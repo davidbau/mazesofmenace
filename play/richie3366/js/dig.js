@@ -34,7 +34,7 @@ import {
 } from './mkobj.js';
 import {
     in_rooms, in_town, stop_occupation, is_pool, is_lava, is_moat,
-    confdir, losehp, maybe_half_phys, nomul, switch_terrain, On_stairs,
+    confdir, losehp, finish_maybe_wail, maybe_half_phys, nomul, switch_terrain, On_stairs,
     Passes_walls_prop, spot_checks, You_hear,
 } from './hack.js';
 import { currency, cmdq_add_key } from './invent.js';
@@ -1407,6 +1407,9 @@ export async function zap_dig() {
                     // ceiling rock still lands. Return only on true death.
                     if (game.program_state?.gameover) return;
                 }
+                // C hack.c losehp:4289–4291 — maybe_wail runs inline;
+                // drain the deferred flag (zap.c:3311 striking-twin shape).
+                await finish_maybe_wail();
                 const otmp = mksobj_at(ROCK, ux, uy, false, false);
                 if (otmp) {
                     xname(otmp);

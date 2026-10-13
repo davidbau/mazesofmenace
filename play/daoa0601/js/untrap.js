@@ -2,6 +2,10 @@
 // C ref: trap.c dountrap(), could_untrap(), and untrap().
 import { monsterHasMapPosition } from './monster_location.js';
 import { deleteTrap } from './trap_lifecycle.js';
+import { vision_note_blocker_change } from './vision.js';
+import { addShopDamage } from './shop_damage.js';
+import { roomsAt } from './room.js';
+import { SHOPBASE } from './const.js';
 import { triggerBoobyTrap } from './booby_trap.js';
 import { adjustHeroAlignment } from './alignment.js';
 import { artifactById } from './artifacts.js';
@@ -232,7 +236,7 @@ async function chooseFloorTrapOrBox(trap, boxCount, ask) {
     const verb = trap.ttyp === WEB ? 'Remove' : 'Disarm';
     const subject = `There ${boxCount === 1 ? 'is' : 'are'} ${containers} `
         + `and ${article(noun)} ${noun} here.`;
-    return ask(`${subject}  ${verb} the ${noun}? [ynq] (q) `);
+    return ask(`${subject}  ${verb} the ${noun}?`);
 }
 async function handleFloorTrap(trap, options) {
     const { state, publish } = options;
@@ -639,8 +643,8 @@ async function handleBoxes(boxes, { state, force, ask, publish, random, rollOne,
         const known = box.tknown && box.dknown;
         const name = OBJECT_NAMES[box.otyp] || box.name || 'box';
         const answer = await ask(known
-            ? `Disarm this ${name}? [ynq] (q) `
-            : `There is ${article(name)} ${name} here.  Check it for traps? [ynq] (q) `);
+            ? `Disarm this ${name}?`
+            : `There is ${article(name)} ${name} here.  Check it for traps?`);
         if (answer === 'q')
             return false;
         if (answer === 'n')
@@ -680,7 +684,7 @@ async function inspectBox(box, options) {
     box.dknown = true;
     if (!impaired)
         await exerciseAttribute(A_WIS, true, state);
-    if (await ask('Disarm it? [ynq] (q) ') === 'y')
+    if (await ask('Disarm it?') === 'y')
         await disarmBox(box, options);
 }
 async function disarmBox(box, { state, force, publish, random, rollOne, rollDice, }) {
@@ -739,7 +743,7 @@ async function handleDoor(x, y, { state, force, trapSkipped, ask, publish, rando
     }
     await publish('You find a trap on the door!');
     await exerciseAttribute(A_WIS, true, state);
-    if (await ask('Disarm it? [ynq] (q) ') !== 'y')
+    if (await ask('Disarm it?') !== 'y')
         return true;
     if (!(door.doormask & D_TRAPPED)) {
         await publish('This door was not trapped.');
@@ -761,9 +765,13 @@ async function handleDoor(x, y, { state, force, trapSkipped, ask, publish, rando
     return true;
 }
 async function triggerDoorTrap(door, x, y, { state, publish, rollOne }) {
-    await triggerBoobyTrap('door', { bodypart: true, state, publish, rollOne });
+    if (await triggerBoobyTrap('door', { bodypart: true, state, publish, rollOne }))
+        return;
     door.doormask = D_NODOOR;
+    vision_note_blocker_change(x, y);
     newsym(x, y);
+    if (roomsAt(state.level, x, y, SHOPBASE).length)
+        addShopDamage(x, y, 0, state);
 }
 async function awardExperience(experience, scoreBonus, state, publish) {
     addExperience(experience, scoreBonus, state);

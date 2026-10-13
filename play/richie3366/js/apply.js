@@ -1237,7 +1237,7 @@ async function do_break_wand(obj) {
     freeinv(obj); /* hide it from destroy_items instead... */
     setnotworn(obj); /* so we need to do this ourselves */
 
-    if (!zappable(obj)) {
+    if (!(await zappable(obj))) {
         await pline(NOTHING_ELSE_HAPPENS);
         await discard_broken_wand();
         return ECMD_TIME;

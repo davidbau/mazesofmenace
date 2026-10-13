@@ -3543,6 +3543,12 @@ export async function eat_brains(magr, mdef, visflag, dmg_p) {
                 pmname(pd, mdef.female ? FEMALE : MALE)}`;
             game.killer.format = NO_KILLER_PREFIX;
             await done(DIED);
+            // C eat.c `:673–675` — done() is NORETURN (extern.h:997);
+            // "life-saving needed to reach here". A stood death must not
+            // draw the exercise below (D-3746 idiom); lifesave/wizard
+            // returns with gameover false and falls through per C.
+            // M_ATTK_MISS makes the mhitu/mhitm callers return draw-free.
+            if (game.program_state?.gameover) return M_ATTK_MISS;
             exercise(A_WIS, false);
             add_brain_dmg(dmg_p, xtra_dmg);
         } else {
@@ -3573,6 +3579,9 @@ export async function eat_brains(magr, mdef, visflag, dmg_p) {
                 game.killer.name = brainlessness;
                 game.killer.format = KILLED_BY;
                 await done(DIED);
+                // C eat.c `:704` — this done() returns only via lifesave
+                // (NORETURN, extern.h:997); a stood death exits in C.
+                if (game.program_state?.gameover) return M_ATTK_MISS;
                 await pline('Unfortunately your brain is still gone.');
                 if (!u.uprops) u.uprops = {};
                 if (!u.uprops[LIFESAVED]) u.uprops[LIFESAVED] = {};
@@ -3585,6 +3594,11 @@ export async function eat_brains(magr, mdef, visflag, dmg_p) {
             game.killer.name = brainlessness;
             game.killer.format = KILLED_BY;
             await done(DIED);
+            // C eat.c `:715–717` — done() is NORETURN (extern.h:997); "can
+            // only get here when in wizard or explore mode and user has
+            // explicitly chosen not to die" (gameover false there, falls
+            // through). A stood death must not draw the exercise below.
+            if (game.program_state?.gameover) return M_ATTK_MISS;
             u.acurr.a[A_INT] = amin + 2;
             await You_feel('like a scarecrow.');
         }

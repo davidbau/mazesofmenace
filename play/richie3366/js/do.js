@@ -1582,9 +1582,16 @@ async function final_level() {
  * `flags.ins_chkpt` is `game.flags.checkpoint` (options.js; optlist
  * default On).
  *
- * The level rewrite and `savestateinlock`'s file body stay named.
- * `create_levelfile` would set `LFILE_EXISTS` and rewrite `game.lock`
- * without a level image, and `goto_level` treats that flag as a stash.
+ * The level rewrite's `LFILE_EXISTS` half and `savestateinlock`'s file
+ * body stay named. `create_levelfile` would set `LFILE_EXISTS` and
+ * rewrite `game.lock` without a level image, and `goto_level` treats
+ * that flag as a stash — and C's checkpoint image is dead data in
+ * normal play (every leave rewrites it, every discard unlinks it), so
+ * the leave-time rewrite re-sets the flag before any reader runs.
+ * But savelev's `VISITED` mark (save.c:493–494) ships: it survives a
+ * later FREEING leave + cant_go_back discard, which is what the
+ * do.c:1695 re-entry arm tests (TEMP-C measured slot 79 VISITED-only
+ * at the scen-worldtour-Healer-582620 s633 re-entry).
  * `currentlevel_rewrite`'s null return (`:1383–1384`) leaves
  * `in_checkpoint` raised and skips `savestateinlock`; it is not taken
  * here. VFS creat cannot fail (D-2555), and the rewrite is not called.
@@ -1618,12 +1625,22 @@ export function save_currentstate() {
         nhfp.mode = WRITING;
         // C `:1387–1388` savelev(nhfp, lev): WRITING-only checkpoint of the
         // live level — the file write and close stay named, but savelev's
-        // live side-effect ships: save.c:548 save_engravings resets every
+        // live side-effects ship: save.c:548 save_engravings resets every
         // live engr_txt pointer to its slot start (engrave.c:1565–1567),
         // so head-wiped blanks reappear (off→0) with no reload to re-skip
-        // them. Other savelev arms are pure writes in WRITING mode, except
-        // update_mlstmv timestamps (named: unobserved, no RNG impact here).
+        // them; and save.c:493–494 marks the slot VISITED (guarded
+        // `lev >= 0 && lev <= maxledgerno()`), the arrival-time mark the
+        // do.c:1695 re-entry arm tests after a discard. Other savelev arms
+        // are pure writes in WRITING mode, except dmonsfree/dobjsfree
+        // dead-cleanup and update_mlstmv timestamps (named: unobserved,
+        // no RNG impact here — RNG matched with them running in C).
         unskip_engravings_for_save();
+        if (lev >= 0 && lev <= maxledgerno()) {
+            if (!game.level_info) game.level_info = [];
+            const li = game.level_info[lev]
+                || (game.level_info[lev] = { flags: 0 });
+            li.flags = (li.flags | 0) | VISITED;
+        }
     }
     // C `:1393` savestateinlock — file body named (save.c:369–421).
     ps.saving = (ps.saving | 0) + 1;

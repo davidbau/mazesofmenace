@@ -11,6 +11,7 @@ import { heroIsBlind } from './senses.js';
 import { objectTypeKnown } from './shk.js';
 import { captureLevitationState, grantWornProperty, propertyIsActive, refreshMovementProperties, removeWornProperty, } from './properties.js';
 import { isWeldedPrimary, releaseWeaponSlots } from './weapon_slots.js';
+import { cancelSlotTakeoff } from './takeoff_state.js';
 import { heroHasNoLimbs, heroIsUnchanging } from './polyself.js';
 import { changeHeroSex, heroPolyGender } from './hero_species.js';
 import { newsym, plineWithContinuation } from './display.js';
@@ -23,6 +24,7 @@ import { experienceRankIndex } from './exper.js';
 import { clearHeroSliming, heroIsSliming } from './slime.js';
 import { heroIsInDangerousRegion } from './regions.js';
 import { rnd } from './rng.js';
+import { monsterName } from './monster_name.js';
 import { floatHeroDown, floatHeroUp } from './terrain_movement.js';
 import { applyHeroLocationEffects } from './cmd.js';
 import { restartMonsterShapechanging, restoreNaturalMonsterShapes } from './monster_polymorph.js';
@@ -66,9 +68,13 @@ export async function wearHeroAccessory(object, slot, state = game) {
     if (property === 'levitation' || property === 'protectionFromShapeChangers')
         requireLiveGame(state);
     const previousLevitation = captureLevitationState(state);
+    const wasStealthy = propertyIsActive('stealth', state);
     const wasFlying = !!state.u.flying;
     const wasInGas = property === 'magicalBreathing' && heroIsInDangerousRegion(state);
     await releaseWeaponSlots(object, state);
+    const previous = state[slot] || state.u[slot];
+    if (previous && previous !== object)
+        cancelSlotTakeoff(slot, state);
     state[slot] = object;
     state.u[slot] = object;
     object.worn = true;
@@ -82,6 +88,10 @@ export async function wearHeroAccessory(object, slot, state = game) {
         await applyAmuletOnEffects(object, state, { wasFlying, wasInGas });
     if (property === 'protectionFromShapeChangers')
         await restoreNaturalMonsterShapes(state);
+    if (property === 'stealth' && !wasStealthy && propertyIsActive('stealth', state)) {
+        learnRing(object, true, state);
+        await plineWithContinuation('You move very quietly.');
+    }
     if (property === 'levitation') {
         if (!previousLevitation.hasSource && !previousLevitation.blockedByTerrain) {
             await floatHeroUp(state, previousLevitation);
@@ -173,7 +183,17 @@ export async function removeHeroAccessory(object, state = game) {
     if (objectProperty === 'levitation' || objectProperty === 'protectionFromShapeChangers')
         requireLiveGame(state);
     const previousLevitation = captureLevitationState(state);
+    const wasStealthy = propertyIsActive('stealth', state);
     const property = clearHeroAccessory(object, state);
+    if (property === 'stealth' && wasStealthy && !propertyIsActive('stealth', state)) {
+        learnRing(object, true, state);
+        const steed = state.u.usteed;
+        await plineWithContinuation(steed
+            ? `You and ${monsterName(steed, {
+                state, article: 'your', suppressSaddle: true, suppressHallucination: true,
+            })} are noisy.`
+            : 'You sure are noisy.');
+    }
     if (property === 'protectionFromShapeChangers'
         && !propertyIsActive('protectionFromShapeChangers', state))
         await restartMonsterShapechanging(state);
@@ -196,6 +216,7 @@ export function clearHeroAccessory(object, state = game) {
     if (!position)
         return null;
     const { slot } = position;
+    cancelSlotTakeoff(slot, state);
     state[slot] = null;
     state.u[slot] = null;
     object.worn = false;

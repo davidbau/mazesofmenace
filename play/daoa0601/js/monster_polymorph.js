@@ -1,6 +1,6 @@
 // Monster shape-changing rules.
 // C refs: mon.c:select_newcham_form(), pickvampshape(), and newcham().
-import { BOLT_LIM, Is_rogue_level, STRAT_WAITFORU, W_ARM, M_AP_MONSTER, M_AP_NOTHING, M_AP_TYPE, MON_FLOOR, NON_PM, ismnum, } from './const.js';
+import { BOLT_LIM, DOOR, D_CLOSED, D_LOCKED, Is_rogue_level, STRAT_WAITFORU, W_ARM, M_AP_MONSTER, M_AP_NOTHING, M_AP_TYPE, MON_FLOOR, NON_PM, ismnum, } from './const.js';
 import { canSeeMonster, canSpotMonster, newsym, plineWithContinuation, swallowed } from './display.js';
 import { dragonFormForArmor } from './armor.js';
 import { game, requireLiveGame } from './gstate.js';
@@ -20,6 +20,7 @@ import { monsterSelfTouchAfterPolymorph } from './monster_stoning.js';
 import { revealMonsterAppearance } from './monster_appearance.js';
 import { finishMonsterEating } from './monster_eating.js';
 import { setMimicAppearance } from './mklev.js';
+import { smellUnseenMonster } from './monster_smell.js';
 import { isHumanWereMonster, isWereMonster, transformWereMonster } from './were.js';
 import { finishEnvironmentalMonsterDeath } from './monster_death.js';
 import { adjustRiderAfterSteedPolymorph } from './steed.js';
@@ -27,6 +28,8 @@ import { BOULDER, CANDELABRUM_OF_INVOCATION } from './object_data.js';
 import { rn1, rn2 } from './rng.js';
 import { isLavaAt, isPoolAt } from './terrain_properties.js';
 import { toptenMonsterForm } from './topten.js';
+import { findNearbyMonsterPosition } from './teleport_rules.js';
+import { relocateMonsterTo } from './teleport.js';
 import { initializeMonsterWormBody, removeMonsterWormBody, } from './monster_worm.js';
 const M1_HUMANOID = 0x00020000;
 const M1_ANIMAL = 0x00040000;
@@ -218,13 +221,15 @@ function selectChameleonForm() {
     }
     return null;
 }
-function selectInitialSandestinForm() {
+function selectSandestinForm() {
     for (let triesLeft = 20; triesLeft > 0; --triesLeft) {
         const targetMnum = rn2(7)
             ? pickNastyShape((MONSTER_DIFFICULTY[PM_ARCHON] ?? 0) - 1)
             : randomShape(PM_SANDESTIN);
-        if (acceptsShapechangerForm(PM_SANDESTIN, targetMnum))
-            return targetMnum === PM_SANDESTIN ? null : targetMnum;
+        const wantsUppercase = triesLeft > 15 && Is_rogue_level(game.u?.uz);
+        if (acceptsShapechangerForm(PM_SANDESTIN, targetMnum)
+            && (!wantsUppercase || /^[A-Z]$/.test(monsterClassSymbol(targetMnum))))
+            return targetMnum;
     }
     return null;
 }
@@ -424,7 +429,7 @@ export async function initialShapechangedBirth(monster) {
             targetMnum = null;
     }
     else if (baseMnum === PM_SANDESTIN) {
-        targetMnum = selectInitialSandestinForm();
+        targetMnum = selectSandestinForm();
     }
     else if (baseMnum === PM_VAMPIRE || baseMnum === PM_VAMPIRE_LEADER) {
         targetMnum = pickVampireShape(monster);
@@ -456,6 +461,9 @@ export async function changeMonsterForm(monster, forcedTargetMnum = null, state 
     let targetMnum = forcedTargetMnum;
     if (targetMnum == null && baseMnum === PM_DOPPELGANGER) {
         targetMnum = await selectDoppelgangerForm(monster);
+    }
+    else if (targetMnum == null && baseMnum === PM_SANDESTIN) {
+        targetMnum = selectSandestinForm();
     }
     else if (targetMnum == null && baseMnum === PM_CHAMELEON) {
         targetMnum = selectChameleonForm();
@@ -545,14 +553,21 @@ export async function changeMonsterForm(monster, forcedTargetMnum = null, state 
     if (showMessage) {
         const newName = monsterTypeName(monster.mnum, !!monster.female);
         const nowSpotted = canSpotMonster(monster);
-        if (wasSpotted && nowSpotted)
-            message = `${oldSubject} turns into a ${newName}!`;
-        else if (wasSpotted)
-            message = `${oldSubject} disappears!`;
-        else if (nowSpotted)
-            message = `${monster.mtame ? 'Your' : 'A'} ${newName} appears!`;
-        if (message)
+        if (nowSpotted) {
+            if (wasSpotted)
+                message = `${oldSubject} turns into a ${newName}!`;
+            else
+                message = `${monster.mtame ? 'Your' : 'A'} ${newName} appears!`;
             await publish(message);
+        }
+        else {
+            if (wasSpotted) {
+                message = `${oldSubject} disappears!`;
+                await publish(message);
+            }
+            // C newcham(): a form the hero cannot spot may still reach the nose.
+            await smellUnseenMonster(targetMnum, state, publish);
+        }
     }
     if (baseMnum < 0 && MONSTER_SYMBOL[targetMnum] === S_VAMPIRE
         && naturalShapechanger(targetMnum)
@@ -625,7 +640,15 @@ export async function decideMonsterShapeChange(monster, state = game, random = r
                 && monster.mhp === monster.mhpmax
                 && random(4) === 0
                 && vampireMayShiftOutOfSight(monster, state)) {
-                shouldChange = true;
+                targetMnum = pickVampireShape(monster);
+                shouldChange = targetMnum !== monster.mnum;
+            }
+            const square = state.level?.at(monster.mx, monster.my);
+            if (shouldChange && monsterIsAmorphous(monster)
+                && square?.typ === DOOR && square.doormask & (D_CLOSED | D_LOCKED)) {
+                const position = findNearbyMonsterPosition(targetMnum, monster.mx, monster.my, { state, random });
+                if (position)
+                    await relocateMonsterTo(monster, position.x, position.y, { state, random });
             }
         }
         else if (monster.mhp >= 9 * (monster.mhpmax ?? 0) / 10

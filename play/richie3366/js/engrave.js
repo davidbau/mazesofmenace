@@ -1090,7 +1090,7 @@ async function doengrave_sfx_item(de) {
     case RANDOM_CLASS:
         break;
     case WAND_CLASS:
-        if (zappable(de.otmp)) {
+        if (await zappable(de.otmp)) {
             await check_unpaid(de.otmp);
             if (de.otmp.cursed && !rn2(WAND_BACKFIRE_CHANCE)) {
                 await wand_explode(de.otmp, 0);

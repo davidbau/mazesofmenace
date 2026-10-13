@@ -1,12 +1,12 @@
 // state_schema.js — Versioned boundary between saved game data and runtime state.
 // C refs: save.c, restore.c, decl.h, you.h, rm.h.
-export const SAVE_VERSION = 23;
+export const SAVE_VERSION = 25;
 const persistentNames = [
     'Luck', '_activeSpecialLevel', '_armorClassDirty', '_artifactDiscoveries',
     '_artifactExists', '_artifactFound', '_artifactRuntime', '_bonesEncountered',
     '_bonesSaved', '_bubbleTraversalUp', '_characterPickerUsed',
     '_deathKiller', '_digestedMonsterSpecies', '_encounteredObjectTypes',
-    '_encumbranceLevel', '_farMonsterNoise', '_fobjSerial', '_genocidedMonsters',
+    '_encumbranceLevel', '_farMonsterNoise', '_fobjSerial',
     '_helplessAfter', '_helplessDoneMessage', '_helplessReason', '_helplessTurns',
     '_heroActionSeq', '_heroTrack', '_initialGoldCount', '_initialPwBonus',
     '_knownObjectTypes', '_lastBoulderPushMove', '_lastDemigodAggravation',
@@ -45,6 +45,7 @@ const persistentNames = [
 // reclassifying a field requires an explicit persistence decision at compile time.
 const transientFields = {
     _canMakeBones: true,
+    _wailMessageMove: true,
     bhitpos: true,
     notonhead: true,
     _currentWand: true,
@@ -83,12 +84,12 @@ const transientFields = {
     _monsterEngulf: true,
     _occupation: true,
     _pendingDemigodIntervention: true,
+    _pendingHeroShapeChange: true,
     _pending_message: true,
     _prayerHeroTookTimePending: true,
     _queuedHelplessRecoveryMessage: true,
     _retained_message: true,
     _runState: true,
-    _saveExitPending: true,
     _screen_output: true,
     _shopFollowMessageTurn: true,
     _shopRepossession: true,
@@ -98,6 +99,7 @@ const transientFields = {
     _statusGoldOverride: true,
     _statusHpOverride: true,
     _statusProjectedAc: true,
+    _statusUpdatesDisabled: true,
     _steedDismounting: true,
     _suppressMapStatusForFlush: true,
     _suppressMessagesUntilInput: true,

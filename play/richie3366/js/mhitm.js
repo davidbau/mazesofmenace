@@ -141,7 +141,7 @@ import { stairway_find_type_dir } from './mklev.js';
 import { polyself, poly_gender } from './polyself.js';
 import { you_were, you_unwere, were_change } from './were.js';
 import { night } from './calendar.js';
-import { resists_drli, shieldeff_mon, drain_item } from './zap.js';
+import { resists_drli, resists_cold, shieldeff_mon, drain_item } from './zap.js';
 import { poisoned, A_STR, A_DEX, A_CON } from './attrib.js';
 import { rloc, tele_restrict, tele, goodpos, u_teleport_mon, enexto, rloc_to } from './teleport.js';
 import { m_unleash } from './apply.js';
@@ -415,13 +415,7 @@ function Cold_resistance() {
     return !!(u.Cold_resistance || u.HCold_resistance || u.ECold_resistance);
 }
 
-/** C ref: mondata.c resists_cold — MR_COLD on data / intrinsics / extrinsics. */
-function resists_cold(mon) {
-    if (!mon) return false;
-    const bits = (mon.data?.mresists | 0) | (mon.mextrinsics | 0)
-        | (mon.mintrinsics | 0);
-    return !!(bits & MR_COLD);
-}
+/* C monst.h:273 resists_cold → Resists_Elem(mon, COLD_RES): live zap.js export (imported above); local bit-test clone removed. */
 
 /** C ref: mondata.c resists_fire / resists_elec / resists_acid. */
 function resists_fire(mon) {

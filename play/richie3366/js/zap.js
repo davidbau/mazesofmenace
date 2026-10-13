@@ -364,7 +364,7 @@ import {
     W_RING, W_ARMG, W_ARMH, W_ARMOR, W_SADDLE, W_ART, W_ARTI,
     W_WEP, W_SWAPWEP, W_QUIVER, W_WEAPONS,
     W_ARMS, W_ARM, W_ARMC, W_ARMU,
-    REFLECTING, ANTIMAGIC, SHOCK_RES, POISON_RES, DRAIN_RES, TELEPORT_CONTROL, STUNNED, M_SEEN_MAGR, M_SEEN_REFL, M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_SLEEP, M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_ACID, LEVITATION, FLYING,
+    REFLECTING, ANTIMAGIC, COLD_RES, SHOCK_RES, POISON_RES, DRAIN_RES, TELEPORT_CONTROL, STUNNED, M_SEEN_MAGR, M_SEEN_REFL, M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_SLEEP, M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_ACID, LEVITATION, FLYING,
     NO_MINVENT, MM_NOWAIT, MM_NOMSG, MM_NOCOUNTBIRTH, MM_MALE, MM_FEMALE,
     IS_POOL, CONTAINED_TOO, BURIED_TOO, ROOM, CORR, GRAVE,
     CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, MFAST,
@@ -1501,8 +1501,8 @@ function sleep_monst_zap(mon, amt) {
 
 /**
  * C ref: monst.h mon_resistancebits — data.mresists | mextrinsics |
- * mintrinsics. Fire/cold/elec/acid/disint still use this bit test
- * (artifact/worn grants named). Poison is Resists_Elem.
+ * mintrinsics. Fire/elec/acid/disint still use this bit test
+ * (artifact/worn grants named). Poison and cold are Resists_Elem.
  */
 function mon_resists_bit(mon, mrBit) {
     if (!mon) return false;
@@ -1512,7 +1512,8 @@ function mon_resists_bit(mon, mrBit) {
     return !!(bits & mrBit);
 }
 export function resists_fire(mon) { return mon_resists_bit(mon, MR_FIRE); }
-export function resists_cold(mon) { return mon_resists_bit(mon, MR_COLD); }
+/** C monst.h:273 resists_cold → Resists_Elem(mon, COLD_RES). */
+export function resists_cold(mon) { return Resists_Elem(mon, COLD_RES); }
 export function resists_elec(mon) { return mon_resists_bit(mon, MR_ELEC); }
 /** C monst.h:277 resists_poison → Resists_Elem(mon, POISON_RES). */
 export function resists_poison(mon) { return Resists_Elem(mon, POISON_RES); }
@@ -2833,15 +2834,17 @@ async function getobj_zap() {
 }
 
 /**
- * C ref: zap.c zappable — consume a charge; wrest path when spe==0.
- * @returns {number} 1 if zap available
+ * C ref: zap.c zappable :2514–2522 — consume a charge; the spe==0 wrest arm
+ * prints You("wrest one last charge from the worn-out wand.") before the
+ * charge is consumed (D-3901; precedes dozap's getdir :2653 and the engrave
+ * text prompt — engrave.c:784–790). Async: You() can block on --More--.
+ * @returns {Promise<number>} 1 if zap available
  */
-export function zappable(wand) {
+export async function zappable(wand) {
     if (wand.spe < 0 || (wand.spe === 0 && rn2(WAND_WREST_CHANCE)))
         return 0;
-    if (wand.spe === 0) {
-        // You wrest one last charge… — message deferred until needed
-    }
+    if (wand.spe === 0)
+        await You('wrest one last charge from the worn-out wand.');
     wand.spe--;
     return 1;
 }
@@ -7350,7 +7353,7 @@ export async function dozap() {
     const oc = game.objects?.[obj.otyp];
     const need_dir = oc && oc.oc_dir !== NODIR;
 
-    if (!zappable(obj)) {
+    if (!(await zappable(obj))) {
         await pline(nothing_happens);
     } else if (obj.cursed && !rn2(WAND_BACKFIRE_CHANCE)) {
         await backfire(obj); /* the wand blows up in your face! */

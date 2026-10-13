@@ -43,7 +43,7 @@ import {
 } from './const.js';
 import {
     pline, vpline, You, You_cant, There, Norep, newsym, canspotmon, canseemon, map_invisible, You_feel,
-    set_msg_xy, feel_location, map_object, unmap_object, glyph_is_invisible, verbalize, curs_on_u,
+    set_msg_xy, feel_location, map_object, unmap_object, glyph_is_invisible, glyph_to_obj, verbalize, curs_on_u,
     nh_delay_output, back_to_glyph, glyph_to_cmap, glyph_is_cmap, pline_dir,
     impossible, raw_printf,
 } from './display.js';
@@ -1256,17 +1256,21 @@ function glyph_at_fp(x, y) {
 }
 
 /**
- * C display.h glyph_to_obj(glyph_at(x,y)) == BOULDER.
- * C glyph_at is gbuf, not live floor — never use sobj_at here (the
- * while loop already knows a boulder is present). JS has no integer
- * glyph IDs; map_object stamps remembered_glyph.boulder (D-1281).
+ * C hack.c moverock_core `:358–363` — `glyph_to_obj(glyph_at(x,y)) == BOULDER`.
+ * C glyph_at is the shown glyph, not live floor — never use sobj_at here (the
+ * while loop already knows a boulder is present). remembered_glyph.glyph is
+ * the levl.glyph integer model (display.h glyph_to_obj `:902–913`); the
+ * .boulder boolean is only map_object's stamp (D-1281), which integer-only
+ * writers (show_map_spot `:1410–1413` oldglyph restore via
+ * remember_shown_glyph) do not set — read both.
  */
 function glyph_to_obj_is_boulder(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc) return false;
     const rg = loc.remembered_glyph;
     if (rg?.invisible) return false;
-    return !!rg?.boulder;
+    if (rg?.boulder) return true;
+    return glyph_to_obj(rg?.glyph) === BOULDER;
 }
 
 /**

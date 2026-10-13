@@ -20,8 +20,10 @@ import {
     CONFLICT,
     CONFUSION,
     DETECT_MONSTERS,
+    DISMOUNT_ENGULFED,
     DISPLACED,
     DIED,
+    ERODE_CORRODE,
     FIRE_RES,
     FEMALE,
     G_EXTINCT,
@@ -263,7 +265,7 @@ import { enexto, teleds } from './teleport.js';
 import { discover_object, observe_object } from './o_init.js';
 import { is_quest_artifact } from './questpgr.js';
 import { d, rn1, rn2, rnd, rne, rn2_on_display_rng } from './rng.js';
-import { Punished } from './steed.js';
+import { dismount_steed, Punished } from './steed.js';
 import { heroIsBlind, messageAt } from './startup_a11y.js';
 import {
     t_at,
@@ -282,6 +284,7 @@ import {
     enfolds,
     mhitm_adtyping,
     mhitm_knockback,
+    erode_armor,
 } from './uhitm.js';
 import { Cold_resistance, Fire_resistance, drain_item } from './zap.js';
 import { cansee, couldsee, m_canseeu, vision_recalc } from './vision.js';
@@ -2315,9 +2318,11 @@ async function gulpmu(mtmp, mattk, rawEnv = {}) {
                 state,
                 rawEnv,
             );
-            // steed.c dismount_steed() is still partial for DISMOUNT_ENGULFED;
-            // C discards its void result, so preserve the named boundary.
-            note_unported('steed.c dismount_steed');
+            await dismount_steed(DISMOUNT_ENGULFED, state, {
+                ...rawEnv,
+                state,
+                random,
+            });
         } else if (rawEnv.planning) {
             // Planning suppresses only the display operation. Source state
             // transitions and game-RNG draws below still run on the clone.
@@ -3428,7 +3433,8 @@ async function passiveum(olduasmon, mtmp, mattk, state, env) {
         } else {
             tmp = 0;
         }
-        if (!random.rn2(30)) note_unported('uhitm.c erode_armor');
+        if (!random.rn2(30))
+            await erode_armor(mtmp, ERODE_CORRODE, state, { ...env, random });
         if (!random.rn2(6))
             await acid_damage(mtmp.mw, { ...env, state, random });
         return assess_dmg(mtmp, tmp, state, env);

@@ -4,7 +4,9 @@ import { bookCursed, continueSpellbookStudy } from './spellbook_study.js';
 import { grantMonsterWish } from './potion_occupants.js';
 import { quaff } from './quaff.js';
 import { tameMonster } from './monster_taming.js';
+import { setMonsterMalign } from './monster_alignment.js';
 import { jumpHero } from './jumping.js';
+import { feel_location } from './display.js';
 // cmd.js — Command dispatch and movement.
 // C ref: cmd.c rhack(), hack.c domove().
 import { game, requireGameLevel, requirePlayingGame, requireInitializedGame } from './gstate.js';
@@ -30,6 +32,7 @@ import { GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_SUGGEST } from './const.js';
 import { senseBuriedObjects } from './buried_object.js';
 import { monsterInstanceDisplayName, monsterName, shopkeeperName } from './monster_name.js';
 import { attackHostileMonster } from './hero_melee.js';
+import { prepareAppliedWeaponAttack } from './hero_attack_preflight.js';
 import { monsterHasMapPosition, monsterAtPosition } from './monster_location.js';
 import { SHOP_TYPES } from './shop_data.js';
 import { observeBucForNaming } from './object_knowledge.js';
@@ -42,6 +45,9 @@ import { propertyIsActive } from './properties.js';
 import { addPickedInventoryObject, pickupAtHero, pickupObjectClass, pickupClassOrder, } from './pickup.js';
 import { gotoLevel } from './level_change.js';
 import { levelTeleport } from './level_teleport.js';
+import { confirmHeroStep } from './hero_step_confirmation.js';
+import { monsterPassesBars } from './monster_movement_traits.js';
+import { wormCrossesBetween } from './monster_worm.js';
 import { floorObjectDescription, } from './floor_object_display.js';
 import { loseHeroHp } from './hero_damage.js';
 import { poisonHeroStrengthAndHp } from './poison.js';
@@ -52,6 +58,8 @@ import { blocksDiagonalDoor, blocksMove, escapeFromStickyMonster, heroBadRock, h
 import { commandExecutionKey, controlRushDirection, promptedDirectionKey, visibleCommandKey } from './command_keys.js';
 import { NATIVE_COMMAND_FLAGS, NATIVE_COMMANDS } from './command_data.js';
 import { stopHeroOccupation } from './occupation.js';
+import { continueBulkTakeoff, takeOffAll } from './bulk_takeoff.js';
+import { resetBulkTakeoff } from './takeoff_state.js';
 import { currentLuaLifecycle } from './lua/lifecycle.js';
 import { nextObjectId } from './ident.js';
 import { nhgetch } from './input.js';
@@ -62,8 +70,8 @@ import { directionAssistPage, promptKey, readDirectionKey, restoreCommandMap, } 
 import { getLine, paranoidQuery, promptYesNo, promptYesNoQuit, } from './query.js';
 export { getLine, promptYesNo, promptYesNoQuit } from './query.js';
 import { objectTypeCallNoun, } from './object_call.js';
-import { displayLiquidName, newsym, flushPendingTopline, flush_screen, pline, plineWithContinuation, moreUntilDismissed, docrt, bot, terrain_glyph, glyphAt, canSeeMonster, canSpotMonster, monsterHasWarningProjection, see_nearby_objects, show_glyph_cell, swallowed, randomDisplayMonsterName, randomDisplayMonsterSubject, see_monsters, see_objects, see_traps, transientObjectGlyph, map_invisible, unmap_invisible, map_object, unmapObject, } from './display.js';
-import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
+import { displayLiquidName, displayMessageWindow, newsym, feel_newsym, flushPendingTopline, flush_screen, pline, plineWithContinuation, moreUntilDismissed, docrt, bot, terrain_glyph, glyphAt, canSeeMonster, canSpotMonster, monsterHasWarningProjection, see_nearby_objects, show_glyph_cell, swallowed, randomDisplayMonsterName, randomDisplayMonsterSubject, see_monsters, see_objects, see_traps, transientObjectGlyph, map_invisible, unmap_invisible, map_object, unmapObject, } from './display.js';
+import { cansee, couldsee, vision_note_blocker_change, vision_recalc, vision_reset } from './vision.js';
 import { lightWieldedArtifact, transformMagicLampToOilLamp, } from './light.js';
 import { dozap, } from './zap.js';
 import { bucAdjectiveForName, consumeInventoryItem, ddoinv, dolook, fullyIdentifyObject, inventoryItemDescription, inventoryPrimaryHandDetail, selectInventoryObject, } from './invent.js';
@@ -122,11 +130,10 @@ import { objectName, unseenObjectNoun, } from './objnam.js';
 import { artifactById, } from './artifacts.js';
 import { invokeArtifactPower, } from './artifact_invoke.js';
 import { touchArtifactByHero } from './artifact_touch.js';
-import { SLING, BULLWHIP, GRAPPLING_HOOK, CREAM_PIE, EGG, LUMP_OF_ROYAL_JELLY, LOCK_PICK, CREDIT_CARD, STETHOSCOPE, LOADSTONE, GOLD_PIECE, BOULDER, ROCK, DILITHIUM_CRYSTAL, LUCKSTONE, TOUCHSTONE, LARGE_BOX, CHEST, ICE_BOX, SACK, OILSKIN_SACK, BAG_OF_HOLDING, BRASS_LANTERN, OIL_LAMP, MAGIC_LAMP, STATUE, RIN_PROTECTION, BANANA, MIRROR, TIN_WHISTLE, MAGIC_WHISTLE, EUCALYPTUS_LEAF, BELL, BELL_OF_OPENING, EXPENSIVE_CAMERA, TIN_OPENER, TALLOW_CANDLE, WAX_CANDLE, CANDELABRUM_OF_INVOCATION, POT_OIL, RIN_CONFLICT, LENSES, BLINDFOLD, TOWEL, FUMBLE_BOOTS, KICKING_BOOTS, MAGIC_MARKER, UNICORN_HORN, SHIELD_OF_REFLECTION, CLOAK_OF_DISPLACEMENT, AMULET_OF_YENDOR, AMULET_OF_STRANGULATION, FAKE_AMULET_OF_YENDOR, SPE_NOVEL, OBJECT_DELAY, OBJECT_DESCRIPTIONS, OBJECT_MATERIAL, OBJECT_NAMES, OBJECT_WEIGHT, OBJECT_SUBTYPE, } from './object_data.js';
+import { SLING, BULLWHIP, GRAPPLING_HOOK, CREAM_PIE, EGG, LUMP_OF_ROYAL_JELLY, LOCK_PICK, CREDIT_CARD, STETHOSCOPE, LOADSTONE, GOLD_PIECE, BOULDER, ROCK, DILITHIUM_CRYSTAL, LUCKSTONE, TOUCHSTONE, LARGE_BOX, CHEST, ICE_BOX, SACK, OILSKIN_SACK, BAG_OF_HOLDING, BRASS_LANTERN, OIL_LAMP, MAGIC_LAMP, STATUE, RIN_PROTECTION, BANANA, MIRROR, TIN_WHISTLE, MAGIC_WHISTLE, EUCALYPTUS_LEAF, BELL, BELL_OF_OPENING, EXPENSIVE_CAMERA, TIN_OPENER, TALLOW_CANDLE, WAX_CANDLE, CANDELABRUM_OF_INVOCATION, POT_OIL, RIN_CONFLICT, LENSES, BLINDFOLD, TOWEL, FUMBLE_BOOTS, KICKING_BOOTS, MAGIC_MARKER, UNICORN_HORN, SHIELD_OF_REFLECTION, AMULET_OF_YENDOR, AMULET_OF_STRANGULATION, FAKE_AMULET_OF_YENDOR, SPE_NOVEL, OBJECT_DELAY, OBJECT_DESCRIPTIONS, OBJECT_MATERIAL, OBJECT_NAMES, OBJECT_WEIGHT, OBJECT_SUBTYPE, } from './object_data.js';
 import { CLR_WHITE, NO_COLOR, } from './terminal.js';
 import { MONSTER_COLOR, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_LEVEL, MONSTER_MOVE, MONSTER_NAME, MONSTER_SIZE, MONSTER_SYMBOL, MONSTER_ALIGNMENT, MONSTER_ATTACKS, requireMonsterData, } from './monster_data.js';
 import { monsterStatusLine } from './monster_status.js';
-import { revealMimic } from './mimic.js';
 import { nameToMonster } from './mondata.js';
 import { addExperience, checkExperienceLevel, gainExperienceLevel, loseHeroExperience, } from './exper.js';
 import { removeHeroAccessory, wearHeroAccessory, } from './accessory.js';
@@ -136,7 +143,7 @@ import { isPoolAt } from './terrain_properties.js';
 import { drawbridgeUnderlyingType } from './drawbridge_terrain.js';
 import { dosave } from './save.js';
 import { captureRunmodeDelay, startRun, stopRun } from './runmode.js';
-import { applyArmorOnEffects, armorOnIdentifiesType, armorSlotFor, armorSimpleName, armorOffMessage, findArmorClass, heroIsDisplaced, objectErosionKind, objectErosionMessage, removeHeroArmor, wearHeroArmor, } from './armor.js';
+import { announceDisplacementLoss, applyArmorOnEffects, armorOnIdentifiesType, armorSlotFor, armorSimpleName, armorOffMessage, findArmorClass, heroIsDisplaced, objectErosionKind, objectErosionMessage, removeHeroArmor, wearHeroArmor, } from './armor.js';
 import { findMonsterArmorClass, nameMonsterForCreationArmorChecks, } from './monworn.js';
 import { finishHeroMonsterKill, finishHeroMonsterKillOutcome } from './hero_monster_death.js';
 import { wakeMonstersNear } from './monster_wake.js';
@@ -160,7 +167,10 @@ import { isWetTowel, willWeld } from './weapon_type.js';
 import { announceWeaponWeld, explainTwoWeaponEnd, refuseWeldedPrimary } from './weapon_feedback.js';
 import { dropCursedSecondaryWeapon, toggleTwoWeaponCombat } from './two_weapon.js';
 import { dist2, distmin, dungeonDepth } from './hacklib.js';
-import { roomForRoomno } from './room.js';
+import { triggerBoobyTrap } from './booby_trap.js';
+import { addShopDamage, payForShopDamage } from './shop_damage.js';
+import { convertSecretDoor } from './detect.js';
+import { roomForRoomno, roomsAt } from './room.js';
 import { learnObjectType, objectClassForType, recordObjectCall, recordObjectEncounter, recordObjectKnowledge, } from './object_knowledge.js';
 import { encumbranceLabel, encumbranceMessage, exceedsActionCapacity, nearCapacity, invWeight, OVERLOADED, SLT_ENCUMBER, } from './weight.js';
 import { hiddenGold } from './gold.js';
@@ -172,7 +182,7 @@ import { detachHeroGold, heroGoldAmount, heroGoldObject, setHeroGoldAmount } fro
 import { resolveDirectGoldThrow, resolveQuiveredGoldThrow, } from './gold_throw.js';
 import { heroIsBlind, heroIsHallucinating, } from './senses.js';
 import { beginBallAndChainMove, finishBallAndChainMove, heroIsPunished } from './ball.js';
-import { doquit, finishHeroDeath, vanquishedLines, } from './end.js';
+import { doquit, finishHeroDeath, vanquishedLines, listGenocided, } from './end.js';
 import { hasRecordedMonsterDeaths } from './monster_vitals.js';
 import { applyHeroContactPassive, } from './monster_passive.js';
 import { heroCannotTake, heroHasNoHands, heroHasNoLimbs, heroIsPolymorphed, heroIsVerySmall, heroCanChangeVampireShape, polymorphHero, returnHeroToHumanForm, } from './polyself.js';
@@ -191,7 +201,10 @@ import { doenhance, useHeroSkill, } from './skills.js';
 import { chargeUnpaidUsage, checkSpecialRoom, carriedShopBill, objectTypeKnown, payShopDebt, settleCarriedShopBillItem, shopkeeperForHero, shopThankYouMessage, } from './shk.js';
 import { visiblePriestName, } from './priest.js';
 import { gameLogEvents } from './gamelog.js';
-import { maybeSmudgeEngravings, wipeHeroEngraving } from './engrave.js';
+import { killerObjectName } from './objnam.js';
+import { GRAVE } from './const.js';
+import { disturbGrave } from './grave.js';
+import { deleteEngravingAt, maybeSmudgeEngravings, wipeHeroEngraving } from './engrave.js';
 import { canLetGo, finishInventoryRemoval } from './hero_inventory.js';
 import { removeHeroEquipment } from './hero_equipment.js';
 import { shouldShowGetposTip, showGetposTip, moveGetposCursor, selectMapPosition, } from './getpos.js';
@@ -205,7 +218,7 @@ import { kickWithMonsterForm } from './hero_form_kick.js';
 import { bringLeashedFollowers, heroTeleportDestinationOk, moveHeroByTeleport, randomMonsterRelocation, safeTeleportDestination, } from './teleport.js';
 import { monsterTeleportRestricted } from './teleport_rules.js';
 import { removeWishGrantingMonster } from './monster_departure.js';
-import { RLOC_MSG, A_CON, A_DEX, A_STR, A_WIS, BOLT_LIM, COLNO, ROWNO, STONE, SCORR, SDOOR, DOOR, CORR, ROOM, ICE, POOL, CLOUD, IRONBARS, FOUNTAIN, SINK, ALTAR, WATER, MOAT, LAVAWALL, TREE, D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, IS_WALL, IS_STWALL, IS_OBSTRUCTED, IS_FURNITURE, IS_AIR, IS_POOL, IS_LAVA, IS_ROOM, ZAP_POS, SQKY_BOARD, BEAR_TRAP, LANDMINE, FIRE_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR, DART_TRAP, MAGIC_TRAP, TELEP_TRAP, LEVEL_TELEP, STATUE_TRAP, WEB, ANTI_MAGIC, G_GONE, ER_NOTHING, ER_DAMAGED, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, STRAT_WAITMASK, MM_NOEXCLAM, MM_NOMSG, SHOPBASE, ROOMOFFSET, F_LOOTED, In_endgame, Is_airlevel, Is_waterlevel, W_ARMOR, W_ACCESSORY, W_SADDLE, LOST_THROWN, WT_SPLASH_THRESHOLD, WT_SQUEEZABLE_INV, P_BOW, P_SLING, PARANOID_HIT, POLY_CONTROLLED, STR19, isok, ACCESSIBLE, AIR, DIGTYP_UNDIGGABLE, DRAWBRIDGE_UP, } from './const.js';
+import { RLOC_MSG, A_CON, A_DEX, A_STR, A_WIS, BOLT_LIM, COLNO, ROWNO, STONE, SCORR, SDOOR, DOOR, CORR, ROOM, ICE, POOL, CLOUD, IRONBARS, FOUNTAIN, SINK, ALTAR, WATER, MOAT, LAVAWALL, TREE, D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED, SHOP_DOOR_COST, IS_WALL, IS_STWALL, IS_OBSTRUCTED, IS_FURNITURE, IS_AIR, IS_POOL, IS_LAVA, IS_ROOM, ZAP_POS, SQKY_BOARD, BEAR_TRAP, LANDMINE, FIRE_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR, DART_TRAP, MAGIC_TRAP, TELEP_TRAP, LEVEL_TELEP, STATUE_TRAP, WEB, ANTI_MAGIC, G_GONE, ER_NOTHING, ER_DAMAGED, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, STRAT_WAITMASK, MM_NOEXCLAM, MM_NOMSG, SHOPBASE, ROOMOFFSET, F_LOOTED, In_endgame, Is_airlevel, Is_waterlevel, W_ARMOR, W_ACCESSORY, W_SADDLE, LOST_THROWN, WT_SPLASH_THRESHOLD, WT_SQUEEZABLE_INV, P_BOW, P_SLING, PARANOID_HIT, POLY_CONTROLLED, STR19, isok, ACCESSIBLE, AIR, DIGTYP_UNDIGGABLE, DRAWBRIDGE_UP, } from './const.js';
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
 // object.h enum value; object_data currently exposes the two other tools.
@@ -267,6 +280,33 @@ async function rejectTightHeroDiagonal(dx, dy) {
         await pline('You cannot pass that way.');
     game.context.move = 0;
     return true;
+}
+// C test_move(TEST_MOVE): confirmation tests obstacles without performing
+// auto-open, boulder pushing, or the hero's eventual movement.
+function heroCanConfirmStep(x, y) {
+    const hero = game.u;
+    const location = game.level?.at(x, y);
+    if (!location || (blocksMove(x, y) && !heroCanPassWallAt(game, x, y)))
+        return false;
+    const passesWalls = heroPassesWalls(game);
+    if (location.typ === IRONBARS && !passesWalls
+        && !monsterPassesBars({ mnum: heroSpecies(game) }))
+        return false;
+    const dx = x - hero.ux, dy = y - hero.uy;
+    if (dx && dy) {
+        if (!passesWalls && blocksDiagonalDoor(game.level?.at(hero.ux, hero.uy), location))
+            return false;
+        if (heroBadRock(game, hero.ux, y) && heroBadRock(game, x, hero.uy)) {
+            if (heroTightDiagonalReason(game))
+                return false;
+        }
+        else if (wormCrossesBetween(hero.ux, hero.uy, x, y, game))
+            return false;
+    }
+    const boulder = game.level?.objects[x]?.[y]?.some(object => object.otyp === BOULDER);
+    return !(boulder && (!passesWalls || game.level?.flags.sokoban_rules)
+        && (game._runState?.mode ?? 0) >= 2 && !heroIsBlind(game)
+        && !heroIsHallucinating(game) && !heroCouldMoveOntoBoulder(x, y));
 }
 function runDist2(x1, y1, x2, y2) {
     const dx = x1 - x2;
@@ -752,6 +792,12 @@ async function continueOccupation(g) {
     if (occupation.key === 'force-lock') {
         return continueForceLock(occupation, g);
     }
+    if (occupation.key === 'takeoff') {
+        const continuing = await continueBulkTakeoff(g);
+        if (!continuing)
+            g._occupation = null;
+        return continuing;
+    }
     if ('remaining' in occupation && occupation.remaining <= 0) {
         g._occupation = null;
         return false;
@@ -768,6 +814,14 @@ async function continueOccupation(g) {
             if (occupation.container) {
                 occupation.container.olocked = !occupation.container.olocked;
                 occupation.container.lknown = true;
+            }
+            else if (occupation.door && (occupation.door.doormask & D_TRAPPED)) {
+                if (await triggerBoobyTrap('door', { bodypart: true, state: g }))
+                    return false;
+                occupation.door.doormask = D_NODOOR;
+                vision_note_blocker_change(occupation.x, occupation.y);
+                if (roomsAt(g.level, occupation.x, occupation.y, SHOPBASE).length)
+                    addShopDamage(occupation.x, occupation.y, SHOP_DOOR_COST, g);
             }
             else if (occupation.door && (occupation.door.doormask & D_LOCKED)) {
                 occupation.door.doormask &= ~D_LOCKED;
@@ -1121,6 +1175,9 @@ async function runCommandHandler(binding, { cannedCommand = null, previousMessag
     }
     else if (ch === 'T' || ch === 'R') {
         await removeWornItem(ch === 'R' ? 'remove' : 'take off');
+    }
+    else if (ch === 'A') {
+        await takeOffAll();
     }
     else if (ch === 'P') {
         await doputon();
@@ -1569,16 +1626,18 @@ async function doTerrainOverview() {
             browseMessage = farlookLocationDescription(cursor.x, cursor.y);
             continue;
         }
-        await moreUntilDismissed('Done.');
+        await plineWithContinuation('Done.');
         break;
     }
+    // C map_redisplay() reaches cls(), which displays WIN_MESSAGE before
+    // redrawing the map. Bare more() would leave an acknowledged Done line.
+    await displayMessageWindow();
     restoreMapDisplay(displaySnapshot);
-    game._pending_message = '';
     await flush_screen(1);
     game.context.move = 0;
 }
-async function kickOuch(x, y) {
-    await pline('Ouch!  That hurts!');
+async function kickOuch(x, y, objectName = '') {
+    await plineWithContinuation('Ouch!  That hurts!');
     await exerciseAttribute(A_DEX, false);
     await exerciseAttribute(A_STR, false);
     wakeMonstersNear(x, y, 25);
@@ -1588,7 +1647,7 @@ async function kickOuch(x, y) {
     let damage = rnd(currentAttribute(A_CON) > 15 ? 3 : 5);
     if (game.u?.halfPhysicalDamage)
         damage = Math.trunc((damage + 1) / 2);
-    const died = await damageHeroFromKick(damage, x, y);
+    const died = await damageHeroFromKick(damage, x, y, objectName);
     if (!died && kickCausesRecoil())
         await recoilFromKick(4 + rn2(2));
 }
@@ -1606,12 +1665,15 @@ function kickDeathReason(x, y) {
         return 'kicking a wall';
     if (location.typ === TREE)
         return 'kicking a tree';
+    if (location.typ === GRAVE)
+        return 'kicking a headstone';
     if (location.typ === IRONBARS)
         return 'kicking an iron bar';
     return 'kicking something weird';
 }
-async function damageHeroFromKick(amount, x, y) {
-    return loseHeroHp(amount, kickDeathReason(x, y));
+async function damageHeroFromKick(amount, x, y, objectName) {
+    const killer = objectName ? `kicking ${objectName}` : kickDeathReason(x, y);
+    return loseHeroHp(amount, killer, { deathCause: `killed by ${killer}` });
 }
 function finishHurtleMonsterDeath(monster, { noCorpse = true } = {}) {
     return finishHeroMonsterKill(monster, monster.mx, monster.my, {
@@ -1799,6 +1861,9 @@ async function dokick() {
     // dispatching the target.  Peaceful monsters and pets consult it during
     // this same elapsed turn so they do not step into the square just kicked.
     game._kickedLoc = { x, y };
+    const average = game.uarmf?.otyp === KICKING_BOOTS ? 99
+        : Math.trunc((currentStrength()
+            + currentAttribute(A_DEX) + currentAttribute(A_CON)) / 3);
     const monster = monsterAtPosition(requireGameLevel(), x, y);
     if (monster) {
         const recoilRange = kickRecoilRange(monster.mnum);
@@ -1824,7 +1889,7 @@ async function dokick() {
             game.context.move = 1;
             return;
         }
-        await kickFloorObject(x, y, {
+        const kicked = await kickFloorObject(x, y, {
             state: game,
             dx: game.u.dx,
             dy: game.u.dy,
@@ -1833,11 +1898,46 @@ async function dokick() {
         });
         if (game.program_state.gameover)
             return;
+        if (!kicked)
+            await kickOuch(x, y, killerObjectName(kickedObject));
         game.context.move = 1;
         return;
     }
     if (!location || IS_STWALL(location.typ)) {
         await kickOuch(x, y);
+        game.context.move = 1;
+        return;
+    }
+    if (location.typ === GRAVE) {
+        if (game.u.levitating || game.u.levitation || game.levitating) {
+            await kickDumb(x, y);
+        }
+        else if (rn2(4) !== 0) {
+            await kickOuch(x, y);
+        }
+        else if (!location.disturbed && rn2(2) === 0) {
+            await disturbGrave(x, y);
+        }
+        else {
+            await exerciseAttribute(A_WIS, false);
+            const alignment = game.u.ualign;
+            if (!alignment)
+                throw new Error('Breaking a grave requires hero alignment.');
+            if (game.urole?.key === 'archeologist' || game.urole?.key === 'samurai'
+                || (alignment.type === 1 && alignment.record > -10))
+                adjustHeroAlignment(-Math.sign(alignment.type));
+            location.typ = ROOM;
+            location.emptygrave = 0;
+            location.disturbed = 0;
+            placeCreatedObject(await mksobj(ROCK, true, false), x, y);
+            deleteEngravingAt(x, y);
+            if (heroIsBlind(game))
+                await pline('Crack!  Something broke!');
+            else {
+                await pline('The headstone topples over and breaks!');
+                newsym(x, y);
+            }
+        }
         game.context.move = 1;
         return;
     }
@@ -1850,27 +1950,32 @@ async function dokick() {
         }
         await exerciseAttribute(A_DEX, true);
         const strength = currentStrength();
-        const average = Math.trunc((strength + currentAttribute(A_DEX) + currentAttribute(A_CON)) / 3);
         if (rnl(35) < average) {
-            // in_rooms(..., SHOPBASE) includes a shop immediately across a
-            // boundary door.  Such doors never take the high-strength
-            // shatter branch, though the ordinary crash still succeeds.
-            const touchesShop = [[0, 0], [-1, 0], [1, 0], [0, -1], [0, 1]]
-                .some(([dx, dy]) => {
-                const roomno = game.level?.at(x + dx, y + dy)?.roomno ?? 0;
-                return roomno >= ROOMOFFSET
-                    && (roomForRoomno(game.level, roomno)?.rtype
-                        ?? 0) >= SHOPBASE;
-            });
-            const shatters = strength > 18 && rn2(5) === 0 && !touchesShop;
-            location.doormask = shatters ? D_NODOOR : D_BROKEN;
-            await pline(shatters
-                ? 'As you kick the door, it shatters to pieces!'
-                : 'As you kick the door, it crashes open!');
-            await exerciseAttribute(A_STR, true);
-            vision_reset();
-            vision_recalc(0);
-            newsym(x, y);
+            const shopDoor = roomsAt(game.level, x, y, SHOPBASE).length > 0;
+            if (location.doormask & D_TRAPPED) {
+                if (game.flags.verbose)
+                    await pline('You kick the door.');
+                await exerciseAttribute(A_STR, false);
+                location.doormask = D_NODOOR;
+                if (await triggerBoobyTrap('door', { bodypart: true }))
+                    return;
+            }
+            else {
+                const shatters = strength > 18 && rn2(5) === 0 && !shopDoor;
+                location.doormask = shatters ? D_NODOOR : D_BROKEN;
+                await pline(shatters
+                    ? 'As you kick the door, it shatters to pieces!'
+                    : 'As you kick the door, it crashes open!');
+                await exerciseAttribute(A_STR, true);
+            }
+            feel_newsym(x, y);
+            // kick_door() defers sight refresh so billing sees the keeper's
+            // visibility before the door broke, as rloc_to_core() requires.
+            vision_note_blocker_change(x, y);
+            if (shopDoor) {
+                addShopDamage(x, y, SHOP_DOOR_COST);
+                await payForShopDamage('break');
+            }
         }
         else {
             await exerciseAttribute(A_STR, true);
@@ -1879,6 +1984,34 @@ async function dokick() {
         game.context.move = 1;
         return;
     }
+    if (location.typ === SDOOR) {
+        if (!game.u.levitating && rn2(30) < average) {
+            convertSecretDoor(location);
+            const uncover = (location.doormask & (D_LOCKED | D_TRAPPED)) === D_LOCKED;
+            await pline(`Crash!  ${uncover ? 'Your kick uncovers' : 'You kick open'} a secret door!`);
+            await exerciseAttribute(A_DEX, true);
+            if (location.doormask & D_TRAPPED) {
+                location.doormask = D_NODOOR;
+                if (await triggerBoobyTrap('door', { bodypart: true }))
+                    return;
+            }
+            else if (location.doormask !== D_NODOOR && !(location.doormask & D_LOCKED)) {
+                location.doormask = D_ISOPEN;
+            }
+            feel_newsym(x, y);
+            vision_reset();
+            vision_recalc(0);
+        }
+        else {
+            await kickOuch(x, y);
+        }
+        game.context.move = 1;
+        return;
+    }
+    await kickDumb(x, y);
+    game.context.move = 1;
+}
+async function kickDumb(x, y) {
     // dokick.c:kick_dumb() always abuses Dexterity before deciding whether
     // an unremarkable floor kick is merely empty or strains a muscle.
     await exerciseAttribute(A_DEX, false);
@@ -1886,6 +2019,8 @@ async function dokick() {
         || game.uarmf?.otyp === KICKING_BOOTS;
     if (martial || currentAttribute(A_DEX) >= 16 || rn2(3) !== 0) {
         await pline('You kick at empty space.');
+        if (heroIsBlind(game))
+            feel_location(x, y);
     }
     else {
         await pline('Dumb move!  You strain a muscle.');
@@ -1894,7 +2029,6 @@ async function dokick() {
     }
     if (kickCausesRecoil() && rn2(2) !== 0)
         await recoilFromKick(1);
-    game.context.move = 1;
 }
 function putCommandLine(col, row, message, attr = 0) {
     const display = game.nhDisplay;
@@ -2355,7 +2489,7 @@ async function wizGenesis() {
     const substituteName = WIZGENESIS_SUBSTITUTIONS.get(mnum);
     if (substituteName !== undefined) {
         const requestedName = MONSTER_NAME[mnum];
-        const force = await promptYesNo(`Creating ${substituteName} instead; force ${requestedName}? [yn] (n) `);
+        const force = await promptYesNo(`Creating ${substituteName} instead; force ${requestedName}?`);
         if (force !== 'y')
             mnum = nameToMonster(substituteName);
     }
@@ -2363,23 +2497,15 @@ async function wizGenesis() {
         const monster = await makemonNear(mnum, game.u.ux, game.u.uy, MM_NOEXCLAM);
         if (!monster)
             break;
-        // create_particular_creation() applies disposition before its later
-        // requested state flags.  Deleting a constructor-provided malign lets
-        // the shared death-alignment fallback derive it from forced peace.
+        // Native creation records kill alignment again after forcing attitude.
         if (tame) {
             await tameMonster(monster);
         }
-        else if (peaceful) {
+        else if (peaceful || hostile) {
             monster.mtame = 0;
             monster.pet = false;
-            monster.mpeaceful = 1;
-            delete monster.malign;
-        }
-        else if (hostile) {
-            monster.mtame = 0;
-            monster.pet = false;
-            monster.mpeaceful = 0;
-            delete monster.malign;
+            monster.mpeaceful = peaceful ? 1 : 0;
+            setMonsterMalign(monster);
         }
         // create_particular_creation() applies requested sleep after makemon
         // announces the actor.
@@ -2643,7 +2769,6 @@ export async function chooseWizardLevelDestination() {
     const destination = await showPagedPickOneMenu({ rows, choices });
     if (!destination)
         return null;
-    await docrt();
     const preArrivalPager = await endgamePrerequisite(destination);
     return { destination, preArrivalPager };
 }
@@ -2755,8 +2880,8 @@ async function doloot() {
         // it can install the prompt.
         await promptKey(`${lockedMessage}--More--`);
         const toolName = lockToolPresentation(tool);
-        const answer = await promptKey(`Unlock it with your ${toolName}? [ynq] (q) `);
-        if (String.fromCharCode(answer).toLowerCase() === 'y') {
+        const answer = await promptYesNoQuit(`Unlock it with your ${toolName}?`);
+        if (answer === 'y') {
             game._occupation = {
                 key: 'pick-lock',
                 text: tool.otyp === LOCK_PICK || tool.otyp === CREDIT_CARD
@@ -2799,12 +2924,11 @@ async function dotip() {
         && !exceedsActionCapacity(game)) {
         observeObjectForNaming(container);
         const prompt = `There is ${floorObjectDescription(container)} here, `
-            + 'tip it? [ynq] (q) ';
-        const answer = await promptYnq(prompt);
+            + 'tip it?';
+        const answer = await promptYesNoQuit(prompt);
         if (answer === 'q') {
             // tty leaves the resolved query physically painted until the
             // following command read, but it is no longer continuation-owned.
-            game._retained_message = prompt;
             game.context.move = 0;
             return;
         }
@@ -2829,6 +2953,7 @@ function completeExtendedCommand(prefix) {
     return matches.length === 1 ? matches[0]?.name ?? null : null;
 }
 const EXTENDED_COMMAND_HANDLERS = new Map([
+    ['takeoffall', takeOffAll],
     ['conduct', doconduct],
     ['chronicle', doChronicle],
     ['vanquished', doVanquished],
@@ -2989,6 +3114,7 @@ async function djinniFromLamp(object) {
         case 2:
             await plineWithContinuation('"You freed me!"');
             djinni.mpeaceful = 1;
+            setMonsterMalign(djinni);
             break;
         case 3:
             await plineWithContinuation('"It is about time!"');
@@ -3001,6 +3127,7 @@ async function djinniFromLamp(object) {
             djinni.mpeaceful = 0;
             djinni.mtame = 0;
             djinni.pet = false;
+            setMonsterMalign(djinni);
             break;
     }
 }
@@ -3463,15 +3590,10 @@ async function dodip() {
     const loc = game.level?.at(game.u?.ux, game.u?.uy);
     if (loc?.typ === FOUNTAIN) {
         const description = dipTargetDescription(object);
-        const prompt = `Dip ${description} into the fountain? [yn] (n)`;
-        const answer = await promptYesNo(prompt, 'n', 1);
+        const prompt = `Dip ${description} into the fountain?`;
+        const answer = await promptYesNo(prompt, 'n');
         if (answer === 'y') {
             await dipFountain(object, loc);
-            // tty removes the answered query from continuation ownership but
-            // leaves its physical row painted when dipfountain() produces no
-            // replacement line (for example, cursing an already-cursed item).
-            if (!game._pending_message && !game._retained_message)
-                game._retained_message = prompt;
             game.context.move = 1;
             return;
         }
@@ -3643,14 +3765,7 @@ async function doVanquished() {
     game.context.move = 0;
 }
 async function doGenocided() {
-    const genocided = [...(game._genocidedMonsters || [])];
-    if (!genocided.length) {
-        await pline('No creatures have been genocided.');
-    }
-    else {
-        const lines = ['Genocided species:', '', ...genocided];
-        await showDisclosureOverlay(lines, { restoreUnderlay: true });
-    }
+    await listGenocided(game.iflags.menu_requested ? 'a' : 'y');
     game.context.move = 0;
 }
 function inventoryCommandLetter(item) {
@@ -3716,7 +3831,6 @@ async function wizIdentify() {
         titleAttr: ATR_NONE,
     });
     game._pending_message = '';
-    await docrt();
     for (const item of selected) {
         const learnedType = !objectTypeKnown(item);
         fullyIdentifyObject(item);
@@ -4253,23 +4367,6 @@ async function dohelp() {
     }
     game.context.move = 0;
 }
-async function promptYnq(message, defaultAnswer = 'q') {
-    game._suppressMessagesUntilInput = false;
-    await pline(message);
-    await flush_screen(1);
-    game.nhDisplay?.setCursor(message.length, 0);
-    for (;;) {
-        const key = await nhgetch();
-        const answer = String.fromCharCode(key).toLowerCase();
-        if (!['y', 'n', 'q'].includes(answer)
-            && ![27, 32, 10, 13].includes(key))
-            continue;
-        game._pending_message = '';
-        game._retained_message = '';
-        return answer === 'y' || answer === 'n' || answer === 'q'
-            ? answer : defaultAnswer;
-    }
-}
 async function doputon() {
     const accessories = (game.inventory || []).filter(object => (object.class === 'Rings' || object.oclass === 4
         || object.class === 'Amulets' || object.oclass === 5
@@ -4350,7 +4447,7 @@ async function putOnAccessoryObject(object) {
     // Sink effects can remove the ring inside Ring_on().
     if (game.uleft === object || game.uright === object) {
         observeObjectForNaming(object);
-        await pline(`${object.invlet} - ${inventoryItemDescription(object)}.`);
+        await plineWithContinuation(`${object.invlet} - ${inventoryItemDescription(object)}.`);
     }
     game.context.move = 1;
 }
@@ -4361,6 +4458,7 @@ async function putOnAccessoryObject(object) {
 // the same state owner immediately.
 export async function finishArmorRemoval(object, { silent = false } = {}) {
     await removeHeroArmor(object, game);
+    await announceDisplacementLoss(object, game);
     if (silent || game.flags?.verbose === false)
         return '';
     return armorOffMessage(object, game);
@@ -4399,6 +4497,7 @@ async function removeWornItem(action) {
         game.context.move = 0;
         return;
     }
+    resetBulkTakeoff();
     if (object.cursed) {
         object.bknown = true;
         const plural = /gloves|boots|shoes|lenses/.test(object.name || '')
@@ -4420,9 +4519,18 @@ async function removeWornItem(action) {
         || object === game.uright) {
         const wasStrangled = object.otyp === AMULET_OF_STRANGULATION
             && heroIsStrangled(game);
+        // C armor_or_accessory_off(): a ring's off_msg() runs while it is
+        // still worn, so the report keeps the "(on {right|left} hand)"
+        // suffix and precedes Ring_off()'s side effects such as a
+        // levitation landing or the death it causes; Amulet_off() clears
+        // the slot first and reports afterwards, without a suffix.
+        const ring = object === game.uleft || object === game.uright;
+        if (ring && game.flags?.verbose !== false) {
+            await plineWithContinuation(armorOffMessage(object, game));
+        }
         await removeHeroAccessory(object, game);
         findArmorClass(game);
-        if (game.flags?.verbose !== false) {
+        if (!ring && game.flags?.verbose !== false) {
             await plineWithContinuation(armorOffMessage(object, game));
         }
         if (wasStrangled) {
@@ -4451,35 +4559,15 @@ async function removeWornItem(action) {
         return;
     }
     const previousArmorClass = game.u?.uac ?? 10;
-    const hero = game.u;
-    const otherDisplacementSource = (game.inventory || []).some(candidate => candidate !== object && candidate.worn
-        && candidate.otyp === CLOAK_OF_DISPLACEMENT)
-        || (hero.displacedTurns ?? 0) > 0
-        || !!hero.displacedIntrinsic
-        || !!hero.intrinsicDisplacement;
-    const canNoticeDisplacementChange = (!game.blind
-        && !hero.uswallow
-        && !(game.invisible || hero.invisible || hero.invis))
-        || !!(hero.unblindTelepathy || hero.blindTelepathy
-            || hero.telepathy || hero.detectMonsters
-            || game.detectMonsters);
-    const displacementOffMessage = object.otyp === CLOAK_OF_DISPLACEMENT
-        && !otherDisplacementSource
-        && !(hero.displacementBlocked || hero.displacedBlocked)
-        && canNoticeDisplacementChange
-        ? 'You feel that monsters no longer have difficulty pinpointing your location.'
-        : null;
-    const removalMessage = await finishArmorRemoval(object);
-    if (removalMessage && game.u?.uac !== previousArmorClass)
-        game._statusAcOverride = previousArmorClass;
     // do_wear.c:off_msg() is conditional on flags.verbose.  When disabled,
     // immediate zero-delay armor removal leaves getobj's selector as the
     // physical topline even though the timed state change has committed.
     game._pending_message = '';
-    if (!removalMessage && game.flags?.verbose === false && inventoryPrompt)
+    if (game.flags?.verbose === false && inventoryPrompt)
         game._retained_message = inventoryPrompt.trimEnd();
-    if (displacementOffMessage)
-        await plineWithContinuation(displacementOffMessage);
+    const removalMessage = await finishArmorRemoval(object);
+    if (removalMessage && game.u?.uac !== previousArmorClass)
+        game._statusAcOverride = previousArmorClass;
     if (removalMessage)
         await plineWithContinuation(removalMessage);
     game.context.move = 1;
@@ -4536,6 +4624,8 @@ async function putOnArmorObject(object) {
                 await pline(onMessage);
         }
     }
+    // C accessory_or_armor_on() discards interrupted 'A' after armor wear.
+    resetBulkTakeoff();
     game.context.move = 1;
 }
 // C refs: wield.c:dowield(), ready_weapon(), invent.c:getobj().  The prompt
@@ -4552,7 +4642,8 @@ async function dowield(cannedInvlet = null) {
         || (object.oclass === 6 && OBJECT_SUBTYPE[object.otyp] !== 0))
         .sort((left, right) => String(left.invlet || '').localeCompare(String(right.invlet || '')));
     const letters = weapons.map(object => object.invlet).join('');
-    const prompt = `What do you want to wield? [- ${compactInventoryLetters(letters)} or ?*] `;
+    const choices = ['-', compactInventoryLetters(letters)].filter(Boolean).join(' ');
+    const prompt = `What do you want to wield? [${choices} or ?*] `;
     const selection = cannedInvlet === null
         ? await promptInventoryObject(prompt, game.inventory || [], {
             allowNone: true, allowMenu: true,
@@ -4582,6 +4673,7 @@ async function dowield(cannedInvlet = null) {
         return;
     }
     if (await refuseWeldedPrimary()) {
+        resetBulkTakeoff();
         game.context.move = 0;
         return;
     }
@@ -4880,6 +4972,8 @@ async function dodrop() {
             state: game, publish: plineWithContinuation,
         });
         game.context.move = spentTime ? 1 : 0;
+        if (spentTime)
+            resetBulkTakeoff();
         // Lock-picking's resumable record lives in the occupation itself.
         if (spentTime && game._occupation?.key === 'pick-lock')
             game._occupation = null;
@@ -5031,17 +5125,36 @@ async function doopen() {
     if (rnl(20) < Math.trunc((currentStrength()
         + currentAttribute(A_DEX)
         + currentAttribute(A_CON)) / 3)) {
-        loc.doormask = D_ISOPEN;
-        newsym(x, y);
-        vision_reset();
-        vision_recalc(0);
-        await pline('The door opens.');
+        await openClosedDoor(loc, x, y);
     }
     else {
         await exerciseAttribute(A_STR, true);
         await pline('The door resists!');
     }
+    if (game.program_state.gameover)
+        return;
     game.context.move = 1;
+}
+// lock.c:doopen_indir() announces opening before the explosion. The door
+// remains closed across that message pause and any fatal explosion.
+async function openClosedDoor(door, x, y) {
+    await plineWithContinuation('The door opens.');
+    if (door.doormask & D_TRAPPED) {
+        if (await triggerBoobyTrap('door', { bodypart: true }))
+            return;
+        door.doormask = D_NODOOR;
+        const level = requireGameLevel();
+        if (roomsAt(level, x, y, SHOPBASE).length)
+            addShopDamage(x, y, SHOP_DOOR_COST);
+    }
+    else
+        door.doormask = D_ISOPEN;
+    if (heroIsBlind(game))
+        feel_location(x, y);
+    else
+        newsym(x, y);
+    vision_reset();
+    vision_recalc(0);
 }
 // C refs: write.c dowrite()/write_ok(); invent.c getobj().  The object picker
 // retains ownership after an absent inventory letter and reopens the same
@@ -5268,11 +5381,6 @@ async function applyTool(item, underlay) {
             state: game,
             ensureWielded: () => wieldTool(item, 'cast', { swapWeapons: doswapweapon }, game),
             describeTarget: wizardPositionDescription,
-            holdObject: async (object) => {
-                const prepared = await addPickedInventoryObject(object);
-                await plineWithContinuation(prepared.message);
-                return true;
-            },
             hurtle: (dx, dy) => hurtleHero(dx, dy, 1, {
                 finishTeleport: finishTeleportArrival,
                 gotoLevel,
@@ -5503,7 +5611,7 @@ async function doquiverCore(verb) {
                 ? `You are wielding ${quantity} ${plural}.`
                 : `${wasTwoweap ? 'You are dual wielding'
                     : 'Your alternate weapon is'} ${quantity} ${plural}.`;
-            const partial = await promptYesNoQuit(`${slotDescription}  Ready ${quantity - 1} of them? [ynq] (q) `);
+            const partial = await promptYesNoQuit(`${slotDescription}  Ready ${quantity - 1} of them?`);
             if (partial === 'q') {
                 game.context.move = 0;
                 return { item: null, spentTime: false, cancelled: false };
@@ -5514,7 +5622,7 @@ async function doquiverCore(verb) {
             }
         }
         if (readyAll) {
-            const answer = await promptYesNoQuit(`Ready ${quantity > 1 ? 'all of them' : 'it'} instead? [ynq] (q) `);
+            const answer = await promptYesNoQuit(`Ready ${quantity > 1 ? 'all of them' : 'it'} instead?`);
             if (answer !== 'y') {
                 game.context.move = 0;
                 return { item: null, spentTime: false, cancelled: false };
@@ -6381,25 +6489,6 @@ async function pushBoulder(boulder, x, y, dx, dy) {
     await moveObject(boulder, targetX, targetY, game);
     return true;
 }
-// C uhitm.c:attack_checks().  An ordinary direction into an actor which the
-// hero cannot spot is not yet a melee attack unless warning or a remembered
-// invisible-monster glyph has already identified the occupied square.
-// Returning true means that this preflight consumed the turn.
-async function markUnseenMonsterBeforeAttack(monster, x, y) {
-    monster.mstrategy = (monster.mstrategy ?? 0) & ~STRAT_WAITMASK;
-    if (game.context?.forcefight
-        || canSpotMonster(monster)
-        || monsterHasWarningProjection(monster)
-        || game.level?.at(x, y)?.remembered_glyph?.kind === 'invisible') {
-        return false;
-    }
-    await plineWithContinuation("Wait!  There's something there you can't see!");
-    map_invisible(x, y);
-    // mon.c:wakeup() clears sleep here.
-    // TODO: add mimic reveal, peaceful response, and the sleeping growl.
-    monster.msleeping = 0;
-    return true;
-}
 // C ref: hack.c:domove_fight_empty(). Forced attacks at the map edge and
 // ordinary moves into remembered invisible-monster knowledge converge here.
 // Both spend the action without entering terrain movement; only the
@@ -6504,6 +6593,7 @@ export async function applyHeroLocationEffects(publish = plineWithContinuation, 
 // termination, u_on_newpos/vision work, and spoteffects in this order.
 async function finishMovedHero({ oldx, oldy, newx, newy, loc, explicitAttempt, ballChainMove = null, trapOptions = {}, }) {
     const u = game.u;
+    resetBulkTakeoff();
     // C hack.c:domove_core() sets this only in the common tail after map
     // coordinates changed.  The turn loop retains it through every global
     // allocation needed to settle this action, then clears it before the next
@@ -6736,6 +6826,10 @@ async function domoveCore(dx, dy, explicitAttempt) {
                 await pline(`You stop.  ${displayName} is in the way!`);
                 return true;
             }
+            // C domove_core() confirms a yielded step before either actor
+            // changes position or the hero tries to escape a current trap.
+            if (heroCanConfirmStep(newx, newy) && !await confirmHeroStep(newx, newy))
+                return false;
             if (u.utrap
                 && !await heroCanMoveFromTrap(newx, newy))
                 return true;
@@ -6765,6 +6859,9 @@ async function domoveCore(dx, dy, explicitAttempt) {
                     u.usteed.mx = oldx;
                     u.usteed.my = oldy;
                 }
+                // C domove_core() resets occupations after restoring the
+                // hero's position, even when a peaceful refuses the swap.
+                resetBulkTakeoff();
                 await finishBallAndChainMove(ballChainMove);
                 if (ballChainMove?.causeDelay)
                     await delayAfterDraggingBall();
@@ -6781,10 +6878,13 @@ async function domoveCore(dx, dy, explicitAttempt) {
                 ballChainMove,
             });
         }
-        if (await revealMimic(monster))
-            return true;
-        if (await markUnseenMonsterBeforeAttack(monster, newx, newy))
-            return true;
+        // attack() runs the whole attack_checks() reveal sequence: the
+        // unseen-monster marker, the disguised-mimic stumble, and the
+        // hidden-under reveal, each able to consume the move on its own.
+        // C gb.bhitpos is the struck square, even for a worm tail.
+        const verdict = await prepareAppliedWeaponAttack(monster, game.uwep ?? null, { state: game, struckAt: { x: newx, y: newy } });
+        if (!verdict.proceed)
+            return verdict.spentTime;
         if (await attackHostileMonster(monster, newx, newy))
             return true;
     }
@@ -6799,6 +6899,8 @@ async function domoveCore(dx, dy, explicitAttempt) {
         stopRun(game);
         return true;
     }
+    if (heroCanConfirmStep(newx, newy) && !await confirmHeroStep(newx, newy))
+        return false;
     if (!await heroCanMoveFromTrap(newx, newy))
         return true;
     if (loc?.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED))
@@ -6848,8 +6950,8 @@ async function domoveCore(dx, dy, explicitAttempt) {
             }
             await promptKey('This door is locked.--More--');
             const toolName = lockToolPresentation(tool);
-            const answer = await promptKey(`Unlock it with your ${toolName}? [ynq] (q) `);
-            if (String.fromCharCode(answer).toLowerCase() === 'y') {
+            const answer = await promptYesNoQuit(`Unlock it with your ${toolName}?`);
+            if (answer === 'y') {
                 game._occupation = {
                     key: 'pick-lock',
                     text: tool.otyp === LOCK_PICK || tool.otyp === CREDIT_CARD
@@ -6874,12 +6976,7 @@ async function domoveCore(dx, dy, explicitAttempt) {
             await pline('The door resists!');
             return false;
         }
-        loc.doormask &= ~(D_CLOSED | D_LOCKED);
-        loc.doormask |= 2; // D_ISOPEN
-        await pline('The door opens.');
-        vision_reset();
-        vision_recalc(1);
-        newsym(newx, newy);
+        await openClosedDoor(loc, newx, newy);
         return false;
     }
     // C test_move() rejects an obstructed destination before it evaluates

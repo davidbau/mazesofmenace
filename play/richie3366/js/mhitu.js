@@ -26,7 +26,7 @@ import {
 } from './const.js';
 import { thrwmu, spitmu, breamu } from './mthrowu.js';
 import { find_offensive, use_offensive } from './muse.js';
-import { destroy_items, resists_drli, Drain_resistance, drain_item } from './zap.js';
+import { destroy_items, resists_drli, resists_cold, Drain_resistance, drain_item } from './zap.js';
 import { nomul, stop_occupation, maybe_half_phys, is_pool, losehp, unmul, fall_asleep, You_hear, showdamage } from './hack.js';
 import { upstart } from './hacklib.js';
 import { rnd, d, rn2, rn1 } from './rng.js';
@@ -3129,7 +3129,7 @@ async function passiveum(olduasmon, mtmp, mattk) {
             }
             return M_ATTK_HIT;
         case AD_COLD: // C mhitu.c passiveum :2561–2571
-            if (resists_mr(mtmp, MR_COLD)) {
+            if (resists_cold(mtmp)) {
                 await shieldeff(mtmp.mx | 0, mtmp.my | 0); // C `:2563`
                 await pline(`${Monnam(mtmp)} is mildly chilly.`); // C `:2564`
                 await golemeffects_mm(mtmp, AD_COLD, tmp); // C `:2565`

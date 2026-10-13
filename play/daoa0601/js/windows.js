@@ -8,10 +8,11 @@
 // pagination, cursor position, and input boundaries.
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { clearMessageWindow, docrt, flushPendingTopline, flush_screen } from './display.js';
-import { getLine } from './query.js';
-import { BUFSZ, PICK_NONE, PICK_ONE } from './const.js';
+import { docrt, flush_screen } from './display.js';
+import { BUFSZ, NHW_MENU, PICK_NONE, PICK_ONE, PICK_ANY, MENU_ITEMFLAGS_SELECTED } from './const.js';
 import { NO_COLOR } from './terminal.js';
+import { menuLayout, windowOrigin, selectableMenuText, paintMenuPage, snapshotMenuUnderlay, restoreMenuUnderlay, tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu, tty_select_menu, tty_destroy_nhwindow } from './tty_menu.js';
+export { snapshotMenuUnderlay, restoreMenuUnderlay } from './tty_menu.js';
 export const ATR_NONE = 0;
 export const ATR_INVERSE = 1;
 function display() {
@@ -41,263 +42,96 @@ function clearRect(left, top, right, bottom) {
         }
     }
 }
-// Native tty_end_menu() measures every assembled row, including later pages,
-// after assigning selectors. Margins and the largest pager also occupy width.
-function menuLayout(rows, columns, terminalRows, overlay) {
-    if (terminalRows < 2 || columns < 2)
-        throw new RangeError('A menu requires a content row, a pager row, and two columns');
-    const pageSize = Math.min(52, terminalRows - 1);
-    const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
-    const clippedRows = rows.map(row => ({
-        ...row,
-        text: row.text.slice(0, columns - 2),
-        // Native checks the stored prefix before rendering selection markers.
-        // Fake menu entries use that same prefix without a selectable value.
-        attributeStart: 'key' in row && typeof row.key === 'string' && row.key.length > 0
-            || /^. [-+#] /.test(row.text) ? 4 : 0,
-    }));
-    const pager = pageCount > 1 ? `(${pageCount} of ${pageCount}) ` : '(end) ';
-    const width = clippedRows.reduce((widest, row) => Math.max(widest, row.text.length + 2), Math.min(columns, pager.length));
-    const maxRows = (pageCount > 1 ? pageSize : rows.length) + 1;
-    const boundary = maxRows >= terminalRows || !overlay ? 0
-        : Math.max(0, Math.min(82, Math.floor(columns / 2), columns - width - 1));
-    return { rows: clippedRows, pageSize, pageCount, maxRows, boundary };
-}
-function menuSelector(index) {
-    return String.fromCharCode(index < 26 ? 97 + index : 65 + index - 26);
-}
-function selectableMenuText(key, text, marker = '-') {
-    return `${key} ${marker} ${text.slice(0, BUFSZ - 1)}`;
-}
-function paintMenuPage(d, menu, page, rows, underlay) {
-    const { boundary, maxRows, pageCount } = menu;
-    if (boundary === 0)
-        d.clearScreen();
-    else {
-        clearRect(boundary, 0, d.cols, maxRows);
-        // A shorter corner page exposes the map again below two blank rows.
-        // Keep those cells from the already-painted map, like docorner().
-        const firstRestoredRow = Math.min(rows.length + 3, maxRows - 1);
-        if (underlay && rows.length + 1 < maxRows) {
-            for (let row = firstRestoredRow; row < maxRows; row++) {
-                for (let col = boundary; col < d.cols; col++) {
-                    const cell = underlay[row]?.[col];
-                    if (cell)
-                        d.setCell(col, row, cell.ch, cell.color, cell.attr);
-                }
-            }
-        }
-    }
-    const left = boundary + 1;
-    for (const [row, line] of rows.entries()) {
-        for (let col = 0; col < line.text.length; col++) {
-            const attr = col < line.attributeStart ? ATR_NONE : line.attr ?? ATR_NONE;
-            d.setCell(left + col, row, line.text.charAt(col), NO_COLOR, attr);
-        }
-    }
-    const marker = pageCount > 1 ? `(${page + 1} of ${pageCount})` : '(end) ';
-    putLine(left, rows.length, marker);
-    d.setCursor(Math.min(d.cols - 1, left + marker.length), rows.length);
-}
-export function snapshotMenuUnderlay() {
-    const d = display();
-    return d?.grid?.map(row => row.map(cell => ({ ...cell }))) || null;
-}
-export function restoreMenuUnderlay(snapshot) {
-    const d = display();
-    if (!d || !snapshot)
-        return;
-    for (const [row, cells] of snapshot.entries()) {
-        if (row >= d.rows)
-            break;
-        for (const [col, cell] of cells.entries()) {
-            if (col >= d.cols)
-                break;
-            d.setCell(col, row, cell.ch, cell.color, cell.attr);
-        }
-    }
-    d.clearRow(0);
-}
 /**
  * Display the tty inventory menu at the right edge of the map.
  * Items carry their displayed text and selector.
  * Return a selected key/count, Escape, or key 0 for an unselected dismissal.
  */
 export async function showInventoryWindow(sections, { pickMode = PICK_NONE, headingAttr = ATR_INVERSE, title = null, preselectedKey = null, } = {}) {
-    const d = display();
-    if (!d)
+    if (!display())
         return { key: 27, count: null };
-    await flushPendingTopline();
-    clearMessageWindow();
-    const rows = [];
-    // allmain.c relays the default inverse menu-heading style to tty;
-    // tty_end_menu() uses that style for the prompt as well as headings.
-    if (title !== null)
-        rows.push({ text: title, attr: ATR_INVERSE }, { text: '', attr: ATR_NONE });
-    for (const section of sections) {
-        if (!section?.items?.length)
-            continue;
-        if (section.heading != null)
-            rows.push({ text: section.heading, attr: headingAttr });
-        for (const item of section.items)
-            rows.push({ attr: ATR_NONE, ...item });
-    }
-    // Explicit selectors do not consume automatic letters. Headers and the
-    // prompt still count toward page boundaries.
-    const pageSize = Math.min(52, d.rows - 1);
-    let selector = 0;
-    for (const [index, row] of rows.entries()) {
-        if (index % pageSize === 0)
-            selector = 0;
-        if (row.key) {
-            // Existing inventory callers supply the selector prefix.
-            row.text = row.text.slice(0, BUFSZ + 3);
-        }
-        else if (row.value !== undefined) {
-            row.key = menuSelector(selector++);
-            row.text = selectableMenuText(row.key, row.text);
-        }
-    }
-    const menu = menuLayout(rows, d.cols, d.rows, game.flags.menu_overlay !== false);
-    const underlay = snapshotMenuUnderlay();
+    const window = tty_create_nhwindow(NHW_MENU);
     try {
-        return await readInventoryMenu(d, menu.rows, { pickMode, menu, preselectedKey }, underlay);
+        await tty_start_menu(window);
+        for (const section of sections) {
+            if (!section.items.length)
+                continue;
+            if (section.heading != null)
+                tty_add_menu(window, { identifier: null, text: section.heading, attr: headingAttr });
+            for (const item of section.items)
+                tty_add_menu(window, {
+                    identifier: item.key || item.value !== undefined ? item : null,
+                    text: item.text, attr: item.attr ?? ATR_NONE,
+                    ...(item.key ? { selector: item.key } : {}),
+                    itemflags: item.key === preselectedKey ? MENU_ITEMFLAGS_SELECTED : 0,
+                });
+        }
+        tty_end_menu(window, title);
+        const result = await tty_select_menu(window, pickMode);
+        // Native PICK_ONE can return the preset and the new choice together.
+        const selection = result.selections.find(item => item.selector !== preselectedKey)
+            ?? result.selections[0];
+        if (result.cancelled)
+            return { key: 27, count: null };
+        if (!selection)
+            return { key: 0, count: null };
+        return { key: selection.selector.charCodeAt(0), count: selection.count === -1 ? null : selection.count,
+            ...(selection.identifier.value === undefined ? {} : { value: selection.identifier.value }) };
     }
     finally {
-        // tty_dismiss_nhwindow(): a full window regenerates the map;
-        // a corner window restores the glyphs it covered.
-        if (menu.boundary === 0) {
-            await docrt();
-            await flush_screen(1);
-        }
-        else {
-            restoreMenuUnderlay(underlay);
-        }
+        await tty_destroy_nhwindow(window);
     }
-}
-// C wintty.c:process_menu_window(), PICK_ONE and PICK_NONE.
-async function readInventoryMenu(d, rows, { pickMode, menu, preselectedKey }, underlay) {
-    const { pageSize, pageCount } = menu;
-    const selectable = pickMode === PICK_ONE ? rows.filter(hasMenuKey) : [];
-    let page = 0;
-    let count = null;
-    let repaint = true;
-    let selectedKey = selectable.some(row => row.key === preselectedKey) ? preselectedKey : null;
-    const selectedResult = (item) => ({
-        key: item.key === selectedKey && count === null ? 0 : item.key.charCodeAt(0),
-        count: count === null ? null : Number(count),
-        ...(item.value === undefined ? {} : { value: item.value }),
-    });
-    const committedResult = () => ({ key: selectedKey?.charCodeAt(0) ?? 0, count: null });
-    for (;;) {
-        const pageRows = rows.slice(page * pageSize, (page + 1) * pageSize);
-        if (repaint)
-            paintMenuPage(d, menu, page, pageRows.map(row => ({
-                ...row,
-                text: row.key && row.key === selectedKey
-                    ? `${row.text.slice(0, 2)}*${row.text.slice(3)}` : row.text,
-            })), underlay);
-        repaint = false;
-        const key = await nhgetch();
-        const letter = String.fromCharCode(key);
-        // Explicit selectors take priority over menu commands. Ordinary
-        // inventory selection only accepts items on the current page.
-        const item = pickMode === PICK_ONE
-            ? pageRows.find((row) => hasMenuKey(row) && row.key === letter)
-            : null;
-        if (item) {
-            return selectedResult(item);
-        }
-        if (/[0-9]/.test(letter)) {
-            const nextCount = (count ?? 0n) * 10n + BigInt(letter);
-            // AppendLongDigit() rejects native signed-long overflow.
-            count = nextCount > 9223372036854775807n ? null : nextCount || null;
-            continue;
-        }
-        if (key === 27) {
-            if (count !== null) {
-                count = null;
-                continue;
-            }
-            return { key: 27, count: null };
-        }
-        if (key === 0 || key === 10 || key === 13)
-            return committedResult();
-        if (key === 32 && page === pageCount - 1)
-            return committedResult();
-        const nextPage = letter === '>' || key === 32 ? Math.min(page + 1, pageCount - 1)
-            : letter === '<' ? Math.max(page - 1, 0)
-                : letter === '^' ? 0 : letter === '|' ? pageCount - 1 : null;
-        if (nextPage !== null) {
-            count = null;
-            repaint = nextPage !== page;
-            page = nextPage;
-            continue;
-        }
-        if (letter === ':' && pickMode === PICK_ONE) {
-            const query = await getLine('Search for:', (_ch, code) => code >= 32 && code < 127);
-            const found = query && selectable.find(row => inventorySearchMatches(query, row.text));
-            if (found)
-                return selectedResult(found);
-            count = null;
-            repaint = true;
-            continue;
-        }
-        if (letter === '-' || (letter === '\\' && pageRows.some(row => row.key === selectedKey))) {
-            selectedKey = null;
-            repaint = true;
-        }
-        if ('.@,\\-~'.includes(letter))
-            count = null; // bulk selection requires PICK_ANY
-        // Invalid input does not navigate or cancel a count. The current
-        // page remains the same input boundary.
-    }
-}
-function hasMenuKey(row) {
-    return typeof row.key === 'string' && row.key.length > 0;
-}
-function inventorySearchMatches(query, text) {
-    const pattern = [...query].map(character => character === '*' ? '.*'
-        : character === '?' ? '.' : character.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('');
-    return new RegExp(pattern, 'i').test(text);
 }
 /**
- * Display a blocking tty text/menu window over the right side of the map.
- * NetHack reserves at least 39 columns for these windows; wider content
- * pushes their left edge farther west.  Unlike a choice menu, disclosure
- * windows finish with either `--More--` or `(end)` and accept one dismissal
- * key before returning to their caller.
+ * Display a blocking disclosure window. Text windows wrap prose and use
+ * `--More--`; menu-built overviews retain their rows and use the native
+ * menu layout and page controls.
  */
-export async function showDisclosureOverlay(lines, { marker = '--More--', minWidth = 38, restoreUnderlay = false, } = {}) {
+export async function showDisclosureOverlay(lines, { marker = '--More--', restoreUnderlay = false, pagerStyle = 'text', } = {}) {
     const d = display();
     if (!d)
         return 27;
-    const widest = Math.max(marker.length, ...lines.map(line => line.length));
-    // process_menu_window() leaves one terminal column to the right of a
-    // PICK_NONE disclosure.  (Choice/inventory windows use a distinct
-    // two-column corner margin.)
-    const left = Math.max(0, d.cols - Math.max(minWidth, widest) - 1);
-    const rows = [...lines, marker];
-    // NHW_MENU replaces the message row rather than leaving the preceding
-    // yn_function prompt visible to the west of a narrow overlay.
+    const entries = lines.map(line => typeof line === 'string' ? { text: line } : line);
+    if (pagerStyle === 'menu') {
+        return await pageDisclosureWindow(d, entries, { marker, pagerStyle, restoreUnderlay });
+    }
+    const prose = entries.map(line => ({ ...line, text: compressTextWindowLine(line.text, d.cols) }));
+    const dataWidth = prose.reduce((widest, line) => Math.max(widest, line.text.length), 0);
+    // putstr-built windows wrap prose but retain their original width
+    // when deciding placement.
+    const content = prose.flatMap(line => textWindowRows(line.text, d.cols)
+        .map(text => ({ ...line, text })));
+    // The pinned H2344_BROKEN path permits corners narrower than ten
+    // columns. A zero offset, excess height, or disabled overlay uses
+    // the full-screen renderer instead.
+    const cornerOffset = windowOrigin(d.cols, d.rows, dataWidth + 1, content.length, game.flags.menu_overlay !== false);
+    if (content.length >= d.rows || cornerOffset === 0
+        || game.flags.menu_overlay === false) {
+        return await pageDisclosureWindow(d, content, { marker, pagerStyle, restoreUnderlay });
+    }
+    const left = cornerOffset + 1;
+    const rows = [...content, { text: marker }];
+    // Replace the preceding question across the whole message row.
     d.clearRow(0);
-    // In-game disclosure destroys its temporary corner window with
-    // docorner(), restoring the already-painted map rather than recomputing
-    // vision.  End-of-game disclosure deliberately leaves the page in place.
+    // A dismissed corner window restores the already-painted map rather
+    // than recomputing vision. Callers may retain a final page after exit.
     const underlay = restoreUnderlay
         ? d.grid.map(row => row.map(cell => ({ ...cell }))) : null;
     const underlayCursor = restoreUnderlay
         ? { col: d.cursorCol, row: d.cursorRow, visible: d.cursorVisible } : null;
     clearRect(left - 1, 0, d.cols, Math.min(d.rows, rows.length));
-    for (const [row, text] of rows.entries()) {
+    for (const [row, line] of rows.entries()) {
         if (row >= d.rows)
             break;
-        putLine(left, row, text);
+        putLine(left, row, line.text, line.attr);
     }
     const markerRow = Math.min(rows.length - 1, d.rows - 1);
     const cursorOffset = marker === '(end)' ? marker.length + 1 : marker.length;
     d.setCursor(Math.min(d.cols - 1, left + cursorOffset), markerRow);
-    const key = await nhgetch();
+    let key;
+    do
+        key = await nhgetch();
+    while (![27, 32, 10, 13].includes(key));
     if (underlay && underlayCursor) {
         for (const [row, cells] of underlay.entries()) {
             for (const [col, cell] of cells.entries()) {
@@ -310,62 +144,116 @@ export async function showDisclosureOverlay(lines, { marker = '--More--', minWid
     return key;
 }
 /**
+ * Text windows use the full screen minus a pager row. Menu windows share
+ * tty_end_menu()'s margins, corner placement, and 52-entry page limit with
+ * inventory windows, including when a tall terminal permits corner paging.
+ */
+async function pageDisclosureWindow(d, lines, { marker, pagerStyle, restoreUnderlay }) {
+    const menu = pagerStyle === 'menu'
+        ? menuLayout(lines, d.cols, d.rows, game.flags.menu_overlay !== false) : null;
+    const pageSize = menu?.pageSize ?? d.rows - 1;
+    const pageCount = menu?.pageCount ?? Math.max(1, Math.ceil(lines.length / pageSize));
+    if (menu)
+        d.clearRow(0);
+    const underlay = menu && menu.boundary > 0 ? snapshotMenuUnderlay() : null;
+    const underlayCursor = { col: d.cursorCol, row: d.cursorRow, visible: d.cursorVisible };
+    let page = 0;
+    let count = null;
+    try {
+        for (;;) {
+            if (menu) {
+                const content = menu.rows.slice(page * pageSize, (page + 1) * pageSize);
+                paintMenuPage(d, menu, page, content, underlay);
+            }
+            else {
+                const content = lines.slice(page * pageSize, (page + 1) * pageSize);
+                d.clearScreen();
+                for (const [row, line] of content.entries()) {
+                    putLine(0, row, line.text, line.attr);
+                }
+                putLine(1, content.length, marker);
+                d.setCursor(1 + marker.length, content.length);
+            }
+            const key = await nhgetch();
+            if (pagerStyle === 'menu') {
+                // Counts are accepted even by PICK_NONE menus. Escape
+                // cancels an active count before it can close the window.
+                if (key >= 48 && key <= 57) {
+                    const nextCount = (count ?? 0n) * 10n + BigInt(key - 48);
+                    count = nextCount > 9223372036854775807n ? null : nextCount || null;
+                    continue;
+                }
+                // xwaitforspace() ignores keys outside the menu response
+                // set without returning to the loop that resets counts.
+                const letter = String.fromCharCode(key);
+                if (!' \x1b\n\r\0><^|.@,\\-~:'.includes(letter))
+                    continue;
+                const wasCounting = count !== null;
+                count = null;
+                if (key === 27) {
+                    if (wasCounting)
+                        continue;
+                    return key;
+                }
+                // process_menu_window(): Return commits on any page;
+                // Space advances, or commits on the last page.
+                if (key === 0 || key === 10 || key === 13)
+                    return key;
+                if (key === 32 && page === pageCount - 1)
+                    return key;
+                if (key === 32 || letter === '>')
+                    page = Math.min(page + 1, pageCount - 1);
+                else if (letter === '<')
+                    page = Math.max(page - 1, 0);
+                else if (letter === '^')
+                    page = 0;
+                else if (letter === '|')
+                    page = pageCount - 1;
+            }
+            else if (key === 27)
+                return key;
+            else if (key === 32 || key === 10 || key === 13) {
+                if (page === pageCount - 1)
+                    return key;
+                page++;
+            }
+        }
+    }
+    finally {
+        if (menu && menu.boundary > 0) {
+            if (restoreUnderlay) {
+                restoreMenuUnderlay(underlay);
+                d.setCursor(underlayCursor.col, underlayCursor.row);
+                d.cursorVisible = underlayCursor.visible;
+            }
+        }
+        else {
+            // erase_menu_or_text(): a full-screen window rebuilds vision
+            // and glyphs; saved cells only apply to corner windows.
+            await docrt();
+            await flush_screen(1);
+        }
+    }
+}
+/**
  * Display Lua `nh.text()` output.  Despite its name, that API creates an
  * NHW_MENU/PICK_NONE window in C.  With tty menu_overlay enabled, sparse menu
  * rows are painted over the live map at the computed corner offset.
  */
 export async function showTextMenuOverlay(lines) {
-    const d = display();
-    if (!d)
+    if (!display())
         return 27;
-    const rows = lines.map(line => typeof line === 'string'
-        ? { text: line, attr: ATR_NONE }
-        : { text: line.text || '', attr: line.attr || ATR_NONE });
-    const menu = menuLayout(rows, d.cols, d.rows, game.flags.menu_overlay !== false);
-    const { pageSize, pageCount } = menu;
-    d.clearRow(0);
-    // tty_select_menu() dismisses a corner NHW_MENU with docorner(), which
-    // copies the already-painted map buffer back into the covered rectangle.
-    // It does not call docrt() and recompute live glyph precedence.  Preserve
-    // that presentation buffer here so a mapped trap, engraving, or other
-    // deliberate overlay survives the menu exactly as it does in tty.
-    const underlay = d.grid.map(row => row.map(cell => ({ ...cell })));
-    const underlayCursor = { col: d.cursorCol, row: d.cursorRow, visible: d.cursorVisible };
-    let page = 0;
+    const window = tty_create_nhwindow(NHW_MENU);
     try {
-        for (;;) {
-            const pageRows = menu.rows.slice(page * pageSize, (page + 1) * pageSize);
-            paintMenuPage(d, menu, page, pageRows, underlay);
-            const key = await nhgetch();
-            if ([0, 27, 10, 13].includes(key))
-                return key;
-            if (key === 32 && page === pageCount - 1)
-                return key;
-            switch (String.fromCharCode(key)) {
-                case ' ':
-                case '>':
-                    page = Math.min(page + 1, pageCount - 1);
-                    break;
-                case '<':
-                    page = Math.max(0, page - 1);
-                    break;
-                case '^':
-                    page = 0;
-                    break;
-                case '|':
-                    page = pageCount - 1;
-                    break;
-            }
-        }
+        await tty_start_menu(window);
+        for (const line of lines)
+            tty_add_menu(window, { identifier: null,
+                ...(typeof line === 'string' ? { text: line } : line) });
+        tty_end_menu(window);
+        return (await tty_select_menu(window, PICK_NONE)).key;
     }
     finally {
-        for (const [row, cells] of underlay.entries()) {
-            for (const [col, cell] of cells.entries()) {
-                d.setCell(col, row, cell.ch, cell.color, cell.attr);
-            }
-        }
-        d.setCursor(underlayCursor.col, underlayCursor.row);
-        d.cursorVisible = underlayCursor.visible;
+        await tty_destroy_nhwindow(window);
     }
 }
 /**
@@ -436,168 +324,47 @@ export async function showChoiceWindow({ title, entries, validKeys = null, resto
     return key;
 }
 export async function showMultiSelectWindow({ title, sections, omitHeadings = false, introLines = [], blankAfterTitle = true, pageLocalKeys = false, titleAttr = ATR_INVERSE, returnCounts = false, pickOne = false, signalEscape = false, }) {
-    const d = display();
-    if (!d)
+    if (!display())
         return [];
-    const allItems = sections.flatMap(section => section.items || [])
-        .filter((item) => item.selectable !== false);
-    const selected = new Set();
-    const selectedCounts = new Map();
-    let page = 0;
-    let pendingCount = null;
-    const selectionMarker = (item) => selected.has(item)
-        ? selectedCounts.has(item) ? '#' : '+'
-        : '-';
-    const selectedValues = () => {
-        const items = allItems.filter(item => selected.has(item));
-        if (returnCounts)
-            return items.map(item => ({
-                value: item.value,
-                count: selectedCounts.get(item) ?? -1,
-            }));
-        return items.map(item => item.value);
-    };
-    d.clearRow(0);
-    const underlay = snapshotMenuUnderlay();
-    const render = () => {
-        const rows = [
-            { text: title, attr: titleAttr },
-            ...(blankAfterTitle ? [{ text: '', attr: ATR_NONE }] : []),
-            ...introLines.map(text => ({ text, attr: ATR_NONE })),
-        ];
+    const window = tty_create_nhwindow(NHW_MENU);
+    try {
+        await tty_start_menu(window);
+        tty_add_menu(window, { identifier: null, text: title, attr: titleAttr });
+        if (blankAfterTitle)
+            tty_add_menu(window, { identifier: null, text: '' });
+        for (const text of introLines)
+            tty_add_menu(window, { identifier: null, text });
         for (const section of sections) {
-            if (!section?.items?.length)
+            if (!section.items.length)
                 continue;
             if (!omitHeadings) {
                 if (section.heading == null)
-                    throw new TypeError('A visible menu section requires a heading.');
-                rows.push({ text: section.heading, attr: ATR_INVERSE });
+                    throw new TypeError('A visible menu section requires a heading');
+                tty_add_menu(window, { identifier: null, text: section.heading, attr: ATR_INVERSE });
             }
             for (const item of section.items) {
                 if (item.selectable === false) {
-                    rows.push({ text: item.text, attr: ATR_NONE });
+                    tty_add_menu(window, { identifier: null, text: item.text });
                     continue;
                 }
+                if (!pageLocalKeys && !item.key)
+                    throw new TypeError('The menu item requires a selector');
                 if (item.separatorBefore)
-                    rows.push({ text: '--', attr: ATR_NONE });
-                rows.push({
-                    text: item.text,
-                    attr: ATR_NONE,
-                    item,
-                });
+                    tty_add_menu(window, { identifier: null, text: '--' });
+                tty_add_menu(window, { identifier: item, text: item.text,
+                    ...(item.key ? { selector: item.key } : {}),
+                    ...(item.groupAccelerator ? { group: item.groupAccelerator } : {}), itemflags: item.itemFlags ?? 0 });
             }
         }
-        const pageSize = Math.min(52, d.rows - 1);
-        let selector = 0;
-        const rowKeys = new Map();
-        for (const [index, row] of rows.entries()) {
-            if (index % pageSize === 0)
-                selector = 0;
-            if (!row.item)
-                continue;
-            const key = row.item.key ?? (pageLocalKeys ? menuSelector(selector++) : undefined);
-            if (key === undefined)
-                throw new TypeError('A menu item requires a selector unless page-local keys are enabled.');
-            rowKeys.set(row.item, key);
-            row.text = selectableMenuText(key, row.item.text, selectionMarker(row.item));
-        }
-        const menu = menuLayout(rows, d.cols, d.rows, game.flags.menu_overlay !== false);
-        const { pageCount } = menu;
-        const pageRows = menu.rows.slice(page * pageSize, (page + 1) * pageSize);
-        const pageItems = pageRows.flatMap(row => row.item ? [row.item] : []);
-        const pageKeys = new Map();
-        for (const item of pageItems) {
-            const key = rowKeys.get(item);
-            if (key !== undefined)
-                pageKeys.set(item, key);
-        }
-        paintMenuPage(d, menu, page, pageRows, underlay);
-        return {
-            pageCount,
-            pageItems,
-            pageKeys,
-        };
-    };
-    for (;;) {
-        const { pageCount, pageItems, pageKeys } = render();
-        const key = await nhgetch();
-        if (returnCounts && key >= 48 && key <= 57) {
-            const digit = key - 48;
-            const next = Math.min(Number.MAX_SAFE_INTEGER, (pendingCount ?? 0) * 10 + digit);
-            if (next > 0)
-                pendingCount = next;
-            continue;
-        }
-        if (key === 27) {
-            if (pendingCount !== null) {
-                pendingCount = null;
-                continue;
-            }
+        tty_end_menu(window);
+        const result = await tty_select_menu(window, pickOne ? PICK_ONE : PICK_ANY);
+        if (result.cancelled)
             return signalEscape ? null : [];
-        }
-        const count = pendingCount;
-        pendingCount = null;
-        if (key === 10 || key === 13) {
-            return selectedValues();
-        }
-        const letter = String.fromCharCode(key);
-        if (letter === ' ') {
-            if (pageCount > 1 && page < pageCount - 1) {
-                page++;
-                continue;
-            }
-            // tty PICK_ANY: Space is next-page only while another page
-            // exists.  On the last (including only) page it commits.
-            return selectedValues();
-        }
-        if (pageCount > 1 && letter === '<') {
-            page = (page + pageCount - 1) % pageCount;
-            continue;
-        }
-        if (letter === '@') {
-            if (pickOne)
-                continue;
-            if (selected.size === allItems.length) {
-                selected.clear();
-                selectedCounts.clear();
-            }
-            else {
-                for (const candidate of allItems)
-                    selected.add(candidate);
-                selectedCounts.clear();
-            }
-            continue;
-        }
-        if (letter === '.') {
-            if (pickOne)
-                continue;
-            for (const candidate of pageItems) {
-                selected.add(candidate);
-                selectedCounts.delete(candidate);
-            }
-            continue;
-        }
-        const item = pageLocalKeys
-            ? pageItems.find(candidate => pageKeys.get(candidate) === letter)
-            : allItems.find(candidate => candidate.key === letter);
-        if (!item)
-            continue;
-        if (pickOne) {
-            if (returnCounts)
-                return [{ value: item.value, count: count ?? -1 }];
-            return [item.value];
-        }
-        if (selected.has(item) && count === null) {
-            selected.delete(item);
-            selectedCounts.delete(item);
-        }
-        else {
-            selected.add(item);
-            if (count === null)
-                selectedCounts.delete(item);
-            else
-                selectedCounts.set(item, count);
-        }
+        return returnCounts ? result.selections.map(selection => ({ value: selection.identifier.value, count: selection.count }))
+            : result.selections.map(selection => selection.identifier.value);
+    }
+    finally {
+        await tty_destroy_nhwindow(window);
     }
 }
 // C tty_putstr(NHW_TEXT) buffers rows, including empty rows, and flushes at
@@ -611,7 +378,7 @@ export async function showTextWindow(lines) {
     const rows = lines.flatMap(line => textWindowRows(line, d.cols));
     const pageSize = d.rows - 1;
     const pages = [];
-    for (let first = 0; first < rows.length; first += pageSize) {
+    for (let first = 0; first < Math.max(1, rows.length); first += pageSize) {
         const page = rows.slice(first, first + pageSize);
         while (page.length < pageSize)
             page.push('');
@@ -621,6 +388,7 @@ export async function showTextWindow(lines) {
     return showTextPages(pages, { validKeys: [27, 32, 10, 13] });
 }
 function textWindowRows(text, columns) {
+    text = compressTextWindowLine(text, columns);
     const rows = [];
     while (text.length >= columns) {
         let split = columns - 1;
@@ -631,17 +399,26 @@ function textWindowRows(text, columns) {
         rows.push(text.slice(0, split));
         text = text.slice(split + 1);
     }
-    // NHW_TEXT truncates an indivisible oversized word; unlike topline
+    // tty text rendering truncates an indivisible oversized word; unlike topline
     // messages, its text-window renderer does not wrap at the final column.
     rows.push(text.slice(0, columns - 1));
     return rows;
+}
+// tty_putstr() compresses long lines before buffering them. It leaves
+// indentation alone on short lines and reserves BUFSZ's terminator slot.
+function compressTextWindowLine(text, columns) {
+    if (text.length < columns && !text.includes('\n'))
+        return text;
+    const compressed = text.replace(/[ \n]+/g, ' ').replace(/^ /, '').slice(0, BUFSZ - 1);
+    return compressed.length === BUFSZ - 1 || compressed.endsWith(' ')
+        ? compressed.slice(0, -1) : compressed;
 }
 /**
  * Display one or more full-screen tty text pages.  Each page has
  * `{ lines, cursor }`; a line is either a string or `{ text, attr }`.
  * Escape closes the window, while any other key advances to the next page.
  */
-export async function showTextPages(pages, { validKeys = null } = {}) {
+export async function showTextPages(pages, { validKeys = [27, 32, 10, 13] } = {}) {
     const d = display();
     if (!d)
         return 27;
@@ -671,35 +448,30 @@ export async function showTextPages(pages, { validKeys = null } = {}) {
 /**
  * Display a paged PICK_ONE menu. `rows` contains strings or
  * `{ text, attr }` entries and already includes the title/blank rows. Choice
- * letters can be selected from any page; space advances and `<` goes back.
+ * letters select visible entries; space advances and `<` goes back.
  * C refs: tty select_menu() and dungeon.c print_dungeon(TRUE).
  */
-export async function showPagedPickOneMenu({ rows, choices, returnCancels = false, }) {
-    const d = display();
-    if (!d)
+export async function showPagedPickOneMenu({ rows, choices }) {
+    if (!display())
         return null;
-    const menu = menuLayout(rows.map(row => typeof row === 'string' ? { text: row } : row), d.cols, d.rows, game.flags.menu_overlay !== false);
-    const { pageSize, pageCount } = menu;
-    d.clearRow(0);
-    const underlay = snapshotMenuUnderlay();
-    let page = 0;
-    for (;;) {
-        const pageRows = menu.rows.slice(page * pageSize, (page + 1) * pageSize);
-        paintMenuPage(d, menu, page, pageRows, underlay);
-        const key = await nhgetch();
-        if (key === 27)
-            return null;
-        if (returnCancels && (key === 10 || key === 13))
-            return null;
-        const letter = String.fromCharCode(key);
-        for (const [choice, value] of choices) {
-            if (choice === letter)
-                return value;
+    const window = tty_create_nhwindow(NHW_MENU);
+    try {
+        await tty_start_menu(window);
+        for (const entry of rows) {
+            const row = typeof entry === 'string' ? { text: entry } : entry;
+            const selector = row.text.charAt(0);
+            const identifier = choices.get(selector);
+            const selectable = identifier !== undefined && row.text.slice(1, 4) === ' - ';
+            tty_add_menu(window, { text: selectable ? row.text.slice(4) : row.text,
+                identifier: selectable ? identifier : null,
+                ...(selectable ? { selector } : {}), attr: row.attr ?? ATR_NONE });
         }
-        if (letter === '<')
-            page = (page + pageCount - 1) % pageCount;
-        else
-            page = (page + 1) % pageCount;
+        tty_end_menu(window);
+        const result = await tty_select_menu(window, PICK_ONE);
+        return result.selections[0]?.identifier ?? null;
+    }
+    finally {
+        await tty_destroy_nhwindow(window);
     }
 }
 //# sourceMappingURL=windows.js.map

@@ -297,7 +297,7 @@ function corpseMonsterIsUnique(species) {
 }
 // C corpse_xname(): corpse species is visible even when the object type has
 // not been discovered. Possessive species put adjectives after their name.
-export function corpseName(object, { adjective = '', includeArticle = false, singular = false, definite = false, } = {}) {
+export function corpseName(object, { adjective = '', includeArticle = false, singular = false, definite = false, omitPrefix = false, } = {}) {
     const glob = object.otyp !== CORPSE && object.globby;
     let name = glob ? requireObjectName(object.otyp) : objectMonsterName(object);
     const personal = !glob && object.corpsenm !== undefined
@@ -309,12 +309,12 @@ export function corpseName(object, { adjective = '', includeArticle = false, sin
         name = personal || unique
             ? `${name} ${adjective}` : `${adjective} ${name}`;
     name = name.trim().replace(/\s+/g, ' ');
-    if (!personal && (unique || definite))
+    if (!omitPrefix && !personal && (unique || definite))
         name = `the ${name}`;
     const plural = !glob && !singular && (object.quan ?? object.quantity ?? 1) > 1;
     if (!glob)
         name += ` corpse${plural ? 's' : ''}`;
-    return includeArticle && !personal && !unique && !definite && !plural
+    return !omitPrefix && includeArticle && !personal && !unique && !definite && !plural
         && !/^\d/.test(adjective) ? withIndefiniteArticle(name) : name;
 }
 function physicalObjectNoun(object, noun, state) {
@@ -371,12 +371,13 @@ export function minimalObjectName(object, state = game) {
     const bare = {
         otyp: object.otyp,
         oclass: object.oclass,
-        dknown: object.dknown,
+        dknown: !!object.dknown,
+        typeKnown: !!object.dknown && objectTypeKnown(object, state),
         known: object.oclass === AMULET_CLASS
-            ? object.known : !OBJECT_USES_KNOWN[object.otyp],
+            ? !!object.known : !OBJECT_USES_KNOWN[object.otyp],
         quan: 1,
         corpsenm: object.otyp === BOULDER ? 0 : -1,
-        spe: object.otyp === SLIME_MOLD ? object.spe : 0,
+        spe: object.otyp === SLIME_MOLD ? object.spe ?? 0 : 0,
     };
     return objectName(bare, state, { minimal: true });
 }
@@ -426,13 +427,13 @@ export function armorObjectName(object, state, { minimal = false } = {}) {
 }
 // C ansimpleoname(): no personal/call names, quantity prefix, or observation.
 export function simpleObjectNameWithArticle(object, state = game) {
-    const noun = object.oclass === ARMOR_CLASS
-        ? armorObjectName(object, state, { minimal: true })
-        : object.otyp === SLIME_MOLD ? objectName(object, state, { minimal: true })
-            : OBJECT_NAMES[object.otyp] || object.name || 'object';
+    const noun = minimalObjectName(object, state);
     const quantity = object.quan ?? object.quantity ?? 1;
     if (quantity !== 1)
         return pluralizeObjectNoun(object, noun);
+    const uniqueType = object.otyp === FAKE_AMULET_OF_YENDOR ? AMULET_OF_YENDOR : object.otyp;
+    if (OBJECT_UNIQUE[uniqueType] && noun === OBJECT_NAMES[uniqueType])
+        return definiteKillerName(noun);
     return withIndefiniteArticle(noun);
 }
 export function ownedObjectName(object, state = game, { capitalized = true } = {}) {
@@ -606,7 +607,8 @@ function candidateNames(otyp) {
 }
 function singularizeObjectName(value) {
     const requested = normalizeName(value);
-    const isExactCandidate = (candidate) => OBJECT_NAMES.some((name, otyp) => name && candidateNames(otyp).includes(candidate));
+    const isExactCandidate = (candidate) => japaneseWishType(candidate) !== null
+        || OBJECT_NAMES.some((name, otyp) => name && candidateNames(otyp).includes(candidate));
     if (isExactCandidate(requested))
         return requested;
     const alternatives = [];
@@ -625,6 +627,29 @@ function singularizeObjectName(value) {
     if (requested.endsWith('s'))
         alternatives.push(requested.slice(0, -1));
     return alternatives.find(isExactCandidate) || requested;
+}
+// C readobjnam_postparse3(): Japanese aliases follow the ordinary name and
+// description lottery, regardless of the hero's role, without another draw.
+function japaneseWishType(request) {
+    let name = request;
+    for (const wrapper of ['wand', 'ring', 'potion', 'scroll', 'gem', 'spellbook',
+        'spell book', 'weapon', 'armor', 'tool', 'food', 'comestible']) {
+        const prefix = `${wrapper} of `;
+        const suffix = ` ${wrapper}`;
+        if (request.startsWith(prefix)) {
+            name = request.slice(prefix.length);
+            break;
+        }
+        if (request.endsWith(suffix)) {
+            name = request.slice(0, -suffix.length);
+            break;
+        }
+    }
+    for (const [type, japaneseName] of JAPANESE_ITEM_NAMES) {
+        if (name === japaneseName)
+            return type;
+    }
+    return null;
 }
 const GENERIC_SCALE_MAIL = OBJECT_NAMES.findIndex(name => name === 'scale mail');
 const DRAGON_SCALE_MAIL_REMAP = new Map(OBJECT_NAMES.map((name, otyp) => [normalizeName(name), otyp])
@@ -881,7 +906,8 @@ export async function readObjectName(text, { wizardWish = false } = {}) {
     else {
         const lookup = namedLookupPlan(parsed.name);
         let matchedType = artifact?.baseType ?? exactRealGemType(lookup.lookupName)
-            ?? rndObjectTypeByName(lookup.lookupName, 1);
+            ?? rndObjectTypeByName(lookup.lookupName, 1)
+            ?? japaneseWishType(lookup.lookupName);
         if (matchedType === null) {
             const match = matchWishedFruit(parsed.fruitName);
             if (match) {
@@ -1057,7 +1083,7 @@ async function applyWishQuantity(object, parsed, wizardWish) {
             const limit = Math.min(rn2(5) + 2, 6 - parsed.globSize);
             if (count > limit) {
                 const override = wizardWish && !game.program_state?.wizkit_wishing
-                    && await promptYesNo('Override glob weight limit? [yn] (n) ') === 'y';
+                    && await promptYesNo('Override glob weight limit?') === 'y';
                 if (!override)
                     count = limit;
             }

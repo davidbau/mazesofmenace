@@ -33044,14 +33044,22 @@ function mkroom_cmp(x, y) {
     return (xlx > ylx) ? 1 : 0; // C: return (x->lx > y->lx)
 }
 
-// C ref: mklev.c sort_rooms()
+// C ref: mklev.c sort_rooms() `:210–228` — qsort the first nroom entries
+// IN PLACE. Subrooms at [MAXNROFROOMS+1 ..] (levl roomnos 44+) sit past
+// the sort range and survive (svr.rooms is one flat array; gs.subrooms
+// aliases &svr.rooms[MAXNROFROOMS+1]); reassigning the array head would
+// delete them (Healer-585512 s669: subroom shops lost → no greeting,
+// no "(for sale)" price). C writes no sentinel here — the one add_room /
+// add_subroom left stays wherever it is.
 function sort_rooms() {
     const g = game;
     const n = g.level.nroom;
-    const oldToNew = new Array(n).fill(0);
-    const liveRooms = g.level.rooms.slice(0, n).sort(mkroom_cmp); // C :215 qsort(..., mkroom_cmp)
-    g.level.rooms = liveRooms;
-    if (n < MAXNROFROOMS) g.level.rooms[n] = { hx: -1 };
+    const oldToNew = new Array(n).fill(0); // C `:213` ri[MAXNROFROOMS+1] = {0}
+    // C `:215` qsort(svr.rooms, n, sizeof(struct mkroom), mkroom_cmp):
+    // sort the head, write it back in place — never reassign the array.
+    const head = g.level.rooms.slice(0, n).sort(mkroom_cmp);
+    for (let i = 0; i < n; i++) g.level.rooms[i] = head[i];
+    // C `:218–219` ri[rooms[i].roomnoidx] = i (old index → new index).
     for (let i = 0; i < n; i++) {
         if (g.level.rooms[i]) {
             oldToNew[g.level.rooms[i].roomnoidx] = i;

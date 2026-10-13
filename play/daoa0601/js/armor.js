@@ -1,9 +1,9 @@
 // armor.js — Hero armor-class projection.
 // C refs: do_wear.c find_ac() and hack.h ARM_BONUS().
-import { heroIsBlind } from './senses.js';
+import { heroDetectsMonsters, heroIsBlind } from './senses.js';
 import { makeHallucinated } from './hero_mental_status.js';
 import { game, requireLiveGame } from './gstate.js';
-import { corpseName, killerObjectName, observeObjectForNaming } from './objnam.js';
+import { corpseName, killerObjectName, observeObjectForNaming, simpleObjectNameWithArticle } from './objnam.js';
 import { heroHandName } from './body_parts.js';
 import { makePlural } from './object_grammar.js';
 import { plineWithContinuation } from './display.js';
@@ -17,7 +17,10 @@ import { setSlipperyHands } from './towel.js';
 import { releaseWeaponSlots } from './weapon_slots.js';
 import { surfaceName } from './terrain_name.js';
 import { magicNegation } from './magic_negation.js';
+import { heroFormClings } from './polyself.js';
+import { isLavaAt, isPoolAt, levelHasCeiling } from './terrain_properties.js';
 import { removeWornHeroItem } from './hero_equipment.js';
+import { cancelSlotTakeoff, takeoffSlotObject } from './takeoff_state.js';
 import { learnObjectType } from './object_knowledge.js';
 import { floatHeroDown, floatHeroUp } from './terrain_movement.js';
 import { applyHeroLocationEffects } from './cmd.js';
@@ -27,8 +30,8 @@ import { beginObjectBurn, endObjectBurn, equipmentLightDescription, equipmentLig
 import { AMULET_OF_GUARDING, CLOAK_OF_DISPLACEMENT, CORPSE, GAUNTLETS_OF_POWER, FEDORA, FUMBLE_BOOTS, LEVITATION_BOOTS, RIN_FREE_ACTION, RIN_PROTECTION, GRAY_DRAGON_SCALE_MAIL, GRAY_DRAGON_SCALES, YELLOW_DRAGON_SCALE_MAIL, YELLOW_DRAGON_SCALES, SHIELD_OF_DRAIN_RESISTANCE, SHIELD_OF_REFLECTION, OBJECT_DESCRIPTIONS, OBJECT_MATERIAL, OBJECT_NAMES, OBJECT_PROPERTY, WATER_WALKING_BOOTS, } from './object_data.js';
 import { rn2, rnd } from './rng.js';
 import { MONSTER_NAME } from './monster_data.js';
-import { captureLevitationState, grantWornProperty, hasIntrinsicProperty, propertyIsActive, refreshMovementProperties, removeWornProperty, } from './properties.js';
-import { A_DEX, A_INT, A_WIS, LUCKMIN, LUCKMAX, W_ARM, W_ARMC, W_ARMF, W_ARMG, W_ARMH, W_ARMS, W_ARMU, } from './const.js';
+import { captureLevitationState, grantWornProperty, hasIntrinsicProperty, hasWornProperty, propertyIsActive, refreshMovementProperties, removeWornProperty, } from './properties.js';
+import { A_DEX, A_INT, A_WIS, LUCKMIN, LUCKMAX, W_ARM, W_ARMC, W_ARMF, W_ARMG, W_ARMH, W_ARMOR, W_ARMS, W_ARMU, } from './const.js';
 // objects[].a_ac is `10 - ac` for every ARMOR()/HELM()/CLOAK()/SHIELD()/
 // GLOVES()/BOOTS() entry in the pinned objects.h. Armor occupies IDs 89..172.
 // Keeping the complete table here makes equipment transactions consume object
@@ -181,6 +184,9 @@ export function wearHeroArmor(object, state = game) {
     if (!slot)
         return null;
     const hero = state.u;
+    const previous = equippedObject(state, slot);
+    if (previous && previous !== object)
+        cancelSlotTakeoff(slot, state);
     // setworn() installs physical properties immediately. The later *_on()
     // callback needs the sources that existed before that installation.
     if (object.otyp === LEVITATION_BOOTS)
@@ -211,7 +217,7 @@ export function wearHeroArmor(object, state = game) {
     return slot;
 }
 export async function removeHeroArmor(object, state = game, options = {}) {
-    if (object?.otyp === LEVITATION_BOOTS)
+    if (object.otyp === LEVITATION_BOOTS || object.otyp === WATER_WALKING_BOOTS)
         requireLiveGame(state);
     const previousLevitation = captureLevitationState(state);
     const cancelledDon = options.cancelledDon
@@ -224,12 +230,21 @@ export async function removeHeroArmor(object, state = game, options = {}) {
     }
     if (object?.otyp === FEDORA && state.urole?.key === 'archeologist')
         state.u.uluck = Math.max(LUCKMIN, (state.u.uluck ?? 0) - 1);
-    const removed = await clearHeroArmor(object, state, { cancelledDon });
+    const removed = await clearHeroArmor(object, state, { ...options, cancelledDon });
     if (losingGloves) {
         setSlipperyHands(0, state);
         await loseGloveProtection(object, state);
         if (state.program_state?.gameover)
             return removed;
+    }
+    // C Boots_off(): identify before spoteffects(), which can kill the hero.
+    if (removed && object.otyp === WATER_WALKING_BOOTS
+        && (isPoolAt(state.u.ux, state.u.uy, state) || isLavaAt(state.u.ux, state.u.uy, state))
+        && !propertyIsActive('levitation', state) && !propertyIsActive('flying', state)
+        && !(heroFormClings(state) && levelHasCeiling(state))
+        && !cancelledDon && !state.iflags.in_lava_effects) {
+        learnObjectType(object.otyp, state);
+        await applyHeroLocationEffects();
     }
     if (removed && object.otyp === LEVITATION_BOOTS) {
         const remaining = captureLevitationState(state);
@@ -244,6 +259,28 @@ export async function removeHeroArmor(object, state = game, options = {}) {
         delete object._levitationBeforeWear;
     }
     return removed;
+}
+// C Cloak_off(): toggle_displacement() runs after the cloak's source is removed.
+export async function announceDisplacementLoss(object, state = game) {
+    if (object.otyp !== CLOAK_OF_DISPLACEMENT)
+        return;
+    const hero = state.u;
+    if (propertyIsActive('displaced', state)
+        || hero.displacedIntrinsic || hero.intrinsicDisplacement
+        || hero.displacementBlocked || hero.displacedBlocked)
+        return;
+    const blind = heroIsBlind(state);
+    const unseen = propertyIsActive('invisible', state) && !propertyIsActive('seeInvisible', state);
+    const visibleSelf = !blind && !hero.uswallow
+        && !unseen;
+    const unblindTelepathy = hasWornProperty('telepathy', state)
+        || hero.unblindTelepathy || (hero.unblind_telepat_range ?? -1) >= 0;
+    const blindTelepathy = blind
+        && (propertyIsActive('telepathy', state) || hero.blindTelepathy || hero.telepathy);
+    if (!(visibleSelf || unblindTelepathy || blindTelepathy || heroDetectsMonsters(state)))
+        return;
+    learnObjectType(object.otyp, state);
+    await plineWithContinuation('You feel that monsters no longer have difficulty pinpointing your location.');
 }
 // C Gloves_off(): wielding_corpse(). Glove loss resolves life saving or
 // stone-golem transformation before the armor's destruction can continue.
@@ -269,10 +306,12 @@ async function loseGloveProtection(gloves, state) {
 }
 // Slot/source removal without the Boots_off() transition.
 export async function clearHeroArmor(object, state = game, { cancelledDon = state._delayedAction?.kind === 'wear'
-    && state._delayedAction.object === object, } = {}) {
+    && state._delayedAction.object === object, deferArmorClass = false, } = {}) {
     const slot = armorSlotFor(object?.otyp);
     if (!slot)
         return false;
+    if (equippedObject(state, slot) === object)
+        cancelSlotTakeoff(slot, state);
     if (equippedObject(state, slot) === object && !cancelledDon)
         adjustArmorAttributeBonus(object, -objectEnchantment(object), state);
     const wasShining = object.lamplit && artifactEmitsLight(object);
@@ -305,7 +344,10 @@ export async function clearHeroArmor(object, state = game, { cancelledDon = stat
         hero.fumbling = !!hero.fumblingIntrinsic
             || (hero.fumblingTurns ?? 0) > 0;
     }
-    findArmorClass(state);
+    if (deferArmorClass)
+        state._armorClassDirty = true;
+    else
+        findArmorClass(state);
     return true;
 }
 export function objectIsHardHelmet(object) {
@@ -823,8 +865,21 @@ export function armorOffMessage(object, state = game) {
 // interrupted removal leaves the item worn.
 export async function stopDonning(stolenObject = null, state = game) {
     const delayed = state._delayedAction;
-    if (!delayed)
+    if (!delayed) {
+        const progress = state.context.takeoff;
+        const slot = progress?.current;
+        const object = slot ? takeoffSlotObject(slot, state) : null;
+        if (!progress || !object || !((object.owornmask ?? 0) & W_ARMOR))
+            return false;
+        progress.current = null;
+        progress.delay = 0;
+        state.multi = 0;
+        if (object !== stolenObject) {
+            const name = simpleObjectNameWithArticle(object, state).replace(/^(?:a|an) /, '');
+            await plineWithContinuation(`You stop taking off the ${name}.`);
+        }
         return false;
+    }
     const puttingOn = delayed.kind === 'wear';
     state._delayedAction = null;
     state.multi = 0;

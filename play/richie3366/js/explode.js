@@ -48,7 +48,7 @@ import { strstri, dist2 } from './hacklib.js';
 import {
     monstseesu, monstunseesu, cvt_adtyp_to_mseenres, resists_magm,
 } from './mondata.js';
-import { resists_poison } from './zap.js';
+import { resists_poison, resists_cold } from './zap.js';
 import { uhim, uhis } from './roles.js';
 import { sticks } from './engrave.js';
 import { Soundeffect, se_blast } from './sndprocs.js';
@@ -201,7 +201,7 @@ function mon_resists_bit(mon, mrBit) {
     return !!(bits & mrBit);
 }
 function resists_fire(mon) { return mon_resists_bit(mon, MR_FIRE); }
-function resists_cold(mon) { return mon_resists_bit(mon, MR_COLD); }
+/* C monst.h:273 resists_cold → Resists_Elem(mon, COLD_RES): live zap.js export (imported above); local bit-test clone removed. */
 function resists_elec(mon) { return mon_resists_bit(mon, MR_ELEC); }
 function resists_disint(mon) { return mon_resists_bit(mon, MR_DISINT); }
 function resists_acid(mon) { return mon_resists_bit(mon, MR_ACID); }

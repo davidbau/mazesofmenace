@@ -2,9 +2,9 @@
 // C refs: save.c and restore.c.
 import { game } from './gstate.js';
 import { PanicTermination } from './panic_termination.js';
-import { clearMessageWindow, docrt, pline, plineWithContinuation } from './display.js';
+import { clearMessageWindow, docrt, pline, plineWithContinuation, rawPrint } from './display.js';
 import { doneObjectCleanup } from './object_cleanup.js';
-import { promptYesNo, promptYesNoQuit } from './query.js';
+import { promptChoice, promptYesNo } from './query.js';
 import { requireInitializedHero } from './hero_types.js';
 import { currentLuaLifecycle } from './lua/lifecycle.js';
 import { encodeSavedGraph } from './saved_graph.js';
@@ -14,6 +14,8 @@ import { copyPersistentState, restorePersistentState, SAVE_VERSION } from './sta
 import { restoreMonsterWormHeads, validMonsterWormBodies } from './monster_worm.js';
 import { resolveDungeonIdentities } from './dungeon.js';
 import { restoreMonsterInventoryOwnership } from './monster_inventory.js';
+import { FULL_MOON, LUCKMAX, LUCKMIN } from './const.js';
+import { vision_reset_new_level } from './vision.js';
 const SAVE_PREFIX = 'teleport-save:';
 const ERROR_SAVE_PREFIX = 'teleport-error-save:';
 function saveKey(name, prefix = SAVE_PREFIX) {
@@ -46,7 +48,7 @@ export async function dosave() {
     // C save.c:dosave() clears WIN_MESSAGE before asking and after either
     // answer. Acknowledgment alone leaves the seen question on tty.
     clearMessageWindow();
-    const answer = await promptYesNo('Really save? [yn] (n) ');
+    const answer = await promptYesNo('Really save?');
     clearMessageWindow();
     if (answer !== 'y') {
         if (game.multi > 0)
@@ -63,7 +65,13 @@ export async function dosave() {
     game.program_state.savefile_completed
         = (game.program_state.savefile_completed || 0) + 1;
     game.u.uhp = -1;
-    game._saveExitPending = true;
+    // C save.c:dosave() displays WIN_MESSAGE so the "Saving..." line is
+    // seen, then exit_nhwindows("Be seeing you...") tears the windows down
+    // (term_end_screen clears the screen, settty raw-prints the goodbye
+    // with a trailing newline), and nh_terminate() never returns here.
+    game.program_state.windows_exited = true;
+    game.nhDisplay?.clearScreen();
+    rawPrint('Be seeing you...');
     game.program_state.gameover = true;
     game.context.move = 0;
 }
@@ -88,12 +96,24 @@ export function hasErrorSave(name, storage = game.storage) {
 export async function askAboutPanicSave() {
     await plineWithContinuation('There is no regular save file but there is a panic one.');
     await plineWithContinuation('It might be recoverable with demi-divine intervention.');
-    const question = 'Start a new game instead? [yn] (n) ';
-    return await promptYesNoQuit(question, 'n') === 'y';
+    const question = 'Start a new game instead?';
+    return await promptChoice(question, ['y', 'n', 'q'], 'n', { visibleChoices: 'yn' }) === 'y';
 }
 async function prepareGameForSave() {
     game.u.invulnerable = false;
     await doneObjectCleanup();
+}
+// C save.c dosave0(): undo the date-dependent luck that
+// moveloop_preamble() applied at startup; restoring applies it again.
+function undoDateLuck() {
+    const before = game.u.uluck || 0;
+    let luck = before;
+    if (game.flags.moonphase === FULL_MOON)
+        luck = Math.max(LUCKMIN, luck - 1);
+    if (game.flags.friday13)
+        luck = Math.min(LUCKMAX, luck + 1);
+    game.u.uluck = luck;
+    return before;
 }
 async function writeSave(storage, key, reportFailure) {
     game.program_state.saving = (game.program_state.saving || 0) + 1;
@@ -102,8 +122,15 @@ async function writeSave(storage, key, reportFailure) {
         await prepareGameForSave();
         if (storage?.setItem) {
             currentLuaLifecycle().syncVariables(game);
-            const encoded = encodeSavedGraph(snapshotState());
-            storage.setItem(key, encoded);
+            const luck = undoDateLuck();
+            try {
+                storage.setItem(key, encodeSavedGraph(snapshotState()));
+            }
+            catch (error) {
+                // The port keeps playing after a failed save; C has exited.
+                game.u.uluck = luck;
+                throw error;
+            }
             game.program_state.something_worth_saving = false;
             saved = true;
         }
@@ -155,6 +182,10 @@ export function restoreGame(name, storage = game.storage) {
         game._shopFollowMessageTurn = 0;
         game.program_state = { something_worth_saving: true };
         game.fmon = game.level?.monsters[0] ?? null;
+        // C restore.c:dorecover() rebuilds transient vision after loading the
+        // level. No old sight bits may suppress its first terrain repaint.
+        vision_reset_new_level();
+        game.vision_full_recalc = 1;
         storage.removeItem?.(key);
         return true;
     }
