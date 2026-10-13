@@ -60,7 +60,7 @@ import {
     pet_ranged_attk,
 } from './dogmove.js';
 import { migrate_to_level } from './dog.js';
-import { capitalizedMonsterName } from './do_name.js';
+import { capitalizedMonsterName, mon_nam } from './do_name.js';
 import { on_level } from './dungeon.js';
 import { PM_ANGEL } from './monsters.js';
 import { engr_at, wipe_engr_at } from './engrave.js';
@@ -1456,22 +1456,44 @@ function attackHeroWithMattacku(monster, env) {
         useOffensiveItem,
         unsupported,
         // C ref: mhitu.c:930 castmu(mtmp, mattk, TRUE, foundyou).
-        castMonsterSpell: (subject, mattk, thinkFound, actualFound, spellEnv) =>
-            castmu(subject, mattk, thinkFound, actualFound, {
+        castMonsterSpell: (subject, mattk, thinkFound, actualFound, spellEnv) => {
+            const state = spellEnv.state ?? env.state;
+            const planning = spellEnv.planning ?? env.planning;
+            const spellMessage = spellEnv.message
+                ?? (planning ? undefined : async (text, owner) => {
+                    await ttyPline(text, owner);
+                });
+            const loseSpellHp = spellEnv.losehp ?? (async (n, knam, format) => {
+                const polymorphed = Upolyd(state.u);
+                const currentHitPoints = polymorphed ? state.u.mh : state.u.uhp;
+                if (planning
+                    && n >= currentHitPoints
+                    && typeof spellEnv.planningDeath === 'function') {
+                    end_running(true, state);
+                    state.disp ??= {};
+                    state.disp.botl = true;
+                    if (polymorphed) state.u.mh -= n;
+                    else state.u.uhp -= n;
+                    throw spellEnv.planningDeath(subject);
+                }
+                return losehp(n, knam, format, state, {
+                    ...spellEnv,
+                    fromMonster: true,
+                    message: spellMessage,
+                });
+            });
+            return castmu(subject, mattk, thinkFound, actualFound, {
                 ...spellEnv,
+                losehp: loseSpellHp,
+                encumberMessage: spellEnv.encumberMessage
+                    ?? (planning ? async () => {} : encumber_msg),
                 monsterName: (mtmp) => capitalizedMonsterName(mtmp, env.state),
-                monnam: (mtmp) => {
-                    const name = mtmp.data?.pmnames?.[2]
-                        ?? mtmp.data?.pmnames?.[0]
-                        ?? 'something';
-                    return `the ${name}`;
-                },
-                message: env.planning ? undefined : async (text, s) => {
-                    await ttyPline(text, s);
-                },
+                monnam: (mtmp) => mon_nam(mtmp, state, spellEnv),
+                message: spellMessage,
                 mdamageu: (mtmp2, dmg) =>
                     mdamageu(mtmp2, dmg, spellEnv.state ?? env.state, spellEnv),
-            }),
+            });
+        },
         // C ref: mhitu.c AT_MAGC range2 arm -> buzzmu() (mcastu.c:988-1012).
         castRangedSpell: (subject, mattk, spellEnv) =>
             buzzmu(subject, mattk, {

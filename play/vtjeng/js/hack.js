@@ -123,6 +123,7 @@ import {
     SEE_INVIS,
     SHOCK_RES,
     SHOPBASE,
+    SHOP_DOOR_COST,
     SLEEP_RES,
     SLT_ENCUMBER,
     SPIKED_PIT,
@@ -337,7 +338,6 @@ import {
     just_an,
     ansimpleoname,
     donameFresh,
-    UnsupportedObjectNameError,
     xnameFresh,
     Tobjnam,
     otense,
@@ -451,11 +451,13 @@ import {
 import { helm_simple_name } from './objnam.js';
 
 import {
+    add_damage,
     addtobill,
     block_door,
     block_entry,
     costly_spot,
     onshopbill,
+    pay_for_damage,
     preflight_shop_transition,
     shop_keeper,
     stolen_value,
@@ -1608,8 +1610,7 @@ export function requireSimpleHeroDestination(
         try {
             preflight_projected_random_arrival_pickup(projected);
         } catch (error) {
-            if (error instanceof UnsupportedObjectNameError
-                || error instanceof UnsupportedShopError)
+            if (error instanceof UnsupportedShopError)
                 throw new UnsupportedHeroMoveBoundaryError(error.branch);
             if (!(error instanceof UnsupportedPickupError)) throw error;
             throw new UnsupportedHeroMoveBoundaryError(error.reason);
@@ -2062,7 +2063,7 @@ export async function still_chewing(x, y, state = game) {
         }
     } else if (IS_WALL(lev.typ)) {
         if (in_rooms(x, y, SHOPBASE, state)[0]) {
-            note_unported('shk.c add_damage');
+            add_damage(x, y, 10 * acurrstr(state), state);
             dmgtxt = 'damage';
         }
         digtxt = 'You chew a hole in the wall.';
@@ -2098,7 +2099,7 @@ export async function still_chewing(x, y, state = game) {
         lev.typ = DOOR;
     } else if (IS_DOOR(lev.typ)) {
         if (in_rooms(x, y, SHOPBASE, state)[0]) {
-            note_unported('shk.c add_damage');
+            add_damage(x, y, SHOP_DOOR_COST, state);
             dmgtxt = 'break';
         }
         if ((lev.doormask ?? lev.flags ?? 0) & D_TRAPPED) {
@@ -2118,7 +2119,7 @@ export async function still_chewing(x, y, state = game) {
     recalc_block_point(x, y, state);
     newsym(x, y);
     if (digtxt) await ttyPline(digtxt, state);
-    if (dmgtxt) note_unported('shk.c pay_for_damage');
+    if (dmgtxt) await pay_for_damage(dmgtxt, false, state, rawEnv);
     reset_digging(state);
     return 0;
 }

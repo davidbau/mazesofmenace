@@ -243,7 +243,7 @@ import {
     MALE,
     QBUFSZ,
     STOMACH, ICE, PLNMSG_ONE_ITEM_HERE, is_pit,
-    MINV_PICKMASK, INCLUDE_HERO,
+    MINV_PICKMASK, INCLUDE_HERO, FEEL_COCKATRICE,
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import {
@@ -337,7 +337,7 @@ import { t_at, trapname, ice_descr } from './trap.js';
 import { is_pool, is_lava, in_rooms } from './hack.js';
 import { is_ice } from './zap.js';
 import { is_drawbridge_wall, hero_Wwalking } from './dbridge.js';
-import { Levitation, Flying } from './mhitu.js';
+import { Levitation, Flying, digests } from './mhitu.js';
 import { a_gname_at } from './pray.js';
 import { sticks } from './engrave.js';
 import { surface } from './sit.js';
@@ -4488,8 +4488,9 @@ function s_suffix_inv(s) {
  * !MINV_ALL → worn_wield_only armament filter (D-3315).
  * youmonst.data swap for "weapon in claw". Empty → "(none)".
  * PICK_ONE/ANY delegate to query_objlist like C (return selected[0]).
- * Named omit: INCLUDE_HERO fake youmonst rows in the PICK_NONE analog;
- * sortloot order (chain order kept — loot-name + pack ranks unported);
+ * PICK_NONE analog ranks by live sortloot + shows the INCLUDE_HERO
+ * engulfed row (D-3911). Named omit: engulfer mon_to_glyph burn
+ * (C :1157–1158, Hallu-only — shared with query_objlist);
  * invdisp_nothing NHW_MENU polish.
  * @returns {Promise<object|null>} selected object (PICK_NONE → null)
  */
@@ -4523,8 +4524,8 @@ export async function display_minventory(mon, dflags, title) {
     const pickings = dflags & MINV_PICKMASK;
     // C: query_objlist(title, &minvent, INVORDER_SORT|INCLUDE_HERO,
     // pickings, allow_all|worn_wield_only); return selected[0].
-    // INCLUDE_HERO fake-hero rows live in query_objlist for this
-    // PICK_ONE/ANY path; the PICK_NONE analog below still omits them.
+    // The PICK_NONE analog below mirrors the same query_objlist arms
+    // (sortflags + sortloot rank + INCLUDE_HERO row) in C order.
     if (pickings !== PICK_NONE) {
         if (!game.youmonst) game.youmonst = { _youmonst: true };
         if (!game.iflags) game.iflags = {};
@@ -4544,7 +4545,10 @@ export async function display_minventory(mon, dflags, title) {
             game.youmonst.data = savedData;
         }
     }
-    const have_any = items.length > 0;
+    // C display_minventory `:5354` — have_any counts the engulfed hero
+    // (both live callers guard minvent non-null, as in C, so the
+    // hero-only menu is defensive here, exactly as there).
+    const have_any = items.length > 0 || incl_hero;
     // C display_minventory `:5359–5370` — without MINV_ALL only worn or
     // wielded items are displayed (worn_wield_only filter). The C
     // `(mon->misc_worn_check || MON_WEP(mon))` predicate is the
@@ -4567,21 +4571,47 @@ export async function display_minventory(mon, dflags, title) {
     // C iflags.suppress_price++ so doname_with_price ≡ doname
     game.iflags.suppress_price = (game.iflags.suppress_price | 0) + 1;
     try {
+        // C query_objlist `:1075–1082` sortflags (query_objlist
+        // :822–832 shape). This path's qflags are always
+        // INVORDER_SORT|INCLUDE_HERO — never USE_INVLET,
+        // FEEL_COCKATRICE or BY_NEXTHERE (display_minventory
+        // `:5364–5368`); AUTOSELECT_SINGLE is unset so no autoselect.
+        const qflags = INVORDER_SORT | (incl_hero ? INCLUDE_HERO : 0);
+        const sortlootOpt = game.flags?.sortloot ?? 'l';
+        let sortflags = 0;
+        if (sortlootOpt === 'f'
+            || (sortlootOpt === 'l' && !(qflags & USE_INVLET))) {
+            sortflags |= SORTLOOT_LOOT;
+        } else if (qflags & USE_INVLET) {
+            sortflags |= SORTLOOT_INVLET;
+        }
+        if (game.flags?.sortpack !== false) sortflags |= SORTLOOT_PACK;
+        if (qflags & FEEL_COCKATRICE) sortflags |= SORTLOOT_PETRIFY;
+        const allowFn = do_all ? allow_all : worn_wield_only;
+        // C `:1080–1081` — rank the minvent chain (nobj) with the
+        // allow filter, exactly as the PICK_ONE/ANY path does.
+        const ranked = sortloot(mon.minvent, sortflags, false, allowFn);
         // C tty_end_menu `:2680–2690`: a prompt prepends "" then the
         // title, so rows are [title, "", ...items].
         const entries = [
             { text: hdr, attr: headingAttr },
             { text: '', attr: 0 },
         ];
-        const classes = DEF_INV_ORDER.includes(VENOM_CLASS)
-            ? [...DEF_INV_ORDER]
-            : [...DEF_INV_ORDER, VENOM_CLASS];
+        // C query_objlist `:1094–1100` — pack walks flags.inv_order;
+        // no INCLUDE_VENOM on this path, so no venom slot (a
+        // VENOM_CLASS minvent item is skipped, as in C).
+        const order = inv_order_classes();
         let first = true; // C query_objlist `:1105–1139` first-added item
-        for (const oclass of classes) {
-            const group = shown.filter((o) => (o.oclass | 0) === oclass);
-            if (!group.length) continue;
-            entries.push({ text: let_to_name(oclass), attr: headingAttr });
-            for (const otmp of group) {
+        for (const oclass of order) {
+            let printed = false;
+            for (const srt of ranked) {
+                const otmp = srt.obj;
+                if (!otmp || (otmp.oclass | 0) !== oclass) continue;
+                if (!allowFn(otmp)) continue; // C `:1122`
+                if (!printed) {
+                    entries.push({ text: let_to_name(oclass), attr: headingAttr });
+                    printed = true;
+                }
                 obj_glyph(otmp);
                 // C query_objlist `:1133–1135`: first-item gold keeps '$'
                 // (a set selector tty_end_menu never reassigns); every
@@ -4592,6 +4622,25 @@ export async function display_minventory(mon, dflags, title) {
                 first = false;
                 entries.push(e);
             }
+        }
+        if (incl_hero) { // C query_objlist `:1146–1164` INCLUDE_HERO
+            // C `:1050–1067` — n counts allowed items plus the hero.
+            const n = ranked.length + 1;
+            // C `:1150` — sorted && n > 1 (sorted is always true on
+            // this path: INVORDER_SORT is unconditional above).
+            if (n > 1) {
+                entries.push({
+                    text: `${digests(game.u?.ustuck?.data) ? 'Swallowed' : 'Engulfed'} Creatures`,
+                    attr: headingAttr,
+                });
+            }
+            // C `:1155–1163` — fake row, CONTAINED_SYM selector, no
+            // group accelerator. Named omit (shared with query_objlist):
+            // the mon_to_glyph burn (`:1157–1158`, Hallu-only).
+            const { self_lookat } = await import('./pager.js');
+            entries.push({
+                text: an(self_lookat()), attr: 0, selector: CONTAINED_SYM,
+            });
         }
         const rows = display()?.rows || 24;
         const lmax = Math.min(52, rows - 1);

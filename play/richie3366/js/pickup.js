@@ -5042,8 +5042,9 @@ async function tipcontainer_checks(box, targetbox, allowempty) {
  * doaltarobj/dropy (do.js), surface (sit.js), removed_from_icebox (muse.js)
  * are static (imports.mjs IN-SCC SAFE — hoisted, call-time read only).
  * Named omissions: none — every arm and callee is live or file-local.
- * Display sync (not in C): one newsym(ox, oy) after the loop; C leaves the
- * redraw to dropy→dropz per item and the transfer arm moves no floor glyph.
+ * No trailing newsym: C leaves the redraw to dropy→dropz per item and
+ * the transfer arm moves no floor glyph (D-2612's JS-only newsym(ox, oy)
+ * is deleted — it burned a display-RNG draw under hallucination).
  * @param {object} box
  */
 export async function tipcontainer(box) {
@@ -5208,8 +5209,12 @@ export async function tipcontainer(box) {
     if (srcheld || dstheld) {
         await encumber_msg();
     }
-    // Display sync (not in C): the spill site glyph changed.
-    newsym(ox, oy);
+    // C paints no floor glyph here: the spill arm repaints per item via
+    // dropy→dropz, highdrop via hitfloor, and the transfer arm moves no
+    // floor glyph at all (D-2612's trailing newsym(ox, oy) was JS-only;
+    // under hallucination it burned a display-RNG draw C never makes and
+    // shifted every later hallu re-roll — scen-sweep-Archeologist-585417
+    // step 451 `=` vs C `)` plus 502 shifted screens).
     // C `:3837–3838`.
     if (srcheld || dstheld) {
         update_inventory();

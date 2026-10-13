@@ -5,7 +5,7 @@ import { objectName, observeObjectForNaming } from './objnam.js';
 import { inventoryClassOrder, lootSortMode, objectClassHeading, sortObjects } from './object_sort.js';
 import { floorObjectDescription, readFloorEngraving, showFloorPile, } from './floor_object_display.js';
 import { tryCallObjectType } from './object_call.js';
-import { newsym, flush_screen, pline, plineWithContinuation, bot, map_object, } from './display.js';
+import { newsym, flush_screen, pline, plineWithContinuation, map_object, } from './display.js';
 import { dungeonFeatureSentenceAt } from './dungeon_feature.js';
 import { showMultiSelectWindow } from './windows.js';
 import { addInventoryItem } from './u_init.js';
@@ -257,7 +257,6 @@ async function takeSelectedObjects(source, selected, telekinesis = false, batch 
     if (batch && picked && !game.program_state?.gameover) {
         if (!source.monster)
             newsym(source.x, source.y);
-        await bot();
     }
     return { picked, attempted };
 }
@@ -361,6 +360,9 @@ async function checkHere(source, pickedSome) {
         return { died: false };
     }
     stopRun();
+    // C check_here() flushes movement before look_here() can page a prior
+    // message. The pager itself leaves pending map changes untouched.
+    await flush_screen(1);
     const feature = skipFeature ? '' : dungeonFeatureSentenceAt(x, y);
     if (heroIsBlind(game)) {
         const first = source.objects[0];

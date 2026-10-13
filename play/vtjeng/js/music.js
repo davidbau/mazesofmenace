@@ -46,6 +46,7 @@ import { create_gas_cloud } from './region.js';
 import { d, rn1, rn2, rne, rnl, rnd, rnz } from './rng.js';
 import { altarmask_at, desecrate_altar } from './pray.js';
 import { in_rooms } from './rooms.js';
+import { add_damage } from './shk.js';
 import { set_levltyp } from './terrain.js';
 import {
     Flying, Levitation, maketrap, reset_utrap, set_utrap,
@@ -462,7 +463,7 @@ export async function do_earthquake(force, state = game, rawEnv = {}) {
                 newsym(x, y, state);
                 if (cansee(x, y, state)) await message('The door collapses.', state);
                 if (in_rooms(x, y, SHOPBASE, state).length)
-                    note_unported('shk.c add_damage');
+                    add_damage(x, y, 0, state);
                 break;
             default:
                 break;
@@ -536,7 +537,7 @@ export async function do_improvisation(instr, state = game, env = {}) {
     const { same } = improvised_notes(state, random);
     switch (itmp.otyp) {
     case MAGIC_FLUTE:
-        consume_obj_charge(instr, true, { state });
+        await consume_obj_charge(instr, true, { state });
         await message(`You ${!Deaf(state) ? '' : 'seem to '}produce ${Hallucination(state) ? 'piped' : 'soft'}${same ? ', familiar' : ''} music.`, state);
         await put_monsters_to_sleep(state.u.ulevel * 5, state, {
             ...env,
@@ -556,7 +557,7 @@ export async function do_improvisation(instr, state = game, env = {}) {
         break;
     case FIRE_HORN:
     case FROST_HORN: {
-        consume_obj_charge(instr, true, { state });
+        await consume_obj_charge(instr, true, { state });
         if (!await getdir(null, state)) {
             await message(`${Tobjnam(instr, 'vibrate', state)}.`, state);
             break;
@@ -593,7 +594,7 @@ export async function do_improvisation(instr, state = game, env = {}) {
         await exercise(A_WIS, false, state, random);
         break;
     case MAGIC_HARP:
-        consume_obj_charge(instr, true, { state });
+        await consume_obj_charge(instr, true, { state });
         await message(!Deaf(state)
             ? `${Tobjnam(instr, 'produce', state)} very attractive${same ? ' and familiar' : ''} music.`
             : 'You feel very soothing vibrations.', state);
@@ -613,7 +614,7 @@ export async function do_improvisation(instr, state = game, env = {}) {
         await exercise(A_DEX, true, state, random);
         break;
     case DRUM_OF_EARTHQUAKE:
-        consume_obj_charge(instr, true, { state });
+        await consume_obj_charge(instr, true, { state });
         await message('You produce a heavy, thunderous rolling!', state);
         await message(`The entire ${generic_lvl_desc(state)} is shaking around you!`, state);
         await do_earthquake(Math.trunc((state.u.ulevel - 1) / 3) + 1,

@@ -11585,8 +11585,10 @@ export async function doset_simple() {
     }
     if (!game.go) game.go = {};
     game.go.opt_phase = PLAY_OPT; // C `:8719` roleopt phase slot (was omitted)
-    // C: give_opt_msg = FALSE around the pick loop (no "Fruit is now")
-    const prevGive = game.give_opt_msg;
+    // C `:8722` give_opt_msg = FALSE around the pick loop (no "Fruit
+    // is now"); C `:8733` restores TRUE unconditionally — a FALSE
+    // poisoned by an earlier full-doset idlecheckpoint toggle (`:5318`)
+    // must not survive a simple menu.
     game.give_opt_msg = false;
     try {
         do {
@@ -11597,7 +11599,7 @@ export async function doset_simple() {
             if (picked <= 0) break;
         } while (true);
     } finally {
-        game.give_opt_msg = prevGive !== undefined ? prevGive : true;
+        game.give_opt_msg = true; // C `:8733`
     }
     return ECMD_OK;
 }

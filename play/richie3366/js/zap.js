@@ -7309,8 +7309,12 @@ export async function weffects(obj) {
 
 /**
  * C ref: zap.c backfire `:2605–2614` — cursed-wand explode.
- * in_use before losehp so a fatal done() still sees the wand;
- * C done() is noreturn so skip useupall when JS losehp is fatal.
+ * in_use before losehp so a fatal done() still sees the wand.
+ * A survived fatal losehp (wizard Die?-decline, lifesaved) still uses
+ * up the wand: C done() sets survive and returns (end.c:1119–1123),
+ * so backfire falls through to useupall `:2613`; only a true gameover
+ * never reaches it. maybe_wail is in losehp's non-fatal else arm
+ * (hack.c:4289–4290), so it never fires on the survived-fatal path.
  */
 async function backfire(otmp) {
     otmp.in_use = true;
@@ -7319,6 +7323,8 @@ async function backfire(otmp) {
     losehp(maybe_half_phys(dmg), 'exploding wand', KILLED_BY_AN);
     if (game._losehp_needs_done || game.program_state?.gameover) {
         await finish_losehp_done();
+        if (game.program_state?.gameover) return;
+        useupall(otmp);
         return;
     }
     // C hack.c losehp:4289–4291 — maybe_wail runs inline; drain the

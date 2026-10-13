@@ -1441,18 +1441,33 @@ export async function prev_level(at_stairs) {
     await goto_level(newlevel, at_stairs, false, false);
 }
 
-/** Rebuild floor object index after in-memory getlev restore. */
+/**
+ * C ref: restore.c find_lev_obj `:70–107` (sole caller getlev `:1168`) —
+ * recalculate level.objects (not saved) by re-placing every floor object
+ * oldest-first through place_object, so a non-boulder lands under the
+ * last consecutive boulder (mkobj.c `:2336–2344`) and the map shows
+ * boulder (D-3910: naive prepend showed corpse over boulder at load).
+ */
 function rebuildObjectsAt(fobj) {
-    game._objects_at = new Map();
-    const stack = [];
-    for (let o = fobj; o; o = o.nobj) stack.push(o);
-    for (let i = stack.length - 1; i >= 0; i--) {
-        const otmp = stack[i];
-        otmp.nexthere = null;
-        const key = `${otmp.ox},${otmp.oy}`;
-        const cur = game._objects_at.get(key) || null;
-        otmp.nexthere = cur;
-        game._objects_at.set(key, otmp);
+    game._objects_at = new Map(); // C `:77–79` zero the grid
+    // C `:86–91` — reverse fobj into placement order, OBJ_FREE each.
+    let fobjtmp = null;
+    for (let o = fobj; o;) {
+        const nx = o.nobj;
+        o.nobj = fobjtmp;
+        o.where = OBJ_FREE;
+        fobjtmp = o;
+        o = nx;
+    }
+    game.fobj = null; // C: fobj emptied; place_object rebuilds it below
+    // C `:95–106` — re-place (chain reversed back) + hero-level fixup.
+    for (let o = fobjtmp; o;) {
+        const nx = o.nobj; // C `:96` pop before place (place rewrites nobj)
+        place_object(o, o.ox, o.oy);
+        // C `:101–105` — restoring the hero's level: re-wear floor ball/chain.
+        if ((game.u?.uz?.dlevel | 0) && (o.owornmask & (W_BALL | W_CHAIN)))
+            setworn(o, o.owornmask);
+        o = nx;
     }
 }
 

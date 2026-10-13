@@ -142,7 +142,7 @@ import {
     REFLECTING,
     WEAK, HUNGRY, TT_LAVA, TT_BURIEDBALL, TELEDS_NO_FLAGS, DISSOLVED,
     XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT,
-    EXT_ENCUMBER, HVY_ENCUMBER, TIMEOUT, isok, IS_OBSTRUCTED,
+    EXT_ENCUMBER, HVY_ENCUMBER, TIMEOUT, STRANGLED, isok, IS_OBSTRUCTED,
     SDOOR, SCORR, W_SADDLE, EYE, STOMACH,
     P_LONG_SWORD, P_BROAD_SWORD, ONAME_GIFT, ONAME_KNOW_ARTI,
     nothing_happens, ACH_TUNE, PLNMSG_OBJ_GLOWS,
@@ -682,6 +682,11 @@ async function fix_worst_trouble(trouble) {
         u.Strangled = 0;
         u.HStrangled = 0;
         u.EStrangled = 0;
+        // C pray.c:394 `Strangled = 0` zeroes the one C field
+        // (u.uprops[STRANGLED].intrinsic, youprop.h:110); wiz_intrinsic
+        // writes that mirror only, so clear it too (do_wear.js:3325 /
+        // polyself.js:1569 clear sites mirror the same way).
+        if (u.uprops?.[STRANGLED]) u.uprops[STRANGLED].intrinsic = 0;
         game.flags.botl = true;
         break;
     }

@@ -2,6 +2,7 @@
 // C ref: objnam.c — doname(), xname(), an(), just_an(), makeplural() (Tourist-kit subset).
 
 import { game } from './gstate.js';
+import { rn2 } from './rng.js';
 import {
     WEAPON_CLASS,
     ARMOR_CLASS,
@@ -116,6 +117,9 @@ const tintxts = [
     { txt: '' },
 ];
 
+/** C ref: eat.c TTSZ — SIZE(tintxts); local (objnam↔eat cycle). */
+const TTSZ = tintxts.length;
+
 /** C ref: eat.c nonrotting_corpse — local copy (objnam↔eat cycle). */
 function nonrotting_corpse_tin(mnum) {
     if (mnum === PM_LIZARD || mnum === PM_LICHEN || mnum === PM_ACID_BLOB) {
@@ -125,8 +129,10 @@ function nonrotting_corpse_tin(mnum) {
 }
 
 /**
- * C ref: eat.c tin_variety(obj, TRUE) — display path only (no rn2 side
- * effects). Named omission: non-display tin_variety RNG when spe>=0.
+ * C ref: eat.c tin_variety(obj, TRUE) — display path (local: objnam↔eat
+ * cycle keeps the canonical eat.js body out of reach). Draws rn2(TTSZ-1)
+ * like C `:1503` even though the value is text-unused when spe>=0 (the
+ * stream position itself is observable).
  */
 function tin_variety_display(obj) {
     let r;
@@ -140,8 +146,10 @@ function tin_variety_display(obj) {
         r = -spe;
         --r;
     } else {
-        // C: rn2(TTSZ-1) when displ; unused below when spe>=0 (no tintxt).
-        r = HOMEMADE_TIN;
+        // C eat.c:1503: rn2(TTSZ-1) even when displ=TRUE — the value is
+        // unused below when spe>=0 (no tintxt adjective), but the draw
+        // itself advances the stream.
+        r = rn2(TTSZ - 1);
     }
     if (r === ROTTEN_TIN && ismnum(mnum) && nonrotting_corpse_tin(mnum)) {
         r = HOMEMADE_TIN;

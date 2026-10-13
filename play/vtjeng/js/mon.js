@@ -575,6 +575,7 @@ import {
     youSee,
     mb_trapped,
     closed_door,
+    set_apparxy,
 } from './monmove.js';
 import {
     m_at,
@@ -1632,7 +1633,9 @@ export async function meatmetal(mtmp, rawEnv = {}) {
                     rawEnv,
                 );
         } else if (state.flags?.verbose) {
-            await monsterMessage('You hear a crunching sound.', null, state, rawEnv);
+            const heard = youHear('a crunching sound.', state);
+            if (heard !== null)
+                await monsterMessage(heard, null, state, rawEnv);
         }
         mtmp.meating = Math.trunc(obj.owt / 2) + 1;
         await m_consume_obj(mtmp, obj, { ...rawEnv, state, random });

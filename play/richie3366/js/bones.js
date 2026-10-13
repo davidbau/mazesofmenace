@@ -5,10 +5,12 @@
 
 import { game } from './gstate.js';
 import { vfsReadFile, vfsWriteFile, vfsDeleteFile } from './storage.js';
-import { next_ident, obj_extract_self, dealloc_obj, curse, free_omonst, set_corpsenm, weight, is_mines_prize, is_soko_prize, restore_timers } from './mkobj.js';
+import { next_ident, obj_extract_self, dealloc_obj, curse, free_omonst, set_corpsenm, weight, is_mines_prize, is_soko_prize, restore_timers, place_object } from './mkobj.js';
 import { peace_minded, set_malign, propagate } from './makemon.js';
+import { setworn } from './do_wear.js';
 import {
-    OBJ_FLOOR, OBJ_CONTAINED, SHOPBASE, ROOMOFFSET, ONAME_BONES,
+    OBJ_FLOOR, OBJ_CONTAINED, OBJ_FREE, SHOPBASE, ROOMOFFSET, ONAME_BONES,
+    W_BALL, W_CHAIN,
     DEFUNCT_MONSTER, NON_PM, TRICKED, LOST_NONE, has_oname, has_omonst,
     has_mgivenname, ismnum, RIGHT_HANDED, EBONES,
 } from './const.js';
@@ -584,18 +586,34 @@ function remapMonChainIds(monsList) {
     }
 }
 
+/**
+ * C ref: restore.c find_lev_obj `:70–107` (sole caller getlev `:1168`,
+ * runs for ghostly bones loads too) — recalculate level.objects (not
+ * saved) by re-placing every floor object oldest-first through
+ * place_object, so a non-boulder lands under the last consecutive
+ * boulder (mkobj.c `:2336–2344`) and the map shows boulder (D-3910:
+ * naive prepend showed corpse over boulder at load).
+ */
 function rebuildObjectsAt(fobj) {
-    game._objects_at = new Map();
-    // Walk oldest→newest so top-of-pile matches C nexthere head = newest
-    const stack = [];
-    for (let o = fobj; o; o = o.nobj) stack.push(o);
-    for (let i = stack.length - 1; i >= 0; i--) {
-        const otmp = stack[i];
-        otmp.nexthere = null;
-        const key = `${otmp.ox},${otmp.oy}`;
-        const cur = game._objects_at.get(key) || null;
-        otmp.nexthere = cur;
-        game._objects_at.set(key, otmp);
+    game._objects_at = new Map(); // C `:77–79` zero the grid
+    // C `:86–91` — reverse fobj into placement order, OBJ_FREE each.
+    let fobjtmp = null;
+    for (let o = fobj; o;) {
+        const nx = o.nobj;
+        o.nobj = fobjtmp;
+        o.where = OBJ_FREE;
+        fobjtmp = o;
+        o = nx;
+    }
+    game.fobj = null; // C: fobj emptied; place_object rebuilds it below
+    // C `:95–106` — re-place (chain reversed back) + hero-level fixup.
+    for (let o = fobjtmp; o;) {
+        const nx = o.nobj; // C `:96` pop before place (place rewrites nobj)
+        place_object(o, o.ox, o.oy);
+        // C `:101–105` — restoring the hero's level: re-wear floor ball/chain.
+        if ((game.u?.uz?.dlevel | 0) && (o.owornmask & (W_BALL | W_CHAIN)))
+            setworn(o, o.owornmask);
+        o = nx;
     }
 }
 

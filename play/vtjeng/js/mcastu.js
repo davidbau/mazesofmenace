@@ -8,6 +8,7 @@
 // lands; the dispatcher still preserves its source case and damage order.
 
 import {
+    A_DEX,
     ANTIMAGIC,
     BLINDED,
     BZ_M_SPELL,
@@ -15,7 +16,9 @@ import {
     BZ_VALID_ADTYP,
     CONFUSION,
     DEAF,
+    DETECT_MONSTERS,
     DIED,
+    EYE,
     KILLED_BY,
     Upolyd,
     DISPLACED,
@@ -35,28 +38,38 @@ import {
     M_SEEN_MAGR,
     M_SEEN_REFL,
     MFAST,
+    MM_ANGRY,
+    MM_NOMSG,
     SEE_INVIS,
     SHOCK_RES,
+    STUNNED,
+    TIMEOUT,
     u_at,
     ismnum,
 } from './const.js';
 import { game } from './gstate.js';
 import { HeroDeathPlanningError, losehp, nomul } from './hack.js';
-import { adjuhploss, minuhpmax, setuhpmax } from './attrib.js';
+import { acurr, adjuhploss, losestr, minuhpmax, setuhpmax } from './attrib.js';
 import { done } from './end.js';
-import { sgn } from './hacklib.js';
-import { Monnam, Mgender, pmname } from './do_name.js';
-import { an, the_unique_pm } from './objnam.js';
+import { sgn, upstart } from './hacklib.js';
+import { bogusmon, Monnam, Mgender, mon_nam, pmname } from './do_name.js';
+import { an, the_unique_pm, vtense } from './objnam.js';
+import { makeplural, makesingular } from './fruit.js';
 import {
     canspotmon,
     canseemon,
     map_invisible,
     map_invisible_planning,
     shieldeff,
+    tp_sensemon,
 } from './display.js';
 import { messageAt } from './startup_a11y.js';
+import { makemon_runtime } from './makemon_create.js';
+import { mkclass, set_malign } from './makemon.js';
+import { monster_census } from './minion.js';
+import { enexto } from './teleport.js';
 import { healmon } from './mon.js';
-import { make_confused } from './potion.js';
+import { make_blinded, make_confused, make_stunned } from './potion.js';
 import {
     cvt_adtyp_to_mseenres,
     monstseesu,
@@ -66,17 +79,23 @@ import {
     mhe,
     nonliving,
     type_is_pname,
+    haseyes,
 } from './mondata.js';
 import {
     AD_CLRC,
     AD_ELEC,
     AD_FIRE,
+    AD_MAGM,
     AD_SPEL,
+    PM_CYCLOPS,
+    PM_FLOATING_EYE,
+    S_ANT,
+    S_SNAKE,
 } from './monsters.js';
 import { STRANGE_OBJECT } from './objects.js';
 import { body_part, rehumanize } from './polyself.js';
 import { lined_up } from './mthrowu.js';
-import { rn2, rnd, d } from './rng.js';
+import { rn2, rn2_on_display_rng, rnd, d, rnl } from './rng.js';
 
 import { cansee, couldsee } from './vision.js';
 import { aggravate, has_aggravatables, nasty } from './wizard.js';
@@ -88,7 +107,13 @@ import { destroy_items } from './zap_destroy_items.js';
 import { ureflects } from './muse.js';
 import { note_unported } from './unported.js';
 import { buzz, flash_str, flashburn } from './zap.js';
-import { verbalize as plineVerbalize } from './pline.js';
+import {
+    heroDeaf,
+    heroUnaware,
+    pline_mon,
+    verbalize as plineVerbalize,
+    youHear,
+} from './pline.js';
 import { ttyPline } from './tty_message.js';
 
 // C ref: mcastu.c touch_of_death() (323-354). Both Death's melee touch
@@ -470,7 +495,7 @@ export async function castmu(
 ) {
     const state = rawEnv.state ?? game;
     const random = rawEnv.random ?? { rn2, d, rnd };
-    // The unported arms below -- AD_FIRE, AD_COLD and AD_MAGM here, and most
+    // The unported arms below -- AD_FIRE and AD_COLD here, and most
     // spell effects in mcast_spell() -- refuse through this rather than
     // running as a spell that quietly does nothing.
     const unsupported = requireCastmuOperation(rawEnv, 'unsupported');
@@ -531,7 +556,7 @@ export async function castmu(
             await message(
                 `The air crackles around ${
                     env.monnam?.(mtmp)
-                    ?? monnamFallback(mtmp, state)
+                    ?? mon_nam(mtmp, state, env)
                 }.`,
                 state,
             );
@@ -587,24 +612,34 @@ export async function castmu(
         await mcast_spell(mtmp, dmg, spellnum, env);
         dmg = 0; /* done by the spell casting functions */
         break;
+    case AD_MAGM:
+        if (message)
+            await message('You are hit by a shower of missiles!', state, env);
+        if (heroProperty(state, ANTIMAGIC)) {
+            await shieldeff(state.u.ux, state.u.uy, state);
+            if (message)
+                await message('The missiles bounce off!', state, env);
+            monstseesu(M_SEEN_MAGR, state);
+            dmg = 0;
+        } else {
+            // C replaces the generic damage roll above with this roll.
+            dmg = random.d(Math.trunc(ml / 2) + 1, 6);
+            monstunseesu(M_SEEN_MAGR, state);
+        }
+        // C's mon_spell_hits_spot() returns void and castmu discards it.
+        recordMcastGap('zap.c mon_spell_hits_spot', env);
+        break;
     default:
-        // AD_FIRE, AD_COLD, AD_MAGM are ranged-only attack types.
+        // AD_FIRE and AD_COLD are ranged-only attack types.
         // Adjacent AT_MAGC attacks always carry AD_SPEL or AD_CLRC.
         unsupported('castmu() elemental spell type');
         break;
     }
-    // C's trailing `if (dmg) mdamageu(mtmp, dmg)` serves only the three
-    // elemental arms above; the AD_SPEL/AD_CLRC arm zeroes dmg because
-    // mcast_spell() calls mdamageu() itself.
+    if (dmg) {
+        const mdamageu = requireCastmuOperation(env, 'mdamageu');
+        await mdamageu(mtmp, dmg, state, env);
+    }
     return ret;
-}
-
-// Lowercase monster name fallback for "the air crackles around <mon_nam>".
-function monnamFallback(mtmp, state) {
-    const name = mtmp.data?.pmnames?.[2]
-        ?? mtmp.data?.pmnames?.[0]
-        ?? 'something';
-    return `the ${name}`;
 }
 
 // ---- Individual spell effect functions ----
@@ -851,6 +886,199 @@ export async function mcast_summon_mons(mtmp, rawEnv = {}) {
     return count;
 }
 
+// C ref: mcastu.c mcast_insects() (645-744). Keep its selection, placement,
+// census, and message order together; mcast_spell() calls this for
+// MCAST_INSECTS and then clears the spell damage.
+export async function mcast_insects(mtmp, rawEnv = {}) {
+    const state = rawEnv.state ?? game;
+    const random = { rn2, rnd, ...(rawEnv.random ?? {}) };
+    const env = { ...rawEnv, state, random };
+    const message = env.message
+        ?? (env.planning ? async () => {} : ttyPline);
+    const chooseClass = env.mkclass ?? mkclass;
+    const census = env.monsterCensus ?? monster_census;
+    const nextTo = env.enexto ?? enexto;
+    const createMonster = env.makemonRuntime ?? makemon_runtime;
+
+    // C first tries ants, then falls back to snakes if none can be generated.
+    let pm = chooseClass(S_ANT, 0, env);
+    const classSymbol = pm ? S_ANT : S_SNAKE;
+    let success = false;
+    const oldseen = census(true, { ...env, canSpotMonster: env.canspotmon });
+    let quan = mtmp.m_lev < 2 ? 1 : random.rnd(Math.trunc(mtmp.m_lev / 2));
+    if (quan < 3) quan = 3;
+
+    for (let i = 0; i <= quan; i++) {
+        const bypos = nextTo(mtmp.mux, mtmp.muy, mtmp.data, env);
+        if (!bypos) return;
+        pm = chooseClass(classSymbol, 0, env);
+        if (pm) {
+            const summoned = await createMonster(
+                pm,
+                bypos.x,
+                bypos.y,
+                MM_ANGRY | MM_NOMSG,
+                { ...env, message },
+            );
+            if (summoned) {
+                success = true;
+                summoned.msleeping = 0;
+                summoned.mpeaceful = 0;
+                summoned.mtame = 0;
+                (env.setMalign ?? set_malign)(summoned, state);
+            }
+        }
+    }
+    const newseen = census(true, { ...env, canSpotMonster: env.canspotmon });
+
+    // C deliberately excludes warning-only sensing from this visible-caster
+    // decision; telepathy and monster detection are separate alternatives.
+    const seesCaster = (env.canseemon ?? canseemon)(mtmp, state)
+        || (env.tpSensemon ?? tp_sensemon)(mtmp, state)
+        || heroProperty(state, DETECT_MONSTERS);
+    let what = classSymbol === S_SNAKE ? 'snakes' : 'insects';
+    if (Hallucination(state)) {
+        const displayRandom = env.displayRandom
+            ?? ((bound) => rn2_on_display_rng(bound, state));
+        what = makeplural((env.bogusmon ?? bogusmon)(
+            { state, random: displayRandom },
+        ).name);
+    }
+
+    if (!seesCaster) {
+        if (newseen <= oldseen || heroUnaware(state)) {
+            const heard = youHear(`someone summoning ${what}.`, state);
+            if (heard) await message(heard, state, env);
+        } else {
+            const arg = newseen === oldseen + 1
+                ? an(makesingular(what)) : what;
+            if (!heroDeaf(state)) {
+                // sndprocs.h compiles Soundeffect() to an empty macro in the
+                // recorder's tty build; preserve the following You_hear line.
+                const heard = youHear(
+                    `someone summoning something, and ${arg} ${vtense(arg, 'appear')}.`,
+                    state,
+                );
+                if (heard) await message(heard, state, env);
+            } else {
+                await message(`${upstart(arg)} ${vtense(arg, 'appear')}.`, state, env);
+            }
+        }
+        return;
+    }
+
+    let line;
+    if (!success) {
+        what = '';
+        line = `${Monnam(mtmp, state, env)} casts at a clump of sticks, but nothing happens.`;
+    } else if (classSymbol === S_SNAKE) {
+        line = `${Monnam(mtmp, state, env)} transforms a clump of sticks into ${what}!`;
+    } else if (activeHeroProperty(state, INVIS)
+        && !perceives(mtmp.data)
+        && (mtmp.mux !== state.u.ux || mtmp.muy !== state.u.uy)) {
+        line = `${Monnam(mtmp, state, env)} summons ${what} around a spot near you!`;
+    } else if (activeHeroProperty(state, DISPLACED)
+        && (mtmp.mux !== state.u.ux || mtmp.muy !== state.u.uy)) {
+        line = `${Monnam(mtmp, state, env)} summons ${what} around your displaced image!`;
+    } else {
+        line = `${Monnam(mtmp, state, env)} summons ${what}!`;
+    }
+    await pline_mon(mtmp, line, state, { ...env, message });
+}
+
+// C ref: mcastu.c mcast_stun_you() (503-520). The helper ignores castmu's
+// initial spell damage. It applies a one-turn stun through Antimagic or Free
+// action, otherwise rolls Dexterity-based stun damage and extends the current
+// timeout before clearing the caster's remembered magic resistance.
+async function mcast_stun_you(dmg, env = {}) {
+    const state = env.state ?? game;
+    const random = { d, ...(env.random ?? {}) };
+    const message = env.message
+        ?? (env.planning ? async () => {} : ttyPline);
+    const hStun = state.u?.uprops?.[STUNNED]?.intrinsic ?? 0;
+
+    if (heroProperty(state, ANTIMAGIC) || heroProperty(state, FREE_ACTION)) {
+        await shieldeff(state.u.ux, state.u.uy, state);
+        monstseesu(M_SEEN_MAGR, state);
+        if (!hStun)
+            await message('You feel momentarily disoriented.', state, env);
+        await make_stunned(1, false, state, { ...env, message });
+    } else {
+        await message(
+            hStun ? 'You struggle to keep your balance.' : 'You reel...',
+            state,
+            env,
+        );
+        dmg = random.d(acurr(state, A_DEX) < 12 ? 6 : 4, 4);
+        if (heroProperty(state, HALF_SPDAM))
+            dmg = Math.trunc((dmg + 1) / 2);
+        await make_stunned((hStun & TIMEOUT) + dmg, false, state,
+            { ...env, message });
+        monstunseesu(M_SEEN_MAGR, state);
+    }
+}
+
+// C ref: mcastu.c:mcast_weaken_you() (466-487). The spell owns only the
+// caster-derived strength loss here; attrib.c:losestr() owns minimum-strength
+// damage and the actual attribute update.
+export async function mcast_weaken_you(mtmp, dmg, rawEnv = {}) {
+    const state = rawEnv.state ?? game;
+    const random = { rnd, ...(rawEnv.random ?? {}) };
+    const message = rawEnv.message
+        ?? (rawEnv.planning ? async () => {} : ttyPline);
+
+    if (heroProperty(state, ANTIMAGIC)) {
+        await shieldeff(state.u.ux, state.u.uy, state);
+        monstseesu(M_SEEN_MAGR, state);
+        await message('You feel momentarily weakened.', state, rawEnv);
+        return;
+    }
+
+    await message('You suddenly feel weaker!', state, rawEnv);
+    dmg = mtmp.m_lev - 6;
+    if (dmg < 1) dmg = 1;
+    if (heroProperty(state, HALF_SPDAM))
+        dmg = Math.trunc((dmg + 1) / 2);
+    await losestr(
+        random.rnd(dmg),
+        death_inflicted_by('strength loss', mtmp, state),
+        KILLED_BY,
+        state,
+        { ...rawEnv, random },
+    );
+    state.killer ??= {};
+    state.killer.name = '';
+    monstunseesu(M_SEEN_MAGR, state);
+}
+
+// C ref: mcastu.c:mcast_destroy_armor() (450-463). The consumed boolean from
+// do_wear.c:destroy_arm() decides whether monsters remember the hero's
+// resistance; an ineffective hit only makes the hero's skin itch.
+export async function mcast_destroy_armor(rawEnv = {}) {
+    const state = rawEnv.state ?? game;
+    const random = { rn2, rnl, ...(rawEnv.random ?? {}) };
+    const message = rawEnv.message
+        ?? (rawEnv.planning ? async () => {} : ttyPline);
+
+    if (heroProperty(state, ANTIMAGIC)) {
+        await shieldeff(state.u.ux, state.u.uy, state);
+        monstseesu(M_SEEN_MAGR, state);
+        await message('A field of force surrounds you!', state, rawEnv);
+        return;
+    }
+
+    const { destroy_arm } = await import('./do_wear.js');
+    if (!await destroy_arm(state, random, {
+        ...rawEnv,
+        message,
+    })) {
+        await message('Your skin itches.', state, rawEnv);
+    } else {
+        // C clears the seen-resistance bit only when armor was destroyed.
+        monstunseesu(M_SEEN_MAGR, state);
+    }
+}
+
 // ---- mcast_spell() ----
 // C ref: mcastu.c mcast_spell() (800-897).
 // The C dispatcher clears damage for void effects and sends every remaining
@@ -893,16 +1121,16 @@ async function mcast_spell(mtmp, dmg, spellnum, env = {}) {
         }
         break;
     case MCAST_DESTRY_ARMR:
-        recordMcastGap('mcastu.c mcast_destroy_armor', env);
+        await mcast_destroy_armor(env);
         break;
     case MCAST_WEAKEN_YOU:
-        recordMcastGap('mcastu.c mcast_weaken_you', env);
+        await mcast_weaken_you(mtmp, dmg, env);
         break;
     case MCAST_DISAPPEAR:
         await mcast_disappear(mtmp, env);
         break;
     case MCAST_STUN_YOU:
-        recordMcastGap('mcastu.c mcast_stun_you', env);
+        await mcast_stun_you(dmg, env);
         break;
     case MCAST_PSI_BOLT:
         resultDmg = await mcast_psi_bolt(dmg, env);
@@ -926,10 +1154,10 @@ async function mcast_spell(mtmp, dmg, spellnum, env = {}) {
         resultDmg = await mcast_lightning(mtmp, dmg, env);
         break;
     case MCAST_INSECTS:
-        recordMcastGap('mcastu.c mcast_insects', env);
+        await mcast_insects(mtmp, env);
         break;
     case MCAST_BLIND_YOU:
-        recordMcastGap('mcastu.c mcast_blind_you', env);
+        await mcast_blind_you(env);
         break;
     case MCAST_PARALYZE:
         resultDmg = await mcast_paralyze(mtmp, env);
@@ -947,6 +1175,34 @@ async function mcast_spell(mtmp, dmg, spellnum, env = {}) {
             throw new TypeError('mcast_spell requires the mdamageu operation');
         }
         await mdamageu(mtmp, resultDmg);
+    }
+}
+
+// C ref: mcastu.c:mcast_blind_you() (729-742). This is a clerical spell,
+// separate from the monster's blindness resistance checks: it reports the
+// scales first, then applies the C-selected timeout and reports vision
+// clearing only if blindness did not become active.
+async function mcast_blind_you(env = {}) {
+    const state = env.state ?? game;
+    const message = env.message ?? ttyPline;
+
+    if (!Blinded(state)) {
+        const species = state.youmonst.data;
+        const numEyes = !haseyes(species) ? 0
+            : (species.pmidx === PM_CYCLOPS
+                || species.pmidx === PM_FLOATING_EYE) ? 1 : 2;
+        let eyes = body_part(EYE, state.youmonst);
+        if (numEyes !== 1) eyes = makeplural(eyes);
+
+        await message(`Scales cover your ${eyes}!`, state);
+        await make_blinded(heroProperty(state, HALF_SPDAM) ? 100 : 200,
+            false, state, { ...env, message });
+        if (!activeHeroProperty(state, BLINDED))
+            await message('Your vision clears.', state);
+    } else {
+        // C's impossible() is diagnostic only; callers that expose an
+        // impossible hook keep the report without changing gameplay state.
+        env.impossible?.('no reason for monster to cast blindness spell?');
     }
 }
 

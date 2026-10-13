@@ -126,6 +126,7 @@ import {
     SDOOR,
     SHOCK_RES,
     SHOPBASE,
+    SHOP_HOLE_COST,
     SLEEP_RES,
     SLT_ENCUMBER,
     SLP_GAS_TRAP,
@@ -171,13 +172,7 @@ import {
     WT_TOOMUCH_DIAGONAL,
     XKILL_NOMSG,
     W_SADDLE,
-    W_AMUL,
-    W_ARMOR,
-    W_BALL,
-    W_CHAIN,
     W_ARTI,
-    W_TOOL,
-    W_WEAPONS,
     ZAP_POS,
     CORPSTAT_FEMALE,
     CORPSTAT_GENDER,
@@ -353,7 +348,7 @@ import { newsym, bot, shieldeff } from './display.js';
 import { m_next2u } from './mhitu.js';
 import { linedup } from './mthrowu.js';
 import { destroy_items } from './zap_destroy_items.js';
-import { costly_spot, sellobj, shop_keeper, shk_your, shopdig } from './shk.js';
+import { add_damage, costly_spot, sellobj, shop_keeper, shk_your, shopdig } from './shk.js';
 import { quest_info } from './questpgr.js';
 import { mon_has_amulet } from './wizard.js';
 import { canspotmon } from './display.js';
@@ -1035,7 +1030,9 @@ export function maketrap(x, y, typ, rawEnv = {}) {
     case SPIKED_PIT:
         if (in_rooms(x, y, SHOPBASE, state).length
             && (IS_DOOR(location.typ) || IS_WALL(location.typ)))
-            note_unported('shk.c add_damage');
+            add_damage(x, y,
+                !state.context?.mon_moving ? SHOP_HOLE_COST : 0,
+                state);
         trap.conjoined = 0;
         {
             const exposed = pitTerrain(x, y, env);
@@ -1047,7 +1044,7 @@ export function maketrap(x, y, typ, rawEnv = {}) {
     case TRAPDOOR:
         hole_destination(trap.dst, env);
         if (in_rooms(x, y, SHOPBASE, state).length)
-            note_unported('shk.c add_damage');
+            add_damage(x, y, 0, state);
         {
             const exposed = pitTerrain(x, y, env);
             if (exposed && typeof exposed.then === 'function')
@@ -1700,25 +1697,11 @@ export async function lava_effects(state = game) {
                         await ttyPline(`${Yobjnam2(obj, 'burst', state)} into flame!`, state);
                         burnmesgcount++;
                     }
-                    // C removes every doomed worn item. The message is
-                    // conditional on lifesaving, but remove_worn_item() is
-                    // unconditional before useupall().
-                    // Keep unsupported worn-item arms as explicit gaps while
-                    // routing a worn cloak through the existing helper path.
-                    const mask = obj.owornmask;
-                    const supportedCloak = obj === state.uarmc
-                        && Boolean(mask & W_ARMOR);
-                    const unsupportedMask = Boolean(mask
-                        & (W_AMUL | W_TOOL | W_BALL | W_CHAIN))
-                        || (Boolean(mask & W_ARMOR) && !supportedCloak);
-                    const unsupportedQuiver = Boolean(mask & W_WEAPONS)
-                        && obj === state.uquiver;
-                    if (unsupportedMask || unsupportedQuiver) {
-                        note_unported('steal.c remove_worn_item');
-                    } else {
-                        const { remove_worn_item } = await import('./steal.js');
-                        await remove_worn_item(obj, true, state);
-                    }
+                    // trap.c calls remove_worn_item for every worn inventory
+                    // item before useupall. Its return is discarded, but the
+                    // slot callbacks and setnotworn must finish first.
+                    const { remove_worn_item } = await import('./steal.js');
+                    await remove_worn_item(obj, true, state);
                 }
                 await useupall(obj, { state });
                 burncount++;
@@ -2763,7 +2746,7 @@ async function disarm_squeaky_board(ttmp, state = game) {
     /* successfully used oil or grease to fix squeaky board */
     if (obj.otyp === CAN_OF_GREASE) {
         // C: consume_obj_charge(obj, TRUE). invent.c.
-        consume_obj_charge(obj, true, { state });
+        await consume_obj_charge(obj, true, { state });
     } else {
         await useup(obj, state); /* oil */
         // C hack.h makeknown(): all three discovery flags are TRUE.
@@ -3137,8 +3120,7 @@ export async function untrap(force, rx, ry, container, state = game) {
                 unblock_point(x, y, state);
                 newsym(x, y);
                 if (in_rooms(x, y, SHOPBASE, state).length > 0) {
-                    // C: add_damage(x, y, 0L). shk.c, not ported.
-                    note_unported('shk.c add_damage');
+                    add_damage(x, y, 0, state);
                 }
             } else {
                 await ttyPline('You disarm it!', state);
