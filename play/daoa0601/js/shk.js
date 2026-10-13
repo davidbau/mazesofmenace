@@ -30,6 +30,7 @@ import { nextIdent, nextObjectId } from './ident.js';
 import { pacifyShopkeeper, rileShopkeeper, shopkeeperCustomerInsult, } from './shop_damage.js';
 import { deallocateObject, stopObjectTimers } from './object_delete.js';
 import { getObjectLocation, unlinkObject } from './object_location.js';
+import { objectsInTimerGraph } from './object_timers.js';
 import { leaveHeroShop } from './shop_departure.js';
 const COIN_CLASS = 12;
 const GEM_CLASS = 13;
@@ -114,6 +115,50 @@ export function currentShopResident(state = game) {
 }
 export function shopkeeperForHero(state = game) {
     return shopkeeperForRoom(state.u.ushops?.[0], state);
+}
+// C shk.c:make_itemized_bill()/cheapest_item(). Contents are sold together
+// through their outermost container; a partly used stack has separate costs
+// for its used-up and intact portions.
+export function minimumShopPurchase(resident, state = game) {
+    if (!hasShopBill(resident) || !resident.eshk.bill.length)
+        return null;
+    const objects = objectsInTimerGraph(state);
+    const containers = new Set();
+    const prices = [];
+    let multipleItems = resident.eshk.bill.length > 1;
+    for (const entry of resident.eshk.bill) {
+        const object = (entry.useup ? state.billObjects ?? [] : objects)
+            .find(candidate => candidate.o_id === entry.bo_id);
+        if (!object)
+            continue;
+        if (object.where === 'onbill' || object.quan === 0) {
+            prices.push(entry.price * entry.bquan);
+            continue;
+        }
+        if (object.quan < entry.bquan) {
+            prices.push(entry.price * (entry.bquan - object.quan));
+            multipleItems = true;
+        }
+        if (object.container || object.contents?.length) {
+            let container = object;
+            let contentsKnown = true;
+            while (container.container) {
+                container = container.container;
+                if (!container.cknown)
+                    contentsKnown = false;
+            }
+            if (containers.has(container))
+                continue;
+            containers.add(container);
+            prices.push(unpaidObjectCost(container, state, 'contents'));
+            if (container !== object && !contentsKnown)
+                multipleItems = true;
+        }
+        else {
+            prices.push(entry.price * object.quan);
+        }
+    }
+    return prices.length ? { price: Math.min(...prices), multipleItems } : null;
 }
 export function carriedShopBill(resident, state = game) {
     if (!resident?.eshk)
@@ -881,19 +926,23 @@ export function updateUnpaidObjectPrice(object, state = game) {
         return;
     billed.entry.price = Math.max(billed.entry.price, shopObjectUnitCost(object, billed.resident, state));
 }
-// C shk.c:Shk_Your(). The returned prefix includes its separator; a corpse
+// C shk.c:shk_your()/Shk_Your(). The returned prefix includes its separator; a corpse
 // of a personally named monster has no prefix or separator at all.
-export function objectOwnershipPrefix(object, state = game) {
+export function objectOwnershipPrefix(object, state = game, { capitalized = true } = {}) {
     const species = object.corpsenm;
     if (object.otyp === CORPSE && species !== undefined && MONSTER_NAME[species] !== undefined) {
         if ((MONSTER_FLAGS2[species] ?? 0) & M2_PNAME)
             return '';
         if (((MONSTER_GENO[species] ?? 0) & G_UNIQ)
             && !['high cleric', 'long worm tail'].includes(MONSTER_NAME[species]))
-            return 'The ';
+            return capitalized ? 'The ' : 'the ';
     }
-    const owner = carriedObjectOwner(object, state);
-    return `${owner.charAt(0).toUpperCase()}${owner.slice(1)} `;
+    let owner = carriedObjectOwner(object, state);
+    if (capitalized)
+        owner = owner.charAt(0).toUpperCase() + owner.slice(1);
+    else if (owner === 'Your' || owner === 'The')
+        owner = owner.toLowerCase();
+    return `${owner} `;
 }
 // C shk.c:shk_owns() and mon_owns(). Shop ownership takes
 // precedence over the carrier, using the object's location rather than ours.

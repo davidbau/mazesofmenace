@@ -2046,7 +2046,9 @@ export async function gold_detect(sobj) {
     }
     await You_feel('very greedy, and sense gold!');
     exercise(A_WIS, true);
-    await flush_topl_more();
+    // C detect.c:471 You_feel → browse_map with no flush between: the
+    // getpos.c:843-846 verbose pline joins on the same topline (topl.c
+    // NEED_MORE + room → two-space join; same class as D-2081/D-2242/D-3769).
     await browse_map(ter_typ, 'gold');
     reconstrain_map();
     await map_redisplay();

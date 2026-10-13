@@ -3,14 +3,14 @@
 import { game } from './gstate.js';
 import { CommandBindings } from './command_bindings.js';
 import { changePreferredFruit, normalizePreferredFruitName } from './fruit.js';
-import { bot, clearMessageWindow, cls, docrt, flushPendingTopline, flush_screen, plineWithContinuation } from './display.js';
+import { bot, clearMessageWindow, cls, docrt, flushPendingTopline, flush_screen, plineWithContinuation, reglyph_darkroom } from './display.js';
 import { vision_recalc } from './vision.js';
 import { nhgetch } from './input.js';
 import { getLine } from './query.js';
 import { changeInventoryOrder, inventoryOrderSymbols } from './object_sort.js';
 import { NO_COLOR } from './terminal.js';
 import { ATR_INVERSE, restoreMenuUnderlay, showChoiceWindow, showInventoryWindow, showMultiSelectWindow, snapshotMenuUnderlay } from './windows.js';
-import { MENU_FULL, PICK_ONE, PARANOID_AUTOALL, PARANOID_BONES, PARANOID_BREAKWAND, PARANOID_CONFIRM, PARANOID_DIE, PARANOID_EATING, PARANOID_HIT, PARANOID_PRAY, PARANOID_QUIT, PARANOID_REMOVE, PARANOID_SWIM, PARANOID_TRAP, PARANOID_WERECHANGE, } from './const.js';
+import { MENU_FULL, PICK_ONE, PL_PSIZ, PARANOID_AUTOALL, PARANOID_BONES, PARANOID_BREAKWAND, PARANOID_CONFIRM, PARANOID_DIE, PARANOID_EATING, PARANOID_HIT, PARANOID_PRAY, PARANOID_QUIT, PARANOID_REMOVE, PARANOID_SWIM, PARANOID_TRAP, PARANOID_WERECHANGE, } from './const.js';
 const DEFAULT_PARANOIA_BITS = PARANOID_PRAY | PARANOID_SWIM | PARANOID_TRAP;
 const MENU_STYLES = [
     ['traditional', '[prompt for object class(es), then', ' ask y/n for each item in those classes]'],
@@ -273,6 +273,15 @@ function parseConfiguration(rc, result) {
             const colonIdx = stripped.indexOf(':');
             const bindingOption = (colonIdx < 0 ? stripped : stripped.slice(0, colonIdx)).trim().toLowerCase();
             const optionValue = colonIdx < 0 ? null : stripped.slice(colonIdx + 1).trim();
+            if (bindingOption === 'dogname' || bindingOption === 'catname' || bindingOption === 'horsename') {
+                if (negated)
+                    continue;
+                if (optionValue === 'none' || optionValue === '(none)')
+                    result.flags[bindingOption] = '';
+                else if (optionValue)
+                    result.flags[bindingOption] = configuredPetName(optionValue, !!result.iflags.wc_eight_bit_input);
+                continue;
+            }
             if (bindingOption === 'number_pad') {
                 if (optionValue && negated)
                     continue;
@@ -457,6 +466,24 @@ function parseConfiguration(rc, result) {
         result.flags.paranoia_bits = paranoiaBits;
     return result;
 }
+// C options.c:nmcpy() copies bytes; bones.c:sanitize_name() replaces control
+// bytes and strips printable high bytes only when eight-bit input is disabled.
+function configuredPetName(value, eightBitInput) {
+    const bytes = new TextEncoder().encode(value).subarray(0, PL_PSIZ - 1);
+    const nameBytes = [];
+    for (const byte of bytes) {
+        if (byte === 0 || byte === 44)
+            break;
+        const character = byte & 0x7f;
+        if (character < 32 || character === 127)
+            nameBytes.push('.'.charCodeAt(0));
+        else
+            nameBytes.push(byte > 127 && !eightBitInput ? '_'.charCodeAt(0) : byte);
+    }
+    // The tty consumes individual characters, even when these bytes no
+    // longer form UTF-8 after sanitizing or reaching the name limit.
+    return String.fromCharCode(...nameBytes);
+}
 const NUMBER_PAD_CHOICES = [
     ' 0 (off)', ' 1 (on)', ' 2 (on, MSDOS compatible)',
     ' 3 (on, phone-style digit layout)',
@@ -564,7 +591,7 @@ const REQUEST_MENU_BOOLEAN_OPTIONS = [
     ['customsymbols', 'customsymbols', true],
     ['dark_room', 'dark_room', true],
     ['dropped_nopick', 'dropped_nopick', true],
-    ['eight_bit_tty', 'eight_bit_tty', false],
+    ['eight_bit_tty', 'wc_eight_bit_input', false],
     ['extmenu', 'extmenu', false],
     ['fireassist', 'fireassist', true],
     ['fixinv', 'fixinv', true],
@@ -627,7 +654,8 @@ function requestBooleanValue(name) {
     const [, property, fallback] = option;
     if (property === '_monTelecontrol')
         return game._monTelecontrol ?? fallback;
-    if (property === 'altmeta' || property === 'toptenwin' || property === 'menu_tab_sep')
+    if (property === 'altmeta' || property === 'toptenwin' || property === 'menu_tab_sep'
+        || property === 'wc_eight_bit_input')
         return game.iflags[property] ?? fallback;
     return game.flags[property] ?? fallback;
 }
@@ -635,7 +663,8 @@ function setConfigurationBoolean(settings, option, value) {
     const [, property] = option;
     if (property === '_monTelecontrol')
         settings.monTelecontrol = value;
-    else if (property === 'altmeta' || property === 'toptenwin' || property === 'menu_tab_sep')
+    else if (property === 'altmeta' || property === 'toptenwin' || property === 'menu_tab_sep'
+        || property === 'wc_eight_bit_input')
         settings.iflags[property] = value;
     else
         settings.flags[property] = value;
@@ -644,7 +673,8 @@ function setRequestBoolean(option, value) {
     const [, property] = option;
     if (property === '_monTelecontrol')
         game._monTelecontrol = value;
-    else if (property === 'altmeta' || property === 'toptenwin' || property === 'menu_tab_sep')
+    else if (property === 'altmeta' || property === 'toptenwin' || property === 'menu_tab_sep'
+        || property === 'wc_eight_bit_input')
         game.iflags[property] = value;
     else
         game.flags[property] = value;
@@ -774,9 +804,9 @@ function requestMenuSections() {
                 readonly('race', race),
                 readonly('gender', gender),
                 readonly('alignment', alignment),
-                readonly('catname', '(none)'),
-                readonly('dogname', '(none)'),
-                readonly('horsename', '(none)'),
+                readonly('catname', game.flags.catname || '(none)'),
+                readonly('dogname', game.flags.dogname || '(none)'),
+                readonly('horsename', game.flags.horsename || '(none)'),
                 readonly('msghistory', '20'),
                 readonly('pettype', 'random'),
                 readonly('soundlib', 'nosound'),
@@ -920,6 +950,8 @@ async function editPickupTypes(preserveStatus = false) {
 // changes need bot(); map-affecting changes defer the full docrt until all
 // selected options and their compound handlers have finished.
 function applyBooleanVisualChange(name) {
+    if (name === 'showexp' || name === 'time')
+        game.context.botl = true;
     if (name === 'dark_room' || name === 'lit_corridor') {
         vision_recalc(2);
         game.vision_full_recalc = 1;
@@ -973,8 +1005,10 @@ async function doRequestMenuOptions() {
         await editPickupTypes(true);
     if (selected.has('sortloot'))
         await editSortLoot();
-    if (needsRedraw)
+    if (needsRedraw) {
+        reglyph_darkroom();
         await docrt();
+    }
     await bot();
     game.context.move = 0;
 }
@@ -1054,6 +1088,7 @@ export async function doOptions(menuRequested = false) {
         game._optionsInitialized = true;
     }
     let page = 1;
+    let needsRedraw = false;
     for (;;) {
         renderOptionsPage(page);
         const key = await nhgetch();
@@ -1101,9 +1136,11 @@ export async function doOptions(menuRequested = false) {
         }
         else if (page === 2 && input === 'e') {
             flags.hilite_pet = !flags.hilite_pet;
+            needsRedraw = true;
         }
         else if (page === 2 && input === 'f') {
             flags.hilite_pile = !flags.hilite_pile;
+            needsRedraw = true;
         }
         else if (page === 2 && input === 'l') {
             flags.showexp = !flags.showexp;
@@ -1117,6 +1154,8 @@ export async function doOptions(menuRequested = false) {
         page = 1;
     }
     game._pending_message = '';
+    if (needsRedraw)
+        reglyph_darkroom();
     await docrt();
     await bot();
     game.context.move = 0;

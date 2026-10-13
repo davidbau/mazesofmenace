@@ -2,16 +2,19 @@
 // C refs: potion.c make_sick(), make_vomiting();
 // timeout.c sickness_dialogue(), vomiting_dialogue(); eat.c vomit().
 import { heroIsHallucinating } from './senses.js';
+import { makeConfused, makeStunned } from './hero_mental_status.js';
 import { endVoluntaryMultiTurn } from './command_state.js';
 import { adjustAttribute, currentAttribute, exerciseAttribute, } from './attrib.js';
 import { A_CON, ALTAR, FAINTING, ICE, POISONING, SICK_ALL, SICK_NONVOMITABLE, SICK_VOMITABLE, TIMEOUT, } from './const.js';
 import { pline, plineWithContinuation } from './display.js';
 import { finishHeroDeath } from './end.js';
 import { withIndefiniteArticle } from './object_grammar.js';
+import { definiteName } from './objnam.js';
+import { nameToMonster } from './mondata.js';
 import { game, requirePlayingGame } from './gstate.js';
 import { currentHungerState, spendHeroNutrition } from './hunger.js';
 import { meltIce } from './ice.js';
-import { MONSTER_FLAGS1, MONSTER_SYMBOL, } from './monster_data.js';
+import { MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_GENO, MONSTER_SYMBOL, } from './monster_data.js';
 import { heroMonsterForm } from './polyself.js';
 import { altarWrath } from './pray.js';
 import { d, rn2 } from './rng.js';
@@ -43,6 +46,7 @@ export async function startHeroSickness({ state = game, turns, cause = 'illness'
     hero.sickTurns = Math.min(TIMEOUT, Math.max(0, Math.trunc(turns)));
     hero.sick = hero.sickTurns > 0;
     hero.sickType = (hero.sickType ?? 0) | type;
+    state.context.botl = true;
     await exerciseAttribute(A_CON, false, state);
     hero.sickCause = cause;
     return { started: hero.sick, newlySick };
@@ -53,6 +57,7 @@ export function cureHeroSickness(state = game, type = SICK_ALL) {
     if (!heroIsSick(state) || !(currentType & type))
         return false;
     hero.sickType = currentType & ~type;
+    state.context.botl = true;
     if (hero.sickType) {
         hero.sick = true;
         hero.sickTurns = Math.max(1, (hero.sickTurns ?? 1) * 2);
@@ -76,11 +81,13 @@ export async function cureHeroSicknessWithMessages(state = game, type = SICK_ALL
         ? 'You feel somewhat better.' : 'You feel cured.  What a relief!');
     if (hero.sickType) {
         hero.sickTurns = Math.min(TIMEOUT, (hero.sickTurns ?? 0) * 2);
+        state.context.botl = true;
         await exerciseAttribute(A_CON, false, state);
     }
     else {
         hero.sick = false;
         hero.sickTurns = 0;
+        state.context.botl = true;
         delete hero.sickCause;
     }
     return true;
@@ -92,6 +99,7 @@ export function startHeroVomiting({ state = game, turns } = {}) {
     const hero = state.u;
     hero.vomitingTurns = Math.max(0, turns ?? 0);
     hero.vomiting = hero.vomitingTurns > 0;
+    state.context.botl = true;
     return hero.vomiting;
 }
 export function cureHeroVomiting(state = game) {
@@ -99,6 +107,7 @@ export function cureHeroVomiting(state = game) {
     const cured = heroIsVomiting(state);
     hero.vomiting = false;
     hero.vomitingTurns = 0;
+    state.context.botl = true;
     return cured;
 }
 export function cureHeroIllness(state = game) {
@@ -210,14 +219,13 @@ export async function advanceHeroVomiting({ state = game, publish = pline, rollD
         return { active: false, vomited: false };
     const nextTurns = Math.max(0, (hero.vomitingTurns ?? 0) - 1);
     if (nextTurns === 9) {
-        hero.confusionTurns = (hero.confusionTurns ?? 0) + rollDice(2, 4);
+        await makeConfused((hero.confusionTurns ?? 0) + rollDice(2, 4), { state, talk: false });
         stopCountedAction(state);
     }
     else if (nextTurns === 6) {
-        hero.stunnedTurns = (hero.stunnedTurns ?? 0) + rollDice(2, 4);
-        hero.stunned = true;
+        await makeStunned((hero.stunnedTurns ?? 0) + rollDice(2, 4), { state, talk: false });
         state._occupation = null;
-        hero.confusionTurns = (hero.confusionTurns ?? 0) + rollDice(2, 4);
+        await makeConfused((hero.confusionTurns ?? 0) + rollDice(2, 4), { state, talk: false });
     }
     const message = vomitingMessage(state, nextTurns);
     if (message)
@@ -240,8 +248,6 @@ export async function advanceHeroVomiting({ state = game, publish = pline, rollD
     await exerciseAttribute(A_CON, false, state);
     hero.vomitingTurns = nextTurns;
     hero.vomiting = nextTurns > 0;
-    if (!hero.vomiting && vomited)
-        await publish('You feel much less nauseated now.');
     return { active: hero.vomiting, vomited, turns: nextTurns };
 }
 function sicknessMessage(hero) {
@@ -278,10 +284,17 @@ export async function advanceHeroSickness({ state = game, publish = pline, die =
         return { active: false, died: false, recovered: true, turns: 0 };
     }
     await publish('You die from your illness.');
-    const killer = hero.sickCause || 'illness';
+    let killer = hero.sickCause || 'illness';
+    const species = nameToMonster(killer);
+    const personal = species >= 0 && !!((MONSTER_FLAGS2[species] ?? 0) & 0x00080000);
+    const unique = species >= 0 && !!((MONSTER_GENO[species] ?? 0) & 0x1000);
+    // nh_timeout() resolves personal and unique monster names when the
+    // delayed illness becomes fatal, before formatkiller() adds an article.
+    if (unique && !personal)
+        killer = definiteName(killer);
     const died = await die({
         killer,
-        deathCause: `poisoned by ${killer === '#wizintrinsic'
+        deathCause: `poisoned by ${personal || unique || killer === '#wizintrinsic'
             ? killer : withIndefiniteArticle(killer)}`,
         deathLineShown: true,
         deathType: POISONING,

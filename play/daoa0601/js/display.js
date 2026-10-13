@@ -12,8 +12,11 @@ import { artifactWarningFeedback } from './artifact_warning.js';
 import { currentAttribute } from './attrib.js';
 import { nhgetch } from './input.js';
 import { currentHungerState } from './hunger.js';
+import { heroIsSick } from './hero_illness.js';
+import { heroIsSliming } from './slime.js';
+import { heroIsPetrifying } from './stoning.js';
 import { cansee, couldsee, set_seenv, vision_recalc } from './vision.js';
-import { A_CHA, A_CON, A_DEX, A_INT, A_STR, A_WIS, BC_BALL, BC_CHAIN, COLNO, ROWNO, STONE, ROOM, CORR, SCORR, SDOOR, DOOR, STAIRS, FOUNTAIN, THRONE, SINK, GRAVE, ALTAR, ICE, HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, TREE, IRONBARS, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, AIR, CLOUD, IS_POOL, IS_OBSTRUCTED, IS_ROOM, IS_WALL, LADDER, LA_DOWN, DBWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED, D_BROKEN, SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR, BEAR_TRAP, WEB, VIBRATING_SQUARE, CORPSTAT_GENDER, CORPSTAT_FEMALE, ENGRAVE, BURN, HEADSTONE, is_pit, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, def_warnsyms, MON_STILL_ARRIVING, In_endgame, Is_rogue_level, Is_waterlevel, Is_knox_level, In_sokoban, PLNMSG_UNKNOWN, MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS, MONSEEN_TELEPAT, MONSEEN_XRAYVIS, MONSEEN_DETECT, MONSEEN_WARNMON, PICK_NONE, PICK_ONE, Upolyd, ismnum, } from './const.js';
+import { A_CHA, A_CON, A_DEX, A_INT, A_STR, A_WIS, BC_BALL, BC_CHAIN, COLNO, ROWNO, STONE, ROOM, CORR, SCORR, SDOOR, DOOR, STAIRS, FOUNTAIN, THRONE, SINK, GRAVE, ALTAR, ICE, HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, TREE, IRONBARS, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, AIR, CLOUD, IS_POOL, IS_OBSTRUCTED, IS_ROOM, IS_WALL, LADDER, LA_DOWN, DBWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED, D_BROKEN, SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, SICK_VOMITABLE, SICK_NONVOMITABLE, WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR, BEAR_TRAP, WEB, VIBRATING_SQUARE, CORPSTAT_GENDER, CORPSTAT_FEMALE, ENGRAVE, BURN, HEADSTONE, is_pit, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, def_warnsyms, MON_STILL_ARRIVING, In_endgame, Is_rogue_level, Is_waterlevel, Is_knox_level, In_sokoban, PLNMSG_UNKNOWN, MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS, MONSEEN_TELEPAT, MONSEEN_XRAYVIS, MONSEEN_DETECT, MONSEEN_WARNMON, PICK_NONE, PICK_ONE, Upolyd, ismnum, } from './const.js';
 import { NO_COLOR, ATR_INVERSE, CLR_BLACK, CLR_RED, CLR_GREEN, CLR_GRAY, CLR_BROWN, CLR_MAGENTA, CLR_CYAN, CLR_WHITE, CLR_YELLOW, CLR_BLUE, CLR_ORANGE, CLR_BRIGHT_GREEN, CLR_BRIGHT_BLUE, CLR_BRIGHT_MAGENTA, DEC_TO_UNICODE, } from './terminal.js';
 import { LARGE_BOX, CHEST, GOLD_PIECE, FOOD_RATION, CORPSE, TOWEL, STATUE, BOULDER, OBJECT_BASES, OBJECT_COLOR, } from './object_data.js';
 import { MONSTER_COLOR, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_FLAGS3, MONSTER_GENO, MONSTER_LEVEL, MONSTER_NAME, MONSTER_SYMBOL, SPECIAL_PM, monsterTypeName, } from './monster_data.js';
@@ -24,6 +27,7 @@ import { OBJECT_CLASS_SYMBOLS, recordObjectEncounter } from './object_knowledge.
 import { heroGoldAmount } from './hero_gold.js';
 import { encumbranceLabel, nearCapacity } from './weight.js';
 import { heroCanReachFloor } from './floor_reach.js';
+import { propertyIsActive } from './properties.js';
 const HALLUCINATED_LIQUIDS = [
     'yoghurt', 'oobleck', 'clotted blood', 'diluted water',
     'purified water', 'instant coffee', 'tea', 'herbal infusion',
@@ -53,7 +57,6 @@ function activeObjectSymbols() {
         ? ROGUE_OBJECT_SYMBOLS : OBJECT_CLASS_SYMBOLS;
 }
 const M3_INFRAVISIBLE = 0x0200;
-const M1_FLY = 0x00000001;
 const M1_MINDLESS = 0x00010000;
 const TELEPATHY_RANGE = 8 * 8; // BOLT_LIM squared
 const HELM_OF_TELEPATHY = 100;
@@ -309,29 +312,86 @@ const ANSI_COLOR = [
     97, // CLR_WHITE     15
     90, // remembered room/corridor while blind (tty dark gray)
 ];
-function rememberedColor(glyph, loc, x, y) {
-    // newsym() darkens unseen corridors with dark_room and color enabled,
-    // even when the terrain remains lit. Without those options, waslit
-    // determines whether memory retains the bright corridor glyph.
-    if (glyph?.kind === 'terrain' && glyph.ch === '#'
-        && loc?.typ === CORR && !cansee(x, y)
-        && (!loc.waslit || ((game.flags.dark_room ?? true) && game.flags.color !== false))
-        && glyph.color === CLR_WHITE) {
-        glyph.color = NO_COLOR;
-        glyph.glyph = cmapToGlyph(CmapSymbol.corr);
+// C display.c:newsym(): only remembered room and corridor terrain changes
+// when it leaves sight. Objects, traps, and engravings retain their glyphs.
+function rememberedGlyph(glyph, loc, x, y) {
+    if (glyph.kind !== 'terrain' || cansee(x, y))
+        return glyph;
+    const rogue = Is_rogue_level(game.u.uz);
+    const darkRoom = !rogue && (game.flags.dark_room ?? true) && game.flags.color !== false;
+    if (loc.typ === CORR && glyph.glyph === cmapToGlyph(CmapSymbol.litcorr)
+        && (rogue || !loc.waslit || darkRoom)) {
+        return { ...glyph, color: NO_COLOR, glyph: cmapToGlyph(CmapSymbol.corr) };
     }
-    // Preserve the port's established blind-memory behavior on ordinary
-    // levels.  Premapped levels distinguish background from mapped objects
-    // and traps, just as C's glyph categories do.
-    // display.c only substitutes DARKROOMSYM when the remembered glyph is
-    // the room terrain itself.  Objects, traps, and engravings keep their
-    // remembered glyph (and color) when blindness removes IN_SIGHT.
-    const darkRoomMemory = glyph?.kind === 'terrain' && loc?.typ === ROOM
-        && (loc.premapped
-            ? !cansee(x, y) && (game.flags?.dark_room ?? true)
-                && game.flags?.color !== false
-            : game.blind);
-    return darkRoomMemory ? 16 : glyph?.color;
+    if (loc.typ !== ROOM || glyph.glyph !== cmapToGlyph(CmapSymbol.room)
+        || loc.waslit && !darkRoom)
+        return glyph;
+    if (rogue) {
+        return { ch: ' ', color: NO_COLOR, decgfx: false, kind: 'terrain',
+            terrainName: 'stone', glyph: cmapToGlyph(CmapSymbol.stone) };
+    }
+    return { ...glyph, ch: darkRoom ? glyph.ch : ' ',
+        color: darkRoom ? 16 : NO_COLOR, decgfx: darkRoom && !!glyph.decgfx,
+        terrainName: 'dark part of a room', glyph: cmapToGlyph(CmapSymbol.darkroom) };
+}
+function showRememberedLocation(x, y, loc) {
+    const memory = loc.remembered_glyph;
+    if (!memory)
+        return;
+    const glyph = rememberedGlyph(memory, loc, x, y);
+    loc.remembered_glyph = glyph;
+    show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.decgfx, objectGlyphAttr(glyph), glyph);
+}
+// C display.c:reglyph_darkroom(). Option changes convert stored floor glyphs
+// before docrt() displays memory; ordinary redraws must leave memory alone.
+export function reglyph_darkroom() {
+    if (!game.level)
+        return;
+    const darkRoom = game.flags.dark_room ?? true;
+    const showDarkFloor = darkRoom && game.flags.color !== false
+        && !Is_rogue_level(game.u.uz);
+    const dec = /^DECgraphics$/i.test(game.symset || '') && !Is_rogue_level(game.u.uz);
+    for (let x = 1; x < COLNO; x++) {
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = game.level.at(x, y);
+            const memory = loc?.remembered_glyph;
+            if (!loc || !memory)
+                continue;
+            if (!darkRoom && loc.waslit && memory.glyph === cmapToGlyph(CmapSymbol.corr)) {
+                loc.remembered_glyph = { ...memory, color: CLR_WHITE,
+                    glyph: cmapToGlyph(CmapSymbol.litcorr),
+                    kind: 'terrain', terrainName: 'lit corridor' };
+            }
+            else if (darkRoom && !cansee(x, y)
+                && memory.glyph === cmapToGlyph(CmapSymbol.litcorr)) {
+                loc.remembered_glyph = { ...memory, color: NO_COLOR,
+                    glyph: cmapToGlyph(CmapSymbol.corr),
+                    kind: 'terrain', terrainName: 'corridor' };
+            }
+            if (!showDarkFloor) {
+                if (memory.glyph === cmapToGlyph(CmapSymbol.darkroom)) {
+                    loc.remembered_glyph = loc.waslit ? roomMemoryGlyph(false, dec)
+                        : { ch: ' ', color: NO_COLOR, decgfx: false,
+                            kind: 'nothing', glyph: GlyphOffset.nothing };
+                }
+            }
+            else if (memory.glyph === cmapToGlyph(CmapSymbol.darkroom)
+                || (loc.seenv && !cansee(x, y)
+                    && (memory.glyph === cmapToGlyph(CmapSymbol.room) && loc.waslit
+                        || memory.glyph === GlyphOffset.nothing && loc.typ === ROOM))) {
+                // Native also refreshes showsyms[S_darkroom] for glyphs that
+                // were already stored as darkroom while color was disabled.
+                loc.remembered_glyph = roomMemoryGlyph(true, dec);
+            }
+        }
+    }
+}
+function roomMemoryGlyph(dark, dec) {
+    return {
+        ch: dec ? '~' : '.', color: dark ? 16 : NO_COLOR, decgfx: dec,
+        kind: 'terrain', terrainName: dark ? 'dark part of a room' : 'floor of a room',
+        glyph: cmapToGlyph(dark ? CmapSymbol.darkroom : CmapSymbol.room),
+    };
 }
 function stairGlyphIndex(loc, x, y) {
     // C display.c:back_to_cmap(). Direction belongs to the terrain cell;
@@ -623,15 +683,18 @@ export function terrain_glyph(loc, x, y) {
     const appearance = terrainGlyphAppearance(loc, x, y);
     const typ = projectedTerrainType(loc);
     const symbol = terrainSymbolIndex(loc, x, y, typ, appearance);
+    return {
+        ...appearance, kind: 'terrain', terrainName: terrainGlyphName(loc, x, y, appearance),
+        glyph: typ === ALTAR ? altarToGlyph(loc.flags) : cmapToGlyph(symbol, currentWallGlyphOffset()),
+    };
+}
+// display.h:cmap_walls_to_glyph() applies to both real walls and disguises.
+function currentWallGlyphOffset() {
     const branch = game.dungeons[game.u.uz?.dnum ?? 0];
-    const wallOffset = branch?.dname === 'The Gnomish Mines' ? GlyphOffset.cmapMines
+    return branch?.dname === 'The Gnomish Mines' ? GlyphOffset.cmapMines
         : branch?.flags.hellish ? GlyphOffset.cmapGehennom
             : Is_knox_level(game.u.uz) ? GlyphOffset.cmapKnox
                 : In_sokoban(game.u.uz) ? GlyphOffset.cmapSokoban : GlyphOffset.cmapMain;
-    return {
-        ...appearance, kind: 'terrain', terrainName: terrainGlyphName(loc, x, y, appearance),
-        glyph: typ === ALTAR ? altarToGlyph(loc.flags) : cmapToGlyph(symbol, wallOffset),
-    };
 }
 function terrainSymbolIndex(loc, x, y, typ, appearance) {
     if ((IS_WALL(typ) && typ !== DBWALL) || typ === SDOOR) {
@@ -861,6 +924,28 @@ function monsterGlyphNumber(mnum, female, state) {
 function heroDisplayGlyph() {
     if (game.u?.m_ap_type === M_AP_OBJECT)
         return apparentObjectGlyph(game.u);
+    if (game.u.m_ap_type === M_AP_MONSTER) {
+        const appearance = game.u.mappearance;
+        if (!ismnum(appearance))
+            throw new Error('Hero monster disguise requires a valid species');
+        return displayMonsterGlyph(appearance, Upolyd(game.u) ? !!game.u.mfemale : !!game.flags.female);
+    }
+    if (game.u.m_ap_type === M_AP_FURNITURE) {
+        const appearance = game.u.mappearance;
+        const symbol = appearance === undefined ? undefined : MAP_SYMBOLS[appearance];
+        if (appearance === undefined || !symbol)
+            throw new Error('Hero furniture disguise requires a valid map symbol');
+        const rogue = Is_rogue_level(game.u.uz);
+        const decSymbol = !rogue && /^DECgraphics$/i.test(game.symset || '')
+            ? decFurnitureSymbols.get(appearance) : undefined;
+        const ch = rogue ? rogueFurnitureSymbols.get(appearance) ?? symbol.ch : decSymbol ?? symbol.ch;
+        const wallOffset = currentWallGlyphOffset();
+        const wallDisguise = appearance >= CmapSymbol.vwall && appearance <= CmapSymbol.trwall;
+        const color = decSymbol !== undefined && wallDisguise
+            ? decWallColors.get(wallOffset) ?? symbol.color : symbol.color;
+        return { ch, color, decgfx: decSymbol !== undefined,
+            kind: 'terrain', terrainName: symbol.name, glyph: cmapToGlyph(appearance, wallOffset) };
+    }
     // display.h:hero_glyph and you.h:Ugender select the current body's sex.
     // Hero glyph identity still changes when the tty symbol remains '@'.
     const polymorphed = Upolyd(game.u);
@@ -872,6 +957,34 @@ function heroDisplayGlyph() {
     return polymorphed ? glyph
         : { ...glyph, ch: game.flags.showrace ? glyph.ch : '@', color: CLR_WHITE };
 }
+// symbols.c:init_rogue_symbols() changes ordinary stairs and open doorways.
+// Branch stairs retain their default symbols.
+const rogueFurnitureSymbols = new Map([
+    [CmapSymbol.ndoor, '+'], [CmapSymbol.vodoor, '+'], [CmapSymbol.hodoor, '+'],
+    [CmapSymbol.upstair, '%'], [CmapSymbol.dnstair, '%'],
+]);
+// dat/symbols:DECgraphics overrides dungeon symbols independently of the
+// terrain type at the hero's location. Furniture mimicry uses these symbols.
+const decFurnitureSymbols = new Map([
+    [CmapSymbol.vwall, 'x'], [CmapSymbol.hwall, 'q'],
+    [CmapSymbol.tlcorn, 'l'], [CmapSymbol.trcorn, 'k'],
+    [CmapSymbol.blcorn, 'm'], [CmapSymbol.brcorn, 'j'],
+    [CmapSymbol.crwall, 'n'], [CmapSymbol.tuwall, 'v'],
+    [CmapSymbol.tdwall, 'w'], [CmapSymbol.tlwall, 'u'], [CmapSymbol.trwall, 't'],
+    [CmapSymbol.ndoor, '~'], [CmapSymbol.vodoor, 'a'], [CmapSymbol.hodoor, 'a'],
+    [CmapSymbol.bars, '|'], [CmapSymbol.tree, 'g'], [CmapSymbol.room, '~'],
+    [CmapSymbol.upladder, 'y'], [CmapSymbol.dnladder, 'z'],
+    [CmapSymbol.brupladder, 'y'], [CmapSymbol.brdnladder, 'z'],
+    [CmapSymbol.altar, '{'], [CmapSymbol.pool, '`'], [CmapSymbol.ice, '~'],
+    [CmapSymbol.lava, '`'], [CmapSymbol.lavawall, '`'],
+    [CmapSymbol.vodbridge, '~'], [CmapSymbol.hodbridge, '~'], [CmapSymbol.water, '`'],
+]);
+// display.c:reset_glyphmap() and map_glyphinfo() retain the glyph's color.
+// dat/symbols:DECgraphics assigns these colors to branch wall glyphs.
+const decWallColors = new Map([
+    [GlyphOffset.cmapMines, CLR_BROWN], [GlyphOffset.cmapGehennom, CLR_RED],
+    [GlyphOffset.cmapKnox, CLR_YELLOW], [GlyphOffset.cmapSokoban, CLR_BLUE],
+]);
 // C display.h:canspotself().  See-invisible does not make the hero's own
 // glyph opaque again; ordinary self projection depends on not being
 // invisible, while telepathy/detection can supply a sensory projection.
@@ -1462,7 +1575,7 @@ export function displaySelf() {
     const glyph = steed && monsterVisible(steed)
         ? displayMonsterGlyph(heroIsHallucinating() ? rn2Display(MONSTER_COLOR.length) : steed.mnum, !!steed.female, 'ridden')
         : heroDisplayGlyph();
-    show_glyph_cell(game.u.ux, game.u.uy, glyph.ch, glyph.color, false, 0, glyph);
+    show_glyph_cell(game.u.ux, game.u.uy, glyph.ch, glyph.color, glyph.decgfx ?? false, 0, glyph);
 }
 // C display.c:newsym_force(). A forced redraw prints even an unchanged glyph.
 export function newsym_force(x, y) {
@@ -1601,15 +1714,7 @@ export function newsym(x, y) {
         map_location(x, y, true);
     }
     else if (loc.remembered_glyph) {
-        if (Is_rogue_level(game.u.uz) && loc.typ === ROOM && !loc.waslit
-            && loc.remembered_glyph.glyph === cmapToGlyph(CmapSymbol.room)) {
-            loc.remembered_glyph = {
-                ch: ' ', color: NO_COLOR, decgfx: false, kind: 'terrain',
-                terrainName: 'stone', glyph: cmapToGlyph(CmapSymbol.stone),
-            };
-        }
-        // Out of sight but remembered — show remembered glyph
-        show_glyph_cell(x, y, loc.remembered_glyph.ch, rememberedColor(loc.remembered_glyph, loc, x, y), loc.remembered_glyph.decgfx, objectGlyphAttr(loc.remembered_glyph), loc.remembered_glyph);
+        showRememberedLocation(x, y, loc);
     }
     else {
         // A living glyph is only an overlay.  When its actor vacates an
@@ -1929,8 +2034,11 @@ export async function docrt({ beforeGlow = null } = {}) {
         for (let y = 0; y < ROWNO; y++)
             for (let x = 1; x < COLNO; x++) {
                 const loc = game.level.at(x, y);
-                if (loc?.remembered_glyph) {
-                    show_glyph_cell(x, y, loc.remembered_glyph.ch, rememberedColor(loc.remembered_glyph, loc, x, y), loc.remembered_glyph.decgfx, objectGlyphAttr(loc.remembered_glyph), loc.remembered_glyph);
+                const memory = loc?.remembered_glyph;
+                if (memory) {
+                    // docrt_flags() displays memory unchanged. newsym() owns
+                    // corrections after sight and monster senses are restored.
+                    show_glyph_cell(x, y, memory.ch, memory.color, memory.decgfx, objectGlyphAttr(memory), memory);
                 }
                 else {
                     show_glyph_cell(x, y, ' ', NO_COLOR, false);
@@ -1941,6 +2049,7 @@ export async function docrt({ beforeGlow = null } = {}) {
     }
     finally {
         game.program_state.in_docrt = false;
+        game.context.botl = true;
     }
 }
 // Refresh map cells after an ordinary vision change or a temporary overlay.
@@ -1965,11 +2074,14 @@ export async function redrawMap() {
             // or traps which did not move while the modal was open.
             const monster = monsterAtMapCell(x, y);
             if (cansee(x, y) || (monster
-                && monsterProjectionAtCell(monster, x, y))) {
+                && (monsterProjectionAtCell(monster, x, y)
+                    || !isWormTail(monster, x, y) && monsterHasWarningProjection(monster)))) {
+                // newsym() displays Warning before correcting unseen floor
+                // memory, just as it does for an identified monster.
                 newsym(x, y);
             }
             else if (loc?.remembered_glyph) {
-                show_glyph_cell(x, y, loc.remembered_glyph.ch, rememberedColor(loc.remembered_glyph, loc, x, y), loc.remembered_glyph.decgfx, objectGlyphAttr(loc.remembered_glyph), loc.remembered_glyph);
+                showRememberedLocation(x, y, loc);
             }
             else {
                 // Modal redraw reconstructs presentation from visibility and
@@ -2109,15 +2221,13 @@ export function _statusLine2(refreshLoad = true) {
                 : `Dlvl:${dungeonDepth(u.uz)}`;
     const polymorphed = (u.mtimedone ?? 0) > 0;
     // botl.c bounds the printed numbers without changing combat state.
-    const currentHp = game._statusHpOverride
-        ?? (polymorphed ? u.mh : u.uhp) ?? 0;
+    const currentHp = (polymorphed ? u.mh : u.uhp) ?? 0;
     const displayedHp = Math.max(0, Math.min(currentHp, 9999));
     const maximumHp = Math.min((polymorphed ? u.mhmax : u.uhpmax) ?? 0, 9999);
     const displayedPower = Math.min(u.uen ?? 0, 9999);
     const maximumPower = Math.min(u.uenmax ?? 0, 9999);
     const goldSymbol = Is_rogue_level(u.uz) ? '*' : '$';
-    const displayedAc = game._statusAcOverride
-        ?? game._statusProjectedAc ?? u.uac ?? 10;
+    const displayedAc = u.uac ?? 10;
     const displayedGold = game._statusGoldOverride
         ?? heroGoldAmount(game);
     let line = `${location} ${goldSymbol}:${displayedGold} HP:${displayedHp}(${maximumHp}) Pw:${displayedPower}(${maximumPower}) AC:${displayedAc}`;
@@ -2131,27 +2241,38 @@ export function _statusLine2(refreshLoad = true) {
     }
     if (game.flags?.time)
         line += ` T:${game.moves ?? 1}`;
-    if (u.usteed)
-        line += ' Ride';
-    const hungerLabel = ['Satiated', '', 'Hungry', 'Weak', 'Fainting', 'Fainted', 'Starved'][game._statusHungerOverride ?? u.uhs ?? currentHungerState(game)];
+    const hungerLabel = ['Satiated', '', 'Hungry', 'Weak', 'Fainting', 'Fainted', 'Starved'][u.uhs ?? currentHungerState(game)];
     if (hungerLabel)
         line += ` ${hungerLabel}`;
     const load = refreshLoad ? encumbranceLabel(nearCapacity(game)) : u._encumbrance;
     if (load)
         line += ` ${load}`;
+    // TTY places conditions after hunger and load, sorted by severity and name.
     if (u.strangled || (u.strangledTurns ?? 0) > 0)
         line += ' Strngl';
+    const sick = heroIsSick(game);
+    if (sick && ((u.sickType ?? 0) & SICK_VOMITABLE))
+        line += ' FoodPois';
+    if (heroIsSliming(game))
+        line += ' Slime';
+    if (heroIsPetrifying(game))
+        line += ' Stone';
+    if (sick && ((u.sickType ?? 0) & SICK_NONVOMITABLE))
+        line += ' TermIll';
     if (game.blind)
         line += ' Blind';
-    if (polymorphed
-        && ((MONSTER_FLAGS1[u.umonnum ?? -1] ?? 0) & M1_FLY))
-        line += ' Fly';
     if ((u.confusionTurns ?? 0) > 0)
         line += ' Conf';
-    if ((game._statusDeafOverride ?? game.deaf))
+    if (game.deaf)
         line += ' Deaf';
+    if (propertyIsActive('flying', game))
+        line += ' Fly';
     if (heroIsHallucinating(game))
         line += ' Hallu';
+    if (propertyIsActive('levitation', game))
+        line += ' Lev';
+    if (u.usteed)
+        line += ' Ride';
     if (u.stunned || (u.stunnedTurns ?? 0) > 0)
         line += ' Stun';
     return line;
@@ -2205,20 +2326,13 @@ export function serialize_terminal_grid(display) {
     }
     return output;
 }
-function statusLines(update) {
-    // C botl.c:bot() reserves uhp == -1 for saving. It leaves both status
-    // rows untouched, even when real damage happens to produce that value.
-    if (!update || game._statusUpdatesDisabled || game.u.uhp === -1) {
-        const row = (index) => game.nhDisplay?.grid[index]
-            ?.map(cell => cell.ch).join('').trimEnd() ?? '';
-        return [row(22), row(23)];
-    }
-    // A map flush retains the displayed load until native code requests bot().
-    if (game.context.botl) {
-        game.u._encumbrance = encumbranceLabel(nearCapacity(game));
-        game.context.botl = false;
-    }
-    return [_statusLine1(), _statusLine2(false)];
+function displayedStatusLines() {
+    const display = game.nhDisplay;
+    if (display?.statusVisible && !game._statusUpdatesDisabled)
+        return display.statusLines ?? ['', ''];
+    const row = (index) => game.nhDisplay?.grid[index]
+        ?.map(cell => cell.ch).join('').trimEnd() ?? '';
+    return [row(22), row(23)];
 }
 function writeStatusLines(display, lines) {
     for (const [index, text] of lines.entries()) {
@@ -2229,7 +2343,7 @@ function writeStatusLines(display, lines) {
     }
 }
 // ── Build screen output ──
-function _buildScreenOutput(updateStatus = true) {
+function _buildScreenOutput() {
     const display = game?.nhDisplay;
     if (!display)
         return;
@@ -2249,7 +2363,7 @@ function _buildScreenOutput(updateStatus = true) {
         output += (blankMainWindow ? '' : render_map_row(y)) + '\n';
     }
     // Row 22-23: status
-    const status = statusLines(updateStatus);
+    const status = displayedStatusLines();
     output += (blankMainWindow ? '' : status[0]) + '\n';
     output += blankMainWindow ? '' : status[1];
     game._screen_output = output;
@@ -2294,6 +2408,8 @@ function writeMapRow(display, y) {
 }
 // ── flush_screen ──
 export async function flush_screen(mode) {
+    if (game.program_state.saving || game._suppressMapStatusForFlush)
+        return;
     if (game.program_state?.windows_exited)
         return;
     // C display.c pauses map updates during level arrival. Message windows
@@ -2302,8 +2418,10 @@ export async function flush_screen(mode) {
         game._mapFlushPaused = !game._mapFlushPaused;
     if (game._mapFlushPaused)
         return;
-    if (game.context.botl)
+    if (game.context.botl || game.nhDisplay?.statusLines === null)
         refreshStatusLines();
+    else if (game.context.time_botl)
+        timebot();
     const display = game.nhDisplay;
     const mapCursor = mode === 0 && display
         ? lastDirtyMapCursor() ?? [display.cursorCol, display.cursorRow] : null;
@@ -2329,6 +2447,7 @@ export function clearMapDisplay() {
 // ── cls ──
 export async function cls() {
     await flushPendingTopline();
+    game.context.botl = true;
     const display = game?.nhDisplay;
     if (display?.clearScreen)
         display.clearScreen();
@@ -2357,8 +2476,11 @@ export function clearMessageWindow(coveredRows) {
     }
     // docorner() asks bot() to restore covered status rows. getlin() keeps
     // status updates disabled through this cleanup, leaving those rows blank.
-    if (rows > ROWNO + 1)
+    if (rows > ROWNO + 1) {
+        if (game._statusUpdatesDisabled)
+            display.statusVisible = false;
         refreshStatusLines();
+    }
     display.setCursor(0, 0);
 }
 // ── bot ──
@@ -2367,13 +2489,33 @@ export async function bot() {
 }
 function refreshStatusLines() {
     const display = game.nhDisplay;
-    if (!display || game._statusUpdatesDisabled || game.u.uhp === -1 || game.program_state.saving
+    if (!display || game._statusUpdatesDisabled || game.program_state.saving
         || game.program_state.windows_exited || game._suppressMapStatusForFlush)
         return;
-    game.u._encumbrance = encumbranceLabel(nearCapacity(game));
-    delete game._statusHungerOverride;
     game.context.botl = false;
-    writeStatusLines(display, statusLines(true));
+    game.context.time_botl = false;
+    if (game.u.uhp === -1)
+        return;
+    game.u._encumbrance = encumbranceLabel(nearCapacity(game));
+    display.statusLines = [_statusLine1(), _statusLine2(false)];
+    display.statusVisible = true;
+    writeStatusLines(display, display.statusLines);
+}
+// C botl.c:stat_update_time() notifies only BL_TIME. Other fields keep the
+// values from the last bot(), even if game state changed during an occupation.
+export function timebot() {
+    if (game._statusUpdatesDisabled)
+        return;
+    game.context.time_botl = false;
+    const display = game.nhDisplay;
+    if (!display?.statusLines || !game.flags.time
+        || game.program_state.saving || game.program_state.windows_exited
+        || game._suppressMapStatusForFlush)
+        return;
+    const [first, second] = display.statusLines;
+    display.statusLines = [first, second.replace(/\bT:\d+\b/, `T:${game.moves}`)];
+    display.statusVisible = true;
+    writeStatusLines(display, display.statusLines);
 }
 // ── pline ──
 export async function pline(msg) {
@@ -2531,7 +2673,7 @@ async function pageTopline(message, { urgent = false, menuLetter } = {}) {
         game._suppressMessagesUntilInput = false;
         game._retained_message = '';
         if (lines.length > 1)
-            _buildScreenOutput(false);
+            _buildScreenOutput();
         else
             display?.clearRow(0);
         display?.setCursor(0, 0);
@@ -2541,7 +2683,7 @@ async function pageTopline(message, { urgent = false, menuLetter } = {}) {
     // erases a one-line message; WIN_NOSTOP only prevents output suppression.
     game._retained_message = '';
     if (lines.length > 1) {
-        _buildScreenOutput(false);
+        _buildScreenOutput();
         display?.setCursor(0, 0);
     }
     else if (key === 27) {

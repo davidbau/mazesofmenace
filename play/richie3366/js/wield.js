@@ -21,7 +21,7 @@ import {
 import {
     W_WEP, W_SWAPWEP, W_QUIVER, W_ARM, W_ARMOR, W_ACCESSORY, W_SADDLE,
     P_NONE, P_BOW, P_CROSSBOW, P_DART, P_BOOMERANG, P_POLEARMS, P_LANCE,
-    ECMD_OK, ECMD_TIME, Upolyd, HAND, RIGHT_HANDED,
+    ECMD_OK, ECMD_TIME, ECMD_FAIL, ECMD_CANCEL, Upolyd, HAND, RIGHT_HANDED,
     has_oname, ONAME, COST_DEGRD, COST_DECHNT, CXN_PFX_THE, STONE_RES,
 } from './const.js';
 import { retouch_object, set_artifact_intrinsic, is_art, u_wield_art, restrict_name, arti_speak } from './artifact.js';
@@ -103,6 +103,8 @@ async function finish_splitting(obj) {
 
 /**
  * C ref: wield.c already_wielded — pline + unweapon FALSE for weptool/towel.
+ * C returns ECMD_FAIL (`:381`); the bit (not just no-time) is what clears
+ * a canned tail in rhack.
  */
 async function already_wielded_msg(wep) {
     await pline('You are already wielding that!');
@@ -110,7 +112,7 @@ async function already_wielded_msg(wep) {
         if (!game.gu) game.gu = {};
         game.gu.unweapon = false;
     }
-    return 0;
+    return ECMD_FAIL;
 }
 /** C ref: obj.h is_weptool — TOOL with oc_skill != P_NONE (named fallback). */
 export function is_weptool(obj) {
@@ -473,8 +475,11 @@ export function uqwepgone() {
  * → uwep==oldwep (wield failed) restores oldswap, else setuswapwep(oldwep)
  * + prinv(uswapwep) / You("have no secondary weapon readied.") →
  * twoweap && !can_twoweapon → untwoweapon → return result.
- * @returns {number} 0 no turn (ECMD_OK/ECMD_FAIL — C ECMD_FAIL=0x04 carries
- * no ECMD_TIME bit); 1 took time (ECMD_TIME, from ready_weapon)
+ * @returns {number} C ECMD_* — ECMD_FAIL (cantwield/welded), else
+ * ready_weapon's ECMD_OK/ECMD_TIME. The FAIL bit (not just no-time) is
+ * what clears a canned tail in rhack: a canned dofire requeues
+ * doswapweapon/dowield/dofire while its launcher sits unwielded, and a
+ * welded uwep livelocked the worker when FAIL collapsed to 0.
  */
 export async function doswapweapon() {
     game.multi = 0; // C `:464`
@@ -482,12 +487,12 @@ export async function doswapweapon() {
     // C `:466–469` — cantwield (mondata.h: nohands || verysmall); local `:171`.
     if (cantwield(game.youmonst?.data)) {
         await pline("Don't be ridiculous!");
-        return 0;
+        return ECMD_FAIL;
     }
     // C `:470–473` — welded(uwep) → weldmsg (Yobjnam2 `:1071`), ECMD_FAIL.
     if (welded(u.uwep)) {
         await weldmsg(u.uwep);
-        return 0;
+        return ECMD_FAIL;
     }
 
     // C `:476–478` — stash slots, then clear secondary ahead of ready_weapon.
@@ -556,7 +561,8 @@ async function cant_wield_corpse(obj) {
  * prinv (+AKLYS tether), setuwep, twoweap message, artifact light, shop.
  * `arti_speak` wired below (C `:241–243`); res already TIME here so only
  * its rumor/pline side effect is new.
- * @returns {number} 0 = ECMD_OK/ECMD_FAIL (no turn); 1 = ECMD_TIME
+ * @returns {number} C ECMD_* — ECMD_OK / ECMD_FAIL (shield) / ECMD_TIME.
+ * Callers (dowield, doswapweapon) pass the value straight through like C.
  */
 async function ready_weapon(wep) {
     const u = game.u || {};
@@ -570,28 +576,28 @@ async function ready_weapon(wep) {
                 const shine = setuwep(null);
                 if (shine) await shine;
             }
-            return 1; // C: ECMD_TIME
+            return ECMD_TIME;
         }
         await pline(`You are already ${empty_handed()}.`);
-        return 0; // C: ECMD_OK
+        return ECMD_OK;
     }
 
     // C :183–185 — corpse that petrifies bare-handed is not wielded; turn spent.
     if ((wep.otyp | 0) === CORPSE && await cant_wield_corpse(wep)) {
         // C :270–271 — life-save may have changed uwep; same botl tail as the wield arm.
         if (had_wep !== !!game.u?.uwep && game.flags) game.flags.botl = true;
-        return 1; // C: ECMD_TIME
+        return ECMD_TIME;
     }
     if (u.uarms && bimanual(wep)) {
-        // C :186–190 — ECMD_FAIL takes no turn → 0 in this 0/1 scheme
+        // C :186–190 — ECMD_FAIL (no turn, but the FAIL bit clears a canned tail).
         const what = is_sword(wep) ? 'sword'
             : ((wep.otyp | 0) === BATTLE_AXE ? 'axe' : 'weapon');
         await pline(`You cannot wield a two-handed ${what} while wearing a shield.`);
-        return 0;
+        return ECMD_FAIL;
     }
 
     if (!(await retouch_object(wep, false))) {
-        return 1; // C: ECMD_TIME even when not wielded
+        return ECMD_TIME; // C: ECMD_TIME even when not wielded
     }
 
     // C: Weapon WILL be wielded after this point → ECMD_TIME
@@ -627,8 +633,8 @@ async function ready_weapon(wep) {
     }
 
     // C :241–243 — KMH talking artifacts: res |= arti_speak(wep).
-    // JS ready_weapon returns TIME unconditionally past retouch, so the
-    // OR is a no-op on res; the await keeps the rumor/pline side effect.
+    // JS ready_weapon returns ECMD_TIME unconditionally past retouch, so
+    // the OR is a no-op on res; the await keeps the rumor/pline side effect.
     if (wep.oartifact) await arti_speak(wep);
     // C :245–250 — artifact light begins to burn + shine pline
     const { artifact_light, begin_burn } = await import('./timeout.js');
@@ -646,7 +652,7 @@ async function ready_weapon(wep) {
         }
     }
     if (had_wep !== !!game.u?.uwep && game.flags) game.flags.botl = true;
-    return 1;
+    return ECMD_TIME;
 }
 
 /**
@@ -780,20 +786,22 @@ async function getobj_wield() {
  * clear_splitobjs; getobj ALLOWCNT child → unsplitobj (welded / already
  * parent) or finish_splitting; uquiver ynq split-one. Shk_Your decline
  * remain prefix still named.
- * @returns {number} 0 = no turn / cancel / fail; 1 = took time
+ * @returns {number} C ECMD_* — ECMD_OK / ECMD_CANCEL / ECMD_FAIL /
+ * ECMD_TIME (ready_weapon passthrough). The FAIL/CANCEL bits are what
+ * clear a canned tail in rhack (a canned dofire requeue livelocked the
+ * worker against a welded uwep when they collapsed to 0).
  */
 export async function dowield() {
     game.multi = 0;
-    // C `:359–362` — cantwield (mondata.h: nohands || verysmall);
-    // ECMD_FAIL takes no turn → 0 in this 0/1 scheme (doswapweapon idiom).
+    // C `:359–362` — cantwield (mondata.h: nohands || verysmall).
     if (cantwield(game.youmonst?.data)) {
         await pline("Don't be ridiculous!");
-        return 0;
+        return ECMD_FAIL;
     }
     clear_splitobjs();
 
     const picked = await getobj_wield();
-    if (picked === undefined) return 0; // cancel
+    if (picked === undefined) return ECMD_CANCEL; // C `:375` — cancelled
     let wep = picked;
 
     const u = game.u || {};
@@ -804,7 +812,7 @@ export async function dowield() {
         await weldmsg(u.uwep); // C wield.c:383 — Yobjnam2, not "weapon"
         reset_remarm(); // C wield.c:385 — interrupted armor removal mustn't resume
         if (is_split_child(wep)) unsplitobj(wep);
-        return 0;
+        return ECMD_FAIL;
     }
     if (is_split_child(wep)) {
         if (is_split_parent(u.uwep)) {
@@ -822,10 +830,10 @@ export async function dowield() {
         if (quan > 1 && inv_cnt(false) < invlet_basic && splittable(qobj)) {
             const qbuf = `You have ${quan} ${simpleonames(qobj)} readied.  Wield one?`;
             const ans = await yn_function(qbuf, 'ynq', 'q');
-            if (ans === 'q') return 0;
+            if (ans === 'q') return ECMD_OK; // C `:417`
             if (ans === 'y') {
                 wep = splitobj(qobj, 1);
-                if (!wep) return 0;
+                if (!wep) return ECMD_OK; // no C arm — split failed, nothing wielded
                 wep = await finish_splitting(wep);
                 confirmed = true;
             }
@@ -840,13 +848,13 @@ export async function dowield() {
                 await pline( // C `:436–438` Shk_Your(qbuf, uquiver)
                     `${Shk_Your(qobj)}${simpleonames(qobj)} ${otense(qobj, 'remain')} readied.`,
                 );
-                return 0;
+                return ECMD_OK; // C `:439`
             }
             setuqwep(null);
         }
     } else if (wep && (wep.owornmask || 0) & (W_ARMOR | W_ACCESSORY | W_SADDLE)) {
         await pline('You cannot wield that!');
-        return 0;
+        return ECMD_FAIL; // C `:445`
     }
 
     // C wield.c dowield wielding:: oldwep = uwep; ready_weapon; pushweapon

@@ -13180,6 +13180,13 @@ function load_cav_strt() {
         inarea: { x1: mx + 71, y1: my + 9, x2: mx + 71, y2: my + 9 },
         delarea: { x1: -1, y1: -1, x2: -1, y2: -1 },
     });
+    // C load_special epilogue (sp_lev.c:6464-6466): link_doors_rooms →
+    // remove_boundary_syms → map_cleanup, before wallification. Cav-strt
+    // map chars are only ' ', '.', 'B', 'S' (no liquid) so map_cleanup is
+    // a no-op; link_doors_rooms is doors-only (Named omission: door
+    // registry). remove_boundary converts 'B'/CROSSWALL cells to ROOM
+    // before wallification can retype them as walls (D-3929).
+    remove_boundary_syms();
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -28348,8 +28355,12 @@ function hellfill_style_cold_maze() {
         selection_filter_percent(icey, 5),
         (x, y) => sel_set_ter(x, y, POOL, SET_LIT_NOCHANGE),
     );
+    // C hellfill.lua:405-407 des.terrain(selection.match("w"), "W") — the
+    // lspo_terrain :5010-5012/:5024-5025 selection arm paints draw-free
+    // (selection_iterate + sel_set_ter); the replace_terrain helper burns a
+    // per-cell rn2(100) (C :5127/:5132) C never draws here.
     if (percent(25))
-        hellfill_replace_terrain_all(MATCH_WALL, WATER, 100);
+        lspo_terrain(selection_match_mapfrag('w'), 'W');
     if (cwid === 1 && percent(25)) {
         /* rnd_hell_prefab(true) deferred */
     }

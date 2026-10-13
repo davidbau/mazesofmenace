@@ -6011,19 +6011,29 @@ export async function rhack(key) {
         game.context.move = (res & ECMD_TIME) ? 1 : 0;
         if (res & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'w') {
-        // C ref: wield.c dowield — wield a weapon
-        const tookTime = await dowield();
-        // C rhack `:3814–3816` — no-time result applies the ECMD_OK rule.
-        if (!tookTime) reset_cmd_vars((game.multi | 0) < 0);
-        game.context.move = tookTime ? 1 : 0;
-        if (tookTime) game.kickedloc = { x: 0, y: 0 };
+        // C ref: wield.c dowield — wield a weapon (C ECMD_* returns).
+        const res = await dowield();
+        // C rhack `:3812–3816` — CANCEL|FAIL → reset_cmd_vars(TRUE),
+        // else no-TIME-bit (ECMD_OK) → reset_cmd_vars(multi < 0).
+        if ((res & (ECMD_CANCEL | ECMD_FAIL)) !== 0) {
+            reset_cmd_vars(true);
+        } else if ((res & ECMD_TIME) === 0) {
+            reset_cmd_vars((game.multi | 0) < 0);
+        }
+        game.context.move = (res & ECMD_TIME) ? 1 : 0;
+        if (res & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'x') {
-        // C ref: wield.c doswapweapon / cmd.c 'x' "swap"
+        // C ref: wield.c doswapweapon / cmd.c 'x' "swap" (C ECMD_* returns).
         const swapRes = await doswapweapon();
-        // C rhack `:3814–3816` — no-time result applies the ECMD_OK rule.
-        if (!swapRes) reset_cmd_vars((game.multi | 0) < 0);
-        game.context.move = swapRes ? 1 : 0;
-        if (swapRes) game.kickedloc = { x: 0, y: 0 };
+        // C rhack `:3812–3816` — CANCEL|FAIL → reset_cmd_vars(TRUE),
+        // else no-TIME-bit (ECMD_OK) → reset_cmd_vars(multi < 0).
+        if ((swapRes & (ECMD_CANCEL | ECMD_FAIL)) !== 0) {
+            reset_cmd_vars(true);
+        } else if ((swapRes & ECMD_TIME) === 0) {
+            reset_cmd_vars((game.multi | 0) < 0);
+        }
+        game.context.move = (swapRes & ECMD_TIME) ? 1 : 0;
+        if (swapRes & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'S') {
         // C ref: save.c dosave / cmd.c — #save (GENERALCMD, ECMD_OK)
         // C rhack `:3689–3694` — can_do_extcmd(tlist) gates the key

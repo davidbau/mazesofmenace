@@ -2,9 +2,9 @@
 // C ref: vault.c:invault(), find_guard_dest(), and the PM_GUARD setup slice.
 import { game, requireGameLevel, requireLiveGame } from './gstate.js';
 import { isRoom } from './map_types.js';
-import { nhgetch } from './input.js';
+import { getLine } from './query.js';
 import { deleteEngravingAt } from './engrave.js';
-import { bot, redrawMap, flush_screen, newsym, pline } from './display.js';
+import { bot, redrawMap, flush_screen, newsym, pline, plineWithContinuation, displayMessageWindow } from './display.js';
 import { COLNO, ROWNO, ROOM, ROOMOFFSET, CORR, STONE, DOOR, D_NODOOR, VAULT, SCORR, IS_STWALL, IS_POOL, IS_ROOM, IS_WALL, ACCESSIBLE, HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER, MM_NOMSG, MMOVE_NOTHING, MMOVE_MOVED, MMOVE_DIED, GD_EATGOLD, } from './const.js';
 import { makemonAt } from './mklev.js';
 import { cansee, vision_note_blocker_change } from './vision.js';
@@ -120,33 +120,19 @@ function guardEntryToward(destination) {
     return { x, y };
 }
 async function morePrompt(message) {
-    const line = `${message}--More--`;
-    await pline(line);
-    let key;
-    do {
-        await flush_screen(1);
-        game.nhDisplay?.setCursor(line.length, 0);
-        key = await nhgetch();
-    } while (![27, 10, 13, 32].includes(key));
-    game._pending_message = '';
+    await plineWithContinuation(message);
+    await displayMessageWindow();
 }
 async function readGuardName() {
-    const prompt = '"Hello stranger, who are you?" -';
-    let name = '';
-    for (;;) {
-        await pline(`${prompt} ${name}`);
-        await flush_screen(1);
-        game.nhDisplay?.setCursor(prompt.length + 1 + name.length, 0);
-        const key = await nhgetch();
-        if (key === 10 || key === 13)
-            break;
-        if (key === 8 || key === 127)
-            name = name.slice(0, -1);
-        else if (key >= 32 && key <= 126 && name.length < 31)
-            name += String.fromCharCode(key);
+    const prompt = heroIsDeaf(game) ? 'You are required to supply your name. -'
+        : '"Hello stranger, who are you?" -';
+    for (let tries = 5; tries > 0; tries--) {
+        const response = await getLine(prompt, (_character, key) => key >= 32 && key !== 127);
+        const name = response?.trim().replace(/\s+/g, ' ') ?? '\x1b';
+        if (name)
+            return name;
     }
-    game._pending_message = '';
-    return name.trim();
+    return '';
 }
 function guardGoldState(state = game) {
     return heroGoldAmount(state) + hiddenGold(state, true);
@@ -371,22 +357,18 @@ export async function continueVaultGuardArrival(state = game) {
     await bot();
     await morePrompt("Suddenly one of the Vault's guards enters!");
     await readGuardName();
+    await plineWithContinuation('"I don\'t know you."');
+    const gold = heroGoldAmount(game);
     const stashedGold = hiddenGold(game, true);
-    if (stashedGold) {
-        corridor.dropgoldcnt++;
-        await morePrompt('"I don\'t know you."  "You have hidden gold."');
-        await morePrompt('"Most likely all your gold was stolen from this vault."');
-        await pline('"Please drop that gold and follow me."');
-    }
-    else if (heroGoldAmount(game)) {
-        corridor.dropgoldcnt++;
-        await morePrompt('"I don\'t know you."');
-        await morePrompt('"Most likely all your gold was stolen from this vault."');
-        await pline('"Please drop that gold and follow me."');
+    if (!gold && !stashedGold) {
+        await plineWithContinuation('"Please follow me."');
     }
     else {
-        await morePrompt('"I don\'t know you."');
-        await pline('"Please follow me."');
+        if (!gold)
+            await plineWithContinuation('"You have hidden gold."');
+        await plineWithContinuation('"Most likely all your gold was stolen from this vault."');
+        await plineWithContinuation('"Please drop that gold and follow me."');
+        corridor.dropgoldcnt++;
     }
     if (!IS_WALL(original.typ)) {
         const { lx, hx, ly, hy } = pending.vault;

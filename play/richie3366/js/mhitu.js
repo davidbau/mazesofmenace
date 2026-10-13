@@ -2272,6 +2272,11 @@ export async function mhitm_ad_drin_u(mtmp, mattk, mhm) {
     mhm.damage = maybe_half_phys(mhm.damage | 0);
     await mdamageu(mtmp, mhm.damage);
     mhm.damage = 0; /* don't inflict a second dose in hitmu */
+    // C uhitm.c `:3244` — mdamageu is fatal-noreturn via done_in_by→done
+    // (mhitu.c:1925, NORETURN extern.h:997); a stood death never reaches
+    // eat_brains/adjattrib below (D-3732/D-3746 idiom; lifesave returns
+    // with gameover false and falls through per C).
+    if (game.program_state?.gameover) return;
 
     if (!u.uarmh || (u.uarmh.otyp | 0) !== DUNCE_CAP) {
         const oldmort = u.umortality | 0;

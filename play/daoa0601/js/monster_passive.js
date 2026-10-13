@@ -1,6 +1,7 @@
 // A monster's passive response when the hero or an object strikes it.
 // C ref: uhitm.c passive() and passive_obj().
 import { heroIsHallucinating } from './senses.js';
+import { makeStunned } from './hero_mental_status.js';
 import { endVoluntaryMultiTurn } from './command_state.js';
 import { currentAttribute, exerciseAttribute } from './attrib.js';
 import { heroHasFreeAction } from './armor.js';
@@ -11,14 +12,14 @@ import { finishHeroDeath } from './end.js';
 import { game } from './gstate.js';
 import { healMonster } from './mon.js';
 import { erodeArmor, erodeObject } from './object_erosion.js';
-import { MONSTER_ATTACKS, MONSTER_LEVEL, MONSTER_NAME, MONSTER_RESISTS, monsterTypeName, requireMonsterData, } from './monster_data.js';
+import { MONSTER_ATTACKS, MONSTER_NAME, MONSTER_RESISTS, monsterTypeName, requireMonsterData, } from './monster_data.js';
 import { splitMonster } from './monster_clone.js';
 import { monstersForgetHeroResistance, monstersObserveHeroResistance, } from './monster_perception.js';
 import { AD_ACID, AD_COLD, AD_CORR, AD_ELEC, AD_ENCH, AD_FIRE, AD_MAGM, AD_PHYS, AD_PLYS, AD_RUST, AD_STON, AD_STUN, AT_BITE, AT_BOOM, AT_BREA, AT_BUTT, AT_CLAW, AT_EXPL, AT_GAZE, AT_HUGS, AT_KICK, AT_MAGC, AT_NONE, AT_SPIT, AT_STNG, AT_TUCH, AT_WEAP, } from './monster_attack_types.js';
 import { OBJECT_NAMES } from './object_data.js';
 import { drainObjectEnchantment } from './object_state.js';
 import { hasWornProperty } from './properties.js';
-import { heroMonsterForm, returnHeroToHumanForm, } from './polyself.js';
+import { applyHeroGolemEffects, heroMonsterForm, returnHeroToHumanForm, } from './polyself.js';
 import { heroReflectionSource, heroReflectsRay } from './ray.js';
 import { d, rn2 } from './rng.js';
 import { contactIsProtected, resolveImmediatePetrification } from './stoning.js';
@@ -33,7 +34,7 @@ export async function applyHeroContactPassive(monster, { hit, defenderSurvived =
     if (!attack)
         return { handled: false, heroDied: false };
     const damageType = attack[1];
-    const damage = passiveDamage(monster.mnum, attack, rollDice);
+    const damage = passiveDamage(monster.m_lev, attack, rollDice);
     const context = {
         monster,
         damageType,
@@ -239,7 +240,7 @@ async function applyColdPassive(context) {
         await shieldeff(state.u.ux, state.u.uy, state);
         await publish('You feel a mild chill.');
         monstersObserveHeroResistance(M_SEEN_COLD, state);
-        await applyGolemEffects(AD_COLD, damage, state, publish);
+        await applyHeroGolemEffects(AD_COLD, damage, { state, publish });
         return { resisted: true, heroDied: false };
     }
     monstersForgetHeroResistance(M_SEEN_COLD, state);
@@ -258,9 +259,7 @@ async function applyStunPassive({ damage, state, publish }) {
     const hero = state.u;
     if (hero.stunned || (hero.stunnedTurns ?? 0) > 0 || damage <= 0)
         return { heroDied: false };
-    await publish(hero.usteed ? 'You wobble in the saddle.' : 'You stagger...');
-    hero.stunnedTurns = damage;
-    hero.stunned = true;
+    await makeStunned(damage, { state, publish });
     return { heroDied: false };
 }
 async function applyFirePassive({ monster, damage, state, publish, die }) {
@@ -270,7 +269,7 @@ async function applyFirePassive({ monster, damage, state, publish, die }) {
         await shieldeff(state.u.ux, state.u.uy, state);
         await publish('You feel mildly warm.');
         monstersObserveHeroResistance(M_SEEN_FIRE, state);
-        await applyGolemEffects(AD_FIRE, damage, state, publish);
+        await applyHeroGolemEffects(AD_FIRE, damage, { state, publish });
         return { resisted: true, heroDied: false };
     }
     monstersForgetHeroResistance(M_SEEN_FIRE, state);
@@ -285,7 +284,7 @@ async function applyElectricPassive({ monster, damage, state, publish, die }) {
         await shieldeff(state.u.ux, state.u.uy, state);
         await publish('You feel a mild tingle.');
         monstersObserveHeroResistance(M_SEEN_ELEC, state);
-        await applyGolemEffects(AD_ELEC, damage, state, publish);
+        await applyHeroGolemEffects(AD_ELEC, damage, { state, publish });
         return { resisted: true, heroDied: false };
     }
     monstersForgetHeroResistance(M_SEEN_ELEC, state);
@@ -296,6 +295,7 @@ async function applyElectricPassive({ monster, damage, state, publish, die }) {
     return { appliedDamage: damage, heroDied };
 }
 async function damageHero(monster, amount, { state, publish, die }) {
+    state.context.botl = true;
     if (amount <= 0)
         return false;
     const hero = state.u;
@@ -362,34 +362,17 @@ function freezeHero(state, turns, reason, showRecoveryMessage) {
 function monsterNearHero(monster, state) {
     return Math.max(Math.abs((monster.mx ?? 0) - (state.u?.ux ?? 0)), Math.abs((monster.my ?? 0) - (state.u?.uy ?? 0))) <= 1;
 }
-async function applyGolemEffects(damageType, damage, state, publish) {
-    const form = heroMonsterForm(state);
-    const name = form == null ? null : MONSTER_NAME[form];
-    let healing = 0;
-    if (damageType === AD_ELEC && name === 'flesh golem')
-        healing = Math.trunc((damage + 5) / 6);
-    else if (damageType === AD_FIRE && name === 'iron golem')
-        healing = damage;
-    if (healing <= 0 || (state.u.mh ?? 0) >= (state.u.mhmax ?? 0))
-        return;
-    const hp = state.u.mh, maximum = state.u.mhmax;
-    if (hp === undefined || maximum === undefined)
-        return;
-    state.u.mh = Math.min(maximum, hp + healing);
-    await publish('Strangely, you feel better than before.');
-    await exerciseAttribute(A_STR, true, state);
-}
 export function passiveAttack(monster) {
     if (!monster)
         return null;
     return (MONSTER_ATTACKS[monster.mnum] || []).find(([attackType]) => attackType === AT_NONE) || null;
 }
-export function passiveDamage(species, attack, rollDice) {
+export function passiveDamage(level, attack, rollDice) {
     const [, , dice, sides] = attack;
     if (dice > 0)
         return rollDice(dice, sides);
     if (sides > 0)
-        return rollDice(requireMonsterData(MONSTER_LEVEL, species) + 1, sides);
+        return rollDice(level + 1, sides);
     return 0;
 }
 function monsterName(monster) {

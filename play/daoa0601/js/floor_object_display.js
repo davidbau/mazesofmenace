@@ -1,6 +1,7 @@
 // Looking at floor objects and displaying their prices and pile windows.
 // C invent.c:look_here(), pickup.c:check_here(), and objnam.c.
 import { game, requireGameDisplay } from './gstate.js';
+import { PLNMSG_ONE_ITEM_HERE } from './const.js';
 import { nhgetch } from './input.js';
 import { clearMessageWindow, flushPendingTopline, flush_screen, pline, plineWithContinuation, } from './display.js';
 import { readEngravingAt } from './engrave.js';
@@ -14,13 +15,7 @@ import { objectQuantity } from './object_stack.js';
 import { heroIsBlind } from './senses.js';
 import { feelPetrifyingCorpse, formCanBecomeStoneGolem, willFeelPetrifyingCorpse, } from './stoning.js';
 export async function readFloorEngraving(x, y) {
-    const read = await readEngravingAt(x, y, {
-        showMore: async (message) => {
-            await plineWithContinuation(message);
-            return flushPendingTopline();
-        },
-        showLine: plineWithContinuation,
-    });
+    const read = await readEngravingAt(x, y, plineWithContinuation);
     if (read && game._runState)
         stopRun();
 }
@@ -72,6 +67,7 @@ export async function showFloorPile(objects, pickedSome = false, featureDescript
         await readFloorEngraving(game.u.ux, game.u.uy);
         observeObjectForNaming(first);
         await plineWithContinuation(`You ${heroIsBlind() ? 'feel' : 'see'} here ${pricedFloorObjectDescription(first)}.`);
+        game._lastPlineKind = PLNMSG_ONE_ITEM_HERE;
         return await feelPetrifyingCorpse(first);
     }
     // look_here() displays WIN_MESSAGE first; a corner NHW_MENU then clears

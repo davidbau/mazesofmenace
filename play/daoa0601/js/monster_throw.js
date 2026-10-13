@@ -28,6 +28,7 @@ import { clearDescriptionKnowledge, unlinkMonsterObject } from './monster_invent
 import { unlinkObject } from './object_location.js';
 import { monsterAtPosition } from './monster_location.js';
 import { monsterName, monsterObjectPronoun, possessiveName } from './monster_name.js';
+import { wakeMonstersNearWithMessages } from './monster_wake.js';
 import { applyMonsterPassiveToObject } from './monster_passive.js';
 import { monsterProjectileDisplay } from './monster_projectile_display.js';
 import { monsterLinedUpWithMonster } from './monster_ranged_alignment.js';
@@ -135,7 +136,8 @@ export async function throwMonsterProjectile(source, object, { state = game, dx,
                     break;
             }
             else if (point.x === state.u.ux && point.y === state.u.uy) {
-                endVoluntaryMultiTurn(state);
+                if (state.multi)
+                    endVoluntaryMultiTurn(state);
                 shot.heroTarget = true;
                 shot.target = null;
                 if (await catchUnicornGift(missile, context)
@@ -375,6 +377,7 @@ async function hitMonsterWithProjectile(defender, shot, remaining, context) {
     if (object.oclass === POTION_CLASS) {
         const potion = await hitMonsterWithSupportedPotion({
             state, monster: defender, potion: object, target: point, publish,
+            wakeNearby: (x, y, distance) => wakeMonstersNearWithMessages(x, y, distance, state, publish),
             resolveVapor: true,
             // potionhit measures vapor distance from the monster's head.
             distance: dist2(state.u.ux, state.u.uy, defender.mx, defender.my),
