@@ -337,42 +337,59 @@ export async function rndcurse() {
 }
 
 /**
- * C ref: sit.c attrcurse — strip one random INTRINSIC ability.
+ * C ref: sit.c attrcurse `:644–762` — strip one random INTRINSIC ability.
  * Returns the prop index removed, or 0 if none matched the rnd(11) fallthrough.
+ * In C each H* gate IS u.uprops[*].intrinsic (youprop.h single storage);
+ * JS keeps the flat and the slot, so every arm OR-reads and dual-writes
+ * (house pattern: timeout.js FAST/WOUNDED_LEGS arms, set_HFast). Flat-only
+ * left the slot high and the next timeout tick restored the flat, so a
+ * curse victim lost the same intrinsic twice (scen-sweep-Knight-587209
+ * steps 557/561). The strip clears INTRINSIC bits only (TIMEOUT kept).
  * Named omissions: none for SEE_INVIS light-block (D-0956).
  */
 export async function attrcurse() {
     const u = game.u || (game.u = {});
     let ret = 0;
 
+    // C: H* ≡ uprops[*].intrinsic — read either mirror, clear both.
+    const has_intr = (flat, prop) => (
+        ((u[flat] | 0) | (u.uprops?.[prop]?.intrinsic | 0)) & INTRINSIC
+    ) !== 0;
+    const clear_intr = (flat, prop) => {
+        u[flat] = (u[flat] | 0) & ~INTRINSIC;
+        if (u.uprops?.[prop]) {
+            u.uprops[prop].intrinsic = (u.uprops[prop].intrinsic | 0) & ~INTRINSIC;
+        }
+    };
+
     switch (rnd(11)) {
     case 1:
-        if ((u.HFire_resistance | 0) & INTRINSIC) {
-            u.HFire_resistance = (u.HFire_resistance | 0) & ~INTRINSIC;
+        if (has_intr('HFire_resistance', FIRE_RES)) {
+            clear_intr('HFire_resistance', FIRE_RES);
             await You_feel('warmer.');
             ret = FIRE_RES;
             break;
         }
         // FALLTHROUGH
     case 2:
-        if ((u.HTeleportation | 0) & INTRINSIC) {
-            u.HTeleportation = (u.HTeleportation | 0) & ~INTRINSIC;
+        if (has_intr('HTeleportation', TELEPORT)) {
+            clear_intr('HTeleportation', TELEPORT);
             await You_feel('less jumpy.');
             ret = TELEPORT;
             break;
         }
         // FALLTHROUGH
     case 3:
-        if ((u.HPoison_resistance | 0) & INTRINSIC) {
-            u.HPoison_resistance = (u.HPoison_resistance | 0) & ~INTRINSIC;
+        if (has_intr('HPoison_resistance', POISON_RES)) {
+            clear_intr('HPoison_resistance', POISON_RES);
             await You_feel('a little sick!');
             ret = POISON_RES;
             break;
         }
         // FALLTHROUGH
     case 4:
-        if ((u.HTelepat | 0) & INTRINSIC) {
-            u.HTelepat = (u.HTelepat | 0) & ~INTRINSIC;
+        if (has_intr('HTelepat', TELEPAT)) {
+            clear_intr('HTelepat', TELEPAT);
             if (Blind() && !Blind_telepat()) see_monsters();
             await pline('Your senses fail!');
             ret = TELEPAT;
@@ -380,24 +397,24 @@ export async function attrcurse() {
         }
         // FALLTHROUGH
     case 5:
-        if ((u.HCold_resistance | 0) & INTRINSIC) {
-            u.HCold_resistance = (u.HCold_resistance | 0) & ~INTRINSIC;
+        if (has_intr('HCold_resistance', COLD_RES)) {
+            clear_intr('HCold_resistance', COLD_RES);
             await You_feel('cooler.');
             ret = COLD_RES;
             break;
         }
         // FALLTHROUGH
     case 6:
-        if ((u.HInvis | 0) & INTRINSIC) {
-            u.HInvis = (u.HInvis | 0) & ~INTRINSIC;
+        if (has_intr('HInvis', INVIS)) {
+            clear_intr('HInvis', INVIS);
             await You_feel('paranoid.');
             ret = INVIS;
             break;
         }
         // FALLTHROUGH
     case 7:
-        if ((u.HSee_invisible | 0) & INTRINSIC) {
-            u.HSee_invisible = (u.HSee_invisible | 0) & ~INTRINSIC;
+        if (has_intr('HSee_invisible', SEE_INVIS)) {
+            clear_intr('HSee_invisible', SEE_INVIS);
             if (!See_invisible()) {
                 set_mimic_blocking();
                 see_monsters();
@@ -411,32 +428,32 @@ export async function attrcurse() {
         }
         // FALLTHROUGH
     case 8:
-        if ((u.HFast | 0) & INTRINSIC) {
-            u.HFast = (u.HFast | 0) & ~INTRINSIC;
+        if (has_intr('HFast', FAST)) {
+            clear_intr('HFast', FAST);
             await You_feel('slower.');
             ret = FAST;
             break;
         }
         // FALLTHROUGH
     case 9:
-        if ((u.HStealth | 0) & INTRINSIC) {
-            u.HStealth = (u.HStealth | 0) & ~INTRINSIC;
+        if (has_intr('HStealth', STEALTH)) {
+            clear_intr('HStealth', STEALTH);
             await You_feel('clumsy.');
             ret = STEALTH;
             break;
         }
         // FALLTHROUGH
     case 10:
-        if ((u.HProtection | 0) & INTRINSIC) {
-            u.HProtection = (u.HProtection | 0) & ~INTRINSIC;
+        if (has_intr('HProtection', PROTECTION)) {
+            clear_intr('HProtection', PROTECTION);
             await You_feel('vulnerable.');
             ret = PROTECTION;
             break;
         }
         // FALLTHROUGH
     case 11:
-        if ((u.HAggravate_monster | 0) & INTRINSIC) {
-            u.HAggravate_monster = (u.HAggravate_monster | 0) & ~INTRINSIC;
+        if (has_intr('HAggravate_monster', AGGRAVATE_MONSTER)) {
+            clear_intr('HAggravate_monster', AGGRAVATE_MONSTER);
             await You_feel('less attractive.');
             ret = AGGRAVATE_MONSTER;
             break;

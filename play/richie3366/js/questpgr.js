@@ -227,8 +227,7 @@ export async function com_pager_legacy(statusSnap = null, pauper = false) {
 
 /**
  * C ref: dat/quest.lua firsttime texts
- * (Arc/Bar/Pri/Wiz + Hea/Kni/Ran/Rog/Sam/Tou/Val/Mon exercised).
- * Cav burns nhl_init shuffle only until ported.
+ * (Arc/Bar/Pri/Wiz + Hea/Kni/Ran/Rog/Sam/Tou/Val/Mon/Cav exercised).
  */
 const QUEST_FIRSTTIME = {
     // C ref: dat/quest.lua Arc firsttime (output=text)
@@ -332,6 +331,13 @@ Something is obviously wrong here.  Strange shapes lumber around
 outside %H!
 
 You realize that %l needs your assistance!`,
+    // C ref: dat/quest.lua Cav firsttime (output=text) — quest.lua:723-728
+    Cav: `You descend through a barely familiar stairwell that you remember
+%l showing you when you embarked upon your vision quest.
+
+You arrive back at %H, but something seems
+wrong here.  The usual smoke and glowing light of the fires of the
+outer caves are absent, and an uneasy quiet fills the damp air.`,
 };
 
 /** C ref: dat/quest.lua leader_first (Arc + Bar + Pri). */
@@ -588,7 +594,7 @@ surrounded with a moat of bubbling lava.  You remember the description
 from something that %l said.  This is the lair of %n.`,
 };
 
-/** C ref: dat/quest.lua goal_next (Arc + Bar + Pri + Kni + Ran). */
+/** C ref: dat/quest.lua goal_next (Arc + Bar + Pri + Kni + Ran + Val). */
 const QUEST_GOAL_NEXT = {
     Arc: `The familiar presence of %o is in the ether.`,
     Bar: `Yet again you feel the air around you heavy with malevolent magical energy.`,
@@ -597,6 +603,8 @@ const QUEST_GOAL_NEXT = {
     Kni: `Again, you stand at the entrance to %ns lair.`,
     // C ref: dat/quest.lua Ran goal_next (no output/synopsis keys: pline)
     Ran: `Once again, you enter the distorted castle of %n.`,
+    // C ref: dat/quest.lua Val goal_next (no output/synopsis keys: pline) — quest.lua:2732-2734
+    Val: `Once again, you stand in sight of %ns lair.`,
 };
 
 /** C ref: dat/quest.lua goal_alt (Arc; Bar falls back to goal_next in C). */
@@ -686,8 +694,25 @@ Suddenly, %n grasps his head and screams in agony, then dies.`,
 Then, the body bursts into a cloud of choking dust, and blows away.`,
 };
 
-/** C ref: dat/quest.lua gotit (Rog exercised; remaining roles named omit). */
+/** C ref: dat/quest.lua gotit (Arc/Bar/Pri/Rog exercised; remaining roles named omit). */
 const QUEST_GOTIT = {
+    // C ref: dat/quest.lua Arc gotit (output=text) — quest.lua:283-289
+    Arc: `The power of %o flows through your body!  You feel
+as if you could now take on the Wizard of Yendor himself and win, but
+you know you must return %o to %l.`,
+    // C ref: dat/quest.lua Bar gotit (output=text) — quest.lua:508-513
+    Bar: `As you pick up %o, you feel the power of it
+flowing through your hands.  It seems to be in two or more places
+at once, even though you are holding it.`,
+    // C ref: dat/quest.lua Pri gotit (output=text) — quest.lua:1622-1631
+    Pri: `As you pick up %o, you feel the essence of
+%d fill your soul.  You know now why %n stole it from
+%H, for with it, %ca of %d could
+easily defeat his plans.
+
+You sense a message from %d.  Though not verbal, you
+get the impression that you must return to %l as soon
+as possible.`,
     // C ref: dat/quest.lua Rog gotit (output=text) — quest.lua:2060-2067
     Rog: `As you pick up %o, the hairs on the back of your
 neck fall out.  At once you realize why %n was
@@ -753,6 +778,10 @@ const QUEST_MSG_META = {
         Mon: {
             output: 'text',
             synopsis: '[You have reached %H but something is wrong.  %lC needs your aid.]',
+        },
+        Cav: {
+            output: 'text',
+            synopsis: '[You arrive back at %H, but something is wrong here.]',
         },
     },
     leader_first: {
@@ -912,6 +941,18 @@ const QUEST_MSG_META = {
         },
     },
     gotit: {
+        Arc: {
+            output: 'text',
+            synopsis: '[The power of %o flows through your body!  You must return it to %l.]',
+        },
+        Bar: {
+            output: 'text',
+            synopsis: '[You feel the power of %o flowing through your hands.]',
+        },
+        Pri: {
+            output: 'text',
+            synopsis: '[You feel %d as you pick up %o; return %oh to %l.]',
+        },
         Rog: {
             output: 'text',
             synopsis: '[You pick up %o and know that %l should not have it.]',

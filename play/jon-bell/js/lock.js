@@ -102,7 +102,7 @@ function _the(str) { return 'the ' + str; }
 
 /* C ref: trap.c:6694 b_trapped(item, bodypart) — a booby-trapped container or
  * door explodes in the hero's face. */
-async function b_trapped(item, bodypart) {
+export async function b_trapped(item, bodypart) {
     const lvl = level_difficulty() | 0;
     const dmg = rnd(5 + (lvl < 5 ? lvl : 2 + Math.trunc(lvl / 2)));
     const hp = game.u?.uprops?.[HALF_PHDAM];

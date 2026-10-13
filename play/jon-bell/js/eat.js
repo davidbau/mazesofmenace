@@ -878,7 +878,7 @@ function _pmname(mdat, mgender) {
     if (!mdat || !Number.isInteger(mdat.pmidx)) return "monster";
     return monPmname(mdat.pmidx | 0, mgender | 0);
 }
-async function _done(how) {
+async function _done(how, opts) {
     const g = game;
     const u = g.u;
     /* C end.c:1041-1046 bot() runs before the HP is forced to zero (pline's own
@@ -927,7 +927,7 @@ async function _done(how) {
     if (!(wizard() || discover())) {
         /* C end.c:1128 — ordinary mode falls through to really_done(),
          * which this port defers through the shared death boundary. */
-        deadhero(how);
+        deadhero(how, opts);
         return true;
     }
     /* C cmd.c paranoid_query(ParanoidDie, "Die?") -> yn_function("Die?","yn",
@@ -940,8 +940,8 @@ async function _done(how) {
     if (diesArm) {
         /* C end.c:1115-1117 — an explicit yes falls through to
          * really_done(); defer that confirmed death through the shared
-         * boundary just as ordinary mode does. */
-        deadhero(how);
+         * boundary just as ordinary mode does (the query is not re-asked). */
+        deadhero(how, { ...opts, dieConfirmed: true });
         return true;
     }
     /* C end.c:1108-1112 — the survive arm: "OK, so you don't die." + savelife(). */
@@ -1251,7 +1251,15 @@ export async function eat_brains(magr, mdef, visflag, dmg_p) {
             if (!g.svk) g.svk = { killer: { format: 0, name: "" } };
             g.svk.killer.name = "brainlessness";
             g.svk.killer.format = KILLED_BY;
-            await _done(DIED);
+            /* C end.c:1068-1117 — a confirmed "Die? y" never returns from
+             * done(DIED), so eat_brains' ABASE(A_INT) reset and "You feel
+             * like a scarecrow." (eat.c:717-719) must not run. C calls
+             * done(DIED) directly here, not done_in_by(), so no "You die..."
+             * line is printed (noDeathLine). */
+            if (await _done(DIED, { noDeathLine: true }))
+                return result;
+            if (pending_death_is_final())
+                return result;
             abase[di_int] = 3 + 2;
             await pline("You feel like a scarecrow.");
         }
@@ -4226,7 +4234,7 @@ export async function floorfood(verb, corpsecheck) {
         const picked = await getObjFromGetobj('eat', eat_ok, GETOBJ_NOFLAGS);
         otmp = (picked && picked.hands) ? null : picked;
     } else if (offering) {
-        otmp = getobj("sacrifice", offer_ok, GETOBJ_NOFLAGS);
+        otmp = await getObjFromGetobj("sacrifice", offer_ok, GETOBJ_NOFLAGS);
     } else if (corpsecheck === 2) {
         otmp = getobj(verb, tin_ok, GETOBJ_NOFLAGS);
     } else {
@@ -4264,7 +4272,7 @@ async function check_capacity(qbuf) {
     return false;
 }
 async function dropy(obj) { return await dropy_real(obj); }
-async function feel_cockatrice(obj, force) {
+export async function feel_cockatrice(obj, force) {
     if (!will_feel_cockatrice(obj, force)) return;
     /* C invent.c:4348-4361: "the <cockatrice> corpse" via corpse_xname */
     const name = corpse_xname(obj, null, 4 /* CXN_PFX_THE */);

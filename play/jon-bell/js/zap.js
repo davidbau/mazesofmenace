@@ -21,7 +21,7 @@ import { ENGRAVE, HEADSTONE, ARM } from './const.js';
 import { In_mines } from './const.js';
 import { GETOBJ_SUGGEST, GETOBJ_EXCLUDE, GETOBJ_NOFLAGS } from './const.js';
 import { LARGEST_INT, ARTICLE_A, SUPPRESS_SADDLE, has_mgivenname, G_GENOD, MM_NOMSG } from './const.js';
-import { addtobill } from './shk.js';
+import { addtobill, check_unpaid_usage } from './shk.js';
 import { ECMD_OK, ECMD_CANCEL, ECMD_TIME } from './const.js';
 import { POOL, MOAT, DRAWBRIDGE_DOWN, IS_FOUNTAIN, Is_waterlevel, Is_airlevel } from './const.js';
 import { PIT, FIRE_RES, COLD_RES, SHOCK_RES, SLEEP_RES, ACID_RES, DISINT_RES, POISON_RES, W_ARMOR, W_ACCESSORY, W_WEP, W_ART, W_RING, W_ARMG, W_ARMC, W_ARM, W_ARMU, W_ARMH, W_ARMF, W_ARMS, W_AMUL, W_TOOL, W_RINGL, W_RINGR, SDOOR, SCORR, DOOR, CORR, ROOM, D_CLOSED, D_LOCKED, D_TRAPPED, D_NODOOR, BOLT_LIM, STATUE_TRAP, SVALL, COULD_SEE, IN_SIGHT, STONE, ZAP_POS, IS_WALL, IS_OBSTRUCTED, IS_TREE, IS_ROOM, isok, W_NONDIGGABLE, Is_earthlevel, u_at, TRAPDOOR, HOLE, NO_TRAP_FLAGS } from './const.js';
@@ -46,7 +46,7 @@ import { unbless, uncurse } from './mkobj.js';
 import { find_ac, disintegrate_arm } from './do_wear.js';
 import { rehumanize } from './polyself.js';
 import { NOTELL, ANTIMAGIC, UNCHANGING, SLIMED, INVIS, DRAIN_RES, STONED } from './const.js';
-import { FAST, TIMEOUT, INTRINSIC, LEG, STUNNED, SEE_INVIS, TELEPAT, DETECT_MONSTERS } from './const.js';
+import { FAST, TIMEOUT, INTRINSIC, LEG, STUNNED, SEE_INVIS, TELEPAT, DETECT_MONSTERS, TELEPORT_CONTROL } from './const.js';
 import { is_fainted } from './eat.js';
 import { do_clear_area, unblock_point, recalc_block_point, vision_recalc, does_block, block_point } from './vision.js';
 import { t_at, burnarmor, monkilled_trap, extract_from_minvent as disint_extract, fill_pit, delfloortrap, closeholdingtrap, openholdingtrap, openfallingtrap, find_mac, m_useup, sokoban_guilt, goodpos, mon_adjust_speed, thitu, animate_statue, activate_statue_trap, dotrap, maketrap, mintrap, erode_obj, grease_protect, trap_ice_effects, unearth_objs } from './trap.js';
@@ -1343,15 +1343,15 @@ export async function zapyourself(obj, ordinary) {
             break;
         case WAN_TELEPORTATION:
         case SPE_TELEPORT_AWAY:
-            /* C zap.c:2871-2878 */
+            /* C zap.c:2876-2883: short, visible teleports need not identify. */
             {
-                const u = game.u || {};
-                const ox = u.ux | 0, oy = u.uy | 0;
+                const u = game.u;
                 await tele();
-                /* A moved hero observes the teleport and can identify the
-                 * wand/spell.  The canonical tele() handles control,
-                 * no-teleport levels, and safe destination selection. */
-                if ((u.ux | 0) !== ox || (u.uy | 0) !== oy)
+                const control = u.uprops?.[TELEPORT_CONTROL];
+                const stunned = u.uprops?.[STUNNED]?.intrinsic;
+                if (((control?.intrinsic || control?.extrinsic) && !stunned)
+                    || !couldsee(u.ux0, u.uy0)
+                    || dist2(u.ux, u.uy, u.ux0, u.uy0) >= 16)
                     learn_it = true;
             }
             break;
@@ -4208,7 +4208,12 @@ async function _buzz_hit_monster(mon, type, nd, fltyp, sayhit) {
     } else {
         /* normal non-fatal hit — hit message + wakeup. */
         if (sayhit || canspotmon(mon)) {
-            await pline('The ' + flash_str(fltyp) + ' hits ' + mon_nam(mon)
+            /* C zap.c:3561-3567 hit(): name the target only when verbose and
+             * the hero can see bhitpos or spot the monster; else "it". */
+            const verbosely = game.flags?.verbose
+                && (cansee(game.bhitpos.x, game.bhitpos.y) || canspotmon(mon));
+            await pline('The ' + flash_str(fltyp) + ' hits '
+                + (verbosely ? mon_nam(mon) : 'it')
                 + (tmp > 4 ? '!' : '.'));
         }
         if (damgtype !== ZT_SLEEP) {
@@ -6509,7 +6514,8 @@ export async function dozap() {
     }
     /* C invent.c:2049: SET_BOTL — getobj selection sets the botl flag. */
     if (g.disp) g.disp.botl = 1;
-    /* C zap.c:2637: check_unpaid(obj) — shop billing; no RNG. */
+    /* C zap.c:2642; shk.c:5739 — bill normal use before zappable(). */
+    check_unpaid_usage(obj, false);
     /* C zap.c:2639: need_dir = objects[obj->otyp].oc_dir != NODIR */
     const need_dir = (oc_dir_of(obj.otyp | 0) !== NODIR);
     /* C zap.c:2640: zappable(obj) — consume a charge (rn2(121) only when spe==0). */

@@ -218,7 +218,9 @@ function observeNearbyObject(object, x, y) {
     // observation when the glyph is generic.  An ordinary type-specific
     // glyph can be rendered without adding that type to discoveries; explicit
     // examination, inventory, and pickup paths own those encounters.
-    if (!generic)
+    // STRANGE_OBJECT lies outside C's generic glyph range, so a mimic's
+    // zero-class disguise cannot become a known object at close range.
+    if (!generic || object.oclass === 0)
         return false;
     const range = Math.max(game.u?.xray_range ?? -1, 2);
     const dx = x - game.u.ux, dy = y - game.u.uy;
@@ -308,13 +310,15 @@ const ANSI_COLOR = [
     90, // remembered room/corridor while blind (tty dark gray)
 ];
 function rememberedColor(glyph, loc, x, y) {
-    // display.c maps an unlit corridor with S_litcorr only while it is in
-    // sight.  When that live projection becomes hero memory, retain the lit
-    // identity only for a location whose own waslit bit supports it.
+    // newsym() darkens unseen corridors with dark_room and color enabled,
+    // even when the terrain remains lit. Without those options, waslit
+    // determines whether memory retains the bright corridor glyph.
     if (glyph?.kind === 'terrain' && glyph.ch === '#'
-        && loc?.typ === CORR && !loc.waslit && !cansee(x, y)
+        && loc?.typ === CORR && !cansee(x, y)
+        && (!loc.waslit || ((game.flags.dark_room ?? true) && game.flags.color !== false))
         && glyph.color === CLR_WHITE) {
         glyph.color = NO_COLOR;
+        glyph.glyph = cmapToGlyph(CmapSymbol.corr);
     }
     // Preserve the port's established blind-memory behavior on ordinary
     // levels.  Premapped levels distinguish background from mapped objects
@@ -879,6 +883,10 @@ function canSpotHeroSelf() {
     return canSeeSelf || sensesSelf;
 }
 function objectClassForType(otyp) {
+    // objects.h slots 1..17 have matching classes; slot 0 is a strange object.
+    const firstRealObject = OBJECT_BASES[2];
+    if (firstRealObject !== undefined && otyp > 0 && otyp < firstRealObject)
+        return otyp;
     for (let cls = 2; cls < OBJECT_BASES.length - 1; cls++) {
         const first = OBJECT_BASES[cls];
         const next = OBJECT_BASES[cls + 1];
@@ -932,6 +940,9 @@ function objectGlyph(object) {
     const species = (object.otyp === CORPSE || object.otyp === STATUE)
         && object.corpsenm !== undefined ? { corpsenm: object.corpsenm } : {};
     const glyph = objectGlyphNumber(object, piletop);
+    // reset_glyphmap() resolves both normal and generic object numbers
+    // through objects[].oc_class, including a mimic's zero-class disguise.
+    const displayedType = objectUsesGenericGlyph(object) ? object.oclass : object.otyp;
     return statueSymbol
         ? {
             ch: statueSymbol, color: CLR_WHITE, decgfx: false,
@@ -939,7 +950,7 @@ function objectGlyph(object) {
             statueGlyph: true, piletop,
         }
         : {
-            ch: activeObjectSymbols()[object.oclass] || '?',
+            ch: activeObjectSymbols()[objectClassForType(displayedType)] || '?',
             color: objectColor(object), decgfx: false,
             kind: 'object', otyp: object.otyp, ...species, glyph,
             statueGlyph: object.otyp === STATUE, piletop,
@@ -1453,6 +1464,13 @@ export function displaySelf() {
         : heroDisplayGlyph();
     show_glyph_cell(game.u.ux, game.u.uy, glyph.ch, glyph.color, false, 0, glyph);
 }
+// C display.c:newsym_force(). A forced redraw prints even an unchanged glyph.
+export function newsym_force(x, y) {
+    newsym(x, y);
+    const location = game.level?.at(x, y);
+    if (location)
+        location.gnew = 1;
+}
 // ── newsym ──
 function monsterDisplayAttribute(monster) {
     if ((monster.pet || (monster.mtame ?? 0) > 0) && !heroIsHallucinating()
@@ -1614,7 +1632,9 @@ function displayMonsterAtCell(monster, x, y, projection) {
             map_object({
                 ox: x, oy: y,
                 otyp: mimicAppearance(monster),
-                oclass: objectClassForType(mimicAppearance(monster)),
+                // Native uses zeroobj, whose class remains zero. A potion
+                // disguise therefore bypasses the generic-potion test.
+                oclass: 0,
                 corpsenm: monster.mcorpsenm ?? MONSTER_NAME.indexOf('tengu'),
                 dknown: false,
             }, !sensed);
@@ -2076,7 +2096,7 @@ export function formatStrength(value) {
         return '18/**';
     return `18/${String(value - 18).padStart(2, '0')}`;
 }
-export function _statusLine2() {
+export function _statusLine2(refreshLoad = true) {
     const u = game.u;
     if (!u)
         return '';
@@ -2113,11 +2133,12 @@ export function _statusLine2() {
         line += ` T:${game.moves ?? 1}`;
     if (u.usteed)
         line += ' Ride';
-    const hungerLabel = ['Satiated', '', 'Hungry', 'Weak', 'Fainting', 'Fainted', 'Starved'][game._statusHungerOverride ?? currentHungerState(game)];
+    const hungerLabel = ['Satiated', '', 'Hungry', 'Weak', 'Fainting', 'Fainted', 'Starved'][game._statusHungerOverride ?? u.uhs ?? currentHungerState(game)];
     if (hungerLabel)
         line += ` ${hungerLabel}`;
-    if (u._encumbrance)
-        line += ` ${u._encumbrance}`;
+    const load = refreshLoad ? encumbranceLabel(nearCapacity(game)) : u._encumbrance;
+    if (load)
+        line += ` ${load}`;
     if (u.strangled || (u.strangledTurns ?? 0) > 0)
         line += ' Strngl';
     if (game.blind)
@@ -2192,7 +2213,12 @@ function statusLines(update) {
             ?.map(cell => cell.ch).join('').trimEnd() ?? '';
         return [row(22), row(23)];
     }
-    return [_statusLine1(), _statusLine2()];
+    // A map flush retains the displayed load until native code requests bot().
+    if (game.context.botl) {
+        game.u._encumbrance = encumbranceLabel(nearCapacity(game));
+        game.context.botl = false;
+    }
+    return [_statusLine1(), _statusLine2(false)];
 }
 function writeStatusLines(display, lines) {
     for (const [index, text] of lines.entries()) {
@@ -2435,6 +2461,22 @@ function toplineRows(message, columns) {
         }
     }
     return lines;
+}
+// C update_topl()/topl_putsym(): key queries wrap without a More prompt.
+// Return the rows covered so tty_yn_function's cleanup can restore the map.
+export function renderKeyPrompt(message, cursorOffset = 0) {
+    const display = game.nhDisplay;
+    const lines = toplineRows(message, display?.cols ?? COLNO);
+    if (!display)
+        return lines.length;
+    for (const [row, line] of lines.entries()) {
+        display.clearRow(row);
+        for (const [column, cell] of line.entries())
+            display.setCell(column, row, cell.ch, NO_COLOR, 0);
+    }
+    const lastLine = lines.at(-1) ?? lines[0];
+    display.setCursor(lastLine.length + cursorOffset, lines.length - 1);
+    return lines.length;
 }
 export async function moreUntilDismissed(message, { urgent = false } = {}) {
     await pline(message);

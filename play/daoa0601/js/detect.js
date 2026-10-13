@@ -171,7 +171,9 @@ async function searchAdjacentSecrets(automatic = false) {
                 revealSecretDoor(x, y);
                 exerciseWisdom();
                 endVoluntaryMultiTurn(game);
-                newsym(x, y);
+                // C dosearch0() maps the discovered door by touch even when
+                // its former wall position remains outside line of sight.
+                feel_location(x, y);
                 await plineWithContinuation('You find a hidden door.');
                 found = true;
                 continue;
@@ -500,6 +502,11 @@ async function preventUnsafeSearch(force = false) {
 export async function dosearch(force = false) {
     if (await preventUnsafeSearch(force))
         return false;
+    if (game.u.uswallow) {
+        await plineWithContinuation('What are you looking for?  The exit?', { noRepeat: true });
+        game.context.move = 1;
+        return true;
+    }
     const found = await searchAdjacentSecrets();
     game.context.move = 1;
     return found;

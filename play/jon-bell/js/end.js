@@ -31,7 +31,7 @@ import { clong, nowrap_add } from './integer.js';
 import { savebones, no_bones_special_level } from './bones.js';
 import { force_more, force_more_lone_frame, pline, urgent_pline, flush_screen, bot, _topl_joins_committed,
          _topline_more_pending, capture_painted_frame_with_status } from './display.js';
-import { topl_park_cursor } from './display.js';
+import { topl_park_cursor, canspotmon } from './display.js';
 import { putmsghistory } from './display.js';
 import { cmdq_pop, cmdq_clear, cmdq_add_key, key2txt } from './cmd.js';
 import { CQ_CANNED, CQ_REPEAT, CMDQ_KEY, CMDQ_USER_INPUT, QBUFSZ, PLNMSG_UNKNOWN } from './const.js';
@@ -45,7 +45,7 @@ import { A_CON, A_CURRENT, A_ORIGINAL, Upolyd, DIED, CHOKING, STARVING, DROWNING
 import { KILLED_BY_AN, MALE, FEMALE, In_quest, In_endgame, Is_astralevel } from './const.js';
 import { dunlev } from './dungeon.js';
 import { MGIVENNAME, has_mgivenname } from './const.js';
-import { SICK, SICK_ALL, TIMEOUT, TT_LAVA, UNCHANGING } from './const.js';
+import { SICK, SICK_ALL, TIMEOUT, TT_LAVA, UNCHANGING, HALLUC, HALLUC_RES } from './const.js';
 import { PM_TOURIST, PM_HUMAN_MUMMY, PM_ELF_MUMMY, PM_DWARF_MUMMY, PM_GNOME_MUMMY, PM_ORC_MUMMY, PM_HUMAN_ZOMBIE, PM_ELF_ZOMBIE, PM_DWARF_ZOMBIE, PM_GNOME_ZOMBIE, PM_ORC_ZOMBIE, PM_WRAITH, PM_VAMPIRE, PM_GHOUL, PM_HUMAN, PM_ELF, PM_DWARF, PM_GNOME, PM_ORC } from './pm.generated.js';
 import { G_GENOD } from './const.js';
 import { shkname, free_oname } from './dokick.js';
@@ -215,10 +215,12 @@ export function deadhero(how, opts) {
     const g = game;
     if (!g._pendingDeath)
         g._pendingDeath = { how: how | 0,
+                            stoningDeathLine: !!(opts && opts.stoningDeathLine),
                             alreadySaidYouDie: !!(opts && opts.alreadySaidYouDie),
                             prejoinButWait: !!(opts && opts.prejoinButWait),
                             urgentDeathLine: !!(opts && opts.urgentDeathLine),
                             noDeathLine: !!(opts && opts.noDeathLine),
+                            dieConfirmed: !!(opts && opts.dieConfirmed),
                             remainderIsFresh: !!(opts && opts.remainderIsFresh),
                             moves: g.moves | 0 };
 }
@@ -242,6 +244,15 @@ export function pending_death_is_final() {
     for (const p of [g.u?.uprops?.[LIFESAVED], g.u?.uprops?.['LIFESAVED']])
         if (p?.extrinsic | 0) return false;
     return !(wizard() || discover());
+}
+
+/* C youprop.h:116-120 — Hallucination is (HHallucination && !Halluc_resistance),
+ * HHallucination = u.uprops[HALLUC].intrinsic (no EHallucination in 5.0). */
+function _hero_hallucinating_end() {
+    const up = game.u?.uprops;
+    const h = up?.[HALLUC], r = up?.[HALLUC_RES];
+    const res = ((r?.intrinsic | 0) !== 0) || ((r?.extrinsic | 0) !== 0);
+    return ((h?.intrinsic | 0) !== 0) && !res;
 }
 
 export function done_in_by(mtmp, how) {
@@ -312,6 +323,11 @@ export function done_in_by(mtmp, how) {
     /* C end.c:218-219 */
     if (mtmp?.minvis)
         buf += 'invisible ';
+    /* C end.c:220-221 — Hallucination && canspotmon(mtmp).  Only a string
+     * prefix: no RNG is drawn, the real monster name is still used. */
+    const distorted = _hero_hallucinating_end() && canspotmon(mtmp);
+    if (distorted)
+        buf += 'hallucinogen-distorted ';
     if (imitator) {
         /* C end.c:223-255 — describe the real monster in its current form. */
         const realidx = cham >= 0 ? cham : (mptr?.pmidx | 0);
@@ -365,7 +381,7 @@ export function done_in_by(mtmp, how) {
     }
     /* C end.c:284 */
     g.svk.killer.name = buf;
-    deadhero(how | 0);
+    deadhero(how | 0, { stoningDeathLine: how === STONING });
 }
 /* C monflag.h G_UNIQ 0x1000 — the same value js/read.js:3797 pins. */
 const G_UNIQ_END = 0x1000;
@@ -433,7 +449,7 @@ export async function savelife(how, inPlace) {
     // movemon, so gm.multi = -1 ticks back to 0 there and unmul() plines the
     // that attempt on your life." on its own topline, after the
     // "OK, so you don't die.  The kitten bites the giant bat.--More--" page).
-    g.multi = inPlace ? -1 : 0;
+    g.multi = (inPlace || (g.u?.uswallow && u.ustuck)) ? -1 : 0;
     /* The deferred path skips the multi<0 countdown, so C's unmul() never
      * runs here; it ends with `u.usleep = 0` (hack.c:4197).  Left set, a
      * hero who died asleep keeps u.usleep < moves and mhitu.c:940 draws a
@@ -538,6 +554,14 @@ export async function do_death_sequence(opts) {
     // it) — the m4 "The ettin mummy hits again!--More--" / "Your potion ...
     // shatters!--More--" page.  Then "You die..." itself is acknowledged before
     // done() raises the "Die?" prompt.
+    /* C end.c:195: petrification uses ordinary You("turn to stone...").
+     * Unlike "You die", it may join the hit message (tty/topl.c:261-270).
+     * Let the prompt or lifesaving messages page that live topline. */
+    if (pd.stoningDeathLine) {
+        await pline('You turn to stone...');
+        pd.alreadySaidYouDie = true;
+        pd.remainderIsFresh = true;
+    }
     let remainder = String(g._pending_message || '');
     let _prejoinedButWait = false;
     /* C's direct zhitu()->done() continuation paints status, appends
@@ -579,6 +603,10 @@ export async function do_death_sequence(opts) {
         await bot();
         done_death_context(pd.how);
     }
+    /* C end.c:1043-1075: bot() paints before HP is forced to zero.
+     * tty_yn_function's more() uses that paint before its prompt flush. */
+    const stoningPromptFrame = pd.stoningDeathLine
+        ? capture_painted_frame_with_status() : null;
     /* C youprop.h:387 `#define Lifesaved u.uprops[LIFESAVED].extrinsic` reads
      * ONLY the extrinsic half (set when an amulet of life saving is worn).
      * `.intrinsic` is a plain long that carries no gameplay meaning for this
@@ -702,8 +730,15 @@ export async function do_death_sequence(opts) {
     }
     _done_force_hp_zero();
     if (!g._topl_win_stop && !_suppressDeathPage
-        && g._pending_message && g._pending_message.length > 0)
-        await force_more(g._pending_message);
+        && g._pending_message && g._pending_message.length > 0) {
+        const savedPaint = g._paintedSnapshot;
+        if (stoningPromptFrame) g._paintedSnapshot = stoningPromptFrame;
+        try {
+            await force_more(g._pending_message);
+        } finally {
+            if (stoningPromptFrame) g._paintedSnapshot = savedPaint;
+        }
+    }
     /* The tty prompt preamble above has now consumed TOPLINE_NEED_MORE,
      * including the WIN_STOP case where acknowledgement is suppressed.
      * Clear that state before dropping WIN_STOP so the shared reader cannot
@@ -717,6 +752,14 @@ export async function do_death_sequence(opts) {
     /* C end.c:1116 uses the shared paranoid reader here too.  This path is the
      * in-place death/lifesaving path, distinct from done() below, and must honor
      * ParanoidDie rather than maintaining a second tty reader. */
+    /* opts.dieConfirmed — the caller already ran paranoid_query(ParanoidDie,
+     * "Die?") and read 'y' (eat_brains via eat.js _done); C's done() reaches
+     * really_done() (end.c:1115-1117) without asking again. */
+    if (pd.dieConfirmed) {
+        await really_done(pd.how);
+        g._resultMessage = null;
+        return true;
+    }
     routeTag('done_savelife', 'Die?'); /* telemetry only; inert when env unset */
     const _strictDie = !!((g.flags?.paranoia_bits | 0) & PARANOID_DIE);
     let die;
@@ -751,9 +794,13 @@ export async function do_death_sequence(opts) {
             // "OK, so you don't die." (done) and the nomovemsg (savelife) both land on
             // when the multi<0 countdown completes; here both are the command-result
             // line the next rhack(0) restores).
-            g._resultMessage = (_okFirst ? "" : "OK, so you don't " + (((pd.how | 0) === CHOKING_END) ? "choke" : "die") + ".  ")
-                + (g.nomovemsg || 'You survived that attempt on your life.');
-            g.nomovemsg = null;
+            /* savelife left gm.multi = -1 (swallowed hero): the countdown turn ticks it
+             * to 0 and unmul() plines the nomovemsg where C does (allmain.c:433-441). */
+            if ((g.multi | 0) >= 0) {
+                g._resultMessage = (_okFirst ? "" : "OK, so you don't " + (((pd.how | 0) === CHOKING_END) ? "choke" : "die") + ".  ")
+                    + (g.nomovemsg || 'You survived that attempt on your life.');
+                g.nomovemsg = null;
+            }
             /* The deferred path skips the multi countdown, so do unmul()'s
              * u.usleep = 0 here (hack.c:4177-4197); else mhitu.c:940 draws rn2(10). */
             if (g.u) g.u.usleep = 0;
@@ -846,6 +893,9 @@ async function _yn_prompt(query, choices, defchoice, opts = {}) {
     const hasDef = defchoice && defchoice !== '\0';
     const qbuf = choices === null ? query
         : `${query} [${shownChoices}]${hasDef ? ` (${defchoice})` : ''}`;
+    // C topl.c:420,425 custompline -> pline.c:282 records the prompt even
+    // with SUPPRESS_HISTORY; an intervening question breaks Norep's match.
+    g._prevmsg = qbuf + ' ';
     /* Unlike getlin's windows.c wrapper, yn_function does not set
      * gb.bot_disabled. Its initial custompline can therefore paint pending
      * status even though tty inread is set. Materialize that frame here;

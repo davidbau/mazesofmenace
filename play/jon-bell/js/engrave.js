@@ -35,6 +35,7 @@ import { useup, altar_wrath, check_capacity } from './cmd.js';
 import { GETOBJ_PROMPT, HAND } from './const.js';
 import { exercise } from './attrib.js';
 import { more_experienced } from './exper.js';
+import { object_tough } from './o_init.js';
 import { can_reach_floor as can_reach_floor_real } from './hold_another_object.js';
 import { make_engr_at, del_engr_at, engr_at, random_engraving } from './mklev.js';
 import { DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, HEADSTONE, A_WIS,
@@ -411,7 +412,10 @@ export async function doengrave() {
     /* C engrave.c:doengrave_sfx_item. Fingers leave the type unchanged. */
     if (!de.otmp.hands) {
         const oc = de.otmp.oclass | 0;
-        if (oc === WAND_CLASS) {
+        if (oc === RING_CLASS || oc === GEM_CLASS) {
+            // C engrave.c:751-758: hard rings and gems carve the surface.
+            if (object_tough(de.otmp.otyp)) de.type = ENGRAVE;
+        } else if (oc === WAND_CLASS) {
             /* C engrave.c:791-815.  zappable() spends the charge HERE, before
              * the "You write in the dust with <wand>" message doname()s it. */
             if (zappable(de.otmp)) {
@@ -594,7 +598,8 @@ export async function doengrave() {
         /* C engrave.c:1177-1183 uses doname(), not the yname() writer used
          * by the earlier special-case messages.  In particular a selected
          * stack must retain its quantity and BUC adjective here. */
-        await pline(`You ${de.everb} the ${de.eloc} with ${(await doname(de.otmp))}.`);
+        const one = de.type === ENGRAVE && de.otmp.quan > 1 ? '1 of ' : '';
+        await pline(`You ${de.everb} the ${de.eloc} with ${one}${await doname(de.otmp)}.`);
     } else {
         /* C engrave.c:1184 — "You write in the dust with your fingertip." */
         await pline(`You ${de.everb} the ${de.eloc} with your ${body_part_fingertip()}.`);
@@ -722,6 +727,10 @@ export function engrave() {
     /* C engrave.c:1322-1331 — compute rate.  DUST/fingertip → default rate 10. */
     let rate = 10;
     const stylus = eng.stylus;
+    // C engrave.c:1321-1325: rings and gems carve one character per action.
+    if ((eng.type === ENGRAVE || eng.type === HEADSTONE) && stylus
+        && (stylus.oclass === RING_CLASS || stylus.oclass === GEM_CLASS))
+        rate = 1;
     const marker = !!(stylus && stylus.otyp === MAGIC_MARKER && eng.type === MARK);
     if (marker) {
         /* C engrave.c:1326-1328 — one charge / 2 letters */

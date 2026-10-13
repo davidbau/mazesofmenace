@@ -3672,8 +3672,8 @@ export function objects_at(x, y) {
 }
 
 /**
- * C ref: mkobj.c replace_object — swap otmp into obj's chain position.
- * Floor + invent used by zap.c poly_obj; minvent/contained named.
+ * C ref: mkobj.c replace_object `:641–680` whole — swap otmp into
+ * obj's chain position (floor/invent/minvent/contained; FREE no-op).
  */
 export function replace_object(obj, otmp) {
     if (!obj || !otmp) return;
@@ -3738,8 +3738,50 @@ export function replace_object(obj, otmp) {
         obj.where = OBJ_FREE;
         obj.ox = 0;
         obj.oy = 0;
+    } else if (where === OBJ_CONTAINED) {
+        // C mkobj.c replace_object `:658–663` — otmp takes obj's cobj slot.
+        otmp.nobj = obj.nobj || null;
+        otmp.ocontainer = obj.ocontainer || null;
+        const parent = obj.ocontainer;
+        if (parent) {
+            if (parent.cobj === obj) {
+                parent.cobj = otmp;
+            } else {
+                for (let p = parent.cobj; p; p = p.nobj) {
+                    if (p.nobj === obj) {
+                        p.nobj = otmp;
+                        break;
+                    }
+                }
+            }
+        }
+        obj.nobj = null;
+        obj.where = OBJ_FREE;
+    } else if (where === OBJ_MINVENT) {
+        // C mkobj.c replace_object `:665–669` — otmp takes obj's minvent
+        // slot (C splices obj->nobj = otmp then extract_nobj(obj); the
+        // predecessor relink below is the same net swap, matching the
+        // OBJ_INVENT arm's house idiom above).
+        otmp.nobj = obj.nobj || null;
+        otmp.ocarry = obj.ocarry || null;
+        const carrier = obj.ocarry;
+        if (carrier) {
+            if (carrier.minvent === obj) {
+                carrier.minvent = otmp;
+            } else {
+                for (let p = carrier.minvent; p; p = p.nobj) {
+                    if (p.nobj === obj) {
+                        p.nobj = otmp;
+                        break;
+                    }
+                }
+            }
+        }
+        obj.nobj = null;
+        obj.where = OBJ_FREE;
     } else {
-        // invent/minvent/contained — place as free until callers need them
+        // OBJ_FREE (C `:646–648` no-op; otmp.where already set above) and
+        // anything exotic (C panics; unreachable for valid callers).
         otmp.where = OBJ_FREE;
     }
 }

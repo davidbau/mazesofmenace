@@ -3169,13 +3169,15 @@ export async function hurtle_step(rangeArg, x, y) {
 
 /**
  * C ref: dothrow.c hurtle — knock hero through air for range steps.
- * endmultishot after verbose (C :1119). Named omit: Punished
- * diagonal-chain slack beyond !carried(uball). TT_INFLOOR uses
- * dungeon.c surface (D-2884).
+ * endmultishot after verbose (C :1119). The Punished guard (C :1090)
+ * is the live uball check (youprop.h:77), never sticky u.Punished
+ * (D-1778). TT_INFLOOR uses dungeon.c surface (D-2884).
  */
 export async function hurtle(dx, dy, range, verbose) {
     const u = game.u || {};
-    if (u.Punished && u.uball && u.uball.where !== OBJ_INVENT) {
+    // C :1090 — Punished && !carried(uball): Punished ≡ (uball != 0)
+    // (youprop.h:77), carried ≡ where == OBJ_INVENT (obj.h:332).
+    if (u.uball && u.uball.where !== OBJ_INVENT) {
         await You_feel('a tug from the iron ball.');
         nomul(0);
         return;

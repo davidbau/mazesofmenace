@@ -7816,6 +7816,8 @@ async function themeroom_fill_rng(aroom, difficulty) {
                 const otmp = await mkobj_at(oclass, ox, oy, artif);
                 if (otmp)
                     otmp.blessed = false;   /* buc="not-blessed" (see below) */
+                // C sp_lev.c:2422-2423: des.object stacks after applying BUC.
+                await stackobj(otmp);
                 return otmp;
             };
             // The fill's dagger/bow/arrow are `id=` specs, not `class=` specs, so C
@@ -7829,6 +7831,8 @@ async function themeroom_fill_rng(aroom, difficulty) {
                 const otmp = await mksobj_at(otyp, ox, oy, true, true);
                 if (otmp)
                     otmp.blessed = false;
+                // C sp_lev.c:2422-2423: the explicit object-id path stacks too.
+                await stackobj(otmp);
                 return otmp;
             };
             // C ref: themerms.lua:225 ghost spec has asleep=true, waiting=true.  makemon

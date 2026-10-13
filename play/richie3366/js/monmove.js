@@ -2785,8 +2785,8 @@ export async function dochug(mtmp) {
         if ((await use_misc(mtmp)) !== 0) return 1;
     }
 
-    // C: Demonic Blackmail — mux-mismatch whisper/anger. Named:
-    // minion.c demon_talk (mux==hero, paid-off / demand path).
+    // C: Demonic Blackmail — mux-mismatch whisper/anger, else haggle
+    // via minion.c demon_talk (mux==hero, paid-off / demand path).
     const u0 = game.u || {};
     if (nearby && (mdat?.msound | 0) === MS_BRIBE && mtmp.mpeaceful
         && !mtmp.mtame && !u0.uswallow) {
@@ -2805,8 +2805,14 @@ export async function dochug(mtmp) {
                 mtmp.mpeaceful = 0;
                 set_malign(mtmp);
             }
+        } else {
+            // C monmove.c `:823` — mux==hero: demon_talk; nonzero (paid
+            // off) spends the turn. Dynamic import like the sounds.js
+            // MS_BRIBE site (same 101-module SCC, no new static edge);
+            // demon_talk is a hoisted function (imports.mjs --can SAFE).
+            const { demon_talk } = await import('./minion.js');
+            if (await demon_talk(mtmp)) return 1; /* you paid it off */
         }
-        // else demon_talk(mtmp) named omit
     }
 
     // C ref: monmove.c dochug — watch_on_duty / mind_blast before wield

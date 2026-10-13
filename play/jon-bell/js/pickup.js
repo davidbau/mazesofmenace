@@ -33,6 +33,7 @@ import { Blind } from './vision.js';
 import { splitobj } from './makemon.js';
 import { which_armor } from './makemon.js';
 import { rnd } from './rng.js';
+import { losehp } from './dokick.js';
 import { yn_function } from './end.js';
 import {
     ECMD_OK, ECMD_TIME, is_pit, is_hole, u_at, TT_PIT, isok,
@@ -49,7 +50,7 @@ import {
     IS_AIR, IS_ALTAR, IS_GRAVE, IS_FOUNTAIN, IS_WALL, IS_DOOR, IS_ROOM,
     SDOOR, CLOUD, Is_waterlevel, Is_earthlevel,
     In_sokoban, HAND, P_RIDING, P_BASIC,
-    SHOPBASE, ESHK, STONE_RES,
+    SHOPBASE, ESHK, STONE_RES, KILLED_BY_AN,
 } from './const.js';
 /* C ref: pickup.c:2293 the `lootmon` branch — mon_beside() needs m_at(). */
 import { m_at } from './uhitm.js';
@@ -72,7 +73,7 @@ import {
     max_capacity, calc_capacity, near_capacity, weight,
 } from './weight.js';
 import { ansimpleoname, an, doname, cxname_singular, getObjDescr, xname, the, otense } from './objnam.js';
-import { observe_object } from './o_init.js';
+import { observe_object, discover_object } from './o_init.js';
 /* C ref: describe_decor()'s own callees (invent.c dfeature_at, dungeon.c
  * waterbody_name, trap.c back_on_ground) are all real, tested bodies that
  * already live in js/cmd.js (exported) — js/cmd.js already imports several
@@ -90,6 +91,7 @@ import {
     pooleffects_back_on_ground as _cmd_back_on_ground,
     body_part,
     count_unpaid,
+    bhp_Maybe_Half_Phys,
 } from './cmd.js';
 import { getlin } from './wizcmds.js';
 import { def_oc_syms_chars, def_char_to_objclass } from './drawing.js';
@@ -329,6 +331,13 @@ async function do_loot_cont(cobjRef, cindex, ccount) {
 
     cobj.lknown = 1;
     if (cobj.otyp === BAG_OF_TRICKS_OTYP) {
+        /* C pickup.c:2144-2153 — opening the bag bites, then identifies it. */
+        await pline('You carefully open %s...', the(xname(cobj)));
+        await pline('It develops a huge set of teeth and bites you!');
+        const tmp = rnd(10);
+        await losehp(bhp_Maybe_Half_Phys(tmp), 'carnivorous bag', KILLED_BY_AN);
+        discover_object(BAG_OF_TRICKS_OTYP, true, true, true);
+        g.abort_looting = true;
         return ECMD_TIME;
     }
     /* C pickup.c:2155 — use_container for an unlocked container. */

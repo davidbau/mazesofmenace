@@ -4,6 +4,9 @@
 
 import { growl as growl_mhitm, yelp as yelp_mhitm, y_monnam as y_monnam_shk } from './mhitm.js';
 import { game } from './gstate.js';
+import { make_happy_shoppers, migrate_to_level, mdrop_special_objs } from './dog.js';
+import { sensemon } from './display.js';
+import { MIGR_APPROX_XY } from './const.js';
 import { ansimpleoname } from './objnam.js';
 import { stop_occupation } from './allmain.js';
 import { picking_at } from './lock.js';
@@ -56,7 +59,7 @@ import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import monArmedPack from './makemon_mons_armed.json' with { type: 'json' };
 import monMsoundPack from './makemon_msound.json' with { type: 'json' };
-import { OC_COST } from './oc_cost_data.js';
+import { OC_COST, OC_CHARGED } from './oc_cost_data.js';
 import { OC_NAME } from './oc_name_data.js';
 import { xname_flags as xname_flags_shk, CXN_NORMAL as CXN_NORMAL_SHK,
          the as the_shk, The as The_shk, arti_cost,
@@ -1022,11 +1025,10 @@ export async function dopay() {
                 else await pline(`You don't have enough gold to satisfy ${shkname(shkp)}.`);
                 return ECMD_TIME;
             }
-            await pline(`But since ${shkname(shkp)}'s shop has been robbed recently,`);
-            await pline(`you ${umoney < ltmp ? 'partially ' : ''}compensate ${shkname(shkp)} for losses.`);
+            await pline(`But since ${noit_mhis(shkp)} shop has been robbed recently,`);
+            await pline(`you ${umoney < ltmp ? 'partially ' : ''}compensate ${shkname(shkp)} for ${noit_mhis(shkp)} losses.`);
             await pay(Math.min(umoney, ltmp), shkp);
-            shkp.mpeaceful = 1;
-            eshkp.robbed = 0;
+            await make_happy_shk(shkp, false);
         } else {
             await pline(`${Shknam(shkp)} is after your hide, not your gold!`);
             if (umoney < 1000) {
@@ -2338,6 +2340,32 @@ function m_canseeu_shk(_shkp) {
     return !Invis && !u.uundetected;
 }
 
+async function make_happy_shk(shkp, silentkops) { // C shk.c:1395-1436
+    const eshkp = ESHK(shkp), wasmad = !shkp.mpeaceful;
+    pacify_shk(shkp, false);
+    eshkp.following = eshkp.robbed = 0;
+    if (game.urole.mnum !== PM_ROGUE)
+        adjalign_real(sgn(game.u.ualign.type));
+    if (!inhishop(shkp)) {
+        const shk_nam = shkname(shkp);
+        let vanished = canseemon(shkp);
+        if (on_level(eshkp.shoplevel, game.u.uz)) {
+            await home_shk(shkp, false);
+            if (canspotmon(shkp)) {
+                await pline('%s returns to %s shop.', Shknam(shkp), noit_mhis(shkp));
+                vanished = false;
+            }
+        } else {
+            if (sensemon(shkp)) vanished = true;
+            await mdrop_special_objs(shkp);
+            const lev = eshkp.shoplevel;
+            await migrate_to_level(shkp, lev.dlevel + game.dungeons[lev.dnum].ledger_start, MIGR_APPROX_XY, eshkp.shd);
+            eshkp.dismiss_kops = true;
+        }
+        if (vanished) await pline('Satisfied, %s suddenly disappears!', shk_nam);
+    } else if (wasmad) await pline('%s calms down.', Shknam(shkp));
+    await make_happy_shoppers(silentkops);
+}
 function pacify_shk(shkp, clear_surcharge) {
     shkp.mpeaceful = 1; /* NOTANGRY(shkp) = TRUE */
     const eshkp = ESHK(shkp);
@@ -3752,7 +3780,7 @@ function um_dist(x, y, n) {
 async function home_shk(shkp, killkops) {
     const e = ESHK(shkp);
     if (!e) return;
-    await mnearto(shkp, e.shk?.x | 0, e.shk?.y | 0, true, RLOC_NOMSG);
+    await mnearto(shkp, (e.shk_x ?? e.shk?.x) | 0, (e.shk_y ?? e.shk?.y) | 0, true, RLOC_NOMSG);
     if (game.level?.flags) game.level.flags.has_shop = true;
     /* Kops cleanup is not represented as a shared JS helper; the native
        movement and shop bookkeeping are the observable portion here. */
@@ -4859,6 +4887,8 @@ function cost_per_charge(shkp, obj, altusage) {
 
 export function check_unpaid_usage(obj, altusage = false) {
     if (!obj?.unpaid || !(game.u?.ushops || '').length) return;
+    // C shk.c:5696-5698 — empty charged objects incur no usage fee.
+    if ((obj.spe | 0) <= 0 && OC_CHARGED[obj.otyp | 0]) return;
     const room = game.u.ushops.charCodeAt(0) | 0;
     const shkp = shop_keeper(room);
     if (!shkp || !inhishop(shkp)) return;

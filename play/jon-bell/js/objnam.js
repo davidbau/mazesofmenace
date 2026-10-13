@@ -50,7 +50,7 @@ import { s_suffix,
  * redeclare (js/uhitm.js:1319's local `P_BOW = 21` is skills.h's P_SLING and is
  * wrong — see the cross-file note in the task report). */
 import { NEUTRAL, ONAME, has_oname, BLINDED, P_BOW, P_SHURIKEN,
-         P_HAMMER, P_POLEARMS,
+         P_HAMMER, P_POLEARMS, MV_KNOWS_EGG,
          PL_PSIZ, OBJ_INVENT, ONAME_VIA_NAMING, ONAME_WISH, ONAME_GIFT,
          ONAME_VIA_DIP, ONAME_LEVEL_DEF, ONAME_BONES, ONAME_RANDOM,
          ONAME_KNOW_ARTI, ONAME_SKIP_INVUPD, SPE_LIM,
@@ -65,6 +65,7 @@ import { impossible_, maketrap, t_at, deltrap, reset_utrap } from './trap.js';
 import { feel_newsym, docrt } from './display.js';
 import { fire_damage_chain, water_damage_chain, pooleffects, switch_terrain, set_uinwater,
          waterbody_name, ice_descr } from './cmd.js';
+import { set_artifact_intrinsic } from './cmd.js';
 import { make_grave, del_engr_at, fix_wall_spines, count_level_features } from './mklev.js';
 import { recalc_block_point } from './vision.js';
 import { is_pool, is_pool_or_lava } from './look.js';
@@ -681,8 +682,8 @@ export function oname(obj, name, oflgs) {
         if (obj === game.uswapwep)
             throw new Error('UNPORTED-CALLEE: oname untwoweapon');
         /* activate warning if you've just named your weapon "Sting" */
-        if (obj === game.uwep)
-            throw new Error('UNPORTED-CALLEE: oname set_artifact_intrinsic');
+        if (obj === game.u.uwep)
+            set_artifact_intrinsic(obj, true, W_WEP_D); // C do_name.c:406-407
         /* if obj is owned by a shop, increase your bill */
         if (obj.unpaid)
             throw new Error('UNPORTED-CALLEE: oname alter_cost');
@@ -5244,7 +5245,7 @@ async function doname_base(obj, doname_flags) {
         } else if (otyp === EGG) {
             if (omndx !== NON_PM && omndx >= 0
                 && (known || _mvitals_knows_egg(omndx))) {
-                prefix += `${monPmname(permonstTemplate(omndx), NEUTRAL)} `;
+                prefix += `${monPmname(omndx, NEUTRAL)} `;
                 if ((obj.spe | 0) === 1) bp += ' (laid by you)';
             }
         } else if (otyp === MEAT_RING) {
@@ -5353,7 +5354,10 @@ async function doname_base(obj, doname_flags) {
     }
     return prefix + bp;
 }
-function _mvitals_knows_egg(_omndx) { return false; }
+/* C objnam.c:1530 — recognize eggs after learning their species by hatching. */
+function _mvitals_knows_egg(omndx) {
+    return !!((game.mvitals?.[omndx]?.mvflags | 0) & MV_KNOWS_EGG);
+}
 /* C you.h URIGHTY — !u.uhandedness (RIGHTHANDED == 0). */
 function _URIGHTY() { return !(game.u && game.u.uhandedness); }
 /* C obj.h:238/245 is_ammo / is_missile, off oc_skill (see js/u_init.js:1392). */

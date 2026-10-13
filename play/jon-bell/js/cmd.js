@@ -1,4 +1,5 @@
 import { menucolor_text } from './coloratt.js';
+import { HUNGER } from './const.js';
 import { displayLookWindow } from './look-window.js';
 import { impact_drop, obj_delivery } from './dokick.js';
 import { impossible as real_impossible } from './pline.js';
@@ -19,7 +20,7 @@ import { classifyTerrain } from './terrain-status.js';
 import { Is_earthlevel, RUN_TPORT, RUN_LEAP, RUN_CRAWL, LOW_PM, VANQ_ALPHA_SEP, VANQ_ALPHA_MIX, VANQ_MSTR_MNDX, VANQ_MCLS_LTOH, VANQ_MCLS_HTOL, VANQ_COUNT_H_L, VANQ_COUNT_L_H, In_quest, BASICENLIGHTENMENT, MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS, ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD, LL_DEBUG, I_SPECIAL } from './const.js';
 import { WC_PERM_INVENT, PARANOID_QUIT, G_GONE, G_EXTINCT, G_GENOD } from './const.js';
 import { GP_ALLOW_U } from './const.js';
-import { NUMMONS } from './pm.generated.js';
+import { NUMMONS, PM_ROGUE } from './pm.generated.js';
 import { IS_ROOM } from './const.js';
 import { GameMap, newobj, copy_you } from './game.js';
 import { MAXSPELL } from './spell.js';
@@ -33,7 +34,7 @@ import { paranoid_ynq, paranoid_query } from './paranoid.js';
 import { get_configfile } from './cfgfiles.js';
 import { get_feature_notice_ver } from './feature_alert.js';
 export { paranoid_ynq, paranoid_query } from './paranoid.js';
-import { visible_region_at, reg_damg, regions_list, region_hero_inside, REG_INSIDE_GAS_CLOUD, m_in_out_region } from './region.js';
+import { visible_region_at, poisoncloud_at, reg_damg, regions_list, region_hero_inside, REG_INSIDE_GAS_CLOUD, m_in_out_region } from './region.js';
 import { use_last_flush_snapshot, cls as display_cls, map_background, reglyph_darkroom, trap_glyph_char, newsym, newsym_force, flush_screen, pline, nh_sprintf, mon_visible, sensemon, docrt, canspotmon, canseemon, level_transition_capture_old_paint, level_transition_arrival_more, canspotself, _topl_record_join, force_more, topl_force_break_now, await_more_dismiss, await_topl_more_dismiss, await_menu_key, see_nearby_objects, terrain_glyph, _topl_visualLen, map_trap, map_engraving, _topl_merge_result, _topl_joins_snapshot, _topl_snapshot_result, _topl_stash_result, _topl_more_pages, _topline_more_pending, capture_painted_frame_with_status, capture_painted_frame, map_object, map_invisible, feel_location, unmap_object, feel_newsym, unmap_invisible, under_water, GLYPHCLS_INVIS, GLYPHCLS_SWALLOW, GLYPHCLS_OBJ, GLYPHCLS_MON, livelog_printf, update_lastseentyp, show_glyph_cell, GLYPHCLS_CMAP, GLYPHCLS_TRAP, GLYPHCLS_ENGR, display_self, glyph_is_this_trap, glyph_is_invisible_at, glyph_is_warning_at, last_flush_forced_cursor, topl_park_cursor, You_hear, You_see, getobj_never_mind, putmsghistory, warning_of as warning_of_real } from './display.js';
 // WRITE-ONLY route-attribution telemetry (inert unless NH_ROUTE_TELEMETRY=1 —
 import { routeTag } from './route_telemetry.js';
@@ -76,6 +77,8 @@ import { exercise, adjalign, acurr, adjattrib, C_ATTR_TO_DISP, attrmax, getAbase
 /* C artifact.c artilist[] columns + get_artifact()/spec_m2(), hosted in
  * js/attrib.js next to the spfx column that was already there. */
 import { get_artifact, ART_NONARTIFACT, spec_ability, spec_m2, arti_spfx, arti_cspfx, arti_defn_adtyp, arti_cary_adtyp, arti_inv_prop } from './attrib.js';
+import { ARTILIST, quest_info } from './objnam.js';
+import { ARTI_PROPS, ARTI_GIFT_ROLE } from './wizcmds.js';
 import { losexp } from './exper.js';
 import { build_window_screen, build_text_window_screen, money_cnt, tty_window_offx,
          menu_search_case, menu_search_getlin, pline_with_more,
@@ -184,7 +187,9 @@ import { P_BOW as _SL_P_BOW, P_CROSSBOW as _SL_P_CROSSBOW, P_SPEAR as _SL_P_SPEA
  * import so the next reader does not mistake the partial for the live body. */
 import { lookaround, end_running, avoid_moving_on_trap, avoid_moving_on_liquid, is_pool_or_lava, closed_door, may_dig, accessible,
          _dfeature_at as look_dfeature_at } from './look.js';
-import { corpse_floor_xname, doeat, getobj, morehungry, is_fainted, reset_faint, init_uhunger, start_tin, opentin, use_tin_opener, set_tin_variety, food_disappears } from './eat.js';
+import { floorfood, feel_cockatrice, corpse_floor_xname, doeat, getobj, morehungry, is_fainted, reset_faint, init_uhunger, start_tin, opentin, use_tin_opener, set_tin_variety, food_disappears } from './eat.js';
+import { Align2amask } from "./const.js";
+import { eaten_stat } from "./food_props.js";
 import { curse as curse_obj, unbless } from './mkobj.js';
 import { oc_nutrition } from './food_props.js';
 import { bones_include_name } from './bones.js';
@@ -195,7 +200,7 @@ export { inside_shop };
 import { search_special } from './mkroom.js';
 import { depth, dist2, distmin } from './hacklib.js';
 import { hmon, passive_obj, Some_Monnam, shade_miss, yelp as yelp_real, can_blow as can_blow_real } from './mhitm.js';
-import { killed, mon_nam_too, pronoun_gender, helpless } from './mhitm.js';
+import { killed, mon_nam_too, pronoun_gender, helpless, same_race } from './mhitm.js';
 import { objtyp_is_callable } from './mhitm.js';
 import { potionhit, djinni_from_bottle } from './potion.js';
 import { tamedog, sticks as sticks_real, unstuck, mdrop_special_objs, migrate_to_level } from './dog.js';
@@ -303,12 +308,14 @@ import { FAST as _FW_FAST, FROMFORM as _FW_FROMFORM,
 /* otyp / oclass ids read out of js/oc_name_data.js by name (objects.h is an
  * X-macro file, so these are not greppable in the C tree). */
 const _FW_AMULET_CLASS = 5, _FW_LUCKSTONE = 470, _FW_BOULDER = 475, _FW_SLIME_MOLD = 285;
-import { Tobjnam, ndemon } from './sit.js';
+import { Tobjnam, ndemon, lminion } from './sit.js';
+import { MM_EMIN } from './const.js';
+import { PM_EARTH_ELEMENTAL, PM_SHOPKEEPER, PM_GUARD, PM_PRIEST } from './pm.generated.js';
 /* js/cmd.js declares its OWN throwing `shop_keeper` stub at the light-source
  * block below (the same shadowing shape the get_obj_location note there
  * describes), so the real shk.c body has to come in under an alias. */
 import { obfree, sellobj, shop_keeper as shk_shop_keeper, inhishop as shk_inhishop, in_rooms as shk_in_rooms, add_damage as shk_add_damage, billable as shk_billable, pay_for_damage, onbill as shk_onbill, subfrombill as shk_subfrombill, alter_cost as shk_alter_cost, find_objowner as shk_find_objowner, shop_object as shk_shop_object, Hello as shk_Hello, add_to_billobjs as shk_add_to_billobjs } from './shk.js';
-import { stackobj } from './sp_lev.js';
+import { stackobj, find_level } from './sp_lev.js';
 import { shk_chat, dopay, growl, sellobj_state, block_entry, block_door, u_entered_shop, u_left_shop, IS_SHOP as IS_SHOP_ROOM, addtobill as shk_addtobill, get_cost_of_shop_item, is_unpaid as shk_is_unpaid, unpaid_cost as shk_unpaid_cost, check_unpaid_usage as shk_check_unpaid_usage, COST_CONTENTS as SHK_COST_CONTENTS, costly_spot as shk_costly_spot, currency as shk_currency, record_price_quote, append_price_quote, get_cost as shk_get_cost, contained_cost as shk_contained_cost, contained_gold as shk_contained_gold, donate_gold as shk_donate_gold, get_pricing_units as shk_get_pricing_units, delete_contents as shk_delete_contents } from './shk.js';
 import { m_unleash, keepdogs, losedogs, mon_catchup_elapsed_time, mon_arrive } from './dog.js';
 import { mon_has_amulet } from './mhitm.js';
@@ -373,7 +380,7 @@ import { P_NONE, P_UNSKILLED, P_SKILLED, P_ISRESTRICTED, P_BASIC, P_EXPERT,
 import { ARMOR_DATA } from './armor_data.js';
 import { attach_egg_hatch_timeout, obj_stop_timers, run_timers, stop_timer, spot_stop_timers,
          peek_timer as peek_timer_real, start_timer as start_timer_real } from './timeout.js';
-import { HATCH_EGG } from './const.js';
+import { HATCH_EGG, MV_KNOWS_EGG, NEUTRAL, ismnum } from './const.js';
 
 
 /* C ref: pline.c vpline() -> vsnprintf.  js/display.js:3124 pline(msg) takes a
@@ -11609,9 +11616,43 @@ export async function wiz_where() {
 }
 
 
+// C ref: dungeon.c:2098-2173 lev_by_name(), including annotation and branch lookup.
+function lev_by_name(nam) {
+    const g = game, uz = g.u.uz, dungeons = g._dungeons_full || g.dungeons;
+    const visited = lev => !!(g.level_info?.[ledger_no_cmd(lev)]?.flags & VISITED);
+    const inBranch = lev => lev.dnum === uz.dnum
+        || (uz.dnum === g.valley_level?.dnum && lev.dnum === g.medusa_level?.dnum)
+        || (uz.dnum === g.medusa_level?.dnum && lev.dnum === g.valley_level?.dnum);
+    nam = nam.toLowerCase();
+    const annotations = Object.entries(g._level_custom || {}).map(([key, text]) => {
+        const [dnum, dlevel] = key.split(':').map(Number);
+        return { dnum, dlevel, text };
+    }).sort((a, b) => a.dnum - b.dnum || a.dlevel - b.dlevel);
+    let dlev = annotations.find(lev => lev.text && lev.text.toLowerCase() === nam);
+    if (!dlev) {
+        nam = nam.replace(/^the /, '');
+        if (nam.endsWith(' level') && nam.indexOf(' level') === nam.length - 6) nam = nam.slice(0, -6);
+        if (nam === 'gehennom' || nam === 'hell')
+            nam = uz.dnum === g.tower_dnum ? " to Vlad's tower".toLowerCase() : 'valley';
+        else if (nam === 'delphi') nam = 'oracle';
+        dlev = (g._sp_levchn || []).find(lev => lev.proto.toLowerCase() === nam)?.dlevel;
+    }
+    if (dlev) return inBranch(dlev) && (wizard() || visited(dlev)) ? depth(dlev) : 0;
+    const findBranch = name => (g._dungeon_branches || []).find(br => {
+        const dname = dungeons[br.end2.dnum].dname.toLowerCase();
+        return dname === name || (dname.startsWith('the ') && dname.slice(4) === name);
+    });
+    let br = findBranch(nam);
+    const to = nam.indexOf(' to ');
+    if (!br && to >= 0) br = findBranch(nam.slice(to + 4));
+    if (!br || (!wizard() && !(visited(br.end1) && visited(br.end2)))) return 0;
+    dlev = br.end1.dnum === uz.dnum ? br.end1 : br.end2;
+    return inBranch(dlev) ? depth(dlev) : 0;
+}
+
 // C ref: teleport.c:1165 level_tele() — the level-teleport body.
 // Ported scope: wizard-mode path (wizard=TRUE → Teleport_control||wizard branch)
-// with a numeric buf (e.g. "2") OR the '?' overview-menu path (print_dungeon).
+// with a number, a special-level name, or the '?' menu (print_dungeon).
 // The non-wizard involuntary path, confusion, and "*" random paths are stubbed
 // The wizard branch is: getlin prompt → parse → get_level → schedule_goto, or
 // for "?": print_dungeon → schedule_goto(newlevel) with force_dest.
@@ -11726,7 +11767,27 @@ export async function level_tele() {
             }
             // C teleport.c:1248 — (newlev = lev_by_name(buf)) == 0 → newlev = atoi(buf)
             // lev_by_name returns 0 for a numeric string.
-            newlev = parseInt(buf, 10) || 0;
+            newlev = lev_by_name(buf) || parseInt(buf, 10) || 0;
+            // C dungeon.c:2116-2150: lev_by_name's special-level name arm.
+            let nam = buf.replace(/^the /i, '');
+            const suffix = nam.toLowerCase().indexOf(' level');
+            if (suffix >= 0 && suffix === nam.length - 6) nam = nam.slice(0, suffix);
+            if (/^(gehennom|hell)$/i.test(nam))
+                nam = u.uz.dnum === g.tower_dnum ? " to Vlad's tower" : 'valley';
+            else if (/^delphi$/i.test(nam))
+                nam = 'oracle';
+            const slev = find_level(nam);
+            newlev = 0;
+            if (slev) {
+                const dest = slev.dlevel;
+                const sameBranch = dest.dnum === u.uz.dnum
+                    || (u.uz.dnum === g.valley_level?.dnum && dest.dnum === g.medusa_level?.dnum)
+                    || (u.uz.dnum === g.medusa_level?.dnum && dest.dnum === g.valley_level?.dnum);
+                if (sameBranch && (wizard() || (g.level_info?.[ledger_no_cmd(dest)]?.flags & VISITED)))
+                    newlev = depth(dest);
+            }
+            // C teleport.c:1248-1249: use atoi only when name lookup returns 0.
+            if (!newlev) newlev = parseInt(buf, 10) || 0;
         } while (!newlev && !(buf.length > 0 && (buf[0] === '-' ? (buf.length > 1 && buf[1] >= '0' && buf[1] <= '9') : (buf[0] >= '0' && buf[0] <= '9'))) && trycnt < 10);
         // C teleport.c:1254 — if (newlev == 0) { if trycnt>=10 goto random; ynq "Go to Nowhere" ... }
         if (newlev === 0 && trycnt >= 10)
@@ -13790,6 +13851,19 @@ async function dodiscovered() {
         ct++;
         lines.push(disco_fmt_uniq(utyp));
     }
+    /* C o_init.c:814; artifact.c:1147-1176, with hack_artifacts():88-105. */
+    for (const [i, art] of (g.artidisco || []).entries()) {
+        if (!art) break;
+        if (i === 0) lines.push('\x1b[7mArtifacts\x1b[0m');
+        const { name, otyp } = ARTILIST[art - 1];
+        let al = ARTI_PROPS[art].al;
+        if ((al !== A_NONE && ARTI_GIFT_ROLE[art] === g.flags.initrole)
+            || art === quest_info(0))
+            al = [A_LAWFUL, A_NEUTRAL, A_CHAOTIC][g.flags.initalign];
+        const algnstr = al === A_NONE ? 'non-aligned' : align_str(al);
+        lines.push(`  ${name} [${algnstr} ${simple_typename(otyp)}]`);
+        ct++;
+    }
     for (const oclass of classes) {
         const list = disco[oclass];
         if (!list || list.length === 0)
@@ -14584,6 +14658,12 @@ export async function doname_body(obj, hand, with_price) {
             /* C's corpse_xname() with CXN_ARTICLE has already supplied the
              * article, so the fixup below must not add a second one. */
             corpseNamedPrefix = true;
+        } else if (otyp === 266 /* EGG */ && ismnum(obj.corpsenm)
+                   && (known || ((game.mvitals?.[obj.corpsenm]?.mvflags | 0)
+                                 & MV_KNOWS_EGG))) {
+            // C objnam.c:1529-1534: species knowledge also identifies eggs.
+            prefix += `${monPmname(obj.corpsenm, NEUTRAL)} `;
+            if (spe === 1) typeName += ' (laid by you)';
         }
     }
     /* ── article fixup (objnam.c:1684-1690): "a "/"an " by following sound ── */
@@ -20494,10 +20574,12 @@ export async function doapply() {
             } else {
                 g.unweapon = true;
             }
-            /* C wield.c:206-225 ready_weapon → prinv(new uwep) "weapon in right
-             * hand"; doswapweapon:489 → prinv(uswapwep) "alternate weapon; not
-             * wielded".  Both queued onto the tty topline, paged with --More--. */
-            const msg1 = `${plainMsg ?? _prinv_line(selObj, 'weapon in right hand')}--More--`;
+            /* C wield.c:225 prinv() → objnam.c:1578-1595: derive the wielded
+             * phrase from body_part(HAND), bimanual(), and URIGHTY, just as
+             * ready_weapon does for an explicitly wielded weapon. */
+            const hand = (u.uhandedness === RIGHT_HANDED) ? 'right' : 'left';
+            const msg1 = `${plainMsg ?? (_weapon_prinv_line(selObj,
+                _wep_worn_phrase(selObj, hand)) + '.')}--More--`;
             /* C ref: getline.c:230-257 xwaitforspace("\033 ") — only space/CR/LF/
              * ESC page a more(); any other key is consumed with a bell and the
              * page stays up.  Both wield pages were bare nhgetch()es. */
@@ -22504,6 +22586,11 @@ function _oc_charged_prinv(obj) {
 // Sets _screen_output with updated row 0, cursor at col (msg+.--More--).length-1, row 0.
 async function _topline_more(msg) {
     const g = game;
+    /* C ref: topl.c more() — when the line leaves no room for "--More--" on its
+     * row (strlen + 8 > CO-1), more() parks it on the next row (cw->curx > CO-8
+     * -> tty_curs(1, cury+1)); the splice below would instead wrap the text. */
+    if (_topl_visualLen(msg + '.') + 8 > 79)
+        return await force_more(msg + '.');
     const full = msg + '.--More--';
     const _show = async () => {
         g._pending_message = full;
@@ -22679,7 +22766,8 @@ async function _doswapweapon() {
 // (dowield) set themselves.  RNG-neutral wrt the swap itself.
 async function _doswapweapon_cmd() {
     const g = game;
-    const _swapRes = await _doswapweapon();
+    // wield.c:457-498 incl. the cantwield/welded guards (ECMD_FAIL = no turn).
+    const _swapRes = (await doswapweapon()) & ECMD_TIME;
     // C ref: wield.c:497 — doswapweapon returns ready_weapon()'s result, which is
     // ECMD_OK only on the already-empty-handed arm.
     g.context = g.context || {};
@@ -23570,12 +23658,18 @@ export async function build_enlightenment_lines(final = 0, mode = BASICENLIGHTEN
     if (riding) lines.push(_you_are(`riding ${steedname}`, ''));
     /* C insight.c:981-989 — "other movement situations that hero should always
      * know".  youtoo is You_ plus "and <steed> " when riding (insight.c:979).
-     * Lev_at_will is HLevitation & I_SPECIAL (youprop.h). */
+     * Lev_at_will (youprop.h:242-245) permits blessed-potion or invoked-artifact
+     * levitation only when no other intrinsic or extrinsic source holds it. */
     {
         const youtoo = riding ? `You and ${steedname} ` : 'You ';
         const levp = game.u?.uprops?.[LEVITATION];
         if (_Levitation()) {
-            if (((levp?.intrinsic | 0) & I_SPECIAL) && (mode & MAGICENLIGHTENMENT))
+            const hlev = levp?.intrinsic | 0;
+            const elev = levp?.extrinsic | 0;
+            const levAtWill = ((hlev & I_SPECIAL) !== 0 || (elev & W_ARTI_FW) !== 0)
+                && (hlev & ~(I_SPECIAL | TIMEOUT)) === 0
+                && (elev & ~W_ARTI_FW) === 0;
+            if (levAtWill && (mode & MAGICENLIGHTENMENT))
                 lines.push(_you_are('levitating, at will', ''));
             else
                 lines.push(_enlght_line(youtoo, _enl_tense('are ', 'were '),
@@ -23655,7 +23749,8 @@ export async function build_enlightenment_lines(final = 0, mode = BASICENLIGHTEN
                 kind = 'deliberately';
             else
                 kind = 'temporarily';
-            let suffix = await _from_what(BLINDED);
+            // C insight.c:1070-1071 omits the source for eyeless forms.
+            let suffix = _haseyes(g.youmonst?.data) ? await _from_what(BLINDED) : '';
             /* insight.c:1067 — the wizard timeout annotation is the
              * parenthesized suffix after "blind", not part of the adjective
              * before it (C: "temporarily blind (98)"). */
@@ -23740,6 +23835,11 @@ export async function build_enlightenment_lines(final = 0, mode = BASICENLIGHTEN
                 ' asleep uncontrollably', _buf));
         }
     }
+    /* C insight.c:1189-1194 — rapid hunger precedes the nutrition status. */
+    if ((_hprop(HUNGER) || _eprop(HUNGER))
+        && ((mode & MAGICENLIGHTENMENT) || _enl_cause_known(HUNGER)))
+        lines.push(_enlght_line('You ', _enl_tense('hunger', 'hungered'),
+            ' rapidly', await _from_what(HUNGER)));
     /* hunger (insight.c:1166) — uhs 1 (NOT_HUNGRY) ⇒ "aren't hungry". */
     lines.push(_enl_hunger_line(u.uhs | 0));
     /* encumbrance (insight.c:1192-1247).  Both arms are ported; the wizard
@@ -24218,6 +24318,30 @@ async function _attributes_enlightenment() {
     }
     if (on(TELEPAT)) out.push(_you_are(`telepathic${(await _from_what(TELEPAT))}`, ''));
     if (on(WARNING)) out.push(_you_are(`warned${(await _from_what(WARNING))}`, ''));
+    /* C insight.c:1585-1609 — independent object, polyform and species warnings. */
+    if (Warn_of_mon_prop(u)) {
+        const wt = g.context?.warntype || {};
+        /* C monflag.h:126-131 */
+        const M2_HUMAN = 0x08, M2_ELF = 0x10, M2_ORC = 0x80, M2_DEMON = 0x100;
+        if (wt.obj) {
+            const whom = (wt.obj & M2_ORC) ? 'orcs'
+                : (wt.obj & M2_ELF) ? 'elves'
+                : (wt.obj & M2_DEMON) ? 'demons' : 'something';
+            out.push(_you_are(`aware of the presence of ${whom}`, await _from_what(WARN_OF_MON)));
+        }
+        if (wt.polyd) {
+            const whom = ((wt.polyd & (M2_HUMAN | M2_ELF)) === (M2_HUMAN | M2_ELF))
+                ? 'humans and elves' : (wt.polyd & M2_HUMAN) ? 'humans'
+                : (wt.polyd & M2_ELF) ? 'elves' : (wt.polyd & M2_ORC) ? 'orcs'
+                : (wt.polyd & M2_DEMON) ? 'demons' : 'certain monsters';
+            out.push(_you_are(`aware of the presence of ${whom}`, ''));
+        }
+        const warnspecies = wt.speciesidx ?? NON_PM;
+        if (warnspecies >= LOW_PM && warnspecies < NUMMONS) {
+            const whom = makeplural_objnam(monPmnamesPack.pmnames[warnspecies][2 /* NEUTRAL */]);
+            out.push(_you_are(`aware of the presence of ${whom}`, await _from_what(WARN_OF_MON)));
+        }
+    }
     if (on(WARN_UNDEAD)) out.push(_you_are(`warned of undead${(await _from_what(WARN_UNDEAD))}`, ''));
     if (on(SEARCHING)) out.push(_you_have(`automatic searching${(await _from_what(SEARCHING))}`, ''));
     if (on(CLAIRVOYANT)) out.push(_you_are(`clairvoyant${(await _from_what(CLAIRVOYANT))}`, ''));
@@ -24265,6 +24389,26 @@ async function _attributes_enlightenment() {
     /* C insight.c:1767-1771 — physical attributes. */
     if (on(REGENERATION)) out.push(_enlght_line('You regenerate', _enl_tense('', 'd'), '', (await _from_what(REGENERATION))));
     if (on(SLOW_DIGESTION)) out.push(_you_have(`slower digestion${(await _from_what(SLOW_DIGESTION))}`, ''));
+    /* C insight.c:1785-1799 — non-armor defense from protection sources. */
+    const protection = prop(PROTECTION);
+    if (u.uspellprot || protection?.intrinsic || protection?.extrinsic) {
+        const RIN_PROTECTION = 178, AMULET_OF_GUARDING = 210;
+        let prot = 0;
+        if (u.uleft?.otyp === RIN_PROTECTION) prot += u.uleft.spe | 0;
+        if (u.uright?.otyp === RIN_PROTECTION) prot += u.uright.spe | 0;
+        if (u.uamul?.otyp === AMULET_OF_GUARDING) prot += 2;
+        if ((protection?.intrinsic | 0) & INTRINSIC) prot += u.ublessed | 0;
+        prot += u.uspellprot | 0;
+        if (prot) {
+            /* C insight.c:160-199 enlght_combatinc("defense", prot, final). */
+            const absamt = Math.trunc(Math.abs(prot) * 2 / 3);
+            const modif = absamt <= 3 ? 'small' : absamt <= 6 ? 'moderate'
+                : absamt <= 12 ? 'large' : 'huge';
+            let buf = `${an(modif)} defense ${prot >= 0 ? 'bonus' : 'penalty'}`;
+            if (_enl_final || wizard()) buf += ` (${prot > 0 ? '+' : ''}${prot})`;
+            out.push(_you_have(buf, ''));
+        }
+    }
     const armpro = Math.min(magic_negation(g.youmonst || { m_id: 1 }) | 0, 3);
     if (armpro > 0)
         out.push(_you_are(['', 'warded', 'guarded', 'protected'][armpro], ''));
@@ -24480,8 +24624,222 @@ async function dosacrifice() {
         await pline('You are too impaired to perform the rite.');
         return ECMD_OK;
     }
-    /* NOT PORTED: pray.c:1868-2200, the sacrifice proper. */
-    return ECMD_OK;
+    /* pray.c:1868 */
+    const c0 = _levlAt(u.ux | 0, u.uy | 0);
+    const highaltar = ((((c0 && (c0.altarmask ?? c0.flags)) | 0) & AM_SANCTUM) !== 0);
+    const altaralign = _a_align(u.ux, u.uy);
+    /* pray.c:1870 */
+    const otmp = await floorfood('sacrifice', 1);
+    if (!otmp)
+        return ECMD_OK;
+    if ((otmp.otyp | 0) === 213 /* AMULET_OF_YENDOR */) {
+        if (!highaltar) {
+            await _offer_too_soon(altaralign);
+            return ECMD_TIME;
+        }
+        g_uncomputable_pray('offer_real_amulet');
+        return ECMD_TIME;
+    }
+    if ((otmp.otyp | 0) === 212 /* FAKE_AMULET_OF_YENDOR */) {
+        if (!highaltar && !otmp.known) {
+            await _offer_too_soon(altaralign);
+            return ECMD_TIME;
+        }
+        g_uncomputable_pray('offer_fake_amulet');
+        return ECMD_TIME;
+    }
+    if ((otmp.otyp | 0) === THIT_CORPSE) {
+        await _offer_corpse(otmp, highaltar, altaralign);
+        return ECMD_TIME;
+    }
+    await pline('Nothing happens.');
+    return ECMD_TIME;
+}
+
+/* C ref: pray.c:1479 offer_too_soon(altaralign) */
+async function _offer_too_soon(altaralign) {
+    const u = game.u;
+    if (altaralign === A_NONE && Inhell()) {
+        await _gods_upset(A_NONE);
+        return;
+    }
+    await pline(`You feel ${(altaralign === (u.ualign.type | 0))
+                   ? 'an urge to return to the surface' : 'ashamed'}.`);
+}
+
+/* C ref: pray.c:1446 consume_offering(otmp) (non-hallucinating arms). */
+async function _consume_offering(otmp) {
+    const u = game.u;
+    const t = u.ualign.type | 0;
+    if (_blind_sac() && t === A_LAWFUL)
+        await pline('Your sacrifice disappears!');
+    else
+        await pline(`Your sacrifice is consumed in a ${t === A_LAWFUL ? 'flash of light'
+                   : t === A_NEUTRAL ? 'plume of smoke' : 'burst of flame'}!`);
+    let carried = false;
+    for (let o = game.invent; o; o = o.nobj) if (o === otmp) { carried = true; break; }
+    if (carried) await useup(otmp);
+    else await useupf(otmp, 1);
+    exercise(A_WIS, true);
+}
+function _blind_sac() { return !!((game.u?.uprops?.[BLINDED_SAC]?.intrinsic | 0) || (game.u?.uprops?.[BLINDED_SAC]?.extrinsic | 0)); }
+const BLINDED_SAC = 15; /* prop.h BLINDED */
+
+/* C ref: pray.c:1839 sacrifice_value(otmp) */
+function _sacrifice_value(otmp) {
+    const row = monsPack.mons[otmp.corpsenm | 0];
+    let value = 0;
+    if ((otmp.corpsenm | 0) === 6 /* PM_ACID_BLOB */
+        || ((game.moves | 0) <= (_peek_age_sac(otmp) + 50))) {
+        value = (row[2] | 0) + 1;
+        if (otmp.oeaten) value = eaten_stat(value, otmp);
+    }
+    return value;
+}
+function _peek_age_sac(otmp) {
+    let retval = otmp.age | 0;
+    if (otmp.on_ice) retval += Math.trunc(((game.moves | 0) - retval) / 2);
+    return retval;
+}
+
+/* C ref: pray.c:1899 eval_offering(otmp, altaralign) */
+async function _eval_offering(otmp, altaralign) {
+    const u = game.u;
+    let value = _sacrifice_value(otmp);
+    if (!value) return 0;
+    const row = monsPack.mons[otmp.corpsenm | 0];
+    const f2 = row[7] >>> 0;
+    if ((f2 & _FE_M2_UNDEAD) !== 0) {
+        if ((u.ualign.type | 0) !== A_CHAOTIC
+            || ((otmp.corpsenm | 0) === PM_WRAITH && (u.uconduct?.unvegetarian | 0)))
+            value += 1;
+    } else if ((row[0] | 0) === THIT_S_UNICORN && (f2 & THIT_M2_JEWELS) !== 0) {
+        const unicalign = Math.sign(row[4] | 0);
+        if (unicalign === altaralign) {
+            await pline(`Such an action is an insult to ${unicalign === A_CHAOTIC ? 'chaos' : unicalign ? 'law' : 'balance'}!`);
+            await adjattrib(A_WIS, -1, true);
+            return -1;
+        } else if ((u.ualign.type | 0) === altaralign) {
+            g_uncomputable_pray('eval_offering: coaligned unicorn');
+            return 0;
+        } else if (unicalign === (u.ualign.type | 0)) {
+            u.ualign.record = -1;
+            value = 1;
+        } else {
+            value += 3;
+        }
+    }
+    return value;
+}
+
+/* C ref: pray.c:1590 offer_negative_valued */
+async function _offer_negative_valued(highaltar, altaralign) {
+    if (altaralign !== (game.u.ualign.type | 0) && highaltar)
+        g_uncomputable_pray('desecrate_altar');
+    else
+        await _gods_upset(altaralign);
+}
+
+/* C ref: pray.c:1666 offer_different_alignment_altar(otmp, altaralign) */
+async function _offer_different_alignment_altar(otmp, altaralign) {
+    const u = game.u;
+    /* ugod_is_angry() = (u.ualign.record < 0) */
+    if ((u.ualign.record | 0) < 0 || (altaralign === A_NONE && Inhell())) {
+        g_uncomputable_pray('offer_different_alignment_altar: conversion/rejection');
+        return;
+    }
+    await _consume_offering(otmp);
+    await pline(`You sense a conflict between ${u_gname()} and ${a_gname()}.`);
+    if (rn2(8 + (u.ulevel | 0)) > 5) {
+        await pline(`You feel the power of ${u_gname()} increase.`);
+        exercise(A_WIS, true);
+        _change_luck(1);
+        const shrine = _on_shrine();
+        const c = _levlAt(u.ux | 0, u.uy | 0);
+        if (c) c.altarmask = Align2amask(u.ualign.type | 0) | (shrine ? AM_SHRINE : 0);
+        newsym(u.ux, u.uy);
+        if (!_blind_sac())
+            await pline(`The altar glows ${(u.ualign.type | 0) === A_LAWFUL ? 'white'
+                        : (u.ualign.type | 0) ? 'black' : 'gray'}.`);
+        if (rnl(u.ulevel | 0) > 6 && (u.ualign.record | 0) > 0
+            && rnd(u.ualign.record | 0) > Math.trunc(3 * LUCKMAX_PRAY * 2 / 4))
+            g_uncomputable_pray('summon_minion');
+    } else {
+        await pline(`Unluckily, you feel the power of ${u_gname()} decrease.`);
+        _change_luck(-1);
+        exercise(A_WIS, false);
+        if (rnl(u.ulevel | 0) > 6 && (u.ualign.record | 0) > 0
+            && rnd(u.ualign.record | 0) > Math.trunc(7 * LUCKMAX_PRAY * 2 / 8))
+            g_uncomputable_pray('summon_minion');
+    }
+}
+
+/* C ref: pray.c:1936-2052 offer_corpse — scoped; the same-race / tame /
+ * high-altar / coaligned-reward arms record g_uncomputable_pray. */
+async function _offer_corpse(otmp, highaltar, altaralign) {
+    const u = game.u;
+    u.uconduct = u.uconduct || {};
+    u.uconduct.gnostic = (u.uconduct.gnostic | 0) + 1;
+    await feel_cockatrice(otmp, true);
+    const row = monsPack.mons[otmp.corpsenm | 0];
+    const ir = (game.flags?.initrace ?? 0) | 0;
+    const selfmask = [0x8, 0x10, 0x20, 0x40, 0x80][ir] ?? 0;
+    if (((row[7] >>> 0) & selfmask) !== 0) {
+        g_uncomputable_pray('sacrifice_your_race');
+        return;
+    }
+    let value = await _eval_offering(otmp, altaralign);
+    if (value === 0) {
+        await pline('Nothing happens.');
+        return;
+    }
+    if (value < 0) {
+        await _offer_negative_valued(highaltar, altaralign);
+        return;
+    }
+    if (altaralign !== (u.ualign.type | 0) && highaltar) {
+        g_uncomputable_pray('desecrate_altar');
+        return;
+    }
+    if ((u.ualign.type | 0) !== altaralign) {
+        await _offer_different_alignment_altar(otmp, altaralign);
+        return;
+    }
+    const MAXVALUE = 24;
+    await _consume_offering(otmp);
+    const hallu = _uprop_active('HALLUC');
+    if (u.ugangr | 0) {
+        const saved_anger = u.ugangr | 0;
+        u.ugangr = Math.max(0, saved_anger - Math.trunc((value * ((u.ualign.type | 0) === A_CHAOTIC ? 2 : 3)) / MAXVALUE));
+        if ((u.ugangr | 0) !== saved_anger) {
+            if (u.ugangr | 0) {
+                await pline(`${u_gname()} seems ${hallu ? 'groovy' : 'slightly mollified'}.`);
+                if ((u.uluck | 0) < 0) _change_luck(1);
+            } else {
+                await pline(`${u_gname()} seems ${hallu ? 'cosmic (not a new fact)' : 'mollified'}.`);
+                if ((u.uluck | 0) < 0) u.uluck = 0;
+            }
+        } else await pline(hallu ? 'The gods seem tall.' : 'You have a feeling of inadequacy.');
+    } else if ((u.ualign.record | 0) < 0) { /* ugod_is_angry() */
+        if (value > MAXVALUE) value = MAXVALUE;
+        if (value > -(u.ualign.record | 0)) value = -(u.ualign.record | 0);
+        adjalign(value);
+        await pline('You feel partially absolved.');
+    } else if ((u.ublesscnt | 0) > 0) {
+        const saved_cnt = u.ublesscnt | 0;
+        u.ublesscnt = Math.max(0, saved_cnt - Math.trunc((value * ((u.ualign.type | 0) === A_CHAOTIC ? 500 : 300)) / MAXVALUE));
+        if ((u.ublesscnt | 0) !== saved_cnt) {
+            if (u.ublesscnt | 0) {
+                await pline(hallu ? 'You realize that the gods are not like you and I.' : 'You have a hopeful feeling.');
+                if ((u.uluck | 0) < 0) _change_luck(1);
+            } else {
+                await pline(hallu ? 'Overall, there is a smell of fried onions.' : 'You have a feeling of reconciliation.');
+                if ((u.uluck | 0) < 0) u.uluck = 0;
+            }
+        }
+    } else {
+        g_uncomputable_pray('offer_corpse: coaligned bestow_artifact/luck');
+    }
 }
 
 /* C ref: pray.c:105-107 — on_altar()/a_align(x,y) for the hero's cell. */
@@ -25088,7 +25446,7 @@ function num_genocides() {
     const G_GENOD = 0x02;
     const vitals = game.mvitals || [];
     let n = 0;
-    for (let i = LOW_PM; i < vitals.length; i++)
+    for (let i = LOW_PM; i < NUMMONS; i++)
         if ((vitals[i]?.mvflags | 0) & G_GENOD) n++;
     return n;
 }
@@ -27536,9 +27894,7 @@ async function _god_zaps_you(respGod) {
         g_uncomputable_pray('god_zaps_you: summon_minion tail');
 }
 
-/* C ref: pray.c:704 angrygods(resp_god) — the god's displeasure response.
- * Cases 0-5 are ported; case 6 (unless Punished), cases 7-8, and default still
- * require the source helpers summon_minion/god_zaps_you/punish. */
+/* C ref: pray.c:704 angrygods(resp_god) — the god's displeasure response. */
 async function _angrygods(respGod) {
     const u = game.u || (game.u = {});
     u.ublessed = 0;                          /* lose divine protection */
@@ -27600,12 +27956,30 @@ async function _angrygods(respGod) {
             if (rn2(2) || !(await attrcurse()))
                 await rndcurse();
             break;
-        default:
-            if (roll === 7 || roll === 8) {
-                /* cases 7-8 need summon_minion (unported) */
-                g_uncomputable_pray(`angrygods case ${roll}/${maxanger}`);
-                break;
+        case 7:
+        case 8: {
+            /* C pray.c:760-772; minion.c:198-265 summon_minion(respGod, FALSE). */
+            await godvoice(respGod, null);
+            SetVoice(null, 0, 80, 0 /* voice_deity */);
+            await verbalize("Thou durst %s me?", _on_altar() && _a_align(u.ux, u.uy) !== respGod ? "scorn" : "call upon");
+            await pline(`"Then die, ${(_hero_youmonst()?.data?.mlet | 0) === S_HUMAN ? "mortal" : "creature"}!"`);
+            const mnum = respGod === A_LAWFUL ? lminion() : respGod === A_NEUTRAL
+                ? [PM_AIR_ELEMENTAL, PM_FIRE_ELEMENTAL, PM_EARTH_ELEMENTAL, PM_WATER_ELEMENTAL][rn2(4)] : ndemon(respGod);
+            if (mnum !== NON_PM) {
+                const emin = ![PM_SHOPKEEPER, PM_GUARD, PM_PRIEST, PM_HIGH_PRIEST].includes(mnum);
+                const mon = await mklev_makemon(permonstTemplate(mnum), u.ux, u.uy, MM_NOMSG | (emin ? MM_EMIN : 0));
+                if (mon) {
+                    if (emin) {
+                        mon.isminion = 1;
+                        _fl_EMIN(mon).min_align = respGod;
+                        _fl_EMIN(mon).renegade = false;
+                    }
+                    mon.mpeaceful = false; /* C deliberately does not call set_malign. */
+                }
             }
+            break;
+        }
+        default:
             /* C pray.c:792-795 */
             await godvoice(respGod, "Thou hast angered me.");
             await _god_zaps_you(respGod);
@@ -29008,6 +29382,17 @@ function _an(s) {
     if (!s) return s;
     const c = s[0].toLowerCase();
     return ('aeiou'.includes(c) ? 'an ' : 'a ') + s;
+}
+/* C insight.c:267-287 — known worn sources; wielded items do not qualify. */
+function _enl_cause_known(propindx) {
+    const mask = W_ARMOR | W_ACCESSORY;
+    for (let obj = game.invent; obj; obj = obj.nobj) {
+        if (!(obj.owornmask & mask)) continue;
+        if (MKOBJ_OC_OPROP[obj.otyp] === propindx
+            && game._oc_name_known?.[obj.otyp] && obj.dknown)
+            return true;
+    }
+    return false;
 }
 // C ref: eat.c hu_stat[] + insight.c:1172 — hunger status line.
 function _enl_hunger_line(uhs) {
@@ -31177,6 +31562,7 @@ async function _look_here_pile(objCnt = null, pickedSome = false) {
         if (kept)
             g._topl_sticky = kept;
     }
+        g._topl_sticky = _toplUnderWindow.slice(0, Math.max(0, WIN_COL - 2));
 }
 
 async function _dolook() {
@@ -31930,6 +32316,7 @@ async function _pickup_lift_list(pickOrder, _oldcap) {
                 if (th) th.nexthere = obj.nexthere ?? null;
             }
             obj.where = 0; /* OBJ_FREE — now in hero's inventory */
+            newsym(ux, uy);
             /* C pickup.c:1920-1933 — with the object extracted, bill it before
              * addinv() (C's own comment: "for shop items, addinv() needs to be
              * after addtobill() so that object merger can take otmp->unpaid into
@@ -32135,10 +32522,10 @@ async function _pickup_lift_list(pickOrder, _oldcap) {
                         _result_append_join(game, line);
                     }
                 } else {
-                    const cn0 = _drop_doname(obj) ?? _pile_doname(obj)
-                        ?? corpse_floor_xname(obj)
-                        ?? _look_here_doname_generic(obj);
-                    const cn = cn0 ? cn0 + (await _doname_price_tail(obj, false)) : cn0;
+                    /* C invent.c:2924 xprname -> doname: include equipment
+                     * suffixes after addinv fills an empty quiver, as well
+                     * as the unpaid tail supplied by doname itself. */
+                    const cn = await doname(obj);
                     if (cn && obj.invlet && (obj.oclass | 0) !== OCLASS_COIN) {
                         const line = `${_pickup_prinv_prefix('lifting')}${String.fromCharCode(obj.invlet | 0)} - ${cn}.`;
                         _lastPrinvLine = line;
@@ -32744,8 +33131,8 @@ async function dispatch_command(command, outcome = {}, queued = false) {
         // cantwield / welded not yet ported; default to the swap path (ECMD_TIME),
         /* wield.c:497 returns ready_weapon()'s result, which is ECMD_OK when the
          * hero was ALREADY empty-handed and there was no secondary to wield. */
-        const _swapRes = await _doswapweapon();
-        game.context.move = _swapRes | 0;
+        const _swapRes = (await doswapweapon()) & ECMD_TIME;
+        game.context.move = _swapRes;
     }
         return true;
     case "dotwoweapon": {
@@ -35788,6 +36175,8 @@ function self_lookat() {
         || _i(DETECT_MONSTERS) || _e(DETECT_MONSTERS);
     let buf = `${_invis && (_senseself || !_blind) ? 'invisible ' : ''}`
         + `${_self_lookat_base()} called ${game.plname || ''}`;
+    if (visible_region_at(game.u?.ux | 0, game.u?.uy | 0) !== null)
+        buf += _mhidden_region_tail(game.u?.ux | 0, game.u?.uy | 0);
     if (_st_Punished()) {
         const uball = game.u?.uball || null;
         buf += `, chained to ${uball ? _ansimpleoname(uball) : 'nothing?'}`;
@@ -35867,12 +36256,27 @@ function look_at_monster(mtmp, x, y) {
             t.tseen = 1; /* C: newsym lets you know of the trap */
         }
     }
-    if (mtmp.mundetected || M_AP_TYPE(mtmp))
+    if (mtmp.mundetected || M_AP_TYPE(mtmp) || visible_region_at(x, y) !== null)
         buf += mhidden_description(mtmp, x, y);
     return buf;
 }
 
 function mhidden_description(mon, x, y) {
+    /* C pager.c:57-140 — the MHID_REGION tail is applied to outbuf after the
+     * whole if/else chain, so it follows every arm, including the hidden ones. */
+    return _mhidden_arms(mon, x, y) + _mhidden_region_tail(x, y);
+}
+
+/* C ref: pager.c:262-279 — `if ((reg = visible_region_at(x, y)) != 0 && ...)`
+ * with force_region set by MHID_REGION, so the distu() <= r*(r+1) test is
+ * short-circuited away.  poison_gas is the S_poisoncloud glyph test on reg. */
+function _mhidden_region_tail(x, y) {
+    if (visible_region_at(x, y) === null)
+        return '';
+    return poisoncloud_at(x, y) ? ', in a cloud of poison gas' : ', in a cloud of vapor';
+}
+
+function _mhidden_arms(mon, x, y) {
     const apType = M_AP_TYPE(mon);
     /* C pager.c:71-73 — remembered glyph, not glyph_at(). */
     const loc = _levlAt(x, y);
@@ -37343,12 +37747,8 @@ async function domove_fight_empty(x, y, dx, dy) {
     // C hack.c:2260-2262 — boulder = sobj_at(BOULDER, x, y).  This was the
     // but it is the call C makes, so make it.
     //
-    // C hack.c:2264-2267 also retargets a *displayed* statue —
-    //   if (glyph_is_statue(glyph) || (Hallucination && glyph_is_monster(glyph)))
-    //       boulder = sobj_at(STATUE, x, y);
-    // JS has no glyph_is_statue; the remembered-glyph class is the equivalent
-    // discriminator (map_object stores a GLYPHCLS_OBJ glyph for a statue, and a
-    // hallucinated monster is GLYPHCLS_MON).
+    // C hack.c:2266-2268 tests glyph_at(), not hero memory or any object
+    // glyph: another object atop a statue hides it from the attack.
     //
     // C hack.c:2270-2277's dig branch (uwep && dig_typ(uwep,x,y) ->
     // use_pick_axe2) is not reached: dig_typ is DIGTYP_UNDIGGABLE at every
@@ -37356,11 +37756,10 @@ async function domove_fight_empty(x, y, dx, dy) {
     // a divergence.
     let boulder = !off_edge ? sobj_at(BOULDER, x, y) : null;
     if (!off_edge) {
-        const rg = loc ? loc.remembered_glyph : null;
-        const rgcls = rg ? rg.cls : null;
-        if (rgcls === GLYPHCLS_OBJ
-            || (_cmd_Hallucination() && rgcls === GLYPHCLS_MON))
-            boulder = sobj_at(STATUE_OTYP, x, y) || boulder;
+        const glyph = _glyph_at(x, y);
+        if ((glyph?.cls === GLYPHCLS_OBJ && glyph.otyp === STATUE_OTYP)
+            || (_cmd_Hallucination() && glyph?.cls === GLYPHCLS_MON))
+            boulder = sobj_at(STATUE_OTYP, x, y);
     }
     /* C hack.c:2270-2277 — force fight at boulder/statue or wall/door while
      * wielding a pick/axe starts digging. */
@@ -42672,7 +43071,7 @@ async function _disarm_box(box, confused) {
     const u = game.u || {};
     if (box.otrapped) {
         let ch = acurr(u, A_DEX) + (u.ulevel | 0);
-        if (Role_if(7)) ch *= 2;
+        if (Role_if(PM_ROGUE)) ch *= 2;
         if (confused || _uprop_active('FUMBLING')
             || rnd(75 + Math.trunc(level_difficulty() / 2)) > ch) {
             await _fl_chest_trap(box, FINGER, true);
@@ -44703,7 +45102,7 @@ export async function do_reqmenu() {
 function makeknown(otyp) { discover_object(otyp | 0, true, true, true); }
 /* C artifact.c:1113 discover_artifact().  artidisco is a compact discovery
  * order list; retaining the order also matches the discoveries window. */
-function discover_artifact(art) {
+export function discover_artifact(art) {
     art |= 0;
     if (!art) return;
     const list = game.artidisco || (game.artidisco = []);
@@ -46360,6 +46759,9 @@ export async function check_special_room(newlev) {
                 }
             }
             if (rt === COURT || rt === SWAMP || rt === MORGUE || rt === ZOO) {
+                if (msg_given && _topline_more_pending() && g.nhDisplay?.onEmptyQueue
+                    && g.nhDisplay.inputQueueLength === 0)
+                    await force_more(g._pending_message);
                 for (let mtmp = g.fmon; mtmp; mtmp = mtmp.nmon) {
                     if (DEADMONSTER(mtmp))
                         continue;
@@ -46831,14 +47233,7 @@ export async function water_damage_chain(obj, here) {
 
 /* C ref: trap.c:4896-4941 emergency_disrobe(boolean *lostsome) — drop things
  * until near_capacity() is low enough to crawl out of water.
- * `lostsome` is C's out-param; JS returns { succ, lost }.
- *
- * The drop LOOP is not ported: it needs remove_worn_item() + dropx(), neither
- * of which has a real body here, and it cannot start unless the hero is
- * already Burdened (SLT_ENCUMBER) at the moment of drowning.  It throws rather
- * than silently returning TRUE, because a silent TRUE would let a burdened
- * hero crawl out where C makes them drown — and the rn2(invc) inside the loop
- * would desync the stream anyway. */
+ * `lostsome` is C's out-param; JS returns { succ, lost }. */
 async function emergency_disrobe() {
     const u = game.u || {};
     const limit = _st_Punished() ? 0 : SLT_ENCUMBER;
@@ -46855,7 +47250,10 @@ async function emergency_disrobe() {
                 || (o.cursed && (o === u.uarmh || o === u.uarms))
                 || welded(o) || (o.o_id | 0) === (game.stealoid | 0)
                 || o.in_use;
-            if (!undroppable && pick-- <= 0) { chosen = o; break; }
+            // C trap.c:4924-4927 counts every item and remembers the last
+            // droppable one, including when the random mark is undroppable.
+            if (!undroppable) chosen = o;
+            if (--pick < 0 && chosen) break;
         }
         if (!chosen) return { succ: false, lost };
         if (chosen.owornmask) await _remove_worn_item_thrown(chosen, false);
@@ -48670,12 +49068,18 @@ async function domonnoise(mtmp) {
      * leader speech."
      *     if (mtmp->m_id == svq.quest_status.leader_m_id && msound > MS_ANIMAL)
      *         msound = MS_LEADER;
-     * Only the leader arm of that if/else-if chain is ported; the MS_GUARDIAN
-     * adjust, the isshk/MS_ORC/MS_MOO/gecko arms below it are not, and a
+     * The MS_GUARDIAN adjustment and the MS_MOO/gecko arms are not ported; a
      * monster that would have taken one of them still falls through to the
      * unported-msound path exactly as before. */
     if ((mtmp.m_id | 0) === (_quest_status().leader_m_id | 0) && msound > MS_ANIMAL)
         msound = MS_LEADER;
+    /* C sounds.c:705-709 — normally grunting monsters can speak to kin.
+     * Shopkeepers take the earlier MS_SELL arm, even when polymorphed. */
+    else if (!mtmp.isshk && msound === 24 /* MS_ORC */
+             && (same_race(ptr, _hero_youmonst().data)
+                 || same_race(ptr, permonstTemplate(g.urace.mnum))
+                 || _uprop_active('HALLUC')))
+        msound = _MSNOISE_MS_HUMANOID;
     /* C sounds.c:722-733 — the quest speakers.  quest_chat() is the ONLY writer
      * of Qstat(got_quest) in the whole game, so without this arm the leader was
      * mute and the quest could never be granted. */

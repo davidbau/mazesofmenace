@@ -15,7 +15,9 @@ import { PM_DWARF as PM_DWARF_ } from './pm.generated.js';
 import { game } from './gstate.js';
 import { end_burn, start_timer } from './timeout.js';
 import { pline, feel_newsym, canseemon, newsym, You_hear, Unaware as Unaware_real } from './display.js';
-import { unblock_point, Blind } from './vision.js';
+import { unblock_point, does_block, Blind } from './vision.js';
+import { b_trapped } from './lock.js';
+import { NO_PART } from './const.js';
 import { acurr, exercise, adjalign } from './attrib.js';
 import { TT_PIT, STONE, SCORR, CORR, DOOR, D_NODOOR, IS_WALL, IS_OBSTRUCTED, IS_DOOR, D_CLOSED, TREE, isok,
          OBJ_FREE, OBJ_FLOOR, OBJ_CONTAINED, OBJ_INVENT, OBJ_MINVENT, OBJ_MIGRATING,
@@ -1173,12 +1175,20 @@ export async function dig() {
         } else {
             return 0; /* statue or boulder got taken (C dig.c:517-518) */
         }
-        unblock_point(dpx, dpy);
+        if (!does_block(dpx, dpy))
+            unblock_point(dpx, dpy);
         feel_newsym(dpx, dpy);
         if (digtxt && !d.quiet)
             await pline(digtxt);
         if (dmgtxt)
             await pay_for_damage(dmgtxt, false); /* C dig.c:526-527 */
+        /* C dig.c:534-539 — destroying a trapped door sets off its blast. */
+        if (IS_DOOR(lev.typ) && (lev.doormask & D_TRAPPED)) {
+            lev.doormask = D_NODOOR;
+            await b_trapped('door', NO_PART);
+            recalc_block_point(dpx, dpy);
+            newsym(dpx, dpy);
+        }
         /* C dig.c:539-543 cleanup — lastdigtime = moves; clear the dig level. */
         d.lastdigtime = g.moves | 0;
         d.quiet = false;

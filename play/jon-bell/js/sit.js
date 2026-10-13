@@ -26,6 +26,7 @@
  * @ts-nocheck — js sibling imports; ambient game types not declared.
  */
 import { game, wizard } from './gstate.js';
+import { PM_NINJA } from './pm.generated.js';
 import { block_point, unblock_point, cansee } from './vision.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { In_V_tower, NON_PM, MAGIC_PORTAL, EMIN, CONFUSION, HALLUC, HALLUC_RES, ACID_RES, SHOCK_RES, DRAIN_RES, BLINDED, SEE_INVIS as SEE_INVIS_PROP, TELEPAT as TELEPAT_PROP, TIMEOUT, MM_ANGRY, MM_EMIN, MM_NOMSG, G_GONE, G_GENOD, LOW_PM, G_EXTINCT, NO_MINVENT, A_NONE } from './const.js';
@@ -624,7 +625,7 @@ function dlord(atyp) {
     }
     return ndemon(atyp);
 }
-function lminion() {
+export function lminion() {
     for (let tries = 0; tries < 20; ++tries) {
         const pm = mkclass(27, 0); /* S_ANGEL */
         if (pm !== null && pm !== NON_PM
@@ -911,6 +912,7 @@ export async function throne_sit_effect() {
             }
             case 4:
                 /* No RNG — full heal + status effects */
+                await You_feel("much, much better!"); /* C sit.c:84 */
                 if (Upolyd(u)) {
                     if ((u.mh | 0) >= (u.mhmax | 0) - 5)
                         u.mhmax = (u.mhmax | 0) + 4;

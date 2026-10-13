@@ -217,10 +217,10 @@ export async function savebones(how, when, corpse) {
             return;                     /* C: compress_bonesfile(); return; */
     }
 
-    /* C bones.c:437-443 unleash_all() / Punished -> unpunish() / u.usteed ->
-     * dismount_steed(DISMOUNT_BONES).  UNPORTED-CALLEEs: no leash, ball-and-
-     * chain or steed model survives into a bones file here.  All three are
-     * RNG-free on this path. */
+    if (g.u?.uball) {
+        const { unpunish } = await import('./dig.js');
+        await unpunish();
+    }
 
     /* C bones.c:445-446 iter_mons(remove_mon_from_bones); dmonsfree(); */
     {

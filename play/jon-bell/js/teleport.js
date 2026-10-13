@@ -362,7 +362,7 @@ export async function teleds(nux, nuy, teleds_flags) {
             ball_active = true;
             ball_still_in_range = allow_drag = false;
         }
-        await docrt();
+        await docrt(true); /* cls() pages the pending topline (display.c:2196) */
     }
     /* C ref: teleport.c:504-520 — the in-range / draggable arm.  drag_ball()
      * may itself decide dragging is impossible and teleport the ball on its
@@ -426,7 +426,7 @@ export async function teleds(nux, nuy, teleds_flags) {
      * pline was suppressed (topl.c:257 skip), so _pending_message is empty and
      * the topline C still shows is the already-published result; do not
      * clobber it with the empty pending line. */
-    if (is_teleport && (game.flags?.verbose !== false)
+    if (is_teleport && (game.flags?.verbose !== false || game._pending_message)
         && (game._pending_message || !game._resultMessage)) {
         const _joins = _topl_joins_snapshot(game._pending_message);
         game._resultMessage = game._pending_message;
@@ -449,8 +449,7 @@ export async function teleds(nux, nuy, teleds_flags) {
         if (_trap) await dotrap(_trap, 0);
         if (_pit) await _spoteffects_pickup();
     }
-    if (is_teleport && (game.flags?.verbose !== false)
-        && game._resultMessage && game._pending_message) {
+    if (is_teleport && game._resultMessage && game._pending_message) {
         const _rmj = game._resultMessageJoins;
         const _aHint = (_rmj && _rmj.src === game._resultMessage)
             ? _rmj.joins.slice() : undefined;

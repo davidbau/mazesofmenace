@@ -339,8 +339,8 @@ async function in_or_out_menu(promptText, box, outokay, inokay, alreadyused, mor
     /* {disp, canon} in display order — `disp` is the key C paints and accepts,
      * `canon` is what in_or_out_menu hands back to menu_loot. */
     const items = [];
-    const additem = (idx, text) => {
-        lines.push(`${sel[idx]} - ${text}`);
+    const additem = (idx, text, selected = false) => {
+        lines.push(`${sel[idx]} ${selected ? '*' : '-'} ${text}`);
         items.push({ disp: sel[idx], canon: LOOTCHARS[idx] });
     };
     additem(1, `Look inside the ${boxname}`);
@@ -352,7 +352,8 @@ async function in_or_out_menu(promptText, box, outokay, inokay, alreadyused, mor
         additem(6, `stash one item into the ${boxname}`);
     }
     lines.push('');
-    if (more_containers) additem(7, 'loot next container');
+    /* C pickup.c:3453-3457 preselects 'n' when another container remains. */
+    if (more_containers) additem(7, 'loot next container', true);
     /* 'q' default-selected when no next container: shown with '*'. */
     const qDefault = !more_containers;
     lines.push(`${sel[8]} ${qDefault ? '*' : '-'} ${alreadyused ? 'done' : 'do nothing'}`);

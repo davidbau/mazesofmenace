@@ -4417,8 +4417,9 @@ async function seffect_identify(holder, otyp) {
 
     if (is_scroll) {
         /* C read.c:2070: useup the scroll first, before learnscrolltyp →
-         * makeknown's perm_invent update; also simplifies empty-invent check. */
-        useup(sobj);
+         * makeknown's perm_invent update; invent.c:1312-1332 routes through
+         * obfree (shk.c:1224-1233), retaining unpaid scrolls on billobjs. */
+        await useup_cmd(sobj);
         holder.obj = null; /* C: *sobjp = 0 — it's gone */
         if (confused || (scursed && !already_known)) {
             await pline('You identify this as an identify scroll.');

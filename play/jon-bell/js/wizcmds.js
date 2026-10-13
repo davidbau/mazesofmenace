@@ -43,7 +43,11 @@ import monsPack from './makemon_mons.json' with { type: 'json' };
  * function declarations, so the binding resolves at call time. */
 import { setuqwep, y_n_default, addinv_core2, reorder_invent, inv_cnt, dropx, freeinv, hitfloor, getpos, addinv_core1, dropy, carry_obj_effects } from './cmd.js';
 import { place_object, remove_object } from './mklev.js';
-import { m_at, mon_nam, xkilled, XKILL_NOMSG } from './uhitm.js';
+import { m_at, xkilled, XKILL_NOMSG } from './uhitm.js';
+import { x_monnam } from './mhitm.js';
+import { nonliving } from './makemon.js';
+import { ARTICLE_YOUR, ARTICLE_THE, ARTICLE_A, SUPPRESS_IT,
+         SUPPRESS_HALLUCINATION, SUPPRESS_SADDLE, has_mgivenname } from './const.js';
 import { dmonsfree } from './mkmaze.js';
 import { flip_level, flip_level_rnd } from './sp_lev.js';
 import { docrt } from './display.js';
@@ -147,6 +151,7 @@ const A_LAWFUL  = 1;
  * artilist index, valued by roles[] index (0=Arc..12=Wiz).  Quest artifacts are
  * handled via quest_info(0).  aligns[].value by flags.initalign (role.c:697). */
 const _ARTI_GIFT_ROLE = { 1: 4, 3: 11, 4: 1, 8: 12, 12: 6, 19: 9 };
+export { _ARTI_GIFT_ROLE as ARTI_GIFT_ROLE };
 const _ARTI_ALIGN_VALUE = [1, 0, -1];
 
 export const ARTI_PROPS = [
@@ -476,7 +481,16 @@ export async function wiz_kill() {
             await pline('There is no monster there.');
             break;
         }
-        await pline(`You kill ${mon_nam(mtmp)}!`);
+        // C wizcmds.c:298-314 names even unseen targets, without hallucination.
+        const tame = !!mtmp.mtame;
+        const seen = canspotmon(mtmp) || (g.u.uswallow && mtmp === g.u.ustuck);
+        const flgs = SUPPRESS_IT | SUPPRESS_HALLUCINATION
+            | ((tame && has_mgivenname(mtmp)) ? SUPPRESS_SADDLE : 0);
+        const articl = tame ? ARTICLE_YOUR : seen ? ARTICLE_THE : ARTICLE_A;
+        const adjs = tame ? (!seen ? 'poor, unseen' : 'poor')
+                          : (!seen ? 'unseen' : null);
+        const Mn = x_monnam(mtmp, articl, adjs, flgs, false);
+        await pline(`You ${nonliving(mtmp.data) ? 'destroy' : 'kill'} ${Mn}!`);
         await xkilled(mtmp, XKILL_NOMSG);
         if (g.u?.utotype) break;
     }

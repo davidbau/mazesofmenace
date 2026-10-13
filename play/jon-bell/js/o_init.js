@@ -224,6 +224,9 @@ const RING_CANONICAL_TOUGH = [
     true, false, false, false, true, false, false, false,
 ];
 export function object_tough(otyp) {
+    // C objects.h:1529-1549 HARDGEM(mohs >= 8); gem hardness is not shuffled.
+    if ((otyp >= DIAMOND && otyp <= EMERALD)
+        || otyp === AQUAMARINE || otyp === 450 /* TOPAZ */) return true;
     return !!(game._objTough && game._objTough[otyp | 0]);
 }
 /**

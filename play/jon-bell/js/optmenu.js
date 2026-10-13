@@ -118,7 +118,9 @@ const PAGES = [
         { name: 'hilite_pile', kind: 'bool', flag: 'hilite_pile' },
         { name: 'showrace', kind: 'bool', flag: 'showrace' },
         { name: 'sparkle', kind: 'bool', flag: 'sparkle', defOn: true },
-        { name: 'symset', kind: 'comp', value: () => 'DECgraphics, active, handler=DEC' },
+        /* C options.c:8614-8618: simple and full menus call the same get_val
+         * handler (optfn_symset, options.c:4205-4215). */
+        { name: 'symset', kind: 'comp', value: DOSET_COMPOUNDS.find(r => r.name === 'symset').val },
         { section: 'Status' },
         { name: 'hitpointbar', kind: 'bool', flag: 'hitpointbar' },
         { name: 'menu colors', kind: 'othr', value: () => '(0 currently set)' },

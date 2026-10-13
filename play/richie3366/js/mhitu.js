@@ -108,7 +108,7 @@ import {
 import { morehungry, is_fainted } from './eat.js';
 import { castmu, buzzmu } from './mcastu.js';
 import { rehumanize, polymon, body_part, Unchanging } from './polyself.js';
-import { set_wounded_legs, burnarmor, ignite_items, ceiling, drain_en, t_at, reset_utrap, minstapetrify } from './trap.js';
+import { set_wounded_legs, burnarmor, ignite_items, ceiling, drain_en, t_at, reset_utrap, minstapetrify, acid_damage } from './trap.js';
 import { mon_explodes } from './explode.js';
 import { make_hallucinated, make_confused, make_stunned, make_sick, make_slimed, make_stoned } from './potion.js';
 import { SetVoice, Soundeffect } from './sndprocs.js';
@@ -3013,9 +3013,9 @@ export function mon_avoiding_this_attack(mtmp, attkidx) {
 /**
  * C ref: mhitu.c passiveum — hero AT_NONE/AT_BOOM counterattack after hitmu.
  * Uses olduasmon (form at hit start) even if rehumanized mid-hit.
- * Named omissions: drain_item body; erode_armor/acid_damage bodies;
- * golemeffects; mon_reflects; paralyze_monst full; rehumanize AT_BOOM;
- * split_mon body (mh heal still applied).
+ * Named omissions: drain_item body; golemeffects; mon_reflects;
+ * paralyze_monst full; rehumanize AT_BOOM; split_mon body (mh heal
+ * still applied). AD_ACID erode_armor/acid_damage wired (live).
  */
 async function passiveum(olduasmon, mtmp, mattk) {
     if (!olduasmon || !mtmp) return M_ATTK_HIT;
@@ -3053,11 +3053,14 @@ async function passiveum(olduasmon, mtmp, mattk) {
         } else {
             tmp = 0;
         }
+        /* C mhitu.c:2477–2480 — acid splash also corrodes the attacker's
+         * armor (rn2(30) gate) and wielded weapon (rn2(6) gate); both
+         * callees are live (mhitm.js erode_armor, trap.js acid_damage). */
         if (!rn2(30)) {
-            // erode_armor(mtmp, ERODE_CORRODE) deferred
+            await erode_armor(mtmp, ERODE_CORRODE);
         }
         if (!rn2(6)) {
-            // acid_damage(MON_WEP(mtmp)) deferred
+            await acid_damage(MON_WEP(mtmp));
         }
         return assess_dmg(mtmp, tmp);
     case AD_STON: { /* cockatrice (C mhitu.c:2480–2498) */

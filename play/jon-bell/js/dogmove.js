@@ -1,4 +1,4 @@
-import { touch_artifact_mon, lifesaved_monster, m_consume_obj, add_to_minv as add_to_minv_real } from './mklev.js';
+import { touch_artifact_mon, lifesaved_monster, kop_revival, m_consume_obj, add_to_minv as add_to_minv_real } from './mklev.js';
 import { newobj } from './game.js';
 import { is_pole as is_pole_dm, flooreffects as flooreffects_dm, xytodir as xytodir_dm, dirtocoord as dirtocoord_dm } from './cmd.js';
 import { m_in_out_region as m_in_out_region_dm } from './region.js';
@@ -3245,6 +3245,9 @@ export async function mondied_dm(mdef, mondead_only = false) {
             if ((mv.died | 0) < 255) mv.died = (mv.died | 0) + 1;
         }
     }
+    /* C mon.c:3147-3165 mondead(): dead Kops may return, before m_detach
+     * and mondied()'s corpse_chance roll. */
+    await kop_revival(mdef);
     if (glyph_is_invisible_at(deadMx, deadMy)) unmap_object(deadMx, deadMy);
 
     /* C mon.c:2700 leaves mx/my untouched on death (the zeroing is #if 0'd

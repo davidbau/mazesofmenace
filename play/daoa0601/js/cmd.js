@@ -1,3 +1,5 @@
+import { monsterHiddenConditions } from './monster_status.js';
+import { visibleRegionAt } from './regions.js';
 import { wizIntrinsic } from './wizard_intrinsics.js';
 import { isRoom } from './map_types.js';
 import { bookCursed, continueSpellbookStudy } from './spellbook_study.js';
@@ -12,7 +14,10 @@ import { feel_location } from './display.js';
 import { game, requireGameLevel, requirePlayingGame, requireInitializedGame } from './gstate.js';
 import { requireInitializedHero } from './hero_types.js';
 import { fruitName } from './fruit.js';
+import { encyclopediaEntries } from './encyclopedia.js';
 import { waterbodyName } from './terrain_name.js';
+import { iceDescriptionAt } from './dungeon_feature.js';
+import { CmapSymbol, cmapToGlyph } from './glyph_numbers.js';
 import { isGrayStone, isWeaponTool } from './object_properties.js';
 import { applySuggestion } from './apply_selection.js';
 import { flipThroughBook } from './book_flip.js';
@@ -28,15 +33,17 @@ import { speakArtifact } from './artifact_speech.js';
 import { lightCocktail, useCandelabrum, useCandle, useLamp } from './apply_light.js';
 import { useWhistle } from './whistle.js';
 import { retouchHeroObject } from './hero_retouch.js';
-import { GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_SUGGEST } from './const.js';
+import { GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_INACCESS, GETOBJ_SUGGEST } from './const.js';
 import { senseBuriedObjects } from './buried_object.js';
 import { monsterInstanceDisplayName, monsterName, shopkeeperName } from './monster_name.js';
 import { attackHostileMonster } from './hero_melee.js';
 import { prepareAppliedWeaponAttack } from './hero_attack_preflight.js';
+import { beastChoosesHeroDisplacement, settleBeastHeroDisplacement } from './hero_beast_displacement.js';
+import { stumbleOntoMimic } from './mimic.js';
 import { monsterHasMapPosition, monsterAtPosition } from './monster_location.js';
 import { SHOP_TYPES } from './shop_data.js';
 import { observeBucForNaming } from './object_knowledge.js';
-import { observeDistantObjectForNaming, observeObjectForNaming, ownedObjectName, simpleObjectNameWithArticle } from './objnam.js';
+import { minimalObjectName, objectNameIsPlural, observeDistantObjectForNaming, observeObjectForNaming, ownedObjectName, simpleObjectNameWithArticle, } from './objnam.js';
 import { woundHeroLegs } from './hero_legs.js';
 import { makeMonsterFlee } from './monster_flee.js';
 import { descendFromLevitation } from './levitation_commands.js';
@@ -59,11 +66,11 @@ import { blocksDiagonalDoor, blocksMove, escapeFromStickyMonster, heroBadRock, h
 import { commandExecutionKey, controlRushDirection, promptedDirectionKey, visibleCommandKey } from './command_keys.js';
 import { NATIVE_COMMAND_FLAGS, NATIVE_COMMANDS } from './command_data.js';
 import { stopHeroOccupation } from './occupation.js';
-import { continueBulkTakeoff, takeOffAll } from './bulk_takeoff.js';
-import { resetBulkTakeoff } from './takeoff_state.js';
+import { canSelectOff, continueBulkTakeoff, takeOffAll } from './bulk_takeoff.js';
+import { resetBulkTakeoff, TAKEOFF_ORDER, takeoffSlotObject } from './takeoff_state.js';
 import { currentLuaLifecycle } from './lua/lifecycle.js';
 import { nextObjectId } from './ident.js';
-import { nhgetch } from './input.js';
+import { clearCommandKeys, nhgetch, queueCommandKeys, takeCommandKey } from './input.js';
 import { readCommandInput } from './command_input.js';
 import { chooseInventoryObject, compactInventoryLetters, promptInventoryObject, } from './inventory_prompt.js';
 import { AT_EXPL, AT_KICK } from './monster_attack_types.js';
@@ -71,7 +78,7 @@ import { directionAssistPage, promptKey, readDirectionKey, restoreCommandMap, } 
 import { getLine, paranoidQuery, promptYesNo, promptYesNoQuit, } from './query.js';
 export { getLine, promptYesNo, promptYesNoQuit } from './query.js';
 import { objectTypeCallNoun, } from './object_call.js';
-import { displayLiquidName, displayMessageWindow, newsym, feel_newsym, flushPendingTopline, flush_screen, pline, plineWithContinuation, moreUntilDismissed, docrt, bot, terrain_glyph, glyphAt, canSeeMonster, canSpotMonster, monsterHasWarningProjection, see_nearby_objects, show_glyph_cell, swallowed, randomDisplayMonsterName, randomDisplayMonsterSubject, see_monsters, see_objects, see_traps, transientObjectGlyph, map_invisible, unmap_invisible, map_object, unmapObject, } from './display.js';
+import { displayLiquidName, displayMessageWindow, newsym, feel_newsym, flushPendingTopline, flush_screen, pline, plineWithContinuation, moreUntilDismissed, docrt, bot, terrain_glyph, glyphAt, canSeeMonster, canSpotMonster, canSenseMonster, monsterHasWarningProjection, see_nearby_objects, show_glyph_cell, swallowed, randomDisplayMonsterName, randomDisplayMonsterSubject, see_monsters, see_objects, see_traps, transientObjectGlyph, map_invisible, unmap_invisible, map_object, unmapObject, } from './display.js';
 import { cansee, couldsee, vision_note_blocker_change, vision_recalc, vision_reset } from './vision.js';
 import { lightWieldedArtifact, transformMagicLampToOilLamp, } from './light.js';
 import { dozap, } from './zap.js';
@@ -127,11 +134,11 @@ import { throwOrdinaryObject } from './ordinary_throw.js';
 import { hitMonsterWithThrownObject } from './hero_ranged_attack.js';
 import { chooseHeroVolleyCount } from './hero_multishot.js';
 import { captureThrownObjectFlight, detachThrownUnit, finishHeroThrownObjectLanding, } from './thrown_object.js';
-import { objectName, unseenObjectNoun, } from './objnam.js';
+import { objectName, singularObjectName, unseenObjectNoun, } from './objnam.js';
 import { artifactById, } from './artifacts.js';
 import { invokeArtifactPower, } from './artifact_invoke.js';
 import { touchArtifactByHero } from './artifact_touch.js';
-import { SLING, BULLWHIP, GRAPPLING_HOOK, CREAM_PIE, EGG, LUMP_OF_ROYAL_JELLY, LOCK_PICK, CREDIT_CARD, STETHOSCOPE, LOADSTONE, GOLD_PIECE, BOULDER, ROCK, DILITHIUM_CRYSTAL, LUCKSTONE, TOUCHSTONE, LARGE_BOX, CHEST, ICE_BOX, SACK, OILSKIN_SACK, BAG_OF_HOLDING, BRASS_LANTERN, OIL_LAMP, MAGIC_LAMP, STATUE, RIN_PROTECTION, BANANA, MIRROR, TIN_WHISTLE, MAGIC_WHISTLE, EUCALYPTUS_LEAF, BELL, BELL_OF_OPENING, EXPENSIVE_CAMERA, TIN_OPENER, TALLOW_CANDLE, WAX_CANDLE, CANDELABRUM_OF_INVOCATION, POT_OIL, RIN_CONFLICT, LENSES, BLINDFOLD, TOWEL, FUMBLE_BOOTS, KICKING_BOOTS, MAGIC_MARKER, UNICORN_HORN, SHIELD_OF_REFLECTION, AMULET_OF_YENDOR, AMULET_OF_STRANGULATION, FAKE_AMULET_OF_YENDOR, SPE_NOVEL, OBJECT_DELAY, OBJECT_DESCRIPTIONS, OBJECT_MATERIAL, OBJECT_NAMES, OBJECT_WEIGHT, OBJECT_SUBTYPE, } from './object_data.js';
+import { SLING, BULLWHIP, GRAPPLING_HOOK, CREAM_PIE, EGG, LUMP_OF_ROYAL_JELLY, LOCK_PICK, CREDIT_CARD, STETHOSCOPE, LOADSTONE, GOLD_PIECE, BOULDER, ROCK, DILITHIUM_CRYSTAL, LUCKSTONE, TOUCHSTONE, LARGE_BOX, CHEST, ICE_BOX, SACK, OILSKIN_SACK, BAG_OF_HOLDING, BRASS_LANTERN, OIL_LAMP, MAGIC_LAMP, STATUE, RIN_PROTECTION, BANANA, MIRROR, TIN_WHISTLE, MAGIC_WHISTLE, EUCALYPTUS_LEAF, BELL, BELL_OF_OPENING, EXPENSIVE_CAMERA, TIN_OPENER, TALLOW_CANDLE, WAX_CANDLE, CANDELABRUM_OF_INVOCATION, POT_OIL, RIN_CONFLICT, MEAT_RING, LENSES, BLINDFOLD, TOWEL, FUMBLE_BOOTS, KICKING_BOOTS, MAGIC_MARKER, UNICORN_HORN, SHIELD_OF_REFLECTION, AMULET_OF_YENDOR, AMULET_OF_STRANGULATION, FAKE_AMULET_OF_YENDOR, SPE_NOVEL, OBJECT_DELAY, OBJECT_DESCRIPTIONS, OBJECT_MATERIAL, OBJECT_NAMES, OBJECT_WEIGHT, OBJECT_SUBTYPE, } from './object_data.js';
 import { CLR_WHITE, NO_COLOR, } from './terminal.js';
 import { MONSTER_COLOR, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_LEVEL, MONSTER_MOVE, MONSTER_NAME, MONSTER_SIZE, MONSTER_SYMBOL, MONSTER_ALIGNMENT, MONSTER_ATTACKS, requireMonsterData, } from './monster_data.js';
 import { monsterStatusLine } from './monster_status.js';
@@ -140,6 +147,9 @@ import { addExperience, checkExperienceLevel, gainExperienceLevel, loseHeroExper
 import { removeHeroAccessory, wearHeroAccessory, } from './accessory.js';
 import { heroIsStrangled } from './hero_strangulation.js';
 import { heroIsBreathless, heroPassesWalls, heroSpecies } from './hero_species.js';
+import { disturbBuriedZombies } from './object_impact.js';
+import { checkSlipperyIce } from './fumbling.js';
+import { MONSTER_BODY_META } from './monster_data.js';
 import { heroCanOoze } from './monster_perception.js';
 import { isPoolAt } from './terrain_properties.js';
 import { drawbridgeUnderlyingType } from './drawbridge_terrain.js';
@@ -163,7 +173,7 @@ import { activateStatueTrapAt } from './statue_trap.js';
 import { applyDippedCoinFate, applyFountainDemonActor, applyFountainGemDiscovery, applyFountainNymphActor, applyFountainSnakeActors, resolveDippedBucFate, resolveDippedSensationFate, } from './fountain_effects.js';
 import { dryFountainAt, gushForthFromFountain } from './fountain.js';
 import { heroArmName, heroHandName, heroNeckName } from './body_parts.js';
-import { withIndefiniteArticle, makePlural } from './object_grammar.js';
+import { armorUsesPairGrammar, withIndefiniteArticle, makePlural } from './object_grammar.js';
 import { objectWearMessage } from './object_wear_message.js';
 import { isWetTowel, willWeld } from './weapon_type.js';
 import { announceWeaponWeld, explainTwoWeaponEnd, refuseWeldedPrimary } from './weapon_feedback.js';
@@ -200,7 +210,7 @@ import { continueHeroDigging, diggingTarget } from './hero_digging.js';
 import { checkHeroAttackOverexertion } from './hero_overexertion.js';
 import { wieldTool } from './wield_tool.js';
 import { doenhance, useHeroSkill, } from './skills.js';
-import { chargeUnpaidUsage, checkSpecialRoom, carriedShopBill, objectTypeKnown, payShopDebt, settleCarriedShopBillItem, shopkeeperForHero, shopThankYouMessage, } from './shk.js';
+import { objectOwnershipPrefix, chargeUnpaidUsage, checkSpecialRoom, carriedShopBill, objectTypeKnown, payShopDebt, settleCarriedShopBillItem, shopkeeperForHero, shopThankYouMessage, tendedShop, } from './shk.js';
 import { visiblePriestName, } from './priest.js';
 import { gameLogEvents } from './gamelog.js';
 import { killerObjectName } from './objnam.js';
@@ -230,6 +240,7 @@ const PM_WATER_NYMPH = 68;
 const PM_WATER_DEMON = 289;
 const PM_WATER_MOCCASIN = 216;
 const M2_ROCKTHROW = 0x08000000;
+const M1_HUMANOID = 0x00020000;
 const MAT_GEMSTONE = 20;
 const MAT_MINERAL = 21;
 function isMovementKey(ch) {
@@ -942,10 +953,12 @@ export async function rhack(key) {
     }
     const inputKey = key;
     const configured = configuredCommand(key);
-    // The input boundary displayed the previous command's message.  Clear it
-    // now; any message produced below remains visible at the next boundary.
-    game._pending_message = '';
-    game._retained_message = '';
+    // A player command acknowledges the previous topline. A canned command
+    // bypasses parse(), so unread prose and cmd_before output remain pending.
+    if (!cannedCommand) {
+        game._pending_message = '';
+        game._retained_message = '';
+    }
     if (!cannedCommand && !configured.command) {
         game.multi = 0;
         game._cannedCommands = [];
@@ -955,9 +968,11 @@ export async function rhack(key) {
     }
     const cannedName = cannedCommand?.kind === 'swap-weapon'
         ? 'swap' : cannedCommand?.kind;
-    const command = cannedCommand
-        ? NATIVE_COMMANDS.find(entry => entry.name === cannedName) ?? null
-        : configured.command;
+    const command = cannedCommand?.kind === 'inventory-action'
+        ? inventoryActionCommand(cannedCommand.action)
+        : cannedCommand
+            ? NATIVE_COMMANDS.find(entry => entry.name === cannedName) ?? null
+            : configured.command;
     if (!await commandAllowed(command)) {
         resetCommandVariables(true);
         return;
@@ -999,28 +1014,33 @@ async function runCommandHandler(binding, { cannedCommand = null, previousMessag
     // byte.  Tool commands use this to resume the original operation after
     // wield_tool() has spent one action installing the selected object.
     if (cannedCommand?.kind === 'rub') {
-        game._pending_message = previousMessage;
         await dorub(cannedCommand.invlet);
         return;
     }
     if (cannedCommand?.kind === 'apply') {
-        game._pending_message = previousMessage;
         await doapply(cannedCommand.invlet);
         return;
     }
     if (cannedCommand?.kind === 'swap-weapon') {
-        game._pending_message = previousMessage;
         await doswapweapon();
         return;
     }
     if (cannedCommand?.kind === 'wield') {
-        game._pending_message = previousMessage;
-        await dowield(cannedCommand.invlet);
+        queueCommandKeys(cannedCommand.invlet);
+        try {
+            await dowield();
+        }
+        finally {
+            clearCommandKeys();
+        }
         return;
     }
     if (cannedCommand?.kind === 'fire') {
-        game._pending_message = previousMessage;
         await dofire(cannedCommand.shotLimit ?? 0);
+        return;
+    }
+    if (cannedCommand?.kind === 'inventory-action') {
+        await executeInventoryAction(cannedCommand.action);
         return;
     }
     if (key === 22 && game.flags?.debug) { // Ctrl-V: wiz_level_tele()
@@ -1123,8 +1143,10 @@ async function runCommandHandler(binding, { cannedCommand = null, previousMessag
     }
     else if (ch === 'i') {
         const action = await ddoinv();
-        if (action?.key === 't')
-            await dothrow(action.item);
+        if (action && !['\x1b', ' ', '\n', '\r'].includes(action.key)) {
+            game._cannedCommands ??= [];
+            game._cannedCommands.push({ kind: 'inventory-action', action });
+        }
     }
     else if (ch === 'O') {
         await doOptions();
@@ -1646,7 +1668,7 @@ async function doTerrainOverview() {
         const delta = farlookDelta(browseKey);
         if (delta) {
             moveGetposCursor(cursor, delta.dx, delta.dy);
-            browseMessage = farlookLocationDescription(cursor.x, cursor.y);
+            browseMessage = await farlookLocationDescription(cursor.x, cursor.y);
             continue;
         }
         await plineWithContinuation('Done.');
@@ -2137,28 +2159,26 @@ async function doherecmdmenu() {
     game.context.move = key === 27 ? 0 : 1;
 }
 async function doname() {
-    const display = game.nhDisplay;
-    if (!display)
-        throw new Error('This command requires an initialized display.');
-    const left = 32;
-    game._pending_message = '';
-    display.clearRow(0);
-    for (let row = 0; row <= 8; row++) {
-        for (let col = left - 1; col < display.cols; col++)
-            display.setCell(col, row, ' ', NO_COLOR, 0);
-    }
-    putCommandLine(left, 0, 'What do you want to name?', ATR_INVERSE);
-    putCommandLine(left, 2, 'm - a monster');
-    putCommandLine(left, 3, 'i - a particular object in inventory');
-    putCommandLine(left, 4, 'o - the type of an object in inventory');
-    putCommandLine(left, 5, 'f - the type of an object upon the floor');
-    putCommandLine(left, 6, 'd - the type of an object on discoveries list');
-    putCommandLine(left, 7, 'a - record an annotation for the current level');
-    putCommandLine(left, 8, '(end)');
-    display.setCursor(left + 6, 8);
-    const choice = String.fromCharCode(await nhgetch()).toLowerCase();
-    game._pending_message = '';
-    await restoreCommandMap();
+    // docallcmd() consumes a canned category before creating its menu.
+    // Unread callback prose then belongs to the later naming prompt.
+    const queuedChoice = takeCommandKey();
+    const key = queuedChoice ?? await showChoiceWindow({
+        title: 'What do you want to name?',
+        entries: [
+            { key: 'm', text: 'a monster' },
+            ...(game.inventory.length ? [
+                { key: 'i', text: 'a particular object in inventory' },
+                { key: 'o', text: 'the type of an object in inventory' },
+            ] : []),
+            { key: 'f', text: 'the type of an object upon the floor' },
+            { key: 'd', text: 'the type of an object on discoveries list' },
+            { key: 'a', text: 'record an annotation for the current level' },
+        ],
+        validKeys: [27, 32, 10, 13, ...'miofda'.split('').map(char => char.charCodeAt(0))],
+    });
+    const choice = String.fromCharCode(key).toLowerCase();
+    if (queuedChoice === undefined)
+        await restoreCommandMap();
     // C refs: do_name.c:docallcmd()/do_oname() and
     // dungeon.c:donamelevel()/query_annotation().  The menu owns only the
     // category choice; level annotations live with mapseen, while an
@@ -2182,7 +2202,6 @@ async function doname() {
         const selection = await promptInventoryObject(`What do you want to name? [${letters} or ?*] `, inventory, { allowMenu: true });
         if (!selection.cancelled && selection.object) {
             const object = selection.object;
-            game._pending_message = '';
             const value = await getLine(`What do you want to name this ${object.name}?`, (_ch, key) => key >= 32 && key < 127);
             if (value !== null) {
                 const name = value.trim().replace(/\s+/g, ' ');
@@ -2221,7 +2240,6 @@ async function doname() {
         const selection = await promptInventoryObject(`What do you want to call? [${letters} or ?*] `, eligible, { allowMenu: true });
         if (!selection.cancelled && selection.object) {
             const object = selection.object;
-            game._pending_message = '';
             if (object.dknown === false) {
                 await pline('You would never recognize another one.');
             }
@@ -2311,6 +2329,117 @@ async function dotwoweapon() {
     const spentTime = await toggleTwoWeaponCombat();
     if (!game.program_state.gameover)
         game.context.move = spentTime ? 1 : 0;
+}
+// C iactions.c:itemactions_pushkeys(). The menu closes before the queued
+// command runs; its object letter answers the later inventory prompt.
+function inventoryActionCommand({ key, item }) {
+    const handlers = {
+        '-': item === game.uwep ? 'dowield'
+            : item === game.uswapwep ? 'remarm_swapwep'
+                : item === game.uquiver ? 'dowieldquiver' : 'donull',
+        'c': 'docallcmd', 'd': 'dodrop', 'E': 'doengrave', 'f': 'dofire',
+        'i': 'doorganize', 'P': 'dowear', 'Q': 'dowieldquiver', 'r': 'doread',
+        'R': 'ia_dotakeoff', 't': 'dothrow', 'T': 'ia_dotakeoff',
+        'w': 'dowield', 'x': 'doswapweapon', 'X': 'dotwoweapon',
+        '/': 'dowhatis', '\x1b': null, ' ': null, '\n': null, '\r': null,
+    };
+    return NATIVE_COMMANDS.find(command => command.handler === handlers[key]) ?? null;
+}
+async function executeInventoryAction({ key, item }) {
+    try {
+        await runInventoryAction({ key, item });
+    }
+    finally {
+        // These keys belong to this item's prompts. Native rhack discards
+        // them if the command fails before it asks for the selected item.
+        clearCommandKeys();
+    }
+}
+async function runInventoryAction({ key, item }) {
+    const letter = item.invlet;
+    if (!letter || !game.inventory.includes(item)) {
+        game.context.move = 0;
+        return;
+    }
+    switch (key) {
+        case '-':
+            if (item === game.uwep) {
+                queueCommandKeys('-');
+                await dowield();
+            }
+            else if (item === game.uswapwep) {
+                resetBulkTakeoff();
+                const twoweap = game.u.twoweap;
+                await setSecondaryWeapon(null, game);
+                await plineWithContinuation(twoweap ? 'You are no longer wielding two weapons at once.'
+                    : 'You no longer have a second weapon readied.');
+                game.context.move = 1;
+            }
+            else if (item === game.uquiver) {
+                queueCommandKeys('-');
+                await doready();
+            }
+            return;
+        case 'c':
+            queueCommandKeys(`i${letter}`);
+            await doname();
+            return;
+        case 'd':
+            queueCommandKeys(letter);
+            await dodrop();
+            return;
+        case 'E':
+            queueCommandKeys(letter);
+            await doengrave();
+            return;
+        case 'f':
+            await dofire();
+            return;
+        case 'i':
+            queueCommandKeys(letter);
+            await doadjust();
+            return;
+        case 'P':
+            queueCommandKeys(letter);
+            await dowear();
+            return;
+        case 'Q':
+            queueCommandKeys(letter);
+            await doready();
+            return;
+        case 'r':
+            queueCommandKeys(letter);
+            await doread({ gotoLevel });
+            return;
+        case 'R':
+        case 'T':
+            queueCommandKeys(letter);
+            await removeWornItem('take off', true);
+            return;
+        case 't':
+            await dothrow(item);
+            return;
+        case 'w':
+            queueCommandKeys(letter);
+            await dowield();
+            return;
+        case 'x':
+            await doswapweapon();
+            return;
+        case 'X':
+            await dotwoweapon();
+            return;
+        case '/':
+            queueCommandKeys(`i${letter}`);
+            await dowhatis();
+            return;
+        case '\x1b':
+        case ' ':
+        case '\n':
+        case '\r':
+            game.context.move = 0;
+            return;
+    }
 }
 // C ref: wield.c:doswapweapon()/ready_weapon().  Clearing the old secondary
 // slot through setworn() also ends two-weapon mode before either new
@@ -2682,13 +2811,12 @@ function specialLevelReachable(event) {
 }
 // C ref: teleport.c level_tele().  Wizard-menu entry into the Elemental
 // Planes grants the real Amulet before deferred_goto() starts.  Object
-// construction and inventory identity therefore precede getbones()/mklev(),
-// while tty does not expose prinv() until the destination transaction yields
-// at its pre-arrival acknowledgement.
+// construction, inventory identity, and prinv() precede getbones()/mklev().
+// Destination placement finishes before tty asks for acknowledgement.
 async function endgamePrerequisite(destination) {
     if (!In_endgame(destination) || In_endgame(game.u?.uz)
         || game.u?.uhave?.amulet)
-        return '';
+        return;
     const amulet = await addInventoryItem(await mksobj(AMULET_OF_YENDOR, true, false));
     // teleport.c prints the grant with prinv(); its doname()->xname() path
     // observes the visible object and appends it to the Amulet disco[] class
@@ -2697,7 +2825,8 @@ async function endgamePrerequisite(destination) {
     if (!game.u.uhave)
         game.u.uhave = {};
     game.u.uhave.amulet = 1;
-    return `Endgame prerequisite: ${amulet.invlet} - the Amulet of Yendor.--More--`;
+    const message = `Endgame prerequisite: ${amulet.invlet} - the Amulet of Yendor.`;
+    await pline(message);
 }
 // C ref: dungeon.c print_dungeon(TRUE). Build one source-ordered menu stream;
 // the tty layer alone owns pagination and nested input capture.
@@ -2792,8 +2921,8 @@ export async function chooseWizardLevelDestination() {
     const destination = await showPagedPickOneMenu({ rows, choices });
     if (!destination)
         return null;
-    const preArrivalPager = await endgamePrerequisite(destination);
-    return { destination, preArrivalPager };
+    await endgamePrerequisite(destination);
+    return { destination };
 }
 async function wizLevelTeleport({ menuRequested = false } = {}) {
     game.context.move = 0;
@@ -2975,6 +3104,7 @@ function completeExtendedCommand(prefix) {
     return matches.length === 1 ? matches[0]?.name ?? null : null;
 }
 const EXTENDED_COMMAND_HANDLERS = new Map([
+    ['whatis', dowhatis],
     ['takeoffall', takeOffAll],
     ['conduct', doconduct],
     ['chronicle', doChronicle],
@@ -3419,7 +3549,9 @@ async function doadjust() {
         .filter(letter => letter === object.invlet || !occupied.has(letter))
         .join('');
     const destinationPrompt = `Adjust letter to what [${compactInventoryLetters(recommended)}] (? see used letters)?`;
-    game._pending_message = '';
+    // The source item's queued letter bypasses getobj's prompt, but the
+    // destination uses tty_yn_function(), which acknowledges unread prose.
+    await flushPendingTopline();
     const key = await promptKey(destinationPrompt, 1);
     const destination = String.fromCharCode(key);
     if (key === 27 || key === 32 || key === 10 || key === 13) {
@@ -3954,7 +4086,7 @@ async function doextcmd() {
     }
     await runExtendedCommand(completeExtendedCommand(normalizedCommand) || normalizedCommand);
 }
-function wizardPositionDescription(x, y) {
+async function wizardPositionDescription(x, y) {
     if (x === game.u?.ux && y === game.u?.uy) {
         const species = game.u.umonnum;
         const polymorphName = heroIsPolymorphed(game) && species !== undefined
@@ -3985,7 +4117,7 @@ function wizardPositionDescription(x, y) {
         observeDistantObjectForNaming(object);
         return floorObjectDescription(object);
     }
-    return farlookLocationDescription(x, y) || 'unexplored area';
+    return await farlookLocationDescription(x, y) || 'unexplored area';
 }
 function roomAtPosition(x, y) {
     const roomno = game.level?.at(x, y)?.roomno ?? 0;
@@ -4097,8 +4229,8 @@ function travelLocationDescription(x, y) {
         return 'staircase up';
     return '';
 }
-function travelPositionDescription(x, y) {
-    const description = wizardPositionDescription(x, y);
+async function travelPositionDescription(x, y) {
+    const description = await wizardPositionDescription(x, y);
     if (x === game.u?.ux && y === game.u?.uy)
         return description;
     const loc = game.level?.at?.(x, y);
@@ -4108,7 +4240,7 @@ function travelPositionDescription(x, y) {
     const valid = !unexploredProjection && isValidTravelTarget(x, y);
     return valid ? description : `${description} (no travel path)`;
 }
-export function farlookLocationDescription(x, y) {
+export async function farlookLocationDescription(x, y) {
     const monster = game.level ? monsterAtPosition(game.level, x, y) : null;
     if (monster && glyphAt(x, y)?.kind === 'monster') {
         const hallucinating = heroIsHallucinating(game);
@@ -4127,7 +4259,13 @@ export function farlookLocationDescription(x, y) {
                 condition = ', meditating';
         }
         const tail = monster.mx !== x || monster.my !== y;
-        return `${tail ? 'tail of a ' : ''}${prefix}${name}${condition}`;
+        // look_at_monster() gates hidden details on the selected square,
+        // which can be a worm tail outside the head's cloud.
+        const hidden = monster.mundetected || M_AP_TYPE(monster) || visibleRegionAt(game, x, y)
+            ? await monsterHiddenConditions(monster, game, { showAlternateMonster: false })
+            : [];
+        const hiddenText = hidden.length ? `, ${hidden.join(', ')}` : '';
+        return `${tail ? 'tail of a ' : ''}${prefix}${name}${condition}${hiddenText}`;
     }
     const trap = game.level?.traps?.find(candidate => candidate.tx === x && candidate.ty === y && candidate.tseen);
     if (trap?.ttyp === DART_TRAP)
@@ -4137,6 +4275,23 @@ export function farlookLocationDescription(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc)
         return '';
+    const glyph = glyphAt(x, y);
+    // pager.c:lookat() recognizes liquid cmap glyphs, including memory,
+    // then waterbody_name() describes the current surface at that square.
+    if (glyph?.kind === 'terrain' && [
+        CmapSymbol.pool, CmapSymbol.water, CmapSymbol.lava,
+        CmapSymbol.lavawall, CmapSymbol.ice,
+    ].some(symbol => glyph.glyph === cmapToGlyph(symbol))) {
+        const description = waterbodyName(x, y);
+        // do_screen_description() adds strength only to plain "ice";
+        // hallucinated frozen liquids retain their waterbody_name().
+        return description === 'ice' ? iceDescriptionAt(x, y) : description;
+    }
+    // do_screen_description() applies the Quest gate to the glyph's stair
+    // description, whether the stair is visible now or remembered.
+    if (glyph?.kind === 'terrain' && glyph.terrainName === 'staircase down'
+        && onQuestStart(game) && !okToQuest(game))
+        return 'blocked staircase down';
     if (loc.disp_glyph?.kind === 'nothing')
         return 'dark part of a room';
     // pager.c:do_screen_description() recognizes the concrete S_cloud glyph
@@ -4172,13 +4327,12 @@ export function farlookLocationDescription(x, y) {
             return loc.typ === DOOR && loc.doormask === D_ISOPEN
                 ? 'open door' : 'closed door';
         }
+        return loc.remembered_glyph.terrainName;
     }
     if (loc.typ === FOUNTAIN)
         return 'fountain';
     if (loc.typ === SINK)
         return 'sink';
-    if (loc.typ === MOAT)
-        return 'moat';
     if (loc.typ === STONE)
         return 'stone';
     if (IS_WALL(loc.typ))
@@ -4189,14 +4343,14 @@ export function farlookLocationDescription(x, y) {
         return 'floor of a room';
     if (loc.typ === CORR)
         return 'corridor';
-    return travelLocationDescription(x, y);
+    return glyph?.kind === 'terrain' ? glyph.terrainName : travelLocationDescription(x, y);
 }
 // C apply.c:dojump(): the physical command shares the spell's jump owner.
 async function dojump() {
     const result = await jumpHero(0);
     game.context.move = result.spentTime ? 1 : 0;
 }
-function verboseFarlookDescription(x, y) {
+async function verboseFarlookDescription(x, y) {
     const loc = game.level?.at(x, y);
     if (loc?.typ === CORR)
         return `#\x1b[8Ccan be many things (corridor)`;
@@ -4245,7 +4399,6 @@ async function dotravel() {
     // after the pick key, but removes it from the logical topline transaction.
     // Silent travel can retain that row; a new attack must replace rather than
     // append to "staircase down".
-    game._retained_message = game._pending_message;
     game._pending_message = '';
     if (cursor.x === game.u.ux && cursor.y === game.u.uy) {
         game._travelTarget = null;
@@ -4284,18 +4437,26 @@ async function dotravel() {
 // Quick far-look is a zero-time modal command.  It shares getpos's cached
 // cursor with travel, paints a short automatic description after movement,
 // then restores the gameplay cursor while showing the verbose selection.
-async function doFarlook() {
+async function doFarlook(quick = true) {
+    const verbose = !!game.flags.verbose && !quick;
+    await plineWithContinuation(verbose
+        ? 'Please move the cursor to a monster, object or location.'
+        : 'Pick a monster, object or location.');
     const firstUse = shouldShowGetposTip();
-    if (firstUse) {
-        await pline('Pick a monster, object or location.');
+    if (firstUse)
         await showGetposTip();
+    if (verbose) {
+        const helpKey = game.commandBindings.specialKey('getpos.help');
+        if (helpKey === undefined)
+            throw new Error('Map selection requires a getpos.help binding');
+        await plineWithContinuation(`(For instructions type a '${visibleCommandKey(helpKey)}')`);
     }
+    if (firstUse)
+        await plineWithContinuation('Move cursor to a monster, object or location:');
     const cursor = await selectMapPosition({
         start: game._travelTarget
             ? { ...game._travelTarget } : { x: game.u.ux, y: game.u.uy },
-        prompt: firstUse
-            ? 'Move cursor to a monster, object or location:'
-            : 'Pick a monster, object or location.',
+        prompt: game._pending_message || game._retained_message,
         goal: 'a monster, object or location',
         describe: farlookLocationDescription,
     });
@@ -4308,7 +4469,7 @@ async function doFarlook() {
     // description wraps and calls tty more() before do_look() can return.
     game._pending_message = '';
     game._retained_message = '';
-    await plineWithContinuation(verboseFarlookDescription(cursor.x, cursor.y));
+    await plineWithContinuation(await verboseFarlookDescription(cursor.x, cursor.y));
     game.context.move = 0;
 }
 async function restoreHelpMap() {
@@ -4341,17 +4502,38 @@ async function dowhatis() {
         27, 32, 10, 13,
         ...'/i?mMoOtTeE'.split('').map(char => char.charCodeAt(0)),
     ];
-    const key = await showChoiceWindow({
+    const queuedKey = takeCommandKey();
+    const key = queuedKey ?? await showChoiceWindow({
         title: 'What do you want to look at:',
         entries,
         validKeys,
     });
-    await restoreHelpMap();
-    if (String.fromCharCode(key) === '/') {
-        await doFarlook();
+    if (queuedKey === undefined)
+        await restoreHelpMap();
+    const choice = String.fromCharCode(key);
+    if (choice === '/') {
+        await doFarlook(false);
         return;
     }
+    if (choice === 'i') {
+        const queuedLetter = takeCommandKey();
+        const letter = queuedLetter ?? (await selectInventoryObject()).key;
+        const item = game.inventory.find(item => item.invlet === String.fromCharCode(letter));
+        if (item)
+            await showEncyclopediaInformation(singularObjectName(item));
+        else if (queuedLetter !== undefined)
+            clearCommandKeys();
+    }
     game.context.move = 0;
+}
+async function showEncyclopediaInformation(name) {
+    const entries = encyclopediaEntries(name);
+    // checkfile() fills an NHW_MENU with putstr(), so tty treats its rows
+    // as prose and accepts only the --More-- responses, even across pages.
+    for (const entry of entries)
+        await showDisclosureOverlay(entry.lines, { restoreUnderlay: true });
+    if (!entries.length)
+        await pline("You don't have any information on those things.");
 }
 // C pager.c:dohelp().
 async function dohelp() {
@@ -4487,7 +4669,7 @@ export async function finishArmorRemoval(object, { silent = false } = {}) {
 }
 // C do_wear.c:dotakeoff()/doremring() share armor_or_accessory_off().
 // T suggests armor and R suggests accessories; either accepts the other kind.
-async function removeWornItem(action) {
+async function removeWornItem(action, itemAction = false) {
     const worn = (game.inventory || []).filter(object => object.worn);
     if (!worn.length) {
         await pline(action === 'remove'
@@ -4501,7 +4683,9 @@ async function removeWornItem(action) {
     const preferred = worn.filter(candidate => action === 'remove'
         ? candidate.oclass === 4 || candidate.oclass === 5 || isEyewear(candidate)
         : candidate.class === 'Armor' || candidate.oclass === 3);
-    if (preferred.length === 1) {
+    // C ia_dotakeoff() forces getobj() to consume the queued item letter,
+    // even if another accessible piece is the only normal suggestion.
+    if (preferred.length === 1 && !itemAction) {
         [object] = preferred;
     }
     else {
@@ -4519,16 +4703,24 @@ async function removeWornItem(action) {
         game.context.move = 0;
         return;
     }
-    resetBulkTakeoff();
-    if (object.cursed) {
-        object.bknown = true;
-        const plural = /gloves|boots|shoes|lenses/.test(object.name || '')
-            || objectQuantity(object) > 1;
-        game._pending_message = '';
-        await pline(`You can't.  ${plural ? 'They are' : 'It is'} cursed.`);
+    const cloak = game.uarmc;
+    const suit = game.uarm;
+    if (object === game.uskin || object === suit && cloak
+        || object === game.uarmu && (cloak || suit)) {
+        const coverings = [cloak, object === game.uarmu ? suit : null]
+            .filter(covering => covering != null).map(covering => armorSimpleName(covering));
+        await pline(object === game.uskin ? "You can't take that off; it's embedded."
+            : `You can't take that off without taking off your ${coverings.join(' and ')} first.`);
         game.context.move = 0;
         return;
     }
+    resetBulkTakeoff();
+    const slot = TAKEOFF_ORDER.find(candidate => takeoffSlotObject(candidate) === object);
+    if (!slot || !await canSelectOff(object, slot)) {
+        game.context.move = 0;
+        return;
+    }
+    resetBulkTakeoff();
     if (object === game.ublindf) {
         game._pending_message = '';
         const removed = await removeEyewear(object);
@@ -4653,7 +4845,7 @@ async function putOnArmorObject(object) {
 // C refs: wield.c:dowield(), ready_weapon(), invent.c:getobj().  The prompt
 // advertises weapons and weapon-tools but still permits the full inventory
 // through ?/*; '-' represents the synthetic empty-hands object.
-async function dowield(cannedInvlet = null) {
+async function dowield() {
     game.multi = 0;
     if (heroHasNoHands(game) || heroIsVerySmall(game)) {
         await pline("Don't be ridiculous!");
@@ -4666,22 +4858,18 @@ async function dowield(cannedInvlet = null) {
     const letters = weapons.map(object => object.invlet).join('');
     const choices = ['-', compactInventoryLetters(letters)].filter(Boolean).join(' ');
     const prompt = `What do you want to wield? [${choices} or ?*] `;
-    const selection = cannedInvlet === null
-        ? await promptInventoryObject(prompt, game.inventory || [], {
-            allowNone: true, allowMenu: true,
-            menuItems: weapons.length ? weapons : game.inventory.filter(item => item.oclass !== 12),
-            noneDescription: `your ${game.uarmg ? 'gloved' : 'bare'} ${makePlural(heroHandName(game))}${game.uwep ? '' : ' (wielded)'}`,
-        })
-        : {
-            cancelled: false,
-            none: false,
-            object: (game.inventory || []).find(candidate => candidate.invlet === cannedInvlet),
-        };
+    const selection = await promptInventoryObject(prompt, game.inventory || [], {
+        verb: 'wield',
+        classify: object => object.oclass === 12 ? GETOBJ_EXCLUDE
+            : object.oclass === 2 || isWeaponTool(object) ? GETOBJ_SUGGEST : GETOBJ_DOWNPLAY,
+        allowNone: true, allowMenu: true,
+        menuItems: weapons.length ? weapons : game.inventory.filter(item => item.oclass !== 12),
+        noneDescription: `your ${game.uarmg ? 'gloved' : 'bare'} ${makePlural(heroHandName(game))}${game.uwep ? '' : ' (wielded)'}`,
+    });
     if (selection.cancelled) {
         game.context.move = 0;
         return;
     }
-    game._pending_message = '';
     const object = selection.object;
     if (!selection.none && !object) {
         game.context.move = 0;
@@ -4770,36 +4958,26 @@ async function dowear() {
         game.context.move = 0;
         return;
     }
-    const armor = (game.inventory || []).filter(object => object.class === 'Armor' || object.oclass === 3);
-    if (!armor.length) {
-        await pline("You don't have anything appropriate to wear.");
+    // wear_ok() downplays accessories but accepts them through the same
+    // getobj transaction, including a queued inventory action.
+    const object = await chooseInventoryObject('wear', candidate => {
+        if ((candidate.owornmask ?? 0) & (W_ARMOR | W_ACCESSORY))
+            return GETOBJ_EXCLUDE_INACCESS;
+        if (candidate.oclass === 3)
+            return GETOBJ_SUGGEST;
+        if (candidate.oclass === 4 || candidate.oclass === 5
+            || isEyewear(candidate) || candidate.otyp === MEAT_RING)
+            return GETOBJ_DOWNPLAY;
+        return GETOBJ_EXCLUDE;
+    });
+    if (!object) {
         game.context.move = 0;
         return;
     }
-    const letters = armor.filter(object => !object.worn)
-        .map(object => object.invlet).join('');
-    const choices = letters ? `${letters} or ?*` : '*';
-    const selection = String.fromCharCode(await promptKey(`What do you want to wear? [${choices}] `));
-    game._pending_message = '';
-    const inventoryObject = (game.inventory || []).find(candidate => candidate.invlet === selection);
-    const object = armor.find(candidate => candidate === inventoryObject);
-    if (object) {
+    if (object.oclass === 3)
         await putOnArmorObject(object);
-        return;
-    }
-    const accessory = inventoryObject
-        && (inventoryObject.class === 'Rings' || inventoryObject.oclass === 4
-            || inventoryObject.class === 'Amulets'
-            || inventoryObject.oclass === 5
-            || inventoryObject.otyp === RIN_CONFLICT
-            || inventoryObject.otyp === BLINDFOLD
-            || inventoryObject.otyp === TOWEL)
-        ? inventoryObject : null;
-    if (!accessory) {
-        game.context.move = 0;
-        return;
-    }
-    await putOnAccessoryObject(accessory);
+    else
+        await putOnAccessoryObject(object);
 }
 // C refs: shk.c:dopay(), menu_pick_pay_items(), pay(), and update_bill().
 // The menu is a zero-time nested input transaction until at least one billed
@@ -4989,7 +5167,6 @@ async function dodrop() {
                 object = splitCarriedStack(object, selection.count);
             }
         }
-        game._pending_message = '';
         const spentTime = await dropHeroObject(object, {
             state: game, publish: plineWithContinuation,
         });
@@ -5629,14 +5806,20 @@ async function doquiverCore(verb) {
     let spentTime = false;
     if (primary || alternate) {
         const quantity = item.quantity ?? item.quan ?? 1;
+        const noun = minimalObjectName(item, game);
+        const names = quantity === 1 ? noun : makePlural(noun);
+        const usePlural = objectNameIsPlural(item, game)
+            || item.otyp === LENSES || armorUsesPairGrammar(OBJECT_NAMES[item.otyp]);
+        let confirmation = primary
+            ? `You are wielding ${usePlural ? 'those' : 'that'}.  Ready ${usePlural ? 'them' : 'it'} instead?`
+            : `${usePlural ? 'Those are' : 'That is'} your ${wasTwoweap ? 'second' : 'alternate'} weapon.  Ready ${usePlural ? 'them' : 'it'} instead?`;
         let readyAll = true;
         if (quantity > 1 && hasFreeBasicInventoryLetter()
             && splittableForQuiver(item)) {
-            const plural = item.plural || makePlural(item.name || 'object');
             const slotDescription = primary
-                ? `You are wielding ${quantity} ${plural}.`
+                ? `You are wielding ${quantity} ${names}.`
                 : `${wasTwoweap ? 'You are dual wielding'
-                    : 'Your alternate weapon is'} ${quantity} ${plural}.`;
+                    : 'Your alternate weapon is'} ${quantity} ${names}.`;
             const partial = await promptYesNoQuit(`${slotDescription}  Ready ${quantity - 1} of them?`);
             if (partial === 'q') {
                 game.context.move = 0;
@@ -5646,10 +5829,16 @@ async function doquiverCore(verb) {
                 item = splitStackForQuiver(item, quantity - 1);
                 readyAll = false;
             }
+            else
+                confirmation = 'Ready all of them instead?';
         }
         if (readyAll) {
-            const answer = await promptYesNoQuit(`Ready ${quantity > 1 ? 'all of them' : 'it'} instead?`);
+            const answer = await promptYesNoQuit(confirmation);
             if (answer !== 'y') {
+                const owner = objectOwnershipPrefix(item, game);
+                const remains = objectNameIsPlural(item, game) ? 'remain' : 'remains';
+                const slot = primary || wasTwoweap ? 'wielded' : 'as secondary weapon';
+                await plineWithContinuation(`${owner}${names} ${remains} ${slot}.`);
                 game.context.move = 0;
                 return { item: null, spentTime: false, cancelled: false };
             }
@@ -5667,11 +5856,21 @@ async function doquiverCore(verb) {
         await setQuiverObject(item, game);
     observeObjectForNaming(item);
     const description = inventoryItemDescription(item);
-    await pline(verb === 'fire'
+    await plineWithContinuation(verb === 'fire'
         ? `You ready: ${item.invlet} - ${description}.`
         : `${item.invlet} - ${description}.`);
     if (verb === 'fire')
         await setQuiverObject(item, game);
+    if (spentTime) {
+        if (primary) {
+            const humanoid = !!((MONSTER_FLAGS1[heroSpecies(game)] ?? 0) & M1_HUMANOID);
+            const hands = game.uarmg ? 'empty handed'
+                : humanoid ? 'bare handed' : 'not wielding anything';
+            await plineWithContinuation(`You are now ${hands}.`);
+        }
+        else
+            await plineWithContinuation('You are no longer using two weapons at once.');
+    }
     game.context.move = spentTime ? 1 : 0;
     return { item, spentTime, cancelled: false };
 }
@@ -6550,6 +6749,13 @@ async function pushBoulder(boulder, x, y, dx, dy) {
     // honor `I` and cannot reveal the boulder which now occupies the square.
     unmap_invisible(targetX, targetY, false);
     await moveObject(boulder, targetX, targetY, game);
+    if (heroIsBlind(game)) {
+        feel_location(targetX, targetY);
+        feel_location(x, y);
+    }
+    else {
+        newsym(x, y);
+    }
     return true;
 }
 // C ref: hack.c:domove_fight_empty(). Forced attacks at the map edge and
@@ -6671,6 +6877,12 @@ async function finishMovedHero({ oldx, oldy, newx, newy, loc, explicitAttempt, b
         || IS_OBSTRUCTED(loc?.typ ?? STONE)
         || IS_FURNITURE(loc?.typ ?? STONE)))
         stopRun();
+    // C trap.c:move_into_trap() skips domove_core()'s footstep disturbance.
+    if (!trapOptions.failedUntrap
+        && !propertyIsActive('levitation', game) && !propertyIsActive('flying', game)
+        && !propertyIsActive('stealth', game)
+        && (MONSTER_BODY_META[heroSpecies(game)]?.[0] ?? 0) >= 400)
+        disturbBuriedZombies(u.ux, u.uy);
     newsym(oldx, oldy);
     vision_recalc(1);
     await announceInvocationSquare();
@@ -6732,6 +6944,28 @@ async function moveOutOfBounds(x, y) {
     game.context.move = 0;
     return false;
 }
+// C hack.c:domove_bump_mon(). The m-prefix spends the step before the
+// destination monster can choose displacement or receive an attack.
+async function bumpIntoMonster(monster, x, y) {
+    if (!game.context.nopick || game.context.travel)
+        return false;
+    const glyph = glyphAt(x, y);
+    if (!canSpotMonster(monster)
+        && glyph?.kind !== 'invisible' && glyph?.kind !== 'warning')
+        return false;
+    if (M_AP_TYPE(monster)
+        && !(game.u.protectionFromShapeChangers || game.protectionFromShapeChangers)
+        && !canSenseMonster(monster)) {
+        await stumbleOntoMimic(monster);
+    }
+    else if (monster.mpeaceful && !heroIsHallucinating(game)) {
+        await plineWithContinuation(`Pardon me, ${monsterName(monster, { article: 'none', exact: true })}.`);
+    }
+    else {
+        await plineWithContinuation(`You move right into ${monsterName(monster)}.`);
+    }
+    return true;
+}
 async function domoveCore(dx, dy, explicitAttempt) {
     requirePlayingGame(game);
     const u = game.u;
@@ -6779,6 +7013,7 @@ async function domoveCore(dx, dy, explicitAttempt) {
         u.uy = monster.my;
         return attackHostileMonster(monster, monster.mx, monster.my);
     }
+    checkSlipperyIce();
     // C hack.c:impaired_movement() always checks Confusion before deriving
     // the destination.  A nonzero rn2(5) keeps the requested direction; on
     // impairment, confdir(TRUE) chooses cardinals first and retries only an
@@ -6837,8 +7072,7 @@ async function domoveCore(dx, dy, explicitAttempt) {
         // after impaired_movement() has changed u.dx/u.dy; a Shift-run which
         // is redirected into the pet therefore stops before do_attack() and
         // its one-in-seven displacement refusal roll.
-        const safeMonster = game.flags.safe_dog !== false
-            && !!monster.mpeaceful
+        const safeMonster = (game.flags.safe_dog ?? true) && !!monster.mpeaceful
             && canSpotMonster(monster)
             && !game.context?.forcefight
             && !confused
@@ -6865,13 +7099,42 @@ async function domoveCore(dx, dy, explicitAttempt) {
         // step after the intervening monster phase.
         if (!safeMonster && game._runState)
             stopRun(game);
-        if (safeMonster) {
+        if (await bumpIntoMonster(monster, newx, newy))
+            return true;
+        if (beastChoosesHeroDisplacement(monster, game, newx, newy)) {
+            const ballChainMove = await beginBallAndChainMove(newx, newy);
+            if (ballChainMove?.blocked) {
+                if (ballChainMove.blockedMessage)
+                    await pline(ballChainMove.blockedMessage);
+                game.context.move = Number(ballChainMove.consumedTurn);
+                return ballChainMove.consumedTurn;
+            }
+            const oldx = u.ux, oldy = u.uy;
+            u.ux = newx;
+            u.uy = newy;
+            await settleBeastHeroDisplacement(monster, game);
+            if (game.program_state.gameover)
+                return true;
+            return finishMovedHero({ oldx, oldy, newx, newy, loc, explicitAttempt, ballChainMove });
+        }
+        if (safeMonster && artifactById(game.uwep?.oartifact, game)?.name !== 'Stormbringer') {
             // C ref: hack.c do_attack()/domove(): a tame monster normally
             // yields to the hero, and ordinary peacefuls share the same
             // displacement path.  Only tame actors flee after refusal.
             const tame = !!(monster.pet || monster.mtame);
-            const yields = rn2(7) !== 0;
-            if (!yields && tame) {
+            const blocked = heroIsPunished() || rn2(7) === 0
+                || (!!monster.wormno && ['baby long worm', 'long worm', 'long worm tail']
+                    .includes(MONSTER_NAME[monster.mnum] ?? ''))
+                || (IS_OBSTRUCTED(game.level.requireAt(u.ux, u.uy).typ)
+                    && !((MONSTER_FLAGS1[monster.mnum] ?? 0) & 0x00000008));
+            const inShop = !blocked && roomsAt(game.level, monster.mx, monster.my, SHOPBASE)
+                .some(roomno => tendedShop(roomForRoomno(game.level, roomno), game));
+            if ((blocked || inShop) && monster.isshk
+                && !game.context.travel && !game.context.run) {
+                await dopay();
+                return true;
+            }
+            if ((blocked || inShop) && tame) {
                 const flight = await makeMonsterFlee(monster, {
                     turns: rnd(6), announce: false,
                 });
@@ -6884,15 +7147,16 @@ async function domoveCore(dx, dy, explicitAttempt) {
             const speciesName = monsterInstanceDisplayName(monster);
             const subject = tame ? tameName
                 : monster.name ? speciesName : `the ${speciesName}`;
-            if (!yields) {
+            if (blocked || inShop) {
                 const displayName = subject.charAt(0).toUpperCase()
                     + subject.slice(1);
-                await pline(`You stop.  ${displayName} is in the way!`);
+                await plineWithContinuation(`You stop.  ${displayName} is in the way!`);
+                stopRun(game);
                 return true;
             }
-            if (monster.mfrozen || !monster.mcanmove || monster.msleeping
-                || (MONSTER_MOVE[monster.mnum] === 0 && rn2(6))) {
-                await pline(`${monsterName(monster, { state: game, capitalized: true })} doesn't seem to move!`);
+            if (monster.mfrozen || monster.msleeping || !monster.mcanmove
+                || ((MONSTER_MOVE[monster.mnum] ?? 0) === 0 && rn2(6))) {
+                await plineWithContinuation(`${monsterName(monster, { state: game, capitalized: true })} doesn't seem to move!`);
                 stopRun(game);
                 return true;
             }

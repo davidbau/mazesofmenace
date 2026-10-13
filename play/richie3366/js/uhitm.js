@@ -24,7 +24,7 @@ import {
     HAND, LEG, A_LAWFUL, Is_airlevel, Is_waterlevel, PARANOID_HIT, LOW_PM,
     W_ARM, W_ARMC, W_ARMH, W_ARMU, W_ARMG, W_RINGL, W_RINGR, W_ARMF, W_AMUL, W_WEP,
     MON_EXPLODE, NO_MM_FLAGS, NO_TRAP_FLAGS, DISP_ALWAYS, DISP_END, STOMACH, DIED, NO_KILLER_PREFIX, ERODE_CORRODE, ERODE_BURN, ERODE_RUST, EF_GREASE, EF_NONE, EF_VERBOSE, STONING,
-    KILLED_BY_AN, SLOW_DIGESTION, FREE_ACTION, MALE, FEMALE, MMOVE_DIED, CXN_ARTICLE,
+    KILLED_BY_AN, SLOW_DIGESTION, FREE_ACTION, ANTIMAGIC, MALE, FEMALE, MMOVE_DIED, CXN_ARTICLE,
     M_SEEN_MAGR, M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_ELEC, M_SEEN_ACID,
     ERODE_ROT, NO_NC_FLAGS, AD_CURS, EDOG, is_pit, FACE, NEUTRAL, CXN_PFX_THE,
     EXPL_FIERY, ismnum, EXT_ENCUMBER, NOTELL,
@@ -3278,7 +3278,13 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
         || u.EShock_resistance);
     const Acid_resistance = !!(u.Acid_resistance || u.HAcid_resistance
         || u.EAcid_resistance);
-    const Antimagic = !!(u.Antimagic || u.HAntimagic || u.EAntimagic);
+    // C youprop.h:55-57 — Antimagic ≡ uprops[ANTIMAGIC].intrinsic ||
+    // .extrinsic; confer_oc_oprop writes worn oprop gear (cloak of MR,
+    // gray DSM) only to uprops (sit.js D-1089 idiom), so the flats alone
+    // miss it — same shape as Free_action above (mhitm.js:596).
+    const Antimagic = !!(u.Antimagic || u.HAntimagic || u.EAntimagic
+        || (u.uprops?.[ANTIMAGIC]?.intrinsic | 0)
+        || (u.uprops?.[ANTIMAGIC]?.extrinsic | 0));
     const Stone_resistance = !!(u.Stone_resistance || u.HStone_resistance
         || u.EStone_resistance);
 

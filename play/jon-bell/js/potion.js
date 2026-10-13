@@ -6,7 +6,7 @@ import { newobj } from './game.js';
 import { make_blinded, resist, explode, explode_oil, potionhit_polymorph, poly_obj, obj_unpolyable, ubreatheu, melt_ice_zap } from './zap.js';
 import { spoteffects } from './landing-effects.js';
 import { nothing_happens, nothing_seems_to_happen } from './const.js';
-import { prinv, enlightenment, fire_damage, cmdq_peek, useup } from './cmd.js';
+import { prinv, enlightenment, fire_damage, cmdq_peek, useup, discover_artifact } from './cmd.js';
 import { CQ_CANNED, ECMD_FAIL } from './const.js';
 import { EXPL_FIERY } from './const.js';
 import { RIGHT_HANDED, STRANGLED, A_STR, ismnum, BOLT_LIM, Upolyd } from './const.js';
@@ -16,11 +16,13 @@ import { In_hell, make_grave } from './mklev.js';
 import { an } from './objnam.js';
 import { rn2, rnd, d, rn1, rnl } from './rng.js';
 import { PM_HEALER, PM_ROCK_MOLE, PM_WOODCHUCK, PM_PONY, PM_HORSE, PM_WARHORSE } from './pm.generated.js';
+import { PM_FIRE_VORTEX, PM_FLAMING_SPHERE, PM_FIRE_ELEMENTAL, PM_SALAMANDER } from './pm.generated.js';
+import { COLD_RES } from './const.js';
 import monPmnamesPack from './makemon_pmnames.json' with { type: 'json' };
 import { pline, flush_screen, newsym, force_more, force_more_lone_frame, await_topl_more_dismiss, canspotmon, canseemon, map_invisible, getobj_never_mind, You_see } from './display.js';
 import { unmap_object, glyph_is_invisible_at, tmp_at } from './display.js';
 import { DISP_ALWAYS, DISP_END } from './const.js';
-import { aggravate, monstseesu as monstseesu_real } from './mcastu.js';
+import { aggravate, monstseesu as monstseesu_real, burn_away_slime } from './mcastu.js';
 import { COLNO, ROWNO, INVIS } from './const.js';
 import { topl_park_cursor, _topl_stash_result } from './display.js';
 import { cls, docrt, map_monst, display_self, map_object, GLYPHCLS_OBJ } from './display.js';
@@ -585,8 +587,18 @@ export async function monster_detect(otmp, mclass) {
             p.extrinsic = (p.extrinsic | 0) & ~I_SPECIAL;
         }
     }
-    if (g._pending_message)
-        await force_more(g._pending_message);
+    if (g._pending_message) {
+        const morc = await force_more(g._pending_message);
+        /* detect.c:859 map_redisplay -> display.c:2196 cls flushes WIN_MESSAGE.
+         * This more() has no incoming update_topl owner: ESC's WIN_STOP is
+         * already live for the next pline (topl.c:232-235,257), including
+         * monster messages during the crystal ball's remaining busy turns. */
+        if (morc === 27 && g._topl_win_stop_armed) {
+            g._topl_win_stop_armed = false;
+            g._topl_win_stop = true;
+            g._topl_win_stop_buf = g._topl_last_more_committed;
+        }
+    }
     await docrt();
     return 0;
 }
@@ -1006,6 +1018,7 @@ export async function dipfountain(obj) {
             await pline("As the hand retreats, the fountain disappears!");
             obj = oname(obj, artiname(1 /* ART_EXCALIBUR */),
                         ONAME_VIA_DIP | ONAME_KNOW_ARTI);
+            discover_artifact(1 /* ART_EXCALIBUR */); // C fountain.c:433
             obj.cursed = false;
             obj.blessed = true;
             obj.oeroded = obj.oeroded2 = 0;
@@ -1217,24 +1230,19 @@ async function peffect_water(otmp) {
 async function peffect_oil(otmp) {
     let good_for_you = false;
     if (otmp.lamplit) {
-        /* C potion.c:1266-1284 — likes_fire(youmonst) is FALSE for every
-         * playable role at chargen (no S_LIGHT/fire-liking polyform), so the
-         * `else` (burn-your-face) branch is taken.  Stub likes_fire → false. */
-        if (false /* likes_fire(gy.youmonst.data) */) {
+        const pm = game.youmonst?.data?.pmidx;
+        if ([PM_FIRE_VORTEX, PM_FLAMING_SPHERE, PM_FIRE_ELEMENTAL, PM_SALAMANDER].includes(pm)) {
             await pline('Ahh, a refreshing drink.');
             good_for_you = true;
         } else {
-            /* C: You("burn your %s.", body_part(FACE));
-             * vulnerable = !Fire_resistance || Cold_resistance;
-             * losehp(d(vulnerable ? 4 : 2, 4), ...);
-             * At chargen: no Fire_resistance, no Cold_resistance →
-             * vulnerable = true → d(4,4). */
-            await pline('You burn your face.'); /* You("burn your %s.", body_part(FACE)) */
-            const dmg = d(4, 4); /* d(vulnerable?4:2, 4) — vulnerable=true at chargen */
-            /* losehp(dmg, "quaffing a burning potion of oil", KILLED_BY) —
-             * stubbed: fire the RNG draw to align stream. */
-            void dmg;
+            await pline(`You burn your ${body_part(FACE)}.`);
+            const fire = game.u.uprops[FIRE_RES], cold = game.u.uprops[COLD_RES];
+            const vulnerable = !((fire?.intrinsic | 0) || (fire?.extrinsic | 0))
+                || !!((cold?.intrinsic | 0) || (cold?.extrinsic | 0));
+            await losehp(d(vulnerable ? 4 : 2, 4),
+                'quaffing a burning potion of oil', KILLED_BY);
         }
+        await burn_away_slime();
     } else if (otmp.cursed) {
         /* C potion.c:1291 */
         await pline('This tastes like castor oil.');

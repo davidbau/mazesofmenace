@@ -4385,7 +4385,13 @@ async function you_aggravate(mtmp) {
     const _agg2 = `You feel aggravated at ${noit_mon_nam(mtmp)}.`;
     await pline(_agg2);
     /* wintty.c:1884-1889 display_nhwindow(WIN_MAP, TRUE) pages the pending topline */
-    await force_more(String(game._pending_message || _agg2));
+    /* display_nhwindow(WIN_MAP, TRUE) is a separate blocking page after _agg2's
+     * pline completed: an ESC there leaves WIN_STOP live (topl.c:234) until the
+     * next tty_nhgetch (wintty.c:4066), so later plines this turn are swallowed. */
+    if (await force_more(String(game._pending_message || _agg2)) === 27) {
+        game._topl_win_stop = true;
+        game._topl_win_stop_armed = false;
+    }
     await docrt();
     if (unconscious()) {
         game.multi = -1;

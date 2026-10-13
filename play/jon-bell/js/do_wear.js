@@ -202,7 +202,7 @@ import { W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU } from './const.j
 import { FAST as FAST_PROP, DRAIN_RES as DRAIN_RES_PROP, FREE_ACTION as FREE_ACTION_PROP,
          STONE_RES as STONE_RES_PROP, SLOW_DIGESTION as SLOW_DIGESTION_PROP,
          SICK_RES as SICK_RES_PROP, INFRAVISION as INFRAVISION_PROP } from './const.js';
-import { BLINDED as BLINDED_PROP, INVIS as INVIS_PROP, DISPLACED as DISPLACED_PROP } from './const.js';
+import { BLINDED as BLINDED_PROP, INVIS as INVIS_PROP, DISPLACED as DISPLACED_PROP, WARN_OF_MON } from './const.js';
 /* ── Cloak_on()'s per-otyp switch (do_wear.c:363-419) reads two more props and
  * paints/names on two of its arms. ── */
 import { SEE_INVIS as SEE_INVIS_PROP, ACID_RES as ACID_RES_PROP,
@@ -3208,12 +3208,33 @@ function _Blind_dw() {
 }
 
 
+/* C ref: potion.c:335-364 toggle_blindness().
+ *     SET_BOTL; gv.vision_full_recalc = 1; vision_recalc(0);
+ *     if (Blind_telepat || Infravision || Stinging) see_monsters();
+ *     if (Stinging) Sting_effects(-1);
+ *     if (!Blind) learn_unseen_invent();
+ * No RNG on any arm.  This is the same body js/zap.js:355 carries file-locally
+ * for flashburn; kept local here for the same reason (zap.js does not export
+ * it, and importing zap.js from do_wear.js would close a cycle through
+ * mhitm.js).  vision_recalc(0) is the load-bearing call: js/vision.js:596 has
+ * the real `else if (Blind)` arm, so once EBlinded is set this is what clears
+ * IN_SIGHT everywhere and repaints the remembered map.
+ *
+ * Refresh sensed monsters after vision changes, including stationary monsters
+ * outside the cells vision_recalc repaints.  The remaining unported calls are
+ * Sting_effects(-1) and learn_unseen_invent(). */
 function toggle_blindness_dw() {
     const g = game;
+    // C potion.c:338,349-350: Blind_telepat || Infravision || Stinging.
+    const up = g.u?.uprops;
+    const has = (p) => !!(up?.[p]?.intrinsic || up?.[p]?.extrinsic);
+    const Stinging = g.u?.uwep && ((up?.[WARN_OF_MON]?.extrinsic | 0) & W_WEP);
     g.disp = g.disp || {};
     g.disp.botl = 1;
     g.vision_full_recalc = 1;
     vision_recalc(0);
+    if (has(TELEPAT_DISP_PROP) || has(INFRAVISION_PROP) || Stinging)
+        see_monsters();
 }
 
 async function eyewear_on_msg(otmp) {

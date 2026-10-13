@@ -2439,34 +2439,29 @@ export async function avoid_trap_andor_region(x, y) {
 }
 
 /**
- * C ref: hack.c crawl_destination `:4079–4101` — orthogonal always;
- * diagonal takes the NODIAG veto (`:4089`), the Passes_walls allow
- * (`:4091`), the intact-doorway ban (`:4095`) and the bad_rock-flank
- * cant_squeeze_thru veto (`:4097–4100`). goodpos stays the inline
- * hero-crawl approximation (hack→teleport load cycle).
+ * C ref: hack.c crawl_destination `:4079–4101` — the goodpos gate
+ * (`:4082–4084`), then orthogonal always; diagonal takes the NODIAG veto
+ * (`:4089`), the Passes_walls allow (`:4091`), the intact-doorway ban
+ * (`:4095`) and the bad_rock-flank cant_squeeze_thru veto (`:4097–4100`).
  */
 export async function crawl_destination(x, y) {
     const u = game.u;
     if (!u) return false;
-    // Lazy goodpos via teleport to avoid hack→teleport→… cycles at load
-    // Inline ACCESSIBLE floor check approximating goodpos for hero crawl.
-    if (!isok(x, y)) return false;
-    const loc = game.level?.at(x, y);
-    if (!loc) return false;
-    // C: goodpos(x,y,&youmonst,0) — pool/lava not good for grounded hero
-    if (is_pool(x, y) || is_lava(x, y) || IS_WATERWALL(loc.typ)
-        || loc.typ === LAVAWALL) return false;
-    if (IS_OBSTRUCTED(loc.typ) || loc.typ === IRONBARS) return false;
-    if (IS_DOOR(loc.typ) && closed_door(x, y)) return false;
-    // occupied by monster
-    if (m_at(x, y)) return false;
+    /* C `:4082–4084` — is location ok in general? Live goodpos via the
+       pre-existing static hack→teleport edge (no new import; the
+       hack↔teleport pair is long-standing and runtime-only). The inline
+       typ+monster approximation dropped the sobj_at(BOULDER) arm, so
+       drown crawled onto boulder squares C rejects (587316 s340:
+       "Pheew!" vs C "You drown."). */
+    if (!goodpos(x, y, game.youmonst, 0)) return false;
     if (x === u.ux || y === u.uy) return true;
     // C `:4089–4090` — poly'd into a grid bug: no diagonal crawl.
     if (NODIAG(u.umonnum)) return false;
     // C `:4091–4092` — or a xorn: walls don't constrain the diagonal.
     if (Passes_walls_prop()) return true;
     // C `:4095` — doorless shop door still blocked by block_door.
-    if (IS_DOOR(loc.typ) && (!doorless_door(x, y) || await block_door(x, y))) return false;
+    const loc = game.level?.at(x, y);
+    if (IS_DOOR(loc?.typ) && (!doorless_door(x, y) || await block_door(x, y))) return false;
     // C `:4097–4100` — squeeze through a too-narrow gap?
     const youdata = game.youmonst?.data;
     return !(bad_rock(youdata, u.ux, y)

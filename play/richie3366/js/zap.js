@@ -289,8 +289,9 @@ import {
     NO_TRAP_FLAGS, ignite_items, openholdingtrap, closeholdingtrap,
     openfallingtrap, self_invis_message, trapname, animate_statue,
     activate_statue_trap,
-    acid_damage, ceiling,
+    acid_damage, ceiling, sokoban_guilt,
 } from './trap.js';
+import { o_unleash } from './apply.js';
 import { potionbreathe, make_stunned, speed_up, healup } from './potion.js';
 import { carried, fix_petrification, cant_finish_meal } from './eat.js';
 import { spoteffects } from './pickup.js';
@@ -385,6 +386,7 @@ import {
     has_mcorpsenm, ERODE_CORRODE,
     LL_WISH, LL_CONDUCT, LL_ARTIFACT, ONAME_WISH, ONAME_KNOW_ARTI,
     FM_FMON, REVIVE_MON, ROT_CORPSE, TIMER_OBJECT, thats_enough_tries,
+    MAX_SPELL_STUDY,
 } from './const.js';
 import { monstseesu, monstunseesu, defended, Resists_Elem, resists_blnd, resists_blnd_by_arti, resists_magm } from './mondata.js';
 import { spell_skilltype } from './spell.js';
@@ -454,6 +456,7 @@ const FIRE_HORN = objectNames.indexOf('FIRE_HORN');
 const FROST_HORN = objectNames.indexOf('FROST_HORN');
 const ROCK = objectNames.indexOf('ROCK');
 const BOULDER = objectNames.indexOf('BOULDER');
+const LEASH = objectNames.indexOf('LEASH');
 const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
 /** C objclass.h ARM_HELM — oc_armcat; JS oc_skill stand-in. */
 const ARM_HELM = 2;
@@ -5375,15 +5378,18 @@ async function stone_to_flesh_obj(obj) {
 }
 
 /**
- * C ref: zap.c poly_obj — STRANGE_OBJECT class-preserving poly
- * (wand/pile + potion_dip D-1499) plus mksobj(id) for stone-to-flesh
- * (D-1461 :1728–1736). Invent worn remap + set_wear (D-1510).
- * Invent side effects via addinv_core1/2 (C `:1910–1914`).
- * Named: sokoban_guilt / egg/leash /
- * gem mineral rnd / spestudied / floor boulder block.
+ * C ref: zap.c poly_obj `:1702–1989` whole — STRANGE_OBJECT
+ * class-preserving poly (wand/pile + potion_dip D-1499) plus mksobj(id)
+ * for stone-to-flesh (D-1461 :1728–1736). Invent worn remap + set_wear
+ * (D-1510). Invent side effects via addinv_core1/2 (C `:1910–1914`).
+ * D-3916: boulder sokoban_guilt, SCR_MAIL, leash transfer, spestudied
+ * degrade, gem backfire, unconditional replace_object (minvent via
+ * mkobj.c replace_object `:665–669`) + unconditional shop billing.
  */
 export async function poly_obj(obj, id) {
     if (!obj) return null;
+    // C zap.c :1710 — polying Sokoban boulders is Sokoban guilt.
+    if ((obj.otyp | 0) === BOULDER) sokoban_guilt();
     const can_merge = id === STRANGE_OBJECT;
     const obj_location = obj.where;
     let otmp;
@@ -5413,6 +5419,12 @@ export async function poly_obj(obj, id) {
     otmp.quan = obj.quan | 0;
     otmp.no_charge = obj.no_charge;
     if (obj_location === OBJ_INVENT) otmp.invlet = obj.invlet;
+
+    // C zap.c :1747–1753 (MAIL_STRUCTURES is defined) — mail stays mail.
+    if ((obj.otyp | 0) === objectNames.indexOf('SCR_MAIL')) {
+        otmp.otyp = objectNames.indexOf('SCR_MAIL');
+        otmp.spe = 1;
+    }
 
     /* C zap.c :1756–1779 — avoid abusing eggs laid by you.
      * random_monster(rn2) is rn2(NUMMONS); set_corpsenm re-arms hatch. */
@@ -5472,6 +5484,18 @@ export async function poly_obj(obj, id) {
         otmp.cursed = false;
     }
 
+    // C zap.c :1815–1825 — leashed-monster transfer across the poly.
+    if ((obj.otyp | 0) === LEASH && (obj.leashmon | 0) !== 0) {
+        if ((otmp.otyp | 0) === LEASH) {
+            otmp.leashmon = obj.leashmon | 0;
+            // clear m_id before delobj, to avoid o_unleash by obfree
+            obj.leashmon = 0;
+        } else {
+            // obfree() would do this if we didn't do it here
+            o_unleash(obj);
+        }
+    }
+
     /* C zap.c poly_obj `:1827–1829` — no box contents --KAA.
      * shk.c delete_contents (D-1770); zap.js clone retired. */
     if (Has_contents(otmp)) delete_contents(otmp);
@@ -5512,11 +5536,25 @@ export async function poly_obj(obj, id) {
         while (otmp.otyp === SPE_POLYMORPH) {
             otmp.otyp = rnd_class(bases[SPBOOK_CLASS] | 0, SPE_BLANK_PAPER);
         }
-        // spestudied degrade named
+        // C zap.c :1871–1880 — studied books degrade across the poly.
+        if ((otmp.otyp | 0) !== SPE_BLANK_PAPER
+            && (otmp.otyp | 0) !== SPE_NOVEL) {
+            otmp.spestudied = (obj.spestudied | 0) + 1;
+            if ((otmp.spestudied | 0) > MAX_SPELL_STUDY) {
+                otmp.otyp = SPE_BLANK_PAPER;
+                otmp.spestudied = rn2(otmp.spestudied | 0);
+            }
+        }
         break;
     }
     case GEM_CLASS:
-        // mineral→ROCK backfire named (rnd(4) RNG)
+        // C zap.c :1883–1890 — mineral transmutation backfire to ROCK.
+        if ((otmp.quan | 0) > rnd(4)
+            && (game.objects?.[obj.otyp]?.oc_material | 0) === MAT_MINERAL
+            && (game.objects?.[otmp.otyp]?.oc_material | 0) !== MAT_MINERAL) {
+            otmp.otyp = ROCK; // transmutation backfired
+            otmp.quan = Math.trunc((otmp.quan | 0) / 2); // some material lost
+        }
         break;
     default:
         break;
@@ -5535,93 +5573,89 @@ export async function poly_obj(obj, id) {
     }
     const old_wornmask = (obj.owornmask | 0) & ~(W_ART | W_ARTI);
 
-    if (obj_location === OBJ_FLOOR || obj_location === OBJ_INVENT) {
-        replace_object(obj, otmp);
-        if (obj_location === OBJ_INVENT) {
-            freeinv_core(obj);
-            /* C zap.c `:1910–1914` — freeinv_core(obj) then addinv_core1/2
-             * on otmp: the in-place invent swap's side effects (uhave /
-             * questart artitouch / W_ART intrinsic / archeologist decipher).
-             * Old-obj invoked-toggle reversal (artifact.c `:880–885`, D-2378)
-             * runs here, in C order before addinv_core1. */
-            if (obj.oartifact) await revoke_invoked_property(obj);
-            await addinv_core1(otmp);
-            await addinv_core2(otmp);
-            if (old_wornmask) {
-                /* C :1921–1950 — keep weapon slots; else wearslot & old. */
-                const was_twohanded = bimanual(obj);
-                const was_twoweap = !!(game.u?.twoweap);
-                const new_wornmask = ((old_wornmask & W_WEAPONS) !== 0)
-                    ? old_wornmask
-                    : (wearslot(otmp) & old_wornmask);
-                await remove_worn_item(obj, true);
-                const u = game.u || {};
-                if ((new_wornmask & W_WEP) !== 0) {
-                    if (was_twohanded || !bimanual(otmp) || !u.uarms) {
-                        const shine = setuwep(otmp);
-                        if (shine) await shine;
-                    }
-                    if (was_twoweap && u.uwep && !bimanual(u.uwep)) {
-                        set_twoweap(true);
-                    }
-                } else if ((new_wornmask & W_SWAPWEP) !== 0) {
-                    if (was_twohanded || !bimanual(otmp)) {
-                        setuswapwep(otmp);
-                    }
-                    if (was_twoweap && u.uswapwep) {
-                        set_twoweap(true);
-                    }
-                } else if ((new_wornmask & W_QUIVER) !== 0) {
-                    setuqwep(otmp);
-                } else if (new_wornmask) {
-                    setworn(otmp, new_wornmask);
-                    await set_wear(otmp);
-                    otmp = wearmask_to_obj(new_wornmask);
+    // C zap.c :1903 — swap otmp for obj in every location (floor,
+    // invent, minvent, contained); replace_object covers them all.
+    replace_object(obj, otmp);
+    if (obj_location === OBJ_INVENT) {
+        freeinv_core(obj);
+        /* C zap.c `:1910–1914` — freeinv_core(obj) then addinv_core1/2
+         * on otmp: the in-place invent swap's side effects (uhave /
+         * questart artitouch / W_ART intrinsic / archeologist decipher).
+         * Old-obj invoked-toggle reversal (artifact.c `:880–885`, D-2378)
+         * runs here, in C order before addinv_core1. */
+        if (obj.oartifact) await revoke_invoked_property(obj);
+        await addinv_core1(otmp);
+        await addinv_core2(otmp);
+        if (old_wornmask) {
+            /* C :1921–1950 — keep weapon slots; else wearslot & old. */
+            const was_twohanded = bimanual(obj);
+            const was_twoweap = !!(game.u?.twoweap);
+            const new_wornmask = ((old_wornmask & W_WEAPONS) !== 0)
+                ? old_wornmask
+                : (wearslot(otmp) & old_wornmask);
+            await remove_worn_item(obj, true);
+            const u = game.u || {};
+            if ((new_wornmask & W_WEP) !== 0) {
+                if (was_twohanded || !bimanual(otmp) || !u.uarms) {
+                    const shine = setuwep(otmp);
+                    if (shine) await shine;
                 }
-            }
-        } else if ((obj_location | 0) === OBJ_FLOOR) {
-            // C zap.c `:1952–1962` — boulder leaving or entering the cell.
-            // A new boulder in liquid is fractured before the block test.
-            const lev = game.level?.at?.(ox, oy);
-            if ((obj.otyp | 0) === BOULDER && (otmp.otyp | 0) !== BOULDER) {
-                if (!does_block(ox, oy, lev)) unblock_point(ox, oy);
-            } else if ((obj.otyp | 0) !== BOULDER && (otmp.otyp | 0) === BOULDER) {
-                if (is_pool(ox, oy) || is_lava(ox, oy)) await fracture_rock(otmp);
-                if (does_block(ox, oy, game.level?.at?.(ox, oy))) {
-                    block_point(ox, oy);
+                if (was_twoweap && u.uwep && !bimanual(u.uwep)) {
+                    set_twoweap(true);
                 }
+            } else if ((new_wornmask & W_SWAPWEP) !== 0) {
+                if (was_twohanded || !bimanual(otmp)) {
+                    setuswapwep(otmp);
+                }
+                if (was_twoweap && u.uswapwep) {
+                    set_twoweap(true);
+                }
+            } else if ((new_wornmask & W_QUIVER) !== 0) {
+                setuqwep(otmp);
+            } else if (new_wornmask) {
+                setworn(otmp, new_wornmask);
+                await set_wear(otmp);
+                otmp = wearmask_to_obj(new_wornmask);
             }
         }
-        /* C zap.c `:1965–1986` — polymorphing shop goods (or an unpaid
-           item) on a costly spot angers the shopkeeper. otmp gone means
-           useup() already billed it. */
-        if (((otmp && !carried(otmp)) || obj.unpaid) && costly_spot(ox, oy)) {
-            const rooms = in_rooms(ox, oy, SHOPBASE) || '';
-            const shkp = shop_keeper(rooms ? rooms.charCodeAt(0) : 0); // C :1967
-            if ((!obj.no_charge
-                    || (Has_contents(obj)
-                        && contained_cost(obj, shkp, 0, false, false) !== 0))
-                && inhishop(shkp)) { // C :1969–1971
-                if (shkp.mpeaceful) {
-                    const urooms = in_rooms(game.u.ux, game.u.uy, 0) || '';
-                    const srooms = in_rooms(shkp.mx, shkp.my, 0) || '';
-                    if ((game.u.ushops || '')
-                        && (urooms.charCodeAt(0) || 0) === (srooms.charCodeAt(0) || 0)
-                        && !costly_spot(game.u.ux, game.u.uy)) { // C :1974–1977
-                        await make_angry_shk(shkp, ox, oy);
-                    } else { // C :1978–1981
-                        await pline(`${Shknam(shkp)} gets angry!`);
-                        await hot_pursuit(shkp);
-                    }
-                } else { // C :1983–1984
-                    await Norep(`${Shknam(shkp)} is furious!`);
-                }
+    } else if ((obj_location | 0) === OBJ_FLOOR) {
+        // C zap.c `:1952–1962` — boulder leaving or entering the cell.
+        // A new boulder in liquid is fractured before the block test.
+        const lev = game.level?.at?.(ox, oy);
+        if ((obj.otyp | 0) === BOULDER && (otmp.otyp | 0) !== BOULDER) {
+            if (!does_block(ox, oy, lev)) unblock_point(ox, oy);
+        } else if ((obj.otyp | 0) !== BOULDER && (otmp.otyp | 0) === BOULDER) {
+            if (is_pool(ox, oy) || is_lava(ox, oy)) await fracture_rock(otmp);
+            if (does_block(ox, oy, game.level?.at?.(ox, oy))) {
+                block_point(ox, oy);
             }
         }
-    } else {
-        // minvent/contained — extract+free old; leave otmp free
-        delobj(obj);
-        return otmp;
+    }
+    /* C zap.c `:1965–1986` — polymorphing shop goods (or an unpaid
+       item) on a costly spot angers the shopkeeper. otmp gone means
+       useup() already billed it. */
+    if (((otmp && !carried(otmp)) || obj.unpaid) && costly_spot(ox, oy)) {
+        const rooms = in_rooms(ox, oy, SHOPBASE) || '';
+        const shkp = shop_keeper(rooms ? rooms.charCodeAt(0) : 0); // C :1967
+        if ((!obj.no_charge
+                || (Has_contents(obj)
+                    && contained_cost(obj, shkp, 0, false, false) !== 0))
+            && inhishop(shkp)) { // C :1969–1971
+            if (shkp.mpeaceful) {
+                const urooms = in_rooms(game.u.ux, game.u.uy, 0) || '';
+                const srooms = in_rooms(shkp.mx, shkp.my, 0) || '';
+                if ((game.u.ushops || '')
+                    && (urooms.charCodeAt(0) || 0) === (srooms.charCodeAt(0) || 0)
+                    && !costly_spot(game.u.ux, game.u.uy)) { // C :1974–1977
+                    await make_angry_shk(shkp, ox, oy);
+                } else { // C :1978–1981
+                    await pline(`${Shknam(shkp)} gets angry!`);
+                    await hot_pursuit(shkp);
+                }
+            } else { // C :1983–1984
+                await Norep(`${Shknam(shkp)} is furious!`);
+            }
+        }
     }
     delobj(obj);
     return otmp;

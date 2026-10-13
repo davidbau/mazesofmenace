@@ -409,10 +409,17 @@ async function noises(magr, mattk) {
     }
 }
 
-/** C ref: youprop.h Cold_resistance — intrinsic/extrinsic cold resist. */
+/**
+ * C youprop.h Cold_resistance `:30–32` — H || E via flats + uprops[COLD_RES]
+ * (worn ring; confer_oc_oprop does not mirror ECold — sit.js shape; sole
+ * caller is the getmattk lich cold→PHYS arm `:568`).
+ */
 function Cold_resistance() {
     const u = game.u || {};
-    return !!(u.Cold_resistance || u.HCold_resistance || u.ECold_resistance);
+    const e = u.uprops?.[COLD_RES];
+    return !!((u.HCold_resistance | 0) || (u.ECold_resistance | 0)
+        || u.Cold_resistance
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
 }
 
 /* C monst.h:273 resists_cold → Resists_Elem(mon, COLD_RES): live zap.js export (imported above); local bit-test clone removed. */

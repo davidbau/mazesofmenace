@@ -1104,6 +1104,8 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                         !(hero_uptr && poly_when_stoned(hero_uptr)
                           && polymon_to_stone_golem)) {
                         done_in_by(mon, STONING);
+                        // C uhitm.c:5952: done() returns here after lifesaving.
+                        await drain_pending_death_in_place();
                         return M_ATTK_DEF_DIED;
                     }
                 }

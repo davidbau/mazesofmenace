@@ -813,7 +813,7 @@ export async function make_happy_shoppers(silentkops) {
         await mongone(mon);
     }
     if (visibleKops && !silentkops)
-        pline('The Kop%s (disappointed) vanish%s into thin air.',
+        await pline('The Kop%s (disappointed) vanish%s into thin air.',
               visibleKops === 1 ? '' : 's', visibleKops === 1 ? 'es' : '');
 
     /* C mon.c:5758 pacify_guards(): is_watch() monsters become peaceful. */

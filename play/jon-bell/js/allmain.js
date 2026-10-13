@@ -1448,6 +1448,7 @@ async function eat_occupation_turn() {
     // C: this turn's per-turn physical flush — record the painted frame as the
     // current last-flush (this turn's movemon map).  DISPLAY-ONLY.
     occupation_painted_tick();
+    const _tickFrame = g._occCurFrame, _tickBotl = g._occCurBotl;
     const _eatPre = g._eatPreEffectFrame;
     const thisTurnFrame = _eatPre?.cells || g._occCurFrame;
     if (_eatPre?.botl) g._occCurBotl = _eatPre.botl;
@@ -1661,7 +1662,14 @@ async function eat_occupation_turn() {
                          * pet not yet moved. */
                         || (g._plineFlushFrames || []).findLast((f) => f.cells && f.msg === part))
                     : null;
-                const _pageFrame = _pf?.cells || thisTurnFrame;
+                /* An interrupt line ("You stop eating X.", allmain.c:505 ->
+                 * stop_occupation) is plined AFTER this turn's movemon, so its
+                 * more() pages over this turn's tick frame (pet moved, status
+                 * already without the cured Stone), not the corpse-flavor frame
+                 * frozen at eatcorpse time. */
+                const _interrupt = !_fromPreEat && /^You stop eating\b/.test(part);
+                if (_interrupt && _tickBotl) g._occCurBotl = _tickBotl;
+                const _pageFrame = _pf?.cells || (_interrupt && _tickFrame) || thisTurnFrame;
                 /* The movemon pline's flush_screen()/bot() ran before moves++
                  * (allmain.c:261), so its --More-- shows that frame's T:. */
                 const morc = await occupation_force_more(

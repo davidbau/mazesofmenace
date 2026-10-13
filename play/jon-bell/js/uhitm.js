@@ -5427,6 +5427,7 @@ export async function mon_wield_item(mon) {
                 pline(`${Tobjnam_sh(obj, 'weld')} ${(obj.quan | 0) !== 1 ? 'themselves' : 'itself'} to ${s_suffix(mon_nam(mon))} ${mon_hand}!`);
                 /* C weapon.c:917 — the welded weapon's curse becomes known. */
                 obj.bknown = 1;
+                obj.bknown = 1; /* weapon.c:915 */
             } else {
                 pline(_wieldLine);
                 if (_tetherLine) pline(_tetherLine);

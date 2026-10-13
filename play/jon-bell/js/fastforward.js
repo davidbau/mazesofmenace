@@ -8,7 +8,7 @@ import monsPack from "./makemon_mons.json" with { type: "json" };
 import { gethungry, morehungry, opentin } from "./eat.js";
 import { make_confused, make_stunned, vomit, cantvomit } from "./potion.js";
 import { age_spells } from "./spell.js";
-import { exerchk, exercise, acurr } from "./attrib.js";
+import { exerchk, exercise, acurr, spec_ability } from "./attrib.js";
 import { overexert_hp } from "./uhitm.js";
 import { t_at, registerTrapMksobj, m_dowear, activate_statue_trap } from "./trap.js";
 import { Warning, newsym, feel_location, feel_newsym, pline, urgent_pline, flush_screen, _topl_merge_result, _topl_joins_snapshot, _topline_more_pending, You_hear } from "./display.js";
@@ -46,7 +46,7 @@ import { restrap, mcalcdistress, hideunder as hideunder_ff, get_iter_mons } from
  * import fastforward.js, so this static edge introduces no cycle (same rule
  * as the mklev/monmove imports above). */
 import { dmonsfree, movebubbles, fumaroles } from "./mkmaze.js";
-import { vision_recalc } from "./vision.js";
+import { vision_recalc, Blind } from "./vision.js";
 import { any_light_source } from "./light.js";
 /* C prop.h:44 I_SPECIAL — mon.c:1269 borrows the bit in misc_worn_check as the
  * "re-check worn gear next turn" flag (check_gear_next_turn, mon.c:5903). */
@@ -626,6 +626,18 @@ function ff_Searching() {
     }
     return hSearching || eSearching;
 }
+/* C ref: detect.c:2017 dosearch0(aflag=1) — intrinsic autosearch.  Fired
+ * once per turn from moveloop_core (allmain.c:395-397) when
+ *   Searching && !svl.level.flags.noautosearch && gm.multi >= 0.
+ * For aflag=1 (intrinsic) the !aflag branches (feel_location, m_at/mfind0,
+ * unmap_invisible) are skipped, so the scan consumes RNG only via:
+ *   SDOOR  → rnl(7 - fund)
+ *   SCORR  → rnl(7 - fund)
+ *   unseen trap → rnl(8)
+ * over the hero's 3x3 (x outer ux-1..ux+1, y inner uy-1..uy+1, skipping
+ * self and !isok).  This is the RNG-consuming subset of cmd.js's full
+ * dosearch0; the message/vision side-effects are screen-only and omitted.
+ * fund follows detect.c:2027-2033 (artifact enchantment plus lenses). */
 async function autosearch_rng() {
     const g = game;
     const u = g.u || {};
@@ -636,8 +648,10 @@ async function autosearch_rng() {
     /* C: if (u.uswallow) { ... } — no RNG when engulfed for aflag=1. */
     if (u.uswallow) return;
     /* C: fund = (uwep && oartifact && SPFX_SEARCH ? uwep->spe : 0)
-     *           + (LENSES && !Blind ? 2 : 0), capped 5.  Stub: 0. */
-    let fund = 0;
+     *           + (LENSES && !Blind ? 2 : 0), capped 5. */
+    let fund = u.uwep?.oartifact && spec_ability(u.uwep, 0x00000200 /* SPFX_SEARCH */)
+        ? (u.uwep.spe | 0) : 0;
+    if (u.ublindf?.otyp === 232 /* LENSES */ && !Blind()) fund += 2;
     if (fund > 5) fund = 5;
     const ux = u.ux | 0;
     const uy = u.uy | 0;
