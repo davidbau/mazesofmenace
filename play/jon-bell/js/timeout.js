@@ -1,4 +1,5 @@
-// timeout.js — port of nethack-c/src/timeout.c (scaffold: functions are added
+// timeout.js — object timers and status timeouts from
+// nethack-c-v5/upstream/src/timeout.c.
 
 import { RANGE_GLOBAL, NHF_BONESFILE, TIMER_LEVEL, TIMER_OBJECT, TIMER_NONE,
          TIMER_GLOBAL, TIMER_MONSTER, NUM_TIMER_KINDS, NUM_TIME_FUNCS, HATCH_EGG,
@@ -11,17 +12,17 @@ import { game } from './gstate.js';
 import { eatfood } from './eat.js';
 import { COLNO, ROWNO, CLOUD } from './const.js';
 import { rn2, rn1 } from './rng.js';
-import { pline, You_hear } from './display.js';
-import { buzz } from './mcastu.js';
+import { pline, You_hear, urgent_pline } from './display.js';
+import { buzz, Monnam } from './mcastu.js';
 import { makemon, hideunder, ing_suffix, revive_corpse, zombie_form, set_corpsenm,
          dealloc_obj, maybe_unhide_at } from './mklev.js';
-import { permonstTemplate, container_weight } from './makemon.js';
+import { permonstTemplate, container_weight, emits_light } from './makemon.js';
 import { enexto_out } from './teleport.js';
 import { tamedog } from './dog.js';
 import { make_familiar } from './dog.js';
 import { cansee } from './vision.js';
 import { m_monnam, locomotion, big_to_little, little_to_big, a_monnam } from './mhitm.js';
-import { makeplural, an } from './objnam.js';
+import { makeplural, an, xname } from './objnam.js';
 import { newsym, You_see, canseemon, Deaf } from './display.js';
 import { useup, useupall, obj_extract_self_general, verbalize, Yname2 } from './cmd.js';
 import { obfree, is_ice } from './dokick.js';
@@ -35,11 +36,17 @@ import { hcolor } from './mhitm.js';
 import { melt_ice_zap } from './zap.js';
 import { find_ac } from './do_wear.js';
 import { remove_worn_item } from './steal.js';
-import { encumber_msg, near_capacity } from './weight.js';
+import { encumber_msg, near_capacity, weight } from './weight.js';
+import { Shk_Your } from './shk.js';
+import { polymon } from './polyself.js';
+import { done, dealloc_killer } from './end.js';
+import { PM_GREEN_SLIME } from './pm.generated.js';
+import { LS_MONSTER, I_SPECIAL, TURNED_SLIME, GENOCIDED, KILLED_BY,
+         NO_KILLER_PREFIX, PLNMSG_OK_DONT_DIE } from './const.js';
 import { OC_WEIGHT } from './oc_weight.generated.js';
 import {
     new_light_source, del_light_source, get_obj_location,
-    artifact_light, arti_light_radius, candle_light_range,
+    artifact_light, arti_light_radius, candle_light_range, monst_to_any,
 } from './light.js';
 import { update_inventory } from './mhitm.js';
 import { nomul, stop_occupation } from './allmain.js';
@@ -65,6 +72,47 @@ const MAX_EGG_HATCH_TIME = 200;
 const G_UNIQ = 0x1000;
 const S_DRAGON = 30;
 
+/* C timeout.c:574 — preserve the fatal condition through end disclosure,
+ * then remove the marker if done() returns because the hero was life-saved. */
+export async function done_timeout(how, which) {
+    const prop = game.u.uprops[which];
+    prop.intrinsic |= I_SPECIAL;
+    await done(how);
+    prop.intrinsic &= ~I_SPECIAL;
+    (game.disp ||= {}).botl = true;
+}
+
+/* C timeout.c:456-516 — the SLIMED property has already counted down to 0.
+ * Polymorph even into a genocided slime before the first death; after a
+ * life-save, genocide is a second, separate death. */
+export async function slimed_to_death(kptr) {
+    const g = game;
+    if (g.u.umonnum !== g.u.umonster && g.youmonst.data.pmidx === PM_GREEN_SLIME) {
+        dealloc_killer(kptr);
+        return;
+    }
+    const killer = (g.svk ||= {}).killer ||= { id: 0, format: 0, name: '', next: null };
+    killer.format = kptr?.name ? kptr.format : NO_KILLER_PREFIX;
+    killer.name = kptr?.name || 'turned into green slime';
+    dealloc_killer(kptr);
+    if (emits_light(g.youmonst.data))
+        del_light_source(LS_MONSTER, monst_to_any(g.youmonst));
+    const vitals = (g.mvitals ||= [])[PM_GREEN_SLIME] ||= { mvflags: 0 };
+    const save_mvflags = vitals.mvflags | 0;
+    vitals.mvflags = save_mvflags & ~G_GENOD;
+    await polymon(PM_GREEN_SLIME);
+    vitals.mvflags = save_mvflags;
+    await done_timeout(TURNED_SLIME, SLIMED);
+    if (vitals.mvflags & G_GENOD) {
+        g.svk.killer.format = KILLED_BY;
+        g.svk.killer.name = 'slimicide';
+        await urgent_pline(g.iflags?.last_msg === PLNMSG_OK_DONT_DIE
+            ? 'Yes, you do.  Green slime has been genocided...'
+            : 'Unfortunately, green slime has been genocided...');
+        await done(GENOCIDED);
+    }
+}
+
 /* C apply.c:2398 — delayed figurine transformation. */
 async function fig_transform_timer(arg, timeout) {
     const figurine = arg?.a_obj;
@@ -79,51 +127,241 @@ async function fig_transform_timer(arg, timeout) {
         await useup(figurine);
 }
 
-/* C timeout.c:1383 — the timer fires when fuel is exhausted.  The detailed
- * per-object messaging is presentation-only here; the state transition that
- * matters to subsequent turns is extinguishing the light and consuming the
- * remaining fuel. */
-async function burn_object_timer(arg) {
-    const obj = arg?.a_obj;
-    if (!obj) return;
+function burn_hallucination() {
+    const props = game.u?.uprops;
+    return !!props?.[HALLUC]?.intrinsic
+        && !(props?.[HALLUC_RES]?.intrinsic || props?.[HALLUC_RES]?.extrinsic);
+}
 
-    /* C timeout.c:1391-1397.  A timer which expired while the object was
-     * detached (level change) has already consumed all of its fuel; the
-     * normal callback below is still the right state transition, but the
-     * object must be removed for disposable light sources. */
-    obj.age = 0;
-    /* The timer element has already been removed by run_timers(), so C calls
-     * end_burn(..., FALSE) here; passing TRUE would skip its light-source
-     * cleanup and only work accidentally when no light source is registered. */
-    end_burn(obj, false);
+/* C timeout.c:1344 — only called for a visible lamp. */
+async function see_lamp_flicker(obj, tailer) {
+    switch (obj.where) {
+    case OBJ_INVENT:
+    case OBJ_MINVENT:
+        await pline(`${Yname2(obj)} flickers${tailer}.`);
+        break;
+    case OBJ_FLOOR:
+        await You_see(`${an(xname(obj))} flicker${tailer}.`);
+        break;
+    }
+}
 
-    const t = obj.otyp | 0;
-    if (t === BURN_POT_OIL || Is_candle(obj)) {
-        const onFloor = (obj.where | 0) === OBJ_FLOOR;
-        const x = obj.ox | 0, y = obj.oy | 0;
-        const carried = burn_carried(obj);
-        if (carried)
-            await useup(obj);
-        else {
-            obj_extract_self_general(obj);
-            await obfree(obj, null);
-            if (onFloor)
-                maybe_unhide_at(x, y);
+/* C timeout.c:1359 — brass lanterns have their own warning text. */
+async function lantern_message(obj) {
+    switch (obj.where) {
+    case OBJ_INVENT:
+        await pline('Your lantern is getting dim.');
+        if (burn_hallucination())
+            await pline('Batteries have not been invented yet.');
+        break;
+    case OBJ_FLOOR:
+        await You_see('a lantern getting dim.');
+        break;
+    case OBJ_MINVENT:
+        await pline(`${s_suffix(Monnam(obj.ocarry))} lantern is getting dim.`);
+        break;
+    }
+}
+
+/* C timeout.c:1382-1680.  begin_burn subtracts fuel through the next
+ * warning checkpoint in advance; age is the fuel LEFT at that checkpoint.
+ * run_timers has already detached this timer before calling us. */
+async function burn_object(arg, timeout) {
+    let obj = arg.a_obj;
+    const menorah = obj.otyp === BURN_CANDELABRUM;
+    const many = menorah ? obj.spe > 1 : obj.quan > 1;
+
+    if (timeout !== game.moves) {
+        const how_long = game.moves - timeout;
+        if (how_long >= obj.age) {
+            obj.age = 0;
+            end_burn(obj, false);
+            if (menorah) {
+                obj.spe = 0;
+                obj.owt = weight(obj);
+            } else if (Is_candle(obj) || obj.otyp === BURN_POT_OIL) {
+                const mon = obj.where === OBJ_FLOOR ? m_at(obj.ox, obj.oy) : null;
+                obj_extract_self_general(obj);
+                await obfree(obj, null);
+                if (mon) maybe_unhide_at(mon.mx, mon.my);
+            }
+        } else {
+            obj.age -= how_long;
+            begin_burn(obj, true);
         }
-        if (onFloor)
-            newsym(x, y);
         return;
     }
-    if (t === BURN_CANDELABRUM) {
-        /* C leaves the candelabrum in place, but consumes all candles and
-         * recomputes its weight.  `spe` is the candle count in this port. */
-        obj.spe = 0;
-        container_weight(obj);
+
+    const x = { value: 0 }, y = { value: 0 };
+    let canseeit = false, whose = '';
+    if (get_obj_location(obj, x, y, 0)) {
+        canseeit = !Blind() && cansee(x.value, y.value);
+        whose = Shk_Your('', obj);
     }
-    if (burn_carried(obj))
-        update_inventory();
-    else if (obj.where === OBJ_FLOOR)
-        newsym(obj.ox | 0, obj.oy | 0);
+    const bytouch = obj.where === OBJ_INVENT && obj.otyp !== BURN_BRASS_LANTERN;
+    let need_newsym = false, need_invupdate = false;
+    switch (obj.otyp) {
+    case BURN_POT_OIL:
+        if (canseeit) {
+            switch (obj.where) {
+            case OBJ_INVENT:
+                need_invupdate = true;
+                // C FALLTHROUGH.
+            case OBJ_MINVENT:
+                await pline(`${whose}potion of oil has burnt away.`);
+                break;
+            case OBJ_FLOOR:
+                await You_see('a burning potion of oil go out.');
+                need_newsym = true;
+                break;
+            }
+        }
+        end_burn(obj, false);
+        if (burn_carried(obj)) {
+            await useupall(obj);
+        } else {
+            if (obj.where === OBJ_MIGRATING) obj.owornmask = 0;
+            obj_extract_self_general(obj);
+            await obfree(obj, null);
+        }
+        obj = null;
+        break;
+
+    case BURN_BRASS_LANTERN:
+    case BURN_OIL_LAMP:
+        switch (obj.age) {
+        case 150:
+        case 100:
+        case 50:
+            if (canseeit) {
+                if (obj.otyp === BURN_BRASS_LANTERN)
+                    await lantern_message(obj);
+                else
+                    await see_lamp_flicker(obj, obj.age === 50 ? ' considerably' : '');
+            }
+            break;
+        case 25:
+            if (canseeit) {
+                if (obj.otyp === BURN_BRASS_LANTERN) {
+                    await lantern_message(obj);
+                } else {
+                    switch (obj.where) {
+                    case OBJ_INVENT:
+                    case OBJ_MINVENT:
+                        await pline(`${Yname2(obj)} seems about to go out.`);
+                        break;
+                    case OBJ_FLOOR:
+                        await You_see(`${an(xname(obj))} about to go out.`);
+                        break;
+                    }
+                }
+            }
+            break;
+        case 0:
+            if (canseeit || bytouch) {
+                switch (obj.where) {
+                case OBJ_INVENT:
+                    need_invupdate = true;
+                    // C FALLTHROUGH.
+                case OBJ_MINVENT:
+                    await pline(obj.otyp === BURN_BRASS_LANTERN
+                        ? `${whose}lantern has run out of power.` : `${Yname2(obj)} has gone out.`);
+                    break;
+                case OBJ_FLOOR:
+                    await You_see(obj.otyp === BURN_BRASS_LANTERN
+                        ? 'a lantern run out of power.' : `${an(xname(obj))} go out.`);
+                    break;
+                }
+            }
+            end_burn(obj, false);
+            break;
+        }
+        if (obj.age) begin_burn(obj, true);
+        break;
+
+    case BURN_CANDELABRUM:
+    case BURN_TALLOW_CANDLE:
+    case BURN_WAX_CANDLE:
+        switch (obj.age) {
+        case 75:
+            if (canseeit) {
+                switch (obj.where) {
+                case OBJ_INVENT:
+                case OBJ_MINVENT:
+                    await pline(`${whose}${menorah ? "candelabrum's " : ''}candle${many ? 's are' : ' is'} getting short.`);
+                    break;
+                case OBJ_FLOOR:
+                    await You_see(`${menorah ? "a candelabrum's " : many ? 'some ' : 'a '}candle${many ? 's' : ''} getting short.`);
+                    break;
+                }
+            }
+            break;
+        case 15:
+            if (canseeit) {
+                switch (obj.where) {
+                case OBJ_INVENT:
+                case OBJ_MINVENT:
+                    await pline(`${whose}${menorah ? "candelabrum's " : ''}candle${many ? "s'" : "'s"} flame${many ? 's' : ''} flicker${many ? '' : 's'} low!`);
+                    break;
+                case OBJ_FLOOR:
+                    await You_see(`${menorah ? "a candelabrum's " : many ? 'some ' : 'a '}candle${many ? "s'" : "'s"} flame${many ? 's' : ''} flicker low!`);
+                    break;
+                }
+            }
+            break;
+        case 0:
+            if (canseeit || bytouch) {
+                if (menorah) {
+                    switch (obj.where) {
+                    case OBJ_INVENT:
+                        need_invupdate = true;
+                        // C FALLTHROUGH.
+                    case OBJ_MINVENT:
+                        await pline(`${whose}candelabrum's flame${many ? 's die' : ' dies'}.`);
+                        break;
+                    case OBJ_FLOOR:
+                        await You_see(`a candelabrum's flame${many ? 's' : ''} die.`);
+                        break;
+                    }
+                } else {
+                    switch (obj.where) {
+                    case OBJ_INVENT:
+                    case OBJ_MINVENT:
+                        await pline(`${Yname2(obj)} ${many ? 'are' : 'is'} consumed!`);
+                        break;
+                    case OBJ_FLOOR:
+                        await You_see(`${many ? 'some ' : ''}${many ? xname(obj) : an(xname(obj))} consumed!`);
+                        need_newsym = true;
+                        break;
+                    }
+                    await pline(burn_hallucination() ? (many ? 'They shriek!' : 'It shrieks!')
+                        : Blind() ? '' : (many ? 'Their flames die.' : 'Its flame dies.'));
+                }
+            }
+            end_burn(obj, false);
+            if (menorah) {
+                obj.spe = 0;
+                obj.owt = weight(obj);
+                if (burn_carried(obj)) need_invupdate = true;
+            } else {
+                if (burn_carried(obj)) {
+                    await useupall(obj);
+                } else {
+                    const onfloor = obj.where === OBJ_FLOOR;
+                    if (obj.where === OBJ_MIGRATING) obj.owornmask = 0;
+                    obj_extract_self_general(obj);
+                    if (onfloor) maybe_unhide_at(x.value, y.value);
+                    await obfree(obj, null);
+                }
+                obj = null;
+            }
+            break;
+        }
+        if (obj && obj.age) begin_burn(obj, true);
+        break;
+    }
+    if (need_newsym) newsym(x.value, y.value);
+    if (need_invupdate) update_inventory();
 }
 
 /* C mkobj.c:1501 — globs lose one weight unit every ~25 turns. */
@@ -539,6 +777,17 @@ function Sfi_ulong(nhfp, val, name) { return val; }
 function Sfi_int(nhfp, val, name) { return val; }
 function Sfi_fe(nhfp, curr, name) { return curr; }
 
+/* C ref: timeout.c:1965-1978 timeout_funcs[NUM_TIME_FUNCS] — the
+ * per-timeout-type dispatch table { timeout proc, cleanup proc, name }, indexed
+ * by the ROT_ORGANIC..MELT_ICE_AWAY enum in include/timeout.h.
+ *
+ * The handlers are read through arrow wrappers rather than referenced directly
+ * so the table can be built at module-evaluation time without forcing the
+ * imported bindings out of TDZ — js/dig.js imports start_timer from here, so
+ * the two modules form a cycle and whichever loads second would otherwise see
+ * an uninitialised binding.
+ * The expiration time must reach callbacks such as burn_object: it determines
+ * whether to show a warning or silently catch up after time spent away. */
 const timeout_funcs = [
     { f: (arg, timeout) => rot_organic(arg, timeout), cleanup: 0, name: 'rot_organic' },
     { f: (arg, timeout) => rot_corpse(arg, timeout), cleanup: 0, name: 'rot_corpse' },
@@ -551,7 +800,7 @@ const timeout_funcs = [
         set_corpsenm(body, zmon);
         return await revive_corpse(body);
     }, cleanup: 0, name: 'zombify_mon' },
-    { f: async (arg) => (await burn_object_timer(arg)),
+    { f: (arg, timeout) => burn_object(arg, timeout),
       cleanup: (arg, expire_time) => cleanup_burn(arg, expire_time), name: 'burn_object' },
     { f: (arg, timeout) => hatch_egg(arg, timeout), cleanup: 0, name: 'hatch_egg' },
     { f: (arg, timeout) => fig_transform_timer(arg, timeout), cleanup: 0, name: 'fig_transform' },

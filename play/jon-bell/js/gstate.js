@@ -68,6 +68,15 @@ export function resetGame() {
     game.gd = { domove_attempting: 0 };
     game.ge = { ext_tlist: null };
     game.gl = { luacore: null };
+    // C decl.c:595-605,1099: option globals exist before any options menu.
+    // doset() can request a redraw without first calling the runtime parser.
+    game.go = {
+        opt_initial: false, opt_from_file: false,
+        opt_need_redraw: false, opt_need_glyph_reset: false,
+        opt_need_promptstyle: false, opt_reset_customcolors: false,
+        opt_reset_customsymbols: false, opt_update_basic_palette: false,
+        opt_symset_changed: false,
+    };
     game.nhcb_counts = [0, 0, 0, 0];
     game.nhcore_call_available = [false, false, false, false, false, false, false];
     // C allmain.c:174 file-static pending transformation. A new game process

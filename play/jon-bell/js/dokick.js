@@ -1,3 +1,4 @@
+import { disturb_grave } from './engrave.js';
 // @ts-nocheck
 import { credit_report } from './shk_credit.js';
 // dokick.js — Kicking non-door terrain handler.
@@ -23,7 +24,11 @@ function strchr(str, ch) {
 /* `cansee` was used by ship_object (dokick.c:1099 `if (cansee(x, y))
  * otransit_msg(...)`) but never imported, so the first monster whose thrown
  * object shipped off the level killed the run with a ReferenceError. */
-import { recalc_block_point, unblock_point, cansee } from './vision.js';
+import { recalc_block_point, unblock_point, cansee, couldsee } from './vision.js';
+import { D_WARNED, MON_FLOOR } from './const.js';
+import { PM_WATCHMAN, PM_WATCH_CAPTAIN } from './pm.generated.js';
+import { mon_yells } from './monmove.js';
+import { in_town } from './cmd.js';
 import { exercise, acurr, change_luck } from './attrib.js';
 import { HALLUC, SHOPBASE, SDOOR, SCORR, CORR, ROOM, STAIRS, LADDER, IRONBARS, DOOR, D_NODOOR, D_ISOPEN, D_BROKEN, D_TRAPPED, D_LOCKED, IS_THRONE, IS_ALTAR, IS_FOUNTAIN, IS_GRAVE, IS_SINK, IS_TREE, IS_STWALL, IS_DOOR, ECMD_TIME, ECMD_CANCEL, ECMD_OK, POOL, MOAT, WATER, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, LAVAPOOL, LAVAWALL, DBWALL, A_STR, A_DEX, A_CON, A_WIS, A_LAWFUL, KILLED_BY, G_GONE, T_LOOTED, TREE_LOOTED, TREE_SWARM, S_LPUDDING, S_LDWASHER, LA_DOWN, MM_NOMSG, MM_MALE, MM_FEMALE, MM_ANGRY, DB_UNDER, DB_ICE, DB_LAVA, DB_MOAT, STONE, ICE, IS_WATERWALL, IS_DRAWBRIDGE, IS_WALL, W_NONDIGGABLE, isok, DB_DIR, DB_WEST, DB_EAST, DB_SOUTH, DB_NORTH, NON_PM, MIGR_NOWHERE, MIGR_RANDOM, MIGR_APPROX_XY, MIGR_EXACT_XY, MIGR_STAIRS_UP, MIGR_STAIRS_DOWN, MIGR_LADDER_UP, MIGR_LADDER_DOWN, MIGR_SSTAIRS, MIGR_PORTAL, MIGR_WITH_HERO, MIGR_NOBREAK, MIGR_NOSCATTER, MIGR_TO_SPECIES, ONAME, has_oname, has_mgivenname, In_mines, Is_stronghold, In_endgame, Is_botlevel, Has_contents, N_DIRS, xdir, ydir,
 is_hole, } from './const.js';
@@ -608,8 +613,7 @@ export async function kick_nondoor(x, y, avrg_attrib) {
             await kick_ouch(x, y, "");
         }
         else if (!maploc.horizontal /* C: !gm.maploc->disturbed — maps to horizontal */ && !rn2(2)) {
-            /* disturb the grave: summon a ghoul */
-            /* disturb_grave stub — WIRE_PENDING */
+            await disturb_grave(x, y);
         }
         else {
             /* destroy the headstone */
@@ -794,6 +798,36 @@ export async function kick_nondoor(x, y, avrg_attrib) {
     await kick_dumb(x, y);
     return ECMD_TIME;
 }
+/* C dokick.c:833-842 — a visible peaceful watchman arrests a door breaker. */
+async function watchman_thief_arrest(mtmp) {
+    const pm = mtmp.data?.pmidx;
+    if ((pm === PM_WATCHMAN || pm === PM_WATCH_CAPTAIN)
+        && couldsee(mtmp.mx, mtmp.my) && mtmp.mpeaceful) {
+        await mon_yells(mtmp, "Halt, thief!  You're under arrest!");
+        await mklev_angry_guards(false);
+        return true;
+    }
+    return false;
+}
+
+/* C dokick.c:845-861 — warn once per door, then arrest for further damage. */
+async function watchman_door_damage(mtmp, x, y) {
+    const pm = mtmp.data?.pmidx;
+    if ((pm === PM_WATCHMAN || pm === PM_WATCH_CAPTAIN)
+        && mtmp.mpeaceful && couldsee(mtmp.mx, mtmp.my)) {
+        const loc = game.level.at(x, y);
+        if (loc.looted & D_WARNED) {
+            await mon_yells(mtmp, "Halt, vandal!  You're under arrest!");
+            await mklev_angry_guards(false);
+        } else {
+            await mon_yells(mtmp, "Hey, stop damaging that door!");
+            loc.looted |= D_WARNED;
+        }
+        return true;
+    }
+    return false;
+}
+
 /* C ref: dokick.c:909-971 kick_door(x, y, avrg_attrib) — kick a closed/locked door.
  * RNG sites: rnl(35) (success roll), rn2(5) (shatter vs crash-open),
  *            rn2(3) (Thwack vs Whammm).  All mirror C ordering. */
@@ -856,15 +890,27 @@ async function kick_door(x, y, avrg_attrib) {
             add_damage(x, y, SHOP_DOOR_COST);
             await pay_for_damage("break", false);
         }
-        /* C dokick.c:955-956 — in_town(x,y) → get_iter_mons(watchman_thief_arrest).
-         * in_town() requires svl.level.flags.has_town, which no level in scope
-         * sets; the Watch is not ported. */
+        if (in_town(x, y)) {
+            /* C mon.c:4544 get_iter_mons, awaiting the shouting callback. */
+            for (let mon = g.fmon, next; mon; mon = next) {
+                next = mon.nmon;
+                if (mon.mhp < 1 || (mon.mstate | 0) !== MON_FLOOR) continue;
+                if (await watchman_thief_arrest(mon)) break;
+            }
+        }
     }
     else {
         exercise(A_STR, true);
         /* C: pline("%s!!", (Deaf || !rn2(3)) ? "Thwack" : "Whammm") */
         void pline(`${(!rn2(3)) ? "Thwack" : "Whammm"}!!`);
-        /* watchman_door_damage (in_town) — WIRE_PENDING */
+        if (in_town(x, y)) {
+            /* C mon.c:4562 get_iter_mons_xy, with the same async boundary. */
+            for (let mon = g.fmon, next; mon; mon = next) {
+                next = mon.nmon;
+                if (mon.mhp < 1 || (mon.mstate | 0) !== MON_FLOOR) continue;
+                if (await watchman_door_damage(mon, x, y)) break;
+            }
+        }
     }
 }
 const _KM_AT_KICK = 3;              /* monattk.h AT_KICK */

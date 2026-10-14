@@ -3946,9 +3946,9 @@ async function deliver_by_pline(text) {
 const msg_fallbacks = { goal_alt: 'goal_next' };
 
 /* C questpgr.c:467 com_pager_core(section, msgid, showerror, rawtext).
- * rawtext is unused here (only stinky_nemesis passes it).  Returns TRUE when a
+ * rawtext bypasses delivery for stinky_nemesis. Returns TRUE when a
  * message was delivered. */
-async function com_pager_core(section, msgid, showerror) {
+async function com_pager_core(section, msgid, showerror, rawtext) {
     /* Populate the convert_arg('d') → align_gname() handle before any
      * (synchronous) convert_line() runs.  Pure module resolution: no RNG, no
      * game state touched, so its position relative to nhl_init is immaterial. */
@@ -3985,6 +3985,7 @@ async function com_pager_core(section, msgid, showerror) {
     /* howtoput2i: pline->1, window->2, text->2, menu->3, default->0 */
     let output = { pline: 1, window: 2, text: 2, menu: 3 }[entry.output] ?? 0;
     let text = entry.text;
+    if (rawtext) { rawtext.text = text; return true; } // C questpgr.c:546-550
     if (!text) {
         /* C questpgr.c:557-570 — array-form entry: nelems < 2 is an error,
          * else text = elems[rn2(nelems) + 1]. */
@@ -4065,6 +4066,11 @@ export function find_quest_artifact(whichchains) {
     return qarti;
 }
 
+export async function quest_nemesis_death_text() {
+    const rawtext = {};
+    await com_pager_core(_roleFilecode(), 'killed_nemesis', false, rawtext);
+    return rawtext.text;
+}
 /* C questpgr.c:624 com_pager(msgid) — the "common" section. */
 export async function com_pager(msgid) {
     await com_pager_core('common', msgid, true);

@@ -10,7 +10,8 @@
 // call in this file must match C's sp_lev.c in order and argument.
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, pushRngLogEntry } from './rng.js';
-import { FILL_NORMAL, MELT_ICE_AWAY } from './const.js';
+import { FILL_NORMAL, MELT_ICE_AWAY, GRAVE } from './const.js';
+import { dig_corridor, mineralize, make_grave } from './mklev.js';
 import { ALTAR, DOOR, SDOOR, D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED, D_SECRET, W_RANDOM, W_NORTH, W_SOUTH, W_EAST, W_WEST, W_ANY, IS_OBSTRUCTED, isok, IS_WALL, IS_DOOR, STONE, MAX_TYPE, INVALID_TYPE, MATCH_WALL, IS_STWALL, IS_ROOM, CROSSWALL, HWALL, VWALL, COLNO, ROWNO, W_NONDIGGABLE, W_NONPASSWALL, ROOM, MOAT, TLCORNER, TRCORNER, BLCORNER, BRCORNER, TUWALL, TDWALL, TLWALL, TRWALL, DBWALL, AIR, CLOUD, FOUNTAIN, THRONE, SINK, POOL, WATER, TREE, IRONBARS, IS_DRAWBRIDGE, DB_DIR, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP, VIBRATING_SQUARE, NO_TRAP, CORR, ICE, ICED_POOL, ICED_MOAT, SCORR, LAVAPOOL, LAVAWALL, OROOM, THEMEROOM, COURT, SWAMP, VAULT, BEEHIVE, MORGUE, BARRACKS, ZOO, DELPHI, TEMPLE, ANTHOLE, COCKNEST, LEPREHALL, SHOPBASE, ARMORSHOP, SCROLLSHOP, POTIONSHOP, WEAPONSHOP, FOODSHOP, RINGSHOP, WANDSHOP, TOOLSHOP, BOOKSHOP, FODDERSHOP, CANDLESHOP, STAIRS, LADDER, MKTRAP_MAZEFLAG, MKTRAP_NOSPIDERONWEB, MKTRAP_SEEN, MKTRAP_NOVICTIM, SP_COORD_IS_RANDOM, OBJ_CONTAINED, OBJ_MINVENT, NON_PM, NEUTRAL, MALE, FEMALE, In_mines, AM_NONE, AM_CHAOTIC, AM_NEUTRAL, AM_LAWFUL, AM_MASK, AM_SPLEV_CO, AM_SPLEV_NONCO, AM_SPLEV_RANDOM, A_NONE, A_LAWFUL, A_ORIGINAL, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPMASK, PROT_FROM_SHAPE_CHANGERS, WET, HOT, SOLID, DEFAULT_INVENT, CUSTOM_INVENT, NO_INVENT, STRAT_WAITFORU, MM_NOTAIL, MM_NOGRP, MM_ADJACENTOK, MM_IGNOREWATER, MM_NOCOUNTBIRTH, MM_NOMSG, NO_MM_FLAGS, G_EXTINCT, G_GONE, LOW_PM, TUTORIAL, QUEST, DUNGEON_ALIGN_BY_DNUM, M_AP_MONSTER, DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, CORPSTAT_NONE, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_FEMALE, ROOMOFFSET, AM_SHRINE, AM_SANCTUM, Is_waterlevel, Is_airlevel, Is_stronghold, In_quest, LR_DOWNSTAIR, LR_UPSTAIR, LR_PORTAL, LR_BRANCH, LR_TELE, LR_UPTELE, LR_DOWNTELE, LR_MONGEN, GP_CHECKSCARY, IS_LAVA, IS_POOL, OBJ_FREE, LA_UP, LA_DOWN, MAX_NESTED_ROOMS, MAXNROFROOMS, IS_FURNITURE, F_LOOTED, F_WARNED, S_LPUDDING, S_LDWASHER, S_LRING, T_LOOTED, TREE_LOOTED, TREE_SWARM, SET_LIT_NOCHANGE, IS_TREE, is_pit, is_hole, TRAPNUM, Is_botlevel, In_endgame, EPRI, ESHK, ONAME_LEVEL_DEF, RLOC_ERR, RLOC_NOMSG, P_SPEAR, Amask2align, SVALL, } from './const.js';
 import { oinit } from './o_init.js';
 import { level_finalize_topology, fill_special_room, clear_level_structures, find_branch_room, OC_MERGE, newcham, add_door, makeroguerooms, themeroom_lspo_map_redo_maploc_rng, u_on_newpos, set_wall_state, mdrop_obj_md } from './mklev.js';
@@ -3597,7 +3598,7 @@ async function create_object(o, croom) {
     /* C ref: sp_lev.c:2267-2273 — names on novels are canonicalized against
      * the Discworld title table and store the matching novel index. */
     if (named) {
-        otmp = oname(otmp, o.name, ONAME_LEVEL_DEF);
+        otmp = await oname(otmp, o.name, ONAME_LEVEL_DEF);
         if (otmp.otyp === SPE_NOVEL_OTYP) {
             const idx = { value: otmp.novelidx ?? otmp.corpsenm ?? -1 };
             const canonical = lookup_novel(o.name, idx);
@@ -4000,6 +4001,7 @@ function MON_AT_local(x, y) {
  * PM_VAMPIRE_LORD (a NetHack version rename already reflected elsewhere in
  * this port, e.g. js/mhitm.js's own PM_VAMPIRE_LORD import). */
 const SYM_VAMPIRE = 48;
+import { validvamp_nc } from './mklev.js';
 function vampshiftedLocal(mtmp) {
     const cham = mtmp.cham;
     if (cham !== PM_VAMPIRE && cham !== PM_VAMPIRE_LORD && cham !== PM_VLAD_THE_IMPALER)
@@ -4467,10 +4469,15 @@ async function create_monster(m, croom) {
                  * requested form through set_mon_data. */
                 {
                     const resolved = name_to_mon(m.appear_as, null);
-                    const mndx = resolved?.mntmp ?? NON_PM;
+                    let mndx = resolved?.mntmp ?? NON_PM;
                     const gender = resolved?.gender ?? NEUTRAL;
                     if (mndx === NON_PM || !permonstTemplate(mndx))
                         break; /* C impossible(), then leaves the monster intact. */
+                    if ([PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER].includes(mtmp.cham)) {
+                        const [ok, form] = validvamp_nc(mtmp, mndx, 53 /* S_HUMAN */);
+                        mndx = form; // C sp_lev.c:2071-2072: validvamp updates the chosen form.
+                        if (!ok) break;
+                    }
                     if ((mtmp.mnum | 0) === (mndx | 0)) {
                         mtmp.m_ap_type = M_AP_NOTHING;
                         mtmp.mappearance = 0;
@@ -6348,20 +6355,157 @@ function give_up_des_coder(result) {
     return result;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// lspo_random_corridors — C ref: nethack-c/src/sp_lev.c:4565-4581
-// des.random_corridors() handler.
-//
-// In C, this builds a `corridor tc` with all src/dest fields hardcoded to -1
-// and calls create_corridor(&tc).  create_corridor's first branch is
-// `if (c->src.room == -1) { makecorridors(); return; }` — since src.room is
-// ALWAYS -1 here, the remaining ~50 lines of create_corridor (search_door,
-// dig_corridor, wall switch, etc.) are dead code for this call site and are
-// intentionally not ported.
-// ═══════════════════════════════════════════════════════════════════════════════
+// C ref: sp_lev.c:2492-2540. Door numbers are zero-based in wall scan order.
+function search_door(croom, pos, wall, cnt) {
+    let dx, dy, x, y;
+    switch (wall) {
+    case W_SOUTH:
+        dx = 1; dy = 0; x = croom.lx; y = croom.hy + 1;
+        break;
+    case W_NORTH:
+        dx = 1; dy = 0; x = croom.lx; y = croom.ly - 1;
+        break;
+    case W_EAST:
+        dx = 0; dy = 1; x = croom.hx + 1; y = croom.ly;
+        break;
+    case W_WEST:
+        dx = 0; dy = 1; x = croom.lx - 1; y = croom.ly;
+        break;
+    default:
+        throw new Error('search_door: Bad wall!');
+    }
+    while (x <= croom.hx + 1 && y <= croom.hy + 1) {
+        const typ = game.level.at(x, y).typ;
+        if (IS_DOOR(typ) || typ === SDOOR) {
+            pos.x = x;
+            pos.y = y;
+            if (cnt-- <= 0)
+                return true;
+        }
+        x += dx;
+        y += dy;
+    }
+    return false;
+}
+
+// C ref: sp_lev.c:2671-2726. Keep the random-wall rejection before either
+// search, and only dig when both rooms have the requested door.
+async function create_corridor(c) {
+    if (c.src.room === -1) {
+        await makecorridors();
+        return;
+    }
+    if (c.src.wall === W_ANY || c.src.wall === W_RANDOM
+        || c.dest.wall === W_ANY || c.dest.wall === W_RANDOM) {
+        impossible('create_corridor to/from a random wall');
+        return;
+    }
+    const org = {}, dest = {};
+    if (!search_door(game.level.rooms[c.src.room], org, c.src.wall, c.src.door))
+        return;
+    if (c.dest.room !== -1) {
+        if (!search_door(game.level.rooms[c.dest.room], dest, c.dest.wall, c.dest.door))
+            return;
+        switch (c.src.wall) {
+        case W_NORTH: org.y--; break;
+        case W_SOUTH: org.y++; break;
+        case W_WEST: org.x--; break;
+        case W_EAST: org.x++; break;
+        }
+        switch (c.dest.wall) {
+        case W_NORTH: dest.y--; break;
+        case W_SOUTH: dest.y++; break;
+        case W_WEST: dest.x--; break;
+        case W_EAST: dest.x++; break;
+        }
+        await dig_corridor(org, dest, null, false, CORR, STONE);
+    }
+}
+
+// C nhlua.c:225: no arguments creates an empty table; extra arguments are
+// discarded. Used by the table-only des handlers below.
+function des_param_table(args) {
+    if (!args.length)
+        return { type: 'table', get: () => null };
+    if (args[0]?.type !== 'table')
+        throw new Error('Expected a table');
+    return args[0];
+}
+
+// C ref: sp_lev.c:4529-4554.
+export async function lspo_corridor(...args) {
+    create_des_coder();
+    const table = des_param_table(args);
+    const walldirs = ['all', 'random', 'north', 'west', 'east', 'south'];
+    const walls = [W_ANY, W_RANDOM, W_NORTH, W_WEST, W_EAST, W_SOUTH];
+    const wall = (name) => {
+        const value = table.get(name) ?? 'all';
+        const index = walldirs.indexOf(value);
+        if (index < 0)
+            throw new Error(`invalid option '${value}'`);
+        return walls[index];
+    };
+    const c = {
+        src: { room: get_table_int(table, 'srcroom'),
+               door: get_table_int(table, 'srcdoor'), wall: wall('srcwall') },
+        dest: { room: get_table_int(table, 'destroom'),
+                door: get_table_int(table, 'destdoor'), wall: wall('destwall') },
+    };
+    await create_corridor(c);
+    return 0;
+}
+
+// C ref: sp_lev.c:4558-4574. The src.room sentinel selects makecorridors.
 export async function lspo_random_corridors(args) {
     create_des_coder();
-    await makecorridors();
+    await create_corridor({ src: { room: -1, door: -1, wall: -1 },
+                            dest: { room: -1, door: -1, wall: -1 } });
+    return 0;
+}
+
+// C ref: sp_lev.c:3939-3956. Reuse mklev's RNG-bearing placement routine.
+export async function lspo_mineralize(...args) {
+    create_des_coder();
+    const table = des_param_table(args);
+    const gem_prob = get_table_int_opt(table, 'gem_prob', -1);
+    const gold_prob = get_table_int_opt(table, 'gold_prob', -1);
+    const kelp_moat = get_table_int_opt(table, 'kelp_moat', -1);
+    const kelp_pool = get_table_int_opt(table, 'kelp_pool', -1);
+    await mineralize(kelp_pool, kelp_moat, gold_prob, gem_prob, true);
+    return 0;
+}
+
+// C ref: sp_lev.c:4243-4280. Set GRAVE before make_grave so explicit
+// coordinates can replace other terrain, but never replace a trapped square.
+export async function lspo_grave(...args) {
+    create_des_coder();
+    let x, y, text;
+    if (args.length === 3) {
+        x = Number(args[0]);
+        y = Number(args[1]);
+        text = String(args[2]);
+    } else {
+        const table = des_param_table(args);
+        ({ x, y } = get_table_xy_or_coord(table));
+        text = table.get('text');
+        // nhlua.c:1055-1078 permits a function-valued optional string.
+        // The Lua binding supplies a callable thunk for a Lua closure.
+        if (typeof text === 'function') {
+            text = await text();
+            if (Array.isArray(text) && text._multi) text = text[0];
+            if (typeof text === 'number') text = String(text);
+        }
+        if (text != null && typeof text !== 'string')
+            throw new Error('get_table_str_opt: no string');
+    }
+    const coord = { x, y };
+    const packed = (x === -1 && y === -1)
+        ? SP_COORD_PACK_RANDOM(0) : SP_COORD_PACK(x, y);
+    get_location_coord(coord, DRY, game.gc.coder.croom, packed);
+    if (isok(coord.x, coord.y) && !t_at(coord.x, coord.y)) {
+        game.level.at(coord.x, coord.y).typ = GRAVE;
+        make_grave(coord.x, coord.y, text);
+    }
     return 0;
 }
 
@@ -7390,6 +7534,40 @@ function sel_set_wall_property(x, y, prop) {
         return;
     if (IS_STWALL(loc.typ) || IS_TREE(loc.typ) || loc.typ === IRONBARS)
         loc.wall_info = (loc.wall_info | 0) | prop;
+}
+
+// C ref: sp_lev.c:1001-1013. Do not reorder inverted endpoints.
+function set_wall_property(x1, y1, x2, y2, prop) {
+    x1 = Math.max(x1, 1);
+    x2 = Math.min(x2, COLNO - 1);
+    y1 = Math.max(y1, 0);
+    y2 = Math.min(y2, ROWNO - 1);
+    for (let y = y1; y <= y2; y++)
+        for (let x = x1; x <= x2; x++)
+            sel_set_wall_property(x, y, prop);
+}
+
+// C ref: sp_lev.c:5876-5908. Defaults are resolved before get_location;
+// even those defaults receive C's map-origin adjustment a second time.
+export function lspo_wall_property(...args) {
+    create_des_coder();
+    const table = des_param_table(args);
+    let { dx1, dy1, dx2, dy2 } = get_table_coords_or_region(table);
+    const property = table.get('property') ?? 'nondiggable';
+    if (property !== 'nondiggable' && property !== 'nonpasswall')
+        throw new Error(`invalid option '${property}'`);
+    const prop = property === 'nondiggable' ? W_NONDIGGABLE : W_NONPASSWALL;
+    if (!game.gx || game.gx.xstart === undefined)
+        reset_xystart_size();
+    if (dx1 === -1) dx1 = game.gx.xstart - 1;
+    if (dy1 === -1) dy1 = game.gy.ystart - 1;
+    if (dx2 === -1) dx2 = game.gx.xstart + game.gx.xsize + 1;
+    if (dy2 === -1) dy2 = game.gy.ystart + game.gy.ysize + 1;
+    const start = { x: dx1, y: dy1 }, end = { x: dx2, y: dy2 };
+    get_location(start, ANY_LOC, null);
+    get_location(end, ANY_LOC, null);
+    set_wall_property(start.x, start.y, end.x, end.y, prop);
+    return 0;
 }
 
 function set_wallprop_in_selection(args, prop) {

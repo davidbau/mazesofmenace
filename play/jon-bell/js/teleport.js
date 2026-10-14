@@ -9,7 +9,7 @@ import { on_level, In_tutorial } from './dungeon.js';
 import { make_stunned } from './potion.js';
 /* C ref: do.c:2076 schedule_goto — domagicportal defers the actual level
  * change to the end of the turn, same as level_tele (js/cmd.js:11421). */
-import { schedule_goto } from './cmd.js';
+import { schedule_goto, invocation_message } from './cmd.js';
 import { yn_function } from './end.js';
 import { ROWNO, COLNO, ZAP_POS, ACCESSIBLE, D_CLOSED, D_LOCKED, DOOR, isok, u_at, TELEDS_TELEPORT, RLOC_MSG, TEMPLE, engulfing_u, STRAT_APPEARMSG, NO_TRAP_FLAGS, BOLT_LIM, IS_ALTAR, IS_STWALL, W_NONPASSWALL, MON_FLOOR, POOL, MOAT, WATER, DRAWBRIDGE_UP, DB_UNDER, DB_MOAT, DB_LAVA, LAVAPOOL, LAVAWALL, MM_IGNOREWATER, MM_IGNORELAVA, GP_CHECKSCARY, GP_ALLOW_U, GP_AVOID_MONPOS, LR_MONGEN, LR_TELE, LR_UPTELE, LR_DOWNTELE, FIRE_RES, NO_MM_FLAGS, IS_WATERWALL, In_endgame, Is_astralevel, Is_juiblex_level, MON_DETACH, MON_OBLITERATE, MON_ENDGAME_MIGR } from './const.js';
 import { game } from './gstate.js';
@@ -23,6 +23,7 @@ import { You } from './eat.js';
 import { set_ustuck, in_rooms, maybe_unhide_at, sobj_at, somexyspace, u_on_newpos, mongone } from './mklev.js';
 /* C ref: mkroom.c:764-780 search_special(VAULT) — vault_tele's room lookup. */
 import { search_special } from './mkroom.js';
+import { vault_occupied, findgd, uleftvault } from './vault.js';
 /* C ref: trap.c:1700 deltrap — the once-trap is consumed on use. */
 import { deltrap } from './trap.js';
 /* C ref: track.c:23 settrack — tele_trap's fixed-destination arm. */
@@ -281,6 +282,7 @@ export function teleok(x, y, trapok) {
         return false;
     if (MON_AT(x, y))                                           /* C 127-129 */
         return false;
+    const mdat = permonstTemplate(game.u.umonnum | 0);
     if (is_pool_local(x, y)) {                                  /* C 133-140 */
         if (!(Swimming_hero() || Amphibious_hero()
             || (!Is_waterlevel_local() && !is_waterwall_local(x, y)
@@ -292,7 +294,8 @@ export function teleok(x, y, trapok) {
             || (FireResistance_hero() && Wwalking_hero()
                 && uarmf && uarmf.oerodeproof)))
             return false;
-    } else {
+    } else if (!(passes_walls(mdat) && may_passwall(x, y))
+               && !(amorphous(mdat) && closed_door_local(x, y))) {
         /* accessible(x,y): ACCESSIBLE(typ) && !closed_door(x,y) */
         const loc = game.level?.at(x, y);
         if (!loc) return false;
@@ -332,6 +335,7 @@ function tele_jump_ok(x1, y1, x2, y2) {
 export async function teleds(nux, nuy, teleds_flags) {
     const u = game.u;
     const is_teleport = (teleds_flags & TELEDS_TELEPORT) !== 0;
+    const vault_guard = vault_occupied(u.urooms) ? findgd() : null;
     const uball = u.uball;
     let ball_active = !!(uball && (uball.where | 0) !== OBJ_FREE);
     let ball_still_in_range = false;
@@ -408,6 +412,14 @@ export async function teleds(nux, nuy, teleds_flags) {
         const same = (nux === u.ux0 && nuy === u.uy0);
         await pline(`You materialize in ${same ? 'the same' : 'a different'} location!`);
     }
+    /* C teleport.c:551-566 — guard alarm precedes room-entry messages. */
+    if (vault_guard) {
+        const save_urooms = u.urooms;
+        u.urooms = String.fromCharCode(...in_rooms(u.ux, u.uy, VAULT));
+        if (!vault_occupied(u.urooms))
+            await uleftvault(vault_guard);
+        u.urooms = save_urooms;
+    }
     await check_special_room(false);
     /* The command-result publication used to sit immediately after the
      * materialize pline above, i.e. BEFORE spoteffects ran.  That snapshot is
@@ -449,6 +461,8 @@ export async function teleds(nux, nuy, teleds_flags) {
         if (_trap) await dotrap(_trap, 0);
         if (_pit) await _spoteffects_pickup();
     }
+    // C teleport.c:569: the invocation clue follows arrival spoteffects.
+    await invocation_message();
     if (is_teleport && game._resultMessage && game._pending_message) {
         const _rmj = game._resultMessageJoins;
         const _aHint = (_rmj && _rmj.src === game._resultMessage)

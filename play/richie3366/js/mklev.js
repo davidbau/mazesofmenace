@@ -31955,6 +31955,11 @@ function themeroom_fill_buried_zombies(croom) {
         if (!otmp) continue;
         // Override random corpsenm (restarts corpse timeout like C set_corpsenm)
         set_corpsenm(otmp, mndx);
+        // C: sp_lev.c lspo_object CORPSE arm — des.object with no
+        // male/female/historic sets tmpobj.spe=lflags=0, applied by
+        // create_object (o->spe != -127), discarding the mksobj gender
+        // roll. themerms.lua "Buried zombies" passes no flags.
+        otmp.spe = 0;
         // C bury_an_obj: obj_resists(0,0) then extract + add_to_buried
         rn2(100);
         obj_extract_self(otmp);

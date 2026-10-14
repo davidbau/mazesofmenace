@@ -4,12 +4,16 @@
 
 import { growl as growl_mhitm, yelp as yelp_mhitm, y_monnam as y_monnam_shk } from './mhitm.js';
 import { game } from './gstate.js';
+import { locomotion } from './mhitm.js';
+import { makeplural } from './objnam.js';
+import { W_SWAPWEP, W_QUIVER } from './const.js';
 import { make_happy_shoppers, migrate_to_level, mdrop_special_objs } from './dog.js';
 import { sensemon } from './display.js';
 import { MIGR_APPROX_XY } from './const.js';
 import { ansimpleoname } from './objnam.js';
 import { stop_occupation } from './allmain.js';
 import { picking_at } from './lock.js';
+import { dochug } from './dochug.js';
 import { newobj } from './game.js';
 import { pline, You_hear, Norep, topl_park_cursor, force_more } from './display.js';
 /* C pline.c You/Your — use the shared async formatters.  Sale settlement
@@ -106,6 +110,8 @@ import { yn_function as yn_function_shk } from './end.js';
 import { build_window_screen, tty_window_offx, menu_search_case } from './com_pager.js';
 import { observe_object, discover_object } from './o_init.js';
 import { MKOBJ_OC_MAGIC } from './mkobj_erosion_meta.js';
+import { veggy_item } from './mklev.js';
+import { is_izchak } from './cmd.js';
 
 // SELL_NORMAL constant from hack.h:1070
 const SELL_NORMAL = 0;
@@ -294,6 +300,7 @@ export function saleable(shkp, obj) {
     for (let i = 0; i < shp.iprobs.length && shp.iprobs[i].iprob; i++) {
         const itype = shp.iprobs[i].itype | 0;
         if (itype === VEGETARIAN_CLASS_SALE) {
+            if (veggy_item(obj, 0)) return true;
             continue;
         }
         if (itype < 0 ? (itype === -(obj.otyp | 0)) : (itype === (obj.oclass | 0)))
@@ -1915,7 +1922,7 @@ export function special_stock(obj, shkp, silent) {
     if (!e || (e.shoptype | 0) !== CANDLESHOP || (obj?.otyp | 0) !== 262)
         return false;
     if (!silent) {
-        const izchak = String(shkname(shkp) || '').toLowerCase().includes('izchak');
+        const izchak = is_izchak(shkp, true);
         if (izchak && !(game.u?.uevent?.invoked | 0)) {
             if (_shk_Deaf() || muteshk(shkp)) {
                 pline("%s seems %s that you want to sell that.", Shknam(shkp), (obj.spe | 0) < 7 ? 'horrified' : 'concerned');
@@ -2427,7 +2434,7 @@ export function add_damage(x, y, cost) {
     if (cansee(x, y))
         loc.seenv = SVALL;
 }
-/* C ref: shk.c:5019-5062 shopdig(fall); fall arm (backpack grab) not ported. */
+/* C ref: shk.c:5019-5114 shopdig(fall). */
 export async function shopdig(fall) {
     const u = game.u;
     const shkp = shop_keeper(_ushops0_shk(u));
@@ -2439,12 +2446,39 @@ export async function shopdig(fall) {
         }
         return;
     }
-    if (fall) return;
     let lang = 0; /* 0 can't speak, 1 animal noises, 2 speaks */
     const msound = _msound_of_shk(shkp);
     if (helpless(shkp) || msound === 0) { /* lang stays 0 */ }
     else if (msound <= MS_ANIMAL_SHK) lang = 1;
     else if (msound >= 25 /* MS_HUMANOID */) lang = 2;
+    if (fall) {
+        if (um_dist(shkp.mx, shkp.my, 5) || helpless(shkp)
+            || !(ESHK(shkp).billct || ESHK(shkp).debit)) return;
+        const ptr = shkp.data || permonstTemplate(shkp.mnum);
+        const grabs = (ptr.mflags1 & 0x6000) === 0x6000 ? 'knocks off' : 'grabs'; // M1_NOLIMBS
+        if (!m_next2u(shkp)) {
+            await mnexto(shkp, RLOC_MSG);
+            if (!m_next2u(shkp)) {
+                if (lang === 2) await pline('%s curses you in anger and frustration!', Shknam(shkp));
+                else if (lang === 1) await growl(shkp);
+                rile_shk(shkp);
+                return;
+            }
+            await pline('%s %s, and %s your backpack!', Shknam(shkp), makeplural(locomotion(ptr, 'leap')), grabs);
+        } else await pline('%s %s your backpack!', Shknam(shkp), grabs);
+        for (let obj = game.invent, obj2; obj; obj = obj2) {
+            obj2 = obj.nobj;
+            if ((obj.owornmask & ~(W_SWAPWEP | W_QUIVER))
+                || (obj === u.uswapwep && u.twoweap)
+                || (obj.otyp === 236 /* LEASH */ && obj.leashmon)) continue;
+            if (obj === game.gc_current_wand) continue;
+            setnotworn(obj);
+            await freeinv(obj);
+            await subfrombill(obj, shkp);
+            await add_to_minv(shkp, obj);
+        }
+        return;
+    }
     if (lang === 2 && !_shk_Deaf() && !muteshk(shkp)) {
         const female = !!(game.flags?.female | 0);
         if ((u.utraptype | 0) === 2 /* TT_PIT, const.js:2269 */)
@@ -2663,7 +2697,7 @@ export function Hello(mtmp) {
         return 'Hello';
     }
 }
-export function u_entered_shop(enterstring) {
+export async function u_entered_shop(enterstring) {
     const g = game, u = g.u || {};
     if (!enterstring || !enterstring.length || enterstring.charCodeAt(0) === 0)
         return;
@@ -2736,6 +2770,28 @@ export function u_entered_shop(enterstring) {
                       again, s_suffix_shk(shkname(shkp)), shopname);
         } else {
             pline(`You enter ${s_suffix_shk(shkname(shkp))} ${shopname}${again}!`);
+        }
+    }
+    if (!inside_shop(u.ux, u.uy)) {
+        const PICK_AXE = 259, DWARVISH_MATTOCK = 71; // objects.h
+        const pick = carrying(PICK_AXE), mattock = carrying(DWARVISH_MATTOCK);
+        if (pick || mattock) {
+            const not_upset = !eshkp.surcharge;
+            let cnt = 1, tool;
+            if (pick && mattock) { tool = 'digging tool'; cnt = 2; }
+            else {
+                tool = pick ? 'pick-axe' : 'mattock';
+                for (let obj = (pick || mattock).nobj; obj; obj = obj.nobj)
+                    if (obj.otyp === (pick ? PICK_AXE : DWARVISH_MATTOCK)) ++cnt;
+                if (!pick && !_shk_Blind()) makeknown(DWARVISH_MATTOCK);
+            }
+            if (!_shk_Deaf() && !muteshk(shkp)) {
+                SetVoice(shkp, 0, 80, 0);
+                await verbalize(not_upset ? 'Will you please leave your %s%s outside?' : 'Leave the %s%s outside.', tool, cnt === 1 ? '' : 's');
+            } else await pline('%s %s to let you in with your %s%s.', Shknam(shkp), not_upset ? 'is hesitant' : 'refuses', tool, cnt === 1 ? '' : 's');
+            // Complete update_topl's message page before C's extra monster move.
+            await flush_screen(1);
+            await dochug(shkp);
         }
     }
 }
@@ -3419,7 +3475,7 @@ export async function shk_chat(shkp) {
         await pline(`${Shknam(shkp)} ${speaks ? 'complains' : 'indicates'} that business is bad.`);
     } else if (shkmoney > 4000) {
         await pline(`${Shknam(shkp)} ${speaks ? 'says' : 'indicates'} that business is good.`);
-    } else if (shkname_real(shkp) === 'Izchak' && ((shkp.mndx ?? shkp.mnum) | 0) === PM_SHOPKEEPER) {
+    } else if (is_izchak(shkp, false)) {
         if (speaks)
             await pline(Sprintf(Izchak_speaks[rn2_shk(Izchak_speaks.length)], shkname_real(shkp)));
     } else if (speaks) {

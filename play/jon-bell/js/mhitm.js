@@ -18,8 +18,9 @@
  */
 import { game } from './gstate.js';
 // Preserve legacy import paths while all callers share invent.c's real body.
-export { update_inventory } from './inventory_refresh.js';
-import { W_ARMOR, W_ACCESSORY, W_WEP, W_SWAPWEP, A_WIS, IS_DOOR, ROOMOFFSET } from './const.js';
+import { update_inventory } from './inventory_refresh.js';
+export { update_inventory };
+import { W_ARMOR, W_ACCESSORY, W_WEP, W_SWAPWEP, A_WIS, IS_DOOR, ROOMOFFSET, OBJ_INVENT } from './const.js';
 import { MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js';
 import { rn2, rnd, d, rn1, rn2_on_display_rng, pushRngLogEntry } from './rng.js';
 import { pline, sensemon, canspotmon, canseemon, rank_of, map_invisible, Deaf } from './display.js';
@@ -80,10 +81,10 @@ import { abuse_dog, sticks, unstuck } from './dog.js';
  * exports a throw-stub and js/shk.js a "hand" constant).  cmd.js already
  * imports from this file, so this is a cycle — safe because mbodypart is a
  * hoisted function declaration and is only called at runtime. */
-import { mbodypart, a_gname_at } from './cmd.js';
+import { mbodypart, a_gname_at, Breathless } from './cmd.js';
 import { newsym as _wakeup_newsym } from './display.js';
 import { MKOBJ_OC_CLASS } from './mkobj_data.js';
-import { getObjDescr, just_an, The, vtense, xname, cxname, mshot_xname } from './objnam.js';
+import { getObjDescr, just_an, The, vtense, xname, cxname, mshot_xname, Yobjnam2 } from './objnam.js';
 import { newoextra, lcase } from './mklev.js';
 import { str_start_is } from './mklev.js';   /* C hacklib.c:276 — title_to_mon's prefix test */
 import { ROLE_RANKS } from './rank_data.js'; /* C role.c roles[].rank[9] */
@@ -947,15 +948,21 @@ export async function passive_obj(mon, obj, mattk) {
             }
             break;
         case AD_ENCH:
-            /* C uhitm.c:6180: drain_item(obj, TRUE) — no rn2 */
+            /* C uhitm.c:6180-6184: notify only after a successful drain. */
             if (!mon.mcan) {
-                await drain_item(obj, true);
+                if (await drain_item(obj, true)
+                    && obj.where === OBJ_INVENT
+                    && (obj.known || obj.oclass === ARMOR_CLASS)) {
+                    await pline('%s less effective.', Yobjnam2(obj, 'seem'));
+                }
             }
             break;
         default:
             break;
     }
-    /* update_inventory() — no RNG */
+    /* C uhitm.c:6193-6194. */
+    if (obj.where === OBJ_INVENT)
+        update_inventory();
 }
 /* ---------------------------------------------------------------------------
  * passive — C ref: nethack-c/src/uhitm.c:5866-6121
@@ -1804,6 +1811,21 @@ function u_wield_art(art) {
  * artilist[0] is a dummy element, artilist[1] is Excalibur */
 const ART_EXCALIBUR = 1;
 
+/* C mondata.c:590-619: strangulation stops blood flow, not just breathing. */
+export function can_be_strangled(mon) {
+    const flags = mon.data.mflags1 | 0;
+    if (flags & 0x00008000 /* M1_NOHEAD */) return false;
+    const nobrainer = !!(flags & M1_MINDLESS);
+    let nonbreathing;
+    if (is_youmonst(mon)) {
+        nonbreathing = Breathless();
+    } else {
+        nonbreathing = !!(flags & 0x00000400 /* M1_BREATHLESS */)
+            || which_armor(mon, 0x00010000 /* W_AMUL */)?.otyp === 209 /* AMULET_OF_MAGICAL_BREATHING */;
+    }
+    return !nobrainer || !nonbreathing;
+}
+
 /* ---------------------------------------------------------------------------
  * can_blow — C ref: nethack-c/src/mondata.c:566-576
  * Returns true if a monster can blow (whistle, etc).
@@ -2443,6 +2465,33 @@ export function seemimic(mtmp) {
     if (wasBlocker && !does_block(mtmp.mx, mtmp.my))
         unblock_point(mtmp.mx, mtmp.my);
     _wakeup_newsym(mtmp.mx | 0, mtmp.my | 0);
+}
+
+/* C mhitm.c:40-71 — reveal both combatants before hit/miss feedback,
+ * even when the hero cannot see the fight. */
+export function pre_mm_attack(magr, mdef) {
+    let showit = false;
+    const vis = !!game.v?.vis;
+    if ((mdef.m_ap_type | 0) & 0x7) {
+        seemimic(mdef);
+        showit ||= vis;
+    } else if (mdef.mundetected) {
+        mdef.mundetected = 0;
+        showit ||= vis;
+    }
+    if ((magr.m_ap_type | 0) & 0x7) {
+        seemimic(magr);
+        showit ||= vis;
+    } else if (magr.mundetected) {
+        magr.mundetected = 0;
+        showit ||= vis;
+    }
+    if (vis) {
+        if (!canspotmon(magr)) map_invisible(magr.mx, magr.my);
+        else if (showit) _wakeup_newsym(magr.mx, magr.my);
+        if (!canspotmon(mdef)) map_invisible(mdef.mx, mdef.my);
+        else if (showit) _wakeup_newsym(mdef.mx, mdef.my);
+    }
 }
 
 export async function wakeup(mtmp, via_attack, defer_priest = false) {
@@ -3689,7 +3738,7 @@ function defends(adtyp, obj) {
     }
 }
 
-function defends_when_carried(adtyp, obj) {
+export function defends_when_carried(adtyp, obj) {
     const a = obj ? (obj.oartifact | 0) : 0;
     return !!a && arti_cary_adtyp(a) === (adtyp | 0);
 }

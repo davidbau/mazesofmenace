@@ -321,7 +321,7 @@ export async function createLevelLuaState() {
         'corridor', 'random_corridor', 'teleport_region',
         'levregion', 'branch_region', 'stairs_region',
         'placeholder', 'arrival_room', 'theme_room',
-        'engraving', 'message', 'vision',
+        'engraving', 'message', 'vision', 'mineralize',
         'wish', 'wall_property', 'region',
         'mazewalk', 'bounds',
         // Additional common des.* calls from tutorials
@@ -346,6 +346,20 @@ export async function createLevelLuaState() {
         if (typeof real !== 'function') continue;
         interp.defineGlobal('des.' + desName, makeRecorder(desName, real));
     }
+
+    // sp_lev.c:4262 / nhlua.c:1065: grave text may call back into Lua.
+    interp.defineGlobal('des.grave', makeRecorder('grave', (...args) => {
+        const table = args[0];
+        const text = table?.type === 'table' ? table.get('text') : null;
+        if (args.length !== 3 && text?.type === 'function') {
+            args[0] = {
+                type: 'table',
+                get: key => key === 'text'
+                    ? () => interp.callFunction(null, text, []) : table.get(key),
+            };
+        }
+        return SPLEV.lspo_grave(...args);
+    }));
 
     // Override des.map to invoke its function-valued `contents` closure.
     // C ref: sp_lev.c:6314-6320 — after the map fragment is written,

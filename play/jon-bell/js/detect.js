@@ -1,11 +1,13 @@
-// detect.js — clairvoyance map scan.
-// C ref: nethack-c/src/detect.c:1449-1585.
+// detect.js — detection redraw helpers and clairvoyance map scan.
+// C ref: nethack-c-v5/upstream/src/detect.c.
 import { game } from './gstate.js';
 import { COLNO, ROWNO, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL,
          TER_DETECT, TER_MAP, TER_TRP, TER_OBJ, TER_MON, I_SPECIAL, IN_SIGHT,
-         CLAIRVOYANT, CONFUSION, DETECT_MONSTERS } from './const.js';
+         CLAIRVOYANT, CONFUSION, DETECT_MONSTERS, SVALL, COULD_SEE } from './const.js';
 import { pline, flush_screen, docrt, map_invisible, map_object, map_monst,
-         see_monsters, canspotmon, GLYPHCLS_MON, GLYPHCLS_INVIS } from './display.js';
+         see_monsters, canspotmon, newsym, GLYPHCLS_MON, GLYPHCLS_INVIS,
+         GLYPHCLS_CMAP, GLYPHCLS_TRAP, GLYPHCLS_ENGR } from './display.js';
+import { Blind } from './vision.js';
 import { show_map_spot } from './read.js';
 import { browse_map } from './cmd.js';
 import { observe_object } from './o_init.js';
@@ -38,6 +40,24 @@ function _reconstrainMap(u, saved) {
     u.uinwater = saved.uinwater;
     u.uburied = saved.uburied;
     u.uswallow = saved.uswallow;
+}
+
+/* C detect.c:1609-1635 foundone(). The port carries glyph families rather
+ * than numeric glyphs; traps and engravings are also C cmap glyphs. The
+ * FOUND_FLASH_COUNT == 0 alternative is not enabled in the target build. */
+export function foundone(zx, zy, glyphClass) {
+    if (glyphClass === GLYPHCLS_CMAP || glyphClass === GLYPHCLS_TRAP
+        || glyphClass === GLYPHCLS_ENGR || glyphClass === 'unexplored')
+        game.level.at(zx, zy).seenv = SVALL;
+
+    const row = game.viz_array[zy];
+    const save_viz = row[zx];
+    if (!Blind()) row[zx] = COULD_SEE | IN_SIGHT;
+    try {
+        newsym(zx, zy);
+    } finally {
+        row[zx] = save_viz;
+    }
 }
 
 /* C detect.c:1449 do_vicinity_map().  `sobj` is the fake spellbook for a

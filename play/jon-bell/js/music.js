@@ -12,7 +12,7 @@ import { impossible } from './steed.js';
 import { discover_object } from './o_init.js';
 import { yn_function } from './end.js';
 import { getlin } from './wizcmds.js';
-import { thesimpleoname, Tobjnam, an } from './objnam.js';
+import { thesimpleoname, Tobjnam, an, the, xname } from './objnam.js';
 import { yname } from './do_wear.js';
 import { dist2 } from './hacklib.js';
 import { tamedog } from './dog.js';
@@ -36,7 +36,7 @@ import { flooreffects } from './cmd.js';
 import { rnl } from './rng.js';
 import { xkilled } from './uhitm.js';
 import { mon_nam } from './uhitm.js';
-import { You_hear } from './display.js';
+import { You_hear, You_see } from './display.js';
 import { unblock_point, recalc_block_point } from './vision.js';
 import { is_pit, has_mgivenname, ROOM, SHOPBASE, XKILL_NOMSG,
          ARTICLE_THE, SUPPRESS_SADDLE, NO_KILLER_PREFIX, TT_PIT, TT_BURIEDBALL,
@@ -809,8 +809,8 @@ export async function do_play_instrument(instr) {
         if (tune === '') return ECMD_OK;
         tune = tune.trim().replace(/\s+/g, '').toUpperCase().replace(/H/g, 'B');
     }
-    await pline(!Deaf() ? `You extract a strange sound from ${yname(instr)}!`
-                         : `You can feel ${yname(instr)} emitting vibrations.`);
+    await pline(!Deaf() ? `You extract a strange sound from ${the(xname(instr))}!`
+                         : `You can feel ${the(xname(instr))} emitting vibrations.`);
     if (Is_stronghold(u.uz)) {
         exercise(A_WIS, true);
         const expected = String(game._tune || '');
@@ -829,15 +829,24 @@ export async function do_play_instrument(instr) {
                 if (dir === DB_NORTH) wy--; else if (dir === DB_SOUTH) wy++;
                 else if (dir === DB_EAST) wx++; else if (dir === DB_WEST) wx--;
                 const wall = game.level.at(wx, wy);
+                u.uheard_tune = 2; record_achievement(ACH_TUNE);
+                // C music.c:824-829 / dbridge.c:788-798,853-860:
+                // announce the bridge before changing terrain or running the turn.
+                const visible = cansee(bx.value, by.value) || cansee(wx, wy);
+                const nearerWall = dist2(u.ux, u.uy, wx, wy) < dist2(u.ux, u.uy, bx.value, by.value);
                 if ((bridge.typ | 0) === DRAWBRIDGE_DOWN) {
+                    if (visible) await You_see('a drawbridge %s up!',
+                        (((u.ux === bx.value || u.uy === by.value) && !u.uinwater) || nearerWall) ? 'coming' : 'going');
+                    else await You_hear('chains rattling and gears turning.');
                     bridge.typ = DRAWBRIDGE_UP;
                     if (wall) { wall.typ = DBWALL; wall.wall_info = W_NONDIGGABLE; }
                 } else {
+                    if (visible) await You_see('a drawbridge %s down!', nearerWall ? 'going' : 'coming');
+                    else await You_hear('gears turning and chains rattling.');
                     bridge.typ = DRAWBRIDGE_DOWN;
                     if (wall) { wall.typ = DOOR; wall.doormask = D_NODOOR; }
                     u.uopened_dbridge = true;
                 }
-                u.uheard_tune = 2; record_achievement(ACH_TUNE);
                 newsym(bx.value, by.value); newsym(wx, wy);
                 return ECMD_TIME;
             }

@@ -1,3 +1,4 @@
+import { delallobj } from './cmd.js';
 // C ref: nethack-c/src/dig.c — the apply-a-pick-axe / dig occupation subsystem.
 //
 //   use_pick_axe2()  — the down-dig (u.dz > 0) branch: "You start digging
@@ -15,7 +16,9 @@ import { PM_DWARF as PM_DWARF_ } from './pm.generated.js';
 import { game } from './gstate.js';
 import { end_burn, start_timer } from './timeout.js';
 import { pline, feel_newsym, canseemon, newsym, You_hear, Unaware as Unaware_real } from './display.js';
-import { unblock_point, does_block, Blind } from './vision.js';
+import { unblock_point, does_block, Blind, vision_recalc } from './vision.js';
+import { scatter } from './dokick.js';
+import { MAY_HIT, Is_stronghold } from './const.js';
 import { b_trapped } from './lock.js';
 import { NO_PART } from './const.js';
 import { acurr, exercise, adjalign } from './attrib.js';
@@ -85,7 +88,8 @@ import { d } from './rng.js';
 import { IRONBARS, IS_WATERWALL, KILLED_BY, HALF_PHDAM, WEB } from './const.js';
 import { nomul } from './allmain.js';
 import { wake_nearby } from './mklev.js';
-import { fire_damage, confdir, surface as surface_cmd, ceiling as ceiling_cmd } from './cmd.js';
+import { fire_damage, confdir, surface as surface_cmd, ceiling as ceiling_cmd, altar_wrath } from './cmd.js';
+import { angry_priest } from './priest.js';
 import { losehp } from './dokick.js';
 import { t_at, deltrap, delfloortrap, unearth_objs, maketrap, mintrap,
          trapeffect_hole_mon, buried_ball_to_punishment } from './trap.js';
@@ -113,6 +117,8 @@ import { mkclass } from './makemon.js';
 /* C fountain.c furniture handlers: these bodies are shared with potion.js. */
 import { dogushforth, dryup, breaksink } from './potion.js';
 
+/* C dbridge.c:888-1010: bridge terrain, debris, and vision transitions.
+ * The occupant death handling remains in the wider dbridge porting scope. */
 export async function destroy_drawbridge(x, y) {
     const ox = x | 0, oy = y | 0;
     const inputDir = is_drawbridge_wall(ox, oy);
@@ -134,7 +140,12 @@ export async function destroy_drawbridge(x, y) {
     const lava = under === DB_LAVA;
     const iced = (bridge.drawbridgemask | 0) & DB_ICE;
     if (under === DB_MOAT || lava) {
-        await pline('The drawbridge collapses into the %s!', lava ? 'lava' : 'moat');
+        const raised = bridge.typ === DRAWBRIDGE_UP;
+        const sx = raised ? wx : bx.value, sy = raised ? wy : by.value;
+        if (cansee(sx, sy) || (game.u.ux === sx && game.u.uy === sy))
+            await pline(raised ? 'The portcullis of the drawbridge falls into the %s!'
+                : 'The drawbridge collapses into the %s!', lava ? hliquid('lava') : 'moat');
+        else await You_hear('a loud *SPLASH*!');
         bridge.typ = lava ? LAVAPOOL : MOAT;
     } else {
         await pline('The drawbridge disintegrates!');
@@ -149,9 +160,16 @@ export async function destroy_drawbridge(x, y) {
     if (wt && wt !== bt) deltrap(wt);
     del_engr_at(bx.value, by.value); del_engr_at(wx, wy);
     wake_nearto(bx.value, by.value, 500);
-    /* C scatters rn2(6) iron chains, each consuming three rn2(2) draws. */
-    for (let i = rn2(6); i > 0; --i) { rn2(2); rn2(2); rn2(2); }
+    // C dbridge.c:949-959: create and scatter each piece of iron-chain debris.
+    for (let i = rn2(6); i > 0; --i) {
+        const obj = await mksobj_at(478 /* IRON_CHAIN */, rn2(2) ? bx.value : wx, rn2(2) ? by.value : wy, true, false);
+        await scatter(obj.ox, obj.oy, 1, MAY_HIT, obj);
+    }
     newsym(bx.value, by.value); newsym(wx, wy);
+    if (!does_block(wx, wy)) unblock_point(wx, wy);
+    vision_recalc(0);
+    if (Is_stronghold(game.u.uz))
+        Object.assign(game.u.uevent, { uopened_dbridge: true, uheard_tune: 3 });
     return true;
 }
 
@@ -177,6 +195,7 @@ export async function open_drawbridge(x, y) {
     p.bridge.typ = DRAWBRIDGE_DOWN;
     const wall = game.level?.at(p.wx, p.wy);
     if (wall) { wall.typ = DOOR; wall.doormask = D_NODOOR; }
+    await delallobj(p.bx, p.by); // C dbridge.c:869
     const bt = t_at(p.bx, p.by), wt = t_at(p.wx, p.wy);
     if (bt) deltrap(bt); if (wt && wt !== bt) deltrap(wt);
     del_engr_at(p.bx, p.by); del_engr_at(p.wx, p.wy);
@@ -194,6 +213,8 @@ export async function close_drawbridge(x, y) {
     p.bridge.typ = DRAWBRIDGE_UP;
     const wall = game.level?.at(p.wx, p.wy);
     if (wall) { wall.typ = DBWALL; wall.wall_info = W_NONDIGGABLE; }
+    await delallobj(p.bx, p.by); // C dbridge.c:822-823
+    await delallobj(p.wx, p.wy);
     const bt = t_at(p.bx, p.by), wt = t_at(p.wx, p.wy);
     if (bt) deltrap(bt); if (wt && wt !== bt) deltrap(wt);
     del_engr_at(p.bx, p.by); del_engr_at(p.wx, p.wy);
@@ -854,7 +875,9 @@ export async function digactualhole_(x, y, madeby, ttyp, skipFurniture = false) 
                 if (oldobjs !== newobjs) await pickup(1);
                 if (shopdoor && heros_fault) await pay_for_damage('ruin', false);
             } else {
-                if (shopdoor && heros_fault)
+                if (heros_fault && u.ushops && (Array.isArray(u.ushops) ? u.ushops[0] : u.ushops))
+                    await shopdig(1);
+                else
                     await pay_for_damage('dig into', true);
                 await pline('You fall through...');
                 const newlevel = {
@@ -1118,6 +1141,12 @@ export async function dig() {
          * digging (the pit is made once; further turns only add effort). */
         if (d.effort <= 50 || (ttmp && (ttmp.ttyp === TRAPDOOR || is_pit(ttmp.ttyp)))) {
             return 1;
+        }
+        /* C dig.c:427-430: anger the god and priest before digging the pit. */
+        const lev = g.level.at(d.pos.x, d.pos.y);
+        if (IS_ALTAR(lev.typ)) {
+            await altar_wrath(d.pos.x, d.pos.y);
+            await angry_priest();
         }
         /* C dig.c:432-437 — make the pit at <u.ux,u.uy>, occupation ends. */
         if (await dighole(true, false, null)) {

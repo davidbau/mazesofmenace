@@ -23,11 +23,14 @@ import { game } from './gstate.js';
 import {
     COLNO, ROWNO, MAX_RADIUS, LS_OBJECT, LS_MONSTER, TEMP_LIT, COULD_SEE,
     RANGE_LEVEL, OBJ_FREE, OBJ_INVENT, OBJ_FLOOR, OBJ_MINVENT, OBJ_BURIED, OBJ_CONTAINED,
-    BURIED_TOO, CONTAINED_TOO, u_at,
+    BURIED_TOO, CONTAINED_TOO, u_at, PLNMSG_OBJ_GLOWS,
 } from './const.js';
-import { clear_path, circle_ptr, vision_recalc } from './vision.js';
+import { clear_path, circle_ptr, vision_recalc, Blind, cansee } from './vision.js';
 import { place_object, remove_object } from './mklev.js';
-import { flush_screen } from './display.js';
+import { flush_screen, canseemon, canspotmon, map_invisible, pline } from './display.js';
+import { Yname2 } from './cmd.js';
+import { xname, otense, simpleonames } from './objnam.js';
+import { impossible } from './pline.js';
 /* end_burn — obj_merge_light_sources's src != dest arm (light.c:812).  This is
  * the reverse edge of the js/timeout.js -> js/light.js import; see the note on
  * obj_merge_light_sources below. */
@@ -310,10 +313,9 @@ export function light_sources_list() {
  * The partition predicate is C's own, verbatim: keep the entry when
  * `is_global ^ (range == RANGE_LEVEL)` is false.
  *
- * discard_flashes() (light.c:360-370) drops LS_OBJECT sources with a null
- * object; none can exist here (no LS_OBJECT source is ever created), so the
- * call would be a no-op and is omitted rather than faked. */
+ * Camera flashes have no object identity and are discarded before saving. */
 export function save_light_sources(range) {
+    discard_flashes();
     const taken = [];
     let prev = null, curr = light_base;
     game.vision_full_recalc = 0;
@@ -365,6 +367,7 @@ export function restore_light_sources(saved) {
  * prepends local sources after global sources, and restore_light_sources()
  * supplies the same file-order reversal. */
 export function lights_save_snapshot() {
+    discard_flashes();
     const local = [], global = [];
     for (let ls = light_base; ls; ls = ls.next) {
         const isGlobal = ls.type === LS_OBJECT ? !obj_is_local(ls.id.a_obj)
@@ -437,6 +440,56 @@ export function obj_is_burning(obj) {
         || typ === BURN_WAX_CANDLE
         || typ === BURN_POT_OIL;
     return ignitable || artifact_light(obj);
+}
+
+/* C light.c:729-758: snuff the first burning source at the cached position.
+ * end_burn removes its list entry, so C returns immediately afterward. */
+export function snuff_light_source(x, y) {
+    for (let ls = light_base; ls; ls = ls.next) {
+        if (ls.type === LS_OBJECT && ls.x === x && ls.y === y) {
+            const obj = ls.id.a_obj;
+            if (obj_is_burning(obj)) {
+                if (artifact_light(obj))
+                    continue;
+                end_burn(obj, obj.otyp !== BURN_MAGIC_LAMP);
+                return;
+            }
+        }
+    }
+}
+
+/* C light.c:826-837.  Setting the same radius does not dirty vision. */
+export async function obj_adjust_light_radius(obj, new_radius) {
+    for (let ls = light_base; ls; ls = ls.next) {
+        if (ls.type === LS_OBJECT && ls.id.a_obj === obj) {
+            if (new_radius !== ls.range)
+                game.vision_full_recalc = 1;
+            ls.range = new_radius;
+            return;
+        }
+    }
+    await impossible("obj_adjust_light_radius: can't find %s", xname(obj));
+}
+
+/* C mkobj.c:1704-1738, used by polyself.c:1967 when scales become armor.
+ * Keep the radius change and its message together at the light-source owner. */
+export async function maybe_adjust_light(obj, old_range) {
+    const new_range = arti_light_radius(obj), delta = new_range - old_range;
+    if (delta) {
+        await obj_adjust_light_radius(obj, new_range);
+        const ox = { value: 0 }, oy = { value: 0 };
+        if (!Blind() && get_obj_location(obj, ox, oy, 0)) {
+            let buf = '';
+            if (game.iflags.last_msg === PLNMSG_OBJ_GLOWS)
+                buf = obj.quan === 1 ? 'It' : 'They';
+            else if (obj.where === OBJ_INVENT || cansee(ox.value, oy.value))
+                buf = Yname2(obj);
+            if (buf)
+                await pline('%s %s %s%s.', buf, otense(obj, 'shine'),
+                    Math.abs(delta) > 1 ? 'much ' : '',
+                    delta > 0 ? 'brighter' : 'less brightly');
+        }
+    }
 }
 
 /* C ref: light.c:880-911 arti_light_radius(struct obj *obj) — a light-emitting
@@ -535,15 +588,72 @@ export function candle_light_range(obj) {
     return radius;
 }
 
-export function show_transient_light(obj, x, y) {
-    let ls = light_base;
-    for (; ls; ls = ls.next)
-        if (ls.type === LS_OBJECT && ls.id?.a_obj === obj)
-            break;
-    if (!ls || (obj.where | 0) !== OBJ_FREE)
-        return; /* C: impossible("transient light ...") */
-    place_object(obj, game.bhitpos.x, game.bhitpos.y);
+/* C light.c:253-324: a camera flash or a lit missile reveals its surroundings
+ * until transient_light_cleanup replaces newly unseen monsters in memory. */
+export async function show_transient_light(obj, x, y) {
+    let ls;
+    if (!obj) {
+        if (game.level.at(x, y).lit)
+            return;
+        ls = new_light_core(x, y, 0, LS_OBJECT, obj_to_any(null));
+    } else {
+        for (ls = light_base; ls; ls = ls.next)
+            if (ls.type === LS_OBJECT && ls.id.a_obj === obj)
+                break;
+        if (!ls || obj.where !== OBJ_FREE) {
+            await impossible('transient light %s %s %s not %s?',
+                obj.lamplit ? 'lit' : 'unlit', simpleonames(obj),
+                otense(obj, 'are'), !ls ? 'a light source' : 'free');
+            return;
+        }
+    }
+    if (obj)
+        place_object(obj, game.bhitpos.x, game.bhitpos.y);
+    else {
+        ls.x = x;
+        ls.y = y;
+    }
     vision_recalc(0);
-    flush_screen(0);
-    remove_object(obj);
+    await flush_screen(0);
+    const radius_squared = ls.range * ls.range;
+    for (let mon = game.fmon; mon; mon = mon.nmon) {
+        if (mon.mhp <= 0 || (mon.isgd && !mon.mx))
+            continue;
+        if ((mon.mx - x) ** 2 + (mon.my - y) ** 2 <= radius_squared
+            && canseemon(mon))
+            mon.mtemplit = 1;
+    }
+    if (obj) {
+        /* nh_delay_output() is a no-op in this port. */
+        remove_object(obj);
+    }
+}
+
+/* C light.c:330-357. */
+export async function transient_light_cleanup() {
+    discard_flashes();
+    if (game.vision_full_recalc)
+        vision_recalc(0);
+    let mtempcount = 0;
+    for (let mon = game.fmon; mon; mon = mon.nmon) {
+        if (mon.mhp <= 0)
+            continue;
+        if (mon.mtemplit) {
+            mon.mtemplit = 0;
+            ++mtempcount;
+            if (!canspotmon(mon))
+                map_invisible(mon.mx, mon.my);
+        }
+    }
+    if (mtempcount)
+        await flush_screen(0);
+}
+
+/* C light.c:361-370: deletion invalidates next, so save it before unlinking. */
+function discard_flashes() {
+    for (let ls = light_base, next; ls; ls = next) {
+        next = ls.next;
+        if (ls.type === LS_OBJECT && !ls.id.a_obj)
+            delete_ls(ls);
+    }
 }

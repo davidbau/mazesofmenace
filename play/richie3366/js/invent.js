@@ -2523,6 +2523,47 @@ export function unsortloot(_lootArray) {
 }
 
 /**
+ * C library qsort, glibc msort pattern (top-down mergesort, mid=(lo+hi)/2,
+ * take-left on cmp<=0) — in-place like qsort(). sortloot's comparator is
+ * INCONSISTENT on one pair shape: the spe key (invent.c:530-536) is gated
+ * on obj1's otyp oc_uses_known only, so a uses_known item with unknown
+ * spe (bag of tricks, known=0 → -1000) vs a non-uses_known item with
+ * known spe 0 compares cmp(a,b)>0 AND cmp(b,a)>0 (b falls to the indx
+ * tiebreak). V8 Array.sort (binary insertion at menu sizes) asks cmp in
+ * the opposite direction from a mergesort merge step and keeps chain
+ * order; glibc's mergesort takes the other side (scen-sweep-Barbarian-610017
+ * step 642: C [v,l,n,u] vs insertion [u,v,l,n]). For consistent
+ * comparators this IS stable sort (identical output to Array.sort), so
+ * only inconsistent inputs change order. Proven equivalent to glibc 2.36
+ * qsort on 60000 randomized parametric sortloot_cmp cases, n=0..60
+ * (differential /tmp/sortdiff harness: same key chain + asymmetric gate).
+ * @param {Array} arr sorted in place
+ * @param {(a, b) => number} cmp comparator (need not be consistent)
+ * @returns {Array} arr
+ */
+export function glibc_qsort(arr, cmp) {
+    const n = arr.length;
+    if (n <= 1) return arr;
+    const aux = new Array(n);
+    const rec = (lo, hi) => {
+        if (hi - lo <= 1) return;
+        const mid = (lo + hi) >> 1;
+        rec(lo, mid);
+        rec(mid, hi);
+        let i = lo, j = mid, k = lo;
+        while (i < mid && j < hi) {
+            if (cmp(arr[i], arr[j]) <= 0) aux[k++] = arr[i++];
+            else aux[k++] = arr[j++];
+        }
+        while (i < mid) aux[k++] = arr[i++];
+        while (j < hi) aux[k++] = arr[j++];
+        for (let t = lo; t < hi; t++) arr[t] = aux[t];
+    };
+    rec(0, n);
+    return arr;
+}
+
+/**
  * C ref: invent.c sortloot `:592–643` — Loot[] view; does not relink.
  * Branch envelope: SORTLOOT_PACK class + SORTLOOT_INVLET + SORTLOOT_LOOT
  * + SORTLOOT_INUSE (inuse_classify; bigger inuse first) + optional
@@ -2569,7 +2610,10 @@ export function sortloot(olist, mode, by_nexthere = false, filterfunc = null) {
     // C sortloot `:634–640` — mode is extra input for sortloot_cmp via
     // gs.sortlootmode; reset after the sort (str free is GC here).
     sortlootmode = mode;
-    items.sort((sli1, sli2) => sortloot_cmp(sli1, sli2));
+    // C sortloot `:634` — qsort(), not insertion sort: glibc's mergesort
+    // pattern (take-left on cmp<=0), which decides inconsistent pairs
+    // (asymmetric spe key) opposite to V8 Array.sort.
+    glibc_qsort(items, (sli1, sli2) => sortloot_cmp(sli1, sli2));
     sortlootmode = 0;
     return items;
 }

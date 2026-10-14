@@ -317,7 +317,9 @@ export async function read_tribute(tribsection, tribtitle, tribpassage, nowin_bu
         return nowin_buf.value !== '';
     if (foundpassage && lastline) {
         const { dbase_display_window } = await import('./cmd.js');
-        await dbase_display_window(win, 0);
+        /* C files.c:3574,3626 / wintty.c:1923-1945: an NHW_MENU overlay
+         * preserves the existing status outside the window's rows. */
+        await dbase_display_window(win);
         if (lastline.includes('['))
             lastline = munge(lastline);
         else

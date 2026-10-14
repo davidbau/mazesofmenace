@@ -8,7 +8,7 @@ import { EPRI, EMIN, TEMPLE, NOTONL, ALLOW_M, ALLOW_ROCK, IS_ROOM, ROOMOFFSET,
          INVIS, CONFLICT, DISPLACED,
          N_DIRS, xdir, ydir, MM_EPRI, MM_EMIN, MM_ADJACENTOK, MM_NOMSG,
          W_ARMC, ALL_TRAPS, RLOC_NOMSG,
-         AM_SHRINE, Amask2align, IS_ALTAR, HALLUC, HALLUC_RES,
+         AM_SHRINE, AM_MASK, Amask2align, IS_ALTAR, HALLUC, HALLUC_RES,
          } from './const.js';
 import { PM_DEATH, PM_FAMINE, PM_PESTILENCE, PM_PRIEST, PM_HIGH_PRIEST } from './pm.generated.js';
 import { newmextra } from './makemon.js';
@@ -17,7 +17,7 @@ import { newemin } from './sit.js';
 import { rn2, rn1 } from './rng.js';
 import { dist2 } from './hacklib.js';
 import { _allow_rock_mv, _can_open_mv, _passes_bars_mv, m_break_boulder_mv, m_move_aggress, mon_allowflags } from './monmove.js';
-import { online2, mfndpos, monnear, makemon, mpickobj, mkobj, mksobj, mongone } from './mklev.js';
+import { online2, mfndpos, monnear, makemon, mpickobj, mkobj, mksobj, mongone, setmangry } from './mklev.js';
 import { pm_good_location } from './sp_lev.js';
 import { set_malign, which_armor } from './makemon.js';
 import { mon_learns_traps } from './trap.js';
@@ -42,7 +42,7 @@ function _hero_invis_priest(u) {
 import { Your } from './do_wear.js';
 import { mon_nam } from './uhitm.js';
 import { mattacku } from './mhitu.js';
-import { resist_conflict } from './mhitm.js';
+import { resist_conflict, wakeup } from './mhitm.js';
 
 /**
  * newepri — allocate and init epri (priest extended data)
@@ -54,6 +54,35 @@ export function newepri(mtmp) {
     if (!EPRI(mtmp)) {
         mtmp.mextra.epri = {};
         mtmp.mextra.epri.parentmid = mtmp.m_id;
+    }
+}
+
+/* C priest.c:27-35: discard shrine data, retaining other mextra fields. */
+export function free_epri(mtmp) {
+    if (mtmp.mextra && EPRI(mtmp))
+        mtmp.mextra.epri = null;
+    mtmp.ispriest = 0;
+}
+
+/* C priest.c:876-911: anger the temple's priest, then release him from a
+ * destroyed or converted shrine.  Keep epri alive until min_align is copied. */
+export async function angry_priest() {
+    const priest = findpriest(temple_occupied(game.u.urooms));
+    if (priest) {
+        const eprip = EPRI(priest);
+        await wakeup(priest, false);
+        await setmangry(priest, false);
+        const lev = game.level.at(eprip.shrpos.x, eprip.shrpos.y);
+        if (!IS_ALTAR(lev.typ)
+            || Amask2align(lev.altarmask & AM_MASK) !== eprip.shralign) {
+            if (!EMIN(priest))
+                newemin(priest);
+            priest.ispriest = 0;
+            priest.isminion = 1;
+            EMIN(priest).min_align = eprip.shralign;
+            EMIN(priest).renegade = false;
+            free_epri(priest);
+        }
     }
 }
 

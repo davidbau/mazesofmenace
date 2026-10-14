@@ -1,8 +1,10 @@
+import { ggetobj } from './cmd.js';
 // @ts-nocheck
 import { rn2, rnd, rn1, rnl, d } from './rng.js';
 import { discover_object } from './o_init.js';
 import { MKOBJ_OC_CLASS } from './mkobj_data.js';
 import { game } from './gstate.js';
+import { snuff_light_source } from './light.js';
 import { pline, getobj_never_mind, bot as bot_read, gamelog_add, obj_to_glyph } from './display.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import {
@@ -614,7 +616,7 @@ import { which_armor } from './makemon.js';
 import { NO_COLOR, CLR_BLACK } from './terminal.js';
 import { build_window_screen, tty_window_offx, menu_search_case } from './com_pager.js';
 import { getObjDescr, xname_scroll, makeplural, an, Yobjnam2, otense, not_fully_identified } from './objnam.js';
-import { simpleonames, suit_simple_name } from './objnam.js';
+import { simpleonames, suit_simple_name, actualoname as _actualoname } from './objnam.js';
 /* C read.c:384-390's "obscured by" guard needs shk_your()'s shop-owner arm
  * (shk.c:5885-5896 shk_owns): shop_keeper/costly_spot (js/shk.js), inside_shop
  * (js/mklev.js, the single live body -- see js/cmd.js:159) and shkname
@@ -2678,27 +2680,6 @@ async function disintegrate_cursed_armor() {
     return false;
 }
 
-/* C ref: objnam.c:2490-2497 actualoname(obj) —
- *   iflags.override_ID = TRUE; res = minimal_xname(obj); iflags.override_ID = FALSE;
- * i.e. the object's REAL type name regardless of what the hero has identified.
- * KNOWN GAP: minimal_xname() (objnam.c:2478) is not ported, so xname() stands
- * in under the same override_ID bracket that js/objnam.js already honours
- * (js/objnam.js:3413, :3974, :4329).  For a single unidentified scroll — the
- * only object that reaches the one call site below — the two agree, because
- * minimal_xname's whole job is to suppress the quantity/BUC/erosion prefixes
- * that a fresh single scroll does not carry.  RNG: none. */
-function _actualoname(obj) {
-    const g = game;
-    g.iflags = g.iflags || {};
-    const saved = g.iflags.override_ID;
-    g.iflags.override_ID = 1;
-    try {
-        return xname(obj);
-    } finally {
-        g.iflags.override_ID = saved;
-    }
-}
-
 async function seffect_destroy_armor(sobjp) {
     const g = game, u = g.u || {};
     const sobj = sobjp.obj;
@@ -3398,6 +3379,7 @@ function _sense_trap(trap, x, y, src_cursed) {
     }
     if (atHero) game._sensed_at_hero = true;
 }
+export { _sense_trap as sense_trap };
 
 /* C detect.c:956-1003 display_trap_map(cursed_src) */
 async function display_trap_map(cursed_src) {
@@ -3982,6 +3964,12 @@ function free_lit(ptr) {}
 
 function impact_arti_light(otmp, flag, visible) { /* not yet ported */ }
 import { light_hits_gremlin } from './cmd.js'; /* C uhitm.c:6425 — real body lives in cmd.js */
+/* C ref: read.c:2470-2489 set_lit(x, y, val) — the do_clear_area() callback
+ * litroom() drives.  `val` is a non-null pointer flag, not a value: non-null
+ * lights the square, null darkens it.
+ *   if (val) { levl[x][y].lit = 1; if a gremlin is here, push it on `gremlins` }
+ *   else     { levl[x][y].lit = 0; snuff_light_source(x, y); }
+ * RNG: none. */
 function set_lit(x, y, val) {
     const loc = game.level?.at(x, y);
     if (!loc)
@@ -3993,7 +3981,7 @@ function set_lit(x, y, val) {
             game.gremlins = { mon: mtmp, nxt: game.gremlins || null };
     } else {
         loc.lit = 0;
-        /* C: snuff_light_source(x, y) — see KNOWN GAP above. */
+        snuff_light_source(x, y);
     }
 }
 
@@ -4509,8 +4497,14 @@ export async function identify_pack(id_limit, learning_id) {
             }
         }
     } else {
-        /* Identify up to id_limit items via the menu (MENU_FULL → menu_identify). */
-        await menu_identify(id_limit);
+        // C invent.c:2734-2744: traditional selection precedes the menu.
+        let n = 0;
+        if (g.flags.menu_style === 0 /* MENU_TRADITIONAL */)
+            do {
+                n = await ggetobj('identify', identify, id_limit, false);
+                if (n < 0) break;
+            } while ((id_limit -= n) > 0);
+        if (n === 0 || n < -1) await menu_identify(id_limit);
     }
     /* C: update_inventory() — display refresh, no RNG. */
 }

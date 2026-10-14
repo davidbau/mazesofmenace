@@ -101,6 +101,27 @@ const default_menu_cmd_info = [
     ['menu_deselect_all', '-'], ['menu_select_page', ','], ['menu_invert_page', '~'],
     ['menu_deselect_page', '\\'], ['menu_search', ':'], ['menu_shift_right', '}'], ['menu_shift_left', '{'],
 ];
+// C options.c:694,5452: OPTIONS= uses the same menu aliases as BINDINGS=.
+export function check_misc_menu_command(opts) {
+    const name = opts.split(/[:=]/, 1)[0].trimEnd().toLowerCase();
+    return default_menu_cmd_info.findIndex(row => row[0] === name);
+}
+export function set_misc_menu_command(opts, negated) {
+    const i = check_misc_menu_command(opts);
+    if (i < 0) return false;
+    if (negated) {
+        config_error_add('The %s option may not both have a value and be negated.', default_menu_cmd_info[i][0]);
+    } else {
+        const sep = opts.search(/[:=]/), op = sep < 0 ? '' : opts.slice(sep + 1);
+        if (!op) config_error_add("Missing parameter for '%s'", opts);
+        else {
+            const key = txt2key(op);
+            if (!illegal_menu_cmd_key(key))
+                add_menu_cmd_alias(key, default_menu_cmd_info[i][1].charCodeAt(0));
+        }
+    }
+    return true;
+}
 function illegal_menu_cmd_key(c) {
     if (!c || [13, 10, 27, 32].includes(c) || (c >= 48 && c <= 57)
         || (c >= 65 && c <= 90) || (c >= 97 && c <= 122)) {

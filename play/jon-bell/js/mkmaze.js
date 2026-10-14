@@ -2,6 +2,7 @@
 // Ported from nethack-c/src/mkmaze.c:77-140
 
 import { game } from './gstate.js';
+import { unplacebc_and_covet_placebc, lift_covet_and_placebc } from './ball.js';
 import { rn2, rnd, pushRngLogEntry } from './rng.js';
 import {
     STONE, MAX_TYPE, SDOOR, AIR, ICE,
@@ -1142,6 +1143,7 @@ export function setup_waterlevel() {
  * moveloop_core() when on the level". */
 export async function movebubbles() {
     const uz = game.u?.uz;
+    let bcpin = 0;
 
     /* set up the portal the first time bubbles are moved */
     if (!_wportal)
@@ -1152,10 +1154,10 @@ export async function movebubbles() {
     _hero_bubble = null;
 
     if (Is_waterlevel(uz)) {
+        // C mkmaze.c:1562-1564: keep attached ball&chain out of bubble contents.
+        if (game.u?.uchain) bcpin = unplacebc_and_covet_placebc();
         /* C mkmaze.c:1560-1646 — pick up everything inside of a bubble then
-         * fill all bubble locations.  [Punished ball&chain handling
-         * (unplacebc_and_covet_placebc / lift_covet_and_placebc) is not
-         * ported.] */
+         * fill all bubble locations. */
         for (let b = _bubbles_up ? _bbubbles : _ebubbles; b;
              b = _bubbles_up ? b.next : b.prev) {
             if (b.cons)
@@ -1258,6 +1260,9 @@ export async function movebubbles() {
                   b.dy + 1 - (!b.dy ? ry : (ry ? 1 : 0)), false);
     }
 
+    // C mkmaze.c:1681-1683: replace at the hero's final position.
+    if (Is_waterlevel(game.u?.uz) && game.u?.uchain)
+        await lift_covet_and_placebc(bcpin);
     game.vision_full_recalc = 1;
 }
 

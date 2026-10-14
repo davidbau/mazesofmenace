@@ -4,7 +4,7 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, force_more, topl_park_cursor, bot,
-         _topline_more_pending } from './display.js';
+         _topline_more_pending, restore_occupation_topline, putmsghistory } from './display.js';
 import { PARANOID_CONFIRM, BUFSZ, QBUFSZ } from './const.js';
 
 function mungspaces(s) {
@@ -104,21 +104,22 @@ async function read_yn(prompt, acceptQ) {
     const stick = () => {
         g._topl_sticky = topl_park_cursor(null, `${shown} `)[1] ? null : shown;
     };
+    /* C topl.c:537-539 rewrites gt.toplines as prompt + key2txt(q) and
+     * remember_topl() files THAT: the answered prompt, never the bare one. */
+    const answered = (a) => { putmsghistory(`${shown} ${a}`, false); stick(); return a; };
     for (;;) {
-        const key = await nhgetch();
+        const sh = g._topl_suppress_history;
+        g._topl_suppress_history = true;
+        let key;
+        try { key = await nhgetch(); }
+        finally { g._topl_suppress_history = sh; }
         const c = String.fromCharCode(key).toLowerCase();
-        if (c === 'y' || c === 'n' || (acceptQ && c === 'q')) {
-            stick();
-            return c;
-        }
-        if (key === 27) {
-            stick();
-            return acceptQ ? 'q' : 'n';
-        }
-        if (key === 32 || key === 10 || key === 13) {
-            stick();
-            return 'n';
-        }
+        if (c === 'y' || c === 'n' || (acceptQ && c === 'q'))
+            return answered(c);
+        if (key === 27)
+            return answered(acceptQ ? 'q' : 'n');
+        if (key === 32 || key === 10 || key === 13)
+            return answered('n');
         /* nhgetch clears the logical topline, but tty keeps the already-painted
          * special prompt on screen while ringing the bell and re-reading. */
     }
@@ -126,6 +127,7 @@ async function read_yn(prompt, acceptQ) {
 
 /** Return exactly "y", "n", or "q"; ESC is "q" before accept_q normalization. */
 export async function paranoid_ynq(be_paranoid, prompt, accept_q) {
+    restore_occupation_topline();
     let c = 'n';
     if (be_paranoid) {
         const strict = !!((game.flags?.paranoia_bits | 0) & PARANOID_CONFIRM);

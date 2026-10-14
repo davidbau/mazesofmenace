@@ -650,7 +650,7 @@ export async function mInitweap(mtmp, mksobjFn) {
                     ? (mtmp.mextra.emin.min_align | 0) : monAlign(mndx);
                 if ((!rn2(20) || isLordMndx(mndx)) && sgn(mal) === A_LAWFUL) {
                     if (otmpW)
-                        otmpW = oname(otmpW, nam, ONAME_RANDOM);
+                        otmpW = await oname(otmpW, nam, ONAME_RANDOM);
                 }
                 if (otmpW) {
                     blessObj(otmpW);

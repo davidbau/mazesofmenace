@@ -1,12 +1,17 @@
 import { spoteffects } from './landing-effects.js';
-import { is_pool_or_lava } from './look.js';
+import { is_pool, is_pool_or_lava } from './look.js';
+import { SWIMMING, WWALKING } from './const.js';
+import { pooleffects_drown, pooleffects_lava_effects, pooleffects_is_lava,
+         pooleffects_is_swimmer, pooleffects_is_flyer } from './cmd.js';
 // do_wear.c — wearing / taking off worn objects; armor-class calculation.
 // C ref: do_wear.c — find_ac (line 2472).
 // @ts-nocheck — sibling imports from hand-maintained js/*.js (no .d.ts yet).
 import { game } from './gstate.js';
+import { shk_your as ownership_prefix } from './shk.js';
 import { setworn, setnotworn } from './worn.js';
 import { impossible as equipment_impossible } from './pline.js';
-import { end_burn } from './timeout.js';
+import { begin_burn, end_burn } from './timeout.js';
+import { artifact_light, arti_light_description } from './light.js';
 import monAcPack from './makemon_ac.json' with { type: 'json' };
 const MONS_AC = monAcPack.ac;
 /* C mons[] rows (permonst); row[6] = mflags1.  Imported as a raw data pack for
@@ -39,7 +44,7 @@ import { discover_object } from './o_init.js';
 import { exercise, change_luck, acurr, C_ATTR_TO_DISP, adjalign } from './attrib.js';
 import { STR19, PROTECTION, INTRINSIC, Is_astralevel } from './const.js';
 import { PM_ARCHEOLOGIST, PM_HOBBIT, PM_MARILITH, PM_WINGED_GARGOYLE } from './pm.generated.js';
-import { float_vs_flight, breakarm, num_horns, obj_pmname, y_monnam } from './mhitm.js';
+import { float_vs_flight, breakarm, num_horns, obj_pmname, y_monnam, can_be_strangled } from './mhitm.js';
 import { s_suffix } from './hacklib.js';
 import { hcolor } from './mhitm.js';
 import { curse } from './mkobj.js';
@@ -52,7 +57,7 @@ import { sliparm, permonstTemplate } from './makemon.js';
 import { canletgo } from './makemon.js';
 import { weapon_descr, touch_petrifies as corpse_touch_petrifies, mon_nam } from './uhitm.js';
 import { setuwep, setuswapwep, setuqwep, empty_handed, cmdq_pop, cmdq_peek, dropx, cmdq_clear, instapetrify as corpse_instapetrify,
-         carrying_stoning_corpse } from './cmd.js';
+         carrying_stoning_corpse, Yname2 } from './cmd.js';
 import { otense, makesingular, corpse_xname as petrify_corpse_xname, killer_xname as petrify_killer_xname, simpleonames as petrify_simpleonames } from './objnam.js';
 import { HAND, FINGER, RIGHT_HANDED, LEFT_HANDED, CQ_CANNED, CXN_ARTICLE as PETRIFY_ARTICLE } from './const.js';
 import { W_WEP, W_SWAPWEP, W_QUIVER, W_RINGL, W_RINGR, W_TOOL,
@@ -60,11 +65,11 @@ import { W_WEP, W_SWAPWEP, W_QUIVER, W_RINGL, W_RINGR, W_TOOL,
 const PETRIFY_CORPSE = 265; /* objects.h CORPSE */
 /* C mkobj.c:1865 set_bknown() — the project's real one (js/mklev.js:11078).
  * mklev.js does not import this file, so there is no cycle. */
-import { set_bknown, set_ustuck } from './mklev.js';
+import { set_bknown, set_ustuck, rescham, restartcham } from './mklev.js';
 import { sticks } from './dog.js';
 import { Can_fall_thru } from './mklev.js';
 import { on_level } from './dungeon.js';
-import { self_invis_message, make_confused } from './potion.js';
+import { self_invis_message, make_confused, make_hallucinated } from './potion.js';
 import { set_mimic_blocking } from './sit.js';
 import { paranoid_query } from './paranoid.js';
 /* C do_wear.c:3258 obj_erode_type() / :3299 destroy_arm() read the objclass.h
@@ -136,6 +141,7 @@ import { UNCHANGING as UNCHANGING_PROP } from './const.js';
 /* C polyself.c poly_gender() — js/makemon.js:2112 is the ONE definition (do_wear.c
  * itself calls the same global function; not duplicating it here). */
 import { poly_gender } from './makemon.js';
+import { livelog_newform } from './polyself.js';
 import { trycall } from './cmd.js';
 /* C objects.h — AMULET_OF_RESTFUL_SLEEP is otyp 204 (same numbering
  * js/mklev.js:370 uses for the amulet_curse table). */
@@ -656,7 +662,7 @@ export function takeoff_slot_noac(slot) {
 }
 /* C ref: do_wear.c:908-930 Armor_off() — setworn(0, W_ARM) first (takeoff_slot),
  * THEN dragon_armor_handling(otmp, FALSE, TRUE) on the piece just removed.  The
- * arti-light half (do_wear.c:920-923) is deferred with the GOLD arm. */
+ * arti-light half (do_wear.c:920-923) remains deferred. */
 export async function Armor_off()  {
     const otmp = game.u ? game.u.uarm : null;
     const r = await takeoff_slot('uarm');
@@ -985,12 +991,8 @@ async function dragon_armor_handling(otmp, puton, on_purpose) {
         break;
     case GOLD_DRAGON_SCALES_DW:
     case GOLD_DRAGON_SCALE_MAIL_DW:
-        /* DEFERRED — C do_wear.c:848-850
-         *     (void) make_hallucinated((long) !puton,
-         *                              program_state.restoring ? FALSE : TRUE,
-         *                              W_ARM);
-         * make_hallucinated lives in js/potion.js and this module has no import
-         * edge to it; see the header note. */
+        // C do_wear.c:848-850: add/remove resistance, preserving hallucination.
+        await make_hallucinated(Number(!puton), !game.program_state?.restoring, W_ARM);
         break;
     case ORANGE_DRAGON_SCALES_DW:
     case ORANGE_DRAGON_SCALE_MAIL_DW:
@@ -1012,14 +1014,22 @@ async function dragon_armor_handling(otmp, puton, on_purpose) {
         break;
     }
 }
-/* C ref: do_wear.c:885-906 Armor_on() — the suit slot's donning afternmv.
- * The `if (!uarm->known) uarm->known = 1` half is don_slot()'s shared tail; the
- * dragon_armor_handling call was missing entirely.  artifact_light(uarm) (gold
- * DSM's worn glow, do_wear.c:899-905) needs the artifact table and stays
- * deferred with the GOLD arm above. */
+/* C ref: do_wear.c:885-906 Armor_on() — identify the suit, apply its dragon
+ * properties, then activate worn gold armor's light and announce it. */
 export async function Armor_on()  {
-    await dragon_armor_handling(game.u ? game.u.uarm : null, true, true);
-    return don_slot('uarm');
+    const uarm = game.u?.uarm;
+    if (!uarm) return 0;
+    if (!uarm.known) {
+        uarm.known = 1;
+        update_inventory();
+    }
+    await dragon_armor_handling(uarm, true, true);
+    if (artifact_light(uarm) && !uarm.lamplit) {
+        begin_burn(uarm, false);
+        if (!_Blind_dw())
+            await pline(`${Yname2(uarm)} ${otense(uarm, 'begin')} to shine ${arti_light_description(uarm)}!`);
+    }
+    return 0;
 }
 export function Shield_on() { return don_slot('uarms'); }
 const FEDORA_OTYP = 92, CORNUTHAUM_OTYP = 93;
@@ -1944,7 +1954,7 @@ function is_sword(otmp) {
     return !!otmp && (otmp.oclass | 0) === WEAPON_CLASS_DW
         && (otmp.otyp | 0) >= SWORD_OTYP_LO_DW && (otmp.otyp | 0) <= SWORD_OTYP_HI_DW;
 }
-function is_elven_armor(otmp) {
+export function is_elven_armor(otmp) {
     return !!otmp && ELVEN_ARMOR_OTYPS_DW.has(otmp.otyp | 0);
 }
 
@@ -2451,6 +2461,7 @@ export async function accessory_or_armor_on(obj) {
                 await You("don't feel like yourself.");
                 callIt = obj.dknown !== undefined ? !!obj.dknown : true;
             }
+            livelog_newform(false, origSex, newSex); /* C do_wear.c:1029 */
             await pline('The amulet disintegrates!');
             if (callIt)
                 await trycall(obj);
@@ -2467,10 +2478,8 @@ export async function accessory_or_armor_on(obj) {
         /* C ref: do_wear.c:1030-1042 — case AMULET_OF_STRANGULATION. */
         let onMsgDone = false;
         if ((obj.otyp | 0) === AMULET_OF_STRANGULATION_DW) {
-            const bre = g.u.uprops && g.u.uprops[MAGICAL_BREATHING_DW];
-            const breathless = !!(bre && ((bre.intrinsic | 0) || (bre.extrinsic | 0)));
             const sp = ensure_uprop(STRANGLED);
-            if (has_head(g.youmonst && g.youmonst.data) && !breathless
+            if (can_be_strangled(g.youmonst)
                 && !(sp.intrinsic | 0)) {
                 makeknown_otyp(AMULET_OF_STRANGULATION_DW);
                 sp.intrinsic = 6;
@@ -2793,9 +2802,12 @@ async function Ring_off_or_gone(obj, gone) {
         learnring(obj, !!obj.spe);
         if (obj.spe) find_ac();
         break;
+    case RIN_PROTECTION_FROM_SHAPE_CHAN_OTYP: { // C do_wear.c:1438-1444
+        const p = u.uprops?.[oprop];
+        if (!p?.intrinsic && !p?.extrinsic) await restartcham();
+        break;
     }
-    /* Other immediate toggle-ring effects (stealth/warning/see-invis/invis/
-     * shapechanger protection) remain deferred in both Ring_on and Ring_off. */
+    }
 }
 
 /* C do_wear.c:1454 Ring_gone(obj) — removal outside the ordinary take-off
@@ -2826,12 +2838,12 @@ export async function Amulet_off() {
     const otyp = amul.otyp | 0;
     let earlyOffMsg = false;
     if (otyp === AMULET_OF_ESP_DW) {
-        /* do_wear.c:1097-1105 — setworn+off_msg early so the ability is
-         * already off before see_monsters() re-derives vision.
-         * see_monsters() itself deferred: display-only vision recompute. */
+        /* C do_wear.c:1098-1104 — clear telepathy and print the removal
+         * message before refreshing sensed monsters. */
         await setworn(null, W_AMUL_C);
         await off_msg_amulet(amul);
         earlyOffMsg = true;
+        see_monsters();
     } else if (otyp === AMULET_OF_STRANGULATION_DW) {
         /* do_wear.c:1134-1148 */
         await setworn(null, W_AMUL_C);
@@ -2938,7 +2950,7 @@ export async function float_down(hmask, emask) {
         await pline(`Startled, ${mon_nam(u.ustuck)} can no longer hold you!`);
         set_ustuck(null);
     }
-    /* uswallow/Punished/pool/lava branches deferred (FALSE here). */
+    /* uswallow/Punished branches deferred (FALSE here). */
     /* C trap.c:4086-4095 — a stuck-to hero (not swallowed) is released. */
     if (!Flying() && !u.uswallow && u.ustuck) {
         const ym = game.youmonst;
@@ -2948,7 +2960,22 @@ export async function float_down(hmask, emask) {
             await pline(`Startled, ${mon_nam(u.ustuck)} can no longer hold you!`);
         set_ustuck(null);
     }
-    if (!(emask & W_SADDLE_FD)) {
+    /* C trap.c:4096-4111 — landing in liquid precedes landing feedback,
+     * including dismounts whose steed died and left the hero over water. */
+    let no_msg = false;
+    if (!Flying() && !u.uswallow) { /* C's swallowed branch returns above this. */
+        const walk = ensure_uprop(WWALKING), swim = ensure_uprop(SWIMMING);
+        const wwalking = (walk.intrinsic || walk.extrinsic) && !Is_waterlevel(u.uz);
+        const swimming = swim.intrinsic || swim.extrinsic
+            || (u.usteed && pooleffects_is_swimmer(u.usteed.data));
+        if (is_pool(u.ux, u.uy) && !wwalking && !swimming && !u.uinwater)
+            no_msg = await pooleffects_drown();
+        if (pooleffects_is_lava(u.ux, u.uy) && !g.iflags?.in_lava_effects) {
+            await pooleffects_lava_effects();
+            no_msg = true;
+        }
+    }
+    if (!u.uinwater && !no_msg && !(emask & W_SADDLE_FD)) {
         const hallu = u.uprops?.[HALLUC]?.intrinsic
             && !(u.uprops[HALLUC_RES]?.intrinsic || u.uprops[HALLUC_RES]?.extrinsic);
         if (hallu) /* C trap.c:4138-4141 (is_pool arm deferred with the pool branch) */
@@ -3320,6 +3347,7 @@ export async function Blindf_off(otmp) {
 export const RIN_LEVITATION_OTYP = 183;
 const RIN_INVISIBILITY_OTYP = 198;
 const RIN_SEE_INVISIBLE_OTYP = 199;
+const RIN_PROTECTION_FROM_SHAPE_CHAN_OTYP = 200;
 const RIN_GAIN_STRENGTH_OTYP = 174;
 const RIN_GAIN_CONSTITUTION_OTYP = 175;
 const RIN_ADORNMENT_OTYP = 173;
@@ -3359,7 +3387,8 @@ function Levitation() {
 /* C youprop.h: Flying — active hero flying property. */
 function Flying() {
     const p = ensure_uprop(FLYING_PROP);
-    return !!((p.intrinsic | 0) || (p.extrinsic | 0)) && !(p.blocked | 0);
+    return !!((p.intrinsic | 0) || (p.extrinsic | 0)
+        || (game.u.usteed && pooleffects_is_flyer(game.u.usteed.data))) && !(p.blocked | 0);
 }
 
 function learnring(ring, observed) {
@@ -3382,6 +3411,7 @@ function learnring(ring, observed) {
     }
 }
 
+/* C attrib.c:1268 — effective attribute limits, including equipment overrides. */
 function extremeattr_dw(which) {
     const g = game;
     const u = g.u || {};
@@ -3390,7 +3420,11 @@ function extremeattr_dw(which) {
         hilimit = STR19(25);
         if (u.uarmg && (u.uarmg.otyp | 0) === GAUNTLETS_OF_POWER_OTYP_DW)
             lolimit = hilimit;
+    } else if (which === A_CON && u.uwep?.oartifact === 16) { // Ogresmasher
+        lolimit = hilimit;
     }
+    if ((which === A_INT || which === A_WIS) && (u.uarmh?.otyp | 0) === 94)
+        hilimit = lolimit = 6; // dunce cap
     const curval = acurr(u, which);
     return curval === lolimit || curval === hilimit;
 }
@@ -3533,6 +3567,10 @@ export async function Ring_on(obj) {
             break;
         case RIN_INCREASE_DAMAGE_OTYP:
             u.udaminc = (u.udaminc | 0) + (obj.spe | 0);
+            break;
+        case RIN_PROTECTION_FROM_SHAPE_CHAN_OTYP:
+            /* C do_wear.c:1331-1333: restore shapes before the next turn. */
+            await rescham();
             break;
         case RIN_PROTECTION_OTYP: {
             const observable = (obj.spe | 0) !== 0;
@@ -4091,6 +4129,23 @@ export async function Your(line, ...args) {
     return pline('Your ' + _plineVFmt(line, args));
 }
 
+/* yname — C objnam.c:2568-2582.
+ *   yname(obj) { s = cxname(obj);
+ *                if (!carried(obj) || !obj_is_pname(obj)
+ *                    || obj->oartifact >= ART_ORB_OF_DETECTION)
+ *                    s = strcat(shk_your(nextobuf(), obj), s);
+ *                return s; }
+ * RNG-free on every arm.
+ *
+ * This was a throw-stub here AND at js/cmd.js:19318, which mattered because
+ * js/cmd.js:6674 is `await You("smear royal jelly all over %s.", yname(eobj))`
+ * — porting You() alone would have moved the abort one argument to the left,
+ * exactly the failure recorded in the cmd.js:6537 comment. Both sites now
+ * resolve to this body.
+ *
+ * Ownership uses the shared shk.c:5862-5873 helper, including shop bills,
+ * monster inventory, and unique corpses.  KNOWN GAP: obj_is_pname/oartifact
+ * gating of the possessive is not modelled here. */
 export function yname(obj) {
     let owned = !!obj && (obj.where | 0) === 3;
     if (obj && !owned) {
@@ -4098,11 +4153,11 @@ export function yname(obj) {
             if (o === obj) { owned = true; break; }
         }
     }
-    /* C shk.c:5871,5899-5905 mon_owns(): an object in a monster's minvent is
-     * "<monster>'s " (s_suffix(y_monnam(obj->ocarry))), not "the ". */
-    if (!owned && obj && (obj.where | 0) === 4 /* OBJ_MINVENT */ && obj.ocarry)
-        return s_suffix(y_monnam(obj.ocarry)) + ' ' + cxname(obj);
-    return (owned ? 'your ' : 'the ') + cxname(obj);
+    const name = cxname(obj); // C objnam.c:2361: name before ownership prefix.
+    // Retain the inventory-chain fallback for objects without a where field.
+    const prefix = owned && obj.where == null && !obj.unpaid
+        ? 'your ' : ownership_prefix('', obj);
+    return prefix + name;
 }
 export { xname };
 export function shk_your(obj) {

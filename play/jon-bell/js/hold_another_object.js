@@ -271,7 +271,7 @@ export async function merged(potmp, pobj) {
          * copies the discarded stack's name without refreshing inventory.
          * The latter matters because merged() is still midway through its
          * bookkeeping and C's update_inventory happens in addinv's caller. */
-        oname(otmp, ONAME(obj), 0x0200 /* ONAME_SKIP_INVUPD */);
+        await oname(otmp, ONAME(obj), 0x0200 /* ONAME_SKIP_INVUPD */);
 
     /* C invent.c:845: extraction is unconditional, including OBJ_FREE. */
     obj_extract_self_general(obj);
@@ -664,7 +664,7 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
 
     /* C:1296 `drop_it:` */
     if (drop_fmt)
-        pline(_fmt1(drop_fmt, drop_arg));
+        await pline(_fmt1(drop_fmt, drop_arg));
     obj.nomerge = 0;
     if (can_reach_floor(true) || u.uswallow) {
         await dropx(obj);

@@ -25,7 +25,7 @@ import { tamedog } from './dog.js';
 import {
     PM_WEREWOLF, PM_WEREJACKAL, PM_WERERAT,
     PM_JACKAL, PM_FOX, PM_COYOTE,
-    PM_WOLF, PM_WARG, PM_WINTER_WOLF,
+    PM_WOLF, PM_WARG, PM_WINTER_WOLF, PM_WINTER_WOLF_CUB,
     PM_SEWER_RAT, PM_GIANT_RAT, PM_RABID_RAT,
 } from './pm.generated.js';
 
@@ -201,6 +201,32 @@ export function counter_were(pm) {
     default:                   return NON_PM;
     }
 }
+
+// C were.c:69-94 — map related animals to their werebeast species.
+export function were_beastie(pm) {
+    switch (pm) {
+    case PM_WERERAT:
+    case PM_SEWER_RAT:
+    case PM_GIANT_RAT:
+    case PM_RABID_RAT:
+        return PM_WERERAT;
+    case PM_WEREJACKAL:
+    case PM_JACKAL:
+    case PM_FOX:
+    case PM_COYOTE:
+        return PM_WEREJACKAL;
+    case PM_WEREWOLF:
+    case PM_WOLF:
+    case PM_WARG:
+    case PM_WINTER_WOLF:
+    case PM_WINTER_WOLF_CUB:
+        return PM_WEREWOLF;
+    default:
+        break;
+    }
+    return NON_PM;
+}
+
 /* C monst.h Mgender(mon) — (mon)->female ? FEMALE : MALE (do_name.h 1 / 0). */
 function Mgender(mtmp) { return mtmp.female ? 1 : 0; }
 /* C youprop.h Hallucination — (HHallucination || EHallucination) && !Halluc_resistance;
@@ -263,17 +289,17 @@ export async function were_summon(ptr, yours, visible, genbuf) {
         case PM_HUMAN_WERERAT:
             typ = rn2(3) ? PM_SEWER_RAT
                          : rn2(3) ? PM_GIANT_RAT : PM_RABID_RAT;
-            if (genbuf != null) { /* Strcpy(genbuf, "rat") — see header note */ }
+            if (genbuf && typeof genbuf === 'object') genbuf.value = 'rat';
             break;
         case PM_WEREJACKAL:
         case PM_HUMAN_WEREJACKAL:
             typ = rn2(7) ? PM_JACKAL : rn2(3) ? PM_COYOTE : PM_FOX;
-            if (genbuf != null) { /* Strcpy(genbuf, "jackal") — see header note */ }
+            if (genbuf && typeof genbuf === 'object') genbuf.value = 'jackal';
             break;
         case PM_WEREWOLF:
         case PM_HUMAN_WEREWOLF:
             typ = rn2(5) ? PM_WOLF : rn2(2) ? PM_WARG : PM_WINTER_WOLF;
-            if (genbuf != null) { /* Strcpy(genbuf, "wolf") — see header note */ }
+            if (genbuf && typeof genbuf === 'object') genbuf.value = 'wolf';
             break;
         default:
             continue;

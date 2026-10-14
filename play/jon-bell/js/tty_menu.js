@@ -23,6 +23,7 @@ import { nhgetch } from './input.js';
  * :1714 pmatchi(searchbuf, curr->str) (strutil.c:151). */
 import { menu_search_getlin, build_window_screen, tty_window_offx } from './com_pager.js';
 import { pmatchi } from './strutil.js';
+import { NO_COLOR } from './terminal.js';
 
 /* C ref: include/wintty.h — the tty is 24x80 (LI x CO). */
 const LI = 24;
@@ -32,12 +33,36 @@ const CO = 80;
 export const ATR_NONE = 0;
 export const ATR_INVERSE = 3;
 
+/* C ref: wintty.c toggle_menu_attr for iflags.menu_headings (default
+ * {NO_COLOR, ATR_INVERSE}, options.c:2197; the option parser stores
+ * {color, attr} in tty SGR numbering).  Returns the SGR parameter list. */
+export function menu_heading_sgr() {
+    const mh = game.iflags?.menu_headings;
+    if (!mh) return [7];
+    const codes = [];
+    if (mh.attr) codes.push(mh.attr);
+    if (mh.color >= 0 && mh.color < 8) codes.push(30 + mh.color);
+    else if (mh.color >= 8 && mh.color < 16) codes.push(90 + mh.color - 8);
+    return codes;
+}
+/* putstr(win, iflags.menu_headings.attr, str) — attribute only, no colour
+ * (o_init.c:824-843 disco headers). */
+export function menu_heading_attr_text(str) {
+    const mh = game.iflags?.menu_headings;
+    const codes = mh ? (mh.attr ? [mh.attr] : []) : [7];
+    return codes.length ? `\x1b[${codes.join(';')}m${str}\x1b[0m` : str;
+}
+/* Wrap a heading string in menu_headings' SGR pair. */
+export function menu_heading_text(str) {
+    const sgr = menu_heading_sgr();
+    return sgr.length ? `\x1b[${sgr.join(';')}m${str}\x1b[0m` : str;
+}
+
 /* C ref: include/wintty.h / include/winprocs.h */
 export const PICK_NONE = 0;
 export const PICK_ONE = 1;
 export const PICK_ANY = 2;
 
-const ESC_INVERSE = '\x1b[7m';
 const ESC_RESET = '\x1b[0m';
 
 // C ref: cmd.c set_cursor — record the tty cursor position after a window draw.
@@ -69,8 +94,7 @@ export class TtyMenu {
 
     /* C ref: src/windows.c add_menu_str — a non-selectable text line. */
     add_menu_str(str) {
-        this.mlist.push({ aInt: 0, selector: 0, attr: ATR_NONE, str: String(str),
-                          selected: false, count: -1 });
+        this.add_menu(0, 0, ATR_NONE, str);
     }
 
     /* C ref: src/windows.c:1816 add_menu_heading — a non-selectable line drawn
@@ -78,7 +102,7 @@ export class TtyMenu {
      * (options.c:2197 optfn_menu_headings). */
     add_menu_heading(str) {
         this.mlist.push({ aInt: 0, selector: 0, attr: ATR_INVERSE, str: String(str),
-                          selected: false, count: -1 });
+                          selected: false, count: -1, heading: true });
     }
 
     /* C ref: tty_add_menu.  `aInt` is anything.a_int; a non-zero identifier
@@ -88,8 +112,11 @@ export class TtyMenu {
     add_menu(aInt, ch, attr, str, skipinvert = false, preselected = false) {
         if (str === null || str === undefined) return;   /* C: str == 0 -> return */
         let s = String(str);
+        // C windows.c:1803-1806: match before tty adds the selector prefix.
+        const menuColor = game.iflags.use_menu_color
+            ? game.menu_colorings?.find(mc => mc.match.test(s)) : null;
         if (aInt) s = `${ch ? ch : '?'} - ${s}`;
-        this.mlist.push({ aInt, selector: ch || 0, attr: attr | 0, str: s,
+        this.mlist.push({ aInt, selector: ch || 0, attr: attr | 0, str: s, menuColor,
                           selected: preselected, count: -1, skipinvert });
     }
 
@@ -102,7 +129,7 @@ export class TtyMenu {
          * PREPENDS, so adding "" then the prompt yields [prompt, "", ...]. */
         if (prompt !== null && prompt !== undefined) {
             this.mlist.unshift({ aInt: 0, selector: 0, attr: ATR_INVERSE,
-                                 str: String(prompt), selected: false, count: -1 });
+                                 str: String(prompt), selected: false, count: -1, heading: true });
             this.mlist.splice(1, 0, { aInt: 0, selector: 0, attr: ATR_NONE,
                                       str: '', selected: false, count: -1 });
         }
@@ -156,8 +183,15 @@ export class TtyMenu {
              * tabs (ch < 32). Encode that unpainted cell in the screen wire
              * format, leaving mlist.str intact for geometry and MENU_SEARCH. */
             text = text.replace(/\t/g, '\x1b[1C');
-            if (curr.attr === ATR_INVERSE) lines.push(' ' + ESC_INVERSE + text + ESC_RESET);
-            else lines.push(' ' + text);
+            // C wintty.c:1441-1489: leave the margin and selector unstyled.
+            const attr_n = /^. [-+#] /.test(curr.str) ? 4 : 0;
+            const mc = curr.menuColor;
+            const sgr = mc ? [mc.attr || '', mc.color === NO_COLOR ? ''
+                : mc.color < 8 ? 30 + mc.color : 90 + mc.color - 8].filter(Boolean)
+                : curr.attr === ATR_INVERSE ? (curr.heading ? menu_heading_sgr() : [7]) : [];
+            if (sgr.length) text = text.slice(0, attr_n)
+                + `\x1b[${sgr.join(';')}m` + text.slice(attr_n) + ESC_RESET;
+            lines.push(' ' + text);
         }
         return lines;
     }

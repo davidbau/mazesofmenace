@@ -2,6 +2,7 @@ import { change_luck } from './attrib.js';
 // save.js — C ref: nethack-c/src/save.c
 
 import { game } from './gstate.js';
+import { getnow } from './allmain.js';
 import { pline } from './display.js';
 import { TRICKED, VISITED, RANGE_LEVEL, MON_DETACH } from './const.js';
 import { save_light_sources, lights_save_snapshot } from './light.js';
@@ -16,7 +17,7 @@ import { save_timers_level } from './timeout.js';
 import { vfsWriteFile } from './storage.js';
 /* The save-file error path terminates through the shared end-game machinery;
  * keep this import aliased because save.js is also reached by bones.js. */
-import { done as done_real } from './end.js';
+import { done as done_real, done_object_cleanup } from './end.js';
 import { encode_save_graph, decode_save_graph } from './save_graph.js';
 
 function pline1(line) { pline(line); }
@@ -159,6 +160,11 @@ export const NOT_SAVED = [
     'program_state', 'iflags', 'keybindings', 'sysopt', 'disp', 'env',
     'Cmd', '_command_binding_statics', 'nhcb_counts', 'nhcore_call_available', 'mvl_change',
     'n_menu_mapped', 'mapped_menu_cmds', 'mapped_menu_op', '_config_errors',
+    // save.c:265-328 omits menu patterns; cfgfiles.c:1164 reloads them from rc.
+    'menu_colorings', 'color_colorings', 'save_colorings',
+    // C options.c:7731 stores MSGTYPE rules in gp.plinemsg_types; save.c:265
+    // savegamestate omits them. Each process rebuilds them from its own rc.
+    'msgtypes',
     'nhDisplay', '_rawterm', '_screen_output', '_preNhgetchHook',
     'mockStorage', 'currentSeed', 'tutorial_set_in_config',
     '_pending_message', '_prevmsg', '_resultMessage', '_resultMessageJoins',
@@ -178,10 +184,21 @@ export const NOT_SAVED = [
  * the other levels.  Returns the graph root; the caller serializes it into a
  * detached byte representation. */
 async function savegamestate() {
+    // C save.c:282-292 — accumulate play time, then restart the interval.
+    if (game.urealtime) {
+        const clock = game.urealtime;
+        clock.finish_time = getnow();
+        clock.realtime += Math.trunc(clock.finish_time - clock.start_timing);
+        clock.start_timing = clock.finish_time;
+    }
     const state = {};
     for (const k of Object.keys(game))
         if (!NOT_SAVED.includes(k) && typeof game[k] !== 'function')
             state[k] = game[k];
+    // C save.c:306 saves the migrating object chain, not JS's getter alias.
+    // Copy its value while retaining graph identity with game.migrating_objs.
+    if (game.gm)
+        state.gm = { ...game.gm };
     // C save_luadata serializes the Lua variables, never the interpreter or
     // its closures. Preserve the other gl fields (including light roots).
     state.gl = { ...game.gl, luacore: null };
@@ -205,6 +222,8 @@ export async function dosave0() {
     const g = game;
     g.program_state = g.program_state || {};
     g.program_state.saving = (g.program_state.saving | 0) + 1;
+    // C save.c:98 — settle active inventory and objects in transit before saving.
+    await done_object_cleanup();
     /* C save.c:98 — `if (!program_state.something_worth_saving || !gs.SAVEF[0])
      * goto done;` i.e. no game in progress, or no file name. */
     const path = savefile_name(g.plname);

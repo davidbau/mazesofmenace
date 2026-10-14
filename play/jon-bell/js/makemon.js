@@ -1,3 +1,5 @@
+import { expels_gu } from './mhitu.js';
+import { copy_oextra, free_omid } from './mkobj.js';
 import { linedup } from './trap.js';
 import { newobj } from './game.js';
 import { M_AP_TYPMASK, M_AP_NOTHING, M_AP_MONSTER, M_AP_FURNITURE, M_AP_OBJECT, Is_knox_level,
@@ -119,7 +121,7 @@ import { dropy } from './cmd.js';
 import { place_object, mpickobj, upstart, Can_fall_thru, resists_ston } from './mklev.js';
 /* C obj.h:257 bimanual(otmp) — one shared body; this file already imports
  * from do_wear.js on this line, so no module edge is added. */
-import { xname, hard_helmet, bimanual } from './do_wear.js';
+import { xname, yname, hard_helmet, bimanual } from './do_wear.js';
 import { migrate_to_level, sticks, unstuck } from './dog.js';
 /* use_defensive()'s dependencies (C muse.c:795-1221).  Is_botlevel and
  * mon_has_amulet were already READ by find_defensive() above (js/makemon.js
@@ -5538,7 +5540,9 @@ export function canletgo(obj, word) {
     if (obj === u.uwep && welded(u.uwep)) {
         /* no weldmsg(), so uwep->bknown might become set silently if word is "" */
         if (w) {
-            const hand = body_part(HAND);
+            let hand = body_part(HAND);
+            if (bimanual(u.uwep))
+                hand = makeplural(hand);
             void Norep(`You cannot ${w} something welded to your ${hand}.`);
         }
         return false;
@@ -5953,6 +5957,7 @@ function dist2(x1, y1, x2, y2) {
  * (steal.c:78-81, makeplural(mbodypart(u.usteed, FOOT))) AND was what
  * js/read.js imported by name for litroom()'s engulfed arm.  Imported from
  * ./cmd.js above, alongside body_part from the same module. */
+// The historical stub notes above are obsolete: unstuck and expels_gu are live.
 export async function monflee_release_hero(mon) {
     const u = game.u;
     const ustuck = u ? u.ustuck : null;
@@ -5964,10 +5969,10 @@ export async function monflee_release_hero(mon) {
     if (!same)
         return;
     if (u.uswallow) {
-        /* C: expels(mon, mon->data, TRUE) — js/dog.js:610 no-op stub. */
+        await expels_gu(mon, mon.data.pmidx, true); // C monmove.c:365
     } else if (!sticks(game.youmonst ? game.youmonst.data : null)) {
         await unstuck(mon); /* js/dog.js:651 no-op stub; see RNG note above */
-        pline('You get released!');
+        await pline('You get released!');
     }
 }
 
@@ -6033,7 +6038,7 @@ export async function monflee(mtmp, fleetime, first, fleemsg) {
                     const source = uwep && artifact_light(uwep)
                         ? bare_artifactname(uwep)
                         : uarm && artifact_light(uarm)
-                            ? xname(uarm) : '[its imagination?]';
+                            ? yname(uarm) : '[its imagination?]';
                     pline_mon(mtmp, `${Monnam(mtmp)} flees from the painful light of ${source}.`);
                 } else {
                     pline_mon(mtmp, 'Bright light!');
@@ -6165,6 +6170,8 @@ export async function splitobj(obj, num) {
         otmp.where = OBJ_FREE;
     if (obj.unpaid)
         await splitbill(obj, otmp);
+    await copy_oextra(otmp, obj);
+    if (otmp.oextra?.omid) free_omid(otmp);
     if (obj.timed)
         obj_split_timers(obj, otmp);
     if (_splitobj_shedsLight(obj))

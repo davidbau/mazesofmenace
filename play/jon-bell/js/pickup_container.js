@@ -30,6 +30,7 @@ import { ECMD_OK, ECMD_TIME, OBJ_FREE, OBJ_INVENT,
          NO_MINVENT, MM_ADJACENTOK, MM_NOMSG, FOOT, ONAME_NO_FLAGS,
          HAND, HALLUC, HALLUC_RES } from './const.js';
 import { paranoid_ynq } from './paranoid.js';
+import { Ysimple_name2 } from './objnam.js';
 
 const COIN_CLASS = 12; /* objclass.h COIN_CLASS — gold */
 import { game } from './gstate.js';
@@ -39,11 +40,11 @@ import { pline, urgent_pline, Norep, flush_screen, bot, force_more, canspotmon }
 import { build_window_screen, tty_window_offx } from './com_pager.js';
 import { nhgetch } from './input.js';
 import { weight } from './weight.js';
-import { doname_with_price, simpleonames, cxname_singular, getObjDescr, Tobjnam, xname, the, The, otense, oname } from './objnam.js';
+import { doname_with_price, simpleonames, cxname, cxname_singular, getObjDescr, Tobjnam, xname, the, The, otense, oname } from './objnam.js';
 /* C ref: pickup.c in_container's freeinv/add_to_container/weight trio. */
 import { freeinv, welded, weldmsg, setuwep, setuswapwep, setuqwep, snuff_lit,
          useup, useupf, obj_here, obj_extract_self_general,
-         getObjFromGetobj, body_part, u_handsy } from './cmd.js';
+         getObjFromGetobj, body_part, u_handsy, yname } from './cmd.js';
 import { add_to_container, set_bknown, makemon, set_corpsenm } from './mklev.js';
 import { obj_is_burning, get_obj_location } from './light.js';
 import { addinv } from './hold_another_object.js';
@@ -64,7 +65,7 @@ import { W_ARMOR, W_ACCESSORY } from './const.js';
 const ICE_BOX_OTYP = 216; /* objects.h ICE_BOX (js/pickup.js:153) */
 import { observe_object, discover_object } from './o_init.js';
 import { sellobj_state, sellobj, costly_spot, shk_your, addtobill, pick_pick,
-         currency, shop_keeper, stolen_value } from './shk.js';
+         currency, shop_keeper, stolen_value, safe_qbuf } from './shk.js';
 import { obfree, scatter, losehp } from './dokick.js';
 import { rn2, d } from './rng.js';
 
@@ -142,7 +143,7 @@ export async function observe_quantum_cat(box, makecat, givemsg) {
         if (deadcat) {
             deadcat.age = game.moves;
             set_corpsenm(deadcat, PM_HOUSECAT);
-            oname(deadcat, name, ONAME_NO_FLAGS);
+            await oname(deadcat, name, ONAME_NO_FLAGS);
             if (!game.context?.mon_moving) {
                 more_experienced(20, 10);
                 await newexplevel();
@@ -249,15 +250,18 @@ function _carried_box(o) {
         if (p === o) return true;
     return false;
 }
-function _yname_box(o) {
+function _yname_box(o, simple = false) {
+    // C objnam.c:2361: yname uses cxname; ysimple_name uses minimal_xname.
+    const name = simple ? null : cxname(o);
     let prefix = shk_your('', o);
     // Preserve the existing carried-chain fallback until every acquisition
     // path maintains where; shop ownership takes precedence over "your".
     if (prefix === 'the ' && _carried_box(o)) prefix = 'your ';
-    return prefix + _box_xname(o);
+    return prefix + (simple ? _box_xname(o) : name);
 }
-function _Yname_box(o) {
-    return _Upstart(_yname_box(o));
+function _Yname_box(o, simple = false) {
+    if (simple) return Ysimple_name2(o);
+    return _Upstart(_yname_box(o, simple));
 }
 
 async function _item_doname(obj) {
@@ -1343,15 +1347,18 @@ export async function use_container_impl(cobjRef, held, more_containers) {
     const outokay = Has_contents(obj);
     /* pickup.c:3044-3047 preformats this before any transfer; the same text is
      * reused by out-first and reversed out-after-in. */
-    const emptymsg = `${_Yname_box(obj)} is ${quantumCat || cursedMbag ? 'now ' : ''}empty.`;
+    const emptymsg = `${_Yname_box(obj, true)} is ${quantumCat || cursedMbag ? 'now ' : ''}empty.`;
 
     /* C: the in_or_out_menu / yn_function prompt loop (repeats on '?'/':'). */
     let c;
     for (;;) {
         const outmaybe = (outokay || !obj.cknown);
+        // C pickup.c:3076-3082: retain the object's name unless it needs shortening.
         const promptText = outmaybe
-            ? `Do what with ${_yname_box(obj)}?`
-            : `${_Yname_box(obj)} is ${cursedMbag ? 'now ' : ''}empty.  Do what with it?`;
+            ? await safe_qbuf('', 'Do what with ', '?', obj,
+                              yname, _yname_box, 'it')
+            : await safe_qbuf('', null, ' is empty.  Do what with it?', obj,
+                              o => _Upstart(yname(o)), _Yname_box, 'This');
         /* C pickup.c:3079-3080: MENU_PARTIAL|MENU_FULL → in_or_out_menu;
          * otherwise (MENU_TRADITIONAL|MENU_COMBINATION) a yn_function prompt.
          * options.c:7258 sets MENU_FULL as the default, so unset means FULL. */

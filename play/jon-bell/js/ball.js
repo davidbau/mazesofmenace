@@ -39,10 +39,10 @@ import { impossible } from './steed.js';
 import { miss as miss_real } from './zap.js';
 import {
     W_BALL, W_CHAIN, BC_BALL, BC_CHAIN, SLT_ENCUMBER,
-    OBJ_FLOOR, OBJ_INVENT,
+    OBJ_FREE, OBJ_FLOOR, OBJ_INVENT,
     IS_OBSTRUCTED, IS_DOOR, D_CLOSED, D_LOCKED,
     POOL, MOAT, WATER, DRAWBRIDGE_UP, DB_UNDER, DB_MOAT,
-    Is_juiblex_level,
+    Is_juiblex_level, Is_waterlevel,
     is_pit, is_hole,
     LEVITATION, HEAD, NO_KILLER_PREFIX, HALF_PHDAM,
     TT_INFLOOR, TT_BURIEDBALL, TT_PIT, TT_WEB, TT_LAVA, TT_BEARTRAP,
@@ -330,19 +330,16 @@ export async function ballfall() {
            'crunched in the head by an iron ball', NO_KILLER_PREFIX);
 }
 
-// placebc() — ball.c:193-209, whose only work beyond placebc_core() is the
-// bcrestriction assertion (an NH_DEVEL-only paniclog guard with no game-state
-// effect) and an impossible() when the chain is already placed.
-//
-// ball.c:119-143 placebc_core(): put the ball & chain under the hero.  Called
-// by read.c:3057 punish() when the hero is first chained, and by do.c:1814
-// goto_level() on arrival at every new level.
-// and is called for its water/lava/rust side effects.
-export async function placebc() {
+// C ball.c:119-143: shared by ordinary placement and the bubble owner's
+// placement.  The restriction is process state, kept on game so resetGame()
+// gives a new game C's zero-initialized bcrestriction.
+async function placebc_core() {
     const u = game.u;
     const { uball, uchain } = findBallChain();
-    if (!uchain || !uball) return; // C impossible("Where are your ball and chain?")
-    if ((uchain.where | 0) !== 0 /* OBJ_FREE */) return; // C ball.c:204
+    if (!uchain || !uball) {
+        impossible('Where are your ball and chain?');
+        return;
+    }
 
     await flooreffects(uchain, u.ux, u.uy, ''); // ball.c:126 — chain might rust
     if (carried(uball)) {
@@ -358,6 +355,47 @@ export async function placebc() {
     // arrival path, where set_bc is not called).
     u.bglyph = u.cglyph = bc_glyph_at(u.ux, u.uy);
     newsym(u.ux, u.uy);                   // ball.c:143
+    game.bcrestriction = 0;
+}
+
+// C ball.c:179-188; hack.h:110 override_restriction == -1.
+function check_restriction(restriction) {
+    return !game.bcrestriction || restriction === -1
+        || game.bcrestriction === restriction;
+}
+
+// C ball.c:193-209.  A bubble move owns placement until its pin is lifted.
+export async function placebc() {
+    if (!check_restriction(0)) return;
+    const { uchain } = findBallChain();
+    if (uchain && uchain.where !== OBJ_FREE) {
+        impossible('bc already placed?');
+        return;
+    }
+    await placebc_core();
+}
+
+// C ball.c:221-232.  Draw exactly once when acquiring the restriction.
+export function unplacebc_and_covet_placebc() {
+    let restriction = 0;
+    if (game.bcrestriction) {
+        impossible('unplacebc_and_covet_placebc denied, already restricted');
+    } else {
+        restriction = game.bcrestriction = rnd(400);
+        unplacebc_core();
+    }
+    return restriction;
+}
+
+// C ball.c:235-255.  A wrong pin leaves both the restriction and objects alone.
+export async function lift_covet_and_placebc(pin) {
+    if (!check_restriction(pin)) return;
+    const { uchain } = findBallChain();
+    if (uchain && uchain.where !== OBJ_FREE) {
+        impossible('bc already placed?');
+        return;
+    }
+    await placebc_core();
 }
 
 /* C ball.c:873-965 drop_ball().  dropy() has already placed the ball; this
@@ -419,11 +457,26 @@ export async function drop_ball(x, y) {
 // into the OLD level's object chain and the arrival-side placebc() then splices
 // them into the new level's too, so remove_object() later walks a tile chain
 // they are not on and throws "extract_nexthere: object lost".
-// The swallowed arm (ball.c:149-161) is omitted with the rest of this file's
 export function unplacebc() {
+    if (game.bcrestriction) {
+        impossible('unplacebc denied, restriction in place');
+        return;
+    }
+    unplacebc_core();
+}
+
+// C ball.c:146-176.  On Water, even a swallowed hero's ball and chain must
+// be excluded from bubble contents; this path does not alter glyph memory.
+function unplacebc_core() {
     const { uball, uchain } = findBallChain();
     if (!uball || !uchain) return;
-    if (game.u?.uswallow) return; // ball.c:149-161 — not unplaced while swallowed
+    if (game.u?.uswallow) {
+        if (Is_waterlevel(game.u.uz)) {
+            if (!carried(uball)) obj_extract_self(uball);
+            obj_extract_self(uchain);
+        }
+        return;
+    }
     if (!carried(uball)) {
         obj_extract_self(uball);          // ball.c:164
         if (Blind() && ((game.u.bc_felt | 0) & BC_BALL))  // ball.c:167-168

@@ -828,12 +828,21 @@ export async function u_entered_shop(enterstring) {
     }
 }
 
-/** C ref: shk.c inhishop — roomno match (full in_rooms / on_level deferred). */
+/**
+ * C ref: shk.c inhishop `:1039–1048` — keeper stands in its own shop.
+ * on_level(shoplevel, u.uz) gate, then strchr(in_rooms(mx,my,SHOPBASE),
+ * shoproom). The in_rooms SHARED-walk is load-bearing: a keeper in its
+ * shop doorway (roomno SHARED) is inside; a direct roomno===shoproom
+ * compare says out and drops costly_spot (scen-shop-Monk-49959628 s150).
+ */
 export function inhishop(shkp) {
-    const eshk = ESHK(shkp);
-    if (!eshk || shkp.mx == null) return false;
-    const loc = game.level?.at?.(shkp.mx, shkp.my);
-    return !!loc && ((loc.roomno | 0) === (eshk.shoproom | 0));
+    const eshkp = ESHK(shkp);
+    if (!eshkp) return false;
+    // C `:1044` gate — live on_level (js/dungeon.js).
+    if (!on_level(eshkp.shoplevel, game.u?.uz)) return false;
+    const shkrooms = in_rooms(shkp.mx, shkp.my, SHOPBASE);
+    if (!shkrooms) return false;
+    return shkrooms.includes(String.fromCharCode(eshkp.shoproom | 0));
 }
 
 /** C shk.c pick_pick — last moves tick that drew pick feedback. */

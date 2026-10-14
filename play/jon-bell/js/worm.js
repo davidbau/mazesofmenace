@@ -1,9 +1,10 @@
 // worm.js — port of nethack-c/src/worm.c (scaffold: functions are added here
 
 import { MAX_NUM_WORMS, NON_PM, MCORPSENM, NORMAL_SPEED, MSLOW, MFAST, MHPMAX } from './const.js';
-import { PM_LONG_WORM } from './pm.generated.js';
+import { PM_LONG_WORM, PM_LONG_WORM_TAIL, NUMMONS } from './pm.generated.js';
+import { HALLUC, HALLUC_RES } from './const.js';
 import { rnd_nextto_goodpos } from './trap.js';
-import { newsym } from './display.js';
+import { newsym, show_detected_monster_glyph } from './display.js';
 import { m_at, mon_nam } from './uhitm.js';
 import { clone_mon_ml } from './mklev.js';
 import { pline } from './display.js';
@@ -12,7 +13,7 @@ import { Monnam } from './mcastu.js';
 import { s_suffix } from './hacklib.js';
 import { game } from './gstate.js';
 import { cansee } from './vision.js';
-import { rn2, rnd, rn1, d } from './rng.js';
+import { rn2, rnd, rn1, d, rn2_on_display_rng } from './rng.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 
 // C ref: worm.c:77-79 — static struct wseg *wheads[MAX_NUM_WORMS],
@@ -730,6 +731,22 @@ export function worm_tail_cells(worm) {
     for (let curr = wtails[wnum]; curr && curr !== wheads[wnum]; curr = curr.nseg)
         cells.push(curr);
     return cells;
+}
+
+/* C worm.c:503-519 detect_wsegs: resolve what_mon once, even for an empty
+ * tail.  Detection retains the pet glyph under hallucination and only paints
+ * the buffer; unlike display_monster it does not mark the worm ever seen or
+ * remove remembered invisible markers.  newsym_rn2 is the display RNG. */
+export function detect_wsegs(worm, use_detection_glyph) {
+    const up = game.u?.uprops;
+    const hallucinating = !!(up?.[HALLUC]?.intrinsic
+        && !(up?.[HALLUC_RES]?.intrinsic || up?.[HALLUC_RES]?.extrinsic));
+    const what_tail = hallucinating
+        ? rn2_on_display_rng(NUMMONS) : PM_LONG_WORM_TAIL;
+
+    for (const curr of worm_tail_cells(worm))
+        show_detected_monster_glyph(curr.wx, curr.wy, what_tail, worm,
+                                   use_detection_glyph);
 }
 
 /* C ref: worm.c:877-891 worm_known().  Kept here with the private segment

@@ -12,7 +12,7 @@
 // content (labels + ordering) is fixed (it is the static set_in_game projection
 // of allopt[]); only the [value] fields are state-dependent.  Rendered
 import { game } from './gstate.js';
-import { ECMD_OK } from './const.js';
+import { ECMD_OK, gs } from './const.js';
 import { nhgetch } from './input.js';
 import { flush_screen, pline, force_more, docrt } from './display.js';
 import { update_inventory } from './inventory_refresh.js';
@@ -20,7 +20,7 @@ import { update_inventory } from './inventory_refresh.js';
  * getlin(); mungspaces (objnam.c) normalises it before it is stored. */
 import { getlin } from './wizcmds.js';
 import { mungspaces } from './mklev.js';
-import { optfn_fruit_set } from './options.js';
+import { optfn_fruit_set, optfn_statushilites_set, handler_autopickup_exception, compound_option_value, optfn_boulder_set } from './options.js';
 import { reset_needed_visuals } from './options_runtime.js';
 import { vision_recalc } from './vision.js';
 import { optfn_suppress_alert_set } from './feature_alert.js';
@@ -31,6 +31,7 @@ import { pgetchar, key2txt } from './cmd.js';
 import { display_text_window } from './com_pager.js';
 import { TtyMenu, PICK_ANY, PICK_ONE, ATR_NONE } from './tty_menu.js';
 import { menutype } from './menustyle.js';
+import { choose_disco_sort } from './o_init.js';
 /* C ref: wintty.c process_menu_window's overlay composition — the shared
  * map-under-window renderer every other overlay in this port uses. */
 import { build_window_screen, menu_search_case } from './com_pager.js';
@@ -668,8 +669,14 @@ export async function doset_simple() {
             if (entry.kind === 'bool') {
                 const { obj, fld } = simpleBox(entry);
                 obj[fld] = !flagOn(entry);
-                if (entry.name === 'color')
+                if (entry.name === 'color') {
                     g.iflags.use_color = !!obj[fld];
+                    /* C options.c:8727: reset_needed_visuals redraws before
+                     * doset_simple offers the menu again. */
+                    g.go ||= {};
+                    g.go.opt_need_redraw = g.go.opt_need_glyph_reset = true;
+                    await reset_needed_visuals();
+                }
                 if (entry.name === 'hilite_pet') {
                     /* C options.c:3109 (optfn_boolean/hilite_pet): petattr
                      * defaults to ATR_INVERSE and opt_need_redraw is set, so
@@ -702,9 +709,21 @@ export async function doset_simple() {
                 pageIdx = 0;
                 continue;
             }
+            if (entry.name === 'symset') {
+                /* C options.c:6321 handler_symset -> symbols.c:906 do_symset(). */
+                await handler_symset(false);
+                g.go.opt_need_redraw = true;
+                pageIdx = 0;
+                continue;
+            }
             if (entry.name === 'autounlock') {
                 /* C options.c:8930-8953 -> handler_autounlock (has_handler). */
                 await handler_autounlock(false);
+                pageIdx = 0;
+                continue;
+            }
+            if (entry.name === 'autopickup exceptions') {
+                await handler_autopickup_exception(false);
                 pageIdx = 0;
                 continue;
             }
@@ -875,6 +894,66 @@ function autounlockStr() {
     return unlocktypes.filter((_, i) => f & (1 << i)).map(t => t[0]).join(' + ');
 }
 
+/* C dat/symbols pick-list: [name, handling, description, restriction].  The
+ * file is not vendored under js/dat (V5_DIVERGENT), so the symset headers
+ * read_sym_file() collects with gs.symset[].name == NULL (symbols.c:497-552)
+ * are tabled here.  MACgraphics (H_MAC) is skipped by do_symset() on non-Mac
+ * builds; Rogue* sets carry the "rogue" restriction. */
+const SYMSET_LIST = [
+    ['plain', 0, "same as default symbols, except '+' for corner walls", ''],
+    ['Blank', 0, 'completely blank symbols', ''],
+    ['IBMgraphics', 1, 'special line-drawing characters used for walls', ''],
+    ['IBMGraphics_1', 1, '', ''],
+    ['IBMGraphics_2', 1, '', ''],
+    ['RogueIBM', 1, '', 'rogue'],
+    ['RogueEpyx', 1, '', 'rogue'],
+    ['RogueWindows', 1, '', 'rogue'],
+    ['curses', 2, 'approximation of IBMgraphics using DECgraphics', ''],
+    ['DECgraphics', 2, 'special line-drawing characters used for walls', ''],
+    ['Enhanced1', 5, 'Enhanced with Unicode glyphs and 24-bit color', ''],
+    ['Enhanced2', 5, 'Enhanced with more Unicode glyphs and 24-bit color', ''],
+    ['AmigaFont', 0, 'Amiga hack.font line-drawing and effect characters', ''],
+];
+
+/* C symbols.c:906 do_symset(FALSE) — the primary-set picker. */
+export async function handler_symset(preserveStatus = false) {
+    const PRIMARY = 0;
+    const cur = gs.symset[PRIMARY];
+    const symset_name = cur.name;
+    const sets = SYMSET_LIST.filter((s) => s[3] !== 'rogue');
+    let biggest = 'Default Symbols'.length;
+    for (const s of sets) biggest = Math.max(biggest, s[0].length);
+    let defindx = 0;
+    const m = new TtyMenu({ overlay: true, statusClipCol: preserveStatus ? undefined : 0 });
+    if (!symset_name) defindx = 1;
+    m.add_menu(1, 0, ATR_NONE, 'Default Symbols', false, defindx === 1);
+    sets.forEach((s, i) => {
+        const id = i + 2;
+        if (symset_name && s[0].toLowerCase() === symset_name.toLowerCase()) defindx = id;
+        m.add_menu(id, 0, ATR_NONE, s[0].padEnd(biggest + 2) + ' ' + s[2], false, id === defindx);
+    });
+    m.end_menu('Select symbol set:');
+    const { count, picks } = await m.select_menu(PICK_ONE);
+    let chosen = -2;
+    if (count > 0) {
+        chosen = picks[0];
+        if (count === 2 && chosen === defindx) chosen = picks[1];
+        chosen -= 2;
+    } else if (count === 0 && defindx > 0) {
+        chosen = defindx - 2;
+    }
+    if (chosen > -1) {
+        const sl = sets[chosen];
+        if (!sl) return true;
+        cur.name = sl[0];
+        cur.handling = sl[1];
+    } else if (chosen === -1) {
+        cur.name = null;
+        cur.handling = 0;
+    }
+    return true;
+}
+
 /* C options.c:5624 handler_autounlock. */
 export async function handler_autounlock(preserveStatus = false) {
     const oldflags = autounlockFlags();
@@ -1025,6 +1104,7 @@ export async function doset() {
     const g = game;
     g.flags = g.flags || {};
     g.iflags = g.iflags || {};
+    g.go ||= {}; // C's option redraw flags are zero-initialized globals.
     /* C ref: options.c:8773 — `boolean skiphelp = !iflags.cmdassist`.  The
      * cmdassist row itself is one of the booleans below, so this reads the
      * same storage the menu shows. */
@@ -1088,7 +1168,7 @@ export async function doset() {
         for (const row of DOSET_COMPOUNDS) {
             /* C ref: options.c:9026 doset_add_menu — an optfn that returns an
              * empty string leaves the value at its "unknown" default. */
-            const value = (row.name === 'number_pad' ? number_pad_value() : row.val()) || 'unknown';
+            const value = (row.name === 'number_pad' ? number_pad_value() : compound_option_value(row.name) ?? row.val()) || 'unknown';
             if (!row.sel) {
                 m.add_menu_str(dosetRow('    ', row.name, value));
             } else {
@@ -1138,6 +1218,13 @@ export async function doset() {
                     const box = boolBox(ent.row);
                     const negated = boolValue(ent.row);
                     box[ent.row.fld] = !negated;
+                    /* C flag.h:507 aliases use_color to wc_color; options.c:5408-5410
+                     * requests a glyph reset and redraw when this option changes. */
+                    if (ent.row.name === 'color') {
+                        g.iflags.use_color = !negated;
+                        g.go.opt_need_redraw = g.go.opt_need_glyph_reset = true;
+                        needVisuals = true;
+                    }
                     if (ent.row.name === 'rest_on_space') update_rest_on_space();
                     /* C optfn_boolean (options.c:5412-5416): these set the pending-visual flags. */
                     if (ent.row.name === 'customcolors') { g.go.opt_reset_customcolors = true; needVisuals = true; }
@@ -1168,6 +1255,9 @@ export async function doset() {
                     await drainTopline();
                     await pickupTypesSubmenu(undefined, statusRefreshed);
                     statusRefreshed = false;
+                } else if (ent.row.name === 'autopickup exceptions') {
+                    await drainTopline();
+                    await handler_autopickup_exception(statusRefreshed);
                 } else if (ent.row.name === 'number_pad') {
                     await drainTopline();
                     await numberPadSubmenu();
@@ -1187,6 +1277,10 @@ export async function doset() {
                 } else if (ent.row.name === 'runmode') {
                     await drainTopline();
                     await handler_runmode(statusRefreshed);
+                    statusRefreshed = true;
+                } else if (ent.row.name === 'sortdiscoveries') {
+                    await drainTopline();
+                    await choose_disco_sort(0, statusRefreshed);
                     statusRefreshed = true;
                 } else if (ent.row.name === 'sortloot') {
                     await drainTopline();
@@ -1212,6 +1306,10 @@ export async function doset() {
                          * alone is not enough. */
                         const msg = optfn_fruit_set(mungspaces(abuf));
                         if (msg) g._pending_message = msg;
+                    } else if (abuf !== '\x1b' && ent.row.name === 'statushilites') {
+                        optfn_statushilites_set(g.iflags, mungspaces(abuf));
+                    } else if (abuf !== '\x1b' && ent.row.name === 'boulder') {
+                        needVisuals = (await optfn_boulder_set(mungspaces(abuf))) || needVisuals;
                     } else if (abuf !== '\x1b' && ent.row.name === 'suppress_alert') {
                         const { message } = optfn_suppress_alert_set(g.flags, mungspaces(abuf), false, false);
                         if (message) await pline(message);

@@ -14,6 +14,11 @@ import { roles } from './roles.js';
 import { nhgetch } from './input.js';
 import { cast_chain_lightning, pline, flush_screen, newsym, show_glyph_cell, topl_force_break_now } from './display.js';
 import { rn2, rnd, rn1 } from './rng.js';
+import { d } from './rng.js';
+import { mkinvokearea } from './mklev.js';
+import { CANDELABRUM_OF_INVOCATION, BELL_OF_OPENING } from './objclass_ranges.js';
+import { ACH_INVK } from './const.js';
+import { record_achievement } from './cmd.js';
 import { build_window_screen, tty_window_offx } from './com_pager.js';
 import { CORR, DOOR, ROOM, NO_SPELL, UNKNOWN_SPELL, CONFUSION, STUNNED, TIMEOUT, BLINDED, CLAIRVOYANT, SICK, SLIMED, HEAD,
     ECMD_OK, ECMD_TIME, ECMD_FAIL, CMDQ_KEY, CQ_REPEAT } from './const.js';
@@ -24,7 +29,8 @@ import { CORR, DOOR, ROOM, NO_SPELL, UNKNOWN_SPELL, CONFUSION, STUNNED, TIMEOUT,
  * read_ability is a threshold comparison where a defaulted 10 would silently
  * change the outcome.  Retiring the local shadow touches its other callers and
  * is out of this fix's scope. */
-import { acurr as acurr_real } from './attrib.js';
+import { acurr as acurr_real, poison_strdmg } from './attrib.js';
+import { POISON_RES, KILLED_BY_AN } from './const.js';
 import { nomul } from './allmain.js';
 import { iter_mons, On_stairs, makemon } from './mklev.js';
 import { set_malign, permonstTemplate } from './makemon.js';
@@ -88,8 +94,11 @@ import { dmgtype_fromattack } from './makemon.js';
 import { PM_FOG_CLOUD, PM_AIR_ELEMENTAL } from './pm.generated.js';
 /* C spell.c:1570 dispatches directly to dog.c:137 make_familiar(). */
 import { make_familiar } from './dog.js';
-import { TtyMenu, PICK_ONE, ATR_NONE } from './tty_menu.js';
+import { TtyMenu, PICK_ONE, ATR_NONE, menu_heading_text } from './tty_menu.js';
 import { do_vicinity_map } from './detect.js';
+import { You_hear } from './display.js';
+import { SPINE, DISP_BEAM, DISP_END } from './const.js';
+import { tmp_at } from './display.js';
 
 // ── Object-type constants ────────────────────────────────────────────────────
 const SPBOOK_FIRST_OTYP = 366; // SPE_DIG = FIRST_SPELL
@@ -858,19 +867,57 @@ function incrnknow(spell, x) {
 // the delay countdown and the normal (non-confused, non-blank, non-novel)
 // memorization tail.  No RNG on these paths (the lenses rn2(2) / confusion
 // branches don't occur for the elf-wizard finger-of-death study).
-// C ref: spell.c:231-339 deadbook().  Only the plain (non-invocation, non-cursed,
-// non-blessed) arm is ported; the others are named gaps and throw loudly.
+// C ref: spell.c:231-339 deadbook(), including the invocation ritual.
 async function deadbook(book2) {
-    pline('You turn the pages of the Book of the Dead...');
+    let raiseDead = false;
+    await pline('You turn the pages of the Book of the Dead...');
     /* makeknown(): credit_hero exercise only on first discovery (o_init.c:481) */
     if (!(game._oc_name_known && game._oc_name_known[SPE_BOOK_OF_THE_DEAD]))
         exercise(A_WIS, true);
     discover_object(SPE_BOOK_OF_THE_DEAD, true, true);
     observe_object(book2);
     book2.known = 1;
-    if (invocation_pos(game.u.ux, game.u.uy) && !On_stairs(game.u.ux, game.u.uy))
-        throw new Error('not yet ported: deadbook invocation arm (spell.c:241-308)');
-    if (book2.cursed) {
+    if (invocation_pos(game.u.ux, game.u.uy) && !On_stairs(game.u.ux, game.u.uy)) {
+        // C spell.c:247-266: cursed books and missing invocation tools.
+        if (book2.cursed) {
+            await pline(Blind() ? 'The Book seems to be ignoring you!'
+                : "The runes appear scrambled.  You can't read them!");
+            return;
+        }
+        if (!game.u.uhave.bell || !game.u.uhave.menorah) {
+            await pline('A chill runs down your %s.', body_part(SPINE));
+            if (!game.u.uhave.bell) await You_hear('a faint chime...');
+            if (!game.u.uhave.menorah) await pline("Vlad's doppelganger is amused.");
+            return;
+        }
+        let arti1_primed = false, arti2_primed = false, arti_cursed = false;
+        for (let otmp = game.invent; otmp; otmp = otmp.nobj) {
+            if (otmp.otyp === CANDELABRUM_OF_INVOCATION && otmp.spe === 7 && otmp.lamplit) {
+                if (!otmp.cursed) arti1_primed = true;
+                else arti_cursed = true;
+            }
+            if (otmp.otyp === BELL_OF_OPENING && game.moves - otmp.age < 5) {
+                if (!otmp.cursed) arti2_primed = true;
+                else arti_cursed = true;
+            }
+        }
+        if (arti_cursed) {
+            await pline('The invocation fails!');
+            await pline('At least one of your relics is cursed...');
+        } else if (arti1_primed && arti2_primed) {
+            const soon = d(2, 6);
+            await mkinvokearea();
+            game.u.uevent.invoked = 1;
+            record_achievement(ACH_INVK);
+            game.u.uevent.udemigod = 1;
+            if (!game.u.udg_cnt || game.u.udg_cnt > soon) game.u.udg_cnt = soon;
+        } else {
+            await pline('You have a feeling that something is amiss...');
+            raiseDead = true;
+        }
+        if (!raiseDead) return;
+    }
+    if (book2.cursed || raiseDead) {
         /* spell.c:311-323 raise_dead */
         await pline('You raised the dead!');
         let mtmp;
@@ -1073,6 +1120,15 @@ async function cursed_book(bp) {
             /* C spell.c:147-149 */
             await erode_obj(g.u.uarmg, 'gloves', ERODE_CORRODE, EF_GREASE | EF_VERBOSE);
             break;
+        }
+        { // C spell.c:162-168; preserve the book if the poison kills its reader.
+            const was_in_use = bp.in_use;
+            bp.in_use = false;
+            const p = g.u.uprops?.[POISON_RES];
+            const resistant = !!(p?.intrinsic || p?.extrinsic);
+            await poison_strdmg(resistant ? rn1(2, 1) : rn1(4, 3),
+                rnd(resistant ? 6 : 10), 'contact-poisoned spellbook', KILLED_BY_AN);
+            bp.in_use = was_in_use;
         }
         break;
     case 6:
@@ -1383,9 +1439,8 @@ function format_spell_row_raw(i, splnum) {
 async function dospellmenu(prompt, splaction) {
     const g = game;
     const spl_book = g.spl_book || [];
-    /* C ref: spell.c:2117 — gs.spl_orderindx is NULL until sortspells()
-     * allocates it; this port never populates it (see spellsortmenu below), so
-     * the identity mapping is the only branch reached today. */
+    /* C spell.c:2117 — sorting changes display order independently of the
+     * casting letters stored in the spellbook. */
     const spl_orderindx = g.spl_orderindx || null;
 
     /* C ref: spell.c:2102-2115 — heading (iflags.menu_tab_sep OFF):
@@ -1463,9 +1518,9 @@ async function dospellmenu_render_and_read(prompt, headingRaw, items, how) {
      * add SGR attributes and collapse blank runs into ESC[NC.               */
     const rawLines = [prompt, '', headingRaw, ...items.map((it) => `${it.accel} - ${it.raw}`), '(end)'];
     const windowLines = [
-        `\x1b[7m${prompt}\x1b[0m`,
+        menu_heading_text(prompt),
         '',
-        `\x1b[7m${collapseGaps(headingRaw)}\x1b[0m`,
+        menu_heading_text(collapseGaps(headingRaw)),
         ...items.map((it) => collapseGaps(`${it.accel} - ${it.raw}`)),
         '(end)',
     ];
@@ -1525,6 +1580,13 @@ async function dospellmenu_render_and_read(prompt, headingRaw, items, how) {
 // C ref: spell.c:1855-1866 spl_sortchoices[NUM_SPELL_SORTBY], indexed by the
 // spl_sort_types enum at spell.c:1841-1852.
 const SORTBY_LETTER = 0;
+const SORTBY_ALPHA = 1;
+const SORTBY_LVL_LO = 2;
+const SORTBY_LVL_HI = 3;
+const SORTBY_SKL_AL = 4;
+const SORTBY_SKL_LO = 5;
+const SORTBY_SKL_HI = 6;
+const SORTBY_CURRENT = 7;
 const SORTRETAINORDER = 8;
 const SPL_SORTCHOICES = [
     'by casting letter',
@@ -1539,97 +1601,88 @@ const SPL_SORTCHOICES = [
     'reassign casting letters to retain current order',
 ];
 
-// C ref: spell.c:1975-2016 spellsortmenu() — "called if the [sort spells] entry
-// in the view spells menu gets chosen".  Returns TRUE when a choice was picked.
-//
-// KNOWN GAP (render fidelity): spell.c:2001-2002 preselects the entry matching
-// the current gs.spl_sortmode (MENU_ITEMFLAGS_SELECTED), and the tty marker for
-// a preselected picklist entry is not modelled here, so this window's exact
-// appearance is best-effort rather than verified.  What IS C-shaped is the key
-// consumption — spell.c:2007 select_menu(tmpwin, PICK_ONE, &selected) reads
-// exactly one selection, so reaching this arm cannot desynchronise the keystroke
-// stream.  spell.c:1975-2016 contains no rn2/rnd/d/rne/rnz call, so it cannot
-// perturb the RNG sequence either (Cardinal Rule 2).
+/* C spell.c:1975-2016 — preserve the selected sort mode and let the tty
+ * menu handle toggling it off or choosing a second, non-default entry. */
 async function spellsortmenu() {
-    /* C ref: spell.c:1986-2005 — letters are 'a'+i except SORTRETAINORDER,
-     * which is 'z' and is preceded by a blank separator line
-     * (spell.c:1990-1993 add_menu_str(tmpwin, "")). */
-    const items = [];
+    const menu = new TtyMenu({ overlay: true });
+    const mode = game.spl_sortmode || SORTBY_LETTER;
     for (let i = 0; i < SPL_SORTCHOICES.length; i++) {
-        const accel = (i === SORTRETAINORDER) ? 'z' : String.fromCharCode(97 + i);
-        items.push({ accel, raw: SPL_SORTCHOICES[i], a_int: i + 1, sep: i === SORTRETAINORDER });
+        if (i === SORTRETAINORDER) menu.add_menu_str('');
+        const letter = i === SORTRETAINORDER ? 'z' : String.fromCharCode(97 + i);
+        menu.add_menu(i + 1, letter, ATR_NONE, SPL_SORTCHOICES[i], false, i === mode);
     }
-    const rawLines = ['View known spells list sorted', '',
-        ...items.map((it) => `${it.accel} - ${it.raw}`), '(end)'];
-    const windowLines = [
-        '\x1b[7mView known spells list sorted\x1b[0m',
-        '',
-        ...items.flatMap((it) => it.sep
-            ? ['', collapseGaps(`${it.accel} - ${it.raw}`)]
-            : [collapseGaps(`${it.accel} - ${it.raw}`)]),
-        '(end)',
-    ];
-    const WIN_COL = tty_window_offx(rawLines, 'end');
-    const g = game;
-    g._screen_output = build_window_screen(windowLines, WIN_COL, g.u?.uac ?? 0);
-    const disp = g.nhDisplay;
-    if (disp) {
-        disp.cursorCol = WIN_COL + 5 + 1;
-        disp.cursorRow = windowLines.length - 1;
-    }
-
-    /* C ref: spell.c:2007-2016 select_menu(tmpwin, PICK_ONE, &selected). */
-    for (;;) {
-        const key = await nhgetch();
-        const ch = String.fromCharCode(key);
-        if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r')
-            return false; /* C ref: spell.c:2016 return FALSE */
-        const hit = items.find((it) => it.accel === ch);
-        if (hit) {
-            /* C ref: spell.c:2010-2015 — choice = selected[0].item.a_int - 1;
-             * the n > 1 preselect-skip arm needs a multi-select menu and is
-             * dead for this single-selection reader. */
-            game.spl_sortmode = hit.a_int - 1;
-            return true;
-        }
-    }
+    menu.end_menu('View known spells list sorted');
+    const selected = await menu.select_menu(PICK_ONE);
+    if (selected.count <= 0) return false;
+    let choice = selected.picks[0] - 1;
+    if (selected.count > 1 && choice === mode)
+        choice = selected.picks[1] - 1;
+    game.spl_sortmode = choice;
+    return true;
 }
 
-// C ref: spell.c:1930-1972 sortspells() — "sort the index used to display the
-// spells list (sortmode == SORTBY_xxx), or sort the spellbook itself to make
-// the current display order stick (sortmode == SORTRETAINORDER)".
-//
-// KNOWN GAP: only the two branches whose result is exactly derivable are
-// implemented — the n < 2 early return (spell.c:1936-1938) and the
-// SORTBY_LETTER identity ordering (spell.c:1945-1951), which restores
-// spl_orderindx[i] = i and returns.  The qsort(spl_orderindx, n, spell_cmp)
-// tail (spell.c:1968-1970) and the SORTRETAINORDER spellbook rewrite
-// (spell.c:1954-1966) are NOT implemented: spell_cmp (spell.c:1870-1926) breaks
-// ties by falling through to a name comparison, and C's qsort is not a stable
-// sort, so the surviving permutation for equal keys is libc-defined and cannot
-// be reproduced without pinning that qsort.  Under those modes the display
-// order is left as the identity rather than guessed.  RNG-free either way
-// (spell.c:1930-1972 contains no rn2/rnd/d/rne/rnz call), so this gap cannot
-// perturb the RNG sequence — it can only leave the menu in letter order.
+/* C spell.c:1870-1926 — compare spellbook indices, with spell names as the
+ * tie-breaker.  Skill reads include the Priest's reclassification of light. */
+function spell_cmp(indx1, indx2) {
+    const otyp1 = game.spl_book[indx1].sp_id;
+    const otyp2 = game.spl_book[indx2].sp_id;
+    const levl1 = _spbook_oc(otyp1, SPBOOK_OC_LEVEL);
+    const levl2 = _spbook_oc(otyp2, SPBOOK_OC_LEVEL);
+    const skil1 = spell_skilltype(otyp1), skil2 = spell_skilltype(otyp2);
+    switch (game.spl_sortmode || SORTBY_LETTER) {
+    case SORTBY_LETTER: return indx1 - indx2;
+    case SORTBY_ALPHA: break;
+    case SORTBY_LVL_LO:
+        if (levl1 !== levl2) return levl1 - levl2;
+        break;
+    case SORTBY_LVL_HI:
+        if (levl1 !== levl2) return levl2 - levl1;
+        break;
+    case SORTBY_SKL_AL:
+        if (skil1 !== skil2) return skil1 - skil2;
+        break;
+    case SORTBY_SKL_LO:
+        if (skil1 !== skil2) return skil1 - skil2;
+        if (levl1 !== levl2) return levl1 - levl2;
+        break;
+    case SORTBY_SKL_HI:
+        if (skil1 !== skil2) return skil1 - skil2;
+        if (levl1 !== levl2) return levl2 - levl1;
+        break;
+    default:
+        // C compares the array-element addresses to retain current order.
+        // Stable JS sorting preserves that order for equal comparisons.
+        return 0;
+    }
+    const name1 = OC_NAME[otyp1].toLowerCase(), name2 = OC_NAME[otyp2].toLowerCase();
+    return name1 < name2 ? -1 : name1 > name2 ? 1 : 0;
+}
+
+/* C spell.c:1930-1972 — sort display indices; only the explicit retain-order
+ * choice changes casting letters by rearranging the spellbook itself. */
 function sortspells() {
     const g = game;
+    const mode = g.spl_sortmode || SORTBY_LETTER;
+    if (mode === SORTBY_CURRENT) return;
     const n = num_spells();
-    if (n < 2) /* C ref: spell.c:1936-1938 */
-        return;
+    if (n < 2) return;
     if (!g.spl_orderindx) {
-        /* C ref: spell.c:1940-1943 */
-        g.spl_orderindx = [];
-        for (let i = 0; i < MAXSPELL; i++)
-            g.spl_orderindx[i] = i;
+        if (mode === SORTBY_LETTER || mode === SORTRETAINORDER) return;
+        g.spl_orderindx = Array.from({ length: MAXSPELL }, (_, i) => i);
     }
-    if (g.spl_sortmode === SORTBY_LETTER || g.spl_sortmode === SORTRETAINORDER) {
-        /* C ref: spell.c:1945-1951 — reset to the natural order first. */
-        for (let i = 0; i < MAXSPELL; i++)
+    if (mode === SORTRETAINORDER) {
+        const tmp_book = g.spl_orderindx.map(i => ({
+            ...(g.spl_book[i] || { sp_id: NO_SPELL, sp_lev: 0, sp_know: 0 }),
+        }));
+        for (let i = 0; i < MAXSPELL; i++) {
+            g.spl_book[i] = tmp_book[i];
             g.spl_orderindx[i] = i;
-        if (g.spl_sortmode === SORTBY_LETTER)
-            return;
+        }
+        g.spl_sortmode = SORTBY_LETTER;
+        return;
     }
-    /* KNOWN GAP (see above): SORTRETAINORDER rewrite and the qsort tail. */
+    const sorted = g.spl_orderindx.slice(0, n).sort(spell_cmp);
+    for (let i = 0; i < n; i++) g.spl_orderindx[i] = sorted[i];
 }
 
 // ── dovspell ─────────────────────────────────────────────────────────────────
@@ -2083,9 +2136,24 @@ function can_center_spell_location(x, y) {
     return isok(x, y) && !!cansee(x, y) && !IS_STWALL(game.level.at(x, y).typ | 0);
 }
 
-/* C ref: spell.c:1653-1700 throwspell — choose location where spell takes
- * effect.  The getpos_sethilite highlight (display_spell_target_positions,
- * spell.c:1625-1651) is cosmetic and not modelled, as in seffect_fire. */
+/* C spell.c:1627-1651 — getpos's valid-position overlay for aimed spells. */
+function display_spell_target_positions(on_off) {
+    const u = game.u;
+    if (on_off) {
+        tmp_at(DISP_BEAM, 4092 /* cmap_to_glyph(S_goodpos) */);
+        for (let dx = -10; dx <= 10; dx++) {
+            for (let dy = -10; dy <= 10; dy++) {
+                const x = u.ux + dx, y = u.uy + dy;
+                if (x === u.ux && y === u.uy) continue;
+                if (can_center_spell_location(x, y)) tmp_at(x, y);
+            }
+        }
+    } else {
+        tmp_at(DISP_END, 0);
+    }
+}
+
+/* C spell.c:1653-1700 — choose where an aimed spell takes effect. */
 async function throwspell() {
     const u = game.u;
     if (u.uinwater) {
@@ -2097,7 +2165,7 @@ async function throwspell() {
     }
     await pline('Where do you want to cast the spell?');
     const cc = { x: u.ux, y: u.uy };
-    await getpos_sethilite(null, can_center_spell_location);
+    await getpos_sethilite(display_spell_target_positions, can_center_spell_location);
     if ((await getpos(cc, true, 'the desired position')) < 0)
         return 0; /* user pressed ESC */
     /* clear_nhwindow(WIN_MESSAGE): discard any autodescribe feedback */

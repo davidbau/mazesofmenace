@@ -16,6 +16,7 @@
 // exercise pickup.c's real body directly.  Unifying the two remains the
 // @ts-nocheck — js sibling imports.
 import { game } from './gstate.js';
+import { fix_ghostly_obj } from './bones.js';
 import {
     pline, _topl_stash_result, newsym, newsym_force, Norep, flush_screen,
     force_more, topl_park_cursor, topl_force_break_after,
@@ -72,7 +73,7 @@ import { remove_object, upstart, engr_at, On_stairs } from './mklev.js';
 import {
     max_capacity, calc_capacity, near_capacity, weight,
 } from './weight.js';
-import { ansimpleoname, an, doname, cxname_singular, getObjDescr, xname, the, otense } from './objnam.js';
+import { ansimpleoname, an, doname, makesingular, cxname_singular, getObjDescr, xname, the, otense } from './objnam.js';
 import { observe_object, discover_object } from './o_init.js';
 /* C ref: describe_decor()'s own callees (invent.c dfeature_at, dungeon.c
  * waterbody_name, trap.c back_on_ground) are all real, tested bodies that
@@ -298,9 +299,9 @@ async function do_loot_cont(cobjRef, cindex, ccount) {
 
     if (cobj.olocked) {
         let res = ECMD_OK;
-        const autounlock = AUTOUNLOCK_APPLY_KEY;
+        const autounlock = g.flags?.autounlock ?? AUTOUNLOCK_APPLY_KEY;
         const ox = cobj.ox | 0, oy = cobj.oy | 0;
-        g.u.dz = 0; /* C pickup.c:2110 — #loot isn't a move; pick_lock cares. */
+        if (autounlock) g.u.dz = 0; /* C pickup.c:2110 — pick_lock cares. */
         let unlocktool = null;
         if ((autounlock & AUTOUNLOCK_APPLY_KEY) !== 0)
             unlocktool = autokey(true);
@@ -534,7 +535,7 @@ async function get_adjacent_loc(prompt, emsg, x, y, cc) {
     return 1;
 }
 
-async function loot_mon(mtmp, box) {
+export async function loot_mon(mtmp, box) {
     if (mtmp && mtmp !== game.u?.usteed && (which_armor(mtmp, _W_SADDLE) || _which_saddle(mtmp))) {
         const saddle = which_armor(mtmp, _W_SADDLE) || _which_saddle(mtmp);
         if (box) box.passed_info = 1;
@@ -905,8 +906,12 @@ function _follow(curr, qflags) {
     return (qflags & BY_NEXTHERE) ? curr.nexthere : curr.nobj;
 }
 
-function check_autopickup_exceptions(obj) {
-    void obj;
+/* C ref: pickup.c:912-927 — first matching exception, newest rule first. */
+async function check_autopickup_exceptions(obj) {
+    if (game.apelist?.length) {
+        const objdesc = makesingular(await doname(obj));
+        return game.apelist.find(ape => new RegExp(ape.pattern).test(objdesc)) || null;
+    }
     return null;
 }
 
@@ -920,7 +925,7 @@ const DEF_OC_SYMS = [
     ']', ')', '[', '=', '"', '(', '%', '!',
     '?', '+', '/', '$', '*', '`', '0', '_', '.',
 ];
-function autopick_testobj(otmp, calc_costly) {
+async function autopick_testobj(otmp, calc_costly) {
     const g = game;
     const otypes = g.flags?.pickup_types || '';
 
@@ -942,7 +947,7 @@ function autopick_testobj(otmp, calc_costly) {
 
     let pickit = (!otypes || otypes.length === 0
                   || otypes.includes(DEF_OC_SYMS[otmp.oclass | 0]));
-    const ape = check_autopickup_exceptions(otmp);
+    const ape = await check_autopickup_exceptions(otmp);
     if (ape)
         pickit = ape.grab;
     return pickit;
@@ -951,11 +956,11 @@ function autopick_testobj(otmp, calc_costly) {
 /* C ref: pickup.c:988-1003 autopick(olist, follow, pick_list).  Returns an
  * array of {obj, count} (this port's pick_list shape), never a raw count +
  * out-param the way C's alloc()'d menu_item array works. */
-function autopick(olist, follow) {
+async function autopick(olist, follow) {
     const items = [];
     let check_costly = true;
     for (let curr = olist; curr; curr = _follow(curr, follow)) {
-        if (autopick_testobj(curr, check_costly))
+        if (await autopick_testobj(curr, check_costly))
             items.push({ obj: curr, count: curr.quan | 0 });
         check_costly = false;
     }
@@ -1555,10 +1560,8 @@ export async function pickup_object(obj, count, telekinesis) {
     if (g.u?.uwep && g.u.uwep === picked)
         g.mrg_to_wielded = true;
     await pickup_prinv(picked, cnt.v, 'lifting');
-    /* C bones.c:786 fix_ghostly_obj — clear the marker after pickup.  The
-     * asymmetrical-weapon adjustment message is cosmetic; state cleanup is
-     * the invariant needed by subsequent inventory operations. */
-    if (picked.ghostly) picked.ghostly = 0;
+    if (picked.ghostly)
+        await fix_ghostly_obj(picked); // C pickup.c:1884-1885
     g.mrg_to_wielded = false;
     return 1;
 }
@@ -1573,7 +1576,7 @@ function _is_cleric() {
 
 /* C ref: pickup.c:523-590 allow_category() — query_objlist callback driven by
  * add_valid_menu_class()'s filters.  (ParanoidAutoAll is not modelled.) */
-function allow_category(obj) {
+export function allow_category(obj) {
     const g = game;
     if (!g.gc?.class_filter && !g.gs?.shop_filter && !g.gb?.bucx_filter
         && !g.gp?.picked_filter)
@@ -1917,7 +1920,7 @@ export async function pickup(what) {
     let pick_list = [];
     let old_style = false, old_tried = 0, old_picked = 0;
     if (autopickup) {
-        pick_list = autopick(objchain, traverse_how);
+        pick_list = await autopick(objchain, traverse_how);
     } else if ((g.flags?.menu_style ?? MENU_FULL) === MENU_TRADITIONAL
                && !g.iflags?.menu_requested) {
         /* C pickup.c:787-902 — old style interface. */

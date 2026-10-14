@@ -30,7 +30,8 @@ import { COIN_CLASS, WEAPON_CLASS } from './objects.js';
 import { rn2, rn1 } from './rng.js';
 import { dist2, ucase } from './hacklib.js';
 import { vtense, an } from './objnam.js';
-import { nomul, You_hear } from './hack.js';
+import { on_level } from './dungeon.js';
+import { nomul, You_hear, in_rooms } from './hack.js';
 import {
     is_animal, is_flyer, is_lord, is_prince, is_mercenary, is_undead,
     is_mplayer, is_elf, is_dwarf, is_gnome, likes_magic, monsterNames,
@@ -609,12 +610,18 @@ async function get_iter_mons(bfunc) {
     return null;
 }
 
-/** C ref: shk.c inhishop — roomno match stand-in (full in_rooms deferred). */
+/**
+ * C ref: shk.c inhishop `:1039–1048` — keeper stands in its own shop.
+ * Local clone — shk.js imports this file. on_level + in_rooms SHARED-walk,
+ * same as the shk.js export (doorway keepers are inside).
+ */
 function inhishop(shkp) {
-    const eshk = ESHK(shkp);
-    if (!eshk || shkp.mx == null) return false;
-    const loc = game.level?.at?.(shkp.mx, shkp.my);
-    return !!loc && ((loc.roomno | 0) === (eshk.shoproom | 0));
+    const eshkp = ESHK(shkp);
+    if (!eshkp) return false;
+    if (!on_level(eshkp.shoplevel, game.u?.uz)) return false;
+    const shkrooms = in_rooms(shkp.mx, shkp.my, SHOPBASE);
+    if (!shkrooms) return false;
+    return shkrooms.includes(String.fromCharCode(eshkp.shoproom | 0));
 }
 
 /** C ref: shk.c tended_shop */

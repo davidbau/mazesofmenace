@@ -246,8 +246,11 @@ export const DOSET_COMPOUNDS = [
     { name: "sortloot", sel: true, hasHandler: true, val: () => "loot" },
     /* C: options.c:3991 vanqorders[flags.vanq_sortmode]; get_val appends ": <descr>" */
     { name: "sortvanquished", sel: true, hasHandler: true, val: () => "t: traditional: by monster level" },
-    /* C: options.c:4044 — iflags.hilite_delta 0 */
-    { name: "statushilites", sel: true, hasHandler: false, val: () => "0 (off: don't highlight status fields)" },
+    /* C options.c:4044-4050: report the live highlight duration. */
+    { name: "statushilites", sel: true, hasHandler: false,
+      val: () => game.iflags?.hilite_delta
+          ? `${game.iflags.hilite_delta} (on: highlight status for ${game.iflags.hilite_delta} turns)`
+          : "0 (off: don't highlight status fields)" },
     /* C: options.c:4099 — iflags.wc2_statuslines < 3 */
     { name: "statuslines", sel: true, hasHandler: false, val: () => "2" },
     /* C: options.c:4150 — live FEATURE_NOTICE_VER_{MAJ,MIN,PATCH} fields. */

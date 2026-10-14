@@ -16,7 +16,7 @@
 import { game } from './gstate.js';
 import { dist2 } from './hacklib.js';
 import { rn1, rn2, rnd, d } from './rng.js';
-import { pline, newsym, canspotmon, canseemon, map_invisible } from './display.js';
+import { pline, newsym, canspotmon, canseemon, map_invisible, You_hear } from './display.js';
 import { cansee, couldsee } from './vision.js';
 import { m_at, mon_nam, exclam } from './uhitm.js';
 import { Monnam } from './mcastu.js';
@@ -41,7 +41,7 @@ import { doorlock } from './lock.js';
 import { in_rooms, add_damage } from './shk.js';
 import { tele, tele_restrict, rloc } from './teleport.js';
 import { mreadmsg } from './makemon.js';
-import { m_useup } from './trap.js';
+import { m_useup, monkilled_trap } from './trap.js';
 import { drop_boulder_on_monster, drop_boulder_on_player } from './read.js';
 import { ceiling } from './cmd.js';
 import { closed_door } from './look.js';
@@ -116,7 +116,7 @@ function hit(str, mtmp, force) {
  * the only one is the cursed-wand backfire; the POTION_CLASS arms (milky /
  * smoky potion occupants) are not ported and are guarded by the caller, which
  * only reaches precheck for oclass != POTION_CLASS. */
-function precheck(mon, obj) {
+async function precheck(mon, obj) {
     if (!obj)
         return 0;
     if (obj.oclass === POTION_CLASS) {
@@ -131,15 +131,22 @@ function precheck(mon, obj) {
      * only drawn for a CURSED wand, so an uncursed one costs nothing.  The
      * draw is kept because C makes it unconditionally for a cursed wand. */
     if (obj.oclass === WAND_CLASS && obj.cursed && !rn2(WAND_BACKFIRE_CHANCE)) {
-        /* KNOWN GAP — muse.c:1148-1173, the cursed-wand backfire: the wand
-         * explodes for d(spe+2, 6), the monster may die (monkilled), and the
-         * wand is m_useup'd.  Missing dependency: m_useup (muse.c) and the
-         * d() damage application to a monster outside resist().  C's own
-         * post-backfire state for a SURVIVING monster is
-         * `gm.m.has_defense = gm.m.has_offense = gm.m.has_misc = 0` followed
-         * by `return 0` (muse.c:1170-1172), and that is reproduced here, so
-         * use_offensive's switch falls to `case 0: return 0` (muse.c:2009). */
-        game.has_offense = 0;
+        // C v5 muse.c:131-160: consume the wand before applying blast damage.
+        const dam = d(obj.spe + 2, 6);
+        if (cansee(mon.mx, mon.my)) {
+            await pline(`${Monnam(mon)} zaps ${an(xname(obj))}, which suddenly explodes!`);
+        } else {
+            const range = couldsee(mon.mx, mon.my) ? BOLT_LIM + 1 : BOLT_LIM - 3;
+            const near = dist2(mon.mx, mon.my, game.u.ux, game.u.uy) <= range * range;
+            await You_hear(`a zap and an explosion ${near ? 'nearby' : 'in the distance'}.`);
+        }
+        await m_useup(mon, obj);
+        mon.mhp -= dam;
+        if (DEADMONSTER(mon)) {
+            await monkilled_trap(mon, ''); // AD_RBRE uses the ordinary corpse path.
+            return 1;
+        }
+        game.has_defense = game.has_offense = game.has_misc = 0;
         return 0;
     }
     return 0;
@@ -386,7 +393,7 @@ export async function use_offensive(mtmp) {
     /* C muse.c:1834-1836 — mwandexp: a monster's FIRST attack-wand shot always
      * misses (buzz_force_miss); mbhitm reads the same flag via game.buzzer. */
 
-    if (otmp.oclass !== POTION_CLASS && (i = precheck(mtmp, otmp)) !== 0)
+    if (otmp.oclass !== POTION_CLASS && (i = await precheck(mtmp, otmp)) !== 0)
         return i;
     const oseen = canseemon(mtmp);
 

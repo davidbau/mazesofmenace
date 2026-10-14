@@ -6,6 +6,8 @@
 
 import { pline, newsym, canspotmon, map_invisible, map_location, You_hear, You_see, mon_visible } from './display.js'; /* was an undeclared global: every pline() call in this file threw ReferenceError when reached */
 import { game } from './gstate.js';
+import { m_canseeu } from './dochug.js';
+import { unset_seenv } from './display.js';
 import {
     ROOMOFFSET, VAULT, EGD,
     RLOC_NOMSG, MALE, FEMALE, NEUTRAL, NUM_MGENDERS,
@@ -25,7 +27,7 @@ import { relobj } from './steal.js';
 import { stackobj } from './sp_lev.js';
 import { on_level } from './dungeon.js';
 import { contained_gold, currency } from './shk.js';
-import { makeplural, simpleonames } from './objnam.js';
+import { makeplural, simpleonames, mimic_obj_name } from './objnam.js';
 import { upstart } from './mklev.js';
 import { in_rooms } from './shk.js';
 import { g_at, um_dist } from './cmd.js';
@@ -131,9 +133,35 @@ export function vault_occupied(array) {
     return 0; /* return '\0' */
 }
 
+/* C vault.c:255-278 — the hero teleported out while a guard was active. */
+export async function uleftvault(grd) {
+    if (!grd || !grd.isgd || DEADMONSTER(grd)) {
+        impossible("escaping vault without guard?");
+        return;
+    }
+    if ((money_cnt(game.invent) || hidden_gold(true))
+        && um_dist(grd.mx, grd.my, 1)) {
+        if (grd.mpeaceful) {
+            if (canspotmon(grd))
+                await pline(`${Monnam(grd)} becomes irate.`);
+            grd.mpeaceful = 0;
+        }
+        if (!in_fcorridor(grd, game.u.ux, game.u.uy))
+            await gd_move(grd);
+    }
+}
+
 /* prevent "You hear footsteps.." when inappropriate */
 export function gd_sound() {
     return !(vault_occupied(game.u.urooms) || findgd());
+}
+
+/* C vault.c:1278 — remember gold consumed/destroyed in a guard's sight. */
+export function vault_gd_watching(activity) {
+    const guard = findgd();
+    if (guard && guard.mx && guard.mcansee && m_canseeu(guard)
+        && (activity === 1 || activity === 2))
+        EGD(guard).witness = activity;
 }
 
 const COIN_CLASS = 12;
@@ -501,9 +529,7 @@ export async function invault() {
                     SetVoice(guard, 0, 80, 0);
                     /* C: verbalize("Hey!  Who left that %s in here?",
                      *              mimic_obj_name(&gy.youmonst)); */
-                    const disguise = { otyp: game.youmonst.mappearance | 0,
-                                       quan: 1, known: 1, o_id: 0 };
-                    verbalize(`Hey!  Who left that ${simpleonames(disguise)} in here?`);
+                    verbalize(`Hey!  Who left that ${mimic_obj_name(game.youmonst)} in here?`);
                 }
             /* C: pline("Puzzled, %s turns around and leaves.", mhe(guard)); */
             pline(`Puzzled, ${mhe(guard)} turns around and leaves.`);
@@ -689,7 +715,7 @@ export function newegd(mtmp) {
  * ported: the port has no migrating_mons chain, so there is nothing to scan and
  * C's fallthrough result (NULL) is reproduced exactly.  Restore that loop with
  * the migrating-monster subsystem, not before. */
-function findgd() {
+export function findgd() {
     for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
         /* C dereferences EGD(mtmp)->gdlevel unguarded; in the port newegd()
          * (above) creates the egd extra with only `parentmid`, and invault()
@@ -743,10 +769,8 @@ function remove_monster(x, y) {
 
 /* C ref: vault.c:123-140 blackout(x, y) — as the temporary corridor is removed,
  * set STONE locations and their neighbours unlit so a light spell cast inside
- * the corridor does not reappear in a later tunnel.
- * unset_seenv() (display.c) has no js/ body; the seenv bookkeeping only affects
- * which wall-angle a REMEMBERED wall is drawn from, and every cell this touches
- * is reverting to STONE, so the lit/waslit half is what is portable today. */
+ * the corridor does not reappear in a later tunnel.  Clear the view from the
+ * removed square on every neighbour, including walls that remain walls. */
 function blackout(x, y) {
     for (let i = x - 1; i <= x + 1; ++i)
         for (let j = y - 1; j <= y + 1; ++j) {
@@ -759,7 +783,7 @@ function blackout(x, y) {
                 lev.lit = false;
                 lev.waslit = false;
             }
-            /* C: unset_seenv(lev, x, y, i, j) — no js/ counterpart. */
+            unset_seenv(lev, x, y, i, j);
         }
 }
 

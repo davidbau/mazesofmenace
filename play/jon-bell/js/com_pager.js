@@ -21,8 +21,8 @@ import { pmatchi } from './strutil.js'; /* C strutil.c:151 — MENU_SEARCH's mat
 // putmsghistory: feed the quest synopsis into the ^P message-history ring.
 import { putmsghistory, _strengthStr, force_more, force_more_pages, await_more_dismiss,
          await_topl_more_dismiss, pline_flush_point,
-         botl_pmname, botl_upstart_words, botl_mon_mlevel,
-         gold_status_char, rogue_graphics, rogue_ibm_color, botl_status_suffix, fit_status_line_width, status_row_finish, _statusRows3, _threeStatusLines, docrt_flags, flush_screen, use_last_flush_snapshot, hitpointbar_status1, _hilite_status_wrap } from './display.js';
+         botl_pmname, botl_upstart_words, botl_mon_mlevel, botl_title,
+         gold_status_char, rogue_graphics, rogue_ibm_color, botl_status_suffix, fit_status_line_width, status_row_finish, _statusRows3, _threeStatusLines, docrt_flags, flush_screen, use_last_flush_snapshot, hitpointbar_status1, _hilite_status_wrap, _status_sgr } from './display.js';
 // ── ANSI color helpers (inlined from display.js — not exported there) ──
 const ANSI_DEFAULT = 39;
 // C ref: color.h:10-14 — CLR_BLACK(0) renders as bright-black (90); CLR_GRAY(7)
@@ -741,7 +741,8 @@ function _cp_rank_of(ulevel, roleName, female) {
         return null;
     return rank_of(idx, ulevel, female);
 }
-function _statusLine1() { return _hilite_status_wrap(_statusLine1Raw()); }
+/* C wintty.c:5216-5240: status keeps its field highlights under a menu. */
+function _statusLine1() { return _status_sgr(_hilite_status_wrap(_statusLine1Raw())); }
 function _statusLine1Raw() {
     const g = game;
     const u = g.u;
@@ -773,7 +774,7 @@ function _statusLine1Raw() {
            || (female ? g.urole?.name?.f : null)
            || g.urole?.name?.m
            || 'Adventurer');
-    const title = `${name} the ${role}`;
+    const title = botl_title(name, role);
     const _hasAttrs = !!(u.acurr && u.acurr.a);
     const _acur = (ci) => (_hasAttrs ? acurr(u, ci) : null);
     const _st = _acur(A_STR);
@@ -798,7 +799,7 @@ export function money_cnt(otmp) {
 // C ref: botl.c — status line 2 format.
 // Respects flags.showexp and flags.time options.
 // Note: uac passed as parameter to allow caller control (step 0 = pre-find_ac, step 1+ = current).
-function _statusLine2(uacOverride, pwOverride) { return _hilite_status_wrap(_statusLine2Raw(uacOverride, pwOverride)); }
+function _statusLine2(uacOverride, pwOverride) { return _status_sgr(_hilite_status_wrap(_statusLine2Raw(uacOverride, pwOverride))); }
 function _statusLine2Raw(uacOverride, pwOverride) {
     const g = game;
     const u = g.u;
@@ -886,10 +887,10 @@ export async function topl_more_page(msg, uacAtCapture) {
     // appears on row 1.
     // COLNO = 80 (const.js); --More-- = 8 chars; threshold: msg.length + 8 <= 79.
     const inlineMore = (msgLen + 8) <= (COLNO - 1);
-    /* topl.c wraps an overlong pline at the --More-- reserve, not at the
-     * physical column 79 edge. */
+    /* C topl.c:284-297 update_topl() searches backward from CO-1 for
+     * the break space; more():220 reserves room for its marker afterward. */
     const wrapAt = (!inlineMore && msgLen > (COLNO - 1))
-        ? msg.lastIndexOf(' ', COLNO - 1 - 8) : -1;
+        ? msg.lastIndexOf(' ', COLNO - 1) : -1;
     let output = '';
     if (inlineMore) {
         // Row 0: message + '--More--' on the same line
@@ -1085,7 +1086,8 @@ export async function com_pager_legacy(pauper = false, preInitAc = 0, preInitPw 
 //   - y/n options, blank, config hint, optional retry line, "(end)"
 // Loops until 'y', 'n', or ESC. Returns boolean (true=do tutorial).
 //
-// Called only when g.tutorial_set_in_config is falsy (i.e. tutorial option was
+// C options.c:430-483: an explicit tutorial option returns its value without
+// asking; only an unset option opens the menu.
 //
 // WIN_COL computation:
 //   Longest line is the config hint (57 chars): 'Put "OPTIONS=!tutorial" in .nethackrc to skip this query.'
@@ -1095,6 +1097,8 @@ export async function com_pager_legacy(pauper = false, preInitAc = 0, preInitPw 
 //   C ref: tty select_menu PICK_ONE — cursor ends one past last char of footer.
 export async function ask_do_tutorial() {
     const g = game;
+    // C options.c:432-434,483 — obey either configured value without a menu.
+    if (g.tutorial_set_in_config) return !!g.flags.tutorial;
     const u = g.u;
     /* C tty_display_nhwindow's NHW_MENU arm clears WIN_MESSAGE before
      * drawing an overlay (wintty.c:1939-1940), including after WIN_STOP. */

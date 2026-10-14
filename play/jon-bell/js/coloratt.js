@@ -369,13 +369,14 @@ export function add_menu_coloring(tmpstr) {
  * tty then paints the text after the "x - " selector in the matched colour
  * (term_start_color ... term_end_color).  Returns `body` wrapped in the SGR
  * pair, or unchanged when no MENUCOLOR pattern matches. */
-export function menucolor_text(body) {
-    /* iflags is rebuilt after the rc parse (jsmain.js), so a non-empty list is
-     * the live form of iflags.use_menu_color here. */
-    if (!game.menu_colorings?.length) return body;
+export function menucolor_text(body, matchText = body) {
+    if (!game.iflags.use_menu_color || !game.menu_colorings?.length) return body;
     for (const mc of game.menu_colorings) {
-        if (mc.match.test(body)) {
+        // windows.c matches the original string before tty clips it for display.
+        if (mc.match.test(matchText)) {
             const c = mc.color;
+            if (c === NO_COLOR)
+                return mc.attr ? `\x1b[${mc.attr}m${body}\x1b[0m` : body;
             const sgr = c < 8 ? 30 + c : 90 + (c - 8);
             if (mc.attr) return `\x1b[${mc.attr};${sgr}m${body}\x1b[0m`;
             return `\x1b[${sgr}m${body}\x1b[39m`;

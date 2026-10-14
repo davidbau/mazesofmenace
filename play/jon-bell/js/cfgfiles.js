@@ -1,8 +1,10 @@
 // @ts-nocheck
-// cfgfiles.js — Configuration file name retrieval.
-// C ref: nethack-c/src/cfgfiles.c — get_configfile().
+// cfgfiles.js — Configuration file names and statement parsing.
+// C ref: nethack-c-v5/upstream/src/cfgfiles.c.
 import { pline } from './display.js'; /* was an undeclared global: every pline() call in this file threw ReferenceError when reached */
 import { game } from './gstate.js';
+import { rn2 } from './rng.js';
+import { str2role } from './roles.js';
 import { sha1Hex } from './sha1.js';
 
 /* tty synchronization is unnecessary for the replay terminal. */
@@ -119,14 +121,101 @@ const CONFIG_LINE_STMT = [
     ['QT_TILEHEIGHT', 13], ['QT_FONTSIZE', 11], ['QT_COMPACT', 10],
 ];
 
+/* C cfgfiles.c:463-500.  Preserve the pre-increment while looking for a
+ * separator: a leading separator is skipped even when the draw is zero,
+ * and is not counted by the search when the draw is positive.  In particular,
+ * this is not equivalent to indexing split(sep).  Empty strings still draw. */
+export function choose_random_part(str, sep) {
+    if (str == null)
+        return null;
+    let nsep = 1;
+    for (let i = 0; i < str.length && str[i] !== '\0'; i++)
+        if (str[i] === sep) nsep++;
+    let csep = rn2(nsep), pos = 0;
+    while (csep > 0 && pos < str.length && str[pos] !== '\0') {
+        pos++;
+        if (str[pos] === sep) csep--;
+    }
+    if (pos < str.length && str[pos] !== '\0') {
+        if (str[pos] === sep) pos++;
+        const begin = pos;
+        while (pos < str.length && str[pos] !== '\0' && str[pos] !== sep)
+            pos++;
+        if (pos > begin)
+            return str.slice(begin, pos);
+    }
+    return null;
+}
+
+/* C cfgfiles.c:587-597; a JS index replaces the pointer into buf. */
+function find_optparam(buf) {
+    const eq = buf.indexOf('='), co = buf.indexOf(':');
+    return eq < 0 || (co >= 0 && co < eq) ? co : eq;
+}
+
+/* C cfgfiles.c:760-789.  The startup parser collects settings in result;
+ * jsmain installs these in plname, flags.initrole and the pet-name fields
+ * before character creation and makedog.  ROLE silently ignores invalid and
+ * random names (str2role < 0), unlike the OPTIONS=role handler. */
+function cnf_line_NAME(bufp, result) {
+    result.name = bufp.slice(0, 31); // PL_NSIZ - 1
+    return true;
+}
+
+function cnf_line_ROLE(bufp, result) {
+    const len = str2role(bufp);
+    if (len >= 0)
+        result.role = len;
+    return true;
+}
+
+function cnf_line_dogname(bufp, result) {
+    result.flags.dogname = bufp.slice(0, 62); // PL_PSIZ - 1
+    return true;
+}
+
+function cnf_line_catname(bufp, result) {
+    result.flags.catname = bufp.slice(0, 62);
+    return true;
+}
+
+/* C cfgfiles.c:1389-1439 parse_config_line(): match abbreviations against
+ * the statement table after mungspaces(), with either ':' or '='.  Keep
+ * OPTIONS' original value (including whitespace) for parseoptions; every
+ * other handler receives the munged value.  The existing option handlers
+ * live in options.js, so return their canonical statement instead of
+ * duplicating them here.  null means a statement was handled here. */
+export function config_statement(origbuf, result) {
+    origbuf = origbuf.replace(/^[ \t]+/, '');
+    const buf = origbuf.slice(0, 1023).split(/[\n\0]/, 1)[0]
+        .replace(/[ \t]+/g, ' ').replace(/^ | $/g, '');
+    const p = find_optparam(buf);
+    if (p < 0) return origbuf;
+    const user = buf.slice(0, p).replace(/ +$/, '').toLowerCase();
+    const row = CONFIG_LINE_STMT.find(([name, minlen]) =>
+        user.length >= minlen && name.toLowerCase().startsWith(user));
+    if (!row) return origbuf;
+    const name = row[0];
+    const value = buf.slice(p + 1).replace(/^ /, '');
+    const handler = name === 'NAME' ? cnf_line_NAME
+        : name === 'ROLE' || name === 'CHARACTER' ? cnf_line_ROLE
+        : name === 'dogname' ? cnf_line_dogname
+        : name === 'catname' ? cnf_line_catname : null;
+    if (handler) {
+        handler(value, result);
+        return null;
+    }
+    return name + '=' + (name === 'OPTIONS'
+        ? origbuf.slice(find_optparam(origbuf) + 1) : value);
+}
+
 /* C ref: cfgfiles.c:1437 (and :1413) parse_config_line()'s error returns for
  * a statement no config_line_stmt[] row matches.  Returns the
  * config_error_add() message, or null when the line is a known statement. */
 export function config_line_error(origbuf) {
     /* mungspaces(): tabs -> space, condense runs, trim */
     const buf = origbuf.replace(/[ \t]+/g, ' ').replace(/^ | $/g, '');
-    const eq = buf.indexOf('='), co = buf.indexOf(':');
-    let p = (eq < 0 || (co >= 0 && co < eq)) ? co : eq; /* find_optparam() */
+    const p = find_optparam(buf);
     if (p < 0)
         return "Not a config statement, missing '='";
     /* match_varname() -> match_optname(..., val_allowed=TRUE): the length

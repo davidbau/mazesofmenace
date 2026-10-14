@@ -5,7 +5,7 @@
 import { rn2, rnd, d, rn1, rnl, pushRngLogEntry } from "./rng.js";
 import { dochug, m_canseeu } from "./dochug.js";
 import monsPack from "./makemon_mons.json" with { type: "json" };
-import { gethungry, morehungry, opentin } from "./eat.js";
+import { gethungry, morehungry, Popeye } from "./eat.js";
 import { make_confused, make_stunned, vomit, cantvomit } from "./potion.js";
 import { age_spells } from "./spell.js";
 import { exerchk, exercise, acurr, spec_ability } from "./attrib.js";
@@ -99,6 +99,7 @@ import { BOLT_LIM as BOLT_LIM_FF, CONFLICT as CONFLICT_FF } from "./const.js";
 import { near_capacity } from "./weight.js";
 import { settrack } from "./track.js";
 import { depth as dungeon_depth, dist2 as dist2_ff } from "./hacklib.js";
+import { intervene } from './cmd.js';
 
 async function maybe_generate_rnd_mon() {
     const u = game.u;
@@ -1119,16 +1120,6 @@ function u_wipe_engr_rng() {
             wipe_engr_at(g.u.ux | 0, g.u.uy | 0, cnt, false);
     }
 }
-/* C eat.c:3920-3955 Popeye(VOMITING): only an unknown accessible tin
- * might help; no known tin cures vomiting. */
-function vomiting_tin_might_help() {
-    if (game.occupation !== opentin) return false;
-    const tin = game.context?.tin?.tin;
-    if (!tin) return false;
-    if (tin.where !== 3 && (!obj_here(tin, game.u.ux, game.u.uy)
-        || !can_reach_floor(true))) return false;
-    return !tin.known;
-}
 export async function vomiting_dialogue_ff() {
     const u = game.u;
     const p = u?.uprops?.[VOMITING];
@@ -1147,7 +1138,7 @@ export async function vomiting_dialogue_ff() {
         break;
     case 6:
         await make_stunned(((u.uprops?.[STUNNED]?.intrinsic | 0) & TIMEOUT) + d(2, 4), false);
-        if (!vomiting_tin_might_help()) await stop_occupation();
+        if (!Popeye(VOMITING)) await stop_occupation();
         // C FALLTHROUGH.
     case 9:
         await make_confused(((u.uprops?.[CONFUSION]?.intrinsic | 0) & TIMEOUT) + d(2, 4), false);
@@ -1667,6 +1658,14 @@ export async function ff_head_phase_post() {
     if (game.u?.uhave?.amulet)
         await amulet();
     u_wipe_engr_rng();
+    /* C allmain.c:362-369 — invulnerability pauses Wizard harassment. */
+    if (game.u.uevent.udemigod && !game.u.uinvulnerable) {
+        if (game.u.udg_cnt) --game.u.udg_cnt;
+        if (!game.u.udg_cnt) {
+            await intervene();
+            game.u.udg_cnt = rn1(200, 50);
+        }
+    }
     /* C allmain.c:374-377 — "vision will be updated as bubbles move":
      *     if (Is_waterlevel(&u.uz) || Is_airlevel(&u.uz)) movebubbles();
      *     else if (svl.level.flags.fumaroles) fumaroles(); */

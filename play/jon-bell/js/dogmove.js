@@ -1,8 +1,11 @@
+import { quest_monster_died } from './quest.js';
 import { touch_artifact_mon, lifesaved_monster, kop_revival, m_consume_obj, add_to_minv as add_to_minv_real } from './mklev.js';
 import { newobj } from './game.js';
+import { beg } from './sounds.js';
 import { is_pole as is_pole_dm, flooreffects as flooreffects_dm, xytodir as xytodir_dm, dirtocoord as dirtocoord_dm } from './cmd.js';
+import { wizdeadorgone } from './cmd.js';
 import { m_in_out_region as m_in_out_region_dm } from './region.js';
-import { set_apparxy as set_apparxy_dm } from './monmove.js';
+import { set_apparxy as set_apparxy_dm, itsstuck, find_pmmonst, bee_eat_jelly } from './monmove.js';
 // @ts-nocheck
 // js/dogmove.js — Pet AI: dog_move, dog_goal, dog_invent, dog_hunger helpers.
 // C ref: nethack-c/src/dogmove.c
@@ -28,11 +31,12 @@ import { mon_mattk_raw, getmattk as getmattk_mhitu, could_seduce, mattacku, mswi
          breamm as breamm_mu, spitmm as spitmm_mu, mhis_mon as mhis_mon_mu } from './mhitu.js';
 import { monshoot } from './mhitu.js';
 import { m_lined_up } from './makemon.js';
-import { select_rwep } from './uhitm.js';
+import { select_rwep, m_is_steadfast } from './uhitm.js';
 import { ammo_and_launcher as ammo_and_launcher_dm } from './hold_another_object.js';
 import { nomul as nomul_dm } from './allmain.js';
 import { x_monnam, You, hliquid, noit_Monnam } from './mhitm.js';
 import { game } from './gstate.js';
+import { pre_mm_attack as pre_mm_attack_real } from './mhitm.js';
 import { dist2, s_suffix } from './hacklib.js';
 import { couldsee as couldsee_vision, clear_path, do_clear_area, cansee, recalc_block_point } from './vision.js';
 import { gettrack, hastrack } from './track.js';
@@ -80,6 +84,7 @@ import { mhitm_ad_blnd as mhitm_ad_blnd_gz } from './uhitm.js';
 import { seemimic, resists_magm as resists_magm_dm, defended as defended_dm } from './mhitm.js';
 import { mfndpos, make_corpse, zombie_form, On_stairs, is_rustprone } from './mklev.js';
 import { isok, is_pit, ARTICLE_A, ARTICLE_NONE, MON_DETACH, CORPSTAT_NONE, G_GONE, CONFLICT as CONFLICT_DM, engulfing_u as engulfing_u_const, MAGIC_PORTAL } from './const.js';
+import { thiefdead } from './steal.js';
 import { otrapped_of } from './const.js';   /* obj.h:139 #define opoisoned otrapped */
 import { should_displace, undesirable_disp, _can_open_mv, _passes_bars_mv, m_avoid_soko_push_loc, mon_allowflags } from './monmove.js';
 import { enexto_out, rloc as rloc_tp, tele_restrict as tele_restrict_tp, vamprises } from './teleport.js';
@@ -689,6 +694,8 @@ export function dogfood(mtmp, obj) {
                 && !resists_ston(mtmp))
                 return POISON;
         }
+        if (otyp === LUMP_OF_ROYAL_JELLY_OTYP && mndx === 1 /* PM_KILLER_BEE */)
+            return find_pmmonst(5 /* PM_QUEEN_BEE */) ? TABU : DOGFOOD;
         /* C dog.c:1033-1034 — neither carni nor herbi: APPORT (or UNDEF if cursed) */
         if (!carni && !herbi)
             return (obj.cursed | 0) ? UNDEF : APPORT;
@@ -821,8 +828,19 @@ function cursed_object_at(x, y) {
     return false;
 }
 
+/* C dogmove.c:347-358 — shared by both starvation paths in dog_hunger. */
+async function dog_starve(mtmp) {
+    if ((mtmp.mleashed | 0) && mtmp !== game.u?.usteed)
+        await pline('Your leash goes slack.');
+    else if (cansee(mtmp.mx | 0, mtmp.my | 0))
+        await pline(`${Monnam_dm(mtmp)} starves.`);
+    else
+        await pline(`You feel ${dm_hallucinating() ? 'bummed' : 'sad'} for a moment.`);
+    await mondied_dm(mtmp);
+}
+
 /* -----------------------------------------------------------------------
- * dog_hunger — C ref: dogmove.c:357-391
+ * dog_hunger — C ref: dogmove.c:362-398
  * Returns true if pet starves this turn (which is rare early-game).
  * No RNG in the common case (pet has enough food: moves < hungrytime+DOG_WEAK).
  * ----------------------------------------------------------------------- */
@@ -847,13 +865,13 @@ async function dog_hunger(mtmp, edog) {
         if ((mtmp.mhp | 0) > newmax)
             mtmp.mhp = newmax;
         if ((mtmp.mhp | 0) < 1) {
-            await mondied_dm(mtmp);
+            await dog_starve(mtmp);
             return true;
         }
         if (cansee(mtmp.mx | 0, mtmp.my | 0))
             void pline(`${Monnam_dm(mtmp)} is confused from hunger.`);
         else if (couldsee_vision(mtmp.mx | 0, mtmp.my | 0))
-            void pline(`${Monnam_dm(mtmp)} looks hungry.`);
+            await beg(mtmp);
         else
             void pline(`You feel worried about ${mon_nam_dm(mtmp)}.`);
         /* C dogmove.c:389 — hunger confusion interrupts any occupation after
@@ -862,15 +880,7 @@ async function dog_hunger(mtmp, edog) {
         return false;
     }
     if (moves > (edog.hungrytime | 0) + DOG_STARVE || (mtmp.mhp | 0) < 1) {
-        /* C dogmove.c:352-360 — starvation reports through the leash or
-         * player sensation even when the pet itself cannot be seen. */
-        if ((mtmp.mleashed | 0) && mtmp !== game.u?.usteed)
-            void pline('Your leash goes slack.');
-        else if (cansee(mtmp.mx | 0, mtmp.my | 0))
-            void pline(`${Monnam_dm(mtmp)} starves.`);
-        else
-            void pline(`You feel ${game.flags?.hallucination ? 'bummed' : 'sad'} for a moment.`);
-        await mondied_dm(mtmp);
+        await dog_starve(mtmp);
         return true;
     }
     return false;
@@ -1377,6 +1387,11 @@ export async function dog_eat(mtmp, obj, x, y, devour) {
         newsym(mtmp.mx | 0, mtmp.my | 0);
     }
 
+    // C dogmove.c:255-259: bee growth bypasses ordinary eating and apport.
+    if (mtmp.data.pmidx === 1 && obj.otyp === LUMP_OF_ROYAL_JELLY_OTYP) {
+        const res = await bee_eat_jelly(mtmp, obj);
+        if (res >= 0) return res + 1;
+    }
     if (((obj.quan ?? 1) | 0) > 1 && (obj.oclass | 0) === FOOD_CLASS)
         obj = (await splitobj(obj, 1));
 
@@ -1701,7 +1716,7 @@ function dog_goal(mtmp, edog, after, udist, whappr) {
      * If the goal landed on the hero but the pet can't see the hero, the pet
      * has lost the hero: follow the hero's footstep track (gettrack), reuse the
      * previous goal (edog->ogoal), or shadow-cast from the pet's position to
-     * pick the farthest visible square (do_clear_area + wantdoor).  Bit-exact
+     * pick the visible square nearest the hero (do_clear_area + wantdoor).  Bit-exact
      * here is what determines GDIST() in dog_move and thus the rn2(++chcnt)
      * candidate-selection sequence. */
     const FARAWAY = COLNO + 2; /* 82 */
@@ -1725,8 +1740,8 @@ function dog_goal(mtmp, edog, after, udist, whappr) {
                 /* do_clear_area(omx, omy, 9, wantdoor, &fardist) */
                 const ctx = { fardist: FARAWAY * FARAWAY };
                 gg.gx = gg.gy = FARAWAY;
-                /* wantdoor(x,y,distance): keep the square farthest from the hero
-                 * that the pet can see (max distu).  C ref: dogmove.c:1479. */
+                /* wantdoor(x,y,distance): keep the square nearest the hero
+                 * that the pet can see (min distu).  C ref: dogmove.c:1417. */
                 const wantdoor = (x, y, c) => {
                     const ndist = distu(x, y);
                     if (c.fardist > ndist) {
@@ -2623,8 +2638,7 @@ export async function fightm(mtmp) {
     /* C mhitm.c:110-112 — perhaps the monster will resist Conflict. */
     if (resist_conflict(mtmp))
         return 0;
-    if (u && u.ustuck === mtmp) {
-    }
+    if (u && u.ustuck === mtmp && await itsstuck(mtmp)) return 0;
     const has_u_swallowed = engulfing_u_const(mtmp);
     let nmon;
     for (let mon = g.fmon; mon; mon = nmon) {
@@ -3097,7 +3111,13 @@ export async function mhitm_knockback(magr, mdef, mattk, mhm, weapon_used) {
     }
     if (unsolid_dm(magr.data))
         return false;
-    /* C:5343 m_is_steadfast(mdef) skipped — not modeled. */
+    if (m_is_steadfast(mdef)) { /* C uhitm.c:5342-5353 */
+        if (game.u.usteed && mdef === game.u.usteed)
+            await You("and %s don't budge.", y_monnam_qm(game.u.usteed));
+        else if (canseemon(mdef))
+            await pline("%s doesn't budge.", Monnam_dm(mdef));
+        return false;
+    }
 
     /* C uhitm.c:5361-5376.  These formatting draws happen while pline is
      * displaying the knockback message.  In particular, pline may suspend
@@ -3200,6 +3220,7 @@ export async function mondied_dm(mdef, mondead_only = false) {
                     if ((mv.died | 0) < 255) mv.died = (mv.died | 0) + 1;
                 }
                 mdef.mstate = (mdef.mstate | 0) | MON_DETACH;
+                if (mdef.m_id === game.stealmid) thiefdead(); // C mon.c:2782-2783
             }
             if (mondead_only)
                 return;
@@ -3260,7 +3281,10 @@ export async function mondied_dm(mdef, mondead_only = false) {
         remove_worm_real(mdef);
     newsym(deadMx, deadMy);
 
+    if (mdef.iswiz) wizdeadorgone(); /* C mon.c:2761-2762, before relobj */
+    await quest_monster_died(mdef);
     await relobj_dead_dm(mdef);
+    if (mdef.m_id === game.stealmid) thiefdead(); // C mon.c:2782-2783
     /* C mon.c:2786-2787 m_detach(): if (mtmp->wormno) wormgone(mtmp); */
     if (mdef.wormno)
         wormgone_real(mdef);
@@ -3363,6 +3387,9 @@ async function mdamagem_dm(magr, mdef, mattk, mwep, dieroll) {
     const mhm = {
         damage: d((mattk.damn | 0), (mattk.damd | 0)),
         hitflags: M_ATTK_MISS,
+        permdmg: 0,
+        specialdmg: 0,
+        dieroll,
         done: false,
     };
 
@@ -3569,16 +3596,17 @@ async function gulpmm(magr, mdef, mattk) {
     return status;
 }
 
+/* C mhitm.c:41-71 pre_mm_attack(magr, mdef) — run at the top of BOTH hitmm()
+ * and missmm() before the message.  Unhides/unmimics either party, then for a
+ * visible fight places the 'I' glyph over anything the hero cannot spot:
+ *   if (gv.vis) {
+ *     if (!canspotmon(magr)) map_invisible(magr->mx, magr->my);
+ *     else if (showit) newsym(magr->mx, magr->my);
+ *     ... same for mdef ...
+ *   }
+ * RNG-free; the canonical body in mhitm.js also reveals mimics. */
 function pre_mm_attack_dm(magr, mdef) {
-    let showit = false;
-    const vis = !!(game.v?.vis);
-    if (mdef && (mdef.mundetected | 0)) { mdef.mundetected = 0; showit ||= vis; }
-    if (magr && (magr.mundetected | 0)) { magr.mundetected = 0; showit ||= vis; }
-    if (!vis) return;
-    if (!canspotmon(magr)) map_invisible(magr.mx | 0, magr.my | 0);
-    else if (showit) newsym(magr.mx | 0, magr.my | 0);
-    if (!canspotmon(mdef)) map_invisible(mdef.mx | 0, mdef.my | 0);
-    else if (showit) newsym(mdef.mx | 0, mdef.my | 0);
+    return pre_mm_attack_real(magr, mdef);
 }
 
 function noises_dm(magr, mattk) {

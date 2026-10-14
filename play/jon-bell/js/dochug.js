@@ -13,7 +13,7 @@ import { game } from './gstate.js';
 // distfleeck and their PM_* imports as dead. Static import = same runtime
 // binding (RNG-identical), but the call edge dochug→m_move→dog_move is now
 // statically visible. No circular dep: monmove/dogmove do not import dochug.)
-import { distfleeck, set_apparxy, m_move, mind_blast } from './monmove.js';
+import { distfleeck, set_apparxy, m_move, mind_blast, mon_yells, mon_eat_before_move } from './monmove.js';
 import { worm_hitu_segs } from './worm.js';
 import { mattacku, noattacks_mndx, mon_mattk_raw, ranged_attk_available, expels_gu } from './mhitu.js';
 import { find_offensive, find_defensive, find_misc, use_misc, use_defensive, monflee_release_hero } from './makemon.js';
@@ -240,10 +240,10 @@ async function watch_on_duty(mtmp) {
                 /* C monmove.c:184-192 — warn once, then arrest on a repeated
                  * attempt.  D_WARNED lives on the door's looted flags. */
                 if ((loc.looted | 0) & D_WARNED) {
-                    await pline('Halt, thief! You\'re under arrest!');
+                    await mon_yells(mtmp, "Halt, thief!  You're under arrest!");
                     await angry_guards(false);
                 } else {
-                    await pline('Hey, stop picking that lock!');
+                    await mon_yells(mtmp, 'Hey, stop picking that lock!');
                     loc.looted = (loc.looted | 0) | D_WARNED;
                 }
                 await stop_occupation();
@@ -357,7 +357,7 @@ export async function dochug(mtmp) {
     }
     /* C monmove.c:813 — distfleeck(mtmp, &inrange, &nearby, &scared).
      * Always fires rn2(5) for bravegremlin. */
-    let { inrange, nearby, scared } = distfleeck(mtmp);
+    let { inrange, nearby, scared } = await distfleeck(mtmp);
     if (typeof process !== 'undefined' && ENV?.FF_DH_TRACE)
         pushRngLogEntry(`^dh_pre[id=${mtmp?.m_id ?? 0} moved=${inrange}/${nearby}/${scared}]`);
     if (find_defensive(mtmp, false)) {
@@ -375,7 +375,7 @@ export async function dochug(mtmp) {
         /* C monmove.c:853-855 — mind_blast(mtmp), then recompute apparent target/flags. */
         await mind_blast(mtmp);
         set_apparxy(mtmp);
-        ({ inrange, nearby, scared } = distfleeck(mtmp));
+        ({ inrange, nearby, scared } = await distfleeck(mtmp));
     }
     {
         /* C monmove.c:843 attacktype(mdat, AT_WEAP) — same mattk walk the
@@ -400,6 +400,9 @@ export async function dochug(mtmp) {
             }
         }
     }
+    // C monmove.c:865-878: eating uses the move before ordinary movement.
+    const meal = await mon_eat_before_move(mtmp);
+    if (meal >= 0) return meal;
     const mlet = (mndx >= 0 && mndx < MONS.length && MONS[mndx][0]) | 0;
     /*
      * C monmove.c:904-909 big condition with embedded RNG calls (short-circuit).
@@ -502,7 +505,7 @@ export async function dochug(mtmp) {
         /* C monmove.c:940-941: if (status != MMOVE_DIED) distfleeck(recalc)
          * Recalc fires rn2(5) again. MMOVE_DIED=2. */
         if (status !== MMOVE_DIED) {
-            const rc = distfleeck(mtmp); /* C: recalculate distfleeck after m_move */
+            const rc = await distfleeck(mtmp); /* C: recalculate distfleeck after m_move */
             if (typeof process !== 'undefined' && ENV?.FF_DH_TRACE)
                 pushRngLogEntry(`^dh_post[id=${mtmp?.m_id ?? 0} status=${status}]`);
             pf_inrange = rc.inrange; pf_scared = rc.scared; pf_nearby = rc.nearby;
@@ -543,7 +546,7 @@ export async function dochug(mtmp) {
         if (mon_offmap_dh(mtmp)) return 1;
         if (status === MMOVE_DIED) return 1;
         /* C monmove.c:940-941: if (status != MMOVE_DIED) distfleeck recalc. */
-        const rc = distfleeck(mtmp);
+        const rc = await distfleeck(mtmp);
         if (typeof process !== 'undefined' && ENV?.FF_DH_TRACE)
             pushRngLogEntry(`^dh_post[id=${mtmp?.m_id ?? 0} status=${status}]`);
         pf_inrange = rc.inrange; pf_scared = rc.scared; pf_nearby = rc.nearby;

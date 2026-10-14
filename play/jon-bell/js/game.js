@@ -97,6 +97,12 @@ for (const alias of [
         configurable: true,
     });
 }
+// C rm.h: disturbed aliases horizontal for graves.
+Object.defineProperty(rmProto, 'disturbed', {
+    get() { return this.horizontal; },
+    set(v) { this.horizontal = v; },
+    enumerable: true,
+});
 // A single map cell. Mirrors C's struct rm.
 export function makeLocation() {
     const loc = Object.create(rmProto);

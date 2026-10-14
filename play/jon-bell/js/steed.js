@@ -5,16 +5,31 @@
 import { game } from './gstate.js';
 import { pline } from './display.js';
 import { MONS_NAMES, use_skill } from './uhitm.js';
-import { isok, MON_FLOOR, W_SADDLE, P_RIDING } from './const.js';
+import { isok, MON_FLOOR, W_SADDLE, P_RIDING, DISMOUNT_FELL,
+         ARTICLE_YOUR, SUPPRESS_SADDLE } from './const.js';
 import { can_saddle } from './makemon.js';
 import { mksobj, mpickobj } from './mklev.js';
-import { fully_identify_obj } from './cmd.js';
+import { fully_identify_obj, can_ride, dismount_steed,
+         steed_vs_stealth } from './cmd.js';
 import { update_mon_extrinsics } from './trap.js';
 import { describe_level_buf } from './dungeon.js';
 import { rn2 } from './rng.js';
-import { helpless, y_monnam as y_monnam_real } from './mhitm.js';
+import { helpless, x_monnam, y_monnam as y_monnam_real } from './mhitm.js';
 import { Monnam } from './mcastu.js';
 import { finish_meating } from './dogmove.js';
+
+/* C steed.c:852-875 — newcham has already handled the saddle/armor. */
+export async function poly_steed(steed, oldshape) {
+    if (!can_saddle(steed) || !can_ride(steed)) {
+        await dismount_steed(DISMOUNT_FELL);
+    } else {
+        let name = x_monnam(steed, ARTICLE_YOUR, null, SUPPRESS_SADDLE, false);
+        if (oldshape !== steed.data)
+            name = name.replace('your ', 'your new ');
+        await pline('You adjust yourself in the saddle on %s.', name);
+        steed_vs_stealth();
+    }
+}
 
 /* C steed.c:17 — caller has already checked mounted reach and riding skill. */
 export async function rider_cant_reach() {

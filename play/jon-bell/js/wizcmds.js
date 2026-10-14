@@ -3,6 +3,12 @@
 // C ref: nethack-c/src/wizcmds.c — wiz_level_change() and related.
 // Hand-maintained JS (not tsc-emitted). Sibling imports from js/*.js.
 import { u_safe_from_fatal_corpse } from './pickup.js';
+import { olfaction } from './makemon.js';
+import { usmellmon } from './mklev.js';
+import { body_part } from './cmd.js';
+import { ARM, ECMD_CANCEL, UTOTYPE_NONE } from './const.js';
+import { getdir } from './lock.js';
+import { map_invisible, GLYPHCLS_MON, GLYPHCLS_INVIS } from './display.js';
 import { game, wizard } from './gstate.js';
 import { reassign } from './inventory_refresh.js';
 import { COLNO } from './const.js';
@@ -41,9 +47,9 @@ import monsPack from './makemon_mons.json' with { type: 'json' };
  * TRUE)); it lives in js/cmd.js, which already imports this file — the cycle is
  * the tree's norm (20+ modules import from cmd.js) and both sides are hoisted
  * function declarations, so the binding resolves at call time. */
-import { setuqwep, y_n_default, addinv_core2, reorder_invent, inv_cnt, dropx, freeinv, hitfloor, getpos, addinv_core1, dropy, carry_obj_effects } from './cmd.js';
+import { setuqwep, y_n_default, addinv_core2, reorder_invent, inv_cnt, dropx, freeinv, hitfloor, getpos, addinv_core1, dropy, carry_obj_effects, hurtle, mhurtle } from './cmd.js';
 import { place_object, remove_object } from './mklev.js';
-import { m_at, xkilled, XKILL_NOMSG } from './uhitm.js';
+import { m_at, mon_nam, xkilled, XKILL_NOMSG } from './uhitm.js';
 import { x_monnam } from './mhitm.js';
 import { nonliving } from './makemon.js';
 import { ARTICLE_YOUR, ARTICLE_THE, ARTICLE_A, SUPPRESS_IT,
@@ -51,7 +57,10 @@ import { ARTICLE_YOUR, ARTICLE_THE, ARTICLE_A, SUPPRESS_IT,
 import { dmonsfree } from './mkmaze.js';
 import { flip_level, flip_level_rnd } from './sp_lev.js';
 import { docrt } from './display.js';
-import { yn_function } from './end.js';
+import { yn_function, done } from './end.js';
+import { paranoid_query } from './paranoid.js';
+import { DIED } from './const.js';
+import { PM_SAMURAI } from './pm.generated.js';
 import { bury_objs } from './zap.js';
 import { addinv_core0, can_reach_floor, is_missile, ammo_and_launcher } from './hold_another_object.js';
 import { A_WIS, KILLED_BY, ANTIMAGIC, HALF_PHDAM, LOW_PM, ECMD_OK, MM_MINVIS,
@@ -458,6 +467,34 @@ export async function getlin(prompt) {
     }
 }
 
+/* C wizcmds.c:883-938 — #wizsmell keeps selecting until cancelled, without time. */
+export async function wiz_smell() {
+    const u = game.u, cc = { x: u.ux, y: u.uy };
+    if (!olfaction(game.youmonst.data)) {
+        await pline('You are incapable of detecting odors in your present form.');
+        return ECMD_OK;
+    }
+    await pline('You can move the cursor to a monster that you want to smell.');
+    for (;;) {
+        await pline('Pick a monster to smell.');
+        const ans = await getpos(cc, true, 'a monster');
+        if (ans < 0 || cc.x < 0) return ECMD_CANCEL;
+        const atYou = cc.x === u.ux && cc.y === u.uy;
+        const isYou = atYou && !u.usteed;
+        const mptr = atYou ? (u.usteed || game.youmonst).data : m_at(cc.x, cc.y)?.data;
+        const glyph = game.level.at(cc.x, cc.y).disp_cls;
+        if (mptr) {
+            if (isYou) await pline('You surreptitiously sniff under your %s.', body_part(ARM));
+            if (!usmellmon(mptr))
+                await pline('%s to not give off any smell.', isYou ? 'You seem' : 'That monster seems');
+            if (glyph !== GLYPHCLS_MON) map_invisible(cc.x, cc.y);
+        } else {
+            await pline("You don't smell any monster there.");
+            if (glyph === GLYPHCLS_INVIS) unmap_invisible(cc.x, cc.y);
+        }
+    }
+}
+
 export async function wiz_kill() {
     const g = game;
     const savedVerbose = g.flags?.verbose;
@@ -475,7 +512,28 @@ export async function wiz_kill() {
         g.flags.verbose = savedVerbose;
         g.iflags.autodescribe = savedAutodescribe;
         if (ans < 0 || (cc.x | 0) < 1) break;
-        const mtmp = m_at(cc.x | 0, cc.y | 0);
+        let mtmp = null;
+        // C wizcmds.c:267-287: choosing the hero offers mount death or suicide.
+        if (cc.x === g.u.ux && cc.y === g.u.uy) {
+            if (g.u.usteed) {
+                const c = await yn_function(`Kill ${mon_nam(g.u.usteed).slice(0, 110)}?`, 'ynq', 'n');
+                if (c === 'q') break;
+                if (c === 'y') mtmp = g.u.usteed;
+            }
+            if (!mtmp) {
+                const qbuf = g.urole.mnum === PM_SAMURAI ? 'Perform seppuku?' : 'Commit suicide?';
+                if (await paranoid_query(true, qbuf)) {
+                    g.svk ||= {};
+                    g.svk.killer ||= { id: 0, format: 0, name: '', next: null };
+                    g.svk.killer.name = `${g.flags.female ? 'her' : 'his'} own player`;
+                    g.svk.killer.format = KILLED_BY;
+                    await done(DIED);
+                }
+                break;
+            }
+        } else {
+            mtmp = m_at(cc.x | 0, cc.y | 0);
+        }
         unmap_invisible(cc.x | 0, cc.y | 0);
         if (!mtmp) {
             await pline('There is no monster there.');
@@ -574,6 +632,39 @@ export async function wiz_level_change() {
     u.ulevelmax = u.ulevel;
 
     g.context.move = 0;
+}
+
+/* C ref: wizcmds.c:490-525 — #wiztelekinesis. Keep targeting until cancelled
+ * or a hurtle schedules a level change; the command itself takes no time. */
+export async function wiz_telekinesis() {
+    const u = game.u;
+    const cc = { x: u.ux, y: u.uy };
+
+    await pline('Pick a monster to hurtle.');
+    do {
+        const ans = await getpos(cc, true, 'a monster');
+        if (ans < 0 || cc.x < 1)
+            return ECMD_CANCEL;
+
+        const mtmp = m_at(cc.x, cc.y);
+        if ((mtmp && canspotmon(mtmp)) || (cc.x === u.ux && cc.y === u.uy)) {
+            if (!await getdir('which direction?'))
+                return ECMD_CANCEL;
+
+            if (mtmp) {
+                await mhurtle(mtmp, u.dx, u.dy, 6);
+                if (mtmp.mhp >= 1 && canspotmon(mtmp)) {
+                    cc.x = mtmp.mx;
+                    cc.y = mtmp.my;
+                }
+            } else {
+                await hurtle(u.dx, u.dy, 6, false);
+                cc.x = u.ux;
+                cc.y = u.uy;
+            }
+        }
+    } while ((u.utotype | 0) === UTOTYPE_NONE);
+    return ECMD_OK;
 }
 
 /* C ref: zap.c:6307 makewish(void)

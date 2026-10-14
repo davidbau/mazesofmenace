@@ -1,3 +1,5 @@
+import { reroll_menu } from './cmd.js';
+import { u_init_inventory_attrs } from './u_init.js';
 // @ts-nocheck
 // allmain.js — Main game loop.
 // C ref: allmain.c — newgame, moveloop, moveloop_core.
@@ -9,14 +11,15 @@ import { rehumanize, polymon } from './polyself.js';
 import { you_unwere, is_were } from './were.js';
 import { UNCHANGING, STRANGLED, DIED, KILLED_BY, STONED, SLIMED, STONING, TURNED_SLIME, NO_KILLER_PREFIX, ARTICLE_THE, SUPPRESS_SADDLE, SICK, SICK_ALL, KILLED_BY_AN, SICK_NONVOMITABLE, A_CON, POISONING } from './const.js';
 import { done as done_end, find_delayed_killer, dealloc_killer } from './end.js';
-import { nh_timeout_spell_protection, run_timers, fall_asleep } from './timeout.js';
+import { nh_timeout_spell_protection, run_timers, fall_asleep, slimed_to_death, done_timeout } from './timeout.js';
+import { useup } from './cmd.js';
 import { decrement_property_timeout, timeout_terrain_property,
     terrain_timeout_dialogues } from './terrain_timeout.js';
 import { FIRE_RES, COLD_RES, DISINT_RES, SHOCK_RES, POISON_RES, ACID_RES,
     STONE_RES, DRAIN_RES, SICK_RES, ANTIMAGIC, WARN_OF_MON, DETECT_MONSTERS, DISPLACED, WWALKING,
     MAGICAL_BREATHING, PASSES_WALLS } from './const.js';
 import * as PROPS from './const.js';
-import { mklev, l_nhcore_init, u_on_upstairs, engr_reset_text_pointers } from './mklev.js';
+import { mklev, l_nhcore_init, u_on_upstairs, engr_reset_text_pointers, restartcham } from './mklev.js';
 import { l_nhcore_call, NHCORE_START_NEW_GAME, NHCORE_MOVELOOP_TURN,
     nh_callback_run, NHCB_END_TURN } from './nhlua.js';
 import { clear_bypasses, sink_into_lava } from './trap.js';
@@ -56,6 +59,7 @@ import { learn } from './spell.js';
 import { engrave } from './engrave.js';
 import { m_at } from './uhitm.js';
 import { noattacks_mndx, stealarm_mu } from './mhitu.js';
+import { unstolenarm } from './steal.js';
 import { canspotmon, _topl_stash_result } from './display.js';
 import { pline_flush_point } from './display.js';
 import { spoteffects } from './landing-effects.js';
@@ -271,8 +275,8 @@ export function yyyymmdd(date) {
     return datenum;
 }
 
-// C ref: allmain.c newgame()
-export async function newgame() {
+// C ref: cfgfiles.c config_error_done() at the end of initoptions()
+export async function report_config_errors() {
     const g = game;
     /* C cfgfiles.c:1544-1590 config_erradd() / :1596-1620 config_error_done():
      * the rc errors collected while parsing are reported before any window
@@ -296,8 +300,21 @@ export async function newgame() {
          * parked it: every step of a game that opened with a config-error
          * report records that one position. */
         g._rawCursorFrozen = [g.nhDisplay?.cursorCol ?? 0, g.nhDisplay?.cursorRow ?? 0, 1];
-        await nhgetch();
+        /* wait_synch() is xwaitforspace(""): only Return/Enter or ESC end the
+         * wait (hardfought-style space is not accepted); other keys are read
+         * and discarded, each one a recorded frame. */
+        for (;;) {
+            const c = await nhgetch();
+            if (c === 10 || c === 13 || c === 27 || c === undefined || c < 0)
+                break;
+        }
     }
+}
+
+// C ref: allmain.c newgame()
+export async function newgame() {
+    const g = game;
+    await report_config_errors();
     // C ref: allmain.c newgame():845 — SET_BOTLX() fires before any init
     // functions (notice_mon_off(); SET_BOTLX(); ...).
     // SET_BOTLX() = event_log("botlx[...]") + disp.botlx = TRUE (hack.h:1729).
@@ -461,6 +478,10 @@ export async function newgame() {
     await docrt();
     await flush_screen(1);
     await bot();
+    while (g.u.uroleplay.reroll && await reroll_menu()) {
+        await u_init_inventory_attrs();
+        await bot();
+    }
     // C ref: u_init.c:954 memset(&u,0,...) zeroes u.uac=0 at u_init_misc entry,
     // and bot() at allmain.c:891 renders the status with this 0 value.
     // find_ac() runs inside u_init_skills_discoveries() and updates u.uac.
@@ -513,6 +534,8 @@ export async function newgame() {
     if (!chargenIncomplete && g.flags?.legacy !== false) {
         await com_pager_legacy(!!(g.u?.uroleplay?.pauper), preInitAc, preInitPw);
     }
+    // C allmain.c:835-836 — elapsed play starts after the introduction.
+    g.urealtime = { realtime: 0, start_timing: getnow(), finish_time: 0 };
     // C ref: allmain.c:840 — useful data now exists (impossible() reads this).
     (g.program_state ||= {}).something_worth_saving = ((g.program_state.something_worth_saving | 0) + 1);
     // C ref: allmain.c:923 welcome(TRUE) — role-specific greeting + char description.
@@ -706,14 +729,15 @@ export async function newgame() {
     }
     g.disp = g.disp || { botl: 0, botlx: 0, time_botl: 0, toplin: 0, inmore: 0 };
     g.disp.botlx = 1;
-    // C ref: allmain.c:662-663 — if (!resuming) maybe_do_tutorial()
+    // C ref: allmain.c:591-592 — if (!resuming) maybe_do_tutorial()
     // maybe_do_tutorial calls ask_do_tutorial() when the tutorial level exists.
     // ask_do_tutorial() shows the PICK_ONE menu unless the tutorial option was
     // explicitly set in the config file (opt_set_in_config[opt_tutorial]=true).
     // g.tutorial_set_in_config is set by jsmain.js when OPTIONS=tutorial or
+    // An explicit setting skips the dialog, but still enters when tutorial=true.
     // C ref: maybe_do_tutorial() is only called from moveloop(), not newgame();
     // so skip ask_do_tutorial when chargen has not resolved role.
-    if (!g.tutorial_set_in_config && !chargenIncomplete) {
+    if (!chargenIncomplete) {
         if (await ask_do_tutorial()) {
             // C: assign_level(&u.ucamefrom, &u.uz)
             g.u = g.u || {};
@@ -862,7 +886,9 @@ export async function unmul(msg_override) {
  * and any death/lifesaving caused by removing protection. */
 async function afternmv_dispatch(tag) {
     switch (tag) {
+        case 'eatmdone': return (await import('./eat.js')).eatmdone();
         case 'stealarm':   return stealarm_mu(); /* steal.c:165 */
+        case 'unstolenarm': return unstolenarm(); /* steal.c:146 */
         case 'Finish_digestion': return Finish_digestion(); /* eat.c:3961 */
         case 'Armor_off':  return Armor_off();
         case 'Shield_off': return Shield_off();
@@ -1288,6 +1314,11 @@ async function faithful_moveloop_turn() {
                 await timeout_terrain_property(WWALKING);
                 await timeout_terrain_property(MAGICAL_BREATHING);
                 await timeout_terrain_property(PASSES_WALLS);
+                // C timeout.c:938-942 — property 60 expires before FAST (64).
+                if (decrement_property_timeout(PROPS.PROT_FROM_SHAPE_CHANGERS)) {
+                    const p = g.u.uprops[PROPS.PROT_FROM_SHAPE_CHANGERS];
+                    if (!p.intrinsic && !p.extrinsic) await restartcham();
+                }
                 await nh_timeout_fast();
                 /* C timeout.c:670-671 — the generic loop decrements EVERY timed
                  * property; properties with no switch arm (timeout.c:672-940) just
@@ -1456,7 +1487,7 @@ async function eat_occupation_turn() {
     // hunger state so the forced --More-- shows it (before lesshungry's newuhs() bump).
     const thisTurnUhs = (g.u && g.u.uhs != null) ? (g.u.uhs | 0) : null;
     g._eatPreEffectFrame = null;
-    const prior = g._occ_committed_topl;
+    let prior = g._occ_committed_topl;
     // The committed topline (prior.text) was shown coming into this turn (the inter-turn
     // flush set _pending_message = prior.text, which the incomingMove block then merged
     // into _resultMessage).  Strip that known prefix so we isolate THIS turn's fresh
@@ -1488,7 +1519,26 @@ async function eat_occupation_turn() {
      * bite runs; choke()'s fatal path never returns here, so it needs them on the
      * live topline (timeout.c:628 precedes allmain.c:485). */
     g._occPreEatLive = (!prior && preEat) ? preEat : null;
-    const r = await eatfood();
+    // C allmain.c:498 calls eatfood with the earlier topline still live.
+    // A query inside the callback must drain it before reading its answer.
+    g._occBeforeInput = () => {
+        // choke() may already have moved the pre-bite messages to the live line.
+        if (g._occPreEatUsed) { preEat = ''; preEatJoins = []; }
+        const prefix = prior?.text || '';
+        const text = prefix && preEat ? `${prefix}  ${preEat}` : prefix || preEat;
+        const joins = prefix && preEat
+            ? [prefix.length, ...preEatJoins.map(off => off + prefix.length + 2)]
+            : prefix ? [] : preEatJoins;
+        prior = null;
+        preEat = '';
+        preEatJoins = [];
+        g._occ_committed_topl = null;
+        g._occPreEatLive = null;
+        return { text, joins };
+    };
+    let r;
+    try { r = await eatfood(); }
+    finally { g._occBeforeInput = null; }
     g._occPreEatLive = null;
     if (g._occPreEatUsed) {
         g._occPreEatUsed = false;
@@ -1831,9 +1881,7 @@ async function nh_timeout_sick() {
     g.svk = g.svk || {};
     g.svk.killer = { id: 0, name: kptr?.name || '', format: kptr?.name ? kptr.format : KILLED_BY_AN, next: null };
     dealloc_killer(kptr);
-    p.intrinsic |= I_SPECIAL; /* done_timeout, timeout.c:575 */
-    await done_end(POISONING);
-    p.intrinsic &= ~I_SPECIAL;
+    await done_timeout(POISONING, SICK);
     g.u.usick_type = 0;
 }
 
@@ -1876,29 +1924,12 @@ async function nh_timeout_slimed() {
     p.intrinsic = (p.intrinsic | 0) - 1;
     if ((p.intrinsic | 0) & TIMEOUT)
         return;
-    const kptr = find_delayed_killer(SLIMED);
-    if ((g.u?.umonnum | 0) === PM_GREEN_SLIME && g.u?.mtimedone) {
-        dealloc_killer(kptr);
-        return;
-    }
-    g.svk = g.svk || {};
-    g.svk.killer = g.svk.killer || { id: 0, format: 0, name: '', next: null };
-    if (kptr && kptr.name) {
-        g.svk.killer.format = kptr.format;
-        g.svk.killer.name = kptr.name;
-    } else {
-        g.svk.killer.format = NO_KILLER_PREFIX;
-        g.svk.killer.name = 'turned into green slime';
-    }
-    dealloc_killer(kptr);
-    await polymon(PM_GREEN_SLIME);
-    await done_end(TURNED_SLIME);
-    if (g.disp) g.disp.botl = 1;
+    await slimed_to_death(find_delayed_killer(SLIMED));
 }
 
 /* C timeout.c:890-894 generic countdown, STRANGLED (19): at expiry the hero
  * dies of strangulation/suffocation.  (The life-saved tail, timeout.c:895-905,
- * is not ported: the amulet-vanishes arm needs useup on uamul.) */
+ * consumes uamul after done_timeout returns.) */
 async function nh_timeout_strangled() {
     const g = game;
     const p = g.u?.uprops?.[STRANGLED];
@@ -1911,7 +1942,11 @@ async function nh_timeout_strangled() {
     g.svk.killer = g.svk.killer || { id: 0, format: 0, name: '', next: null };
     g.svk.killer.format = KILLED_BY;
     g.svk.killer.name = g.u.uburied ? 'suffocation' : 'strangulation';
-    await done_end(DIED);
+    await done_timeout(DIED, STRANGLED);
+    if (g.u.uamul?.otyp === 203 /* AMULET_OF_STRANGULATION */) {
+        await pline('Your amulet vanishes!');
+        await useup(g.u.uamul);
+    }
 }
 
 async function nh_timeout_stunned() {
@@ -3578,6 +3613,11 @@ async function moveloop_core_faithful() {
             // C allmain.c:556 — (*go.occupation)() == forcelock(); 0 ends the force.
             const r = await forcelock();
             if (r === 0) g.occupation = null;
+            // C allmain.c:504-507 — interrupt before the next world's attacks.
+            if (monster_nearby()) {
+                await stop_occupation();
+                reset_eat();
+            }
         }
         // C ref: src/pline.c:274 — `if (u.ux) flush_screen(...)` runs BEFORE
         // putmesg(), so the physical screen that each of forcelock()'s plines
@@ -3598,15 +3638,24 @@ async function moveloop_core_faithful() {
         // staged messages in C, so hold them back and append them last.
         const _res0 = g._resultMessage ?? null;
         const _pend0 = g._pending_message || '';
+        const _pendJoins0 = _topl_joins_snapshot(_pend0);
         if (!forceInterrupted) await faithful_moveloop_turn();
         let _postTail = '';
+        let _postJoins = null;
         {
             const _p1 = g._pending_message || '';
             const _pre = [_res0, _pend0].filter(Boolean).join('  ');
             if (_p1.length > _pre.length && _p1.startsWith(_pre)) {
                 _postTail = _p1.slice(_pre.length).trim();
+                // C topl.c:262 — preserve each pline boundary when holding back
+                // the post-occupation text; the width test applies per message.
+                const _postStart = _pre.length + (_pre ? 2 : 0);
+                _postJoins = (_topl_joins_snapshot(_p1) || [])
+                    .filter(off => off >= _postStart).map(off => off - _postStart);
                 g._resultMessage = _res0;
                 g._pending_message = _pend0;
+                g._topl_joins = _pendJoins0 || [];
+                g._topl_joins_src = _pend0;
             }
         }
         if (g.vision_full_recalc) {
@@ -3664,8 +3713,11 @@ async function moveloop_core_faithful() {
                             f.off = full.length;
                     }
                 }
+                const fullJoins = _topl_joins_snapshot(full);
+                g._topl_joins = _postJoins || [];
+                g._topl_joins_src = _postTail;
                 full = full
-                    ? _topl_merge_result(full, _postTail, _topl_joins_snapshot(full) || undefined)
+                    ? _topl_merge_result(full, _postTail, fullJoins || undefined)
                     : _postTail;
             }
             g._forceMsgs = null;

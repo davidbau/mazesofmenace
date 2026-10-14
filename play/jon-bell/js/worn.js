@@ -1,17 +1,18 @@
 // @ts-nocheck
 // C ref: nethack-c-v5/upstream/src/worn.c — shared worn-gear bookkeeping.
 import { game } from './gstate.js';
-import { cancel_doff, recalc_telepat_range } from './do_wear.js';
-import { MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js';
-import { is_weptool, monstunseesu, cvt_prop_to_mseenres } from './mhitm.js';
+import { cancel_doff, recalc_telepat_range, is_elven_armor, oc_armcat } from './do_wear.js';
+import { MKOBJ_OC_OPROP, MKOBJ_OC_MERGE } from './mkobj_erosion_meta.js';
+import { armcat_to_wornmask } from './trap.js';
+import { is_weptool, monstunseesu, cvt_prop_to_mseenres, raceptr } from './mhitm.js';
 import { update_inventory } from './inventory_refresh.js';
 import { set_artifact_intrinsic, set_twoweap } from './cmd.js';
 import { impossible } from './pline.js';
-import { PM_MONK, PM_WIZARD } from './pm.generated.js';
+import { PM_MONK, PM_WIZARD, PM_HOBBIT } from './pm.generated.js';
 import {
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_ARMOR,
     W_RINGL, W_RINGR, W_WEP, W_SWAPWEP, W_QUIVER, W_AMUL, W_TOOL,
-    W_BALL, W_CHAIN, I_SPECIAL, INVIS, CLAIRVOYANT, BLINDED,
+    W_BALL, W_CHAIN, W_SADDLE, I_SPECIAL, INVIS, CLAIRVOYANT, BLINDED,
 } from './const.js';
 
 export function bypass_obj(obj) {
@@ -42,6 +43,10 @@ const worn = [
 const WEAPON_CLASS = 2;
 const MUMMY_WRAPPING = 138, CORNUTHAUM = 93;
 const ART_EYES_OF_THE_OVERWORLD = 26;
+const ARMOR_CLASS = 3, RING_CLASS = 4, AMULET_CLASS = 5, TOOL_CLASS = 6,
+      FOOD_CLASS = 7, GEM_CLASS = 13, BALL_CLASS = 15, CHAIN_CLASS = 16;
+const BLINDFOLD = 233, TOWEL = 234, LENSES = 232, TIN_OPENER = 239,
+      SADDLE = 235, MEAT_RING = 270;
 
 // C's u.uprops[] is zero-initialized, including the non-property entry 0.
 function uprop(p) {
@@ -145,4 +150,58 @@ export function setnotworn(obj) {
         game.disp.botl = true;
     update_inventory();
     recalc_telepat_range();
+}
+
+/* C worn.c:281-350 — possible equipment slots for ordinary item usage.
+ * poly_obj (zap.c:1924-1929) preserves wielded/quivered non-weapons itself. */
+export function wearslot(obj) {
+    const otyp = obj.otyp;
+    let res = 0;
+    switch (obj.oclass) {
+    case AMULET_CLASS:
+        res = W_AMUL;
+        break;
+    case RING_CLASS:
+        res = W_RINGL | W_RINGR;
+        break;
+    case ARMOR_CLASS:
+        res = armcat_to_wornmask(oc_armcat(obj));
+        break;
+    case WEAPON_CLASS:
+        res = W_WEP | W_SWAPWEP;
+        if (MKOBJ_OC_MERGE[otyp])
+            res |= W_QUIVER;
+        break;
+    case TOOL_CLASS:
+        if (otyp === BLINDFOLD || otyp === TOWEL || otyp === LENSES)
+            res = W_TOOL;
+        else if (is_weptool(obj) || otyp === TIN_OPENER)
+            res = W_WEP | W_SWAPWEP;
+        else if (otyp === SADDLE)
+            res = W_SADDLE;
+        break;
+    case FOOD_CLASS:
+        if (otyp === MEAT_RING)
+            res = W_RINGL | W_RINGR;
+        break;
+    case GEM_CLASS:
+        res = W_QUIVER;
+        break;
+    case BALL_CLASS:
+        res = W_BALL;
+        break;
+    case CHAIN_CLASS:
+        res = W_CHAIN;
+        break;
+    }
+    return res;
+}
+
+/* C worn.c:1359-1374 — raceptr handles the hero's polymorphed race. */
+export function racial_exception(mon, obj) {
+    const ptr = raceptr(mon);
+    // Hobbits may wear elven armor; C defines no unacceptable exceptions.
+    if (ptr.pmidx === PM_HOBBIT && is_elven_armor(obj))
+        return 1;
+    return 0;
 }

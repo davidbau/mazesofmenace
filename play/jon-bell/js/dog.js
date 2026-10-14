@@ -819,7 +819,7 @@ export async function make_happy_shoppers(silentkops) {
     /* C mon.c:5758 pacify_guards(): is_watch() monsters become peaceful. */
     for (let mon = game.fmon; mon; mon = mon.nmon) {
         const pm = mon.mndx ?? mon.data?.pmidx ?? mon.data?.mndx;
-        if ((mon.mhp | 0) > 0
+        if ((mon.mhp | 0) > 0 && (mon.mstate | 0) === 0
             && (pm === PM_WATCHMAN || pm === PM_WATCH_CAPTAIN))
             mon.mpeaceful = 1;
     }

@@ -1,24 +1,24 @@
 // Clear equipment when an item leaves the hero or changes type.
 // C worn.c:setnotworn(). Command messages belong to the caller.
 import { clearHeroAccessory, removeHeroAccessory } from './accessory.js';
-import { armorSlotFor, clearHeroArmor, removeHeroArmor } from './armor.js';
+import { announceDisplacementLoss, armorSlotFor, clearHeroArmor, removeHeroArmor } from './armor.js';
 import { I_SPECIAL } from './const.js';
 import { removeEyewear, unequipEyewear } from './eyewear.js';
 import { game } from './gstate.js';
 import { syncBlindness } from './senses.js';
 import { losePrimaryWeapon, releaseWeaponSlots } from './weapon_slots.js';
-export async function removeHeroEquipment(object, state = game) {
+export async function removeHeroEquipment(object, state = game, { deferArmorClass = false, } = {}) {
     const armorSlot = armorSlotFor(object.otyp);
     if (state.uskin === object) {
         state.uskin = null;
         object.owornmask = (object.owornmask ?? 0) & ~I_SPECIAL;
-        await clearHeroArmor(object, state);
+        await clearHeroArmor(object, state, { deferArmorClass });
     }
     if (armorSlot && (state[armorSlot] === object
         || state.u?.[armorSlot] === object)) {
-        await clearHeroArmor(object, state);
+        await clearHeroArmor(object, state, { deferArmorClass });
     }
-    clearHeroAccessory(object, state);
+    clearHeroAccessory(object, state, { deferArmorClass });
     if (state.ublindf === object || state.u?.ublindf === object) {
         unequipEyewear(object, state);
         syncBlindness(state);
@@ -32,10 +32,16 @@ export async function removeWornHeroItem(object, state = game) {
     object.in_use = true;
     try {
         const slot = armorSlotFor(object.otyp);
-        if (slot && (state[slot] === object || state.u?.[slot] === object))
-            // Native *_off() clears worn sources; the command loop owns
-            // find_ac(). A fatal removal can end before that refresh.
-            await removeHeroArmor(object, state, { deferArmorClass: true });
+        if (slot && (state[slot] === object || state.u?.[slot] === object)) {
+            const cancelledDon = state._delayedAction?.kind === 'wear'
+                && state._delayedAction.object === object;
+            // Native *_off() clears worn sources; the command loop owns find_ac().
+            const removed = await removeHeroArmor(object, state, {
+                deferArmorClass: true,
+            });
+            if (removed && !cancelledDon)
+                await announceDisplacementLoss(object, state);
+        }
         await removeHeroAccessory(object, state);
         if (state.ublindf === object || state.u?.ublindf === object) {
             await removeEyewear(object, { state });

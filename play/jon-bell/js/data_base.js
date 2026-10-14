@@ -243,8 +243,8 @@ export function checkfile_lookup(inp) {
  * offer more than one neutral species name.  It is display-channel only and
  * does not consume RNG.
  */
-export function checkfile_entries(inp) {
-    const keys = checkfile_keys(inp);
+export function checkfile_entries(inp, supplemental = null) {
+    const keys = checkfile_keys(inp, supplemental);
     if (!keys) return [];
     return resolve_checkfile_entries(keys).entries;
 }
@@ -293,8 +293,8 @@ export function ia_checkfile(inp) {
 /* checkfile()'s key derivation, shared by the two modes above.  Returns null
  * where C bails out early (pager.c:944 empty name).
  * C ref: pager.c:942-1012. */
-function checkfile_keys(inp) {
-    if (inp == null) return null;
+function checkfile_keys(inp, supplemental = null) {
+    if (inp == null || String(inp).length > 255) return null;
     let dbase_str = mangle_dbase_str(inp);
     if (!dbase_str) return null;         /* pager.c:944 "Make sure the name is non-empty" */
 
@@ -313,6 +313,11 @@ function checkfile_keys(inp) {
         if (called !== -1) {
             alt = dbase_str.slice(called + 8);
             ep = called;
+            // C pager.c:958-962 preserves the original case and suffixes for
+            // do_supplemental_info, independently of the encyclopedia key.
+            const originalCalled = String(inp).toLowerCase().indexOf(' called ');
+            if (supplemental && originalCalled !== -1)
+                supplemental.name = String(inp).slice(originalCalled + 8, originalCalled + 8 + 255);
         } else {
             ep = dbase_str.indexOf(', ');
         }

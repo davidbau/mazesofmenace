@@ -1,17 +1,19 @@
 // region.js — port of nethack-c/src/region.c (scaffold: functions are added here
 
-import { NHF_BONESFILE, DOOR } from './const.js';
+import { NHF_BONESFILE, DOOR, MAGICAL_BREATHING, TELEDS_NO_FLAGS } from './const.js';
 import { game } from './gstate.js';
-import { rn2, rnd } from './rng.js';
+import { rn2, rnd, d } from './rng.js';
 const HALF_PHYSICAL_DAMAGE = 74; /* C prop.h HALF_PHYS_DAM */
 import { Monnam, monstseesu, monstunseesu } from './mcastu.js';
 import { You, Your } from './do_wear.js';
 import { makeplural } from './objnam.js';
-import { body_part } from './cmd.js';
+import { body_part, region_danger } from './cmd.js';
 import { losehp } from './dokick.js';
 import { killed } from './mhitm.js';
 import { monkilled_trap } from './trap.js';
-import { make_blinded } from './zap.js';
+import { make_blinded, BlindedTimeout } from './zap.js';
+import { set_itimeout } from './potion.js';
+import { safe_teleds } from './teleport.js';
 import { EYE, LUNG, POISON_RES, KILLED_BY_AN, M_SEEN_POISON, M_POISONGAS_OK } from './const.js';
 import { wake_nearto, resists_poison, setmangry } from './mklev.js';
 import { isok } from './hacklib.js';
@@ -325,9 +327,8 @@ export function free_region(_reg) {
 // C ref: decl.h svn.n_regions / gr.regions — a read-only view of the live
 // region list for callers outside this module.  pray.c's region_danger()
 // (region.c:1341) and region_safety() (region.c:1367) both walk exactly this
-// list; they are hosted in js/cmd.js because their predicates
-// (nonliving/Breathless/Poison_resistance) live on that side and this module
-// deliberately imports almost nothing.  Returns the live region objects (the
+// list; region_danger is hosted in js/cmd.js alongside its predicates
+// (nonliving/Breathless/Poison_resistance). Returns the live region objects (the
 // caller only reads inside_f / player_flags), sliced to n_regions so a stale
 // tail left by the grow-by-10 bookkeeping is never visible.
 export function regions_list() {
@@ -1188,4 +1189,40 @@ function valid_cloud_pos(x, y) {
     if (!lev)
         return false;
     return ((lev.typ | 0) >= DOOR) || is_pool_or_lava(x, y);
+}
+
+// C ref: region.c:1367-1407 region_safety() — cure gas-cloud prayer trouble.
+export async function region_safety() {
+    let r = null;
+    let n = 0;
+
+    for (let i = 0; i < svn.n_regions; i++) {
+        if (!hero_inside(gr.regions[i]))
+            continue;
+        if (gr.regions[i].inside_f === INSIDE_GAS_CLOUD) {
+            if (!n++ && gr.regions[i].ttl >= 0)
+                r = gr.regions[i];
+        }
+    }
+
+    if (n > 1 || (n === 1 && !r)) {
+        await safe_teleds(TELEDS_NO_FLAGS);
+        // Teleportation may fail, or leave the hero in another gas cloud.
+        if (region_danger()) {
+            const u = game.u;
+            const p = u.uprops[MAGICAL_BREATHING]
+                || (u.uprops[MAGICAL_BREATHING] = { intrinsic: 0, extrinsic: 0 });
+            const timeout = { value: p.intrinsic | 0 };
+            set_itimeout(timeout, d(4, 4) + 4);
+            p.intrinsic = timeout.value;
+            await You('feel able to breathe.');
+        }
+    } else if (r) {
+        remove_region(r);
+        await pline('The gas cloud enveloping you dissipates.');
+    } else {
+        await pline('The gas cloud has dissipated.');
+    }
+    if (BlindedTimeout() === 1)
+        make_blinded(0, true);
 }

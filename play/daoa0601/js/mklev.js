@@ -10,6 +10,8 @@ import { setTinVariety } from './tin.js';
 import { setWallState } from './wall_topology.js';
 import { monsterHasMapPosition, monsterAtPosition, monsterOccupiesPosition } from './monster_location.js';
 import { finishMonsterBirth } from './monster_birth.js';
+import { createParticularMonster } from './read_creation.js';
+import { setMonsterPermanentInvisibility } from './monster_invisibility.js';
 import { nameObjectFromTopten } from './topten.js';
 import { normalDemon } from './minion.js';
 import { randomMonsterRelocation } from './teleport.js';
@@ -53,7 +55,7 @@ import { carveMazeFrom, createMaze } from './maze_terrain.js';
 import { DRY, HOT, NO_LOC_WARN, SOLID, WET, getLocationCoord } from './special_location.js';
 import { MAP_SYMBOLS } from './map_symbols.js';
 import { cleanupSpecialLevelMap, removeSpecialLevelBoundaries } from './special_level_cleanup.js';
-import { A_CHA, COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, LADDER, HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, D_NODOOR, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED, OROOM, VAULT, COURT, SWAMP, BEEHIVE, MORGUE, BARRACKS, ZOO, TEMPLE, LEPREHALL, COCKNEST, ANTHOLE, DELPHI, THEMEROOM, SHOPBASE, ROOMOFFSET, MAXNROFROOMS, SHARED, SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, ALTAR, GRAVE, THRONE, HEADSTONE, ENGRAVE, BURN, MARK, DUST, ENGR_BLOOD, DIR_N, DIR_S, DIR_E, DIR_W, DIR_180, XL_UP, XL_DOWN, XL_LEFT, XL_RIGHT, ACCESSIBLE, IS_WALL, IS_STWALL, IS_DOOR, IS_ROOM, IS_OBSTRUCTED, ZAP_POS, IS_FURNITURE, IS_POOL, IS_AIR, IS_LAVA, In_endgame, Is_earthlevel, Is_botlevel, Is_stronghold, Invocation_lev, In_hell, In_quest, In_V_tower, Is_oracle_level, Is_waterlevel, Is_knox_level, Is_rogue_level, In_sokoban, SPACE_POS, isok, W_NONDIGGABLE, W_NONPASSWALL, FILL_NONE, FILL_NORMAL, ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DBWALL, ICED_POOL, ICED_MOAT, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, DB_MOAT, DB_LAVA, DB_UNDER, DB_FLOOR, SHOP_HOLE_COST, TREE, AIR, CLOUD, A_NONE, A_CHAOTIC, A_NEUTRAL, A_LAWFUL, P_SHORT_SWORD, P_SABER, AM_SHRINE, AM_SANCTUM, Align2amask, LR_DOWNSTAIR, LR_UPSTAIR, LR_UPTELE, LR_DOWNTELE, LR_TELE, LR_BRANCH, LR_PORTAL, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE, MM_ANGRY, MM_ASLEEP, MM_NONAME, MM_NOGRP, MM_EMIN, MM_EPRI, MM_NOWAIT, MM_NOTAIL, MM_IGNOREWATER, MM_ADJACENTOK, MM_NOCOUNTBIRTH, MM_NOMSG, MM_MALE, MM_FEMALE, MM_EDOG, NO_MINVENT, G_EXTINCT, G_GENOD, G_GONE, G_NOCORPSE, ROT_AGE, TROLL_REVIVE_CHANCE, HEALTHY_TIN, RANDOM_TIN, CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_NEUTER, CORPSTAT_HISTORIC, CORPSTAT_INIT, CORPSTAT_SPE_VAL, STRAT_APPEARMSG, STRAT_CLOSE, STRAT_WAITFORU, ANTI_MAGIC, TT_BURIEDBALL, TT_BEARTRAP, TT_WEB, TT_PIT, TT_LAVA, } from './const.js';
+import { A_CHA, COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, LADDER, HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, D_NODOOR, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED, OROOM, VAULT, COURT, SWAMP, BEEHIVE, MORGUE, BARRACKS, ZOO, TEMPLE, LEPREHALL, COCKNEST, ANTHOLE, DELPHI, THEMEROOM, SHOPBASE, ROOMOFFSET, MAXNROFROOMS, SHARED, SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, ALTAR, GRAVE, THRONE, HEADSTONE, ENGRAVE, BURN, MARK, DUST, ENGR_BLOOD, DIR_N, DIR_S, DIR_E, DIR_W, DIR_180, XL_UP, XL_DOWN, XL_LEFT, XL_RIGHT, ACCESSIBLE, IS_WALL, IS_STWALL, IS_DOOR, IS_ROOM, IS_OBSTRUCTED, ZAP_POS, IS_FURNITURE, IS_POOL, IS_AIR, IS_LAVA, In_endgame, Is_earthlevel, Is_botlevel, Is_stronghold, Invocation_lev, In_hell, In_quest, In_V_tower, Is_oracle_level, Is_waterlevel, Is_knox_level, Is_rogue_level, In_sokoban, SPACE_POS, isok, W_NONDIGGABLE, W_NONPASSWALL, FILL_NONE, FILL_NORMAL, ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DBWALL, ICED_POOL, ICED_MOAT, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, DB_MOAT, DB_LAVA, DB_UNDER, DB_FLOOR, SHOP_HOLE_COST, TREE, AIR, CLOUD, A_NONE, A_CHAOTIC, A_NEUTRAL, A_LAWFUL, P_SHORT_SWORD, P_SABER, AM_SHRINE, AM_SANCTUM, Align2amask, LR_DOWNSTAIR, LR_UPSTAIR, LR_UPTELE, LR_DOWNTELE, LR_TELE, LR_BRANCH, LR_PORTAL, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE, MM_ANGRY, MM_ASLEEP, MM_NONAME, MM_NOGRP, MM_EMIN, MM_EPRI, MM_NOWAIT, MM_NOTAIL, MM_IGNOREWATER, MM_ADJACENTOK, MM_NOCOUNTBIRTH, MM_NOMSG, MM_MALE, MM_FEMALE, MM_MINVIS, MM_EDOG, NO_MINVENT, G_EXTINCT, G_GENOD, G_GONE, G_NOCORPSE, ROT_AGE, TROLL_REVIVE_CHANCE, HEALTHY_TIN, RANDOM_TIN, CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_NEUTER, CORPSTAT_HISTORIC, CORPSTAT_INIT, CORPSTAT_SPE_VAL, STRAT_APPEARMSG, STRAT_CLOSE, STRAT_WAITFORU, ANTI_MAGIC, TT_BURIEDBALL, TT_BEARTRAP, TT_WEB, TT_PIT, TT_LAVA, } from './const.js';
 import { getObjectClassBounds, getObjectDefinition, requireObjectData, OBJECT_BASES, OBJECT_PROB, OBJECT_MATERIAL, OBJECT_SPELL_LEVEL, OBJECT_MERGE, OBJECT_WEIGHT, OBJECT_COST, OBJECT_SUBTYPE, WORM_TOOTH, UNICORN_HORN, HELM_OF_OPPOSITE_ALIGNMENT, GAUNTLETS_OF_FUMBLING, FUMBLE_BOOTS, LEVITATION_BOOTS, AMULET_OF_STRANGULATION, AMULET_OF_RESTFUL_SLEEP, AMULET_OF_CHANGE, AMULET_OF_YENDOR, FAKE_AMULET_OF_YENDOR, LARGE_BOX, CHEST, ICE_BOX, SACK, OILSKIN_SACK, BAG_OF_HOLDING, BAG_OF_TRICKS, TALLOW_CANDLE, WAX_CANDLE, BRASS_LANTERN, OIL_LAMP, MAGIC_LAMP, EXPENSIVE_CAMERA, CRYSTAL_BALL, TINNING_KIT, CAN_OF_GREASE, FIGURINE, MAGIC_MARKER, MAGIC_FLUTE, FROST_HORN, FIRE_HORN, HORN_OF_PLENTY, MAGIC_HARP, DRUM_OF_EARTHQUAKE, CORPSE, EGG, MEAT_RING, GLOB_OF_GRAY_OOZE, GLOB_OF_BLACK_PUDDING, KELP_FROND, SLIME_MOLD, MELON, LUMP_OF_ROYAL_JELLY, CREAM_PIE, CANDY_BAR, TIN, GOLD_PIECE, SPE_NOVEL, SPE_BOOK_OF_THE_DEAD, DILITHIUM_CRYSTAL, LUCKSTONE, LOADSTONE, TOUCHSTONE, ROCK, BOULDER, STATUE, DART, DAGGER, SPEAR, SLING, ORCISH_DAGGER, MACE, QUARTERSTAFF, BULLWHIP, FEDORA, ELVEN_ARROW, ELVEN_SPEAR, ELVEN_DAGGER, ELVEN_SHORT_SWORD, ELVEN_BROADSWORD, ELVEN_BOW, ELVEN_LEATHER_HELM, ELVEN_MITHRIL_COAT, ELVEN_CLOAK, ELVEN_SHIELD, ELVEN_BOOTS, ORCISH_ARROW, ORCISH_SHORT_SWORD, ORCISH_BOW, ORCISH_HELM, ORCISH_CHAIN_MAIL, ORCISH_CLOAK, URUK_HAI_SHIELD, ORCISH_SHIELD, SCIMITAR, AXE, PICK_AXE, DWARVISH_SPEAR, DWARVISH_SHORT_SWORD, DWARVISH_MATTOCK, DWARVISH_IRON_HELM, DWARVISH_MITHRIL_COAT, DWARVISH_CLOAK, DWARVISH_ROUNDSHIELD, IRON_SHOES, HELMET, SPLINT_MAIL, RING_MAIL, SMALL_SHIELD, ROBE, CLOAK_OF_PROTECTION, CLOAK_OF_MAGIC_RESISTANCE, LEATHER_ARMOR, LEATHER_JACKET, LEATHER_GLOVES, MIRROR, POT_OBJECT_DETECTION, RIN_INVISIBILITY, SHIELD_OF_REFLECTION, SADDLE, WAN_CANCELLATION, WAN_LIGHT, WAN_LIGHTNING, } from './object_data.js';
 import { MONSTER_ATTACKS, MONSTER_BODY_META, MONSTER_DIFFICULTY, MONSTER_GENO, MONSTER_ALIGNMENT, MONSTER_LEVEL, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_FLAGS3, MONSTER_SYMBOL, MONSTER_SIZE, MONSTER_MOVE, MONSTER_SOUND, MONSTER_HAS_WEAPON_ATTACK, MONSTER_COLOR, MONSTER_NAME, MONSTER_RESISTS, SPECIAL_PM, monsterClassSymbol, monsterIsPlayerMonster, requireMonsterData, } from './monster_data.js';
 import { isReviver, isRider, zombieForm, } from './corpse_species.js';
@@ -1636,11 +1638,28 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
         x = point.x;
         y = point.y;
     }
-    // C makemon() rejects an occupied explicit coordinate before choosing a
-    // species or allocating an id.  Callers which permit displacement choose
-    // the adjacent square before entering this constructor.
-    if (levelMonsterAt(x, y))
-        return null;
+    else if (!game.in_mklev && x === game.u.ux && y === game.u.uy) {
+        const point = findMonsterNearPosition(mdat, x, y, {
+            ignoreWater: !!(mmflags & MM_IGNOREWATER), gpflags: GP_AVOID_MONPOS,
+        });
+        if (!point)
+            return null;
+        x = point.x;
+        y = point.y;
+        requestedByHero = true;
+    }
+    if (levelMonsterAt(x, y)) {
+        if (!(mmflags & MM_ADJACENTOK))
+            return null;
+        // The occupied-square branch has only the scary-square-aware search.
+        const flags = GP_AVOID_MONPOS | GP_CHECKSCARY
+            | (mmflags & MM_IGNOREWATER);
+        const point = findMonsterNearPositionCore(mdat, x, y, flags, game);
+        if (!point)
+            return null;
+        x = point.x;
+        y = point.y;
+    }
     let mndx = mdat;
     if (mndx == null) {
         // C accepts the 51st result even if every preceding type was
@@ -1722,6 +1741,12 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
         hasInventory: false,
     };
     const monsterIndex = level.monsters.push(pendingMonster) - 1;
+    if (mmflags & MM_MINVIS) {
+        setMonsterPermanentInvisibility(pendingMonster);
+        newsym(pendingMonster.mx, pendingMonster.my);
+    }
+    if (mndx === PM_STALKER || mndx === PM_BLACK_LIGHT)
+        setMonsterPermanentInvisibility(pendingMonster);
     const isMimic = MONSTER_SYMBOL[mndx] === S_MIMIC;
     if (isMimic)
         await setMimicAppearance(pendingMonster);
@@ -1731,8 +1756,10 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
     }
     const shaped = await initialShapechangedBirth(pendingMonster);
     if (shaped) {
-        if (requestedByHero)
+        if (requestedByHero) {
+            newsym(shaped.mx, shaped.my);
             setMonsterApparentHeroPosition(shaped, game, rn2);
+        }
         setMonsterMalign(shaped);
         level.monsters[monsterIndex] = shaped;
         return finishMonsterBirth(shaped, mmflags);
@@ -1740,8 +1767,10 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
     // makemon.c owns this initialization when its original requested
     // coordinate was the hero's occupied square.  enexto() has already moved
     // the actor, so preserve that caller fact separately from final x/y.
-    if (requestedByHero)
+    if (requestedByHero) {
+        newsym(pendingMonster.mx, pendingMonster.my);
         setMonsterApparentHeroPosition(pendingMonster, game, rn2);
+    }
     if (mndx === PM_LONG_WORM)
         initializeMonsterWormBody(pendingMonster, {
             allowTail: !(mmflags & MM_NOTAIL),
@@ -2618,7 +2647,7 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
         && (wieldedArtifact === artifactByName('Excalibur')?.id || wieldedArtifact === artifactByName('Demonbane')?.id);
     const birthPeaceful = bribingPrince ? !baneWielded
         : mndx === PM_RAVEN && game.uwep?.otyp === BEC_DE_CORBIN ? true : peaceful;
-    const birthInvisible = monsterInvisible || bribingPrince;
+    const birthInvisible = monsterInvisible || bribingPrince || !!pendingMonster.perminvis;
     const monster = {
         m_id: monsterId,
         mnum: mndx, cham: pendingMonster.cham ?? -1,
@@ -2676,8 +2705,8 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
             (game.context.no_of_wizards || 0) + 1;
     }
     restoreMonsterInventoryOwnership(monster);
-    await initializeMonsterArmor(monster);
     if (allowMonsterInventory) {
+        await initializeMonsterArmor(monster);
         await maybeGiveDomesticSaddle(monster);
         monster.hasInventory = monsterInventory.length > 0;
     }
@@ -2745,12 +2774,11 @@ function collectShuffledMonsterCoordinates(centerX, centerY, maxRadius = 0) {
     }
     return candidates;
 }
-function findMonsterNearPositionCore(mnum, centerX, centerY, checkScary, ignoreWater, state) {
+function findMonsterNearPositionCore(mnum, centerX, centerY, gpflags, state) {
     const species = mnum ?? state.u.umonster;
     if (species === undefined)
         throw new Error('monster placement requires a species or initialized hero body');
     const subject = { kind: 'species', mnum: species };
-    const gpflags = (checkScary ? GP_CHECKSCARY : 0) | (ignoreWater ? MM_IGNOREWATER : 0);
     const nearby = collectShuffledMonsterCoordinates(centerX, centerY, 3);
     for (const pos of nearby) {
         if (goodPosition(pos.x, pos.y, subject, { state, gpflags }))
@@ -2769,8 +2797,9 @@ function findMonsterNearPositionCore(mnum, centerX, centerY, checkScary, ignoreW
 // only total failure triggers an independently shuffled unrestricted search.
 // Exposing selection separately lets callbacks distinguish enexto failure
 // from a later makemon()/make_familiar() construction failure.
-export function findMonsterNearPosition(mnum, centerX, centerY, { ignoreWater = false, state = game } = {}) {
-    return findMonsterNearPositionCore(mnum, centerX, centerY, true, ignoreWater, state) || findMonsterNearPositionCore(mnum, centerX, centerY, false, ignoreWater, state);
+export function findMonsterNearPosition(mnum, centerX, centerY, { ignoreWater = false, gpflags = 0, state = game } = {}) {
+    const flags = gpflags | (ignoreWater ? MM_IGNOREWATER : 0);
+    return findMonsterNearPositionCore(mnum, centerX, centerY, flags | GP_CHECKSCARY, state) || findMonsterNearPositionCore(mnum, centerX, centerY, flags & ~GP_CHECKSCARY, state);
 }
 // C refs: mhitu.c:cloneu(), potion.c:split_mon(), dog.c:initedog().
 // The actor is a fresh makemon birth rather than a copy of youmonst: it owns
@@ -2855,7 +2884,15 @@ export async function makemonNear(mnum, centerX, centerY, flags = 0, requestedBy
 // the hero saw or sensed at least one result.
 export async function createCritters(count, mnum = null) {
     let known = false;
+    let ask = !!game.flags.debug;
     while (count-- > 0) {
+        if (ask) {
+            if (await createParticularMonster()) {
+                known = true;
+                continue;
+            }
+            ask = false;
+        }
         if (mnum == null && game.level?.flags?.rndmongen === false)
             continue;
         let monster = null;
@@ -3342,7 +3379,7 @@ export function randomEngraving() {
         text: wipeoutText(pristine, Math.trunc(pristine.length / 4)),
     };
 }
-const BONES_VERSION = 11;
+const BONES_VERSION = 12;
 function bonesStorageKey(level = game.u.uz) {
     return `teleport-bones:${level?.dnum ?? 0}:${level?.dlevel ?? 1}`;
 }
@@ -3613,6 +3650,23 @@ async function renewBonesIdentities(level, fruits) {
     }
     eachObjectInBonesGraph(level, object => repairObjectMonsterIds(object, monsterIds));
     eachTopLevelBonesObject(level, repairContainedObjects);
+    // C region.c:reset_region_mids(). Missing identities are removed by
+    // replacing their slot with the last member, as during region turns.
+    for (const region of level.regions) {
+        region.heroFault = false;
+        let index = 0;
+        while (index < region.monsterIds.length) {
+            const mapped = remappedMonsterId(region.monsterIds[index], monsterIds);
+            if (mapped !== undefined) {
+                region.monsterIds[index++] = mapped;
+            }
+            else {
+                const last = region.monsterIds.pop();
+                if (last !== undefined && index < region.monsterIds.length)
+                    region.monsterIds[index] = last;
+            }
+        }
+    }
 }
 function restoreBonesObjects(level) {
     eachObjectInBonesGraph(level, object => prepareBonesObjectForRestore(object, game));
@@ -5280,7 +5334,6 @@ export async function generateMinetown(active) {
         throw new RangeError(`unknown Minetown layout ${active?.variant}`);
     }
     active.file = `minetn-${active.variant}.lua`;
-    level.flags.is_maze_lev = true;
     level.flags.has_town = true;
     await generateSpecialAndFixup(generateLuaSpecialLevel, active);
     for (const room of level.rooms.slice(0, level.nroom))
@@ -5330,13 +5383,15 @@ async function specialShrinePriest(temple, altarX, altarY, altarAlignment, { san
         const y = altarY + dy;
         const loc = level.at(x, y);
         if (loc && SPACE_POS(loc.typ)
-            && !level.monsters.some(monster => monsterHasMapPosition(monster, game) && monster.mhp > 0
-                && monster.mx === x && monster.my === y)) {
+            && !(level.objects[x]?.[y] ?? []).some(object => object.otyp === BOULDER)) {
             priestX = x;
             priestY = y;
             break;
         }
     }
+    const occupant = monsterAtPosition(level, priestX, priestY);
+    if (occupant)
+        await randomMonsterRelocation(occupant, { flags: RLOC_NOMSG });
     const priest = await makemon(sanctum ? PM_HIGH_CLERIC : PM_ALIGNED_CLERIC, priestX, priestY, MM_EPRI);
     if (!priest)
         return null;
@@ -5646,17 +5701,8 @@ function luaSpecialAlignment(value = 'random') {
 }
 function specialRoomAt(x, y, roomType) {
     const level = requireGameLevel();
-    const roomNumber = level.at(x, y)?.roomno ?? 0;
-    const direct = roomNumber >= ROOMOFFSET
-        ? level.rooms?.[roomNumber - ROOMOFFSET] : null;
-    if (direct && isRoom(direct) && direct.rtype === roomType)
-        return direct;
-    return level.rooms
-        ?.slice(0, level.nroom)
-        .filter(isRoom)
-        .find(room => room.rtype === roomType
-        && x >= room.lx && x <= room.hx
-        && y >= room.ly && y <= room.hy) ?? null;
+    const roomNumber = roomsAt(level, x, y, roomType)[0];
+    return roomNumber === undefined ? null : roomForIndex(level, roomNumber - ROOMOFFSET);
 }
 function luaCoordinate(options) {
     if (Array.isArray(options.coord))
@@ -5685,7 +5731,9 @@ async function createLuaAltar(context, options) {
     const altarType = options.type ?? 'altar';
     if (!['altar', 'shrine', 'sanctum'].includes(altarType))
         throw new Error(`unsupported Lua altar type ${altarType}`);
-    const temple = specialRoomAt(point.x, point.y, TEMPLE);
+    const temple = context._room
+        ? context._room.rtype === TEMPLE ? context._room : null
+        : specialRoomAt(point.x, point.y, TEMPLE);
     if (!temple || altarType === 'altar')
         return;
     const sanctum = altarType === 'sanctum';

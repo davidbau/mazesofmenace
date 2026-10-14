@@ -6,6 +6,7 @@
 //
 // Object type ordinals: from nethack-c/include/objects.h enum (post-SCR_MAIL fix).
 import { game } from './gstate.js';
+import { maxledgerno } from './dungeon.js';
 import { rn2, pushRngLogEntry } from './rng.js';
 import { exercise } from './attrib.js';
 import { gem_learned } from './shk.js';
@@ -33,6 +34,16 @@ import { Japanese_item_name } from './objnam.js';
 /* prop.h HALLUC / HALLUC_RES — the two slots youprop.h:116-120's
  * Hallucination macro reads.  See _observe_hallucinating() below. */
 import { HALLUC, HALLUC_RES } from './const.js';
+import { TtyMenu, PICK_ONE, ATR_NONE, menu_heading_attr_text } from './tty_menu.js';
+import { display_text_window } from './com_pager.js';
+import { pline, flush_screen } from './display.js';
+import { config_error_add } from './cmd_binds.js';
+import { OC_USES_KNOWN } from './mklev.js';
+import { ARTILIST, quest_info, simple_typename } from './objnam.js';
+import { ARTI_PROPS, ARTI_GIFT_ROLE } from './wizcmds.js';
+import { A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC } from './const.js';
+import { _interesting_to_discover, _disco_typename, _disco_append_price_quote,
+    _sortloot_classify, disco_fmt_uniq, OCLASS_NAME, INV_ORDER, align_str } from './cmd.js';
 
 /* C ref: include/objects.h:80-108 — MARKER(FIRST_OBJECT, LAST_GENERIC + 1),
  * with LAST_GENERIC == GENERIC_VENOM, the seventeenth and last GENERIC() row.
@@ -80,9 +91,7 @@ export function setgemprobs(dlev) {
     if (dlev !== null) {
         const ledgerStart = game.dungeons?.[dlev.dnum]?.ledger_start ?? 0;
         const raw = dlev.dlevel + ledgerStart;
-        /* C: lev = (ledger_no > maxledgerno) ? maxledgerno : ledger_no
-         * maxledgerno not yet tracked in JS; clamp to raw (safe for d0). */
-        lev = raw;
+        lev = Math.min(raw, maxledgerno()); // C o_init.c:59-60
     }
     const first_base = MKOBJ_SVB_BASES[GEM_CLASS] | 0; /* 439 */
     /* C o_init.c:65-66: zero first (9 - lev/3) gems */
@@ -513,3 +522,190 @@ export function init_objects() {
     _wan_nothing_oc_dir = rn2(2) ? NODIR : IMMEDIATE;
 }
 const MAXOCLASSES_OINIT = 18; /* objclass.h MAXOCLASSES — C's audit loop start */
+
+// C o_init.c:597-607: these letters are also the sortdiscoveries option values.
+const disco_order_let = 'osca';
+const disco_orders_descr = [
+    'by order of discovery within each class',
+    'sortloot order (by class with some sub-class groupings)',
+    'alphabetical within each class',
+    'alphabetical across all classes',
+];
+
+// C o_init.c:1209.  Return the string that C writes into the caller's buffer.
+export function get_sortdisco(cnf = false) {
+    let i = disco_order_let.indexOf(game.flags.discosort);
+    if (i < 0 || !game.flags.discosort) {
+        game.flags.discosort = 'o';
+        i = 0;
+    }
+    return cnf ? game.flags.discosort : disco_orders_descr[i];
+}
+
+// C options.c:3871-3900 optfn_sortdiscoveries(do_set).  Return true after
+// handling the option so the config parser won't treat it as a boolean.
+export function optfn_sortdiscoveries_set(value, negated, flags) {
+    if (negated) {
+        flags.discosort = 'o';
+        return true;
+    }
+    const c = String(value || '').charAt(0).toLowerCase();
+    const choice = { '0': 'o', o: 'o', '1': 's', s: 's',
+                     '2': 'c', c: 'c', '3': 'a', a: 'a' }[c];
+    if (choice) flags.discosort = choice;
+    else if (c) config_error_add("Unknown sortdiscoveries parameter '%s'", value);
+    else config_error_add("Missing parameter for 'sortdiscoveries'");
+    return true;
+}
+
+// C o_init.c:610-655.  Keep the selected default when the menu is accepted
+// unchanged, and skip it when another entry was selected alongside it.
+export async function choose_disco_sort(mode, preserveStatus = false) {
+    const menu = new TtyMenu({ overlay: true,
+        statusClipCol: mode === 0 && !preserveStatus ? 0 : undefined });
+    for (let i = 0; i < disco_orders_descr.length; ++i) {
+        const c = disco_order_let[i];
+        menu.add_menu(c.charCodeAt(0), c, ATR_NONE, disco_orders_descr[i],
+            false, c === game.flags.discosort);
+    }
+    if (mode === 2) {
+        menu.add_menu_str('');
+        menu.add_menu_str('Note: full alphabetical and alphabetical within class');
+        menu.add_menu_str('      are equivalent for single class discovery, but');
+        menu.add_menu_str('      will matter for future use of total discoveries.');
+    }
+    menu.end_menu('Ordering of discoveries');
+    const { count, picks } = await menu.select_menu(PICK_ONE);
+    if (count > 0) {
+        let choice = String.fromCharCode(picks[0]);
+        if (count > 1 && choice === game.flags.discosort)
+            choice = String.fromCharCode(picks[1]);
+        game.flags.discosort = choice;
+    }
+    return count;
+}
+
+// Shared preamble of dodiscovered and doclassdisco (o_init.c:776, 907).
+export async function prepare_discoveries(mode) {
+    get_sortdisco();
+    return !game.iflags.menu_requested || await choose_disco_sort(mode) >= 0;
+}
+
+// C o_init.c:552: ignore the encounter marker, compare case-insensitively,
+// with no locale collation or tie-breaker.
+function discovered_cmp(a, b) {
+    const fold = s => s.slice(2).replace(/[A-Z]/g, c => c.toLowerCase());
+    const s1 = fold(a), s2 = fold(b);
+    return s1 < s2 ? -1 : s1 > s2 ? 1 : 0;
+}
+
+// C o_init.c:566.  Reuse invent.c's existing classifier rather than making
+// another copy of its armor/weapon/tool/gem subclass rules.
+function sortloot_descr(otyp) {
+    const oclass = MKOBJ_OC_CLASS[otyp];
+    const obj = { otyp, oclass, dknown: 1,
+        known: game._oc_name_known?.[otyp] || !OC_USES_KNOWN[otyp] ? 1 : 0,
+        corpsenm: -1, spe: otyp === 285 ? game.context.current_fruit : 0 };
+    const { subclass, disco } = _sortloot_classify(obj);
+    const order = game.flags.sortpack ? (game.flags.inv_order || INV_ORDER)
+        : [12, 5, 4, 11, 8, 9, 10, 13, 7, 6, 2, 3, 14, 15, 16];
+    const idx = order.indexOf(oclass);
+    const orderclass = idx >= 0 ? idx + 1 : 1 + order.length + (oclass !== 17);
+    return `${String(orderclass).padStart(2, '0')}${String(subclass).padStart(2, '0')}${disco} `;
+}
+
+// C o_init.c:693-721: preserve a trailing parenthesized appearance when a
+// player-assigned name must be truncated to fit BUFSZ, then append the quote.
+function disco_append_typename(buf, dis) {
+    const typnm = _disco_typename(dis);
+    if (buf.length + typnm.length < 256) {
+        buf += typnm;
+    } else {
+        const p = typnm.lastIndexOf('(');
+        if (p > 0 && typnm[p - 1] === ' ' && typnm.indexOf(')', p) >= 0) {
+            const suffix = typnm.slice(p - 1);
+            buf += typnm.slice(0, 255 - buf.length - suffix.length) + suffix;
+        } else {
+            buf += typnm.slice(0, 255 - buf.length);
+        }
+    }
+    return _disco_append_price_quote(buf, dis);
+}
+
+// can observe the dummy object; the numeric key counts against BUFSZ too.
+export function discovery_line(dis, buf = game._oc_encountered?.[dis] ? '  ' : '* ') {
+    if (game.flags.discosort === 's') buf += sortloot_descr(dis);
+    return disco_append_typename(buf, dis);
+}
+
+// C o_init.c:740-760.  Arrays stand in for putstr's destination window and
+// the owned sorted_lines vector; draining it models the C free/reset loop.
+export function disco_output_sorted(lines, sorted_lines, special = false) {
+    if (!sorted_lines.length) return;
+    if (special && game.flags.discosort === 'a')
+        lines.push(menu_heading_attr_text('Discovered items'));
+    sorted_lines.sort(discovered_cmp);
+    for (const line of sorted_lines) {
+        lines.push(game.flags.discosort === 's' ? line[0] + line.slice(7) : line);
+    }
+    sorted_lines.length = 0;
+}
+
+export function discovery_entries(oclass) {
+    const lines = (game._disco?.[oclass] || [])
+        .filter(dis => dis && _interesting_to_discover(dis)).map(dis => discovery_line(dis));
+    if (game.flags.discosort === 'o') return lines;
+    const result = [];
+    disco_output_sorted(result, lines);
+    return result;
+}
+
+const uniq_objs = [213, 263, 409, 262];
+function known_relics() {
+    return uniq_objs.filter(i => game._oc_name_known?.[i]
+        || (game._oc_encountered?.[i] && i !== 213));
+}
+
+// C doclassdisco:935-962, pseudo-classes precede packorder classes.
+export function discovery_special_rows() {
+    const rows = [];
+    if (known_relics().length) rows.push({ key: 'u', label: 'unique items or relics' });
+    if (game.artidisco?.[0]) rows.push({ key: 'a', label: 'artifacts' });
+    return rows;
+}
+
+// C doclassdisco:1049-1080.  The wizard-only artifact debug dump is outside
+// this gameplay port; ordinary artifact discoveries use artifact.c:1147.
+export async function show_special_discoveries(key) {
+    if (key !== 'u' && key !== 'r' && key !== 'a') return false;
+    const unique = key !== 'a';
+    const label = unique ? 'unique items or relics' : 'artifacts';
+    const lines = [menu_heading_attr_text(unique ? 'Unique items or relics' : 'Artifacts')];
+    if (unique) {
+        for (const i of known_relics()) lines.push(disco_fmt_uniq(i));
+    } else {
+        for (const art of game.artidisco || []) {
+            if (!art) break;
+            const { name, otyp } = ARTILIST[art - 1];
+            let al = ARTI_PROPS[art].al;
+            if ((al !== A_NONE && ARTI_GIFT_ROLE[art] === game.flags.initrole)
+                || art === quest_info(0))
+                al = [A_LAWFUL, A_NEUTRAL, A_CHAOTIC][game.flags.initalign];
+            lines.push(`  ${name} [${al === A_NONE ? 'non-aligned' : align_str(al)} ${simple_typename(otyp)}]`);
+        }
+    }
+    if (lines.length > 1) {
+        await display_text_window(lines);
+        await flush_screen(1);
+    } else {
+        await pline(`You haven't discovered any ${label} yet.`);
+    }
+    return true;
+}
+
+// C doclassdisco:1080-1084, the class window's sort-dependent title.
+export function discovery_class_title(oclass) {
+    const order = game.flags.discosort === 'o' ? 'order of discovery'
+        : game.flags.discosort === 's' ? "'sortloot' order" : 'alphabetical order';
+    return `Discovered ${OCLASS_NAME[oclass]} in ${order}`;
+}

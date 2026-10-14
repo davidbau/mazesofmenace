@@ -1,3 +1,5 @@
+import { forget_engravings, sanitize_engravings } from './engrave.js';
+import { obj_attach_mid } from './mkobj.js';
 // bones.c — the bones subsystem: savebones() writes the level a hero died on,
 // getbones() reads it back into the NEXT game on the same level.
 //
@@ -43,8 +45,13 @@ import { vfsReadFile, vfsWriteFile, vfsDeleteFile } from './storage.js';
 import { savelev } from './save.js';
 /* js/game.js makeLocation() seeds disp_color with terminal.js's NO_COLOR. */
 import { NO_COLOR as NO_COLOR_BONES } from './terminal.js';
-import { In_quest } from './const.js';
+import { In_quest, Is_botlevel, Is_oracle_level, ROOMOFFSET, DELPHI } from './const.js';
 import { DUNGEON_LUA_TABLE } from './dungeon_data.js';
+import { Is_branchlev } from './dungeon.js';
+import { In_hell } from './mklev.js';
+import { PM_ORACLE } from './pm.generated.js';
+import { pline } from './display.js';
+import { the, xname } from './objnam.js';
 
 /* ── the bones "file" ────────────────────────────────────────────────────────
  * C ref: files.c set_bonesfile_name() / open_bonesfile() / create_bonesfile() /
@@ -102,6 +109,25 @@ export function no_bones_special_level(uz) {
         && (sl.dlevel?.dlevel | 0) === (uz?.dlevel | 0)
         && !(sl.boneid | 0));
 }
+
+/* C bones.c:18-34.  Both the death path and level generation use this guard.
+ * Dungeon initialization retains the Lua name rather than boneid, so recover
+ * that field from the same source table when it is not stored explicitly. */
+export function no_bones_level(lev) {
+    const saved = game.save_dlevel;
+    if (saved && ledger_no(saved)) {
+        lev.dnum = saved.dnum;
+        lev.dlevel = saved.dlevel;
+    }
+    const dgn = game.dungeons[lev.dnum];
+    const boneid = dgn.boneid
+        ?? DUNGEON_LUA_TABLE.find((d) => d.name === dgn.dname)?.bonetag;
+    return no_bones_special_level(lev)
+        || !boneid
+        || Is_botlevel(lev)
+        || (!!Is_branchlev(lev) && lev.dlevel > 1)
+        || (In_hell(lev) && lev.dlevel === dgn.num_dunlevs - 1);
+}
 function bones_filename(uz) {
     const q = In_quest(uz) ? String(game.urole?.filecode ?? '0') : '0';
     const sp = sp_level_boneid(uz);
@@ -143,15 +169,11 @@ function delete_bonesfile(uz) {
     return vfsDeleteFile(bones_filename(uz));
 }
 
-/* C bones.c:151 set_ghostly_objlist(ochain) — marks a chain as coming from (or
- * going to) a bones file.  The flag is read by shop/artifact bookkeeping this
- * port has no live model for; the walk is kept so the field exists and the call
- * order is C's. */
+/* C bones.c:784 set_ghostly_objlist — mark this chain for fix_ghostly_obj.
+ * C does not recurse into container contents. */
 function set_ghostly_objlist(ochain) {
     for (let otmp = ochain; otmp; otmp = otmp.nobj) {
         otmp.ghostly = 1;
-        if (otmp.cobj)
-            set_ghostly_objlist(otmp.cobj);
     }
 }
 
@@ -188,12 +210,42 @@ function resetobjs(ochain, restore) {
  * two-real-bodies rule. */
 import { drop_upon_death } from './shk.js';
 
+async function fixuporacle(oracle) {
+    if (!Is_oracle_level(game.u.uz))
+        return false;
+    oracle.mpeaceful = 1;
+    const rooms = game.level.rooms;
+    let o_ridx = game.level.locations[oracle.mx][oracle.my].roomno - ROOMOFFSET;
+    if (o_ridx >= 0 && rooms[o_ridx].rtype === DELPHI)
+        return true;
+
+    let ridx = 0;
+    for (; ridx < rooms.length; ++ridx)
+        if (rooms[ridx].orig_rtype === DELPHI)
+            break;
+    if (o_ridx !== ridx && ridx < rooms.length) {
+        const { enexto_out, rloc_to } = await import('./teleport.js');
+        const room = rooms[ridx];
+        const cc = enexto_out(Math.trunc((room.lx + room.hx) / 2),
+                              Math.trunc((room.ly + room.hy) / 2), oracle.data);
+        if (cc) {
+            await rloc_to(oracle, cc.x, cc.y);
+            o_ridx = game.level.locations[oracle.mx][oracle.my].roomno - ROOMOFFSET;
+        }
+    }
+    if (ridx === o_ridx)
+        rooms[ridx].rtype = DELPHI;
+    return true;
+}
+
+/* C bones.c:390 remove_mon_from_bones(mtmp), called by savebones. */
 const MS_LEADER = 22, MS_NEMESIS = 23; /* monflag.h */
 async function remove_mon_from_bones(mtmp, mongone) {
     const ptr = mtmp.data || {};
     if (mtmp.iswiz
         || ptr.msound === MS_NEMESIS
-        || ptr.msound === MS_LEADER)
+        || ptr.msound === MS_LEADER
+        || (ptr.pmidx === PM_ORACLE && !await fixuporacle(mtmp)))
         await mongone(mtmp);
 }
 
@@ -229,11 +281,7 @@ export async function savebones(how, when, corpse) {
             await remove_mon_from_bones(mtmp, mongone);
     }
 
-    /* C bones.c:448 forget_engravings() — "next hero won't have read any
-     * engravings yet".  engrave.c:1509 walks the level's engraving chain and
-     * clears each one's `engr_time`/`guardobjects` reader flags; this port's
-     * engraving map (js/mklev.js save_engravings) has no per-engraving seen
-     * flag, so there is nothing to clear. */
+    forget_engravings(); // C bones.c:449 — new hero has not discovered these.
 
 
     set_ghostly_objlist(g.invent);
@@ -249,10 +297,7 @@ export async function savebones(how, when, corpse) {
         const { christen_monst } = await import('./mhitm.js');
         christen_monst(mtmp, String(g.plname ?? g.u?.plname ?? ''));
     }
-    /* C bones.c:497 obj_attach_mid(corpse, mtmp->m_id) — the hero's corpse is
-     * created by really_done()'s grave block (end.c:1306), which is NOT ported,
-     * so `corpse` is always null here.  Named rather than dropped. */
-    void corpse;
+    obj_attach_mid(corpse, mtmp.m_id); // C bones.c:503
 
     /* C bones.c:499-539 — the ghost's own fields, plus the EBONES record that
      * lets a later hero identify whose ghost it is.  EBONES has no reader in
@@ -388,10 +433,8 @@ export function getbones() {
      * wizard bypasses. */
     if (rn2(3) && !wizard())
         return false;
-    /* C bones.c:646 no_bones_level(&u.uz) — the botlevel/special-level guard.
-     * js/end.js can_make_bones() carries the same test on the WRITE side; on
-     * the read side a level with no bones file fails the open below anyway, so
-     * the only case this guard changes is a level we never wrote to. */
+    if (no_bones_level(u.uz))
+        return false; /* C bones.c:648: reject before opening or prompting. */
     const f = open_bonesfile(u.uz);
     if (!f)
         return false; /* C bones.c:650 !nhfp */
@@ -441,6 +484,7 @@ async function getbones_load(f) {
 
     /* C bones.c:729-731 */
     g.program_state.reading_bonesfile = 0;
+    sanitize_engravings(); // C bones.c:736
     if (!u.uroleplay) u.uroleplay = {};
     u.uroleplay.numbones = (u.uroleplay.numbones | 0) + 1;
 
@@ -466,6 +510,27 @@ export function bones_include_name(name) {
         if (String(bp.who ?? '').startsWith(buf))
             return true;
     return false;
+}
+
+/* C bones.c:796-816 — only asymmetrical weapons need a handedness message;
+ * every picked-up ghostly object loses the marker, after the message. */
+export async function fix_ghostly_obj(obj) {
+    if (!obj.ghostly)
+        return;
+    const BOW = 83, ELVEN_BOW = 84, ORCISH_BOW = 85, YUMI = 86, BOOMERANG = 26;
+    switch (obj.otyp) {
+    case BOW:
+    case ELVEN_BOW:
+    case ORCISH_BOW:
+    case YUMI:
+    case BOOMERANG:
+        await pline('You make adjustments to %s to suit your %s hand.',
+                    the(xname(obj)), game.u.uhandedness ? 'left' : 'right');
+        break;
+    default:
+        break;
+    }
+    obj.ghostly = 0;
 }
 
 /* C mkobj.c:509 next_ident() — js/mklev.js has the single body but does not

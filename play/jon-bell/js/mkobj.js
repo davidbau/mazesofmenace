@@ -5,7 +5,9 @@
 // C ref: nethack-c/src/mklev.c:1055-1132 (fill_supply_chest body)
 //        nethack-c/src/mkobj.c:2680-2699  (add_to_container)
 import { rn2 } from './rng.js';
-import { mksobj, mkobj } from './mklev.js';
+import { mksobj, mkobj, newoextra, newomid, copy_mextra } from './mklev.js';
+import { permonstTemplate } from './makemon.js';
+import { forget_temple_entry } from './priest.js';
 import { weight } from './weight.js';
 import { game } from './gstate.js';
 /* C mkobj.c curse()/unbless() side-effect arms, each imported from the file that
@@ -17,8 +19,144 @@ import { book_cursed } from './spell.js';     /* spell.c:2093 */
 import { cansee, Blind } from './vision.js';
 import { pline, You_see, You_hear } from './display.js';
 import { Your } from './do_wear.js';
-import { makeplural, obj_typename } from './objnam.js';
-import { HALLUC, OBJ_FLOOR, OBJ_INVENT } from './const.js';
+import { makeplural, obj_typename, oname } from './objnam.js';
+import { HALLUC, OBJ_FLOOR, OBJ_INVENT, MON_DETACH, ONAME_SKIP_INVUPD } from './const.js';
+
+// C mkobj.c:113: both gameplay callers overwrite the allocated monst before
+// reading it (copy_oextra/save_mtraits). No monster ID or RNG is allocated.
+function newomonst(obj) {
+    obj.oextra ||= newoextra();
+    obj.oextra.omonst ||= {};
+}
+
+// C mkobj.c:150. Splitting a stack must not duplicate a ghost association.
+export function free_omid(obj) {
+    obj.oextra.omid = 0;
+    if ('oextra_omid' in obj)
+        obj.oextra_omid = 0;
+}
+
+// C mkobj.c:156-173. Strings are immutable; replacing the reference is free().
+function free_omailcmd(obj) {
+    if (obj.oextra?.omailcmd)
+        obj.oextra.omailcmd = null;
+}
+function new_omailcmd(obj, response_cmd) {
+    obj.oextra ||= newoextra();
+    if (obj.oextra.omailcmd)
+        free_omailcmd(obj);
+    obj.oextra.omailcmd = response_cmd;
+}
+
+// A C struct copy owns its embedded coordinates, but retains pointer fields.
+// monst.h:119,190: mtrack[] and mgoal are values, not monster/object pointers.
+function copy_monster_traits(dest, src) {
+    Object.assign(dest, src);
+    if (src.mtrack)
+        dest.mtrack = src.mtrack.map(coord => ({ ...coord }));
+    if (src.mgoal)
+        dest.mgoal = { ...src.mgoal };
+    dest.mextra = null;
+    if (src.mextra)
+        copy_mextra(dest, src);
+}
+
+// C mkobj.c:416-448: independent extras for split stacks and shop bill copies.
+export async function copy_oextra(dest, src) {
+    if (!dest || !src || !src.oextra)
+        return;
+    dest.oextra ||= newoextra();
+    if (src.oextra.oname)
+        await oname(dest, src.oextra.oname, ONAME_SKIP_INVUPD);
+    if (src.oextra.omonst) {
+        newomonst(dest);
+        copy_monster_traits(dest.oextra.omonst, src.oextra.omonst);
+        dest.oextra.omonst.nmon = null;
+    }
+    if (src.oextra.omailcmd)
+        new_omailcmd(dest, src.oextra.omailcmd);
+    if (src.oextra.omid) {
+        if (!dest.oextra.omid)
+            newomid(dest);
+        dest.oextra.omid = src.oextra.omid;
+        if ('oextra_omid' in dest)
+            dest.oextra_omid = src.oextra.omid;
+    }
+}
+
+// C mkobj.c:683-695: return the outermost unknown enclosing container.
+export function unknwn_contnr_contents(obj) {
+    let result = null;
+    while (obj.where === OBJ_CONTAINED) {
+        obj = obj.ocontainer;
+        if (!obj.cknown)
+            result = obj;
+    }
+    return result;
+}
+
+// C mkobj.c:1977-2000; same object indices as dig.js's rnd_treefruit_at.
+export function is_treefruit(obj) {
+    return [277, 278, 279, 281, 276].includes(obj.otyp);
+}
+
+// C mkobj.c:2024-2048. Oil age is remaining fuel; other ages are birth turns.
+export function fixup_oil(potion, source) {
+    const POT_OIL = 321, MAX_OIL_IN_FLASK = 400;
+    if (potion.otyp === POT_OIL) {
+        potion.age = source?.otyp === POT_OIL ? source.age : MAX_OIL_IN_FLASK;
+    } else if (source?.otyp === POT_OIL) {
+        if (potion.age === source.age)
+            potion.age = game.moves;
+        if (source.age < MAX_OIL_IN_FLASK)
+            potion.odiluted = 1;
+    }
+}
+
+// C mkobj.c:2146-2153: associate a corpse with its ghost.
+export function obj_attach_mid(obj, mid) {
+    if (!mid || !obj)
+        return null;
+    newomid(obj);
+    obj.oextra.omid = mid;
+    obj.oextra_omid = mid;
+    return obj;
+}
+
+// C mkobj.c:2156-2193: preserve revival traits, not live list membership.
+export function save_mtraits(obj, mon) {
+    if (mon.ispriest)
+        forget_temple_entry(mon);
+    newomonst(obj);
+    const data = mon.data ?? permonstTemplate(mon.mndx ?? mon.mnum);
+    const saved = obj.oextra.omonst;
+    copy_monster_traits(saved, mon);
+    saved.mnum = data.pmidx;
+    saved.nmon = saved.data = saved.minvent = saved.mw = null;
+    saved.wormno = 0;
+    if (saved.mhpmax <= data.mlevel)
+        saved.mhpmax = data.mlevel + 1;
+    if (saved.mhp > saved.mhpmax)
+        saved.mhp = saved.mhpmax;
+    if (saved.mhp < 1)
+        saved.mhp = 0;
+    saved.mstate = (saved.mstate | 0) & ~MON_DETACH;
+    return obj;
+}
+
+// C mkobj.c:2200-2220. The borrowed form must never enter a monster chain.
+export function get_mtraits(obj, copyof) {
+    const saved = obj.oextra?.omonst;
+    if (!saved)
+        return null;
+    let mon = saved;
+    if (copyof) {
+        mon = {};
+        copy_monster_traits(mon, saved);
+    }
+    mon.data = permonstTemplate(mon.mnum);
+    return mon;
+}
 // ── Object-type constants ────────────────────────────────────────────────────
 // All values must match the otyp indices baked into the C build this JS mirrors.
 const POT_HEALING = 307;

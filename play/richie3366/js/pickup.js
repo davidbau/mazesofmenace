@@ -1786,7 +1786,9 @@ async function query_objlist_pickup(objList, extraAllow = null, opts = null) {
                 }
                 const mark = it.selected ? '+' : '-';
                 entries.push({
-                    text: `${it.letch} ${mark} ${doname(it.obj)}`,
+                    // C query_objlist pickup.c:1137 — menu shows
+                    // doname_with_price (shop "(for sale…)"/"(no charge)").
+                    text: `${it.letch} ${mark} ${doname_with_price(it.obj)}`,
                     attr: 0,
                 });
             }
@@ -1794,7 +1796,8 @@ async function query_objlist_pickup(objList, extraAllow = null, opts = null) {
             for (const it of items) {
                 const mark = it.selected ? '+' : '-';
                 entries.push({
-                    text: `${it.letch} ${mark} ${doname(it.obj)}`,
+                    // C query_objlist pickup.c:1137 — doname_with_price.
+                    text: `${it.letch} ${mark} ${doname_with_price(it.obj)}`,
                     attr: 0,
                 });
             }
@@ -1802,9 +1805,14 @@ async function query_objlist_pickup(objList, extraAllow = null, opts = null) {
         await paint_corner_nhw_menu(entries, '(end) ');
         await flush_screen(1);
         const key = await nhgetch();
-        game._menu_overlay = false;
-        await docrt();
-        await flush_screen(1);
+        // C wintty.c erase_menu_or_text `:965–984` (destroy_nhwindow
+        // `:1999`): fullscreen destroy is docrt()+flush (fresh bot);
+        // corner destroy is docorner (gbuf resend, status untouched
+        // unless the menu wrecked rows 22+, `:3716–3720`) — never
+        // docrt: docrt re-newsyms every cell and botlx+bot() would
+        // freshen stale botl (T:92-for-T:91, 12 scen-shop). keep_status
+        // keeps the C-fresh fullscreen repaint (no D-0467 blank).
+        await dismiss_nhw_menu({ keep_status: true });
 
         if (key === 27) return [];
         if (key === 13 || key === 10 || key === 32) {
@@ -4357,9 +4365,11 @@ async function loot_which_containers_menu(x, y) {
         await paint_corner_nhw_menu(entries, '(end) ');
         await flush_screen(1);
         const key = await nhgetch();
-        game._menu_overlay = false;
-        await docrt();
-        await flush_screen(1);
+        // C wintty.c erase_menu_or_text `:965–984`: corner destroy is
+        // docorner (status untouched unless rows 22+ wrecked,
+        // `:3716–3720`), never docrt+bot (same cause as the
+        // query_objlist_pickup T:92-for-T:91 freshen).
+        await dismiss_nhw_menu({ keep_status: true });
         if (key === 27) return { n: -1, list: [] };
         if (key === 13 || key === 10 || key === 32) {
             const list = rows.filter((r) => r.selected).map((r) => r.obj);

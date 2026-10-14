@@ -1,3 +1,4 @@
+import { quest_monster_died } from './quest.js';
 import { Norep } from './display.js';
 import { nonliving as lifesave_nonliving } from './makemon.js';
 import { m_useup as lifesave_m_useup } from './trap.js';
@@ -30,13 +31,13 @@ import { PM_GRAY_OOZE as PM_GRAY_OOZE_MK } from './pm.generated.js';
 import { PM_YELLOW_DRAGON as PM_YELLOW_DRAGON_MC, PM_WHITE_UNICORN as PM_WHITE_UNICORN_MC, PM_BLACK_UNICORN as PM_BLACK_UNICORN_MC } from './pm.generated.js';
 import { nexttodoor } from './mkroom.js';
 import { OBJ_MINVENT } from './const.js';
-import { fill_supply_chest } from './mkobj.js';
+import { fill_supply_chest, save_mtraits } from './mkobj.js';
 import { init_fruit_chain } from './options.js';
 import { MKOBJ_OC_CLASS, MKOBJ_OC_PROB, MKOBJ_OCLASS_PROB_TOTALS, MKOBJ_SVB_BASES, } from './mkobj_data.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_OPROP, MKOBJ_OC_SKILL, } from './mkobj_erosion_meta.js';
 import { GameMap, newobj } from './game.js';
 import { rn2, rnd, rn1, rne, rnz, rnl as rnl_mc, d as d_ml, pushRngLogEntry } from './rng.js';
-import { put_saddle_on_mon, place_monster } from './steed.js';
+import { put_saddle_on_mon, place_monster, poly_steed } from './steed.js';
 import { rndmonstAdj, rndmonnumAdj, newMonHp, assignMakemonFemale, isArmedMndx, mInitweap, mInitinv, makemonDomesticSaddle, levelDifficulty, Inhell, mkclass, mkclassAligned, peaceMinded, monGeno, permonstTemplate, dmgtype_fromattack, splitobj as splitobj_real, m_in_air, noteleport_level, newmextra, is_ndemon, is_dprince, propagate, olfaction, mon_set_minvis, set_mon_data, grow_up } from './makemon.js';
 import { more_experienced } from './exper.js';
 import { dng_bottom } from './trap.js';
@@ -91,6 +92,12 @@ import { litstate_rnd } from './mkmap.js';
 import { chooseTrapnote } from './mklev_choose_trapnote.js';
 import { getbones } from './bones.js';
 import { recalc_block_point } from './vision.js';
+import { does_block, unblock_point } from './vision.js';
+import { COULD_SEE, IN_SIGHT, TT_BURIEDBALL, NO_TRAP_FLAGS } from './const.js';
+import { buried_ball_to_punishment, reset_utrap, mintrap } from './trap.js';
+import { fracture_rock } from './zap.js';
+import { is_pool } from './look.js';
+import { flush_screen, force_more } from './display.js';
 /* Vault guards are normally dismissed through mongone's common inventory
  * path; vault.c's grddead() must first clear any temporary corridor when the
  * guard is the special vault monster. */
@@ -125,7 +132,7 @@ import { t_at, deltrap, mon_knows_traps, mon_learns_traps, m_carrying, linedup, 
          update_mon_extrinsics as update_mon_extrinsics_md } from './trap.js';
 /* prop.h-adjacent: trap.c's ALL_TRAPS sentinel for mon_learns_traps (const.js:2270). */
 import { ALL_TRAPS } from './const.js';
-import { rloco as steal_rloco } from './steal.js';
+import { rloco as steal_rloco, thiefdead } from './steal.js';
 import { cansee, couldsee, block_point, vision_recalc } from './vision.js';
 import { canseemon, canspotmon, pline, newsym, sensemon, unmap_object, glyph_is_invisible_at, see_nearby_objects, You_hear, You_see, map_location, swallowed } from './display.js';
 import { invalidateTerrainStatus } from './terrain-status.js';
@@ -166,14 +173,15 @@ import { on_level } from './dungeon.js';
  * for meatobj(); that stub is gone, so the plain name is the real body now. */
 import { obj_resists, quickmimic as quickmimic_mk, monstone } from './dogmove.js';
 export { in_rooms };
-import { attacktype, x_monnam, noname_monnam, poly_when_stoned } from './mhitm.js';
+import { attacktype, x_monnam, noname_monnam, poly_when_stoned, noit_mon_nam } from './mhitm.js';
 /* ── newcham()'s equipment half, C mon.c:5484-5518.  Every import below is a
  * REAL body; where js/ has only a stub the call is spelled out locally next to
  * newcham instead (see MON_WEP_nc / possibly_unwield_nc / mselftouch_nc). ── */
 import { Resists_Elem } from './mhitm.js';                    /* C mondata.h resists_ston */
 import { STONE_RES, NEED_WEAPON, NO_WEAPON_WANTED, NC_VIA_WAND_OR_SPELL } from './const.js';
-import { setmnotwielded, mwepgone } from './uhitm.js';                  /* C worn.c:290 */
+import { setmnotwielded, mwepgone, minstapetrify } from './uhitm.js'; /* C worn.c:290; trap.c:3927 */
 import { mwelded } from './cmd.js';                           /* C obj.h:434 */
+import { wizdeadorgone } from './cmd.js';
 import { bypass_obj, setnotworn } from './worn.js';            /* C worn.c:1090 */
 import { flooreffects } from './cmd.js';                      /* C do.c:161 */
 import { stackobj } from './sp_lev.js';                       /* C mkobj.c:2411 */
@@ -209,7 +217,8 @@ import { in_your_sanctuary, p_coaligned, priestini, mon_aligntyp } from './pries
 /* touch_artifact()'s hero branch and the artilist[] spfx/alignment/role columns
  * both already live in js/wizcmds.js; the monster branch below reads them there
  * rather than carrying a second copy. */
-import { ARTI_PROPS, touch_artifact_youmonst } from './wizcmds.js';
+import { ARTI_PROPS, touch_artifact_youmonst, getlin as getlin_wf } from './wizcmds.js';
+import { name_to_mon as name_to_mon_wf, name_to_monclass as name_to_monclass_wf } from './makemon.js';
 import { healup, dryup as dryup_ml } from './potion.js';
 import { Upolyd } from './const.js';
 /* getrumor()'s post-selection exercise(A_WIS, ...) — C rumors.c:175. */
@@ -953,7 +962,7 @@ function nartifact_exist() {
         if (ae[k]) ++a;
     return a;
 }
-function mk_artifact(otmp, alignment, max_giftvalue, adjust_spe) {
+async function mk_artifact(otmp, alignment, max_giftvalue, adjust_spe) {
     const by_align = (alignment !== A_NONE);
     if (by_align)
         return otmp; /* not ported — see above */
@@ -992,7 +1001,7 @@ function mk_artifact(otmp, alignment, max_giftvalue, adjust_spe) {
      * the ONAME_RANDOM default), then C re-asserts oartifact and re-runs
      * artifact_origin(otmp, ONAME_RANDOM) — both already done by oname here,
      * hence no second call. */
-    oname(otmp, a.name, ONAME_NO_FLAGS);
+    await oname(otmp, a.name, ONAME_NO_FLAGS);
     otmp.oartifact = m;
     if (adjust_spe) {
         /* C:285-297 — clamped into the "normal" range. */
@@ -1508,10 +1517,10 @@ async function mksobj(otyp, init, artif) {
         const novidx = { value: otmp.novelidx | 0 }; /* C's `&otmp->novelidx` */
         const title = noveltitle(novidx);
         otmp.novelidx = novidx.value | 0;
-        otmp = oname(otmp, title, ONAME_NO_FLAGS);
+        otmp = await oname(otmp, title, ONAME_NO_FLAGS);
     }
     if (game._oc_unique && game._oc_unique[otmp.otyp | 0] && !otmp.oartifact)
-        otmp = mk_artifact(otmp, A_NONE, 99, false);
+        otmp = await mk_artifact(otmp, A_NONE, 99, false);
     /* C mkobj.c:1258 — otmp->owt = weight(otmp); final weight computation
        after all init/corpsenm/switch handling. */
     otmp.owt = weight(otmp);
@@ -1596,7 +1605,7 @@ async function mksobj_init(otmp, otyp, artif) {
         if (is_mgen && !rn2(100))
             otmp.opoisoned = 1;
         if (artif && !rn2(20 + (10 * nartifact_exist())))
-            mk_artifact(otmp, A_NONE, 99, true);
+            await mk_artifact(otmp, A_NONE, 99, true);
         mkobj_erosions(otmp);
         return;
     }
@@ -1721,7 +1730,7 @@ async function mksobj_init(otmp, otyp, artif) {
             blessorcurse(otmp, 10);
         }
         if (artif && !rn2(40 + (10 * nartifact_exist())))
-            mk_artifact(otmp, A_NONE, 99, true);
+            await mk_artifact(otmp, A_NONE, 99, true);
         /* C ref: mkobj.c:1104-1113 "simulate lacquered armor for samurai":
          *   if (Role_if(PM_SAMURAI) && otmp->otyp == SPLINT_MAIL
          *       && (svm.moves <= 1 || In_quest(&u.uz)))
@@ -1905,7 +1914,7 @@ export function rnd_class(first, last) {
     }
     return first;
 }
-function _gm_migrating() {
+export function _gm_migrating() {
     const g = game;
     if (!g.gm)
         g.gm = {};
@@ -2334,7 +2343,7 @@ export function get_shop_item(type) {
     return shp.iprobs[0].itype;
 }
 /* C shknam.c:378-405 — staticfn boolean veggy_item(struct obj *obj, int otyp).
- * Only the obj == NULL ("just a type") shape is reachable from shkveg(); C
+ * The obj == NULL ("just a type") shape is used by shkveg(); C
  * pins corpsenm to PM_LICHEN in that case, calling it "veggy standin":
  *
  *     if (oclass == FOOD_CLASS) {
@@ -2348,13 +2357,17 @@ export function get_shop_item(type) {
  * and that arm is flagged "implies obj is non-null"), so the THIRD arm decides
  * TIN and CORPSE — and a lichen is S_FUNGUS, hence vegan, hence vegetarian.
  * Both therefore count. */
-function veggy_item_type(otyp) {
+export function veggy_item(obj, otyp) {
     const VEGGY_MAT = 3; /* objclass.h VEGGY */
-    const corpsenm = PM_LICHEN; /* C: veggy standin */
-    if ((MKOBJ_OC_CLASS[otyp] | 0) !== FOOD_CLASS)
+    if (obj) otyp = obj.otyp;
+    const corpsenm = obj ? obj.corpsenm : PM_LICHEN; /* C: veggy standin */
+    const oclass = obj ? obj.oclass : MKOBJ_OC_CLASS[otyp];
+    if (oclass !== FOOD_CLASS)
         return false;
     if ((MKOBJ_OC_MATERIAL[otyp] | 0) === VEGGY_MAT || otyp === EGG)
         return true;
+    if (otyp === TIN && corpsenm === NON_PM)
+        return obj.spe === 1;
     if (otyp === TIN || otyp === CORPSE)
         return ismnum(corpsenm) && vegetarian(permonstTemplate(corpsenm));
     return false;
@@ -2366,7 +2379,7 @@ function shkveg() {
     let ok = [];
     let maxprob = 0;
     for (let i = foodStart; i < foodEnd; i++) {
-        if (veggy_item_type(i)) {
+        if (veggy_item(null, i)) {
             ok.push(i);
             maxprob += (MKOBJ_OC_PROB[i] | 0);
         }
@@ -2418,8 +2431,8 @@ async function mkshobj_at_shk(shp, shpIndx, sx, sy, mkspecl) {
             const ptr = mkclass(S_MIMIC);
             if (ptr != null) {
                 /* C: makemon(ptr, sx, sy, NO_MM_FLAGS) */
-                await makemon(ptr, sx, sy, 0);
-                return;
+                if (await makemon(ptr, sx, sy, 0))
+                    return;
             }
         }
     }
@@ -3060,7 +3073,7 @@ export async function mk_tt_object(objtype, x, y) {
 
     /* C mkobj.c:2242 — tt_oname() draws its rnd(10) and returns NULL for the
      * empty scoreboard, so the body always runs; the call is NOT skippable. */
-    if (!tt_oname(otmp)) {
+    if (!(await tt_oname(otmp))) {
         /* C mkobj.c:2243 */
         const pm = rn1(PM_WIZARD - PM_ARCHEOLOGIST + 1, PM_ARCHEOLOGIST);
 
@@ -3933,6 +3946,7 @@ export async function mkcorpstat(objtyp, mtmp, pm, x, y, flags) {
      * monster's corpse is explicitly marked non-revivable (except riders). */
     otmp.norevive = (game.gm?.mkcorpstat_norevive ? 1 : 0);
     if (mtmp) {
+        save_mtraits(otmp, mtmp); // C mkobj.c:2094
         if (pm == null)
             pm = mtmp.data ?? mtmp.mndx ?? mtmp.mnum ?? null;
         const mndx = (pm !== null && typeof pm === 'object')
@@ -4926,6 +4940,8 @@ export async function mongone(mdef) {
     mdef.mhp = 1;
     await mon_leaving_level_mk(mdef);
     mdef.mhp = 0;
+    if (mdef.iswiz) wizdeadorgone(); /* C mon.c:2761-2762, m_detach */
+    if (mdef.m_id === game.stealmid) thiefdead(); // C mon.c:2782-2783
     if ((mdef.mstate | 0) & MON_DETACH) {
         /* C mon.c:2789-2792 `impossible("m_detach: ... already detached?")` —
          * mongone is never called twice on the same monster from any live
@@ -5289,7 +5305,7 @@ export function make_grave(x, y, text) {
     if (!set_levltyp(x, y, GRAVE))
         return;
     del_engr_at(x, y);
-    if (!text)
+    if (text == null)
         text = get_rnd_text_epitaph();
     make_engr_at(x, y, text, null, 0, HEADSTONE);
 }
@@ -5898,7 +5914,7 @@ export async function make_corpse(mtmp, x, y, corpseflags) {
      * ONAME_NO_FLAGS);` (ONAME_NO_FLAGS == 0).  Missing here, so a named pet's
      * corpse listed as "a little dog corpse" instead of "... named Slasher". */
     if (mtmp.mextra?.mgivenname)
-        oname(otmp, mtmp.mextra.mgivenname, 0);
+        await oname(otmp, mtmp.mextra.mgivenname, 0);
     // C mon.c:934-935 — make_corpse ends `stackobj(obj); newsym(x, y);`.  Every
     // newsym the death path issued before this one ran while the corpse did not
     // exist yet (mondead → m_detach → mon_leaving_level, mon.c:2725), so they
@@ -11089,8 +11105,7 @@ async function mkgrave_room(croom) {
     if (!rn2(3)) {
         const gold = await mksobj(GOLD_PIECE, true, false);
         if (gold) {
-            const depth = game.u?.uz?.dlevel ?? 1;
-            gold.quan = rnd(20) + depth * rnd(5);
+            gold.quan = rnd(20) + level_difficulty() * rnd(5);
             gold.owt = weight(gold);
             gold.ox = pos.x;
             gold.oy = pos.y;
@@ -11109,6 +11124,148 @@ async function mkgrave_room(croom) {
     if (dobell)
         await mksobj_at(BELL, pos.x, pos.y, true, false);
 }
+
+// C mklev.c:2410-2496 — the Book of the Dead opens the way to the Sanctum.
+export async function mkinvokearea() {
+    const g = game;
+    const u = g.u;
+    const inv = g.svi.inv_pos;
+    await pline('The floor shakes violently under you!');
+
+    let xmin = inv.x, xmax = inv.x, ymin = inv.y, ymax = inv.y;
+    let wallct = mkinvk_check_wall(xmin, ymin);
+    for (let dist = 1; !wallct && dist < 7; ++dist) {
+        --xmin;
+        ++xmax;
+        if (dist !== 3) {
+            --ymin;
+            ++ymax;
+            for (let i = xmin + 1; i < xmax; ++i) {
+                if (mkinvk_check_wall(i, ymin)) ++wallct;
+                if (mkinvk_check_wall(i, ymax)) ++wallct;
+            }
+        }
+        if (!wallct) {
+            for (let i = ymin; i <= ymax; ++i) {
+                if (mkinvk_check_wall(xmin, i)) ++wallct;
+                if (mkinvk_check_wall(xmax, i)) ++wallct;
+            }
+        }
+    }
+    if (wallct)
+        await pline('The walls around you begin to bend and crumble!');
+    // C display_nhwindow(WIN_MESSAGE, TRUE), before changing the terrain.
+    if (g._pending_message)
+        await force_more(g._pending_message);
+
+    if (u.utrap) {
+        if (u.utraptype === TT_BURIEDBALL)
+            await buried_ball_to_punishment();
+        await reset_utrap(false);
+    }
+    xmin = xmax = inv.x;
+    ymin = ymax = inv.y;
+    await mkinvpos(xmin, ymin, 0);
+    for (let dist = 1; dist < 7; ++dist) {
+        --xmin;
+        ++xmax;
+        if (dist !== 3) {
+            --ymin;
+            ++ymax;
+            for (let i = xmin + 1; i < xmax; ++i) {
+                await mkinvpos(i, ymin, dist);
+                await mkinvpos(i, ymax, dist);
+            }
+        }
+        for (let i = ymin; i <= ymax; ++i) {
+            await mkinvpos(xmin, i, dist);
+            await mkinvpos(xmax, i, dist);
+        }
+        await flush_screen(1);
+        // nh_delay_output() is a window-port delay, with no game-state effect.
+    }
+    await pline('You are standing at the top of a stairwell leading down!');
+    mkstairs(u.ux, u.uy, 0, null);
+    newsym(u.ux, u.uy);
+    g.vision_full_recalc = 1;
+}
+
+// C mklev.c:2503-2597 — preserve the ring order, including monster effects.
+async function mkinvpos(x, y, dist) {
+    const g = game;
+    const xmax = g.gx?.x_maze_max ?? ((COLNO - 1) & ~1);
+    const ymax = g.gy?.y_maze_max ?? ((ROWNO - 1) & ~1);
+    if (!within_bounded_area(x, y, 2, 2, xmax, ymax)) {
+        if (dist < 5) {
+            const msg = `mkinvpos: <${x},${y}> (${dist}) off map edge!`;
+            if (!isok(x, y)) throw new Error(msg);
+            await lifecycle_impossible(msg);
+        }
+        return;
+    }
+    const lev = g.level.at(x, y);
+    let ttmp = t_at(x, y);
+    if (ttmp) deltrap(ttmp);
+
+    let make_rocks = dist !== 1 && dist !== 4 && dist !== 5;
+    let otmp;
+    while ((otmp = sobj_at(BOULDER, x, y)) !== null) {
+        if (make_rocks) {
+            await fracture_rock(otmp);
+            make_rocks = false;
+        } else {
+            obj_extract_self(otmp);
+            await obfree(otmp, null);
+        }
+    }
+
+    lev.seenv = 0;
+    lev.flags = 0; // C doormask aliases rm.flags.
+    if (dist < 6) lev.lit = true;
+    lev.waslit = true;
+    lev.horizontal = false;
+    g.viz_array[y][x] = dist < 6 ? IN_SIGHT | COULD_SEE : COULD_SEE;
+    switch (dist) {
+    case 1:
+        if (is_pool(x, y)) break;
+        lev.typ = ROOM;
+        ttmp = await maketrap(x, y, FIRE_TRAP);
+        if (ttmp) ttmp.tseen = true;
+        break;
+    case 0:
+    case 2:
+    case 3:
+    case 6:
+        lev.typ = ROOM;
+        break;
+    case 4:
+    case 5:
+        lev.typ = MOAT;
+        break;
+    default:
+        await lifecycle_impossible('mkinvpos called with dist %d', dist);
+        break;
+    }
+
+    const mon = m_at(x, y);
+    if (mon) {
+        if (mon.m_ap_type) seemimic(mon);
+        if (t_at(x, y))
+            await mintrap(mon, NO_TRAP_FLAGS);
+        else
+            await minliquid(mon);
+    }
+    if (!does_block(x, y)) unblock_point(x, y);
+    newsym(x, y);
+}
+
+// C mklev.c:2603-2614 — lava maze walls do not trigger the crumble message.
+function mkinvk_check_wall(x, y) {
+    if (!isok(x, y)) return 0;
+    const ltyp = game.level.at(x, y).typ;
+    return IS_STWALL(ltyp) || ltyp === IRONBARS ? 1 : 0;
+}
+
 async function fill_ordinary_room(croom, bonus_items) {
     const g = game;
     if (!croom || (croom.rtype !== OROOM && croom.rtype !== THEMEROOM))
@@ -11237,7 +11394,7 @@ async function mineralize_kelp(kelp_pool, kelp_moat) {
                 await mksobj_at(KELP_FROND, x, y, true, false);
 }
 /* C ref: mklev.c:1456–1549 mineralize — place gold/gem deposits and kelp */
-async function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_checks) {
+export async function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_checks) {
     if (kelp_pool < 0)
         kelp_pool = 10;
     if (kelp_moat < 0)
@@ -13501,7 +13658,7 @@ function mm_displacement_mk(magr, mdef) {
     if (((pd.mflags3 | 0) & M3_DISPLACES_MK)
         && ((magr.m_lev | 0) <= (mdef.m_lev | 0))) return 0;
     if ((magr.mx | 0) !== (mdef.mx | 0) && (magr.my | 0) !== (mdef.my | 0)
-        && ((pa.pmidx ?? magr.mndx ?? magr.mnum) | 0) === PM_GRID_BUG) return 0;
+        && ((pd.pmidx ?? mdef.mndx ?? mdef.mnum) | 0) === PM_GRID_BUG) return 0;
     if ((mdef.mtrapped | 0) || ((mdef.wormno | 0) && count_wsegs(mdef))) return 0;
     const rider = is_rider(pa);
     if (!rider && (pa.msize | 0) < (pd.msize | 0)) return 0;
@@ -13787,7 +13944,7 @@ function mhealup(otmp) {
 
 /* C obj.h:321-324 — food that can trigger a monster polymorph. */
 const AD_POLY = 43;
-function polyfood(otmp) {
+export function polyfood(otmp) {
     if (!ofood(otmp) || (otmp.corpsenm | 0) < LOW_PM)
         return false;
     const cm = pm_to_cham(otmp.corpsenm | 0);
@@ -14255,7 +14412,10 @@ export async function mondead(mtmp) {
     /* C mon.c:2711 mon_leaving_level -> newsym(mx, my): repaint the cell the
      * monster just vacated.  RNG-free. */
     newsym(mx, my);
+    if (mtmp.iswiz) wizdeadorgone(); /* C mon.c:2761-2762, before relobj */
+    await quest_monster_died(mtmp);
     await relobj_md(mtmp);
+    if (mtmp.m_id === game.stealmid) thiefdead(); // C mon.c:2782-2783
     /* C mon.c:2786-2787, near the END of m_detach():
      *     if (mtmp->wormno) wormgone(mtmp);
      * remove_worm() above took the body off the map; this discards the segment
@@ -14794,6 +14954,103 @@ function pick_animal() {
     return res;
 }
 
+
+/* C makemon.c:1983 mkclass_poly(class) — like mkclass() but ignores alignment and
+ * only skips G_NOGEN|G_UNIQ/genocided/hell-ness; monpolycontrol's class pick. */
+function mkclass_poly_nc(cls) {
+    let first, last, num = 0;
+    for (first = LOW_PM; first < SPECIAL_PM_NC; first++)
+        if ((MONS_ROWS[first][0] | 0) === cls)
+            break;
+    if (first === SPECIAL_PM_NC)
+        return NON_PM;
+    let gmask = 0x0200 | 0x1000; /* G_NOGEN | G_UNIQ */
+    if (rn2(9) || cls === 38 /* S_LICH */)
+        gmask |= (Inhell() ? G_NOHELL_NC : G_HELL_NC);
+    const ok = (m) => !mvitals_genod_nc(m) && ((MONS_ROWS[m][3] | 0) & gmask) === 0;
+    for (last = first; last < SPECIAL_PM_NC && (MONS_ROWS[last][0] | 0) === cls; last++)
+        if (ok(last))
+            num += (MONS_ROWS[last][3] | 0) & 7;
+    if (!num)
+        return NON_PM;
+    for (num = rnd(num); num > 0; first++)
+        if (ok(first))
+            num -= (MONS_ROWS[first][3] | 0) & 7;
+    first--;
+    return first;
+}
+
+/* C mon.c:5026 validvamp(mon, &mndx, monclass) — returns [ok, mndx]. */
+export function validvamp_nc(mon, mndx, monclass) {
+    if (!is_vampshifter_nc(mon))
+        return [validspecmon(mon, mndx), mndx];
+    if ((mon.cham | 0) === PM_VLAD_THE_IMPALER_NC && mon_has_special_nc(mon))
+        return [true, PM_VLAD_THE_IMPALER_NC];
+    if (ismnum(mndx) && is_shapeshifter_nc(permonstTemplate(mndx)))
+        return [true, mon.cham | 0];
+    if (mndx === PM_WOLF_NC)
+        return [(mon.cham | 0) !== PM_VAMPIRE_NC, mndx];
+    if (mndx === PM_FOG_CLOUD_NC || mndx === PM_VAMPIRE_BAT_NC)
+        return [true, mndx];
+    switch (monclass) {
+    case S_VAMPIRE: mndx = mon.cham | 0; break;
+    case 28 /* S_BAT */: mndx = PM_VAMPIRE_BAT_NC; break;
+    case 22 /* S_VORTEX */: mndx = PM_FOG_CLOUD_NC; break;
+    case 4 /* S_DOG */:
+        if ((mon.cham | 0) !== PM_VAMPIRE_NC) { mndx = PM_WOLF_NC; break; }
+        mndx = NON_PM; break;
+    default: mndx = NON_PM; break;
+    }
+    return [mndx !== NON_PM, mndx];
+}
+
+/* C mon.c:5072 wiz_force_cham_form(mon) — monpolycontrol prompt. */
+async function wiz_force_cham_form(mon) {
+    const TRYLIMIT = 5;
+    let monclass, mndx = NON_PM, tryct = TRYLIMIT;
+    let pprompt = "Change " + noit_mon_nam(mon);
+    const parttwo = " @ <" + (mon.mx | 0) + "," + (mon.my | 0) + "> into what?";
+    const QBUFSZ = 128;
+    const len = pprompt.length + parttwo.length;
+    if (len >= QBUFSZ)
+        pprompt = pprompt.slice(0, pprompt.length - (len - (QBUFSZ - 1)));
+    pprompt += parttwo;
+    do {
+        if (tryct === TRYLIMIT - 1 && pprompt.length + 15 < QBUFSZ)
+            pprompt = pprompt.slice(0, -1) + " kind of monster?";
+        monclass = 0;
+        let buf = await getlin_wf(pprompt);
+        buf = mungspaces(buf || '');
+        if (buf[0] === '\x1b')
+            break;
+        if (buf === '*' || buf.toLowerCase() === 'random') {
+            mndx = NON_PM;
+            break;
+        }
+        mndx = name_to_mon_wf(buf, null).mntmp;
+        if (mndx === NON_PM) {
+            const p = { value: NON_PM };
+            monclass = name_to_monclass_wf(buf, p);
+            mndx = p.value;
+            if (monclass && mndx === NON_PM)
+                mndx = mkclass_poly_nc(monclass);
+        }
+        if (ismnum(mndx)) {
+            const [ok, m2] = validvamp_nc(mon, mndx, monclass);
+            mndx = m2;
+            if (ok)
+                break;
+            mndx = NON_PM;
+        }
+        await pline("It can't become that.");
+    } while (--tryct > 0);
+    if (!tryct)
+        await pline("That's enough tries!");
+    if (is_vampshifter_nc(mon) && !validvamp_nc(mon, mndx, monclass)[0])
+        mndx = pickvampshape(mon);
+    return mndx;
+}
+
 /* C mon.c:5157 select_newcham_form(mon) — pick the mndx of the next form.
  *
  * The quest-guardian arm's [PM_STUDENT, PM_APPRENTICE] span and gu.urole.guardnum
@@ -14801,7 +15058,7 @@ function pick_animal() {
  * which is stale: its entries (379..393) run off the end of the 383-row 5.0
  * mons[] table.  That is a live defect in peaceMinded(), not one this port
  * introduces, and it is left alone here rather than fixed in passing. */
-function select_newcham_form(mon) {
+async function select_newcham_form(mon) {
     let mndx = NON_PM;
     let tryct;
 
@@ -14862,8 +15119,9 @@ function select_newcham_form(mon) {
     }
     }
 
-    /* C mon.c:5209-5211 wizard-mode mon_polycontrol: wizard mode is not
-     * modelled by this port, and the branch draws no RNG. */
+    /* C mon.c:5209-5211 for debugging: allow control of polymorphed monster */
+    if (wizard() && game.iflags?.monpolycontrol)
+        mndx = await wiz_force_cham_form(mon);
 
     /* if no form was specified above, pick one at random now */
     if (mndx === NON_PM) {
@@ -14963,35 +15221,17 @@ async function possibly_unwield_nc(mon, polyspot) {
         mon.weapon_check = NEED_WEAPON;
 }
 
-async function mselftouch_nc(mon, arg, byplayer) {
+export async function mselftouch_nc(mon, arg, byplayer) {
     const mwep = MON_WEP_nc(mon);
 
     if (mwep && (mwep.otyp | 0) === CORPSE
         && ((mwep.corpsenm | 0) === PM_COCKATRICE
             || (mwep.corpsenm | 0) === PM_CHICKATRICE)
         && !Resists_Elem(mon, STONE_RES)) {
-        /* C minstapetrify(): forms covered by poly_when_stoned() become a
-         * stone golem immediately.  This branch is synchronous (mon_to_stone
-         * -> newcham) and must complete before the async death alternatives. */
-        if (poly_when_stoned(mon.data)) {
-            await newcham(mon, PM_STONE_GOLEM, 0);
-            return;
-        }
-        if (!byplayer) {
-            /* C minstapetrify(mon, FALSE): the monster-caused terminal path
-             * is synchronous and its existing monstone helper preserves the
-             * statue/death RNG.  Player-caused xkilled remains async below. */
-            if (canseemon(mon))
-                pline('%s turns to stone.', Monnam(mon));
-            await monstone(mon);
-            return;
-        }
-        /* C trap.c:3922-3931 — the player-caused path uses the same
-         * petrification transition; mwepgone then removes the corpse if the
-         * monster survives through life-saving.  Message delivery is deferred
-         * here because this call site is synchronous during polymorph. */
-        void arg;
-        await monstone(mon);
+        if (cansee(mon.mx, mon.my))
+            await pline('%s%s touches %s.', arg || '', arg ? mon_nam_wm(mon) : Monnam(mon),
+                        corpse_xname_rc(mwep, null, 4 /* CXN_PFX_THE */));
+        await minstapetrify(mon, byplayer);
         if (mon.mhp > 0 && !which_armor(mon, W_ARMG) && !Resists_Elem(mon, STONE_RES))
             mwepgone(mon);
     }
@@ -15156,7 +15396,7 @@ export async function newcham(mtmp, mdat, ncflags) {
            always pick that so we still retry here too */
         tryct = 20;
         do {
-            mndx = select_newcham_form(mtmp);
+            mndx = await select_newcham_form(mtmp);
             newmndx = accept_newcham_form(mtmp, mndx);
             /* for the first several tries we require upper-case on the rogue
                level (after that, we take whatever we get) */
@@ -15349,13 +15589,9 @@ export async function newcham(mtmp, mdat, ncflags) {
             }
         }
     }
-    /* C mon.c:5517-5518 / steed.c:852 — a mounted hero adjusts in the saddle
-     * after the steed changes form.  Armor handling above has already ensured
-     * the saddle remains valid; preserve the observable transition message. */
-    if (game.u && mtmp === game.u.usteed) {
-        const changed = (olddata | 0) !== (mtmp.mnum | 0);
-        pline(`You adjust yourself in the saddle on ${changed ? 'your new steed' : 'your steed'}.`);
-    }
+    /* C mon.c:5517-5518 — adjust riding after armor handling. */
+    if (game.u && mtmp === game.u.usteed)
+        await poly_steed(mtmp, oldPermonst);
 
     /* old form might not have been affected by Elbereth but perhaps the
        new form is.  C mon.c:5522-5533.
@@ -16332,8 +16568,33 @@ export function set_bknown(obj, onoff) {
     }
 }
 
-export function rescham() {
-    iter_mons(normal_shape);
+/* C mon.c:4626-4643 — resume shapechanging and sleeping mimic disguises. */
+async function m_restartcham(mon) {
+    if (!mon.mcan)
+        mon.cham = pm_to_cham(mon.data.pmidx);
+    if (mon.data.mlet === 13 /* S_MIMIC */ && mon.msleeping) {
+        await set_mimic_sym(mon);
+        newsym(mon.mx, mon.my);
+    }
+}
+export async function restartcham() {
+    for (let mon = game.fmon, next; mon; mon = next) {
+        next = mon.nmon;
+        if ((mon.mhp | 0) < 1 || (mon.mstate | 0) !== MON_FLOOR)
+            continue;
+        await m_restartcham(mon);
+    }
+}
+
+export async function rescham() {
+    /* C mon.c:4621 rescham -> iter_mons (:4529): normal_shape must finish
+     * before the next monster; the general iter_mons has synchronous callers. */
+    for (let mon = game.fmon, next; mon; mon = next) {
+        next = mon.nmon;
+        if ((mon.mhp | 0) < 1 || (mon.mstate | 0) !== MON_FLOOR)
+            continue;
+        await normal_shape(mon);
+    }
 }
 
 /* C mon.c:4421-4455 — restore a monster's ordinary shape.  This is used by
@@ -16547,6 +16808,14 @@ function big_little_match_sm(montyp1, montyp2) {
     return false;
 }
 
+/* C ref: sounds.c:546-609 maybe_gasp(mon) — "hero has attacked a peaceful
+ * monster within 'mon's view".  Returns the exclamation, or null.
+ *
+ * THE RNG LEAF: hack.h:1493 ROLL_FROM(Exclam) is `Exclam[rn2(SIZE(Exclam))]`,
+ * i.e. an rn2(5) drawn ONLY when dogasp is true.  Getting the dogasp switch
+ * wrong therefore costs a draw, not just a message.
+ *
+ * EMIN lives in mextra.emin, including the renegade flag. */
 function maybe_gasp_sm(mon) {
     const Exclam = ["Gasp!", "Uh-oh.", "Oh my!", "What?", "Why?"];
     const mptr = mon.data;
@@ -16558,6 +16827,9 @@ function maybe_gasp_sm(mon) {
     if ((msound === MS_GUARDIAN_SM && (mptr?.pmidx | 0) !== quest_info(MS_GUARDIAN_SM))
         || (msound === MS_PRIEST_SM && !p_coaligned(mon)))
         msound = MS_SILENT_SM;
+    else if (msound === MS_CUSS_SM && mon.mextra?.emin
+             && (p_coaligned(mon) ? !mon.mextra.emin.renegade : mon.mextra.emin.renegade))
+        msound = MS_HUMANOID_SM;
 
     switch (msound) {
     case MS_HUMANOID_SM: case MS_ARREST_SM: case MS_SOLDIER_SM:

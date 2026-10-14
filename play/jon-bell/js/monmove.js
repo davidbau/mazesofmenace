@@ -5,15 +5,16 @@
 import { stop_occupation } from './allmain.js';
 import { rn2, rnd, rn1, d, pushRngLogEntry } from './rng.js';
 import { game } from './gstate.js';
-import { PM_LEPRECHAUN, PM_VROCK } from './pm.generated.js';
-import { bare_artifactname, xname, makeplural } from './objnam.js';
+import { PM_LEPRECHAUN, PM_VROCK, PM_KILLER_BEE, PM_QUEEN_BEE } from './pm.generated.js';
+import { bare_artifactname, makeplural, an, xname, vtense } from './objnam.js';
+import { yname } from './do_wear.js';
 import { acurr } from './attrib.js';
 import { money_cnt } from './com_pager.js';
 import { dist2, isok } from './hacklib.js';
 import { dog_move, mattackm, dogfood, mdisplacem } from './dogmove.js';
 import { dochug } from './dochug.js';
 import { gd_move } from './vault.js';
-import { findgold, noattacks, attacktype, noteleport_level, tele_restrict, permonstTemplate, splitobj, check_gear_next_turn, find_defensive, use_defensive, onscary } from './makemon.js';
+import { findgold, noattacks, attacktype, noteleport_level, tele_restrict, permonstTemplate, splitobj, check_gear_next_turn, find_defensive, use_defensive, onscary, grow_up, monflee_release_hero } from './makemon.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import monMsizePack from './makemon_msize.json' with { type: 'json' };
 /* obj.h's is_cloak/is_gloves/is_shirt read objects[otyp].oc_armcat, which this
@@ -22,10 +23,10 @@ import { ARMOR_DATA } from './armor_data.js';
 import { t_at, mintrap, mon_knows_traps, mon_learns_traps, m_carrying, seetrap, m_has_launcher_and_ammo, linedup, count_traps, maketrap } from './trap.js';
 import { OBJ_FLOOR, OBJ_DELETED, is_pit, IS_STWALL, IS_TREE, Is_rogue_level, NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE,
          Upolyd, M_AP_TYPMASK, M_AP_NOTHING, M_AP_MONSTER, CONFLICT as CONFLICT_MAF, INVIS as INVIS_PROP, DISPLACED as DISPLACED_PROP, DEAF, A_STR,
-         NC_SHOW_MSG,
+         NC_SHOW_MSG, ARM, HEAD, ROOM, CORR, GPCOORDS_NONE, GPCOORDS_COMFULL,
          /* maybe_spin_web (monmove.c:1267) */ IS_OBSTRUCTED, STAIRS, LADDER, IRONBARS, WEB, In_sokoban } from './const.js';
-import { newsym, canspotmon, _topl_record_join, pline, canseemon,
-         topl_force_break_now, Norep, You_hear, You_see, sensemon, _pline_flush_frame_record, Unaware, swallowed } from './display.js';
+import { newsym, canspotmon, pline, canseemon,
+         topl_force_break_now, Norep, You_hear, You_see, sensemon, Unaware, swallowed } from './display.js';
 import { cansee, vision_recalc, recalc_block_point, clear_path, couldsee } from './vision.js';
 import { curr_mon_load, max_mon_load, can_carry, could_reach_item, dmgtype,
          obj_extract_floor, distant_obj_name, Monnam_dm, finish_meating as finish_meating_real,
@@ -34,7 +35,8 @@ import { can_touch_safely, mfndpos, sobj_at, hideunder, maybe_unhide_at, mpickob
          /* meatmetal (mon.c:1521) */ mksobj_at,
          /* meatmetal (mon.c:1473) */ is_rustprone,
  healmon as healmon_real, meatobj as meatobj_real,
-         meatcorpse as meatcorpse_real, newcham, u_on_newpos } from './mklev.js';
+         meatcorpse as meatcorpse_real, newcham, u_on_newpos,
+         extract_from_minvent, m_consume_obj, Is_special } from './mklev.js';
 import { accessible, closed_door, may_dig } from './look.js';
 import { m_at, mon_nam, autoreturn_weapon } from './uhitm.js';
 import { gettrack } from './track.js';
@@ -44,14 +46,14 @@ import { artifact_light } from './light.js';
  * cycle is fine, they are hoisted function declarations). */
 import { rloc, mnexto } from './teleport.js';
 import { RLOC_MSG, has_edog, SHOPBASE } from './const.js';
-import { can_track, resist_conflict, can_blow, y_monnam, YMonnam, Adjmonnam, wakeup, locomotion } from './mhitm.js';
-import { losehp, acurrstr } from './dokick.js';
+import { can_track, resist_conflict, can_blow, y_monnam, YMonnam, Adjmonnam, wakeup, locomotion, Amonnam } from './mhitm.js';
+import { losehp, acurrstr, delobj } from './dokick.js';
 import { monkilled_trap } from './trap.js';
 import { TELEPAT as TELEPAT_MV, HALF_SPDAM as HALF_SPDAM_MV, KILLED_BY_AN as KILLED_BY_AN_MV } from './const.js';
 import { see_wsegs, worm_nomove, worm_move } from './worm.js';
-import { ranged_attk_available } from './mhitu.js';
+import { ranged_attk_available, mhis_mon } from './mhitu.js';
 import { mon_wield_item, sticks } from './dog.js';
-import { mwelded, is_pole, is_mines_prize, is_soko_prize, bill_dummy_object } from './cmd.js';
+import { mwelded, is_pole, is_mines_prize, is_soko_prize, bill_dummy_object, mbodypart, verbalize, switch_terrain, coord_desc } from './cmd.js';
 import { is_pick, mdig_tunnel, mb_trapped } from './dig.js';
 import { fracture_rock } from './zap.js';
 /* C monflag.h:37 — MZ_LARGE is the first monster size subject to the
@@ -63,6 +65,7 @@ import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 /* C objects[otyp].oc_weight — m_consume_obj (mon.c:1399) heals a non-pet by the
  * RAW column, not by weight(obj) (which multiplies by quan).  Pure data module,
  * no imports of its own. */
+import { eaten_stat } from './food_props.js';
 import { OC_WEIGHT } from './oc_weight.generated.js';
 /* C monmove.c:1831 — m_move dispatches a shopkeeper to shk_move (shk.js →
  * move_special in priest.js).  This forms a call-time cycle monmove→shk→
@@ -76,6 +79,130 @@ import { pri_move, in_your_sanctuary } from './priest.js';
  * region.c functions called from monmove.c:682-683, :702-704 and :2063. */
 import { create_gas_cloud, visible_region_at, m_in_out_region } from './region.js';
 import { ENV } from './hostenv.js';
+/* C pline.c:126-149,175-190: these messages carry a map location even
+ * when the monster cannot be seen. The display pline does not add this prefix. */
+async function monmove_message(mon, text) {
+    const x = mon === game.youmonst ? 0 : mon.mx;
+    const y = mon === game.youmonst ? 0 : mon.my;
+    if (game.a11y?.accessiblemsg && isok(x, y)) {
+        const mode = game.iflags?.getpos_coords;
+        text = coord_desc(x, y, !mode || mode === GPCOORDS_NONE
+                              ? GPCOORDS_COMFULL : mode) + ': ' + text;
+    }
+    (game.a11y ||= {}).msg_loc = { x: 0, y: 0 };
+    await pline('%s', text);
+}
+
+/* C monmove.c:32-46 — accessibility announcements follow placement and
+ * precede worm movement and the destination's hiding/terrain effects. */
+async function msg_mon_movement(mtmp, omx, omy) {
+    if (game.a11y?.mon_movement && canspotmon(mtmp) && mtmp.mspotted) {
+        const distance = mdistu(mtmp);
+        const n2u = distance <= 2;
+        const close = !n2u && distance <= BOLT_LIM * BOLT_LIM;
+        const closer = !n2u && distance <= dist2(omx, omy, game.u.ux, game.u.uy);
+        const where = n2u ? ' next to you' : close && closer ? ' closer'
+                    : close ? ' further away' : ' in the distance';
+        await monmove_message(mtmp,
+            `${Monnam_dm(mtmp)} ${vtense(null, locomotion(mtmp.data, 'move'))}${where}.`);
+    }
+}
+
+/* C monmove.c:105-130 — deaf heroes see gestures instead of hearing speech. */
+export async function mon_yells(mon, shout) {
+    const p = game.u?.uprops?.[DEAF];
+    const deaf = !!(p?.intrinsic || p?.extrinsic || game.u?.uroleplay?.deaf);
+    if (deaf) {
+        if (canspotmon(mon)) {
+            const limbless = ((mon.data.mflags1 | 0) & 0x6000) === 0x6000;
+            const name = Amonnam(mon);
+            const possessive = mhis_mon(mon);
+            const part = limbless ? mbodypart(mon, HEAD) : makeplural(mbodypart(mon, ARM));
+            await monmove_message(mon,
+                `${name} angrily ${limbless ? 'shakes' : 'waves'} ${possessive} ${part}!`);
+        }
+    } else {
+        if (canspotmon(mon))
+            await monmove_message(mon, `${Amonnam(mon)} yells:`);
+        else
+            await You_hear('someone yell:');
+        await verbalize('%s', shout);
+    }
+}
+
+/* C monmove.c:374-389 — genocided species and dead list nodes don't count. */
+export function find_pmmonst(pm) {
+    if (!((game.mvitals?.[pm]?.mvflags | 0) & G_GENOD_MV)) {
+        for (let mon = game.fmon; mon; mon = mon.nmon) {
+            if (mon.mhp < 1) continue;
+            if (mon.data?.pmidx === pm) return mon;
+        }
+    }
+    return null;
+}
+
+/* C monmove.c:393-419 — consume one jelly, grow immediately, then freeze. */
+export async function bee_eat_jelly(mon, obj) {
+    if (find_pmmonst(PM_QUEEN_BEE)) return -1;
+    const delay = obj.blessed ? 3 : !obj.cursed ? 5 : 7;
+    if (obj.quan > 1) obj = await splitobj(obj, 1);
+    if (canseemon(mon))
+        await monmove_message(mon, `${Monnam_dm(mon)} eats ${an(xname(obj))}.`);
+    await delobj(obj);
+    const queenLevel = permonstTemplate(PM_QUEEN_BEE).mlevel;
+    if (mon.m_lev < queenLevel - 1) mon.m_lev = queenLevel - 1;
+    await grow_up(mon, null);
+    if (mon.mhp < 1) return 1;
+    mon.mfrozen = delay;
+    mon.mcanmove = 0;
+    return 0;
+}
+
+/* C monmove.c:423-445 — select the first digestible inventory object. */
+async function gelcube_digests(mtmp) {
+    if (mtmp.meating || !mtmp.minvent) return -1;
+    let otmp = mtmp.minvent;
+    for (; otmp; otmp = otmp.nobj) {
+        if (MKOBJ_OC_MATERIAL[otmp.otyp] <= 8 /* WOOD */ && !otmp.oartifact
+            && !is_mines_prize(otmp) && !is_soko_prize(otmp)) break;
+    }
+    if (!otmp) return -1;
+    mtmp.meating = eaten_stat(mtmp.meating, otmp);
+    await extract_from_minvent(mtmp, otmp, true, true);
+    await m_consume_obj(mtmp, otmp);
+    return 0;
+}
+
+export async function mon_eat_before_move(mtmp) {
+    const pm = mtmp.data.pmidx;
+    if (pm === PM_KILLER_BEE) {
+        const jelly = sobj_at(286 /* LUMP_OF_ROYAL_JELLY */, mtmp.mx, mtmp.my);
+        if (jelly) return await bee_eat_jelly(mtmp, jelly);
+    }
+    if (pm === PM_GELATINOUS_CUBE_MV) return await gelcube_digests(mtmp);
+    return -1;
+}
+
+/* C monmove.c:1052-1061 — a sticking hero prevents escape, with a message. */
+export async function itsstuck(mtmp) {
+    if (sticks(game.youmonst.data) && mtmp === game.u.ustuck && !game.u.uswallow) {
+        await monmove_message(mtmp, `${Monnam_dm(mtmp)} cannot escape from you!`);
+        return true;
+    }
+    return false;
+}
+
+/* C monmove.c:2169-2180 — bars on a room edge leave a doorless doorway. */
+async function dissolve_bars(x, y) {
+    const loc = game.level.locations[x][y];
+    loc.typ = loc.edge === 1 ? DOOR_TYP_MV
+        : Is_special(game.u.uz) || in_rooms(x, y, 0).length ? ROOM : CORR;
+    loc.flags = 0;
+    loc.doormask = 0; /* flags and doormask share the same C storage. */
+    newsym(x, y);
+    if (game.u.ux === x && game.u.uy === y) await switch_terrain();
+}
+
 /* C ref: hack.h:49 — BOLT_LIM = 8; BOLT_LIM*BOLT_LIM = 64 */
 const BOLT_LIM = 8;
 /* C ref: trap.h — SQKY_BOARD = 4 */
@@ -141,13 +268,12 @@ function _Invis_mv() {
     const BInvis = p?.blocked | 0;
     return !!((HInvis || EInvis) && !BInvis);
 }
-/* C ref: monmove.c:461-533 monflee, synchronous body for distfleeck (whose
- * callers in js/dochug.js do not await).  js/makemon.js's async monflee is the
- * same body; its only await is the u.ustuck release (monmove.c:473-474), which
- * is a no-op stub there too (unstuck/expels in js/dog.js). */
-function monflee_sync(mtmp, fleetime, first, fleemsg) {
+/* C monmove.c:461-533: distfleeck must await releasing a held hero before
+ * setting flight state or resuming the monster turn. */
+async function monflee_mv(mtmp, fleetime, first, fleemsg) {
     if ((mtmp.mhp | 0) < 1)
         return;
+    await monflee_release_hero(mtmp);
     if (!first || !mtmp.mflee) {
         if (!fleetime) {
             mtmp.mfleetim = 0;
@@ -160,22 +286,22 @@ function monflee_sync(mtmp, fleetime, first, fleemsg) {
         const apt = (mtmp.m_ap_type | 0) & M_AP_TYPMASK;
         if (!mtmp.mflee && fleemsg && canseemon(mtmp) && apt !== 1 /* M_AP_FURNITURE */ && apt !== 2 /* M_AP_OBJECT */) {
             if (!mtmp.mcanmove || !(mtmp.data ? mtmp.data.mmove | 0 : 0)) {
-                pline(`${Adjmonnam(mtmp, 'immobile')} seems to flinch.`);
+                await pline(`${Adjmonnam(mtmp, 'immobile')} seems to flinch.`);
             } else if (flees_light(mtmp)) {
                 const u = game.u || {};
                 const p = u.uprops ? u.uprops[DEAF] : null;
                 const deaf = !!((p && ((p.intrinsic | 0) || (p.extrinsic | 0))) || (u.uroleplay && u.uroleplay.deaf));
                 if (Unaware()) {
-                    pline(`${Monnam_dm(mtmp)} is frightened.`);
+                    await pline(`${Monnam_dm(mtmp)} is frightened.`);
                 } else if (rn2(10) || deaf) {
                     const lsrc = (u.uwep && artifact_light(u.uwep)) ? bare_artifactname(u.uwep)
-                        : (u.uarm && artifact_light(u.uarm)) ? xname(u.uarm) : '[its imagination?]';
-                    pline(`${Monnam_dm(mtmp)} flees from the painful light of ${lsrc}.`);
+                        : (u.uarm && artifact_light(u.uarm)) ? yname(u.uarm) : '[its imagination?]';
+                    await pline(`${Monnam_dm(mtmp)} flees from the painful light of ${lsrc}.`);
                 } else {
-                    pline('Bright light!');
+                    await pline('Bright light!');
                 }
             } else {
-                pline(`${Monnam_dm(mtmp)} turns to flee.`);
+                await pline(`${Monnam_dm(mtmp)} turns to flee.`);
             }
         }
         if (mtmp.data && (mtmp.data.pmidx | 0) === PM_VROCK && !mtmp.mspec_used) {
@@ -186,7 +312,7 @@ function monflee_sync(mtmp, fleetime, first, fleemsg) {
     }
     mon_track_clear(mtmp);
 }
-export function distfleeck(mtmp) {
+export async function distfleeck(mtmp) {
     const u = game.u;
     if (!u || !mtmp)
         return { inrange: 0, nearby: 0, scared: 0 };
@@ -236,7 +362,7 @@ export function distfleeck(mtmp) {
          * rn2(7) and rnd() must fire even if monflee side-effects are skipped.
          * Minimal port: consume the RNG; set mtmp.mflee=1 for state parity. */
         const flee_rn2_7 = rn2(7);
-        monflee_sync(mtmp, rnd(flee_rn2_7 ? 10 : 100), true, true);
+        await monflee_mv(mtmp, rnd(flee_rn2_7 ? 10 : 100), true, true);
     }
     return { inrange, nearby, scared };
 }
@@ -1399,7 +1525,7 @@ export async function m_move_aggress(mtmp, x, y) {
 /* C trap.c:1402-1470 via monmove.c:1535 — apply SQKY_BOARD to a moved
  * monster.  Both tame and hostile postmov paths call this shared leaf; C's
  * postmov invokes mintrap uniformly for pets and non-pets. */
-function _handle_sqky_board_mon(mtmp, trap, nix, niy) {
+async function _handle_sqky_board_mon(mtmp, trap, nix, niy) {
     const _mf1_sq = (mtmp.data.mflags1 | 0);
     const _in_air_sq = (_mf1_sq & M1_FLY_MV) !== 0;
     let _sqky_handled = false;
@@ -1468,7 +1594,7 @@ function _handle_sqky_board_mon(mtmp, trap, nix, niy) {
             const _couldsee = !!couldsee(nix, niy);
             const _range = _couldsee ? (BOLT_LIM + 1) : (BOLT_LIM - 3);
             const _nearfar = (_dist2 <= _range * _range) ? 'nearby' : 'in the distance';
-            /* You_hear (pline.c) inline, keeping this arm's own join bookkeeping:
+            /* You_hear (pline.c) text and hearing predicates:
              * silent when Deaf and aware or !acoustics; 'You barely hear' under
              * water; 'You dream that you hear' while Unaware (asleep/fainted). */
             const _ua = Unaware();
@@ -1478,19 +1604,9 @@ function _handle_sqky_board_mon(mtmp, trap, nix, niy) {
                     + `${trapnote} squeak ${_nearfar}.`;
         }
         if (_msg) {
-            /* C pline.c:282 — gp.prevmsg = line on every shown message; Norep()
-             * (pline.c:255) reads it, so a later identical Norep must print. */
-            game._prevmsg = String(_msg);
-            const _prev = game._pending_message;
-            if (_prev && _prev.length > 0) {
-                const _joined = _prev + '  ' + _msg;
-                _topl_record_join(_prev, _joined);
-                game._pending_message = _joined;
-            } else {
-                const _rr = game._resultMessage;
-                if (_rr && _rr !== _msg) _pline_flush_frame_record(_rr.length, String(_msg));
-                game._pending_message = _msg;
-            }
+            /* C trap.c:1449-1470 uses pline_mon/You_hear, including
+             * update_topl's WIN_STOP suppression after an ESC (topl.c:257). */
+            await pline(_msg);
         }
         if (_mark_seen)
             seetrap(trap); /* C marks the trap after pline_mon */
@@ -1717,7 +1833,7 @@ export async function m_move(mtmp, after) {
                     return MMOVE_DIED_MV;
                 }
             } else if (_trap && _trap.ttyp === SQKY_BOARD_MV) {
-                _handle_sqky_board_mon(mtmp, _trap, mtmp.mx | 0, mtmp.my | 0);
+                await _handle_sqky_board_mon(mtmp, _trap, mtmp.mx | 0, mtmp.my | 0);
             }
         }
         /* C postmov (monmove.c:1549-1553) — the door block runs for a tame mover
@@ -1837,7 +1953,7 @@ export async function m_move(mtmp, after) {
                     return MMOVE_DIED_MV;
                 }
             } else if (_tt) {
-                _handle_sqky_board_mon(mtmp, _tt, mtmp.mx | 0, mtmp.my | 0);
+                await _handle_sqky_board_mon(mtmp, _tt, mtmp.mx | 0, mtmp.my | 0);
             }
         }
         newsym(mtmp.mx | 0, mtmp.my | 0);
@@ -2126,9 +2242,7 @@ export async function m_move(mtmp, after) {
          * before the dig-weapon arm and consumes no movement RNG. */
         if (mmoved === MMOVE_MOVED_MV
             && !((game.u?.ux | 0) === (nix | 0) && (game.u?.uy | 0) === (niy | 0))
-            && sticks(game.youmonst?.data)
-            && game.u?.ustuck === mtmp
-            && !(game.u?.uswallow | 0))
+            && await itsstuck(mtmp))
             return MMOVE_DONE_MV;
 
         if (mmoved === MMOVE_MOVED_MV && await m_digweapon_check(mtmp, nix, niy))
@@ -2188,6 +2302,7 @@ export async function m_move(mtmp, after) {
         /* C monmove.c:2073-2086: actual move — update position */
         mtmp.mx = nix;
         mtmp.my = niy;
+        await msg_mon_movement(mtmp, omx, omy);
         /* C monmove.c:2057-2058: for a long worm, insert a new segment to
          * reconnect the head with the tail (rnd(5)/rn1 growth draws). */
         if (mtmp.wormno)
@@ -2260,7 +2375,7 @@ export async function m_move(mtmp, after) {
                     return MMOVE_DIED_MV;
                 }
             } else if (_trap && _trap.ttyp === SQKY_BOARD_MV) {
-                _handle_sqky_board_mon(mtmp, _trap, nix, niy);
+                await _handle_sqky_board_mon(mtmp, _trap, nix, niy);
             }
         }
 
@@ -2269,23 +2384,23 @@ export async function m_move(mtmp, after) {
             if (_dr === MMOVE_DIED_MV) return _dr;
         }
 
-        /* C monmove.c:1623-1639 — the IRONBARS arm of "doors and bars".  The
-         * metal-eating arm (dissolve_bars, MMOVE_DONE) is not ported here;
-         * the else-if Norep arm is: "%s %s %s the iron bars." */
+        /* C monmove.c:1623-1639 — eating bars spends the rest of the move;
+         * verbose only controls the ordinary passage message. */
         {
-            const _bloc = game.level?.locations?.[mtmp.mx | 0]?.[mtmp.my | 0];
-            if (_bloc && (_bloc.typ | 0) === IRONBARS
-                && game.flags?.verbose !== false && canseemon(mtmp)) {
-                const _bn = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
-                const _bptr = permonstTemplate(_bn);
-                const _eats = !(((_bloc.wall_info ?? 0) | 0) & 0x08 /* W_NONDIGGABLE */)
-                    && (dmgtype({ pmidx: _bn }, AD_RUST_BARS_MV)
-                        || dmgtype({ pmidx: _bn }, AD_CORR_BARS_MV)
-                        || metallivorous_mv(_bptr));
-                if (!_eats) {
+            const loc = game.level?.locations?.[mtmp.mx]?.[mtmp.my];
+            const ptr = mtmp.data;
+            if (loc?.typ === IRONBARS) {
+                if (!((loc.wall_info | 0) & 0x08 /* W_NONDIGGABLE */)
+                    && (dmgtype(ptr, AD_RUST_BARS_MV)
+                        || dmgtype(ptr, AD_CORR_BARS_MV) || metallivorous_mv(ptr))) {
+                    if (canseemon(mtmp))
+                        await monmove_message(mtmp, `${Monnam_dm(mtmp)} eats through the iron bars.`);
+                    await dissolve_bars(mtmp.mx, mtmp.my);
+                    return MMOVE_DONE_MV;
+                } else if (game.flags?.verbose !== false && canseemon(mtmp)) {
                     await Norep('%s %s %s the iron bars.', Monnam_dm(mtmp),
-                          makeplural(locomotion(_bptr, 'pass')),
-                          ((_bptr.mflags1 | 0) & M1_WALLWALK_MV) ? 'through' : 'between');
+                          makeplural(locomotion(ptr, 'pass')),
+                          ((ptr.mflags1 | 0) & M1_WALLWALK_MV) ? 'through' : 'between');
                 }
             }
         }
@@ -2516,8 +2631,9 @@ function count_webbing_walls_mv(x, y) {
          + (holds_up_web_mv(x - 1, y) ? 1 : 0);
 }
 
+/* C monmove.c:1251-1264: solved levels have sokoban_rules cleared. */
 function soko_allow_web_mv(mon) {
-    if (!In_sokoban(game.u?.uz))
+    if (!game.level?.flags?.sokoban_rules)
         return true;
     const stway = stairway_find_dir(true); /* stairs up */
     if (stway && clear_path(mon.mx | 0, mon.my | 0, stway.sx | 0, stway.sy | 0))

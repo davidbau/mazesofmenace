@@ -4,10 +4,9 @@
 // For browser play, see nethack.js.
 import { game, resetGame } from './gstate.js';
 import { vfsDeleteFile } from './storage.js';
-import { add_menu_coloring } from './coloratt.js';
 import { savefile_name } from './save.js';
 import { initRng, enableRngLog, getRngLog, pushRngLogEntry } from './rng.js';
-import { newgame, moveloop_core, _flushTrailingWorldBlock } from './allmain.js';
+import { newgame, report_config_errors, moveloop_core, _flushTrailingWorldBlock } from './allmain.js';
 import { FF_FAITHFUL } from './fastforward.js';
 import { parseNethackrc, init_fruit_chain } from './options.js';
 import { reset_commands, update_rest_on_space } from './cmd_binds.js';
@@ -108,10 +107,9 @@ export class NethackGame {
         initRng(this._seed);
         enableRngLog();
         // Parse nethackrc
-        const opts = parseNethackrc(this._nethackrc);
-        g.msgtype_hide = opts.msgtypes || [];
         g.menu_colorings = null;
-        for (const mc of opts.menucolors || []) add_menu_coloring(mc);
+        const opts = parseNethackrc(this._nethackrc);
+        g.msgtypes = opts.msgtypes || [];
         g.apelist = opts.apelist || null;
         // C ref: options.c optfn_name — svp.plname[] is empty unless the rc
         // named the hero.  The 'Hero' default is a JS-side placeholder for
@@ -261,6 +259,10 @@ export class NethackGame {
         }
         g.iflags.window_inited = true;
         this._installCaptureHook();
+        /* C ref: cfgfiles.c config_error_done() ends initoptions(), so the rc
+         * error report (and its wait for a key) precedes attempt_restore and
+         * player_selection(). */
+        if (this._playChargen) await report_config_errors();
         // ── attempt_restore (v5 cross-segment save channel) ───────────────
         // C ref: sys/unix/unixmain.c:220 `attempt_restore:` — after
         // initoptions()/plnamesuffix()/vision_init() and BEFORE

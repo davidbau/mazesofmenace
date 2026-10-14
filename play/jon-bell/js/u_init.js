@@ -37,7 +37,7 @@ import { discover_object } from './o_init.js';
 import { MKOBJ_OC_SKILL, MKOBJ_OC_MAGIC } from './mkobj_erosion_meta.js';
 import { OC_USES_KNOWN, dealloc_obj, mksobj, mkobj } from './mklev.js';
 import { MKOBJ_OC_CLASS, MKOBJ_SVB_BASES } from './mkobj_data.js';
-import { NON_PM, A_CHAOTIC, A_CON, JUMPING, FROMOUTSIDE, LAST_PROP } from './const.js';
+import { NON_PM, A_CHAOTIC, A_CON, JUMPING, BLINDED, FROMOUTSIDE, LAST_PROP } from './const.js';
 const STATUE = 476; // objects.h
 // C role indices (role.c order): 0=Archeologist 1=Barbarian 2=Caveman 3=Healer
 // 4=Knight 5=Monk 6=Priest 7=Rogue 8=Ranger 9=Samurai 10=Tourist 11=Valkyrie 12=Wizard
@@ -260,6 +260,9 @@ export async function u_init_misc() {
     /* C ref u_init.c:1005: u.ublesscnt = 300 — "no prayers just yet".
      * Prayer cooldown counter; decremented in moveloop, no RNG involved. */
     u.ublesscnt = 300;
+    // C u_init.c:1023-1028: OPTIONS:blind sets PermaBlind, not a timeout.
+    if (u.uroleplay?.blind)
+        u.uprops[BLINDED].intrinsic |= FROMOUTSIDE;
     u.uhandedness = rn2(10) ? RIGHT_HANDED : LEFT_HANDED;
     /* C ref u_init.c:1006 + attrib.c:1099-1100:
      *   u.ualignbase[A_CURRENT] = u.ualignbase[A_ORIGINAL] = u.ualign.type =

@@ -1,3 +1,5 @@
+import { u_carried_gloves } from './cmd.js';
+import { yyyymmdd } from './allmain.js';
 import { spoteffects } from './landing-effects.js';
 // @ts-nocheck
 /* js/mhitu.js — gazemu(): monster gaze attack on hero.
@@ -26,7 +28,7 @@ import { game } from './gstate.js';
 import { freehand } from './engrave.js';
 import { get_atkdam_type, is_youmonst as is_youmonst_mu, ugolemeffects as ugolemeffects_mh,
          seemimic as seemimic_real, killed as killed_real } from './mhitm.js';
-import { erode_armor as erode_armor_um } from './mhitm.js';
+import { erode_armor as erode_armor_um, mon_hates_blessings } from './mhitm.js';
 import monKbMsizePack from './makemon_msize.json' with { type: 'json' };
 import monKbMattkPack from './makemon_mattk.json' with { type: 'json' };
 import monKbMonsPack from './makemon_mons.json' with { type: 'json' };
@@ -35,7 +37,7 @@ import { pline, urgent_pline as urgent_pline_disp, newsym, mon_visible as mon_vi
 import { m_at as uhitm_m_at, hitval, mon_wield_item, dmgval, select_rwep } from './uhitm.js';
 import { burnarmor as burnarmor_real, erode_obj, drain_en as drain_en_trap, goodpos } from './trap.js';
 import { msummon as msummon_real, attrcurse as attrcurse_mu } from './sit.js';
-import { PM_CLAY_GOLEM as PM_CLAY_GOLEM_MU } from './pm.generated.js';
+import { PM_CLAY_GOLEM as PM_CLAY_GOLEM_MU, PM_CLERIC } from './pm.generated.js';
 import { _mon_reflects_zap as mon_reflects_real } from './zap.js';
 /* C uhitm.c:4424 mhitm_ad_legs — one body, shared by both attack directions. */
 import { mhitm_ad_legs as mhitm_ad_legs_uh } from './uhitm.js';
@@ -128,6 +130,7 @@ import { stackobj } from './sp_lev.js';
 import { nomul, night, midnight, stop_occupation as real_stop_occupation } from './allmain.js';
 import { is_were as is_were_real, new_were as new_were_real,
          were_summon as were_summon_real, set_ulycn as set_ulycn_real } from './were.js';
+import { you_were, you_unwere } from './were.js';
 /* The real canseemon — this file also declares a file-local
  * `canseemon() { return false; }` stub, which the older arms below still use. */
 import { canseemon as canseemon_mu, tp_sensemon as tp_sensemon_mu, sensemon as sensemon_mu } from './display.js';
@@ -187,7 +190,7 @@ import { hold_another_object } from './hold_another_object.js';
 /* C objnam.c:2424 simpleonames(obj) — minimal_xname made plural for quan>1.
  * RNG-free; C evaluates it twice in the u_catch_thrown_obj call, once per
  * argument, so calling it once and reusing the string is faithful. */
-import { simpleonames as simpleonames_mu } from './objnam.js';
+import { simpleonames as simpleonames_mu, is_quest_artifact } from './objnam.js';
 import { obj_resists as obj_resists_mu } from './dogmove.js';
 import { thitu as thitu_mu, monkilled_trap as monkilled_mu,
          openholdingtrap as openholdingtrap_mu } from './trap.js';
@@ -1850,8 +1853,12 @@ async function doseduce(mon) {
 
     if (u.uarm || u.uarmc) {
         if (!Deaf_mu()) {
-            /* C's ld() is a Feb-29 date test (mhitu.c:25); not true on a recorded date. */
-            await verbalize_ds(`You're such a ${g.flags?.female ? 'sweet lady' : 'nice guy'}; I wish...`);
+            if (yyyymmdd(0) % 10000 === 229 && mon.female) {
+                const gloves = u_carried_gloves();
+                if (gloves) observe_object_mu(gloves);
+                await verbalize_ds(`Well, then you owe me ${gloves ? await yname_mu(gloves) : 'twelve pairs of gloves'}${gloves ? ' and eleven more pairs of gloves' : ''}!`);
+            } else
+                await verbalize_ds(`You're such a ${g.flags?.female ? 'sweet lady' : 'nice guy'}; I wish...`);
         } else if (seewho)
             pline(`${Monnam(mon)} appears to sigh.`);
         if (!tele_restrict_mu(mon))
@@ -2704,12 +2711,20 @@ async function mhitm_ad_poly_u(mtmp, mattk, mhm) {
         } else {
             const oldform = (game.u?.umonnum ?? -1) | 0; /* mhitm.c:1124 (data identity ~ form index) */
             if (Antimagic_mu()) {
-                /* shieldeff: display only */
+                shieldeff(u.ux, u.uy);
             } else if (Unchanging_mu()) {
                 /* just take a little damage */
             } else {
-                pline('You are subjected to a freakish metamorphosis.');
-                await polyself_real(0);
+                if (u.ulycn === -1) {
+                    await pline('You are subjected to a freakish metamorphosis.');
+                    await polyself_real(0);
+                } else if (u.umonnum !== u.ulycn) {
+                    await pline('You feel an unnatural urge coming on.');
+                    await you_were();
+                } else {
+                    await pline('You feel a natural urge coming on.');
+                    await you_unwere(false);
+                }
                 mhm.damage = 0;
             }
             /* mhitm.c:1203-1204: a changed hero form (magr != youmonst)
@@ -3258,9 +3273,11 @@ async function hitmu_je(mtmp, mattk) {
         if (mhm.damage < 1) mhm.damage = 1;
     }
     if (mhm.damage > 0) {
-        /* C mhitu.c:1212-1216 — Half_physical_damage (RNG-free).  The Mitre of
-         * Holiness clause is not ported. */
-        if (_half_phys_prop_mu())
+        /* C mhitu.c:1216-1220 — the Cleric's quest helm also halves damage
+         * from monsters that hate blessings, even when the helm is cursed. */
+        if (_half_phys_prop_mu()
+            || (game.urole?.mnum === PM_CLERIC && u.uarmh
+                && is_quest_artifact(u.uarmh) && mon_hates_blessings(mtmp)))
             mhm.damage = Math.trunc((mhm.damage + 1) / 2);
         /* C mhitu.c:1222-1252 — Death's life force drain (mhm.permdmg). */
         if (mhm.permdmg) {
@@ -5041,22 +5058,7 @@ const M2_WERE_MU = 0x00000004, M2_DEMON_MU = 0x00000100, NON_PM_MU = -1;
 function is_were_mu(ptr) { return ((ptr?.mflags2 | 0) & M2_WERE_MU) !== 0; }
 function is_demon_mu(ptr) { return ((ptr?.mflags2 | 0) & M2_DEMON_MU) !== 0; }
 
-/* C mhitu.c:955-1012 summonmu(mtmp, youseeit) — "monster summons help for its
- * fight against hero".  DEMON ARM ONLY:
- *
- *     if (is_demon(mdat)) {
- *         if (mdat != &mons[PM_BALROG] && mdat != &mons[PM_AMOROUS_DEMON]) {
- *             if (!rn2(Inhell ? 10 : 16))
- *                 (void) msummon(mtmp);
- *         }
- *         return;
- *     }
- *
- * The `youseeit` parameter is only read by the were arm's "%s summons help!"
- * pline, so it is not threaded here.
- *
- * The demon arm is synchronous in this file.  The were arm is async only
- * because makemon() is async in JS, so its caller awaits this helper. */
+/* C mhitu.c:955-1029 summonmu(mtmp, youseeit) — demon and were help. */
 const M2_HUMAN_SUMMONMU = 0x00000008;
 async function summonmu_mu(mtmp, youseeit = false) {
     const mdat = mtmp.data;
@@ -5086,10 +5088,11 @@ async function summonmu_mu(mtmp, youseeit = false) {
      * draws, and reports how many were visible. */
     if (!rn2(10)) {
         const visible = { value: 0 };
+        const genericwere = { value: 'creature' };
         /* C:994-995 — the announcement precedes were_summon's makemon calls */
         if (youseeit)
             await pline(`${Monnam(mtmp)} summons help!`);
-        const numhelp = await were_summon_real(mtmp.data, false, visible, 'creature');
+        const numhelp = await were_summon_real(mtmp.data, false, visible, genericwere);
         if (youseeit) {
             if (numhelp > 0) {
                 if ((visible.value | 0) === 0)
@@ -5111,10 +5114,9 @@ async function summonmu_mu(mtmp, youseeit = false) {
                 if ((visible.value | 0) < 1) {
                     await pline('You feel hemmed in.');
                 } else {
-                    const genericwere = 'creature';
                     const buf = (visible.value | 0) === 1
-                        ? `${an(genericwere)} appears`
-                        : `${makeplural(genericwere)} appear`;
+                        ? `${an(genericwere.value)} appears`
+                        : `${makeplural(genericwere.value)} appear`;
                     await pline(`${buf.charAt(0).toUpperCase()}${buf.slice(1)}${from_nowhere}!`);
                 }
             } /* else no help came; but you didn't know it tried */

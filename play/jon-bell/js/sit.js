@@ -97,6 +97,9 @@ import { losexp as losexp_real } from './exper.js';
  * export is fine to import (only editing js/cmd.js is off limits here). */
 import { schedule_goto } from './cmd.js';
 import { remove_worn_item } from './steal.js';
+import { done, delayed_killer } from './end.js';
+import { GENOCIDED, POLYMORPH } from './const.js';
+import { rehumanize, udeadinside } from './polyself.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 /* ---------------------------------------------------------------------------
  * A_MAX — total number of base attributes (C: attrib.h A_MAX = 6)
@@ -377,14 +380,25 @@ export async function do_genocide(flags = 1) {
             which = !((data.mflags2 >>> 0) & 0x00080000) ? 'the ' : '';
     }
     await pline('Wiped out %s%s.', which, (which.charAt(0) !== 'a') ? buf : makeplural(buf));
-    await kill_genocided_monsters();
-    update_inventory();
+    // C read.c:2967-2995: resolve hero death before monster/inventory cleanup.
     if (killPlayer) {
         game.u.uhp = -1;
-        game.__bridge__ ||= {};
-        game.__bridge__['killer.name'] = onThrone ? 'imperious order' : 'scroll of genocide';
-        await pline('You die.');
+        game.svk ||= {};
+        const killer = game.svk.killer ||= { id: 0, format: 0, name: '', next: null };
+        killer.format = (flags & 2) ? KILLED_BY : KILLED_BY_AN;
+        killer.name = (flags & 2) ? 'genocidal confusion'
+            : onThrone ? 'imperious order' : 'scroll of genocide';
+        if (Upolyd(game.u) && selected !== current) {
+            delayed_killer(POLYMORPH, killer.format, killer.name);
+            await pline('You feel %s inside.', udeadinside());
+        } else {
+            await done(GENOCIDED);
+        }
+    } else if (selected === current) {
+        await rehumanize();
     }
+    await kill_genocided_monsters();
+    update_inventory();
     return true;
 }
 /* make_blinded: LOCAL EMPTY STUB DELETED — see import above. */
@@ -954,19 +968,12 @@ export async function throne_sit_effect() {
                 await pline('A voice echoes:');
                 await verbalize('Thine audience hath been summoned, %s!',
                                 game.flags?.female ? 'Dame' : 'Sire');
-                await pline('A voice echoes:');
-                await verbalize('Thine audience hath been summoned, %s!',
-                    game.flags?.female ? 'Dame' : 'Sire');
                 for (let i = cnt; i > 0; --i) {
                     await makemon(courtmon_real(), tx, ty, /* NO_MM_FLAGS */ 0);
                 }
                 break;
             }
             case 8:
-                /* sit.c:124-128 */
-                await pline('A voice echoes:');
-                await verbalize('By thine Imperious order, %s...',
-                                game.flags?.female ? 'Dame' : 'Sire');
                 /* C sit.c:125-131: magical voice, not affected by deafness.
                  * No RNG here — do_genocide() has its own RNG. */
                 await pline('A voice echoes:');
@@ -975,10 +982,7 @@ export async function throne_sit_effect() {
                 await do_genocide(5); /* REALLY|ONTHRONE */
                 break;
             case 9: {
-                /* sit.c:131-135 */
-                await pline('A voice echoes:');
-                await verbalize('A curse upon thee for sitting upon this most holy throne!');
-                /* RNG: rn1(100,250) always; optionally rnd(2) if Luck > 1 */
+                /* C sit.c:133-143: announce the curse once, then apply it. */
                 await pline('A voice echoes:');
                 await verbalize('A curse upon thee for sitting upon this most holy throne!');
                 const luck = (u.uluck | 0) + (u.moreluck | 0);

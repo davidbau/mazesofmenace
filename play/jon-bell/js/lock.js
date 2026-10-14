@@ -5,14 +5,15 @@
 // (lock.c:957-1052). The drawbridge predicates used by the shared branches
 // are implemented locally below to keep lock.js independent of dokick.js.
 import { game } from './gstate.js';
+import { could_untrap, untrap_at, cmdq_add_ec, cmdq_add_dir } from './cmd.js';
 import { t_at } from './trap.js';
 const WAND_CLASS = 11; /* objclass.h WAND_CLASS */
-import { Is_rogue_level, M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT } from './const.js';
+import { Is_rogue_level, M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, AUTOUNLOCK_KICK } from './const.js';
 import { canspotmon, map_invisible } from './display.js';
 import { s_suffix } from './hacklib.js';
 import { Some_Monnam } from './mhitm.js';
 import { set_occupation, confdir, movecmd, cmdq_pop, cmdq_clear, cmdq_add_key, redraw_cmd, dxdy_moveok, xytodir, readchar,
-    show_direction_keys, dowhatdoes_core } from './cmd.js';
+    show_direction_keys, dowhatdoes_core, useup } from './cmd.js';
 import { visctrl } from './cmd_binds.js';
 import { CQ_REPEAT, CQ_CANNED, CMDQ_DIR, CMDQ_KEY, NHKF_GETDIR_HELP, NHKF_GETDIR_SELF, NHKF_GETDIR_SELF2 } from './const.js';
 import { impossible } from './pline.js';
@@ -33,7 +34,10 @@ import { isok } from './hacklib.js';
 import { wake_nearto } from './mklev.js';
 import { in_rooms, add_damage } from './shk.js';
 import { cansee, Blind } from './vision.js';
-import { closed_door } from './look.js';
+import { closed_door, is_door_mappear } from './look.js';
+import { maybe_absorb_item } from './steal.js';
+import { stumble_onto_mimic } from './uhitm.js';
+import { TT_PIT } from './const.js';
 import { DEAF, HALLUC, STUNNED, CONFUSION, DBWALL, DB_DIR, DB_WEST, DB_EAST, DB_SOUTH, DB_NORTH,
          IS_DRAWBRIDGE, HALF_PHDAM, KILLED_BY_AN, NO_PART, SHOP_DOOR_COST } from './const.js';
 /* C ref: objects.h — WAN_STRIKING otyp (js/makemon.js and js/muse.js pin the
@@ -242,6 +246,17 @@ export async function doopen_indir(x, y) {
             break;
         }
         await pline(`This door${mesg}.`);
+        /* C lock.c:875-894 — the autounlock follow-up:
+         *     if (locked && flags.autounlock) {
+         *         u.dz = 0;
+         *         if ((flags.autounlock & AUTOUNLOCK_APPLY_KEY) != 0
+         *             && (unlocktool = autokey(TRUE)) != 0)
+         *             res = pick_lock(unlocktool, cc.x, cc.y, NULL) ? ECMD_TIME
+         *                                                          : ECMD_OK;
+         *         else if ((flags.autounlock & AUTOUNLOCK_KICK) != 0
+         *                  && !u.usteed && ynq("Kick it?") == 'y') { ... }
+         *     }
+         * Kicking is offered only when no apply-key action is available. */
         /* the nethackrc handler stores flags.autounlock as the option's text
          * ("apply-key+kick+force"); C holds the unlocktypes[] bitmask. */
         const auRaw = g.flags?.autounlock ?? AUTOUNLOCK_APPLY_KEY;
@@ -250,21 +265,15 @@ export async function doopen_indir(x, y) {
             : auRaw;
         if (locked && au) {
             if (g.u) g.u.dz = 0;   /* C lock.c:877 */
-            if ((au & AUTOUNLOCK_APPLY_KEY) !== 0) {
-                const unlocktool = autokey(true);
-                if (unlocktool) {
-                    /* C lock.c:880-882 —
-                     *   res = pick_lock(unlocktool, cc.x, cc.y, (struct obj *) 0)
-                     *         ? ECMD_TIME : ECMD_OK;
-                     * pick_lock's adjacent-door branch now carries C's
-                     * autounlock confirmation prompt (lock.c:619-625), so this
-                     * is a live call and no longer a flagged incomplete callee. */
-                    res = (await pick_lock(unlocktool, cx, cy, null))
-                        ? ECMD_TIME : ECMD_OK;
-                }
+            const unlocktool = (au & AUTOUNLOCK_APPLY_KEY) ? autokey(true) : null;
+            if (unlocktool) {
+                res = (await pick_lock(unlocktool, cx, cy, null)) ? ECMD_TIME : ECMD_OK;
+            } else if ((au & AUTOUNLOCK_KICK) && !g.u.usteed
+                       && (await yn_function('Kick it?', 'ynq', 'q', true)) === 'y') {
+                cmdq_add_ec(CQ_CANNED, 'dokick');
+                cmdq_add_dir(CQ_CANNED, Math.sign(cx - g.u.ux), Math.sign(cy - g.u.uy), 0);
+                res = ECMD_OK;
             }
-            /* C lock.c:882-892 AUTOUNLOCK_KICK arm — unreachable at the default
-             * flags.autounlock (APPLY_KEY only); not ported. */
         }
         return res;
     }
@@ -969,17 +978,19 @@ export async function forcelock() {
         x.usedtime = 0; return 0;
     }
     /* C lock.c:221 — give up after 50 turns / no weapon. */
-    if ((x.usedtime++ | 0) >= 50 || !u.uwep) {
+    if ((x.usedtime++ | 0) >= 50 || !u.uwep || _nohands_lk()) {
         await pline('You give up your attempt to force the lock.');
         if ((x.usedtime | 0) >= 50)
             exercise(x.picktyp ? A_DEX : A_STR, true);
         x.usedtime = 0; return 0;
     }
     if (x.picktyp) {
-        if (rn2(1000 - (u.uwep.spe | 0)) > (992 - 0 /* greatest_erosion */ * 10)
-            && !u.uwep.cursed) {
-            await pline(`${(u.uwep.quan | 0) > 1 ? 'One of y' : 'Y'}our ${simple_typename(u.uwep.otyp | 0)} broke!`);
-            u.uwep = null;
+        /* C lock.c:228-240; obj.h:126 greatest_erosion(). */
+        const erosion = Math.max(u.uwep.oeroded | 0, u.uwep.oeroded2 | 0);
+        if (rn2(1000 - (u.uwep.spe | 0)) > (992 - erosion * 10)
+            && !u.uwep.cursed && !obj_resists(u.uwep, 0, 99)) {
+            await pline(`${(u.uwep.quan | 0) > 1 ? 'One of y' : 'Y'}our ${xname_flags(u.uwep, CXN_NORMAL)} broke!`);
+            await useup(u.uwep);
             await pline('You give up your attempt to force the lock.');
             exercise(A_DEX, true);
             x.usedtime = 0; return 0;
@@ -1376,12 +1387,23 @@ export async function pick_lock(pick, rx, ry, container) {
     /* C lock.c:546 — adjacent door branch.  A visible monster gets first
      * refusal, before the terrain is inspected; using a lock tool on a pet
      * therefore reports its appreciation message and still costs a turn. */
+    if (u.utrap && u.utraptype === TT_PIT) { // C lock.c:550-555
+        await pline("You can't reach over the edge of the pit.");
+        return PICKLOCK_DID_NOTHING;
+    }
     const mtmp = m_at(cx, cy);
-    if (mtmp && canseemon(mtmp) && !(mtmp.m_ap_type === 3 || mtmp.m_ap_type === 5)) {
+    if (mtmp && canseemon(mtmp) && M_AP_TYPE(mtmp) !== M_AP_FURNITURE
+        && M_AP_TYPE(mtmp) !== M_AP_OBJECT) {
         if (picktyp === CREDIT_CARD_OTYP && mtmp.isshk)
             await pline('No checks, no credit, no problem.');
         else
             await pline(`I don't think ${mon_nam(mtmp)} would appreciate that.`);
+        return PICKLOCK_LEARNED_SOMETHING;
+    }
+    if (mtmp && is_door_mappear(mtmp)) {
+        // C lock.c:571-576: reveal the mimic before it may take the tool.
+        await stumble_onto_mimic(mtmp);
+        await maybe_absorb_item(mtmp, pick, 50, 10);
         return PICKLOCK_LEARNED_SOMETHING;
     }
     const door = g.level?.at?.(cx, cy) ?? null;
@@ -1403,6 +1425,18 @@ export async function pick_lock(pick, rx, ry, container) {
     if (mask === D_ISOPEN) { await pline('You cannot lock an open door.'); return PICKLOCK_LEARNED_SOMETHING; }
     if (mask === D_BROKEN) { await pline('This door is broken.'); return PICKLOCK_LEARNED_SOMETHING; }
 
+    /* C lock.c:605-612 — check for traps before either locking or unlocking. */
+    const au = g.flags?.autounlock;
+    const checkTraps = typeof au === 'string'
+        ? au.split('+').some(w => w.trim() === 'untrap') : (au & AUTOUNLOCK_UNTRAP);
+    if (checkTraps && could_untrap(false, false)) {
+        const c = await _ynq('Check this door for a trap?');
+        if (c === 'q') return PICKLOCK_DID_NOTHING;
+        if (c !== 'n') {
+            await untrap_at(cx, cy);
+            return PICKLOCK_DID_SOMETHING;
+        }
+    }
 
     /* C lock.c:614-618 — credit cards are only good for unlocking. */
     if (picktyp === CREDIT_CARD_OTYP && !(mask & D_LOCKED)) {

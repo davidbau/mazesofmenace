@@ -42,6 +42,7 @@
 //     of left-padding; they're emitted as \x1b[(indent+4)C + content.
 
 import { PORT_ID } from './platform_identity.js';
+import { game } from './gstate.js';
 
 // ──────────────────────────────────────────────────────────────────────────
 // Copyright banner / askname constants (R1 — preserved)
@@ -449,16 +450,16 @@ function cursorForAskname(namePrefix) {
     return [col, ASKNAME_ROW, 1];
 }
 
-function buildShallIPickFrame(finalName) {
+function buildShallIPickFrame(finalName, prompt = SHALL_I_PICK_PROMPT) {
     let out = '';
-    out += SHALL_I_PICK_PROMPT + '\n';
+    out += prompt + '\n';
     out += '\n\n\n';
     out += COPYRIGHT_BANNER_A + '\n';
     out += `\x1b[${BANNER_INDENT}C` + COPYRIGHT_BANNER_B + '\n';
     out += `\x1b[${BANNER_INDENT}C` + COPYRIGHT_BANNER_C + '\n';
     out += `\x1b[${BANNER_INDENT}C` + COPYRIGHT_BANNER_D + '\n';
     out += '\n\n\n\n';
-    out += ASKNAME_TEXT;
+    out += finalName === null ? '' : ASKNAME_TEXT;
     if (finalName && finalName.length > 0)
         out += ' ' + finalName;
     return out;
@@ -466,6 +467,34 @@ function buildShallIPickFrame(finalName) {
 
 function cursorForShallIPick() {
     return [SHALL_I_PICK_PROMPT.length + 1, PROMPT_ROW, 1];
+}
+
+// C role.c:1430-1659 root_plselection_prompt + build_plselection_prompt.
+function buildPickPrompt(st) {
+    let { role: r, race: c, gender: g, align: a } = st;
+    const role = ROLES[r], race = RACES[c], words = [];
+    const missing = { race: false, role: false, gender: false, alignment: false };
+    const aligncount = race ? ALIGNS.filter(v => race.allow & v.allow).length : 0;
+    if (a >= 0 && ok_align(r, c, g, a)) words.push(ALIGNS[a].adj);
+    else {
+        if (a !== ROLE_RANDOM) a = ROLE_NONE;
+        missing.alignment = !race || (ok_race(r, c, g, a) && aligncount > 1);
+    }
+    const gendercount = role ? GENDERS.filter(v => role.allow & v.allow).length : 0;
+    if (g >= 0) { if (!role || (gendercount > 1 && !role.f)) words.push(GENDERS[g].adj); }
+    else missing.gender = !role || gendercount > 1;
+    if (race && (!role || ok_race(r, c, g, a))) words.push(role ? race.adj : race.noun);
+    else missing.race = true;
+    if (role) words.push(roleLabel(r, g));
+    else missing.role = r === ROLE_NONE;
+    if (!race && !role) words.push('character');
+    if (!Object.values(missing).some(Boolean))
+        for (const key of Object.keys(missing)) missing[key] = st[key === 'alignment' ? 'align' : key] === ROLE_NONE;
+    let root = `Shall I pick ${c !== ROLE_NONE || role ? 'your' : 'a'} ${words.join(' ')}`.replace('pick a character', 'pick character');
+    root += root.endsWith('s') && !root.endsWith('Priest/Priestess') ? "'" : "'s";
+    const attrs = Object.keys(missing).filter(key => missing[key]);
+    const tail = attrs.length > 1 ? attrs.slice(0, -1).join(', ') + ' and ' + attrs.at(-1) : attrs.join('');
+    return root + (tail ? ' ' + tail : '') + ' for you? [ynaq]';
 }
 
 // Askname frame at row R (used for askname re-prompt after 'a' in confirm
@@ -816,17 +845,18 @@ function buildAlignMenu(state) {
 // '*' while it is still selected (wintty.c:1470, a fresh page draw of a
 // MENU_ITEMFLAGS_SELECTED entry) and '-' once MENU_UNSELECT_ALL/_PAGE has
 // cleared it (wintty.c:1182 set_item_state).
-function buildConfirmMenu(state, name, mark = '*') {
+function buildConfirmMenu(state, name, mark = '*', renameallowed = true) {
     const lines = [];
     lines.push({ content: '' });
     lines.push({ content: buildConfirmInfoLine(state, name) });
     lines.push({ content: '' });
     lines.push({ content: `y ${mark} Yes; start game` });
     lines.push({ content: 'n - No; choose role again' });
-    lines.push({ content: 'a - Not yet; choose another name' });
+    // C role.c:2664-2673: the rename entry and title share this guard.
+    if (renameallowed) lines.push({ content: 'a - Not yet; choose another name' });
     lines.push({ content: 'q - Quit' });
     lines.push({ content: '(end)' });
-    return { title: 'Is this ok? [ynaq]', lines, fitsIn24: true };
+    return { title: `Is this ok? [yn${renameallowed ? 'a' : ''}q]`, lines, fitsIn24: true };
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -964,10 +994,10 @@ function renderFilterPage(pageItems, morestr) {
 //               does not rewrite that line — it is screen residue — so this
 //               stays the first name typed even after plname changes.
 function buildIsThisOkFrame(name, infoLine, opts = {}) {
-    const { mark = '*', bannerClip = Infinity, row10 = null } = opts;
+    const { mark = '*', bannerClip = Infinity, row10 = null, renameallowed = true } = opts;
     const row12Name = ('row12Name' in opts) ? opts.row12Name : name;
     const COLNO = 80, ROWNO = 24;
-    const title = 'Is this ok? [ynaq]';
+    const title = `Is this ok? [yn${renameallowed ? 'a' : ''}q]`;
     // Menu body lines (rows 1..8), in role.c:2654-2679 order.  `mark` is the
     // preselected "Yes" entry's indicator — see buildConfirmMenu.
     const menuLines = [
@@ -976,7 +1006,7 @@ function buildIsThisOkFrame(name, infoLine, opts = {}) {
         '',                                     // blank
         `y ${mark} Yes; start game`,
         'n - No; choose role again',
-        'a - Not yet; choose another name',
+        ...(renameallowed ? ['a - Not yet; choose another name'] : []),
         'q - Quit',
         '(end)',
     ];
@@ -1018,7 +1048,8 @@ function buildIsThisOkFrame(name, infoLine, opts = {}) {
     // window (the window spans rows 0..winRows-1 only).
     if (row10) paint(10, 0, row10);
     // Askname line at row 12 (still visible below the window).
-    paint(12, 0, ASKNAME_TEXT + (row12Name ? ' ' + row12Name : ''));
+    if (row12Name !== null)
+        paint(12, 0, ASKNAME_TEXT + (row12Name ? ' ' + row12Name : ''));
 
     // else literal spaces; trailing blanks trimmed; rows joined by '\n'.
     const rowStrs = [];
@@ -1906,7 +1937,13 @@ export async function playChargen(ctx) {
     // from an empty filter.  The 'n'-at-confirm restart is NOT a new game —
     // C's `goto makepicks` keeps whatever the player filtered (role.c:2705) —
     // so the recursive call below passes keepFilter.
-    if (!ctx.keepFilter) resetRfilter();
+    if (!ctx.keepFilter) {
+        resetRfilter();
+        if (game.rc_rolefilter) {
+            rfilter.mask = game.rc_rolefilter.mask;
+            rfilter.roles = [...game.rc_rolefilter.roles];
+        }
+    }
     const st = {
         role:   ctx.flags?.initrole  ?? ROLE_NONE,
         race:   ctx.flags?.initrace  ?? ROLE_NONE,
@@ -1967,7 +2004,8 @@ export async function playChargen(ctx) {
             || st.gender === ROLE_NONE || st.align === ROLE_NONE)) {
         // C ref: role.c:2257 — the do/while re-prompts until [yna]; 'q'/ESC bails.
         for (;;) {
-            const key = await read(buildShallIPickFrame(plname), cursorForShallIPick());
+            const prompt = buildPickPrompt(st);
+            const key = await read(buildShallIPickFrame(ctx.needAskname ? plname : null, prompt), [prompt.length + 1, PROMPT_ROW, 1]);
             let a = String.fromCharCode(key).toLowerCase();
             if (key === K_ESC || a === 'q') return quit();
             if (a === ' ' || a === '\n' || a === '\r') a = 'y';
@@ -2247,7 +2285,8 @@ export async function playChargen(ctx) {
     // The row-12 "Who are you? <name>" line is what the FIRST askname() left
     // on the BASE_WINDOW.  A rename writes its re-prompt at row 10 and never
     // touches row 12, so this is pinned to the name we arrive with.
-    const asknameResidual = plname;
+    // tty_askname() alone paints this line and enables renaming (wintty.c:754).
+    const asknameResidual = renameallowed ? plname : null;
     // Rows 0..8 of the base window, from this column rightwards, have been
     // erased by a previous dismissal of the confirm menu — see
     // buildIsThisOkFrame.  Cumulative: nothing repaints the banner.
@@ -2262,13 +2301,15 @@ export async function playChargen(ctx) {
         const info = buildConfirmInfoLine(st, plname);
         if (overlayBanner) {
             const f = buildIsThisOkFrame(plname, info, {
-                mark: yesMark, bannerClip, row10: renameRow10,
+                mark: yesMark, bannerClip, row10: renameRow10, renameallowed,
                 row12Name: asknameResidual,
+                mark: yesMark, bannerClip, row10: renameRow10,
+                row12Name: asknameResidual, renameallowed,
             });
             lastConfirmIndent = f.indent;
             return f;
         }
-        const menu = buildConfirmMenu(st, plname, yesMark);
+        const menu = buildConfirmMenu(st, plname, yesMark, renameallowed);
         const r = renderMenu(menu.title, menu.lines, true);
         if (renameResidual === null) return r;
         return {

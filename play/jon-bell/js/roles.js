@@ -865,7 +865,7 @@ export function roleOptionToIndex(role) {
     if (typeof role === 'number')
         return role >= 0 && role < NUM_ROLES ? role : ROLE_NONE;
     const r = findRole(String(role));
-    return r ? roles.indexOf(r) : ROLE_NONE;
+    return r ? roles.indexOf(r) : str2role(String(role));
 }
 /** Map OPTIONS race to C races[] index; ROLE_NONE if unset. */
 const RACE_CODES = ['hum', 'elf', 'dwa', 'gno', 'orc'];
@@ -1076,7 +1076,7 @@ export function str2race(str) {
 
     // Match as much of str as is provided
     const len = str.length;
-    for (let i = 0; raceSpecs[i].noun; i++) {
+    for (let i = 0; i < raceSpecs.length && raceSpecs[i].noun; i++) {
         // Does it match the noun?
         if (!_strncmpi(str, raceSpecs[i].noun, len))
             return i;

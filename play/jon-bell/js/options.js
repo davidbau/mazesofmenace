@@ -20,11 +20,20 @@ import { def_char_to_objclass } from './drawing.js';
 import { DOSET_BOOLS } from './doset_data.js';
 import { optfn_menustyle_set } from './menustyle.js';
 import { optfn_suppress_alert_set } from './feature_alert.js';
-import { parsebindings, parseautocomplete, optfn_number_pad_set } from './cmd_config.js';
+import { parsebindings, parseautocomplete, optfn_number_pad_set, escapes, check_misc_menu_command, set_misc_menu_command } from './cmd_config.js';
 import { config_error_add } from './cmd_binds.js';
+import { str2role, str2race, str2gend, str2align, setrolefilter, gr as roleGlobals } from './roles.js';
 import { glyphrep_to_custom_map_entries } from './glyphs.js';
-import { config_line_error } from './cfgfiles.js';
-const booleanStorage = new Map(DOSET_BOOLS.map(row => [row.name, row]));
+import { config_line_error, config_statement, choose_random_part } from './cfgfiles.js';
+import { add_menu_coloring, match_str2clr } from './coloratt.js';
+import { TtyMenu, PICK_NONE, PICK_ONE, PICK_ANY, ATR_NONE } from './tty_menu.js';
+import { getlin } from './wizcmds.js';
+import { mungspaces } from './mklev.js';
+import { pline, nh_sprintf } from './display.js';
+import { optfn_sortdiscoveries_set, get_sortdisco } from './o_init.js';
+// C options.c:6768 match_optname compares names case-insensitively; keep
+// the native storage field (for example, flags.goldX) from the matched row.
+const booleanStorage = new Map(DOSET_BOOLS.map(row => [row.name.toLowerCase(), row]));
 const MAXOCLASSES = 18; /* objclass.h:141 */
 
 /* C ref: options.c:3308-3390 optfn_pickup_types(do_set), the config-file arm.
@@ -71,9 +80,13 @@ function parse_pickup_types(op) {
     return out;
 }
 
-export function parse_end_disclose(val, negated) {
+export function parse_end_disclose(val, negated, existing = END_DISCLOSE_DEFAULT) {
     const op = (val == null) ? '' : String(val);
     const lower = op.toLowerCase();
+    if (op && negated) {
+        config_error_add('The disclose option may not both have a value and be negated.');
+        return existing;
+    }
     /* C: bare `disclose` = all with prompting; `!disclose` or "none" = none
        without prompting; "all" = all with prompting. */
     if (op === '' || lower === 'all' || lower === 'none') {
@@ -84,7 +97,7 @@ export function parse_end_disclose(val, negated) {
     const valid = [DISCLOSE_PROMPT_DEFAULT_YES, DISCLOSE_PROMPT_DEFAULT_NO,
                    DISCLOSE_PROMPT_DEFAULT_SPECIAL, DISCLOSE_YES_WITHOUT_PROMPT,
                    DISCLOSE_NO_WITHOUT_PROMPT, DISCLOSE_SPECIAL_WITHOUT_PROMPT];
-    const out = END_DISCLOSE_DEFAULT.split('');
+    const out = existing.split('');
     let prefix = null;
     for (const raw of op) {
         let c = raw.toLowerCase();
@@ -106,15 +119,14 @@ export function parse_end_disclose(val, negated) {
             } else {
                 out[idx] = DISCLOSE_YES_WITHOUT_PROMPT;
             }
-        } else if (valid.includes(raw)) {
-            /* NOTE: C tests `strchr(valid_settings, c)` with c ALREADY lowc'd,
-               but every valid setting char is punctuation or already lower, so
-               the un-lowered char is the faithful comparison either way. */
-            prefix = raw;
+        } else if (valid.includes(c)) {
+            prefix = c;
         } else if (c === ' ') {
             /* do nothing */
         } else {
-            return END_DISCLOSE_DEFAULT;
+            // C writes each category immediately, even when a later byte fails.
+            config_error_add("Unknown disclose parameter '%c'", raw.charCodeAt(0));
+            return out.join('');
         }
     }
     return out.join('');
@@ -201,6 +213,17 @@ const BL_ALIASES = { characteristics: 'characteristics', encumbrance: 'carrying-
     xl: 'experience-level', xplvl: 'experience-level', ac: 'armor-class', 'hit-dice': 'hd',
     turns: 'time', hp: 'hitpoints', 'hp-max': 'hitpoints-max', dgn: 'dungeon-level',
     xp: 'experience', exp: 'experience', flags: 'condition' };
+/* C botl.c:2220 fldname_to_bl_indx: use field names in place of BL_* ids. */
+export function status_fieldname(name) {
+    if (!name) return null;
+    const norm = s => s.toLowerCase().replace(/[ \-_]/g, '');
+    let matches = BL_FLDNAMES.filter(n => norm(n) === norm(name));
+    if (!matches.length)
+        matches = Object.entries(BL_ALIASES).filter(([n]) => norm(n) === norm(name)).map(([, n]) => n);
+    if (!matches.length)
+        matches = BL_FLDNAMES.filter(n => n.toLowerCase().startsWith(name.toLowerCase()));
+    return matches.length === 1 ? matches[0] : null;
+}
 /* C ref: botl.c:781-797 conditions[].text[0] and botl.c:749-770 condition_aliases[] ids */
 const COND_NAMES = ['Bare', 'Blind', 'Busy', 'Conf', 'Deaf', 'Iron', 'Fly', 'FoodPois', 'Glow',
     'Grab', 'Hallu', 'Held', 'Icy', 'InLava', 'Lev', 'Parlyz', 'Ride', 'Zzz', 'Slime', 'Slip',
@@ -222,18 +245,13 @@ function match_str2conditionbitmask(str) {
  * parse_status_hl2() (botl.c:2814-2975).  Returns [fmt, arg] for the first
  * config_error_add() C would make, or null. */
 function hilite_status_config_error(op) {
-    const norm = (t) => t.toLowerCase().replace(/[ \-_]/g, '');
     const hsbuf = [''];
     let fldnum = 0;
     const check = () => {
         const name = hsbuf[0];
-        let fld = BL_FLDNAMES.filter(n => norm(n) === norm(name));
-        if (!fld.length && BL_ALIASES[name.toLowerCase()]) fld = [BL_ALIASES[name.toLowerCase()]];
-        if (!fld.length && name)
-            fld = BL_FLDNAMES.filter(n => n.toLowerCase().startsWith(name.toLowerCase()));
-        if (fld.length !== 1)
+        const f = status_fieldname(name);
+        if (f === null)
             return ["Unknown status field '%s'", name];
-        const f = fld[0];
         if (f === 'condition') {
             /* botl.c:3205-3228 str2conditionbitmask(): each '+'/'&' subfield
              * must match a condition name or alias, else
@@ -431,10 +449,12 @@ function* rc_fgets_lines(rc) {
     }
 }
 
-function rc_logical_lines(rc) {
-    const out = [];
+function* rc_logical_lines(rc) {
+    const errors = () => (game._config_errors || []).filter(m => typeof m === 'string').length;
+    const initialErrors = errors();
     let chosen = null, current = null, buf = null;
     for (let line of rc_fgets_lines(rc)) {
+        if (errors() > initialErrors) return; // config_error_nextline(), secure rc
         const more = line.endsWith('\\');
         if (more) line = line.slice(0, -1);
         line = line.replace(/[ \t\r]+$/, '');
@@ -470,39 +490,223 @@ function rc_logical_lines(rc) {
                 continue;
             }
             const str = b.slice(optp + 1);
-            chosen = null;
-            if (str) {
-                const parts = str.split(',');
-                chosen = parts[rn2(parts.length)] || null;
-            }
+            chosen = choose_random_part(str, ',');
             if (chosen === null)
                 config_error_add('No config section to choose');
             continue;
         }
-        out.push(b);
+        yield b;
     }
-    return out;
+}
+
+/* C options.c:4025-4032 optfn_statushilites(do_set). */
+export function optfn_statushilites_set(iflags, op, negated = false) {
+    const n = op ? (parseInt(op, 10) || 0) : 3;
+    iflags.hilite_delta = negated ? 0 : n < 0 ? 1 : n;
+}
+
+// C options.c:1065-1143 optfn_autounlock(do_set). Commit only after the
+// entire list validates; '+' and space separators cannot be mixed.
+function optfn_autounlock(flags, op, negated) {
+    if (!op) {
+        flags.autounlock = negated ? 0 : 2;
+        return;
+    }
+    let newflags = 0;
+    const sep = op.includes('+') ? '+' : ' ';
+    while (op !== null) {
+        op = op.replace(/^[ \t]+|[ \t]+$/g, '');
+        const end = op.indexOf(sep);
+        const next = end < 0 ? null : op.slice(end + 1);
+        if (end >= 0) op = op.slice(0, end).replace(/[ \t]+$/g, '');
+        let matched = 'none'.startsWith(op.toLowerCase());
+        if (matched) negated = true;
+        for (const name of ['untrap', 'apply-key', 'kick', 'force']) {
+            if (matched) break;
+            if (name.startsWith(op.toLowerCase())
+                || name.replace(/[ _-]/g, '') === op.toLowerCase().replace(/[ _-]/g, '')) {
+                // C deliberately switches on the original, case-sensitive byte.
+                const bit = { u: 1, a: 2, k: 4, f: 8 }[op[0]];
+                if (bit) { newflags |= bit; matched = true; }
+            }
+        }
+        if (!matched) {
+            config_error_add('Invalid value for "%s": "%s"', 'autounlock', op);
+            return;
+        }
+        op = next;
+    }
+    if (negated && newflags) {
+        config_error_add('Invalid value combination for "%s": \'none\' with some', 'autounlock');
+        return;
+    }
+    flags.autounlock = newflags;
+}
+
+// C options.c:847 petname_optfn(do_set), nmcpy(:6861), bones.c:198.
+function petname_optfn(flags, name, op, negated, eightBitInput) {
+    if (!op && !negated) return;
+    if (negated || op === 'none' || op === '(none)') op = '';
+    flags[name] = sanitize_name(op.split(/[\0,]/, 1)[0].slice(0, 62), !eightBitInput);
+}
+
+// C options.c:1170-1223 (BACKWARD_COMPAT). The startup and in-game setter
+// share validation; only the latter requests a redraw and can block on errors.
+function set_boulder_symbol(target, opts, op, negated, report) {
+    if (negated) {
+        report('The boulder option may not both have a value and be negated.');
+        return false;
+    }
+    if (!op) {
+        report("Missing parameter for '%s'", opts);
+        return false;
+    }
+    const sym = escapes(op)[0] ?? '\0';
+    if (sym < ' ') {
+        report('boulder symbol cannot be a control character');
+        return false;
+    }
+    const clash = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@'&;:]~ ".includes(sym)
+        ? 'monster' : (sym >= '1' && sym <= '5' ? 'warning' : null);
+    if (clash) {
+        report("Badoption - boulder symbol '%s' would conflict with a %s symbol", sym, clash);
+        return false;
+    }
+    (target.symbolOverrides ||= {}).S_boulder = sym;
+    return true;
+}
+
+export async function optfn_boulder_set(op) {
+    const errors = [];
+    const changed = set_boulder_symbol(game, 'boulder:' + op, op, false,
+        (...args) => errors.push(args));
+    for (const args of errors) {
+        const message = nh_sprintf(...args);
+        await pline('%s%s%s', game.iflags.window_inited ? '' : 'config_error_add: ',
+            message, /[.!?]$/.test(message) ? '' : '.');
+    }
+    if (changed) (game.go ||= {}).opt_need_redraw = true;
+    return changed;
+}
+
+// C options.c:1145,1235,1546: the option menu reads the live compound value.
+export function compound_option_value(name) {
+    if (name === 'sortdiscoveries') return get_sortdisco();
+    if (name === 'autounlock') {
+        const bits = game.flags?.autounlock ?? 2;
+        return bits ? ['untrap', 'apply-key', 'kick', 'force']
+            .filter((_, i) => bits & (1 << i)).join(' + ') : 'none';
+    }
+    if (name === 'disclose') {
+        const value = game.flags?.end_disclose || END_DISCLOSE_DEFAULT;
+        return [...DISCLOSURE_OPTIONS].map((c, i) => value[i] + c).join(' ');
+    }
+    if (name === 'boulder') return game.symbolOverrides?.S_boulder || '`';
+    return null;
+}
+
+// C options.c:884 and parse_role_opt(:7905). Only the rc-file phase enters
+// parseNethackrc; saved values here preserve that phase's duplicate/filter
+// semantics. Configuration-file export and C string ownership are separate.
+function optfn_alignment(result, opts, op, negated, state) {
+    const duplicate = state.duplicate;
+    state.duplicate = true;
+    if (!op) {
+        config_error_add("Missing parameter for '%s'", opts);
+        return;
+    }
+    op = op.replace(/[\t ]+/g, ' ').trim();
+    let first = true, prev_negated = false, selected = '';
+    while (op) {
+        if (op[0] === ' ') op = op.slice(1);
+        let val_negated = false;
+        while (op[0] === '!' || /^no/i.test(op)) {
+            val_negated = !val_negated;
+            op = op.slice(op[0] === '!' ? 1 : op[2] === '-' ? 3 : 2);
+        }
+        if (!op || op[0] === ' ') {
+            config_error_add("Negated nothing for '%s'", 'alignment');
+            return;
+        }
+        if (!first) {
+            if (val_negated !== prev_negated || (negated && val_negated)) {
+                config_error_add("Invalid mixed negation for '%s%s'", negated ? '!' : '', 'alignment');
+                return;
+            } else if (!negated && !val_negated) {
+                config_error_add('Multiple role values only allowed when list is negated');
+                return;
+            }
+        }
+        first = false;
+        prev_negated = val_negated;
+        const space = op.indexOf(' '), value = space < 0 ? op : op.slice(0, space);
+        if (val_negated || negated) {
+            if (!state.saved?.startsWith('!')) roleGlobals.rfilter.mask &= ~7; // ROLE_ALIGNMASK
+            if (!setrolefilter(value)) {
+                config_error_add("Invalid %s '%s'", 'alignment', value);
+                return;
+            }
+            // rolefilterstring(RS_ALGNMNT) returns empty if only another
+            // character facet was named (setrolefilter accepts all four).
+            state.saved = ['lawful', 'neutral', 'chaotic']
+                .filter((_, i) => roleGlobals.rfilter.mask & (4 >> i))
+                .map(name => '!' + name).join(' ');
+            selected = '!';
+        } else {
+            if (duplicate && state.saved?.startsWith('!')) {
+                const alias = opts.split(/[:=]/, 1)[0].trimEnd().toLowerCase() === 'align';
+                config_error_add('compound option specified multiple times: alignment%s',
+                    alias ? ' (via alias: align)' : '');
+                return;
+            }
+            state.saved = value;
+            selected = value;
+        }
+        op = space < 0 ? '' : op.slice(space + 1);
+    }
+    if (selected !== '!') {
+        const n = str2align(selected);
+        if (n === ROLE_NONE) {
+            result.align = '';
+            config_error_add("Unknown %s '%s'", 'alignment', selected);
+        } else {
+            result.align = state.saved = n < 0 ? 'random' : ['lawful', 'neutral', 'chaotic'][n];
+        }
+    }
 }
 
 export function parseNethackrc(rc) {
+    // C startup zeros gr.rfilter before reading any options. Keep the filter
+    // available to both role_init and the played character-selection menu.
+    roleGlobals.rfilter.roles.fill(false);
+    roleGlobals.rfilter.mask = 0;
+    game.rc_rolefilter = roleGlobals.rfilter;
+    const alignmentState = { saved: null, duplicate: false };
+    const compoundSeen = new Set();
+    const compoundDuplicate = name => {
+        if (compoundSeen.has(name))
+            config_error_add('compound option specified multiple times: %s', name);
+        compoundSeen.add(name);
+    };
     const result = {
         name: '',
         role: '',
         race: '',
         gender: '',
         align: '',
-        flags: {}, iflags: {},
+        flags: { autounlock: 2, inv_order: [12, 5, 2, 3, 7, 9, 10, 8, 4, 11, 6, 13, 14, 15, 16] }, // options.c:118,1076
+        iflags: { hilite_delta: 0 },
         uroleplay: {blind: false, deaf: false, nudist: false, pauper: false},
     };
     if (!rc)
         return result;
-    let number_pad_seen = false;
+    let number_pad_seen = false, packorder_seen = false;
     const bool_dup_seen = new Set();
     const cfgerr_base = (game._config_errors || []).filter(m => typeof m === 'string').length;
     for (const rawLine of rc_logical_lines(rc)) {
         if ((game._config_errors || []).filter(m => typeof m === 'string').length > cfgerr_base)
             break;
-        const line = rawLine.trim();
+        const line = config_statement(rawLine, result);
         if (!line || line.startsWith('#'))
             continue;
         // C ref: cfgfiles.c:1311 CNFL_N(BINDINGS, 4) — the BINDINGS statement
@@ -558,25 +762,25 @@ export function parseNethackrc(rc) {
                     glyphrep_to_custom_map_entries(entry.trim(), { value: 0 });
                 /* C symbols.c loadsyms: an explicit S_<name>:<char> replaces the
                  * symset glyph for that cmap symbol.  Retained here only for the
-                 * consumers that exist: S_pool (display.js) and the wall cmap
+                 * consumers that exist: S_pool, S_boulder and the wall cmap
                  * names resolved by _wall_angle_glyph (display.js). */
-                const symMatch = entry.match(/^\s*(S_(?:pool|stone|vwall|hwall|tlcorn|trcorn|blcorn|brcorn|crwall|tuwall|tdwall|tlwall|trwall))\s*:\s*(.)/i);
+                const symMatch = entry.match(/^\s*(S_(?:pool|boulder|stone|vwall|hwall|tlcorn|trcorn|blcorn|brcorn|crwall|tuwall|tdwall|tlwall|trwall))\s*:\s*(.)/i);
                 if (symMatch)
                     (result.symbolOverrides ||= {})['S_' + symMatch[1].slice(2).toLowerCase()] = symMatch[2];
             }
             continue;
         }
 
-        /* C cfgfiles.c cnf_line_MSGTYPE -> options.c msgtype_parse_add:
-         * MSGTYPE=<type> "<regex>".  Only the "hide"/"noshow" type changes
-         * the 24x80 render (pline.c:247-258 drops the message), so only that
-         * is retained; show/norep/stop are not modeled. */
+        /* C options.c:7682-7693,7732-7753,7844-7861: keep the type and
+         * prepend each rule; msgtype_type uses the first matching pattern. */
         const msgtypeMatch = line.match(/^MSGTYPE=\s*(\w+)\s+"(.*)"\s*$/i);
         if (msgtypeMatch) {
-            const typ = msgtypeMatch[1].toLowerCase();
-            if (typ === 'hide' || typ === 'noshow') {
+            const names = ['show', 'hide', 'noshow', 'stop', 'more', 'norep'];
+            const name = names.find(n => n.startsWith(msgtypeMatch[1].toLowerCase()));
+            if (name) {
                 try {
-                    (result.msgtypes ||= []).push(new RegExp(msgtypeMatch[2]));
+                    const type = name === 'noshow' ? 'hide' : name === 'more' ? 'stop' : name;
+                    (result.msgtypes ||= []).unshift({ type, regex: new RegExp(msgtypeMatch[2]) });
                 } catch (e) { /* bad pattern: C reports and skips */ }
             }
             continue;
@@ -586,6 +790,25 @@ export function parseNethackrc(rc) {
         const mcMatch = line.match(/^MENUCOLOR=(.*)$/i);
         if (mcMatch) {
             (result.menucolors ||= []).push(mcMatch[1]);
+            // C coloratt.c:611: a valid rule enables coloring at this RC line.
+            if (add_menu_coloring(mcMatch[1])) result.iflags.use_menu_color = true;
+            continue;
+        }
+
+        /* C cfgfiles.c:1170-1173,1366: HILITE_STATUS (minimum prefix
+         * HILITE) uses the same status-rule parser as OPTIONS=hilite_status. */
+        const hlMatch = line.match(/^(HILITE[A-Z_]*)\s*[:=]\s*(.*)$/i);
+        if (hlMatch && 'HILITE_STATUS'.startsWith(hlMatch[1].toUpperCase())) {
+            const hlop = hlMatch[2].trim();
+            const hlerr = hilite_status_config_error(hlop);
+            if (hlerr)
+                config_error_add(hlerr[0], hlerr[1]);
+            else if (status_fieldname(hlop.split('/')[0]) === 'condition')
+                (game.status_condition_hilites ||= []).push(hlop);
+            else
+                (game.status_field_hilites ||= []).push(hlop);
+            // C botl.c:2643-2645: accepting a rule enables highlighting.
+            if (!hlerr && !result.iflags.hilite_delta) result.iflags.hilite_delta = 3;
             continue;
         }
 
@@ -593,13 +816,7 @@ export function parseNethackrc(rc) {
          * cnf_line_AUTOPICKUP_EXCEPTION: "<pat" (grab) or ">pat" / "pat". */
         const apeMatch = line.match(/^AUTOPICKUP_EXCEPTION=\s*(.*)$/i);
         if (apeMatch) {
-            const m = /^"([<>]?)([^"]{1,253})"\s*(?:#.*)?$/.exec(apeMatch[1]);
-            if (m) {
-                try {
-                    new RegExp(m[2]);
-                    (result.apelist ||= []).unshift({ pattern: m[2], grab: m[1] === '<' });
-                } catch (e) { /* regex error: C reports and skips */ }
-            }
+            add_autopickup_exception(apeMatch[1], result);
             continue;
         }
 
@@ -626,6 +843,62 @@ export function parseNethackrc(rc) {
             }
             const menusep = menuopts.search(/[:=]/);
             const menuname = (menusep < 0 ? menuopts : menuopts.slice(0, menusep)).trim().toLowerCase();
+            const menuval = menusep < 0 ? '' : menuopts.slice(menusep + 1);
+            if (menuname === 'align' || (menuname.length >= 6 && 'alignment'.startsWith(menuname))) {
+                optfn_alignment(result, menuopts, menuval, menunegated, alignmentState);
+                continue;
+            }
+            if (check_misc_menu_command(menuopts) >= 0) {
+                compoundDuplicate(menuname);
+                set_misc_menu_command(menuopts, menunegated);
+                continue;
+            }
+            if (menuname.length >= 5 && 'autounlock'.startsWith(menuname)) {
+                compoundDuplicate('autounlock');
+                optfn_autounlock(result.flags, menuval, menunegated);
+                continue;
+            }
+            const petopt = ['catname', 'dogname', 'horsename'].find(n => menuname.length >= 3 && n.startsWith(menuname));
+            if (petopt) {
+                compoundDuplicate(petopt);
+                // optlist.h rejects negation before the shared handler runs.
+                if (menunegated)
+                    config_error_add('The %s option may not both have a value and be negated.', petopt);
+                else petname_optfn(result.flags, petopt, menuval, false, result.iflags.wc_eight_bit_input);
+                continue;
+            }
+            if (menuname.length >= 3 && 'disclose'.startsWith(menuname)) {
+                compoundDuplicate('disclose');
+                result.flags.end_disclose = parse_end_disclose(menuval, menunegated,
+                    result.flags.end_disclose || END_DISCLOSE_DEFAULT);
+                continue;
+            }
+            // C options.c:1393: the legacy switch loads the existing symbol set.
+            if (menuname.length >= 3 && 'decgraphics'.startsWith(menuname)) {
+                compoundDuplicate('DECgraphics');
+                if (!menunegated) {
+                    if (result.symset || gs.symset?.[0]?.name)
+                        config_error_add('Failure to load symbol set %s.', 'DECgraphics');
+                    else {
+                        result.symset = 'DECgraphics';
+                        if (gs.symset?.[0]) gs.symset[0].name = result.symset;
+                    }
+                }
+                continue;
+            }
+            if (menuname.length >= 7 && 'statushilites'.startsWith(menuname)) {
+                optfn_statushilites_set(result.iflags,
+                    menusep < 0 ? '' : menuopts.slice(menusep + 1).trim(), menunegated);
+                continue;
+            }
+            /* C options.c:1182-1223 optfn_boulder() (BACKWARD_COMPAT): boulder:sym
+             * overrides the primary boulder symbol unless it is a control
+             * character or clashes with a monster class / warning symbol. */
+            if (menuname.length >= 3 && 'boulder'.startsWith(menuname)) {
+                compoundDuplicate('boulder');
+                set_boulder_symbol(result, menuopts, menuval, menunegated, config_error_add);
+                continue;
+            }
             /* C options.c:688-689 parseoptions(): a name matching no allopt[]
              * entry (by abbreviation) falls out of every arm to
              * config_error_add("Unknown option '%s'", opts) and is not stored.
@@ -699,6 +972,15 @@ export function parseNethackrc(rc) {
                 config_error_add("Unknown option '%s'", menuopts);
                 continue;
             }
+            /* C options.c:4497-4502 optfn_versinfo(): string_for_opt(FALSE)
+             * (:6665-6677) reports the missing parameter before the handler's
+             * own diagnostic. The release build defaults to VI_NUMBER (1). */
+            if (menuname.length >= 4 && 'versinfo'.startsWith(menuname)
+                && !menunegated && (menusep < 0 || !menuopts.slice(menusep + 1))) {
+                config_error_add("Missing parameter for '%s'", menuopts);
+                config_error_add("'%s' requires a value; defaulting to %d", 'versinfo', 1);
+                continue;
+            }
             if (menuname.length >= 9 && 'hilite_status'.startsWith(menuname)
                 && !menunegated && (menusep < 0 || !menuopts.slice(menusep + 1).trim())) {
                 config_error_add('Value is mandatory for hilite_status');
@@ -719,11 +1001,12 @@ export function parseNethackrc(rc) {
                  * condition/<name>/<colour>&<attr> rule is carried to
                  * display.js, which paints the condition's own text. */
                 const hlop = menuopts.slice(menusep + 1).trim();
-                if (/^condition\//i.test(hlop))
+                if (status_fieldname(hlop.split('/')[0]) === 'condition')
                     (game.status_condition_hilites ||= []).push(hlop);
                 /* C botl.c:2593 parse_status_hl2(): a field rule (strength/always/yellow&inverse) is kept too; display.js paints the field's text. */
                 else
                     (game.status_field_hilites ||= []).push(hlop);
+                if (!result.iflags.hilite_delta) result.iflags.hilite_delta = 3;
             }
             /* C options.c:3446-3460 optfn_player_selection(do_set) */
             if (menuname.length >= 3 && 'player_selection'.startsWith(menuname)
@@ -794,12 +1077,97 @@ export function parseNethackrc(rc) {
                     menusep < 0 ? '' : menuopts.slice(menusep + 1).trim(), menunegated);
                 continue;
             }
+            /* C options.c:2190 optfn_menu_headings(do_set) + coloratt.c:261
+             * color_attr_parse_str: "color&attr" (either order) or one of them. */
+            if (menuname.length >= 6 && 'menu_headings'.startsWith(menuname)) {
+                const op = menusep < 0 ? '' : menuopts.slice(menusep + 1).trim();
+                const ATTRS = { none: 0, bold: 1, dim: 2, italic: 3, underline: 4, blink: 5, inverse: 7, normal: 0, uline: 4, reverse: 7 };
+                const attrOf = (t) => ATTRS[t.trim().toLowerCase()] ?? -1;
+                if (!op) {
+                    result.iflags.menu_headings = { color: 8 /* NO_COLOR */, attr: menunegated ? 0 : 7 };
+                } else if (!menunegated) {
+                    let c = 8, a = 0, ok = true;
+                    const amp = op.indexOf('&');
+                    if (amp >= 0) {
+                        const l = op.slice(0, amp), r = op.slice(amp + 1);
+                        c = match_str2clr(l, false); a = attrOf(r);
+                        if (c >= 16 && a === -1) { c = match_str2clr(r, false); a = attrOf(l); }
+                        ok = !(c >= 16 || a === -1);
+                    } else {
+                        const t = attrOf(op);
+                        if (t === -1) { c = match_str2clr(op, false); ok = c < 16; }
+                        else a = t;
+                    }
+                    if (ok) result.iflags.menu_headings = { color: c, attr: a };
+                }
+                continue;
+            }
+            /* C options.c:2225 optfn_menu_objsyms(do_set) + set_menuobjsyms_flags
+             * (options.c:7446): menuobjsyms, menu_head_objsym = bit 0,
+             * use_menu_glyphs = TRUE (do_init, options.c:2234). */
+            if (menuname.length >= 7 && 'menu_objsyms'.startsWith(menuname)) {
+                const OBJSYM_NAMES = ['none', 'headers', 'entries', 'both', 'conditional', 'one-or-other'];
+                const op = menusep < 0 ? '' : menuopts.slice(menusep + 1).trim();
+                let osyms;
+                if (menunegated) osyms = 0;
+                else if (!op) osyms = 1;
+                else if (/^\d/.test(op)) {
+                    osyms = parseInt(op, 10);
+                    if (osyms >= OBJSYM_NAMES.length) {
+                        config_error_add(`Illegal menu_objsyms parameter '${op}'`);
+                        continue;
+                    }
+                } else {
+                    osyms = 0;
+                    const k = op.length;
+                    for (let i = 0; i < OBJSYM_NAMES.length; i++) {
+                        const l = k >= 4 ? k : OBJSYM_NAMES[i].length;
+                        if (OBJSYM_NAMES[i].slice(0, l).toLowerCase() === op.slice(0, l).toLowerCase()
+                            || (i === 5 && 'one-or-the-other'.slice(0, l).toLowerCase() === op.slice(0, l).toLowerCase())) {
+                            osyms = i;
+                            break;
+                        }
+                    }
+                }
+                result.iflags.menuobjsyms = osyms;
+                result.iflags.menu_head_objsym = (osyms & 1) !== 0;
+                result.iflags.use_menu_glyphs = true;
+                continue;
+            }
             // determine_ambiguities(): "sup" uniquely identifies suppress_alert.
             if (menuname.length >= 3 && 'suppress_alert'.startsWith(menuname)) {
                 optfn_suppress_alert_set(result.flags,
                     menusep < 0 ? '' : menuopts.slice(menusep + 1).trim(), menunegated);
                 continue;
             }
+            if (menuname.length >= 3 && 'packorder'.startsWith(menuname)) {
+                if (packorder_seen) config_error_add('compound option specified multiple times: packorder');
+                packorder_seen = true;
+                if (menunegated) {
+                    config_error_add('The packorder option may not both have a value and be negated.');
+                    continue;
+                }
+                const val = menusep < 0 ? '' : menuopts.slice(menusep + 1);
+                if (!val) continue; // options.c:2678: empty_optstr leaves the order unchanged.
+                // C options.c:7466 change_inv_order: keep good entries, then omissions.
+                const previous = result.flags.inv_order;
+                const order = val.includes('$') ? [] : [12];
+                for (let i = 0; i < val.length; i++) {
+                    const ch = val[i], oc = def_char_to_objclass(ch.charCodeAt(0));
+                    if (oc === MAXOCLASSES)
+                        config_error_add("Not an object class '%c'", ch.charCodeAt(0));
+                    else if (!previous.includes(oc))
+                        config_error_add("Object class '%c' not allowed", ch.charCodeAt(0));
+                    else if (val.includes(ch, i + 1))
+                        config_error_add("Duplicate object class '%c'", ch.charCodeAt(0));
+                    else order.push(oc);
+                }
+                result.flags.inv_order = order.concat(previous.filter(oc => !order.includes(oc)));
+                continue;
+            }
+            if (menuname.length >= 5 && 'sortdiscoveries'.startsWith(menuname)
+                && optfn_sortdiscoveries_set(menusep < 0 ? '' : menuopts.slice(menusep + 1).trim(), menunegated, result.flags))
+                continue;
             const negated = trimmed.startsWith('!');
             const stripped = negated ? trimmed.slice(1) : trimmed;
             const colonIdx = stripped.indexOf(':');
@@ -808,14 +1176,19 @@ export function parseNethackrc(rc) {
                 const val = stripped.slice(colonIdx + 1).trim();
                 if (key === 'name')
                     result.name = val;
-                else if (key === 'role')
-                    result.role = val;
-                else if (key === 'race')
-                    result.race = val;
-                else if (key === 'gender')
-                    result.gender = val;
-                else if (key === 'align')
-                    result.align = val;
+                else if (key === 'role' || key === 'race' || key === 'gender' || key === 'align') {
+                    /* C options.c optfn_role/race/gender/alignment: a name
+                     * str2xxx() cannot resolve is "Unknown %s '%s'" and is
+                     * not stored (a leading '!' is the exclusion form). */
+                    const str2 = { role: str2role, race: str2race,
+                                   gender: str2gend, align: str2align }[key];
+                    if (val[0] !== '!' && str2(val) === ROLE_NONE) {
+                        config_error_add("Unknown %s '%s'",
+                                         key, val);
+                    } else {
+                        result[key] = val;
+                    }
+                }
                 else if (key === 'fruit' && !negated && val)
                     result.fruit = val; /* optfn_fruit -> svp.pl_fruit (options.c:1745) */
                 else if (key === 'playmode' && val === 'debug')
@@ -928,10 +1301,6 @@ export function parseNethackrc(rc) {
                         result.iflags.wc_hilite_pet = itmp !== 0;
                     }
                 }
-                else if (key === 'disclose') {
-                    result.flags.disclose = val;
-                    result.flags.end_disclose = parse_end_disclose(val, negated);
-                }
                 else if (key === 'paranoid_confirmation' || key === 'paranoid_confirm') {
                     const existing = (result.flags.paranoia_bits != null)
                         ? result.flags.paranoia_bits
@@ -1008,6 +1377,90 @@ export function parseNethackrc(rc) {
     return result;
 }
 
+/* C options.c:9299. Share the existing RC parser with the in-game editor;
+ * state is the pending RC result during startup, and the live game otherwise.
+ * The regexp backend is the same one used by pickup.js. */
+function add_autopickup_exception(mapping, state = game) {
+    const m = /^"([<>]?)([^"]{1,253})"\s*(?:#.*)?$/.exec(mapping);
+    if (m) {
+        try {
+            new RegExp(m[2]);
+            (state.apelist ||= []).unshift({ pattern: m[2], grab: m[1] === '<' });
+            return 1;
+        } catch (e) { /* regex error: C reports and skips */ }
+    }
+    return 0;
+}
+
+/* C options.c:9348: unlink by identity, preserving the newest-first order.
+ * ga.apelist is represented by an array by both startup and pickup.js. */
+function remove_autopickup_exception(whichape) {
+    const apes = game.apelist;
+    if (!apes) return;
+    const i = apes.indexOf(whichape);
+    if (i >= 0) apes.splice(i, 1);
+    if (!apes.length) game.apelist = null;
+}
+
+/* C options.c:9204: list/remove are omitted for an empty list, but keep
+ * their identifiers; exit is preselected and loses to an explicit choice. */
+async function handle_add_list_remove(optname, numtotal, preserveStatus) {
+    const menu = new TtyMenu({ overlay: true,
+        statusClipCol: preserveStatus ? undefined : 0 });
+    const actions = [
+        ['a', `add new ${optname}`],
+        ['l', `list ${makeplural(optname)}`],
+        ['r', `remove existing ${optname}`],
+        ['x', 'exit this menu'],
+    ];
+    for (let i = 0; i < actions.length; ++i) {
+        if (!numtotal && (i === 1 || i === 2)) continue;
+        menu.add_menu(i + 1, actions[i][0], ATR_NONE, actions[i][1], false, i === 3);
+    }
+    menu.end_menu('Do what?');
+    const { count, picks } = await menu.select_menu(PICK_ONE);
+    if (count <= 0) return 3;
+    let opt_idx = picks[0] - 1;
+    if (count > 1 && opt_idx === 3) opt_idx = picks[1] - 1;
+    return opt_idx;
+}
+
+/* C options.c:6331: reached from both options menus via
+ * optfn_o_autopickup_exceptions(do_handler). No turn and no RNG. */
+export async function handler_autopickup_exception(preserveStatus = false) {
+    for (;;) {
+        const numapes = game.apelist?.length || 0;
+        const opt_idx = await handle_add_list_remove('autopickup exception', numapes,
+            preserveStatus);
+        if (opt_idx === 3) return 1;
+        if (opt_idx === 0) {
+            game._status_blanked = !preserveStatus;
+            const pattern = mungspaces(await getlin('What new autopickup exception pattern?'));
+            game._status_blanked = false;
+            if (pattern[0] === '\x1b') return 1;
+            // apebuf is 2 + BUFSZ; getlin starts at byte 1 and byte 256 is NUL.
+            if (pattern) add_autopickup_exception(`"${pattern.slice(0, 255)}"`);
+            continue;
+        }
+        const menu = new TtyMenu({ overlay: true,
+            statusClipCol: preserveStatus ? undefined : 0 });
+        const apes = [...(game.apelist || [])];
+        if (numapes) {
+            menu.add_menu_heading("Always pickup '<'; never pickup '>'");
+            for (let i = 0; i < apes.length; ++i) {
+                const ape = apes[i];
+                menu.add_menu(opt_idx === 1 ? 0 : i + 1, 0, ATR_NONE,
+                    `"${ape.grab ? '<' : '>'}${ape.pattern}"`);
+            }
+        }
+        menu.end_menu(`${opt_idx === 1 ? 'List of' : 'Remove which'} autopickup exceptions`);
+        const { count, picks } = await menu.select_menu(opt_idx === 1 ? PICK_NONE : PICK_ANY);
+        if (count > 0)
+            for (const pick of picks) remove_autopickup_exception(apes[pick - 1]);
+        if (count < 0) return 0; // ESC leaves the editor; ordinary dismissal loops.
+    }
+}
+
 // ── option_help() — the '?' help menu's "List of game options." item ─────────
 // C ref: options.c:9472-9598 (opt_intro[]/opt_epilog[] + option_help()).
 // Builds one NHW_TEXT window: the intro block, the boolean-option names run
@@ -1023,9 +1476,9 @@ import { rnd, rn2 } from './rng.js';
 /* C options.c:8194 makesingular(), :8204-8212 OBJ_NAME over the FOOD_CLASS
  * range, :8230-8236 name_to_mon()/ismnum() — fruitadd's user_specified name
  * rewrite reads all four. */
-import { makesingular } from './objnam.js';
+import { makesingular, makeplural } from './objnam.js';
 import { name_to_mon } from './makemon.js';
-import { gs, ismnum, RUN_TPORT, RUN_LEAP, RUN_STEP, RUN_CRAWL } from './const.js';
+import { ROLE_NONE, gs, ismnum, RUN_TPORT, RUN_LEAP, RUN_STEP, RUN_CRAWL } from './const.js';
 import { OC_NAME } from './oc_name_data.js';
 import { MKOBJ_OC_CLASS, MKOBJ_SVB_BASES } from './mkobj_data.js';
 const FOOD_CLASS = 7;
@@ -1185,19 +1638,17 @@ export async function option_help() {
  * which IS reproduced below.
  */
 
-/* C bones.c:198 sanitize_name(namebuf) — strip control characters a previous
- * player could have injected.  WINDOWPORT(tty) is true for this port and
- * iflags.wc_eight_bit_input is off, so strip_8th_bit is TRUE: a byte whose
- * low 7 bits differ from the byte itself (i.e. >= 0x80) becomes '_', and a
- * low-7-bit value below ' ' or equal to 0177 becomes '.'. */
-export function sanitize_name(namebuf) {
+/* C bones.c:198 sanitize_name(namebuf) — strip control characters, and
+ * replace high-bit bytes unless the tty's eight_bit_tty option allows them.
+ * Startup callers pass the option value accumulated at that rc-file line. */
+export function sanitize_name(namebuf, strip_8th_bit = !game.iflags?.wc_eight_bit_input) {
     let out = '';
     for (let i = 0; i < namebuf.length; i++) {
         const ch = namebuf.charCodeAt(i) & 0xff;
         const c = ch & 0o177;
         if (c < 0x20 /* ' ' */ || c === 0o177)
             out += '.';
-        else if (c !== ch)
+        else if (c !== ch && strip_8th_bit)
             out += '_';
         else
             out += String.fromCharCode(ch);

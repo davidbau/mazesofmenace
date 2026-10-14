@@ -1154,6 +1154,14 @@ function _uprop(u, prop) {
     return u.uprops[prop];
 }
 
+/* C attrib.c:780 — the property index represents the intrinsic's address. */
+function postadjabil(prop) {
+    if (!game.u.ulevel)
+        return;
+    if (prop === WARNING || prop === SEE_INVIS)
+        see_monsters();
+}
+
 /* C attrib.c:1012 adjabil — async because it plines.  No RNG. */
 export async function adjabil(oldlevel, newlevel) {
     const g = game;
@@ -1211,10 +1219,8 @@ export async function adjabil(oldlevel, newlevel) {
          * WARNING or SEE_INVISIBLE changes.  This is display bookkeeping, but
          * it is reachable on role/race level transitions and must happen only
          * when the intrinsic actually changed. */
-        if ((prevabil | 0) !== (p.intrinsic | 0)
-            && (prop === WARNING || prop === SEE_INVIS)) {
-            see_monsters();
-        }
+        if ((prevabil | 0) !== (p.intrinsic | 0))
+            postadjabil(prop);
         i++;
     }
     /* C attrib.c:1068-1073 — initialization grants intrinsics, not skill slots. */
@@ -1224,6 +1230,12 @@ export async function adjabil(oldlevel, newlevel) {
         else
             lose_weapon_skill(oldlevel - newlevel);
     }
+}
+
+/* C attrib.c:274 — both arguments are rolled before strength-loss damage. */
+export async function poison_strdmg(strloss, dmg, knam, k_format) {
+    await losestr(strloss, knam, k_format);
+    await losehp(dmg, knam, k_format);
 }
 
 /* feedback for attribute loss due to poisoning */

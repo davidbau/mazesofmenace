@@ -293,9 +293,8 @@ export function tt_oname(otmp) {
     } else if (tt.plgend[0] === 'M') {
         otmp.spe = CORPSTAT_MALE;
     }
-    otmp = oname(otmp, tt.name, 0); // ONAME_NO_FLAGS = 0
 
-    return otmp;
+    return oname(otmp, tt.name, 0); // ONAME_NO_FLAGS = 0
 }
 /* set_corpsenm(), oname() and christen_monst() were throwing stubs here for the
  * same reason classmon() was: an always-NULL get_rnd_toptenentry() made

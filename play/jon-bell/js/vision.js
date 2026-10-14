@@ -5,6 +5,7 @@
 // light-source hook: vision.c:702 `do_light_sources(next_array)` plus the two
 // TEMP_LIT tests it feeds (vision.c:756 and vision.c:772).
 import { game } from './gstate.js';
+import { Is_airlevel } from './const.js';
 import { is_pool } from './look.js';
 import { Is_waterlevel, Is_rogue_level, ROOMOFFSET, COLNO, ROWNO, DOOR, SDOOR, POOL, WATER, LAVAWALL, CLOUD, D_CLOSED, D_LOCKED, D_TRAPPED, SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, SVALL, IS_WALL, isok, BLINDED, SEE_INVIS, DETECT_MONSTERS, MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS, MONSEEN_TELEPAT, MONSEEN_XRAYVIS, MONSEEN_DETECT, MONSEEN_WARNMON } from './const.js';
 import { newsym, canseemon, mon_visible, see_with_infrared, tp_sensemon, MATCH_WARN_OF_MON } from './display.js';
@@ -623,12 +624,14 @@ function view_from(srow, scol, cs_rows, cs_left, cs_right, range = 0, func = nul
 // Hero-centered branch: walk the circle and call func on each couldsee square.
 // NOTE: dog_goal calls do_clear_area(omx, omy, 9, wantdoor) — the off-center
 // branch is the one the FARAWAY goal computation depends on.
-export function do_clear_area(scol, srow, range, func, arg) {
+export function do_clear_area(scol, srow, range, func, arg, isDetection = false) {
     const u = game.u;
     if (scol !== (u?.ux | 0) || srow !== (u?.uy | 0)) {
         // off-center: the hard work — full shadow-cast from (srow,scol)
         view_from(srow, scol, null, null, null, range, func, arg);
     } else {
+        // C detect.c:1928 detecting(func), supplied by findit/openit callers.
+        const override_vision = isDetection && (Is_waterlevel(u?.uz) || Is_airlevel(u?.uz));
         // hero-centered: use the existing vision matrix.
         // C ref: vision.c:2130-2131 — the matrix is only trustworthy if it is
         // clean; C refreshes it first:
@@ -654,7 +657,7 @@ export function do_clear_area(scol, srow, range, func, arg) {
             if (max_x >= COLNO)
                 max_x = COLNO - 1;
             for (let x = min_x; x <= max_x; x++)
-                if (couldsee(x, y))
+                if (couldsee(x, y) || override_vision)
                     func(x, y, arg);
         }
     }
@@ -666,11 +669,12 @@ export function do_clear_area(scol, srow, range, func, arg) {
  * its trapped-door and falling-trap arms can await pline()/trap effects.  Keep
  * the same hero-centered circle and vision refresh, but await each callback so
  * those effects cannot run after the command has already returned. */
-export async function do_clear_area_async(scol, srow, range, func, arg) {
+export async function do_clear_area_async(scol, srow, range, func, arg, isDetection = false) {
     const u = game.u;
     if (scol !== (u?.ux | 0) || srow !== (u?.uy | 0)) {
         throw new Error('do_clear_area_async requires a hero-centered origin');
     }
+    const override_vision = isDetection && (Is_waterlevel(u?.uz) || Is_airlevel(u?.uz));
     if (game.vision_full_recalc)
         vision_recalc(0);
     const limitsIdx = circle_start[range];
@@ -689,7 +693,7 @@ export async function do_clear_area_async(scol, srow, range, func, arg) {
         if (max_x >= COLNO)
             max_x = COLNO - 1;
         for (let x = min_x; x <= max_x; x++)
-            if (couldsee(x, y))
+            if (couldsee(x, y) || override_vision)
                 await func(x, y, arg);
     }
 }

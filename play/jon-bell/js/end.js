@@ -28,13 +28,14 @@
 // keystrokes be consumed by the prompt instead of leaking to rhack.
 import { game, wizard, discover } from './gstate.js';
 import { clong, nowrap_add } from './integer.js';
-import { savebones, no_bones_special_level } from './bones.js';
+import { savebones, no_bones_level } from './bones.js';
 import { force_more, force_more_lone_frame, pline, urgent_pline, flush_screen, bot, _topl_joins_committed,
          _topline_more_pending, capture_painted_frame_with_status } from './display.js';
 import { topl_park_cursor, canspotmon } from './display.js';
 import { putmsghistory } from './display.js';
 import { cmdq_pop, cmdq_clear, cmdq_add_key, key2txt } from './cmd.js';
 import { CQ_CANNED, CQ_REPEAT, CMDQ_KEY, CMDQ_USER_INPUT, QBUFSZ, PLNMSG_UNKNOWN } from './const.js';
+import { PLNMSG_OK_DONT_DIE } from './const.js';
 import { nhgetch } from './input.js';
 import { paranoid_query } from './paranoid.js';
 // WRITE-ONLY route-attribution telemetry (inert unless NH_ROUTE_TELEMETRY=1 —
@@ -60,7 +61,7 @@ import { exit_nhwindows, raw_print } from './rawterm.js';
 import { topten, formatkiller } from './topten.js';
 import { yyyymmdd, getnow } from './allmain.js';
 import { depth, deepest_lev_reached } from './hacklib.js';
-import { Is_branchlev, In_tutorial } from './dungeon.js';
+import { In_tutorial } from './dungeon.js';
 /* C eat.c:126 init_uhunger() — savelife's starving/choking reset (end.c:721).
  * Runtime-only edge: eat.js does import end.js, but only for the death path, so
  * neither module needs the other at module-init time. */
@@ -75,6 +76,7 @@ import { mkcorpstat, make_grave, place_object, mksobj } from './mklev.js';
 import { stackobj } from './sp_lev.js';
 import { accessible } from './look.js';
 import { isok, OBJ_FREE } from './const.js';
+import { lift_covet_and_placebc } from './ball.js';
 import { oname, an, arti_cost, artiname, the_unique_obj, xname } from './objnam.js';
 import { OC_NAME } from './oc_name_data.js';
 import { OC_COST } from './oc_cost_data.js';
@@ -104,6 +106,53 @@ import { useup, endmultishot } from './cmd.js';
  * return to u.ucamefrom; allmain's moveloop executes it via deferred_goto(). */
 import { schedule_goto } from './cmd.js';
 import { Blind } from './vision.js';
+import { placebc } from './ball.js';
+
+// C end.c:350-384 — avoid repeating the fatal condition as helplessness.
+function fixup_death(how) {
+    const g = game;
+    if (how === STONING && g.multi_reason === 'getting stoned') {
+        g.multi_reason = null;
+        g.multireasonbuf = '';
+        g.multi = 0;
+    } else if (how === STARVING
+               && g.multi_reason === 'fainted from lack of food') {
+        g.multi_reason = 'fainted';
+        g.multireasonbuf = '';
+    }
+}
+
+// C end.c:850-902 — shared by really_done() and save.c:dosave0().
+export async function done_object_cleanup() {
+    const g = game;
+    // restore.c:113 inven_inuse(TRUE): useup can unlink the current item.
+    for (let obj = g.invent, next; obj; obj = next) {
+        next = obj.nobj;
+        if (obj.in_use) await useup(obj);
+    }
+
+    const u = g.u;
+    let ox = (u.ux | 0) + (u.dx | 0), oy = (u.uy | 0) + (u.dy | 0);
+    if (!isok(ox, oy) || !accessible(ox, oy)) {
+        ox = u.ux | 0;
+        oy = u.uy | 0;
+    }
+    for (const key of ['thrownobj', 'kickedobj']) {
+        const obj = g[key];
+        if (obj && (obj.where | 0) === OBJ_FREE) {
+            place_object(obj, ox, oy);
+            await stackobj(obj);
+            g[key] = null;
+            if (g.gt && g.gt[key]) g.gt[key] = null;
+            if (g.gk && g.gk[key]) g.gk[key] = null;
+        }
+    }
+    // ball.c:236 lift_covet_and_placebc(override_restriction) always permits
+    // placement; placebc() already implements its placebc_core() behavior.
+    if (u.uchain && u.uchain.where === OBJ_FREE)
+        await placebc();
+    g.iflags.perm_invent = false;
+}
 
 // ── C ref: end.c:1706-1756 — the DELAYED-KILLER list. ────────────────────────
 //
@@ -188,17 +237,13 @@ export function dealloc_killer(kptr) {
 function can_make_bones() {
     const g = game;
     const u = g.u || {};
-    if (no_bones_special_level(u.uz))
-        return false;
     if (g.flags && g.flags.bones === false)
         return false;
-    /* C bones.c:29 no_bones_level -> Is_botlevel(lev):
+    if (no_bones_level(u.uz))
+        return false;
+    /* History of the guards now centralized in no_bones_level():
+       C bones.c:29 no_bones_level -> Is_botlevel(lev):
        lev->dlevel == dunlevs_in_dungeon(lev), i.e. the dungeon's num_dunlevs. */
-    const dgn = g.dungeons?.[u.uz?.dnum | 0];
-    if (dgn && (u.uz?.dlevel | 0) === (dgn.num_dunlevs | 0))
-        return false;
-    if (Is_branchlev(u.uz) && (u.uz?.dlevel | 0) > 1)
-        return false;
     if (u.uswallow)
         return false;
     const udepth = depth(u.uz);
@@ -605,7 +650,7 @@ export async function do_death_sequence(opts) {
     }
     /* C end.c:1043-1075: bot() paints before HP is forced to zero.
      * tty_yn_function's more() uses that paint before its prompt flush. */
-    const stoningPromptFrame = pd.stoningDeathLine
+    const deathPromptFrame = (pd.stoningDeathLine || pd.remainderIsFresh)
         ? capture_painted_frame_with_status() : null;
     /* C youprop.h:387 `#define Lifesaved u.uprops[LIFESAVED].extrinsic` reads
      * ONLY the extrinsic half (set when an amulet of life saving is worn).
@@ -732,11 +777,11 @@ export async function do_death_sequence(opts) {
     if (!g._topl_win_stop && !_suppressDeathPage
         && g._pending_message && g._pending_message.length > 0) {
         const savedPaint = g._paintedSnapshot;
-        if (stoningPromptFrame) g._paintedSnapshot = stoningPromptFrame;
+        if (deathPromptFrame) g._paintedSnapshot = deathPromptFrame;
         try {
             await force_more(g._pending_message);
         } finally {
-            if (stoningPromptFrame) g._paintedSnapshot = savedPaint;
+            if (deathPromptFrame) g._paintedSnapshot = savedPaint;
         }
     }
     /* The tty prompt preamble above has now consumed TOPLINE_NEED_MORE,
@@ -778,6 +823,7 @@ export async function do_death_sequence(opts) {
             // savelife's gm.multi = -1 then makes this turn's HEAD block emit the
             // nomovemsg through unmul() (js/allmain.js), where C emits it.
             await pline("OK, so you don't %s.", ((pd.how | 0) === CHOKING_END) ? "choke" : "die");
+            (g.iflags ||= {}).last_msg = PLNMSG_OK_DONT_DIE;
             await savelife(pd.how, true);
         } else {
             // DEFERRED path (a death flagged outside movemon and drained at the
@@ -1167,6 +1213,7 @@ export async function done(how) {
             const die = await paranoid_query(!!((g.flags?.paranoia_bits | 0) & PARANOID_DIE), 'Die?');
             if (!die) {
                 await pline("OK, so you don't %s.", ((how | 0) === CHOKING_END) ? "choke" : "die");
+                (g.iflags ||= {}).last_msg = PLNMSG_OK_DONT_DIE;
                 await savelife(how, true);
                 if (g.svk?.killer) {
                     g.svk.killer.name = '';
@@ -1498,7 +1545,21 @@ async function really_done(how) {
     if (g.program_state.done_hup)
         g.program_state.stopprint++;
     g.iflags.vision_inited = false;
+    // C end.c:1156-1159 — skip object cleanup during panic, but always
+    // disable the obsolete persistent inventory before disclosure.
+    if (!g.program_state.panicking)
+        await done_object_cleanup();
+    g.iflags.perm_invent = false;
     g._endtime = getnow();
+    // C end.c:1164-1165 — freeze elapsed play before disclosure prompts.
+    if (g.urealtime) {
+        g.urealtime.finish_time = g._endtime;
+        g.urealtime.realtime += Math.trunc(g._endtime - g.urealtime.start_timing);
+    }
+    for (let obj = !g.program_state.panicking && g.invent, next; obj; obj = next) {
+        next = obj.nobj;
+        if (obj.in_use) await useup(obj);
+    }
     {
         const u = g.u || {};
         let ox = (u.ux | 0) + (u.dx | 0), oy = (u.uy | 0) + (u.dy | 0);
@@ -1517,6 +1578,9 @@ async function really_done(how) {
             }
         }
     }
+    // C end.c:890-894: recover attached objects left in limbo at death.
+    if (!g.program_state.panicking && g.u?.uchain?.where === OBJ_FREE)
+        await lift_covet_and_placebc(-1); // hack.h override_restriction
     /* C end.c:1185-1191: a fatal result on the first move gets one final
      * joke before bones/disclosure processing.  pline owns the paging against
      * the preceding death line; the next blocking disclosure input observes
@@ -1529,6 +1593,7 @@ async function really_done(how) {
            pre-rewrite `how`) and BEFORE disclose(), the tombstone and
            topten(). */
         how = _really_done_killer(how);
+        fixup_death(how);
         let taken = false;
         if (how !== PANICKED) {
             const silently = !!done_stopprint();
@@ -1591,7 +1656,7 @@ async function really_done(how) {
                 _corpse = (await mkcorpstat(CORPSE_END, null, mnum, u.ux | 0, u.uy | 0,
                                      CORPSTAT_INIT));
                 if (_corpse && plname)
-                    _corpse = oname(_corpse, plname, 0 /* ONAME_NO_FLAGS */);
+                    _corpse = await oname(_corpse, plname, 0 /* ONAME_NO_FLAGS */);
                 let pbuf = `${plname}, `;
                 pbuf += formatkiller('', 0, how, true);
                 make_grave(u.ux | 0, u.uy | 0, pbuf);

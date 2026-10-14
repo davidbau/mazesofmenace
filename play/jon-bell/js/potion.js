@@ -24,7 +24,8 @@ import { unmap_object, glyph_is_invisible_at, tmp_at } from './display.js';
 import { DISP_ALWAYS, DISP_END } from './const.js';
 import { aggravate, monstseesu as monstseesu_real, burn_away_slime } from './mcastu.js';
 import { COLNO, ROWNO, INVIS } from './const.js';
-import { topl_park_cursor, _topl_stash_result } from './display.js';
+import { topl_park_cursor, _topl_stash_result, putmsghistory } from './display.js';
+import { key2txt } from './cmd.js';
 import { cls, docrt, map_monst, display_self, map_object, GLYPHCLS_OBJ } from './display.js';
 /* make_hallucinated()'s "changed" block (potion.c:415-433). */
 import { see_monsters, see_objects, see_traps, swallowed } from './display.js';
@@ -46,7 +47,7 @@ import { curse } from './mkobj.js';
 import { heal_legs, unfixable_trouble_count, doup, body_part as body_part_cmd, ceiling, altar_wrath } from './cmd.js';
 import { WOUNDED_LEGS } from './const.js';
 /* C hack.h:129-149 enum bodypart_types — the indices body_part() takes. */
-import { EYE, FINGER, LEG, ARM, STOMACH, FACE } from './const.js';
+import { EYE, FINGER, HAND, LEG, ARM, STOMACH, FACE } from './const.js';
 /* make_confused's C home is THIS file (potion.c:88); it used to be imported
  * from js/mhitu.js, where it was an exported empty body. */
 import { unconscious } from './pickup.js';
@@ -55,7 +56,7 @@ import { stagger, hliquid, hcolor, monstunseesu, x_monnam, update_inventory,
          Resists_Elem, mon_hates_blessings, wakeup_attack, sleep_monst, killed } from './mhitm.js';
 import { float_vs_flight } from './mhitm.js';
 import { monkilled_trap, split_mon_rt } from './trap.js';
-import { ERODE_CORRODE, ER_NOTHING, EF_GREASE, P_NONE, P_BOW, P_CROSSBOW, P_SHURIKEN,
+import { ERODE_CORRODE, ER_NOTHING, ER_GREASED, EF_GREASE, P_NONE, P_BOW, P_CROSSBOW, P_SHURIKEN,
          ROOM, ALTAR, IS_FOUNTAIN, FOUNTAIN, IS_SINK, A_WIS, A_DEX, A_CON, A_MAX, POISON_RES, FIXED_ABIL, HALLUC, HALLUC_RES, SEE_INVIS, FAST, ICE, ECMD_OK, ECMD_TIME, ECMD_CANCEL, Is_airlevel, Is_waterlevel, Is_earthlevel, FROMOUTSIDE, INTRINSIC, STUNNED, CONFUSION, BLINDED, FIRE_RES, UNCHANGING, KILLED_BY, G_GONE, MM_NOMSG, S_LRING, M_SEEN_FIRE, POLY_NOFLAGS, POLY_CONTROLLED, POLY_LOW_CTRL, ARTICLE_A, DETECT_MONSTERS, I_SPECIAL, LEVITATION, HALF_PHDAM, HEAD, FAINTING, SICK_VOMITABLE, FREE_ACTION, SLEEP_RES } from './const.js';
 /* prop.h indices + you.h/end.h flags the make_*() setters below need. */
 import { DEAF, SICK, SICK_RES, STONED, VOMITING, GLIB, SLIMED, KILLED_BY_AN,
@@ -75,7 +76,11 @@ import { bottlename } from './lock.js';
 import { surface as surface_cmd, body_part, trycall as trycall_cmd, trycall_noprompt, reorder_invent } from './cmd.js';
 import { attacktype_fordmg } from './makemon.js';
 import { is_ice } from './engrave.js';
-import { Tobjnam, Yobjnam2 } from './objnam.js';
+import { can_reach_floor, hold_another_object } from './hold_another_object.js';
+import { obj_extract_self } from './mklev.js';
+import { freeinv, useupall } from './cmd.js';
+import { _pickup_burden_level } from './wizcmds.js';
+import { Tobjnam, Yobjnam2, aobjnam } from './objnam.js';
 import { makeplural as makeplural_objnam } from './objnam.js';
 import { ACID_RES, ANTIMAGIC, MAX_OIL_IN_FLASK } from './const.js';
 import { NOTELL, ARTICLE_THE, SUPPRESS_IT, SUPPRESS_SADDLE, has_mgivenname,
@@ -107,7 +112,8 @@ import { angry_guards, get_iter_mons } from './mklev.js';
 import { somegold } from './steal.js';
 import { money_cnt } from './com_pager.js';
 import { delobj, stolen_value } from './dokick.js';
-import { shop_keeper, subfrombill } from './shk.js';
+import { shop_keeper, subfrombill, alter_cost } from './shk.js';
+import { PLNMSG_OBJ_GLOWS, COST_UNCURS, COST_UNBLSS } from './const.js';
 import { PM_WATCHMAN as PM_WATCHMAN_POT,
          PM_WATCH_CAPTAIN as PM_WATCH_CAPTAIN_POT } from './pm.generated.js';
 import { water_damage_chain } from './cmd.js';
@@ -352,12 +358,18 @@ async function y_n(question) {
         if (game._pending_message && !game._topl_win_stop)
             await force_more_lone_frame(game._pending_message);
     }
-    game._pending_message = prompt;
-    await flush_screen(1);
-    {
-        const disp = game.nhDisplay;
-        if (disp) topl_park_cursor(disp, prompt + ' ');
-    }
+    const wraps = topl_park_cursor(null, prompt + ' ')[1] > 0;
+    const paintPrompt = async () => {
+        const savedEcho = game._topl_prompt_echo;
+        // C topl.c:394,420: TOPLINE_SPECIAL_PROMPT hard-wraps without more().
+        if (wraps) game._topl_prompt_echo = true;
+        try {
+            game._pending_message = prompt;
+            await flush_screen(1);
+            topl_park_cursor(game.nhDisplay, prompt + ' ');
+        } finally { game._topl_prompt_echo = savedEcho; }
+    };
+    await paintPrompt();
     let key, answer;
     do {
         key = await nhgetch();
@@ -369,14 +381,14 @@ async function y_n(question) {
         /* C tty_yn_function loops after an invalid response, leaving the same
          * prompt visible and ringing the terminal bell.  There is no audible
          * terminal in this port, but the repeated input boundary is observable. */
-        game._pending_message = prompt;
-        await flush_screen(1);
-        {
-            const disp = game.nhDisplay;
-            if (disp) topl_park_cursor(disp, prompt + ' ');
-        }
+        await paintPrompt();
     } while (true);
-    game._topl_sticky = prompt;
+    // C topl.c:547-548 clears the message window when the prompt wrapped.
+    game._topl_sticky = wraps ? null : prompt;
+    if (wraps) {
+        game._pending_message = '';
+        await flush_screen(1);
+    }
     return answer;
 }
 async function floating_above(what) {
@@ -1016,7 +1028,7 @@ export async function dipfountain(obj) {
             /* The lady of the lake acts! - Eric Backus */
             await pline("From the murky depths, a hand reaches up to bless the sword.");
             await pline("As the hand retreats, the fountain disappears!");
-            obj = oname(obj, artiname(1 /* ART_EXCALIBUR */),
+            obj = await oname(obj, artiname(1 /* ART_EXCALIBUR */),
                         ONAME_VIA_DIP | ONAME_KNOW_ARTI);
             discover_artifact(1 /* ART_EXCALIBUR */); // C fountain.c:433
             obj.cursed = false;
@@ -1037,7 +1049,7 @@ export async function dipfountain(obj) {
     let er;
     const _is_hands = !!obj && Object.hasOwn(obj, 'hands') && !!obj.hands;
     if (obj && (_is_hands || obj === u.uarmg)) {
-        er = ER_NOTHING;
+        er = await wash_hands();
     } else {
         er = await water_damage(obj, null, true);
     }
@@ -1254,7 +1266,7 @@ async function peffect_oil(otmp) {
     exercise(A_WIS, good_for_you);
 }
 /* Sink-delivered potions use the shared effect dispatcher. */
-async function dopotion_unported(otmp) {
+export async function dopotion_unported(otmp) {
     /* C potion.c:618-641 dopotion(): peffects, then (when it returns -1) the
      * identify tail and useup.  The tail's makeknown() is discover_object(...,
      * credit_hero=TRUE), whose exercise(A_WIS, TRUE) is one rn2(19) draw. */
@@ -1264,7 +1276,7 @@ async function dopotion_unported(otmp) {
     g._potion_unkn = 0;
     const retval = await peffects(otmp);
     if (retval >= 0)
-        return retval ? ECMD_TIME : 0;
+        return retval ? ECMD_TIME : ECMD_OK;
     if (g._potion_nothing) {
         g._potion_unkn++;
         await pline(`You have a ${_hallucination() ? 'normal' : 'peculiar'} feeling for a moment, then it passes.`);
@@ -1274,10 +1286,10 @@ async function dopotion_unported(otmp) {
             discover_object(otmp.otyp, true, true, true);
             more_experienced(0, 10);
         } else {
-            await _docall_potion(otmp);
+            await trycall_cmd(otmp);
         }
     }
-    useup_potion(otmp);
+    await useup(otmp);
     return ECMD_TIME;
 }
 /* C fountain.c:581-593 — convert a sink into a fountain. */
@@ -1712,7 +1724,7 @@ export async function dodrink() {
     drink_ok_extra = 0;
     if (u && g.level && !g.iflags?.menu_requested) {
         const loc = g.level.at(u.ux, u.uy);
-        if (loc && IS_FOUNTAIN(loc.typ)) {
+        if (loc && IS_FOUNTAIN(loc.typ) && can_reach_floor(false)) {
             /* C potion.c:547: if (y_n("Drink from the fountain?") == 'y') */
             const answer = await y_n('Drink from the fountain?');
             if (answer === 'y') {
@@ -1728,7 +1740,7 @@ export async function dodrink() {
             ++drink_ok_extra;
             /* Else fall through to inventory potion path */
         }
-        if (loc && IS_SINK(loc.typ)) {
+        if (loc && IS_SINK(loc.typ) && can_reach_floor(false)) {
             /* C potion.c:557: if (y_n("Drink from the sink?") == 'y') */
             const answer = await y_n('Drink from the sink?');
             if (answer === 'y') {
@@ -1804,7 +1816,12 @@ export async function dodrink() {
             if (disp) topl_park_cursor(disp, _qbuf + ' ');
         }
         /* nhgetch for item selection — mirrors C getobj() → nhgetch(). */
-        itemKey = await nhgetch();
+        /* C topl.c:537-539 files prompt + key2txt(answer) in the history. */
+        const _sh = g._topl_suppress_history;
+        g._topl_suppress_history = true;
+        try { itemKey = await nhgetch(); }
+        finally { g._topl_suppress_history = _sh; }
+        putmsghistory(_qbuf + ' ' + key2txt(itemKey & 0xff), false);
         // C leaves the getobj prompt physically painted after the answer.
         // Preserve it until the next input when a potion emits no new message.
         g._topl_sticky = _qbuf;
@@ -3178,136 +3195,18 @@ function _freeinv(obj) {
     }
 }
 
-/* C ref: pickup.c:1972 encumber_msg() text for an oldcap→newcap transition.
- * RNG-free.  Mirrors cmd.js _encumber_msg_text / wizcmds.js _wish_encumber_text. */
-function _potion_encumber_text(oldcap, newcap) {
-    if (oldcap < newcap) {
-        switch (newcap) {
-        case 1: return 'Your movements are slowed slightly because of your load.';
-        case 2: return 'You rebalance your load.  Movement is difficult.';
-        case 3: return `You ${stagger_verb()} under your heavy load.  Movement is very hard.`;
-        default: return `You ${newcap === 4 ? 'can barely' : "can't even"} move a handspan with this load!`;
-        }
-    } else if (oldcap > newcap) {
-        switch (newcap) {
-        case 0: return 'Your movements are now unencumbered.';
-        case 1: return 'Your movements are only slowed slightly by your load.';
-        case 2: return 'You rebalance your load.  Movement is still difficult.';
-        case 3: return `You ${stagger_verb()} under your load.  Movement is still very hard.`;
-        default: return null;
-        }
-    }
-    return null;
-}
-
-/* C ref: potion.c:2245 hold_potion() → invent.c:1208 hold_another_object().
- * Re-insert a transformed potion (its weight is unchanged, so it never drops
- * for encumbrance): observe_object marks it dknown, addinv merges it into a
- * compatible carried stack (reusing that slot) or assigns a new a..z/A..Z
- * letter, prinv()s the surviving "<let> - <doname>." line, then encumber_msg().
- * DISPLAY/inventory-bookkeeping only; no RNG.  The prinv pline forces a --More--
- * of the (committed) "mixture looks ..." topline; after that page the prinv line
- * shows.  Mirrors wizcmds.js _wish_addinv_prinv. */
-async function _hold_potion(obj) {
-    const g = game;
-    const oldcap = near_capacity();
-
-    /* observe_object: dknown=1 (RNG-free), to maximize mergeability. */
-    if ((obj.otyp | 0) >= 0) {
-        obj.dknown = 1;
-        _makeknown_observe(obj.otyp | 0);
-    }
-
-    /* freeinv: remove from invent before re-adding (C potion.c:2596). */
-    _freeinv(obj);
-
-    /* addinv_core0: merge into the first mergable carried stack, else new slot. */
-    let survivor = null;
-    for (let o = g.invent; o; o = o.nobj) {
-        if (_potion_mergable(o, obj)) {
-            o.quan = ((o.quan ?? 1) | 0) + ((obj.quan ?? 1) | 0);
-            survivor = o;
-            break;
-        }
-    }
-    if (!survivor) {
-        const used = new Set();
-        for (let o = g.invent; o; o = o.nobj)
-            if (o.invlet != null) used.add(o.invlet | 0);
-        let assigned = obj.invlet | 0;
-        if (!assigned || used.has(assigned)) {
-            assigned = 0;
-            for (let c = 97; c <= 122; c++) if (!used.has(c)) { assigned = c; break; }
-            if (!assigned) for (let c = 65; c <= 90; c++) if (!used.has(c)) { assigned = c; break; }
-        }
-        if (assigned) obj.invlet = assigned;
-        /* C obj.h:78 `#define OBJ_INVENT 3` — this used to write 2, which is
-         * OBJ_CONTAINED (obj.h:77).  survivor's slot already carries the
-         * right where (it was already in invent), so only the fresh-slot arm
-         * needs it. */
-        obj.where = 3; /* OBJ_INVENT */
-        obj.nobj = g.invent ?? null;
-        g.invent = obj;
-        reorder_invent();
-        survivor = obj;
-    }
-    /* C invent.c:1142 addinv_core0 `added:` — `obj->pickup_prev = 1;` on the
-     * surviving node, merge path included (obj = otmp at :850). */
-    /* C invent.c:1142 `added:` — obj->pickup_prev = 1 on the survivor of both
-     * the merge and the new-slot arm (shows as the D menu's "Just picked up"). */
-    /* C invent.c:1142 `added:` — addinv_core0 stamps pickup_prev=1 on the
-     * survivor on BOTH the merge arm (`goto added`, :1112) and the fresh-slot
-     * arm.  Without it the mixed potion stays unmarked and #drop's
-     * query_category loses its "P - Just picked up" row (do.c:994, pickup.c:1433). */
-    survivor.pickup_prev = 1;
-
-    /* C invent.c:1141-1142 `added:` label — addinv_core0 sets pickup_prev = 1
-     * on the surviving object (merged-into stack or the new node). */
-    survivor.pickup_prev = 1;
-
-    /* prinv "<let> - <doname>." — drop_fmt was non-null so hold_another_object
-     * always prinv()s.  The pline auto-pages the prior topline. */
-    let prinvLine = null;
-    if (survivor.invlet) {
-        prinvLine = `${String.fromCharCode(survivor.invlet | 0)} - ${await doname_body(survivor, (g.u?.uhandedness === RIGHT_HANDED) ? 'right' : 'left')}.`;
-        await pline(prinvLine);
-    }
-
-    /* encumber_msg(): the load-change line.  A SEPARATE pline(); the per-pline
-     * update_topl reserve rule pages the prinv only on topline overflow (same
-     * rule as the wish path).  Weight is unchanged here so this is normally a
-     * no-op, but kept faithful. */
-    const newcap = near_capacity();
-    if (g.u) g.u._oldcap = newcap;
-    if (oldcap !== newcap) {
-        const emsg = _potion_encumber_text(oldcap, newcap);
-        if (emsg) {
-            await pline(emsg);
-            if (g.disp) g.disp.botl = true;
-        }
-    }
-}
-
-/* observe_object's discover side (o_init.c:442-450) marks the type encountered;
- * here we only need the dknown bookkeeping reflected (RNG-free). */
-function _makeknown_observe(otyp) {
-    /* C observe_object: discover_object(otyp, FALSE, TRUE, FALSE) — marks the
-     * type as encountered but NOT name-identified; no RNG, no discovery pline. */
-}
-
-/* C invent.c:1108 mergable test (the subset the dip path can hit): same otyp,
- * same bless/curse, same dilution, both unnamed.  Conservative — only merges
- * when clearly compatible. */
-function _potion_mergable(o, obj) {
-    if (o === obj) return false;
-    if ((o.otyp | 0) !== (obj.otyp | 0)) return false;
-    if ((o.oclass | 0) !== (obj.oclass | 0)) return false;
-    if (!!o.blessed !== !!obj.blessed) return false;
-    if (!!o.cursed !== !!obj.cursed) return false;
-    if (!!o.odiluted !== !!obj.odiluted) return false;
-    if (!!o.greased !== !!obj.greased) return false; /* invent.c mergable */
-    if ((o.oname || null) !== (obj.oname || null)) return false;
-    return true;
+/* C potion.c:2242-2263 — preserve the current burden allowance while a
+ * transformed potion is extracted and reinserted.  The shared inventory path
+ * owns merging, slot exhaustion, fumbling drops, and the pickup message. */
+async function _hold_potion(potobj, drop_fmt, drop_arg, hold_msg) {
+    const cap = near_capacity();
+    const save_pickup_burden = game.flags.pickup_burden;
+    if (_pickup_burden_level(save_pickup_burden) < cap)
+        game.flags.pickup_burden = cap;
+    obj_extract_self(potobj);
+    await hold_another_object(potobj, drop_fmt, drop_arg, hold_msg);
+    game.flags.pickup_burden = save_pickup_burden;
+    update_inventory();
 }
 
 // C potion.c:2409 — identification prompt precedes consumption.
@@ -3449,7 +3348,7 @@ function mixtype(o1, o2) {
 }
 
 async function _H2Opotion_dip(potion, targobj, useeit, objphrase) {
-    const COST_alter = -2, COST_none = -1, COST_UNCURS = 4, COST_UNBLSS = 3;
+    const COST_alter = -2, COST_none = -1;
     let func = null, glowcolor = 0, costchange = COST_none, altfmt = false, res = false;
 
     if (!potion || potion.otyp !== POT_WATER) return false;
@@ -3467,30 +3366,36 @@ async function _H2Opotion_dip(potion, targobj, useeit, objphrase) {
             func = _curse; glowcolor = 'black'; costchange = COST_alter; altfmt = true;
         }
     } else {
-        /* C potion.c:1534-1541 — dipping into uncursed water; carried()
-         * check skips a steed's saddle (which is worn, not OBJ_INVENT).
-         * GAP: C's `gm.mentioned_water` flag (set BY water_damage() when it
-         * prints a message that gives the water away) has no field in this
-         * port, so the trailing `if (gm.mentioned_water) makeknown(POT_WATER)`
-         * is not modeled — RNG-free and discovery-only, not faked here rather
-         * than guessed. */
+        // C potion.c:1534-1541: a saddle is not carried by the hero.
         if ((targobj.where | 0) === OBJ_INVENT) {
+            game.mentioned_water = false;
             if ((await water_damage(targobj, 0, true)) !== ER_NOTHING)
                 res = true;
+            if (game.mentioned_water)
+                discover_object(POT_WATER, true, true, true);
+            game.mentioned_water = false;
         }
     }
 
     if (func) {
         if (useeit) {
+            glowcolor = hcolor(glowcolor);
             if (altfmt)
                 await pline(`${objphrase} with ${_an(glowcolor)} aura.`);
             else
                 await pline(`${objphrase} ${glowcolor}.`);
-            targobj.bknown = true; /* !Hallucination */
+            game.iflags.last_msg = PLNMSG_OBJ_GLOWS;
+            targobj.bknown = !_potion_Hallucination();
         } else {
             if (!potion.bknown || !potion.dknown) targobj.bknown = false;
         }
-        /* unpaid shop-cost adjustment (targobj POT_WATER only) — not reached. */
+        // C potion.c:1567-1579: settle the old BUC value before altering it.
+        if (targobj.unpaid && targobj.otyp === POT_WATER) {
+            if (costchange === COST_alter)
+                await alter_cost(targobj, 0);
+            else if (costchange !== COST_none)
+                await costly_alteration(targobj, costchange);
+        }
         func(targobj);
         res = true;
     }
@@ -3504,15 +3409,15 @@ function _Yobjnam2_glow(obj) {
 /* C ref: potion.c:2419 dip_potion_explosion — does the dipped potion explode? */
 async function _dip_potion_explosion(obj, dmg) {
     const u = game.u;
-    const cloakSmock = false;
+    const cloakSmock = u.uarmc?.otyp === 144; // objects.h: ALCHEMY_SMOCK
     if (obj.cursed || obj.otyp === POT_ACID
         || (obj.otyp === POT_OIL && obj.lamplit)
         || !rn2(cloakSmock ? 30 : 10)) {
         obj.in_use = 1;
-        await pline('BOOM!  They explode!');
+        await pline(`${_potion_Deaf() ? '' : 'BOOM!  '}They explode!`);
         /* C potion.c:2426: wake_nearto(u.ux, u.uy, (BOLT_LIM+1)*(BOLT_LIM+1));
          * RNG-free (wakeup() bookkeeping only). */
-        wake_nearto(u.ux | 0, u.uy | 0, (BOLT_LIM + 1) * (BOLT_LIM + 1));
+        await wake_nearto(u.ux | 0, u.uy | 0, (BOLT_LIM + 1) * (BOLT_LIM + 1));
         await exercise(A_STR, false);
         /* C potion.c:2429-2430:
          *     if (!breathless(gy.youmonst.data) || haseyes(gy.youmonst.data))
@@ -3522,7 +3427,7 @@ async function _dip_potion_explosion(obj, dmg) {
         const ymdata = (game.youmonst && game.youmonst.data) || null;
         if (!breathless(ymdata) || haseyes(ymdata))
             await potionbreathe(obj);
-        _useupall(obj);
+        await useupall(obj);
         /* C potion.c:2432-2433: losehp(dmg /* not physical damage *\/,
          * "alchemic blast", KILLED_BY_AN); — was entirely missing, which is
          * why every recorded explosion showed hero.uhp unchanged. */
@@ -3657,12 +3562,9 @@ async function potion_dip(obj, potion) {
             await pline(`The mixture looks ${descr}.`);
         }
 
-        /* C potion.c:2596-2597 freeinv(obj); hold_potion(obj, "You drop %s!",
-         * doname(obj), 0).  The mixture's weight didn't change, so it can't be
-         * dropped for encumbrance; hold_another_object re-inserts it (merging
-         * into a compatible carried stack if one exists), prinv()s the surviving
-         * "<let> - <doname>." line, then encumber_msg(). */
-        await _hold_potion(obj);
+        // C potion.c:2590-2591: mixing extracts before hold_potion measures load.
+        freeinv(obj);
+        await _hold_potion(obj, 'You drop %s!', await doname_body(obj), null);
         return ECMD_TIME;
     }
 
@@ -3864,11 +3766,9 @@ async function potion_dip(obj, potion) {
             if (old_dknown && !ocNameKnown && !ocUname)
                 await _docall_potion({ dknown: true, otyp: old_otyp });
         }
-        /* C potion.c:2784-2786 hold_potion(singlepotion, "You juggle and drop
-         * %s!", doname(singlepotion), 0) — mirrors the mixing arm's identical
-         * call above (js/potion.js:4018); weight is unchanged so the drop_fmt
-         * message never fires either place. */
-        await _hold_potion(singlepotion);
+        // C potion.c:2784-2786: the transformed potion is still carried here.
+        await _hold_potion(singlepotion, 'You juggle and drop %s!',
+                           await doname_body(singlepotion), null);
         return ECMD_TIME;
     }
 
@@ -4091,9 +3991,25 @@ export async function sink_backs_up(x, y) {
     }
 }
 
-/* C fountain.c:722-799 dipsink(obj) — #dip while standing on a sink.
- * WIRE_PENDING: wash_hands() (is_hands arm) is not ported; that arm only
- * returns here. */
+/* C fountain.c:558-577 — wash bare hands or worn gloves before dipping. */
+async function wash_hands() {
+    const hands = makeplural_objnam(body_part(HAND));
+    let res = ER_NOTHING;
+    const was_glib = !!(game.u.uprops[GLIB].intrinsic);
+    await pline('You wash your %s%s in the %s.', game.u.uarmg ? 'gloved ' : '',
+                hands, hliquid('water'));
+    if (game.u.uprops[GLIB].intrinsic) {
+        make_glib(0);
+        await pline('Your %s are no longer slippery.', fingers_or_gloves(true));
+    }
+    if (game.u.uarmg)
+        res = await water_damage(game.u.uarmg, null, true);
+    if (was_glib && res === ER_NOTHING)
+        res = ER_GREASED;
+    return res;
+}
+
+/* C fountain.c:722-799 dipsink(obj) — #dip while standing on a sink. */
 export async function dipsink(obj) {
     const g = game;
     const u = g.u;
@@ -4108,7 +4024,7 @@ export async function dipsink(obj) {
             await pline(`Your ${fingers_or_gloves(true)} are still slippery.`);
         return;
     } else if (is_hands) {
-        /* C:732 wash_hands() — unported */
+        await wash_hands();
         return;
     } else if ((obj.oclass | 0) !== 8 /* POTION_CLASS */) {
         await pline(`You hold ${await the(await xname(obj))} under the tap.`);
@@ -4327,12 +4243,14 @@ export async function potionhit(mon, obj, how) {
         const useeit = !_potion_Blind() && canseemon(mon) && cansee(tx, ty);
         const mnam = x_monnam(mon, ARTICLE_THE, null,
                               SUPPRESS_IT | SUPPRESS_SADDLE, false);
-        const saddleName = `${s_suffix(mnam)} saddle`;
+        const owner = s_suffix(mnam);
+        const saddleOwner = owner.charAt(0).toUpperCase() + owner.slice(1);
         let affected = false;
         if ((obj.otyp | 0) === POT_WATER)
-            affected = await _H2Opotion_dip(obj, saddle, useeit, saddleName);
+            affected = await _H2Opotion_dip(obj, saddle, useeit,
+                `${saddleOwner} ${aobjnam(saddle, 'glow')}`);
         if (useeit && !affected)
-            await pline(`${saddleName.charAt(0).toUpperCase() + saddleName.slice(1)} gets wet.`);
+            await pline(`${saddleOwner} ${aobjnam(saddle, 'get')} wet.`);
     } else {
         /* C potion.c:1727-1904 — the monster-target per-otyp arms. */
         let angermon = your_fault, cureblind = false;

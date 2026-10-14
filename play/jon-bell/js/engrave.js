@@ -1,12 +1,8 @@
 // engrave.js — the 'E' engrave command.
-// C ref: nethack-c/src/engrave.c doengrave() (engrave.c:958) and the engrave()
-// occupation callback (engrave.c:1268).
-//
-// This module ports the player engrave command.  The DUST / bare-fingertip path
-// dust with a fingertip) is ported leaf-for-leaf against C.  The wand/ring/gem/
-// weapon/marker stylus paths and the blind/confused/swallowed/altar/grave special
-// cases are guarded with C-ref comments and conservative C-faithful defaults; the
-// RNG-bearing pieces those paths reach (wand-explode, wrest-charge, marker ink)
+// C ref: nethack-c-v5/upstream/src/engrave.c.
+// Implements the player command and its implement effects, with the shared
+// engraving store in mklev.js. Bones cleanup and grave disturbance also live
+// here, matching their C ownership.
 //
 // Engraving runs as a moveloop occupation (set_occupation(engrave)): doengrave()
 // does the stylus/text/smudge setup and consumes NO time itself; the per-character
@@ -19,7 +15,11 @@ import { rn1, rn2, rnd } from './rng.js';
 import { goodpos } from './trap.js';
 import { is_pool } from './look.js';
 import { LAVAPOOL, LAVAWALL, CLOUD, IS_FOUNTAIN, IS_AIR, ACCESSIBLE } from './const.js';
-import { permonstTemplate } from './makemon.js';
+import { permonstTemplate, is_demon } from './makemon.js';
+import { PM_GHOUL } from './pm.generated.js';
+import { wand_explode } from './read.js';
+import { sanitize_name } from './options.js';
+import { mon_nam } from './uhitm.js';
 import { nhgetch } from './input.js';
 import { pline, flush_screen, newsym } from './display.js';
 import { topl_park_cursor } from './display.js';
@@ -28,7 +28,7 @@ import { zappable, zapnodir, learnwand, make_blinded } from './zap.js';
 import { resists_blnd } from './mhitm.js';
 import { yn_function } from './end.js';
 import { getObjFromGetobj, welded, body_part, surface as surface_real, ceiling,
-         Yname2, is_blade, is_art } from './cmd.js';
+         Yname2, yname, dry_a_towel, is_blade, is_art } from './cmd.js';
 import { bimanual, is_boots } from './do_wear.js';
 import { Yobjnam2, doname, xname, Tobjnam, otense } from './objnam.js';
 import { useup, altar_wrath, check_capacity } from './cmd.js';
@@ -37,10 +37,10 @@ import { exercise } from './attrib.js';
 import { more_experienced } from './exper.js';
 import { object_tough } from './o_init.js';
 import { can_reach_floor as can_reach_floor_real } from './hold_another_object.js';
-import { make_engr_at, del_engr_at, engr_at, random_engraving } from './mklev.js';
+import { make_engr_at, del_engr_at, engr_at, random_engraving, engravings_list, makemon, xcrypt } from './mklev.js';
 import { DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, HEADSTONE, A_WIS,
          ECMD_OK, ECMD_CANCEL, ECMD_FAIL, ECMD_TIME, ICE, IS_ALTAR,
-         DRAWBRIDGE_UP, DB_ICE, DB_UNDER, BLINDED, CONFUSION, STUNNED, HALLUC } from './const.js';
+         DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DEAF, DB_ICE, DB_UNDER, BLINDED, CONFUSION, STUNNED, HALLUC } from './const.js';
 
 /* ── object class numbers (objclass.h OBJCLASS enum) ─────────────────────────── */
 const WEAPON_CLASS = 2;
@@ -230,9 +230,7 @@ async function The_xname(obj) {
     return 'The ' + x;
 }
 
-/* C engrave.c:583 doengrave_sfx_item_WAN — special effects for wands.
- * Not ported: WAN_POLYMORPH's random_engraving/blengr rewrite, doknown's
- * learnwand(), and the lightning blindness (doblind) — no JS bodies here. */
+/* C engrave.c:583 — special effects for wands. */
 function wandNameKnown(o) {
     return !!game._oc_name_known?.[o.otyp | 0];
 }
@@ -277,8 +275,10 @@ async function doengrave_sfx_item_WAN(de) {
                 const re = random_engraving();
                 de.buf = re.text;
                 de.ebuf = re.pristine;
+            } else {
+                if (de.oetype) de.type = de.oetype;
+                de.buf = xcrypt(blengr());
             }
-            /* blind arm (blengr/xcrypt) not ported */
             de.dengr = true;
         }
         break;
@@ -313,11 +313,14 @@ async function doengrave_sfx_item_WAN(de) {
                 await pline(`This ${await xname(de.otmp)} is a wand of digging!`);
             de.doknown = true;
         }
-        de.post_engr_text = blind ? 'You feel tremors.'
+        de.post_engr_text = blind
+            ? (_hasProp(u, DEAF) ? 'You feel tremors.' : 'You hear drilling!')
             : game.level?.locations?.[u.ux]?.[u.uy]?.typ === GRAVE_TYP
                 ? 'Chips fly out from the headstone.'
             : de.frosted ? 'Ice chips fly up from the ice surface!'
-            : 'Gravel flies up from the floor.';
+            : game.level?.at(u.ux, u.uy)?.typ === DRAWBRIDGE_DOWN
+                ? 'Splinters fly up from the bridge.'
+                : 'Gravel flies up from the floor.';
         break;
     case 430: /* WAN_FIRE */
         de.ptext = true;
@@ -341,12 +344,126 @@ async function doengrave_sfx_item_WAN(de) {
             de.post_engr_text = 'Lightning arcs from the wand.';
             de.doblind = true;
         } else {
-            de.post_engr_text = 'You hear crackling!';
+            de.post_engr_text = _hasProp(u, DEAF)
+                ? 'Your hair stands up!' : 'You hear crackling!';
         }
         break;
     default:
         break;
     }
+}
+
+/* C engrave.c:544 — initialize implement and surface state. */
+function doengrave_ctx_init(de) {
+    const u = game.u;
+    Object.assign(de, {
+        dengr: false, doblind: false, doknown: false, eow: false, jello: false,
+        ptext: true, teleengr: false, zapwand: false, disprefresh: false,
+        adding: false, post_engr_text: '',
+        ret: ECMD_OK, type: DUST, oetype: 0,
+        otmp: null, oep: engr_at(u.ux, u.uy),
+        buf: '', ebuf: '', fbuf: '', qbuf: '', writer: null,
+        frosted: is_ice(u.ux, u.uy),
+    });
+    if (de.oep) de.oetype = de.oep.engr_type;
+    const ptr = game.youmonst?.data || permonstTemplate(u.umonnum);
+    if (ptr && (is_demon(ptr) || ptr.mlet === 48 /* S_VAMPIRE */))
+        de.type = ENGR_BLOOD;
+    const swallower = u.ustuck?.data;
+    de.jello = !!(u.uswallow && swallower
+        && !(swallower.mflags1 & 0x00040000 /* M1_ANIMAL */)
+        && swallower.mlet !== 22 /* S_VORTEX */
+        && swallower.pmidx !== 154 /* PM_AIR_ELEMENTAL */);
+}
+
+/* C engrave.c:741 — implement effects, before asking for text. */
+async function doengrave_sfx_item(de) {
+    const u = game.u;
+    const oc = de.otmp.oclass | 0;
+    if (oc === RING_CLASS || oc === GEM_CLASS) {
+        // C engrave.c:751-758: hard rings and gems carve the surface.
+        if (object_tough(de.otmp.otyp)) de.type = ENGRAVE;
+    } else if (oc === WAND_CLASS) {
+        /* C engrave.c:791-815.  zappable() spends the charge HERE, before
+         * the "You write in the dust with <wand>" message doname()s it. */
+        if (zappable(de.otmp)) {
+            /* C engrave.c:793-798 — bill the charge before backfire. */
+            check_unpaid_usage(de.otmp, false);
+            if (de.otmp.cursed && !rn2(100)) { /* WAND_BACKFIRE_CHANCE */
+                await wand_explode(de.otmp, 0);
+                de.ret = ECMD_TIME;
+                return false;
+            }
+            de.zapwand = true;
+            if (!can_reach_floor_real(true)) de.ptext = false;
+            await doengrave_sfx_item_WAN(de);
+        } else {
+            de.ptext = false;
+            if (can_reach_floor_real(true)) {
+                if ((de.otmp.spe | 0) < 0) de.zapwand = true;
+                else await pline('The wand is too worn out to engrave.');
+            }
+        }
+    } else if (oc === FOOD_CLASS || oc === SCROLL_CLASS || oc === SPBOOK_CLASS) {
+        /* engrave.c:774-780 — "Objects too silly to engrave with":
+         *     pline("%s would get %s.", Yname2(de->otmp),
+         *           de->frosted ? "all frosty" : "too dirty");
+         *     de->ptext = FALSE; */
+        await pline(`${Yname2(de.otmp)} would get `
+                    + `${de.frosted ? 'all frosty' : 'too dirty'}.`);
+        de.ptext = false;
+    } else if (oc === ARMOR_CLASS && is_boots(de.otmp)) {
+        de.type = DUST;
+    } else if (oc === ARMOR_CLASS || oc === BALL_CLASS || oc === ROCK_CLASS) {
+        /* engrave.c:768-772 — "Objects too large to engrave with". */
+        await pline("You can't engrave with such a large object!");
+        de.ptext = false;
+    } else if (oc === TOOL_CLASS) {
+        /* C engrave.c:836-880 */
+        if (de.otmp === (game.u || {}).ublindf) {
+            await pline("That is a bit difficult to engrave with, don't you think?");
+            de.ret = ECMD_FAIL;
+            return false;
+        }
+        if (de.otmp.otyp === MAGIC_MARKER) {
+            if ((de.otmp.spe | 0) <= 0)
+                await pline('Your marker has dried out.');
+            else
+                de.type = MARK;
+        } else if (de.otmp.otyp === TOWEL) {
+            /* C engrave.c:850-878 — wiping also dries a wet towel. */
+            de.ptext = false;
+            const towelMessage = () => `${Yobjnam2(de.otmp, 'get')} ${de.frosted ? 'frosty' : 'dusty'}.`;
+            if (de.oep) {
+                if (de.oep.engr_type === DUST || de.oep.engr_type === ENGR_BLOOD
+                    || de.oep.engr_type === MARK) {
+                    if ((de.otmp.spe | 0) > 0) await dry_a_towel(de.otmp, -1, true);
+                    if (!uBlind(game.u || {})) await pline('You wipe out the message here.');
+                    else await pline(towelMessage());
+                    de.dengr = true;
+                } else {
+                    await pline(`${await Yname2(de.otmp)} can't wipe out this engraving.`);
+                }
+            } else {
+                await pline(towelMessage());
+            }
+        }
+    } else if (oc === WEAPON_CLASS) {
+        if (is_art(de.otmp, ART_FIRE_BRAND)) {
+            de.type = BURN;
+        } else if (is_blade(de.otmp)) {
+            if (welded(de.otmp))
+                await pline('%s can only scratch the %s.',
+                            Yname2(de.otmp), surface_real(u.ux, u.uy));
+            else if ((de.otmp.spe | 0) <= -3)
+                await pline('%s too dull for engraving.', Yobjnam2(de.otmp, 'are'));
+            else
+                de.type = ENGRAVE;
+        }
+    } else if (oc === 17 /* VENOM_CLASS */) {
+        await pline("Writing a poison pen letter?");
+    }
+    return true;
 }
 
 /* doengrave — the 'E' command.  C ref: engrave.c:958.
@@ -360,17 +477,8 @@ export async function doengrave() {
         return ECMD_FAIL;
     }
 
-    /* C engrave.c:969-973 — doengrave_ctx_init(de); gm.multi = 0. */
-    const de = {
-        dengr: false, doblind: false, doknown: false, eow: false, jello: false,
-        ptext: true, teleengr: false, zapwand: false, disprefresh: false,
-        adding: false, post_engr_text: '',
-        ret: ECMD_OK, type: DUST, oetype: 0,
-        otmp: null, oep: engr_at(u.ux, u.uy),
-        buf: '', ebuf: '', writer: '', everb: '', eloc: '',
-        frosted: is_ice(u.ux, u.uy),
-    };
-    if (de.oep) de.oetype = de.oep.engr_type;
+    const de = {};
+    doengrave_ctx_init(de);
     g.multi = 0;
 
     /* C engrave.c:979 — getobj("write with", stylus_ok, GETOBJ_PROMPT). */
@@ -384,12 +492,18 @@ export async function doengrave() {
     if (de.otmp.hands) {
         de.writer = 'your ' + body_part_fingertip();
     } else {
-        de.writer = de.otmp.writerName || 'it';
+        de.writer = yname(de.otmp);
     }
 
     /* C engrave.c:993 — the wielded or worn stylus is still usable. */
     if (!freehand() && de.otmp !== u.uwep && !de.otmp.owornmask) {
         await pline(`You have no free ${body_part(HAND)} to write with!`);
+        return doengr_exit(de);
+    }
+
+    if (de.jello) {
+        await pline('You tickle %s with %s.', mon_nam(u.ustuck), de.writer);
+        await pline('Your message dissolves...');
         return doengr_exit(de);
     }
 
@@ -409,91 +523,32 @@ export async function doengrave() {
         return doengr_exit(de);
     }
 
-    /* C engrave.c:doengrave_sfx_item. Fingers leave the type unchanged. */
-    if (!de.otmp.hands) {
-        const oc = de.otmp.oclass | 0;
-        if (oc === RING_CLASS || oc === GEM_CLASS) {
-            // C engrave.c:751-758: hard rings and gems carve the surface.
-            if (object_tough(de.otmp.otyp)) de.type = ENGRAVE;
-        } else if (oc === WAND_CLASS) {
-            /* C engrave.c:791-815.  zappable() spends the charge HERE, before
-             * the "You write in the dust with <wand>" message doname()s it. */
-            if (zappable(de.otmp)) {
-                /* C engrave.c:793 check_unpaid() = check_unpaid_usage(otmp, FALSE)
-                 * (shk.c:5739).  The cursed WAND_BACKFIRE_CHANCE wand_explode()
-                 * arm (engrave.c:794-798) is not ported: wand_explode has no JS body. */
-                check_unpaid_usage(de.otmp, false);
-                if (de.otmp.cursed && !rn2(100)) { /* WAND_BACKFIRE_CHANCE */
-                    de.ret = ECMD_TIME;
-                    return doengr_exit(de);
-                }
-                de.zapwand = true;
-                if (!can_reach_floor_real(true)) de.ptext = false;
-                await doengrave_sfx_item_WAN(de);
-            } else {
-                de.ptext = false;
-                if (can_reach_floor_real(true)) {
-                    if ((de.otmp.spe | 0) < 0) de.zapwand = true;
-                    else await pline('The wand is too worn out to engrave.');
-                }
-            }
-        } else if (oc === FOOD_CLASS || oc === SCROLL_CLASS || oc === SPBOOK_CLASS) {
-            /* engrave.c:774-780 — "Objects too silly to engrave with":
-             *     pline("%s would get %s.", Yname2(de->otmp),
-             *           de->frosted ? "all frosty" : "too dirty");
-             *     de->ptext = FALSE; */
-            await pline(`${Yobjnam2(de.otmp, null)} would get `
-                        + `${de.frosted ? 'all frosty' : 'too dirty'}.`);
-            de.ptext = false;
-        } else if (oc === ARMOR_CLASS && is_boots(de.otmp)) {
-            de.type = DUST;
-        } else if (oc === ARMOR_CLASS || oc === BALL_CLASS || oc === ROCK_CLASS) {
-            /* engrave.c:768-772 — "Objects too large to engrave with". */
-            await pline("You can't engrave with such a large object!");
-            de.ptext = false;
-        } else if (oc === TOOL_CLASS) {
-            /* C engrave.c:836-880 */
-            if (de.otmp === (game.u || {}).ublindf) {
-                await pline("That is a bit difficult to engrave with, don't you think?");
-                de.ret = ECMD_FAIL;
-                return doengr_exit(de);
-            }
-            if (de.otmp.otyp === MAGIC_MARKER) {
-                if ((de.otmp.spe | 0) <= 0)
-                    await pline('Your marker has dried out.');
-                else
-                    de.type = MARK;
-            } else if (de.otmp.otyp === TOWEL) {
-                /* Can't really engrave with a towel.  The wet-towel
-                 * dry_a_towel() arm (engrave.c:858-859) has no JS body. */
-                de.ptext = false;
-                const verbs = `${await Yobjnam2(de.otmp, 'get')} ${de.frosted ? 'frosty' : 'dusty'}.`;
-                if (de.oep) {
-                    if (de.oep.engr_type === DUST || de.oep.engr_type === ENGR_BLOOD
-                        || de.oep.engr_type === MARK) {
-                        if (!uBlind(game.u || {})) await pline('You wipe out the message here.');
-                        else await pline(verbs);
-                        de.dengr = true;
-                    } else {
-                        await pline(`${await Yname2(de.otmp)} can't wipe out this engraving.`);
-                    }
-                } else {
-                    await pline(verbs);
-                }
-            }
-        } else if (oc === WEAPON_CLASS) {
-            if (is_art(de.otmp, ART_FIRE_BRAND)) {
-                de.type = BURN;
-            } else if (is_blade(de.otmp)) {
-                if (welded(de.otmp))
-                    await pline('%s can only scratch the %s.',
-                                Yname2(de.otmp), surface_real(u.ux, u.uy));
-                else if ((de.otmp.spe | 0) <= -3)
-                    await pline('%s too dull for engraving.', Yobjnam2(de.otmp, 'are'));
-                else
-                    de.type = ENGRAVE;
-            }
+    /* C engrave.c:1019-1031 — a headstone is disturbed before item effects. */
+    const loc = game.level.at(u.ux, u.uy);
+    if (loc.typ === GRAVE_TYP) {
+        if (de.otmp.hands) {
+            await pline('You would only make a small smudge on the %s.', surface(u.ux, u.uy));
+            return doengr_exit(de);
+        } else if (!loc.disturbed) {
+            await disturb_grave(u.ux, u.uy);
+            return doengr_exit(de);
         }
+    }
+    if (!(await doengrave_sfx_item(de))) return doengr_exit(de);
+    if (loc.typ === GRAVE_TYP) {
+        if (de.type === ENGRAVE || de.type === 0) {
+            de.type = HEADSTONE;
+        } else {
+            de.type = DUST;
+            de.dengr = de.teleengr = false;
+            de.buf = '';
+        }
+    }
+    /* C engrave.c:1053-1057 — identify before any early exit. */
+    if (de.doknown) {
+        learnwand(de.otmp);
+        if (game._oc_name_known?.[de.otmp.otyp | 0])
+            more_experienced(0, 10);
     }
     if (de.teleengr) {
         const moved = rloc_engr(de.oep, u.ux, u.uy);
@@ -537,12 +592,6 @@ export async function doengrave() {
         return doengr_exit(de);
     }
 
-    /* C engrave.c:1053-1057 — identify stylus. */
-    if (de.doknown) {
-        learnwand(de.otmp);
-        if (game._oc_name_known?.[de.otmp.otyp | 0])
-            more_experienced(0, 10);
-    }
     if (de.oep) {
         /* C engrave.c:907-954 — decide whether to append, wipe, or
          * overwrite the existing engraving. */
@@ -813,6 +862,41 @@ export function engrave() {
     eng.stylus = null;
     if (neweng) newsym(eng.pos.x, eng.pos.y);
     return 0;
+}
+
+/* C engrave.c:1497,1508 — bones text cleanup and discovery reset. */
+export function sanitize_engravings() {
+    for (const ep of engravings_list()) ep.text = sanitize_name(ep.text);
+}
+
+export function forget_engravings() {
+    for (const ep of engravings_list()) ep.erevealed = ep.eread = 0;
+}
+
+/* C engrave.c:1706 — engraving and kicking share this grave disturbance. */
+export async function disturb_grave(x, y) {
+    const loc = game.level.at(x, y);
+    if (loc.typ !== GRAVE_TYP || loc.disturbed) return;
+    await pline('You disturb the undead!');
+    loc.disturbed = 1;
+    await makemon(permonstTemplate(PM_GHOUL), x, y, 0);
+    exercise(A_WIS, false);
+}
+
+/* C engrave.c:1743-1767 — encrypted strings, decoded only by the blind writer. */
+const blind_writing = [
+    'Dfmibe"E{qemr',
+    'Qg`z\x7f!@qkqogc',
+    'Imsibe"La|mg$B\x7filwg~',
+    'Kmlf0Lkh|\x7fo',
+    'Qgpz\x7foghdq!Okm~r',
+    'Lcvaq!Hk{ugc$Eekke',
+    'Lghkxhmvzu!Oqzuow',
+    'Dfm|x!Pefel',
+    'Dfsibe"V}civkf',
+];
+function blengr() {
+    return blind_writing[rn2(blind_writing.length)];
 }
 
 /* enum engraving_texts (nethack-c/include/engrave.h:9). */

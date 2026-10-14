@@ -16,7 +16,7 @@ import { peaceMinded, set_malign } from './makemon.js';
 
 import { game } from './gstate.js';
 import { rnd } from './rng.js';
-import { rest_engravings, restore_cham, hide_monst, hideunder } from './mklev.js';
+import { rest_engravings, restore_cham, hide_monst, hideunder, _gm_migrating } from './mklev.js';
 import { restore_luadata, l_nhcore_call, NHCORE_RESTORE_OLD_GAME } from './nhlua.js';
 import { regions_rest_snapshot } from './region.js';
 import { restore_timers_level, run_timers } from './timeout.js';
@@ -29,7 +29,7 @@ import { restore_light_sources } from './light.js';
 import { place_wsegs, worm_seg_clear_level } from './worm.js';
 import { change_luck } from './attrib.js';
 import { HALLUC, HALLUC_RES } from './const.js';
-import { phase_of_the_moon, friday_13th } from './allmain.js';
+import { phase_of_the_moon, friday_13th, getnow } from './allmain.js';
 
 /* C ref: mondata.h:90 hides_under(ptr) — ((ptr)->mflags1 & M1_CONCEAL). */
 const M1_CONCEAL = 0x00000080; /* C monflag.h:101 */
@@ -206,6 +206,10 @@ async function restgamestate(state) {
             continue;
         game[k] = state[k];
     }
+    // C restore.c:625 — time while the game was saved is not playing time.
+    (game.urealtime ||= { realtime: 0, finish_time: 0 }).start_timing = getnow();
+    // C restore.c:671 restores one migrating chain; rebind both JS spellings.
+    _gm_migrating();
     /* C decl.h:536 marks `int lastinvnr` "(never saved&restored)": the restoring
      * process keeps decl.c:458's initial 51 (u_init.c:1375 re-sets it only for a
      * NEW game), so assigninvlet() (invent.c:721) scans from 'a' again instead of

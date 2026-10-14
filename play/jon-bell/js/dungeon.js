@@ -1,11 +1,37 @@
 // dungeon.js — port of nethack-c/src/dungeon.c (scaffold: functions are added here
 
 import { game } from './gstate.js';
-import { In_quest, In_endgame, Is_knox_level } from './const.js';
+import { In_quest, In_endgame, Is_knox_level, VISITED } from './const.js';
 import { depth } from './hacklib.js';
 import { strsubst } from './mklev.js';
+import { rnd } from './rng.js';
+import { goto_level } from './cmd.js';
 
 let sve = { exclusion_zones: null };
+
+// C dungeon.c:1391-1396 — last dungeon's final bookkeeping level.
+export function maxledgerno() {
+    const dungeons = game.dungeons;
+    const last = dungeons[(game._n_dgns ?? dungeons.length) - 1];
+    return last.ledger_start + last.num_dunlevs;
+}
+
+// C dungeon.c:1956-1963 — find_hell() always chooses dungeon level 1.
+export async function goto_hell(at_stairs, falling) {
+    const lev = { dnum: game.valley_level.dnum, dlevel: 1 };
+    await goto_level(lev, at_stairs, falling, false);
+}
+
+// C dungeon.c:1985-1995 — retain the signed range and the single rnd draw.
+export function assign_rnd_level(dest, src, range) {
+    dest.dnum = src.dnum;
+    dest.dlevel = src.dlevel + (range > 0 ? rnd(range) : -rnd(-range));
+    const bottom = game.dungeons[dest.dnum].num_dunlevs;
+    if (dest.dlevel > bottom)
+        dest.dlevel = bottom;
+    else if (dest.dlevel < 1)
+        dest.dlevel = 1;
+}
 
 export function on_level(lev1, lev2) {
     return (lev1.dnum === lev2.dnum && lev1.dlevel === lev2.dlevel);
@@ -119,6 +145,48 @@ export function at_dgn_entrance(s) {
  * dungeon, i.e. the raw dlevel, NOT depth(). */
 export function dunlev(lev) {
     return lev?.dlevel | 0;
+}
+
+/* C dungeon.c:2805-2831 remdun_mapseen().  The port stores overview data
+ * in per-level tables instead of a linked mapseen chain (cmd.js
+ * show_overview).  Mark only levels which already have an overview entry;
+ * a later first visit to another level in this dungeon starts reachable.
+ * Keep annotations and features for final disclosure, just as C does. */
+export function remdun_mapseen(dnum) {
+    const dgn = game.dungeons?.[dnum];
+    if (!dgn) return;
+    const unreachable = (game._level_notreachable ||= {});
+    const start = dgn.ledger_start | 0;
+    const end = start + (dgn.num_dunlevs | 0);
+    for (const key of Object.keys(game.level_info || {})) {
+        const ledger = Number(key);
+        if (ledger > start && ledger <= end
+            && (game.level_info[key].flags & VISITED))
+            unreachable[`${dnum}:${ledger - start}`] = true;
+    }
+    // The current level has a mapseen entry before its first savelev().
+    const lev = game.u?.uz;
+    if (lev && lev.dnum === dnum)
+        unreachable[`${dnum}:${lev.dlevel}`] = true;
+}
+
+export function mapseen_notreachable(lev) {
+    return !!game._level_notreachable?.[`${lev.dnum}:${lev.dlevel}`];
+}
+
+/* C dungeon.c:3096-3111, the reachability part of recalc_mapseen().
+ * Returning to one quest level revives the entire branch's overview data;
+ * elsewhere only the current level becomes reachable again. */
+export function recalc_mapseen_reachability() {
+    const lev = game.u?.uz;
+    if (!lev || !mapseen_notreachable(lev)) return;
+    const unreachable = game._level_notreachable;
+    unreachable[`${lev.dnum}:${lev.dlevel}`] = false;
+    if (In_quest(lev)) {
+        for (const key of Object.keys(unreachable))
+            if (Number(key.split(':')[0]) === lev.dnum)
+                unreachable[key] = false;
+    }
 }
 
 /* C ref: dungeon.c:3409-3437 endgamelevelname(outbuf, indx) — name an endgame

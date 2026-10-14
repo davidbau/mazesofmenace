@@ -17,6 +17,8 @@ import {
     Helmet_off,
     Shield_off,
     Shirt_off,
+    bimanual,
+    yname,
 } from './do_wear.js';
 import {
     W_ARMOR,
@@ -44,6 +46,7 @@ import {
     isok,
     ESHK,
     I_SPECIAL,
+    HAND,
 } from './const.js';
 import { artifact_light } from './light.js';
 import { update_inventory } from './inventory_refresh.js';
@@ -54,6 +57,7 @@ import { newsym, pline } from './display.js';
 import { Blind, cansee } from './vision.js';
 import { canspotmon, canseemon } from './display.js';
 import { Monnam } from './mcastu.js';
+import { Some_Monnam } from './mhitm.js';
 import { is_fainted } from './eat.js';
 import { unpunish } from './dig.js';
 import { unconscious } from './pickup.js';
@@ -61,12 +65,13 @@ import { findgold } from './makemon.js';
 import { droppables } from './dogmove.js';
 import { extract_from_minvent } from './trap.js';
 import { obfree, stolen_value } from './dokick.js';
-import { simpleonames, Tobjnam, is_quest_artifact as is_quest_artifact_real } from './objnam.js';
+import { simpleonames, Tobjnam, armor_simple_name, makeplural, otense, is_quest_artifact as is_quest_artifact_real } from './objnam.js';
 import { end_burn } from './timeout.js';
 import { goodpos } from './trap.js';
-import { obj_extract_self, remove_object, place_object, mdrop_obj_md, revive_corpse } from './mklev.js';
-import { flooreffects } from './cmd.js';
-import { find_objowner, costly_spot, in_rooms, inhishop, subfrombill, addtobill as shk_addtobill } from './shk.js';
+import { obj_extract_self, remove_object, place_object, mdrop_obj_md, revive_corpse, mpickobj, touch_artifact_mon } from './mklev.js';
+import { flooreffects, freeinv, body_part } from './cmd.js';
+import { encumber_msg } from './weight.js';
+import { find_objowner, costly_spot, in_rooms, inhishop, subfrombill, shop_keeper, addtobill as shk_addtobill } from './shk.js';
 import { within_bounded_area } from './rect.js';
 import { PM_DEATH, PM_FAMINE, PM_PESTILENCE } from './pm.generated.js';
 /* C zap.c:1458 obj_resists — the body WITH C's Rider-corpse clause
@@ -82,6 +87,7 @@ import { PM_DEATH, PM_FAMINE, PM_PESTILENCE } from './pm.generated.js';
  * only module-level statement is a numeric const (RLOCO_CORPSE) and nothing
  * here or there calls across the cycle during module evaluation. */
 import { obj_resists } from './zap.js';
+const ROCK_CLASS = 14; // C objclass.h: boulders and statues
 
 /**
  * C ref: steal.c:212 remove_worn_item()
@@ -212,6 +218,15 @@ export async function remove_worn_item(obj, unchain_ball) {
     obj.in_use = oldinuse;
 }
 
+// C steal.c:119-128: the thief died while the hero was removing armor.
+export function thiefdead() {
+    game.stealmid = 0;
+    if (game.afternmv === 'stealarm') {
+        game.afternmv = 'unstolenarm';
+        game.nomovemsg = null;
+    }
+}
+
 export function unresponsive() {
     if (game.multi >= 0)
         return false;
@@ -220,6 +235,48 @@ export function unresponsive() {
             || (game.multi_reason
                 && (game.multi_reason.substring(0, 6) === "frozen"
                     || game.multi_reason.substring(0, 9) === "paralyzed")));
+}
+
+// C steal.c:146-162: finish undressing, but keep the now-unworn armor.
+export async function unstolenarm() {
+    let obj;
+    for (obj = game.invent; obj; obj = obj.nobj)
+        if (obj.o_id === game.stealoid)
+            break;
+    game.stealoid = 0;
+    if (obj)
+        await pline(`You finish taking off your ${armor_simple_name(obj)}.`);
+    return 0;
+}
+
+// C steal.c:772-815: a mimic can absorb the tool used to probe its disguise.
+export async function maybe_absorb_item(mon, obj, ochance, achance) {
+    const u = game.u;
+    if (obj === u.uball || obj === u.uchain || obj.oclass === ROCK_CLASS
+        || obj_resists(obj, 100 - ochance, 100 - achance)
+        || !touch_artifact_mon(obj, mon))
+        return;
+
+    if (obj.where === OBJ_INVENT) {
+        if (obj.owornmask)
+            await remove_worn_item(obj, true);
+        if (obj.unpaid)
+            await subfrombill(obj, shop_keeper((u.ushops || '')[0]));
+        if (cansee(mon.mx, mon.my)) {
+            await pline(`${Some_Monnam(mon)} pulls ${yname(obj)} away from you and absorbs ${obj.quan > 1 ? 'them' : 'it'}!`);
+        } else {
+            let hand_s = body_part(HAND);
+            if (bimanual(obj))
+                hand_s = makeplural(hand_s);
+            const name = yname(obj);
+            await pline(`${name.charAt(0).toUpperCase() + name.slice(1)} ${otense(obj, 'are')} pulled from your ${hand_s}!`);
+        }
+        await freeinv(obj);
+        await encumber_msg();
+    } else if (canspotmon(mon)) {
+        await pline(`${Monnam(mon)} absorbs ${yname(obj)}!`);
+    }
+    await mpickobj(mon, obj);
 }
 
 // Stubs for unported helpers — these will be ported separately or imported

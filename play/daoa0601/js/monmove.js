@@ -27,7 +27,7 @@ import { useMonsterOffensiveItem } from './monster_offensive_item.js';
 import { searchMonsterItems } from './monster_item_search.js';
 import { monsterCouldReachItem } from './monster_item_reach.js';
 import { consumeMonsterFloorObjects } from './monster_floor_consumption.js';
-import { digestGelatinousCubeInventory } from './monster_consumption.js';
+import { digestGelatinousCubeInventory, feedBeeRoyalJelly } from './monster_consumption.js';
 import { pickUpMonsterFloorObject } from './monster_pickup.js';
 import { digMonsterTunnel } from './monster_tunnel.js';
 import { monsterMovementBaseFlags, monsterCanOpenDoor, monsterCanUnlockDoor, monsterCorrodesBars, } from './monster_movement_traits.js';
@@ -96,7 +96,7 @@ import { beginHeroEngulf, monsterCanEngulfHero, resolveHeroEngulf, } from './her
 import { splitObjectStack } from './object_stack.js';
 import { artifactById } from './artifacts.js';
 import { respondMedusa } from './monster_gaze.js';
-import { canSeeMonster, canSpotMonster, map_invisible, newsym, randomDisplayMonsterName, randomDisplayMonsterSubject, plineWithContinuation, } from './display.js';
+import { canSeeMonster, canSpotMonster, map_invisible, newsym, randomDisplayMonsterSubject, plineWithContinuation, } from './display.js';
 import { MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_FLAGS3, MONSTER_GENO, MONSTER_LEVEL, MONSTER_MOVE, MONSTER_NAME, MONSTER_RESISTS, MONSTER_SIZE, MONSTER_SYMBOL, monsterIsCovetous, monsterIsNoncorporeal, monsterIsUndead, monsterIsVampireShifter, monsterIsWhirly, monsterIsShade, monsterIsUnsolid, monsterIsThickSkinned, monsterTypeName, } from './monster_data.js';
 import { AD_ACID, AD_BLND, AD_CLRC, AD_COLD, AD_CURS, AD_HEAL, AD_DRIN, AD_CORR, AD_DCAY, AD_DGST, AD_DREN, AD_DRLI, AD_ELEC, AD_ENCH, AD_FIRE, AD_LEGS, AD_PHYS, AD_POLY, AD_TLPT, AD_DISE, AD_PEST, AD_FAMN, AD_MAGM, AD_SPC2, AD_SAMU, AD_SEDU, AD_SGLD, AD_SSEX, AD_SITM, AD_SLIM, AD_SLOW, AD_SPEL, AD_STCK, AD_STON, AD_STUN, AD_WRAP, AD_PLYS, AD_WERE, AD_RUST, AT_BOOM, AT_BREA, AT_CLAW, AT_ENGL, AT_GAZE, AT_HUGS, AT_MAGC, AT_SPIT, AT_TUCH, AT_WEAP, AT_KICK, AT_BITE, AT_STNG, AT_BUTT, AT_TENT, AT_EXPL, } from './monster_attack_types.js';
 import { AMULET_OF_YENDOR, APPLE, BANANA, BELL_OF_OPENING, BULLWHIP, BOULDER, CARROT, CANDELABRUM_OF_INVOCATION, CLOVE_OF_GARLIC, CORPSE, DWARVISH_MATTOCK, EGG, FAKE_AMULET_OF_YENDOR, FLINT, ENORMOUS_MEATBALL, GOLD_PIECE, MEATBALL, MEAT_RING, MEAT_STICK, ARROW, AXE, BATTLE_AXE, DART, IRON_SHOES, OBJECT_MATERIAL, OBJECT_BIMANUAL, OBJECT_LARGE_DAMAGE, OBJECT_NAMES, OBJECT_SMALL_DAMAGE, OBJECT_SUBTYPE, PICK_AXE, ROCK, POT_GAIN_LEVEL, POT_HEALING, POT_INVISIBILITY, SLIME_MOLD, SPE_BOOK_OF_THE_DEAD, TIN, TRIPE_RATION, WAN_SPEED_MONSTER, } from './object_data.js';
@@ -105,7 +105,7 @@ import { unlinkObject } from './object_location.js';
 import { removeWornHeroItem } from './hero_equipment.js';
 import { canLetGo, finishInventoryRemoval } from './hero_inventory.js';
 import { dropObjectAtHero } from './object_drop.js';
-import { canFallThrough, makemonNear, mksobj, summonNastyMonsters } from './mklev.js';
+import { canFallThrough, makemonNear, maketrap, mksobj, summonNastyMonsters } from './mklev.js';
 import { decideMonsterShapeChange } from './monster_polymorph.js';
 import { isZombieMaker, zombieForm } from './corpse_species.js';
 import { getTrack, hasTrack } from './track.js';
@@ -124,13 +124,14 @@ import { wipeEngravingAt } from './engrave.js';
 import { moveVaultGuard } from './vault.js';
 import { afterShopkeeperMove, checkSpecialRoom, shopGreeting, shopkeeperInOwnShop } from './shk.js';
 import { shopkeeperIsMuted } from './shop_loss.js';
-import { findMonsterArmorClass, nameMonsterForCreationArmorChecks, } from './monworn.js';
+import { findMonsterArmorClass } from './monworn.js';
 import { inTown, roomsAt } from './room.js';
 import { addShopDamage } from './shop_damage.js';
-import { createHarmlessGasCloudSelection, createPoisonGasCloud, createSteamCloud, GAS_OK, monsterGasTolerance, visibleRegionAt, } from './regions.js';
+import { createHarmlessGasCloudSelection, createPoisonGasCloud, createSteamCloud, GAS_OK, monsterGasTolerance, visibleRegionAt, updateMonsterRegions, } from './regions.js';
 import { heroIsDeaf, syncBlindness } from './senses.js';
 import { applyMonsterStoningAttack, startHeroPetrificationFromMonster, touchPetrifies, } from './stoning.js';
-import { monsterHasFireResistance } from './monster_resistance.js';
+import { monsterHasFireResistance, monsterHasStoneResistance } from './monster_resistance.js';
+import { monsterReflectsRay } from './ray.js';
 import { clearHeroSliming } from './slime.js';
 import { monsterWeaponStrengthBonus, rollPhysicalWeaponDamageAgainstHero, } from './weapon_damage.js';
 import { weaponHitBonus } from './weapon_accuracy.js';
@@ -170,7 +171,7 @@ import { learnObjectType } from './object_knowledge.js';
 import { changeMonsterForm } from './monster_polymorph.js';
 import { rndmonstAdj } from './mklev.js';
 import { summonMonsterInsects } from './monster_spell_insects.js';
-import { BAG_OF_TRICKS, POT_POLYMORPH, WAN_MAKE_INVISIBLE, WAN_POLYMORPH } from './object_data.js';
+import { BAG_OF_TRICKS, LUMP_OF_ROYAL_JELLY, POT_POLYMORPH, WAN_MAKE_INVISIBLE, WAN_POLYMORPH } from './object_data.js';
 import { lootMonsterContainer } from './monster_container_loot.js';
 import { isContainer } from './container.js';
 import { isQuantumBox } from './quantum_cat.js';
@@ -701,8 +702,6 @@ export async function finishDeferredMonsterMiscItem(action, state = requireIniti
     }
     if (misc.kind === 'potion-invisibility' || misc.kind === 'wand-invisibility') {
         setMonsterPermanentInvisibility(monster, !misc.object.cursed);
-        if (misc.kind === 'potion-invisibility')
-            await consumeMonsterItem(monster, misc.object, state);
         misc.effectApplied = true;
         return misc;
     }
@@ -2289,6 +2288,8 @@ async function finishPetMovePlan(monster, state, plan, random, rollDice, rollOne
             ...inventoryAction,
         };
     }
+    if (nix !== oldx || niy !== oldy)
+        updateMonsterRegions(monster, state, { x: nix, y: niy });
     monster.mx = nix;
     monster.my = niy;
     if (nix !== oldx || niy !== oldy) {
@@ -2427,6 +2428,21 @@ async function movePet(monster, state, random, rollDice, rollOne, calls, resumeA
                 continue;
             if (maxPassiveMonsterDamage(target, monster) >= (monster.mhp ?? 1))
                 continue;
+            // dog_move() usually avoids paralysis and petrifying contact even
+            // when the expected passive HP damage would be survivable.
+            const avoidsEye = target.mnum === MONSTER_NAME.indexOf('floating eye')
+                && recordRandom(random, calls, 10) !== 0
+                && !!monster.mcansee
+                && !((MONSTER_FLAGS1[monster.mnum] ?? 0) & M1_NOEYES)
+                && !!target.mcansee
+                && (!target.minvis || !!((MONSTER_FLAGS1[monster.mnum] ?? 0) & M1_SEE_INVIS))
+                && !monsterReflectsRay(monster, state);
+            const avoidsCube = target.mnum === MONSTER_NAME.indexOf('gelatinous cube')
+                && recordRandom(random, calls, 10) !== 0;
+            const avoidsPetrification = touchPetrifies(target.mnum)
+                && !monsterHasStoneResistance(monster);
+            if (avoidsEye || avoidsCube || avoidsPetrification)
+                continue;
             const attack = await petAttacksMonster(monster, target, state, random, rollDice, rollOne, calls, { x: nx, y: ny });
             return {
                 oldx,
@@ -2474,6 +2490,7 @@ async function movePet(monster, state, random, rollDice, rollOne, calls, resumeA
             }
         }
         if (edible) {
+            updateMonsterRegions(monster, state, { x: nx, y: ny });
             monster.mx = nx;
             monster.my = ny;
             if (!Array.isArray(monster.mtrack))
@@ -2949,6 +2966,8 @@ async function moveHostile(monster, state, random, rollDice, rollOne, calls, cap
             heroDied: !!state.program_state.gameover,
         }, status, 'dochug');
     }
+    if (selected)
+        updateMonsterRegions(monster, state, { x: nix, y: niy });
     if (selectedInfo & ALLOW_ROCK && monsterCanBreakBoulder(monster)) {
         await breakMonsterBoulder(monster, nix, niy, state, { random });
         return finishMovement({
@@ -6190,7 +6209,8 @@ async function monsterSummonSpellEffect(monster, state) {
     const summoned = await summonNastyMonsters(monster);
     effect = {
         ...effect,
-        ...(summoned.deferredDemonSummon ? await msummon(monster) : summoned),
+        // nasty() delegates to msummon(NULL), using the Wizard's demon choices.
+        ...(summoned.deferredDemonSummon ? await msummon() : summoned),
     };
     for (const created of effect.created || []) {
         const hostileState = created.mpeaceful;
@@ -6264,9 +6284,6 @@ async function createWizardClone(state) {
         return null;
     newsym(clone.mx, clone.my);
     const hallucinating = heroIsHallucinating(state);
-    if (hallucinating) {
-        nameMonsterForCreationArmorChecks(clone, () => randomDisplayMonsterName());
-    }
     // makemon() repaints after the complete creation wear pass, then formats
     // its visible announcement.  clonewiz() performs another repaint later,
     // after fake-Amulet and wizapp state have been installed.
@@ -6438,17 +6455,9 @@ async function maybeSpinMonsterWeb(monster, movement, state, random, rollDice, c
     const roll = recordRandom(random, calls, 1000);
     if (roll >= probability)
         return { roll, probability, created: false };
-    const trap = {
-        ttyp: WEB,
-        tx: monster.mx,
-        ty: monster.my,
-        tseen: false,
-        once: false,
-        launch: { x: 0, y: 0 },
-    };
-    if (!state.level.traps)
-        state.level.traps = [];
-    state.level.traps.push(trap);
+    const trap = await maketrap(monster.mx, monster.my, WEB);
+    if (!trap)
+        return { roll, probability, created: false };
     monster.mspec_used = rollDice(4, 4);
     calls.push('d(4,4)');
     if (cansee(monster.mx, monster.my)) {
@@ -7102,6 +7111,21 @@ export async function takeMonsterTurn(monster, state, random = rn2, rollDice = d
         };
     }
     const entryMnum = dochugContext.entryMnum;
+    // dochug() gives royal jelly priority over movement and attacks.
+    const royalJelly = entryMnum === MONSTER_NAME.indexOf('killer bee')
+        ? state.level.objects[monster.mx]?.[monster.my]?.find(object => object.otyp === LUMP_OF_ROYAL_JELLY)
+        : null;
+    if (royalJelly && await feedBeeRoyalJelly(monster, royalJelly, state)) {
+        return {
+            calls, dochugContext,
+            movement: {
+                oldx: monster.mx, oldy: monster.my, x: monster.mx, y: monster.my,
+                moved: false, actionCompleted: true,
+                actorDied: !!monster.dead || monster.mhp <= 0,
+                heroDied: !!state.program_state.gameover,
+            },
+        };
+    }
     if (entryMnum === MONSTER_NAME.indexOf('gelatinous cube')
         && await digestGelatinousCubeInventory(monster, state, { random, rollOne, rollDice })) {
         return {

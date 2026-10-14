@@ -509,6 +509,7 @@ export function consumeDungeonInitRng() {
         else if (sl.proto === 'x-goal')
             sl.proto = roleCode + '-goal';
     }
+    spLevchn.sort((a, b) => a.dlevel.dnum - b.dlevel.dnum || a.dlevel.dlevel - b.dlevel.dlevel);
     game._sp_levchn = spLevchn;
     {
         const dummy = spLevchn.find(sl => sl.proto === 'dummy');
@@ -558,6 +559,8 @@ export function consumeDungeonInitRng() {
             continue;
         const lv = { dnum: fl.dnum, dlevel: fl.dlevel };
         switch (fl.proto) {
+            case 'bigrm': game.bigroom_level = lv;
+                break;
             case 'medusa':
                 game.medusa_level = lv;
                 break;
