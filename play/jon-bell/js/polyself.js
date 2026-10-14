@@ -85,7 +85,7 @@ import { Monnam, perceives } from "./mcastu.js";
 import { helpless, Resists_Elem, killed, y_monnam, l_monnam } from './mhitm.js';
 import { s_suffix } from './hacklib.js';
 import { nonliving, poly_gender } from './makemon.js';
-import { livelog_printf, rank_of } from './display.js';
+import { livelog_printf, rank_of, retouch_equipment } from './display.js';
 import { LL_MINORAC } from './const.js';
 import { bhp_bury_objs, dismount_steed as dismount_steed_real } from './cmd.js';
 import { in_rooms, add_damage, pay_for_damage } from './shk.js';
@@ -686,6 +686,7 @@ export async function polymon(mntmp) {
     // fully implemented in trap.js and must run after the form/status update:
     // losing stone resistance while wielding a cockatrice corpse can petrify
     // the hero (or life-saving can unwield it).
+    await retouch_equipment(2);
     if (!u.uarmg)
         await selftouch(NO_LONGER_PETRIFY_RESISTANT);
 
@@ -1275,6 +1276,7 @@ export async function rehumanize() {
         await pline(`And ${mon_nam_poly(u.usteed)} return gently to the ${surface(u.ux, u.uy)}.`);
     update_inventory();                          /* C:1411 */
     /* C polyself.c:1415-1417 retouch_equipment(2) / selftouch(). */
+    await retouch_equipment(2);
     if (!u.uarmg)
         await selftouch(NO_LONGER_PETRIFY_RESISTANT);
 }
@@ -1460,6 +1462,7 @@ export async function newman() {
     // C polyself.c:461 retouch_equipment(2) / selftouch().  selftouch is
     // safe here even when the ordinary inventory has no petrifying corpse;
     // its guard is fully local and consumes no RNG in that case.
+    await retouch_equipment(2);
     if (!u.uarmg)
         await selftouch(NO_LONGER_PETRIFY_RESISTANT);
 }

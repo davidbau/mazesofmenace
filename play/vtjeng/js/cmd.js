@@ -282,7 +282,7 @@ import {
     UnsupportedEnlightenmentError,
 } from './insight.js';
 import {
-    doclassdisco, dodiscovered, UnsupportedDiscoveryDisplayError,
+    doclassdisco, dodiscovered,
 } from './o_init.js';
 import { donameFresh } from './objnam.js';
 import {
@@ -328,10 +328,7 @@ import {
     dovspell,
     UnsupportedSpellCastError,
 } from './spell.js';
-import {
-    UnsupportedWeaponSkillError,
-    enhance_weapon_skill,
-} from './weapon.js';
+import { enhance_weapon_skill } from './weapon.js';
 import {
     displayTtyTextWindow, menuTitleStyle,
 } from './tty_menu.js';
@@ -2883,7 +2880,6 @@ export function failClosedCommandRefusals() {
         // the forgotten-spell, amulet-drain, and non-healing spell paths
         // that this port has not reached.
         UnsupportedSpellCastError,
-        UnsupportedDiscoveryDisplayError,
         UnsupportedEnlightenmentError,
         UnsupportedShopError,
         // end.c really_done() calls paybill() and paygd() on every death, so
@@ -2892,7 +2888,6 @@ export function failClosedCommandRefusals() {
         // reaches that death through losehp(), and js/allmain.js converts the
         // same two classes where a monster's attack reaches it.
         UnsupportedVaultGuardError,
-        UnsupportedWeaponSkillError,
         UnsupportedSearchError,
         UnsupportedDirectionBoundaryError,
         UnsupportedApplyError,
@@ -5726,6 +5721,16 @@ export async function rhack(key, state = game, selectedPrefixEntry = null) {
         // ECMD reset/time tail as a directly selected extended command.
         if (queuedExtcmdEntry?.ef_funct === 'dosacrifice') {
             const res = await dosacrifice(state);
+            if (res & (ECMD_CANCEL | ECMD_FAIL)) resetCommandVars(state);
+            else if ((res & (ECMD_OK | ECMD_TIME)) === ECMD_OK)
+                resetCommandVars(state, state.multi < 0);
+            if (res & ECMD_TIME) commandTookTime(state);
+            return;
+        }
+        // C ref: pickup.c:2144 queues lock.c:doforce() as a function
+        // pointer. rhack() dispatches that row directly before reading a key.
+        if (queuedExtcmdEntry?.ef_funct === 'doforce') {
+            const res = await doforce(state);
             if (res & (ECMD_CANCEL | ECMD_FAIL)) resetCommandVars(state);
             else if ((res & (ECMD_OK | ECMD_TIME)) === ECMD_OK)
                 resetCommandVars(state, state.multi < 0);

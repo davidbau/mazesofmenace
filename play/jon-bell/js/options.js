@@ -1912,8 +1912,9 @@ export function optfn_fruit_set(op) {
             }
         }
     }
-    /* C options.c:1745-1751 — nmcpy + sanitize_name + the empty-name default. */
-    g.pl_fruit = sanitize_name(op);
+    /* C options.c:1748,6861 — nmcpy stops at comma/NUL and copies at most
+     * PL_FSIZ - 1 (31) characters, before sanitizing or defaulting the name. */
+    g.pl_fruit = sanitize_name(op.split(/[\0,]/, 1)[0].slice(0, 31));
     if (!g.pl_fruit)
         g.pl_fruit = 'slime mold';
     /* C options.c:1754-1756 — fruitadd(svp.pl_fruit, forig): svp.pl_fruit is

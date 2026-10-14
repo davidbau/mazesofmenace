@@ -446,11 +446,17 @@ function terrain_matches_tags(loc, x, y, tags, ch) {
     return false;
 }
 
-/** Visible cmap: disp_ch is this terrain's showsym (not a covering mon). */
+/**
+ * C ref: getpos.c `:1073–1103` per-cell checks — glyph_at, memory glyph,
+ * vibrating square, seenv back_to_glyph, all cmap-vs-matching[]. C never
+ * consults the rendered char: stairs match via terrain typ + seenv (the
+ * `:1095–1103` back_to_glyph arm), which the terrain gate below carries.
+ * The former `disp_ch === ch` stairs shortcut (D-0408 subset) is deleted:
+ * under symsets the stripped carrier collides with ASCII keys (RogueIBM
+ * S_brcorn 0xBC captures as '<', so '<' jumped to a wall corner instead
+ * of the upstairs — scen-symset-Healer-50155002 s6).
+ */
 function visible_feature_match(loc, x, y, tags, ch) {
-    if ((tags.has('dnfeature') || tags.has('upfeature')) && loc.disp_ch === ch) {
-        return true;
-    }
     if (!terrain_matches_tags(loc, x, y, tags, ch)) return false;
     // Stairs already gated seenv inside terrain_matches_tags
     if (tags.has('dnfeature') || tags.has('upfeature')) return true;

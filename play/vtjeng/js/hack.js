@@ -462,7 +462,6 @@ import {
     costly_spot,
     onshopbill,
     pay_for_damage,
-    preflight_shop_transition,
     shop_keeper,
     stolen_value,
     subfrombill,
@@ -1633,16 +1632,8 @@ export function requireSimpleHeroDestination(
     const destinationTrap = t_at(x, y, state);
     if (destinationTrap) preflight_dotrap(destinationTrap, state);
 
-    // Region membership is not an admission failure. hack.c runs
-    // avoid_trap_andor_region() for any needed confirmation, then
-    // in_out_region() before changing u.ux/u.uy; that same source order owns
-    // the query and hero_inside transition here.
-    try {
-        preflight_shop_transition(state.u.ux, state.u.uy, x, y, state);
-    } catch (error) {
-        if (!(error instanceof UnsupportedShopError)) throw error;
-        throw new UnsupportedHeroMoveBoundaryError(error.branch);
-    }
+    // shk.c:u_left_shop() handles both shop-boundary warnings and indebted
+    // departures after the movement commits, through check_special_room().
 }
 
 function doorMask(location) {
@@ -4410,7 +4401,7 @@ async function domove_core(state = game) {
         u.usteed.mx = u.ux;
         u.usteed.my = u.uy;
         /* [if move attempt ends up being blocked, should training count?] */
-        exercise_steed(state); /* train riding skill */
+        await exercise_steed(state); /* train riding skill */
     }
 
     if (destinationMonster) {

@@ -435,7 +435,7 @@ async function getbones() {
     if (state.wizard) state._bonesRestorePrompt = true;
     let ok;
     try {
-        ok = loadBones(state);
+        ok = await loadBones(state);
 
         // C ref: bones.c:739-744. Wizard mode: ask whether to delete the
         // bones file. If 'n', keep it for next time.
@@ -1964,6 +1964,7 @@ async function ensureSpecialLevelLoaders() {
     const { WIZARD2_LEVEL_LOADERS } = await import('./wizard2_levels.js');
     const { WIZARD3_LEVEL_LOADERS } = await import('./wizard3_levels.js');
     const { KNOX_LEVEL_LOADERS } = await import('./knox_levels.js');
+    const { TUTORIAL_LEVEL_LOADERS } = await import('./tutorial_level.js');
     SPECIAL_LEVEL_LOADERS = {
         ...BIGRM_LOADERS,
         ...QUEST_LEVEL_LOADERS,
@@ -1986,6 +1987,7 @@ async function ensureSpecialLevelLoaders() {
         ...WIZARD2_LEVEL_LOADERS,
         ...WIZARD3_LEVEL_LOADERS,
         ...KNOX_LEVEL_LOADERS,
+        ...TUTORIAL_LEVEL_LOADERS,
     };
     // Val-strt is the first translated level to use the Lua selection global.
     // Keep the established loader signature for every other level, including
@@ -7154,6 +7156,10 @@ function dosdoor(x, y, aroom, type) {
         } else {
             loc.flags = shdoor ? D_ISOPEN : D_NODOOR;
         }
+        // C's mklev.c:dosdoor clears this mask before the trapped-door mimic
+        // check on Rogue levels; roguecorr() also clears it after carving.
+        if (Is_rogue_level(game.u?.uz))
+            loc.flags = D_NODOOR;
         if (loc.flags & D_TRAPPED) {
             if (level_difficulty() >= 9 && !rn2(5)) {
                 loc.flags = D_NODOOR;
@@ -7493,6 +7499,7 @@ function makecorridors() {
 export {
     add_room,
     dodoor,
+    dosdoor,
     get_free_room_loc,
     get_location,
     get_location_coord,

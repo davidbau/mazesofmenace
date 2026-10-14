@@ -258,10 +258,11 @@ import { makemon } from './makemon_create.js';
 import { fumaroles, movebubbles } from './mkmaze.js';
 import {
     healmon, kill_genocided_monsters, m_in_air, m_into_limbo, mnexto, mondied, newcham, pm_to_cham, set_ustuck,
-    wake_nearto, zombie_form,
+    iter_mons, wake_nearto, zombie_form,
 } from './mon.js';
 import { m_at } from './monst.js';
 import { gulp_blnd_check } from './mhitu.js';
+import { mcureblindness } from './muse.js';
 import {
     dmgtype, is_whirly, olfaction, passes_walls, sticks, touch_petrifies,
     throws_rocks, is_reviver, is_rider, is_displacer, locomotion,
@@ -351,13 +352,14 @@ import {
 import { ok_to_quest, onquest } from './quest.js';
 import { com_pager, deliver_splev_message } from './questpgr.js';
 import { gain_guardian_angel } from './minion.js';
+import { reset_hostility } from './priest.js';
 import { in_out_region, visible_region_at } from './region.js';
 import { getlev } from './restore.js';
 import { delete_levelfile } from './files.js';
 import { cloneIsaacContext, createCoreRandom, d, rn1, rn2, rnd, rnz } from './rng.js';
 import { check_special_room, move_update } from './rooms.js';
 import { savelev } from './save.js';
-import { sellobj, sellobj_state } from './shk.js';
+import { fix_shop_damage, sellobj, sellobj_state } from './shk.js';
 import { container_impact_dmg, impact_drop, ship_object } from './dokick.js';
 import { set_levltyp } from './terrain.js';
 import {
@@ -1952,13 +1954,19 @@ export function preflight_dropx(obj, env = {}) {
     // shk.c:sellobj() owns its shop checks after floor placement, including
     // the costly-spot test this preflight used to reject.
     // The remaining square effects are reached from dropz()'s flooreffects().
-    // do.c:dropx ships only at a down gate; flooreffects adds a trap arm
-    // for boulders or the hero standing at a seen pit/shaft edge. Other
-    // traps are inert for an ordinary object, including an occupied pit.
+    // do.c:dropx ships only at a down gate; flooreffects has a boulder arm for
+    // pits/holes and a separate arm for the hero at a seen pit/shaft edge.
+    // Other traps have no floor-effects arm for an ordinary drop.
     const trap = t_at(x, y, state);
-    if (trap && (obj.otyp === BOULDER || is_hole(trap.ttyp)
-        || uteetering_at_seen_pit(trap, state)
-        || uescaped_shaft(trap, state))) {
+    // do.c:flooreffects handles a boulder on a pit or hole before its later
+    // hero pit-edge/shaft arm. That branch consumes the boulder and removes
+    // the trap; other boulder traps are inert and reach ordinary placement.
+    const boulderFillsTrap = obj.otyp === BOULDER && trap
+        && (is_pit(trap.ttyp) || is_hole(trap.ttyp));
+    if (trap && !boulderFillsTrap
+        && (is_hole(trap.ttyp)
+            || uteetering_at_seen_pit(trap, state)
+            || uescaped_shaft(trap, state))) {
         throw new UnsupportedDropError('shipping or floor effects at a trap');
     }
     // do.c:flooreffects routes ordinary objects through trap.c:lava_damage or
@@ -2163,7 +2171,7 @@ async function dropzAdmitted(obj, normalized, withImpact = false) {
     )) {
         return;
     }
-    place_object(
+    const placement = place_object(
         obj,
         normalized.state.u.ux,
         normalized.state.u.uy,
@@ -2177,6 +2185,7 @@ async function dropzAdmitted(obj, normalized, withImpact = false) {
             },
         },
     );
+    if (placement && typeof placement.then === 'function') await placement;
     if (withImpact) {
         // C do.c:dropz() calls container_impact_dmg() after placement and
         // before corpse disturbance, ball handling, shop sale, and stacking.
@@ -2322,9 +2331,7 @@ async function engulfer_digests_food(obj, state = game, env = {}) {
         await grow_up(swallower, null, { ...env, state });
     } else if (couldHeal) {
         healmon(swallower, swallower.mhpmax, 0);
-        // C's source call is mcureblindness(mon, FALSE); it is void and the
-        // monster blindness helper is not yet ported.
-        note_unported('mon.c mcureblindness');
+        await mcureblindness(swallower, false, state);
     }
     delobj(obj, { ...env, state });
     return true;
@@ -2671,8 +2678,8 @@ function discard_unreachable_levels(state, leavingTutorial) {
 // the arrival tail at 1967-1993.
 //
 // Remaining gaps are limited to discarded calls whose source owners are not
-// yet available (selftouch, fix_shop_damage, and the migration
-// sweeps). The selected goto_level branches themselves are source-ordered,
+// yet available (selftouch and the migration sweeps). The selected
+// goto_level branches themselves are source-ordered,
 // including endgame/tutorial transitions, portal fallback, flight, falling,
 // and the unreachable-level cleanup. Gehennom, Knox, Mines, Sokoban and the
 // Rogue-level arms are implemented below.
@@ -2681,6 +2688,13 @@ function discard_unreachable_levels(state, leavingTutorial) {
 // renderings of the dungeon.h macros and read the module-level game. They
 // ignore the state passed here, as every other caller of those two does. On
 // the live path the two are the same object.
+// C ref: do.c final_level(). Keep its source call order at Astral arrival.
+async function final_level(state = game) {
+    iter_mons((monster) => reset_hostility(monster, state), state);
+    await create_mplayers(rn1(4, 3), true, { state });
+    await gain_guardian_angel(state);
+}
+
 export async function goto_level(
     newlevel,
     at_stairs,
@@ -3158,14 +3172,11 @@ export async function goto_level(
     // the arrival achievement is part of the level-change output order.
     if (In_endgame(u.uz)) {
         // C ref: do.c:1884-1890. A first arrival in an endgame dungeon
-        // records Endgame, then Astral on a newly created Astral level. Keep
-        // final_level()'s source-order calls around the ported player-monster
-        // generation while its other void callees remain explicit gaps.
+        // records Endgame, then runs final_level() before recording Astral on
+        // a newly created Astral level.
         if (newdungeon) record_achievement(ACH_ENDG, state);
         if (isNew && on_level(u.uz, state.astral_level)) {
-            note_unported('priest.c reset_hostility');
-            await create_mplayers(rn1(4, 3), true, { state });
-            await gain_guardian_angel(state);
+            await final_level(state);
             record_achievement(ACH_ASTR, state);
         } else if (newdungeon && u.uhave?.amulet) {
             // C resurrect() returns no value and is already the canonical
@@ -3275,13 +3286,8 @@ export async function goto_level(
     /* assume this will always return TRUE when changing level */
     await in_out_region(u.ux, u.uy, { state });
 
-    // do.c:1984-1987 fix_shop_damage() catches a shopkeeper up on repairs;
-    // it runs only when `new` is false, and this arm always generated.
-    // do.c:1989-1992 charges fall damage, which needs `falling`.
-    if (!isNew)
-        // fix_shop_damage() has no source owner in the current shopkeeper
-        // port; C discards its result after catching up the repair bill.
-        note_unported('shk.c fix_shop_damage');
+    // do.c:1984-1987 catches up repairs before fall damage and pickup.
+    if (!isNew) await fix_shop_damage(state, { message: ttyPline });
 
     // do.c:1989-1992. Shaft damage is deliberately charged after the shop
     // repair catch-up and before pickup, preserving C's RNG and message order.

@@ -3298,7 +3298,12 @@ export async function Blindf_on(otmp) {
             await pline("You can't see any more.");
     } else if (already_blind && !_Blind_dw()) {
         changed = true;
-        await pline('You can see!');
+        // C do_wear.c:1480-1488: the Eyes end the blind-from-birth conduct.
+        if (game.u.uroleplay?.blind) {
+            await pline('For the first time in your life, you can see!');
+            game.u.uroleplay.blind = false;
+        } else
+            await pline('You can see!');
     }
     if (changed)
         toggle_blindness_dw();

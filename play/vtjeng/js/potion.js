@@ -195,9 +195,11 @@ import {
 } from './monsters.js';
 import {
     bless, bcsign, carried, costly_alteration, curse, fixup_oil, is_ammo,
-    is_weptool, isCorrodeable, isRustprone, mkobj, newObject, objectType, splitobj,
+    dealloc_obj, is_weptool, isCorrodeable, isRustprone, mkobj, mksobj,
+    newObject, objectType, splitobj,
     unbless, uncurse,
 } from './obj.js';
+import { obj_resists } from './bury.js';
 import { dist2, s_suffix, upstart } from './hacklib.js';
 import {
     The, Tobjnam, Yname2, Yobjnam2, cxname, donameFresh, is_plural,
@@ -2495,6 +2497,27 @@ async function H2Opotion_dip(potion, target, useeit, objphrase, state, env) {
     return res;
 }
 
+// C ref: potion.c impact_arti_light() (1595-1618). A light scroll calls this
+// for each carried lit artifact light; its temporary water potion is freed
+// after H2Opotion_dip() applies the BUC change and any visible feedback.
+export async function impact_arti_light(obj, worsen, seeit, state = game, rawEnv = {}) {
+    const random = {
+        d, rn1, rn2, rnd, rnl, rne, rnz,
+        ...(rawEnv.random ?? {}),
+    };
+    const env = { ...rawEnv, state, random };
+
+    if ((worsen ? obj.cursed : obj.blessed)
+        || obj_resists(obj, 25, 75, env)) return;
+
+    const potion = mksobj(POT_WATER, true, false, env);
+    if (worsen) curse(potion, env);
+    else bless(potion, env);
+    const objphrase = seeit ? Yobjnam2(obj, 'glow', state) : '';
+    await H2Opotion_dip(potion, obj, seeit, objphrase, state, env);
+    dealloc_obj(potion, env);
+}
+
 // C ref: potion.c potionhit() (1625-1928), "potion obj hits monster mon,
 // which might be youmonst; obj always used up". The single C function owns
 // both target arms, the saddle subcase, the selected monster effect, vapor
@@ -3665,7 +3688,7 @@ export async function potion_dip(obj, potion, state = game, rawEnv = {}) {
                 state, env) + ' ';
         const singlePotion = potion.quan > 1
             ? splitobj(potion, 1, env) : potion;
-        costly_alteration(singlePotion, COST_NUTRLZ, env);
+        await costly_alteration(singlePotion, COST_NUTRLZ, env);
         singlePotion.otyp = mixture;
         singlePotion.blessed = 0;
         if (mixture === POT_WATER) {

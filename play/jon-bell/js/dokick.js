@@ -849,8 +849,9 @@ async function kick_door(x, y, avrg_attrib) {
         return;
     }
     exercise(A_DEX, true);
-    /* C: doorbuster = Upolyd && is_giant(youmonst.data) — FALSE for normal hero */
-    const doorbuster = false; /* WIRE_PENDING: Upolyd && is_giant */
+    /* C dokick.c:927; mondata.h:107 — giant forms skip the success roll. */
+    const M2_GIANT = 0x00002000; /* monflag.h:136 */
+    const doorbuster = Upolyd(u) && ((g.youmonst.data.mflags2 & M2_GIANT) !== 0);
     /* C: rnl(35) < avrg_attrib + (!martial() ? 0 : ACURR(A_DEX)) */
     const bonus = martial() ? (acurr(u, A_DEX) | 0) : 0;
     if (doorbuster || (rnl(35) < avrg_attrib + bonus)) {

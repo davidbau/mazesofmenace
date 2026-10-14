@@ -71,6 +71,18 @@ import { routeTag } from './route_telemetry.js';
  * _goto_level_You_hear already calls, so You_hear below reads the same state
  * that file does rather than growing a tenth private approximation. */
 import { unconscious } from './pickup.js';
+import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
+import { KILLED_BY, HALF_PHDAM, LOW_PM } from './const.js';
+import { rnd as _rt_rnd } from './rng.js';
+import { touch_artifact_youmonst as _rt_touch_artifact_youmonst } from './wizcmds.js';
+import { hates_silver as _rt_hates_silver } from './makemon.js';
+import { losehp as _rt_losehp } from './dokick.js';
+import { exercise as _rt_exercise } from './attrib.js';
+import { yname as _rt_yname, dropx as _rt_dropx, hitfloor as _rt_hitfloor, freeinv as _rt_freeinv, surface as _rt_surface } from './cmd.js';
+import { killer_xname as _rt_killer_xname, Tobjnam as _rt_Tobjnam } from './objnam.js';
+import { remove_worn_item as _rt_remove_worn_item } from './steal.js';
+import { bypass_obj as _rt_bypass_obj } from './worn.js';
+import { clear_bypasses as _rt_clear_bypasses, nxt_unbypassed_obj as _rt_nxt_unbypassed_obj } from './trap.js';
 import { is_fainted } from './eat.js';
 import { ENV } from './hostenv.js';
 
@@ -526,6 +538,8 @@ function _wall_symbol_glyph(key, decMode, wallColor) {
     const override = game.symbolOverrides?.[`S_${key}`];
     if (override)
         return { ch: override, color: wallColor, dec: false };
+    if (blank_symbols())
+        return { ch: ' ', color: wallColor, dec: false };
     /* C dat/symbols `start: plain` (lines 43-54): S_tlcorn..S_trwall are '+',
      * every other symbol keeps its default. */
     if (!decMode && String(gs?.symset?.[PRIMARYSET]?.name ?? '').toLowerCase() === 'plain'
@@ -585,8 +599,21 @@ export function rogue_graphics() {
         return !!Is_rogue_level({ dnum: snap.dnum, dlevel: snap.dlevel });
     return !!Is_rogue_level(game?.u?.uz);
 }
-/* the DEC line-drawing set is in force only when the PRIMARY symset is (C:
- * gc.currentgraphics == PRIMARYSET), i.e. everywhere except a Rogue level. */
+/* C symbols.c:570-579,629-635 loads dat/symbols:56-239 (Blank),
+ * case-insensitively, into the selected primary/rogue set. Every ordinary
+ * terrain, monster and object symbol in that set is a space. Warning digits,
+ * S_goodpos and the trapped-door/chest symbols retain their defaults. */
+function blank_symbols() {
+    const which = rogue_graphics() ? 1 : PRIMARYSET;
+    return String(gs.symset?.[which]?.name ?? '').toLowerCase() === 'blank';
+}
+function monster_symbol(mlet) {
+    return blank_symbols() ? ' ' : (DEF_MONSYM_CHARS[mlet] ?? '@');
+}
+function engraving_symbol(corridor) {
+    return blank_symbols() ? ' ' : (corridor ? '#' : '`');
+}
+/* The DEC line-drawing set is in force only with primary graphics. */
 export function dec_mode() {
     return !rogue_graphics() && gs.symset?.[PRIMARYSET]?.handling === H_DEC;
 }
@@ -605,9 +632,11 @@ const COIN_CLASS_DISP = 12; /* objclass.h COIN_CLASS */
  * COIN_CLASS object symbol.  Shared by bot() and the window-screen status row
  * (com_pager.js) so both read the same label on a Rogue level. */
 export function gold_status_char() {
-    return rogue_ibm_color() ? '$' : (oclass_sym(COIN_CLASS_DISP) ?? '$');
+    return (rogue_ibm_color() || game.iflags?.invis_goldsym || game.iflags?.in_dumplog)
+        ? '$' : (oclass_sym(COIN_CLASS_DISP) ?? '$');
 }
 export function oclass_sym(oc) {
+    if (blank_symbols() && oc > 0 && oc < OCLASS_CHAR.length) return ' ';
     if (rogue_graphics()) {
         const r = ROGUE_OCLASS_CHAR[oc | 0];
         if (r)
@@ -663,6 +692,13 @@ function _epyx_terrain(loc, g) {
 }
 export function terrain_glyph(loc, x, y, assumeVisible = false) {
     const g = _terrain_glyph_base(loc, x, y, assumeVisible);
+    /* Blank defines every back_to_glyph terrain symbol. Wall overrides are
+     * already resolved by _wall_symbol_glyph; S_pool is the other supported
+     * explicit terrain override (symbols.c:239 gives overrides precedence). */
+    if (blank_symbols() && !g.wallSymbol
+        && !((loc.typ === POOL || loc.typ === MOAT)
+             && !rogue_graphics() && game.symbolOverrides?.S_pool))
+        return { ...g, ch: ' ', dec: false };
     return rogue_ibm_terrain() ? _epyx_terrain(loc, g) : g;
 }
 function _terrain_glyph_base(loc, x, y, assumeVisible) {
@@ -1080,19 +1116,30 @@ export const GLYPHCLS_SWALLOW = 'swallow';
 // ── show_glyph_cell ──
 export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr = 0,
                                 cls = GLYPHCLS_CMAP, isWarning = false,
-                                objectType = null, objectCorpsenm = null, trapType = null) {
+                                objectType = null, objectCorpsenm = null, trapType = null,
+                                cmap = null) {
     const loc = game.level?.at(x, y);
     if (!loc)
         return;
     /* C display.c:3079-3084 resolves color in glyphmap, and show_glyph stores
      * that glyphinfo in gbuf. Changing the option cannot recolor cells already
      * buffered: cls() may page a message before docrt paints the new glyphs. */
+    // Preserve the logical color used to distinguish room/darkroom glyphs.
+    loc.disp_glyph_color = color;
     if (game.iflags?.use_color === false) color = NO_COLOR;
+    /* dat/symbols Blank does not redefine S_trapped_door/S_trapped_chest. */
+    if (blank_symbols() && (cls === GLYPHCLS_INVIS
+        || (cls === GLYPHCLS_TRAP && trapType >= 1 && trapType <= 23))) {
+        ch = ' ';
+        decgfx = false;
+    }
     loc.disp_ch = ch;
     loc.disp_color = color;
     loc.disp_decgfx = !!decgfx;
     loc.disp_attr = attr | 0;
     loc.disp_cls = cls;
+    // C's gbuf retains glyph identity even when colors are disabled.
+    loc.disp_cmap = cls === GLYPHCLS_CMAP ? cmap : null;
     loc.disp_mon_pm = null; // C gbuf's species; filled by monster glyph producers.
     // C gbuf keeps the trap identity even when no ftrap node exists.
     loc.disp_trap_type = cls === GLYPHCLS_TRAP ? trapType : null;
@@ -1264,7 +1311,7 @@ function _obj_to_glyph(obj) {
     if (otyp === STATUE) {
         const scnm = (obj.corpsenm | 0);
         const smlet = (scnm >= 0 && scnm < MON_MLET.length) ? MON_MLET[scnm] : 53;
-        return { ch: DEF_MONSYM_CHARS[smlet] ?? '@', color: CLR_WHITE, decgfx: false,
+        return { ch: monster_symbol(smlet), color: CLR_WHITE, decgfx: false,
                  objpile: pileTop, cls: GLYPHCLS_OBJ, otyp,
                  corpsenm: scnm }; /* glyph_to_statue_corpsenm() carries the species (pager.c:340) */
     }
@@ -1341,7 +1388,7 @@ function _hallucinated_obj_glyph(obj) {
         const hmndx = random_monster();
         rn2_on_display_rng(2); /* male/female glyph range; same rendered cell */
         const hmlet = (hmndx >= 0 && hmndx < MON_MLET.length) ? MON_MLET[hmndx] : 53;
-        return { ch: DEF_MONSYM_CHARS[hmlet] ?? '@',
+        return { ch: monster_symbol(hmlet),
                  color: (hmndx >= 0 && hmndx < MON_MCOLOR.length) ? MON_MCOLOR[hmndx] : CLR_GRAY,
                  decgfx: false, objpile: false, cls: GLYPHCLS_MON };
     }
@@ -1437,7 +1484,7 @@ export function flash_mon(mon) {
         const actual = (mon.data?.pmidx ?? mon.mndx ?? mon.mnum) | 0;
         const shown = _hallucinating_dsp() ? random_monster() : actual;
         const mlet = (shown >= 0 && shown < MON_MLET.length) ? MON_MLET[shown] : 53;
-        const glyph = { ch: DEF_MONSYM_CHARS[mlet] ?? '@',
+        const glyph = { ch: monster_symbol(mlet),
             color: (shown >= 0 && shown < MON_MCOLOR.length) ? MON_MCOLOR[shown] : CLR_GRAY,
             decgfx: false, cls: GLYPHCLS_MON };
         const loc = game.level.at(x, y);
@@ -1619,7 +1666,7 @@ function _map_location_glyph(x, y, loc, tg) {
         if (otyp === STATUE) {
             const scnm = (obj.corpsenm | 0);
             const smlet = (scnm >= 0 && scnm < MON_MLET.length) ? MON_MLET[scnm] : 53;
-            return { ch: DEF_MONSYM_CHARS[smlet] ?? '@', color: CLR_WHITE, decgfx: false,
+            return { ch: monster_symbol(smlet), color: CLR_WHITE, decgfx: false,
                      objpile: pileTop, cls: GLYPHCLS_OBJ, otyp,
                      corpsenm: scnm };
         }
@@ -1660,7 +1707,7 @@ function _map_location_glyph(x, y, loc, tg) {
     if ((styp === ROOM || styp === CORR || styp === ICE) && !covers_traps(x, y)) {
         const ep = engr_at(x, y);
         if (ep !== null) {
-            const eCh = (styp === CORR) ? '#' : '`';
+            const eCh = engraving_symbol(styp === CORR);
             return { ch: eCh, color: CLR_BRIGHT_BLUE, decgfx: false,
                      bwengr: (styp === CORR), cls: GLYPHCLS_ENGR };
         }
@@ -1708,7 +1755,7 @@ function _render_monster_glyph(x, y, mon, loc, tg, map_memory, worm_tail, detect
              * hallucination indirection; non-hallucinating it is the identity. */
             const amndx = _hallucinating_dsp() ? random_monster() : mon.mappearance | 0;
             const amlet = (amndx >= 0 && amndx < MON_MLET.length) ? MON_MLET[amndx] : 53;
-            show_glyph_cell(x, y, DEF_MONSYM_CHARS[amlet] ?? '@',
+            show_glyph_cell(x, y, monster_symbol(amlet),
                 (amndx >= 0 && amndx < MON_MCOLOR.length) ? MON_MCOLOR[amndx] : 7,
                 false, 0, GLYPHCLS_MON);
             loc.disp_mon_pm = amndx;
@@ -1758,7 +1805,7 @@ function _render_monster_glyph(x, y, mon, loc, tg, map_memory, worm_tail, detect
         ? rn2_on_display_rng(MON_MCOLOR.length)
         : (worm_tail ? PM_LONG_WORM_TAIL_DISP : ((mon.mnum ?? mon.mndx) | 0));
     const mlet = (mndx >= 0 && mndx < MON_MLET.length) ? MON_MLET[mndx] : 53; // 53='@' human fallback
-    const mch = DEF_MONSYM_CHARS[mlet] ?? '@';
+    const mch = monster_symbol(mlet);
     let mcol = (mndx >= 0 && mndx < MON_MCOLOR.length) ? MON_MCOLOR[mndx] : 7;
     /* C display.c:3040-3062 reset_glyphmap under has_rogue_color: pet and female
      * monster glyphs NO_COLOR, male monster glyphs CLR_YELLOW. */
@@ -1832,7 +1879,7 @@ export function show_detected_monster_glyph(x, y, mndx, mon, detected) {
         const pa = game.iflags.wc2_petattr ?? 7;
         attr = pa === 7 ? 1 : pa === 1 ? 2 : pa === 4 ? 4 : 0;
     }
-    show_glyph_cell(x, y, DEF_MONSYM_CHARS[MON_MLET[mndx]], color, false, attr, GLYPHCLS_MON);
+    show_glyph_cell(x, y, monster_symbol(MON_MLET[mndx]), color, false, attr, GLYPHCLS_MON);
     const loc = game.level?.at(x, y);
     if (loc) loc.disp_mon_pm = mndx;
 }
@@ -1872,7 +1919,7 @@ export function display_self() {
             }
         } else {
             const mlet = (app >= 0 && app < MON_MLET.length) ? MON_MLET[app] : 53;
-            show_glyph_cell(u.ux | 0, u.uy | 0, DEF_MONSYM_CHARS[mlet] ?? '@',
+            show_glyph_cell(u.ux | 0, u.uy | 0, monster_symbol(mlet),
                 (app >= 0 && app < MON_MCOLOR.length) ? MON_MCOLOR[app] : 7,
                 false, 0, GLYPHCLS_MON);
             return;
@@ -1899,7 +1946,7 @@ function _maybe_display_usteed() {
         const mndx = (steed.mnum ?? steed.mndx) | 0;
         const mlet = (mndx >= 0 && mndx < MON_MLET.length) ? MON_MLET[mndx] : 53;
         return {
-            ch: DEF_MONSYM_CHARS[mlet] ?? '@',
+            ch: monster_symbol(mlet),
             color: (mndx >= 0 && mndx < MON_MCOLOR.length) ? MON_MCOLOR[mndx] : 7,
         };
     }
@@ -1919,11 +1966,11 @@ function _hero_glyph() {
     const Upolyd = (u.umonnum | 0) !== (u.umonster | 0);
     const _race = (!Upolyd && game.flags?.showrace) ? (game.urace?.mnum ?? -1) | 0 : -1;
     if (!Upolyd && _race < 0)
-        return { ch: '@', color: CLR_WHITE };
+        return { ch: monster_symbol(53), color: CLR_WHITE };
     const mndx = Upolyd ? (u.umonnum | 0) : _race;
     const mlet = (mndx >= 0 && mndx < MON_MLET.length) ? MON_MLET[mndx] : 53;
     return {
-        ch: DEF_MONSYM_CHARS[mlet] ?? '@',
+        ch: monster_symbol(mlet),
         /* showrace: recorded hero cell is white, not the race monster's colour */
         color: !Upolyd ? CLR_WHITE : (mndx >= 0 && mndx < MON_MCOLOR.length) ? MON_MCOLOR[mndx] : CLR_WHITE,
     };
@@ -2213,7 +2260,7 @@ export function newsym(x, y) {
             if (otyp === STATUE) {
                 const scnm = (obj.corpsenm | 0);
                 const smlet = (scnm >= 0 && scnm < MON_MLET.length) ? MON_MLET[scnm] : 53; // 53='@' fallback
-                const sch = DEF_MONSYM_CHARS[smlet] ?? '@';
+                const sch = monster_symbol(smlet);
                 show_glyph_cell(x, y, sch, CLR_WHITE, false,
                                 _pile_hilite(pileTop), GLYPHCLS_OBJ, false, otyp, scnm);
                 if (game.level?.flags?.hero_memory) {
@@ -2327,7 +2374,7 @@ export function newsym(x, y) {
             if (ep !== null) {
                 // C ref: engrave.h engraving_to_defsym — CORR → S_engrcorr ('#'), else S_engroom ('`').
                 // Both use CLR_BRIGHT_BLUE (defsym.h PCHAR2 lines 114-119).
-                const eCh = (styp === CORR) ? '#' : '`';
+                const eCh = engraving_symbol(styp === CORR);
                 const eCol = CLR_BRIGHT_BLUE;
                 /* C display.c:2942-2945 MG_BW_ENGR — see _bw_engr_hilite. */
                 const eBw = (styp === CORR);
@@ -3326,7 +3373,10 @@ function render_map_row(y) {
     let firstCol = -1, lastCol = -1;
     for (let x = 1; x < COLNO; x++) {
         const cell = _snapCellAt(x, y);
-        if (cell.ch && cell.ch !== ' ') {
+        /* C wintty.c:3930-3964 prints inverse spaces too (for example,
+         * MG_BW_ENGR with Blank symbols). Include them in the row bounds,
+         * just as the serialization loop below includes them in its output. */
+        if (cell.ch && (cell.ch !== ' ' || (cell.attr & 1))) {
             if (firstCol < 0)
                 firstCol = x;
             lastCol = x;
@@ -6862,9 +6912,11 @@ export function clear_glyph_buffer() {
                 continue;
             loc.disp_ch = ' ';
             loc.disp_color = NO_COLOR;
+            loc.disp_glyph_color = NO_COLOR;
             loc.disp_decgfx = false;
             loc.disp_attr = 0;
             loc.disp_cls = GLYPHCLS_CMAP;
+            loc.disp_cmap = null;
             loc.disp_is_warning = false;
             loc.gnew = 1;
         }
@@ -6889,6 +6941,16 @@ export async function cls() {
      * painted since (you_aggravate's engineer + hero, display.c:2196-2201). */
     game._paintedSnapshot = null;
 }
+/* C botl.c:1683-1725 status_initialize(REASSESS_ONLY).  Field enablement
+ * and title formatting are evaluated directly by _statusLine1Raw(),
+ * _statusLine2Parts(), and status_row_finish() in this renderer, rather than
+ * cached by status_enablefield().  Request the full bot() repaint after those
+ * inputs change.  bot() rebuilds every field, so C's separate update_all flag
+ * (which bypasses per-field change detection) is implicit here. */
+export function status_reassess() {
+    game.disp.botlx = true;
+}
+
 // ── bot ──
 export async function bot() {
     /* getline.c:63: custompline() reaches flush_screen()->bot(), but the core
@@ -7563,7 +7625,9 @@ export function check_gold_symbol() {
     // Default COIN symbol is '$' (ASCII 36) from defsym.h OBJCLASS(12, '$', COIN, ...)
     const showsyms = gs.showsyms;
     let goldch;
-    if (showsyms && showsyms.length > 117) {
+    if (blank_symbols()) {
+        goldch = 32; /* dat/symbols:88 S_coin; checked at graphics changes */
+    } else if (showsyms && showsyms.length > 117) {
         // If showsyms is initialized, read the actual symbol
         const sym = showsyms[117];
         goldch = (typeof sym === 'number') ? sym : (typeof sym === 'string' ? sym.charCodeAt(0) : 36);
@@ -7989,7 +8053,7 @@ const GLYPH_MON_MALE_OFF = 38;
 export function show_monster_glyph_at(x, y, mndx) {
     const mlet = (mndx >= 0 && mndx < MON_MLET.length) ? MON_MLET[mndx] : 53;
     const mcol = (mndx >= 0 && mndx < MON_MCOLOR.length) ? MON_MCOLOR[mndx] : 7;
-    show_glyph_cell(x, y, DEF_MONSYM_CHARS[mlet] ?? '@', mcol, false, 0, GLYPHCLS_MON);
+    show_glyph_cell(x, y, monster_symbol(mlet), mcol, false, 0, GLYPHCLS_MON);
     const loc = game.level?.at(x, y); if (loc) loc.disp_mon_pm = mndx;
 }
 export function show_glyph(x, y, glyph) {
@@ -8248,7 +8312,7 @@ export function map_engraving(ep, show) {
     const x = ep.engr_x, y = ep.engr_y;
     const loc = game.level?.at(x, y);
     if (!loc) return;
-    const ch = (loc.typ === CORR) ? '#' : '`';
+    const ch = engraving_symbol(loc.typ === CORR);
     const color = CLR_BRIGHT_BLUE;
     /* C display.c:2942-2945 MG_BW_ENGR — see _bw_engr_hilite. */
     const bwengr = (loc.typ === CORR);
@@ -8448,6 +8512,10 @@ export function cmap_to_type(sym) {
  * caller keeps its pre-existing behaviour (draw the monster) in that case.
  * RNG-free. */
 function cmap_to_glyph_disp(sym) {
+    const cell = _cmap_to_glyph_disp_base(sym);
+    return cell && blank_symbols() ? { ...cell, ch: ' ', dec: false } : cell;
+}
+function _cmap_to_glyph_disp_base(sym) {
     const dec = dec_mode();
     const s = sym | 0;
     /* walls (S_vwall..S_trwall) — colour from wall_color(), per branch. */
@@ -8514,10 +8582,19 @@ export function update_lastseentyp(x, y) {
  * decode those two here rather than teach the whole glyph plane to region.js.
  * defsym.h:149 S_cloud = '#' CLR_GRAY, :204 S_poisoncloud = '#' CLR_BRIGHT_GREEN. */
 const REGION_GLYPH_POISONCLOUD = 4091; /* region.js:62-71 cmap_to_glyph(S_poisoncloud) */
-function show_region(reg, x, y) {
+export function region_glyph(reg) {
     const poison = (reg?.glyph | 0) === REGION_GLYPH_POISONCLOUD;
-    show_glyph_cell(x, y, '#', poison ? CLR_BRIGHT_GREEN : CLR_GRAY, false, 0,
-                    GLYPHCLS_CMAP);
+    return { ch: '#', color: poison ? CLR_BRIGHT_GREEN : CLR_GRAY,
+             decgfx: false, cls: GLYPHCLS_CMAP, cmap: poison ? 86 : 47 };
+}
+// C detect.c:2162-2164 glyph_is_gascloud; corridors can share both color and '#'.
+export function glyph_is_gascloud(glyph) {
+    return glyph?.cls === GLYPHCLS_CMAP && (glyph.cmap === 47 || glyph.cmap === 86);
+}
+function show_region(reg, x, y) {
+    const glyph = region_glyph(reg);
+    show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.decgfx, 0,
+                    glyph.cls, false, null, null, null, glyph.cmap);
 }
 
 /*
@@ -9106,3 +9183,63 @@ export async function cast_chain_lightning() {
     nh_delay_output();
     tmp_at(DISP_END, 0);
 }
+
+/* C artifact.c:2503-2578 retouch_object() for the hero.  Gaps: the artifact
+ * bane_applies() arm and BELL_OF_OPENING early-out are not modelled; touch_blasted
+ * is approximated as false (a non-blasting touch_artifact success). */
+async function retouch_object_hero(obj, loseit) {
+    if (await _rt_touch_artifact_youmonst(obj)) {
+        const ag = ((MKOBJ_OC_MATERIAL[obj.otyp | 0] | 0) === 14 /* SILVER */) && (((game.u?.ulycn ?? -1) | 0) >= LOW_PM || !!(game.youmonst?.data && _rt_hates_silver(game.youmonst.data)));
+        if (!ag) return 1;
+        await pline(`You can't handle ${_rt_yname(obj)}${obj.owornmask ? ' anymore' : ''}!`);
+        const half = game.u?.uprops?.[HALF_PHDAM];
+        let tmp = _rt_rnd(10);
+        if (half && (half.intrinsic || half.extrinsic)) tmp = Math.trunc((tmp + 1) / 2);
+        await _rt_losehp(tmp, `handling ${_rt_killer_xname(obj)}`, KILLED_BY);
+        _rt_exercise(A_CON, false);
+    }
+    if (obj.owornmask) {
+        await _rt_remove_worn_item(obj, false);
+        let found = false;
+        for (let o = game.invent; o; o = o.nobj) if (o === obj) { found = true; break; }
+        if (!found) return 0;
+    }
+    if (loseit) {
+        const lev = game.u?.uprops?.[LEVITATION];
+        if (lev && (lev.intrinsic || lev.extrinsic)) {
+            _rt_freeinv(obj);
+            await _rt_hitfloor(obj, true);
+        } else {
+            if (game.level?.at(game.u.ux, game.u.uy)?.typ !== ALTAR)
+                await pline(`${_rt_Tobjnam(obj, 'fall')} to the ${_rt_surface(game.u.ux, game.u.uy)}.`);
+            await _rt_dropx(obj);
+        }
+    }
+    return 0;
+}
+
+/* C artifact.c:2596-2631 untouchable() — worn/wielded subset (no carried-artifact effect). */
+async function untouchable_hero(obj, drop) {
+    const u = game.u;
+    const wearmask = ~(0x00200000 /* W_QUIVER */ | (u.twoweap ? 0 : 0x00100000 /* W_SWAPWEP */) | 0x00800000 /* W_BALL */);
+    if (!obj || !((obj.owornmask & wearmask) !== 0)) return false;
+    return !(await retouch_object_hero(obj, drop));
+}
+
+/* C artifact.c:2640-2700 retouch_equipment(dropflag): 0 none, 1 all, 2 weapon. */
+export async function retouch_equipment(dropflag) {
+    const u = game.u;
+    if (!_rt_nesting++) _rt_clear_bypasses();
+    let dropit = dropflag > 0;
+    try {
+        if (u.twoweap && u.uswapwep) { _rt_bypass_obj(u.uswapwep); await untouchable_hero(u.uswapwep, dropit); }
+        if (u.uwep) { _rt_bypass_obj(u.uwep); await untouchable_hero(u.uwep, dropit); }
+        dropit = dropflag === 1;
+        let obj;
+        while ((obj = _rt_nxt_unbypassed_obj(game.invent)) !== null && obj !== undefined)
+            await untouchable_hero(obj, dropit);
+    } finally {
+        if (!--_rt_nesting) _rt_clear_bypasses();
+    }
+}
+let _rt_nesting = 0;

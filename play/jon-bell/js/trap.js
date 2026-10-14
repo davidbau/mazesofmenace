@@ -6372,7 +6372,7 @@ export async function erode_obj(otmp, ostr, type, ef_flags) {
     const victim = uvictim ? game.youmonst
         : (otmp.where | 0) === 4 ? otmp.ocarry : null;
     const vismon = !uvictim && victim && canseemon(victim);
-    const hit = game.bhitpos || { x: 0, y: 0 };
+    const hit = game.gb?.bhitpos || game.bhitpos || { x: 0, y: 0 };
     const visobj = !victim && cansee(hit.x, hit.y)
         && (!is_pool(hit.x, hit.y)
             || (dist2(hit.x, hit.y, game.u.ux, game.u.uy) < 3 && game.u.uinwater));

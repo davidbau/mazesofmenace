@@ -102,7 +102,7 @@ import { useup as _destroy_useup, useupf, compactify, getobj_redo_menu, check_ca
 import { setnotworn, setworn } from './worn.js';
 import { Ring_gone as _ring_gone, Ring_off, Ring_on } from './do_wear.js';
 import { xytodir, throwit_mon_hit, endmultishot } from './cmd.js';
-import { ceiling, body_part } from './cmd.js';
+import { ceiling, body_part, force_decor } from './cmd.js';
 import { delobj, hot_pursuit, losehp, obfree } from './dokick.js';
 import { weight } from './weight.js';
 import { ignite_items, mon_mattk_raw, poisoned_u, expels_gu } from './mhitu.js';
@@ -110,7 +110,7 @@ import { stackobj } from './sp_lev.js';
 import { HEAD, EYE, FACE, FOOT, IS_FURNITURE } from './const.js';
 import { surface } from './cmd.js';
 import { on_level } from './dungeon.js';
-import { ok_to_quest, is_drawbridge_wall } from './dokick.js';
+import { ok_to_quest, is_drawbridge_wall, db_under_typ } from './dokick.js';
 import { mksobj_at, stairway_at } from './mklev.js';
 
 /* C objnam.c:347 distant_name — use the canonical object naming body. */
@@ -658,7 +658,20 @@ export function make_blinded(xtime, talk) {
         if (game.u?.uball)              /* Punished — youprop.h */
             set_bc(0);
     }
-    /* The setting-without-toggling talk arm (potion.c:309-323) remains gapped. */
+    else if (!old && xtime && talk) { // v5 potion.c:309-324
+        const hero = game.youmonst?.data || {};
+        const hasEyes = (hero.mflags1 & M1_NOEYES_ZAP) === 0;
+        const permanentlyBlind = ((_blind_prop().intrinsic | 0) & 0x04000000) !== 0;
+        if (!hasEyes || permanentlyBlind) {
+            pline(`You have a ${_Halluc() ? "normal" : "strange"} feeling for a moment, then it passes.`);
+        } else if ((_blind_prop().extrinsic | 0) !== 0) {
+            const oneEye = [PM_CYCLOPS, PM_FLOATING_EYE].includes(hero.pmidx | 0);
+            const eyes = oneEye ? body_part(EYE) : makeplural(body_part(EYE));
+            pline(`Your ${eyes} momentarily ${vtense(eyes, "twitch")}.`);
+        } else {
+            pline(`Your vision seems to dim for a moment but is ${_Halluc() ? "happier" : "normal"} now.`);
+        }
+    }
 
     _set_HBlinded(xtime);               /* potion.c:326 */
 
@@ -6007,10 +6020,15 @@ async function zap_updown(obj) {
             const loc = g.level?.at(x, y);
             const rememberedltyp = loc ? (loc.lastseentyp | 0) : 0;
             ptmp += await bhitpile(obj, bhito, x, y, u.dz);
-            const ltyp = loc ? (loc.typ | 0) : 0;
+            const ltyp = loc?.typ === DRAWBRIDGE_UP
+                ? db_under_typ(loc.drawbridgemask | 0) : (loc?.typ | 0);
             await _zap_map_engraving(x, y, obj);
             let surf;
             if (ltyp === ICE || IS_FURNITURE(ltyp)) {
+                // C zap.c:3761-3765,3798-3799: zap_map's downward
+                // probing arm describes the surface before probing beneath it.
+                force_decor(true);
+                learnwand(obj);
                 surf = 'it';
                 if ((loc.lastseentyp | 0) !== rememberedltyp)
                     ptmp += 1;

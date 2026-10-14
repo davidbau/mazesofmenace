@@ -20,7 +20,7 @@ import { CQ_REPEAT, CQ_CANNED, CMDQ_DIR, CMDQ_KEY, NHKF_GETDIR_HELP, NHKF_GETDIR
 import { impossible } from './pline.js';
 import { pline, force_more, newsym, feel_newsym, flush_screen, docrt_flags, _darken_room_floor, show_glyph_cell, canseemon, You_hear, Unaware } from './display.js';
 import { mb_trapped } from './dig.js';
-import { topl_park_cursor, putmsghistory, feel_location } from './display.js';
+import { topl_park_cursor, putmsghistory, feel_location, flush_pending_messages, _topl_stash_result } from './display.js';
 import { block_point, recalc_block_point, vision_recalc, unblock_point } from './vision.js';
 import { nhgetch } from './input.js';
 import { yn_function } from './end.js';
@@ -158,7 +158,13 @@ export async function doopen_indir(x, y) {
      * above), so res only ever carries ECMD_OK out of the not-closed branch. */
     let res = ECMD_OK;
 
-    const dirprompt = null;
+    /* C lock.c:793-795 — a container underfoot can be opened from a pit. */
+    let dirprompt = null;
+    if (g.u.utrap && g.u.utraptype === TT_PIT) {
+        const { container_at } = await import('./pickup.js');
+        if (container_at(g.u.ux, g.u.uy, false))
+            dirprompt = 'Open where? [.>]';
+    }
 
     let cx = x | 0, cy = y | 0;
     if (!(cx > 0 && cy >= 0)) {
@@ -753,6 +759,8 @@ function _yname(pick) { return 'your ' + _toolname(pick); }
 async function _ynq(query) {
     const g = game;
     const prompt = query + ' [ynq] (q)';
+    // C topl.c:389-392: the prior command's topline also precedes queued queries.
+    await flush_pending_messages();
     if (g._pending_message) await force_more(g._pending_message);
     /* tty_yn_function re-reads after an invalid character.  The old one-shot
      * reader treated '+' (or any other invalid key) as an implicit q, which
@@ -935,7 +943,7 @@ export async function picklock() {
 function _is_weptool_lk(o) {
     return !!o && (o.oclass | 0) === TOOL_CLASS_OC && (MKOBJ_OC_SKILL[o.otyp | 0] | 0) !== 0;
 }
-function u_have_forceable_weapon() {
+export function u_have_forceable_weapon() {
     const uwep = game.u?.uwep ?? null;
     if (!uwep) return false;
     const oclass = uwep.oclass | 0;
@@ -1217,7 +1225,7 @@ export async function doforce() {
         await pline(picktyp
             ? `You force ${_wepname(uwep)} into a crack and pry.`
             : `You start bashing it with ${_wepname(uwep)}.`);
-        g._resultMessage = g._pending_message || g._resultMessage;
+        _topl_stash_result();
         g._forceMsgs = [];
         x.box = otmp;
         x.chance = (WEAPON_WLDAM[uwep.otyp | 0] | 0) * 2; /* objects[uwep].oc_wldam * 2 */

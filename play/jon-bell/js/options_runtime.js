@@ -6,7 +6,7 @@
 import { game } from './gstate.js';
 import { OPTION_DEFINITIONS } from './options_data.js';
 import { ECMD_OK, ECMD_FAIL, PRIMARYSET, STONE, WC_PERM_INVENT } from './const.js';
-import { pline, bot, docrt, reglyph_darkroom, check_gold_symbol, flush_screen, force_more } from './display.js';
+import { pline, bot, docrt, reglyph_darkroom, check_gold_symbol, flush_screen, force_more, status_reassess } from './display.js';
 import { vision_recalc } from './vision.js';
 import { update_rest_on_space } from './cmd_binds.js';
 import { classifyTerrain as classify_terrain } from './terrain-status.js';
@@ -294,7 +294,7 @@ export async function optfn_boolean(optidx, req, negated, opts, op) {
             }
             // fall through
         case 'showscore': case 'showvers': case 'showexp': case 'time':
-            if (!game.windowprocs || (game.windowprocs.wincap2 & (0x8 | 0x80))) missing('status_initialize');
+            if (!game.windowprocs || (game.windowprocs.wincap2 & (0x8 | 0x80))) status_reassess();
             game.disp.botl = true;
             break;
         case 'fixinv': case 'price_quotes': case 'sortpack': case 'implicit_uncursed': case 'wizweight':
@@ -312,7 +312,7 @@ export async function optfn_boolean(optidx, req, negated, opts, op) {
             break;
         case 'hitpointbar':
             if (!game.windowprocs || (game.windowprocs.wincap2 & (0x8 | 0x80))) {
-                missing('status_initialize');
+                status_reassess();
                 go.opt_need_redraw = true;
             }
             break;

@@ -22,7 +22,7 @@ import {
     force_more, topl_park_cursor, topl_force_break_after,
 } from './display.js';
 import { pline_with_more, money_cnt, build_window_screen, tty_window_offx } from './com_pager.js';
-import { autokey, pick_lock, getdir } from './lock.js';
+import { autokey, pick_lock, getdir, u_have_forceable_weapon } from './lock.js';
 import { nomul } from './allmain.js';
 import { nhgetch } from './input.js';
 import { touch_artifact_youmonst, _pickup_burden_level } from './wizcmds.js';
@@ -37,7 +37,7 @@ import { rnd } from './rng.js';
 import { losehp } from './dokick.js';
 import { yn_function } from './end.js';
 import {
-    ECMD_OK, ECMD_TIME, is_pit, is_hole, u_at, TT_PIT, isok,
+    ECMD_OK, ECMD_TIME, is_pit, is_hole, u_at, TT_PIT, isok, AUTOUNLOCK_FORCE, CQ_CANNED,
     OBJ_CONTAINED, OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT,
     LOST_NONE, LOST_THROWN, LOST_DROPPED, LOST_STOLEN, LOST_EXPLODING,
     STONE, MENU_TRADITIONAL, MENU_FULL,
@@ -93,6 +93,7 @@ import {
     body_part,
     count_unpaid,
     bhp_Maybe_Half_Phys,
+    cmdq_add_ec,
 } from './cmd.js';
 import { getlin } from './wizcmds.js';
 import { def_oc_syms_chars, def_char_to_objclass } from './drawing.js';
@@ -325,8 +326,13 @@ async function do_loot_cont(cobjRef, cindex, ccount) {
                 res = ECMD_TIME;
             return res;
         }
-        /* AUTOUNLOCK_FORCE branch (doforce) — not in default flags; with no
-         * unlock tool the locked container is simply reported. */
+        // C pickup.c:2137-2144: queue #force after looting one locked box.
+        // doforce owns the confirmation prompt and whether time passes.
+        if ((autounlock & AUTOUNLOCK_FORCE) !== 0 && res !== ECMD_TIME
+            && ccount === 1 && u_have_forceable_weapon()) {
+            cmdq_add_ec(CQ_CANNED, 'doforce');
+            g.abort_looting = true;
+        }
         return res;
     }
 
@@ -1681,7 +1687,7 @@ async function _yn_count_tail(qbuf) {
 
 /* C ref: pickup.c:141-262 query_classes().  Returns
  * { ok, oclasses, one_at_a_time, everything, via_menu }. */
-async function query_classes(action, objs, here, menu_on_demand) {
+export async function query_classes(action, objs, here, menu_on_demand) {
     const r = { ok: true, oclasses: [], one_at_a_time: false,
                 everything: false, via_menu: 0 };
     let { ilets, itemcount } = collect_obj_classes(objs, here);

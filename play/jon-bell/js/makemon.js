@@ -6041,7 +6041,7 @@ export async function monflee(mtmp, fleetime, first, fleemsg) {
                             ? yname(uarm) : '[its imagination?]';
                     pline_mon(mtmp, `${Monnam(mtmp)} flees from the painful light of ${source}.`);
                 } else {
-                    pline_mon(mtmp, 'Bright light!');
+                    await verbalize('Bright light!'); /* C monmove.c:514 */
                 }
             } else {
                 pline_mon(mtmp, `${Monnam(mtmp)} turns to flee.`);

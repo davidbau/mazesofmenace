@@ -308,6 +308,9 @@ export function encumber_msg_sync() {
     }
     if (msg) {
         pline(msg);
+    }
+    // C pickup.c:1999,2016: both changes flag status, even the silent 5 -> 4.
+    if (oldcap !== newcap) {
         if (game.disp) game.disp.botl = true;
     }
     u._oldcap = newcap;

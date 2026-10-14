@@ -272,7 +272,8 @@ async function _edibility_prompts(otmp) {
     }
     if (buf) {
         buf += `  Eat ${(otmp.quan | 0) === 1 ? 'it' : 'one'} anyway?`;
-        return (await _tin_y_n(buf)) === 'n' ? 1 : 2;
+        // C eat.c:2728: yn_function keeps long warnings in special-prompt mode.
+        return (await yn_function(buf, 'yn', 'n', true)) === 'n' ? 1 : 2;
     }
     return 0;
 }

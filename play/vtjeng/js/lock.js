@@ -8,6 +8,7 @@ import {
     AUTOUNLOCK_APPLY_KEY,
     AUTOUNLOCK_KICK,
     AUTOUNLOCK_UNTRAP,
+    COST_BRKLCK,
     CONFUSION,
     CQ_CANNED,
     D_BROKEN,
@@ -88,6 +89,7 @@ import { PM_ORACLE, PM_ROGUE, PM_WIZARD } from './monsters.js';
 import { obj_resists } from './bury.js';
 import {
     greatest_erosion,
+    costly_alteration,
     newObject,
     is_blade,
     is_pick,
@@ -100,8 +102,13 @@ import {
     CHEST,
     CREDIT_CARD,
     LARGE_BOX,
+    FLESH,
+    GLASS,
     PAPER,
     POTION_CLASS,
+    VEGGY,
+    WAX,
+    WOOD,
     LOCK_PICK,
     ROCK_CLASS,
     SKELETON_KEY,
@@ -278,13 +285,8 @@ async function chest_shatter_msg(otmp, state = game) {
         }
         return;
     }
-    if (objectType(otmp, state).oc_material !== PAPER) {
-        throw new UnsupportedLockError(
-            'chest_shatter_msg() for a non-PAPER object',
-        );
-    }
-    // C temporarily sets HBlinded while naming the item so xname() neither
-    // observes it nor includes a visual description such as "white".
+    // lock.c:1290-1317 hides the item's visual description while naming it,
+    // then selects the shattering message from its source material.
     const blindness = state.u.uprops[BLINDED] ??= {
         intrinsic: 0,
         extrinsic: 0,
@@ -301,22 +303,49 @@ async function chest_shatter_msg(otmp, state = game) {
         if (oldBlocked === undefined) delete blindness.blocked;
         else blindness.blocked = oldBlocked;
     }
+    let disposition;
+    switch (objectType(otmp, state).oc_material) {
+    case PAPER:
+        disposition = 'is torn to shreds';
+        break;
+    case WAX:
+        disposition = 'is crushed';
+        break;
+    case VEGGY:
+        disposition = 'is pulped';
+        break;
+    case FLESH:
+        disposition = 'is mashed';
+        break;
+    case GLASS:
+        disposition = 'shatters';
+        break;
+    case WOOD:
+        disposition = 'splinters to fragments';
+        break;
+    default:
+        disposition = 'is destroyed';
+        break;
+    }
     const subject = an(thing);
-    await ttyPline(`${subject[0].toUpperCase()}${subject.slice(1)} is torn to shreds!`, state);
+    await ttyPline(
+        `${subject[0].toUpperCase()}${subject.slice(1)} ${disposition}!`,
+        state,
+    );
 }
 
 // C ref: lock.c breakchestlock() (162-212). Called after the hero forces a
-// chest lock open, and by really_kick_object(false). The false arm records
-// the missing costly_alteration billing and toggles the source lock flags.
+// chest lock open, and by really_kick_object(false). The false arm bills
+// before it toggles the source lock flags.
 // When destroyit is true,
 // this slice destroys an ordinary non-shop chest, scatters its contents, and
 // cleans up the lock-picking context.
 //
 // Covered: the destroyit=false arm and the destroyit=true arm for an ordinary
-// non-shop CHEST with PAPER or potion contents, including potion vapor effects,
-// quantity-one obfree(), the survivor placement/stacking path, chest deletion,
-// and lock cleanup. Deferred: shop billing, other material messages, ICE_BOX
-// corpse timers, and the multi-quantity useup branch.
+// non-shop CHEST with potion or non-potion material contents, including potion
+// vapor effects, quantity-one obfree(), survivor placement/stacking, chest
+// deletion, and lock cleanup. Deferred: shop billing, ICE_BOX corpse timers, and
+// the multi-quantity useup branch.
 export async function breakchestlock(box, destroyit, state = game) {
     if (destroyit) {
         // The shopkeeper lookup and stolen_value() accounting in C are outside
@@ -350,7 +379,11 @@ export async function breakchestlock(box, destroyit, state = game) {
                 // slice does not admit multi-quantity witnesses yet.
                 await useup(otmp, { state });
             }
-            place_object(otmp, state.u.ux, state.u.uy, { state });
+            const placement = place_object(
+                otmp, state.u.ux, state.u.uy, { state },
+            );
+            if (placement && typeof placement.then === 'function')
+                await placement;
             stackobj(otmp, {
                 state,
                 hooks: { extractExternalObject: remove_object },
@@ -369,9 +402,9 @@ export async function breakchestlock(box, destroyit, state = game) {
     /* bill for the box but not for its contents */
     const hideContents = box.cobj;
     box.cobj = null;
-    // C discards this unported billing result. Continue the source lock
-    // updates after recording the gap; no hook stands in for shop behavior.
-    note_unported('mkobj.c costly_alteration');
+    // C discards the return but completes its message and bill before changing
+    // the chest's lock state.
+    await costly_alteration(box, COST_BRKLCK, { state });
     box.cobj = hideContents;
     box.olocked = 0;
     box.obroken = 1;

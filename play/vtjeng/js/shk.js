@@ -7,7 +7,9 @@
 // append_price_quote(), contained_gold(), check_unpaid(),
 // use_unpaid_trapobj(), costly_spot(),
 // shop_object(), shk_owns(), mon_owns(), shk_your(), shk_move(),
-// shk_fixes_damage(), and the end-of-game cleanup chain next_shkp(),
+// shk_fixes_damage(), repair_damage(), fix_shop_damage(), litter_getpos(),
+// litter_scatter(), litter_newsyms(), discard_damage_struct(), and the
+// end-of-game cleanup chain next_shkp(),
 // rile_shk(), hot_pursuit(), onbill(), clear_unpaid(), clear_no_charge(), setpaid(),
 // inherits() and paybill().
 
@@ -36,6 +38,8 @@ import {
     ECMD_OK,
     ECMD_TIME,
     D_BROKEN,
+    D_CLOSED,
+    FAINTED,
     EYE,
     FAST,
     G_GONE,
@@ -46,6 +50,7 @@ import {
     INVIS,
     IS_DOOR,
     IS_ROOM,
+    IS_WALL,
     LL_ACHIEVE,
     LOW_PM,
     MAXULEV,
@@ -82,6 +87,12 @@ import {
     SELL_NORMAL,
     SHOPBASE,
     SVALL,
+    BEAR_TRAP,
+    LANDMINE,
+    HOLE,
+    PIT,
+    SPIKED_PIT,
+    ZAP_POS,
     TT_PIT,
     FIRE_RES,
     POISON_RES,
@@ -101,10 +112,11 @@ import { isok } from './cmd_isok.js';
 import { acurr, adjalign, exercise } from './attrib.js';
 import { arti_cost } from './artifacts.js';
 import { y_n, yn_function } from './cmd.js';
-import { bot, map_invisible } from './display.js';
+import { bot, map_invisible, newsym } from './display.js';
 import { assign_level, depth, mapseen_room, on_level } from './dungeon.js';
 import { um_dist } from './apply.js';
 import { game } from './gstate.js';
+import { del_engr_at } from './engrave.js';
 import { getpos } from './getpos.js';
 import { intrinsic_possible } from './eat.js';
 import {
@@ -125,6 +137,7 @@ import {
     money_cnt,
     INVLET_BASIC,
     merge_choice,
+    obfree,
     obj_extract_self,
     o_on,
     update_inventory,
@@ -147,6 +160,9 @@ import {
     objectType,
     splitobj,
     weight,
+    mksobj,
+    place_object,
+    remove_object,
 } from './obj.js';
 import {
     AGATE,
@@ -210,6 +226,10 @@ import {
     HORN_OF_PLENTY,
     AQUAMARINE,
     LEASH,
+    LAND_MINE,
+    BEARTRAP,
+    BOULDER,
+    ROCK,
 } from './objects.js';
 import {
     PM_KEYSTONE_KOP,
@@ -245,7 +265,12 @@ import { move_special } from './priest.js';
 import { SHTYPES } from './shtypes_data.js';
 import { makeplural } from './fruit.js';
 import { m_at } from './monst.js';
-import { t_at } from './trap.js';
+import { deltrap, trapname, t_at, unconscious } from './trap.js';
+import { closed_door } from './monmove.js';
+import { picking_at } from './lock.js';
+import { block_point } from './vision.js';
+import { stop_occupation } from './allmain.js';
+import { placebc, unplacebc } from './ball.js';
 import { makemon_runtime } from './makemon_create.js';
 import { enexto } from './teleport.js';
 import { m_next2u } from './mhitu.js';
@@ -737,45 +762,8 @@ export function find_objowner(obj, x, y, state = game) {
     return defaultShopkeeper;
 }
 
-// Admission seam for the parts of shk.c:u_left_shop() which movement can
-// reach. Settled departures and absent/displaced keepers have no effect. Debt
-// handling and boundary-entry blocking remain named refusals, raised before
-// hack.c:domove_core() changes u.ux/u.uy.
-export function preflight_shop_transition(
-    fromX,
-    fromY,
-    toX,
-    toY,
-    state = game,
-) {
-    const oldShops = in_rooms(fromX, fromY, SHOPBASE, state);
-    const newShops = in_rooms(toX, toY, SHOPBASE, state);
-
-    const left = oldShops.filter((roomno) => !newShops.includes(roomno));
-    const from = state.level?.at(fromX, fromY);
-    const to = state.level?.at(toX, toY);
-    if (!left.length) {
-        if (!to?.edge) return;
-        if (from?.edge) return;
-    }
-
-    const roomno = left[0] ?? oldShops[0] ?? 0;
-    const shopkeeper = shop_keeper(roomno, state);
-    if (!shopkeeper) return;
-    if (!inhishop(shopkeeper, state)) return;
-    const extension = shopkeeper.mextra.eshk;
-    if (!extension.billct) {
-        if (!extension.debit) return;
-    }
-    throw new UnsupportedShopError(
-        left.length
-            ? 'u_left_shop() leaving a shop with debt'
-            : 'u_left_shop() reaching a shop boundary with debt',
-    );
-}
-
-// C ref: shk.c u_left_shop() (578-625).  The boundary speech remains in the
-// preflight seam; this post-move function handles robbery and the Kops call.
+// C ref: shk.c u_left_shop() (579-625). The empty-leavestring boundary warning
+// runs after the hero moves; an indebted departure reaches rob_shop().
 export async function u_left_shop(
     leavestring,
     newlev,
@@ -798,13 +786,34 @@ export async function u_left_shop(
     if (!extension.billct) {
         if (!extension.debit) return;
     }
-    // C's no-leavestring branch tries to make the hero pay at the shop
-    // boundary.  The movement preflight owns that still-unported speech and
-    // refusal, so do not turn a boundary arrival into a robbery here.
-    if (!left.length)
-        throw new UnsupportedShopError(
-            'u_left_shop() reaching a shop boundary with debt',
-        );
+    // C's no-leavestring branch warns the debtor at the boundary and returns;
+    // an explicit leavestring departure skips that warning and reaches
+    // rob_shop() below.
+    if (!left.length && !muteshk(shopkeeper)) {
+        const notUpset = !extension.surcharge;
+        if (!heroIsDeaf(state)) {
+            // SetVoice has no effect in the recorder's tty build; preserve its
+            // source position before verbalize() prints the boundary warning.
+            set_voice(shopkeeper, 0, 80, 0, state);
+            await verbalize(
+                `${state.plname ?? ''}!  ${notUpset
+                    ? 'Please pay before leaving.'
+                    : "Don't you leave without paying!"}`,
+                state,
+                { message },
+            );
+        } else {
+            await message(
+                `${Shknam(shopkeeper, state)} ${notUpset
+                    ? 'points out'
+                    : 'makes it clear'} that you need to pay before leaving${notUpset
+                    ? '.'
+                    : '!'}`,
+                state,
+            );
+        }
+        return;
+    }
     if (await rob_shop(shopkeeper, state, { message })) {
         await call_kops(
             shopkeeper,
@@ -1039,8 +1048,8 @@ export async function remote_burglary(
         await call_kops(shopkeeper, false, state, { message });
 }
 
-// C ref: shk.c rob_shop() (684-719). This out-of-scope call site still marks
-// hot_pursuit as a gap; the robbery chronicle event stays in pline.c's owner.
+// C ref: shk.c rob_shop() (684-719). The robbery chronicle event stays in
+// pline.c's owner; an actual theft also starts the keeper's hot pursuit.
 async function rob_shop(
     shopkeeper,
     state = game,
@@ -1078,7 +1087,7 @@ async function rob_shop(
     );
     if (state.urole?.mnum !== PM_ROGUE)
         adjalign(-sgn(state.u.ualign.type), state);
-    note_unported('shk.c hot_pursuit');
+    await hot_pursuit(shopkeeper, state);
     return true;
 }
 
@@ -3422,6 +3431,253 @@ export function find_damage(shkp, state = game) {
     return null;
 }
 
+// C ref: shk.c discard_damage_struct() (4509-4528). Keep the damage list's
+// link structure identical when a keeper finishes one repair.
+function discard_damage_struct(damage, state = game) {
+    if (!damage) return;
+    if (damage === state.level?.damagelist) {
+        state.level.damagelist = damage.next ?? null;
+    } else {
+        let previous = state.level?.damagelist ?? null;
+        while (previous && previous.next !== damage)
+            previous = previous.next ?? null;
+        if (previous) previous.next = damage.next ?? null;
+    }
+    damage.next = null;
+}
+
+const LITTER_UPDATE = 0x01;
+const LITTER_OPEN = 0x02;
+const LITTER_INSHOP = 0x04;
+const litterHoriz = (i) => (i % 3) - 1;
+const litterVert = (i) => Math.trunc(i / 3) - 1;
+
+// C ref: shk.c litter_getpos() (4591-4619). Return the number of adjacent
+// open squares belonging to this shop while preserving each square's flags.
+function litter_getpos(litter, x, y, shkp, state = game) {
+    litter.fill(0);
+    const location = state.level?.at(x, y);
+    if (!state.level?.objects?.[x]?.[y] || !location || IS_ROOM(location.typ))
+        return 0;
+
+    let count = 0;
+    for (let i = 0; i < 9; ++i) {
+        const ix = x + litterHoriz(i);
+        const iy = y + litterVert(i);
+        if (i === 4 || !isok(ix, iy)) continue;
+        const adjacent = state.level.at(ix, iy);
+        if (!adjacent || !ZAP_POS(adjacent.typ)) continue;
+        litter[i] = LITTER_OPEN;
+        if (inside_shop(ix, iy, state)
+            === shkp.mextra.eshk.shoproom) {
+            litter[i] |= LITTER_INSHOP;
+            ++count;
+        }
+    }
+    return count;
+}
+
+// C ref: shk.c litter_scatter() (4622-4709). Move the objects out of the
+// repaired wall into adjacent open shop squares, retaining billing behavior.
+async function litter_scatter(litter, x, y, shkp, state = game, env = {}) {
+    const random = env.random ?? { rn2 };
+    const chain = state.uchain;
+    const ball = state.uball;
+    if (ball && !state.u?.uswallow
+        && ((chain?.ox === x && chain?.oy === y)
+            || (ball.where === OBJ_FLOOR && ball.ox === x && ball.oy === y))) {
+        if (!heroIsDeaf(state) && !muteshk(shkp)) {
+            set_voice(shkp, 0, 80, 0, state);
+            await verbalize('Get your junk out of my wall!', state, env);
+        }
+        unplacebc(state);
+        await placebc(state, env);
+    }
+
+    while (state.level.objects[x][y]) {
+        const object = state.level.objects[x][y];
+        if (object.otyp === BOULDER || object.otyp === ROCK) {
+            obj_extract_self(object, { ...env, state });
+            obfree(object, null, { ...env, state });
+            continue;
+        }
+
+        let trylimit = 10;
+        let i = random.rn2(9);
+        do {
+            i = (i + 1) % 9;
+        } while (--trylimit && !(litter[i] & LITTER_INSHOP));
+
+        let ix;
+        let iy;
+        if (litter[i] & (LITTER_OPEN | LITTER_INSHOP)) {
+            ix = x + litterHoriz(i);
+            iy = y + litterVert(i);
+        } else {
+            ix = shkp.mx;
+            iy = shkp.my;
+        }
+
+        if (object.unpaid) {
+            let owner = shkp;
+            if (costly_spot(ix, iy, state)
+                && (onbill(object, owner, true)
+                    || ((owner = find_objowner(object, ix, iy, state))
+                        && onbill(object, owner, false)))) {
+                subfrombill(object, owner, state, env);
+            }
+        }
+        if (object.no_charge
+            && !costly_spot(ix, iy, state)
+            && !costly_adjacent(shkp, ix, iy, state)) {
+            object.no_charge = false;
+        }
+
+        remove_object(object, { ...env, state });
+        await place_object(object, ix, iy, { ...env, state });
+        litter[i] |= LITTER_UPDATE;
+    }
+}
+
+// C ref: shk.c litter_newsyms() (4712-4720). Redraw only squares to which
+// litter was moved.
+function litter_newsyms(litter, x, y) {
+    for (let i = 0; i < 9; ++i) {
+        if (litter[i] & LITTER_UPDATE)
+            newsym(x + litterHoriz(i), y + litterVert(i));
+    }
+}
+
+// C ref: shk.c repair_damage() (4732-4847). `catchup` suppresses messages
+// and returns one as soon as the terrain is restored for an off-level repair.
+async function repair_damage(shkp, damage, catchup, state = game, env = {}) {
+    if (!repairable_damage(damage, shkp, state)) return 0;
+
+    const { x, y } = damage.place;
+    const seeit = cansee(x, y, state);
+    const trap = t_at(x, y, state);
+    let disposition = 1;
+    let stopPicking = false;
+
+    if (trap) {
+        let objectTypeForTrap = null;
+        switch (trap.ttyp) {
+        case LANDMINE:
+            objectTypeForTrap = LAND_MINE;
+            break;
+        case BEAR_TRAP:
+            objectTypeForTrap = BEARTRAP;
+            break;
+        case HOLE:
+        case PIT:
+        case SPIKED_PIT:
+            break;
+        default:
+            break;
+        }
+
+        if (objectTypeForTrap !== null) {
+            const object = mksobj(objectTypeForTrap, true, false, {
+                ...env,
+                state,
+            });
+            object.quan = 1;
+            object.owt = weight(object, { ...env, state });
+            if (!catchup) {
+                if (canseemon(shkp, state)
+                    && dist2(x, y, shkp.mx, shkp.my) <= 2) {
+                    await ttyPline(
+                        `${Shknam(shkp, state, env)} untraps ${
+                            ansimpleoname(object, state)}.`,
+                        state,
+                        env,
+                    );
+                } else if (trap.tseen && cansee(trap.tx, trap.ty, state)) {
+                    await ttyPline(
+                        `The ${trapname(trap.ttyp, true, state, randomFor(env))} vanishes.`,
+                        state,
+                        env,
+                    );
+                }
+            }
+            mpickobj(shkp, object, { ...env, state });
+        } else if (!catchup && trap.tseen && cansee(trap.tx, trap.ty, state)) {
+            const verb = trap.ttyp === HOLE || trap.ttyp === PIT
+                || trap.ttyp === SPIKED_PIT ? 'is filled in' : 'vanishes';
+            await ttyPline(
+                `The ${trapname(trap.ttyp, true, state, randomFor(env))} ${verb}.`,
+                state,
+                env,
+            );
+        }
+
+        deltrap(trap, state);
+        del_engr_at(x, y, state);
+        if (seeit) newsym(x, y);
+        if (!catchup) disposition = 3;
+    }
+
+    const location = state.level.at(x, y);
+    if (IS_ROOM(damage.typ)
+        || (damage.typ === location.typ
+            && (!IS_DOOR(damage.typ) || location.doormask > D_BROKEN))) {
+        return disposition;
+    }
+
+    if (closed_door(x, y, state))
+        stopPicking = picking_at(x, y, state);
+
+    location.typ = damage.typ;
+    if (IS_DOOR(damage.typ)) {
+        // rm.flags aliases rm.doormask in C; keep both JS projections in sync.
+        location.flags = D_CLOSED;
+        location.doormask = D_CLOSED;
+    }
+    else location.flags = damage.flags;
+
+    const litter = new Array(9).fill(0);
+    if (litter_getpos(litter, x, y, shkp, state))
+        await litter_scatter(litter, x, y, shkp, state, env);
+    del_engr_at(x, y, state);
+
+    if (seeit) newsym(x, y);
+    block_point(x, y, state);
+    if (catchup) return 1;
+
+    if (seeit) {
+        if (IS_WALL(damage.typ)) {
+            location.seenv = SVALL;
+            await ttyPline('Suddenly, a section of the wall closes up!', state, env);
+        } else if (IS_DOOR(damage.typ)) {
+            await ttyPline('Suddenly, the shop door reappears!', state, env);
+        }
+        newsym(x, y);
+    } else if (IS_WALL(damage.typ)) {
+        if (inside_shop(state.u.ux, state.u.uy, state)
+            === shkp.mextra.eshk.shoproom) {
+            await ttyPline(youFeelPrefix(state)
+                + ' more claustrophobic than before.', state, env);
+        } else if (!heroIsDeaf(state) && !randomFor(env).rn2(10)) {
+            await ttyNorep('The dungeon acoustics noticeably change.', state, env);
+        }
+    }
+
+    if (stopPicking) await stop_occupation(state, env);
+    litter_newsyms(litter, x, y);
+    if (disposition < 3) disposition = 2;
+    return disposition;
+}
+
+function randomFor(env) {
+    return env.random ?? { rn2 };
+}
+
+function youFeelPrefix(state) {
+    const isUnconscious = Math.trunc(state.multi ?? 0) < 0
+        && (unconscious(state) || state.u?.uhs === FAINTED);
+    return isUnconscious ? 'You dream that you feel' : 'You feel';
+}
+
 // C ref: shk.c shk_fixes_damage() (4556-4577). Fresh shop damage is ignored
 // until the C repair delay and occupancy checks in find_damage() permit it.
 async function shk_fixes_damage(shkp, state, env = {}) {
@@ -3430,28 +3686,37 @@ async function shk_fixes_damage(shkp, state, env = {}) {
 
     const closeby = dist2(shkp.mx, shkp.my, state.u.ux, state.u.uy)
         <= Math.trunc(BOLT_LIM / 2) ** 2;
-    const message = env.message ?? ttyPline;
     if (canseemon(shkp, state)) {
-        await message(
+        await ttyPline(
             `${Shknam(shkp, state, env)} whispers ${
                 closeby ? 'an incantation' : 'something'}.`,
             state,
             env,
         );
-    } else if (closeby) {
-        const deafness = state.u?.uprops?.[DEAF];
-        if (!(deafness?.intrinsic || deafness?.extrinsic
-            || state.u?.uroleplay?.deaf)) {
-            const heard = youHear('someone muttering an incantation.', state);
-            if (heard) await message(heard, state, env);
-        }
+    } else if (closeby && !heroIsDeaf(state)) {
+        const heard = youHear('someone muttering an incantation.', state);
+        if (heard) await ttyPline(heard, state, env);
     }
 
-    // Both C results are discarded. The full terrain/trap repair procedure
-    // and record deallocation remain explicit gaps, as the source contract
-    // permits for unported void helpers.
-    note_unported('shk.c repair_damage');
-    note_unported('shk.c discard_damage_struct');
+    await repair_damage(shkp, damage, false, state, env);
+    discard_damage_struct(damage, state);
+}
+
+// C ref: shk.c fix_shop_damage() (4850-4877). Catch-up repairs are silent and
+// retain a record only when repair_damage() reports that it could not repair.
+export async function fix_shop_damage(state = game, env = {}) {
+    if (!state.level?.damagelist) return;
+    for (let shkp = next_shkp(state.level.monlist ?? null, false, state);
+        shkp;
+        shkp = next_shkp(shkp.nmon, false, state)) {
+        if (shk_impaired(shkp, state)) continue;
+        for (let damage = state.level.damagelist; damage;) {
+            const nextDamage = damage.next ?? null;
+            if (await repair_damage(shkp, damage, true, state, env))
+                discard_damage_struct(damage, state);
+            damage = nextDamage;
+        }
+    }
 }
 
 // C ref: shk.c shk_move() (4880-4993). Covers the ordinary peaceful path and
@@ -4064,32 +4329,21 @@ async function rouse_shk(shopkeeper, verbosely = false, state = game, env = {}) 
     }
 }
 
-function shopMessage(text, state) {
-    // paybill() retains its source-shaped synchronous API. really_done()
-    // awaits this one deferred tty write before it resumes disclosure.
-    const previous = state._paybill_message ?? Promise.resolve();
-    state._paybill_message = Promise.resolve(previous).then(
-        () => ttyPline(text, state),
-    );
-}
-
 // C ref: shk.c home_shk() (1317-1330). Return a keeper to the square at its
 // shop door; the no-message relocation flag is the only observable work on
 // this death path.
-function home_shk(shopkeeper, _killkops, state) {
-    // The movement helper's extended rloc_to() bookkeeping is not ported;
-    // home_shk() discards mnearto()'s result, so preserve the reached gap and
-    // keep the shop bookkeeping below source control.
-    note_unported('mon.c mnearto');
+async function home_shk(shopkeeper, _killkops, state, env = {}) {
+    await mnearto(shopkeeper, shopkeeper.mextra.eshk.shk.x,
+        shopkeeper.mextra.eshk.shk.y, true, RLOC_NOMSG, { ...env, state });
     state.level.flags ??= {};
     state.level.flags.has_shop = true;
-    after_shk_move(shopkeeper, state, { defer: true });
+    await after_shk_move(shopkeeper, state);
 }
 
 // C ref: shk.c inherits() (2570-2676). The ordinary death path below ports
 // the hostile/following arm as well as the clear arm. Inventory stays in the
 // hero's list until finish_paybill(), after disclosure, just as in C.
-function inherits(shopkeeper, numsk, croaked, silently, state) {
+async function inherits(shopkeeper, numsk, croaked, silently, state) {
     const eshkp = shopkeeper.mextra.eshk;
     const uinshop = (state.u.ushops ?? []).includes(eshkp.shoproom);
 
@@ -4129,7 +4383,8 @@ function inherits(shopkeeper, numsk, croaked, silently, state) {
     if (eshkp.following || !NOTANGRY(shopkeeper) || take) {
         if (!state.invent) {
             rouse_shk(shopkeeper);
-            if (!inhishop(shopkeeper, state)) home_shk(shopkeeper, false, state);
+            if (!inhishop(shopkeeper, state))
+                await home_shk(shopkeeper, false, state);
         } else {
             const umoney = money_cnt(state.invent);
             let takes = '';
@@ -4148,7 +4403,10 @@ function inherits(shopkeeper, numsk, croaked, silently, state) {
                     state.disp.botl = true;
                 }
                 if (!silently)
-                    shopMessage(`${Shknam(shopkeeper, state)} ${takes} all your possessions.`, state);
+                    await ttyPline(
+                        `${Shknam(shopkeeper, state)} ${takes} all your possessions.`,
+                        state,
+                    );
                 taken = true;
             } else {
                 money2mon(shopkeeper, loss, state);
@@ -4157,7 +4415,7 @@ function inherits(shopkeeper, numsk, croaked, silently, state) {
                 if (!silently) {
                     const customer = eshkp.customer ?? '';
                     const owesYou = customer.startsWith(state.plname ?? '');
-                    shopMessage(
+                    await ttyPline(
                         `${Shknam(shopkeeper, state)} ${takes} the ${loss} ${currency(loss, state)} ${owesYou ? 'you ' : ''}owed ${mhim(shopkeeper)}.`,
                         state,
                     );
@@ -4167,7 +4425,8 @@ function inherits(shopkeeper, numsk, croaked, silently, state) {
                 eshkp.robbed = 0;
             }
             rouse_shk(shopkeeper);
-            if (!inhishop(shopkeeper, state)) home_shk(shopkeeper, false, state);
+            if (!inhishop(shopkeeper, state))
+                await home_shk(shopkeeper, false, state);
         }
     }
 
@@ -4180,7 +4439,7 @@ function inherits(shopkeeper, numsk, croaked, silently, state) {
 // C ref: shk.c paybill() (2483-2566). Called from end.c really_done() after
 // the hero dies, quits, or escapes. Returns whether a shopkeeper took the
 // hero's inventory, which decides whether finish_paybill() later moves it.
-export function paybill(croaked, silently, state = game) {
+export async function paybill(croaked, silently, state = game) {
     /* if we escaped from the dungeon, shopkeepers can't reach us */
     if (croaked < 0) return false;
 
@@ -4226,7 +4485,7 @@ export function paybill(croaked, silently, state = game) {
     const firstshk = resident ?? creditor ?? hostile ?? localshk;
     if (firstshk) {
         numsk++;
-        taken = inherits(firstshk, numsk, croaked, silently, state);
+        taken = await inherits(firstshk, numsk, croaked, silently, state);
     }
 
     /* now handle the rest */
@@ -4239,7 +4498,7 @@ export function paybill(croaked, silently, state = game) {
         const local = on_level(eshkp.shoplevel, state.u.uz);
         if (mtmp !== firstshk) {
             numsk++;
-            taken = inherits(mtmp, numsk, croaked, silently, state) || taken;
+            taken = (await inherits(mtmp, numsk, croaked, silently, state)) || taken;
         }
         /* for bones: we don't want a shopless shk around */
         if (!local) mongone(mtmp, { state });
@@ -4436,7 +4695,7 @@ export async function pay_for_damage(
             state.disp.botl = true;
         }
         await message(`Mollified, ${shkname(shopkeeper, state)} accepts your restitution.`, state, env);
-        home_shk(shopkeeper, false, state);
+        await home_shk(shopkeeper, false, state, env);
         pacify_shk(shopkeeper, false);
         if (shopkeeper.mx !== oldX || shopkeeper.my !== oldY) {
             if (wasOutside && canspotmon(shopkeeper, state)) {

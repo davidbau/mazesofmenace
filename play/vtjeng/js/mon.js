@@ -1456,12 +1456,14 @@ export async function meatbox(mon, obj, rawEnv = {}) {
                     ?? ((reason) => note_unported(`do.c flooreffects ${reason}`)),
             },
         )) {
-            place_object(
+            const placement = place_object(
                 child,
                 x,
                 y,
                 objectGenerationEnv({ ...rawEnv, state }),
             );
+            if (placement && typeof placement.then === 'function')
+                await placement;
         }
     }
 }
@@ -4758,14 +4760,10 @@ export function mnearto(
 // of mtmp from other data structures". `mptr` is mtmp->data as it stood before
 // the death, which mondead() saves before restoring a chameleon's true form.
 //
-// The remaining unported branches stop under their source conditions:
-//
-//   2741-2742  m_unleash(), for a leashed pet.
-//   2774-2775  leaddead(), for a dying quest leader.
-//   2800-2801  asynchronous DISMOUNT_GENERIC release when the departing
-//              monster was the hero's steed.
-// thiefdead(), shkgone(), wormgone(), MON_ENDGAME_FREE, and the detach flag
-// update are implemented in C order. The due_to_death branch awaits its
+// The planned-steed branch stops before asynchronous DISMOUNT_GENERIC work,
+// which cannot run against a planning clone. m_unleash(), thiefdead(),
+// shkgone(), wormgone(), MON_ENDGAME_FREE, and the detach flag update follow
+// C order. The due_to_death branch awaits its
 // inventory drop; either death or departure can then await the generic steed
 // release so its caller observes the completed source-order effects.
 //
@@ -4780,7 +4778,6 @@ export function m_detach(
     state = game,
     env = {},
 ) {
-    const unsupported = requiredKillOperation(env, 'unsupported');
     const mx = mtmp.mx;
     const my = mtmp.my;
 
@@ -4869,8 +4866,10 @@ export function m_detach(
                         });
                     }
                 }
-                if (mtmp.data.msound === MS_LEADER)
-                    unsupported("the quest leader's death");
+                if (mtmp.data.msound === MS_LEADER) {
+                    const { leaddead } = await import('./quest.js');
+                    leaddead(state);
+                }
                 /* "release (drop onto map) all objects carried by mtmp; assumes that
                    mtmp->mx,my contains the appropriate location" */
                 await relobj(mtmp, 1, false, { ...env, state });
@@ -4897,7 +4896,8 @@ function monsterOnLevelChain(monster, state) {
 
 // C ref: mon.c mongone() (3267-3283). The vault guard must remain on the
 // monster chain until grddead() has removed its temporary corridor. Keep the
-// ordinary path synchronous; only the guard-specific corridor work is async.
+// ordinary path synchronous; protected-object transfer and guard work return
+// promises only on their corresponding source branches.
 export function mongone(monster, env = {}) {
     const state = env.state ?? game;
     if (!monster || typeof monster !== 'object')
@@ -4915,11 +4915,7 @@ export function mongone(monster, env = {}) {
     // rolls the holding cooldown. Keep the ordinary path synchronous, but
     // preserve C's order by continuing inventory and detach only after that
     // redraw/cooldown promise settles.
-    const finishRemoval = () => {
-        // C's void mdrop_special_objs() runs before ordinary inventory
-        // disposal. The helper keeps unconditional resistance calls;
-        // protected object transfers remain explicit source-call gaps.
-        mdrop_special_objs(monster, { ...env, state });
+    const finishAfterSpecialDrops = () => {
         discard_minvent(monster, false, { ...env, state });
 
         const unsupported = (branch) => {
@@ -4937,6 +4933,14 @@ export function mongone(monster, env = {}) {
             state,
             unsupported,
         });
+    };
+    const finishRemoval = () => {
+        // C drops protected objects before discard_minvent(). Await only when
+        // a protected object actually enters the async transfer lifecycle.
+        const dropping = mdrop_special_objs(monster, { ...env, state });
+        return dropping && typeof dropping.then === 'function'
+            ? dropping.then(finishAfterSpecialDrops)
+            : finishAfterSpecialDrops();
     };
     const releaseAndFinish = () => {
         const release = unstuck(monster, state, env);
@@ -5763,7 +5767,9 @@ export async function monstone(mdef, state = game, env = {}) {
                 || obj_resists(obj, 0, 0, objectEnv)) {
                 if (await flooreffects(obj, x, y, 'fall', { ...env, state }))
                     continue;
-                place_object(obj, x, y, objectEnv);
+                const placement = place_object(obj, x, y, objectEnv);
+                if (placement && typeof placement.then === 'function')
+                    await placement;
             } else {
                 if (obj.lamplit) end_burn(obj, true, { ...env, state });
                 obj.nobj = oldminvent;
@@ -6101,7 +6107,9 @@ export async function xkilled(mtmp, xkill_flags, state = game, env = {}) {
                     delobj(otmp, dropEnv);
                 } else if (!await flooreffects(otmp, x, y, nomsg ? '' : 'fall',
                                          dropEnv)) {
-                    place_object(otmp, x, y, dropEnv);
+                    const placement = place_object(otmp, x, y, dropEnv);
+                    if (placement && typeof placement.then === 'function')
+                        await placement;
                     stackobj(otmp, objectGenerationEnv(dropEnv));
                 }
             }
@@ -6362,9 +6370,9 @@ export function m_into_limbo(mtmp, state = game, env = {}) {
     return migrate_mon(mtmp, targetLev, MIGR_APPROX_XY, state, env);
 }
 
-// C ref: mon.c migrate_mon() (3839-3863). The special-object helper preserves
-// C's resistance queries; protected-object transfer remains a recorded gap
-// until callers can await the drop or relocation lifecycle.
+// C ref: mon.c migrate_mon() (3839-3863). Preserve the helper's object order
+// before migrating the monster, awaiting only when a protected item enters
+// the drop or relocation lifecycle.
 export function migrate_mon(
     mtmp,
     target_lev,
@@ -6372,29 +6380,27 @@ export function migrate_mon(
     state = game,
     env = {},
 ) {
-    if (mtmp.mx) {
-        const release = unstuck(mtmp, state, env);
-        if (release && typeof release.then === 'function') {
-            return release.then(() => {
-                mdrop_special_objs(mtmp, { ...env, state });
-                return migrate_to_level(
-                    mtmp,
-                    target_lev,
-                    xyloc,
-                    null,
-                    { ...env, state },
-                );
-            });
-        }
-        mdrop_special_objs(mtmp, { ...env, state });
-    }
-    return migrate_to_level(
+    const finishMigration = () => migrate_to_level(
         mtmp,
         target_lev,
         xyloc,
         null,
         { ...env, state },
     );
+    const preserveSpecialObjects = () => {
+        const dropping = mdrop_special_objs(mtmp, { ...env, state });
+        return dropping && typeof dropping.then === 'function'
+            ? dropping.then(finishMigration)
+            : finishMigration();
+    };
+    if (mtmp.mx) {
+        const release = unstuck(mtmp, state, env);
+        if (release && typeof release.then === 'function') {
+            return release.then(preserveSpecialObjects);
+        }
+        return preserveSpecialObjects();
+    }
+    return finishMigration();
 }
 
 // C ref: mon.c ok_to_obliterate() (3864-3874). These monsters must survive

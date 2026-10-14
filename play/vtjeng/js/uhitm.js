@@ -3311,7 +3311,7 @@ async function hmon_hitmon_do_hit(hmd, mon, obj, state, env, random) {
 // The propeller exemption and weapon-skill choice below are decided by
 // `hmd->thrown`; cream pies leave get_dmg_bonus false, while ranged weapons
 // retain the source branches until their separate damage helper is ported.
-function hmon_hitmon_dmg_recalc(hmd, obj, state, env) {
+async function hmon_hitmon_dmg_recalc(hmd, obj, state, env) {
     let dmgbonus = 0;
 
     /*
@@ -3379,7 +3379,7 @@ function hmon_hitmon_dmg_recalc(hmd, obj, state, env) {
             const skill = hmd.thrown
                 ? weapon_type(skillwep, state)
                 : uwep_skill_type(state);
-            use_skill(skill, 1, state);
+            await use_skill(skill, 1, state);
         }
     }
 
@@ -3779,7 +3779,7 @@ async function hmon_hitmon(mon, obj, thrown, dieroll, state = game, env = {}) {
      *      set 'use_weapon_skill', bare-handed does.
      */
 
-    if (hmd.dmg > 0) hmon_hitmon_dmg_recalc(hmd, obj, state, env);
+    if (hmd.dmg > 0) await hmon_hitmon_dmg_recalc(hmd, obj, state, env);
 
     if (hmd.ispoisoned)
         await hmon_hitmon_poison(hmd, mon, obj, state, env, random);
@@ -8264,10 +8264,14 @@ export async function passive_obj(mon, obj, mattk, state = game, env = {}) {
             await erode_obj(obj, null, ERODE_CORRODE, EF_GREASE, effectEnv);
         }
         break;
-    case AD_ENCH:
-        if (!mon.mcan
-            && drain_item(obj, true, state, effectEnv)
-            && carried(obj)
+    case AD_ENCH: {
+        let drained = false;
+        if (!mon.mcan) {
+            const result = drain_item(obj, true, state, effectEnv);
+            drained = result && typeof result.then === 'function'
+                ? await result : result;
+        }
+        if (drained && carried(obj)
             && (obj.known || obj.oclass === ARMOR_CLASS)) {
             const message = env.message
                 ?? (env.planning ? async () => {} : ttyPline);
@@ -8278,6 +8282,7 @@ export async function passive_obj(mon, obj, mattk, state = game, env = {}) {
             );
         }
         break;
+    }
     default:
         break;
     }

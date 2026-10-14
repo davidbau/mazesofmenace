@@ -2085,7 +2085,7 @@ async function nh_timeout_blinded() {
         return; /* C: `upp->intrinsic & TIMEOUT` is 0 -- not counted down */
     if (typeof process !== 'undefined' && ENV && ENV.FF_MLTRACE === '1')
         pushRngLogEntry(`^ml_blind[t=${t | 0} moves=${game.moves | 0} multi=${game.multi | 0}]`);
-    set_HBlinded(HBlinded_raw() - 1);
+    set_HBlinded(t - 1); // v5 timeout.c:671: decrement TIMEOUT, preserving source bits
     if (BlindedTimeout() !== 0)
         return; /* C: still counting down */
     const was_blind = !!Blind();
@@ -3438,7 +3438,7 @@ async function moveloop_core_faithful() {
              * world block.  Hallucinating, each is a run of DISPLAY-stream
              * draws, so omitting it shifts every later hallucinated name. */
             faithful_input_redraw();
-            const r = engrave();
+            const r = await engrave();
             if (r === 0) g.occupation = null;
             // C allmain.c:485-509 checks interruption after the callback,
             // before the next invocation spends this action's world turn.

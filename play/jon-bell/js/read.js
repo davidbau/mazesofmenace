@@ -1,4 +1,5 @@
-import { ggetobj } from './cmd.js';
+import { ggetobj, costly_alteration } from './cmd.js';
+import { COST_UNCHRG } from './const.js';
 // @ts-nocheck
 import { rn2, rnd, rn1, rnl, d } from './rng.js';
 import { discover_object } from './o_init.js';
@@ -137,13 +138,21 @@ export async function wand_explode(obj, chg) {
     exercise(A_STR, false);
 }
 /* ---------------------------------------------------------------------------
- * stripspe — remove charges from object (no RNG).
- * C ref: nethack-c/src/read.c stripspe() — sets spe=0, costs.
+ * stripspe — remove charges from an unblessed object.
+ * C ref: nethack-c-v5/upstream/src/read.c:652-664.
  * ---------------------------------------------------------------------------
  */
-function stripspe(obj) {
-    if (obj && obj.spe > 0)
+async function stripspe(obj) {
+    if (obj.blessed || obj.spe <= 0) {
+        await pline('Nothing happens.');
+    } else {
+        // C orders the message and billing before changing charges or fuel.
+        await pline(`${Yobjnam2(obj, 'vibrate')} briefly.`);
+        await costly_alteration(obj, COST_UNCHRG);
         obj.spe = 0;
+        if (obj.otyp === OIL_LAMP || obj.otyp === BRASS_LANTERN)
+            obj.age = 0;
+    }
 }
 /* ---------------------------------------------------------------------------
  * cap_spe — clamp spe to +/-SPE_LIM.
@@ -263,7 +272,7 @@ export async function recharge(obj, curse_bless) {
         /* C read.c:770-799: actual recharging */
         if (is_cursed) {
             /* C read.c:771: stripspe(obj) */
-            stripspe(obj);
+            await stripspe(obj);
         }
         else {
             /* C read.c:773: n = (lim==1) ? 1 : rn1(5, lim+1-5) */
@@ -385,7 +394,7 @@ export async function recharge(obj, curse_bless) {
             case BELL_OF_OPENING:
                 /* C read.c:845-852 */
                 if (is_cursed) {
-                    stripspe(obj);
+                    await stripspe(obj);
                 }
                 else if (is_blessed) {
                     obj.spe += rnd(3); /* RNG: rnd(3) */
@@ -401,7 +410,7 @@ export async function recharge(obj, curse_bless) {
             case EXPENSIVE_CAMERA:
                 /* C read.c:855-893 */
                 if (is_cursed) {
-                    stripspe(obj);
+                    await stripspe(obj);
                 }
                 else if (rechrg && obj.otyp === MAGIC_MARKER) {
                     /* C read.c:859-865: previously recharged magic marker */
@@ -453,7 +462,7 @@ export async function recharge(obj, curse_bless) {
             case BRASS_LANTERN:
                 /* C read.c:895-914 */
                 if (is_cursed) {
-                    stripspe(obj);
+                    await stripspe(obj);
                     if (obj.lamplit) {
                         if (!game.u.blind) {
                             await pline(`${obj._name || 'lamp'} goes out!`);
@@ -523,7 +532,7 @@ export async function recharge(obj, curse_bless) {
             case CAN_OF_GREASE:
                 /* C read.c:956-975 */
                 if (is_cursed) {
-                    stripspe(obj);
+                    await stripspe(obj);
                 }
                 else if (is_blessed) {
                     if (obj.spe <= 10) {
@@ -550,7 +559,7 @@ export async function recharge(obj, curse_bless) {
             case DRUM_OF_EARTHQUAKE:
                 /* C read.c:976-994 */
                 if (is_cursed) {
-                    stripspe(obj);
+                    await stripspe(obj);
                 }
                 else if (is_blessed) {
                     obj.spe += d(2, 4); /* RNG: d(2,4) */
@@ -627,6 +636,8 @@ import { inside_shop } from './mklev.js';
 import { KILLED_BY_AN } from './const.js';
 import { shkname, losehp } from './dokick.js';
 import { Yname2, useup as useup_cmd } from './cmd.js';
+import { drop_uswapwep } from './cmd.js';
+import { bimanual, reset_remarm } from './do_wear.js';
 import { erosion_matters, mkobj, place_object, makemon } from './mklev.js';
 /* seffect_light's confused arm only (read.c:1762-1780). */
 import { initedog, tamedog } from './dog.js';
@@ -2077,14 +2088,16 @@ function _uncurse(otmp) {
     otmp.cursed = 0;                             /* C mkobj.c:1829 */
     _bc_side_effects(otmp);
 }
-function _curse(otmp) {
+async function _curse(otmp) {
     if ((otmp.oclass | 0) === COIN_CLASS_OC)
         return;                                  /* C mkobj.c:1789 */
     otmp.blessed = 0;
     otmp.cursed = 1;
-    /* C mkobj.c:1797-1802 — uwep bimanual reset_remarm() / uswapwep twoweapon
-     * drop.  Not ported (no RNG); reached only when the cursed object is the
-     * wielded or alternate weapon. */
+    /* C mkobj.c:1796-1801: update wielded weapons before other curse effects. */
+    if (otmp === game.u.uwep && bimanual(otmp))
+        reset_remarm();
+    if (otmp === game.u.uswapwep && game.u.twoweap)
+        await drop_uswapwep();
     _bc_side_effects(otmp);
 }
 function _bc_side_effects(otmp) {
@@ -2099,11 +2112,11 @@ function _bc_side_effects(otmp) {
 }
 /* C ref: mkobj.c:1841-1855 blessorcurse(otmp, chance).
  * RNG: rn2(chance), and on success rn2(2). */
-function _blessorcurse(otmp, chance) {
+async function _blessorcurse(otmp, chance) {
     if (otmp.blessed || otmp.cursed)
         return;
     if (!rn2(chance)) {
-        if (!rn2(2)) _curse(otmp);
+        if (!rn2(2)) await _curse(otmp);
         else _bless(otmp);
     }
 }
@@ -2285,7 +2298,7 @@ async function seffect_enchant_armor(sobjp) {
     if (s < 0)
         _costly_alteration(otmp, 'COST_DECHNT');        /* C read.c:1263 */
     if (scursed && !otmp.cursed)
-        _curse(otmp);
+        await _curse(otmp);
     else if (sblessed && !otmp.blessed)
         _bless(otmp);
     else if (!scursed && otmp.cursed)
@@ -2606,7 +2619,7 @@ async function seffect_remove_curse(sobj) {
                 /* C read.c:1554 — water price varies by curse/bless status */
                 const shop_h2o = (obj.unpaid && (obj.otyp | 0) === POT_WATER);
                 if (confused) {
-                    _blessorcurse(obj, 2);              /* C read.c:1557 — RNG */
+                    await _blessorcurse(obj, 2);        /* C read.c:1557 — RNG */
                     obj.bknown = 0;                     /* C read.c:1560 */
                     if (shop_h2o && (obj.cursed || obj.blessed))
                         _alter_cost(obj, 0);
@@ -3962,7 +3975,7 @@ function is_whirly_lit(mon_data) {
 /* free: no-op in JS */
 function free_lit(ptr) {}
 
-function impact_arti_light(otmp, flag, visible) { /* not yet ported */ }
+import { impact_arti_light } from './potion.js';
 import { light_hits_gremlin } from './cmd.js'; /* C uhitm.c:6425 — real body lives in cmd.js */
 /* C ref: read.c:2470-2489 set_lit(x, y, val) — the do_clear_area() callback
  * litroom() drives.  `val` is a non-null pointer flag, not a value: non-null
@@ -4011,7 +4024,7 @@ export async function litroom(on, obj) {
                 if (!artifact_light_lit(otmp))
                     await snuff_lit_real(otmp);
                 else
-                    impact_arti_light(otmp, true, !_Blind());
+                    await impact_arti_light(otmp, true, !_Blind());
 
                 if (otmp.lamplit)
                     ++still_lit;
@@ -4030,7 +4043,7 @@ export async function litroom(on, obj) {
             for (let otmp = g.invent; otmp; otmp = nextobj) {
                 nextobj = otmp.nobj;
                 if (otmp.lamplit && artifact_light_lit(otmp))
-                    impact_arti_light(otmp, false, !_Blind());
+                    await impact_arti_light(otmp, false, !_Blind());
             }
         }
         if (u.uswallow) {

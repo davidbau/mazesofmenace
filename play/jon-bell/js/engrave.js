@@ -36,6 +36,11 @@ import { GETOBJ_PROMPT, HAND } from './const.js';
 import { exercise } from './attrib.js';
 import { more_experienced } from './exper.js';
 import { object_tough } from './o_init.js';
+import { splitobj } from './makemon.js';
+import { obj_extract_self } from './mklev.js';
+import { hold_another_object } from './hold_another_object.js';
+import { prinv } from './cmd.js';
+import { update_inventory } from './inventory_refresh.js';
 import { can_reach_floor as can_reach_floor_real } from './hold_another_object.js';
 import { make_engr_at, del_engr_at, engr_at, random_engraving, engravings_list, makemon, xcrypt } from './mklev.js';
 import { DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, HEADSTONE, A_WIS,
@@ -758,7 +763,7 @@ function doengr_exit(de) {
     return de.ret;
 }
 
-export function engrave() {
+export async function engrave() {
     const g = game;
     const u = g.u || {};
     const eng = g.context && g.context.engraving;
@@ -775,10 +780,12 @@ export function engrave() {
 
     /* C engrave.c:1322-1331 — compute rate.  DUST/fingertip → default rate 10. */
     let rate = 10;
-    const stylus = eng.stylus;
+    let stylus = eng.stylus;
+    const dulling = (eng.type === ENGRAVE || eng.type === HEADSTONE) && stylus
+        && stylus.oclass === WEAPON_CLASS && (stylus.otyp !== 38 /* ATHAME */ || stylus.cursed);
     // C engrave.c:1321-1325: rings and gems carve one character per action.
     if ((eng.type === ENGRAVE || eng.type === HEADSTONE) && stylus
-        && (stylus.oclass === RING_CLASS || stylus.oclass === GEM_CLASS))
+        && (dulling || stylus.oclass === RING_CLASS || stylus.oclass === GEM_CLASS))
         rate = 1;
     const marker = !!(stylus && stylus.otyp === MAGIC_MARKER && eng.type === MARK);
     if (marker) {
@@ -797,6 +804,26 @@ export function engrave() {
 
     /* C engrave.c:1394-1408 — marker ink: max(rate/2, 1) charges per action */
     let truncate = false;
+    if (dulling) {
+        const splitstack = stylus.quan > 1;
+        let dulled = false;
+        if (firsttime) await pline(splitstack ? `One of ${yname(stylus)} gets dull.` : `${Yname2(stylus)} gets dull.`);
+        if (splitstack) {
+            stylus = eng.stylus = await splitobj(stylus, 1);
+            stylus.owornmask = 0;
+        }
+        if (eng.actionct % 2 === 1) {
+            if (stylus.spe <= -3) truncate = true;
+            else if (endc < text.length || firsttime) { stylus.spe--; dulled = true; }
+        }
+        if (splitstack) {
+            obj_extract_self(stylus);
+            await hold_another_object(stylus, 'You drop one %s!', await doname(stylus), null);
+        } else if (dulled && stylus.known) {
+            await prinv(null, stylus, 1);
+            update_inventory();
+        }
+    }
     if (marker) {
         let ink_cost = Math.max(Math.trunc(rate / 2), 1);
         if ((stylus.spe | 0) < ink_cost) {
@@ -813,7 +840,7 @@ export function engrave() {
     if (truncate && endc < text.length) {
         text = text.slice(0, endc);
         eng.text = text;
-        void pline(`You are only able to write "${text.slice(0, endc)}".`);
+        await pline(`You are only able to write "${text.slice(0, endc)}".`);
     }
 
     /* C engrave.c:1438-1462 — append the engraved slice to any existing engraving. */

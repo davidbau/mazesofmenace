@@ -31,11 +31,13 @@ import {
     BEAR_TRAP,
     BOLT_LIM,
     CONFUSION,
+    COST_DRAIN,
     DART_TRAP,
     DEAF,
     DRAIN_RES,
     DISP_END,
     DISP_FLASH,
+    DISMOUNT_POLY,
     D_CLOSED,
     D_BROKEN,
     D_LOCKED,
@@ -105,6 +107,8 @@ import {
     TT_BEARTRAP,
     TT_PIT,
     TT_WEB,
+    Has_contents,
+    OMONST,
     Trap_Caught_Mon,
     Trap_Effect_Finished,
     Trap_Is_Gone,
@@ -166,6 +170,7 @@ import {
     x_monnam,
 } from './do_name.js';
 import { game } from './gstate.js';
+import { get_obj_location } from './light.js';
 import { losexp } from './exper.js';
 import { youHear as plineYouHear } from './pline.js';
 import { m_in_air, newcham, setmangry } from './mon.js';
@@ -293,6 +298,7 @@ import {
 import {
     dealloc_obj,
     carried,
+    costly_alteration,
     mksobj,
     newObject,
     objectType,
@@ -751,7 +757,9 @@ async function trapeffect_arrow_trap(mtmp, trap, _trflags, env) {
         )) {
             if (otmp) obfree(otmp, null, { state });
         } else {
-            place_object(otmp, state.u.ux, state.u.uy, objectEnv);
+            const placement = place_object(otmp, state.u.ux, state.u.uy, objectEnv);
+            if (placement && typeof placement.then === 'function')
+                await placement;
             if (!heroIsBlind(state)) observe_object(otmp, state);
             stackobj(otmp, objectEnv);
             newsym(state.u.ux, state.u.uy);
@@ -882,7 +890,8 @@ export async function thitm(tlev, mon, obj, d_override, nocorpse, env) {
     // caller supplied, lands where the target stands; one that struck on its
     // own to-hit roll is used up. No newsym() follows in C.
     if (obj && (!strike || d_override)) {
-        place_object(obj, mon.mx, mon.my, env.objectEnv);
+        const placement = place_object(obj, mon.mx, mon.my, env.objectEnv);
+        if (placement && typeof placement.then === 'function') await placement;
         stackobj(obj, env.objectEnv);
     } else if (obj) {
         dealloc_obj(obj, env.objectEnv);
@@ -978,7 +987,9 @@ async function trapeffect_dart_trap(mtmp, trap, _trflags, env) {
             }
         } else {
             // Miss: dart lands on the floor.
-            place_object(otmp, state.u.ux, state.u.uy, { state });
+            const placement = place_object(otmp, state.u.ux, state.u.uy, { state });
+            if (placement && typeof placement.then === 'function')
+                await placement;
             if (!heroIsBlind(state))
                 observe_object(otmp, state);
             stackobj(otmp, { state });
@@ -1062,7 +1073,8 @@ async function trapeffect_rocktrap(mtmp, trap, _trflags, env) {
         trap.once = true;
         feeltrap(trap, env);
         const otmp = t_missile(ROCK, trap, { ...env, objectEnv });
-        place_object(otmp, state.u.ux, state.u.uy, objectEnv);
+        const placement = place_object(otmp, state.u.ux, state.u.uy, objectEnv);
+        if (placement && typeof placement.then === 'function') await placement;
         await message(
             `A trap door in ${the(ceiling(state.u.ux, state.u.uy), state)}`
                 + ` opens and ${an(xnameFresh(otmp, state))} falls on your `
@@ -1461,10 +1473,8 @@ async function steedintrap(trap, otmp, env) {
     }
 
     if (trapkilled) {
-        // C discards dismount_steed() here. Its poly-dismount body is not
-        // ported, so preserve the source call as an explicit boundary gap
-        // rather than raising after the steed's trap result is computed.
-        note_unported('steed.c dismount_steed DISMOUNT_POLY');
+        const { dismount_steed } = await import('./steed.js');
+        await dismount_steed(DISMOUNT_POLY, state, env);
         return Trap_Killed_Mon;
     }
     return steedhit ? 1 : 0;
@@ -2423,9 +2433,7 @@ async function trapeffect_anti_magic(mtmp, trap, _trflags, env) {
                     state,
                     env,
                 );
-                // C's costly_alteration() result is discarded; its source
-                // implementation remains a named void-call gap.
-                note_unported('mkobj.c costly_alteration');
+                await costly_alteration(shoes, COST_DRAIN, env);
                 shoes.spe -= 1;
                 update_inventory({ state });
                 return Trap_Effect_Finished;
@@ -2934,7 +2942,8 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style, state, rawEnv = {}
     launch_drop_spot(null, 0, 0, state);
     if (!used_up) {
         singleobj.otrapped = 0;
-        place_object(singleobj, x2, y2, objectEnv);
+        const placement = place_object(singleobj, x2, y2, objectEnv);
+        if (placement && typeof placement.then === 'function') await placement;
         redraw(x2, y2);
         return 1;
     }
@@ -3590,6 +3599,39 @@ export async function blow_up_landmine(trap, rawEnv = {}) {
     spot_checks(x, y, oldTyp, state, env);
 }
 
+// C ref: trap.c keep_saddle_with_steedcorpse() (939-963). Search the floor
+// object list, including container contents, for the slain mount's corpse.
+// The saddle is moved onto the corpse's reported physical location and
+// merged into that square's pile.
+function keep_saddle_with_steedcorpse(
+    steedMid,
+    objchn,
+    saddle,
+    state = game,
+) {
+    if (!saddle) return false;
+    while (objchn) {
+        const corpseMonster = objchn.otyp === CORPSE ? OMONST(objchn) : null;
+        if (corpseMonster?.m_id === steedMid) {
+            const location = get_obj_location(objchn, 0, state) ?? { x: 0, y: 0 };
+            const objectEnv = objectGenerationEnv({ state });
+            obj_extract_self(saddle, objectEnv);
+            place_object(saddle, location.x, location.y, objectEnv);
+            stackobj(saddle, objectEnv);
+            return true;
+        }
+        if (Has_contents(objchn)
+            && keep_saddle_with_steedcorpse(
+                steedMid,
+                objchn.cobj,
+                saddle,
+                state,
+            )) return true;
+        objchn = objchn.nobj;
+    }
+    return false;
+}
+
 // C ref: trap.c trapeffect_landmine() (2527-2658). The hero and monster arms
 // share the damage roll and then follow their source-specific trigger paths.
 export async function trapeffect_landmine(mtmp, trap, trflags, rawEnv = {}) {
@@ -3676,7 +3718,12 @@ export async function trapeffect_landmine(mtmp, trap, trflags, rawEnv = {}) {
         );
         await blow_up_landmine(trap, env);
         if (steedMid && saddle && !state.u.usteed)
-            note_unported('trap.c keep_saddle_with_steedcorpse');
+            keep_saddle_with_steedcorpse(
+                steedMid,
+                state.level.objlist,
+                saddle,
+                state,
+            );
         newsym(state.u.ux, state.u.uy, state);
         const nextTrap = t_at(state.u.ux, state.u.uy, state);
         if (nextTrap)

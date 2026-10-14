@@ -2,6 +2,8 @@ import { dipFountainSword } from './fountain_sword.js';
 import { washHands } from './dip_water.js';
 import { waterDamageObject } from './trap.js';
 import { dip, dipInto } from './potion_dip.js';
+import { AKLYS, BOOMERANG, CRYSTAL_BALL } from './object_data.js';
+import { useCrystalBall } from './crystal_ball.js';
 import { monsterHiddenConditions } from './monster_status.js';
 import { visibleRegionAt } from './regions.js';
 import { wizIntrinsic } from './wizard_intrinsics.js';
@@ -69,7 +71,7 @@ import { wormCrossesBetween } from './monster_worm.js';
 import { floorObjectDescription, } from './floor_object_display.js';
 import { loseHeroHp } from './hero_damage.js';
 import { dopay } from './shop_pay_command.js';
-import { reportShopFinances } from './shop_finance.js';
+import { inventoryReport } from './inventory_reports.js';
 import { quoteShopGoods } from './shop_price_quote.js';
 import { shopkeeperBlockingDoor, shopkeeperBlockingEntry } from './shop_blocking.js';
 import { poisonHeroStrengthAndHp } from './poison.js';
@@ -204,7 +206,6 @@ import { convertSecretDoor } from './detect.js';
 import { roomForRoomno, roomsAt } from './room.js';
 import { learnObjectType, objectClassForType, recordObjectCall, recordObjectEncounter, recordObjectKnowledge, } from './object_knowledge.js';
 import { encumbranceLabel, encumbranceMessage, exceedsActionCapacity, nearCapacity, invWeight, OVERLOADED, SLT_ENCUMBER, } from './weight.js';
-import { hiddenGold } from './gold.js';
 import { makeWish } from './wish.js';
 import { dopray } from './pray.js';
 import { finishDestinationSpotEffects, finishTeleportArrival } from './location_effects.js';
@@ -1165,6 +1166,9 @@ async function runCommandHandler(binding, { cannedCommand = null, previousMessag
         else if (direction === 'p') {
             await dopay();
         }
+        else if (nextKey !== null && '$)[="(*'.includes(String.fromCharCode(nextKey))) {
+            await runCommandHandler(nextCommand);
+        }
         else if (nextKey === 22 && game.flags?.debug) {
             // cmd.c marks wiz_level_tele CMD_M_PREFIX. do_reqmenu() sets
             // iflags.menu_requested, so level_tele() skips its numeric
@@ -1190,11 +1194,16 @@ async function runCommandHandler(binding, { cannedCommand = null, previousMessag
         }
     }
     else if (ch === 'i') {
-        const action = await ddoinv();
-        if (action && !['\x1b', ' ', '\n', '\r'].includes(action.key)) {
-            game._cannedCommands ??= [];
-            game._cannedCommands.push({ kind: 'inventory-action', action });
-        }
+        enqueueInventoryAction(await ddoinv());
+    }
+    else if (ch === 'I') {
+        enqueueInventoryAction(await inventoryReport('type'));
+    }
+    else if (ch === '(') {
+        enqueueInventoryAction(await inventoryReport('tools'));
+    }
+    else if (ch === '*') {
+        enqueueInventoryAction(await inventoryReport('inuse'));
     }
     else if (ch === 'O') {
         await doOptions();
@@ -1312,19 +1321,19 @@ async function runCommandHandler(binding, { cannedCommand = null, previousMessag
         await dosave();
     }
     else if (ch === '$') {
-        await doWalletQuery();
+        enqueueInventoryAction(await inventoryReport('gold'));
     }
     else if (ch === ')') {
-        await doWeaponQuery();
+        enqueueInventoryAction(await inventoryReport('weapon'));
     }
     else if (ch === '[') {
-        await doArmorQuery();
+        enqueueInventoryAction(await inventoryReport('armor'));
     }
     else if (ch === '=') {
-        await doRingQuery();
+        enqueueInventoryAction(await inventoryReport('rings'));
     }
     else if (ch === '"') {
-        await doAmuletQuery();
+        enqueueInventoryAction(await inventoryReport('amulet'));
     }
     else if (key === 127) { // Delete: overview of known terrain.
         await doTerrainOverview();
@@ -1336,6 +1345,12 @@ async function runCommandHandler(binding, { cannedCommand = null, previousMessag
         // Unknown command
         game.context.move = 0;
         await pline(`Unknown command '${ch}'.`);
+    }
+}
+function enqueueInventoryAction(action) {
+    if (action && !['\x1b', ' ', '\n', '\r'].includes(action.key)) {
+        game._cannedCommands ??= [];
+        game._cannedCommands.push({ kind: 'inventory-action', action });
     }
 }
 async function doquaff() {
@@ -1577,63 +1592,6 @@ export async function travelStairs(up) {
     if (changed !== false)
         game.context.move = 1;
     return changed !== false;
-}
-async function doWalletQuery() {
-    const purse = heroGoldAmount(game);
-    const stashed = hiddenGold(game, false);
-    if (game.flags?.verbose !== false) {
-        let message = purse
-            ? `Your wallet contains ${purse} zorkmid${purse === 1 ? '' : 's'}`
-            : 'Your wallet is empty';
-        if (stashed) {
-            message += `, ${purse ? 'and' : 'but'} you have ${stashed} ${purse ? 'more' : `zorkmid${stashed === 1 ? '' : 's'}`} stashed away in your pack`;
-        }
-        await pline(`${message}.`);
-    }
-    else {
-        const total = purse + stashed;
-        await pline(total
-            ? `You are carrying a total of ${total} zorkmid${total === 1 ? '' : 's'}.`
-            : 'You have no money.');
-    }
-    await reportShopFinances();
-    game.context.move = 0;
-}
-async function doWeaponQuery() {
-    await pline(game.uwep
-        ? `${game.uwep.invlet} - ${game.uwep.name}.`
-        : 'You are bare handed.');
-    game.context.move = 0;
-}
-async function doArmorQuery() {
-    const armor = game.uarm;
-    if (!armor) {
-        await pline('You are not wearing any armor.');
-    }
-    else {
-        const parts = [];
-        if (armor.buc)
-            parts.push(armor.buc);
-        if (armor.enchantment !== undefined && Number.isInteger(armor.enchantment))
-            parts.push(`${armor.enchantment >= 0 ? '+' : ''}${armor.enchantment}`);
-        parts.push(armor.name);
-        const description = parts.join(' ');
-        const article = /^[aeiou]/i.test(description) ? 'an' : 'a';
-        await pline(`${armor.invlet} - ${article} ${description} (being worn).`);
-    }
-    game.context.move = 0;
-}
-async function doRingQuery() {
-    await pline(game.uleft || game.uright
-        ? 'You are wearing a ring.'
-        : 'You are not wearing any rings.');
-    game.context.move = 0;
-}
-async function doAmuletQuery() {
-    await pline(game.uamul
-        ? 'You are wearing an amulet.'
-        : 'You are not wearing an amulet.');
-    game.context.move = 0;
 }
 function captureMapDisplay() {
     const snapshot = [];
@@ -2283,7 +2241,7 @@ async function doname() {
             && (!objectTypeKnown(object)
                 || !!game._objectCallNames?.[object.otyp]));
         const letters = compactInventoryLetters(suggested.map(object => object.invlet).join(''));
-        const selection = await promptInventoryObject(`What do you want to call? [${letters} or ?*] `, eligible, { verb: 'call', allowMenu: true });
+        const selection = await promptInventoryObject(`What do you want to call? [${letters ? `${letters} or ?*` : '*'}] `, eligible, { verb: 'call', allowMenu: true, menuItems: suggested.length ? suggested : eligible });
         if (!selection.cancelled && selection.object) {
             const object = selection.object;
             if (object.dknown === false) {
@@ -2376,10 +2334,13 @@ function inventoryActionCommand({ key, item }) {
         '-': item === game.uwep ? 'dowield'
             : item === game.uswapwep ? 'remarm_swapwep'
                 : item === game.uquiver ? 'dowieldquiver' : 'donull',
-        'a': 'doapply', 'c': 'docallcmd', 'd': 'dodrop', 'e': 'doeat', 'E': 'doengrave', 'f': 'dofire',
-        'i': 'doorganize', 'I': 'adjust_split', 'P': 'dowear', 'Q': 'dowieldquiver', 'r': 'doread',
-        'R': 'ia_dotakeoff', 't': 'dothrow', 'T': 'ia_dotakeoff',
-        'w': 'dowield', 'x': 'doswapweapon', 'X': 'dotwoweapon',
+        'a': item.oclass === 8 && !(item.otyp === POT_OIL && objectTypeKnown(item)) ? 'dip_into' : 'doapply',
+        'c': 'docallcmd', 'C': 'docallcmd', 'd': 'dodrop', 'e': 'doeat', 'E': 'doengrave', 'f': 'dofire',
+        'i': 'doorganize', 'I': 'adjust_split', 'O': 'dosacrifice', 'p': 'dopay', 'P': 'dowear', 'q': 'dodrink',
+        'Q': 'dowieldquiver', 'r': 'doread',
+        'R': item.owornmask && item.owornmask & W_ACCESSORY ? 'ia_dotakeoff' : 'dorub',
+        't': 'dothrow', 'T': item.oclass === 3 ? 'ia_dotakeoff' : 'dotip', 'V': 'doinvoke',
+        'w': 'dowield', 'W': 'dowear', 'x': 'doswapweapon', 'X': 'dotwoweapon', 'z': 'dozap',
         '/': 'dowhatis', '\x1b': null, ' ': null, '\n': null, '\r': null,
     };
     return NATIVE_COMMANDS.find(command => command.handler === handlers[key]) ?? null;
@@ -2421,10 +2382,17 @@ async function runInventoryAction({ key, item }) {
             return;
         case 'a':
             queueCommandKeys(letter);
-            await doapply();
+            if (item.oclass === 8 && !(item.otyp === POT_OIL && objectTypeKnown(item)))
+                await dipInto();
+            else
+                await doapply();
             return;
         case 'c':
             queueCommandKeys(`i${letter}`);
+            await doname();
+            return;
+        case 'C':
+            queueCommandKeys(`o${letter}`);
             await doname();
             return;
         case 'd':
@@ -2451,9 +2419,23 @@ async function runInventoryAction({ key, item }) {
             queueCommandKeys(letter);
             await adjustSplit();
             return;
+        case 'O':
+            queueCommandKeys(letter);
+            await dosacrifice();
+            return;
+        case 'p':
+            queueCommandKeys(letter);
+            await dopay();
+            return;
         case 'P':
+        case 'W':
             queueCommandKeys(letter);
             await dowear();
+            return;
+        case 'q':
+            queueCommandKeys(letter);
+            game.iflags.menu_requested = true;
+            await doquaff();
             return;
         case 'Q':
             queueCommandKeys(letter);
@@ -2464,9 +2446,20 @@ async function runInventoryAction({ key, item }) {
             await doread({ gotoLevel });
             return;
         case 'R':
+            queueCommandKeys(letter);
+            if ((item.owornmask ?? 0) & W_ACCESSORY)
+                await removeWornItem('take off', true);
+            else
+                await dorub();
+            return;
         case 'T':
             queueCommandKeys(letter);
-            await removeWornItem('take off', true);
+            if ((item.owornmask ?? 0) & W_ARMOR)
+                await removeWornItem('take off', true);
+            else {
+                game.iflags.menu_requested = true;
+                await tipCommand();
+            }
             return;
         case 't':
             await dothrow(item);
@@ -2475,11 +2468,19 @@ async function runInventoryAction({ key, item }) {
             queueCommandKeys(letter);
             await dowield();
             return;
+        case 'V':
+            queueCommandKeys(letter);
+            await doinvoke();
+            return;
         case 'x':
             await doswapweapon();
             return;
         case 'X':
             await dotwoweapon();
+            return;
+        case 'z':
+            queueCommandKeys(letter);
+            await dozap();
             return;
         case '/':
             queueCommandKeys(`i${letter}`);
@@ -2653,7 +2654,7 @@ async function dochat() {
     game.context.move = 0;
 }
 async function wizWish() {
-    return makeWish({ allowWizardTerrain: true });
+    return makeWish();
 }
 // C refs: cmd.c Ctrl-G/wizgenesis, wizcmds.c wiz_genesis(), and read.c
 // create_particular().  The debug command remains zero-time.
@@ -3083,21 +3084,14 @@ async function runExtendedCommand(name) {
 // still consumes a turn after retouching, but its only effect is the ordinary
 // "Nothing happens." line.
 async function doinvoke() {
-    const eligible = (game.inventory || []).filter(object => !!(object.oartifact || object.artifact || OBJECT_UNIQUE[object.otyp]
-        || object.otyp === FAKE_AMULET_OF_YENDOR && !object.known));
-    if (!eligible.length) {
-        await pline("You don't have anything special to invoke.");
-        game.context.move = 0;
-        return;
-    }
-    const letters = eligible.map(object => object.invlet).join('');
-    const selection = await promptInventoryObject(`What do you want to invoke? [${compactInventoryLetters(letters)} or ?*] `, eligible, { verb: 'invoke', allowMenu: true });
-    if (selection.cancelled || !selection.object) {
+    const object = await chooseInventoryObject('invoke', candidate => candidate.oartifact || OBJECT_UNIQUE[candidate.otyp] || candidate.otyp === CRYSTAL_BALL
+        || candidate.otyp === FAKE_AMULET_OF_YENDOR && !candidate.known
+        ? GETOBJ_SUGGEST : GETOBJ_EXCLUDE, { forcePrompt: true });
+    if (!object) {
         game.context.move = 0;
         return;
     }
     game._pending_message = '';
-    const object = selection.object;
     const touch = await retouchHeroObject(object);
     if (touch.rejected || touch.died) {
         game.context.move = 1;
@@ -3106,7 +3100,10 @@ async function doinvoke() {
     const artifact = object.oartifact
         ? artifactById(object.oartifact) : null;
     if (!artifact || artifact.invokePower === null) {
-        await pline('Nothing happens.');
+        if (object.otyp === CRYSTAL_BALL)
+            await useCrystalBall(object);
+        else
+            await pline('Nothing happens.');
         game.context.move = 1;
         return;
     }
@@ -3498,10 +3495,15 @@ async function doadjust(selected = null, splitting = null) {
     if (!selected && game.flags.fixinv === false)
         reassignInventoryLetters();
     const repairGold = !selected && await checkInventoryGold('adjust');
-    let object = selected || await chooseInventoryObject('adjust', candidate => candidate.oclass === 12 && !repairGold ? GETOBJ_EXCLUDE : GETOBJ_SUGGEST, { forcePrompt: true });
+    let object = selected || await chooseInventoryObject('adjust', candidate => candidate.oclass === 12 && !repairGold ? GETOBJ_EXCLUDE : GETOBJ_SUGGEST, { forcePrompt: true, allowCount: true });
     if (!object) {
         game.context.move = 0;
         return;
+    }
+    if (!splitting) {
+        const previous = game.inventory[game.inventory.indexOf(object) - 1];
+        if (previous && previous.invlet === object.invlet)
+            splitting = previous;
     }
     const source = object.invlet;
     if (!source)
@@ -3536,6 +3538,8 @@ async function doadjust(selected = null, splitting = null) {
         }
         purse.invlet = '$';
         game.inventory.sort((a, b) => inventoryLetterRank(a) - inventoryLetterRank(b));
+        if (game.flags.fixinv === false)
+            reassignInventoryLetters();
         observeObjectForNaming(purse);
         await pline(`${action}: $ - ${inventoryItemDescription(purse)}.`);
         game.context.move = 0;
@@ -3544,10 +3548,12 @@ async function doadjust(selected = null, splitting = null) {
     const adjusting = object;
     const occupied = new Set(inventory.filter(candidate => candidate !== adjusting && !mergable(candidate, adjusting))
         .map(candidate => candidate.invlet));
-    const recommended = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    const slots = game.flags.fixinv === false
+        ? game.inventory.filter(item => item.oclass !== 12).length + (splitting ? 0 : 1) : 52;
+    const recommended = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'.slice(0, slots)
         .split('')
         .filter(letter => letter === adjusting.invlet || !occupied.has(letter))
-        .join('');
+        .join('') + (occupied.has('#') ? '#' : '');
     const destinationPrompt = `${splitting ? `Split ${object.quan}` : 'Adjust letter'} to what [${compactInventoryLetters(recommended)}] (? see used letters)?`;
     // The source item's queued letter bypasses getobj's prompt, but the
     // destination uses tty_yn_function(), which acknowledges unread prose.
@@ -3664,9 +3670,11 @@ async function doadjust(selected = null, splitting = null) {
         game.inventory.unshift(bumped);
     }
     game.inventory.sort((a, b) => inventoryLetterRank(a) - inventoryLetterRank(b));
+    if (game.flags.fixinv === false)
+        reassignInventoryLetters();
     game._pending_message = '';
     observeObjectForNaming(object);
-    await pline(`${action} ${destination} - ${inventoryItemDescription(object, {
+    await pline(`${action} ${object.invlet} - ${inventoryItemDescription(object, {
         primaryHandDetail: inventoryPrimaryHandDetail(object),
     })}.`);
     if (bumped)
@@ -5622,6 +5630,11 @@ async function doapply(cannedInvlet = null) {
 // Return the surviving object for the native talking-artifact tail. Applied
 // stacks can split or disappear, so each destructive owner returns its object.
 async function applyTool(item, underlay) {
+    if (item.otyp === CRYSTAL_BALL) {
+        const object = await useCrystalBall(item);
+        game.context.move = 1;
+        return object;
+    }
     if (item.otyp === LAND_MINE || item.otyp === BEARTRAP) {
         const object = await useSettableTrap(item);
         game.context.move = 1;
@@ -6201,60 +6214,30 @@ async function dothrow(selectedItem = null, capabilityChecked = false, suppliedS
     if (!selectedItem && game.flags.fixinv === false)
         reassignInventoryLetters();
     // C getobj() sorts its candidates independently of the carried chain.
-    const throwables = (game.inventory || []).filter(item => {
+    const throwClassification = (item) => {
         const objectClass = item.oclass || objectClassForType(item.otyp);
-        return (objectClass === 12 || objectClass === (wieldingSling ? 13 : 2))
-            && !(item === game.uwep && (item.quantity ?? item.quan ?? 1) === 1);
-    }).sort((left, right) => inventoryLetterOrder(left.invlet) - inventoryLetterOrder(right.invlet));
-    const letters = throwables.map(item => item.invlet).join('');
-    const prompt = letters
-        ? `What do you want to throw? [${letters} or ?*] `
-        : 'What do you want to throw? [*] ';
+        if (item.bknown && isWeldedPrimary(item))
+            return GETOBJ_DOWNPLAY;
+        if (item.otyp === BOOMERANG || item === game.uwep && (item.otyp === AKLYS
+            || artifactById(item.oartifact)?.name === 'Mjollnir'
+                && game.urole?.key === 'valkyrie' && currentAttribute(A_STR) >= STR19(25)))
+            return GETOBJ_SUGGEST;
+        if (item.quan === 1 && (item === game.uwep || item === game.uswapwep && game.u.twoweap))
+            return GETOBJ_DOWNPLAY;
+        return objectClass === 12 || objectClass === (wieldingSling ? 13 : 2)
+            || item.otyp === BOULDER && ((MONSTER_FLAGS2[game.u.umonnum ?? -1] ?? 0) & M2_ROCKTHROW)
+            ? GETOBJ_SUGGEST : GETOBJ_DOWNPLAY;
+    };
     if (!selectedItem) {
-        let key = await promptKey(prompt);
-        for (;;) {
-            if ([27, 32, 10, 13].includes(key)) {
-                await pline('Never mind.');
-                game.context.move = 0;
-                return;
-            }
-            if (key === 63) {
-                ({ key } = await selectInventoryObject({
-                    // invent.c:getobj(): `?` normally lists suggestions.  If
-                    // lets is empty but altlets forced the prompt, it lists
-                    // those downplayed objects instead.
-                    items: throwables.length
-                        ? throwables : (game.inventory || []),
-                    includeGold: true,
-                }));
-                if (!key)
-                    key = await promptKey(prompt);
-                continue;
-            }
-            if (key === 42) {
-                ({ key } = await selectInventoryObject());
-                if (!key)
-                    key = await promptKey(prompt);
-                continue;
-            }
-            selectedItem = game.inventory?.find(candidate => candidate.invlet === String.fromCharCode(key)) ?? null;
-            game.context.botl = true;
-            if (selectedItem)
-                break;
-            // invent.c:getobj() retains the picker after an absent letter.
-            // Reissuing its prompt forces tty to acknowledge the intervening
-            // error line, so the recorded boundary exposes --More-- first.
-            await moreUntilDismissed("You don't have that object.");
-            game._pending_message = '';
-            key = await promptKey(prompt);
-        }
+        selectedItem = await chooseInventoryObject('throw', throwClassification, { forcePrompt: true, allowCount: true });
     }
     const item = selectedItem;
     if (!item) {
         game.context.move = 0;
-        game._pending_message = '';
         return;
     }
+    const previous = game.inventory[game.inventory.indexOf(item) - 1];
+    const splitParent = previous && previous.invlet === item.invlet ? previous : null;
     const selectedObjectClass = item.oclass || objectClassForType(item.otyp);
     const selectedIsGold = selectedObjectClass === 12;
     const directGoldThrow = selectedIsGold && item !== game.uquiver;
@@ -6263,6 +6246,8 @@ async function dothrow(selectedItem = null, capabilityChecked = false, suppliedS
     const selfThrow = direction === '.';
     const verticalThrow = direction === '<' || direction === '>';
     if (!isMovementKey(direction) && !verticalThrow && !selfThrow) {
+        if (splitParent)
+            await rejoinObjectStack(splitParent, item, game);
         const quitDirection = [27, 32, 10, 13].includes(directionKey);
         if (!quitDirection && game.flags?.cmdassist !== false) {
             await showTextPages([directionAssistPage()], {
@@ -6287,6 +6272,8 @@ async function dothrow(selectedItem = null, capabilityChecked = false, suppliedS
     game.u.dz = dz;
     if (directGoldThrow) {
         if (selfThrow) {
+            if (splitParent)
+                await rejoinObjectStack(splitParent, item, game);
             await pline('You cannot throw gold at yourself.');
             game.context.move = 0;
             return;
@@ -6304,11 +6291,15 @@ async function dothrow(selectedItem = null, capabilityChecked = false, suppliedS
         return;
     }
     if (!await canLetGo(item, 'throw')) {
+        if (splitParent)
+            await rejoinObjectStack(splitParent, item, game);
         game.context.move = 0;
         return;
     }
     const mjollnir = artifactById(item.oartifact, game)?.name === 'Mjollnir';
     if (mjollnir && item !== game.uwep) {
+        if (splitParent)
+            await rejoinObjectStack(splitParent, item, game);
         await pline(`The ${objectName(item)} must be wielded before it can be thrown.`);
         game.context.move = 0;
         return;
@@ -6316,11 +6307,15 @@ async function dothrow(selectedItem = null, capabilityChecked = false, suppliedS
     if (mjollnir && currentAttribute(A_STR) < STR19(25)
         || item.otyp === BOULDER
             && !((MONSTER_FLAGS2[game.u.umonnum] ?? 0) & M2_ROCKTHROW)) {
+        if (splitParent)
+            await rejoinObjectStack(splitParent, item, game);
         await pline("It's too heavy.");
         game.context.move = 1;
         return;
     }
     if (selfThrow) {
+        if (splitParent)
+            await rejoinObjectStack(splitParent, item, game);
         await pline('You cannot throw an object at yourself.');
         game.context.move = 0;
         return;

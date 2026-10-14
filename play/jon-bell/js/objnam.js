@@ -1,6 +1,7 @@
 import { is_unpaid, unpaid_cost, get_cost_of_shop_item, record_price_quote, append_price_quote, currency, obfree, delete_contents } from './shk.js';
 import { alter_cost, shk_your } from './shk.js'; // C do_name.c:410
 import { lookup_novel } from './do_name.js';
+import { apron_text } from './read.js';
 import { COST_CONTENTS, BURN_OBJECT, otrapped_of, GLIB as GLIB_PROP_ON } from './const.js';
 // @ts-nocheck
 // objnam.js — readobjnam and helpers for wish parsing.
@@ -4178,13 +4179,11 @@ export function not_fully_identified(otmp) {
         return true;
     if ((otmp.rknown | 0)
         || ((otmp.oclass | 0) !== ARMOR_CLASS && (otmp.oclass | 0) !== WEAPON_CLASS
+            && !_is_weptool(otmp)
             && (otmp.oclass | 0) !== BALL_CLASS))
         return false;
-    /* C: lack of `rknown' only matters for vulnerable objects — is_damageable()
-     * (obj.h) is is_rustprone||is_corrodeable||is_flammable||is_rottable.  Not
-     * modelled; C's own comment calls the BALL/weptool cases "(useless)".  Being
-     * conservative here (FALSE) matches every non-eroding object. */
-    return false;
+    // C objnam.c:1819-1820: erosion-proofing must be known for vulnerable objects.
+    return _is_damageable(otmp);
 }
 /* C obj.h:337  #define Is_container(o) ((o)->otyp >= LARGE_BOX \
  *                                   && (o)->otyp <= BAG_OF_TRICKS)
@@ -4748,6 +4747,8 @@ export async function singular(otmp, func) {
  *   - the leash "(attached to <mon>)" arm (C:1428) needs find_mid.
  *   - the shop-pricing tail (C:1648-1685) and the wizweight/wizmgender debug
  *     suffixes (C:1690-1704, C:1613-1624).
+ *   - the warning-artifact glow inside the weapon parentheses (C:1599-1603).
+ *   - the wizmgender debug suffix (C:1555-1559).
  *   - the artifact-glow / arti-light insertions inside the worn-weapon and
  *     worn-armor parentheses (C:1602-1610).
  */
@@ -4991,6 +4992,9 @@ async function doname_base(obj, doname_flags) {
             if (bp.endsWith(')') && obj === game.u?.uarmg
                 && ((game.u.uprops?.[GLIB_PROP_ON]?.intrinsic) | 0) !== 0)
                 bp += '; slippery)';
+            /* C objnam.c:1408-1413 — ConcatF1 replaces the final paren. */
+            if (bp.endsWith(')') && !_Blind() && obj.lamplit && artifact_light(obj))
+                bp = `${bp.slice(0, -1)}, ${arti_light_description(obj)} lit)`;
         }
         /* FALLTHROUGH — C:1420 */
     case WEAPON_CLASS:
@@ -5030,7 +5034,7 @@ async function doname_base(obj, doname_flags) {
                 const full_burn_time = 20 * Number(OC_COST[otyp]);
                 let turns_left = Number(obj.age ?? 0);
                 if (obj.lamplit)
-                    turns_left += peek_timer(BURN_OBJECT, { a_obj: obj })
+                    turns_left += peek_timer(BURN_OBJECT, { a_obj: obj, a_long: null })
                         - ((game.moves ?? 0) | 0);
                 if (turns_left < full_burn_time) prefix += 'partly used ';
             }
@@ -5165,6 +5169,13 @@ async function doname_base(obj, doname_flags) {
         const rest = prefix.slice(2);
         prefix = just_an('', rest || bp) + rest;
     }
+    // C objnam.c:1695-1702: wizard-requested weight follows all other suffixes.
+    if (wizard() && g.iflags?.wizweight) {
+        if ((doname_flags & DONAME_WITH_PRICE) && bp.endsWith(')'))
+            bp = `${bp.slice(0, -1)}, ${obj.owt >>> 0} aum)`;
+        else
+            bp += ` (${obj.owt >>> 0} aum)`;
+    }
     return strprepend(bp, prefix);
 }
 /* C objnam.c:1530 — recognize eggs after learning their species by hatching. */
@@ -5237,14 +5248,17 @@ function _xname_flags_body(obj, cxn_flags, side_effects) {
             buf = makeplural(buf);
 
         /* C:960-994 — end-of-game disclosure text, keyed on o_id (zeroed by
-         * distant_name/minimal_xname so it is skipped there).  Only the
-         * HAWAIIAN_SHIRT arm is ported (read.c:189-221 hawaiian_motif, a
-         * private copy of js/read.js's — the shirt's o_id ^ ubirthday, RNG-free).
-         * KNOWN GAP: T_SHIRT/ALCHEMY_SMOCK " with text", CANDY_BAR " labeled". */
+         * minimal_xname so it is skipped there).
+         * KNOWN GAP: T_SHIRT " with text", CANDY_BAR " labeled". */
         if (game.program_state?.gameover && obj.o_id && (obj.otyp | 0) === 136) {
             const motif = (((obj.o_id | 0) ^ ((game.u?.ubirthday ?? 0) | 0)) >>> 0)
                 % HAWAIIAN_MOTIFS_XN.length;
             buf += ` with ${an(HAWAIIAN_MOTIFS_XN[motif])} motif`;
+        }
+        if (game.program_state?.gameover && obj.o_id
+            && (obj.otyp | 0) === ALCHEMY_SMOCK) {
+            // C objnam.c:978-982; read.c:254-280 includes erosion of the text.
+            buf += ` with text "${apron_text(obj)}"`;
         }
 
         /* C:998-999 */

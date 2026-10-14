@@ -2,7 +2,6 @@
 // potion.js — Potion subsystem + fountain interactions.
 // C ref: nethack-c/src/potion.c, nethack-c/src/fountain.c
 import { game, wizard, discover } from './gstate.js';
-import { newobj } from './game.js';
 import { make_blinded, resist, explode, explode_oil, potionhit_polymorph, poly_obj, obj_unpolyable, ubreatheu, melt_ice_zap } from './zap.js';
 import { spoteffects } from './landing-effects.js';
 import { nothing_happens, nothing_seems_to_happen } from './const.js';
@@ -42,7 +41,9 @@ import { silly_thing_dw, inaccessible_equipment, float_up, hard_helmet } from '.
 import { getlin } from './wizcmds.js';
 import { nomul } from './allmain.js';
 import { fall_asleep } from './timeout.js';
-import { mkgold, bcsign, makemon, mkobj, mkobj_at, mksobj_at, rnd_class, healmon, wake_nearto } from './mklev.js';
+import { mkgold, bcsign, makemon, mkobj, mkobj_at, mksobj_at, rnd_class, healmon, wake_nearto, mksobj, dealloc_obj } from './mklev.js';
+import { obj_resists } from './zap.js';
+import { arti_light_radius, maybe_adjust_light } from './light.js';
 import { curse } from './mkobj.js';
 import { heal_legs, unfixable_trouble_count, doup, body_part as body_part_cmd, ceiling, altar_wrath } from './cmd.js';
 import { WOUNDED_LEGS } from './const.js';
@@ -74,7 +75,7 @@ const RING_CLASS = 4;
 import { getObjName, discover_object, observe_object } from './o_init.js';
 import { bottlename } from './lock.js';
 import { surface as surface_cmd, body_part, trycall as trycall_cmd, trycall_noprompt, reorder_invent } from './cmd.js';
-import { attacktype_fordmg } from './makemon.js';
+import { attacktype_fordmg, splitobj } from './makemon.js';
 import { is_ice } from './engrave.js';
 import { can_reach_floor, hold_another_object } from './hold_another_object.js';
 import { obj_extract_self } from './mklev.js';
@@ -3396,12 +3397,26 @@ async function _H2Opotion_dip(potion, targobj, useeit, objphrase) {
             else if (costchange !== COST_none)
                 await costly_alteration(targobj, costchange);
         }
+        // C mkobj.c:1749-1835: BUC changes also adjust an active object's light.
+        const old_light = targobj.lamplit ? arti_light_radius(targobj) : 0;
         func(targobj);
+        if (targobj.lamplit) await maybe_adjust_light(targobj, old_light);
         res = true;
     }
     return res;
 }
 function _an(s) { return /^[aeiou]/i.test(s) ? `an ${s}` : `a ${s}`; }
+
+// C potion.c:1595-1620: scroll light changes artifact light through water's BUC effect.
+export async function impact_arti_light(obj, worsen, seeit) {
+    if ((worsen ? obj.cursed : obj.blessed) || obj_resists(obj, 25, 75))
+        return;
+    const otmp = await mksobj(POT_WATER, true, false);
+    if (worsen) _curse(otmp);
+    else _bless(otmp);
+    await _H2Opotion_dip(otmp, obj, seeit, seeit ? Yobjnam2(obj, 'glow') : '');
+    await dealloc_obj(otmp);
+}
 function _Yobjnam2_glow(obj) {
     return `Your ${_simpleoname(obj)} glows`;
 }
@@ -3490,6 +3505,8 @@ async function potion_dip(obj, potion) {
                 return ECMD_TIME;
             }
         }
+        potion.in_use = false; /* C potion.c:2501: didn't go poof */
+        return ECMD_TIME;
     } else if ((obj.oclass | 0) === POTION_CLASS && obj.otyp !== potion.otyp) {
         let amt = obj.quan | 0;
         let magic;
@@ -3505,7 +3522,7 @@ async function potion_dip(obj, potion) {
             else amt = rnd(amt - (7 - 1)) + (7 - 1);
 
             if (amt < (obj.quan | 0)) {
-                obj = _splitobj(obj, amt);
+                obj = await splitobj(obj, amt);
                 qbuf = `${obj.quan | 0} of the`;
             }
         }
@@ -3725,7 +3742,7 @@ async function potion_dip(obj, potion) {
         }
         /* C potion.c:2741-2744 — split one off a merged stack to neutralize;
          * with multiple merged potions only one is affected. */
-        const singlepotion = (potion.quan | 0) > 1 ? _splitobj(potion, 1)
+        const singlepotion = (potion.quan | 0) > 1 ? await splitobj(potion, 1)
                                                     : potion;
 
         /* C potion.c:2746 — COST_NUTRLZ is alteration verb 10.  The shared
@@ -3851,15 +3868,6 @@ function _Yname2(obj) {
 const NH_ORANGE = 'orange';
 const NH_RED = 'red';
 function obj_dip_hcolor(pref) { return hcolor(pref); }
-
-function _splitobj(obj, num) {
-    const o = newobj(obj);
-    o.quan = num;
-    obj.quan = (obj.quan | 0) - num;
-    o.nobj = obj.nobj;
-    obj.nobj = o;
-    return o;
-}
 
 async function _costlyAlterationInventoryDip(obj) {
     if ((obj.where | 0) === OBJ_INVENT || (obj.where | 0) === OBJ_FREE) {
@@ -5570,7 +5578,9 @@ async function peffect_polymorph(otmp) {
     else {
         await polyself(POLY_CONTROLLED | POLY_LOW_CTRL);
         if ((game.u.mtimedone | 0) && ((game.u.umonnum | 0) !== (game.u.umonster | 0)))
-            game.u.mtimedone = Math.min(game.u.mtimedone | 0, rn2(15) + 10);
+            // C potion.c:1329 / hack.h:1518: min evaluates its chosen arm again.
+            game.u.mtimedone = (game.u.mtimedone | 0) < rn2(15) + 10
+                ? (game.u.mtimedone | 0) : rn2(15) + 10;
     }
 }
 

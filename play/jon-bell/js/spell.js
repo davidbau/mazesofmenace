@@ -68,6 +68,8 @@ import { use_skill } from './uhitm.js';
  * for the worn-armour slots; ARMOR_DATA is the generated ARMOR_CLASS slice of
  * the C objects table and armorIsMetallic() is objclass.h:194 restated. */
 import { ARMOR_DATA, armorIsMetallic } from './armor_data.js';
+import { weight } from './weight.js';
+import { OC_WEIGHT } from './oc_weight.generated.js';
 import { ubuzz, zap_dig } from './zap.js';
 /* ── spelleffects() effect-dispatch surface ─────────────────────────────────
  * spell.c:1385 spelleffects() does not *emulate* the spell; it builds a pseudo
@@ -348,7 +350,6 @@ const QUARTERSTAFF      = 79;
 const ROBE              = 143;
 const SMALL_SHIELD      = 150;
 const ROBE_TAG          = 'ROBE';
-const SMALL_SHIELD_TAG  = 'SMALL_SHIELD';
 const QUARTERSTAFF_TAG  = 'QUARTERSTAFF';
 
 /* True when `obj` is of object type `num` (objects.h index), tolerating the
@@ -529,21 +530,9 @@ function percent_success(spellSlot) {
     if (chance < 0)  chance = 0;
     if (chance > 120) chance = 120;
 
-    /* Heavy shield penalty.
-     * C ref: spell.c:2269 `if (uarms && weight(uarms) > (int) objects[SMALL_SHIELD].oc_weight)`
-     * objects.h gives SMALL_SHIELD oc_weight = 30, so C penalises any shield
-     * STRICTLY heavier than 30 — a small shield itself (exactly 30) does not
-     * penalise.
-     * KNOWN GAP: weight() (mkobj.c:1900) sums the object's own oc_weight plus
-     * any contents, and this port has no objects[].oc_weight table wired up
-     * here, so the test is approximated by object identity: everything that is
-     * not a SMALL_SHIELD is treated as heavier than 30.  That is exact for the
-     * shields at or below 30 (only SMALL_SHIELD qualifies) and wrong only for a
-     * hypothetical sub-30 non-small shield, of which objects.h has none — but
-     * it would also mis-handle an ELVEN_MITHRIL_COAT-style contents case if a
-     * shield could ever hold contents.  Replace with a real weight() when the
-     * oc_weight table lands. */
-    if (uarms && !otypIs(uarms, SMALL_SHIELD, SMALL_SHIELD_TAG)) {
+    /* C spell.c:2269: only shields heavier than a small shield incur this
+     * penalty. Drain/shock resistance shields also weigh 30 (objects.h:656-661). */
+    if (uarms && weight(uarms) > OC_WEIGHT[SMALL_SHIELD]) {
         if (otyp === spelspec) {
             chance = Math.trunc(chance / 2);
         } else {
@@ -2101,7 +2090,7 @@ async function getdir_for_spell() {
 
 /* C ref: zap.c:3480 spell_damage_bonus (zap.js's copy is an identity stub). */
 function spell_damage_bonus_sp(dmg) {
-    const intell = acurr_real(1 /* A_INT */);
+    const intell = acurr_real(game.u, A_INT);
     const lvl = game.u.ulevel | 0;
     if (intell <= 9) {
         if (dmg > 1)

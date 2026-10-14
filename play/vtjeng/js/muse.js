@@ -25,6 +25,7 @@ import {
     D_CLOSED,
     D_LOCKED,
     DEAF,
+    EXPL_FIERY,
     DRAWBRIDGE_UP,
     EDOG,
     FAINTED,
@@ -148,7 +149,7 @@ import { add_to_container, carrying, freeinv, hands_obj, obfree, obj_extract_sel
 import { game } from './gstate.js';
 import { can_carry } from './moncarry.js';
 import { dist2, distmin, sgn, strsubst } from './hacklib.js';
-import { makemon } from './makemon_create.js';
+import { makemon, makemon_runtime } from './makemon_create.js';
 import { grow_up, rndmonst, set_malign } from './makemon.js';
 import { awaken_soldiers } from './music.js';
 import { m_next2u } from './mhitu.js';
@@ -965,7 +966,9 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
         const cc = enexto(mtmp.mx, mtmp.my, pm, { state });
         if (!cc) return 0;
         await mzapwand(mtmp, otmp, false, state);
-        const mon = makemon(null, cc.x, cc.y, NO_MM_FLAGS, { state });
+        const mon = await makemon_runtime(
+            null, cc.x, cc.y, NO_MM_FLAGS, { ...env, state },
+        );
         if (mon && canspotmon(mon, state) && oseen)
             discover_object(O.WAN_CREATE_MONSTER, true, true, true, state);
         return 2;
@@ -990,7 +993,9 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
         while (cnt-- > 0) {
             const cc = enexto(mtmp.mx, mtmp.my, fish, { state });
             if (!cc) break;
-            const mon = makemon(pm, cc.x, cc.y, NO_MM_FLAGS, { state });
+            const mon = await makemon_runtime(
+                pm, cc.x, cc.y, NO_MM_FLAGS, { ...env, state },
+            );
             if (mon && canspotmon(mon, state))
                 known = true;
         }
@@ -1472,7 +1477,9 @@ export async function mloot_container(mon, container, vismon, rawEnv = {}) {
             // [shouldn't be a problem; even though this item didn't
             // give the rummage message, that's what mon was doing]
             xobj.nomerge = 1;
-            xobj = add_to_container(container, xobj, { state });
+            const addition = add_to_container(container, xobj, { state });
+            xobj = addition && typeof addition.then === 'function'
+                ? await addition : addition;
             if (!already_nomerge)
                 xobj.nomerge = 0;
             container.owt = weight(container, { state });
@@ -1734,7 +1741,8 @@ export async function use_misc(mtmp, selection, state, env = {}) {
             await pline_mon(mtmp,
                 `${capitalizedMonsterName(mtmp, state)} yanks ${the_weapon} from your ${hand_buf}!`,
                 state);
-            place_object(obj, mtmp.mx, mtmp.my, { state });
+            const placement = place_object(obj, mtmp.mx, mtmp.my, { state });
+            if (placement && typeof placement.then === 'function') await placement;
             break;
         case 2: /* onto floor beneath you */
             await pline_mon(mtmp,
@@ -3448,7 +3456,9 @@ async function muse_unslime(mon, obj, trap, by_you, state = game, env = {}) {
             dmg = Math.trunc((2 * (random.rn1(3, 3) + 2 * bcsign(obj)) + 1) / 3);
             await m_useup(mon, obj, actionEnv);
             /* -11 => monster's fireball */
-            note_unported('explode.c explode');
+            const { explode } = await import('./explode.js');
+            await explode(mon.mx, mon.my, -11, dmg, O.SCROLL_CLASS,
+                by_you ? -EXPL_FIERY : EXPL_FIERY, state, actionEnv);
             dmg = 0; /* damage has been applied by explode() */
         }
     } else if (otyp === O.POT_OIL) {

@@ -498,8 +498,8 @@ function hero_map_attr() {
  * all inherit it, as in C. Default symbols all show '#', so the arm
  * fires unless SYMBOLS separates them (showsyms live, `:2653`).
  * Named omissions: the `:2934` has_rogue_color first-arm (ROGUESET +
- * IBM handling, never active on contest tty — same standing as the
- * S_litcorr CLR_WHITE sibling); the `:2897–2912` MG_BW_LAVA/ICE/SINK
+ * IBM handling, never active on contest tty — same standing as in
+ * litcorr_showsyms_white); the `:2897–2912` MG_BW_LAVA/ICE/SINK
  * chain (needs !use_color plus customized colliding symbols; no
  * corpus session reaches it).
  */
@@ -1944,7 +1944,17 @@ function cmap_idx_to_tty(cmap_idx) {
     case S_CORR:
         return { ch: '#', color: NO_COLOR, dec: false };
     case S_LITCORR:
-        return { ch: '#', color: CLR_WHITE, dec: false };
+        // C reset_glyphmap `:2938–2940` + cmap_color `:2684` (defsyms
+        // CLR_GRAY, defsym.h:117): WHITE only when the live litcorr
+        // byte equals the live corr byte; else the use_color-gated
+        // gray base (tty-default). RogueEpyx \xb2 vs \xb1 paints
+        // gray `2`, not white.
+        return {
+            ch: '#',
+            color: litcorr_showsyms_white() ? CLR_WHITE
+                : (game.iflags?.wc_color === false ? NO_COLOR : CLR_GRAY),
+            dec: false,
+        };
     case S_ENGRCORR:
         return { ch: '#', color: CLR_BRIGHT_BLUE, dec: false };
     case S_UPSTAIR:
@@ -3870,8 +3880,16 @@ export function symset_render_char(code, handling) {
     } else {
         out = { ch: String.fromCharCode(c), dec: false };
     }
-    if (out.ch.charCodeAt(0) < 32)
-        return { ch: ' ', dec: false }; // capture-ignore ≈ cleared cell
+    // C wintty.c g_putch `:3745–3790` emits the showsyms byte raw
+    // (IBM arm `:3753–3758` putchar(ch), no control mapping): RogueEpyx
+    // S_human 0x01 / S_coin 0x0f go out as C0 bytes. They paint nothing
+    // visible — real terminals ignore C0, and the nomux shadow drops
+    // ch < 32 (termcap.c nomux_putch, patch 006) so the capture keeps
+    // the previous cell content (stale), NOT a cleared cell. Return the
+    // raw byte (gbuf layer, C-exact); the grid-write gates below mirror
+    // the drop. The old ' ' mapping painted cleared cells where C and
+    // the capture show stale terrain (scen-symset-Caveman-50059032 s16:
+    // gold over floor, hero over stairs).
     return out;
 }
 
@@ -3926,6 +3944,26 @@ export function cmap_to_roguecolor(cmap) {
         color = NO_COLOR;
 
     return color;
+}
+
+/**
+ * C ref: display.c reset_glyphmap `:2938–2940` (the engrcorr twin's
+ * "S_litcorr CLR_WHITE sibling"): lit corridor is CLR_WHITE only when
+ * its live showsyms byte equals the live S_corr byte ("provide a
+ * visible difference if normal and lit corridor use the same
+ * symbol"); otherwise it keeps the cmap_color `:2684` base (defsyms
+ * CLR_GRAY, defsym.h:116–117 — tty-default via tty_map_color, the
+ * termcap nilstring arms). The `:2935` has_rogue_color first-arm stays
+ * a named omission (never active on contest tty — same standing as
+ * the `:2934` note on engrcorr_map_attr). The white is ungated (C
+ * overwrites even on mono); the gray base keeps the macro's
+ * use_color gate at the call sites. Reads live_showsyms (D-3950):
+ * the static showsyms copy lacks loaded-symset carriers, and the
+ * divergence is exactly loaded sets whose corr/litcorr bytes differ
+ * (RogueEpyx \xb1 vs \xb2; MACgraphics \xb0 vs the #-fallback).
+ */
+function litcorr_showsyms_white() {
+    return live_showsyms(S_LITCORR) === live_showsyms(S_CORR);
 }
 
 function wall_glyph_table() {
@@ -4433,12 +4471,17 @@ export function terrain_glyph(loc, x, y) {
         : { ch: '.', color: NO_COLOR, dec: false };
     case CORR: {
         // C ref: display.c back_to_glyph — S_litcorr if waslit||lit_corridor
-        // else S_corr. reset_glyphmap: S_litcorr + shared '#' → CLR_WHITE;
-        // S_corr is defsym CLR_GRAY, which tty records as NO_COLOR.
+        // else S_corr. reset_glyphmap `:2938–2940`: S_litcorr is CLR_WHITE
+        // only when its live byte equals the live S_corr byte (shared
+        // '#' under DEC/ASCII); else the `:2684` gray base (tty-default
+        // via tty_map_color). S_corr is defsym CLR_GRAY, which tty
+        // records as NO_COLOR.
         const litCorr = !!(loc.waslit || game.flags?.lit_corridor);
         return {
             ch: '#',
-            color: litCorr ? CLR_WHITE : NO_COLOR,
+            color: !litCorr ? NO_COLOR
+                : litcorr_showsyms_white() ? CLR_WHITE
+                : (game.iflags?.wc_color === false ? NO_COLOR : CLR_GRAY),
             dec: false,
         };
     }
@@ -5200,7 +5243,10 @@ function reveal_terrain_cmap_hack(g) {
             glyph: cmap_to_glyph(S_CORR),
         };
     }
-    if (g.ch === '#' && g.color === CLR_WHITE) {
+    // Gray-# joins white-# here: under symsets whose corr/litcorr bytes
+    // differ, a glyph-less litcorr memory carries the `:2684` gray base
+    // (S_corr memories stay NO_COLOR, so gray-# is unambiguous).
+    if (g.ch === '#' && (g.color === CLR_WHITE || g.color === CLR_GRAY)) {
         const fixed = { ch: '#', color: NO_COLOR, dec: false };
         if (typeof g.glyph === 'number') fixed.glyph = g.glyph | 0;
         return fixed;
@@ -6529,9 +6575,13 @@ export function newsym(x, y) {
         let mem = loc.remembered_glyph;
         const darkRoomColor = game.flags?.dark_room !== false
             && game.iflags?.wc_color !== false;
+        // Gray-# joins white-# in the glyph-less fallback: under symsets
+        // whose corr/litcorr bytes differ, litcorr memories carry the
+        // `:2684` gray base (S_corr memories stay NO_COLOR, so gray-# is
+        // unambiguous — typ is CORR here, never CLOUD).
         const isLitcorr = (loc.typ | 0) === CORR && (
             memory_is_cmap(mem, S_LITCORR)
-            || (mem.ch === '#' && mem.color === CLR_WHITE)
+            || (mem.ch === '#' && (mem.color === CLR_WHITE || mem.color === CLR_GRAY))
         );
         const isRoomFloor = (loc.typ | 0) === ROOM
             && memory_is_cmap(mem, S_ROOM_CMAP);
@@ -6574,11 +6624,18 @@ export function newsym(x, y) {
         const floorObj = objects_at(x, y);
         const livePile = !!(floorObj && !covers_objects(x, y)
             && obj_is_piletop(floorObj));
-        const attr = (livePile || mem.objpile)
-            ? obj_map_attr(floorObj, !livePile)
-            : 0;
         const gid = typeof mem.glyph === 'number' ? mem.glyph
             : (mem.invisible ? GLYPH_INVISIBLE : NO_GLYPH);
+        // C wintty.c tty_print_glyph `:3930–3936`: inverse needs a flag on
+        // the PAINTED id — MG_OBJPILE lives only on piletop-bank ids
+        // (reset_glyphmap `:2788–2821`), MG_FEMALE on statue banks
+        // (`:2828–2835`). A pile under a remembered non-pile glyph (trap
+        // over an unseen corpse pile) takes no inverse.
+        const inverseBank = gid >= GLYPH_STATUE_OFF
+            && gid < GLYPH_UNEXPLORED_OFF;
+        const attr = ((livePile || mem.objpile) && inverseBank)
+            ? obj_map_attr(floorObj, !livePile)
+            : 0;
         show_glyph_cell(x, y, mem.ch, mem.color, mem.decgfx, attr, gid);
     } else {
         // C: show_mem → show_glyph(x, y, lev->glyph); unexplored glyph
@@ -8028,6 +8085,13 @@ export function paint_gbuf_level_to_terminal(level) {
             let ch = loc.disp_ch ?? ' ';
             const color = loc.disp_color ?? NO_COLOR;
             const attr = loc.disp_attr ?? 0;
+            // Same C0 drop as _paint_gbuf_cell (nomux_putch ch < 32):
+            // control bytes leave the stale grid cell in place.
+            if (ch && ch.charCodeAt(0) < 32) {
+                loc.gnew = 0;
+                last = { x, y };
+                continue;
+            }
             if (loc.disp_decgfx && ch && ch !== ' ') {
                 const uni = DEC_TO_UNICODE[ch];
                 if (uni && ch !== '{' && ch !== '`' && ch !== 'g'
@@ -8060,6 +8124,11 @@ function _paint_gbuf_cell(mx, my, sc, sr) {
             || mx >= clipxmax || my >= clipymax)) return;
     if (loc.disp_ch == null || loc.disp_ch === '') return;
     let ch = loc.disp_ch;
+    // C0 control bytes paint nothing visible: C g_putch emits them raw
+    // (wintty.c `:3753–3758`), real terminals ignore C0, and nomux drops
+    // ch < 32 (termcap.c nomux_putch, patch 006) — the capture keeps the
+    // stale cell. Mirror the drop: leave the grid cell untouched.
+    if (ch.charCodeAt(0) < 32) return;
     if (loc.disp_decgfx) {
         const uni = DEC_TO_UNICODE[ch];
         if (uni && ch !== '{' && ch !== '`' && ch !== 'g'

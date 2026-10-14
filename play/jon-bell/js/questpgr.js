@@ -26,7 +26,7 @@ import { NEUTRAL, MIN_QUEST_LEVEL } from './const.js';
  * is_quest_artifact() lives in js/objnam.js (js/cmd.js's same-named export is a
  * throwing stub — the file-local-stub-shadows-real-port shape). */
 import { OBJ_INVENT, OBJ_FLOOR, OBJ_MINVENT, OBJ_MIGRATING, OBJ_BURIED, Has_contents } from './const.js';
-import { is_quest_artifact } from './objnam.js';
+import { is_quest_artifact, makesingular } from './objnam.js';
 import { rank_of } from './rank_data.js';
 import { putmsghistory } from './display.js';
 import { roles as ROLES } from './roles.js';
@@ -3866,8 +3866,7 @@ function _impossible(msg) {
 /* C questpgr.c:262 convert_line(in_line, out_line) — %-arg substitution for one
  * line.  Ports the arms reachable from the entries above: the bare arg (default
  * `--c` undo), plus An/an, capitalize, pluralize, possessive and "the "-strip.
- * The pronoun arms (%.h/%.H/%.i/%.I/%.j/%.J) are NOT ported — no ported entry
- * uses them; hitting one reports and falls through to the bare arg. */
+ * Pronoun modifiers are handled by the qtext_pronoun arm below. */
 function convert_line(in_line) {
     let out = '';
     for (let i = 0; i < in_line.length; i++) {
@@ -3893,12 +3892,21 @@ function convert_line(in_line) {
             if (buf.slice(0, 4).toLowerCase() === 'the ') { out += buf.slice(4); continue; }
             break;
         case 'h': case 'H': case 'i': case 'I': case 'j': case 'J':
-            /* C questpgr.c:qtext_pronoun — the quest leader's pronoun. */
+            /* C questpgr.c:199-231 qtext_pronoun. */
             if ('dlno'.includes(in_line[i].toLowerCase())) {
                 const who = in_line[i].toLowerCase();
+                if (who === 'o') {
+                    const plural = in_line[i] === 'o' && (/Eyes /i.test(buf)
+                        || buf.toLowerCase() !== makesingular(buf).toLowerCase());
+                    const forms = plural ? { h: 'they', i: 'them', j: 'their' }
+                        : { h: 'it', i: 'it', j: 'its' };
+                    const pronoun = forms[mod.toLowerCase()];
+                    out += mod === mod.toLowerCase() ? pronoun : _highc(pronoun);
+                    i++;
+                    continue;
+                }
                 i++;
-                /* %l names the role leader; the other pronoun sources in
-                 * quest.lua (%n/%d/%o) are not female in the role table. */
+                /* %l and %n name the role's leader and nemesis. */
                 const female = (who === 'l' && _leader_female())
                     || (who === 'n' && _nemesis_female());
                 const forms = female

@@ -1,4 +1,4 @@
-// C makemon.c:bagotricks(), for doapply's one-charge use.
+// C makemon.c:bagotricks(), shared by applying and tipping.
 import { M_AP_MONSTER, M_AP_TYPE } from './const.js';
 import { canSeeMonster, canSenseMonster, plineWithContinuation as pline } from './display.js';
 import { game } from './gstate.js';

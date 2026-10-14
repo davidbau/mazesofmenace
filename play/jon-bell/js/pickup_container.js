@@ -68,6 +68,9 @@ import { sellobj_state, sellobj, costly_spot, shk_your, addtobill, pick_pick,
          currency, shop_keeper, stolen_value, safe_qbuf } from './shk.js';
 import { obfree, scatter, losehp } from './dokick.js';
 import { rn2, d } from './rng.js';
+import { MENU_TRADITIONAL } from './const.js';
+import { query_classes, add_valid_menu_class, allow_category } from './pickup.js';
+import { askchain } from './cmd.js';
 
 
 function set_cursor(col, row) {
@@ -205,7 +208,7 @@ async function mbag_item_gone(held, item, silent) {
     return loss | 0;
 }
 
-async function do_boh_explosion(boh, onFloor) {
+export async function do_boh_explosion(boh, onFloor) {
     boh.in_use = 1;
     for (let it = boh.cobj; it;) {
         const next = it.nobj;
@@ -1482,11 +1485,25 @@ export async function use_container_impl(cobjRef, held, more_containers) {
 
     /* C pickup.c:3175-3181 — menu_loot(0, TRUE): the put-in type menu, then
      * the put-in item menu, then in_container() on each pick. */
+    // C pickup.c:3168-3173,3230-3260: traditional_loot(TRUE).
+    let retry = 0;
+    if (do_in && g.flags?.menu_style === MENU_TRADITIONAL) {
+        add_valid_menu_class(0);
+        const q = await query_classes('put in', g.invent, false, true);
+        if (q.ok) {
+            if (await askchain(() => g.invent, q.one_at_a_time ? [] : q.oclasses,
+                q.everything, in_container,
+                (o) => g.current_container && o !== g.current_container, 0, 'put in'))
+                used |= ECMD_TIME;
+        } else retry = q.via_menu;
+        if (!retry) do_in = false;
+    }
     if (do_in) {
         g.pickup_encumbrance = 0; // C menu_loot resets report suppression.
         const invlist = [];
         for (let o = g.invent; o; o = o.nobj) invlist.push(o);
-        const sel = _menu_style_is_full()
+        const sel = retry ? { ..._no_category_sel(), allCategories: retry === -2 }
+            : _menu_style_is_full()
             ? await _query_category(invlist, 'Put in', true)
             : _no_category_sel();
         if (sel.menuShown && !sel.autopick
@@ -1518,7 +1535,8 @@ export async function use_container_impl(cobjRef, held, more_containers) {
                 used |= ECMD_TIME;
                 await in_container(it);
             } else {
-                const eligible = invlist.filter((o) => _qc_allow(o, sel));
+                const eligible = invlist.filter((o) => retry === -3
+                    ? allow_category(o) : _qc_allow(o, sel));
                 if (eligible.length) {
                     const picked = await menu_loot_putin(eligible);
                     if (picked.length) used |= ECMD_TIME;
@@ -1537,6 +1555,7 @@ export async function use_container_impl(cobjRef, held, more_containers) {
             }
         }
     }
+    if (loot_in && inokay2) add_valid_menu_class(0);
     /* C pickup.c:3182-3193 — single-item stash uses the shared getobj reader,
      * whose ALLOWCNT path returns a split child.  A simple refusal recombines
      * that child; -1 means the container vanished and deliberately counts as a
