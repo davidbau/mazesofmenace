@@ -9,13 +9,15 @@ import {
     HALF_PHDAM, HALLUC, HALLUC_RES, IS_DRAWBRIDGE,
     CORR, M_AP_MONSTER, M_AP_NOTHING, M_AP_TYPE, NO_KILLER_PREFIX,
     PIT, ROWNO, ROOM, SCORR, SDOOR, SHOPBASE, SINK, STRAT_WAITMASK,
-    SUPPRESS_SADDLE, STUNNED, THRONE, TT_BURIEDBALL, TT_PIT,
+    SUPPRESS_SADDLE, STUNNED, THRONE, TT_BURIEDBALL, TT_PIT, XKILL_NOMSG,
     UNCHANGING, has_mgivenname, is_pit, plur, u_at,
 } from './const.js';
 import { isok } from './cmd_isok.js';
 import { acurr, exercise } from './attrib.js';
 import { getdir, yn_function } from './cmd.js';
-import { find_drawbridge, is_drawbridge_wall } from './dbridge.js';
+import {
+    close_drawbridge, find_drawbridge, is_drawbridge_wall, open_drawbridge,
+} from './dbridge.js';
 import { cvt_sdoor_to_door } from './detect.js';
 import { newsym } from './display.js';
 import { fillholetyp, liquid_flow } from './dig.js';
@@ -32,7 +34,7 @@ import { monflee, monfleeMessage, onscary, youHear } from './monmove.js';
 import { Amonnam, a_monnam, Monnam, mon_nam, x_monnam } from './do_name.js';
 import { tamedog } from './dog.js';
 import { m_at } from './monst.js';
-import { seemimic, wakeup } from './mon.js';
+import { seemimic, wakeup, xkilled } from './mon.js';
 import { discover_object } from './o_init.js';
 import { an, the, thesimpleoname, Tobjnam, xnameFresh, yname, Yname2 } from './objnam.js';
 import {
@@ -252,9 +254,8 @@ export function musicMaybeHalfPhys(damage, state) {
         ? Math.trunc((damage + 1) / 2) : damage;
 }
 
-// C ref: music.c do_pit() (221-338). This file owns the earthquake pit call
-// path; discarded floor/touch/kill effects remain named gaps at their C call
-// sites until those source units are ported.
+// C ref: music.c do_pit() (221-338). Discarded floor/touch effects remain
+// named gaps at their C call sites until those source units are ported.
 export async function do_pit(x, y, tuPit, state = game, rawEnv = {}) {
     const env = { ...rawEnv, state };
     const random = env.random ?? musicRandom;
@@ -316,7 +317,7 @@ export async function do_pit(x, y, tuPit, state = game, rawEnv = {}) {
                             : mon_nam(mtmp, state, env);
                         await message(`You destroy ${name}!`, state);
                     }
-                    note_unported('mon.c xkilled');
+                    await xkilled(mtmp, XKILL_NOMSG, state, env);
                 }
             }
         }
@@ -454,10 +455,14 @@ export async function do_earthquake(force, state = game, rawEnv = {}) {
                 if (cansee(x, y, state)) await message('A secret door is revealed.', state);
                 // FALLTHROUGH: newly revealed SDOOR is processed as DOOR.
             case DOOR:
-                if (location.doormask === D_NODOOR) {
+                // C rm.h aliases doormask to flags; prefer that canonical slot
+                // even when its zero value disagrees with the JS mirror.
+                const doormask = location.flags ?? location.doormask ?? D_NODOOR;
+                if (doormask === D_NODOOR) {
                     await do_pit(x, y, tuPit, state, { ...env, random, message });
                     break;
                 }
+                location.flags = D_NODOOR;
                 location.doormask = D_NODOOR;
                 recalc_block_point(x, y, state);
                 newsym(x, y, state);
@@ -700,8 +705,10 @@ export async function do_play_instrument(instr, state = game, env = {}) {
                     if (found) {
                         state.u.uevent.uheard_tune = 2;
                         record_achievement(ACH_TUNE, state);
-                        note_unported(state.level.at(x, y).typ === DRAWBRIDGE_DOWN
-                            ? 'dbridge.c close_drawbridge' : 'dbridge.c open_drawbridge');
+                        if (state.level.at(x, y).typ === DRAWBRIDGE_DOWN)
+                            await close_drawbridge(x, y, state, env);
+                        else
+                            await open_drawbridge(x, y, state, env);
                         return ECMD_TIME;
                     }
                 }

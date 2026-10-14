@@ -1112,9 +1112,9 @@ export function purge_all_custom_entries() {
  * under the `gdc.custtype` guard (urep utf8str / sym symparse+val /
  * ccolor nhcolor+glyphidx) so the end state matches C once the
  * add_custom_symbols/ureps writers land. C callers: the export above
- * (wired) + clear_symsetentry (symbols.c:347, unported — map-named).
+ * (wired) + clear_symsetentry (symbols.c:347, wired: display.js).
  */
-function purge_custom_entries(which_set) {
+export function purge_custom_entries(which_set) {
     const set = which_set | 0;
     for (let custtype = CUSTOM_NONE; custtype < CUSTOM_COUNT; ++custtype) {
         const gdc = sym_customizations[set][custtype];

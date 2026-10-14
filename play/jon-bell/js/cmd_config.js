@@ -258,16 +258,18 @@ export function number_pad_value(config = false) {
 
 export function parseautocomplete(autocomplete, condition) {
     const AUTOCOMPLETE = 0x0002, AUTOCOMP_ADJ = 0x2000;
-    const m = /[,:]/.exec(autocomplete);
-    if (m) {
-        parseautocomplete(autocomplete.slice(m.index + 1), condition);
-        autocomplete = autocomplete.slice(0, m.index);
+    // C cmd.c:3250: any comma takes precedence over the first colon.
+    let split = autocomplete.indexOf(',');
+    if (split < 0) split = autocomplete.indexOf(':');
+    if (split >= 0) {
+        parseautocomplete(autocomplete.slice(split + 1), condition);
+        autocomplete = autocomplete.slice(0, split);
     }
-    autocomplete = autocomplete.trim();
+    autocomplete = trimspaces(autocomplete);
     if (!autocomplete)
         return;
     if (autocomplete[0] === '!') {
-        autocomplete = autocomplete.slice(1).trim();
+        autocomplete = trimspaces(autocomplete.slice(1));
         condition = !condition;
     }
     for (const efp of EXTCMDLIST) {

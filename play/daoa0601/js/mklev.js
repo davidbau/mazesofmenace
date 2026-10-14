@@ -55,7 +55,7 @@ import { carveMazeFrom, createMaze } from './maze_terrain.js';
 import { DRY, HOT, NO_LOC_WARN, SOLID, WET, getLocationCoord } from './special_location.js';
 import { MAP_SYMBOLS } from './map_symbols.js';
 import { cleanupSpecialLevelMap, removeSpecialLevelBoundaries } from './special_level_cleanup.js';
-import { A_CHA, COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, LADDER, HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, D_NODOOR, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED, OROOM, VAULT, COURT, SWAMP, BEEHIVE, MORGUE, BARRACKS, ZOO, TEMPLE, LEPREHALL, COCKNEST, ANTHOLE, DELPHI, THEMEROOM, SHOPBASE, ROOMOFFSET, MAXNROFROOMS, SHARED, SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, ALTAR, GRAVE, THRONE, HEADSTONE, ENGRAVE, BURN, MARK, DUST, ENGR_BLOOD, DIR_N, DIR_S, DIR_E, DIR_W, DIR_180, XL_UP, XL_DOWN, XL_LEFT, XL_RIGHT, ACCESSIBLE, IS_WALL, IS_STWALL, IS_DOOR, IS_ROOM, IS_OBSTRUCTED, ZAP_POS, IS_FURNITURE, IS_POOL, IS_AIR, IS_LAVA, In_endgame, Is_earthlevel, Is_botlevel, Is_stronghold, Invocation_lev, In_hell, In_quest, In_V_tower, Is_oracle_level, Is_waterlevel, Is_knox_level, Is_rogue_level, In_sokoban, SPACE_POS, isok, W_NONDIGGABLE, W_NONPASSWALL, FILL_NONE, FILL_NORMAL, ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DBWALL, ICED_POOL, ICED_MOAT, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, DB_MOAT, DB_LAVA, DB_UNDER, DB_FLOOR, SHOP_HOLE_COST, TREE, AIR, CLOUD, A_NONE, A_CHAOTIC, A_NEUTRAL, A_LAWFUL, P_SHORT_SWORD, P_SABER, AM_SHRINE, AM_SANCTUM, Align2amask, LR_DOWNSTAIR, LR_UPSTAIR, LR_UPTELE, LR_DOWNTELE, LR_TELE, LR_BRANCH, LR_PORTAL, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE, MM_ANGRY, MM_ASLEEP, MM_NONAME, MM_NOGRP, MM_EMIN, MM_EPRI, MM_NOWAIT, MM_NOTAIL, MM_IGNOREWATER, MM_ADJACENTOK, MM_NOCOUNTBIRTH, MM_NOMSG, MM_MALE, MM_FEMALE, MM_MINVIS, MM_EDOG, NO_MINVENT, G_EXTINCT, G_GENOD, G_GONE, G_NOCORPSE, ROT_AGE, TROLL_REVIVE_CHANCE, HEALTHY_TIN, RANDOM_TIN, CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_NEUTER, CORPSTAT_HISTORIC, CORPSTAT_INIT, CORPSTAT_SPE_VAL, STRAT_APPEARMSG, STRAT_CLOSE, STRAT_WAITFORU, ANTI_MAGIC, TT_BURIEDBALL, TT_BEARTRAP, TT_WEB, TT_PIT, TT_LAVA, } from './const.js';
+import { A_CHA, COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, LADDER, HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, D_NODOOR, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED, OROOM, VAULT, COURT, SWAMP, BEEHIVE, MORGUE, BARRACKS, ZOO, TEMPLE, LEPREHALL, COCKNEST, ANTHOLE, DELPHI, THEMEROOM, SHOPBASE, ROOMOFFSET, MAXNROFROOMS, SHARED, SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, ALTAR, GRAVE, THRONE, HEADSTONE, ENGRAVE, BURN, MARK, DUST, ENGR_BLOOD, DIR_N, DIR_S, DIR_E, DIR_W, DIR_180, XL_UP, XL_DOWN, XL_LEFT, XL_RIGHT, ACCESSIBLE, IS_WALL, IS_STWALL, IS_DOOR, IS_ROOM, IS_OBSTRUCTED, ZAP_POS, IS_FURNITURE, IS_POOL, IS_AIR, IS_LAVA, In_endgame, Is_earthlevel, Is_botlevel, Is_stronghold, Invocation_lev, In_hell, In_quest, In_V_tower, Is_oracle_level, Is_waterlevel, Is_knox_level, Is_rogue_level, In_sokoban, SPACE_POS, isok, W_NONDIGGABLE, W_NONPASSWALL, FILL_NONE, FILL_NORMAL, ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DBWALL, ICED_POOL, ICED_MOAT, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, DB_MOAT, DB_LAVA, DB_UNDER, DB_FLOOR, SHOP_HOLE_COST, TREE, AIR, CLOUD, A_NONE, A_CHAOTIC, A_NEUTRAL, A_LAWFUL, P_SHORT_SWORD, P_SABER, AM_SHRINE, AM_SANCTUM, Align2amask, LR_DOWNSTAIR, LR_UPSTAIR, LR_UPTELE, LR_DOWNTELE, LR_TELE, LR_BRANCH, LR_PORTAL, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE, MM_ANGRY, MM_ASLEEP, MM_NONAME, MM_NOGRP, MM_EMIN, MM_EPRI, MM_NOWAIT, MM_NOTAIL, MM_IGNOREWATER, MM_ADJACENTOK, MM_NOCOUNTBIRTH, MM_NOMSG, MM_MALE, MM_FEMALE, MM_MINVIS, MM_EDOG, NO_MINVENT, G_EXTINCT, G_GENOD, G_GONE, G_NOCORPSE, ROT_AGE, TROLL_REVIVE_CHANCE, HEALTHY_TIN, RANDOM_TIN, MAX_OIL_IN_FLASK, CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_NEUTER, CORPSTAT_HISTORIC, CORPSTAT_INIT, CORPSTAT_SPE_VAL, STRAT_APPEARMSG, STRAT_CLOSE, STRAT_WAITFORU, ANTI_MAGIC, TT_BURIEDBALL, TT_BEARTRAP, TT_WEB, TT_PIT, TT_LAVA, } from './const.js';
 import { getObjectClassBounds, getObjectDefinition, requireObjectData, OBJECT_BASES, OBJECT_PROB, OBJECT_MATERIAL, OBJECT_SPELL_LEVEL, OBJECT_MERGE, OBJECT_WEIGHT, OBJECT_COST, OBJECT_SUBTYPE, WORM_TOOTH, UNICORN_HORN, HELM_OF_OPPOSITE_ALIGNMENT, GAUNTLETS_OF_FUMBLING, FUMBLE_BOOTS, LEVITATION_BOOTS, AMULET_OF_STRANGULATION, AMULET_OF_RESTFUL_SLEEP, AMULET_OF_CHANGE, AMULET_OF_YENDOR, FAKE_AMULET_OF_YENDOR, LARGE_BOX, CHEST, ICE_BOX, SACK, OILSKIN_SACK, BAG_OF_HOLDING, BAG_OF_TRICKS, TALLOW_CANDLE, WAX_CANDLE, BRASS_LANTERN, OIL_LAMP, MAGIC_LAMP, EXPENSIVE_CAMERA, CRYSTAL_BALL, TINNING_KIT, CAN_OF_GREASE, FIGURINE, MAGIC_MARKER, MAGIC_FLUTE, FROST_HORN, FIRE_HORN, HORN_OF_PLENTY, MAGIC_HARP, DRUM_OF_EARTHQUAKE, CORPSE, EGG, MEAT_RING, GLOB_OF_GRAY_OOZE, GLOB_OF_BLACK_PUDDING, KELP_FROND, SLIME_MOLD, MELON, LUMP_OF_ROYAL_JELLY, CREAM_PIE, CANDY_BAR, TIN, GOLD_PIECE, SPE_NOVEL, SPE_BOOK_OF_THE_DEAD, DILITHIUM_CRYSTAL, LUCKSTONE, LOADSTONE, TOUCHSTONE, ROCK, BOULDER, STATUE, DART, DAGGER, SPEAR, SLING, ORCISH_DAGGER, MACE, QUARTERSTAFF, BULLWHIP, FEDORA, ELVEN_ARROW, ELVEN_SPEAR, ELVEN_DAGGER, ELVEN_SHORT_SWORD, ELVEN_BROADSWORD, ELVEN_BOW, ELVEN_LEATHER_HELM, ELVEN_MITHRIL_COAT, ELVEN_CLOAK, ELVEN_SHIELD, ELVEN_BOOTS, ORCISH_ARROW, ORCISH_SHORT_SWORD, ORCISH_BOW, ORCISH_HELM, ORCISH_CHAIN_MAIL, ORCISH_CLOAK, URUK_HAI_SHIELD, ORCISH_SHIELD, SCIMITAR, AXE, PICK_AXE, DWARVISH_SPEAR, DWARVISH_SHORT_SWORD, DWARVISH_MATTOCK, DWARVISH_IRON_HELM, DWARVISH_MITHRIL_COAT, DWARVISH_CLOAK, DWARVISH_ROUNDSHIELD, IRON_SHOES, HELMET, SPLINT_MAIL, RING_MAIL, SMALL_SHIELD, ROBE, CLOAK_OF_PROTECTION, CLOAK_OF_MAGIC_RESISTANCE, LEATHER_ARMOR, LEATHER_JACKET, LEATHER_GLOVES, MIRROR, POT_OBJECT_DETECTION, RIN_INVISIBILITY, SHIELD_OF_REFLECTION, SADDLE, WAN_CANCELLATION, WAN_LIGHT, WAN_LIGHTNING, } from './object_data.js';
 import { MONSTER_ATTACKS, MONSTER_BODY_META, MONSTER_DIFFICULTY, MONSTER_GENO, MONSTER_ALIGNMENT, MONSTER_LEVEL, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_FLAGS3, MONSTER_SYMBOL, MONSTER_SIZE, MONSTER_MOVE, MONSTER_SOUND, MONSTER_HAS_WEAPON_ATTACK, MONSTER_COLOR, MONSTER_NAME, MONSTER_RESISTS, SPECIAL_PM, monsterClassSymbol, monsterIsPlayerMonster, requireMonsterData, } from './monster_data.js';
 import { isReviver, isRider, zombieForm, } from './corpse_species.js';
@@ -68,7 +68,7 @@ import { nhgetch } from './input.js';
 import { canSeeMonster, canSenseMonster, flush_screen, newsym, pline, } from './display.js';
 import { premap_detect } from './detect.js';
 import { TRUE_RUMORS, FALSE_RUMORS, RANDOM_ENGRAVINGS, RANDOM_EPITAPHS, } from './random_text_data.js';
-import { makeEngravingAt, wipeEngravingAt, wipeoutText } from './engrave.js';
+import { deleteEngravingAt, makeEngravingAt, wipeEngravingAt, wipeoutText } from './engrave.js';
 import { registerQuestLeader } from './quest.js';
 import { armorBonus } from './armor.js';
 import { initializeMonsterArmor } from './monworn.js';
@@ -155,7 +155,10 @@ const BELL = 255;
 const CANDELABRUM_OF_INVOCATION = 262;
 const BELL_OF_OPENING = 263;
 const BEC_DE_CORBIN = 70;
+const PM_BAT = 126;
+const PM_GIANT_BAT = 127;
 const PM_RAVEN = 128;
+const PM_VAMPIRE_BAT = 129;
 const MS_BRIBE = 33;
 const LONG_SWORD = 54;
 const SPBOOK_no_NOVEL = -SPBOOK_CLASS;
@@ -223,6 +226,7 @@ const PM_VAMPIRE_LEADER = 227;
 const PM_VLAD_THE_IMPALER = 228;
 const PM_ARCHAEOLOGIST = 331;
 const PM_WIZARD_OF_YENDOR = 285;
+const PM_CROESUS = MONSTER_NAME.indexOf('Croesus');
 const PM_DEATH = 311;
 const PM_PESTILENCE = 312;
 const PM_FAMINE = 313;
@@ -515,6 +519,9 @@ export async function mksobj(otyp, init, artif, { zombify = false } = {}) {
     if (init) {
         await mksobj_init(otmp, artif, definition);
     }
+    // Fuel is intrinsic to an oil flask even when random initialization is skipped.
+    if (otyp === POT_OIL)
+        otmp.age = MAX_OIL_IN_FLASK;
     if (otyp === CORPSE || otyp === STATUE || otyp === FIGURINE) {
         if (otmp.corpsenm == null) {
             otmp.corpsenm = rndmonnum();
@@ -1671,7 +1678,12 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
                 return null;
             ++tryCount;
         } while (tryCount <= 50
-            && !goodPosition(x, y, { kind: 'species', mnum: mndx }));
+            && ((tryCount === 1 && In_sokoban(game.u.uz)
+                && !!((MONSTER_FLAGS2[mndx] ?? 0) & 0x08000000)) // M2_ROCKTHROW
+                || !goodPosition(x, y, { kind: 'species', mnum: mndx }, {
+                    gpflags: GP_AVOID_MONPOS | GP_CHECKSCARY
+                        | (mmflags & MM_IGNOREWATER),
+                })));
     }
     if (mdat != null
         && ((game.mvitals?.[mndx]?.mvflags ?? 0) & G_GENOD))
@@ -1764,58 +1776,9 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
         level.monsters[monsterIndex] = shaped;
         return finishMonsterBirth(shaped, mmflags);
     }
-    // makemon.c owns this initialization when its original requested
-    // coordinate was the hero's occupied square.  enexto() has already moved
-    // the actor, so preserve that caller fact separately from final x/y.
-    if (requestedByHero) {
-        newsym(pendingMonster.mx, pendingMonster.my);
-        setMonsterApparentHeroPosition(pendingMonster, game, rn2);
-    }
-    if (mndx === PM_LONG_WORM)
-        initializeMonsterWormBody(pendingMonster, {
-            allowTail: !(mmflags & MM_NOTAIL),
-        });
-    // C makemon() type setup: spiders and snakes born during level creation
-    // receive a random floor object before they hide beneath it.
-    if (game.in_mklev
-        && (MONSTER_SYMBOL[mndx] === 19 || MONSTER_SYMBOL[mndx] === 45)
-        && x && y) {
-        await mkobj_at(RANDOM_CLASS, x, y, true);
-    }
-    // Ordinary clerics always become roamers; ordinary Angels have a
-    // one-in-three chance. Callers requesting priest/minion data own its
-    // alignment themselves. This birth state also applies under NO_MINVENT.
     let roamingMinion = null;
-    const becomesRoamer = [PM_ALIGNED_CLERIC, PM_HIGH_CLERIC].includes(mndx)
-        ? !(mmflags & (MM_EPRI | MM_EMIN))
-        : mndx === MONSTER_NAME.indexOf('Angel') && !(mmflags & MM_EMIN) && !rn2(3);
-    if (becomesRoamer) {
-        const minAlign = rn2(3) - 1;
-        const renegade = !!(mmflags & MM_ANGRY) || rn2(3) === 0;
-        const minionPeaceful = minAlign === (game.u?.ualign?.type ?? 0)
-            ? !renegade : renegade;
-        roamingMinion = {
-            min_align: minAlign,
-            renegade,
-            mpeaceful: minionPeaceful ? 1 : 0,
-        };
-        pendingMonster.isminion = 1;
-        pendingMonster.emin = { min_align: minAlign, renegade };
-        pendingMonster.mpeaceful = roamingMinion.mpeaceful;
-    }
-    if (mdat == null && !(mmflags & MM_NOGRP)) {
-        const geno = MONSTER_GENO[mndx] || 0;
-        if ((geno & G_SGROUP) && rn2(2)) {
-            await initMonsterGroup(mndx, x, y, 3, mmflags);
-        }
-        else if (geno & G_LGROUP) {
-            await initMonsterGroup(mndx, x, y, rn2(3) ? 10 : 3, mmflags);
-        }
-    }
     let hasMonsterInventory = false;
     const allowMonsterInventory = !(mmflags & NO_MINVENT);
-    const initializeMonsterEquipment = allowMonsterInventory && !Is_rogue_level(game.u.uz);
-    let skipCommonMonsterInventory = false;
     // C makemon.c:mongets(). Normalize birth equipment before mpickobj().
     const mongets = async (otyp) => {
         if (!otyp)
@@ -1863,6 +1826,73 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
         hasMonsterInventory = true;
         return object.where === 'gone' ? null : object;
     };
+    // makemon() creates Croesus's fixed sword before apparent-target rolls.
+    if (allowMonsterInventory && mndx === PM_CROESUS)
+        await mongets(TWO_HANDED_SWORD);
+    // makemon.c owns this initialization when its original requested
+    // coordinate was the hero's occupied square.  enexto() has already moved
+    // the actor, so preserve that caller fact separately from final x/y.
+    if (requestedByHero) {
+        newsym(pendingMonster.mx, pendingMonster.my);
+        setMonsterApparentHeroPosition(pendingMonster, game, rn2);
+    }
+    // makemon() establishes these attitudes before inventory selection.
+    // Peaceful monsters decline invisibility items when the hero cannot see
+    // invisible, including princes made peaceful despite MM_ANGRY.
+    const bribingPrince = (genderFlags & M2_DEMON) !== 0 && (genderFlags & M2_PRINCE) !== 0
+        && MONSTER_SOUND[mndx] === MS_BRIBE;
+    const wieldedArtifact = game.uwep?.oartifact;
+    const baneWielded = wieldedArtifact !== undefined
+        && (wieldedArtifact === artifactByName('Excalibur')?.id || wieldedArtifact === artifactByName('Demonbane')?.id);
+    if (bribingPrince) {
+        pendingMonster.mpeaceful = baneWielded ? 0 : 1;
+        pendingMonster.minvis = pendingMonster.perminvis = true;
+        pendingMonster.mavenge = 0;
+    }
+    if (mndx === PM_RAVEN && game.uwep?.otyp === BEC_DE_CORBIN)
+        pendingMonster.mpeaceful = 1;
+    if (mndx === PM_LONG_WORM)
+        initializeMonsterWormBody(pendingMonster, {
+            allowTail: !(mmflags & MM_NOTAIL),
+        });
+    // C makemon() type setup: spiders and snakes born during level creation
+    // receive a random floor object before they hide beneath it.
+    if (game.in_mklev
+        && (MONSTER_SYMBOL[mndx] === 19 || MONSTER_SYMBOL[mndx] === 45)
+        && x && y) {
+        await mkobj_at(RANDOM_CLASS, x, y, true);
+    }
+    // Ordinary clerics always become roamers; ordinary Angels have a
+    // one-in-three chance. Callers requesting priest/minion data own its
+    // alignment themselves. This birth state also applies under NO_MINVENT.
+    const becomesRoamer = [PM_ALIGNED_CLERIC, PM_HIGH_CLERIC].includes(mndx)
+        ? !(mmflags & (MM_EPRI | MM_EMIN))
+        : mndx === MONSTER_NAME.indexOf('Angel') && !(mmflags & MM_EMIN) && !rn2(3);
+    if (becomesRoamer) {
+        const minAlign = rn2(3) - 1;
+        const renegade = !!(mmflags & MM_ANGRY) || rn2(3) === 0;
+        const minionPeaceful = minAlign === (game.u?.ualign?.type ?? 0)
+            ? !renegade : renegade;
+        roamingMinion = {
+            min_align: minAlign,
+            renegade,
+            mpeaceful: minionPeaceful ? 1 : 0,
+        };
+        pendingMonster.isminion = 1;
+        pendingMonster.emin = { min_align: minAlign, renegade };
+        pendingMonster.mpeaceful = roamingMinion.mpeaceful;
+    }
+    if (mdat == null && !(mmflags & MM_NOGRP)) {
+        const geno = MONSTER_GENO[mndx] || 0;
+        if ((geno & G_SGROUP) && rn2(2)) {
+            await initMonsterGroup(mndx, x, y, 3, mmflags);
+        }
+        else if (geno & G_LGROUP) {
+            await initMonsterGroup(mndx, x, y, rn2(3) ? 10 : 3, mmflags);
+        }
+    }
+    const initializeMonsterEquipment = allowMonsterInventory && !Is_rogue_level(game.u.uz);
+    let skipCommonMonsterInventory = false;
     // C makemon.c:m_initthrow(). Throwing stacks bypass mongets(): the raw
     // mksobj() result goes straight into the inventory, so demons keep any
     // blessing, the quantity is replaced with rn1(oquan, 3), and orcish
@@ -2083,10 +2113,10 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
     }
     else if ([
         PM_SOLDIER, PM_SERGEANT, PM_LIEUTENANT, PM_CAPTAIN,
-        PM_WATCHMAN, PM_WATCH_CAPTAIN,
+        PM_WATCHMAN, PM_WATCH_CAPTAIN, PM_GUARD,
     ].includes(mndx)) {
         // C ref: makemon.c m_initweap()/m_initinv(), human mercenaries.
-        // Soldiers and Minetown's watch share one equipment constructor;
+        // Soldiers, the watch, and vault guards share an armor budget;
         // armor gained in each round gates whether later slots are attempted.
         let primaryWeapon = 0;
         let secondaryWeapon = 0;
@@ -2105,8 +2135,14 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
         else if (mndx === PM_LIEUTENANT) {
             primaryWeapon = rn2(2) ? 52 : LONG_SWORD; // BROADSWORD
         }
-        else {
+        else if (mndx === PM_CAPTAIN || mndx === PM_WATCH_CAPTAIN) {
             primaryWeapon = rn2(2) ? LONG_SWORD : SILVER_SABER;
+        }
+        else {
+            if (!rn2(4))
+                primaryWeapon = DAGGER;
+            if (!rn2(7))
+                secondaryWeapon = SPEAR;
         }
         if (primaryWeapon)
             await mongets(primaryWeapon);
@@ -2120,10 +2156,11 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
             if (offensiveItem)
                 await mongets(offensiveItem);
         }
-        let mercenaryAc = (mndx === PM_SOLDIER || mndx === PM_WATCHMAN) ? 3
-            : mndx === PM_SERGEANT ? 0
-                : (mndx === PM_LIEUTENANT
-                    || mndx === PM_WATCH_CAPTAIN) ? -2 : -3;
+        let mercenaryAc = mndx === PM_GUARD ? -1
+            : (mndx === PM_SOLDIER || mndx === PM_WATCHMAN) ? 3
+                : mndx === PM_SERGEANT ? 0
+                    : (mndx === PM_LIEUTENANT
+                        || mndx === PM_WATCH_CAPTAIN) ? -2 : -3;
         const addArmor = async (otyp) => {
             const object = await mongets(otyp);
             mercenaryAc += armorBonus(object);
@@ -2156,6 +2193,13 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
             if (rn2(3))
                 await mongets(TIN_WHISTLE);
         }
+        else if (mndx === PM_GUARD) {
+            const whistle = await mksobj(TIN_WHISTLE, true, false);
+            whistle.cursed = true;
+            whistle.buc = 'cursed';
+            await addCreatedObjectToMonsterInventory(pendingMonster, whistle, game);
+            hasMonsterInventory = true;
+        }
         else if (mndx !== PM_WATCH_CAPTAIN) {
             if (!rn2(3))
                 await mongets(K_RATION);
@@ -2168,49 +2212,6 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
             if (mndx === PM_SOLDIER && rn2(13))
                 skipCommonMonsterInventory = true;
         }
-    }
-    else if (mndx === PM_GUARD) {
-        // C refs: makemon.c:m_initweap()/m_initinv(), PM_GUARD.  Vault
-        // guards use the default mercenary weapon branch, five sequential
-        // armor rounds, then receive a cursed tin whistle.
-        let primaryWeapon = 0;
-        let secondaryWeapon = 0;
-        if (!rn2(4))
-            primaryWeapon = DAGGER;
-        if (!rn2(7))
-            secondaryWeapon = SPEAR;
-        if (primaryWeapon)
-            await mongets(primaryWeapon);
-        if (!secondaryWeapon && primaryWeapon !== DAGGER && !rn2(4))
-            secondaryWeapon = KNIFE;
-        if (secondaryWeapon)
-            await mongets(secondaryWeapon);
-        await giveOffensiveMonsterItem();
-        if (rn2(5))
-            await mongets(rn2(3) ? SPLINT_MAIL : BANDED_MAIL);
-        else
-            await mongets(LEATHER_ARMOR);
-        if (rn2(3))
-            await mongets(HELMET);
-        else if (rn2(2))
-            await mongets(DENTED_POT);
-        if (rn2(3))
-            await mongets(SMALL_SHIELD);
-        else if (rn2(2))
-            await mongets(LARGE_SHIELD);
-        if (rn2(3))
-            await mongets(LOW_BOOTS);
-        else if (rn2(2))
-            await mongets(HIGH_BOOTS);
-        if (rn2(3))
-            await mongets(LEATHER_GLOVES);
-        else if (rn2(2))
-            await mongets(LEATHER_CLOAK);
-        const whistle = await mksobj(TIN_WHISTLE, true, false);
-        whistle.cursed = true;
-        whistle.buc = 'cursed';
-        await addCreatedObjectToMonsterInventory(pendingMonster, whistle, game);
-        hasMonsterInventory = true;
     }
     else if (mndx === PM_SHOPKEEPER) {
         // C refs: makemon.c m_initweap() and m_initinv().  Shopkeepers have
@@ -2612,10 +2613,6 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
             && canMonsterHideUnderFloorObject(x, y))
             || (classIndex === 57
                 && birthTerrain !== undefined && IS_POOL(birthTerrain)))); // M1_CONCEAL/S_EEL
-    // Stalkers and black lights are permanently invisible from birth.  Keep
-    // both the current and permanent bits because later reveal/re-hide paths
-    // distinguish them even though their initial projection is identical.
-    const monsterInvisible = mndx === PM_STALKER || mndx === PM_BLACK_LIGHT;
     // C makemon.c initializes strategic presentation state for waiting and
     // covetous species unless the caller explicitly supplies MM_NOWAIT.
     // STRAT_APPEARMSG is consumed by the first visible relocation message;
@@ -2635,19 +2632,8 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
     // permanent-speed property of the actor, not a projection of its current
     // species; vampire bases which immediately shapechange into a bat do not
     // pass through this birth-time branch.
-    const hellishNativeBat = classIndex === 28
+    const hellishNativeBat = [PM_BAT, PM_GIANT_BAT, PM_VAMPIRE_BAT].includes(mndx)
         && !!game.dungeons?.[game.u?.uz?.dnum ?? 0]?.flags?.hellish;
-    // makemon.c: a bribe-demanding demon prince is born peaceful and
-    // permanently invisible unless the hero wields Excalibur or Demonbane;
-    // a raven is peaceful toward a hero wielding a bec de corbin.
-    const bribingPrince = (genderFlags & M2_DEMON) !== 0 && (genderFlags & M2_PRINCE) !== 0
-        && MONSTER_SOUND[mndx] === MS_BRIBE;
-    const wieldedArtifact = game.uwep?.oartifact;
-    const baneWielded = wieldedArtifact !== undefined
-        && (wieldedArtifact === artifactByName('Excalibur')?.id || wieldedArtifact === artifactByName('Demonbane')?.id);
-    const birthPeaceful = bribingPrince ? !baneWielded
-        : mndx === PM_RAVEN && game.uwep?.otyp === BEC_DE_CORBIN ? true : peaceful;
-    const birthInvisible = monsterInvisible || bribingPrince || !!pendingMonster.perminvis;
     const monster = {
         m_id: monsterId,
         mnum: mndx, cham: pendingMonster.cham ?? -1,
@@ -2655,15 +2641,16 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
         m_lev: baseLevel, female: monsterFemale,
         mwandexp: pendingMonster.mwandexp ?? false,
         msleeping: monsterSleeping,
-        mpeaceful: roamingMinion?.mpeaceful ?? (birthPeaceful ? 1 : 0),
+        mpeaceful: pendingMonster.mpeaceful,
+        mavenge: pendingMonster.mavenge ?? 0,
         malign: 0,
         mcanmove: 1, mcansee: 1,
         mgenmklev: !!game.in_mklev,
         seen_resistance: 0,
         mux: pendingMonster.mux, muy: pendingMonster.muy,
         mundetected: monsterUndetected,
-        minvis: birthInvisible,
-        perminvis: birthInvisible,
+        minvis: !!pendingMonster.minvis,
+        perminvis: !!pendingMonster.perminvis,
         movement: 0, mmove: MONSTER_MOVE[mndx] ?? 0,
         permspeed: hellishNativeBat ? 2 : 0,
         mspeed: hellishNativeBat ? 2 : 0,
@@ -2967,7 +2954,9 @@ export async function summonNastyMonsters(summoner, { onCreate = null } = {}) {
                 || (summonerClass === 30 && candidateClass === 56));
             if (makeindex == null)
                 continue;
-            const monster = await makemonNear(makeindex, summoner?.mux ?? game.u?.ux ?? 0, summoner?.muy ?? game.u?.uy ?? 0, MM_NOMSG);
+            // nasty() preselects a nearby square for a monster caster;
+            // that construction does not inherit the hero's position.
+            const monster = await makemonNear(makeindex, summoner?.mux ?? game.u?.ux ?? 0, summoner?.muy ?? game.u?.uy ?? 0, MM_NOMSG, !summoner);
             if (!monster) {
                 // C tries a random replacement only when direct construction
                 // fails (normally because the chosen species was genocided).
@@ -4857,6 +4846,16 @@ export function finishSpecialRoamer(monster, alignment, peaceful) {
     monster.mtrapseen = 0x7fffffff;
     setMonsterMalign(monster);
 }
+// sp_lev.c:create_monster() replaces unavailable ordinary species, but
+// an extinct unique monster must not appear again in any form.
+function selectNamedSpecialMonster(mndx) {
+    if (mndx === null)
+        return { species: null };
+    const vitalFlags = game.mvitals?.[mndx]?.mvflags ?? 0;
+    if (((MONSTER_GENO[mndx] ?? 0) & 0x1000) && (vitalFlags & G_EXTINCT))
+        return null;
+    return { species: vitalFlags & G_GONE ? null : mndx };
+}
 // sp_lev.c:create_monster() searches before construction, including when
 // a worm's tail occupies the requested square. The result must stay in croom.
 async function createSpecialMonster(context, mndx, x, y, mmflags) {
@@ -4883,7 +4882,10 @@ async function specialMonsterAt(context, mndx, x, y, { randomGender = true, rand
         consumeSpecialMonsterAlignment();
     const alignment = typeof roamerAlignment === 'function'
         ? roamerAlignment() : roamerAlignment;
-    mndx = applyMinesSameRaceMonsterGate(mndx);
+    const selection = selectNamedSpecialMonster(mndx);
+    if (!selection)
+        return null;
+    mndx = applyMinesSameRaceMonsterGate(selection.species);
     const monster = await createSpecialMonster(context, mndx, context.xstart + x, context.ystart + y, mmflags);
     if (monster && requestedFemale !== null)
         monster.female = requestedFemale;
@@ -4964,7 +4966,10 @@ async function specialExplicitMonster(context, mndx, appearance = null, { random
         consumeSpecialMonsterAlignment();
     const alignment = typeof roamerAlignment === 'function'
         ? roamerAlignment() : roamerAlignment;
-    const selectedSpecies = applyMinesSameRaceMonsterGate(mndx);
+    const selection = selectNamedSpecialMonster(mndx);
+    if (!selection)
+        return null;
+    const selectedSpecies = applyMinesSameRaceMonsterGate(selection.species);
     const point = await specialMonsterRandomLocation(context, selectedSpecies);
     if (!point)
         return null;
@@ -7218,6 +7223,10 @@ async function generateSpecialAndFixup(generator, active) {
     if (active?.elementalBubbles)
         await setupElementalBubbles();
     await fixupSpecialRegions(active);
+    // fixup_special() reduces undead remains throughout the Castle and the
+    // Priest quest, even after the hero has entered any morgue rooms.
+    if (Is_stronghold(game.u.uz) || game.urole?.key === 'priest' && In_quest(game.u.uz))
+        level.flags.graveyard = true;
     if (active?.baalzFixup)
         await fixupBaalz(active);
     // sp_lev.c explicitly places deferred portals, stairs, and branches
@@ -7919,11 +7928,8 @@ async function makeRandomTemple(room) {
     return true;
 }
 async function markRandomSpecialRoom(roomType) {
-    // All zoo-family rooms use pick_room(FALSE); temples use the stricter
-    // stair exclusion.  Swamps have their own multi-room terrain transaction
-    // and remain a distinct downstream owner.
     if (roomType === SWAMP)
-        return false;
+        return makeSwamps();
     const room = pickSpecialRoom(roomType === TEMPLE);
     if (!room)
         return false;
@@ -7932,6 +7938,61 @@ async function markRandomSpecialRoom(roomType) {
     room.rtype = roomType;
     room.needfill = FILL_NORMAL;
     return true;
+}
+// C mkroom.c:mkswamp(). Room selection is with replacement; a room already
+// converted by an earlier attempt is skipped. The first pool has a resident.
+async function makeSwamps() {
+    const level = requireGameLevel();
+    let residents = 0;
+    let madeSwamp = false;
+    for (let attempt = 0; attempt < 5; attempt++) {
+        const roomIndex = rn2(level.nroom);
+        const room = level.rooms[roomIndex];
+        if (!isRoom(room) || room.hx < 0 || room.rtype !== OROOM
+            || roomHasStair(room, true) || roomHasStair(room, false))
+            continue;
+        room.rtype = SWAMP;
+        for (let x = room.lx; x <= room.hx; x++) {
+            for (let y = room.ly; y <= room.hy; y++) {
+                const location = level.requireAt(x, y);
+                if (!IS_ROOM(location.typ) || location.roomno !== roomIndex + ROOMOFFSET
+                    || level.objects[x]?.[y]?.length || monsterAtPosition(level, x, y)
+                    || level.traps.some(trap => trap.tx === x && trap.ty === y)
+                    || swampSquareBordersDoor(x, y))
+                    continue;
+                if ((x + y) % 2) {
+                    deleteEngravingAt(x, y, level);
+                    location.typ = POOL;
+                    if (!residents || !rn2(4)) {
+                        const species = rn2(5) ? PM_GIANT_EEL
+                            : rn2(2) ? MONSTER_NAME.indexOf('piranha')
+                                : MONSTER_NAME.indexOf('electric eel');
+                        await makemon(species, x, y, 0);
+                        residents++;
+                    }
+                }
+                else if (!rn2(4)) {
+                    await makemon(mkclass(32, 0), x, y, 0); // S_FUNGUS
+                }
+            }
+        }
+        level.flags.has_swamp = true;
+        madeSwamp = true;
+    }
+    return madeSwamp;
+}
+function swampSquareBordersDoor(x, y) {
+    const level = requireGameLevel();
+    for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+            if (!isok(x + dx, y + dy))
+                continue;
+            const location = level.at(x + dx, y + dy);
+            if (location && (IS_DOOR(location.typ) || location.typ === SDOOR))
+                return true;
+        }
+    }
+    return false;
 }
 // C ref: mklev.c makelevel() random-special-room else-if chain.  Every failed
 // depth-eligible predicate owns its draw; once one type is selected, room
@@ -8161,11 +8222,13 @@ async function stockShopRoom(sroom) {
     // ordinary humanoid observer; shkinit() establishes both together here.
     shopkeeper.isshk = 1;
     sroom.resident = shopkeeper;
-    // C ref: shkinit().  The gold object and possible charging scroll live
-    // in the shopkeeper's inventory even though only their RNG-visible
-    // initialization is needed by the current session.
-    shopkeeper.gold = 1000 + 30 * rnd(100);
-    await linkObjectToMonsterInventory(shopkeeper, await mksobj(GOLD_PIECE, false, false), { atFront: true });
+    // C shknam.c:shkinit()/makemon.c:mkmonmoney(). Initial capital is
+    // an ordinary coin stack in the keeper's inventory.
+    const capital = 1000 + 30 * rnd(100);
+    const coins = await mksobj(GOLD_PIECE, false, false);
+    coins.quan = coins.quantity = capital;
+    coins.owt = objectWeight(coins);
+    await linkObjectToMonsterInventory(shopkeeper, coins, { atFront: true });
     if (shopIndex === 6)
         await addObjectToMonsterInventory(shopkeeper, await mksobj(TOUCHSTONE, true, false), game, { atFront: true });
     if (shopIndex === 8 || shopIndex === 7

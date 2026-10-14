@@ -1038,9 +1038,13 @@ export function decode_mixed(str) {
                 if (dcount) { // C `:1482`
                     i += (dcount + 1); // C `:1483`
                     // C `:1484–1486` map_glyphinfo symidx → showsyms.
+                    // Slots are nhsym ints since the symset loader port
+                    // (ov/boulder writes stay strings); C compares ints.
                     const so = glyphmap_symidx(box.v);
                     const sh = game.gs?.showsyms?.[so];
-                    out += (typeof sh === 'string' && sh.length) ? sh[0] : '?';
+                    out += (typeof sh === 'string' && sh.length) ? sh[0]
+                        : (typeof sh === 'number' && sh > 0)
+                            ? String.fromCharCode(sh & 0xFF) : '?';
                     continue; // C `:1485–1487` no copy this iteration
                 }
                 i = save; // C `:1490` forgery — literal

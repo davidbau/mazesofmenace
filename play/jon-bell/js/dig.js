@@ -28,7 +28,7 @@ import { TT_PIT, STONE, SCORR, CORR, DOOR, D_NODOOR, IS_WALL, IS_OBSTRUCTED, IS_
          TIMER_OBJECT, ROT_ORGANIC, SDOOR, D_BROKEN, D_TRAPPED, W_NONDIGGABLE, SHOPBASE, ROOM, IS_TREE,
          WM_MASK, D_LOCKED, Is_rogue_level, A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA,
          HALLUC, HALLUC_RES, DEAF, TAINT_AGE, A_LAWFUL, TRAPPED_DOOR, DIR_180, DIR_ERR, IS_DRAWBRIDGE,
-         DB_DIR, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST } from './const.js';
+         DB_DIR, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, xdir, ydir, N_DIRS } from './const.js';
 /* mdig_tunnel leaf callees, imported from their C homes: wake_nearto (mklev.c
  * via js/mklev.js), mon_learns_traps (trap.c), mondied (mon.c via
  * js/makemon.js — still a throwing stub, reached only on a lethal door blast). */
@@ -93,13 +93,13 @@ import { angry_priest } from './priest.js';
 import { losehp } from './dokick.js';
 import { t_at, deltrap, delfloortrap, unearth_objs, maketrap, mintrap,
          trapeffect_hole_mon, buried_ball_to_punishment } from './trap.js';
-import { On_stairs, stairway_at, In_hell } from './mklev.js';
+import { On_stairs, On_ladder, stairway_at, In_hell } from './mklev.js';
 import { Monnam } from './mcastu.js';
 import { is_pool_or_lava } from './look.js';
 import { water_damage_chain, pooleffects, switch_terrain, boulder_hits_pool, check_special_room } from './cmd.js';
 import { is_drawbridge_wall, find_drawbridge, delobj, impact_drop, is_db_wall } from './dokick.js';
 import { hliquid, mon_has_amulet } from './mhitm.js';
-import { distmin } from './hacklib.js';
+import { distmin, s_suffix } from './hacklib.js';
 import { pickup } from './pickup.js';
 import { spot_stop_timers, spot_time_left } from './timeout.js';
 import { obj_ice_effects } from './mklev.js';
@@ -611,6 +611,120 @@ function is_watch_dg(ptr) {
 function watchman_canseeu_dg(mtmp) {
     return !!(is_watch_dg(mtmp.data) && (mtmp.mcansee | 0) && m_canseeu(mtmp)
               && (mtmp.mpeaceful | 0));
+}
+
+// C dig.c:1762-1837: check the surface above a proposed adjacent pit.
+function adj_pit_checks(cc, msg) {
+    if (!cc || !isok(cc.x, cc.y)) return false;
+    msg.text = '';
+    const room = game.level.at(cc.x, cc.y);
+    const ltyp = room.typ;
+    // Preserve C's order: flags aliases doormask/wall_info/drawbridgemask,
+    // so this also clears those bits BEFORE the tests below.
+    room.flags = 0;
+    const foundation = 'The foundation is too hard to dig through from this angle.';
+    if (is_pool(cc.x, cc.y) || is_lava_(cc.x, cc.y)) {
+        return false;
+    } else if (closed_door(cc.x, cc.y) || room.typ === SDOOR) {
+        msg.text = foundation;
+        return false;
+    } else if (IS_WALL(ltyp)) {
+        msg.text = foundation;
+        return false;
+    } else if (IS_TREE(ltyp)) {
+        msg.text = "The tree's roots glow then fade.";
+        return false;
+    } else if (ltyp === STONE || ltyp === SCORR) {
+        if (room.wall_info & W_NONDIGGABLE) {
+            msg.text = 'The rock glows then fades.';
+            return false;
+        }
+    } else if (ltyp === IRONBARS) {
+        msg.text = 'The bars go much deeper than your pit.';
+        return false;
+    } else if (IS_SINK(ltyp)) {
+        msg.text = 'A tangled mass of plumbing remains below the sink.';
+        return false;
+    } else if (On_ladder(cc.x, cc.y)) {
+        msg.text = 'The ladder is unaffected.';
+        return false;
+    } else {
+        let supporting = null;
+        if (IS_FOUNTAIN(ltyp)) supporting = 'fountain';
+        else if (IS_THRONE(ltyp)) supporting = 'throne';
+        else if (IS_ALTAR(ltyp)) supporting = 'altar';
+        else if (On_stairs(cc.x, cc.y)) supporting = 'stairs';
+        else if (ltyp === DRAWBRIDGE_DOWN || ltyp === DBWALL)
+            supporting = 'drawbridge';
+        if (supporting) {
+            msg.text = `The ${s_suffix(supporting)} supporting structures remain intact.`;
+            return false;
+        }
+    }
+    return true;
+}
+
+// C dig.c:1843-1882: save the links before liquid_flow deletes the trap
+// and clears its neighbors' conjoined bits, then flood in direction order.
+async function pit_flow(trap, filltyp) {
+    if (trap && filltyp !== ROOM && is_pit(trap.ttyp)) {
+        const t = { ...trap };
+        const room = game.level.at(t.tx, t.ty);
+        room.typ = filltyp;
+        room.flags = 0;
+        await liquid_flow_(t.tx, t.ty, filltyp, trap, u_at_(t.tx, t.ty)
+            ? 'Suddenly %s flows in from the adjacent pit!' : null);
+        for (let idx = 0; idx < N_DIRS; ++idx) {
+            if (t.conjoined & (1 << idx))
+                await pit_flow(t_at(t.tx + xdir[idx], t.ty + ydir[idx]), filltyp);
+        }
+    }
+}
+
+// C dig.c:1617-1668,1740-1749: the pit-only horizontal zap path. zap.js
+// supplies the trap found before its unconditional rn1(18, 8) depth draw.
+export async function zap_dig_pit(trap_with_u, digdepth) {
+    const u = game.u;
+    const diridx = xytodir(u.dx, u.dy);
+    let zx = u.ux + u.dx, zy = u.uy + u.dy;
+    let flow_x = -1, flow_y = -1, pitflow = false;
+    while (--digdepth >= 0) {
+        if (!isok(zx, zy)) break;
+        let adjpit = t_at(zx, zy);
+        if (diridx !== DIR_ERR && !conjoined_pits_dg(adjpit, trap_with_u, false)) {
+            if (!(adjpit && is_pit(adjpit.ttyp))) {
+                const cc = { x: zx, y: zy }, msg = { text: '' };
+                if (!adj_pit_checks(cc, msg)) {
+                    if (msg.text) await pline(msg.text);
+                } else {
+                    await dighole(true, true, cc);
+                    adjpit = t_at(zx, zy);
+                }
+            }
+            if (adjpit && is_pit(adjpit.ttyp)) {
+                trap_with_u.conjoined |= 1 << diridx;
+                adjpit.conjoined |= 1 << DIR_180(diridx);
+                flow_x = zx;
+                flow_y = zy;
+                pitflow = true;
+            }
+            if (is_pool(zx, zy) || is_lava_(zx, zy)) {
+                flow_x = zx - u.dx;
+                flow_y = zy - u.dy;
+                pitflow = true;
+            }
+            break;
+        }
+        zx += u.dx;
+        zy += u.dy;
+    }
+    if (pitflow && isok(flow_x, flow_y)) {
+        const ttmp = t_at(flow_x, flow_y);
+        if (ttmp && is_pit(ttmp.ttyp)) {
+            const filltyp = fillholetyp_(ttmp.tx, ttmp.ty, true);
+            if (filltyp !== ROOM) await pit_flow(ttmp, filltyp);
+        }
+    }
 }
 
 // C youprop.h:125 Deaf — flat u.HDeaf/u.EDeaf/u.uroleplay.deaf read, the same

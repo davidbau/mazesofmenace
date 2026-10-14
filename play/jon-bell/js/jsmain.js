@@ -18,6 +18,8 @@ import { GameDisplay } from './game_display.js';
 import { generateChargenFrames, chargenShallAnswer, playChargen } from './chargen_ui.js';
 import { rn2 } from './rng.js';
 import { nhgetch } from './input.js';
+import { nh_terminate } from './end.js';
+import { exit_nhwindows } from './rawterm.js';
 import { worm_seg_at } from './worm.js';
 import { worms_rest_snapshot } from './worm.js';
 import { bubbles_reset_process_state } from './mkmaze.js';
@@ -183,10 +185,6 @@ export class NethackGame {
             g.preferred_pet = opts.preferred_pet;
         if (opts.tutorial_set)
             g.tutorial_set_in_config = true;
-        /* C cfgfiles.c:1216 WIZKIT= names gw.wizkit; read_wizkit() (allmain.c:827)
-         * reports it unreadable (files.c:2487) — this port has no filesystem. */
-        { const wk = /^WIZKIT=(.*)$/im.exec(this._nethackrc || '');
-          if (wk) g.wizkit = wk[1].trim(); }
         // Apply symset option → gs.symset[PRIMARYSET].handling.
         // C ref: options.c optfn_DECgraphics / handler_symset — sets gs.symset[PRIMARYSET].handling.
         // Default (no symset option) keeps H_UNK → ASCII PCHAR glyphs from defsym.h.
@@ -333,9 +331,12 @@ export class NethackGame {
             g.flags.initrace = played.race;
             g.flags.initgend = played.gender;
             g.flags.initalign = played.align;
-            // C ref: role.c:2727 `result = 0` -> tty_player_selection() calls
-            // bail(): the player quit out of chargen and no game starts.
-            if (played.quit) return;
+            // C wintty.c:634-640 -> bail():344-350 exits the process;
+            // returning here would let the caller enter moveloop without a hero.
+            if (played.quit) {
+                exit_nhwindows(null);
+                await nh_terminate(0);
+            }
             game._screen_output = '';
         }
         // Run game startup
@@ -823,7 +824,13 @@ export async function runSegment(input, prevGame = null) {
     const quiet = (e) => {
         if (!String(e?.message || '').includes('Input queue empty')) throw e;
     };
-    try { await nhGame.start(); } catch (e) { quiet(e); }
+    try { await nhGame.start(); } catch (e) {
+        // C's chargen bail terminates before newgame or any moveloop input.
+        if (game.program_state?.exiting
+            && String(e?.message || '').startsWith('nh_terminate: '))
+            return nhGame;
+        quiet(e);
+    }
     // C ref: allmain.c:59 moveloop() — `for (;;) { moveloop_core(); }`.  One
     // moveloop_core() call is ONE command, not the whole game: C keeps calling
     // that out (`for (iter…) await moveloop_core()`), but this adapter only

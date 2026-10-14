@@ -132,7 +132,13 @@ function _uprop_on(idx) {
 }
 /* C youprop.h Levitation / Flying. */
 function Levitation() { return _uprop_on(LEVITATION); }
-function Flying() { return _uprop_on(FLYING); }
+function Flying() {
+    // C youprop.h:253: a flying steed confers flight unless BFlying blocks it.
+    const u = game.u, p = u?.uprops?.[FLYING];
+    return !!((p?.intrinsic | 0) || (p?.extrinsic | 0)
+        || ((u?.usteed?.data?.mflags1 | 0) & 0x00000001 /* M1_FLY */))
+        && !(p?.blocked | 0);
+}
 
 function _hero_data() {
     const ym = game.youmonst;

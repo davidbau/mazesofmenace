@@ -906,21 +906,20 @@ const SYMSET_LIST = [
     ['IBMGraphics_1', 1, '', ''],
     ['IBMGraphics_2', 1, '', ''],
     ['RogueIBM', 1, '', 'rogue'],
-    ['RogueEpyx', 1, '', 'rogue'],
+    ['RogueEpyx', 1, 'rogue level color symbol set like Epyx Rogue', 'rogue'],
     ['RogueWindows', 1, '', 'rogue'],
-    ['curses', 2, 'approximation of IBMgraphics using DECgraphics', ''],
-    ['DECgraphics', 2, 'special line-drawing characters used for walls', ''],
-    ['Enhanced1', 5, 'Enhanced with Unicode glyphs and 24-bit color', ''],
-    ['Enhanced2', 5, 'Enhanced with more Unicode glyphs and 24-bit color', ''],
+    ['curses', 2, 'approximation of IBMgraphics using DECgraphics', 'primary'],
+    ['DECgraphics', 2, 'special line-drawing characters used for walls', 'primary'],
+    ['Enhanced1', 5, 'Enhanced with Unicode glyphs and 24-bit color', 'primary'],
+    ['Enhanced2', 5, 'Enhanced with more Unicode glyphs and 24-bit color', 'primary'],
     ['AmigaFont', 0, 'Amiga hack.font line-drawing and effect characters', ''],
 ];
 
-/* C symbols.c:906 do_symset(FALSE) — the primary-set picker. */
-export async function handler_symset(preserveStatus = false) {
-    const PRIMARY = 0;
-    const cur = gs.symset[PRIMARY];
+/* C symbols.c:909 do_symset(): both pickers share the restriction filter. */
+export async function handler_symset(preserveStatus = false, rogueflag = false) {
+    const cur = gs.symset[rogueflag ? 1 : 0];
     const symset_name = cur.name;
-    const sets = SYMSET_LIST.filter((s) => s[3] !== 'rogue');
+    const sets = SYMSET_LIST.filter((s) => s[3] !== (rogueflag ? 'primary' : 'rogue'));
     let biggest = 'Default Symbols'.length;
     for (const s of sets) biggest = Math.max(biggest, s[0].length);
     let defindx = 0;
@@ -932,7 +931,7 @@ export async function handler_symset(preserveStatus = false) {
         if (symset_name && s[0].toLowerCase() === symset_name.toLowerCase()) defindx = id;
         m.add_menu(id, 0, ATR_NONE, s[0].padEnd(biggest + 2) + ' ' + s[2], false, id === defindx);
     });
-    m.end_menu('Select symbol set:');
+    m.end_menu(`Select ${rogueflag ? 'rogue level ' : ''}symbol set:`);
     const { count, picks } = await m.select_menu(PICK_ONE);
     let chosen = -2;
     if (count > 0) {
@@ -1226,6 +1225,14 @@ export async function doset() {
                         needVisuals = true;
                     }
                     if (ent.row.name === 'rest_on_space') update_rest_on_space();
+                    /* C options.c:5376-5385: these toggles reset glyphs and
+                     * redraw after the pick walk, acknowledging pending messages
+                     * through reset_needed_visuals() -> docrt() -> cls(). */
+                    if (['wizmgender', 'showrace', 'use_inverse', 'hilite_pile',
+                         'perm_invent', 'ascii_map', 'tiled_map'].includes(ent.row.name)) {
+                        g.go.opt_need_redraw = g.go.opt_need_glyph_reset = true;
+                        needVisuals = true;
+                    }
                     /* C optfn_boolean (options.c:5412-5416): these set the pending-visual flags. */
                     if (ent.row.name === 'customcolors') { g.go.opt_reset_customcolors = true; needVisuals = true; }
                     if (ent.row.name === 'customsymbols') { g.go.opt_reset_customsymbols = true; needVisuals = true; }
@@ -1290,6 +1297,13 @@ export async function doset() {
                     await drainTopline();
                     await handler_menustyle(statusRefreshed);
                     statusRefreshed = true;
+                } else if (ent.row.name === 'symset' || ent.row.name === 'roguesymset') {
+                    /* C options.c:6325 handler_symset(), 8939 do_handler. */
+                    await drainTopline();
+                    await handler_symset(statusRefreshed, ent.row.name === 'roguesymset');
+                    g.go.opt_need_redraw = true;
+                    needVisuals = true;
+                    statusRefreshed = false;
                 } else if (ent.row.hasHandler === false) {
                     /* C ref: options.c:8944-8953 — no handler, so getlin. */
                     await drainTopline();

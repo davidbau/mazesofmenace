@@ -65,7 +65,7 @@ import { ENV } from './hostenv.js';
  * leave it in TDZ at call time (look_here only runs after both modules have
  * finished evaluating). */
 import { force_decor, mbodypart, set_msg_xy, instapetrify,
-         dfeature_at as _cmd_dfeature_at } from './cmd.js';
+         dfeature_at as _cmd_dfeature_at, pooleffects_is_flyer } from './cmd.js';
 
 const _DIRTRACE = (typeof process !== 'undefined' && ENV
     && ENV.FF_DIRTRACE === '1');
@@ -647,7 +647,7 @@ export function is_pool_or_lava(x, y) {
 // C ref: hack.c:2448-2464 avoid_moving_on_trap(x, y, msg)
 // Returns TRUE if there's a known, visible, non-vibrating-square trap at (x, y).
 // (RNG-free: only reads trap state.)
-export function avoid_moving_on_trap(x, y, msg) {
+export async function avoid_moving_on_trap(x, y, msg) {
     const trap = t_at(x, y);
     if (!trap) return false;
     if (!trap.tseen) return false;
@@ -655,7 +655,7 @@ export function avoid_moving_on_trap(x, y, msg) {
     /* C hack.c:2456-2460 — rushes (run >= 2) report why they stopped. */
     if (msg && game.flags?.mention_walls) {
         set_msg_xy(x, y);
-        void pline(`You stop in front of ${an(trapname(trap.ttyp | 0, false))}.`);
+        await pline(`You stop in front of ${an(trapname(trap.ttyp | 0, false))}.`);
     }
     return true;
 }
@@ -663,14 +663,16 @@ export function avoid_moving_on_trap(x, y, msg) {
 // C ref: hack.c:2466-2494 avoid_moving_on_liquid(x, y, msg) — static fn in C
 // Returns TRUE if the hero should stop at the edge of a pool/lava.
 // RNG-free; reads terrain type, hero flags, and seenv.
-export function avoid_moving_on_liquid(x, y, msg) {
+export async function avoid_moving_on_liquid(x, y, msg) {
     const u = game.u || {};
     const levHere = game.level?.at(u.ux | 0, u.uy | 0);
     const levThere = game.level?.at(x, y);
     if (!levThere) return false;
-    /* in_air: Levitation || Flying */
-    const levitation = !!(u.uprops?.[LEVITATION]?.intrinsic || u.uprops?.[LEVITATION]?.extrinsic);
-    const flying = !!(u.uprops?.[FLYING]?.intrinsic || u.uprops?.[FLYING]?.extrinsic);
+    /* C youprop.h:240-255: blocked properties do not lift the hero; a flying steed can. */
+    const lp = u.uprops?.[LEVITATION], fp = u.uprops?.[FLYING];
+    const levitation = !!((lp?.intrinsic || lp?.extrinsic) && !lp?.blocked);
+    const flying = !!((fp?.intrinsic || fp?.extrinsic
+        || (u.usteed && pooleffects_is_flyer(u.usteed.data))) && !fp?.blocked);
     const in_air = levitation || flying;
     /* C hack.c:59-65 Known_wwalking / Known_lwalking.  These are
      * knowledge predicates, not movement properties: the hero only knows
@@ -685,7 +687,6 @@ export function avoid_moving_on_liquid(x, y, msg) {
     const fireRes = u.uprops?.[FIRE_RES];
     const known_lwalking = !!(known_wwalking && fireRes
         && ((fireRes.intrinsic | 0) || (fireRes.extrinsic | 0))
-        && !(fireRes.blocked | 0)
         && uarmf.oerodeproof && uarmf.rknown);
     /* C condition: avoid if:
      * NOT ((levl[x][y].typ == levl[u.ux][u.uy].typ
@@ -711,7 +712,8 @@ export function avoid_moving_on_liquid(x, y, msg) {
     if (safe_terrain && safe_protected && notWaterwall) return false;
     if (is_pool_or_lava(x, y) && levThere.seenv) {
         if (msg && game.flags?.mention_walls) {
-            void pline(`You stop at the edge of the ${hliquid(isPoolThere ? 'water' : 'lava')}.`);
+            set_msg_xy(x, y);
+            await pline(`You stop at the edge of the ${hliquid(isPoolThere ? 'water' : 'lava')}.`);
         }
         return true;
     }
@@ -763,7 +765,7 @@ export function end_running(and_travel) {
 // May rewrite u.dx/u.dy/u.last_str_turn for corridor turns.
 // Consumes NO RNG.
 // WIRE_PENDING: stage-B-run-dispatch — will be called from moveloop_core multi>0 loop.
-export function lookaround() {
+export async function lookaround() {
     const u = game.u;
     if (!u) return;
     const ctx = game.context || {};
@@ -832,12 +834,12 @@ export function lookaround() {
                      *     "%s blocks your path.", upstart(a_monnam(mtmp))).
                      * Amonnam is exactly that naming composition.  pline()'s
                      * normal path updates the topline synchronously, so this
-                     * remains a synchronous, RNG-free lookaround stop (apart
+                     * awaits completion before stopping the run (apart
                      * from the same display-name stream C may use while
                      * hallucinating). */
                     if (game.flags?.mention_walls) {
                         set_msg_xy(x, y);
-                        void pline(`${Amonnam(mtmp)} blocks your path.`);
+                        await pline(`${Amonnam(mtmp)} blocks your path.`);
                     }
                     nomul(0);
                     _emitStop(`monster@${x},${y}:tame${mtmp.mtame | 0}:peace${mtmp.mpeaceful | 0}:infront${infront ? 1 : 0}`);
@@ -851,7 +853,7 @@ export function lookaround() {
             if (x === ux - dx && y === uy - dy) continue;
 
             /* trap check: avoid_moving_on_trap(x, y, infront && run > 1) */
-            if (avoid_moving_on_trap(x, y, infront && run > 1)) {
+            if (await avoid_moving_on_trap(x, y, infront && run > 1)) {
                 if (run === 1) {
                     /* goto bcorr — treat as corridor */
                     const bcorr_res = _bcorr(x, y, ux, uy, dx, dy, run, mtmp,
@@ -883,7 +885,7 @@ export function lookaround() {
                     /* C hack.c:3974-3977 */
                     if (game.flags?.mention_walls) {
                         set_msg_xy(x, y);
-                        void pline('You stop in front of the door.');
+                        await pline('You stop in front of the door.');
                     }
                     nomul(0);
                     _emitStop('closed-door');
@@ -911,7 +913,7 @@ export function lookaround() {
                 m0 = bcorr_res.m0;
                 continue;
             } else if (is_pool_or_lava(x, y)) {
-                if (infront && avoid_moving_on_liquid(x, y, true)) {
+                if (infront && await avoid_moving_on_liquid(x, y, true)) {
                     nomul(0);
                     _emitStop('liquid');
                     return;

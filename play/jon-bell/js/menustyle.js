@@ -1,6 +1,7 @@
 // C options.c:menutype and optfn_menustyle(do_set). Shared by the parser,
 // value display and interactive handler; menu_style is the actual flags field.
 import { MENU_TRADITIONAL, MENU_COMBINATION, MENU_FULL, MENU_PARTIAL } from './const.js';
+import { config_error_add } from './cmd_binds.js';
 
 export const menutype = [
     ['traditional', '[prompt for object class(es), then', ' ask y/n for each item in those classes]'],
@@ -13,7 +14,11 @@ export function optfn_menustyle_set(flags, opts, op, negated) {
     const val_required = opts.length > 5 && !negated;
     let tmp;
     if (!op) {
-        if (val_required) return false;
+        if (val_required) {
+            // C options.c:6675-6678, string_for_opt().
+            config_error_add("Missing parameter for '%s'", opts);
+            return false;
+        }
         tmp = negated ? 'n' : 'f';
     } else tmp = op[0].toLowerCase();
     switch (tmp) {
@@ -21,7 +26,10 @@ export function optfn_menustyle_set(flags, opts, op, negated) {
     case 'c': flags.menu_style = MENU_COMBINATION; break;
     case 'f': flags.menu_style = MENU_FULL; break;
     case 'p': flags.menu_style = MENU_PARTIAL; break;
-    default: return false;
+    default:
+        // C options.c:2361-2363, optfn_menustyle(do_set).
+        config_error_add("Unknown %s parameter '%s'", 'menustyle', op);
+        return false;
     }
     return true;
 }

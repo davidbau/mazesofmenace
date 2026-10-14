@@ -1,4 +1,22 @@
-import { fixup_oil } from './mkobj.js';
+import { fixup_oil, get_mtraits, free_omid } from './mkobj.js';
+import { dead_species, restore_cham, neweshk, mongone, add_to_minv } from './mklev.js';
+import { monhp_per_lvl, dmgtype_fromattack, container_weight, emits_light, monflee } from './makemon.js';
+import { dealloc_monst, dealloc_mextra, relmon, wary_dog, tamedog } from './dog.js';
+import { place_monster } from './steed.js';
+import { place_wsegs } from './worm.js';
+import { new_light_source, del_light_source, monst_to_any } from './light.js';
+import { inhishop, stolen_value as revive_stolen_value } from './shk.js';
+import { cant_finish_meal, eaten_stat } from './eat.js';
+import { cant_revive } from './read.js';
+import { enexto_out } from './teleport.js';
+import { free_oname } from './dokick.js';
+import { christen_monst, Amonnam } from './mhitm.js';
+import { attach_egg_hatch_timeout } from './timeout.js';
+import { OBJ_FREE, OBJ_FLOOR, OBJ_CONTAINED, OBJ_INVENT, OBJ_MINVENT, OBJ_BURIED,
+         NO_MINVENT, MM_NOWAIT, MM_NOCOUNTBIRTH, MM_NOTAIL, MM_ADJACENTOK,
+         MM_MALE, MM_FEMALE, CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE,
+         GRAVE, IS_POOL, LS_MONSTER, ONAME, has_oname, PLNMSG_OBJ_GLOWS, PROT_FROM_SHAPE_CHANGERS, OBJ_DELETED } from './const.js';
+import { PM_GHOST, PM_DOPPELGANGER } from './pm.generated.js';
 import { wearslot } from './worn.js';
 import { freeinv_core, addinv_core1, addinv_core2, setuwep, setuswapwep, setuqwep, set_twoweap } from './cmd.js';
 import { bimanual, set_wear } from './do_wear.js';
@@ -13,7 +31,7 @@ import { rn2, rnd, rn1, d, pushRngLogEntry } from './rng.js';
 import { spell_skilltype } from './spell.js';
 import { P_SKILL } from './skills.js';
 import { P_ISRESTRICTED, P_UNSKILLED, P_BASIC, P_SKILLED, P_EXPERT } from './const.js';
-import { mkobj, mksobj, rnd_class, OC_MERGE, m_respond, hideunder, dealloc_oextra, OC_USES_KNOWN, engr_at, del_engr_at, make_engr_at, wipe_engr_at, lowc, healmon, random_engraving, makemon, MONS_CWT, normal_shape, revive_corpse, sobj_at, minliquid, mlifesaver } from './mklev.js';
+import { mkobj, mksobj, rnd_class, OC_MERGE, m_respond, hideunder, dealloc_oextra, OC_USES_KNOWN, engr_at, del_engr_at, make_engr_at, wipe_engr_at, lowc, healmon, random_engraving, makemon, MONS_CWT, normal_shape, sobj_at, minliquid, mlifesaver } from './mklev.js';
 import { MKOBJ_OC_MAGIC, MKOBJ_OC_MATERIAL, MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js';
 import { PM_FLESH_GOLEM, PM_IRON_GOLEM, PM_STONE_GOLEM, PM_CLAY_GOLEM, PM_WOOD_GOLEM,
          PM_LEATHER_GOLEM, PM_ROPE_GOLEM, PM_SKELETON, PM_GOLD_GOLEM, PM_GLASS_GOLEM,
@@ -35,7 +53,7 @@ import { addtobill, check_unpaid_usage } from './shk.js';
 import { ECMD_OK, ECMD_CANCEL, ECMD_TIME } from './const.js';
 import { POOL, MOAT, DRAWBRIDGE_DOWN, IS_FOUNTAIN, Is_waterlevel, Is_airlevel } from './const.js';
 import { PIT, FIRE_RES, COLD_RES, SHOCK_RES, SLEEP_RES, ACID_RES, DISINT_RES, POISON_RES, W_ARMOR, W_ACCESSORY, W_WEP, W_ART, W_RING, W_ARMG, W_ARMC, W_ARM, W_ARMU, W_ARMH, W_ARMF, W_ARMS, W_AMUL, W_TOOL, W_RINGL, W_RINGR, SDOOR, SCORR, DOOR, CORR, ROOM, D_CLOSED, D_LOCKED, D_TRAPPED, D_NODOOR, BOLT_LIM, STATUE_TRAP, SVALL, COULD_SEE, IN_SIGHT, STONE, ZAP_POS, IS_WALL, IS_OBSTRUCTED, IS_TREE, IS_ROOM, isok, W_NONDIGGABLE, Is_earthlevel, u_at, TRAPDOOR, HOLE, NO_TRAP_FLAGS } from './const.js';
-import { xdir, ydir, N_DIRS, FUMBLING, IS_SINK } from './const.js';
+import { xdir, ydir, N_DIRS, FUMBLING, IS_SINK, TT_PIT } from './const.js';
 import { game, wizard } from './gstate.js';
 import { TtyMenu, PICK_ONE, ATR_NONE } from './tty_menu.js';
 import { get_obj_location } from './light.js';
@@ -187,7 +205,7 @@ import { spoteffects } from './landing-effects.js';
 import { is_moat, is_db_wall, find_drawbridge } from './dokick.js';
 import { shkname, stolen_value } from './dokick.js';
 import { cvt_sdoor_to_door, draft_message, set_utrap, dighole, bury_an_obj, unpunish,
-         destroy_drawbridge, open_drawbridge, close_drawbridge, watch_dig } from './dig.js';
+         destroy_drawbridge, open_drawbridge, close_drawbridge, watch_dig, zap_dig_pit } from './dig.js';
 import { in_town } from './cmd.js';
 import { rloco } from './steal.js';
 import { reset_utrap } from './trap.js';
@@ -1088,66 +1106,331 @@ export function zappable(obj) {
         obj.spe = spe - 1;
     return 1;
 }
-/* C zap.c:1156-1230, unturn_you().  An undead-turning zap at the hero
- * reverses the normal undead-turning effect on carried corpses: one corpse
- * from each stack is revived, then the backlash stuns the hero.  Keep this
- * separate from timeout revival because explicit turning ignores norevive
- * and must not arm a new corpse timer. */
-async function _zp_unturn_you() {
-    let revived = 0;
-    for (let obj = game.invent; obj; ) {
-        const next = obj.nobj;
-        if ((obj.otyp | 0) !== CORPSE) {
-            obj = next;
-            continue;
-        }
-        let corpse = corpse_xname_uy(obj, null, 0 /* CXN_NORMAL */);
-        let owner;
-        if ((obj.quan | 0) > 1)
-            owner = 'One of ' + shk_your_uy('', obj);
-        else
-            owner = Shk_Your_uy('', obj);
-        const corpsenm = obj.corpsenm | 0;
-        const save_norevive = obj.norevive;
-        obj.norevive = 0;
-        /* zap.c:1042-1050, 1176-1190 */
-        const by_hero = !(game.context && game.context.mon_moving);
-        const one_of = (obj.quan | 0) > 1;
-        let glow = null;
-        if (by_hero && cansee(game.u.ux, game.u.uy)) {
-            const q = obj.quan;
-            glow = (one_of ? 'one of ' : '') + shk_your_uy('', obj);
-            if (one_of) obj.quan = q + 1;
-            glow += corpse_xname_uy(obj, null, 2 /* CXN_NO_PFX */);
-            if (one_of) obj.quan = q;
-            glow = glow.charAt(0).toUpperCase() + glow.slice(1);
-        }
-        const mon = await revive_corpse(obj, false);
-        if (mon) {
-            revived++;
-            const mndx = (mon.mndx ?? mon.mnum ?? mon.pmidx) | 0;
-            const different_type = mndx !== corpsenm;
-            if (glow != null) {
-                await pline(`${glow} glows iridescently.`);
-                corpse = 'It';
-                owner = '';
+/* C zap.c:712-826.  Restore the saved monster, using makemon for the
+ * placement-dependent fields and preserving the C RNG order. */
+export async function montraits(obj, cc, adjacentok) {
+    const saved = get_mtraits(obj, true);
+    if (!saved) return null;
+    saved.data = permonstTemplate(saved.mnum);
+    let fresh = null;
+    if (saved.mhpmax > 0 || _zp_is_rider(saved.data))
+        fresh = await makemon(saved.data, cc.x, cc.y,
+            NO_MINVENT | MM_NOWAIT | MM_NOCOUNTBIRTH | MM_NOTAIL | MM_NOMSG
+            | (adjacentok ? MM_ADJACENTOK : 0));
+    if (!fresh) {
+        dealloc_monst(saved);
+        return null;
+    }
+    if (fresh.m_lev < fresh.data.mlevel) {
+        const level = rnd(fresh.data.mlevel + 1);
+        if (level > fresh.m_lev) {
+            while (fresh.m_lev < level) {
+                fresh.m_lev++;
+                fresh.mhpmax += monhp_per_lvl(fresh);
             }
-            await pline(`${owner}${corpse} suddenly ${nonliving(mon.data) ? 'reanimates' : 'comes alive'}${different_type ? ' as ' + an(monPmname(mndx, mon.female ? FEMALE : MALE)) : ''}!`);
+            saved.m_lev = fresh.m_lev;
+        }
+    }
+    saved.mhpmax = Math.max(fresh.mhpmax, saved.mhpmax);
+    saved.mhp = saved.mhpmax;
+    saved.minvent = fresh.minvent;
+    // C deliberately uses the freshly allocated ID, even for current-game traits.
+    if (fresh.m_id) {
+        saved.m_id = fresh.m_id;
+        const q = game.svq?.quest_status;
+        if (q?.leader_is_dead && saved.m_id === q.leader_m_id)
+            q.leader_is_dead = false;
+    }
+    for (const key of ['mx', 'my', 'mux', 'muy', 'mw', 'wormno',
+        'misc_worn_check', 'weapon_check', 'mtrapseen', 'mflee', 'mburied',
+        'mundetected', 'mfleetim', 'mlstmv', 'm_ap_type'])
+        saved[key] = fresh[key];
+    saved.mrevived = 1;
+    for (const key of ['mavenge', 'meating', 'mleashed', 'mtrapped',
+        'msleeping', 'mfrozen', 'mblinded', 'mstun', 'mconf'])
+        saved[key] = 0;
+    saved.mcanmove = saved.mcansee = 1;
+    if (!dmgtype_fromattack(saved.data, 22 /* AD_SEDU */, -1 /* AT_ANY */)
+        && (!(game.sysopt?.seduce ?? true)
+            || !dmgtype_fromattack(saved.data, 35 /* AD_SSEX */, -1)))
+        saved.mcan = 0;
+    if (saved.isshk) {
+        neweshk(fresh);
+        Object.assign(fresh.mextra.eshk, saved.mextra.eshk);
+        const eshk = fresh.mextra.eshk;
+        if (eshk.bill_p && eshk.bill_p !== -1000) eshk.bill_p = eshk.bill;
+        fresh.isshk = 1;
+    }
+    // C mon.c:2515 replmon: transfer references before freeing the dummy.
+    for (let o = saved.minvent; o; o = o.nobj) o.ocarry = saved;
+    fresh.minvent = null;
+    if (game.context?.polearm?.hitmon === fresh) game.context.polearm.hitmon = saved;
+    await relmon(fresh, null);
+    if (fresh !== game.u.usteed) place_monster(saved, saved.mx, saved.my);
+    if (saved.wormno) place_wsegs(saved, fresh);
+    const light = emits_light(saved.data);
+    if (light) {
+        new_light_source(saved.mx, saved.my, light, LS_MONSTER, monst_to_any(saved));
+        del_light_source(LS_MONSTER, monst_to_any(fresh));
+    }
+    saved.nmon = game.fmon;
+    game.fmon = saved;
+    if (game.u.ustuck === fresh) set_ustuck(saved);
+    if (game.u.usteed === fresh) game.u.usteed = saved;
+    if (saved.isshk) {
+        const eshk = saved.mextra.eshk;
+        game.level.rooms[eshk.shoproom - 3 /* ROOMOFFSET */].resident = saved;
+        if (inhishop(fresh) && game.u.ushops?.charCodeAt(0) === fresh.mextra.eshk.shoproom)
+            eshk.bill_p = eshk.bill;
+    }
+    dealloc_monst(fresh);
+    newsym(saved.mx, saved.my);
+    // mon.c:4649 restore_cham; the shared helper omits the protection arm.
+    const protection = game.u.uprops?.[PROT_FROM_SHAPE_CHANGERS];
+    if (protection?.intrinsic || protection?.extrinsic)
+        await normal_shape(saved);
+    else
+        await restore_cham(saved);
+    return saved;
+}
+
+function _zp_is_rider(ptr) {
+    return ptr.pmidx === PM_DEATH || ptr.pmidx === PM_PESTILENCE || ptr.pmidx === PM_FAMINE;
+}
+
+/* C zap.c:840-858: a null object leaves *loc unchanged. */
+function get_container_location(obj, loc, nesting) {
+    if (nesting) nesting.value = 0;
+    while (obj && obj.where === OBJ_CONTAINED) {
+        if (nesting) nesting.value++;
+        obj = obj.ocontainer;
+    }
+    if (obj) {
+        loc.value = obj.where;
+        if (obj.where === OBJ_MINVENT) return obj.ocarry;
+    }
+    return null;
+}
+
+/* C zap.c:862-876. Any trap prevents a buried zombie digging out. */
+function zombie_can_dig(x, y) {
+    if (!isok(x, y) || t_at(x, y)) return false;
+    const typ = game.level.locations[x][y].typ;
+    return typ === ROOM || typ === CORR || typ === GRAVE;
+}
+
+/* C zap.c:883-1139. Unlike do.c's revive_corpse, this performs no
+ * timer-revival presentation or post-revival digging. */
+async function revive(corpse, by_hero) {
+    if (corpse.otyp !== CORPSE) {
+        await impossible('Attempting to revive %s?', xname(corpse));
+        return null;
+    }
+    const mptr = permonstTemplate(corpse.corpsenm);
+    const is_zomb = mptr.mlet === 52 /* S_ZOMBIE */
+        || (corpse.where === OBJ_BURIED && (_zp_is_rider(mptr) || mptr.mlet === 46 /* S_TROLL */));
+    await cant_finish_meal(corpse);
+    const xp = { value: 0 }, yp = { value: 0 }, nesting = { value: 0 };
+    let container = null;
+    if (corpse.where !== OBJ_CONTAINED) {
+        get_obj_location(corpse, xp, yp, is_zomb ? BURIED_TOO : 0);
+    } else {
+        container = corpse.ocontainer;
+        const holder = { value: OBJ_FREE };
+        const carrier = get_container_location(container, holder, nesting);
+        if (holder.value === OBJ_MINVENT) {
+            xp.value = carrier.mx; yp.value = carrier.my;
+        } else if (holder.value === OBJ_INVENT) {
+            xp.value = game.u.ux; yp.value = game.u.uy;
+        } else if (holder.value === OBJ_FLOOR) {
+            get_obj_location(corpse, xp, yp, CONTAINED_TOO);
+        }
+    }
+    let x = xp.value, y = yp.value;
+    if (x) { corpse.ox = x; corpse.oy = y; }
+    if (!x || (container && (container.olocked || nesting.value > 2
+        || container.otyp === 476 /* STATUE */
+        || (container.otyp === 219 /* BAG_OF_HOLDING */ && rn2(40))))
+        || (is_zomb && corpse.where === OBJ_BURIED && !zombie_can_dig(x, y)))
+        return null;
+    if (m_at(x, y)) {
+        const cc = enexto_out(x, y, mptr);
+        if (cc) { x = cc.x; y = cc.y; }
+    }
+    if (corpse.norevive || (mptr.mlet === 57 /* S_EEL */ && !IS_POOL(game.level.locations[x][y].typ))) {
+        if (cansee(x, y))
+            await pline('%s twitches feebly.', upstart(corpse_xname_uy(corpse, null, 4 /* CXN_PFX_THE */)));
+        return null;
+    }
+    let mmflags = NO_MINVENT | MM_NOWAIT | MM_NOMSG;
+    const gender = corpse.spe & CORPSTAT_GENDER;
+    if (gender === CORPSTAT_MALE) mmflags |= MM_MALE;
+    else if (gender === CORPSTAT_FEMALE) mmflags |= MM_FEMALE;
+    const mtype = { value: corpse.corpsenm };
+    let mon;
+    if (cant_revive(mtype, true, corpse)) {
+        mon = await makemon(permonstTemplate(mtype.value), x, y, mmflags);
+        if (mon) {
+            if (corpse.oextra?.omid) free_omid(corpse);
+            if (corpse.oextra?.omonst) {
+                dealloc_mextra(corpse.oextra.omonst);
+                corpse.oextra.omonst = null;
+            }
+            if (mon.cham === PM_DOPPELGANGER)
+                await newcham(mon, mptr.pmidx, NO_NC_FLAGS);
+            else if (mon.data.mlet === 52) {
+                mon.mhp = mon.mhpmax = 100;
+                mon_adjust_speed(mon, 2, null);
+            }
+        }
+    } else if (corpse.oextra?.omonst) {
+        mon = await montraits(corpse, { x, y }, false);
+        if (mon?.mtame && !mon.isminion) await wary_dog(mon, true);
+    } else {
+        mon = await makemon(mptr, x, y, mmflags | MM_NOCOUNTBIRTH);
+    }
+    if (!mon) return null;
+    if (mon.mundetected) {
+        mon.mundetected = 0;
+        newsym(mon.mx, mon.my);
+    }
+    if (M_AP_TYPE(mon)) seemimic(mon);
+    const one_of = corpse.quan > 1;
+    if (one_of) corpse = await splitobj(corpse, 1);
+    if (by_hero) {
+        x = corpse.ox; y = corpse.oy;
+        let shkp = null;
+        if (costly_spot(x, y) && (corpse.where === OBJ_INVENT ? corpse.unpaid : !corpse.no_charge))
+            shkp = shop_keeper((in_rooms(x, y, SHOPBASE) || [])[0]);
+        if (cansee(x, y)) {
+            let buf = (one_of ? 'one of ' : '') + shk_your_uy('', corpse);
+            if (one_of) corpse.quan++;
+            buf += corpse_xname_uy(corpse, null, 2 /* CXN_NO_PFX */);
+            if (one_of) corpse.quan--;
+            await pline('%s glows iridescently.', upstart(buf));
+            game.iflags.last_msg = PLNMSG_OBJ_GLOWS;
+        } else if (shkp) {
+            await pline('A corpse is resuscitated.');
+        }
+        if (shkp && mon !== shkp) await revive_stolen_value(corpse, x, y, !!shkp.mpeaceful, false);
+    }
+    if (corpse.oextra?.omid) {
+        let ghost = game.fmon;
+        while (ghost && (DEADMONSTER(ghost) || ghost.m_id !== corpse.oextra.omid)) ghost = ghost.nmon;
+        if (ghost?.data?.pmidx === PM_GHOST) {
+            if (canseemon(ghost)) await pline('%s is suddenly drawn into its former body!', Monnam(ghost));
+            while (ghost.minvent) {
+                const obj = ghost.minvent;
+                obj_extract_self_general(obj);
+                await add_to_minv(mon, obj);
+            }
+            if (ghost.mtame && !mon.mtame && await tamedog(mon, null, false)) mon.mtame = ghost.mtame;
+            mon.mconf = 1;
+            await mongone(ghost);
+        }
+        free_omid(corpse);
+    }
+    if (has_oname(corpse) && !(mon.data.geno & 0x1000 /* G_UNIQ */))
+        mon = christen_monst(mon, ONAME(corpse));
+    if (corpse.oeaten) mon.mhp = eaten_stat(mon.mhp, corpse);
+    mon.mrevived = 1;
+    switch (corpse.where) {
+    case OBJ_INVENT:
+        await _destroy_useup(corpse);
+        break;
+    case OBJ_FLOOR:
+        obj_extract_self_general(corpse);
+        maybe_unhide_at(corpse.ox, corpse.oy);
+        newsym(corpse.ox, corpse.oy);
+        await obfree(corpse, null);
+        break;
+    case OBJ_MINVENT:
+        // The stack was split above: m_useup -> m_useupall (mthrowu.c:1153).
+        await disint_extract(corpse.ocarry, corpse, true, false);
+        await obfree(corpse, null);
+        break;
+    case OBJ_CONTAINED:
+        obj_extract_self_general(corpse);
+        await obfree(corpse, null);
+        break;
+    case OBJ_BURIED:
+        if (is_zomb) {
+            obj_extract_self_general(corpse);
+            await obfree(corpse, null);
+            break;
+        }
+        // fall through
+    default:
+        throw new Error(`revive default case ${corpse.where}`);
+    }
+    // Mirror dealloc_obj's deletion; billed corpses can remain on the bill.
+    if (corpse.where === OBJ_DELETED) {
+        game.__bridge__ ||= {};
+        const count = Number(game.__bridge__['objs_deleted.count'] ?? 0);
+        game.__bridge__['objs_deleted.count'] = String(count + 1);
+    }
+    return mon;
+}
+
+/* C zap.c:1142-1152. Explicit turning restarts even an expired egg timer. */
+function revive_egg(obj) {
+    if (obj.otyp === 266 /* EGG */ && obj.corpsenm !== NON_PM
+        && !dead_species(obj.corpsenm, true))
+        attach_egg_hatch_timeout(obj, 0);
+}
+
+/* C zap.c:1156-1222. Save next before revival can split or free a stack. */
+export async function unturn_dead(mon) {
+    const is_u = is_youmonst(mon);
+    const youseeit = is_u || canseemon(mon);
+    let res = 0;
+    for (let obj = is_u ? game.invent : mon.minvent, next; obj; obj = next) {
+        next = obj.nobj;
+        if (obj.otyp === 266) revive_egg(obj);
+        if (obj.otyp !== CORPSE) continue;
+        let corpse = '', owner = '';
+        if (youseeit) {
+            corpse = corpse_xname_uy(obj, null, 0);
+            owner = obj.quan > 1 ? 'One of ' + shk_your_uy('', obj) : Shk_Your_uy('', obj);
+        }
+        const corpsenm = obj.corpsenm, save_norevive = obj.norevive;
+        obj.norevive = 0;
+        const revived = await revive(obj, !game.context?.mon_moving);
+        if (revived) {
+            res++;
+            const different = revived.data.pmidx !== corpsenm;
+            if (game.iflags.last_msg === PLNMSG_OBJ_GLOWS) { corpse = 'It'; owner = ''; }
+            if (youseeit)
+                await pline('%s%s suddenly %s%s%s!', owner, corpse,
+                    nonliving(revived.data) ? 'reanimates' : 'comes alive',
+                    different ? ' as ' : '', different ? an(mon_pmname(revived)) : '');
+            else if (canseemon(revived))
+                await pline('%s suddenly appears!', Amonnam(revived));
         } else {
             obj.norevive = save_norevive ? 1 : 0;
         }
-        obj = next;
     }
-    if (revived) await encumber_msg(); /* C zap.c:1219-1220 */
-    const undead = !!((game.youmonst?.data?.mflags2 | 0) & 0x00000002);
-    if (undead) {
-        const old = game.u?.uprops?.[STUNNED]?.intrinsic | 0;
-        await pline(`You feel frightened and ${old & TIMEOUT ? 'even more ' : ''}stunned.`);
-        make_stunned((old & TIMEOUT) + rnd(30), false);
+    if (is_u && res) await encumber_msg();
+    return res;
+}
+
+/* C zap.c:1224-1235. Stunned is HStun, including its FROMFORM bit. */
+async function _zp_unturn_you() {
+    await unturn_dead(game.youmonst);
+    if ((game.youmonst.data.mflags2 | 0) & 0x2 /* M2_UNDEAD */) {
+        const prop = game.u.uprops[STUNNED];
+        await pline(`You feel frightened and ${prop.intrinsic ? 'even more ' : ''}stunned.`);
+        await make_stunned((prop.intrinsic & TIMEOUT) + rnd(30), false);
     } else {
         await pline('You shudder in dread.');
     }
-    return revived;
+}
+
+/* C zap.c:1366-1377; novelidx aliases corpsenm in struct obj. */
+export function blank_novel(obj) {
+    obj.novelidx = obj.corpsenm = 0;
+    free_oname(obj);
+    container_weight(obj);
 }
 
 export async function zapyourself(obj, ordinary) {
@@ -2144,24 +2427,7 @@ function _uhas(prop) {
 }
 /* C trap.c:4618-4655 acid_damage().  zap.c reaches this with a carried weapon;
  * retain C's inventory-resistance, scroll-erasure, and canonical erosion arms. */
-async function acid_damage_zap(obj) {
-    if (!obj) return;
-    const u = game.u;
-    const carried = (obj.where | 0) === 3; /* OBJ_INVENT */
-    if (carried && inventory_resistance_check(AD_ACID)) return;
-    const victim = carried ? game.youmonst : (obj.ocarry || null);
-    if (obj.greased) {
-        await grease_protect(obj, null, victim);
-    } else if ((obj.oclass | 0) === SCROLL_CLASS && (obj.otyp | 0) !== 365) {
-        if (!_Blind()) await pline(`Your ${aobjnam(obj, 'fade')}.`);
-        obj.otyp = 365; /* SCR_BLANK_PAPER */
-        obj.spe = 0;
-        obj.dknown = 0;
-        return;
-    } else {
-        await erode_obj(obj, null, ERODE_CORRODE, EF_GREASE | EF_VERBOSE);
-    }
-}
+import { acid_damage as acid_damage_zap } from './trap.js';
 
 /* C zap.c:3011 ubreatheu — poly'd hero uses its breath attack against itself
  * (getdir gave the self-direction '.'/'s', so u.dx==u.dy==u.dz==0).  The bolt
@@ -4108,7 +4374,7 @@ export async function _zhitm(mon, type, nd) {
             break;
         }
         tmp = d(nd, 6);
-        if (!rn2(6)) { /* acid_damage(MON_WEP(mon)) — no wep, no RNG */ }
+        if (!rn2(6)) await acid_damage_zap(_MON_WEP_zap(mon));
         if (!rn2(6)) { /* erode_armor(mon, CORRODE) — deferred */ }
         break;
     case ZT_SLEEP:
@@ -4563,9 +4829,15 @@ export async function zap_dig() {
     let zx = (u.ux | 0) + udx;
     let zy = (u.uy | 0) + udy;
 
-    const pitdig = false;
+    /* C dig.c:1617-1620: a horizontal zap from a pit digs adjacent pits. */
+    const trap_with_u = u.utrap && u.utraptype === TT_PIT ? t_at(u.ux, u.uy) : null;
 
     let digdepth = rn1(18, 8);
+    if (trap_with_u) {
+        await zap_dig_pit(trap_with_u, digdepth);
+        g.vision_full_recalc = 1;
+        return;
+    }
 
     /* C dig.c:1624-1737 — dig loop. */
     while (--digdepth >= 0) {
@@ -4576,9 +4848,7 @@ export async function zap_dig() {
             break;
         /* C dig.c:1628-1629 tmp_at(zx,zy)/nh_delay_output — beam anim; skipped. */
 
-        if (pitdig) {
-            break;
-        } else if (closed_door(zx, zy) || room.typ === SDOOR) {
+        if (closed_door(zx, zy) || room.typ === SDOOR) {
             /* C dig.c:1669-1683 — raze a (secret) door into a doorless doorway. */
             /* C dig.c:1670-1673 — shop-door damage. */
             if (in_rooms(zx, zy, SHOPBASE).length) {
@@ -4660,8 +4930,6 @@ export async function zap_dig() {
         zy += udy;
     } /* while */
     /* C dig.c:1738 tmp_at(DISP_END,0) — closing beam call; skipped. */
-
-    /* C dig.c:1740-1749 pitflow — only set on the pitdig path; not reached. */
 
     /* C dig.c:1751-1752 */
     if (shopdoor || shopwall)
@@ -5367,80 +5635,51 @@ export async function bhito(obj, otmp) {
     }
     case WAN_UNDEAD_TURNING:
     case SPE_TURN_UNDEAD: {
-        /* C zap.c:2332-2392; corpse arm only (revive_egg unported -> res 0) */
-        if ((obj.otyp | 0) !== CORPSE) { res = 0; break; }
-        const by_u = !(g.context && g.context.mon_moving);
-        const ox = obj.ox | 0, oy = obj.oy | 0;
-        const corpsname = cxname_singular_bh(obj);
-        const save_norevive = obj.norevive;
-        obj.norevive = 0;
-        /* revive() zap.c:1034-1048: glow pline comes after makemon placed it */
-        let glowmsg = null;
-        if (by_u && cansee(ox, oy)) {
-            const one_of = (obj.quan | 0) > 1;
-            let buf = one_of ? 'one of ' : '';
-            buf += shk_your_uy('', obj);
-            if (one_of) obj.quan = (obj.quan | 0) + 1;
-            buf += corpse_xname_uy(obj, null, 2 /* CXN_NO_PFX */);
-            if (one_of) obj.quan = (obj.quan | 0) - 1;
-            glowmsg = `${buf.charAt(0).toUpperCase() + buf.slice(1)} glows iridescently.`;
-        }
-        const mtmp = await revive_corpse(obj, false);
-        if (mtmp && glowmsg) await pline(glowmsg);
-        if (!mtmp) {
-            obj.norevive = save_norevive ? 1 : 0;
-            res = 0;
-        } else if (cansee(ox, oy)) {
-            if (canspotmon(mtmp)) {
-                const nm = x_monnam(mtmp, 1 /* ARTICLE_THE */, null, 0x20 /* SUPPRESS_NAME */, false);
-                await pline(`${nm.charAt(0).toUpperCase() + nm.slice(1)} is resurrected!`);
-                if (by_u) learn_it = true;
+        // C zap.c:2332-2390; revive() owns the glow and shop charge.
+        if (obj.otyp === 266 /* EGG */) {
+            revive_egg(obj);
+        } else if (obj.otyp === CORPSE) {
+            const by_u = !g.context?.mon_moving;
+            const corpsenm = obj.oextra?.omonst?.mnum ?? obj.corpsenm;
+            let corpsname = cxname_singular_bh(obj);
+            const xp = { value: 0 }, yp = { value: 0 };
+            if (!get_obj_location(obj, xp, yp, 0)) {
+                xp.value = obj.ox; yp.value = obj.oy;
+            }
+            const save_norevive = obj.norevive;
+            obj.norevive = 0;
+            const mon = await revive(obj, true);
+            if (!mon) {
+                obj.norevive = save_norevive;
+                res = 0;
             } else {
-                await pline(`The ${corpsname} disappears.`);
+                const pname = permonstTemplate(corpsenm).mflags2 & M2_PNAME_ZAP;
+                if (cansee(xp.value, yp.value)) {
+                    if (canspotmon(mon)) {
+                        await pline('%s is resurrected!', upstart(noname_monnam(mon, ARTICLE_THE)));
+                        learn_it = by_u || !!g.zap_oseen;
+                    } else {
+                        if (!pname) corpsname = The(corpsname);
+                        await pline('%s disappears.', corpsname);
+                    }
+                } else {
+                    if (_wand_Role_if(PM_HEALER) && !_live_deaf_reading()
+                        && !nonliving(permonstTemplate(corpsenm))) {
+                        if (!pname) corpsname = an(corpsname);
+                        await You_hear(_Halluc() ? 'a defibrillator.' : '%s reviving.', corpsname);
+                        learn_it = by_u || !!g.zap_oseen;
+                    }
+                    if (canspotmon(mon)) await pline('%s appears.', Monnam(mon));
+                }
+                if (learn_it) exercise(A_WIS, true);
             }
         }
-        /* C zap.c:2388-2389: if (learn_it) exercise(A_WIS, TRUE) */
-        if (mtmp && learn_it) exercise(A_WIS, true);
         break;
     }
     case SPE_STONE_TO_FLESH:
         /* C zap.c:2412-2413: res = stone_to_flesh_obj(obj); no learn_it. */
         res = await stone_to_flesh_obj(obj);
         break;
-    case WAN_UNDEAD_TURNING:
-    case SPE_TURN_UNDEAD: {
-        /* C zap.c:2332-2370, corpse arm. EGG (revive_egg) is unported: res stays 1. */
-        if ((obj.otyp | 0) !== CORPSE)
-            break;
-        /* C zap.c:884 revive(corpse, TRUE): the glow names the corpse before it is consumed */
-        const ox = obj.ox | 0, oy = obj.oy | 0, corpsenm = obj.corpsenm | 0;
-        const corpsename = cxname_singular(obj);
-        const glow = cansee(ox, oy) ? upstart(shk_your_uy('', obj) + corpse_xname_uy(obj, null, 2)) : null;
-        const save_norevive = obj.norevive | 0;
-        obj.norevive = 0;
-        const mtmp = await revive_corpse(obj, false);
-        if (!mtmp) {
-            obj.norevive = save_norevive;
-            res = 0; /* no monster implies corpse was left intact */
-            break;
-        }
-        if (glow != null)
-            await pline(`${glow} glows iridescently.`);
-        if (cansee(ox, oy) && canspotmon(mtmp)) {
-            await pline(`${upstart(noname_monnam(mtmp, ARTICLE_THE))} is resurrected!`);
-            learn_it = !(game.context && game.context.mon_moving) || !!game.zap_oseen;
-        } else if (cansee(ox, oy)) {
-            /* C zap.c:2357-2366 */
-            const pname = (permonstTemplate(corpsenm)?.mflags2 | 0) & M2_PNAME_ZAP;
-            await pline(`${pname ? corpsename : The(corpsename)} disappears.`);
-        } else if (canspotmon(mtmp)) {
-            /* C zap.c:2368-2369; the Healer "You hear ... reviving" arm is unported */
-            await pline(`${Monnam(mtmp)} appears.`);
-        }
-        if (learn_it)
-            exercise(A_WIS, true);
-        break;
-    }
     default:
         res = 0;
         break;
@@ -6125,6 +6364,20 @@ async function _bhitm_wand(mtmp, obj) {
             learn_it = false;
         }
         return _bhitm_wand_epilogue(mtmp, false, true, learn_it, obj);
+    }
+    if (otyp === WAN_UNDEAD_TURNING || otyp === SPE_TURN_UNDEAD) {
+        let wake = !!(await unturn_dead(mtmp));
+        let reveal_invis = false;
+        if ((mtmp.data.mflags2 & 0x2 /* M2_UNDEAD */) || _expl_is_vampshifter(mtmp)) {
+            wake = reveal_invis = true;
+            let dmg = rnd(8);
+            if (_wand_Role_if(PM_KNIGHT) && game.u.uhave?.questart) dmg *= 2;
+            if (otyp === SPE_TURN_UNDEAD) dmg = spell_damage_bonus(dmg);
+            game.context.bypasses = true;
+            if (!await resist(mtmp, obj.oclass, dmg, NOTELL) && !DEADMONSTER(mtmp))
+                await monflee(mtmp, 0, false, true);
+        }
+        return wake ? await _bhitm_wand_epilogue(mtmp, false, reveal_invis, false, obj) : 0;
     }
     if (otyp === WAN_LOCKING || otyp === SPE_WIZARD_LOCK) {
         /* C zap.c:369-374:
@@ -6922,7 +7175,8 @@ async function cancel_item(obj) {
             if (otyp !== SPE_CANCELLATION && otyp !== CI_SPE_BOOK_OF_THE_DEAD_) {
                 await _ci_costly_alteration(obj, 'COST_CANCEL');
                 obj.otyp = CI_SPE_BLANK_PAPER;
-                void CI_SPE_NOVEL;
+                if (otyp === CI_SPE_NOVEL)
+                    blank_novel(obj);
             }
             break;
         case CI_POTION_CLASS:
@@ -7381,7 +7635,7 @@ export function hit(str, mtmp, force) {
     const verbosely = (is_youmonst(mtmp)
                        || (g.flags?.verbose
                            && (cansee(bx, by) || canspotmon(mtmp))));
-    pline(`${The(str)} ${vtense(str, "hit")} ${verbosely ? mon_nam(mtmp) : "it"}${force}`);
+    return pline(`${The(str)} ${vtense(str, "hit")} ${verbosely ? mon_nam(mtmp) : "it"}${force}`);
 }
 
 /* ── Stubs for unported helpers called by zapnodir ───────────────────────── */

@@ -22,7 +22,6 @@ import { deleteObject } from './object_delete.js';
 import { makePlural, withIndefiniteArticle } from './object_grammar.js';
 import { objectName } from './objnam.js';
 import { objectClassForType, recordObjectKnowledge } from './object_knowledge.js';
-import { rebasePrayerAfterLifeSaving } from './pray.js';
 import { isQuantumBox, observeQuantumCat } from './quantum_cat.js';
 import { deepestLevelReached, depth } from './hacklib.js';
 import { recordGameLogEvent } from './gamelog.js';
@@ -30,7 +29,7 @@ import { hiddenGold } from './gold.js';
 import { heroGoldAmount } from './hero_gold.js';
 import { doneObjectCleanup } from './object_cleanup.js';
 import { restoreHeroNutrition } from './hunger.js';
-import { A_CON, A_WIS, CHOKING, DIED, G_EXTINCT, G_GENOD, GENOCIDED, PANICKED, POISONING, STARVING, STONING, Is_astralevel, PICK_ONE, STRAT_WAITFORU, Upolyd, } from './const.js';
+import { A_CON, A_WIS, CHOKING, DIED, G_EXTINCT, G_GENOD, GENOCIDED, PANICKED, POISONING, STARVING, STONING, Is_astralevel, KILLED_BY, KILLED_BY_AN, NO_KILLER_PREFIX, PICK_ONE, STRAT_WAITFORU, Upolyd, } from './const.js';
 import { AMULET_OF_LIFE_SAVING, AMULET_OF_YENDOR, BELL_OF_OPENING, CANDELABRUM_OF_INVOCATION, JADE, OBJECT_COST, OBJECT_NAMES, SPE_BOOK_OF_THE_DEAD, } from './object_data.js';
 import { createBonesFromDeath } from './bones_death.js';
 import { canMakeBones } from './bones_admission.js';
@@ -109,16 +108,16 @@ export async function restoreHeroAfterDeath({ deathType = null } = {}) {
     // end.c:savelife() replaces any earlier negative multi (including a
     // monster paralysis spell) with exactly -1.  The interrupted actor can
     // finish its remaining attack slots, but no older helpless interval may
-    // allocate another autonomous monster turn afterward.  Its visible
-    // nomovemsg is projected by allmain's debug-death continuation.
+    // allocate another autonomous monster turn afterward. The shared
+    // helplessness recovery publishes nomovemsg when that turn ends.
     endVoluntaryMultiTurn(game);
+    game.multi = -1;
     game._helplessTurns = 1;
     game._helplessReason = 'attempting to cheat Death';
-    game._helplessDoneMessage = '';
+    game._helplessDoneMessage = 'You survived that attempt on your life.';
     game.context.botl = true;
     clearHeroRemains(game);
     await flush_screen(1);
-    rebasePrayerAfterLifeSaving(game);
     const holder = game.u.ustuck;
     if (game.u.uswallow) {
         if (!holder)
@@ -134,7 +133,7 @@ export async function restoreHeroAfterDeath({ deathType = null } = {}) {
     }
     return game.u.uhp;
 }
-export async function finishHeroDeath({ killer, beforeFinalDeath = null, deathCause = null, deathVerb = 'died', deathLineShown = false, deathType = null, }) {
+export async function finishHeroDeath({ killer, killerFormat = KILLED_BY_AN, beforeFinalDeath = null, deathCause = null, deathVerb = 'died', deathLineShown = false, deathType = null, }) {
     // losehp() announces the fatal hit before done() changes mortality or
     // identifies a life-saving amulet. tty keeps this message on its own line.
     if (!deathLineShown) {
@@ -160,7 +159,6 @@ export async function finishHeroDeath({ killer, beforeFinalDeath = null, deathCa
             await plineWithContinuation('Unfortunately you are still genocided...');
         }
         else {
-            game._deathSurvivedMessagePending = true;
             return false;
         }
     }
@@ -171,13 +169,12 @@ export async function finishHeroDeath({ killer, beforeFinalDeath = null, deathCa
             await restoreHeroAfterDeath({ deathType });
             if (game.program_state.gameover)
                 return true;
-            game._deathSurvivedMessagePending = true;
             return false;
         }
     }
     await beforeFinalDeath?.();
     setHeroRemainsFromDeath(deathType, game);
-    await finishOrdinaryDeath({ killer, deathCause, deathVerb, deathType });
+    await finishOrdinaryDeath({ killer, killerFormat, deathCause, deathVerb, deathType });
     return true;
 }
 function conductState(state = game) {
@@ -625,14 +622,23 @@ function scoreIdentity() {
         align,
     };
 }
-function deathCauseRecord(killer, deathVerb = 'died') {
+// topten.c:formatkiller() selects the cause prefix from the death type.
+// The final summary's verb describes the hero and is a separate choice.
+const DEATH_CAUSE_PREFIXES = [
+    'killed by ', 'choked on ', 'poisoned by ', 'died of ',
+    'drowned in ', 'burned by ', 'dissolved in ', 'crushed to death by ',
+    'petrified by ', 'turned to slime by ', 'killed by ',
+    '', '', '', '', '',
+];
+function deathCauseRecord(killer, deathVerb = 'died', deathType = null, killerFormat = KILLED_BY_AN) {
     const raw = String(killer || 'unknown cause');
-    if (deathVerb !== 'died')
+    const prefix = deathType === null ? undefined : DEATH_CAUSE_PREFIXES[deathType];
+    if (killerFormat === NO_KILLER_PREFIX || prefix === '')
+        return raw;
+    if (prefix === undefined && deathVerb !== 'died')
         return `${deathVerb} by ${raw}`;
-    if (/^(?:an?|the) /i.test(raw)
-        || /^(?:Mr|Mrs|Ms|Miss|Sir|Lady|Lord)\.?\s/.test(raw))
-        return `killed by ${raw}`;
-    return `killed by ${withIndefiniteArticle(raw)}`;
+    const name = killerFormat === KILLED_BY ? raw : withIndefiniteArticle(raw);
+    return `${prefix ?? 'killed by '}${name}`;
 }
 // C topten.c:formatkiller() sanitizes killer names for every caller, including rip.c.
 function sanitizeDeathCause(cause) {
@@ -1162,11 +1168,11 @@ export async function finishOrdinaryDeath(options) {
         setHeroRemainsFromDeath(options.deathType, game);
     await completeOrdinaryDeath(options);
 }
-async function completeOrdinaryDeath({ killer, possessionAnswer = null, deathVerb = 'died', deathCause = null, deathType = null, }) {
+async function completeOrdinaryDeath({ killer, possessionAnswer = null, deathVerb = 'died', deathCause = null, deathType = null, killerFormat = KILLED_BY_AN, }) {
+    deathCause ||= deathCauseRecord(killer, deathVerb, deathType, killerFormat);
     // topten.c:formatkiller() uses "poisoned by" for the cause; only
     // end.c:ends[POISONING] uses "were poisoned" in the final summary.
     if (deathType === POISONING) {
-        deathCause ||= deathCauseRecord(killer).replace(/^killed by /, 'poisoned by ');
         deathVerb = 'were poisoned';
     }
     game._deathKiller = killer;

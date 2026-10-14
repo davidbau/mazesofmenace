@@ -2895,47 +2895,22 @@ export const decgraphics = [
 // def_char_is_furniture: canonical version in drawing.js
 
 // C global structs from decl.c — module-level state for symbol sets
-// Note: init functions lost array indices in autotranslation; showsyms/primary_syms/rogue_syms
-// are scalars here (last-write-wins) rather than arrays. Functional but imprecise.
-export const gs = { showsyms: null, symset: [{ name: null, handling: 0, nocolor: 0 }, { name: null, handling: 0, nocolor: 0 }] };
+// (live symbol state is per-game: game.gs.symset/carriers in display.js;
+// the old module-level gs/gp.primary_syms/gr triple was dead — removed).
 // C ref: symbols.c known_handling `:376–384` — symset "handling" names at
 // the H_XXX offsets (H_UNK..H_UTF8); index 6 is the NUL terminator.
 export const KNOWN_HANDLING = ['UNKNOWN', 'IBM', 'DEC', 'CURS', 'MAC', 'UTF8', null];
 export const gp = {
-    primary_syms: null,
     pl_race: null,
     plinemsg_types: null,
     pline_flags: 0,
 };
-const gr = { rogue_syms: null };
 
-// init_symbols, init_showsyms, init_primary_symbols, init_rogue_symbols:
-// Canonical versions in drawing.js. These were autotranslated duplicates
-// that used defsyms (from symbols.js), creating a const→symbols→monsters→const
-// cycle. Removed to keep the constant DAG acyclic.
-
-// Autotranslated from symbols.c:306
-export function update_primary_symset(symp, val) {
-  gp.primary_syms = val;
-}
-
-// Autotranslated from symbols.c:312
-export function update_rogue_symset(symp, val) {
-  gr.rogue_syms = val;
-}
-
+// init_symbols, init_showsyms, init_primary_symbols, init_rogue_symbols,
+// update_primary_symset, update_rogue_symset, set_symhandling, get_othersym:
+// canonical versions in display.js (game.gs homes). The autotranslated
+// const.js scalars/duplicates were dead (zero callers) — removed.
 // symset_is_compatible — moved to drawing.js
-
-// Autotranslated from symbols.c:656 — iterates KNOWN_HANDLING above (C
-// known_handling[] symbols.c:376–384: UNKNOWN/IBM/DEC/CURS/MAC/UTF8 + NUL).
-export function set_symhandling(handling, which_set) {
-  let i = 0;
-  gs.symset[which_set].handling = H_UNK;
-  while (KNOWN_HANDLING[i]) {
-    if (KNOWN_HANDLING[i].toLowerCase() === handling.toLowerCase()) { gs.symset[which_set].handling = i; return; }
-    i++;
-  }
-}
 
 // free_symsets, savedsym_free, savedsym_add, savedsym_strbuf, parsesymbols
 // — moved to drawing.js (depend on symbols.js / hacklib.js)

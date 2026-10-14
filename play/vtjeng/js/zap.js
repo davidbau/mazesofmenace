@@ -33,18 +33,20 @@ import {
 import { ship_object } from './dokick.js';
 import { o_unleash } from './apply.js';
 import {
+    close_drawbridge,
+    find_drawbridge,
+    is_db_wall,
     is_moat,
+    open_drawbridge,
     is_pool,
     is_lava,
     is_pool_or_lava,
     is_ice,
-    is_db_wall,
     is_drawbridge_wall,
-    find_drawbridge,
 } from './dbridge.js';
 import { isok } from './cmd_isok.js';
 import {
-    ACID_RES, A_INT, A_STR, A_DEX, A_CON, AC_VALUE, ANTIMAGIC, ARM, A_WIS, BLINDED, BUFSZ, LARGEST_INT, MAX_SPELL_STUDY, COLD_RES, COLNO, CORR, D_BROKEN, D_NODOOR, DB_FLOOR, DB_ICE, DB_UNDER, DISINT_RES, DISP_BEAM, DISP_CHANGE, DISP_END, DISP_FLASH, DISP_TETHER, FLASHED_LIGHT, ECMD_CANCEL, ECMD_OK, ECMD_TIME, ENL_GAMEINPROGRESS, FIRE_RES, FUMBLING, GETOBJ_EXCLUDE, GETOBJ_NOFLAGS, GETOBJ_SUGGEST, HALF_SPDAM, HALF_PHDAM, HALLUC, HALLUC_RES, HEADSTONE, IS_FURNITURE, HWALL, ICE, INTRINSIC, INVIS_BEAM, ICED_MOAT, ICED_POOL, IRONBARS, LEFT_HANDED, IS_FOUNTAIN, IS_ROOM, IS_SINK, IS_WALL, IS_WATERWALL, IS_DOOR, In_mines, TEST_MOVE, is_hole, is_pit, DIED, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, EXPL_FIERY, KILLED_BY_AN, LL_ARTIFACT, LL_CONDUCT, LL_WISH, MAGICENLIGHTENMENT, NO_KILLER_PREFIX, NO_TRAP_FLAGS, TIMEOUT, TIMER_LEVEL, TIMER_OBJECT, REVIVE_MON, ROT_CORPSE, COST_CANCEL, COST_DRAIN, COST_UNCURS, COST_UNBLSS, thats_enough_tries, st_all, PHYS_EXPL_TYPE, PICK_NONE, POLY_NOFLAGS, PLNMSG_ENVELOPED_IN_GAS, POOL, MOAT, PIT, P_BASIC, P_EXPERT, P_ISRESTRICTED, P_SKILLED, P_UNSKILLED, Is_airlevel, Is_rogue_level, Is_waterlevel, LAVAWALL, M_AP_MONSTER, M_AP_FURNITURE, M_AP_NOTHING, M_AP_OBJECT, M_AP_TYPE, M_SEEN_FIRE, M_SEEN_MAGR, M_SEEN_ELEC, M_SEEN_COLD, M_SEEN_ACID, M_SEEN_REFL, M_SEEN_SLEEP, M_SEEN_DISINT, OBJ_AT, OBJ_FLOOR, OBJ_INVENT, OBJ_CONTAINED, OBJ_MINVENT, OBJ_BURIED, OBJ_FREE, OBJ_MIGRATING, OBJ_ONBILL, OBJ_LUAFREE, BURIED_TOO, CONTAINED_TOO, FM_FMON, GRAVE, MINV_ALL, MINV_NOLET, PLNMSG_OBJ_GLOWS, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_HISTORIC, STATUE_TRAP, CXN_PFX_THE, CXN_NORMAL, CXN_NO_PFX, DEAF, MM_FEMALE, MM_ADJACENTOK, MM_MALE, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, NO_MINVENT, NON_PM, NOTELL, TELL, G_GENOD, has_mcorpsenm, REFLECTING, ROOM, ROWNO, SDOOR, SCORR, VIBRATING_SQUARE, SHOCK_RES, POISON_RES, SHOPBASE, SHOP_BARS_COST, SHOP_DOOR_COST, STONE, STRAT_WAITMASK, TT_INFLOOR, TT_LAVA, MELT_ICE_AWAY, VWALL, nothing_happens, ONAME_KNOW_ARTI, ONAME_WISH, SLEEP_RES, STONED, STUNNED, TELEPORT_CONTROL, UNCHANGING, DRAIN_RES, FAST, INVIS, KICKED_WEAPON, THROWN_TETHERED_WEAPON, THROWN_WEAPON, ZAPPED_WAND, WAND_BACKFIRE_CHANCE, WAND_WREST_CHANCE, WEB, W_ACCESSORY, W_ART, W_ARTI, W_AMUL, W_ARMC, W_ARM, W_ARMF, W_ARMG, W_ARMH, W_ARMOR, W_ARMS, W_ARMU, W_BALL, W_CHAIN, W_RING, W_RINGL, W_QUIVER, W_SWAPWEP, W_TOOL, W_WEAPONS, W_WEP, W_NONDIGGABLE, XKILL_GIVEMSG, XKILL_NOMSG, XKILL_NOCORPSE, ZAP_POS, xdir, ydir, engulfing_u, u_at, uhim, Upolyd, NC_SHOW_MSG, NC_VIA_WAND_OR_SPELL, ANIMATE_SPELL, ERODE_CORRODE, } from './const.js';
+    ACID_RES, A_INT, A_STR, A_DEX, A_CON, AC_VALUE, ANTIMAGIC, ARM, A_WIS, BLINDED, BUFSZ, LARGEST_INT, MAX_SPELL_STUDY, COLD_RES, COLNO, CORR, D_BROKEN, D_NODOOR, DB_FLOOR, DB_ICE, DB_UNDER, DISINT_RES, DISP_BEAM, DISP_CHANGE, DISP_END, DISP_FLASH, DISP_TETHER, FLASHED_LIGHT, ECMD_CANCEL, ECMD_OK, ECMD_TIME, ENL_GAMEINPROGRESS, FIRE_RES, FUMBLING, GETOBJ_EXCLUDE, GETOBJ_NOFLAGS, GETOBJ_SUGGEST, HALF_SPDAM, HALF_PHDAM, HALLUC, HALLUC_RES, HEADSTONE, IS_FURNITURE, HWALL, ICE, INTRINSIC, INVIS_BEAM, ICED_MOAT, ICED_POOL, IRONBARS, LEFT_HANDED, IS_FOUNTAIN, IS_ROOM, IS_SINK, IS_WALL, IS_WATERWALL, IS_DOOR, In_mines, TEST_MOVE, is_hole, is_pit, DIED, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, EXPL_FIERY, KILLED_BY_AN, LL_ARTIFACT, LL_CONDUCT, LL_WISH, MAGICENLIGHTENMENT, NO_KILLER_PREFIX, NO_TRAP_FLAGS, TIMEOUT, TIMER_LEVEL, TIMER_OBJECT, REVIVE_MON, ROT_CORPSE, COST_CANCEL, COST_DRAIN, COST_UNCURS, COST_UNBLSS, thats_enough_tries, st_all, PHYS_EXPL_TYPE, PICK_NONE, POLY_NOFLAGS, PLNMSG_ENVELOPED_IN_GAS, POOL, MOAT, PIT, P_BASIC, P_EXPERT, P_ISRESTRICTED, P_SKILLED, P_UNSKILLED, Is_airlevel, Is_rogue_level, Is_waterlevel, LAVAWALL, M_AP_MONSTER, M_AP_FURNITURE, M_AP_NOTHING, M_AP_OBJECT, M_AP_TYPE, M_SEEN_FIRE, M_SEEN_MAGR, M_SEEN_ELEC, M_SEEN_COLD, M_SEEN_ACID, M_SEEN_REFL, M_SEEN_SLEEP, M_SEEN_DISINT, OBJ_AT, OBJ_FLOOR, OBJ_INVENT, OBJ_CONTAINED, OBJ_MINVENT, OBJ_BURIED, OBJ_FREE, OBJ_MIGRATING, OBJ_ONBILL, OBJ_LUAFREE, BURIED_TOO, CONTAINED_TOO, FM_FMON, GRAVE, MINV_ALL, MINV_NOLET, PLNMSG_OBJ_GLOWS, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_HISTORIC, STATUE_TRAP, CXN_PFX_THE, CXN_NORMAL, CXN_NO_PFX, DEAF, MM_FEMALE, MM_ADJACENTOK, MM_MALE, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, NO_MINVENT, NON_PM, NOTELL, TELL, G_GENOD, has_mcorpsenm, REFLECTING, ROOM, ROWNO, SDOOR, SCORR, VIBRATING_SQUARE, SHOCK_RES, POISON_RES, SHOPBASE, SHOP_BARS_COST, SHOP_DOOR_COST, STONE, STRAT_WAITMASK, TT_INFLOOR, TT_LAVA, MELT_ICE_AWAY, VWALL, nothing_happens, ONAME_KNOW_ARTI, ONAME_WISH, SLEEP_RES, STONED, STUNNED, TELEPORT_CONTROL, UNCHANGING, DRAIN_RES, FAST, INVIS, KICKED_WEAPON, THROWN_TETHERED_WEAPON, THROWN_WEAPON, ZAPPED_WAND, WAND_BACKFIRE_CHANCE, WAND_WREST_CHANCE, WEB, W_ACCESSORY, W_ART, W_ARTI, W_AMUL, W_ARMC, W_ARM, W_ARMF, W_ARMG, W_ARMH, W_ARMOR, W_ARMS, W_ARMU, W_RING, W_RINGL, W_QUIVER, W_SWAPWEP, W_TOOL, W_WEAPONS, W_WEP, W_NONDIGGABLE, XKILL_GIVEMSG, XKILL_NOMSG, XKILL_NOCORPSE, ZAP_POS, xdir, ydir, engulfing_u, u_at, uhim, Upolyd, NC_SHOW_MSG, NC_VIA_WAND_OR_SPELL, ANIMATE_SPELL, ERODE_CORRODE, } from './const.js';
 import { stop_occupation } from './allmain.js';
 import { acurr, adjalign, exercise, poisoned } from './attrib.js';
 import { dirtocoord, getdir, xytodir, y_n } from './cmd.js';
@@ -188,11 +190,15 @@ import {
 import { Shknam, shkname } from './shknam.js';
 import { messageAt } from './startup_a11y.js';
 import { MIM_OMIT_WAIT, MIM_REVEAL } from './const.js';
+import {
+    EXPL_MAGICAL, TRAP_EXPLODE, is_magical_trap, undestroyable_trap,
+} from './const.js';
 import { S_flashbeam, S_hcdoor, S_vodoor, } from './symbols.js';
 import {
     closed_door, dissolve_bars, monflee, monfleeMessage, onscary, set_apparxy, youHear, } from './monmove.js';
 
 import { acid_damage, burnarmor } from './trap_erode_obj.js';
+import { deltrap } from './trap.js';
 import { delfloortrap, fill_pit, maketrap, openholdingtrap, closeholdingtrap, openfallingtrap, animate_statue, activate_statue_trap, reset_utrap, set_utrap, sokoban_guilt, t_at, trapname, trap_ice_effects, Levitation } from './trap.js';
 import { dotrap, mintrap } from './trap_effects.js';
 import {
@@ -2509,19 +2515,9 @@ export async function poly_obj(obj, id, state = game,
             const newWornMask = (oldWornMask & W_WEAPONS)
                 ? oldWornMask
                 : wearslot(replacement, state) & oldWornMask;
-            // C calls remove_worn_item() for every worn replacement. The
-            // existing armor, ring, and weapon branches are wired here;
-            // unsupported accessory arms remain an explicit discarded-call
-            // boundary until their source owners are ported.
-            const removable = !(oldWornMask
-                & (W_AMUL | W_TOOL | W_BALL | W_CHAIN | W_QUIVER));
-            if (removable) {
-                await remove_worn_item(obj, true, state, env);
-            } else {
-                note_unported('steal.c remove_worn_item');
-            }
-            // C keeps this tail after remove_worn_item(), even when that
-            // discarded void helper is not yet ported for an accessory.
+            // C calls remove_worn_item() for every worn replacement before
+            // assigning the replacement to any slot it can still occupy.
+            await remove_worn_item(obj, true, state, env);
             if (newWornMask & W_WEP) {
                 if (wasTwoHanded || !bimanual(replacement, state)
                     || !state.uarms)
@@ -2538,11 +2534,7 @@ export async function poly_obj(obj, id, state = game,
                 setuqwep(replacement, env);
             } else if (newWornMask) {
                 await setworn(replacement, newWornMask, env);
-                if (newWornMask & (W_RING | W_ARMOR)) {
-                    await set_wear(state, replacement, { ...rawEnv, random });
-                } else {
-                    note_unported('do_wear.c set_wear');
-                }
+                await set_wear(state, replacement, { ...rawEnv, random });
                 replacement = wearmask_to_obj(newWornMask, state);
             }
         }
@@ -3884,10 +3876,59 @@ export async function bhitpile(wand, tx, ty, state = game,
 // C ref: zap.c zap_map() (3625-3825). The WAN_PROBING arm maps terrain and
 // traps before it teaches the wand; the downward polymorph and teleportation
 // arms handle engraving. Other zap_map branches remain at their source boundaries.
+// C ref: zap.c maybe_explode_trap() (3594-3623). A cancellation ray explodes
+// a magical trap before zap_map handles its remaining terrain and engraving.
+export async function maybe_explode_trap(
+    trap,
+    object,
+    learnIt,
+    state = game,
+    random = {},
+    rawEnv = {},
+) {
+    if (!trap || !object
+        || (object.otyp !== WAN_CANCELLATION
+            && object.otyp !== SPE_CANCELLATION)) return;
+
+    const { tx: x, ty: y } = trap;
+    if (undestroyable_trap(trap.ttyp)) {
+        await shieldeff(x, y, state);
+        if (cansee(x, y, state)) {
+            trap.tseen = true;
+            newsym(x, y, state);
+            learnIt.value = true;
+        }
+    } else if (is_magical_trap(trap.ttyp)) {
+        const seeIt = cansee(x, y, state);
+        const explosionRandom = {
+            d, rn1, rn2, rnl, rnd, rne,
+            ...random,
+        };
+        await explode(
+            x,
+            y,
+            -WAN_CANCELLATION,
+            20 + (random.d ?? d)(3, 6),
+            TRAP_EXPLODE,
+            EXPL_MAGICAL,
+            state,
+            { ...rawEnv, random: explosionRandom },
+        );
+        deltrap(trap, state);
+        newsym(x, y, state);
+        if (seeIt) learnIt.value = true;
+    }
+}
+
 export async function zap_map(
     x, y, wand, state = game,
     random = { rn2, rn2_on_display_rng }, rawEnv = {},
 ) {
+    const trapLearn = { value: false };
+    await maybe_explode_trap(
+        t_at(x, y, state), wand, trapLearn, state, random, rawEnv,
+    );
+
     if (wand?.otyp === WAN_PROBING) {
         const trap = t_at(x, y, state);
         let learnIt = false;
@@ -3959,10 +4000,48 @@ export async function zap_map(
         return undefined;
     }
 
-    if ((state.u?.dz ?? 0) <= 0) return undefined;
-    const engraving = engr_at(x, y, state);
-    if (!engraving || engraving.engr_type === HEADSTONE)
+    if ((state.u?.dz ?? 0) === 0) {
+        const originalType = state.level.at(x, y).typ;
+        const position = { x, y };
+        if (find_drawbridge(position, state)) {
+            let learnIt = false;
+            switch (wand?.otyp) {
+            case WAN_OPENING:
+            case SPE_KNOCK:
+                if (is_db_wall(x, y, state)) {
+                    if (cansee(position.x, position.y, state) || cansee(x, y, state))
+                        learnIt = true;
+                    await open_drawbridge(position.x, position.y, state, rawEnv);
+                }
+                break;
+            case WAN_LOCKING:
+            case SPE_WIZARD_LOCK:
+                if ((cansee(position.x, position.y, state) || cansee(x, y, state))
+                    && state.level.at(position.x, position.y).typ === DRAWBRIDGE_DOWN)
+                    learnIt = true;
+                await close_drawbridge(position.x, position.y, state, rawEnv);
+                break;
+            case WAN_STRIKING:
+            case SPE_FORCE_BOLT:
+                if (originalType !== DRAWBRIDGE_UP) {
+                    learnIt = true;
+                    note_unported('dbridge.c destroy_drawbridge');
+                }
+                break;
+            }
+            if (learnIt) learnwand(wand, state);
+        }
+    }
+
+    if ((state.u?.dz ?? 0) <= 0) {
+        if (trapLearn.value) learnwand(wand, state);
         return undefined;
+    }
+    const engraving = engr_at(x, y, state);
+    if (!engraving || engraving.engr_type === HEADSTONE) {
+        if (trapLearn.value) learnwand(wand, state);
+        return undefined;
+    }
     switch (wand?.otyp) {
     case WAN_POLYMORPH:
     case SPE_POLYMORPH: {
@@ -3984,6 +4063,7 @@ export async function zap_map(
         rloc_engr(engraving, state, { ...rawEnv, random });
         break;
     }
+    if (trapLearn.value) learnwand(wand, state);
     return undefined;
 }
 
@@ -6239,8 +6319,10 @@ export async function zap_updown(obj, state = game,
         const drawbridge = { x: xx, y: yy };
         if (is_db_wall(x, y, state)
             && find_drawbridge(drawbridge, state)) {
-            // dbridge.c open_drawbridge() returns void and has no JS port yet.
-            note_unported('dbridge.c open_drawbridge');
+            await open_drawbridge(drawbridge.x, drawbridge.y, state, {
+                ...rawEnv,
+                random,
+            });
             disclose = true;
         } else if (state.u.dz > 0 && stway && stway.sx === x
                    && stway.sy === y
@@ -6270,10 +6352,16 @@ export async function zap_updown(obj, state = game,
                 && !is_db_wall(x, y, state)))
             && find_drawbridge(bridge, state);
         if (bridgeTarget) {
-            // The three dbridge.c operations return void; retain their exact
-            // source gap and disclose the observed bridge interaction.
-            note_unported(`dbridge.c ${striking
-                ? 'destroy_drawbridge' : 'close_drawbridge'}`);
+            if (!striking) {
+                await close_drawbridge(bridge.x, bridge.y, state, {
+                    ...rawEnv,
+                    random,
+                });
+            } else {
+                // C discards destroy_drawbridge's return value; its source
+                // behavior remains unported.
+                note_unported('dbridge.c destroy_drawbridge');
+            }
             disclose = true;
         } else if (striking && state.u.dz < 0
                    && random.rn2(3) !== 0

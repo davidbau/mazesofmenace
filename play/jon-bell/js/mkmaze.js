@@ -1155,7 +1155,7 @@ export async function movebubbles() {
 
     if (Is_waterlevel(uz)) {
         // C mkmaze.c:1562-1564: keep attached ball&chain out of bubble contents.
-        if (game.u?.uchain) bcpin = unplacebc_and_covet_placebc();
+        if (game.u?.uchain) bcpin = await unplacebc_and_covet_placebc();
         /* C mkmaze.c:1560-1646 — pick up everything inside of a bubble then
          * fill all bubble locations. */
         for (let b = _bubbles_up ? _bbubbles : _ebubbles; b;

@@ -26,7 +26,7 @@ import { OBJ_FLOOR, OBJ_DELETED, is_pit, IS_STWALL, IS_TREE, Is_rogue_level, NEE
          NC_SHOW_MSG, ARM, HEAD, ROOM, CORR, GPCOORDS_NONE, GPCOORDS_COMFULL,
          /* maybe_spin_web (monmove.c:1267) */ IS_OBSTRUCTED, STAIRS, LADDER, IRONBARS, WEB, In_sokoban } from './const.js';
 import { newsym, canspotmon, pline, canseemon,
-         topl_force_break_now, Norep, You_hear, You_see, sensemon, Unaware, swallowed } from './display.js';
+         topl_force_break_now, flush_pending_messages, Norep, You_hear, You_see, sensemon, Unaware, swallowed } from './display.js';
 import { cansee, vision_recalc, recalc_block_point, clear_path, couldsee } from './vision.js';
 import { curr_mon_load, max_mon_load, can_carry, could_reach_item, dmgtype,
          obj_extract_floor, distant_obj_name, Monnam_dm, finish_meating as finish_meating_real,
@@ -2344,6 +2344,9 @@ export async function m_move(mtmp, after) {
             /* C vamp_shift always calls display_nhwindow(WIN_MESSAGE,FALSE)
              * after newcham, even when no shape-change message was emitted. */
             topl_force_break_now();
+            // monmove.c:2391 blocks here, before restoring the monster's
+            // position or letting later monsters append to the same topline.
+            await flush_pending_messages();
             if (seenflgs) {
                 mtmp.mx = nix;
                 mtmp.my = niy;

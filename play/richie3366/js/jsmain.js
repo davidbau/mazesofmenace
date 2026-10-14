@@ -28,6 +28,7 @@ import { check_special_room } from './hack.js';
 import { y_n } from './getline.js';
 import { delete_savefile } from './files.js';
 import { NhPanic, panic_tail } from './end.js';
+import { apply_customizations, free_glyphid_cache, glyphid_cache_status } from './glyphs.js';
 
 // ── NethackGame ──
 // Wraps a single game session with replay infrastructure.
@@ -192,6 +193,17 @@ export class NethackGame {
         // C initoptions_finish fruitadd(pl_fruit) before newgame / mksobj
         // so SLIME_MOLD spe hits fruit_from_indx (D-1511).
         init_fruit_chain();
+        // C initoptions_finish `:7376–7381` (ENHANCED_SYMBOLS live,
+        // config.h:368): this runSegment startup inlines finish (the
+        // opt_initial=false below is its `:7382`) — drop the glyphid
+        // cache, then stamp the rc-filed urep/nhcolor rows onto
+        // glyphmap (without this the wintty `:3946` utf8 arm never
+        // fires: Enhanced sessions paint ASCII at step 0).
+        if (glyphid_cache_status()) // C `:7377–7378`
+            free_glyphid_cache(); // C `:7379`
+        // C `:7380–7381` (do_custom_symbols | do_custom_colors,
+        // sym.h:132–135; currentgraphics BSS 0 ≡ PRIMARYSET).
+        apply_customizations(g.currentgraphics | 0, 2 | 1);
         g.go.opt_initial = false; // C initoptions_finish :7382
         // C: moves starts 0; u_init_role sets 1 after mklev (see u_init.c)
         g.moves = 0;

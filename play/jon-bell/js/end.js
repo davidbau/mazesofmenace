@@ -29,6 +29,7 @@
 import { game, wizard, discover } from './gstate.js';
 import { clong, nowrap_add } from './integer.js';
 import { savebones, no_bones_level } from './bones.js';
+import { launch_in_progress, force_launch_placement } from './trap.js';
 import { force_more, force_more_lone_frame, pline, urgent_pline, flush_screen, bot, _topl_joins_committed,
          _topline_more_pending, capture_painted_frame_with_status } from './display.js';
 import { topl_park_cursor, canspotmon } from './display.js';
@@ -1589,6 +1590,9 @@ async function really_done(how) {
         await pline(`Do not pass Go.  Do not collect 200 ${currency(200)}.`);
     {
         const bones_ok = (how < GENOCIDED) && can_make_bones();
+        // C end.c:1203-1204 — restore an in-flight trap object before bones.
+        if (bones_ok && launch_in_progress())
+            force_launch_placement();
         /* C end.c:1221-1230, in C's order: AFTER bones_ok (which tests the
            pre-rewrite `how`) and BEFORE disclose(), the tombstone and
            topten(). */
@@ -1858,7 +1862,7 @@ async function really_done(how) {
            here. */
         if (have_windows && !g.iflags.toptenwin)
             exit_nhwindows(null);
-        topten(how, g._endtime || 0);
+        await topten(how, g._endtime || 0);
         if (have_windows && g.iflags.toptenwin)
             exit_nhwindows(null);
         /* C end.c:1596-1599 appends two blank raw_print()s only when

@@ -361,7 +361,9 @@ export function tty_fit_text_lines(lines) {
     const CO = 80; /* the tty's column count */
     const out = [];
     for (const line of lines) {
-        let str = line;
+        let str = typeof line === 'string' ? line : line.text;
+        // C wintty.c:tty_putstr/process_text_window: fit text before applying ATR_BOLD.
+        const emit = text => out.push(line.attr === 2 ? '\x1b[1m' + text + '\x1b[0m' : text);
         if (str.length >= CO)
             /* C tty_putstr() calls mungspaces(): tabs become blanks, runs are
              * collapsed, and leading/trailing blanks are removed.  The trim is
@@ -374,12 +376,12 @@ export function tty_fit_text_lines(lines) {
                 i--;
             if (!i)
                 i = CO - 2;
-            out.push(str.slice(0, i));
+            emit(str.slice(0, i));
             /* C skips the blank it broke at; with no blank (i == CO - 2) the
              * next line resumes at the break column itself. */
             str = str.charAt(i) === ' ' ? str.slice(i + 1) : str.slice(i);
         }
-        out.push(str);
+        emit(str);
     }
     return out;
 }

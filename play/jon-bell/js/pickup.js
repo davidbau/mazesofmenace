@@ -305,8 +305,8 @@ async function do_loot_cont(cobjRef, cindex, ccount) {
         let unlocktool = null;
         if ((autounlock & AUTOUNLOCK_APPLY_KEY) !== 0)
             unlocktool = autokey(true);
-        const willPrompt = unlocktool != null;
-        const _resuming = willPrompt && game.xlock && game.xlock.usedtime && (unlocktool.otyp|0) === game.xlock.picktyp;
+        const willPrompt = unlocktool != null || (autounlock & 1); /* pickup.c:2123 AUTOUNLOCK_UNTRAP */
+        const _resuming = willPrompt && game.xlock && game.xlock.usedtime && (unlocktool?.otyp|0) === game.xlock.picktyp;
         /* C pickup.c:2100-2103 — locked message; lknown picks "is locked" vs
          * "Hmmm, ... turns out to be locked."  Page it (cross-pline --More--)
          * only when a follow-up unlock prompt will arrive to force the page. */
@@ -734,6 +734,7 @@ async function deferred_decor(setup) {
         g.iflags.defer_decor = false;
     }
 }
+export { deferred_decor };
 
 async function describe_decor() {
     const g = game;

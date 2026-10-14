@@ -3,8 +3,8 @@
 //         dat/Bar-goal.lua, dat/Bar-loca.lua, dat/Arc-strt.lua,
 //         dat/Arc-loca.lua, dat/Arc-fila.lua, dat/Arc-filb.lua,
 //         dat/Arc-goal.lua, dat/Cav-goal.lua, dat/Cav-loca.lua,
-//         dat/Cav-strt.lua, dat/Mon-goal.lua, dat/Mon-loca.lua, dat/Mon-strt.lua,
-//         dat/Sam-goal.lua, dat/Tou-strt.lua, dat/astral.lua,
+//         dat/Cav-strt.lua, dat/Cav-fila.lua, dat/Mon-goal.lua, dat/Mon-loca.lua, dat/Mon-strt.lua,
+//         dat/Sam-goal.lua, dat/Tou-strt.lua, dat/Tou-fila.lua, dat/astral.lua,
 //         dat/Hea-goal.lua, dat/Hea-loca.lua, dat/Hea-strt.lua,
 //         dat/Kni-loca.lua, dat/Kni-strt.lua, dat/Ran-loca.lua,
 //         dat/Ran-goal.lua, dat/Ran-strt.lua, dat/Rog-strt.lua, dat/Rog-loca.lua,
@@ -13,8 +13,13 @@
 //         dat/Pri-strt.lua, dat/Pri-loca.lua, dat/Pri-fila.lua,
 //         dat/Pri-filb.lua, dat/Pri-goal.lua, dat/oracle.lua,
 //         dat/Wiz-strt.lua, dat/Wiz-loca.lua, dat/Wiz-fila.lua,
-//         dat/Wiz-filb.lua, dat/Wiz-goal.lua, dat/tower1.lua, dat/tower2.lua,
-//         dat/tower3.lua, dat/Val-strt.lua.
+//         dat/Wiz-filb.lua, dat/Wiz-goal.lua, dat/Kni-fila.lua, dat/Sam-fila.lua,
+//         dat/Rog-fila.lua,
+//         dat/Hea-fila.lua,
+//         dat/Hea-filb.lua, dat/Cav-filb.lua, dat/Ran-fila.lua, dat/Val-fila.lua,
+//         dat/Mon-fila.lua, dat/Mon-filb.lua,
+//         dat/tower1.lua, dat/tower2.lua,
+//         dat/tower3.lua, dat/Val-strt.lua, dat/Val-filb.lua, dat/Kni-filb.lua.
 
 import {
     COLNO, FEMALE, G_GENOD, ROOM, ROWNO,
@@ -28,8 +33,10 @@ import {
     PM_ACOLYTE,
     PM_ALIGNED_CLERIC,
     PM_ARCH_PRIEST,
+    PM_BUGBEAR,
     PM_CHIEFTAIN,
     PM_GIANT_EEL,
+    PM_HILL_GIANT,
     PM_HUMAN_ZOMBIE,
     PM_IXOTH,
     PM_LORD_CARNARVON,
@@ -53,6 +60,7 @@ import {
     S_WRAITH,
     S_ZOMBIE,
     S_OGRE,
+    S_HUMANOID,
     S_SNAKE,
     S_TROLL,
     S_VAMPIRE,
@@ -109,6 +117,7 @@ import { TOU_LOCA_DOORS, TOU_LOCA_LEVEL_MAP } from './tou_loca_level_data.js';
 import { l_selection_or, l_selection_sub } from './nhlsel.js';
 import { SAM_LOCA_LEVEL_MAP, SAM_LOCA_LEVEL_DOORS,
     SAM_LOCA_LEVEL_OBJECTS, SAM_LOCA_LEVEL_MONSTERS } from './sam_loca_level_data.js';
+import { SAM_FILB_LEVEL_MAP } from './sam_filb_level_data.js';
 import {
     TOU_GOAL_LEVEL_DOORS, TOU_GOAL_LEVEL_MAP, TOU_GOAL_LEVEL_MONSTERS,
 } from './tou_goal_level_data.js';
@@ -381,6 +390,51 @@ async function barFilb(des) {
     await des.monster({ id: PM_ROCK_TROLL, peaceful: 0 });
     await des.monster({ id: PM_ROCK_TROLL, peaceful: 0 });
     await des.monster({ class: S_TROLL, peaceful: 0 });
+}
+
+// C ref: dat/Cav-fila.lua (6-35). Mines-style, walled filler for the Caveman
+// quest levels above Cav-loca, with random objects, traps and hostile monsters.
+async function cavFila(des) {
+    await des.level_init({ style: 'solidfill', fg: ' ' });
+    await des.level_flags('mazelevel', 'noflip');
+    await des.level_init({
+        style: 'mines', fg: '.', bg: ' ',
+        smoothed: true, joined: true, walled: true,
+    });
+
+    await des.stair('up');
+    await des.stair('down');
+
+    for (let i = 0; i < 7; i++) await des.object();
+    for (let i = 0; i < 4; i++) await des.trap();
+
+    for (let i = 0; i < 5; i++)
+        await des.monster({ id: PM_BUGBEAR, peaceful: 0 });
+    await des.monster({ class: S_HUMANOID, peaceful: 0 });
+    await des.monster({ id: PM_HILL_GIANT, peaceful: 0 });
+}
+
+// C ref: dat/Tou-fila.lua, whole program. Mines-style filler for Tourist
+// quest levels above Tou-loca, with source-order stairs, objects, traps, and
+// hostile soldiers and humanoids.
+async function touFila(des) {
+    await des.level_init({ style: 'solidfill', fg: ' ' });
+    await des.level_flags('mazelevel', 'noflip');
+    await des.level_init({
+        style: 'mines', fg: '.', bg: ' ',
+        smoothed: true, joined: true, walled: true,
+    });
+
+    await des.stair('up');
+    await des.stair('down');
+
+    for (let i = 0; i < 7; i++) await des.object();
+    for (let i = 0; i < 4; i++) await des.trap();
+
+    for (let i = 0; i < 5; i++)
+        await des.monster({ id: 'soldier', peaceful: 0 });
+    await des.monster({ class: 'H', peaceful: 0 });
+    await des.monster({ class: 'C', peaceful: 0 });
 }
 
 // C ref: dat/Bar-goal.lua. Map-based barbarian quest goal level: irregular
@@ -1331,6 +1385,25 @@ async function samGoal(des) {
 // population, and trap calls in source order; the static tables are generated
 // from the Lua program so the transparent map and explicit descriptors stay
 // tied to upstream.
+// C ref: complete dat/Kni-filb.lua. Keep the Mines options and source order
+// for the Knight quest's later filler descriptors.
+async function kniFilb(des) {
+    await des.level_init({ style: 'solidfill', fg: '.' });
+    await des.level_flags('mazelevel', 'noflip');
+    await des.level_init({ style: 'mines', fg: '.', bg: 'P',
+        smoothed: false, joined: true, lit: 1, walled: false });
+
+    await des.stair('up');
+    await des.stair('down');
+    for (let i = 0; i < 11; ++i) await des.object();
+    for (let i = 0; i < 4; ++i)
+        await des.monster({ id: 'quasit', peaceful: 0 });
+    await des.monster({ class: 'i', peaceful: 0 });
+    for (let i = 0; i < 3; ++i)
+        await des.monster({ id: 'ochre jelly', peaceful: 0 });
+    for (let i = 0; i < 4; ++i) await des.trap();
+}
+
 async function kniLoca(des) {
     await des.level_init({ style: 'solidfill', fg: ' ' });
     await des.level_flags('mazelevel', 'hardfloor');
@@ -1352,6 +1425,93 @@ async function kniLoca(des) {
         await des.monster(monster);
 }
 
+// C ref: complete dat/Kni-fila.lua. Keep the two terrain initializers and
+// the source-ordered random contents for the Knight quest's earlier filler.
+async function kniFila(des) {
+    await des.level_init({ style: 'solidfill', fg: '.' });
+    await des.level_flags('mazelevel', 'noflip');
+    await des.level_init({ style: 'mines', fg: '.', bg: 'P',
+        smoothed: false, joined: true, lit: 1, walled: false });
+
+    await des.stair('up');
+    await des.stair('down');
+    for (let i = 0; i < 8; ++i) await des.object();
+    for (let i = 0; i < 4; ++i)
+        await des.monster({ id: 'quasit', peaceful: 0 });
+    await des.monster({ class: 'i', peaceful: 0 });
+    await des.monster({ id: 'ochre jelly', peaceful: 0 });
+    for (let i = 0; i < 4; ++i) await des.trap();
+}
+
+// C ref: complete dat/Sam-fila.lua. Preserve its Mines terrain options and
+// all random descriptors in their original top-level order.
+async function samFila(des) {
+    await des.level_init({ style: 'solidfill', fg: ' ' });
+    await des.level_flags('mazelevel', 'noflip');
+    await des.level_init({ style: 'mines', fg: '.', bg: 'P',
+        smoothed: true, joined: true, walled: true });
+
+    await des.stair('up');
+    await des.stair('down');
+    for (let i = 0; i < 9; ++i) await des.object();
+    await des.monster('d');
+    for (let i = 0; i < 5; ++i) await des.monster('wolf');
+    await des.monster('stalker');
+    for (let i = 0; i < 4; ++i) await des.trap();
+}
+
+// C ref: complete dat/Rog-fila.lua. Keep all six room callbacks and their
+// source-ordered contents before connecting the Rogue quest filler rooms.
+async function rogFila(des) {
+    await des.room({ type: 'ordinary', async contents() {
+        await des.stair('up');
+        await des.object();
+        await des.monster({ id: 'leprechaun', peaceful: 0 });
+    }});
+
+    await des.room({ type: 'ordinary', async contents() {
+        await des.object();
+        await des.object();
+        await des.monster({ id: 'leprechaun', peaceful: 0 });
+        await des.monster({ id: 'guardian naga', peaceful: 0 });
+    }});
+
+    await des.room({ type: 'ordinary', async contents() {
+        await des.object();
+        await des.trap();
+        await des.trap();
+        await des.object();
+        await des.monster({ id: 'water nymph', peaceful: 0 });
+    }});
+
+    await des.room({ type: 'ordinary', async contents() {
+        await des.stair('down');
+        await des.object();
+        await des.trap();
+        await des.trap();
+        await des.monster({ class: 'l', peaceful: 0 });
+        await des.monster({ id: 'guardian naga', peaceful: 0 });
+    }});
+
+    await des.room({ type: 'ordinary', async contents() {
+        await des.object();
+        await des.object();
+        await des.trap();
+        await des.trap();
+        await des.monster({ id: 'leprechaun', peaceful: 0 });
+    }});
+
+    await des.room({ type: 'ordinary', async contents() {
+        await des.object();
+        await des.trap();
+        await des.trap();
+        await des.monster({ id: 'leprechaun', peaceful: 0 });
+        await des.monster({ id: 'water nymph', peaceful: 0 });
+    }});
+
+    await des.random_corridors();
+}
+
 // C ref: dat/Ran-loca.lua. Preserve the source's map, region, stair, and
 // descriptor order; names and classes stay intact for lspo_monster resolution.
 async function ranLoca(des) {
@@ -1366,6 +1526,60 @@ async function ranLoca(des) {
     for (let i = 0; i < RAN_LOCA_OBJECT_COUNT; ++i) await des.object();
     for (const type of RAN_LOCA_TRAPS) await des.trap(type);
     for (const monster of RAN_LOCA_MONSTERS) await des.monster(monster);
+}
+
+// C ref: complete dat/Ran-fila.lua. Preserve the program's background,
+// staircase, object, trap, and monster ordering.
+async function ranFila(des) {
+    await des.level_init({ style: 'solidfill', fg: ' ' });
+    await des.level_flags('mazelevel', 'noflip');
+    await des.level_init({ style: 'mines', fg: '.', bg: 'T',
+        smoothed: true, joined: true, walled: true });
+
+    await des.stair('up');
+    await des.stair('down');
+    for (let i = 0; i < 7; ++i) await des.object();
+    for (let i = 0; i < 4; ++i) await des.trap();
+    for (let i = 0; i < 2; ++i) await des.monster({ id: 'mountain centaur', peaceful: 0 });
+    for (let i = 0; i < 3; ++i) await des.monster({ id: 'forest centaur', peaceful: 0 });
+    await des.monster({ class: 'C', peaceful: 0 });
+    await des.monster({ id: 'scorpion', peaceful: 0 });
+}
+
+// C ref: complete dat/Ran-filb.lua. Keep its blank Mines background and
+// descriptor order distinct from the earlier Ran-fila program.
+async function ranFilb(des) {
+    await des.level_init({ style: 'solidfill', fg: ' ' });
+    await des.level_flags('mazelevel', 'noflip');
+    await des.level_init({ style: 'mines', fg: '.', bg: ' ',
+        smoothed: true, joined: true, walled: true });
+
+    await des.stair('up');
+    await des.stair('down');
+    for (let i = 0; i < 11; ++i) await des.object();
+    for (let i = 0; i < 4; ++i) await des.trap();
+    for (let i = 0; i < 4; ++i) await des.monster({ id: 'mountain centaur', peaceful: 0 });
+    await des.monster({ class: 'C', peaceful: 0 });
+    for (let i = 0; i < 2; ++i) await des.monster({ id: 'scorpion', peaceful: 0 });
+}
+
+// C ref: complete dat/Tou-filb.lua. Keep the Tourist monster descriptors in
+// source order, including its final random spider-class monster.
+async function touFilb(des) {
+    await des.level_init({ style: 'solidfill', fg: ' ' });
+    await des.level_flags('mazelevel', 'noflip');
+    await des.level_init({ style: 'mines', fg: '.', bg: ' ',
+        smoothed: true, joined: true, walled: true });
+
+    await des.stair('up');
+    await des.stair('down');
+    for (let i = 0; i < 11; ++i) await des.object();
+    for (let i = 0; i < 4; ++i) await des.trap();
+    await des.monster({ id: 'soldier', peaceful: 0 });
+    for (let i = 0; i < 2; ++i) await des.monster({ id: 'captain', peaceful: 0 });
+    for (let i = 0; i < 2; ++i) await des.monster({ class: 'H', peaceful: 0 });
+    await des.monster({ class: 'C', peaceful: 0 });
+    await des.monster('s');
 }
 
 // C ref: complete dat/Ran-goal.lua. Generated tables preserve its map and
@@ -1469,6 +1683,147 @@ async function heaLoca(des) {
     for (let i = 0; i < 2; ++i) await des.monster({ class: ';', peaceful: 0 });
     for (let i = 0; i < 5; ++i) await des.monster({ class: 'D', peaceful: 0 });
     for (let i = 0; i < 9; ++i) await des.monster({ class: 'S', peaceful: 0 });
+}
+
+// C ref: complete dat/Hea-fila.lua. The source applies solidfill, maze flags,
+// and the Mines background in this order before placing random contents.
+async function heaFila(des) {
+    await des.level_init({ style: 'solidfill', fg: 'P' });
+    await des.level_flags('mazelevel', 'noflip');
+    await des.level_init({ style: 'mines', fg: '.', bg: 'P',
+        smoothed: false, joined: true, lit: 1, walled: false });
+
+    await des.stair('up');
+    await des.stair('down');
+    for (let i = 0; i < 8; ++i) await des.object();
+
+    await des.monster('rabid rat');
+    for (let i = 0; i < 2; ++i) await des.monster({ class: 'r', peaceful: 0 });
+    for (let i = 0; i < 2; ++i) await des.monster('giant eel');
+    await des.monster('electric eel');
+    for (let i = 0; i < 4; ++i) await des.monster({ class: 'D', peaceful: 0 });
+    for (let i = 0; i < 3; ++i) await des.monster({ class: 'S', peaceful: 0 });
+    for (let i = 0; i < 4; ++i) await des.trap();
+}
+
+// C ref: complete dat/Hea-filb.lua. This later quest filler has the same
+// initialization as Hea-fila, with its own source-ordered population counts.
+async function heaFilb(des) {
+    await des.level_init({ style: 'solidfill', fg: 'P' });
+    await des.level_flags('mazelevel', 'noflip');
+    await des.level_init({ style: 'mines', fg: '.', bg: 'P',
+        smoothed: false, joined: true, lit: 1, walled: false });
+
+    await des.stair('up');
+    await des.stair('down');
+    for (let i = 0; i < 11; ++i) await des.object();
+
+    for (let i = 0; i < 2; ++i) await des.monster('rabid rat');
+    for (let i = 0; i < 2; ++i) await des.monster({ class: 'r', peaceful: 0 });
+    for (let i = 0; i < 5; ++i) await des.monster('giant eel');
+    for (let i = 0; i < 2; ++i) await des.monster('electric eel');
+    for (let i = 0; i < 4; ++i) await des.monster({ class: 'D', peaceful: 0 });
+    for (let i = 0; i < 3; ++i) await des.monster({ class: 'S', peaceful: 0 });
+    for (let i = 0; i < 4; ++i) await des.trap();
+}
+
+// C ref: complete dat/Cav-filb.lua. Preserve the source's trap-before-monster
+// order because each descriptor consumes random state during generation.
+async function cavFilb(des) {
+    await des.level_init({ style: 'solidfill', fg: ' ' });
+    await des.level_flags('mazelevel', 'noflip');
+    await des.level_init({ style: 'mines', fg: '.', bg: ' ',
+        smoothed: true, joined: true, walled: true });
+
+    await des.stair('up');
+    await des.stair('down');
+    for (let i = 0; i < 12; ++i) await des.object();
+    for (let i = 0; i < 4; ++i) await des.trap();
+
+    for (let i = 0; i < 4; ++i) await des.monster({ id: 'bugbear', peaceful: 0 });
+    for (let i = 0; i < 2; ++i) await des.monster({ class: 'h', peaceful: 0 });
+    for (let i = 0; i < 2; ++i) await des.monster({ id: 'hill giant', peaceful: 0 });
+}
+
+// C ref: complete dat/Mon-fila.lua. The six room callbacks run immediately in
+// source order before the program creates random corridors.
+async function monFila(des) {
+    await des.room({ type: 'ordinary', async contents() {
+        await des.stair('up');
+        await des.object();
+        await des.monster({ class: 'E', peaceful: 0 });
+    } });
+    await des.room({ type: 'ordinary', async contents() {
+        await des.object();
+        await des.object();
+        await des.monster({ class: 'E', peaceful: 0 });
+    } });
+    await des.room({ type: 'ordinary', async contents() {
+        await des.object();
+        await des.trap();
+        await des.object();
+        await des.monster('xorn');
+        await des.monster('earth elemental');
+    } });
+    await des.room({ type: 'ordinary', async contents() {
+        await des.stair('down');
+        await des.object();
+        await des.trap();
+        await des.monster({ class: 'E', peaceful: 0 });
+        await des.monster('earth elemental');
+    } });
+    await des.room({ type: 'ordinary', async contents() {
+        await des.object();
+        await des.object();
+        await des.trap();
+        await des.monster({ class: 'X', peaceful: 0 });
+    } });
+    await des.room({ type: 'ordinary', async contents() {
+        await des.object();
+        await des.trap();
+        await des.monster('earth elemental');
+    } });
+    await des.random_corridors();
+}
+
+// C ref: complete dat/Mon-filb.lua. The later filler changes only the room
+// contents, retaining all six ordinary rooms and random-corridor ordering.
+async function monFilb(des) {
+    await des.room({ type: 'ordinary', async contents() {
+        await des.stair('up');
+        await des.object();
+        await des.monster({ class: 'X', peaceful: 0 });
+    } });
+    await des.room({ type: 'ordinary', async contents() {
+        await des.object();
+        await des.object();
+        await des.monster({ class: 'X', peaceful: 0 });
+    } });
+    await des.room({ type: 'ordinary', async contents() {
+        await des.object();
+        await des.trap();
+        await des.object();
+        await des.monster({ class: 'E', peaceful: 0 });
+    } });
+    await des.room({ type: 'ordinary', async contents() {
+        await des.stair('down');
+        await des.object();
+        await des.trap();
+        await des.monster({ class: 'E', peaceful: 0 });
+        await des.monster('earth elemental');
+    } });
+    await des.room({ type: 'ordinary', async contents() {
+        await des.object();
+        await des.object();
+        await des.trap();
+        await des.monster({ class: 'X', peaceful: 0 });
+    } });
+    await des.room({ type: 'ordinary', async contents() {
+        await des.object();
+        await des.trap();
+        await des.monster('earth elemental');
+    } });
+    await des.random_corridors();
 }
 
 // C ref: dat/Pri-goal.lua. Priest quest goal level — lava-filled cave with
@@ -2759,6 +3114,26 @@ async function valStrt(des, state, lua) {
     await des.monster({ id: 'fire giant', x: 10, y: 16, peaceful: 0 });
 }
 
+// C ref: complete dat/Val-filb.lua. Keep its lava Mines terrain options and
+// the source-ordered descriptors for the later Valkyrie quest filler.
+async function valFilb(des) {
+    await des.level_init({ style: 'solidfill', fg: 'L' });
+    await des.level_flags('mazelevel', 'icedpools', 'noflip');
+    await des.level_init({ style: 'mines', fg: '.', bg: 'L', smoothed: true,
+        joined: true, lit: 1, walled: false });
+
+    await des.stair('up');
+    await des.stair('down');
+    for (let i = 0; i < 11; ++i) await des.object();
+    for (let i = 0; i < 3; ++i) await des.monster('fire ant');
+    await des.monster('a');
+    for (let i = 0; i < 3; ++i)
+        await des.monster({ id: 'fire giant', peaceful: 0 });
+    for (let i = 0; i < 5; ++i) await des.trap('fire');
+    await des.trap();
+    await des.trap();
+}
+
 async function valLoca(des) {
     await des.level_init({ style: 'solidfill', fg: ' ' });
     await des.level_flags('mazelevel', 'hardfloor', 'icedpools', 'noflip');
@@ -2778,6 +3153,23 @@ async function valLoca(des) {
     await des.monster({ class: 'H', peaceful: 0 });
     for (let i = 0; i < 7; ++i) await des.monster({ id: 'fire giant', peaceful: 0 });
     await des.monster({ class: 'H', peaceful: 0 });
+}
+
+// C ref: complete dat/Val-fila.lua. Preserve its icy Mines terrain setup and
+// the source-ordered random stairs, objects, monsters, and traps.
+async function valFila(des) {
+    await des.level_init({ style: 'solidfill', fg: 'I' });
+    await des.level_flags('mazelevel', 'icedpools', 'noflip');
+    await des.level_init({ style: 'mines', fg: '.', bg: 'I', smoothed: true,
+        joined: true, lit: 1, walled: false });
+
+    await des.stair('up');
+    await des.stair('down');
+    for (let i = 0; i < 9; ++i) await des.object();
+    for (let i = 0; i < 5; ++i) await des.monster('fire ant');
+    await des.monster('a');
+    await des.monster({ id: 'fire giant', peaceful: 0 });
+    for (let i = 0; i < 7; ++i) await des.trap();
 }
 
 // Whole dat/Ran-strt.lua1–101. Tree replacement uses the pre-map frame;
@@ -2983,8 +3375,30 @@ async function samLoca(des) {
     for (const monster of SAM_LOCA_LEVEL_MONSTERS) await des.monster(...monster);
 }
 
+// C ref: complete dat/Sam-filb.lua. Preserve the generated fixed map,
+// unlit region, and source-ordered doors, stairs, and random contents.
+async function samFilb(des) {
+    await des.level_init({ style: 'solidfill', fg: ' ' });
+    await des.level_flags('mazelevel');
+    await des.map(SAM_FILB_LEVEL_MAP);
+    await des.region(selection_area(0, 0, 59, 15), 'unlit');
+    await des.door('closed', 16, 7);
+    await des.door('closed', 16, 8);
+    await des.door('closed', 43, 7);
+    await des.door('closed', 43, 8);
+
+    await des.stair('up');
+    await des.stair('down');
+    for (let i = 0; i < 9; ++i) await des.object();
+    await des.monster('d');
+    for (let i = 0; i < 4; ++i) await des.monster('wolf');
+    for (let i = 0; i < 3; ++i) await des.monster('stalker');
+    for (let i = 0; i < 4; ++i) await des.trap();
+}
+
 export const QUEST_LEVEL_LOADERS = {
     'Sam-loca': samLoca,
+    'Sam-filb': samFilb,
     'Rog-loca': rogLoca,
     'Rog-goal': rogGoal,
     'Mon-loca': monLoca,
@@ -2992,9 +3406,13 @@ export const QUEST_LEVEL_LOADERS = {
     'Ran-strt': ranStrt,
     'Rog-strt': rogStrt,
     'Val-loca': valLoca,
+    'Val-filb': valFilb,
+    'Val-fila': valFila,
     'Val-strt': valStrt,
     'Hea-strt': heaStrt,
     'Cav-loca': cavLoca,
+    'Cav-fila': cavFila,
+    'Tou-fila': touFila,
     'Cav-goal': cavGoal,
     'Bar-strt': barStrt,
     'Bar-fila': barFila,
@@ -3010,14 +3428,26 @@ export const QUEST_LEVEL_LOADERS = {
     'Sam-goal': samGoal,
     'Tou-strt': touStrt,
     'Tou-loca': touLoca,
+    'Tou-filb': touFilb,
     'Tou-goal': touGoal,
+    'Kni-fila': kniFila,
+    'Sam-fila': samFila,
+    'Rog-fila': rogFila,
     'Kni-loca': kniLoca,
+    'Kni-filb': kniFilb,
     'Ran-loca': ranLoca,
+    'Ran-fila': ranFila,
+    'Ran-filb': ranFilb,
     'Ran-goal': ranGoal,
     'Val-goal': valGoal,
     'Hea-goal': heaGoal,
     'Cav-strt': cavStrt,
     'Hea-loca': heaLoca,
+    'Hea-fila': heaFila,
+    'Hea-filb': heaFilb,
+    'Cav-filb': cavFilb,
+    'Mon-fila': monFila,
+    'Mon-filb': monFilb,
     'Kni-strt': kniStrt,
     astral,
     'Pri-strt': priStrt,

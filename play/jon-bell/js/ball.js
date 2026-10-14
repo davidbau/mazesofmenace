@@ -35,10 +35,13 @@ import { xname } from './do_wear.js';
 import { losehp } from './dokick.js';
 import { hmon as hmon_real } from './mhitm.js';
 import { impossible } from './steed.js';
+import { impossible as bc_impossible } from './pline.js';
+import { simple_typename } from './objnam.js';
+import { OC_NAME } from './oc_name_data.js';
 /* zap.c:3571 miss() — canonical synchronous message helper. */
 import { miss as miss_real } from './zap.js';
 import {
-    W_BALL, W_CHAIN, BC_BALL, BC_CHAIN, SLT_ENCUMBER,
+    W_BALL, W_CHAIN, W_WEAPONS, BC_BALL, BC_CHAIN, SLT_ENCUMBER,
     OBJ_FREE, OBJ_FLOOR, OBJ_INVENT,
     IS_OBSTRUCTED, IS_DOOR, D_CLOSED, D_LOCKED,
     POOL, MOAT, WATER, DRAWBRIDGE_UP, DB_UNDER, DB_MOAT,
@@ -337,7 +340,7 @@ async function placebc_core() {
     const u = game.u;
     const { uball, uchain } = findBallChain();
     if (!uchain || !uball) {
-        impossible('Where are your ball and chain?');
+        await bc_impossible('Where are your ball and chain?');
         return;
     }
 
@@ -369,17 +372,17 @@ export async function placebc() {
     if (!check_restriction(0)) return;
     const { uchain } = findBallChain();
     if (uchain && uchain.where !== OBJ_FREE) {
-        impossible('bc already placed?');
+        await bc_impossible('bc already placed?');
         return;
     }
     await placebc_core();
 }
 
 // C ball.c:221-232.  Draw exactly once when acquiring the restriction.
-export function unplacebc_and_covet_placebc() {
+export async function unplacebc_and_covet_placebc() {
     let restriction = 0;
     if (game.bcrestriction) {
-        impossible('unplacebc_and_covet_placebc denied, already restricted');
+        await bc_impossible('unplacebc_and_covet_placebc denied, already restricted');
     } else {
         restriction = game.bcrestriction = rnd(400);
         unplacebc_core();
@@ -392,7 +395,7 @@ export async function lift_covet_and_placebc(pin) {
     if (!check_restriction(pin)) return;
     const { uchain } = findBallChain();
     if (uchain && uchain.where !== OBJ_FREE) {
-        impossible('bc already placed?');
+        await bc_impossible('bc already placed?');
         return;
     }
     await placebc_core();
@@ -490,6 +493,71 @@ function unplacebc_core() {
     maybe_unhide_at(uchain.ox, uchain.oy);
     newsym(uchain.ox, uchain.oy);
     game.u.bc_felt = 0;                   // ball.c:178 feel nothing
+}
+
+// C objnam.c:312-331: diagnostic naming must not identify or rename the type.
+async function bc_safe_typename(otyp) {
+    if (otyp < 0 || otyp >= OC_NAME.length || !OC_NAME[otyp]) {
+        const name = `glorkum[${otyp}]`;
+        await bc_impossible('safe_typename: %s', name);
+        return name;
+    }
+    const known = game._oc_name_known ||= {};
+    const saved = known[otyp];
+    known[otyp] = 1;
+    const name = simple_typename(otyp);
+    if (saved === undefined) delete known[otyp];
+    else known[otyp] = saved;
+    return name;
+}
+
+// C ball.c:1033-1109. Use the actual attachment slots even when inconsistent:
+// searching worn objects would hide precisely the corruption being diagnosed.
+export async function bc_sanity_check() {
+    const u = game.u;
+    const uball = u.uball, uchain = u.uchain;
+    const punished = !!uball; // youprop.h:77 Punished
+    if (punished && (!uball || !uchain)) {
+        await bc_impossible('Punished without %s%s%s?',
+            !uball ? 'iron ball' : '', (!uball && !uchain) ? ' and ' : '',
+            !uchain ? 'attached chain' : '');
+    } else if (!punished && (uball || uchain)) {
+        await bc_impossible('Attached %s%s%s without being Punished?',
+            uchain ? 'chain' : '', (uchain && uball) ? ' and ' : '',
+            uball ? 'iron ball' : '');
+    }
+    const freechain = !uchain || uchain.where === OBJ_FREE;
+    const freeball = !uball || uball.where === OBJ_FREE
+        || (freechain && uball.where === OBJ_INVENT);
+    if (uball && (uball.otyp !== 477 /* HEAVY_IRON_BALL */
+        || (uball.where !== OBJ_FLOOR && uball.where !== OBJ_INVENT
+            && uball.where !== OBJ_FREE)
+        || (freeball !== freechain)
+        || !(uball.owornmask & W_BALL)
+        || (uball.owornmask & ~(W_BALL | W_WEAPONS)))) {
+        const name = await bc_safe_typename(uball.otyp);
+        await bc_impossible('uball: type %d (%s), where %d, wornmask=0x%08lx',
+            uball.otyp, name, uball.where, uball.owornmask);
+    }
+    if (uchain && (uchain.otyp !== 478 /* IRON_CHAIN */
+        || (uchain.where !== OBJ_FLOOR && uchain.where !== OBJ_FREE)
+        || (freechain !== freeball)
+        || !(uchain.owornmask & W_CHAIN)
+        || (uchain.owornmask & ~W_CHAIN))) {
+        const name = await bc_safe_typename(uchain.otyp);
+        await bc_impossible('uchain: type %d (%s), where %d, wornmask=0x%08lx',
+            uchain.otyp, name, uchain.where, uchain.owornmask);
+    }
+    if (uball && uchain && !(freeball && freechain)) {
+        const cx = uchain.ox, cy = uchain.oy;
+        const bx = carried(uball) ? u.ux : uball.ox;
+        const by = carried(uball) ? u.uy : uball.oy;
+        if (Math.abs(cx - u.ux) > 1 || Math.abs(cy - u.uy) > 1
+            || Math.abs(bx - cx) > 1 || Math.abs(by - cy) > 1)
+            await bc_impossible(
+                'b&c distance: you@<%d,%d>, chain@<%d,%d>, ball@<%d,%d>',
+                u.ux, u.uy, cx, cy, bx, by);
+    }
 }
 
 // uball / uchain (decl.h:97-98) are top-level C globals, not modeled as a

@@ -102,6 +102,21 @@ export function getversionstring() {
     return RECORDER_VERSION_ID;
 }
 
+// C ref: version.c doversion(). The short V command prints one message; its
+// M-prefix variant delegates to the existing extended-version text window.
+export async function doversion(state, {
+    pline,
+    displayTextWindow,
+    random,
+} = {}) {
+    if (state.iflags?.menu_requested)
+        return doextversion(state, { displayTextWindow, random });
+    if (typeof pline !== 'function')
+        throw new TypeError('doversion requires the pline operation');
+    await pline(getversionstring(), state);
+    return 0; // C: ECMD_OK.
+}
+
 function get_lua_version(state, random) {
     state.context ??= {};
     if (!state.context.versionLuaInitialized) {

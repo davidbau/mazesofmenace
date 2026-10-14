@@ -42,9 +42,32 @@
 
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import monMattkPack from './makemon_mattk.json' with { type: 'json' };
+import { PM_HIPPOCRATES, PM_KING_ARTHUR } from './pm.generated.js';
 
 const MONS = monsPack.mons;
 const MATTK = monMattkPack.mattk;
+
+// C v5 include/monsters.h:3515-3526: both leaders have speed 15, not the
+// older generated rows' 12.  Correct the shared initializers before taking
+// the pristine snapshot so every consumer and segment uses the v5 values.
+MONS[PM_HIPPOCRATES][9] = 15;
+MONS[PM_KING_ARTHUR][9] = 15;
+/* C v5 include/monsters.h:3516 — Hippocrates has LVL(20, 15, 0, 90, 0).
+ * Correct the older table's speed before capturing the static initialisers,
+ * so every mons[] reader and each fresh game uses the same v5 value. */
+/* NetHack 5.0 include/monsters.h:3516: Hippocrates has LVL(20, 15, ...).
+ * Correct the older packed speed before snapshotting C's initialisers so
+ * every consumer, including mcalcmove and permonstTemplate, shares it. */
+/* C v5 include/monsters.h:3516: Hippocrates has LVL(20, 15, 0, 90, 0).
+ * Correct the shared speed row before capturing the per-process initialisers. */
+MONS[PM_HIPPOCRATES][9] = 15;
+/* NetHack 5.0 monsters.h:3515-3525: both leaders have LVL speed 15.
+ * Update the older packed initialisers before snapshotting them for reset. */
+MONS[PM_HIPPOCRATES][9] = 15;
+MONS[PM_KING_ARTHUR][9] = 15;
+/* NetHack 5.0 include/monsters.h:3515-3516: Hippocrates has speed 15.
+ * Correct the shared packed initialiser before snapshotting it for resets. */
+MONS[PM_HIPPOCRATES][9] = 15;
 
 const MONS_PRISTINE = MONS.map((row) => row.slice());
 const MATTK_PRISTINE = MATTK.map((row) => row.map(

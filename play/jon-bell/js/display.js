@@ -507,13 +507,18 @@ function _wall_angle_glyph(loc, decMode) {
     if (!(loc.seenv | 0))
         return { ch: ' ', color: NO_COLOR, dec: false }; // S_stone
     const key = _wall_angle(loc);
+    return { ..._wall_symbol_glyph(key, decMode, _wall_color()), wallSymbol: key };
+}
+/* C display.c:2609 map_glyphinfo resolves the remembered glyph through the
+ * current glyphmap. Keep the wall symbol identity separately from its paint:
+ * changing symbol sets must not recompute wall_angle from unseen terrain. */
+function _wall_symbol_glyph(key, decMode, wallColor) {
     const sym = _WALL_SYM[key] || _WALL_SYM.stone;
     if (key === 'stone')
         return { ch: ' ', color: NO_COLOR, dec: false };
     /* C ref: display.c:2949-2965 wall_color(<branch>_walls) — a wall cmap glyph
      * is coloured from wallcolors[] per dungeon branch, not from
      * defsyms[S_vwall].color.  See _wall_color() below. */
-    const wallColor = _wall_color();
     /* C ref: symbols.c loadsyms — an explicit SYMBOLS=S_<name>:<char> replaces
      * the symset glyph for that cmap symbol, a plain tty character (not a DEC
      * byte).  The rc's SYMBOLS=S_trcorn:% makes C draw '%' at the intro box's
@@ -529,6 +534,13 @@ function _wall_angle_glyph(loc, decMode) {
     return decMode
         ? { ch: sym.d, color: wallColor, dec: true }
         : { ch: sym.a, color: wallColor, dec: false };
+}
+function _refresh_remembered_wall(rg) {
+    if (!rg?.wallSymbol) return;
+    const glyph = _wall_symbol_glyph(rg.wallSymbol, dec_mode(), rg.color);
+    rg.ch = rogue_ibm_terrain() && _EPYX_WALL[rg.wallSymbol]
+        ? _EPYX_WALL[rg.wallSymbol] : glyph.ch;
+    rg.decgfx = rogue_ibm_terrain() ? false : glyph.dec;
 }
 /* dat/symbols — which symsets define the per-branch `G_*_sokoban: /blue`,
  * `G_*_gehennom: /red`, `G_*_mines: /brown` colour overrides that populate
@@ -611,6 +623,14 @@ function _object_sym(otyp, oc) {
         return game.symbolOverrides?.S_boulder || oclass_sym(oc);
     return oclass_sym(oc);
 }
+/* dat/symbols "start: RogueIBM" (Handling: IBM, no Color): same CP437 terrain
+ * bytes as RogueEpyx (walls \xba..\xcc, S_room \xfa, S_corr \xb1, doors \xce,
+ * stairs \xf0), high bit stripped by the terminal; but has_rogue_color is false,
+ * so the map stays uncoloured. */
+function rogue_ibm_terrain() {
+    return rogue_graphics() && gs.symset?.[1]?.handling === 1
+        && (gs.symset[1].name === 'RogueEpyx' || gs.symset[1].name === 'RogueIBM');
+}
 export function rogue_ibm_color() {
     return rogue_graphics() && gs.symset?.[1]?.name === 'RogueEpyx'
         && gs.symset[1].handling === 1;
@@ -626,7 +646,7 @@ function _epyx_terrain(loc, g) {
             return g;
         const key = _wall_angle(loc);
         const ch = _EPYX_WALL[key];
-        return ch ? { ch, color: CLR_BROWN, dec: false } : g;
+        return ch ? { ch, color: CLR_BROWN, dec: false, wallSymbol: key } : g;
     }
     switch (typ) {
         case DOOR:
@@ -643,7 +663,7 @@ function _epyx_terrain(loc, g) {
 }
 export function terrain_glyph(loc, x, y, assumeVisible = false) {
     const g = _terrain_glyph_base(loc, x, y, assumeVisible);
-    return rogue_ibm_color() ? _epyx_terrain(loc, g) : g;
+    return rogue_ibm_terrain() ? _epyx_terrain(loc, g) : g;
 }
 function _terrain_glyph_base(loc, x, y, assumeVisible) {
     const typ = loc.typ;
@@ -1567,7 +1587,7 @@ export function unmap_object(x, y) {
                 /* map_background(x, y, 0) — store terrain glyph */
                 const tg = terrain_glyph(loc, x, y);
                 if (game.level?.flags?.hero_memory)
-                    loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec };
+                    loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec, wallSymbol: tg.wallSymbol };
             }
 
             /* turn remembered dark room squares dark */
@@ -1645,7 +1665,7 @@ function _map_location_glyph(x, y, loc, tg) {
                      bwengr: (styp === CORR), cls: GLYPHCLS_ENGR };
         }
     }
-    return { ch: tg.ch, color: tg.color, decgfx: tg.dec, cls: GLYPHCLS_CMAP };
+    return { ch: tg.ch, color: tg.color, decgfx: tg.dec, cls: GLYPHCLS_CMAP, wallSymbol: tg.wallSymbol };
 }
 // C display.c show_mon_or_warn: showing a monster or warning retires the
 // remembered invisible marker, while preserving a visible object beneath it.
@@ -2324,7 +2344,7 @@ export function newsym(x, y) {
         show_glyph_cell(x, y, tg.ch, tg.color, tg.dec, 0, GLYPHCLS_CMAP);
         if (game.level?.flags?.hero_memory) {
             loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec,
-                                     cls: GLYPHCLS_CMAP };
+                                     cls: GLYPHCLS_CMAP, wallSymbol: tg.wallSymbol };
         }
     }
     else if (_oos_sensed_monster(x, y, loc)) {
@@ -2346,13 +2366,14 @@ export function newsym(x, y) {
         // corridor demotion by waslit and dark_room/use_color. Rogue levels
         // use their separate unconditional corridor-demotion path.
         const rg = loc.remembered_glyph;
+        _refresh_remembered_wall(rg);
         const rogueRoom = Is_rogue_level(game.u?.uz) && !loc.waslit
             && loc.typ === ROOM
             && ((rg.color === NO_COLOR
                  && ((rg.ch === '.' && !rg.decgfx) || (rg.ch === '~' && rg.decgfx)))
                 /* RogueEpyx S_room \xfa, green under has_rogue_color */
                 || (rg.ch === 'z' && rg.color === CLR_GREEN && !rg.decgfx
-                    && rogue_ibm_color()));
+                    && rogue_ibm_terrain()));
         if (rogueRoom) {
             rg.ch = ' ';
             rg.color = NO_COLOR;
@@ -2618,6 +2639,7 @@ export function docrt_flags(refresh_flags) {
             for (let y = 0; y < ROWNO; y++) {
                 const loc = game.level.at(x, y);
                 if (loc && loc.remembered_glyph) {
+                    _refresh_remembered_wall(loc.remembered_glyph);
                     show_glyph_cell(x, y, loc.remembered_glyph.ch, loc.remembered_glyph.color,
                                     loc.remembered_glyph.decgfx, _glyph_attr(loc.remembered_glyph),
                                     loc.remembered_glyph.cls ?? GLYPHCLS_CMAP, false,
@@ -2685,6 +2707,7 @@ export async function docrt(pageTopl = false) {
         for (let x = 1; x < COLNO; x++) {
             const loc = game.level.at(x, y);
             if (loc?.remembered_glyph) {
+                _refresh_remembered_wall(loc.remembered_glyph);
                 show_glyph_cell(x, y, loc.remembered_glyph.ch, loc.remembered_glyph.color,
                                 loc.remembered_glyph.decgfx, _glyph_attr(loc.remembered_glyph),
                                 loc.remembered_glyph.cls ?? GLYPHCLS_CMAP, false,
@@ -4663,6 +4686,40 @@ function _fit_status_line_width(s, width) {
     }
     return last.length > width ? last.slice(0, width) : last;
 }
+// C win/tty/wintty.c:1401-1433: corner menus clear from offx, then
+// paint their content one column to the right.  Preserve the base window
+// outside that rectangle; a full-width menu clears the entire screen.
+// `background` contains plain base-window rows, not the menu's own text.
+export function tty_menu_overlay(frame, background, offx) {
+    if (offx <= 0) background.fill('');
+    const rows = frame.screen.split('\n');
+    const height = rows.length;
+    for (let r = 0; r < height; r++) {
+        const prefix = (background[r] || '').slice(0, Math.max(0, offx));
+        background[r] = prefix;
+        // renderMenuAt encodes leading blanks as either spaces or CSI n C.
+        const leading = rows[r].match(/^(?:\x1b\[(\d+)C|( +))/);
+        const col = leading ? Number(leading[1] || leading[2].length) : 0;
+        rows[r] = rows[r] ? prefix + ' '.repeat(Math.max(0, col - prefix.length))
+            + rows[r].slice(leading?.[0].length || 0) : prefix;
+    }
+    for (let r = height; r < background.length; r++) rows[r] = background[r];
+    while (rows.length && !rows.at(-1).trim()) rows.pop();
+    return { ...frame, screen: rows.join('\n'), dismiss() {
+        // C erase_menu_or_text:982 -> docorner:3684-3687. BASE_WINDOW's
+        // cursor is one-based, so dismissal also erases column offx - 1
+        // and one row below the menu (cw->maxrow + 1).
+        for (let r = 0; r <= height && r < background.length; r++)
+            background[r] = background[r].slice(0, Math.max(0, offx - 1));
+    } };
+}
+
+// C tty_askname writes on BASE_WINDOW; it does not repaint the banner.
+export function tty_base_window_prompt(background, row, text, cursor) {
+    background[row] = text;
+    return { screen: background.join('\n'), cursor };
+}
+
 // ── Serialize terminal grid for screen comparison ──
 export function serialize_terminal_grid(display) {
     let output = '';
@@ -7039,6 +7096,10 @@ export async function urgent_pline(msg, ...args) {
         g._topl_joins_src = '';
         g._topl_win_stop = false;
         g._topl_win_stop_buf = null;
+        /* The wipe also takes the line a command stashed into the result
+         * channel (float_down's "You float gently..." drawn past the ESC). */
+        g._resultMessage = null;
+        g._resultMessageJoins = null;
     }
     g._topl_win_stop_armed = false;           /* NOSTOP also pre-empts the arm */
     g._topl_urgent_next = true;               /* one-shot; pline() consumes it */
@@ -8213,7 +8274,7 @@ export function map_background(x, y, show) {
     if (!loc) return;
     const tg = terrain_glyph(loc, x, y);
     const glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec,
-                    cls: GLYPHCLS_CMAP };
+                    cls: GLYPHCLS_CMAP, wallSymbol: tg.wallSymbol };
     if (game.level?.flags?.hero_memory)
         loc.remembered_glyph = glyph;
     if (show)

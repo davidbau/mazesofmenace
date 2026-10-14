@@ -43,6 +43,8 @@
 
 import { PORT_ID } from './platform_identity.js';
 import { game } from './gstate.js';
+import { tty_menu_overlay, tty_base_window_prompt } from './display.js';
+import { str2role, str2race, str2gend, str2align } from './roles.js';
 
 // ──────────────────────────────────────────────────────────────────────────
 // Copyright banner / askname constants (R1 — preserved)
@@ -387,7 +389,7 @@ function roleLabel(rolenum, gendnum) {
     const role = ROLES[rolenum];
     if (role.f) {
         if (gendnum === 1) return role.f;             // female chosen → female name only
-        if (gendnum === ROLE_NONE) return role.m + '/' + role.f;  // both names
+        if (gendnum < 0) return role.m + '/' + role.f;  // both names
         return role.m;                                 // male chosen → male name only
     }
     return role.m;
@@ -526,7 +528,7 @@ function cursorForAsknameAtRow(row, namePrefix) {
 //             lines have padLeft=4).  Empty content → blank row.
 // title    = string in reverse-video at row 0
 // fitsIn24 = if false, force indent=0 left-align
-function renderMenu(title, lines, fitsIn24) {
+function renderMenu(title, lines, fitsIn24, background = null) {
     // Compute max effective line length (content + padLeft).  Empty lines
     // contribute 0.
     let maxLen = title.length;
@@ -543,7 +545,8 @@ function renderMenu(title, lines, fitsIn24) {
     } else {
         indent = Math.max(0, Math.min(41, 78 - maxLen));
     }
-    return renderMenuAt(title, lines, indent);
+    const frame = renderMenuAt(title, lines, indent);
+    return background ? tty_menu_overlay(frame, background, indent - 1) : frame;
 }
 
 // renderMenuAt: emit the menu at a specific indent column.
@@ -597,18 +600,19 @@ function emitLeading(firstCol, currentCol) {
 // C ref: role.c plsel_startmenu:2820-2825.
 function buildInfoLine(state) {
     const rolenameForInfo =
-        state.role === ROLE_NONE ? '<role>'
+        state.role < 0 ? '<role>'
         : (state.gender === 1 && ROLES[state.role].f) ? ROLES[state.role].f
         : ROLES[state.role].m;
-    const racename  = state.race  === ROLE_NONE ? '<race>'      : RACES[state.race].noun;
-    const gendname  = state.gender=== ROLE_NONE ? '<gender>'    : GENDERS[state.gender].adj;
-    const alignname = state.align === ROLE_NONE ? '<alignment>' : ALIGNS[state.align].adj;
+    const racename  = state.race  < 0 ? '<race>'      : RACES[state.race].noun;
+    const gendname  = state.gender< 0 ? '<gender>'    : GENDERS[state.gender].adj;
+    const alignname = state.align < 0 ? '<alignment>' : ALIGNS[state.align].adj;
     return `${rolenameForInfo} ${racename} ${gendname} ${alignname}`;
 }
 
 // Build the "Name the alignment gender race role" confirm-screen line.
 // C ref: role.c plsel_startmenu:2828-2833.
 function buildConfirmInfoLine(state, name) {
+    if (!name) return buildInfoLine(state); // role.c:2820: no name yet
     const rolenameForInfo =
         state.role === ROLE_NONE ? '<role>'
         : (state.gender === 1 && ROLES[state.role].f) ? ROLES[state.role].f
@@ -616,7 +620,7 @@ function buildConfirmInfoLine(state, name) {
     const raceadj   = RACES[state.race].adj;
     const gendadj   = GENDERS[state.gender].adj;
     const alignadj  = ALIGNS[state.align].adj;
-    return `${name} the ${alignadj} ${gendadj} ${raceadj} ${rolenameForInfo}`;
+    return `${name.slice(0, 20)} the ${alignadj} ${gendadj} ${raceadj} ${rolenameForInfo}`;
 }
 
 // Role-menu "extras" appended after the role list — Random + race/gender/
@@ -1256,6 +1260,11 @@ function parseMenuKey(phase, key, state) {
     if (key === 'q' || key === '\x1b') return { action: 'quit' };
     if (key === '*') return { action: 'random' };
     if (key === '~') return { action: 'filter' };
+    // role.c:1929-1938: forced facets are text, with no menu identifier.
+    if ((key === '?' && forcedRole(state))
+        || (key === '/' && forcedRace(state))
+        || (key === '"' && forcedGender(state))
+        || (key === '[' && forcedAlign(state))) return null;
 
     if (phase === 'role') {
         if (key === '/') return { action: 'switch', target: 'race' };
@@ -1277,7 +1286,9 @@ function parseMenuKey(phase, key, state) {
         if (key === '[') return { action: 'switch', target: 'align' };
         for (let i = 0; i < RACES.length; i++) {
             if (!ok_race(state.role, i, state.gender, state.align)) continue;
-            if (RACES[i].noun[0] === key) return { action: 'select', kind: 'race', value: i };
+            if (!ok_role(state.role, i, state.gender, state.align)) continue;
+            if (!ok_align(state.role, i, state.gender, state.align)) continue;
+            if (RACES[i].noun[0] === key.toLowerCase()) return { action: 'select', kind: 'race', value: i };
         }
         return null;
     }
@@ -1288,7 +1299,9 @@ function parseMenuKey(phase, key, state) {
         if (key === '[') return { action: 'switch', target: 'align' };
         for (let i = 0; i < GENDERS.length; i++) {
             if (!ok_gend(state.role, state.race, i, state.align)) continue;
-            if (GENDERS[i].adj[0] === key) return { action: 'select', kind: 'gender', value: i };
+            if (!ok_role(state.role, state.race, i, state.align)) continue;
+            if (!ok_race(state.role, state.race, i, state.align)) continue;
+            if (GENDERS[i].adj[0] === key.toLowerCase()) return { action: 'select', kind: 'gender', value: i };
         }
         return null;
     }
@@ -1299,7 +1312,9 @@ function parseMenuKey(phase, key, state) {
         if (key === '"') return { action: 'switch', target: 'gender' };
         for (let i = 0; i < ALIGNS.length; i++) {
             if (!ok_align(state.role, state.race, state.gender, i)) continue;
-            if (ALIGNS[i].adj[0] === key) return { action: 'select', kind: 'align', value: i };
+            if (!ok_role(state.role, state.race, state.gender, i)) continue;
+            if (!ok_race(state.role, state.race, state.gender, i)) continue;
+            if (ALIGNS[i].adj[0] === key.toLowerCase()) return { action: 'select', kind: 'align', value: i };
         }
         return null;
     }
@@ -1929,6 +1944,18 @@ function asknameFilter(ch, ct) {
     return '_';
 }
 
+// C role.c:1698-1720: suffix namespaces are tried in this order, even for '*'.
+function plnamesuffix(name, state) {
+    const [base, ...tokens] = name.split('-');
+    for (const token of tokens) {
+        for (const [key, parse] of [['role', str2role], ['race', str2race], ['gender', str2gend], ['align', str2align]]) {
+            const value = parse(token);
+            if (value !== ROLE_NONE) { state[key] = value; break; }
+        }
+    }
+    return base.replace(/,/g, ' ');
+}
+
 export async function playChargen(ctx) {
     const rn2 = ctx.rn2;
     const read = ctx.read;
@@ -1951,6 +1978,7 @@ export async function playChargen(ctx) {
         align:  ctx.flags?.initalign ?? ROLE_NONE,
     };
     let plname = ctx.plname || '';
+    let asknameText = null;
     let renameallowed = ctx.renameallowed || false;
     const result = () => ({ plname, role: st.role, race: st.race,
                             gender: st.gender, align: st.align, quit: false });
@@ -1982,11 +2010,13 @@ export async function playChargen(ctx) {
         }
     }
 
-    if (ctx.needAskname) {
-        plname = await doAskname((typed) => ({
+    plname = plnamesuffix(plname, st);
+    while (!plname) {
+        asknameText = await doAskname((typed) => ({
             screen: buildCopyrightAskname(typed),
             cursor: cursorForAskname(typed),
         }));
+        plname = plnamesuffix(asknameText, st);
         renameallowed = true;   // wintty.c:747 iflags.renameallowed = TRUE
     }
 
@@ -2005,7 +2035,7 @@ export async function playChargen(ctx) {
         // C ref: role.c:2257 — the do/while re-prompts until [yna]; 'q'/ESC bails.
         for (;;) {
             const prompt = buildPickPrompt(st);
-            const key = await read(buildShallIPickFrame(ctx.needAskname ? plname : null, prompt), [prompt.length + 1, PROMPT_ROW, 1]);
+            const key = await read(buildShallIPickFrame(asknameText, prompt), [prompt.length + 1, PROMPT_ROW, 1]);
             let a = String.fromCharCode(key).toLowerCase();
             if (key === K_ESC || a === 'q') return quit();
             if (a === ' ' || a === '\n' || a === '\r') a = 'y';
@@ -2014,6 +2044,13 @@ export async function playChargen(ctx) {
         }
     }
 
+    // C tty menus retain the base window until their rectangles erase it.
+    const menuBackground = Array(13).fill('');
+    if (!ctx.forcePick4u) {
+        [COPYRIGHT_BANNER_A, COPYRIGHT_BANNER_B, COPYRIGHT_BANNER_C, COPYRIGHT_BANNER_D]
+            .forEach((line, i) => { menuBackground[4 + i] = ' '.repeat(i ? BANNER_INDENT : 0) + line; });
+        if (asknameText !== null) menuBackground[12] = ASKNAME_TEXT + ' ' + asknameText;
+    }
     // ── makepicks ────────────────────────────────────────────────────────
     // C ref: role.c:2288 — `nextpick = RS_ROLE; do { ... } while (any < 0);`
     // The blocks are sequential inside one iteration, so advancing nextpick
@@ -2029,7 +2066,11 @@ export async function playChargen(ctx) {
         else if (kind === RS_RACE)   menu = buildRaceMenu(st);
         else if (kind === RS_GENDER) menu = buildGenderMenu(st);
         else                         menu = buildAlignMenu(st);
-        return renderMenu(menu.title, menu.lines, menu.fitsIn24);
+        // role.c:2820-2834: any menu uses the full description when all
+        // four facets are specified, even while replacing an invalid one.
+        if (plname && st.role >= 0 && st.race >= 0 && st.gender >= 0 && st.align >= 0)
+            menu.lines[1].content = buildConfirmInfoLine(st, plname);
+        return renderMenu(menu.title, menu.lines, menu.fitsIn24, menuBackground);
     }
 
     // Read one selection from the `kind` menu.  Returns one of
@@ -2038,9 +2079,10 @@ export async function playChargen(ctx) {
         for (;;) {
             const f = menuFrame(kind);
             const key = await read(f.screen, f.cursor);
-            if (isMenuDefaultKey(key)) return { random: true };   // preselected "Random"
-            const parsed = parseMenuKey(kind, String.fromCharCode(key), st);
+            const parsed = isMenuDefaultKey(key) ? { action: 'random' }
+                : parseMenuKey(kind, String.fromCharCode(key), st);
             if (!parsed) continue;                                 // no such entry: menu redraws
+            f.dismiss();
             if (parsed.action === 'quit')   return { quit: true };
             if (parsed.action === 'random') return { random: true };
             if (parsed.action === 'filter') return { filter: true };
@@ -2055,6 +2097,7 @@ export async function playChargen(ctx) {
     // entry was picked (role.c:2769), which is what tells the race/gender/
     // alignment callers to restart at RS_ROLE.  Draws no RNG.
     async function resetRoleFiltering() {
+        menuBackground.fill(''); // C tty_display_nhwindow:1927: full-screen menu
         const items = buildFilterMenuItems();
         // end_menu() prepends a blank and the prompt, in that order, so the
         // prompt is item 0 and the blank is item 1 (wintty.c:2680-2689 adding
@@ -2272,7 +2315,7 @@ export async function playChargen(ctx) {
     // C ref: role.c:2654 `getconfirmation = picksomething && pick4u != 'a'`.
     // The 'y' (game-picks) confirm window overlays the still-visible
     // copyright banner and askname line; the 'n' (manual-menu) one paints
-    // over the last menu, which the tty erased to blank.
+    // over the base-window residue left by the dismissed selection menus.
     let getconfirmation = picksomething && pick4u !== 'a';
     const overlayBanner = (pick4u === 'y');
     // The rename re-prompt draws "Who are you? <name>" at row 10 (askname's
@@ -2286,7 +2329,7 @@ export async function playChargen(ctx) {
     // on the BASE_WINDOW.  A rename writes its re-prompt at row 10 and never
     // touches row 12, so this is pinned to the name we arrive with.
     // tty_askname() alone paints this line and enables renaming (wintty.c:754).
-    const asknameResidual = renameallowed ? plname : null;
+    const asknameResidual = asknameText;
     // Rows 0..8 of the base window, from this column rightwards, have been
     // erased by a previous dismissal of the confirm menu — see
     // buildIsThisOkFrame.  Cumulative: nothing repaints the banner.
@@ -2310,13 +2353,7 @@ export async function playChargen(ctx) {
             return f;
         }
         const menu = buildConfirmMenu(st, plname, yesMark, renameallowed);
-        const r = renderMenu(menu.title, menu.lines, true);
-        if (renameResidual === null) return r;
-        return {
-            screen: r.screen + '\n\n' + ASKNAME_TEXT
-                + (renameResidual ? ' ' + renameResidual : ''),
-            cursor: r.cursor,
-        };
+        return renderMenu(menu.title, menu.lines, true, menuBackground);
     }
     // C ref: win/tty/wintty.c:287 default_menu_cmds — every tty menu accepts
     // these on top of its own page selectors.
@@ -2369,6 +2406,7 @@ export async function playChargen(ctx) {
                 });
             }
             if (ch === 'a' && renameallowed) {
+                f.dismiss?.();
                 // C ref: role.c:2691 — the name is re-asked, role/race/gender/
                 // align are saved and restored around plnamesuffix().
                 // destroy_nhwindow() runs first: in role selection that is
@@ -2376,15 +2414,13 @@ export async function playChargen(ctx) {
                 // column offx-1 == indent-2 rightwards, permanently.
                 if (overlayBanner && lastConfirmIndent !== null)
                     bannerClip = Math.min(bannerClip, lastConfirmIndent - 2);
-                plname = await doAskname((typed) => (
-                    overlayBanner
+                do {
+                    renameResidual = await doAskname(typed => overlayBanner
                         ? buildAsknameOverBanner(typed, asknameResidual, bannerClip)
-                        : {
-                            screen: buildAsknameAtRow(10, typed),
-                            cursor: cursorForAsknameAtRow(10, typed),
-                          }));
-                renameResidual = plname;
-                renameRow10 = ASKNAME_TEXT + (plname ? ' ' + plname : '');
+                        : tty_base_window_prompt(menuBackground, 10, ASKNAME_TEXT + (typed ? ' ' + typed : ''), cursorForAsknameAtRow(10, typed)));
+                    renameRow10 = ASKNAME_TEXT + (renameResidual ? ' ' + renameResidual : '');
+                    plname = plnamesuffix(renameResidual, { ...st }); // role.c:2695-2699 restores facets
+                } while (!plname);
                 continue confirm;   // getconfirmation is still True
             }
 

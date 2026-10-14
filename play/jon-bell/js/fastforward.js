@@ -1123,7 +1123,7 @@ function u_wipe_engr_rng() {
 export async function vomiting_dialogue_ff() {
     const u = game.u;
     const p = u?.uprops?.[VOMITING];
-    if (!p || !((p.intrinsic | 0) & TIMEOUT)) return;
+    if (!p || !(p.intrinsic | 0)) return;
     const i = ((p.intrinsic | 0) & TIMEOUT) - 1;
     const cant = cantvomit(game.youmonst?.data);
     const hallu = !!(u.uprops?.[HALLUC]?.intrinsic | 0)

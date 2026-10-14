@@ -4808,7 +4808,7 @@ async function seffect_magic_mapping(sobj) {
 export function magic_map_background(loc, x, y) {
     if (!loc) return;
     const tg = terrain_glyph(loc, x, y);
-    let rg = { ch: tg.ch, color: tg.color, decgfx: tg.dec };
+    let rg = { ch: tg.ch, color: tg.color, decgfx: tg.dec, wallSymbol: tg.wallSymbol };
     /* C: if (!cansee(x,y) && !lev->waslit) — dark-room / dark-corridor correction. */
     if (!cansee(x, y) && !loc.waslit) {
         const darkRoomOn = !!(game.flags?.dark_room && game.iflags?.use_color);

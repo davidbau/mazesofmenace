@@ -1,3 +1,4 @@
+import { unturn_dead } from './zap.js';
 // spell.js — Spell casting RNG path.
 // C ref: nethack-c/src/spell.c
 // @ts-nocheck — sibling imports from hand-maintained js/*.js (no .d.ts yet).
@@ -926,10 +927,7 @@ async function deadbook(book2) {
             mtmp.mpeaceful = false;
             set_malign(mtmp);
         }
-        /* unturn_dead(&youmonst), zap.c:1156: only carried corpses/eggs act */
-        for (let o = game.invent; o; o = o.nobj)
-            if ((o.otyp | 0) === 265 /* CORPSE */ || (o.otyp | 0) === 266 /* EGG */)
-                throw new Error('not yet ported: unturn_dead(hero) with corpse/egg in inventory (zap.c:1156)');
+        await unturn_dead(game.youmonst);
         await mkundead({ x: game.u.ux, y: game.u.uy }, true, NO_MINVENT);
         return;
     }
@@ -2280,6 +2278,28 @@ export function known_spell(otyp) {
     }
 
     return spe_Unknown;  // C ref: spell.c:2374
+}
+
+/* C v5 spell.c:2391-2414 — direct divine learning or refresh. */
+export function force_learn_spell(otyp) {
+    otyp = (otyp << 16) >> 16; /* C short */
+    if (otyp === SPE_BLANK_PAPER || otyp === SPE_BOOK_OF_THE_DEAD
+        || known_spell(otyp) === spe_Fresh)
+        return '\0';
+    const book = game.spl_book || (game.spl_book = []);
+    let i;
+    for (i = 0; i < MAXSPELL; i++)
+        if ((book[i]?.sp_id || NO_SPELL) === NO_SPELL || book[i].sp_id === otyp)
+            break;
+    if (i === MAXSPELL) {
+        impossible('Too many spells memorized');
+        return '\0';
+    }
+    book[i] ||= { sp_id: NO_SPELL, sp_lev: 0, sp_know: 0 };
+    book[i].sp_id = otyp;
+    book[i].sp_lev = _spbook_oc(otyp, SPBOOK_OC_LEVEL);
+    incrnknow(i, 0);
+    return spellet(i);
 }
 
 /* C spell.c:2379 — return the first known slot for an object type. */

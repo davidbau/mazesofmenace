@@ -6,7 +6,7 @@
 // This is the single shared, C-faithful implementation; the old per-file
 import { game } from './gstate.js';
 import { acurr } from './attrib.js';
-import { UNENCUMBERED, OVERLOADED, LEVITATION, LOW_PM, Upolyd, WOUNDED_LEGS, LEFT_SIDE, RIGHT_SIDE, Is_airlevel, W_ARMF } from './const.js';
+import { UNENCUMBERED, OVERLOADED, LEVITATION, FLYING, LOW_PM, Upolyd, WOUNDED_LEGS, LEFT_SIDE, RIGHT_SIDE, Is_airlevel, W_ARMF } from './const.js';
 import { OC_WEIGHT, OTYP_LARGE_BOX, OTYP_BAG_OF_TRICKS, OTYP_BAG_OF_HOLDING, OTYP_STATUE, OTYP_BOULDER } from './oc_weight.generated.js';
 import corpseData from './eat_corpse_data.json' with { type: 'json' };
 import monMsizePack from './makemon_msize.json' with { type: 'json' };
@@ -178,7 +178,11 @@ export function weight_cap() {
     } else {
         if (carrcap > MAX_CARR_CAP)
             carrcap = MAX_CARR_CAP;
-        const Flying = false;
+        // C hack.c:4330 / youprop.h:253: flight includes a flying steed.
+        const flight = u.uprops?.[FLYING];
+        const Flying = !!((flight?.intrinsic | 0) || (flight?.extrinsic | 0)
+            || ((u.usteed?.data?.mflags1 | 0) & 0x00000001 /* M1_FLY */))
+            && !(flight?.blocked | 0);
         if (!Flying) {
             /* hack.c:4293-4296 — EWounded_legs & LEFT_SIDE / RIGHT_SIDE. */
             const wprop = u.uprops ? u.uprops[WOUNDED_LEGS] : null;
@@ -209,8 +213,9 @@ export function weight_cap() {
  * The BOULDER/throws_rocks exclusion is off for the un-polymorphed hero. */
 export function inv_weight_raw() {
     let wt = 0;
-    /* throws_rocks(youmonst.data) is FALSE for the un-polymorphed hero. */
-    const throwsRocks = false;
+    // C hack.c:4360 / mondata.h:134: rock throwers ignore carried boulders.
+    const throwsRocks = !!((game.youmonst?.data?.mflags2 | 0)
+        & 0x08000000 /* M2_ROCKTHROW */);
     for (let otmp = game.invent; otmp; otmp = otmp.nobj) {
         if ((otmp.oclass | 0) === COIN_CLASS) {
             /* C hack.c:4322 — wt += (quan + 50) / 100 (integer division). */

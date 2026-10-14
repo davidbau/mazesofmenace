@@ -64,6 +64,10 @@ import {
     PRIMARYSET,
     ROGUESET,
     H_UNK,
+    H_DEC,
+    H_UTF8,
+    KNOWN_HANDLING,
+    MAXOTHER,
     DISP_BEAM, DISP_ALL, DISP_TETHER, DISP_FLASH, DISP_ALWAYS,
     DISP_CHANGE, DISP_END, DISP_FREEMEM, BACKTRACK,
     M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_NOTHING,
@@ -131,6 +135,7 @@ import {
     WC2_SUPPRESS_HIST,
     WC2_HILITE_STATUS,
     WC2_FLUSH_STATUS,
+    WC2_U_UTF8STR,
     TTY_WINCAP2,
     PLNMSG_UNKNOWN,
     BUFSZ,
@@ -159,7 +164,8 @@ import { stairway_at, known_branch_stairs, xy_set_wall_state } from './mklev.js'
 import {
     A_INT, A_WIS, A_DEX, A_CON, A_CHA, acurr, get_strength_str,
 } from './attrib.js';
-import { depth, dist2 } from './hacklib.js';
+import { depth, dist2, strncmpi } from './hacklib.js';
+import { purge_custom_entries, clear_all_glyphmap_colors, free_all_glyphmap_u } from './glyphs.js'; // clear_symsetentry (same SCC; hoisted fns, runtime use only — imports.mjs IN-SCC)
 import { monsterNames } from './generated/monsters_data.js';
 import { DEFSYMS } from './generated/defsyms_data.js';
 import { observe_object, near_capacity, update_inventory, Blind, hero_Warning } from './invent.js';
@@ -3529,16 +3535,16 @@ export function assign_graphics(whichset) {
  * C ref: symbols.c switch_symbols `:253–292` — refresh showsyms from the
  * primary set (SYMBOLS/ROGUESYMBOLS apply). TRUE (`:257–260`): showsyms[i]
  * = ov_primary ? ov : primary — the assign_graphics PRIMARYSET arm, same
- * stores; the `:261–287` PC9800/TERMLIB/CURSES/WIN32/UTF8 graphics-mode
- * callbacks are null in contest tty (no JS callbacks exist). FALSE
- * (`:288–291`): init_primary_symbols + init_showsyms = defaults (the gp
- * carrier stays null by design; showsyms_defaults PRIMARYSET is what
- * those inits write) + the PRIMARYSET entry handling/nocolor reset.
- * Named omission: clear_symsetentry desc/purge/glyphmap (`:289` tail —
- * no JS home). No reset_glyphmap call in C (assign_graphics-only,
- * by-design unported). C callers: cfgfiles.c:1194/:1205 (wired);
- * options.c:664 (wired: parseoptions S_ arm); options.c:1370/:1419/:1943/
- * :4197 + symbols.c:682/:1088 (unported sites, named).
+ * stores (showsyms_defaults PRIMARYSET stands in for the carrier row;
+ * the table's one reader, getpos build_feature_matching, takes numbers
+ * too); the `:261–287` PC9800/TERMLIB/CURSES/WIN32/UTF8
+ * graphics-mode callbacks are null in contest tty (no JS callbacks
+ * exist). FALSE (`:288–291`): init_primary_symbols + init_showsyms
+ * (ported below, live). No reset_glyphmap call in C
+ * (assign_graphics-only, by-design unported). C callers:
+ * cfgfiles.c:1194/:1205 (wired); options.c:664 (wired: parseoptions S_
+ * arm); options.c:1370/:1419/:1943/:4197 (wired: optfn legs) +
+ * symbols.c:682/:1088 (load_symset/do_symset, named).
  */
 export function switch_symbols(nondefault) {
     if (!game.gs) game.gs = {};
@@ -3550,14 +3556,293 @@ export function switch_symbols(nondefault) {
     if (nondefault) { // C `:257–260`
         const ov = ov_primary_table();
         for (let i = 0; i < SYM_MAX; i++) sh[i] = ov[i] ? ov[i] : def[i];
-    } else { // C `:288–291` — defaults + entry handling/nocolor reset
-        const se = game.gs.symset?.[PRIMARYSET];
-        if (se) {
-            se.handling = H_UNK;
-            se.nocolor = 0;
-        }
-        for (let i = 0; i < SYM_MAX; i++) sh[i] = def[i];
+    } else { // C `:288–291`
+        init_primary_symbols(); // C `:289` (carrier + entry reset inside)
+        init_showsyms(); // C `:290`
     }
+}
+
+/**
+ * C decl.h gs.symset[NUM_GRAPHICS] — the live symset entries (game home;
+ * const.js carries a dead autotranslated gs/gp/gr triple — see below).
+ * Slots gain the full C struct symsetentry shape (sym.h `:74–85`):
+ * name/desc/handling/nocolor/primary/rogue/explicitly. Carriers
+ * primary_syms/rogue_syms mirror C gp.primary_syms/gr.rogue_syms
+ * (decl.c): SYM_MAX nhsym ints (0–255), filled by the ported
+ * init_primary/rogue_symbols, updated by update_primary/rogue_symset.
+ * Lazily ensured so direct assign_graphics callers (tests, save.js)
+ * never see a hole (ov_primary_table precedent).
+ */
+export function symset_slot(which_set) {
+    if (!game.gs) game.gs = {};
+    if (!Array.isArray(game.gs.symset) || game.gs.symset.length !== 2) {
+        game.gs.symset = [
+            { name: null, desc: null, handling: 0, nocolor: 0, primary: 0, rogue: 0, explicitly: 0 },
+            { name: null, desc: null, handling: 0, nocolor: 0, primary: 0, rogue: 0, explicitly: 0 },
+        ];
+    }
+    const set = (which_set | 0) === ROGUESET ? ROGUESET : PRIMARYSET;
+    const slot = game.gs.symset[set];
+    if (slot.desc === undefined) slot.desc = null;
+    if (slot.primary === undefined) slot.primary = 0;
+    if (slot.rogue === undefined) slot.rogue = 0;
+    if (slot.explicitly === undefined) slot.explicitly = 0;
+    return slot;
+}
+function primary_syms_table() {
+    if (!game.gs) game.gs = {};
+    if (!Array.isArray(game.gs.primary_syms)
+            || game.gs.primary_syms.length !== SYM_MAX)
+        game.gs.primary_syms = new Array(SYM_MAX).fill(0);
+    return game.gs.primary_syms;
+}
+function rogue_syms_table() {
+    if (!game.gs) game.gs = {};
+    if (!Array.isArray(game.gs.rogue_syms)
+            || game.gs.rogue_syms.length !== SYM_MAX)
+        game.gs.rogue_syms = new Array(SYM_MAX).fill(0);
+    return game.gs.rogue_syms;
+}
+function showsyms_table() {
+    if (!game.gs) game.gs = {};
+    if (!Array.isArray(game.gs.showsyms)
+            || game.gs.showsyms.length !== SYM_MAX)
+        game.gs.showsyms = new Array(SYM_MAX).fill(0);
+    return game.gs.showsyms;
+}
+
+// C drawing.c def_r_oc_syms `:72–82` — the full 18-entry rogue object-class
+// table (index 0 is the '\0' random-class placeholder like primary).
+// DEF_R_OC_SYM above is the 3-diff partial for the display fast path.
+const DEF_R_OC_SYM_FULL = [
+    0, ']', ')', ']', '=', ',', '(', ':', '!', '?', '+',
+    '/', '*', '*', '`', '0', '_', '.',
+];
+
+/**
+ * C ref: symbols.c get_othersym `:129–160` — X-range default for one set:
+ * ov table, else the live carrier, else the switch (NOTHING/UNEXPLORED →
+ * DEF_NOTHING ' ' (hack.h:51); BOULDER → def_oc_syms[ROCK_CLASS].sym '`';
+ * INVISIBLE → DEF_INVISIBLE 'I' (defsym.h MONSYM(35)); PET/HERO_OVERRIDE
+ * have no default (C `#if 0`)). Values are nhsym ints (C global.h:108).
+ * C callers: init_primary_symbols `:180`, init_rogue_symbols `:207`,
+ * init_showsyms `:107` (all wired below).
+ */
+export function get_othersym(idx, which_set) {
+    const i = idx | 0;
+    const oidx = i + SYM_OFF_X;
+    const rogue = (which_set | 0) === ROGUESET;
+    const ov = rogue ? ov_rogue_table() : ov_primary_table();
+    const car = rogue ? rogue_syms_table() : primary_syms_table();
+    let sym = ov[oidx] ? nhsym_code(ov[oidx]) : (car[oidx] | 0); // C `:133–138`
+    if (!sym) { // C `:139`
+        switch (i) { // C `:140–159`
+        case SYM_NOTHING: // C `:141–142`
+        case SYM_UNEXPLORED: // C `:143–144`
+            sym = 32; // DEF_NOTHING ' '
+            break;
+        case SYM_BOULDER: // C `:145–147`
+            sym = DEF_OC_SYM[ROCK_CLASS].charCodeAt(0); // '`'
+            break;
+        case SYM_INVISIBLE: // C `:148–149`
+            sym = 73; // DEF_INVISIBLE 'I'
+            break;
+        /* C `:150–158` #if 0: PET/HERO_OVERRIDE intentionally defaultless. */
+        }
+    }
+    return sym; // C `:160`
+}
+
+// ov tables hold 0 or a single-char string (update_ov_* normalize);
+// carriers hold nhsym ints. One reader for the C `nhsym` value.
+function nhsym_code(v) {
+    if (typeof v === 'string') return v.length ? v.charCodeAt(0) & 0xFF : 0;
+    return (v | 0) & 0xFF;
+}
+
+/**
+ * C ref: symbols.c init_primary_symbols `:167–186` — defaults into
+ * gp.primary_syms (P `:171–172` defsyms, O `:173–174` def_oc_syms with
+ * the [0] '\0' placeholder, M `:175–176` def_monsyms with the [0] '\0'
+ * placeholder, W `:178` def_warnsyms, X `:180` get_othersym), then
+ * clear_symsetentry(PRIMARYSET, FALSE) (`:186`). Values are nhsym ints.
+ */
+export function init_primary_symbols() {
+    const t = primary_syms_table();
+    for (let i = 0; i < SYM_OFF_O; i++) // C `:171–172` (MAXPCHARS)
+        t[i + SYM_OFF_P] = DEFSYMS[i][0].charCodeAt(0);
+    for (let i = 0; i < SYM_OFF_M - SYM_OFF_O; i++) // C `:173–174` (MAXOCLASSES)
+        t[i + SYM_OFF_O] = i === 0 ? 0 : nhsym_code(DEF_OC_SYM[i]);
+    for (let i = 0; i < SYM_OFF_W - SYM_OFF_M; i++) // C `:175–176` (MAXMCLASSES)
+        t[i + SYM_OFF_M] = i === 0 ? 0 : DEF_MONSYM_CH[i - 1].charCodeAt(0);
+    for (let i = 0; i < WARNCOUNT; i++) // C `:178`
+        t[i + SYM_OFF_W] = def_warnsyms[i].ch.charCodeAt(0);
+    for (let i = 0; i < MAXOTHER; i++) // C `:180`
+        t[i + SYM_OFF_X] = get_othersym(i, PRIMARYSET);
+    clear_symsetentry(PRIMARYSET, false); // C `:186`
+}
+
+/**
+ * C ref: symbols.c init_rogue_symbols `:190–215` — defaults into
+ * gr.rogue_syms (P `:193–195` defsyms + `:196–198` door/stair overrides,
+ * O `:201–202` def_r_oc_syms, M `:203–204` def_monsyms, W `:205–206`
+ * def_warnsyms, X `:207` get_othersym), then clear_symsetentry(ROGUESET,
+ * FALSE) (`:213`) + the nocolor=1 default (`:214–215`).
+ */
+export function init_rogue_symbols() {
+    const t = rogue_syms_table();
+    for (let i = 0; i < SYM_OFF_O; i++) // C `:193–195` (MAXPCHARS)
+        t[i + SYM_OFF_P] = DEFSYMS[i][0].charCodeAt(0);
+    t[S_vodoor] = t[S_hodoor] = t[S_ndoor] = 43; // C `:196–198` '+'
+    t[S_upstair] = t[S_dnstair] = 37; // C `:196–198` '%'
+    for (let i = 0; i < SYM_OFF_M - SYM_OFF_O; i++) // C `:201–202` (MAXOCLASSES)
+        t[i + SYM_OFF_O] = nhsym_code(DEF_R_OC_SYM_FULL[i]);
+    for (let i = 0; i < SYM_OFF_W - SYM_OFF_M; i++) // C `:203–204` (MAXMCLASSES)
+        t[i + SYM_OFF_M] = i === 0 ? 0 : DEF_MONSYM_CH[i - 1].charCodeAt(0);
+    for (let i = 0; i < WARNCOUNT; i++) // C `:205–206`
+        t[i + SYM_OFF_W] = def_warnsyms[i].ch.charCodeAt(0);
+    for (let i = 0; i < MAXOTHER; i++) // C `:207`
+        t[i + SYM_OFF_X] = get_othersym(i, ROGUESET);
+    clear_symsetentry(ROGUESET, false); // C `:213`
+    symset_slot(ROGUESET).nocolor = 1; // C `:214–215`
+}
+
+/**
+ * C ref: symbols.c init_showsyms `:95–108` — defaults straight into
+ * gs.showsyms (P `:100–101`, O `:102–103`, M `:104–105`, W `:106–107`,
+ * X `:108` get_othersym PRIMARYSET). C duplicates the init_primary
+ * loops; so does JS (same sources, same order).
+ */
+export function init_showsyms() {
+    const sh = showsyms_table();
+    for (let i = 0; i < SYM_OFF_O; i++) // C `:100–101` (MAXPCHARS)
+        sh[i + SYM_OFF_P] = DEFSYMS[i][0].charCodeAt(0);
+    for (let i = 0; i < SYM_OFF_M - SYM_OFF_O; i++) // C `:102–103` (MAXOCLASSES)
+        sh[i + SYM_OFF_O] = i === 0 ? 0 : nhsym_code(DEF_OC_SYM[i]);
+    for (let i = 0; i < SYM_OFF_W - SYM_OFF_M; i++) // C `:104–105` (MAXMCLASSES)
+        sh[i + SYM_OFF_M] = i === 0 ? 0 : DEF_MONSYM_CH[i - 1].charCodeAt(0);
+    for (let i = 0; i < WARNCOUNT; i++) // C `:106–107`
+        sh[i + SYM_OFF_W] = def_warnsyms[i].ch.charCodeAt(0);
+    for (let i = 0; i < MAXOTHER; i++) // C `:108`
+        sh[i + SYM_OFF_X] = get_othersym(i, PRIMARYSET);
+}
+
+/**
+ * C ref: symbols.c init_symbols `:85–92` — the full reset: ov primary
+ * (`:87`), ov rogue (`:88`), primary (`:89`), showsyms (`:90`), rogue
+ * (`:91`). C callers: options.c:7199 (wired: initoptions_init) and
+ * end.c:553 (DUMPLOG-only, compiled out — named).
+ */
+export function init_symbols() {
+    init_ov_primary_symbols(); // C `:87`
+    init_ov_rogue_symbols(); // C `:88`
+    init_primary_symbols(); // C `:89`
+    init_showsyms(); // C `:90`
+    init_rogue_symbols(); // C `:91`
+}
+
+/**
+ * C ref: symbols.c update_primary_symset `:306–309` — gp.primary_syms
+ * [symp->idx] = val (pure store, no normalization). Canonical home
+ * (replaces the const.js scalar autotranslation, removed).
+ * C callers: parse_sym_line `:633` (wired: options.js).
+ */
+export function update_primary_symset(symp, val) {
+    primary_syms_table()[symp.idx | 0] = val | 0; // C `:308`
+}
+
+/**
+ * C ref: symbols.c update_rogue_symset `:312–315` — gr.rogue_syms
+ * [symp->idx] = val. Canonical home (replaces the const.js scalar
+ * autotranslation, removed). C callers: parse_sym_line `:635`
+ * (wired: options.js).
+ */
+export function update_rogue_symset(symp, val) {
+    rogue_syms_table()[symp.idx | 0] = val | 0; // C `:314`
+}
+
+/**
+ * C ref: symbols.c clear_symsetentry `:318–349` — reset one symset
+ * entry: desc freed (`:326–328`), handling H_UNK (`:330`), nocolor 0
+ * (`:331`), restriction bits 0 (`:333–334`), name dropped when
+ * name_too (`:336–340`); under ENHANCED_SYMBOLS (live, config.h:368)
+ * a UTF8→non-UTF8 transition frees the glyphmap u data (`:342–346`);
+ * then purge_custom_entries (`:347`) + clear_all_glyphmap_colors
+ * (`:348`). C callers: init_primary_symbols `:186` / init_rogue_symbols
+ * `:213` (wired above), read_sym_file's callers via the optfn failure
+ * arms (wired: options.js), load_symset `:675/:686` (named: callers
+ * compiled-out/by-design).
+ */
+export function clear_symsetentry(which_set, name_too) {
+    const set = (which_set | 0) === ROGUESET ? ROGUESET : PRIMARYSET;
+    const other_set = set === PRIMARYSET ? ROGUESET : PRIMARYSET; // C `:322`
+    const slot = symset_slot(set);
+    const old_handling = slot.handling | 0; // C `:323`
+    slot.desc = null; // C `:326–328` (free is GC)
+    slot.handling = H_UNK; // C `:330`
+    slot.nocolor = 0; // C `:331`
+    slot.primary = 0; // C `:333`
+    slot.rogue = 0; // C `:334`
+    if (name_too) // C `:336`
+        slot.name = null; // C `:337–339` (free is GC)
+    if (old_handling === H_UTF8 // C `:344`
+        && (symset_slot(other_set).handling | 0) !== H_UTF8)
+        free_all_glyphmap_u(); // C `:345`
+    purge_custom_entries(set); // C `:347`
+    clear_all_glyphmap_colors(); // C `:348`
+}
+
+/**
+ * C ref: symbols.c set_symhandling `:657–669` — match a Handling: value
+ * against known_handling[] (`:376–384`, case-insensitive strcmpi),
+ * default H_UNK. Canonical home (replaces the const.js dead-gs
+ * autotranslation, removed). C callers: parse_sym_line `:590`
+ * (wired: options.js).
+ */
+export function set_symhandling(handling, which_set) {
+    const slot = symset_slot(which_set);
+    slot.handling = H_UNK; // C `:661`
+    let i = 0;
+    while (KNOWN_HANDLING[i]) { // C `:662` (NULL fencepost)
+        if (strncmpi(KNOWN_HANDLING[i], handling, -1) === 0) { // C `:663` strcmpi
+            slot.handling = i; // C `:664`
+            return;
+        }
+        i++;
+    }
+}
+
+/**
+ * C ref: win/tty/wintty.c g_putch `:3740–3790` + the recorder capture
+ * (nomux_putch hook `:3848`: high bit stripped, decgfx from the
+ * graph_on/off state) — one symset byte to its recorded cell. IBM/UTF8
+ * handling (`:3750–3757`, eight_bit_tty unset in every committed
+ * session): raw putchar, no graph_on, capture strips → dec off. Any
+ * other handling (DEC/CURS/MAC/UNK): high bit → graph_on + ch ^ 0x80
+ * (`:3758–3763`); low bit → unconditional graph_off (DECgraphics-
+ * Optimization is undefined on unix) + raw (`:3764–3778`) → dec off.
+ * Bytes (and stripped bytes) below 0x20 are capture-ignored
+ * (nomux_putch `ch < 32` return): RogueEpyx traps are \x04, AmigaFont
+ * doors \x91–\x94 (stripped DC1–DC4) — the recorded cell keeps its
+ * cleared space. Repaints over a stale cell keep the stale char in C;
+ * JS has no keep-prior (fresh-screen space stands in — named).
+ * Returns { ch, dec } for the map_glyphinfo `:2653` arm below.
+ */
+export function symset_render_char(code, handling) {
+    const c = (code | 0) & 0xFF;
+    const h = handling | 0;
+    let out;
+    if (h === H_IBM || h === H_UTF8
+        || (game.iflags?.eight_bit_tty && (h !== H_DEC || (c & 0x7F) < 0x60))) {
+        out = { ch: String.fromCharCode(c & 0x7F), dec: false };
+    } else if (c & 0x80) {
+        out = { ch: String.fromCharCode(c ^ 0x80), dec: true };
+    } else {
+        out = { ch: String.fromCharCode(c), dec: false };
+    }
+    if (out.ch.charCodeAt(0) < 32)
+        return { ch: ' ', dec: false }; // capture-ignore ≈ cleared cell
+    return out;
 }
 
 /**
@@ -4556,7 +4841,8 @@ export function update_ov_rogue_symset(idx, val) {
  * glyphmap/tile machinery; the symidx column is live as
  * glyphmap_symidx); get_othersym base (the assign_graphics showsyms
  * copy itself is live at game.gs.showsyms; the `:2653` arm reads the
- * ov tables directly);
+ * ov tables, then the loaded symset carrier row when a symset name is
+ * set, else the base ch);
  * HAS_ROGUE_IBM_GRAPHICS MSDOS/TILES variant (compiled out upstream).
  * @param {number} x map x, C coordxy
  * @param {number} y map y, C coordxy
@@ -4635,21 +4921,57 @@ export function map_glyphinfo(x, y, base, mgflags) {
         symidx = mlet_symidx(glyph_to_mon(gid));
     }
     // C `:2653–2655` ttychar = gs.showsyms[gm.sym.symidx] + glyph echo.
-    // C's showsyms is ov ?: symset (switch_symbols `:257–260`); the base
-    // ch already encodes the symset side (DEC via use_decgraphics, ASCII
-    // defaults), so only the ov side is read here, from the current
-    // set's table — ROGUESET vs PRIMARYSET follows game.currentgraphics
-    // like C's assign_graphics swap. High-bit ov values are DEC-charset
-    // requests (wintty.c `:3758–3763` graph_on + ch ^ 0x80); plain values
-    // paint with DEC off (SYMBOLS=S_pool:~ paints '~', not the DEC '`').
+    // C's showsyms is ov ?: symset-carrier (switch_symbols `:257–260`).
+    // With no symset loaded the base ch already encodes the carrier
+    // side (DEC via use_decgraphics, ASCII defaults), so only the ov
+    // side is read. With a symset loaded (entry name set by the ported
+    // read_sym_file), the carrier row is read with the entry's
+    // handling. ROGUESET vs PRIMARYSET follows game.currentgraphics
+    // like C's assign_graphics swap. Translation is symset_render_char
+    // (wintty.c g_putch + recorder capture — the old DEC-only ov
+    // reading was its H_DEC row); SYMBOLS=S_pool:~ still paints '~'.
     if (!heroArmFired && symidx >= 0 && symidx < SYM_MAX) {
-        const ovTable = ((game.currentgraphics | 0) === ROGUESET)
+        const curSet = ((game.currentgraphics | 0) === ROGUESET)
+            ? ROGUESET : PRIMARYSET;
+        const ovTable = curSet === ROGUESET
             ? ov_rogue_table() : ov_primary_table();
+        const slot = game.gs?.symset?.[curSet];
+        const handling = slot ? (slot.handling | 0) : H_UNK;
         const ov = ovTable[symidx] || 0;
-        if (ov) {
-            const code = String(ov).charCodeAt(0);
-            out.ch = String.fromCharCode(code & 0x7F);
-            out.dec = (code & 0x80) !== 0;
+        if (slot?.name != null && symidx === S_darkroom) {
+            // C reglyph_darkroom `:1850–1853` (D-1972 equate, now live):
+            // showsyms[S_darkroom] is overwritten with showsyms[S_room]
+            // (dark_room && use_color) or showsyms[X_nothing] — the ov
+            // side included, so this arm precedes the ov read. Flags
+            // mirror reglyph_darkroom above (wc_color ≡ use_color).
+            const car = curSet === ROGUESET
+                ? rogue_syms_table() : primary_syms_table();
+            const darkRoom = game.flags?.dark_room !== false;
+            const useColor = game.iflags?.wc_color !== false;
+            const code = (darkRoom && useColor)
+                ? car[S_room]
+                : car[SYM_NOTHING + SYM_OFF_X];
+            const rendered = symset_render_char(code, handling);
+            out.ch = rendered.ch;
+            out.dec = rendered.dec;
+        } else if (ov) {
+            const rendered = symset_render_char(nhsym_code(ov), handling);
+            out.ch = rendered.ch;
+            out.dec = rendered.dec;
+        } else if (slot?.name != null) {
+            const car = curSet === ROGUESET
+                ? rogue_syms_table() : primary_syms_table();
+            const rendered = symset_render_char(car[symidx], handling);
+            out.ch = rendered.ch;
+            out.dec = rendered.dec;
+            if (rendered.dec && (rendered.ch === 'y' || rendered.ch === 'z')) {
+                // LADDER-base exception (same arm's base comment): C sends
+                // these in a DEC span (DECgraphics ladders 0xf9/0xfa,
+                // AmigaFont S_sw_bc/S_sw_br) but the frozen comparison has
+                // no y/z DEC mapping, so C's cell is the raw letter —
+                // dec:true would paint ≤/≥ (Ranger-95303 s839).
+                out.dec = false;
+            }
         } else if (petArmFired) {
             // C's showsyms default for the mlet slot: the plain letter
             // (the base ch may carry a hallucination-mapped letter).
@@ -4757,6 +5079,33 @@ export async function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false
     // (reset_glyphmap `:2941–2946`) at every paint; OR it here so live,
     // memory, detection and wizard engrcorr paints all inherit, as in C.
     attr |= engrcorr_map_attr(gid);
+    // C tty_print_glyph `:3867` HUPSKIP (HANGUPHANDLING live,
+    // global.h:278; g_pututf8 `:3795` + g_putch `:3745` carry the same
+    // guard): under hangup the tty layer emits nothing (morc is
+    // display-local — botl.js:801 precedent), so skip the emission
+    // (stores) below. Core validation + the map_glyphinfo resolve above
+    // already ran, as in C.
+    if (game.program_state?.done_hup) return;
+    // C tty_print_glyph `:3945–3953` + g_pututf8 `:3795–3803`
+    // (ENHANCED_SYMBOLS live, config.h:368): with the port advertising
+    // WC2_U_UTF8STR (tty_procs `:120`, the installed TTY_WINCAP2 word),
+    // the active set handling UTF8 (SYMHANDLING(H_UTF8), sym.h:176),
+    // and a stamped unicode representation (apply_customizations →
+    // glyphmap u, glyphs.c `:552–560`), g_pututf8 emits the byte string
+    // instead of the ttychar, and glyphdone (`:3951`) skips g_putch.
+    // JS strings carry the decoded char (glyphs.js fromCodePoint), so
+    // emission is assignment; dec off (no graph_on in the utf8 path).
+    // The MSDOS tiles arm (`:3939–3944`) never compiles on unix (named).
+    // Cells without u data keep the `:2653` ttychar via g_putch (the
+    // symset_render_char H_UTF8 row) — dat/symbols says so explicitly.
+    const utf8set = ((game.currentgraphics | 0) === ROGUESET) ? ROGUESET : PRIMARYSET;
+    const utf8u = (gid >= 0 && gid < MAX_GLYPH) ? game.glyphmap?.[gid]?.u : null;
+    if ((install_tty_wincap2() & WC2_U_UTF8STR) !== 0
+            && (game.gs?.symset?.[utf8set]?.handling | 0) === H_UTF8
+            && utf8u?.utf8str != null) {
+        ch = utf8u.utf8str; // g_pututf8 `:3797–3800` putchar loop
+        decgfx = false;
+    }
     const announce = show_glyph_change_wanted(loc, x, y, ch, color, decgfx, attr);
     // C classifies the already-chosen glyph id; stamp JS kind the same way
     // (no mon_glyph / obj_glyph). Always store so later On sees real old kind.
@@ -8020,11 +8369,12 @@ export async function cliparound(x, y) {
  * flag.h:507) default On via `!== false` (per
  * `get_bkglyph_and_framecolor` `:2555–2562`); `cansee` stays last in each
  * conjunction so it never runs when an earlier arm already failed.
- * Named omissions: `gs.showsyms[S_darkroom]` equate (`:1850–1853`, no
- * showsyms[]/glyphmap[] machinery in JS — D-1972; tty derives from the
- * remembered ch/color via `darkroom_sym()`); caller wiring
- * (`do.c:1715` goto_level, `options.c:7347` + `:8999`
- * reset_needed_visuals, `restore.c:926` — function live, unwired).
+ * Named omissions: `gs.showsyms[S_darkroom]` equate (`:1850–1853`)
+ * reads live in map_glyphinfo's loaded-symset arm (D-1972 closed for
+ * loaded sets; unloaded tty derives from the remembered ch/color via
+ * `darkroom_sym()`); caller wiring (`do.c:1715` goto_level,
+ * `options.c:7347` + `:8999` reset_needed_visuals, `restore.c:926` —
+ * function live, unwired).
  */
 export function reglyph_darkroom() {
     // C `:1826` + `:1836–1837` flag reads (Is_rogue_level takes &u.uz).
@@ -8105,9 +8455,9 @@ export function reglyph_darkroom() {
             }
         }
     }
-    // C `:1850–1853` gs.showsyms[S_darkroom] equate: no JS counterpart
-    // (see Named omissions above); remembered cells already carry the
-    // darkroom tty via cmap_idx_to_glyph(S_darkroom).
+    // C `:1850–1853` gs.showsyms[S_darkroom] equate: read live in
+    // map_glyphinfo's loaded-symset arm (carriers); remembered cells
+    // already carry the darkroom tty via cmap_idx_to_glyph(S_darkroom).
 }
 
 /**

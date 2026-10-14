@@ -1292,7 +1292,7 @@ export function parse_conf_str(str, proc) {
  * and the loop replays fgets of inbufsz-1 chars (newline included when
  * it fits). C callers: read_config_file `:1638` (wired below);
  * read_wizkit files.c:2594 (keeps its parse_wizkit_text subset clone,
- * review-154 debt — named); read_sym_file files.c:2646 (MISSING — named).
+ * review-154 debt — named); read_sym_file files.c:2646 (wired: options.js).
  * @param {string} text
  * @param {(line: string) => boolean} proc
  * @returns {boolean}

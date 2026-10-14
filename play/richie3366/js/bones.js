@@ -5,7 +5,7 @@
 
 import { game } from './gstate.js';
 import { vfsReadFile, vfsWriteFile, vfsDeleteFile } from './storage.js';
-import { next_ident, obj_extract_self, dealloc_obj, curse, free_omonst, set_corpsenm, weight, is_mines_prize, is_soko_prize, restore_timers, place_object } from './mkobj.js';
+import { next_ident, obj_extract_self, dealloc_obj, curse, free_omonst, set_corpsenm, weight, is_mines_prize, is_soko_prize, restore_timers, restore_light_sources, place_object } from './mkobj.js';
 import { peace_minded, set_malign, propagate } from './makemon.js';
 import { setworn } from './do_wear.js';
 import {
@@ -637,10 +637,13 @@ async function trickery(reason) {
  * against the blob, review 657), then the ghostly arms: loadfruitchn →
  * restmonchn/restobjchn id remap + propagate + ghostfruit, peace/malign
  * reset for the new hero, install, rest_track, freefruitchn.
- * Named omissions: installing the blob's RANGE_LEVEL lights
- * (restore_light_sources + relink_light_sources ghostly, light.c),
- * lastseentyp (C getlev restores it); shk residency peace; hide_monst.
- * The RANGE_LEVEL timers ARE installed below (C `:1144`).
+ * Named omissions: lastseentyp (C getlev restores it); shk residency
+ * peace; hide_monst.
+ * The RANGE_LEVEL timers ARE installed below (C `:1144`, D-3864), and so
+ * are the blob's RANGE_LEVEL lights (C `:1145` restore_light_sources +
+ * `:1300` relink_light_sources ghostly — deserLevel pre-relinked both
+ * against the blob's ids, so the ghostly id-map lookups have no work
+ * left, timers precedent).
  * Regions ARE restored (rest_regions ghostly arm below, D-2639).
  * Exclusions likewise (load_exclusions, same C order).
  * @param {object} payload  bones VFS payload (top-level level blob)
@@ -733,9 +736,19 @@ function getlev_bones(payload) {
     // relinked to live object pointers by deserLevel against the blob's
     // (pre-remap) o_ids, so C timeout.c `:2760`'s ghostly id-map lookup
     // has no work left; the remap above only renumbered o_ids, which the
-    // installed pointers do not use. The lights half of `:1144–1145` /
-    // `:1300` stays a named omission (light.c, separate file).
+    // installed pointers do not use (same below for the lights half of
+    // `:1144–1145` / `:1300`, no longer a named omission).
     restore_timers(info.timers, true, (game.moves | 0) - (info.omoves | 0));
+    // C restore.c getlev `:1145` restore_light_sources ghostly, in C order
+    // right after restore_timers `:1144` (timers precedent D-3864):
+    // install the blob's RANGE_LEVEL lights. Entries were relinked to
+    // live object/monster pointers by deserLevel against the blob's
+    // (pre-remap) ids, so C light.c's ghostly id-map lookup (`:1300`
+    // relink_light_sources via lookup_id_mapping) has no work left; the
+    // remap above only renumbered ids, which the installed pointers do
+    // not use. The lights half of `:1144–1145` / `:1300` is no longer a
+    // named omission.
+    restore_light_sources(info.lights);
     // C restore.c getlev `:1301` reset_oattached_mids(ghostly) in C order —
     // after all mons & objs are restored, before clear_id_mapping `:1304`:
     // ghostly omonst m_id zeroing + peace reset, omid remap through the

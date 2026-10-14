@@ -2,7 +2,7 @@
 // C refs: objnam.c readobjnam(), rnd_otyp_by_namedesc(), xname().
 import { game } from './gstate.js';
 import { fruitFromIndex, fruitFromName, matchWishedFruit } from './fruit.js';
-import { carriedObjectOwner, objectOwnershipPrefix, objectTypeKnown } from './shk.js';
+import { objectOwnershipPrefix, objectTypeKnown } from './shk.js';
 import { rn2, rnd } from './rng.js';
 import { mkobj, mksobj, rndClass } from './mklev.js';
 import { CORPSTAT_FEMALE, CORPSTAT_HISTORIC, SPE_LIM } from './const.js';
@@ -18,11 +18,11 @@ import { promptYesNo } from './query.js';
 import { objectWeight } from './weight.js';
 import { heroIsBlind, heroIsHallucinating } from './senses.js';
 import { artifactById, artifactByName, artifactExistCount, findArtifact, nameArtifact, uncreateArtifact, } from './artifacts.js';
-import { CRYSKNIFE, DILITHIUM_CRYSTAL, FLINT, GOLD_PIECE, JADE, LENSES, ROCK, GLOB_OF_BLACK_PUDDING, GLOB_OF_GRAY_OOZE, TALLOW_CANDLE, WAX_CANDLE, ACID_VENOM, AMULET_OF_YENDOR, BELL, BELL_OF_OPENING, BLINDING_VENOM, BOULDER, CANDELABRUM_OF_INVOCATION, CHEST, CORPSE, CRYSTAL_BALL, FAKE_AMULET_OF_YENDOR, FIGURINE, HEAVY_IRON_BALL, IRON_CHAIN, LARGE_BOX, MAGIC_LAMP, OIL_LAMP, SKELETON_KEY, SLIME_MOLD, SPE_BLANK_PAPER, SPE_BOOK_OF_THE_DEAD, STATUE, POT_WATER, TIN, TOWEL, WAN_WISHING, OBJECT_BASES, requireObjectData, OBJECT_DESCRIPTIONS, OBJECT_NAMES, OBJECT_PROB, OBJECT_MERGE, OBJECT_NOWISH, OBJECT_CHARGED, OBJECT_UNIQUE, OBJECT_USES_KNOWN, OBJECT_MATERIAL, OBJECT_SPELL_CATEGORY, OBJECT_SPELL_LEVEL, OBJECT_SUBTYPE, OBJECT_WEIGHT, } from './object_data.js';
+import { CRYSKNIFE, DILITHIUM_CRYSTAL, FLINT, GOLD_PIECE, JADE, LENSES, ROCK, GLOB_OF_BLACK_PUDDING, GLOB_OF_GRAY_OOZE, TALLOW_CANDLE, WAX_CANDLE, ACID_VENOM, AMULET_OF_YENDOR, BELL, BELL_OF_OPENING, BLINDING_VENOM, BOULDER, CANDELABRUM_OF_INVOCATION, CHEST, CORPSE, CRYSTAL_BALL, FAKE_AMULET_OF_YENDOR, FIGURINE, HEAVY_IRON_BALL, IRON_CHAIN, LARGE_BOX, MAGIC_LAMP, OIL_LAMP, SKELETON_KEY, SLIME_MOLD, SPE_BLANK_PAPER, SPE_BOOK_OF_THE_DEAD, STATUE, POT_WATER, TIN, TOWEL, WAN_WISHING, OBJECT_BASES, requireObjectData, OBJECT_DESCRIPTIONS, OBJECT_NAMES, OBJECT_PROB, OBJECT_MERGE, OBJECT_NOWISH, OBJECT_CHARGED, OBJECT_MAGIC, OBJECT_UNIQUE, OBJECT_USES_KNOWN, OBJECT_MATERIAL, OBJECT_SPELL_CATEGORY, OBJECT_SPELL_LEVEL, OBJECT_SUBTYPE, OBJECT_WEIGHT, } from './object_data.js';
 import { armorPresentationName, withIndefiniteArticle, makePlural, makeSingular } from './object_grammar.js';
 import { armorSimpleName } from './armor.js';
 import { isContainer } from './container.js';
-import { observeBucForNaming, observeObject } from './object_knowledge.js';
+import { objectClassForType, observeBucForNaming, observeObject } from './object_knowledge.js';
 import { getObjectLocation } from './object_location.js';
 import { objectDisclosureText } from './object_inscription.js';
 import { cansee } from './vision.js';
@@ -150,8 +150,8 @@ export function objectName(object, state = game, { minimal = false } = {}) {
         noun = callName
             ? `potion called ${callName}` : `${appearance || 'unknown'} potion`;
     else if (oclass === SCROLL_CLASS)
-        noun = callName ? `scroll called ${callName}` : appearance === 'unlabeled'
-            ? 'unlabeled scroll' : `scroll labeled ${appearance || 'unknown'}`;
+        noun = callName ? `scroll called ${callName}` : OBJECT_MAGIC[object.otyp]
+            ? `scroll labeled ${appearance || 'unknown'}` : `${appearance || trueName} scroll`;
     else if (oclass === SPBOOK_CLASS)
         noun = callName
             ? `${ordinaryName === 'novel' ? 'novel' : 'spellbook'} called ${callName}`
@@ -285,7 +285,9 @@ export function killerObjectName(object, state = game) {
     return OBJECT_UNIQUE[object.otyp] ? definiteName(name, state)
         : withIndefiniteArticle(name);
 }
-function objectMonsterName(object) {
+// C do_name.c:obj_pmname(): object gender describes the depicted creature,
+// independently of any saved traits used when a corpse revives.
+export function objectMonsterName(object) {
     let species = object.corpsenm;
     if (species === undefined)
         return 'thing';
@@ -419,6 +421,51 @@ function capitalizedMonsterTitle(name) {
     return CAPITALIZED_MONSTER_TITLES.some(title => name.startsWith(title)
         && (name.length === title.length || [' ', "'"].includes(name.charAt(title.length))));
 }
+// C simple_typename()/obj_typename(): type knowledge alone selects the name.
+// Potions, rings, scrolls, wands and spellbooks retain their generic noun
+// until identified; other unknown types use their appearance.
+export function simpleObjectTypeName(otyp, state = game) {
+    const oclass = objectClassForType(otyp);
+    const object = { otyp, oclass };
+    const actual = actualObjectTypeName(object, state);
+    const known = objectTypeKnown(object, state);
+    let className = null;
+    switch (oclass) {
+        case COIN_CLASS: return actual;
+        case AMULET_CLASS: return known ? actual : 'amulet';
+        case RING_CLASS:
+            className = 'ring';
+            break;
+        case POTION_CLASS:
+            className = 'potion';
+            break;
+        case SCROLL_CLASS:
+            className = 'scroll';
+            break;
+        case WAND_CLASS:
+            className = 'wand';
+            break;
+        case SPBOOK_CLASS:
+            if (OBJECT_NAMES[otyp] === 'novel')
+                return known ? 'novel' : 'book';
+            className = 'spellbook';
+            break;
+    }
+    if (className) {
+        if (!known)
+            return className;
+        return OBJECT_UNIQUE[otyp] ? actual : `${className} of ${actual}`;
+    }
+    const appearance = state.urole?.key === 'samurai'
+        && ['wooden harp', 'magic harp'].includes(OBJECT_NAMES[otyp] ?? '')
+        ? 'koto' : state.objectDescriptions?.[otyp] ?? OBJECT_DESCRIPTIONS[otyp] ?? actual;
+    const name = known ? actual : appearance;
+    if (oclass === ARMOR_CLASS)
+        return armorPresentationName(name, OBJECT_NAMES[otyp]);
+    if (oclass === GEM_CLASS)
+        return gemPresentationName(otyp, actual, known ? null : appearance);
+    return name;
+}
 // C minimal_xname() builds a bare object so personal names, call names,
 // quantity, and statue identity cannot reveal more than the known type.
 export function minimalObjectName(object, state = game) {
@@ -497,7 +544,11 @@ export function simpleObjectNameWithArticle(object, state = game) {
     return withIndefiniteArticle(noun);
 }
 export function ownedObjectName(object, state = game, { capitalized = true } = {}) {
-    const prefix = objectOwnershipPrefix(object, state, { capitalized });
+    // yname() omits ownership for most personal artifacts; quest artifacts retain it.
+    const omitOwner = object.where === 'inventory'
+        && objectHasPersonalName(object, state)
+        && (object.oartifact ?? 0) < requiredArtifact('The Orb of Detection', state).id;
+    const prefix = omitOwner ? '' : objectOwnershipPrefix(object, state, { capitalized });
     const quantity = object.quan ?? object.quantity ?? 1;
     // yname() uses cxname(): corpses retain their species and plural suffix.
     const noun = object.otyp === CORPSE ? corpseName(object) : objectName(object, state);
@@ -543,15 +594,13 @@ export function ownedObjectAction(object, verb, state = game, { capitalized = tr
     const personal = !!personalName && objectHasPersonalName(object, state);
     const name = personal && personalName
         ? personalName.replace(/^the /i, '')
-        : objectName(object, state);
+        : singularObjectName(object, state);
     const noun = quantity > 1 ? `${quantity} ${pluralizeObjectNoun(object, name)}` : name;
     const firstQuestArtifact = requiredArtifact('The Orb of Detection', state).id;
     const needsOwner = object.where !== 'inventory' || !personal
         || object.oartifact !== undefined && object.oartifact >= firstQuestArtifact;
-    let owner = carriedObjectOwner(object, state);
-    if (!capitalized && (owner === 'Your' || owner === 'The'))
-        owner = owner.toLowerCase();
-    let subject = needsOwner ? `${owner} ${noun}` : noun;
+    const prefix = needsOwner ? objectOwnershipPrefix(object, state, { capitalized }) : '';
+    let subject = `${prefix}${noun}`;
     if (capitalized)
         subject = subject.charAt(0).toUpperCase() + subject.slice(1);
     if (!verb)

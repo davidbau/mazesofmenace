@@ -62,7 +62,7 @@ PM_FLAMING_SPHERE, PM_FIRE_VORTEX, PM_FIRE_ELEMENTAL, PM_SALAMANDER, PM_WATER_EL
 PM_GHOST, PM_WIZARD_OF_YENDOR, PM_SHOPKEEPER, PM_ARCHEOLOGIST, PM_WIZARD, } from './pm.generated.js';
 import { cansee, couldsee, clear_path, is_lightblocker_mappear, does_block, unblock_point } from './vision.js';
 import { linedup } from './trap.js';
-import { mon_nam, exclam, artifact_hit } from './uhitm.js';
+import { mon_nam, exclam, artifact_hit, hmon_hitmon_do_hit, hmon_hitmon_poison, hmon_hitmon_splitmon, hmon_hitmon_msg_hit, hmon_hitmon_msg_silver, hmon_hitmon_msg_lightobj, hmon_hitmon_dmg_recalc, hmon_hitmon_special } from './uhitm.js';
 /* C mon.c:3470 killed() is a one-line wrapper over xkilled(), which lives in
  * js/uhitm.js.  mhitm.js already imports from uhitm.js (mon_nam, dmgval_weapon,
  * ...), so this rides the existing edge rather than adding a new one. */
@@ -2639,18 +2639,20 @@ export async function hmon_hitmon(mon, obj, thrown, dieroll) {
         return hmd.retval;
 
     if (hmd.dmg > 0)
-        await _hmon_hitmon_dmg_recalc(hmd, obj, u, uwep);
+        await hmon_hitmon_dmg_recalc(hmd, obj);
 
+    if (hmd.ispoisoned) await hmon_hitmon_poison(hmd, mon, obj);
     if (hmd.dmg < 1) {
         const mon_is_shade = (mon.data && (mon.data.pmidx | 0) === PM_SHADE);
         hmd.dmg = (hmd.get_dmg_bonus && !mon_is_shade) ? 1 : 0;
     }
 
+    await hmon_hitmon_special(hmd, mon, obj);
     let maybe_knockback = false;
     if (hmd.jousting) {
-        /* not exercised */
+        /* handled by hmon_hitmon_special above */
     } else if (hmd.unarmed && hmd.dmg > 1 && !thrown && !obj && !Upolyd(u)) {
-        /* stagger — not exercised (thrown) */
+        /* handled by hmon_hitmon_special above */
     } else if (!hmd.unarmed && hmd.dmg > 1 && !thrown && !Upolyd(u)
                && !u.twoweap && uwep) {
         maybe_knockback = true;
@@ -2668,8 +2670,12 @@ export async function hmon_hitmon(mon, obj, thrown, dieroll) {
         hmd.destroyed = true;
 
     await _hmon_hitmon_pet(hmd, mon);
-    /* splitmon: puddings + hand_to_hand only — never for THROWN */
-    _hmon_hitmon_msg_hit(hmd, mon, obj);
+    await hmon_hitmon_splitmon(hmd, mon, obj);
+    await hmon_hitmon_msg_hit(hmd, mon, obj);
+    if (hmd.silvermsg) await hmon_hitmon_msg_silver(hmd, mon);
+    if (hmd.lightobj) await hmon_hitmon_msg_lightobj(hmd, mon);
+    if (hmd.unpoisonmsg) hmd.saved_oname = cxname(obj);
+    if (hmd.needpoismsg) await pline("The poison doesn't seem to affect " + mon_nam(mon) + '.');
 
     if (hmd.poiskilled) {
         pline('The poison was deadly...');
@@ -2688,6 +2694,7 @@ export async function hmon_hitmon(mon, obj, thrown, dieroll) {
         /* confusing touch — hand_to_hand only, not for THROWN */
     }
 
+    if (hmd.unpoisonmsg) await pline(`Your ${hmd.saved_oname} ${vtense(hmd.saved_oname, 'are')} no longer poisoned.`);
     if (!hmd.destroyed && !hmd.offmap) {
         await wakeup_attack(mon, true);
         void maybe_knockback;
@@ -2704,19 +2711,7 @@ function is_pole_hmon(otmp) {
 
 /* uhitm.c:1388 hmon_hitmon_do_hit */
 async function _hmon_hitmon_do_hit(hmd, mon, obj, u, uwep) {
-    if (!obj) {
-        hmd.dmg = 0;
-        return;
-    }
-    if (hmd.mdat && (hmd.mdat.pmidx | 0) === PM_SHADE) {
-    }
-    if ((obj.oclass | 0) === _OCLASS_WEAPON || is_weptool(obj)
-        || (obj.oclass | 0) === _OCLASS_GEM) {
-        await _hmon_hitmon_weapon(hmd, mon, obj, u, uwep);
-    } else if ((obj.oclass | 0) === 8 /* POTION_CLASS */) {
-    } else {
-        await _hmon_hitmon_misc_obj(hmd, mon, obj);
-    }
+    await hmon_hitmon_do_hit(hmd, mon, obj, _hmon_hitmon_weapon, _hmon_hitmon_misc_obj);
 }
 
 /* uhitm.c:1071 hmon_hitmon_weapon — dispatch melee vs ranged */

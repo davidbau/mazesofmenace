@@ -477,7 +477,7 @@ export async function mcast_clone_wiz(mtmp) {
     const g = game, u = g.u || {};
     if (!mtmp?.iswiz || (g.context?.no_of_wizards | 0) !== 1)
         return;
-    pline('Double Trouble...');
+    await pline('Double Trouble...');
     const clone = await makemon(PM_WIZARD_OF_YENDOR_MC, u.ux | 0, u.uy | 0, MM_NOWAIT);
     if (!clone) return;
     clone.msleeping = clone.mtame = clone.mpeaceful = 0;

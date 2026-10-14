@@ -1,5 +1,9 @@
 // Hero form changes and equipment.
 // C refs: polyself.c polyself(), polymon(), break_armor(), drop_weapon().
+import { weaponDescription } from './weapon_description.js';
+import { P_SHORT_SWORD, P_SABER } from './const.js';
+import { makePlural } from './object_grammar.js';
+import { OBJECT_SUBTYPE } from './object_data.js';
 import { heroIsUnaware } from './hero_sleep.js';
 import { endVoluntaryMultiTurn, heroHasInvoluntaryDelay } from './command_state.js';
 import { finishHeroHelplessness } from './allmain.js';
@@ -24,7 +28,8 @@ import { AD_ELEC, AD_FIRE } from './monster_attack_types.js';
 import { AMULET_OF_UNCHANGING, ELVEN_MITHRIL_COAT, LEASH, LENSES, LOADSTONE, GRAY_DRAGON_SCALE_MAIL, GRAY_DRAGON_SCALES, OBJECT_MATERIAL, OBJECT_NAMES, RIN_POLYMORPH_CONTROL, RIN_PROTECTION_FROM_SHAPE_CHANGERS, } from './object_data.js';
 import { newsym, pline, plineWithContinuation, see_monsters, } from './display.js';
 import { deleteObject } from './object_delete.js';
-import { dragonFormForArmor, findArmorClass } from './armor.js';
+import { dragonFormForArmor, findArmorClass, removeHeroArmor } from './armor.js';
+import { endObjectBurn } from './light.js';
 import { encumbranceLabel, encumbranceMessage, nearCapacity, } from './weight.js';
 import { A_CHA, A_CON, A_DEX, A_STR, A_WIS, G_GENOD, I_SPECIAL, In_endgame, M_AP_NOTHING, STAIRS, STR18, STR19, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, Upolyd, POLY_CONTROLLED, POLY_LOW_CTRL, POLY_MONSTER, POLY_NOFLAGS, POLY_REVERT, W_ACCESSORY, W_ARMOR, W_SADDLE, } from './const.js';
 import { exerciseAttribute } from './attrib.js';
@@ -633,8 +638,13 @@ async function changeArmorForHeroForm(mnum) {
     let object;
     if (breaksArmor) {
         if ((object = worn('uarm'))) {
+            if (object.lamplit)
+                endObjectBurn(object, game);
             await plineWithContinuation('You break out of your armor!');
             await exerciseAttribute(A_STR, false);
+            await removeHeroArmor(object, game, { deferArmorClass: true, voluntary: false });
+            if (game.program_state.gameover)
+                return;
             await deleteObject(object);
         }
         if ((object = worn('uarmc'))
@@ -662,6 +672,9 @@ async function changeArmorForHeroForm(mnum) {
             && !(MONSTER_NAME[mnum] === 'hobbit'
                 && object.otyp === ELVEN_MITHRIL_COAT)) {
             await plineWithContinuation('Your armor falls around you!');
+            await removeHeroArmor(object, game, { deferArmorClass: true, voluntary: false });
+            if (game.program_state.gameover)
+                return;
             await dropCarriedObject(object);
             if (game.program_state.gameover)
                 return;
@@ -758,7 +771,12 @@ async function dropPolymorphWeapons(alone) {
     const canDropSecondary = !secondary || canDropPolymorphWeapon(secondary);
     if (alone) {
         const verb = canDropPrimary && canDropSecondary ? 'drop' : 'release';
-        await plineWithContinuation(`You find you must ${verb} your ${secondary ? 'weapons' : 'weapon'}!`);
+        let noun = droppedWeaponNoun(primary);
+        if (secondary && noun !== droppedWeaponNoun(secondary))
+            noun = 'weapon';
+        if (primary.quan !== 1 || secondary)
+            noun = makePlural(noun);
+        await plineWithContinuation(`You find you must ${verb} ${noun.startsWith('corpse') ? 'the' : 'your'} ${noun}!`);
     }
     const weapons = [
         [secondary, canDropSecondary], [primary, canDropPrimary],
@@ -775,6 +793,11 @@ async function dropPolymorphWeapons(alone) {
         if (game.program_state.gameover)
             return;
     }
+}
+function droppedWeaponNoun(object) {
+    const skill = OBJECT_SUBTYPE[object.otyp] ?? 0;
+    return object.oclass === 2 && skill >= P_SHORT_SWORD && skill <= P_SABER
+        ? 'sword' : weaponDescription(object);
 }
 function canDropPolymorphWeapon(object) {
     if ((object.owornmask ?? 0) & (W_ARMOR | W_ACCESSORY | W_SADDLE))

@@ -13,6 +13,7 @@ import { set_corpsenm } from './mklev.js';
 import { christen_monst } from './mhitm.js';
 export { oname } from './objnam.js';
 import { oname } from './objnam.js';
+import { display_text_window } from './com_pager.js';
 
 /**
  * int tt_doppel(struct monst *mon)
@@ -603,11 +604,7 @@ function newttentry() {
 }
 function dealloc_ttentry(ttent) { /* no-op */ }
 
-/* Minimal synchronous NHW_TEXT window used by toptenwin.  topten() itself is
- * synchronous (end.c calls it after tearing down the normal window port), so
- * this path keeps the C putstr/display ordering without introducing a promise
- * into the score writer.  The rows are published as the next screen frame;
- * the normal raw_print path remains unchanged when toptenwin is off. */
+/* C topten.c:911: NHW_TEXT display blocks for acknowledgement before teardown. */
 const _TT_WINDOWS = new Map();
 let _tt_next_window = 1;
 function create_nhwindow(type) {
@@ -618,14 +615,7 @@ function create_nhwindow(type) {
 function display_nhwindow(win, flag) {
     const w = _TT_WINDOWS.get(win);
     if (!w) return;
-    const gs = game;
-    const rows = w.lines.map(({ text, attr }) =>
-        attr ? '\x1b[1m' + text + '\x1b[0m' : text);
-    gs._screen_output = rows.join('\n');
-    if (gs.nhDisplay) {
-        gs.nhDisplay.cursorCol = 0;
-        gs.nhDisplay.cursorRow = Math.min(rows.length, 23);
-    }
+    return display_text_window(w.lines);
 }
 function destroy_nhwindow(win) { _TT_WINDOWS.delete(win); }
 function lock_file(filename, prefix, timeout) { return 1; }
@@ -671,7 +661,7 @@ function ordin(n) {
  * void topten(int how, time_t when)
  * nethack-c/src/topten.c:627-926
  */
-export function topten(how, when) {
+export async function topten(how, when) {
     const gs = game;
     let t0, tprev;
     let t1;
@@ -744,7 +734,7 @@ export function topten(how, when) {
         topten_print(pbuf);
         if (gs.program_state && !gs.program_state.stopprint) {
             if (gs.iflags && gs.iflags.toptenwin) {
-                display_nhwindow(gs.gt.toptenwin, true);
+                await display_nhwindow(gs.gt.toptenwin, true);
             }
         }
         if (gs.iflags && gs.iflags.toptenwin) {
@@ -908,7 +898,7 @@ export function topten(how, when) {
 
     if (gs.program_state && !gs.program_state.stopprint) {
         if (gs.iflags && gs.iflags.toptenwin) {
-            display_nhwindow(gs.gt.toptenwin, true);
+            await display_nhwindow(gs.gt.toptenwin, true);
         }
     }
     if (!t0_used)

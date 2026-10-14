@@ -24,7 +24,7 @@ import { parsebindings, parseautocomplete, optfn_number_pad_set, escapes, check_
 import { config_error_add } from './cmd_binds.js';
 import { str2role, str2race, str2gend, str2align, setrolefilter, gr as roleGlobals } from './roles.js';
 import { glyphrep_to_custom_map_entries } from './glyphs.js';
-import { config_line_error, config_statement, choose_random_part } from './cfgfiles.js';
+import { config_line_error, config_statement, choose_random_part, config_error_nextline, is_config_section, parse_autopickup_exception, parse_msgtype } from './cfgfiles.js';
 import { add_menu_coloring, match_str2clr } from './coloratt.js';
 import { TtyMenu, PICK_NONE, PICK_ONE, PICK_ANY, ATR_NONE } from './tty_menu.js';
 import { getlin } from './wizcmds.js';
@@ -458,6 +458,7 @@ function* rc_logical_lines(rc) {
         const more = line.endsWith('\\');
         if (more) line = line.slice(0, -1);
         line = line.replace(/[ \t\r]+$/, '');
+        if (game.config_error_data && !config_error_nextline(line)) return;
         const ep = line.replace(/^[ \t]+/, '');
         const ignore = !ep || ep[0] === '#';
         const old = buf !== null;
@@ -465,10 +466,9 @@ function* rc_logical_lines(rc) {
         if (more || (ignore && !old)) continue;
         const b = buf;
         buf = null;
-        const sm = b[0] === '[' && /^\[([^\]]*)\] *(#.*)?$/.exec(b.trim());
-        if (sm) {
+        const sect = is_config_section(b);
+        if (sect !== null) {
             current = null;
-            const sect = sm[1].trim();
             if (chosen === null) {
                 config_error_add('Section "[%s]" without CHOOSE', sect);
             } else if (sect) {
@@ -713,14 +713,14 @@ export function parseNethackrc(rc) {
         // matches any prefix abbreviation of length >= 4 ("BIND"..."BINDINGS");
         // cnf_line_BINDINGS (cfgfiles.c:617) -> parsebindings (options.c:7614):
         // comma-separated key:command pairs; each -> bind_key (options.c:7687).
-        const bindMatch = line.match(/^(?:BIND|BINDI|BINDIN|BINDING|BINDINGS)=(.+)/i);
+        const bindMatch = line.match(/^(?:BIND|BINDI|BINDIN|BINDING|BINDINGS)=([\s\S]*)/i);
         if (bindMatch) {
             parsebindings(bindMatch[1]);
             continue;
         }
 
         /* C cfgfiles.c:627 cnf_line_AUTOCOMPLETE (CNFL_N(AUTOCOMPLETE, 5)) */
-        const acMatch = line.match(/^(AUTOC[A-Z]*)\s*=\s*(.*)$/i);
+        const acMatch = line.match(/^(AUTOC[A-Z]*)=([\s\S]*)$/i);
         if (acMatch && 'AUTOCOMPLETE'.startsWith(acMatch[1].toUpperCase())) {
             parseautocomplete(acMatch[2], true);
             continue;
@@ -773,14 +773,12 @@ export function parseNethackrc(rc) {
 
         /* C options.c:7682-7693,7732-7753,7844-7861: keep the type and
          * prepend each rule; msgtype_type uses the first matching pattern. */
-        const msgtypeMatch = line.match(/^MSGTYPE=\s*(\w+)\s+"(.*)"\s*$/i);
+        const msgtypeMatch = line.match(/^MSGTYPE=([\s\S]*)$/i);
         if (msgtypeMatch) {
-            const names = ['show', 'hide', 'noshow', 'stop', 'more', 'norep'];
-            const name = names.find(n => n.startsWith(msgtypeMatch[1].toLowerCase()));
-            if (name) {
+            const rule = parse_msgtype(msgtypeMatch[1]);
+            if (rule) {
                 try {
-                    const type = name === 'noshow' ? 'hide' : name === 'more' ? 'stop' : name;
-                    (result.msgtypes ||= []).unshift({ type, regex: new RegExp(msgtypeMatch[2]) });
+                    (result.msgtypes ||= []).unshift({ type: rule.type, regex: new RegExp(rule.pattern) });
                 } catch (e) { /* bad pattern: C reports and skips */ }
             }
             continue;
@@ -844,6 +842,12 @@ export function parseNethackrc(rc) {
             const menusep = menuopts.search(/[:=]/);
             const menuname = (menusep < 0 ? menuopts : menuopts.slice(0, menusep)).trim().toLowerCase();
             const menuval = menusep < 0 ? '' : menuopts.slice(menusep + 1);
+            // C options.c:2559 optfn_name -> string_for_opt(:6665): a
+            // missing value reports an error and leaves plname unchanged.
+            if (menuname === 'name' && !menunegated && !menuval) {
+                config_error_add("Missing parameter for '%s'", menuopts);
+                continue;
+            }
             if (menuname === 'align' || (menuname.length >= 6 && 'alignment'.startsWith(menuname))) {
                 optfn_alignment(result, menuopts, menuval, menunegated, alignmentState);
                 continue;
@@ -1102,6 +1106,15 @@ export function parseNethackrc(rc) {
                 }
                 continue;
             }
+            // C options.c:2299-2308: atoi, accept only menuinvertmode 0..2.
+            if (menuname.length >= 5 && 'menuinvertmode'.startsWith(menuname)) {
+                const op = menusep < 0 ? '' : menuopts.slice(menusep + 1).trim();
+                const mode = parseInt(op, 10) || 0;
+                if (op && (mode < 0 || mode > 2))
+                    config_error_add(`Illegal menuinvertmode parameter '${op}'`);
+                else if (op) result.iflags.menuinvertmode = mode;
+                continue;
+            }
             /* C options.c:2225 optfn_menu_objsyms(do_set) + set_menuobjsyms_flags
              * (options.c:7446): menuobjsyms, menu_head_objsym = bit 0,
              * use_menu_glyphs = TRUE (do_init, options.c:2234). */
@@ -1168,8 +1181,34 @@ export function parseNethackrc(rc) {
             if (menuname.length >= 5 && 'sortdiscoveries'.startsWith(menuname)
                 && optfn_sortdiscoveries_set(menusep < 0 ? '' : menuopts.slice(menusep + 1).trim(), menunegated, result.flags))
                 continue;
-            const negated = trimmed.startsWith('!');
-            const stripped = negated ? trimmed.slice(1) : trimmed;
+            let negated = trimmed.startsWith('!');
+            let stripped = negated ? trimmed.slice(1) : trimmed;
+            // C options.c:5192-5244 optfn_boolean: parameters select the
+            // boolean value; storage still uses the option's native address.
+            if (boolRow && booleanStorage.has(boolRow[0].toLowerCase())) {
+                if (booleanStorage.get(boolRow[0].toLowerCase()).wizNoFuz)
+                    continue;
+                negated = menunegated;
+                stripped = boolRow[0];
+                const op = menuval.toLowerCase();
+                if (op) {
+                    if (negated) {
+                        config_error_add("Negated boolean '%s' should not have a parameter", boolRow[0]);
+                        continue;
+                    }
+                    const numeric = /^\d/.test(op) ? parseInt(op, 10) : NaN;
+                    if ('true'.startsWith(op) || 'yes'.startsWith(op)
+                        || op === 'on' || numeric === 1)
+                        negated = false;
+                    else if ('false'.startsWith(op) || 'no'.startsWith(op)
+                        || op === 'off' || numeric === 0)
+                        negated = true;
+                    else if (boolRow[0] !== 'menucolors') { // its valok is Yes
+                        config_error_add("'%s' is not valid for a boolean", menuopts);
+                        continue;
+                    }
+                }
+            }
             const colonIdx = stripped.indexOf(':');
             if (colonIdx >= 0) {
                 const key = stripped.slice(0, colonIdx).trim().toLowerCase();
@@ -1381,11 +1420,11 @@ export function parseNethackrc(rc) {
  * state is the pending RC result during startup, and the live game otherwise.
  * The regexp backend is the same one used by pickup.js. */
 function add_autopickup_exception(mapping, state = game) {
-    const m = /^"([<>]?)([^"]{1,253})"\s*(?:#.*)?$/.exec(mapping);
+    const m = parse_autopickup_exception(mapping);
     if (m) {
         try {
-            new RegExp(m[2]);
-            (state.apelist ||= []).unshift({ pattern: m[2], grab: m[1] === '<' });
+            new RegExp(m.pattern);
+            (state.apelist ||= []).unshift(m);
             return 1;
         } catch (e) { /* regex error: C reports and skips */ }
     }

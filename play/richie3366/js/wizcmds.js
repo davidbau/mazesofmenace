@@ -1120,8 +1120,11 @@ export async function wiz_map_levltyp() {
     const lf = game.level?.flags || {};
     // C `:753–756` defsyms[S_fountain].sym / defsyms[S_sink].sym — JS char
     // via game.gs.showsyms (both default per defsym.h:133–134, hoisted).
-    if (lf.nfountains) dsc += ` ${game.gs?.showsyms?.[S_fountain] ?? DEF_FOUNTAIN_SINK_SYM}:${lf.nfountains | 0}`;
-    if (lf.nsinks) dsc += ` ${game.gs?.showsyms?.[S_sink] ?? DEF_FOUNTAIN_SINK_SYM}:${lf.nsinks | 0}`;
+    const shF = game.gs?.showsyms?.[S_fountain];
+    const shS = game.gs?.showsyms?.[S_sink];
+    const shCh = (v) => (typeof v === 'number' ? String.fromCharCode(v & 0xFF) : v) ?? DEF_FOUNTAIN_SINK_SYM;
+    if (lf.nfountains) dsc += ` ${shCh(shF)}:${lf.nfountains | 0}`;
+    if (lf.nsinks) dsc += ` ${shCh(shS)}:${lf.nsinks | 0}`;
     if (lf.has_vault) dsc += ' vault'; // C `:758`
     if (lf.has_shop) dsc += ' shop'; // C `:760`
     if (lf.has_temple) dsc += ' temple'; // C `:762`

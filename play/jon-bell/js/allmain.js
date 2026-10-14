@@ -6,12 +6,14 @@ import { u_init_inventory_attrs } from './u_init.js';
 //
 // Real mklev.js handles level generation for screen parity.
 import { game } from './gstate.js';
+import { bc_sanity_check } from './ball.js';
 import { m_everyturn_effect } from './monmove.js';
 import { rehumanize, polymon } from './polyself.js';
 import { you_unwere, is_were } from './were.js';
 import { UNCHANGING, STRANGLED, DIED, KILLED_BY, STONED, SLIMED, STONING, TURNED_SLIME, NO_KILLER_PREFIX, ARTICLE_THE, SUPPRESS_SADDLE, SICK, SICK_ALL, KILLED_BY_AN, SICK_NONVOMITABLE, A_CON, POISONING } from './const.js';
 import { done as done_end, find_delayed_killer, dealloc_killer } from './end.js';
-import { nh_timeout_spell_protection, run_timers, fall_asleep, slimed_to_death, done_timeout } from './timeout.js';
+import { nh_timeout_spell_protection, nh_timeout_gallop, nh_timeout_sickness_killer, nh_timeout_silent_properties, run_timers, fall_asleep, slimed_to_death, done_timeout } from './timeout.js';
+import { deferred_decor } from './pickup.js';
 import { useup } from './cmd.js';
 import { decrement_property_timeout, timeout_terrain_property,
     terrain_timeout_dialogues } from './terrain_timeout.js';
@@ -1216,6 +1218,8 @@ async function faithful_moveloop_turn() {
                 if (g.u.ucreamed) g.u.ucreamed--;
                 if (g.u?.usptime)
                     await nh_timeout_spell_protection();
+                await nh_timeout_gallop();
+                const was_flying = _fumble_flying();
                 // C timeout.c: property-index order, including silent expiry.
                 await timeout_terrain_property(FIRE_RES);
                 for (const prop of [COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, POISON_RES])
@@ -1236,9 +1240,6 @@ async function faithful_moveloop_turn() {
                  * "You turn into a green slime!" pline raises more() INLINE
                  * (topl.c update_topl), before polymon changes u.umonnum, so the
                  * frozen frame keeps the pre-polymon status.  Snapshot as above. */
-                const _wasMB2 = g._inMovemonBlock;
-                g._inMovemonBlock = true;
-                try { await nh_timeout_slimed(); } finally { g._inMovemonBlock = _wasMB2; }
                 await nh_timeout_strangled();
                 // C timeout.c:689, VOMITING (20): dialogue ran above;
                 // the generic timeout loop decrements the property here.
@@ -1255,15 +1256,20 @@ async function faithful_moveloop_turn() {
                     glibProp.intrinsic--;
                     if (!((glibProp.intrinsic | 0) & TIMEOUT)) make_glib(0);
                 }
+                const _wasMB2 = g._inMovemonBlock;
+                g._inMovemonBlock = true;
+                try { await nh_timeout_slimed(); } finally { g._inMovemonBlock = _wasMB2; }
                 // C timeout.c:778-782, HALLUC (23): after the generic
                 // decrement, re-arm a one-turn old value so make_hallucinated()
                 // performs its transition/vision cleanup on expiry.
                 await nh_timeout_hallucinated();
+                nh_timeout_silent_properties(PROPS.HALLUC_RES);
                 // FUMBLING (25) precedes WOUNDED_LEGS (26), preserving the
                 // property loop order even when both expire this turn.
                 await nh_timeout_fumbling();
                 await nh_timeout_wounded_legs();
                 await nh_timeout_sleepy();
+                nh_timeout_silent_properties(PROPS.HUNGER);
                 // C timeout.c:768-773, SEE_INVIS (29): a #wizintrinsic timed
                 // See_invisible counts down; expiry refreshes invisible monsters.
                 if (decrement_property_timeout(PROPS.SEE_INVIS)) {
@@ -1272,9 +1278,11 @@ async function faithful_moveloop_turn() {
                     newsym(g.u.ux, g.u.uy);
                     await stop_occupation();
                 }
+                nh_timeout_silent_properties(PROPS.TELEPAT, PROPS.WARNING);
                 await timeout_terrain_property(WARN_OF_MON);
-                // C timeout.c:751 generic loop: DETECT_MONSTERS (37) counts down; no expiry arm.
-                decrement_property_timeout(DETECT_MONSTERS);
+                nh_timeout_silent_properties(PROPS.WARN_UNDEAD, PROPS.SEARCHING, PROPS.CLAIRVOYANT, PROPS.INFRAVISION);
+                if (decrement_property_timeout(DETECT_MONSTERS)) see_monsters(); // C timeout.c:932
+                nh_timeout_silent_properties(PROPS.BLND_RES, PROPS.ADORNED);
                 // C timeout.c:760-767 INVIS (40): newsym(u.ux,u.uy), then the expiry
                 // message when the hero is visible again; precedes DISPLACED (41).
                 if (decrement_property_timeout(PROPS.INVIS)) {
@@ -1292,6 +1300,7 @@ async function faithful_moveloop_turn() {
                 // C timeout.c:858 — DISPLACED is property index 41, after
                 // WARN_OF_MON and before the transportation-property block.
                 await timeout_terrain_property(DISPLACED);
+                nh_timeout_silent_properties(PROPS.STEALTH, PROPS.AGGRAVATE_MONSTER, PROPS.CONFLICT, PROPS.JUMPING, PROPS.TELEPORT, PROPS.TELEPORT_CONTROL);
                 // C timeout.c:794: LEVITATION (48) precedes FAST (64).
                 if ((g.u?.uprops?.[LEVITATION]?.intrinsic | 0) & TIMEOUT)
                     await nh_timeout_levitation();
@@ -1300,7 +1309,6 @@ async function faithful_moveloop_turn() {
                 {
                     const flyP = g.u?.uprops?.[FLYING];
                     if ((flyP?.intrinsic | 0) & TIMEOUT) {
-                        const was_flying = _fumble_flying();
                         flyP.intrinsic--;
                         if (!((flyP.intrinsic | 0) & TIMEOUT)
                             && was_flying && !_fumble_flying()) {
@@ -1312,21 +1320,23 @@ async function faithful_moveloop_turn() {
                     }
                 }
                 await timeout_terrain_property(WWALKING);
+                nh_timeout_silent_properties(PROPS.SWIMMING);
                 await timeout_terrain_property(MAGICAL_BREATHING);
                 await timeout_terrain_property(PASSES_WALLS);
+                nh_timeout_silent_properties(PROPS.SLOW_DIGESTION, PROPS.HALF_SPDAM, PROPS.HALF_PHDAM, PROPS.REGENERATION, PROPS.ENERGY_REGENERATION, PROPS.PROTECTION);
                 // C timeout.c:938-942 — property 60 expires before FAST (64).
                 if (decrement_property_timeout(PROPS.PROT_FROM_SHAPE_CHANGERS)) {
                     const p = g.u.uprops[PROPS.PROT_FROM_SHAPE_CHANGERS];
                     if (!p.intrinsic && !p.extrinsic) await restartcham();
                 }
+                nh_timeout_silent_properties(PROPS.POLYMORPH, PROPS.POLYMORPH_CONTROL, PROPS.UNCHANGING);
                 await nh_timeout_fast();
                 /* C timeout.c:670-671 — the generic loop decrements EVERY timed
                  * property; properties with no switch arm (timeout.c:672-940) just
                  * count down.  Only #wizintrinsic sets such timeouts (e.g. a timed
                  * Reflecting, which must expire or dobuzz's `if (Reflecting)`
                  * keeps bouncing the ray at zap.c:4964). */
-                for (const name of 'HALLUC_RES BLND_RES HUNGER TELEPAT WARNING WARN_UNDEAD SEARCHING INFRAVISION ADORNED STEALTH AGGRAVATE_MONSTER CONFLICT JUMPING TELEPORT_CONTROL SLOW_DIGESTION HALF_SPDAM HALF_PHDAM REGENERATION ENERGY_REGENERATION PROTECTION POLYMORPH_CONTROL UNCHANGING REFLECTING FREE_ACTION FIXED_ABIL LIFESAVED TELEPORT POLYMORPH CLAIRVOYANT SWIMMING'.split(' '))
-                    decrement_property_timeout(PROPS[name]);
+                nh_timeout_silent_properties(PROPS.REFLECTING, PROPS.FREE_ACTION, PROPS.FIXED_ABIL, PROPS.LIFESAVED);
                 // C timeout.c:947 — run_timers(), the LAST statement of nh_timeout().
                 // Fires every queue element whose timeout has arrived: ROT_CORPSE is
                 // ~250 turns after it was made).  RNG-free for the two ported
@@ -1879,8 +1889,9 @@ async function nh_timeout_sick() {
     }
     await urgent_pline('You die from your illness.');
     g.svk = g.svk || {};
-    g.svk.killer = { id: 0, name: kptr?.name || '', format: kptr?.name ? kptr.format : KILLED_BY_AN, next: null };
+    Object.assign(g.svk.killer ||= { id: 0, next: null }, { format: kptr?.name ? kptr.format : KILLED_BY_AN, name: kptr?.name || '' });
     dealloc_killer(kptr);
+    nh_timeout_sickness_killer();
     await done_timeout(POISONING, SICK);
     g.u.usick_type = 0;
 }
@@ -2081,7 +2092,7 @@ async function nh_timeout_blinded() {
     set_HBlinded(1);            /* C set_itimeout(&HBlinded, 1L) */
     make_blinded(0, true);      /* prints "You can see again." */
     if (was_blind && !Blind())
-        await stop_occupation({ silent: true });
+        await stop_occupation();
 }
 
 /* C timeout.c:778-782 — timed hallucination expires through
@@ -2099,7 +2110,7 @@ async function nh_timeout_hallucinated() {
     set_itimeout(which, 1);
     p.intrinsic = which.value;
     await make_hallucinated(0, true, 0);
-    if (!((game.u?.uprops?.[HALLUC]?.intrinsic | 0)))
+    if (!p.intrinsic || game.u.uprops[HALLUC_RES]?.intrinsic || game.u.uprops[HALLUC_RES]?.extrinsic)
         await stop_occupation();
 }
 
@@ -2373,6 +2384,7 @@ async function nh_timeout_fumbling() {
         set_itimeout(box, (box.value & TIMEOUT) + rnd(20));
         fu.intrinsic = box.value;
     }
+    if (g.iflags?.defer_decor) await deferred_decor(false);
 }
 function _fumble_levitation() {
     const p = game.u?.uprops?.[LEVITATION];
@@ -2380,7 +2392,7 @@ function _fumble_levitation() {
 }
 function _fumble_flying() {
     const p = game.u?.uprops?.[FLYING];
-    return !!(p && ((p.intrinsic | 0) || (p.extrinsic | 0)) && !(p.blocked | 0));
+    return !!(p && ((p.intrinsic | 0) || (p.extrinsic | 0) || (game.u.usteed?.data?.mflags1 & 0x00000001 /* M1_FLY */)) && !(p.blocked | 0));
 }
 /* C youprop.h:125 Deaf = (HDeaf || EDeaf || u.uroleplay.deaf).  HDeaf is
  * u.HDeaf in this port (nh_timeout_deaf above owns it); EDeaf and
@@ -4312,7 +4324,7 @@ async function moveloop_core_faithful() {
         // C ref: allmain.c:582 — lookaround() (RNG-free run-stop predicate). May call
         // nomul(0) → end_running(TRUE), clearing multi.  For a counted command
         // (!run, !mv) lookaround does not stop anything (it keys on run/mv state).
-        lookaround();
+        await lookaround();
         // C allmain.c:515-526: repaint/pacing precedes the stopped-run test.
         await runmode_delay_output();
         // C ref: allmain.c:584-588 — if lookaround cleared multi the repeat is over;
@@ -4551,6 +4563,18 @@ async function moveloop_core_impl() {
     // per-turn world block, but only when a bypass was actually requested.
     if (g.svc?.context?.bypasses)
         clear_bypasses();
+    // C allmain.c:197-198 / wizcmds.c:1460-1480: sanity-check envelope.
+    // Only the ball checker is ported here; the other subsystem checks remain
+    // unported. Preserve the skip flag and diagnostic context around this one.
+    if (g.iflags.sanity_check || g.iflags.debug_fuzzer) {
+        if (g.iflags.sanity_no_check) {
+            g.iflags.sanity_no_check = false;
+        } else {
+            g.program_state.in_sanity_check++;
+            await bc_sanity_check();
+            g.program_state.in_sanity_check--;
+        }
+    }
     // NOTE: the painted-screen snapshot is dropped at flush_screen after its
     // --More-- window is paged (see moveloop_core_faithful) — NOT reset here.
     // unless explicitly disabled, so the early return below ALWAYS fires and
@@ -4949,7 +4973,7 @@ async function moveloop_core_impl() {
         emitMapstate('turn_end');
         // C ref: allmain.c:582 — lookaround() (RNG-free run-stop predicate).
         // May call nomul(0) → end_running(TRUE), clearing multi/context.run.
-        lookaround();
+        await lookaround();
         ffRunTrace('after-lookaround', `stopped=${g.multi | 0}`);
         // C ref: allmain.c:584-588 — if lookaround cleared multi the run is over;
         // that here so the lookaround-stop path skips the hero domove below (matching

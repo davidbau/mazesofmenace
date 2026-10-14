@@ -920,6 +920,7 @@ export function obj_extract_floor(obj) {
         recalc_block_point(xi, yi);
 }
 
+import { acid_damage } from './trap.js';
 function MON_WEP_dm(mon) {
     /* C MON_WEP(mon) = mon->mw (the wielded weapon). */
     if (mon.mw) return mon.mw;
@@ -2536,7 +2537,7 @@ async function passivemm_rng(magr, mdef, mhitb, mdead) {
         } else
             tmp = 0;
         rn2(30);           /* C:1345 (erode_armor effect unmodelled) */
-        rn2(6);            /* C:1347 (acid_damage effect unmodelled) */
+        if (!rn2(6)) await acid_damage(MON_WEP_dm(magr));
         /* C mhitm.c:1442-1446 assess_dmg */
         magr.mhp = (magr.mhp | 0) - tmp;
         if (magr.mhp <= 0) {
@@ -3393,13 +3394,8 @@ async function mdamagem_dm(magr, mdef, mattk, mwep, dieroll) {
         done: false,
     };
 
-    if (mattk.adtyp === 21 /* AD_SITM */ || mattk.adtyp === 22 /* AD_SEDU */
-        || mattk.adtyp === 35 /* AD_SSEX */)
-        await mhitm_ad_sedu_mm(magr, mdef, mhm);
-    else if (mattk.adtyp === AD_DGST)
-        await mhitm_ad_dgst_mm(magr, mdef, mhm);
-    else
-        await mhitm_adtyping(magr, mattk, mdef, mhm);
+    // C mhitm.c:1059: all damage types use the shared uhitm.c handlers.
+    await mhitm_adtyping(magr, mattk, mdef, mhm);
 
     if (await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep)
         && ((mhm.hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) !== 0

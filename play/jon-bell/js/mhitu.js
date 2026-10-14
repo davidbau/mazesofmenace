@@ -60,20 +60,7 @@ const AD_HEAL_MU = 27;  /* monattk.h:69 */
 const AD_PLYS_MU = 14;  /* monattk.h:56 */
 const AD_RUST_MU = 24;  /* monattk.h:66 */
 const AD_TLPT_MU = 23;  /* monattk.h:65 */
-const _SCROLL_CLASS_MU = 9, _SCR_BLANK_PAPER_MU = 365;
-async function acid_damage_um(obj) {
-    if (!obj) return;
-    if ((obj.greased | 0)) {
-        await erode_obj(obj, null, ERODE_CORRODE, 1 | 4);
-    } else if ((obj.oclass | 0) === _SCROLL_CLASS_MU
-               && (obj.otyp | 0) !== _SCR_BLANK_PAPER_MU) {
-        obj.otyp = _SCR_BLANK_PAPER_MU;
-        obj.spe = 0;
-        obj.dknown = 0;
-    } else {
-        await erode_obj(obj, null, ERODE_CORRODE, 1 | 4);
-    }
-}
+import { acid_damage as acid_damage_um } from './trap.js';
 import { do_death_sequence, deadhero, done_in_by, pending_death_is_final, delayed_killer } from './end.js';
 /* C potion.c:194 make_slimed() — mhitm_ad_slim's hero-defender arm. */
 import { make_slimed } from './potion.js';
@@ -2009,7 +1996,7 @@ async function mhitm_ad_sedu_u(magr, mattk, mhm) {
         /* Continue below */
     } else if (dmgtype(g.youmonst?.data ?? g.u?.data, AD_SEDU_)
                || dmgtype(g.youmonst?.data ?? g.u?.data, AD_SSEX_)) {
-        pline(`${je_Monnam(magr)} ${Deaf_mu()
+        await pline(`${Monnam(magr)} ${Deaf_mu()
             ? "says something but you can't hear it"
             : magr.minvent
               ? 'brags about the goods some dungeon explorer provided'
@@ -2021,7 +2008,7 @@ async function mhitm_ad_sedu_u(magr, mattk, mhm) {
         return;
     } else if (magr.mcan | 0) {
         if (!Blind_mu())
-            pline(`${Adjmonnam_mu(magr, 'plain')} tries to ${
+            await pline(`${Adjmonnam_mu(magr, 'plain')} tries to ${
                 g.flags?.female ? 'charm' : 'seduce'} you, but you seem ${
                 g.flags?.female ? 'unaffected' : 'uninterested'}.`);
         if (rn2(3)) {
@@ -2047,7 +2034,7 @@ async function mhitm_ad_sedu_u(magr, mattk, mhm) {
             await rloc(magr, RLOC_MSG_MU);
         if (is_animal_mu(magr.data) && buf.s) {
             if (canseemon_mu(magr))
-                pline(`${je_Monnam(magr)} tries to ${
+                await pline(`${Monnam(magr)} tries to ${
                     locomotion(magr.data, 'run')} away with ${buf.s}.`);
         }
         await monflee(magr, 0, false, false);
@@ -2305,13 +2292,13 @@ async function steal(mtmp, objnambuf) {
             /* C:527 slowly = (armordelay >= 1 || gm.multi < 0) */
             const slowly = (armordelay >= 1) || ((game.multi | 0) < 0);
             if (game.flags?.female) {
-                pline(`${!seen ? 'She' : Monnambuf} charms you.  You gladly ${
+                await urgent_pline_disp(`${!seen ? 'She' : Monnambuf} charms you.  You gladly ${
                     curssv ? 'let her take'
                     : !slowly ? 'hand over'
                     : was_doffing ? 'continue removing'
                     : 'start removing'} your ${armor_simple_name_mu(otmp)}.`);
             } else {
-                pline(`${!seen ? 'She' : Adjmonnam_mu(mtmp, 'beautiful')} seduces you and ${
+                await urgent_pline_disp(`${!seen ? 'She' : Adjmonnam_mu(mtmp, 'beautiful')} seduces you and ${
                     curssv ? 'helps you to take'
                     : !slowly ? 'you take'
                     : was_doffing ? 'you continue taking'
@@ -2611,7 +2598,7 @@ export async function mhitm_adtyping_u(mtmp, mattk, mhm) {
             await mhitm_ad_slow_uh(mtmp, mattk, game.youmonst, mhm); break;
         /* C uhitm.c:4789 `case AD_WERE: mhitm_ad_were(...)`. */
         case AD_WERE_MU:
-            mhitm_ad_were_u(mtmp, mattk, mhm); break;
+            await mhitm_ad_were_u(mtmp, mattk, mhm); break;
         /* C uhitm.c:3858 `case AD_DETH: mhitm_ad_deth(...)` — see
          * mhitm_ad_deth_u's header for what its absence cost. */
         case AD_DETH_MU:
@@ -2634,7 +2621,7 @@ export async function mhitm_adtyping_u(mtmp, mattk, mhm) {
          * make_sick rn1(ACURR(A_CON),20) draw and its "deathly sick" message. */
         case AD_DISE_MK:
             await hitmsg(mtmp, mattk);
-            if (!(await diseasemu_gu({ mnum: (mtmp.mnum ?? mtmp.mndx ?? 0) | 0 })))
+            if (!(await diseasemu_gu(mtmp.data)))
                 mhm.damage = 0;
             break;
         /* C uhitm.c:3808-3822 mhitm_ad_pest, mhitu arm: its own pline_mon
@@ -2643,8 +2630,8 @@ export async function mhitm_adtyping_u(mtmp, mattk, mhm) {
          * adtyp fell into the default arm, which printed "touches you!" and
          * skipped the make_sick rn1(ACURR(A_CON),20) draw. */
         case AD_PEST_MK:
-            pline_mon(mtmp, `${Monnam(mtmp)} reaches out, and you feel fever and chills.`);
-            await diseasemu_gu({ mnum: (mtmp.mnum ?? mtmp.mndx ?? 0) | 0 });
+            await pline('%s reaches out, and you feel fever and chills.', Monnam(mtmp));
+            await diseasemu_gu(mtmp.data);
             break;
         /* C uhitm.c:3729-3763 mhitm_ad_poly + mhitm.c:1122 mon_poly, hero arm. */
         case AD_POLY_MK:
@@ -2865,7 +2852,7 @@ async function mhitm_ad_deth_u(magr, mattk, mhm) {
     }
 }
 async function mhitm_ad_famn_u(magr, mattk, mhm) {
-    pline_mon(magr, "%s reaches out, and your body shrivels.", Monnam(magr));
+    await pline('%s reaches out, and your body shrivels.', Monnam(magr));
     exercise(A_CON, false);
     if (!is_fainted_mu())
         await morehungry_mu(rn1(40, 40));
@@ -2928,8 +2915,8 @@ function Slimed_mu() {
     return !!(p && (p.intrinsic | 0));
 }
 
-function mhitm_ad_were_u(mtmp, mattk, mhm) {
-    hitmsg_je(mtmp, mattk);
+async function mhitm_ad_were_u(mtmp, mattk, mhm) {
+    await hitmsg(mtmp, mattk);
     const u = game.u || (game.u = {});
     if (!rn2(4) && ((u.ulycn ?? NON_PM_MU) | 0) === NON_PM_MU
         && !_ac_prot_from_shape_changers_u()
@@ -2938,9 +2925,9 @@ function mhitm_ad_were_u(mtmp, mattk, mhm) {
         /* C uhitm.c:4280-4285: the bite changes the hero's lycanthropy
          * species immediately.  mtmp.mnum is monsndx(mtmp->data), the same
          * numeric identity used by set_ulycn(). */
-        urgent_pline_disp('You feel feverish.');
+        await urgent_pline_disp('You feel feverish.');
         exercise(A_CON, false);
-        set_ulycn_real((mtmp.mnum ?? mtmp.mndx ?? NON_PM_MU) | 0);
+        set_ulycn_real(mtmp.data.pmidx);
         /* C retouch_equipment(2) can damage or remove worn gear.  There is no
          * canonical JS implementation yet; retain the state transition and
          * its RNG order rather than invoking a throwing placeholder. */
@@ -5311,7 +5298,7 @@ async function diseasemu_gu(mdat) {
     const u = game.u || (game.u = {});
     const sickRes = u.uprops?.[SICK_RES_MU];
     if ((sickRes?.intrinsic | 0) || (sickRes?.extrinsic | 0)) {
-        pline('You feel a slight illness.');
+        await pline('You feel a slight illness.');
         return false;
     }
     const sick = u.uprops?.[17]; /* SICK, prop.h (const.js:2364); [11] was another property */
@@ -5319,7 +5306,7 @@ async function diseasemu_gu(mdat) {
     const duration = current ? Math.trunc(current / 3) + 1
                              : rn1(Math.max(1, acurr_mu(A_CON_GU)), 20);
     const mndx = (mdat?.pmidx ?? mdat?.mnum ?? 0) | 0;
-    await make_sick(duration, monPmname_mu(mndx, 0), true,
+    await make_sick(duration, monPmname_mu(mndx, 2 /* NEUTRAL */), true,
                     SICK_NONVOMITABLE_MU);
     return true;
 }

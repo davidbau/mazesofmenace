@@ -5,7 +5,8 @@
 //        oinit(369-372), init_objects preamble.
 //
 // Object type ordinals: from nethack-c/include/objects.h enum (post-SCR_MAIL fix).
-import { game } from './gstate.js';
+import { game, wizard } from './gstate.js';
+import { yn_function } from './end.js';
 import { maxledgerno } from './dungeon.js';
 import { rn2, pushRngLogEntry } from './rng.js';
 import { exercise } from './attrib.js';
@@ -674,8 +675,7 @@ export function discovery_special_rows() {
     return rows;
 }
 
-// C doclassdisco:1049-1080.  The wizard-only artifact debug dump is outside
-// this gameplay port; ordinary artifact discoveries use artifact.c:1147.
+// C doclassdisco:1049-1080; artifact.c:1147-1210 supplies the artifact lists.
 export async function show_special_discoveries(key) {
     if (key !== 'u' && key !== 'r' && key !== 'a') return false;
     const unique = key !== 'a';
@@ -683,6 +683,18 @@ export async function show_special_discoveries(key) {
     const lines = [menu_heading_attr_text(unique ? 'Unique items or relics' : 'Artifacts')];
     if (unique) {
         for (const i of known_relics()) lines.push(disco_fmt_uniq(i));
+    } else if (wizard()
+        && await yn_function('Dump information about all artifacts?', 'yn', 'n', true) === 'y') {
+        // C artifact.c:1177 dump_artifact_info: artifact order and nine flags.
+        for (let m = 1; m <= ARTILIST.length; ++m) {
+            const info = game._artiexist?.[m];
+            const bits = info === true ? { exists: true } : (info || {});
+            let flags = bits.exists ? 'exists;' : '';
+            if (bits.found) flags += ' hero knows;';
+            for (const field of ['gift', 'wish', 'named', 'viadip', 'lvldef', 'bones', 'rndm'])
+                if (bits[field]) flags += ` ${field === 'rndm' ? 'random' : field}`;
+            lines.push(`  ${ARTILIST[m - 1].name.slice(0, 36).padEnd(36)}[${flags}]`);
+        }
     } else {
         for (const art of game.artidisco || []) {
             if (!art) break;

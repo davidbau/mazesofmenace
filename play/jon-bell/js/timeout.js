@@ -16,13 +16,13 @@ import { pline, You_hear, urgent_pline } from './display.js';
 import { buzz, Monnam } from './mcastu.js';
 import { makemon, hideunder, ing_suffix, revive_corpse, zombie_form, set_corpsenm,
          dealloc_obj, maybe_unhide_at } from './mklev.js';
-import { permonstTemplate, container_weight, emits_light } from './makemon.js';
+import { permonstTemplate, container_weight, emits_light, name_to_mon } from './makemon.js';
 import { enexto_out } from './teleport.js';
 import { tamedog } from './dog.js';
 import { make_familiar } from './dog.js';
 import { cansee } from './vision.js';
 import { m_monnam, locomotion, big_to_little, little_to_big, a_monnam } from './mhitm.js';
-import { makeplural, an, xname } from './objnam.js';
+import { makeplural, an, xname, the } from './objnam.js';
 import { newsym, You_see, canseemon, Deaf } from './display.js';
 import { useup, useupall, obj_extract_self_general, verbalize, Yname2 } from './cmd.js';
 import { obfree, is_ice } from './dokick.js';
@@ -41,7 +41,7 @@ import { Shk_Your } from './shk.js';
 import { polymon } from './polyself.js';
 import { done, dealloc_killer } from './end.js';
 import { PM_GREEN_SLIME } from './pm.generated.js';
-import { LS_MONSTER, I_SPECIAL, TURNED_SLIME, GENOCIDED, KILLED_BY,
+import { LS_MONSTER, I_SPECIAL, TIMEOUT, LOW_PM, TURNED_SLIME, GENOCIDED, KILLED_BY,
          NO_KILLER_PREFIX, PLNMSG_OK_DONT_DIE } from './const.js';
 import { OC_WEIGHT } from './oc_weight.generated.js';
 import {
@@ -71,6 +71,41 @@ import {
 const MAX_EGG_HATCH_TIME = 200;
 const G_UNIQ = 0x1000;
 const S_DRAGON = 30;
+
+/* C timeout.c:670-671 — properties without a switch arm still count down
+ * at their position in u.uprops, before later expiry handlers inspect them.
+ * allmain's split driver supplies each consecutive group in index order. */
+export function nh_timeout_silent_properties(...properties) {
+    for (const which of properties) {
+        const prop = game.u.uprops[which];
+        if ((prop?.intrinsic | 0) & TIMEOUT)
+            --prop.intrinsic;
+    }
+}
+
+/* C timeout.c:665-668 — this precedes the property countdown, even when
+ * spell protection has no running timer and even if the steed is gone. */
+export async function nh_timeout_gallop() {
+    const u = game.u;
+    if (u.ugallop && --u.ugallop === 0 && u.usteed)
+        await pline(`${Monnam(u.usteed)} stops galloping.`);
+}
+
+/* C timeout.c:715-723 — sickness attributed to a proper-named or unique
+ * monster uses "killed by [the] X", rather than "killed by an X". */
+export function nh_timeout_sickness_killer() {
+    const killer = game.svk.killer;
+    const { mntmp } = name_to_mon(killer.name, null);
+    if (mntmp >= LOW_PM) {
+        const ptr = permonstTemplate(mntmp);
+        if (ptr.mflags2 & 0x00080000 /* M2_PNAME, monflag.h */) {
+            killer.format = KILLED_BY;
+        } else if (ptr.geno & G_UNIQ) {
+            killer.name = the(killer.name);
+            killer.format = KILLED_BY;
+        }
+    }
+}
 
 /* C timeout.c:574 — preserve the fatal condition through end disclosure,
  * then remove the marker if done() returns because the hero was life-saved. */

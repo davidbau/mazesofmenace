@@ -10,10 +10,9 @@ import { PM_KILLER_BEE, PM_QUEEN_BEE, PM_STONE_GOLEM, PM_DWARF,
 import { FIRE_RES, SLEEP_RES, COLD_RES, DISINT_RES, SHOCK_RES, POISON_RES, ACID_RES, STONE_RES, SICK_RES, TELEPORT, TELEPORT_CONTROL, TELEPAT, STUNNED, DISPLACED } from './const.js';
 import { PM_FLOATING_EYE, PM_MIND_FLAYER, PM_MASTER_MIND_FLAYER, PM_PYROLISK,
          PM_LITTLE_DOG, PM_DOG, PM_LARGE_DOG, PM_KITTEN, PM_HOUSECAT, PM_LARGE_CAT } from './pm.generated.js';
-import { permonstTemplate, olfaction, monPmname, splitobj, attacktype_fordmg, levelDifficulty, mon_set_minvis } from './makemon.js';
+import { permonstTemplate, olfaction, monPmname, splitobj, attacktype_fordmg, levelDifficulty, mon_set_minvis, monflee } from './makemon.js';
 import { same_race } from './mhitm.js';
 import { monstone as monstone_real } from './dogmove.js';
-import { PM_VROCK } from './pm.generated.js';
 import { game, wizard, discover } from './gstate.js';
 import { paranoid_query } from './paranoid.js';
 import { PARANOID_EATING, PARANOID_DIE } from './const.js';
@@ -78,7 +77,6 @@ import { PM_VIOLET_FUNGUS, PM_WRAITH, PM_NURSE,
          PM_NEWT } from './pm.generated.js';
 import { dmgtype, stackobj_dm } from './dogmove.js';
 import { attacktype } from './makemon.js';
-import { mon_track_clear } from './monmove.js'; /* C monmove.c:90 */
 /* C monattk.h — AT_MAGC (ranged spellcasting) and the AD_ damage types
  * cpostfx's hallucination test reads.  Values verified against the copies
  * already in js/mhitu.js (AD_STUN=12), js/polyself.js (AD_HALU=36) and
@@ -431,7 +429,10 @@ async function eatspecial() {
         return;
     }
     if (MKOBJ_OC_MATERIAL[otmp.otyp] === 5 /* PAPER */) {
-        if (objName(otmp.otyp) === 'scare monster')
+        // C eat.c:2434-2440; v5 global.h always enables MAIL_STRUCTURES.
+        if (otmp.otyp === 364 /* SCR_MAIL */)
+            await pline('This junk mail is less than satisfying.');
+        else if (objName(otmp.otyp) === 'scare monster')
             await pline(`Yuck${otmp.blessed ? '!' : '.'}`);
         else if (otmp.oclass === 9 && getObjDescr(otmp.otyp) === 'YUM YUM')
             await pline(`Yum${otmp.blessed ? '!' : '.'}`);
@@ -495,6 +496,8 @@ async function doeat_nonfood(otmp) {
         ? (otmp.quan > 200000 ? 2000 : Math.trunc(otmp.quan / 100))
         : otmp.oclass === 15 || otmp.oclass === 16 ? weight(otmp)
         : nonfood_nutrition(otmp);
+    // C eat.c:2758-2760: junk mail gives no nutrition, unlike other scrolls.
+    if (otmp.otyp === 364 /* SCR_MAIL */) v.nmod = 0;
     v.eating = 1;
     const conduct = u.uconduct ??= {};
     let ll_conduct = 0;
@@ -2378,7 +2381,7 @@ async function _fprefx(otmp) {
             await make_vomiting(rn1(v.reqtime | 0, 5), false);
             return true;
         }
-        _iter_mons(_garlic_breath);
+        await _iter_mons(_garlic_breath);
         /* fallthrough to give_feedback */
     }
     /* default / give_feedback */
@@ -2425,7 +2428,7 @@ function _hero_undead() {
     return !!(((d && d.mflags2) | 0) & M2_UNDEAD_E);
 }
 
-function _iter_mons(vfunc) {
+async function _iter_mons(vfunc) {
     let mtmp2;
     for (let mtmp = game.fmon; mtmp; mtmp = mtmp2) {
         mtmp2 = mtmp.nmon;
@@ -2433,30 +2436,20 @@ function _iter_mons(vfunc) {
             continue;
         if (mtmp.data === undefined)
             mtmp.data = permonstTemplate(mtmp.mnum);
-        vfunc(mtmp);
+        await vfunc(mtmp);
     }
-}
-
-function _monflee_untimed(mtmp) {
-    if ((mtmp.mhp | 0) < 1)  /* DEADMONSTER — C returns immediately */
-        return;
-    mtmp.mfleetim = 0;
-    if ((mtmp.mnum | 0) === PM_VROCK && !(mtmp.mspec_used | 0)) {
-        mtmp.mspec_used = 75 + rn2(25);
-    }
-    mtmp.mflee = 1;
-    mon_track_clear(mtmp); /* monmove.c:529-530 */
 }
 
 /* C eat.c:2084-2089 garlic_breath(mtmp) — eating a clove of garlic scares every
  * nearby monster that can smell.  distu(x,y) is dist2(x, y, u.ux, u.uy), i.e.
  * the SQUARED distance, so `< 7` is a radius of just over two squares. */
-function _garlic_breath(mtmp) {
+async function _garlic_breath(mtmp) {
     const u = game.u;
     if (!u) return;
     const dx = (mtmp.mx | 0) - (u.ux | 0), dy = (mtmp.my | 0) - (u.uy | 0);
     if (olfaction(mtmp.data) && (dx * dx + dy * dy) < 7)
-        _monflee_untimed(mtmp);
+        // C monmove.c:473-527 also releases the hero and creates vrock gas.
+        await monflee(mtmp, 0, false, false);
 }
 
 /* C ref: youprop.h Sleep_resistance — used only by the cursed-apple core-joke
@@ -2610,8 +2603,8 @@ async function _fpostfx(otmp) {
                     || { id: 0, format: 0, name: '', next: null };
                 game.svk.killer.format = KILLED_BY_AN;
                 game.svk.killer.name = 'rotten lump of royal jelly';
-                deadhero(POISONING);
-                await do_death_sequence({ inPlace: true });
+                // C eat.c:2554 calls done directly, without a "You die" line.
+                await done_end(POISONING);
             }
         }
         if (!otmp.cursed) heal_legs(0);

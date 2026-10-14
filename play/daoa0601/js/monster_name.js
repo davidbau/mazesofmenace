@@ -112,6 +112,13 @@ export function monsterFormChangeName(monster, { state = game } = {}) {
     return name.charAt(0).toUpperCase() + name.slice(1);
 }
 // C noname_monnam(monster, ARTICLE_NONE).
+// C l_monnam(): leash messages retain the species of a named creature.
+export function monsterLeashName(monster, state = game) {
+    requireLiveGame(state);
+    return formatMonsterName(monster, state, {
+        article: 'none', called: true, suppressSaddle: !!MGIVENNAME(monster),
+    });
+}
 export function namelessMonsterName(monster, { state = game, article = 'none', suppressIt = false, suppressInvisible = false, suppressHallucination = false, suppressSaddle = false, } = {}) {
     requireLiveGame(state);
     return formatMonsterName(monster, state, {
@@ -274,8 +281,8 @@ function priestName(monster, { article, hallucinating, invisible, state }) {
 export function monsterPossessive(monster, { state = game, random = rn2, noIt = false } = {}) {
     return POSSESSIVE_PRONOUNS[monsterPronounGender(monster, { state, random, noIt })];
 }
-export function monsterSubjectPronoun(monster, { state = game } = {}) {
-    return SUBJECT_PRONOUNS[monsterPronounGender(monster, { state })];
+export function monsterSubjectPronoun(monster, { state = game, noIt = false } = {}) {
+    return SUBJECT_PRONOUNS[monsterPronounGender(monster, { state, noIt })];
 }
 // C mhim()/noit_mhim(): the same perceived gender, in the object case.
 export function monsterObjectPronoun(monster, { state = game, random = rn2, noIt = false } = {}) {

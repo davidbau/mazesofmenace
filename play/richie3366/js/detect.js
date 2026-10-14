@@ -2104,7 +2104,10 @@ export async function object_detect(detector, oclass) {
      * show both possibilities. Buried boulders are excluded below.
      */
     const sym = class_ ? def_oc_syms[class_]?.sym : 0;
-    if (sym && sym === game.gs?.showsyms?.[SYM_BOULDER + SYM_OFF_X]) boulder = ROCK_CLASS; // C `:629`
+    const symcode = typeof sym === 'string' ? (sym.length ? sym.charCodeAt(0) : 0) : (sym | 0);
+    const bsh = game.gs?.showsyms?.[SYM_BOULDER + SYM_OFF_X];
+    const bcode = typeof bsh === 'string' ? (bsh.length ? bsh.charCodeAt(0) : 0) : ((bsh | 0) & 0xFF);
+    if (symcode && symcode === bcode) boulder = ROCK_CLASS; // C `:629` (nhsym ints)
 
     let stuff;
     if (Hallucination()
@@ -2754,7 +2757,11 @@ export async function use_crystal_ball(obj) {
 
         const oclass = def_char_to_objclass(ch);
         const mlet = def_char_to_monclass_mlet(ch);
-        const boulderSym = game.gs?.showsyms?.[SYM_BOULDER + SYM_OFF_X]; // C `:1348–1349`
+        const boulderSymRaw = game.gs?.showsyms?.[SYM_BOULDER + SYM_OFF_X]; // C `:1348–1349`
+        // Slots are nhsym ints since the symset loader port (C compares ints).
+        const boulderSym = typeof boulderSymRaw === 'number'
+            ? (boulderSymRaw ? String.fromCharCode(boulderSymRaw & 0xFF) : 0)
+            : boulderSymRaw;
 
         if (def_char_is_furniture(ch) >= 0) {
             ret = await furniture_detect();

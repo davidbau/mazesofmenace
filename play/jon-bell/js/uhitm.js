@@ -2,8 +2,8 @@ import { quest_monster_died } from './quest.js';
 import { xdir, ydir } from './const.js';
 import { vamprises } from './teleport.js';
 import { spoteffects } from './landing-effects.js';
-import { unmap_invisible, start_engulf, end_engulf } from './display.js';
-import { lifesaved_monster, wipe_engr_at } from './mklev.js';
+import { unmap_invisible, start_engulf, end_engulf, Deaf } from './display.js';
+import { lifesaved_monster, wipe_engr_at, mlifesaver as mlifesaver_real, set_corpsenm } from './mklev.js';
 import { add_to_minv, pm_to_cham } from './mklev.js';
 import { addinv } from './hold_another_object.js';
 import { merge_choice, inv_cnt, dropy } from './cmd.js';
@@ -14,17 +14,17 @@ import { mhitm_adtyping_u } from './mhitu.js';
 import { night } from './allmain.js';
 import { is_were, were_change } from './were.js';
 import { Is_airlevel, Is_waterlevel } from './const.js';
-import { PM_GREMLIN, PM_CLAY_GOLEM, PM_GHOUL } from './pm.generated.js';
+import { PM_GREMLIN, PM_CLAY_GOLEM, PM_GHOUL, PM_SAMURAI } from './pm.generated.js';
 // @ts-nocheck
 import { game, wizard, discover } from './gstate.js';
 import { rehumanize } from './polyself.js';
-import { helm_simple_name, cloak_simple_name, an, doname } from './objnam.js';
+import { helm_simple_name, cloak_simple_name, an, doname, mshot_xname } from './objnam.js';
 import { corpse_xname, the as the_sh, xname, cxname as cxname_sh, Tobjnam as Tobjnam_sh, makeplural, simpleonames, obj_is_pname, bare_artifactname, otense, distant_name, vtense,
          Yobjnam2 as Yobjnam2_real,
          makesingular as makesingular_real } from './objnam.js';
 import { rn2, rnd, d, rn1, pushRngLogEntry } from './rng.js';
 import { m_move } from './monmove.js';
-import { pline, canspotmon, newsym, sensemon,
+import { pline, canspotmon, newsym, sensemon, _topline_more_pending, flush_pending_messages,
 /* canseemon is the real _canseemon macro from js/display.js (display.h:117-120).
  * A file-local stub returning false for every monster used to shadow it here;
  * only three sites were migrated to a `canseemon_real` alias, leaving thirteen
@@ -98,7 +98,9 @@ import { can_reach_floor } from './hold_another_object.js';
 import { hold_another_object } from './hold_another_object.js';
 import { extract_from_minvent, mpickobj, obj_extract_self, mselftouch_nc } from './mklev.js';
 import { findgold, gender, mhe } from './makemon.js';
-import { possibly_unwield } from './dogmove.js';
+import { possibly_unwield, dog_nutrition } from './dogmove.js';
+import { dismount_steed, instapetrify } from './cmd.js';
+import { DISMOUNT_POLY, M_ATTK_AGR_DONE, CXN_ARTICLE, LL_ARTIFACT } from './const.js';
 import { monstseesu, monstunseesu, touch_of_death,
          burn_away_slime as burn_away_slime_real } from './mcastu.js';
 import { LS_MONSTER, Is_rogue_level, TELEPAT as TELEPAT_PROP } from './const.js';
@@ -167,7 +169,7 @@ import { PM_BALROG, PM_COCKATRICE, PM_CHICKATRICE, PM_BARBED_DEVIL, PM_SHADE, PM
          PM_DEATH, PM_FAMINE, PM_PESTILENCE, PM_VAMPIRE, PM_VAMPIRE_LORD, PM_WOOD_GOLEM, PM_LEATHER_GOLEM } from './pm.generated.js';
 import { hitmsg, hitmsg_je, u_slip_free, make_blinded, mpoisons_subj, magic_negation,
          could_seduce, mdamageu, mhis_mon } from './mhitu.js';
-import { drain_item, resist, cancel_monst, probe_monster } from './zap.js';
+import { drain_item, resist, cancel_monst, probe_monster, hit as hit_projectile } from './zap.js';
 import { make_stunned, make_confused, potionhit } from './potion.js';
 import { splitobj } from './makemon.js';
 import { setuwep, freeinv, set_twoweap, Yname2 } from './cmd.js';
@@ -2151,7 +2153,7 @@ export async function do_attack(mtmpOrX, y) {
 
     let malive = true; /* monster still alive after this attack */
 
-    const _swing = async (weapon, second, viaHmonas, cleaving) => {
+    const _swing = async (weapon, second, viaHmonas, cleaving, twohits = 0) => {
     let tmp = _tmpBase;
     const uwepForHit = weapon;
     if (uwepForHit)
@@ -2174,6 +2176,11 @@ export async function do_attack(mtmpOrX, y) {
     if (mhit) {
         if (!second && !cleaving && tmp > dieroll) exercise(A_DEX, true);
 
+        // C uhitm.c:612-639: a zero-damage hit restores weapon conduct.
+        const oldhp = mtmp.mhp;
+        const oldweaphit = u.uconduct?.weaphit | 0;
+        const angerGuards = !!(mtmp.mpeaceful && (mtmp.ispriest || mtmp.isshk
+            || mtmp.data?.pmidx === 282 || mtmp.data?.pmidx === 283));
         if (weapon && ((weapon.oclass | 0) === WEAPON_CLASS || is_weptool(weapon))) {
             const uc = (u.uconduct ||= {});
             uc.weaphit = (uc.weaphit | 0) + 1;
@@ -2184,26 +2191,26 @@ export async function do_attack(mtmpOrX, y) {
          * Armed: the real dmgval(obj, mon) below, which derives bigmonst
          * from mon.data internally (weapon.c:224). */
         const uwep = weapon; /* C: known_hitum(mon, <this swing's weapon>, ...) */
+        const hmd = {
+            thrown: 0, twohits,
+            mdat: mtmp.data, material: uwep ? sr_oc_material(uwep.otyp) : 0,
+            saved_oname: uwep ? (artifact_light(uwep) && uwep.lamplit
+                ? bare_artifactname(uwep) : cxname_sh(uwep)) : '',
+            barehand_silver_rings: 0, silvermsg: false, silverobj: false,
+            lightobj: false, already_killed: false, offmap: false,
+            hand_to_hand: true, hittxt: false, unarmed: !u.uwep && !u.uarm && !u.uarms,
+        };
         hit_body: {
         /* C uhitm.c:1341-1347 hmon_hitmon_misc_obj EXPENSIVE_CAMERA: the wielded
          * camera breaks, release_camera_demon draws rn2(3) (dothrow.c:2460),
          * hmon returns TRUE with no damage.  known_hitum then still runs its
          * flee check and the Vorpal "mhp == oldhp -> miss" conversion. */
-        if (uwep && (uwep.otyp | 0) === 229 /* EXPENSIVE_CAMERA */) {
+        if (uwep && (uwep.otyp | 0) === 229 /* EXPENSIVE_CAMERA */
+            && (hmd.mdat?.pmidx | 0) !== PM_SHADE) {
             You(`succeed in destroying ${await ysimple_name_hit(uwep)}.  Congratulations!`);
             await release_camera_demon_hit(uwep, u.ux, u.uy);
             await useup(uwep);
             _wepDestroyed = true;
-            if (!rn2(25) && (mtmp.mhp | 0) < Math.trunc((mtmp.mhpmax | 0) / 2)
-                && !(u && u.uswallow && u.ustuck
-                     && ((u.ustuck.m_id | 0) === (mtmp.m_id | 0)))) {
-                await monflee(mtmp, !rn2(3) ? rnd(100) : 0, false, true);
-                if (u && u.ustuck && ((u.ustuck.m_id | 0) === (mtmp.m_id | 0))
-                    && !u.uswallow
-                    && !sticks(game.youmonst ? game.youmonst.data : null))
-                    set_ustuck(null);
-            }
-            mhit = false; /* mon->mhp == oldhp */
             break hit_body;
         }
         const isWeaponClassHit = !!uwep && ((uwep.oclass | 0) === WEAPON_CLASS
@@ -2218,6 +2225,7 @@ export async function do_attack(mtmpOrX, y) {
         let dmg;
         let _potHittxt = false;
         let _noDmgBonus = false;
+        let barehandTrain = false;
         if (!uwep) {
             /* hmon_hitmon_barehands [uhitm.c:848]:
              *   hmd->dmg = rnd(!martial_bonus() ? 2 : 4);
@@ -2232,9 +2240,14 @@ export async function do_attack(mtmpOrX, y) {
              * with NO die roll (and no use_weapon_skill); only other
              * defenders draw rnd(martial ? 4 : 2). */
             dmg = ((mtmp.data?.pmidx | 0) === PM_SHADE) ? 0 : rnd(martial ? 4 : 2);
-            /* the bare-handed weapon-skill bonus is weapon_dam_bonus(NULL);
-             * it is added below, through the same single call C makes from
-             * hmon_hitmon_dmg_recalc for BOTH the armed and unarmed cases. */
+            barehandTrain = dmg > 1;
+            const silverhit = { value: 0 };
+            const mask = u.uarmg ? W_ARMG
+                : ((hmd.twohits < 2 ? W_RINGR : 0)
+                   | (hmd.twohits === 0 || hmd.twohits === 2 ? W_RINGL : 0));
+            dmg += special_dmgval(game.youmonst, mtmp, mask, silverhit);
+            hmd.barehand_silver_rings = (silverhit.value & (W_RINGR | W_RINGL)) ? 1 : 0;
+            hmd.silvermsg = !!hmd.barehand_silver_rings;
         } else {
             if (isRangedMelee) {
                 dmg = _uh_hmon_hitmon_weapon_ranged(uwep, mtmp);
@@ -2255,14 +2268,17 @@ export async function do_attack(mtmpOrX, y) {
                     break hit_body;
                 }
                 _potHittxt = true;
+                hmd.mdat = mtmp.data;
                 dmg = ((mtmp.data?.pmidx | 0) === PM_SHADE) ? 0 : 1;
+            } else if ((hmd.mdat?.pmidx | 0) === PM_SHADE && !hmon_shade_aware(uwep)) {
+                // C uhitm.c:1425: do not run misc-object effects against a shade.
+                dmg = 0;
             } else if ((uwep.otyp | 0) === 265 /* CORPSE */) {
                 /* C uhitm.c:1151-1176 hmon_hitmon_misc_obj CORPSE: a wielded
                  * cockatrice corpse prints its own "You hit X with Y." (hittxt),
                  * observe_object, then munstone/minstapetrify; unless the
                  * target resists stoning the hit returns at once.  Other
-                 * corpses do msize + 1.  (munstone-saved survivors skip
-                 * known_hitum's flee check here — small named gap.) */
+                 * corpses do msize + 1. */
                 const cn = uwep.corpsenm | 0;
                 if (touch_petrifies_corpsenm(cn)) {
                     dmg = 1;
@@ -2309,28 +2325,9 @@ export async function do_attack(mtmpOrX, y) {
             && _backstabbable) {
             You(`strike ${mon_nam(mtmp)} from behind!`);
             dmg += rnd(Math.max(1, u.ulevel | 0));
+            _potHittxt = true;
         }
 
-        let dbon_val = 0;
-        if (!Upolyd(u)) {
-            const str2 = acurr(u, A_STR);
-            if (str2 < 6) dbon_val = -1;
-            else if (str2 < 16) dbon_val = 0;
-            else if (str2 < 18) dbon_val = 1;
-            else if (str2 === 18) dbon_val = 2;
-            else if (str2 <= 93) dbon_val = 3;   /* <= STR18(75) */
-            else if (str2 <= 108) dbon_val = 4;  /* <= STR18(90) */
-            else if (str2 < 118) dbon_val = 5;   /* < STR18(100) */
-            else dbon_val = 6;
-        }
-        const _twohitsDmg = second || (!viaHmonas && uwep && u.twoweap);
-        if (dbon_val !== 0) {
-            const _abs = Math.abs(dbon_val);
-            if (_twohitsDmg)
-                dbon_val = Math.trunc((3 * _abs + 2) / 4) * Math.sign(dbon_val);
-            else if (uwep && bimanual(uwep))
-                dbon_val = Math.trunc((3 * _abs + 1) / 2) * Math.sign(dbon_val);
-        }
         /* C uhitm.c:1015-1023, the tail of hmon_hitmon_weapon_melee:
          *     if (obj->oartifact
          *         && artifact_hit(&gy.youmonst, mon, obj, &hmd->dmg,
@@ -2369,12 +2366,7 @@ export async function do_attack(mtmpOrX, y) {
          * (now the real one) and for bare hands it is the rnd(2)/rnd(4) die;
          * `dmgvalResult` is exactly that in both cases.  Computed BEFORE artifact_hit for
          * the same reason C sets it before uhitm.c:1015.
-         * NOT PORTED, and deliberately: C's PM_SHADE arm (uhitm.c:842-843) sets
-         * dmg = 0 and leaves train_weapon_skill FALSE, and the jousting arm
-         * (:1044-1046) forces it TRUE.  Neither is modelled in this body --
-         * there is no shade branch here at all, and the comment ~110 lines
-         * below records that jousting is unmodelled -- so both are left alone
-         * rather than half-wired. */
+         */
         /* C uhitm.c:936/850 set use_weapon_skill TRUE only on the weapon-melee
          * and bare-handed arms; hmon_hitmon_misc_obj never touches the flag,
          * so it stays FALSE (struct init) for a misc-object hit — no skill
@@ -2383,15 +2375,21 @@ export async function do_attack(mtmpOrX, y) {
         /* hmon_hitmon_weapon_ranged (uhitm.c:885-909) is the same kind of gap
          * as misc_obj above: it never sets use_weapon_skill and never calls
          * artifact_hit -- both are exclusive to hmon_hitmon_weapon_melee. */
-        const useWeaponSkillHit = !uwep || (isWeaponClassHit && !isRangedMelee);
-        let trainWeaponSkill = useWeaponSkillHit && dmgvalResult > 1;
+        const useWeaponSkillHit = (!uwep && (hmd.mdat?.pmidx | 0) !== PM_SHADE)
+            || (isWeaponClassHit && !isRangedMelee);
+        let trainWeaponSkill = useWeaponSkillHit && (uwep ? dmgvalResult > 1 : barehandTrain);
         let artiHittxt = _potHittxt;
         if (uwep && isWeaponClassHit && !isRangedMelee && (uwep.oartifact | 0)) {
             const ah = await artifact_hit(null /* &gy.youmonst */, mtmp, uwep,
                                           dmgvalResult, dieroll, mndx);
             dmgvalResult = ah.dmg;
-            if (ah.special)
+            if (ah.special) {
+                if ((mtmp.mhp | 0) <= 0 || ah.dmg === 0) {
+                    malive = (mtmp.mhp | 0) > 0;
+                    break hit_body;
+                }
                 artiHittxt = true;
+            }
         }
 
         /* C uhitm.c:1042-1047: jousting with a lance while mounted. */
@@ -2402,174 +2400,58 @@ export async function do_attack(mtmpOrX, y) {
             if (jousting)
                 trainWeaponSkill = true;
         }
-        /* C uhitm.c:1485-1500 hmon_hitmon_dmg_recalc:
-         *     if (hmd->use_weapon_skill) dmgbonus += weapon_dam_bonus(skillwep);
-         * use_weapon_skill is TRUE for both a hand-to-hand ordinary weapon
-         * (uhitm.c:936) and a bare-handed attack (uhitm.c:850), so ONE call
-         * covers both — the bare-handed half used to be inlined here and the
-         * armed half was simply missing.
-         *
-         * hmon_hitmon: dmg < 1 is clamped to 1 (get_dmg_bonus && !shade) at
-         * uhitm.c:1813-1818.  dbon()/weapon_dam_bonus consume no RNG. */
-        const skillDmgBonus = useWeaponSkillHit ? weapon_dam_bonus(uwep || null) : 0;
-        if (trainWeaponSkill)
-            await use_skill(uwep_skill_type(), 1);
-        /* C uhitm.c:1806-1822: `if (hmd.dmg > 0) hmon_hitmon_dmg_recalc()`
-         * adds the strength/skill bonuses (clamping at 1) only for a nonzero
-         * dmgval; a zero one (a shade struck by a non-silver weapon,
-         * weapon.c dmgval) stays 0 -- `(get_dmg_bonus && !mon_is_shade) ? 1
-         * : 0` -- so `dmg > 1` fails and maybe_knockback is never set. */
-        let totalDmg = dmgvalResult > 0
-            ? Math.max(1, dmgvalResult + (u.udaminc | 0)
-                + dbon_val + skillDmgBonus)
-            : ((mtmp.data?.pmidx | 0) === PM_SHADE || _noDmgBonus ? 0 : 1);
+        hmd.dmg = dmgvalResult;
+        hmd.get_dmg_bonus = !_noDmgBonus;
+        hmd.use_weapon_skill = useWeaponSkillHit;
+        hmd.train_weapon_skill = trainWeaponSkill;
+        if (hmd.dmg > 0) await hmon_hitmon_dmg_recalc(hmd, uwep);
+        let totalDmg = hmd.dmg;
 
-        /* C uhitm.c:1813-1821: dmg < 1 on a shade with no hittxt gives the
-         * "Your attack passes harmlessly through" feedback via shade_miss
-         * (melee only; thrown/kicked are excluded). */
-        if (totalDmg < 1 && (mtmp.data?.pmidx | 0) === PM_SHADE && !artiHittxt)
-            artiHittxt = !!shade_miss(game.youmonst, mtmp, uwep || null, false, true);
-
-        /* C uhitm.c:1062-1066 hmon_hitmon_weapon_melee: a melee hit with a
-         * permapoisoned weapon (Grimtooth) sets ispoisoned on dieroll <= 5;
-         * hmon_hitmon (uhitm.c:1809) then runs hmon_hitmon_poison
-         * (1510-1538) after dmg_recalc.  permapoisoned skips the unpoison
-         * rn2(nopoison). */
-        let _poisNeedMsg = false;
-        let _poisKilled = false;
-        if (uwep && !isRangedMelee && isWeaponClassHit && dmgvalResult > 0
-            && permapoisoned(uwep) && dieroll <= 5) {
-            if (((game.flags?.initrole ?? -1) | 0) === 9 /* PM_SAMURAI */) {
-                await pline('You dishonorably use a poisoned weapon!');
-                adjalign(-Math.sign(u.ualign.type | 0));
-            } else if ((u.ualign.type | 0) === 1 /* A_LAWFUL */
-                       && (u.ualign.record | 0) > -10) {
-                await pline('You feel like an evil coward for using a poisoned weapon.');
-                adjalign(-1);
-            }
-            if (resists_poison_uh(mtmp))
-                _poisNeedMsg = true;
-            else if (rn2(10))
-                totalDmg += rnd(6);
-            else
-                _poisKilled = true;
+        // C uhitm.c:1034-1041: remember feedback before hurtling can transform mon.
+        if (uwep && hmd.material === 14 && mon_hates_silver(mtmp)
+            && (isWeaponClassHit || dmgvalResult > 0))
+            hmd.silvermsg = hmd.silverobj = true;
+        hmd.lightobj = !!(uwep && isWeaponClassHit && !isRangedMelee
+            && hmon_hitmon_lightobj(uwep, mtmp));
+        hmd.dmg = totalDmg;
+        if (uwep && !isRangedMelee && isWeaponClassHit
+            && permapoisoned(uwep) && dieroll <= 5)
+            await hmon_hitmon_poison(hmd, mtmp, uwep);
+        if (hmd.dmg < 1) {
+            hmd.dmg = !_noDmgBonus && mtmp.data?.pmidx !== PM_SHADE ? 1 : 0;
+            if (mtmp.data?.pmidx === PM_SHADE && !artiHittxt)
+                artiHittxt = !!shade_miss(game.youmonst, mtmp, uwep || null, false, true);
         }
+        hmd.jousting = jousting;
+        hmd.hittxt = artiHittxt;
+        await hmon_hitmon_special(hmd, mtmp, uwep);
+        totalDmg = hmd.dmg;
 
-        /* C uhitm.c:1813-1822 hmon_hitmon: a shade struck for dmg < 1 (not
-         * thrown or kicked) gets shade_miss()'s "Your attack passes harmlessly
-         * through the shade." as its hittxt, and a set hittxt suppresses
-         * hmon_hitmon_msg_hit's "You hit <mon>." (uhitm.c:1643, !hittxt). */
-        let _shadeHittxt = false;
-        if (totalDmg < 1 && (mtmp.data?.pmidx | 0) === PM_SHADE
-            && !artiHittxt && !_potHittxt) {
-            _shadeHittxt = shade_miss(u, mtmp, uwep || null, false, true);
-        }
-
-        if (jousting) {
-            /* hmon_hitmon_jousting (uhitm.c:1541-1568). KNOWN GAP: if
-             * mhurtle_to_doom kills the target (trap), C sets already_killed
-             * and skips the mhp subtraction; not modelled here. */
-            totalDmg += d(2, (uwep === u.uwep) ? 10 : 2);
-            await pline('You joust ' + mon_nam(mtmp) + (canseemon(mtmp) ? exclam(totalDmg) : '.'));
-            if ((u.uconduct?.weaphit | 0) <= 1)
-                first_weapon_hit(uwep);
-            if (jousting < 0) {
-                set_twoweap(false);
-                if (uwep === u.uwep)
-                    await uwepgone();
-                await pline(Yname2(uwep) + ' shatters on impact!');
-                await useup(uwep);
-            }
-            if (totalDmg < (mtmp.mhp | 0))
-                await mhurtle(mtmp, u.dx | 0, u.dy | 0, 1);
-            artiHittxt = true; /* hmd->hittxt = TRUE */
-        }
-        const heroUnarmed = !uwep && !(u && u.uarm) && !(u && u.uarms);
-        if (!jousting && heroUnarmed && totalDmg > 1 && !Upolyd(u)) {
-            /* hmon_hitmon_stagger (uhitm.c:1570-1586): rnd(100) is the first
-             * operand, so it is always drawn. */
-            const _mdat = mtmp.data;
-            if (rnd(100) < P_SKILL(P_BARE_HANDED_COMBAT)
-                && !((_mdat?.msize | 0) >= MZ_LARGE) && !thick_skinned(_mdat)) {
-                if (canspotmon(mtmp))
-                    await pline(Monnam(mtmp) + ' '
-                        + makeplural(stagger(mtmp.data, 'stagger'))
-                        + ' from your powerful strike!');
-                /* mhurtle_to_doom (uhitm.c:1942-1956) */
-                if (totalDmg < (mtmp.mhp | 0))
-                    await mhurtle(mtmp, u.dx | 0, u.dy | 0, 1);
-                artiHittxt = true; /* hmd->hittxt = TRUE */
-            }
-        }
-
-        if (weapon && !jousting && totalDmg > 0 && ((u.uconduct?.weaphit | 0) <= 1))
+        // C uhitm.c:1839-1850: record the first weapon hit before a kill.
+        if (!hmd.already_killed && weapon && (weapon === u.uwep || (u.twoweap && weapon === u.uswapwep))
+            && ((weapon.oclass | 0) === WEAPON_CLASS || is_weptool(weapon))
+            && !jousting && totalDmg > 0 && ((u.uconduct?.weaphit | 0) <= 1))
             first_weapon_hit(weapon);
 
-        /* kill check: monster dies if total damage >= current HP */
-        const curHp = (mtmp.mhp | 0);
-        const _hmon_destroyed = (curHp > 0 && totalDmg >= curHp);
-        if ((mtmp.mtame | 0) && totalDmg > 0) {
-            abuse_dog(mtmp);
-            if ((mtmp.mtame | 0) && !_hmon_destroyed)
-                await monflee(mtmp, 10 * rnd(totalDmg), false, false);
-        }
-        if (curHp > 0 && totalDmg >= curHp) {
-            /* monster killed */
-            malive = false;
-            mtmp.mhp = 0;
-
-            /* hmon_hitmon_msg_hit fires ONLY if !destroyed [uhitm.c:1643-1661].
-             * When hero kills the monster, destroyed=TRUE so generic hit msg
-             * is suppressed; xkilled emits "You kill ..." instead.
-             *
-             * Shared kill sequence: xkilled(mtmp, XKILL_GIVEMSG) [mon.c:3464].
-             * It runs the message, rn2(6) treasure, corpse_chance, peaceful/tame
-             * luck rn2(2), experience, m_detach+newsym, newexplevel — the exact
-             * RNG order the ray path (zap.js zhitm) also needs.  For an ordinary
-             * hostile melee target (mtame=0, mpeaceful=0) the message uses
-             * mon_nam and the luck rn2(2) does not fire — bit-identical to the
-             * previous inlined sequence. */
-            await _hmon_hitmon_msg_silver(mtmp, uwep);
-            if (_poisNeedMsg)
-                await pline("The poison doesn't seem to affect " + mon_nam(mtmp) + '.');
-            if (_poisKilled) {
-                await pline('The poison was deadly...');
-                await xkilled(mtmp, XKILL_NOMSG);
-            } else
-                await xkilled(mtmp, XKILL_GIVEMSG);
+        // C uhitm.c:1838-1870: apply HP before pet abuse, even after a trap kill.
+        if (!hmd.already_killed) mtmp.mhp -= totalDmg;
+        if (mtmp.mhp > mtmp.mhpmax) mtmp.mhp = mtmp.mhpmax;
+        hmd.offmap = mtmp.mx === 0;
+        hmd.destroyed = mtmp.mhp < 1;
+        await hmon_hitmon_pet(hmd, mtmp);
+        await hmon_hitmon_splitmon(hmd, mtmp, uwep);
+        await hmon_hitmon_msg_hit(hmd, mtmp, uwep);
+        if (hmd.silvermsg) await hmon_hitmon_msg_silver(hmd, mtmp);
+        if (hmd.lightobj) await hmon_hitmon_msg_lightobj(hmd, mtmp);
+        if (hmd.needpoismsg)
+            await pline("The poison doesn't seem to affect " + mon_nam(mtmp) + '.');
+        if (hmd.poiskilled) {
+            await pline('The poison was deadly...');
+            if (!hmd.already_killed) await xkilled(mtmp, XKILL_NOMSG);
+            hmd.destroyed = true;
+        } else if (hmd.destroyed) {
+            if (!hmd.already_killed) await xkilled(mtmp, XKILL_GIVEMSG);
         } else {
-            mtmp.mhp = Math.max(0, curHp - totalDmg);
-
-            /* hmon_hitmon_splitmon [uhitm.c:1604-1634], between _pet and
-             * _msg_hit: an iron/metal melee weapon splits a healthy pudding.
-             * clone_mon places the clone via enexto (collect_coords shuffle),
-             * then next_ident; "divides as you hit it" sets hittxt. */
-            if ((mtmp.data?.pmidx | 0) === PM_BLACK_PUDDING
-                || (mtmp.data?.pmidx | 0) === PM_BROWN_PUDDING) {
-                const _mat = sr_oc_material(uwep?.otyp | 0);
-                if ((mtmp.mhp | 0) > 1 && !mtmp.mcan && uwep
-                    && (_mat === 11 /* IRON */ || _mat === 12 /* METAL */)
-                    && !(_uh_is_ammo(uwep) || _uh_is_missile(uwep))) {
-                    const mclone = await clone_mon_ml(mtmp, 0, 0);
-                    if (mclone) {
-                        await pline(Monnam(mtmp) + ' divides as you hit it!');
-                        artiHittxt = true;
-                        await mintrap(mclone, 0);
-                    }
-                }
-            }
-
-            if (artiHittxt || _shadeHittxt) {
-                /* C uhitm.c:1643 — hmon_hitmon_msg_hit is guarded by
-                 * `!hmd->hittxt`; artifact_hit() (or shade_miss) set it by printing its own. */
-            } else if (!(game.flags?.verbose ?? true)) {
-                pline('You hit it.');
-            } else {
-                pline('You ' + _hmon_hit_verb(u && u.uwep) + ' ' + mon_nam(mtmp)
-                      + (canseemon(mtmp) ? exclam(totalDmg) : '.'));
-            }
-
-            await _hmon_hitmon_msg_silver(mtmp, uwep);
             /* C uhitm.c:1911-1918 hmon_hitmon: confusing touch (melee is
              * always hand_to_hand).  nohandglow() is uhitm.c:6315-6337. */
             if ((u.umconf | 0) && !(mtmp.mconf | 0)) {
@@ -2597,98 +2479,50 @@ export async function do_attack(mtmpOrX, y) {
             } else if ((u.umconf | 0) && (mtmp.mconf | 0)) {
                 /* C: nohandglow() returns early, then !mon->mconf is false */
             }
-            if (_poisNeedMsg)
-                await pline("The poison doesn't seem to affect " + mon_nam(mtmp) + '.');
-            if (_poisKilled) {
-                /* C uhitm.c:1899-1903 */
-                await pline('The poison was deadly...');
-                await xkilled(mtmp, XKILL_NOMSG);
-                malive = false;
-            }
-            /* C uhitm.c:826-828 hmon(): anger_guards is sampled BEFORE hmon_hitmon, whose
-             * tail wakeup() (uhitm.c:1926) clears mpeaceful. */
-            const _angerGuards = !!(mtmp.mpeaceful && (mtmp.ispriest || mtmp.isshk
-                || mtmp.data?.pmidx === 282 || mtmp.data?.pmidx === 283)); /* PM_WATCHMAN / PM_WATCH_CAPTAIN */
-            if (!_poisKilled) await wakeup_attack(mtmp, true);
-
-            /* mhitm_knockback [uhitm.c:5248-5430] — called from hmon_hitmon when
-             * maybe_knockback=TRUE. Conditions for maybe_knockback (uhitm.c:1832):
-             *   !unarmed && dmg>1 && !thrown && !Upolyd && !twoweap && uwep.
-             * Two RNG calls always fire at top of mhitm_knockback before further
-             * conditions are checked (uhitm.c:5259, 5270):
-             *   rn2(3) — knockdistance (1 or 2 steps)
-             *   rn2(chance) — chance check; chance=6 normally (2 for OGRESMASHER)
-             * C ref: uhitm.c:5248-5270. */
-            const maybeKnockback = (uwep && totalDmg > 1 && !Upolyd(u) && !u.twoweap && !_poisKilled);
-            if (maybeKnockback) {
+        }
+        malive = !hmd.destroyed;
+        if (!hmd.destroyed && !hmd.offmap) {
+            await wakeup_attack(mtmp, true);
+            if (!jousting && u.uwep && totalDmg > 1 && !Upolyd(u) && !u.twoweap) {
                 await _hero_mhitm_knockback(mtmp, uwep);
-            }
-
-            /* C uhitm.c:829-830 hmon(): `if (mon->ispriest && !rn2(2))
-             * ghod_hitsu(mon);` runs after hmon_hitmon returns, before
-             * known_hitum's flee check below. */
-            if (mtmp.ispriest && !rn2(2))
-                await ghod_hitsu(mtmp);
-            if (_angerGuards)
-                await angry_guards(_uh_Deaf()); /* uhitm.c:831-832 */
-
-            /* known_hitum monflee check — C ref: nethack-c/src/uhitm.c:625-634:
-             *   if (!rn2(25) && mon->mhp < mon->mhpmax / 2
-             *       && !engulfing_u(mon)) {
-             *       monflee(mon, !rn2(3) ? rnd(100) : 0, FALSE, TRUE);
-             *       if (u.ustuck == mon && !u.uswallow
-             *           && !sticks(gy.youmonst.data))
-             *           set_ustuck((struct monst *) 0);
-             *   }
-             *
-             * C's `&&` short-circuits: when rn2(25) != 0, OR when the monster
-             * is still at half HP or better, NO further RNG is drawn.  This
-             * block used to draw rn2(3) (and, 1 time in 3, rnd(100)) on EVERY
-             * rn2(25)==0 regardless of HP.  Its own comment claimed "We check
-             * mhp < mhpmax/2 too to mirror C" — the test was simply absent, so
-             * the comment described code that was not there.  That is 1-2
-             * surplus draws on ~4% of surviving melee hits: an RNG-sequence
-             * divergence (Cardinal Rule 2), not a cosmetic one.
-             *
-             * mhp here is post-damage (assigned above, mirroring C's read
-             * after hmon()).  mhpmax/2 is C integer division -> Math.trunc.
-             * engulfing_u(mon) is mon.h:  (u.ustuck == mon && u.uswallow);
-             * pointer identity is carried by m_id (see the same substitution in
-             * js/mhitm.js xm_same_monst).
-             * fleemsg is TRUE in C, so monflee may emit "<Monster> turns to
-             * flee." — that pline was previously missing entirely. */
-            const _kh_engulfing_u = !!(u && u.uswallow && u.ustuck
-                && ((u.ustuck.m_id | 0) === (mtmp.m_id | 0)));
-            if (!_poisKilled && !rn2(25) && (mtmp.mhp | 0) < Math.trunc((mtmp.mhpmax | 0) / 2)
-                && !_kh_engulfing_u) {
-                /* C: !rn2(3) ? rnd(100) : 0 — the fleetime argument. */
-                await monflee(mtmp, !rn2(3) ? rnd(100) : 0, false, true);
-                /* C uhitm.c:631-633 */
-                if (u && u.ustuck && ((u.ustuck.m_id | 0) === (mtmp.m_id | 0))
-                    && !u.uswallow
-                    && !sticks(game.youmonst ? game.youmonst.data : null))
-                    set_ustuck(null);
-            }
-            /* C uhitm.c:641-642 known_hitum: `if (mon->wormno && *mhit)
-             * cutworm(mon, gb.bhitpos.x, gb.bhitpos.y, slice_or_chop)`;
-             * slice_or_chop = weapon && (is_blade || is_axe) (uhitm.c:598-600).
-             * is_blade: WEAPON_CLASS with skill P_DAGGER(1)..P_SABER(8). */
-            if (mtmp.wormno && mhit) {
-                const _sk = weapon ? (sr_oc_skill(weapon.otyp | 0) | 0) : 0;
-                const _sliceOrChop = !!weapon
-                    && (((weapon.oclass | 0) === WEAPON_CLASS && _sk >= 1 && _sk <= 8)
-                        || is_axe_dv(weapon));
-                await cutworm(mtmp, (game.gb?.bhitpos?.x ?? mtmp.mx) | 0,
-                        (game.gb?.bhitpos?.y ?? mtmp.my) | 0, _sliceOrChop);
+                if (mtmp.mhp < 1) malive = false;
             }
         }
         } /* hit_body */
+        // C uhitm.c:824-833: hmon's wrapper also runs after an early return.
+        if (mtmp.ispriest && !rn2(2)) await ghod_hitsu(mtmp);
+        if (angerGuards) await angry_guards(_uh_Deaf());
+        // C uhitm.c:623-642: known_hitum's survivor checks.
+        if (malive) {
+            if (!rn2(25) && mtmp.mhp < Math.trunc(mtmp.mhpmax / 2)
+                && !(u.uswallow && u.ustuck === mtmp)) {
+                await monflee(mtmp, !rn2(3) ? rnd(100) : 0, false, true);
+                if (u.ustuck === mtmp && !u.uswallow && !sticks(game.youmonst.data))
+                    set_ustuck(null);
+            }
+            if (mtmp.mhp === oldhp) {
+                mhit = false;
+                (u.uconduct ||= {}).weaphit = oldweaphit;
+            }
+            if (mtmp.wormno && mhit) {
+                const skill = weapon ? sr_oc_skill(weapon.otyp) : 0;
+                const sliceOrChop = !!weapon && ((weapon.oclass === WEAPON_CLASS
+                    && skill >= 1 && skill <= 8) || is_axe_dv(weapon));
+                await cutworm(mtmp, game.gb?.bhitpos?.x ?? mtmp.mx,
+                    game.gb?.bhitpos?.y ?? mtmp.my, sliceOrChop);
+            }
+        }
+        _wepDestroyed = !!uwepForHit && !(second ? u.uswapwep : u.uwep);
+
     }
 
     if (!viaHmonas && (!second || mhit)) {
         const _passMalive = cleaving ? (mtmp.mhp | 0) >= 1 : malive;
         const _passWepGone = cleaving ? !(u && u.uwep) : _wepDestroyed;
-        await passive_uh(mtmp, weapon, mhit, _passMalive, 254 /* AT_WEAP, uhitm.c aatyp enum */, _passWepGone);
+        // C uhitm.c:789,811: first swing passes the surviving primary slot;
+        // the second swing retains secondwep, even if that weapon was consumed.
+        await passive_uh(mtmp, second ? weapon : u.uwep, mhit, _passMalive,
+            254 /* AT_WEAP */, _passWepGone);
     }
     return mhit;
     }; /* end _swing */
@@ -2716,6 +2550,8 @@ export async function do_attack(mtmpOrX, y) {
         const pmndx = (u && u.umonnum) | 0;
         const rows = MONS_MATTK[pmndx] || [];
         let odd_claw = true; /* C uhitm.c:5428, 5445-5448, 5470 */
+        const multi_weap = rows.slice(0, NATTK_UH).filter(row => row.aatyp === AT_WEAP_H).length;
+        let weaponHits = 0;
         const multi_claw = rows.slice(0, NATTK_UH).filter(
             row => [AT_WEAP_H, AT_CLAW_H, 5 /* AT_TUCH */].includes(row.aatyp)).length > 1;
         const _damageum = async (mattk, specialdmg) => {
@@ -3132,7 +2968,7 @@ export async function do_attack(mtmpOrX, y) {
                  * (_passiveAndKnockback), not from _swing itself — see
                  * _swing's own comment on `viaHmonas`. */
                 weapon_used = true;
-                const _mhitRowWeap = await _swing(u && u.uwep, false, true);
+                const _mhitRowWeap = await _swing(u && u.uwep, false, true, false, multi_weap > 1 ? ++weaponHits : 0);
                 const _sumWeap = await _weaponRowSum(row, _mhitRowWeap);
                 if (_sumWeap === null)
                     break; /* C i = NATTK; goto passivedone (worm split) */
@@ -3147,7 +2983,7 @@ export async function do_attack(mtmpOrX, y) {
                  * use_weapon;` — same use_weapon body as the AT_WEAP row
                  * above (FALLTHROUGH in C reaches the identical code). */
                 weapon_used = true;
-                const _mhitRowClaw = await _swing(u && u.uwep, false, true);
+                const _mhitRowClaw = await _swing(u && u.uwep, false, true, false, multi_weap > 1 ? ++weaponHits : 0);
                 const _sumClaw = await _weaponRowSum(row, _mhitRowClaw);
                 if (_sumClaw === null)
                     break; /* C i = NATTK; goto passivedone (worm split) */
@@ -3348,7 +3184,7 @@ export async function do_attack(mtmpOrX, y) {
                 return true;
             }
         }
-        await _swing(u && u.uwep, false);
+        await _swing(u && u.uwep, false, false, false, _twohits);
 
         /* C uhitm.c:794-814 — the second swing.  C's full guard is
          *   !(go.override_confirmation || gm.multi < 0 || u.umortality > oldumort
@@ -3359,7 +3195,7 @@ export async function do_attack(mtmpOrX, y) {
             /* C: secondwep = u.twoweap ? uswapwep : NULL — the bare-handed
              * double_punch case swings with no weapon. */
             const _secondwep = (u && u.twoweap) ? (u.uswapwep || null) : null;
-            await _swing(_secondwep, true);
+            await _swing(_secondwep, true, false, false, 2);
         }
     }
 
@@ -3830,6 +3666,10 @@ export async function xkilled(mtmp, xkflags) {
               : x_monnam(mtmp, namedpet ? ARTICLE_NONE : ARTICLE_THE,
                          'poor', namedpet ? SUPPRESS_SADDLE : 0, false);
         await pline('You ' + verb + ' ' + name + '!');
+        /* C mon.c:3506-3512 -> topl.c:273-274 blocks on the kill message's
+         * overflow before mondead, treasure drops, or corpse_chance can run. */
+        if (_topline_more_pending())
+            await flush_pending_messages();
         /* The command (fire/throw/zap/apply, not only melee) published this
          * line: the rhack-tail stash in allmain.js must not discard it as a
          * stale leftover when the topline already held an earlier message
@@ -6983,6 +6823,21 @@ async function mhitm_ad_drin(magr, mattk, mdef, mhm) {
         game.s.skipdrin = 1;
 }
 
+/* C uhitm.c:2160-2265 steal_it() + uhitm.c:4621-4630 mhitm_ad_sedu() hero arm:
+ * a polymorphed nymph hero steals from the monster it attacks.  The whole
+ * AD_SITM/AD_SEDU/AD_SSEX hero arm was missing from mhitm_adtyping, so the
+ * hero's theft attack dealt nothing and printed no "You steal: ..." line.
+ */
+/* C uhitm.c:2147-2164. Even a life-saved thief stops after touching the
+ * stolen corpse; the poly_when_stoned shortcut is #if 0 in C. */
+async function theft_petrifies(otmp) {
+    if (game.u.uarmg || otmp.otyp !== 265 /* CORPSE */
+        || !touch_petrifies_corpsenm(otmp.corpsenm) || _hero_resists(STONE_RES))
+        return false;
+    await instapetrify(corpse_xname(otmp, 'stolen', CXN_ARTICLE));
+    return true;
+}
+
 async function steal_it(mdef, mattk) {
     let otmp = mdef.minvent;
     if (!otmp || ((otmp.oclass | 0) === 13 /* COIN_CLASS */ && !otmp.nobj))
@@ -7040,6 +6895,23 @@ async function steal_it(mdef, mattk) {
         if (!Upolyd(game.u))
             break; /* no longer have ability to steal */
         const unwornmask = otmp.owornmask | 0;
+        /* C uhitm.c:2225-2226, artifact.c:418-459 find_artifact: record
+         * the find while the artifact is still carried by the monster. */
+        if (otmp.oartifact && !_ac_blind()) {
+            const a = otmp.oartifact;
+            const artifacts = game._artiexist || (game._artiexist = {});
+            const info = artifacts[a];
+            if (!info?.found) {
+                if (a < 1 || a >= ARTI_SPEC.length)
+                    impossible('found_artifact: invalid artifact index! (%d)', a);
+                else if (!info || (info !== true && !info.exists))
+                    impossible("found_artifact: artifact doesn't exist yet? (%d)", a);
+                else if (info === true) artifacts[a] = { exists: 1, found: 1 };
+                else info.found = 1;
+                livelog_printf(LL_ARTIFACT, 'found %s carried by a monster',
+                               bare_artifactname(otmp));
+            }
+        }
         await extract_from_minvent(mdef, otmp, true, false);
         if (otmp === ustealo)
             await pline('%s finishes taking off %s suit.', Monnam(mdef),
@@ -7048,6 +6920,8 @@ async function steal_it(mdef, mattk) {
                                          await doname(otmp), 'You steal: ');
         if (!otmp || (otmp.where | 0) !== 3 /* OBJ_INVENT */)
             continue;
+        if (await theft_petrifies(otmp))
+            break;
         if (unwornmask & 0x100 /* W_WEP */) {
             await possibly_unwield(mdef, false);
         } else if (unwornmask & W_ARMG) {
@@ -7318,6 +7192,118 @@ async function mhitm_ad_stun(magr, mattk, mdef, mhm) {
     await mhitm_ad_phys(magr, mattk, mdef, mhm);
 }
 
+/* C uhitm.c:4491-4566.  Digestion's Rider test precedes the burp,
+ * lifesaving-amulet consumption, and the corpse/nutrition RNG. */
+async function mhitm_ad_dgst(magr, mattk, mdef, mhm) {
+    if (is_youmonst(magr) || is_youmonst(mdef)) {
+        mhm.damage = 0;
+        return;
+    }
+    const pd = mdef.data;
+    const num = pd.pmidx;
+    if (num === PM_DEATH || num === PM_FAMINE || num === PM_PESTILENCE) {
+        if (game.v?.vis && canseemon(magr))
+            await pline('%s %s!', Monnam(magr), num === PM_FAMINE
+                ? 'belches feebly, shrivels up and dies'
+                : num === PM_PESTILENCE
+                    ? 'coughs spasmodically and collapses'
+                    : 'vomits violently and drops dead');
+        await mondied_dm(magr);
+        if (!DEADMONSTER(magr)) {
+            mhm.hitflags = M_ATTK_MISS;
+            mhm.done = true;
+            return;
+        } else if (magr.mtame && !game.v?.vis) {
+            await You('have a %s feeling for a moment, then it passes.', 'queasy');
+        }
+        mhm.hitflags = M_ATTK_AGR_DIED;
+        mhm.done = true;
+        return;
+    }
+    if (game.flags.verbose && !Deaf()) {
+        SetVoice(magr, 0, 80, 0);
+        await verbalize('Burrrrp!');
+    }
+    wake_nearto(magr.mx, magr.my, 2 * 2);
+    mhm.damage = mdef.mhp;
+    const obj = mlifesaver_real(mdef);
+    if (obj) await m_useup(mdef, obj);
+    if (!(await corpse_chance(mdef, magr, true)) || DEADMONSTER(magr))
+        return;
+    if (magr.mtame && !magr.isminion
+        && !((game.mvitals?.[num]?.mvflags | 0) & G_NOCORPSE)) {
+        const virtualcorpse = await mksobj(265 /* CORPSE */, false, false);
+        set_corpsenm(virtualcorpse, num);
+        let nutrit = dog_nutrition(magr, virtualcorpse);
+        await _uh_dealloc_and_bump(virtualcorpse);
+        if (magr.meating > 1)
+            magr.meating = Math.trunc((magr.meating + 3) / 4);
+        if (nutrit > 1) nutrit = Math.trunc(nutrit / 2);
+        magr.mextra.edog.hungrytime += nutrit;
+    }
+}
+
+/* C uhitm.c:4569-4588.  The hero-defender arm owns hitmsg and rn2(20). */
+async function mhitm_ad_samu(magr, mattk, mdef, mhm) {
+    if (!is_youmonst(magr) && is_youmonst(mdef))
+        await mhitm_adtyping_u(magr, mattk, mhm);
+    else
+        mhm.damage = 0;
+}
+
+/* C uhitm.c:4622-4747.  Preserve names before inventory mutation: saddle
+ * removal changes the defender's name, and add_to_minv can merge/free obj. */
+async function mhitm_ad_sedu(magr, mattk, mdef, mhm) {
+    const pa = magr.data;
+    if (is_youmonst(magr)) {
+        await steal_it(mdef, mattk);
+        mhm.damage = 0;
+    } else if (is_youmonst(mdef)) {
+        await mhitm_adtyping_u(magr, mattk, mhm);
+    } else {
+        if (magr.mcan) return;
+        let obj;
+        for (obj = mdef.minvent; obj; obj = obj.nobj)
+            if (!magr.mtame || !obj.cursed) break;
+        if (obj) {
+            const mdefnambuf = x_monnam(mdef, ARTICLE_THE, null, 0, false);
+            if (game.u.usteed === mdef && obj === which_armor(mdef, W_SADDLE))
+                await dismount_steed(DISMOUNT_POLY);
+            await extract_from_minvent(mdef, obj, true, false);
+            const onambuf = game.v?.vis ? await doname(obj) : '';
+            await add_to_minv(magr, obj);
+            const buf = Monnam(magr);
+            if (game.v?.vis && canseemon(mdef))
+                await pline('%s steals %s from %s!', buf, onambuf, mdefnambuf);
+            await possibly_unwield(mdef, false);
+            mdef.mstrategy &= ~STRAT_WAITFORU;
+            await mselftouch_nc(mdef, null, false);
+            if (DEADMONSTER(mdef)) {
+                mhm.hitflags = M_ATTK_DEF_DIED
+                    | ((await grow_up(magr, mdef)) ? 0 : M_ATTK_AGR_DIED);
+                mhm.done = true;
+                return;
+            }
+            if (pa.mlet === 14 /* S_NYMPH */ && !tele_restrict(magr)) {
+                const couldspot = canspotmon(magr);
+                mhm.hitflags = M_ATTK_AGR_DONE;
+                await rloc(magr, RLOC_NOMSG);
+                if (game.v?.vis && couldspot && !canspotmon(magr))
+                    await pline('%s suddenly disappears!', buf);
+            }
+        }
+        mhm.damage = 0;
+    }
+}
+
+/* C uhitm.c:4750-4777. SYSOPT_SEDUCE affects only the hero-defender arm. */
+async function mhitm_ad_ssex(magr, mattk, mdef, mhm) {
+    if (!is_youmonst(magr) && is_youmonst(mdef))
+        await mhitm_adtyping_u(magr, mattk, mhm);
+    else
+        await mhitm_ad_sedu(magr, mattk, mdef, mhm);
+}
+
 export async function mhitm_adtyping(magr, mattk, mdef, mhm) {
     switch (mattk.adtyp) {
     case 20: await mhitm_ad_sgld(magr, mattk, mdef, mhm); break;
@@ -7331,15 +7317,14 @@ export async function mhitm_adtyping(magr, mattk, mdef, mhm) {
     case 33: await mhitm_ad_dise(magr, mattk, mdef, mhm); break;
     case 29: await mhitm_ad_were(magr, mattk, mdef, mhm); break;
     case 12: await mhitm_ad_stun(magr, mattk, mdef, mhm); break;
+    case 26: await mhitm_ad_dgst(magr, mattk, mdef, mhm); break;
+    case 252: await mhitm_ad_samu(magr, mattk, mdef, mhm); break;
     case 21: /* AD_SITM */
     case 22: /* AD_SEDU */
+        await mhitm_ad_sedu(magr, mattk, mdef, mhm);
+        break;
     case 35: /* AD_SSEX */
-        if (magr === game.youmonst) { /* C uhitm.c:4627 */
-            await steal_it(mdef, mattk);
-            mhm.damage = 0;
-        } else {
-            mhm.damage = 0;
-        }
+        await mhitm_ad_ssex(magr, mattk, mdef, mhm);
         break;
     case 0: /* AD_PHYS */
         await mhitm_ad_phys(magr, mattk, mdef, mhm);
@@ -7864,30 +7849,238 @@ function is_weptool(obj) {
     return !!obj && (obj.oclass | 0) === TOOL_CLASS
         && (MKOBJ_OC_SKILL[obj.otyp | 0] | 0) !== 0 /* P_NONE */;
 }
-/* C uhitm.c:1663-1704 hmon_hitmon_msg_silver, reached when hmd->silvermsg was
- * set by a silver weapon/object vs a silver-hater (uhitm.c:897, 1036, 1378).
- * It follows hmon_hitmon_msg_hit and precedes killed()/wakeup (uhitm.c:1878).
- * The barehand_silver_rings arms ("Your silver ring sears") are not modelled. */
-async function _hmon_hitmon_msg_silver(mon, obj) {
-    if (!obj) return;
-    const otyp = obj.otyp | 0;
-    const material = (otyp >= 0 && otyp < MKOBJ_OC_MATERIAL.length)
-        ? (MKOBJ_OC_MATERIAL[otyp] | 0) : 0;
-    if (material !== 14 /* SILVER */ || !mon_hates_silver(mon)) return;
-    let whom = mon_nam(mon);
-    let fmt;
-    if (canspotmon(mon)) {
-        const oname = cxname_sh(obj);
-        fmt = `Your ${/silver/.test(oname) ? '' : 'silver '}${oname} ${vtense(oname, 'sear')} %s!`;
-    } else {
-        whom = whom.charAt(0).toUpperCase() + whom.slice(1);
-        fmt = '%s is seared!';
+// C uhitm.c:1993-2012. Misc-object dispatch must test this before effects.
+function hmon_shade_aware(obj) {
+    return !!obj && ([475, 477, 478, 230, 284].includes(obj.otyp | 0)
+        || sr_oc_material(obj.otyp) === 14);
+}
+
+// C uhitm.c:1386-1432. The callers supply their weapon/misc damage bodies.
+export async function hmon_hitmon_do_hit(hmd, mon, obj, weaponHit, miscHit) {
+    const u = game.u;
+    if (!obj) {
+        hmd.dmg = 0;
+        if (hmd.mdat.pmidx !== PM_SHADE) {
+            hmd.dmg = rnd(_uh_martial_bonus() ? 4 : 2);
+            hmd.use_weapon_skill = true;
+            hmd.train_weapon_skill = hmd.dmg > 1;
+        }
+        const mask = u.uarmg ? W_ARMG
+            : ((hmd.twohits === 0 || hmd.twohits === 1 ? W_RINGR : 0)
+               | (hmd.twohits === 0 || hmd.twohits === 2 ? W_RINGL : 0));
+        const silverhit = { value: 0 };
+        hmd.dmg += special_dmgval(game.youmonst, mon, mask, silverhit);
+        hmd.barehand_silver_rings = (silverhit.value & (W_RINGR | W_RINGL)) ? 1 : 0;
+        if (hmd.barehand_silver_rings) hmd.silvermsg = true;
+        return;
     }
-    const ptr = mon.data;
-    if (!((ptr.mlet | 0) === 54 /* S_GHOST: noncorporeal */
-          || ((ptr.mflags1 | 0) & 0x00000004) /* M1_AMORPHOUS */))
+    const mat = sr_oc_material(obj.otyp);
+    if ((hmd.thrown === 1 || hmd.thrown === 2)
+        && (mat === 20 || mat === 21) && obj.oclass !== 4
+        && (hmd.mdat.mflags1 & 0x08) && !(hmd.mdat.mflags1 & 0x00100000)) {
+        await hit_projectile(mshot_xname(obj), mon, ' but does no harm.');
+        await wakeup_attack(mon, true);
+        hmd.doreturn = hmd.retval = true;
+        return;
+    }
+    hmd.saved_oname = artifact_light(obj) && obj.lamplit
+        ? bare_artifactname(obj) : cxname_sh(obj);
+    if (obj.oclass === WEAPON_CLASS || is_weptool(obj) || obj.oclass === GEM_CLASS) {
+        await weaponHit(hmd, mon, obj, u, u.uwep);
+        if (!hmd.doreturn && hmd.use_weapon_skill) {
+            hmd.lightobj = hmon_hitmon_lightobj(obj, mon);
+            if (u.usteed && !hmd.thrown && hmd.dmg > 0
+                && weapon_type(obj) === P_LANCE && mon !== u.ustuck) {
+                hmd.jousting = joust(mon, obj);
+                if (hmd.jousting) hmd.train_weapon_skill = true;
+            }
+            if (permapoisoned(obj) && hmd.dieroll <= 5) hmd.ispoisoned = true;
+        }
+    } else if (obj.oclass === POTION_CLASS) {
+        if (obj.quan > 1) obj = await splitobj(obj, 1);
+        else await setuwep(null);
+        freeinv(obj);
+        await potionhit(mon, obj, hmd.hand_to_hand ? 0 : 1);
+        if (mon.mhp < 1) {
+            hmd.doreturn = true;
+            hmd.retval = false;
+            return;
+        }
+        hmd.hittxt = true;
+        hmd.mdat = mon.data;
+        hmd.dmg = hmd.mdat.pmidx === PM_SHADE ? 0 : 1;
+    } else if (hmd.mdat.pmidx === PM_SHADE && !hmon_shade_aware(obj)) {
+        hmd.dmg = 0;
+    } else {
+        await miscHit(hmd, mon, obj);
+    }
+}
+
+// C uhitm.c:1435-1506. Derive bonuses after artifact effects, before poison.
+export async function hmon_hitmon_dmg_recalc(hmd, obj) {
+    const u = game.u;
+    const uwep = u.uwep;
+    const ammoAndLauncher = (ammo, launcher) => !!ammo && !!launcher
+        && _uh_is_ammo(ammo) && _uh_is_launcher(launcher)
+        && sr_oc_skill(ammo.otyp) === -sr_oc_skill(launcher.otyp);
+    let bonus = 0;
+    if (hmd.get_dmg_bonus) {
+        bonus = u.udaminc | 0;
+        if (hmd.thrown !== 1 || !obj || !uwep || !ammoAndLauncher(obj, uwep)) {
+            let strength = dbon();
+            const abs = Math.abs(strength);
+            if (hmd.twohits)
+                strength = Math.trunc((3 * abs + 2) / 4) * Math.sign(strength);
+            else if (hmd.thrown === 0 && uwep && bimanual(uwep))
+                strength = Math.trunc((3 * abs + 1) / 2) * Math.sign(strength);
+            bonus += strength;
+        }
+    }
+    if (hmd.use_weapon_skill) {
+        const skillwep = _uh_is_ammo(obj) && ammoAndLauncher(obj, uwep) ? uwep : obj;
+        bonus += weapon_dam_bonus(skillwep);
+        if (hmd.train_weapon_skill)
+            await use_skill(hmd.thrown ? weapon_type(skillwep) : uwep_skill_type(), 1);
+    }
+    hmd.dmg = Math.max(1, hmd.dmg + bonus);
+}
+
+// C uhitm.c:1509-1537. Shared by melee and thrown hits; keep wear-off first.
+export async function hmon_hitmon_poison(hmd, mon, obj) {
+    const u = game.u;
+    const nopoison = Math.max(2, 10 - Math.trunc((obj.owt | 0) / 10));
+    if (Role_if(PM_SAMURAI)) {
+        await pline('You dishonorably use a poisoned weapon!');
+        adjalign(-Math.sign(u.ualign.type));
+    } else if (u.ualign.type === 1 && u.ualign.record > -10) {
+        await pline('You feel like an evil coward for using a poisoned weapon.');
+        adjalign(-1);
+    }
+    if (!permapoisoned(obj) && !rn2(nopoison)) {
+        obj.opoisoned = false;
+        hmd.unpoisonmsg = true;
+    }
+    if (resists_poison_uh(mon)) hmd.needpoismsg = true;
+    else if (rn2(10)) hmd.dmg += rnd(6);
+    else hmd.poiskilled = true;
+}
+
+// C uhitm.c:1825-1833: these effects happen after poison and before HP loss.
+export async function hmon_hitmon_special(hmd, mon, obj) {
+    if (hmd.jousting) await hmon_hitmon_jousting(hmd, mon, obj);
+    else if (hmd.unarmed && hmd.dmg > 1 && !hmd.thrown && !obj && !Upolyd(game.u))
+        await hmon_hitmon_stagger(hmd, mon);
+}
+
+// C uhitm.c:1942-1961. A trap can kill, migrate, or transform the target.
+async function hmon_mhurtle_to_doom(hmd, mon) {
+    if (hmd.dmg < mon.mhp) {
+        await mhurtle(mon, game.u.dx | 0, game.u.dy | 0, 1);
+        hmd.mdat = mon.data;
+        if (mon.mhp < 1) hmd.already_killed = true;
+    }
+}
+
+// C uhitm.c:1540-1566. C only nulls its local obj after consuming the lance.
+async function hmon_hitmon_jousting(hmd, mon, obj) {
+    const u = game.u;
+    hmd.dmg += d(2, obj === u.uwep ? 10 : 2);
+    await pline('You joust ' + mon_nam(mon) + (canseemon(mon) ? exclam(hmd.dmg) : '.'));
+    if ((u.uconduct?.weaphit | 0) <= 1) first_weapon_hit(obj);
+    if (hmd.jousting < 0) {
+        set_twoweap(false);
+        if (obj === u.uwep) await uwepgone();
+        await pline(Yname2(obj) + ' shatters on impact!');
+        await useup(obj);
+    }
+    await hmon_mhurtle_to_doom(hmd, mon);
+    hmd.hittxt = true;
+}
+
+// C uhitm.c:1569-1584: draw before testing size and skin.
+async function hmon_hitmon_stagger(hmd, mon) {
+    if (rnd(100) < P_SKILL(P_BARE_HANDED_COMBAT)
+        && (hmd.mdat.msize | 0) < MZ_LARGE && !thick_skinned(hmd.mdat)) {
+        if (canspotmon(mon))
+            await pline(Monnam(mon) + ' ' + makeplural(stagger(mon.data, 'stagger'))
+                + ' from your powerful strike!');
+        await hmon_mhurtle_to_doom(hmd, mon);
+        hmd.hittxt = true;
+    }
+}
+
+// C uhitm.c:1587-1600; HP and destroyed must already be updated by the caller.
+async function hmon_hitmon_pet(hmd, mon) {
+    if (mon.mtame && hmd.dmg > 0) {
+        abuse_dog(mon);
+        if (mon.mtame && !hmd.destroyed)
+            await monflee(mon, 10 * rnd(hmd.dmg), false, false);
+    }
+}
+
+// C uhitm.c:1603-1633.
+export async function hmon_hitmon_splitmon(hmd, mon, obj) {
+    const u = game.u;
+    if ((hmd.mdat.pmidx === PM_BLACK_PUDDING || hmd.mdat.pmidx === PM_BROWN_PUDDING)
+        && mon.mhp > 1 && !mon.mcan && !hmd.offmap && obj
+        && (obj === u.uwep || (u.twoweap && obj === u.uswapwep))
+        && (hmd.material === 11 || hmd.material === 12)
+        && !(_uh_is_ammo(obj) || _uh_is_missile(obj)) && hmd.hand_to_hand) {
+        const clone = await clone_mon_ml(mon, 0, 0);
+        if (clone) {
+            const withwhat = u.twoweap && game.flags?.verbose ? ' with ' + yname(obj) : '';
+            await pline(Monnam(mon) + ' divides as you hit it' + withwhat + '!');
+            hmd.hittxt = true;
+            await mintrap(clone, 0);
+        }
+    }
+}
+
+// C uhitm.c:1636-1659: the weapon is this hit's object, including off-hand.
+export async function hmon_hitmon_msg_hit(hmd, mon, obj) {
+    const shot = game.gm?.m_shot;
+    if (!hmd.hittxt && (!hmd.destroyed
+        || (hmd.thrown && (shot?.n | 0) > 1 && shot.o === obj.otyp))) {
+        if (hmd.thrown) await hit_projectile(mshot_xname(obj), mon, exclam(hmd.dmg));
+        else if (!(game.flags?.verbose ?? true)) await pline('You hit it.');
+        else await pline('You ' + _hmon_hit_verb(obj) + ' ' + mon_nam(mon)
+            + (canseemon(mon) ? exclam(hmd.dmg) : '.'));
+    }
+}
+
+// C uhitm.c:1662-1698: saved_oname predates destruction and poison removal.
+export async function hmon_hitmon_msg_silver(hmd, mon) {
+    let whom = mon_nam(mon);
+    let prefix;
+    const spotted = canspotmon(mon);
+    if (spotted) {
+        if (hmd.barehand_silver_rings === 1) prefix = 'Your silver ring sears';
+        else if (hmd.barehand_silver_rings === 2) prefix = 'Your silver rings sear';
+        else if (hmd.silverobj && hmd.saved_oname) {
+            const name = hmd.saved_oname;
+            prefix = `Your ${/silver/i.test(name) ? '' : 'silver '}${name} ${vtense(name, 'sear')}`;
+        } else prefix = 'The silver sears';
+    } else whom = whom.charAt(0).toUpperCase() + whom.slice(1);
+    if (hmd.mdat.mlet !== 54 && !(hmd.mdat.mflags1 & 0x00000004))
         whom = s_suffix(whom) + ' flesh';
-    await pline(fmt.replace('%s', whom));
+    await pline(spotted ? `${prefix} ${whom}!` : `${whom} is seared!`);
+}
+
+// C uhitm.c:1038-1041 and mondata.c:547-550.
+function hmon_hitmon_lightobj(obj, mon) {
+    return !!(artifact_light(obj) && obj.lamplit && mon.data.pmidx === PM_GREMLIN);
+}
+
+// C uhitm.c:1701-1730.
+export async function hmon_hitmon_msg_lightobj(hmd, mon) {
+    let whom = mon_nam(mon);
+    const spotted = canspotmon(mon);
+    if (!spotted) whom = whom.charAt(0).toUpperCase() + whom.slice(1);
+    if (hmd.mdat.mlet !== 54 && !(hmd.mdat.mflags1 & 0x00000004))
+        whom = s_suffix(whom) + ' flesh';
+    const prefix = hmd.saved_oname
+        ? s_suffix(hmd.saved_oname) + ' radiance penetrates deep into' : 'The light sears';
+    await pline(spotted ? `${prefix} ${whom}!` : `${whom} is seared!`);
 }
 
 /* C ref: uhitm.c:1651-1658 — the verb inside hmon_hitmon_msg_hit's verbose arm:
@@ -7895,9 +8088,7 @@ async function _hmon_hitmon_msg_silver(mon, obj) {
  *   (objects[obj->otyp].oc_skill == P_WHIP || is_wet_towel)   -> "lash"
  *   Role_if(PM_BARBARIAN)                                     -> "smite"
  *   otherwise                                                 -> "hit"
- * GAP: the is_shield() arm needs objects[].oc_armcat, which this file does not
- * carry (js/do_wear.js has it but does not export is_shield). A wielded shield
- * is the only way to reach it, so it is left out rather than guessed at. */
+ * is_shield is shared with the armor code in do_wear.js. */
 const HEAVY_IRON_BALL_HV = 477;   /* objects.h BALL_CLASS heavy iron ball */
 const OTYP_TOWEL_HV = 234;
 const P_WHIP_HV = 26;

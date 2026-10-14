@@ -234,8 +234,11 @@ export const DOSET_COMPOUNDS = [
     { name: "pickup_types", sel: true, hasHandler: true, val: () => pickupTypes() },
     /* C: options.c:3430 flags.pile_limit; init PILE_LIMIT_DFLT = 5 */
     { name: "pile_limit", sel: true, hasHandler: false, val: () => "5" },
-    /* C: options.c optfn_roguesymset get_val — no rogue symset loaded */
-    { name: "roguesymset", sel: true, hasHandler: true, val: () => "default" },
+    /* C: options.c:3573 optfn_roguesymset get_val. */
+    { name: "roguesymset", sel: true, hasHandler: true, val: () => {
+        const name = gs.symset[1].name;
+        return name ? name + (game.gc?.currentgraphics === 1 ? ', active' : '') : 'default';
+    } },
     /* C: options.c:3658 runmodes[flags.runmode]; init RUN_LEAP -> "run" */
     { name: "runmode", sel: true, hasHandler: true, val: () => ["teleport", "run", "walk", "crawl"][F().runmode ?? 1] ?? "run" },
     /* C: options.c:3745 — flags.end_top 3, end_around 2, end_own FALSE */

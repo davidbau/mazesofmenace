@@ -5,7 +5,8 @@
 // (lock.c:957-1052). The drawbridge predicates used by the shared branches
 // are implemented locally below to keep lock.js independent of dokick.js.
 import { game } from './gstate.js';
-import { could_untrap, untrap_at, cmdq_add_ec, cmdq_add_dir } from './cmd.js';
+import { could_untrap, untrap_at, cmdq_add_ec, cmdq_add_dir, ysimple_name } from './cmd.js';
+import { yname } from './do_wear.js';
 import { t_at } from './trap.js';
 const WAND_CLASS = 11; /* objclass.h WAND_CLASS */
 import { Is_rogue_level, M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, AUTOUNLOCK_KICK } from './const.js';
@@ -1318,10 +1319,17 @@ export async function pick_lock(pick, rx, ry, container) {
             if (autounlock && otmp !== container) continue;
             if (!_Is_box(otmp)) continue;
             ++count;
-            /* C lock.c:471 — AUTOUNLOCK_UNTRAP path (could_untrap) not enabled
-             * by default flags (APPLY_KEY only); skip to the APPLY_KEY arm. */
+            if (autounlock && (g.flags?.autounlock & AUTOUNLOCK_UNTRAP) && could_untrap(false, true)) { /* C lock.c:471-480 */
+                c = otmp.tknown ? (otmp.otrapped ? 'y' : 'n')
+                    : await _ynq(await safe_qbuf('', 'Check ', ' for a trap?', otmp, yname, ysimple_name, 'this'));
+                if (c === 'q') return PICKLOCK_DID_NOTHING;
+                if (c !== 'n') {
+                    await untrap_at(cx, cy, otmp);
+                    return PICKLOCK_DID_SOMETHING;
+                }
+            }
             /* C lock.c:482 — AUTOUNLOCK_APPLY_KEY: "Unlock it with <pick>? [ynq]" */
-            if (autounlock /* && (flags.autounlock & AUTOUNLOCK_APPLY_KEY) */) {
+            if (autounlock && ((g.flags?.autounlock ?? AUTOUNLOCK_APPLY_KEY) & AUTOUNLOCK_APPLY_KEY)) {
                 c = 'q';
                 if (pick) {
                     /* C lock.c:486 — Sprintf(qbuf,"Unlock it with %s?", yname(pick)) */

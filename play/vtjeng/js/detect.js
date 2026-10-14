@@ -138,7 +138,7 @@ import {
 import { game } from './gstate.js';
 import { getpos } from './getpos.js';
 import { get_obj_location } from './light.js';
-import { find_drawbridge, is_pool } from './dbridge.js';
+import { find_drawbridge, is_pool, open_drawbridge } from './dbridge.js';
 import { Is_box } from './lock.js';
 import { losehp, nomul } from './hack.js';
 import { hides_under, is_hider, resists_blnd } from './mondata.js';
@@ -2661,7 +2661,7 @@ export async function openone(x, y, counter, state) {
     } else {
         const position = { x, y };
         if (find_drawbridge(position, state)) {
-            note_unported('dbridge.c open_drawbridge');
+            await open_drawbridge(position.x, position.y, state);
             counter.value++;
         }
     }
@@ -2815,6 +2815,13 @@ async function findTrap(trap, env) {
     if (cleared) await env.waitFoundTrap(env);
 }
 
+// C ref: detect.c find_trap() (1935-1964). The discovery sequence is shared
+// by explicit searching and callers such as dokick.c:really_kick_object().
+export async function find_trap(trap, rawEnv = {}) {
+    const env = normalizeSearchEnv(rawEnv);
+    await findTrap(trap, env);
+}
+
 /**
  * C ref: detect.c dosearch0().
  *
@@ -2913,7 +2920,7 @@ export async function dosearch0(aflag, rawEnv = {}) {
                     if (animated) await env.exerciseWisdom(env);
                     return 1;
                 }
-                await findTrap(trap, env);
+                await find_trap(trap, { ...rawEnv, state });
             }
         }
     }

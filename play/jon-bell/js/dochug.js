@@ -998,7 +998,7 @@ async function tactics_wz(mtmp) {
 
                 if ((otmp = on_ground_wz(which_arti_wz(targ))) != null) {
                     if (cansee(mtmp.mx | 0, mtmp.my | 0))
-                        pline(`${Monnam_dm(mtmp)} picks up ${(await distant_obj_name(otmp))}.`);
+                        await pline(`${Monnam_dm(mtmp)} picks up ${(await distant_obj_name(otmp))}.`);
                     obj_extract_floor(otmp);
                     await mpickobj(mtmp, otmp);
                     return 1;

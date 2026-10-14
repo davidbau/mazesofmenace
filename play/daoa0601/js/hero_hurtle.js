@@ -267,6 +267,7 @@ async function settleLiquid(options, remaining) {
         }
         return null;
     }
+    game.multi = 0;
     game._helplessTurns = 0;
     game._helplessReason = null;
     game._helplessDoneMessage = null;
@@ -312,10 +313,7 @@ async function moveOneSquare(x, y, options, remaining) {
         await finishBallAndChainMove(ballAndChain);
     const oldx = hero.ux;
     const oldy = hero.uy;
-    hero.ux0 = oldx;
-    hero.uy0 = oldy;
     await placeHeroOnLevel(x, y);
-    hero.umoved = true;
     newsym(oldx, oldy);
     vision_recalc(1);
     await flush_screen(1);
@@ -374,7 +372,13 @@ export async function hurtleHero(dx, dy, range, { verbose = false, finishTelepor
         return false;
     stopRun();
     endVoluntaryMultiTurn(game);
-    game._helplessTurns = range;
+    // nomul(-range) cannot shorten an existing involuntary delay.
+    if ((game._helplessTurns ?? 0) <= range && game.multi >= -range) {
+        game._helplessTurns = range;
+        game.multi = -range;
+        game.u.usleep = 0;
+        game.u.invulnerable = false;
+    }
     game._helplessReason = 'moving through the air';
     game._helplessDoneMessage = '';
     if (verbose) {

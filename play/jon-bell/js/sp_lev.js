@@ -5144,7 +5144,7 @@ function flip_visuals(flp, minx, miny, maxx, maxy) {
                 && lev.remembered_glyph?.cls === GLYPHCLS_CMAP) {
                 const tg = terrain_glyph(lev, x, y);
                 lev.remembered_glyph = { ch: tg.ch, color: tg.color,
-                                         decgfx: tg.dec, cls: GLYPHCLS_CMAP };
+                                         decgfx: tg.dec, cls: GLYPHCLS_CMAP, wallSymbol: tg.wallSymbol };
             }
         }
     }

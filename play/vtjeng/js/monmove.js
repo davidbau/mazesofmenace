@@ -354,6 +354,7 @@ import {
     find_defensive, find_offensive, searches_for_item, use_defensive,
 } from './muse.js';
 import { fracture_rock } from './zap.js';
+import { objectGenerationEnv } from './object_generation.js';
 import {
     bill_dummy_object,
     g_at,
@@ -424,7 +425,7 @@ import { quest_stat_check, quest_talk } from './quest.js';
 import { create_gas_cloud, m_in_out_region, visible_region_at } from './region.js';
 import { d, rn1, rn2, rnd, rne, rnl, rnz } from './rng.js';
 import { in_rooms } from './rooms.js';
-import { worm_move, wormhitu } from './worm.js';
+import { worm_move, worm_nomove, wormhitu } from './worm.js';
 import { add_damage, after_shk_move, inhishop, shk_move } from './shk.js';
 import { findgold, mdrop_obj, mpickobj } from './steal.js';
 import { stairway_at, stairway_find_dir } from './stairs.js';
@@ -1939,11 +1940,12 @@ export async function bee_eat_jelly(mon, obj, env = {}) {
     const state = env.state ?? game;
     const random = env.random ?? { rn2 };
     const message = env.message ?? ttyPline;
+    const objectEnv = objectGenerationEnv({ ...env, state, random, message });
     const mtmp = find_pmmonst(PM_QUEEN_BEE, state);
 
     if (!mtmp) {
         const m_delay = obj.blessed ? 3 : !obj.cursed ? 5 : 7;
-        if (obj.quan > 1) obj = splitobj(obj, 1, env);
+        if (obj.quan > 1) obj = splitobj(obj, 1, objectEnv);
         if (canseemon(mon, state)) {
             await message(
                 messageAt(
@@ -1956,7 +1958,7 @@ export async function bee_eat_jelly(mon, obj, env = {}) {
                 env,
             );
         }
-        delobj(obj, env);
+        delobj(obj, objectEnv);
 
         if (mon.m_lev < (state.mons?.[PM_QUEEN_BEE]?.mlevel ?? 0) - 1)
             mon.m_lev = (state.mons?.[PM_QUEEN_BEE]?.mlevel ?? 0) - 1;
@@ -4166,8 +4168,7 @@ export async function m_move(monster, rawEnv = {}) {
                 return MMOVE_MOVED;
             }
         }
-        if (monster.wormno)
-            note_unported('worm.c worm_nomove');
+        if (monster.wormno) worm_nomove(monster, env);
         return postMonsterMove(
             monster,
             oldX,

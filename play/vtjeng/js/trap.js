@@ -89,6 +89,8 @@ import {
     LANDMINE,
     LEVEL_TELEP,
     LEVITATION,
+    LL_DUMP,
+    LL_MINORAC,
     M_SEEN_FIRE,
     MAGICAL_BREATHING,
     M_SEEN_ELEC,
@@ -247,7 +249,8 @@ import {
     UnsupportedHeroMoveBoundaryError,
 } from './hack.js';
 import { goodpos } from './teleport.js';
-import { sgn, upstart } from './hacklib.js';
+import { ordin, sgn, upstart } from './hacklib.js';
+import { livelog_printf } from './pline.js';
 import {
     stackobj,
     getobj,
@@ -290,7 +293,7 @@ import {
 } from './monsters.js';
 import { m_at } from './monst.js';
 import { discover_object, observe_object } from './o_init.js';
-import { drag_ball, move_bc } from './ball.js';
+import { drag_ball, move_bc, placebc, unplacebc } from './ball.js';
 import {
     mksobj,
     carried,
@@ -1081,12 +1084,28 @@ export function deltrap(trap, state = game) {
     const index = traps.indexOf(trap);
     if (index < 0) throw new Error('deltrap: no preceding trap!');
     traps.splice(index, 1);
-    const uz = state.u?.uz;
-    if (uz && In_sokoban(uz) && (trap.ttyp === PIT || trap.ttyp === HOLE)) {
-        // trap.c:6545-6546 calls maybe_finish_sokoban(), which awards the
-        // Sokoban prize and its luck bonus. Nothing of that is ported.
-        throw new UnsupportedHeroMoveBoundaryError(
-            'maybe_finish_sokoban() after removing a Sokoban pit or hole',
+    if (state.level?.flags?.sokoban_rules
+        && (trap.ttyp === PIT || trap.ttyp === HOLE))
+        maybe_finish_sokoban(state);
+}
+
+// C ref: trap.c maybe_finish_sokoban() (7059-7090). Called after deleting or
+// replacing a trap. Clearing the last non-player pit or hole ends Sokoban
+// rules for this level and records its ordinal completion in the livelog.
+function maybe_finish_sokoban(state) {
+    if (state.level?.flags?.sokoban_rules && !state.in_mklev) {
+        for (const trap of state.level.traps ?? []) {
+            if (trap.madeby_u) continue;
+            if (trap.ttyp === PIT || trap.ttyp === HOLE) return;
+        }
+
+        const u = state.u;
+        const sokonum = state.dungeons[u.uz.dnum].entry_lev - u.uz.dlevel + 1;
+        state.level.flags.sokoban_rules = false;
+        livelog_printf(
+            LL_MINORAC | LL_DUMP,
+            `completed ${sokonum}${ordin(sokonum)} Sokoban level`,
+            state,
         );
     }
 }
@@ -1476,8 +1495,10 @@ export async function drown(state = game) {
             }
         }
         if (Punished(state)) {
-            note_unported('ball.c unplacebc');
-            note_unported('ball.c placebc');
+            // trap.c:drown unplaces and replaces the ball and chain before
+            // putting the hero underwater; placebc can run pool flooreffects.
+            unplacebc(state);
+            await placebc(state);
         }
         vision_recalc(2);
         await set_uinwater(true, state);
@@ -3362,7 +3383,7 @@ export async function animate_statue(
     // eager.  C enters this function only after the game has initialized all
     // of those owners, so resolve them at the call boundary instead.
     const [{ cant_revive }, { montraits }, { makemon_runtime, m_dowear },
-        { mpickobj }] = await Promise.all([
+        { mpickobj, remove_worn_item }] = await Promise.all([
         import('./read.js'),
         import('./zap.js'),
         import('./makemon_create.js'),
@@ -3530,7 +3551,7 @@ export async function animate_statue(
     }
     m_dowear(monster, true, objectEnv);
     if (statue.owornmask)
-        note_unported('steal.c remove_worn_item');
+        await remove_worn_item(statue, true, state, objectEnv);
     delobj(statue, objectEnv);
 
     if (atHero && Upolyd(state.u)

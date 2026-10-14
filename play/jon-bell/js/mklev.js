@@ -95,7 +95,7 @@ import { recalc_block_point } from './vision.js';
 import { does_block, unblock_point } from './vision.js';
 import { COULD_SEE, IN_SIGHT, TT_BURIEDBALL, NO_TRAP_FLAGS } from './const.js';
 import { buried_ball_to_punishment, reset_utrap, mintrap } from './trap.js';
-import { fracture_rock } from './zap.js';
+import { fracture_rock, montraits } from './zap.js';
 import { is_pool } from './look.js';
 import { flush_screen, force_more } from './display.js';
 /* Vault guards are normally dismissed through mongone's common inventory
@@ -5904,11 +5904,15 @@ export async function make_corpse(mtmp, x, y, corpseflags) {
     const goneDyn = (g.mvitals?.[mndx]?.mvflags | 0) & G_GONE;
     if ((noCorpseStatic | goneDyn) !== 0)
         return null;
-    // C: mkcorpstat(CORPSE, KEEPTRAITS(mtmp) ? mtmp : 0, mdat, x, y, INIT).
-    // KEEPTRAITS is false for an ordinary unnamed hostile (no extra-monst traits),
-    // so the corpse carries no saved monster struct — mksobj(CORPSE, init=TRUE)
-    // fires the random-corpsenm + timeout RNG, then we override corpsenm to mdat.
-    const otmp = await _mkcorpstat_corpse(mndx, x, y, corpstatflags | CORPSTAT_INIT);
+    // C mon.c:549-556,898: KEEPTRAITS preserves revivers' levels and other traits.
+    const mdat = mtmp.data ?? permonstTemplate(mndx);
+    const keeptraits = mtmp.isshk || mtmp.mtame || (mdat.geno & 0x1000 /* G_UNIQ */)
+        || is_rider_pm(mndx) || mdat.mlet === S_TROLL
+        || mtmp.m_id === (game.svq?.quest_status?.leader_m_id ?? 0)
+        || dmgtype_fromattack(mdat, 22 /* AD_SEDU */, -1 /* AT_ANY */)
+        || dmgtype_fromattack(mdat, 35 /* AD_SSEX */, -1);
+    const otmp = await mkcorpstat(CORPSE, keeptraits ? mtmp : null, mdat,
+                                x, y, corpstatflags | CORPSTAT_INIT);
     /* C mon.c:920-921 — the common tail names the corpse after a named
      * monster: `if (has_mgivenname(mtmp)) obj = oname(obj, MGIVENNAME(mtmp),
      * ONAME_NO_FLAGS);` (ONAME_NO_FLAGS == 0).  Missing here, so a named pet's
@@ -13846,8 +13850,12 @@ export async function revive_corpse(otmp, do_msgs = true) {
     }
     /* C zap.c:895/1003: revive() suppresses inventory and waiting strategy,
      * and does not count the revived monster as a new birth. */
-    const mon = await makemon(mdat, x, y,
-                              NO_MINVENT | MM_NOWAIT | MM_NOMSG | MM_NOCOUNTBIRTH);
+    // C zap.c:1000-1007: a corpse with saved traits restores that monster.
+    const mon = otmp.oextra?.omonst
+        ? await montraits(otmp, { x, y }, false)
+        : await makemon(mdat, x, y, NO_MINVENT | MM_NOWAIT | MM_NOMSG | MM_NOCOUNTBIRTH);
+    if (otmp.oextra?.omonst && mon?.mtame && !mon.isminion)
+        await wary_dog(mon, true);
     if (!mon)
         return false;
     /* A timed corpse may be firing from the timeout queue right now; C's

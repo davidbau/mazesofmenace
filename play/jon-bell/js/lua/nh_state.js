@@ -19,6 +19,7 @@ import { cmd_from_ecname } from '../cmd_binds.js';
 /* nh.parse_config (nhlua.c:666) routes its argument through the config-line
  * parser and assigns into the live flags — see the binding below. */
 import { parseNethackrc } from '../options.js';
+import { l_get_config_errors, parse_lua_config } from '../cfgfiles.js';
 import { game } from '../gstate.js';
 import { spot_stop_timers, start_timer } from '../timeout.js';
 import { long_to_any } from '../cmd.js';
@@ -238,12 +239,10 @@ export async function createLevelLuaState() {
         return cmd_from_ecname(lua_checkstring(args[0]));
     });
     interp.defineGlobal('nh.callback', nhl_callback);
-    interp.defineGlobal('nh.parse_config', (str) => {
-        /* C: luaL_checkstring would error on a non-string; the Lua side never
-         * calls it that way, so silently ignore instead of throwing. */
-        if (typeof str !== 'string' || !str)
-            return undefined;
-        const parsed = parseNethackrc(str);
+    interp.defineGlobal('nh.get_config_errors', l_get_config_errors);
+    interp.defineGlobal('nh.parse_config', (...args) => {
+        if (args.length !== 1) throw new Error('Wrong args');
+        const parsed = parse_lua_config(lua_checkstring(args[0]), parseNethackrc);
         if (!game)
             return undefined;
         if (parsed.flags && Object.keys(parsed.flags).length) {

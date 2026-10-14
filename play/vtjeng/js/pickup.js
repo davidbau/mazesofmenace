@@ -5,7 +5,8 @@
 // 272-313, doloot(), doloot_core(), container_at(), able_to_loot(),
 // mon_beside(), do_loot_cont(), use_container(), traditional_loot(),
 // query_classes(), collect_obj_classes(), out_container(), lift_object(),
-// carry_count(), pickup_prinv(), container_gone(), ck_bag(), and delta_cwt().
+// carry_count(), pickup_prinv(), container_gone(), explain_container_prompt(), ck_bag(), and
+// delta_cwt().
 
 import {
     AUTOSELECT_SINGLE,
@@ -246,7 +247,9 @@ import {
     sellobj_state, shop_keeper, shk_your, stolen_value, subfrombill,
     check_unpaid_usage,
 } from './shk.js';
-import { displayTtyMenuTextWindow, menuTitleStyle } from './tty_menu.js';
+import {
+    displayTtyMenuTextWindow, displayTtyTextWindow, menuTitleStyle,
+} from './tty_menu.js';
 import { waterbody_name } from './pager.js';
 import {
     back_on_ground,
@@ -1057,22 +1060,38 @@ function preflightPickupObjects(selected, state) {
             addPlans.push(null);
     }
     // pickup.c lift_object() checks the 52-letter limit in floor order after
-    // merge_choice().  Gold consumes no ordinary slot, and a later floor
-    // object can merge with an earlier projected pickup.  Reject atomically
-    // only at the first projected non-merge addition which C would refuse.
+    // merge_choice(). Gold consumes no ordinary slot, and a later floor
+    // object can merge with an earlier projected pickup. Leave the first
+    // rejected object and everything after it to C's source-ordered stop path.
     let projectedSlots = inv_cnt(false, state);
+    let fullPackFailure = -1;
     // Billing changes mergeability after lift_object's decision. For a shop
     // floor, use the live source lift below, not this pre-billing projection.
     if (selected.every(({ obj }) => obj.where !== OBJ_FLOOR)
         || !costly_spot(state.u.ux, state.u.uy, state)) {
-        for (const plan of computedPlans) {
-            if (!plan.addedOrdinarySlot) continue;
-            if (projectedSlots >= 52)
-                throw new UnsupportedPickupError('pickup() with a full pack');
+        for (let i = 0; i < computedPlans.length; ++i) {
+            if (!computedPlans[i].addedOrdinarySlot) continue;
+            if (projectedSlots >= 52) {
+                fullPackFailure = i;
+                break;
+            }
             ++projectedSlots;
         }
     }
-    return { addPlans, env, unliftable: [] };
+    const unliftable = [];
+    if (fullPackFailure >= 0) {
+        const failedObject = actionable[fullPackFailure].obj;
+        const selectedIndex = selected.findIndex(({ obj }) =>
+            obj === failedObject);
+        if (selectedIndex >= 0) {
+            for (const { obj } of selected.slice(selectedIndex))
+                unliftable.push(obj);
+            // The live lift path determines the refusal after earlier pickups;
+            // later items cannot be reached because pickup() breaks on -1.
+            addPlans.fill(null, selectedIndex);
+        }
+    }
+    return { addPlans, env, unliftable };
 }
 
 // C ref: pickup.c check_autopickup_exceptions() (913-927).  The exception
@@ -2112,6 +2131,30 @@ async function boh_loss(container, held, state) {
     return loss;
 }
 
+// C ref: pickup.c:explain_container_prompt() (2910-2940). The text rows and
+// conditional Next row match the static NHW_TEXT source table.
+async function explain_container_prompt(more_containers, state) {
+    const explaintext = [
+        'Container actions:',
+        '',
+        ' : -- Look: examine contents',
+        ' o -- Out: take things out',
+        ' i -- In: put things in',
+        ' b -- Both: first take things out, then put things in',
+        ' r -- Reversed: put things in, then take things out',
+        ' s -- Stash: put one item in',
+        '',
+        ' n -- Next: loot next selected container',
+        ' q -- Quit: finished',
+        ' ? -- Help: display this text.',
+        '',
+    ];
+    const lines = explaintext
+        .filter((line) => more_containers || !line.startsWith(' n '))
+        .map((text) => ({ text }));
+    await displayTtyTextWindow(state, lines);
+}
+
 // sellobj_state containerdone cleanup.
 //
 // Not covered: 'o'/'i'/'b'/'r'/'s' (item transfer) and otrapped/chest_trap.
@@ -2256,11 +2299,7 @@ export async function use_container(obj, held, more_containers, state) {
         }
 
         if (ch === '?') {
-            // explain_container_prompt is a text window listing actions.
-            // For this slice, refuse it rather than porting the text window.
-            throw new UnsupportedPickupError(
-                'use_container: explain_container_prompt (?)',
-            );
+            await explain_container_prompt(more_containers, state);
         } else if (ch === ':') {
             if (!state.gc.current_container.cknown)
                 used = ECMD_TIME;
@@ -3324,8 +3363,11 @@ async function traditional_loot(put_in, state) {
             actionfunc, checkfunc, 0, action, state);
         if (cnt) return ECMD_TIME;
     } else if (qc.menu_on_request < 0) {
-        throw new UnsupportedPickupError(
-            'traditional_loot: menu_loot(menu_on_request, put_in)');
+        // C: pickup.c traditional_loot() calls menu_loot() when
+        // query_classes() receives the menu-request prefix. A positive count
+        // means at least one item was moved and spends this turn.
+        if (await menu_loot(qc.menu_on_request, put_in, state) > 0)
+            return ECMD_TIME;
     }
     return ECMD_OK;
 }

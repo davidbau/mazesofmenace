@@ -59,6 +59,7 @@ import { resist_conflict } from './mhitm.js';
 import { move_special } from './priest.js';
 import { rn2 as rn2_shk, rnd as rnd_shk } from './rng.js';
 import { depth as depth_shk } from './hacklib.js';
+import { builds_up } from './dungeon.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import monArmedPack from './makemon_mons_armed.json' with { type: 'json' };
@@ -3625,10 +3626,8 @@ async function rob_shop(shkp) {
 }
 function _choose_stairs_shk(out, dir) {
     const lev = game.u?.uz;
-    const d = (game.dungeons || [])[lev?.dnum | 0];
-    let stdir = !!dir;
-    if (d && (d.num_dunlevs | 0) > 1)
-        stdir = ((d.entry_lev | 0) === (d.num_dunlevs | 0)) ? !!dir : !dir;
+    // C wizard.c:337: builds_up also checks a single-level branch's connection.
+    const stdir = builds_up(lev) ? !!dir : !dir;
     const find = (ladder, up) => {
         for (let s = game.stairs; s; s = s.next)
             if (!!s.isladder === !!ladder && !!s.up === !!up) return s;

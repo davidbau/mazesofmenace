@@ -185,7 +185,8 @@ import { rnd } from './rng.js';
 import { str_end_is, str_start_is, highc, lowc, strstri, strsubst, strNsubst, strkitten, fuzzymatch, trimspaces, strncmpi } from './hacklib.js';
 import { name_to_mon, DEF_CHAR_TO_MLET, mlet_class_explain } from './mondata.js';
 import { nhgetch } from './input.js';
-import { flush_screen, pline, You_cant, docrt, bot, check_gold_symbol, switch_symbols, clear_committed_status, set_bot_disabled, tty_wait_synch, update_ov_primary_symset, update_ov_rogue_symset, impossible, SYM_OFF_X, reglyph_darkroom, raw_printf, init_ov_primary_symbols, init_ov_rogue_symbols, assign_graphics } from './display.js';
+import { flush_screen, pline, You_cant, docrt, bot, check_gold_symbol, switch_symbols, clear_committed_status, set_bot_disabled, tty_wait_synch, update_ov_primary_symset, update_ov_rogue_symset, impossible, SYM_OFF_X, reglyph_darkroom, raw_printf, init_ov_primary_symbols, init_ov_rogue_symbols, assign_graphics, init_symbols, init_primary_symbols, init_rogue_symbols, update_primary_symset, update_rogue_symset, set_symhandling, clear_symsetentry, symset_slot, NO_GLYPH } from './display.js';
+import { SYMBOLS_TEXT } from './generated/symbols_text.js';
 import { get_feature_notice_ver, get_current_feature_ver } from './version.js';
 import { paint_corner_nhw_menu, dismiss_nhw_menu, collect_menu_gacc, process_menu_search, toggle_menu_curr, menu_digit_is_gacc, reassign, update_inventory, invlet_constant, perm_invent_toggled, select_menu_pick_none, DEF_INV_ORDER } from './invent.js';
 import {
@@ -247,7 +248,7 @@ import {
 import {
     clearrolefilter, setrolefilter, rolefilterstring,
 } from './player_selection.js';
-import { rcfile, read_config_file, config_error_init, config_error_done, config_error_add, assure_syscf_file } from './cfgfiles.js';
+import { rcfile, read_config_file, config_error_init, config_error_done, config_error_add, assure_syscf_file, parse_conf_file } from './cfgfiles.js';
 import { nh_terminate, panic } from './end.js';
 import { do_deferred_showpaths } from './files.js'; // C initoptions `:7112` (imports.mjs: hoisted fn, lazy reads only)
 
@@ -1801,8 +1802,8 @@ function paranoiaNofoo(op) {
 /**
  * C symbols.c known_handling[] `:376–384` — symset handling names indexed by
  * the H_UNK..H_UTF8 enum (sym.h `:43–49`), read by optfn_symset get_val
- * (`:4211–4214`) and the H_UTF8 arm (`:4189–4193`). (const.js carries an
- * unexported 4-entry autotranslation of this table; C has 6 entries + NULL.)
+ * (`:4211–4214`) and the H_UTF8 arm (`:4189–4193`). (const.js
+ * KNOWN_HANDLING is the same 6 entries + NULL for display.js.)
  */
 const known_handling = ['UNKNOWN', 'IBM', 'DEC', 'CURS', 'MAC', 'UTF8'];
 
@@ -3612,22 +3613,21 @@ function doset_compopt_get_val(optfn, name) {
 /**
  * C options.c optfn_roguesymset `:3545–3586` (staticfn; NHOPT_PARSE wires
  * &optfn_roguesymset into the roguesymset allopt row, optlist.h `:626`).
- * do_set stores the name (flat + gs ROGUESET slot mirror, optfn_symset
- * `:3068–3071` precedent); the `:3558–3563` read_sym_file failure arm
- * (clear_symsetentry + "Unable to load" sink) is named with the sibling's
- * `:3072–3075`; the rogue-level assign_graphics (`:3565–3566`) is live;
- * the `:3567–3568` flags are gated like the sibling's `:3076` (no JS
- * startup consumer); get_val/get_cnf_val stay combined per C (`:3574` —
- * no ', handler=' tail, symset-only `:4211–4214`); do_handler (`:3582`)
- * returns handler_symset(optidx) (`:6320–6328`; do_symset browser
- * by-design inside, sibling `:3049`).
+ * do_set stores the name (flat + live gs ROGUESET slot) and runs
+ * read_sym_file with the C failure arm (clear_symsetentry + "Unable to
+ * load" sink, `:3558–3563`); the rogue-level assign_graphics
+ * (`:3565–3566`) and the `:3567–3568` flags are live (unconditional
+ * per C — the marks are menu-local flag sets); get_val/get_cnf_val
+ * stay combined per C (`:3574` — no ', handler=' tail, symset-only
+ * `:4211–4214`); do_handler (`:3582`) returns handler_symset(optidx)
+ * (`:6320–6328`; do_symset browser by-design inside).
  * @param {number} optidx C optidx (feeds the do_handler arm)
  * @param {number} req REQ_DO_INIT / REQ_DO_SET / REQ_GET_VAL / REQ_GET_CNF_VAL
  * @param {boolean} _negated C UNUSED — even "!roguesymset:foo" stores
  * @param {{buf:string}|string} opts get_val holder / do_set option string (read-only)
  * @param {string} op value tail (EMPTY_OPTSTR when valueless)
  * @param {object|null} [store] name home (rc result at parse; game in game)
- * @param {boolean} [optInitial] C go.opt_initial — skip redraw flags at init
+ * @param {boolean} [optInitial] C go.opt_initial — gates the assign arm
  */
 export function optfn_roguesymset(optidx, req, _negated, opts, op, store, optInitial) {
     const st = store || game;
@@ -3638,18 +3638,19 @@ export function optfn_roguesymset(optidx, req, _negated, opts, op, store, optIni
         if (op !== EMPTY_OPTSTR) { // C `:3553`
             // C `:3554–3557` free old name + dupstr(op) (GC: overwrite).
             st.roguesymset = String(op);
-            const slot = st.gs?.symset?.[ROGUESET]; // C-mirror home (no live .name readers yet)
-            if (slot) slot.name = String(op);
-            /* Named (map): read_sym_file `:3558` (SYMBOLS file IO under
-               Rule #2), clear_symsetentry + "Unable to load" sink
-               `:3559–3563` (optfn_symset `:3072–3075` precedent). */
-            if (!optInitial) { // C `:3567–3568` unconditional; gated: JS startup has no consumer (sibling `:3076` precedent)
-                if (Is_rogue_level(game.u?.uz)) assign_graphics(ROGUESET); // C `:3565–3566`
-                mark_opt_need_redraw(); // C `:3567`
-                mark_opt_need_glyph_reset(); // C `:3567`
-                if (!game.go) game.go = {};
-                game.go.opt_symset_changed = true; // C `:3568`
+            symset_slot(ROGUESET).name = String(op); // C live home
+            if (!read_sym_file(ROGUESET)) { // C `:3558`
+                clear_symsetentry(ROGUESET, true); // C `:3559`
+                config_error_add( // C `:3560–3562`
+                    'Unable to load symbol set "%s" from "%s"', op, 'symbols');
+                return OPTN_ERR; // C `:3563`
             }
+            const optInit = optInitial ?? !!game.go?.opt_initial; // C go.opt_initial
+            if (!optInit && Is_rogue_level(game.u?.uz)) assign_graphics(ROGUESET); // C `:3565–3566`
+            mark_opt_need_redraw(); // C `:3567`
+            mark_opt_need_glyph_reset(); // C `:3567`
+            if (!game.go) game.go = {};
+            game.go.opt_symset_changed = true; // C `:3568`
         } else {
             return OPTN_ERR; // C `:3570–3571`
         }
@@ -3659,7 +3660,7 @@ export function optfn_roguesymset(optidx, req, _negated, opts, op, store, optIni
         const gsname = st.gs?.symset?.[ROGUESET]?.name || null;
         const nm = gsname || st.roguesymset || game._parsed_rc?.roguesymset || game.flags?.roguesymset;
         let s = nm ? String(nm) : 'default'; // C `:3575–3577`
-        // C `:3578–3579` tests the gs home; the union matches C once homes unify (mirror is write-only today).
+        // C `:3578–3579` tests the gs home (live since the loader port).
         if ((game.currentgraphics | 0) === ROGUESET && (gsname || st.roguesymset)) s += ', active';
         set_optbuf(opts, s);
         return OPTN_OK; // C `:3580`
@@ -3673,6 +3674,11 @@ export function optfn_roguesymset(optidx, req, _negated, opts, op, store, optIni
 /**
  * C options.c optfn_symset `:4166–4236` (staticfn; NHOPT_PARSE wires
  * &optfn_symset into the symset allopt row, optlist.h `:743`).
+ * do_set stores the name (flat + live gs PRIMARYSET slot) and runs
+ * read_sym_file with the C failure arm (clear_symsetentry + "Unable to
+ * load" sink, `:4181–4185`); the H_UTF8/load_symset arm (`:4188–4194`)
+ * is compiled out (#ifndef ENHANCED_SYMBOLS); switch_symbols
+ * (`:4197`) + the `:4198–4199` flags are live (unconditional per C).
  * do_handler (`:4223–4233`) is handler_symset (`:6320–6328`) around the
  * do_symset browser (symbols.c `:908–1099`, 192 lines over the SYMBOLS
  * file — by-design inside the handler); the glyphid cache wrap is live.
@@ -3682,7 +3688,8 @@ export function optfn_roguesymset(optidx, req, _negated, opts, op, store, optIni
  * @param {{buf:string}|string} opts get_val holder / do_set option string (read-only)
  * @param {string} op value tail (EMPTY_OPTSTR when valueless)
  * @param {object|null} [store] name home (rc result at parse; game in game)
- * @param {boolean} [optInitial] C go.opt_initial — skip redraw flags at init
+ * @param {boolean} [optInitial] C go.opt_initial (read for the legacy
+ * optfns; optfn_symset's own arms are unconditional per C)
  */
 export function optfn_symset(optidx, req, _negated, opts, op, store, optInitial) {
     const st = store || game;
@@ -3693,18 +3700,20 @@ export function optfn_symset(optidx, req, _negated, opts, op, store, optInitial)
         if (op !== EMPTY_OPTSTR) { // C `:4175`
             // C `:4176–4179` free old name + dupstr(op) (GC: overwrite).
             st.symset = String(op);
-            const slot = st.gs?.symset?.[PRIMARYSET]; // C-mirror home (no live readers yet)
-            if (slot) slot.name = String(op);
-            /* Named (map): read_sym_file `:4180` (files.c fopen — Rule #2),
-               clear_symsetentry + "Unable to load" sink `:4181–4185`,
-               H_UTF8/load_symset `:4188–4194`, switch_symbols `:4197`
-               (ov_* lazy-read precedent); success flags below. */
-            if (!optInitial) { // C `:4198–4199` unconditional; gated: JS startup has no consumer (perminv precedent)
-                mark_opt_need_redraw();
-                mark_opt_need_glyph_reset();
-                if (!game.go) game.go = {};
-                game.go.opt_symset_changed = true;
+            symset_slot(PRIMARYSET).name = String(op); // C live home
+            if (!read_sym_file(PRIMARYSET)) { // C `:4180`
+                clear_symsetentry(PRIMARYSET, true); // C `:4181`
+                config_error_add( // C `:4182–4184`
+                    'Unable to load symbol set "%s" from "%s"', op, 'symbols');
+                return OPTN_ERR; // C `:4185`
             }
+            /* C `:4187–4194` H_UTF8/load_symset arm is compiled out
+               (#ifndef ENHANCED_SYMBOLS; ENHANCED_SYMBOLS is live). */
+            switch_symbols(symset_slot(PRIMARYSET).name != null); // C `:4197`
+            mark_opt_need_redraw(); // C `:4198`
+            mark_opt_need_glyph_reset(); // C `:4198`
+            if (!game.go) game.go = {};
+            game.go.opt_symset_changed = true; // C `:4199`
         } else {
             return OPTN_ERR; // C `:4201–4202`
         }
@@ -3714,7 +3723,7 @@ export function optfn_symset(optidx, req, _negated, opts, op, store, optInitial)
         const gsname = st.gs?.symset?.[PRIMARYSET]?.name || null;
         const nm = gsname || st.symset || game._parsed_rc?.symset || game.flags?.symset;
         let s = nm ? String(nm) : 'default'; // C `:4206–4208`
-        // C `:4209–4210` tests the gs home; the union matches C once homes unify (mirror is write-only today).
+        // C `:4209–4210` tests the gs home (live since the loader port).
         if ((game.currentgraphics | 0) === PRIMARYSET && (gsname || st.symset)) s += ', active';
         const handling = st.gs?.symset?.[PRIMARYSET]?.handling | 0;
         if (handling) s += `, handler=${known_handling[handling]}`; // C `:4211–4214`
@@ -8189,10 +8198,9 @@ export function optfn_mouse_support(optidx, req, negated, opts, op, iflagsBag, o
  * &optfn_IBMgraphics into the IBMgraphics allopt row, optlist.h `:386`).
  * BACKWARD_COMPAT is defined (optlist.h `:15`), so do_set is the symset
  * loop (`:1924–1948`); the `#else` no-longer-supported arm (`:1949–1953`)
- * is compiled out. No do_handler (has_handler No).
- * Named (map): read_sym_file `:1932–1936` (SYMBOLS file IO under Rule #2),
- * clear_symsetentry `:1934` + switch_symbols `:1943` (both by-design, no
- * scored analogue) — optfn_symset/roguesymset precedent.
+ * is compiled out. No do_handler (has_handler No). read_sym_file
+ * (`:1932`), clear_symsetentry (`:1934`) and switch_symbols (`:1943`)
+ * are live; the rogue assign gate (`:1944–1945`) was already live.
  * @param {number} optidx
  * @param {number} req
  * @param {boolean} negated
@@ -8211,21 +8219,24 @@ export function optfn_IBMgraphics(optidx, req, negated, opts, _op, optInitial) {
             let symName = allopt_name(optidx); // C `:1911` sym_name
             let badflag = false; // C `:1912`
             for (let i = 0; i < NUM_GRAPHICS; ++i) { // C `:1925`
-                const slot = game.gs?.symset?.[i]; // C `:1926` gs.symset[i]
-                if (slot?.name) { // C `:1926–1927` name already set
+                const slot = symset_slot(i); // C `:1926` gs.symset[i]
+                if (slot.name != null) { // C `:1926–1927` name already set
                     badflag = true;
                 } else {
                     if (i === ROGUESET) symName = 'RogueIBM'; // C `:1929–1930`
-                    if (slot) slot.name = symName; // C `:1931` dupstr (GC: overwrite)
-                    /* Named (map): read_sym_file `:1932` + clear_symsetentry
-                       `:1934` failure arm (SYMBOLS file IO under Rule #2). */
+                    slot.name = symName; // C `:1931` dupstr (GC: overwrite)
+                    if (!read_sym_file(i)) { // C `:1932`
+                        badflag = true; // C `:1933`
+                        clear_symsetentry(i, true); // C `:1934`
+                        break; // C `:1935`
+                    }
                 }
             }
             if (badflag) { // C `:1939`
                 config_error_add('Failure to load symbol set %s.', symName); // C `:1940`
                 return OPTN_ERR; // C `:1941`
             }
-            /* Named (map): switch_symbols(TRUE) `:1943` (by-design). */
+            switch_symbols(true); // C `:1943`
             const optInit = optInitial ?? !!game.go?.opt_initial; // C go.opt_initial
             if (!optInit && Is_rogue_level(game.u?.uz)) assign_graphics(ROGUESET); // C `:1944–1945`
         }
@@ -8246,10 +8257,9 @@ export function optfn_IBMgraphics(optidx, req, negated, opts, _op, optInitial) {
  * no-longer-supported arm (`:1428–1431`) is compiled out. Unlike
  * optfn_IBMgraphics there is no rogue-level set (`:1410`) and no
  * assign_graphics gate — switch_symbols(TRUE) runs inside the load arm
- * (`:1418–1419`). No do_handler (has_handler No).
- * Named (map): read_sym_file `:1415` + clear_symsetentry `:1417` failure
- * arm (SYMBOLS file IO under Rule #2), switch_symbols `:1419`
- * (by-design) — optfn_symset/IBMgraphics precedent.
+ * (`:1418–1419`). No do_handler (has_handler No). read_sym_file
+ * (`:1415`), clear_symsetentry (`:1417`) and switch_symbols (`:1419`)
+ * are live.
  * @param {number} optidx
  * @param {number} req
  * @param {boolean} negated
@@ -8266,14 +8276,17 @@ export function optfn_DECgraphics(optidx, req, negated, opts, _op) {
         if (!negated) { // C `:1409`
             /* C `:1410` There is no rogue level DECgraphics-specific set */
             let badflag = false; // C `:1399`
-            const slot = game.gs?.symset?.[PRIMARYSET]; // C `:1411` gs.symset[PRIMARYSET]
-            if (slot?.name) { // C `:1411–1412` name already set
+            const slot = symset_slot(PRIMARYSET); // C `:1411` gs.symset[PRIMARYSET]
+            if (slot.name != null) { // C `:1411–1412` name already set
                 badflag = true;
             } else {
-                if (slot) slot.name = allopt_name(optidx); // C `:1414` dupstr (GC: overwrite)
-                /* Named (map): read_sym_file `:1415` + clear_symsetentry
-                   `:1417` failure arm (SYMBOLS file IO under Rule #2). */
-                /* Named (map): switch_symbols(TRUE) `:1418–1419` (by-design). */
+                slot.name = allopt_name(optidx); // C `:1414` dupstr (GC: overwrite)
+                if (!read_sym_file(PRIMARYSET)) { // C `:1415`
+                    badflag = true; // C `:1416`
+                    clear_symsetentry(PRIMARYSET, true); // C `:1417`
+                } else {
+                    switch_symbols(true); // C `:1418–1419`
+                }
             }
             if (badflag) { // C `:1421`
                 config_error_add('Failure to load symbol set %s.', allopt_name(optidx)); // C `:1422–1423`
@@ -9170,7 +9183,7 @@ export function initoptions_init() {
     flags.initrole = flags.initrace = flags.initgend = flags.initalign = ROLE_NONE; // C `:7193–7194`
     init_ov_primary_symbols(); // C `:7196`
     init_ov_rogue_symbols(); // C `:7197`
-    /* C `:7199` init_symbols() — named omit (seed by-design symbols.c). */
+    init_symbols(); // C `:7199` ov×2 + primary + showsyms + rogue carriers
     if (!game.gw) game.gw = {};
     game.gw.warnsyms = [];
     for (let i = 0; i < WARNCOUNT; i++) // C `:7200–7201`
@@ -9181,7 +9194,7 @@ export function initoptions_init() {
     flags.sortloot = 'l'; // C `:7208`
     flags.end_disclose = DISCLOSE_PROMPT_DEFAULT_NO.repeat(NUM_DISCLOSURE_OPTIONS); // C `:7210–7211`
     switch_symbols(false); // C `:7212` set default characters (builds gs.showsyms)
-    /* C `:7213` init_rogue_symbols() — named omit (rogue_syms carrier unread in JS). */
+    init_rogue_symbols(); // C `:7213` rogue carrier defaults
     /* C `:7214–7244` TERM probes + `:7246–7257` MSDOS/WIN32/MAC — named omits, see doc. */
     flags.menu_style = MENU_FULL; // C `:7258`
     iflags.wc_align_message = ALIGN_TOP; // C `:7260`
@@ -9812,6 +9825,20 @@ function simple_bool_toggle(opt) {
     if (OPT_GLYPH_RESET.has(opt.name)) {
         mark_opt_need_redraw();
         mark_opt_need_glyph_reset();
+    }
+    // C doset_simple_menu `:8654–8656` parseoptions("!name") → optfn_boolean
+    // do_set `:5411–5416` (optfn_boolean_do_set mirror): custom-data
+    // toggles re-stamp at the doset_simple `:8727` reset_needed_visuals
+    // (wired) — without the marker a customsymbols off-toggle never
+    // unstamps and map cells keep painting UTF8 after C fell back to
+    // the ASCII ttychar (20 symset sessions).
+    if (opt.name === 'customcolors') { // C `:5411–5413`
+        if (!game.go) game.go = {};
+        game.go.opt_reset_customcolors = true;
+    }
+    if (opt.name === 'customsymbols') { // C `:5414–5416`
+        if (!game.go) game.go = {};
+        game.go.opt_reset_customsymbols = true;
     }
 }
 
@@ -13228,6 +13255,277 @@ export function match_sym(buf) {
         }
     }
     return null;
+}
+
+/**
+ * C symbols.c known_restrictions[] `:399–401` — symset restriction
+ * keywords ("primary", "rogue"), read by parse_sym_line's case-5 arms.
+ */
+const KNOWN_RESTRICTIONS = ['primary', 'rogue'];
+
+/**
+ * C files.c fopen_sym_file `:2610–2624` (staticfn) — open the SYMBOLS
+ * datafile (fopen_datafile `:2615–2621`). Rule #2: no runtime
+ * filesystem; the embedded text (js/generated/symbols_text.js via
+ * scripts/extract-symbols.py) stands in. Returns the text, or null
+ * when empty (the C fopen-failure arm). Sole C caller: read_sym_file
+ * `:2636` (wired below).
+ */
+function fopen_sym_file() {
+    return SYMBOLS_TEXT ? SYMBOLS_TEXT : null; // C `:2615–2623`
+}
+
+/**
+ * C files.c read_sym_file `:2631–2674` — load gs.symset[which_set].name
+ * from the SYMBOLS file via parse_conf_file(proc_symset_line).
+ * explicitly FALSE (`:2635`), fopen (`:2636–2637`), explicitly TRUE +
+ * chosen_start/end FALSE + symset_which_set/count (`:2639–2642`),
+ * config_error_init (`:2644`), the parse (`:2646`), then the
+ * not-found fallback (`:2649–2667`: "Default symbols"/"default" names
+ * clear to default and succeed, anything else fails) or the missing-
+ * finish note + success (`:2668–2673`). Returns 1 loaded, 0 not.
+ * C callers: optfn_cursesgraphics :1366 (CURSES_GRAPHICS compiled out
+ * on unix — named), optfn_DECgraphics :1415 / optfn_IBMgraphics :1932 /
+ * optfn_roguesymset :3558 / optfn_symset :4180 (all wired in this
+ * file), load_symset :681 (named: its callers are compiled-out or
+ * by-design), do_symset :929/:1075 (by-design browser — named).
+ */
+export function read_sym_file(which_set) {
+    const set = (which_set | 0) === ROGUESET ? ROGUESET : PRIMARYSET;
+    const slot = symset_slot(set);
+    slot.explicitly = false; // C `:2635`
+    const fp = fopen_sym_file(); // C `:2636`
+    if (!fp) // C `:2636–2637`
+        return 0;
+    slot.explicitly = true; // C `:2639`
+    if (!game.gc) game.gc = {};
+    game.gc.chosen_symset_start = false; // C `:2640`
+    game.gc.chosen_symset_end = false; // C `:2640`
+    game.gs.symset_which_set = set; // C `:2641`
+    game.gs.symset_count = 0; // C `:2642`
+    config_error_init(true, 'symbols', false); // C `:2644`
+    parse_conf_file(fp, proc_symset_line); // C `:2646`
+    /* C `:2647` fclose — no handle in JS. */
+    if (!game.gc.chosen_symset_start && !game.gc.chosen_symset_end) { // C `:2649`
+        /* C `:2650–2652` name not found: "Default symbols" (fuzzy) or
+           "default" clears to default and succeeds, else failure. */
+        if (slot.name != null // C `:2653` (NULL check — "" loads, then fails)
+            && (fuzzymatch(slot.name, 'Default symbols', ' -_', true) // C `:2654–2655`
+                || strncmpi(slot.name, 'default', -1) === 0)) // C `:2656` strcmpi
+            clear_symsetentry(set, true); // C `:2657`
+        config_error_done(); // C `:2658`
+        if (slot.name != null) { // C `:2661`
+            slot.explicitly = false; // C `:2662`
+            return 0; // C `:2663`
+        }
+        return 1; // C `:2666`
+    }
+    if (!game.gc.chosen_symset_end) // C `:2668`
+        config_error_add( // C `:2669–2671`
+            'Missing finish for symset "%s"',
+            slot.name != null ? slot.name : 'unknown');
+    config_error_done(); // C `:2672`
+    return 1; // C `:2673`
+}
+
+/**
+ * C symbols.c proc_symset_line `:430–434` — parse_conf_file callback:
+ * NOT parse_sym_line over gs.symset_which_set. Sole C caller:
+ * read_sym_file `:2646` (wired above).
+ */
+export function proc_symset_line(buf) {
+    return !parse_sym_line(buf, game.gs.symset_which_set); // C `:433`
+}
+
+/**
+ * C symbols.c parse_sym_line `:438–654` — parse one SYMBOLS-file line
+ * for which_set, in C order: BUFSZ truncate (`:446–447`), mungspaces
+ * (`:450`), trailing-comment cut (`:457–458`, last '#' with a space
+ * before it), '='-or-':' split (`:461–465`, earlier wins), bare
+ * "finish" (`:467–477`), match_sym + the G_ gate (`:483–495`,
+ * match_glyph only inside the chosen set), the unknown-keyword error
+ * (`:496–499`), the pick-list arm for a null name (`:500–565`,
+ * start/handling/description/restrictions rows), the SYM_CONTROL arms
+ * for a set name (`:567–626`: start match + carrier init, finish,
+ * handling, description ignored, color, restrictions), the symbol arms
+ * (`:627–645`: sym_val + update_primary/rogue_symset, or the
+ * glyphrep_to_custom_map_entries UTF8 row — ENHANCED_SYMBOLS is live),
+ * and the G_ row (`:646–649`). Returns 1 ok, 0 on error.
+ * C callers: proc_symset_line `:433` (wired above).
+ */
+export function parse_sym_line(buf, which_set) {
+    const set = (which_set | 0) === ROGUESET ? ROGUESET : PRIMARYSET;
+    if (!game.gc) game.gc = {}; // C gc global always exists; JS ensures
+    let line = String(buf ?? ''); // C `:438` char *buf
+    if (line.length >= BUFSZ) // C `:446–447`
+        line = line.slice(0, BUFSZ - 1);
+    line = mungspaces(line); // C `:450`
+    const commentp = line.lastIndexOf('#'); // C `:457` strrchr
+    if (commentp > 0 && line[commentp - 1] === ' ') // C `:457–458`
+        line = line.slice(0, commentp - 1);
+    let bufp = line.indexOf('='); // C `:461`
+    const altp = line.indexOf(':'); // C `:462`
+    if (bufp < 0 || (altp >= 0 && altp < bufp)) // C `:464–465`
+        bufp = altp;
+    if (bufp < 0) { // C `:467`
+        if (strncmpi(line, 'finish', 6) === 0) { // C `:468`
+            if (game.gc?.chosen_symset_start) // C `:470–471`
+                game.gc.chosen_symset_end = true;
+            game.gc.chosen_symset_start = false; // C `:472`
+            return 1; // C `:473`
+        }
+        config_error_add('No "finish"'); // C `:475`
+        return 0; // C `:476`
+    }
+    let valstr = line.slice(bufp + 1); // C `:479` past '=' or ':'
+    if (valstr.startsWith(' ')) // C `:480–481`
+        valstr = valstr.slice(1);
+    const symp = match_sym(line); // C `:483`
+    let is_glyph = false; // C `:444`
+    if (!symp && line[0] === 'G' && line[1] === '_') { // C `:484`
+        if (game.gc?.chosen_symset_start) { // C `:485`
+            is_glyph = match_glyph(line) !== 0; // C `:486`
+        } else {
+            is_glyph = true; // C `:488` report error only once
+        }
+        /* C `:490–494` enhanced_unavailable = FALSE (ENHANCED_SYMBOLS
+           is live; the #else TRUE arm is compiled out). */
+    }
+    if (!symp && !is_glyph) { // C `:496` (& !enhanced_unavailable, always false)
+        config_error_add('Unknown sym keyword'); // C `:497`
+        return 0; // C `:498`
+    }
+    const slot = symset_slot(set);
+    if (symp) { // C `:500`
+        if (slot.name == null) { // C `:501` NULL name → pick-list build
+            if (symp.range === SYM_CONTROL) { // C `:505`
+                if (!Array.isArray(game.gs.symset_list))
+                    game.gs.symset_list = [];
+                const list = game.gs.symset_list;
+                const lastsp = list.length ? list[list.length - 1] : null; // C `:508–510`
+                switch (symp.idx) { // C `:511`
+                case 0: { // C `:512–527` start: new list node
+                    const tmpsp = { // C `:513–518`
+                        name: valstr, // C `:520` dupstr(bufp)
+                        desc: null, // C `:521`
+                        idx: game.gs.symset_count++, // C `:519`
+                        handling: 0, // C `:522` H_UNK
+                        nocolor: 0, // C `:524`
+                        primary: 0, // C `:525`
+                        rogue: 0, // C `:526`
+                    };
+                    list.push(tmpsp);
+                    break;
+                }
+                case 2: { // C `:528–537` handling: match known_handling
+                    for (let i = 0; i < known_handling.length; i++) { // C `:531`
+                        if (strncmpi(known_handling[i], valstr, -1) === 0) { // C `:532` strcmpi
+                            if (lastsp) // C `:533–534`
+                                lastsp.handling = i;
+                            break; // C `:535`
+                        }
+                    }
+                    break;
+                }
+                case 3: // C `:538–543` description: first one wins
+                    if (lastsp && lastsp.desc == null) // C `:541`
+                        lastsp.desc = valstr; // C `:542`
+                    break;
+                case 5: // C `:544–562` restrictions: match known_restrictions
+                    for (let i = 0; i < KNOWN_RESTRICTIONS.length; i++) { // C `:547`
+                        if (strncmpi(KNOWN_RESTRICTIONS[i], valstr, -1) === 0) { // C `:548` strcmpi
+                            if (lastsp) { // C `:549`
+                                switch (i) { // C `:550`
+                                case 0: // C `:551–552`
+                                    lastsp.primary = 1;
+                                    break;
+                                case 1: // C `:554–555`
+                                    lastsp.rogue = 1;
+                                    break;
+                                }
+                            }
+                            break; // C `:559`
+                        }
+                    }
+                    break;
+                }
+            }
+            return 1; // C `:565`
+        }
+        if (symp.range && symp.range === SYM_CONTROL) { // C `:567`
+            switch (symp.idx) { // C `:568`
+            case 0: // C `:569–579` start of symset
+                if (strncmpi(valstr, slot.name, -1) === 0) { // C `:571` strcmpi
+                    game.gc.chosen_symset_start = true; // C `:573`
+                    if (set === ROGUESET) // C `:575`
+                        init_rogue_symbols(); // C `:576`
+                    else if (set === PRIMARYSET) // C `:577`
+                        init_primary_symbols(); // C `:578`
+                }
+                break;
+            case 1: // C `:581–585` finish symset
+                if (game.gc?.chosen_symset_start) // C `:583–584`
+                    game.gc.chosen_symset_end = true;
+                game.gc.chosen_symset_start = false; // C `:585`
+                break;
+            case 2: // C `:587–591` handler type identified
+                if (game.gc?.chosen_symset_start) // C `:589`
+                    set_symhandling(valstr, set); // C `:590`
+                break;
+            /* C `:592` case 3 (description) is ignored here. */
+            case 4: // C `:593–604` color:off
+                if (game.gc?.chosen_symset_start) { // C `:594`
+                    if (valstr) { // C `:595` (always true past the sep)
+                        if (strncmpi(valstr, 'true', -1) === 0 // C `:596–597`
+                            || strncmpi(valstr, 'yes', -1) === 0
+                            || strncmpi(valstr, 'on', -1) === 0)
+                            slot.nocolor = 0; // C `:598`
+                        else if (strncmpi(valstr, 'false', -1) === 0 // C `:599–601`
+                            || strncmpi(valstr, 'no', -1) === 0
+                            || strncmpi(valstr, 'off', -1) === 0)
+                            slot.nocolor = 1; // C `:602`
+                    }
+                }
+                break;
+            case 5: // C `:606–625` restrictions: xxxx
+                if (game.gc?.chosen_symset_start) { // C `:607`
+                    let n = 0; // C `:608`
+                    while (n < KNOWN_RESTRICTIONS.length // C `:610`
+                        && KNOWN_RESTRICTIONS[n]) {
+                        if (strncmpi(KNOWN_RESTRICTIONS[n], valstr, -1) === 0) { // C `:611` strcmpi
+                            switch (n) { // C `:612`
+                            case 0: // C `:613–614`
+                                slot.primary = 1;
+                                break;
+                            case 1: // C `:616–617`
+                                slot.rogue = 1;
+                                break;
+                            }
+                            break; // C `:620`
+                        }
+                        n++; // C `:622`
+                    }
+                }
+                break;
+            }
+        } else { // C `:627` Not SYM_CONTROL
+            if ((slot.handling | 0) !== H_UTF8) { // C `:629`
+                if (game.gc?.chosen_symset_start) { // C `:630`
+                    const v = sym_val(valstr); // C `:631`
+                    if (set === PRIMARYSET) // C `:632`
+                        update_primary_symset(symp, v); // C `:633`
+                    else if (set === ROGUESET) // C `:634`
+                        update_rogue_symset(symp, v); // C `:635`
+                }
+            } else { // C `:639` H_UTF8 (ENHANCED_SYMBOLS live)
+                if (game.gc?.chosen_symset_start) // C `:640`
+                    glyphrep_to_custom_map_entries(line, { v: NO_GLYPH }); // C `:641`
+            }
+        }
+    } else if (game.gc?.chosen_symset_start) { // C `:646` glyph, not symbol
+        glyphrep_to_custom_map_entries(line, { v: NO_GLYPH }); // C `:648`
+    }
+    return 1; // C `:653`
 }
 
 /**

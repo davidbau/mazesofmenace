@@ -5,6 +5,9 @@ import { pline } from './display.js'; /* was an undeclared global: every pline()
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { str2role } from './roles.js';
+import { WIZKIT_MAX } from './const.js';
+import { LuaTable } from './lua/interp.js';
+import { config_error_add } from './cmd_binds.js';
 import { sha1Hex } from './sha1.js';
 
 /* tty synchronization is unnecessary for the replay terminal. */
@@ -14,13 +17,23 @@ const RECORDER_CONFIGFILE =
     '/Users/davidbau/git/mazesofmenace/teleport/maud/test/comparison'
     + '/c-harness/resul';
 
+/* C cfgfiles.c:124-151: the scored MacOS build uses the UNIX branch. */
+function get_default_configfile() {
+    return '.nethackrc';
+}
+
+/* C cfgfiles.c:215-219: strncpy into configfile[BUFSZ], always terminated. */
+function set_configfile_name(fname) {
+    game._configfile = fname.split('\0', 1)[0].slice(0, 255);
+}
+
 export function set_configfile_for_session(seed, datetime, nethackrc, moves) {
     let seedValue = typeof seed === 'bigint' ? Number(seed) : seed;
     if (typeof seedValue !== 'number' || !Number.isFinite(seedValue))
         seedValue = String(seed);
     const digest = sha1Hex(JSON.stringify([seedValue, datetime, nethackrc, moves]))
         .slice(0, 16);
-    game._configfile = `/tmp/regen-${digest}/.nethackrc`;
+    set_configfile_name(`/tmp/regen-${digest}/${get_default_configfile()}`);
     game._hilite_rc = String(nethackrc || ""); /* source text for hilite_status rules (botl.c parse_status_hl1) */
     game._generated_configfile = String(datetime || '').startsWith('2026');
 }
@@ -38,7 +51,7 @@ export function config_error_done() {
     if (!game.config_error_data)
         return 0;
     n = game.config_error_data.num_errors;
-    if (game.gn.no_sound_notified > 0) {
+    if (game.gn?.no_sound_notified > 0) {
         n += (game.gn.no_sound_notified - 1);
         game.gn.no_sound_notified = 0;
     }
@@ -74,6 +87,61 @@ export function config_error_init(from_file, sourcename, secure) {
     game.config_error_data = tmp;
     if (!game.program_state) game.program_state = {};
     game.program_state.config_error_ready = true;
+}
+
+// C cfgfiles.c:1492-1511. Count physical lines, including comments and
+// continuations; a secure frame stops before advancing after its first error.
+export function config_error_nextline(line) {
+    const ced = game.config_error_data;
+    if (!ced || (ced.num_errors && ced.secure))
+        return false;
+    ced.line_num++;
+    ced.origline_shown = false;
+    ced.origline = line ? line.split('\0', 1)[0].slice(0, 1023) : '';
+    return true;
+}
+
+// C cfgfiles.c:1565-1575 config_erradd(): Lua errors are prepended to a
+// separate list, without printing or incrementing the frame's error count.
+export function config_error_add_lua(message) {
+    if (!game.program_state?.config_error_ready || !game.iflags?.in_lua)
+        return false;
+    game.config_error_msg = {
+        line_num: game.config_error_data.line_num,
+        errormsg: message || 'Unknown error',
+        next: game.config_error_msg,
+    };
+    return true;
+}
+
+// C cfgfiles.c:1515-1539. Lua receives one table, newest error first; reading
+// consumes the list even when errors came from multiple parse_config calls.
+export function l_get_config_errors() {
+    const errors = new LuaTable();
+    let idx = 1;
+    for (let dat = game.config_error_msg; dat; dat = dat.next) {
+        const entry = new LuaTable();
+        entry.set('line', dat.line_num);
+        entry.set('error', dat.errormsg);
+        errors.set(idx++, entry);
+    }
+    game.config_error_msg = null;
+    return errors;
+}
+
+// C nhlua.c:664 / cfgfiles.c:1810 parse_conf_str: Lua parsing owns a
+// non-secure frame. Keep its errors separate from startup's displayed errors.
+export function parse_lua_config(str, parse) {
+    const iflags = (game.iflags ||= {}), in_lua = iflags.in_lua;
+    iflags.in_lua = true;
+    config_error_init(false, 'parse_conf_str', false);
+    try {
+        str = str.split('\0', 1)[0];
+        return str ? parse(str) : {};
+    } finally {
+        config_error_done();
+        iflags.in_lua = in_lua;
+    }
 }
 
 export function read_config_file(filename, src) {
@@ -117,7 +185,8 @@ const CONFIG_LINE_STMT = [
     ['NAME', 4], ['ROLE', 4], ['CHARACTER', 4], ['dogname', 3],
     ['catname', 3], ['BOULDER', 3], ['MENUCOLOR', 9], ['HILITE_STATUS', 6],
     ['WARNINGS', 5], ['ROGUESYMBOLS', 4], ['SYMBOLS', 4], ['WIZKIT', 6],
-    ['SOUNDDIR', 8], ['SOUND', 5], ['QT_TILEWIDTH', 12],
+    // USER_SOUNDS is not compiled into the tty target (cfgfiles.c:1371).
+    ['QT_TILEWIDTH', 12],
     ['QT_TILEHEIGHT', 13], ['QT_FONTSIZE', 11], ['QT_COMPACT', 10],
 ];
 
@@ -147,10 +216,84 @@ export function choose_random_part(str, sep) {
     return null;
 }
 
+/* C cfgfiles.c:522-548, hacklib.c:164: trimspaces removes only space/tab.
+ * Between ']' and a comment only spaces are accepted; an empty section is
+ * a valid result, distinct from a malformed section's null pointer. */
+export function is_config_section(str) {
+    const a = str.split('\0', 1)[0].replace(/^[ \t]+|[ \t]+$/g, '');
+    if (a[0] !== '[') return null;
+    const z = a.indexOf(']', 1);
+    if (z < 0) return null;
+    let c = z + 1;
+    while (a[c] === ' ') c++;
+    if (c < a.length && a[c] !== '#') return null;
+    return a.slice(1, z).replace(/^[ \t]+|[ \t]+$/g, '');
+}
+
+/* C options.c:9299-9327, called by cnf_line_AUTOPICKUP_EXCEPTION.
+ * sscanf counts the scanset assignment even when the closing quote fails.
+ * Keep its 253-byte truncation and the sequential scans: the generic scan
+ * can overwrite a preceding '>' scan's text when there is a comment. */
+export function parse_autopickup_exception(mapping) {
+    mapping = mapping.split('\0', 1)[0];
+    let text = '', end = '\0';
+    const scan = prefix => {
+        if (!mapping.startsWith(prefix)) return 0;
+        let pos = prefix.length;
+        const begin = pos;
+        while (pos < mapping.length && mapping[pos] !== '"'
+               && pos - begin < 253) pos++;
+        if (pos === begin) return 0;
+        text = mapping.slice(begin, pos);
+        if (mapping[pos] !== '"') return 1;
+        pos++;
+        while (pos < mapping.length && /[ \t\n\r\v\f]/.test(mapping[pos])) pos++;
+        if (pos === mapping.length) return 1;
+        end = mapping[pos];
+        return 2;
+    };
+    let n = scan('"<');
+    if (n === 1 || (n === 2 && end === '#'))
+        return { pattern: text, grab: true };
+    n = scan('">');
+    if (n === 1)
+        return { pattern: text, grab: false };
+    n = scan('"');
+    if (n === 1 || (n === 2 && end === '#'))
+        return { pattern: text, grab: false };
+    config_error_add('syntax error in AUTOPICKUP_EXCEPTION');
+    return null;
+}
+
 /* C cfgfiles.c:587-597; a JS index replaces the pointer into buf. */
 function find_optparam(buf) {
     const eq = buf.indexOf('='), co = buf.indexOf(':');
     return eq < 0 || (co >= 0 && co < eq) ? co : eq;
+}
+
+/* C cfgfiles.c:631 -> options.c:7844 msgtype_parse_add().  sscanf counts
+ * assignments, not matched literals: a closing quote is not required once
+ * the nonempty pattern has been assigned, and text after it is ignored.
+ * Keep the widths on both conversions, including truncation at 255 bytes.
+ * Compilation and insertion use the existing MSGTYPE owner in options.js. */
+export function parse_msgtype(bufp) {
+    const token = /^[\t\n\v\f\r ]*([^\t\n\v\f\r ]{1,10})/.exec(bufp);
+    const pattern = token && /^[\t\n\v\f\r ]*"([^"]{1,255})/
+        .exec(bufp.slice(token[0].length));
+    if (!pattern) {
+        config_error_add('Malformed MSGTYPE');
+        return null;
+    }
+    const names = ['show', 'hide', 'noshow', 'stop', 'more', 'norep'];
+    const name = names.find(n => n.startsWith(token[1].toLowerCase()));
+    if (!name) {
+        config_error_add("Unknown message type '%s'", token[1]);
+        return null;
+    }
+    return {
+        type: name === 'noshow' ? 'hide' : name === 'more' ? 'stop' : name,
+        pattern: pattern[1],
+    };
 }
 
 /* C cfgfiles.c:760-789.  The startup parser collects settings in result;
@@ -179,6 +322,13 @@ function cnf_line_catname(bufp, result) {
     return true;
 }
 
+// C cfgfiles.c:1213-1218. Use the parsed statement so sections, continuations,
+// whitespace and repeated assignments follow the same rules as other lines.
+function cnf_line_WIZKIT(bufp) {
+    game.wizkit = bufp.slice(0, WIZKIT_MAX - 1);
+    return true;
+}
+
 /* C cfgfiles.c:1389-1439 parse_config_line(): match abbreviations against
  * the statement table after mungspaces(), with either ':' or '='.  Keep
  * OPTIONS' original value (including whitespace) for parseoptions; every
@@ -200,7 +350,8 @@ export function config_statement(origbuf, result) {
     const handler = name === 'NAME' ? cnf_line_NAME
         : name === 'ROLE' || name === 'CHARACTER' ? cnf_line_ROLE
         : name === 'dogname' ? cnf_line_dogname
-        : name === 'catname' ? cnf_line_catname : null;
+        : name === 'catname' ? cnf_line_catname
+        : name === 'WIZKIT' ? cnf_line_WIZKIT : null;
     if (handler) {
         handler(value, result);
         return null;

@@ -1208,8 +1208,9 @@ export async function try_restore_save() {
     restore_light_sources(info.lights);
     // C restore.c getlev `:1300` relink_light_sources(ghostly) in C order.
     // Save-file restore is never ghostly (ghostly ⇔ bones → getlev_bones,
-    // which never installs lights — named omission); level entries arrive
-    // already linked by relinkLevelTimersLights, so flag-gated skip.
+    // which installs its lights like the timers, D-3864 precedent); level
+    // entries arrive already linked by relinkLevelTimersLights, so
+    // flag-gated skip.
     relink_light_sources(false);
     // C restore.c getlev `:1301` reset_oattached_mids(ghostly) in C order,
     // right after relink. Never ghostly here, so a no-op walk of
