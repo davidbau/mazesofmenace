@@ -537,7 +537,7 @@ const DEF_OC_SYM = {
 // (gr.rogue_syms[O] = def_r_oc_syms) swapped into showsyms by
 // assign_graphics ROGUESET (do.c goto_level; js do.js:1604). Rogue level
 // renders armor ']' (not '['), amulet ',' (not '"'), food ':' (not '%');
-// gold '*' rides _goldsym (assign_graphics) and VENOM/others are unchanged.
+// gold '*' via live_showsyms and VENOM/others are unchanged.
 const DEF_R_OC_SYM = {
     [ARMOR_CLASS]: ']',
     [AMULET_CLASS]: ',',
@@ -2228,7 +2228,7 @@ function objnum_to_display_glyph(onum) {
     const def = game.objects?.[onum | 0];
     const oclass = def?.oc_class ?? ILLOBJ_CLASS;
     let ch = oc_display_sym(oclass);
-    if (oclass === COIN_CLASS) ch = game._goldsym || ch;
+    if (oclass === COIN_CLASS) ch = String.fromCharCode(live_showsyms(COIN_CLASS + SYM_OFF_O));
     const color = def?.oc_color ?? NO_COLOR;
     return { ch, color, dec: false, glyph: objnum_to_glyph(onum) };
 }
@@ -3496,10 +3496,12 @@ function showsyms_defaults(set) {
 
 /**
  * C ref: symbols.c assign_graphics `:217–250` — swap showsyms between
- * Primary and Rogue sets. JS keeps DEC/ASCII via use_decgraphics +
- * goldsym; the showsyms table copy (`:224–227` / `:236–239`) lands on
- * game.gs.showsyms (ov tables live here; defaults from the carriers
- * above). RogueIBM color sets deferred. Named omission: `:249`
+ * Primary and Rogue sets. JS keeps DEC/ASCII via use_decgraphics; the
+ * showsyms table copy (`:224–227` / `:236–239`) lands on game.gs.showsyms
+ * (ov tables live here; static defaults — the carrier merge ships as
+ * lazy live_showsyms reads instead of a store copy). RogueIBM color sets
+ * deferred. Named omission: `:224–239` carrier write-through (the copy
+ * stays ov+static; getpos P-range still reads it); `:249`
  * reset_glyphmap(gm_symchange) — by-design unported (fortress guard).
  */
 export function assign_graphics(whichset) {
@@ -3514,13 +3516,13 @@ export function assign_graphics(whichset) {
         ];
     }
     if (set === ROGUESET) {
-        // C init_rogue_symbols: default Rogue set nocolor=1; gold = GEM_SYM '*'
-        // (drawing.c def_r_oc_syms[COIN_CLASS]).
+        // C init_rogue_symbols: default Rogue set nocolor=1.
         game.gs.symset[ROGUESET].nocolor = 1;
-        game._goldsym = '*';
-    } else {
-        game._goldsym = '$';
     }
+    // No gold snapshot: coin readers take live_showsyms (the C ov-?-carrier
+    // expression), so a loaded symset's coin is visible without an assign
+    // round-trip. (C keeps one live gs.showsyms store; the game.gs.showsyms
+    // copy below stays ov+static — see live_showsyms.)
     // C `:224–227` / `:236–239` — gs.showsyms[i] = ov ? ov : default.
     const ov = set === ROGUESET ? ov_rogue_table() : ov_primary_table();
     const def = showsyms_defaults(set);
@@ -3560,6 +3562,34 @@ export function switch_symbols(nondefault) {
         init_primary_symbols(); // C `:289` (carrier + entry reset inside)
         init_showsyms(); // C `:290`
     }
+}
+
+/**
+ * C symbols.c assign_graphics `:224–239` / switch_symbols `:257–260` — the
+ * live gs.showsyms[i] read (ov ? ov : carrier) for the current set, for
+ * readers outside the map_glyphinfo `:2653` arm. JS keeps the loaded
+ * carriers separate (game.gs.primary_syms/rogue_syms, filled by the
+ * read_sym_file port) while the game.gs.showsyms copy stays ov+static,
+ * so the carrier side is read lazily here — same expression as the
+ * `:2653` arm (currentgraphics set, ov first, carrier when that set has
+ * a symset loaded, else the showsyms copy, which equals C's carrier at
+ * default config). Returns the nhsym code (C int). Callers:
+ * check_gold_symbol (botl.c `:43`), decode_mixed via botl.js
+ * (windows.c `:1486`), the _statusLine2 gold arm (botl.c `:132–134`),
+ * the mimic gold base.
+ */
+export function live_showsyms(symidx) {
+    const i = symidx | 0;
+    if (i < 0 || i >= SYM_MAX) return 0;
+    const curSet = ((game.currentgraphics | 0) === ROGUESET) ? ROGUESET : PRIMARYSET;
+    const ov = (curSet === ROGUESET ? ov_rogue_table() : ov_primary_table())[i] || 0;
+    if (ov) return nhsym_code(ov);
+    const slot = game.gs?.symset?.[curSet];
+    if (slot?.name != null) {
+        const car = curSet === ROGUESET ? rogue_syms_table() : primary_syms_table();
+        return (car[i] | 0) & 0xFF;
+    }
+    return nhsym_code(game.gs?.showsyms?.[i] ?? 0);
 }
 
 /**
@@ -3846,13 +3876,15 @@ export function symset_render_char(code, handling) {
 }
 
 /**
- * C ref: botl.c check_gold_symbol — invis_goldsym when gold showsym ≤ ' '.
+ * C ref: botl.c check_gold_symbol `:39–44` — invis_goldsym when the live
+ * gold showsym ≤ ' '. Reads live_showsyms (carrier when a symset is
+ * loaded): RogueEpyx coin `\x0f` checks invisible exactly when C's three
+ * call sites run (S_-parse, doset-commit, goto_level — none before the
+ * step-0 paint, so C and JS both take the encglyph path there).
  */
 export function check_gold_symbol() {
     if (!game.iflags) game.iflags = {};
-    const goldch = game._goldsym || '$';
-    const code = typeof goldch === 'string' ? goldch.charCodeAt(0) : (goldch | 0);
-    game.iflags.invis_goldsym = code <= 0x20;
+    game.iflags.invis_goldsym = live_showsyms(COIN_CLASS + SYM_OFF_O) <= 0x20;
 }
 
 /** C reset_glyphmap: Rogue level without RogueIBM color → strip all color. */
@@ -4768,8 +4800,8 @@ export const MG_HERO = 0x00001;
 // gives SYM_OFF_O 105, SYM_OFF_M 123, SYM_OFF_W 184, SYM_OFF_X 190;
 // C sym.h `:111–119` MAXOTHER 6 gives SYM_MAX 196.
 export const SYM_OFF_O = 105;
-const SYM_OFF_M = 123;
-const SYM_OFF_W = 184;
+export const SYM_OFF_M = 123;
+export const SYM_OFF_W = 184;
 export const SYM_OFF_X = 190;
 export const SYM_MAX = 196;
 
@@ -7305,9 +7337,16 @@ function _statusLine2() {
     if (uenmax > 9999) uenmax = 9999;
     // C botl.c `:130–138` — describe_level(dloc, 1) plus gold; money < 0
     // → 0, min(money, 999999L); '$' when in_dumplog/invis_goldsym else the
-    // gold glyph. JS gold rides the _goldCount cache (do.js); dx is 0 here
-    // (no `\GXXXXNNNN` glyph encoding on this path).
-    const goldch = game.iflags?.invis_goldsym ? '$' : (game._goldsym || '$');
+    // gold glyph (encglyph → decode_mixed → live showsyms coin). JS gold
+    // rides the _goldCount cache (do.js); dx is 0 here (no `\GXXXXNNNN`
+    // glyph encoding on this path). The decoded byte paints raw (wintty.c
+    // tty_putstatusfield `:4824`) and the capture drops bytes < 0x20 —
+    // the cell keeps its cleared space while the cursor still advances
+    // (recorder termcap.c nomux_putch; symset_render_char precedent) —
+    // so an unprintable coin (RogueEpyx `\x0f`) renders a space.
+    const goldCode = live_showsyms(COIN_CLASS + SYM_OFF_O);
+    const goldch = game.iflags?.invis_goldsym ? '$'
+        : (goldCode <= 0x20 ? ' ' : String.fromCharCode(goldCode));
     let gold = game._goldCount | 0;
     if (gold < 0) gold = 0;
     if (gold > 999999) gold = 999999;

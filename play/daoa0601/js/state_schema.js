@@ -43,6 +43,7 @@ const persistentNames = [
 // Every remaining GameState field must be transient. Adding, removing, or
 // reclassifying a field requires an explicit persistence decision at compile time.
 const transientFields = {
+    _pickWarningMove: true,
     _canMakeBones: true,
     _wailMessageMove: true,
     bhitpos: true,
@@ -128,6 +129,7 @@ const transientFields = {
     vision_full_recalc: true,
     viz_array: true,
     warn_obj_cnt: true,
+    _magicKeyTrapWarningCount: true,
 };
 const persistentStateKeys = new Set(persistentNames);
 const persistentKeyNames = persistentStateKeys;

@@ -3044,6 +3044,21 @@ export async function hurtle_step(rangeArg, x, y) {
         if (why) {
             const dmg = rnd(2 + (rangeArg.n | 0));
             losehp(maybe_half_phys(dmg), why, KILLED_BY);
+            // C dothrow.c:836 — losehp runs inline: a fatal hit
+            // done(DIED)s noreturn (never reaches wake_nearto); on
+            // survival hack.c:4289–4291 maybe_wail prints before
+            // wake_nearto (its You_hear may --More-- wait, suspending
+            // the knockback chain ahead of the stun roll + mdamageu).
+            // JS losehp is sync — drain done, then the deferred wail
+            // (dig.js falling-rock shape, D-3949).
+            if (game._losehp_needs_done
+                || game.program_state?.gameover) {
+                const { finish_losehp_done } = await import('./end.js');
+                await finish_losehp_done();
+                // done() returns after lifesave; return only on death.
+                if (game.program_state?.gameover) return false;
+            }
+            await finish_maybe_wail();
             await wake_nearto(x, y, 10);
             return false;
         }

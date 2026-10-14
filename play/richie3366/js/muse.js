@@ -41,7 +41,7 @@ import {
     objectNames, objectDescrs, POTION_CLASS, WAND_CLASS, SPEED_BOOTS,
     SCROLL_CLASS, AMULET_CLASS, TOOL_CLASS, FOOD_CLASS, WEAPON_CLASS,
 } from './objects.js';
-import { observe_object, makeknown } from './invent.js';
+import { observe_object, makeknown, freeinv } from './invent.js';
 import {
     losehp, nomul, in_rooms, You_hear, is_pool, is_lava, closed_door, carrying,
     stop_occupation, maybe_half_phys, finish_maybe_wail,
@@ -281,16 +281,6 @@ function m_next2m(mtmp) {
         }
     }
     return false;
-}
-
-/**
- * C ref: invent.c freeinv subset — unlink from hero invent array.
- */
-function freeinv_hero(obj) {
-    const inv = game.invent || [];
-    const idx = inv.indexOf(obj);
-    if (idx >= 0) inv.splice(idx, 1);
-    obj.nobj = null;
 }
 
 /** C ref: obj.h bimanual — WEAPON/TOOL with oc_bimanual (oc_big). */
@@ -3268,7 +3258,7 @@ export async function use_misc(mtmp) {
             where_to = 2;
         }
         await remove_worn_item(obj, false); /* C muse.c:2596 */
-        freeinv_hero(obj);
+        freeinv(obj); /* C muse.c:2597 — live export (extract_nobj sets where=OBJ_FREE, mkobj.c:2612) */
         switch (where_to) {
         case 1:
             await pline(

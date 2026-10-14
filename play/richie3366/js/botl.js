@@ -73,7 +73,7 @@ import {
     A_STR, A_DEX, A_CON, A_INT, A_WIS, A_CHA,
     acurr, get_strength_str,
 } from './attrib.js';
-import { describe_level, objnum_to_glyph, Hallucination, impossible, SYM_OFF_O, glyphmap_symidx, set_committed_status_lines, pline } from './display.js';
+import { describe_level, objnum_to_glyph, Hallucination, impossible, SYM_OFF_O, glyphmap_symidx, set_committed_status_lines, pline, live_showsyms } from './display.js';
 import { rank_of, roles } from './roles.js';
 import { money_cnt } from './shk.js';
 import { hidden_gold } from './vault.js';
@@ -760,12 +760,26 @@ function tty_putstatusfield(text, x, y) {
     x |= 0; y |= 0;
     if (x < STATUS_COLS && y < nrows) { // C `:4818`
         if (x !== statusCurX || y !== statusCurY) status_curs(x, y); // C `:4819–4820`
-        const s = String(text ?? ''); // C `:4814` lth
+        const s = String(text ?? '');
+        // C `:4814` lth = strlen: a NUL truncates the field (C never
+        // iterates past it).
+        const nul = s.indexOf('\0');
+        const lth = nul < 0 ? s.length : nul;
         const disp = game.nhDisplay;
-        for (let i = 0; i < s.length; ++i) { // C `:4821`
+        for (let i = 0; i < lth; ++i) { // C `:4821`
             const n = i + x; // C `:4822`
             if (n < STATUS_COLS && s[i]) { // C `:4823`
-                statusWinData[y][n - 1] = s[i]; // C `:4827` cw->data
+                // C `:4824` writes the byte raw and `:4825–4826` advance
+                // past it; the capture drops bytes < 0x20 (recorder
+                // termcap.c nomux_putch) so the recorded cell keeps its
+                // cleared space (RogueEpyx gold `\x0f`; symset_render_char
+                // precedent). JS merged the putchar+capture stages: store
+                // and paint the recorded form. Attr on a dropped cell is
+                // the fresh field attr (C keeps the stale cell attr —
+                // invisible on a space without inverse/underline, same
+                // standing note as symset_render_char repaints).
+                const cell = s[i].charCodeAt(0) < 0x20 ? ' ' : s[i];
+                statusWinData[y][n - 1] = cell; // C `:4827` cw->data
                 // Capture-normalized form: the recorder compresses space
                 // runs longer than 4 to CSI CUF (terminal.js serialize
                 // precedent; do_statusline1 gap rule) and the worker
@@ -784,7 +798,7 @@ function tty_putstatusfield(text, x, y) {
                     while (s[hi + 1] === ' ') hi++;
                     if (hi - lo + 1 > 4) chAttr = 0;
                 }
-                if (disp?.setCell) disp.setCell(n - 1, 22 + y, s[i], renderFg, chAttr); // C `:4824` putchar
+                if (disp?.setCell) disp.setCell(n - 1, 22 + y, cell, renderFg, chAttr); // C `:4824` putchar
                 statusCurX++; // C `:4825–4826` curx++
             }
         }
@@ -1037,14 +1051,12 @@ export function decode_mixed(str) {
                 const dcount = decode_glyph(s.slice(i + 1), box); // C `:1482`
                 if (dcount) { // C `:1482`
                     i += (dcount + 1); // C `:1483`
-                    // C `:1484–1486` map_glyphinfo symidx → showsyms.
-                    // Slots are nhsym ints since the symset loader port
-                    // (ov/boulder writes stay strings); C compares ints.
+                    // C `:1484–1486` map_glyphinfo symidx → live showsyms
+                    // (ov ? ov : carrier, current set). Raw byte, C-exact —
+                    // an unprintable coin (RogueEpyx `\x0f`) maps to the
+                    // recorded space downstream at tty_putstatusfield.
                     const so = glyphmap_symidx(box.v);
-                    const sh = game.gs?.showsyms?.[so];
-                    out += (typeof sh === 'string' && sh.length) ? sh[0]
-                        : (typeof sh === 'number' && sh > 0)
-                            ? String.fromCharCode(sh & 0xFF) : '?';
+                    out += String.fromCharCode(live_showsyms(so));
                     continue; // C `:1485–1487` no copy this iteration
                 }
                 i = save; // C `:1490` forgery — literal
@@ -1741,11 +1753,11 @@ export function eval_notify_windowport_field(fld, valsetlist, idx) {
     // svc.context.rndencode after the status window init, so gold's \G
     // sequence was already encoded/cached; a symset change likewise alters
     // the glyph half of the encoding. svc rndencode has no JS port yet so
-    // that read stays undefined-safe; the gold showsyms slot landed with
-    // assign_graphics (display.js) and reads the C :1579 slot.
+    // that read stays undefined-safe; the gold slot reads live (carrier
+    // when a symset is loaded) like C :1579.
     {
         const rndencode = game.svc?.context?.rndencode;
-        const goldsym = game.gs?.showsyms?.[COIN_CLASS + SYM_OFF_O]; // C :1579
+        const goldsym = live_showsyms(COIN_CLASS + SYM_OFF_O); // C :1579
         if (fld === BL_GOLD && (rndencode !== oldrndencode || goldsym !== oldgoldsym)) { // C :1582-1584
             if (!game.gu) game.gu = {};
             game.gu.update_all = true; // C :1585 (chg = 2 variant abandoned)

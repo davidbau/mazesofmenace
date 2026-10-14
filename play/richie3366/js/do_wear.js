@@ -1303,15 +1303,17 @@ export function adj_abon(otmp, delta) {
 /**
  * C ref: do_wear.c Helmet_on `:434–516` — helm switch after setworn.
  * known=1 is assigned at the END (after messages) so the DUNCE_CAP glow
- * still shows the unknown "conical hat". find_ac kept (house; C relies
- * on the botl repaint instead).
+ * still shows the unknown "conical hat". No find_ac anywhere in the C
+ * body (D-3891 class): uac refreshes at the allmain once-per-input
+ * find_ac (D-0810 rule; Cloak_on stale-uac note), so a donning that
+ * completes mid-turn paints the stale AC until the turn ends.
  */
 async function Helmet_on() {
     const u = game.u || {};
     let h = u.uarmh; // let: uchangealign below may clear u.uarmh (C `:508`)
-    // C dereferences uarmh (non-null there); keep the old no-op when null.
+    // C dereferences uarmh (non-null there); null is C-unreachable, so
+    // this stays a plain no-op with no find_ac either.
     if (!h) {
-        find_ac();
         return 0;
     }
     switch ((h.otyp | 0)) {
@@ -1390,11 +1392,11 @@ async function Helmet_on() {
         break;
     }
     // C `:509–513` — uarmh could be Null; helm +/- evident via status AC.
+    // No find_ac: C `:434–516` never recomputes here (D-3891 class).
     if (game.u?.uarmh && !game.u.uarmh.known) {
         game.u.uarmh.known = 1;
         update_inventory();
     }
-    find_ac();
     return 0;
 }
 /**

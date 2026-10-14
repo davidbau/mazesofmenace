@@ -534,7 +534,7 @@ export function montraits(obj, cc, adjacentok = false, rawEnv = {}) {
                 extension.bill_p = extension.bill ?? [];
             resolvedDummy.isshk = true;
         }
-        replmon(resolvedDummy, saved, state);
+        await replmon(resolvedDummy, saved, state);
         newsym(saved.mx, saved.my, state);
         await restore_cham(saved, state, env);
         return saved;
@@ -3869,13 +3869,14 @@ export async function bhitpile(wand, tx, ty, state = game,
         previous = previous.nexthere;
     }
     if (hidingunder) maybe_unhide_at(tx, ty, state, rawEnv);
-    fill_pit(tx, ty, state);
+    await fill_pit(tx, ty, state, rawEnv);
     return hitanything;
 }
 
 // C ref: zap.c zap_map() (3625-3825). The WAN_PROBING arm maps terrain and
-// traps before it teaches the wand; the downward polymorph and teleportation
-// arms handle engraving. Other zap_map branches remain at their source boundaries.
+// traps before it teaches the wand; the downward polymorph, cancellation,
+// invisibility, and teleportation arms handle engraving. Other zap_map
+// branches remain at their source boundaries.
 // C ref: zap.c maybe_explode_trap() (3594-3623). A cancellation ray explodes
 // a magical trap before zap_map handles its remaining terrain and engraving.
 export async function maybe_explode_trap(
@@ -3922,7 +3923,7 @@ export async function maybe_explode_trap(
 
 export async function zap_map(
     x, y, wand, state = game,
-    random = { rn2, rn2_on_display_rng }, rawEnv = {},
+    random = { d, rn2, rn2_on_display_rng }, rawEnv = {},
 ) {
     const trapLearn = { value: false };
     await maybe_explode_trap(
@@ -4061,6 +4062,29 @@ export async function zap_map(
     case WAN_TELEPORTATION:
     case SPE_TELEPORT_AWAY:
         rloc_engr(engraving, state, { ...rawEnv, random });
+        break;
+    case WAN_CANCELLATION:
+    case SPE_CANCELLATION:
+    case WAN_MAKE_INVISIBLE:
+        del_engr_at(x, y, state);
+        break;
+    case SPE_STONE_TO_FLESH:
+        if (engraving.engr_type === ENGRAVE) {
+            await ttyPline(
+                Hallucination(state)
+                    ? 'The floor runs like butter!'
+                    : 'The edges on the floor get smoother.',
+                state,
+                rawEnv,
+            );
+            await wipe_engr_at(
+                x,
+                y,
+                random.d(2, 4),
+                true,
+                { ...rawEnv, state, random },
+            );
+        }
         break;
     }
     if (trapLearn.value) learnwand(wand, state);
@@ -6260,7 +6284,7 @@ export async function zap_steed(obj, state = game, random = { rn2, rnd }, rawEnv
 // probing, knock/opening, striking/force bolt, locking/wizard lock, and stone
 // to flesh before the shared floor-pile/map or ceiling-hiding behavior.
 export async function zap_updown(obj, state = game,
-    random = { rn2, rnd }, rawEnv = {}) {
+    random = { d, rn2, rnd }, rawEnv = {}) {
     const x = state.u.ux;
     const y = state.u.uy;
     let xx = x;

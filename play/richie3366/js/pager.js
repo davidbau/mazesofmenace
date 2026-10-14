@@ -38,6 +38,7 @@ import {
     GLYPH_STATUE_MALE_PILETOP_OFF, GLYPH_STATUE_FEM_PILETOP_OFF,
     GLYPH_BODY_OFF, GLYPH_BODY_PILETOP_OFF,
     set_bot_disabled, tty_nhbell, MG_FLAG_NOOVERRIDE, SYM_OFF_X, SYM_MAX,
+    SYM_OFF_M, SYM_OFF_O, SYM_OFF_W, live_showsyms,
 } from './display.js';
 import { howmonseen, couldsee, cansee } from './vision.js';
 import { getlin, mungspaces, y_n } from './getline.js';
@@ -1241,29 +1242,13 @@ function decSymsActive() {
 }
 
 /**
- * C dat/symbols DECGraphics block (`:689–777`, via load_symset): cmap
- * symbol → full showsyms byte. Sessions record `OPTIONS=symset:DECgraphics`,
- * so C matches on these bytes (the stored disp_ch bytes are stripped,
- * byte & 0x7F). Monster/object/warning letters are unremapped.
- * defsym.h 89/91/92/94 are the swallow tc/ml/mr/bc rows and 97/99/101/103
- * are the explosion tc/ml/mr/bc rows (no per-row consts in js; consecutive
- * order per defsym.h PCHAR2 rows).
+ * C symbols.c gs.showsyms cmap slot for the looked path (`:1475`): the
+ * live table for the current set — option override, else the loaded
+ * symset carrier, else the showsyms copy (live_showsyms: the
+ * assign_graphics `:224–239` / switch_symbols `:257–260` expression).
+ * S_darkroom keeps the map_background runtime rewrite (display.c
+ * `:1850–1853`).
  */
-const DEC_CMAP_BYTE = {
-    [S_vwall]: 0xF8, [S_hwall]: 0xF1, [S_tlcorn]: 0xEC, [S_trcorn]: 0xEB,
-    [S_blcorn]: 0xED, [S_brcorn]: 0xEA, [S_crwall]: 0xEE, [S_tuwall]: 0xF6,
-    [S_tdwall]: 0xF7, [S_tlwall]: 0xF5, [S_trwall]: 0xF4, [S_ndoor]: 0xFE,
-    [S_vodoor]: 0xE1, [S_hodoor]: 0xE1, [S_bars]: 0xFC, [S_tree]: 0xE7,
-    [S_room]: 0xFE, [S_upladder]: 0xF9, [S_dnladder]: 0xFA,
-    [S_brupladder]: 0xF9, [S_brdnladder]: 0xFA, [S_altar]: 0xFB,
-    [S_pool]: 0xE0, [S_ice]: 0xFE, [S_lava]: 0xE0, [S_lavawall]: 0xE0,
-    [S_vodbridge]: 0xFE, [S_hodbridge]: 0xFE, [S_water]: 0xE0,
-    [S_vbeam]: 0xF8, [S_hbeam]: 0xF1,
-    89: 0xEF, 91: 0xF8, 92: 0xF8, 94: 0xF3,
-    97: 0xEF, 99: 0xF8, 101: 0xF8, 103: 0xF3,
-};
-
-/** C symbols.c showsyms cmap slot: DEC byte when active, else Primary. */
 function cmap_showsym_code(idx) {
     if (idx === S_darkroom) {
         // C display.c map_background `:1850–1853` — showsyms[S_darkroom] is
@@ -1273,27 +1258,30 @@ function cmap_showsym_code(idx) {
             && (game.iflags?.wc_color !== false)) {
             return cmap_showsym_code(S_room);
         }
-        return showsym_x_code(SYM_NOTHING, 0x20);
+        return live_showsyms(SYM_NOTHING + SYM_OFF_X);
     }
-    if (decSymsActive()) {
-        const dec = DEC_CMAP_BYTE[idx];
-        if (dec !== undefined) return dec;
-    }
-    const prim = DEFSYMS_CH[idx];
-    return (typeof prim === 'string' && prim.length) ? prim.charCodeAt(0) : -1;
+    return live_showsyms(idx);
+}
+
+// C defsym.h MONSYM(53, '@', HUMAN, S_HUMAN): DEF_MONSYM_MLET is
+// C-aligned ([0] null, [1] S_ANT), so the index is the C mlet. Resolved
+// lazily: mondata.js sits in this module's import cycle, so the list is
+// not initialized at module-evaluation time.
+let S_HUMAN_MLET = -1;
+function human_mlet() {
+    if (S_HUMAN_MLET < 0) S_HUMAN_MLET = DEF_MONSYM_MLET.indexOf('S_HUMAN');
+    return S_HUMAN_MLET;
 }
 
 /**
- * C symbols.c get_othersym + init_showsyms SYM_OFF_X slot: option override
- * or the Primary default (NOTHING/UNEXPLORED → DEF_NOTHING ' ').
+ * C display.c reset_glyphmap monster rows (`:2651`): mons mlet +
+ * SYM_OFF_M, read live (rogue set + loaded symsets included). An unknown
+ * mlet keeps the old '?' stand-in.
  */
-function showsym_x_code(xidx, dflt) {
-    const ovt = Is_rogue_level(game.u?.uz)
-        ? game.go?.ov_rogue_syms : game.go?.ov_primary_syms;
-    const ov = ovt?.[(xidx | 0) + SYM_OFF_X];
-    if (typeof ov === 'string' && ov.length) return ov.charCodeAt(0);
-    if ((ov | 0)) return ov | 0;
-    return dflt;
+function mlet_showsym_code(mlet) {
+    const mi = DEF_MONSYM_MLET.indexOf(mlet);
+    if (mi <= 0) return 0x3F;
+    return live_showsyms(mi + SYM_OFF_M);
 }
 
 /**
@@ -1339,41 +1327,47 @@ function statue_body_mnum(glyph) {
 
 /**
  * C display.c map_glyphinfo ttychar for do_screen_description `:1268–1271`:
- * the showsyms byte for the glyph's symbol, as an integer code. Statues
- * resolve to the depicted monster's letter (C documents this in
- * do_screen_description `:1359–1361`); trap glyphs peel to their cmap row.
+ * gs.showsyms of the glyph's symbol row, read live (rogue set, loaded
+ * symsets and option overrides included). Statues resolve to the depicted
+ * monster's letter (C documents this in do_screen_description `:1359–1361`);
+ * trap glyphs peel to their cmap row; invisible/unexplored/nothing glyphs
+ * read their SYM_OFF_X slots (C display.c `:2775` `:2779` `:3030`).
  */
 function glyph_showsym_code(glyph) {
     if (glyph_is_monster(glyph)) {
-        const mlet = mons(glyph_to_mon(glyph))?.mlet;
-        return (mlet ? monsym({ mlet }) : '?').charCodeAt(0);
+        return mlet_showsym_code(mons(glyph_to_mon(glyph))?.mlet);
     }
     if (glyph_is_statue(glyph) || glyph_is_body(glyph)) {
         const mnum = statue_body_mnum(glyph);
         const mlet = (mnum != null) ? mons(mnum)?.mlet : null;
-        if (mlet) return monsym({ mlet }).charCodeAt(0);
-        return def_oc_syms[ROCK_CLASS].sym.charCodeAt(0);
+        if (mlet) return mlet_showsym_code(mlet);
+        return live_showsyms(ROCK_CLASS + SYM_OFF_O);
     }
     if (glyph_is_normal_object(glyph) || glyph_is_piletop_generic_obj(glyph)) {
-        const row = def_oc_syms[game.objects?.[glyph_to_obj(glyph)]?.oc_class];
-        return (row && row.sym.length) ? row.sym.charCodeAt(0) : 0x3F;
+        const oc = game.objects?.[glyph_to_obj(glyph)]?.oc_class;
+        const row = def_oc_syms[oc];
+        if (!row || !row.sym.length) return 0x3F;
+        return live_showsyms(oc + SYM_OFF_O);
     }
     if (glyph_is_trap(glyph)) {
         return cmap_showsym_code(((glyph | 0) - GLYPH_TRAP_OFF) + S_arrow_trap);
     }
     if (glyph_is_cmap(glyph)) return cmap_showsym_code(glyph_to_cmap(glyph));
     // C map_glyphinfo ttychar for a swallow glyph — showsyms[S_sw_*] of the
-    // part (packed low 3 bits), DEC high-bit under decSymsActive; the
-    // stomach cell's sym feeds is_swallow_sym → mon_interior.
+    // part (packed low 3 bits); the stomach cell's sym feeds
+    // is_swallow_sym → mon_interior.
     if (glyph_is_swallow(glyph)) {
         return cmap_showsym_code(S_sw_tl + glyph_to_swallow(glyph));
     }
     if (glyph_is_warning(glyph)) {
-        const wch = def_warnsyms[glyph_to_warning(glyph)]?.ch;
-        return (typeof wch === 'string' && wch.length) ? wch.charCodeAt(0) : 0x3F;
+        const w = glyph_to_warning(glyph);
+        const wch = def_warnsyms[w]?.ch;
+        if (typeof wch !== 'string' || !wch.length) return 0x3F;
+        return live_showsyms(w + SYM_OFF_W);
     }
-    if (glyph_is_invisible_id(glyph)) return 0x49; // DEF_INVISIBLE 'I'
-    if (glyph_is_unexplored(glyph) || glyph_is_nothing(glyph)) return 0x20; // DEF_NOTHING
+    if (glyph_is_invisible_id(glyph)) return live_showsyms(SYM_INVISIBLE + SYM_OFF_X);
+    if (glyph_is_unexplored(glyph)) return live_showsyms(SYM_UNEXPLORED + SYM_OFF_X);
+    if (glyph_is_nothing(glyph)) return live_showsyms(SYM_NOTHING + SYM_OFF_X);
     return 0x20;
 }
 
@@ -1406,13 +1400,15 @@ function rendered_glyph_char(x, y) {
  * Holders ({s}/{v}/{pm}, the add_cmap_descr convention) stand in for the C
  * out-pointers and are mutated in place; returns the C `found` count.
  * `sym` is the C int: the full showsyms byte from glyph_showsym_code
- * (sessions run symset:DECgraphics, so wall/room/ladder bytes carry the
+ * (live_showsyms for the current set — rogue, symsets and overrides
+ * included; under symset:DECgraphics wall/room/ladder bytes carry the
  * high bit and never collide with monster letters). The prefix renders the
  * glyph through the DEC→Unicode paint rule, as C's encglyph/putmixed does.
- * Named omissions: rogue_syms table (Is_rogue_level showsyms; Primary used);
- * non-boulder `go.ov_*_syms` option overrides (boulder arm live).
- * The `looked && sym == showsyms[SYM_*+SYM_OFF_X]` halves of the
- * dark-room/unexplored arms resolve via the showsym_x_code slots.
+ * The looked path reads the live showsyms table throughout; the unlooked
+ * `/`-query path compares the Primary def_* bytes, per C. The warning arm
+ * keeps the house gw.warnsyms read (WARNINGS-customizable; W slots have
+ * no symset or rogue variance). The `is_swallow_sym` full-showsyms table
+ * stays that function's own row.
  */
 export function do_screen_description(cc, looked, sym, outStr, firstMatch, forSupplement) {
     const u = game.u || {};
@@ -1471,7 +1467,12 @@ export function do_screen_description(cc, looked, sym, outStr, firstMatch, forSu
                     const mlet = DEF_MONSYM_MLET[i];
                     if (mlet === 'S_invisible') continue; // avoid matching on this
                     const explain = mlet_class_explain(mlet);
-                    if (sym === monsym({ mlet }).charCodeAt(0) && explain) {
+                    // C `:1332–1333` — looked compares the live showsyms
+                    // (rogue set + loaded symsets included); the unlooked
+                    // `/`-query path compares the Primary def_monsyms byte.
+                    const monByte = looked ? live_showsyms(i + SYM_OFF_M)
+                        : monsym({ mlet }).charCodeAt(0);
+                    if (sym === monByte && explain) {
                         needToLook = true;
                         if (!found) {
                             outStr.s = `${prefix}${an(explain)}`;
@@ -1483,7 +1484,9 @@ export function do_screen_description(cc, looked, sym, outStr, firstMatch, forSu
                     }
                 }
                 // C `:1342–1352` — '@' as you when your race isn't '@'.
-                if ((looked ? (sym === 0x40 && u_at(cc.x, cc.y))
+                // Looked compares the live S_HUMAN slot (RogueEpyx sets
+                // 0x01); unlooked compares the Primary def_monsyms byte.
+                if ((looked ? (sym === live_showsyms(human_mlet() + SYM_OFF_M) && u_at(cc.x, cc.y))
                             : (sym === 0x40 && !game.flags?.showrace))
                     && (game.urace?.mnum | 0) !== PM_HUMAN
                     && (game.urace?.mnum | 0) !== PM_ELF
@@ -1501,8 +1504,13 @@ export function do_screen_description(cc, looked, sym, outStr, firstMatch, forSu
                     ? ovCh.charCodeAt(0)
                     : def_oc_syms[ROCK_CLASS].sym.charCodeAt(0);
                 for (let i = 1; i < MAXOCLASSES; i++) {
+                    // C `:1359–1362` — looked compares the live showsyms
+                    // (rogue def_r_oc_syms + loaded symsets included);
+                    // unlooked compares the Primary def_oc_syms byte.
+                    const objByte = looked ? live_showsyms(i + SYM_OFF_O)
+                        : def_oc_syms[i].sym.charCodeAt(0);
                     if ((i !== ROCK_CLASS)
-                        ? (sym !== def_oc_syms[i].sym.charCodeAt(0))
+                        ? (sym !== objByte)
                         : (!glyph_is_statue(glyph) && sym !== bouldersym)) {
                         continue;
                     }
@@ -1540,9 +1548,9 @@ export function do_screen_description(cc, looked, sym, outStr, firstMatch, forSu
                 }
             }
             // C `:1419–1431` — the dark part of a room: glyph bank or the
-            // SYM_NOTHING showsyms slot.
+            // live SYM_NOTHING showsyms slot.
             if ((glyph !== NO_GLYPH && glyph_is_nothing(glyph))
-                || (looked && sym === showsym_x_code(SYM_NOTHING, 0x20))) {
+                || (looked && sym === live_showsyms(SYM_NOTHING + SYM_OFF_X))) {
                 xStr = 'the dark part of a room';
                 if (!found) {
                     outStr.s = `${prefix}${xStr}`;
@@ -1552,10 +1560,10 @@ export function do_screen_description(cc, looked, sym, outStr, firstMatch, forSu
                     found += append_str(outStr, xStr);
                 }
             }
-            // C `:1433–1445` — unexplored: glyph bank or the SYM_UNEXPLORED
-            // showsyms slot.
+            // C `:1433–1445` — unexplored: glyph bank or the live
+            // SYM_UNEXPLORED showsyms slot.
             if ((glyph !== NO_GLYPH && glyph_is_unexplored(glyph))
-                || (looked && sym === showsym_x_code(SYM_UNEXPLORED, 0x20))) {
+                || (looked && sym === live_showsyms(SYM_UNEXPLORED + SYM_OFF_X))) {
                 xStr = submerged ? 'land' : 'unexplored';
                 if (!found) {
                     outStr.s = `${prefix}${xStr}`;
@@ -1679,7 +1687,7 @@ export function do_screen_description(cc, looked, sym, outStr, firstMatch, forSu
                             // (MG_FLAG_NOOVERRIDE): the pet's class letter.
                             const mtmp = mon_at(cc.x, cc.y);
                             const under = mtmp
-                                ? monsym(mtmp).charCodeAt(0) : sym;
+                                ? mlet_showsym_code(mtmp.mlet) : sym;
                             if (under !== sym) {
                                 sym = under;
                                 jumped = true;
@@ -1688,9 +1696,10 @@ export function do_screen_description(cc, looked, sym, outStr, firstMatch, forSu
                         break;
                     }
                     if (j === (SYM_HERO_OVERRIDE | 0) + SYM_OFF_X) {
-                        // C `:1592–1595` — the human class symbol.
-                        if (sym !== 0x40) {
-                            sym = 0x40;
+                        // C `:1592–1595` — the live human class symbol.
+                        const heroByte = live_showsyms(human_mlet() + SYM_OFF_M);
+                        if (sym !== heroByte) {
+                            sym = heroByte;
                             jumped = true;
                         }
                         break;

@@ -4895,6 +4895,17 @@ export function parseNethackrc(rc, defaultsInitialized = false) {
             continue;
         }
 
+        // C cfgfiles.c cnf_line_MENUCOLOR `:1164–1166` — top-level
+        // MENUCOLOR= (config_line_stmt CNFL_N(MENUCOLOR, 9) `:1365`: full
+        // name, case-insensitive match_optname, no abbreviation). bufp is
+        // the text after the first '=' (find_optparam `:588–598`); the live
+        // add_menu_coloring re-splits at its own '=' (`:626`).
+        const menucMatch = line.match(/^MENUCOLOR=(.+)/i);
+        if (menucMatch) {
+            add_menu_coloring(menucMatch[1]);
+            continue;
+        }
+
         // C cfgfiles.c cnf_line_ROGUESYMBOLS `:1190–1199` — top-level
         // ROGUESYMBOLS=. C TRUE→switch_symbols (named: no JS apply step,
         // ov_* tables are read lazily at render) / FALSE→config_error_add
@@ -9749,18 +9760,13 @@ function simple_opt_get_val(opt) {
         return holder.buf;
     }
     if (name === 'symset') {
-        // C: gs.symset[PRIMARYSET].name + ", active" + ", handler=DEC"
-        // jsmain stores OPTIONS=symset:Name on game.symset; boolean
-        // DECgraphics also implies the DECgraphics set name.
-        let nm = game.symset || game._parsed_rc?.symset || game.flags?.symset;
-        if (!nm && game.iflags?.decgraphics) nm = 'DECgraphics';
-        if (!nm) return 'default';
-        let s = String(nm);
-        s += ', active';
-        if (String(nm).toLowerCase() === 'decgraphics' || game.iflags?.decgraphics) {
-            s += ', handler=DEC';
-        }
-        return s;
+        // C doset_simple_menu `:8602–8620` calls the optfn get_val for
+        // every compound row — no hand-rolled value. k-swap `:8603–8608`:
+        // on a rogue level the row shows the roguesymset entry (the name
+        // half of the swap is at the doset_simple_menu call site).
+        if (Is_rogue_level())
+            return doset_compopt_get_val(optfn_roguesymset, 'roguesymset');
+        return doset_compopt_get_val(optfn_symset, 'symset');
     }
     if (name === 'statuslines') {
         // C `:4101` supported arm (contest tty sets the bit; the live
@@ -11450,7 +11456,7 @@ export async function doset() {
             // so the live optfn reads '2'/'3' like C — same as here).
             { name: 'statuslines', get_val: () => (((game.iflags?.wc2_statuslines | 0) < 3) ? '2' : '3') },
             { name: 'suppress_alert', get_val: () => doset_compopt_get_val(optfn_suppress_alert, 'suppress_alert') },
-            { name: 'symset', val: 'DECgraphics, active, handler=DEC', handler: true }, // C has_handler (optlist.h) → handler_symset
+            { name: 'symset', get_val: () => doset_compopt_get_val(optfn_symset, 'symset'), handler: true }, // C `:9038` get_val → optfn_symset `:4205–4215` (was a DECgraphics literal); has_handler (optlist.h) → handler_symset
             { name: 'versinfo', get_val: () => doset_compopt_get_val(optfn_versinfo, 'versinfo'), handler: true },
             { name: 'whatis_coord', get_val: () => doset_compopt_get_val(optfn_whatis_coord, 'whatis_coord'), handler: true },
             { name: 'whatis_filter', get_val: () => doset_compopt_get_val(optfn_whatis_filter, 'whatis_filter'), handler: true },

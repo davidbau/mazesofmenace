@@ -19,7 +19,7 @@ import {
     glyph_is_warning, unmap_object, map_object,
     look_shown_at, Norep, tty_doprev_message, putmsghistory, NO_GLYPH,
     unmap_invisible, map_invisible, custompline,
-    Hallucination, raw_printf, feel_location,
+    Hallucination, raw_printf, feel_location, doredraw,
 } from './display.js';
 import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR, ICE,
          D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN, D_ISOPEN, SCORR, LAVAWALL,
@@ -3664,16 +3664,55 @@ export async function dotherecmdmenu() {
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
 
+// C ref: cmd.c reset_commands `:3433–3435` — num_pad dirchars are ndir
+// "47896321" index-aligned with sdir "hykulnjb", so each digit walks the
+// same direction as its sdir letter ('5' is no direction: commands_init
+// `:2770` binds it to the run prefix instead).
+const NUMPAD_WALK = { 4: 'h', 7: 'y', 8: 'k', 9: 'u', 6: 'l', 3: 'n', 2: 'j', 1: 'b' };
+
+// C ref: cmd.c move_funcs `:2070–2083` rows by sdir letter — the CQ_REPEAT
+// func/txt for num_pad digit (walk) and M(digit) (run) keys.
+const RHACK_REPEAT_MOVE = {
+    h: do_move_west, y: do_move_northwest, k: do_move_north,
+    u: do_move_northeast, l: do_move_east, n: do_move_southeast,
+    j: do_move_south, b: do_move_southwest,
+};
+const RHACK_REPEAT_RUN = {
+    h: do_run_west, y: do_run_northwest, k: do_run_north,
+    u: do_run_northeast, l: do_run_east, n: do_run_southeast,
+    j: do_run_south, b: do_run_southwest,
+};
+const RHACK_REPEAT_MOVE_TXT = {
+    h: 'movewest', y: 'movenorthwest', k: 'movenorth', u: 'movenortheast',
+    l: 'moveeast', n: 'movesoutheast', j: 'movesouth', b: 'movesouthwest',
+};
+const RHACK_REPEAT_RUN_TXT = {
+    h: 'runwest', y: 'runnorthwest', k: 'runnorth', u: 'runnortheast',
+    l: 'runeast', n: 'runsoutheast', j: 'runsouth', b: 'runsouthwest',
+};
+
 function isMovementKey(ch) {
+    // C `:3439–3472` — the movement binds are sdir letters when !num_pad
+    // (letters restored to commands_init binds under num_pad: h→help,
+    // j→jump, k→kick, l→loot, u→untrap, the rest unbound) and ndir
+    // digits when num_pad.
+    if (game.Cmd?.num_pad) return ch in NUMPAD_WALK;
     return 'hjklyubn'.includes(ch);
 }
 
 function isRunKey(ch) {
+    // C `:3464–3471` — capital-letter run exists only when !num_pad;
+    // under num_pad run is M(digit) (handled at the run arm).
+    if (game.Cmd?.num_pad) return false;
     return 'HJKLYUBN'.includes(ch);
 }
 
 /** C ref: cmd.c reset_commands — C(dirchars[i]) → do_rush_* (!number_pad). */
 function rushDirFromCtrl(key) {
+    // C `:3471` — no C(digit) rush binds under num_pad ("just use the 5
+    // prefix"); the C(letter) rush binds are restored away, so ^J etc. are
+    // unbound there (C-l→redraw and C-n→annotate excepted).
+    if (game.Cmd?.num_pad) return null;
     // Only real Ctrl-A..Ctrl-Z codes (1..26). Plain 'j' (106) must not match:
     // (106 & 0x1f)+96 === 'j'. C('j')==10=='\n' is rush-south.
     if (key < 1 || key > 26) return null;
@@ -5183,10 +5222,31 @@ function rhack_repeat_command(ch, key) {
     if (key === 6) return wiz_map;
     if (key === 7) return wiz_genesis;
     if (key === 16) return doprev_message; // C('p')
+    if (key === 18) return doredraw; // C `:1818` C('r')→redraw, both modes
     if (key === 20) return dotelecmd;
     if (key === 22) return wiz_level_tele;
     if (key === 23) return wiz_wish;
     if (key === 24) return doattributes;
+    if (game.Cmd?.num_pad) {
+        // C reset_commands `:3462–3472` + commands_init `:2770–2772`:
+        // ndir digits walk, M(digits) run, '5'/M('5') are the run/rush
+        // prefixes, C('l') redraws. Restored letters re-add via
+        // rhack_dispatch_bound (their tlist); unbound keys add nothing
+        // (C `:3835–3836` clears instead). All other binds are unchanged,
+        // so they fall through to the switch below.
+        if (ch === '5') return do_run;
+        if (key === Mcode(53)) return do_rush;
+        if (key === Ccode(108)) return doredraw;
+        if (key >= Mcode(49) && key <= Mcode(57)) {
+            const md = NUMPAD_WALK[String.fromCharCode(key & 0x7f)];
+            if (md) return RHACK_REPEAT_RUN[md];
+        }
+        const wl = NUMPAD_WALK[ch];
+        if (wl !== undefined) return RHACK_REPEAT_MOVE[wl];
+        if ('hykulnjbHYKULNJB'.includes(ch)) return null;
+        if (key >= 1 && key <= 26
+            && 'hykulnjb'.includes(String.fromCharCode(key + 96))) return null;
+    }
     switch (ch) {
     case 'a': return doapply;
     case 'A': return doddoremarm;
@@ -5270,10 +5330,27 @@ function rhack_repeat_txt(ch, key) {
     if (key === 6) return 'wizmap';
     if (key === 7) return 'wizgenesis';
     if (key === 16) return 'prevmsg';
+    if (key === 18) return 'redraw';
     if (key === 20) return 'teleport';
     if (key === 22) return 'wizlevelport';
     if (key === 23) return 'wizwish';
     if (key === 24) return 'attributes';
+    if (game.Cmd?.num_pad) {
+        // Same num_pad dispatch as rhack_repeat_command above (C
+        // reset_commands `:3462–3472` + commands_init `:2770–2772`).
+        if (ch === '5') return 'run';
+        if (key === Mcode(53)) return 'rush';
+        if (key === Ccode(108)) return 'redraw';
+        if (key >= Mcode(49) && key <= Mcode(57)) {
+            const md = NUMPAD_WALK[String.fromCharCode(key & 0x7f)];
+            if (md) return RHACK_REPEAT_RUN_TXT[md];
+        }
+        const wl = NUMPAD_WALK[ch];
+        if (wl !== undefined) return RHACK_REPEAT_MOVE_TXT[wl];
+        if ('hykulnjbHYKULNJB'.includes(ch)) return '';
+        if (key >= 1 && key <= 26
+            && 'hykulnjb'.includes(String.fromCharCode(key + 96))) return '';
+    }
     const byCh = {
         a: 'apply', A: 'takeoffall', c: 'close', d: 'drop', D: 'droptype',
         e: 'eat',
@@ -5410,6 +5487,30 @@ async function parse() {
     clear_nhwindow_message(); // C `:5146` clear_nhwindow(WIN_MESSAGE)
     game.iflags.in_parse = false; // C `:5149`
     return game.cmd_key; // C `:5150`
+}
+
+/**
+ * C cmd.c rhack `:3833–3841` bad_command arm — the key has no bind.
+ * custompline(SUPPRESS_HISTORY, "Unknown command '%s'.", visctrl(key)),
+ * then cmdq_clear(CQ_CANNED) + cmdq_clear(CQ_REPEAT), skip the sanity
+ * check, move FALSE, multi 0. Shared by both Unknown sites (the BIND=
+ * overlay arm and the final else — a NULL tlist and an unrunnable one
+ * converge here in C). Ctrl-C is "^C", not raw ETX (D-1189).
+ * @param {number} key
+ */
+async function rhack_unknown_command(key) {
+    // C `:3833–3841`: no reset — forcefight survives Unknown (D-3953).
+    if (game.context?.run || (game.multi || 0) > 0) end_running(true);
+    if (game.context) game.context.command_count = 0;
+    game._repeat_search = false;
+    await custompline(SUPPRESS_HISTORY, // C `:3834`
+        `Unknown command '${visctrl(key)}'.`);
+    cmdq_clear(CQ_CANNED); // C `:3835`
+    cmdq_clear(CQ_REPEAT); // C `:3836`
+    // C `:3837` skip sanity check (house shape: rhack's ESC/no-key arm).
+    if (game.iflags) game.iflags.sanity_no_check = game.iflags.sanity_check;
+    game.context.move = 0; // C `:3840` didn't move
+    game.multi = 0; // C `:3841`
 }
 
 // C ref: cmd.c rhack — main command dispatcher
@@ -5552,6 +5653,12 @@ export async function rhack(key) {
     const ch = String.fromCharCode(key);
     // C ref: reset_commands bind C(dir) → do_rush_*; e.g. C('j')=='\n' south
     const rushDir = rushDirFromCtrl(key);
+    // C `:3470` — under num_pad M(digit) runs that direction (M(number)
+    // works when altmeta is on); M('5') is the rush prefix instead
+    // (`:2771`, chained at the g/G arm below like 'g').
+    const metaRunDir = !!game.Cmd?.num_pad && key >= Mcode(49)
+        && key <= Mcode(57) && key !== Mcode(53)
+        ? (NUMPAD_WALK[String.fromCharCode(key & 0x7f)] || null) : null;
 
     // C rhack (cmd.c): prefix_seen=do_fight + command lacking CMD_gGF_PREFIX
     // → pline feedback, ECMD_FAIL, reset_cmd_vars — do NOT run the command.
@@ -5559,12 +5666,31 @@ export async function rhack(key) {
     // later getobj letters as movement (D-0927 seed4500 @87803).
     // Named omissions: nested g/G PREFIXCMD after F; full CMD_gGF table.
     // C: g/G are PREFIXCMD so they do not trip the F-prefix error.
-    if (game.context?.forcefight
-        && ch !== 'F' && ch !== '-' && ch !== 'm' && ch !== 'g' && ch !== 'G'
-        && !isMovementKey(ch) && !isRunKey(ch) && !rushDir) {
+    // C `:2770–2772` — under num_pad '5' is the run prefix and M('5')
+    // the rush prefix; both chain after another prefix like g/G (the g/G
+    // arm below accepts them; the tlist gates here already skip PREFIXCMD).
+    const numPadPrefix = !!game.Cmd?.num_pad
+        && (ch === '5' || key === Mcode(53));
+    // C `:3693` — after a fight prefix the error fires only for a BOUND
+    // key whose command is neither PREFIXCMD nor CMD_gGF_PREFIX. An
+    // unbound key (NULL tlist) skips the gate and falls to Unknown below
+    // (`:3829–3838`); movement binds carry CMD_gGF_PREFIX, F/-/m/g/G and
+    // num_pad 5/M-5 carry PREFIXCMD, so they chain instead.
+    // C prefix_seen is call-local: Unknown returns with forcefight set,
+    // but the next call runs the key normally with the gate off — so the
+    // gate reads prefix_seen, not the persistent forcefight (D-3953).
+    const afterFightTab = prefix_seen?.txt === 'fight'
+        ? cmdbind_get(key & 0xff) : null;
+    if (afterFightTab && !(afterFightTab.flags & PREFIXCMD)
+        && !(afterFightTab.flags & CMD_gGF_PREFIX)) {
         const upDown = (ch === '<' || ch === '>');
+        // C `:3696–3700` — the prefix names itself via
+        // visctrl(cmd_from_func(fight)): 'F' when !num_pad, '-' when num_pad
+        // (newest printable bind wins; 0 falls back to the ef_txt).
+        const fightPfx = cmd_from_func('fight') & 0xff;
+        const fightWhich = fightPfx ? visctrl(fightPfx) : 'fight';
         await pline(
-            `The 'F' prefix should be followed by a movement command${
+            `The '${fightWhich}' prefix should be followed by a movement command${
                 upDown ? ' other than up or down' : ''}.`,
         );
         game.context.forcefight = 0;
@@ -5585,10 +5711,18 @@ export async function rhack(key) {
         && !game.context?.mv
         && (game.context?.run === 2 || game.context?.run === 3)
     );
-    if (pendingRushPrefix
-        && ch !== 'g' && ch !== 'G' && ch !== 'F' && ch !== '-' && ch !== 'm'
-        && !isMovementKey(ch)) {
-        const which = game.context.run === 3 ? 'G' : 'g';
+    // C `:3693` — same tlist gate after a run/rush prefix: bound keys
+    // without PREFIXCMD/CMD_gGF_PREFIX error, unbound keys fall through
+    // to Unknown, movement and chained prefixes run.
+    const afterRushTab = pendingRushPrefix ? cmdbind_get(key & 0xff) : null;
+    if (afterRushTab && !(afterRushTab.flags & PREFIXCMD)
+        && !(afterRushTab.flags & CMD_gGF_PREFIX)) {
+        // C `:3696–3700` — visctrl(cmd_from_func(run|rush)): 'G'/'g' when
+        // !num_pad; '5'/'g' when num_pad (M('5') is non-printable so the
+        // older 'g' still wins for rush; 0 falls back to the ef_txt).
+        const rushTxt = game.context.run === 3 ? 'run' : 'rush';
+        const rushPfx = cmd_from_func(rushTxt) & 0xff;
+        const which = rushPfx ? visctrl(rushPfx) : rushTxt;
         const upDown = (ch === '<' || ch === '>');
         await pline(
             `The '${which}' prefix should be followed by a movement command${
@@ -5623,7 +5757,7 @@ export async function rhack(key) {
         || accept_menu_prefix_tab(bindTab);
     if (ch !== 'm' && ch !== 'g' && ch !== 'G' && ch !== 'F' && ch !== '-'
         && !accepts_m_prefix && !isMovementKey(ch) && !isRunKey(ch)
-        && !rushDir && game.iflags?.menu_requested) {
+        && !rushDir && !metaRunDir && game.iflags?.menu_requested) {
         // C `:3703–3711` — m-prefix + command lacking CMD_M_PREFIX: the
         // reject pline (bound keys only; unbound fall to Unknown below).
         if (bindTab?.txt) {
@@ -5631,6 +5765,10 @@ export async function rhack(key) {
             const which = pfx ? visctrl(pfx) : 'move-no-pickup or request-menu';
             await custompline(SUPPRESS_HISTORY,
                 `The ${bindTab.txt} command does not accept '${which}' prefix.`);
+            // C `:3713–3714` res = ECMD_FAIL → `:3812–3816`
+            // reset_cmd_vars(TRUE): the rejected command does NOT run.
+            reset_cmd_vars(true);
+            return;
         }
         game.iflags.menu_requested = false;
     }
@@ -5662,10 +5800,12 @@ export async function rhack(key) {
         // C `:1396–1399`: `if (!domove_attempting && !u.dz) run = 0` — a
         // plain walk ends any run (e.g. travel's run=8); without this the
         // EOT time_botl stays suppressed and T: goes stale after travel.
+        // Under num_pad the key is an ndir digit walking its sdir letter.
+        const wch = NUMPAD_WALK[ch] || ch;
         const mu = game.u || (game.u = {});
         mu.dz = 0; // C `:1389` u.dz = zdir[dir] (0 for planar)
-        mu.dx = DIR_DX[ch]; // C `:1390`
-        mu.dy = DIR_DY[ch]; // C `:1391`
+        mu.dx = DIR_DX[wch]; // C `:1390`
+        mu.dy = DIR_DY[wch]; // C `:1391`
         if (!game.context) game.context = {};
         game.context.travel = 0;
         game.context.travel1 = 0;
@@ -5697,7 +5837,7 @@ export async function rhack(key) {
         // per tick, no rhack re-dispatch, no per-step see_monsters
         // refresh under Hallu/telepat/Warning/region.
         if (game.multi) game.context.mv = 1;
-        await domove(DIR_DX[ch], DIR_DY[ch]);
+        await domove(DIR_DX[wch], DIR_DY[wch]);
         // C: forcefight cleared after DOMOVE_WALK domove
         if (game.context) game.context.forcefight = 0;
         // domove sets context.move = 0 if blocked; else leave as 1 (allmain preset)
@@ -5715,16 +5855,12 @@ export async function rhack(key) {
         if (!bound.done) {
             // C tlist NULL ("nothing") or overlay target with no EXT_CMDS
             // runner — Unknown, do not fall through to if/else.
-            if (game.context?.forcefight) game.context.forcefight = 0;
-            if (game.context?.run || (game.multi || 0) > 0) end_running(true);
-            if (game.context) game.context.command_count = 0;
-            game._repeat_search = false;
-            game.context.move = 0;
-            await pline(`Unknown command '${visctrl(key)}'.`);
+            await rhack_unknown_command(key);
         }
-    } else if (isRunKey(ch) || rushDir) {
-        // C ref: cmd.c do_run_* → run=1; do_rush_* (C(dir)) → run=3
-        const low = rushDir || ch.toLowerCase();
+    } else if (isRunKey(ch) || rushDir || metaRunDir) {
+        // C ref: cmd.c do_run_* → run=1; do_rush_* (C(dir)) → run=3.
+        // metaRunDir is do_run_* (M(digit) under num_pad) → run=1.
+        const low = rushDir || metaRunDir || ch.toLowerCase();
         if (!game.context) game.context = {};
         // Pending F + capital/ctrl dir: forcefight one step (not rush)
         if (game.context.forcefight) {
@@ -5802,14 +5938,17 @@ export async function rhack(key) {
         was_m_prefix = true;
         key = 0;
         continue;
-    } else if (ch === 'g' || ch === 'G') {
-        // C cmd.c do_rush ('g') / do_run ('G') — PREFIXCMD, then another cmd
-        const res = ch === 'G' ? await do_run() : await do_rush();
+    } else if (ch === 'g' || ch === 'G' || numPadPrefix) {
+        // C cmd.c do_rush ('g') / do_run ('G') — PREFIXCMD, then another
+        // cmd. Under num_pad '5' is do_run and M('5') is do_rush
+        // (commands_init `:2770–2771`).
+        const isRun = ch === 'G' || ch === '5';
+        const res = isRun ? await do_run() : await do_rush();
         if (res & ECMD_CANCEL) {
             reset_cmd_vars(true);
             return;
         }
-        prefix_seen = ext_func_tab_from_txt(ch === 'G' ? 'run' : 'rush');
+        prefix_seen = ext_func_tab_from_txt(isRun ? 'run' : 'rush');
         key = 0;
         continue;
     } else if (key === 1) {
@@ -5824,10 +5963,13 @@ export async function rhack(key) {
         }
         game.context.move = (res & ECMD_TIME) ? 1 : 0;
         if (res & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
-    } else if (ch >= '0' && ch <= '9') {
+    } else if (!game.Cmd?.num_pad && ch >= '0' && ch <= '9') {
         // Digits are consumed by get_count in parse (rhack(0)); reaching
         // here means rhack(key) with an explicit digit — treat as count
         // bump without a turn (rare multi/canned path).
+        // Under num_pad digits are commands (walk/5-prefix above; '0' is
+        // unbound in C — no extcmdlist '0', no ndir slot — so it falls to
+        // the final else → Unknown like C `:3833–3841`).
         if (!game.context) game.context = {};
         const d = ch.charCodeAt(0) - 48;
         game.context.command_count = (game.context.command_count || 0) * 10 + d;
@@ -6264,6 +6406,17 @@ export async function rhack(key) {
         // C rhack `:3814–3816` — ECMD_OK → reset_cmd_vars(multi < 0).
         reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = 0;
+    } else if (key === 18 || (!!game.Cmd?.num_pad && key === 12)) {
+        // C ref: cmd.c extcmdlist `:1818` C('r') "redraw" (IFBURIED |
+        // GENERALCMD | CMD_INSANE) + commands_init `:2762` C('l')→redraw,
+        // which is live only under num_pad (!num_pad C('l') is rush-west
+        // via the run arm above). C doredraw display.c `:1694–1699`:
+        // docrt(), ECMD_OK.
+        rhack_cmd_insane(CMD_INSANE);
+        await doredraw();
+        // C rhack `:3814–3816` — ECMD_OK → reset_cmd_vars(multi < 0).
+        reset_cmd_vars((game.multi | 0) < 0);
+        game.context.move = 0;
     } else if (key === 16) { // ^P — C('p') doprev_message
         // C ref: cmd.c doprev_message / topl.c tty_doprev_message (D-1601)
         // CMD_INSANE — skip the following sanity_check (D-1664).
@@ -6414,15 +6567,8 @@ export async function rhack(key) {
             continue;
         }
         if (!bound.done) {
-            // Unknown command (includes unbound space when !rest_on_space)
-            // C rhack: custompline(SUPPRESS_HISTORY, "Unknown command '%s'.",
-            // visctrl(key)) — Ctrl-C is "^C", not raw ETX (D-1189).
-            if (game.context?.forcefight) game.context.forcefight = 0;
-            if (game.context?.run || (game.multi || 0) > 0) end_running(true);
-            if (game.context) game.context.command_count = 0;
-            game._repeat_search = false;
-            game.context.move = 0;
-            await pline(`Unknown command '${visctrl(key)}'.`);
+            // Unknown command (includes unbound space when !rest_on_space).
+            await rhack_unknown_command(key);
         }
     }
     return;
