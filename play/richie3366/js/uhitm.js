@@ -25,6 +25,7 @@ import {
     W_ARM, W_ARMC, W_ARMH, W_ARMU, W_ARMG, W_RINGL, W_RINGR, W_ARMF, W_AMUL, W_WEP,
     MON_EXPLODE, NO_MM_FLAGS, NO_TRAP_FLAGS, DISP_ALWAYS, DISP_END, STOMACH, DIED, NO_KILLER_PREFIX, ERODE_CORRODE, ERODE_BURN, ERODE_RUST, EF_GREASE, EF_NONE, EF_VERBOSE, STONING,
     KILLED_BY_AN, SLOW_DIGESTION, FREE_ACTION, ANTIMAGIC, MALE, FEMALE, MMOVE_DIED, CXN_ARTICLE,
+    ACID_RES, COLD_RES, FIRE_RES, SHOCK_RES, STONE_RES, BLINDED,
     M_SEEN_MAGR, M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_ELEC, M_SEEN_ACID,
     ERODE_ROT, NO_NC_FLAGS, AD_CURS, EDOG, is_pit, FACE, NEUTRAL, CXN_PFX_THE,
     EXPL_FIERY, ismnum, EXT_ENCUMBER, NOTELL,
@@ -3245,6 +3246,9 @@ async function passive_obj(mon, obj, mattk) {
  * C `gn.nomovemsg = 0` is `game.nomovemsg = null` (hack.js unmul prints
  * only non-null; `= ''` elsewhere means the same suppression);
  * `You_can_move_again` is the decl.c string (cf. hack.js unmul default).
+ * D-3978: the five resist unions read uprops (C youprop.h), not flats
+ * alone — worn gear writes uprops only. Same for the :5908 Blind gate
+ * (D-0716: no sticky).
  */
 export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destroyed) {
     if (!mon) return (maliveb ? M_ATTK_HIT : M_ATTK_MISS)
@@ -3270,14 +3274,27 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
     // miss it (cf. the enlightenment union, invent.js:7441).
     const Free_action = !!(u.Free_action || u.HFree_action || u.EFree_action
         || (u.uprops?.[FREE_ACTION]?.extrinsic | 0));
+    // C youprop.h:26-32,42-44,59-61 — each resistance ≡
+    // uprops[PROP].intrinsic || uprops[PROP].extrinsic; worn gear
+    // (confer_oc_oprop, do_wear.js) writes uprops only, so the flats
+    // alone miss it (D-1089 idiom; cf. mhitu.js hitmu, potion.js,
+    // invent.js unions). Keep the flats for eat/poly paths.
     const Cold_resistance = !!(u.Cold_resistance || u.HCold_resistance
-        || u.ECold_resistance);
+        || u.ECold_resistance
+        || (u.uprops?.[COLD_RES]?.intrinsic | 0)
+        || (u.uprops?.[COLD_RES]?.extrinsic | 0));
     const Fire_resistance = !!(u.Fire_resistance || u.HFire_resistance
-        || u.EFire_resistance);
+        || u.EFire_resistance
+        || (u.uprops?.[FIRE_RES]?.intrinsic | 0)
+        || (u.uprops?.[FIRE_RES]?.extrinsic | 0));
     const Shock_resistance = !!(u.Shock_resistance || u.HShock_resistance
-        || u.EShock_resistance);
+        || u.EShock_resistance
+        || (u.uprops?.[SHOCK_RES]?.intrinsic | 0)
+        || (u.uprops?.[SHOCK_RES]?.extrinsic | 0));
     const Acid_resistance = !!(u.Acid_resistance || u.HAcid_resistance
-        || u.EAcid_resistance);
+        || u.EAcid_resistance
+        || (u.uprops?.[ACID_RES]?.intrinsic | 0)
+        || (u.uprops?.[ACID_RES]?.extrinsic | 0));
     // C youprop.h:55-57 — Antimagic ≡ uprops[ANTIMAGIC].intrinsic ||
     // .extrinsic; confer_oc_oprop writes worn oprop gear (cloak of MR,
     // gray DSM) only to uprops (sit.js D-1089 idiom), so the flats alone
@@ -3285,8 +3302,12 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
     const Antimagic = !!(u.Antimagic || u.HAntimagic || u.EAntimagic
         || (u.uprops?.[ANTIMAGIC]?.intrinsic | 0)
         || (u.uprops?.[ANTIMAGIC]?.extrinsic | 0));
+    // C youprop.h:63-65 — uprops[STONE_RES].intrinsic || .extrinsic
+    // (same worn-gear uprops-only write; flats kept for eat/poly).
     const Stone_resistance = !!(u.Stone_resistance || u.HStone_resistance
-        || u.EStone_resistance);
+        || u.EStone_resistance
+        || (u.uprops?.[STONE_RES]?.intrinsic | 0)
+        || (u.uprops?.[STONE_RES]?.extrinsic | 0));
 
     // C passive arms call mdamageu (mhitu.c), never losehp: lethal damage
     // runs done_in_by immediately (no healmon/split after). Dynamic import:
@@ -3316,7 +3337,13 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
         // C :5906–5933 — splash damage + worn-armor corrode + weapon/kick
         // corrode. (C You("are splashed…") renders the same strings.)
         if (mhitb && rn2(2)) {
-            if (game.u?.Blind || !game.flags?.verbose) {
+            // C :5908 — Blind ≡ (HBlinded||EBlinded) && !BBlinded
+            // (youprop.h:103, uprops; D-0716: no sticky — the u.Blind
+            // flat is unmaintained, and worn gear writes uprops only).
+            const HBlinded = (u.HBlinded | 0) || (u.uprops?.[BLINDED]?.intrinsic | 0);
+            const EBlinded = (u.EBlinded | 0) || (u.uprops?.[BLINDED]?.extrinsic | 0);
+            const BBlinded = (u.BBlinded | 0) || (u.uprops?.[BLINDED]?.blocked | 0);
+            if (((HBlinded || EBlinded) && !BBlinded) || !game.flags?.verbose) {
                 await pline('You are splashed!');
             } else {
                 await pline(`You are splashed by ${s_suffix(mon_nam(mon))} ${hliquid('acid')}!`);

@@ -16,9 +16,11 @@ import { resolveDungeonIdentities } from './dungeon.js';
 import { restoreMonsterInventoryOwnership } from './monster_inventory.js';
 import { FULL_MOON, LUCKMAX, LUCKMIN } from './const.js';
 import { vision_reset_new_level } from './vision.js';
-import { rewindEngravingsForSave, restoreEngravingPointers } from './engrave.js';
+import { rewindEngravingsForSave, restoreEngravings } from './engrave.js';
 import { weaponNeedsBashingMessage } from './weapon_type.js';
 import { GRAPPLING_HOOK, PICK_AXE } from './object_data.js';
+import { forgetTempleEntry } from './priest.js';
+import { restoreElementalBubbles } from './elemental.js';
 const SAVE_PREFIX = 'teleport-save:';
 const ERROR_SAVE_PREFIX = 'teleport-error-save:';
 function saveKey(name, prefix = SAVE_PREFIX) {
@@ -30,8 +32,8 @@ function snapshotState() {
         state: copyPersistentState(game),
     };
 }
-function restoreLevelMonsters(level) {
-    restoreEngravingPointers(level);
+function restoreLevelMonsters(level, moves) {
+    restoreEngravings(level, moves);
     if (!validMonsterWormBodies(level))
         throw new Error('Invalid saved worm bodies');
     restoreMonsterWormHeads(level);
@@ -40,9 +42,9 @@ function restoreLevelMonsters(level) {
 }
 function restoreSavedMonsters(state) {
     if (state.level)
-        restoreLevelMonsters(state.level);
+        restoreLevelMonsters(state.level, state.moves);
     for (const cached of state._levelCache?.values() ?? [])
-        restoreLevelMonsters(cached.level);
+        restoreLevelMonsters(cached.level, state.moves);
     for (const monster of state._migratingMonsters || [])
         restoreMonsterInventoryOwnership(monster);
     if (state.u.usteed)
@@ -106,6 +108,16 @@ export async function askAboutPanicSave() {
 async function prepareGameForSave() {
     game.u.invulnerable = false;
     await doneObjectCleanup();
+    const levels = [game.level, ...[...(game._levelCache?.values() ?? [])].map(cached => cached.level)];
+    for (const level of levels)
+        for (const monster of level?.monsters ?? [])
+            if (monster.ispriest)
+                forgetTempleEntry(monster);
+    for (const monster of game._migratingMonsters ?? [])
+        if (monster.ispriest)
+            forgetTempleEntry(monster);
+    if (game.u.usteed?.ispriest)
+        forgetTempleEntry(game.u.usteed);
 }
 // C save.c dosave0(): undo the date-dependent luck that
 // moveloop_preamble() applied at startup; restoring applies it again.
@@ -168,6 +180,7 @@ export function restoreGame(name, storage = game.storage) {
         restoreSavedMonsters(snapshot.state);
         restorePersistentState(game, snapshot.state);
         resolveDungeonIdentities(game);
+        restoreElementalBubbles();
         // restgamestate() rebuilds the first-use reminder from the restored
         // weapon, treating applied tools conservatively as improvised weapons.
         const weapon = game.uwep || game.u.uwep;

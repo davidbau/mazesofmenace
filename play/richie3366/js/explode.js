@@ -72,7 +72,8 @@ import {
     N_DIRS, xdir, ydir, ZAP_POS, IS_DOOR, IS_SINK, STONE,
     LARGEST_INT, MAY_HITMON, MAY_HITYOU, MAY_DESTROY, MAY_FRACTURE,
     D_ISOPEN, D_NODOOR, D_BROKEN, STATUE_TRAP, SHOPBASE,
-    POISON_RES,
+    POISON_RES, FIRE_RES, COLD_RES, SHOCK_RES, DISINT_RES, ACID_RES,
+    ANTIMAGIC,
 } from './const.js';
 import {
     pmnames, G_UNIQ, MR_FIRE, MR_COLD, MR_ELEC, MR_DISINT,
@@ -156,30 +157,42 @@ function pmname_mon(mon) {
     return String(raw).replace(/^PM_/, '').replace(/_/g, ' ').toLowerCase();
 }
 
-/** C ref: youprop.h Fire/Cold/Shock/Antimagic/Disint/Poison/Acid_resistance */
+/** C ref: youprop.h:27–61 — each resistance macro is
+ * uprops[SLOT].intrinsic||extrinsic (C single storage). JS splits flats
+ * (some grant paths) and the uprops slot (worn extrinsic etc.), so read
+ * the union (D-3978/D-3982 idiom; Poison arm already did). */
 function Fire_resistance() {
     const u = game.u || {};
-    return !!(u.Fire_resistance || u.HFire_resistance || u.EFire_resistance);
+    const p = u.uprops?.[FIRE_RES];
+    return !!(u.Fire_resistance || u.HFire_resistance || u.EFire_resistance
+        || (p?.intrinsic | 0) || (p?.extrinsic | 0));
 }
 function Cold_resistance() {
     const u = game.u || {};
-    return !!(u.Cold_resistance || u.HCold_resistance || u.ECold_resistance);
+    const p = u.uprops?.[COLD_RES];
+    return !!(u.Cold_resistance || u.HCold_resistance || u.ECold_resistance
+        || (p?.intrinsic | 0) || (p?.extrinsic | 0));
 }
 function Shock_resistance() {
     const u = game.u || {};
-    return !!(u.Shock_resistance || u.HShock_resistance || u.EShock_resistance);
+    const p = u.uprops?.[SHOCK_RES];
+    return !!(u.Shock_resistance || u.HShock_resistance || u.EShock_resistance
+        || (p?.intrinsic | 0) || (p?.extrinsic | 0));
 }
 function Antimagic() {
     const u = game.u || {};
-    return !!(u.Antimagic || u.HAntimagic || u.EAntimagic);
+    const p = u.uprops?.[ANTIMAGIC];
+    return !!(u.Antimagic || u.HAntimagic || u.EAntimagic
+        || (p?.intrinsic | 0) || (p?.extrinsic | 0));
 }
 function Disint_resistance() {
     const u = game.u || {};
+    const p = u.uprops?.[DISINT_RES];
     return !!(u.Disint_resistance || u.HDisint_resistance
-        || u.EDisint_resistance);
+        || u.EDisint_resistance
+        || (p?.intrinsic | 0) || (p?.extrinsic | 0));
 }
 function Poison_resistance() {
-    // C youprop.h:46-48 — H || E || flag || uprops (JS split storage).
     const u = game.u || {};
     const p = u.uprops?.[POISON_RES];
     return !!(u.Poison_resistance || u.HPoison_resistance
@@ -188,7 +201,9 @@ function Poison_resistance() {
 }
 function Acid_resistance() {
     const u = game.u || {};
-    return !!(u.Acid_resistance || u.HAcid_resistance || u.EAcid_resistance);
+    const p = u.uprops?.[ACID_RES];
+    return !!(u.Acid_resistance || u.HAcid_resistance || u.EAcid_resistance
+        || (p?.intrinsic | 0) || (p?.extrinsic | 0));
 }
 
 /** C ref: monst.h resists_fire / cold / elec / disint / acid.

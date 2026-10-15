@@ -2656,12 +2656,14 @@ export async function donate_gold(gltmp, shkp, selling) {
 }
 
 /**
- * C gs.sell_response / gs.sell_how / ga.auto_credit — BSS zero-init.
- * sell_response '\0' is falsy (query); JS uses null. Do not default 'a'
- * (that is only sellobj_state(SELL_NORMAL) after an accidental drop).
+ * C gs.sell_response / gs.sell_how (decl.c gs initializer `:720–721`) /
+ * ga.auto_credit (decl.c:197 FALSE). sell_response starts 'a' — explicit,
+ * NOT BSS '\0' — so the first incidental sale auto-accepts via sellobj's
+ * case 'a' → 'y' (shk.c `:4171–4172`); null (query) appears only via
+ * sellobj_state(non-NORMAL) (D-3986).
  */
 function ensure_sell_state() {
-    if (game.sell_response === undefined) game.sell_response = null;
+    if (game.sell_response === undefined) game.sell_response = 'a';
     if (game.sell_how === undefined) game.sell_how = SELL_NORMAL;
     if (game.auto_credit === undefined) game.auto_credit = false;
 }

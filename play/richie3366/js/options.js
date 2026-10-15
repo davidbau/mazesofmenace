@@ -136,6 +136,7 @@ import {
     AUTOCOMP_ADJ,
     PRIMARYSET,
     ROGUESET,
+    H_MAC,
     H_UTF8,
     HL_NONE,
     HL_BOLD,
@@ -185,7 +186,7 @@ import { rnd } from './rng.js';
 import { str_end_is, str_start_is, highc, lowc, strstri, strsubst, strNsubst, strkitten, fuzzymatch, trimspaces, strncmpi } from './hacklib.js';
 import { name_to_mon, DEF_CHAR_TO_MLET, mlet_class_explain } from './mondata.js';
 import { nhgetch } from './input.js';
-import { flush_screen, pline, You_cant, docrt, bot, check_gold_symbol, switch_symbols, clear_committed_status, set_bot_disabled, tty_wait_synch, update_ov_primary_symset, update_ov_rogue_symset, impossible, SYM_OFF_X, reglyph_darkroom, raw_printf, init_ov_primary_symbols, init_ov_rogue_symbols, assign_graphics, init_symbols, init_primary_symbols, init_rogue_symbols, update_primary_symset, update_rogue_symset, set_symhandling, clear_symsetentry, symset_slot, NO_GLYPH } from './display.js';
+import { flush_screen, pline, There, You_cant, docrt, bot, check_gold_symbol, switch_symbols, clear_committed_status, set_bot_disabled, tty_wait_synch, update_ov_primary_symset, update_ov_rogue_symset, impossible, SYM_OFF_X, reglyph_darkroom, raw_printf, init_ov_primary_symbols, init_ov_rogue_symbols, assign_graphics, init_symbols, init_primary_symbols, init_rogue_symbols, update_primary_symset, update_rogue_symset, set_symhandling, clear_symsetentry, symset_slot, NO_GLYPH } from './display.js';
 import { SYMBOLS_TEXT } from './generated/symbols_text.js';
 import { get_feature_notice_ver, get_current_feature_ver } from './version.js';
 import { paint_corner_nhw_menu, dismiss_nhw_menu, collect_menu_gacc, process_menu_search, toggle_menu_curr, menu_digit_is_gacc, reassign, update_inventory, invlet_constant, perm_invent_toggled, select_menu_pick_none, DEF_INV_ORDER } from './invent.js';
@@ -2414,18 +2415,189 @@ export async function handler_whatis_coord() {
 }
 
 /**
+ * C symbols.c do_symset `:908–1098` — the SYMBOLS-file menu browser, in C
+ * order: list pick (`:924–931` null-name read_sym_file), the
+ * restriction/handling filter + widest-name measure (`:937–958`),
+ * Default + per-set PICK_ONE menu (`:965–1006`), the menu-index to
+ * symset-index chosen mapping (`:1007–1017`), the name transfer
+ * (`:1021–1039`), list cleanup (`:1051–1058`), defaults reset + the
+ * chosen-set reload (`:1065–1085`), and the switch/assign/customize /
+ * preference tail (`:1087–1097`). TRUE on every path (C boolean 1 =
+ * OPTN_OK, options.c `:84`). Sole C caller: options.c:6325
+ * handler_symset (wired below).
+ * Menu idiom is the handler_whatis_coord precedent: the end_menu prompt
+ * paints first with tty_menu_promptstyle (menu_headings, default
+ * ATR_INVERSE) plus the tty_end_menu blank row (wintty.c `:2680–2689`);
+ * selectors stay implicit a..z (tty_end_menu / select_menu_pick_one).
+ * The helper returns the one new pick, which subsumes the C
+ * `:1011–1012` n==2 rule, and Enter/space on the preselected entry
+ * returns it (subsuming n==1 and `:1016` n==0&&defindx>0); cancel
+ * subsumes ESC (n==-1, tty_select_menu `:2796–2803`) and n==0 with
+ * nothing preselected.
+ * @param {boolean} rogueflag C rogueflag (ROGUESET vs PRIMARYSET)
+ * @returns {Promise<number>} OPTN_OK (C TRUE) on every path
+ */
+export async function do_symset(rogueflag) {
+    const rogue = !!rogueflag;
+    let ready_to_switch = false, nothing_to_do = false; // C `:917–918`
+    let setcount = 0, chosen = -2, defindx = 0; // C `:921`
+    const set = rogue ? ROGUESET : PRIMARYSET; // C `:923`
+    if (!game.gs) game.gs = {};
+    game.gs.symset_list = []; // C `:924` (NULL; the pick-list rows push here)
+    /* C `:925` clear symset[].name as a flag to read_sym_file() to build list */
+    const slot = symset_slot(set);
+    const symset_name = slot.name; // C `:926`
+    slot.name = null; // C `:927`
+    const res = read_sym_file(set); // C `:929`
+    /* C `:930` put symset name back */
+    slot.name = symset_name; // C `:931`
+    const list = game.gs.symset_list; // C gs.symset_list
+    if (res && list.length > 0) { // C `:933`
+        /* C `:935` sizeof "Default Symbols" - sizeof "" = 15 */
+        let biggest = 'Default Symbols'.length;
+        let big_desc = 0; // C `:936` (measured; unused downstream)
+        for (const sl of list) { // C `:937`
+            /* C `:939` check restrictions */
+            if (rogue ? sl.primary : sl.rogue) // C `:940`
+                continue;
+            /* C `:941–945` #ifndef MAC_GRAPHICS_ENV (undefined on unix) */
+            if ((sl.handling | 0) === H_MAC) // C `:943`
+                continue;
+            /* C `:946–948` #ifndef ENHANCED_SYMBOLS — ENHANCED_SYMBOLS is
+               live (config.h:368), so the H_UTF8 skip is compiled out. */
+            setcount++; // C `:950`
+            /* C `:951` find biggest name */
+            const thissize = sl.name != null ? sl.name.length : 0; // C `:952`
+            if (thissize > biggest) // C `:953`
+                biggest = thissize; // C `:954`
+            const dsize = sl.desc != null ? sl.desc.length : 0; // C `:955`
+            if (dsize > big_desc) // C `:956`
+                big_desc = dsize; // C `:957`
+        }
+        if (!setcount) { // C `:959`
+            await There('are no appropriate %s symbol sets available.', // C `:960–961`
+                rogue ? 'rogue level' : 'primary');
+            return OPTN_OK; // C `:962` TRUE (early: the list stays, C leaks it too)
+        }
+        /* C `:965` Sprintf(fmtstr, "%%-%ds %%s", biggest + 2) → "%-<N>s %s" */
+        const width = biggest + 2;
+        /* C `:966–968` create_nhwindow/start_menu/zeroany — raw menu below. */
+        /* C `:969` any.a_int = 1 (-1 + 2). */
+        if (symset_name == null) // C `:970`
+            defindx = 1; // C `:971`
+        const prompt = `Select ${rogue ? 'rogue level ' : ''}symbol set:`; // C `:1003–1004`
+        const raw = [
+            { text: prompt, selectable: false, attr: ATR_INVERSE }, // C `:1005`
+            { text: '', selectable: false }, // C wintty.c blank row
+            // C `:972–976` "Default Symbols" (a_int 1, SELECTED iff defindx)
+            { text: 'Default Symbols', selectable: true, selected: 1 === defindx, a_int: 1 },
+        ];
+        for (const sl of list) { // C `:977`
+            /* C `:978` check restrictions */
+            if (rogue ? sl.primary : sl.rogue) // C `:979`
+                continue;
+            if ((sl.handling | 0) === H_MAC) // C `:982`
+                continue;
+            /* C `:984–986` H_UTF8 skip compiled out (ENHANCED_SYMBOLS live). */
+            if (sl.name != null) { // C `:989`
+                /* C `:990–992` +2: idx runs 0..N-1; +1 Defaults slot [0];
+                   +1 again so valid data is never 0 */
+                const a_int = (sl.idx | 0) + 2; // C `:993`
+                if (symset_name != null && strncmpi(sl.name, symset_name, -1) === 0) // C `:994` strcmpi
+                    defindx = a_int; // C `:995`
+                /* C `:996` Sprintf(buf, fmtstr, name, desc or "") */
+                raw.push({
+                    text: `${String(sl.name).padEnd(width, ' ')} ${sl.desc != null ? sl.desc : ''}`,
+                    selectable: true, selected: a_int === defindx, a_int,
+                }); // C `:997–1000`
+            }
+        }
+        /* C `:1006` select_menu PICK_ONE; `:1019` destroy inside the helper. */
+        const pick = await select_menu_pick_one(raw);
+        /* C `:1007–1017` (free at `:1015` is GC). */
+        if (pick.kind === 'pick') // C `:1007` n > 0
+            chosen = (pick.item.a_int | 0) - 2; // C `:1008–1014`
+        if (chosen > -1) { // C `:1021`
+            /* C `:1022–1025` chose an actual symset name from file */
+            const hit = list.find((e) => (e.idx | 0) === chosen);
+            if (hit) { // C `:1026`
+                /* C `:1027` free the now stale attributes */
+                clear_symsetentry(set, true); // C `:1028`
+                /* C `:1030` transfer only the name of the symbol set */
+                symset_slot(set).name = dupstr(hit.name); // C `:1031`
+                ready_to_switch = true; // C `:1032`
+            }
+        } else if (chosen === -1) { // C `:1034`
+            /* C `:1035–1036` explicit selection of defaults */
+            clear_symsetentry(set, true); // C `:1037`
+        } else { // C `:1038`
+            nothing_to_do = true; // C `:1039`
+        }
+    } else if (!res) { // C `:1040`
+        /* C `:1041` The symbols file could not be accessed */
+        await pline('Unable to access "%s" file.', 'symbols'); // C `:1042` (SYMBOLS, global.h:29)
+        return OPTN_OK; // C `:1043` TRUE
+    } else if (list.length === 0) { // C `:1044` !gs.symset_list
+        /* C `:1045` The symbols file was empty */
+        await There('were no symbol sets found in "%s".', 'symbols'); // C `:1046`
+        return OPTN_OK; // C `:1047` TRUE
+    }
+
+    /* C `:1050` clean up (the frees are GC) */
+    game.gs.symset_list = []; // C `:1051–1058`
+
+    if (nothing_to_do) // C `:1060`
+        return OPTN_OK; // C `:1061` TRUE
+
+    /* C `:1063` Set default symbols and clear the handling value */
+    if (rogue) // C `:1064`
+        init_rogue_symbols(); // C `:1065`
+    else // C `:1066`
+        init_primary_symbols(); // C `:1067`
+
+    if (symset_slot(set).name != null) { // C `:1069`
+        /* C `:1070` non-default symbols */
+        if (!glyphid_cache_status()) { // C `:1072`
+            fill_glyphid_cache(); // C `:1073`
+        }
+        const ok = read_sym_file(set); // C `:1075`
+        if (glyphid_cache_status()) { // C `:1076`
+            free_glyphid_cache(); // C `:1077`
+        }
+        if (ok) { // C `:1079`
+            ready_to_switch = true; // C `:1080`
+        } else {
+            clear_symsetentry(set, true); // C `:1082`
+            return OPTN_OK; // C `:1083` TRUE
+        }
+    }
+
+    if (ready_to_switch) // C `:1087`
+        switch_symbols(true); // C `:1088` TRUE
+
+    if (Is_rogue_level(game.u?.uz)) { // C `:1090`
+        if (rogue) // C `:1091`
+            assign_graphics(ROGUESET); // C `:1092`
+    } else if (!rogue) // C `:1093`
+        assign_graphics(PRIMARYSET); // C `:1094`
+    /* C sym.h:132–135 do_custom_symbols (2) | do_custom_colors (1). */
+    apply_customizations(rogue ? ROGUESET : PRIMARYSET, 2 | 1); // C `:1095–1096`
+    preference_update('symset'); // C `:1097`
+    return OPTN_OK; // C `:1098` TRUE
+}
+
+/**
  * C options.c handler_symset `:6320–6328` (staticfn) — do_handler body
  * shared by optfn_roguesymset (`:3583`) and optfn_symset (`:4228`).
- * do_symset (`:6325`, symbols.c `:908–1099`) is the SYMBOLS-file menu
- * browser — by-design, no scored analogue — and returns TRUE on all six
- * C paths, so the live remainder is the redraw flag plus OPTN_OK (C
- * optn_ok = 1 = TRUE, options.c `:84`).
- * @param {number} _optidx C optidx (feeds only the named do_symset rogueflag)
+ * do_symset (`:6325`, symbols.c `:908–1098`) is the SYMBOLS-file menu
+ * browser (live above, async); every C path returns TRUE (optn_ok = 1,
+ * options.c `:84`).
+ * @param {number} optidx C optidx (rogueflag iff the roguesymset row)
  */
-export function handler_symset(_optidx) {
-    /* Named: do_symset(_optidx == opt_roguesymset) — symbols.c browser by-design. */
+export async function handler_symset(optidx) {
+    const reslt = await do_symset(optidx === allopt_idx('roguesymset')); // C `:6325`
     mark_opt_need_redraw(); // C `:6326`
-    return OPTN_OK; // C `:6327` reslt — do_symset TRUE on every path
+    return reslt; // C `:6327`
 }
 
 /**
@@ -3620,7 +3792,7 @@ function doset_compopt_get_val(optfn, name) {
  * per C — the marks are menu-local flag sets); get_val/get_cnf_val
  * stay combined per C (`:3574` — no ', handler=' tail, symset-only
  * `:4211–4214`); do_handler (`:3582`) returns handler_symset(optidx)
- * (`:6320–6328`; do_symset browser by-design inside).
+ * (`:6320–6328` → do_symset, live above, async).
  * @param {number} optidx C optidx (feeds the do_handler arm)
  * @param {number} req REQ_DO_INIT / REQ_DO_SET / REQ_GET_VAL / REQ_GET_CNF_VAL
  * @param {boolean} _negated C UNUSED — even "!roguesymset:foo" stores
@@ -3680,8 +3852,8 @@ export function optfn_roguesymset(optidx, req, _negated, opts, op, store, optIni
  * is compiled out (#ifndef ENHANCED_SYMBOLS); switch_symbols
  * (`:4197`) + the `:4198–4199` flags are live (unconditional per C).
  * do_handler (`:4223–4233`) is handler_symset (`:6320–6328`) around the
- * do_symset browser (symbols.c `:908–1099`, 192 lines over the SYMBOLS
- * file — by-design inside the handler); the glyphid cache wrap is live.
+ * do_symset browser (symbols.c `:908–1098`, live above, async); the
+ * glyphid cache wrap runs after the menu completes.
  * @param {number} optidx C optidx (feeds the do_handler arm)
  * @param {number} req REQ_DO_INIT / REQ_DO_SET / REQ_GET_VAL / REQ_GET_CNF_VAL
  * @param {boolean} _negated C UNUSED — even "!symset:foo" stores
@@ -3739,11 +3911,15 @@ export function optfn_symset(optidx, req, _negated, opts, op, store, optInitial)
     if (req === REQ_DO_HANDLER) { // C `:4223–4233`
         if (!glyphid_cache_status()) // C `:4226`
             fill_glyphid_cache(); // C `:4227`
-        const reslt = handler_symset(optidx); // C `:4228`
-        if (glyphid_cache_status()) // C `:4229`
-            free_glyphid_cache(); // C `:4230`
-        /* C `:4231–4232` apply_customizations commented out in C. */
-        return reslt; // C `:4233`
+        /* handler_symset is async (do_symset menu); the C `:4229–4230`
+           free runs after it completes. This path returns a promise —
+           the live caller awaits (doset_compound_via_getlin). */
+        return handler_symset(optidx).then((reslt) => { // C `:4228`
+            if (glyphid_cache_status()) // C `:4229`
+                free_glyphid_cache(); // C `:4230`
+            /* C `:4231–4232` apply_customizations commented out in C. */
+            return reslt; // C `:4233`
+        });
     }
     return OPTN_OK; // C `:4235`
 }
@@ -9655,9 +9831,12 @@ async function doset_compound_via_getlin(opt) {
             reslt = await optfn_o_status_hilites(allopt_idx(name), REQ_DO_HANDLER, false, null, EMPTY_OPTSTR);
         } else if (name === 'symset') {
             // C `:8663–8666` optfn(idx, do_handler) → optfn_symset
-            // `:4223–4233` (glyphid wrap + handler_symset; do_symset
-            // browser by-design inside the handler).
+            // `:4223–4233` (glyphid wrap + handler_symset → do_symset).
             reslt = await optfn_symset(allopt_idx(name), REQ_DO_HANDLER, false, null, EMPTY_OPTSTR);
+        } else if (name === 'roguesymset') {
+            // C `:8663–8666` optfn(idx, do_handler) → optfn_roguesymset
+            // `:3582–3584` → handler_symset (rogueflag via optidx).
+            reslt = await optfn_roguesymset(allopt_idx(name), REQ_DO_HANDLER, false, null, EMPTY_OPTSTR);
         }
         // C `:8668–8670`: optn_ok marks the row (no simple-menu option is
         // pfx_cond_, so no `:8669` guard).
@@ -13294,7 +13473,7 @@ function fopen_sym_file() {
  * on unix — named), optfn_DECgraphics :1415 / optfn_IBMgraphics :1932 /
  * optfn_roguesymset :3558 / optfn_symset :4180 (all wired in this
  * file), load_symset :681 (named: its callers are compiled-out or
- * by-design), do_symset :929/:1075 (by-design browser — named).
+ * by-design), do_symset :929/:1075 (live above).
  */
 export function read_sym_file(which_set) {
     const set = (which_set | 0) === ROGUESET ? ROGUESET : PRIMARYSET;

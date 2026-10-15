@@ -1700,6 +1700,22 @@ async function drop_boulder_on_player(confused, helmet_protects, byu, skip_uswal
         stackobj(otmp2);
         newsym(u.ux | 0, u.uy | 0);
     }
+    // C `:2331–2337` — losehp→done is inline: a fatal pit-crush
+    // ("squished under a boulder") lifesaves HERE, before the
+    // boulder-hit losehp below (temp-C dump on Ranger-50351023: crush
+    // n=14 → savelife 14/14 → hit n=1 → 13/14, regen_hp called). JS
+    // deferred done past both losehps, leaving 14/14 and skipping
+    // regen_hp. Drain first; on a real death C never returns (its
+    // killer — the crush — is also preserved this way).
+    {
+        const { finish_maybe_wail: finish_crush_wail } = await import('./hack.js');
+        await finish_crush_wail();
+        if (game._losehp_needs_done || game.program_state?.gameover) {
+            const { finish_losehp_done: finish_crush_done } = await import('./end.js');
+            await finish_crush_done();
+        }
+        if (game.program_state?.gameover) return;
+    }
     if (dmg) losehp(maybe_half_phys(dmg), 'scroll of earth', KILLED_BY_AN);
     // C `:2336–2337` — losehp→done is noreturn: drain the deferred
     // wail/done finishers here (explode_losehp idiom) so the queued

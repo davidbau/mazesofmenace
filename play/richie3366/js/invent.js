@@ -1192,6 +1192,17 @@ export async function encumber_msg() {
      * code runs mid-await except other floats, for which fresh oldcap
      * (no duplicate crossing message) is the C-faithful read. */
     game.oldcap = newcap;
+    // C pickup.c:2016/:1999 sets disp.botl after the crossing pline
+    // fully resolves — synchronously before any later pline's
+    // pre-putmesg flush_screen repaint (display.c:2236-2239). The
+    // `await pline` below suspends (floated from sync exercise():
+    // attrib.c:516-517 tail), and a chained follower's flush can run
+    // before this call's post-pline commit. Record the pending commit
+    // synchronously; putmesg converts it once the message is
+    // displayed (after this pline's own flush, before any later one).
+    // The post-pline real sets below stay as the suppressed-message
+    // backstop (a suppressed pline never reaches putmesg).
+    if (oldcap !== newcap) game._pending_botl = true;
     if (oldcap < newcap) {
         switch (newcap) {
         case SLT_ENCUMBER:

@@ -1,9 +1,11 @@
+import { formatFeltMessage, formatSeenMessage, publishHeardMessage } from './hero_speech.js';
 import { ingSuffix } from './hacklib.js';
 import { heroLocomotion } from './hero_locomotion.js';
 import { autokey, autoUnlockFlags, continuePicking, pickLock } from './lock_pick.js';
 import { resetPick } from './lock_context.js';
 import { petRefusesHeroSwap } from './hero_pet_displacement.js';
 import { airTurbulenceStopsHero, waterTurbulenceStopsHero } from './hero_movement_turbulence.js';
+import { maybeAdjustHeroBubble } from './elemental.js';
 import { announceRunLiquid, announceRunTrap, knownRunTrap, runLiquidIsDangerous } from './run_hazards.js';
 import { AUTOUNLOCK_APPLY_KEY, AUTOUNLOCK_UNTRAP } from './const.js';
 import { findDrawbridgeAt } from './dbridge.js';
@@ -11,6 +13,8 @@ import { doorObstructed } from './door_magic.js';
 import { DBWALL, DRAWBRIDGE_DOWN, IS_DRAWBRIDGE, IS_TREE, LADDER, STAIRS, THRONE } from './const.js';
 import { dipFountainSword } from './fountain_sword.js';
 import { washHands } from './dip_water.js';
+import { curseObject, uncurseObjectState } from './object_state.js';
+import { adjustObjectLightAfterBlessing, objectLightRadius } from './light.js';
 import { waterDamageObject } from './trap.js';
 import { dip, dipInto } from './potion_dip.js';
 import { AKLYS, BOOMERANG, CRYSTAL_BALL } from './object_data.js';
@@ -24,7 +28,7 @@ import { wizMigrateMonsters } from './wizard_migration.js';
 import { prepareWizardTeleportAtWill, wizardTeleportCommand } from './wizard_teleport.js';
 import { hurtleMonster } from './monster_hurtle.js';
 import { isRoom } from './map_types.js';
-import { bookCursed, continueSpellbookStudy } from './spellbook_study.js';
+import { continueSpellbookStudy } from './spellbook_study.js';
 import { grantMonsterWish } from './potion_occupants.js';
 import { quaff } from './quaff.js';
 import { tameMonster } from './monster_taming.js';
@@ -70,7 +74,7 @@ import { flipCoin } from './coin_flip.js';
 import { useGrayStone } from './gray_stone.js';
 import { useMirror } from './mirror.js';
 import { useCamera } from './camera.js';
-import { useTowel } from './towel.js';
+import { dryTowel, useTowel } from './towel.js';
 import { useBell } from './apply_bell.js';
 import { breakWand } from './wand_break.js';
 import { speakArtifact } from './artifact_speech.js';
@@ -80,7 +84,7 @@ import { retouchHeroObject } from './hero_retouch.js';
 import { GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, PARANOID_REMOVE, GETOBJ_SUGGEST } from './const.js';
 import { TER_MON } from './const.js';
 import { senseBuriedObjects } from './buried_object.js';
-import { distantMonsterName, monsterInstanceDisplayName, monsterName, shopkeeperName } from './monster_name.js';
+import { distantMonsterName, monsterInstanceDisplayName, monsterName, monsterPossessive, monsterSubjectPronoun, shopkeeperName } from './monster_name.js';
 import { attackHostileMonster } from './hero_melee.js';
 import { prepareAppliedWeaponAttack } from './hero_attack_preflight.js';
 import { applyCaitiffPenalty } from './hero_attack_conduct.js';
@@ -95,7 +99,7 @@ import { woundHeroLegs } from './hero_legs.js';
 import { makeMonsterFlee } from './monster_flee.js';
 import { descendFromLevitation, floatingAbove } from './levitation_commands.js';
 import { endVoluntaryMultiTurn, resetCommandVariables } from './command_state.js';
-import { propertyIsActive } from './properties.js';
+import { grantIntrinsicProperty, propertyIsActive } from './properties.js';
 import { addPickedInventoryObject, pickupAtHero, pickupObjectClass, pickupClassOrder, } from './pickup.js';
 import { gotoLevel } from './level_change.js';
 import { levelTeleport } from './level_teleport.js';
@@ -138,7 +142,7 @@ export { getLine, promptYesNo, promptYesNoQuit } from './query.js';
 import { objectTypeCallNoun, } from './object_call.js';
 import { displayLiquidName, displayMessageWindow, newsym, feel_newsym, flushPendingTopline, flush_screen, pline, plineWithContinuation, moreUntilDismissed, docrt, bot, terrain_glyph, glyphAt, canSeeMonster, canSpotMonster, canSenseMonster, canSpotHeroSelf, unblindTelepathyRange, monsterHasWarningProjection, see_nearby_objects, show_glyph_cell, swallowed, randomDisplayMonsterName, randomDisplayMonsterSubject, see_monsters, see_objects, see_traps, transientObjectGlyph, map_invisible, unmap_invisible, map_object, unmapObject, } from './display.js';
 import { cansee, couldsee, vision_note_blocker_change, vision_recalc, vision_reset } from './vision.js';
-import { lightWieldedArtifact, transformMagicLampToOilLamp, } from './light.js';
+import { transformMagicLampToOilLamp } from './light.js';
 import { dozap, } from './zap.js';
 import { bucAdjectiveForName, checkInventoryGold, consumeInventoryItem, ddoinv, dolook, fullyIdentifyObject, inventoryItemDescription, inventoryPrimaryHandDetail, selectInventoryObject, selectUsedInventoryLetter, } from './invent.js';
 import { mergable, mergeObjectStacks } from './object_merge.js';
@@ -166,7 +170,7 @@ import { continueFoodMeal, doeat } from './eat.js';
 import { continueTinOpening, useTinOpener } from './tin.js';
 import { PLAYABLE_INSTRUMENTS, playInstrument } from './music.js';
 import { dodiscovered } from './o_init.js';
-import { doattributes, doconduct } from './insight.js';
+import { doattributes, doconduct, showEnlightenment } from './insight.js';
 import { contactHelp, displayHelpFile, menuControlsHelp, setOptionsCommand } from './pager_help.js';
 import { doextversion, NATIVE_VERSION } from './extversion.js';
 import { dosearch, findit } from './detect.js';
@@ -182,7 +186,8 @@ import { moveObject, placeCreatedObject, } from './floor_object.js';
 import { makemonNear, mkgold, mksobj, rndClass } from './mklev.js';
 import { level_difficulty, recordMappedOverviewState, specialDisplayName, specialPrototypeAt, } from './dungeon.js';
 import { addInventoryItem, assignInventoryLetter, inventoryLetterRank } from './u_init.js';
-import { objectQuantity, rejoinObjectStack, splitObjectStack } from './object_stack.js';
+import { clearSplitObjects, objectQuantity, rejoinObjectStack, splitObjectStack } from './object_stack.js';
+import { freeInventoryObject } from './hero_inventory.js';
 import { dropHeroObject } from './hero_drop.js';
 import { SELL_DELIBERATE, SELL_NORMAL, setSellDisposition } from './shop_sell.js';
 import { addObjectToMonsterInventory } from './monster_inventory.js';
@@ -198,7 +203,6 @@ import { captureThrownObjectFlight, detachThrownUnit, finishHeroThrownObjectLand
 import { objectName, singularObjectName, unseenObjectNoun, } from './objnam.js';
 import { artifactById, } from './artifacts.js';
 import { invokeArtifactPower, } from './artifact_invoke.js';
-import { touchArtifactByHero } from './artifact_touch.js';
 import { SLING, BULLWHIP, GRAPPLING_HOOK, CREAM_PIE, EGG, LUMP_OF_ROYAL_JELLY, LOCK_PICK, CREDIT_CARD, STETHOSCOPE, LOADSTONE, GOLD_PIECE, BOULDER, ROCK, DILITHIUM_CRYSTAL, LUCKSTONE, TOUCHSTONE, LARGE_BOX, CHEST, ICE_BOX, SACK, OILSKIN_SACK, BAG_OF_HOLDING, BAG_OF_TRICKS, BRASS_LANTERN, OIL_LAMP, MAGIC_LAMP, STATUE, RIN_PROTECTION, BANANA, MIRROR, TIN_WHISTLE, MAGIC_WHISTLE, EUCALYPTUS_LEAF, BELL, BELL_OF_OPENING, EXPENSIVE_CAMERA, TIN_OPENER, FIGURINE, LEASH, CAN_OF_GREASE, SADDLE, HORN_OF_PLENTY, TINNING_KIT, LAND_MINE, BEARTRAP, TALLOW_CANDLE, WAX_CANDLE, CANDELABRUM_OF_INVOCATION, POT_OIL, RIN_CONFLICT, MEAT_RING, OBJECT_BIMANUAL, HELM_OF_OPPOSITE_ALIGNMENT, GRAY_DRAGON_SCALES, LENSES, BLINDFOLD, TOWEL, FUMBLE_BOOTS, KICKING_BOOTS, MAGIC_MARKER, UNICORN_HORN, SHIELD_OF_REFLECTION, AMULET_OF_YENDOR, AMULET_OF_STRANGULATION, FAKE_AMULET_OF_YENDOR, SPE_NOVEL, OBJECT_DELAY, OBJECT_UNIQUE, OBJECT_DESCRIPTIONS, OBJECT_MATERIAL, OBJECT_NAMES, OBJECT_WEIGHT, OBJECT_SUBTYPE, } from './object_data.js';
 import { CLR_WHITE, NO_COLOR, } from './terminal.js';
 import { MONSTER_COLOR, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_LEVEL, MONSTER_MOVE, MONSTER_NAME, MONSTER_SIZE, MONSTER_SYMBOL, MONSTER_SOUND, MONSTER_ALIGNMENT, MONSTER_ATTACKS, requireMonsterData, monsterTypeName, monsterClassSymbol, monsterIsHumanoid, monsterDigests, monsterSpeciesHidesOnCeiling, } from './monster_data.js';
@@ -224,21 +228,22 @@ import { wakeMonstersNear } from './monster_wake.js';
 import { aggravateMonsters, angerAttackedMonster, wakeAttackedMonster, } from './monster_anger.js';
 import { publishMonsterNoise } from './monster_sound.js';
 import { doride, moveSteedWithHero, ridingPreventsMovement, stuckSteed } from './steed.js';
-import { currentAttribute, currentStrength, exerciseAttribute, exerciseWisdom, reportHeroEncumbrance } from './attrib.js';
+import { adjustAttribute, ATTRIBUTE_DISPLAY_ORDER, attributeChangeMessage, currentAttribute, currentStrength, exerciseAttribute, exerciseWisdom, reportHeroEncumbrance } from './attrib.js';
 import { spendHeroNutrition, updateHeroHunger } from './hunger.js';
 import { continueForceLock, doforce } from './lock.js';
 import { doUntrap } from './untrap.js';
 import { dosit } from './sit.js';
 import { continueEngraving, doengrave } from './engrave_command.js';
 import { climbOutOfPit, heroCanMoveFromTrap, triggerHeroTrapAt, triggerLevelTeleportTrap } from './hero_traps.js';
-import { applyDippedCoinFate, applyFountainDemonActor, applyFountainGemDiscovery, applyFountainNymphActor, applyFountainSnakeActors, resolveDippedBucFate, resolveDippedSensationFate, } from './fountain_effects.js';
+import { applyDippedCoinFate, applyFountainDemonActor, applyFountainGemDiscovery, applyFountainNymphActor, applyFountainSnakeActors, resolveDippedSensationFate, } from './fountain_effects.js';
 import { dryFountainAt, gushForthFromFountain } from './fountain.js';
 import { heroArmName, heroFingerName, heroHandName } from './body_parts.js';
 import { armorUsesPairGrammar, withIndefiniteArticle, makePlural } from './object_grammar.js';
 import { objectWearMessage } from './object_wear_message.js';
 import { isWetTowel, willWeld } from './weapon_type.js';
-import { announceWeaponWeld, explainTwoWeaponEnd, refuseWeldedPrimary } from './weapon_feedback.js';
-import { dropCursedSecondaryWeapon, toggleTwoWeaponCombat } from './two_weapon.js';
+import { refuseWeldedPrimary } from './weapon_feedback.js';
+import { readyHeroWeapon } from './weapon_readiness.js';
+import { dropCursedSecondaryWeapon, stopTwoWeaponCombat, toggleTwoWeaponCombat } from './two_weapon.js';
 import { dist2, distmin, dungeonDepth, ledgerNo } from './hacklib.js';
 import { triggerBoobyTrap } from './booby_trap.js';
 import { addShopDamage, payForShopDamage } from './shop_damage.js';
@@ -302,7 +307,7 @@ import { heroHasMartialKick } from './kick_rules.js';
 import { bringLeashedFollowers, heroTeleportDestinationOk, moveHeroByTeleport, randomMonsterRelocation, } from './teleport.js';
 import { goodPosition, monsterTeleportRestricted } from './teleport_rules.js';
 import { removeWishGrantingMonster } from './monster_departure.js';
-import { RLOC_MSG, A_CON, A_DEX, A_STR, A_WIS, BOLT_LIM, COLNO, ROWNO, STONE, SCORR, SDOOR, DOOR, CORR, ROOM, ICE, POOL, CLOUD, IRONBARS, FOUNTAIN, SINK, ALTAR, WATER, MOAT, LAVAWALL, TREE, D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED, SHOP_DOOR_COST, IS_WALL, IS_STWALL, IS_OBSTRUCTED, IS_FURNITURE, IS_AIR, IS_POOL, IS_LAVA, IS_ROOM, ZAP_POS, SQKY_BOARD, BEAR_TRAP, LANDMINE, FIRE_TRAP, PIT, SPIKED_PIT, TT_PIT, HOLE, TRAPDOOR, DART_TRAP, MAGIC_TRAP, TELEP_TRAP, LEVEL_TELEP, STATUE_TRAP, WEB, ANTI_MAGIC, G_GONE, ER_NOTHING, ER_DAMAGED, M_AP_MONSTER, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, STRAT_WAITMASK, MM_NOEXCLAM, MM_NOMSG, SHOPBASE, ROOMOFFSET, F_LOOTED, In_endgame, Is_airlevel, Is_waterlevel, Is_rogue_level, In_hell, W_ARMOR, W_ACCESSORY, W_SADDLE, LOST_THROWN, WT_SPLASH_THRESHOLD, WT_SQUEEZABLE_INV, P_BOW, P_SLING, PARANOID_HIT, POLY_CONTROLLED, STR19, isok, ACCESSIBLE, AIR, DIGTYP_UNDIGGABLE, DRAWBRIDGE_UP, } from './const.js';
+import { RLOC_MSG, A_CON, A_DEX, A_MAX, A_STR, A_WIS, BOLT_LIM, COLNO, ROWNO, STONE, SCORR, SDOOR, DOOR, CORR, ROOM, ICE, POOL, CLOUD, IRONBARS, FOUNTAIN, SINK, ALTAR, WATER, MOAT, LAVAWALL, TREE, D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED, SHOP_DOOR_COST, IS_WALL, IS_STWALL, IS_OBSTRUCTED, IS_FURNITURE, IS_AIR, IS_POOL, IS_LAVA, IS_ROOM, ZAP_POS, SQKY_BOARD, BEAR_TRAP, LANDMINE, FIRE_TRAP, PIT, SPIKED_PIT, TT_PIT, HOLE, TRAPDOOR, DART_TRAP, MAGIC_TRAP, TELEP_TRAP, LEVEL_TELEP, STATUE_TRAP, WEB, ANTI_MAGIC, G_GONE, ER_NOTHING, ER_DAMAGED, M_AP_MONSTER, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, STRAT_WAITMASK, MM_NOEXCLAM, MM_NOMSG, SHOPBASE, ROOMOFFSET, F_LOOTED, In_endgame, Is_airlevel, Is_waterlevel, Is_rogue_level, In_hell, W_ARMOR, W_ACCESSORY, W_SADDLE, LOST_THROWN, WT_SPLASH_THRESHOLD, WT_SQUEEZABLE_INV, P_BOW, P_SLING, PARANOID_HIT, POLY_CONTROLLED, STR19, isok, ACCESSIBLE, AIR, DIGTYP_UNDIGGABLE, DRAWBRIDGE_UP, } from './const.js';
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
 // object.h enum value; object_data currently exposes the two other tools.
@@ -1515,7 +1520,7 @@ function someGold(amount) {
 async function discoverFountainGem(loc) {
     return applyFountainGemDiscovery({
         loc,
-        blind: !!game.blind,
+        blind: heroIsBlind(),
         announce: (message) => pline(message),
         chooseGem: () => rndClass(DILITHIUM_CRYSTAL, LUCKSTONE - 1),
         createGem: (gemType) => mksobj(gemType, false, false),
@@ -1528,35 +1533,29 @@ function fountainActorGone(mnum) {
     return !!((game.mvitals?.[mnum]?.mvflags ?? 0) & G_GONE);
 }
 function fountainActorIndefiniteName(monster) {
-    const name = heroIsHallucinating()
-        ? randomDisplayMonsterName() : monsterInstanceDisplayName(monster);
-    return withIndefiniteArticle(name);
+    return monsterName(monster, { article: 'a' });
 }
 function fountainActorVisibleSubject(monster) {
-    return heroIsHallucinating()
-        ? randomDisplayMonsterSubject()
-        : `The ${monsterInstanceDisplayName(monster)}`;
+    return monsterName(monster, { capitalized: true });
 }
-// Fountain-spawned monsters can enter webs immediately. Other trap types
-// still wait for their normal turn because their messages are not handled
-// here yet.
-function supportedImmediateFountainTrap(monster) {
-    return game.level?.traps?.some(trap => trap.tx === monster.mx && trap.ty === monster.my
-        && trap.ttyp === WEB) ?? false;
+function fountainTrapAt(monster) {
+    return game.level?.traps?.some(trap => trap.tx === monster.mx && trap.ty === monster.my) ?? false;
 }
-async function triggerSupportedImmediateFountainTrap(monster) {
+async function triggerFountainTrap(monster) {
     const state = requireInitializedGame();
     const action = await triggerImmediateMonsterTrap(monster, state);
-    await resumeDeferredMonsterTrap(action, state, {
-        describeMonster: fountainActorVisibleSubject,
-        publish: plineWithContinuation,
-    });
-    return action;
+    if (!state.program_state.gameover) {
+        await resumeDeferredMonsterTrap(action, state, {
+            describeMonster: fountainActorVisibleSubject,
+            publish: plineWithContinuation,
+        });
+    }
+    return { heroDied: !!state.program_state.gameover };
 }
 async function summonFountainNymph() {
     return applyFountainNymphActor({
         gone: fountainActorGone(PM_WATER_NYMPH),
-        blind: !!game.blind,
+        blind: heroIsBlind(),
         createMonster: async () => {
             const nymph = await makemonNear(PM_WATER_NYMPH, game.u.ux, game.u.uy, MM_NOMSG);
             if (nymph)
@@ -1565,14 +1564,14 @@ async function summonFountainNymph() {
         },
         announce: plineWithContinuation,
         nymphDescription: fountainActorIndefiniteName,
-        trapAt: supportedImmediateFountainTrap,
-        triggerTrap: triggerSupportedImmediateFountainTrap,
+        trapAt: fountainTrapAt,
+        triggerTrap: triggerFountainTrap,
     });
 }
 async function summonFountainDemon() {
     return applyFountainDemonActor({
         gone: fountainActorGone(PM_WATER_DEMON),
-        blind: !!game.blind,
+        blind: heroIsBlind(),
         difficulty: level_difficulty(),
         createMonster: async () => {
             const demon = await makemonNear(PM_WATER_DEMON, game.u.ux, game.u.uy, MM_NOMSG);
@@ -1582,15 +1581,19 @@ async function summonFountainDemon() {
         },
         announce: plineWithContinuation,
         demonIndefiniteName: fountainActorIndefiniteName,
+        demonPronouns: monster => ({
+            possessive: monsterPossessive(monster),
+            pronoun: monsterSubjectPronoun(monster),
+        }),
         grantWish: (demon) => grantMonsterWish(demon),
-        trapAt: supportedImmediateFountainTrap,
-        triggerTrap: triggerSupportedImmediateFountainTrap,
+        trapAt: fountainTrapAt,
+        triggerTrap: triggerFountainTrap,
     });
 }
 async function summonFountainSnakes() {
     return applyFountainSnakeActors({
         gone: fountainActorGone(PM_WATER_MOCCASIN),
-        blind: !!game.blind,
+        blind: heroIsBlind(),
         hallucinating: heroIsHallucinating(),
         random: rn2,
         hallucinatedPlural: () => makePlural(randomDisplayMonsterName()),
@@ -1603,13 +1606,22 @@ async function summonFountainSnakes() {
                 newsym(snake.mx, snake.my);
             return snake;
         },
-        trapAt: supportedImmediateFountainTrap,
-        triggerTrap: triggerSupportedImmediateFountainTrap,
+        trapAt: fountainTrapAt,
+        triggerTrap: triggerFountainTrap,
     });
 }
 export async function drinkFountain(loc) {
     let fountainMessage = '';
+    const blessed = loc.blessedftn === 1;
     const fate = rnd(30);
+    if (propertyIsActive('levitation')) {
+        await floatingAbove('fountain');
+        return false;
+    }
+    if (blessed && (game.u.uluck ?? 0) >= 0 && fate >= 10) {
+        await blessedFountainDraught(loc);
+        return false;
+    }
     if (fate < 10) {
         // fountain.c:drinkfountain() handles the ordinary low-fate draught
         // before its numbered switch.  Nutrition is credited before dryup()
@@ -1619,6 +1631,15 @@ export async function drinkFountain(loc) {
         await updateHeroHunger(false);
         if (game.program_state.gameover)
             return true;
+        if (blessed)
+            return false;
+    }
+    else if (fate === 19) {
+        await plineWithContinuation(formatFeltMessage('self-knowledgeable...'));
+        await flushPendingTopline();
+        await showEnlightenment({ basic: false, magic: true });
+        await exerciseAttribute(A_WIS, true);
+        await plineWithContinuation('The feeling subsides.');
     }
     else if (fate === 20) {
         await plineWithContinuation('The water is foul!  You gag and vomit.');
@@ -1652,8 +1673,42 @@ export async function drinkFountain(loc) {
     else if (fate === 23) {
         await summonFountainDemon();
     }
+    else if (fate === 24) {
+        await plineWithContinuation("This water's no good!");
+        await spendHeroNutrition(11 + rn2(20));
+        if (game.program_state.gameover)
+            return true;
+        await exerciseAttribute(A_CON, false);
+        // A curse can drop the offhand weapon and change the inventory.
+        for (const object of [...game.inventory]) {
+            if (object.oclass !== 12 && !object.cursed && !rn2(5)) {
+                await curseObject(object);
+                if (game.program_state.gameover)
+                    return true;
+            }
+        }
+    }
+    else if (fate === 25) {
+        if (heroIsBlind()) {
+            if (propertyIsActive('invisible') && !propertyIsActive('seeInvisible')) {
+                await plineWithContinuation('You feel transparent.');
+            }
+            else {
+                await plineWithContinuation('You feel very self-conscious.');
+                await plineWithContinuation('Then it passes.');
+            }
+        }
+        else {
+            await plineWithContinuation(formatSeenMessage('an image of someone stalking you.'));
+            await plineWithContinuation('But it disappears.');
+        }
+        grantIntrinsicProperty('seeInvisible', 'outside');
+        newsym(game.u.ux, game.u.uy);
+        await exerciseAttribute(A_WIS, true);
+    }
     else if (fate === 26) {
-        await detectMonsters(null);
+        if ((await detectMonsters(null)).result)
+            await plineWithContinuation(`The ${displayLiquidName('water')} tastes like nothing.`);
         await exerciseAttribute(A_WIS, true);
     }
     else if (fate === 27 && !((loc.looted ?? 0) & 1)) {
@@ -1662,17 +1717,61 @@ export async function drinkFountain(loc) {
     else if (fate === 27 || fate === 28) {
         await summonFountainNymph();
     }
+    else if (fate === 29) {
+        await plineWithContinuation(`This ${displayLiquidName('water')} gives you bad breath!`);
+        for (const monster of [...requireGameLevel().monsters].reverse()) {
+            if (monster.dead || monster.mhp <= 0)
+                continue;
+            if ((await makeMonsterFlee(monster, { announce: false })).heroDied)
+                return true;
+        }
+    }
     else if (fate === 30) {
-        fountainMessage = (await gushForthFromFountain({ drinking: true })).join('  ');
+        await gushForthFromFountain({ drinking: true });
     }
     else if (fate >= 10) {
         fountainMessage =
             `This tepid ${displayLiquidName('water')} is tasteless.`;
     }
+    if (game.program_state.gameover)
+        return true;
     if (fountainMessage)
         await plineWithContinuation(fountainMessage);
     await dryFountainAt(game.u.ux, game.u.uy);
     return false;
+}
+async function blessedFountainDraught(loc) {
+    requirePlayingGame(game);
+    const state = game;
+    const hero = state.u;
+    await plineWithContinuation('Wow!  This makes you feel great!');
+    for (const attribute of ATTRIBUTE_DISPLAY_ORDER) {
+        if (hero.acurr.a[attribute] < hero.amax.a[attribute]) {
+            hero.acurr.a[attribute] = hero.amax.a[attribute];
+            state.context.botl = true;
+        }
+    }
+    const littleLuck = (hero.uluck ?? 0) < 4;
+    const start = rn2(A_MAX);
+    for (let offset = 0; offset < A_MAX; offset++) {
+        const attribute = (start + offset) % A_MAX;
+        const change = adjustAttribute(attribute, 1, state);
+        if (change.changed || !littleLuck
+            && (change.blockedByDunceCap || state.flags.verbose !== false)) {
+            const message = attributeChangeMessage(attribute, change, state);
+            if (message)
+                await plineWithContinuation(message);
+        }
+        if (change.changed && state._moveloopStarted
+            && (attribute === A_STR || attribute === A_CON))
+            await reportHeroEncumbrance(state);
+        if (change.changed && littleLuck)
+            break;
+    }
+    await displayMessageWindow();
+    await plineWithContinuation('A wisp of vapor escapes the fountain...');
+    await exerciseAttribute(A_WIS, true);
+    loc.blessedftn = 0;
 }
 // C do.c:u_stuck_cannot_go(). A sticky hero releases its captive, while
 // being held or swallowed prevents even an attempt to use the floor below.
@@ -2602,31 +2701,12 @@ async function doswapweapon() {
     }
     const oldPrimary = game.uwep || game.u?.uwep || null;
     const oldSecondary = game.uswapwep || game.u?.uswapwep || null;
-    if (!oldSecondary) {
-        if (!oldPrimary) {
-            await pline('You are already bare handed.');
-            game.context.move = 0;
-            return;
-        }
-        await plineWithContinuation('You are bare handed.');
-        await setPrimaryWeapon(null, game);
-        await setSecondaryWeapon(oldPrimary, game);
-        observeObjectForNaming(oldPrimary);
-        await plineWithContinuation(`${oldPrimary.invlet} - ${inventoryItemDescription(oldPrimary)}.`);
-        game.context.move = 1;
-        return;
-    }
     await setSecondaryWeapon(null, game);
-    observeObjectForNaming(oldSecondary);
-    if (willWeld(oldSecondary)) {
-        await announceWeaponWeld(oldSecondary);
+    const spentTime = await readyHeroWeapon(oldSecondary);
+    if (game.uwep === oldPrimary) {
+        await setSecondaryWeapon(oldSecondary, game);
     }
-    else {
-        await plineWithContinuation(`${oldSecondary.invlet} - ${inventoryItemDescription(oldSecondary, { projectPrimaryHand: true })}.`);
-    }
-    await setPrimaryWeapon(oldSecondary, game);
-    await lightWieldedArtifact(oldSecondary);
-    if (oldPrimary) {
+    else if (oldPrimary) {
         await setSecondaryWeapon(oldPrimary, game);
         observeObjectForNaming(oldPrimary);
         await plineWithContinuation(`${oldPrimary.invlet} - ${inventoryItemDescription(oldPrimary)}.`);
@@ -2634,7 +2714,7 @@ async function doswapweapon() {
     else {
         await plineWithContinuation('You have no secondary weapon readied.');
     }
-    game.context.move = 1;
+    game.context.move = spentTime ? 1 : 0;
 }
 async function dochat() {
     const species = heroSpecies(game);
@@ -2668,7 +2748,7 @@ async function dochat() {
             game.context.move = 1;
         }
         else {
-            game.context.move = Number(await publishMonsterNoise(steed, game, { exerciseWisdom }));
+            game.context.move = Number(await publishMonsterNoise(steed, game));
         }
         return;
     }
@@ -2731,7 +2811,7 @@ async function dochat() {
         await plineWithContinuation(`Any response${canSpotMonster(monster) ? ` from ${monsterName(monster)}` : ''} ${response}.`);
         return;
     }
-    game.context.move = Number(await publishMonsterNoise(monster, game, { exerciseWisdom }));
+    game.context.move = Number(await publishMonsterNoise(monster, game));
 }
 async function wizWish() {
     const verbose = game.flags.verbose;
@@ -3909,19 +3989,24 @@ async function dipFountain(object, loc) {
     }
     const fate = rnd(30);
     let eventMessage = '';
-    const wasCursed = object !== 'hands' && object.cursed;
-    const bucEffect = object === 'hands' ? { handled: fate >= 16 && fate <= 20,
-        message: fate >= 17 && fate <= 20 ? 'A feeling of loss comes over you.' : '' } : resolveDippedBucFate({
-        fate,
-        object,
-        blind: !!game.blind,
-        liquidName: () => displayLiquidName('water'),
-    });
-    if (object !== 'hands' && !wasCursed && object.cursed) {
-        await dropCursedSecondaryWeapon(object);
-        if (game.program_state.gameover)
-            return;
-        await bookCursed(object);
+    if (fate >= 16 && fate <= 20) {
+        if (fate === 16) {
+            if (object !== 'hands' && object.oclass !== 12 && !object.cursed)
+                await curseObject(object);
+        }
+        else if (object !== 'hands' && object.cursed) {
+            if (!heroIsBlind())
+                await plineWithContinuation(`The ${displayLiquidName('water')} glows for a moment.`);
+            const oldRadius = objectLightRadius(object);
+            uncurseObjectState(object);
+            await adjustObjectLightAfterBlessing(object, oldRadius);
+        }
+        else {
+            await plineWithContinuation('A feeling of loss comes over you.');
+        }
+        if (!game.program_state.gameover)
+            await dryFountainAt(game.u.ux, game.u.uy);
+        return;
     }
     const sensationEffect = resolveDippedSensationFate({
         fate,
@@ -3934,7 +4019,7 @@ async function dipFountain(object, loc) {
         dungeonLevels: currentDungeon?.num_dunlevs
             ?? game.u?.uz?.dlevel ?? 1,
         dungeonLevel: game.u?.uz?.dlevel ?? 1,
-        blind: !!game.blind,
+        blind: heroIsBlind(),
         random: rnd,
         createGold: async (quantity) => {
             await mkgold(quantity, game.u.ux, game.u.uy);
@@ -3943,10 +4028,7 @@ async function dipFountain(object, loc) {
         exerciseWisdom,
         repaint: () => newsym(game.u.ux, game.u.uy),
     });
-    if (bucEffect.handled) {
-        eventMessage = bucEffect.message;
-    }
-    else if (sensationEffect.handled) {
+    if (sensationEffect.handled) {
         eventMessage = sensationEffect.message;
     }
     else if (coinEffect.handled) {
@@ -3963,22 +4045,21 @@ async function dipFountain(object, loc) {
     }
     else if (fate === 24) {
         if ((loc.looted ?? 0) & F_LOOTED)
-            eventMessage = (await gushForthFromFountain()).join('  ');
+            await gushForthFromFountain();
         else
             await discoverFountainGem(loc);
     }
     else if (fate === 25) {
-        eventMessage = (await gushForthFromFountain()).join('  ');
+        await gushForthFromFountain();
     }
     else if (fate === 28) {
-        await moreUntilDismissed('An urge to take a bath overwhelms you.');
-        game._pending_message = '';
+        await plineWithContinuation('An urge to take a bath overwhelms you.');
         const wallet = heroGoldAmount(game);
         if (wallet > 10) {
             const loss = Math.trunc(someGold(wallet) / 10);
             game._statusGoldOverride = wallet;
             setHeroGoldAmount(game, wallet - loss);
-            await pline('You lost some of your gold in the fountain!');
+            await plineWithContinuation('You lost some of your gold in the fountain!');
             loc.looted = (loc.looted ?? 0) & ~F_LOOTED;
             await exerciseAttribute(A_WIS, false);
         }
@@ -3988,6 +4069,8 @@ async function dipFountain(object, loc) {
     else if ((fate < 16 || fate === 30) && result === 'nothing') {
         eventMessage = 'Nothing seems to happen.';
     }
+    if (game.program_state.gameover)
+        return;
     if (eventMessage)
         await plineWithContinuation(eventMessage);
     await dryFountainAt(game.u.ux, game.u.uy);
@@ -5263,17 +5346,17 @@ async function dowield() {
         game.context.move = 0;
         return;
     }
-    const weapons = (game.inventory || []).filter(object => object.class === 'Weapons' || object.oclass === 2
-        || (object.oclass === 6 && OBJECT_SUBTYPE[object.otyp] !== 0))
-        .sort((left, right) => String(left.invlet || '').localeCompare(String(right.invlet || '')));
+    const weapons = (game.inventory || []).filter(object => object.oclass === 2 || isWeaponTool(object))
+        .sort((left, right) => inventoryLetterRank(left) - inventoryLetterRank(right));
     const letters = weapons.map(object => object.invlet).join('');
     const choices = ['-', compactInventoryLetters(letters)].filter(Boolean).join(' ');
     const prompt = `What do you want to wield? [${choices} or ?*] `;
+    clearSplitObjects();
     const selection = await promptInventoryObject(prompt, game.inventory || [], {
         verb: 'wield',
         classify: object => object.oclass === 12 ? GETOBJ_EXCLUDE
             : object.oclass === 2 || isWeaponTool(object) ? GETOBJ_SUGGEST : GETOBJ_DOWNPLAY,
-        allowNone: true, allowMenu: true,
+        allowNone: true, allowMenu: true, allowCount: true,
         menuItems: weapons.length ? weapons : game.inventory.filter(item => item.oclass !== 12),
         noneDescription: `your ${game.uarmg ? 'gloved' : 'bare'} ${makePlural(heroHandName(game))}${game.uwep ? '' : ' (wielded)'}`,
     });
@@ -5281,38 +5364,50 @@ async function dowield() {
         game.context.move = 0;
         return;
     }
-    const object = selection.object;
+    let object = selection.object;
     if (!selection.none && !object) {
         game.context.move = 0;
         return;
     }
+    let splitParent = null;
+    if (object && selection.count !== null && selection.count < object.quan) {
+        if (object.otyp === LOADSTONE && object.cursed)
+            object.corpsenm = selection.count;
+        else if (isWeldedPrimary(object))
+            object.bknown = true;
+        else {
+            splitParent = object;
+            object = splitCarriedStack(object, selection.count);
+        }
+    }
     if (object && object === game.uwep) {
-        await pline('You are already wielding that!');
-        if (isWeaponTool(object) || isWetTowel(object))
-            game._unweapon = false;
-        game.context.move = 0;
+        await reportAlreadyWielded(object);
         return;
     }
     if (await refuseWeldedPrimary()) {
         resetBulkTakeoff();
+        if (splitParent && object)
+            await rejoinObjectStack(splitParent, object);
         game.context.move = 0;
+        return;
+    }
+    if (splitParent && object) {
+        if (splitParent === game.uwep) {
+            await rejoinObjectStack(splitParent, object);
+            await reportAlreadyWielded(splitParent);
+        }
+        else {
+            await finishSplittingCarriedStack(object);
+            await wieldSelectedWeapon(object);
+        }
         return;
     }
     if (selection.none) {
-        if (!game.uwep) {
-            await pline('You are already bare handed.');
-            game.context.move = 0;
-            return;
-        }
-        await plineWithContinuation('You are bare handed.');
-        await setPrimaryWeapon(null, game);
-        game.context.move = 1;
+        await wieldSelectedWeapon(null);
         return;
     }
-    if (!object) {
-        game.context.move = 0;
+    if (!object)
         return;
-    }
     // C dowield() hands an alternate-weapon selection to doswapweapon()
     // rather than treating it as an unrelated primary.  That continuation
     // prints the new primary before committing the old primary as secondary;
@@ -5321,40 +5416,61 @@ async function dowield() {
         await doswapweapon();
         return;
     }
-    if (object.worn && object.class !== 'Weapons' && object.oclass !== 2) {
+    if (object === game.uquiver) {
+        const quantity = object.quan;
+        let confirmation;
+        if (quantity > 1 && hasFreeBasicInventoryLetter() && splittableForQuiver(object)) {
+            const names = makePlural(minimalObjectName(object, game));
+            const answer = await promptYesNoQuit(`You have ${quantity} ${names} readied.  Wield one?`);
+            if (answer === 'q') {
+                game.context.move = 0;
+                return;
+            }
+            if (answer === 'y') {
+                await wieldSelectedWeapon(await splitStackForQuiver(object, 1));
+                return;
+            }
+            confirmation = 'Wield all of them instead?';
+        }
+        else {
+            const plural = objectNameIsPlural(object, game)
+                || object.otyp === LENSES || armorUsesPairGrammar(OBJECT_NAMES[object.otyp]);
+            confirmation = `You have ${plural ? 'those' : 'that'} readied.  Wield ${plural ? 'them' : 'it'} instead?`;
+        }
+        if (await promptYesNoQuit(confirmation) !== 'y') {
+            const names = minimalObjectName(object, game);
+            const plural = objectNameIsPlural(object, game);
+            await plineWithContinuation(`${objectOwnershipPrefix(object, game)}${quantity > 1 ? makePlural(names) : names} ${plural ? 'remain' : 'remains'} readied.`);
+            game.context.move = 0;
+            return;
+        }
+        await setQuiverObject(null);
+    }
+    else if ((object.owornmask ?? 0) & (W_ARMOR | W_ACCESSORY | W_SADDLE)) {
         await pline('You cannot wield that!');
         game.context.move = 0;
         return;
     }
-    if (object.oartifact) {
-        const artifact = artifactById(object.oartifact);
-        const touch = await touchArtifactByHero(object, artifact);
-        if (!touch.allowed || touch.died) {
-            game.context.move = 1;
-            return;
-        }
-    }
-    observeObjectForNaming(object);
-    const oldPrimary = game.uwep || game.u?.uwep || null;
-    const wasTwoWeapon = game.u.twoweap;
-    if (willWeld(object)) {
-        await announceWeaponWeld(object);
-    }
-    else {
-        const description = inventoryItemDescription(object, { projectPrimaryHand: true });
-        await plineWithContinuation(`${object.invlet} - ${description}.`);
-    }
-    await setPrimaryWeapon(object, game);
-    await explainTwoWeaponEnd(wasTwoWeapon);
-    await lightWieldedArtifact(object);
+    await wieldSelectedWeapon(object);
+}
+async function reportAlreadyWielded(object) {
+    await pline('You are already wielding that!');
+    if (isWeaponTool(object) || isWetTowel(object))
+        game._unweapon = false;
+    game.context.move = 0;
+}
+async function wieldSelectedWeapon(object) {
+    const oldPrimary = game.uwep || game.u.uwep || null;
+    const spentTime = await readyHeroWeapon(object);
     // C dowield() applies pushweapon only after ready_weapon() has installed
     // the new primary.  The displaced primary becomes the authoritative
     // secondary object; preserving that identity is what makes a later
     // selection of it enter doswapweapon() and its two-prinv continuation.
-    if (game.flags?.pushweapon && oldPrimary && oldPrimary !== object) {
+    if (game.flags?.pushweapon && oldPrimary && game.uwep !== oldPrimary) {
         await setSecondaryWeapon(oldPrimary, game);
     }
-    game.context.move = 1;
+    await stopTwoWeaponCombat();
+    game.context.move = spentTime ? 1 : 0;
 }
 // C refs: do_wear.c dowear(), accessory_or_armor_on(), and the negative
 // `multi`/afternmv completion in allmain.c.  Armor is installed in its worn
@@ -6036,31 +6152,26 @@ function splitCarriedStack(item, count) {
         throw new Error('cannot split selected inventory stack');
     return split;
 }
-function splitStackForQuiver(item, count) {
+async function splitStackForQuiver(item, count) {
     const child = splitCarriedStack(item, count);
-    child.invlet = null;
-    assignInventoryLetter(child);
-    if (!child.invlet)
-        child.invlet = '#';
+    await finishSplittingCarriedStack(child);
     return child;
 }
-async function reportWeldedPrimary(item) {
-    const newlyKnown = !item.bknown;
-    item.bknown = true;
-    observeObjectForNaming(item);
-    const hand = item.bimanual ? 'hands' : 'hand';
-    await pline(`${inventoryItemDescription(item)} is welded to your ${hand}!`);
-    return newlyKnown;
+// C finish_splitting(): take the child out and add it without merging so
+// its inherited inventory letter is replaced and carried effects refresh.
+async function finishSplittingCarriedStack(object) {
+    await freeInventoryObject(object);
+    const nomerge = !!object.nomerge;
+    object.nomerge = true;
+    await addInventoryItem(object, null, false);
+    object.nomerge = nomerge;
 }
 function splittableForQuiver(item) {
     return !(item?.otyp === LOADSTONE && item.cursed)
         && !isWeldedPrimary(item);
 }
 function hasFreeBasicInventoryLetter() {
-    const basicLetters = new Set((game.inventory || [])
-        .map(item => item.invlet)
-        .filter(letter => /^[a-zA-Z]$/.test(letter || '')));
-    return basicLetters.size < 52;
+    return game.inventory.filter(item => item.oclass !== 12).length < 52;
 }
 async function doquiverCore(verb) {
     game.multi = 0;
@@ -6069,6 +6180,7 @@ async function doquiverCore(verb) {
         game.context.move = 0;
         return { item: null, spentTime: false, cancelled: false };
     }
+    clearSplitObjects();
     const suggestions = game.inventory.filter(item => readySuggestion(item, game));
     const letters = suggestions.map(item => item.invlet).join('');
     const noneSuggested = !!game.uquiver;
@@ -6103,7 +6215,13 @@ async function doquiverCore(verb) {
         return { item: null, spentTime: false, cancelled: true };
     }
     if (isWeldedPrimary(item)) {
-        const spentTime = await reportWeldedPrimary(item);
+        // getobj() tests splittable() first for a partial count. That test
+        // reveals the weld before doquiver_core() checks whether it is new.
+        if (selection.count !== null && selection.count < item.quan)
+            item.bknown = true;
+        const spentTime = !item.bknown;
+        await refuseWeldedPrimary();
+        resetBulkTakeoff();
         game.context.move = spentTime ? 1 : 0;
         return {
             item: null, spentTime, cancelled: false,
@@ -6113,6 +6231,8 @@ async function doquiverCore(verb) {
     const initialQuantity = item.quantity ?? item.quan ?? 1;
     const partialCount = requestedCount !== null
         && requestedCount < initialQuantity;
+    if (partialCount && item.otyp === LOADSTONE && item.cursed)
+        item.corpsenm = requestedCount;
     if (item === game.uquiver) {
         // C getobj() splits before doquiver_core() notices the readied parent.
         if (partialCount && splittableForQuiver(item)) {
@@ -6134,7 +6254,7 @@ async function doquiverCore(verb) {
     }
     if (requestedCount !== null && requestedCount < initialQuantity
         && splittableForQuiver(item)) {
-        item = splitStackForQuiver(item, requestedCount);
+        item = await splitStackForQuiver(item, requestedCount);
     }
     const incompatibleMask = W_ARMOR | W_ACCESSORY | W_SADDLE;
     if (((item.owornmask ?? 0) & incompatibleMask)
@@ -6169,7 +6289,7 @@ async function doquiverCore(verb) {
                 return { item: null, spentTime: false, cancelled: false };
             }
             if (partial === 'y') {
-                item = splitStackForQuiver(item, quantity - 1);
+                item = await splitStackForQuiver(item, quantity - 1);
                 readyAll = false;
             }
             else
@@ -6482,6 +6602,8 @@ async function throwCommand(selectedItem = null, capabilityChecked = false, supp
         return;
     }
     wipeHeroEngraving(2);
+    if (isWetTowel(item))
+        await dryTowel(item, -1);
     if (selectedIsGold && item === game.uquiver) {
         const previousCapacity = game._encumbranceLevel
             ?? nearCapacity(game);
@@ -6970,7 +7092,7 @@ async function pushBoulder(boulder, x, y, dx, dy) {
             await plineWithContinuation(`There's ${withIndefiniteArticle(name)} on the other side.`);
         }
         else {
-            await plineWithContinuation('You hear a monster behind the boulder.');
+            await publishHeardMessage('a monster behind the boulder.', plineWithContinuation);
             map_invisible(targetX, targetY);
         }
         if (game.flags?.verbose !== false) {
@@ -7138,6 +7260,7 @@ async function finishMovedHero({ oldx, oldy, newx, newy, loc, explicitAttempt, b
     await checkHeroLeashes(oldx, oldy);
     if (game.program_state.gameover)
         return true;
+    game._domoveSucceeded = oldx !== newx || oldy !== newy;
     newsym(oldx, oldy);
     vision_recalc(1);
     await announceInvocationSquare();
@@ -7172,8 +7295,11 @@ async function delayAfterDraggingBall() {
 }
 // C hack.c:domove() clears kickedloc after even an unsuccessful attempt.
 async function domove(dx, dy, explicitAttempt = true) {
+    game._domoveSucceeded = false;
     const moved = await domoveCore(dx, dy, explicitAttempt);
     if (!game.program_state.gameover) {
+        if (game._domoveSucceeded)
+            maybeAdjustHeroBubble();
         game._kickedLoc = null;
         game._movementAttempt = null;
     }
@@ -7392,8 +7518,6 @@ async function domoveCore(dx, dy, explicitAttempt) {
         if (beastChoosesHeroDisplacement(monster, game, newx, newy)) {
             const ballChainMove = await beginBallAndChainMove(newx, newy);
             if (ballChainMove?.blocked) {
-                if (ballChainMove.blockedMessage)
-                    await pline(ballChainMove.blockedMessage);
                 game.context.move = Number(ballChainMove.consumedTurn);
                 return ballChainMove.consumedTurn;
             }
@@ -7465,8 +7589,6 @@ async function domoveCore(dx, dy, explicitAttempt) {
                 return false;
             const ballChainMove = await beginBallAndChainMove(newx, newy);
             if (ballChainMove?.blocked) {
-                if (ballChainMove.blockedMessage)
-                    await pline(ballChainMove.blockedMessage);
                 game.context.move = Number(ballChainMove.consumedTurn);
                 return ballChainMove.consumedTurn;
             }
@@ -7692,8 +7814,6 @@ async function domoveCore(dx, dy, explicitAttempt) {
     // Move the hero
     const ballChainMove = await beginBallAndChainMove(newx, newy);
     if (ballChainMove?.blocked) {
-        if (ballChainMove.blockedMessage)
-            await pline(ballChainMove.blockedMessage);
         game.context.move = Number(ballChainMove.consumedTurn);
         return ballChainMove.consumedTurn;
     }

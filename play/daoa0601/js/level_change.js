@@ -1,7 +1,7 @@
 import { heroLocomotion } from './hero_locomotion.js';
 import { maybeResetPick } from './lock_context.js';
 // C do.c:goto_level(): departure, destination creation or restoration, and arrival.
-import { rewindEngravingsForSave, restoreEngravingPointers } from './engrave.js';
+import { rewindEngravingsForSave, restoreEngravings } from './engrave.js';
 import { monsterHasMapPosition } from './monster_location.js';
 import { game, requireGameLevel, requirePlayingGame } from './gstate.js';
 import { addExperience, checkExperienceLevel } from './exper.js';
@@ -43,6 +43,7 @@ import { fumaroles } from './monmove.js';
 import { moveElementalBubbles } from './elemental.js';
 import { CORR, ROOM, DISMOUNT_FELL, LR_UPTELE, LR_DOWNTELE, RLOC_NOMSG, MAGIC_PORTAL, In_endgame, Is_airlevel, Is_waterlevel, Is_rogue_level, Is_knox_level, UTOTYPE_DEFERRED, } from './const.js';
 import { resurrectWizard } from './wizard.js';
+import { forgetTempleEntry } from './priest.js';
 import { heroIsBlind, heroIsHallucinating } from './senses.js';
 // C do.c:schedule_goto(). The current command or monster finishes using
 // the departure level; utotype stops the next monster from moving.
@@ -129,7 +130,7 @@ export async function gotoLevel(targetDepth, { arrival = 'random', ladder = fals
     // object identity while removing both objects from the departing floor.
     // placebc() installs them on the destination after hero placement.
     if (heroIsPunished())
-        unplaceBallAndChain(game);
+        await unplaceBallAndChain(game);
     clearHeroTrap(game);
     game.u.ustuck = null;
     // goto_level() calls set_ustuck(NULL), which requests a status update.
@@ -152,6 +153,9 @@ export async function gotoLevel(targetDepth, { arrival = 'random', ladder = fals
     if (!game._levelCache)
         game._levelCache = new Map();
     rewindEngravingsForSave(oldLevel);
+    for (const monster of oldLevel.monsters)
+        if (monster.ispriest)
+            forgetTempleEntry(monster);
     game._levelCache.set(levelCacheKey(oldDepth), cachedLevelState(oldLevel, oldStairs));
     if (leavingTutorial) {
         for (const key of game._levelCache.keys()) {
@@ -179,7 +183,7 @@ export async function gotoLevel(targetDepth, { arrival = 'random', ladder = fals
         game.program_state.in_getlev = true;
         try {
             game.level = cached.level;
-            restoreEngravingPointers(cached.level);
+            restoreEngravings(cached.level);
             game.stairs = cached.stairs;
             restoreCachedLevelMetadata(cached);
             await restoreCachedMonsterState(cached);
@@ -213,12 +217,11 @@ export async function gotoLevel(targetDepth, { arrival = 'random', ladder = fals
         && destinationDepth.dnum === tutorialDnum;
     // Quest text preparation can run Lua, so finish it before a message
     // pauses for player input.
-    const questArrival = prepareQuestArrival({
+    const questArrival = await prepareQuestArrival({
         fromDepth: oldDepth,
-        firstVisit: !cached,
     });
     const questPortalCall = arrival === 'portal' ? null
-        : prepareMainQuestPortalCall({ firstVisit: !cached });
+        : await prepareMainQuestPortalCall({ firstVisit: !cached });
     const oldDungeon = game.dungeons?.[oldDepth.dnum ?? 0];
     const newDungeon = game.dungeons?.[newDepth.dnum ?? 0];
     recordDungeonEntryAchievements(game, oldDepth, newDepth);

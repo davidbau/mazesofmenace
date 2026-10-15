@@ -3483,7 +3483,10 @@ export function bot_via_windowport() {
     condtests[bl_ride].test = u.usteed ? true : false; // C :1198
     condtests[bl_slime].test = ((u.Slimed | 0) || (u.uprops?.[SLIMED]?.intrinsic | 0)) ? true : false; // C :1199 display.js:5899
     condtests[bl_stone].test = ((u.Stoned | 0) || (u.uprops?.[STONED]?.intrinsic | 0)) ? true : false; // C :1200 display.js:5900
-    condtests[bl_strngl].test = ((u.Strangled | 0) || (u.HStrangled | 0) || (u.EStrangled | 0) || (u.uprops?.[STRANGLED]?.intrinsic | 0) || (u.uprops?.[STRANGLED]?.extrinsic | 0)) ? true : false; // C :1201 display.js:5894
+    // C :1201 `(Strangled)` is uprops[STRANGLED].intrinsic only
+    // (youprop.h:110); the worn-amulet oc_oprop extrinsic is write-only in
+    // C (worn.c:123-125), like Glib below — u.Strangled mirrors intrinsic.
+    condtests[bl_strngl].test = ((u.Strangled | 0) || (u.uprops?.[STRANGLED]?.intrinsic | 0)) ? true : false; // C :1201
     condtests[bl_stun].test = ((u.HStun | 0) || u.Stunned) ? true : false; // C :1202 display.js:5931
     condtests[bl_submerged].test = u.uinwater ? true : false; // C :1203 Underwater: youprop.h:279
     setIfEnabled(bl_elf_iron, false); // C :1204 never (FALSE)

@@ -25,6 +25,7 @@ import { offerThrownFood } from './thrown_food.js';
 import { hitMonsterWithThrownEggPieOrVenom } from './hero_thrown_egg_pie_venom.js';
 import { rangedTargetHitBonus } from './weapon_accuracy.js';
 import { isAxe } from './weapon_type.js';
+import { catchQuestObject } from './quest_leader_catch.js';
 const M2_ELF = 0x00000010;
 const M2_ORC = 0x00000080;
 const WEAPON_CLASS = 2;
@@ -96,20 +97,19 @@ function baseRangedHitThreshold(monster, weapon, state) {
     return threshold + (targetIsOrc && heroIsElf ? 1 : 0);
 }
 function throwingHitBonus(monster, weapon, state) {
-    const skill = Math.abs(OBJECT_SUBTYPE[weapon.otyp] ?? 0);
     if (isLauncherAmmunition(weapon)) {
         const launcher = state.uwep;
         if (!launcher || !launcherMatchesAmmo(weapon, launcher))
             return -4;
         const erosion = Math.max(launcher.oeroded ?? 0, launcher.oeroded2 ?? 0);
         return launcher.spe - erosion
-            + weaponSkillHitBonus(state, Math.abs(OBJECT_SUBTYPE[launcher.otyp] ?? 0))
+            + weaponSkillHitBonus(launcher, state)
             + artifactToHitBonus(launcher, monster, rnd, { state })
             + bowTrainingHitBonus(state, launcher);
     }
     const bonus = weapon.otyp === BOOMERANG ? 4
         : isThrowingWeapon(weapon) ? 2 : -2;
-    return bonus + weaponSkillHitBonus(state, skill);
+    return bonus + weaponSkillHitBonus(weapon, state);
 }
 function rangedObjectUsesWeaponHit(object) {
     const objectClass = object.oclass ?? objectClassForType(object.otyp);
@@ -124,6 +124,11 @@ async function hitMonsterWithRangedObject(monster, object, state, mode, { guaran
     let threshold = baseRangedHitThreshold(monster, object, state);
     if (guaranteedHit)
         threshold += 1000;
+    if (!applied) {
+        const caught = await catchQuestObject(monster, object, state);
+        if (caught !== null)
+            return { hit: caught, consumed: caught };
+    }
     const dieRoll = rnd(20);
     const weaponHit = rangedObjectUsesWeaponHit(object);
     const heavyObject = object.otyp === BOULDER || object.otyp === HEAVY_IRON_BALL;
@@ -135,7 +140,7 @@ async function hitMonsterWithRangedObject(monster, object, state, mode, { guaran
         else if (mode === 'thrown')
             threshold += throwingHitBonus(monster, object, state);
         else
-            threshold += weaponSkillHitBonus(state, Math.abs(OBJECT_SUBTYPE[object.otyp] ?? 0));
+            threshold += weaponSkillHitBonus(object, state);
     }
     else if (heavyObject) {
         await exerciseAttribute(A_STR, true, state);

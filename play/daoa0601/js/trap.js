@@ -1,25 +1,27 @@
 // Water, lava, fire, and monster rust-trap effects.
 // C ref: trap.c lava_effects(), burnarmor(), trapeffect_rust_trap(),
 // water_damage(), and erode_obj().
-import { IS_POOL, Is_waterlevel, W_ARM, W_ARMC, W_ARMF, W_ARMG, W_ARMH, W_ARMS, W_ARMU, W_SWAPWEP, W_WEP, isok, } from './const.js';
+import { formatSeenMessage } from './hero_speech.js';
+import { Is_waterlevel, W_ARM, W_ARMC, W_ARMF, W_ARMG, W_ARMH, W_ARMS, W_ARMU, W_SWAPWEP, W_WEP, isok, } from './const.js';
 import { armorSimpleName, heroHasWaterWalking } from './armor.js';
 import { fireDamageObject } from './fire_damage.js';
 import { delobj } from './object_delete.js';
 import { objectDescription as fullObjectDescription } from './object_description.js';
 import { objectCombatName, observeObjectForNaming, ownedObjectName, simpleObjectName } from './objnam.js';
-import { cansee } from './vision.js';
+import { cansee, couldsee } from './vision.js';
 import { endObjectBurn } from './light.js';
 import { game } from './gstate.js';
-import { monsterName, possessiveName } from './monster_name.js';
 import { removeHeroEquipment, removeWornHeroItem } from './hero_equipment.js';
 import { useUpInventoryStack } from './hero_inventory.js';
 import { getObjectLocation } from './object_location.js';
 import { heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
 import { heroIsFlying } from './polyself.js';
-import { MONSTER_FLAGS1 } from './monster_data.js';
+import { isPoolAt, monsterFliesOrFloats } from './terrain_properties.js';
+import { objectOwnershipPrefix } from './shk.js';
+import { MONSTER_FLAGS1, monsterIsHumanoid } from './monster_data.js';
 import { splitMonster } from './monster_clone.js';
 import { monsterWieldedWeapon } from './monster_weapon.js';
-import { BAG_OF_TRICKS, BRASS_LANTERN, CAN_OF_GREASE, CHEST, ICE_BOX, FIRE_HORN, LARGE_BOX, OBJECT_BIMANUAL, OBJECT_MATERIAL, OBJECT_MATERIAL_NAMES, OBJECT_NAMES, OBJECT_PROPERTY, OILSKIN_SACK, POT_ACID, POT_WATER, RED_DRAGON_SCALE_MAIL, RED_DRAGON_SCALES, RIN_FIRE_RESISTANCE, SCR_BLANK_PAPER, SCR_FIRE, SPE_BLANK_PAPER, SPE_BOOK_OF_THE_DEAD, SPE_FIREBALL, SPE_NOVEL, TOWEL, WAN_FIRE, } from './object_data.js';
+import { BAG_OF_TRICKS, BRASS_LANTERN, CAN_OF_GREASE, CANDELABRUM_OF_INVOCATION, CHEST, ICE_BOX, FIRE_HORN, LARGE_BOX, OBJECT_BIMANUAL, OBJECT_MATERIAL, OBJECT_MATERIAL_NAMES, OBJECT_NAMES, OBJECT_PROPERTY, OILSKIN_SACK, MAGIC_LAMP, OIL_LAMP, POT_ACID, POT_OIL, POT_WATER, RED_DRAGON_SCALE_MAIL, RED_DRAGON_SCALES, RIN_FIRE_RESISTANCE, SCR_BLANK_PAPER, SCR_FIRE, SPE_BLANK_PAPER, SPE_BOOK_OF_THE_DEAD, SPE_FIREBALL, SPE_NOVEL, TALLOW_CANDLE, TOWEL, WAN_FIRE, WAX_CANDLE, } from './object_data.js';
 import { erodeObject } from './object_erosion.js';
 import { learnObjectType } from './object_knowledge.js';
 import { blankNovel } from './object_cancellation.js';
@@ -30,6 +32,7 @@ import { impossible } from './diagnostics.js';
 import { stopAllObjectTimers } from './object_timers.js';
 import { rnl, rn2, rnd } from './rng.js';
 import { canSeeMonster, newsym } from './display.js';
+import { dryTowel, wetTowel } from './towel.js';
 // C trap.c:seetrap(). Discovering a trap refreshes the nonliving layer;
 // any object or monster still covering it keeps its usual display priority.
 export function seeTrap(trap, state = game) {
@@ -149,7 +152,7 @@ export async function destroyLavaFloorObjects(objects, { state = game, publish =
                 }
                 else {
                     observeObjectForNaming(object, { state });
-                    await publish(`You see ${fullObjectDescription(object, { state })} hit lava and burn up!`);
+                    await publish(formatSeenMessage(`${fullObjectDescription(object, { state })} hit lava and burn up!`, state));
                 }
             }
             await delobj(object, state, random);
@@ -215,8 +218,7 @@ function carriedByHero(object, state) {
     return (state.inventory || []).includes(object);
 }
 function heroLanternIsDunked(state) {
-    const location = state.level?.at?.(state.u?.ux, state.u?.uy);
-    if (!location || !IS_POOL(location.typ))
+    if (!isPoolAt(state.u.ux, state.u.uy, state))
         return false;
     return Is_waterlevel(state.u.uz)
         || !(state.u?.levitating || state.levitating
@@ -225,27 +227,56 @@ function heroLanternIsDunked(state) {
 export function splashLitObject(object, messages = [], state = game) {
     if (!object?.lamplit)
         return false;
+    // snuff_lit() handles flames and lanterns, not magical light sources.
+    if (![OIL_LAMP, MAGIC_LAMP, BRASS_LANTERN, POT_OIL,
+        TALLOW_CANDLE, WAX_CANDLE, CANDELABRUM_OF_INVOCATION].includes(object.otyp))
+        return false;
     const carried = carriedByHero(object, state);
     let dunkedLantern = false;
-    if (object.otyp === BRASS_LANTERN && carried) {
-        const visible = !heroIsBlind(state);
-        const audible = !heroIsDeaf(state);
+    if (object.otyp === BRASS_LANTERN) {
+        let visible = false, audible = false, snuff = true;
+        if (carried) {
+            visible = !heroIsBlind(state);
+            audible = !heroIsDeaf(state);
+            dunkedLantern = heroLanternIsDunked(state);
+            snuff = false;
+        }
+        else if (object.where === 'minvent' && object.ocarry
+            && monsterIsHumanoid(object.ocarry.mnum)) {
+            const carrier = object.ocarry;
+            const position = getObjectLocation(object, state);
+            visible = !!position && cansee(position.x, position.y);
+            audible = couldsee(carrier.mx, carrier.my)
+                && (carrier.mx - state.u.ux) ** 2 + (carrier.my - state.u.uy) ** 2 < 25;
+            dunkedLantern = isPoolAt(carrier.mx, carrier.my, state)
+                && (!monsterFliesOrFloats(carrier) || Is_waterlevel(state.u.uz));
+            snuff = false;
+        }
         if (visible || audible) {
             const action = audible && visible
                 ? 'crackles and flickers'
                 : audible ? 'crackles' : 'flickers';
-            messages.push(`Your ${waterObjectName(object)} ${action}.`);
+            messages.push(`${ownedObjectName(object, state)} ${action}.`);
         }
-        dunkedLantern = heroLanternIsDunked(state);
-        if (!dunkedLantern)
+        if (!dunkedLantern && !snuff)
             return false;
+    }
+    const position = getObjectLocation(object, state);
+    const visible = object.where === 'minvent'
+        ? !!position && cansee(position.x, position.y) : !heroIsBlind(state);
+    if (visible) {
+        const candle = object.otyp === TALLOW_CANDLE || object.otyp === WAX_CANDLE;
+        if (candle || object.otyp === CANDELABRUM_OF_INVOCATION) {
+            const many = candle ? object.quan > 1 : object.spe > 1;
+            messages.push(`${objectOwnershipPrefix(object, state, { capitalized: true })}${candle ? '' : "candelabrum's "}candle${many ? "s' flames are" : "'s flame is"} extinguished.`);
+        }
+        else {
+            const plural = waterObjectIsPlural(object);
+            messages.push(`${ownedObjectName(object, state)} ${plural ? 'go' : 'goes'} out!`);
+        }
     }
     if (!endObjectBurn(object, state, state.moves ?? 0))
         object.lamplit = false;
-    if (carried && !heroIsBlind(state)) {
-        const plural = waterObjectIsPlural(object);
-        messages.push(`Your ${waterObjectName(object)} ${plural ? 'go' : 'goes'} out!`);
-    }
     if (dunkedLantern) {
         const age = object.age ?? 0;
         object.age = age - (age > 200 ? 100 : Math.trunc(age / 2));
@@ -299,12 +330,7 @@ export async function waterDamageObject(object, messages = [], state = game, { f
     if (object.otyp === CAN_OF_GREASE && spe > 0)
         return 'nothing';
     if (object.otyp === TOWEL && spe < 7) {
-        const wetness = spe + rollOne(7 - spe);
-        if (carried) {
-            const adjective = wetness < 3 ? spe ? 'damper' : 'damp' : spe ? 'wetter' : 'wet';
-            await emit(`${ownedObjectName(object, state)} gets ${adjective}.`);
-        }
-        object.spe = wetness;
+        await wetTowel(object, -rollOne(7 - spe), { state, verbose: true, publish: emit });
         return 'nothing';
     }
     if (object.greased) {
@@ -339,7 +365,8 @@ export async function waterDamageObject(object, messages = [], state = game, { f
         }
         return 'damaged';
     }
-    if (!force && (state.u.uluck ?? 0) + 5 > random(20))
+    const luck = (state.u.uluck ?? 0) + (state.u.moreluck ?? 0);
+    if (!force && luck + 5 > random(20))
         return 'nothing';
     if (object.oclass === 9) {
         if (object.otyp === SCR_BLANK_PAPER)
@@ -422,10 +449,10 @@ async function destroyWetAcidPotion(object, described, emit, state, context) {
     await delobj(object, state);
     return 'destroyed';
 }
-export async function waterDamageChain(objects, messages = [], state = game) {
+export async function waterDamageChain(objects, messages = [], state = game, options = {}) {
     if (!objects)
         return messages;
-    await damageWaterChain(objects, messages, state, {});
+    await damageWaterChain(objects, messages, state, options);
     return messages;
 }
 async function damageWaterChain(objects, messages, state, options) {
@@ -501,8 +528,6 @@ export async function burnArmorByFire(victim, state, emitMessage, calls = [], ra
     if (victim !== state.u && !monster)
         throw new TypeError('Armor damage requires the live hero or a monster.');
     const hero = monster === null;
-    const owner = !monster ? () => 'Your'
-        : visible ? () => possessiveName(monsterName(monster, { state, capitalized: true })) : null;
     const inventory = monster ? inventoryOf(monster) : state.inventory;
     for (const towel of inventory) {
         const wetness = towel.otyp === TOWEL ? towel.spe ?? 0 : 0;
@@ -511,10 +536,7 @@ export async function burnArmorByFire(victim, state, emitMessage, calls = [], ra
         const newWetness = recordRoll(random, calls, wetness + 1);
         if (newWetness === wetness)
             continue;
-        towel.spe = newWetness;
-        if (visible && owner && emitMessage) {
-            await emitMessage(`${owner()} towel dries${newWetness ? '' : ' out'}.`);
-        }
+        await dryTowel(towel, newWetness, { state, verbose: visible, publish: emitMessage ?? null });
         break;
     }
     for (;;) {

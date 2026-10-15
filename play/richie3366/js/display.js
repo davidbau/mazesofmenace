@@ -7427,11 +7427,10 @@ function _statusLine2() {
     const tmmv = flags.time ? `T:${game.moves || 1}` : '';
     // C botl.c `:165–186` + tty field path (see fn doc): each arm's
     // predicate is unchanged (flats in make_stoned/make_slimed/make_sick
-    // or uprops[].intrinsic like timeout.js intr_bits; Strangled also
-    // covers the H/E flat mirrors); only emission order moves to the
-    // field order — BL_HUNGER, then BL_CAP, then rank-sorted
-    // BL_CONDITION. FoodPois and TermIll ride separate Sick gates so
-    // Stone/Slime sort between them.
+    // or uprops[].intrinsic like timeout.js intr_bits); only emission
+    // order moves to the field order — BL_HUNGER, then BL_CAP, then
+    // rank-sorted BL_CONDITION. FoodPois and TermIll ride separate Sick
+    // gates so Stone/Slime sort between them.
     let cond = '';
     // C do_statusline2 `:187–188` + windows.c fieldorder — hu_stat, then
     // enc_stat, both ahead of every condition word.
@@ -7445,9 +7444,14 @@ function _statusLine2() {
     }
     // C rank-sorted BL_CONDITION: Strngl(4); FoodPois/Slime/Stone/TermIll
     // (6, alpha); Blind/Conf/Deaf/Fly/Hallu/Lev/Ride/Stun (10, alpha).
-    if ((u.Strangled | 0) || (u.HStrangled | 0) || (u.EStrangled | 0)
-        || (u.uprops?.[STRANGLED]?.intrinsic | 0)
-        || (u.uprops?.[STRANGLED]?.extrinsic | 0)) cond += ' Strngl';
+    // C botl.c:177 `if (Strangled)` where Strangled is
+    // uprops[STRANGLED].intrinsic only (youprop.h:110): the worn amulet's
+    // oc_oprop extrinsic (worn.c:123-125) is write-only in C — no C reader
+    // of EStrangled/HStrangled exists — so an immune form (dust vortex)
+    // wearing the amulet shows no Strngl. u.Strangled is the JS mirror of
+    // the same C field (dig.js/potion.js/spell.js idiom).
+    if ((u.Strangled | 0)
+        || (u.uprops?.[STRANGLED]?.intrinsic | 0)) cond += ' Strngl';
     const sickActive = (u.Sick | 0) || (u.uprops?.[SICK]?.intrinsic | 0);
     if (sickActive && ((u.usick_type | 0) & SICK_VOMITABLE)) cond += ' FoodPois';
     if ((u.Slimed | 0) || (u.uprops?.[SLIMED]?.intrinsic | 0)) cond += ' Slime';
@@ -10049,6 +10053,17 @@ export function install_tty_wincap2() {
 function putmesg(line) {
     let attr = ATR_NONE;
     if (game.iflags?.debug_prevent_pline) return;
+    // Convert a pending encumber_msg botl commit (pickup.c:2016/:1999):
+    // the crossing message is displayed now — after its own pline's
+    // pre-putmesg flush (which must not repaint, as in C) and before
+    // any later flush (which must, display.c:2236-2239). Idempotent
+    // with the caller's post-pline real sets; a stale pending from a
+    // suppressed pline converts redundantly at the next message.
+    if (game._pending_botl) {
+        game._pending_botl = false;
+        if (game.flags) game.flags.botl = true;
+        if (game.disp) game.disp.botl = true;
+    }
     const wincap2 = install_tty_wincap2();
     if ((gp.pline_flags & URGENT_MESSAGE) !== 0
         && (wincap2 & WC2_URGENT_MESG) !== 0) {

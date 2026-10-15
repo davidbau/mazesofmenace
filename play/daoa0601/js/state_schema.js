@@ -30,7 +30,7 @@ const persistentNames = [
     'made_branch', 'medusa_level', 'migratingObjects', 'mines_dnum',
     'moves', 'mvitals', 'name', 'nethackrc', 'nh_lua_variables', 'objectColors',
     'objectDescriptionIndex', 'objectDescriptions', 'objectMaterials', 'objectToughness',
-    'oracle_level', 'plname', 'polymorphControl', 'preferred_pet',
+    'oracle_level', 'oracleRemaining', 'plname', 'polymorphControl', 'preferred_pet',
     'protectionFromShapeChangers', 'quest_dnum', 'quest_status',
     'rndencode', 'rogue_level', 'sanctum_level', 'seer_turn', 'smeq', 'sokoban_dnum',
     'specialLevels', 'spells', 'splev_align', 'stairs', 'startingPet', 'stronghold_level',
@@ -43,6 +43,9 @@ const persistentNames = [
 // Every remaining GameState field must be transient. Adding, removing, or
 // reclassifying a field requires an explicit persistence decision at compile time.
 const transientFields = {
+    _ballChainRestriction: true,
+    _heroBubble: true,
+    _domoveSucceeded: true,
     _wishHistory: true,
     _pickWarningMove: true,
     _canMakeBones: true,

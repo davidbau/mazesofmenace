@@ -1,31 +1,10 @@
-// Source-shaped fountain effect reducers.
-// C refs: fountain.c fountain actor helpers and dipfountain() cases 16 through
-// 20, 21 through 24, 26 through 27, and 29.
-import { curseObjectState, uncurseObjectState } from './object_state.js';
+// Fountain sensations, treasure, and spawned creatures.
+// C refs: fountain.c actor helpers, dofindgem(), and dipfountain() cases
+// 21 through 24, 26 through 27, and 29.
+import { formatFeltMessage, formatHeardMessage } from './hero_speech.js';
 import { rn2, rnd } from './rng.js';
 function resolvedLiquidName(liquidName) {
     return typeof liquidName === 'function' ? liquidName() : liquidName;
-}
-export function resolveDippedBucFate({ fate, object, isHands = false, blind = false, liquidName = 'water', }) {
-    if (fate === 16) {
-        if (!isHands && object && !object.cursed)
-            curseObjectState(object);
-        return { handled: true, message: '' };
-    }
-    if (fate >= 17 && fate <= 20) {
-        if (!isHands && object?.cursed) {
-            const message = blind
-                ? ''
-                : `The ${resolvedLiquidName(liquidName)} glows for a moment.`;
-            uncurseObjectState(object);
-            return { handled: true, message };
-        }
-        return {
-            handled: true,
-            message: 'A feeling of loss comes over you.',
-        };
-    }
-    return { handled: false, message: '' };
 }
 function resolvedArmName(armName) {
     return typeof armName === 'function' ? armName() : armName;
@@ -40,7 +19,7 @@ export function resolveDippedSensationFate({ fate, armName = 'arm' }) {
     if (fate === 27) {
         return {
             handled: true,
-            message: 'You feel a sudden chill.',
+            message: formatFeltMessage('a sudden chill.'),
         };
     }
     return { handled: false, message: '' };
@@ -96,7 +75,7 @@ export async function applyFountainGemDiscovery({ loc, blind = false, announce =
         };
     }
     const message = blind
-        ? 'You feel a gem here!'
+        ? formatFeltMessage('a gem here!')
         : 'You spot a gem in the sparkling waters!';
     await announce(message);
     const gemType = chooseGem();
@@ -124,7 +103,7 @@ export async function applyFountainNymphActor({ gone = false, blind = false, cre
     const monster = gone ? null : await createMonster();
     if (!monster) {
         const message = blind
-            ? 'You hear a loud pop.'
+            ? formatHeardMessage('a loud pop.')
             : 'A large bubble rises to the surface and pops.';
         await announceFountainActor(message, announce);
         return {
@@ -133,7 +112,7 @@ export async function applyFountainNymphActor({ gone = false, blind = false, cre
         };
     }
     const message = blind
-        ? 'You hear a seductive voice.'
+        ? formatHeardMessage('a seductive voice.')
         : `You attract ${nymphDescription(monster)}!`;
     await announceFountainActor(message, announce);
     wakeMonster(monster);
@@ -160,7 +139,7 @@ export async function applyFountainDemonActor({ gone = false, blind = false, dif
         };
     }
     const message = blind
-        ? 'You feel the presence of evil.'
+        ? formatFeltMessage('the presence of evil.')
         : `You unleash ${demonIndefiniteName(monster)}!`;
     await announceFountainActor(message, announce);
     const wishRoll = random(100);
@@ -193,7 +172,7 @@ export async function applyFountainSnakeActors({ gone = false, blind = false, ha
         };
     }
     const message = blind
-        ? 'You hear something hissing!'
+        ? formatHeardMessage('something hissing!')
         : `An endless stream of ${hallucinating ? hallucinatedPlural() : 'snakes'} pours forth!`;
     await announceFountainActor(message, announce);
     const created = [];
@@ -206,6 +185,8 @@ export async function applyFountainSnakeActors({ gone = false, blind = false, ha
         const trap = await triggerFountainActorTrap(monster, trapAt, triggerTrap);
         if (trap != null)
             traps.push({ monster, trap });
+        if (trap?.heroDied)
+            break;
     }
     return { requested, created, message, traps, fallback: false };
 }

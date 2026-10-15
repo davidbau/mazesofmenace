@@ -48,7 +48,7 @@ import {
 import { m_at, wakeup, seemimic, m_carrying, bad_rock, setmangry, m_in_air, unique_corpstat, wake_nearby, wake_nearto } from './mon.js';
 import { cansee, couldsee, m_cansee, recalc_block_point, unblock_point, vision_recalc } from './vision.js';
 import { del_engr_at, can_reach_floor, sticks } from './engrave.js';
-import { set_ustuck } from './mhitu.js';
+import { set_ustuck, digests } from './mhitu.js';
 import {
     G_UNIQ, grounded, passes_walls,
     is_flyer, is_floater, is_clinger,
@@ -109,7 +109,7 @@ import {
     IS_OBSTRUCTED, IS_STWALL, IS_TREE, IRONBARS,
     HVY_ENCUMBER, EXT_ENCUMBER, UNENCUMBERED, SLT_ENCUMBER, WT_TOOMUCH_DIAGONAL,
     TELEDS_ALLOW_DRAG, TELEDS_TELEPORT, TELEPORT, TELEPORT_CONTROL,
-    WOUNDED_LEGS,
+    WOUNDED_LEGS, LEVITATION,
     ECMD_OK, ECMD_TIME, MON_DETACH, MON_ENDGAME_FREE, M_AP_NOTHING, M_AP_MONSTER,
     Is_container, Waterproof_container, Is_box,
     xytodir, DIR_180, DIR_ERR,
@@ -1100,7 +1100,24 @@ export function maketrap(x, y, typ) {
                     : DOOR;
                 set_levltyp(x, y, newt);
             }
-            if (clear_flags) lev.flags = 0;
+            // C trap.c:560–561 — lev->flags = 0 clears the rm.h union:
+            // doormask/altarmask/wall_info/drawbridgemask/looted/
+            // icedpool/ladder/emptygrave ALL alias flags (rm.h:213–221).
+            // JS split the mirrors, so clear each live one (DRAWBRIDGE_UP
+            // keeps its mask via clear_flags above; ladder cells never
+            // reach here — stairs fail the terrain gate; emptygrave has
+            // no JS field). Proved by minetn-6 (49,7): the ensure_way_out
+            // HOLE on a D_CLOSED des door must leave D_NODOOR
+            // (lock.c:1165), JS kept doormask=4 → fi14 cnt 4 vs 5.
+            if (clear_flags) {
+                lev.flags = 0;
+                lev.doormask = 0;
+                lev.altarmask = 0;
+                lev.wall_info = 0;
+                lev.drawbridgemask = 0;
+                lev.looted = 0;
+                lev.icedpool = 0;
+            }
             maketrap_unearth_objs(x, y);
             recalc_block_point(x, y);
         }
@@ -3387,6 +3404,19 @@ export async function float_down(hmask, emask) {
 
     u.HLevitation = (u.HLevitation | 0) & ~(hmask | 0);
     u.ELevitation = (u.ELevitation | 0) & ~(emask | 0);
+    /* C youprop.h:235-236 — HLevitation IS u.uprops[LEVITATION].intrinsic
+     * and ELevitation IS .extrinsic (single storage); the mask clear must
+     * hit the slot too, or nh_timeout's generic loop decrements the stale
+     * slot TIMEOUT and mirrors it back into the flat, re-levitating the
+     * hero a turn after float_down (dodown path; D-3978 dual-write idiom). */
+    if (!u.uprops) u.uprops = {};
+    if (!u.uprops[LEVITATION]) {
+        u.uprops[LEVITATION] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+    }
+    u.uprops[LEVITATION].intrinsic =
+        (u.uprops[LEVITATION].intrinsic | 0) & ~(hmask | 0);
+    u.uprops[LEVITATION].extrinsic =
+        (u.uprops[LEVITATION].extrinsic | 0) & ~(emask | 0);
     if (Levitation_fd()) return 0;
 
     if (u.BLevitation | 0) {
@@ -3420,9 +3450,10 @@ export async function float_down(hmask, emask) {
         }
     }
     if (u.uswallow) {
-        // digests() deferred — "swallowed" vs "engulfed" via is_animal
+        // C `:4065–4070` — digests() (mondata.h:71: AT_ENGL+AD_DGST),
+        // not is_animal (D-1849-class clone deleted; live mhitu.js export).
         const stuck = u.ustuck;
-        const how = (stuck && is_animal(stuck.data)) ? 'swallowed' : 'engulfed';
+        const how = (stuck && digests(stuck.data)) ? 'swallowed' : 'engulfed';
         await pline(`You float down, but you are still ${how}.`);
         await encumber_msg();
         return 1;

@@ -1,4 +1,5 @@
 // C fountain.c:dipsink(), sink_backs_up().
+import { formatSeenMessage, publishHeardMessage } from './hero_speech.js';
 import { exerciseAttribute } from './attrib.js';
 import { heroFaceName } from './body_parts.js';
 import { A_DEX, A_WIS, S_LRING } from './const.js';
@@ -10,7 +11,7 @@ import { consumeInventoryItem } from './invent.js';
 import { mkobj } from './mklev.js';
 import { tryCallObjectType } from './object_call.js';
 import { POT_ACID, POT_FRUIT_JUICE, POT_GAIN_ENERGY, POT_GAIN_LEVEL, POT_LEVITATION, POT_MONSTER_DETECTION, POT_OBJECT_DETECTION, POT_OIL, POT_POLYMORPH, POT_WATER } from './object_data.js';
-import { objectCombatName } from './objnam.js';
+import { definiteName, objectCombatName } from './objnam.js';
 import { objectQuantity } from './object_stack.js';
 import { applySupportedPotionVapor, heroPotionVaporProfile } from './potion_hit.js';
 import { polymorphSink } from './ring_sink.js';
@@ -35,12 +36,12 @@ export async function dipSink(object) {
         return;
     }
     if (object.oclass !== 8) {
-        await pline(`You hold the ${objectCombatName(object, { includeCorpseSpecies: false })} under the tap.`);
+        await pline(`You hold ${definiteName(objectCombatName(object, { includeCorpseSpecies: false }))} under the tap.`);
         if (await waterDamageObject(object, [], game, { force: true, publish: pline }) === 'nothing')
             await pline('Nothing seems to happen.');
         return;
     }
-    await pline(`You pour ${objectQuantity(object) > 1 ? 'one of ' : ''}the ${objectCombatName(object)} down the drain.`);
+    await pline(`You pour ${objectQuantity(object) > 1 ? 'one of ' : ''}${definiteName(objectCombatName(object))} down the drain.`);
     let tryCall = false;
     switch (object.otyp) {
         case POT_POLYMORPH:
@@ -57,7 +58,7 @@ export async function dipSink(object) {
                 tryCall = true;
             }
             else if (!heroIsDeaf()) {
-                await pline('You hear a sucking sound.');
+                await publishHeardMessage('a sucking sound.', pline);
                 tryCall = true;
             }
             else
@@ -101,7 +102,7 @@ export async function sinkBacksUp(x = game.u.ux, y = game.u.uy) {
     if ((location.looted ?? 0) & S_LRING)
         return;
     if (!sight)
-        await pline('You see a ring shining in its midst.');
+        await pline(formatSeenMessage('a ring shining in its midst.'));
     placeCreatedObject(await mkobj(4, true), x, y);
     newsym(x, y);
     await exerciseAttribute(A_DEX, true);

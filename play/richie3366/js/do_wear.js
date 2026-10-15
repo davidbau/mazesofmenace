@@ -1596,9 +1596,14 @@ async function Shield_on() {
     return 0;
 }
 /**
- * C ref: do_wear.c Gloves_on — POWER makeknown→exercise(A_WIS) (D-0783);
- * FUMBLING incr_itimeout; DEXTERITY adj_abon (makeknown→exercise(A_WIS)
- * credit when spe nonzero). Named omissions: update_inventory; Gloves_off.
+ * C ref: do_wear.c Gloves_on `:576–603` — oldprop + glove switch after
+ * setworn; known=1 + update_inventory tail. No find_ac anywhere in the
+ * C body (D-3891/D-3948 class): uac refreshes at the allmain
+ * once-per-input find_ac (D-0810 rule), so a donning that completes
+ * mid-turn paints the stale AC until the turn ends. DEXTERITY inlines
+ * the adj_abon gloves half (Helmet_on carries the helm half);
+ * FUMBLING seeds the uprops slot from the merged flat (C has one
+ * HFumbling long). C-unreachable null uarmg stays a plain no-op.
  */
 async function Gloves_on() {
     const o = game.u?.uarmg;
@@ -1608,7 +1613,9 @@ async function Gloves_on() {
     const extr = u.uprops?.[oprop]?.extrinsic | 0;
     const oldprop = extr & ~WORN_GLOVES;
 
-    if (o.otyp === GAUNTLETS_OF_FUMBLING) {
+    if (o.otyp === LEATHER_GLOVES) {
+        /* C `:581–582` — no effect */
+    } else if (o.otyp === GAUNTLETS_OF_FUMBLING) {
         if (!u.uprops) u.uprops = {};
         const prop = u.uprops[oprop] || (u.uprops[oprop] = {
             intrinsic: 0, extrinsic: 0, blocked: 0,
@@ -1638,9 +1645,16 @@ async function Gloves_on() {
         }
         if (!game.flags) game.flags = {};
         game.flags.botl = true;
+    } else {
+        // C `:595–596` default.
+        await impossible('Unknown type of %s (%d)', 'gloves', o.otyp | 0);
     }
-    if (!o.known) o.known = 1;
-    find_ac();
+    // C `:597–600` — gloves' +/- evident via the status line AC.
+    // No find_ac: C `:576–603` never recomputes here (D-3891 class).
+    if (!o.known) {
+        o.known = 1;
+        update_inventory();
+    }
     return 0;
 }
 /**

@@ -1,8 +1,10 @@
+import { formatFeltMessage, publishHeardMessage } from './hero_speech.js';
 import { moveMonsterNextToHero } from './teleport.js';
 import { monsterFireDescription } from './monster_fire_description.js';
 import { bot } from './display.js';
 import { launchRollingBoulder } from './rolling_boulder.js';
 import { recorderLocalHour } from './calendar.js';
+import { impossible, panic } from './diagnostics.js';
 // Monster movement-ration state, movement, and combat.
 // C refs: allmain.c moveloop_core(), mon.c mcalcmove()/movemon()/mfndpos(),
 // monmove.c m_move()/dochug(), and dogmove.c dog_goal()/dog_move().
@@ -39,7 +41,7 @@ import { loseGuardianAngel } from './guardian_angel.js';
 import { shiftMonsterForDoor, resolveMonsterDoorPassage } from './monster_door_passage.js';
 import { heroSpecies } from './hero_species.js';
 import { releaseHeroFromMonster, releaseMonsterHold } from './hero_expulsion.js';
-import { checkQuestMonsterStatus } from './quest.js';
+import { checkQuestMonsterStatus, talkQuestCharacter } from './quest.js';
 import { placeHeroOnLevel } from './hero_location.js';
 import { swallowed } from './display.js';
 import { Is_rogue_level } from './const.js';
@@ -131,7 +133,7 @@ import { shopkeeperIsMuted } from './shop_loss.js';
 import { checkMonsterGearNextTurn, findMonsterArmorClass } from './monworn.js';
 import { inTown, roomsAt } from './room.js';
 import { addShopDamage } from './shop_damage.js';
-import { createPoisonGasCloud, createSteamCloud, GAS_OK, monsterGasTolerance, visibleRegionAt, updateMonsterRegions, } from './regions.js';
+import { createPoisonGasCloud, GAS_OK, monsterGasTolerance, visibleRegionAt, updateMonsterRegions, } from './regions.js';
 import { heroIsDeaf, syncBlindness } from './senses.js';
 import { makeBlinded } from './sight_change.js';
 import { applyMonsterStoningAttack, startHeroPetrificationFromMonster, touchPetrifies, } from './stoning.js';
@@ -198,7 +200,7 @@ import { stopHeroOccupation } from './occupation.js';
 import { rileShopkeeper, shopkeeperRepairsDamage } from './shop_damage.js';
 import { diggingTimeToHole } from './hero_digging.js';
 import { migrateMonsterOffLevel } from './monster_migration.js';
-import { RLOC_MSG, A_CHA, A_DEX, A_STR, A_CON, ALLOW_ALL, ALLOW_BARS, ALLOW_DIG, ALLOW_M, ALLOW_MDISP, ALLOW_ROCK, ALLOW_SANCT, MMOVE_NOTHING, MMOVE_MOVED, MMOVE_DIED, MMOVE_DONE, MMOVE_NOMOVES, MON_FLOOR, ALLOW_SSM, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_WALL, ARROW_TRAP, BEAR_TRAP, BOLT_LIM, COLNO, CORR, DART_TRAP, DOOR, ROWNO, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, D_WARNED, FOUNTAIN, SDOOR, Is_firelevel, Is_waterlevel, IS_DOOR, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_STWALL, IS_TREE, IS_WALL, IRONBARS, LAVAPOOL, LAVAWALL, BUSTDOOR, MAGIC_PORTAL, OPENDOOR, TELEP_TRAP, MIGR_RANDOM, ANTI_MAGIC, FIRE_TRAP, HOLE, LANDMINE, MAGIC_TRAP, M_ATTK_AGR_DIED, M_ATTK_DEF_DIED, M_ATTK_HIT, M_ATTK_MISS, M_ATTK_AGR_DONE, M_AP_FURNITURE, M_AP_MONSTER, M_AP_NOTHING, M_AP_OBJECT, M_AP_TYPE, POLY_TRAP, RUST_TRAP, PIT, PL_NSIZ, ROCKTRAP, ROLLING_BOULDER_TRAP, ROOM, SLP_GAS_TRAP, STONE, SPIKED_PIT, SQKY_BOARD, STATUE_TRAP, TRAPDOOR, NEED_AXE, NEED_HTH_WEAPON, NEED_PICK_AXE, NEED_PICK_OR_AXE, NEED_WEAPON, NO_WEAPON_WANTED, MM_NOWAIT, NOGARLIC, NOTONL, SHOPBASE, TEMPLE, TRAPNUM, STRAT_WAITFORU, STRAT_WAITMASK, STRAT_ARRIVE, UNLOCKDOOR, VIBRATING_SQUARE, WATER, W_ACCESSORY, W_ARM, W_ARMC, W_ARMF, W_ARMG, W_ARMH, W_ARMOR, W_ARMS, W_ARMU, W_NONDIGGABLE, W_NONPASSWALL, Upolyd, isok, WEB, WT_TOOMUCH_DIAGONAL, } from './const.js';
+import { RLOC_MSG, A_CHA, A_DEX, A_STR, A_CON, ALLOW_ALL, ALLOW_BARS, ALLOW_DIG, ALLOW_M, ALLOW_MDISP, ALLOW_ROCK, ALLOW_SANCT, MMOVE_NOTHING, MMOVE_MOVED, MMOVE_DIED, MMOVE_DONE, MMOVE_NOMOVES, MON_FLOOR, ALLOW_SSM, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_WALL, ARROW_TRAP, BEAR_TRAP, BOLT_LIM, COLNO, CORR, DART_TRAP, DOOR, ROWNO, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, D_WARNED, FOUNTAIN, SDOOR, Is_firelevel, Is_waterlevel, IS_DOOR, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_STWALL, IS_TREE, IS_WALL, IRONBARS, LAVAPOOL, LAVAWALL, BUSTDOOR, MAGIC_PORTAL, OPENDOOR, TELEP_TRAP, MIGR_RANDOM, ANTI_MAGIC, FIRE_TRAP, HOLE, LANDMINE, MAGIC_TRAP, M_ATTK_AGR_DIED, M_ATTK_DEF_DIED, M_ATTK_HIT, M_ATTK_MISS, M_ATTK_AGR_DONE, M_AP_FURNITURE, M_AP_MONSTER, M_AP_NOTHING, M_AP_OBJECT, M_AP_TYPE, POLY_TRAP, RUST_TRAP, PIT, PL_NSIZ, ROCKTRAP, ROLLING_BOULDER_TRAP, ROOM, SLP_GAS_TRAP, STONE, SPIKED_PIT, SQKY_BOARD, STATUE_TRAP, TRAPDOOR, NEED_AXE, NEED_HTH_WEAPON, NEED_PICK_AXE, NEED_PICK_OR_AXE, NEED_WEAPON, NO_WEAPON_WANTED, MM_NOWAIT, NOGARLIC, NOTONL, SHOPBASE, TEMPLE, TRAPNUM, STRAT_WAITFORU, STRAT_WAITMASK, STRAT_CLOSE, STRAT_ARRIVE, UNLOCKDOOR, VIBRATING_SQUARE, WATER, W_ACCESSORY, W_ARM, W_ARMC, W_ARMF, W_ARMG, W_ARMH, W_ARMOR, W_ARMS, W_ARMU, W_NONDIGGABLE, W_NONPASSWALL, Upolyd, isok, WEB, WT_TOOMUCH_DIAGONAL, } from './const.js';
 import { monsterIsScaredAt } from './monster_fear.js';
 import { monsterInAir, monsterFliesOrFloats, levelHasCeiling, isLavaAt, isPoolAt } from './terrain_properties.js';
 import { disturbBuriedZombies } from './object_impact.js';
@@ -362,24 +364,22 @@ function monsterSpellEffectPreview(spell, damage, state) {
     }
     else if (spell.key === 'confuse-you') {
         if (antimagic) {
-            effectMessage = 'You feel momentarily dizzy.';
+            effectMessage = formatFeltMessage('momentarily dizzy.', state);
         }
         else if (heroIsHallucinating(state)) {
             effectMessage =
-                (state?.u?.confusionTurns ?? 0) > 0 ? 'You feel trippier!' : 'You feel trippy!';
+                formatFeltMessage((state?.u?.confusionTurns ?? 0) > 0 ? 'trippier!' : 'trippy!', state);
         }
         else {
             effectMessage =
-                (state?.u?.confusionTurns ?? 0) > 0
-                    ? 'You feel more confused!'
-                    : 'You feel confused!';
+                formatFeltMessage((state?.u?.confusionTurns ?? 0) > 0 ? 'more confused!' : 'confused!', state);
         }
     }
     else if (spell.key === 'weaken-you') {
-        effectMessage = antimagic ? 'You feel momentarily weakened.' : 'You suddenly feel weaker!';
+        effectMessage = antimagic ? formatFeltMessage('momentarily weakened.', state) : 'You suddenly feel weaker!';
     }
     else if (spell.key === 'aggravation') {
-        effectMessage = 'You feel that monsters are aware of your presence.';
+        effectMessage = formatFeltMessage('that monsters are aware of your presence.', state);
     }
     else if (spell.key === 'stun-you') {
         const resisted = antimagic || heroHasFreeAction(state);
@@ -387,13 +387,13 @@ function monsterSpellEffectPreview(spell, damage, state) {
         effectMessage = resisted
             ? alreadyStunned
                 ? null
-                : 'You feel momentarily disoriented.'
+                : formatFeltMessage('momentarily disoriented.', state)
             : alreadyStunned
                 ? 'You struggle to keep your balance.'
                 : 'You reel...';
     }
     else if (spell.key === 'curse-items') {
-        effectMessage = 'You feel as if you need some help.';
+        effectMessage = formatFeltMessage('as if you need some help.', state);
     }
     else if (spell.key === 'geyser') {
         effectMessage = 'A sudden geyser slams into you from nowhere!';
@@ -1457,7 +1457,10 @@ async function watchOnDuty(monster, state, random, calls) {
                     await plineWithContinuation(`${name} angrily waves ${monster.female ? 'her' : 'his'} arms!`);
             }
             else {
-                await plineWithContinuation(seen ? `${name} yells:` : 'You hear someone yell:');
+                if (seen)
+                    await plineWithContinuation(`${name} yells:`);
+                else
+                    await publishHeardMessage('someone yell:', plineWithContinuation, state);
                 await plineWithContinuation(warned
                     ? '"Halt, thief!  You\'re under arrest!"'
                     : '"Hey, stop picking that lock!"');
@@ -3131,7 +3134,7 @@ export async function beginMonsterHeroAttack(monster, state, random, rollOne, ro
         else if (appearsAdjacent) {
             await plineWithContinuation(canSpotMonster(monster)
                 ? `${canonicalMonsterName(monster, { state, capitalized: true })} starts to attack you, but pulls back.`
-                : 'You feel something move nearby.');
+                : formatFeltMessage('something move nearby.', state));
         }
         return {};
     }
@@ -3312,8 +3315,8 @@ function maybeBreatheAtHero(monster, attack, state, random, calls) {
         dy: Math.sign(targetY - monster.my),
     };
 }
-// C ref: mkmaze.c:fumaroles(). Steam vents use the same cloud builder as
-// fire striking water.
+// C ref: mkmaze.c:fumaroles(). Lava vents leave damaging gas even though
+// fire striking water leaves harmless steam.
 export async function fumaroles(state = requireInitializedGame()) {
     let cloudCount = rn2(3);
     let minimumSize = 5;
@@ -3332,7 +3335,7 @@ export async function fumaroles(state = requireInitializedGame()) {
         const y = rn2(ROWNO - 4) + 3;
         if (state.level?.at?.(x, y)?.typ !== LAVAPOOL)
             continue;
-        const cloud = await createSteamCloud(state, x, y, rn2(10) + minimumSize, rn2);
+        const cloud = await createPoisonGasCloud(state, x, y, rn2(10) + minimumSize, rn2(10) + 5);
         if (cloud)
             cloud.heroFault = false;
         heard = true;
@@ -3341,6 +3344,8 @@ export async function fumaroles(state = requireInitializedGame()) {
         if (dx * dx + dy * dy < 15)
             loud = true;
     }
+    if (heard && !heroIsDeaf(state))
+        await plineWithContinuation(`You hear a ${loud ? 'loud ' : ''}whoosh!`, { noRepeat: true });
     return { heard, loud };
 }
 // Finish breamm() in the same actor transaction across ray message input.
@@ -4536,7 +4541,7 @@ async function beginHeroAttackSlot(sequence, slot, state, random, rollOne, rollD
         }
         const engulfOldX = monster.mx;
         const engulfOldY = monster.my;
-        unplaceBallAndChain(state);
+        await unplaceBallAndChain(state);
         monster.mtrapped = 0;
         monster.mx = state.u.ux;
         monster.my = state.u.uy;
@@ -6135,7 +6140,7 @@ export async function resumeDeferredMovementSpell(action, state, random = rn2, r
         }
     }
     else if (spellCast.spell === 'aggravation') {
-        await publish('You feel that monsters are aware of your presence.');
+        await publish(formatFeltMessage('that monsters are aware of your presence.', state));
         aggravateMonsters(state, random);
     }
     else if (spellCast.spell === 'insects') {
@@ -6427,8 +6432,19 @@ async function completeMovedMonsterAction(monster, movement, state, random, roll
             if (state === game)
                 swallowed(false);
         }
-        else if (state === game)
-            newsym(monster.mx, monster.my);
+        else if (state === game) {
+            const { mx, my } = monster;
+            if (!state.in_mklev && !state.program_state.saving && !isok(mx, my)) {
+                // C newsym() diagnoses column zero even when a live guard
+                // is legitimately parked there until its corridor clears.
+                const reason = `newsym: attempting screen update for <${mx},${my}>`;
+                if (mx < 0 || my < 0 || mx >= COLNO || my >= ROWNO)
+                    await panic(reason, { state });
+                await impossible(reason, { state });
+            }
+            else
+                newsym(mx, my);
+        }
         movement.postMoveDestinationPainted = true;
     }
     if (movement.postMoveStatus === MMOVE_MOVED || movement.postMoveStatus === MMOVE_DONE) {
@@ -7265,6 +7281,9 @@ export async function runMonsterAction(monster, state, random = rn2, rollDice = 
     if ((monster.mstrategy ?? 0) & STRAT_WAITMASK) {
         if (heroIsHallucinating(state))
             newsym(monster.mx, monster.my);
+        if (monster.mcanmove && (monster.mstrategy ?? 0) & STRAT_CLOSE
+            && !monster.msleeping && nextToHero)
+            await talkQuestCharacter(monster, state);
         return {
             monster,
             calls,
