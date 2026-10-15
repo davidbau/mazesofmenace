@@ -66,7 +66,11 @@ function reset_instance_globals() {
     game.gd = {}; // `:1088`
     game.gf = {}; // `:1090`
     game.gg = {}; // `:1091`
-    game.gh = {}; // `:1092`
+    // `:1092` + sys/unix/unixmain.c:100 (gh.hname = argv[0], set after
+    // early_init `:66`): basename "nethack" in every recording; C
+    // version.c:497 uses the same fallback when unset. Feeds
+    // status_version's VI_NAME arm (version.c:99-104).
+    game.gh = { hname: 'nethack' }; // `:1092`
     game.gi = {}; // `:1093`
     game.gm = {}; // `:1097`
     game.gn = {}; // `:1098`

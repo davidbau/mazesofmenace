@@ -45,6 +45,7 @@ import {
     CQ_CANNED,
     CORR,
     CONFUSION,
+    CONFLICT,
     COST_DSTROY,
     COST_SPLAT,
     DEAF,
@@ -574,7 +575,7 @@ import { wield_tool } from './wield.js';
 import { acurr } from './attrib.js';
 import { known_spell, spe_Fresh, spelleffects } from './spell.js';
 import { kick_steed, stucksteed, use_saddle } from './steed.js';
-import { enexto, rloc, rloc_to, tele_restrict, tele_to_rnd_pet, teleds } from './teleport.js';
+import { enexto, noteleport_level, rloc, rloc_to, tele_restrict, tele_to_rnd_pet, teleds } from './teleport.js';
 import { mpickobj } from './steal.js';
 import {
     _doWearInternals,
@@ -613,6 +614,7 @@ import {
     check_caitiff,
     flash_hits_mon,
     force_attack,
+    stumble_onto_mimic,
 } from './uhitm.js';
 import { find_mid, get_obj_location, obj_merge_light_sources, transient_light_cleanup } from './light.js';
 import {
@@ -960,8 +962,8 @@ async function whipattack(monster, rx, ry, proficient, state, env) {
                 await setmnotwielded(monster, object, { state });
                 switch (rn2(proficient + 1)) {
                 case 2: {
-                    await ttyPline(`You yank ${yname(object, state)} to the ${surface(u.ux, u.uy, state)}!`, state);
-                    const placement = place_object(object, u.ux, u.uy, { state });
+                    await ttyPline(`You yank ${yname(object, state)} to the ${surface(state.u.ux, state.u.uy, state)}!`, state);
+                    const placement = place_object(object, state.u.ux, state.u.uy, { state });
                     if (placement && typeof placement.then === 'function')
                         await placement;
                     stackobj(object, { state });
@@ -980,7 +982,7 @@ async function whipattack(monster, rx, ry, proficient, state, env) {
                         if (!saved) {
                             await ttyPline(`Snatching ${an(objectName, state)} is a fatal mistake.`, state);
                             const placement = place_object(
-                                object, u.ux, u.uy, { state },
+                                object, state.u.ux, state.u.uy, { state },
                             );
                             if (placement && typeof placement.then === 'function')
                                 await placement;

@@ -405,7 +405,7 @@ function count_worn_stuff(accessorizing) {
  * Artifact spfx is `set_artifact_intrinsic` (D-1558), not this helper.
  * SWAPWEP/QUIVER skip, w_blocks, and monstunseesu_prop live in setworn
  * (D-1757), not here. Named: mirror of most E* flats (BLINDED/FAST/
- * TELEPAT/STEALTH/LEVITATION only so far).
+ * TELEPAT/STEALTH/LEVITATION/FREE_ACTION so far).
  */
 export function confer_oc_oprop(obj, mask, on) {
     if (!obj) return;
@@ -434,6 +434,13 @@ export function confer_oc_oprop(obj, mask, on) {
         // C youprop.h ELevitation ≡ uprops[LEVITATION].extrinsic (D-0976)
         if (on) u.ELevitation = (u.ELevitation | 0) | mask;
         else u.ELevitation = (u.ELevitation | 0) & ~mask;
+    } else if (p === FREE_ACTION) {
+        // C youprop.h:383 Free_action ≡ uprops[FREE_ACTION].extrinsic
+        // (conferred by setworn worn.c:117-125 for a worn ring); the
+        // behavioral readers (potion.js, mcastu.js, mhitu.js, trap.js,
+        // polyself.js, apply.js) consume the EFree_action flat.
+        if (on) u.EFree_action = (u.EFree_action | 0) | mask;
+        else u.EFree_action = (u.EFree_action | 0) & ~mask;
     }
 }
 

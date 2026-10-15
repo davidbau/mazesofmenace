@@ -20,7 +20,7 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
     flush_screen, flush_screen_getpos_dirty, cliparound, pline, You, coord_desc, custompline,
-    docrt, docrt_flags, docrtRefresh,
+    docrt, docrt_flags, docrtRefresh, erase_menu_or_text,
     terrain_glyph,
     look_shown_at, glyph_is_invisible,
     glyph_at, glyph_is_cmap, glyph_to_cmap, back_to_glyph,
@@ -1332,21 +1332,30 @@ export async function show_getpos_tip() {
     // C: nhl_text `:846–848` destroys the PICK_NONE menu after select →
     // tty_destroy_nhwindow `:2020` → tty_dismiss_nhwindow `:1953` (MENU
     // arm) → erase_menu_or_text `:966–985` with clearscreen=FALSE. The
-    // corner arm (`:981–982` docorner) reprints retained gbuf, no
-    // newsym — the loop's flushes set _overlay_resync, so the flush
-    // below resyncs the full map from gbuf (terrainmode and normal
-    // alike); docrt there would newsym the hero `@` over a cell C
+    // fullscreen arm (offx==0 — !menu_overlay per `:1924–1925` H2344,
+    // or maxrow>=rows) is `:976–979` docrt() + flush, redrawing level
+    // state over the reveal_terrain temp map (hero `@` + visible mon
+    // repaint; scen-options-Archeologist-94231 s36: pet `f` + `@` over
+    // reveal floor+stairs). The corner arm (`:982–984` docorner)
+    // cl_ends every row from offx BEFORE reprinting retained gbuf, no
+    // newsym — docrt there would newsym the hero `@` over a cell C
     // still shows stale (scen-dig-Caveman-94195 s66: seen trap `^`
-    // under the hero). But the fullscreen arm (offx==0 — !menu_overlay
-    // per `:1924–1925` H2344, or maxrow>=rows) is `:976–979` docrt() +
-    // flush, redrawing level state over the reveal_terrain temp map
-    // (hero `@` + visible mon repaint; scen-options-Archeologist-94231
-    // s36: pet `f` + `@` over reveal floor+stairs). Same fullscreen
-    // cadence as select_menu_pick_none (invent.js:3347-3351, D-1879:
-    // no clear_committed_status on PICK_NONE).
-    if (!game._tty_menu_geom || game._tty_menu_geom.offx === 0) {
-        game._tty_menu_geom = null;
+    // under the hero). The cl_end is load-bearing for dropped
+    // reprints: a C0 door cell (AmigaFont S_vcdoor 0x93 → 0x13) is
+    // blanked and never rewritten, while a bare resync reprint skips
+    // the drop and keeps overlay residue (scen-symset-Tourist-50255028
+    // s4: tip `l` kept where C shows blank — the D-3962 Must-fix).
+    // Same fullscreen cadence as select_menu_pick_none
+    // (invent.js:3347-3351, D-1879: no clear_committed_status on
+    // PICK_NONE).
+    const tipGeom = game._tty_menu_geom;
+    game._tty_menu_geom = null;
+    if (!tipGeom || tipGeom.offx === 0) {
         await docrt();
+    } else {
+        await erase_menu_or_text(tipGeom.offx | 0, 0,
+            (tipGeom.maxrow > 0 ? tipGeom.maxrow : (tipGeom.endRow | 0) + 1),
+            false);
     }
     await flush_screen(1);
 }

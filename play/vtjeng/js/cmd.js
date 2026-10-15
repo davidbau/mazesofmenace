@@ -279,7 +279,6 @@ import {
     dogenocided,
     dovanquished,
     remove_achievement,
-    UnsupportedEnlightenmentError,
 } from './insight.js';
 import {
     doclassdisco, dodiscovered,
@@ -1763,7 +1762,7 @@ export async function get_count(
                 countMessage = `Count: ${count}`;
                 backspaced = false;
             }
-            await ttyPline(countMessage, state);
+            await ttyCustomPline(countMessage, SUPPRESS_HISTORY, state);
             await flush_screen(1);
             state.nhDisplay?.setCursor(countMessage.length, 0);
         }
@@ -2880,7 +2879,6 @@ export function failClosedCommandRefusals() {
         // the forgotten-spell, amulet-drain, and non-healing spell paths
         // that this port has not reached.
         UnsupportedSpellCastError,
-        UnsupportedEnlightenmentError,
         UnsupportedShopError,
         // end.c really_done() calls paybill() and paygd() on every death, so
         // a shopkeeper inherits() cannot settle with or a vault guard owed the

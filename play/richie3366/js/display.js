@@ -5173,13 +5173,19 @@ export async function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false
     // The MSDOS tiles arm (`:3939–3944`) never compiles on unix (named).
     // Cells without u data keep the `:2653` ttychar via g_putch (the
     // symset_render_char H_UTF8 row) — dat/symbols says so explicitly.
+    // Contest capture (patch 006, Constitution §1.1): nomux hooks
+    // g_putch but not g_pututf8, so the recorded cell is never written —
+    // it keeps its previous content, exactly like a dropped C0 byte. The
+    // gbuf keeps the C value; the grid writers skip disp_capture_drop.
     const utf8set = ((game.currentgraphics | 0) === ROGUESET) ? ROGUESET : PRIMARYSET;
     const utf8u = (gid >= 0 && gid < MAX_GLYPH) ? game.glyphmap?.[gid]?.u : null;
+    let captureDrop = false;
     if ((install_tty_wincap2() & WC2_U_UTF8STR) !== 0
             && (game.gs?.symset?.[utf8set]?.handling | 0) === H_UTF8
             && utf8u?.utf8str != null) {
         ch = utf8u.utf8str; // g_pututf8 `:3797–3800` putchar loop
         decgfx = false;
+        captureDrop = true;
     }
     const announce = show_glyph_change_wanted(loc, x, y, ch, color, decgfx, attr);
     // C classifies the already-chosen glyph id; stamp JS kind the same way
@@ -5197,6 +5203,7 @@ export async function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false
     loc.disp_color = tty_map_color(color);
     loc.disp_decgfx = !!decgfx;
     loc.disp_attr = attr | 0;
+    loc.disp_capture_drop = captureDrop;
     loc.disp_kind = kind;
     // Resolved first: two glyph ids can share one ttychar (altar and
     // fountain are both '{'), so the id is part of the change test below.
@@ -8085,9 +8092,9 @@ export function paint_gbuf_level_to_terminal(level) {
             let ch = loc.disp_ch ?? ' ';
             const color = loc.disp_color ?? NO_COLOR;
             const attr = loc.disp_attr ?? 0;
-            // Same C0 drop as _paint_gbuf_cell (nomux_putch ch < 32):
-            // control bytes leave the stale grid cell in place.
-            if (ch && ch.charCodeAt(0) < 32) {
+            // Same capture drops as _paint_gbuf_cell (nomux_putch ch < 32,
+            // unhooked g_pututf8): the stale grid cell stays in place.
+            if ((ch && ch.charCodeAt(0) < 32) || loc.disp_capture_drop) {
                 loc.gnew = 0;
                 last = { x, y };
                 continue;
@@ -8127,8 +8134,9 @@ function _paint_gbuf_cell(mx, my, sc, sr) {
     // C0 control bytes paint nothing visible: C g_putch emits them raw
     // (wintty.c `:3753–3758`), real terminals ignore C0, and nomux drops
     // ch < 32 (termcap.c nomux_putch, patch 006) — the capture keeps the
-    // stale cell. Mirror the drop: leave the grid cell untouched.
-    if (ch.charCodeAt(0) < 32) return;
+    // stale cell. Mirror the drop: leave the grid cell untouched. Same for
+    // g_pututf8 output, which patch 006 never captures.
+    if (ch.charCodeAt(0) < 32 || loc.disp_capture_drop) return;
     if (loc.disp_decgfx) {
         const uni = DEC_TO_UNICODE[ch];
         if (uni && ch !== '{' && ch !== '`' && ch !== 'g'

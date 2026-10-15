@@ -126,6 +126,7 @@ import {
     NO_MM_FLAGS,
     NORMAL_SPEED,
     NOTONL,
+    OBJ_BURIED,
     OBJ_FLOOR,
     OBJ_MINVENT,
     ONAME_NO_FLAGS,
@@ -361,6 +362,7 @@ import {
     vegan,
     verysmall,
     set_mon_data,
+    slimeproof,
     dead_species,
     olfaction,
 } from './mondata.js';
@@ -410,6 +412,7 @@ import {
     PM_BARBARIAN,
     PM_CHAMELEON,
     PM_DOPPELGANGER,
+    PM_GELATINOUS_CUBE,
     PM_GARGOYLE,
     PM_KILLER_BEE,
     PM_QUEEN_BEE,
@@ -549,6 +552,7 @@ import {
     S_KOBOLD,
     S_KOP,
     S_LICH,
+    S_LIGHT,
     S_MIMIC,
     S_ORC,
     S_UNICORN,
@@ -1512,10 +1516,41 @@ export async function m_consume_obj(mtmp, otmp, rawEnv = {}) {
     // CARROT eye-cure check is by otyp.  Keep every other food arm guarded
     // until its downstream effect is ported.
     if (otmp.otyp !== CORPSE) {
-        if (otmp.otyp === EGG) stop('a non-EGG food item');
+        if (otmp.otyp === EGG) {
+            // C obj.h polyfood() includes eggs whose species polymorphs or
+            // carries AD_POLY. m_consume_obj deletes the egg before newcham.
+            const eggSpeciesIndex = otmp.corpsenm;
+            const eggSpecies = eggSpeciesIndex >= LOW_PM
+                ? state.mons?.[eggSpeciesIndex] : null;
+            const polymorphs = Boolean(eggSpecies)
+                && (pm_to_cham(eggSpeciesIndex, state) !== NON_PM
+                    || dmgtype(eggSpecies, AD_POLY));
+            const visible = polymorphs && canseemon(mtmp, state);
+            delobj(otmp, objectGenerationEnv({ ...rawEnv, state }));
+            if (polymorphs) {
+                await newcham(mtmp, null, {
+                    ...rawEnv,
+                    state,
+                    ncflags: visible ? NC_SHOW_MSG : 0,
+                });
+            }
+            return;
+        }
         if (otmp.otyp === TIN) stop('a non-TIN food item');
-        if (otmp.otyp === GLOB_OF_GREEN_SLIME)
-            stop('a non-slime food item');
+        if (otmp.otyp === GLOB_OF_GREEN_SLIME) {
+            // C mon.c:m_consume_obj() sets `slimer` before delobj(), then
+            // changes the eater into green slime with visibility-sensitive
+            // newcham() feedback. Gelatinous-cube digestion reaches this
+            // branch after meatobj() has engulfed the glob into inventory.
+            const visible = canseemon(mtmp, state);
+            delobj(otmp, objectGenerationEnv({ ...rawEnv, state }));
+            await newcham(mtmp, state.mons[PM_GREEN_SLIME], {
+                ...rawEnv,
+                state,
+                ncflags: visible ? NC_SHOW_MSG : 0,
+            });
+            return;
+        }
         delobj(otmp, objectGenerationEnv({ ...rawEnv, state }));
         if (otmp.otyp === CARROT && !mtmp.mcansee) {
             // C ref: muse.c mcureblindness() (2872-2881), reached by
@@ -1729,7 +1764,11 @@ export async function meatobj(mtmp, rawEnv = {}) {
                     await monsterMessage(`Yum${obj.blessed ? '!' : '.'}`, null, state, rawEnv);
                 }
             } else {
-                await monsterMessage('You hear a slurping sound.', null, state, rawEnv);
+                if (state.flags?.verbose) {
+                    const heard = youHear('a slurping sound.', state);
+                    if (heard !== null)
+                        await monsterMessage(heard, null, state, rawEnv);
+                }
             }
             await m_consume_obj(mtmp, obj, { ...rawEnv, state });
             if (mtmp.data !== original) return mtmp.data ? 1 : 2;
@@ -1740,13 +1779,14 @@ export async function meatobj(mtmp, rawEnv = {}) {
     if (engulfed && state.flags?.verbose) {
         if (cansee(mtmp.mx, mtmp.my, state) && messageText)
             await monsterMessage(messageText, mtmp, state, rawEnv);
-        else
-            await monsterMessage(
-                `You hear ${engulfed === 1 ? 'a' : 'several'} slurping sound${engulfed === 1 ? '' : 's'}.`,
-                null,
+        else {
+            const heard = youHear(
+                `${engulfed === 1 ? 'a' : 'several'} slurping sound${engulfed === 1 ? '' : 's'}.`,
                 state,
-                rawEnv,
             );
+            if (heard !== null)
+                await monsterMessage(heard, null, state, rawEnv);
+        }
     }
     return count || engulfed ? 1 : 0;
 }
@@ -2618,6 +2658,10 @@ function newchamEnv(rawEnv = {}) {
     const normalized = normalizedDistressEnv(rawEnv);
     return {
         ...normalized,
+        // The C monster scan has no dry-run display. Keep a planned shape
+        // change silent unless its caller supplies a planning message owner.
+        message: rawEnv.message
+            ?? (rawEnv.planning ? async () => {} : ttyPline),
         hooks: rawEnv.hooks ?? {},
     };
 }

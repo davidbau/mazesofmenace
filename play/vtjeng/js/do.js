@@ -3,7 +3,7 @@
 // C refs: do.c -- boulder_hits_pool(), dodrop(), flooreffects(), canletgo(), drop(), dosinkring(),
 // teleport_sink(), dropx(), dropy(), dropz(), trycall(), u_stuck_cannot_go(), dodown(), doup(),
 // goto_level(), u_collide_m(), temperature_change_msg() and
-// legs_in_no_shape(), set_wounded_legs(), heal_legs(); dokick.c obj_delivery();
+// legs_in_no_shape(), set_wounded_legs(), heal_legs();
 // questpgr.c deliver_splev_message().
 
 import {
@@ -54,6 +54,7 @@ import {
     F_LOOTED,
     FOUNTAIN,
     FUMBLING,
+    FIRE_RES,
     GETOBJ_ALLOWCNT,
     GETOBJ_PROMPT,
     GRAVE,
@@ -83,6 +84,7 @@ import {
     NON_PM,
     NC_SHOW_MSG,
     NO_NC_FLAGS,
+    NO_KILLER_PREFIX,
     OBJ_INVENT,
     OBJ_MINVENT,
     OBJ_CONTAINED,
@@ -360,7 +362,9 @@ import { cloneIsaacContext, createCoreRandom, d, rn1, rn2, rnd, rnz } from './rn
 import { check_special_room, move_update } from './rooms.js';
 import { savelev } from './save.js';
 import { fix_shop_damage, sellobj, sellobj_state } from './shk.js';
-import { container_impact_dmg, impact_drop, ship_object } from './dokick.js';
+import {
+    container_impact_dmg, impact_drop, obj_delivery, ship_object,
+} from './dokick.js';
 import { set_levltyp } from './terrain.js';
 import {
     stairway_at,
@@ -1023,6 +1027,7 @@ export async function flooreffects(obj, x, y, verb, rawEnv = {}) {
         const trap = t_at(x, y, state);
         if (obj.otyp === BOULDER && trap
             && (is_pit(trap.ttyp) || is_hole(trap.ttyp))) {
+            let deletedWithBoulder = false;
             const trappedMonster = m_at(x, y, state);
             const trappedHero = u_at(x, y, state)
                 && (state.u?.utrap ?? 0);
@@ -1031,7 +1036,7 @@ export async function flooreffects(obj, x, y, verb, rawEnv = {}) {
                 && (cansee(x, y, state) || dist2(x, y, state.u.ux, state.u.uy) === 0)) {
                 const subject = cansee(x, y, state) ? 'The' : 'A';
                 await (rawEnv.message ?? ttyPline)(
-                    `${subject} boulder ${verb} into the pit`
+                    `${subject} boulder ${vtense(null, verb)} into the pit`
                         + `${trappedMonster ? '' : ' with you'}.`,
                     state,
                 );
@@ -1062,11 +1067,14 @@ export async function flooreffects(obj, x, y, verb, rawEnv = {}) {
                         NO_KILLER_PREFIX,
                         state,
                     );
+                    // C jumps to deletedwithboulder after squishing the hero,
+                    // skipping the later generic pit-filling message.
+                    deletedWithBoulder = true;
                 } else {
                     await reset_utrap(true, state);
                 }
             }
-            if (verb) {
+            if (verb && !deletedWithBoulder) {
                 const message = rawEnv.message ?? ttyPline;
                 const blind = heroIsBlind(state);
                 if (blind && u_at(x, y, state)) {
@@ -3092,7 +3100,7 @@ export async function goto_level(
     // do.c:1812 placebc() puts a punished hero's ball and chain down after
     // arrival and before migrating objects are delivered.
     if (Punished(state)) await placebc(state);
-    obj_delivery(false, state);
+    await obj_delivery(false, { state });
     await losedogs({ state });
     await kill_genocided_monsters(state);
     // "Expire all timers that have gone off while away. Must be after
@@ -3281,7 +3289,7 @@ export async function goto_level(
     // do.c:1974 print_level_annotation() prints the hero's own #annotate note.
     await print_level_annotation(state);
     await check_special_room(false, state); /* give room entrance message */
-    obj_delivery(true, state); /* deliver objects traveling with player */
+    await obj_delivery(true, { state }); /* deliver objects traveling with player */
 
     /* assume this will always return TRUE when changing level */
     await in_out_region(u.ux, u.uy, { state });
@@ -3298,18 +3306,6 @@ export async function goto_level(
     }
 
     await pickup(1, state);
-}
-
-// C ref: dokick.c obj_delivery(), which do.c goto_level() calls twice: once
-// for the objects that were sent ahead and once for the ones that travel with
-// the hero.
-//
-// ship_object() and impact_drop() populate gm.migrating_objs. Arrival remains
-// an explicit discarded-call gap until the object-delivery owner is ported.
-function obj_delivery(near_hero, state = game) {
-    if (state.gm?.migrating_objs) {
-        note_unported('dokick.c obj_delivery');
-    }
 }
 
 // C ref: do.c u_collide_m() (1410-1445). The hero has arrived on a square a

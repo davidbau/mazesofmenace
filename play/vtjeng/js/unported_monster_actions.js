@@ -20,6 +20,7 @@ import {
     D_TRAPPED,
     FIRE_RES,
     HEADSTONE,
+    IRONBARS,
     INVIS,
     IS_DOOR,
     IS_OBSTRUCTED,
@@ -89,7 +90,6 @@ import {
 } from './mhitu.js';
 import { buzzmu, castmu } from './mcastu.js';
 import { m_throw, thitu, thrwmu } from './mthrowu.js';
-import { WOOD } from './objects.js';
 import { quest_stat_check, quest_talk } from './quest.js';
 import { whimper } from './sounds.js';
 import {
@@ -123,7 +123,6 @@ import {
     AD_SPEL,
     AT_MAGC,
     PM_FLOATING_EYE,
-    PM_GELATINOUS_CUBE,
     PM_KILLER_BEE,
     PM_KITTEN,
     PM_LITTLE_DOG,
@@ -249,24 +248,6 @@ function liveOnMap(monster) {
         && (monster.mstate ?? MON_FLOOR) === MON_FLOOR;
 }
 
-// C ref: monmove.c gelcube_digests()'s inventory scan (424-434). The
-// digestion effect remains behind the special-action boundary, but a cube
-// whose pack contains no eligible object reaches ordinary dochug() unchanged.
-function gelcubeHasDigestibleObject(monster, state) {
-    if (monster.meating || !monster.minvent) return false;
-    const achieveo = state.context?.achieveo;
-    for (let obj = monster.minvent; obj; obj = obj.nobj) {
-        const organic = (state.objects?.[obj.otyp]?.oc_material ?? 0) <= WOOD;
-        const minesPrize = Boolean(achieveo?.mines_prize_oid)
-            && obj.o_id === achieveo.mines_prize_oid;
-        const sokoPrize = Boolean(achieveo?.soko_prize_oid)
-            && obj.o_id === achieveo.soko_prize_oid;
-        if (organic && !obj.oartifact && !minesPrize && !sokoPrize)
-            return true;
-    }
-    return false;
-}
-
 function assertSimpleScanState(monster, state) {
     const parkedGuard = monster.isgd
         && !monster.mx
@@ -360,18 +341,13 @@ function assertSimpleActionState(monster, state) {
                 state.u?.ux,
                 state.u?.uy,
             ) > 100);
-    const digestibleGelatinousCube =
-        monster.data?.pmidx === PM_GELATINOUS_CUBE
-        && gelcubeHasDigestibleObject(monster, state);
     // monmove.c m_move() consumes Tengu's natural-teleport roll before
     // tele_restrict() rejects it on a no-teleport level. m_move now admits
     // the permitted relocation path through rloc()/mnexto(); sleeping-bee
-    // and digesting-cube actions remain separate boundaries.
+    // actions remain behind their own boundary.
     if ((monster.data?.pmidx === PM_KILLER_BEE
             && monster.msleeping
-            && !sleepingOutOfWakeRangeKillerBee)
-        || (monster.data?.pmidx === PM_GELATINOUS_CUBE
-            && digestibleGelatinousCube)) {
+            && !sleepingOutOfWakeRangeKillerBee)) {
         unsupported('a special monster action');
     }
 }
@@ -1038,6 +1014,11 @@ async function admitSimpleDestinationAndRegion(monster, x, y, env) {
     const ordinaryDestination = location
         && (IS_ROOM(location.typ)
             || location.typ === CORR
+            // C mon.c:mfndpos() already filtered IRONBARS through ALLOW_BARS
+            // and its diggability checks before m_move() offers this square.
+            // Keep that selected destination eligible so monmove.c:postmov()
+            // can run its source-owned passage or bar-dissolution branch.
+            || location.typ === IRONBARS
             || inertDoorway
             || opensDoor
             || passWallDoorway

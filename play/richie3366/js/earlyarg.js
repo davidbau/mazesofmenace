@@ -585,8 +585,9 @@ export function early_version_info(pastebuf) {
  * words save/bones validation compares against. Lives here next to
  * `early_version_info` (same reason: needs the `raw_printf` channel,
  * and its sole C caller is earlyarg.c:512). `nhStr` is the identity
- * cast (lint.h:16); `gh.hname` is always unset in JS (botl.js:2322
- * precedent) so the name is `"nethack"`. The `%-12.33s` field is the
+ * cast (lint.h:16); `gh.hname` is 'nethack' from decl init
+ * (unixmain.c:100 analog), so the `:497` ternary yields `"nethack"`
+ * either way. The `%-12.33s` field is the
  * last-33 slice padded to 12; each `%08lx` word is 8 lowercase hex
  * digits (`>>> 0` — all three nomakedefs words fit 32 bits). Output is
  * at most 60 chars so the `BUFSZ` Snprintf cap never fires. C

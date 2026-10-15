@@ -160,7 +160,7 @@ import {
 import { game } from './gstate.js';
 import { mungspaces } from './hacklib.js';
 import {
-    amorphous, attacktype, attacktype_fordmg, breakarm, can_be_strangled, can_breathe, could_twoweap, dmgtype, dmgtype_fromattack, emits_light, has_head, has_horns, hides_under, humanoid, infravision, is_animal, is_bat, is_clinger, is_floater, is_flyer, is_hider, is_female, is_male, is_neuter, is_placeholder, is_swimmer, is_vampire, is_vampshifter, is_mind_flayer, is_unicorn, is_were, is_whirly, lays_eggs, eggs_in_water, likes_lava, mindless, Resists_Elem, nohands, nonliving, unsolid, passes_walls, perceives, pm_invisible, polyok, regenerates, resists_drli, sliparm, slithy, sticks, strongmonst, telepathic, touch_petrifies, valid_vampshiftform, verysmall, webmaker, weirdnonliving, can_teleport, control_teleport, defended, your_race, flaming, name_to_monclass, name_to_monplus, num_horns, type_is_pname, } from './mondata.js';
+    amorphous, attacktype, attacktype_fordmg, breakarm, can_be_strangled, can_breathe, could_twoweap, dmgtype, dmgtype_fromattack, emits_light, has_head, has_horns, hides_under, humanoid, infravision, is_animal, is_bat, is_clinger, is_floater, is_flyer, is_hider, is_female, is_male, is_neuter, is_placeholder, is_swimmer, is_vampire, is_vampshifter, is_mind_flayer, is_unicorn, is_were, is_whirly, lays_eggs, eggs_in_water, likes_lava, mindless, Resists_Elem, nohands, nonliving, unsolid, passes_walls, perceives, pm_invisible, poly_when_stoned, polyok, regenerates, resists_drli, sliparm, slithy, sticks, strongmonst, telepathic, touch_petrifies, valid_vampshiftform, verysmall, webmaker, weirdnonliving, can_teleport, control_teleport, defended, your_race, flaming, name_to_monclass, name_to_monplus, num_horns, type_is_pname, } from './mondata.js';
 import { character_race, genders } from './roles.js';
 import {
     capitalizedMonsterName, hliquid, l_monnam, Monnam, mon_nam,
@@ -194,8 +194,8 @@ import { cantwield, untwoweapon, uwepgone, uswapwepgone } from './wield.js';
 import { _doWearInternals } from './do_wear.js';
 import { setnotworn, setworn } from './worn.js';
 import {
-    Is_dragon_armor, WrappingAllowed, is_sword, maybe_adjust_light, mksobj,
-    remove_object,
+    Is_dragon_armor, WrappingAllowed, is_flimsy, is_sword, maybe_adjust_light,
+    mksobj, remove_object,
 } from './obj.js';
 import { artifact_light, retouch_equipment } from './artifacts.js';
 import { makeplural } from './fruit.js';

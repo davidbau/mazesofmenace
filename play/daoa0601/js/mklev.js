@@ -9,11 +9,15 @@ import { addFruit } from './fruit.js';
 import { setTinVariety } from './tin.js';
 import { setWallState } from './wall_topology.js';
 import { monsterHasMapPosition, monsterAtPosition, monsterOccupiesPosition } from './monster_location.js';
+import { hideMonsterUnder } from './monster_hiding.js';
 import { finishMonsterBirth } from './monster_birth.js';
 import { createParticularMonster } from './read_creation.js';
 import { setMonsterPermanentInvisibility } from './monster_invisibility.js';
+import { setMonsterSpecies } from './monster_species.js';
+import { monsterIsVampireShifter } from './monster_data.js';
 import { nameObjectFromTopten } from './topten.js';
 import { normalDemon } from './minion.js';
+import { ismnum } from './const.js';
 import { randomMonsterRelocation } from './teleport.js';
 import { sendMonsterToLimbo } from './monster_migration.js';
 import { monsterHasStoneResistance } from './monster_resistance.js';
@@ -57,11 +61,11 @@ import { DRY, HOT, NO_LOC_WARN, SOLID, WET, getLocationCoord } from './special_l
 import { MAP_SYMBOLS } from './map_symbols.js';
 import { cleanupSpecialLevelMap, removeSpecialLevelBoundaries } from './special_level_cleanup.js';
 import { A_CHA, COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, LADDER, HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, D_NODOOR, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED, OROOM, VAULT, COURT, SWAMP, BEEHIVE, MORGUE, BARRACKS, ZOO, TEMPLE, LEPREHALL, COCKNEST, ANTHOLE, DELPHI, THEMEROOM, SHOPBASE, ROOMOFFSET, MAXNROFROOMS, SHARED, SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, ALTAR, GRAVE, THRONE, HEADSTONE, ENGRAVE, BURN, MARK, DUST, ENGR_BLOOD, DIR_N, DIR_S, DIR_E, DIR_W, DIR_180, XL_UP, XL_DOWN, XL_LEFT, XL_RIGHT, ACCESSIBLE, IS_WALL, IS_STWALL, IS_DOOR, IS_ROOM, IS_OBSTRUCTED, ZAP_POS, IS_FURNITURE, IS_POOL, IS_AIR, IS_LAVA, In_endgame, Is_earthlevel, Is_botlevel, Is_stronghold, Invocation_lev, In_hell, In_quest, In_V_tower, Is_oracle_level, Is_waterlevel, Is_knox_level, Is_rogue_level, In_sokoban, SPACE_POS, isok, W_NONDIGGABLE, W_NONPASSWALL, FILL_NONE, FILL_NORMAL, ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DBWALL, ICED_POOL, ICED_MOAT, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, DB_MOAT, DB_LAVA, DB_UNDER, DB_FLOOR, SHOP_HOLE_COST, TREE, AIR, CLOUD, A_NONE, A_CHAOTIC, A_NEUTRAL, A_LAWFUL, P_SHORT_SWORD, P_SABER, AM_SHRINE, AM_SANCTUM, Align2amask, LR_DOWNSTAIR, LR_UPSTAIR, LR_UPTELE, LR_DOWNTELE, LR_TELE, LR_BRANCH, LR_PORTAL, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE, MM_ANGRY, MM_ASLEEP, MM_NONAME, MM_NOGRP, MM_EMIN, MM_EPRI, MM_NOWAIT, MM_NOTAIL, MM_IGNOREWATER, MM_ADJACENTOK, MM_NOCOUNTBIRTH, MM_NOMSG, MM_MALE, MM_FEMALE, MM_MINVIS, MM_EDOG, NO_MINVENT, G_EXTINCT, G_GENOD, G_GONE, G_NOCORPSE, ROT_AGE, TROLL_REVIVE_CHANCE, HEALTHY_TIN, RANDOM_TIN, MAX_OIL_IN_FLASK, CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_NEUTER, CORPSTAT_HISTORIC, CORPSTAT_INIT, CORPSTAT_SPE_VAL, STRAT_APPEARMSG, STRAT_CLOSE, STRAT_WAITFORU, ANTI_MAGIC, TT_BURIEDBALL, TT_BEARTRAP, TT_WEB, TT_PIT, TT_LAVA, } from './const.js';
-import { getObjectClassBounds, getObjectDefinition, requireObjectData, OBJECT_BASES, OBJECT_PROB, OBJECT_MATERIAL, OBJECT_SPELL_LEVEL, OBJECT_MERGE, OBJECT_WEIGHT, OBJECT_COST, OBJECT_SUBTYPE, WORM_TOOTH, UNICORN_HORN, HELM_OF_OPPOSITE_ALIGNMENT, GAUNTLETS_OF_FUMBLING, FUMBLE_BOOTS, LEVITATION_BOOTS, AMULET_OF_STRANGULATION, AMULET_OF_RESTFUL_SLEEP, AMULET_OF_CHANGE, AMULET_OF_YENDOR, FAKE_AMULET_OF_YENDOR, LARGE_BOX, CHEST, ICE_BOX, SACK, OILSKIN_SACK, BAG_OF_HOLDING, BAG_OF_TRICKS, TALLOW_CANDLE, WAX_CANDLE, BRASS_LANTERN, OIL_LAMP, MAGIC_LAMP, EXPENSIVE_CAMERA, CRYSTAL_BALL, TINNING_KIT, CAN_OF_GREASE, FIGURINE, MAGIC_MARKER, MAGIC_FLUTE, FROST_HORN, FIRE_HORN, HORN_OF_PLENTY, MAGIC_HARP, DRUM_OF_EARTHQUAKE, CORPSE, EGG, MEAT_RING, GLOB_OF_GRAY_OOZE, GLOB_OF_BLACK_PUDDING, KELP_FROND, SLIME_MOLD, MELON, LUMP_OF_ROYAL_JELLY, CREAM_PIE, CANDY_BAR, TIN, GOLD_PIECE, SPE_NOVEL, SPE_BOOK_OF_THE_DEAD, DILITHIUM_CRYSTAL, LUCKSTONE, LOADSTONE, TOUCHSTONE, ROCK, BOULDER, STATUE, DART, DAGGER, SPEAR, SLING, ORCISH_DAGGER, MACE, QUARTERSTAFF, BULLWHIP, FEDORA, ELVEN_ARROW, ELVEN_SPEAR, ELVEN_DAGGER, ELVEN_SHORT_SWORD, ELVEN_BROADSWORD, ELVEN_BOW, ELVEN_LEATHER_HELM, ELVEN_MITHRIL_COAT, ELVEN_CLOAK, ELVEN_SHIELD, ELVEN_BOOTS, ORCISH_ARROW, ORCISH_SHORT_SWORD, ORCISH_BOW, ORCISH_HELM, ORCISH_CHAIN_MAIL, ORCISH_CLOAK, URUK_HAI_SHIELD, ORCISH_SHIELD, SCIMITAR, AXE, PICK_AXE, DWARVISH_SPEAR, DWARVISH_SHORT_SWORD, DWARVISH_MATTOCK, DWARVISH_IRON_HELM, DWARVISH_MITHRIL_COAT, DWARVISH_CLOAK, DWARVISH_ROUNDSHIELD, IRON_SHOES, HELMET, SPLINT_MAIL, RING_MAIL, SMALL_SHIELD, ROBE, CLOAK_OF_PROTECTION, CLOAK_OF_MAGIC_RESISTANCE, LEATHER_ARMOR, LEATHER_JACKET, LEATHER_GLOVES, MIRROR, POT_OBJECT_DETECTION, RIN_INVISIBILITY, SHIELD_OF_REFLECTION, SADDLE, WAN_CANCELLATION, WAN_LIGHT, WAN_LIGHTNING, } from './object_data.js';
+import { getObjectClassBounds, getObjectDefinition, requireObjectData, OBJECT_BASES, OBJECT_PROB, OBJECT_MATERIAL, OBJECT_SPELL_LEVEL, OBJECT_MERGE, OBJECT_WEIGHT, OBJECT_COST, OBJECT_SUBTYPE, WORM_TOOTH, UNICORN_HORN, HELM_OF_OPPOSITE_ALIGNMENT, GAUNTLETS_OF_FUMBLING, FUMBLE_BOOTS, LEVITATION_BOOTS, AMULET_OF_STRANGULATION, AMULET_OF_RESTFUL_SLEEP, AMULET_OF_CHANGE, AMULET_OF_YENDOR, FAKE_AMULET_OF_YENDOR, LARGE_BOX, CHEST, ICE_BOX, SACK, OILSKIN_SACK, BAG_OF_HOLDING, BAG_OF_TRICKS, TALLOW_CANDLE, WAX_CANDLE, BRASS_LANTERN, OIL_LAMP, MAGIC_LAMP, EXPENSIVE_CAMERA, CRYSTAL_BALL, TINNING_KIT, CAN_OF_GREASE, FIGURINE, MAGIC_MARKER, MAGIC_FLUTE, FROST_HORN, FIRE_HORN, HORN_OF_PLENTY, MAGIC_HARP, DRUM_OF_EARTHQUAKE, CORPSE, EGG, MEAT_RING, GLOB_OF_GRAY_OOZE, GLOB_OF_BLACK_PUDDING, KELP_FROND, SLIME_MOLD, MELON, LUMP_OF_ROYAL_JELLY, CREAM_PIE, CANDY_BAR, TIN, GOLD_PIECE, SPE_NOVEL, SPE_BOOK_OF_THE_DEAD, DILITHIUM_CRYSTAL, LUCKSTONE, LOADSTONE, TOUCHSTONE, ROCK, BOULDER, STATUE, DART, DAGGER, SPEAR, SLING, ORCISH_DAGGER, MACE, QUARTERSTAFF, BULLWHIP, FEDORA, ELVEN_ARROW, ELVEN_SPEAR, ELVEN_DAGGER, ELVEN_SHORT_SWORD, ELVEN_BROADSWORD, ELVEN_BOW, ELVEN_LEATHER_HELM, ELVEN_MITHRIL_COAT, ELVEN_CLOAK, ELVEN_SHIELD, ELVEN_BOOTS, ORCISH_ARROW, ORCISH_SHORT_SWORD, ORCISH_BOW, ORCISH_HELM, ORCISH_CHAIN_MAIL, ORCISH_CLOAK, URUK_HAI_SHIELD, ORCISH_SHIELD, SCIMITAR, AXE, PICK_AXE, DWARVISH_SPEAR, DWARVISH_SHORT_SWORD, DWARVISH_MATTOCK, DWARVISH_IRON_HELM, DWARVISH_MITHRIL_COAT, DWARVISH_CLOAK, DWARVISH_ROUNDSHIELD, IRON_SHOES, HELMET, SPLINT_MAIL, RING_MAIL, SMALL_SHIELD, ROBE, CLOAK_OF_PROTECTION, CLOAK_OF_MAGIC_RESISTANCE, LEATHER_ARMOR, LEATHER_JACKET, LEATHER_GLOVES, LEATHER_CLOAK, MIRROR, POT_OBJECT_DETECTION, RIN_INVISIBILITY, SHIELD_OF_REFLECTION, SADDLE, WAN_CANCELLATION, WAN_LIGHT, WAN_LIGHTNING, } from './object_data.js';
 import { MONSTER_ATTACKS, MONSTER_BODY_META, MONSTER_DIFFICULTY, MONSTER_GENO, MONSTER_ALIGNMENT, MONSTER_LEVEL, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_FLAGS3, MONSTER_SYMBOL, MONSTER_SIZE, MONSTER_MOVE, MONSTER_SOUND, MONSTER_HAS_WEAPON_ATTACK, MONSTER_COLOR, MONSTER_NAME, MONSTER_RESISTS, SPECIAL_PM, monsterClassSymbol, monsterIsPlayerMonster, requireMonsterData, } from './monster_data.js';
 import { isReviver, isRider, zombieForm, } from './corpse_species.js';
 import { adjustedMonsterLevel, newMonsterHitPoints, } from './monster_hit_points.js';
-import { changeMonsterForm, initialShapechangedBirth, pickNastyShape, } from './monster_polymorph.js';
+import { changeMonsterForm, initialShapechangedBirth, pickNastyShape, shapechangerGender, } from './monster_polymorph.js';
 import { initializeMonsterWormBody, restoreMonsterWormHeads, validMonsterWormBodies, } from './monster_worm.js';
 import { monsterAlignmentType, setMonsterMalign } from './monster_alignment.js';
 import { saveMonsterTraits } from './monster_traits.js';
@@ -86,10 +90,11 @@ import { beginObjectBurn } from './light.js';
 import { LEVEL_TIMER_KIND, OBJECT_TIMER_KIND, objectTimers, objectsInTimerGraph, scheduleLevelTimer, scheduleObjectTimer, stopAllObjectTimers, stopObjectTimer, stopLevelTimer, } from './object_timers.js';
 import { setMonsterApparentHeroPosition } from './monster_perception.js';
 import { objectWeight } from './weight.js';
+import { createOrcRaid, deliverOrcRaidLoot } from './orc_raid.js';
 import { curseObjectState, objectResistsDestruction, } from './object_state.js';
 import { isMultiGeneratedWeapon, isPoisonableObject, } from './object_properties.js';
 import { addCreatedObjectToContainer, addObjectToContainer } from './object_container.js';
-import { vision_note_blocker_change } from './vision.js';
+import { monsterEmitsLight, vision_note_blocker_change } from './vision.js';
 import { goodPosition } from './teleport_rules.js';
 import { randomDefensiveMonsterItem, randomMiscMonsterItem, randomOffensiveMonsterItem, } from './muse.js';
 import { SpecialSelection, match_maptyps, mapCharacterType, specialSelectionFillRect, specialSelectionMatch, } from './selvar.js';
@@ -147,7 +152,6 @@ const STUDDED_LEATHER_ARMOR = 131;
 const LARGE_SHIELD = 156;
 const LOW_BOOTS = 163;
 const HIGH_BOOTS = 165;
-const LEATHER_CLOAK = 146;
 const MUMMY_WRAPPING = 138;
 const TIN_WHISTLE = 245;
 const SPE_LIGHT = 372;
@@ -284,23 +288,6 @@ const TRAPPED_DOOR = 24;
 const TRAPPED_CHEST = 25;
 function is_hole(t) { return t === HOLE || t === TRAPDOOR; }
 function is_pit(t) { return t === PIT || t === SPIKED_PIT; }
-function canMonsterHideUnderFloorObject(x, y) {
-    const pile = game.level?.objects?.[x]?.[y] || [];
-    if (!pile.length)
-        return false;
-    const trap = game.level?.traps?.find(candidate => candidate.tx === x && candidate.ty === y);
-    if (trap && !is_pit(trap.ttyp))
-        return false;
-    let coinQuantity = 0;
-    for (const object of pile) {
-        if (object.oclass !== COIN_CLASS)
-            return true;
-        coinQuantity += object.quan ?? object.quantity ?? 1;
-        if (coinQuantity >= 10)
-            return true;
-    }
-    return false;
-}
 // Stairway list management
 function stairway_add(x, y, up, isladder, dest) {
     const currentDungeon = game.u?.uz?.dnum ?? 0;
@@ -1410,6 +1397,7 @@ const M2_GNOME = 0x00000040;
 const M2_ORC = 0x00000080;
 const M2_DEMON = 0x00000100;
 const M2_JEWELS = 0x20000000;
+const M2_SHAPESHIFTER = 0x00004000;
 const M2_LORD = 0x00000400;
 const M2_PRINCE = 0x00000800;
 const M2_MINION = 0x00001000;
@@ -1537,11 +1525,15 @@ function randomMonsterPosition(mndx) {
     // scan.  Runtime callers first scan unseen squares; the compact vision
     // bit mirrors cansee() without introducing a level-generation cycle.
     const firstPass = game.in_mklev || game.blind ? 1 : 0;
+    const xOffset = x;
+    const yOffset = y;
     for (let visiblePass = firstPass; visiblePass < 2; visiblePass++) {
         for (let dx = 0; dx < COLNO; dx++) {
             for (let dy = 0; dy < ROWNO; dy++) {
-                const candidateX = ((dx + x) % (COLNO - 1)) + 1;
-                const candidateY = ((dy + y) % (ROWNO - 1)) + 1;
+                const candidateX = ((dx + xOffset) % (COLNO - 1)) + 1;
+                const candidateY = ((dy + yOffset) % (ROWNO - 1)) + 1;
+                x = candidateX;
+                y = candidateY;
                 if (!visiblePass
                     && !!((game.viz_array?.[candidateY]?.[candidateX] ?? 0) & 0x02)) {
                     continue;
@@ -1549,6 +1541,17 @@ function randomMonsterPosition(mndx) {
                 if (goodPosition(candidateX, candidateY, subject, { gpflags: GP_AVOID_MONPOS }))
                     return { x: candidateX, y: candidateY };
             }
+        }
+        if (!visiblePass && (mndx === null || MONSTER_MOVE[mndx])) {
+            for (let stair = game.stairs; stair; stair = stair.next) {
+                if (stair.tolev.dnum === game.u.uz?.dnum && !rn2(2)) {
+                    x = stair.sx;
+                    y = stair.sy;
+                    break;
+                }
+            }
+            if (goodPosition(x, y, subject, { gpflags: GP_AVOID_MONPOS }))
+                return { x, y };
         }
     }
     return null;
@@ -2635,16 +2638,6 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
         }
     }
     const classIndex = MONSTER_SYMBOL[mndx] || 0;
-    // C makemon.c: during level creation, M1_CONCEAL actors hide under an
-    // object already present on their square and eel-class actors hide in
-    // pools.  Concealment is producer state: display may reveal it through
-    // telepathy, but must not infer the state from species at paint time.
-    const birthTerrain = level.at(x, y)?.typ;
-    const monsterUndetected = !!(game.in_mklev
-        && ((((MONSTER_FLAGS1[mndx] ?? 0) & 0x00000080)
-            && canMonsterHideUnderFloorObject(x, y))
-            || (classIndex === 57
-                && birthTerrain !== undefined && IS_POOL(birthTerrain)))); // M1_CONCEAL/S_EEL
     // C makemon.c initializes strategic presentation state for waiting and
     // covetous species unless the caller explicitly supplies MM_NOWAIT.
     // STRAT_APPEARMSG is consumed by the first visible relocation message;
@@ -2680,7 +2673,7 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
         mgenmklev: !!game.in_mklev,
         seen_resistance: 0,
         mux: pendingMonster.mux, muy: pendingMonster.muy,
-        mundetected: monsterUndetected,
+        mundetected: false,
         minvis: !!pendingMonster.minvis,
         perminvis: !!pendingMonster.perminvis,
         movement: 0, mmove: MONSTER_MOVE[mndx] ?? 0,
@@ -2739,6 +2732,11 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
         // Branch knowledge survives puzzle completion.
         monster.mtrapseen = (1 << (PIT - 1)) | (1 << (HOLE - 1));
     }
+    if (Is_stronghold(game.u.uz) && !(requireMonsterData(MONSTER_FLAGS1, mndx) & M1_MINDLESS))
+        monster.mtrapseen = (monster.mtrapseen ?? 0) | (1 << (TRAPDOOR - 1));
+    // Native quest leaders and nemeses know every trap type at birth.
+    if (MONSTER_SOUND[mndx] === 36 || MONSTER_SOUND[mndx] === 37)
+        monster.mtrapseen = -1;
     if (mndx === PM_SHOPKEEPER) {
         monster.mpeaceful = 1;
     }
@@ -2749,6 +2747,12 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
         setMonsterGivenName(monster, generatedGhostName);
     registerQuestLeader(monster);
     level.monsters[monsterIndex] = monster;
+    // makemon() asks hideunder() for spiders, snakes, and eels. Its
+    // terrain, trap, and corpse checks also apply during level creation.
+    if (game.in_mklev && [19, 45, 57].includes(classIndex))
+        await hideMonsterUnder(monster);
+    if (allowMonsterInventory)
+        await deliverOrcRaidLoot(monster, game);
     return finishMonsterBirth(monster, mmflags);
 }
 // Direct-coordinate creation for source callers which deliberately bypass
@@ -3130,6 +3134,7 @@ export async function maketrap(x, y, typ) {
             statueMonster = rndmonnumAdj(3, 6);
         } while (--tryCount > 0
             && MONSTER_SYMBOL[statueMonster] === 21
+            && ((MONSTER_FLAGS2[statueMonster] ?? 0) & M2_JEWELS)
             && Math.sign(game.u?.ualign?.type ?? 0)
                 === Math.sign(MONSTER_ALIGNMENT[statueMonster] ?? 0));
         const statue = await createCorpstatAt(STATUE, null, statueMonster, x, y, 0);
@@ -6138,14 +6143,50 @@ async function createLuaObject(context, options, parentContainer, parentMonster,
 function applyLuaMonsterAppearance(monster, appearance) {
     if (!monster || !appearance)
         return;
+    const mimic = MONSTER_SYMBOL[monster.mnum] === S_MIMIC;
+    if (game.u.protectionFromShapeChangers || game.protectionFromShapeChangers
+        || !(mimic || (ismnum(monster.cham) && appearance.kind === 'monster')))
+        return;
     if (appearance.kind === 'object') {
         monster.m_ap_type = M_AP_OBJECT;
         monster.mappearance = appearance.type;
         return;
     }
     if (appearance.kind === 'monster') {
-        monster.m_ap_type = M_AP_MONSTER;
-        monster.mappearance = appearance.type;
+        let type = appearance.type;
+        if (monsterIsVampireShifter(monster)) {
+            const base = monster.cham;
+            if (base === PM_VLAD_THE_IMPALER
+                && monster.minvent?.some(object => object.otyp === CANDELABRUM_OF_INVOCATION)) {
+                type = base;
+            }
+            else if ((MONSTER_FLAGS2[type] ?? 0) & M2_SHAPESHIFTER) {
+                if (!ismnum(base))
+                    throw new Error('A vampire shape needs its natural species');
+                type = base;
+            }
+            else if (!(type === PM_VAMPIRE_BAT
+                || type === MONSTER_NAME.indexOf('fog cloud')
+                || (type === MONSTER_NAME.indexOf('wolf') && base !== PM_VAMPIRE)))
+                return;
+        }
+        if (type === monster.mnum) {
+            monster.m_ap_type = M_AP_NOTHING;
+            monster.mappearance = 0;
+        }
+        else if (mimic || monster.iswiz) {
+            monster.m_ap_type = M_AP_MONSTER;
+            monster.mappearance = type;
+        }
+        else {
+            const oldForm = monster.mnum;
+            monster.female = shapechangerGender(monster.cham ?? oldForm, type, !!monster.female);
+            setMonsterSpecies(monster, type);
+            if (monsterEmitsLight(oldForm) !== monsterEmitsLight(type))
+                game.vision_full_recalc = 1;
+            if (!monster.perminvis || oldForm === PM_STALKER || oldForm === PM_BLACK_LIGHT)
+                monster.perminvis = type === PM_STALKER || type === PM_BLACK_LIGHT;
+        }
         return;
     }
     // C sp_lev.c:create_monster() stores the matching defsyms index,
@@ -6229,10 +6270,10 @@ async function createLuaMonster(context, options) {
     if (monster && options.waiting) {
         monster.mstrategy = (monster.mstrategy ?? 0) | STRAT_WAITFORU;
         monster.waiting = true;
-        if (monster.cham === PM_VAMPIRE_LEADER
-            && monster.mnum !== PM_VAMPIRE_LEADER
+        if (monsterIsVampireShifter(monster)
+            && monster.mnum !== monster.cham
             && options.appearance?.kind !== 'monster') {
-            await changeMonsterForm(monster, PM_VAMPIRE_LEADER);
+            await changeMonsterForm(monster, monster.cham ?? null);
         }
     }
     if (monster && options.seentraps)
@@ -7263,6 +7304,8 @@ async function generateSpecialAndFixup(generator, active) {
         level.flags.graveyard = true;
     if (active?.baalzFixup)
         await fixupBaalz(active);
+    if (active.file === 'minetn-1.lua' && In_mines(game.u.uz))
+        await createOrcRaid();
     // sp_lev.c explicitly places deferred portals, stairs, and branches
     // before premap_detect(); otherwise their remembered glyphs retain the
     // underlying terrain even though the live level cell was updated.
@@ -7383,6 +7426,7 @@ function vibratingSquarePoint() {
     }
     if (!point)
         throw new Error('Vibrating square placement did not choose a position.');
+    level.invocationPosition = { ...point };
     return point;
 }
 async function populateRandomMaze() {
@@ -10262,8 +10306,12 @@ async function mktrap_victim(trap) {
             if (!rn2(10)) {
                 const otmp = await mksobj(rn2(4) ? TALLOW_CANDLE : WAX_CANDLE, true, false);
                 otmp.quan = 1;
+                otmp.quantity = 1;
+                otmp.owt = objectWeight(otmp);
                 curseObjectState(otmp);
                 placeCreatedObject(otmp, x, y);
+                if (!requireGameLevel().requireAt(x, y).lit)
+                    beginObjectBurn(otmp);
             }
             break;
         default:

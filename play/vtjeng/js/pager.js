@@ -12,6 +12,7 @@ import {
     BUFSZ,
     COLNO,
     MAXTCHARS,
+    NO_TRAP,
     AM_MASK,
     AM_SANCTUM,
     Amask2align,
@@ -99,6 +100,7 @@ import {
     Ugender,
     has_mcorpsenm,
     MCORPSENM,
+    is_pit,
     u_at,
 } from './const.js';
 import { isok } from './cmd_isok.js';
@@ -638,12 +640,9 @@ function look_at_monster(monster, x, y, state, output = null) {
     if (monster.mleashed) detail += ', leashed to you';
     if (monster.mtrapped && cansee(monster.mx, monster.my, state)) {
         const trap = t_at(monster.mx, monster.my, state);
-        const description = TRAP_DESCRIPTIONS[trap?.ttyp];
-        if (description
-            && ['bear trap', 'pit', 'spiked pit', 'web'].includes(
-                description,
-            )) {
-            detail += `, trapped in ${an(description)}`;
+        const trapType = trap?.ttyp ?? NO_TRAP;
+        if (trapType === BEAR_TRAP || is_pit(trapType) || trapType === WEB) {
+            detail += `, trapped in ${an(trapname(trapType, false, state))}`;
             trap.tseen = true;
         }
     }
@@ -2175,7 +2174,7 @@ async function dispfile_optionfile(state) {
     await display_file('opthelp', state);
 }
 
-async function dispfile_optmenu(state) {
+export async function dispfile_optmenu(state = game) {
     await display_file('optmenu', state);
 }
 

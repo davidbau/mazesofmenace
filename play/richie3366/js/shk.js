@@ -51,6 +51,8 @@ import { choose_stairs } from './wizard.js';
 import { in_rooms, stop_occupation, You_hear, check_special_room } from './hack.js';
 /* priest.js (same 101-module SCC; hoisted function, call-time use only — imports.mjs IN-SCC, verify judges TDZ). */
 import { histemple_at } from './priest.js';
+/* options.js (same 101-module SCC; hoisted function, call-time use only — imports.mjs IN-SCC, verify judges TDZ). */
+import { select_menu_pick_any } from './options.js';
 import {
     ESHK, has_eshk, has_mgivenname, MGIVENNAME, EPRI, BEFORE, NOW, IS_ROOM, IS_DOOR, IS_WALL, ZAP_POS, NOTONL, ALLOW_ROCK, u_at, isok,
     ROOMOFFSET, SHOPBASE, ACH_SHOP, SVALL, ROWNO, COLNO,
@@ -64,7 +66,7 @@ import {
     COST_CONTENTS, COST_SINGLEOBJ, COST_UNBLSS, COST_UNCURS, TELEPAT,
     FIRE_RES, SLEEP_RES, COLD_RES, DISINT_RES, SHOCK_RES, POISON_RES,
     ACID_RES, STONE_RES, TELEPORT, TELEPORT_CONTROL, ismnum, Upolyd,
-    MENU_TRADITIONAL, MENU_FULL,
+    MENU_TRADITIONAL, MENU_FULL, MENU_ITEMFLAGS_NONE,
     W_SWAPWEP, W_QUIVER, TT_PIT, MIGR_APPROX_XY, MON_FLOOR,
     SELL_NORMAL, SELL_DELIBERATE, SELL_DONTSELL, CANDLESHOP,
     ARTICLE_THE, G_GONE, LL_ACHIEVE, MM_NOMSG, PL_NSIZ,
@@ -5563,78 +5565,74 @@ async function make_itemized_bill(shkp) {
 }
 
 /**
- * C ref: shk.c menu_pick_pay_items `:1666–1739` — PICK_ANY
- * "Pay for which items?". Used-up / unpaid headings; quan for paydoname.
- * Letter toggle; Return confirms; ESC cancels. SELECT_ALL `.` deferred
- * (session uses item letter `a`).
+ * C ref: shk.c menu_pick_pay_items `:1668–1739` — PICK_ANY
+ * "Pay for which items?" over the ported tty pager (D-3968 query_objlist
+ * precedent). The private loop repainted docrt()+flush_screen() per key,
+ * which committed fresh status C never paints (windows.c select_menu
+ * `:1859–1863` scopes gb.bot_disabled around win_select_menu; corner
+ * dismiss is docorner, never docrt+bot — scen-shop-Monk-50255713 kept
+ * stale T:35 where JS freshened T:36). Build in C order (amt width,
+ * used-up heading, per-item unpaid heading + paydoname quan swap +
+ * "%*ld Zm" text, a_int i+1) + end_menu prompt rows, then one
+ * select_menu_pick_any (bot_disabled + paging + dismiss inside); apply
+ * queuedpay per pick (C `:1727–1735`, subset counts unsupported — C FIXME
+ * — so counts never flow here, unlike the pickup adapter).
  */
 async function menu_pick_pay_items(ibill) {
+    // JS-necessary: C `:1696` dereferences ibill[0] (callers guarantee
+    // non-empty); an empty bill returns 0 instead of throwing.
     if (!ibill.length) return 0;
     const ibillct = ibill.length;
+    // C `:1684–1691` — price-field width from the largest amount.
     let largest = 0;
     for (const e of ibill) {
         if ((e.cost | 0) > largest) largest = e.cost | 0;
     }
     const amtWidth = String(largest).length;
-    const items = ibill.map((e, i) => ({
-        ibillIdx: i,
-        letch: String.fromCharCode('a'.charCodeAt(0) + i),
-        selected: false,
-        cost: e.cost | 0,
-        obj: e.obj,
-    }));
-
-    for (;;) {
-        const entries = [
-            { text: 'Pay for which items?', attr: ATR_INVERSE },
-            { text: '', attr: 0 },
-        ];
-        if ((ibill[0].usedup | 0) <= PartlyUsedUp) {
-            const plural = (ibillct > 1
-                && (ibill[1].usedup | 0) <= PartlyUsedUp) ? 's' : '';
-            entries.push({ text: `Used up item${plural}:`, attr: 0 });
-        }
-        for (const it of items) {
-            const i = it.ibillIdx;
-            if (i > 0 && (ibill[i - 1].usedup | 0) <= PartlyUsedUp
-                && (ibill[i].usedup | 0) >= PartlyIntact) {
-                const plural = (i < ibillct - 1) ? 's' : '';
-                entries.push({ text: `Unpaid item${plural}:`, attr: 0 });
-            }
-            const otmp = it.obj;
-            const saveQuan = otmp?.quan;
-            if (otmp) otmp.quan = ibill[i].quan;
-            const nm = paydoname(otmp);
-            if (otmp) otmp.quan = saveQuan;
-            const mark = it.selected ? '+' : '-';
-            const amt = String(it.cost).padStart(amtWidth, ' ');
-            entries.push({
-                text: `${it.letch} ${mark} ${amt} Zm, ${nm}`,
-                attr: 0,
-            });
-        }
-        await paint_corner_nhw_menu(entries, '(end) ');
-        await flush_screen(1);
-        const key = await nhgetch();
-        game._menu_overlay = false;
-        await docrt();
-        await flush_screen(1);
-
-        if (key === 27) return 0;
-        if (key === 13 || key === 10 || key === 32) {
-            let n = 0;
-            for (const it of items) {
-                if (!it.selected) continue;
-                ibill[it.ibillIdx].queuedpay = true;
-                n++;
-            }
-            return n;
-        }
-        const ch = String.fromCharCode(key);
-        const hit = items.find((it) => it.letch === ch);
-        if (hit) hit.selected = !hit.selected;
-        // invalid (incl. stray `p`/`y`/`W`) → re-prompt like C select_menu
+    // C `:1723` end_menu prompt rows (query_objlist raw precedent).
+    const raw = [
+        { selectable: false, text: 'Pay for which items?', attr: ATR_INVERSE },
+        { selectable: false, text: '' },
+    ];
+    // C `:1696–1700` — "used up" heading when ibill[0] is used up.
+    if ((ibill[0].usedup | 0) <= PartlyUsedUp) {
+        const plural = (ibillct > 1
+            && (ibill[1].usedup | 0) <= PartlyUsedUp) ? 's' : '';
+        raw.push({ selectable: false, text: `Used up item${plural}:` });
     }
+    for (let i = 0; i < ibillct; i++) {
+        // C `:1704–1708` — "unpaid" heading at the used-up/intact seam.
+        if (i > 0 && (ibill[i - 1].usedup | 0) <= PartlyUsedUp
+            && (ibill[i].usedup | 0) >= PartlyIntact) {
+            const plural = (i < ibillct - 1) ? 's' : '';
+            raw.push({ selectable: false, text: `Unpaid item${plural}:` });
+        }
+        // C `:1710–1713` — quan swap around paydoname (partly used).
+        const otmp = ibill[i].obj;
+        const saveQuan = otmp?.quan;
+        if (otmp) otmp.quan = ibill[i].quan;
+        const nm = paydoname(otmp);
+        if (otmp) otmp.quan = saveQuan;
+        // C `:1717–1720` — "%*ld Zm, %s", a_int i+1, ITEMFLAGS_NONE.
+        raw.push({
+            selectable: true,
+            a_int: i + 1,
+            gselector: '',
+            text: `${String(ibill[i].cost | 0).padStart(amtWidth, ' ')} Zm, ${nm}`,
+            itemflags: MENU_ITEMFLAGS_NONE,
+        });
+    }
+    // C `:1724` select_menu PICK_ANY (create/start_menu/end_menu/destroy
+    // inside the pager; bot_disabled per windows.c `:1859–1863`).
+    const picked = await select_menu_pick_any(raw, { cancelValue: null });
+    // C `:1738` — ESC returns max(n, 0), not -1.
+    if (!picked) return 0;
+    // C `:1727–1735` — queuedpay per pick (selection order irrelevant:
+    // pay_billed_items iterates ibill in order).
+    for (const it of picked) {
+        ibill[(it.a_int | 0) - 1].queuedpay = true;
+    }
+    return picked.length;
 }
 
 /**

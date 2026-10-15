@@ -2599,13 +2599,16 @@ export async function getobj_dip(at_here) {
             if (!ilet) continue;
             if (ilet === HANDS_SYM) return hands_obj;
             const picked = (game.invent || []).find((o) => o.invlet === ilet);
+            // C order as in the letter path: gold gate, `:2049` botl
+            // (fires before silly_thing too), then verify.
+            if (picked && picked.oclass === COIN_CLASS) {
+                await pline('You cannot dip gold.');
+                return null;
+            }
+            if (game.flags) game.flags.botl = true;
             if (!picked) {
                 await pline("You don't have that object.");
                 continue;
-            }
-            if (picked.oclass === COIN_CLASS) {
-                await pline('You cannot dip gold.');
-                return null;
             }
             if (obj_ok(picked) === GETOBJ_EXCLUDE) {
                 await pline('That is a silly thing to dip.');
@@ -2615,13 +2618,16 @@ export async function getobj_dip(at_here) {
             return picked;
         }
         const otmp = (game.invent || []).find((o) => o.invlet === ch);
+        // C invent.c getobj `:2003–2049` — gold gate, then disp.botl on
+        // every pick past it, before the verify (bad letters repaint too).
+        if (otmp && otmp.oclass === COIN_CLASS) {
+            await pline('You cannot dip that!');
+            return null;
+        }
+        if (game.flags) game.flags.botl = true;
         if (!otmp) {
             await pline("You don't have that object.");
             continue;
-        }
-        if (otmp.oclass === COIN_CLASS) {
-            await pline('You cannot dip that!');
-            return null;
         }
         game._pending_message = '';
         return otmp;
@@ -2888,13 +2894,16 @@ async function getobj_dip_ok(word, inacc) {
             if (!ilet) continue;
             if (ilet === HANDS_SYM) return hands_obj;
             const picked = (game.invent || []).find((o) => o.invlet === ilet);
+            // C invent.c getobj `:2003–2049` — gold gate, then disp.botl
+            // on every pick past it, before the verify (as in getobj_dip).
+            if (picked && picked.oclass === COIN_CLASS) {
+                await pline(`You cannot ${word} gold.`);
+                return null;
+            }
+            if (game.flags) game.flags.botl = true;
             if (!picked) {
                 await pline("You don't have that object.");
                 continue;
-            }
-            if (picked.oclass === COIN_CLASS) {
-                await pline(`You cannot ${word} gold.`);
-                return null;
             }
             const rank = obj_ok(picked);
             if (rank === GETOBJ_EXCLUDE) {
@@ -2910,17 +2919,21 @@ async function getobj_dip_ok(word, inacc) {
                 await pline(`You cannot ${word} gold.`);
                 return null;
             }
+            // C `:2049` — the gold branch falls through to botl+verify.
+            if (game.flags) game.flags.botl = true;
             await pline("You don't have that object.");
             continue;
         }
         const otmp = (game.invent || []).find((o) => o.invlet === ch);
+        // C order as in getobj_dip: gold gate, `:2049` botl, then verify.
+        if (otmp && otmp.oclass === COIN_CLASS) {
+            await pline(`You cannot ${word} gold.`);
+            return null;
+        }
+        if (game.flags) game.flags.botl = true;
         if (!otmp) {
             await pline("You don't have that object.");
             continue;
-        }
-        if (otmp.oclass === COIN_CLASS) {
-            await pline(`You cannot ${word} gold.`);
-            return null;
         }
         const rank = obj_ok(otmp);
         if (rank === GETOBJ_EXCLUDE) {

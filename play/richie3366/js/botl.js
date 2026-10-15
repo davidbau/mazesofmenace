@@ -3117,8 +3117,9 @@ export function encglyph(glyph) {
 // text for status lines. C fills the caller's buffer (Snprintf-capped at
 // bufsz); JS returns the string, sliced to bufsz - 1 like the C truncation.
 // VERS_GAME_NAME is unset (C :100-104 takes nh_basename(gh.hname) then);
-// JS has no gh.hname, so a missing name disables showname exactly as C's
-// `!name || !*name` arm does. Likewise a missing nomakedefs.git_branch
+// gh.hname is 'nethack' from decl init (unixmain.c:100 analog). A missing
+// name still disables showname, mirroring C's `!name || !*name`
+// shouldn't-happen arm. Likewise a missing nomakedefs.git_branch
 // disables showbranch (C :110-115).
 export function status_version(bufsz, indent) {
     const vflags = (game.flags?.versinfo | 0); // C :93

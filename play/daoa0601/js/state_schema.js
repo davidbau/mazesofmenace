@@ -43,6 +43,7 @@ const persistentNames = [
 // Every remaining GameState field must be transient. Adding, removing, or
 // reclassifying a field requires an explicit persistence decision at compile time.
 const transientFields = {
+    _wishHistory: true,
     _pickWarningMove: true,
     _canMakeBones: true,
     _wailMessageMove: true,
@@ -58,6 +59,10 @@ const transientFields = {
     _cursorOverride: true,
     _commandCount: true,
     _commandKey: true,
+    _repeatCommands: true,
+    _inDoAgain: true,
+    _movementAttempt: true,
+    _whatdoesShown: true,
     _kickedLoc: true,
     _helplessRunmodeDelayPending: true,
     multi: true,
@@ -79,6 +84,7 @@ const transientFields = {
     _monsterSwallower: true,
     _monsterEngulf: true,
     _occupation: true,
+    _lockAttempt: true,
     _trapSetting: true,
     _pendingDemigodIntervention: true,
     _pendingHeroShapeChange: true,

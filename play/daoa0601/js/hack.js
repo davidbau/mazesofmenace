@@ -4,9 +4,10 @@ import { monsterHasMapPosition } from './monster_location.js';
 import { heroIsHallucinating } from './senses.js';
 import { BURNING, D_BROKEN, D_CLOSED, D_LOCKED, DISMOUNT_FELL, DISMOUNT_GENERIC, DISSOLVED, DROWNING, DOOR, ICE, IS_AIR, IS_OBSTRUCTED, IS_STWALL, IS_WALL, IS_WATERWALL, Is_waterlevel, LAVAPOOL, LAVAWALL, PARANOID_SWIM, POOL, ROOM, STONE, FAINTED, TREE, TT_LAVA, Upolyd, WATER, W_NONDIGGABLE, W_NONPASSWALL, WT_TOOMUCH_DIAGONAL, } from './const.js';
 import { displayLiquidName, feel_newsym, newsym, plineWithContinuation, updateLastSeenTerrain } from './display.js';
-import { heroPassesWalls, heroFormSticks } from './hero_species.js';
+import { heroPassesWalls, heroFormSticks, heroSpecies } from './hero_species.js';
 import { heroHasConflict } from './hero_conflict.js';
 import { endVoluntaryMultiTurn } from './command_state.js';
+import { setHeroInWater } from './terrain_movement.js';
 import { monsterName } from './monster_name.js';
 import { beginHeroLifeSaving, completeHeroLifeSaving, finishHeroDeath, identifyLifeSavingAmulet, } from './end.js';
 import { placeObject, stack_object } from './floor_object.js';
@@ -21,7 +22,7 @@ import { igniteItems } from './light.js';
 import { destroyFireInventory } from './zap.js';
 import { releaseAllMonsterLeashes } from './monster_leash.js';
 import { splitHeroMonsterForm } from './mklev.js';
-import { MONSTER_MOVE, MONSTER_SIZE, MONSTER_SYMBOL, } from './monster_data.js';
+import { MONSTER_FLAGS1, MONSTER_MOVE, MONSTER_SIZE, MONSTER_SYMBOL, } from './monster_data.js';
 import { AMULET_OF_LIFE_SAVING, BOULDER, LOADSTONE, OBJECT_MATERIAL, OBJECT_NAMES, } from './object_data.js';
 import { heroFormClings, heroFormFlags, heroHidesOnCeiling, heroIsFlying, } from './polyself.js';
 import { d, rn2, rnd } from './rng.js';
@@ -75,6 +76,7 @@ const CRAWL_DX = [-1, -1, 0, 1, 1, 1, 0, -1];
 const CRAWL_DY = [0, -1, -1, -1, 0, 1, 1, 1];
 const M1_SWIM = 0x00000002;
 const M1_AMORPHOUS = 0x00000004;
+const M1_WALLWALK = 0x00000008;
 const M1_TUNNEL = 0x00000020;
 const M1_NEEDPICK = 0x00000040;
 const M1_SLITHY = 0x00080000;
@@ -161,6 +163,8 @@ export function heroCanPassWallAt(state, x, y) {
 }
 function doorlessDoor(location) {
     return location?.typ === DOOR
+        // Rogue doorways have no doors but retain diagonal restrictions.
+        && !game.level?.flags.is_rogue_level
         && !((location.doormask || 0) & ~D_BROKEN);
 }
 export function blocksDiagonalDoor(current, destination) {
@@ -177,13 +181,16 @@ export function heroBadRock(state, x, y) {
         return true;
     if (!IS_OBSTRUCTED(location.typ))
         return false;
-    const flags = heroFormFlags(state);
-    const mayDig = !((IS_WALL(location.typ) || location.typ === TREE)
+    // C bad_rock() tests the species, even when the hero has temporary
+    // wall passing. test_move() applies that property after direction selection.
+    const flags = MONSTER_FLAGS1[heroSpecies(state)] ?? 0;
+    const mayDig = !((IS_STWALL(location.typ) || location.typ === TREE)
         && ((location.wall_info ?? 0) & W_NONDIGGABLE));
     const cannotTunnel = !(flags & M1_TUNNEL)
         || !!(flags & M1_NEEDPICK) || !mayDig;
-    const cannotPass = !heroCanPassWallAt(state, x, y);
-    return cannotTunnel && cannotPass;
+    const canPass = !!(flags & M1_WALLWALK)
+        && !(IS_STWALL(location.typ) && (location.wall_info & W_NONPASSWALL));
+    return cannotTunnel && !canPass;
 }
 export function heroTightDiagonalReason(state = game) {
     const u = state.u;
@@ -710,7 +717,7 @@ async function leaveWater({ state, location, publish, resetVision, recalculateVi
     if (message)
         await publish(message);
     const wasUnderwater = !!state.underwater && !heroIsOnWaterLevel(state);
-    u.uinwater = 0;
+    await setHeroInWater(false, state);
     state.underwater = false;
     if (wasUnderwater) {
         resetVision();
@@ -819,7 +826,7 @@ export async function heroLiquidEffects(options = {}) {
             if (!heroIsOnWaterLevel(state))
                 await publish(heroIsHallucinating(state) ? 'Your keel hits the bottom.' : 'You touch bottom.');
         }
-        u.uinwater = 1;
+        await setHeroInWater(true, state);
         recalculateVision(1);
         return { entered: true, moved: false, died: false };
     }
@@ -866,8 +873,6 @@ export async function heroLiquidEffects(options = {}) {
             // which resets the trap/hold state and drags the ball and chain
             // along, then runs the full destination effects below.
             await moveHeroByTeleport(destination.x, destination.y, state, { allowDrag: true });
-            repaint(x, y);
-            recalculateVision(1);
             const landing = await applyLandingEffects({
                 from: { x, y },
                 to: { x: u.ux, y: u.uy },
@@ -879,7 +884,7 @@ export async function heroLiquidEffects(options = {}) {
         }
         await publish('But in vain.');
     }
-    u.uinwater = 1;
+    await setHeroInWater(true, state);
     await publish('You drown.');
     for (let attempt = 0; attempt < 2; attempt++) {
         const liquid = waterbodyName(u.ux, u.uy, state);
@@ -917,7 +922,7 @@ export async function heroLiquidEffects(options = {}) {
         }
         await publish("You're still drowning.");
     }
-    u.uinwater = 0;
+    await setHeroInWater(false, state);
     state.underwater = false;
     await announceTerrainRescue(DROWNING, state, publish);
     // C drown() returns TRUE after rescue even when no safe landing exists.

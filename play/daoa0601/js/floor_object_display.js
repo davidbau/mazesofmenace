@@ -13,6 +13,9 @@ import { NO_COLOR } from './terminal.js';
 import { MONSTER_NAME } from './monster_data.js';
 import { objectQuantity } from './object_stack.js';
 import { heroIsBlind } from './senses.js';
+import { visibleRegionAt } from './regions.js';
+import { trapName } from './trap_name.js';
+import { withIndefiniteArticle } from './object_grammar.js';
 import { feelPetrifyingCorpse, formCanBecomeStoneGolem, willFeelPetrifyingCorpse, } from './stoning.js';
 export async function readFloorEngraving(x, y) {
     const read = await readEngravingAt(x, y, plineWithContinuation);
@@ -61,6 +64,16 @@ export async function showFloorPile(objects, pickedSome = false, featureDescript
         }
         return { died: false };
     }
+    const region = visibleRegionAt(game, game.u.ux, game.u.uy);
+    const trap = game.level?.traps.find(trap => trap.tseen
+        && trap.tx === game.u.ux && trap.ty === game.u.uy);
+    const features = [];
+    if (region)
+        features.push(`a ${region.damage ? 'poison gas' : 'vapor'} cloud`);
+    if (trap)
+        features.push(withIndefiniteArticle(trapName(trap.ttyp)));
+    if (features.length)
+        await plineWithContinuation(`There is ${features.join(' and ')} here.`);
     if (objects.length === 1) {
         if (featureDescription)
             await plineWithContinuation(featureDescription);
@@ -70,10 +83,12 @@ export async function showFloorPile(objects, pickedSome = false, featureDescript
         game._lastPlineKind = PLNMSG_ONE_ITEM_HERE;
         return await feelPetrifyingCorpse(first);
     }
-    // look_here() displays WIN_MESSAGE first; a corner NHW_MENU then clears
-    // that window, including seen text outside the menu's own rectangle.
+    // look_here() displays WIN_MESSAGE first. Unread prose is acknowledged
+    // and cleared; seen text stays beneath the corner window.
+    const unreadMessage = !!game._pending_message;
     await flushPendingTopline();
-    clearMessageWindow();
+    if (unreadMessage)
+        clearMessageWindow();
     await flush_screen(1);
     const display = requireGameDisplay();
     const underlay = snapshotMenuUnderlay();
