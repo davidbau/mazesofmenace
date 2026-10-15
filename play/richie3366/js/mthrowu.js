@@ -22,7 +22,7 @@ import {
     BRK_BY_HERO, BRK_MELEE, W_NONDIGGABLE, WT_IRON_BALL_INCR,
     P_BOW, P_CROSSBOW, P_DART, P_SHURIKEN, P_SPEAR, P_KNIFE,
     Has_contents, KILLED_BY, KILLED_BY_AN, TIMEOUT, STONED, EYE, FACE,
-    M_SEEN_ACID, ACID_RES, engulfing_u,
+    M_SEEN_ACID, ACID_RES, engulfing_u, MIGR_NOWHERE,
 } from './const.js';
 import { cansee, couldsee, clear_path } from './vision.js';
 import { worm_known } from './worm.js';
@@ -791,15 +791,23 @@ async function drop_throw(obj, ohit, x, y) {
     if (broken) {
         delobj(obj);
     } else {
-        const { ship_object } = await import('./dokick.js');
-        broken = await ship_object(obj, x, y, false);
+        // C `:176–177` — ship_object only runs past a down gate
+        // (MIGR_NOWHERE ≡ -1; the live export gates again inside).
+        const { down_gate, ship_object } = await import('./dokick.js');
+        if (down_gate(x, y) !== MIGR_NOWHERE) {
+            broken = await ship_object(obj, x, y, false);
+        }
         if (!broken) {
             const { flooreffects } = await import('./do.js');
-            if (!(await flooreffects(obj, x, y, 'fall'))) {
+            // C `:179` — the landing square's occupant is read
+            // before flooreffects runs.
+            let mtmp = m_at(x, y);
+            // C `:180` — flooreffects TRUE means the obj is gone
+            // (sank, burned, merged); its value IS broken.
+            if (!(broken = await flooreffects(obj, x, y, 'fall'))) {
                 place_object(obj, x, y);
                 // C :183–190 — the landing square's occupant (hero
                 // included) passively erodes a missile that hit.
-                let mtmp = m_at(x, y);
                 if (!mtmp && u_at(x, y)) mtmp = game.youmonst;
                 if (mtmp && ohit) await passive_obj(mtmp, obj, null);
                 stackobj(obj);

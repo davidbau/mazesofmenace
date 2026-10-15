@@ -118,7 +118,7 @@ import {
     MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS, MONSEEN_TELEPAT,
     MONSEEN_XRAYVIS, MONSEEN_DETECT, MONSEEN_WARNMON,
     CMDQ_KEY, MENU_SEARCH, PICK_ONE, I_SPECIAL,
-    MV_WALK, MV_RUN, MV_RUSH,
+    MV_WALK, MV_RUN, MV_RUSH, H_UTF8,
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR, DEC_TO_UNICODE } from './terminal.js';
 import { DAT_TEXT } from './generated/dat_text.js';
@@ -264,6 +264,18 @@ export async function show_text_pages(lines, { moreAtEnd = true } = {}) {
         for (const text of wrap_text_window_line(raw, cols))
             expanded.push(typeof entry === 'string' ? text : { text, attr });
     }
+    // C wintty.c process_text_window `:1819–1829` linestart — under
+    // SYMHANDLING(H_UTF8) (`:1820–1822`) a text line's first char goes
+    // through g_putch, whose patch-006 nomux hook writes at the
+    // pre-incremented curx (one cell right); the second char's hook
+    // overwrites it, so the capture keeps col 0 cleared and loses
+    // text[0] (Enhanced recordings show " mdassist..." / " alid..." —
+    // the `cmd.c` getdir cliffs row; getdir itself is whole since
+    // D-2434, the writer is this paint path). A high-bit first char
+    // under other handlings takes the same g_putch arm (`:1823–1825` +
+    // end_glyphout; retires D-3962 omission (1) for the TEXT path). A
+    // 1-char line shifts instead (no second char to overwrite it).
+    const utf8Handling = game.gs?.symset?.[(game.currentgraphics | 0)]?.handling === H_UTF8;
     let offset = 0;
     let cancelled = false;
     while (offset < expanded.length || (offset === 0 && expanded.length === 0)) {
@@ -275,8 +287,15 @@ export async function show_text_pages(lines, { moreAtEnd = true } = {}) {
             const entry = chunk[r];
             const text = typeof entry === 'string' ? entry : (entry?.text || '');
             const attr = typeof entry === 'string' ? 0 : (entry?.attr || 0);
-            for (let i = 0; i < text.length && i < textCols; i++)
-                disp.setCell(i, r, text[i], NO_COLOR, attr);
+            const dropFirst = text.length > 0
+                && (utf8Handling || (text.charCodeAt(0) & 0x80) !== 0);
+            if (dropFirst && text.length === 1) {
+                // C `:1810` bound on the shifted cell: ++curx(0→1) < cols.
+                if (1 < cols) disp.setCell(1, r, text[0], NO_COLOR, attr);
+            } else {
+                for (let i = dropFirst ? 1 : 0; i < text.length && i < textCols; i++)
+                    disp.setCell(i, r, text[i], NO_COLOR, attr);
+            }
         }
         // C H2344: tty_curs(1, cury+1); cl_eos(); then more on rows-1
         for (let r = chunk.length; r < rows - 1; r++) {

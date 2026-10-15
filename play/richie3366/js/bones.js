@@ -37,7 +37,7 @@ import { sanitize_engravings, rest_engravings } from './engrave.js';
 import { rest_worm } from './worm.js';
 import { rest_rooms } from './mkroom.js';
 import { delete_convertedfile, compress_bonesfile } from './files.js';
-import { mons, monsterNames, SPECIAL_PM } from './monsters.js';
+import { mons, monsterNames, SPECIAL_PM, is_unicorn } from './monsters.js';
 import { cant_revive } from './zap.js';
 import { rest_regions } from './region.js';
 import { load_exclusions, Is_special } from './dungeon.js';
@@ -689,7 +689,9 @@ function getlev_bones(payload) {
     for (const mtmp of fmon) {
         if (!mtmp.isshk) {
             const ptr = mtmp.data;
-            const uniCoalign = !!(ptr && ptr.mlet === 'S_UNICORN'
+            // C restore.c ghostly: is_unicorn(mtmp->data) (mondata.h:149:
+            // mlet S_UNICORN && likes_gems) — pony/horse take peace_minded.
+            const uniCoalign = !!(ptr && is_unicorn(ptr)
                 && sgn(ual) === sgn(ptr.maligntyp | 0));
             mtmp.mpeaceful = uniCoalign ? 1 : (peace_minded(ptr) ? 1 : 0);
         }

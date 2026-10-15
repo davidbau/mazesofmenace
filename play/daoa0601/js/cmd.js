@@ -1,9 +1,12 @@
 import { autokey, autoUnlockFlags, continuePicking, pickLock } from './lock_pick.js';
 import { resetPick } from './lock_context.js';
+import { petRefusesHeroSwap } from './hero_pet_displacement.js';
+import { airTurbulenceStopsHero, waterTurbulenceStopsHero } from './hero_movement_turbulence.js';
+import { announceRunLiquid, announceRunTrap, knownRunTrap, runLiquidIsDangerous } from './run_hazards.js';
 import { AUTOUNLOCK_APPLY_KEY, AUTOUNLOCK_UNTRAP } from './const.js';
 import { findDrawbridgeAt } from './dbridge.js';
 import { doorObstructed } from './door_magic.js';
-import { DBWALL, DRAWBRIDGE_DOWN } from './const.js';
+import { DBWALL, DRAWBRIDGE_DOWN, IS_DRAWBRIDGE, IS_TREE, LADDER, STAIRS, THRONE } from './const.js';
 import { dipFountainSword } from './fountain_sword.js';
 import { washHands } from './dip_water.js';
 import { waterDamageObject } from './trap.js';
@@ -78,8 +81,10 @@ import { senseBuriedObjects } from './buried_object.js';
 import { distantMonsterName, monsterInstanceDisplayName, monsterName, shopkeeperName } from './monster_name.js';
 import { attackHostileMonster } from './hero_melee.js';
 import { prepareAppliedWeaponAttack } from './hero_attack_preflight.js';
+import { applyCaitiffPenalty } from './hero_attack_conduct.js';
+import { revealMonsterAppearance } from './monster_appearance.js';
 import { beastChoosesHeroDisplacement, settleBeastHeroDisplacement } from './hero_beast_displacement.js';
-import { stumbleOnDoorMimic, stumbleOntoMimic } from './mimic.js';
+import { hasDoorAppearance, stumbleOnDoorMimic, stumbleOntoMimic } from './mimic.js';
 import { monsterHasMapPosition, monsterAtPosition } from './monster_location.js';
 import { SHOP_TYPES } from './shop_data.js';
 import { observeBucForNaming } from './object_knowledge.js';
@@ -94,7 +99,7 @@ import { gotoLevel } from './level_change.js';
 import { levelTeleport } from './level_teleport.js';
 import { confirmHeroStep } from './hero_step_confirmation.js';
 import { monsterPassesBars } from './monster_movement_traits.js';
-import { heroCanEnterIronBars } from './iron_bars_meal.js';
+import { continueChewingTerrain, heroCanEnterIronBars } from './iron_bars_meal.js';
 import { wormCrossesBetween } from './monster_worm.js';
 import { floorObjectDescription, } from './floor_object_display.js';
 import { loseHeroHp } from './hero_damage.js';
@@ -107,7 +112,7 @@ import { isContainer, useContainer } from './container.js';
 import { tipCommand } from './container_tip.js';
 import { lootCommand } from './container_loot.js';
 import { adjustHeroAlignment } from './alignment.js';
-import { doOptions } from './options.js';
+import { doOptions, option_help } from './options.js';
 import { blocksDiagonalDoor, blocksMove, escapeFromStickyMonster, heroBadRock, heroCanPassWallAt, heroLiquidEffects, heroShouldAvoidLiquid, heroTightDiagonalReason, } from './hack.js';
 import { commandExecutionKey, controlRushDirection, visibleCommandKey } from './command_keys.js';
 import { NATIVE_COMMAND_FLAGS, NATIVE_COMMANDS } from './command_data.js';
@@ -224,7 +229,6 @@ import { doUntrap } from './untrap.js';
 import { dosit } from './sit.js';
 import { continueEngraving, doengrave } from './engrave_command.js';
 import { heroCanMoveFromTrap, triggerHeroTrapAt, triggerLevelTeleportTrap } from './hero_traps.js';
-import { activateStatueTrapAt } from './statue_trap.js';
 import { applyDippedCoinFate, applyFountainDemonActor, applyFountainGemDiscovery, applyFountainNymphActor, applyFountainSnakeActors, resolveDippedBucFate, resolveDippedSensationFate, } from './fountain_effects.js';
 import { dryFountainAt, gushForthFromFountain } from './fountain.js';
 import { heroArmName, heroFingerName, heroHandName } from './body_parts.js';
@@ -286,9 +290,13 @@ import { chatWithQuestLeader, onQuestStart, okToQuest } from './quest.js';
 import { performPetRangedAttack, resumeDeferredMonsterTrap, triggerImmediateMonsterTrap, } from './monmove.js';
 import { hurtleHero, kickRecoilRange } from './hero_hurtle.js';
 import { announceInvocationSquare } from './invocation.js';
-import { abuseKickedPet, kickConductViolation, levitatingKickMisses, prepareKick, prepareKickDamage, rollKickDamage, tryKickEvasion, tryKickReel, } from './monster_kick.js';
+import { abuseKickedPet, levitatingKickMisses, prepareKick, prepareKickDamage, rollKickDamage, tryKickEvasion, tryKickReel, } from './monster_kick.js';
 import { kickFloorObject } from './object_kick.js';
 import { kickWithMonsterForm } from './hero_form_kick.js';
+import { admitHeroKick, kickCanReachTarget } from './kick_admission.js';
+import { kickNonDoorTerrain } from './kick_terrain.js';
+import { kickDoor } from './kick_door.js';
+import { heroHasMartialKick } from './kick_rules.js';
 import { bringLeashedFollowers, heroTeleportDestinationOk, moveHeroByTeleport, randomMonsterRelocation, } from './teleport.js';
 import { goodPosition, monsterTeleportRestricted } from './teleport_rules.js';
 import { removeWishGrantingMonster } from './monster_departure.js';
@@ -303,6 +311,8 @@ const PM_WATER_DEMON = 289;
 const PM_WATER_MOCCASIN = 216;
 const M2_ROCKTHROW = 0x08000000;
 const M1_HUMANOID = 0x00020000;
+const M1_TUNNEL = 0x20;
+const M1_NEEDPICK = 0x40;
 const MAT_GEMSTONE = 20;
 const MAT_MINERAL = 21;
 function isMovementKey(ch) {
@@ -640,13 +650,18 @@ function startTravel(targetX, targetY, g = game) {
     g.context.nopick = true;
     return g._runState;
 }
-// Source-order subset of lookaround() for run mode 1.  It ignores rooms and
-// rock, follows an unambiguous corridor bend, and lets domove() encounter an
-// obstacle when the path does not turn.  Front monsters stop the run before
-// an automatic attack, matching the C in-front check for every run mode.
-export function lookaroundRun(state = game._runState, g = game) {
+// C hack.c:lookaround(). Count nearby corridor choices before deciding
+// whether to turn, and stop for visible actors, known traps, or liquid edges.
+export async function lookaroundRun(state = game._runState, g = game) {
     if (!state || state.mode === 8 || !g.u || !g.level)
         return false;
+    const noDiagonal = MONSTER_NAME[g.u.umonnum ?? -1] === 'grid bug';
+    if (noDiagonal && state.dx && state.dy) {
+        await plineWithContinuation('You cannot move diagonally.');
+        return false;
+    }
+    if (heroIsBlind(g))
+        return true;
     if (state.mode === 0)
         return true;
     const u = g.u;
@@ -661,6 +676,8 @@ export function lookaroundRun(state = game._runState, g = game) {
             if (x < 1 || x >= COLNO || y < 0 || y >= ROWNO
                 || (x === u.ux && y === u.uy))
                 continue;
+            if (noDiagonal && x !== u.ux && y !== u.uy)
+                continue;
             const infront = x === targetX && y === targetY;
             const monster = g.level.monsters?.find(mon => monsterHasMapPosition(mon, g) &&
                 mon.mx === x && mon.my === y);
@@ -668,13 +685,20 @@ export function lookaroundRun(state = game._runState, g = game) {
             // its mon_visible() branch.  An invisible monster directly in
             // front must reach domove()/attack_checks(), which remembers the
             // unseen occupant instead of silently ending the run.
-            const visibleMonster = monster
+            const visibleMonster = monster && M_AP_TYPE(monster) !== M_AP_FURNITURE
+                && M_AP_TYPE(monster) !== M_AP_OBJECT
                 && canSeeRunMonster(monster, monster.mx, monster.my, g);
-            const visibleHostile = visibleMonster && !monster.pet
-                && !monster.mpeaceful;
+            const safeMonster = monster && (g.flags.safe_dog ?? true)
+                && monster.mpeaceful && !g.context.forcefight
+                && !(u.confusionTurns ?? 0) && !u.stunned && !(u.stunnedTurns ?? 0)
+                && !heroIsHallucinating(g);
+            const visibleHostile = visibleMonster && !safeMonster;
             if (visibleMonster && (infront
-                || (state.mode !== 1 && visibleHostile)))
+                || (state.mode !== 1 && visibleHostile))) {
+                if (g.flags.mention_walls)
+                    await plineWithContinuation(`${monsterName(monster, { state: g, article: 'a', capitalized: true })} blocks your path.`);
                 return false;
+            }
             const loc = g.level.at(x, y);
             if (!loc)
                 continue;
@@ -683,17 +707,29 @@ export function lookaroundRun(state = game._runState, g = game) {
                 continue;
             if (x === u.ux - state.dx && y === u.uy - state.dy)
                 continue;
-            if (IS_OBSTRUCTED(typ) || typ === ROOM || IS_AIR(typ)
-                || typ === ICE)
-                continue;
             let corridorLike = false;
-            if (typ === DOOR) {
-                const closed = !!(loc.doormask & (D_CLOSED | D_LOCKED));
+            const trap = knownRunTrap(x, y, g);
+            if (trap && state.mode !== 1 && infront) {
+                await announceRunTrap(trap, g);
+                return false;
+            }
+            if (trap && state.mode === 1) {
+                corridorLike = true;
+            }
+            else if (IS_OBSTRUCTED(typ) || typ === ROOM || IS_AIR(typ)
+                || typ === ICE) {
+                continue;
+            }
+            else if (typ === DOOR || hasDoorAppearance(monster)) {
+                const closed = hasDoorAppearance(monster) || !!(loc.doormask & (D_CLOSED | D_LOCKED));
                 if (closed) {
                     if (x !== u.ux && y !== u.uy)
                         continue;
-                    if (state.mode !== 1)
+                    if (state.mode !== 1) {
+                        if (g.flags.mention_walls)
+                            await plineWithContinuation('You stop in front of the door.');
                         return false;
+                    }
                     corridorLike = true;
                 }
                 else if (state.mode === 1) {
@@ -719,6 +755,10 @@ export function lookaroundRun(state = game._runState, g = game) {
                 corridorLike = true;
             }
             else if (IS_POOL(typ) || IS_LAVA(typ)) {
+                if (infront && runLiquidIsDangerous(x, y, g)) {
+                    await announceRunLiquid(x, y, g);
+                    return false;
+                }
                 continue;
             }
             else {
@@ -743,21 +783,28 @@ export function lookaroundRun(state = game._runState, g = game) {
             }
             if (!corridorLike || currentTyp === ROOM)
                 continue;
-            const distance = runDist2(x, y, targetX, targetY);
-            if (distance > 2)
-                continue;
-            if (corrct === 1 && runDist2(x, y, x0, y0) !== 1)
-                noturn = true;
-            if (distance < i0) {
-                i0 = distance;
-                x0 = x;
-                y0 = y;
-                m0 = monster ? 1 : 0;
+            if (state.mode === 1 || state.mode === 3) {
+                const distance = runDist2(x, y, targetX, targetY);
+                if (distance > 2)
+                    continue;
+                if (corrct === 1 && runDist2(x, y, x0, y0) !== 1)
+                    noturn = true;
+                if (distance < i0) {
+                    i0 = distance;
+                    x0 = x;
+                    y0 = y;
+                    m0 = monster ? 1 : 0;
+                }
             }
             corrct++;
         }
     }
-    if (!noturn && !m0 && i0
+    if (corrct > 1 && state.mode === 2) {
+        if (g.flags.mention_walls)
+            await plineWithContinuation('The corridor widens here.');
+        return false;
+    }
+    if ((state.mode === 1 || state.mode === 3) && !noturn && !m0 && i0
         && (corrct === 1 || (corrct === 2 && i0 === 1))) {
         let turn;
         if (i0 === 2) {
@@ -827,7 +874,7 @@ export async function continueRun(g = game) {
             stopRun(g);
         return moved;
     }
-    if (!state || !lookaroundRun(state, g)) {
+    if (!state || !await lookaroundRun(state, g)) {
         stopRun(g);
         g.context.move = 0;
         return false;
@@ -952,7 +999,6 @@ async function redrawCommand() {
 async function performWaitCommand(force = game.iflags.menu_requested) {
     if (!await donull(force, !!game.multi))
         return;
-    game._pending_message = '';
     game.context.move = 1;
 }
 // C cmd.c:can_do_extcmd(). Admission precedes prefixes and handler setup.
@@ -1689,7 +1735,19 @@ async function kickOuch(x, y, objectName = '') {
     await plineWithContinuation('Ouch!  That hurts!');
     await exerciseAttribute(A_DEX, false);
     await exerciseAttribute(A_STR, false);
-    wakeMonstersNear(x, y, 25);
+    if (isok(x, y)) {
+        if (heroIsBlind(game))
+            feel_location(x, y);
+        const location = game.level?.at(x, y);
+        const bridge = location && (location.typ === DOOR || location.typ === DBWALL)
+            ? findDrawbridgeAt(x, y) : null;
+        if (bridge) {
+            await plineWithContinuation('The drawbridge is unaffected.');
+            x = bridge.x;
+            y = bridge.y;
+        }
+        wakeMonstersNear(x, y, 25);
+    }
     if (rn2(3) === 0) {
         await woundHeroLegs('right', 5 + rnd(5));
     }
@@ -1705,17 +1763,35 @@ function kickCausesRecoil() {
         || game.u?.levitation || game.levitating;
 }
 function kickDeathReason(x, y) {
+    if (!isok(x, y))
+        return 'kicking nothing';
     const location = game.level?.at?.(x, y);
     if (!location)
         return 'kicking nothing';
     if (location.typ === DOOR)
         return 'kicking a door';
+    if (IS_TREE(location.typ))
+        return 'kicking a tree';
     if (IS_STWALL(location.typ))
         return 'kicking a wall';
-    if (location.typ === TREE)
-        return 'kicking a tree';
+    if (IS_OBSTRUCTED(location.typ))
+        return 'kicking a rock';
+    if (location.typ === THRONE)
+        return 'kicking a throne';
+    if (location.typ === FOUNTAIN)
+        return 'kicking a fountain';
     if (location.typ === GRAVE)
         return 'kicking a headstone';
+    if (location.typ === SINK)
+        return 'kicking a sink';
+    if (location.typ === ALTAR)
+        return 'kicking an altar';
+    if (IS_DRAWBRIDGE(location.typ))
+        return 'kicking a drawbridge';
+    if (location.typ === STAIRS)
+        return 'kicking the stairs';
+    if (location.typ === LADDER)
+        return 'kicking a ladder';
     if (location.typ === IRONBARS)
         return 'kicking an iron bar';
     return 'kicking something weird';
@@ -1743,23 +1819,6 @@ async function recoilFromKick(range) {
         finishMonsterDeath: finishHurtleMonsterDeath,
     });
 }
-function kickPromptTargetName(monster) {
-    if (monster.name)
-        return monster.name;
-    const article = (monster.mtame ?? 0) > 0 ? 'your' : 'the';
-    return `${article} ${monsterInstanceDisplayName(monster)}`;
-}
-async function confirmKickTarget(monster) {
-    const hero = game.u;
-    const impaired = hero?.confused || (hero?.confusionTurns ?? 0) > 0
-        || heroIsHallucinating(game)
-        || hero?.stunned || (hero?.stunnedTurns ?? 0) > 0;
-    if (game.flags?.confirm === false || !monster.mpeaceful || impaired
-        || game.context?.forcefight || !canSpotMonster(monster))
-        return true;
-    const paranoid = !!((game.flags?.paranoia_bits ?? 0) & PARANOID_HIT);
-    return paranoidQuery(paranoid, `Really attack ${kickPromptTargetName(monster)}?`);
-}
 function applyKickPassive(monster, hit) {
     return applyHeroContactPassive(monster, {
         hit,
@@ -1771,32 +1830,40 @@ function applyKickPassive(monster, hit) {
 // Form-specific attacks share the command admission rules. Projection affects only the
 // target noun: dokick() still targets m_at(x,y) when the actor is invisible.
 async function kickLiveMonster(monster, x, y) {
-    const helplessBeforeKick = !!(monster.msleeping
-        || monster.mcanmove === 0 || (monster.mfrozen ?? 0) > 0);
-    const fleeingFromBehind = !!(monster.mflee && !monster.mavenge);
-    monster.mstrategy = (monster.mstrategy ?? 0) & ~STRAT_WAITMASK;
-    if (!await confirmKickTarget(monster)) {
-        game.context.move = 0;
-        return;
+    const forcefight = game.context.forcefight;
+    try {
+        if (!monster.mpeaceful || !canSpotMonster(monster))
+            game.context.forcefight = true;
+        const permission = await prepareAppliedWeaponAttack(monster, null, { struckAt: { x, y } });
+        if (!permission.proceed) {
+            game.context.move = permission.spentTime ? 1 : 0;
+            return false;
+        }
+        if (await checkHeroAttackOverexertion()) {
+            game.context.move = 1;
+            return false;
+        }
     }
-    if (await checkHeroAttackOverexertion()) {
-        game.context.move = 1;
-        return;
+    finally {
+        if (forcefight === undefined)
+            delete game.context.forcefight;
+        else
+            game.context.forcefight = forcefight;
     }
     wakeMonstersNear(game.u.ux, game.u.uy, (game.u?.ulevel ?? 1) * 20);
     wipeHeroEngraving(2);
     await angerAttackedMonster(monster);
     if (await levitatingKickMisses(monster)) {
         await pline('Floating in the air, you miss wildly!');
+        await exerciseAttribute(A_DEX, false);
         await applyKickPassive(monster, false);
         game.context.move = 1;
-        return;
+        return true;
     }
     if (monster.mundetected
         || (M_AP_TYPE(monster) && M_AP_TYPE(monster) !== M_AP_MONSTER)) {
         monster.mundetected = 0;
-        monster.m_ap_type = 0;
-        monster.mappearance = 0;
+        revealMonsterAppearance(monster);
         if (canSpotMonster(monster)) {
             newsym(x, y);
             const name = monsterInstanceDisplayName(monster);
@@ -1809,11 +1876,10 @@ async function kickLiveMonster(monster, x, y) {
     }
     if (await kickWithMonsterForm(monster, x, y)) {
         game.context.move = 1;
-        return;
+        return true;
     }
     const target = monsterName(monster);
-    const martial = game.urole?.key === 'monk' || game.urole?.key === 'samurai'
-        || game.uarmf?.otyp === KICKING_BOOTS;
+    const martial = heroHasMartialKick();
     const kick = await prepareKick({
         martial,
         announce: pline,
@@ -1821,7 +1887,7 @@ async function kickLiveMonster(monster, x, y) {
     if (kick.stopped) {
         await applyKickPassive(monster, false);
         game.context.move = 1;
-        return;
+        return true;
     }
     await plineWithContinuation(`You kick ${target}.`);
     const evaded = await tryKickEvasion(monster, {
@@ -1837,41 +1903,35 @@ async function kickLiveMonster(monster, x, y) {
             && !canSpotMonster(monster))
             map_invisible(x, y);
         game.context.move = 1;
-        return;
+        return true;
     }
     const preparedDamage = prepareKickDamage(monster, {
         clumsy: kick.clumsy,
     });
     if (preparedDamage.passesThroughShade) {
-        await plineWithContinuation('The kick passes harmlessly through the shade.');
+        await plineWithContinuation('The kick passes harmlessly through.');
         game.context.move = 1;
-        return;
+        return true;
     }
-    const conductMessage = kickConductViolation(monster, {
-        helpless: helplessBeforeKick,
-        fleeingFromBehind,
-    });
-    if (conductMessage) {
-        await plineWithContinuation(conductMessage);
-        adjustHeroAlignment(-1);
-    }
+    revealMonsterAppearance(monster);
+    await applyCaitiffPenalty(monster);
     const petReaction = await abuseKickedPet(monster, preparedDamage.potentialDamage);
     if (petReaction.heroDied)
-        return;
+        return true;
     const damage = await rollKickDamage(preparedDamage, { martial });
     if (damage.damage > 0)
-        monster.mhp = Math.max(0, (monster.mhp ?? 1) - damage.damage);
+        monster.mhp -= damage.damage;
     const reel = await tryKickReel(monster, x - (game.u?.ux ?? x), y - (game.u?.uy ?? y), {
         martial,
         announce: plineWithContinuation,
         nameMonster: (actor) => canSpotMonster(actor) ? `The ${monsterInstanceDisplayName(actor)}` : 'It',
     });
     if (reel?.heroDied)
-        return;
+        return true;
     const passive = await applyKickPassive(monster, true);
     if (passive.heroDied) {
         game.context.move = 1;
-        return;
+        return true;
     }
     if ((monster.mhp ?? 1) <= 0 && !reel?.dead) {
         await finishHeroMonsterKill(monster, monster.mx, monster.my, {
@@ -1885,19 +1945,13 @@ async function kickLiveMonster(monster, x, y) {
     if (damage.trainSkill)
         await useHeroSkill(35);
     game.context.move = 1;
+    return true;
 }
 async function dokick() {
-    if ((game.u?._woundedLegTurns ?? 0) > 0) {
-        const side = game.u._woundedLegSide;
-        const leg = side === 'both' ? 'legs are' : `${side || 'right'} leg is`;
-        await moreUntilDismissed(`Your ${leg} in no shape for kicking.`);
-        game._pending_message = '';
-        game._retained_message = '';
-        game.context.move = 0;
+    if (!await admitHeroKick())
         return;
-    }
     const direction = await promptDirection();
-    if (!direction || direction.dz || (!direction.dx && !direction.dy)) {
+    if (!direction || (!direction.dx && !direction.dy)) {
         resetCommandVariables(true); // dokick() returns ECMD_CANCEL.
         return;
     }
@@ -1909,14 +1963,28 @@ async function dokick() {
     // dispatching the target.  Peaceful monsters and pets consult it during
     // this same elapsed turn so they do not step into the square just kicked.
     game._kickedLoc = { x, y };
+    if (!await kickCanReachTarget())
+        return;
     const average = game.uarmf?.otyp === KICKING_BOOTS ? 99
         : Math.trunc((currentStrength()
             + currentAttribute(A_DEX) + currentAttribute(A_CON)) / 3);
     const monster = monsterAtPosition(requireGameLevel(), x, y);
     if (monster) {
+        const cell = game.level?.at(x, y);
+        const oldGlyph = cell ? { ch: cell.disp_ch, color: cell.disp_color,
+            decgfx: cell.disp_decgfx, attr: cell.disp_attr, metadata: glyphAt(x, y) } : null;
         const recoilRange = kickRecoilRange(monster.mnum);
-        await kickLiveMonster(monster, x, y);
-        if (kickCausesRecoil() && game.context.move)
+        if (!await kickLiveMonster(monster, x, y))
+            return;
+        const glyph = glyphAt(x, y);
+        if (monster.dead || monster.mhp <= 0) {
+            if (oldGlyph && glyph?.kind === 'invisible' && oldGlyph.metadata?.kind !== 'invisible')
+                show_glyph_cell(x, y, oldGlyph.ch, oldGlyph.color, oldGlyph.decgfx, oldGlyph.attr, oldGlyph.metadata);
+        }
+        else if (!canSpotMonster(monster) && monster.mx === x && monster.my === y
+            && glyph?.kind !== 'invisible' && !(game.u.uswallow && game.u.ustuck === monster))
+            map_invisible(x, y);
+        if (!game.program_state.gameover && kickCausesRecoil() && game.context.move)
             await recoilFromKick(recoilRange);
         return;
     }
@@ -1926,17 +1994,21 @@ async function dokick() {
     // impact-centered wake after its attribute exercise draws.
     wakeMonstersNear(game.u.ux, game.u.uy, (game.u?.ulevel ?? 1) * 20);
     wipeHeroEngraving(2);
+    if (!isok(x, y)) {
+        await kickOuch(x, y);
+        game.context.move = 1;
+        return;
+    }
+    unmap_invisible(x, y);
+    if ((isPoolAt(x, y) || location?.typ === LAVAWALL) !== !!game.u.uinwater) {
+        await plineWithContinuation(`You splash some ${displayLiquidName(isPoolAt(x, y) ? 'water' : 'lava')} around.`);
+        game.context.move = 1;
+        return;
+    }
     const kickedObject = game.level?.objects?.[x]?.[y]?.[0];
-    const ball = game.uball || game.u?.uball;
-    const chain = game.uchain || game.u?.uchain;
-    if (kickedObject && kickedObject.otyp !== BOULDER
-        && kickedObject !== ball && kickedObject !== chain) {
-        const trap = game.level?.traps?.find(candidate => candidate.tx === x && candidate.ty === y);
-        if (trap?.ttyp === STATUE_TRAP) {
-            await activateStatueTrapAt(x, y);
-            game.context.move = 1;
-            return;
-        }
+    const hasBoulder = game.level?.objects?.[x]?.[y]?.some(object => object.otyp === BOULDER);
+    if (kickedObject && (!game.u.levitating || Is_airlevel(game.u.uz)
+        || Is_waterlevel(game.u.uz) || hasBoulder)) {
         const kicked = await kickFloorObject(x, y, {
             state: game,
             dx: game.u.dx,
@@ -1948,10 +2020,12 @@ async function dokick() {
             return;
         if (!kicked)
             await kickOuch(x, y, killerObjectName(kickedObject));
+        else if (Is_airlevel(game.u.uz))
+            await recoilFromKick(1);
         game.context.move = 1;
         return;
     }
-    if (!location || IS_STWALL(location.typ)) {
+    if (!location || (IS_STWALL(location.typ) && !IS_TREE(location.typ))) {
         await kickOuch(x, y);
         game.context.move = 1;
         return;
@@ -1989,47 +2063,8 @@ async function dokick() {
         game.context.move = 1;
         return;
     }
-    if (location?.typ === DOOR
-        && (location.doormask & (D_CLOSED | D_LOCKED))) {
-        if (game.u?.levitating) {
-            await kickOuch(x, y);
-            game.context.move = 1;
-            return;
-        }
-        await exerciseAttribute(A_DEX, true);
-        const strength = currentStrength();
-        if (rnl(35) < average) {
-            const shopDoor = roomsAt(game.level, x, y, SHOPBASE).length > 0;
-            if (location.doormask & D_TRAPPED) {
-                if (game.flags.verbose)
-                    await pline('You kick the door.');
-                await exerciseAttribute(A_STR, false);
-                location.doormask = D_NODOOR;
-                if (await triggerBoobyTrap('door', { bodypart: true }))
-                    return;
-            }
-            else {
-                const shatters = strength > 18 && rn2(5) === 0 && !shopDoor;
-                location.doormask = shatters ? D_NODOOR : D_BROKEN;
-                await pline(shatters
-                    ? 'As you kick the door, it shatters to pieces!'
-                    : 'As you kick the door, it crashes open!');
-                await exerciseAttribute(A_STR, true);
-            }
-            feel_newsym(x, y);
-            // kick_door() defers sight refresh so billing sees the keeper's
-            // visibility before the door broke, as rloc_to_core() requires.
-            vision_note_blocker_change(x, y);
-            if (shopDoor) {
-                addShopDamage(x, y, SHOP_DOOR_COST);
-                await payForShopDamage('break');
-            }
-        }
-        else {
-            await exerciseAttribute(A_STR, true);
-            await pline(rn2(3) === 0 ? 'Thwack!!' : 'Whammm!!');
-        }
-        game.context.move = 1;
+    if (location.typ === DOOR) {
+        await kickDoor(x, y, average, { ouch: kickOuch, dumb: kickDumb });
         return;
     }
     if (location.typ === SDOOR) {
@@ -2056,6 +2091,8 @@ async function dokick() {
         game.context.move = 1;
         return;
     }
+    if (await kickNonDoorTerrain(x, y, average, { ouch: kickOuch, dumb: kickDumb }))
+        return;
     await kickDumb(x, y);
     game.context.move = 1;
 }
@@ -2063,8 +2100,7 @@ async function kickDumb(x, y) {
     // dokick.c:kick_dumb() always abuses Dexterity before deciding whether
     // an unremarkable floor kick is merely empty or strains a muscle.
     await exerciseAttribute(A_DEX, false);
-    const martial = game.urole?.key === 'monk' || game.urole?.key === 'samurai'
-        || game.uarmf?.otyp === KICKING_BOOTS;
+    const martial = heroHasMartialKick();
     if (martial || currentAttribute(A_DEX) >= 16 || rn2(3) !== 0) {
         await pline('You kick at empty space.');
         if (heroIsBlind(game))
@@ -4806,6 +4842,8 @@ async function dohelp() {
         await dowhatis();
     else if (choice === 'f')
         await whatDoesCommand();
+    else if (choice === 'g')
+        await option_help();
     else if (choice === 'j')
         await showKeyBindings();
     else if (choice === 'k')
@@ -6328,7 +6366,6 @@ async function throwCommand(selectedItem = null, capabilityChecked = false, supp
             captureFlight: captureThrownObjectFlight,
             wakeMonster: wakeAttackedMonster,
             angerMonster: angerAttackedMonster,
-            adjustAlignment: adjustHeroAlignment,
         });
         game.context.move = 1;
         return;
@@ -7105,6 +7142,15 @@ async function bumpIntoMonster(monster, x, y) {
     }
     return true;
 }
+// C hack.c:u_rooted(). An immobile form may attack but cannot take a step.
+async function rootedHeroCannotMove() {
+    if (MONSTER_MOVE[heroSpecies(game)] !== 0)
+        return false;
+    const inPlace = game.u.levitating || Is_airlevel(game.u.uz) || Is_waterlevel(game.u.uz);
+    await plineWithContinuation(`You are rooted ${inPlace ? 'in place' : 'to the ground'}.`);
+    endVoluntaryMultiTurn(game);
+    return true;
+}
 async function domoveCore(dx, dy, explicitAttempt) {
     requirePlayingGame(game);
     const u = game.u;
@@ -7152,11 +7198,13 @@ async function domoveCore(dx, dy, explicitAttempt) {
         u.uy = monster.my;
         return attackHostileMonster(monster, monster.mx, monster.my);
     }
+    if (await airTurbulenceStopsHero())
+        return true;
     checkSlipperyIce();
     // C hack.c:impaired_movement() always checks Confusion before deriving
     // the destination.  A nonzero rn2(5) keeps the requested direction; on
     // impairment, confdir(TRUE) chooses cardinals first and retries only an
-    // out-of-bounds or solid-rock result.
+    // out-of-bounds square or rock this body cannot traverse.
     const confused = (u?.confusionTurns || 0) > 0;
     const stunned = !!(u?.stunned || (u?.stunnedTurns || 0) > 0);
     if (stunned || (confused && rn2(5) === 0)) {
@@ -7180,6 +7228,10 @@ async function domoveCore(dx, dy, explicitAttempt) {
     // confdir() updates the same persistent vector selected by set_move_cmd().
     u.dx = dx;
     u.dy = dy;
+    if (await waterTurbulenceStopsHero())
+        return true;
+    dx = u.dx;
+    dy = u.dy;
     // C stores direction in u.dx/u.dy, so confdir() permanently changes the
     // pending Shift-direction run as well as this one destination.  The next
     // automatic step must retain that impaired direction; it may immediately
@@ -7192,6 +7244,22 @@ async function domoveCore(dx, dy, explicitAttempt) {
     const newy = u.uy + dy;
     if (!isok(newx, newy))
         return moveOutOfBounds(newx, newy);
+    if (game.context.run) {
+        const trap = knownRunTrap(newx, newy, game);
+        const liquid = heroIsBlind(game) && runLiquidIsDangerous(newx, newy, game);
+        if (trap || liquid) {
+            const stopBeforeStep = game.context.run >= 2;
+            if (stopBeforeStep) {
+                if (trap)
+                    await announceRunTrap(trap, game);
+                else
+                    await announceRunLiquid(newx, newy, game);
+            }
+            endVoluntaryMultiTurn(game);
+            if (stopBeforeStep)
+                return false;
+        }
+    }
     if (await escapeFromStickyMonster(newx, newy))
         return true;
     const loc = game.level?.at(newx, newy);
@@ -7200,19 +7268,20 @@ async function domoveCore(dx, dy, explicitAttempt) {
     // diagonally across an intact doorway even though moving through that
     // same doorway would be rejected.
     const monster = game.level ? monsterAtPosition(game.level, newx, newy) : null;
+    const hiddenCeilingMonster = monster?.mundetected && !game.context.forcefight
+        && !canSenseMonster(monster)
+        && !((MONSTER_FLAGS1[monster.mnum] ?? 0) & 0x80)
+        && MONSTER_SYMBOL[monster.mnum] !== 57;
+    // C display.h:_is_safemon() requires a spotted peaceful monster and
+    // an unimpaired hero. Concealed ceiling monsters still cancel running
+    // here, before domove_attackmon_at() leaves their reveal to arrival.
+    const safeMonster = !!monster && (game.flags.safe_dog ?? true) && !!monster.mpeaceful
+        && canSpotMonster(monster)
+        && !game.context?.forcefight
+        && !confused
+        && !heroIsHallucinating(game)
+        && !stunned;
     if (monster) {
-        // C display.h:_is_safemon() deliberately stops treating even a
-        // peaceful/tame monster as safe while the hero is confused,
-        // hallucinating, or stunned.  domove_core() checks that predicate
-        // after impaired_movement() has changed u.dx/u.dy; a Shift-run which
-        // is redirected into the pet therefore stops before do_attack() and
-        // its one-in-seven displacement refusal roll.
-        const safeMonster = (game.flags.safe_dog ?? true) && !!monster.mpeaceful
-            && canSpotMonster(monster)
-            && !game.context?.forcefight
-            && !confused
-            && !heroIsHallucinating(game)
-            && !stunned;
         // hack.c checks context.run even when F makes this a single step.
         // It stops only for a visible or sensed actor. Seeing the
         // destination terrain is insufficient when minvis hides its occupant;
@@ -7237,6 +7306,8 @@ async function domoveCore(dx, dy, explicitAttempt) {
             stopRun(game);
         if (await bumpIntoMonster(monster, newx, newy))
             return true;
+    }
+    if (monster && !hiddenCeilingMonster) {
         if (beastChoosesHeroDisplacement(monster, game, newx, newy)) {
             const ballChainMove = await beginBallAndChainMove(newx, newy);
             if (ballChainMove?.blocked) {
@@ -7298,6 +7369,8 @@ async function domoveCore(dx, dy, explicitAttempt) {
             }
             // C domove_core() confirms a yielded step before either actor
             // changes position or the hero tries to escape a current trap.
+            if (await rootedHeroCannotMove())
+                return true;
             if (heroCanConfirmStep(newx, newy) && !await confirmHeroStep(newx, newy))
                 return false;
             if (u.utrap
@@ -7326,10 +7399,7 @@ async function domoveCore(dx, dy, explicitAttempt) {
             await moveSteedWithHero();
             // C drag_ball() can pull the hero back before the swap check.
             // A refused swap still completes ball placement and its delay.
-            if (monster.mpeaceful && (!goodPosition(oldx, oldy, { kind: 'monster', monster }, { state: game })
-                || game.level.traps.some(trap => trap.tx === oldx && trap.ty === oldy))) {
-                const subjectName = monsterName(monster, { state: game, article: 'your', capitalized: true });
-                await plineWithContinuation(`You stop.  ${subjectName} doesn't want to swap places.`);
+            if (await petRefusesHeroSwap(monster, game)) {
                 u.ux = oldx;
                 u.uy = oldy;
                 if (u.usteed) {
@@ -7384,6 +7454,8 @@ async function domoveCore(dx, dy, explicitAttempt) {
         stopRun(game);
         return true;
     }
+    if (await rootedHeroCannotMove())
+        return true;
     if (heroCanConfirmStep(newx, newy) && !await confirmHeroStep(newx, newy))
         return false;
     if (!await heroCanMoveFromTrap(newx, newy))
@@ -7398,6 +7470,18 @@ async function domoveCore(dx, dy, explicitAttempt) {
     }
     if (!await heroCanEnterIronBars(newx, newy, game))
         return false;
+    const formFlags = MONSTER_FLAGS1[heroSpecies(game)] ?? 0;
+    const tunnels = !!(formFlags & M1_TUNNEL) && !(formFlags & M1_NEEDPICK);
+    if (loc && (IS_OBSTRUCTED(loc.typ)
+        || loc.typ === DOOR && !!(loc.doormask & (D_CLOSED | D_LOCKED)))
+        && !heroCanPassWallAt(game, newx, newy) && !heroOozesUnderDoor(loc)) {
+        if (u.uinwater || game.underwater) {
+            await pline('There is an obstacle there.');
+            return false;
+        }
+        if (tunnels && await continueChewingTerrain(newx, newy, game))
+            return false;
+    }
     const oozingUnderDoor = heroOozesUnderDoor(loc);
     if (oozingUnderDoor)
         await pline('You ooze under the door.');
@@ -7492,15 +7576,20 @@ async function domoveCore(dx, dy, explicitAttempt) {
         game.context.move = 0;
         return false;
     }
-    if (boulder && !await pushBoulder(boulder, newx, newy, dx, dy)) {
-        game.context.move = 0;
-        return false;
-    }
-    if (boulder && game._runState) {
-        // hack.c:dopush() cancels multi after the successful push.  The hero
-        // still enters the boulder's vacated square, but Shift-direction
-        // running must not auto-push the same boulder down the whole corridor.
-        stopRun(game);
+    if (boulder) {
+        if (tunnels && !game.level.flags.sokoban_rules) {
+            if (await continueChewingTerrain(newx, newy, game))
+                return false;
+        }
+        else {
+            if (!await pushBoulder(boulder, newx, newy, dx, dy)) {
+                game.context.move = 0;
+                return false;
+            }
+            // C moverock_core() stops running for a push; still_chewing() does not.
+            if (game._runState)
+                stopRun(game);
+        }
     }
     // C hack.c:swim_move_danger().  Known walking equipment and the swim
     // confirmation option decide whether a visible liquid edge stops us.

@@ -2271,7 +2271,12 @@ export function u_locomotion(defWord) {
  */
 function u_simple_floortyp(x, y) {
     const u = game.u || {};
-    const uInAir = !!(u.Levitation || u.Flying // C `:1835`
+    // C `:1835` reads the youprop.h Levitation/Flying macros; the combined
+    // u.Levitation/u.Flying flats are never written port-wide, so read the
+    // file-local slot unions too (flats OR uprops H/E, either blocked
+    // source — the u_locomotion/D-3810 shape), keeping C order.
+    const uInAir = !!(u.Levitation || Levitation_st() // C `:1835`
+        || u.Flying || Flying_st()
         || !grounded(game.youmonst?.data));
     if (is_waterwall(x, y)) return WATER; // C `:1837` (live dbridge.js export)
     const loc = game.level?.at(x, y);
@@ -3302,7 +3307,7 @@ function _uprop_he_st(u, flatH, flatE, idx) {
  * C youprop.h Levitation — (HLevitation || ELevitation) && !BLevitation.
  * B is u.BLevitation | uprops[LEVITATION].blocked (D-1070).
  */
-function Levitation_st() {
+export function Levitation_st() {
     const u = game.u || {};
     const prop = u.uprops?.[LEVITATION];
     const blocked = (u.BLevitation | 0) || (prop?.blocked | 0);
@@ -3313,7 +3318,7 @@ function Levitation_st() {
 /**
  * C youprop.h Flying — (H||E||steed is_flyer) && !BFlying.
  */
-function Flying_st() {
+export function Flying_st() {
     const u = game.u || {};
     const prop = u.uprops?.[FLYING];
     const blocked = (u.BFlying | 0) || (prop?.blocked | 0);

@@ -1,7 +1,9 @@
 // Monster experience, level gains, and adult forms.
 // C ref: makemon.c grow_up().
 import { withIndefiniteArticle } from './object_grammar.js';
-import { G_GENOD } from './const.js';
+import { G_GENOD, MGIVENNAME } from './const.js';
+import { canSpotMonster } from './display.js';
+import { monsterName, monsterSubjectPronoun } from './monster_name.js';
 import { MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_GROWTH_TARGET, MONSTER_LEVEL, MONSTER_SYMBOL, monsterIsNonliving, monsterIsPlayerMonster, monsterTypeName, } from './monster_data.js';
 import { setMonsterSpecies } from './monster_species.js';
 import { game } from './gstate.js';
@@ -9,7 +11,7 @@ import { rn2, rnd } from './rng.js';
 const M1_HUMANOID = 0x00020000;
 const M2_MALE = 0x00010000;
 const M2_FEMALE = 0x00020000;
-const M2_NEUTER = 0x00040000;
+const M2_SHAPESHIFTER = 0x00004000;
 const S_GOLEM = 55;
 const PM_KILLER_BEE = 1;
 const PM_QUEEN_BEE = 5;
@@ -47,22 +49,24 @@ function resultingGender(monster, newType) {
         return true;
     return !!monster.female;
 }
-function growthMessage(monster, oldType, newType, oldFemale, newFemale) {
-    const oldName = monsterTypeName(oldType, oldFemale);
-    const newName = monsterTypeName(newType, newFemale);
-    const subject = monster.name || `The ${oldName}`;
+function growthMessage(monster, newType, oldFemale, newFemale, state) {
+    const gender = oldFemale !== newFemale ? newFemale ? 'female ' : 'male ' : '';
+    const newName = gender + monsterTypeName(newType, newFemale);
+    const subject = monsterName(monster, {
+        state, article: 'your', capitalized: true,
+        suppressSaddle: !!MGIVENNAME(monster) || monster === state.u.usteed,
+    });
     const verb = oldFemale !== newFemale
         ? 'changes into'
         : (MONSTER_FLAGS1[newType] ?? 0) & M1_HUMANOID
             ? 'becomes' : 'grows up into';
     return `${subject} ${verb} ${withIndefiniteArticle(newName)}.`;
 }
-function genocidedGrowthMessage(monster, oldType, newType, oldFemale, newFemale) {
-    const oldName = monsterTypeName(oldType, oldFemale);
-    const newName = monsterTypeName(newType, newFemale);
-    const subject = monster.name || `the ${oldName}`;
-    const newFlags = MONSTER_FLAGS2[newType] ?? 0;
-    const pronoun = newFlags & M2_NEUTER ? 'it' : newFemale ? 'she' : 'he';
+function genocidedGrowthMessage(monster, newType, state) {
+    const subject = monsterName(monster, { state });
+    // grow_up announces death before changing species or gender.
+    const newName = monsterTypeName(newType, monster.female);
+    const pronoun = monsterSubjectPronoun(monster, { state });
     const fate = monsterIsNonliving(newType) ? 'expires' : 'dies';
     return `As ${subject} grows up into ${withIndefiniteArticle(newName)}, ${pronoun} ${fate}!`;
 }
@@ -73,11 +77,11 @@ function recordRoll(calls, text) {
 function growthFromKill(monster, victim, state, rollOne, random, calls) {
     const level = monster.m_lev ?? MONSTER_LEVEL[monster.mnum] ?? 0;
     let hpThreshold = level ? level * 8 : 4;
-    if (MONSTER_SYMBOL[monster.mnum] === S_GOLEM) {
+    if (level && MONSTER_SYMBOL[monster.mnum] === S_GOLEM) {
         hpThreshold = (Math.trunc((monster.mhpmax ?? 1) / 10) + 1)
             * 10 - 1;
     }
-    else if (isHomeElemental(monster.mnum, state)) {
+    else if (level && isHomeElemental(monster.mnum, state)) {
         hpThreshold *= 3;
     }
     const victimLevel = victim.m_lev ?? MONSTER_LEVEL[victim.mnum] ?? 0;
@@ -137,13 +141,24 @@ export function growMonster(monster, { victim = null, state = game, rollOne = rn
     if (monster.m_lev >= targetLevel && newType !== oldType) {
         const newFemale = resultingGender(monster, newType);
         const genocided = !!((state.mvitals?.[newType]?.mvflags ?? 0) & G_GENOD);
-        const message = genocided
-            ? genocidedGrowthMessage(monster, oldType, newType, oldFemale, newFemale)
-            : growthMessage(monster, oldType, newType, oldFemale, newFemale);
+        const message = !canSpotMonster(monster) ? '' : genocided
+            ? genocidedGrowthMessage(monster, newType, state)
+            : growthMessage(monster, newType, oldFemale, newFemale, state);
         speciesChange = { genocided, newFemale, message };
         levelLimit = monster.m_lev;
     }
-    if (!speciesChange?.genocided && monster.m_lev > levelLimit) {
+    if (speciesChange?.genocided)
+        return {
+            ...speciesChange,
+            alive: false,
+            changedSpecies: true,
+            oldType,
+            newType,
+            leveled: monster.m_lev > oldLevel,
+            maxIncrease: increase.maximum,
+            currentIncrease: increase.current,
+        };
+    if (monster.m_lev > levelLimit) {
         monster.m_lev--;
         if (monster.mhpmax === increase.hpThreshold + 1)
             monster.mhpmax--;
@@ -179,9 +194,13 @@ export function finishMonsterGrowth(monster, growth) {
     if (!growth?.changedSpecies || growth.applied)
         return false;
     setMonsterSpecies(monster, growth.newType);
-    if (monster.cham === growth.oldType)
-        monster.cham = growth.newType;
-    monster.female = growth.newFemale;
+    // Fatal growth calls mondied before the normal form-change tail.
+    if (!growth.genocided) {
+        if (monster.cham === growth.oldType
+            && ((MONSTER_FLAGS2[growth.newType] ?? 0) & M2_SHAPESHIFTER))
+            monster.cham = growth.newType;
+        monster.female = growth.newFemale;
+    }
     growth.applied = true;
     return true;
 }

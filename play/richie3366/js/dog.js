@@ -819,8 +819,22 @@ function arrive_stairway_find(fromdlev) {
     return null;
 }
 
-/** C ref: dog.c mon_arrive MIGR_PORTAL — first MAGIC_PORTAL on ftrap. */
-function arrive_find_magic_portal() {
+/**
+ * C ref: dog.c mon_arrive MIGR_PORTAL `:553–557` — first MAGIC_PORTAL on
+ * the gf.ftrap chain (newest first: maketrap head-inserts). JS splits
+ * C's chain: maketrap unshifts the live level.traps array and never
+ * sets game.ftrap (null on fresh levels), so the live array carries the
+ * check and the gf-shaped game.ftrap (array or ntrap chain) is the
+ * fallback — goto_level do.js:2145 / quest.js:294 / end.js:659 shape;
+ * dog_goal D-3411 union sibling.
+ */
+export function arrive_find_magic_portal() {
+    const traps = game.level?.traps;
+    if (Array.isArray(traps)) {
+        for (const t of traps) {
+            if (t && (t.ttyp | 0) === MAGIC_PORTAL) return t;
+        }
+    }
     const ftrap = game.ftrap;
     if (Array.isArray(ftrap)) {
         for (const t of ftrap) {

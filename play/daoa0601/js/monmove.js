@@ -29,6 +29,7 @@ import { selectMonsterOffensiveItem } from './monster_offensive_selection.js';
 import { useMonsterOffensiveItem } from './monster_offensive_item.js';
 import { searchMonsterItems } from './monster_item_search.js';
 import { monsterCouldReachItem } from './monster_item_reach.js';
+import { isLevelPrize } from './level_prize.js';
 import { consumeMonsterFloorObjects } from './monster_floor_consumption.js';
 import { digestGelatinousCubeInventory, feedBeeRoyalJelly } from './monster_consumption.js';
 import { pickUpMonsterFloorObject } from './monster_pickup.js';
@@ -37,6 +38,8 @@ import { monsterMovementBaseFlags, monsterCanOpenDoor, monsterCanUnlockDoor, mon
 import { loseGuardianAngel } from './guardian_angel.js';
 import { shiftMonsterForDoor, resolveMonsterDoorPassage } from './monster_door_passage.js';
 import { heroSpecies } from './hero_species.js';
+import { releaseHeroFromMonster, releaseMonsterHold } from './hero_expulsion.js';
+import { checkQuestMonsterStatus } from './quest.js';
 import { placeHeroOnLevel } from './hero_location.js';
 import { swallowed } from './display.js';
 import { Is_rogue_level } from './const.js';
@@ -98,16 +101,14 @@ import { heroGoldAmount, heroGoldObject } from './hero_gold.js';
 import { unplaceBallAndChain } from './ball.js';
 import { beginHeroEngulf, monsterCanEngulfHero, resolveHeroEngulf, } from './hero_engulf.js';
 import { splitObjectStack } from './object_stack.js';
-import { respondMedusa } from './monster_gaze.js';
+import { respondToImmediateMagic } from './monster_magic_response.js';
 import { canSeeMonster, canSpotMonster, map_invisible, newsym, randomDisplayMonsterSubject, plineWithContinuation, } from './display.js';
 import { MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_GENO, MONSTER_LEVEL, MONSTER_MOVE, MONSTER_NAME, MONSTER_RESISTS, MONSTER_SIZE, MONSTER_SYMBOL, monsterIsCovetous, monsterIsNoncorporeal, monsterIsUndead, monsterIsVampireShifter, monsterIsWhirly, monsterIsShade, monsterIsUnsolid, monsterIsThickSkinned, monsterTypeName, } from './monster_data.js';
-import { AD_ACID, AD_BLND, AD_CLRC, AD_COLD, AD_CURS, AD_HEAL, AD_DRIN, AD_CORR, AD_DCAY, AD_DGST, AD_DREN, AD_DRLI, AD_ELEC, AD_ENCH, AD_FIRE, AD_LEGS, AD_PHYS, AD_POLY, AD_TLPT, AD_DISE, AD_PEST, AD_FAMN, AD_MAGM, AD_SPC2, AD_SAMU, AD_SEDU, AD_SGLD, AD_SSEX, AD_SITM, AD_SLIM, AD_SLOW, AD_SPEL, AD_STCK, AD_STON, AD_STUN, AD_WRAP, AD_PLYS, AD_WERE, AD_RUST, AT_BOOM, AT_BREA, AT_CLAW, AT_ENGL, AT_GAZE, AT_HUGS, AT_MAGC, AT_SPIT, AT_TUCH, AT_WEAP, AT_KICK, AT_BITE, AT_STNG, AT_BUTT, AT_TENT, AT_EXPL, } from './monster_attack_types.js';
-import { AMULET_OF_YENDOR, APPLE, BANANA, BELL_OF_OPENING, BULLWHIP, BOULDER, CARROT, CANDELABRUM_OF_INVOCATION, CLOVE_OF_GARLIC, CORPSE, DWARVISH_MATTOCK, EGG, FAKE_AMULET_OF_YENDOR, FLINT, ENORMOUS_MEATBALL, GOLD_PIECE, MEATBALL, MEAT_RING, MEAT_STICK, ARROW, AXE, BATTLE_AXE, DART, IRON_SHOES, OBJECT_MATERIAL, OBJECT_BIMANUAL, OBJECT_LARGE_DAMAGE, OBJECT_NAMES, OBJECT_SMALL_DAMAGE, OBJECT_SUBTYPE, PICK_AXE, ROCK, POT_GAIN_LEVEL, POT_HEALING, POT_INVISIBILITY, SLIME_MOLD, SPE_BOOK_OF_THE_DEAD, TIN, TRIPE_RATION, WAN_SPEED_MONSTER, } from './object_data.js';
+import { AD_ACID, AD_BLND, AD_CLRC, AD_COLD, AD_CURS, AD_HEAL, AD_DRIN, AD_CORR, AD_DCAY, AD_DGST, AD_DREN, AD_DETH, AD_CONF, AD_DRLI, AD_ELEC, AD_ENCH, AD_FIRE, AD_LEGS, AD_PHYS, AD_POLY, AD_TLPT, AD_DISE, AD_PEST, AD_FAMN, AD_MAGM, AD_SPC2, AD_SAMU, AD_SEDU, AD_SGLD, AD_SSEX, AD_SITM, AD_SLIM, AD_SLOW, AD_SPEL, AD_STCK, AD_STON, AD_STUN, AD_WRAP, AD_PLYS, AD_WERE, AD_RUST, AT_BOOM, AT_BREA, AT_CLAW, AT_ENGL, AT_GAZE, AT_HUGS, AT_MAGC, AT_SPIT, AT_TUCH, AT_WEAP, AT_KICK, AT_BITE, AT_STNG, AT_BUTT, AT_TENT, AT_EXPL, } from './monster_attack_types.js';
+import { APPLE, BANANA, BULLWHIP, BOULDER, CARROT, CLOVE_OF_GARLIC, CORPSE, DWARVISH_MATTOCK, EGG, FAKE_AMULET_OF_YENDOR, FLINT, ENORMOUS_MEATBALL, GOLD_PIECE, MEATBALL, MEAT_RING, MEAT_STICK, ARROW, AXE, BATTLE_AXE, DART, IRON_SHOES, OBJECT_MATERIAL, OBJECT_BIMANUAL, OBJECT_LARGE_DAMAGE, OBJECT_NAMES, OBJECT_SMALL_DAMAGE, OBJECT_SUBTYPE, PICK_AXE, ROCK, POT_GAIN_LEVEL, POT_HEALING, POT_INVISIBILITY, SLIME_MOLD, TIN, TRIPE_RATION, WAN_SPEED_MONSTER, } from './object_data.js';
 import { placeCreatedObject, placeObjectSynchronously, remove_object, stack_object, } from './floor_object.js';
-import { unlinkObject } from './object_location.js';
-import { removeWornHeroItem } from './hero_equipment.js';
-import { canLetGo, finishInventoryRemoval } from './hero_inventory.js';
-import { dropObjectAtHero } from './object_drop.js';
+import { canLetGo } from './hero_inventory.js';
+import { useMonsterBullwhip } from './monster_bullwhip.js';
 import { canFallThrough, makemonNear, maketrap, mksobj, summonNastyMonsters } from './mklev.js';
 import { decideMonsterShapeChange } from './monster_polymorph.js';
 import { isZombieMaker, zombieForm } from './corpse_species.js';
@@ -127,7 +128,7 @@ import { wipeEngravingAt } from './engrave.js';
 import { moveVaultGuard } from './vault.js';
 import { afterShopkeeperMove, checkSpecialRoom, shopGreeting, shopkeeperInOwnShop } from './shk.js';
 import { shopkeeperIsMuted } from './shop_loss.js';
-import { findMonsterArmorClass } from './monworn.js';
+import { checkMonsterGearNextTurn, findMonsterArmorClass } from './monworn.js';
 import { inTown, roomsAt } from './room.js';
 import { addShopDamage } from './shop_damage.js';
 import { createHarmlessGasCloudSelection, createPoisonGasCloud, createSteamCloud, GAS_OK, monsterGasTolerance, visibleRegionAt, updateMonsterRegions, } from './regions.js';
@@ -160,7 +161,7 @@ import { inHeroSanctuary, priestIsInOwnTemple } from './priest.js';
 import { addObjectToMonsterInventory, linkObjectToMonsterInventory, } from './monster_inventory.js';
 import { currentMonsterLoad, monsterCanCarryObject, monsterCarryAmount } from './monster_carry.js';
 export { monsterCanCarryObject } from './monster_carry.js';
-import { monsterCanFog, setMonsterApparentHeroPosition, } from './monster_perception.js';
+import { monsterCanFog, monsterHasLineOfSightToHero, setMonsterApparentHeroPosition, } from './monster_perception.js';
 import { adjustMonsterSpeed, monsterSpeedMessage } from './monster_speed.js';
 import { setMonsterPermanentInvisibility } from './monster_invisibility.js';
 import { msummon } from './minion.js';
@@ -169,8 +170,9 @@ import { stashLeprechaunGold } from './leprechaun_stash.js';
 import { MONSTER_SOUND } from './monster_data.js';
 import { MONSTER_DIFFICULTY } from './monster_data.js';
 import { depth } from './hacklib.js';
-import { objectMaterial } from './object_material.js';
-import { monsterHatesSilver } from './monster_data.js';
+import { artifactById } from './artifacts.js';
+import { resolveMonsterWeaponContact } from './monster_weapon_contact.js';
+import { monsterHatesBlessings } from './monster_data.js';
 import { canHeroRiseUp, levelAtDepth } from './dungeon.js';
 import { LEVEL_TELEP } from './const.js';
 import { teleportMonsterThroughPortal, teleportMonsterToRandomLevel } from './teleport.js';
@@ -190,12 +192,13 @@ import { findNearbyMonsterPosition, goodPosition, monsterTeleportRestricted, rep
 import { burnArmorByFire, monsterTrapVisibility, seeTrap } from './trap.js';
 import { publishMonsterWake } from './monster_wake.js';
 import { wereChange, setHeroLycanthropy } from './were.js';
-import { aggravateMonsters, angerMonster, angerWatchGuards } from './monster_anger.js';
+import { aggravateMonsters, angerMonster, angerWatchGuards, publishMonsterWhimper } from './monster_anger.js';
+import { xdir, ydir } from './const.js';
 import { stopHeroOccupation } from './occupation.js';
 import { rileShopkeeper, shopkeeperRepairsDamage } from './shop_damage.js';
 import { diggingTimeToHole } from './hero_digging.js';
 import { migrateMonsterOffLevel } from './monster_migration.js';
-import { RLOC_MSG, A_CHA, A_DEX, A_STR, A_CON, ALLOW_ALL, ALLOW_BARS, ALLOW_DIG, ALLOW_M, ALLOW_MDISP, ALLOW_ROCK, ALLOW_SANCT, MMOVE_NOTHING, MMOVE_MOVED, MMOVE_DIED, MMOVE_DONE, MMOVE_NOMOVES, MON_FLOOR, ALLOW_SSM, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_WALL, ARROW_TRAP, BEAR_TRAP, BOLT_LIM, COLNO, CORR, DART_TRAP, DOOR, ROWNO, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, D_WARNED, FOUNTAIN, SDOOR, Is_firelevel, Is_waterlevel, IS_DOOR, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_STWALL, IS_TREE, IS_WALL, IRONBARS, LAVAPOOL, LAVAWALL, BUSTDOOR, MAGIC_PORTAL, OPENDOOR, TELEP_TRAP, MIGR_RANDOM, ANTI_MAGIC, FIRE_TRAP, HOLE, LANDMINE, MAGIC_TRAP, M_ATTK_AGR_DIED, M_ATTK_DEF_DIED, M_ATTK_HIT, M_ATTK_MISS, M_ATTK_AGR_DONE, M_AP_FURNITURE, M_AP_MONSTER, M_AP_NOTHING, M_AP_OBJECT, M_AP_TYPE, POLY_TRAP, RUST_TRAP, PIT, PL_NSIZ, ROCKTRAP, ROLLING_BOULDER_TRAP, ROOM, SLP_GAS_TRAP, STONE, SPIKED_PIT, SQKY_BOARD, STATUE_TRAP, TRAPDOOR, NEED_AXE, NEED_HTH_WEAPON, NEED_PICK_AXE, NEED_PICK_OR_AXE, NEED_WEAPON, NO_WEAPON_WANTED, MM_NOWAIT, NOGARLIC, NOTONL, SHOPBASE, TEMPLE, TRAPNUM, STRAT_WAITFORU, STRAT_WAITMASK, UNLOCKDOOR, VIBRATING_SQUARE, WATER, W_ACCESSORY, W_ARM, W_ARMC, W_ARMF, W_ARMG, W_ARMH, W_ARMOR, W_ARMS, W_ARMU, W_NONDIGGABLE, W_NONPASSWALL, Upolyd, isok, WEB, WT_TOOMUCH_DIAGONAL, } from './const.js';
+import { RLOC_MSG, A_CHA, A_DEX, A_STR, A_CON, ALLOW_ALL, ALLOW_BARS, ALLOW_DIG, ALLOW_M, ALLOW_MDISP, ALLOW_ROCK, ALLOW_SANCT, MMOVE_NOTHING, MMOVE_MOVED, MMOVE_DIED, MMOVE_DONE, MMOVE_NOMOVES, MON_FLOOR, ALLOW_SSM, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_WALL, ARROW_TRAP, BEAR_TRAP, BOLT_LIM, COLNO, CORR, DART_TRAP, DOOR, ROWNO, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, D_WARNED, FOUNTAIN, SDOOR, Is_firelevel, Is_waterlevel, IS_DOOR, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_STWALL, IS_TREE, IS_WALL, IRONBARS, LAVAPOOL, LAVAWALL, BUSTDOOR, MAGIC_PORTAL, OPENDOOR, TELEP_TRAP, MIGR_RANDOM, ANTI_MAGIC, FIRE_TRAP, HOLE, LANDMINE, MAGIC_TRAP, M_ATTK_AGR_DIED, M_ATTK_DEF_DIED, M_ATTK_HIT, M_ATTK_MISS, M_ATTK_AGR_DONE, M_AP_FURNITURE, M_AP_MONSTER, M_AP_NOTHING, M_AP_OBJECT, M_AP_TYPE, POLY_TRAP, RUST_TRAP, PIT, PL_NSIZ, ROCKTRAP, ROLLING_BOULDER_TRAP, ROOM, SLP_GAS_TRAP, STONE, SPIKED_PIT, SQKY_BOARD, STATUE_TRAP, TRAPDOOR, NEED_AXE, NEED_HTH_WEAPON, NEED_PICK_AXE, NEED_PICK_OR_AXE, NEED_WEAPON, NO_WEAPON_WANTED, MM_NOWAIT, NOGARLIC, NOTONL, SHOPBASE, TEMPLE, TRAPNUM, STRAT_WAITFORU, STRAT_WAITMASK, STRAT_ARRIVE, UNLOCKDOOR, VIBRATING_SQUARE, WATER, W_ACCESSORY, W_ARM, W_ARMC, W_ARMF, W_ARMG, W_ARMH, W_ARMOR, W_ARMS, W_ARMU, W_NONDIGGABLE, W_NONPASSWALL, Upolyd, isok, WEB, WT_TOOMUCH_DIAGONAL, } from './const.js';
 import { monsterIsScaredAt } from './monster_fear.js';
 import { monsterInAir, monsterFliesOrFloats, levelHasCeiling, isLavaAt, isPoolAt } from './terrain_properties.js';
 import { disturbBuriedZombies } from './object_impact.js';
@@ -203,6 +206,8 @@ export const NORMAL_SPEED = 12;
 export const MSLOW = 1;
 export const MFAST = 2;
 const M1_FLY = 0x00000001;
+const MS_LEADER = 36;
+const MS_GUARDIAN = 38;
 const M1_SWIM = 0x00000002;
 const M1_AMORPHOUS = 0x00000004;
 const M1_CLING = 0x00000010;
@@ -631,7 +636,7 @@ async function useMonsterMiscItem(monster, state, random, calls) {
     if (selected.kind === 'bullwhip-disarm') {
         // use_misc() chooses the destination before any two-weapon target
         // selection.  Removal itself follows the urgent wrap message.
-        let whereTo = recordRandom(random, calls, 4);
+        const whereTo = recordRandom(random, calls, 4);
         let target = selected.heroWeapon;
         if (!await heroCanReleaseWeapon(target, state) ||
             (state?.u?.twoweap &&
@@ -639,12 +644,10 @@ async function useMonsterMiscItem(monster, state, random, calls) {
                 recordRandom(random, calls, 2))) {
             target = selected.heroSwapWeapon;
         }
-        if (whereTo === 3 && target && monsterHatesSilver(monster) && objectMaterial(target, state) === 14)
-            whereTo = 2;
         return {
             ...selected,
             target,
-            whereTo: target && !willWeld(target) ? whereTo : 0,
+            whereTo,
             deferredEffect: true,
         };
     }
@@ -655,12 +658,6 @@ async function useMonsterMiscItem(monster, state, random, calls) {
         kind: wand ? 'wand-speed-monster' : 'potion-speed',
         deferredEffect: true,
     };
-}
-function placeDisarmedHeroWeapon(state, object, x, y) {
-    // Disarm runs inside the attacking monster's turn (mon_moving), so the
-    // hero-controlled crysknife prohibition cannot apply; the synchronous
-    // placement still performs the reversion iteration.
-    placeObjectSynchronously(object, x, y, state);
 }
 export function monsterGainLevelRiseDestination(monster, state) {
     if (!canHeroRiseUp(monster.mx, monster.my, { state }))
@@ -738,44 +735,17 @@ export async function finishDeferredMonsterMiscItem(action, state = requireIniti
         return misc;
     }
     if (misc.kind === 'wand-speed-monster' || misc.kind === 'potion-speed') {
-        if (misc.kind === 'wand-speed-monster') {
-        }
-        else {
-            await consumeMonsterItem(monster, misc.object, state);
-        }
         const speed = adjustMonsterSpeed(monster, 1);
         misc.oldSpeed = speed.oldSpeed;
-        misc.speedChanged = speed.changed && speed.canDescribe && monster.mcanmove !== 0;
+        misc.speedChanged = speed.changed && speed.canDescribe && !state.in_mklev;
         misc.speedMuch = speed.much;
         misc.effectApplied = true;
         return misc;
     }
     if (misc.kind === 'bullwhip-disarm') {
         const target = misc.target;
-        if (!target || misc.whereTo === 0) {
-            misc.whereTo = 0;
-            misc.effectApplied = true;
-            return misc;
-        }
-        await removeWornHeroItem(target, state);
-        if (state.program_state.gameover)
-            return misc;
-        unlinkObject(target, state);
-        await finishInventoryRemoval(target, state);
-        if (state.program_state.gameover)
-            return misc;
-        if (misc.whereTo === 3) {
-            // muse.c:use_misc(MUSE_BULLWHIP)->mpickobj().  The disarmed
-            // identity is free of hero equipment state before the monster
-            // applies carrying effects and links it into minvent.
-            await addObjectToMonsterInventory(monster, target, state);
-        }
-        else if (misc.whereTo === 1) {
-            placeDisarmedHeroWeapon(state, target, monster.mx, monster.my);
-        }
-        else {
-            await dropObjectAtHero(target, { state });
-        }
+        if (target)
+            await useMonsterBullwhip(monster, target, misc.whereTo ?? 0, state);
         misc.effectApplied = true;
     }
     return misc;
@@ -1303,7 +1273,7 @@ function monsterAttackThreshold(monster, state, rollOne, calls) {
 // C mhitu.c:hitmu().  Negative AC has a second, independent role after a
 // hit: once attack effects and knockback finish, it reduces positive damage
 // by rnd(-uac), with a floor of one.  This is not the AC_VALUE to-hit draw.
-function reduceHeroContactDamage(damage, state, rollOne, calls) {
+function reduceHeroContactDamage(monster, damage, state, rollOne, calls) {
     const armorClass = state?.u?.uac ?? 10;
     let appliedDamage = damage;
     if (appliedDamage > 0 && armorClass < 0) {
@@ -1313,7 +1283,10 @@ function reduceHeroContactDamage(damage, state, rollOne, calls) {
     }
     // mhitu.c:hitmu() applies Half_physical_damage only after negative-AC
     // reduction and rounds odd positive damage upward.
-    if (appliedDamage > 0 && state?.u?.halfPhysicalDamage) {
+    const mitreProtects = state.urole.key === 'priest'
+        && artifactById(state.uarmh?.oartifact, state)?.questArtifact
+        && monsterHatesBlessings(monster);
+    if (appliedDamage > 0 && (state.u.halfPhysicalDamage || mitreProtects)) {
         appliedDamage = Math.trunc((appliedDamage + 1) / 2);
     }
     return appliedDamage;
@@ -1412,7 +1385,12 @@ function petCanReachLocation(monster, mx, my, fx, fy, state) {
             if (!isok(x, y) || dist2(x, y, fx, fy) >= distance)
                 continue;
             const loc = state?.level?.at?.(x, y);
-            if (!loc || IS_OBSTRUCTED(loc.typ))
+            if (!loc)
+                continue;
+            const flags = MONSTER_FLAGS1[monster.mnum] ?? 0;
+            if (IS_OBSTRUCTED(loc.typ) && !(flags & M1_WALLWALK)
+                && (!monsterMayDigLocation(loc) || !(flags & M1_TUNNEL)
+                    || Is_rogue_level(state.u.uz, state)))
                 continue;
             if (IS_DOOR(loc.typ) && (loc.doormask ?? 0) & (D_CLOSED | D_LOCKED))
                 continue;
@@ -1737,7 +1715,7 @@ async function petInventoryAction(monster, state, random, calls) {
     const fetchableClass = object.oclass !== BALL_CLASS &&
         object.oclass !== CHAIN_CLASS &&
         object.oclass !== ROCK_CLASS;
-    if (!fetchableClass)
+    if (!fetchableClass || isLevelPrize(object, state))
         return null;
     const edible = dogFood(monster, object, random, calls, state);
     if ((edible <= CADAVER || monster.edog?.mhpmax_penalty && edible === ACCFOOD)
@@ -1779,6 +1757,11 @@ export async function commitPetPickup(monster, movement, state) {
     remove_object(object, state);
     newsym(monster.mx, monster.my);
     await addObjectToMonsterInventory(monster, object, state);
+    if (speciesHasWeaponAttack(monster.mnum) && monster.weaponCheck === NEED_WEAPON) {
+        monster.weaponCheck = NEED_HTH_WEAPON;
+        await wieldMonsterWeapon(monster, state);
+    }
+    checkMonsterGearNextTurn(monster);
 }
 function trapAt(state, x, y) {
     return state?.level?.traps?.find((trap) => trap.tx === x && trap.ty === y);
@@ -2266,7 +2249,8 @@ export function maxPassiveMonsterDamage(defender, aggressor) {
     return 0;
 }
 async function finishPetMovePlan(monster, state, plan, random, rollDice, rollOne, calls) {
-    const { oldx, oldy, nix, niy, selectedInfo, reluctant, inventoryAction } = plan;
+    const { oldx, oldy, selectedInfo, reluctant, inventoryAction } = plan;
+    let { nix, niy } = plan;
     if (selectedInfo & ALLOW_U) {
         if (monster.mleashed) {
             const pronoun = (MONSTER_FLAGS2[monster.mnum] ?? 0) & M2_NEUTER
@@ -2293,8 +2277,16 @@ async function finishPetMovePlan(monster, state, plan, random, rollDice, rollOne
             ...inventoryAction,
         };
     }
-    if (nix !== oldx || niy !== oldy)
+    if (nix !== oldx || niy !== oldy) {
         updateMonsterRegions(monster, state, { x: nix, y: niy });
+        if (await readyMonsterDiggingWeapon(monster, state, nix, niy)) {
+            return {
+                oldx, oldy, x: oldx, y: oldy, moved: false,
+                postMoveStatus: MMOVE_NOTHING, movementStage: 'postmov',
+                ...inventoryAction,
+            };
+        }
+    }
     monster.mx = nix;
     monster.my = niy;
     if (nix !== oldx || niy !== oldy) {
@@ -2302,6 +2294,11 @@ async function finishPetMovePlan(monster, state, plan, random, rollDice, rollOne
             monster.mtrack = [];
         monster.mtrack.unshift({ x: oldx, y: oldy });
         monster.mtrack.length = Math.min(monster.mtrack.length, 4);
+    }
+    else {
+        pullLeashedPetCloser(monster, state, random, calls);
+        nix = monster.mx;
+        niy = monster.my;
     }
     const movement = {
         oldx,
@@ -2318,6 +2315,44 @@ async function finishPetMovePlan(monster, state, plan, random, rollDice, rollOne
         movement.deferredPetReluctance = true;
     }
     return movement;
+}
+// C dog_move() keeps a leashed pet close even after an action which left it
+// in place. Its fallback probes use dirtocoord's map coordinates as written.
+function pullLeashedPetCloser(monster, state, random, calls) {
+    if (!monster.mleashed || dist2(monster.mx, monster.my, state.u.ux, state.u.uy) <= 4)
+        return;
+    const dx = Math.sign(monster.mx - state.u.ux);
+    const dy = Math.sign(monster.my - state.u.uy);
+    let destination = { x: state.u.ux + dx, y: state.u.uy + dy };
+    const reachable = (position) => goodPosition(position.x, position.y, { kind: 'monster', monster }, { state });
+    if (!reachable(destination)) {
+        const direction = xdir.findIndex((x, i) => i < 8 && x === dx && ydir[i] === dy);
+        let found = false;
+        for (const spread of [1, 2]) {
+            for (let j = (direction + 8 - spread) % 8; j < (direction + spread) % 8; j++) {
+                const x = xdir[j], y = ydir[j];
+                if (x === undefined || y === undefined)
+                    continue;
+                const candidate = { x, y };
+                if (!reachable(candidate))
+                    continue;
+                destination = candidate;
+                found = true;
+                break;
+            }
+            if (found)
+                break;
+        }
+        if (!found)
+            destination = { x: monster.mx, y: monster.my };
+    }
+    // The native region check precedes placement and uses the unchanged
+    // planned square when this is a forced leash move.
+    updateMonsterRegions(monster, state);
+    monster.mx = destination.x;
+    monster.my = destination.y;
+    newsym(monster.mx, monster.my);
+    setMonsterApparentHeroPosition(monster, state, random, calls);
 }
 async function movePet(monster, state, random, rollDice, rollOne, calls, resumeAfterInventory = false) {
     const oldx = monster.mx;
@@ -2433,6 +2468,11 @@ async function movePet(monster, state, random, rollDice, rollOne, calls, resumeA
                 continue;
             if (maxPassiveMonsterDamage(target, monster) >= (monster.mhp ?? 1))
                 continue;
+            const targetSound = MONSTER_SOUND[target.mnum];
+            if ((monster.mhp * 4 < monster.mhpmax
+                || targetSound === MS_GUARDIAN || targetSound === MS_LEADER)
+                && target.mpeaceful && !heroHasConflict(state))
+                continue;
             // dog_move() usually avoids paralysis and petrifying contact even
             // when the expected passive HP damage would be survivable.
             const avoidsEye = target.mnum === MONSTER_NAME.indexOf('floating eye')
@@ -2469,11 +2509,14 @@ async function movePet(monster, state, random, rollDice, rollOne, calls, resumeA
         // pile.  A pet usually refuses a harmful trap the hero has seen, but
         // an unseen trap remains eligible even when the pet knows its type.
         const trap = trapAt(state, nx, ny);
-        if (candidate.info & ALLOW_TRAPS &&
-            trap?.tseen &&
-            !monster.mleashed &&
-            recordRandom(random, calls, 40) !== 0)
-            continue;
+        if (candidate.info & ALLOW_TRAPS && trap) {
+            if (monster.mleashed) {
+                if (!heroIsDeaf(state))
+                    await publishMonsterWhimper(monster);
+            }
+            else if (trap.tseen && recordRandom(random, calls, 40) !== 0)
+                continue;
+        }
         // dogmove.c examines every reachable, uncursed object on a candidate
         // square before applying its cursed-square avoidance roll.  Cursed
         // objects set the reluctance flag without calling dogfood(); ordinary
@@ -2496,6 +2539,13 @@ async function movePet(monster, state, random, rollDice, rollOne, calls, resumeA
         }
         if (edible) {
             updateMonsterRegions(monster, state, { x: nx, y: ny });
+            if (await readyMonsterDiggingWeapon(monster, state, nx, ny)) {
+                return {
+                    oldx, oldy, x: oldx, y: oldy, moved: false,
+                    postMoveStatus: MMOVE_NOTHING, movementStage: 'postmov',
+                    ...inventoryAction,
+                };
+            }
             monster.mx = nx;
             monster.my = ny;
             if (!Array.isArray(monster.mtrack))
@@ -2516,7 +2566,8 @@ async function movePet(monster, state, random, rollDice, rollOne, calls, resumeA
                 ...inventoryAction,
             };
         }
-        if (cursed && uncursedCount > 0 && recordRandom(random, calls, 13 * uncursedCount))
+        if (cursed && !monster.mleashed && uncursedCount > 0
+            && recordRandom(random, calls, 13 * uncursedCount))
             continue;
         // C dog_move(): only distant, unleashed pets probabilistically avoid
         // recent locations. `uncursedCount` is the source `k`, so it controls
@@ -2587,15 +2638,7 @@ async function movePet(monster, state, random, rollDice, rollOne, calls, resumeA
 // to stay inside its squared-distance return band.
 function monsterApproachPolicy(monster, state, oldPolicy, targetX, targetY, random) {
     const distance = dist2(monster.mx, monster.my, targetX, targetY);
-    const heroInvisible = !!(state?.u?.invisible ||
-        state?.u?.invis ||
-        (state?.u?.invisibleTurns ?? 0) > 0);
-    const speciesFlags = MONSTER_FLAGS1[monster?.mnum] ?? 0;
-    const seesInvisible = !!(speciesFlags & M1_SEE_INVIS);
-    const canSeeHero = monster.mcansee !== false &&
-        (!heroInvisible || seesInvisible) &&
-        couldSeeFromHero(state, monster.mx, monster.my);
-    if (monster.mpeaceful || distance >= 25 || !canSeeHero)
+    if (monster.mpeaceful || distance >= 25 || !monsterHasLineOfSightToHero(monster, state))
         return { policy: oldPolicy, min: 0, max: 0 };
     if (monsterHasLauncherAndAmmo(monster))
         return { policy: -1, min: 0, max: 0 };
@@ -2726,51 +2769,49 @@ async function moveHostile(monster, state, random, rollDice, rollOne, calls, cap
     const heroY = state?.u?.uy ?? oldy;
     let gx = isFiniteNumber(monster.mux) ? monster.mux : heroX;
     let gy = isFiniteNumber(monster.muy) ? monster.muy : heroY;
-    // m_move() establishes the base approach mode before refreshing its
-    // short-range visual target and applying ranged-distance policy.
-    const disoriented = monster.mconf || monster.mcansee === false || monster.mcansee === 0
-        || state.u.uswallow && state.u.ustuck === monster;
-    let appr = disoriented ? 0 : monster.mflee ? -1 : 1;
-    // C m_move() does not pursue the hero's omniscient coordinates through
-    // long, unseen passages.  Outside its short direct-vision envelope, an
-    // eyed monster follows the newest adjacent entry in the hero track.  The
-    // goal swap consumes no randomness, but it changes which equally legal
-    // candidate wins and can therefore alter a later candidate-count range.
-    const monsterTile = state?.level?.at?.(oldx, oldy);
-    const apparentTargetTile = state?.level?.at?.(gx, gy);
-    const shouldSee = couldSeeFromHero(state, oldx, oldy) &&
-        (apparentTargetTile?.lit || !monsterTile?.lit) &&
-        dist2(oldx, oldy, gx, gy) <= 36;
     const speciesFlags = MONSTER_FLAGS1[monster?.mnum] ?? 0;
-    // C m_move() distinguishes geometric COULD_SEE from the hero's rendered
-    // sight.  An invisible hero in a dark but unobstructed corridor can make
-    // a non-perceiving monster abandon directed pursuit before item search
-    // and mfndpos()'s random reservoir.  This test precedes the unconditional
-    // peaceful-milling clause, so a sighted peaceful actor still owns rn2(11).
-    const heroInvisible = !!state?.invisible ||
-        !!state?.u?.invisible ||
-        !!state?.u?.invis ||
-        (state?.u?.invisibleTurns ?? 0) > 0;
-    if (!monster.mconf &&
-        monster.mcansee !== false &&
-        monster.mcansee !== 0 &&
-        shouldSee &&
-        heroInvisible &&
-        !(speciesFlags & M1_SEE_INVIS) &&
-        recordRandom(random, calls, 11) !== 0) {
+    let appr = monster.mflee ? -1 : 1;
+    let preferredRange = { min: 0, max: 0 };
+    // Confused monsters and engulfers skip all deliberate pursuit decisions.
+    if (monster.mconf || state.u.uswallow && state.u.ustuck === monster)
         appr = 0;
-    }
-    if (monster.mpeaceful)
-        appr = 0;
-    // set_apparxy() has already established mux/muy.  m_move() never
-    // replaces that apparent target with the omniscient hero coordinate;
-    // it substitutes the hero's track only when the apparent target is not
-    // in this short direct-vision envelope.
-    if (!shouldSee && !(speciesFlags & M1_NOEYES)) {
-        const track = getTrack(oldx, oldy, state);
-        if (track) {
-            gx = track.x;
-            gy = track.y;
+    else {
+        const monsterTile = state.level.at(oldx, oldy);
+        const apparentTargetTile = state.level.at(gx, gy);
+        const shouldSee = couldSeeFromHero(state, oldx, oldy)
+            && (apparentTargetTile?.lit || !monsterTile?.lit)
+            && dist2(oldx, oldy, gx, gy) <= 36;
+        const heroObjectAppearance = M_AP_TYPE(state.u) === M_AP_OBJECT ? state.u.mappearance : null;
+        const symbol = MONSTER_SYMBOL[monster.mnum];
+        if (!monster.mcansee
+            || (shouldSee && heroIsInvisible(state) && !(speciesFlags & M1_SEE_INVIS)
+                && recordRandom(random, calls, 11) !== 0)
+            || heroObjectAppearance === 0 || state.u.uundetected
+            || (heroObjectAppearance === GOLD_PIECE
+                && !((MONSTER_FLAGS2[monster.mnum] ?? 0) & M2_GREEDY))
+            || (monster.mpeaceful && !monster.isshk)
+            || ((monster.mnum === PM_STALKER || symbol === 28 || symbol === S_LIGHT)
+                && recordRandom(random, calls, 3) === 0))
+            appr = 0;
+        if (appr === 1 && monster.mnum === MONSTER_NAME.indexOf('leprechaun')) {
+            const carriedGold = monster.minvent?.find(object => object.otyp === GOLD_PIECE);
+            const heroGold = state.inventory.find(object => object.otyp === GOLD_PIECE);
+            if (carriedGold && carriedGold.quan > (heroGold?.quan ?? 0))
+                appr = -1;
+        }
+        const approach = monsterApproachPolicy(monster, state, appr, monster.mux, monster.muy, limit => recordRandom(random, calls, limit));
+        appr = approach.policy;
+        preferredRange = { min: approach.min, max: approach.max };
+        // C can_track(): Excalibur lets even eyeless monsters follow tracks.
+        const heroWeapon = state.uwep || state.u.uwep;
+        const canTrack = !(speciesFlags & M1_NOEYES)
+            || artifactById(heroWeapon?.oartifact, state)?.name === 'Excalibur';
+        if (!shouldSee && canTrack) {
+            const track = getTrack(oldx, oldy, state);
+            if (track) {
+                gx = track.x;
+                gy = track.y;
+            }
         }
     }
     let nix = oldx;
@@ -2778,27 +2819,6 @@ async function moveHostile(monster, state, random, rollDice, rollOne, calls, cap
     let nidist = dist2(nix, niy, gx, gy);
     let selected = false;
     let selectedInfo = 0;
-    // C m_move() makes stalkers, bats, and lights intermittently wander even
-    // while fleeing. This roll is part of the approach decision and must
-    // precede item search and mfndpos()'s random-reservoir selection.
-    const symbol = MONSTER_SYMBOL[monster?.mnum];
-    if (appr !== 0 &&
-        (monster.mnum === PM_STALKER || symbol === 28 || symbol === S_LIGHT) &&
-        recordRandom(random, calls, 3) === 0) {
-        appr = 0;
-    }
-    if (appr === 1 && monster.mnum === MONSTER_NAME.indexOf('leprechaun')) {
-        const carriedGold = monster.minvent?.find(object => object.otyp === GOLD_PIECE);
-        const heroGold = state.inventory.find(object => object.otyp === GOLD_PIECE);
-        // leppie_avoidance(): a richer leprechaun protects its own gold.
-        if (carriedGold && carriedGold.quan > (heroGold?.quan ?? 0))
-            appr = -1;
-    }
-    // Confused and engulfing monsters skip deliberate ranged movement.
-    const approach = monster.mconf || state.u.uswallow && state.u.ustuck === monster
-        ? { policy: appr, min: 0, max: 0 }
-        : monsterApproachPolicy(monster, state, appr, monster.mux ?? gx, monster.muy ?? gy, limit => recordRandom(random, calls, limit));
-    appr = approach.policy;
     // Native lined_up() is evaluated for every admitted search, including
     // peaceful actors, before approach determines whether combat forbids it.
     if ((!monster.mpeaceful || recordRandom(random, calls, 10) === 0)
@@ -2913,8 +2933,8 @@ async function moveHostile(monster, state, random, rollDice, rollOne, calls, cap
         }
         else if (appr === -2) {
             const nearer = ndist < nidist;
-            const inRetreatBand = ndist <= approach.min && !nearer;
-            const inAdvanceBand = ndist >= approach.max && nearer;
+            const inRetreatBand = ndist <= preferredRange.min && !nearer;
+            const inAdvanceBand = ndist >= preferredRange.max && nearer;
             if (selected && !inRetreatBand && !inAdvanceBand)
                 continue;
         }
@@ -3053,6 +3073,19 @@ export async function beginMonsterHeroAttack(monster, state, random, rollOne, ro
     state.notonhead = false;
     if (dist2(monster.mx, monster.my, state.u.ux, state.u.uy) <= 3)
         endVoluntaryMultiTurn(state);
+    if (monster.dead || monster.mhp <= 0)
+        return { heroAttackResult: 1 };
+    if ((state.underwater || state.u.uinwater)
+        && !((MONSTER_FLAGS1[monster.mnum] ?? 0) & M1_SWIM))
+        return {};
+    if (state.u.uswallow) {
+        if (state.u.ustuck !== monster)
+            return {};
+        monster.mux = state.u.ux;
+        monster.muy = state.u.uy;
+        if (state.u.invulnerable)
+            return {};
+    }
     if (monster === state.u.usteed)
         return {};
     if (!state.u.uswallow && state.u.usteed) {
@@ -3997,7 +4030,7 @@ export async function triggerImmediateMonsterTrap(monster, state = requireInitia
     return { monster, movement, event, calls };
 }
 // Complete mintrap() for a source effect without running a movement tail.
-export async function finishImmediateMonsterTrap(action, state = requireInitializedGame(), { publish = plineWithContinuation, random = rn2, rollOne = rnd, rollDice = d, finishDeath } = {}) {
+export async function finishImmediateMonsterTrap(action, state = requireInitializedGame(), { publish = plineWithContinuation, random = rn2, rollOne = rnd, rollDice = d, finishDeath, describeMonster } = {}) {
     if (action.movement.escapingTrap)
         return action;
     if (action.event?.kind === 'rolling-boulder')
@@ -4005,6 +4038,7 @@ export async function finishImmediateMonsterTrap(action, state = requireInitiali
     await resumeDeferredMonsterTrap(action, state, {
         publish, random, rollOne, rollDice,
         ...(finishDeath ? { finishDeath } : {}),
+        ...(describeMonster ? { describeMonster } : {}),
     });
     return action;
 }
@@ -4570,6 +4604,7 @@ async function beginHeroAttackSlot(sequence, slot, state, random, rollOne, rollD
                 deferredPostHit: true,
             };
         }
+        damage = await resolveMonsterWeaponContact(monster, contactWeapon, damage, state, plineWithContinuation, rollOne);
         await erodeAttackingWeapon(state.u, contactWeapon, { state, random });
         if (poison) {
             const effect = await poisonHeroFromMonster(monster, attackType, {
@@ -4594,7 +4629,7 @@ async function beginHeroAttackSlot(sequence, slot, state, random, rollOne, rollD
         const knockback = await knockHeroFromMonster(monster, { attackType, damageType, hit }, state, random);
         if (knockback.defenderDied)
             return { kind: 'hero-attack', hit, damage: 0, heroDied: true, attackType, damageType };
-        damage = reduceHeroContactDamage(damage, state, rollOne, calls);
+        damage = reduceHeroContactDamage(monster, damage, state, rollOne, calls);
         const passive = await finishHeroContactDamage(monster, damage, attackType, oldFormMnum, state, {
             random,
             rollDice,
@@ -4628,7 +4663,7 @@ async function beginHeroAttackSlot(sequence, slot, state, random, rollOne, rollD
         const knockback = await knockHeroFromMonster(monster, { attackType, damageType, hit }, state, random);
         if (knockback.defenderDied)
             return { kind: 'hero-attack', hit, damage: 0, heroDied: true, attackType, damageType };
-        damage = reduceHeroContactDamage(damage, state, rollOne, calls);
+        damage = reduceHeroContactDamage(monster, damage, state, rollOne, calls);
         const passive = await finishHeroContactDamage(monster, damage, attackType, oldFormMnum, state, {
             random,
             rollDice,
@@ -4689,7 +4724,7 @@ async function beginHeroAttackSlot(sequence, slot, state, random, rollOne, rollD
         const knockback = await knockHeroFromMonster(monster, { attackType, damageType, hit }, state, random);
         if (knockback.defenderDied)
             return { kind: 'hero-attack', hit, damage: 0, heroDied: true, attackType, damageType };
-        damage = reduceHeroContactDamage(damage, state, rollOne, calls);
+        damage = reduceHeroContactDamage(monster, damage, state, rollOne, calls);
         const passive = await finishHeroContactDamage(monster, damage, attackType, oldFormMnum, state, {
             random,
             rollDice,
@@ -4707,29 +4742,13 @@ async function beginHeroAttackSlot(sequence, slot, state, random, rollOne, rollD
             heroDied: !!passive.heroDied,
         };
     }
-    else if (hit && damageType === AD_SAMU && dice > 0 && sides > 0) {
-        // uhitm.c:mhitm_ad_samu() retains ordinary claw damage.  After
-        // hitmsg(), it always spends the one-in-twenty theft gate; a hero
-        // without quest/invocation objects simply has nothing to steal.
-        return {
-            kind: 'hero-attack',
-            roll,
-            threshold,
-            hit,
-            damage,
-            attackType,
-            damageType,
-            effect: 'amulet-theft-natural',
-            deferredAmuletTheftGate: true,
-            deferredPostHit: true,
-            oldFormMnum,
-        };
-    }
     else if (hit && (damageType === AD_WERE || damageType === AD_SLEE
         || damageType === AD_POLY || damageType === AD_TLPT || damageType === AD_PLYS
         || damageType === AD_WRAP || damageType === AD_DRIN || damageType === AD_CURS
         || damageType === AD_HEAL || damageType === AD_ACID || damageType === AD_SLOW
-        || damageType === AD_SGLD || damageType === AD_SSEX)) {
+        || damageType === AD_SGLD || damageType === AD_SSEX || damageType === AD_DISE
+        || damageType === AD_CONF || damageType === AD_PEST || damageType === AD_FAMN
+        || damageType === AD_DETH || damageType === AD_SAMU)) {
         const negated = damageType === AD_SLOW
             ? specialAttackNegated(monster, state.u, { state, random })
             : damageType === AD_POLY
@@ -4740,6 +4759,9 @@ async function beginHeroAttackSlot(sequence, slot, state, random, rollOne, rollD
             ...(damageType === AD_WRAP ? { effect: 'wrapping-natural' } : {}),
             ...(damageType === AD_HEAL ? { effect: `nurse-${nurseContactMode(monster, state)}` } : {}),
             ...(damageType === AD_SSEX ? { effect: 'seduction-contact' } : {}),
+            ...(damageType === AD_PEST ? { effect: 'pestilence-contact' } : {}),
+            ...(damageType === AD_FAMN ? { effect: 'famine-contact' } : {}),
+            ...(damageType === AD_DETH ? { effect: 'death-contact' } : {}),
         };
     }
     else if (hit && damageType === AD_STCK) {
@@ -5095,7 +5117,7 @@ async function beginHeroAttackSlot(sequence, slot, state, random, rollOne, rollD
         const knockback = await knockHeroFromMonster(monster, { attackType, damageType, hit }, state, random);
         if (knockback.defenderDied)
             return { kind: 'hero-attack', hit, damage: 0, heroDied: true, attackType, damageType };
-        damage = reduceHeroContactDamage(damage, state, rollOne, calls);
+        damage = reduceHeroContactDamage(monster, damage, state, rollOne, calls);
         const passive = await finishHeroContactDamage(monster, damage, attackType, oldFormMnum, state, {
             random,
             rollDice,
@@ -5381,27 +5403,6 @@ export async function resumeDeferredHeroContact(action, state, { random = rn2, r
             return action;
         }
     }
-    if (attack.deferredAmuletTheftGate) {
-        const stealGate = recordRandom(random, calls, 20);
-        attack.deferredAmuletTheftGate = false;
-        const theftTarget = (state.inventory || []).find((object) => object?.questArtifact ||
-            [
-                AMULET_OF_YENDOR,
-                BELL_OF_OPENING,
-                SPE_BOOK_OF_THE_DEAD,
-                CANDELABRUM_OF_INVOCATION,
-            ].includes(object?.otyp));
-        if (stealGate === 0 && theftTarget) {
-            // Actual worn-item removal, theft, and relocation remain a named
-            // continuation.  A successful gate with no special target is a
-            // source no-op and must continue into knockback/passive handling.
-            attack.deferredAmuletTheft = true;
-            attack.amuletTheftTarget = theftTarget;
-            return action;
-        }
-    }
-    if (attack.deferredAmuletTheft)
-        return action;
     if (attack.deferredColdInventory) {
         const destructionGate = recordRandom(random, calls, 20);
         const attackerLevel = action.monster?.m_lev ?? MONSTER_LEVEL[action.monster?.mnum] ?? 0;
@@ -5457,7 +5458,25 @@ export async function resumeDeferredHeroContact(action, state, { random = rn2, r
         attack.deferredPostHit = false;
         return action;
     }
-    attack.appliedDamage = reduceHeroContactDamage(attack.damage ?? 0, state, rollOne, calls);
+    attack.appliedDamage = reduceHeroContactDamage(action.monster, attack.damage ?? 0, state, rollOne, calls);
+    if (attack.permanentDamage && attack.appliedDamage > 0) {
+        const damage = attack.appliedDamage;
+        let drain = recordRandom(random, calls, Math.trunc(damage / 2) + 1);
+        const hero = state.u;
+        const polymorphed = Upolyd(hero);
+        if (polymorphed || hero.uhpmax > 25 * hero.ulevel)
+            drain = damage;
+        else if (hero.uhpmax > 10 * hero.ulevel)
+            drain += Math.trunc(damage / 2);
+        else if (hero.uhpmax > 5 * hero.ulevel)
+            drain += Math.trunc(damage / 4);
+        const maximum = polymorphed ? 'mhmax' : 'uhpmax';
+        const lowerLimit = polymorphed
+            ? Math.min(MONSTER_LEVEL[hero.umonnum] ?? 0, hero.ulevel) : Math.max(hero.ulevel, 1);
+        if (hero[maximum] > lowerLimit)
+            hero[maximum] = Math.max(lowerLimit, hero[maximum] - drain);
+        state.context.botl = true;
+    }
     attack.passive = await finishHeroContactDamage(action.monster, attack.appliedDamage, attack.attackType, attack.oldFormMnum ?? state.u.umonnum, state, { random, rollDice, publish, ...(die ? { die } : {}) });
     if (attack.passive.heroDied)
         attack.heroDied = true;
@@ -6252,6 +6271,11 @@ async function finishDochugAfterMovement(monster, movement, state, random, rollO
         || movement.postMoveStatus === MMOVE_DONE || movement.postMoveStatus === MMOVE_NOMOVES))
         newsym(monster.mx, monster.my);
     if (movement.postMoveStatus === MMOVE_MOVED) {
+        const dx = Math.abs(monster.mx - state.u.ux);
+        const dy = Math.abs(monster.my - state.u.uy);
+        const nextToHero = dx <= 1 && dy <= 1 && !(monster.mnum === PM_GRID_BUG && dx && dy);
+        if (state.u.ustuck === monster && !nextToHero)
+            await releaseHeroFromMonster(monster, { state, rollOne });
         const flags = MONSTER_FLAGS1[dochugContext.entryMnum] ?? 0;
         if (!monsterFliesOrFloats({ mnum: dochugContext.entryMnum })
             && (!(flags & M1_CLING) || !levelHasCeiling(state)))
@@ -6703,7 +6727,7 @@ export async function takeMonsterTurn(monster, state, random = rn2, rollDice = d
                 };
             }
         }
-        const response = await respondMedusa(monster, { state, random, rollDice, rollOne, calls });
+        const response = await respondToImmediateMagic(monster, state, { random, rollDice, rollOne, calls });
         if (response?.heroDied || monster.dead || monster.mhp <= 0) {
             return {
                 calls,
@@ -6725,6 +6749,17 @@ export async function takeMonsterTurn(monster, state, random = rn2, rollDice = d
             (monster.mhp ?? 0) === (monster.mhpmax ?? 0) &&
             recordRandom(random, calls, 25) === 0) {
             monster.mflee = 0;
+        }
+        if (state.u.ustuck === monster && monster.mpeaceful && !monster.mconf
+            && !heroHasConflict(state)) {
+            const heroDied = await releaseMonsterHold(monster, { state, random, rollOne });
+            return {
+                calls, dochugContext,
+                movement: {
+                    oldx: monster.mx, oldy: monster.my, x: monster.mx, y: monster.my,
+                    moved: false, actionCompleted: true, heroDied,
+                },
+            };
         }
     }
     if (!options.afterCovetousRelocation) {
@@ -7137,6 +7172,12 @@ export async function resumeDeferredPetEating(action, state, random = rn2, rollD
     delete movement.petMeal;
     if (monster.dead || monster.mhp <= 0)
         movement.postMoveStatus = MMOVE_DIED;
+    else if (!movement.moved && monsterHasMapPosition(monster, state)) {
+        pullLeashedPetCloser(monster, state, random, calls);
+        movement.x = monster.mx;
+        movement.y = monster.my;
+        movement.moved = movement.x !== movement.oldx || movement.y !== movement.oldy;
+    }
     await completeMovedMonsterAction(monster, movement, state, random, rollDice, rollOne, calls, action.dochugContext);
     return action;
 }
@@ -7206,6 +7247,8 @@ export async function runMonsterAction(monster, state, random = rn2, rollDice = 
         if (conflictFight?.heroDied || conflictFight?.consumed)
             return { monster, calls, conflictFight };
     }
+    // C m_arrival() always clears arrival, even for an inactive monster.
+    monster.mstrategy = (monster.mstrategy ?? 0) & ~STRAT_ARRIVE;
     // monmove.c:dochug() checks the strategy wait mask before ordinary
     // sleep disturbance.  A squeaky board wakes indeterminate sleep, but
     // wake_nearto() deliberately preserves meditation for unique
@@ -7213,9 +7256,10 @@ export async function runMonsterAction(monster, state, random = rn2, rollDice = 
     // actor can see the hero or has been hurt.
     if ((monster.mstrategy ?? 0) & STRAT_WAITFORU &&
         ((monster.mhp ?? 0) < (monster.mhpmax ?? monster.mhp ?? 0) ||
-            (monster.mcansee !== 0 && couldSeeFromHero(state, monster.mx, monster.my)))) {
+            monsterHasLineOfSightToHero(monster, state))) {
         monster.mstrategy = (monster.mstrategy ?? 0) & ~STRAT_WAITFORU;
     }
+    checkQuestMonsterStatus(monster, state);
     if ((monster.mstrategy ?? 0) & STRAT_WAITMASK) {
         if (heroIsHallucinating(state))
             newsym(monster.mx, monster.my);

@@ -7,6 +7,7 @@ import { finishMonsterHideUnder } from './monster_hiding.js';
 // C ref: allmain.c — newgame, moveloop, moveloop_core.
 import { heroIsHallucinating } from './senses.js';
 import { mcalcmove } from './monster_speed.js';
+import { learnWand } from './wand_charge.js';
 import { makeBlinded } from './sight_change.js';
 import { makeConfused, makeHallucinated, makeStunned } from './hero_mental_status.js';
 import { heroHasHalfSpellDamage } from './spell_damage.js';
@@ -33,6 +34,8 @@ import { moveMonsterNextToHero, randomMonsterRelocation } from './teleport.js';
 import { monsterAtPosition } from './monster_location.js';
 import { placeHeroAtRandomArrival } from './level_change.js';
 import { monsterName, monsterSpellDeathReason, possessiveName, quietMonsterName } from './monster_name.js';
+import { touchHeroWithDeath } from './monster_death_touch.js';
+import { resolveMonsterWeaponContact } from './monster_weapon_contact.js';
 import { finishMonsterAttackDeath, waitForCurrentMonsterMore } from './monster_attack_death.js';
 import { monsterMissMessage } from './monster_miss.js';
 import { monsterIsAnimal } from './monster_data.js';
@@ -85,7 +88,9 @@ import { cansee, couldsee, vision_note_blocker_change, vision_recalc, vision_res
 import { nhgetch } from './input.js';
 import { NO_COLOR, CLR_BRIGHT_BLUE } from './terminal.js';
 import { ACID_VENOM, CORPSE, GOLD_PIECE, OBJECT_BIMANUAL, OBJECT_NAMES, SHIELD_OF_REFLECTION, } from './object_data.js';
-import { makePlural, withIndefiniteArticle } from './object_grammar.js';
+import { makePlural, verbForSubject, withIndefiniteArticle } from './object_grammar.js';
+import { monsterLocomotion } from './monster_locomotion.js';
+import { monsterFliesOrFloats } from './terrain_properties.js';
 import { observeDistantObjectForNaming, observeObjectForNaming, ownedObjectName, } from './objnam.js';
 import { A_CHA, A_CON, A_DEX, A_INT, A_STR, A_WIS, BOLT_LIM, COLNO, ROWNO, DOOR, D_CLOSED, D_LOCKED, HOLE, M_SEEN_MAGR, STONE, ZAP_POS, STRAT_CLOSE, STRAT_WAITFORU, UNENCUMBERED, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, W_ACCESSORY, W_WEAPONS, ismnum, Upolyd, Is_airlevel, Is_waterlevel, LUCKMIN, LUCKMAX, TT_LAVA, } from './const.js';
 import { uInitMisc, makedog, uInitInventoryAttrs, finishStartingDiscoveries, } from './u_init.js';
@@ -105,7 +110,7 @@ import { allocateMonsterMovement, applyHeroSpellDamage, beginDeferredHeroCloneWi
 import { finishEnvironmentalMonsterDeath, finishMonsterKilled, finishMonsterLiquidDeath, } from './monster_death.js';
 import { erodeArmor, erodeAttackingWeapon } from './object_erosion.js';
 import { monsterWieldedWeapon } from './monster_weapon.js';
-import { killGenocidedMonster, resolveMonsterLiquid, } from './mon.js';
+import { resolveMonsterLiquid } from './mon.js';
 import { wakeMonstersNear, wakeMonstersNearWithMessages, } from './monster_wake.js';
 import { applyHeroWereChange, presentWereChange } from './were.js';
 import { sessionIsNight } from './monster_sound.js';
@@ -1468,10 +1473,14 @@ function addHeroMovementRation(state, amount) {
 function reluctantPetMessage(monster, movement) {
     const game = requireInitializedGame();
     const pile = game.level?.objects?.[movement.x]?.[movement.y] || [];
-    const top = pile[0];
+    const rememberedObject = game.level?.at(movement.x, movement.y)?.remembered_glyph?.kind === 'object';
+    const top = !heroIsHallucinating(game) && game.level?.flags.hero_memory && rememberedObject
+        ? pile[0] : undefined;
     const objectName = top ? distantMonsterObjectName(top) : 'something';
-    const airborne = !!((MONSTER_FLAGS1[monster?.mnum] ?? 0) & 0x1);
-    return `${monsterName(monster, { state: game, capitalized: true, article: 'your', suppressIt: true })} ${airborne ? 'flies reluctantly over' : 'steps reluctantly onto'} ${objectName}.`;
+    const verb = verbForSubject(null, monsterLocomotion(monster.mnum, 'step'));
+    const subject = monsterName(monster, { state: game, capitalized: true, article: 'your', suppressIt: true });
+    const preposition = monsterFliesOrFloats(monster) ? 'over' : 'onto';
+    return `${subject} ${verb} reluctantly ${preposition} ${objectName}.`;
 }
 async function monsterAttackMessage(monster, attack, previousAttack = null, random = rn2) {
     const game = requireInitializedGame();
@@ -1499,6 +1508,12 @@ async function monsterAttackMessage(monster, attack, previousAttack = null, rand
     if (!attack.hit)
         return monsterMissMessage(monster, attack, game, random);
     const subject = monsterName(monster, { capitalized: true });
+    if (attack.effect === 'pestilence-contact')
+        return `${subject} reaches out, and you feel fever and chills.`;
+    if (attack.effect === 'famine-contact')
+        return `${subject} reaches out, and your body shrivels.`;
+    if (attack.effect === 'death-contact')
+        return `${subject} reaches out with its deadly touch.`;
     if (monster?.mnum === 116) {
         if (attack.effect === 'electric-natural')
             return `${subject} bites!`;
@@ -1868,7 +1883,7 @@ async function presentMonsterGrowth(monster, growth) {
     finishMonsterGrowth(monster, growth);
     newsym(monster.mx, monster.my);
     if (growth.genocided)
-        await killGenocidedMonster(monster, game);
+        await finishEnvironmentalMonsterDeath(monster, game);
 }
 async function resolveErosionFormRehumanization(heroAttack, effectMessage) {
     const game = requireInitializedGame();
@@ -2046,36 +2061,10 @@ async function resolveDeferredHeroDeathTouch(action, heroAttack, publish) {
         heroAttack.deferredDeathTouch = false;
         return;
     }
-    const rolledDamage = d(8, 6);
-    action.calls.push('d(8,6)');
-    const damage = 50 + rolledDamage;
-    const drain = Math.trunc(damage / 2);
-    await publish('You feel drained...');
-    heroAttack.fatalAttribution = {
-        kind: 'death-inflicted-by',
-        killer: monsterSpellDeathReason(action.monster, 'the touch of death'),
-        announcesDeath: drain < (u.uhpmax ?? 1),
-    };
-    if (polymorphed) {
-        u.mh = 0;
-        heroAttack.rehumanize = true;
-        heroAttack.appliedDamage = damage;
-    }
-    else if (drain >= (u.uhpmax ?? 1)) {
-        u.uhp = 0;
-        heroAttack.appliedDamage = damage;
-        heroAttack.heroDied = true;
-    }
-    else {
-        const oldHp = u.uhp ?? 1;
-        const minimumHp = Math.max(u.ulevel ?? 1, 3);
-        u.uhpmax = Math.max(minimumHp, (u.uhpmax ?? 1) - drain);
-        u.uhp = Math.min(u.uhp ?? 1, u.uhpmax);
-        const adjustedDamage = Math.max(1, damage - (oldHp - u.uhp));
-        applyHeroSpellDamage(heroAttack, adjustedDamage, game);
-    }
-    heroAttack.deathTouchDamage = damage;
-    heroAttack.deathTouchDrain = drain;
+    heroAttack.heroDied = await touchHeroWithDeath(action.monster, game, publish, (count, sides) => {
+        action.calls.push(`d(${count},${sides})`);
+        return d(count, sides);
+    });
     heroAttack.deferredDeathTouch = false;
 }
 async function resolveDeferredHeroDestroyArmor(heroAttack) {
@@ -2403,8 +2392,11 @@ async function presentMonsterAttackEffects(action, game, { random = rn2, rollDic
                     }
                     if (heroAttack.deferredAggravation)
                         resolveDeferredHeroAggravation(action, game);
-                    if (heroAttack.deferredDeathTouch)
+                    if (heroAttack.deferredDeathTouch) {
                         await resolveDeferredHeroDeathTouch(action, heroAttack, publishSpellMessage);
+                        if (heroAttack.heroDied)
+                            return { heroDied: true };
+                    }
                     if (heroAttack.deferredDestroyArmor)
                         await resolveDeferredHeroDestroyArmor(heroAttack);
                     if (heroAttack.deferredGeyserSpell)
@@ -2488,7 +2480,10 @@ async function presentMonsterAttackEffects(action, game, { random = rn2, rollDic
                     return dismissal;
                 };
                 if (heroAttack.hit && heroAttack.effect === 'physical-weapon') {
-                    await erodeAttackingWeapon(game.u, monsterWieldedWeapon(monster), {
+                    const weapon = monsterWieldedWeapon(monster);
+                    if (weapon)
+                        heroAttack.damage = await resolveMonsterWeaponContact(monster, weapon, heroAttack.damage ?? 0, game, publishEquipmentMessage, rollOne);
+                    await erodeAttackingWeapon(game.u, weapon, {
                         publish: publishEquipmentMessage,
                     });
                 }
@@ -3173,58 +3168,24 @@ async function executeMonsterTurns() {
             }
         }
         if (movement?.usedMisc?.kind === 'bullwhip-disarm') {
-            const misc = movement.usedMisc;
-            const targetType = misc.target?.otyp;
-            const targetName = (targetType !== undefined ? OBJECT_NAMES[targetType] : null)
-                || misc.target?.name || 'weapon';
-            const targetWithArticle = `the ${targetName}`;
-            const hand = targetType !== undefined && OBJECT_BIMANUAL[targetType]
-                ? 'hands' : 'hand';
-            if (actorWasOpticallySeen) {
-                await plineWithContinuation(`${visibleMonsterSubject(monster)} flicks a bullwhip towards your ${hand}!`);
-            }
-            const whip = actorWasOpticallySeen ? 'The bullwhip' : 'A whip';
-            await plineWithContinuation(`${whip} wraps around ${targetWithArticle} you're wielding!`);
             await finishDeferredMonsterMiscItem(action, game);
-            newsym(monster.mx, monster.my);
-            newsym(game.u.ux, game.u.uy);
-            if (misc.whereTo === 0) {
-                await plineWithContinuation('The whip slips free.');
-            }
-            else {
-                const subject = canSpotMonster(monster) ? visibleMonsterSubject(monster) : 'It';
-                if (misc.whereTo === 1) {
-                    await plineWithContinuation(`${subject} yanks ${targetWithArticle} from your ${hand}!`);
-                }
-                else if (misc.whereTo === 2) {
-                    await plineWithContinuation(`${subject} yanks ${targetWithArticle} to the floor!`);
-                }
-                else {
-                    await plineWithContinuation(`${subject} snatches ${targetWithArticle}!`);
-                }
-            }
+            if (game.program_state.gameover)
+                return false;
         }
-        if (movement?.usedMisc?.kind === 'potion-speed') {
+        if (movement?.usedMisc?.kind === 'potion-speed' || movement?.usedMisc?.kind === 'wand-speed-monster') {
             const misc = movement.usedMisc;
-            const sawDrinking = await presentMonsterQuaff(monster, misc.object);
+            const seen = canSeeMonster(monster);
+            if (misc.kind === 'wand-speed-monster')
+                await presentMonsterWandUse(monster, misc.object, { state: game, self: true });
+            else
+                await presentMonsterQuaff(monster, misc.object);
             await finishDeferredMonsterMiscItem(action, game);
-            if (sawDrinking && misc.speedChanged) {
+            if (seen && misc.speedChanged) {
                 await plineWithContinuation(`${visibleMonsterSubject(monster)} is suddenly moving ${misc.speedMuch ? 'much ' : ''}faster.`);
-                if (misc.object.dknown)
-                    learnObjectType(misc.object.otyp);
+                learnWand(misc.object, { state: game });
             }
-        }
-        if (movement?.usedMisc?.kind === 'wand-speed-monster') {
-            const misc = movement.usedMisc;
-            await presentMonsterWandUse(monster, misc.object, { state: game, self: true });
-            await finishDeferredMonsterMiscItem(action, game);
-            if (actorWasOpticallySeen && misc.speedChanged) {
-                await plineWithContinuation(`${visibleMonsterSubject(monster)} is suddenly moving ${misc.speedMuch ? 'much ' : ''}faster.`);
-                if (misc.object.dknown) {
-                    await exerciseAttribute(A_WIS, true);
-                    recordObjectKnowledge(misc.object.otyp);
-                }
-            }
+            if (misc.kind === 'potion-speed')
+                await consumeMonsterItem(monster, misc.object, game);
         }
         await presentMonsterMoveMessage(action, game);
         // C monmove.c:dochugw() interrupts an occupation when one actor has

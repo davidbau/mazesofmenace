@@ -6803,10 +6803,9 @@ export async function domove(dx, dy) {
         // Swallowed path: mtmp is ustuck; still goes through do_attack.
         const atk = await domove_attackmon_at(mtmp, newx, newy);
         displaceu = atk.displaceu;
-        if (atk.done) {
-            if (game.context?.run) end_running(true);
-            return;
-        }
+        // C hack.c:2796-2797 — attack done returns bare; run ends only via
+        // uhitm blocked-arms/nomul inside, never here (stale-T during runs).
+        if (atk.done) return;
         // safemon displace: fall through; swap after test_move succeeds
         // (not when swallowed — engulfer is never safemon displace)
     }
@@ -6815,11 +6814,12 @@ export async function domove(dx, dy) {
     // (steed/rooted/paranoid/utrap/inline test_move/swim). A displacer
     // swap skips the whole middle; the swap arm runs after the occupy.
     if (!displaceu) {
+        // C hack.c:2802-2808 — ironbars/web/empty TRUE returns bare (move
+        // stays the allmain preset 1); run ends only via nomul inside the
+        // futile/u_rooted arms, never on the dig-start arm (stale-T runs).
         if (await domove_fight_ironbars(newx, newy)
             || await domove_fight_web(newx, newy)
             || await domove_fight_empty(newx, newy)) {
-            if (game.context?.run) end_running(true);
-            game.context.move = 1;
             return;
         }
         unmap_invisible(newx, newy);

@@ -180,6 +180,7 @@ import {
 import {
     attach_egg_hatch_timeout,
     attach_fig_transform_timeout,
+    obj_split_timers,
     obj_stop_timers,
     start_timer,
     start_corpse_timeout,
@@ -960,8 +961,7 @@ export function splitobj(obj, quantity, env = {}) {
     if (obj.timed) {
         if (typeof normalized.hooks.splitObjectTimers === 'function')
             normalized.hooks.splitObjectTimers(obj, child, normalized);
-        else if (normalized.state === game)
-            note_unported('timeout.c obj_split_timers');
+        else obj_split_timers(obj, child, normalized.state);
     }
     if (obj_sheds_light(obj))
         obj_split_light_source(obj, child, normalized.state);
@@ -3902,19 +3902,20 @@ export function sanity_check_worn(obj, state = game) {
 
 // C ref: mkobj.c obj_nexto() (3643-3654). Wrapper to find a matching
 // object near the given object's location.
-export function obj_nexto(otmp, state = game) {
+export function obj_nexto(otmp, state = game, random = null) {
     if (!otmp) {
         note_unported('pline.c impossible');
         return null;
     }
-    return obj_nexto_xy(otmp, otmp.ox, otmp.oy, true, state);
+    return obj_nexto_xy(otmp, otmp.ox, otmp.oy, true, state, random);
 }
 
 // C ref: mkobj.c obj_nexto_xy() (3656-3693). Looks for objects of a
 // particular type next to (x, y), skipping over the given object.
 // Searches the current square first, then adjacent squares in a random
 // order. Makes two rn2(2) calls when recurs is true.
-export function obj_nexto_xy(obj, x, y, recurs, state = game) {
+export function obj_nexto_xy(obj, x, y, recurs, state = game, random = null) {
+    const drawRn2 = random?.rn2 ?? coreRn2;
     let otmp = inventory_sobj_at(obj.otyp, x, y, state);
     while (otmp) {
         if (otmp !== obj && mergable(otmp, obj))
@@ -3926,15 +3927,15 @@ export function obj_nexto_xy(obj, x, y, recurs, state = game) {
         return null;
 
     // search in a random order
-    const dx = coreRn2(2) ? -1 : 1;
-    const dy = coreRn2(2) ? -1 : 1;
+    const dx = drawRn2(2) ? -1 : 1;
+    const dy = drawRn2(2) ? -1 : 1;
     const ex = x - dx;
     const ey = y - dy;
 
     for (let fx = ex; Math.abs(fx - ex) < 3; fx += dx) {
         for (let fy = ey; Math.abs(fy - ey) < 3; fy += dy) {
             if (isok(fx, fy) && (fx !== x || fy !== y)) {
-                otmp = obj_nexto_xy(obj, fx, fy, false, state);
+                otmp = obj_nexto_xy(obj, fx, fy, false, state, random);
                 if (otmp) return otmp;
             }
         }

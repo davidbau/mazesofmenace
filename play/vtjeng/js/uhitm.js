@@ -517,7 +517,11 @@ import {
     xdrainenergym,
     rustm,
 } from './mhitm.js';
-import { burn_away_slime, fall_asleep } from './timeout.js';
+import {
+    burn_away_slime,
+    fall_asleep,
+    obj_stop_timers,
+} from './timeout.js';
 import { set_ulycn } from './were.js';
 import {
     carried,
@@ -698,7 +702,7 @@ import { obj_resists } from './bury.js';
 import { mhidden_description, object_from_map } from './pager.js';
 import { cutworm } from './worm.js';
 import { canseemon, canspotmon, sensemon } from './display.js';
-import { erode_obj } from './trap_erode_obj.js';
+import { acid_damage, erode_obj } from './trap_erode_obj.js';
 
 function intrinsicProperty(hero, index) {
     return Boolean(hero?.uprops?.[index]?.intrinsic);
@@ -4631,6 +4635,85 @@ export async function mhitm_ad_elec(
     }
 }
 
+// C ref: uhitm.c mhitm_ad_acid() (2742-2786), all three combat directions.
+// An acid-resistant monster still gets the source corrosion and weapon-acid
+// checks; resistance only clears the direct attack damage.
+export async function mhitm_ad_acid(
+    magr,
+    mattk,
+    mdef,
+    mhm,
+    state = game,
+    env = {},
+) {
+    const random = env.random ?? { rn2 };
+    const message = requireAttackOperation(env, 'message');
+    const effectEnv = { ...env, state, random, message };
+
+    if (magr === state.youmonst) {
+        if (Resists_Elem(mdef, ACID_RES, state)
+            || defended(mdef, AD_ACID, state)) {
+            mhm.damage = 0;
+        }
+    } else if (mdef === state.youmonst) {
+        await hitmsg(magr, mattk, state, effectEnv);
+        if (!magr.mcan && !random.rn2(3)) {
+            if (propertyPresent(state.u, ACID_RES)) {
+                await message(
+                    `You're covered in ${hliquid('acid', effectEnv)}, `
+                        + 'but it seems harmless.',
+                    state,
+                );
+                monstseesu(M_SEEN_ACID, state);
+                mhm.damage = 0;
+            } else {
+                await message(
+                    `You're covered in ${hliquid('acid', effectEnv)}! It burns!`,
+                    state,
+                );
+                await exercise(A_STR, false, state, random, {
+                    encumberMessage: env.encumberMessage ?? encumber_msg,
+                });
+                monstunseesu(M_SEEN_ACID, state);
+            }
+        } else {
+            mhm.damage = 0;
+        }
+    } else {
+        if (magr.mcan) {
+            mhm.damage = 0;
+            return;
+        }
+        if (Resists_Elem(mdef, ACID_RES, state)
+            || defended(mdef, AD_ACID, state)) {
+            if (state.gv?.vis && canseemon(mdef, state)) {
+                await message(
+                    `${Monnam(mdef, state, effectEnv)} is covered in `
+                        + `${hliquid('acid', effectEnv)}, but it seems harmless.`,
+                    state,
+                );
+            }
+            mhm.damage = 0;
+        } else if (state.gv?.vis && canseemon(mdef, state)) {
+            await message(
+                messageAt(
+                    `${Monnam(mdef, state, effectEnv)} is covered in `
+                        + `${hliquid('acid', effectEnv)}!`,
+                    mdef.mx,
+                    mdef.my,
+                    state,
+                ),
+                state,
+            );
+            await message(`It burns ${mon_nam(mdef, state, effectEnv)}!`, state);
+        }
+        if (!random.rn2(30))
+            await erode_armor(mdef, ERODE_CORRODE, state, effectEnv);
+        if (!random.rn2(6))
+            await acid_damage(mdef.mw, effectEnv);
+    }
+}
+
 // C's helper is used only when a poison attack has already passed its own
 // magic-cancellation and chance gates. It deliberately does not spend either
 // gate again. `gv.vis` is the combat visibility result computed by mhitm.c;
@@ -7346,7 +7429,18 @@ export async function mhitm_ad_dgst(
     const num = monsndx(pd);
     if (magr.mtame && !magr.isminion
         && !(state.svm.mvitals[num].mvflags & G_NOCORPSE)) {
-        const objectEnv = { ...env, state };
+        // C dealloc_obj stops timers itself; its JS lifecycle hook is explicit.
+        const objectEnv = {
+            ...env,
+            state,
+            hooks: {
+                ...(env.hooks ?? {}),
+                stopObjectTimers: env.hooks?.stopObjectTimers
+                    ?? ((obj, hookEnv) => obj_stop_timers(
+                        obj, hookEnv.state ?? state, hookEnv,
+                    )),
+            },
+        };
         const virtualcorpse = mksobj(CORPSE, false, false, objectEnv);
         set_corpsenm(virtualcorpse, num, objectEnv);
         let nutrit = dog_nutrition(magr, virtualcorpse, state);
@@ -7482,7 +7576,9 @@ export async function mhitm_adtyping(
     case AD_ELEC:
         await mhitm_ad_elec(magr, mattk, mdef, mhm, state, env);
         break;
-    case AD_ACID: unported('mhitm_ad_acid'); break;
+    case AD_ACID:
+        await mhitm_ad_acid(magr, mattk, mdef, mhm, state, env);
+        break;
     case AD_STON:
         await mhitm_ad_ston(magr, mattk, mdef, mhm, state, env);
         break;

@@ -26,7 +26,7 @@ import {
 import {
     nomul, check_special_room, set_uinwater, is_pool, is_lava, in_rooms, dosinkfall,
     SURFACE_AT, switch_terrain, maybe_half_phys, waterbody_name, losehp, carrying,
-    check_capacity,
+    check_capacity, Levitation_st, Flying_st,
 } from './hack.js';
 import {
     flush_screen, pline, newsym, newsym_force, docrt, bot, flush_topl_more, canseemon,
@@ -2217,9 +2217,9 @@ export async function pooleffects(newspot) {
             }
         } else if (Is_waterlevel(u.uz)) {
             stillInwater = true;
-        } else if (u.Levitation) {
+        } else if (u.Levitation || Levitation_st()) { // C `:3251` youprop macro, not the dead flat (D-3810 shape)
             await pline(`You pop out of the ${hliquid('water')} like a cork!`);
-        } else if (u.Flying) {
+        } else if (u.Flying || Flying_st()) { // C `:3253`
             await pline(`You fly out of the ${hliquid('water')}.`);
         } else if (wwalking) {
             await pline('You slowly rise above the surface.');
@@ -2237,8 +2237,14 @@ export async function pooleffects(newspot) {
         }
     }
 
-    /* C `:3267–3307` — entering water or lava. */
-    if (!u.ustuck && !u.Levitation && !u.Flying
+    /* C `:3267–3307` — entering water or lava. `:3272` reads the youprop.h
+       Levitation/Flying macros; the combined u.Levitation/u.Flying flats
+       are never written port-wide, so OR the file-local slot-union
+       readers (flats OR uprops H/E, either blocked source — the
+       u_locomotion/D-3810 shape), keeping the flat ORs. */
+    const levitating = !!(u.Levitation || Levitation_st());
+    const flying = !!(u.Flying || Flying_st());
+    if (!u.ustuck && !levitating && !flying
         && (is_pool(u.ux, u.uy) || is_lava(u.ux, u.uy))) {
         if (u.usteed && !grounded(u.usteed.data)) {
             /* floating or clinging steed keeps hero safe */
