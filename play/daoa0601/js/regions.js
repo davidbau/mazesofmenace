@@ -8,6 +8,8 @@ import { game, requireGameLevel } from './gstate.js';
 import { monsterAtPosition } from './monster_location.js';
 import { monsterHasPoisonResistance } from './monster_resistance.js';
 import { heroIsBreathless } from './hero_species.js';
+import { heroEyeName, heroLungName } from './body_parts.js';
+import { makePlural } from './object_grammar.js';
 import { refreshProperty } from './properties.js';
 import { teleportHeroSafely } from './teleport.js';
 import { MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_SOUND, MONSTER_SYMBOL, monsterIsNonliving, monsterIsVampireShifter, } from './monster_data.js';
@@ -36,12 +38,16 @@ function uniqueXMajorCells(cells) {
     return [...points.values()].sort((left, right) => left.x - right.x || left.y - right.y);
 }
 // Store the cells and lifetime shared by harmless and poisonous gas clouds.
-export function createHarmlessGasCloudSelection(state, cells, { ttl = -1 } = {}) {
-    return createGasCloudSelection(state, cells, ttl, 0);
+export async function createHarmlessGasCloudSelection(state, cells, { ttl = -1 } = {}) {
+    return await createGasCloudSelection(state, cells, ttl, 0);
 }
-function createGasCloudSelection(state, cells, ttl, damage) {
+export async function createGasCloudSelection(state, cells, ttl, damage, publish = plineWithContinuation) {
+    return await makeGasCloud(state, cells, ttl, damage, false, publish);
+}
+async function makeGasCloud(state, cells, ttl, damage, silent, publish) {
     if (!state?.level)
         return null;
+    const inside = state.level.regions.some(region => regionContains(region, state.u.ux, state.u.uy));
     const orderedCells = uniqueXMajorCells(cells);
     const monsterIds = new Set();
     for (const cell of orderedCells) {
@@ -53,6 +59,7 @@ function createGasCloudSelection(state, cells, ttl, damage) {
     }
     const region = {
         kind: 'gas-cloud',
+        heroFault: !state.in_mklev && !state.context.mon_moving,
         visible: true,
         damage,
         ttl,
@@ -74,6 +81,11 @@ function createGasCloudSelection(state, cells, ttl, damage) {
                     newsym(x, y);
             }
         }
+    }
+    if (!state.in_mklev && !inside && !silent
+        && regionContains(region, state.u.ux, state.u.uy)) {
+        await publish(`You are enveloped in a cloud of ${damage ? 'noxious gas' : 'steam'}!`);
+        state._lastPlineKind = PLNMSG_ENVELOPED_IN_GAS;
     }
     return region;
 }
@@ -126,29 +138,17 @@ function gasCloudCells(state, x, y, cloudSize, random) {
 function gasCloudTtl(cloudSize, cellCount, random) {
     return Math.trunc((4 + random(3)) * cloudSize / cellCount);
 }
-export function createSteamCloud(state, x, y, cloudSize, random = rn2) {
-    const cells = gasCloudCells(state, x, y, cloudSize, random);
-    const ttl = gasCloudTtl(cloudSize, cells.length, random);
-    return createHarmlessGasCloudSelection(state, cells, { ttl });
+export async function createSteamCloud(state, x, y, cloudSize, random = rn2) {
+    return await createPoisonGasCloud(state, x, y, cloudSize, 0, random);
 }
 export async function createPoisonGasCloud(state, x, y, cloudSize, damage, random = rn2, publish = plineWithContinuation) {
     if (!state?.level)
         return null;
-    const inside = (state.level.regions || []).some(region => region.kind === 'gas-cloud' && regionContains(region, state.u.ux, state.u.uy));
     const silentSingleCell = !state.context?.mon_moving
         && x === state.u.ux && y === state.u.uy && cloudSize === 1
         && (!damage || heroGasTolerance(state) === GAS_OK);
     const cells = gasCloudCells(state, x, y, cloudSize, random);
-    const region = createGasCloudSelection(state, cells, gasCloudTtl(cloudSize, cells.length, random), damage);
-    if (!region)
-        return null;
-    region.heroFault = !state.in_mklev && !state.context?.mon_moving;
-    if (!state.in_mklev && !inside && !silentSingleCell
-        && regionContains(region, state.u.ux, state.u.uy)) {
-        await publish(`You are enveloped in a cloud of ${damage ? 'noxious gas' : 'steam'}!`);
-        state._lastPlineKind = PLNMSG_ENVELOPED_IN_GAS;
-    }
-    return region;
+    return await makeGasCloud(state, cells, gasCloudTtl(cloudSize, cells.length, random), damage, silentSingleCell, publish);
 }
 function regionContains(region, x, y) {
     return region.cells?.some(cell => cell.x === x && cell.y === y);
@@ -271,7 +271,7 @@ async function affectHeroWithGas(region, state, { publish, rollOne, wake, onHero
     if (tolerance === GAS_OK)
         return null;
     if (!heroIsBlind(state)) {
-        await publish('Your eyes sting.');
+        await publish(`Your ${makePlural(heroEyeName(state))} sting.`);
         await makeBlinded(1, { state, talk: false, publish });
     }
     if (tolerance === GAS_MINOR) {
@@ -279,7 +279,7 @@ async function affectHeroWithGas(region, state, { publish, rollOne, wake, onHero
         await wakeNearGas(state.u.ux, state.u.uy, state, publish, wake);
         return { kind: 'hero-gas', resisted: true, damage: 0 };
     }
-    await publish('Something is burning your lungs!');
+    await publish(`Something is burning your ${makePlural(heroLungName(state))}!`);
     await publish('You cough and spit blood!');
     await wakeNearGas(state.u.ux, state.u.uy, state, publish, wake);
     const damage = halfHeroGasDamage(rollOne(region.damage) + 5, state);

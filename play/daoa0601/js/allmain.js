@@ -1,5 +1,9 @@
 import { recorderLocalEpochSeconds } from './calendar.js';
 import { slipOrTrip } from './fumbling.js';
+import { recoverTimedLuck } from './timeout_luck.js';
+import { doStorms } from './storms.js';
+import { advanceBodyTimeouts, advanceGallopingTimeout } from './timeout_body.js';
+import { breathingDialogue, wallPassageDialogue, finishBreathingTimeout, finishWallPassageTimeout, } from './timeout_warnings.js';
 import { invWeight } from './weight.js';
 import { rewindEngravingsForSave } from './engrave.js';
 import { finishMonsterHideUnder } from './monster_hiding.js';
@@ -19,7 +23,7 @@ import { advanceCorpseResistanceTimeouts } from './corpse_intrinsics.js';
 import { game, requireGameLevel, requireInitializedGame, requireGameDisplay, requireLiveGame } from './gstate.js';
 import { isRoom } from './map_types.js';
 import { clearImmediateZapBypasses } from './immediate_zap.js';
-import { MON_FLOOR, PICK_ONE } from './const.js';
+import { MON_FLOOR, PICK_ONE, PLNMSG_MON_TAKES_OFF_ITEM } from './const.js';
 import { showInventoryWindow } from './windows.js';
 import { endVoluntaryMultiTurn, heroHasInvoluntaryDelay } from './command_state.js';
 import { dosounds } from './ambient_sounds.js';
@@ -40,11 +44,17 @@ import { finishMonsterAttackDeath, waitForCurrentMonsterMore } from './monster_a
 import { monsterMissMessage } from './monster_miss.js';
 import { monsterIsAnimal } from './monster_data.js';
 import { monsterCanCarryObject } from './monster_carry.js';
+import { releaseObjectLeash } from './monster_leash.js';
+import { petrifyMonsterImmediately } from './monster_stoning.js';
+import { touchPetrifies } from './stoning.js';
 import { armorSimpleName, stopDonning } from './armor.js';
 import { isBeingTakenOff } from './takeoff_state.js';
 import { OBJECT_DELAY } from './object_data.js';
 import { heroIsUnaware } from './hero_sleep.js';
-import { AD_COLD, AD_DGST, AD_DRST, AD_FIRE, AD_MAGM, AD_SITM, AD_STCK } from './monster_attack_types.js';
+import { heroSpecies } from './hero_species.js';
+import { heroHasConflict } from './hero_conflict.js';
+import { openHoldingTrap } from './trap_magic.js';
+import { AD_COLD, AD_DGST, AD_DRST, AD_FIRE, AD_MAGM, AD_SEDU, AD_SITM, AD_SSEX, AD_STCK } from './monster_attack_types.js';
 import { monstersForgetHeroResistance, monstersObserveHeroResistance, seenResistanceForDamage, } from './monster_perception.js';
 import { engravingAt, wipeEngravingAt } from './engrave.js';
 import { finishScheduledLevelChange } from './level_change.js';
@@ -87,12 +97,12 @@ import { canSpotMonster, displayMessageWindow, docrt, redrawMap, bot, flush_scre
 import { cansee, couldsee, vision_note_blocker_change, vision_recalc, vision_reset, hasLightSources, init_vision_globals, } from './vision.js';
 import { nhgetch } from './input.js';
 import { NO_COLOR, CLR_BRIGHT_BLUE } from './terminal.js';
-import { ACID_VENOM, CORPSE, GOLD_PIECE, OBJECT_BIMANUAL, OBJECT_NAMES, SHIELD_OF_REFLECTION, } from './object_data.js';
+import { ACID_VENOM, BOULDER, CORPSE, LEASH, GOLD_PIECE, OBJECT_BIMANUAL, OBJECT_NAMES, SHIELD_OF_REFLECTION, } from './object_data.js';
 import { makePlural, verbForSubject, withIndefiniteArticle } from './object_grammar.js';
 import { monsterLocomotion } from './monster_locomotion.js';
 import { monsterFliesOrFloats } from './terrain_properties.js';
 import { observeDistantObjectForNaming, observeObjectForNaming, ownedObjectName, } from './objnam.js';
-import { A_CHA, A_CON, A_DEX, A_INT, A_STR, A_WIS, BOLT_LIM, COLNO, ROWNO, DOOR, D_CLOSED, D_LOCKED, HOLE, M_SEEN_MAGR, STONE, ZAP_POS, STRAT_CLOSE, STRAT_WAITFORU, UNENCUMBERED, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, W_ACCESSORY, W_WEAPONS, ismnum, Upolyd, Is_airlevel, Is_waterlevel, LUCKMIN, LUCKMAX, TT_LAVA, } from './const.js';
+import { A_CHA, A_CON, A_DEX, A_INT, A_STR, A_WIS, BOLT_LIM, COLNO, ROWNO, DOOR, D_CLOSED, D_LOCKED, HOLE, M_SEEN_MAGR, STONE, ZAP_POS, STRAT_CLOSE, STRAT_WAITFORU, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE, W_ARMG, UNENCUMBERED, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, W_ACCESSORY, W_WEAPONS, ismnum, Upolyd, Is_airlevel, Is_waterlevel, LUCKMIN, LUCKMAX, TT_BURIEDBALL, TT_LAVA, } from './const.js';
 import { uInitMisc, makedog, uInitInventoryAttrs, finishStartingDiscoveries, } from './u_init.js';
 import { makeDeaf } from './hero_hearing.js';
 import { heroIsBlind, heroIsDeaf, syncBlindness } from './senses.js';
@@ -119,10 +129,10 @@ import { sinkHeroIntoLava } from './hack.js';
 import { reportMonsterTeleportRestriction } from './teleport_rules.js';
 import { heroIsUnchanging, polymonHero, polymorphHero, returnHeroToHumanForm } from './polyself.js';
 import { healHeroLegs } from './hero_legs.js';
-import { advanceHeroSickness, advanceHeroVomiting, heroIsSick, heroIsVomiting, } from './hero_illness.js';
-import { advanceHeroSliming, clearHeroSliming, finishDeferredHeroSlime, heroIsSliming, resumeDeferredHeroSlime, } from './slime.js';
-import { advanceHeroPetrification, heroIsPetrifying, } from './stoning.js';
-import { advanceHeroStrangulation } from './hero_strangulation.js';
+import { advanceHeroSickness, advanceHeroVomiting, heroIsSick, heroIsVomiting, sicknessDialogue, vomitingDialogue, } from './hero_illness.js';
+import { advanceHeroSliming, clearHeroSliming, finishDeferredHeroSlime, heroIsSliming, resumeDeferredHeroSlime, slimeDialogue, } from './slime.js';
+import { advanceHeroPetrification, heroIsPetrifying, petrificationDialogue, } from './stoning.js';
+import { advanceHeroStrangulation, strangulationDialogue } from './hero_strangulation.js';
 import { initTrack, setTrack } from './track.js';
 import { autopickupAtHero } from './pickup.js';
 import { clearJustPicked } from './just_picked.js';
@@ -139,12 +149,12 @@ import { activateStatueTrapAt } from './statue_trap.js';
 import { finishPrayerOccupation } from './pray.js';
 import { getHungry, recoverHeroFromFainting, regainHearingAfterHelplessness, } from './hunger.js';
 import { chatWithQuestLeader, isQuestLeader } from './quest.js';
-import { deliverCommonQuestInsult } from './quest_pager.js';
+import { publishMonsterCuss } from './monster_cuss.js';
 import { monsterAlignmentType } from './monster_alignment.js';
 import { moveElementalBubbles } from './elemental.js';
 import { removeObjectAndContentsFromBill, checkSpecialRoom, currentShopResident, } from './shk.js';
 import { inventoryItemDescription, rerollMenu, } from './invent.js';
-import { hasIntrinsicProperty, hasPermanentIntrinsicProperty, propertyIsActive, propertyTimeout, refreshProperty, setPropertyTimeout, } from './properties.js';
+import { hasIntrinsicProperty, hasPermanentIntrinsicProperty, propertyIsActive, propertyTimeout, propertyIsBlocked, refreshProperty, setPropertyTimeout, } from './properties.js';
 import { heroIsUnconscious, putHeroToSleep } from './hero_sleep.js';
 import { resolveMonsterContactEffect } from './monster_contact_effects.js';
 import { setSlipperyHands } from './towel.js';
@@ -508,7 +518,7 @@ async function finishInitialTurnMaintenanceAfterIntervention(sourceTurn) {
     if (Is_airlevel(game.u?.uz) || Is_waterlevel(game.u?.uz))
         await moveElementalBubbles();
     else if (game.level?.flags?.fumaroles)
-        fumaroles(game);
+        await fumaroles(game);
     const delayedAction = game._delayedAction;
     if (delayedAction && delayedAction.kind !== 'steal' && delayedAction.remainingGlobalTurns > 0) {
         delayedAction.remainingGlobalTurns--;
@@ -706,6 +716,9 @@ async function finishInitialTurnMaintenanceAfterAutomaticSearch({ sourceTurn, mo
     await warnWithMasterKey(game);
     // Each sound keeps its native message wait before later feature rolls.
     await dosounds();
+    await doStorms(game);
+    if (game.program_state.gameover)
+        return { kind: 'complete', moveAmount };
     return finishInitialTurnMaintenanceAfterAmbient({ sourceTurn, moveAmount });
 }
 async function finishInitialTurnMaintenanceAfterRegions({ sourceTurn, moveAmount, capacity, deferAmbientMessage, polymorphed, }) {
@@ -900,22 +913,11 @@ async function finishInitialTurnMaintenanceAfterMonsterDistress(capacity, deferA
     // disposable: bear-trap leg damage lowers Dexterity until this countdown
     // expires.
     const sourceTurn = game.moves;
-    if (game.u.mtimedone !== undefined && game.u.mtimedone > 0)
-        game.u.mtimedone--;
-    if (peekNextDueObjectTimer(game, sourceTurn)) {
-        if (!deferAmbientMessage) {
-            throw new Error('due object timer requires source-ordered async maintenance');
-        }
-        return {
-            kind: 'object-timers',
-            sourceTurn, moveAmount, capacity, deferAmbientMessage, polymorphed,
-        };
-    }
-    return finishInitialTurnMaintenanceAfterObjectTimers({
+    return finishInitialTurnMaintenanceBeforeTimeouts({
         sourceTurn, moveAmount, capacity, deferAmbientMessage, polymorphed,
     });
 }
-async function finishInitialTurnMaintenanceAfterObjectTimers({ sourceTurn, moveAmount, capacity, deferAmbientMessage, polymorphed, }) {
+async function finishInitialTurnMaintenanceBeforeTimeouts({ sourceTurn, moveAmount, capacity, deferAmbientMessage, polymorphed, }) {
     const game = requireInitializedGame();
     // C timeout.c:nh_timeout() expires temporary confusion before regen,
     // sounds, hunger, and exerchk().  The final tick is observable twice:
@@ -924,57 +926,66 @@ async function finishInitialTurnMaintenanceAfterObjectTimers({ sourceTurn, moveA
     // Prayer's u.uinvulnerable is not the timed Invulnerable property.
     // timeout.c:nh_timeout() returns before decrementing any property while
     // that prayer-only flag is active.
+    recoverTimedLuck(game);
     const prayerTimeoutFreeze = !!game.u?.invulnerable;
     if (!prayerTimeoutFreeze && heroIsPetrifying(game)) {
-        await advanceHeroPetrification({
+        await petrificationDialogue({
             state: game,
             publish: plineWithContinuation,
-            die: finishHeroDeath,
         });
         if (game.program_state?.gameover)
             return { kind: 'complete', moveAmount };
     }
     if (!prayerTimeoutFreeze && heroIsSliming(game)) {
-        await advanceHeroSliming({
+        await slimeDialogue({
             state: game,
             publish: plineWithContinuation,
             repaint: newsym,
             randomMonsterName: randomDisplayMonsterName,
-            transform: polymonHero,
-            die: finishHeroDeath,
         });
         if (game.program_state?.gameover)
             return { kind: 'complete', moveAmount };
     }
     if (!prayerTimeoutFreeze && heroIsVomiting(game)) {
-        await advanceHeroVomiting({
+        await vomitingDialogue({
             state: game,
             publish: plineWithContinuation,
         });
     }
     if (!prayerTimeoutFreeze
         && game.u.strangledTurns !== undefined && game.u.strangledTurns > 0) {
-        await advanceHeroStrangulation({
+        await strangulationDialogue({
             state: game,
             publish: plineWithContinuation,
-            die: finishHeroDeath,
         });
         if (game.program_state?.gameover)
             return { kind: 'complete', moveAmount };
     }
     if (!prayerTimeoutFreeze && heroIsSick(game)) {
-        await advanceHeroSickness({
+        await sicknessDialogue({
             state: game,
             publish: plineWithContinuation,
-            die: finishHeroDeath,
         });
         if (game.program_state?.gameover)
             return { kind: 'complete', moveAmount };
     }
     if (!prayerTimeoutFreeze)
         await levitationDialogue(game);
+    if (!prayerTimeoutFreeze) {
+        await wallPassageDialogue(game);
+        await breathingDialogue(game);
+    }
+    if (!prayerTimeoutFreeze) {
+        if (propertyTimeout('sleepy', game) === 4)
+            await plineWithContinuation('You yawn.');
+        await advanceBodyTimeouts(game);
+        if (game.program_state.gameover)
+            return { kind: 'complete', moveAmount };
+    }
     if (!prayerTimeoutFreeze)
         await advanceSpellProtection(game);
+    if (!prayerTimeoutFreeze)
+        await advanceGallopingTimeout(game);
     if (!prayerTimeoutFreeze) {
         if (advancePropertyTimeout('fireResistance', game)
             && !propertyIsActive('fireResistance', game))
@@ -1081,8 +1092,25 @@ async function finishInitialTurnMaintenanceAfterConfusion({ sourceTurn, moveAmou
         else
             game.u.deafTurns--;
     }
+    if (!prayerTimeoutFreeze) {
+        await advanceHeroSickness({ publish: plineWithContinuation });
+        if (game.program_state.gameover)
+            return { kind: 'complete', moveAmount };
+        await advanceHeroPetrification();
+        if (game.program_state.gameover)
+            return { kind: 'complete', moveAmount };
+        await advanceHeroStrangulation();
+        if (game.program_state.gameover)
+            return { kind: 'complete', moveAmount };
+        await advanceHeroVomiting();
+    }
     if (!prayerTimeoutFreeze && advancePropertyTimeout('glib', game))
         setSlipperyHands(0, game);
+    if (!prayerTimeoutFreeze) {
+        await advanceHeroSliming({ transform: polymonHero, die: finishHeroDeath });
+        if (game.program_state.gameover)
+            return { kind: 'complete', moveAmount };
+    }
     if (!prayerTimeoutFreeze
         && game.u.hallucinationTurns !== undefined && game.u.hallucinationTurns > 0) {
         if (game.u.hallucinationTurns === 1) {
@@ -1177,12 +1205,11 @@ async function finishInitialTurnMaintenanceAfterFumbling({ sourceTurn, moveAmoun
         if (game.u.invisibleTurns === 0) {
             const stillInvisible = syncHeroInvisibility(game);
             newsym(game.u.ux, game.u.uy);
-            if (!stillInvisible && !game.blind) {
-                appendTurnMessage(game.u.seeInvisible
+            if (!stillInvisible && !propertyIsBlocked('invisible', game) && !heroIsBlind(game)) {
+                await plineWithContinuation(game.u.seeInvisible
                     ? 'You can no longer see through yourself.'
                     : 'You are no longer invisible.');
-                if (game._occupation)
-                    game._occupation = null;
+                await stopHeroOccupation(game);
             }
         }
     }
@@ -1205,17 +1232,10 @@ async function finishInitialTurnMaintenanceAfterFumbling({ sourceTurn, moveAmoun
             && !propertyIsActive('waterWalking', game))
             await plineWithContinuation('Your temporary ability to walk on liquid has ended.');
         advancePropertyTimeout('swimming', game);
-        for (const [property, timeout] of [
-            ['magicalBreathing', 'magicalBreathingTurns'],
-            ['passesWalls', 'passesWallsTurns'],
-        ]) {
-            const remaining = game.u[timeout];
-            if (remaining !== undefined && remaining > 0) {
-                game.u[timeout] = remaining - 1;
-                if (game.u[timeout] === 0)
-                    refreshProperty(property, game);
-            }
-        }
+        if (advancePropertyTimeout('magicalBreathing', game))
+            await finishBreathingTimeout(game);
+        if (advancePropertyTimeout('passesWalls', game))
+            await finishWallPassageTimeout(game);
         advancePropertyTimeout('slowDigestion', game);
     }
     if (!prayerTimeoutFreeze)
@@ -1236,7 +1256,7 @@ async function finishInitialTurnMaintenanceAfterFumbling({ sourceTurn, moveAmoun
         setPropertyTimeout('fast', game.u.veryFastTurns - 1, game);
         if (game.u.veryFastTurns === 0) {
             if (!game.u.veryFast)
-                appendTurnMessage(game.u.fast
+                await plineWithContinuation(game.u.fast
                     ? 'You feel yourself slow down a bit.'
                     : 'You feel yourself slow down.');
         }
@@ -1245,9 +1265,11 @@ async function finishInitialTurnMaintenanceAfterFumbling({ sourceTurn, moveAmoun
         advanceSimplePropertyTimeouts([
             'reflection', 'freeAction', 'sustainAbility', 'lifeSaving',
         ], game);
-    return finishInitialTurnMaintenanceAfterTimeout({
+    return {
+        kind: !prayerTimeoutFreeze && peekNextDueObjectTimer(game, sourceTurn)
+            ? 'object-timers' : 'regions',
         sourceTurn, moveAmount, capacity, deferAmbientMessage, polymorphed,
-    });
+    };
 }
 // C timeout.c decrements every intrinsic timeout in prop.h order. These
 // properties have no dedicated recovery action; their source projection still
@@ -1283,16 +1305,6 @@ async function advanceWorldTurn() {
         return;
     let phase = initialPhase;
     const completedTurn = game.moves;
-    while (phase.kind === 'object-timers') {
-        const claimed = claimNextDueObjectTimer(game, phase.sourceTurn);
-        if (claimed)
-            await runObjectTimer(claimed, phase.sourceTurn);
-        if (peekNextDueObjectTimer(game, phase.sourceTurn))
-            continue;
-        phase = await finishInitialTurnMaintenanceAfterObjectTimers(phase);
-    }
-    if (game.program_state?.gameover)
-        return;
     while (phase.kind === 'timeout-message') {
         if (phase.timeoutKind === 'stun') {
             await makeStunned(0);
@@ -1305,6 +1317,16 @@ async function advanceWorldTurn() {
             await stopHeroOccupation(game);
             phase = await finishInitialTurnMaintenanceAfterConfusion(phase);
         }
+    }
+    while (phase.kind === 'object-timers') {
+        const claimed = claimNextDueObjectTimer(game, phase.sourceTurn);
+        if (claimed)
+            await runObjectTimer(claimed, phase.sourceTurn);
+        if (game.program_state.gameover)
+            return;
+        if (peekNextDueObjectTimer(game, phase.sourceTurn))
+            continue;
+        phase = finishInitialTurnMaintenanceAfterTimeout(phase);
     }
     if (game.program_state?.gameover)
         return;
@@ -1560,7 +1582,7 @@ function wornTheftObjectDescription(object) {
     // C steal.c:worn_item_removal() starts from doname(), then massages only
     // the ownership and equipment-location suffix for its pre-removal line.
     let description = inventoryItemDescription(object)
-        .replace(/^(?:the|an|a) /, 'your ')
+        .replace(/^(?:the|an|a) /, object === game.uchain ? 'the ' : 'your ')
         .replace(' (being worn)', '')
         .replace(' (alternate weapon; not wielded)', '');
     description = description.replace(/ \(on (left|right) hand\)$/, ' (from $1 hand)');
@@ -1583,10 +1605,24 @@ async function resolveDeferredHeroItemTheft(action, monster, attack, random) {
         return false;
     attack.deferredItemTheft = false;
     const animal = monsterIsAnimal(monster);
+    const wasPunished = !!game.uball;
     const draw = (limit) => {
         action.calls.push(`rn2(${limit})`);
         return random(limit);
     };
+    if (!animal && MONSTER_ATTACKS[heroSpecies(game)]?.some(attack => attack[1] === AD_SEDU || attack[1] === AD_SSEX)) {
+        const subject = monsterName(monster, { state: game, capitalized: true });
+        await plineWithContinuation(`${subject} ${heroIsDeaf(game)
+            ? "says something but you can't hear it"
+            : (monster.minvent || monster.inventory || []).length ? 'brags about the goods some dungeon explorer provided'
+                : 'makes some remarks about how difficult theft is lately'}.`);
+        if (!await reportMonsterTeleportRestriction(monster, { state: game }))
+            await randomMonsterRelocation(monster, { calls: action.calls, flags: RLOC_MSG });
+        attack.attackerDone = true;
+        attack.contactDone = true;
+        attack.nativeResult = M_ATTK_AGR_DONE;
+        return true;
+    }
     if (monster.mcan) {
         if (animal)
             return false;
@@ -1601,13 +1637,56 @@ async function resolveDeferredHeroItemTheft(action, monster, attack, random) {
             if (!await reportMonsterTeleportRestriction(monster, { state: game }))
                 await randomMonsterRelocation(monster, { calls: action.calls, flags: RLOC_MSG });
             attack.attackerDone = true;
+            attack.contactDone = true;
+            attack.nativeResult = M_ATTK_AGR_DONE;
         }
         return false;
     }
-    const object = selectHeroItemForTheft(game, random, action.calls);
-    if (!object || !(game.inventory || []).includes(object))
+    if (dist2(monster.mx, monster.my, game.u.ux, game.u.uy) > 2)
         return false;
-    if (game._delayedAction?.kind === 'steal' && game._delayedAction.object === object)
+    const seenBeforeRemoval = canSpotMonster(monster);
+    let subject = seenBeforeRemoval
+        ? monsterName(monster, { state: game, capitalized: true })
+        : animal ? 'Something' : 'Someone';
+    const meal = game.context.victual;
+    if (game._occupation?.key === 'eat-food' && meal && meal.usedtime >= meal.reqtime) {
+        await stopHeroOccupation(game);
+        if (game.program_state.gameover)
+            return true;
+    }
+    const adornment = !animal && !game.uarmg
+        ? [game.uleft, game.uright].find(ring => ring?.otyp === OBJECT_NAMES.indexOf('adornment'))
+        : null;
+    let object = adornment ?? selectHeroItemForTheft(game, random, action.calls);
+    const throwsRocks = !!((MONSTER_FLAGS2[monster.mnum] ?? 0) & 0x08000000);
+    let retriedBoulder = false;
+    while (object) {
+        if (game._delayedAction?.kind === 'steal' && game._delayedAction.object === object)
+            return false;
+        if (object.otyp !== BOULDER || throwsRocks || retriedBoulder)
+            break;
+        retriedBoulder = true;
+        object = selectHeroItemForTheft(game, random, action.calls);
+    }
+    if (!object) {
+        if (!animal && game.uchain && draw(4)) {
+            await plineWithContinuation(`${subject} takes off ${wornTheftObjectDescription(game.uchain)}.`);
+            await removeWornHeroItem(game.uchain, game);
+        }
+        else if (!animal && game.u.utrap && game.u.utraptype === TT_BURIEDBALL && !draw(4)) {
+            await plineWithContinuation(`${subject} takes off your unseen chain.`);
+            await openHoldingTrap(game.u, { state: game });
+        }
+        else
+            await plineWithContinuation(heroIsBlind(game)
+                ? 'Somebody tries to rob you, but finds nothing to steal.'
+                : game.inventory.some(item => item.oclass === 12)
+                    ? `${subject} tries to rob you, but isn't interested in gold.`
+                    : `${subject} tries to rob you, but there is nothing to steal!`);
+        await retreatAfterItemTheft(action, monster, attack, animal);
+        return true;
+    }
+    if (!game.inventory.includes(object))
         return false;
     const equipmentSlots = heroEquipmentSlots();
     const occupiedSlots = equipmentSlots.filter(slot => game[slot] === object);
@@ -1619,10 +1698,6 @@ async function resolveDeferredHeroItemTheft(action, monster, attack, random) {
         || !!(weaponMask & W_ACCESSORY);
     const wasWorn = occupiedSlots.length > 0
         || object.worn || weaponMask !== 0;
-    const seenBeforeRemoval = canSpotMonster(monster);
-    let subject = seenBeforeRemoval
-        ? monsterName(monster, { state: game, capitalized: true })
-        : animal ? 'Something' : 'Someone';
     const wornArmor = occupiedSlots.some(slot => slot.startsWith('uarm'));
     const refuse = async () => {
         const verbs = ['steal', 'snatch', 'grab', 'take'];
@@ -1630,16 +1705,15 @@ async function resolveDeferredHeroItemTheft(action, monster, attack, random) {
             : ownedObjectName(object, game, { capitalized: false });
         await plineWithContinuation(`${subject} tries to ${verbs[draw(4)]} ${name} but gives up.`);
         if (draw(Math.trunc(game.inventory.filter(item => item.oclass !== 12).length / 5) + 2) === 0) {
-            if (!animal && !await reportMonsterTeleportRestriction(monster, { state: game }))
-                await randomMonsterRelocation(monster, { calls: action.calls, flags: RLOC_MSG });
-            await makeMonsterFlee(monster, { announce: false });
-            attack.attackerDone = true;
+            await retreatAfterItemTheft(action, monster, attack, animal);
         }
         return false;
     };
+    if (object.otyp === BOULDER && !throwsRocks)
+        return refuse();
     if (animal) {
-        let stuck = !!object.cursed && wasWorn
-            && object !== game.uquiver && !(object === game.uswapwep && !game.u.twoweap);
+        let stuck = object === game.uball || (!!object.cursed && wasWorn
+            && object !== game.uquiver && !(object === game.uswapwep && !game.u.twoweap));
         const weapon = game.uwep;
         const ring = object === game.uleft || object === game.uright;
         if (!stuck && ring && weapon && isWeldedPrimary(weapon, game)) {
@@ -1650,6 +1724,11 @@ async function resolveDeferredHeroItemTheft(action, monster, attack, random) {
         }
         if (stuck || !monsterCanCarryObject(monster, object, game, draw))
             return refuse();
+    }
+    if (object.otyp === LEASH && object.leashmon) {
+        if (animal && object.cursed)
+            return refuse();
+        releaseObjectLeash(object, game);
     }
     const previousDelay = game._delayedAction;
     const wasDoffing = (previousDelay?.kind === 'remove' && previousDelay.object === object)
@@ -1713,14 +1792,20 @@ async function resolveDeferredHeroItemTheft(action, monster, attack, random) {
             }
         }
     }
+    const removalItem = object === game.uball && game.uchain ? game.uchain : object;
     if (!charmed && (wasWeapon || stillWorn)) {
-        observeObjectForNaming(object);
-        const description = wornTheftObjectDescription(object);
-        const verb = wasWeapon ? 'disarms' : wasAccessory ? 'removes' : 'takes off';
+        observeObjectForNaming(removalItem);
+        const description = wornTheftObjectDescription(removalItem);
+        const verb = removalItem === object && wasWeapon ? 'disarms'
+            : wasAccessory ? 'removes' : 'takes off';
         removalMessage = `${subject} ${verb} ${description}.`;
     }
-    if (removalMessage && !charmed)
+    if (removalMessage && !charmed) {
         await plineWithContinuation(removalMessage);
+        game._lastPlineKind = PLNMSG_MON_TAKES_OFF_ITEM;
+    }
+    if (removalItem !== object)
+        await removeWornHeroItem(removalItem, game);
     await removeWornHeroItem(object, game);
     if (game.program_state?.gameover || !game.inventory.includes(object)) {
         attack.theftResolved = true;
@@ -1733,6 +1818,8 @@ async function resolveDeferredHeroItemTheft(action, monster, attack, random) {
     // C yname() observes and names ownership before the shop bill is cleared.
     observeObjectForNaming(object);
     const stolenName = ownedObjectName(object, game, { capitalized: false });
+    if (!heroHasConflict(game) && !(wasPunished && !game.uball))
+        monster.mavenge = 1;
     if (object.unpaid)
         removeObjectAndContentsFromBill(object, game, { resident: currentShopResident(game) });
     unlinkObject(object, game);
@@ -1741,24 +1828,39 @@ async function resolveDeferredHeroItemTheft(action, monster, attack, random) {
         attack.theftResolved = true;
         return true;
     }
-    monster.mavenge = 1;
     observeObjectForNaming(object);
     const stolenObjectDescription = inventoryItemDescription(object);
-    const thief = removalMessage && !animal
-        ? 'She' : subject;
+    const thief = charmed || (game._lastPlineKind === PLNMSG_MON_TAKES_OFF_ITEM
+        && MONSTER_SYMBOL[monster.mnum] === 14) ? 'She' : subject;
     // urgent_pline() does not force a pager for its newly installed line.
     // It can first suspend while clearing the older worn-removal line; after
     // that acknowledgement, rloc() may append its own message to this one.
-    await plineWithContinuation(`${thief} stole ${stolenObjectDescription}.`);
+    await plineWithContinuation(`${thief} stole ${stolenObjectDescription}.`, { urgent: true });
+    await reportHeroEncumbrance(game);
+    const couldPetrify = object.otyp === CORPSE && touchPetrifies(object.corpsenm);
     object.how_lost = LOST_STOLEN;
     await addObjectToMonsterInventory(monster, object, game);
+    if (couldPetrify && !((monster.misc_worn_check ?? 0) & W_ARMG)) {
+        await petrifyMonsterImmediately(monster, {
+            creditHero: true,
+            finishDeath: (target, death = {}) => finishHeroMonsterKill(target, target.mx, target.my, { ...death, showKillMessage: false, recordConduct: false }),
+        });
+        attack.nativeResult = M_ATTK_AGR_DIED;
+        attack.contactDone = true;
+        return true;
+    }
     // steal() returns zero while an involuntary delay is still active.
     // The thief can keep attacking and must stay for any pending armor.
     attack.theftResolved = true;
     if (heroHasInvoluntaryDelay(game))
         return true;
+    await retreatAfterItemTheft(action, monster, attack, animal, stolenName);
+    return true;
+}
+async function retreatAfterItemTheft(action, monster, attack, animal, stolenName) {
+    const game = requireInitializedGame();
     if (animal) {
-        if (canSeeMonster(monster))
+        if (stolenName && canSeeMonster(monster))
             await plineWithContinuation(`${monsterName(monster, { state: game,
                 capitalized: true })} tries to run away with ${stolenName}.`);
     }
@@ -1767,13 +1869,14 @@ async function resolveDeferredHeroItemTheft(action, monster, attack, random) {
             calls: action.calls, flags: RLOC_MSG,
         });
         if (relocation && 'died' in relocation && relocation.died)
-            return true;
+            return;
     }
     const flight = await makeMonsterFlee(monster, { announce: false });
     if (flight.heroDied)
-        return true;
+        return;
     attack.attackerDone = true;
-    return true;
+    attack.contactDone = true;
+    attack.nativeResult = M_ATTK_AGR_DONE;
 }
 // C steal.c:stealarm(). The armor is already unworn; transfer
 // waits until the removal delay finishes and requires the same nearby thief.
@@ -1798,77 +1901,11 @@ async function finishDelayedArmorTheft(thief, object, state) {
 function visibleMonsterSubject(monster) {
     return monsterName(monster, { capitalized: true });
 }
-const M2_MINION = 0x00001000;
-const WIZARD_CUSS_INSULTS = [
-    'antic', 'blackguard', 'caitiff', 'chucklehead', 'coistrel', 'craven',
-    'cretin', 'cur', 'dastard', 'demon fodder', 'dimwit', 'dolt', 'fool',
-    'footpad', 'imbecile', 'knave', 'maledict', 'miscreant', 'niddering',
-    'poltroon', 'rattlepate', 'reprobate', 'scapegrace', 'varlet', 'villein',
-    'wittol', 'worm', 'wretch',
-];
-const WIZARD_CUSS_MALEDICTIONS = [
-    'Hell shall soon claim thy remains,',
-    'I chortle at thee, thou pathetic',
-    'Prepare to die, thou',
-    'Resistance is useless,',
-    'Surrender or die, thou',
-    'There shall be no mercy, thou',
-    'Thou shalt repent of thy cunning,',
-    'Thou art as a flea to me,',
-    'Thou art doomed,',
-    'Thy fate is sealed,',
-    'Verily, thou shalt be one dead',
-];
 async function presentMonsterCuss(action) {
-    const game = requireInitializedGame();
-    if (heroIsDeaf(game))
-        return;
-    const monster = action.monster;
-    const minion = !!((MONSTER_FLAGS2[monster.mnum] ?? 0) & M2_MINION);
-    if (monster.iswiz) {
-        await plineWithContinuation(selectWizardCussMessage(action, monster));
-    }
-    else if (minion && monsterAlignmentType(monster) === 1
-        && !(monster.isminion && monster.emin?.renegade)) {
-        await deliverCommonQuestInsult('angel_cuss', game);
-    }
-    else {
-        const ancestry = rn2(minion ? 100 : 5) === 0;
-        action.calls.push(`rn2(${minion ? 100 : 5})`);
-        if (ancestry)
-            await plineWithContinuation(`${visibleMonsterSubject(monster)} casts aspersions on your ancestry.`);
-        else
-            await deliverCommonQuestInsult('demon_cuss', game);
-    }
-    wakeMonstersNear(monster.mx, monster.my, 25);
-}
-function selectWizardCussMessage(action, monster) {
-    const game = requireInitializedGame();
-    const roll = (sides) => {
-        const value = rn2(sides);
-        action.calls.push('rn2(' + sides + ')');
-        return value;
-    };
-    if (roll(5) === 0)
-        return visibleMonsterSubject(monster) + ' laughs fiendishly.';
-    if (game.u?.uhave?.amulet
-        && roll(WIZARD_CUSS_INSULTS.length) === 0) {
-        return '"Relinquish the amulet, '
-            + WIZARD_CUSS_INSULTS[roll(WIZARD_CUSS_INSULTS.length)] + '!"';
-    }
-    if ((game.u?.uhp ?? 1) < 5 && roll(2) === 0) {
-        const line = roll(2)
-            ? 'Even now thy life force ebbs, '
-            : 'Savor thy breath, ';
-        const suffix = line.startsWith('Savor')
-            ? ', it be thy last!' : '!';
-        return '"' + line
-            + WIZARD_CUSS_INSULTS[roll(WIZARD_CUSS_INSULTS.length)]
-            + suffix + '"';
-    }
-    if ((monster.mhp ?? 1) < 5 && roll(2) === 0)
-        return roll(2) ? '"I shall return."' : '"I\'ll be back."';
-    return '"' + WIZARD_CUSS_MALEDICTIONS[roll(WIZARD_CUSS_MALEDICTIONS.length)] + ' ' + WIZARD_CUSS_INSULTS[roll(WIZARD_CUSS_INSULTS.length)] + '!"';
+    await publishMonsterCuss(action.monster, requireInitializedGame(), sides => {
+        action.calls.push(`rn2(${sides})`);
+        return rn2(sides);
+    });
 }
 function distantMonsterObjectName(object) {
     observeDistantObjectForNaming(object);
@@ -2961,7 +2998,7 @@ async function executeMonsterTurns() {
         if (!level.monsters.includes(actor) || (actor.mhp ?? 1) <= 0 || actor.mx === 0
             || (actor.mstate ?? MON_FLOOR) !== MON_FLOOR)
             continue;
-        runMonsterEveryturnEffects([actor], game, rn2, { fmonOrdered: true });
+        await runMonsterEveryturnEffects([actor], game, rn2, { fmonOrdered: true });
         if (actor.movement === undefined)
             throw new Error(`Monster ${actor.m_id} entered a turn before movement initialization.`);
         if (actor.movement < NORMAL_SPEED)
@@ -3480,7 +3517,7 @@ export async function moveloop_core() {
         g.vision_full_recalc = 0;
     }
     await flush_screen(1);
-    heroEveryturnEffect(g);
+    await heroEveryturnEffect(g);
     // A negative C `multi` suppresses rhack() but still leaves context.move
     // set, so the next moveloop invocation spends another hero action.  Once
     // the once-per-turn owner above reaches zero, execution falls through and

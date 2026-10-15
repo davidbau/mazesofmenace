@@ -1,6 +1,6 @@
 // end.js — End-of-game disclosure and terminal presentation.
 // C refs: end.c disclose()/really_done(), insight.c, dungeon.c.
-import { PARANOID_DIE, PARANOID_QUIT } from './const.js';
+import { PARANOID_DIE, PARANOID_QUIT, PLNMSG_OK_DONT_DIE } from './const.js';
 import { PanicTermination } from './panic_termination.js';
 import { endVoluntaryMultiTurn } from './command_state.js';
 import { achievementEntries } from './achievements.js';
@@ -167,6 +167,7 @@ export async function finishHeroDeath({ killer, killerFormat = KILLED_BY_AN, bef
         const answer = await paranoidQuery(!!((game.flags.paranoia_bits ?? 0) & PARANOID_DIE), 'Die?');
         if (!answer) {
             await plineWithContinuation("OK, so you don't die.");
+            game._lastPlineKind = PLNMSG_OK_DONT_DIE;
             await restoreHeroAfterDeath({ deathType });
             if (game.program_state.gameover)
                 return true;
@@ -1382,7 +1383,7 @@ async function finalPossessionLines(possessions) {
     const lines = possessions.artifacts.map(({ object, value, points, name }) => {
         recordObjectKnowledge(object.otyp);
         object.known = object.dknown = object.bknown = object.rknown = true;
-        return `${name} (worth ${value} zorkmids and ${points} points)`;
+        return `${name} (worth ${value} ${currency(value)} and ${points} points)`;
     });
     for (const [type, count] of possessions.valuables) {
         const worth = count * objectBaseValue(type);
@@ -1396,7 +1397,7 @@ async function finalPossessionLines(possessions) {
             object.quan = count;
             recordObjectKnowledge(type);
             const name = objectName(object);
-            lines.push(`${prefix} ${count === 1 ? name : makePlural(name)} (worth ${worth} zorkmids),`);
+            lines.push(`${prefix} ${count === 1 ? name : makePlural(name)} (worth ${worth} ${currency(2)}),`);
             await deleteObject(object);
         }
     }
