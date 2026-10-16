@@ -461,7 +461,8 @@ export async function spitmu(mtmp, mattk) {
 /**
  * C ref: mthrowu.c breamm — monster breath weapon at mtarg.
  * Envelope: m_lined_up; mcan cough; m_seenres/REFL skip; !mspec_used &&
- * rn2(3) → dobuzz(BZ_M_BREATH); mspec_used / pet hunger. Named omissions:
+ * rn2(3) → dobuzz(BZ_M_BREATH); fatal dobuzz aborts HIT (done noreturn);
+ * mspec_used / pet hunger. Named omissions:
  * Hallucination breathwep_name; Soundeffect cough; AD_SLEE Sleep_res
  * mspec bump uses flat Sleep_resistance. Callers wired: breamu
  * (js/mthrowu.js:544), mattackm AT_BREA (js/mhitm.js:6455).
@@ -515,6 +516,13 @@ export async function breamm(mtmp, mattk, mtarg) {
                 } finally {
                     game.buzzer = null;
                 }
+                // C: dobuzz → losehp → done(DIED) never returns on a true
+                // death — neither nomul(0) nor the :1132 mspec gate runs.
+                // JS done() returns, so check the flag (no finish call:
+                // done already ran inside dobuzz when it drew; lifesave /
+                // Die?-decline clears gameover and falls through like C —
+                // D-3998/D-4000). HIT: the breath landed (cf thitu :1321).
+                if (game.program_state?.gameover) return M_ATTK_HIT;
                 nomul(0);
                 // C: breath runs out sometimes; don't if target fell asleep
                 if (!utarget || !rn2(3)) {

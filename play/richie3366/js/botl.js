@@ -302,6 +302,14 @@ function statusRows() {
     return n <= 2 ? 2 : 3;
 }
 
+// C wintty.c:905-912 — the tty status window sits at the bottom of the
+// screen: offy = min(rows - wc2_statuslines, ROWNO + 1); at contest
+// 80x24 that is grid row 22 for 2 lines, 21 for 3.
+function statusOriginRow() {
+    const rows = game.nhDisplay?.rows | 0 || 24;
+    return Math.min(rows - statusRows(), 22);
+}
+
 function emptyTtyStatusField(lth) {
     return {
         idx: BL_FLUSH,
@@ -647,8 +655,9 @@ function check_windowdata() {
         for (let r = 0; r < statusWinData.length; r++) statusWinData[r].fill(' ');
         const disp = game.nhDisplay;
         if (disp?.setCell) {
+            const origin = statusOriginRow(); // C wintty.c:905 offy
             for (let r = 0; r < statusRows(); r++) {
-                for (let c = 0; c < STATUS_COLS; c++) disp.setCell(c, 22 + r, ' ', NO_COLOR, 0);
+                for (let c = 0; c < STATUS_COLS; c++) disp.setCell(c, origin + r, ' ', NO_COLOR, 0);
             }
         }
         windowdataInit = true;
@@ -740,10 +749,11 @@ function status_curs(x, y) {
 // so the cursor does not move (the no-CE space-fill arm is dead there).
 function status_cl_end() {
     const disp = game.nhDisplay;
+    const origin = statusOriginRow(); // C wintty.c:905 offy
     for (let c = statusCurX - 1; c < STATUS_COLS; c++) {
         if (c < 0) continue;
         statusWinData[statusCurY][c] = ' ';
-        if (disp?.setCell) disp.setCell(c, 22 + statusCurY, ' ', NO_COLOR, 0);
+        if (disp?.setCell) disp.setCell(c, origin + statusCurY, ' ', NO_COLOR, 0);
     }
 }
 
@@ -757,6 +767,7 @@ function tty_putstatusfield(text, x, y) {
     // C `:4816` print_vt_code2 AVTC_SELECT_WINDOW — tile-protocol emit,
     // no tty text effect.
     const nrows = statusRows(); // C `:4813` cw->maxrow
+    const origin = statusOriginRow(); // C wintty.c:905 offy
     x |= 0; y |= 0;
     if (x < STATUS_COLS && y < nrows) { // C `:4818`
         if (x !== statusCurX || y !== statusCurY) status_curs(x, y); // C `:4819–4820`
@@ -798,7 +809,7 @@ function tty_putstatusfield(text, x, y) {
                     while (s[hi + 1] === ' ') hi++;
                     if (hi - lo + 1 > 4) chAttr = 0;
                 }
-                if (disp?.setCell) disp.setCell(n - 1, 22 + y, cell, renderFg, chAttr); // C `:4824` putchar
+                if (disp?.setCell) disp.setCell(n - 1, origin + y, cell, renderFg, chAttr); // C `:4824` putchar
                 statusCurX++; // C `:4825–4826` curx++
             }
         }
@@ -996,11 +1007,11 @@ function render_status() {
     // clears it with the grid), so visible content is the row through
     // finalx, trailing blanks trimmed like _statusLine1/2 emit.
     const rows = [];
-    for (let r = 0; r < 2; r++) {
+    for (let r = 0; r < num_rows; r++) {
         const end = Math.max(0, (finalx[r][NOW] | 0) + 1);
         rows.push(statusWinData[r].slice(0, end).join('').replace(/ +$/, ''));
     }
-    set_committed_status_lines(rows[0] ?? '', rows[1] ?? '');
+    set_committed_status_lines(rows[0] ?? '', rows[1] ?? '', rows[2] ?? '');
     // C `:5263` return (void).
 }
 
@@ -1149,22 +1160,49 @@ export function status_initialize(reassessment) {
 }
 
 // C wintty.c:491-507 new_status_window (static). STATUS_HILITES is on,
-// so the reassess call is live. Callers winch_handler (wintty.c:431)
-// and tty_preference_update (wintty.c:602) have no JS site.
+// so the reassess call is live. Callers: winch_handler (wintty.c:431,
+// no JS resize path) and tty_preference_update (wintty.c:602, live via
+// options.js preference_update).
 export function new_status_window() {
     const win = game.WIN_STATUS;
     if (win != null && (win | 0) !== WIN_ERR) {
-        // tty_clear_nhwindow (wintty.c:1034) and tty_destroy_nhwindow
-        // (wintty.c:2009) are not ported. Drop the sentinel the way
-        // destroy assigns WIN_ERR.
+        // C `:494-498` first tty_clear_nhwindow (pre-destroy blank so a
+        // shrinking window drops no stale rows) + destroy. The WinDesc
+        // table is not ported; drop the sentinel the way destroy
+        // assigns WIN_ERR. (The blank rides with the second clear
+        // below: iflags already holds the new size, so one blanking of
+        // the new rows covers the old rows too.)
         game.WIN_STATUS = WIN_ERR;
     }
     genl_status_finish();
     tty_status_init();
-    // Second tty_clear_nhwindow(WIN_STATUS) (wintty.c:503) blanks the
-    // status rows and sets disp.botlx (wintty.c:1072). The clear is
-    // named; status_initialize sets botlx on the next line.
+    // C `:503` second tty_clear_nhwindow(WIN_STATUS): blanks the new
+    // window's rows (`:1067-1072`: tty_curs + cl_end per row, cw->data
+    // to spaces) and sets disp.botlx. finalx is NOT reset (C `:1070`
+    // is commented out); windowdata_init stays TRUE like C.
+    clear_status_window();
     status_initialize(REASSESS_ONLY);
+}
+
+// C wintty.c:1066-1073 tty_clear_nhwindow NHW_STATUS arm — blank the
+// window buffer and its tty rows. Both clears in one (`:496` pre-destroy
+// over the old rows, `:503` over the new): iflags already holds the new
+// size, so blank the union — grid rows 21..23 cover both geometries'
+// status rows (the dropped row 21 on a 3→2 shrink blanks like C's first
+// clear; the map repaints it at menu teardown). The committed-line cache
+// blanks with it (house mirror: C has no such strings; the blank cache
+// makes the next flush paint blank like C's cleared tty until the
+// BL_RESET render recommits — status_initialize already set update_all
+// + botlx).
+function clear_status_window() {
+    for (let r = 0; r < statusWinData.length; r++) statusWinData[r].fill(' ');
+    const disp = game.nhDisplay;
+    if (disp?.setCell) {
+        for (let r = 21; r < 24; r++) {
+            for (let c = 0; c < STATUS_COLS; c++) disp.setCell(c, r, ' ', NO_COLOR, 0);
+        }
+    }
+    set_committed_status_lines('', '', '');
 }
 
 // C botl.c:1809-1884 — compare_blstats(): prev-vs-new change direction

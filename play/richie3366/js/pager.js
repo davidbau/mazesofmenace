@@ -660,6 +660,11 @@ export async function show_nhw_menu_text(lines, opts = {}) {
     const maxrow = lines.length;
     // C wintty.c:1924–1925 !iflags.menu_overlay (home: optlist.h:456).
     if (maxrow >= rows || game.iflags?.menu_overlay === false) offx = 0;
+    // C wintty.c process_text_window linestart (`:1819–1829`, same arm as
+    // show_text_pages' D-3977 fix): putstr-only NHW_MENU windows carry
+    // cw->data, so tty_display_nhwindow (`:1943–1946`) routes them here,
+    // not through process_menu_window.
+    const utf8Handling = game.gs?.symset?.[(game.currentgraphics | 0)]?.handling === H_UTF8;
 
     // Default: clear topline (C NHW_MENU corner tty_clear when toplin!=EMPTY,
     // fullscreen always). look_here opts.keep_message_leftover skips clear
@@ -696,8 +701,18 @@ export async function show_nhw_menu_text(lines, opts = {}) {
             const textCols = cols - 1;
             for (let r = 0; r < chunk.length; r++) {
                 const text = chunk[r] || '';
-                for (let i = 0; i < text.length && i < textCols; i++)
-                    disp.setCell(i, r, text[i], NO_COLOR, 0);
+                // C `:1820–1825`: text[0] through g_putch lands one cell
+                // right (patch-006 hook at pre-incremented curx), covered
+                // by text[1]'s hook — col 0 stays cleared; 1-char lines
+                // shift to col 1 (no overwrite).
+                const dropFirst = text.length > 0
+                    && (utf8Handling || (text.charCodeAt(0) & 0x80) !== 0);
+                if (dropFirst && text.length === 1) {
+                    if (1 < cols) disp.setCell(1, r, text[0], NO_COLOR, 0);
+                } else {
+                    for (let i = dropFirst ? 1 : 0; i < text.length && i < textCols; i++)
+                        disp.setCell(i, r, text[i], NO_COLOR, 0);
+                }
             }
             const last = offset + pageRows >= lines.length;
             const fr = Math.min(rows - 1, Math.max(chunk.length, 1));
@@ -711,15 +726,29 @@ export async function show_nhw_menu_text(lines, opts = {}) {
             if (last) break;
         }
     } else {
-        // C process_text_window corner: cl_end from offx; putchar(' '); text.
+        // C process_text_window corner (`:1796–1831`): cl_end from offx;
+        // putchar(' '); text from offx+1 with the linestart first char
+        // through g_putch under UTF8 (`:1820–1822`) or high-bit-first
+        // (`:1823–1825`) — the patch-006 hook writes it one cell right,
+        // covered by text[1]'s hook, so offx+1 stays cleared (the
+        // look_here `hings` cliffs row; retires D-3977 omission (1) for
+        // this path). 1-char lines shift to offx+2 (`:1810` bound).
         // No mid-list page break when offx≠0 — all rows then one dmore.
         for (let r = 0; r < lines.length; r++) {
             for (let c = offx; c < cols; c++)
                 disp.setCell(c, r, ' ', NO_COLOR, 0);
             disp.setCell(offx, r, ' ', NO_COLOR, 0);
             const text = lines[r] || '';
-            for (let i = 0; i < text.length && offx + 1 + i < cols; i++)
-                disp.setCell(offx + 1 + i, r, text[i], NO_COLOR, 0);
+            const dropFirst = text.length > 0
+                && (utf8Handling || (text.charCodeAt(0) & 0x80) !== 0);
+            if (dropFirst && text.length === 1) {
+                if (offx + 2 < cols)
+                    disp.setCell(offx + 2, r, text[0], NO_COLOR, 0);
+            } else {
+                // C `:1810`: text[i] iff ++curx(offx+1+i→offx+2+i) < cols.
+                for (let i = dropFirst ? 1 : 0; i < text.length && offx + 2 + i < cols; i++)
+                    disp.setCell(offx + 1 + i, r, text[i], NO_COLOR, 0);
+            }
         }
         const moreRow = lines.length;
         for (let c = offx; c < cols; c++)

@@ -2,7 +2,7 @@ import { rotCorpse } from './corpse_rot.js';
 import { isRoom } from './map_types.js';
 import { createObjectBase } from './object_constructor.js';
 import { deleteTrap, finishSokobanIfSolved } from './trap_lifecycle.js';
-import { randomGhostName, setMonsterGivenName } from './monster_given_name.js';
+import { randomGhostName, roguePlayerName, setMonsterGivenName } from './monster_given_name.js';
 import { game, requireGameLevel, requireLiveGame } from './gstate.js';
 import { lookupNovelTitle, novelTitle } from './novel_titles.js';
 import { addFruit } from './fruit.js';
@@ -52,7 +52,7 @@ import { encodeSavedGraph } from './saved_graph.js';
 import { decodeBonesPayload } from './bones_validation.js';
 import { rn2, rnd, rn1, rne, rnz, d } from './rng.js';
 import { SHOP_TYPES, RANDOM_SHOP_TYPES } from './shop_data.js';
-import { GP_AVOID_MONPOS, GP_CHECKSCARY, RLOC_ERR, RLOC_NOMSG, In_mines, PL_NSIZ } from './const.js';
+import { GP_ALLOW_XY, GP_AVOID_MONPOS, GP_CHECKSCARY, RLOC_ERR, RLOC_NOMSG, In_mines, PL_NSIZ } from './const.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level, ledgerNo, maxLedgerNo, } from './hacklib.js';
 import { inducedAlignment, level_difficulty, specialLevelAt } from './dungeon.js';
@@ -86,7 +86,7 @@ import { insideRoom, inTown, roomForIndex, roomsAt } from './room.js';
 import { insideShopRoomAt } from './shk.js';
 import { convertSecretDoor } from './detect.js';
 import { occupied, somex, somey, somexy, somexyspace, } from './mkroom.js';
-import { createGasCloudSelection, createPoisonGasCloud } from './regions.js';
+import { createGasCloudSelection, createPoisonGasCloud, restoreLevelRegions } from './regions.js';
 import { F_LOOTED, F_WARNED, S_LDWASHER, S_LPUDDING, S_LRING, T_LOOTED, TREE_LOOTED, TREE_SWARM } from './const.js';
 import { beginObjectBurn } from './light.js';
 import { LEVEL_TIMER_KIND, OBJECT_TIMER_KIND, objectTimers, objectsInTimerGraph, scheduleLevelTimer, scheduleObjectTimer, stopAllObjectTimers, stopObjectTimer, stopLevelTimer, } from './object_timers.js';
@@ -240,6 +240,8 @@ const PM_FAMINE = 313;
 const PM_WIZARD = 343;
 const PM_SALAMANDER = 329;
 const S_MIMIC = 13;
+const S_ANGEL = 27;
+const S_DEMON = 56;
 const G_UNIQ_MASK = 0x1000;
 const FLINT = 473;
 const PM_HOBBIT = 43;
@@ -2895,6 +2897,9 @@ function findMonsterNearPositionCore(mnum, centerX, centerY, gpflags, state) {
         if (goodPosition(pos.x, pos.y, subject, { state, gpflags }))
             return pos;
     }
+    if ((gpflags & GP_ALLOW_XY)
+        && goodPosition(centerX, centerY, subject, { state, gpflags }))
+        return { x: centerX, y: centerY };
     return null;
 }
 // C teleport.c:enexto().  The first complete search avoids scary squares;
@@ -2903,7 +2908,7 @@ function findMonsterNearPositionCore(mnum, centerX, centerY, gpflags, state) {
 // from a later makemon()/make_familiar() construction failure.
 export function findMonsterNearPosition(mnum, centerX, centerY, { ignoreWater = false, gpflags = 0, state = game } = {}) {
     const flags = gpflags | (ignoreWater ? MM_IGNOREWATER : 0);
-    return findMonsterNearPositionCore(mnum, centerX, centerY, flags | GP_CHECKSCARY, state) || findMonsterNearPositionCore(mnum, centerX, centerY, flags & ~GP_CHECKSCARY, state);
+    return findMonsterNearPositionCore(mnum, centerX, centerY, flags | GP_CHECKSCARY, state) || findMonsterNearPositionCore(mnum, centerX, centerY, flags, state);
 }
 // C potion.c:split_mon() halves maximum HP after cloneu() divides current HP.
 export async function splitHeroMonsterForm(state = game) {
@@ -3036,10 +3041,11 @@ export async function createCritters(count, mnum = null, neverAsk = false) {
 // A monster-cast summon deliberately chooses an explicit high-difficulty
 // species, asks enexto() for a square around the caster's apparent hero
 // position, then runs the ordinary makemon() constructor.  The created
-// actors are returned so the caller can repaint them at the same runtime
-// boundary where C's makemon() calls newsym().
-export async function summonNastyMonsters(summoner, { onCreate = null } = {}) {
+// actors retain the normal constructor's messages and display updates.
+export async function summonNastyMonsters(summoner) {
     const created = [];
+    const census = nastyMonsterCensus();
+    const flags = summoner ? MM_NOMSG : 0;
     const inHell = !!game.dungeons?.[game.u?.uz?.dnum ?? 0]?.flags?.hellish;
     // wizard.c:nasty() occasionally delegates to demon.c:msummon().  The
     // caller handles that different summoning path.
@@ -3075,36 +3081,43 @@ export async function summonNastyMonsters(summoner, { onCreate = null } = {}) {
                 && (MONSTER_DIFFICULTY[makeindex] ?? 0)
                     >= difficultyCap
                 && (MONSTER_ATTACKS[makeindex] || []).some(([attackType]) => attackType === 255))
-                || (summonerClass === 56 && candidateClass === 30)
-                || (summonerClass === 30 && candidateClass === 56));
+                || (summonerClass === S_DEMON && candidateClass === S_ANGEL)
+                || (summonerClass === S_ANGEL && candidateClass === S_DEMON));
             if (makeindex == null)
                 continue;
-            // nasty() preselects a nearby square for a monster caster;
-            // that construction does not inherit the hero's position.
-            const monster = await makemonNear(makeindex, summoner?.mux ?? game.u?.ux ?? 0, summoner?.muy ?? game.u?.uy ?? 0, MM_NOMSG, !summoner);
-            if (!monster) {
-                // C tries a random replacement only when direct construction
-                // fails (normally because the chosen species was genocided).
-                // The current constructor does not yet expose that distinct
-                // failure reason, so leave the replacement cone explicit.
+            const position = summoner ? findMonsterNearPosition(makeindex, summoner.mux ?? game.u.ux, summoner.muy ?? game.u.uy)
+                : { x: game.u.ux, y: game.u.uy };
+            if (!position)
                 continue;
+            let monster = await makemon(makeindex, position.x, position.y, flags);
+            if (monster) {
+                monster.msleeping = 0;
+                monster.mpeaceful = 0;
+                monster.mtame = 0;
+                setMonsterMalign(monster);
             }
-            // C makemon() calls newsym() before nasty() overrides attitude.
-            // Preserve that birth-time projection state for the spell owner;
-            // the actor becomes hostile below without an immediate repaint.
-            monster._nastyBirthPeaceful = monster.mpeaceful;
-            if (onCreate)
-                await onCreate(monster);
-            monster.msleeping = 0;
-            monster.mpeaceful = 0;
-            monster.mtame = 0;
-            setMonsterMalign(monster);
-            monster.mspec_used = rnd(4);
-            created.push(monster);
+            else {
+                monster = await makemon(null, position.x, position.y, flags);
+                if (monster) {
+                    const replacementClass = MONSTER_SYMBOL[monster.mnum] ?? 0;
+                    if ((difficultyCap > 0 && (MONSTER_DIFFICULTY[monster.mnum] ?? 0) >= difficultyCap
+                        && rn2(In_endgame(game.u.uz) ? 3 : 7)
+                        && (MONSTER_ATTACKS[monster.mnum] ?? []).some(([type]) => type === 255))
+                        || (summonerClass === S_DEMON && replacementClass === S_ANGEL)
+                        || (summonerClass === S_ANGEL && replacementClass === S_DEMON)) {
+                        await unmakeNastySubstitute(monster);
+                        monster = null;
+                    }
+                }
+            }
+            if (!monster)
+                continue;
             if (monster.mnum === archLich || monster.mnum === archon) {
                 if (!difficultyCap || difficultyCap > lowerArchDifficulty)
                     difficultyCap = lowerArchDifficulty;
             }
+            monster.mspec_used = rnd(4);
+            created.push(monster);
             const monsterAlignment = MONSTER_ALIGNMENT[monster.mnum] ?? 0;
             if (created.length >= 10
                 || monsterAlignment === 0
@@ -3113,7 +3126,25 @@ export async function summonNastyMonsters(summoner, { onCreate = null } = {}) {
             }
         }
     }
-    return { count: created.length, created };
+    return { count: created.length ? nastyMonsterCensus() - census : 0, created };
+}
+function nastyMonsterCensus() {
+    return game.level?.monsters.filter(monster => !monster.dead && monster.mhp > 0
+        && !(monster.isgd && monster.mx === 0)).length ?? 0;
+}
+// C makemon.c:unmakemon(). Rejected substitutes undo their counted birth
+// and artifact creation before the ordinary non-death removal.
+async function unmakeNastySubstitute(monster) {
+    const vital = game.mvitals?.[monster.mnum];
+    if (vital) {
+        if (vital.born > 0 && vital.born < 255)
+            vital.born--;
+        if ((MONSTER_GENO[monster.mnum] ?? 0) & G_UNIQ_MASK)
+            vital.mvflags &= ~G_EXTINCT;
+    }
+    monster.mhp = 0;
+    await discardMonsterInventory(monster, true);
+    await removeMonsterFromGame(monster);
 }
 export async function maketrap(x, y, typ) {
     // trap.c:maketrap() treats the two pseudo-types returned by rndtrap()
@@ -3495,7 +3526,7 @@ export function randomEngraving() {
         text: wipeoutText(pristine, Math.trunc(pristine.length / 4)),
     };
 }
-const BONES_VERSION = 12;
+const BONES_VERSION = 13;
 function bonesStorageKey(level = game.u.uz) {
     return `teleport-bones:${level?.dnum ?? 0}:${level?.dlevel ?? 1}`;
 }
@@ -3847,6 +3878,7 @@ async function getbones() {
     }));
     await renewBonesIdentities(game.level, payload.fruits);
     await restoreBonesMonsters(game.level, game);
+    restoreLevelRegions(game, 0);
     restoreBonesObjects(game.level);
     restoreBonesMonsterAttitudes(game.level);
     sanitizeEngravings(game.level);
@@ -4787,11 +4819,13 @@ async function fillCourtRoom(room) {
         ruler.mpeaceful = 0;
         setMonsterMalign(ruler);
         const mace = await mksobj(MACE, true, false);
+        // All four rulers are princes; mongets() upgrades their weapons.
+        mace.spe = Math.max(1, mace.spe);
         await addObjectToMonsterInventory(ruler, mace, game, { atFront: true });
     }
     const entrance = room.doorct
         ? level.doors[room.fdoor] : null;
-    const roomNumber = level.rooms.indexOf(room) + ROOMOFFSET;
+    const roomNumber = room.roomnoidx + ROOMOFFSET;
     for (let x = room.lx; x <= room.hx; x++) {
         for (let y = room.ly; y <= room.hy; y++) {
             const loc = level.at(x, y);
@@ -4815,8 +4849,7 @@ async function fillCourtRoom(room) {
             if (loc.typ === THRONE)
                 continue;
             const mndx = courtMonsterType();
-            const monster = mndx == null ? null
-                : await makemon(mndx, x, y, MM_ASLEEP | MM_NOGRP);
+            const monster = await makemon(mndx, x, y, MM_ASLEEP | MM_NOGRP);
             if (monster) {
                 monster.msleeping = 1;
                 if (monster.mpeaceful) {
@@ -4834,9 +4867,10 @@ async function fillCourtRoom(room) {
     const gold = await mksobj(GOLD_PIECE, true, false);
     gold.quan = rn1(50 * difficulty, 10);
     gold.quantity = gold.quan;
-    gold.owt = (OBJECT_WEIGHT[GOLD_PIECE] ?? 0) * gold.quan;
+    gold.owt = objectWeight(gold);
     const chest = await mksobj_at(CHEST, cofferPosition.x, cofferPosition.y, true, false);
-    chest.contents = [gold];
+    await addToContainer(chest, gold);
+    chest.owt = objectWeight(chest);
     chest.spe = 2;
     level.flags.has_court = true;
 }
@@ -5932,10 +5966,14 @@ function luaRoomLighting(value) {
 function luaRoomType(name = 'ordinary') {
     const roomTypes = {
         ordinary: OROOM,
+        vault: VAULT,
         zoo: ZOO,
         beehive: BEEHIVE,
         morgue: MORGUE,
         barracks: BARRACKS,
+        anthole: ANTHOLE,
+        cocknest: COCKNEST,
+        leprehall: LEPREHALL,
         court: COURT,
         throne: COURT,
         swamp: SWAMP,
@@ -5955,7 +5993,7 @@ function luaRoomType(name = 'ordinary') {
         'health food shop': SHOPBASE + 10,
         'candle shop': SHOPBASE + 11,
     };
-    const roomType = roomTypes[name];
+    const roomType = roomTypes[name.toLowerCase()];
     if (roomType == null)
         throw new Error(`unsupported Lua room type ${name}`);
     return roomType;
@@ -8087,15 +8125,14 @@ function roomHasStair(croom, up) {
     for (let stair = game.stairs; stair; stair = stair.next) {
         if (!!stair.up !== !!up)
             continue;
-        if (stair.sx >= croom.lx && stair.sx <= croom.hx
-            && stair.sy >= croom.ly && stair.sy <= croom.hy)
+        if (insideRoom(game.level, croom, stair.sx, stair.sy))
             return true;
     }
     return false;
 }
 // C ref: mkroom.c invalid_shop_shape().  A shopkeeper must have more than a
 // one-square cul-de-sac immediately inside the selected room's only door.
-function invalidShopShape(croom) {
+async function invalidShopShape(croom) {
     const level = requireGameLevel();
     const door = level.doors[croom.fdoor];
     if (!door)
@@ -8110,8 +8147,10 @@ function invalidShopShape(croom) {
             }
         }
     }
-    if (insideCount < 1 || !inside)
+    if (insideCount < 1 || !inside) {
+        await impossible('invalid_shop_shape: no squares inside door?');
         return true;
+    }
     if (insideCount > 1)
         return false;
     let exits = 0;
@@ -8125,14 +8164,21 @@ function invalidShopShape(croom) {
     }
     return exits === 1;
 }
-function mkshop() {
+async function mkshop() {
     const level = requireGameLevel();
     const rooms = level.rooms.slice(0, level.nroom);
-    const sroom = rooms.find((room) => isRoom(room) && room.rtype === OROOM
-        && !roomHasStair(room, false)
-        && !roomHasStair(room, true)
-        && room.doorct === 1
-        && !invalidShopShape(room));
+    let sroom = null;
+    for (const room of rooms) {
+        if (!isRoom(room) || room.hx < 0)
+            return false;
+        if (room.rtype !== OROOM || roomHasStair(room, false)
+            || roomHasStair(room, true) || room.doorct !== 1)
+            continue;
+        if (await invalidShopShape(room))
+            continue;
+        sroom = room;
+        break;
+    }
     if (!sroom)
         return false;
     if (!sroom.rlit) {
@@ -8218,7 +8264,6 @@ function shrinePosition(room) {
 async function makeRandomTemple(room) {
     const level = requireGameLevel();
     room.rtype = TEMPLE;
-    room.needfill = FILL_NORMAL;
     const shrine = shrinePosition(room);
     const altar = level.at(shrine.x, shrine.y);
     if (!altar)
@@ -8309,23 +8354,27 @@ async function maybeMakeSpecialRoom(roomThreshold) {
         return mkshop();
     if (uDepth > 4 && !rn2(6))
         return markRandomSpecialRoom(COURT);
-    if (uDepth > 5 && !rn2(8))
+    if (uDepth > 5 && !rn2(8)
+        && !((game.mvitals?.[MONSTER_NAME.indexOf('leprechaun')]?.mvflags ?? 0) & G_GONE))
         return markRandomSpecialRoom(LEPREHALL);
     if (uDepth > 6 && !rn2(7))
         return markRandomSpecialRoom(ZOO);
     if (uDepth > 8 && !rn2(5))
         return markRandomSpecialRoom(TEMPLE);
-    if (uDepth > 9 && !rn2(5))
+    if (uDepth > 9 && !rn2(5)
+        && !((game.mvitals?.[MONSTER_NAME.indexOf('killer bee')]?.mvflags ?? 0) & G_GONE))
         return markRandomSpecialRoom(BEEHIVE);
     if (uDepth > 11 && !rn2(6))
         return markRandomSpecialRoom(MORGUE);
-    if (uDepth > 12 && !rn2(8))
+    if (uDepth > 12 && !rn2(8) && antholeMonsterType() !== null)
         return markRandomSpecialRoom(ANTHOLE);
-    if (uDepth > 14 && !rn2(4))
+    if (uDepth > 14 && !rn2(4)
+        && !((game.mvitals?.[PM_SOLDIER]?.mvflags ?? 0) & G_GONE))
         return markRandomSpecialRoom(BARRACKS);
     if (uDepth > 15 && !rn2(6))
         return markRandomSpecialRoom(SWAMP);
-    if (uDepth > 16 && !rn2(8))
+    if (uDepth > 16 && !rn2(8)
+        && !((game.mvitals?.[MONSTER_NAME.indexOf('cockatrice')]?.mvflags ?? 0) & G_GONE))
         return markRandomSpecialRoom(COCKNEST);
     return false;
 }
@@ -8689,7 +8738,7 @@ function barracksMonsterType() {
 async function fillBarracksRoom(room) {
     const level = requireGameLevel();
     const entrance = room.doorct ? level.doors?.[room.fdoor] : null;
-    const roomNumber = level.rooms.indexOf(room) + ROOMOFFSET;
+    const roomNumber = room.roomnoidx + ROOMOFFSET;
     for (let x = room.lx; x <= room.hx; x++) {
         for (let y = room.ly; y <= room.hy; y++) {
             const loc = level.at(x, y);
@@ -8710,8 +8759,7 @@ async function fillBarracksRoom(room) {
                 continue;
             }
             const mndx = barracksMonsterType();
-            const monster = mndx == null ? null
-                : await makemon(mndx, x, y, MM_ASLEEP | MM_NOGRP);
+            const monster = await makemon(mndx, x, y, MM_ASLEEP | MM_NOGRP);
             if (monster)
                 monster.msleeping = 1;
             if (!rn2(20)) {
@@ -8964,11 +9012,6 @@ async function makeroguerooms() {
         }
     }
 }
-function roguename() {
-    return rn2(3)
-        ? (rn2(2) ? 'Michael Toy' : 'Kenneth Arnold')
-        : 'Glenn Wichman';
-}
 async function makerogueghost() {
     const level = requireGameLevel();
     if (!level.nroom)
@@ -8981,7 +9024,7 @@ async function makerogueghost() {
     if (!ghost)
         return;
     ghost.msleeping = 1;
-    setMonsterGivenName(ghost, roguename());
+    setMonsterGivenName(ghost, roguePlayerName());
     let ghostobj;
     if (rn2(4)) {
         ghostobj = await mksobj_at(FOOD_RATION, x, y, false, false);
@@ -9359,7 +9402,7 @@ function add_subroom(proom, lowx, lowy, hix, hiy, lit, rtype, special) {
         doorct: 0, fdoor: level.doorindex,
         irregular: false, needjoining: !special,
         nsubrooms: 0, sbrooms: [],
-        roomnoidx: MAXNROFROOMS + subroomIndex,
+        roomnoidx: MAXNROFROOMS + 1 + subroomIndex,
         needfill: 0,
     };
     do_room_or_subroom(croom, lowx, lowy, hix, hiy, lit, rtype, special, false);
@@ -11040,7 +11083,7 @@ async function level_finalize_topology() {
                 topologize(room);
     }
     setWallState();
-    for (const room of level.rooms) {
+    for (const room of [...level.rooms, ...(level.subrooms ?? [])]) {
         if (isRoom(room))
             room.orig_rtype = room.rtype;
     }

@@ -85,7 +85,7 @@
 
 import { game } from './gstate.js';
 import {
-    pline, You_feel, newsym, see_monsters, map_background, newsym_force,
+    pline, You, You_feel, newsym, see_monsters, map_background, newsym_force,
     verbalize, canspotmon, shieldeff,
 } from './display.js';
 import { set_mimic_blocking, cansee } from './vision.js';
@@ -274,8 +274,10 @@ export async function rndcurse() {
     const u = game.u || (game.u = {});
 
     if (u_wield_art(ART_MAGICBANE) && rn2(20)) {
-        // C: You(mal_aura, "the magic-absorbing blade")
-        await You_feel('a malignant aura surround the magic-absorbing blade.');
+        // C: You(mal_aura, "the magic-absorbing blade") — You, not
+        // You_feel: only You_feel dream-prefixes when Unaware (pline.c
+        // :387–400); You (:366–374) is a plain "You " prefix.
+        await You('feel a malignant aura surround the magic-absorbing blade.');
         return;
     }
 
@@ -283,7 +285,9 @@ export async function rndcurse() {
         await shieldeff(u.ux, u.uy);
     }
 
-    await You_feel('a malignant aura surround you.');
+    // C: You(mal_aura, "you") — You, not You_feel (no dream prefix
+    // when Unaware; pline.c You :366–374 vs You_feel :387–400).
+    await You('feel a malignant aura surround you.');
 
     const invent = game.invent || [];
     let nobj = 0;

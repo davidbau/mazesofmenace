@@ -54,6 +54,7 @@ import {
     DISPLACED, INVIS, SEE_INVIS, CLAIRVOYANT, LEVITATION, FLYING,
     PROT_FROM_SHAPE_CHANGERS,
     ACID_RES, DRAIN_RES, SICK_RES, INFRAVISION, STONE_RES, STRANGLED, SLOW_DIGESTION, FREE_ACTION,
+    MAGICAL_BREATHING,
     BOLT_LIM, LEFT_HANDED, GLIB, FROMOUTSIDE,
     ARTICLE_YOUR, SUPPRESS_SADDLE, SUPPRESS_HALLUCINATION,
     MENU_TRADITIONAL, MENU_COMBINATION, MENU_FULL,
@@ -405,7 +406,7 @@ function count_worn_stuff(accessorizing) {
  * Artifact spfx is `set_artifact_intrinsic` (D-1558), not this helper.
  * SWAPWEP/QUIVER skip, w_blocks, and monstunseesu_prop live in setworn
  * (D-1757), not here. Named: mirror of most E* flats (BLINDED/FAST/
- * TELEPAT/STEALTH/LEVITATION/FREE_ACTION so far).
+ * TELEPAT/STEALTH/LEVITATION/FREE_ACTION/MAGICAL_BREATHING so far).
  */
 export function confer_oc_oprop(obj, mask, on) {
     if (!obj) return;
@@ -441,6 +442,13 @@ export function confer_oc_oprop(obj, mask, on) {
         // polyself.js, apply.js) consume the EFree_action flat.
         if (on) u.EFree_action = (u.EFree_action | 0) | mask;
         else u.EFree_action = (u.EFree_action | 0) & ~mask;
+    } else if (p === MAGICAL_BREATHING) {
+        // C youprop.h EMagical_breathing ≡ uprops[MAGICAL_BREATHING]
+        // .extrinsic (conferred by setworn worn.c:117-125 for a worn
+        // amulet); the behavioral readers (mon.js + region.js
+        // Breathless, m_poisongas_ok immunity) consume the flat.
+        if (on) u.EMagical_breathing = (u.EMagical_breathing | 0) | mask;
+        else u.EMagical_breathing = (u.EMagical_breathing | 0) & ~mask;
     }
 }
 
@@ -2081,10 +2089,14 @@ async function armoroff(otmp) {
     return 1;
 }
 
-/** C youprop.h Blind — HBlinded || EBlinded, not blocked. */
+/** C youprop.h:103 Blind — (HBlinded||EBlinded)&&!BBlinded; no sticky
+ * u.Blind/u.ublind (D-0716 house shape, cf. shk.js Blind). u.Blind syncs
+ * only in make_blinded, so after Blindf_off's setworn cleared EBlinded
+ * the sticky term still read true: "still cannot see" where C sees
+ * again, no toggle_blindness, stale viz (Samurai-50156038@186). */
 function Blind() {
     const u = game.u || {};
-    if (u.Blind || u.ublind) return true;
+    if (u.uroleplay?.blind) return true;
     return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
 }
 
@@ -2166,6 +2178,10 @@ export async function Blindf_off(otmp) {
     if (changed) {
         await toggle_blindness();
     }
+    // House: re-sync the sticky u.Blind mirror (elsewhere written only by
+    // make_blinded) so out-of-file readers see the eyewear transition;
+    // value ≡ live props ≡ C (C has no mirror).
+    u.Blind = Blind();
 }
 
 /**

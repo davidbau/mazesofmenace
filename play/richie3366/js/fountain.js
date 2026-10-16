@@ -374,7 +374,18 @@ export async function drinksink() {
             await pline('It seems quite tasty.');
             monstseesu(M_SEEN_FIRE);
         } else {
+            // C fountain.c:617–618 — losehp → done(DIED) is noreturn
+            // (lifesave / wizard Die? decline returns via savelife);
+            // JS defers via _losehp_needs_done — drain like
+            // peffect_oil/dothrow, then fall through to monstunseesu
+            // on survival (C order; the wail is non-fatal only).
             losehp(rnd(6), 'sipping boiling water', KILLED_BY);
+            if (game._losehp_needs_done) {
+                await finish_losehp_done();
+                if (game.program_state?.gameover) return;
+            } else {
+                await finish_maybe_wail();
+            }
             monstunseesu(M_SEEN_FIRE);
         }
         break;

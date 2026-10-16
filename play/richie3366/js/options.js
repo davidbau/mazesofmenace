@@ -186,7 +186,7 @@ import { rnd } from './rng.js';
 import { str_end_is, str_start_is, highc, lowc, strstri, strsubst, strNsubst, strkitten, fuzzymatch, trimspaces, strncmpi } from './hacklib.js';
 import { name_to_mon, DEF_CHAR_TO_MLET, mlet_class_explain } from './mondata.js';
 import { nhgetch } from './input.js';
-import { flush_screen, pline, There, You_cant, docrt, bot, check_gold_symbol, switch_symbols, clear_committed_status, set_bot_disabled, tty_wait_synch, update_ov_primary_symset, update_ov_rogue_symset, impossible, SYM_OFF_X, reglyph_darkroom, raw_printf, init_ov_primary_symbols, init_ov_rogue_symbols, assign_graphics, init_symbols, init_primary_symbols, init_rogue_symbols, update_primary_symset, update_rogue_symset, set_symhandling, clear_symsetentry, symset_slot, NO_GLYPH } from './display.js';
+import { flush_screen, pline, There, You_cant, docrt, bot, check_gold_symbol, switch_symbols, clear_committed_status, set_bot_disabled, tty_wait_synch, update_ov_primary_symset, update_ov_rogue_symset, impossible, SYM_OFF_X, reglyph_darkroom, raw_printf, init_ov_primary_symbols, init_ov_rogue_symbols, assign_graphics, init_symbols, init_primary_symbols, init_rogue_symbols, update_primary_symset, update_rogue_symset, set_symhandling, clear_symsetentry, symset_slot, NO_GLYPH, newclipping } from './display.js';
 import { SYMBOLS_TEXT } from './generated/symbols_text.js';
 import { get_feature_notice_ver, get_current_feature_ver } from './version.js';
 import { paint_corner_nhw_menu, dismiss_nhw_menu, collect_menu_gacc, process_menu_search, toggle_menu_curr, menu_digit_is_gacc, reassign, update_inventory, invlet_constant, perm_invent_toggled, select_menu_pick_none, DEF_INV_ORDER } from './invent.js';
@@ -223,7 +223,7 @@ import {
     count_status_hilites, reset_status_hilites,
     clear_status_hilites, parse_status_hl1,
     match_str2clr, match_str2attr, status_version,
-    status_initialize,
+    status_initialize, new_status_window,
     condopt, parse_cond_option,
 } from './botl.js';
 import { classify_terrain } from './hack.js';
@@ -4679,7 +4679,7 @@ async function optfn_o_status_hilites_handler() {
         return OPTN_ERR;
     } else {
         if (wc2_supported('hilite_status')) { // C :8468–8469
-            preference_update('hilite_status');
+            await preference_update('hilite_status');
         }
     }
     return OPTN_OK;
@@ -10227,11 +10227,23 @@ function longest_option_name(startpass, endpass) {
 }
 
 /**
- * C windows.c genl_preference_update `:461–469` — the generic windowport
- * preference hook just returns (ports provide their own; tty has none).
- * Defined so the doset_simple_menu `:8688` gate stays C-order.
+ * C win/tty/wintty.c tty_preference_update `:594–608` + windows.c
+ * genl_preference_update `:461–469` (returns immediately; the tty end
+ * runs first). A statuslines change with an inited window destroys and
+ * recreates the status window at the new height, then re-clips the map
+ * around the hero. TTY_PERM_INVENT (`:609–630`) is compiled out
+ * (config.h:612). Async only because newclipping reaches redraw_map
+ * (display.js newclipping idiom); every other preference name is a
+ * synchronous no-op like C.
+ * @param {string} pref
  */
-function preference_update(_pref) {
+async function preference_update(pref) {
+    // C `:597–599` newstatuslines; `:601–604` resize + reclip.
+    if (pref === 'statuslines' && game.iflags?.window_inited) {
+        new_status_window();
+        await newclipping(game.u?.ux | 0, game.u?.uy | 0);
+    }
+    // C genl_preference_update `:461–469`: nothing further on tty.
 }
 
 /**
@@ -10332,7 +10344,7 @@ async function doset_simple_menu() {
         }
         // Unknown opttyp still counts as picked (C returns pick_cnt).
         if (pickName && abuf !== '\x1b' // C `:8688–8691`
-            && (wc_supported(pickName) || wc2_supported(pickName))) preference_update(pickName);
+            && (wc_supported(pickName) || wc2_supported(pickName))) await preference_update(pickName);
         // C `:8692–8693`: free pick_list + destroy_nhwindow — GC / helper.
         if (toggled_help) { // C `:8694–8697`
             toggled_help = false;
@@ -11703,7 +11715,7 @@ export async function doset() {
                 // give_opt_msg off instead of plining here).
                 if (applied && game.give_opt_msg !== false)
                     await pline(`'${name}' option toggled ${!negated ? 'on' : 'off'}.`);
-                preference_update(name); // C `:8956–8958` (tty no-op stub; doset ignores the optfn return)
+                await preference_update(name); // C `:8956–8958` (tty arm live for statuslines; doset ignores the optfn return)
                 continue;
             }
             // C doset `:8934–8940`, has_handler: optfn do_handler; optn_ok
@@ -11712,16 +11724,16 @@ export async function doset() {
                 if (name === 'pickup_types') {
                     const reslt = await handler_pickup_types();
                     if (reslt === OPTN_OK) opt_set_in_config[allopt_idx(name)] = true;
-                    preference_update(name); // C `:8956–8958` (tty no-op stub)
+                    await preference_update(name); // C `:8956–8958`
                 } else if (name === 'perminv_mode') {
                     await handler_perminv_mode();
-                    preference_update(name); // C `:8956–8958` (tty no-op stub)
+                    await preference_update(name); // C `:8956–8958`
                 } else {
                     // C doset `:8935–8939`: optfn do_handler; optn_ok marks the row
                     // for a later options save.
                     const reslt = await doset_optfn_do_handler(name);
                     if (reslt === OPTN_OK) opt_set_in_config[allopt_idx(name)] = true;
-                    preference_update(name); // C `:8956–8958` (tty no-op stub)
+                    await preference_update(name); // C `:8956–8958`
                 }
                 continue;
             }
@@ -11730,7 +11742,7 @@ export async function doset() {
             if (it.kind === 'comp') {
                 const abuf = await doset_compound_via_getlin({ name, hasHandler: false });
                 if (abuf === '\x1b') continue; // C `:8947–8948` ESC skips parseoptions + preference_update
-                preference_update(name); // C `:8956–8958` (tty no-op stub)
+                await preference_update(name); // C `:8956–8958`
                 continue;
             }
             // C options.c doset Othr rows → optfn do_handler; bind keys

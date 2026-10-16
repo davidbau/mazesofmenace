@@ -2585,12 +2585,18 @@ export async function eatcorpse(otmp) {
         // Must call rnd() (logs rnd(N)=…) not 1+rn2 (logs rn2(N)=…).
         losehp(rnd(15), !glob ? 'acidic corpse' : 'acidic glob', KILLED_BY_AN);
         if (game._losehp_needs_done || game.program_state?.gameover) {
-            // C losehp → done(DIED) is noreturn; do not start eating.
+            // C hack.c:4287–4288 — done(DIED) returns after lifesave or a
+            // wizard/explore "Die?" decline (end.c:1113–1117); only a real
+            // death (gameover set by really_done) aborts the meal — C
+            // eat.c:1926 has no check and eats on (D-3998).
             const { finish_losehp_done } = await import('./end.js');
             await finish_losehp_done();
-            return 1;
+            if (game.program_state?.gameover) return 1;
+            // Survived: fall through like C (no maybe_wail — C hack.c:4290
+            // wails only in the non-fatal else-if arm).
+        } else {
+            await finish_maybe_wail();
         }
-        await finish_maybe_wail();
     } else if (poisonous(ptr) && rn2(5)) {
         tp++;
         await pline('Ecch - that must have been poisonous!');
@@ -2608,12 +2614,18 @@ export async function eatcorpse(otmp) {
             await poison_strdmg(strloss, dmg,
                 !glob ? 'poisonous corpse' : 'poisonous glob', KILLED_BY_AN);
             if (game._losehp_needs_done || game.program_state?.gameover) {
-                // C losehp → done(DIED) is noreturn; do not start eating.
+                // C hack.c:4287–4288 — done returns after lifesave or a
+                // wizard/explore "Die?" decline (end.c:1113–1117); only a
+                // real death aborts the meal — C eat.c:1932 has no check
+                // and eats on (D-3998; same arm as the acid/cadaver sites).
                 const { finish_losehp_done } = await import('./end.js');
                 await finish_losehp_done();
-                return 1;
+                if (game.program_state?.gameover) return 1;
+                // Survived: fall through like C (no maybe_wail — C
+                // hack.c:4290 wails only in the non-fatal else-if arm).
+            } else {
+                await finish_maybe_wail();
             }
-            await finish_maybe_wail();
         } else {
             await pline('You seem unaffected by the poison.');
         }
@@ -2626,12 +2638,18 @@ export async function eatcorpse(otmp) {
         // attribution, death path (D-2402 was inline).
         losehp(rnd(8), !glob ? 'cadaver' : 'rotted glob', KILLED_BY_AN);
         if (game._losehp_needs_done || game.program_state?.gameover) {
-            // C losehp → done(DIED) is noreturn; do not start eating.
+            // C hack.c:4287–4288 — done returns after lifesave or a
+            // wizard/explore "Die?" decline (end.c:1113–1117); only a real
+            // death aborts the meal — C eat.c:1942 has no check and eats
+            // on (D-3998; same arm as the acid/poison sites).
             const { finish_losehp_done } = await import('./end.js');
             await finish_losehp_done();
-            return 1;
+            if (game.program_state?.gameover) return 1;
+            // Survived: fall through like C (no maybe_wail — C hack.c:4290
+            // wails only in the non-fatal else-if arm).
+        } else {
+            await finish_maybe_wail();
         }
-        await finish_maybe_wail();
     }
 
     // delay is weight dependent

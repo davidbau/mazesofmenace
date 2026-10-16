@@ -4304,7 +4304,8 @@ function load_bigrm_2() {
     for (let y = 0; y < ROWNO; y++) {
         for (let x = 1; x < COLNO; x++) {
             const loc = g.level.at(x, y);
-            if (loc) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
+            // C sp_lev.c sel_set_wall_property :989-993: stone/tree/bars gate
+            if (loc && (IS_STWALL(loc.typ) || IS_TREE(loc.typ) || loc.typ === IRONBARS)) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
         }
     }
 
@@ -4379,7 +4380,8 @@ function load_bigrm_3() {
     for (let y = 0; y < ROWNO; y++) {
         for (let x = 1; x < COLNO; x++) {
             const loc = g.level.at(x, y);
-            if (loc) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
+            // C sp_lev.c sel_set_wall_property :989-993: stone/tree/bars gate
+            if (loc && (IS_STWALL(loc.typ) || IS_TREE(loc.typ) || loc.typ === IRONBARS)) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
         }
     }
 
@@ -4492,7 +4494,8 @@ function load_bigrm_4() {
     for (let y = 0; y < ROWNO; y++) {
         for (let x = 1; x < COLNO; x++) {
             const loc = g.level.at(x, y);
-            if (loc) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
+            // C sp_lev.c sel_set_wall_property :989-993: stone/tree/bars gate
+            if (loc && (IS_STWALL(loc.typ) || IS_TREE(loc.typ) || loc.typ === IRONBARS)) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
         }
     }
 
@@ -5387,7 +5390,8 @@ async function load_medusa_1() {
     for (let y = my + 6; y <= my + 13 && y < ROWNO; y++) {
         for (let x = mx + 30; x <= mx + 46 && x < COLNO; x++) {
             const loc = g.level.at(x, y);
-            if (loc) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
+            // C sp_lev.c sel_set_wall_property :989-993: stone/tree/bars gate
+            if (loc && (IS_STWALL(loc.typ) || IS_TREE(loc.typ) || loc.typ === IRONBARS)) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
         }
     }
 
@@ -5650,7 +5654,8 @@ async function load_medusa_3() {
         for (let y = my + y1; y <= my + y2 && y < ROWNO; y++) {
             for (let x = mx + x1; x <= mx + x2 && x < COLNO; x++) {
                 const loc = g.level.at(x, y);
-                if (loc) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
+                // C sp_lev.c sel_set_wall_property :989-993: stone/tree/bars gate
+                if (loc && (IS_STWALL(loc.typ) || IS_TREE(loc.typ) || loc.typ === IRONBARS)) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
             }
         }
     }
@@ -6222,7 +6227,8 @@ function load_bigrm_7() {
     for (let y = 0; y < ROWNO; y++) {
         for (let x = 1; x < COLNO; x++) {
             const loc = g.level.at(x, y);
-            if (loc) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
+            // C sp_lev.c sel_set_wall_property :989-993: stone/tree/bars gate
+            if (loc && (IS_STWALL(loc.typ) || IS_TREE(loc.typ) || loc.typ === IRONBARS)) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
         }
     }
 
@@ -6297,7 +6303,8 @@ function load_bigrm_8() {
     for (let y = 0; y < ROWNO; y++) {
         for (let x = 1; x < COLNO; x++) {
             const loc = g.level.at(x, y);
-            if (loc) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
+            // C sp_lev.c sel_set_wall_property :989-993: stone/tree/bars gate
+            if (loc && (IS_STWALL(loc.typ) || IS_TREE(loc.typ) || loc.typ === IRONBARS)) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
         }
     }
 
@@ -6369,7 +6376,8 @@ function load_bigrm_9() {
     for (let y = 0; y < ROWNO; y++) {
         for (let x = 1; x < COLNO; x++) {
             const loc = g.level.at(x, y);
-            if (loc) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
+            // C sp_lev.c sel_set_wall_property :989-993: stone/tree/bars gate
+            if (loc && (IS_STWALL(loc.typ) || IS_TREE(loc.typ) || loc.typ === IRONBARS)) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
         }
     }
 
@@ -6462,7 +6470,8 @@ function load_bigrm_12() {
     for (let y = 0; y < ROWNO; y++) {
         for (let x = 1; x < COLNO; x++) {
             const loc = g.level.at(x, y);
-            if (loc) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
+            // C sp_lev.c sel_set_wall_property :989-993: stone/tree/bars gate
+            if (loc && (IS_STWALL(loc.typ) || IS_TREE(loc.typ) || loc.typ === IRONBARS)) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
         }
     }
 
@@ -6639,7 +6648,8 @@ function load_bar_strt() {
     for (let y = my; y <= my + 19 && y < ROWNO; y++) {
         for (let x = mx; x <= mx + 75 && x < COLNO; x++) {
             const loc = g.level.at(x, y);
-            if (loc) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
+            // C sp_lev.c sel_set_wall_property :989-993: stone/tree/bars gate
+            if (loc && (IS_STWALL(loc.typ) || IS_TREE(loc.typ) || loc.typ === IRONBARS)) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
         }
     }
 
@@ -8165,7 +8175,8 @@ function load_arc_strt() {
     for (let y = my; y <= my + 19 && y < ROWNO; y++) {
         for (let x = mx; x <= mx + 75 && x < COLNO; x++) {
             const loc = g.level.at(x, y);
-            if (loc) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
+            // C sp_lev.c sel_set_wall_property :989-993: stone/tree/bars gate
+            if (loc && (IS_STWALL(loc.typ) || IS_TREE(loc.typ) || loc.typ === IRONBARS)) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
         }
     }
 
@@ -14321,7 +14332,8 @@ function load_tower1() {
     for (let y = my; y <= my + 10 && y < ROWNO; y++) {
         for (let x = mx; x <= mx + 14 && x < COLNO; x++) {
             const loc = g.level.at(x, y);
-            if (loc) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
+            // C sp_lev.c sel_set_wall_property :989-993: stone/tree/bars gate
+            if (loc && (IS_STWALL(loc.typ) || IS_TREE(loc.typ) || loc.typ === IRONBARS)) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
         }
     }
 
@@ -14536,7 +14548,8 @@ function load_tower2() {
     for (let y = my; y <= my + 10 && y < ROWNO; y++) {
         for (let x = mx; x <= mx + 14 && x < COLNO; x++) {
             const loc = g.level.at(x, y);
-            if (loc) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
+            // C sp_lev.c sel_set_wall_property :989-993: stone/tree/bars gate
+            if (loc && (IS_STWALL(loc.typ) || IS_TREE(loc.typ) || loc.typ === IRONBARS)) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
         }
     }
 
@@ -14726,7 +14739,8 @@ function load_tower3() {
     for (let y = my; y <= my + 12 && y < ROWNO; y++) {
         for (let x = mx; x <= mx + 18 && x < COLNO; x++) {
             const loc = g.level.at(x, y);
-            if (loc) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
+            // C sp_lev.c sel_set_wall_property :989-993: stone/tree/bars gate
+            if (loc && (IS_STWALL(loc.typ) || IS_TREE(loc.typ) || loc.typ === IRONBARS)) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
         }
     }
 
@@ -20297,7 +20311,8 @@ function load_tut1() {
     for (let y = 0; y < ROWNO; y++) {
         for (let x = 1; x < COLNO; x++) {
             const loc = game.level.at(x, y);
-            if (loc) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
+            // C sp_lev.c sel_set_wall_property :989-993: stone/tree/bars gate
+            if (loc && (IS_STWALL(loc.typ) || IS_TREE(loc.typ) || loc.typ === IRONBARS)) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
         }
     }
     // des.teleport_region({ region = { 9,3, 9,3 } }) — C lspo_teleport_region
@@ -20696,7 +20711,8 @@ function load_tut2() {
     for (let y = 0; y < ROWNO; y++) {
         for (let x = 1; x < COLNO; x++) {
             const loc = game.level.at(x, y);
-            if (loc) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
+            // C sp_lev.c sel_set_wall_property :989-993: stone/tree/bars gate
+            if (loc && (IS_STWALL(loc.typ) || IS_TREE(loc.typ) || loc.typ === IRONBARS)) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
         }
     }
 
@@ -25073,7 +25089,8 @@ function load_castle() {
     for (let y = my; y <= my + 16 && y < ROWNO; y++) {
         for (let x = mx; x <= mx + 62 && x < COLNO; x++) {
             const loc = g.level.at(x, y);
-            if (loc) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
+            // C sp_lev.c sel_set_wall_property :989-993: stone/tree/bars gate
+            if (loc && (IS_STWALL(loc.typ) || IS_TREE(loc.typ) || loc.typ === IRONBARS)) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
         }
     }
 

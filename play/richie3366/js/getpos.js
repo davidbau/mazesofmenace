@@ -19,7 +19,7 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
-    flush_screen, flush_screen_getpos_dirty, cliparound, pline, You, coord_desc, custompline,
+    flush_screen, flush_screen_getpos_dirty, cliparound, tty_map_clip, pline, You, coord_desc, custompline,
     docrt, docrt_flags, docrtRefresh, erase_menu_or_text,
     terrain_glyph,
     look_shown_at, glyph_is_invisible,
@@ -627,15 +627,19 @@ export function auto_describe_text(cx, cy) {
 
 /**
  * C ref: winprocs.h `curs` → wintty.c tty_curs `:2058–2158` for WIN_MAP.
- * Contest 80×24: offx 0, offy 1, clipping off. `curx = --x`, screen row
- * is `y + offy`. Named: other window types, the clipping subtract, and
- * cmov/nocmov (the Terminal cursor is absolute).
+ * Contest 80×24: offx 0, offy 1. `curx = --x`, screen row is `y + offy`,
+ * minus the CLIPPING pan when the viewport is small (statuslines=3).
+ * Named: other window types and cmov/nocmov (the Terminal cursor is
+ * absolute).
  * @param {number} x map x
  * @param {number} y map y
  */
 function curs_win_map(x, y) {
     const disp = game.nhDisplay;
-    if (disp?.setCursor) disp.setCursor((x | 0) - 1, (y | 0) + 1);
+    const clip = tty_map_clip();
+    const sc = (x | 0) - 1 - (clip.clipping ? clip.clipx : 0);
+    const sr = (y | 0) + 1 - (clip.clipping ? clip.clipy : 0);
+    if (disp?.setCursor) disp.setCursor(sc, sr);
 }
 
 /**
@@ -1427,10 +1431,10 @@ export async function getpos(ccp, force, goal) {
     // flush_screen(0) reprints dirty (getvalid) cells and leaves the
     // tty cursor on the last glyph — not on the hero (D-0928 #1137).
     // C getpos.c:848–853 — CLIPPING (config.h:538, compiled in):
-    // cliparound(cx, cy) with the pre-loop curs+flush. No-op at the
-    // contest fixed size (clipping never set — no resize path).
+    // cliparound(cx, cy) with the pre-loop curs+flush. Live once
+    // statuslines=3 turns clipping on (otherwise still a no-op).
     await cliparound(cx, cy);
-    if (disp?.setCursor) disp.setCursor(cx - 1, cy + 1);
+    curs_win_map(cx, cy);
     flush_screen_getpos_dirty();
     // First read uses the pre-loop dirty flush; later iterations need a
     // full flush + curs like the prior port (topline / map sync).
@@ -1465,7 +1469,7 @@ export async function getpos(ccp, force, goal) {
             msg_given = true;
             // C: curs + flush_screen(0) after goal pline (gnew usually empty
             // → cursor stays on cx,cy).
-            if (disp?.setCursor) disp.setCursor(cx - 1, cy + 1);
+            curs_win_map(cx, cy);
             flush_screen_getpos_dirty();
             need_full_flush = false;
         } else if (g.iflags?.autodescribe && !msg_given) {
@@ -1482,7 +1486,7 @@ export async function getpos(ccp, force, goal) {
             need_full_flush = false;
         } else if (need_full_flush) {
             await flush_screen(1);
-            if (disp?.setCursor) disp.setCursor(cx - 1, cy + 1);
+            curs_win_map(cx, cy);
         }
 
         rushrun = false; // C `:870` — cleared at the top of every iteration
@@ -1657,7 +1661,7 @@ export async function getpos(ccp, force, goal) {
                 await getpos_help(!!force, goal || 'desired location');
             }
             await getpos_refresh();
-            if (disp?.setCursor) disp.setCursor(cx - 1, cy + 1);
+            curs_win_map(cx, cy);
             show_goal_msg = true;
             continue;
         }
@@ -1667,7 +1671,7 @@ export async function getpos(ccp, force, goal) {
         if (key === getpos_spkey(NHKF_GETPOS_SHOWVALID)) {
             if (getpos_hilitefunc) {
                 getpos_toggle_hilite_state();
-                if (disp?.setCursor) disp.setCursor(cx - 1, cy + 1);
+                curs_win_map(cx, cy);
             }
             show_goal_msg = true; // still targeting
             continue;

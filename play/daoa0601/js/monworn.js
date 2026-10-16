@@ -12,20 +12,18 @@ import { artifactEmitsLight } from './artifacts.js';
 import { beginObjectBurn, endObjectBurn, equipmentLightDescription } from './light.js';
 import { cansee, vision_recalc } from './vision.js';
 import { surfaceName } from './terrain_name.js';
-import { monsterSentenceSubject } from './monster_sound.js';
-import { monsterName } from './monster_name.js';
+import { monsterName, monsterObjectPronoun, monsterPossessive, possessiveName } from './monster_name.js';
 import { dismountHero, heroCanRideSteed } from './steed.js';
 import { resolveImmediatePetrification, touchPetrifies } from './stoning.js';
 import { rnl } from './rng.js';
 import { game } from './gstate.js';
-import { MONSTER_EXPERIENCE_META, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_SIZE, MONSTER_NAME, MONSTER_SYMBOL, monsterBreaksArmor, monsterCanBeSaddled, monsterHasNoHands, monsterIsCentaur, monsterIsWhirly, monsterTypeName, monsterHornCount, monsterIsSlithy, monsterIsVerySmall, monsterSlipsArmor, monsterWrappingAllowed, } from './monster_data.js';
+import { MONSTER_EXPERIENCE_META, MONSTER_FLAGS1, MONSTER_SIZE, MONSTER_NAME, MONSTER_SYMBOL, monsterBreaksArmor, monsterCanBeSaddled, monsterHasNoHands, monsterIsCentaur, monsterIsWhirly, monsterTypeName, monsterHornCount, monsterIsSlithy, monsterIsVerySmall, monsterSlipsArmor, monsterWrappingAllowed, } from './monster_data.js';
 import { destroyObjectFromMonsterInventory, dropMonsterArmor, } from './monster_inventory.js';
 import { AMULET_OF_GUARDING, AMULET_OF_LIFE_SAVING, AMULET_OF_REFLECTION, ALCHEMY_SMOCK, DUNCE_CAP, ELVEN_MITHRIL_COAT, HELM_OF_OPPOSITE_ALIGNMENT, GOLD_DRAGON_SCALES, IRON_SHOES, MUMMY_WRAPPING, ROBE, OBJECT_BIMANUAL, OBJECT_DELAY, OBJECT_MATERIAL, OBJECT_NAMES, } from './object_data.js';
 import { AC_MAX, DISMOUNT_FELL, I_SPECIAL, W_AMUL, W_ARM, W_ARMC, W_ARMF, W_ARMG, W_ARMH, W_ARMS, W_ARMU, W_SADDLE, } from './const.js';
 const M1_NOHEAD = 0x00008000;
 const M1_MINDLESS = 0x00010000;
 const M1_ANIMAL = 0x00040000;
-const M2_NEUTER = 0x00040000;
 const MZ_SMALL = 1;
 const LEATHER = 7;
 const SPEED_BOOTS = 166;
@@ -278,16 +276,14 @@ export async function adjustMonsterClothingAfterPolymorph(monster, state = game,
     const dropped = [];
     const destroyed = [];
     const mnum = monster.mnum;
+    // mon_break_armor chooses both perceived pronouns before any clothing
+    // changes visibility. Hallucination chooses each one independently.
+    const pronoun = monsterObjectPronoun(monster, { state });
+    const owner = monsterPossessive(monster, { state });
     const wrappingFits = monsterWrappingAllowed(mnum);
     const visible = cansee(monster.mx, monster.my);
-    const name = () => monsterSentenceSubject(monster);
-    const possessive = () => {
-        const subject = name();
-        return `${subject}${subject.endsWith('s') ? "'" : "'s"}`;
-    };
-    const neuter = !!((MONSTER_FLAGS2[mnum] ?? 0) & M2_NEUTER);
-    const pronoun = neuter ? 'it' : monster.female ? 'her' : 'him';
-    const owner = neuter ? 'its' : monster.female ? 'her' : 'his';
+    const name = () => monsterName(monster, { state, capitalized: true });
+    const possessive = () => possessiveName(name());
     const cloakName = (object) => object.otyp === ROBE ? 'robe'
         : object.otyp === MUMMY_WRAPPING ? 'mummy wrapping'
             : object.otyp === ALCHEMY_SMOCK ? 'apron' : 'cloak';
@@ -413,10 +409,9 @@ export async function adjustMonsterClothingAfterPolymorph(monster, state = game,
     }
     if (state.u.usteed === monster
         && (!monsterCanBeSaddled(monster) || !heroCanRideSteed(monster, state))) {
-        const steed = name();
-        await publish(`You can no longer ride ${steed.charAt(0).toLowerCase()}${steed.slice(1)}.`);
+        await publish(`You can no longer ride ${monsterName(monster, { state })}.`);
         if (touchPetrifies(mnum) && !state.u.stoneResistance && rnl(3)) {
-            await publish(`You touch ${steed.charAt(0).toLowerCase()}${steed.slice(1)}.`);
+            await publish(`You touch ${monsterName(monster, { state })}.`);
             await resolveImmediatePetrification({ state, publish,
                 killer: `falling off a ${monsterTypeName(mnum, !!monster.female)}` });
         }

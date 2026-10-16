@@ -74,7 +74,12 @@ import { ART_ORB_OF_DETECTION } from './generated/artifacts_data.js';
 /** C ref: decl.c:96 quitchars — `getdir :4098` skips help when set. */
 export const QUITCHARS = ' \r\n\x1b';
 
-/** C cmd.c number_pad dirchars (only when iflags.num_pad / Cmd.num_pad). */
+/**
+ * C cmd.c number_pad dirchars (only when iflags.num_pad / Cmd.num_pad).
+ * NUMPAD_DIR is ndir "47896321><"; NUMPAD_DIR_PHONE is
+ * ndir_phone_layout[] "41236987><" (cmd.c `:3347–3350`, selected at
+ * reset_commands `:3432–3434`): 1→NW 2→N 3→NE 7→SW 8→S 9→SE.
+ */
 const NUMPAD_DIR = {
     '1': { dx: -1, dy: 1 },
     '2': { dx: 0, dy: 1 },
@@ -84,6 +89,16 @@ const NUMPAD_DIR = {
     '7': { dx: -1, dy: -1 },
     '8': { dx: 0, dy: -1 },
     '9': { dx: 1, dy: -1 },
+};
+const NUMPAD_DIR_PHONE = {
+    '1': { dx: -1, dy: -1 },
+    '2': { dx: 0, dy: -1 },
+    '3': { dx: 1, dy: -1 },
+    '4': { dx: -1, dy: 0 },
+    '6': { dx: 1, dy: 0 },
+    '7': { dx: -1, dy: 1 },
+    '8': { dx: 0, dy: 1 },
+    '9': { dx: 1, dy: 1 },
 };
 
 /** C ref: cmd.c spkeys_binds defaults — getdir self/help/mouse/esc. */
@@ -119,10 +134,19 @@ function getpos_spkey_for_getdir(nhkf) {
 
 /**
  * C ref: cmd.c reset_commands sdir/ndir — `!num_pad ? sdir : ndir`
- * (`sdir="hykulnjb><"`, `ndir="47896321><"`; swap_yz/phone_layout named).
+ * (`sdir="hykulnjb><"`, `ndir="47896321><"`; swap_yz named). Under
+ * phone_layout (`:3432–3434`) the digits are
+ * `ndir_phone_layout[] = "41236987><"` (`:3347–3350`).
  */
 const GETDIR_SDIR = 'hykulnjb><';
 const GETDIR_NDIR = '47896321><';
+const GETDIR_NDIR_PHONE = '41236987><';
+
+/** C ref: cmd.c reset_commands `:3432–3434` — live dirchars for getdir. */
+function getdir_dirchars() {
+    if (!(game.iflags?.num_pad || game.Cmd?.num_pad)) return GETDIR_SDIR;
+    return game.Cmd?.phone_layout ? GETDIR_NDIR_PHONE : GETDIR_NDIR;
+}
 
 /** C ref: cmd.c move_funcs rows — extcmd txt per direction (0..7 compass). */
 const GETDIR_WALK = ['movewest', 'movenorthwest', 'movenorth', 'movenortheast', 'moveeast', 'movesoutheast', 'movesouth', 'movesouthwest'];
@@ -133,8 +157,9 @@ const GETDIR_RUSH = ['rushwest', 'rushnorthwest', 'rushnorth', 'rushnortheast', 
  * C ref: cmd.c movecmd `:3868–3898` (sym, MV_ANY) via live cmdbind_get —
  * walk/run/rush rows of move_funcs plus dodown/doup (`down`/`up` txt).
  * Sets u.dx/dy/dz from xdir/ydir/zdir, returns !u.dz; else u.dz=0, 0.
- * num_pad digits fall back to NUMPAD_DIR (dokeylist omits digit layouts).
- * Name kept (callers stay wired); C `movecmd` has no separate JS export.
+ * num_pad digits fall back to NUMPAD_DIR (phone: NUMPAD_DIR_PHONE;
+ * dokeylist omits digit layouts). Name kept (callers stay wired); C
+ * `movecmd` has no separate JS export.
  */
 function apply_dirsym(ch) {
     const u = game.u || (game.u = {});
@@ -163,7 +188,7 @@ function apply_dirsym(ch) {
     }
     const numPad = !!(game.iflags?.num_pad || game.Cmd?.num_pad);
     if (numPad) {
-        const nd = NUMPAD_DIR[ch];
+        const nd = (game.Cmd?.phone_layout ? NUMPAD_DIR_PHONE : NUMPAD_DIR)[ch];
         if (nd) {
             u.dx = nd.dx;
             u.dy = nd.dy;
@@ -594,15 +619,14 @@ async function picklock() {
 
 /**
  * C ref: cmd.c getdir CMDQ_DIR `:3966–3971` — dirchars[xytodir] or
- * dirchars[DIR_DOWN/DIR_UP] (`sdir="hykulnjb><"`, `ndir="47896321><"`;
- * index 8 `>` down, 9 `<` up in both). num_pad selects NDIR.
+ * dirchars[DIR_DOWN/DIR_UP] (`sdir="hykulnjb><"`, `ndir="47896321><"`,
+ * phone `"41236987><"`; index 8 `>` down, 9 `<` up in all).
  */
 function getdir_dirsym_from_dir(cmdq) {
     if (!(cmdq.dirz | 0)) {
         const d = xytodir(cmdq.dirx | 0, cmdq.diry | 0);
         if (d < 0 || d >= 8) return '\0';
-        const numPad = !!(game.iflags?.num_pad || game.Cmd?.num_pad);
-        return (numPad ? GETDIR_NDIR : GETDIR_SDIR).charAt(d);
+        return getdir_dirchars().charAt(d);
     }
     return (cmdq.dirz | 0) > 0 ? '>' : '<';
 }
@@ -664,13 +688,9 @@ export async function getdir_read_dirsym(prompt) {
                 if (pick === 0) {
                     dirsym = String.fromCharCode(getdir_spkey(rn2(2) ? NHKF_GETDIR_SELF : NHKF_ESC));
                 } else if (pick === 1) {
-                    const numPad = !!(game.iflags?.num_pad || game.Cmd?.num_pad);
-                    const dc = numPad ? GETDIR_NDIR : GETDIR_SDIR;
-                    dirsym = dc.charAt(rn2(2) ? 8 : 9);
+                    dirsym = getdir_dirchars().charAt(rn2(2) ? 8 : 9);
                 } else {
-                    const numPad = !!(game.iflags?.num_pad || game.Cmd?.num_pad);
-                    const dc = numPad ? GETDIR_NDIR : GETDIR_SDIR;
-                    dirsym = dc.charAt(rn2(N_DIRS));
+                    dirsym = getdir_dirchars().charAt(rn2(N_DIRS));
                 }
             }
         }

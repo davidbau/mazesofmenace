@@ -3664,11 +3664,21 @@ export async function dotherecmdmenu() {
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
 
-// C ref: cmd.c reset_commands `:3433–3435` — num_pad dirchars are ndir
+// C ref: cmd.c reset_commands `:3432–3435` — num_pad dirchars are ndir
 // "47896321" index-aligned with sdir "hykulnjb", so each digit walks the
 // same direction as its sdir letter ('5' is no direction: commands_init
-// `:2770` binds it to the run prefix instead).
+// `:2770` binds it to the run prefix instead). With phone_layout
+// (`ndir_phone_layout[] = "41236987><"`, `:3347–3350`, selected at
+// `:3432–3434`) the 1/2/3 and 7/8/9 rows swap: 1→NW 2→N 3→NE 7→SW
+// 8→S 9→SE (4/6/5 unchanged). Every digit→direction read below goes
+// through numpad_walk_dir so both layouts resolve.
 const NUMPAD_WALK = { 4: 'h', 7: 'y', 8: 'k', 9: 'u', 6: 'l', 3: 'n', 2: 'j', 1: 'b' };
+const NUMPAD_WALK_PHONE = { 4: 'h', 1: 'y', 2: 'k', 3: 'u', 6: 'l', 9: 'n', 8: 'j', 7: 'b' };
+
+/** C ref: cmd.c reset_commands `:3432–3434` — dirchars digit for one key. */
+function numpad_walk_dir(ch) {
+    return (game.Cmd?.phone_layout ? NUMPAD_WALK_PHONE : NUMPAD_WALK)[ch];
+}
 
 // C ref: cmd.c move_funcs `:2070–2083` rows by sdir letter — the CQ_REPEAT
 // func/txt for num_pad digit (walk) and M(digit) (run) keys.
@@ -5238,10 +5248,10 @@ function rhack_repeat_command(ch, key) {
         if (key === Mcode(53)) return do_rush;
         if (key === Ccode(108)) return doredraw;
         if (key >= Mcode(49) && key <= Mcode(57)) {
-            const md = NUMPAD_WALK[String.fromCharCode(key & 0x7f)];
+            const md = numpad_walk_dir(String.fromCharCode(key & 0x7f));
             if (md) return RHACK_REPEAT_RUN[md];
         }
-        const wl = NUMPAD_WALK[ch];
+        const wl = numpad_walk_dir(ch);
         if (wl !== undefined) return RHACK_REPEAT_MOVE[wl];
         if ('hykulnjbHYKULNJB'.includes(ch)) return null;
         if (key >= 1 && key <= 26
@@ -5342,10 +5352,10 @@ function rhack_repeat_txt(ch, key) {
         if (key === Mcode(53)) return 'rush';
         if (key === Ccode(108)) return 'redraw';
         if (key >= Mcode(49) && key <= Mcode(57)) {
-            const md = NUMPAD_WALK[String.fromCharCode(key & 0x7f)];
+            const md = numpad_walk_dir(String.fromCharCode(key & 0x7f));
             if (md) return RHACK_REPEAT_RUN_TXT[md];
         }
-        const wl = NUMPAD_WALK[ch];
+        const wl = numpad_walk_dir(ch);
         if (wl !== undefined) return RHACK_REPEAT_MOVE_TXT[wl];
         if ('hykulnjbHYKULNJB'.includes(ch)) return '';
         if (key >= 1 && key <= 26
@@ -5499,8 +5509,11 @@ async function parse() {
  * @param {number} key
  */
 async function rhack_unknown_command(key) {
-    // C `:3833–3841`: no reset — forcefight survives Unknown (D-3953).
-    if (game.context?.run || (game.multi || 0) > 0) end_running(true);
+    // C `:3833–3841`: no reset — forcefight survives Unknown (D-3953),
+    // and so do run/domove_attempting: no end_running (D-3953 omission 1
+    // retired — its falsifier fired: 6 stale-T sessions prove C's run
+    // stays stuck after '5'+'0'/travel+Unknown, suppressing EOT time_botl
+    // while JS repainted; cf. scen-symset-Caveman-50359027 s83 T:5 vs T:6).
     if (game.context) game.context.command_count = 0;
     game._repeat_search = false;
     await custompline(SUPPRESS_HISTORY, // C `:3834`
@@ -5658,7 +5671,7 @@ export async function rhack(key) {
     // (`:2771`, chained at the g/G arm below like 'g').
     const metaRunDir = !!game.Cmd?.num_pad && key >= Mcode(49)
         && key <= Mcode(57) && key !== Mcode(53)
-        ? (NUMPAD_WALK[String.fromCharCode(key & 0x7f)] || null) : null;
+        ? (numpad_walk_dir(String.fromCharCode(key & 0x7f)) || null) : null;
 
     // C rhack (cmd.c): prefix_seen=do_fight + command lacking CMD_gGF_PREFIX
     // → pline feedback, ECMD_FAIL, reset_cmd_vars — do NOT run the command.
@@ -5706,21 +5719,21 @@ export async function rhack(key) {
     }
     // C rhack: g/G PREFIXCMD then a non-walk, non-PREFIXCMD key (capital
     // run / Ctrl-rush lack CMD_gGF_PREFIX) → same pline, reset_cmd_vars.
-    const pendingRushPrefix = !!(
-        ((game.domove_attempting || 0) & DOMOVE_RUSH)
-        && !game.context?.mv
-        && (game.context?.run === 2 || game.context?.run === 3)
-    );
-    // C `:3693` — same tlist gate after a run/rush prefix: bound keys
+    // C `:3693` — same tlist gate after a run/rush prefix, and prefix_seen
+    // is call-local like the fight gate (D-3953): a run stuck by an
+    // earlier call ('5'+Unknown leaves run=3/RUSH set — C `:3833–3841`
+    // resets nothing) must not re-error the next command. Bound keys
     // without PREFIXCMD/CMD_gGF_PREFIX error, unbound keys fall through
     // to Unknown, movement and chained prefixes run.
-    const afterRushTab = pendingRushPrefix ? cmdbind_get(key & 0xff) : null;
+    const afterRushPrefix = prefix_seen?.txt === 'run'
+        || prefix_seen?.txt === 'rush';
+    const afterRushTab = afterRushPrefix ? cmdbind_get(key & 0xff) : null;
     if (afterRushTab && !(afterRushTab.flags & PREFIXCMD)
         && !(afterRushTab.flags & CMD_gGF_PREFIX)) {
         // C `:3696–3700` — visctrl(cmd_from_func(run|rush)): 'G'/'g' when
         // !num_pad; '5'/'g' when num_pad (M('5') is non-printable so the
         // older 'g' still wins for rush; 0 falls back to the ef_txt).
-        const rushTxt = game.context.run === 3 ? 'run' : 'rush';
+        const rushTxt = prefix_seen?.txt === 'rush' ? 'rush' : 'run';
         const rushPfx = cmd_from_func(rushTxt) & 0xff;
         const which = rushPfx ? visctrl(rushPfx) : rushTxt;
         const upDown = (ch === '<' || ch === '>');
@@ -5801,7 +5814,7 @@ export async function rhack(key) {
         // plain walk ends any run (e.g. travel's run=8); without this the
         // EOT time_botl stays suppressed and T: goes stale after travel.
         // Under num_pad the key is an ndir digit walking its sdir letter.
-        const wch = NUMPAD_WALK[ch] || ch;
+        const wch = numpad_walk_dir(ch) || ch;
         const mu = game.u || (game.u = {});
         mu.dz = 0; // C `:1389` u.dz = zdir[dir] (0 for planar)
         mu.dx = DIR_DX[wch]; // C `:1390`
@@ -6703,11 +6716,13 @@ export async function domove(dx, dy) {
         game.iflags.menu_requested = false;
     }
 
-    // C sets u.dx/u.dy before the blocked-move check (used by lookaround/run)
+    // C sets u.dx/u.dy before the blocked-move check (used by lookaround/run).
+    // ux0/uy0 are NOT written here: C hack.c:2780-2781 writes them after the
+    // early-return gates below (carrying/turbulence/impaired/bounds/trap/
+    // sticky/run), just before bhitpos — a failed move keeps the stale
+    // previous-turn square for URETREATING (mthrowu.c:18-19) and friends.
     u.dx = dx;
     u.dy = dy;
-    u.ux0 = u.ux;
-    u.uy0 = u.uy;
 
     // C ref: hack.c domove_core — carrying_too_much before swallow/attack
     if (await carrying_too_much()) {
@@ -6781,7 +6796,12 @@ export async function domove(dx, dy) {
         }
     }
 
-    // C hack.c:2775 — bhitpos tracks the target square for zap/throw aim.
+    // C hack.c:2780-2781 — ux0/uy0 trail the hero's previous square; every
+    // early-return gate above leaves them stale (a failed move does not
+    // move the trail). C hack.c:2782-2783 — bhitpos tracks the target
+    // square for zap/throw aim.
+    u.ux0 = u.ux;
+    u.uy0 = u.uy;
     if (!game.bhitpos) game.bhitpos = { x: 0, y: 0 };
     game.bhitpos.x = newx;
     game.bhitpos.y = newy;

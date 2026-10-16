@@ -3155,6 +3155,7 @@ export function reset_display_messages() {
     reset_glyph_bbox();
     _lastStatus1 = '';
     _lastStatus2 = '';
+    _lastStatus3 = '';
     _prevmsg = '';
     _dismiss_more = 0;
     _morc = 0;
@@ -7295,6 +7296,7 @@ function _statusLine1() {
 // pline→flush_screen calls bot() when disp.botl before putmesg (D-0314).
 let _lastStatus1 = '';
 let _lastStatus2 = '';
+let _lastStatus3 = '';
 /** When true, paint blank status (fullscreen menu cleared WIN_STATUS). */
 let _statusSuppressed = false;
 /** C decl.h `gb.bot_disabled` — windows.c `select_menu` / `getlin` wrap. */
@@ -7565,9 +7567,10 @@ export { _paintToplineOnly as paint_topline_only };
  * the windowport render commits here instead of _commitStatusLines.
  * Caller: botl.js render_status.
  */
-export function set_committed_status_lines(s1, s2) {
+export function set_committed_status_lines(s1, s2, s3 = '') {
     _lastStatus1 = s1 ?? '';
     _lastStatus2 = s2 ?? '';
+    _lastStatus3 = s3 ?? '';
 }
 
 /** Expand CSI cursor-forward in status for overlay painting. */
@@ -7876,11 +7879,12 @@ function _buildScreenOutput() {
                     // C print_glyph of the UNEXPLORED gbuf cell — instead
                     // of leaving overlay garbage (D-0931 blank precedent).
                     if (loc.disp_ch == null || loc.disp_ch === '') {
-                        display.setCell(x - 1, y + 1, ' ', NO_COLOR, 0);
+                        const blank = map_screen_cell(x, y);
+                        if (blank) display.setCell(blank.sc, blank.sr, ' ', NO_COLOR, 0);
                         loc.gnew = 0;
                         continue;
                     }
-                    _paint_gbuf_cell(x, y, x - 1, y + 1);
+                    _paint_gbuf_cell(x, y);
                     loc.gnew = 0;
                     continue;
                 }
@@ -7896,9 +7900,10 @@ function _buildScreenOutput() {
                     // `:2255` gnew = 0. Unexplored-with-gnew paints blank
                     // (S_air `' '+color` precedent, D-0931).
                     if (loc.disp_ch == null || loc.disp_ch === '') {
-                        display.setCell(x - 1, y + 1, ' ', NO_COLOR, 0);
+                        const blank = map_screen_cell(x, y);
+                        if (blank) display.setCell(blank.sc, blank.sr, ' ', NO_COLOR, 0);
                     } else {
-                        _paint_gbuf_cell(x, y, x - 1, y + 1);
+                        _paint_gbuf_cell(x, y);
                     }
                     loc.gnew = 0;
                 }
@@ -7909,8 +7914,9 @@ function _buildScreenOutput() {
         // Status from last bot() cache. C gb.bot_disabled skips putstr so
         // leftover tty cells stay; repaint the cache unless D-0467
         // `_statusSuppressed` (fullscreen NHW_MENU left WIN_STATUS blank)
-        // or bot_disabled (docorner leftover). Rows 22–23 belong to this
-        // window alone, so blank-then-paint erases a shrunk status.
+        // or bot_disabled (docorner leftover). The live-origin rows
+        // (22–23, or 21–23 with statuslines=3) belong to this window
+        // alone, so blank-then-paint erases a shrunk status.
         // Do not snapshot/restore grid rows — that copies blanks after a
         // per-key docrt/cls (D-1831 regression).
         // Per-cell compare: restore cells the cache disagrees with
@@ -7921,13 +7927,18 @@ function _buildScreenOutput() {
         if (!_statusSuppressed && !_bot_disabled) {
             const s1 = _lastStatus1 || s1raw.replace(/\x1b\[[0-9;]*[A-Za-z]/g, m =>
                 m.match(/\x1b\[\d+C/) ? ' '.repeat(parseInt(m.slice(2), 10) || 0) : '');
-            const grow22 = display.grid?.[22];
-            const grow23 = display.grid?.[23];
-            for (let c = 0; c < cols; c++) {
-                const want1 = c < s1.length ? s1[c] : ' ';
-                const want2 = c < s2.length ? s2[c] : ' ';
-                if (grow22?.[c]?.ch !== want1) display.setCell(c, 22, want1, NO_COLOR, 0);
-                if (grow23?.[c]?.ch !== want2) display.setCell(c, 23, want2, NO_COLOR, 0);
+            // C wintty.c:905 — status rows start at the live window
+            // origin (22 for 2 lines, 21 for 3).
+            const want = [s1, s2, _lastStatus3 || ''];
+            const origin = status_origin_row();
+            const nrows = status_num_rows();
+            for (let r = 0; r < nrows; r++) {
+                const grow = display.grid?.[origin + r];
+                const line = want[r];
+                for (let c = 0; c < cols; c++) {
+                    const wantch = c < line.length ? line[c] : ' ';
+                    if (grow?.[c]?.ch !== wantch) display.setCell(c, origin + r, wantch, NO_COLOR, 0);
+                }
             }
         }
         // Cursor: prompts that actively await input set cursor via their
@@ -7943,8 +7954,7 @@ function _buildScreenOutput() {
         } else if (game.u?.ux > 0) {
             // C wintty.c tty_curs `:2119–2124`: curx = --x, then
             // x += offx / y += offy, and WIN_MAP with CLIPPING shows
-            // x -= clipx / y -= clipy (JS offx 0 / offy 1; clips 0 at
-            // 80x24 — the same cursor as before).
+            // x -= clipx / y -= clipy (JS offx 0 / offy 1).
             display.setCursor(game.u.ux - 1 - (clipping ? clipx : 0),
                 game.u.uy + 1 - (clipping ? clipy : 0));
         }
@@ -7976,20 +7986,26 @@ let _prevMsgOwnsRow1 = false;
 /**
  * C docorner(1, cury+1, 0) row-1 half (topl.c more()-end `:236–240`,
  * tty_clear_nhwindow NHW_MESSAGE): when a wrapped message unwraps, grid
- * row 1 (screen row shared with map row 0) is repainted from the map.
- * Row 0's full-span repaint erases message residue, like C's row_refresh.
- * gnew clears like _buildScreenOutput's rowFull arm (grid now current).
+ * row 1 (screen row shared with map row 0, or map row clipy under
+ * CLIPPING) is repainted from the map. Row 0's full-span repaint erases
+ * message residue, like C's row_refresh. gnew clears like
+ * _buildScreenOutput's rowFull arm (grid now current).
  */
 function resync_map_row0() {
     const display = game?.nhDisplay;
     if (!display?.grid) return;
-    for (let x = 1; x <= COLNO - 1; x++) {
-        const loc = game.level?.at(x, 0);
+    // C docorner `:3696–3704`: screen row 1 replays map row
+    // y+clipy-offy (offy 1), x from xmin+clipx-offx (offx 0).
+    const my = clipping ? clipy : 0;
+    const x0 = 1 + (clipping ? clipx : 0);
+    for (let x = x0; x <= COLNO - 1; x++) {
+        const loc = game.level?.at(x, my);
         if (!loc) continue;
         if (loc.disp_ch == null || loc.disp_ch === '') {
-            display.setCell(x - 1, 1, ' ', NO_COLOR, 0);
+            const blank = map_screen_cell(x, my);
+            if (blank) display.setCell(blank.sc, blank.sr, ' ', NO_COLOR, 0);
         } else {
-            _paint_gbuf_cell(x, 0, x - 1, 1);
+            _paint_gbuf_cell(x, my);
         }
         loc.gnew = 0;
     }
@@ -8054,22 +8070,42 @@ function _paintToplineOnlyOverOverlay() {
  * grid status otherwise survives to the next capture — the more() wait
  * paints topline-only per C and must not be relied on for freshness).
  */
+// C wintty.c:229 StatusRows — wc2_statuslines <= 2 → 2 else 3 (the
+// MAX_STATUS_ROWS arm; botl.js statusRows is the twin).
+function status_num_rows() {
+    const n = game.iflags?.wc2_statuslines | 0;
+    return n <= 2 ? 2 : 3;
+}
+
+// C wintty.c:905-912 — the tty status window's screen origin: offy =
+// min(rows - wc2_statuslines, ROWNO + 1); at contest 80x24 grid row 22
+// for 2 lines, 21 for 3.
+function status_origin_row() {
+    const rows = (game.nhDisplay?.rows | 0) || 24;
+    return Math.min(rows - status_num_rows(), ROWNO + 1);
+}
+
 function paint_status_grid() {
     const display = game?.nhDisplay;
     // C bot() returns before putstr when gb.bot_disabled.
     if (!display?.grid || !display.setCell || _statusSuppressed || _bot_disabled) return;
     const cols = display.cols || 80;
-    const s1 = _lastStatus1 || '';
-    const s2 = _lastStatus2 || '';
-    const strip = (s) => s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, (m) =>
+    const lines = [strip_csi(_lastStatus1 || ''), _lastStatus2 || '', _lastStatus3 || ''];
+    const origin = status_origin_row();
+    const nrows = status_num_rows();
+    for (let r = 0; r < nrows; r++) {
+        for (let c = 0; c < cols; c++) display.setCell(c, origin + r, ' ', NO_COLOR, 0);
+        const line = lines[r];
+        for (let c = 0; c < Math.min(line.length, cols); c++)
+            display.setCell(c, origin + r, line[c], NO_COLOR, 0);
+    }
+}
+
+// Expand CSI cursor-forward runs in a committed status line (the
+// do_statusline1 gap idiom) for plain grid paints.
+function strip_csi(s) {
+    return s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, (m) =>
         m.match(/\x1b\[\d+C/) ? ' '.repeat(parseInt(m.slice(2), 10) || 0) : '');
-    const line1 = strip(s1);
-    for (let c = 0; c < cols; c++) display.setCell(c, 22, ' ', NO_COLOR, 0);
-    for (let c = 0; c < cols; c++) display.setCell(c, 23, ' ', NO_COLOR, 0);
-    for (let c = 0; c < Math.min(line1.length, cols); c++)
-        display.setCell(c, 22, line1[c], NO_COLOR, 0);
-    for (let c = 0; c < Math.min(s2.length, cols); c++)
-        display.setCell(c, 23, s2[c], NO_COLOR, 0);
 }
 
 function _paintToplineAndStatus() {
@@ -8089,10 +8125,18 @@ export function paint_gbuf_level_to_terminal(level) {
     if (!display?.setCell || !level?.at) return null;
     let last = null;
     for (let y = 0; y < ROWNO; y++) {
-        const sr = y + 1;
         for (let x = 1; x < COLNO; x++) {
             const loc = level.at(x, y);
             if (!loc?.gnew) continue;
+            // C print_glyph clip gate + pan (map_screen_cell): cells
+            // outside the viewport never reach the tty — and move no
+            // cursor (unlike the capture drops below, C returns before
+            // tty_curs, so `last` stays).
+            const cell = map_screen_cell(x, y);
+            if (!cell) {
+                loc.gnew = 0;
+                continue;
+            }
             let ch = loc.disp_ch ?? ' ';
             const color = loc.disp_color ?? NO_COLOR;
             const attr = loc.disp_attr ?? 0;
@@ -8109,7 +8153,7 @@ export function paint_gbuf_level_to_terminal(level) {
                     && ch !== '|' && ch !== 'o' && ch !== 's')
                     ch = uni;
             }
-            display.setCell(x - 1, sr, ch || ' ', color, attr);
+            display.setCell(cell.sc, cell.sr, ch || ' ', color, attr);
             loc.gnew = 0;
             last = { x, y };
         }
@@ -8118,21 +8162,38 @@ export function paint_gbuf_level_to_terminal(level) {
 }
 
 /**
+ * C wintty.c tty_print_glyph `:3869–3873` CLIPPING gate + tty_curs
+ * `:2119–2124` WIN_MAP pan (offx 0, offy 1): the screen cell for a map
+ * cell, or null when the viewport drops it. Callers pass map coords as
+ * in C; the tty offsets live here.
+ * @param {number} mx map x (1..COLNO-1)
+ * @param {number} my map y (0..ROWNO-1)
+ * @returns {{ sc: number, sr: number } | null}
+ */
+function map_screen_cell(mx, my) {
+    if (clipping) {
+        if (mx <= clipx || my < clipy || mx >= clipxmax || my >= clipymax) return null;
+        return { sc: mx - 1 - clipx, sr: my + 1 - clipy };
+    }
+    return { sc: mx - 1, sr: my + 1 };
+}
+
+/**
  * One gbuf cell onto the Terminal (C print_glyph / row_refresh).
  * @param {number} mx map x (1..COLNO-1)
  * @param {number} my map y (0..ROWNO-1)
- * @param {number} sc screen column
- * @param {number} sr screen row
  */
-function _paint_gbuf_cell(mx, my, sc, sr) {
+function _paint_gbuf_cell(mx, my) {
     const display = game?.nhDisplay;
     const loc = game.level?.at(mx, my);
     if (!display?.setCell || !loc) return;
-    // C wintty.c tty_print_glyph `:3869–3873` CLIPPING gate: cells
-    // outside [clipx, clipxmax) x [clipy, clipymax) never reach the tty.
-    // Shut (!clipping) at 80x24 — every cell paints as before.
-    if (clipping && (mx <= clipx || my < clipy
-            || mx >= clipxmax || my >= clipymax)) return;
+    // C wintty.c tty_print_glyph `:3869–3873` CLIPPING gate + tty_curs
+    // `:2121–2124` pan: cells outside the viewport never reach the tty,
+    // the rest paint panned. Shut (!clipping) at 80x24 2-line status —
+    // every cell paints at (x-1, y+1) as before.
+    const cell = map_screen_cell(mx, my);
+    if (!cell) return;
+    const { sc, sr } = cell;
     if (loc.disp_ch == null || loc.disp_ch === '') return;
     let ch = loc.disp_ch;
     // C0 control bytes paint nothing visible: C g_putch emits them raw
@@ -8268,8 +8329,8 @@ export function get_bkglyph_and_framecolor(x, y) {
  * `' '`/`NO_COLOR` (`clear_glyph_buffer`), identical to the UNEXPLORED
  * rendering, so `force` is false (tile/symset `map_glyphinfo` arms that
  * could flip it stay named). `print_glyph` / `Glyphinfo_at` is
- * `_paint_gbuf_cell` at screen `(x - 1, y + 1)` (WIN_MAP offx 0 / offy 1,
- * as `docorner` maps `mx = c + 1`). The background glyph id has no tty
+ * `_paint_gbuf_cell` (WIN_MAP offx 0 / offy 1 plus the CLIPPING pan, as
+ * `docorner` maps `mx = c + 1`). The background glyph id has no tty
  * paint consumer (use_background_glyph is FALSE on tty — `windmain.c:332`);
  * the frame color feeds the gate live via `get_bkglyph_and_framecolor`.
  * Named omissions: `map_glyphinfo` glyphmap[]-base/symidx/tileidx/ov_*
@@ -8301,7 +8362,7 @@ export function row_refresh(start, stop, y) {
         if (force || glyph !== GLYPH_UNEXPLORED || framecolor !== NO_COLOR) {
             // C `:2182–2184` print_glyph(WIN_MAP, x, y,
             // Glyphinfo_at(x, y, glyph), &bkglyphinfo).
-            _paint_gbuf_cell(xi, yy, xi - 1, yy + 1);
+            _paint_gbuf_cell(xi, yy);
         }
     }
 }
@@ -8311,8 +8372,8 @@ export function row_refresh(start, stop, y) {
  * gbuf cell to the map window, then flush_screen(cursor_on_u). Callers:
  * docrt_flags redrawonly `:1722–1724`, tty cliparound (`wintty.c:3840`).
  * JS gbuf is `loc.disp_glyph`/`disp_ch` (D-1767); `print_glyph` /
- * `Glyphinfo_at` is `_paint_gbuf_cell` at screen `(x - 1, y + 1)`
- * (WIN_MAP offx 0 / offy 1), as in row_refresh. Unlike row_refresh there
+ * `Glyphinfo_at` is `_paint_gbuf_cell` (WIN_MAP offx 0 / offy 1 plus
+ * the CLIPPING pan), as in row_refresh. Unlike row_refresh there
  * is no UNEXPLORED/framecolor gate — C resends every cell. Loop bounds
  * keep every (x, y) in range, so Glyphinfo_at is always the gbuf cell
  * (never `&no_ginfo`); the default `!UNBUFFERED_GLYPHINFO` expansion
@@ -8341,7 +8402,7 @@ export async function redraw_map(cursor_on_u) {
             void glyph;
             // C `:1803–1806` get_bkglyph_and_framecolor + print_glyph.
             get_bkglyph_and_framecolor(x, y);
-            _paint_gbuf_cell(x, y, x - 1, y + 1);
+            _paint_gbuf_cell(x, y);
         }
     }
     // C `:1808` flush_screen(cursor_on_u).
@@ -8355,11 +8416,22 @@ export async function redraw_map(cursor_on_u) {
 // CO/LI are the tty dimensions; JS reads game.nhDisplay.cols/rows
 // (Terminal/GameDisplay default 80x24). HUPSKIP is empty without
 // HANGUPHANDLING (`:93–94`), so there is no hangup arm to port.
-// At 80x24 `CO >= COLNO` and `LI >= 1 + ROWNO + statuslines`, so
-// newclipping leaves clipping FALSE and every gate below stays shut.
+// At 80x24 with 2-line status `CO >= COLNO` and
+// `LI >= 1 + ROWNO + statuslines`, so newclipping leaves clipping FALSE
+// and every gate below stays shut; statuslines=3 makes 24 < 1+21+3 and
+// clipping goes live (clipymax 20).
 let clipping = false;
 let clipx = 0, clipxmax = 0;
 let clipy = 0, clipymax = 0;
+
+/**
+ * C wintty.c CLIPPING file statics `:186–193` — read-only view for the
+ * getpos cursor painter (curs_win_map), the tty_curs(WIN_MAP) analog.
+ * @returns {{ clipping: boolean, clipx: number, clipy: number }}
+ */
+export function tty_map_clip() {
+    return { clipping, clipx, clipy };
+}
 
 /**
  * C ref: win/tty/wintty.c tty clip extent — screen columns and rows
@@ -8395,7 +8467,8 @@ export function setclipped() {
  * C is static; exported so the arms stay testable, like
  * get_bkglyph_and_framecolor. Async only because tty_cliparound
  * reaches redraw_map (nhgetch reach), same shape as redraw_map D-1974.
- * Named: resize/preference_update callers (no JS resize path; the
+ * Wired: options.js preference_update (tty_preference_update `:603`).
+ * Named: the winch_handler resize caller (no JS resize path; the
  * display is fixed 80x24).
  * @param {number} x map x, C `coordxy x` (0 = no position, skip the pan)
  * @param {number} y map y, C `coordxy y`
@@ -8610,18 +8683,17 @@ export async function docorner(xmin, ymax, ystart = 0) {
                 display.setCell(c, y, ' ', NO_COLOR, 0);
         }
         // C `:3696` y < offy || y + clipy > ROWNO → skip board (tty
-        // tty_display_nhwindow; JS offy 1; clipy 0 at 80x24, so y > ROWNO).
+        // tty_display_nhwindow; JS offy 1).
         if (y < 1 || y + clipy > ROWNO) continue;
         // C `:3704` row_refresh(xmin + clipx - offx, COLNO - 1,
         // y + clipy - offy); JS offx 0 / offy 1: xmin is x0 + 1, so the
-        // map segment is [x0 + 1 + clipx, COLNO - 1] at y - 1 + clipy
-        // (clips 0 at 80x24 — the same cells as before).
+        // map segment is [x0 + 1 + clipx, COLNO - 1] at y - 1 + clipy.
         // row_refresh skips UNEXPLORED cells C would skip, leaving the
         // cl_end blank — visually identical, no redundant setCell.
         row_refresh(x0 + 1 + clipx, COLNO - 1, y - 1 + clipy);
     }
     // C `:3716`: ymax >= wins[WIN_STATUS]->offy && !ystart → botlx; bot()
-    if (y1 >= 22 && !paging) {
+    if (y1 >= status_origin_row() && !paging) {
         if (game.flags) game.flags.botlx = true;
         await bot();
     }
@@ -8772,7 +8844,8 @@ export function flush_screen_getpos_dirty() {
     if (last && display?.setCursor) {
         // C print_glyph → tty_curs(x,y) with --x then putchar advances
         // curx by 1, so the tty cursor sits in column map_x (not map_x-1).
-        display.setCursor(last.x, last.y + 1);
+        // WIN_MAP CLIPPING pan (wintty.c `:2121–2124`) applies on top.
+        display.setCursor(last.x - (clipping ? clipx : 0), last.y + 1 - (clipping ? clipy : 0));
     } else if (display?.setCursor && prevCol != null && prevRow != null) {
         display.setCursor(prevCol, prevRow);
     }

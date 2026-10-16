@@ -139,7 +139,7 @@ import {
     LL_MINORAC, BOLT_LIM, MAXULEV, TELL, NOTELL, Upolyd, ismnum,
     DIED, KILLED_BY, Is_astralevel, M_SEEN_REFL, M_SEEN_ELEC, M_SEEN_DISINT,
     W_ARMS, W_ARMC, W_ARM, W_AMUL, OBJ_FREE, SICK_ALL,
-    REFLECTING,
+    REFLECTING, ANTIMAGIC,
     WEAK, HUNGRY, TT_LAVA, TT_BURIEDBALL, TELEDS_NO_FLAGS, DISSOLVED,
     XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT,
     EXT_ENCUMBER, HVY_ENCUMBER, TIMEOUT, STRANGLED, isok, IS_OBSTRUCTED,
@@ -236,10 +236,19 @@ function Hallucination() {
     return !!(game.u?.Hallucination);
 }
 
-/** C youprop.h Antimagic. */
+/**
+ * C youprop.h Antimagic (:55–57) ≡ uprops[ANTIMAGIC].intrinsic ||
+ * uprops[ANTIMAGIC].extrinsic. confer_oc_oprop writes a worn
+ * CLOAK_OF_MAGIC_RESISTANCE / gray DSM only to uprops (EAntimagic
+ * unmirrored), so the flats alone miss worn MR — sit.js D-1089 shape;
+ * this pray.js clone was its deferred twin. Gates the angrygods
+ * black-glow line: with worn MR, C skips the glow (pray.c :754–756).
+ */
 function Antimagic() {
     const u = game.u || {};
-    return !!(u.Antimagic || u.HAntimagic || u.EAntimagic);
+    const e = u.uprops?.[ANTIMAGIC];
+    return !!((u.Antimagic || u.HAntimagic || u.EAntimagic)
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
 }
 
 /** C: Punished ≡ uball != 0. Exported for polyself.c doremove. */

@@ -2454,7 +2454,8 @@ export async function hatch_egg(egg, timeout) {
     const { enexto } = await import('./teleport.js');
     const { makemon } = await import('./makemon.js');
     const { tamedog } = await import('./dog.js');
-    const { useup } = await import('./eat.js');
+    // NB: useup is the static invent.js import (timeout.js:54); eat.js does
+    // not export it — a dynamic re-import here shadowed it with undefined.
     const { m_at, hideunder } = await import('./mon.js');
 
     let mon = null;

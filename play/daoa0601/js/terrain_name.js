@@ -3,10 +3,10 @@ import { ALTAR, CLOUD, DOOR, DRAWBRIDGE_DOWN, FOUNTAIN, GRAVE, ICE, IS_AIR, IS_R
 import { game, requireGameLevel } from './gstate.js';
 import { displayLiquidName } from './display.js';
 import { drawbridgeUnderlyingType } from './drawbridge_terrain.js';
+import { isIceAt, isLavaAt, isPoolAt } from './terrain_properties.js';
 import { onQuestStart } from './quest.js';
 import { heroIsHallucinating } from './senses.js';
 import { roomsAt } from './room.js';
-import { isIceAt, isLavaAt, isPoolAt } from './terrain_properties.js';
 import { monsterDigests, monsterEnfolds, monsterIsAnimal } from './monster_data.js';
 // C pager.c:waterbody_name(). The liquid name is chosen before a caller
 // changes terrain, even when that caller will not print it.
@@ -63,7 +63,7 @@ export function surfaceName(x, y, state = game) {
         return 'ice';
     if (isLavaAt(x, y, state))
         return displayLiquidName('lava', state);
-    if (location.typ === DRAWBRIDGE_DOWN)
+    if (type === DRAWBRIDGE_DOWN)
         return 'bridge';
     if (type === ALTAR)
         return 'altar';
