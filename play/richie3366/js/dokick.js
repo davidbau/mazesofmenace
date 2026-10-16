@@ -929,7 +929,9 @@ export async function kick_monster(mon, x, y) {
     await setmangry(mon, true);
 
     const u = game.u || {};
-    if (u.Levitation && !rn2(3) && verysmall(mon.data)
+    /* C dokick.c:154 reads the Levitation macro, not the JS-only sticky
+       u.Levitation (D-1070) — use this file's youprop.h:240 helper. */
+    if (Levitation() && !rn2(3) && verysmall(mon.data)
         && !is_flyer(mon.data)) {
         await pline('Floating in the air, you miss wildly!');
         exercise(A_DEX, false);

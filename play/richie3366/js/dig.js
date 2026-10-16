@@ -82,6 +82,9 @@ import {
 import { obj_resists } from './dogmove.js';
 import { unpunish, punish } from './read.js';
 import { getdir, dxdy_moveok } from './lock.js';
+// C ref: cmd.c cmd_from_dir/movecmd — use_pick_axe dirsyms through the
+// live binds (hoisted fns, cycle-safe per imports.mjs --can dig.js dokeylist.js).
+import { cmd_from_dir, movecmd } from './dokeylist.js';
 // imports.mjs --can js/dig.js js/cmd.js cmdq_add_ec: hoisted, cycle-safe.
 import { cmdq_add_ec } from './cmd.js';
 // C ref: explode.c explode — dighole magical-trap explode arm
@@ -134,7 +137,7 @@ import {
     HEAD, FOOT,
     TT_BURIEDBALL, TT_INFLOOR, DRAWBRIDGE_DOWN, DBWALL, MIGR_RANDOM,
     TAINT_AGE, MM_NOMSG, IN_SIGHT, COULD_SEE, RLOC_NOMSG, STOMACH, FAINTED,
-    xytodir, DIR_180, DIR_ERR, xdir, ydir, N_DIRS,
+    xytodir, DIR_180, DIR_ERR, xdir, ydir, N_DIRS, N_DIRS_Z, MV_WALK,
     ICE, DRAWBRIDGE_UP, DB_UNDER, DB_MOAT, DB_LAVA, DB_ICE,
     ROT_ORGANIC, TIMER_OBJECT, Has_contents, OBJ_FREE, OBJ_FLOOR,
     CORPSTAT_HISTORIC, STATUE_TRAP, CQ_CANNED,
@@ -163,22 +166,6 @@ const TREEFRUITS = [
     objectNames.indexOf('BANANA'),
     objectNames.indexOf('EUCALYPTUS_LEAF'),
 ].filter((i) => i >= 0);
-
-/** C ref: dig.c use_pick_axe dir loop — cmd_from_dir(dir, MV_WALK) walks
- *  DIR_W..DIR_UP, i.e. sdir order "hykulnjb><" (cmd.c reset_commands;
- *  hack.h movementdirs; xdir/ydir/zdir decl.c:77-79). */
-const DIG_DIR_CHARS = [
-    { ch: 'h', dx: -1, dy: 0, dz: 0 },
-    { ch: 'y', dx: -1, dy: -1, dz: 0 },
-    { ch: 'k', dx: 0, dy: -1, dz: 0 },
-    { ch: 'u', dx: 1, dy: -1, dz: 0 },
-    { ch: 'l', dx: 1, dy: 0, dz: 0 },
-    { ch: 'n', dx: 1, dy: 1, dz: 0 },
-    { ch: 'j', dx: 0, dy: 1, dz: 0 },
-    { ch: 'b', dx: -1, dy: 1, dz: 0 },
-    { ch: '>', dx: 0, dy: 0, dz: 1 },
-    { ch: '<', dx: 0, dy: 0, dz: -1 },
-];
 
 /**
  * C: `#define wall_info flags` — one field. JS sometimes writes W_* bits to
@@ -2602,37 +2589,28 @@ export async function use_pick_axe(obj) {
     }
 
     const downok = !!can_reach_floor(false);
-    let dirsyms = '';
-    for (const d of DIG_DIR_CHARS) {
+    // C dig.c:1123-1149 — dirsyms in move_funcs order through the live
+    // binds: cmd_from_dir names the key (ndir digits under number_pad,
+    // phone-layout digits under num_pad_mode&2), movecmd sets u.dx/u.dy/u.dz.
+    const syms = [];
+    for (let dir = 0; dir < N_DIRS_Z; dir++) {
+        const dirch = cmd_from_dir(dir, MV_WALK); // C :1126
         if (u.uswallow) {
-            dirsyms += d.ch;
-            continue;
-        }
-        if (d.dz === 0) {
-            /* C dig.c:1129-1136: movecmd(dirch, MV_WALK) sets u.dx/u.dy,
-             * then dxdy_moveok() (NODIAG grid-bug) gates the cell test. */
-            u.dx = d.dx;
-            u.dy = d.dy;
-            u.dz = 0;
-            if (!dxdy_moveok()) continue;
+            /* all directions are viable when swallowed */
+        } else if (movecmd(dirch, MV_WALK)) { // C :1129 planar
+            if (!dxdy_moveok()) continue; // C :1131 NODIAG
             const rx = (u.ux | 0) + (u.dx | 0);
             const ry = (u.uy | 0) + (u.dy | 0);
-            if (!isok(rx, ry) || dig_typ(obj, rx, ry) === DIGTYP_UNDIGGABLE) {
-                continue;
-            }
-            dirsyms += d.ch;
-        } else {
-            /* C dig.c:1137-1145: up/down arm; movecmd set u.dz, skip when
-             * (u.dz > 0) ^ downok; down needs floor, else up is the token
-             * candidate so there is always at least one choice shown. */
-            u.dx = 0;
-            u.dy = 0;
-            u.dz = d.dz;
-            if (((u.dz > 0) ? 1 : 0) ^ (downok ? 1 : 0)) continue;
-            dirsyms += d.ch;
+            if (!isok(rx, ry) || dig_typ(obj, rx, ry) === DIGTYP_UNDIGGABLE) continue; // C :1134-1136
+        } else if ((((u.dz | 0) > 0) ? 1 : 0) ^ (downok ? 1 : 0)) { // C :1137-1145 up/down arm
+            continue;
         }
+        syms.push(dirch);
     }
-    const qbuf = `In what direction do you want to ${verb}? [${dirsyms}]`;
+    // C :1150 Sprintf %s — a NUL dirch (fully unbound move) truncates.
+    const nul = syms.indexOf(0);
+    const shown = nul < 0 ? syms : syms.slice(0, nul);
+    const qbuf = `In what direction do you want to ${verb}? [${String.fromCharCode(...shown)}]`;
     if (!(await getdir(qbuf))) return res | ECMD_CANCEL;
     return use_pick_axe2(obj);
 }

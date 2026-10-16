@@ -3112,7 +3112,9 @@ async function passiveum(olduasmon, mtmp, mattk) {
         case AD_PHYS:
             if ((oldu_mattk.aatyp | 0) === AT_BOOM) {
                 await pline('You explode!');
-                // rehumanize deferred
+                /* C mhitu.c:2529 — KMH balance patch: rehumanize even if
+                   unchanging; rehumanize() itself gates the stuck arm. */
+                await rehumanize();
                 return assess_dmg(mtmp, tmp);
             }
             break;

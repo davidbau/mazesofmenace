@@ -128,7 +128,7 @@ import { Monnam, Amonnam, Adjmonnam, mon_nam, s_suffix, hliquid, rndmonnam, tryc
 import { revive } from './zap.js';
 import {
     near_capacity, learn_unseen_invent, encumber_msg,
-    freeinv_core, getobj, ggetobj, useup, useupall, useupf,
+    freeinv, freeinv_core, getobj, ggetobj, useup, useupall, useupf,
     update_inventory,
 } from './invent.js';
 import { can_reach_floor, set_occupation, engr_at, sticks, save_engravings, rest_engravings, unskip_engravings_for_save } from './engrave.js';
@@ -1121,16 +1121,14 @@ function tutorial_enter_gamestate() {
     while (inv.length) {
         const otmp = inv[0];
         const wornmask = otmp.owornmask || 0;
-        // C nhl_gamestate: setnotworn(otmp); freeinv(otmp);
-        // otmp->owornmask = wornmask (restore flag, not currently worn)
-        setnotworn(otmp);
-        inv.shift();
-        // C freeinv sets where = OBJ_FREE before the object sits on
+        // C nhl_gamestate `:1777–1779`: setnotworn(otmp); freeinv(otmp);
+        // otmp->owornmask = wornmask (restore flag, not currently worn).
+        // freeinv (live invent.js export) extracts, clears carry
+        // intrinsics via freeinv_core (uhave bits, artifact W_ART off),
+        // and sets where = OBJ_FREE before the object sits on
         // gmst_invent. addinv_nomerge on the way out panics otherwise.
-        // freeinv_core stays the existing omit (where is set by hand below).
-        // update_inventory rides inside setnotworn now (C `:182`); it
-        // no-ops outside the moveloop, so stash/restore are unaffected.
-        otmp.where = OBJ_FREE;
+        setnotworn(otmp);
+        freeinv(otmp);
         otmp.owornmask = wornmask;
         stash.unshift(otmp); // C prepends gmst_invent
     }

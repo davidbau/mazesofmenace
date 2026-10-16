@@ -662,15 +662,17 @@ export function ecname_from_fn(fn) {
  * command for DIR_ dir + MV_ mode, i.e. cmd_from_func of
  * move_funcs[dir][mode] (cmd.c:2070–2083), whose columns are
  * { do_move_*, do_run_*, do_rush_* } = { MV_WALK, MV_RUN, MV_RUSH }.
- * Out-of-range dir/mode returns 0 (C would index off the table;
- * callers only pass rn2(N_DIRS) dirs). Only live caller is the
- * debug-fuzzer randomkey (cmd.c:3563).
+ * Rows 8,9 are { dodown, doup } in every column (cmd.c:2078–2080),
+ * so the mode is irrelevant there. Out-of-range dir/mode returns 0
+ * (C would index off the table). Live callers: use_pick_axe dirsyms
+ * (dig.c:1126) + the debug-fuzzer randomkey (cmd.c:3563).
  * @param {number} dir
  * @param {number} mode
  * @returns {number}
  */
 export function cmd_from_dir(dir, mode) {
-    if (dir < 0 || dir >= 8) return 0;
+    if (dir < 0 || dir >= N_DIRS_Z) return 0;
+    if (dir >= 8) return cmd_from_func_ecname(dir === 8 ? 'down' : 'up');
     const names =
         mode === MV_WALK ? MOVE_WALK_ECNAMES
         : mode === MV_RUN ? MOVE_RUN_ECNAMES

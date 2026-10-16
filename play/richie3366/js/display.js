@@ -410,6 +410,28 @@ function obj_map_attr(obj, rememberedPile = false) {
 }
 
 /**
+ * C ref: wintty.c tty_print_glyph `:3930–3936` — the tty inverse reads
+ * MG_OBJPILE / MG_FEMALE off the PAINTED id's glyphmap flags
+ * (reset_glyphmap `:2788–2835` piletop + statue banks), never live floor
+ * objects or a side field. Memory paints (newsym, docrt
+ * show_memory_glyph, show_map_spot `:1410–1413` oldglyph restore) derive
+ * pile here: a pile under a remembered trap/stone takes no inverse, a
+ * remembered piletop id takes it even when the objpile field is absent
+ * (integer-only restore) or the floor index misses. Named omissions:
+ * MG_DETECT / MG_BW_* (same standing as obj_map_attr).
+ */
+export function glyph_bank_attr(gid) {
+    const g = glyph_id(gid);
+    if (g == null) return 0;
+    const pile = glyph_is_normal_piletop_obj(g) || glyph_is_piletop_generic_obj(g)
+        || glyph_is_body_piletop(g)
+        || glyph_is_male_statue_piletop(g) || glyph_is_fem_statue_piletop(g);
+    if (pile && game.iflags?.hilite_pile && use_inverse_opt()) return ATR_INVERSE;
+    if (glyph_is_fem_statue(g)) return wizmgender_inverse(true);
+    return 0;
+}
+
+/**
  * C ref: wintty.c tty_print_glyph — (special & MG_PET) && hilite_pet
  * → term_start_attr(wc2_petattr). flag.h hilite_pet ≡ wc_hilite_pet;
  * options.c init_options wc2_petattr = ATR_INVERSE; enable hilite_pet
@@ -496,7 +518,9 @@ function hero_map_attr() {
  * tty paint), so the twin derives it from the banked id inside
  * show_glyph_cell — live, memory, detection and wizard engrcorr paints
  * all inherit it, as in C. Default symbols all show '#', so the arm
- * fires unless SYMBOLS separates them (showsyms live, `:2653`).
+ * fires unless SYMBOLS separates them; with a symset loaded the read is
+ * ov ?: live carrier (C switch_symbols `:257–260`), not the stale
+ * showsyms copy.
  * Named omissions: the `:2934` has_rogue_color first-arm (ROGUESET +
  * IBM handling, never active on contest tty — same standing as in
  * litcorr_showsyms_white); the `:2897–2912` MG_BW_LAVA/ICE/SINK
@@ -505,10 +529,29 @@ function hero_map_attr() {
  */
 function engrcorr_map_attr(gid) {
     if ((gid | 0) !== cmap_to_glyph(S_ENGRCORR)) return 0;
-    const sh = game.gs?.showsyms;
-    const sym = sh?.[S_ENGRCORR + SYM_OFF_P];
-    if (sym !== sh?.[S_CORR + SYM_OFF_P]
-        && sym !== sh?.[S_LITCORR + SYM_OFF_P]) return 0;
+    // C symbols.c switch_symbols `:257–260`: showsyms is ov ?: loaded
+    // carrier, but game.gs.showsyms only carries ov + defaults — with a
+    // symset loaded (Amiga corr `e` vs default `#`), read the live
+    // carrier like map_glyphinfo so the collision test sees what C sees
+    // (Valkyrie-50155041 s133: `#` vs `e` → no MG_BW_ENGR). Values are
+    // nhsym-normalized (ov stores strings, carrier ints).
+    const curSet = ((game.currentgraphics | 0) === ROGUESET) ? ROGUESET : PRIMARYSET;
+    const slot = game.gs?.symset?.[curSet];
+    let sym, corr, litcorr;
+    if (slot?.name != null) {
+        const ov = curSet === ROGUESET ? ov_rogue_table() : ov_primary_table();
+        const car = curSet === ROGUESET ? rogue_syms_table() : primary_syms_table();
+        const live = (i) => nhsym_code(ov[i] || car[i]);
+        sym = live(S_ENGRCORR + SYM_OFF_P);
+        corr = live(S_CORR + SYM_OFF_P);
+        litcorr = live(S_LITCORR + SYM_OFF_P);
+    } else {
+        const sh = game.gs?.showsyms;
+        sym = nhsym_code(sh?.[S_ENGRCORR + SYM_OFF_P]);
+        corr = nhsym_code(sh?.[S_CORR + SYM_OFF_P]);
+        litcorr = nhsym_code(sh?.[S_LITCORR + SYM_OFF_P]);
+    }
+    if (sym !== corr && sym !== litcorr) return 0;
     return use_inverse_opt() ? ATR_INVERSE : 0;
 }
 
@@ -6626,24 +6669,24 @@ export function newsym(x, y) {
                 loc.remembered_glyph = mem;
             }
         }
-        // C: piletop glyph carries MG_OBJPILE; hilite applied at print
-        // from current iflags. JS may lack objpile on older memory — also
-        // detect live floor pile (still present under remembered glyph).
-        const floorObj = objects_at(x, y);
-        const livePile = !!(floorObj && !covers_objects(x, y)
-            && obj_is_piletop(floorObj));
         const gid = typeof mem.glyph === 'number' ? mem.glyph
             : (mem.invisible ? GLYPH_INVISIBLE : NO_GLYPH);
-        // C wintty.c tty_print_glyph `:3930–3936`: inverse needs a flag on
-        // the PAINTED id — MG_OBJPILE lives only on piletop-bank ids
-        // (reset_glyphmap `:2788–2821`), MG_FEMALE on statue banks
-        // (`:2828–2835`). A pile under a remembered non-pile glyph (trap
-        // over an unseen corpse pile) takes no inverse.
-        const inverseBank = gid >= GLYPH_STATUE_OFF
-            && gid < GLYPH_UNEXPLORED_OFF;
-        const attr = ((livePile || mem.objpile) && inverseBank)
-            ? obj_map_attr(floorObj, !livePile)
-            : 0;
+        // C wintty.c tty_print_glyph `:3930–3936`: inverse needs MG_OBJPILE
+        // / MG_FEMALE on the PAINTED id (reset_glyphmap `:2788–2835`
+        // piletop + statue banks) — never live floor objects: a pile
+        // under a remembered trap/stone takes no inverse, a remembered
+        // piletop id takes it even when the objpile field is absent
+        // (show_map_spot `:1413` integer-only restore) or the floor index
+        // misses. Unmapped ids (NO_GLYPH legacy) keep the field/live read.
+        let attr = glyph_bank_attr(gid);
+        if (gid === NO_GLYPH) {
+            const floorObj = objects_at(x, y);
+            const livePile = !!(floorObj && !covers_objects(x, y)
+                && obj_is_piletop(floorObj));
+            attr = (livePile || mem.objpile)
+                ? obj_map_attr(floorObj, !livePile)
+                : 0;
+        }
         show_glyph_cell(x, y, mem.ch, mem.color, mem.decgfx, attr, gid);
     } else {
         // C: show_mem → show_glyph(x, y, lev->glyph); unexplored glyph
@@ -6893,14 +6936,21 @@ function show_memory_glyph(x, y) {
     if (!loc) return;
     const mem = loc.remembered_glyph;
     if (mem) {
-        const floorObj = objects_at(x, y);
-        const livePile = !!(floorObj && !covers_objects(x, y)
-            && obj_is_piletop(floorObj));
-        const attr = (livePile || mem.objpile)
-            ? obj_map_attr(floorObj, !livePile)
-            : 0;
         const gid = typeof mem.glyph === 'number' ? mem.glyph
             : (mem.invisible ? GLYPH_INVISIBLE : NO_GLYPH);
+        // C wintty.c tty_print_glyph `:3930–3936`: inverse reads the
+        // PAINTED id's bank flags (glyph_bank_attr), never live floor
+        // objects — a pile under a remembered trap/stone takes no
+        // inverse. Unmapped ids keep the legacy field/live read.
+        let attr = glyph_bank_attr(gid);
+        if (gid === NO_GLYPH) {
+            const floorObj = objects_at(x, y);
+            const livePile = !!(floorObj && !covers_objects(x, y)
+                && obj_is_piletop(floorObj));
+            attr = (livePile || mem.objpile)
+                ? obj_map_attr(floorObj, !livePile)
+                : 0;
+        }
         show_glyph_cell(x, y, mem.ch, mem.color, !!mem.decgfx, attr, gid);
     } else {
         show_glyph_cell(x, y, ' ', NO_COLOR, false, 0, GLYPH_UNEXPLORED);

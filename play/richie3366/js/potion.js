@@ -136,7 +136,7 @@ import {
     EYE, SEE_INVIS,
     DETECT_MONSTERS, LEVITATION, INVIS, HEAD, COLNO, ROWNO,
     In_endgame, Is_earthlevel, Is_airlevel, Is_waterlevel, In_sokoban,
-    QBUFSZ, STONED, SLIMED, SICK, SICK_ALL, DEAF, STRANGLED, STUNNED, G_GONE,
+    QBUFSZ, STONED, SLIMED, SICK, SICK_ALL, DEAF, STRANGLED, STUNNED, VOMITING, G_GONE,
     CONFUSION,
     A_CHAOTIC, A_LAWFUL, Upolyd, ismnum, NON_PM, NEUTRAL,
     P_RIDING, P_BASIC, ER_DESTROYED, ER_NOTHING, MM_NOMSG,
@@ -149,7 +149,7 @@ import {
     BURNING_OIL, LOST_EXPLODING, EXPL_FIERY,
     MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS, COST_NUTRLZ,
     COST_UNCURS, COST_UNBLSS, PLNMSG_OBJ_GLOWS,
-    P_CROSSBOW, P_NONE, FINGER, FOOT, LL_CONDUCT,
+    P_CROSSBOW, P_NONE, FINGER, FOOT, FACE, LL_CONDUCT,
     GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, GETOBJ_EXCLUDE_INACCESS,
     GETOBJ_EXCLUDE_NONINVENT, GETOBJ_NOFLAGS,
     HANDS_SYM,
@@ -833,6 +833,15 @@ export async function make_vomiting(xtime, talk) {
     // the u.Unaware field has no writers, so it never suppressed.
     if (Unaware()) talk = false;
     u.Vomiting = ((u.Vomiting | 0) & ~TIMEOUT) | itimeout(xtime);
+    // C: Vomiting ≡ uprops[VOMITING].intrinsic (youprop.h:111, single
+    // storage; set_itimeout `:250` writes TIMEOUT bits only). Mirror so
+    // the nh_timeout generic -- (which decrements uprops) and the
+    // intr_bits dialogue guards see what C wrote (D-2396 sibling shape;
+    // without this a clear left the slot set and vomiting_dialogue ran
+    // where C skips it — Tourist-51050041 s112 extra exercise rn2(2)).
+    if (!u.uprops) u.uprops = {};
+    if (!u.uprops[VOMITING]) u.uprops[VOMITING] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+    u.uprops[VOMITING].intrinsic = ((u.uprops[VOMITING].intrinsic | 0) & ~TIMEOUT) | itimeout(xtime);
     if (game.disp) game.disp.botl = true;
     if (game.flags) game.flags.botl = true;
     if (!xtime && old && talk) {

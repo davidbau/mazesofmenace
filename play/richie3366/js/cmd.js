@@ -6779,10 +6779,13 @@ export async function domove(dx, dy) {
         // full mon_visible Blind_telepat / Protection_from_shape amulet prop.
         mtmp = mon_at(newx, newy);
         // C: don't attack if running and can see the non-safemon (pets ok).
-        // forcefight never reaches this arm. Confdir into a visible hostile
-        // must stop the run here — else JS burns a hit-roll rn2(20) while C
-        // returns for nhgetch (seed0002 @11309).
-        if (mtmp && !is_safemon(mtmp) && game.context?.run && !forcefight) {
+        // No forcefight exemption in C's condition (hack.c:2766–2776):
+        // C's "never get here if forcefight" comment notwithstanding,
+        // stale run (8 left over from travel) + F reaches it and C stops
+        // silently (temp-C measured at the questtour zombie turn).
+        // Confdir into a visible hostile must stop the run here — else JS
+        // burns a hit-roll rn2(20) while C returns for nhgetch (D-0440).
+        if (mtmp && !is_safemon(mtmp) && game.context?.run) {
             const Blind = !!(u.Blind || u.ublind
                 || (((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0)));
             const ap = M_AP_TYPE(mtmp);

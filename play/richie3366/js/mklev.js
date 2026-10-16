@@ -6552,25 +6552,22 @@ function load_bar_strt() {
     // des.terrain({62,02}, ".") — portal free spot
     sel_set_ter(mx + 62, my + 2, ROOM, false);
 
-    // des.region lit/unlit (map-relative; RNG-free)
-    const barLit = (x1, y1, x2, y2, lit) => {
-        for (let y = y1; y <= y2; y++) {
-            for (let x = x1; x <= x2; x++) {
-                const loc = g.level.at(mx + x, my + y);
-                if (loc) loc.lit = lit;
-            }
-        }
-    };
-    barLit(0, 0, 75, 19, true);
-    barLit(9, 5, 11, 5, false);
-    barLit(9, 7, 11, 7, true);
-    barLit(9, 9, 11, 9, false);
-    barLit(13, 5, 20, 9, true);
-    barLit(29, 5, 31, 6, true);
-    barLit(26, 10, 28, 11, true);
-    barLit(4, 13, 6, 14, true);
-    barLit(15, 13, 17, 14, true);
-    barLit(22, 14, 24, 15, true);
+    // des.region lit/unlit (map-relative; RNG-free) — C lspo_region
+    // argc=2 (sp_lev.c:5619-5632): "lit" grows the selection W_ANY before
+    // sel_set_lit (lava-or-rlit); "unlit" does not grow. light_region is
+    // the grown+isok-clipped mirror (same file): rect +/-1 when lit,
+    // x>=1/y>=0 clip like isok, lava always lit. The ungrown barLit left
+    // the grown fringe (map y0 at my=1) dark, hiding y0 floor (D-4024).
+    light_region(mx + 0, my + 0, mx + 75, my + 19, true); // Bar-strt.lua:48 lit
+    light_region(mx + 9, my + 5, mx + 11, my + 5, false); // :49 unlit (no grow)
+    light_region(mx + 9, my + 7, mx + 11, my + 7, true); // :50 lit
+    light_region(mx + 9, my + 9, mx + 11, my + 9, false); // :51 unlit (no grow)
+    light_region(mx + 13, my + 5, mx + 20, my + 9, true); // :52 lit
+    light_region(mx + 29, my + 5, mx + 31, my + 6, true); // :53 lit
+    light_region(mx + 26, my + 10, mx + 28, my + 11, true); // :54 lit
+    light_region(mx + 4, my + 13, mx + 6, my + 14, true); // :55 lit
+    light_region(mx + 15, my + 13, mx + 17, my + 14, true); // :56 lit
+    light_region(mx + 22, my + 14, mx + 24, my + 15, true); // :57 lit
 
     // des.stair("down", 09,09)
     // C l_create_stairway: fixed scoord → SpLev_Map mark :4189 + force :4209–4210.
@@ -28325,7 +28322,8 @@ function hellfill_style_maze_wt1() {
 
 /**
  * hellfill.lua hells[4] — maze + iron bars / lava wall replace.
- * Named omit: horiz iron-bar floor replace.
+ * The cwid==1 horiz iron-bar floor replace (:366) runs the live whole
+ * lspo_replace_terrain (D-4033).
  */
 function hellfill_style_maze_wall_replace() {
     const cwid = lua_random2(1, 4); // math.random(4)
@@ -28347,9 +28345,11 @@ function hellfill_style_maze_wall_replace() {
     hellfill_replace_terrain_all(MATCH_WALL, wallterrain[0], 100);
     if (cwid === 1) {
         if (wallterrain[0] === IRONBARS && percent(80)) {
-            // replace some horizontal iron bars — named omission envelope
+            // hellfill.lua:366 — replace some horizontal iron bars walls
+            // with floor (chance = 25 * math.random(4) burns before the
+            // call, like the lua table constructor; D-4033).
             const chance = 25 * lua_random2(1, 4);
-            void chance;
+            lspo_replace_terrain({ mapfragment: '.\nF\n.', toterrain: '.', chance });
         } else if (percent(25)) { // hellfill.lua:367-369 (D-4019)
             hellfill_rnd_hell_prefab(false);
         }

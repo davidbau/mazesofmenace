@@ -62,7 +62,7 @@ import {
     feel_location, feel_newsym, unmap_invisible, map_object, Norep, You_see,
     see_monsters, flush_screen, docrt, cls, more, set_msg_xy, unmap_object, flush_topl_more,
     remember_shown_glyph,
-    glyph_is_object, glyph_to_obj, glyph_is_trap, glyph_at, glyph_to_cmap,
+    glyph_is_object, glyph_to_obj, glyph_is_trap, glyph_at, glyph_to_cmap, glyph_bank_attr,
     There, You, Your, under_water, under_ground,
     Hallucination, random_object, random_monster,
     pet_to_glyph, detected_mon_to_glyph, mon_to_glyph, monsym, glyph_tty_attr,
@@ -980,10 +980,15 @@ export function show_map_spot(x, y, cnf) {
             if (ep && !cnf) {
                 map_engraving(ep, 1);
             } else if (glyph_is_trap(oldglyph) || glyph_is_object(oldglyph)) { // C `:1410`
-                // C `:1411` show_glyph — fire-and-forget like map_trap /
-                // map_engraving (show_glyph_cell is async; disp stores land
+                // C `:1411` show_glyph repaints the id: the tty inverse
+                // reads the id's glyphmap flags (MG_OBJPILE on piletop
+                // banks), so a restored piletop keeps inverse where a
+                // hardcoded 0 drops it (Knight-50450039 s720 `?`).
+                // Fire-and-forget like map_trap / map_engraving
+                // (show_glyph_cell is async; disp stores land
                 // synchronously, only the announce emit defers).
-                show_glyph_cell(x, y, oldtty.ch, oldtty.color, oldtty.dec, 0, oldglyph);
+                show_glyph_cell(x, y, oldtty.ch, oldtty.color, oldtty.dec,
+                    glyph_bank_attr(oldglyph), oldglyph);
                 if (hero_memory) remember_shown_glyph(lev, oldtty, oldglyph); // C `:1413` lev->glyph
             }
         }
