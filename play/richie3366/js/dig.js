@@ -222,8 +222,16 @@ function Unaware() {
         || (u.uhs | 0) === FAINTED);
 }
 
+/** C youprop.h Blind ≡ (HBlinded || EBlinded) && !BBlinded (D-0716 house
+ * shape, verbatim cf. shk.js/do_wear.js Blind). The old sticky
+ * `u.Blind || u.ublind` mirrors are pure hysteresis (D-3995): u.Blind is a
+ * make_blinded cache, u.ublind only ever false — a blindfold-wearing
+ * (EBlinded) hero misread as seeing, so zap_dig's maze_dig wall/tree/rock
+ * arms and the dighole grave arms printed where C stays silent. */
 function Blind() {
-    return !!(game.u?.Blind || game.u?.ublind);
+    const u = game.u || {};
+    if (u.uroleplay?.blind) return true;
+    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
 }
 
 /* rm.h m_at now imported from mon.js (live export) — fmon-only clone

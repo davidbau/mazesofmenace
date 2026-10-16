@@ -10,9 +10,12 @@ import { runDueTimers } from './timer_effects.js';
 import { loseHeroHp } from './hero_damage.js';
 import { finishLivingGame } from './end.js';
 import { currentLuaLifecycle } from './lua/lifecycle.js';
-import { flushPendingTopline, flush_screen, pline, plineWithContinuation, docrt, bot, } from './display.js';
+import { flushPendingTopline, flush_screen, pline, plineWithContinuation, docrt, bot, newsym, } from './display.js';
 import { vision_recalc, vision_reset, vision_reset_new_level } from './vision.js';
-import { d, rnd, rn2 } from './rng.js';
+import { d, rnd, rn1, rn2 } from './rng.js';
+import { gainGuardianAngel } from './guardian_angel.js';
+import { createPlayerMonsters } from './mplayer.js';
+import { monsterAlignmentType, setMonsterMalign } from './monster_alignment.js';
 import { deliverMigratingObjects, impactDrop } from './object_migration.js';
 import { deliverMigratingMonsters, discardMigrations, updateMonsterLastMove, catchUpMonster, setShopResidency, sendMonsterToLimbo, } from './monster_migration.js';
 import { collectLevelFollowers } from './monster_followers.js';
@@ -21,10 +24,11 @@ import { restoreMonsterShape } from './monster_polymorph.js';
 import { restoreMonsterWormHeads } from './monster_worm.js';
 import { restoreLevelRegions } from './regions.js';
 import { mklev, place_lregion, u_on_downstairs, u_on_upstairs } from './mklev.js';
-import { dungeonBuildsUp, level_difficulty, specialPrototypeAt } from './dungeon.js';
+import { dungeonBuildsUp, level_difficulty, specialPrototypeAt, recordMappedOverviewState, recordOverviewBranch, markOverviewUnreachable, insideWizardTower, levelIsWizardTower } from './dungeon.js';
 import { findNearbyMonsterPosition } from './teleport_rules.js';
 import { moveMonsterNextToHero, randomMonsterRelocation } from './teleport.js';
 import { placeHeroOnLevel } from './hero_location.js';
+import { switchHeroTerrain } from './terrain_movement.js';
 import { MONSTER_FLAGS1, MONSTER_NAME } from './monster_data.js';
 import { monsterDeathCount } from './monster_vitals.js';
 import { killGenocidedMonsters } from './mon.js';
@@ -35,14 +39,14 @@ import { dungeonDepth } from './hacklib.js';
 import { nearCapacity } from './weight.js';
 import { selfTouchPetrifyingWeapons } from './stoning.js';
 import { dragBallDownStairs, fallWithIronBall, heroIsPunished, placeBallAndChain, unplaceBallAndChain, } from './ball.js';
-import { recordDungeonEntryAchievements } from './achievements.js';
+import { recordAchievement, recordDungeonEntryAchievements } from './achievements.js';
 import { heroHasOlfaction } from './polyself.js';
 import { checkSpecialRoom } from './shk.js';
 import { fixShopDamage } from './shop_damage.js';
 import { displayPreparedQuestArrival, prepareQuestArrival, prepareMainQuestPortalCall, onQuestStart, okToQuest, } from './quest.js';
 import { fumaroles } from './monmove.js';
 import { moveElementalBubbles } from './elemental.js';
-import { CORR, ROOM, DISMOUNT_FELL, LR_UPTELE, LR_DOWNTELE, RLOC_NOMSG, MAGIC_PORTAL, In_endgame, Is_airlevel, Is_waterlevel, Is_rogue_level, Is_knox_level, UTOTYPE_DEFERRED, } from './const.js';
+import { CORR, ROOM, DISMOUNT_FELL, LR_UPTELE, LR_DOWNTELE, RLOC_NOMSG, MAGIC_PORTAL, In_endgame, Is_airlevel, Is_waterlevel, Is_astralevel, ACH_ENDG, ACH_ASTR, Is_rogue_level, Is_knox_level, UTOTYPE_DEFERRED, } from './const.js';
 import { resurrectWizard } from './wizard.js';
 import { forgetTempleEntry } from './priest.js';
 import { heroIsBlind, heroIsHallucinating } from './senses.js';
@@ -75,6 +79,7 @@ export async function finishScheduledLevelChange() {
 export async function gotoLevel(targetDepth, { arrival = 'random', ladder = false, postMessage = '', } = {}) {
     requirePlayingGame(game);
     const oldDepth = { ...game.u.uz };
+    const wasInsideWizardTower = insideWizardTower(game.u.ux, game.u.uy);
     const destinationDepth = { ...oldDepth, ...targetDepth };
     const tutorialDnum = game.specialLevels?.get('tut-1')?.dnum;
     const leavingTutorial = tutorialDnum !== undefined && Number.isInteger(tutorialDnum)
@@ -143,6 +148,7 @@ export async function gotoLevel(targetDepth, { arrival = 'random', ladder = fals
     const followers = game.iflags.nofollowers ? [] : await collectLevelFollowers(game);
     if (game.program_state.gameover)
         return true;
+    recordMappedOverviewState();
     // Losing sight of this level can use display randomness while the hero
     // hallucinates. Do it before generating the destination.
     vision_recalc(2);
@@ -168,6 +174,14 @@ export async function gotoLevel(targetDepth, { arrival = 'random', ladder = fals
         lifecycle.themed.delete(tutorialDnum);
         await tutorialState?.destroy();
     }
+    if (leavingTutorial)
+        markOverviewUnreachable(oldDepth.dnum);
+    else if (oldDepth.dnum !== destinationDepth.dnum && In_endgame(destinationDepth)) {
+        for (let dnum = 0; dnum < game.dungeons.length; dnum++)
+            markOverviewUnreachable(dnum);
+    }
+    if (arrival === 'stairs' || arrival === 'downstairs' || arrival === 'portal' || arrival === 'falling')
+        recordOverviewBranch(oldDepth, destinationDepth);
     const cached = game._levelCache.get(levelCacheKey(destinationDepth));
     game.u.uz0 = oldDepth;
     game.u.uz = destinationDepth;
@@ -207,7 +221,7 @@ export async function gotoLevel(targetDepth, { arrival = 'random', ladder = fals
         postMessage = '';
         await plineWithContinuation(message);
     };
-    const died = await arriveOnLevel(oldDepth, { arrival, ladder, followers, beforeGlow });
+    const died = await arriveOnLevel(oldDepth, { arrival, ladder, followers, beforeGlow, wasInsideWizardTower });
     if (died)
         return true;
     const newDepth = { ...game.u.uz };
@@ -311,7 +325,13 @@ export async function gotoLevel(targetDepth, { arrival = 'random', ladder = fals
     }
     const enteredEndgame = oldDepth.dnum !== newDepth.dnum
         && In_endgame(newDepth);
-    if (enteredEndgame && game.u?.uhave?.amulet)
+    if (enteredEndgame)
+        recordAchievement(game, ACH_ENDG);
+    if (!cached && Is_astralevel(newDepth)) {
+        await finishAstralArrival();
+        recordAchievement(game, ACH_ASTR);
+    }
+    else if (enteredEndgame && game.u?.uhave?.amulet)
         await resurrectWizard();
     // Special levels can override their dungeon's temperature.
     const currentTemperature = game.level?.flags?.temperature || 0;
@@ -359,7 +379,22 @@ export async function gotoLevel(targetDepth, { arrival = 'random', ladder = fals
     game.u.uz0 = { ...game.u.uz };
     return true;
 }
-async function arriveOnLevel(from, { arrival, ladder, followers, beforeGlow }) {
+// C do.c:final_level() and priest.c:reset_hostility().
+async function finishAstralArrival() {
+    requirePlayingGame(game);
+    for (const monster of game.level.monsters.slice().reverse()) {
+        if (!monster.isminion || !['Angel', 'aligned cleric'].includes(MONSTER_NAME[monster.mnum] ?? ''))
+            continue;
+        if (monsterAlignmentType(monster) !== game.u.ualign.type) {
+            monster.mpeaceful = monster.mtame = 0;
+            setMonsterMalign(monster);
+        }
+        newsym(monster.mx, monster.my);
+    }
+    await createPlayerMonsters(rn1(4, 3), true);
+    await gainGuardianAngel(game);
+}
+async function arriveOnLevel(from, { arrival, ladder, followers, beforeGlow, wasInsideWizardTower }) {
     requirePlayingGame(game);
     const atStairs = arrival === 'stairs' || arrival === 'downstairs';
     const up = dungeonDepth(game.u.uz.dnum, game.u.uz.dlevel)
@@ -378,10 +413,13 @@ async function arriveOnLevel(from, { arrival, ladder, followers, beforeGlow }) {
                 await placeHeroOnLevel(stairs.sx, stairs.sy);
                 stairs.u_traversed = true;
             }
-            else if (up)
-                await u_on_downstairs();
-            else
-                await u_on_upstairs();
+            else {
+                if (up)
+                    await u_on_downstairs();
+                else
+                    await u_on_upstairs();
+                await placeHeroOnLevel(game.u.ux, game.u.uy);
+            }
             if (await applyStairTravelEffects(up, ladder))
                 return true;
         }
@@ -395,8 +433,11 @@ async function arriveOnLevel(from, { arrival, ladder, followers, beforeGlow }) {
                 await placeHeroAtRandomArrival(game.level.upTeleportRegion, true);
         }
         else {
-            await placeHeroAtRandomArrival(up
-                ? game.level.upTeleportRegion : game.level.downTeleportRegion, up);
+            if (wasInsideWizardTower && levelIsWizardTower())
+                await placeHeroAtRandomArrival(game._activeSpecialLevel?.downTeleportExclude);
+            else
+                await placeHeroAtRandomArrival(up
+                    ? game.level.upTeleportRegion : game.level.downTeleportRegion, up);
             if (arrival === 'falling') {
                 if (heroIsPunished() && await fallWithIronBall())
                     return true;
@@ -540,6 +581,8 @@ export async function placeHeroAtRandomArrival(region = null, up = false) {
     const area = region ?? { lx: 0, ly: 0, hx: 0, hy: 0 };
     const excluded = region?.exclude ?? { lx: -1, ly: -1, hx: -1, hy: -1 };
     await place_lregion(area.lx, area.ly, area.hx, area.hy, excluded.lx, excluded.ly, excluded.hx, excluded.hy, up ? LR_UPTELE : LR_DOWNTELE, null);
+    await placeHeroOnLevel(game.u.ux, game.u.uy);
+    await switchHeroTerrain();
     return { x: game.u.ux, y: game.u.uy };
 }
 // C do.c:u_collide_m(). A level arrival may overlap a resident or follower.

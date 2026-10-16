@@ -2951,9 +2951,39 @@ export function migrate_to_level(mtmp, tolev, xyloc, cc) {
     game.migrating_mons.unshift(mtmp);
     mtmp.mstate = (mtmp.mstate | 0) | MON_MIGRATING;
 
+    /* C dog.c:908–909 — new_lev from the destination ledger, EXCEPT
+     * tolev -1: the only caller-side producer of -1 is a to-nowhere
+     * MAGIC_PORTAL (dst {-1,-1} — wizard-wish made, C wizterrainwish
+     * never assigns dst, objnam.c:3573; ledger_no = 0 + -1). Every
+     * other caller passes ledger_no of a valid level (≥ 1; get_level's
+     * walk-break floors at ledger 1 since ledger_start+2-depth_start
+     * ≥ 1 on every dungeon). C ledger_no on {-1,-1} reads
+     * svd.dungeons[-1].ledger_start (OOB — dungeon.c:1376): the pinned
+     * recorder lays svd immediately after svc (nm: svc 0x53bdd0 size
+     * 0x2c0 = sizeof context_info, svd 0x53c090), and
+     * sizeof(dungeon)-offsetof(ledger_start) = 92-84 = 8, so the read
+     * is svc+696 = context.jingle[0..4] (the improvised instrument
+     * tune, music.c:741-747; BSS zeros until first played). N is then
+     * (xint16)(-1 + LE32) — the cast keeps only bytes 0,1, which the
+     * JS tune string mirrors exactly (byte0 = tune[0] or NUL, byte1 =
+     * tune[1] or the explicit NUL C writes at buf[notecount]; stale
+     * bytes truncate away). Valid N migrates (Archeologist-50456037
+     * s802: tune "A" → N=64 → dnum 3 dlev 3, never revisited);
+     * invalid N falls into ledger_to_dnum's C-identical panic,
+     * matching C's Oops tail (95244/50358026/50556015, jingle never
+     * played → -1). D-4003. */
+    let destLedger = tolev;
+    if ((tolev | 0) === -1) {
+        const tune = game.context?.jingle || '';
+        const b0 = tune.length > 0 ? tune.charCodeAt(0) & 0xff : 0;
+        const b1 = tune.length > 1 ? tune.charCodeAt(1) & 0xff : 0;
+        let n = (b0 + (b1 << 8) - 1) & 0xffff;
+        if (n >= 0x8000) n -= 0x10000;
+        destLedger = n;
+    }
     const new_lev = {
-        dnum: ledger_to_dnum(tolev),
-        dlevel: ledger_to_dlev(tolev),
+        dnum: ledger_to_dnum(destLedger),
+        dlevel: ledger_to_dlev(destLedger),
     };
     // Destination encoding (mtrack / mux/muy overload) — matches C fields
     let xyflags = 0;

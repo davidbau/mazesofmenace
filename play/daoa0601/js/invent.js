@@ -14,7 +14,7 @@ import { ALTAR, ICE, Is_airlevel, Is_waterlevel, MENU_TRADITIONAL, MV_KNOWS_EGG,
 import { ALCHEMY_SMOCK, ARROW as FIRST_OBJECT, BAG_OF_TRICKS, EGG, CHEST, FORTUNE_COOKIE, GOLD_PIECE, HAWAIIAN_SHIRT, LARGE_BOX, MAGIC_MARKER, HEAVY_IRON_BALL, LOCK_PICK, CREDIT_CARD, SKELETON_KEY, OBJECT_BIMANUAL, OBJECT_INITIAL_KNOWN, OBJECT_NAMES, SCR_BLANK_PAPER, SPE_BLANK_PAPER, SPE_BOOK_OF_THE_DEAD, SPE_NOVEL, STATUE, TIN, TIN_OPENER, TOWEL, AMULET_OF_YENDOR, FAKE_AMULET_OF_YENDOR, BEARTRAP, BELL, BELL_OF_OPENING, BLINDFOLD, BRASS_LANTERN, BULLWHIP, CANDELABRUM_OF_INVOCATION, CAN_OF_GREASE, CORPSE, CREAM_PIE, CRYSTAL_BALL, DRUM_OF_EARTHQUAKE, DWARVISH_MATTOCK, EUCALYPTUS_LEAF, EXPENSIVE_CAMERA, FIGURINE, GRAPPLING_HOOK, HORN_OF_PLENTY, LAND_MINE, LEASH, LENSES, MAGIC_LAMP, MAGIC_WHISTLE, MEAT_RING, MIRROR, OBJECT_DESCRIPTIONS, OBJECT_UNIQUE, OIL_LAMP, PICK_AXE, POT_OIL, SADDLE, STETHOSCOPE, TALLOW_CANDLE, TINNING_KIT, TIN_WHISTLE, UNICORN_HORN, WAX_CANDLE, WOODEN_FLUTE, } from './object_data.js';
 import { MONSTER_GROWTH_TARGET } from './monster_data.js';
 import { definiteName, objectCombatName, objectLooksUnique, objectName, observeObjectForNaming, simpleObjectName, singularObjectName } from './objnam.js';
-import { learnObjectType, OBJECT_CLASS_SYMBOLS } from './object_knowledge.js';
+import { learnObjectType, OBJECT_CLASS_SYMBOLS, recordObjectEncounter, recordObjectKnowledge } from './object_knowledge.js';
 import { getLine, promptYesNoAllQuit } from './query.js';
 import { isGrayStone, isWeaponTool, objectUsesCharges } from './object_properties.js';
 import { ammunitionMatchesLauncher, isBlade, isTwoWeaponObject } from './weapon_type.js';
@@ -30,7 +30,7 @@ import { eggHasMonsterSpecies } from './egg_impact.js';
 import { heroIsBlind, heroIsHallucinating } from './senses.js';
 import { useUpInventoryStack } from './hero_inventory.js';
 import { objectWeight } from './weight.js';
-import { readFloorEngraving, showFloorPile } from './floor_object_display.js';
+import { lookHere } from './floor_object_display.js';
 import { heroCanReachFloor } from './floor_reach.js';
 import { surfaceName } from './terrain_name.js';
 import { dungeonFeatureAt, dungeonFeatureSentence, forceDescribeDecor } from './dungeon_feature.js';
@@ -761,24 +761,31 @@ export async function selectUsedInventoryLetter(avoidLetter) {
 // Keep that state transition separate from the ordinary `i` command, whose
 // descriptions are still constrained by what the hero learned in play.
 export async function showIdentifiedInventory() {
-    for (const item of game.inventory || []) {
-        item.typeKnown = true;
-        item.known = true;
-        item.bknown = true;
-        item.dknown = true;
-        item.rknown = true;
-        item.overrideIdentified = true;
-        const redundantNeutral = item.oclass === 2 || item.oclass === 11
-            || (item.oclass === 6 && objectUsesCharges(item));
-        item.buc = item.blessed ? 'blessed' : item.cursed ? 'cursed'
-            : !redundantNeutral
-                && [3, 4, 5, 6, 7, 8, 9, 10, 13].includes(item.oclass)
-                ? 'uncursed' : '';
-        const canonicalName = OBJECT_NAMES[item.otyp];
-        if (item.oclass === 13 && canonicalName)
-            item.name = canonicalName;
-    }
+    for (const item of game.inventory)
+        identifyObjectForDisclosure(item, true);
     return selectInventoryObject({ headingAttr: 0, pickMode: PICK_NONE });
+}
+export function identifyObjectForDisclosure(item, identifyTinContents = false) {
+    recordObjectEncounter(item.otyp);
+    recordObjectKnowledge(item.otyp);
+    item.typeKnown = true;
+    item.known = true;
+    item.bknown = true;
+    item.dknown = true;
+    item.rknown = true;
+    if (isContainer(item) || item.otyp === STATUE)
+        item.cknown = item.lknown = true;
+    else if (identifyTinContents && item.otyp === TIN)
+        item.cknown = true;
+    const redundantNeutral = item.oclass === 2 || item.oclass === 11
+        || (item.oclass === 6 && objectUsesCharges(item));
+    item.buc = item.blessed ? 'blessed' : item.cursed ? 'cursed'
+        : !redundantNeutral
+            && [3, 4, 5, 6, 7, 8, 9, 10, 13].includes(item.oclass)
+            ? 'uncursed' : '';
+    const canonicalName = OBJECT_NAMES[item.otyp];
+    if (item.oclass === 13 && canonicalName)
+        item.name = canonicalName;
 }
 export async function selectInventoryObject({ items, includeGold = true, title = null, extraChoice = null, pickMode = PICK_ONE, headingAttr, menuOptions = [], } = {}) {
     const filtered = !!items?.length;
@@ -830,56 +837,7 @@ export async function dolook() {
         game.context.move = heroIsBlind() ? 1 : 0;
         return;
     }
-    const x = game.u.ux, y = game.u.uy;
-    const level = requireGameLevel();
-    const underwater = game.underwater || game.u.uinwater;
-    const objects = isLavaAt(x, y) || isPoolAt(x, y) && !underwater ? [] : level.objects[x]?.[y] || [];
-    const blind = heroIsBlind();
-    const trap = level.traps.find(trap => trap.tx === x && trap.ty === y);
-    const region = visibleRegionAt(game, x, y);
-    if (region || trap?.tseen) {
-        const cloud = region ? `a ${region.damage ? 'poison gas' : 'vapor'} cloud` : '';
-        await plineWithContinuation(`There is ${cloud}${region && trap?.tseen ? ' and ' : ''}${trap?.tseen ? withIndefiniteArticle(trapName(trap.ttyp)) : ''} here.`);
-    }
-    const featureName = dungeonFeatureAt(x, y);
-    let feature = dungeonFeatureSentence(featureName);
-    if (blind) {
-        const drift = Is_airlevel(game.u.uz) || Is_waterlevel(game.u.uz);
-        const surface = surfaceName(x, y);
-        if (featureName?.startsWith('altar ')) {
-            await plineWithContinuation('You try to feel what is here.');
-        }
-        else if (isIceAt(x, y)) {
-            if (!game.flags.mention_decor || game._prevDecorType === ICE)
-                await forceDescribeDecor();
-            await plineWithContinuation('You try to feel what is on it.');
-            feature = '';
-        }
-        else {
-            const where = drift ? 'floating here' : heroCanReachFloor(game, { checkPit: true })
-                ? `lying here on the ${surface}` : 'lying beneath you';
-            await plineWithContinuation(`You try to feel what is ${where}.`);
-            if (!drift && featureName === surface)
-                feature = '';
-        }
-        if (!heroCanReachFloor(game, { checkPit: !!trap && is_pit(trap.ttyp) })) {
-            await plineWithContinuation("But you can't reach it!");
-            game.context.move = 0;
-            return;
-        }
-    }
-    if (objects.length) {
-        const result = await showFloorPile(objects, false, feature);
-        if (result.died)
-            return;
-    }
-    else {
-        if (feature)
-            await plineWithContinuation(feature);
-        await readFloorEngraving(x, y);
-        if (blind || !feature)
-            await plineWithContinuation(`You ${blind ? 'feel' : 'see'} no objects here.`);
-    }
-    game.context.move = blind ? 1 : 0;
+    const { tookTime } = await lookHere(0);
+    game.context.move = tookTime ? 1 : 0;
 }
 //# sourceMappingURL=invent.js.map

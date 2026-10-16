@@ -1109,28 +1109,12 @@ function useupall_gamestate(obj) {
 }
 
 /**
- * C worn.c setworn(otmp, wornmask) for nhl_gamestate restore.
- * JS setworn is armor/accessory/ball/chain; weapons go through setu*.
- */
-function setworn_restore(otmp, wornmask) {
-    if (!otmp || !wornmask) return;
-    let shine;
-    if (wornmask & W_WEP) shine = setuwep(otmp);
-    if (wornmask & W_SWAPWEP) setuswapwep(otmp);
-    if (wornmask & W_QUIVER) setuqwep(otmp);
-    const rest = wornmask & ~(W_WEP | W_SWAPWEP | W_QUIVER);
-    if (rest) setworn(otmp, rest);
-    return shine;
-}
-
-/**
  * C ref: nhlua.c nhl_gamestate(false) via tutorial_enter / tutorial(TRUE).
  * Stash invent (preserve owornmask as restore flag) via setnotworn+freeinv
  * so extrinsics clear and find_ac → base 10. Backup u/disco/mvitals/spl_book
  * then memset spells. Named omit: leftover `obfree` contents/timers.
  */
 function tutorial_enter_gamestate() {
-    if (game.gmst_stored) return;
     game.gmst_moves = game.moves | 0;
     const stash = [];
     const inv = game.invent || [];
@@ -1169,8 +1153,6 @@ function tutorial_enter_gamestate() {
  * update_inventory redraw. `nhcore_call_available` disable is tutorial().
  */
 async function tutorial_leave_gamestate() {
-    if (!game.gmst_stored) return;
-
     game.moves = game.gmst_moves | 0;
     await pline(`Resetting time to move #${game.moves}.`);
     game.gmst_moves = 0;
@@ -1185,9 +1167,14 @@ async function tutorial_leave_gamestate() {
         const wornmask = otmp.owornmask || 0;
         otmp.owornmask = 0;
         await addinv_nomerge(otmp);
+        /* C `:1749–1750` — re-wear via worn.c setworn (the live
+           do_wear.js export, whose slot loop covers W_WEP too), never
+           setuwep: C preserves gu.unweapon across the restore, so a
+           pole-wield TRUE still arms the next melee's "begin bashing";
+           setuwep would recompute it FALSE for an ordinary weapon.
+           Likewise no Sunsword shine or Ogresmasher botl here. */
         if (wornmask) {
-            const shine = setworn_restore(otmp, wornmask);
-            if (shine) await shine;
+            setworn(otmp, wornmask);
         }
     }
     restore_you(game.u, game.gmst_ubak);
@@ -1203,10 +1190,15 @@ async function tutorial_leave_gamestate() {
     game.gmst_spl_book = null;
 }
 
-/** C nhlua.c nhl_gamestate — Lua nh.gamestate([restore]). */
+/**
+ * C nhlua.c nhl_gamestate `:1733–1799` — Lua nh.gamestate([restore]).
+ * C's if/else-if/else with the inconsistent-state impossible arm; the
+ * update_inventory() tail stays the standing display-refresh omit.
+ */
 export async function nhl_gamestate(reststate = false) {
-    if (reststate) await tutorial_leave_gamestate();
-    else tutorial_enter_gamestate();
+    if (reststate && game.gmst_stored) await tutorial_leave_gamestate();
+    else if (!reststate && !game.gmst_stored) tutorial_enter_gamestate();
+    else await impossible(`nhl_gamestate: inconsistent state (${reststate ? 'restore' : 'save'} vs ${game.gmst_stored ? 'already stored' : 'not stored'})`);
 }
 
 /**

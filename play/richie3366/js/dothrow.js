@@ -1814,6 +1814,8 @@ function Levitation_throw() {
 /**
  * C invent.c addinv_before — nomerge addinv then insert before oldslot
  * (!fixinv). JS invent is an array; letter reorder still happens in addinv.
+ * For return_throw_to_inv ONLY (C dothrow.c `:1885–1887` sets nomerge
+ * there); the throwit `:1719` catch arm uses plain merging addinv_before.
  */
 async function addinv_before_throw(obj, other_obj) {
     if (!obj) return obj;
@@ -1940,7 +1942,7 @@ export async function sho_obj_return_to_u(obj) {
  * (D-1311). Leader catch finish_quest is D-1312.
  * Arm-hit losehp uses killer_xname + KILLED_BY (D-1346; C `:1747–1748`).
  */
-async function throwit_returning_missile(
+export async function throwit_returning_missile(
     obj, wep_mask, twoweap, oldslot, x, y, impaired, tethered_weapon,
 ) {
     if (!game.iflags?.returning_missile) return false;
@@ -1967,7 +1969,14 @@ async function throwit_returning_missile(
     }
     if (!impaired && rn2(100)) {
         await pline(`${Tobjnam(obj, 'return')} to your hand!`);
-        obj = await addinv_before_throw(obj, oldslot);
+        // C `:1719` — plain addinv_before, NOT the nomerge throw
+        // helper: a split-off returning missile rejoins its stack
+        // (quiver-preferred merge in invent.c addinv_core0
+        // `:1101–1114`; oldslot is NULL on the split path so the
+        // `:1087` reinsert does not apply). The nomerge form is only
+        // for return_throw_to_inv (C `:1885–1887`).
+        const { addinv_before } = await import('./u_init.js');
+        obj = await addinv_before(obj, oldslot);
         const { encumber_msg } = await import('./invent.js');
         await encumber_msg();
         if ((obj.owornmask || 0) & W_QUIVER) setuqwep(null);

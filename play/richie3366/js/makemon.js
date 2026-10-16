@@ -3785,10 +3785,15 @@ export function makemon(mdat, x, y, mmflags = 0) {
     // await makemon_appear_msg after sync makemon (D-0559 / D-0928 #1164).
     // Mimic furniture/object appear uses mhidden_description (D-1554).
     // set_msg_xy stays deferred.
+    // NOTE (Ranger s50 park): mapping the group primary inline here shows
+    // it a screen early when a member's Norep triggers --More-- mid-makemon
+    // (C maps it post-More, at its :1473 after the inline member msgs).
+    // Deferring the primary's map to the drain heals Ranger but reshuffles
+    // hallucinated display-stream order (3 hallu REACH regressions); that
+    // port needs a display-stream audit companion — see the Parked row.
     if (!game.in_mklev) {
         newsym(mtmp.mx, mtmp.my);
     }
-
     return mtmp;
 }
 

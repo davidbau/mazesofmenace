@@ -435,6 +435,12 @@ export async function runSegment(input) {
             if (game.program_state?.gameover) break;
         }
     } catch (e) {
+        // Harness-clean: input exhaustion outside the drive loop (inside
+        // nhGame.start()) ends the segment with what was captured, the
+        // same as exhaustion inside a moveloop_core iteration (C would
+        // block on input; the harness has none). Previously it escaped
+        // runSegment and voided the run (0/0) instead of comparing.
+        if (String(e?.message || '').includes('Input queue empty')) return nhGame;
         // C end.c panic is noreturn: the NhPanic throw unwound to here, so
         // run the rest of its body (Oops, getret wait, then the process
         // aborts). Any other throw is a port bug and still propagates.

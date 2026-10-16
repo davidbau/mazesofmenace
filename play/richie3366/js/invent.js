@@ -9648,7 +9648,16 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
         const oerode = obj.oerodeproof;
         const wasUpolyd = Upolyd(u);
         place_object(obj, u.ux, u.uy);
-        if (!(await touch_artifact(obj, youmonst))) {
+        const touched = await touch_artifact(obj, youmonst);
+        // C `:1224–1230` — done() is noreturn: a fatal touch (the blast
+        // kills the hero) never reaches obj_extract_self/dropy; the
+        // artifact stays on the floor where the "in case touching this
+        // object turns out to be fatal" place put it. Without this JS
+        // continues past death and re-drops at zeroed hero coords, whose
+        // place_object impossible floats an input-exhaustion rejection
+        // that escapes runSegment (D-4001 gameover idiom).
+        if (game.program_state?.gameover) return obj;
+        if (!touched) {
             obj_extract_self(obj);
             // C invent.c:1229 dropy — put it back on the floor (was a named
             // omit since D-2134; without it a refused wish-artifact leaves

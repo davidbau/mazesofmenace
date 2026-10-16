@@ -1029,6 +1029,23 @@ const gno_abil = [
     { ulevel: 1, prop: 'HInfravision', gainstr: '', losestr: '' },
 ];
 
+// C ref: attrib.c adjabil — flat H* field -> u.uprops index for the
+// dual-store mirror (every table prop below has a live uprops slot).
+const ADJABIL_UPROPS = {
+    HSearching: SEARCHING,
+    HStealth: STEALTH,
+    HFast: FAST,
+    HPoison_resistance: POISON_RES,
+    HWarning: WARNING,
+    HSleep_resistance: SLEEP_RES,
+    HSee_invisible: SEE_INVIS,
+    HFire_resistance: FIRE_RES,
+    HCold_resistance: COLD_RES,
+    HShock_resistance: SHOCK_RES,
+    HTeleport_control: TELEPORT_CONTROL,
+    HInfravision: INFRAVISION,
+};
+
 // C ref: attrib.c role_abil()
 function role_abil(rolePm) {
     switch (rolePm) {
@@ -1099,26 +1116,40 @@ export async function adjabil(oldlevel, newlevel) {
         }
 
         const prop = entry.prop;
-        const prev = u[prop] || 0;
+        // C attrib.c:1038 stores one long per ability; JS mirrors it in the
+        // flat u[prop] AND u.uprops[idx].intrinsic (Fast()/Searching() read
+        // both). Operate on the merged value and dual-write, so a lose arm
+        // cannot print while leaving the live bit set (Knight wiz_level_change
+        // 12->6 kept uprops[FAST] FROMEXPER: "You feel slow!" with no effect).
+        const upIdx = ADJABIL_UPROPS[prop];
+        const uprop = (u.uprops && upIdx !== undefined) ? u.uprops[upIdx] : undefined;
+        const prev = (u[prop] | 0) | (uprop?.intrinsic | 0);
+        const store = (nv) => {
+            u[prop] = nv;
+            if (u.uprops && upIdx !== undefined) {
+                (u.uprops[upIdx] || (u.uprops[upIdx] = {})).intrinsic = nv;
+            }
+        };
         if (oldlevel < entry.ulevel && newlevel >= entry.ulevel) {
             // Level-1 abilities also set FROMOUTSIDE so outside sources
             // cannot "gain" a meaningless duplicate (C adjabil).
-            if (entry.ulevel === 1) u[prop] = prev | (mask | FROMOUTSIDE);
-            else u[prop] = prev | mask;
+            const nv = (entry.ulevel === 1) ? (prev | (mask | FROMOUTSIDE)) : (prev | mask);
+            store(nv);
             // C: if (!(*(abil->ability) & INTRINSIC & ~mask)) You_feel(gainstr)
-            if (!((u[prop] || 0) & INTRINSIC & ~mask) && entry.gainstr) {
+            if (!(nv & INTRINSIC & ~mask) && entry.gainstr) {
                 await You_feel('%s!', entry.gainstr);
             }
         } else if (oldlevel >= entry.ulevel && newlevel < entry.ulevel) {
-            u[prop] = prev & ~mask;
+            const nv = prev & ~mask;
+            store(nv);
             // C attrib.c:1056–1060 — losestr, else "less %s!"
-            if (!((u[prop] || 0) & INTRINSIC)) {
+            if (!(nv & INTRINSIC)) {
                 if (entry.losestr) await You_feel('%s!', entry.losestr);
                 else if (entry.gainstr) await You_feel('less %s!', entry.gainstr);
             }
         }
         // C :1063–1064 — it changed
-        if (prev !== (u[prop] || 0)) postadjabil(prop);
+        if (prev !== ((u[prop] | 0) | (uprop?.intrinsic | 0))) postadjabil(prop);
     }
     // C attrib.c:1068–1073 — a level change grants or drains skill slots
     // (add_weapon_skill is async: give_may_advance_msg can reach nhgetch).

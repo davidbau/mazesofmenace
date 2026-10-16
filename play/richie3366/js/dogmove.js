@@ -37,7 +37,7 @@ import {
     IS_OBSTRUCTED, IS_DOOR, D_CLOSED, D_LOCKED, ALLOW_MDISP,
     MAGIC_PORTAL, A_NONE,
     EPRI, EMIN, DIR_LEFT, DIR_RIGHT, DIR_LEFT2, DIR_RIGHT2,
-    xdir, ydir, xytodir,
+    xytodir, dirtocoord,
     DISMOUNT_THROWN, DISMOUNT_POLY, W_ARMS, COST_DEGRD,
     NEED_WEAPON, NEED_HTH_WEAPON,
     S_sink, something,
@@ -1646,17 +1646,23 @@ export async function dog_move(mtmp, after) {
         if (!goodpos(cc.x, cc.y, mtmp, 0)) {
             const i = xytodir(sgn(omx - ux), sgn(omy - uy));
             let placed = false;
-            // C dirtocoord is additive on the same cc (verbatim): each
-            // rejected bearing accumulates into the next candidate.
+            // C dogmove.c `:1335–1345` calls dirtocoord(&cc, j), and C
+            // cmd.c `:3858–3865` dirtocoord ASSIGNS cc=(xdir[j],ydir[j])
+            // (it does not accumulate onto cc): the spiral tests raw
+            // direction vectors as absolute squares — near the map
+            // origin, unreachable in play — so every candidate fails
+            // and the fallback below (stay) runs. TEMP-C measured at
+            // moves==62 (goods spiral (62,5),(1,-1),(1,0),(0,-1),
+            // (1,-1),(1,0),(1,1), all rejected; D-4005): the old
+            // additive walk here reached (63,4) and dragged Hachi off
+            // her just-dropped dagger, forking step 433 RNG.
             for (let j = DIR_LEFT(i); j < DIR_RIGHT(i) && !placed; j++) {
-                cc.x += xdir[j];
-                cc.y += ydir[j];
+                dirtocoord(cc, j);
                 if (goodpos(cc.x, cc.y, mtmp, 0)) placed = true;
             }
             if (!placed) {
                 for (let j = DIR_LEFT2(i); j < DIR_RIGHT2(i) && !placed; j++) {
-                    cc.x += xdir[j];
-                    cc.y += ydir[j];
+                    dirtocoord(cc, j);
                     if (goodpos(cc.x, cc.y, mtmp, 0)) placed = true;
                 }
             }

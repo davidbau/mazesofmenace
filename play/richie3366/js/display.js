@@ -7612,7 +7612,8 @@ export function serialize_terminal_grid(display) {
  * spaces that carry attrs (inverse/underline/bold) are emitted so decode
  * preserves them. Frozen Terminal.serialize() cursor-forwards past all
  * leading spaces and drops those attrs (D-0129 spell heading; D-0932
- * topten_print_bold leading pads).
+ * topten_print_bold leading pads). Trailing attr-spaces likewise extend
+ * lastCol/lastRow (detected rogue ghost `\x1b[7m \x1b[0m` at row end).
  *
  * D-0293: S_altar stays raw `{` in the grid (frozen DEC_MAP omits it) so
  * decodeScreen matches C whether the recorder emitted SO+`{` or bare `{`.
@@ -7661,7 +7662,8 @@ export function serialize_for_scoring(term) {
     let lastRow = 0;
     for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
-            if (term.grid[r][c].ch !== ' ') { lastRow = r; break; }
+            const cell = term.grid[r][c];
+            if (cell.ch !== ' ' || (cell.attr & 0x7)) { lastRow = r; break; }
         }
     }
     let out = '';
@@ -7669,7 +7671,11 @@ export function serialize_for_scoring(term) {
     for (let r = 0; r <= lastRow; r++) {
         let lastCol = -1;
         for (let c = cols - 1; c >= 0; c--) {
-            if (term.grid[r][c].ch !== ' ') { lastCol = c; break; }
+            // C tty row emission keeps trailing spaces that carry an
+            // attr (detected/tame ghost ' ' mlet: `\x1b[7m \x1b[0m` at
+            // row end) — mirror the firstCol attr rule below (D-0129).
+            const cell = term.grid[r][c];
+            if (cell.ch !== ' ' || (cell.attr & 0x7)) { lastCol = c; break; }
         }
         if (lastCol < 0) { if (r < lastRow) out += '\n'; continue; }
         // Start at first non-space OR space with attr (inv/bold/uline).
@@ -7696,22 +7702,26 @@ export function serialize_for_scoring(term) {
         for (let c = firstCol; c <= lastCol; ) {
             const cell = term.grid[r][c];
             const wantAttr = cell.attr | 0;
-            // Contest tty capture: mid-row runs of >4 spaces (no inv/uline)
-            // become CSI CUF after the run's SGR — even for S_air CLR_CYAN
-            // (seed0373 `\x1b[36m\x1b[5C`). Decode leaves those cells as
-            // default blanks; emitting the spaces fails strict SGR (D-0931).
-            if (cell.ch === ' ' && !(wantAttr & 0x5)) {
+            // Contest tty capture: runs of >4 spaces become CSI CUF after
+            // the run's SGR — even for S_air CLR_CYAN
+            // (`\x1b[36m\x1b[5C`). Decode leaves those cells as default
+            // blanks; emitting the spaces fails strict SGR (D-0931).
+            // Trailing inv/uline runs compress too: C pads standout menu
+            // headings with attr spaces and the capture CUFs them
+            // (` General\x1b[24C`). Mid-row inv/uline runs stay
+            // literal (D-0129 — no session shows them compressed).
+            if (cell.ch === ' ') {
                 const runColor = cellEmitColor(cell);
                 let end = c;
                 while (end + 1 <= lastCol) {
                     const n = term.grid[r][end + 1];
                     const na = n.attr | 0;
-                    if (n.ch !== ' ' || (na & 0x5)) break;
+                    if (n.ch !== ' ') break;
                     if (cellEmitColor(n) !== runColor || na !== wantAttr) break;
                     end++;
                 }
                 const runLen = end - c + 1;
-                if (runLen > 4) {
+                if (runLen > 4 && (!(wantAttr & 0x5) || end === lastCol)) {
                     const wantFg = colorToFg(runColor);
                     out += sgrTransition(curFg, curAttr, wantFg, wantAttr);
                     curFg = wantFg;

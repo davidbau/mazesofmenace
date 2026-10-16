@@ -32,7 +32,7 @@ import { find_mac, make_corpse, mon_to_stone, vamp_stone, monstone, monkilled, A
 import { finish_meating } from './dogmove.js';
 import { scatter } from './explode.js';
 import {
-    newsym, pline, pline_mon, pline_xy, urgent_pline, mon_visible, see_with_infrared,
+    newsym, map_trap, pline, pline_mon, pline_xy, urgent_pline, mon_visible, see_with_infrared,
     bot,
     You_feel, unmap_object, glyph_is_invisible, tmp_at, nh_delay_output,
     obj_glyph, flush_topl_more, feel_newsym, canspotmon, canseemon, map_invisible, under_water,
@@ -2616,10 +2616,17 @@ async function trapeffect_arrow_trap(mtmp, trap) {
         : (mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished);
 }
 
-// C ref: trap.c feeltrap — mark seen + redisplay via newsym → map_trap
+// C ref: trap.c feeltrap `:3588–3594` — "like seetrap() but overrides
+// vision": tseen = 1, then map_trap(trap, 1) paints the trap glyph and
+// records it in memory unconditionally, then newsym re-covers it with
+// any visible monster/object ("in case it's beneath something,
+// redisplay the something"). The map_trap call is the vision override:
+// without it a felt-but-unseen trap (blind hero, pit-vision 3x3)
+// never paints — newsym's !cansee arm re-shows stale memory.
 export function feeltrap(trap) {
     if (!trap) return;
     trap.tseen = true;
+    map_trap(trap, 1);
     newsym(trap.tx, trap.ty);
 }
 

@@ -2,7 +2,7 @@
 // C ref: hack.c pooleffects() and trap.c drown().
 import { formatFeltMessage } from './hero_speech.js';
 import { monsterHasMapPosition } from './monster_location.js';
-import { heroIsHallucinating } from './senses.js';
+import { heroIsBlind, heroIsHallucinating } from './senses.js';
 import { BURNING, D_BROKEN, D_CLOSED, D_LOCKED, DISMOUNT_FELL, DISMOUNT_GENERIC, DISSOLVED, DROWNING, DOOR, IS_AIR, IS_OBSTRUCTED, IS_STWALL, IS_WALL, IS_WATERWALL, Is_waterlevel, LAVAPOOL, LAVAWALL, PARANOID_SWIM, POOL, ROOM, STONE, FAINTED, TREE, TT_LAVA, Upolyd, WATER, W_NONDIGGABLE, W_NONPASSWALL, WT_TOOMUCH_DIAGONAL, } from './const.js';
 import { displayLiquidName, feel_newsym, newsym, plineWithContinuation, updateLastSeenTerrain } from './display.js';
 import { heroPassesWalls, heroFormSticks, heroSpecies } from './hero_species.js';
@@ -305,7 +305,7 @@ async function reviveHeroFromLiquid(state, publish, random) {
         return false;
     await publish('But wait...');
     identifyLifeSavingAmulet(random);
-    await publish('Your medallion begins to glow!');
+    await publish(`Your medallion ${heroIsBlind(state) ? 'feels warm' : 'begins to glow'}!`);
     await publish(formatFeltMessage('much better!', state));
     await publish('The medallion crumbles to dust!');
     await completeHeroLifeSaving(lifeSaving);
@@ -884,7 +884,24 @@ export async function heroLiquidEffects(options = {}) {
                 return teleport.arrival ?? { entered: true, moved: teleport.moved, died: false };
         }
     }
+    // C drown(): a mounted hero dismounts before crawling; landing on dry
+    // ground ends the drowning.
+    if (u.usteed) {
+        const from = { x: u.ux, y: u.uy };
+        const dismount = await dismountHero(DISMOUNT_GENERIC, { state, random, announce: publish });
+        if (dismount.died || state.program_state?.gameover)
+            return { entered: true, dismounted: dismount.dismounted, moved: u.ux !== from.x || u.uy !== from.y, died: true };
+        if (!isPoolAt(u.ux, u.uy, state))
+            return {
+                entered: true, dismounted: dismount.dismounted,
+                moved: u.ux !== from.x || u.uy !== from.y, died: false,
+                from, to: { x: u.ux, y: u.uy },
+            };
+    }
     await wakeHeroForCrawl(state, publish);
+    // C drown() reads u.ux/u.uy after any teleport or dismount.
+    x = u.ux;
+    y = u.uy;
     const canMove = !((state._helplessTurns ?? 0) > 0)
         && (!((u.mtimedone ?? 0) > 0) || (MONSTER_MOVE[u.umonnum] ?? 0) > 0);
     const destination = canMove

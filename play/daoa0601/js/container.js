@@ -1,6 +1,7 @@
 // Container use and object transfer.
 // C refs: pickup.c use_container(), in_container(), out_container().
 import { makePlural } from './object_grammar.js';
+import { containerContents } from './container_contents.js';
 import { bot, displayMessageWindow, redrawMap, flush_screen, pline, plineWithContinuation } from './display.js';
 import { touchArtifactByHero } from './artifact_touch.js';
 import { loseHeroHp } from './hero_damage.js';
@@ -16,7 +17,7 @@ import { inventoryClassOrder, lootSortMode, objectClassHeading, sortObjects } fr
 import { OBJECT_CLASS_SYMBOLS, objectClassForType } from './object_knowledge.js';
 import { clearJustPicked } from './just_picked.js';
 import { liftObject } from './lift_object.js';
-import { endObjectBurn } from './light.js';
+import { objectShedsLight, snuffLitObject } from './light.js';
 import { addObjectToContainer } from './object_container.js';
 import { useUpFloorObject } from './floor_consumption.js';
 import { scatterFloorObjects } from './scatter.js';
@@ -484,8 +485,8 @@ export async function putIntoContainer(container, object, state = game, count = 
     await finishInventoryRemoval(object, state);
     if (state.program_state?.gameover)
         return { moved: false, stop: true, message: null };
-    if (object.lamplit)
-        endObjectBurn(object, state, state.moves ?? 0);
+    if (objectShedsLight(object))
+        await snuffLitObject(object, state);
     const floorShop = container.where !== 'inventory' && costlySpot(state.u.ux, state.u.uy, state);
     const wasUnpaid = object.unpaid;
     if (floorShop && object.oclass !== 12)
@@ -662,27 +663,6 @@ async function putSelectedObjects(container, stashOne = false) {
     }
     return { results, spentTime: spentTime || results.some(result => result.moved) };
 }
-function contentLines(container) {
-    return sortObjects(container.contents || [], { mode: lootSortMode() })
-        .map(object => `  ${objectDescription(object)}`);
-}
-async function showContents(container) {
-    container.cknown = true;
-    if (!container.contents?.length) {
-        await pline(`The ${containerNoun(container)} is empty.`);
-        await displayMessageWindow();
-        return;
-    }
-    for (const object of container.contents)
-        observeObjectForNaming(object);
-    const lines = [
-        `Contents of the ${containerNoun(container)}:`,
-        '',
-        ...contentLines(container),
-    ];
-    // putstr() gives this NHW_MENU a text buffer; tty uses --More--.
-    await showDisclosureOverlay(lines, { pagerStyle: 'text', restoreUnderlay: true });
-}
 function actionKeys() {
     const menuStyle = game.flags.menu_style ?? MENU_FULL;
     return game.flags.lootabc && (menuStyle === MENU_PARTIAL || menuStyle === MENU_FULL)
@@ -798,7 +778,7 @@ async function useContainerActions(container, { held = false, moreContainers = f
             break;
         if (!container.cknown)
             spentTime = true;
-        await showContents(container);
+        await containerContents([container], false, false, true);
         if (underlay)
             restoreMenuUnderlay(underlay);
     }
