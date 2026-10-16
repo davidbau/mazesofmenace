@@ -72,7 +72,7 @@ import {
     SDOOR, DRAWBRIDGE_UP, D_LOCKED, D_CLOSED, D_BROKEN, SHOPBASE,
     KILLED_BY_AN, ANTIMAGIC, M_SEEN_MAGR, M_SEEN_FIRE, M_SEEN_COLD,
     M_SEEN_ELEC, M_SEEN_SLEEP, M_SEEN_ACID, M_SEEN_REFL, TIMEOUT,
-    OBJ_FLOOR, G_GONE, MM_NOMSG, NO_MM_FLAGS,
+    OBJ_FLOOR, G_GONE, MM_NOMSG, NO_MM_FLAGS, MM_ASYNCGROUP,
     W_ARMOR, W_ACCESSORY, W_SADDLE, W_ARMH, W_ARM, W_ARMG,
     Has_contents, NON_PM, NC_SHOW_MSG, NC_VIA_WAND_OR_SPELL, POLY_TRAP,
     MIGR_RANDOM, MIGR_STAIRS_DOWN, MIGR_STAIRS_UP,
@@ -2653,12 +2653,16 @@ export async function use_defensive(mtmp) {
         const wcc = { x: 0, y: 0 };
         if (!enexto(wcc, mtmp.mx, mtmp.my, wpm)) return 0;
         await mzapwand(mtmp, otmp, false);
-        const wmon = makemon(null, wcc.x, wcc.y, NO_MM_FLAGS);
+        // MM_ASYNCGROUP (D-4014 pattern): a grouped wand summons runs its
+        // member appears inline, so a member Norep --More-- splits the
+        // placements across replay steps exactly like C (the sync tail
+        // paints every member before the first appear).
+        const wmon = makemon(null, wcc.x, wcc.y, NO_MM_FLAGS | MM_ASYNCGROUP);
         // C makemon.c:1472–1500 in-body appear Norep — JS makemon is sync
         // so callers wire it (D-0559); without it a visible summons drops
         // its "suddenly appears" line and a later --More-- desyncs input
         // (town-94102 step 118: space became "Unknown command").
-        if (wmon) await makemon_appear_msg(wmon, wcc.x, wcc.y, NO_MM_FLAGS);
+        if (wmon) await makemon_appear_msg(wmon, wcc.x, wcc.y, NO_MM_FLAGS | MM_ASYNCGROUP);
         if (wmon && canspotmon(wmon) && oseen) {
             makeknown(WAN_CREATE_MONSTER);
         }
@@ -2677,12 +2681,16 @@ export async function use_defensive(mtmp) {
         while (cnt--) {
             const cc = { x: 0, y: 0 };
             if (!enexto(cc, mtmp.mx, mtmp.my, fish)) break;
-            const mon = makemon(pm, cc.x, cc.y, NO_MM_FLAGS);
+            // MM_ASYNCGROUP (D-4014 pattern): a grouped scroll summons runs
+            // its member appears inline, so a member Norep --More-- splits
+            // the placements across replay steps exactly like C (the sync
+            // tail paints every member before the first appear).
+            const mon = makemon(pm, cc.x, cc.y, NO_MM_FLAGS | MM_ASYNCGROUP);
             // C makemon.c:1472–1500 in-body appear Norep — JS makemon is sync
             // so callers wire it (D-0559; wand-arm sibling above); without it
             // a sensed summons drops its "suddenly appears" line and later
             // --More-- pages bundle steps (95211: C-328..332 in one JS step).
-            if (mon) await makemon_appear_msg(mon, cc.x, cc.y, NO_MM_FLAGS);
+            if (mon) await makemon_appear_msg(mon, cc.x, cc.y, NO_MM_FLAGS | MM_ASYNCGROUP);
             if (mon && (canseemon(mon) || sensemon(mon))) known = true;
         }
         if (known) makeknown(SCR_CREATE_MONSTER);

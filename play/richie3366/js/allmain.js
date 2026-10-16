@@ -79,7 +79,7 @@ import { udeadinside } from './read.js';
 import { you_were } from './were.js';
 import {
     UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
-    NO_MM_FLAGS, Upolyd, LL_ACHIEVE, NHCORE_START_NEW_GAME, NHCORE_RESTORE_OLD_GAME,
+    NO_MM_FLAGS, MM_ASYNCGROUP, Upolyd, LL_ACHIEVE, NHCORE_START_NEW_GAME, NHCORE_RESTORE_OLD_GAME,
     NHCORE_MOVELOOP_TURN, NHCB_END_TURN, ESCAPED,
     ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE,
     UTOTYPE_NONE, TIMEOUT, REGENERATION, CLAIRVOYANT,
@@ -325,7 +325,7 @@ export async function moveloop_preamble(resuming) {
     // C `:90–93` — deferred see_monsters catch-up.
     if (game.defer_see_monsters) {
         game.defer_see_monsters = false;
-        see_monsters();
+        await see_monsters();
     }
     // C allmain.c:97 — u_init leaves uz0.dlevel at 0 (u_init.c:984).
     // Until this copy, on_level(uz, uz0) is false on the starting
@@ -399,9 +399,13 @@ async function maybe_generate_rnd_mon() {
         rate = 50;
     }
     if (!rn2(rate)) {
-        const rndmon = makemon(null, 0, 0, NO_MM_FLAGS);
+        // MM_ASYNCGROUP (D-4014): C runs the mid-game group with member
+        // appears INLINE, so a member Norep --More-- splits the placements
+        // across replay steps (Valkyrie s146/s147 Uruk-hai group); the
+        // deferred tail in makemon_appear_msg preserves C draw order.
+        const rndmon = makemon(null, 0, 0, MM_ASYNCGROUP);
         // C: the appear Norep is inside makemon (:1476–1500).
-        if (rndmon) await makemon_appear_msg(rndmon, rndmon.mx | 0, rndmon.my | 0, NO_MM_FLAGS);
+        if (rndmon) await makemon_appear_msg(rndmon, rndmon.mx | 0, rndmon.my | 0, MM_ASYNCGROUP);
     }
 }
 
@@ -1470,7 +1474,7 @@ export async function moveloop_core() {
             || (((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0)));
         if (!g.context.mv || Blind) {
             if (Hallucination()) {
-                see_monsters();
+                await see_monsters();
                 see_objects();
                 see_traps();
                 if (u.uswallow) swallowed(0);
@@ -1480,7 +1484,7 @@ export async function moveloop_core() {
                     || !!(u.uprops?.[TELEPAT]?.extrinsic | 0);
                 if (Unblind_telepat || Warning(u) || Warn_of_mon()
                     || any_visible_region()) {
-                    see_monsters();
+                    await see_monsters();
                 }
             }
             // C :470–471 — inside the gate, after the see arms.

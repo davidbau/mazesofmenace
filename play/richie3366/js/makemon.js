@@ -99,7 +99,7 @@ import {
 } from './monsters.js';
 import { big_to_little, set_mon_data, name_to_mon, name_to_monclass, monsndx, attacktype } from './mondata.js';
 import {
-    NO_MINVENT, NO_MM_FLAGS, MM_NOGRP, MM_ASLEEP, MM_NONAME, MM_ESHK, MM_EGD,
+    NO_MINVENT, NO_MM_FLAGS, MM_NOGRP, MM_ASYNCGROUP, MM_ASLEEP, MM_NONAME, MM_ESHK, MM_EGD,
     MM_EMIN, MM_EPRI, MM_EDOG, MM_ANGRY, MM_ADJACENTOK, MM_NOTAIL, MM_NOWAIT,
     MM_MALE, MM_FEMALE, MM_MINVIS,
     MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOEXCLAM, MM_IGNOREWATER, M_SEEN_NOTHING,
@@ -3305,6 +3305,46 @@ function m_initlgrp(mtmp, x, y, mmf) {
     m_initgrp(mtmp, x, y, 10, mmf);
 }
 
+// C ref: makemon.c m_initgrp `:79–145` — mid-game async twin (D-4014).
+// C's nested member makemons run their appear-Norep + occupation check
+// INLINE (`:1476–1504`), so a member's Norep can trigger --More--
+// MID-GROUP, splitting the placements across replay steps (Valkyrie
+// s146/s147: the Uruk-hai group's 2nd member lands after the s146 --More--
+// ack). The sync m_initgrp above must stay sync (level-gen runs inside
+// sync makemon, as do non-awaiting mid-game callers), so flagged mid-game
+// primaries (MM_ASYNCGROUP) run this instead from makemon_appear_msg:
+// same loop in C order, member appear awaited inline per member
+// (replacing the _grpAppearPending push). Members get MM_ASYNCGROUP
+// stripped: their own tails stay sync and their appear is this inline
+// await, never deferred again.
+async function m_initgrp_async(mtmp, x, y, n, mmflags) {
+    let cnt = rnd(n);
+    const ulevel = game.u?.ulevel ?? 1;
+    cnt = Math.trunc(cnt / (ulevel < 3 ? 4 : ulevel < 5 ? 2 : 1));
+    if (!cnt) cnt = 1;
+
+    const mm = { x, y };
+    const memflags = (mmflags | MM_NOGRP) & ~MM_ASYNCGROUP;
+    while (cnt--) {
+        if (peace_minded(mtmp.data)) continue;
+        if (enexto_gpflags(mm, mm.x, mm.y, mtmp.data, mmflags)) {
+            const mon = makemon(mtmp.data, mm.x, mm.y, memflags);
+            if (mon) {
+                mon.mpeaceful = 0;
+                mon.mavenge = 0;
+                set_malign(mon);
+                // C `:1432–1437` → nested makemon `:1476–1500`: the
+                // member's own appear + occupation complete here, before
+                // the next member is placed (this await is the mid-group
+                // --More-- that splits the placements in C order).
+                if (!game.in_mklev) {
+                    await makemon_appear_msg(mon, mon.mx | 0, mon.my | 0, memflags);
+                }
+            }
+        }
+    }
+}
+
 /**
  * makemon for fill_ordinary_room(makemon(NULL,...,MM_NOGRP)),
  * makedog(MM_EDOG|NO_MINVENT), and maybe_generate_rnd_mon(NULL,0,0).
@@ -3742,6 +3782,21 @@ export function makemon(mdat, x, y, mmflags = 0) {
     // dprince MS_BRIBE / raven BEC_DE_CORBIN; emin roaming D-1526)
     set_malign(mtmp);
 
+    // C makemon.c:1430–1473 (D-4014): the mid-game group runs its member
+    // appears INLINE, so a member Norep --More-- splits placements across
+    // replay steps (C maps the primary post-More). Sync makemon cannot
+    // await; callers that WILL await the async tail pass MM_ASYNCGROUP and
+    // the whole post-sleep tail (group gates+group, invent, migrating
+    // deliver, primary newsym — C order) runs deferred in
+    // makemon_appear_msg instead. Unflagged callers keep the sync tail
+    // below (their groups never pause mid-group — legacy).
+    if (!game.in_mklev && (mmflags & MM_ASYNCGROUP) !== 0) {
+        // Stash the sync-computed tail inputs for the async half (deleted
+        // there; JS-only field, never upstream).
+        mtmp._asyncTail = { anymon, allowMinvent: allow_minvent_local, birthPtr: ptr };
+        return mtmp;
+    }
+
     // C: anymon && !(mmflags & MM_NOGRP) → small/large group (after sleep)
     if (anymon && (mmflags & MM_NOGRP) === 0) {
         if ((ptr.geno & G_SGROUP) && rn2(2)) {
@@ -3842,6 +3897,50 @@ export async function unmakemon(mon, mmflags = 0) {
  */
 export async function makemon_appear_msg(mtmp, x, y, mmflags = 0) {
     if (!mtmp || game.in_mklev) return;
+
+    // C makemon.c:1430–1473 deferred tail (D-4014, MM_ASYNCGROUP callers):
+    // group gates + group (member appears awaited INLINE per member, so a
+    // member Norep splits placements at --More-- exactly like C), then
+    // invent, migrating deliver, primary newsym — C order, before the
+    // primary's own appear below (:1476–1500). Members-first ordering is
+    // structural here (no queue needed on this path).
+    if ((mmflags & MM_ASYNCGROUP) !== 0 && mtmp._asyncTail) {
+        const deferred = mtmp._asyncTail;
+        delete mtmp._asyncTail;
+        // C makemon.c: the local `ptr` is the BIRTH type for the whole body:
+        // a shapechanger's sync-prefix newcham (:1356-1367) swaps mtmp->data
+        // (and clears allow_minvent) but ptr still gates the group block
+        // (:1430-1439) and the invent predicates (:1443/:1447). The stashed
+        // birthPtr preserves that; mtmp.data is the (possibly newcham'd)
+        // current form, which C uses only for member type (m_initgrp) and
+        // the appear below. Reading data here fired an orc-zombie SGROUP
+        // gate for a doppelganger birth (Tourist-50456027 s679).
+        const ptr = deferred.birthPtr || mtmp.data;
+        if (deferred.anymon && (mmflags & MM_NOGRP) === 0) {
+            if ((ptr.geno & G_SGROUP) && rn2(2)) {
+                await m_initgrp_async(mtmp, mtmp.mx, mtmp.my, 3, mmflags);
+            } else if (ptr.geno & G_LGROUP) {
+                if (rn2(3)) await m_initgrp_async(mtmp, mtmp.mx, mtmp.my, 10, mmflags);
+                else await m_initgrp_async(mtmp, mtmp.mx, mtmp.my, 3, mmflags);
+            }
+        }
+        if (deferred.allowMinvent) {
+            if (is_armed(ptr)) m_initweap(mtmp);
+            m_initinv(mtmp);
+            m_dowear(mtmp, true);
+            if (!rn2(100) && is_domestic(ptr)
+                && can_saddle(mtmp) && !which_armor(mtmp, W_SADDLE)) {
+                put_saddle_on_mon(null, mtmp);
+            }
+        } else {
+            if (mtmp.minvent) discard_minvent(mtmp, true);
+            mtmp.minvent = null;
+        }
+        if (deferred.allowMinvent && game.migrating_objs) {
+            deliver_obj_to_mon(mtmp, 1, DF_NONE);
+        }
+        newsym(mtmp.mx, mtmp.my);
+    }
 
     // C makemon.c:1432–1437 + :1476–1500 — nested group-member makemons
     // complete (appear + occupation check) before the outer primary's

@@ -1069,7 +1069,7 @@ export function l_levregion(opts) {
  * the live get_location arm adds the coder-croom or map origin
  * (ANY_LOC|NO_LOC_WARN skips the maze-max clamp like C). Prepend onto
  * sve.exclusion_zones (`:5529–5530`; persisted via save_exclusions /
- * load_exclusions). Named omit: hellfill rnd_hell_prefab maps.
+ * load_exclusions). Prefab exclusions wired D-4019.
  */
 export function lspo_exclusion(opts) {
     create_des_coder(); // C :5510
@@ -2103,7 +2103,7 @@ export async function lspo_region(a, b) {
         const irregular = get_table_boolean_opt(o, 'irregular', 0); // C :5601 get_table_boolean_opt(L, "irregular", 0)
         const joined = get_table_boolean_opt(o, 'joined', 1); // C :5602 get_table_boolean_opt(L, "joined", TRUE)
         const do_arrival_room = get_table_boolean_opt(o, 'arrival_room', 0); // C :5603 get_table_boolean_opt(L, "arrival_room", 0)
-        const rtype = await get_table_roomtype_opt(o, 'type', OROOM); // C :5606
+        const rtype = get_table_roomtype_opt(o, 'type', OROOM); // C :5606 (sync since D-4019: no-contents calls run fully sync — see helper)
         let rlit = get_table_int_opt(o, 'lit', -1); // C :5605 get_table_int_opt(L, "lit", -1)
         let dx1 = get_table_int_opt(o, 'x1', -1); // C :5565-5568 get_table_coords_or_region
         let dy1 = get_table_int_opt(o, 'y1', -1);
@@ -24369,13 +24369,21 @@ export function get_mkroom_name(rtype) {
  * so the diagnostic completes before room RNG or callbacks (C `:4015–
  * 4016`) — and keeps defval. Free is a GC no-op (C `:4017`).
  */
-export async function get_table_roomtype_opt(opts, name, defval) {
+/* Sync since D-4019 (was async): the only await was the impossible error
+ * arm; C :4004–4020 is sync, and des.map contents (hellfill prefab 6
+ * temple region via lspo_region) run sync inside lspo_map — awaiting this
+ * helper's promise would defer the region past lspo_map's :6319 origin
+ * reset (wrong coords) and past the altar's percent(75) (RNG swap). The
+ * error arm floats impossible (void; display.js is async) — the
+ * get_location :22106 precedent; valid room types never hit it.
+ * Await-callers are unaffected (await on a plain value). */
+export function get_table_roomtype_opt(opts, name, defval) {
     const roomstr = get_table_str_opt(opts ?? {}, name, ''); // C :4006 (emptystr)
     let res = defval;
     if (roomstr && roomstr.length !== 0) { // C :4008 `roomstr && *roomstr`
         const hit = splev_roomtype_entry(roomstr.toLowerCase()); // C :4009–4013 strcmpi
         if (hit) res = hit.type;
-        else await impossible(`Unknown room type '${roomstr}'`); // C :4015–4016
+        else void impossible(`Unknown room type '${roomstr}'`); // C :4015–4016
     }
     return res; // C :4018–4019
 }
@@ -26039,8 +26047,20 @@ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
     }
     const placeNamedAtAbs = (id, x, y, appearFurniture) => {
         const { mndx, female } = find_montype_gender(id);
-        const pm = (mndx >= 0 && mndx !== NON_PM) ? mons(mndx) : null;
+        let pm = (mndx >= 0 && mndx !== NON_PM) ? mons(mndx) : null;
         induced_align(80);
+        // C sp_lev.c create_monster :1947–1953 — an extinct unique never
+        // spawns (a genesis-born Juiblex carries G_EXTINCT from propagate's
+        // unique side effect, makemon.c:966–968); a genocided or extinct
+        // type falls through to a random monster (pm cleared, makemon(null)
+        // below). Same shape as splev_create_monster :22278–22287.
+        if (pm) {
+            const g_mvflags = game.mvitals?.[mndx]?.mvflags ?? 0;
+            if (((pm?.geno ?? 0) & G_UNIQ) && (g_mvflags & G_EXTINCT))
+                return null;
+            if (g_mvflags & G_GONE)
+                pm = null;
+        }
         let xx = x, yy = y;
         const moved = splev_resolve_occupied(xx, yy, pm);
         xx = moved.x;
@@ -28137,8 +28157,7 @@ function load_sanctum() {
 /**
  * C ref: dat/hellfill.lua via load_special — Gehennom filler levels.
  * hellno = math.random(1,#hells) → 7 styles; stairs; populatemaze.
- * Named omissions: rnd_hell_prefab (styles 2/4/6 percent arms);
- * hellobjects/hellmonsters (defined but unused in Lua).
+ * Named omissions: hellobjects/hellmonsters (defined but unused in Lua).
  */
 async function load_hellfill() {
     const g = game;
@@ -28258,8 +28277,7 @@ async function hellfill_style_mines_lava() {
 }
 
 /**
- * hellfill.lua hells[2] — mazegrid + mazewalk + hell_tweaks.
- * Named omit: rnd_hell_prefab on percent(25).
+ * hellfill.lua hells[2] — mazegrid + mazewalk + hell_tweaks (+ prefab, D-4019).
  */
 function hellfill_style_mazegrid_tweaks() {
     const g = game;
@@ -28285,10 +28303,8 @@ function hellfill_style_mazegrid_tweaks() {
         (tmpbounds.hy - 1) + by,
     ));
     hell_tweaks(protectedArea);
-    // percent(25) rnd_hell_prefab — named omission (still burn percent RNG)
-    if (percent(25)) {
-        /* rnd_hell_prefab deferred */
-    }
+    // hellfill.lua:341-343 — percent(25) → rnd_hell_prefab(false) (D-4019)
+    if (percent(25)) hellfill_rnd_hell_prefab(false);
 }
 
 /** hellfill.lua hells[3] — maze wallthick=1, random corrwid. */
@@ -28309,7 +28325,7 @@ function hellfill_style_maze_wt1() {
 
 /**
  * hellfill.lua hells[4] — maze + iron bars / lava wall replace.
- * Named omit: horiz iron-bar floor replace; rnd_hell_prefab.
+ * Named omit: horiz iron-bar floor replace.
  */
 function hellfill_style_maze_wall_replace() {
     const cwid = lua_random2(1, 4); // math.random(4)
@@ -28334,8 +28350,8 @@ function hellfill_style_maze_wall_replace() {
             // replace some horizontal iron bars — named omission envelope
             const chance = 25 * lua_random2(1, 4);
             void chance;
-        } else if (percent(25)) {
-            /* rnd_hell_prefab deferred */
+        } else if (percent(25)) { // hellfill.lua:367-369 (D-4019)
+            hellfill_rnd_hell_prefab(false);
         }
     }
     selection_iterate(outside, (x, y) => sel_set_ter(x, y, STONE, SET_LIT_NOCHANGE));
@@ -28373,7 +28389,7 @@ function hellfill_style_maze_thick() {
 
 /**
  * hellfill.lua hells[6] — cold maze with ice/water.
- * Named omit: ice grow/filter fidelity; rnd_hell_prefab.
+ * Named omit: ice grow/filter fidelity.
  */
 function hellfill_style_cold_maze() {
     const cwid = lua_random2(1, 4);
@@ -28412,9 +28428,8 @@ function hellfill_style_cold_maze() {
     // per-cell rn2(100) (C :5127/:5132) C never draws here.
     if (percent(25))
         lspo_terrain(selection_match_mapfrag('w'), 'W');
-    if (cwid === 1 && percent(25)) {
-        /* rnd_hell_prefab(true) deferred */
-    }
+    // hellfill.lua:408-410 — cwid==1 && percent(25) → prefab, cold (D-4019)
+    if (cwid === 1 && percent(25)) hellfill_rnd_hell_prefab(true);
     selection_iterate(outside, (x, y) => sel_set_ter(x, y, STONE, SET_LIT_NOCHANGE));
 }
 
@@ -28461,6 +28476,271 @@ async function hellfill_style_open_cavern() {
         if (bloc) bloc.lit = IS_LAVA(wter);
     });
     wallify_map(0, 0, COLNO - 1, ROWNO - 1);
+}
+
+/**
+ * C ref: dat/hellfill.lua rnd_halign/rnd_valign :85-93 — prefab placement
+ * alignment rolls (math.random(1,3) first-match like lua).
+ */
+function hellfill_rnd_halign() {
+    const aligns = ['half-left', 'center', 'half-right'];
+    return aligns[lua_random2(1, aligns.length) - 1];
+}
+
+function hellfill_rnd_valign() {
+    const aligns = ['top', 'center', 'bottom'];
+    return aligns[lua_random2(1, aligns.length) - 1];
+}
+
+/**
+ * C ref: dat/hellfill.lua hell_prefabs :99-298 in lua order (D-4019: closes
+ * the load_special rnd_hell_prefab-arms omit). Tables carry repeatable +
+ * contents like lua (:99: bare function implies not repeatable); bare
+ * functions take coldhell. Map strings are byte-exact lua long-string
+ * bodies (lua skips the newline after the opening bracket, so no leading
+ * newline here either). des.map contents run with the placed-map origin
+ * (lspo_map :2366-2367), so every inner coord is map-relative like C.
+ * Empty lua contents (function() end) are passed as empty closures, never
+ * omitted: a null contents would skip C :6319 reset_xystart_size.
+ */
+const HELLFILL_PREFABS = [
+    { // :100-121 open room, repeatable
+        repeatable: true,
+        contents() {
+            lspo_map({
+                halign: hellfill_rnd_halign(), valign: 'center',
+                map: `......
+......
+......
+......
+......
+......
+......
+......
+......
+......
+......
+......
+......
+......
+......
+......`,
+                contents: () => {},
+            });
+        },
+    },
+    { // :122-145 cavern ring, repeatable
+        repeatable: true,
+        contents() {
+            lspo_map({
+                halign: hellfill_rnd_halign(), valign: 'center',
+                map: `xxxxxx.....xxxxxx
+xxxx.........xxxx
+xx.............xx
+xx.............xx
+x...............x
+x...............x
+.................
+.................
+.................
+.................
+.................
+x...............x
+x...............x
+xx.............xx
+xx.............xx
+xxxx.........xxxx
+xxxxxx.....xxxxxx`,
+                contents: () => {},
+            });
+        },
+    },
+    (coldhell) => { // :146-182 lava temple; coldhell swaps L walls to P
+        lspo_map({
+            halign: hellfill_rnd_halign(), valign: hellfill_rnd_valign(),
+            map: `xxxxxx.xxxxxx
+xLLLLLLLLLLLx
+xL---------Lx
+xL|.......|Lx
+xL|.......|Lx
+.L|.......|L.
+xL|.......|Lx
+xL|.......|Lx
+xL---------Lx
+xLLLLLLLLLLLx
+xxxxxx.xxxxxx`,
+            contents: () => {
+                lspo_non_diggable(selection_fillrect_rel(2, 2, 10, 8)); // :160
+                lspo_region(selection_fillrect_rel(4, 4, 8, 6), 'lit'); // :161 selection+lit arm (sync)
+                lspo_exclusion({ type: 'teleport', region: [2, 2, 10, 8] }); // :162
+                if (coldhell) // :163-165 region L→P (default chance 100, per-cell draw)
+                    lspo_replace_terrain_region(1, 1, 11, 9, check_mapchr('L'), check_mapchr('P'), 100);
+                const dblocs = [ // :166-171
+                    { x: 1, y: 5, dir: 'east', state: 'closed' },
+                    { x: 11, y: 5, dir: 'west', state: 'closed' },
+                    { x: 6, y: 1, dir: 'south', state: 'closed' },
+                    { x: 6, y: 9, dir: 'north', state: 'closed' },
+                ];
+                nhlib_shuffle(dblocs); // :172
+                for (let i = 0, n = lua_random2(1, dblocs.length); i < n; i++) // :173-175
+                    lspo_drawbridge(dblocs[i]);
+                const mons = ['H', 'T', '@']; // :176
+                nhlib_shuffle(mons); // :177
+                for (let i = 0, n = 3 + lua_random2(1, 5); i < n; i++) // :178-180
+                    splev_create_monster(mons[0], undefined, { rx: 6, ry: 5 });
+            },
+        });
+    },
+    { // :183-193 open floor, repeatable
+        repeatable: true,
+        contents() {
+            lspo_map({
+                halign: 'center', valign: 'center',
+                map: `..............................................................
+..............................................................
+..............................................................
+..............................................................
+..............................................................`,
+                contents: () => {},
+            });
+        },
+    },
+    { // :194-206 lit alcove row, repeatable
+        repeatable: true,
+        contents() {
+            lspo_map({
+                halign: hellfill_rnd_halign(), valign: hellfill_rnd_valign(), lit: true,
+                map: `x.....x
+.......
+.......
+.......
+.......
+.......
+x.....x`,
+                contents: () => {},
+            });
+        },
+    },
+    () => { // :207-219 crosswall temple: irregular region + altar or shrine
+        lspo_map({
+            halign: hellfill_rnd_halign(), valign: hellfill_rnd_valign(),
+            map: `BBBBBBB
+B.....B
+B.....B
+B.....B
+B.....B
+B.....B
+BBBBBBB`,
+            contents: () => {
+                // :216 table-form region (sync: no contents arg, roomtype sync D-4019)
+                lspo_region({ region: [2, 2, 2, 2], type: 'temple', filled: 1, irregular: 1 });
+                // :217 percent(75) evaluated for the altar opts, after the region
+                lspo_altar({ x: 3, y: 3, align: 'noalign', type: percent(75) ? 'altar' : 'shrine' });
+            },
+        });
+    },
+    () => { // :220-236 lava F-room: exclusion + one random monster
+        lspo_map({
+            halign: hellfill_rnd_halign(), valign: hellfill_rnd_valign(),
+            map: `..........
+..........
+..........
+...FFFF...
+...F..F...
+...F..F...
+...FFFF...
+..........
+..........
+..........`,
+            contents: () => {
+                lspo_exclusion({ type: 'teleport', region: [4, 4, 5, 5] }); // :232
+                const mons = ['Angel', 'D', 'H', 'L']; // :233-234
+                splev_create_monster(mons[lua_random2(1, mons.length) - 1], undefined, { rx: 4, ry: 4 });
+            },
+        });
+    },
+    () => { // :238-253 moat room: exclusion + class-L monster (lua 04 == 4)
+        lspo_map({
+            halign: hellfill_rnd_halign(), valign: hellfill_rnd_valign(),
+            map: `.........
+.}}}}}}}.
+.}}---}}.
+.}--.--}.
+.}|...|}.
+.}--.--}.
+.}}---}}.
+.}}}}}}}.
+.........`,
+            contents: () => {
+                lspo_exclusion({ type: 'teleport', region: [3, 3, 5, 5] }); // :250
+                splev_create_monster('L', undefined, { rx: 4, ry: 4 }); // :251
+            },
+        });
+    },
+    () => { // :254-270 five 5x5 patches; percent(30) picks the lava set
+        const mapstr = percent(30) ? [ // :255-265
+            '.....',
+            '.LLL.',
+            '.LZL.',
+            '.LLL.',
+            '.....',
+        ].join('\n') : [
+            '.....',
+            '.PPP.',
+            '.PWP.',
+            '.PPP.',
+            '.....',
+        ].join('\n');
+        for (let dx = 1; dx <= 5; dx++) // :266-269
+            lspo_map({ x: dx * 14 - 4, y: lua_random2(3, 15), map: mapstr, contents: () => {} });
+    },
+    { // :271-297 stone strips, repeatable
+        repeatable: true,
+        contents() {
+            const mapstr = `...
+...
+...
+...
+...
+...
+...
+...
+...
+...
+...
+...
+...
+...
+...
+...
+...`;
+            for (let dx = 1; dx <= 3; dx++) // :292-295
+                lspo_map({ x: lua_random2(3, 75), y: 3, map: mapstr, contents: () => {} });
+        },
+    },
+];
+
+/**
+ * C ref: dat/hellfill.lua rnd_hell_prefab :300-317 — pick prefabs until a
+ * non-repeatable lands, the repeatable re-roll fails, or nloops passes 5.
+ * math.random(1,10) → lua_random2; the (0, nloops*2) re-roll is drawn only
+ * for tables (C :314 short-circuit). Callers: hells[2]/[4]/[6] percent
+ * arms (false, false, coldhell=true).
+ */
+function hellfill_rnd_hell_prefab(coldhell) {
+    let dorepeat = true;
+    let nloops = 0;
+    do { // C :303-316 repeat/until (always runs once)
+        nloops += 1;
+        const fab = HELLFILL_PREFABS[lua_random2(1, HELLFILL_PREFABS.length) - 1]; // :305
+        if (typeof fab === 'function') { // :309-311
+            fab(coldhell);
+            dorepeat = false;
+        } else { // :312-315
+            fab.contents(coldhell);
+            dorepeat = !(fab.repeatable && lua_random2(0, nloops * 2) === 0);
+        }
+    } while (dorepeat && nloops <= 5); // :316 until ((not dorepeat) or (nloops > 5))
 }
 
 /**
@@ -30000,7 +30280,9 @@ async function makerooms() {
             // the wrapper set/clear mirrors C :413/:417.
             g.in_mk_themerooms = true;
             g.themeroom_failed = false;
-            await themerooms_generate(depth_of_level(g.u?.uz));
+            // C themerms.lua is_eligible :890-902 reads nh.level_difficulty(),
+            // not depth() — EAggravate/amulet/builds_up arms gate mindiff.
+            await themerooms_generate(level_difficulty());
             g.in_mk_themerooms = false;
             if (g.themeroom_failed
                 && (themeroom_tries++ > 10
@@ -32434,8 +32716,9 @@ const THEMEROOM_FILL_BODIES = {
 };
 
 // C ref: themerms.lua themeroom_fill() — reservoir + dispatched fill bodies
+// (is_eligible reads nh.level_difficulty(), not depth() — :890-902).
 function themeroom_fill(croom) {
-    const difficulty = depth_of_level(game.u?.uz);
+    const difficulty = level_difficulty();
     let pick = null;
     let total_frequency = 0;
     for (const fill of THEMEROOM_FILLS) {

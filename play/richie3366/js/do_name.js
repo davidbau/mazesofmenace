@@ -997,10 +997,28 @@ export function x_monnam(mtmp, article, adjective, suppress = 0, called = false)
         const u = game.u || {};
         const save_prop = u.EHalluc_resistance | 0;
         const save_invis = mtmp.minvis;
-        if (!do_hallu) u.EHalluc_resistance = 1;
+        /* C `:889–894`: save EHalluc_resistance; when the true name is
+           wanted (!do_hallu — m_monnam's EXACT_NAME, gameover), force it
+           so the Hallucination macro (youprop.h:120, HHallucination &&
+           !Halluc_resistance) reads false inside priestname: no
+           rndmonnam/randrole/case display draws, true "of <deity>" tail.
+           JS additionally saves/clears the u.Hallucination sticky, which
+           shadows the same macro (this module's Hallucination reads it
+           first): without this the EHalluc_resistance assignment is
+           ineffective while hallucinating, priestname burns 5 display
+           draws and misnames done_in_by's killer (slimed_to_death cliff:
+           scen-sweep-Barbarian-50255228 s911 "lhurgoyf of Thoth" vs
+           "vampire lord of Ptah"). priestname is sync, so the restore
+           below always runs (C's shape, no new edge). */
+        const save_sticky = u.Hallucination;
+        if (!do_hallu) {
+            u.EHalluc_resistance = 1;
+            u.Hallucination = 0;
+        }
         if (!do_invis) mtmp.minvis = 0;
         let name = priestname(mtmp, art, do_exact);
         u.EHalluc_resistance = save_prop;
+        u.Hallucination = save_sticky;
         mtmp.minvis = save_invis;
         if (art === ARTICLE_NONE && name.startsWith('the ')) name = name.slice(4);
         return ret(name);

@@ -194,6 +194,7 @@ const SPE_REMOVE_CURSE = objectNames.indexOf('SPE_REMOVE_CURSE');
 const SCR_ENCHANT_WEAPON = objectNames.indexOf('SCR_ENCHANT_WEAPON');
 const SCR_DESTROY_ARMOR = objectNames.indexOf('SCR_DESTROY_ARMOR');
 const SCR_IDENTIFY = objectNames.indexOf('SCR_IDENTIFY');
+const SPE_IDENTIFY = objectNames.indexOf('SPE_IDENTIFY');
 const SCR_PUNISHMENT = objectNames.indexOf('SCR_PUNISHMENT');
 const SCR_GENOCIDE = objectNames.indexOf('SCR_GENOCIDE');
 const SCR_CREATE_MONSTER = objectNames.indexOf('SCR_CREATE_MONSTER');
@@ -1364,7 +1365,8 @@ async function seffect_food_detection(sobj) {
 /**
  * C ref: read.c seffect_identify.
  * Scroll: useup first, self-ID messages, learnscrolltyp, then
- * identify_pack(cval). SPE_IDENTIFY cast path deferred (wired if seffects).
+ * identify_pack(cval). SPE_IDENTIFY cast path live via seffects
+ * (C read.c:2256-2259 shared arm; spell pseudo keeps sobj, D-4020).
  */
 async function seffect_identify(sobj) {
     const otyp = sobj.otyp | 0;
@@ -1404,7 +1406,10 @@ async function seffect_identify(sobj) {
             `You're not carrying anything${is_scroll ? ' else' : ''} to be identified.`,
         );
     }
-    return null; // used up when scroll
+    // C: *sobjp is zeroed only on the scroll path (useup above); a
+    // spellbook/pseudo keeps sobj — the seffects kept-protocol
+    // (null = gone, object = kept; C read.c:2256-2259, D-4020).
+    return is_scroll ? null : sobj;
 }
 
 /** C read.c seffect_charging `:1788–1827` — confused uen else learn/useup/getobj+recharge. */
@@ -2124,7 +2129,8 @@ export async function seffects(sobj) {
     case SPE_REMOVE_CURSE:
         await seffect_remove_curse(sobj);
         break;
-    case SCR_IDENTIFY: {
+    case SCR_IDENTIFY:
+    case SPE_IDENTIFY: { // C read.c:2256-2259 shared arm (spell pseudo via spell.js spelleffects :2792-2809)
         const kept = await seffect_identify(sobj);
         if (!kept) return 1;
         break;

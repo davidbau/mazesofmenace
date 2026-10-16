@@ -863,8 +863,15 @@ async function mhitm_ad_elec_u(mtmp, mattk, mhm) {
     if (!(await mhitm_mgc_atk_negated(mtmp, null, true))) {
         await pline('You get zapped!');
         const u = game.u || {};
+        // C youprop.h:44 Shock_resistance ≡ HShock_resistance ||
+        // EShock_resistance ≡ uprops[SHOCK_RES].intrinsic || .extrinsic.
+        // Worn gear (confer_oc_oprop, do_wear.js — no E* mirror for
+        // resists) writes uprops only, so the flats alone miss a worn
+        // ring of shock resistance (D-1089 idiom; cf. the :1842 union).
         const Shock_resistance = !!(u.Shock_resistance || u.HShock_resistance
-            || u.EShock_resistance);
+            || u.EShock_resistance
+            || (u.uprops?.[SHOCK_RES]?.intrinsic | 0)
+            || (u.uprops?.[SHOCK_RES]?.extrinsic | 0));
         if (Shock_resistance) {
             await pline("The zap doesn't shock you!");
             monstseesu(M_SEEN_ELEC);

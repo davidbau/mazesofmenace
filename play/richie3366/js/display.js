@@ -6806,7 +6806,7 @@ export function swallowed(first = 0) {
  * `dog.c` `mon_arrive`). Detect_monsters cansee is newsym D-1737;
  * !cansee DETECTED is D-1745.
  */
-export function see_monsters() {
+export async function see_monsters() {
     if (game.defer_see_monsters) return;
     const u = game.u;
     if (u?.usteed) u.usteed.meverseen = 1;
@@ -6826,10 +6826,17 @@ export function see_monsters() {
             new_warn_obj_cnt++;
         }
     }
-    // C: Sting_effects then gw.warn_obj_cnt = new (reads old count)
+    // C `:1519–1524` — Sting_effects then gw.warn_obj_cnt = new (the
+    // glow text reads the old count). Sting_effects computes its text
+    // synchronously from the old count at call time, so the count updates
+    // synchronously right after (C order for sync readers like doname),
+    // and the glow pline is awaited so it emits before the caller
+    // proceeds: C emits synchronously, and an unawaited fire lets the
+    // text land after the next screen capture (D-4022).
     if (new_warn_obj_cnt !== (game.warn_obj_cnt | 0)) {
-        if (_Sting_effects) _Sting_effects(new_warn_obj_cnt);
+        const sting = _Sting_effects ? _Sting_effects(new_warn_obj_cnt) : null;
         game.warn_obj_cnt = new_warn_obj_cnt;
+        if (sting) await sting;
     }
     // C `:1527–1528` — no ux guard: when unmounted the hero cell is always
     // newsym'd (newsym no-ops when the level is not ready).
