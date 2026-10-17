@@ -80,7 +80,7 @@ import { obj_resists } from './dogmove.js';
 import { acurr, A_CHA, A_STR, A_DEX, A_CON, change_luck, Fumbling } from './attrib.js';
 import { Monnam, mon_nam, x_monnam, y_monnam, Hallucination, a_monnam, Amonnam, monverbself, l_monnam, type_is_pname, pmname, Mgender, hliquid, YMonnam, obj_pmname, hcolor, s_suffix, Ugender } from './do_name.js';
 import { monflee, accessible } from './monmove.js';
-import { nomul, confdir, losehp, maybe_half_phys, is_pool, is_lava, overexertion, in_rooms, You_hear, check_capacity, invocation_pos, On_stairs } from './hack.js';
+import { nomul, confdir, losehp, maybe_half_phys, is_pool, is_lava, overexertion, in_rooms, You_hear, check_capacity, invocation_pos, On_stairs, finish_maybe_wail } from './hack.js';
 import { getpos, getpos_sethilite } from './getpos.js';
 import { walk_path, walk_path_async, hurtle_jump, thitmonst, hurtle } from './dothrow.js';
 import { uhim, uhis, genders } from './roles.js';
@@ -4066,6 +4066,10 @@ async function use_grapple(obj) {
         if (P_SKILL(typ) <= P_BASIC) {
             await pline('You hook yourself!');
             losehp(maybe_half_phys(rn1(10, 10)), 'a grappling hook', KILLED_BY);
+            /* C apply.c:3865 — losehp runs maybe_wail inline
+               (hack.c:4289–4291); JS defers via _needs_maybe_wail
+               (D-3105): drain here, before the ECMD_TIME return. */
+            await finish_maybe_wail();
             return ECMD_TIME;
         }
         break;

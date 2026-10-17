@@ -407,6 +407,12 @@ export async function losestr(num, knam, k_format) {
             // (mthrowu.js D-3426/D-3777, muse.js D-3776).
             if (game.program_state?.gameover) return;
         }
+        /* C attrib.c:244 — losehp runs maybe_wail inline (hack.c:4289–4291)
+           before the max-HP cut below; JS defers via _needs_maybe_wail
+           (D-3105): drain here, C order. No-op on survived-fatal (the
+           flag is only set by losehp's non-fatal else arm). */
+        const { finish_maybe_wail } = await import('./hack.js');
+        await finish_maybe_wail();
         const { setuhpmax } = await import('./exper.js');
         if (Upolyd(u)) {
             setuhpmax(Math.max((u.mhmax | 0) - dmg, 1), false);

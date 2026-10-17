@@ -955,11 +955,11 @@ export async function digactualhole(x, y, madeby, ttyp) {
                 if (!grounded(mtmp.data)
                     || (mtmp.wormno && count_wsegs(mtmp) > 5)
                     || (mtmp.data?.msize | 0) >= MZ_HUGE) {
-                    newsym(x, y);
+                    /* C dig.c:802–805 — bare return, no newsym (D-4066). */
                     return;
                 }
                 if (mtmp === u.ustuck) {
-                    newsym(x, y);
+                    /* C dig.c:806–807 — bare return, no newsym (D-4066). */
                     return;
                 }
                 const { teleport_pet, migrate_to_level } = await import(
@@ -973,14 +973,16 @@ export async function digactualhole(x, y, madeby, ttyp) {
                             tolevel.dnum = v.dnum | 0;
                             tolevel.dlevel = v.dlevel | 0;
                         } else {
-                            newsym(x, y);
+                            /* C dig.c:812–813 — assign_level unconditional
+                               (no valley_level fallback); bare return, no
+                               newsym (D-4066). */
                             return;
                         }
                     } else if (Is_botlevel(u.uz)) {
                         if (canseemon(mtmp)) {
                             await pline(`${Monnam(mtmp)} avoids the trap.`);
                         }
-                        newsym(x, y);
+                        /* C dig.c:814–817 — bare return, no newsym (D-4066). */
                         return;
                     } else {
                         get_level(tolevel, depth(u.uz) + 1);
@@ -998,7 +1000,10 @@ export async function digactualhole(x, y, madeby, ttyp) {
             }
         }
     }
-    newsym(x, y);
+    /* C dig.c digactualhole :640–829 issues no newsym (the cell was redrawn
+       by unearth_objs inside maketrap + seetrap above); a tail newsym here
+       burns display-RNG draws C never makes and resyncs later hallu glyphs
+       (D-4066). */
 }
 
 /**

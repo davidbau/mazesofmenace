@@ -1234,8 +1234,21 @@ async function drop_boulder_on_player(
         stackobj(otmp2);
         newsym(u.ux, u.uy);
     }
+    /* C `:2331–2337` — same deferred tail as the read.js twin
+       (drop_boulder_on_player): a fatal pit-crush lifesaves before
+       the boulder-hit losehp below, and the hit's losehp drains its
+       inline wail/done here (explode_losehp idiom). */
+    await finish_maybe_wail();
+    if (game._losehp_needs_done || game.program_state?.gameover) {
+        await finish_losehp_done();
+    }
+    if (game.program_state?.gameover) return;
     if (dmg) {
         losehp(maybe_half_phys(dmg), 'scroll of earth', KILLED_BY_AN);
+    }
+    await finish_maybe_wail();
+    if (game._losehp_needs_done || game.program_state?.gameover) {
+        await finish_losehp_done();
     }
 }
 

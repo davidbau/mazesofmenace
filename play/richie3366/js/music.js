@@ -50,7 +50,7 @@ import {
     fillholetyp, liquid_flow,
 } from './dig.js';
 import { obj_extract_self, delobj, sobj_at } from './mkobj.js';
-import { losehp, maybe_half_phys, in_rooms, You_hear } from './hack.js';
+import { losehp, maybe_half_phys, in_rooms, You_hear, finish_maybe_wail } from './hack.js';
 import { xkilled } from './uhitm.js';
 import { makeknown, consume_obj_charge } from './invent.js';
 import { align_str, uhim } from './roles.js';
@@ -518,6 +518,10 @@ async function do_pit(x, y, tu_pit) {
                 'fell into a chasm',
                 NO_KILLER_PREFIX,
             );
+            /* C music.c:314 — losehp runs maybe_wail inline
+               (hack.c:4289–4291); JS defers via _needs_maybe_wail
+               (D-3105): drain here, before selftouch, C order. */
+            await finish_maybe_wail();
             await selftouch('Falling, you');
         } else if (u.utrap && (u.utraptype | 0) === TT_PIT) {
             const keepfooting = (!(Fumbling() && rn2(5))
@@ -530,6 +534,9 @@ async function do_pit(x, y, tu_pit) {
                 'hurt in a chasm',
                 NO_KILLER_PREFIX,
             );
+            /* C music.c:325 — same inline wail as the :314 arm above;
+               drain before the keepfooting exercise/selftouch. */
+            await finish_maybe_wail();
             if (keepfooting) {
                 exercise(A_DEX, true);
             } else {

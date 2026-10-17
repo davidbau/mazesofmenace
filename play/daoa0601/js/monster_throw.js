@@ -191,6 +191,7 @@ export async function throwMonsterProjectile(source, object, { state = game, dx,
             await returnMonsterWeapon(source, missile, state.bhitpos.x, state.bhitpos.y, {
                 state, publish, random, rollOne,
                 animateReturn: () => flightDisplay.backtrack(),
+                dropTether: () => flightDisplay.clear(),
             });
         }
     }
@@ -383,13 +384,10 @@ async function hitMonsterWithProjectile(defender, shot, remaining, context) {
             resolveVapor: true,
             // potionhit measures vapor distance from the monster's head.
             distance: dist2(state.u.ux, state.u.uy, defender.mx, defender.my),
-            heroCaused: !state.context.mon_moving,
-            finishKill: async (victim, options) => {
-                if (!state.context.mon_moving)
-                    return finishHeroMonsterKillOutcome(victim, victim.mx, victim.my, options);
-                const death = await finishEnvironmentalMonsterDeath(victim, state, { ...options, publish });
-                return { killed: !death.survived, heroDied: !!death.heroDied };
-            },
+            // C ohitmon() uses POTHIT_OTHER_THROW, so the hero is never at
+            // fault; holy water and rust still end in killed() there.
+            heroCaused: false,
+            finishKill: (victim, options) => finishHeroMonsterKillOutcome(victim, victim.mx, victim.my, options),
         });
         if (!potion)
             throw new Error(`Unsupported thrown potion ${object.otyp}`);

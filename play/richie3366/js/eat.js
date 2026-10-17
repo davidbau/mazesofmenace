@@ -137,7 +137,7 @@ import {
 } from './trap.js';
 import { done, delayed_killer } from './end.js';
 import { explode } from './explode.js';
-import { polymon, polyself, rehumanize, change_sex, body_part } from './polyself.js';
+import { polymon, polyself, rehumanize, change_sex, body_part, Unchanging } from './polyself.js';
 import { costly_alteration, costly_spot, sellobj_state } from './shk.js';
 import {
     wield_tool, uwepgone, uswapwepgone, uqwepgone, welded,
@@ -3779,8 +3779,10 @@ async function cprefx(pm) {
     case PM_GREEN_SLIME: {
         const u = game.u || {};
         const Slimed = !!(u.Slimed & TIMEOUT);
-        const Unchanging = !!(u.Unchanging || u.HUnchanging || u.EUnchanging);
-        if (!Slimed && !Unchanging && !slimeproof(hero_form_data())) {
+        // C eat.c:852 Unchanging ≡ HUnchanging || EUnchanging (youprop.h:372);
+        // the worn amulet confers E via uprops (worn.c), which the flats miss
+        // (D-4037/D-4055 class) — canonical polyself.js read.
+        if (!Slimed && !Unchanging(u) && !slimeproof(hero_form_data())) {
             await pline("You don't feel very well.");
             await make_slimed(10, null);
             delayed_killer(SLIMED, KILLED_BY_AN, '');

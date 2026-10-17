@@ -97,7 +97,7 @@ import {
     breathless, haseyes,
 } from './monsters.js';
 import { m_at, angry_guards, minliquid, mongone } from './mon.js';
-import { mon_offmap } from './monmove.js';
+import { mon_offmap, monflee } from './monmove.js';
 import { cansee, couldsee, do_clear_area } from './vision.js';
 import { del_engr_at, make_grave } from './engrave.js';
 import { monstseesu, monstunseesu, mhis, mhe } from './mondata.js';
@@ -927,16 +927,13 @@ export async function drinkfountain() {
             break;
         case 29: { // Scare
             await pline(`This ${hliquid('water')} gives you bad breath!`);
+            // C fountain.c:373-377 — the whole fmon list through the live
+            // monflee (D-4061: the inline mflee=1/mfleetim=0/mtrack-zeroing
+            // skipped monflee's ustuck release and Vrock arm — monmove.c:521
+            // mspec_used = 75 + rn2(25) + create_gas_cloud).
             for (const mtmp of game.fmon || []) {
-                if (mtmp.mhp <= 0) continue;
-                // C: monflee(mtmp, 0, FALSE, FALSE) — fleetime 0 + mon_track_clear
-                mtmp.mflee = 1;
-                mtmp.mfleetim = 0;
-                if (mtmp.mtrack) {
-                    for (let j = 0; j < mtmp.mtrack.length; j++) {
-                        mtmp.mtrack[j] = { x: 0, y: 0 };
-                    }
-                }
+                if ((mtmp.mhp | 0) < 1) continue; // C: DEADMONSTER(mtmp)
+                await monflee(mtmp, 0, false, false);
             }
             break;
         }

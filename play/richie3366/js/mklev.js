@@ -12606,18 +12606,42 @@ function load_mon_strt() {
 
     // Monsters on siege duty: 8 earth elementals then 4 xorns
     for (let i = 0; i < 8; i++) {
-        const pos = selection_rndcoord(spacelocs, true);
+        let pos = selection_rndcoord(spacelocs, true);
         const { mndx, female } = find_montype_gender('earth elemental');
         induced_align(80);
-        if (!pos || mndx < 0 || mndx === NON_PM) continue;
+        if (mndx < 0 || mndx === NON_PM) continue;
+        if (!pos) {
+            // C: selection.rndcoord on an empty selection draws nothing and
+            // yields {x:-1,y:-1} (nhlsel.c:407-427); des.monster then places
+            // randomly — create_monster :1963-1972 pm_to_humidity first-try
+            // + DRY retry, :1975-1976 MON_AT/enexto (croom is null for
+            // top-level des.monster, so no :1978-1979 inside_room check).
+            const pm0 = mons(mndx);
+            const loc0 = pm_to_humidity(pm0);
+            pos = get_location_random(loc0 | NO_LOC_WARN);
+            if (pos.x < 0) pos = get_location_random(loc0 | DRY);
+            pos = splev_resolve_occupied(pos.x, pos.y, pm0);
+        }
         const mtmp = makemon(mons(mndx), pos.x, pos.y, 0);
         if (mtmp) mtmp.female = female;
     }
     for (let i = 0; i < 4; i++) {
-        const pos = selection_rndcoord(spacelocs, true);
+        let pos = selection_rndcoord(spacelocs, true);
         const { mndx, female } = find_montype_gender('xorn');
         induced_align(80);
-        if (!pos || mndx < 0 || mndx === NON_PM) continue;
+        if (mndx < 0 || mndx === NON_PM) continue;
+        if (!pos) {
+            // C: selection.rndcoord on an empty selection draws nothing and
+            // yields {x:-1,y:-1} (nhlsel.c:407-427); des.monster then places
+            // randomly — create_monster :1963-1972 pm_to_humidity first-try
+            // + DRY retry, :1975-1976 MON_AT/enexto (croom is null for
+            // top-level des.monster, so no :1978-1979 inside_room check).
+            const pm0 = mons(mndx);
+            const loc0 = pm_to_humidity(pm0);
+            pos = get_location_random(loc0 | NO_LOC_WARN);
+            if (pos.x < 0) pos = get_location_random(loc0 | DRY);
+            pos = splev_resolve_occupied(pos.x, pos.y, pm0);
+        }
         const mtmp = makemon(mons(mndx), pos.x, pos.y, 0);
         if (mtmp) mtmp.female = female;
     }

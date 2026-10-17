@@ -4987,9 +4987,11 @@ export async function do_attack(mtmp) {
         // through to the hostile path below).
         if (!u_wield_art(ART_STORMBRINGER)) {
             const loc = game.level?.at(game.u?.ux, game.u?.uy);
-            // C `:469–473` — Punished || !rn2(7) || longworm+tail ||
-            // (IS_OBSTRUCTED(here) && !passes_walls).
-            const foo = !!(game.u?.Punished || !rn2(7)
+            // C `:474` — Punished ≡ (uball != 0) (youprop.h:77) ||
+            // !rn2(7) || longworm+tail || (IS_OBSTRUCTED(here) &&
+            // !passes_walls). Read the live ball: game.u.Punished is
+            // never written (D-4057).
+            const foo = !!(game.u?.uball || !rn2(7)
                 || (is_longworm(mdat) && mtmp.wormno)
                 || (loc && IS_OBSTRUCTED(loc.typ) && !passes_walls(mdat)));
             // C `:478–484` — inshop scan only when !foo (no RNG either way).

@@ -26,7 +26,7 @@ import {
 import {
     nomul, check_special_room, set_uinwater, is_pool, is_lava, in_rooms, dosinkfall,
     SURFACE_AT, switch_terrain, maybe_half_phys, waterbody_name, losehp, carrying,
-    check_capacity, Levitation_st, Flying_st,
+    check_capacity, Levitation_st, Flying_st, finish_maybe_wail,
 } from './hack.js';
 import {
     flush_screen, pline, newsym, newsym_force, docrt, bot, flush_topl_more, canseemon,
@@ -3243,6 +3243,9 @@ async function in_container(obj) {
         }
 
         await losehp(d(6, 6), 'magical explosion', KILLED_BY_AN); // C `:2692`
+        // C `:2692` — losehp blocks on maybe_wail inside (hack.c:4289–4291);
+        // JS defers via _needs_maybe_wail (D-3105): drain here, C order.
+        await finish_maybe_wail();
         game._current_container = null; /* baggone = TRUE; */ // C `:2693`
     }
 
@@ -4130,7 +4133,7 @@ export async function use_container(obj, held = false, more_containers = false) 
  * @param {number} [ccount=1]
  * @returns {Promise<number>} ECMD_*
  */
-async function do_loot_cont(cobj, cindex = 1, ccount = 1) {
+export async function do_loot_cont(cobj, cindex = 1, ccount = 1) {
     // C `:2095` — cobj = *cobjp.
     if (!cobj) return ECMD_OK; // C `:2095–2096`
     if (cobj.olocked) { // C `:2097`
@@ -4192,6 +4195,9 @@ async function do_loot_cont(cobj, cindex = 1, ccount = 1) {
             await finish_losehp_done();
             return ECMD_TIME;
         }
+        // C `:2156` — losehp blocks on maybe_wail inside (hack.c:4289–4291);
+        // JS defers via _needs_maybe_wail (D-3105): drain here, C order.
+        await finish_maybe_wail();
         makeknown(BAG_OF_TRICKS); // C `:2157`
         game.abort_looting = true; // C `:2158`
         return ECMD_TIME; // C `:2159`
@@ -5055,7 +5061,11 @@ export async function tipcontainer(box) {
                 }
                 targetbox = null;
                 nobj = null;
-                losehp(d(6, 6), 'magical explosion', KILLED_BY_AN);
+                losehp(d(6, 6), 'magical explosion', KILLED_BY_AN); // C `:3803`
+                // C `:3803` — losehp blocks on maybe_wail inside
+                // (hack.c:4289–4291); JS defers via _needs_maybe_wail
+                // (D-3105): drain here, C order.
+                await finish_maybe_wail();
             } else {
                 add_to_container(targetbox, otmp);
             }
