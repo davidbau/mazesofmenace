@@ -24,7 +24,7 @@ import {
     ECMD_OK, ECMD_TIME, ECMD_FAIL, ECMD_CANCEL, Upolyd, HAND, RIGHT_HANDED,
     has_oname, ONAME, COST_DEGRD, COST_DECHNT, CXN_PFX_THE, STONE_RES,
 } from './const.js';
-import { retouch_object, set_artifact_intrinsic, is_art, u_wield_art, restrict_name, arti_speak } from './artifact.js';
+import { retouch_object, set_artifact_intrinsic, halresTalk, is_art, u_wield_art, restrict_name, arti_speak } from './artifact.js';
 import { setworn, reset_remarm } from './do_wear.js';
 import { ART_SNICKERSNEE, ART_MAGICBANE, ART_OGRESMASHER, ART_SUNSWORD } from './generated/artifacts_data.js';
 import { makeknown, encumber_msg, compactify_invlets, invletter_value, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq, getobj_display_pickinv, splittable, freeinv, prinv } from './invent.js';
@@ -573,7 +573,14 @@ async function ready_weapon(wep) {
         if (u.uwep) {
             await pline(`You are ${empty_handed()}.`);
             {
+                const prev_wep = game.u?.uwep ?? null;
                 const shine = setuwep(null);
+                // C artifact.c:788-796 HALRES talk half (D-3223 named): cosmic
+                // when a resist-granter leaves while a timeout runs — before
+                // the shine-stop pline (C setuwep: setworn :106 precedes the
+                // :114 shine pline) and before the ECMD_TIME turn.
+                const halres = halresTalk(prev_wep, null);
+                if (halres) await halres;
                 if (shine) await shine;
             }
             return ECMD_TIME;
@@ -623,7 +630,14 @@ async function ready_weapon(wep) {
     }
 
     {
+        const prev_wep = game.u?.uwep ?? null;
         const shine = setuwep(wep);
+        // C artifact.c:788-796 HALRES talk half (D-3223 named): boring when a
+        // resist-granter arrives while a timeout runs (removed-talk first per
+        // C worn.c:106 → :130) — before the shine-stop pline (C setuwep:
+        // setworn :106 precedes the :114 shine pline) and the ECMD_TIME turn.
+        const halres = halresTalk(prev_wep, wep);
+        if (halres) await halres;
         if (shine) await shine;
     }
     // C :231–237 — was_twoweap && !u.twoweap && verbose → are/can_no_longer

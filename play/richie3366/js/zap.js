@@ -241,7 +241,7 @@ import {
 } from './invent.js';
 import { mstatusline, ustatusline } from './insight.js';
 import { setnotworn, boulder_hits_pool } from './do.js';
-import { doname, xname, yname, Yname2, distant_name, cxname_singular, vtense, The, the, an, An, aobjnam, killer_xname, ansimpleoname, makeplural, simple_typename, Tobjnam } from './objnam.js';
+import { doname, xname, yname, Yname2, distant_name, cxname_singular, vtense, The, the, an, An, aobjnam, killer_xname, ansimpleoname, makeplural, simple_typename, Tobjnam, shk_your, corpse_xname } from './objnam.js';
 import { uhim, uhis } from './roles.js';
 import { str_start_is, upstart, mungspaces, strncmpi, strsubst } from './hacklib.js';
 import { death_inflicted_by } from './mcastu.js';
@@ -302,7 +302,7 @@ import { block_point, does_block, recalc_block_point, unblock_point } from './vi
 import { picking_at, reset_pick, boxlock, boxlock_invent, doorlock, getdir } from './lock.js';
 import { monflee, sticks, maybe_unhide_at } from './monmove.js';
 import { digests, set_ustuck, unstuck, expels, ureflects, u_slow_down, ugolemeffects, mon_reflects } from './mhitu.js';
-import { newcham, makemon, create_critters, monhp_per_lvl, neweshk, add_to_minv, set_mimic_sym, newmcorpsenm } from './makemon.js';
+import { newcham, makemon, create_critters, monhp_per_lvl, neweshk, add_to_minv, set_mimic_sym, newmcorpsenm, makemon_appear_msg } from './makemon.js';
 import { tele, u_teleport_mon, rloco, enexto } from './teleport.js';
 import { find_ac, addinv_core1, addinv_core2 } from './u_init.js';
 import { rehumanize, polymon, body_part } from './polyself.js';
@@ -386,7 +386,7 @@ import {
     has_mcorpsenm, ERODE_CORRODE,
     LL_WISH, LL_CONDUCT, LL_ARTIFACT, ONAME_WISH, ONAME_KNOW_ARTI,
     FM_FMON, REVIVE_MON, ROT_CORPSE, TIMER_OBJECT, thats_enough_tries,
-    MAX_SPELL_STUDY,
+    MAX_SPELL_STUDY, CXN_NO_PFX,
 } from './const.js';
 import { monstseesu, monstunseesu, defended, Resists_Elem, resists_blnd, resists_blnd_by_arti, resists_magm } from './mondata.js';
 import { spell_skilltype } from './spell.js';
@@ -3123,8 +3123,9 @@ function SYSOPT_SEDUCE_zap() {
 
 /**
  * C ref: zap.c montraits — revive from corpse/statue omonst traits.
- * Used by revive() and animate_statue(). Named omit: full replshk bill_p;
- * worm light-source swap.
+ * Used by revive() and animate_statue(). Makemon in-body appear+dochugw
+ * awaited after creation (C makemon.c:1472–1507).
+ * Named omit: full replshk bill_p; worm light-source swap.
  * @returns {Promise<object|null>}
  */
 export async function montraits(obj, cc, adjacentok) {
@@ -3138,6 +3139,10 @@ export async function montraits(obj, cc, adjacentok) {
             | MM_NOTAIL | MM_NOMSG;
         if (adjacentok) mmflags |= MM_ADJACENTOK;
         mtmp = makemon(mtmp2.data, cc.x | 0, cc.y | 0, mmflags);
+        // C makemon.c:1472–1507 in-body: sync makemon defers appear Norep
+        // (MM_NOMSG-skipped here) + occupation dochugw(FALSE); they run
+        // before montraits' trait copy (C zap.c:744+), so await them here.
+        if (mtmp) await makemon_appear_msg(mtmp, mtmp.mx | 0, mtmp.my | 0, mmflags);
     }
     if (!mtmp) {
         // C zap.c:737–741 — traits copy is not on a monst list; free it.
@@ -3302,7 +3307,8 @@ function zombie_can_dig(x, y) {
 /**
  * C ref: zap.c revive — invent/minvent/floor + container/buried +
  * cant_revive zombie/doppel + montraits/omonst + ghost recorporealize +
- * shop stolen_value (D-0983).
+ * shop stolen_value (D-0983) + makemon in-body appear+dochugw(FALSE)
+ * awaited per creation arm (C makemon.c:1472–1507).
  * Named: cant_finish_meal; animate_statue caller of montraits.
  * @returns {Promise<object|null>} revived monst or null
  */
@@ -3412,6 +3418,9 @@ export async function revive(corpse, by_hero) {
     if (cant_revive(montypeBox, true, corpse)) {
         montype = montypeBox.mtype;
         mtmp = makemon(mons(montype), x, y, mmflags);
+        // C makemon.c:1472–1507 in-body: deferred appear + dochugw(FALSE)
+        // precede revive's post-makemon steps (free_omid/newcham below).
+        if (mtmp) await makemon_appear_msg(mtmp, mtmp.mx | 0, mtmp.my | 0, mmflags);
         if (mtmp) {
             if (has_omid(corpse)) free_omid(corpse);
             if (has_omonst(corpse)) free_omonst(corpse);
@@ -3435,6 +3444,14 @@ export async function revive(corpse, by_hero) {
         }
     } else {
         mtmp = makemon(mptr, x, y, mmflags | MM_NOCOUNTBIRTH);
+        // C makemon.c:1472–1507 in-body: deferred appear + dochugw(FALSE)
+        // precede revive's post-makemon steps (mundetected clear below).
+        if (mtmp) {
+            await makemon_appear_msg(
+                mtmp, mtmp.mx | 0, mtmp.my | 0,
+                mmflags | MM_NOCOUNTBIRTH,
+            );
+        }
     }
     if (!mtmp) return null;
 
@@ -3463,12 +3480,15 @@ export async function revive(corpse, by_hero) {
             shkp = shop_keeper(rooms ? rooms.charCodeAt(0) : 0);
         }
         if (cansee(x, y)) {
+            // C zap.c:1034–1049 — "one of " + shk_your ownership ("the "/
+            // "your "/"<mon>'s "/"<Shk>'s ", shk_owns live via hook) +
+            // corpse_xname(CXN_NO_PFX); quan forced plural around the name.
             const prefix = one_of ? 'one of ' : '';
-            const own = carried ? 'your ' : 'the ';
-            let nm = xname(used) || 'corpse';
+            const own = shk_your(used);
             if (one_of) used.quan = (used.quan | 0) + 1; // force plural briefly
-            const body = `${prefix}${own}${nm}`;
+            const nm = corpse_xname(used, null, CXN_NO_PFX) || 'corpse';
             if (one_of) used.quan = (used.quan | 0) - 1;
+            const body = `${prefix}${own}${nm}`;
             const up = body.charAt(0).toUpperCase() + body.slice(1);
             await pline(`${up} glows iridescently.`);
             if (!game.iflags) game.iflags = {};
@@ -4096,10 +4116,16 @@ async function mimic_hit_msg(mtmp, otyp) {
  * SPE_HEALING/SPE_EXTRA_HEALING wand-duplicate weffects is D-1469.
  * zap_steed SPE_CURE_SICKNESS routes here (D-1480) but C has
  * no bhitm arm (default impossible; objects.h NODIR).
- * @returns {Promise<number>} 0 (non-stopping for bhit range)
+ * WAN_NOTHING (wake FALSE, `:545–547`); SPE_KNOCK ret 1 stops the beam
+ * in bhit (`:403`, `:4027–4033`); default impossible (`:548–551`).
+ * @returns {Promise<number>} 1 when SPE_KNOCK absorbed the beam (bhit
+ * stops), else 0
  */
 export async function bhitm(mtmp, otmp) {
     if (!mtmp || !otmp) return 0;
+    // C zap.c bhitm `:162` — nonzero return stops the ZAPPED_WAND beam
+    // in bhit (`:4027–4033`); only the SPE_KNOCK arm sets it (`:403`).
+    let ret = 0;
     let wake = true;
     let reveal_invis = false;
     let learn_it = false;
@@ -4407,6 +4433,11 @@ export async function bhitm(mtmp, otmp) {
         }
         break;
     }
+    case WAN_NOTHING:
+        // C zap.c bhitm :545–547 — a wand of nothing neither wakes nor
+        // angers the monster it hits (wake FALSE skips the wakeup tail).
+        wake = false;
+        break;
     case WAN_LIGHT:
         // C: broken-wand / IMMEDIATE light flash on monster
         if (await flash_hits_mon(mtmp, otmp)) {
@@ -4437,6 +4468,9 @@ export async function bhitm(mtmp, otmp) {
             }
             if (otyp === SPE_KNOCK) {
                 wake = true;
+                // C `:403` — the knock is absorbed: the beam stops here
+                // (bhit `:4027–4033` breaks on a nonzero fhitm return).
+                ret = 1;
                 if ((mtmp.data?.msize | 0) < MZ_HUMAN
                     && !m_is_steadfast(mtmp)) {
                     if (canseemon(mtmp)) {
@@ -4564,6 +4598,8 @@ export async function bhitm(mtmp, otmp) {
         break;
     }
     default:
+        // C zap.c bhitm :548–551 (bhito :6042–6045 sibling shape).
+        await impossible(`What an interesting effect (${otyp | 0})`);
         break;
     }
 
@@ -4586,7 +4622,8 @@ export async function bhitm(mtmp, otmp) {
         }
     }
     if (learn_it) learnwand(otmp);
-    return 0;
+    // C zap.c bhitm `:571` — nonzero (SPE_KNOCK) stops the beam in bhit.
+    return ret;
 }
 
 /** C youprop.h Unaware — multi < 0 && (unconscious || fainted). */

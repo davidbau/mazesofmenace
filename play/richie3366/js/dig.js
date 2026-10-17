@@ -1214,7 +1214,10 @@ export async function mdig_tunnel(mtmp) {
  * C ref: dig.c adj_pit_checks `:1763-1838` — gate an adjacent pit dig.
  * Returns true when the caller may dighole; else false with *msg set
  * (empty when the caller handles it: pool/lava). C clears room->flags
- * unconditionally after saving ltyp; JS mirrors via lev.flags = 0.
+ * unconditionally after saving ltyp (`:1776`); rm.h `:215` `#define
+ * wall_info flags` is one field, so the clear zeroes wall_info too
+ * (incl. W_NONDIGGABLE). JS keeps both fields (D-0865): clear both
+ * (cf. the doormask+flags dual write in zap_dig below).
  * msg is a { v: '' } out-param (C `char *msg`, caller pline1(buf)).
  */
 export function adj_pit_checks(cc, msg) {
@@ -1224,9 +1227,11 @@ export function adj_pit_checks(cc, msg) {
     msg.v = '';
     const lev = game.level?.at(cc.x | 0, cc.y | 0);
     if (!lev) return false;
-    // C: ltyp = room->typ, room->flags = 0.
+    // C dig.c:1776: ltyp = room->typ, room->flags = 0 — single C field
+    // (rm.h:215), so wall_info goes too; JS writes both halves.
     const ltyp = lev.typ;
     lev.flags = 0;
+    lev.wall_info = 0;
 
     if (is_pool(cc.x | 0, cc.y | 0) || is_lava(cc.x | 0, cc.y | 0)) {
         /* this is handled by the caller after we return FALSE */

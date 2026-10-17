@@ -1169,7 +1169,7 @@ export async function make_sick(xtime, cause, talk, type) {
  * C ref: youprop.h Halluc_resistance — H || E, flats + uprops mirror
  * (invent.js hero_Halluc_resistance + do_name.js Hallucination() union).
  */
-function hallucResisted(u) {
+export function hallucResisted(u) {
     const e = u.uprops?.[HALLUC_RES];
     return !!((e?.intrinsic | 0) || (e?.extrinsic | 0)
         || (u.Halluc_resistance | 0)

@@ -545,8 +545,11 @@ export async function test_move(ux, uy, dx, dy, mode) {
                 if (mode === DO_MOVE) {
                     if (amorphous(ydat)) // C :1097–1099
                         await You("try to ooze under the door, but can't squeeze your possessions through.");
-                    if (game.flags?.autoopen !== false && !(game.context.run | 0) // C :1100–1102
-                        && !u.Confusion && !u.Stunned && !Fumbling()) {
+                    // C :1100–1102 Confusion ≡ HConfusion, Stunned ≡ HStun
+                    // (youprop.h:80–84) — read both flats (D-3772 idiom).
+                    if (game.flags?.autoopen !== false && !(game.context.run | 0)
+                        && !((u.HConfusion | 0) || u.Confusion)
+                        && !((u.HStun | 0) || u.Stunned) && !Fumbling()) {
                         // C :1103 tmp = doopen_indir(x, y); JS returns bool
                         // (true ⟺ ECMD_TIME, false ⟺ ECMD_OK — lock.js).
                         const tmp = await doopen_indir(x, y);
@@ -561,7 +564,8 @@ export async function test_move(ux, uy, dx, dy, mode) {
                             game.context.door_opened = !closed_door(x, y); // C :1112
                         game.context.move = (ux !== (u.ux | 0) || uy !== (u.uy | 0)) ? 1 : 0; // C :1113
                     } else if (x === ux || y === uy) { // C :1112 orthogonal
-                        if (Blind_tm() || u.Stunned || acurr(A_DEX) < 10 // C :1113–1114
+                        // C :1113–1114 Stunned ≡ HStun — read both (D-3772).
+                        if (Blind_tm() || (u.HStun | 0) || u.Stunned || acurr(A_DEX) < 10
                             || Fumbling()) {
                             if (u.usteed) { // C :1115–1117
                                 await pline(`You can't lead ${y_monnam(u.usteed)} through that closed door.`); // C You_cant

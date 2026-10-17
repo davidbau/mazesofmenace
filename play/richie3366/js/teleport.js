@@ -1519,8 +1519,12 @@ export async function teleds(nux, nuy, teleds_flags) {
      * trap backups can leave a stale bit). */
     update_player_regions();
 
+    /* C teleport.c:527 teleds — newsym(u.ux0, u.uy0) paints the origin cell
+     * only; the destination hero is painted by vision_recalc's
+     * unconditional skip-label newsym(u.ux, u.uy) (vision.c:850). No
+     * direct destination newsym here: it burns a newsym_rn2 display draw
+     * C never makes, shifting every later Hallucination glyph (D-4035). */
     newsym(ox, oy);
-    newsym(u.ux, u.uy);
     // C: see_monsters() before vision — refresh warns at new distu
     see_monsters();
     // C: vision_recalc(0) before materialize so --More-- shows new map

@@ -6891,7 +6891,13 @@ export async function domove(dx, dy) {
             game.context.door_opened = false;
             // C: check !context.run BEFORE clearing run — rush must bump, not autoopen
             const autoopen = game.flags?.autoopen !== false;
-            const impaired = !!(u.Confusion || u.Stunned || Fumbling());
+            // C hack.c test_move :1100–1102 !Confusion && !Stunned —
+            // Confusion ≡ HConfusion, Stunned ≡ HStun
+            // (youprop.h:80–84); read both flats: the set_uasmon
+            // FROMFORM grant syncs HStun/HConfusion, not the legacy
+            // u.Stunned/u.Confusion mirrors (D-3772 idiom).
+            const impaired = !!((u.HConfusion | 0) || u.Confusion
+                || (u.HStun | 0) || u.Stunned || Fumbling());
             if (autoopen && !game.context.run && !impaired) {
                 await doopen_indir(newx, newy);
                 // C: door_opened = !closed_door; move = (pos changed) → usually 0.
@@ -6903,7 +6909,9 @@ export async function domove(dx, dy) {
             if (newx === u.ux || newy === u.uy) {
                 const Blind = !!(u.Blind || u.ublind
                     || (((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0)));
-                if (Blind || u.Stunned || acurr(A_DEX) < 10 || Fumbling()) {
+                // C :1113–1114 Stunned ≡ HStun (youprop.h:80–81) — read
+                // both flats (FROMFORM grant skips the mirror, D-3772).
+                if (Blind || (u.HStun | 0) || u.Stunned || acurr(A_DEX) < 10 || Fumbling()) {
                     if (u.usteed) { // C :1115–1117 — riding hero leads, never Ouch
                         await pline(`You can't lead ${y_monnam(u.usteed)} through that closed door.`);
                     } else { // C :1118–1120

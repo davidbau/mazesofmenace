@@ -28,7 +28,7 @@ import {
     objectNameStrs, objects,
     AMULET_CLASS, GEM_CLASS, FIRST_REAL_GEM, LAST_REAL_GEM,
 } from './objects.js';
-import { arti_cost, artiname } from './artifact.js';
+import { arti_cost, artiname, revoke_invoked_property } from './artifact.js';
 import {
     DIED, GENOCIDED, STONING, QUIT, ESCAPED, ASCENDED, STARVING, BURNING,
     CHOKING, NON_PM, LEAVESTATUE, DISSOLVED, TURNED_SLIME, G_GENOD,
@@ -1644,6 +1644,12 @@ export async function drop_upon_death(mtmp, cont, x, y) {
         const otmp = game.invent.shift();
         otmp.where = OBJ_FREE;
         otmp.nobj = null;
+
+        // C bones.c:275 + invent.c:1383 + artifact.c:880–885 — obj_extract_self
+        // runs freeinv_core, whose W_ART-off re-invokes a still-on property
+        // toggle (async half; dropx/zap envelope pattern). Before
+        // obj_no_longer_held, in C order.
+        if (otmp.oartifact) await revoke_invoked_property(otmp);
 
         // C bones.c:279–280 — slime keeps gear held; other arises do not
         if (!mtmp || is_undead(mtmp.data)) await obj_no_longer_held(otmp);

@@ -253,7 +253,7 @@ import {
 } from './attrib.js';
 import { ing_suffix, strstri, strsubst, ordin, highc, lcase, strncmpi } from './hacklib.js';
 import { visctrl } from './dokeylist.js';
-import { map_menu_cmd, select_menu_pick_any, select_menu_pick_one, hide_unhide_msgtypes, set_option_mod_status, SET_GAMEVIEW } from './options.js';
+import { map_menu_cmd, select_menu_pick_any, select_menu_pick_one, hide_unhide_msgtypes, set_option_mod_status, SET_GAMEVIEW, get_menu_coloring, cattr_to_cell } from './options.js';
 import { rn2 } from './rng.js';
 import { background_enlightenment, enlght_line as enlght_line_txt } from './insight.js';
 import {
@@ -3710,6 +3710,31 @@ function add_menu_heading_attr() {
     return game.program_state?.gameover ? 0 : ATR_INVERSE;
 }
 
+/**
+ * C ref: windows.c add_menu `:1803–1807` — menu-color patterns replace
+ * the caller color/attr when use_menu_color (matched against the bare
+ * str, pre-selector; display_pickinv's caller color/attr is ATR_NONE /
+ * NO_COLOR, invent.c `:3081` clr); wintty.c process_menu_window
+ * `:1442–1447` — attr_n splits the `X - ` selector prefix (plain) from
+ * the entry description (colored). Headings (add_menu_heading) and the
+ * tty_end_menu query/blank rows (direct tty_add_menu, wintty.c `:2685`)
+ * bypass windows.c and stay plain — callers pass only item rows here.
+ * Returns the paint fields; null match keeps caller ATR_NONE/NO_COLOR.
+ * @param {string} text full entry line (selector prefix included)
+ * @returns {{ color: number, attr: number, descStart: number }}
+ */
+function pickinv_menu_coloring(text) {
+    const t = String(text ?? '');
+    let attr_n = 0; // C `:1442` whole line
+    if (t[0] && t[1] === ' ' && t[2] && '-+#'.includes(t[2]) && t[3] === ' ') {
+        attr_n = 4; // C `:1443–1447` [0]=letter, [1]=space, [2]=[-+#], [3]=space
+    }
+    let color = NO_COLOR, attr = 0; // C ATR_NONE=0, clr=NO_COLOR
+    const mc = get_menu_coloring(t.slice(attr_n)); // C windows.c `:1805` bare str
+    if (mc) { color = mc.color; attr = cattr_to_cell(mc.attr); }
+    return { color, attr, descStart: attr_n };
+}
+
 export function invent_lines(lets) {
     const inv = game.invent || [];
     const lines = [];
@@ -3837,11 +3862,10 @@ function pickinv_build_inuse(lets, wizid, opts = null) {
             const barehands = `${u.uarmg ? 'gloved' : 'bare'} ${hands} (no weapon)`;
             byLet.set(letch, { _hands: true, _inuse_fake: true });
             pickItems.push({ selector: letch, gselector: '' });
-            if (doing_perm_invent) ttyinv_add_menu(letch, NO_COLOR, barehands);
-            entries.push({
-                text: xprname(null, HANDS_SYM, false, 0, barehands),
-                attr: 0,
-            });
+            const handsLine = xprname(null, HANDS_SYM, false, 0, barehands);
+            const handsCol = pickinv_menu_coloring(handsLine);
+            if (doing_perm_invent) ttyinv_add_menu(letch, handsCol.color, barehands);
+            entries.push({ text: handsLine, ...handsCol });
             /* C invent.c:3313–3330 — formattedobj is the makeplural obuf. */
             maybereleaseobuf(hands);
             continue;
@@ -3857,16 +3881,17 @@ function pickinv_build_inuse(lets, wizid, opts = null) {
         let desc;
         if (doing_perm_invent) {
             desc = doname(otmp);
-            ttyinv_add_menu(letch, NO_COLOR, desc);
+            ttyinv_add_menu(letch, pickinv_menu_coloring(desc).color, desc);
         } else {
             desc = xprname(otmp);
         }
-        entries.push({ text: desc, attr: 0 });
+        entries.push({ text: desc, ...pickinv_menu_coloring(desc) });
         /* C invent.c:3322–3330 — release the doname/xprname obuf. */
         maybereleaseobuf(desc);
     }
     if (doing_perm_invent && !inusecount) {
-        entries.push({ text: 'Not using any items', attr: 0 });
+        // C `:3372–3375` add_menu_str (no SKIPMENUCOLORS) — whole row.
+        entries.push({ text: 'Not using any items', ...pickinv_menu_coloring('Not using any items') });
     }
     return { entries, byLet, pickItems, listed };
 }
@@ -3907,16 +3932,15 @@ function pickinv_build_perm() {
         const desc = doname(otmp);
         /* C invent.c:3322–3330 */
         maybereleaseobuf(desc);
-        ttyinv_add_menu(otmp.invlet || '?', NO_COLOR, desc);
-        entries.push({ text: desc, attr: 0 });
+        ttyinv_add_menu(otmp.invlet || '?', pickinv_menu_coloring(desc).color, desc);
+        entries.push({ text: desc, ...pickinv_menu_coloring(desc) });
     }
     if (!listed.length) {
-        entries.push({
-            text: (!show_gold && skipped_gold)
-                ? 'Only carrying gold'
-                : 'Not carrying anything',
-            attr: 0,
-        });
+        // C `:3372–3375` add_menu_str (no SKIPMENUCOLORS) — whole row.
+        const emptyText = (!show_gold && skipped_gold)
+            ? 'Only carrying gold'
+            : 'Not carrying anything';
+        entries.push({ text: emptyText, ...pickinv_menu_coloring(emptyText) });
     }
     ttyinv_end_menu();
     return { entries, listed, show_gold, skipped_gold };
@@ -4058,10 +4082,8 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null, o
         }
         byLet.set(HANDS_SYM, { _hands: true });
         pickItems.push({ selector: HANDS_SYM, gselector: '' });
-        entries.push({
-            text: xprname(null, HANDS_SYM, false, 0, xtra.choice),
-            attr: 0,
-        });
+        const xtraLine = xprname(null, HANDS_SYM, false, 0, xtra.choice);
+        entries.push({ text: xtraLine, ...pickinv_menu_coloring(xtraLine) });
     }
     if (inuse_only) {
         const built = pickinv_build_inuse(lets, wizid);
@@ -4120,7 +4142,7 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null, o
                 const formattedobj = xprname(otmp);
                 /* C invent.c:3322–3330 */
                 maybereleaseobuf(formattedobj);
-                entries.push({ text: formattedobj, attr: 0 });
+                entries.push({ text: formattedobj, ...pickinv_menu_coloring(formattedobj) });
             }
         }
         unsortloot(sorted); // C `:3368` — free-only; GC no-op in JS.
@@ -4131,10 +4153,8 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null, o
         entries.push({ text: 'Special', attr: headingAttr });
         byLet.set(special.ch, { _special: special.ch });
         pickItems.push({ selector: special.ch, gselector: '' });
-        entries.push({
-            text: `${special.ch} - ${special.text}`,
-            attr: 0,
-        });
+        const specialLine = `${special.ch} - ${special.text}`;
+        entries.push({ text: specialLine, ...pickinv_menu_coloring(specialLine) });
     }
     /* C `:3378–3415` — an empty menu still runs end_menu/select_menu
        with no pline (empty select → 0 → '\0'); the tty empty-menu UX is
@@ -4149,6 +4169,8 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null, o
     // force_invmenu; display_inventory passes NULL.
     const query = opts?.query;
     if (query) {
+        // C tty_end_menu `:2685–2689` calls tty_add_menu directly,
+        // bypassing windows.c add_menu — no menu-coloring here.
         entries.unshift({ text: query, attr: 0 });
         entries.unshift({ text: '', attr: 0 });
     }
@@ -4186,9 +4208,13 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null, o
         if (npages > 1) {
             // C fullscreen when maxrow >= rows (multi-page invent)
             // C wintty.c tty_end_menu `:2728–2733`: cut overlong item strs.
+            // Carry entry color/split like paint_corner_nhw_menu's own
+            // fullscreen arm (pad shifts attr_n by one).
             const painted = page.map((e) => ({
                 text: ` ${end_menu_cut_str(typeof e === 'string' ? e : e.text)}`,
                 attr: typeof e === 'string' ? 0 : (e.attr || 0),
+                color: typeof e === 'string' ? NO_COLOR : (e.color ?? NO_COLOR),
+                split: typeof e === 'string' ? 0 : ((e.descStart | 0) + 1),
             }));
             painted.push({ text: ` ${morestr}`, attr: 0 });
             paint_overlay(painted, {
@@ -4342,11 +4368,13 @@ export function build_wizid_pickinv_items() {
             unid_cnt === 1 ? '' : 's'
         }`;
     }
-    const items = [{ text: prompt, attr: 0, selectable: false }];
+    // C `:3232` + `:3234–3235` add_menu_str (no SKIPMENUCOLORS).
+    const items = [{ text: prompt, ...pickinv_menu_coloring(prompt), selectable: false }];
     if (!unid_cnt) {
+        const allId = '(all items are permanently identified already)';
         items.push({
-            text: '(all items are permanently identified already)',
-            attr: 0,
+            text: allId,
+            ...pickinv_menu_coloring(allId),
             selectable: false,
         });
         return { unid_cnt, items };

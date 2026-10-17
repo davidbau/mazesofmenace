@@ -119,7 +119,7 @@ import { safe_teleds } from './teleport.js';
 import { reset_utrap, rescued_from_terrain, heal_legs, animate_statue } from './trap.js';
 import { welded, is_weptool } from './wield.js';
 import { which_armor } from './worn.js';
-import { rehumanize, body_part, mbodypart } from './polyself.js';
+import { rehumanize, body_part, mbodypart, Unchanging } from './polyself.js';
 import { make_blinded, dropy } from './do.js';
 import { buried_ball_to_freedom } from './dig.js';
 import {
@@ -578,7 +578,11 @@ function in_trouble() {
     if (u.Sick) return TROUBLE_SICK;
     if ((u.uhs | 0) >= WEAK) return TROUBLE_STARVING;
     if (region_danger()) return TROUBLE_REGION;
-    const unchanging = !!(u.Unchanging || u.HUnchanging);
+    // C youprop.h:372: Unchanging ≡ HUnchanging || EUnchanging; the worn
+    // amulet confers via uprops[UNCHANGING].extrinsic (confer_oc_oprop,
+    // uprops-only — no EUnchanging flat mirror), so read the canonical
+    // polyself.js helper, not the two flats (D-4036-class dual-store miss).
+    const unchanging = Unchanging(u);
     if ((!Upolyd(u) || unchanging) && critically_low_hp(false)) {
         return TROUBLE_HIT;
     }
@@ -789,7 +793,7 @@ async function fix_worst_trouble(trouble) {
             break;
         }
         if (Upolyd(u) && nohands(game.youmonst?.data)) {
-            if (!(u.Unchanging || u.HUnchanging)) {
+            if (!Unchanging(u)) { // C pray.c:498 — canonical H||E+uprops read
                 await pline('Your shape becomes uncertain.');
                 await rehumanize();
             } else {

@@ -245,6 +245,16 @@ export function mapxy_valid(x, y) {
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
 
+/**
+ * C cmd.c ndir "47896321><" / ndir_phone_layout "41236987><" (`:3348–3349`,
+ * selected at reset_commands `:3432–3436`): number_pad walk deltas, same
+ * DIR_DX/DIR_DY shape (lock.js NUMPAD_DIR sibling data, D-4042).
+ */
+const NUMPAD_DX = { '4': -1, '7': -1, '8': 0, '9': 1, '6': 1, '3': 1, '2': 0, '1': -1 };
+const NUMPAD_DY = { '4': 0, '7': -1, '8': -1, '9': -1, '6': 0, '3': 1, '2': 1, '1': 1 };
+const NUMPAD_DX_PHONE = { '4': -1, '1': -1, '2': 0, '3': 1, '6': 1, '9': 1, '8': 0, '7': -1 };
+const NUMPAD_DY_PHONE = { '4': 0, '1': -1, '2': -1, '3': -1, '6': 0, '9': 1, '8': 1, '7': 1 };
+
 /** C('h')..C('n') → walk dir letter (num_pad off bind). */
 const CTRL_DIR = {
     8: 'h', // C('h')
@@ -1587,26 +1597,36 @@ export async function getpos(ccp, force, goal) {
             }
         }
 
-        // C ref: getpos.c movecmd before quitchars. C('j')=='\n' is bound
-        // to rush-south (cmd.c bind_key_fn); Enter therefore rushes +8 when
-        // it reaches getpos (D-0779). Quitchars still apply when movecmd fails.
+        // C cmd.c reset_commands :3463–3472 — the highc()/C() rush/run
+        // binds exist only under !num_pad; number_pad drops them (M(digits)
+        // run instead, ndir walk — named omission, D-4042). C('j')=='\n'
+        // is bound to rush-south under !num_pad (cmd.c bind_key_fn;
+        // D-0779), so Enter rushes +8 there; under num_pad it is unbound
+        // and falls to the quitchars arm below (decl.c quitchars).
+        const numPad = !!(g.iflags?.num_pad || g.Cmd?.num_pad);
+        // C cmd.c reset_commands :3432–3436 — live dirchars: sdir under
+        // !num_pad, ndir (ndir_phone_layout when phone_layout) under
+        // num_pad; walk binds follow dirchars (C :3463), so digits walk
+        // and hjkl fall through to matching[]/Unknown-direction there.
+        const wdx = numPad ? (g.Cmd?.phone_layout ? NUMPAD_DX_PHONE : NUMPAD_DX) : DIR_DX;
+        const wdy = numPad ? (g.Cmd?.phone_layout ? NUMPAD_DY_PHONE : NUMPAD_DY) : DIR_DY;
         let walk = null;
         let rush = false;
-        if (ch in DIR_DX) {
+        if (ch in wdx) {
             walk = ch;
-        } else if (ch.toLowerCase() in DIR_DX && ch !== ch.toLowerCase()) {
-            // highc(dirchars) → MV_RUN
+        } else if (!numPad && ch.toLowerCase() in DIR_DX && ch !== ch.toLowerCase()) {
+            // highc(dirchars) → MV_RUN (!num_pad only, C :3464–3466)
             walk = ch.toLowerCase();
             rush = true;
-        } else if (key in CTRL_DIR) {
+        } else if (!numPad && key in CTRL_DIR) {
             // C(dirchars) → MV_RUSH (same 8-step path); includes '\n' as C('j')
             walk = CTRL_DIR[key];
             rush = true;
         }
 
         if (walk) {
-            let dx = DIR_DX[walk];
-            let dy = DIR_DY[walk];
+            let dx = wdx[walk];
+            let dy = wdy[walk];
             if (g.u) {
                 g.u.dx = dx;
                 g.u.dy = dy;
@@ -1618,8 +1638,8 @@ export async function getpos(ccp, force, goal) {
                 if (g.iflags?.getloc_moveskip) {
                     // C: skip same glyphs while next+1 is still that glyph
                     const glyph = glyph_at(cx, cy);
-                    const sdx = DIR_DX[walk];
-                    const sdy = DIR_DY[walk];
+                    const sdx = wdx[walk];
+                    const sdy = wdy[walk];
                     while (
                         isok(cx + dx, cy + dy)
                         && glyph === glyph_at(cx + dx, cy + dy)
@@ -1643,9 +1663,12 @@ export async function getpos(ccp, force, goal) {
             continue;
         }
 
-        // C: quitchars (" \r\n\033") — only when not a movecmd. '\n' already
-        // handled as C('j') rush above; space/CR still force-continue.
-        if (ch === ' ' || key === 13) {
+        // C decl.c quitchars (" \r\n\033") — only when not a movecmd (ESC
+        // returns -1 above, C getpos.c :893–898). '\n' (key 10) is C('j')
+        // rush under !num_pad (D-0779) but unbound under num_pad, reaching
+        // here; space/CR/LF force-continue, else "Done." with ccp (-1, 0),
+        // result 0 (C :1132–1141).
+        if (ch === ' ' || key === 13 || key === 10) {
             if (force) continue;
             await pline('Done.');
             ccp.x = -1;

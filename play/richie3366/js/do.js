@@ -1157,7 +1157,14 @@ async function tutorial_leave_gamestate() {
 
     game._lastinvnr = 51;
     const inv = game.invent || (game.invent = []);
-    while (inv.length) useupall_gamestate(inv[0]);
+    // C nhlua.c:1742–1743 + invent.c:1383 + artifact.c:880–885 — useupall runs
+    // freeinv_core, whose W_ART-off re-invokes a still-on property toggle
+    // (async half; dropx/zap envelope pattern).
+    while (inv.length) {
+        const otmp = inv[0];
+        useupall_gamestate(otmp);
+        if (otmp.oartifact) await revoke_invoked_property(otmp);
+    }
 
     const stash = game.gmst_invent || [];
     while (stash.length) {

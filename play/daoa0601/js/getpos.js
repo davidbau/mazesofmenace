@@ -1,13 +1,14 @@
 // C refs: getpos.c:getpos(), drawing.c:defsyms[], symbols.c:gs.showsyms[],
 // display.c:tmp_at() for the valid-location marking overlay.
 import { COLNO, D_ISOPEN, DOOR, GFILTER_NONE, GFILTER_VIEW, HI_ZAP, LOOK_ONCE, LOOK_QUICK, LOOK_TRADITIONAL, LOOK_VERBOSE, NHW_MENU, PICK_ONE, ROWNO, SCORR, STONE, VIBRATING_SQUARE, WEB, IS_WALL, TREE, } from './const.js';
-import { bot, clearMessageWindow, redrawMap, flush_screen, glyphAt, lastDirtyMapCursor, newsym_force, pline, plineWithContinuation, show_glyph_cell, terrain_glyph, } from './display.js';
+import { bot, clearMessageWindow, flush_screen, glyphAt, lastDirtyMapCursor, newsym_force, pline, plineWithContinuation, show_glyph_cell, terrain_glyph, } from './display.js';
 import { game } from './gstate.js';
 import { nhgetch, readchar } from './input.js';
 import { currentLuaLifecycle } from './lua/lifecycle.js';
 import { MONSTER_NAME } from './monster_data.js';
 import { BOULDER, ROCK } from './object_data.js';
-import { CmapSymbol, GlyphOffset } from './glyph_numbers.js';
+import { CmapSymbol, GlyphOffset, cmapToGlyph } from './glyph_numbers.js';
+import { TemporaryMapEffect } from './temporary_map_effect.js';
 import { MAP_SYMBOLS } from './map_symbols.js';
 import { NO_COLOR } from './terminal.js';
 import { cansee } from './vision.js';
@@ -188,22 +189,26 @@ function mapPositionPickType(code) {
 export function isGetposPickCharacter(ch) {
     return mapPositionPickType(ch.charCodeAt(0)) !== null;
 }
-// redrawMap() rebuilds every map cell each round, so the tmp_at-style overlay
-// must be re-applied after it (tty keeps such glyphs on screen instead).
-export async function paintGetposCursor(cursor, message, markedSpots = null, preserveMap = false) {
+// getpos() flushes the existing glyph buffer. Recalculating sight here would
+// discover warnings or erase unseen-monster memory in the middle of a turn.
+export async function paintGetposCursor(cursor, message, markedSpots = null) {
     game._pending_message = message;
-    if (!preserveMap)
-        await redrawMap();
     // display.c:tmp_at() with DISP_BEAM shows the glyph only on squares the
     // hero can see, so a validity rule that admits unseen squares (polearm
     // couldsee+glyph policy) still cannot reveal them.
-    if (markedSpots) {
+    const markers = markedSpots ? new TemporaryMapEffect('beam', {
+        ch: GOODPOS_CH, color: HI_ZAP, decgfx: false, kind: 'effect',
+        glyph: cmapToGlyph(CmapSymbol.goodpos),
+    }) : null;
+    if (markers && markedSpots) {
+        await markers.start();
         for (const { x, y } of markedSpots)
-            show_glyph_cell(x, y, GOODPOS_CH, HI_ZAP, false);
+            await markers.show(x, y);
     }
     await bot();
     await flush_screen(1);
     game.nhDisplay?.setCursor(cursor.x - 1, cursor.y + 1);
+    return markers;
 }
 // C getpos.c:getpos_help() draws this menu over the right side of the map.
 export async function getposHelpUntilDismissed(goal, { hasValidLocations = false } = {}) {
@@ -461,7 +466,7 @@ export async function selectTravelMenuPosition(describe) {
         game.iflags.getloc_filter = previousFilter;
     }
 }
-export async function selectMapPosition({ start, prompt, goal, describe, afterPaint = null, isValidLocation = null, highlightHero = true, preserveMap = false, force = true, }) {
+export async function selectMapPosition({ start, prompt, goal, describe, afterPaint = null, isValidLocation = null, highlightHero = true, force = true, }) {
     const cursor = { ...start };
     const savedDirection = { dx: game.u.dx, dy: game.u.dy, dz: game.u.dz };
     const movePrompt = `Move cursor to ${goal}:`;
@@ -474,6 +479,12 @@ export async function selectMapPosition({ start, prompt, goal, describe, afterPa
     // getpos_sethilite(NULL, NULL) resets them at its exit.
     const validity = { cycle: null };
     let markValid = false;
+    let marking = null;
+    const clearMarking = () => {
+        marking?.clear();
+        marking = null;
+        markValid = false;
+    };
     const targetCycles = new Map();
     const autoDescription = () => game.iflags.autodescribe ?? true;
     const movementMessage = async () => autoDescription()
@@ -506,7 +517,7 @@ export async function selectMapPosition({ start, prompt, goal, describe, afterPa
                 ? validMapSquares(isValidLocation).filter(({ x, y }) => cansee(x, y)
                     && (highlightHero || x !== game.u.ux || y !== game.u.uy))
                 : null;
-            await paintGetposCursor(cursor, message, paintedSpots, preserveMap);
+            marking = await paintGetposCursor(cursor, message, paintedSpots);
             if (firstPaint && initialMapCursor)
                 game.nhDisplay?.setCursor(...initialMapCursor);
             if (afterPaint)
@@ -557,17 +568,17 @@ export async function selectMapPosition({ start, prompt, goal, describe, afterPa
             }
             if (key === 18) {
                 // redraw_cmd(): getpos_refresh() ends an active marking.
-                markValid = false;
+                clearMarking();
                 message = movePrompt;
                 continue;
             }
             if (key === game.commandBindings.specialKey('getpos.help')) {
                 // getpos_help() runs before getpos_refresh(), which resets
                 // the hilite state to its default (marking off).
-                markValid = false;
                 await getposHelpUntilDismissed(goal, {
                     hasValidLocations: !!isValidLocation,
                 });
+                clearMarking();
                 message = movePrompt;
                 continue;
             }
@@ -581,8 +592,10 @@ export async function selectMapPosition({ start, prompt, goal, describe, afterPa
                 continue;
             }
             if (key === game.commandBindings.specialKey('getpos.valid')) {
-                if (isValidLocation)
-                    markValid = !markValid;
+                if (markValid)
+                    clearMarking();
+                else if (isValidLocation)
+                    markValid = true;
                 message = movePrompt;
                 continue;
             }

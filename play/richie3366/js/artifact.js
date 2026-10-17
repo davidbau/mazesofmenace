@@ -170,7 +170,7 @@ import { select_menu_pick_one } from './options.js';
 // C set_artifact_intrinsic SPFX_HALRES changed arm — hoisted fn, cycle-safe
 // (`imports.mjs --can artifact.js eat.js eatmupdate`: SAFE, same shape as the
 // file's existing steal.js/dothrow.js/do.js cycle edges; runtime-only call).
-import { eatmupdate } from './eat.js';
+import { eatmupdate, Unaware } from './eat.js';
 
 const CRYSTAL_BALL = objectNames.indexOf('CRYSTAL_BALL');
 const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
@@ -1019,7 +1019,9 @@ function warntype_info() {
  * async `revoke_invoked_property` half (same file; sync `freeinv_core`
  * cannot await — Constitution §2.6), awaited by async W_ART-off envelopes
  * (`dropx`, zap poly `replace`); no-floor drops ride `finesse_ahriman`
- * (own row). Named omissions: HALRES talk pline (async-only).
+ * (own row). HALRES talk pline: live via the halresTalk envelope below at
+ * ready_weapon's equip/unwield sites (wield.js); wield_tool/uwepgone/quiver/
+ * evaporate + do_name/addinv/freeinv/setnotworn carrier sites stay named.
  * SPFX_REFLECT && W_WEP is D-1342 (not other wp_mask).
  * C artifact.c:886–891 — wielded Sunsword sets EBlnd_resist (W_WEP
  * exact, not bit-test).
@@ -1200,6 +1202,58 @@ export async function revoke_invoked_property(otmp) {
     const u = game.u || {};
     if (!((u.uprops?.[inv]?.extrinsic | 0) & W_ARTI)) return;
     await arti_invoke(otmp);
+}
+
+/** SPFX-side HALRES conferral (worn/wielded masks; W_ART carry never: the
+ * sole HALRES artifact Grayswandir has cspfx 0, artilist.h:170). */
+function halresConfers(otmp) {
+    if (!otmp?.oartifact) return false;
+    const oart = get_artifact(otmp);
+    if (!oart || oart === artilist()[0]) return false;
+    return !!((oart.spfx | 0) & SPFX_HALRES);
+}
+
+/**
+ * C ref: artifact.c:788–796 SPFX_HALRES → potion.c make_hallucinated(:369–438)
+ * talk half. Async complement of the sync HALRES arm in
+ * set_artifact_intrinsic above (D-3223 named omission): C calls
+ * make_hallucinated(!on, !restoring, wp_mask), whose changed arm prints
+ * boring (cover arrives) or cosmic (cover leaves) while a hallucination
+ * timeout runs. Wield sites call this immediately after the sync setuwep
+ * flip — removed-talk then equipped-talk, matching C worn.c:106 → :130 —
+ * awaiting the promise before the shine-stop pline (C setuwep: setworn
+ * :106 precedes the :114 shine pline) and the ECMD_TIME turn.
+ * Returns a Promise only when a pline prints (setuwep shine shape), so the
+ * common path inserts no microtask: `const t = halresTalk(p, w); if (t)
+ * await t;`. Values equal C's make_hallucinated-entry values: flips never
+ * touch HHallucination and no await may intervene before this call.
+ * Named: wield_tool :281, uwepgone :443, quiver :1090, evaporate :1431,
+ * do_name/addinv/freeinv/setnotworn carrier sites (same call, untested).
+ * @param {object|null} removed
+ * @param {object|null} equipped
+ * @returns {Promise<void>|undefined}
+ */
+export function halresTalk(removed, equipped) {
+    if (game.program_state?.restoring) return undefined; // C talk = !restoring
+    if (Unaware()) return undefined; // C :377-378 if (Unaware) talk = FALSE
+    const u = game.u || {};
+    // C :385-392 mask arm: changed iff a hallucination timeout runs (same
+    // OR as the sync arm above; entry-time == now, flips touch E-resist only).
+    const changed = !!((u.HHallucination | 0) || (u.uprops?.[HALLUC]?.intrinsic | 0));
+    if (!changed) return undefined;
+    const jobs = [];
+    if (removed && removed !== equipped && halresConfers(removed)) jobs.push(false);
+    if (equipped && equipped !== removed && halresConfers(equipped)) jobs.push(true);
+    if (!jobs.length) return undefined;
+    const verb = !Blind() ? 'looks' : 'feels'; // C :382
+    return (async () => {
+        for (const on of jobs) {
+            // C :379-381 message select (!xtime → boring; xtime → cosmic)
+            await pline(on
+                ? `Everything ${verb} SO boring now.`
+                : `Oh wow!  Everything ${verb} so cosmic!`);
+        }
+    })();
 }
 
 /**

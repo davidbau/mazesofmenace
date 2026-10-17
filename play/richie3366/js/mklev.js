@@ -22210,9 +22210,14 @@ function sp_amask_to_amask(sp_amask) {
         return Align2amask(game.u?.ualignbase?.original ?? game.u?.ualign?.type ?? 0);
     }
     if (sp_amask === AM_SPLEV_NONCO) {
-        return Align2amask(noncoalignment(
-            game.u?.ualignbase?.original ?? game.u?.ualign?.type ?? 0,
-        ));
+        // C: Align2amask(noncoalignment(orig)) — align.h:50-53 evaluates
+        // its argument once per test, so the call draws up to 3 rn2(2)
+        // (short-circuit on the drawn values); a single-eval wrapper
+        // under-draws here. Expanded in C order (D-4047).
+        const orig = game.u?.ualignbase?.original ?? game.u?.ualign?.type ?? 0;
+        if (noncoalignment(orig) === A_NONE) return AM_NONE;
+        if (noncoalignment(orig) === A_LAWFUL) return AM_LAWFUL;
+        return (noncoalignment(orig) + 2) & 0xff;
     }
     if (sp_amask === AM_SPLEV_RANDOM) return induced_align(80);
     return sp_amask & AM_MASK;

@@ -47,7 +47,7 @@ import { run_timers, start_timer, stop_timer, weight,
 import { which_armor } from './worn.js';
 import { dismount_steed } from './steed.js';
 import { hurtle } from './dothrow.js';
-import { make_confused, make_deaf, make_hallucinated, make_sick, make_slimed, make_stoned, make_stunned, make_vomiting, make_glib, set_itimeout } from './potion.js';
+import { make_confused, make_deaf, make_hallucinated, make_sick, make_slimed, make_stoned, make_stunned, make_vomiting, make_glib, set_itimeout, hallucResisted } from './potion.js';
 import { make_blinded } from './do.js';
 import { Fumbling, Fast, Very_fast, acurr, adjattrib, exercise, stone_luck, A_STR, A_DEX, A_CON } from './attrib.js';
 import { pline, You, Your, You_feel, You_see, newsym, canseemon, verbalize, Norep, see_monsters, impossible, urgent_pline, Hallucination, Warn_of_mon } from './display.js';
@@ -1264,7 +1264,11 @@ export async function nh_timeout() {
         if (flat) {
             u[flat] = ((u[flat] | 0) & ~TIMEOUT) | (next & TIMEOUT);
             if (p === HALLUC) {
-                u.Hallucination = !!(u.HHallucination & TIMEOUT);
+                // C Hallucination is a macro over the mask (youprop.h) —
+                // mirror it resisted, like make_hallucinated :1219/:1237 and
+                // the artifact.c HALRES arm, or a resisted runner (Grayswandir
+                // wielded) re-hallucinates on the next turn here.
+                u.Hallucination = !!((u.HHallucination | 0) & TIMEOUT) && !hallucResisted(u);
             }
             if (p === GLIB) u.HGlib = next;
         }

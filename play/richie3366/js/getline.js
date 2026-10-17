@@ -592,6 +592,17 @@ const EXT_CMDS = [
         },
     },
     {
+        // C: cmd.c:1738-1739 "history"
+        // IFBURIED|AUTOCOMPLETE|GENERALCMD → dohistory
+        name: 'history',
+        wiz: false,
+        autocomplete: true,
+        run: async () => {
+            const { dohistory } = await import('./pager.js');
+            return dohistory();
+        },
+    },
+    {
         // C: cmd.c "teleport" IFBURIED|CMD_M_PREFIX (no AUTOCOMPLETE) → dotelecmd
         name: 'teleport',
         wiz: false,
