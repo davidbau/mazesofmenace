@@ -25,7 +25,7 @@
 // **premap_detect** Sokoban premapped levels (D-0567);
 // **cmd_safety_prevention** for explicit `s` beside hostiles (D-0228);
 // **do_vicinity_map** clairvoyance 9×5 vicinity + skilled observe/detect
-// (D-1391; caller spell.c SPE_CLAIRVOYANCE). allmain seer_turn still named.
+// (D-1391; callers spell.c SPE_CLAIRVOYANCE + allmain seer_turn :1420).
 // **gold_detect** (D-1773; caller read.c seffect_gold_detection).
 // Named omissions: Hallucination/cls
 // map_trap wait;
@@ -62,7 +62,7 @@ import {
     feel_location, feel_newsym, unmap_invisible, map_object, Norep, You_see,
     see_monsters, flush_screen, docrt, cls, more, set_msg_xy, unmap_object, flush_topl_more,
     remember_shown_glyph,
-    glyph_is_object, glyph_to_obj, glyph_is_trap, glyph_at, glyph_to_cmap, glyph_bank_attr,
+    glyph_is_object, glyph_to_obj, glyph_is_trap, glyph_at, glyph_to_cmap, glyph_to_mon, glyph_bank_attr,
     There, You, Your, under_water, under_ground,
     Hallucination, random_object, random_monster,
     pet_to_glyph, detected_mon_to_glyph, mon_to_glyph, monsym, glyph_tty_attr,
@@ -1121,9 +1121,8 @@ function glyph_disp_changed(a, b) {
  * map_monst / map_invisible; skilled/blessed/Clairvoyant observe_object +
  * mdetected browse; random_farsight quick_farsight skip; post-loop I-replace
  * + see_monsters; browse_map then docrt.
- * Named omissions: allmain seer_turn caller still named. detect_wsegs is
- * D-1545 (map_monst FALSE here, like C `:1531`). map_monst
- * pet/detected/monsym is D-1765.
+ * Named omissions: detect_wsegs is D-1545 (map_monst FALSE here, like
+ * C `:1531`). map_monst pet/detected/monsym is D-1765.
  * @param {object|null} sobj fake spellbook (null = random farsight)
  */
 export async function do_vicinity_map(sobj) {
@@ -1209,10 +1208,17 @@ export async function do_vicinity_map(sobj) {
         for (let zy = lo_y; zy <= hi_y; zy++) {
             if (u_at(zx, zy)) continue;
             const newglyph = glyph_at_disp(zx, zy);
-            if (newglyph.kind !== 'monster') continue;
+            /* C detect.c :1568-1570 — both tests read the DISPLAYED
+             * glyph (glyph_at/gbuf), not m_at: glyph_is_monster over
+             * the four banks, then the wormtail exclusion on the
+             * displayed mon. Under hallucination the 1st loop's
+             * map_monst paints what_mon(random), so a hallucinated
+             * long-worm-tail paint skips the I-replace even though
+             * m_at finds the real (non-tail) monster (Samurai-49956004
+             * s830: C keeps floor at (64,13), JS painted 'I' — D-4064). */
+            if (!glyph_is_monster(newglyph.glyph)
+                || glyph_to_mon(newglyph.glyph) === PM_LONG_WORM_TAIL) continue;
             const mtmp = m_at(zx, zy);
-            const mnum = mtmp?.mnum ?? mtmp?.data?.mndx;
-            if (mnum === PM_LONG_WORM_TAIL) continue;
             if (!mtmp || !canspotmon(mtmp)) {
                 map_invisible(zx, zy);
             }

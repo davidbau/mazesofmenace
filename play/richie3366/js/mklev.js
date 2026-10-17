@@ -13820,8 +13820,7 @@ function load_knox() {
 
 /**
  * C ref: dat/Bar-loca.lua via load_special — locate level (ogre fort).
- * Named omissions: humidity-aware get_location for water-likers;
- * set_malign after peaceful override (matches Bar-strt partial).
+ * Named omissions: humidity-aware get_location for water-likers.
  * SpLev_Map game bitmap C-complete (C :6292/:4189/:4661; D-3548).
  */
 function load_bar_loca() {
@@ -13962,10 +13961,15 @@ function load_bar_loca() {
         }
         const mtmp = makemon(pm, x, y, 0);
         if (!mtmp) return;
+        // C sp_lev.c:2125 + :3299/:3355-3356: no female key in Bar-loca.lua
+        // → id specs keep the find_montype gender, class specs force 0.
         if (spec.id) mtmp.female = female;
+        else mtmp.female = 0;
         // C: peaceful > BOOL_RANDOM → override (0 here)
-        if (spec.peaceful != null && spec.peaceful > BOOL_RANDOM)
+        if (spec.peaceful != null && spec.peaceful > BOOL_RANDOM) {
             mtmp.mpeaceful = spec.peaceful;
+            set_malign(mtmp); // C sp_lev.c:2128-2129: reset malign
+        }
     };
 
     for (const [rx, ry] of [

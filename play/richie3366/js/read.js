@@ -136,7 +136,7 @@ import {
     EXPL_FIERY, PLNMSG_TOWER_OF_FLAME, M_SEEN_FIRE, u_at, OBJ_AT,
     something, POLY_REVERT, POLYMORPH,
 } from './const.js';
-import { vision_recalc, do_clear_area, cansee, unblock_point } from './vision.js';
+import { vision_recalc, vision_off_newsym_gbuf, do_clear_area, cansee, unblock_point } from './vision.js';
 import { valid_cloud_pos, create_gas_cloud } from './region.js';
 import { getpos, getpos_sethilite } from './getpos.js';
 import { bcsign, BY_COOKIE, outrumor } from './rumors.js';
@@ -181,7 +181,7 @@ import { ART_SUNSWORD } from './generated/artifacts_data.js';
 import { readmail } from './mail.js';
 import { has_ceiling, avoid_ceiling } from './dungeon.js';
 import { explode } from './explode.js';
-import { burn_away_slime, artifact_light, arti_light_radius, end_burn } from './timeout.js';
+import { burn_away_slime, artifact_light, arti_light_radius, end_burn, Invis, See_invisible } from './timeout.js';
 import { snuff_lit } from './apply.js';
 import { impact_arti_light, make_stunned } from './potion.js';
 
@@ -531,6 +531,17 @@ export async function litroom(on, obj) {
     }
 
     if (!Blind) {
+        // C vision.c:741–836 — vision_recalc(2) runs the main update loop
+        // (newsym prior IN_SIGHT/COULD_SEE while !cansee: Hallu warned
+        // mons burn display_warning rn2(5)s here, before the delayed
+        // full recalc repaints). JS vision_recalc skips that loop for
+        // control 2 (D-0852: unflushed-tty goto/docrt screens), so run
+        // the same newsym set via the D-0852 helper BEFORE the swap —
+        // D-3863/D-3658 precedent (gulpmu/movebubbles), ungated: the
+        // loop's paints land mid-turn and the post-rhack recalc(0)
+        // repaints everything before capture (no #992-class capture
+        // between, unlike docrt/goto).
+        vision_off_newsym_gbuf({ useLiveViz: true });
         vision_recalc(2);
 
         /* C `:2610–2612` — replace ball&chain after the forced redraw. */
@@ -1472,6 +1483,10 @@ async function seffect_confuse_monster(sobj) {
     const u = game.u || (game.u = {});
     const confused = !!((u.HConfusion | 0) || (u.Confusion | 0));
     const Blind = !!((u.Blinded | 0) || u.Blind || u.ublind);
+    // C :1404 altfeedback = (Blind || Invisible), Invisible ≡ Invis && !See_invisible
+    // (youprop.h:199). The u.Invisible flat has no writer in js/ — quaff/spell/wand
+    // invisibility lands in HInvis/uprops — so read the canonicals (D-1999).
+    const altfeedback = Blind || (Invis() && !See_invisible());
     const { body_part } = await import('./polyself.js');
     const { make_confused } = await import('./potion.js');
     const hands = makeplural(body_part(HAND));
@@ -1483,7 +1498,6 @@ async function seffect_confuse_monster(sobj) {
         await make_confused((u.HConfusion | 0) + rnd(100), false);
     } else if (confused) {
         if (!sblessed) {
-            const altfeedback = Blind || !!u.Invisible;
             if (altfeedback) {
                 await pline(`Your ${hands} begin to tingle.`);
             } else {
@@ -1491,7 +1505,6 @@ async function seffect_confuse_monster(sobj) {
             }
             await make_confused((u.HConfusion | 0) + rnd(100), false);
         } else {
-            const altfeedback = Blind || !!u.Invisible;
             if (altfeedback) {
                 await pline(`A faint buzz surrounds your ${body_part(HEAD)}.`);
             } else {
@@ -1501,7 +1514,6 @@ async function seffect_confuse_monster(sobj) {
         }
     } else {
         let incr = (sobj.oclass === SCROLL_CLASS) ? 3 : 0;
-        const altfeedback = Blind || !!u.Invisible;
         if (!sblessed) {
             if (altfeedback) {
                 await pline(`Your ${hands} tingle${u.umconf ? ' even more' : ''}.`);

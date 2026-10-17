@@ -1677,25 +1677,29 @@ export function end_running(and_travel) {
 }
 
 /**
- * C ref: hack.c nomul — start/replace multi-turn inactivity (negative = occupation).
+ * C ref: hack.c nomul `:4161–4173` — start/replace multi-turn inactivity
+ * (negative = occupation). C order: multi<nval early return; botl when
+ * multi>=0; uinvulnerable=FALSE + usleep=0; multi=nval; on nval==0 clear
+ * multi_reason AND multireasonbuf — never gn.nomovemsg (no such line in
+ * C; the old JS clear here ate stored lines like lesshungry's "You're
+ * finally finished." across any nomul(0) — dosearch finds, mattacku
+ * melee — before done_eating/unmul printed them).
  * cmdq_clear(CQ_CANNED) via game._cmdq_canned.
  */
 export function nomul(nval) {
-    if ((game.multi || 0) < nval) return;
+    if ((game.multi || 0) < nval) return; // C `:4163–4164`
     if (!game.flags) game.flags = {};
-    if ((game.multi || 0) >= 0) game.flags.botl = true;
-    /* C hack.c nomul `:4166–4167` — always, before replacing multi.
-       fall_asleep restamps usleep after. */
+    if ((game.multi || 0) >= 0) game.flags.botl = true; // C `:4165` disp.botl
     if (!game.u) game.u = {};
-    game.u.uinvulnerable = false;
-    game.u.usleep = 0;
-    game.multi = nval;
-    if (nval === 0) {
+    game.u.uinvulnerable = false; // C `:4166`
+    game.u.usleep = 0; // C `:4167` (fall_asleep restamps usleep after)
+    game.multi = nval; // C `:4168`
+    if (nval === 0) { // C `:4169–4170`
         game.multi_reason = null;
-        game.nomovemsg = null;
+        game.multireasonbuf = '';
     }
-    end_running(true);
-    if (game._cmdq_canned) game._cmdq_canned = [];
+    end_running(true); // C `:4171`
+    if (game._cmdq_canned) game._cmdq_canned = []; // C `:4172` cmdq_clear
 }
 
 /**

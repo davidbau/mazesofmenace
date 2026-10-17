@@ -9972,61 +9972,6 @@ function simple_bool_value(opt) {
     return !!v;
 }
 
-function simple_bool_toggle(opt) {
-    if (!game[opt.addr.obj]) game[opt.addr.obj] = {};
-    const bag = game[opt.addr.obj];
-    bag[opt.addr.key] = !simple_bool_value(opt);
-    // C options.c opt_hilite_pet `:5307–5308`: enabling with unset
-    // petattr stores wintype.h ATR_INVERSE (7). display.js maps that
-    // to terminal ATR_INVERSE.
-    if (opt.name === 'hilite_pet' && bag[opt.addr.key] && !bag.wc2_petattr) {
-        bag.wc2_petattr = MC_ATR_INVERSE;
-    }
-    // C doset_simple_menu `:8662` parseoptions("!name") → optfn_boolean
-    // do_set `:5350–5351` (optfn_boolean_do_set mirror): status options
-    // reassess fields + botl so the tty field path enables/disables them.
-    if (opt.name === 'terrainstatus') classify_terrain(); // C `:5332`
-    if (opt.name === 'terrainstatus' || opt.name === 'weaponstatus'
-        || opt.name === 'armorstatus') {
-        if (!wc2_supported(opt.name)) { // C `:5337–5342`
-            config_error_add("'%s' is not supported.", opt.name);
-            return;
-        }
-        if (via_windowport()) status_initialize(REASSESS_ONLY); // C `:5350`
-        if (!game.flags) game.flags = {};
-        game.flags.botl = true; // C `:5351` disp.botl
-    }
-    if (opt.name === 'showexp' || opt.name === 'time'
-        || opt.name === 'showscore' || opt.name === 'showvers') { // C `:5346–5351`
-        if (via_windowport()) status_initialize(REASSESS_ONLY);
-        if (!game.flags) game.flags = {};
-        game.flags.botl = true;
-    }
-    if (opt.name === 'hitpointbar' && via_windowport()) { // C `:5387–5390`
-        status_initialize(REASSESS_ONLY);
-        mark_opt_need_redraw();
-    }
-    // C optfn_boolean `:5376–5385` then doset_simple reset_needed_visuals.
-    if (OPT_GLYPH_RESET.has(opt.name)) {
-        mark_opt_need_redraw();
-        mark_opt_need_glyph_reset();
-    }
-    // C doset_simple_menu `:8654–8656` parseoptions("!name") → optfn_boolean
-    // do_set `:5411–5416` (optfn_boolean_do_set mirror): custom-data
-    // toggles re-stamp at the doset_simple `:8727` reset_needed_visuals
-    // (wired) — without the marker a customsymbols off-toggle never
-    // unstamps and map cells keep painting UTF8 after C fell back to
-    // the ASCII ttychar (20 symset sessions).
-    if (opt.name === 'customcolors') { // C `:5411–5413`
-        if (!game.go) game.go = {};
-        game.go.opt_reset_customcolors = true;
-    }
-    if (opt.name === 'customsymbols') { // C `:5414–5416`
-        if (!game.go) game.go = {};
-        game.go.opt_reset_customsymbols = true;
-    }
-}
-
 async function format_simple_opt_line(opt, nameWidth, tabSep = false, dispName = null) {
     const name = dispName ?? opt.name;
     let val;
@@ -10260,9 +10205,14 @@ async function doset_simple_menu() {
     let toggled_help = false; // C `:8550`
 
     for (;;) {
-        // C: tty_end_menu prepends prompt then blank (via reverse+prepend)
+        // C: tty_end_menu prepends prompt then blank (via reverse+prepend).
+        // The prompt paints with the relayed tty_menu_promptstyle (C
+        // windows.c adjust_menu_promptstyle `:1769–1778` snapshots
+        // iflags.menu_headings; wintty.c `:2685–2689` paints it) — not
+        // hardcoded inverse (scen-options-Barbarian-50355007 s30: C
+        // inverse+green vs JS inverse-only).
         const raw = [
-            { text: 'Options', attr: ATR_INVERSE, selectable: false },
+            { text: 'Options', ...menu_prompt_style(), selectable: false },
             { text: '', attr: 0, selectable: false },
         ];
         if (game.simple_options_help) {
@@ -10283,7 +10233,10 @@ async function doset_simple_menu() {
         for (const section of dosetSimpleSections) { // C `:8580`
             raw.push({ text: '', attr: 0, selectable: false }); // C `:8582`
             // C `:8583` Sprintf(buf, " %-30s ", OptS_type[section]).
-            raw.push({ text: ` ${section.padEnd(30)} `, attr: ATR_INVERSE, selectable: false });
+            // Headings paint with live iflags.menu_headings (C
+            // windows.c add_menu_heading `:1815–1828`, gameover-
+            // suppressed) — same relayed style as the prompt above.
+            raw.push({ text: ` ${section.padEnd(30)} `, ...menu_heading_style(), selectable: false });
             for (const opt of dosetSimpleOpts) { // C `:8585`
                 if (opt.section !== section) continue; // C `:8586–8587`
                 // C `:8588–8590` wc/wc2 gate is outcome-dead on contest tty:
@@ -10332,11 +10285,18 @@ async function doset_simple_menu() {
             game.simple_options_help = !game.simple_options_help;
             toggled_help = true; // C: goto redo_opt_help — rebuild in place
         } else if (opt?.opttyp === 'Bool') { // C `:8651–8657`
-            // C `:8654–8656` parseoptions("!name"|"name", FALSE, FALSE).
-            // JS parseoptions is a bool no-op (allopt bool rows carry
-            // optfn:null vs C &optfn_boolean, `:635` guard) — the live
-            // bag write below is the named-omission stand-in.
-            simple_bool_toggle(opt);
+            // C `:8654–8656` parseoptions("!name"|"name", FALSE, FALSE) →
+            // optfn_boolean do_set: the shared optfn_boolean_do_set
+            // mirror fullscreen doset uses (negated = current value so
+            // the write toggles, initial FALSE). The old
+            // simple_bool_toggle stand-in skipped the after-change arms,
+            // so a simple-menu color toggle never marked
+            // opt_need_redraw/opt_need_glyph_reset (C `:5407–5410`) and
+            // the doset_simple `:8727` reset_needed_visuals skipped
+            // reglyph_darkroom — S_darkroom memory kept rendering
+            // X_nothing after color-off (scen-symset-Rogue-50750039
+            // s162). All 22 simple bool addrs match DOSET_BOOL_ADDR.
+            await optfn_boolean_do_set(opt.name, simple_bool_value(opt), false);
             pickName = opt.name;
         } else if (opt?.opttyp === 'Comp' || opt?.opttyp === 'Othr') { // C `:8658–8686`
             abuf = await doset_compound_via_getlin(opt);

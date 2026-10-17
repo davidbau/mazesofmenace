@@ -2990,6 +2990,12 @@ function paint_overlay(lines, opts = {}) {
         const col = opts.col || 0;
         // C tty: leading pad space is not part of item ATR_INVERSE/heading
         for (let i = 0; i < text.length && col + i < disp.cols; i++) {
+            // C termcap.c nomux_putch (patch 006): ch < 32 is dropped
+            // from the capture shadow while the wintty menu loop still
+            // advances one column per char — a cleared screen shows a
+            // space (menu_tab_sep \t; scen-options-Samurai-50162003
+            // s120). D-3962 grid rule for menus.
+            if (text[i] && text[i].charCodeAt(0) < 32) continue;
             const pre = i < split || (i === 0 && text[0] === ' ');
             disp.setCell(col + i, r, text[i], pre ? NO_COLOR : color, pre ? 0 : attr);
         }
@@ -3163,6 +3169,9 @@ export async function paint_corner_nhw_menu(entries, morestr = '(end) ') {
             disp.setCell(c, r, ' ', NO_COLOR, 0);
         disp.setCell(offx, r, ' ', NO_COLOR, 0);
         for (let i = 0; i < text.length && offx + 1 + i < disp.cols; i++) {
+            // C0 drop, column still advances (nomux_putch; same rule as
+            // the fullscreen loop above).
+            if (text[i] && text[i].charCodeAt(0) < 32) continue;
             const pre = i < split;
             disp.setCell(offx + 1 + i, r, text[i], pre ? NO_COLOR : color, pre ? 0 : attr);
         }

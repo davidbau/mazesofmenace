@@ -8990,9 +8990,21 @@ export async function flush_screen(mode) {
         // C display.c flush_screen: bot() else timebot() before map glyphs
         if (flags.botl || flags.botlx) await bot();
         else if (flags.time_botl) await timebot();
-        // Mid goto_level / getbones: keep stale map cells like C gbuf.
+        // Mid goto_level / getbones with no live level: C's gbuf
+        // survives level teardown (gg.gbuf is not levl), so the
+        // vision_recalc(2) leave newsyms (display.c:1088 litcorr→corr,
+        // S_room→DARKROOMSYM) reach the terminal at the next flush —
+        // e.g. the goto_level discarded-level impossible() More
+        // (do.c:1696 → pline.c:274 flush_screen). JS gbuf lives on
+        // loc.disp_* of the stashed leave level: paint its dirty cells
+        // (Get-bones-yn precedent: paint_gbuf_level_to_terminal,
+        // bones.js:848). Silent bones paths (_stale_map_flush) still
+        // paint nothing (D-0852).
         if (!game.level || game._stale_map_flush) {
             _paintToplineAndStatus();
+            if (!game._stale_map_flush && game._leave_gbuf_level) {
+                paint_gbuf_level_to_terminal(game._leave_gbuf_level);
+            }
             return;
         }
         // C `:2241–2265` span-gated map paint + reset_glyph_bbox +

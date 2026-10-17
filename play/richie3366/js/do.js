@@ -124,7 +124,7 @@ import {
     doname, xname, the, The, vtense, an, yname, yobjnam, corpse_xname, is_plural,
     otense, makeplural, body_part_latebound, Tobjnam,
 } from './objnam.js';
-import { Monnam, Amonnam, Adjmonnam, mon_nam, s_suffix, hliquid, rndmonnam, trycall, obj_pmname, y_monnam } from './do_name.js';
+import { Monnam, Amonnam, Adjmonnam, mon_nam, s_suffix, hliquid, hcolor, rndmonnam, trycall, obj_pmname, y_monnam } from './do_name.js';
 import { revive } from './zap.js';
 import {
     near_capacity, learn_unseen_invent, encumber_msg,
@@ -491,10 +491,6 @@ function Passes_walls() {
 function Luck() {
     const u = game.u || {};
     return (u.uluck | 0) + (u.moreluck | 0);
-}
-/** C potion.c hcolor — Hallucination synonym deferred. */
-function hcolor(colorword) {
-    return colorword;
 }
 /** C objnam.c Yname2 — capitalized yname; floor ≈ The(xname). */
 function Yname2(obj) {

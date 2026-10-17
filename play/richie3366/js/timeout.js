@@ -1763,8 +1763,10 @@ export function Invis() {
 
 /**
  * C youprop.h See_invisible — HSee_invisible || ESee_invisible
+ * Exported for read.c seffect_confuse_monster altfeedback (C Invisible
+ * ≡ Invis && !See_invisible, youprop.h:199).
  */
-function See_invisible() {
+export function See_invisible() {
     const u = game.u || {};
     const p = u.uprops?.[SEE_INVIS];
     return !!((u.HSee_invisible | 0) || (u.ESee_invisible | 0)

@@ -232,7 +232,7 @@ import {
 import { show_text_pages } from './pager.js';
 import { cansee, couldsee, vision_recalc } from './vision.js';
 import { readobjnam_wish, HANDS_OBJ, NOTHING_OBJ } from './readobjnam.js';
-import { select_menu_pick_one } from './options.js';
+import { select_menu_pick_one, menu_prompt_style } from './options.js';
 import {
     hold_another_object, makeknown, encumber_msg, enlightenment, freeinv_core,
     observe_object, display_minventory, display_binventory, display_cinventory,
@@ -7678,7 +7678,10 @@ export async function wish_history_menu(buf) {
     // C :6298 end_menu prompt "Wish what?" is modelled as non-selectable
     // header rows (same shape as artifact.js invoke_create_portal).
     const items = [
-        { text: 'Wish what?', selectable: false },
+        // C tty_end_menu `:2685–2689` — the end_menu prompt paints with
+        // the relayed tty_menu_promptstyle (= menu_headings, default
+        // inverse), not plain (options.js menu_prompt_style, D-4067 relay).
+        { text: 'Wish what?', selectable: false, ...menu_prompt_style() },
         { text: '', selectable: false },
     ];
     for (let i = MAX_WISH_HISTORY - 1; i >= 0; i--) {

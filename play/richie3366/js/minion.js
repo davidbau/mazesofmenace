@@ -22,6 +22,7 @@ import { which_armor, m_dowear } from './worn.js';
 import { bless, mksobj } from './mkobj.js';
 import { Hear_again, is_fainted, reset_faint } from './eat.js';
 import { mk_roamer } from './mklev.js';
+import { Conflict } from './mhitu.js';
 import { show_transient_light, transient_light_cleanup } from './light.js';
 import {
     mons, is_demon, is_ndemon, is_dlord, is_dprince, is_lord, G_UNIQ,
@@ -470,7 +471,11 @@ export async function gain_guardian_angel() {
     const u = game.u || {};
     const deaf = !!((u.HDeaf | 0) || (u.EDeaf | 0)
         || u.uroleplay?.deaf || u.Deaf);
-    if (u.HConflict || u.EConflict) {
+    /* C youprop.h:218 Conflict (HConflict || EConflict over
+     * u.uprops[CONFLICT]) — the live mhitu.js reader covers the flats
+     * (artifact mirror) and uprops (worn ring extrinsic); the bare
+     * flats miss a worn RIN_CONFLICT (D-4072). */
+    if (Conflict()) {
         if (!deaf) {
             await pline('A voice booms:');
         } else {
