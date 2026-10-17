@@ -7,7 +7,7 @@ import { armorSimpleName, heroHasWaterWalking } from './armor.js';
 import { fireDamageObject } from './fire_damage.js';
 import { delobj } from './object_delete.js';
 import { objectDescription as fullObjectDescription } from './object_description.js';
-import { objectCombatName, observeObjectForNaming, ownedObjectName, simpleObjectName } from './objnam.js';
+import { objectCombatName, observeObjectForNaming, ownedObjectAction, ownedObjectName, simpleObjectName } from './objnam.js';
 import { cansee, couldsee } from './vision.js';
 import { endObjectBurn } from './light.js';
 import { game } from './gstate.js';
@@ -111,10 +111,7 @@ export async function destroyLavaInventory({ state = game, publish = async () =>
             continue;
         const wasWorn = !!object.worn || !!object.owornmask;
         if (showMessages && wasWorn) {
-            const name = object.name || OBJECT_NAMES[object.otyp] || 'item';
-            const plural = (object.quan ?? object.quantity ?? 1) > 1
-                || name.endsWith('s');
-            await publish(`Your ${name} ${plural ? 'burst' : 'bursts'} into flame!`);
+            await publish(`${ownedObjectAction(object, 'burst', state)} into flame!`);
             named++;
         }
         else {
@@ -193,11 +190,6 @@ export function monsterTrapVisibility(monster, state = game) {
 }
 function wornObject(monster, mask) {
     return inventoryOf(monster).find(object => ((object.owornmask ?? 0) & mask) !== 0) || null;
-}
-function objectDescription(object, fallback) {
-    if (!object)
-        return fallback;
-    return object.name || OBJECT_NAMES[object.otyp] || fallback;
 }
 function objectContents(object) {
     return object.contents || [];
@@ -618,7 +610,7 @@ export async function applyMonsterRustTrap(monster, state, { roll = rn2, luckRol
         if (shieldResult === 'nothing') {
             const weapon = monsterWieldedWeapon(monster);
             if (weapon && OBJECT_BIMANUAL[weapon.otyp]) {
-                addWaterEffect(event, rustObject(weapon, objectDescription(weapon, 'weapon'), monster, state, roll, luckRoll));
+                addWaterEffect(event, rustObject(weapon, objectCombatName(weapon, { state }), monster, state, roll, luckRoll));
             }
             const gloves = wornObject(monster, W_ARMG);
             addWaterEffect(event, rustObject(gloves, gloves ? armorSimpleName(gloves, state) : 'gloves', monster, state, roll, luckRoll));
@@ -627,7 +619,7 @@ export async function applyMonsterRustTrap(monster, state, { roll = rn2, luckRol
     else if (targetRoll === 2) {
         event.target = 'right-arm';
         const weapon = monsterWieldedWeapon(monster);
-        addWaterEffect(event, rustObject(weapon, objectDescription(weapon, 'weapon'), monster, state, roll, luckRoll));
+        addWaterEffect(event, rustObject(weapon, weapon ? objectCombatName(weapon, { state }) : 'weapon', monster, state, roll, luckRoll));
         const gloves = wornObject(monster, W_ARMG);
         addWaterEffect(event, rustObject(gloves, gloves ? armorSimpleName(gloves, state) : 'gloves', monster, state, roll, luckRoll));
     }
@@ -651,7 +643,8 @@ export async function applyMonsterRustTrap(monster, state, { roll = rn2, luckRol
         event.completelyRusted = true;
     }
     else if (monster.mnum === PM_GREMLIN && roll(3) !== 0) {
-        event.clone = await splitMonster(monster, state, { monsterMoving: true });
+        // The rust-trap report owns split_mon()'s message, after the gush.
+        event.clone = await splitMonster(monster, state, { monsterMoving: true, publish: () => { } });
     }
     return event;
 }

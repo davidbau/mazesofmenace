@@ -58,7 +58,7 @@ const PICK_AXE_OTYP = objectNames.indexOf('PICK_AXE');
 const PM_DISPLACER_BEAST = monsterNames.indexOf('PM_DISPLACER_BEAST');
 const DWARVISH_MATTOCK_OTYP = objectNames.indexOf('DWARVISH_MATTOCK');
 const AT_EXPL = 13; // monattk.h — fight_empty Upolyd explode
-import { bad_rock, cant_squeeze_thru, wake_nearto, minliquid, m_at } from './mon.js';
+import { bad_rock, cant_squeeze_thru, wake_nearto, minliquid, m_at, may_passwall } from './mon.js';
 import { worm_cross } from './worm.js';
 import { is_hider, hides_under, tunnels, needspick, monsterNames } from './monsters.js';
 import { vision_recalc, couldsee, cansee } from './vision.js';
@@ -3818,8 +3818,8 @@ function travel_blocks_tight_diag(ux, uy, nx, ny) {
  * diagonal falls into `testdiag` :1139); single boulders are enterable
  * leaves (two-in-a-row gate on expansion, :1238); diagonal intact doorways
  * are banned both into (:1139–1147) and out of (:1205–1213) the door cell.
- * Named omissions: Passes_walls+may_passwall rock (:1014); Underwater rock
- * (outcome identical — blocked); worm_cross (:1172); WAN_DIGGING-unknown arm of the two-in-row
+ * Named omissions: Underwater rock (outcome identical — blocked);
+ * worm_cross (:1172); WAN_DIGGING-unknown arm of the two-in-row
  * gate (no JS objects[].oc_name_known — treated as not carrying);
  * Known_wwalking/Known_lwalking/WATERWALL/LAVAWALL (ride inside
  * travel_avoids_cell).
@@ -3837,14 +3837,18 @@ async function travel_test_move(ux, uy, dx, dy) {
     if (IS_OBSTRUCTED(typ) || typ === IRONBARS) {
         // C :1011–1073. Blind feel_location, autodig/use_pick_axe2 and the
         // drawbridge/Sokoban/mention_walls plines are DO_MOVE-only.
-        // C :1016–1023: Underwater blocks before the tunnels/IRONBARS arms
-        // on every mode (only the There() pline is DO_MOVE-gated) — an
-        // underwater tunneling polyform or passes-bars form no longer
-        // routes travel through rock/bars (D-1971 review-941 debt).
-        if ((game.u?.uinwater | 0)) return false;
-        if (typ === IRONBARS) {
+        if (passWalls && may_passwall(x, y)) { // C :1014–1016
+            ; // phase through rock/bars: no block (falls through to the
+              // squeeze, trap/liquid, doorway and boulder arms below like C).
+        } else if ((game.u?.uinwater | 0)) { // C :1017–1025 Underwater blocks
+            // after the :1014 phasing pass (C order) on every mode (only the
+            // There() pline is DO_MOVE-gated) — an underwater tunneling
+            // polyform or passes-bars form no longer routes travel through
+            // rock/bars (D-1971 review-941 debt).
+            return false;
+        } else if (typ === IRONBARS) { // C :1026–1036
             if (!(passWalls || test_move_hero_passes_bars())) return false;
-        } else if (!(ydat && tunnels(ydat) && !needspick(ydat))) {
+        } else if (!(ydat && tunnels(ydat) && !needspick(ydat))) { // C :1037 eat rock
             return false;
         }
         // tunnels(youmonst)+!needspick eats the rock: pass.
@@ -4798,8 +4802,8 @@ async function findtravelpath_travel(couldseeOnly = false, mode = TRAVP_TRAVEL) 
  * C ref: hack.c findtravelpath(TRAVP_GUESS) — BFS from hero through
  * couldsee cells, pick matrix cell closest to u.tx/u.ty, then
  * TRAVP_TRAVEL from that pick back to hero.
- * Named omissions: travel_test_move arms (may_passwall, worm_cross,
- * wand-unknown, Known_*walking — test_move's own row).
+ * Named omissions: travel_test_move arms (worm_cross, wand-unknown,
+ * Known_*walking — test_move's own row).
  * @returns {number} TRAVEL_NOPATH / TRAVEL_STEP / TRAVEL_STEP_UNSURE
  */
 async function findtravelpath_guess() {
@@ -6936,6 +6940,12 @@ export async function domove(dx, dy) {
         // rust/corr/metallivore before the Passes_walls || passes_bars
         // allow (D-1270). TEST_MOVE/TRAV skip chew via blocksMove.
         const destTyp = game.level?.at(newx, newy)?.typ;
+        // C test_move :1014–1016 — a Passes_walls hero phases through rock
+        // and bars (may_passwall vetoes non-passwall Sokoban walls); skips
+        // chew, tunnels, autodig and the bump below (C's first branch,
+        // before Underwater :1017).
+        const phaseRock = (IS_OBSTRUCTED(destTyp) || destTyp === IRONBARS)
+            && Passes_walls_prop() && may_passwall(newx, newy);
         // C test_move :1012–1013 — a blind hero feels rock, walls and bars
         // before any pass-through, chew or bump outcome.
         if ((IS_OBSTRUCTED(destTyp) || destTyp === IRONBARS) && Blind())
@@ -6956,10 +6966,11 @@ export async function domove(dx, dy) {
         // C order: after the IRONBARS arm, before autodig/bump; Underwater
         // blocks first (:1017–1025 — its message stays deferred, the gate
         // keeps this arm from firing where C never reaches it) and
-        // Passes_walls+may_passwall passes first (:1014–1016, deferred).
+        // Passes_walls+may_passwall passes first (:1014–1016, phaseRock).
         {
             const ydat = game.youmonst?.data;
             if (destTyp !== IRONBARS && IS_OBSTRUCTED(destTyp)
+                && !phaseRock
                 && !(u.uinwater | 0)
                 && ydat && tunnels(ydat) && !needspick(ydat)
                 && await still_chewing(newx, newy)) {
@@ -6976,7 +6987,7 @@ export async function domove(dx, dy) {
         // !door_opened → move=0, nomul(0) per domove_core :2843–2848.
         // Underwater blocks first (:1017–1025 — message deferred, gate
         // preserved like the tunnels arm); Passes_walls+may_passwall
-        // (:1014) stays deferred (turns.md:401).
+        // (:1014) passes first (phaseRock above).
         // C :1037–1048 — the obstructed chain is else-if: when the
         // tunnels arm matches (tunnels && !needspick) but still_chewing
         // returns FALSE (chewed through this move), C skips the :1042
@@ -6985,6 +6996,7 @@ export async function domove(dx, dy) {
         // tunnels polyform + wielded pick + autodig).
         const chewDat = game.youmonst?.data;
         if (destTyp !== IRONBARS && IS_OBSTRUCTED(destTyp)
+            && !phaseRock
             && !(u.uinwater | 0)
             && !(chewDat && tunnels(chewDat) && !needspick(chewDat))
             && game.flags?.autodig && !(game.context.run | 0)
@@ -7000,7 +7012,8 @@ export async function domove(dx, dy) {
         // bump precedes the door branch (:1074) and the doorway-OUT
         // check (:1229–1235), so it runs before both diagonal checks
         // below: a doorway hero bumping a wall reads the wall.
-        if (blocksMove(newx, newy)) {
+        // C :1014 — a phasing hero never reaches the bump (phaseRock).
+        if (blocksMove(newx, newy) && !phaseRock) {
             // C ref: hack.c test_move — DO_MOVE + mention_walls on rock/bars
             const bloc = game.level?.at(newx, newy);
             if (bloc && (IS_OBSTRUCTED(bloc.typ) || bloc.typ === IRONBARS)) {

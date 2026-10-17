@@ -855,6 +855,35 @@ export function serLevel(src) {
 }
 
 /**
+ * C ref: restore.c rest_stairs `:955–985` — rebuild the stairs chain from
+ * file order (save.c save_stairs `:665–691` writes head→tail) via one
+ * stairway_add per node (`:978–979`), whose prepend (stairs.c `:22–23`)
+ * leaves the restored chain REVERSED vs the saved one — on every getlev
+ * (revisit, dorecover current/others, bones ghostly; sole caller `:1113`).
+ * Fresh nodes (C allocs), every field incl. u_traversed (C `:980–982`
+ * stairway_at fixup) plus a tolev copy (C assign_level, stairs.c `:21`).
+ * The save-side relative-dlevel dance (save `:672–682` / restore `:972–976`)
+ * is a file-format quirk with no live analogue (values stay absolute).
+ * @param {object|null|undefined} src head→tail chain (stash or blob)
+ * @returns {object|null} fresh reversed chain
+ */
+export function rest_stairs_chain(src) {
+    let out = null;
+    for (let s = src; s; s = s.next) {
+        out = {
+            sx: s.sx | 0,
+            sy: s.sy | 0,
+            up: !!s.up,
+            isladder: !!s.isladder,
+            u_traversed: !!s.u_traversed,
+            tolev: { dnum: s.tolev?.dnum | 0, dlevel: s.tolev?.dlevel | 0 },
+            next: out,
+        };
+    }
+    return out;
+}
+
+/**
  * JSON analogue of getlev hydration. Returns a stash-shaped record
  * whose `level` is `new GameMap()` + overlay, never a plain object.
  * Relinks RANGE_LEVEL timers/lights against this blob only (C
@@ -904,7 +933,7 @@ export function deserLevel(blob, opts) {
         fmon,
         fobj: deserObjChain(src.fobj, OBJ_FLOOR),
         ftrap: map.traps,
-        stairs: src.stairs || null,
+        stairs: rest_stairs_chain(src.stairs), // C rest_stairs `:955–985` reverses (prepend-per-node)
         head_engr: src.head_engr || null,
         // C restore.c:1147 getlev → rest_worm (worm.c:577–603): blob for
         // the rest_worm install at the caller's install site (head_engr

@@ -693,9 +693,12 @@ export async function explode(x, y, typeIn, dam, olet, expltype) {
                             mtmp, XKILL_NOMSG | XKILL_NOCONDUCT | xkflg);
                     } else {
                         const { monkilled } = await import('./mhitm.js');
-                        let how = adtyp;
-                        if (xkflg) how = 242; // AD_RBRE — no corpse
-                        await monkilled(mtmp, '', how);
+                        // C :577–581 — xkflg reassigns the loop-carried
+                        // adtyp itself (not a local): later victims and
+                        // the hero section skip the AD_FIRE gates, and
+                        // monkilled/destroy_items/ugolemeffects see AD_RBRE.
+                        if (xkflg) adtyp = AD_RBRE; /* no corpse */
+                        await monkilled(mtmp, '', adtyp);
                     }
                 } else if (!game.context?.mon_moving) {
                     await setmangry(mtmp, true);

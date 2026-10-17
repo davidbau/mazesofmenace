@@ -69,6 +69,7 @@ import { record_achievement } from './insight.js';
 import { can_blow, defended } from './mondata.js';
 import { Soundeffect } from './sndprocs.js';
 import { se_tumbler_click, se_gear_turn, se_thump, se_scream } from './generated/seffects_data.js';
+import { Unchanging } from './polyself.js';
 
 const WOODEN_FLUTE = objectNames.indexOf('WOODEN_FLUTE');
 const MAGIC_FLUTE = objectNames.indexOf('MAGIC_FLUTE');
@@ -388,7 +389,9 @@ async function charm_monsters(distance) {
 function improvised_notes(sameRef) {
     if (!game.context) game.context = {};
     if (!game.context.jingle) game.context.jingle = '';
-    const unchanging = !!(game.u?.Unchanging);
+    // C youprop.h:372 Unchanging = HUnchanging || EUnchanging (amulet confers
+    // via uprops, all flats unset — D-4037 class); canonical polyself read.
+    const unchanging = Unchanging(game.u || {});
     if (!(unchanging && game.context.jingle.length > 0)) {
         const notecount = rnd(5); // SIZE(jingle)-1 == 5 → 1..5
         let s = '';

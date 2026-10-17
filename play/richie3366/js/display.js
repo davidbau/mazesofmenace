@@ -106,6 +106,7 @@ import {
     Upolyd,
     H_IBM,
     HI_DOMESTIC,
+    NH_BASIC_COLOR,
     SYM_HERO_OVERRIDE,
     MALE,
     MON_OFFMAP,
@@ -523,9 +524,10 @@ function hero_map_attr() {
  * showsyms copy.
  * Named omissions: the `:2934` has_rogue_color first-arm (ROGUESET +
  * IBM handling, never active on contest tty — same standing as in
- * litcorr_showsyms_white); the `:2897–2912` MG_BW_LAVA/ICE/SINK
- * chain (needs !use_color plus customized colliding symbols; no
- * corpus session reaches it).
+ * litcorr_showsyms_white). The `:2897–2912` MG_BW_LAVA/ICE/SINK
+ * chain it once named now lives in lava_ice_sink_map_attr below
+ * (its "no corpus session reaches it" falsifier fired:
+ * Samurai-50455026 s270).
  */
 function engrcorr_map_attr(gid) {
     if ((gid | 0) !== cmap_to_glyph(S_ENGRCORR)) return 0;
@@ -552,6 +554,56 @@ function engrcorr_map_attr(gid) {
         litcorr = nhsym_code(sh?.[S_LITCORR + SYM_OFF_P]);
     }
     if (sym !== corr && sym !== litcorr) return 0;
+    return use_inverse_opt() ? ATR_INVERSE : 0;
+}
+
+/**
+ * C ref: display.c reset_glyphmap `:2884–2917` (GLYPH_CMAP_B branch:
+ * S_lava/S_lavawall whose showsyms char equals the S_pool/S_water char
+ * → MG_BW_LAVA; S_ice whose char equals S_room/S_darkroom → MG_BW_ICE;
+ * S_sink whose char equals S_fountain → MG_BW_SINK; the whole switch
+ * under `:2890 if (!iflags.use_color)`) + wintty.c tty_print_glyph
+ * `:3930–3936` (special & MG_BW_* && use_inverse → ATR_INVERSE).
+ * Same twin shape as engrcorr_map_attr above: the flag is static per
+ * glyph id, so the attr is derived from the banked id at every paint
+ * and live, memory, detection and wizard paints inherit it. use_color
+ * ≡ wc_color (flag.h:507); the gate is the house `wc_color !== false`
+ * shape, and the collision reads go through live_showsyms (D-3950)
+ * so loaded symset carriers compare as C's showsyms does (RogueIBM
+ * leaves sink+fountain on the primary `{`, Samurai-50455026 s270).
+ * Named omissions: the `:2915–2917` has_rogue_color else-arm
+ * (cmap_to_roguecolor recolor when color is on — ROGUESET + IBM
+ * handling, never active on contest tty; same standing as the
+ * litcorr/engrcorr twins).
+ */
+function lava_ice_sink_map_attr(gid) {
+    // C `:2890`: the whole BW chain runs only with color off.
+    if (game.iflags?.wc_color !== false) return 0;
+    const g = gid | 0;
+    // C `:2897–2900` switch order: lava (+wall), ice, sink.
+    let cmap = -1;
+    if (g === cmap_to_glyph(S_LAVA_CMAP)) cmap = S_LAVA_CMAP;
+    else if (g === cmap_to_glyph(S_LAVAWALL_CMAP)) cmap = S_LAVAWALL_CMAP;
+    else if (g === cmap_to_glyph(S_ICE_CMAP)) cmap = S_ICE_CMAP;
+    else if (g === cmap_to_glyph(S_SINK_CMAP)) cmap = S_SINK_CMAP;
+    else return 0;
+    // C `:2886`: sym is this cmap's own showsyms char (lavawall reads
+    // its own slot, not lava's).
+    const sym = live_showsyms(cmap + SYM_OFF_P);
+    let hit = false;
+    if (cmap === S_LAVA_CMAP || cmap === S_LAVAWALL_CMAP) {
+        // C `:2898–2902`: collide with pool or water.
+        hit = sym === live_showsyms(S_POOL_CMAP + SYM_OFF_P)
+            || sym === live_showsyms(S_WATER_CMAP + SYM_OFF_P);
+    } else if (cmap === S_ICE_CMAP) {
+        // C `:2904–2907`: collide with room or dark room.
+        hit = sym === live_showsyms(S_ROOM_CMAP + SYM_OFF_P)
+            || sym === live_showsyms(S_DARKROOM + SYM_OFF_P);
+    } else {
+        // C `:2909–2911`: sink collides with fountain.
+        hit = sym === live_showsyms(S_FOUNTAIN_CMAP + SYM_OFF_P);
+    }
+    if (!hit) return 0;
     return use_inverse_opt() ? ATR_INVERSE : 0;
 }
 
@@ -1946,7 +1998,7 @@ function cmap_idx_to_tty(cmap_idx) {
         const tab = wall_glyph_table();
         const g = tab[idx] || tab[S_STONE];
         if (idx === S_STONE) return { ch: g.ch, color: g.color, dec: !!g.dec };
-        return { ch: g.ch, color: wall_cmap_color(), dec: !!g.dec };
+        return { ch: g.ch, color: wall_cmap_color(idx), dec: !!g.dec };
     }
     switch (idx) {
     case S_NDOOR:
@@ -4273,27 +4325,35 @@ function do_crwall(seenv, row) {
 }
 
 /**
- * C display.h cmap_walls_to_glyph + display.c wallcolors[] / reset_glyphmap
- * + the symset G_ wall-color customizations (dat/symbols): the base table
- * is all CLR_GRAY, but every graphical symset stamps G_vwall_*..G_trwall_*
- * overrides — mines /brown, gehennom /red, knox /yellow, sokoban /blue
- * (DECgraphics :732–775; same 44 in IBMgraphics/IBMGraphics_1/2/curses) —
- * via glyphs.c apply_customizations + coloratt.c set_map_customcolor, read
- * back as the tty fg in wintty.c tty_print_glyph (TEMP-C measured
- * cust=0x100000B on KNOX glyphs 3963/3964/3966 — answers D-0729's open
- * "why DEC emits color while wallcolors[] is gray"). Arm order mirrors
- * cmap_walls_to_glyph (mines → hell → knox → soko → main). Knox follows
- * the sokoban DEC gate: ASCII (no symset) carries no G_ entries, so C
- * paints gray there (D-0729).
+ * C display.c wallcolors[] :2677 (all CLR_GRAY) + reset_glyphmap wall arms
+ * (:2943–2965 wall_color) + wintty.c tty_print_glyph :3899–3909
+ * (WC2_EXTRACOLORS basic-color override): the base is gray on every
+ * branch; branch colors reach the tty ONLY through the stamped glyphmap
+ * customcolor (dat/symbols G_vwall_*..G_trwall_* rows — mines /brown,
+ * gehennom /red, knox /yellow, sokoban /blue — parsed by the live
+ * read_sym_file G_ row and stamped by glyphs.c apply_customizations +
+ * coloratt.c set_map_customcolor), read back per glyph (color.h:59
+ * COLORVAL when the color.h:57 NH_BASIC_COLOR bit is set; TEMP-C measured
+ * cust=0x100000B on KNOX glyphs 3963/3964/3966, D-3896). The glyph id comes
+ * from the same-module cmap_walls_to_glyph (display.h:598 bank order:
+ * mines → hell → knox → soko → main). Symsets without G_ rows
+ * (MACgraphics, AmigaFont, Rogue*, plain, Blank, ASCII default) stamp
+ * nothing, so C paints gray there (scen-symset-Archeologist-50150039 s39:
+ * MAC mines corners record default fg). C's further gates — wincap2
+ * EXTRACOLORS (unconditional on unix tty, wintty.c:122), colorcount ≥ 256
+ * (judge/recorder env, D-0283), !calling_from_update_inventory (map paint)
+ * — all hold here, as in C. RGB customcolors (Enhanced mines/knox) take
+ * C's :3903–3906 extracolor arm, which the recorder does not hook
+ * (D-4031 class): gray, C's own unappliable-customcolor fallback, stands
+ * in — named.
  */
-function wall_cmap_color() {
-    let color = CLR_GRAY;
-    const uz = game.u?.uz;
-    if (In_mines(uz)) color = CLR_BROWN;
-    else if (game.dungeons?.[uz?.dnum | 0]?.flags?.hellish) color = CLR_RED;
-    else if (Is_knox(uz) && use_decgraphics()) color = CLR_YELLOW;
-    else if (In_sokoban(uz) && use_decgraphics()) color = CLR_BLUE;
-    return color;
+function wall_cmap_color(idx) {
+    const gid = cmap_walls_to_glyph(idx); // C display.h:598 branch bank
+    // C wintty.c:3900 (absent glyphmap cell ≡ BSS-zero ≡ unstamped).
+    const cust = (game.glyphmap?.[gid]?.customcolor | 0) >>> 0;
+    if (cust !== 0 && (cust & NH_BASIC_COLOR) !== 0) // C :3907 basic bit
+        return cust & 0xffffff; // C color.h:59 COLORVAL
+    return CLR_GRAY; // C display.c:2677 wallcolors base
 }
 
 function wall_glyph(loc) {
@@ -4302,10 +4362,7 @@ function wall_glyph(loc) {
     const tab = wall_glyph_table();
     const g = tab[idx] || tab[S_STONE];
     if (idx === S_STONE) return g;
-    // Recorder: mines BROWN (D-0283), Gehennom RED (D-0801), Sokoban blue
-    // only under DECgraphics (D-0729), Knox YELLOW only under DECgraphics
-    // (D-3896; dat/symbols G_*_knox /yellow via the customcolor override).
-    return { ch: g.ch, color: wall_cmap_color(), dec: g.dec };
+    return { ch: g.ch, color: wall_cmap_color(idx), dec: g.dec };
 }
 
 /** C sym.h DARKROOMSYM — Rogue uses S_stone, else S_darkroom. */
@@ -5197,7 +5254,10 @@ export async function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false
     // C tty layer derives ATR_INVERSE from the glyph id's MG_BW_ENGR flag
     // (reset_glyphmap `:2941–2946`) at every paint; OR it here so live,
     // memory, detection and wizard engrcorr paints all inherit, as in C.
+    // Same for the `:2884–2917` MG_BW_LAVA/ICE/SINK chain (gated on
+    // !use_color inside the helper, C `:2890`).
     attr |= engrcorr_map_attr(gid);
+    attr |= lava_ice_sink_map_attr(gid);
     // C tty_print_glyph `:3867` HUPSKIP (HANGUPHANDLING live,
     // global.h:278; g_pututf8 `:3795` + g_putch `:3745` carry the same
     // guard): under hangup the tty layer emits nothing (morc is

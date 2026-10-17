@@ -41,6 +41,7 @@ import {
     A_DEX, A_STR, A_CON, A_WIS, A_INT, A_MAX, acurr, exercise, adjattrib,
     change_luck, Fast, Very_fast, Searching, Fumbling,
 } from './attrib.js';
+import { hallucResisted } from './potion.js';
 import { dosearch0, warnreveal, do_vicinity_map, Clairvoyant } from './detect.js';
 import { nhgetch } from './input.js';
 import {
@@ -620,10 +621,12 @@ function exerper() {
         if ((u.HRegeneration | 0) || (regenProp?.intrinsic | 0)) {
             exercise(A_STR, true);
         }
-        // C: Confusion ≡ HConfusion; Hallucination ≡ HHallucination && !res
+        // C: Confusion ≡ HConfusion (youprop.h:84); Hallucination ≡
+        // HHallucination && !Halluc_resistance (:120), resistance H||E
+        // (:119) via the house hallucResisted union (D-4046).
         if (u.Sick || u.Vomiting) exercise(A_CON, false);
         if ((u.HConfusion | u.Confusion)
-            || ((u.HHallucination | 0) && !(u.Halluc_resistance | 0))
+            || ((u.HHallucination | 0) && !hallucResisted(u))
             || u.Hallucination) {
             exercise(A_WIS, false);
         }

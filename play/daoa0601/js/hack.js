@@ -24,7 +24,8 @@ import { destroyFireInventory } from './zap.js';
 import { releaseAllMonsterLeashes } from './monster_leash.js';
 import { splitHeroMonsterForm } from './mklev.js';
 import { MONSTER_FLAGS1, MONSTER_MOVE, MONSTER_SIZE, MONSTER_SYMBOL, } from './monster_data.js';
-import { AMULET_OF_LIFE_SAVING, BOULDER, LOADSTONE, OBJECT_MATERIAL, OBJECT_NAMES, } from './object_data.js';
+import { AMULET_OF_LIFE_SAVING, BOULDER, LOADSTONE, OBJECT_MATERIAL, } from './object_data.js';
+import { ownedObjectAction } from './objnam.js';
 import { heroFormClings, heroFormFlags, heroHidesOnCeiling, heroIsFlying, } from './polyself.js';
 import { d, rn2, rnd } from './rng.js';
 import { destroyLavaInventory, markLavaInventoryForDestruction, waterDamageChain } from './trap.js';
@@ -277,8 +278,7 @@ async function burnLavaBoots(state, publish, protectedObject) {
     const boots = state.uarmf || state.u?.uarmf;
     if (!boots || !(boots.in_use || (!boots.oerodeproof && objectMaterial(boots, state) <= 8)))
         return false;
-    const name = boots.name || OBJECT_NAMES[boots.otyp] || 'boots';
-    await publish(`Your ${name} burst into flame!`);
+    await publish(`${ownedObjectAction(boots, 'burst', state)} into flame!`);
     // destroyWornArmor() runs the full Boots_off-before-consume sequence; the
     // in_lava_effects counter raised around this whole entry suppresses the
     // nested float_down()/spoteffects() recursion (C trap.c:6863-6867).
@@ -530,9 +530,9 @@ export async function sinkHeroIntoLava({ state = game, publish = plineWithContin
         const message = 'You sink deeper into the lava.';
         const slimeBurns = heroIsSliming(state)
             && rollOne(9) >= (hero.slimedTurns ?? 0);
-        if (slimeBurns
-            || (state._last_message !== message
-                && state._pending_message !== message)) {
+        // C Norep() compares pline.c's previous individual message, not the
+        // joined tty top line.
+        if (slimeBurns || state._lastPlineMessage !== message) {
             await publish(message);
         }
         if (slimeBurns)
@@ -828,10 +828,7 @@ export async function heroLiquidEffects(options = {}) {
             await publish(heroIsHallucinating(state)
                 ? 'You sink like the Titanic.' : 'You sink like a rock.');
     }
-    const damageMessages = [];
-    await waterDamageChain(state.inventory || [], damageMessages, state);
-    for (const message of damageMessages)
-        await publish(message);
+    await waterDamageChain(state.inventory, [], state, { publish });
     const formEffect = await applyHeroFormWaterEffect(state, publish, random, rollDice);
     if (formEffect?.died)
         return { entered: true, moved: false, died: true };

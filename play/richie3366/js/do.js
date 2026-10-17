@@ -72,7 +72,7 @@ import {
 import { yn_function, paranoid_ynq, y_n } from './getline.js';
 import { vision_recalc, vision_reset, recalc_block_point, cansee, couldsee } from './vision.js';
 import { clear_regions, in_out_region, rest_regions } from './region.js';
-import { jsonClone } from './lev_json.js';
+import { jsonClone, rest_stairs_chain } from './lev_json.js';
 import {
     stairway_at,
     stairway_find_from,
@@ -2079,7 +2079,10 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         game.fmon = info.fmon || [];
         game.fobj = info.fobj || null;
         game.ftrap = info.ftrap || null;
-        game.stairs = info.stairs || null;
+        // C restore.c rest_stairs `:955–985` (getlev `:1113`): stairway_add
+        // per node in file order prepends, so the restored chain is REVERSED
+        // vs the stashed one — every revisit, not just save/load.
+        game.stairs = rest_stairs_chain(info.stairs);
         game.head_engr = rest_engravings(info.head_engr); // C restore.c:1174 getlev.
         rest_worm(info.worm_data); // C restore.c:1147 getlev → rest_worm.
         // C restore.c getlev `:1225` rest_regions — rebuild live regions

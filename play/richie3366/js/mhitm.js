@@ -2907,8 +2907,14 @@ export async function mhitm_knockback(magr, mdef, mattk, mhm, weapon_used) {
         // C: subset of test_move()
         if (!isok(defx + dx, defy + dy)) return false;
         const curloc = game.level?.at?.(defx, defy);
-        if (curloc && IS_DOOR(curloc.typ) && dx && dy
-            && !doorless_door(defx, defy)) { // C `:5302–5305`
+        // C `:5301–5305` reads magr->mx/my RAW here (unlike dx/dy above,
+        // which use u.ux/u.uy for a hero attacker): gy.youmonst.mx/my are
+        // never written anywhere in C (BSS 0 forever — light.c:17,
+        // polyself.c:9), so for a hero attacker this is (defx && defy).
+        // The |0 maps JS's never-set youmonst.mx/my (undefined) onto C's
+        // BSS 0; real monsters carry live mx/my either way (D-4051).
+        if (curloc && IS_DOOR(curloc.typ) && (defx - (magr?.mx | 0))
+            && (defy - (magr?.my | 0)) && !doorless_door(defx, defy)) {
             return false;
         }
     }
