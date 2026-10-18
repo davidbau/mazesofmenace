@@ -460,13 +460,18 @@ export async function hitmsg(mtmp, mattk) {
             verb = 'hits';
             break;
         }
-        // C: mattk == gh.hitmsg_prev + 1 && same aatyp → " again"
+        // C: mattk == gh.hitmsg_prev + 1 && same aatyp → " again".
+        // Pointer+1 means same array AND consecutive slot: require the
+        // get_mattk source-array identity too (D-4093: same m_id across
+        // a polymorph must print plain, as C's cross-array comparison does).
         const prev = game.hitmsg_prev;
         const again = (
             (mtmp.m_id | 0) === (game.hitmsg_mid | 0)
             && prev
             && mattk._slot
             && prev._slot
+            && mattk._arr
+            && mattk._arr === prev._arr
             && (mattk._indx | 0) === ((prev._indx | 0) + 1)
             && (mattk.aatyp | 0) === (prev.aatyp | 0)
         ) ? ' again' : '';

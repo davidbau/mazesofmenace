@@ -480,8 +480,11 @@ export function get_mattk(magr, i, mdef = undefined, prev_result = null) {
         adtyp: a.adtyp | 0,
         damn: a.damn | 0,
         damd: a.damd | 0,
-        // C: uses pointer+1 for "again" (D-0840).
+        // C: uses pointer+1 for "again" (D-0840): same array +
+        // consecutive index. _arr carries the array identity — a
+        // polymorphed attacker keeps its m_id but swaps arrays (D-4093).
         _slot: a,
+        _arr: slots,
         _indx: i,
     };
     const mptr = magr.data;

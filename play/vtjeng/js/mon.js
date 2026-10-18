@@ -202,6 +202,7 @@ import {
     free_mgivenname,
     hliquid,
     Monnam,
+    mon_nam,
     mon_pmname,
     monsterCommonName,
     noit_mon_nam,
@@ -385,6 +386,7 @@ import {
     AT_BOOM,
     AT_BREA,
     AT_ENGL,
+    AT_EXPL,
     AT_HUGS,
     AT_MAGC,
     AT_WEAP,
@@ -671,13 +673,14 @@ import {
     an,
 } from './objnam.js';
 import { bury_an_obj, obj_resists } from './bury.js';
-import { objdescr_is } from './o_init.js';
+import { discover_object, objdescr_is } from './o_init.js';
 import { corpse_intrinsic, should_givit } from './eat.js';
 import {
     extract_from_minvent, mon_adjust_speed, mon_set_minvis,
 } from './worn.js';
 import { end_burn, kill_egg } from './timeout.js';
-import { migrate_to_level } from './dog.js';
+import { migrate_to_level, wary_dog } from './dog.js';
+import { m_useup } from './mthrowu.js';
 import { d, rn1, rn2, rnd, rne, rnl, rnz } from './rng.js';
 import { heroIsBlind, messageAt } from './startup_a11y.js';
 import {
@@ -4683,10 +4686,8 @@ export function dealloc_monst(mon) {
 // level due to migration [relmon from keepdogs or migrate_to_level] or due to
 // death [m_detach from mondead or mongone]".
 //
-// 2721-2722's seemimic() stops. A monster whose appearance is neither
-// M_AP_NOTHING nor M_AP_MONSTER is showing a false object or piece of
-// furniture, and revealing it needs mon.c seemimic(), which wakeup() above
-// already records as unported.
+// 2721-2722 reveal a disguised mimic after its grid slot is removed. The
+// departure adapter keeps that redraw on the caller-selected owner.
 //
 // js/dog.js relmon() calls this same lifecycle before transferring the
 // monster between the level and migration lists.
@@ -4719,8 +4720,13 @@ export function mon_leaving_level(mon, state = game, env = {}) {
             /* "unhide mimic in case its shape has been blocking line of sight
                or it is accompanying the hero to another level" */
             if (M_AP_TYPE(mon) !== M_AP_NOTHING
-                && M_AP_TYPE(mon) !== M_AP_MONSTER)
-                requiredKillOperation(env, 'unsupported')('unhiding a mimic');
+                && M_AP_TYPE(mon) !== M_AP_MONSTER) {
+                seemimic(mon, state, {
+                    ...env,
+                    state,
+                    newsym: (x, y) => killRedraw(x, y, { ...env, state }),
+                });
+            }
             /* "if mon is pinned by a boulder, removing mon lets boulder drop" */
             const settling = fill_pit(mx, my, state, env);
             if (settling && typeof settling.then === 'function')
@@ -5027,16 +5033,64 @@ export function mlifesaver(mtmp, state) {
     return null;
 }
 
-// C ref: mon.c lifesaved_monster() (2838-2884). The whole body stops: using up
-// the amulet needs mon.c m_useup(), re-equipping needs check_gear_next_turn()'s
-// counterpart in worn.c m_dowear(), and a life-saved pet needs dog.c
-// wary_dog(). The guard is C's `if (lifesave)`, so a monster wearing no amulet
-// -- every monster this port generates -- falls through exactly as C does.
-function lifesaved_monster(mtmp, state, env) {
-    if (mlifesaver(mtmp, state)) {
-        requiredKillOperation(env, 'unsupported')(
-            'a monster saved by an amulet of life saving',
+// C ref: mon.c lifesaved_monster() (2838-2884). The consumed amulet is
+// removed before restoring movement and HP; callers await this because the
+// canonical m_useup() and pet wary_dog() paths are asynchronous.
+async function lifesaved_monster(mtmp, state, env) {
+    const lifesave = mlifesaver(mtmp, state);
+    if (!lifesave) return;
+
+    const message = env.message ?? ttyPline;
+    if (cansee(mtmp.mx, mtmp.my, state)) {
+        await message('But wait...', state, env);
+        await message(
+            `${s_suffix(Monnam(mtmp, state, env))} medallion begins to glow!`,
+            state,
+            env,
         );
+        discover_object(
+            AMULET_OF_LIFE_SAVING,
+            true,
+            true,
+            true,
+            state,
+            env,
+        );
+        if (canseemon(mtmp, state)) {
+            const verb = attacktype(mtmp.data, AT_EXPL)
+                || attacktype(mtmp.data, AT_BOOM)
+                ? 'reconstitutes'
+                : 'looks much better';
+            await message(
+                `${Monnam(mtmp, state, env)} ${verb}!`,
+                state,
+                env,
+            );
+        }
+        await message('The medallion crumbles to dust!', state, env);
+    }
+
+    await m_useup(mtmp, lifesave, { ...env, state });
+    check_gear_next_turn(mtmp);
+
+    const surviver = !(state.svm.mvitals[monsndx(mtmp.data)].mvflags
+        & G_GENOD);
+    mtmp.mcanmove = 1;
+    mtmp.mfrozen = 0;
+    if (mtmp.mtame && !mtmp.isminion)
+        await wary_dog(mtmp, !surviver, { ...env, state });
+    set_mon_min_mhpmax(mtmp, 10);
+    mtmp.mhp = mtmp.mhpmax;
+
+    if (!surviver) {
+        if (cansee(mtmp.mx, mtmp.my, state)) {
+            await message(
+                `Unfortunately, ${mon_nam(mtmp, state, env)} is still genocided...`,
+                state,
+                env,
+            );
+        }
+        mtmp.mhp = 0;
     }
 }
 
@@ -5275,7 +5329,7 @@ export async function mondead(mtmp, state = game, env = {}) {
     state.iflags.sad_feeling = false;
 
     mtmp.mhp = 0; /* "in case caller hasn't done this" */
-    lifesaved_monster(mtmp, state, env);
+    await lifesaved_monster(mtmp, state, env);
     if (mtmp.mhp >= 1) return; /* !DEADMONSTER() */
 
     /* "vampire in bat/fog/wolf form reverts to vampire instead of dying" */
@@ -5800,7 +5854,7 @@ export async function monstone(mdef, state = game, env = {}) {
     if (!await vamp_stone(mdef, state, env)) return;
 
     mdef.mhp = 0;
-    lifesaved_monster(mdef, state, env);
+    await lifesaved_monster(mdef, state, env);
     if (mdef.mhp >= 1) return;
     mdef.mtrapped = 0;
 
@@ -5918,7 +5972,6 @@ function monsterDigests(species) {
 //              ordinary pet -- one killed by neither fire, rust nor decay --
 //              passes through without it.
 export async function monkilled(mdef, fltxt, how, state = game, env = {}) {
-    const unsupported = requiredKillOperation(env, 'unsupported');
     const message = requiredKillOperation(env, 'message');
     const mptr = mdef.data;
 
@@ -5960,7 +6013,10 @@ export async function monkilled(mdef, fltxt, how, state = game, env = {}) {
             : (how === AD_RUST && completelyrusts(mptr)) ? 'rust'
                 : (how === AD_DCAY && completelyrots(mptr)) ? 'rot'
                     : null;
-        if (rxt) unsupported('the farewell for a destroyed pet golem');
+        if (rxt)
+            requiredKillOperation(env, 'unsupported')(
+                'the farewell for a destroyed pet golem',
+            );
     }
 }
 

@@ -3937,6 +3937,16 @@ export async function dosinkfall() {
     const blockd_lev = ((u.BLevitation | 0) === I_SPECIAL);
     const ufall = (!innate_lev && !blockd_lev
         && !((u.HFlying | 0) || (u.EFlying | 0) || u.Flying)); /* BFlying */
+    /* C youprop.h:235-236 — HLevitation/ELevitation ARE
+     * u.uprops[LEVITATION].intrinsic/extrinsic (single storage); every H/E
+     * write below (fake removal, restore, strip, ++/-- bracket) must hit
+     * the slot too, or nh_timeout's generic loop decrements the stale slot
+     * TIMEOUT and mirrors it back into the flat, re-levitating the hero
+     * the same turn (float_down D-3978 dual-write idiom). */
+    if (!u.uprops) u.uprops = {};
+    const levSlot = u.uprops[LEVITATION] || (u.uprops[LEVITATION] = {
+        intrinsic: 0, extrinsic: 0, blocked: 0,
+    });
 
     if (!ufall) {
         await pline((innate_lev || blockd_lev)
@@ -3945,9 +3955,13 @@ export async function dosinkfall() {
     } else {
         const save_ELev = u.ELevitation | 0;
         const save_HLev = u.HLevitation | 0;
+        const save_LevI = levSlot.intrinsic | 0;
+        const save_LevE = levSlot.extrinsic | 0;
         /* fake removal so fatal disclosure is right; rings/boots still worn */
         u.ELevitation = 0;
         u.HLevitation = 0;
+        levSlot.extrinsic = 0;
+        levSlot.intrinsic = 0;
         await pline('You crash to the floor!');
         const dmg = rn1(8, 25 - (acurr(A_CON) | 0));
         losehp(maybe_half_phys(dmg), fell_on_sink, NO_KILLER_PREFIX);
@@ -3979,6 +3993,8 @@ export async function dosinkfall() {
         }
         u.ELevitation = save_ELev;
         u.HLevitation = save_HLev;
+        levSlot.extrinsic = save_LevE;
+        levSlot.intrinsic = save_LevI;
     }
 
     /*
@@ -3994,7 +4010,10 @@ export async function dosinkfall() {
     /* remove worn levitation items */
     u.ELevitation = (u.ELevitation | 0) & ~W_ARTI;
     u.HLevitation = (u.HLevitation | 0) & ~(I_SPECIAL | TIMEOUT);
+    levSlot.extrinsic = (levSlot.extrinsic | 0) & ~W_ARTI;
+    levSlot.intrinsic = (levSlot.intrinsic | 0) & ~(I_SPECIAL | TIMEOUT);
     u.HLevitation = (u.HLevitation | 0) + 1; /* keep Levitation true during Ring/Boots_off */
+    levSlot.intrinsic = (levSlot.intrinsic | 0) + 1;
     const {
         Ring_off, Boots_off, off_msg,
     } = await import('./do_wear.js');
@@ -4014,6 +4033,7 @@ export async function dosinkfall() {
         await off_msg(obj);
     }
     u.HLevitation = (u.HLevitation | 0) - 1;
+    levSlot.intrinsic = (levSlot.intrinsic | 0) - 1;
     const { float_vs_flight } = await import('./polyself.js');
     float_vs_flight();
 }
