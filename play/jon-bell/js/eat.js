@@ -43,7 +43,7 @@ import { getObjFromGetobj, wield_tool as wield_tool_real, costly_alteration,
          obj_extract_self_general, useup, useupf } from './cmd.js';
 import { sellobj_state, safe_qbuf as safe_qbuf_real } from './shk.js';
 import { g_at } from './cmd.js';
-import { flush_screen, force_more, topl_park_cursor, _pline_flush_frame_record, pline_flush_point, msgtype_suppressed } from './display.js';
+import { flush_screen, restore_occupation_topline, force_more, topl_park_cursor, _pline_flush_frame_record, pline_flush_point, msgtype_suppressed } from './display.js';
 import { more_experienced, newexplevel } from './uhitm.js';
 import { pluslvl } from './exper.js';
 import { nhgetch } from './input.js';
@@ -614,6 +614,10 @@ export async function doeat() {
             } else {
                 await _do_reset_eat();
             }
+            /* DISPLAY-ONLY: a corpse-flavour status pin from the interrupted meal's
+             * earlier command must not freeze this command's --More-- frames
+             * (C re-paints bot() at each pline flush, pline.c:276). */
+            game._earlyBotl = null;
             You(!one_bite_left ? 'resume your meal.' : 'consume the last bite of your meal.');
             if (resumed) await start_eating(resumed, false);
             return ECMD_TIME;
@@ -736,15 +740,22 @@ export async function newuhs(incr) {
     }
     /* C eat.c:3451-3513 — update u.uhs, notify. */
     if (newhs !== (u.uhs | 0)) {
+        /* C eat.c:3468-3513 plines the hunger message while u.uhs still holds the
+         * pre-update value (the restored save_hs after a meal); u.uhs = newhs comes
+         * after it.  That pline's flush_screen()/bot() (pline.c:273-274) therefore
+         * paints the OLD hunger on the --More-- it raises over the prior topline:
+         * publish it, keyed on the message, for the eat occupation's pager. */
+        let _hsMsg = null;
+        const _hs = (m) => (_hsMsg = m);
         switch (newhs) {
         case HUNGRY:
             if (_eat_Hallucination()) {
-                pline(!incr ? 'You now have a lesser case of the munchies.'
-                            : 'You are getting the munchies.');
+                pline(_hs(!incr ? 'You now have a lesser case of the munchies.'
+                            : 'You are getting the munchies.'));
             } else {
-                pline(!incr ? 'You only feel hungry now.'
+                pline(_hs(!incr ? 'You only feel hungry now.'
                      : ((u.uhunger | 0) < 145) ? 'You feel hungry.'
-                       : 'You are beginning to feel hungry.');
+                       : 'You are beginning to feel hungry.'));
                 if (g._resultMessage && g._pending_message) {
                     const _hint = _topl_joins_snapshot(g._resultMessage) || undefined;
                     g._resultMessage = _topl_merge_result(g._resultMessage,
@@ -758,24 +769,25 @@ export async function newuhs(incr) {
             break;
         case WEAK:
             if (_eat_Hallucination()) {
-                pline(!incr ? 'You still have the munchies.'
-                            : 'The munchies are interfering with your motor capabilities.');
+                pline(_hs(!incr ? 'You still have the munchies.'
+                            : 'The munchies are interfering with your motor capabilities.'));
             } else if (incr && (_eat_Role_if(ROLE_WIZARD) || _eat_Race_if_elf()
                                 || _eat_Role_if(ROLE_VALKYRIE))) {
                 /* C: "%s needs food, badly!" with gu.urole.name.m for the two
                  * roles and the literal "Elf" for an elf of any other role. */
-                pline(((_eat_Role_if(ROLE_WIZARD) || _eat_Role_if(ROLE_VALKYRIE))
-                       ? (g.urole?.name?.m || '') : 'Elf') + ' needs food, badly!');
+                pline(_hs(((_eat_Role_if(ROLE_WIZARD) || _eat_Role_if(ROLE_VALKYRIE))
+                       ? (g.urole?.name?.m || '') : 'Elf') + ' needs food, badly!'));
             } else {
-                pline(!incr ? 'You are still weak.'
+                pline(_hs(!incr ? 'You are still weak.'
                      : ((u.uhunger | 0) < 45) ? 'You feel weak.'
-                       : 'You are beginning to feel weak.');
+                       : 'You are beginning to feel weak.'));
             }
             if (incr && g.occupation && g.occupation !== eatfood)
                 await stop_occupation();
             end_running(true);
             break;
         }
+        if (_hsMsg) g._newuhsMsgUhs = { uhs: (u.uhs | 0), msg: _hsMsg };
         if (!u.atemp) u.atemp = { a: [0, 0, 0, 0, 0, 0] };
         if (!u.atemp.a) u.atemp.a = [0, 0, 0, 0, 0, 0];
         if (newhs >= WEAK && (u.atemp.a[0] | 0) >= 0)
@@ -4234,9 +4246,29 @@ export async function cpostfx(pm) {
             if (!(u.uconduct.polyselfs | 0))
                 livelog_printf(LL_CONDUCT, 'changed form for the first time by mimicking %s', shape);
             u.uconduct.polyselfs = (u.uconduct.polyselfs | 0) + 1;
+            /* The eat occupation's committed flavor line is still gt.toplines when
+             * cpostfx plines (allmain.c:498 calls eatfood with it live); fold it in
+             * ahead of done_eating's text so update_topl pages in C's order. */
+            restore_occupation_topline();
+            /* gt.toplines still holds the occupation's fprefx text; C's pline of
+             * done_eating's line (eat.c:556) paged it (topl.c:257-274) before this
+             * arm runs.  Replay the two plines in C's order over it. */
+            const _take = game._occBeforeInput;
+            if (_take && game._resultMessage && !game._pending_message) {
+                game._occBeforeInput = null;
+                const _held = _take().text;
+                const _fin = game._resultMessage;
+                game._resultMessage = null;
+                game._resultMessageJoins = null;
+                game._pending_message = _held;
+                await pline(_fin);
+                game._eatMimicForceMore = true;
+            }
             await pline(`You can't resist the temptation to mimic ${shape}.`);
             /* pline.c:273-277: vpline's flush_screen runs before m_ap_type is set
              * below, so any more() it raised pages over the hero's own '@'. */
+            /* update_topl pages the earlier lines (more()) at the pline, over the map
+             * as it stands BEFORE newsym() below shows the mimic shape. */
             await flush_screen(1);
             if (u.usteed) await dismount_steed(DISMOUNT_FELL);
             nomul(-(pm === PM_GIANT_MIMIC ? 50 : pm === PM_LARGE_MIMIC ? 40 : 20));
@@ -4253,9 +4285,26 @@ export async function cpostfx(pm) {
             game.youmonst.m_ap_type = M_AP_OBJECT;
             game.youmonst.mappearance = hallu ? 278 /* ORANGE */ : 438 /* GOLD_PIECE */;
             newsym(u.ux, u.uy);
-            curs_on_u();
+            await flush_screen(1); /* curs_on_u() is flush_screen(1) (display.c:1726); the sync wrapper left it un-awaited */
             await flush_screen(1);
             await force_more(`You can't resist the temptation to mimic ${shape}.`);
+            if (game._pending_message) await force_more(game._pending_message);
+            /* eat.c:1224 display_nhwindow(WIN_MAP, TRUE) raises exactly ONE more(), the
+             * one above; with nothing held back (no occupation fold-in) a second,
+             * blank page would eat the key that ends the 20-turn pretend. */
+            if (game._eatMimicForceMore)
+                await force_more(game._pending_message || undefined);
+            curs_on_u();
+            /* display_nhwindow(WIN_MAP, TRUE) (eat.c:1224) more()s the topline.  Inside the
+             * eating occupation the earlier committed fprefx line and done_eating's
+             * line must page first, in C's order: eat_occupation_turn owns that. */
+            if (game._eatMimicForceMore) { /* paged by eat_occupation_turn */
+                game._eatMimicFrame = capture_painted_frame_with_status();
+            }
+            else {
+                await flush_screen(1);
+            }
+            /* else: the force_more(shape) above was already eat.c:1224's display_nhwindow(WIN_MAP, TRUE) */
         }
         break;
     case PM_QUANTUM_MECHANIC:

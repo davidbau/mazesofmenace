@@ -25,7 +25,7 @@ import { mklev, l_nhcore_init, u_on_upstairs, engr_reset_text_pointers, restartc
 import { l_nhcore_call, NHCORE_START_NEW_GAME, NHCORE_MOVELOOP_TURN,
     nh_callback_run, NHCB_END_TURN } from './nhlua.js';
 import { clear_bypasses, sink_into_lava } from './trap.js';
-import { pooleffects, rhack, check_special_room, domove, prayer_done, deferred_goto, schedule_goto, heal_legs, timed_occupation, cmdq_clear, wipeoff, body_part, surface, confdir, hurtle, instapetrify, runmode_delay_output, take_off_occ, dolookaround_cmd } from './cmd.js';
+import { notice_all_mons, pooleffects, rhack, check_special_room, domove, prayer_done, deferred_goto, schedule_goto, heal_legs, timed_occupation, cmdq_clear, wipeoff, body_part, surface, confdir, hurtle, instapetrify, runmode_delay_output, take_off_occ, dolookaround_cmd } from './cmd.js';
 import { lookaround, end_running, is_pool, is_pool_or_lava } from './look.js';
 import { docrt, cls, bot, timebot, time_botl_moves_incremented, time_botl_run_ended, flush_screen, pline, urgent_pline, Norep, _topl_joins_committed, _topl_record_join, occupation_painted_tick, occupation_freeze_snapshot, occupation_painted_reset, occupation_force_more, run_page_frame_tick, run_page_frame_reset, capture_painted_frame, capture_pre_movemon_botl, force_more, _topl_merge_result, _topl_joins_snapshot } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
@@ -709,6 +709,13 @@ export async function newgame() {
             pline_flush_point();                          /* C pline.c:274 */
             g._pending_message = welcomeMsg;
         }
+        /* C ref: allmain.c:841-848 newgame() — welcome(TRUE); notice_mon_on();
+         * notice_all_mons(TRUE) (no a11y.glyph_updates): with spot_monsters set,
+         * the starting pet is announced ("You see your kitten.") right after
+         * the welcome line.  The moveloop_preamble messages follow it in C. */
+        g._notice_mon_ready = true; /* allmain.c:844 notice_mon_on() */
+        if (!chargenIncomplete)
+            notice_all_mons(true);
     }
     /* C ref: allmain.c:844-846 newgame() — if (a11y.glyph_updates) dolookaround();
      * then moveloop_preamble's rndencode = rnd(9000) / seer_turn = rnd(30)
@@ -718,6 +725,16 @@ export async function newgame() {
         g._ff_preamble_rng_deferred = false;
         rnd(9000);
         g.context.seer_turn = rnd(30);
+    } else if (!chargenIncomplete) {
+        /* C ref: allmain.c:846-847 newgame() — the non-glyph_updates arm:
+         * `else notice_all_mons(TRUE);` announces ("You see your little dog.")
+         * every monster already spotted, a pline that pages the standing welcome. */
+        /* a11y.mon_notices is OPTIONS=spot_monsters (optlist.h:709); options.js
+         * stores a11y-box booleans under flags[name]. */
+        g.a11y = g.a11y || {};
+        if (g.flags?.spot_monsters) g.a11y.mon_notices = true;
+        g._notice_mon_ready = true; /* allmain.c:844 notice_mon_on() */
+        notice_all_mons(true);
     }
     if (deferredLastStartupMsg !== null)
         g._pending_message = '';
@@ -1487,6 +1504,7 @@ async function faithful_moveloop_turn() {
 // already fired in the per-turn block; bite/lesshungry/done_eating are RNG-free for
 async function eat_occupation_turn() {
     const g = game;
+    g._newuhsMsgUhs = null;
     // Keep the preceding occupation flush available for the done_eating page.
     // C's physical terminal still shows that frame while the post-meal world
     // turn advances the live map before the pending topline is acknowledged.
@@ -1534,6 +1552,7 @@ async function eat_occupation_turn() {
      * bite runs; choke()'s fatal path never returns here, so it needs them on the
      * live topline (timeout.c:628 precedes allmain.c:485). */
     g._occPreEatLive = (!prior && preEat) ? preEat : null;
+    let _preEatConsumed = 0;
     // C allmain.c:498 calls eatfood with the earlier topline still live.
     // A query inside the callback must drain it before reading its answer.
     g._occBeforeInput = () => {
@@ -1544,6 +1563,10 @@ async function eat_occupation_turn() {
         const joins = prefix && preEat
             ? [prefix.length, ...preEatJoins.map(off => off + prefix.length + 2)]
             : prefix ? [] : preEatJoins;
+        /* eatfood's own pline pages behind these movemon plines (topl.c:257-301), so
+         * they leave the preEat group here; remember how many, so their more()
+         * still pages over the movemon-pline frame (pline.c:273-274). */
+        if (preEat) _preEatConsumed = preEatJoins.length + 1 + (prior ? 1 : 0);
         prior = null;
         preEat = '';
         preEatJoins = [];
@@ -1633,8 +1656,11 @@ async function eat_occupation_turn() {
     // committed "This cram ration is bland.", 26+2+25 = 53 < 71) and then
     // "You finish eating the cram ration." (53+2+34 = 89 >= 71, so C more()s).
     // One string gave one 88-column topline and no --More--.
-    const _displayedUhs = () => (g.occupation
+    /* `part` is the incoming pline that raises the page; when it is newuhs's own
+     * hunger message, its flush painted the pre-update hunger (eat.c:3468-3513). */
+    const _displayedUhs = (part) => (g.occupation
         ? (g._saved_hs ? (g._save_hs | 0) : thisTurnUhs)
+        : (g._newuhsMsgUhs && g._newuhsMsgUhs.msg === part) ? (g._newuhsMsgUhs.uhs | 0)
         : (g.u && g.u.uhs != null ? (g.u.uhs | 0) : thisTurnUhs));
     let _committed = prior ? prior.text : null;
     let _emitted = false;
@@ -1720,7 +1746,8 @@ async function eat_occupation_turn() {
             // meal is ongoing (occupation still set), else live u.uhs (committed at meal end).
             if (_committed) {
                 const _eb = (g._earlyBotl && g._earlyBotl.cells && g._earlyBotl.turn === thisTurnMoves - 1) ? g._earlyBotl : null;
-                const _pf = _fromPreEat
+                const _pf = (_fromPreEat || (_preEatSeen <= _preEatConsumed
+                                             && g._movemonPageFrames?.[_preEatPage]))
                     ? (g._movemonPageFrames?.[_preEatPage++] || _eb
                         /* encumber_msg's pline (allmain.c:208) runs BEFORE movemon:
                          * its more() pages over the gbuf its own flush_screen synced,
@@ -1739,7 +1766,7 @@ async function eat_occupation_turn() {
                  * (allmain.c:261), so its --More-- shows that frame's T:. */
                 const morc = await occupation_force_more(
                     _committed, _pageFrame, _pf?.cells ? (_pf.moves | 0) : thisTurnMoves,
-                    _displayedUhs(), !_fromPreEat && !g.occupation);
+                    _displayedUhs(part), !_fromPreEat && !g.occupation);
                 _ownerAfterEsc = morc === 27 && !!g._topl_win_stop_armed;
             }
             _committed = part;
@@ -1751,6 +1778,16 @@ async function eat_occupation_turn() {
             }
         }
     }
+    if (g._eatMimicForceMore) {
+        /* eat.c:1224 display_nhwindow(WIN_MAP, TRUE): more() over the last pline. */
+        g._eatMimicForceMore = false;
+        if (_emitted && _committed)
+            await occupation_force_more(_committed, g._eatMimicFrame?.cells || thisTurnFrame,
+                                        thisTurnMoves, _displayedUhs(), true);
+        g._eatMimicFrame = null;
+        _committed = '';
+        _emitted = false;
+    }
     let thisTurnMsg = _emitted ? _committed : '';
     // This turn's fresh message becomes the committed topline for the next turn (or,
     // once the meal ends and occupation cleared, it stays on _pending_message to be
@@ -1758,6 +1795,17 @@ async function eat_occupation_turn() {
     if (thisTurnMsg) {
         g._occ_committed_topl = { text: thisTurnMsg };
         g._pending_message = thisTurnMsg;
+        /* Flush frames recorded while the meal's pages were still being
+         * assembled carry offsets into the FULL accumulated topline.  Rebase
+         * those whose message survives in the committed line onto it, so the
+         * later more() (stalker "Gee!" over "You finish eating") finds the frame
+         * its own flush froze (pline.c:274) instead of the end-of-turn map. */
+        if (!g.occupation && Array.isArray(g._plineFlushFrames)) {
+            for (const f of g._plineFlushFrames) {
+                const at = thisTurnMsg.lastIndexOf('  ' + f.msg);
+                if (at > 0 && f.off > at) f.off = at;
+            }
+        }
     } else if (prior) {
         // Silent eating turn (no fresh message, e.g. a goblin-corpse meal's mid turns):
         // keep the prior committed topline and DO NOT page (C does not more() a silent
@@ -2770,6 +2818,9 @@ async function moveloop_core_faithful() {
                     // freezing the PHYSICAL screen at the PRE-turn frame (the pet's move
                     // this turn is deferred until the --More-- releases) — C steps 5/6.
                     const pmUhs = (g.u && g.u.uhs != null) ? (g.u.uhs | 0) : null;
+                    /* The interrupt pline's flush_screen()/bot() paints the NEW hunger (newuhs set
+                     * botl) but HP as of the last flush, so only uhs is refreshed. */
+                    if (g._occCurBotl && pmUhs != null) g._occCurBotl = { ...g._occCurBotl, uhs: pmUhs };
                     await occupation_force_more(pm.text, _postMealPreFrame, (g.moves | 0) - 1, pmUhs);
                     // The movemon pline becomes the committed topline / result line, read
                     // at the next rhack(0) restore like any command result.

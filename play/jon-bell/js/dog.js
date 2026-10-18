@@ -22,7 +22,7 @@ import { set_ustuck as set_ustuck_dog, discard_minvent as discard_minvent_real, 
          stairway_find_from, stairway_find_dir, somexy, mongone, monnear } from './mklev.js';
 import { enexto_core, mnexto, mnearto, rloc_to, rloc } from './teleport.js';
 import { put_saddle_on_mon, impossible } from './steed.js';
-import { newMonHp, assignMakemonFemale, peaceMinded, permonstTemplate, newmextra, emits_light, humanoid } from './makemon.js';
+import { newMonHp, assignMakemonFemale, peaceMinded, permonstTemplate, propagate, newmextra, emits_light, humanoid } from './makemon.js';
 import { acurr } from './attrib.js';
 /* ── imports for the level-migration chain (mon_leaving_level / relmon /
  * mon_leave / migrate_to_level, below).  Each names its C home. ── */
@@ -228,6 +228,7 @@ export async function makedog() {
     const ux = (game.u?.ux ?? 0) | 0;
     const uy = (game.u?.uy ?? 0) | 0;
     const petPos = enexto_core(ux, uy) ?? { x: ux, y: uy };
+    propagate(pettype, true, false);
     /* C makemon.c:1253 — mtmp->m_id = next_ident() consumes rnd(2) */
     const g = game;
     if (g.context == null)

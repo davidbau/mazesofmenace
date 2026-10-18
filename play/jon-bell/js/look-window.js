@@ -15,8 +15,16 @@ export async function displayLookWindow(lines) {
     } else if (g._pending_message) {
         const live = g._pending_message;
         const snapshot = g._toplResultSnapshot;
-        for (const page of _topl_more_pages(live, _topl_joins_snapshot(live) || undefined))
-            if (page) await force_more(page);
+        let _start = 0;
+        for (const page of _topl_more_pages(live, _topl_joins_snapshot(live) || undefined)) {
+            g._moreFullCtx = { full: String(live), start: _start };
+            _start += page.length + 2;
+            try {
+                if (page) await force_more(page);
+            } finally {
+                g._moreFullCtx = null;
+            }
+        }
         if (g._resultMessage != null && snapshot != null
             && String(g._resultMessage) === String(snapshot)
             && String(live).startsWith(String(snapshot))) {
@@ -26,8 +34,17 @@ export async function displayLookWindow(lines) {
     } else if (g._resultMessage) {
         const joins = g._resultMessageJoins?.src === g._resultMessage
             ? g._resultMessageJoins.joins : undefined;
-        for (const page of _topl_more_pages(g._resultMessage, joins))
-            if (page) await force_more(page);
+        const full = String(g._resultMessage);
+        let _start = 0;
+        for (const page of _topl_more_pages(g._resultMessage, joins)) {
+            g._moreFullCtx = { full, start: _start };
+            _start += page.length + 2;
+            try {
+                if (page) await force_more(page);
+            } finally {
+                g._moreFullCtx = null;
+            }
+        }
         g._resultMessage = '';
         g._resultMessageJoins = null;
     }

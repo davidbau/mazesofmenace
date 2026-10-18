@@ -86,7 +86,7 @@ import { Blind } from './vision.js';
 import { MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
 import { setnotworn } from './worn.js';
 import { touch_artifact_youmonst, _pickup_burden_level } from './wizcmds.js';
-import { place_object, remove_object, dealloc_obj } from './mklev.js';
+import { place_object, remove_object, dealloc_obj, start_glob_timeout } from './mklev.js';
 import { update_inventory } from './inventory_refresh.js';
 import { obj_merge_light_sources } from './light.js';
 import { obj_stop_timers, stop_timer, start_timer } from './timeout.js';
@@ -248,7 +248,7 @@ function assigninvlet(otmp) {
  * per-otyp oc_merge column, so this never merges a pair C would refuse.
  * RNG-free.
  * ------------------------------------------------------------------------ */
-export async function merged(potmp, pobj) {
+export async function merged(potmp, pobj, nomsg = false) {
     const otmp = potmp.o, obj = pobj.o;
     if (!(await mergable(otmp, obj)))
         return false;
@@ -341,7 +341,9 @@ export async function merged(potmp, pobj) {
      * flags, and average the two shrink timers before freeing the absorbed
      * object. */
     if (obj.globby) {
-        await pudding_merge_message(otmp, obj); /* invent.c:929 */
+        /* obj_meld() reaches obj_absorb directly (mkobj.c:3789,3794) with no message; only invent.c merged() prints */
+        if (!nomsg)
+            await pudding_merge_message(otmp, obj); /* invent.c:929 */
         const w1 = (otmp.oeaten | 0) || (otmp.owt | 0);
         const w2 = (obj.oeaten | 0) || (obj.owt | 0);
         const total = w1 + w2;
@@ -363,10 +365,11 @@ export async function merged(potmp, pobj) {
             otmp.greased = obj.greased = 0;
         if (otmp.orotten || obj.orotten)
             otmp.orotten = obj.orotten = 1;
-        const tm1 = stop_timer(SHRINK_GLOB, { a_obj: otmp });
-        const tm2 = stop_timer(SHRINK_GLOB, { a_obj: obj });
+        /* a_long must be null to match the timer's own obj_to_any() key */
+        const tm1 = stop_timer(SHRINK_GLOB, { a_obj: otmp, a_long: null });
+        const tm2 = stop_timer(SHRINK_GLOB, { a_obj: obj, a_long: null });
         const tm = Math.trunc(((tm1 || 25) + (tm2 || 25) + 1) / 2);
-        start_timer(tm, TIMER_OBJECT, SHRINK_GLOB, { a_obj: otmp });
+        start_glob_timeout(otmp, tm); /* mkobj.c:3742 */
 
     }
 

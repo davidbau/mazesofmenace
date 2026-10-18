@@ -5104,10 +5104,15 @@ async function doname_base(obj, doname_flags) {
             bp += ` (${tethered ? 'tethered to'
                        : twoweap_primary ? 'wielded in'
                        : 'weapon in'} ${hand_s})`;
-            /* C objnam.c:1604-1610 — a lit light-emitting artifact weapon
-             * overwrites the closing paren with ", <adverb> lit)".  (The
-             * warn_obj_cnt/Sting glow arm at 1599-1603 is not ported.) */
-            if (!_Blind() && obj.lamplit && artifact_light(obj))
+            /* C objnam.c:1597-1610 — Sting's glow arm (glow_verb(cnt, TRUE),
+             * glow_color, artifact.c:2427-2462) is tried first; else a lit
+             * light-emitting artifact weapon overwrites the closing paren with
+             * ", <adverb> lit)".  Colours as display.js Sting_effects. */
+            const wcnt = game.warn_obj_cnt | 0;
+            if (!_Blind() && wcnt && obj === u.uwep
+                && ((u.uprops?.[WARN_OF_MON_D]?.extrinsic | 0) & W_WEP_D) !== 0)
+                bp = `${bp.slice(0, -1)}, ${wcnt > 12 ? 'gleam' : wcnt > 4 ? 'glimmer' : 'flicker'}ing ${(obj.oartifact | 0) === 5 ? 'red' : 'light blue'})`;
+            else if (!_Blind() && obj.lamplit && artifact_light(obj))
                 bp = `${bp.slice(0, -1)}, ${arti_light_description(obj)} lit)`;
         }
     }
@@ -5211,7 +5216,7 @@ import { W_ARM as W_ARM_D, W_ARMC as W_ARMC_D, W_ARMH as W_ARMH_D,
          W_ARMU as W_ARMU_D, W_RINGL as W_RINGL_D, W_RINGR as W_RINGR_D,
          W_AMUL as W_AMUL_D, W_TOOL as W_TOOL_D, W_SADDLE as W_SADDLE_D,
          W_WEP as W_WEP_D, W_SWAPWEP as W_SWAPWEP_D, W_QUIVER as W_QUIVER_D,
-         W_BALL as W_BALL_D, W_CHAIN as W_CHAIN_D } from './const.js';
+         W_BALL as W_BALL_D, W_CHAIN as W_CHAIN_D, WARN_OF_MON as WARN_OF_MON_D } from './const.js';
 const HAND_D = 6; /* body_part.h HAND */
 
 /* xname_flags()'s body with C's `gd.distantname` guard (objnam.c:627) hoisted

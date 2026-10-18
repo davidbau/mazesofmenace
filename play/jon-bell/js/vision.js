@@ -19,6 +19,7 @@ import { pushRngLogEntry } from './rng.js';
  * binding is resolved by the time _blocks() first runs. */
 import { visible_region_at } from './region.js';
 import { ENV } from './hostenv.js';
+import { notice_all_mons } from './cmd.js';
 const COULD_SEE = 0x1;
 const IN_SIGHT = 0x2;
 let _visionTraceSeq = 0;
@@ -805,6 +806,7 @@ export function vision_recalc(control = 0) {
             newsym(u.ux | 0, u.uy | 0);
         game._viz_rmin = next_rmin;
         game._viz_rmax = next_rmax;
+        if (game._notice_mon_ready) notice_all_mons(true); /* vision.c:856; notice_mon_off() until newgame (allmain.c:771-844) */
         _visionTrace('exit', control, u, game.viz_array);
         return;
     }
@@ -842,6 +844,39 @@ export function vision_recalc(control = 0) {
             rogue_vision(next, next_rmin, next_rmax);
         } else {
             view_from(u.uy, u.ux, next, next_rmin, next_rmax);
+        }
+    }
+    /* C ref: vision.c:628-667 — "Set the IN_SIGHT bit for xray".  xray_range
+     * is -1 when the hero has none (an unset JS field reads as none); the
+     * update loop below does the newsym for squares not previously in sight. */
+    if (u.xray_range != null && (u.xray_range | 0) >= 0) {
+        const xr = u.xray_range | 0;
+        if (xr) {
+            const ranges = circle_ptr(xr);
+            for (let row = (u.uy | 0) - xr; row <= (u.uy | 0) + xr; row++) {
+                if (row < 0)
+                    continue;
+                if (row >= ROWNO)
+                    break;
+                const dyy = Math.abs((u.uy | 0) - row);
+                const start = Math.max(1, (u.ux | 0) - ranges[dyy]);
+                const stop = Math.min(COLNO - 1, (u.ux | 0) + ranges[dyy]);
+                for (let col = start; col <= stop; col++) {
+                    next[row][col] |= IN_SIGHT;
+                    const xl = game.level?.at(col, row);
+                    if (xl)
+                        xl.seenv = SVALL; /* see all! */
+                }
+                next_rmin[row] = Math.min(start, next_rmin[row]);
+                next_rmax[row] = Math.max(stop, next_rmax[row]);
+            }
+        } else {
+            next[u.uy][u.ux] |= IN_SIGHT;
+            const xl = game.level?.at(u.ux, u.uy);
+            if (xl)
+                xl.seenv = SVALL;
+            next_rmin[u.uy] = Math.min(u.ux, next_rmin[u.uy]);
+            next_rmax[u.uy] = Math.max(u.ux, next_rmax[u.uy]);
         }
     }
     /* C ref: vision.c:701-702 — "Set the correct bits for all light sources."
@@ -964,6 +999,7 @@ export function vision_recalc(control = 0) {
     }
     game._viz_rmin = next_rmin;
     game._viz_rmax = next_rmax;
+    if (game._notice_mon_ready) notice_all_mons(true); /* vision.c:856; notice_mon_off() until newgame (allmain.c:771-844) */
     _visionTrace('exit', control, u, game.viz_array);
 }
 // C ref: vision.c:1602 clear_path(col1, row1, col2, row2)

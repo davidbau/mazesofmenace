@@ -87,7 +87,7 @@ import { ignite_items } from './mhitu.js';
 import { nomul } from './allmain.js';
 import { unconscious } from './pickup.js';
 import { u_locomotion as u_locomotion_real } from './cmd.js';
-import { schedule_goto } from './cmd.js';
+import { schedule_goto, set_msg_xy as set_msg_xy_trap } from './cmd.js';
 import { wizdeadorgone } from './cmd.js';
 import { stop_occupation } from './allmain.js';
 import { fall_asleep, spot_stop_timers, stop_timer, begin_burn, end_burn } from './timeout.js';
@@ -434,6 +434,7 @@ export async function monkilled_trap(mtmp, fltxt = '') {
      * every pre-existing caller is byte-unchanged. */
     if (fltxt !== null && cansee(mtmp.mx | 0, mtmp.my | 0)) {
         const _verb = _mk_nonliving(mtmp) ? 'destroyed' : 'killed';
+        set_msg_xy_trap(mtmp.mx, mtmp.my); /* pline_mon (pline.c:138-146) */
         void pline(`${Monnam_t(mtmp)} is ${_verb}`
                    + (fltxt ? ` by the ${fltxt}` : '') + '!');
     } else {
@@ -541,10 +542,9 @@ function _is_humanoid_mt(ptr) {
  * is single-sourced. */
 function Monnam_t(mtmp) {
     if (!mtmp) return 'It';
-    const gn = _mgivenname(mtmp);
-    if (gn) return gn; /* proper name: no article, no capitalisation */
-    const s = mon_nam(mtmp); /* "the kitten" / "it" */
-    return s.charAt(0).toUpperCase() + s.slice(1); /* "The kitten" / "It" */
+    /* x_monnam checks canspotmon BEFORE the given name (do_name.c:863), so an
+     * unseen named pet is "It", not its name. */
+    return Monnam(mtmp);
 }
 function missile_name(obj) {
     switch (obj.otyp | 0) {
@@ -5860,8 +5860,21 @@ export async function mintrap(mtmp, mintrapflags) {
                 mtmp.mtrapped = 0;
             }
         }
-        else if (is_metallivorous(mtmp)) {
-            /* BEAR_TRAP / SPIKED_PIT eating — no RNG. */
+        else if ((((mtmp.data?.mflags1 | 0) & 0x80000000) !== 0)) {
+            /* C trap.c:3756-3772 metallivorous(mptr) (M1_METALLIVORE, monflag.h:115):
+             * eats a bear trap / munches spikes; no RNG. */
+            if (trap.ttyp === BEAR_TRAP) {
+                if (canseemon(mtmp))
+                    await pline(`${Monnam(mtmp)} eats a bear trap!`);
+                deltrap(trap);
+                mtmp.meating = 5;
+                mtmp.mtrapped = 0;
+            } else if (trap.ttyp === SPIKED_PIT) {
+                if (canseemon(mtmp))
+                    await pline(`${Monnam(mtmp)} munches on some spikes!`);
+                trap.ttyp = PIT;
+                mtmp.meating = 5;
+            }
         }
         trap_result = mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished;
     }
@@ -5990,6 +6003,14 @@ export async function fall_through(fthruflag, fflags) {
         return false;
     }
 
+    let controlledFlight = false;
+    if (flying && (flags & _TOOKPLUNGE_T) && td && trap) {
+        /* C trap.c:652-662 */
+        controlledFlight = true;
+        await You(`swoop down ${trap.ttyp === TRAPDOOR
+            ? 'through the trap door' : 'into the gaping hole'}!`);
+    }
+
     const target = {};
     if (game.stronghold_level
         && (u.uz?.dnum | 0) === (game.stronghold_level.dnum | 0)
@@ -6011,7 +6032,7 @@ export async function fall_through(fthruflag, fflags) {
         // ordinary falls measure signed depth, not branch-local level numbers.
         const dist = depth(target) - depth(u.uz);
         if (dist > 1)
-            await You(`${flying ? 'fly' : 'fall'} down a ${dist > 3 ? 'very ' : ''}${dist > 2 ? 'deep ' : ''}shaft!`);
+            await You(`${controlledFlight ? 'fly' : 'fall'} down a ${dist > 3 ? 'very ' : ''}${dist > 2 ? 'deep ' : ''}shaft!`);
     }
     const post = !td ? `The hole in the ${ceiling(u.ux | 0, u.uy | 0)} above you closes up.` : null;
     schedule_goto(target, flying ? 0 : 0x02, null, post);

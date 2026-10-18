@@ -9,6 +9,8 @@ import { see_wsegs, worm_seg_at, worm_known as worm_known_real, detect_wsegs } f
 import { cansee, couldsee, vision_recalc, Blind } from './vision.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import monPmnamesPack from './makemon_pmnames.json' with { type: 'json' };
+import monAcPack from './makemon_ac.json' with { type: 'json' };
+import monMattkPack from './makemon_mattk.json' with { type: 'json' };
 import { observe_object } from './o_init.js';
 import { sticks, attacktype } from './dog.js';
 import { SEE_INVIS, TELEPAT, DETECT_MONSTERS, INVIS, INTRINSIC, BOLT_LIM } from './const.js';
@@ -78,13 +80,18 @@ import { touch_artifact_youmonst as _rt_touch_artifact_youmonst } from './wizcmd
 import { hates_silver as _rt_hates_silver } from './makemon.js';
 import { losehp as _rt_losehp } from './dokick.js';
 import { exercise as _rt_exercise } from './attrib.js';
-import { yname as _rt_yname, dropx as _rt_dropx, hitfloor as _rt_hitfloor, freeinv as _rt_freeinv, surface as _rt_surface } from './cmd.js';
+import { coord_desc as _rt_coord_desc, yname as _rt_yname, dropx as _rt_dropx, hitfloor as _rt_hitfloor, freeinv as _rt_freeinv, surface as _rt_surface } from './cmd.js';
 import { killer_xname as _rt_killer_xname, Tobjnam as _rt_Tobjnam } from './objnam.js';
 import { remove_worn_item as _rt_remove_worn_item } from './steal.js';
 import { bypass_obj as _rt_bypass_obj } from './worn.js';
 import { clear_bypasses as _rt_clear_bypasses, nxt_unbypassed_obj as _rt_nxt_unbypassed_obj } from './trap.js';
 import { is_fainted } from './eat.js';
 import { ENV } from './hostenv.js';
+import { TRUE_RUMORS, TRUE_RUMOR_OFFSETS, TRUE_RUMOR_SIZE, FALSE_RUMORS, FALSE_RUMOR_OFFSETS, FALSE_RUMOR_SIZE } from './engrave_data.js';
+import { dat_content } from './dat_source.js';
+import { xcrypt } from './mklev.js';
+import { display_text_window } from './com_pager.js';
+import { ECMD_OK } from './const.js';
 
 // ── Trap glyph table ──
 // C ref: include/defsym.h trap PCHAR entries (lines 157-183) + include/rm.h:484
@@ -1943,7 +1950,12 @@ function _maybe_display_usteed() {
     const u = game.u || {};
     const steed = u.usteed;
     if (steed && mon_visible(steed)) {
-        const mndx = (steed.mnum ?? steed.mndx) | 0;
+        /* C display.h:560-562 ridden_mon_to_glyph(mon, rng) -> what_mon(), i.e.
+         * Hallucination ? random_monster(rng) : mon (display.h:197): one
+         * rn2(NUMMONS) on the DISPLAY stream per paint of the rider's square. */
+        const mndx = _hallucinating_dsp()
+            ? rn2_on_display_rng(MON_MCOLOR.length)
+            : (steed.mnum ?? steed.mndx) | 0;
         const mlet = (mndx >= 0 && mndx < MON_MLET.length) ? MON_MLET[mndx] : 53;
         return {
             ch: monster_symbol(mlet),
@@ -2931,7 +2943,7 @@ function _maybe_snapshot_painted_screen() {
             return;
         }
         if (!_res || _pend.startsWith(_res)
-            || _topl_split_for_more(_res + '  ' + _pend) === null) return;
+            || _topl_split_for_more(_res + '  ' + _pend, [_res.length]) === null) return;
         if (!g._earlyBotl || g._earlyBotl.turn !== (g.moves | 0))
             g._earlyBotl = { turn: g.moves | 0, botl: _capture_botl(),
                 cells: _capture_painted_cells(), moves: _painted_moves() };
@@ -3146,6 +3158,7 @@ export function level_transition_capture_old_paint() {
         moves: _painted_moves(),
         dlevel: g.u?.uz?.dlevel | 0,
         dnum: g.u?.uz?.dnum | 0,
+        level: g.level,
     };
 }
 // ── Pre-movemon painted frame (cmdq fireassist swap --More-- freeze) ──
@@ -3285,16 +3298,33 @@ export async function level_transition_arrival_more(msg, oldPaint) {
     const _ambientSnap = g._paintedSnapshot;
     const _pageFrames = g._movemonPageFrames;
     g._pending_message = '';
+    let _arrConsumed = 0;      /* offset of the current page within `msg` */
     // Drive the forced more() over each committed page in turn.  _topl_more shows
     // "<committed>--More--", marks _inMovemonMore (because _paintedSnapshot is
     // key, then restores _inMovemonMore.  After the last one, page-cleanup drops the
     // snapshot so the post-dismiss render uses the live new-level buffer.
     for (let i = 0; i < _pages.length; i++) {
         const _pg = _pages[i];
+        const _arrEnd = _arrConsumed + (_pg ? _pg.length : 0);
+        _arrConsumed = _arrEnd + 2;
         if (!_pg) continue;
+        /* C pline.c:273-274: a non-last page whose more() was raised by a later
+         * pline of the COMMAND (not a movemon block) shows the terminal as that
+         * pline's flush_screen() left it — the pline-flush log's record at this
+         * page's committed end (use_pick_axe2's "You start digging downward."
+         * paged by shopdig's verbalize shows the pre-turn shopkeeper and HP,
+         * dig.c:1348-1350, shk.c:5048).  Only a record taken on the level being
+         * LEFT qualifies: once goto_level has switched levels nothing repaints
+         * the physical map until docrt() (do.c:1840), so a pline flushed during
+         * the transition (dokick.c:439-454 "You hear something shatter!") still
+         * shows the old level, which is oldPaint. */
+        let _flushPf = (i < _pages.length - 1 && !(_pageFrames && _pageFrames[i]))
+            ? _pline_flush_frame_select(_arrEnd, msg) : null;
+        if (_flushPf && _flushPf.level !== oldPaint.level) _flushPf = null;
         const _isLast = (i === _pages.length - 1);
         const _frame = _isLast ? oldPaint
             : (_pageFrames && _pageFrames[i]) ? _pageFrames[i]
+            : _flushPf ? _flushPf
             : (i === 0 && _ambientSnap) ? _ambientSnap
             : oldPaint;
         const _heldBotl = _isLast && g._botlPaintHeld ? g._lastPaintedBotl : null;
@@ -5355,6 +5385,7 @@ export function _pline_flush_frame_record(off, msg) {
     g._plineFlushFrames.push({
         off,
         msg,
+        level: g.level,     /* the level whose map was painted (arrival pager) */
         cells: _capture_painted_cells(),
         moves: _painted_moves(),
         botl: _capture_botl(),
@@ -5831,7 +5862,7 @@ function _topl_joins_for(line) {
 // A line with NO joins is a single atomic pline and is NEVER split, regardless of
 // width (C update_topl prints the over-wide line and only more()s when a NEXT
 // message arrives — which, for a lone pline, never does this turn).
-export function topl_force_break_after(msg, clears = false, fullLine = null) {
+export function topl_force_break_after(msg, clears = false, fullLine = null, cells = null) {
     const t = String(msg ?? '');
     if (!t) return;
     /* An earlier break on the same text stops being the LAST such segment once
@@ -5855,7 +5886,7 @@ export function topl_force_break_after(msg, clears = false, fullLine = null) {
         /* the flush is followed by a cls() (gulpmu's swallowed(1)), which
          * wipes the line if more() was a no-op under WIN_STOP */
         clears,
-        frame: { cells: _capture_painted_cells(), moves: _painted_moves(),
+        frame: { cells: cells || _capture_painted_cells(), moves: _painted_moves(),
                  botl: _capture_botl() },
     });
 }
@@ -5863,7 +5894,10 @@ export function topl_force_break_after(msg, clears = false, fullLine = null) {
  * whatever pline it just emitted.  The topline accumulator holds the WHOLE
  * window's text by then, so the break belongs after its LAST segment — the
  * boundary _topl_joins records. */
-export function topl_force_break_now(clears = false) {
+/* The terminal as of the last flush, for callers whose display_nhwindow(WIN_MESSAGE)
+ * runs after newsym() calls that C's gbuf has not yet flushed to the screen. */
+export function capture_flushed_cells() { return _capture_painted_cells(); }
+export function topl_force_break_now(clears = false, cells = null) {
     const g = game;
     /* C ref: win/tty/topl.c tty_display_nhwindow(WIN_MESSAGE) — more() fires
      * whenever the topline is occupied, whether or not the caller blocks.  A
@@ -5882,7 +5916,7 @@ export function topl_force_break_now(clears = false) {
     const joins = (g._topl_joins_src === line && Array.isArray(g._topl_joins))
         ? g._topl_joins : null;
     const start = (joins && joins.length) ? joins[joins.length - 1] + 2 : 0;
-    topl_force_break_after(line.slice(start), clears, line);
+    topl_force_break_after(line.slice(start), clears, line, cells);
 }
 function _topl_force_break_here(seg, laterSegments = []) {
     /* topl.c:150 — more() is a no-op while WIN_STOP is live (ESC at an earlier
@@ -6169,7 +6203,7 @@ export async function force_more_lone_frame(msg) {
     if (_mo?.mapOnly && _mo.msg === f.msg && game.flags?.time
         && (_mo.moves | 0) !== (_painted_moves() | 0)) return force_more(msg);
     const saved = game._paintedSnapshot;
-    game._paintedSnapshot = { cells: f.cells, moves: f.moves, botl: _capture_botl() };
+    game._paintedSnapshot = { cells: f.cells, moves: f.moves, botl: f.botl || _capture_botl() };
     try {
         return await force_more(msg);
     } finally {
@@ -6178,6 +6212,13 @@ export async function force_more_lone_frame(msg) {
 }
 
 // C tty display_nhwindow: acknowledge all pending message pages in order.
+function _botl_text_window_open() {
+    const paintedBlind = game._botlPaintedBlind;
+    const b = _capture_botl();
+    if (b && paintedBlind != null && !!paintedBlind !== !!b.blinded)
+        game._botlPaintedBlind = paintedBlind, b.blinded = !!paintedBlind;
+    return b;
+}
 export async function force_more_pages(full, retainFinalFrame = true, textWindowOpens = false) {
     const pages = _topl_more_pages(full, _topl_joins_snapshot(full));
     const frames = game._plineFlushFrames?.slice() || [];
@@ -6227,7 +6268,7 @@ export async function force_more_pages(full, retainFinalFrame = true, textWindow
         }
         if (frame) game._paintedSnapshot = {
             cells: frame.cells, moves: frame.moves,
-            botl: (textWindowOpens && i === pages.length - 1) ? _capture_botl()
+            botl: (textWindowOpens && i === pages.length - 1) ? _botl_text_window_open()
                 : (frame.botl || null),
         };
         try {
@@ -6309,7 +6350,16 @@ export async function force_more(committed, dismissMore, alreadyPainted = false)
          * snapshot installed below holds.  The pline-flush log records the
          * exact frame (the same select force_more_pages uses); a page with no
          * record falls through to the existing per-page / ambient choice. */
-        let _pf = _pline_flush_frame_select(_end, _full, _flushFrames);
+        /* A caller that pages a joined topline one page at a time (look_here's
+         * window, js/look-window.js) hands each page in alone; the flush frame
+         * recorded for the NEXT message lives in the joined line's offsets, so
+         * select against that line (pline.c:273-274 froze the frame there). */
+        const _mfc = g._moreFullCtx;
+        const _useCtx = !!_mfc && _mfc.full.slice(_mfc.start, _mfc.start + _full.length) === _full;
+        let _pf = _useCtx
+            ? _pline_flush_frame_select(_end + _mfc.start, _mfc.full, _flushFrames)
+            : null;
+        if (!_pf) _pf = _pline_flush_frame_select(_end, _full, _flushFrames);
         // C pline.c:273-276 flushes before update_topl() raises more()
         // (topl.c:273-275). An exact following-message frame owns this page
         // even when no movemon/occupation snapshot was installed beforehand.
@@ -6492,8 +6542,14 @@ export async function occupation_force_more(committed, frame, framesMoves, frame
         /* done_eating (eat.c:549-556) runs newuhs(FALSE) — botl = TRUE — BEFORE
          * its "You finish eating" pline, whose flush_screen repaints the status
          * with the NEW hunger before more() pages the prior line. */
-        if (postNewuhs && framesUhs != null && g._paintedSnapshot.botl)
-            g._paintedSnapshot.botl = { ...g._paintedSnapshot.botl, uhs: (framesUhs | 0) };
+        if (postNewuhs && framesUhs != null && g._paintedSnapshot.botl) {
+            /* The same pline's flush_screen() runs bot() (pline.c:273-274), so HP
+             * is live too: a pet pickup/drop page mid-meal must not keep the
+             * corpse-flavor frame's HP when regen ran since (display.c:2237). */
+            const _live = _capture_botl();
+            g._paintedSnapshot.botl = { ...g._paintedSnapshot.botl, uhs: (framesUhs | 0),
+                ...(_live ? { uhp: _live.uhp, uhpmax: _live.uhpmax, mh: _live.mh, mhmax: _live.mhmax } : {}) };
+        }
     }
     const morc = await _topl_more(committed);
     // Page-cleanup: drop the snapshot we installed (so the post-dismiss render uses the
@@ -6838,6 +6894,25 @@ async function _flush_screen_body(mode) {
                 const _fk = _topl_force_break_entry(remainder.slice(0, _headEnd));
                 if (_fk >= 0 && game._topl_force_breaks[_fk].clears)
                     game._pending_message = '';
+                /* The cls() can also follow a LATER, suppressed pline: allmain.c
+                 * :383 unmul's "You survived that attempt on your life." owns
+                 * the ESC'd page and is drawn, then Boots_on -> pooleffects
+                 * (hack.c:3256) plines "You slowly rise above the surface."
+                 * under WIN_STOP (topl.c:257 skip) and its docrt() -> cls()
+                 * (display.c:1731, 2196) wipes the drawn head all the same. */
+                else if (remainderJoins && remainderJoins.length) {
+                    const _fb = game._topl_force_breaks || [];
+                    for (let _i = 0; _i < remainderJoins.length; _i++) {
+                        const _s = remainderJoins[_i] + 2;
+                        const _e = (_i + 1 < remainderJoins.length)
+                            ? remainderJoins[_i + 1] : remainder.length;
+                        const _seg = remainder.slice(_s, _e);
+                        if (_fb.some((e) => e.clears && e.text === _seg)) {
+                            game._pending_message = '';
+                            break;
+                        }
+                    }
+                }
             }
             if (!(game._topl_urgent_marks || []).includes(remainder.slice(0, _headEnd))) {
                 game._topl_win_stop_armed = false;
@@ -7279,6 +7354,17 @@ export function msgtype_suppressed(msg) {
 export async function pline(msg, ...args) {
     if (args.length > 0)
         msg = nh_sprintf(msg, args);
+    /* C pline.c:162-190 vpline(): save a11y.msg_loc and always reset it; with
+     * accessiblemsg and a valid location, prefix the message with
+     * coord_desc(GPCOORDS_COMFULL) + ": ". */
+    if (game.a11y?.msg_loc) {
+        const mxy = game.a11y.msg_loc;
+        game.a11y.msg_loc = { x: 0, y: 0 };
+        if (msg && game.a11y.accessiblemsg && isok(mxy.x, mxy.y)) {
+            const gp = game.iflags?.getpos_coords;
+            msg = _rt_coord_desc(mxy.x, mxy.y, (!gp || gp === 'n') ? 'f' : gp) + ': ' + msg;
+        }
+    }
     // C pline.c:247-264: urgent messages bypass hide and no-repeat suppression.
     const msgtyp = msgtype_type(msg);
     if (!game._topl_urgent_next && (msgtyp === 'hide'
@@ -7355,19 +7441,16 @@ export async function pline(msg, ...args) {
         return;
     } else if (game._topl_win_stop_armed) {
         game._topl_win_stop_armed = false;
-        /* C topl.c:298-299: the message that arrives immediately after an
-         * ESC-dismissed page is still processed with the old `skip` value.
-         * `You die...` is the explicit escape hatch: it clears WIN_STOP and
-         * is painted, so the following lifesaving plines can join it on the
-         * same topline.  force_more() and pline() are separate JS calls, so
-         * release the armed bit before the normal paint path sees this text. */
-        if (String(msg).startsWith('You die')) {
+        const _isDie = String(msg).startsWith('You die');
+        const _deathEscape = _isDie
+            && (String(game._topl_last_more_committed || '').length + 2
+                + String(msg).length) < TOPL_LIMIT;
+        if (_isDie) {
             game._topl_win_stop = false;
             game._topl_win_stop_buf = null;
             game._arrival_more_suppress = false;
         }
-        const _deathEscape = String(msg).startsWith('You die');
-        if (game._arrival_more_suppress && !_deathEscape) {
+        if (game._arrival_more_suppress && !_isDie) {
             game._arrival_more_suppress = false;
             game._topl_win_stop = true;
             return await pline(msg);
@@ -7459,7 +7542,7 @@ export async function pline(msg, ...args) {
          * turn that ran in between (see force_more_lone_frame). */
         if (!_res && game.level)
             game._lonePlineFrame = { msg: String(msg), cells: _capture_painted_cells(),
-                                     moves: _painted_moves() };
+                                     moves: _painted_moves(), botl: _capture_botl() };
         game._pending_message = msg;
     }
     /* C ref: pline.c:282 — `(void) strncpy(gp.prevmsg, line, BUFSZ)`, run after
@@ -9293,7 +9376,7 @@ export async function cast_chain_lightning() {
 /* C artifact.c:2503-2578 retouch_object() for the hero.  Gaps: the artifact
  * bane_applies() arm and BELL_OF_OPENING early-out are not modelled; touch_blasted
  * is approximated as false (a non-blasting touch_artifact success). */
-async function retouch_object_hero(obj, loseit) {
+export async function retouch_object_hero(obj, loseit) {
     if (await _rt_touch_artifact_youmonst(obj)) {
         const ag = ((MKOBJ_OC_MATERIAL[obj.otyp | 0] | 0) === 14 /* SILVER */) && (((game.u?.ulycn ?? -1) | 0) >= LOW_PM || !!(game.youmonst?.data && _rt_hates_silver(game.youmonst.data)));
         if (!ag) return 1;
@@ -9349,3 +9432,123 @@ export async function retouch_equipment(dropflag) {
     }
 }
 let _rt_nesting = 0;
+
+/* C rumors.c:196 rumor_check() via wizcmds.c:1102 wiz_rumor_check() — #wizrumorcheck.
+ * The compiled rumors file is represented by the decoded TRUE_/FALSE_RUMORS
+ * tables; each fgets() line is the text re-padded with '_' to its record length. */
+function rumor_padded(lines, offsets, i) {
+    const len = offsets[i + 1] - offsets[i] - 1;
+    return lines[i] + '_'.repeat(Math.max(0, len - lines[i].length));
+}
+const rumor6 = (n) => String(n).padStart(6, '0');
+const rumor6x = (n) => n.toString(16).padStart(6, '0');
+function others_check(ftype, fname, out) {
+    out.push('');
+    out.push(ftype);
+    const raw = dat_content(fname).split('\n');
+    if (raw[raw.length - 1] === '') raw.pop();
+    const lines = raw.slice(1).map((l) => xcrypt(l)); /* skip "#" comment line */
+    out.push(lines[0]);
+    if (lines.length < 2) {
+        out.push('(no second entry)');
+        return;
+    }
+    out.push(lines[1]);
+    if (lines.length === 2) {
+        out.push('(only two entries)');
+    } else {
+        if (lines.length > 3) out.push(' ...');
+        out.push(lines[lines.length - 1]);
+    }
+}
+export async function wiz_rumor_check() {
+    const out = [];
+    const tStart = 109, tEnd = tStart + TRUE_RUMOR_SIZE;
+    const fStart = tEnd, fEnd = fStart + FALSE_RUMOR_SIZE;
+    out.push(`T start=${rumor6(tStart)} (${rumor6x(tStart)}), end=${rumor6(tEnd)} (${rumor6x(tEnd)}), size=${rumor6(TRUE_RUMOR_SIZE)} (${rumor6x(TRUE_RUMOR_SIZE)})`);
+    out.push(`F start=${rumor6(fStart)} (${rumor6x(fStart)}), end=${rumor6(fEnd)} (${rumor6x(fEnd)}), size=${rumor6(FALSE_RUMOR_SIZE)} (${rumor6x(FALSE_RUMOR_SIZE)})`);
+    out.push(`T ${rumor6(tStart)} ${rumor_padded(TRUE_RUMORS, TRUE_RUMOR_OFFSETS, 0)}`);
+    out.push(`  ${''.padStart(6)} ${rumor_padded(TRUE_RUMORS, TRUE_RUMOR_OFFSETS, TRUE_RUMORS.length - 1)}`);
+    out.push(`F ${rumor6(fStart)} ${rumor_padded(FALSE_RUMORS, FALSE_RUMOR_OFFSETS, 0)}`);
+    out.push(`  ${''.padStart(6)} ${rumor_padded(FALSE_RUMORS, FALSE_RUMOR_OFFSETS, FALSE_RUMORS.length - 1)}`);
+    others_check('Engravings:', 'engrave', out);
+    others_check('Epitaphs:', 'epitaph', out);
+    others_check('Bogus monsters:', 'bogusmon', out);
+    await display_text_window(out);
+    return ECMD_OK;
+}
+
+/* C mondata.c:501 mstrength_ranged_attk() */
+function mstrength_ranged_attk(mattk) {
+    const atk_mask = (1 << 12 /* AT_BREA */) | (1 << 10 /* AT_SPIT */) | (1 << 15 /* AT_GAZE */);
+    for (let i = 0; i < 6; i++) {
+        const j = mattk[i].aatyp;
+        if (j >= 254 /* AT_WEAP */ || (j < 32 && (atk_mask & (1 << j)) !== 0))
+            return true;
+    }
+    return false;
+}
+/* C mondata.c:428 mstrength(ptr) — rows from makemon_{mons,ac,mattk,pmnames}.json */
+function mstrength(mndx) {
+    const row = monsPack.mons[mndx], ac = monAcPack.ac[mndx];
+    const mattk = monMattkPack.mattk[mndx], name = monPmnamesPack.pmnames[mndx][2];
+    const geno = row[3], mflags2 = row[7] >>> 0, mmove = row[9];
+    let tmp = row[1], n;
+    if (tmp > 49) /* special fixed hp monster */
+        tmp = Math.trunc(2 * (tmp - 6) / 4);
+    n = (geno & 0x0080 /* G_SGROUP */) ? 1 : 0;
+    n += ((geno & 0x0040 /* G_LGROUP */) ? 1 : 0) << 1;
+    if (mstrength_ranged_attk(mattk)) n++;
+    n += (ac < 4) ? 1 : 0;
+    n += (ac < 0) ? 1 : 0;
+    n += (mmove >= 18) ? 1 : 0;
+    for (let i = 0; i < 6; i++) {
+        const tmp2 = mattk[i].aatyp;
+        n += (tmp2 > 0) ? 1 : 0;
+        n += (tmp2 === 255 /* AT_MAGC */) ? 1 : 0;
+        n += (tmp2 === 254 /* AT_WEAP */ && (mflags2 & 0x04000000 /* M2_STRONG */)) ? 1 : 0;
+        if (tmp2 === 13 /* AT_EXPL */) {
+            const tmp3 = mattk[i].adtyp;
+            n += (tmp3 === 3 /* AD_COLD */ || tmp3 === 2 /* AD_FIRE */) ? 3
+                : (tmp3 === 6 /* AD_ELEC */) ? 5 : 0;
+        }
+    }
+    for (let i = 0; i < 6; i++) {
+        const tmp2 = mattk[i].adtyp;
+        if (tmp2 === 15 || tmp2 === 18 || tmp2 === 7 || tmp2 === 30
+            || tmp2 === 31 || tmp2 === 29) /* DRLI STON DRST DRDX DRCO WERE */
+            n += 2;
+        else if (name !== "grid bug")
+            n += (tmp2 !== 0 /* AD_PHYS */) ? 1 : 0;
+        n += (mattk[i].damd * mattk[i].damn > 23) ? 1 : 0;
+    }
+    if (name === "leprechaun") n -= 2;
+    if (name === "killer bee" || name === "soldier ant") n += 2;
+    if (n === 0) tmp -= 1;
+    else if (n < 6) tmp += Math.trunc(n / 3) + 1;
+    else tmp += Math.trunc(n / 2);
+    return (tmp >= 0) ? tmp : 0;
+}
+/* C wizcmds.c:1790 wiz_mon_diff() — #wizmondiff; NHW_TEXT, ECMD_OK, no turn/RNG. */
+export async function wiz_mon_diff() {
+    const out = [];
+    let trouble = 0;
+    const rows = monsPack.mons;
+    for (let cnt = 0; cnt < rows.length; cnt++) {
+        const mcalculated = mstrength(cnt);
+        const mhardcoded = rows[cnt][2];
+        const mdiff = mhardcoded - mcalculated;
+        if (mdiff) {
+            if (!trouble++)
+                out.push("Review of monster difficulty ratings [index:level]:");
+            let mlev = rows[cnt][1];
+            if (mlev > 50) /* hack for named demons */
+                mlev = 50;
+            out.push(`${monPmnamesPack.pmnames[cnt][2].padEnd(18)} [${String(cnt).padStart(3)}:${String(mlev).padStart(2)}]: calculated: ${String(mcalculated).padStart(2)}, hardcoded: ${String(mhardcoded).padStart(2)} (${mdiff > 0 ? '+' : ''}${mdiff})`);
+        }
+    }
+    if (!trouble)
+        out.push("No monster difficulty discrepancies were detected.");
+    await display_text_window(out);
+    return ECMD_OK;
+}

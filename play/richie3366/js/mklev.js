@@ -12735,7 +12735,11 @@ function load_mon_loca() {
                 quan: 2, buc: 'blessed', montype: 'spinach',
             });
             // des.engraving({ coord=tinloc, type="burn", text="Elbereth" })
-            make_engr_at(tinloc.x, tinloc.y, 'Elbereth', null, 0, BURN);
+            { // C ref: sp_lev.c lspo_engraving `:3930-3934` des ep-tail
+              // (no guardobjects/degrade params: FALSE/TRUE defaults).
+                const ep = make_engr_at(tinloc.x, tinloc.y, 'Elbereth', null, 0, BURN);
+                if (ep) { ep.guardobjects = 0; ep.nowipeout = 0; }
+            }
         }
     }
 
@@ -12995,7 +12999,7 @@ async function load_mon_filb() {
  * whole-map non_diggable; 2 fixed pits + 4 random traps; 12 hostile
  * bugbears on siege duty.
  * Named omissions: humidity-aware get_location for water-likers;
- * ensure_way_out; spo_end_moninvent m_dowear.
+ * ensure_way_out.
  */
 function load_cav_strt() {
     const g = game;
@@ -13144,6 +13148,9 @@ function load_cav_strt() {
         };
         give({ id: 'leather armor', spe: 5 });
         give({ id: 'club', spe: 5 });
+        // C: sp_lev.c spo_end_moninvent `:3032–3035` → m_dowear(TRUE) after
+        // Karnov custom invent (creation: sync-through, no messages/RNG).
+        m_dowear(mtmp, true);
     }
     // des.object("chest", 34,02)
     mksobj_at(CHEST, mx + 34, my + 2, true, true);
@@ -14958,7 +14965,11 @@ function load_soko1_1() {
                 impossible('multiple prizes on %s level', 'sokoban end');
             }
         }
-        make_engr_at(pt.x, pt.y, 'Elbereth', null, 0, BURN);
+        { // C ref: sp_lev.c lspo_engraving `:3930-3934` des ep-tail
+          // (no guardobjects/degrade params: FALSE/TRUE defaults).
+            const ep = make_engr_at(pt.x, pt.y, 'Elbereth', null, 0, BURN);
+            if (ep) { ep.guardobjects = 0; ep.nowipeout = 0; }
+        }
         {
             const otmp = mksobj_at(SCR_SCARE_MONSTER, pt.x, pt.y, true, true);
             if (otmp) curse(otmp);
@@ -15138,7 +15149,11 @@ function load_soko1_2() {
                 impossible('multiple prizes on %s level', 'sokoban end');
             }
         }
-        make_engr_at(pt.x, pt.y, 'Elbereth', null, 0, BURN);
+        { // C ref: sp_lev.c lspo_engraving `:3930-3934` des ep-tail
+          // (no guardobjects/degrade params: FALSE/TRUE defaults).
+            const ep = make_engr_at(pt.x, pt.y, 'Elbereth', null, 0, BURN);
+            if (ep) { ep.guardobjects = 0; ep.nowipeout = 0; }
+        }
         {
             const otmp = mksobj_at(SCR_SCARE_MONSTER, pt.x, pt.y, true, true);
             if (otmp) curse(otmp);
@@ -18743,7 +18758,10 @@ export async function movebubbles() {
                         (b.cons || (b.cons = [])).unshift({ x, y, what: CONS_TRAP, list: btrap });
                     }
                     /* C `:1644–1645`: levl[x][y] = water_pos (S_water
-                     * glyph, WATER, zeroed seenv/lit) then block_point. */
+                     * glyph, WATER, zeroed seenv/lit) then block_point.
+                     * water_pos zeroes the whole struct (rm.h order:
+                     * glyph/typ/seenv/flags/horizontal/lit/waslit/
+                     * roomno/edge/candig), so reset every field here. */
                     const loc = g.level.at(x, y);
                     if (loc) {
                         loc.remembered_glyph = {
@@ -18754,6 +18772,12 @@ export async function movebubbles() {
                         loc.typ = WATER;
                         loc.lit = false;
                         loc.seenv = 0;
+                        loc.flags = 0;
+                        loc.horizontal = false;
+                        loc.waslit = false;
+                        loc.roomno = 0;
+                        loc.edge = false;
+                        loc.candig = 0;
                         block_point(x, y);
                     }
                 }
@@ -18771,6 +18795,17 @@ export async function movebubbles() {
                 loc.remembered_glyph = { ...airGlyph };
                 loc.typ = AIR;
                 loc.lit = true;
+                /* C `:1653–1654`: levl[x][y] = air_pos zeroes the whole
+                 * struct (rm.h order: glyph/typ/seenv/flags/horizontal/
+                 * lit/waslit/roomno/edge/candig), not just typ/lit —
+                 * seenv in particular must not go stale across turns. */
+                loc.seenv = 0;
+                loc.flags = 0;
+                loc.horizontal = false;
+                loc.waslit = false;
+                loc.roomno = 0;
+                loc.edge = false;
+                loc.candig = 0;
                 recalc_block_point(x, y);
                 /* C `:1655–1663`: break up the all-air/all-cloud
                  * perimeter; CLOUD cells block. */
@@ -24990,7 +25025,11 @@ function load_castle() {
                 if (WAN_WISHING >= 0) addContent(WAN_WISHING);
                 if (POT_GAIN_LEVEL >= 0) addContent(POT_GAIN_LEVEL);
             }
-            make_engr_at(loc.x, loc.y, 'Elbereth', null, 0, BURN);
+            { // C ref: sp_lev.c lspo_engraving `:3930-3934` des ep-tail
+              // (no guardobjects/degrade params: FALSE/TRUE defaults).
+                const ep = make_engr_at(loc.x, loc.y, 'Elbereth', null, 0, BURN);
+                if (ep) { ep.guardobjects = 0; ep.nowipeout = 0; }
+            }
             {
                 const otmp = mksobj_at(SCR_SCARE_MONSTER, loc.x, loc.y, true, true);
                 if (otmp) curse(otmp);

@@ -3,7 +3,7 @@ import { touch_artifact_mon, lifesaved_monster, kop_revival, m_consume_obj, add_
 import { newobj } from './game.js';
 import { beg } from './sounds.js';
 import { is_pole as is_pole_dm, flooreffects as flooreffects_dm, xytodir as xytodir_dm, dirtocoord as dirtocoord_dm } from './cmd.js';
-import { wizdeadorgone } from './cmd.js';
+import { wizdeadorgone, set_msg_xy as set_msg_xy_dm } from './cmd.js';
 import { m_in_out_region as m_in_out_region_dm } from './region.js';
 import { set_apparxy as set_apparxy_dm, itsstuck, find_pmmonst, bee_eat_jelly } from './monmove.js';
 // @ts-nocheck
@@ -18,7 +18,7 @@ import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 import { unstuck as unstuck_dm, m_unleash, sticks, dismount_steed as dismount_steed_qm } from './dog.js';
 import { topl_force_break_after as topl_force_break_after_qm, GLYPHCLS_OBJ as GLYPHCLS_OBJ_DM } from './display.js';
 import { y_monnam as y_monnam_qm, mon_hates_silver, stagger as stagger_dm } from './mhitm.js';
-import { an as an_qm, makeplural as makeplural_dm } from './objnam.js';
+import { an as an_qm, makeplural as makeplural_dm, oname as oname_dm } from './objnam.js';
 import { OC_DESCR as OC_DESCR_QM } from './oc_descr_data.js';
 import { OC_NAME as OC_NAME_QM } from './oc_name_data.js';
 import { DEFSYM_EXPLANATION as DEFSYM_EXPL_QM } from './defsym_data.js';
@@ -35,7 +35,7 @@ import { select_rwep, m_is_steadfast } from './uhitm.js';
 import { ammo_and_launcher as ammo_and_launcher_dm } from './hold_another_object.js';
 import { nomul as nomul_dm } from './allmain.js';
 import { x_monnam, You, hliquid, noit_Monnam } from './mhitm.js';
-import { game } from './gstate.js';
+import { game, wizard } from './gstate.js';
 import { pre_mm_attack as pre_mm_attack_real } from './mhitm.js';
 import { dist2, s_suffix } from './hacklib.js';
 import { couldsee as couldsee_vision, clear_path, do_clear_area, cansee, recalc_block_point } from './vision.js';
@@ -64,9 +64,11 @@ import { FF_FAITHFUL } from './fastforward.js';
 import { remove_worm as remove_worm_real, wormgone as wormgone_real,
          place_worm_tail_randomly as place_worm_tail_randomly_real } from './worm.js';
 
-/* C pline_mon() adds a monster-coordinate channel that this terminal does
- * not expose; retain its immediate message semantics for these two callers. */
-function pline_mon(_mon, line, ...args) {
+/* C pline.c:132-146 pline_mon(): set_msg_xy() to the hero (0,0) or the
+ * monster's square, then pline() — the accessiblemsg "(dir): " prefix reads it. */
+function pline_mon(mon, line, ...args) {
+    if (mon === game.youmonst) set_msg_xy_dm(0, 0);
+    else if (mon) set_msg_xy_dm(mon.mx, mon.my);
     let i = 0;
     pline(String(line).replace(/%s/g, () => String(args[i++] ?? '')));
 }
@@ -343,9 +345,13 @@ function obj_weight(obj) {
         const cn = obj.corpsenm | 0;
         let lwt = quan * ((cn < MONS_CWT.length ? MONS_CWT[cn] : 0) | 0);
         if (lwt > LARGEST_INT) lwt = LARGEST_INT;
+        /* C mkobj.c:1960-1961: a partly eaten corpse weighs its uneaten share */
+        if (obj.oeaten) lwt = eaten_stat(lwt | 0, obj);
         return lwt | 0;
     }
-    /* C: FOOD eaten — eaten_stat omitted (oeaten rare on pet-goal path). */
+    /* C mkobj.c:1964-1965 */
+    if ((obj.oclass | 0) === FOOD_CLASS && obj.oeaten)
+        return eaten_stat(quan * wt, obj);
     if ((obj.oclass | 0) === COIN_CLASS_) {
         const cwt = Math.trunc((quan + 50) / 100);
         return Math.max(cwt, 1);
@@ -1000,7 +1006,7 @@ async function relobj_dm(mtmp) {
         extract_from_minvent_dm(mtmp, otmp);
         /* C steal.c:839 — verbose && cansee → pline "<Monnam> drops <obj>." */
         if (cansee(omx, omy) && game.flags?.verbose !== false)
-            await pline(`${Monnam_dm(mtmp)} drops ${objName}.`);
+            { set_msg_xy_dm(mtmp.mx, mtmp.my); await pline(`${Monnam_dm(mtmp)} drops ${objName}.`); } /* pline_mon, steal.c:836 */
         if (!await flooreffects_dm(otmp, omx, omy, 'fall')) {
             place_object(otmp, omx, omy);
             stackobj_dm(otmp);
@@ -1198,7 +1204,9 @@ async function dog_obj_name(obj) {
      * corpse", dogmove.c:285 distant_name(obj, doname)); doname covers it. */
     /* A greased corpse is "a greased jackal corpse" (objnam.c:1370-1371), which
      * the species shortcut below cannot render; only a bare corpse may take it. */
-    if (otyp === CORPSE_OTYP && !(obj.greased | 0)) {
+    /* wizweight (objnam.c:1696-1702) appends " (N aum)" in doname; so must not shortcut. */
+    if (otyp === CORPSE_OTYP && !(obj.greased | 0)
+        && !(wizard() && game.iflags?.wizweight)) {
         const sp = obj_pmname_dm(obj);
         const base = sp ? sp + ' corpse' : 'corpse';
         return an_qm(base);
@@ -1404,7 +1412,14 @@ export async function dog_eat(mtmp, obj, x, y, devour) {
     if (sawpet || (seeobj && canseemon(mtmp))) {
         const objName = await dog_obj_name(obj);
         /* C: pline_mon(mtmp, "%s %s %s.", noit_Monnam(mtmp), devour?"devours":"eats", obj_name) */
-        void pline(`${noit_Monnam(mtmp)} ${devour ? 'devours' : 'eats'} ${objName}.`);
+        /* C dogmove.c:286-290: a tunneler "digs in" instead of naming the meal. */
+        const _mndx = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
+        const _tunnels = _mndx >= 0 && _mndx < _MONS.length
+            && ((_MONS[_mndx][6] | 0) & 0x00000020) !== 0; /* tunnels(): M1_TUNNEL */
+        if (_tunnels)
+            pline_mon(mtmp, `${noit_Monnam(mtmp)} digs in.`);
+        else
+            pline_mon(mtmp, `${noit_Monnam(mtmp)} ${devour ? 'devours' : 'eats'} ${objName}.`);
     } else if (seeobj) {
         const objName = await dog_obj_name(obj);
         void pline(`It ${devour ? 'devours' : 'eats'} ${objName}.`);
@@ -1504,8 +1519,11 @@ async function dog_invent(mtmp, edog, udist) {
                  * "<Monnam> picks up <obj>." pline when the tile is in sight. */
                 if (cansee(omx, omy)) {
                     const otmpname = await distant_obj_name(otmp);
-                    if (game.flags?.verbose !== false)
+                    if (game.flags?.verbose !== false) {
+                        /* C pline_xy(omx, omy, ...) = set_msg_xy + vpline (pline.c:150-157) */
+                        set_msg_xy_dm(omx, omy);
                         void pline(`${Monnam_dm(mtmp)} picks up ${otmpname}.`);
+                    }
                 }
                 /* C: obj_extract_self(otmp); newsym(omx,omy); mpickobj(mtmp,otmp). */
                 obj_extract_floor(otmp);
@@ -3161,7 +3179,7 @@ export async function mhitm_knockback(magr, mdef, mattk, mhm, weapon_used) {
 async function monkilled_dm(mdef, mattk) {
     if (cansee(mdef.mx | 0, mdef.my | 0)) {
         const verb = nonliving(mdef.data) ? 'destroyed' : 'killed';
-        pline(`${Monnam_dm(mdef)} is ${verb}!`);
+        pline_mon(mdef, `${Monnam_dm(mdef)} is ${verb}!`);
     } else {
         /* C mon.c:3390-3391 — the sad feeling is deferred until mondead()
          * has ruled out life-saving. */
@@ -3709,7 +3727,7 @@ export async function possibly_unwield(magr, flag) {
         setmnotwielded(magr, obj);
         magr.weapon_check = 0; /* NO_WEAPON_WANTED */
         if (cansee(magr.mx | 0, magr.my | 0)) {
-            pline(`${Monnam(magr)} drops ${(await distant_name(obj, doname))}.`);
+            { set_msg_xy_dm(magr.mx, magr.my); } pline(`${Monnam(magr)} drops ${(await distant_name(obj, doname))}.`);
             newsym(magr.mx | 0, magr.my | 0);
         }
         if (prev) prev.nobj = cur.nobj;
@@ -4427,7 +4445,7 @@ export async function slept_monst(mon) {
 }
 
 /* C mon.c:3300 mon_to_stone(): a non-stone golem becomes a stone golem. */
-async function mon_to_stone(mtmp) {
+export async function mon_to_stone(mtmp) {
     if (mtmp)
         await newcham(mtmp, PM_STONE_GOLEM, 0);
 }
@@ -4473,6 +4491,9 @@ export async function monstone(mtmp) {
     }
     if (makeStatue) {
         statue = (await mkcorpstat(STATUE_OTYP, mtmp, mtmp.data, x, y, CORPSTAT_NONE));
+        /* C mon.c:3345-3346: oname(otmp, MGIVENNAME(mdef)) */
+        if (_has_mgivenname_dm(mtmp))
+            statue = await oname_dm(statue, mtmp.mextra?.mgivenname || mtmp.mgivenname, 0);
         for (const item of kept) await add_to_container(statue, item);
     } else {
         statue = (await mksobj_at(ROCK_OTYP, x, y, true, false));

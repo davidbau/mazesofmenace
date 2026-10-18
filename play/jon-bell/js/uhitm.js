@@ -1,4 +1,5 @@
 import { quest_monster_died } from './quest.js';
+import { create_gas_cloud } from './region.js';
 import { xdir, ydir } from './const.js';
 import { vamprises } from './teleport.js';
 import { spoteffects } from './landing-effects.js';
@@ -8,7 +9,7 @@ import { add_to_minv, pm_to_cham } from './mklev.js';
 import { addinv } from './hold_another_object.js';
 import { merge_choice, inv_cnt, dropy } from './cmd.js';
 import { wizdeadorgone } from './cmd.js';
-import { silver_sears } from './cmd.js';
+import { silver_sears, set_msg_xy as set_msg_xy_uh } from './cmd.js';
 import { is_youmonst, resists_magm } from './mhitm.js';
 import { mhitm_adtyping_u } from './mhitu.js';
 import { night } from './allmain.js';
@@ -3003,6 +3004,10 @@ export async function do_attack(mtmpOrX, y) {
                              fallback state machines are not modelled. */
             /* weaponless: AT_CLAW/AT_TUCH/AT_KICK/AT_BITE/AT_STNG/AT_BUTT/
              * AT_TENT [uhitm.c:5564-5568]. */
+            /* C uhitm.c:5566 find_roll_to_hit() runs per attack row, so state
+             * changed by an earlier row (a steal making the target flee, etc.)
+             * is seen by the next row's to-hit. */
+            _find_roll_to_hit();
             let tmp = _tmpBase;
             /* uhitm.c:419-423 — weapon==NULL here, so `if (weapon)
              * tmp += hitval(...)` never fires; `tmp += weapon_hit_bonus(weapon)`
@@ -3706,6 +3711,10 @@ export async function xkilled(mtmp, xkflags) {
     /* C mon.c:3546-3550 `if (gs.stoned) monstone(mtmp); else mondead(mtmp);` and
      * mon.c:3569-3572 `if (gs.stoned) { gs.stoned = FALSE; goto cleanup; }`.
      * monstone() ends in mondead(), which does the mvitals died++ itself. */
+    /* C mon.c:3103-3104 mondead(): a dying steam vortex leaves a harmless cloud,
+     * before the chameleon/were restore and m_detach. */
+    if ((mtmp.mnum | 0) === 110 /* PM_STEAM_VORTEX */)
+        create_gas_cloud(mtmp.mx, mtmp.my, rn2(10) + 5, 0);
     const _xk_stoned = !!game.stoned;
     let _died_mndx = mndx;
     {
@@ -5332,6 +5341,7 @@ export async function mon_wield_item(mon) {
         mon.weapon_check = SH_NEED_WEAPON;
         obj.owornmask = SR_W_WEP;
         if (canseemon(mon)) {
+            set_msg_xy_uh(mon.mx, mon.my); /* C weapon.c:892 pline_mon */
             const _wieldLine = `${Monnam(mon)} wields ${doname_sh(obj)}${exclaim ? '!' : '.'}`;
             /* C weapon.c:905-918 — a cursed weapon welds as it is picked up.
              * Set W_WEP below before testing mwelded(), then retain the

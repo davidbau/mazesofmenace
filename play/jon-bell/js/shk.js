@@ -4,7 +4,8 @@
 
 import { growl as growl_mhitm, yelp as yelp_mhitm, y_monnam as y_monnam_shk } from './mhitm.js';
 import { game } from './gstate.js';
-import { locomotion } from './mhitm.js';
+import { locomotion, x_monnam as x_monnam_shk } from './mhitm.js';
+import { ARTICLE_THE as ARTICLE_THE_SHK } from './const.js';
 import { makeplural } from './objnam.js';
 import { W_SWAPWEP, W_QUIVER } from './const.js';
 import { make_happy_shoppers, migrate_to_level, mdrop_special_objs } from './dog.js';
@@ -510,6 +511,7 @@ async function menu_pick_pay_items(ibillct, ibill) {
      * (shk.c:1967) must show --More-- first.  DISPLAY-ONLY. */
     if (g._pending_message)
         await force_more(g._pending_message);
+    g._topl_sticky = null;
     /* C:1682-1687 — first pass over ibill[] purely to width-align the prices. */
     let largest_amt = 0;
     for (let i = 0; i < ibillct; i++)
@@ -1028,9 +1030,9 @@ export async function dopay() {
                 await pline(`Moreover, you${stashed_gold ? ' seem to' : ''} have no gold.`);
         } else if (ltmp) {
             await pline(`${shkname(shkp)} is after blood, not gold!`);
-            if (umoney < Math.trunc(ltmp / 2)) {
-                if (!umoney) await pline(`You ${stashed_gold ? 'seem to ' : ''}have no gold.`);
-                else await pline(`You don't have enough gold to satisfy ${shkname(shkp)}.`);
+            if (umoney < Math.trunc(ltmp / 2) || (umoney < ltmp && stashed_gold)) {
+                if (!umoney) await pline(`Moreover, you${stashed_gold ? ' seem to' : ''} have no gold.`);
+                else await pline(`Besides, you don't have enough to interest ${noit_mhim(shkp)}.`);
                 return ECMD_TIME;
             }
             await pline(`But since ${noit_mhis(shkp)} shop has been robbed recently,`);
@@ -1040,15 +1042,15 @@ export async function dopay() {
         } else {
             await pline(`${Shknam(shkp)} is after your hide, not your gold!`);
             if (umoney < 1000) {
-                if (!umoney) await pline(`You ${stashed_gold ? 'seem to ' : ''}have no gold.`);
-                else await pline(`You don't have enough gold to satisfy ${shkname(shkp)}.`);
+                if (!umoney) await pline(`Moreover, you${stashed_gold ? ' seem to' : ''} have no gold.`);
+                else await pline(`Besides, you don't have enough to interest ${noit_mhim(shkp)}.`);
                 return ECMD_TIME;
             }
-            await pline(`You try to appease ${shkname(shkp)} by giving ${shkname(shkp)} 1000 gold pieces.`);
+            /* C shk.c:1932-1936 */
+            await pline(`You try to appease ${canspotmon(shkp) ? x_monnam_shk(shkp, ARTICLE_THE_SHK, 'angry', 0, false) : shkname(shkp)} by giving ${noit_mhim(shkp)} 1000 gold pieces.`);
             await pay(1000, shkp);
             if (String(eshkp.customer || '') !== String(g.plname || g.u?.plname || '') || rn2_shk(3)) {
-                shkp.mpeaceful = 1;
-                eshkp.following = 0;
+                await make_happy_shk(shkp, false);
             } else {
                 await pline(`But ${shkname(shkp)} is as angry as ever.`);
             }
@@ -2791,6 +2793,17 @@ export async function u_entered_shop(enterstring) {
                 await verbalize(not_upset ? 'Will you please leave your %s%s outside?' : 'Leave the %s%s outside.', tool, cnt === 1 ? '' : 's');
             } else await pline('%s %s to let you in with your %s%s.', Shknam(shkp), not_upset ? 'is hesitant' : 'refuses', tool, cnt === 1 ? '' : 's');
             // Complete update_topl's message page before C's extra monster move.
+            await flush_screen(1);
+            await dochug(shkp);
+        } else if (game.u?.usteed) {
+            /* C ref: shk.c:895-908 — the shopkeeper won't admit a steed */
+            const not_upset = !eshkp.surcharge;
+            if (!_shk_Deaf() && !muteshk(shkp)) {
+                SetVoice(shkp, 0, 80, 0);
+                await verbalize(not_upset ? 'Will you please leave %s outside?' : 'Leave %s outside.',
+                                y_monnam_shk(game.u.usteed));
+            } else await pline('%s %s to let you in while you\'re riding %s.', Shknam(shkp),
+                               not_upset ? "doesn't want" : 'refuses', y_monnam_shk(game.u.usteed));
             await flush_screen(1);
             await dochug(shkp);
         }

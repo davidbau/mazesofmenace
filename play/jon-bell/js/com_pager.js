@@ -454,7 +454,7 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipCo
         || (!!_prevRows && _prevRows.length >= 24
         && (rows3 ? _prevRows[21] === '' : true)
         && _prevRows[22] === '' && _prevRows[23] === '' && statusClipCol == null
-        && _prevRows.slice(1, 22).some((r) => r.includes('\x0e')));
+        && _prevRows.slice(1, 22).some((r) => r.includes('\x0e') || r.trim() !== ''));
     const winRows = windowLines.length;
     // CLIP_X: 1-indexed max map column to render when window covers this row.
     const CLIP_X = WIN_COL - 1 + mapClipExtra;
@@ -525,7 +525,14 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipCo
                 output += `\x1b[${col}C`;
             else
                 output += ' '.repeat(Math.max(0, col));
-            output += text;
+            /* wintty.c:1920-1931 + term_clear_screen: a window starting at offx 0
+             * owns the whole screen, and a row is cut at the right edge (tty_putstr truncates at cols-1). */
+            output += text.slice(0, Math.max(0, 79 - col));
+            if (screenRow < 23)
+                output += '\n';
+            continue;
+        }
+        if (fullScreen && WIN_COL === 1 && winRows < 24) {
             if (screenRow < 23)
                 output += '\n';
             continue;
@@ -586,9 +593,13 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipCo
                  * the current window still covers row 22: the overlay compositor
                  * must not resurrect status text in cells the C corner cleanup
                  * erased.  With no clip, retain the normal col-1 behavior. */
+                /* cl_end() runs at the window margin (WIN_COL - 1), not at the
+                 * line's own indent: an indented text line still erases the
+                 * status cells between the margin and its first glyph. */
+                const marginCol = Math.max(0, WIN_COL - 1);
                 const leftStatus = statusClipCol != null
-                    ? Math.min(statusClipCol, Math.max(0, col - 1))
-                    : Math.max(0, col - 1);
+                    ? Math.min(statusClipCol, marginCol)
+                    : marginCol;
                 output += _overlay_status_line(rowStatus(screenRow), leftStatus, '')
                     + `\x1b[${Math.max(1, col - leftStatus)}C` + text;
             }
@@ -733,7 +744,9 @@ export function tty_window_offx(windowLines, footerKind) {
      * branches still differ by one column, which is the real finding: they
      * reach wintty.c with different cw->maxcol (putstr sets longest+1,
      * tty_end_menu sets longest+2). */
-    return Math.min(41, (footerKind === 'more') ? (79 - maxcol) : (78 - maxcol));
+    /* wintty.c:1920-1921 `if (cw->offx < 0) cw->offx = 0;` — a window wider than
+     * the screen starts at offx 0, i.e. content column 1, never negative. */
+    return Math.max(1, Math.min(41, (footerKind === 'more') ? (79 - maxcol) : (78 - maxcol)));
 }
 // ── Status line helpers (inlined from display.js — not exported there) ──
 // C ref: botl.c — bot(), status line 1 and 2 format.

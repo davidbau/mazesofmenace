@@ -64,14 +64,14 @@ import { unconscious } from './pickup.js';
 import { findgold } from './makemon.js';
 import { droppables } from './dogmove.js';
 import { extract_from_minvent } from './trap.js';
-import { obfree, stolen_value } from './dokick.js';
+import { obfree } from './dokick.js';
 import { simpleonames, Tobjnam, armor_simple_name, makeplural, otense, is_quest_artifact as is_quest_artifact_real } from './objnam.js';
 import { end_burn } from './timeout.js';
 import { goodpos } from './trap.js';
 import { obj_extract_self, remove_object, place_object, mdrop_obj_md, revive_corpse, mpickobj, touch_artifact_mon } from './mklev.js';
 import { flooreffects, freeinv, body_part } from './cmd.js';
 import { encumber_msg } from './weight.js';
-import { find_objowner, costly_spot, in_rooms, inhishop, subfrombill, shop_keeper, addtobill as shk_addtobill } from './shk.js';
+import { find_objowner, costly_spot, in_rooms, inhishop, subfrombill, shop_keeper, addtobill as shk_addtobill, stolen_value } from './shk.js';
 import { within_bounded_area } from './rect.js';
 import { PM_DEATH, PM_FAMINE, PM_PESTILENCE } from './pm.generated.js';
 /* C zap.c:1458 obj_resists — the body WITH C's Rider-corpse clause

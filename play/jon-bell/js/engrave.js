@@ -841,6 +841,10 @@ export async function engrave() {
         text = text.slice(0, endc);
         eng.text = text;
         await pline(`You are only able to write "${text.slice(0, endc)}".`);
+    } else {
+        /* C engrave.c:1453-1457 — input not truncated; stylus may still have
+         * worn out on the last character. */
+        truncate = false;
     }
 
     /* C engrave.c:1438-1462 — append the engraved slice to any existing engraving. */
@@ -868,7 +872,10 @@ export async function engrave() {
         return 1;
     }
     /* C engrave.c:1477 — finished engraving. */
-    if (!firsttime) {
+    if (truncate) {
+        /* C engrave.c:1478-1481 */
+        await pline('You cannot write any more.');
+    } else if (!firsttime) {
         /* "You finish writing in the dust." — only when engraving took >1 action. */
         /* C engrave.c:1411-1432 */
         const ice = is_ice(u.ux, u.uy);

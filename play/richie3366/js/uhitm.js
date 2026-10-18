@@ -42,7 +42,7 @@ import {
 import { exercise, A_STR, A_DEX, A_WIS, A_CON, acurr, adjalign, change_luck, ALIGNLIM, Fumbling } from './attrib.js';
 import { overexertion, nomul, losehp, is_pool, maybe_half_phys, noattacks, check_capacity, in_rooms, end_running } from './hack.js';
 import { ing_suffix, upstart, highc, strstri, dist2 } from './hacklib.js';
-import { pline, pline_mon, newsym, canseemon, canspotmon, sensemon, tp_sensemon, map_invisible, unmap_object, unmap_invisible, memory_glyph_is_invisible, glyph_at, glyph_is_cmap, glyph_to_cmap, glyph_is_warning, glyph_is_invisible_id, flush_topl_more, You_feel, tmp_at, map_location, nh_delay_output, mon_glyph, shieldeff, impossible, see_monsters, hero_Blind_telepat, You, Your, pline_The } from './display.js';
+import { pline, pline_mon, newsym, canseemon, canspotmon, sensemon, tp_sensemon, map_invisible, unmap_object, unmap_invisible, memory_glyph_is_invisible, glyph_at, glyph_is_cmap, glyph_to_cmap, glyph_is_object, glyph_is_warning, glyph_is_invisible_id, flush_topl_more, You_feel, tmp_at, map_location, nh_delay_output, mon_glyph, shieldeff, impossible, see_monsters, hero_Blind_telepat, You, Your, pline_The } from './display.js';
 import { cansee } from './vision.js';
 import {
     dmgval, hitval, P_SKILL, weapon_hit_bonus, martial_bonus,
@@ -4595,12 +4595,13 @@ export async function that_is_a_mimic(mtmp, mimic_flags) {
             if (glyph_is_cmap(shown)
                 && glyph_to_cmap(shown) === S_TRAPPED_CHEST) {
                 fmtbuf = `That ${defsym_explanation(S_TRAPPED_CHEST)} actually is %s!`;
-            } else {
+            } else if (glyph_is_object(shown)) {
+                // C `:6230-6233` — the displayed glyph (an object kind).
                 let fakeobj = false;
                 let otmp = null;
                 await pager_bind();
                 if (_object_from_map) {
-                    const got = _object_from_map(mtmp.mappearance | 0, x, y);
+                    const got = _object_from_map(shown, x, y);
                     fakeobj = !!got?.fakeobj;
                     otmp = got?.otmp || null;
                 }

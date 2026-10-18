@@ -3475,7 +3475,9 @@ async function potion_dip(obj, potion) {
     potion.in_use = true; /* assume it will be used up */
 
     if (potion.otyp === POT_WATER) {
-        const useeit = true; /* !Blind */
+        /* C potion.c:2461 useeit = !Blind || (obj == ublindf && Blindfolded_only);
+         * the blindfold exception is not modelled here. */
+        const useeit = !_potion_Blind();
         const obj_glows = Yobjnam2(obj, 'glow');
         if (await _H2Opotion_dip(potion, obj, useeit, obj_glows)) {
             await _poof(potion);

@@ -1086,9 +1086,14 @@ export function mon_is_local(mon) {
 }
 
 /**
- * C ref: timeout.c obj_is_local — floor/buried stay; invent/migrating
- * follow the hero; contained/minvent recurse. OBJ_FREE panics in C;
- * JS treats it as non-local so a stale timer is not saved onto a level.
+ * C ref: timeout.c obj_is_local `:2559–2577` — floor/buried stay;
+ * invent/migrating follow the hero; contained/minvent recurse. The
+ * fall-through (OBJ_FREE/OBJ_ONBILL) is panic("obj_is_local") (C `:2574`):
+ * a live timer or light on a freed or billed object is a C crash, and a
+ * C-crash recording's Oops tail only matches when JS panics too
+ * (scen-worldtour-Wizard-50056055 step 238: tutorial-enter sequesters a
+ * burning oil potion to FREE while its BURN_OBJECT timer lives). The null
+ * guard stays JS-only (C takes NONNULL — null would segfault, not panic).
  */
 export function obj_is_local(obj) {
     if (!obj) return false;
@@ -1104,7 +1109,7 @@ export function obj_is_local(obj) {
     case OBJ_MINVENT:
         return mon_is_local(obj.ocarry);
     default:
-        return false;
+        panic('obj_is_local'); // C `:2574` — NOTREACHED in C; NhPanic here.
     }
 }
 

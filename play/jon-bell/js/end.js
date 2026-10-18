@@ -33,7 +33,7 @@ import { launch_in_progress, force_launch_placement } from './trap.js';
 import { force_more, force_more_lone_frame, pline, urgent_pline, flush_screen, bot, _topl_joins_committed,
          _topline_more_pending, capture_painted_frame_with_status } from './display.js';
 import { topl_park_cursor, canspotmon } from './display.js';
-import { putmsghistory } from './display.js';
+import { putmsghistory, Unaware } from './display.js';
 import { cmdq_pop, cmdq_clear, cmdq_add_key, key2txt } from './cmd.js';
 import { CQ_CANNED, CQ_REPEAT, CMDQ_KEY, CMDQ_USER_INPUT, QBUFSZ, PLNMSG_UNKNOWN } from './const.js';
 import { PLNMSG_OK_DONT_DIE } from './const.js';
@@ -105,7 +105,8 @@ import { adjattrib } from './attrib.js';
 import { useup, endmultishot } from './cmd.js';
 /* C do.c:2076 schedule_goto — done2's abandon_tutorial arm records the deferred
  * return to u.ucamefrom; allmain's moveloop executes it via deferred_goto(). */
-import { schedule_goto } from './cmd.js';
+import { schedule_goto, record_achievement } from './cmd.js';
+import { ACH_UWIN } from './const.js';
 import { Blind } from './vision.js';
 import { placebc } from './ball.js';
 
@@ -456,7 +457,7 @@ function _shkname_is_pname_end(mtmp) {
 // "Die?" (wizard/explore).  givehp = 50 + 10*(ACURR(A_CON)/2), clamped to uhpmax.
 /* C hack.h:484 — the `how` code passed to done(); CHOKING = 1. */
 const CHOKING_END = 1;
-export async function savelife(how, inPlace) {
+export async function savelife(how, inPlace, countdown = false) {
     const g = game;
     const u = g.u || (g.u = {});
     const givehp = 50 + 10 * Math.trunc(acurr(u, A_CON) / 2);
@@ -499,7 +500,7 @@ export async function savelife(how, inPlace) {
     // movemon, so gm.multi = -1 ticks back to 0 there and unmul() plines the
     // that attempt on your life." on its own topline, after the
     // "OK, so you don't die.  The kitten bites the giant bat.--More--" page).
-    g.multi = (inPlace || (g.u?.uswallow && u.ustuck)) ? -1 : 0;
+    g.multi = (inPlace || countdown || (g.u?.uswallow && u.ustuck)) ? -1 : 0;
     /* The deferred path skips the multi<0 countdown, so C's unmul() never
      * runs here; it ends with `u.usleep = 0` (hack.c:4197).  Left set, a
      * hero who died asleep keeps u.usleep < moves and mhitu.c:940 draws a
@@ -706,7 +707,7 @@ export async function do_death_sequence(opts) {
             await flush_screen(1);
         if ((pd.how | 0) === CHOKING_END)
             await pline('You vomit ...');
-        const _muchbetter = 'You feel much better!';
+        const _muchbetter = Unaware() ? 'You dream that you feel much better!' : 'You feel much better!'; /* You_feel, pline.c:387-400 */
         if (!_topl_joins_committed(g._pending_message || '', _muchbetter))
             await force_more(g._pending_message || '');
         await pline(_muchbetter);
@@ -716,7 +717,7 @@ export async function do_death_sequence(opts) {
         /* C: `(void) adjattrib(A_CON, -1, TRUE)` — msgflg POSITIVE means "no
          * message" (attrib.c:433 comment), so this is silent. */
         adjattrib(A_CON, -1, 1);
-        await savelife(pd.how, inPlace);
+        await savelife(pd.how, inPlace, true);
         /* C end.c:1120-1124 — `if (survive) { killer.name[0] = '\0';
          * killer.format = KILLED_BY_AN; return; }`.  done() returns and play
          * continues; nothing below (the "Die?" query, really_done) runs. */
@@ -1124,8 +1125,14 @@ export async function done(how) {
      * common teardown; excluding it here made a direct slime expiration
      * throw instead of reaching C's done(TURNED_SLIME). */
     if (how >= DIED && how <= TURNED_SLIME && how !== QUIT) {
+        /* done() appends "But wait..." (end.c:1082) to the live topline
+         * before the pending message pages, when life saving applies. */
         if (!g._pendingDeath)
             g._pendingDeath = { how: how | 0, noDeathLine: true,
+                                prejoinButWait: !!([g.u?.uprops?.[LIFESAVED],
+                                                    g.u?.uprops?.['LIFESAVED']]
+                                                   .find(p => p?.extrinsic | 0))
+                                                && how <= GENOCIDED,
                                 moves: g.moves | 0 };
         /* Direct done() callers are already suspended at C's call site: unlike
          * deadhero()'s deferred marker, this interaction has not crossed a
@@ -1200,7 +1207,7 @@ export async function done(how) {
             await pline(`Your medallion ${!Blind() ? 'begins to glow' : 'feels warm'}!`);
             if (how === CHOKING_END)
                 await pline('You vomit ...');
-            await pline('You feel much better!');
+            await pline(Unaware() ? 'You dream that you feel much better!' : 'You feel much better!'); /* You_feel, pline.c:387-400 */
             await pline('The medallion crumbles to dust!');
             if (g.u?.uamul)
                 await useup(g.u.uamul);
@@ -1563,6 +1570,9 @@ async function really_done(how) {
         g.urealtime.finish_time = g._endtime;
         g.urealtime.realtime += Math.trunc(g._endtime - g.urealtime.start_timing);
     }
+    /* C end.c:1178-1179 — always show ascension last. */
+    if (how === ASCENDED)
+        record_achievement(ACH_UWIN);
     for (let obj = !g.program_state.panicking && g.invent, next; obj; obj = next) {
         next = obj.nobj;
         if (obj.in_use) await useup(obj);

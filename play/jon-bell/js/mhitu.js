@@ -1,4 +1,4 @@
-import { u_carried_gloves } from './cmd.js';
+import { u_carried_gloves, set_msg_xy as set_msg_xy_mu } from './cmd.js';
 import { yyyymmdd } from './allmain.js';
 import { spoteffects } from './landing-effects.js';
 // @ts-nocheck
@@ -108,7 +108,7 @@ import { noteleport_level as noteleport_level_mu, Inhell } from './makemon.js';
  * "monster"; tele_restrict's pline needs the real uhitm.c:232 body. */
 import { mon_nam as mon_nam_uh } from './uhitm.js';
 /* C mondata.c:1367 locomotion() — the "tries to run away with" verb. */
-import { locomotion } from './mhitm.js';
+import { locomotion, m_monnam as m_monnam_mu } from './mhitm.js';
 /* C mhitu.c:1176 Amonnam(mtmp) — the hider-reveal message's subject. */
 import { Amonnam as Amonnam_mu } from './mhitm.js';
 import { mksobj } from './mklev.js';
@@ -241,7 +241,10 @@ import { extract_from_minvent_dm } from './dogmove.js';
 import { down_gate, ship_object, add_to_minv } from './dokick.js';
 import { place_object, remove_object, set_ustuck as set_ustuck_mu } from './mklev.js';
 import { mondied_dm } from './dogmove.js';
-import { passive_obj } from './mhitm.js';
+import { passive_obj, attk_protection as attk_protection_mu } from './mhitm.js';
+import { resists_ston as resists_ston_mu } from './mklev.js';
+import { mon_to_stone as mon_to_stone_mu } from './dogmove.js';
+import { W_ARMG as W_ARMG_MU } from './const.js';
 /* NOTE: this file carries a file-local `couldsee() { return false; }` stub at
  * :124 (feeding the unported Medusa-gaze arms, alongside the same file's
  * canseemon stub — the real one is already imported as canseemon_mu).  thrwmu
@@ -460,7 +463,12 @@ export async function ignite_items(objchn) {
     }
 }
 function urgent_pline(_msg) { return urgent_pline_disp(_msg); }
-function pline_mon(_mon, ...args) { pline(...args); }
+/* C pline.c:132-146 pline_mon(): set_msg_xy() hero (0,0) / monster square, then pline(). */
+function pline_mon(mon, ...args) {
+    if (mon === game.youmonst) set_msg_xy_mu(0, 0);
+    else if (mon) set_msg_xy_mu(mon.mx, mon.my);
+    return pline(...args);
+}
 function pline_The(_msg) { pline("The " + _msg); }
 function Your1(_msg) { pline("Your " + _msg); }
 function Monnam(mon) { return je_Monnam(mon); }
@@ -938,7 +946,7 @@ export async function hitmsg(mtmp, mattk) {
 
     const compat = could_seduce(mtmp, gs.youmonst, mattk);
     if (compat !== 0 && !mtmp.mcan && !mtmp.mspec_used) {
-        await pline('%s %s you %s.', Monst_name, !Blind(gs) ? 'smiles at' : !Deaf(gs) ? 'talks to' : 'touches', (compat === 2) ? 'engagingly' : 'seductively');
+        await pline_mon(mtmp, '%s %s you %s.', Monst_name, !Blind(gs) ? 'smiles at' : !Deaf(gs) ? 'talks to' : 'touches', (compat === 2) ? 'engagingly' : 'seductively');
     } else {
         switch (mattk.aatyp) {
             case AT_BITE_:
@@ -976,7 +984,7 @@ export async function hitmsg(mtmp, mattk) {
             && mattk._ai != null
             && (mattk._ai | 0) === (gs._hitmsg_prev_ai | 0) + 1
             && mattk.aatyp === gs._hitmsg_prev_aatyp) ? ' again' : '';
-        await pline('%s %s%s%s', Monst_name, verb, again, punct);
+        await pline_mon(mtmp, '%s %s%s%s', Monst_name, verb, again, punct);
     }
     /* C win/tty/topl.c update_topl() calls blocking more() at this exact
      * putmesg boundary when the new hit message overflows the topline.  The
@@ -1014,7 +1022,8 @@ export function hitmsg_je(mtmp, mattk) {
         && (mattk._ai | 0) === (g._hitmsg_prev_ai | 0) + 1
         && mattk.aatyp === g._hitmsg_prev_aatyp) ? ' again' : '';
     const Monst_name = je_Monnam(mtmp);
-    pline(`${Monst_name} ${verb}${again}!`);
+    /* C mhitu.c:77 pline_mon(mtmp, ...) */
+    pline_mon(mtmp, `${Monst_name} ${verb}${again}!`);
     /* C ref: mhitu.c:80-81 — remember this monster + attack for the next hitmsg. */
     g._hitmsg_mid = mtmp ? mtmp.m_id : 0;
     g._hitmsg_prev_ai = (mattk._ai != null ? (mattk._ai | 0) : null);
@@ -1727,7 +1736,7 @@ function m_next2u_ds(mon) {
 }
 /* C mhitu.c:1985 doseduce() — returns 1 if monster teleported (or hero leaves
  * monster's vicinity). */
-async function doseduce(mon) {
+export async function doseduce(mon) {
     const g = game, u = g.u;
     const mndx = (mon.mndx ?? mon.mnum ?? -1) | 0;
     const fem = (mndx === PM_AMOROUS_DEMON_DS && Mgender(mon) === 1);
@@ -3438,7 +3447,30 @@ async function passiveum(olduasmonMndx, mtmp, mattk) {
 
     /* C:2482-2515 — AD_STON, AD_ENCH.  GAP, see the header; every other
      * adtyp falls out of C's own `default: break` here. */
-    if (oldu_mattk.adtyp === AD_STON_UM || oldu_mattk.adtyp === AD_ENCH_UM)
+    if (oldu_mattk.adtyp === AD_STON_UM) {
+        /* C:2482-2506 — cockatrice passive */
+        const protector = attk_protection_mu(mattk.aatyp | 0);
+        let wornitems = (mtmp.misc_worn_check | 0);
+        /* wielded weapon gives same protection as gloves here */
+        if (MON_WEP(mtmp))
+            wornitems |= W_ARMG_MU;
+        if (!resists_ston_mu(mtmp)
+            && (protector === 0
+                || (protector !== ~0 && (wornitems & protector) !== protector))) {
+            if (poly_when_stoned(mtmp.data)) {
+                await mon_to_stone_mu(mtmp);
+                return 1;
+            }
+            pline_mon(mtmp, `${je_Monnam(mtmp)} turns to stone!`);
+            game.stoned = 1;
+            await xkilled_uh(mtmp, XKILL_NOMSG_UH);
+            if ((mtmp.mhp | 0) > 0)
+                return M_ATTK_HIT;
+            return M_ATTK_AGR_DIED;
+        }
+        return M_ATTK_HIT;
+    }
+    if (oldu_mattk.adtyp === AD_ENCH_UM)
         return M_ATTK_HIT;
 
     /* C:2520-2521 */
@@ -5943,8 +5975,27 @@ export async function mattacku(mtmp) {
             }
             return 0;
         }
-        if (!hider && !youseeit0)
+        if (!hider && !youseeit0) {
             await pline('It tries to move where you are hiding.');
+        } else if (!hider) {
+            /* C mhitu.c:618-648 — surface hider, hero can see the attacker. */
+            const obj = game.level?.levelObjects?.[u.ux | 0]?.[u.uy | 0] ?? null;
+            const hmndx = (u.umonnum | 0);
+            const hgend = game.flags?.female ? 1 : 0;
+            if (obj || hmndx === PM_TRAPPER_MU
+                || ((game.youmonst?.data?.mlet | 0) === S_EEL_MU && is_pool_mu(u.ux | 0, u.uy | 0))) {
+                const save_spe = obj ? obj.spe : 0;
+                if (obj && (obj.otyp | 0) === 266 /* EGG */)
+                    obj.spe = 0;
+                const hname = monPmname_mu(hmndx, hgend);
+                if ((game.youmonst?.data?.mlet | 0) === S_EEL_MU || hmndx === PM_TRAPPER_MU)
+                    await pline(`Wait, ${m_monnam_mu(mtmp)}!  There's a hidden ${hname} named ${game.plname} there!`);
+                else
+                    await pline(`Wait, ${m_monnam_mu(mtmp)}!  There's a ${hname} named ${game.plname} hiding under ${await doname_mu(obj)}!`);
+                if (obj)
+                    obj.spe = save_spe;
+            }
+        }
         newsym(u.ux | 0, u.uy | 0);
         return 0;
     }

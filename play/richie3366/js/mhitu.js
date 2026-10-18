@@ -87,7 +87,7 @@ import { xkilled, killed, Hate_silver, dynamic_multi_reason, attacktype_fordmg, 
 import {
     m_seenres, cvt_adtyp_to_mseenres, monstseesu, monstunseesu, m_canseeu,
     mhis, on_fire, defended, get_atkdam_type, dmgtype_fromattack, attacktype,
-    resists_blnd,
+    resists_blnd, noit_mhim,
 } from './mondata.js';
 import { which_armor, find_mac } from './worn.js';
 import {
@@ -1466,10 +1466,10 @@ export async function doseduce(mon) {
     if (mon.mtame) {
         /* don't charge */
     } else if (rn2(20) < acurr(A_CHA)) {
+        /* C mhitu.c `:2266–2268` noit_mhim(mon): burns rn2(4) via
+           pronoun_gender when hallucinating — never him/her. */
         await pline(
-            `${noit_Monnam(mon)} demands that you pay ${
-                mon.female ? 'her' : 'him'
-            }, but you refuse...`,
+            `${noit_Monnam(mon)} demands that you pay ${noit_mhim(mon)}, but you refuse...`,
         );
     } else if ((u.umonnum | 0) === PM_LEPRECHAUN) {
         await pline_mon(

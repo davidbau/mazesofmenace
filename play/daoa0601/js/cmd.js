@@ -32,10 +32,8 @@ import { hurtleMonster } from './monster_hurtle.js';
 import { isRoom } from './map_types.js';
 import { deityName } from './alignment.js';
 import { continueSpellbookStudy } from './spellbook_study.js';
-import { grantMonsterWish } from './potion_occupants.js';
+import { grantMonsterWish, releaseDjinni } from './potion_occupants.js';
 import { quaff } from './quaff.js';
-import { tameMonster } from './monster_taming.js';
-import { setMonsterMalign } from './monster_alignment.js';
 import { jumpHero } from './jumping.js';
 import { clearMessageWindow, feel_location } from './display.js';
 // cmd.js — Command dispatch and movement.
@@ -257,7 +255,7 @@ import { triggerBoobyTrap } from './booby_trap.js';
 import { addShopDamage, payForShopDamage } from './shop_damage.js';
 import { convertSecretDoor } from './detect.js';
 import { roomForRoomno, roomsAt } from './room.js';
-import { learnObjectType, objectClassForType, recordObjectCall, recordObjectEncounter, recordObjectKnowledge, OBJECT_CLASS_SYMBOLS, } from './object_knowledge.js';
+import { learnObjectType, objectClassForType, recordObjectCall, recordObjectEncounter, OBJECT_CLASS_SYMBOLS, } from './object_knowledge.js';
 import { exceedsActionCapacity, nearCapacity, OVERLOADED, SLT_ENCUMBER, } from './weight.js';
 import { makeWish } from './wish.js';
 import { dopray } from './pray.js';
@@ -315,13 +313,11 @@ import { kickDoor } from './kick_door.js';
 import { heroHasMartialKick } from './kick_rules.js';
 import { bringLeashedFollowers, randomMonsterRelocation, } from './teleport.js';
 import { goodPosition, monsterTeleportRestricted } from './teleport_rules.js';
-import { removeWishGrantingMonster } from './monster_departure.js';
 import { RLOC_MSG, A_CON, A_DEX, A_MAX, A_STR, A_WIS, BOLT_LIM, COLNO, ROWNO, STONE, SCORR, SDOOR, DOOR, CORR, ROOM, ICE, POOL, CLOUD, IRONBARS, FOUNTAIN, SINK, ALTAR, WATER, MOAT, LAVAWALL, TREE, D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED, SHOP_DOOR_COST, IS_WALL, IS_STWALL, IS_OBSTRUCTED, IS_FURNITURE, IS_AIR, IS_ROOM, ZAP_POS, SQKY_BOARD, BEAR_TRAP, LANDMINE, FIRE_TRAP, PIT, SPIKED_PIT, TT_PIT, HOLE, TRAPDOOR, DART_TRAP, MAGIC_TRAP, TELEP_TRAP, LEVEL_TELEP, STATUE_TRAP, WEB, ANTI_MAGIC, G_GONE, ER_NOTHING, ER_DAMAGED, M_AP_NOTHING, M_AP_MONSTER, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, STRAT_WAITMASK, MM_NOEXCLAM, MM_NOMSG, SHOPBASE, ROOMOFFSET, F_LOOTED, In_endgame, Is_airlevel, Is_waterlevel, Is_rogue_level, In_hell, W_ARMOR, W_ACCESSORY, W_SADDLE, P_BOW, P_SLING, PARANOID_HIT, POLY_CONTROLLED, STR19, isok, ACCESSIBLE, AIR, DIGTYP_UNDIGGABLE, DRAWBRIDGE_UP, } from './const.js';
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
 // object.h enum value; object_data currently exposes the two other tools.
 const SKELETON_KEY = 221;
-const PM_DJINNI = 315;
 const PM_WATER_NYMPH = 68;
 const PM_WATER_DEMON = 289;
 const PM_WATER_MOCCASIN = 216;
@@ -3397,70 +3393,14 @@ function rubEligibleObject(object) {
         || object?.otyp === BRASS_LANTERN || isGrayStone(object) || isRoyalJelly(object);
 }
 async function rubRoyalJelly(jelly) {
-    const eggs = (game.inventory || []).filter(object => object.otyp === EGG);
     const used = await useRoyalJelly(jelly, async () => {
-        if (!eggs.length) {
+        const egg = await chooseInventoryObject('rub the royal jelly on', object => object.otyp === EGG ? GETOBJ_SUGGEST : GETOBJ_EXCLUDE, { forcePrompt: true });
+        if (egg)
             game._pending_message = '';
-            await pline("You don't have anything to rub the royal jelly on.");
-            return null;
-        }
-        const letters = compactInventoryLetters(eggs.map(egg => egg.invlet).join(''));
-        const selection = await promptInventoryObject(`What do you want to rub the royal jelly on? [${letters} or ?*] `, eggs, { verb: 'rub the royal jelly on', allowMenu: true });
-        if (!selection.cancelled)
-            game._pending_message = '';
-        return selection.object;
+        return egg;
     });
     game.context.move = used ? 1 : 0;
-}
-async function djinniFromLamp(object) {
-    const djinni = await makemonNear(PM_DJINNI, game.u.ux, game.u.uy, MM_NOMSG);
-    if (!djinni) {
-        await plineWithContinuation('It turns out to be empty.');
-        return;
-    }
-    newsym(djinni.mx, djinni.my);
-    if (!game.blind) {
-        await plineWithContinuation('In a cloud of smoke, a djinni emerges!');
-        await plineWithContinuation('The djinni speaks.');
-    }
-    else {
-        await plineWithContinuation('You smell acrid fumes.');
-        await plineWithContinuation('Something speaks.');
-    }
-    let chance = rn2(5);
-    if (object.blessed)
-        chance = chance === 4 ? rnd(4) : 0;
-    else if (object.cursed)
-        chance = chance === 0 ? rn2(4) : 4;
-    switch (chance) {
-        case 0: {
-            await plineWithContinuation('"I am in your debt.  I will grant one wish!"');
-            await grantMonsterWish(djinni);
-            break;
-        }
-        case 1:
-            await plineWithContinuation('"Thank you for freeing me!"');
-            await tameMonster(djinni);
-            break;
-        case 2:
-            await plineWithContinuation('"You freed me!"');
-            djinni.mpeaceful = 1;
-            setMonsterMalign(djinni);
-            break;
-        case 3:
-            await plineWithContinuation('"It is about time!"');
-            if (canSpotMonster(djinni))
-                await plineWithContinuation('The djinni vanishes.');
-            await removeWishGrantingMonster(djinni);
-            break;
-        default:
-            await plineWithContinuation('"You disturbed me, fool!"');
-            djinni.mpeaceful = 0;
-            djinni.mtame = 0;
-            djinni.pet = false;
-            setMonsterMalign(djinni);
-            break;
-    }
+    return used;
 }
 // C refs: apply.c:dorub(), invent.c:getobj(), wield.c:wield_tool(), and
 // cmd.c:CQ_CANNED.  Selecting an unwielded lamp does not rub it immediately:
@@ -3513,17 +3453,17 @@ async function dorub(cannedInvlet = null) {
             // C performs the bones-safe lamp transformation before the
             // released monster can grant a fatal artifact wish.
             transformMagicLampToOilLamp(object, 1000 + rn2(500), game, game.moves ?? 0);
-            await djinniFromLamp(object);
-            if (!game._knownObjectTypes?.has(MAGIC_LAMP)) {
-                await exerciseAttribute(A_WIS, true);
-                recordObjectKnowledge(MAGIC_LAMP);
-            }
+            requirePlayingGame(game);
+            await releaseDjinni(object, game);
+            learnObjectType(MAGIC_LAMP);
             game.context.move = 1;
             return;
         }
-        await plineWithContinuation(rn2(2)
-            ? 'You see a puff of smoke.'
-            : 'Nothing happens.');
+        if (rn2(2))
+            await plineWithContinuation(heroIsBlind(game)
+                ? 'You smell smoke.' : 'You see a puff of smoke.');
+        else
+            await plineWithContinuation('Nothing happens.');
     }
     else if (object.otyp === BRASS_LANTERN) {
         await plineWithContinuation('Rubbing the electric lamp is not particularly rewarding.');
@@ -3564,7 +3504,7 @@ async function moveIntoFailedUntrap(trap) {
     trap.tseen = false;
     await finishDestinationSpotEffects({
         oldx, oldy, newx: u.ux, newy: u.uy,
-        explicitAttempt: false, trapOptions: { failedUntrap: true },
+        trapOptions: { failedUntrap: true },
     });
     if (game.program_state.gameover)
         return { entered: true, died: true };
@@ -6091,8 +6031,8 @@ async function applyTool(item, underlay) {
         return null;
     }
     if (isRoyalJelly(item)) {
-        await rubRoyalJelly(item);
-        return game.inventory.includes(item) ? item : null;
+        const used = await rubRoyalJelly(item);
+        return used ? null : item;
     }
     if ([SKELETON_KEY, LOCK_PICK, CREDIT_CARD].includes(item.otyp)) {
         game.context.move = Number(await pickLock(item));
@@ -6818,7 +6758,7 @@ export function applyHeroLiquidEffects(publish = plineWithContinuation, { entry 
         applyLandingEffects: ({ from, to, pick = true }) => finishDestinationSpotEffects({
             oldx: from.x, oldy: from.y,
             newx: to.x, newy: to.y,
-            explicitAttempt: false, publish, pick,
+            publish, pick,
         }),
     });
 }
@@ -6828,12 +6768,12 @@ export async function applyHeroLocationEffects(publish = plineWithContinuation, 
     const { ux: x, uy: y } = game.u;
     return finishDestinationSpotEffects({
         oldx: x, oldy: y, newx: x, newy: y,
-        explicitAttempt: false, publish, pick,
+        publish, pick,
     });
 }
 // C hack.c:domove_core() common tail, including a refused pet swap.
 // Repositioning and concealment finish before vision and arrival effects.
-async function finishHeroMovement({ oldx, oldy, loc, explicitAttempt, ballChainMove = null, }) {
+async function finishHeroMovement({ oldx, oldy, loc, ballChainMove = null, }) {
     const u = game.u;
     await placeHeroOnLevel(u.ux, u.uy);
     resetBulkTakeoff();
@@ -6870,12 +6810,10 @@ async function finishHeroMovement({ oldx, oldy, loc, explicitAttempt, ballChainM
         await finishBallAndChainMove(ballChainMove);
     if (u.umoved) {
         const finished = await finishDestinationSpotEffects({
-            oldx, oldy, newx: u.ux, newy: u.uy, explicitAttempt,
+            oldx, oldy, newx: u.ux, newy: u.uy,
         });
         if (finished.died)
             return true;
-        if (finished.moved && explicitAttempt)
-            maybeSmudgeEngravings(oldx, oldy, u.ux, u.uy);
     }
     // C domove_core(): landing and pickup finish before nomul(-2).
     // A longer trap-induced delay survives, but its completion prose changes.
@@ -6890,13 +6828,17 @@ async function delayAfterDraggingBall() {
     game._helplessDoneMessage = '';
     await captureRunmodeDelay(game, true, game.moves || 0, { preservePhysicalTopline: true });
 }
-// C hack.c:domove() clears kickedloc after even an unsuccessful attempt.
+// C hack.c:domove() evaluates a successful step after all destination effects.
+// Automatic run steps have no DOMOVE_WALK/RUSH flags after the first command.
 async function domove(dx, dy, explicitAttempt = true) {
+    const oldx = game.u.ux, oldy = game.u.uy;
     game._domoveSucceeded = false;
-    const moved = await domoveCore(dx, dy, explicitAttempt);
+    const moved = await domoveCore(dx, dy);
     if (!game.program_state.gameover) {
-        if (game._domoveSucceeded)
+        if (explicitAttempt && game._domoveSucceeded) {
+            maybeSmudgeEngravings(oldx, oldy, game.u.ux, game.u.uy);
             maybeAdjustHeroBubble();
+        }
         game._kickedLoc = null;
         game._movementAttempt = null;
     }
@@ -6963,7 +6905,7 @@ function heroMayDisplaceMonster(monster) {
         && canSpotMonster(monster) && !(u.confusionTurns ?? 0)
         && !heroIsHallucinating(game) && !u.stunned && !(u.stunnedTurns ?? 0);
 }
-async function domoveCore(dx, dy, explicitAttempt) {
+async function domoveCore(dx, dy) {
     requirePlayingGame(game);
     const u = game.u;
     // C cmd.c:set_move_cmd() persists the requested command vector before
@@ -7130,7 +7072,7 @@ async function domoveCore(dx, dy, explicitAttempt) {
             await settleBeastHeroDisplacement(monster, game);
             if (game.program_state.gameover)
                 return true;
-            return finishHeroMovement({ oldx, oldy, loc, explicitAttempt, ballChainMove });
+            return finishHeroMovement({ oldx, oldy, loc, ballChainMove });
         }
         if (safeMonster && artifactById(game.uwep?.oartifact, game)?.name !== 'Stormbringer') {
             // C ref: hack.c do_attack()/domove(): a tame monster normally
@@ -7388,7 +7330,7 @@ async function domoveCore(dx, dy, explicitAttempt) {
                 u.usteed.my = oldy;
             }
             return finishHeroMovement({
-                oldx, oldy, loc, explicitAttempt, ballChainMove,
+                oldx, oldy, loc, ballChainMove,
             });
         }
         await settlePetHeroDisplacement(monster, game);
@@ -7396,7 +7338,7 @@ async function domoveCore(dx, dy, explicitAttempt) {
             return true;
     }
     return finishHeroMovement({
-        oldx, oldy, loc, explicitAttempt, ballChainMove,
+        oldx, oldy, loc, ballChainMove,
     });
 }
 //# sourceMappingURL=cmd.js.map

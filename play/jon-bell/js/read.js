@@ -333,7 +333,7 @@ export async function recharge(obj, curse_bless) {
         const spe_cur = obj.spe | 0;
         if (spe_cur > rn2(7) || spe_cur <= -5) {
             /* C read.c:808-814: ring explodes */
-            await pline("It momentarily, then explodes!"); /* simplified */
+            await pline(`${Yobjnam2(obj, 'pulsate')} momentarily, then ${otense(obj, 'explode')}!`);
             if (is_on) {
                 /* Ring_gone(obj) — remove ring from worn slots, no RNG */
                 obj.owornmask = 0;
@@ -352,7 +352,7 @@ export async function recharge(obj, curse_bless) {
                 ? ((worn & LEFT_RING) ? LEFT_RING : RIGHT_RING)
                 : 0;
             /* C read.c:818-819: pline spin message */
-            await pline(`${s < 0 ? 'It spins counter' : 'It spins '}clockwise for a moment.`);
+            await pline(`${Yname2(obj)} spins ${s < 0 ? 'counter' : ''}clockwise for a moment.`);
             if (s < 0) {
                 /* C read.c:821: costly_alteration(obj, COST_DECHNT) — no RNG */
             }
@@ -637,6 +637,7 @@ import { KILLED_BY_AN } from './const.js';
 import { shkname, losehp } from './dokick.js';
 import { Yname2, useup as useup_cmd } from './cmd.js';
 import { drop_uswapwep } from './cmd.js';
+import { useupall as useupall_cmd } from './cmd.js';
 import { bimanual, reset_remarm } from './do_wear.js';
 import { erosion_matters, mkobj, place_object, makemon } from './mklev.js';
 /* seffect_light's confused arm only (read.c:1762-1780). */
@@ -2441,7 +2442,7 @@ async function chwepon(otmp, amount) {
                         + `for a while and then ${otense(uwep, 'evaporate')}.`);
         else
             await pline(`${Yobjnam2(uwep, 'evaporate')}.`);
-        _useupall(uwep); /* let all of them disappear */
+        await useupall_cmd(uwep); /* let all of them disappear */
         return 1;
     }
 
@@ -2492,17 +2493,6 @@ function _is_elven_weapon(obj) {
  * the type was not already oc_name_known (o_init.c's own guard). */
 function _makeknown(otyp) {
     discover_object(otyp | 0, true, true, true);
-}
-/* C invent.c useupall(obj) — remove the whole stack, not one item. */
-function _useupall(obj) {
-    let prev = null;
-    for (let o = game.invent; o; prev = o, o = o.nobj) {
-        if (o === obj) {
-            if (prev) prev.nobj = o.nobj; else game.invent = o.nobj;
-            obj.nobj = null;
-            return;
-        }
-    }
 }
 
 async function seffect_enchant_weapon(sobjp) {

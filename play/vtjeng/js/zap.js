@@ -34,6 +34,7 @@ import { ship_object } from './dokick.js';
 import { o_unleash } from './apply.js';
 import {
     close_drawbridge,
+    destroy_drawbridge,
     find_drawbridge,
     is_db_wall,
     is_moat,
@@ -4031,7 +4032,10 @@ export async function zap_map(
             case SPE_FORCE_BOLT:
                 if (originalType !== DRAWBRIDGE_UP) {
                     learnIt = true;
-                    note_unported('dbridge.c destroy_drawbridge');
+                    await destroy_drawbridge(
+                        position.x, position.y, state, { ...rawEnv, random },
+                    );
+                    if (state.program_state?.gameover) return;
                 }
                 break;
             }
@@ -5473,7 +5477,12 @@ export async function zap_over_floor(
                 state, env,
             );
         } else if (Is_rogue_level(state.u?.uz)) {
-            note_unported('dig.c draft_message');
+            await draft_message(false, {
+                ...env,
+                state,
+                random: { ...random, rn1: random.rn1 ?? rn1 },
+                message,
+            });
         }
     }
 

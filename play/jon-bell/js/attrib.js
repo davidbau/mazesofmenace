@@ -647,6 +647,15 @@ function exerper() {
             exercise(A_DEX, false);
     }
 }
+/* C attrib.c:587 exertext[A_MAX][2], in attribute (C constant) order */
+const EXERTEXT = [
+    ["exercising diligently", "exercising properly"],
+    [0, 0],
+    ["very observant", "paying attention"],
+    ["working on your reflexes", "working on reflexes lately"],
+    ["leading a healthy life-style", "watching your health"],
+    [0, 0],
+];
 export function exerchk() {
     const g = game;
     const u = g.u;
@@ -708,7 +717,8 @@ export function exerchk() {
             /* C attrib.c:661-666 — changed: zero accumulation */
             aexe[i] = 0;
             ax = 0;
-            /* C: print message — not ported (no tty infrastructure) */
+            /* C attrib.c:663-666 — then print an explanation */
+            pline(`You ${(mod_val > 0) ? "must have been" : "haven't been"} ${EXERTEXT[i][(mod_val > 0) ? 0 : 1]}.`);
         }
         /* C attrib.c:671: nextattrib wear-off */
         aexe[i] = Math.trunc(Math.abs(ax) / 2) * mod_val;

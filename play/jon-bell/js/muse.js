@@ -44,7 +44,7 @@ import { tele, tele_restrict, rloc } from './teleport.js';
 import { mreadmsg } from './makemon.js';
 import { m_useup, monkilled_trap } from './trap.js';
 import { drop_boulder_on_monster, drop_boulder_on_player } from './read.js';
-import { ceiling } from './cmd.js';
+import { ceiling, set_msg_xy } from './cmd.js';
 import { closed_door } from './look.js';
 import { IS_OBSTRUCTED, IS_AIR } from './const.js';
 
@@ -181,6 +181,7 @@ async function mzapwand(mtmp, otmp, self) {
          * callers live in use_defensive/use_misc (js/makemon.js).  RNG-free
          * either way; the charge below is still spent, as in C. */
     } else {
+        set_msg_xy(mtmp.mx, mtmp.my); /* pline_mon (pline.c:138-146) */
         pline(`${Monnam(mtmp)} zaps ${an(xname(otmp))}!`);
         await stop_occupation();
     }

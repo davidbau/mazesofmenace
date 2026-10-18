@@ -33,7 +33,7 @@ function _hero_mflags1_dw() {
 const M1_HUMANOID_DW = 0x00020000;
 function _humanoid_dw() { return (_hero_mflags1_dw() & M1_HUMANOID_DW) !== 0; }
 import { pline, urgent_pline } from './display.js';
-import { see_monsters } from './display.js';
+import { see_monsters, retouch_object_hero } from './display.js';
 import { topl_park_cursor } from './display.js';
 import { flush_screen, _topline_more_pending, _topl_stash_result } from './display.js';
 import { _topl_merge_result, _topl_joins_snapshot, _topl_record_join } from './display.js';
@@ -973,7 +973,7 @@ function _dw_set_extrinsic(prop, on) {
 /* C youprop.h:375-377 — HFast is u.uprops[FAST].intrinsic, EFast is .extrinsic;
  *   Fast      = (HFast || EFast)
  *   Very_fast = ((HFast & ~INTRINSIC) || EFast) */
-const INTRINSIC_DW = 0x10000000; /* prop.h INTRINSIC */
+const INTRINSIC_DW = INTRINSIC; /* prop.h:140 INTRINSIC */
 function _dw_HFast() { return (game.u?.uprops?.[FAST_PROP]?.intrinsic | 0); }
 function _dw_EFast() { return (game.u?.uprops?.[FAST_PROP]?.extrinsic | 0); }
 function _dw_Fast() { return !!(_dw_HFast() || _dw_EFast()); }
@@ -1285,7 +1285,9 @@ export async function Cloak_on() {
              * cheat here": if the hero is invisible and not blind, the wrapping
              * makes them visible again.  HInvis/EInvis/See_invisible are the
              * same uprops reads toggle_displacement uses. */
-            if (_propOn(INVIS_PROP) && !_propOn(BLINDED_PROP)) {
+            /* C tests raw (HInvis || EInvis): the wrapping itself blocks Invis */
+            const invr = u.uprops?.[INVIS_PROP];
+            if (invr && ((invr.intrinsic | 0) || (invr.extrinsic | 0)) && !_propOn(BLINDED_PROP)) {
                 newsym(u.ux | 0, u.uy | 0);
                 await pline(`You can ${_propOn(SEE_INVIS_PROP)
                     ? 'no longer see through yourself' : 'see yourself'}!`);
@@ -2429,7 +2431,8 @@ export async function accessory_or_armor_on(obj) {
                 }
             }
         }
-        /* do_wear.c:2356 retouch_object(): no silver/material conflict here. */
+        /* do_wear.c:2355-2356 */
+        if (!(await retouch_object_hero(obj, false))) return ECMD_TIME;
         /* do_wear.c:2409-2416 — setworn(obj, mask); Ring_on(obj); on_msg. */
         await setworn(obj, mask);
         await Ring_on(obj);
@@ -2444,6 +2447,8 @@ export async function accessory_or_armor_on(obj) {
         return ECMD_TIME;
     }
     if (amulet) {
+        /* do_wear.c:2355 */
+        if (!(await retouch_object_hero(obj, false))) return ECMD_TIME;
         await remove_worn_item(obj, false);
         await setworn(obj, W_AMUL_C);
         find_ac();
@@ -2567,6 +2572,8 @@ export async function accessory_or_armor_on(obj) {
             }
             return ECMD_OK;
         }
+        /* do_wear.c:2355 */
+        if (!(await retouch_object_hero(obj, false))) return ECMD_TIME;
         await Blindf_on(obj);
         return ECMD_TIME;
     }

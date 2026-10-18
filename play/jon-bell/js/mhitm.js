@@ -2555,7 +2555,7 @@ export async function hmon(mon, obj, thrown, dieroll) {
 /* HMON_xxx (hack.h) */
 const HMON_MELEE = 0, HMON_THROWN = 1, HMON_KICKED = 2, HMON_APPLIED = 3;
 const _OCLASS_WEAPON = 2, _OCLASS_TOOL = 6, _OCLASS_GEM = 13;
-const _MAT_SILVER_HMON = 10; /* oc_material SILVER (mkobj material encoding) */
+const _MAT_SILVER_HMON = 14; /* oc_material SILVER (mkobj material encoding) */
 
 /* C monst.h:246-248 troll_baned(m, o) — "is mon m (presumably just killed) a
  * troll and obj o Trollsbane?"  Pure, RNG-free.

@@ -5535,13 +5535,23 @@ export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_su
     let levl_glyph;
     if (hero_memory) {
         const mem = loc.remembered_glyph;
-        levl_glyph = mem ? copy_glyph(mem) : copy_glyph(default_glyph);
-        // C levl[][].glyph is the remembered int; unseen BSS 0 is the stone
-        // int, same as default_id.
-        attach_glyph(
-            levl_glyph,
-            mem && typeof mem.glyph === 'number' ? mem.glyph : default_id,
-        );
+        if (mem) {
+            // C levl[][].glyph is the remembered int.
+            levl_glyph = copy_glyph(mem);
+            attach_glyph(
+                levl_glyph,
+                typeof mem.glyph === 'number' ? mem.glyph : default_id,
+            );
+        } else {
+            // C `:2202` — a never-seen cell has no remembered int, so C
+            // reads GLYPH_UNEXPLORED here, not the stone default (the
+            // default only feeds the `:2238` !seenv strip arm). The
+            // BSS-0-is-stone reading is refuted by C's output: #terrain
+            // over a never-seen cell paints unexplored
+            // (scen-worldtour-Archeologist-50950008 step 314: C «unexplored
+            // area» where the stone default described «unexplored»).
+            levl_glyph = attach_glyph(copy_glyph(default_glyph), GLYPH_UNEXPLORED);
+        }
     } else {
         levl_glyph = seenv
             ? { ...terrain_glyph(loc, x, y), glyph: back_to_glyph(x, y) }

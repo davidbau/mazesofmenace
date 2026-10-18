@@ -130,7 +130,7 @@ import { makewish } from './wizcmds.js';
  * does — there is only one in C (read.c:2491).  The port lives in js/read.js;
  * this file used to redeclare it as a throw-stub, shadowing that body for
  * zapnodir()'s WAN_LIGHT / SPE_LIGHT arm (see the note at the former stub). */
-import { litroom, magic_map_background, sense_trap } from './read.js';
+import { litroom, magic_map_background, sense_trap, show_map_spot } from './read.js';
 import { PM_GREMLIN, PM_SILVER_DRAGON, PM_CHROMATIC_DRAGON, PM_HEALER, PM_KNIGHT, PM_MONK, PM_CYCLOPS, PM_FLOATING_EYE } from './pm.generated.js';
 /* pm.generated.js's generator dropped this one as a "duplicate" of PM_PRIEST
  * (275, the temple NPC) — the role player-character monster ("priest,
@@ -1002,6 +1002,10 @@ function _haseyes_hero() {
 async function maybe_destroy_item_elec(obj, dmgtyp) {
     if (dmgtyp !== AD_ELEC)
         return 0;
+    /* C zap.c:5816: external worn item protects inventory? (u_carry only; this
+     * elec path is only reached from the hero's destroy_items) */
+    if (inventory_resistance_check(dmgtyp))
+        return 0;
     const oclass = (obj ? obj.oclass : 0) | 0;
     /* C zap.c:5890 — retain the original class for the damage description
      * after the item may have been consumed. */
@@ -1086,7 +1090,8 @@ async function maybe_destroy_item_elec(obj, dmgtyp) {
         /* C zap.c:5934-5949: losehp(dmg, ...) + exercise(A_STR, FALSE). */
         if (dmg) {
             if (xresist) {
-                /* "You aren't hurt!" — no damage, no exercise. */
+                /* C zap.c:5939 — You("aren't hurt!"); no damage, no exercise. */
+                await pline("You aren't hurt!");
             } else {
                 const how = (dmgtyp === AD_FIRE && osym === FOOD_CLASS)
                     ? 'exploding glob of slime' : DESTROY_STRINGS[dindx][2];
@@ -1769,6 +1774,9 @@ export async function zapyourself(obj, ordinary) {
                     const openedFalling = await openfallingtrap(game.youmonst, true, noticed);
                     if (openedFalling)
                         learn_it = noticed.value;
+                } else {
+                    /* C passes &learn_it into openholdingtrap (zap.c:2942) */
+                    learn_it = noticed.value;
                 }
             }
             break;
@@ -5415,6 +5423,14 @@ export async function break_statue(obj) {
         item.ocontainer = null;
         _zp_place_on_floor(item, x, y);
     }
+    /* C zap.c:5598-5603: a historic statue shames an Archeologist; spe is
+       cleared before fracture_rock so the rocks merge with other rocks. */
+    if (!(game.context && game.context.mon_moving) && _wand_Role_if(PM_ARCHEOLOGIST)
+        && ((obj.spe | 0) & 4 /* CORPSTAT_HISTORIC */)) {
+        await pline('You feel guilty about damaging such a historic statue.');
+        await adjalign(-1);
+    }
+    obj.spe = 0;
     await fracture_rock(obj);
     return true;
 }
@@ -5952,6 +5968,9 @@ async function _zap_map_probing(x, y, obj) {
         || game.level?.map?.[x]?.[y];
     if (!lev)
         return false;
+    /* C zap.c:3721-3731: map terrain (and re-show an engraving, trap or
+     * object) under the probe before the secret door/corridor checks. */
+    show_map_spot(lev, x, y, false);
     if ((lev.typ | 0) === SDOOR) {
         cvt_sdoor_to_door(lev);
         recalc_block_point(x, y);
@@ -6038,6 +6057,7 @@ async function zap_updown(obj) {
             const ltyp = loc?.typ === DRAWBRIDGE_UP
                 ? db_under_typ(loc.drawbridgemask | 0) : (loc?.typ | 0);
             await _zap_map_engraving(x, y, obj);
+            await _zap_map_probing(x, y, obj); // C zap.c:3248 zap_map probing tail
             let surf;
             if (ltyp === ICE || IS_FURNITURE(ltyp)) {
                 // C zap.c:3761-3765,3798-3799: zap_map's downward

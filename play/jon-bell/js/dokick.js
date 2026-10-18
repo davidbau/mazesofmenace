@@ -29,7 +29,7 @@ import { D_WARNED, MON_FLOOR } from './const.js';
 import { PM_WATCHMAN, PM_WATCH_CAPTAIN } from './pm.generated.js';
 import { mon_yells } from './monmove.js';
 import { in_town } from './cmd.js';
-import { exercise, acurr, change_luck } from './attrib.js';
+import { exercise, acurr, change_luck, adjalign as adjalign_dk } from './attrib.js';
 import { HALLUC, SHOPBASE, SDOOR, SCORR, CORR, ROOM, STAIRS, LADDER, IRONBARS, DOOR, D_NODOOR, D_ISOPEN, D_BROKEN, D_TRAPPED, D_LOCKED, IS_THRONE, IS_ALTAR, IS_FOUNTAIN, IS_GRAVE, IS_SINK, IS_TREE, IS_STWALL, IS_DOOR, ECMD_TIME, ECMD_CANCEL, ECMD_OK, POOL, MOAT, WATER, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, LAVAPOOL, LAVAWALL, DBWALL, A_STR, A_DEX, A_CON, A_WIS, A_LAWFUL, KILLED_BY, G_GONE, T_LOOTED, TREE_LOOTED, TREE_SWARM, S_LPUDDING, S_LDWASHER, LA_DOWN, MM_NOMSG, MM_MALE, MM_FEMALE, MM_ANGRY, DB_UNDER, DB_ICE, DB_LAVA, DB_MOAT, STONE, ICE, IS_WATERWALL, IS_DRAWBRIDGE, IS_WALL, W_NONDIGGABLE, isok, DB_DIR, DB_WEST, DB_EAST, DB_SOUTH, DB_NORTH, NON_PM, MIGR_NOWHERE, MIGR_RANDOM, MIGR_APPROX_XY, MIGR_EXACT_XY, MIGR_STAIRS_UP, MIGR_STAIRS_DOWN, MIGR_LADDER_UP, MIGR_LADDER_DOWN, MIGR_SSTAIRS, MIGR_PORTAL, MIGR_WITH_HERO, MIGR_NOBREAK, MIGR_NOSCATTER, MIGR_TO_SPECIES, ONAME, has_oname, has_mgivenname, In_mines, Is_stronghold, In_endgame, Is_botlevel, Has_contents, N_DIRS, xdir, ydir,
 is_hole, } from './const.js';
 /* prop.h BLINDED — the live key for the Blind macro (see _Blind_dk below). */
@@ -129,7 +129,7 @@ import { LEG, TT_PIT, is_pit, WEB, STATUE_TRAP, ZAP_POS } from './const.js';
 import { obj_resists } from './zap.js';
 import { useup } from './cmd.js';
 export { is_unpaid, in_rooms, shop_keeper };
-import { mksobj_at, mksobj, mpickobj, obj_extract_self, rnd_class } from './mklev.js';
+import { del_engr_at as del_engr_at_dk, mksobj_at, mksobj, mpickobj, obj_extract_self, rnd_class } from './mklev.js';
 /* C mkobj.c:1977-1987 rnd_treefruit_at(x, y) — the one real body lives in
  * js/dig.js (a monster-digs-near-a-tree caller already exercises it), which
  * used to keep it file-local; exported there rather than re-derived here so
@@ -624,13 +624,13 @@ export async function kick_nondoor(x, y, avrg_attrib) {
             if (roleMnum === PM_ARCHEOLOGIST || roleMnum === PM_SAMURAI
                 || (((u.ualign?.type ?? 0) | 0) === A_LAWFUL
                     && ((u.ualign?.record ?? 0) | 0) > -10)) {
-                /* adjalign(-sgn(u.ualign.type)) — WIRE_PENDING */
+                adjalign_dk(-Math.sign((u.ualign?.type ?? 0) | 0)); /* C: adjalign(-sgn(u.ualign.type)) */
             }
             maploc.typ = ROOM;
             maploc.flags = 0; /* C: gm.maploc->emptygrave = 0 (flags alias) */
             maploc.horizontal = false; /* C: gm.maploc->disturbed = 0 (horizontal alias) */
-            /* mksobj_at(ROCK, x, y, TRUE, FALSE) stub — WIRE_PENDING */
-            /* del_engr_at(x, y) stub — WIRE_PENDING */
+            await mksobj_at(474 /* ROCK */, x, y, true, false);
+            del_engr_at_dk(x, y);
             if (Blind) {
                 void pline("Crack!  It broke!"); /* C: "Crack!  %s broke!", Something */
             }
@@ -1612,6 +1612,11 @@ async function really_kick_object(x, y, kickedobj) {
         /* C zap.c:4049-4054 bhit(): kicked gold stops on a square that
          * already holds objects (result == NULL). */
         if (isgold && obj_at(bx, by))
+            break;
+        /* C zap.c:4049-4054 bhit(): a kicked object that reaches stairs / a
+         * hole / a trapdoor is shipped down by ship_object(); bhit ends there
+         * with the object migrating (kick_object returns at :753). */
+        if (!isgold && await ship_object(kickedobj, bx, by, costly_spot(bx, by)))
             break;
         /* C zap.c:4076-4080 bhit(): a wall/stone or closed door stops the
          * object and bhitpos backs up one square. */

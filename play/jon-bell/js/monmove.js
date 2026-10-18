@@ -2,6 +2,7 @@
 // js/monmove.js — Monster movement support: distfleeck + set_apparxy + m_move.
 // C ref: nethack-c/src/monmove.c
 // @ts-nocheck — js sibling imports.
+import { HALLUC, HALLUC_RES } from "./const.js";
 import { stop_occupation } from './allmain.js';
 import { rn2, rnd, rn1, d, pushRngLogEntry } from './rng.js';
 import { game } from './gstate.js';
@@ -26,7 +27,7 @@ import { OBJ_FLOOR, OBJ_DELETED, is_pit, IS_STWALL, IS_TREE, Is_rogue_level, NEE
          NC_SHOW_MSG, ARM, HEAD, ROOM, CORR, GPCOORDS_NONE, GPCOORDS_COMFULL,
          /* maybe_spin_web (monmove.c:1267) */ IS_OBSTRUCTED, STAIRS, LADDER, IRONBARS, WEB, In_sokoban } from './const.js';
 import { newsym, canspotmon, pline, canseemon,
-         topl_force_break_now, flush_pending_messages, Norep, You_hear, You_see, sensemon, Unaware, swallowed } from './display.js';
+         topl_force_break_now, capture_flushed_cells, flush_pending_messages, Norep, You_hear, You_see, sensemon, Unaware, swallowed } from './display.js';
 import { cansee, vision_recalc, recalc_block_point, clear_path, couldsee } from './vision.js';
 import { curr_mon_load, max_mon_load, can_carry, could_reach_item, dmgtype,
          obj_extract_floor, distant_obj_name, Monnam_dm, finish_meating as finish_meating_real,
@@ -53,7 +54,7 @@ import { TELEPAT as TELEPAT_MV, HALF_SPDAM as HALF_SPDAM_MV, KILLED_BY_AN as KIL
 import { see_wsegs, worm_nomove, worm_move } from './worm.js';
 import { ranged_attk_available, mhis_mon } from './mhitu.js';
 import { mon_wield_item, sticks } from './dog.js';
-import { mwelded, is_pole, is_mines_prize, is_soko_prize, bill_dummy_object, mbodypart, verbalize, switch_terrain, coord_desc } from './cmd.js';
+import { mwelded, is_pole, is_mines_prize, is_soko_prize, bill_dummy_object, mbodypart, verbalize, switch_terrain, coord_desc, notice_mon } from './cmd.js';
 import { is_pick, mdig_tunnel, mb_trapped } from './dig.js';
 import { fracture_rock } from './zap.js';
 /* C monflag.h:37 — MZ_LARGE is the first monster size subject to the
@@ -1858,11 +1859,18 @@ export async function m_move(mtmp, after) {
             const _pi = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
             const _prow = (_pi >= 0 && _pi < _MONS_MV.length) ? _MONS_MV[_pi] : null;
             const _pmf1 = _prow ? (_prow[6] >>> 0) : 0;
-            const _pctun = !Is_rogue_level(game.u?.uz) && !!(_pmf1 & M1_TUNNEL_MDW)
-                && !((_pmf1 & M1_NEEDPICK_MDW) && _conflict_mv()
-                     && dist2(mtmp.mx | 0, mtmp.my | 0, mtmp.mux | 0, mtmp.muy | 0) <= 8);
+            /* C monmove.c:1762-1763: on the pet path can_tunnel is plain
+             * tunnels(ptr) — the needspick/Conflict demotion (monmove.c:1911)
+             * runs only after the mtame dispatch, so it never applies here. */
+            const _pctun = !Is_rogue_level(game.u?.uz) && !!(_pmf1 & M1_TUNNEL_MDW);
             const _pdr = await postmov_door(mtmp, _pdidsee, _pmf1, _pctun);
             if (_pdr === MMOVE_DIED_MV) return _pdr;
+            /* C postmov (monmove.c:1643-1646) "possibly dig" — the pet path
+             * reaches it too: a tame dwarf/dwarf lord that moved draws
+             * mdig_tunnel's unconditional rnd(12) (dig.c:1418). */
+            if (_pctun && may_dig(mtmp.mx | 0, mtmp.my | 0)
+                && await mdig_tunnel(mtmp))
+                return MMOVE_DIED_MV;
         }
         if (res === MMOVE_MOVED_MV)
             newsym(mtmp.mx | 0, mtmp.my | 0);
@@ -2320,6 +2328,10 @@ export async function m_move(mtmp, after) {
          * could see before it swung open even if the post-vision_recalc cansee()
          * of that cell has gone false.  This port only had the post-recalc
          * cansee(), which is the `||`'s right operand alone. */
+        /* C monmove.c:1470 — postmov() opens with notice_mon(mtmp): its
+         * spot_monsters "You see ..." pline (and any --More--) precedes every
+         * newsym of the move, so the new glyph is not yet on screen. */
+        await notice_mon(mtmp);
         const _didseeit_pm = !!cansee(mtmp.mx | 0, mtmp.my | 0);
 
         /* C postmov (monmove.c:1472-1505): a vampire in a solid form changes
@@ -2339,11 +2351,16 @@ export async function m_move(mtmp, after) {
                 newsym(nix, niy);
                 newsym(omx, omy);
             }
+            /* With no shape-change pline (domsg false) nothing flushes the gbuf
+             * between newcham's newsym and vamp_shift's display_nhwindow
+             * (tty more() does not flush_screen), so the --More-- frame still
+             * shows the closed door, not the fog cloud (monmove.c:2390-2393). */
+            const _preShiftCells = (seenflgs & 1) ? null : capture_flushed_cells();
             await newcham(mtmp, PM_FOG_CLOUD,
                           (seenflgs & 1) ? NC_SHOW_MSG : 0);
             /* C vamp_shift always calls display_nhwindow(WIN_MESSAGE,FALSE)
              * after newcham, even when no shape-change message was emitted. */
-            topl_force_break_now();
+            topl_force_break_now(false, _preShiftCells);
             // monmove.c:2391 blocks here, before restoring the monster's
             // position or letting later monsters append to the same topline.
             await flush_pending_messages();
@@ -2677,6 +2694,9 @@ async function maybe_spin_web(mtmp) {
 }
 
 export async function postmov(mtmp, mmoved) {
+    /* C ref: monmove.c:1470 — postmov() opens with notice_mon(mtmp) (a11y
+     * spot_monsters: "You see a peaceful gnome lord."), before any mmoved test. */
+    await notice_mon(mtmp);
     if (mmoved !== MMOVE_MOVED_MV && mmoved !== MMOVE_DONE_MV)
         return mmoved;
     /* C:1692 — `ptr` inside postmov is re-read from mtmp->data after mintrap
@@ -2994,6 +3014,14 @@ export function can_hide_under_obj(obj) {
  * chug=true: monster is moving (call dochug, then check if hero should stop).
  * chug=false: monster was just created/teleported (don't call dochug, just check if hero should stop).
  * Returns the result of dochug (0 if chug=false). */
+/* C youprop.h:169 Hallucination — (HHallucination || EHallucination) && !Halluc_resistance */
+function _dochugw_Hallucination() {
+    const up = game.u?.uprops;
+    if (up?.[HALLUC_RES]?.intrinsic || up?.[HALLUC_RES]?.extrinsic)
+        return false;
+    return !!(up?.[HALLUC]?.intrinsic || up?.[HALLUC]?.extrinsic);
+}
+
 export async function dochugw(mtmp, chug) {
     const u = game.u;
     const go = game;
@@ -3013,7 +3041,7 @@ export async function dochugw(mtmp, chug) {
      * Condition order matches C source (lines 224-235). */
     if (go.occupation && !rd
         /* monster is hostile and can attack (or hallucination distorts knowledge) */
-        && (((u.flags && u.flags.hallucination) || 0) || (!mtmp.mpeaceful && !noattacks(mtmp.data)))
+        && (_dochugw_Hallucination() || (!mtmp.mpeaceful && !noattacks(mtmp.data)))
         /* it's close enough to be a threat */
         && mdistu(mtmp) <= ((BOLT_LIM + 1) * (BOLT_LIM + 1))
         /* and either couldn't see it before, or it was too far away */

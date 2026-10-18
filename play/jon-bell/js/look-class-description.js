@@ -69,7 +69,7 @@ export function collectScreenDescriptionClasses(options = {}) {
     const showsyms = Array.isArray(options.showsyms) ? options.showsyms : null;
     const classes = [];
     let assembled = '';
-    let needsLook = false, matchCount = 0;
+    let needsLook = false, matchCount = 0, firstmatch = null;
     const symbolAt = (index, fallback) => {
         const active = showsyms?.[index];
         if (active != null) return normalizeSymbol(active);
@@ -95,6 +95,7 @@ export function collectScreenDescriptionClasses(options = {}) {
         if (!value || assembled.toLowerCase().includes(rendered.toLowerCase())) return;
         assembled += (assembled ? ' or ' : '') + rendered;
         classes.push(rendered);
+        if (firstmatch === null) firstmatch = value; /* pager.c *firstmatch: the raw explanation */
         if (count) matchCount++;
         if (needs) needsLook = true;
     };
@@ -186,5 +187,5 @@ export function collectScreenDescriptionClasses(options = {}) {
         }
     }
     const collapsed = matchCount > 4;
-    return { classes: collapsed ? ['can be many things'] : classes, needsLook, matchCount, collapsed };
+    return { classes: collapsed ? ['can be many things'] : classes, needsLook, matchCount, collapsed, firstmatch };
 }

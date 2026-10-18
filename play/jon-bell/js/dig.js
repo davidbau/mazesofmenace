@@ -18,7 +18,7 @@ import { end_burn, start_timer } from './timeout.js';
 import { pline, feel_newsym, canseemon, newsym, You_hear, Unaware as Unaware_real } from './display.js';
 import { unblock_point, does_block, Blind, vision_recalc } from './vision.js';
 import { scatter } from './dokick.js';
-import { MAY_HIT, Is_stronghold } from './const.js';
+import { MAY_HIT, Is_stronghold, MM_NOMSG } from './const.js';
 import { b_trapped } from './lock.js';
 import { NO_PART } from './const.js';
 import { acurr, exercise, adjalign } from './attrib.js';
@@ -257,10 +257,10 @@ async function dig_up_grave_(x, y) {
         if (corpse) corpse.age = (corpse.age | 0) - (TAINT_AGE + 1);
     } else if (outcome === 2) {
         if (!Blind()) await pline(`${_dig_hallucination() ? 'Dude! The living dead' : "The grave's owner is very upset"}!`);
-        await makemon(mkclass(S_ZOMBIE_DIG, 0), x, y, 0);
+        await makemon(mkclass(S_ZOMBIE_DIG, 0), x, y, MM_NOMSG);
     } else if (outcome === 3) {
         if (!Blind()) await pline(`${_dig_hallucination() ? 'I want my mummy' : "You've disturbed a tomb"}!`);
-        await makemon(mkclass(S_MUMMY_DIG, 0), x, y, 0);
+        await makemon(mkclass(S_MUMMY_DIG, 0), x, y, MM_NOMSG);
     } else {
         await pline('The grave is unoccupied.  Strange...');
     }
@@ -1539,6 +1539,15 @@ export async function use_pick_axe2(obj) {
         const _sameLevel = !!_dl && (_dl.dnum | 0) === (_uz.dnum | 0)
             && (_dl.dlevel | 0) === (_uz.dlevel | 0);
         if (dc.pos.x !== rx || dc.pos.y !== ry || !_sameLevel || dc.down) {
+            /* C dig.c:1286-1296 — avoid messages if repeated autodigging. */
+            if (g.flags && g.flags.autodig && dig_target === DIGTYP_ROCK
+                && !dc.down && (u.ux | 0) === (dc.pos.x | 0)
+                && (u.uy | 0) === (dc.pos.y | 0)
+                && (g.moves | 0) <= ((dc.lastdigtime | 0) + 2)
+                && (g.moves | 0) >= (dc.lastdigtime | 0)) {
+                g.did_dig_msg = true;
+                dc.quiet = true;
+            }
             dc.down = false;
             dc.chew = false;
             dc.warned = false;
@@ -1547,7 +1556,8 @@ export async function use_pick_axe2(obj) {
             dc.level = g.u && g.u.uz ? { dnum: g.u.uz.dnum, dlevel: g.u.uz.dlevel } : { dnum: 0, dlevel: 0 };
             dc.effort = 0;
             dc.tool = obj;
-            await pline(`You start ${d_action[dig_target]}.`);
+            if (!dc.quiet)
+                await pline(`You start ${d_action[dig_target]}.`);
         } else {
             await pline(`You ${dc.chew ? 'begin' : 'continue'} ${d_action[dig_target]}.`);
             dc.chew = false;

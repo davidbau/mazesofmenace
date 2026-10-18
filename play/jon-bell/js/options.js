@@ -1298,6 +1298,15 @@ export function parseNethackrc(rc) {
                         (n) => val && n.startsWith(String(val).toLowerCase()));
                     if (sl) result.flags.sortloot = sl[0];
                 }
+                else if (key === 'sortvanquished') {
+                    if (negated) result.flags.vanq_sortmode = 0;
+                    else if (val) {
+                        const vi = 'tdaACcnz'.indexOf(val[0]);
+                        if (vi >= 0) result.flags.vanq_sortmode = vi;
+                        else if ('01234567'.includes(val[0]))
+                            result.flags.vanq_sortmode = val.charCodeAt(0) - 48;
+                    }
+                }
                 else if (key === 'pickup_types') {
                     if (!val) {
                         result.flags.pickup_types = '';
@@ -1397,6 +1406,8 @@ export function parseNethackrc(rc) {
                     if (row?.wizNoFuz) { /* config error, value not stored */ }
                     else if (row?.box === 'flags' || row?.box === 'iflags')
                         result[row.box][row.fld || lname] = value;
+                    else if (row?.box === 'a11y')
+                        (result.a11y ||= {})[row.fld || lname] = value;
                     else if (row?.box === 'u.uroleplay') {
                         result.uroleplay[row.fld] = value;
                         // C optfn_boolean: pauper also sets/clears nudist.

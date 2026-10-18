@@ -105,7 +105,7 @@ import { grddead } from './vault.js';
 /* C ref: mklev.c:928 — clear_level_structures() calls region.c's
  * clear_regions().  region.js imports m_poisongas_ok back from this file;
  * both edges are runtime-only function references, so the cycle resolves. */
-import { clear_regions, create_gas_cloud_selection, poisoncloud_at } from './region.js';
+import { clear_regions, create_gas_cloud, create_gas_cloud_selection, poisoncloud_at } from './region.js';
 /* C mon.c:5485 newcham() invokes the shared worn.c mon_break_armor helper
  * even during creation (its pronoun locals are evaluated before armor tests). */
 import { mon_break_armor } from './trap.js';
@@ -230,7 +230,7 @@ import { A_WIS } from './const.js';
  * body all along; only the wire was missing. */
 import { exercise, adjalign, ARTILIST_MTYPE } from './attrib.js';
 import { attach_egg_hatch_timeout, start_timer, stop_timer, obj_stop_timers, begin_burn, end_burn } from './timeout.js';
-import { ROT_CORPSE, REVIVE_MON, ZOMBIFY_MON, SHRINK_GLOB, HATCH_EGG, TIMER_OBJECT, FIG_TRANSFORM } from './const.js';
+import { ROT_ORGANIC, ROT_CORPSE, REVIVE_MON, ZOMBIFY_MON, SHRINK_GLOB, HATCH_EGG, TIMER_OBJECT, FIG_TRANSFORM } from './const.js';
 /** @type {[number,number,number,number,number,number,number,number,number][]} */
 const MONS_ROWS = monsPack.mons;
 /** C permonst.pmnames[NUM_MGENDERS] per MON() row — the 5.0 canonical names.
@@ -1467,8 +1467,7 @@ async function mksobj(otyp, init, artif) {
                mons[].geno field — geno's low bits are the G_FREQ creation
                frequency, which must not be misread as a genocide flag. */
             const cm = otmp.corpsenm | 0;
-            const mvflags = ((MONS_ROWS[cm][3] | 0) & G_NOCORPSE)
-                | ((game.mvitals?.[cm]?.mvflags | 0) & G_GONE);
+            const mvflags = mvitals_mvflags(cm);
             if ((mvflags & (G_NOCORPSE | G_GONE)) !== 0)
                 otmp.corpsenm = uroleMnum();
         }
@@ -1617,7 +1616,7 @@ async function mksobj_init(otmp, otyp, artif) {
             let tryct = 50;
             do {
                 otmp.corpsenm = undead_to_corpse(rndmonnum());
-            } while (((MONS_ROWS[otmp.corpsenm][3] | 0) & G_NOCORPSE) !== 0
+            } while ((mvitals_mvflags(otmp.corpsenm) & G_NOCORPSE) !== 0
                 && (--tryct > 0));
             if (tryct === 0)
                 otmp.corpsenm = PM_HUMAN;
@@ -1644,7 +1643,7 @@ async function mksobj_init(otmp, otyp, artif) {
                 for (let tryct = 200; tryct > 0; --tryct) {
                     const mndx = undead_to_corpse(rndmonnum());
                     if (mons_cnutrit(mndx)
-                        && ((MONS_ROWS[mndx][3] | 0) & G_NOCORPSE) === 0) {
+                        && (mvitals_mvflags(mndx) & G_NOCORPSE) === 0) {
                         otmp.corpsenm = mndx;
                         otmp.spe = -(tin_variety_random(mndx) + 1); /* RANDOM_TIN */
                         break;
@@ -3970,6 +3969,13 @@ export async function mkcorpstat(objtyp, mtmp, pm, x, y, flags) {
     }
     return otmp;
 }
+/* svm.mvitals[mndx].mvflags: seeded from mons[].geno & G_NOCORPSE
+ * (allmain.c:781) and gaining G_GENOD|G_NOCORPSE from genocide
+ * (read.c:2748,2964) and G_EXTINCT/G_GONE at runtime. */
+function mvitals_mvflags(mndx) {
+    return ((MONS_ROWS[mndx][3] | 0) & G_NOCORPSE)
+        | (game.mvitals?.[mndx]?.mvflags | 0);
+}
 function rndmonnum() {
     return rndmonnumAdj(0, 0);
 }
@@ -4776,6 +4782,7 @@ export async function makemon(mdat, x, y, mmflags) {
                             : (distu <= BOLT_LIM * BOLT_LIM) ? ' close by' : '';
                 /* C makemon.c:1492 uses Norep(): a repeat of the previous
                  * message (e.g. #wizgenesis 4 jackals) is not printed again. */
+                set_msg_xy(mon.mx, mon.my); /* C makemon.c:1491; pline() resets it */
                 await Norep(`${what}${exclaim ? ' suddenly' : ''} `
                       + `${vtense(what, 'appear')}${where}${exclaim ? '!' : '.'}`);
             }
@@ -5868,7 +5875,7 @@ export async function make_corpse(mtmp, x, y, corpseflags) {
         let gobj = await mksobj_at(GLOB_OF_BLACK_PUDDING - (PM_GRAY_OOZE_MK + 3 - mndx), x, y, true, false);
         let gother;
         while (gobj && (gother = await flooreffects_obj_nexto_xy(gobj, gobj.ox | 0, gobj.oy | 0, true)) != null) {
-            flooreffects_pudding_merge_message(gobj, gother);
+            await flooreffects_pudding_merge_message(gobj, gother);
             gobj = await flooreffects_obj_meld(gobj, gother);
         }
         newsym(x | 0, y | 0);
@@ -5901,7 +5908,8 @@ export async function make_corpse(mtmp, x, y, corpseflags) {
     // (MONS row col 3) at game start, G_GONE accrues from genocide/extinction.
     const noCorpseStatic = (mndx >= 0 && mndx < MONS_ROWS.length)
         ? ((MONS_ROWS[mndx][3] | 0) & G_NOCORPSE) : 0;
-    const goneDyn = (g.mvitals?.[mndx]?.mvflags | 0) & G_GONE;
+    /* mon.c:893 tests only G_NOCORPSE; G_GONE (G_EXTINCT set when a unique dies) does not suppress the corpse. */
+    const goneDyn = (g.mvitals?.[mndx]?.mvflags | 0) & G_NOCORPSE;
     if ((noCorpseStatic | goneDyn) !== 0)
         return null;
     // C mon.c:549-556,898: KEEPTRAITS preserves revivers' levels and other traits.
@@ -7677,7 +7685,10 @@ async function themeroom_fill_rng(aroom, difficulty) {
             obj_resists(_chest, 0, 0); // bury_an_obj obj_resists(chest,0,0)
             // dig.c:2027-2028 — the timer starts only when the 5% resist roll fails.
             if (is_organic(_chest) && !obj_resists(_chest, 5, 95)) {
-                rnd(250); // start_timer ROT_ORGANIC offset
+                // dig.c:2033-2034 start_timer(250L + rnd(250), TIMER_OBJECT,
+                // ROT_ORGANIC, obj_to_any(otmp)) — a REAL timer: when it fires,
+                // rot_organic (dig.c:2125) buries the chest's contents.
+                start_timer(250 + rnd(250), TIMER_OBJECT, ROT_ORGANIC, obj_to_any(_chest));
             }
             // dig.c:2045 bury_an_obj: obj_extract_self + add_to_buried(chest).  The
             // chest and each content object it later receives ride the buried chain
@@ -14135,7 +14146,9 @@ export async function add_to_minv(mon, obj) {
  * setmangry() (:15332) angers a peaceful humanoid.  See the Monnam note above:
  * the two throws sat on the same line of the same C statement. */
 async function pline_mon(mtmp, fmt, ...args) {
-    void mtmp; /* set_msg_xy(mtmp->mx, mtmp->my) — no screen channel here */
+    /* C pline.c:132-146 pline_mon(): hero -> (0,0), else the monster's square */
+    if (mtmp === game.youmonst) set_msg_xy(0, 0);
+    else set_msg_xy(mtmp.mx, mtmp.my);
     await pline(fmt, ...args);
 }
 
@@ -14373,6 +14386,9 @@ export async function mondead(mtmp) {
     if ((mx | 0) > 0 && emits_light(mtmp.data))
         del_light_source(LS_MONSTER, monst_to_any(mtmp));
     if (beSad) await pline('You have a sad feeling for a moment, then it passes.');
+    /* C mon.c:3103-3104 */
+    if ((mtmp.data?.pmidx ?? mtmp.mndx ?? mtmp.mnum) === PM_STEAM_VORTEX)
+        create_gas_cloud(mx, my, rn2(10) + 5, 0); /* harmless */
     mtmp.mtrapped = 0;
     await unstuck_mk(mtmp);
     /* C mon.c:3121 svm.mvitals[mndx].died++ (no rng), capped at 255. */

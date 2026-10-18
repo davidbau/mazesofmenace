@@ -22,6 +22,9 @@ import { flush_screen, force_more, _topl_record_join, capture_painted_frame,
          _topl_merge_result, _topl_joins_snapshot } from './display.js';
 import { display_text_window } from './com_pager.js';
 import { displayLookWindow } from './look-window.js';
+import { OC_NAME } from './oc_name_data.js';
+import { MKOBJ_OC_PROB, MKOBJ_OC_CLASS } from './mkobj_data.js';
+import { FIRST_OBJECT } from './o_init.js';
 import { pluslvl, losexp } from './exper.js';
 import { findit, wish_history_add, wish_history_menu, wish_history_has } from './zap.js';
 import { rn2, d, rnd } from './rng.js';
@@ -2177,6 +2180,30 @@ export async function wiz_light_sources() {
         lines.push('<none>');
     }
     await displayLookWindow(lines);
+    return ECMD_OK;
+}
+
+/* C ref: wizcmds.c:1832-1868 wiz_objprobs(void) — #wizobjprobs: an NHW_TEXT
+ * window listing each object's oc_prob against its class total; no turn, no RNG. */
+export async function wiz_objprobs() {
+    const NUM_OBJECTS = 480;
+    const probsum = new Array(18).fill(0);
+    for (let otyp = FIRST_OBJECT; otyp < NUM_OBJECTS; otyp++)
+        probsum[MKOBJ_OC_CLASS[otyp]] += MKOBJ_OC_PROB[otyp];
+    const lines = [];
+    let oclass = MKOBJ_OC_CLASS[FIRST_OBJECT];
+    for (let otyp = FIRST_OBJECT; otyp < NUM_OBJECTS; otyp++) {
+        if (!OC_NAME[otyp])
+            continue;
+        if (MKOBJ_OC_CLASS[otyp] !== oclass)
+            lines.push('');
+        oclass = MKOBJ_OC_CLASS[otyp];
+        const prob = MKOBJ_OC_PROB[otyp];
+        /* %6.2f of a float (single-precision) quotient */
+        const pct = Math.fround(Math.fround(prob * 100) / probsum[oclass]).toFixed(2);
+        lines.push(`${String(prob).padStart(4)} / ${String(probsum[oclass]).padStart(4)} (${pct.padStart(6)}%): ${OC_NAME[otyp]}`);
+    }
+    await display_text_window(lines);
     return ECMD_OK;
 }
 

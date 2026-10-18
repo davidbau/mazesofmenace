@@ -189,8 +189,15 @@ export class TtyMenu {
             const sgr = mc ? [mc.attr || '', mc.color === NO_COLOR ? ''
                 : mc.color < 8 ? 30 + mc.color : 90 + mc.color - 8].filter(Boolean)
                 : curr.attr === ATR_INVERSE ? (curr.heading ? menu_heading_sgr() : [7]) : [];
+            /* A run of more than four spaces inside reverse video reaches the
+             * recorded terminal as cursor-forward (same rule as the status
+             * bar's title bar, display.js ESC[<n>C), so those cells are
+             * unpainted: #wizcustom's heading records "identifier\e[29Csym". */
+            const gapped = (curr.attr === ATR_INVERSE && !mc)
+                ? text.slice(attr_n).replace(/ {5,}/g, m => `\x1b[${m.length}C`)
+                : text.slice(attr_n);
             if (sgr.length) text = text.slice(0, attr_n)
-                + `\x1b[${sgr.join(';')}m` + text.slice(attr_n) + ESC_RESET;
+                + `\x1b[${sgr.join(';')}m` + gapped + ESC_RESET;
             lines.push(' ' + text);
         }
         return lines;
@@ -260,6 +267,21 @@ export class TtyMenu {
             const key = await nhgetch();
             const morc = String.fromCharCode(key);
             const from = this.plist[curr_page], to = this.plist[curr_page + 1];
+
+            /* C ref: wintty.c:1519-1535,1553 + getline.c:230-257 xwaitforspace(resp)
+             * -- a key outside resp (item selectors, ' ', digits, ESC, \n, \r,
+             * default_menu_cmds) rings the bell and is re-read INSIDE the wait,
+             * so the while loop never turns over and a live count survives it
+             * ("n90s" then ESC only stops the count; the second ESC cancels).
+             * Group accelerators are not modelled, so only PICK_NONE menus
+             * (which build none) are filtered. */
+            if (how === PICK_NONE && key !== 10 && key !== 13 && key !== 27 && key !== 0
+                && morc !== ' ' && !(morc >= '0' && morc <= '9')
+                && '<>^|,\\~.-@:'.indexOf(morc) < 0
+                && !this.mlist.slice(from, to).some((c) => c.aInt && c.selector === morc)) {
+                reset_count = false;
+                continue;
+            }
 
             if (morc >= '0' && morc <= '9') {
                 /* C wintty.c:1570-1602: digits build a count; leading zeros

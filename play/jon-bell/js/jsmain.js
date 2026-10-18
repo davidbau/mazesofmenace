@@ -175,6 +175,9 @@ export class NethackGame {
         if (opts.flags && opts.flags.color !== undefined)
             g.iflags.wc_color = !!opts.flags.color;
         g.iflags.use_color = g.iflags.wc_color;   /* flag.h:507 alias */
+        /* C `struct a11y_info a11y` (flag.h): spot_monsters/accessiblemsg/mention_map
+         * rc booleans live in a11y.*, not flags.* (optlist.h NHOPTB addr). */
+        if (opts.a11y) g.a11y = { ...(g.a11y || {}), ...opts.a11y };
         // C initoptions_finish reapplies rest-on-space after all RC bindings.
         update_rest_on_space();
         /* C's SYMBOLS= directives override individual primary symbols after

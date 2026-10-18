@@ -4,8 +4,8 @@
 // Ported scope: simple closed-door open path (lock.c:781-935) and doclose
 // (lock.c:957-1052). The drawbridge predicates used by the shared branches
 // are implemented locally below to keep lock.js independent of dokick.js.
-import { game } from './gstate.js';
-import { could_untrap, untrap_at, cmdq_add_ec, cmdq_add_dir, ysimple_name } from './cmd.js';
+import { game, wizard } from './gstate.js';
+import { could_untrap, untrap_at, cmdq_add_ec, cmdq_add_dir, ysimple_name, set_msg_xy } from './cmd.js';
 import { yname } from './do_wear.js';
 import { t_at } from './trap.js';
 const WAND_CLASS = 11; /* objclass.h WAND_CLASS */
@@ -252,6 +252,7 @@ export async function doopen_indir(x, y) {
             locked = true;
             break;
         }
+        set_msg_xy(cx, cy);   /* C lock.c:874 */
         await pline(`This door${mesg}.`);
         /* C lock.c:875-894 — the autounlock follow-up:
          *     if (locked && flags.autounlock) {
@@ -302,7 +303,8 @@ export async function doopen_indir(x, y) {
     /* ACURRSTR + ACURR(A_DEX) + ACURR(A_CON)) / 3  — integer division */
     const threshold = Math.trunc((acurrstr() + acurr(u, A_DEX) + acurr(u, A_CON)) / 3);
     if (rnl(20) < threshold) {
-        /* C lock.c:907 — pline_The("door opens.") */
+        /* C lock.c:905-906 — set_msg_xy(cc.x, cc.y); pline_The("door opens.") */
+        set_msg_xy(cx, cy);
         await pline("The door opens.");
         /* C lock.c:908-913 — D_TRAPPED: b_trapped then D_NODOOR; else D_ISOPEN */
         if (loc.doormask & D_TRAPPED) {
@@ -334,6 +336,7 @@ export async function doopen_indir(x, y) {
     } else {
         /* C lock.c:917-920 — door resists */
         exercise(A_STR, true); /* C: exercise(A_STR, TRUE) */
+        set_msg_xy(cx, cy);   /* C lock.c:918 */
         await pline("The door resists!");
     }
 
@@ -972,6 +975,8 @@ function _force_box_doname(box) {
     let name = box_xname(box);
     if (box.olocked && box.lknown) name = 'locked ' + name;
     else if (box.obroken && box.lknown) name = 'broken ' + name;
+    /* objnam.c:1697-1702 — wizweight appends " (N aum)" to doname() */
+    if (wizard() && game.iflags?.wizweight) name += ` (${box.owt >>> 0} aum)`;
     return _an(name);
 }
 
@@ -1667,13 +1672,21 @@ export async function doorlock(otmp, x, y) {
     let msg = null;
 
     if ((door.typ | 0) === SDOOR) {
-        /* KNOWN GAP — lock.c:1049-1076: a striking/opening beam turns a
-         * secret door into a real D_CLOSED door and prints "A door appears in
-         * the wall!", then (for striking) falls through to the arm below.
-         * RNG-free.  Returns FALSE ("nothing changed"), a value C's doorlock
-         * really returns (lock.c:1074), rather than throwing — a throw would
-         * discard the replay's entire matched RNG prefix. */
-        return false;
+        /* C lock.c:1049-1076 */
+        const _ot = otmp.otyp | 0;
+        if (_ot === WAN_OPENING_OTYP_LK || _ot === SPE_KNOCK_OTYP_LK
+            || _ot === WAN_STRIKING_OTYP || _ot === 376) {
+            door.typ = DOOR;
+            door.doormask = D_CLOSED | ((door.doormask | 0) & D_TRAPPED);
+            newsym(x, y);
+            if (cansee(x, y))
+                await pline("A door appears in the wall!");
+            if (_ot === WAN_OPENING_OTYP_LK || _ot === SPE_KNOCK_OTYP_LK)
+                return true;
+            /* striking: continue door handling below */
+        } else {
+            return false;
+        }
     }
 
     switch (otmp.otyp | 0) {

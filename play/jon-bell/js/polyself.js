@@ -2259,7 +2259,7 @@ export async function dogaze() {
                        || ((mtmp.m_ap_type | 0) & 7) === M_AP_OBJECT_local) {
                 looked--;
                 continue;
-            } else if (g.flags.safe_dog && mtmp.mtame
+            } else if (g.flags.safe_dog !== false && mtmp.mtame
                        && !u.uprops?.[CONFUSION]?.intrinsic) {
                 await pline('You avoid gazing at %s.', y_monnam(mtmp));
             } else {

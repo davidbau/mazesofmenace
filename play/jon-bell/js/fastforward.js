@@ -1407,7 +1407,17 @@ async function fastforward_step_generic_turn_nodochug() {
 async function fastforward_step_generic_turn() {
     /* C ref: allmain.c:253 movemon() loop → dochugw → dochug per monster.
      * Fires before mcalcmove: monsters use movement accumulated in previous turn. */
-    await fmon_dochug_dispatch();
+    /* The doapply wield-turn caller (js/cmd.js) has already bumped g.moves, but
+     * C runs this movemon() BEFORE svm.moves++ (allmain.c:252-295): dog_move's
+     * whappr (dogmove.c:1038) and every other movemon-time reader of svm.moves
+     * must see the OLD turn counter. */
+    const _preInc = !!game._ff_moves_preinc;
+    if (_preInc) game.moves = (game.moves | 0) - 1;
+    try {
+        await fmon_dochug_dispatch();
+    } finally {
+        if (_preInc) game.moves = (game.moves | 0) + 1;
+    }
     /* C ref: allmain.c:274-281 mcalcmove loop: one rn2(12) per monster in fmon. */
     await fmon_mcalcmove();
     /* C ref: allmain.c:286-290 — makemon probability.

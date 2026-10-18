@@ -1271,7 +1271,11 @@ export async function mhitm_ad_fire(magr, mattk, mdef, mhm) {
                 ? 'burns completely' : 'is totally engulfed in flames';
             await pline_mon(mdef, `${Monnam(mdef)} ${how}!`);
         }
-        await monkilled(mdef, '', AD_FIRE);
+        /* C uhitm.c:2602 `(char *)0`: the caller already spoke, so monkilled
+           stays silent (NULL skips the kill line; '' would print a second
+           "is destroyed!" and steal a --More--). RUST/DCAY/BLND arms pass
+           null; mhitm.c mdamagem passes "" per its own C. */
+        await monkilled(mdef, null, AD_FIRE);
         if (!deadmonster(mdef)) {
             mhm.hitflags = M_ATTK_MISS;
             mhm.done = true;

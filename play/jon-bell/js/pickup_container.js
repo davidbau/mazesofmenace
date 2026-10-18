@@ -439,6 +439,17 @@ const _QC_CLASS_SYM = {
  * name table), not guessed: slime mold 285, tin 296, egg 266, corpse 265. */
 const _SLIME_MOLD_OTYP = 285, _TIN_OTYP = 296, _EGG_OTYP = 266, _CORPSE_OTYP = 265;
 function _loot_subclass(obj) {
+    if ((obj.oclass | 0) === 6 /* TOOL_CLASS */) {
+        /* C invent.c:215-240: known bag of tricks / horn of plenty 2, other
+         * container 1, instruments (and horn of plenty) 3, other tools 4. */
+        const t = obj.otyp | 0;
+        if (obj.dknown && game._oc_name_known && game._oc_name_known[t]
+            && (t === 220 || t === 252))
+            return 2;
+        if (Is_container(obj)) return 1;
+        return ((t >= 247 && t <= 251) || t === 253 || t === 254
+                || (t >= 256 && t <= 258) || t === 252) ? 3 : 4;
+    }
     if ((obj.oclass | 0) !== 7 /* FOOD_CLASS */)
         return 1;
     switch (obj.otyp | 0) {
@@ -1072,7 +1083,9 @@ async function menu_loot_takeout(box, eligible) {
  * flags.invlet_constant is the 'fixinv' option, initval On (optlist.h), so the
  * rows are keyed by each object's OWN invlet, not by a fresh a/b/c run. */
 async function menu_loot_putin(eligible) {
-    return await _menu_loot_items(game.invent, eligible, 'Put in', true);
+    return await _menu_loot_items(game.invent, eligible, 'Put in', !!(game.flags?.invlet_constant ?? true));
+    return await _menu_loot_items(game.invent, eligible, 'Put in',
+                                  (game.flags?.invlet_constant ?? true) !== false);
 }
 /* The body shared by both directions.  `chainHead` is the nobj chain
  * query_objlist walks (container contents or gi.invent) and `contents` is the
@@ -1281,7 +1294,7 @@ async function in_container(obj) {
     box.owt = weight(box);                                    /* C:2706 */
     }
     /* C:2712 bot() — status refresh; gold left the purse. */
-    if (g.disp) g.disp.botl = 1;
+    await bot();
     return g.current_container ? 1 : -1;
 }
 

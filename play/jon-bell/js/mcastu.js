@@ -1305,7 +1305,7 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
 
     nomul(0);
     if (rn2(ml * 10) < (mtmp.mconf ? 100 : 20)) { /* fumbled attack */
-        if (canspotmon(mtmp) && !Deaf()) {
+        if (canseemon(mtmp) && !Deaf()) { /* mcastu.c:210 */
             pline_The('air crackles around ' + mon_nam(mtmp) + '.');
         }
         return M_ATTK_MISS;

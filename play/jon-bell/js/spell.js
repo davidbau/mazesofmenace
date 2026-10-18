@@ -498,7 +498,7 @@ function percent_success(spellSlot) {
     if (splcaster > 20) splcaster = 20;
 
     // statused = ACURR(spelstat) — current stat value
-    const statused = acurr(spelstat);
+    const statused = acurr_real(u, spelstat);
 
     // chance = 11 * statused / 2
     let chance = Math.trunc(11 * statused / 2);
@@ -1450,6 +1450,8 @@ async function dospellmenu(prompt, splaction) {
             accel: spellet(splnum),
             raw: format_spell_row_raw(i, splnum),
             a_int: splnum + 1, /* C ref: spell.c:2128 "must be non-zero" */
+            /* C ref: spell.c:2129-2131 MENU_ITEMFLAGS_SELECTED; tty draws '*' */
+            sel: splnum === splaction,
         });
     }
 
@@ -1503,12 +1505,12 @@ async function dospellmenu_render_and_read(prompt, headingRaw, items, how) {
 
     /* Raw (printed-width) lines drive the window geometry; the display lines
      * add SGR attributes and collapse blank runs into ESC[NC.               */
-    const rawLines = [prompt, '', headingRaw, ...items.map((it) => `${it.accel} - ${it.raw}`), '(end)'];
+    const rawLines = [prompt, '', headingRaw, ...items.map((it) => `${it.accel} ${it.sel ? '*' : '-'} ${it.raw}`), '(end)'];
     const windowLines = [
         menu_heading_text(prompt),
         '',
         menu_heading_text(collapseGaps(headingRaw)),
-        ...items.map((it) => collapseGaps(`${it.accel} - ${it.raw}`)),
+        ...items.map((it) => collapseGaps(`${it.accel} ${it.sel ? '*' : '-'} ${it.raw}`)),
         '(end)',
     ];
 
