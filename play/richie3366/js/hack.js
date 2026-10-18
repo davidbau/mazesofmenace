@@ -1677,29 +1677,25 @@ export function end_running(and_travel) {
 }
 
 /**
- * C ref: hack.c nomul `:4161–4173` — start/replace multi-turn inactivity
- * (negative = occupation). C order: multi<nval early return; botl when
- * multi>=0; uinvulnerable=FALSE + usleep=0; multi=nval; on nval==0 clear
- * multi_reason AND multireasonbuf — never gn.nomovemsg (no such line in
- * C; the old JS clear here ate stored lines like lesshungry's "You're
- * finally finished." across any nomul(0) — dosearch finds, mattacku
- * melee — before done_eating/unmul printed them).
+ * C ref: hack.c nomul — start/replace multi-turn inactivity (negative = occupation).
  * cmdq_clear(CQ_CANNED) via game._cmdq_canned.
  */
 export function nomul(nval) {
-    if ((game.multi || 0) < nval) return; // C `:4163–4164`
+    if ((game.multi || 0) < nval) return;
     if (!game.flags) game.flags = {};
-    if ((game.multi || 0) >= 0) game.flags.botl = true; // C `:4165` disp.botl
+    if ((game.multi || 0) >= 0) game.flags.botl = true;
+    /* C hack.c nomul `:4166–4167` — always, before replacing multi.
+       fall_asleep restamps usleep after. */
     if (!game.u) game.u = {};
-    game.u.uinvulnerable = false; // C `:4166`
-    game.u.usleep = 0; // C `:4167` (fall_asleep restamps usleep after)
-    game.multi = nval; // C `:4168`
-    if (nval === 0) { // C `:4169–4170`
+    game.u.uinvulnerable = false;
+    game.u.usleep = 0;
+    game.multi = nval;
+    if (nval === 0) {
         game.multi_reason = null;
-        game.multireasonbuf = '';
+        game.nomovemsg = null;
     }
-    end_running(true); // C `:4171`
-    if (game._cmdq_canned) game._cmdq_canned = []; // C `:4172` cmdq_clear
+    end_running(true);
+    if (game._cmdq_canned) game._cmdq_canned = [];
 }
 
 /**
@@ -3937,16 +3933,6 @@ export async function dosinkfall() {
     const blockd_lev = ((u.BLevitation | 0) === I_SPECIAL);
     const ufall = (!innate_lev && !blockd_lev
         && !((u.HFlying | 0) || (u.EFlying | 0) || u.Flying)); /* BFlying */
-    /* C youprop.h:235-236 — HLevitation/ELevitation ARE
-     * u.uprops[LEVITATION].intrinsic/extrinsic (single storage); every H/E
-     * write below (fake removal, restore, strip, ++/-- bracket) must hit
-     * the slot too, or nh_timeout's generic loop decrements the stale slot
-     * TIMEOUT and mirrors it back into the flat, re-levitating the hero
-     * the same turn (float_down D-3978 dual-write idiom). */
-    if (!u.uprops) u.uprops = {};
-    const levSlot = u.uprops[LEVITATION] || (u.uprops[LEVITATION] = {
-        intrinsic: 0, extrinsic: 0, blocked: 0,
-    });
 
     if (!ufall) {
         await pline((innate_lev || blockd_lev)
@@ -3955,13 +3941,9 @@ export async function dosinkfall() {
     } else {
         const save_ELev = u.ELevitation | 0;
         const save_HLev = u.HLevitation | 0;
-        const save_LevI = levSlot.intrinsic | 0;
-        const save_LevE = levSlot.extrinsic | 0;
         /* fake removal so fatal disclosure is right; rings/boots still worn */
         u.ELevitation = 0;
         u.HLevitation = 0;
-        levSlot.extrinsic = 0;
-        levSlot.intrinsic = 0;
         await pline('You crash to the floor!');
         const dmg = rn1(8, 25 - (acurr(A_CON) | 0));
         losehp(maybe_half_phys(dmg), fell_on_sink, NO_KILLER_PREFIX);
@@ -3993,8 +3975,6 @@ export async function dosinkfall() {
         }
         u.ELevitation = save_ELev;
         u.HLevitation = save_HLev;
-        levSlot.extrinsic = save_LevE;
-        levSlot.intrinsic = save_LevI;
     }
 
     /*
@@ -4010,10 +3990,7 @@ export async function dosinkfall() {
     /* remove worn levitation items */
     u.ELevitation = (u.ELevitation | 0) & ~W_ARTI;
     u.HLevitation = (u.HLevitation | 0) & ~(I_SPECIAL | TIMEOUT);
-    levSlot.extrinsic = (levSlot.extrinsic | 0) & ~W_ARTI;
-    levSlot.intrinsic = (levSlot.intrinsic | 0) & ~(I_SPECIAL | TIMEOUT);
     u.HLevitation = (u.HLevitation | 0) + 1; /* keep Levitation true during Ring/Boots_off */
-    levSlot.intrinsic = (levSlot.intrinsic | 0) + 1;
     const {
         Ring_off, Boots_off, off_msg,
     } = await import('./do_wear.js');
@@ -4033,7 +4010,6 @@ export async function dosinkfall() {
         await off_msg(obj);
     }
     u.HLevitation = (u.HLevitation | 0) - 1;
-    levSlot.intrinsic = (levSlot.intrinsic | 0) - 1;
     const { float_vs_flight } = await import('./polyself.js');
     float_vs_flight();
 }

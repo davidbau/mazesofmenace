@@ -60,6 +60,7 @@ import {
     DOGFOOD,
     FULL_MOON,
     MANFOOD,
+    LS_MONSTER,
     OBJ_FREE,
     RLOC_NOMSG,
     STRAT_ARRIVE,
@@ -74,6 +75,7 @@ import {
 import { isok } from './cmd_isok.js';
 import {
     depth,
+    ledger_no,
     ledger_to_dlev,
     ledger_to_dnum,
     builds_up,
@@ -89,11 +91,11 @@ import { game } from './gstate.js';
 import {
     can_saddle, dismount_steed, put_saddle_on_mon,
 } from './steed.js';
-import { update_inventory } from './invent.js';
+import { obfree, update_inventory } from './invent.js';
 import { mbirth_limit, rndmonst_adj, set_malign } from './makemon.js';
-import { makemon_runtime } from './makemon_create.js';
+import { discard_minvent, makemon_runtime } from './makemon_create.js';
 import {
-    healmon, mnearto, minliquid, mnexto,
+    dealloc_monst, healmon, mnearto, minliquid, mnexto,
 } from './mon.js';
 import {
     attacktype,
@@ -104,13 +106,14 @@ import {
     is_human,
     levl_follower,
     carnivorous,
+    emits_light,
     herbivorous,
     regenerates,
     sticks,
 } from './mondata.js';
 import { monnear } from './monmove.js';
 import {
-    mon_leaving_level, restore_cham, wake_nearto,
+    m_into_limbo, mon_leaving_level, restore_cham, wake_nearto,
 } from './mon.js';
 import {
     m_at, mon_track_clear, place_monster,
@@ -137,6 +140,7 @@ import {
     PM_RANGER,
     PM_SAMURAI,
     PM_SHOCKING_SPHERE,
+    PM_WIZARD_OF_YENDOR,
     S_LIGHT,
     S_DOG,
 } from './monsters.js';
@@ -165,6 +169,8 @@ import { growl, yelp } from './sounds.js';
 import { ttyPline } from './tty_message.js';
 import { cansee } from './vision.js';
 import { note_unported } from './unported.js';
+import { del_light_source } from './light.js';
+import { objectGenerationEnv } from './object_generation.js';
 import { finish_meating } from './dogmove.js';
 import { body_part } from './polyself.js';
 import { mintrap } from './trap_effects.js';
@@ -990,10 +996,52 @@ export async function keepdogs(pets_only, rawEnv = {}) {
             mtmp.wormno = num_segs;
             mtmp.mlstmv = state.moves;
         } else if (keep_mon_accessible(mtmp, state)) {
-            // dog.c discards migrate_to_level()'s result. That separate
-            // function is still partial in this port, so preserve the gap
-            // without calling its refusal through keepdogs().
-            note_unported('dog.c migrate_to_level');
+            const appearance = mtmp.m_ap_type & M_AP_TYPMASK;
+            let onLevelChain = false;
+            const seen = new Set();
+            for (let current = state.level.monlist;
+                current && !seen.has(current);
+                current = current.nmon) {
+                seen.add(current);
+                if (current === mtmp) {
+                    onLevelChain = true;
+                    break;
+                }
+            }
+            const onWizardTowerLevel = [
+                state.wiz1_level,
+                state.wiz2_level,
+                state.wiz3_level,
+            ].some(level => sameLevel(level, u.uz));
+            const trackAvailable = Array.isArray(mtmp.mtrack)
+                && mtmp.mtrack.length >= 3
+                && mtmp.mtrack.slice(0, 3).every(Boolean);
+            const ordinaryWizard = mtmp.iswiz === true
+                && mtmp.data === state.mons?.[PM_WIZARD_OF_YENDOR]
+                && !mtmp.isshk
+                && !mtmp.wormno
+                && (appearance === M_AP_NOTHING
+                    || appearance === M_AP_MONSTER)
+                && mtmp !== u.ustuck
+                && !onWizardTowerLevel
+                && onLevelChain
+                && m_at(mtmp.mx, mtmp.my, state) === mtmp
+                && trackAvailable
+                && (mtmp.mstate & (MON_LIMBO | MON_MIGRATING
+                    | MON_STILL_ARRIVING)) === 0;
+            if (ordinaryWizard) {
+                await migrate_to_level(
+                    mtmp,
+                    ledger_no(u.uz, state),
+                    MIGR_EXACT_XY,
+                    null,
+                    env,
+                );
+            } else {
+                // Preserve the discarded C call marker where the existing
+                // migration adapter does not yet support this state.
+                note_unported('dog.c migrate_to_level');
+            }
         } else if (mtmp.mleashed) {
             const message = env.message ?? (env.planning ? async () => {}
                 : ttyPline);
@@ -1098,12 +1146,9 @@ export async function losedogs(rawEnv = {}) {
     while (state.gm.failed_arrivals) {
         monster = state.gm.failed_arrivals;
         state.gm.failed_arrivals = monster.nmon;
-        // C re-adds the failed arrival to fmon before mon.c:m_into_limbo(),
-        // which reaches the still-partial dog.c:migrate_to_level adapter.
-        // Record that precise void-callee boundary without invoking it.
         monster.nmon = state.level.monlist;
         state.level.monlist = monster;
-        note_unported('dog.c migrate_to_level');
+        await m_into_limbo(monster, state, env);
     }
 }
 
@@ -1393,8 +1438,13 @@ export async function migrate_to_level(
     const inWizardTower = onWizardTowerLevel
         ? migratingOperation(env, 'inWizardTower')
         : null;
-    if (m_at(monster.mx, monster.my, state) !== monster)
+    const isOnMap = m_at(monster.mx, monster.my, state) === monster;
+    const isOffMapLimbo = monster.mx === 0
+        && (monster.mstate & MON_LIMBO) === MON_LIMBO;
+    if (!isOnMap && !isOffMapLimbo)
         throw new Error('migrate_to_level: monster is not on the map');
+    if (isOffMapLimbo)
+        levelMonsterPredecessor(monster, state);
     if (!Array.isArray(monster.mtrack)
         || monster.mtrack.length < 3
         || monster.mtrack.slice(0, 3).some((entry) => !entry)) {
@@ -1438,6 +1488,55 @@ export async function migrate_to_level(
     monster.my = 0;
     if (recalculateVision) recalculateVision(0);
     return monster;
+}
+
+// C ref: dog.c discard_migrations(). Terminal destinations retain only the
+// Wizard and endgame monsters/objects; every other migrant is removed from
+// its global chain and passed through its normal owner cleanup.
+export function discard_migrations(state = game, rawEnv = {}) {
+    const env = objectGenerationEnv({ ...rawEnv, state });
+    const isEndgameDestination = destination => Boolean(
+        state.astral_level
+        && destination?.dnum === state.astral_level.dnum,
+    );
+
+    let previousMonster = null;
+    let monster = state.gm.migrating_mons;
+    while (monster) {
+        const next = monster.nmon;
+        const keep = monster.iswiz
+            || isEndgameDestination({ dnum: monster.mux, dlevel: monster.muy });
+        if (keep) {
+            previousMonster = monster;
+        } else {
+            if (previousMonster) previousMonster.nmon = next;
+            else state.gm.migrating_mons = next;
+            monster.nmon = null;
+            discard_minvent(monster, false, env);
+            if (emits_light(monster.data))
+                del_light_source(LS_MONSTER, monster, state);
+            dealloc_monst(monster);
+        }
+        monster = next;
+    }
+
+    let previousObject = null;
+    let object = state.gm.migrating_objs;
+    while (object) {
+        const next = object.nobj;
+        const keep = isEndgameDestination({ dnum: object.ox, dlevel: object.oy });
+        if (keep) {
+            previousObject = object;
+        } else {
+            if (previousObject) previousObject.nobj = next;
+            else state.gm.migrating_objs = next;
+            object.nobj = null;
+            object.where = OBJ_FREE;
+            object.owornmask = 0;
+            obfree(object, null, env);
+        }
+        object = next;
+    }
 }
 
 // C ref: youprop.h:214 Aggravate_monster and :218 Conflict, each `(H... ||

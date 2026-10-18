@@ -26,12 +26,11 @@ import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, pline, impossible, erase_menu_or_text, more, coord_desc,
     mon_glyph, obj_glyph, look_shown_at, terrain_glyph, Hallucination,
-    glyph_at, glyph_is_trap, glyph_to_trap, trap_to_glyph,
+    glyph_to_obj_at, glyph_at, glyph_is_trap, glyph_to_trap, trap_to_glyph,
     glyph_is_monster, glyph_is_object, glyph_is_statue, glyph_is_warning,
     glyph_is_body, glyph_is_normal_object, glyph_is_piletop_generic_obj,
     glyph_is_invisible_id, glyph_is_nothing, glyph_is_unexplored,
     glyph_is_cmap, glyph_to_cmap, glyph_to_obj, glyph_to_warning,
-    glyph_to_body_corpsenm, glyph_to_statue_corpsenm, objnum_to_glyph,
     glyph_is_swallow, glyph_to_swallow, S_sw_tl,
     canspotself, senseself, mon_to_glyph, monsym, cmap_to_glyph, glyph_to_mon,
     hero_Invisible, NO_GLYPH, GLYPH_TRAP_OFF,
@@ -133,10 +132,6 @@ const BOULDER_OTYP = objectNames.indexOf('BOULDER');
 const STRANGE_OBJECT = objectNames.indexOf('STRANGE_OBJECT');
 const SLIME_MOLD = objectNames.indexOf('SLIME_MOLD');
 const LEASH = objectNames.indexOf('LEASH');
-const CORPSE = objectNames.indexOf('CORPSE');
-const STATUE = objectNames.indexOf('STATUE');
-const CHEST = objectNames.indexOf('CHEST');
-const LARGE_BOX = objectNames.indexOf('LARGE_BOX');
 
 /**
  * Contest Rule #2: no runtime filesystem. Texts are embedded via
@@ -1819,23 +1814,15 @@ function is_obj_mappear_look(mon, otyp) {
 }
 
 /**
- * C ref: pager.c object_from_map `:284–377` — the glyph in, like C
- * (callers pass glyph_at, or the memorized id on the mhidden path;
- * the otyp is computed inside in C order). A fake CORPSE/STATUE for
- * a body/statue glyph takes its corpsenm from the glyph id, so a
- * stale-memory describe names the remembered species; a cmap glyph
- * assumes a trapped chest|door (live CHEST else LARGE_BOX).
- * Returns { fakeobj, otmp }.
+ * C ref: pager.c object_from_map `:284–377`.
+ * JS has no integer glyph ids; callers pass glyphotyp (C glyph_to_obj).
+ * cmap trapped-chest CHEST|LARGE_BOX, glyph_is_body / glyph_is_statue
+ * corpsenm from glyph id named. Returns { fakeobj, otmp }.
  */
-export function object_from_map(glyph, x, y) {
-    // C `:292-296` — otyp from the glyph, before any lookup.
-    const gid = glyph | 0;
-    const otyp = glyph_is_object(gid) ? glyph_to_obj(gid)
-        : glyph_is_cmap(gid) ? (sobj_at(CHEST, x, y) ? CHEST : LARGE_BOX)
-        : STRANGE_OBJECT;
+export function object_from_map(glyphotyp, x, y) {
+    const otyp = glyphotyp | 0;
     let fakeobj = false;
     let mimic_obj = false;
-    // C `:300-303` — live match, else buried (C TODO: no containers).
     let otmp = sobj_at(otyp, x, y);
     if (!otmp) {
         for (let b = game.level?.buriedobjlist || null; b; b = b.nobj) {
@@ -1872,8 +1859,6 @@ export function object_from_map(glyph, x, y) {
             // C: give it a type — mksobj(init=FALSE) left spe 0
             otmp.spe = game.context?.current_fruit | 0;
         }
-        // C `:338-350` — mimic species wins; else a body/statue glyph
-        // names the fake corpse/statue (stale memory stays exact).
         if (mtmp && has_mcorpsenm(mtmp)) {
             if ((otmp.otyp | 0) === SLIME_MOLD) {
                 // C: override current_fruit so look stays stable if fruit
@@ -1882,10 +1867,6 @@ export function object_from_map(glyph, x, y) {
             } else {
                 otmp.corpsenm = MCORPSENM(mtmp) | 0;
             }
-        } else if ((otmp.otyp | 0) === CORPSE && glyph_is_body(gid)) {
-            otmp.corpsenm = glyph_to_body_corpsenm(gid);
-        } else if ((otmp.otyp | 0) === STATUE && glyph_is_statue(gid)) {
-            otmp.corpsenm = glyph_to_statue_corpsenm(gid);
         }
         // glyph_is_body / glyph_is_statue corpsenm named (no integer glyphs)
         if ((otmp.otyp | 0) === LEASH) {
@@ -1923,14 +1904,14 @@ function look_buf_cat(buf, extra) {
 
 /**
  * C ref: pager.c look_at_object `:380–419`.
- * Callers pass the glyph (C `look_at_object(buf, x, y, glyph)`).
- * `doname_with_price` when `dknown`, else `doname_vague_quan`.
+ * Callers pass glyphotyp (C `glyph_to_obj`); this port has no integer
+ * glyph ids. `doname_with_price` when `dknown`, else `doname_vague_quan`.
  * A fake is named, then `OBJ_FREE` + `dealloc_obj`, so the suffix chain
  * sees a null `otmp` and still applies terrain (tree before stone).
  */
-export function look_at_object(x, y, glyph) {
+export function look_at_object(x, y, glyphotyp) {
     // C `:387` object_from_map(glyph, x, y, &otmp)
-    let { fakeobj, otmp } = object_from_map(glyph, x, y);
+    let { fakeobj, otmp } = object_from_map(glyphotyp, x, y);
     let buf;
     if (otmp) {
         // C `:390–393` — STRANGE_OBJECT uses obj_descr[].oc_name
@@ -1984,24 +1965,26 @@ function hidden_isyou(mon) {
  * !isyou → levl[x][y].glyph (the memorized GLYPH int), else glyph_at
  * (gbuf); object_from_map applies glyph_to_obj. A mimic faking a
  * !dknown gem/spellbook memorizes GLYPH_OBJ_OFF+0 (zeroobj oclass),
- * which reads as STRANGE_OBJECT, not the mimicked otyp. The otyp
- * fallback covers glyph-less memories (Hallu-STATUE randoms only):
- * objnum_to_glyph rebuilds the generic OBJ glyph C's memory holds,
- * so the body/statue arms stay quiet there, as in C.
+ * which reads as STRANGE_OBJECT, not the mimicked otyp. otyp fallback
+ * covers glyph-less memories (Hallu-STATUE randoms only).
  */
-function hidden_object_glyph(x, y, isyou) {
+function hidden_object_glyphotyp(x, y, isyou) {
     const loc = game.level?.at?.(x, y);
-    if (!loc) return NO_GLYPH;
+    if (!loc) return -1;
     const heroMem = game.level?.flags?.hero_memory !== false;
     if (heroMem && !isyou) {
         const rg = loc.remembered_glyph;
-        if (rg && typeof rg.glyph === 'number') return rg.glyph | 0;
-        if (rg && rg.otyp != null && (rg.otyp | 0) >= 0) {
-            return objnum_to_glyph(rg.otyp | 0);
+        if (rg && !rg.invisible) {
+            if (typeof rg.glyph === 'number' && glyph_is_object(rg.glyph)) {
+                return glyph_to_obj(rg.glyph);
+            }
+            if (rg.otyp != null && (rg.otyp | 0) >= 0) {
+                return rg.otyp | 0;
+            }
         }
-        return NO_GLYPH;
+        return -1;
     }
-    return glyph_at(x, y);
+    return glyph_to_obj_at(x, y);
 }
 
 /**
@@ -2009,8 +1992,8 @@ function hidden_object_glyph(x, y, isyou) {
  * fakeobj: object_from_map set OBJ_FLOOR; free via OBJ_FREE (GC; no
  * dealloc_obj clone).
  */
-function hidden_objfrommap(incl_article, glyph, x, y) {
-    const { fakeobj, otmp } = object_from_map(glyph, x, y);
+function hidden_objfrommap(incl_article, glyphotyp, x, y) {
+    const { fakeobj, otmp } = object_from_map(glyphotyp, x, y);
     let what = (otmp && (otmp.otyp | 0) !== STRANGE_OBJECT)
         ? simpleonames(otmp)
         : (objectNameStrs[STRANGE_OBJECT] || 'strange object');
@@ -2043,8 +2026,8 @@ export function mhidden_description(mon, mhid_flags) {
     const y = isyou ? (u.uy | 0) : (mon.my | 0);
     const ap = hidden_ap_type(mon);
     const ptr = mon.data;
-    // C `:201-202` — one glyph pick: memorized id, else glyph_at.
-    const hidden_glyph = hidden_object_glyph(x, y, isyou);
+    // C: one glyph pick (memory vs glyph_at); glyph_is_object ≡ otyp>=0
+    const gtyp = hidden_object_glyphotyp(x, y, isyou);
     let outbuf = '';
 
     if (ap === M_AP_FURNITURE || ap === M_AP_OBJECT) {
@@ -2053,8 +2036,8 @@ export function mhidden_description(mon, mhid_flags) {
             let what = defsym_explanation(mon.mappearance | 0);
             if (incl_article) what = an(what);
             outbuf += what;
-        } else if (ap === M_AP_OBJECT && glyph_is_object(hidden_glyph)) {
-            outbuf += hidden_objfrommap(incl_article, hidden_glyph, x, y);
+        } else if (ap === M_AP_OBJECT && gtyp >= 0) {
+            outbuf += hidden_objfrommap(incl_article, gtyp, x, y);
         } else {
             outbuf += 'something';
         }
@@ -2071,8 +2054,8 @@ export function mhidden_description(mon, mhid_flags) {
         outbuf = ', hiding';
         if (hides_under(ptr)) {
             outbuf += ' under ';
-            if (glyph_is_object(hidden_glyph)) {
-                outbuf += hidden_objfrommap(incl_article, hidden_glyph, x, y);
+            if (gtyp >= 0) {
+                outbuf += hidden_objfrommap(incl_article, gtyp, x, y);
             } else {
                 outbuf += 'something';
             }
@@ -2181,7 +2164,7 @@ export function lookat(x, y) {
             buf = rndmonnam(null);
         }
     } else if (glyph_is_object(glyph)) {
-        buf = look_at_object(x, y, glyph);
+        buf = look_at_object(x, y, glyph_to_obj(glyph));
     } else if (glyph_is_trap(glyph)) {
         buf = trap_description(glyph_to_trap(glyph), x, y);
     } else if (glyph_is_warning(glyph)) {
@@ -2338,7 +2321,8 @@ async function look_all(nearby, do_mons) {
                     ++count; // C :2013
                 }
             } else if (glyph_is_object(glyph)) { // C :2015-2016 !do_mons
-                lookbuf = look_at_object(x, y, glyph); // C :2017
+                const otyp = glyph_to_obj(glyph); // C :2017 via glyphotyp
+                lookbuf = look_at_object(x, y, otyp);
                 glyphCh = shownCh || '?';
                 ++count; // C :2018
             }

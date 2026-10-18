@@ -20,8 +20,7 @@ import { getmailstatus } from './mail.js';
 import { try_restore_save } from './save.js';
 import { vision_init, vision_recalc, init_vision_globals } from './vision.js';
 import { parseNethackrc, set_playmode, init_fruit_chain, initoptions_init, RC_FILE_OPT, set_configfile_name } from './options.js';
-import { flush_pending_config_frame } from './cfgfiles.js';
-import { flush_screen, serialize_for_scoring, reset_display_messages, docrt, bot, pline, tty_wait_synch, nomux_serialize_grid, nomux_build_splice } from './display.js';
+import { flush_screen, serialize_for_scoring, reset_display_messages, docrt, bot, pline } from './display.js';
 import { GameDisplay } from './game_display.js';
 import { askname_if_needed } from './askname.js';
 import { player_selection } from './player_selection.js';
@@ -228,17 +227,6 @@ export class NethackGame {
         // Install capture hook
         this._installCaptureHook();
 
-        // C rcfile `:1943–1945` + config_error_done `:1615`: the rc error
-        // frame replays here — input and capture do not exist at parse
-        // time (display installs above), and C's prompt precedes all game
-        // output. Pre-window tty_wait_synch runs getret, which eats input
-        // to the first return (getline.c xwaitforspace `:230–257`).
-        // Clean rcs (config_errors 0) skip both, exactly as before.
-        if (opts.config_errors) {
-            flush_pending_config_frame();
-            await tty_wait_synch();
-        }
-
         // C unixmain.c:188–190 — #ifdef MAIL getmailstatus() after
         // init_nhwindows, before set_playmode. libnhmain.c:220 is the
         // library entry, not this unix tty build.
@@ -332,43 +320,19 @@ export class NethackGame {
                 if (t.startsWith('Count:') || t.endsWith('--More--'))
                     disp.setCursor(t.length, 0);
             }
-            // Patch-006 overflow (D-40xx): C nomux_emit_marker runs
-            // capture_screen (clobbering the raw triple past 6144 B),
-            // get_cursor, then fprintf+fwrite (splicing the header past
-            // 6608 B). Same order here; the triple lives on `game`
-            // (fresh per segment via resetGame, like the recorder's BSS).
-            const nomux = term?.grid
-                ? nomux_serialize_grid(term, game?.level ?? null)
-                : null;
-            const nT = (game._nomuxRawTriple ??= { active: 0, row: 0, col: 0 });
-            if (nomux && nomux.triple) {
-                nT.active = nomux.triple.active;
-                nT.row = nomux.triple.row;
-                nT.col = nomux.triple.col;
-            }
-            let splice = null;
-            if (nomux && nomux.injection) {
-                let animN = nhGame._pendingAnimFrames.length;
-                for (const a of nhGame._animFramesByStep) animN += (a || []).length;
-                splice = nomux_build_splice(nomux, { seq: keyIdx + 1, anim: animN });
-            }
             nhGame._screens.push(
                 term?.grid
-                    ? serialize_for_scoring(term, splice)
+                    ? serialize_for_scoring(term)
                     : (term?.serialize ? term.serialize() : ''),
             );
             nhGame._rngSlices.push(slice);
 
-            const liveCursor = term?.getCursor
+            const cursor = term?.getCursor
                 ? term.getCursor()
                 : (disp
                     ? [disp.cursorCol ?? 0, disp.cursorRow ?? 0,
                         disp.cursorVisible ?? 1]
                     : null);
-            // C nomux_get_cursor: the clobbered triple once active.
-            const cursor = nT.active && liveCursor
-                ? [nT.col, nT.row, 1]
-                : liveCursor;
             nhGame._cursors.push(cursor);
 
             // Commit animation frames accumulated since the previous

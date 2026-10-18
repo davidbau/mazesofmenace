@@ -6763,9 +6763,13 @@ function load_wiz_strt() {
     lspo_replace_terrain_region(0, 0, 75, 19, ROOM, CLOUD, 10);
     lspo_replace_terrain_region(13, 5, 33, 15, CLOUD, ROOM, 100);
 
-    // lit / unlit regions — des.region(selection.area(00,00,75,19), "lit"):
-    // C lspo_region :5624-5626 grows W_ANY before sel_set_lit :5539.
-    light_region(mx + 0, my + 0, mx + 75, my + 19, true);
+    // lit / unlit regions
+    for (let y = my; y <= my + 19 && y < ROWNO; y++) {
+        for (let x = mx; x <= mx + 75 && x < COLNO; x++) {
+            const loc = g.level.at(x, y);
+            if (loc) loc.lit = true;
+        }
+    }
     const unlitRect = (x1, y1, x2, y2) => {
         for (let y = my + y1; y <= my + y2 && y < ROWNO; y++) {
             for (let x = mx + x1; x <= mx + x2 && x < COLNO; x++) {
@@ -7025,9 +7029,13 @@ function load_wiz_loca() {
     lspo_replace_terrain_region(68, 0, 75, 20, ROOM, MOAT, 25);
     lspo_replace_terrain_region(34, 1, 68, 19, MOAT, ROOM, 2);
 
-    // des.region(selection.area(00,00,75,20), "lit") — C lspo_region
-    // :5624-5626 grows W_ANY before sel_set_lit :5539.
-    light_region(mx + 0, my + 0, mx + 75, my + 20, true);
+    // des.region(selection.area(00,00,75,20), "lit")
+    for (let y = my; y <= my + 20 && y < ROWNO; y++) {
+        for (let x = mx; x <= mx + 75 && x < COLNO; x++) {
+            const loc = g.level.at(x, y);
+            if (loc) loc.lit = true;
+        }
+    }
 
     const wizLocaAddIrregular = (x1, y1, lit, wallsOrRandom) => {
         const dx1 = mx + x1, dy1 = my + y1;
@@ -7507,10 +7515,13 @@ function load_pri_strt() {
     const mx = g.splev_xstart ?? 1;
     const my = g.splev_ystart ?? 0;
 
-    // des.region(selection.area(00,00,75,19), "lit") — C lspo_region
-    // :5624-5626 grows a "lit" selection one cell (selection_do_grow
-    // W_ANY) before sel_set_lit :5539; light_region is that sequence.
-    light_region(mx + 0, my + 0, mx + 75, my + 19, true);
+    // des.region(selection.area(00,00,75,19), "lit")
+    for (let y = my; y <= my + 19 && y < ROWNO; y++) {
+        for (let x = mx; x <= mx + 75 && x < COLNO; x++) {
+            const loc = g.level.at(x, y);
+            if (loc) loc.lit = true;
+        }
+    }
 
     // des.region({ region={24,06, 33,13}, lit=1, type="temple", filled=2 })
     {
@@ -8879,9 +8890,13 @@ xxxxxxxxx.......xxxxxx.....xxxxxxxxxxxxx
     const mx = g.splev_xstart ?? 1;
     const my = g.splev_ystart ?? 0;
 
-    // des.region(selection.area(00,00,39,11), "lit") — C lspo_region
-    // :5624-5626 grows W_ANY before sel_set_lit :5539.
-    light_region(mx + 0, my + 0, mx + 39, my + 11, true);
+    // des.region(selection.area(00,00,39,11), "lit")
+    for (let y = my; y <= my + 11 && y < ROWNO; y++) {
+        for (let x = mx; x <= mx + 39 && x < COLNO; x++) {
+            const loc = g.level.at(x, y);
+            if (loc) loc.lit = true;
+        }
+    }
 
     // des.region({ region={09,02, 27,09}, lit=1, type="temple", filled=2 })
     let templeRoom = null;
@@ -9080,11 +9095,12 @@ function load_kni_goal() {
     const mx = g.splev_xstart ?? 1;
     const my = g.splev_ystart ?? 0;
 
-    // des.region lit / unlit (Kni-goal.lua:33-34) — C lspo_region :5624
-    // grows the "lit" selection (light_region) but not "unlit" (:5626
-    // sel_set_lit both); lit-then-unlit order kept for the overlap.
-    light_region(mx + 0, my + 0, mx + 14, my + 19, true);
+    // des.region lit / unlit
     for (let y = my; y <= my + 19 && y < ROWNO; y++) {
+        for (let x = mx; x <= mx + 14 && x < COLNO; x++) {
+            const loc = g.level.at(x, y);
+            if (loc) loc.lit = true;
+        }
         for (let x = mx + 15; x <= mx + 75 && x < COLNO; x++) {
             const loc = g.level.at(x, y);
             if (loc) loc.lit = false;
@@ -12442,10 +12458,13 @@ function load_mon_strt() {
     const mx = g.splev_xstart ?? 1;
     const my = g.splev_ystart ?? 0;
 
-    // des.region(selection.area(00,00,75,19), "lit") — C lspo_region
-    // :5624-5626 grows a "lit" selection one cell (selection_do_grow
-    // W_ANY) before sel_set_lit :5539; light_region is that sequence.
-    light_region(mx + 0, my + 0, mx + 75, my + 19, true);
+    // des.region(selection.area(00,00,75,19), "lit")
+    for (let y = my; y <= my + 19 && y < ROWNO; y++) {
+        for (let x = mx; x <= mx + 75 && x < COLNO; x++) {
+            const loc = g.level.at(x, y);
+            if (loc) loc.lit = true;
+        }
+    }
 
     // des.region({ region={24,06, 33,13}, lit=1, type="temple" }) — no
     // `filled` key: C lspo_region :5600 defaults needfill to 0 (Pri-strt
@@ -12587,42 +12606,18 @@ function load_mon_strt() {
 
     // Monsters on siege duty: 8 earth elementals then 4 xorns
     for (let i = 0; i < 8; i++) {
-        let pos = selection_rndcoord(spacelocs, true);
+        const pos = selection_rndcoord(spacelocs, true);
         const { mndx, female } = find_montype_gender('earth elemental');
         induced_align(80);
-        if (mndx < 0 || mndx === NON_PM) continue;
-        if (!pos) {
-            // C: selection.rndcoord on an empty selection draws nothing and
-            // yields {x:-1,y:-1} (nhlsel.c:407-427); des.monster then places
-            // randomly — create_monster :1963-1972 pm_to_humidity first-try
-            // + DRY retry, :1975-1976 MON_AT/enexto (croom is null for
-            // top-level des.monster, so no :1978-1979 inside_room check).
-            const pm0 = mons(mndx);
-            const loc0 = pm_to_humidity(pm0);
-            pos = get_location_random(loc0 | NO_LOC_WARN);
-            if (pos.x < 0) pos = get_location_random(loc0 | DRY);
-            pos = splev_resolve_occupied(pos.x, pos.y, pm0);
-        }
+        if (!pos || mndx < 0 || mndx === NON_PM) continue;
         const mtmp = makemon(mons(mndx), pos.x, pos.y, 0);
         if (mtmp) mtmp.female = female;
     }
     for (let i = 0; i < 4; i++) {
-        let pos = selection_rndcoord(spacelocs, true);
+        const pos = selection_rndcoord(spacelocs, true);
         const { mndx, female } = find_montype_gender('xorn');
         induced_align(80);
-        if (mndx < 0 || mndx === NON_PM) continue;
-        if (!pos) {
-            // C: selection.rndcoord on an empty selection draws nothing and
-            // yields {x:-1,y:-1} (nhlsel.c:407-427); des.monster then places
-            // randomly — create_monster :1963-1972 pm_to_humidity first-try
-            // + DRY retry, :1975-1976 MON_AT/enexto (croom is null for
-            // top-level des.monster, so no :1978-1979 inside_room check).
-            const pm0 = mons(mndx);
-            const loc0 = pm_to_humidity(pm0);
-            pos = get_location_random(loc0 | NO_LOC_WARN);
-            if (pos.x < 0) pos = get_location_random(loc0 | DRY);
-            pos = splev_resolve_occupied(pos.x, pos.y, pm0);
-        }
+        if (!pos || mndx < 0 || mndx === NON_PM) continue;
         const mtmp = makemon(mons(mndx), pos.x, pos.y, 0);
         if (mtmp) mtmp.female = female;
     }
@@ -12735,11 +12730,7 @@ function load_mon_loca() {
                 quan: 2, buc: 'blessed', montype: 'spinach',
             });
             // des.engraving({ coord=tinloc, type="burn", text="Elbereth" })
-            { // C ref: sp_lev.c lspo_engraving `:3930-3934` des ep-tail
-              // (no guardobjects/degrade params: FALSE/TRUE defaults).
-                const ep = make_engr_at(tinloc.x, tinloc.y, 'Elbereth', null, 0, BURN);
-                if (ep) { ep.guardobjects = 0; ep.nowipeout = 0; }
-            }
+            make_engr_at(tinloc.x, tinloc.y, 'Elbereth', null, 0, BURN);
         }
     }
 
@@ -12999,7 +12990,7 @@ async function load_mon_filb() {
  * whole-map non_diggable; 2 fixed pits + 4 random traps; 12 hostile
  * bugbears on siege duty.
  * Named omissions: humidity-aware get_location for water-likers;
- * ensure_way_out.
+ * ensure_way_out; spo_end_moninvent m_dowear.
  */
 function load_cav_strt() {
     const g = game;
@@ -13148,9 +13139,6 @@ function load_cav_strt() {
         };
         give({ id: 'leather armor', spe: 5 });
         give({ id: 'club', spe: 5 });
-        // C: sp_lev.c spo_end_moninvent `:3032–3035` → m_dowear(TRUE) after
-        // Karnov custom invent (creation: sync-through, no messages/RNG).
-        m_dowear(mtmp, true);
     }
     // des.object("chest", 34,02)
     mksobj_at(CHEST, mx + 34, my + 2, true, true);
@@ -13808,7 +13796,8 @@ function load_knox() {
 
 /**
  * C ref: dat/Bar-loca.lua via load_special — locate level (ogre fort).
- * Named omissions: humidity-aware get_location for water-likers.
+ * Named omissions: humidity-aware get_location for water-likers;
+ * set_malign after peaceful override (matches Bar-strt partial).
  * SpLev_Map game bitmap C-complete (C :6292/:4189/:4661; D-3548).
  */
 function load_bar_loca() {
@@ -13949,15 +13938,10 @@ function load_bar_loca() {
         }
         const mtmp = makemon(pm, x, y, 0);
         if (!mtmp) return;
-        // C sp_lev.c:2125 + :3299/:3355-3356: no female key in Bar-loca.lua
-        // → id specs keep the find_montype gender, class specs force 0.
         if (spec.id) mtmp.female = female;
-        else mtmp.female = 0;
         // C: peaceful > BOOL_RANDOM → override (0 here)
-        if (spec.peaceful != null && spec.peaceful > BOOL_RANDOM) {
+        if (spec.peaceful != null && spec.peaceful > BOOL_RANDOM)
             mtmp.mpeaceful = spec.peaceful;
-            set_malign(mtmp); // C sp_lev.c:2128-2129: reset malign
-        }
     };
 
     for (const [rx, ry] of [
@@ -14851,9 +14835,13 @@ function load_soko1_1() {
     game.SpLev_Map.add(`${xstart + 1},${ystart + 1}`); // C :4189
     mkstairs(xstart + 1, ystart + 1, 0, null, true); // des.stair("down", 01, 01)
 
-    // des.region(selection.area(00,00,25,17),"lit") — C lspo_region
-    // :5624-5626 grows W_ANY before sel_set_lit :5539.
-    light_region(xstart + 0, ystart + 0, xstart + 25, ystart + 17, true);
+    // des.region(selection.area(00,00,25,17),"lit")
+    for (let y = ystart; y <= ystart + 17 && y < ROWNO; y++) {
+        for (let x = xstart; x <= xstart + 25 && x < COLNO; x++) {
+            const loc = g.level.at(x, y);
+            if (loc) loc.lit = true;
+        }
+    }
 
     // des.non_diggable / non_passwall — C set_wall_property on STWALL/TREE/bars
     for (let y = ystart; y <= ystart + 17 && y < ROWNO; y++) {
@@ -14965,11 +14953,7 @@ function load_soko1_1() {
                 impossible('multiple prizes on %s level', 'sokoban end');
             }
         }
-        { // C ref: sp_lev.c lspo_engraving `:3930-3934` des ep-tail
-          // (no guardobjects/degrade params: FALSE/TRUE defaults).
-            const ep = make_engr_at(pt.x, pt.y, 'Elbereth', null, 0, BURN);
-            if (ep) { ep.guardobjects = 0; ep.nowipeout = 0; }
-        }
+        make_engr_at(pt.x, pt.y, 'Elbereth', null, 0, BURN);
         {
             const otmp = mksobj_at(SCR_SCARE_MONSTER, pt.x, pt.y, true, true);
             if (otmp) curse(otmp);
@@ -15038,9 +15022,13 @@ function load_soko1_2() {
     game.SpLev_Map.add(`${xstart + 6},${ystart + 15}`); // C :4189
     mkstairs(xstart + 6, ystart + 15, 0, null, true); // des.stair("down", 06, 15)
 
-    // des.region(selection.area(00,00,25,16),"lit") — C lspo_region
-    // :5624-5626 grows W_ANY before sel_set_lit :5539.
-    light_region(xstart + 0, ystart + 0, xstart + 25, ystart + 16, true);
+    // des.region(selection.area(00,00,25,16),"lit")
+    for (let y = ystart; y <= ystart + 16 && y < ROWNO; y++) {
+        for (let x = xstart; x <= xstart + 25 && x < COLNO; x++) {
+            const loc = g.level.at(x, y);
+            if (loc) loc.lit = true;
+        }
+    }
 
     for (let y = ystart; y <= ystart + 16 && y < ROWNO; y++) {
         for (let x = Math.max(1, xstart); x <= xstart + 25 && x < COLNO; x++) {
@@ -15149,11 +15137,7 @@ function load_soko1_2() {
                 impossible('multiple prizes on %s level', 'sokoban end');
             }
         }
-        { // C ref: sp_lev.c lspo_engraving `:3930-3934` des ep-tail
-          // (no guardobjects/degrade params: FALSE/TRUE defaults).
-            const ep = make_engr_at(pt.x, pt.y, 'Elbereth', null, 0, BURN);
-            if (ep) { ep.guardobjects = 0; ep.nowipeout = 0; }
-        }
+        make_engr_at(pt.x, pt.y, 'Elbereth', null, 0, BURN);
         {
             const otmp = mksobj_at(SCR_SCARE_MONSTER, pt.x, pt.y, true, true);
             if (otmp) curse(otmp);
@@ -15216,9 +15200,13 @@ function load_soko3_1() {
         }
     }
 
-    // des.region(selection.area(00,00,28,11), "lit") — C lspo_region
-    // :5624-5626 grows W_ANY before sel_set_lit :5539.
-    light_region(xstart + 0, ystart + 0, xstart + 28, ystart + 11, true);
+    // des.region(selection.area(00,00,28,11), "lit")
+    for (let y = ystart; y <= ystart + 11 && y < ROWNO; y++) {
+        for (let x = xstart; x <= xstart + 28 && x < COLNO; x++) {
+            const loc = g.level.at(x, y);
+            if (loc) loc.lit = true;
+        }
+    }
 
     for (let y = ystart; y <= ystart + 11 && y < ROWNO; y++) {
         for (let x = Math.max(1, xstart); x <= xstart + 28 && x < COLNO; x++) {
@@ -15318,9 +15306,13 @@ function load_soko3_2() {
         }
     }
 
-    // des.region(selection.area(00,00,25,13), "lit") — C lspo_region
-    // :5624-5626 grows W_ANY before sel_set_lit :5539.
-    light_region(xstart + 0, ystart + 0, xstart + 25, ystart + 13, true);
+    // des.region(selection.area(00,00,25,13), "lit")
+    for (let y = ystart; y <= ystart + 13 && y < ROWNO; y++) {
+        for (let x = xstart; x <= xstart + 25 && x < COLNO; x++) {
+            const loc = g.level.at(x, y);
+            if (loc) loc.lit = true;
+        }
+    }
 
     for (let y = ystart; y <= ystart + 13 && y < ROWNO; y++) {
         for (let x = Math.max(1, xstart); x <= xstart + 25 && x < COLNO; x++) {
@@ -15421,9 +15413,13 @@ function load_soko4_1() {
     game.SpLev_Map.add(`${xstart + 6},${ystart + 6}`); // C :4189
     mkstairs(xstart + 6, ystart + 6, 1, null, true); // des.stair("up", 06, 06)
 
-    // des.region(selection.area(00,00,13,12), "lit") — C lspo_region
-    // :5624-5626 grows W_ANY before sel_set_lit :5539.
-    light_region(xstart + 0, ystart + 0, xstart + 13, ystart + 12, true);
+    // des.region(selection.area(00,00,13,12), "lit")
+    for (let y = ystart; y <= ystart + 12 && y < ROWNO; y++) {
+        for (let x = xstart; x <= xstart + 13 && x < COLNO; x++) {
+            const loc = g.level.at(x, y);
+            if (loc) loc.lit = true;
+        }
+    }
 
     for (let y = ystart; y <= ystart + 12 && y < ROWNO; y++) {
         for (let x = Math.max(1, xstart); x <= xstart + 13 && x < COLNO; x++) {
@@ -15537,9 +15533,13 @@ function load_soko4_2() {
     game.SpLev_Map.add(`${xstart + 1},${ystart + 1}`); // C :4189
     mkstairs(xstart + 1, ystart + 1, 1, null, true); // des.stair("up", 01, 01)
 
-    // des.region(selection.area(00,00,14,10),"lit") — C lspo_region
-    // :5624-5626 grows W_ANY before sel_set_lit :5539.
-    light_region(xstart + 0, ystart + 0, xstart + 14, ystart + 10, true);
+    // des.region(selection.area(00,00,14,10),"lit")
+    for (let y = ystart; y <= ystart + 10 && y < ROWNO; y++) {
+        for (let x = xstart; x <= xstart + 14 && x < COLNO; x++) {
+            const loc = g.level.at(x, y);
+            if (loc) loc.lit = true;
+        }
+    }
 
     for (let y = ystart; y <= ystart + 10 && y < ROWNO; y++) {
         for (let x = Math.max(1, xstart); x <= xstart + 14 && x < COLNO; x++) {
@@ -16079,9 +16079,13 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
         delarea: { x1: -1, y1: -1, x2: -1, y2: -1 },
     });
 
-    // des.region(selection.area(00,00,75,19),"lit") — map-relative; C
-    // lspo_region :5624-5626 grows W_ANY before sel_set_lit :5539.
-    light_region(xstart + 0, ystart + 0, xstart + 75, ystart + 19, true);
+    // des.region(selection.area(00,00,75,19),"lit") — map-relative
+    for (let y = ystart; y <= ystart + 19 && y < ROWNO; y++) {
+        for (let x = xstart; x <= xstart + 75 && x < COLNO; x++) {
+            const loc = g.level.at(x, y);
+            if (loc) loc.lit = true;
+        }
+    }
 
     const airMons = [
         ['air elemental', 0], ['air elemental', 0], ['air elemental', 0],
@@ -18758,10 +18762,7 @@ export async function movebubbles() {
                         (b.cons || (b.cons = [])).unshift({ x, y, what: CONS_TRAP, list: btrap });
                     }
                     /* C `:1644–1645`: levl[x][y] = water_pos (S_water
-                     * glyph, WATER, zeroed seenv/lit) then block_point.
-                     * water_pos zeroes the whole struct (rm.h order:
-                     * glyph/typ/seenv/flags/horizontal/lit/waslit/
-                     * roomno/edge/candig), so reset every field here. */
+                     * glyph, WATER, zeroed seenv/lit) then block_point. */
                     const loc = g.level.at(x, y);
                     if (loc) {
                         loc.remembered_glyph = {
@@ -18772,12 +18773,6 @@ export async function movebubbles() {
                         loc.typ = WATER;
                         loc.lit = false;
                         loc.seenv = 0;
-                        loc.flags = 0;
-                        loc.horizontal = false;
-                        loc.waslit = false;
-                        loc.roomno = 0;
-                        loc.edge = false;
-                        loc.candig = 0;
                         block_point(x, y);
                     }
                 }
@@ -18795,17 +18790,6 @@ export async function movebubbles() {
                 loc.remembered_glyph = { ...airGlyph };
                 loc.typ = AIR;
                 loc.lit = true;
-                /* C `:1653–1654`: levl[x][y] = air_pos zeroes the whole
-                 * struct (rm.h order: glyph/typ/seenv/flags/horizontal/
-                 * lit/waslit/roomno/edge/candig), not just typ/lit —
-                 * seenv in particular must not go stale across turns. */
-                loc.seenv = 0;
-                loc.flags = 0;
-                loc.horizontal = false;
-                loc.waslit = false;
-                loc.roomno = 0;
-                loc.edge = false;
-                loc.candig = 0;
                 recalc_block_point(x, y);
                 /* C `:1655–1663`: break up the all-air/all-cloud
                  * perimeter; CLOUD cells block. */
@@ -19187,9 +19171,13 @@ function load_soko2_1() {
         }
     }
 
-    // des.region(selection.area(00,00, 19,11), "lit") — C lspo_region
-    // :5624-5626 grows W_ANY before sel_set_lit :5539.
-    light_region(xstart + 0, ystart + 0, xstart + 19, ystart + 11, true);
+    // des.region(selection.area(00,00, 19,11), "lit")
+    for (let y = ystart; y <= ystart + 11 && y < ROWNO; y++) {
+        for (let x = xstart; x <= xstart + 19 && x < COLNO; x++) {
+            const loc = g.level.at(x, y);
+            if (loc) loc.lit = true;
+        }
+    }
 
     for (let y = ystart; y <= ystart + 11 && y < ROWNO; y++) {
         for (let x = Math.max(1, xstart); x <= xstart + 19 && x < COLNO; x++) {
@@ -19290,9 +19278,13 @@ function load_soko2_2() {
         }
     }
 
-    // des.region(selection.area(00,00,21,12), "lit") — C lspo_region
-    // :5624-5626 grows W_ANY before sel_set_lit :5539.
-    light_region(xstart + 0, ystart + 0, xstart + 21, ystart + 12, true);
+    // des.region(selection.area(00,00,21,12), "lit")
+    for (let y = ystart; y <= ystart + 12 && y < ROWNO; y++) {
+        for (let x = xstart; x <= xstart + 21 && x < COLNO; x++) {
+            const loc = g.level.at(x, y);
+            if (loc) loc.lit = true;
+        }
+    }
 
     for (let y = ystart; y <= ystart + 12 && y < ROWNO; y++) {
         for (let x = Math.max(1, xstart); x <= xstart + 21 && x < COLNO; x++) {
@@ -25025,11 +25017,7 @@ function load_castle() {
                 if (WAN_WISHING >= 0) addContent(WAN_WISHING);
                 if (POT_GAIN_LEVEL >= 0) addContent(POT_GAIN_LEVEL);
             }
-            { // C ref: sp_lev.c lspo_engraving `:3930-3934` des ep-tail
-              // (no guardobjects/degrade params: FALSE/TRUE defaults).
-                const ep = make_engr_at(loc.x, loc.y, 'Elbereth', null, 0, BURN);
-                if (ep) { ep.guardobjects = 0; ep.nowipeout = 0; }
-            }
+            make_engr_at(loc.x, loc.y, 'Elbereth', null, 0, BURN);
             {
                 const otmp = mksobj_at(SCR_SCARE_MONSTER, loc.x, loc.y, true, true);
                 if (otmp) curse(otmp);
@@ -28072,21 +28060,9 @@ function load_sanctum() {
     // Monsters — named with coords (random amask) then noalign clerics
     const placeNamed = (id, rx, ry, peaceful) => {
         const { mndx, female } = find_montype_gender(id);
-        let pm = (mndx >= 0 && mndx !== NON_PM) ? mons(mndx) : null;
+        const pm = (mndx >= 0 && mndx !== NON_PM) ? mons(mndx) : null;
         // C: no align → AM_SPLEV_RANDOM → induced_align(80)
         induced_align(80);
-        // C sp_lev.c create_monster :1947–1953 — an extinct unique never
-        // spawns; a genocided or extinct type falls through to a random
-        // monster (pm cleared, makemon(null) below). Same shape as
-        // splev_create_monster :22308–22317 and load_juiblex
-        // placeNamedAtAbs (D-4023).
-        if (pm) {
-            const g_mvflags = game.mvitals?.[mndx]?.mvflags ?? 0;
-            if (((pm?.geno ?? 0) & G_UNIQ) && (g_mvflags & G_EXTINCT))
-                return;
-            if (g_mvflags & G_GONE)
-                pm = null;
-        }
         let x = mx + rx, y = my + ry;
         if (pm) {
             // humidity path omitted for these dry demons

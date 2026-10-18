@@ -13,7 +13,7 @@ import {
     pline, flush_topl_more, bot, You_feel, clear_nhwindow_message,
     canspotmon, Hallucination, curs_on_u, newsym, impossible, You,
     mark_topline_empty, vpline_expand, set_bot_disabled, tty_raw_print,
-    tty_wait_synch, nomux_raw_triple_emit,
+    tty_wait_synch,
 } from './display.js';
 // C end.c panic `:410` exit_nhwindows — hoisted function decl, call-time
 // use only (cmd.js already imports end.js).
@@ -1382,14 +1382,6 @@ async function really_done(how) {
 
     // C: !toptenwin → exit_nhwindows then topten raw_print; nh_terminate
     // captures final screen (contest nomux input boundary, no nhgetch).
-    // D-40xx: C end.c:1580 exit_nhwindows(NULL) → suspend raw_print("")
-    // (wintty.c:808–813) runs before topten; count its newline on the
-    // virtual triple (JS done2 lacks the exit call; the update lands
-    // here, cited — it commutes since all newlines precede the capture).
-    {
-        const nT = game._nomuxRawTriple;
-        if (nT && nT.active) nomux_raw_triple_emit(nT, ['']);
-    }
     topten(how, endtime, formatkiller(how, true));
     // C: if (done_stopprint) { raw_print(""); raw_print(""); }
     if (game.program_state?.done_stopprint) {

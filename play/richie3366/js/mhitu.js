@@ -87,7 +87,7 @@ import { xkilled, killed, Hate_silver, dynamic_multi_reason, attacktype_fordmg, 
 import {
     m_seenres, cvt_adtyp_to_mseenres, monstseesu, monstunseesu, m_canseeu,
     mhis, on_fire, defended, get_atkdam_type, dmgtype_fromattack, attacktype,
-    resists_blnd, noit_mhim,
+    resists_blnd,
 } from './mondata.js';
 import { which_armor, find_mac } from './worn.js';
 import {
@@ -460,18 +460,13 @@ export async function hitmsg(mtmp, mattk) {
             verb = 'hits';
             break;
         }
-        // C: mattk == gh.hitmsg_prev + 1 && same aatyp → " again".
-        // Pointer+1 means same array AND consecutive slot: require the
-        // get_mattk source-array identity too (D-4093: same m_id across
-        // a polymorph must print plain, as C's cross-array comparison does).
+        // C: mattk == gh.hitmsg_prev + 1 && same aatyp → " again"
         const prev = game.hitmsg_prev;
         const again = (
             (mtmp.m_id | 0) === (game.hitmsg_mid | 0)
             && prev
             && mattk._slot
             && prev._slot
-            && mattk._arr
-            && mattk._arr === prev._arr
             && (mattk._indx | 0) === ((prev._indx | 0) + 1)
             && (mattk.aatyp | 0) === (prev.aatyp | 0)
         ) ? ' again' : '';
@@ -1466,10 +1461,10 @@ export async function doseduce(mon) {
     if (mon.mtame) {
         /* don't charge */
     } else if (rn2(20) < acurr(A_CHA)) {
-        /* C mhitu.c `:2266–2268` noit_mhim(mon): burns rn2(4) via
-           pronoun_gender when hallucinating — never him/her. */
         await pline(
-            `${noit_Monnam(mon)} demands that you pay ${noit_mhim(mon)}, but you refuse...`,
+            `${noit_Monnam(mon)} demands that you pay ${
+                mon.female ? 'her' : 'him'
+            }, but you refuse...`,
         );
     } else if ((u.umonnum | 0) === PM_LEPRECHAUN) {
         await pline_mon(

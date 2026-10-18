@@ -48,8 +48,6 @@ import {
 import { lined_up } from './mthrowu.js';
 import { burnarmor, ignite_items } from './trap.js';
 import { mkclass, makemon, set_malign } from './makemon.js';
-// C ref: monmove.c dochugw — mcast_insects makemon in-body :1502–1504 (imports.mjs: hoisted fn, cycle-safe).
-import { dochugw } from './monmove.js';
 import { monster_census } from './minion.js';
 import { enexto, unconscious } from './teleport.js';
 import { is_fainted } from './eat.js';
@@ -716,13 +714,6 @@ async function mcast_insects(mtmp) {
         if (pm)
             mtmp2 = makemon(pm, bypos.x, bypos.y, MM_ANGRY | MM_NOMSG);
         if (mtmp2) {
-            /* C makemon.c:1502–1504 — in-body dochugw(FALSE): MM_NOMSG
-               skips the appear Norep (:1474) but a discernable threat
-               still stops the hero's occupation (zapfest s585 «You stop
-               searching.»; gate mirrors rloc_maybe_occupation). */
-            if (typeof game.occupation === 'function') {
-                await dochugw(mtmp2, false);
-            }
             success = true;
             mtmp2.msleeping = mtmp2.mpeaceful = mtmp2.mtame = 0;
             set_malign(mtmp2);

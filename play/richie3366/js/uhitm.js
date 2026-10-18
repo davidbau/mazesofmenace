@@ -42,7 +42,7 @@ import {
 import { exercise, A_STR, A_DEX, A_WIS, A_CON, acurr, adjalign, change_luck, ALIGNLIM, Fumbling } from './attrib.js';
 import { overexertion, nomul, losehp, is_pool, maybe_half_phys, noattacks, check_capacity, in_rooms, end_running } from './hack.js';
 import { ing_suffix, upstart, highc, strstri, dist2 } from './hacklib.js';
-import { pline, pline_mon, newsym, canseemon, canspotmon, sensemon, tp_sensemon, map_invisible, unmap_object, unmap_invisible, memory_glyph_is_invisible, glyph_at, glyph_is_cmap, glyph_to_cmap, glyph_is_object, glyph_is_warning, glyph_is_invisible_id, flush_topl_more, You_feel, tmp_at, map_location, nh_delay_output, mon_glyph, shieldeff, impossible, see_monsters, hero_Blind_telepat, You, Your, pline_The } from './display.js';
+import { pline, pline_mon, newsym, canseemon, canspotmon, sensemon, tp_sensemon, map_invisible, unmap_object, unmap_invisible, memory_glyph_is_invisible, glyph_at, glyph_is_cmap, glyph_to_cmap, glyph_is_warning, glyph_is_invisible_id, flush_topl_more, You_feel, tmp_at, map_location, nh_delay_output, mon_glyph, shieldeff, impossible, see_monsters, hero_Blind_telepat, You, Your, pline_The } from './display.js';
 import { cansee } from './vision.js';
 import {
     dmgval, hitval, P_SKILL, weapon_hit_bonus, martial_bonus,
@@ -4595,13 +4595,12 @@ export async function that_is_a_mimic(mtmp, mimic_flags) {
             if (glyph_is_cmap(shown)
                 && glyph_to_cmap(shown) === S_TRAPPED_CHEST) {
                 fmtbuf = `That ${defsym_explanation(S_TRAPPED_CHEST)} actually is %s!`;
-            } else if (glyph_is_object(shown)) {
-                // C `:6230-6233` — the displayed glyph (an object kind).
+            } else {
                 let fakeobj = false;
                 let otmp = null;
                 await pager_bind();
                 if (_object_from_map) {
-                    const got = _object_from_map(shown, x, y);
+                    const got = _object_from_map(mtmp.mappearance | 0, x, y);
                     fakeobj = !!got?.fakeobj;
                     otmp = got?.otmp || null;
                 }
@@ -4988,11 +4987,9 @@ export async function do_attack(mtmp) {
         // through to the hostile path below).
         if (!u_wield_art(ART_STORMBRINGER)) {
             const loc = game.level?.at(game.u?.ux, game.u?.uy);
-            // C `:474` — Punished ≡ (uball != 0) (youprop.h:77) ||
-            // !rn2(7) || longworm+tail || (IS_OBSTRUCTED(here) &&
-            // !passes_walls). Read the live ball: game.u.Punished is
-            // never written (D-4057).
-            const foo = !!(game.u?.uball || !rn2(7)
+            // C `:469–473` — Punished || !rn2(7) || longworm+tail ||
+            // (IS_OBSTRUCTED(here) && !passes_walls).
+            const foo = !!(game.u?.Punished || !rn2(7)
                 || (is_longworm(mdat) && mtmp.wormno)
                 || (loc && IS_OBSTRUCTED(loc.typ) && !passes_walls(mdat)));
             // C `:478–484` — inshop scan only when !foo (no RNG either way).

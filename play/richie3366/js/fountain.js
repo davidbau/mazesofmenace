@@ -97,7 +97,7 @@ import {
     breathless, haseyes,
 } from './monsters.js';
 import { m_at, angry_guards, minliquid, mongone } from './mon.js';
-import { mon_offmap, monflee } from './monmove.js';
+import { mon_offmap } from './monmove.js';
 import { cansee, couldsee, do_clear_area } from './vision.js';
 import { del_engr_at, make_grave } from './engrave.js';
 import { monstseesu, monstunseesu, mhis, mhe } from './mondata.js';
@@ -855,19 +855,19 @@ export async function drinkfountain() {
             // C fountain.c:307 "contaminated water", KILLED_BY.
             await poison_strdmg(strloss, dmg,
                 'contaminated water', KILLED_BY);
-            // C :305-309 — drain FIRST (losestr D-3782 shape): losestr
-            // drains only its own frailty death; the TRAILING losehp's
-            // fatal bail (gameover + _losehp_needs_done) is still
-            // undrained here. finish_losehp_done runs done() (wizard
-            // "Die?" decline / lifesave survives and clears gameover —
-            // C returns to exercise/dryup on survive). Return only if
-            // still dead after the drain; the wail no-ops on
-            // survived-fatal (marker is losehp's non-fatal-else-only).
-            if (game._losehp_needs_done || game.program_state?.gameover) {
+            // C :305-309 — losestr/losehp inside poison_strdmg are noreturn
+            // when fatal, so exercise runs only when the hero survives.
+            // losestr drains its own death (D-3782): a set gameover here is
+            // true death → return. Otherwise drain the trailing losehp
+            // (fatal → done; lifesave → exercise) or the low-HP wail —
+            // same oil idiom as the poisRes arm above.
+            if (game.program_state?.gameover) return;
+            if (game._losehp_needs_done) {
                 await finish_losehp_done();
                 if (game.program_state?.gameover) return;
+            } else {
+                await finish_maybe_wail();
             }
-            await finish_maybe_wail();
             exercise(A_CON, false);
             break;
         }
@@ -927,13 +927,16 @@ export async function drinkfountain() {
             break;
         case 29: { // Scare
             await pline(`This ${hliquid('water')} gives you bad breath!`);
-            // C fountain.c:373-377 — the whole fmon list through the live
-            // monflee (D-4061: the inline mflee=1/mfleetim=0/mtrack-zeroing
-            // skipped monflee's ustuck release and Vrock arm — monmove.c:521
-            // mspec_used = 75 + rn2(25) + create_gas_cloud).
             for (const mtmp of game.fmon || []) {
-                if ((mtmp.mhp | 0) < 1) continue; // C: DEADMONSTER(mtmp)
-                await monflee(mtmp, 0, false, false);
+                if (mtmp.mhp <= 0) continue;
+                // C: monflee(mtmp, 0, FALSE, FALSE) — fleetime 0 + mon_track_clear
+                mtmp.mflee = 1;
+                mtmp.mfleetim = 0;
+                if (mtmp.mtrack) {
+                    for (let j = 0; j < mtmp.mtrack.length; j++) {
+                        mtmp.mtrack[j] = { x: 0, y: 0 };
+                    }
+                }
             }
             break;
         }

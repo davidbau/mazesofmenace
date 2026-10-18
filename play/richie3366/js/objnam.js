@@ -3291,15 +3291,6 @@ export function doname_base(obj, doname_flags = 0) {
     if (!Blind() && !(game.distantname | 0) && _xname_observe) {
         _xname_observe(obj);
     }
-    /* C doname_base `:1250` → xname_flags `:660–661` — maybe find a
-       previously unseen artifact. Gated on the real obj->dknown:
-       post-observe (above), pre-override_ID-staging (below stages the
-       field; C only ever stages xname/doname locals, so wizard ^I must
-       not mark found), before obj_is_pname, while otmp is still on the
-       floor for the pickup callers (dogmove.c `:452–457`, mon.c
-       `:1891–1895`: distant_name → doname → here). Idempotent via
-       artiexist[a].found; xname_flags `:1096` is the sibling arm. */
-    if (obj?.oartifact && obj.dknown && _find_artifact) _find_artifact(obj);
     const otyp = obj.otyp;
     const oclass = obj.oclass;
     // C doname_base: switch (is_weptool(obj) ? WEAPON_CLASS : obj->oclass)

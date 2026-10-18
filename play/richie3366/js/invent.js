@@ -1202,18 +1202,7 @@ export async function encumber_msg() {
     // displayed (after this pline's own flush, before any later one).
     // The post-pline real sets below stay as the suppressed-message
     // backstop (a suppressed pline never reaches putmesg).
-    // C :2001–2015 — the improvement default arm (newcap EXT_ENCUMBER:
-    // no case, no pline) still commits disp.botl synchronously (:2016)
-    // with no message pending. Recording _pending_botl here would
-    // convert at the NEXT putmesg — after that message's pre-flush
-    // already painted+cleared the synchronous real commit — re-arming
-    // botl so the following flush repaints post-drop state one screen
-    // early (Valkyrie-50850025 s222: Strained over C's Overtaxed).
-    // Pending is only for crossings that print (every other arm).
-    const silent = oldcap > newcap
-        && newcap !== UNENCUMBERED && newcap !== SLT_ENCUMBER
-        && newcap !== MOD_ENCUMBER && newcap !== HVY_ENCUMBER;
-    if (oldcap !== newcap && !silent) game._pending_botl = true;
+    if (oldcap !== newcap) game._pending_botl = true;
     if (oldcap < newcap) {
         switch (newcap) {
         case SLT_ENCUMBER:
@@ -3001,12 +2990,6 @@ function paint_overlay(lines, opts = {}) {
         const col = opts.col || 0;
         // C tty: leading pad space is not part of item ATR_INVERSE/heading
         for (let i = 0; i < text.length && col + i < disp.cols; i++) {
-            // C termcap.c nomux_putch (patch 006): ch < 32 is dropped
-            // from the capture shadow while the wintty menu loop still
-            // advances one column per char — a cleared screen shows a
-            // space (menu_tab_sep \t; scen-options-Samurai-50162003
-            // s120). D-3962 grid rule for menus.
-            if (text[i] && text[i].charCodeAt(0) < 32) continue;
             const pre = i < split || (i === 0 && text[0] === ' ');
             disp.setCell(col + i, r, text[i], pre ? NO_COLOR : color, pre ? 0 : attr);
         }
@@ -3180,9 +3163,6 @@ export async function paint_corner_nhw_menu(entries, morestr = '(end) ') {
             disp.setCell(c, r, ' ', NO_COLOR, 0);
         disp.setCell(offx, r, ' ', NO_COLOR, 0);
         for (let i = 0; i < text.length && offx + 1 + i < disp.cols; i++) {
-            // C0 drop, column still advances (nomux_putch; same rule as
-            // the fullscreen loop above).
-            if (text[i] && text[i].charCodeAt(0) < 32) continue;
             const pre = i < split;
             disp.setCell(offx + 1 + i, r, text[i], pre ? NO_COLOR : color, pre ? 0 : attr);
         }

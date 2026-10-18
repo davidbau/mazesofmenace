@@ -29,8 +29,7 @@ import { wipeout_text } from './engrave.js';
 import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, canspotmon, pline,
-    glyph_at, glyph_is_object,
-    glyph_is_swallow_at, see_with_infrared, sensemon,
+    glyph_to_obj_at, glyph_is_swallow_at, see_with_infrared, sensemon,
     verbalize, impossible,
     /* youprop.h:116–120. The same-file export is the sticky reader. */
     Hallucination as youprop_Hallucination,
@@ -1690,10 +1689,9 @@ async function namefloorobj() {
         // C: vobj_at(u.ux, u.uy) — display.h level.objects[x][y]
         obj = objects_at(u.ux, u.uy);
     } else {
-        // C `:699-700` — the displayed glyph, object kinds only.
-        const glyph = glyph_at(cc.x, cc.y);
-        if (glyph_is_object(glyph)) {
-            const frommap = object_from_map(glyph, cc.x, cc.y);
+        const glyphotyp = glyph_to_obj_at(cc.x, cc.y);
+        if (glyphotyp >= 0) {
+            const frommap = object_from_map(glyphotyp, cc.x, cc.y);
             fakeobj = !!frommap.fakeobj;
             obj = frommap.otmp;
         }

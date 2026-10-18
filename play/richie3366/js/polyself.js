@@ -538,13 +538,7 @@ const NOT_CLAWS = new Set([
 
 export function mbodypart(mon, part) {
     part = part | 0;
-    // C polyself.c:2057–2059 — bad part fires impossible, then falls
-    // through to "mystery part" (impossible is async-only in JS; float
-    // it fire-and-forget like other sync-context impossibles).
-    if (part <= NO_PART) {
-        void impossible('mbodypart: bad part %d', part);
-        return 'mystery part';
-    }
+    if (part <= NO_PART) return 'mystery part';
     const mptr = mon?.data;
     if (!mptr) return HUMANOID_PARTS[part] || 'body part';
     const mlet = mptr.mlet;

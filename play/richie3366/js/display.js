@@ -13,7 +13,7 @@ import { bot_via_windowport, SCORE_ON_BOTL, botl_score, stat_update_time } from 
 import { rank_of } from './roles.js';
 import { cansee, couldsee, vision_recalc, vision_off_newsym_gbuf } from './vision.js';
 import { objects_at, sobj_at } from './mkobj.js';
-import { mdistu, ceiling_hider } from './mon.js'; // sensemon + feel_can_reach_floor ceiling arm (same SCC; hoisted fns, runtime use only — imports.mjs ALREADY)
+import { mdistu } from './mon.js'; // sensemon (same SCC; hoisted fn, runtime use only — imports.mjs SAFE)
 import { is_pool } from './hack.js'; // sensemon (same SCC; hoisted fn, runtime use only — imports.mjs SAFE)
 import {
     mcolors, mons, pmnames, infravision, infravisible, mindless, NUMMONS,
@@ -137,7 +137,6 @@ import {
     WC2_HILITE_STATUS,
     WC2_FLUSH_STATUS,
     WC2_U_UTF8STR,
-    WC2_EXTRACOLORS,
     TTY_WINCAP2,
     PLNMSG_UNKNOWN,
     BUFSZ,
@@ -148,8 +147,6 @@ import {
     SYM_UNEXPLORED,
     SYM_BOULDER,
     SYM_INVISIBLE,
-    P_RIDING,
-    P_BASIC,
 } from './const.js';
 import {
     ILLOBJ_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
@@ -5170,54 +5167,6 @@ export function map_glyphinfo(x, y, base, mgflags) {
  * Async only yields when mention_map/glyph_updates fires (default Off).
  * Classifier does not re-roll Hallu (D-1221).
  */
-/**
- * C win/tty/termcap.c emit256 `:1578–1584` (static): `ESC[38;5;Nm`
- * (tcfmtstr256 `:1556`, UNIX) via xputs. Pure shape here; the paint call
- * site drops it (capture parity — patch 006 never hooked extracolor).
- */
-function term_emit256(color256idx) {
-    return `\x1b[38;5;${color256idx | 0}m`; // C `:1580–1583` Snprintf
-}
-
-/**
- * C win/tty/termcap.c emit24bit `:1566–1575` (static): `ESC[38;2;r;g;bm`
- * (tcfmtstr `:1550`) via xputs. Pure shape here; the paint call site
- * drops it (capture parity). The non-UNIX `:38:5:`/`:38:2:` spellings
- * (`:1558–1561`) never compile for the contest build (named).
- */
-function term_emit24bit(mcolor) {
-    const c = mcolor >>> 0;
-    return `\x1b[38;2;${(c >> 16) & 0xff};${(c >> 8) & 0xff};${c & 0xff}m`; // C `:1570–1573`
-}
-
-/**
- * C win/tty/termcap.c term_start_extracolor `:1587–1595`, whole, in C
- * order. Caller: wintty.c tty_print_glyph `:3904` (sole C call site;
- * wired in show_glyph_cell below). The bytes go to the terminal only:
- * recorder patch 006 hooks term_start_color/attr but never extracolor
- * (zero 38;5/38;2 bytes in any capture, D-4031), so the scored cell
- * keeps the shadow fg — the caller drops the return (Constitution §1.1,
- * "port the capture").
- */
-export function term_start_extracolor(customcolor, color256idx) {
-    /* color 0 has bit 0x1000000 set (C `:1590`; == color.h:57 NH_BASIC_COLOR) */
-    const mcolor = ((customcolor | 0) & 0xffffff) >>> 0; // C `:1591`
-    if ((game.iflags?.colorcount ?? 256) === 256) // C `:1592`
-        return term_emit256(color256idx);
-    return term_emit24bit(mcolor);
-}
-
-/**
- * C win/tty/termcap.c term_end_extracolor `:1598–1601`, whole: `ESC[0m`
- * via xputs. C caller wintty.c `:3971` (tty_print_glyph tail, when
- * colorflags != NH_BASIC_COLOR) is terminal-only and unhooked, so no JS
- * call site feeds the grid/serializer; the shape is returned for parity
- * tests, never emitted to the capture.
- */
-export function term_end_extracolor() {
-    return '\x1b[0m'; // C `:1600`
-}
-
 export async function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr = 0, glyph) {
     // C show_glyph `:1886` — don't process map glyphs when saving,
     // restoring, or in_mklev (same gate as newsym/feel_location/flush_screen).
@@ -5302,40 +5251,6 @@ export async function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false
     ch = gi.ch;
     color = gi.color;
     decgfx = gi.dec;
-    // C wintty.c tty_print_glyph `:3899–3914` extracolor arm (sole caller
-    // of term_start_extracolor, `:3904`; color block sits before attr and
-    // glyph emit, as here). Gates in C order: use_color `:3888`,
-    // WC2_EXTRACOLORS `:3899` (tty_procs `:122`), customcolor `:3900`
-    // (absent glyphmap cell ≡ BSS-zero ≡ unstamped, wall_cmap_color
-    // precedent), colorcount ≥ 256 `:3901` (termcap.c init_hilite
-    // tgetnum("Co"); the contest TERM is 256-color — C takes this arm in
-    // every capture, D-4031; the ==256/24bit emit choice is
-    // capture-invisible, so 256 stands for the unset iflags field).
-    // `:3902` !calling_from_update_inventory holds vacuously: the flag is
-    // set only around wintty.c tty_update_inventory (`:3335–3369`), and no
-    // JS inventory path paints map gbuf cells (callers below are map
-    // paints only: region/muse/dokick/detect/display + show_memory_glyph).
-    if (game.iflags?.wc_color !== false
-        && (install_tty_wincap2() & WC2_EXTRACOLORS) !== 0
-        && gid >= 0 && gid < MAX_GLYPH
-        && (((game.glyphmap?.[gid]?.customcolor) | 0) >>> 0) !== 0
-        && ((game.iflags?.colorcount ?? 256) >= 256)) {
-        const cust = ((game.glyphmap[gid].customcolor | 0) >>> 0);
-        if ((cust & NH_BASIC_COLOR) === 0) { // C `:3903`
-            // C `:3904–3906`: terminal gets 38;5/38;2, colorflags = 0,
-            // colordone (basic path skipped). Capture parity: 006 never
-            // hooked extracolor, so the shadow keeps its hooked fg —
-            // always default at extracolor glyphs (every basic glyph's
-            // `:3965–3970` tail resets it; C raw shows no SGR) — paint
-            // the char with NO SGR. NOT disp_capture_drop: C's g_putch
-            // IS hooked (the char IS written); only the color start/end
-            // are dropped. (Enhanced1/2 fountains, D-4031 class.)
-            term_start_extracolor(cust, game.glyphmap[gid].color256idx | 0); // return dropped: terminal-only
-            color = NO_COLOR;
-        } else {
-            color = cust & 0xffffff; // C `:3907–3911` NH_BASIC sub-arm (COLORVAL, color.h:59; captured basic path — knox D-3896)
-        }
-    }
     // C tty layer derives ATR_INVERSE from the glyph id's MG_BW_ENGR flag
     // (reset_glyphmap `:2941–2946`) at every paint; OR it here so live,
     // memory, detection and wizard engrcorr paints all inherit, as in C.
@@ -5535,23 +5450,13 @@ export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_su
     let levl_glyph;
     if (hero_memory) {
         const mem = loc.remembered_glyph;
-        if (mem) {
-            // C levl[][].glyph is the remembered int.
-            levl_glyph = copy_glyph(mem);
-            attach_glyph(
-                levl_glyph,
-                typeof mem.glyph === 'number' ? mem.glyph : default_id,
-            );
-        } else {
-            // C `:2202` — a never-seen cell has no remembered int, so C
-            // reads GLYPH_UNEXPLORED here, not the stone default (the
-            // default only feeds the `:2238` !seenv strip arm). The
-            // BSS-0-is-stone reading is refuted by C's output: #terrain
-            // over a never-seen cell paints unexplored
-            // (scen-worldtour-Archeologist-50950008 step 314: C «unexplored
-            // area» where the stone default described «unexplored»).
-            levl_glyph = attach_glyph(copy_glyph(default_glyph), GLYPH_UNEXPLORED);
-        }
+        levl_glyph = mem ? copy_glyph(mem) : copy_glyph(default_glyph);
+        // C levl[][].glyph is the remembered int; unseen BSS 0 is the stone
+        // int, same as default_id.
+        attach_glyph(
+            levl_glyph,
+            mem && typeof mem.glyph === 'number' ? mem.glyph : default_id,
+        );
     } else {
         levl_glyph = seenv
             ? { ...terrain_glyph(loc, x, y), glyph: back_to_glyph(x, y) }
@@ -6373,9 +6278,10 @@ export function engr_can_be_felt(ep) {
  * reads the Levitation/Flying PROPERTIES (H||E, !B); the flat u.Levitation
  * / u.Flying mirrors are never set by set_uasmon (FROMFORM lands on H* +
  * uprops), so read the live mhitu.js exports (D-3825 pattern; imports.mjs
- * VERDICT: SAFE, hoisted functions, cycle-safe). Complete vs C :187–210:
- * msize >= MZ_HUGE (:206) TRUE-arm is subsumed by the fallthrough (the
- * check_pit arm it precedes is skipped for the FALSE arg).
+ * VERDICT: SAFE, hoisted functions, cycle-safe).
+ * Named omission: usteed P_RIDING < P_BASIC (C :201); ceiling hider
+ * (:203); msize >= MZ_HUGE (:206, TRUE-arm subsumed by the fallthrough
+ * since check_pit is skipped for the FALSE arg).
  */
 function feel_can_reach_floor() {
     const u = game.u || {};
@@ -6391,17 +6297,6 @@ function feel_can_reach_floor() {
     if (Levitation() && !(Is_airlevel(u.uz) || Is_waterlevel(u.uz))) {
         return false;
     }
-    // C `:200–201` — restricted/unskilled riders can't reach the floor.
-    // Same read shape as the canonical engrave.js can_reach_floor
-    // (u.weapon_skills[P_RIDING], object-or-flat rank).
-    if (u.usteed) {
-        const sk = u.weapon_skills?.[P_RIDING];
-        const rank = typeof sk === 'object' ? (sk.skill ?? 0) : (sk ?? 0);
-        if (rank < P_BASIC) return false;
-    }
-    // C `:203` — undetected ceiling-hider can't reach the floor
-    // (game.youmonst?.data is the monmove.js:2017 house shape, D-3919).
-    if (u.uundetected && ceiling_hider(game.youmonst?.data)) return false;
     if (Flying()) return true;
     return true;
 }
@@ -6427,8 +6322,7 @@ export function suppress_map_output() {
  * dark adjust; then `:901–908` sensed mon overlay when !u_at (sensemon
  * includes MATCH_WARN D-1514) with is_worm_tail (D-1749). newsym
  * Detect_monsters skips tails; this overlay does not.
- * feel_can_reach_floor is complete vs C engrave.c :187–210 (steed and
- * ceiling-hider arms live; msize TRUE-arm subsumed by fallthrough).
+ * Named omissions: usteed P_RIDING in can_reach_floor (feel_can_reach_floor).
  */
 export function feel_location(x, y) {
     // C `:754–758` — same mklev/save/restore gate as newsym/show_glyph.
@@ -6667,60 +6561,12 @@ export function newsym_force(x, y) {
     mark_gbuf_dirty(x, y);
 }
 
-// C pline.c:584–634 — ordered microtask drain for newsym's !isok arm
-// (see the arm's comment for why the drain exists). One drain task at
-// a time; each impossible() is awaited to completion (latch cleared,
-// C order) before the next starts.
-let _newsymImpossibleQueue = [];
-let _newsymImpossibleDraining = false;
-function queueNewsymImpossible(x, y) {
-    _newsymImpossibleQueue.push([x, y]);
-    if (_newsymImpossibleDraining) return;
-    _newsymImpossibleDraining = true;
-    void (async () => {
-        while (_newsymImpossibleQueue.length) {
-            const [ix, iy] = _newsymImpossibleQueue.shift();
-            await impossible('newsym: attempting screen update for <%d,%d>', ix, iy);
-        }
-        _newsymImpossibleDraining = false;
-    })();
-}
-
 // ── newsym ──
 export function newsym(x, y) {
     // C display.c:928–929 — don't produce map output when the level is
     // in a state of flux (in_mklev/saving/restoring; same gate as
     // feel_location :754–758 and show_glyph).
     if (suppress_map_output()) return;
-    // C display.c:929–935 — !isok (isok cmd.c:4326–4330, x == 1 first
-    // column): off-map :932 panics (NORETURN, end.js throws), column-0
-    // misuse :933 is impossible; call :934 (same split as u_on_newpos).
-    if (!isok(x, y)) {
-        x = x | 0; y = y | 0;
-        if (x < 0 || y < 0 || x > COLNO - 1 || y > ROWNO - 1) {
-            panic('newsym: attempting screen update for <%d,%d>', x, y);
-        }
-        // C pline.c:584–634 impossible() via an ordered microtask drain:
-        // newsym is sync and one see_monsters pass can hit this arm 9×
-        // in a row (worldtour-Wizard-49950024: nine (0,0) mons via
-        // mv_bubble→mnearto→mon_leaving→unstuck→docrt, C steps 151–177).
-        // impossible() proper holds ps.in_impossible across `await
-        // pline`, so sequential fire-and-forget calls trip C's :591–592
-        // recursion panic (an async artifact — C completes each call
-        // before the next); and 27 sync-emitted plines outrun the
-        // chain/nesting/stop machinery built for occasional floaters
-        // (measured: pages 15+ lost). The drain below awaits each
-        // impossible() to completion before starting the next — exactly
-        // C's sequential semantics (latch, URGENT scope, disorder,
-        // report, support, sanity gate, fuzzer panic all live in
-        // impossible() proper, unduplicated). Order caveat: the drain
-        // links behind same-stretch post-burst sync emissions (the
-        // chain is FIFO by call); C orders the burst first. No session
-        // shows a post-burst sync emission on this path (the 151–177
-        // pages are pure burst), so the caveat is unobserved.
-        queueNewsymImpossible(x, y);
-        return;
-    }
     const loc = game.level?.at(x, y);
     if (!loc) return;
 
@@ -7897,7 +7743,7 @@ export function serialize_terminal_grid(display) {
  * (Hoimar-shaped); do not remap glyphs. D-0931: paint S_air spaces in the
  * flush grid, and mid-row space runs >4 → CSI CUF (contest tty capture).
  */
-export function serialize_for_scoring(term, splice = null) {
+export function serialize_for_scoring(term) {
     if (!term?.grid) return term?.serialize?.() ?? '';
     const colorToFg = (color) => {
         if (color === 8 || color < 0 || color > 15) return 39;
@@ -7960,10 +7806,6 @@ export function serialize_for_scoring(term, splice = null) {
                 break;
             }
         }
-        const sp = (splice && r === splice.row) ? splice : null;
-        // Twin splice (D-40xx): the injection column may sit inside the
-        // leading space the head would skip — land the offset on it exactly.
-        if (sp && firstCol > sp.col) firstCol = sp.col;
         if (firstCol > 4) out += `\x1b[${firstCol}C`;
         else if (firstCol > 0) out += ' '.repeat(firstCol);
         // Scoring color for a cell: glyphless CLR_GRAY blanks → NO_COLOR
@@ -7974,29 +7816,7 @@ export function serialize_for_scoring(term, splice = null) {
                 return NO_COLOR;
             return cell.color;
         };
-        let spDone = false;
-        // Twin splice: the injection may sit past lastCol (C pads the
-        // row with blanks there); extend the loop to reach it. Past
-        // col 79 the twin is fully dropped, so nothing need emit.
-        const loopEnd = sp ? Math.min(79, Math.max(lastCol, sp.col)) : lastCol;
-        for (let c = firstCol; c <= loopEnd; ) {
-            // Twin splice (D-40xx): at the injection column emit the SGR
-            // state C held there, the rendered header bytes, then C's own
-            // post-window bytes verbatim — the decoder replays C exactly
-            // (split-SGR tails, SI, resets included).
-            if (sp && c === sp.col) {
-                out += sgrTransition(curFg, curAttr, sp.fg, sp.attr);
-                curFg = sp.fg;
-                curAttr = sp.attr;
-                out += sp.chars;
-                out += sp.remnant;
-                // C's row end always rests the decoder at (fg default,
-                // attr 0): 39m/0m, or keep-8 inductively; SI closes decgfx.
-                curFg = 39;
-                curAttr = 0;
-                spDone = true;
-                break;
-            }
+        for (let c = firstCol; c <= lastCol; ) {
             const cell = term.grid[r][c];
             const wantAttr = cell.attr | 0;
             // Contest tty capture: runs of >4 spaces become CSI CUF after
@@ -8017,8 +7837,6 @@ export function serialize_for_scoring(term, splice = null) {
                     if (cellEmitColor(n) !== runColor || na !== wantAttr) break;
                     end++;
                 }
-                // Twin splice: never run past the injection column.
-                if (sp && c < sp.col && end >= sp.col) end = sp.col - 1;
                 const runLen = end - c + 1;
                 if (runLen > 4 && (!(wantAttr & 0x5) || end === lastCol)) {
                     const wantFg = colorToFg(runColor);
@@ -8038,301 +7856,12 @@ export function serialize_for_scoring(term, splice = null) {
             out += cell.ch;
             c++;
         }
-        if (spDone) {
-            // The remnant already carries C's row-end bytes (SI, reset,
-            // newline when the injection is not on the last row).
-            if (!sp.nlInRemnant && r < lastRow) out += '\n';
-            continue;
-        }
         out += sgrTransition(curFg, curAttr, 39, 0);
         curFg = 39;
         curAttr = 0;
         if (r < lastRow) out += '\n';
     }
     return out;
-}
-
-// ── Patch-006 nomux capture-overflow emulation (D-40xx) ──
-//
-// C ref: contest patch 006 win/tty/termcap.c (recorder tree).
-// nomux_capture_screen `:796–857` serializes nomux_buf[24][80] into
-// `static char nomux_out[24*256]` (`:795`, 6144 B) with unbounded
-// sprintf; nomux_emit_marker `:680–697` runs capture_screen, strlen,
-// nomux_get_cursor, fprintf(header), fwrite(scr, len), fflush.
-// nomux_get_cursor returns (raw_col, raw_row) once nomux_raw_active is
-// nonzero. Pinned-recorder BSS (`nm -S`, BuildID 0702…): the raw triple
-// sits at nomux_out+0/+4/+8 (D-3684); wintty obuf (0x2000) starts at
-// nomux_out+6608. Wire-proven consequences: LEN > 6144 clobbers the
-// triple (cursor frozen at the signed LE32 of S[6148:6156),
-// S[6152:6156)); LEN > 6608 additionally splices the emitted header
-// over S[6608:6608+hlen) — fprintf lands in obuf, inside the fwrite
-// read range, replacing those serialization bytes. Patch 006 is ground
-// truth (Constitution §1.1, D-3963): the JS capture reproduces both.
-//
-// Named residuals: (a) non-ASCII cells outside the DEC map (C stores
-// raw bytes; corpus screens are pure ASCII, so unreached); (b) clipped
-// viewports (screen→map reverse assumes the unclipped pan; the gbuf
-// disambiguation is skipped under clipping). The verbatim remnant keeps
-// small injection columns exact too (no live session below col 38).
-
-/** C `:795` — nomux_out[24*256]; overflow past this clobbers BSS. */
-export const NOMUX_OUT_SIZE = 6144;
-/** Pinned obuf − nomux_out (`nm -S`); the header splice offset. */
-export const NOMUX_TWIN_AT = 6608;
-
-// Reverse of the gbuf DEC paint (paint_gbuf_level_to_terminal /
-// _paint_gbuf_cell): the terminal grid stores Unicode, C's nomux_buf
-// the ASCII byte + decgfx flag. The six kept-raw exclusions
-// (`{`, backtick, g, |, o, s) are omitted: their Unicode forms are
-// never painted, so a literal match there stays literal.
-let _unicodeToDecPainted = null;
-function unicodeToDecPainted(ch) {
-    if (!_unicodeToDecPainted) {
-        _unicodeToDecPainted = new Map();
-        for (const [ascii, uni] of Object.entries(DEC_TO_UNICODE)) {
-            if (ascii === '{' || ascii === '`' || ascii === 'g'
-                || ascii === '|' || ascii === 'o' || ascii === 's') continue;
-            _unicodeToDecPainted.set(uni, ascii);
-        }
-    }
-    return _unicodeToDecPainted.get(ch);
-}
-
-// Decoder DEC map (frozen/screen-decode.mjs:127–133), inlined: the twin
-// is emitted pre-rendered (literal ┼) so it decodes identically while
-// the decoder's decgfx flag stays off. Inlined (not imported): no js/
-// mirror of screen-decode exists for the judge sandbox to overwrite.
-const NOMUX_DEC_RENDER = {
-    l: '┌', q: '─', k: '┐', x: '│', m: '└', j: '┘',
-    t: '├', u: '┤', w: '┬', v: '┴', n: '┼', a: '▒', '~': '·',
-};
-
-// ASCII the gbuf DEC painter keeps raw (ambiguous in the grid: DEC cell
-// vs literal). Map rows only; resolved against loc.disp_* when the
-// ch+color+attr triple matches the live gbuf paint.
-const NOMUX_RAW_ASCII = new Set(['{', '`', 'g', '|', 'o', 's']);
-
-function nomux_sgr_fg(fg) {
-    if (fg >= 0 && fg <= 7) return 30 + fg;
-    if (fg >= 8 && fg <= 15) return 90 + (fg - 8);
-    return 37;
-}
-
-function nomux_fg_code(fg) {
-    if (fg === 7) return 39;
-    if (fg >= 0 && fg <= 7) return 30 + fg;
-    if (fg >= 8 && fg <= 15) return 90 + (fg - 8);
-    return 39;
-}
-
-function nomux_le32(str, off) {
-    const b = (i) => (str.charCodeAt(off + i) || 0) & 0xff;
-    return (b(0) | (b(1) << 8) | (b(2) << 16) | (b(3) << 24)) | 0;
-}
-
-/**
- * Byte-exact port of C nomux_capture_screen `:796–857`: serialize the
- * terminal grid in C's incremental-SGR + SO/SI wire format (all 24 rows,
- * always) and report the overflow probes.
- * @param {object} term terminal/display with .grid/.rows/.cols
- * @param {object|null} level live level for gbuf decgfx disambiguation
- * @returns {{ text, length, triple, injection }} — triple
- *   {active,row,col} (signed LE32 of S[6144:6156)) iff length > 6144;
- *   injection {row,col,fg,attr,dec,split} (grid pos + SGR code +
- *   decgfx flag + split-SGR flag at byte 6608) iff length > 6608.
- */
-export function nomux_serialize_grid(term, level) {
-    const rows = term?.rows || 24;
-    const cols = term?.cols || 80;
-    const darkgray = !!game?.iflags?.wc2_darkgray;
-    const at = (r, c) => {
-        const t = (term.grid[r] && term.grid[r][c]) || {};
-        let ch = t.ch || ' ';
-        const color = (t.color ?? 7) | 0;
-        const attr = (t.attr | 0) & 7;
-        let decgfx = 0;
-        if (r >= 1 && r <= 21 && ch !== ' ' && ch.length === 1) {
-            const rev = unicodeToDecPainted(ch);
-            if (rev !== undefined) {
-                ch = rev;
-                decgfx = 1;
-            } else if (NOMUX_RAW_ASCII.has(ch) && !clipping && level?.at) {
-                const loc = level.at(c + 1, r - 1);
-                if (loc && loc.disp_ch === ch
-                    && (loc.disp_color ?? 8) === color
-                    && ((loc.disp_attr ?? 0) & 7) === attr
-                    && loc.disp_decgfx) decgfx = 1;
-            }
-        }
-        // C nomux_set_fg `:774–784`: BLACK→8 under wc2_darkgray. JS paints
-        // every default (status, topline, menus, cleared blanks) as
-        // NO_COLOR(8), but C clears to 7 and paints text at 7 — only DEC
-        // glyph cells (floors) genuinely carry 8 (90m on the wire).
-        const fg = (color === 0 && darkgray) ? 8
-            : (color === 8 && !decgfx) ? 7 : color;
-        if (ch.length !== 1) ch = ch[0] ?? ' ';
-        return { ch, fg, attr, decgfx };
-    };
-    let out = '';
-    let counter = 0;
-    let injection = null;
-    // Row/col of the in-progress row for the injection probe; the SGR
-    // state recorded is the pre-emission one (a partial SGR split by the
-    // twin is inert — the decoder skips it as CSI-final-ESC).
-    let probeRow = 0, probeCells = 0, probeFg = 7, probeAttr = 0, probeDec = 0;
-    const emit = (s) => {
-        if (injection === null && counter <= NOMUX_TWIN_AT
-            && NOMUX_TWIN_AT < counter + s.length) {
-            injection = {
-                row: probeRow,
-                col: probeCells,
-                fg: nomux_fg_code(probeFg),
-                attr: probeAttr,
-                dec: probeDec,
-                // Split SGR (twin lands strictly inside a multi-byte
-                // emission): the decoder consumes the twin's ESC as the
-                // CSI final. At an emission boundary the ESC is a cell.
-                split: NOMUX_TWIN_AT > counter,
-            };
-        }
-        out += s;
-        counter += s.length;
-    };
-    for (let row = 0; row < 24; row++) {
-        probeRow = row;
-        probeCells = 0;
-        let cur_fg = 7, cur_attr = 0;
-        let end = 79;
-        while (end >= 0) {
-            const e = (row < rows && end < cols) ? at(row, end)
-                : { ch: ' ', fg: 7, attr: 0, decgfx: 0 };
-            if (!((e.ch === ' ' || e.ch === '\0') && e.attr === 0
-                && (e.fg === 7 || e.fg === 0))) break;
-            end--;
-        }
-        let in_dec = 0;
-        for (let col = 0; col <= end; col++) {
-            const c = (row < rows && col < cols) ? at(row, col)
-                : { ch: ' ', fg: 7, attr: 0, decgfx: 0 };
-            const ch = c.ch ? c.ch : ' ';
-            const fg = c.fg ? c.fg : 7;
-            const ac = c.attr;
-            probeFg = cur_fg;
-            probeAttr = cur_attr;
-            probeDec = in_dec;
-            if (ac !== cur_attr) {
-                if ((ac & 1) && !(cur_attr & 1)) emit('\x1b[7m');
-                if (!(ac & 1) && (cur_attr & 1)) emit('\x1b[27m');
-                if ((ac & 2) && !(cur_attr & 2)) emit('\x1b[1m');
-                if (!(ac & 2) && (cur_attr & 2)) emit('\x1b[22m');
-                if ((ac & 4) && !(cur_attr & 4)) emit('\x1b[4m');
-                if (!(ac & 4) && (cur_attr & 4)) emit('\x1b[24m');
-                cur_attr = ac;
-            }
-            if (fg !== cur_fg) {
-                if (fg === 7) {
-                    emit('\x1b[39m');
-                } else {
-                    emit(`\x1b[${nomux_sgr_fg(fg)}m`);
-                }
-                cur_fg = fg;
-            }
-            if (c.decgfx && !in_dec) { emit('\x0e'); in_dec = 1; }
-            else if (!c.decgfx && in_dec) { emit('\x0f'); in_dec = 0; }
-            probeFg = cur_fg;
-            probeAttr = cur_attr;
-            probeDec = in_dec;
-            emit(ch);
-            probeCells++;
-        }
-        probeFg = cur_fg;
-        probeAttr = cur_attr;
-        probeDec = in_dec;
-        if (in_dec) { emit('\x0f'); in_dec = 0; }
-        if (cur_attr && cur_fg !== 7) {
-            emit('\x1b[0m');
-        } else if (cur_attr) {
-            emit('\x1b[0m');
-        } else if (cur_fg !== 7) {
-            emit('\x1b[39m');
-        }
-        if (row < 23) emit('\n');
-    }
-    const length = out.length;
-    let triple = null;
-    if (length > NOMUX_OUT_SIZE) {
-        triple = {
-            active: nomux_le32(out, NOMUX_OUT_SIZE),
-            row: nomux_le32(out, NOMUX_OUT_SIZE + 4),
-            col: nomux_le32(out, NOMUX_OUT_SIZE + 8),
-        };
-    }
-    if (length <= NOMUX_TWIN_AT) injection = null;
-    return { text: out, length, triple, injection };
-}
-
-/**
- * Build the twin splice for a serialization past 6608 bytes. C
- * nomux_emit_marker `:680–697`: the header carries the clobbered
- * cursor (get_cursor runs after the sprintf smash) and LEN = strlen;
- * fprintf lands at obuf[0:hlen), replacing S[6608:6608+hlen).
- * @param {{ text, length, triple, injection }} s from nomux_serialize_grid
- * @param {{ seq, anim }} ids — SEQ = boundary index + 1, ANIM = cumulative
- * @returns splice spec for serialize_for_scoring, or null
- */
-export function nomux_build_splice(s, { seq, anim }) {
-    if (!s || !s.injection || !s.triple) return null;
-    const hdr = `\x1b]7777;KIND=input;SEQ=${seq};ANIM=${anim};`
-        + `CX=${s.triple.col};CY=${s.triple.row};LEN=${s.length}\x07`;
-    // Drop the leading ESC (C's was consumed as the split-CSI final; a
-    // raw ESC here would decode as its own cell and shift the row), and
-    // pre-render through the decoder DEC map iff C's stream had SO on.
-    // fwrite reads [0:L): when the window overruns L the header is cut
-    // (no remnant past L — the row just ends). The ESC is skipped only
-    // on a split (consumed as CSI final); at a boundary it is a cell.
-    const visible = s.length - NOMUX_TWIN_AT;
-    const body = s.injection.split
-        ? hdr.slice(1, 1 + Math.max(0, visible))
-        : hdr.slice(0, Math.max(0, visible));
-    const chars = s.injection.dec
-        ? [...body].map((c) => NOMUX_DEC_RENDER[c] || c).join('')
-        : body;
-    const rowEnd = s.text.indexOf('\n', NOMUX_TWIN_AT);
-    const remnant = (rowEnd < 0 || NOMUX_TWIN_AT + hdr.length >= s.length)
-        ? s.text.slice(NOMUX_TWIN_AT + hdr.length)
-        : s.text.slice(NOMUX_TWIN_AT + hdr.length, rowEnd + 1);
-    return {
-        row: s.injection.row,
-        col: s.injection.col,
-        fg: s.injection.fg,
-        attr: s.injection.attr,
-        chars,
-        remnant,
-        nlInRemnant: rowEnd >= 0,
-    };
-}
-
-/**
- * C termcap.c nomux_raw_putch + nomux_raw_emit: one raw string's effect
- * on the virtual raw triple (chars dropped once smashed-active; only
- * newlines advance). No-op unless triple.active.
- */
-export function nomux_raw_triple_emit(t, strings) {
-    if (!t || !t.active) return;
-    for (const s of strings || []) {
-        for (const ch of (s ?? '')) {
-            if (ch === '\n') {
-                t.row++;
-                t.col = 0;
-            } else if (ch.charCodeAt(0) < 32) {
-                // Dropped control byte: no advance (raw_putch filter).
-            } else {
-                t.col++;
-            }
-        }
-        t.row++;
-        t.col = 0;
-    }
 }
 
 // ── Glyph-bounding-box dirty spans ──
@@ -8425,29 +7954,18 @@ function _buildScreenOutput() {
         // when msg is long). Trailing blanks erase a shrunk message.
         const msg = game._pending_message || '';
         const msgLines = msg.split('\n');
-        // C message paint is home + overwrite + cl_end (no blanket clear:
-        // wintty message window; getpos exits with msg_given=FALSE under
-        // autodescribe, getpos.c:889-890, so no clear_nhwindow either), and
-        // nomux drops ch < 32 (termcap.c nomux_putch, patch 006) — the
-        // capture keeps the stale cell (D-3962 grid rule, omission (1)).
-        // Mirror the drop: skip C0 writes (the column still advances),
-        // then cl_end the tail. C0-free lines paint identically to before.
-        const line0 = msgLines[0] || '';
-        for (let c = 0; c < Math.min(line0.length, cols); c++) {
-            if (line0.charCodeAt(c) < 32) continue; // stale cell kept
-            display.setCell(c, 0, line0[c], NO_COLOR, 0);
-        }
-        for (let c = line0.length; c < cols; c++)
+        for (let c = 0; c < cols; c++)
             display.setCell(c, 0, ' ', NO_COLOR, 0);
+        const line0 = msgLines[0] || '';
+        for (let c = 0; c < Math.min(line0.length, cols); c++)
+            display.setCell(c, 0, line0[c], NO_COLOR, 0);
         // C flush_screen never touches the message rows; JS arbitration:
         // a wrapped message owns screen row 1, so map row 0 stays.
         const msgOwnsRow1 = msgLines.length > 1;
         if (msgOwnsRow1) {
             const line1 = msgLines[1] || '';
-            for (let c = 0; c < Math.min(line1.length, cols); c++) {
-                if (line1.charCodeAt(c) < 32) continue; // stale cell kept
+            for (let c = 0; c < Math.min(line1.length, cols); c++)
                 display.setCell(c, 1, line1[c], NO_COLOR, 0);
-            }
             for (let c = line1.length; c < cols; c++)
                 display.setCell(c, 1, ' ', NO_COLOR, 0);
         }
@@ -8631,14 +8149,11 @@ function _paintToplineOnly() {
     // C putsyms + cl_end clears to end of line on BOTH rows (redotoplin,
     // more): a wrapped line1 blanks row 1's remainder (map cells there
     // are overwritten, repainted by docorner on unwrap — resync_map_row0).
-    // Overwrite, never blanket-clear first: nomux drops ch < 32 (patch 006)
-    // and the capture keeps the stale cell (D-3962 grid rule, omission (1)).
+    for (let c = 0; c < cols; c++) display.setCell(c, 0, ' ', NO_COLOR, 0);
     for (let r = 0; r < msgLines.length && r < 2; r++) {
         const line = msgLines[r];
-        for (let c = 0; c < Math.min(line.length, cols); c++) {
-            if (line.charCodeAt(c) < 32) continue; // stale cell kept
+        for (let c = 0; c < Math.min(line.length, cols); c++)
             display.setCell(c, r, line[c], NO_COLOR, 0);
-        }
         for (let c = line.length; c < cols; c++)
             display.setCell(c, r, ' ', NO_COLOR, 0);
     }
@@ -9413,21 +8928,9 @@ export async function flush_screen(mode) {
         // C display.c flush_screen: bot() else timebot() before map glyphs
         if (flags.botl || flags.botlx) await bot();
         else if (flags.time_botl) await timebot();
-        // Mid goto_level / getbones with no live level: C's gbuf
-        // survives level teardown (gg.gbuf is not levl), so the
-        // vision_recalc(2) leave newsyms (display.c:1088 litcorr→corr,
-        // S_room→DARKROOMSYM) reach the terminal at the next flush —
-        // e.g. the goto_level discarded-level impossible() More
-        // (do.c:1696 → pline.c:274 flush_screen). JS gbuf lives on
-        // loc.disp_* of the stashed leave level: paint its dirty cells
-        // (Get-bones-yn precedent: paint_gbuf_level_to_terminal,
-        // bones.js:848). Silent bones paths (_stale_map_flush) still
-        // paint nothing (D-0852).
+        // Mid goto_level / getbones: keep stale map cells like C gbuf.
         if (!game.level || game._stale_map_flush) {
             _paintToplineAndStatus();
-            if (!game._stale_map_flush && game._leave_gbuf_level) {
-                paint_gbuf_level_to_terminal(game._leave_gbuf_level);
-            }
             return;
         }
         // C `:2241–2265` span-gated map paint + reset_glyph_bbox +

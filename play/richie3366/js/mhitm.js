@@ -480,11 +480,8 @@ export function get_mattk(magr, i, mdef = undefined, prev_result = null) {
         adtyp: a.adtyp | 0,
         damn: a.damn | 0,
         damd: a.damd | 0,
-        // C: uses pointer+1 for "again" (D-0840): same array +
-        // consecutive index. _arr carries the array identity — a
-        // polymorphed attacker keeps its m_id but swaps arrays (D-4093).
+        // C: uses pointer+1 for "again" (D-0840).
         _slot: a,
-        _arr: slots,
         _indx: i,
     };
     const mptr = magr.data;
@@ -1271,11 +1268,7 @@ export async function mhitm_ad_fire(magr, mattk, mdef, mhm) {
                 ? 'burns completely' : 'is totally engulfed in flames';
             await pline_mon(mdef, `${Monnam(mdef)} ${how}!`);
         }
-        /* C uhitm.c:2602 `(char *)0`: the caller already spoke, so monkilled
-           stays silent (NULL skips the kill line; '' would print a second
-           "is destroyed!" and steal a --More--). RUST/DCAY/BLND arms pass
-           null; mhitm.c mdamagem passes "" per its own C. */
-        await monkilled(mdef, null, AD_FIRE);
+        await monkilled(mdef, '', AD_FIRE);
         if (!deadmonster(mdef)) {
             mhm.hitflags = M_ATTK_MISS;
             mhm.done = true;
