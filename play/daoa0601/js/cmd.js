@@ -5,11 +5,11 @@ import { ingSuffix } from './hacklib.js';
 import { heroLocomotion } from './hero_locomotion.js';
 import { autokey, autoUnlockFlags, continuePicking, pickLock } from './lock_pick.js';
 import { resetPick } from './lock_context.js';
-import { petRefusesHeroSwap } from './hero_pet_displacement.js';
+import { petRefusesHeroSwap, settlePetHeroDisplacement } from './hero_pet_displacement.js';
 import { airTurbulenceStopsHero, waterTurbulenceStopsHero } from './hero_movement_turbulence.js';
 import { maybeAdjustHeroBubble } from './elemental.js';
 import { announceRunLiquid, announceRunTrap, knownRunTrap, runLiquidIsDangerous } from './run_hazards.js';
-import { AUTOUNLOCK_APPLY_KEY, AUTOUNLOCK_UNTRAP } from './const.js';
+import { AUTOUNLOCK_APPLY_KEY, AUTOUNLOCK_UNTRAP, ECMD_CANCEL, ECMD_FAIL, ECMD_TIME } from './const.js';
 import { findDrawbridgeAt } from './dbridge.js';
 import { doorObstructed } from './door_magic.js';
 import { DBWALL, DRAWBRIDGE_DOWN, IS_DRAWBRIDGE, IS_TREE, LADDER, STAIRS, THRONE } from './const.js';
@@ -83,7 +83,8 @@ import { useWhistle } from './whistle.js';
 import { retouchHeroObject } from './hero_retouch.js';
 import { GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, PARANOID_REMOVE, GETOBJ_SUGGEST } from './const.js';
 import { TER_MON } from './const.js';
-import { senseBuriedObjects } from './buried_object.js';
+import { placeHeroOnLevel } from './hero_location.js';
+import { hideHeroUnder } from './monster_hiding.js';
 import { distantMonsterName, monsterName, monsterPossessive, monsterSubjectPronoun, shopkeeperName } from './monster_name.js';
 import { attackHostileMonster } from './hero_melee.js';
 import { prepareAppliedWeaponAttack } from './hero_attack_preflight.js';
@@ -98,7 +99,8 @@ import { definiteName, objectCombatName, minimalObjectName, objectNameIsPlural, 
 import { woundHeroLegs } from './hero_legs.js';
 import { makeMonsterFlee } from './monster_flee.js';
 import { descendFromLevitation, floatingAbove } from './levitation_commands.js';
-import { endVoluntaryMultiTurn, resetCommandVariables } from './command_state.js';
+import { endVoluntaryMultiTurn, resetCommandVariables, nomul, setMulti } from './command_state.js';
+import { finishHeroHelplessness } from './allmain.js';
 import { grantIntrinsicProperty, propertyIsActive } from './properties.js';
 import { addPickedInventoryObject, pickupAtHero, pickupObjectClass, pickupClassOrder, } from './pickup.js';
 import { gotoLevel } from './level_change.js';
@@ -143,7 +145,7 @@ import { nameIndividualObject } from './individual_naming.js';
 import { nameChosenMonster } from './monster_naming_command.js';
 import { nameFloorObject } from './floor_naming.js';
 import { chooseNamingCategory } from './naming_categories.js';
-import { displayLiquidName, displayMessageWindow, newsym, feel_newsym, flushPendingTopline, flush_screen, pline, plineWithContinuation, moreUntilDismissed, docrt, bot, terrain_glyph, glyphAt, canSeeMonster, canSpotMonster, canSenseMonster, canSpotHeroSelf, unblindTelepathyRange, monsterHasWarningProjection, see_nearby_objects, show_glyph_cell, swallowed, randomDisplayMonsterName, randomDisplayMonsterSubject, see_monsters, see_objects, see_traps, map_invisible, unmap_invisible, map_object, unmapObject, } from './display.js';
+import { displayLiquidName, displayMessageWindow, newsym, feel_newsym, flushPendingTopline, flush_screen, pline, plineWithContinuation, moreUntilDismissed, docrt, bot, terrain_glyph, glyphAt, canSeeMonster, canSpotMonster, canSenseMonster, canSpotHeroSelf, unblindTelepathyRange, monsterHasWarningProjection, show_glyph_cell, swallowed, randomDisplayMonsterName, randomDisplayMonsterSubject, see_monsters, see_objects, see_traps, map_invisible, unmap_invisible, map_object, unmapObject, } from './display.js';
 import { cansee, couldsee, vision_note_blocker_change, vision_recalc, vision_reset } from './vision.js';
 import { transformMagicLampToOilLamp } from './light.js';
 import { dozap, } from './zap.js';
@@ -193,6 +195,7 @@ import { addInventoryItem, assignInventoryLetter, inventoryLetterRank } from './
 import { clearSplitObjects, objectQuantity, rejoinObjectStack, splitObjectStack } from './object_stack.js';
 import { freeInventoryObject } from './hero_inventory.js';
 import { dropHeroObject } from './hero_drop.js';
+import { dropMultipleObjects } from './drop_menu.js';
 import { SELL_DELIBERATE, SELL_NORMAL, setSellDisposition } from './shop_sell.js';
 import { addObjectToMonsterInventory } from './monster_inventory.js';
 import { resolveGenericSwallowedThrow, resolveSwallowedEggPieOrVenomThrow, resolveSwallowedFoodThrow, resolveSwallowedPotionThrow, resolveSwallowedWeaponThrow, } from './swallowed_throw.js';
@@ -225,7 +228,7 @@ import { isLavaAt, isPoolAt, isPoolOrLavaAt } from './terrain_properties.js';
 import { drawbridgeUnderlyingType } from './drawbridge_terrain.js';
 import { dosave } from './save.js';
 import { captureRunmodeDelay, startRun, stopRun } from './runmode.js';
-import { applyArmorOnEffects, armorOnIdentifiesType, armorSlotFor, armorSimpleName, armorOffMessage, findArmorClass, heroIsDisplaced, removeHeroArmor, wearHeroArmor, } from './armor.js';
+import { armorSlotFor, armorSimpleName, armorOffMessage, findArmorClass, heroIsDisplaced, removeHeroArmor, wearHeroArmor, } from './armor.js';
 import { findMonsterArmorClass, } from './monworn.js';
 import { finishHeroMonsterKill, finishHeroMonsterKillOutcome } from './hero_monster_death.js';
 import { wakeMonstersNear } from './monster_wake.js';
@@ -313,7 +316,7 @@ import { heroHasMartialKick } from './kick_rules.js';
 import { bringLeashedFollowers, randomMonsterRelocation, } from './teleport.js';
 import { goodPosition, monsterTeleportRestricted } from './teleport_rules.js';
 import { removeWishGrantingMonster } from './monster_departure.js';
-import { RLOC_MSG, A_CON, A_DEX, A_MAX, A_STR, A_WIS, BOLT_LIM, COLNO, ROWNO, STONE, SCORR, SDOOR, DOOR, CORR, ROOM, ICE, POOL, CLOUD, IRONBARS, FOUNTAIN, SINK, ALTAR, WATER, MOAT, LAVAWALL, TREE, D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED, SHOP_DOOR_COST, IS_WALL, IS_STWALL, IS_OBSTRUCTED, IS_FURNITURE, IS_AIR, IS_ROOM, ZAP_POS, SQKY_BOARD, BEAR_TRAP, LANDMINE, FIRE_TRAP, PIT, SPIKED_PIT, TT_PIT, HOLE, TRAPDOOR, DART_TRAP, MAGIC_TRAP, TELEP_TRAP, LEVEL_TELEP, STATUE_TRAP, WEB, ANTI_MAGIC, G_GONE, ER_NOTHING, ER_DAMAGED, M_AP_MONSTER, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, STRAT_WAITMASK, MM_NOEXCLAM, MM_NOMSG, SHOPBASE, ROOMOFFSET, F_LOOTED, In_endgame, Is_airlevel, Is_waterlevel, Is_rogue_level, In_hell, W_ARMOR, W_ACCESSORY, W_SADDLE, P_BOW, P_SLING, PARANOID_HIT, POLY_CONTROLLED, STR19, isok, ACCESSIBLE, AIR, DIGTYP_UNDIGGABLE, DRAWBRIDGE_UP, } from './const.js';
+import { RLOC_MSG, A_CON, A_DEX, A_MAX, A_STR, A_WIS, BOLT_LIM, COLNO, ROWNO, STONE, SCORR, SDOOR, DOOR, CORR, ROOM, ICE, POOL, CLOUD, IRONBARS, FOUNTAIN, SINK, ALTAR, WATER, MOAT, LAVAWALL, TREE, D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED, SHOP_DOOR_COST, IS_WALL, IS_STWALL, IS_OBSTRUCTED, IS_FURNITURE, IS_AIR, IS_ROOM, ZAP_POS, SQKY_BOARD, BEAR_TRAP, LANDMINE, FIRE_TRAP, PIT, SPIKED_PIT, TT_PIT, HOLE, TRAPDOOR, DART_TRAP, MAGIC_TRAP, TELEP_TRAP, LEVEL_TELEP, STATUE_TRAP, WEB, ANTI_MAGIC, G_GONE, ER_NOTHING, ER_DAMAGED, M_AP_NOTHING, M_AP_MONSTER, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, STRAT_WAITMASK, MM_NOEXCLAM, MM_NOMSG, SHOPBASE, ROOMOFFSET, F_LOOTED, In_endgame, Is_airlevel, Is_waterlevel, Is_rogue_level, In_hell, W_ARMOR, W_ACCESSORY, W_SADDLE, P_BOW, P_SLING, PARANOID_HIT, POLY_CONTROLLED, STR19, isok, ACCESSIBLE, AIR, DIGTYP_UNDIGGABLE, DRAWBRIDGE_UP, } from './const.js';
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
 // object.h enum value; object_data currently exposes the two other tools.
@@ -322,11 +325,12 @@ const PM_DJINNI = 315;
 const PM_WATER_NYMPH = 68;
 const PM_WATER_DEMON = 289;
 const PM_WATER_MOCCASIN = 216;
-const M2_PNAME = 0x00080000;
 const M2_ROCKTHROW = 0x08000000;
 const M1_HUMANOID = 0x00020000;
 const M1_TUNNEL = 0x20;
 const M1_NEEDPICK = 0x40;
+const M1_CONCEAL = 0x80;
+const S_EEL = 57;
 function isMovementKey(ch) {
     return ch.length === 1 && 'hjklyubn'.includes(ch);
 }
@@ -365,8 +369,8 @@ function heroOozesUnderDoor(destination) {
         && !!(destination.doormask & (D_CLOSED | D_LOCKED))
         && !heroPassesWalls(game) && heroCanOoze(game);
 }
-// C test_move(DO_MOVE): oozing bypasses only the doorway entry check.
-async function rejectHeroDiagonalDoorway(dx, dy, destination) {
+// C test_move(DO_MOVE): entry precedes tight shoulders; exit follows them.
+async function rejectHeroDiagonalDoorEntry(dx, dy, destination) {
     if (!dx || !dy || heroPassesWalls(game))
         return false;
     const entryDoor = heroOozesUnderDoor(destination) ? null : destination;
@@ -374,18 +378,32 @@ async function rejectHeroDiagonalDoorway(dx, dy, destination) {
     const intactEntry = blocksDiagonalDoor(null, entryDoor);
     const doorKeeper = !intactEntry && entryDoor?.typ === DOOR ? shopkeeperBlockingDoor(x, y) : null;
     const entering = intactEntry || !!doorKeeper;
-    const intactExit = !entering && blocksDiagonalDoor(game.level?.at(game.u.ux, game.u.uy), null);
-    const entryKeeper = !entering && !intactExit ? shopkeeperBlockingEntry(x, y) : null;
-    if (!entering && !intactExit && !entryKeeper)
+    if (!entering)
         return false;
-    const keeper = doorKeeper ?? entryKeeper;
+    if (doorKeeper) {
+        const invisible = propertyIsActive('invisible', game);
+        await plineWithContinuation(`${shopkeeperName(doorKeeper, { capitalized: true })}${invisible ? ' senses your motion and' : ''} blocks your way!`);
+    }
+    if (game.flags.mention_walls || game.u.uinwater || game.underwater) {
+        await plineWithContinuation("You can't move diagonally into an intact doorway.");
+    }
+    game.context.move = 0;
+    return true;
+}
+async function rejectHeroDiagonalDoorExit(dx, dy) {
+    const origin = game.level?.at(game.u.ux, game.u.uy);
+    if (!dx || !dy || heroPassesWalls(game) || origin?.typ !== DOOR)
+        return false;
+    const intact = blocksDiagonalDoor(origin, null);
+    const keeper = intact ? null : shopkeeperBlockingEntry(game.u.ux + dx, game.u.uy + dy);
+    if (!intact && !keeper)
+        return false;
     if (keeper) {
         const invisible = propertyIsActive('invisible', game);
         await plineWithContinuation(`${shopkeeperName(keeper, { capitalized: true })}${invisible ? ' senses your motion and' : ''} blocks your way!`);
     }
-    if (game.flags.mention_walls || entering && (game.u.uinwater || game.underwater)) {
-        await plineWithContinuation(`You can't move diagonally ${entering ? 'into' : 'out of'} an intact doorway.`);
-    }
+    if (game.flags.mention_walls)
+        await plineWithContinuation("You can't move diagonally out of an intact doorway.");
     game.context.move = 0;
     return true;
 }
@@ -1064,7 +1082,7 @@ export async function rhack(key) {
             clearCommandKeys();
             clearRepeatCommand();
             game.context.move = 0;
-            game.multi = 0;
+            setMulti(0);
             return;
         }
         if (!await commandAllowed(command)) {
@@ -1370,6 +1388,19 @@ async function runCommandHandler(binding, { cannedCommand = null, } = {}) {
     }
     else if (ch === 'd') {
         await dodrop();
+    }
+    else if (ch === 'D') {
+        const result = await dropMultipleObjects();
+        if (result & (ECMD_FAIL | ECMD_CANCEL))
+            resetCommandVariables(true);
+        game.context.move = Number((result & ECMD_TIME) !== 0);
+        if (result) {
+            resetBulkTakeoff();
+            resetPick();
+            resetTrapSetting();
+            if (game._occupation?.key === 'pick-lock')
+                game._occupation = null;
+        }
     }
     else if (ch === 'c') {
         await doclose();
@@ -2658,7 +2689,7 @@ async function runInventoryAction({ key, item }) {
 // slot through setworn() also ends two-weapon mode before either new
 // inventory description is projected.
 async function doswapweapon() {
-    game.multi = 0;
+    setMulti(0);
     if (heroHasNoHands(game) || heroIsVerySmall(game)) {
         await pline("Don't be ridiculous!");
         game.context.move = 0;
@@ -2962,7 +2993,7 @@ async function wizTelekinesis() {
             break;
     } while (!game.u.utotype);
     if (game._helplessReason === 'moving through the air')
-        game._helplessTurns = 0;
+        setMulti(0);
     game.context.move = 0;
 }
 function menuLetter(index) {
@@ -3074,10 +3105,7 @@ async function endgamePrerequisite(destination) {
 // C ref: dungeon.c print_dungeon(TRUE). Build one source-ordered menu stream;
 // the tty layer alone owns pagination and nested input capture.
 function wizardLevelMenu() {
-    const rows = [
-        { text: 'Level teleport to where:', attr: ATR_INVERSE },
-        '',
-    ];
+    const rows = [];
     const choices = new Map();
     let choiceIndex = 0;
     for (let dnum = 0; dnum < (game.dungeons?.length || 0); dnum++) {
@@ -3184,7 +3212,9 @@ async function wizWhere() {
 // C dungeon.c:print_dungeon(TRUE), with the endgame entry prerequisite.
 export async function chooseWizardLevelDestination() {
     const { rows, choices } = wizardLevelMenu();
-    const destination = await showPagedPickOneMenu({ rows, choices });
+    const destination = await showPagedPickOneMenu({
+        rows, choices, prompt: 'Level teleport to where:',
+    });
     if (!destination)
         return null;
     await endgamePrerequisite(destination);
@@ -3521,22 +3551,20 @@ async function moveIntoFailedUntrap(trap) {
     const oldy = u.uy;
     u.ux0 = oldx;
     u.uy0 = oldy;
-    u.ux = newx;
-    u.uy = newy;
-    if (u.usteed) {
-        u.usteed.mx = newx;
-        u.usteed.my = newy;
-    }
+    await placeHeroOnLevel(newx, newy);
+    u.umoved = true;
+    newsym(oldx, oldy);
+    vision_recalc(1);
+    await checkHeroLeashes(oldx, oldy);
+    if (game.program_state.gameover)
+        return { entered: true, died: true };
+    await finishBallAndChainMove(ballChainMove);
+    // C move_into_trap() has its own arrival order and does not run the
+    // footstep, concealment, or dragging-delay tail of domove_core().
     trap.tseen = false;
-    await finishMovedHero({
-        oldx,
-        oldy,
-        newx,
-        newy,
-        loc,
-        explicitAttempt: true,
-        ballChainMove,
-        trapOptions: { failedUntrap: true },
+    await finishDestinationSpotEffects({
+        oldx, oldy, newx: u.ux, newy: u.uy,
+        explicitAttempt: false, trapOptions: { failedUntrap: true },
     });
     if (game.program_state.gameover)
         return { entered: true, died: true };
@@ -5234,15 +5262,12 @@ async function removeWornItem(action, itemAction = false) {
     const delay = OBJECT_DELAY[object.otyp] ?? 0;
     const isArmor = object.class === 'Armor' || object.oclass === 3;
     if (isArmor && delay > 0) {
-        endVoluntaryMultiTurn(game);
-        game._delayedAction = {
+        nomul(-delay);
+        game._helplessReason = 'disrobing';
+        game._helplessDoneMessage = `You finish taking off your ${armorSimpleName(object)}.`;
+        game._afterMove = {
             kind: 'remove',
             object,
-            remainingGlobalTurns: delay,
-            ready: false,
-            // C do_wear.c installs this as nomovemsg.  allmain.c:unmul()
-            // prints it before invoking Armor_off() through afternmv.
-            finishMessage: `You finish taking off your ${armorSimpleName(object)}.`,
         };
         game.context.move = 1;
         return;
@@ -5287,7 +5312,6 @@ async function putOnArmorObject(object) {
         game.context.move = 1;
         return;
     }
-    const hero = game.u;
     // C accessory_or_armor_on(): armor leaves any held slot before setworn.
     // Cursed armor does not weld to the hand.
     await releaseWeaponSlots(object, game);
@@ -5300,32 +5324,16 @@ async function putOnArmorObject(object) {
     game._armorClassDirty = true;
     if (delay > 0)
         game._armorClassDirtyAfterDelayedFrame = true;
+    game._afterMove = { kind: 'wear', object };
     if (delay > 0) {
-        endVoluntaryMultiTurn(game);
-        game._delayedAction = {
-            kind: 'wear', object,
-            // objects[].oc_delay advances through negative multi during
-            // global-turn allocations, not through input commands.
-            remainingGlobalTurns: delay,
-            ready: false,
-            finishMessage: 'You finish your dressing maneuver.',
-        };
+        nomul(-delay);
+        game._helplessReason = 'dressing up';
+        game._helplessDoneMessage = 'You finish your dressing maneuver.';
     }
     else {
-        game.multi = 0;
-        hero.usleep = 0;
-        const effectMessages = await applyArmorOnEffects(object, game);
-        const identifiesType = armorOnIdentifiesType(object, effectMessages)
-            && !game._knownObjectTypes?.has(object.otyp);
-        if (identifiesType) {
-            recordObjectKnowledge(object.otyp);
-            await exerciseAttribute(A_WIS, true);
-        }
-        object.known = true;
+        await finishHeroHelplessness('');
         object._armorApplied = true;
         const onMessage = objectWearMessage(object);
-        for (const message of effectMessages)
-            await plineWithContinuation(message);
         if (onMessage)
             await plineWithContinuation(onMessage);
     }
@@ -5337,7 +5345,7 @@ async function putOnArmorObject(object) {
 // advertises weapons and weapon-tools but still permits the full inventory
 // through ?/*; '-' represents the synthetic empty-hands object.
 async function dowield() {
-    game.multi = 0;
+    setMulti(0);
     if (heroHasNoHands(game) || heroIsVerySmall(game)) {
         await pline("Don't be ridiculous!");
         game.context.move = 0;
@@ -6133,7 +6141,7 @@ function hasFreeBasicInventoryLetter() {
     return game.inventory.filter(item => item.oclass !== 12).length < 52;
 }
 async function doquiverCore(verb) {
-    game.multi = 0;
+    setMulti(0);
     if (!(game.inventory || []).length) {
         await pline('You have nothing to ready for firing.');
         game.context.move = 0;
@@ -6324,7 +6332,7 @@ async function dofire(cannedShotLimit = null) {
     const shotLimit = cannedShotLimit === null
         ? Math.max(0, game._commandCount || 0)
         : Math.max(0, cannedShotLimit || 0);
-    game.multi = 0;
+    setMulti(0);
     if (!await okToThrow())
         return;
     let fireObject = game.uquiver;
@@ -6475,7 +6483,7 @@ async function throwCommand(selectedItem = null, capabilityChecked = false, supp
         ? Math.max(0, game._commandCount || 0)
         : Math.max(0, suppliedShotLimit || 0);
     requireInitializedHero(game.u);
-    game.multi = 0;
+    setMulti(0);
     if (!capabilityChecked && !await okToThrow())
         return;
     // getobj("throw") changes its suggested class when the primary weapon is
@@ -6823,21 +6831,14 @@ export async function applyHeroLocationEffects(publish = plineWithContinuation, 
         explicitAttempt: false, publish, pick,
     });
 }
-// C hack.c:domove_core() common tail after the hero's coordinates have been
-// committed.  Ordinary moves and pet displacement both pass through run
-// termination, u_on_newpos/vision work, and spoteffects in this order.
-async function finishMovedHero({ oldx, oldy, newx, newy, loc, explicitAttempt, ballChainMove = null, trapOptions = {}, }) {
+// C hack.c:domove_core() common tail, including a refused pet swap.
+// Repositioning and concealment finish before vision and arrival effects.
+async function finishHeroMovement({ oldx, oldy, loc, explicitAttempt, ballChainMove = null, }) {
     const u = game.u;
+    await placeHeroOnLevel(u.ux, u.uy);
     resetBulkTakeoff();
     resetPick();
     resetTrapSetting();
-    // C hack.c:domove_core() sets this only in the common tail after map
-    // coordinates changed.  The turn loop retains it through every global
-    // allocation needed to settle this action, then clears it before the next
-    // hero action begins.
-    u.umoved = true;
-    see_nearby_objects();
-    await senseBuriedObjects();
     // An active non-travel run ends upon entering a doorway, obstruction, or
     // furniture square even when actor displacement, rather than the plain
     // terrain branch, performed the coordinate move.
@@ -6845,28 +6846,37 @@ async function finishMovedHero({ oldx, oldy, newx, newy, loc, explicitAttempt, b
         || IS_OBSTRUCTED(loc?.typ ?? STONE)
         || IS_FURNITURE(loc?.typ ?? STONE)))
         stopRun();
-    // C trap.c:move_into_trap() skips domove_core()'s footstep disturbance.
-    if (!trapOptions.failedUntrap
-        && !propertyIsActive('levitation', game) && !propertyIsActive('flying', game)
+    if (!propertyIsActive('levitation', game) && !propertyIsActive('flying', game)
         && !propertyIsActive('stealth', game)
         && (MONSTER_BODY_META[heroSpecies(game)]?.[0] ?? 0) >= 400)
         disturbBuriedZombies(u.ux, u.uy);
+    const species = heroSpecies(game);
+    if (((MONSTER_FLAGS1[species] ?? 0) & M1_CONCEAL)
+        || MONSTER_SYMBOL[species] === S_EEL || u.dx || u.dy)
+        hideHeroUnder();
+    if ((u.dx || u.dy) && (u.m_ap_type === M_AP_OBJECT || u.m_ap_type === M_AP_FURNITURE))
+        u.m_ap_type = M_AP_NOTHING;
     await checkHeroLeashes(oldx, oldy);
     if (game.program_state.gameover)
         return true;
-    game._domoveSucceeded = oldx !== newx || oldy !== newy;
-    newsym(oldx, oldy);
-    vision_recalc(1);
-    await announceInvocationSquare();
+    game._domoveSucceeded = oldx !== u.ux || oldy !== u.uy;
+    u.umoved = game._domoveSucceeded;
+    if (u.umoved) {
+        newsym(oldx, oldy);
+        vision_recalc(1);
+        await announceInvocationSquare();
+    }
     if (ballChainMove)
         await finishBallAndChainMove(ballChainMove);
-    const finished = await finishDestinationSpotEffects({
-        oldx, oldy, newx, newy, explicitAttempt, trapOptions,
-    });
-    if (finished.died)
-        return true;
-    if (finished.moved && explicitAttempt)
-        maybeSmudgeEngravings(oldx, oldy, u.ux, u.uy);
+    if (u.umoved) {
+        const finished = await finishDestinationSpotEffects({
+            oldx, oldy, newx: u.ux, newy: u.uy, explicitAttempt,
+        });
+        if (finished.died)
+            return true;
+        if (finished.moved && explicitAttempt)
+            maybeSmudgeEngravings(oldx, oldy, u.ux, u.uy);
+    }
     // C domove_core(): landing and pickup finish before nomul(-2).
     // A longer trap-induced delay survives, but its completion prose changes.
     if (ballChainMove?.causeDelay)
@@ -6875,14 +6885,7 @@ async function finishMovedHero({ oldx, oldy, newx, newy, loc, explicitAttempt, b
 }
 // C domove_core() applies the dragging delay even when a pet refuses the swap.
 async function delayAfterDraggingBall() {
-    if ((game._helplessTurns ?? 0) <= 2) {
-        game.u.invulnerable = false;
-        game.u.usleep = 0;
-        game.multi = 0;
-        stopRun();
-        game._cannedCommands = [];
-        game._helplessTurns = 2;
-    }
+    nomul(-2);
     game._helplessReason = 'dragging an iron ball';
     game._helplessDoneMessage = '';
     await captureRunmodeDelay(game, true, game.moves || 0, { preservePhysicalTopline: true });
@@ -6988,7 +6991,8 @@ async function domoveCore(dx, dy, explicitAttempt) {
             if (!polymorphed)
                 await exerciseAttribute(A_CON, false);
         }
-        stopRun(game);
+        // nomul(0) requests a full status update even without an active run.
+        endVoluntaryMultiTurn(game);
         // carrying_too_much() returns from domove_core() without clearing
         // context.move, so the failed step still spends the hero action.
         return true;
@@ -7126,7 +7130,7 @@ async function domoveCore(dx, dy, explicitAttempt) {
             await settleBeastHeroDisplacement(monster, game);
             if (game.program_state.gameover)
                 return true;
-            return finishMovedHero({ oldx, oldy, newx, newy, loc, explicitAttempt, ballChainMove });
+            return finishHeroMovement({ oldx, oldy, loc, explicitAttempt, ballChainMove });
         }
         if (safeMonster && artifactById(game.uwep?.oartifact, game)?.name !== 'Stormbringer') {
             // C ref: hack.c do_attack()/domove(): a tame monster normally
@@ -7298,10 +7302,7 @@ async function domoveCore(dx, dy, explicitAttempt) {
         game.context.move = 0;
         return false;
     }
-    // C ref: hack.c test_move().  Once the closed-door/autoopen path has had
-    // its opportunity, intact open and doorless doorways only allow
-    // orthogonal entry/exit.
-    if (await rejectHeroDiagonalDoorway(dx, dy, loc))
+    if (await rejectHeroDiagonalDoorEntry(dx, dy, loc))
         return false;
     if (await rejectTightHeroDiagonal(dx, dy))
         return false;
@@ -7314,6 +7315,8 @@ async function domoveCore(dx, dy, explicitAttempt) {
         game.context.move = 0;
         return false;
     }
+    if (await rejectHeroDiagonalDoorExit(dx, dy))
+        return false;
     const boulder = heroPassesWalls(game) && !game.level.flags.sokoban_rules ? null
         : (game.level.objects[newx]?.[newy] || []).find(object => object.otyp === BOULDER);
     const hallucinating = heroIsHallucinating(game);
@@ -7384,38 +7387,16 @@ async function domoveCore(dx, dy, explicitAttempt) {
                 u.usteed.mx = oldx;
                 u.usteed.my = oldy;
             }
-            // C domove_core() resets occupations after restoring the
-            // hero's position, even when a peaceful refuses the swap.
-            resetBulkTakeoff();
-            resetPick();
-            resetTrapSetting();
-            await finishBallAndChainMove(ballChainMove);
-            if (ballChainMove?.causeDelay)
-                await delayAfterDraggingBall();
-            return true;
+            return finishHeroMovement({
+                oldx, oldy, loc, explicitAttempt, ballChainMove,
+            });
         }
-        monster.mx = oldx;
-        monster.my = oldy;
-        // C domove_swap_with_pet() redraws both actors before the swap
-        // announcement can flush the map or pause for acknowledgment.
-        newsym(newx, newy);
-        newsym(oldx, oldy);
-        // C hack.c domove_swap_with_pet(): x_monnam() with "your" for
-        // pets, "the" for unnamed common species, and a "peaceful"
-        // adjective for non-pets.
-        const givenName = !!MGIVENNAME(monster);
-        const swapName = monsterName(monster, {
-            state: game,
-            article: monster.mtame ? 'your'
-                : !givenName && !((MONSTER_FLAGS2[monster.mnum] ?? 0) & M2_PNAME)
-                    ? 'the' : 'none',
-            adjective: monster.mpeaceful && !monster.mtame ? 'peaceful' : '',
-            suppressSaddle: givenName,
-        });
-        await plineWithContinuation(`You ${monster.mpeaceful ? 'swap places with' : 'frighten'} ${swapName}.`);
+        await settlePetHeroDisplacement(monster, game);
+        if (game.program_state.gameover)
+            return true;
     }
-    return finishMovedHero({
-        oldx, oldy, newx, newy, loc, explicitAttempt, ballChainMove,
+    return finishHeroMovement({
+        oldx, oldy, loc, explicitAttempt, ballChainMove,
     });
 }
 //# sourceMappingURL=cmd.js.map

@@ -1877,6 +1877,10 @@ export async function spelleffects(spell_otyp, atme, force) {
     /* C leaves energy at zero when force is TRUE: spelleffects_check is
      * skipped and its local `energy` initializer is 0 (spell.c:1388-1396).
      * Wizard #wizcast therefore does not spend Pw. */
+    /* The physical status row keeps the pre-cast Pw until bot() runs
+     * (flush_screen after the effect); a menu raised by the effect (identify's
+     * "What would you like to identify first?") overlays the stale row. */
+    g._spellPwStale = { uen: u.uen | 0, uenmax: u.uenmax | 0 };
     u.uen = (u.uen | 0) - energy;
     if (g.disp) g.disp.botl = true;
     exercise(A_WIS, true);                 /* spell.c:1399 — rn2(19) */
@@ -2075,6 +2079,7 @@ export async function spelleffects(spell_otyp, atme, force) {
     if (!force)
         await use_skill(skill, sb.sp_lev);
     // obfree(pseudo, NULL) is handled by JS garbage collection.
+    g._spellPwStale = null;
     return 1 /* ECMD_TIME */;
 }
 

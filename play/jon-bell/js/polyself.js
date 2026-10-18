@@ -24,7 +24,7 @@ import { pline, urgent_pline, newsym, see_monsters, flush_screen, force_more, _t
 import { exercise, acurr, getAbase, getAmax, C_ATTR_TO_DISP, redist_attr, adjabil, setuhpmax } from './attrib.js';
 import { the_unique_pm, permonstTemplate, monPmname, name_to_mon, name_to_monclass, mkclass, dmgtype_fromattack, sliparm, attacktype_fordmg, set_mon_data, is_home_elemental as is_home_elemental_real } from './makemon.js';
 import { getlin } from './wizcmds.js';
-import { mungspaces, valid_vampshiftform, set_ustuck, mksobj, setmangry } from './mklev.js';
+import { mungspaces, valid_vampshiftform, set_ustuck, mksobj, setmangry, mkclass_poly_nc } from './mklev.js';
 import * as cmdNS from './cmd.js';
 import { mnexto } from './teleport.js';
 import { rndexp } from './exper_pure.js';
@@ -1327,10 +1327,6 @@ async function newman_dead() {
     g.svk.killer.format = KILLED_BY_AN;
     g.svk.killer.name = 'unsuccessful polymorph';
     await done(DIED);
-    if ((game.multi | 0) < 0) {
-        game.multi = 0;
-        game.nomovemsg = null;
-    }
     await newuhs(false);
     await encumber_msg();
 }
@@ -1713,7 +1709,7 @@ async function polyself_body(psflags, st) {
                 mntmp = mbox.value | 0;
                 if (mntmp < LOW_PM && monclass > 0)
                     mntmp = draconian && monclass === S_DRAGON
-                        ? armor_to_dragon(u.uarm.otyp) : mkclass(monclass);
+                        ? armor_to_dragon(u.uarm.otyp) : mkclass_poly_nc(monclass);
                 if (mntmp < LOW_PM) {
                     await pline('I\'ve never heard of such monsters.');
                     continue;
@@ -1774,7 +1770,7 @@ async function polyself_body(psflags, st) {
                 // same answer is not requested from the player again).
                 if (monclass) {
                     while (rn2(3) || --tryct > 0) {
-                        mntmp = mkclass(monclass);
+                        mntmp = mkclass_poly_nc(monclass);
                         cptr = permonstTemplate(mntmp);
                         if (polyok(cptr) || is_placeholder(mntmp)) break;
                     }
@@ -2606,7 +2602,7 @@ export async function still_chewing(x, y) {
     // Okay, you've chewed through something
     if (!(u.uconduct.food | 0)) { /* livelog only */ }
     u.uconduct.food = (u.uconduct.food | 0) + 1;
-    await morehungry(rnd(20));
+    u.uhunger = (u.uhunger | 0) + rnd(20); /* hack.c:735 — a GAIN, not morehungry */
     let digtxt = null, dmgtxt = null;
     if (IS_WALL(lev.typ)) {
         if (in_rooms(x, y, SHOPBASE).length) {

@@ -855,19 +855,19 @@ export async function drinkfountain() {
             // C fountain.c:307 "contaminated water", KILLED_BY.
             await poison_strdmg(strloss, dmg,
                 'contaminated water', KILLED_BY);
-            // C :305-309 — losestr/losehp inside poison_strdmg are noreturn
-            // when fatal, so exercise runs only when the hero survives.
-            // losestr drains its own death (D-3782): a set gameover here is
-            // true death → return. Otherwise drain the trailing losehp
-            // (fatal → done; lifesave → exercise) or the low-HP wail —
-            // same oil idiom as the poisRes arm above.
-            if (game.program_state?.gameover) return;
-            if (game._losehp_needs_done) {
+            // C :305-309 — drain FIRST (losestr D-3782 shape): losestr
+            // drains only its own frailty death; the TRAILING losehp's
+            // fatal bail (gameover + _losehp_needs_done) is still
+            // undrained here. finish_losehp_done runs done() (wizard
+            // "Die?" decline / lifesave survives and clears gameover —
+            // C returns to exercise/dryup on survive). Return only if
+            // still dead after the drain; the wail no-ops on
+            // survived-fatal (marker is losehp's non-fatal-else-only).
+            if (game._losehp_needs_done || game.program_state?.gameover) {
                 await finish_losehp_done();
                 if (game.program_state?.gameover) return;
-            } else {
-                await finish_maybe_wail();
             }
+            await finish_maybe_wail();
             exercise(A_CON, false);
             break;
         }

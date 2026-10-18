@@ -573,7 +573,7 @@ function _arti_exists_bit(m) {
 }
 
 // C artifact.c:461-471 nartifact_exist — count artifacts whose .exists bit is set.
-function nartifact_exist() {
+export function nartifact_exist() {
     const ae = _artiexist();
     let a = 0;
     for (const k in ae)
@@ -585,7 +585,7 @@ function nartifact_exist() {
  * came into being.  RNG-free; pure bookkeeping on artiexist[].  The `ct != 1`
  * impossible() is C's own consistency check and is kept as an inert warning
  * (C's impossible() does not abort either). */
-function _artifact_origin(arti, aflags) {
+export function _artifact_origin(arti, aflags) {
     const a = arti.oartifact | 0;
     if (!a)
         return;

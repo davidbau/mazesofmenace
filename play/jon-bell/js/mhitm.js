@@ -100,6 +100,7 @@ import { monstseesu, shieldeff, buzz } from './mcastu.js';
 import { resist, drain_item, hit } from './zap.js';
 import { finish_meating } from './dogmove.js';
 import { FAINTED } from './const.js';
+import { PM_SAMURAI as PM_SAMURAI_HM, PM_ELF as PM_ELF_HM } from './pm.generated.js';
 /* C end.c:185-300 done_in_by — use the canonical death attribution path.
  * mhitm's local no-op used to discard the stoning killer, leaving the
  * tombstone/scoreline without the attacking monster.  end.js already exposes
@@ -2773,6 +2774,12 @@ export async function hmon_hitmon_weapon_melee(hmd, mon, obj, u, uwep) {
     if (hmd.thrown === HMON_THROWN
         && (_is_ammo_hmon(obj) || _is_missile_hmon(obj))) {
         if (_ammo_and_launcher_hmon(obj, uwep)) {
+            if (((game.urole?.mnum | 0) === PM_SAMURAI_HM) && (obj.otyp | 0) === 22 /* YA */
+                && (uwep.otyp | 0) === 86 /* YUMI */)
+                hmd.dmg++;
+            else if (((game.urace?.mnum | 0) === PM_ELF_HM) && (obj.otyp | 0) === 19 /* ELVEN_ARROW */
+                     && (uwep.otyp | 0) === 84 /* ELVEN_BOW */)
+                hmd.dmg++;
             hmd.train_weapon_skill = (hmd.dmg > 0);
         }
         if (obj.opoisoned /* && is_poisonable(obj) */)
@@ -3621,7 +3628,7 @@ export function Resists_Elem(mon, propindx) {
 /* C mondata.c:200-211 resists_drli(mon). */
 export function resists_drli(mon) {
     const ptr = mon?.data || mon;
-    const M2_UNDEAD = 0x00000002, M2_DEMON = 0x00000100, M2_WERE = 0x00000040;
+    const M2_UNDEAD = 0x00000002, M2_DEMON = 0x00000100, M2_WERE = 0x00000004;
     const pmidx = (ptr?.pmidx ?? mon?.mndx ?? mon?.mnum ?? -1) | 0;
     if ((ptr?.mflags2 | 0) & (M2_UNDEAD | M2_DEMON | M2_WERE)) return true;
     if (pmidx === 311 || (mon === game.youmonst && ((game.u?.ulycn ?? -1) | 0) >= 0)

@@ -39,7 +39,7 @@ import { obj_split_timers, age_is_relative, stop_timer, begin_burn } from './tim
 import { artifact_light, obj_split_light_source as obj_split_light_source_real } from './light.js';
 import { depth as depth_of_level, deepest_lev_reached } from './hacklib.js';
 import { W_ARMOR, W_ACCESSORY, TRAPNUM, NO_TRAP, FLYING, LEVITATION, BLINDED, FAINTED, P_DAGGER, P_KNIFE } from './const.js';
-import { BILLSZ, ROT_CORPSE } from './const.js';
+import { BILLSZ, ROT_CORPSE, AGGRAVATE_MONSTER } from './const.js';
 import { DEFSYM_EXPLANATION } from './defsym_data.js';
 import { rank_of } from './rank_data.js';
 import { is_hole, is_pit, WEB, BEAR_TRAP } from './const.js';
@@ -378,6 +378,10 @@ export function levelDifficulty() {
         const entryLev = dun?.entry_lev ?? 1;
         res += 2 * (entryLev - uz.dlevel + 1);
     }
+    /* C dungeon.c:2078-2080 — ring of aggravate monster (EAggravate_monster,
+     * extrinsic only) doubles the difficulty, capped at 50 above depth 25. */
+    if (game.u?.uprops?.[AGGRAVATE_MONSTER]?.extrinsic | 0)
+        res = res > 25 ? 50 : res * 2;
     return res;
 }
 export function Inhell() {

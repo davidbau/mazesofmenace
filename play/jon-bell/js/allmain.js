@@ -63,7 +63,7 @@ import { m_at } from './uhitm.js';
 import { noattacks_mndx, stealarm_mu } from './mhitu.js';
 import { unstolenarm } from './steal.js';
 import { canspotmon, _topl_stash_result } from './display.js';
-import { pline_flush_point } from './display.js';
+import { pline_flush_point, under_water, under_ground } from './display.js';
 import { spoteffects } from './landing-effects.js';
 import { PM_COCKATRICE, PM_CHICKATRICE } from './pm.generated.js';
 
@@ -1433,6 +1433,11 @@ async function faithful_moveloop_turn() {
         await sink_into_lava();
     else if (!((g.u && g.u.umoved) | 0))
         await pooleffects(false);
+    /* C allmain.c:430-434 — vision while buried or underwater is updated here */
+    if (g.u && g.u.uinwater)
+        under_water(0);
+    else if (g.u && g.u.uburied)
+        under_ground(0);
     if (_heroTrace) {
         const u = g.u || {};
         pushRngLogEntry(
@@ -3779,14 +3784,30 @@ async function moveloop_core_faithful() {
     //
     if (g.occupation === wipeoff && (g.multi | 0) >= 0) {
         let wipeGuard = 0;
+        let wipeInterrupted = false;
         while (g.occupation === wipeoff && wipeGuard++ < 4096) {
             // C allmain.c:243-446 — one full per-turn world block (movemon + HEAD;
             // svm.moves++ inside) BEFORE the occupation callback.
             await faithful_moveloop_turn();
+            // A stop_occupation() inside the world block (a monster attack,
+            // "You stop wiping off your face.") clears the occupation; C's
+            // allmain.c:484 `if (go.occupation && !monster_nearby...)` then skips
+            // the callback and falls through to rhack with no further turn.
+            if (g.occupation !== wipeoff) { wipeInterrupted = true; break; }
             // C allmain.c:496 — (*go.occupation)() == wipeoff(); 0 ends the wipe.
             const r = await wipeoff();
             if (r === 0) g.occupation = null;
         }
+        if (wipeInterrupted) {
+            if (g.vision_full_recalc) {
+                vision_recalc(0);
+                g.vision_full_recalc = 0;
+            }
+            await moveloop_status_paint();
+            await flush_screen(1);
+            g.context = g.context || {};
+            g.context.move = 0;
+        } else {
         // C ref: allmain.c:241-446 — once the occupation clears, C's outer for(;;)
         // re-enters moveloop_core with context.move still 1 and runs ONE post-
         // occupation turn's world block before rhack reads the next key.  That is
@@ -3800,6 +3821,7 @@ async function moveloop_core_faithful() {
         await flush_screen(1);
         g.context = g.context || {};
         g.context.move = 0;
+        }
     }
     // ===================== go.occupation DRIVER — TAKE_OFF ('A') =================
     // C ref: allmain.c:484-507 with do_wear.c:2900 take_off().  doddoremarm ran the

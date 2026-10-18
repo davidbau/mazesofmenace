@@ -1,5 +1,6 @@
 // Hero nutrition, hunger transitions, and meal fullness.
 // C refs: eat.c:gethungry(), newuhs(), morehungry(), lesshungry(), choke().
+import { finishHeroHelplessness } from './allmain.js';
 import { nearCapacity } from './weight.js';
 import { formatFeltMessage } from './hero_speech.js';
 import { objectMaterial } from './object_material.js';
@@ -14,7 +15,7 @@ import { bot, plineWithContinuation } from './display.js';
 import { finishHeroDeath } from './end.js';
 import { makeDeaf } from './hero_hearing.js';
 import { stopHeroOccupation } from './occupation.js';
-import { endVoluntaryMultiTurn } from './command_state.js';
+import { nomul, setMulti } from './command_state.js';
 import { stopRun } from './runmode.js';
 import { heroIsHallucinating } from './senses.js';
 import { selfTouchPetrifyingWeapons } from './stoning.js';
@@ -71,11 +72,9 @@ export async function gainHeroNutrition(amount, { state = game } = {}) {
         && (!victual?.eating || !victual.fullwarn)) {
         await plineWithContinuation("You're having a hard time getting all of it down.");
         if (!victual?.eating) {
-            endVoluntaryMultiTurn(state);
-            state._helplessTurns = 2;
+            setMulti(-2, state);
             state._helplessReason = 'finishing a meal';
             state._helplessDoneMessage = "You're finally finished.";
-            state._helplessAfter = null;
         }
         else {
             victual.fullwarn = true;
@@ -224,11 +223,10 @@ async function faintFromHunger(duration, state) {
     await stopHeroOccupation(state);
     await plineWithContinuation('You faint from lack of food.');
     await makeDeaf((state.u.deafTurns ?? 0) + duration, { state, talk: false });
-    endVoluntaryMultiTurn(state);
-    state._helplessTurns = duration;
+    nomul(-duration, state);
     state._helplessReason = 'fainted from lack of food';
     state._helplessDoneMessage = 'You regain consciousness.';
-    state._helplessAfter = 'unfaint';
+    state._afterMove = { kind: 'unfaint' };
     if (!propertyIsActive('levitation', state)
         && !(state.uarmg || state.u?.uarmg)) {
         await selfTouchPetrifyingWeapons({
@@ -266,17 +264,9 @@ export async function recoverHeroFromFainting({ state = game } = {}) {
 // owns the recovery. A different involuntary delay must remain in place.
 export async function resetHeroFaint({ state = game } = {}) {
     requirePlayingGame(state);
-    if (state._helplessAfter !== 'unfaint')
+    if (state._afterMove?.kind !== 'unfaint')
         return false;
-    state.multi = 0;
-    state._helplessTurns = 0;
-    state._queuedHelplessRecoveryMessage = null;
-    await plineWithContinuation('You revive.');
-    state.u.usleep = 0;
-    state._helplessReason = null;
-    state._helplessDoneMessage = null;
-    state._helplessAfter = null;
-    await recoverHeroFromFainting({ state });
+    await finishHeroHelplessness('You revive.', state);
     return true;
 }
 // C eat.c:init_uhunger(). Hunger weakens temporary, not innate, strength.

@@ -216,7 +216,12 @@ export function move_update(newlev, state = game) {
 export async function check_special_room(
     newlev,
     state = game,
-    { message = ttyPline, random = rn2, canSeeMonster = null } = {},
+    {
+        message = ttyPline,
+        random = rn2,
+        canSeeMonster = null,
+        actionEnv = {},
+    } = {},
 ) {
     move_update(newlev, state);
 
@@ -244,7 +249,22 @@ export async function check_special_room(
         return state; /* no entrance messages necessary */
 
     if (enteredShops.length) {
-        await u_entered_shop(enteredShops, state, { message, random });
+        await u_entered_shop(enteredShops, state, {
+            message,
+            random,
+            directDochug: async (shopkeeper) => {
+                // monmove.c is already in rooms' dependency graph through
+                // hack.js. Load the action adapter only for C's should_block
+                // path, without adding a static cycle through do.js/monmove.js.
+                const { runDirectMonsterAction } =
+                    await import('./unported_monster_actions.js');
+                return runDirectMonsterAction(shopkeeper, {
+                    ...actionEnv,
+                    state,
+                    message,
+                });
+            },
+        });
     }
 
     for (const roomno of entered) {

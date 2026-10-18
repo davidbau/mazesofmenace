@@ -1924,3 +1924,20 @@ export function optfn_fruit_set(op) {
      * AFTER fruitadd, which may have singularised or "candied "-prefixed it. */
     return `Fruit is now "${g.pl_fruit}".`;
 }
+
+/* C botl.c:3477 count_status_hilites() -> status_hilite_linestr_countfield(BL_FLUSH):
+ * one line per field threshold rule; condition rules are gathered one line per
+ * distinct color/attr (botl.c:3487 status_hilite_linestr_gather_conditions). */
+export function count_status_hilites() {
+    let count = 0;
+    for (const spec of game.status_field_hilites || []) {
+        const parts = spec.split('/');
+        count += Math.max(1, Math.trunc((parts.length - 1) / 2));
+    }
+    const seen = new Set();
+    for (const spec of game.status_condition_hilites || []) {
+        const parts = spec.toLowerCase().split('/');
+        seen.add(parts.slice(2).join('/').split(/[&+]/).map(s => s.trim()).sort().join('&'));
+    }
+    return count + seen.size;
+}

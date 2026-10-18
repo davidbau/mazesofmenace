@@ -33,7 +33,7 @@ import { rnd } from './rng.js';
    no top-level read of the binding). */
 import { set_corpsenm } from './mkobj.js';
 import { oname } from './do_name.js';
-import { impossible } from './display.js';
+import { impossible, nomux_raw_triple_emit } from './display.js';
 import {
     PM_HUMAN, PM_RANGER, NON_PM, monsterNames,
 } from './generated/monsters_data.js';
@@ -627,6 +627,15 @@ function render_topten_lines(lines) {
     const disp = game.nhDisplay;
     if (!disp) return;
     disp.clearScreen();
+    // Patch-006 raw capture (D-40xx): C topten_print → raw_print →
+    // tty_raw_print → puts + nomux_raw_emit (wintty.c:4065). With a
+    // smashed triple the chars drop (garbage coords); only the newlines
+    // advance (row++, col 0). The capture stays cleared, as here.
+    const nT = game._nomuxRawTriple;
+    if (nT && nT.active) {
+        nomux_raw_triple_emit(nT, (lines || []).map((l) => l.text ?? ''));
+        return;
+    }
     let row = 0;
     for (const item of lines) {
         const text = item.text ?? '';
@@ -646,6 +655,12 @@ function render_topten_lines(lines) {
  * C ref: end.c really_done trailing raw_print("") x2 when done_stopprint.
  */
 export function raw_print_blanks(n) {
+    const nT = game._nomuxRawTriple;
+    if (nT && nT.active) {
+        const blanks = [];
+        for (let i = 0; i < (n | 0); i++) blanks.push('');
+        nomux_raw_triple_emit(nT, blanks);
+    }
     const disp = game.nhDisplay;
     if (!disp?.setCursor) return;
     // Prefer cursorRow (GameDisplay delegates); getCursor may be absent.

@@ -1,5 +1,7 @@
 // armor.js — Hero armor-class projection.
 // C refs: do_wear.c find_ac() and hack.h ARM_BONUS().
+import { pendingArmorAction, setMulti } from './command_state.js';
+import { finishHeroHelplessness } from './allmain.js';
 import { objectMaterial } from './object_material.js';
 import { formatFeltMessage } from './hero_speech.js';
 import { heroDetectsMonsters, heroIsBlind, heroIsHallucinating } from './senses.js';
@@ -235,13 +237,12 @@ export async function removeHeroArmor(object, state = game, options = {}) {
     if (object.otyp === LEVITATION_BOOTS || object.otyp === WATER_WALKING_BOOTS)
         requireLiveGame(state);
     const previousLevitation = captureLevitationState(state);
+    const pending = pendingArmorAction(state);
     const cancelledDon = options.cancelledDon
-        ?? (state._delayedAction?.kind === 'wear'
-            && state._delayedAction.object === object);
+        ?? (pending?.kind === 'wear' && pending.object === object);
     const losingGloves = equippedObject(state, 'uarmg') === object;
-    if (state._delayedAction?.object === object) {
-        state._delayedAction = null;
-        state.multi = 0;
+    if (pending?.object === object) {
+        cancelDonning(state);
     }
     if (object?.otyp === FEDORA && state.urole?.key === 'archeologist')
         state.u.uluck = Math.max(LUCKMIN, (state.u.uluck ?? 0) - 1);
@@ -359,8 +360,8 @@ async function losePetrificationProtection(armor, state, voluntary) {
     }
 }
 // Slot/source removal without the Boots_off() transition.
-export async function clearHeroArmor(object, state = game, { cancelledDon = state._delayedAction?.kind === 'wear'
-    && state._delayedAction.object === object, deferArmorClass = false, } = {}) {
+export async function clearHeroArmor(object, state = game, { cancelledDon = pendingArmorAction(state)?.kind === 'wear'
+    && pendingArmorAction(state)?.object === object, deferArmorClass = false, } = {}) {
     const slot = armorSlotFor(object?.otyp);
     if (!slot)
         return false;
@@ -1036,33 +1037,40 @@ export function armorOffMessage(object, state = game) {
     observeObjectForNaming(object, { state });
     return `You were wearing ${inventoryItemDescription(object)}.`;
 }
+// C cancel_don(): discard the interrupted callback and its recovery text.
+// The caller retains whether this was donning before clearing the action.
+export function cancelDonning(state = game) {
+    state._afterMove = null;
+    state._helplessDoneMessage = null;
+    state._queuedHelplessRecoveryMessage = null;
+    setMulti(0, state);
+    const progress = state.context.takeoff;
+    if (progress) {
+        progress.current = null;
+        progress.delay = 0;
+    }
+}
 // C stop_donning(): a cancelled dressing action loses its incomplete armor;
 // interrupted removal leaves the item worn.
 export async function stopDonning(stolenObject = null, state = game) {
-    const delayed = state._delayedAction;
-    if (delayed?.kind === 'steal')
-        return false;
+    const delayed = pendingArmorAction(state);
     if (!delayed) {
         const progress = state.context.takeoff;
         const slot = progress?.current;
         const object = slot ? takeoffSlotObject(slot, state) : null;
         if (!progress || !object || !((object.owornmask ?? 0) & W_ARMOR))
             return false;
-        progress.current = null;
-        progress.delay = 0;
-        state.multi = 0;
-        if (object !== stolenObject) {
-            const name = simpleObjectName(object, state);
-            await plineWithContinuation(`You stop taking off the ${name}.`);
-        }
+        cancelDonning(state);
+        const message = object === stolenObject ? ''
+            : `You stop taking off the ${simpleObjectName(object, state)}.`;
+        await finishHeroHelplessness(message, state);
         return false;
     }
     const puttingOn = delayed.kind === 'wear';
-    state._delayedAction = null;
-    state.multi = 0;
-    if (puttingOn || delayed.object !== stolenObject) {
-        await plineWithContinuation(`You stop ${puttingOn ? 'putting on' : 'taking off'} the ${simpleObjectName(delayed.object, state)}.`);
-    }
+    cancelDonning(state);
+    const message = !puttingOn && delayed.object === stolenObject ? ''
+        : `You stop ${puttingOn ? 'putting on' : 'taking off'} the ${simpleObjectName(delayed.object, state)}.`;
+    await finishHeroHelplessness(message, state);
     if (puttingOn)
         await removeHeroArmor(delayed.object, state, { cancelledDon: true });
     return true;

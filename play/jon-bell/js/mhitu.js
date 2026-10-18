@@ -1626,7 +1626,12 @@ function Upolyd_mu() { return !!Upolyd_fn(game.u); }
 import { stop_donning, doffing as doffing_mu, yname as yname_mu, armor_simple_name_dw as armor_simple_name_mu } from './do_wear.js';
 /* C objects[otyp].oc_delay for ARMOR_CLASS — the generated C table. */
 import { ARMOR_DATA as ARMOR_DATA_MU } from './armor_data.js';
-import { rloc, mnexto as mnexto_mu } from './teleport.js';
+import { rloc, mnexto as mnexto_mu, enexto_out as enexto_out_mu, teleds as teleds_mu } from './teleport.js';
+import { which_armor as which_armor_mu } from './makemon.js';
+import { hard_helmet as hard_helmet_mu } from './do_wear.js';
+import { ceiling as ceiling_mu } from './cmd.js';
+import { PM_TRAPPER as PM_TRAPPER_MU } from './pm.generated.js';
+import { WORN_HELMET as WORN_HELMET_MU } from './const.js';
 import { RLOC_NOMSG as RLOC_NOMSG_MU } from './const.js';
 import { um_dist as um_dist_mu } from './cmd.js';
 import { Some_Monnam as Some_Monnam_mu, Adjmonnam as Adjmonnam_mu } from './mhitm.js';
@@ -5898,6 +5903,46 @@ export async function mattacku(mtmp) {
             map_invisible(mtmp.mx | 0, mtmp.my | 0);
         u.uundetected = 0;
         const hider = (((game.youmonst?.data?.mflags1 | 0) >>> 0) & 0x100) !== 0;
+        if (hider && (u.umonnum | 0) !== PM_TRAPPER_MU) {
+            /* C mhitu.c:556-615 — ceiling hider: the monster takes hero's
+             * square and the hero is placed beside it via enexto/teleds. */
+            await pline(`You fall from the ${ceiling_mu(u.ux | 0, u.uy | 0)}!`);
+            /* remove_monster: this port has no grid, so park the monster off
+             * the map so its square is eligible for placing the hero. */
+            const omx = mtmp.mx | 0, omy = mtmp.my | 0;
+            mtmp.mx = 0; mtmp.my = 0;
+            let cc = enexto_out_mu(u.ux | 0, u.uy | 0, game.youmonst.data);
+            if (!cc || ((mtmp.data?.mlet | 0) === S_EEL_MU
+                        && is_pool_mu(omx, omy) && !is_pool_mu(u.ux | 0, u.uy | 0))) {
+                place_monster_mu(mtmp, omx, omy); /* put back */
+                newsym(u.ux | 0, u.uy | 0);
+                await pline(`${Monnam(mtmp)} draws back as you drop!`);
+                return 0;
+            }
+            newsym(omx, omy); /* finish removal */
+            place_monster_mu(mtmp, u.ux | 0, u.uy | 0);
+            if (mtmp.wormno) {
+                if (uhitm_m_at(cc.x, cc.y))
+                    cc = enexto_out_mu(u.ux | 0, u.uy | 0, game.youmonst.data) || cc;
+            }
+            await teleds_mu(cc.x, cc.y, 1 /* TELEDS_ALLOW_DRAG */);
+            set_apparxy_kb(mtmp);
+            newsym(u.ux | 0, u.uy | 0);
+            if ((game.youmonst.data?.mlet | 0) !== 16 /* S_PIERCER */)
+                return 0; /* lurkers don't attack */
+            const obj = which_armor_mu(mtmp, WORN_HELMET_MU);
+            if (hard_helmet_mu(obj)) {
+                await pline(`Your blow glances off ${s_suffix(mon_nam(mtmp))} ${helm_simple_name(obj)}.`);
+            } else if (3 + find_mac_mu(mtmp) <= rnd(20)) {
+                await pline(`${Monnam(mtmp)} is hit by a falling piercer (you)!`);
+                mtmp.mhp -= d(3, 6);
+                if ((mtmp.mhp | 0) < 1)
+                    await killed(mtmp);
+            } else {
+                await pline(`${Monnam(mtmp)} is almost hit by a falling piercer (you)!`);
+            }
+            return 0;
+        }
         if (!hider && !youseeit0)
             await pline('It tries to move where you are hiding.');
         newsym(u.ux | 0, u.uy | 0);

@@ -612,6 +612,11 @@ export async function monster_detect(otmp, mclass) {
             g._topl_win_stop_buf = g._topl_last_more_committed;
         }
     }
+    /* docrt() -> cls() -> tty_clear_nhwindow(WIN_MAP) is clear_screen(), which
+     * blanks the physical topline too: getpos's exit left the autodescribe /
+     * "Move cursor to ..." text standing (msg_given FALSE), and C's frame after
+     * the '.' pick shows an empty row 0. */
+    g._topl_sticky = null;
     await docrt();
     return 0;
 }
@@ -5231,6 +5236,10 @@ async function object_detect(detector, oclass) {
 
     if (g._pending_message)
         await force_more(g._pending_message);
+    /* docrt() -> cls() -> clear_nhwindow(WIN_MAP) blanks the physical topline
+     * too, so browse_map's standing getpos autodescribe line is gone
+     * (detect.c:787, display.c:2196; same as monster_detect above). */
+    g._topl_sticky = null;
     await docrt();
     return 0;
 }

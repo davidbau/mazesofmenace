@@ -1867,6 +1867,14 @@ async function _hero_mhitm_knockback(mdef, wep, aatyp = 254 /* AT_WEAP */,
     const dy = defy > (u.uy | 0) ? 1 : (defy < (u.uy | 0) ? -1 : 0);
     if (!isok(defx + dx, defy + dy) || (mdef.mhp | 0) <= 0)
         return false;
+    /* uhitm.c:5301-5305: no knockback into/out of a doorway diagonally */
+    {
+        const cell = game.level?.at(defx, defy);
+        if (cell && (cell.typ | 0) === 23 /* DOOR */
+            && (defx - (u.ux | 0)) && (defy - (u.uy | 0))
+            && ((cell.doormask | 0) & ~0x01 /* D_BROKEN */) !== 0)
+            return false;
+    }
 
     const heroMsize = (youdata.msize != null)
         ? (youdata.msize | 0)
@@ -2115,7 +2123,7 @@ export async function do_attack(mtmpOrX, y) {
     const monAC = find_mac_full_uh(mtmp);
     const abon_val = abon();
     /* luck bonus: sgn(Luck) * ((abs(Luck)+2)/3) — C ref: uhitm.c:378 */
-    const luck = (u && u.uluck) ? (u.uluck | 0) : 0;
+    const luck = u ? (((u.uluck | 0) + (u.moreluck | 0)) | 0) : 0; /* C Luck = u.uluck + u.moreluck */
     const luckBonus = (luck > 0 ? 1 : luck < 0 ? -1 : 0) * (((luck < 0 ? -luck : luck) + 2) / 3 | 0);
     const ulevel = Upolyd(u)
         ? (((u.umonnum | 0) >= 0 && (u.umonnum | 0) < _MONS.length)

@@ -1814,7 +1814,7 @@ async function read_scroll(scroll) {
             else await trycall(scroll);
         }
         scroll.in_use = false;
-        if (otyp !== SCR_BLANK_PAPER) useup(scroll);
+        if (otyp !== SCR_BLANK_PAPER) await useup_cmd(scroll);
     }
 }
 
@@ -2997,6 +2997,10 @@ async function map_redisplay_rd() {
         }
     }
     await docrt();
+    /* docrt -> cls() -> clear_nhwindow(WIN_MAP) is tty clear_screen() (wintty.c
+     * tty_clear_nhwindow NHW_MAP), which wipes the physical topline too, so the
+     * getpos autodescribe line browse_map left standing (_topl_sticky) is gone. */
+    game._topl_sticky = null;
     // C detect.c:101-102 restores the constrained view after docrt().
     if (saved.uinwater)
         await under_water(2);
@@ -4704,7 +4708,8 @@ async function _identify_objlist_menu(promptText) {
         const winLines = pageLines.slice();
         winLines.push(footer);
         if (titleErased) winLines[0] = '';
-        const rows = build_window_screen(winLines, WIN_COL, g.u?.uac ?? 0).split('\n');
+        const rows = build_window_screen(winLines, WIN_COL, g.u?.uac ?? 0, undefined,
+            g._spellPwStale || undefined).split('\n');
         return { rows, footer, footerRow, pageCount };
     };
     while (true) {
@@ -4818,7 +4823,7 @@ async function seffect_magic_mapping(sobj) {
     }
 }
 
-export function magic_map_background(loc, x, y) {
+export function magic_map_background(loc, x, y, show = false) {
     if (!loc) return;
     const tg = terrain_glyph(loc, x, y);
     let rg = { ch: tg.ch, color: tg.color, decgfx: tg.dec, wallSymbol: tg.wallSymbol };
@@ -4858,6 +4863,9 @@ export function magic_map_background(loc, x, y) {
         && (rememberedClass == null || rememberedClass === GLYPHCLS_CMAP
             || rememberedClass === GLYPHCLS_TRAP || rememberedClass === GLYPHCLS_ENGR))
         loc.remembered_glyph = { ...rg, cls: GLYPHCLS_CMAP };
+    /* C display.c:253-254 — `if (show) show_glyph(x, y, glyph);` */
+    if (show)
+        show_glyph_cell(x, y, rg.ch, rg.color, !!rg.decgfx, 0, GLYPHCLS_CMAP);
     update_lastseentyp(x, y);
 }
 
@@ -4880,8 +4888,13 @@ export function show_map_spot(loc, x, y, cnf) {
                           or corpse's species), which object farlook decodes */
                        otyp: loc.disp_obj_otyp, corpsenm: loc.disp_obj_corpsenm };
     /* C detect.c:1400-1405: hero_memory path — magic_map_background then newsym. */
-    magic_map_background(loc, x, y);
-    newsym(x, y);
+    if (game.level?.flags?.hero_memory) {
+        magic_map_background(loc, x, y);
+        newsym(x, y);
+    } else {
+        /* C detect.c:1403-1405 — no hero_memory: magic_map_background(x,y,1) displays it */
+        magic_map_background(loc, x, y, true);
+    }
     /* C detect.c:1406-1416 — "force the real background, then if it's not
      * furniture and there's a KNOWN trap there, display the trap, else if there
      * was an object shown there, redisplay the object.  So during mapping,

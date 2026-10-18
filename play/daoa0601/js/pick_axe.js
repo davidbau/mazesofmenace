@@ -2,7 +2,7 @@ import { seeTrap } from './trap.js';
 // C dig.c:use_pick_axe()/use_pick_axe2(). Digging effort lives in hero_digging.
 import { monsterHasMapPosition } from './monster_location.js';
 import { heroIsHallucinating } from './senses.js';
-import { endVoluntaryMultiTurn } from './command_state.js';
+import { nomul } from './command_state.js';
 import { artifactById } from './artifacts.js';
 import { makeMonsterFlee } from './monster_flee.js';
 import { heroIsPunished } from './ball.js';
@@ -33,7 +33,8 @@ import { monsterName } from './monster_name.js';
 const M1_WALLWALK = 0x00000008;
 const GRID_BUG = MONSTER_NAME.indexOf('grid bug');
 const LONG_WORM = MONSTER_NAME.indexOf('long worm');
-const DIRECTION_KEYS = ['h', 'y', 'k', 'u', 'l', 'n', 'j', 'b', '<', '>'];
+// hack.h orders DIR_DOWN before DIR_UP after the eight compass directions.
+const DIRECTION_KEYS = ['h', 'y', 'k', 'u', 'l', 'n', 'j', 'b', '>', '<'];
 function compassVector(direction) {
     const dx = xdir[direction], dy = ydir[direction];
     if (dx === undefined || dy === undefined)
@@ -68,7 +69,7 @@ function suggestedDirections(tool, state) {
         if (hero.uswallow)
             return true;
         if (direction >= 8)
-            return (direction === 9) === downOK;
+            return (direction === 8) === downOK;
         const vector = compassVector(direction);
         if (hero.umonnum === GRID_BUG && vector.dx && vector.dy)
             return false;
@@ -156,8 +157,7 @@ async function strikeUndiggable(tool, x, y, state) {
         }
         await plineWithContinuation(`${ownedObjectAction(tool, 'become', state)} entangled in the web.`);
         const turns = d(2, 2);
-        endVoluntaryMultiTurn(state);
-        state._helplessTurns = turns;
+        nomul(-turns, state);
         state._helplessReason = 'stuck in a spider web';
         state._helplessDoneMessage = 'You pull free.';
     }

@@ -41,7 +41,7 @@ import { is_demon, nonliving, check_gear_next_turn } from './makemon.js';
 import { resists_magm, Resists_Elem, defended, sleep_monst, slept_monst, seemimic,
          erode_armor } from './mhitm.js';
 import { x_monnam } from './mhitm.js';
-import { resists_blnd as resists_blnd_real, take_resists_blnd_impossible } from './mhitm.js';
+import { resists_blnd as resists_blnd_real, take_resists_blnd_impossible, resists_drli as resists_drli_mon } from './mhitm.js';
 import { impossible } from './pline.js';
 import { INFRAVISION } from './const.js';
 import { BLINDED, HALLUC, HALLUC_RES, WAND_BACKFIRE_CHANCE, MSLOW, ANIMATE_SPELL, LIFESAVED } from './const.js';
@@ -214,7 +214,7 @@ import { long_to_any, mstatusline, display_minventory, ustatusline } from './cmd
 import { display_cinventory, display_binventory, set_cknown_lknown } from './cmd.js';
 import { SchroedingersBox } from './pickup_container.js';
 import { the } from './objnam.js';
-import { noit_Monnam } from './mhitm.js';
+import { noit_Monnam, resists_drli } from './mhitm.js';
 import { wakeup, wakeup_attack, update_inventory } from './mhitm.js';
 import { sticks, abuse_dog } from './dog.js';
 import { mhurtle } from './cmd.js';
@@ -1114,6 +1114,8 @@ export function zappable(obj) {
     const spe = (obj ? obj.spe : 0) | 0;
     if (spe < 0 || (spe === 0 && rn2(121)))
         return 0;
+    if (spe === 0)
+        pline("You wrest one last charge from the worn-out wand."); /* zap.c:2519 */
     /* decrement charge — C modifies in place */
     if (obj)
         obj.spe = spe - 1;
@@ -4603,7 +4605,20 @@ function _completely_burns(mon) {
 
 /* C zap.c:3000 spell_damage_bonus — hero-cast spell damage modifier. */
 function spell_damage_bonus(dmg) {
-    /* Only relevant for hero-cast spells (ZT_SPELL); wands skip this. */
+    /* C zap.c:3480-3502 */
+    const intell = acurr(game.u, A_INT);
+    const lvl = game.u.ulevel | 0;
+    if (intell <= 9) {
+        if (dmg > 1)
+            dmg = (dmg <= 3) ? 1 : dmg - 3;
+    } else if (intell <= 13 || lvl < 5) {
+        /* no bonus or penalty */
+    } else if (intell <= 18)
+        dmg += 1;
+    else if (intell <= 24 || lvl < 14)
+        dmg += 2;
+    else
+        dmg += 3;
     return dmg;
 }
 
@@ -6582,6 +6597,35 @@ async function _bhitm_wand(mtmp, obj) {
         await cancel_monst(mtmp, obj, true, true, false);
         return _bhitm_wand_epilogue(mtmp, false, false, false, obj);
     }
+    if (otyp === SPE_DRAIN_LIFE) {
+        /* C zap.c:521-545:
+         *     dmg = monhp_per_lvl(mtmp); if (dbldam) dmg *= 2;
+         *     dmg = spell_damage_bonus(dmg);
+         *     if (resists_drli(mtmp)) shieldeff_mon(mtmp);
+         *     else if (!resist(mtmp, otmp->oclass, dmg, NOTELL) && !DEADMONSTER(mtmp)) {
+         *         mhp -= dmg; mhpmax -= dmg;
+         *         if (DEADMONSTER || mhpmax <= 0 || m_lev < 1) killed(mtmp);
+         *         else { m_lev--; "suddenly seems weaker!" } }
+         * seemimic() is the same message-only named gap as the arms above. */
+        let dmg = monhp_per_lvl(mtmp);
+        if (_wand_Role_if(_WAND_PM_KNIGHT) && game.u.uhave?.questart) dmg *= 2;
+        dmg = spell_damage_bonus(dmg);
+        if (resists_drli(mtmp)) {
+            await shieldeff_mon(mtmp);
+        } else if (!await resist(mtmp, (obj.oclass | 0), dmg, NOTELL) && !DEADMONSTER(mtmp)) {
+            mtmp.mhp -= dmg;
+            mtmp.mhpmax -= dmg;
+            /* die if already level 0, regardless of hit points */
+            if (DEADMONSTER(mtmp) || mtmp.mhpmax <= 0 || (mtmp.m_lev | 0) < 1) {
+                await killed(mtmp);
+            } else {
+                mtmp.m_lev--;
+                if (canseemon(mtmp))
+                    await pline(`${Monnam(mtmp)} suddenly seems weaker!`);
+            }
+        }
+        return _bhitm_wand_epilogue(mtmp, false, false, false, obj);
+    }
     if (otyp === WAN_TELEPORTATION || otyp === SPE_TELEPORT_AWAY) {
         /* C zap.c:341-347:
          *     if (disguised_mimic) seemimic(mtmp);
@@ -6724,6 +6768,29 @@ async function _bhitm_wand(mtmp, obj) {
         if (!_Blind())
             learn_it = true;
         return _bhitm_wand_epilogue(mtmp, false, true, learn_it, obj);
+    }
+    if (otyp === SPE_DRAIN_LIFE) {
+        /* C zap.c:521-544: dmg = monhp_per_lvl(mtmp); dbldam doubles;
+         * spell_damage_bonus; resists_drli -> shieldeff_mon, else a failed
+         * resist() drains mhp/mhpmax and a level (killed() at level 0). */
+        let dmg = monhp_per_lvl(mtmp);
+        if (_wand_Role_if(_WAND_PM_KNIGHT) && game.u.uhave?.questart) dmg *= 2;
+        dmg = spell_damage_bonus(dmg);
+        if (resists_drli_mon(mtmp)) {
+            await shieldeff_mon(mtmp);
+        } else if (!(await resist(mtmp, (obj.oclass | 0), dmg, 0 /* NOTELL */))
+                   && !DEADMONSTER(mtmp)) {
+            mtmp.mhp -= dmg;
+            mtmp.mhpmax -= dmg;
+            if (DEADMONSTER(mtmp) || (mtmp.mhpmax | 0) <= 0 || (mtmp.m_lev | 0) < 1) {
+                await killed(mtmp);
+            } else {
+                mtmp.m_lev--;
+                if (canseemon(mtmp))
+                    await pline(`${Monnam(mtmp)} suddenly seems weaker!`);
+            }
+        }
+        return _bhitm_wand_epilogue(mtmp, false, false, false, obj);
     }
     if (otyp === WAN_PROBING) {
         /* C zap.c:376-381: wake = FALSE; reveal_invis = TRUE;
@@ -7366,9 +7433,11 @@ export async function drain_item(obj, by_you) {
     // charged tools, whose only drain_item caller is zap.c:2319 (SPE_DRAIN_LIFE
     const is_charged_ring = (obj.otyp >= RIN_BASE && obj.otyp <= RIN_LAST_CHARGED);
     const is_weapon_or_armor = (obj.oclass === WEAPON_CLASS || obj.oclass === ARMOR_CLASS);
+    /* every wand is oc_charged (objects.h WAND(): chrg bit = 1) */
+    const is_wand = (obj.oclass | 0) === 11 /* WAND_CLASS */;
     const is_wep_tool = drain_is_weptool(obj);
 
-    if (!is_charged_ring && !is_weapon_or_armor && !is_wep_tool)
+    if (!is_charged_ring && !is_wand && !is_weapon_or_armor && !is_wep_tool)
         return false;
     if (drain_defends(AD_DRLI, obj) || drain_defends_when_carried(AD_DRLI, obj)
         || obj_resists(obj, 10, 90))
@@ -7652,7 +7721,7 @@ export function hit(str, mtmp, force) {
     const by = g.bhitpos ? g.bhitpos.y : 0;
     const verbosely = (is_youmonst(mtmp)
                        || (g.flags?.verbose
-                           && (cansee(bx, by) || canspotmon(mtmp))));
+                           && (cansee(bx, by) || canspotmon(mtmp) || engulfing_u(mtmp))));
     return pline(`${The(str)} ${vtense(str, "hit")} ${verbosely ? mon_nam(mtmp) : "it"}${force}`);
 }
 

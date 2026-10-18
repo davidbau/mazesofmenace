@@ -14965,7 +14965,7 @@ function pick_animal() {
 
 /* C makemon.c:1983 mkclass_poly(class) — like mkclass() but ignores alignment and
  * only skips G_NOGEN|G_UNIQ/genocided/hell-ness; monpolycontrol's class pick. */
-function mkclass_poly_nc(cls) {
+export function mkclass_poly_nc(cls) {
     let first, last, num = 0;
     for (first = LOW_PM; first < SPECIAL_PM_NC; first++)
         if ((MONS_ROWS[first][0] | 0) === cls)

@@ -451,6 +451,7 @@ import {
     Ring_off,
     hard_helmet,
     off_msg,
+    stop_donning,
 } from './do_wear.js';
 import { helm_simple_name } from './objnam.js';
 
@@ -2163,7 +2164,7 @@ export async function dosinkfall(state = game) {
     const u = state.u;
     const levitation = u.uprops[LEVITATION];
     const flying = u.uprops[FLYING];
-    const levBoots = state.uarmf?.otyp === LEVITATION_BOOTS;
+    let levBoots = state.uarmf?.otyp === LEVITATION_BOOTS;
     const innateLev = Boolean(levitation.intrinsic
         & (FROMOUTSIDE | FROMFORM));
     const blockedLev = levitation.blocked === I_SPECIAL;
@@ -2205,7 +2206,12 @@ export async function dosinkfall(state = game) {
         levitation.intrinsic = saveIntrinsic;
     }
 
-    if (ufall || levBoots) note_unported('do_wear.c stop_donning');
+    if (ufall || levBoots) {
+        await stop_donning(levBoots ? state.uarmf : null, state);
+        // stop_donning() cancels a pending donning callback and removes boots
+        // that were not fully put on; only then does C reread uarmf.
+        levBoots = state.uarmf?.otyp === LEVITATION_BOOTS;
+    }
     levitation.extrinsic &= ~W_ARTI;
     levitation.intrinsic &= ~(I_SPECIAL | TIMEOUT);
     levitation.intrinsic++;
@@ -3075,9 +3081,10 @@ export async function findtravelpath(mode = TRAVP_TRAVEL, state = game) {
     // C ref: hack.c:1271-1290. A one-step target is handed back to normal
     // movement, after which end_running() has already disposed of travel-map
     // state and the caller continues through domove_core().
-    if (state.context.travel1
+    if ((mode === TRAVP_TRAVEL || mode === TRAVP_VALID)
+        && state.context.travel1
         && dist2(state.u.ux, state.u.uy, state.u.tx, state.u.ty) <= 2
-        && crawl_destination(state.u.tx, state.u.ty, state)) {
+        && await crawl_destination(state.u.tx, state.u.ty, state)) {
         end_running(false, state);
         if (await test_move(
             state.u.ux,

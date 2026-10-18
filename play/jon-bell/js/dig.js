@@ -262,7 +262,7 @@ async function dig_up_grave_(x, y) {
         if (!Blind()) await pline(`${_dig_hallucination() ? 'I want my mummy' : "You've disturbed a tomb"}!`);
         await makemon(mkclass(S_MUMMY_DIG, 0), x, y, 0);
     } else {
-        await pline('The grave is unoccupied. Strange...');
+        await pline('The grave is unoccupied.  Strange...');
     }
     if (loc) {
         loc.typ = ROOM;
@@ -1292,10 +1292,20 @@ export async function dig() {
                 place_object(bobj, dpx, dpy);
             }
             digtxt = 'The boulder falls apart.';
-        } else if (lev && (lev.typ === STONE || lev.typ === SCORR)) {
-            /* C dig.c:486-487 — cut away rock → corridor. */
-            lev.typ = CORR; lev.flags = 0;
-            digtxt = 'You succeed in cutting away some rock.';
+        } else if (lev && (lev.typ === STONE || lev.typ === SCORR || IS_TREE(lev.typ))) {
+            /* C dig.c:468-485 (Is_earthlevel mkcavearea arm not reached here). */
+            if (digtyp === DIGTYP_TREE) {
+                digtxt = 'You cut down the tree.';
+                lev.typ = ROOM; lev.flags = 0;
+                if (!rn2(5))
+                    await rnd_treefruit_at(dpx, dpy);
+                if ((g.urace?.mnum | 0) === 264 /* PM_ELF */ || (g.urole?.mnum | 0) === 338 /* PM_RANGER */)
+                    adjalign(-1);
+            } else {
+                /* C dig.c:486-487 — cut away rock → corridor. */
+                lev.typ = CORR; lev.flags = 0;
+                digtxt = 'You succeed in cutting away some rock.';
+            }
         } else if (lev && IS_WALL(lev.typ)) {
             /* C dig.c:488-500 — ordinary wall → doorless doorway. */
             lev.typ = DOOR; lev.doormask = D_NODOOR;

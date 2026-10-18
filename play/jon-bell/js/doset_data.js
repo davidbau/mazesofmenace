@@ -37,6 +37,7 @@ import { aligns, genders } from './roles.js';
 import { oc_to_str } from './drawing.js';
 import { menutype } from './menustyle.js';
 import { feature_notice_version } from './feature_alert.js';
+import { count_status_hilites } from './options.js';
 
 /* C ref: src/symbols.c:376 known_handling[] */
 const KNOWN_HANDLING = ['UNKNOWN', 'IBM', 'DEC', 'CURS', 'MAC', 'UTF8'];
@@ -291,7 +292,7 @@ export const DOSET_OTHERS = [
     /* C: options.c optfn_o_status_cond get_val — 16 conditions */
     { name: "status condition fields", sel: true, val: () => "(16 currently set)" },
     /* C: options.c optfn_o_status_hilites get_val */
-    { name: "status highlight rules", sel: true, val: () => "(0 currently set)" },
+    { name: "status highlight rules", sel: true, val: () => `(${count_status_hilites()} currently set)` },
 ];
 
 /* C ref: options.c:8735 term_for_boolean(idx, b). */

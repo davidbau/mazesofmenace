@@ -31,12 +31,13 @@ import { distmin } from './hacklib.js';
 import { observe_object } from './o_init.js';
 import { m_throw } from './mhitu.js';
 import { losehp } from './dokick.js';
-import { breaks } from './dokick.js';
+import { breaks, find_drawbridge } from './dokick.js';
+import { destroy_drawbridge } from './dig.js';
 import { nomul, stop_occupation } from './allmain.js';
 import { monstunseesu, seemimic as seemimic_real, resists_magm } from './mhitm.js';
 import { monstseesu as monstseesu_real } from './mcastu.js';
 import { discover_object } from './o_init.js';
-import { BOLT_LIM, M_AP_NOTHING, ANTIMAGIC, HALF_SPDAM, isok, IS_DOOR, SDOOR, D_LOCKED, D_CLOSED, D_BROKEN, SHOPBASE, POOL, OBJ_FLOOR, KILLED_BY_AN, TELL, TEMPLE, RLOC_MSG } from './const.js';
+import { BOLT_LIM, M_AP_NOTHING, ANTIMAGIC, HALF_SPDAM, isok, IS_DOOR, SDOOR, DRAWBRIDGE_UP, D_LOCKED, D_CLOSED, D_BROKEN, SHOPBASE, POOL, OBJ_FLOOR, KILLED_BY_AN, TELL, TEMPLE, RLOC_MSG } from './const.js';
 import { doorlock } from './lock.js';
 import { in_rooms, add_damage } from './shk.js';
 import { tele, tele_restrict, rloc } from './teleport.js';
@@ -350,15 +351,13 @@ async function mbhit(mon, range, fhitm, fhito, obj) {
             range--;
         const loc = game.level?.at(x, y);
         const ltyp = loc ? (loc.typ | 0) : 0;
-        /* KNOWN GAP — muse.c:1775-1783: `otyp == WAN_STRIKING && ltyp !=
-         * DRAWBRIDGE_UP && find_drawbridge(&dbx, &dby)` then
-         * destroy_drawbridge(dbx, dby), which draws RNG (it can kill the
-         * monster and shatter objects).  Missing dependency:
-         * destroy_drawbridge (dbridge.c).  C's `if/else if` makes the DOOR
-         * arm below the alternative, so skipping the drawbridge test means a
-         * striking beam crossing a drawbridge falls into the DOOR arm
-         * instead; DRAWBRIDGE_UP is not IS_DOOR, so it simply does nothing. */
-        if (IS_DOOR(ltyp) || ltyp === SDOOR) {
+        /* C muse.c:1775-1783 — a striking beam destroys a drawbridge it
+         * crosses, unless it is passing over the raised bridge's moat. */
+        const dbx = { value: x }, dby = { value: y };
+        if (otyp === WAN_STRIKING && ltyp !== DRAWBRIDGE_UP
+            && find_drawbridge(dbx, dby)) {
+            await destroy_drawbridge(dbx.value, dby.value);
+        } else if (IS_DOOR(ltyp) || ltyp === SDOOR) {
             /* C muse.c:1783-1800 — monsters never zap opening/locking magic, so
              * WAN_STRIKING is the only case that does anything here. */
             if (otyp === WAN_STRIKING) {

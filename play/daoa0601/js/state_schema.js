@@ -1,6 +1,6 @@
 // state_schema.js — Versioned boundary between saved game data and runtime state.
 // C refs: save.c, restore.c, decl.h, you.h, rm.h.
-export const SAVE_VERSION = 34;
+export const SAVE_VERSION = 35;
 const persistentNames = [
     'Luck', '_activeSpecialLevel', '_armorClassDirty', '_artifactDiscoveries',
     '_artifactExists', '_artifactFound', '_artifactRuntime', '_bonesEncountered',
@@ -36,7 +36,6 @@ const transientFields = {
     _digestedMonsterSpecies: true,
     _encumbranceLevel: true,
     _farMonsterNoise: true,
-    _helplessAfter: true,
     _helplessDoneMessage: true,
     _helplessReason: true,
     _helplessTurns: true,
@@ -109,7 +108,8 @@ const transientFields = {
     _didNothingFlag: true,
     _emptyShops: true,
     _deferVisibleMonsterContact: true,
-    _delayedAction: true,
+    _afterMove: true,
+    _armorTheft: true,
     _heroMeleeThisCommand: true,
     _heroTimePending: true,
     _interruptedMultiActionDebt: true,

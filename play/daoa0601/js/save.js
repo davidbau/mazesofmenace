@@ -1,5 +1,6 @@
 // save.js — Web-Storage-backed save and restore.
 // C refs: save.c and restore.c.
+import { resetErinys } from './monster_data.js';
 import { game } from './gstate.js';
 import { PanicTermination } from './panic_termination.js';
 import { clearMessageWindow, docrt, pline, plineWithContinuation, rawPrint } from './display.js';
@@ -188,6 +189,7 @@ export function restoreGame(name, storage = game.storage) {
         restoreSavedMonsters(snapshot.state);
         restorePersistentState(game, snapshot.state);
         resetRestoredInstanceState();
+        resetErinys(game.u.ualign?.abuse ?? 0);
         resolveDungeonIdentities(game);
         // C restnames() reloads objects[].oc_prob as saved; those gem
         // probabilities are always oinit()'s values for the saved u.uz.
@@ -215,7 +217,8 @@ export function restoreGame(name, storage = game.storage) {
         game._heroTimePending = false;
         game._kickedLoc = null;
         game._cannedCommands = [];
-        game._delayedAction = null;
+        game._afterMove = null;
+        game._armorTheft = null;
         delete game._helplessRunmodeDelayPending;
         game.context.move = 0;
         // Saved flags govern future resets; the current Space binding still
@@ -268,7 +271,6 @@ function resetRestoredInstanceState() {
     delete game._helplessTurns;
     delete game._helplessReason;
     delete game._helplessDoneMessage;
-    delete game._helplessAfter;
     delete game._digestedMonsterSpecies;
     delete game._mimicMealMessage;
     delete game._prayerAlignment;

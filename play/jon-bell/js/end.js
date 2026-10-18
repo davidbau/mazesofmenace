@@ -479,7 +479,11 @@ export async function savelife(how, inPlace) {
     // C end.c:729-733 — nomovemsg + can't-move-again this turn (gm.multi = -1).
     g.nomovemsg = 'You survived that attempt on your life.';
     g.context = g.context || {};
-    g.context.move = 0;
+    /* C end.c:731 sets context.move = 0, but a death flagged inside the hero's own
+     * command is drained here at the NEXT command read, whereas C's done() returns
+     * into the command and rhack's tail (cmd.c:3810-3822) recomputes move from the
+     * handler's ECMD_TIME, so the killing turn's world block still runs. */
+    g.context.move = inPlace ? 0 : 1;
     // C sets gm.multi = -1 so the hero can't move again this turn and the nomovemsg
     // is displayed when the -1 countdown completes in the SAME turn's HEAD (after
     // savelife, movemon continues, then ++gm.multi -> 0 -> unmul shows nomovemsg).
@@ -629,7 +633,9 @@ export async function do_death_sequence(opts) {
          * for the very next "You die..." update; force_more() returns the
          * dismiss key, so carry that state across this synchronous boundary. */
         const _remainderMorc = await force_more(remainder);
-        if (_remainderMorc === 27 && /materialize/.test(remainder)) {
+        if (_remainderMorc === 27
+            && (/materialize/.test(remainder)
+                || (pd.alreadySaidYouDie && /You die\.\.\.$/.test(remainder)))) {
             _winStopHere = true;
             _suppressDeathPage = true;
         }

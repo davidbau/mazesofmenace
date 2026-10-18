@@ -750,7 +750,7 @@ function _toolname(pick) {
         default: return simple_typename(pick ? (pick.otyp | 0) : 0);
     }
 }
-function _yname(pick) { return 'your ' + _toolname(pick); }
+function _yname(pick) { return yname(pick); }
 
 /* C ref: query.c ynq(query) := yn_function(query, ynqchars, 'q', TRUE).
  * tty_yn_function writes "<query> [ynq] (q)" to the topline, parks the cursor

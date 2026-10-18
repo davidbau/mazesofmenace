@@ -1,7 +1,7 @@
 // The #monster gaze command for a polymorphed hero.
 // C ref: polyself.c dogaze().
 import { heroIsHallucinating } from './senses.js';
-import { endVoluntaryMultiTurn } from './command_state.js';
+import { nomul } from './command_state.js';
 import { heroHasFreeAction } from './armor.js';
 import { KILLED_BY, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, STONING, } from './const.js';
 import { canSeeMonster, plineWithContinuation, } from './display.js';
@@ -11,6 +11,7 @@ import { heroIsInvisible } from './hero_invisibility.js';
 import { finishHeroMonsterKill } from './hero_monster_death.js';
 import { igniteItems } from './light.js';
 import { angerAttackedMonster } from './monster_anger.js';
+import { monstersInFmonOrder } from './monmove.js';
 import { AD_CONF, AD_FIRE, AT_GAZE, } from './monster_attack_types.js';
 import { MONSTER_ATTACKS, MONSTER_FLAGS1 } from './monster_data.js';
 import { monsterName, possessiveName } from './monster_name.js';
@@ -61,10 +62,9 @@ async function applyGazePassive(monster, state, publish, random, rollDice, die) 
         }
         await publish(`You are frozen by ${owner} gaze!`);
         state._occupation = null;
-        endVoluntaryMultiTurn(state);
-        state._helplessTurns = floatingEyeFreezeDuration(monster, state, random, rollDice);
+        nomul(-floatingEyeFreezeDuration(monster, state, random, rollDice), state);
         state._helplessReason = "frozen by a monster's gaze";
-        state._helplessDoneMessage = '';
+        state._helplessDoneMessage = null;
         return { heroDied: false, stopped: true };
     }
     if (monster.mnum !== PM_MEDUSA || monster.mcan)
@@ -143,7 +143,8 @@ export async function useHeroGaze({ state = game, attack = heroGazeAttack(state)
     state.u.uen = energy - 15;
     state.context.botl = true;
     let looked = 0;
-    for (const monster of [...(state.level?.monsters || [])]) {
+    // polyself.c:dogaze() walks fmon, newest monster first.
+    for (const monster of monstersInFmonOrder(state.level?.monsters || [])) {
         if (!monster || monster.dead || (monster.mhp ?? 1) <= 0
             || !canSeeMonster(monster)
             || !couldsee(monster.mx, monster.my))
@@ -163,7 +164,7 @@ export async function useHeroGaze({ state = game, attack = heroGazeAttack(state)
             looked--;
             continue;
         }
-        if (state.flags?.safe_dog && monster.mtame && !heroIsConfused(state)) {
+        if ((state.flags?.safe_dog ?? true) && monster.mtame && !heroIsConfused(state)) {
             const target = monsterName(monster, { state, article: 'your' });
             await publish(`You avoid gazing at ${target}.`);
             continue;

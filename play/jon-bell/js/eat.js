@@ -43,7 +43,7 @@ import { getObjFromGetobj, wield_tool as wield_tool_real, costly_alteration,
          obj_extract_self_general, useup, useupf } from './cmd.js';
 import { sellobj_state, safe_qbuf as safe_qbuf_real } from './shk.js';
 import { g_at } from './cmd.js';
-import { flush_screen, force_more, topl_park_cursor, _pline_flush_frame_record } from './display.js';
+import { flush_screen, force_more, topl_park_cursor, _pline_flush_frame_record, pline_flush_point, msgtype_suppressed } from './display.js';
 import { more_experienced, newexplevel } from './uhitm.js';
 import { pluslvl } from './exper.js';
 import { nhgetch } from './input.js';
@@ -105,7 +105,7 @@ import { observe_object } from './o_init.js';
 import { hcolor, poly_when_stoned as poly_when_stoned_eat } from './mhitm.js';
 import { is_were, you_unwere, set_ulycn, were_beastie } from './were.js';
 import { PM_WERERAT, PM_WEREJACKAL, PM_WEREWOLF } from './pm.generated.js';
-import { polymon, rehumanize, still_chewing } from './polyself.js';
+import { polymon, rehumanize, still_chewing, polyself } from './polyself.js';
 import { toggle_displacement } from './do_wear.js';
 import { fingers_or_gloves } from './do_wear.js';
 import { self_invis_message, make_hallucinated, make_glib, make_vomiting, make_sick, vomit, make_slimed } from './potion.js';
@@ -2002,6 +2002,12 @@ function _emit_eat_pline(msg) {
         src: merged,
         joins: (_topl_joins_snapshot(merged) || []).slice(),
     };
+    /* C pline.c:273-274: each pline flush_screen()s (running bot() if botl is
+     * set) before update_topl()'s more(), so a page this message raises over
+     * `prev` shows the map and status as of HERE (rottenfood's make_confused
+     * flags botl before "You cannibal!" pages "...light headed."). */
+    pline_flush_point();
+    _pline_flush_frame_record(prev.length, String(msg));
 }
 
 /* C objclass.h enum obj_material_types — only the two values is_rottable reads. */
@@ -4229,6 +4235,9 @@ export async function cpostfx(pm) {
                 livelog_printf(LL_CONDUCT, 'changed form for the first time by mimicking %s', shape);
             u.uconduct.polyselfs = (u.uconduct.polyselfs | 0) + 1;
             await pline(`You can't resist the temptation to mimic ${shape}.`);
+            /* pline.c:273-277: vpline's flush_screen runs before m_ap_type is set
+             * below, so any more() it raised pages over the hero's own '@'. */
+            await flush_screen(1);
             if (u.usteed) await dismount_steed(DISMOUNT_FELL);
             nomul(-(pm === PM_GIANT_MIMIC ? 50 : pm === PM_LARGE_MIMIC ? 40 : 20));
             game.multi_reason = 'pretending to be a pile of gold';
@@ -4246,11 +4255,22 @@ export async function cpostfx(pm) {
             newsym(u.ux, u.uy);
             curs_on_u();
             await flush_screen(1);
-            await force_more();
+            await force_more(`You can't resist the temptation to mimic ${shape}.`);
         }
         break;
     case PM_QUANTUM_MECHANIC:
-        /* C eat.c:1226-1234 — toggles intrinsic Fast.  WIRE_PENDING, RNG-free. */
+        /* C eat.c:1227-1235 — toggles intrinsic Fast (INTRINSIC = FROMOUTSIDE|FROMRACE|FROMEXPER). */
+        await _emit_eat_pline('Your velocity suddenly seems very uncertain!');
+        {
+            const fast = _uprop(FAST_PROP);
+            if ((fast.intrinsic | 0) & (FROMOUTSIDE | 0x02000000 | 0x01000000)) {
+                fast.intrinsic = (fast.intrinsic | 0) & ~(FROMOUTSIDE | 0x02000000 | 0x01000000);
+                await _emit_eat_pline('You seem slower.');
+            } else {
+                fast.intrinsic = (fast.intrinsic | 0) | FROMOUTSIDE;
+                await _emit_eat_pline('You seem faster.');
+            }
+        }
         break;
     case PM_LIZARD:
         /* C eat.c:1236-1242 — make_stunned/make_confused clamps (RNG-free). */
@@ -4261,8 +4281,19 @@ export async function cpostfx(pm) {
     case PM_DOPPELGANGER:
     case PM_SANDESTIN:
     case PM_GENETIC_ENGINEER:
-        /* C eat.c:1244-1263 — polyself(POLY_NOFLAGS).  WIRE_PENDING; CONSUMES
-         * substantial RNG in C. */
+        /* C eat.c:1244-1263 */
+        if (_uprop_on(UNCHANGING)) {
+            await _emit_eat_pline('You feel momentarily different.');
+        } else {
+            if (game.context?.tin?.tin) {
+                await use_up_tin(game.context.tin.tin);
+                await lesshungry(200 + (_hero_metallivorous() ? 5 : 0));
+            }
+            await _emit_eat_pline(pm === PM_GENETIC_ENGINEER
+                ? 'You undergo a freakish metamorphosis.'
+                : 'You feel a change coming over you.');
+            await polyself(0 /* POLY_NOFLAGS */);
+        }
         break;
     case PM_DISPLACER_BEAST:
         /* C eat.c:1265-1269 — observe the gain before setting the timeout,
@@ -4364,6 +4395,9 @@ export function eatmupdate() {
 
 export function You(line, ...args) {
     const msg = 'You ' + (args.length > 0 ? nh_sprintf(line, args) : String(line));
+    /* pline.c:246-262 vpline(): MSGTYPE=hide / norep drop the message first. */
+    if (msgtype_suppressed(msg))
+        return;
     if (game.vision_full_recalc && !game._topl_win_stop && !game._topl_win_stop_armed)
         vision_recalc(0);
     /* topl.c:257 update_topl: while WIN_STOP is live (an ESC-dismissed --More--

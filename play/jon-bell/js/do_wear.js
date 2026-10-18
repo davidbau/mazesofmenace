@@ -135,7 +135,7 @@ import { cloak_simple_name as cloak_simple_name_obj,
 import { getObjName } from './o_init.js';
 import { ARMOR_DATA, armorIsMetallic, armorIsCrackable } from './armor_data.js';
 import { LEVITATION as LEVITATION_PROP, GLIB as GLIB_PROP, Upolyd, I_SPECIAL,
-         HOLE, TRAPDOOR, STATUE_TRAP, TT_PIT, TT_BEARTRAP, TT_WEB, TT_BURIEDBALL, TT_LAVA, Is_airlevel, Is_waterlevel } from './const.js';
+         HOLE, TRAPDOOR, STATUE_TRAP, TT_PIT, TT_BEARTRAP, TT_WEB, TT_BURIEDBALL, TT_LAVA, Is_airlevel, Is_waterlevel, In_endgame, Is_earthlevel } from './const.js';
 /* C prop.h:63 UNCHANGING — youprop.h:372 Unchanging = (HUnchanging || EUnchanging). */
 import { UNCHANGING as UNCHANGING_PROP } from './const.js';
 /* C polyself.c poly_gender() — js/makemon.js:2112 is the ONE definition (do_wear.c
@@ -778,6 +778,16 @@ export async function Boots_off() {
             makeknown_otyp(otyp);
             await pline('You sure are noisy.');
         }
+    } else if (otyp === WATER_WALKING_BOOTS_OTYP_DW) {
+        /* C do_wear.c:280-291 — removing the boots over a pool/lava square
+         * (not levitating/flying, not a ceiling clinger — a polymorph-only
+         * form, so omitted) drops the hero into it via spoteffects(). */
+        if ((is_pool(u.ux, u.uy) || pooleffects_is_lava(u.ux, u.uy))
+            && !Levitation() && !Flying() && !cancelled
+            && !g.iflags?.in_lava_effects) {
+            makeknown_otyp(otyp);
+            await spoteffects(true);
+        }
     } else if (otyp === FUMBLE_BOOTS_OTYP_DW) {
         /* C do_wear.c:319-321 — removing fumble boots clears their timeout
          * when no other untimed fumbling source remains. */
@@ -791,6 +801,19 @@ export async function Boots_off() {
         if (!oldprop && !(HFast & PROP_TIMEOUT) && !cancelled) {
             makeknown_otyp(otyp);
             await pline(`You feel yourself slow down${HFast ? ' a bit' : ''}.`);
+        }
+    } else if (otyp === WATER_WALKING_BOOTS_OTYP_DW) {
+        /* C do_wear.c:280-291 — removing water walking boots while standing
+         * on a pool/lava square re-runs spoteffects (the hero sinks); the
+         * makeknown is discover_object(..., credit_hero) -> exercise(A_WIS). */
+        if ((is_pool(u.ux, u.uy) || pooleffects_is_lava(u.ux, u.uy))
+            && !Levitation() && !Flying()
+            && !((_hero_mflags1_dw() & 0x10) /* is_clinger */
+                 && !(In_endgame(u.uz) && !Is_earthlevel(u.uz))) /* has_ceiling */
+            && !cancelled
+            && !g.iflags?.in_lava_effects) {
+            makeknown_otyp(otyp);
+            await spoteffects(true);
         }
     } else if (otyp === LEVITATION_BOOTS_OTYP_DW) {
         const BLevFromOutside = (rec ? (rec.blocked | 0) : 0) & 0x04000000;
@@ -2342,6 +2365,8 @@ export async function accessory_or_armor_on(obj) {
         const RIGHT_RING_VAL = 0x00040000;
         let mask = 0;
         if (g.u.uleft && g.u.uright) {
+            /* do_wear.c:2259-2262 — no free fingers; RNG-free, no turn. */
+            await pline(`There are no more ${_humanoid_dw() ? 'ring-' : ''}${fingers_or_gloves(false)} to fill.`);
             return ECMD_OK;
         }
         if (g.u.uleft) {

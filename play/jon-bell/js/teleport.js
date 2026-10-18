@@ -20,7 +20,7 @@ import { pline, canspotmon, sensemon, canseemon, _topl_joins_snapshot, _topl_mer
 import { Monnam } from './mcastu.js';
 import { Amonnam } from './mhitm.js';
 import { You } from './eat.js';
-import { set_ustuck, in_rooms, maybe_unhide_at, sobj_at, somexyspace, u_on_newpos, mongone } from './mklev.js';
+import { set_ustuck, in_rooms, maybe_unhide_at, sobj_at, somexyspace, u_on_newpos, mongone, engr_at } from './mklev.js';
 /* C ref: mkroom.c:764-780 search_special(VAULT) — vault_tele's room lookup. */
 import { search_special } from './mkroom.js';
 import { vault_occupied, findgd, uleftvault } from './vault.js';
@@ -59,7 +59,7 @@ import { near_capacity } from './weight.js';
 /* C ref: hack.c:3375 spoteffects -> pickup(1).  cmd.js <-> teleport.js is
  * already a cycle (cmd.js imports teleds from here); `export async function`
  * declarations hoist, so the binding is live by the time teleds runs. */
-import { _spoteffects_pickup, check_special_room, random_teleport_level, get_level } from './cmd.js';
+import { _spoteffects_pickup, check_special_room, pooleffects, random_teleport_level, get_level } from './cmd.js';
 import { OBJ_FREE, OBJ_INVENT, SLT_ENCUMBER } from './const.js';
 /* C ref: obj.h:332 carried(o) := ((o)->where == OBJ_INVENT).  Same one-liner
  * js/ball.js keeps file-locally; both are the macro, not a stand-in. */
@@ -420,6 +420,12 @@ export async function teleds(nux, nuy, teleds_flags) {
             await uleftvault(vault_guard);
         u.urooms = save_urooms;
     }
+    /* hack.c:3339 pooleffects(TRUE) — narrow wiring for the leaving-water arm
+     * (hack.c:3237-3268): a hero teleported out of water by a survived drowning
+     * (trap.c:5199 safe_teleds) still has u.uinwater set, so C prints
+     * back_on_ground(FALSE) and docrt()s here, before check_special_room. */
+    if (u.uinwater && !game.in_steed_dismounting && !game.iflags?.in_lava_effects)
+        await pooleffects(true);
     await check_special_room(false);
     /* The command-result publication used to sit immediately after the
      * materialize pline above, i.e. BEFORE spoteffects ran.  That snapshot is
@@ -768,7 +774,13 @@ export async function domagicportal(ttmp) {
         return;
 
     /* C 1463 */
-    await pline('You activated a magic portal!'); /* C: You("activated a magic portal!") */
+    /* pline.c:273-277: this pline's flush_screen() freezes the terminal at the
+     * instant a prior unacknowledged line overflows (more()), i.e. BEFORE
+     * make_stunned below; pin the page frame as a movemon window does. */
+    const _wasMB = game._inMovemonBlock;
+    game._inMovemonBlock = true;
+    try { await pline('You activated a magic portal!'); } /* C: You("activated a magic portal!") */
+    finally { game._inMovemonBlock = _wasMB; }
 
     /* C 1465-1472: amulet-in-endgame safety valve. */
     if (In_endgame(u.uz) && !(u.uhave && u.uhave.amulet)) {
@@ -1414,7 +1426,12 @@ function goodpos_onscary(x, y, mptr) {
        caught by the minions check */
     if ((mptr.pmidx | 0) === PM_MINOTAUR || !haseyes(mptr))
         return false;
-    return false; /* sengr_at("Elbereth", x, y, TRUE) — see header comment */
+    /* C teleport.c:75 sengr_at("Elbereth", x, y, TRUE): not a headstone, already
+     * finished (engr_time <= moves), text equal to it case-insensitively. */
+    const ep = engr_at(x, y);
+    return !!(ep && (ep.engr_type | 0) !== 6 /* HEADSTONE */
+              && (ep.engr_time | 0) <= (game.moves | 0)
+              && String(ep.text ?? '').toLowerCase() === 'elbereth');
 }
 
 /* C ref: teleport.c:85-185 goodpos(x,y,mtmp,gpflags) — full port (the

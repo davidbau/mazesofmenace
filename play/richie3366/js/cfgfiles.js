@@ -11,7 +11,7 @@ import {
     PRIMARYSET, ROGUESET, SYM_BOULDER, SYSCONFPREFIX, WARNCOUNT,
 } from './const.js';
 import {
-    pline, tty_wait_synch, raw_printf, MAXPCHARS, SYM_OFF_X,
+    pline, tty_wait_synch, tty_raw_print, raw_printf, MAXPCHARS, SYM_OFF_X,
     update_ov_primary_symset, switch_symbols,
 } from './display.js';
 import { trimspaces } from './hacklib.js';
@@ -223,10 +223,41 @@ function trunc(s, n) {
     return t.length > n ? t.slice(0, n) : t;
 }
 
+/* Pre-window config-error paints issued before the display object exists
+ * (startup rc parse precedes the jsmain display install). C paints them
+ * immediately to stdout; nothing captures between the parse and the
+ * install, so replaying them there is identical. Cleared by every
+ * config_error_init (a new frame supersedes an unflushed one). */
+const pendingConfigFrame = [];
+
 function configMsg(text) {
-    // C pline during early config is raw_print. Windowed pline + wait_synch
-    // is named (parser stays sync, same precedent as parseoptions).
+    // C pline during early config is raw_print (pline.c vpline `:239`
+    // !window_inited arm). The recorder captures those bytes (nomux
+    // shadow — the dupe-rc step-0 screen), so the frame paints via the
+    // live raw_print port; raw_printf keeps the chop + early counts.
+    // Windowed pline + wait_synch is named (parser stays sync, same
+    // precedent as parseoptions). vraw_printf's `:577` omit stands for
+    // unaudited raw_printf sites — only this sink is capture-proven.
     raw_printf('%s', text);
+    // Windowed callers (a doset-phase done summary) should pline, which
+    // is async — dropped exactly as today (pre-existing gap, not this
+    // cliff: the captured frame is pre-window only).
+    if (game.iflags?.window_inited) return;
+    const line = String(text);
+    const chopped = line.length > BUFSZ - 1 ? line.slice(0, BUFSZ - 1) : line;
+    if (!game.nhDisplay) { pendingConfigFrame.push(chopped); return; }
+    tty_raw_print(chopped);
+}
+
+/**
+ * Replay config-error paints buffered before the display existed (see
+ * pendingConfigFrame). Called once from jsmain after the display install,
+ * before the capture hook install, gated on a nonzero error count.
+ */
+export function flush_pending_config_frame() {
+    if (!game.nhDisplay) return;
+    for (const text of pendingConfigFrame) tty_raw_print(text);
+    pendingConfigFrame.length = 0;
 }
 
 /**
@@ -248,13 +279,17 @@ export function config_error_init(fromFile, sourcename, secure) {
     };
     if (sourcename && sourcename[0]) // C `:1481–1484`
         tmp.source = trunc(sourcename, BUFSZ - 1);
+    pendingConfigFrame.length = 0; // new frame supersedes an unflushed one
     configErrorData = tmp; // C `:1488–1489`
     if (!game.program_state) game.program_state = {};
     game.program_state.config_error_ready = true; // C `:1490`
 }
 
-/** C ref: cfgfiles.c config_error_nextline `:1492–1512` (staticfn). */
-function config_error_nextline(line) {
+/** C ref: cfgfiles.c config_error_nextline `:1492–1512` (staticfn).
+ * Exported for the startup rc reader (options.js parseNethackrc), the JS
+ * counterpart of C's rcfile→read_config_file→parse_conf_buf path, which
+ * counts every physical line (C `:1730`). */
+export function config_error_nextline(line) {
     const ced = configErrorData; // C `:1495`
     if (!ced) return false; // C `:1497–1498`
     if (ced.num_errors && ced.secure) return false; // C `:1500–1501`

@@ -7,7 +7,7 @@ import { P_SHORT_SWORD, P_SABER } from './const.js';
 import { verbForSubject, makePlural } from './object_grammar.js';
 import { OBJECT_SUBTYPE } from './object_data.js';
 import { heroIsUnaware } from './hero_sleep.js';
-import { endVoluntaryMultiTurn, heroHasInvoluntaryDelay } from './command_state.js';
+import { endVoluntaryMultiTurn, heroHasInvoluntaryDelay, pendingArmorAction } from './command_state.js';
 import { finishHeroHelplessness } from './allmain.js';
 import { genocideDeathOptions, heroHasBeenGenocided, takePolymorphGenocide } from './hero_genocide.js';
 import { refreshHeroSeeing } from './hero_seeing.js';
@@ -31,7 +31,7 @@ import { AD_ELEC, AD_FIRE, AT_BREA, AT_GAZE, AT_SPIT } from './monster_attack_ty
 import { AMULET_OF_UNCHANGING, ELVEN_MITHRIL_COAT, LEASH, LENSES, LOADSTONE, GRAY_DRAGON_SCALE_MAIL, GRAY_DRAGON_SCALES, OBJECT_NAMES, RIN_POLYMORPH_CONTROL, RIN_PROTECTION_FROM_SHAPE_CHANGERS, } from './object_data.js';
 import { canSpotMonster, newsym, pline, plineWithContinuation, see_monsters, } from './display.js';
 import { deleteObject } from './object_delete.js';
-import { dragonFormForArmor, findArmorClass, removeHeroArmor, simpleArmorName } from './armor.js';
+import { cancelDonning, dragonFormForArmor, findArmorClass, removeHeroArmor, simpleArmorName } from './armor.js';
 import { isFlimsyObject } from './object_properties.js';
 import { adjustObjectLightAfterBlessing as adjustObjectLight, endObjectBurn, objectLightRadius, } from './light.js';
 import { A_CHA, A_CON, A_DEX, A_STR, A_WIS, G_GENOD, I_SPECIAL, In_endgame, M_AP_NOTHING, M_AP_OBJECT, STR18, STR19, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, Upolyd, POLY_CONTROLLED, POLY_LOW_CTRL, POLY_MONSTER, POLY_NOFLAGS, POLY_REVERT, W_ACCESSORY, W_ARMOR, W_SADDLE, } from './const.js';
@@ -360,20 +360,10 @@ async function dropCarriedObject(object, options = {}) {
     await dropInventoryObjectAtHero(object);
 }
 function cancelPolymorphDressing(object) {
-    const delayed = game._delayedAction;
+    const delayed = pendingArmorAction(game);
     const cancelledDon = delayed?.object === object && delayed.kind === 'wear';
-    if (delayed?.object === object) {
-        game._delayedAction = null;
-        game.multi = 0;
-    }
-    if (isBeingTakenOff(object)) {
-        const progress = game.context.takeoff;
-        if (progress) {
-            progress.current = null;
-            progress.delay = 0;
-        }
-        game.multi = 0;
-    }
+    if (delayed?.object === object || isBeingTakenOff(object))
+        cancelDonning();
     return { cancelledDon };
 }
 async function beginMonsterForm(mnum, { sexChangeAllowed = false, announceForm = true, } = {}) {
@@ -780,7 +770,7 @@ async function changeArmorForHeroForm(mnum) {
     }
     const hornCount = monsterHornCount(mnum);
     if (hornCount && (object = worn('uarmh'))) {
-        if (isFlimsyObject(object, game) && game._delayedAction?.object !== object
+        if (isFlimsyObject(object, game) && pendingArmorAction(game)?.object !== object
             && !isBeingTakenOff(object)) {
             await plineWithContinuation(`Your ${hornCount === 1 ? 'horn pierces' : 'horns pierce'} through ${ownedObjectName(object, game, { capitalized: false })}.`);
         }

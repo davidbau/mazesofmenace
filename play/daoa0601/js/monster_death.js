@@ -1,3 +1,4 @@
+import { bypassObject } from './object_bypass.js';
 import { hasShopkeeperData } from './shop_types.js';
 import { isAccessibleAt, isPoolAt } from './terrain_properties.js';
 // Ordinary monster death and corpse rules.
@@ -252,8 +253,10 @@ async function createPuddingGlob(monster, state, publish) {
         || monster.mnum > PM_BLACK_PUDDING)
         return null;
     const glob = await placeMonsterPart(GLOB_OF_GRAY_OOZE + monster.mnum - PM_GRAY_OOZE, monster, state);
+    const remains = await meldNearbyFloorGlobs(glob, { state, publish });
     setMonsterGivenName(monster, null);
-    return meldNearbyFloorGlobs(glob, { state, publish });
+    newsym(monster.mx, monster.my);
+    return remains;
 }
 export async function createMonsterRemains(monster, state = game, { buried = false, zombify = false, noRevive = false, seen = false, publish = plineWithContinuation, } = {}) {
     const x = monster.mx;
@@ -295,7 +298,7 @@ export async function createMonsterRemains(monster, state = game, { buried = fal
 // In particular, the beam which killed a monster must skip its new remains.
 async function finishMonsterRemains(remains, monster, state) {
     if (state.context.bypasses)
-        remains.bypass = true;
+        bypassObject(remains, state);
     if (monster.name)
         remains.oname = monster.name;
     const stacked = await stack_object(remains, state);
@@ -306,7 +309,7 @@ async function finishMonsterRemains(remains, monster, state) {
 }
 // Native mondead() after recovery has failed. Kill credit and remains belong
 // to the caller; map, inventory, and population cleanup share this owner.
-export async function detachDeadMonster(monster, state, random, publish) {
+export async function detachDeadMonster(monster, state, random, publish, rollOne = rnd) {
     const x = monster.mx;
     const y = monster.my;
     monster.mhp = 0;
@@ -317,7 +320,7 @@ export async function detachDeadMonster(monster, state, random, publish) {
     restoreMonsterTrueSpecies(monster);
     recordMonsterDeath(monster, state);
     markQuestLeaderDead(monster, state);
-    await returnDeadKop(monster, state, random);
+    await returnDeadKop(monster, state, rollOne);
     if (state === game)
         unmap_invisible(x, y, false);
     if (monster.mleashed)
@@ -367,7 +370,7 @@ export async function finishMonsterLiquidDeath(monster, { state = game, random =
     }
     if (sadFeeling)
         await publish('You have a sad feeling for a moment, then it passes.');
-    if (await detachDeadMonster(monster, state, random, publish)) {
+    if (await detachDeadMonster(monster, state, random, publish, rollOne)) {
         return {
             oldx: x, oldy: y, x, y,
             moved: false, dead: true, actionCompleted: true,
@@ -401,6 +404,16 @@ export async function finishMonsterLiquidDeath(monster, { state = game, random =
         corpse,
     };
 }
+// C trap.c:thitm() redraws the original square after a lethal hit, even
+// when make_corpse() already displayed the remains. Life-saving skips it.
+export async function finishMonsterTrapDeath(monster, state, options) {
+    const x = monster.mx;
+    const y = monster.my;
+    const death = await finishMonsterKilled(monster, state, options);
+    if (!death.survived && !death.heroDied && state === game)
+        newsym(x, y);
+    return death;
+}
 // C monkilled(): the death line precedes recovery, but pet grief follows it.
 // A null cause suppresses the line even when the monster's square is visible.
 export async function finishMonsterKilled(monster, state, { damageType, cause = '', publish = plineWithContinuation, ...options }) {
@@ -431,7 +444,7 @@ export async function finishMonsterKilled(monster, state, { damageType, cause = 
 export function finishEnvironmentalMonsterDeath(monster, state, options = {}) {
     return resolveMonsterDeath(monster, state, options);
 }
-async function resolveMonsterDeath(monster, state, { deathMessage = null, sadFeeling = false, noCorpse = false, noRevive = false, zombifyCorpse = false, random = rn2, rollDice = d, publish = plineWithContinuation, }, { disintegrated = false } = {}) {
+async function resolveMonsterDeath(monster, state, { deathMessage = null, sadFeeling = false, noCorpse = false, noRevive = false, zombifyCorpse = false, random = rn2, rollOne = rnd, rollDice = d, publish = plineWithContinuation, }, { disintegrated = false } = {}) {
     requireLiveGame(state);
     const recovery = await preventMonsterDeath(monster, {
         creditedKill: deathMessage,
@@ -443,12 +456,10 @@ async function resolveMonsterDeath(monster, state, { deathMessage = null, sadFee
     if (recovery.survived || recovery.heroDied)
         return { monster, survived: recovery.survived, corpse: recovery.completedDeath?.corpse ?? null,
             ...(recovery.heroDied ? { heroDied: true } : {}) };
-    const x = monster.mx;
-    const y = monster.my;
     if (!recovery.completedDeath) {
         if (sadFeeling)
             await publish('You have a sad feeling for a moment, then it passes.');
-        if (await detachDeadMonster(monster, state, random, publish))
+        if (await detachDeadMonster(monster, state, random, publish, rollOne))
             return { monster, survived: false, corpse: null, heroDied: true };
     }
     // C vamprises returns true even when its door already ran mondied.
@@ -466,8 +477,6 @@ async function resolveMonsterDeath(monster, state, { deathMessage = null, sadFee
             seen: canSeeMonster(monster),
             publish,
         }) : recovery.completedDeath?.corpse ?? null;
-    if (state === game)
-        newsym(x, y);
     return { monster, survived: false, corpse };
 }
 //# sourceMappingURL=monster_death.js.map

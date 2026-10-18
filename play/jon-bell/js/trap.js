@@ -1743,8 +1743,13 @@ export async function sink_into_lava() {
     } else if (!is_lava_local(u.ux, u.uy)) {
         await reset_utrap(false);
     } else if (!u.uinvulnerable) {
-        if (!_gp_Fire_resistance())
+        if (!_gp_Fire_resistance()) {
+            /* C trap.c:7005 sets no disp.botl: the status line keeps the old HP */
+            if (!(game.disp && ((game.disp.botl | 0) || (game.disp.botlx | 0)))
+                && game._botlStaleUhp === undefined)
+                game._botlStaleUhp = u.uhp | 0;
             u.uhp = Math.trunc((u.uhp + 2) / 3);
+        }
         u.utrap -= (1 << 8);
         if (u.utrap < (1 << 8)) {
             game.svk = game.svk || {};

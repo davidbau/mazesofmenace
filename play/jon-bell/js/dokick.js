@@ -43,6 +43,7 @@ import { TELEPORT, SEE_INVIS, POISON_RES, COLD_RES, SHOCK_RES, FIRE_RES,
 import { OC_COST } from './oc_cost_data.js';
 import { PM_SOLDIER, PM_SERGEANT, PM_LIEUTENANT, PM_CAPTAIN } from './pm.generated.js';
 import { wakeup } from './mhitm.js';
+import { sink_backs_up } from './potion.js';
 import { finish_meating } from './dogmove.js';
 import { verbalize } from './cmd.js';
 import { money_cnt } from './com_pager.js';
@@ -777,7 +778,7 @@ export async function kick_nondoor(x, y, avrg_attrib) {
             return ECMD_TIME;
         }
         else if (!rn2(3)) {
-            /* C: sink_backs_up(x, y) — may consume RNG; WIRE_PENDING */
+            await sink_backs_up(x, y); /* C dokick.c:1229 */
             return ECMD_TIME;
         }
         await kick_ouch(x, y, "");

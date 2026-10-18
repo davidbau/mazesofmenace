@@ -23,11 +23,11 @@ import { finishHeroDigestion } from './hero_combat_engulf.js';
 import { advanceCorpseResistanceTimeouts } from './corpse_intrinsics.js';
 import { game, requireGameLevel, requireInitializedGame, requireGameDisplay, requireLiveGame } from './gstate.js';
 import { isRoom } from './map_types.js';
-import { clearImmediateZapBypasses } from './immediate_zap.js';
+import { clearBypasses } from './object_bypass.js';
 import { In_endgame, Is_astralevel, MON_FLOOR, PICK_ONE, PLNMSG_MON_TAKES_OFF_ITEM } from './const.js';
 import { mapVicinity } from './magic_mapping.js';
 import { showInventoryWindow } from './windows.js';
-import { endVoluntaryMultiTurn, heroHasInvoluntaryDelay } from './command_state.js';
+import { endVoluntaryMultiTurn, heroHasInvoluntaryDelay, nomul, currentMulti, pendingArmorAction, setMulti } from './command_state.js';
 import { dosounds } from './ambient_sounds.js';
 import { warnWithMasterKey } from './artifact_warning.js';
 import { regenerateHeroHp } from './hero_regeneration.js';
@@ -44,6 +44,7 @@ import { placeHeroAtRandomArrival } from './level_change.js';
 import { monsterName, monsterSpellDeathReason, monsterSubjectPronoun, possessiveName } from './monster_name.js';
 import { touchHeroWithDeath } from './monster_death_touch.js';
 import { resolveMonsterWeaponContact } from './monster_weapon_contact.js';
+import { applyArtifactHit } from './artifact_hit.js';
 import { finishHeroDeathAfterMonsterMessage, finishMonsterAttackDeath, waitForCurrentMonsterMore } from './monster_attack_death.js';
 import { monsterMissMessage } from './monster_miss.js';
 import { monsterIsAnimal } from './monster_data.js';
@@ -67,6 +68,7 @@ import { observeBucForNaming } from './object_knowledge.js';
 import { loseHeroExperience } from './exper.js';
 import { makeMonsterFlee } from './monster_flee.js';
 import { stopHeroOccupation } from './occupation.js';
+import { interruptOccupationForMonster, monsterSightingBeforeAction } from './monster_threat.js';
 import { fixShopDamage } from './shop_damage.js';
 import { removeWornHeroItem } from './hero_equipment.js';
 import { isWeldedPrimary } from './weapon_slots.js';
@@ -109,7 +111,7 @@ import { makePlural, verbForSubject, withIndefiniteArticle } from './object_gram
 import { monsterLocomotion } from './monster_locomotion.js';
 import { monsterFliesOrFloats } from './terrain_properties.js';
 import { observeDistantObjectForNaming, observeObjectForNaming, ownedObjectName, } from './objnam.js';
-import { A_CHA, A_CON, A_DEX, A_INT, A_STR, A_WIS, BOLT_LIM, COLNO, ROWNO, DOOR, D_CLOSED, D_LOCKED, HOLE, M_SEEN_ELEC, M_SEEN_FIRE, M_SEEN_MAGR, M_SEEN_REFL, STONE, ZAP_POS, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE, W_ARMG, UNENCUMBERED, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, W_ACCESSORY, W_WEAPONS, ismnum, Upolyd, Is_airlevel, Is_waterlevel, LUCKMIN, LUCKMAX, TT_BURIEDBALL, TT_LAVA, KILLED_BY_AN, } from './const.js';
+import { A_CHA, A_CON, A_DEX, A_INT, A_STR, A_WIS, COLNO, ROWNO, DOOR, D_CLOSED, D_LOCKED, HOLE, M_SEEN_ELEC, M_SEEN_FIRE, M_SEEN_MAGR, M_SEEN_REFL, STONE, ZAP_POS, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE, W_ARMG, UNENCUMBERED, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, W_ACCESSORY, W_WEAPONS, ismnum, Upolyd, Is_airlevel, Is_waterlevel, LUCKMIN, LUCKMAX, TT_BURIEDBALL, TT_LAVA, KILLED_BY_AN, } from './const.js';
 import { uInitMisc, makedog, uInitInventoryAttrs, finishStartingDiscoveries, } from './u_init.js';
 import { makeDeaf } from './hero_hearing.js';
 import { heroIsBlind, heroIsDeaf, syncBlindness } from './senses.js';
@@ -123,7 +125,7 @@ import { claimNextDueObjectTimer, peekNextDueObjectTimer, } from './object_timer
 import { nativeRoleAt } from './roles.js';
 import { initializeRoleQuestGenders, initializeSourceStartup } from './startup.js';
 import { initialDungeonEntryText, recordGameLogEvent, } from './gamelog.js';
-import { allocateMonsterMovement, applyHeroSpellDamage, beginDeferredHeroCloneWizard, completeHeroAttackSlot, selectHeroItemForTheft, resumeDeferredHeroColdSpecial, resumeDeferredHeroContact, resumeDeferredHeroFireSpecial, resumeDeferredHeroElectricSpecial, resumeDeferredHeroLifeDrain, resumeDeferredHeroStun, resumeDeferredHeroEnchantment, resumeDeferredHeroSticking, resumeDeferredHeroEngulf, resumeDeferredHeroBlindness, resumeDeferredHeroLegs, resumeDeferredHeroReveal, rollDeferredHeroSpellDamage, resumeDeferredHeroSpell, resolveDeferredHeroSummonMonsters, resolveDeferredHeroHasteSelf, resolveDeferredHeroAggravation, finishDeferredMonsterMiscItem, finishDeferredHeroCloneWizard, resumeDeferredCovetousRelocation, resumeDeferredRestrictedTenguTeleport, resumeDeferredMovementSpell, resumeDeferredSpecialAttack, resumeDeferredMonsterTrap, resumeDeferredMonsterHideUnder, completeMonsterOffensiveAction, resumeDeferredPetAttack, resumeDeferredPetEating, resumeDeferredPetMove, resumeDeferredPetReluctance, resolveDeferredMonsterBreath, fumaroles, heroEveryturnEffect, runMonsterEveryturnEffects, beginMonsterMove, beginMonsterHeroAttack, runMonsterAction, monstersInFmonOrder, monsterDistressEvents, commitPetPickup, } from './monmove.js';
+import { allocateMonsterMovement, applyHeroSpellDamage, beginDeferredHeroCloneWizard, completeHeroAttackSlot, selectHeroItemForTheft, resumeDeferredHeroColdSpecial, resumeDeferredHeroContact, resumeDeferredHeroFireSpecial, resumeDeferredHeroElectricSpecial, resumeDeferredHeroLifeDrain, resumeDeferredHeroStun, resumeDeferredHeroEnchantment, resumeDeferredHeroSticking, resumeDeferredHeroEngulf, resumeDeferredHeroBlindness, resumeDeferredHeroLegs, resumeDeferredHeroReveal, rollDeferredHeroSpellDamage, resumeDeferredHeroSpell, resolveDeferredHeroSummonMonsters, resolveDeferredHeroHasteSelf, resolveDeferredHeroAggravation, finishDeferredMonsterMiscItem, finishDeferredHeroCloneWizard, resumeDeferredCovetousRelocation, resumeDeferredRestrictedTenguTeleport, resumeDeferredMovementSpell, resumeDeferredSpecialAttack, resumeDeferredMonsterTrap, resumeDeferredMonsterHideUnder, completeMonsterOffensiveAction, resumeDeferredPetAttack, resumeDeferredPetEating, resumeDeferredPetMove, resumeDeferredPetReluctance, resolveDeferredMonsterBreath, fumaroles, heroEveryturnEffect, runMonsterEveryturnEffects, beginMonsterMove, beginMonsterHeroAttack, beginMonsterDochug, runMonsterAction, monstersInFmonOrder, monsterDistressEvents, commitPetPickup, } from './monmove.js';
 import { finishEnvironmentalMonsterDeath, finishMonsterKilled, finishMonsterLiquidDeath, } from './monster_death.js';
 import { erodeArmor, erodeAttackingWeapon } from './object_erosion.js';
 import { monsterWieldedWeapon } from './monster_weapon.js';
@@ -529,21 +531,14 @@ async function finishInitialTurnMaintenanceAfterIntervention(sourceTurn) {
         await moveElementalBubbles();
     else if (game.level?.flags?.fumaroles)
         await fumaroles(game);
-    const delayedAction = game._delayedAction;
-    if (delayedAction && delayedAction.kind !== 'steal' && delayedAction.remainingGlobalTurns > 0) {
-        delayedAction.remainingGlobalTurns--;
-        if (delayedAction.remainingGlobalTurns === 0)
-            delayedAction.ready = true;
-    }
     // C allmain.c increments negative `multi` only after the complete global
     // turn (monster allocation, timeouts, sounds, hunger, and engraving wear).
     // Keep the counter here rather than in the command which caused the
     // helplessness so fast heroes and multi-round movement rations retain the
     // same boundary.
-    if (game._helplessTurns !== undefined && game._helplessTurns > 0) {
+    if (currentMulti(game) < 0) {
         game._helplessRunmodeDelayPending = sourceTurn;
-        game._helplessTurns--;
-        game.multi = -game._helplessTurns;
+        setMulti(currentMulti(game) + 1, game);
         if (game._helplessTurns === 0) {
             const doneMessage = game._helplessDoneMessage
                 ?? 'You can move again.';
@@ -702,11 +697,7 @@ async function finishInitialTurnMaintenanceAfterAmbient({ sourceTurn, moveAmount
 async function finishFumblingExpiryAfterMessage(fumbled, publish) {
     const game = requireInitializedGame();
     if (fumbled) {
-        // timeout.c reaches this through nomul(-2), which always calls
-        // end_running(TRUE) before the helpless interval.
-        stopRun(game);
-        endVoluntaryMultiTurn(game);
-        game._helplessTurns = 2;
+        nomul(-2);
         game._helplessDoneMessage = '';
         game._helplessReason = 'fumbling';
         if (invWeight(game) > -500) {
@@ -1410,12 +1401,9 @@ async function advanceWorldTurn() {
     }
     const helplessDelayTurn = game._helplessRunmodeDelayPending;
     delete game._helplessRunmodeDelayPending;
-    await captureRunmodeDelay(game, Number.isInteger(helplessDelayTurn), helplessDelayTurn ?? completedTurn, { preservePhysicalTopline: true });
-    await drainQueuedHelplessRecoveryMessage();
-    // Armor theft completes through unmul(), so its display delay belongs
-    // to the helplessness counter above rather than the dressing action.
-    const delayedAction = game._delayedAction?.kind === 'steal'
-        ? null : game._delayedAction;
+    // Dressing retains its physical topline through each negative-multi
+    // frame; its armor effects still wait for unmul's recovery message.
+    const delayedAction = pendingArmorAction(game);
     if (delayedAction) {
         if (game._pending_message) {
             delete delayedAction._runmodeRetainedTopline;
@@ -1425,11 +1413,11 @@ async function advanceWorldTurn() {
                 = game.nhDisplay?.grid?.[0]?.map(cell => ({ ...cell }));
         }
     }
-    await captureRunmodeDelay(game, !!delayedAction, completedTurn, {
+    await captureRunmodeDelay(game, Number.isInteger(helplessDelayTurn), helplessDelayTurn ?? completedTurn, {
         preservePhysicalTopline: true,
         retainedTopline: delayedAction?._runmodeRetainedTopline ?? null,
     });
-    await finishDelayedArmorAction();
+    await drainQueuedHelplessRecoveryMessage();
     if (game.program_state.gameover)
         return;
     // Native find_ac() follows the elapsed-turn loop.  setworn() is already
@@ -1437,7 +1425,7 @@ async function advanceWorldTurn() {
     // prior AC; the next automatic core observes the recomputed value.  A
     // slowed hero stays inside moveloop_core()'s movement loop, without
     // reaching find_ac(), until a turn grants a full movement ration.
-    if (game._armorClassDirtyAfterDelayedFrame && !game._delayedAction?.ready
+    if (game._armorClassDirtyAfterDelayedFrame
         && game.u.umovement >= NORMAL_SPEED) {
         findArmorClass(game);
         game._armorClassDirty = false;
@@ -1446,18 +1434,9 @@ async function advanceWorldTurn() {
 }
 // C allmain.c:moveloop_core() calls unmul() at the end of the world turn
 // which finishes negative multi, even if burden still prevents hero movement.
-async function finishDelayedArmorAction() {
-    const g = requireInitializedGame();
-    const delayed = g._delayedAction;
-    if (!delayed?.ready || delayed.kind === 'steal')
-        return;
-    g._delayedAction = null;
+async function finishDelayedArmorAction(delayed, g) {
     if (delayed.kind === 'wear') {
-        // unmul() prints nomovemsg before Armor_on() and find_ac().
-        // An earlier attack can hold that message at a pager while AC
-        // still belongs to the turn before the dressing finished.
-        if (delayed.finishMessage)
-            await plineWithContinuation(delayed.finishMessage);
+        // unmul() has printed nomovemsg before Armor_on() and find_ac().
         const effectMessages = await applyArmorOnEffects(delayed.object, g);
         delayed.object.known = true;
         const discoverArmorType = armorOnIdentifiesType(delayed.object, effectMessages)
@@ -1480,18 +1459,9 @@ async function finishDelayedArmorAction() {
         }
     }
     else if (delayed.kind === 'remove') {
-        // C allmain.c:unmul() emits nomovemsg before calling afternmv.
-        // If an earlier monster-combat line already owns tty, this await
-        // suspends at --More-- with the armor still worn; Armor_off()
-        // commits only after the continuation is acknowledged.
-        if (delayed.finishMessage)
-            await plineWithContinuation(delayed.finishMessage);
+        // unmul() has acknowledged nomovemsg while the armor was still worn.
         await finishArmorRemoval(delayed.object, { silent: true });
     }
-    g._delayedAction = null;
-    // C moveloop_core() completes travel caused by unmul() before find_ac().
-    // Arrival pagers retain the AC from before the armor was removed.
-    await finishScheduledLevelChange();
     if (g.program_state.gameover)
         return;
     g._armorClassDirty = true;
@@ -1523,33 +1493,33 @@ async function drainQueuedHelplessRecoveryMessage() {
         return;
     const message = game._queuedHelplessRecoveryMessage;
     await finishHeroHelplessness(message);
-    // allmain.c takes travel caused by unmul() before the Seer update.
+    // allmain.c takes travel caused by unmul() before find_ac() and the Seer update.
     await finishScheduledLevelChange();
 }
 // Native hack.c:unmul(). The after-handler is cleared before invocation so
 // recovery can start another delay without inheriting the old completion.
-export async function finishHeroHelplessness(messageOverride, state = game) {
+export async function finishHeroHelplessness(messageOverride, state = game, publish = plineWithContinuation) {
     state.context.botl = true;
-    state.multi = 0;
-    state._helplessTurns = 0;
+    setMulti(0, state);
     state._queuedHelplessRecoveryMessage = null;
     const message = messageOverride ?? state._helplessDoneMessage ?? 'You can move again.';
-    if (message)
-        await plineWithContinuation(message);
+    if (message) {
+        await publish(message);
+        if (Upolyd(state.u) && message.toLowerCase().startsWith('you survived that '))
+            await publish(`You are ${withIndefiniteArticle(monsterTypeName(heroSpecies(state), state.u.mfemale))}.`);
+    }
     state.u.usleep = 0;
     state._helplessReason = null;
     state._helplessDoneMessage = null;
-    const after = state._helplessAfter;
-    state._helplessAfter = null;
-    const armorTheft = state._delayedAction?.kind === 'steal'
-        ? state._delayedAction : null;
-    if (armorTheft)
-        state._delayedAction = null;
-    // C eat.c:Hear_again() runs after unmul() has delivered nomovemsg.
-    // Keep it after the awaited tty continuation: if the rotten-food
-    // message fills the topline, the acknowledgement resumes here before
-    // the recovery message becomes the next input boundary.
-    switch (after) {
+    const after = state._afterMove;
+    state._afterMove = null;
+    if (!after)
+        return;
+    switch (after.kind) {
+        case 'wear':
+        case 'remove':
+            await finishDelayedArmorAction(after, state);
+            break;
         case 'hear-again':
             await regainHearingAfterHelplessness({ state });
             break;
@@ -1562,19 +1532,22 @@ export async function finishHeroHelplessness(messageOverride, state = game) {
         case 'finish-digestion':
             await finishHeroDigestion(state);
             break;
-        case 'steal-armor':
-            if (armorTheft)
-                await finishDelayedArmorTheft(armorTheft.thief, armorTheft.object, state);
+        case 'steal': {
+            const theft = state._armorTheft;
+            if (theft?.thief)
+                await finishDelayedArmorTheft(theft.thief, theft.object, state);
+            state._armorTheft = null;
             break;
-        case 'unstolen-armor':
-            if (armorTheft && state.inventory.includes(armorTheft.object))
-                await plineWithContinuation(`You finish taking off your ${armorSimpleName(armorTheft.object, state)}.`);
+        }
+        case 'unstolen-armor': {
+            const object = state._armorTheft?.object;
+            state._armorTheft = null;
+            if (object && state.inventory.includes(object))
+                await plineWithContinuation(`You finish taking off your ${armorSimpleName(object, state)}.`);
             break;
+        }
         case 'finish-prayer':
             await finishPrayerOccupation(state);
-            break;
-        case null:
-        case undefined:
             break;
     }
 }
@@ -1598,6 +1571,8 @@ function reluctantPetMessage(monster, movement) {
 }
 async function monsterAttackMessage(monster, attack, previousAttack = null, random = rn2) {
     const game = requireInitializedGame();
+    if (attack.specialMessage)
+        return null;
     if (attack.effect === 'petrifying-corpse' || attack.effect === 'wrapping-natural')
         return null;
     if (attack.effect === 'physical-hug' || attack.effect === 'silent-physical-touch')
@@ -1660,8 +1635,10 @@ async function monsterAttackMessage(monster, attack, previousAttack = null, rand
                         : attack.attackType === 6 ? 'stings' : 'hits';
     // C hitmsg() requires adjacent slots in the species' attack array.
     // getmattk() replacements use a separate buffer and cannot be adjacent.
+    // Artifact prose skips hitmsg(), so it does not update that prior slot.
     const again = previousAttack?.hit
         && previousAttack.kind === 'hero-attack'
+        && !previousAttack.specialMessage
         && previousAttack.effect !== 'physical-hug'
         && previousAttack.attackType === attack.attackType
         && previousAttack.attackIndex + 1 === attack.attackIndex
@@ -1753,7 +1730,7 @@ async function resolveDeferredHeroItemTheft(action, monster, attack, random) {
     const throwsRocks = !!((MONSTER_FLAGS2[monster.mnum] ?? 0) & 0x08000000);
     let retriedBoulder = false;
     while (object) {
-        if (game._delayedAction?.kind === 'steal' && game._delayedAction.object === object)
+        if (game._armorTheft?.object === object)
             return false;
         if (object.otyp !== BOULDER || throwsRocks || retriedBoulder)
             break;
@@ -1822,7 +1799,7 @@ async function resolveDeferredHeroItemTheft(action, monster, attack, random) {
             return refuse();
         releaseObjectLeash(object, game);
     }
-    const previousDelay = game._delayedAction;
+    const previousDelay = pendingArmorAction(game);
     const wasDoffing = (previousDelay?.kind === 'remove' && previousDelay.object === object)
         || isBeingTakenOff(object, game);
     await stopDonning(object, game);
@@ -1864,11 +1841,8 @@ async function resolveDeferredHeroItemTheft(action, monster, attack, random) {
                 // nomul() cannot shorten another involuntary delay. Set it
                 // before removal, whose effects can sleep or life-save us.
                 // Life saving may replace the counter during this same
-                // monster turn, before maintenance refreshes multi.
-                const currentDelay = game._helplessTurns || -game.multi;
-                const remaining = Math.max(delay, currentDelay);
-                game.multi = -remaining;
-                game._helplessTurns = remaining;
+                // monster turn.
+                nomul(-delay);
                 game._helplessReason = 'taking off clothes';
                 game._helplessDoneMessage = null;
                 await removeWornHeroItem(object, game);
@@ -1877,9 +1851,8 @@ async function resolveDeferredHeroItemTheft(action, monster, attack, random) {
                 object.cursed = cursed;
             }
             if ((game._helplessTurns ?? 0) > 0) {
-                game._delayedAction = { kind: 'steal', thief: monster, object,
-                    ready: false };
-                game._helplessAfter = 'steal-armor';
+                game._armorTheft = { thief: monster, object };
+                game._afterMove = { kind: 'steal' };
                 return false;
             }
         }
@@ -2631,6 +2604,25 @@ async function presentMonsterAttackEffects(action, game, { random = rn2, rollDic
                     && heroAttack.effect !== 'failed-grab'
                     && !canSpotMonster(monster))
                     map_invisible(monster.mx, monster.my);
+                const publishEquipmentMessage = async (line, options) => {
+                    const dismissal = await plineWithContinuation(line, options);
+                    if (dismissal != null)
+                        paging.pagerOwned = true;
+                    return dismissal;
+                };
+                if (heroAttack.hit && heroAttack.effect === 'physical-weapon'
+                    && heroAttack.deferredPostHit) {
+                    const artifact = await applyArtifactHit(monsterWieldedWeapon(monster), 'hero', heroAttack.damage ?? 0, {
+                        state: game, attacker: monster, dieRoll: heroAttack.roll ?? 0,
+                        publish: publishEquipmentMessage, random, rollOne,
+                    });
+                    if (artifact.heroDied)
+                        return { heroDied: true };
+                    heroAttack.damage = artifact.damage;
+                    heroAttack.specialMessage = artifact.specialMessage;
+                    if (!artifact.damage)
+                        heroAttack.poison = null;
+                }
                 const message = await monsterAttackMessage(monster, heroAttack, previousHeroAttack, random);
                 const contactDismissal = message
                     ? await plineWithContinuation(message) : undefined;
@@ -2638,13 +2630,7 @@ async function presentMonsterAttackEffects(action, game, { random = rn2, rollDic
                     && contactDismissal !== undefined) {
                     paging.pagerOwned = true;
                 }
-                const publishEquipmentMessage = async (line, options) => {
-                    const dismissal = await plineWithContinuation(line, options);
-                    if (dismissal != null)
-                        paging.pagerOwned = true;
-                    return dismissal;
-                };
-                if (heroAttack.hit && heroAttack.effect === 'physical-weapon') {
+                if (heroAttack.hit && heroAttack.effect === 'physical-weapon' && heroAttack.damage) {
                     const weapon = monsterWieldedWeapon(monster);
                     if (weapon)
                         heroAttack.damage = await resolveMonsterWeaponContact(monster, weapon, heroAttack.damage ?? 0, game, publishEquipmentMessage, rollOne);
@@ -2737,6 +2723,17 @@ async function presentMonsterAttackEffects(action, game, { random = rn2, rollDic
                         paging.pagerOwned = true;
                     }
                 }
+                if (heroAttack.deferredFireRehumanize) {
+                    await publishSlotMessage('You go up in flames!');
+                    monstersForgetHeroResistance(M_SEEN_FIRE, game);
+                    const restored = await returnHeroToHumanForm(game, {
+                        publish: publishSlotMessage,
+                        die: finishHeroDeathAfterMonsterMessage,
+                    });
+                    if (restored.died)
+                        return { heroDied: true };
+                    heroAttack.deferredFireRehumanize = false;
+                }
                 if (heroAttack.fireResistanceMessage) {
                     const resistanceDismissal = await plineWithContinuation(heroAttack.fireResistanceMessage);
                     heroAttack.fireResistanceMessage = null;
@@ -2745,13 +2742,13 @@ async function presentMonsterAttackEffects(action, game, { random = rn2, rollDic
                         paging.pagerOwned = true;
                     }
                 }
-                if (heroAttack.slimeBurnedMessage) {
-                    const slimeDismissal = await plineWithContinuation(heroAttack.slimeBurnedMessage);
-                    heroAttack.slimeBurnedMessage = null;
-                    if (slimeDismissal !== null
-                        && slimeDismissal !== undefined) {
-                        paging.pagerOwned = true;
-                    }
+                // mhitm_ad_fire() updates witnesses after the fire messages,
+                // before inventory damage. Cancelled contact teaches nothing.
+                if (heroAttack.deferredFireInventory) {
+                    if (game.u.fireResistance)
+                        monstersObserveHeroResistance(M_SEEN_FIRE, game);
+                    else
+                        monstersForgetHeroResistance(M_SEEN_FIRE, game);
                 }
                 if (heroAttack.deferredElectricNegation)
                     resumeDeferredHeroElectricSpecial(action, game);
@@ -2856,7 +2853,7 @@ async function presentMonsterAttackEffects(action, game, { random = rn2, rollDic
                         if (inventoryDamage.damageType === 'fire') {
                             await igniteItems(game.inventory, {
                                 state: game,
-                                publish: plineWithContinuation,
+                                publish: publishContactMessage,
                             });
                         }
                         heroAttack.deferredElementalInventory = null;
@@ -2951,7 +2948,6 @@ async function presentMonsterAttackEffects(action, game, { random = rn2, rollDic
 // Trap, door, tunneling, and hiding feedback belongs to postmov(), before
 // returning to either dochug() or the hero's out-of-sequence movement caller.
 async function presentMonsterPostMove(action, game) {
-    const monster = action.monster;
     let movement = action.movement;
     // C postmov() repaints the old square before mintrap(), but delays
     // the destination newsym() until the trap's message has returned.
@@ -2977,8 +2973,6 @@ async function presentMonsterPostMove(action, game) {
         if ('heroDied' in event && event.heroDied)
             return true;
         movement = action.movement;
-        if ('seeSquare' in event && event.seeSquare && event.kind !== 'vibrating-square')
-            newsym(event.trap.tx, event.trap.ty);
     }
     if (deferredTrapDestination && !movement.postMoveDestinationPainted)
         newsym(movement.x, movement.y);
@@ -3135,12 +3129,213 @@ export async function moveMonsterForHeroAttack(monster, state = requireInitializ
         throw new Error('Monster movement completed without its native movement result.');
     return { status, heroDied: heroDied || !!state.program_state.gameover };
 }
+// Complete the same action and message phases for scheduled turns and
+// direct dochug() calls. The caller owns movement rations and dochugw().
+async function presentMonsterAction(action, game, actorWasOpticallySeen) {
+    if (game.program_state?.gameover)
+        return 'stop';
+    if (game._questExpulsionPending) {
+        await performQuestExpulsion(game);
+        return 'stop';
+    }
+    if (action.conflictFight)
+        return 'next-monster';
+    // C dochug() returns after gelcube_digests(), before attacks or cursing.
+    if (action.movement.digestedInventory)
+        return 'next-monster';
+    // C dochug() returns immediately when item use spends the turn.
+    if (action.movement?.usedDefense)
+        return 'next-monster';
+    if (action.movement?.usedMisc?.kind === 'item-result'
+        && action.movement.usedMisc.nativeResult !== 0)
+        return 'next-monster';
+    await resumeTrappedMonster(action);
+    let { monster, movement } = action;
+    // A fleeing teleport spends this actor's turn, even if no destination was found.
+    if (movement?.fleeingRelocation || movement?.fleeingTeleportFailed)
+        return 'next-monster';
+    await presentRestrictedMonsterTeleport(action, game, actorWasOpticallySeen);
+    movement = action.movement;
+    if (movement?.deferredCovetousRelocation) {
+        // tactics() has completed relocation and its input pauses.
+        // Resume range checks and attacks from the new position.
+        game._deferVisibleMonsterContact = true;
+        try {
+            await resumeDeferredCovetousRelocation(action, game);
+        }
+        finally {
+            game._deferVisibleMonsterContact = false;
+        }
+        await resumeTrappedMonster(action);
+        movement = action.movement;
+        if (movement?.usedDefense)
+            return 'next-monster';
+        if (movement?.usedMisc?.kind === 'item-result'
+            && movement.usedMisc.nativeResult !== 0)
+            return 'next-monster';
+    }
+    if (movement?.spellCast?.cast) {
+        // dochug() chooses the movement spell after covetous tactics,
+        // so a resumed relocation can still produce this casting phase.
+        if (canSpotMonster(monster)) {
+            await plineWithContinuation(`${visibleMonsterSubject(monster)} casts a spell!`);
+        }
+        await resumeDeferredMovementSpell(action, game);
+        movement = action.movement;
+    }
+    await presentPetMovementPrelude(action, game, actorWasOpticallySeen);
+    movement = action.movement;
+    if (await presentMonsterPostMove(action, game))
+        return 'stop';
+    movement = action.movement;
+    const attackEffects = await presentMonsterAttackEffects(action, game);
+    if (attackEffects.heroDied)
+        return 'stop';
+    movement = action.movement;
+    // monmove.c:dochug() performs the vile-monster emotional attack only
+    // after the complete standard attack set. Item use returns earlier,
+    // including items whose effects await their messages below.
+    const offensive = movement.heroAttackSequence?.offensive;
+    const attackReturnedDeath = movement.heroAttackResult === 1
+        || (offensive?.status === 'completed' && offensive.result.nativeResult === 1);
+    if (action.dochugContext?.reachesFinalActions && !movement.usedMisc
+        && !attackReturnedDeath && !monster.dead && monster.mhp > 0
+        && monster.mcanmove && !monster.msleeping
+        && action.dochugContext.range?.nearby)
+        await talkQuestCharacter(monster, game);
+    if (game._questExpulsionPending) {
+        await performQuestExpulsion(game);
+        return 'stop';
+    }
+    if (action.dochugContext?.reachesFinalActions
+        && !movement.usedMisc && !attackReturnedDeath && action.dochugContext.range?.inRange
+        && !monster.dead && monster.mhp > 0 && monster.mx !== 0
+        && MONSTER_SOUND[monster.mnum] === 34 && !monster.mpeaceful
+        && couldsee(monster.mx, monster.my) && !monster.minvis) {
+        const cussGate = rn2(5);
+        action.calls.push('rn2(5)');
+        if (cussGate === 0)
+            movement.deferredCuss = true;
+    }
+    if (movement?.deferredCuss) {
+        movement.deferredCuss = false;
+        await presentMonsterCuss(action);
+    }
+    if (movement?.deferredAfterPetAttack) {
+        if (game.program_state?.gameover)
+            return 'stop';
+        await resumeDeferredPetAttack(action, game);
+        await presentMonsterHiding(action);
+    }
+    await presentMonsterPickups(action, game);
+    movement = action.movement;
+    if (movement?.usedMisc?.kind === 'polymorph-trap'
+        || movement?.usedMisc?.kind === 'wand-polymorph' || movement?.usedMisc?.kind === 'potion-polymorph')
+        await finishDeferredMonsterMiscItem(action, game);
+    if (movement?.usedMisc?.kind === 'potion-gain-level') {
+        const misc = movement.usedMisc;
+        const sawDrinking = await presentMonsterQuaff(monster, misc.object);
+        if (sawDrinking) {
+            if (misc.object.cursed) {
+                const destination = monsterGainLevelRiseDestination(monster, game);
+                if (destination)
+                    misc.riseDestination = destination;
+                await plineWithContinuation(destination
+                    ? `${visibleMonsterSubject(monster)} rises up, through the ${ceilingName(monster.mx, monster.my, game)}!`
+                    : `${visibleMonsterSubject(monster)} looks uneasy.`);
+                await tryCallObjectType(misc.object, game);
+            }
+            else {
+                await plineWithContinuation(`${visibleMonsterSubject(monster)} seems more experienced.`);
+                learnObjectType(misc.object.otyp);
+            }
+        }
+        if (misc.object.cursed && !sawDrinking) {
+            const destination = monsterGainLevelRiseDestination(monster, game);
+            if (destination)
+                misc.riseDestination = destination;
+        }
+        await finishDeferredMonsterMiscItem(action, game);
+        await presentMonsterGrowth(monster, misc.growth);
+        movement = action.movement;
+    }
+    if (movement?.usedMisc?.kind === 'potion-invisibility' || movement?.usedMisc?.kind === 'wand-invisibility') {
+        const misc = movement.usedMisc;
+        let sawDrinking;
+        if (misc.kind === 'wand-invisibility') {
+            sawDrinking = canSeeMonster(monster);
+            await presentMonsterWandUse(monster, misc.object, { state: game, self: true });
+        }
+        else
+            sawDrinking = await presentMonsterQuaff(monster, misc.object);
+        const nameBeforeInvisibility = monsterName(monster, { state: game });
+        await finishDeferredMonsterMiscItem(action, game);
+        newsym(monster.mx, monster.my);
+        const stillSeen = canSpotMonster(monster);
+        if (sawDrinking && monster.minvis) {
+            if (stillSeen) {
+                await plineWithContinuation(`${possessiveName(nameBeforeInvisibility).replace(/^./, letter => letter.toUpperCase())} body takes on a ${heroIsHallucinating(game) ? 'normal' : 'strange'} transparency.`);
+            }
+            else {
+                await plineWithContinuation(`Suddenly you cannot see ${nameBeforeInvisibility}.`);
+                if (cansee(monster.mx, monster.my))
+                    map_invisible(monster.mx, monster.my);
+            }
+            learnObjectType(misc.object.otyp);
+        }
+        else if (sawDrinking && !monster.minvis) {
+            await plineWithContinuation(`${visibleMonsterSubject(monster)} briefly seems to be transparent.`);
+        }
+        if (misc.kind === 'potion-invisibility') {
+            if (misc.object.cursed)
+                await revealAggravatingMonster(monster, game);
+            await consumeMonsterItem(monster, misc.object, game);
+        }
+    }
+    if (movement?.usedMisc?.kind === 'bullwhip-disarm') {
+        await finishDeferredMonsterMiscItem(action, game);
+        if (game.program_state.gameover)
+            return 'stop';
+    }
+    if (movement?.usedMisc?.kind === 'potion-speed' || movement?.usedMisc?.kind === 'wand-speed-monster') {
+        const misc = movement.usedMisc;
+        const seen = canSeeMonster(monster);
+        if (misc.kind === 'wand-speed-monster')
+            await presentMonsterWandUse(monster, misc.object, { state: game, self: true });
+        else
+            await presentMonsterQuaff(monster, misc.object);
+        await finishDeferredMonsterMiscItem(action, game);
+        if (seen && misc.speedChanged) {
+            await plineWithContinuation(`${visibleMonsterSubject(monster)} is suddenly moving ${misc.speedMuch ? 'much ' : ''}faster.`);
+            learnWand(misc.object, { state: game });
+        }
+        if (misc.kind === 'potion-speed')
+            await consumeMonsterItem(monster, misc.object, game);
+    }
+    await presentMonsterMoveMessage(action, game);
+    return 'check-occupation';
+}
+// C monmove.c:dochug(). Shop entry gives its keeper an immediate action,
+// including resumed messages and attacks, without movemon()'s per-turn work.
+export async function performMonsterTurn(monster, state = requireInitializedGame()) {
+    const wasSeen = canSeeMonster(monster);
+    const previousDeferral = state._deferVisibleMonsterContact;
+    try {
+        state._deferVisibleMonsterContact = true;
+        const action = await beginMonsterDochug(monster, state);
+        state._deferVisibleMonsterContact = false;
+        await presentMonsterAction(action, state, wasSeen);
+    }
+    finally {
+        state._deferVisibleMonsterContact = previousDeferral;
+    }
+}
 async function executeMonsterTurns() {
     const game = requireInitializedGame();
     const level = game.level;
     let somebodyCanMove = false;
     // C iter_mons_safe() snapshots identities, not their remaining movement.
-    monsterTurns: for (const actor of monstersInFmonOrder(level.monsters)) {
+    for (const actor of monstersInFmonOrder(level.monsters)) {
         if (game.level !== level || game.program_state?.gameover)
             return false;
         if (game.u.utotype) {
@@ -3173,10 +3368,9 @@ async function executeMonsterTurns() {
         // actor's liquid checks, equipment changes, and movement decisions.
         if (game.vision_full_recalc)
             vision_recalc(0);
+        if (game.context.bypasses)
+            clearBypasses(game);
         const actorWasOpticallySeen = canSeeMonster(actor);
-        const actorWasSpotted = canSpotMonster(actor);
-        const actorWasCouldSee = couldsee(actor.mx, actor.my);
-        const actorOldDistance = dist2(actor.mx, actor.my, game.u?.ux ?? actor.mx, game.u?.uy ?? actor.my);
         const liquid = await resolveMonsterLiquid(actor, game, {
             announce: plineWithContinuation,
             finishDeath: finishMonsterLiquidDeath,
@@ -3184,6 +3378,7 @@ async function executeMonsterTurns() {
         if (liquid?.dead)
             continue;
         const equipment = await reassessMonsterArmor(actor, game, { publish: plineWithContinuation });
+        const sightingBefore = monsterSightingBeforeAction(actor, game);
         game._deferVisibleMonsterContact = true;
         let action;
         try {
@@ -3198,204 +3393,21 @@ async function executeMonsterTurns() {
         finally {
             game._deferVisibleMonsterContact = false;
         }
-        if (game.program_state?.gameover)
+        const presented = await presentMonsterAction(action, game, actorWasOpticallySeen);
+        if (presented === 'stop')
             return false;
-        if (game._questExpulsionPending) {
-            await performQuestExpulsion(game);
-            break;
-        }
+        if (presented === 'next-monster')
+            continue;
         if (action.conflictFight)
             continue;
-        // C dochug() returns after gelcube_digests(), before attacks or cursing.
-        if (action.movement.digestedInventory)
-            continue;
-        // C dochug() returns immediately when item use spends the turn.
-        if (action.movement?.usedDefense)
-            continue;
-        if (action.movement?.usedMisc?.kind === 'item-result'
-            && action.movement.usedMisc.nativeResult !== 0)
-            continue;
-        await resumeTrappedMonster(action);
-        let { monster, movement } = action;
-        // A fleeing teleport spends this actor's turn, even if no destination was found.
-        if (movement?.fleeingRelocation || movement?.fleeingTeleportFailed)
-            continue;
-        await presentRestrictedMonsterTeleport(action, game, actorWasOpticallySeen);
-        movement = action.movement;
-        if (movement?.deferredCovetousRelocation) {
-            // tactics() has completed relocation and its input pauses.
-            // Resume range checks and attacks from the new position.
-            game._deferVisibleMonsterContact = true;
-            try {
-                await resumeDeferredCovetousRelocation(action, game);
-            }
-            finally {
-                game._deferVisibleMonsterContact = false;
-            }
-            await resumeTrappedMonster(action);
-            movement = action.movement;
-            if (movement?.usedDefense)
-                continue;
-            if (movement?.usedMisc?.kind === 'item-result'
-                && movement.usedMisc.nativeResult !== 0)
-                continue;
-        }
-        if (movement?.spellCast?.cast) {
-            // dochug() chooses the movement spell after covetous tactics,
-            // so a resumed relocation can still produce this casting phase.
-            if (canSpotMonster(monster)) {
-                await plineWithContinuation(`${visibleMonsterSubject(monster)} casts a spell!`);
-            }
-            await resumeDeferredMovementSpell(action, game);
-            movement = action.movement;
-        }
-        await presentPetMovementPrelude(action, game, actorWasOpticallySeen);
-        movement = action.movement;
-        if (await presentMonsterPostMove(action, game))
-            return false;
-        movement = action.movement;
-        const attackEffects = await presentMonsterAttackEffects(action, game);
-        if (attackEffects.heroDied)
-            return false;
-        movement = action.movement;
-        // monmove.c:dochug() performs the vile-monster emotional attack only
-        // after the complete standard attack set. Item use returns earlier,
-        // including items whose effects await their messages below.
+        const { monster, movement } = action;
         const offensive = movement.heroAttackSequence?.offensive;
         const attackReturnedDeath = movement.heroAttackResult === 1
             || (offensive?.status === 'completed' && offensive.result.nativeResult === 1);
-        if (action.dochugContext?.reachesFinalActions && !movement.usedMisc
-            && !attackReturnedDeath && !monster.dead && monster.mhp > 0
-            && monster.mcanmove && !monster.msleeping
-            && action.dochugContext.range?.nearby)
-            await talkQuestCharacter(monster, game);
-        if (game._questExpulsionPending) {
-            await performQuestExpulsion(game);
-            break;
-        }
-        if (action.dochugContext?.reachesFinalActions
-            && !movement.usedMisc && !attackReturnedDeath && action.dochugContext.range?.inRange
-            && !monster.dead && monster.mhp > 0 && monster.mx !== 0
-            && MONSTER_SOUND[monster.mnum] === 34 && !monster.mpeaceful
-            && couldsee(monster.mx, monster.my) && !monster.minvis) {
-            const cussGate = rn2(5);
-            action.calls.push('rn2(5)');
-            if (cussGate === 0)
-                movement.deferredCuss = true;
-        }
-        if (movement?.deferredCuss) {
-            movement.deferredCuss = false;
-            await presentMonsterCuss(action);
-        }
-        if (movement?.deferredAfterPetAttack) {
-            if (game.program_state?.gameover)
-                return false;
-            await resumeDeferredPetAttack(action, game);
-            await presentMonsterHiding(action);
-        }
-        await presentMonsterPickups(action, game);
-        movement = action.movement;
-        if (movement?.usedMisc?.kind === 'polymorph-trap'
-            || movement?.usedMisc?.kind === 'wand-polymorph' || movement?.usedMisc?.kind === 'potion-polymorph')
-            await finishDeferredMonsterMiscItem(action, game);
-        if (movement?.usedMisc?.kind === 'potion-gain-level') {
-            const misc = movement.usedMisc;
-            const sawDrinking = await presentMonsterQuaff(monster, misc.object);
-            if (sawDrinking) {
-                if (misc.object.cursed) {
-                    const destination = monsterGainLevelRiseDestination(monster, game);
-                    if (destination)
-                        misc.riseDestination = destination;
-                    await plineWithContinuation(destination
-                        ? `${visibleMonsterSubject(monster)} rises up, through the ${ceilingName(monster.mx, monster.my, game)}!`
-                        : `${visibleMonsterSubject(monster)} looks uneasy.`);
-                    await tryCallObjectType(misc.object, game);
-                }
-                else {
-                    await plineWithContinuation(`${visibleMonsterSubject(monster)} seems more experienced.`);
-                    learnObjectType(misc.object.otyp);
-                }
-            }
-            if (misc.object.cursed && !sawDrinking) {
-                const destination = monsterGainLevelRiseDestination(monster, game);
-                if (destination)
-                    misc.riseDestination = destination;
-            }
-            await finishDeferredMonsterMiscItem(action, game);
-            await presentMonsterGrowth(monster, misc.growth);
-            movement = action.movement;
-        }
-        if (movement?.usedMisc?.kind === 'potion-invisibility' || movement?.usedMisc?.kind === 'wand-invisibility') {
-            const misc = movement.usedMisc;
-            let sawDrinking;
-            if (misc.kind === 'wand-invisibility') {
-                sawDrinking = canSeeMonster(monster);
-                await presentMonsterWandUse(monster, misc.object, { state: game, self: true });
-            }
-            else
-                sawDrinking = await presentMonsterQuaff(monster, misc.object);
-            const nameBeforeInvisibility = monsterName(monster, { state: game });
-            await finishDeferredMonsterMiscItem(action, game);
-            newsym(monster.mx, monster.my);
-            const stillSeen = canSpotMonster(monster);
-            if (sawDrinking && monster.minvis) {
-                if (stillSeen) {
-                    await plineWithContinuation(`${possessiveName(nameBeforeInvisibility).replace(/^./, letter => letter.toUpperCase())} body takes on a ${heroIsHallucinating(game) ? 'normal' : 'strange'} transparency.`);
-                }
-                else {
-                    await plineWithContinuation(`Suddenly you cannot see ${nameBeforeInvisibility}.`);
-                    if (cansee(monster.mx, monster.my))
-                        map_invisible(monster.mx, monster.my);
-                }
-                learnObjectType(misc.object.otyp);
-            }
-            else if (sawDrinking && !monster.minvis) {
-                await plineWithContinuation(`${visibleMonsterSubject(monster)} briefly seems to be transparent.`);
-            }
-            if (misc.kind === 'potion-invisibility') {
-                if (misc.object.cursed)
-                    await revealAggravatingMonster(monster, game);
-                await consumeMonsterItem(monster, misc.object, game);
-            }
-        }
-        if (movement?.usedMisc?.kind === 'bullwhip-disarm') {
-            await finishDeferredMonsterMiscItem(action, game);
-            if (game.program_state.gameover)
-                return false;
-        }
-        if (movement?.usedMisc?.kind === 'potion-speed' || movement?.usedMisc?.kind === 'wand-speed-monster') {
-            const misc = movement.usedMisc;
-            const seen = canSeeMonster(monster);
-            if (misc.kind === 'wand-speed-monster')
-                await presentMonsterWandUse(monster, misc.object, { state: game, self: true });
-            else
-                await presentMonsterQuaff(monster, misc.object);
-            await finishDeferredMonsterMiscItem(action, game);
-            if (seen && misc.speedChanged) {
-                await plineWithContinuation(`${visibleMonsterSubject(monster)} is suddenly moving ${misc.speedMuch ? 'much ' : ''}faster.`);
-                learnWand(misc.object, { state: game });
-            }
-            if (misc.kind === 'potion-speed')
-                await consumeMonsterItem(monster, misc.object, game);
-        }
-        await presentMonsterMoveMessage(action, game);
-        // C monmove.c:dochugw() interrupts an occupation when one actor has
-        // newly become a visible threat within bolt range.  This happens
-        // after dochug() has completed the actor action, before the ordinary
+        // C monmove.c:dochugw() checks the actor after dochug(), before the
         // adjacent monster_nearby() check at the occupation boundary.
-        const threatDistance = (BOLT_LIM + 1) * (BOLT_LIM + 1);
-        if (game._occupation && !attackReturnedDeath
-            && (monster.mhp ?? 1) > 0
-            && !monster.mpeaceful
-            && monster.mcanmove !== 0
-            && !(monster.msleeping || (monster.mfrozen ?? 0) > 0)
-            && dist2(monster.mx, monster.my, game.u?.ux ?? monster.mx, game.u?.uy ?? monster.my) <= threatDistance
-            && (!actorWasSpotted || !actorWasCouldSee
-                || actorOldDistance > threatDistance)
-            && canSpotMonster(monster)
-            && couldsee(monster.mx, monster.my)) {
-            await stopHeroOccupation(game);
-        }
+        if (!attackReturnedDeath && (monster.mhp ?? 1) > 0)
+            await interruptOccupationForMonster(monster, game, sightingBefore);
         if (!movement?.moved)
             continue;
     }
@@ -3411,6 +3423,8 @@ async function moveMonsters() {
         // C mon.c:movemon() refreshes moving light sources after the pass.
         if (hasLightSources())
             game.vision_full_recalc = 1;
+        if (game.context.bypasses)
+            clearBypasses(game);
         purgeDeadMonsters(level);
         // A monster's action can schedule travel, including removal of
         // levitation gear above a trap. Finish it before world maintenance
@@ -3508,7 +3522,7 @@ export async function moveloop_core() {
     if (g.program_state.gameover)
         return;
     if (g.context.bypasses)
-        clearImmediateZapBypasses(g);
+        clearBypasses(g);
     const movementRationActionPending = !!g._heroTimePending;
     // C allmain.c calls encumber_msg() immediately after a time-consuming
     // command and before monster movement.  If its new message cannot share
@@ -3566,7 +3580,7 @@ export async function moveloop_core() {
         findArmorClass(g);
         g._armorClassDirty = false;
     }
-    if (g._delayedAction && g._delayedAction.kind !== 'steal') {
+    if (currentMulti(g) < 0 && pendingArmorAction(g)) {
         // A delayed action spends movement without reading another command.
         g.u.umoved = false;
         g.context.move = 1;

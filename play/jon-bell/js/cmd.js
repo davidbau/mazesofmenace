@@ -15,7 +15,7 @@ import { displayLookWindow } from './look-window.js';
 import { impact_drop, obj_delivery } from './dokick.js';
 import { impossible as real_impossible } from './pline.js';
 import { WT_IRON_BALL_INCR, BRK_BY_HERO, def_warnsyms, BACKTRACK } from './const.js';
-import { toss_up, harmless_missile } from './throw_vertical.js';
+import { toss_up, harmless_missile, has_ceiling } from './throw_vertical.js';
 import { use_magic_whistle } from './magic_whistle.js';
 import { you_unwere } from './were.js';
 import { spoteffects } from './landing-effects.js';
@@ -33,7 +33,7 @@ import { classifyTerrain } from './terrain-status.js';
 import { Is_earthlevel, RUN_TPORT, RUN_LEAP, RUN_CRAWL, LOW_PM, VANQ_ALPHA_SEP, VANQ_ALPHA_MIX, VANQ_MSTR_MNDX, VANQ_MCLS_LTOH, VANQ_MCLS_HTOL, VANQ_COUNT_H_L, VANQ_COUNT_L_H, In_quest, BASICENLIGHTENMENT, MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS, ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD, LL_DEBUG, I_SPECIAL } from './const.js';
 import { WC_PERM_INVENT, PARANOID_QUIT, G_GONE, G_EXTINCT, G_GENOD } from './const.js';
 import { GP_ALLOW_U } from './const.js';
-import { NUMMONS, PM_ROGUE } from './pm.generated.js';
+import { NUMMONS, PM_ROGUE, PM_DWARF as PM_DWARF_ES } from './pm.generated.js';
 import { IS_ROOM } from './const.js';
 import { GameMap, newobj, copy_you } from './game.js';
 import { MAXSPELL } from './spell.js';
@@ -53,7 +53,7 @@ import { use_last_flush_snapshot, cls as display_cls, map_background, reglyph_da
 // WRITE-ONLY route-attribution telemetry (inert unless NH_ROUTE_TELEMETRY=1 —
 import { routeTag } from './route_telemetry.js';
 import { noattacks_mndx, magic_negation, mhis_mon, expels_gu, hits_bars_mu } from './mhitu.js';
-import { do_death_sequence, done2, done, yn_function, nh_terminate } from './end.js';
+import { do_death_sequence, done2, done, deadhero, yn_function, nh_terminate } from './end.js';
 import { wall_angle_is_stone } from './display.js';
 import { _pline_flush_frame_record, urgent_pline, force_more_pages, flush_pending_messages, time_botl_moves_incremented } from './display.js';
 import { STONING, MENU_TRADITIONAL, MENU_PARTIAL, MENU_COMBINATION, BURN_OBJECT as _BURN_OBJECT_PU } from './const.js';
@@ -139,7 +139,7 @@ import { docast, dovspell, dowizcast, known_spell, force_learn_spell, num_spells
 import { doread, study_book, do_mapping, identify_pack, litroom, punish, magic_map_background, trap_detect, charge_ok, recharge } from './read.js';
 import { doengrave, freehand } from './engrave.js';
 import { CMDQ_INT, CMDQ_DIR, CMDQ_USER_INPUT } from './const.js';
-import { pickup as pickup_c, doloot, loot_mon, able_to_loot, uescaped_shaft, uteetering_at_seen_pit, unconscious, container_at, reset_justpicked, add_valid_menu_class, lift_object, pickup_object } from './pickup.js';
+import { pickup as pickup_c, doloot, loot_mon, able_to_loot, uescaped_shaft, uteetering_at_seen_pit, unconscious, container_at, reset_justpicked, add_valid_menu_class, lift_object, pickup_object, fatal_corpse_mistake } from './pickup.js';
 import { SchroedingersBox, observe_quantum_cat, mbag_explodes, do_boh_explosion } from './pickup_container.js';
 import { MIN_QUEST_ALIGN, MIN_QUEST_LEVEL, A_ORIGINAL, A_CURRENT, EXPL_MAGICAL, EXPL_FIERY, EXPL_FROSTY, BURNING_OIL, LOST_EXPLODING, ESCAPED, DIED, MAX_OIL_IN_FLASK, MAXULEV } from './const.js';
 import { otrapped_of, COST_DSTROY } from './const.js';   /* obj.h:139 #define opoisoned otrapped */
@@ -186,7 +186,7 @@ import { UNCHANGING, A_MAX, EXT_ENCUMBER, HVY_ENCUMBER, W_SADDLE, W_ARMOR, W_ACC
 import { A_INT, A_CHA, STR18, FIXED_ABIL, FULL_MOON, NEW_MOON } from './const.js';
 /* insight.c attributes_enlightenment reads one u.uprops entry per arm; the
  * property indices are const.js's, and u.uprops is NUMERICALLY keyed here. */
-import { PROTECTION, INVULNERABLE, ANTIMAGIC, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, POISON_RES, ACID_RES, DRAIN_RES, SICK_RES, STONE_RES, SEE_INVIS, TELEPAT, WARNING, WARN_UNDEAD, SEARCHING, CLAIRVOYANT, INFRAVISION, DETECT_MONSTERS, INVIS, DISPLACED, STEALTH, AGGRAVATE_MONSTER, CONFLICT, TELEPORT, TELEPORT_CONTROL, POLYMORPH_CONTROL, SWIMMING, MAGICAL_BREATHING, PASSES_WALLS } from './const.js';
+import { ADORNED, PROTECTION, INVULNERABLE, ANTIMAGIC, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, POISON_RES, ACID_RES, DRAIN_RES, SICK_RES, STONE_RES, SEE_INVIS, TELEPAT, WARNING, WARN_UNDEAD, SEARCHING, CLAIRVOYANT, INFRAVISION, DETECT_MONSTERS, INVIS, DISPLACED, STEALTH, AGGRAVATE_MONSTER, CONFLICT, TELEPORT, TELEPORT_CONTROL, POLYMORPH_CONTROL, POLYMORPH, SWIMMING, MAGICAL_BREATHING, PASSES_WALLS } from './const.js';
 const RIN_SUSTAIN_ABILITY = 182, GAUNTLETS_OF_POWER = 161, DUNCE_CAP = 94;
 import { SELL_DELIBERATE, SELL_NORMAL, WT_SPLASH_THRESHOLD, LL_CONDUCT,
          ARTICLE_A, ARTICLE_THE, ARTICLE_YOUR, ARTICLE_NONE, SUPPRESS_SADDLE, SUPPRESS_HALLUCINATION, AUGMENT_IT,
@@ -211,7 +211,7 @@ import { lookaround, end_running, avoid_moving_on_trap, avoid_moving_on_liquid, 
 import { floorfood, feel_cockatrice, corpse_floor_xname, doeat, getobj, morehungry, is_fainted, reset_faint, init_uhunger, start_tin, opentin, use_tin_opener, set_tin_variety, food_disappears } from './eat.js';
 import { Align2amask } from "./const.js";
 import { eaten_stat } from "./food_props.js";
-import { curse as curse_obj, unbless, copy_oextra, free_omid, unknwn_contnr_contents, is_treefruit, get_mtraits } from './mkobj.js';
+import { curse as curse_obj, uncurse as uncurse_obj, unbless, copy_oextra, free_omid, unknwn_contnr_contents, is_treefruit, get_mtraits } from './mkobj.js';
 import { oc_nutrition } from './food_props.js';
 import { bones_include_name } from './bones.js';
 import { engr_reset_text_pointers, shtype_name, bcsign, nxtobj, ing_suffix, In_hell, level_difficulty, place_object, remove_object, mklev, mungspaces, u_on_upstairs, u_on_dnstairs, u_on_sstairs, u_on_newpos, stairway_find_from, u_on_rndspot, place_lregion, wake_msg, sobj_at, set_ustuck, kill_genocided_monsters, engr_at, wipe_engr_at, del_engr_at, in_rooms, upstart, digit, Is_special, sp_levchn_lookup, shop_string, dealloc_obj, hideunder, can_hide_under_obj, maybe_unhide_at, clear_splitobjs, engravings_list, inside_shop, erosion_matters, set_bknown, wake_nearto, setmangry, letter, minliquid, mpickobj, set_corpsenm, egg_type_from_parent, revive_corpse, add_to_migration, rescham, iter_mons as iter_mons_real } from './mklev.js';
@@ -12225,24 +12225,6 @@ export async function level_tele() {
             // C teleport.c:1248 — (newlev = lev_by_name(buf)) == 0 → newlev = atoi(buf)
             // lev_by_name returns 0 for a numeric string.
             newlev = lev_by_name(buf) || parseInt(buf, 10) || 0;
-            // C dungeon.c:2116-2150: lev_by_name's special-level name arm.
-            let nam = buf.replace(/^the /i, '');
-            const suffix = nam.toLowerCase().indexOf(' level');
-            if (suffix >= 0 && suffix === nam.length - 6) nam = nam.slice(0, suffix);
-            if (/^(gehennom|hell)$/i.test(nam))
-                nam = u.uz.dnum === g.tower_dnum ? " to Vlad's tower" : 'valley';
-            else if (/^delphi$/i.test(nam))
-                nam = 'oracle';
-            const slev = find_level(nam);
-            newlev = 0;
-            if (slev) {
-                const dest = slev.dlevel;
-                const sameBranch = dest.dnum === u.uz.dnum
-                    || (u.uz.dnum === g.valley_level?.dnum && dest.dnum === g.medusa_level?.dnum)
-                    || (u.uz.dnum === g.medusa_level?.dnum && dest.dnum === g.valley_level?.dnum);
-                if (sameBranch && (wizard() || (g.level_info?.[ledger_no_cmd(dest)]?.flags & VISITED)))
-                    newlev = depth(dest);
-            }
             // C teleport.c:1248-1249: use atoi only when name lookup returns 0.
             if (!newlev) newlev = parseInt(buf, 10) || 0;
         } while (!newlev && !(buf.length > 0 && (buf[0] === '-' ? (buf.length > 1 && buf[1] >= '0' && buf[1] <= '9') : (buf[0] >= '0' && buf[0] <= '9'))) && trycnt < 10);
@@ -14837,8 +14819,12 @@ export async function doname_body(obj, hand, with_price) {
      * objnam.c:1283-1299 has no COIN exemption, so quan==1 gets the default "a ".
      * The comment that stood here asserted "no article" and was wrong; C prints
      * "$ - a gold piece.", not "$ - 1 gold piece." */
+    /* objnam.c:1622-1646 has no COIN exemption either: gold readied with Q is
+     * W_QUIVER and takes Qtyp 2, " (in quiver pouch)". */
     if (oclass === OCLASS_COIN)
-        return _doname_weight(obj, _coin_doname(quan), with_price);
+        return _doname_weight(obj, _coin_doname(quan)
+            + (((obj.owornmask | 0) & W_QUIVER_C) ? ' (in quiver pouch)' : ''),
+            with_price);
     /* C ref: objnam.c:1254-1262 doname_base — doname has its OWN override_ID
      * block, separate from xname_flags':
      *     if (iflags.override_ID) {
@@ -18246,7 +18232,8 @@ export async function instapetrify(str) {
     if (poly_when_stoned(_hero_youmonst().data) && await polymon(PM_STONE_GOLEM))
         return;
     await urgent_pline('You turn to stone...');
-    await flush_pending_messages();
+    /* The fresh line stays live so lifesaving's "But wait..." joins it. */
+    deadhero(STONING, { noDeathLine: true, remainderIsFresh: true });
     game.svk ||= {};
     game.svk.killer ||= {};
     game.svk.killer.format = KILLED_BY;
@@ -18648,7 +18635,7 @@ async function hurtle_step(arg, x, y, via_jumping) {
 
 
     const ox = u.ux | 0, oy = u.uy | 0;                  /* dothrow.c:916-923 */
-    u.ux = x; u.uy = y;                                  /* u_on_newpos */
+    u_on_newpos_cmd(x, y);                               /* u_on_newpos: steed follows hero (dungeon.c:1576) */
     newsym(ox, oy);
     vision_recalc(1);
     await flush_screen(1);
@@ -20868,6 +20855,19 @@ async function flip_coin(obj) {
 }
 
 const _APPLY_EUCALYPTUS_LEAF_OTYP = 276;
+/* C ref: artifact.c:2275-2293 arti_speak() — a speaking artifact (SPFX_SPEAK) whispers
+ * a rumor.  doapply's tail (apply.c:4421-4423) calls it for any applied artifact. */
+async function arti_speak(obj) {
+    const art = (obj && (obj.oartifact | 0)) || 0;
+    if (!art || !(arti_spfx(art) & 0x00000008 /* SPFX_SPEAK */))
+        return ECMD_OK;
+    let line = getrumor(bcsign(obj), true);
+    if (!line) line = 'NetHack rumors file closed for renovation.';
+    await pline(`${_objnam_Tobjnam(obj, 'whisper')}:`);
+    await verbalize('%s', line);
+    return ECMD_TIME;
+}
+
 export async function doapply() {
     const g = game;
     const u = g.u || {};
@@ -21091,7 +21091,12 @@ export async function doapply() {
      * use_pick_axe builds the dig-direction list and getdir's the direction; the
      * dig occupation (dig.c dig()) then accumulates effort across turns and makes
      * the pit (digactualhole).  Route by OBJECT TYPE (general; all roles). */
-    if (selObj && is_pick(selObj)) {
+    /* apply.c:4409-4419 default case: is_axe(obj) also routes to use_pick_axe
+     * (dig.c:1090-1151, verb "chop").  is_axe (obj.h:218) = WEAPON/TOOL class with
+     * oc_skill == P_AXE. */
+    if (selObj && (is_pick(selObj)
+        || (((selObj.oclass | 0) === OCLASS_WEAPON || (selObj.oclass | 0) === OCLASS_TOOL)
+            && _oc_skill(selObj) === _P_AXE))) {
         /* C dig.c:1100-1109 use_pick_axe — when the pick-axe is NOT the current
          * weapon, wield it first: wield_tool() → (pick-axe is uswapwep) →
          * doswapweapon() (wield.c:457) makes it uwep, prints the new uwep prinv
@@ -21414,7 +21419,7 @@ export async function doapply() {
     if (isLockPick) {
         /* Selected the lock pick.  C ref: apply.c:4287 LOCK_PICK → pick_lock(). */
         const pick = selObj || { otyp: LOCK_PICK_OTYP, oclass: 6 /* TOOL_CLASS */ };
-        const res = await pick_lock(pick);
+        let res = await pick_lock(pick);
         /* C has one live topline for pick_lock's result.  Move it to the
          * deferred result accumulator so the command/world merge cannot append
          * the same message twice (including an ECMD_OK no-door result). */
@@ -21426,6 +21431,9 @@ export async function doapply() {
              * after a cancelled direction without spending a turn. */
             game._pending_message = 'Never mind.';
         }
+        /* C ref: apply.c:4421-4423 — doapply's tail: res |= arti_speak(obj). */
+        if (selObj && selObj.oartifact)
+            res |= await arti_speak(selObj);
         /* C ref: apply.c:4290 — res = (pick_lock(...) != 0) ? ECMD_TIME : ECMD_OK. */
         if (res !== 0) {
             g.context.move = 1;
@@ -21675,6 +21683,13 @@ export async function doapply() {
     }
     if (selObj && (selObj.otyp | 0) === 261 /* UNICORN_HORN */) {
         await use_unicorn_horn(selObj);
+        /* tty never clears the answered getobj prompt (topl.c:257-266 clears
+         * only at the next key read): a horn application that prints nothing
+         * (cursed horn re-confusing an already confused hero, cures that
+         * set no message) leaves "What do you want to use or apply?" on the
+         * topline.  Same shape as the steed.c forcemount arm in dosteed. */
+        if (!g._pending_message && !g._resultMessage)
+            g._resultMessage = g._ynStaleTopline = qbuf;
         g.context.move = 1; /* C: res is still ECMD_TIME */
         return g.context.move;
     }
@@ -21786,9 +21801,11 @@ async function _doapply_break_wand(obj) {
     }
     /* C apply.c:3949-3951 — freeinv(obj); setnotworn(obj); gc.current_wand =
      * obj (destroy_items bookkeeping this port's delobj path does not need).
-     * A wand is never worn, so setnotworn is a no-op here; freeinv's removal
-     * from gi.invent is what the shared delobj helper below performs as part
-     * of its own obj_extract_self. */
+     * A wielded wand carries W_WEP, so setnotworn must run before the delobj
+     * path or obfree's "deleting worn obj" impossible() fires. freeinv's
+     * removal from gi.invent is what the shared delobj helper below performs
+     * as part of its own obj_extract_self. */
+    setnotworn(obj);
     /* C apply.c:3876-3884 discard_broken_wand(): delobj(gc.current_wand) +
      * nomul(0). Reuses the existing real delobj_core port (_delobj_useupf,
      * cmd.js:6378-ish) — same obj_resists(obj,0,0) guard and
@@ -25107,6 +25124,13 @@ async function _attributes_enlightenment() {
         out.push(_enlght_line('You ', _enl_tense('will confuse', 'would have confused'), buf, ''));
     }
     /* C:1641-1678 — appearance and behavior. */
+    /* C insight.c:1645-1657 — Adornment (extrinsic only, youprop.h:193). */
+    if ((prop(ADORNED)?.extrinsic | 0)) {
+        let adorn = 0;
+        if (u.uleft && u.uleft.otyp === 173 /* RIN_ADORNMENT */) adorn += u.uleft.spe | 0;
+        if (u.uright && u.uright.otyp === 173) adorn += u.uright.spe | 0;
+        out.push(_you_are(`${adorn > 0 ? 'more ' : adorn < 0 ? 'less ' : ''}charismatic${(await _from_what(ADORNED))}`, ''));
+    }
     /* C insight.c:1659-1666 — Invisible (Invis && !See_invisible) vs Invis alone,
      * then the "visible" special case when BInvis blocks a real source. */
     {
@@ -25143,6 +25167,20 @@ async function _attributes_enlightenment() {
                 _enl_tense('would fly', 'would have flown'), reason, ''));
         }
         flying.blocked = save_BFly;
+    }
+    /* C insight.c:1737-1753 — ceiling clinging (is_clinger polyform). */
+    if (((game.youmonst?.data?.mflags1 | 0) >>> 0) & 0x00000010 /* M1_CLING */) {
+        const has_lid = has_ceiling(game.u.uz);
+        if (has_lid && !game.u.uinwater) {
+            out.push(_you_can('cling to the ceiling', ''));
+        } else {
+            const reason = ` to the ceiling if ${!has_lid ? 'there was one' : ''}`
+                + `${(!has_lid && game.u.uinwater) ? ' and ' : ''}`
+                + `${game.u.uinwater ? (Underwater() ? "you weren't underwater"
+                    : "you weren't in the water") : ''}`;
+            out.push(_enlght_line('You ',
+                _enl_tense('could cling', 'could have clung'), reason, ''));
+        }
     }
     /* C insight.c:1755-1756, walking_on_water():224-228 — report potential
      * water walking here unless it is actively supporting the hero. */
@@ -25221,6 +25259,9 @@ async function _attributes_enlightenment() {
      * the source line for an ordinary hero wearing an amulet of unchanging. */
     if (_Unchanging() && !Upolyd(u))
         out.push(_you_can(`not change from your current form${(await _from_what(UNCHANGING))}`, ''));
+    /* C insight.c:1854-1855 — the else arm of `if (Unchanging)`. */
+    if (!_Unchanging() && on(POLYMORPH))
+        out.push(_you_are(`polymorphing periodically${(await _from_what(POLYMORPH))}`, ''));
     /* C insight.c:1866-1867 — polymorph control is reported independently of
      * whether Unchanging currently prevents a form change. */
     if (on(POLYMORPH_CONTROL))
@@ -25631,8 +25672,193 @@ async function _offer_corpse(otmp, highaltar, altaralign) {
             }
         }
     } else {
-        g_uncomputable_pray('offer_corpse: coaligned bestow_artifact/luck');
+        if (await _bestow_artifact(value))
+            return;
+
+        const orig_luck = u.uluck | 0;
+        let luck_increase = Math.trunc((value * LUCKMAX_PRAY) / (MAXVALUE * 2));
+        /* sacrificing can't increase non-bonus Luck to above the value of the
+           sacrifice (pray.c:2097-2105) */
+        if (orig_luck > value)
+            luck_increase = 0;
+        else if (orig_luck + luck_increase > value)
+            luck_increase = value - orig_luck;
+
+        _change_luck(luck_increase);
+        if ((u.uluck | 0) < 0)
+            u.uluck = 0;
+        if ((u.uluck | 0) !== orig_luck) {
+            if (_hero_Blind())
+                await You('think %s brushed your %s.', 'something', body_part(FOOT));
+            else
+                await You(hallu
+                    ? 'see crabgrass at your %s.  A funny thing in a dungeon.'
+                    : 'glimpse a four-leaf clover at your %s.',
+                    makeplural_objnam(body_part(FOOT)));
+        }
     }
+}
+
+import { ARTI_NOGEN, ARTI_GEN_SPE, _artifact_origin, nartifact_exist } from './objnam.js';
+import { ONAME_RANDOM as ONAME_RANDOM_CMD } from './const.js';
+/* artilist.h columns mk_artifact()'s by_align path reads (alignment, role,
+ * race, gift_value), keyed by the 1-based artifact ordinal like ARTILIST.
+ * Extracted mechanically from nethack-c-v5/upstream/include/artilist.h; role
+ * and race are the pm.generated.js PM_ ordinals (PM_ARCHEOLOGIST 331 ..
+ * PM_WIZARD 343, PM_ORC 72, PM_ELF 264), NON_PM is -1. */
+const _ARTI_GIFT_INFO = [
+    null,
+    /*  1 Excalibur    */ [A_LAWFUL, 335, -1, 10],
+    /*  2 Stormbringer */ [A_CHAOTIC, -1, -1, 9],
+    /*  3 Mjollnir     */ [A_NEUTRAL, 342, -1, 8],
+    /*  4 Cleaver      */ [A_NEUTRAL, 332, -1, 8],
+    /*  5 Grimtooth    */ [A_CHAOTIC, -1, 72, 5],
+    /*  6 Orcrist      */ [A_CHAOTIC, -1, 264, 4],
+    /*  7 Sting        */ [A_CHAOTIC, -1, 264, 1],
+    /*  8 Magicbane    */ [A_NEUTRAL, 343, -1, 7],
+    /*  9 Frost Brand  */ [A_NONE, -1, -1, 9],
+    /* 10 Fire Brand   */ [A_NONE, -1, -1, 5],
+    /* 11 Dragonbane   */ [A_NONE, -1, -1, 5],
+    /* 12 Demonbane    */ [A_LAWFUL, 337, -1, 3],
+    /* 13 Werebane     */ [A_NONE, -1, -1, 4],
+    /* 14 Grayswandir  */ [A_LAWFUL, -1, -1, 10],
+    /* 15 Giantslayer  */ [A_NEUTRAL, -1, -1, 4],
+    /* 16 Ogresmasher  */ [A_NONE, -1, -1, 1],
+    /* 17 Trollsbane   */ [A_NONE, -1, -1, 1],
+    /* 18 Vorpal Blade */ [A_NEUTRAL, -1, -1, 5],
+    /* 19 Snickersnee  */ [A_LAWFUL, 340, -1, 8],
+    /* 20 Sunsword     */ [A_LAWFUL, -1, -1, 6],
+    /* 21 Orb of Detection    */ [A_LAWFUL, 331, -1, 12],
+    /* 22 Heart of Ahriman    */ [A_NEUTRAL, 332, -1, 12],
+    /* 23 Sceptre of Might    */ [A_LAWFUL, 333, -1, 12],
+    /* 24 Staff of Aesculapius*/ [A_NEUTRAL, 334, -1, 12],
+    /* 25 Magic Mirror        */ [A_LAWFUL, 335, -1, 12],
+    /* 26 Eyes of Overworld   */ [A_NEUTRAL, 336, -1, 12],
+    /* 27 Mitre of Holiness   */ [A_LAWFUL, 337, -1, 12],
+    /* 28 Longbow of Diana    */ [A_CHAOTIC, 338, -1, 12],
+    /* 29 Master Key          */ [A_CHAOTIC, 339, -1, 12],
+    /* 30 Tsurugi of Muramasa */ [A_LAWFUL, 340, -1, 12],
+    /* 31 Platinum YE Card    */ [A_NEUTRAL, 341, -1, 12],
+    /* 32 Orb of Fate         */ [A_NEUTRAL, 342, -1, 12],
+    /* 33 Eye of Aethiopica   */ [A_NEUTRAL, 343, -1, 12],
+];
+
+/* C ref: artifact.c:172-311 mk_artifact((struct obj *) 0, alignment,
+ * max_giftvalue, TRUE) — the by_align (divine gift) path only; js/mklev.js
+ * carries the !by_align path.  Returns the new artifact or null. */
+async function _mk_artifact_by_align(alignment, max_giftvalue) {
+    const u = game.u;
+    const eligible = [];
+    let n = 0, altn = 0;
+    const hatemask = (game.urace?.hatemask ?? 0) | 0;
+    for (let m = 1; m <= ARTILIST.length; m++) {
+        const [a_align, a_role, a_race, gift_value] = _ARTI_GIFT_INFO[m];
+        if (_arti_exists_bit_cmd(m))
+            continue;
+        if (ARTI_NOGEN.has(m))
+            continue;
+        if (gift_value > max_giftvalue && !Role_if(a_role))
+            continue;
+        /* we're looking for an alignment-specific item suitable for the
+           hero's role+race; race_hostile = mflags2 & urace.hatemask */
+        if ((a_align === alignment || a_align === A_NONE)
+            && (a_race === -1
+                || ((monsPack.mons[a_race][7] >>> 0) & hatemask) === 0)) {
+            /* when a role-specific first choice is available, use it */
+            if (Role_if(a_role)) {
+                eligible[0] = m;
+                n = 1;
+                break;
+            }
+            /* check if this is skill-compatible */
+            let skill_compatibility = P_SKILLED;
+            const a_otyp = ARTILIST[m - 1].otyp;
+            if ((MKOBJ_OC_CLASS[a_otyp] | 0) === OCLASS_WEAPON) {
+                const skill = MKOBJ_OC_SKILL[a_otyp] | 0;
+                const t = skill < 0 ? -skill : skill;
+                skill_compatibility = (u.weapon_skills?.[t]?.max_skill ?? P_ISRESTRICTED) | 0;
+            }
+            if ((a_align !== A_NONE || (u.ugifts | 0) > 0 || !rn2(3))
+                && (!rn2(4) || skill_compatibility >= P_SKILLED
+                    || (skill_compatibility >= P_BASIC && rn2(2)))) {
+                eligible[n++] = m;
+            } else {
+                if (!n)
+                    eligible[altn++] = m;
+            }
+        }
+    }
+    /* resort to fallback list if main list was empty */
+    if (!n)
+        n = altn;
+    if (!n)
+        return null;
+    const m = eligible[rn2(n)];
+    const a = ARTILIST[m - 1];
+    let otmp = await mksobj(a.otyp, true, false);
+    /* prevent erosion from generating */
+    otmp.oeroded = otmp.oeroded2 = 0;
+    otmp = await oname(otmp, a.name, 0 /* ONAME_NO_FLAGS */);
+    otmp.oartifact = m;
+    _artifact_origin(otmp, ONAME_RANDOM_CMD);
+    /* adjust_spe: TRUE at the bestow_artifact call site */
+    const new_spe = (otmp.spe | 0) + (ARTI_GEN_SPE[m] | 0);
+    if (new_spe >= -10 && new_spe < 10)
+        otmp.spe = new_spe;
+    if (m === 5 /* permapoisoned: ART_GRIMTOOTH */)
+        otmp.opoisoned = 1;
+    return otmp;
+}
+function _arti_exists_bit_cmd(m) {
+    const e = (game._artiexist || {})[m];
+    return !!e && (e === true || !!e.exists);
+}
+
+/* C ref: pray.c:1780-1835 bestow_artifact(max_giftvalue). */
+async function _bestow_artifact(max_giftvalue) {
+    const u = game.u;
+    const nartifacts = nartifact_exist();
+    let do_bestow = (u.ulevel | 0) > 2 && (u.uluck | 0) >= 0;
+    if (do_bestow) {
+        /* the chance goes down as the number of artifacts goes up */
+        if (wizard())
+            do_bestow = (await yn_function('Gift an artifact?', 'yn', 'n')) === 'y';
+        else
+            do_bestow = !rn2(6 + (2 * (u.ugifts | 0) * nartifacts));
+    }
+    if (do_bestow) {
+        const otmp = await _mk_artifact_by_align(_a_align(u.ux, u.uy), max_giftvalue);
+        if (otmp) {
+            _artifact_origin(otmp, ONAME_GIFT | ONAME_KNOW_ARTI);
+            if ((otmp.spe | 0) < 0)
+                otmp.spe = 0;
+            if (otmp.cursed)
+                uncurse_obj(otmp);
+            otmp.oerodeproof = true;
+            const hallu = _uprop_active('HALLUC');
+            const blind = _hero_Blind();
+            let buf = hallu ? 'a doodad' : blind ? 'an object' : ansimpleoname(otmp);
+            if (!blind)
+                buf += ` named ${bare_artifactname(otmp)}`;
+            await _at_your_feet(upstart(buf));
+            await dropy(otmp);
+            await godvoice(u.ualign.type, 'Use my gift wisely!');
+            u.ugifts = (u.ugifts | 0) + 1;
+            u.ublesscnt = rnz(300 + (50 * nartifacts));
+            exercise(A_WIS, true);
+            livelog_printf(LL_DIVINEGIFT | LL_ARTIFACT, 'was bestowed with %s by %s',
+                           artiname(otmp.oartifact), _align_gname(u.ualign.type));
+            /* make sure we can use this weapon */
+            unrestrict_weapon_skill(weapon_type(otmp));
+            if (!hallu && !blind) {
+                observe_object(otmp);
+                makeknown(otmp.otyp);
+                discover_artifact(otmp.oartifact);
+            }
+            return true;
+        }
+    }
+    return false;
 }
 
 /* C ref: pray.c:105-107 — on_altar()/a_align(x,y) for the hero's cell. */
@@ -26053,6 +26279,10 @@ export async function show_overview(why, reason) {
         const sokoSolved = !!game._level_soko_solved?.[levelKey];
         const bigroomLevel = sp_levchn_lookup(lev)?.proto === 'bigrm';
         const rogueLevel = !!game._level_roguelevel?.[levelKey];
+        /* C dungeon.c:3205-3208 recalc_mapseen / :3274 mapseen_temple — the
+         * Valley is annotated once its (single) altar has been mapped.  The
+         * port keeps no mapseen.flags, so derive it from the remembered altar. */
+        const valleyLevel = sp_levchn_lookup(lev)?.proto === 'valley' && feat.naltar > 0;
         const _inTutorial = (dnum) => (g.tutorial_dnum != null
                                        && (dnum | 0) === (g.tutorial_dnum | 0));
         if (why === 0 && !on_this) {
@@ -26069,6 +26299,7 @@ export async function show_overview(why, reason) {
                 _keep = !!(_of_interest(feat)
                            || bigroomLevel
                            || rogueLevel
+                           || valleyLevel
                            || questSummons
                            || (sokoLevel && (In_sokoban(uz) || !sokoSolved))
                            || custom
@@ -26174,6 +26405,9 @@ export async function show_overview(why, reason) {
             else
                 lines.push(`${PREFIX}Home${mapseen_notreachable(lev) ? ' (no way back...)' : ''}.`);
         }
+        /* C dungeon.c:3664-3665 */
+        else if (valleyLevel)
+            lines.push(`${PREFIX}Valley of the Dead.`);
         /* C dungeon.c:3122-3129 / :3671-3679 — recalc_mapseen() marks the
          * mapseen entry for the current quest entrance while the quest is
          * active, and print_mapseen() emits this annotation immediately
@@ -29634,7 +29868,9 @@ const _CB_TER_DETECT = 0x20;
 
 async function _cb_object_detect_class(oclass) {
     const g = game, u = g.u;
-    const stuff = _uprop_active('HALLUC') ? 'something' : _CB_OC_NAMES[oclass];
+    /* detect.c:632 Hallucination || (Confusion && class == SCROLL_CLASS) */
+    const stuff = (_uprop_active('HALLUC') || (_uprop_active('CONFUSION') && oclass === 9))
+        ? 'something' : _CB_OC_NAMES[oclass];
     let ct = 0, ctu = 0;
 
     for (let obj = g.fobj; obj; obj = obj.nobj)
@@ -29734,6 +29970,10 @@ async function _cb_object_detect_class(oclass) {
     await browse_map(ter_typ, 'object');
     if (g._pending_message)
         await force_more(g._pending_message);
+    /* docrt() -> cls() (display.c:2064-2072) blanks the message window too, so
+     * the autodescribe line getpos left standing (_topl_sticky) does not
+     * survive map_redisplay() (detect.c:94-102). */
+    g._topl_sticky = null;
     await docrt();
     return 0;
 }
@@ -30122,6 +30362,14 @@ async function arti_invoke(obj) {
             await pline('Never mind.');
             obj.age = game.moves | 0;
             return ECMD_CANCEL;
+        }
+        if (inv_prop === ARTI_UNTRAP) {
+            /* C artifact.c:1838-1845 invoke_untrap */
+            if (!await untrap_at(0, 0, null, true)) {
+                obj.age = 0; /* don't charge for changing their mind */
+                return ECMD_CANCEL;
+            }
+            return ECMD_TIME;
         }
         if (inv_prop === ARTI_BANISH) return await invoke_banish(); /* artifact.c:2167 */
         if (inv_prop === ARTI_SNOWSTORM || inv_prop === ARTI_FIRESTORM)
@@ -30988,10 +31236,9 @@ export async function enlightenment_menu(mode) {
     for (const ln of content)
         if (ln.length + 2 > maxcol)
             maxcol = ln.length + 2;
-    let offx = Math.max(10, 80 - maxcol - 1);
-    /* C wintty.c:1927 — offx == 10 (or a window taller than the screen) means
-     * full-screen, which is exactly what doattributes() renders. */
-    if (offx === 10 || content.length + 1 >= 24) {
+    let offx = Math.min(40, 80 - maxcol - 1);
+    if (offx < 0) offx = 0;
+    if (offx === 0 || content.length + 1 >= 24) {
         await _enlightenment_fullscreen_pager(content);
         return;
     }
@@ -31034,8 +31281,7 @@ async function doattributes() {
     const mode = BASICENLIGHTENMENT
         | ((wizard() || discover()) ? MAGICENLIGHTENMENT : 0);
     /* Build the menu content (raw lines, no leading menu prefix). */
-    const content = await build_enlightenment_lines(ENL_GAMEINPROGRESS, mode);
-    await _enlightenment_fullscreen_pager(content);
+    await enlightenment_menu(mode);
     /* ECMD_OK — no turn consumed; map re-renders on the next moveloop flush. */
     g._pending_message = '';
     /* C: this handler returns ECMD_OK on every path; rhack() maps it. */
@@ -33576,6 +33822,10 @@ async function _pickup_lift_list(pickOrder, _oldcap) {
             if (_blast) await force_more(_blast);
             if (!_touched) continue;
         }
+        /* C pickup.c:1824-1829 pickup_object() — touching a cockatrice corpse
+         * bare-handed is fatal; the check precedes lift_object. */
+        if ((obj.otyp | 0) === 265 /* CORPSE */ && await fatal_corpse_mistake(obj, false))
+            break;
         const _liftCount = { v: (_menuCount > 0 && _menuCount < (obj.quan | 0))
             ? _menuCount : (obj.quan | 0) };
         const _liftResult = await lift_object(obj, null, _liftCount, false);
@@ -33641,18 +33891,15 @@ async function _pickup_lift_list(pickOrder, _oldcap) {
              * so a once-dropped/thrown pile merges like any other. */
             const _objWasThrown = (obj.how_lost | 0) === LOST_THROWN;
             obj.how_lost = 0;
-            /* C invent.c:998-1004 addinv_core1 — "special achievements".  This
-             * hand-rolled link-in never reached addinv_core1, so lifting the
-             * Sokoban/Mines prize recorded no ACH_*_PRIZE and #conduct omitted
-             * "You have completed Sokoban." */
-            if (is_mines_prize(obj)) {
-                record_achievement(ACH_MINE_PRIZE);
-                game.context.achieveo.mines_prize_oid = 0;
-                obj.nomerge = 0;
-            } else if (is_soko_prize(obj)) {
-                record_achievement(ACH_SOKO_PRIZE);
-                game.context.achieveo.soko_prize_oid = 0;
-                obj.nomerge = 0;
+            /* C invent.c:1082 addinv_core0 -> addinv_core1(obj): amulet/bell/book
+             * flags, quest-artifact touch, set_artifact_intrinsic(obj, 1, W_ART)
+             * for a carried artifact (the Mitre's fire resistance) and the
+             * special achievements.  This hand-rolled link-in used to inline only
+             * the achievements.  Coins take the dedicated merge arm below. */
+            if ((obj.oclass | 0) !== OCLASS_COIN) {
+                const _core1 = addinv_core1(obj);
+                if (_core1)
+                    await _core1;
             }
             let _addedInvNode = obj;
             let _mergeLiftedQuan = 1;
@@ -35372,6 +35619,9 @@ async function dispatch_command(command, outcome = {}, queued = false) {
          * polyself raises the "Become what kind of monster?" getlin, reading the
          * typed form name char-by-char; move stays 0 (set above). */
         await polyself(POLY_CONTROLLED);
+        /* wizcmds.c:568-571 returns ECMD_OK, so rhack's reset_cmd_vars(gm.multi < 0)
+         * (cmd.c:3814-3815) clears savelife()'s multi = -1. */
+        outcome.value = ECMD_OK;
     }
         return true;
     case "dojump": {
@@ -36520,33 +36770,56 @@ async function _getpos_menu(gloc) {
     }
     if (!entries.length)
         return null;
-    for (let i = 0; i < entries.length; i++)
-        entries[i].accel = String.fromCharCode(97 + i);
     const filtertxt = _GLOC_FILTERTXT[(g.iflags?.getloc_filter | 0)] ?? '';
     const prompt = `Pick ${an(_GLOC_DESCR[gloc][1])}${filtertxt}`
         + (g.iflags?.getloc_travelmode ? ' for travel destination' : '');
-    const rawLines = [prompt, '', ...entries.map((e) => `${e.accel} - ${e.description}`), '(end)'];
-    const windowLines = [
-        `\x1b[7m${prompt}\x1b[0m`,
-        '',
-        ...entries.map((e) => `${e.accel} - ${e.description}`),
-        '(end)',
-    ];
-    const offx = tty_window_offx(rawLines, 'end');
-    g._screen_output = build_window_screen(windowLines, offx, g.u?.uac ?? 0);
-    const disp = g.nhDisplay;
-    if (disp) {
-        disp.cursorCol = offx + 6;
-        disp.cursorRow = windowLines.length - 1;
+    /* C wintty.c:2711-2726 tty_end_menu — the prompt and the blank separator are
+     * the first two mlist rows; pages break every lmax = rows - 1 = 23 rows and
+     * the a-z/A-Z accelerators restart at 'a' on each page. */
+    const PAGE_ROWS = 23;
+    const rowsAll = [{ text: prompt, head: true }, { text: '', head: true },
+        ...entries.map((e) => ({ text: e.description, e }))];
+    const pages = [];
+    for (let i = 0; i < rowsAll.length; i += PAGE_ROWS)
+        pages.push(rowsAll.slice(i, i + PAGE_ROWS));
+    for (const pg of pages) {
+        let ch = 97;
+        for (const r of pg) {
+            if (!r.e) continue;
+            r.e.accel = String.fromCharCode(ch);
+            if (ch++ === 122) ch = 65;
+        }
     }
+    let curPage = 0;
     for (;;) {
+        const pg = pages[curPage];
+        const footer = pages.length > 1 ? `(${curPage + 1} of ${pages.length})` : '(end)';
+        const rawLines = [...pg.map((r) => (r.e ? `${r.e.accel} - ${r.text}` : r.text)), footer];
+        const windowLines = rawLines.map((ln, i) => (pg[i]?.head && i === 0 ? `\x1b[7m${ln}\x1b[0m` : ln));
+        /* C wintty.c:1927 — `cw->maxrow >= rows || !iflags.menu_overlay` drops the
+         * menu to offx 0 and clears the whole screen (map and status included). */
+        const fullScreen = pages.length > 1 || windowLines.length >= 24
+            || g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0;
+        const offx = fullScreen ? 1 : tty_window_offx(rawLines, 'end');
+        g._screen_output = fullScreen
+            ? windowLines.map((ln) => (ln === '' ? '' : ' ' + ln)).join('\n')
+            : build_window_screen(windowLines, offx, g.u?.uac ?? 0);
+        const disp = g.nhDisplay;
+        if (disp) {
+            /* dmore: a multi-page "(n of m)" has no trailing space (wintty.c:1538). */
+            disp.cursorCol = fullScreen ? 1 + footer.length + (pages.length > 1 ? 0 : 1) : offx + 6;
+            disp.cursorRow = windowLines.length - 1;
+        }
         const key = await nhgetch();
         const code = typeof key === 'number' ? key : (key?.charCodeAt(0) ?? 0);
-        if (code === 27 || code === 10 || code === 13 || code === 32)
+        if (code === 27 || code === 10 || code === 13) return null;
+        if (code === 32 || code === 62 /* '>' */) {
+            if (curPage < pages.length - 1) { curPage++; continue; }
             return null;
-        const hit = entries.find((e) => e.accel === String.fromCharCode(code));
-        if (hit)
-            return { x: hit.x, y: hit.y };
+        }
+        if (code === 60 /* '<' */) { if (curPage > 0) curPage--; continue; }
+        const hit = pg.find((r) => r.e && r.e.accel === String.fromCharCode(code));
+        if (hit) return { x: hit.e.x, y: hit.e.y };
     }
 }
 
@@ -37257,6 +37530,27 @@ async function _do_look_lookat(x, y) {
             };
         }
     }
+    /* C pager.c lookat() cmap arm: a ladder glyph (S_upladder/S_dnladder, or
+     * the branch pair) is described by its defsym.h explanation, exactly as
+     * the staircase arm above. */
+    if (cell && cell.typ === LADDER) {
+        const sway = stairway_at(x, y);
+        if (sway) {
+            const uzdnum = (u.uz && u.uz.dnum) | 0;
+            const branch = !!(sway.tolev && (sway.tolev.dnum | 0) !== uzdnum
+                && sway.u_traversed);
+            const dir = sway.up ? 'up' : 'down';
+            const specific = (branch ? 'branch ladder ' : 'ladder ') + dir;
+            return {
+                kind: 'ladder',
+                glyphChar: sway.up ? '<' : '>', /* defsym.h S_upladder/S_dnladder */
+                glyphDec: false,
+                classText: `a ladder ${dir} or a branch ladder ${dir}`,
+                firstmatch: specific,
+                dbaseEntry: specific,
+            };
+        }
+    }
     /* C pager.c:744-753 lookat() — altar glyphs report their alignment rather
      * than the generic defsym explanation.  A_NONE is -128, so the older
      * three-way _align_str() helper cannot be used for this arm. */
@@ -37799,7 +38093,6 @@ async function look_at_object(x, y) {
                 if ((obj.oclass | 0) === OCLASS_COIN)
                     obj.quan = 2; /* C forces pluralisation for a fake coin */
                 else if ((obj.otyp | 0) === 285 /* SLIME_MOLD */)
-                    obj.spe = game.svc.context.current_fruit | 0; /* pager.c:337-338 give it a type */
                     /* C pager.c:336-337 — "give it a type": a fake slime mold
                      * takes current_fruit, else xname() finds no fruit (#0). */
                     obj.spe = game.svc?.context?.current_fruit | 0;
@@ -39984,10 +40277,28 @@ async function trapmove(x, y, desttrap) {
 /* C dungeon.c:1568-1600 u_on_newpos() runs this observation before
  * hack.c:2972 vision_recalc(1).  That order matters at the edge of a dark
  * room: cansee() must still consult visibility from the square just left. */
-function _u_on_newpos_nearby() {
+async function _u_on_newpos_nearby() {
     const u = game.u || {};
     if (!(u.uswallow | 0) && !_uprop_active('BLINDED') && !_cmd_Hallucination())
         see_nearby_objects();
+    await _earth_sense();
+}
+
+/* C dungeon.c:1546-1566 earth_sense() — dwarves sense an object buried under
+ * their feet.  Called from u_on_newpos's tail (dungeon.c:1600). */
+async function _earth_sense() {
+    const u = game.u;
+    if (!Race_if(PM_DWARF_ES)) return;
+    if (u.usteed || _Flying() || _Levitation() || Upolyd(u)) return;
+    const typ = game.level.at(u.ux, u.uy).typ;
+    if (typ !== CORR && typ !== ROOM) return;
+    for (let otmp = game.level.buriedobjlist; otmp; otmp = otmp.nobj) {
+        if (otmp.ox === u.ux && otmp.oy === u.uy) {
+            /* pline is async */
+            return await pline('You sense something below your %s.',
+                         makeplural_objnam(body_part(FOOT)));
+        }
+    }
 }
 
 async function _domove_spot_tail(newx, newy) {
@@ -40821,7 +41132,7 @@ async function _domove_execute_pet_swap(mtmp, newx, newy) {
         _topl_snapshot_result(game._pending_message);
     }
     check_leash(oldx, oldy);
-    _u_on_newpos_nearby();
+    await _u_on_newpos_nearby();
     vision_recalc(1);
     await _domove_spot_tail(newx, newy);
 }
@@ -41043,7 +41354,7 @@ async function domove_core(dx, dy) {
             if (!(await minliquid(mtmp)))
                 await mintrap(mtmp, 0 /* NO_TRAP_FLAGS */);
             game.context.mon_moving = 0;
-            _u_on_newpos_nearby();
+            await _u_on_newpos_nearby();
             vision_recalc(1);
             await _domove_spot_tail(newx, newy);
             await runmode_delay_output();
@@ -41464,7 +41775,7 @@ async function domove_core(dx, dy) {
     check_leash(oldx, oldy);
     // C hack.c: vision_recalc paints the new hero position.
     if (oldx !== newx || oldy !== newy) {
-        _u_on_newpos_nearby();
+        await _u_on_newpos_nearby();
         newsym(oldx, oldy);
         vision_recalc(1);
     }
@@ -43847,10 +44158,15 @@ async function _ynq_cmd(query) {
     g._topl_win_stop = false;
     g._topl_win_stop_armed = false;
     let ch = '';
+    /* TOPLINE_SPECIAL_PROMPT: a yn prompt (SUPPRESS_HISTORY) hard-wraps at CO-1 rather
+     * than word-wrapping (topl.c topl_putsym) — see display.js _topl_prompt_echo. */
+    const savedPromptEcho = g._topl_prompt_echo;
+    const [pcx, pcy] = topl_park_cursor(null, prompt + ' ');
+    if (pcy > 0) g._topl_prompt_echo = true;
     for (;;) {
         g._pending_message = prompt;
         await flush_screen(1);
-        set_cursor(prompt.length + 1, 0);
+        set_cursor(pcy > 0 ? pcx : prompt.length + 1, pcy);
         const raw = await nhgetch();
         const c = (typeof raw === 'number') ? String.fromCharCode(raw) : '';
         if (c === '\x1b') { ch = 'q'; break; }          /* resp has 'q' -> ESC is 'q' */
@@ -43859,6 +44175,7 @@ async function _ynq_cmd(query) {
         if (lc === 'y' || lc === 'n' || lc === 'q') { ch = lc; break; }
         /* tty_nhbell(); q = 0; -- loop and re-read, prompt persists */
     }
+    g._topl_prompt_echo = savedPromptEcho;
     g._pending_message = '';
     g._topl_sticky = prompt;
     return ch;
@@ -44691,10 +45008,10 @@ async function dountrap() {
     return (await untrap_at()) ? ECMD_TIME : ECMD_OK;
 }
 
-export async function untrap_at(rx = 0, ry = 0, container = null) {
+export async function untrap_at(rx = 0, ry = 0, container = null, forceArg = false) {
     // C trap.c:5865-5868; artifact.c:2775-2802: a carried magic key forces success.
-    let force = false;
-    for (let o = game.invent; o; o = o.nobj) {
+    let force = !!forceArg; /* artifact.c:1840 invoke_untrap passes force=TRUE */
+    for (let o = game.invent; o && !force; o = o.nobj) {
         if (o.oartifact === 29 /* ART_MASTER_KEY_OF_THIEVERY */
             && (Role_if(PM_ROGUE) ? !o.cursed : o.blessed)) {
             force = true;
@@ -46357,8 +46674,8 @@ export function learn_unseen_invent() {
 export function addinv_core2(obj, msgSink) {
     const g = game;
     
-    /* if (confers_luck(obj)) - luckstone confers luck */
-    if (obj.otyp === 470) { /* LUCKSTONE */
+    /* invent.c:1027 if (confers_luck(obj)) — a luckstone OR a SPFX_LUCK artifact */
+    if (confers_luck(obj)) {
         /* new luckstone must be in inventory by this point
            for correct calculation */
         set_moreluck();
@@ -48822,7 +49139,8 @@ export async function pooleffects_lava_effects() {
             const frozenPaint = capture_painted_frame_with_status();
             u.uhp = -1;
             g.svk ||= {};
-            g.svk.killer ||= { id: 0, format: 0, name: '', next: null };
+            g.svk ||= {};
+            g.svk.killer ||= { id: 0, format: 0, name: "", next: null };
             g.svk.killer.format = KILLED_BY;
             g.svk.killer.name = 'molten lava';
             await urgent_pline(boil_away ? 'You boil away...' : 'You burn to a crisp...');
@@ -49096,7 +49414,8 @@ async function drown() {
     /* C trap.c:5185-5206 — first pass is survivable by life-saving or by
      * answering no to "Die?" in explore|wizard mode; then safe_teleds() gets
      * the hero out of the water, else the loop repeats. */
-    g.svk.killer ||= { id: 0, format: 0, name: '', next: null };
+    g.svk ||= {};
+    g.svk.killer ||= { id: 0, format: 0, name: "", next: null };
     for (let i = 0; i < 2; i++) {
         let pool_of_water = waterbody_name(u.ux, u.uy);
         g.svk.killer.format = KILLED_BY_AN;
@@ -50681,6 +51000,9 @@ async function doconsult(oracl) {
         }
         u_pay = umoney < major_cost ? umoney : major_cost;
     } else {
+        /* C rumors.c:719-721: 'q'/default returns with no clear_nhwindow, so
+         * the answered prompt stays on the topline (as for the major prompt). */
+        g._topl_sticky = `${qbuf} [ynq] (q)`;
         return ECMD_OK;
     }
     await _money2mon(oracl, u_pay);

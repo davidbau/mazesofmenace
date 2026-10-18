@@ -1,5 +1,6 @@
 // Effects of entering the hero's current square.
 // C ref: hack.c pooleffects() and trap.c drown().
+import { finishHeroHelplessness } from './allmain.js';
 import { formatFeltMessage } from './hero_speech.js';
 import { monsterHasMapPosition } from './monster_location.js';
 import { heroIsBlind, heroIsHallucinating } from './senses.js';
@@ -623,23 +624,10 @@ function heroMovedWithinPool(state, x, y) {
     return isPoolAt(previousX, previousY, state);
 }
 async function wakeHeroForCrawl(state, publish) {
-    const u = state.u;
-    if (u.uhs === FAINTED)
+    if (state.u.usleep)
+        await finishHeroHelplessness('Suddenly you wake up!', state, publish);
+    if (state.u.uhs === FAINTED)
         await resetHeroFaint({ state });
-    if (u.usleep) {
-        u.usleep = 0;
-        state._helplessTurns = 0;
-        state._helplessReason = null;
-        state._helplessDoneMessage = null;
-        await publish('Suddenly you wake up!');
-        return;
-    }
-    if (state._helplessReason === 'unconscious from rotten food'
-        || state._helplessReason === 'unconscious from drinking') {
-        state._helplessTurns = 0;
-        state._helplessReason = null;
-        state._helplessDoneMessage = null;
-    }
 }
 async function applyHeroFormWaterEffect(state, publish, random, rollDice) {
     const u = state.u;

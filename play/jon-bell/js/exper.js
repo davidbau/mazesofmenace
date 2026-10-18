@@ -184,7 +184,9 @@ export function newhp() {
     /* C attrib.c:1117-1130: Con bonus.
      * JS u.acurr.a is in display order [Str,Dex,Con,Int,Wis,Cha].
      * C constant A_CON=4 maps to display index 2 (DISPLAY_TO_C[2]=4). */
-    const con = u.acurr ? (u.acurr.a ? (u.acurr.a[2] | 0) : 0) : 0;
+    /* ACURR(A_CON), not the raw base: wielding Ogresmasher pins Con at 25
+     * (attrib.c:1225-1227). */
+    const con = acurr(u, 4);
     if (con <= 3)       conplus = -2;
     else if (con <= 6)  conplus = -1;
     else if (con <= 14) conplus = 0;

@@ -1933,6 +1933,19 @@ function isMenuDefaultKey(code) {
     return code === K_CR || code === K_LF || code === 32;
 }
 
+// C ref: win/tty/wintty.c:676 — overwrite the row above the askname prompt
+// with the retry message, keeping whatever lies right of it.
+const ASKNAME_RETRY_TEXT = 'Enter a name for your character...';
+function withAsknameRetryLine(screen, promptRow) {
+    const rows = String(screen).split('\n');
+    while (rows.length < promptRow) rows.push('');
+    const r = promptRow - 1;
+    const line = rows[r].replace(/\x1b\[(\d+)C/g, (_, n) => ' '.repeat(+n));
+    rows[r] = line.includes('\x1b') ? ASKNAME_RETRY_TEXT
+        : ASKNAME_RETRY_TEXT + line.slice(ASKNAME_RETRY_TEXT.length);
+    return rows.join('\n');
+}
+
 // C ref: win/tty/wintty.c:651 tty_askname() — the character filter.
 // UNIX/VMS builds map anything that is not a letter, '-', '@', or a
 // non-leading digit to '_'.
@@ -1990,17 +2003,25 @@ export async function playChargen(ctx) {
     // doAskname because the first prompt sits at row 12 over the copyright
     // banner while the rename re-prompt sits at row 10 over whatever the
     // dismissed confirm window left behind.
+    // C wintty.c:672-680: every try after the first paints "Enter a name
+    // for your character..." on the row above the prompt (tty_putstr on the
+    // base window overwrites, it does not clear) and gives up after 10.
     async function doAskname(frameFor) {
         let ct = '';
+        let tryct = 1;
         for (;;) {
             const f = frameFor(ct);
-            const key = await read(f.screen, f.cursor);
-            if (key === K_LF || key === K_CR) {
+            const key = await read(tryct > 1 ? withAsknameRetryLine(f.screen, f.cursor[1]) : f.screen,
+                                   f.cursor);
+            if (key === K_LF || key === K_CR || key === K_ESC) {
+                if (key === K_ESC) ct = '';
                 // C: `while (ct == 0)` re-prompts on an empty name.
-                if (ct.length === 0) continue;
+                if (ct.length === 0) {
+                    if (++tryct > 10) return null;   // bail("Giving up after 10 tries.")
+                    continue;
+                }
                 return ct;
             }
-            if (key === K_ESC) { ct = ''; continue; }
             if (key === K_BS || key === K_DEL) {
                 if (ct.length) ct = ct.slice(0, -1);
                 continue;
@@ -2016,6 +2037,7 @@ export async function playChargen(ctx) {
             screen: buildCopyrightAskname(typed),
             cursor: cursorForAskname(typed),
         }));
+        if (asknameText === null) return quit();
         plname = plnamesuffix(asknameText, st);
         renameallowed = true;   // wintty.c:747 iflags.renameallowed = TRUE
     }
@@ -2418,6 +2440,7 @@ export async function playChargen(ctx) {
                     renameResidual = await doAskname(typed => overlayBanner
                         ? buildAsknameOverBanner(typed, asknameResidual, bannerClip)
                         : tty_base_window_prompt(menuBackground, 10, ASKNAME_TEXT + (typed ? ' ' + typed : ''), cursorForAsknameAtRow(10, typed)));
+                    if (renameResidual === null) return quit();
                     renameRow10 = ASKNAME_TEXT + (renameResidual ? ' ' + renameResidual : '');
                     plname = plnamesuffix(renameResidual, { ...st }); // role.c:2695-2699 restores facets
                 } while (!plname);

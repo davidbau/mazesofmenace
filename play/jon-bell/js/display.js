@@ -2738,7 +2738,7 @@ export async function docrt(pageTopl = false) {
      * RogueEpyx hero's \x01 square (which paints no glyph) is blank again until
      * something is drawn there -- display.js cls() resets _epyxPhys likewise. */
     if (pageTopl && game._pending_message) {
-        topl_force_break_now();
+        topl_force_break_now(true); /* cls() follows: wipes the line if more() was a WIN_STOP no-op */
         game.nhDisplay?.clearScreen?.();
         clear_glyph_buffer();
     }
@@ -3737,7 +3737,14 @@ export function hitpointbar_status1(title, stats, align, ulevel, Upolyd) {
     let p1 = bar.slice(0, pos);
     const trail = p1.length - p1.trimEnd().length;
     if (trail > 4) p1 = `${p1.slice(0, p1.length - trail)}\x1b[${trail}C`;
-    return `[${p1 ? '\x1b[7m' + p1 : ''}\x1b[0m${bar.slice(pos)}] ${stats} ${align}`;
+    /* wintty.c:4536-4543,5136-5150: the bar takes the BL_HP field's highlight
+     * colour (attr forced to inverse) and starts it only when hilite_delta. */
+    let sgr = '\x1b[7m';
+    if (game.iflags?.hilite_delta) {
+        const hh = _status_field_hilites(`HP:${curhp}(${maxhp0})`).get(0);
+        if (hh && hh.color !== NO_COLOR) sgr = `\x1b[7;${ANSI_COLOR[hh.color] ?? ANSI_DEFAULT}m`;
+    }
+    return `[${p1 ? sgr + p1 : ''}\x1b[0m${bar.slice(pos)}] ${stats} ${align}`;
 }
 /* C botl.c:2364-2560 get_hilite() + tty_putstatusfield: persistent
  * (always / absolute-threshold) hilite_status rules, applied to the painted
@@ -3949,6 +3956,9 @@ function _statusLine2Parts() {
         : (_staleGold | 0);
     const _bu = _bs || u;
     let _hp = Upolyd ? (_bu.mh | 0) : (_bu.uhp || 0);
+    /* trap.c sink_into_lava writes u.uhp with no SET_BOTL: the physical line keeps
+     * the last bot()'s HP (js/trap.js records it in _botlStaleUhp). */
+    if (!Upolyd && !_bs && game._botlStaleUhp !== undefined) _hp = game._botlStaleUhp | 0;
     /* C paints the pre-reversion physical HP once when rehumanize() runs
      * inside movemon; the live value is already restored for later turns. */
     if (game._rehumanizeDisplayPending && !Upolyd && !_bs && (game._rehumanizeMoves | 0) === (game.moves | 0)
@@ -4251,7 +4261,12 @@ function _status_field_hilites(row) {
         const sm = /^(\d+)\/(\d+)/.exec(body);
         const cur = sm ? (+sm[1] === 18 ? 18 + +sm[2] : +sm[1]) : parseInt(body, 10);
         const max = /\((\d+)\)/.exec(body);
-        let always = null, hit = null;
+        let always = null, hit = null, exact = false;
+        /* C botl.c:2395-2470 get_hilite() best fit: among percentage/absolute
+         * rules an exact match wins, else the tightest bound (smallest limit
+         * for < / <=, largest for > / >=); min/max start at 101/-1 (pc) and
+         * +-LARGEST_INT (abs) and are tracked separately per kind. */
+        let minPc = 101, maxPc = -1, minAbs = Infinity, maxAbs = -Infinity;
         for (let i = 1; i + 1 < parts.length; i += 2) {
             const thr = parts[i].trim().toLowerCase();
             const [colName, ...attrNames] = parts[i + 1].trim().split(/[&+]/);
@@ -4268,9 +4283,26 @@ function _status_field_hilites(row) {
                 v = Math.trunc((cur * 100) / +max[1]);
             }
             const want = +pm[2], rel = pm[1] || '=';
-            const ok = rel === '=' ? v === want : rel === '<' ? v < want : rel === '>' ? v > want
-                : rel === '<=' ? v <= want : v >= want;
-            if (ok && !hit) hit = rule;
+            if (rel === '=' ? v === want : false) {
+                hit = rule; exact = true;
+                if (pm[3]) minPc = maxPc = want; else minAbs = maxAbs = want;
+            } else if (exact) {
+                /* already found best fit */
+            } else if (rel === '<' || rel === '<=') {
+                if (rel === '<' ? v < want : v <= want) {
+                    if (pm[3] ? want <= minPc : want <= minAbs) {
+                        hit = rule;
+                        if (pm[3]) minPc = want; else minAbs = want;
+                    }
+                }
+            } else if (rel === '>' || rel === '>=') {
+                if (rel === '>' ? v > want : v >= want) {
+                    if (pm[3] ? want >= maxPc : want >= maxAbs) {
+                        hit = rule;
+                        if (pm[3]) maxPc = want; else maxAbs = want;
+                    }
+                }
+            }
         }
         const h = hit || always;
         if (!h) continue;
@@ -4283,6 +4315,50 @@ function _status_field_hilites(row) {
             cells.set(c, h);
     }
     return cells;
+}
+/* C botl.c:1514-1584,2280-2305,2446-2458: BL_TH_UPDOWN rules (up/down/changed)
+ * on the gold and experience-points fields.  A changed value picks the rule
+ * by sign of the change, stamps time = moves + hilite_delta, and the highlight
+ * holds until moves passes that time (hilite_reset_needed, botl.c:2271).
+ * The first sighting of a value is the baseline (update_all => chg 0). */
+function _status_temp_hilites(row, cells) {
+    if (!game.iflags?.hilite_delta) return;
+    const hist = (game._blTemp ||= {});
+    const fields = [
+        ['gold', /\$:(\d+)/, (m) => [m.index, m[0].length]],
+        ['experience', /Xp:\d+\/(\d+)/, (m) => [m.index + m[0].length - m[1].length, m[1].length]],
+    ];
+    for (const [fname, re, span] of fields) {
+        const m = re.exec(row);
+        if (!m) continue;
+        const val = +m[1];
+        const h = hist[fname] ||= { val, rule: null, time: 0 };
+        const chg = val < h.val ? -1 : val > h.val ? 1 : 0;
+        if (chg) {
+            let rule = null, changed = null;
+            for (const spec of game.status_field_hilites || []) {
+                const parts = spec.split('/');
+                if (status_fieldname(parts[0].trim()) !== fname) continue;
+                for (let i = 1; i + 1 < parts.length; i += 2) {
+                    const thr = parts[i].trim().toLowerCase();
+                    const [colName, ...attrNames] = parts[i + 1].trim().split(/[&+]/);
+                    const color = match_str2clr(colName.trim(), true);
+                    if (color >= 16) continue;
+                    const attr = attrNames.reduce((a, n) => a | (_HL_ATTR[n.trim().toLowerCase()] ?? 0), 0);
+                    if ((chg < 0 && thr === 'down') || (chg > 0 && thr === 'up')) rule = { color, attr };
+                    else if (thr === 'changed') changed = { color, attr };
+                }
+            }
+            rule ||= changed;
+            h.rule = rule;
+            h.time = rule ? (game.moves | 0) + game.iflags.hilite_delta : 0;
+            h.val = val;
+        }
+        if (h.rule && h.time && !game.multi && h.time < (game.moves | 0)) { h.rule = null; h.time = 0; }
+        if (!h.rule) continue;
+        const [st, len] = span(m);
+        for (let c = st; c < st + len; c++) cells.set(c, h.rule);
+    }
 }
 function _status_condition_hilites(row) {
     const cells = new Map();
@@ -4301,6 +4377,7 @@ function _status_condition_hilites(row) {
             cells.set(c, { color, attr });
     }
     for (const [c, h] of _status_field_hilites(row)) cells.set(c, h);
+    _status_temp_hilites(row, cells);
     return cells;
 }
 /* The screen text carries the highlight as SGR (tty term_start_attr/term_end):
@@ -5363,6 +5440,7 @@ function _capture_botl(paint = false) {
     const _d = game.disp;
     if (_d && ((_d.botl | 0) || (_d.botlx | 0))) {
         game._botlStaleUen = undefined;
+        game._botlStaleUhp = undefined;
         game._botlPaintedCap = near_capacity() | 0;
         /* Same PAINT-time rule for the Deaf condition — see the `deaf` field
          * below and botl_status_suffix's note. */
@@ -6291,6 +6369,10 @@ export async function force_more(committed, dismissMore, alreadyPainted = false)
         if (_usePlineFrame) g._paintedSnapshot = { cells: _pf.cells, moves: _pf.moves, botl: _ownStatusLive ? null : (_pf.botl || null) };
         _morc = await _topl_more(_pages[i], dismissMore);
         if (_usePlineFrame) g._paintedSnapshot = _sv;
+        if (_morc === 27 && i === _pages.length - 2 && _pages[i + 1] === 'You die...') {
+            g._pending_message = '';
+            break;
+        }
     }
     return _morc;
 }
@@ -7182,6 +7264,18 @@ function msgtype_type(msg, norepeat = false) {
         ?? (norepeat ? 'norep' : 'show');
 }
 
+/* C pline.c:246-262 vpline(): a non-URGENT message whose MSGTYPE rule is
+ * hide (MSGTYP_NOSHOW), or norep with the same text as gp.prevmsg, is dropped
+ * before anything is drawn.  Exported for the direct topline writers that
+ * bypass pline() (js/eat.js You()), so they honour the same rc rules. */
+export function msgtype_suppressed(msg) {
+    if (game._topl_urgent_next)
+        return false;
+    const msgtyp = msgtype_type(msg);
+    return msgtyp === 'hide'
+        || (msgtyp === 'norep' && game._prevmsg === String(msg));
+}
+
 export async function pline(msg, ...args) {
     if (args.length > 0)
         msg = nh_sprintf(msg, args);
@@ -7190,6 +7284,13 @@ export async function pline(msg, ...args) {
     if (!game._topl_urgent_next && (msgtyp === 'hide'
         || (msgtyp === 'norep' && game._prevmsg === String(msg))))
         return;
+    /* C has only gt.toplines (topl.c:257-301): an eat occupation's committed
+     * flavor line (fprefx, eat.c:2002) is still ON the topline when eatfood's
+     * done_eating/cpostfx plines run, so it pages in FRONT of them, not after
+     * (small mimic corpse: "fatty--More--" precedes "You finish eating"). */
+    if (game._occBeforeInput && game._occ_committed_topl && !game._pending_message
+        && !game._occ_committed_topl.postMeal)
+        restore_occupation_topline();
     if (typeof process !== 'undefined' && ENV?.FF_TOPL_TRACE === '1') {
         const _enc = (v) => encodeURIComponent(String(v ?? '').slice(0, 100));
         pushRngLogEntry(`^topl_pline[msg=${_enc(msg)} pending=${_enc(game._pending_message)} stop=${game._topl_win_stop ? 1 : 0} armed=${game._topl_win_stop_armed ? 1 : 0} arrival=${game._arrival_more_suppress ? 1 : 0}]`);
@@ -7793,6 +7894,11 @@ function _feel_can_reach_floor() {
     const levitating = !!lp && !!((lp.intrinsic | 0) || (lp.extrinsic | 0))
                        && !(lp.blocked | 0);
     if (levitating && !Is_waterlevel(u.uz))
+        return false;
+    const yd = game.youmonst?.data;
+    const f1 = (yd?.mflags1 | 0) >>> 0;
+    if (u.uundetected && (f1 & 0x100) !== 0
+        && ((((f1 & 0x10) !== 0) && (yd.mlet | 0) !== 13) || (f1 & 0x1) !== 0))
         return false;
     return true;
 }
@@ -9079,7 +9185,7 @@ export function under_water(mode = 0) {
         const lx = game._under_water_lastx | 0, ly = game._under_water_lasty | 0;
         for (let y = ly - 1; y <= ly + 1; y++)
             for (let x = lx - 1; x <= lx + 1; x++)
-                if (isok(x, y)) show_glyph(x, y, 1 /* GLYPH_UNEXPLORED */);
+                if (isok(x, y)) show_glyph_cell(x, y, ' ', NO_COLOR, false, 0, GLYPHCLS_CMAP); /* GLYPH_UNEXPLORED */
     }
     for (let x = (u.ux | 0) - 1; x <= (u.ux | 0) + 1; x++)
         for (let y = (u.uy | 0) - 1; y <= (u.uy | 0) + 1; y++) {
@@ -9089,7 +9195,7 @@ export function under_water(mode = 0) {
                 const bp = u.uprops?.[BLINDED];
                 const blind = (!!bp && !!((bp.intrinsic | 0) || (bp.extrinsic | 0))
                                && !(bp.blocked | 0));
-                if (blind && !u_at(x, y)) show_glyph(x, y, 1);
+                if (blind && !u_at(x, y)) show_glyph_cell(x, y, ' ', NO_COLOR, false, 0, GLYPHCLS_CMAP); /* GLYPH_UNEXPLORED */
                 else newsym(x, y);
             }
         }

@@ -249,7 +249,7 @@ import {
 import {
     clearrolefilter, setrolefilter, rolefilterstring,
 } from './player_selection.js';
-import { rcfile, read_config_file, config_error_init, config_error_done, config_error_add, assure_syscf_file, parse_conf_file } from './cfgfiles.js';
+import { rcfile, read_config_file, config_error_init, config_error_done, config_error_nextline, config_error_add, assure_syscf_file, parse_conf_file } from './cfgfiles.js';
 import { nh_terminate, panic } from './end.js';
 import { do_deferred_showpaths } from './files.js'; // C initoptions `:7112` (imports.mjs: hoisted fn, lazy reads only)
 
@@ -4948,16 +4948,93 @@ function parse_iflags_wizmgender(result, value) {
 }
 
 /**
+ * C `parseoptions` `:529–614` match, for the startup rc chain (which
+ * dispatches each comma item itself instead of calling `parseoptions`).
+ * Trims, strips `!`/`no` prefixes (`:539–543`), then the main loop in row
+ * order (pfx rows first per row, `:560–563`, then `match_optname` with the
+ * row minmatch, `:580–582`), then the alias loop (`:602–611`, sets
+ * `usingAliasOpt`). Returns the row index or -1. The ambiguous arm
+ * (`:584–588`) stays a named omission (no corpus rc abbreviates; the
+ * chain's exact dispatch could not apply the match anyway) — an
+ * ambiguous spelling resolves -1 here exactly like C's `matchidx = -1`.
+ * @param {string} item raw comma item (value tail still attached)
+ * @returns {number} allopt index, or -1 when unmatched
+ */
+function rc_match_option(item) {
+    let opts = String(item); // C `:529–533` trim
+    let start = 0;
+    while (start < opts.length && isOptSpace(opts[start])) start++;
+    let end = opts.length;
+    while (end > start && isOptSpace(opts[end - 1])) end--;
+    opts = opts.slice(start, end);
+    for (;;) { // C `:540–543`
+        if (opts[0] === '!') opts = opts.slice(1);
+        else if (optStrncasecmp(opts, 'no', 2) === 0)
+            opts = opts.slice(opts[2] !== '-' ? 2 : 3);
+        else break;
+    }
+    let optlen = opts.length; // C `:544`
+    const optlenWoVal = length_without_val(opts, optlen); // C `:545`
+    if (optlenWoVal < optlen) optlen = optlenWoVal; // C `:546–551`
+    determine_ambiguities(); // C: minmatch ready since allopt_array_init
+    usingAliasOpt = false; // C `:503`
+    for (let i = 0; i < OPTCOUNT; ++i) { // C `:555`
+        const row = allopt[i];
+        if (OPT_PFX.has(row.name)) { // C `:560`
+            if (str_start_is(opts, row.name, true)) return i; // C `:561–563`
+        } else if (row.name
+            && match_optname(opts, row.name, row.minmatch, true)) { // C `:580–582`
+            if (optlen >= row.minmatch) return i; // C `:583–591`
+            return -1; // C `:584–588` ambiguous (error arm named above)
+        }
+    }
+    for (let i = 0; i < OPTCOUNT; ++i) { // C `:602`
+        const alias = OPT_ALIAS[allopt[i].name]; // C `:603`
+        if (!alias) continue; // C `:603–604`
+        if (match_optname(opts, alias, alias.length, true)) { // C `:605–607`
+            usingAliasOpt = true; // C `:610`
+            return i; // C `:609–611`
+        }
+    }
+    return -1; // C `:594` no match (unknown-option arm named, chain stores raw)
+}
+
+/**
+ * C `parseoptions` `:619–623` for one rc comma item, ahead of the chain's
+ * own optfn dispatch (C order: detection and complaint precede the
+ * optfn). `go.opt_initial`/`go.opt_from_file` bracket the detection only
+ * (C `:504–505` set them per parseoptions call; the chain's optfns keep
+ * the phase the caller established). Covers the role family too — the
+ * wrapper below keeps only its optfn bracketing.
+ * @param {string} item raw comma item
+ */
+function rc_note_option_occurrence(item) {
+    const matchidx = rc_match_option(item); // C `:555–614`
+    if (matchidx < 0 || matchidx >= OPTCOUNT) return; // C `:619`
+    if (allopt[matchidx].disregarded) return; // C `:620`
+    if (!game.go) game.go = {};
+    const savedInitial = game.go.opt_initial;
+    const savedFromFile = game.go.opt_from_file;
+    game.go.opt_initial = true; // C `:504` tinitial TRUE
+    game.go.opt_from_file = true; // C `:505` tfrom_file TRUE
+    duplicateOpt = duplicate_opt_detection(matchidx); // C `:621`
+    if (duplicateOpt && !OPT_DUPEOK_YES.has(allopt[matchidx].name)) // C `:622`
+        complain_about_duplicate(matchidx); // C `:623`
+    game.go.opt_initial = savedInitial;
+    game.go.opt_from_file = savedFromFile;
+}
+
+/**
  * C `cnf_line_OPTIONS` (`cfgfiles.c:608`) calls `parseoptions(buf, TRUE, TRUE)`.
  * That sets `go.opt_initial` / `go.opt_from_file` (`options.c:504–505`) and
  * `duplicate = duplicate_opt_detection(matchidx)` (`:621`) before the optfn.
  * Role/race/gender/alignment are dupeok, so `:622` does not complain;
  * `parse_role_opt` `:7987–7990` still reads the flag and rejects a positive
  * value when the same-phase saved string starts with `'!'`.
- * The boolean is restored after the call: this reader is not the full
- * `parseoptions` loop, so a leftover TRUE would not be cleared by a later
- * non-role option the way C clears it. The per-row counter is what persists
- * across lines in one file.
+ * Detection itself runs at the top of the chain loop
+ * (`rc_note_option_occurrence`, C `:619–623`); this wrapper keeps only the
+ * optfn bracketing. The per-row counter is what persists across lines in
+ * one file.
  * @param {string} canonName allopt name (`alignment` for the `align` alias,
  *   `role` for `character`)
  * @param {Function} optfn
@@ -4971,15 +5048,9 @@ function rc_do_set_role_family(canonName, optfn, negated, opts, op) {
     if (!game.go) game.go = {};
     const savedInitial = game.go.opt_initial;
     const savedFromFile = game.go.opt_from_file;
-    const savedDup = duplicateOpt;
     game.go.opt_initial = true; // C `:504` tinitial TRUE
     game.go.opt_from_file = true; // C `:505` tfrom_file TRUE
-    duplicateOpt = duplicate_opt_detection(matchidx); // C `:621`
-    if (duplicateOpt && matchidx >= 0 && matchidx < allopt.length
-        && !OPT_DUPEOK_YES.has(allopt[matchidx].name)) // C `:622`
-        complain_about_duplicate(matchidx); // C `:623`
     const reslt = optfn(matchidx, REQ_DO_SET, negated, opts, op, true);
-    duplicateOpt = savedDup;
     game.go.opt_initial = savedInitial;
     game.go.opt_from_file = savedFromFile;
     return reslt;
@@ -4989,8 +5060,12 @@ export function parseNethackrc(rc, defaultsInitialized = false) {
     // C cfgfiles.c cnf_line_MSGTYPE → msgtype_parse_add onto gp.plinemsg_types.
     // Standalone parsing resets the list; startup reset it before sysconf.
     if (!defaultsInitialized) msgtype_free();
+    // C rcfile `:1943–1945` frame bracket: startup calls this function, not
+    // rcfile(), so init lives here (sourcename NULL — the default rc, so
+    // done() reports get_configfile(); secure FALSE so the frame echoes
+    // the origline + `Line N:` like the captured C screen).
+    config_error_init(true, null, false); // C `:1943`
     // C read_config_file `:1633` clears dupdetected before the file is read.
-    // Startup calls this function, not rcfile(), so the bracket lives here.
     // A reused Node process would otherwise treat the next file's first
     // role/race/gender/align as a duplicate of the previous file.
     reset_duplicate_opt_detection();
@@ -5011,6 +5086,9 @@ export function parseNethackrc(rc, defaultsInitialized = false) {
         symset: defaultsInitialized ? game.symset : undefined,
         // C: cfgfiles.c BINDINGS → parsebindings → Cmd.cmdbinds overlays
         binds: defaultsInitialized ? (game.Cmd?.binds || new Map()) : new Map(),
+        // C config_error_done `:1592–1621` return (rcfile `:1945`): the
+        // caller waits (done `:1615`) when this is nonzero.
+        config_errors: 0,
     };
     // Startup already ran allopt_array_init before sysconf; direct parser
     // users retain the standalone defaults. C never reinitializes at rcfile.
@@ -5044,9 +5122,20 @@ export function parseNethackrc(rc, defaultsInitialized = false) {
         optfn_sortloot(allopt_idx('sortloot'), REQ_DO_INIT, false, '', EMPTY_OPTSTR, result.flags);
         result.iflags.getpos_coords = GPCOORDS_NONE; // C initoptions_init `:7190`
     }
-    if (!rc) return result;
+    if (!rc) { // C `:1945` still closes the frame on an empty file
+        result.config_errors = config_error_done();
+        return result;
+    }
 
-    for (const rawLine of rc.split('\n')) {
+    // C fgets lines (a trailing newline leaves no phantom line).
+    const rawLines = rc.split('\n');
+    if (rawLines.length && rawLines[rawLines.length - 1] === '') rawLines.pop();
+    for (const rawLine of rawLines) {
+        // C parse_conf_buf `:1730` — every physical line counts, blanks
+        // and full-line comments included (the ignoreline check is after).
+        // Origline is the rstrip'd inbuf (space/tab/CR); the continuation
+        // backslash stays a named omission (no corpus rc continues lines).
+        if (!config_error_nextline(rawLine.replace(/[ \t\r]+$/, ''))) break; // C `:1730–1736` pbreak (dead !secure)
         const line = rawLine.trim();
         if (!line || line.startsWith('#')) continue;
 
@@ -5108,6 +5197,10 @@ export function parseNethackrc(rc, defaultsInitialized = false) {
         for (const opt of optMatch[1].split(',')) {
             const trimmed = opt.trim();
             if (!trimmed) continue;
+
+            // C parseoptions `:619–623` — detection and complaint precede
+            // the optfn dispatch below (role family included).
+            rc_note_option_occurrence(trimmed);
 
             const negated = trimmed.startsWith('!');
             const stripped = negated ? trimmed.slice(1) : trimmed;
@@ -5790,6 +5883,7 @@ export function parseNethackrc(rc, defaultsInitialized = false) {
             }
         }
     }
+    result.config_errors = config_error_done(); // C rcfile `:1945`
     return result;
 }
 

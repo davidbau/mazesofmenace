@@ -381,16 +381,14 @@ export async function money2u(monster, amount, state = game) {
     }
 }
 
-// C ref: shk.c shkgone() (235-270). Remove the keeper from the shop-room
-// record, clear floor charges, settle its bill when the hero is in that shop,
-// and remove the room from u.ushops. Damage-owned records are not modelled;
-// C discards that helper's return value, so record the gap at its call site.
+// C ref: shk.c shkgone() (235-270). Remove the keeper's damage records and
+// shop-room record, clear floor charges, and settle its bill when applicable.
 export function shkgone(monster, state = game) {
     const eshk = monster.mextra.eshk;
     const room = state.level.rooms[eshk.shoproom - ROOMOFFSET];
 
     if (on_level(eshk.shoplevel, state.u.uz)) {
-        note_unported('shk.c discard_damage_owned_by');
+        discard_damage_owned_by(monster, state);
         room.resident = null;
         if (!search_special(ANY_SHOP, state)) {
             state.level.flags ??= {};
@@ -2854,7 +2852,7 @@ function heroIsFast(state) {
 export async function u_entered_shop(
     enterstring,
     state = game,
-    { message = ttyPline, random = rn2 } = {},
+    { message = ttyPline, random = rn2, directDochug = null } = {},
 ) {
     const roomno = Math.trunc(enterstring?.[0] ?? 0);
     if (!roomno) return false;
@@ -3008,8 +3006,7 @@ export async function u_entered_shop(
 
     // Teleporting into a shop skips the block_door path. A walking arrival
     // can still be outside the strict interior, where C gives the keeper an
-    // extra turn to block entry; dochug()'s result is discarded here and
-    // remains an explicitly recorded gap until monmove.c is complete.
+    // extra direct dochug() turn to block entry.
     if (!inside_shop(state.u.ux, state.u.uy, state)) {
         let shouldBlock = false;
         let count = 0;
@@ -3086,7 +3083,11 @@ export async function u_entered_shop(
                     ),
                 );
         }
-        if (shouldBlock) note_unported('monmove.c dochug');
+        if (shouldBlock) {
+            if (typeof directDochug !== 'function')
+                throw new TypeError('u_entered_shop requires direct dochug for should_block');
+            await directDochug(shopkeeper);
+        }
     }
     return true;
 }
@@ -3544,6 +3545,29 @@ function discard_damage_struct(damage, state = game) {
         if (previous) previous.next = damage.next ?? null;
     }
     damage.next = null;
+}
+
+// C ref: shk.c discard_damage_owned_by() (4530-4553). Remove every damage
+// record whose tile belongs to this keeper's shop, preserving other links.
+function discard_damage_owned_by(shopkeeper, state = game) {
+    const shoproom = shopkeeper.mextra.eshk.shoproom;
+    let damage = state.level?.damagelist ?? null;
+    let previous = null;
+
+    while (damage) {
+        const next = damage.next ?? null;
+        const { x, y } = damage.place;
+        const owned = in_rooms(x, y, SHOPBASE, state).includes(shoproom);
+        if (owned) {
+            if (previous) previous.next = next;
+            else state.level.damagelist = next;
+            // C clears and frees each unlinked node; sever its JS list link.
+            damage.next = null;
+        } else {
+            previous = damage;
+        }
+        damage = next;
+    }
 }
 
 const LITTER_UPDATE = 0x01;

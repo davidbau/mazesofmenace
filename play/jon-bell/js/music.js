@@ -848,6 +848,8 @@ export async function do_play_instrument(instr) {
                     u.uopened_dbridge = true;
                 }
                 newsym(bx.value, by.value); newsym(wx, wy);
+                /* C dbridge.c:878 open_drawbridge: unblock_point(x2, y2) (vision) */
+                if ((bridge.typ | 0) === DRAWBRIDGE_DOWN) unblock_point(wx, wy);
                 return ECMD_TIME;
             }
         } else if (!Deaf()) {
@@ -866,8 +868,13 @@ export async function do_play_instrument(instr) {
                     if (tune[i] === expected[i]) { gears++; matched[i] = true; }
                     else for (let j = 0; j < 5; j++) if (!matched[j] && tune[i] === expected[j] && tune[j] !== expected[j]) { tumblers++; matched[j] = true; break; }
                 }
-                if (tumblers || gears) await pline(`${tumblers} tumbler${tumblers === 1 ? '' : 's'} and ${gears} gear${gears === 1 ? '' : 's'} turn.`);
-                if (gears === 5) { u.uheard_tune = 2; record_achievement(ACH_TUNE); }
+                if (tumblers) {
+                    if (gears) await You_hear('%d tumbler%s click and %d gear%s turn.', tumblers, tumblers === 1 ? '' : 's', gears, gears === 1 ? '' : 's');
+                    else await You_hear('%d tumbler%s click.', tumblers, tumblers === 1 ? '' : 's');
+                } else if (gears) {
+                    await You_hear('%d gear%s turn.', gears, gears === 1 ? '' : 's');
+                }
+                if (!tumblers && gears === 5) { u.uheard_tune = 2; record_achievement(ACH_TUNE); }
             }
         }
     }

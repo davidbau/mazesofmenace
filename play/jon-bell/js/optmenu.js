@@ -20,7 +20,7 @@ import { update_inventory } from './inventory_refresh.js';
  * getlin(); mungspaces (objnam.c) normalises it before it is stored. */
 import { getlin } from './wizcmds.js';
 import { mungspaces } from './mklev.js';
-import { optfn_fruit_set, optfn_statushilites_set, handler_autopickup_exception, compound_option_value, optfn_boulder_set } from './options.js';
+import { optfn_fruit_set, optfn_statushilites_set, count_status_hilites, handler_autopickup_exception, compound_option_value, optfn_boulder_set } from './options.js';
 import { reset_needed_visuals } from './options_runtime.js';
 import { vision_recalc } from './vision.js';
 import { optfn_suppress_alert_set } from './feature_alert.js';
@@ -127,7 +127,7 @@ const PAGES = [
         { name: 'menu colors', kind: 'othr', value: () => '(0 currently set)' },
         { name: 'showexp', kind: 'bool', flag: 'showexp' },
         { name: 'status condition fields', kind: 'othr', value: () => '(16 currently set)' },
-        { name: 'status highlight rules', kind: 'othr', value: () => '(0 currently set)' },
+        { name: 'status highlight rules', kind: 'othr', value: () => `(${count_status_hilites()} currently set)` },
         /* C options.c:4067-4105 — statuslines is a generic compound option;
          * selecting it must enter getlin and parse atoi(op), rather than being
          * treated as a read-only menu row.  The tty renderer still has the
@@ -669,6 +669,10 @@ export async function doset_simple() {
             if (entry.kind === 'bool') {
                 const { obj, fld } = simpleBox(entry);
                 obj[fld] = !flagOn(entry);
+                /* C options.c:5344-5349,5386-5390 optfn_boolean: showscore/showvers/showexp/time/hitpointbar call
+                 * status_initialize(REASSESS_ONLY), which sets gu.update_all; botl.c:1575-1577
+                 * then zeroes every field's time and chg, dropping the up/down temp hilites. */
+                if (['showscore', 'showvers', 'showexp', 'time', 'hitpointbar'].includes(entry.name)) delete g._blTemp;
                 if (entry.name === 'color') {
                     g.iflags.use_color = !!obj[fld];
                     /* C options.c:8727: reset_needed_visuals redraws before
@@ -1225,6 +1229,8 @@ export async function doset() {
                         needVisuals = true;
                     }
                     if (ent.row.name === 'rest_on_space') update_rest_on_space();
+                    /* same status_initialize(REASSESS_ONLY) -> update_all reset as doset_simple */
+                    if (['showscore', 'showvers', 'showexp', 'time', 'hitpointbar'].includes(ent.row.name)) delete g._blTemp;
                     /* C options.c:5376-5385: these toggles reset glyphs and
                      * redraw after the pick walk, acknowledging pending messages
                      * through reset_needed_visuals() -> docrt() -> cls(). */
