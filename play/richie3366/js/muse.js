@@ -795,7 +795,7 @@ async function mbhitm(mtmp, otmp, hits_you) {
                     || u.Half_spell_damage) {
                     tmp = Math.trunc((tmp + 1) / 2);
                 }
-                losehp(tmp, 'wand', KILLED_BY_AN);
+                await losehp(tmp, 'wand', KILLED_BY_AN);
                 /* C `:1625–1626` — losehp may die into done(), but done()
                  * returns when life-saved (amulet; wizard/explore `Die?`
                  * decline — savelife clears the JS gameover flag, end.js);
@@ -1235,7 +1235,7 @@ async function drop_boulder_on_player(
         newsym(u.ux, u.uy);
     }
     if (dmg) {
-        losehp(maybe_half_phys(dmg), 'scroll of earth', KILLED_BY_AN);
+        await losehp(maybe_half_phys(dmg), 'scroll of earth', KILLED_BY_AN);
     }
 }
 

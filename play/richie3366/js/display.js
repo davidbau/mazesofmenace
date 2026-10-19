@@ -7954,11 +7954,9 @@ function _buildScreenOutput() {
         // when msg is long). Trailing blanks erase a shrunk message.
         const msg = game._pending_message || '';
         const msgLines = msg.split('\n');
-        for (let c = 0; c < cols; c++)
-            display.setCell(c, 0, ' ', NO_COLOR, 0);
-        const line0 = msgLines[0] || '';
-        for (let c = 0; c < Math.min(line0.length, cols); c++)
-            display.setCell(c, 0, line0[c], NO_COLOR, 0);
+        // C topl.c redotoplin `:126–137`: home(); putsyms(str); cl_end()
+        // — overwrite in place, then clear to EOL (topline_putsyms_cl_end).
+        topline_putsyms_cl_end(display, 0, msgLines[0] || '', cols);
         // C flush_screen never touches the message rows; JS arbitration:
         // a wrapped message owns screen row 1, so map row 0 stays.
         const msgOwnsRow1 = msgLines.length > 1;
@@ -8139,6 +8137,25 @@ function resync_map_row0() {
 }
 
 /** Paint message rows only; leave map/status cells untouched. */
+/**
+ * C topl.c putsyms `:348–353` → topl_putsym `:302–342` per char, then
+ * redotoplin's cl_end `:137` (`'\n'` arm `:322`) on one message row.
+ * Each byte reaches the capture through nomux_putch (patch 006, topl.c
+ * `:344–351`), which drops `ch < 32`: an IBM-handled C0 symbol decoded
+ * into the message (RogueEpyx hero `\x01` in a farlook line) leaves the
+ * cell's previous content while the cursor advances — the same capture
+ * rule as the map's C0 drop (D-3962). cl_end clears from the text end.
+ */
+function topline_putsyms_cl_end(display, row, line, cols) {
+    const n = Math.min(line.length, cols);
+    for (let c = 0; c < n; c++) {
+        if (line.charCodeAt(c) < 32) continue;
+        display.setCell(c, row, line[c], NO_COLOR, 0);
+    }
+    for (let c = n; c < cols; c++)
+        display.setCell(c, row, ' ', NO_COLOR, 0);
+}
+
 function _paintToplineOnly() {
     const display = game?.nhDisplay;
     if (!display?.grid || !display.setCell) return;
@@ -8149,14 +8166,8 @@ function _paintToplineOnly() {
     // C putsyms + cl_end clears to end of line on BOTH rows (redotoplin,
     // more): a wrapped line1 blanks row 1's remainder (map cells there
     // are overwritten, repainted by docorner on unwrap — resync_map_row0).
-    for (let c = 0; c < cols; c++) display.setCell(c, 0, ' ', NO_COLOR, 0);
-    for (let r = 0; r < msgLines.length && r < 2; r++) {
-        const line = msgLines[r];
-        for (let c = 0; c < Math.min(line.length, cols); c++)
-            display.setCell(c, r, line[c], NO_COLOR, 0);
-        for (let c = line.length; c < cols; c++)
-            display.setCell(c, r, ' ', NO_COLOR, 0);
-    }
+    for (let r = 0; r < msgLines.length && r < 2; r++)
+        topline_putsyms_cl_end(display, r, msgLines[r], cols);
     if (msg.endsWith('--More--') && !msg.includes('\n')) {
         display.setCursor?.(msg.length, 0);
     } else if (msg.includes('\n--More--') || msgLines[1] === '--More--') {

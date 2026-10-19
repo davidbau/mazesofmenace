@@ -768,7 +768,7 @@ export async function mount_steed(mtmp, force) {
             SUPPRESS_IT | SUPPRESS_INVISIBLE | SUPPRESS_HALLUCINATION,
             true,
         )}`;
-        losehp(maybe_half_phys(rn1(5, 10)), buf, NO_KILLER_PREFIX);
+        await losehp(maybe_half_phys(rn1(5, 10)), buf, NO_KILLER_PREFIX);
         await finish_maybe_wail();
         if (game._losehp_needs_done) {
             const { finish_losehp_done } = await import('./end.js');
@@ -898,7 +898,7 @@ export async function dismount_steed(reason) {
         await pline(`You ${verb} off of ${mon_nam(mtmp)}!`);
         if (!have_spot) have_spot = landing_spot(cc, reason, 1);
         if (!ulev && !ufly) {
-            losehp(maybe_half_phys(rn1(10, 10)), 'riding accident',
+            await losehp(maybe_half_phys(rn1(10, 10)), 'riding accident',
                 KILLED_BY_AN);
             await finish_maybe_wail();
             if (game._losehp_needs_done) {

@@ -97,7 +97,7 @@ import {
     breathless, haseyes,
 } from './monsters.js';
 import { m_at, angry_guards, minliquid, mongone } from './mon.js';
-import { mon_offmap } from './monmove.js';
+import { mon_offmap, monflee } from './monmove.js';
 import { cansee, couldsee, do_clear_area } from './vision.js';
 import { del_engr_at, make_grave } from './engrave.js';
 import { monstseesu, monstunseesu, mhis, mhe } from './mondata.js';
@@ -379,7 +379,7 @@ export async function drinksink() {
             // JS defers via _losehp_needs_done — drain like
             // peffect_oil/dothrow, then fall through to monstunseesu
             // on survival (C order; the wail is non-fatal only).
-            losehp(rnd(6), 'sipping boiling water', KILLED_BY);
+            await losehp(rnd(6), 'sipping boiling water', KILLED_BY);
             if (game._losehp_needs_done) {
                 await finish_losehp_done();
                 if (game.program_state?.gameover) return;
@@ -840,7 +840,7 @@ export async function drinkfountain() {
                 // (hack.c:4287-4288 urgent_pline("You die...") + done(DIED));
                 // on wizard lifesave C breaks to the dryup tail. Drain in C
                 // order (potion.js D-3608 oil idiom): fatal → done, else wail.
-                losehp(rnd(4), 'unrefrigerated sip of juice', KILLED_BY_AN);
+                await losehp(rnd(4), 'unrefrigerated sip of juice', KILLED_BY_AN);
                 if (game._losehp_needs_done) {
                     await finish_losehp_done();
                     if (game.program_state?.gameover) return;
@@ -857,14 +857,17 @@ export async function drinkfountain() {
                 'contaminated water', KILLED_BY);
             // C :305-309 — losestr/losehp inside poison_strdmg are noreturn
             // when fatal, so exercise runs only when the hero survives.
-            // losestr drains its own death (D-3782): a set gameover here is
-            // true death → return. Otherwise drain the trailing losehp
-            // (fatal → done; lifesave → exercise) or the low-HP wail —
-            // same oil idiom as the poisRes arm above.
-            if (game.program_state?.gameover) return;
+            // A fatal trailing losehp sets gameover itself (JS bail marker)
+            // with `_losehp_needs_done`, so drain that FIRST — C's done(DIED)
+            // ("You die...", the wizard "Die?" prompt) runs inside losehp;
+            // returning on gameover first skipped it and ended the game
+            // silently (D-4060). Lifesave/decline → exercise. A gameover
+            // without the flag is losestr's own drained death (D-3782).
             if (game._losehp_needs_done) {
                 await finish_losehp_done();
                 if (game.program_state?.gameover) return;
+            } else if (game.program_state?.gameover) {
+                return;
             } else {
                 await finish_maybe_wail();
             }
@@ -928,15 +931,11 @@ export async function drinkfountain() {
         case 29: { // Scare
             await pline(`This ${hliquid('water')} gives you bad breath!`);
             for (const mtmp of game.fmon || []) {
-                if (mtmp.mhp <= 0) continue;
-                // C: monflee(mtmp, 0, FALSE, FALSE) — fleetime 0 + mon_track_clear
-                mtmp.mflee = 1;
-                mtmp.mfleetim = 0;
-                if (mtmp.mtrack) {
-                    for (let j = 0; j < mtmp.mtrack.length; j++) {
-                        mtmp.mtrack[j] = { x: 0, y: 0 };
-                    }
-                }
+                if (mtmp.mhp <= 0) continue; // C DEADMONSTER
+                // C `:376` monflee(mtmp, 0, FALSE, FALSE) — the live body:
+                // release_hero, vrock mspec_used rn2(25) + gas cloud,
+                // mflee, mon_track_clear (was an inline subset).
+                await monflee(mtmp, 0, false, false);
             }
             break;
         }

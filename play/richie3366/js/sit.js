@@ -614,7 +614,7 @@ function Half_physical_damage() {
  * C hack.c losehp then maybe_wail / done(DIED). Returns true if fatal.
  */
 async function sit_losehp(n, knam, k_format) {
-    losehp(n, knam, k_format);
+    await losehp(n, knam, k_format);
     await finish_maybe_wail();
     if (game._losehp_needs_done) {
         const { finish_losehp_done } = await import('./end.js');
@@ -763,7 +763,7 @@ export async function special_throne_effect(effect) {
     case 12: {
         const { losehp } = await import('./hack.js');
         await pline('The throne is covered in acid!');
-        losehp(
+        await losehp(
             Acid_resistance() ? rnd(16) : rnd(80),
             'acidic chair',
             KILLED_BY_AN,
@@ -815,7 +815,7 @@ async function throne_sit_effect() {
         case 1: {
             const { losehp } = await import('./hack.js');
             await adjattrib(rn2(A_MAX), -rn1(4, 3), 0);
-            losehp(rnd(10), 'cursed throne', KILLED_BY_AN);
+            await losehp(rnd(10), 'cursed throne', KILLED_BY_AN);
             break;
         }
         case 2:
@@ -826,7 +826,7 @@ async function throne_sit_effect() {
             await pline(
                 `A${Shock_resistance() ? 'n' : ' massive'} electric shock shoots through your body!`,
             );
-            losehp(
+            await losehp(
                 Shock_resistance() ? rnd(6) : rnd(30),
                 'electric chair',
                 KILLED_BY_AN,

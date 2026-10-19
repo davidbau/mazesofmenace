@@ -1662,7 +1662,7 @@ export async function touch_artifact(obj, mon) {
             tmp = rnd(10);
             dmg += maybe_half_phys(tmp);
         }
-        losehp(dmg, `touching ${oart.name}`, KILLED_BY);
+        await losehp(dmg, `touching ${oart.name}`, KILLED_BY);
         /* C artifact.c:958 losehp is noreturn when fatal (done(DIED)):
            drain the deferred death here so exercise + the evade/control
            pline below never run after death (hack.js finish idiom). */
@@ -1744,7 +1744,7 @@ export async function retouch_object(obj, loseit) {
                1d10 magical for bane, potentially both */
             if (ag) dmg += maybe_half_phys(rnd(10));
             if (bane) dmg += rnd(10);
-            losehp(dmg, `handling ${what}`, KILLED_BY);
+            await losehp(dmg, `handling ${what}`, KILLED_BY);
             /* C losehp is noreturn when fatal — drain the deferred death
                (touch_artifact idiom above) so exercise/unwear/drop never
                run dead; lifesave-decline falls through per C order. */

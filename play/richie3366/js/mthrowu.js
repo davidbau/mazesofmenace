@@ -700,7 +700,7 @@ export async function thitu(tlev, dam, objp, name) {
          * decline — savelife clears the JS gameover flag, end.js);
          * C then falls through to the A_STR exercise. Only a true
          * death (really_done keeps gameover set) skips it. */
-        losehp(dam, knm, kprefix);
+        await losehp(dam, knm, kprefix);
         // C `:4275–4276` — losehp rehumanizes inline when mh<1 (no RNG);
         // drain showdamage/rehumanize/wail before the Upolyd-gated A_STR
         // exercise, or a reverting hero skips the rn2(2) C draws (D-3426).

@@ -1974,7 +1974,7 @@ export async function prayer_done() {
             : 'Walk no more, perversion of nature!');
         await You_feel('like you are falling apart.');
         await rehumanize();
-        losehp(rnd(20), 'residual undead turning effect', KILLED_BY_AN);
+        await losehp(rnd(20), 'residual undead turning effect', KILLED_BY_AN);
         await finish_maybe_wail();
         exercise(A_CON, false);
         return 1;

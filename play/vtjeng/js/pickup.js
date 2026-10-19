@@ -181,6 +181,7 @@ import {
 import {
     INVLET_BASIC,
     add_to_container,
+    addToContainerRuntime,
     add_to_minv,
     addinv_runtime,
     freeinv,
@@ -3259,7 +3260,7 @@ async function in_container(obj, state) {
         await sellobj(obj, state.gc.current_container.ox,
             state.gc.current_container.oy, state);
     }
-    const addition = add_to_container(state.gc.current_container, obj, {
+    const addition = addToContainerRuntime(state.gc.current_container, obj, {
         state,
         hooks: { objectNoLongerHeld: obj_no_longer_held },
     });
@@ -4243,7 +4244,7 @@ async function tipcontainer(box, state) {
                 nobj = null;
                 await losehp(d(6, 6), 'magical explosion', KILLED_BY_AN, state);
             } else {
-                const addition = add_to_container(targetbox, otmp, { state });
+                const addition = addToContainerRuntime(targetbox, otmp, { state });
                 if (addition && typeof addition.then === 'function') await addition;
             }
         } else if (highdrop) {

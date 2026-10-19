@@ -1402,7 +1402,7 @@ async function do_break_wand(obj) {
             const damage = await zapyourself(obj, false);
             if (damage) {
                 const buf = `killed ${uhim()}self by breaking a wand`;
-                losehp(maybe_half_phys(damage), buf, NO_KILLER_PREFIX);
+                await losehp(maybe_half_phys(damage), buf, NO_KILLER_PREFIX);
                 if (game._losehp_needs_done || game.program_state?.gameover) {
                     await finish_losehp_done();
                 }
@@ -3396,7 +3396,7 @@ export async function use_whip(obj) {
         if (dam <= 0) dam = 1;
         await pline(`You hit your ${body_part(FOOT)} with your bullwhip.`);
         const buf = `killed ${uhim()}self with ${uhis()} bullwhip`;
-        losehp(maybe_half_phys(dam), buf, NO_KILLER_PREFIX);
+        await losehp(maybe_half_phys(dam), buf, NO_KILLER_PREFIX);
         return ECMD_TIME;
     } else if ((Fumbling() || Glib_apply()) && !rn2(5)) {
         await pline(`The bullwhip slips out of your ${body_part(HAND)}.`);
@@ -4065,7 +4065,7 @@ async function use_grapple(obj) {
     default:
         if (P_SKILL(typ) <= P_BASIC) {
             await pline('You hook yourself!');
-            losehp(maybe_half_phys(rn1(10, 10)), 'a grappling hook', KILLED_BY);
+            await losehp(maybe_half_phys(rn1(10, 10)), 'a grappling hook', KILLED_BY);
             return ECMD_TIME;
         }
         break;
@@ -5597,7 +5597,7 @@ export async function jump(magic) {
             case TT_BEARTRAP:
                 /* C :2078–2083 */
                 await You('rip yourself free of the bear trap!  Ouch!');
-                losehp(
+                await losehp(
                     maybe_half_phys(rnd(10)),
                     'jumping out of a bear trap',
                     KILLED_BY,

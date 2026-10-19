@@ -136,6 +136,7 @@ import { Soundeffect } from './sndprocs.js';
 // call-time only (no top-level read). zap.c hit, one clone.
 import { hit, m_useupall } from './mthrowu.js';
 import { uhis } from './roles.js';
+import { Punished } from './pray.js';
 import { se_distant_thunder, se_applause } from './generated/seffects_data.js';
 
 const PM_BLACK_PUDDING = monsterNames.indexOf('PM_BLACK_PUDDING');
@@ -658,7 +659,7 @@ async function corpse_chance(mon, magr = null, was_swallowed = false) {
             if (was_swallowed && magr) {
                 if (magr === game.youmonst || magr._youmonst) {
                     await pline(`There is an explosion in your ${body_part(STOMACH)}!`);
-                    losehp(maybe_half_phys(tmp),
+                    await losehp(maybe_half_phys(tmp),
                         `${s_suffix(pmname(mdat, mon.female ? FEMALE : MALE))} explosion`,
                         KILLED_BY_AN);
                 }
@@ -4988,8 +4989,10 @@ export async function do_attack(mtmp) {
         if (!u_wield_art(ART_STORMBRINGER)) {
             const loc = game.level?.at(game.u?.ux, game.u?.uy);
             // C `:469–473` — Punished || !rn2(7) || longworm+tail ||
-            // (IS_OBSTRUCTED(here) && !passes_walls).
-            const foo = !!(game.u?.Punished || !rn2(7)
+            // (IS_OBSTRUCTED(here) && !passes_walls). Punished is the live
+            // youprop.h:77 `uball != 0` (pray.js), never a sticky u.Punished
+            // flat — no JS writer sets one, so ball-and-chain fell to rn2(7).
+            const foo = !!(Punished() || !rn2(7)
                 || (is_longworm(mdat) && mtmp.wormno)
                 || (loc && IS_OBSTRUCTED(loc.typ) && !passes_walls(mdat)));
             // C `:478–484` — inshop scan only when !foo (no RNG either way).

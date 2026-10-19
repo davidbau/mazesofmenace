@@ -1885,9 +1885,10 @@ async function maybe_wail() {
  * into `_losehp_showdamage` and the Upolyd mh<1 `:4276` rehumanize arm
  * sets `_losehp_needs_rehumanize` (C returns to normal form — callers
  * continue); both drain first inside `finish_losehp_done` /
- * `finish_maybe_wail` (C order: showdamage precedes the branch action).
- * Low-HP `maybe_wail` sets `_needs_maybe_wail` — callers must
- * `await finish_maybe_wail()` (C blocks inside losehp on You_hear).
+ * `finish_maybe_wail`. Async (D-4058): C `:4269`/`:4280` showdamage and
+ * the low-HP `:4277`/`:4290` maybe_wail print inline, in C order, so no
+ * caller can drop the wail. Every state change still runs before the
+ * first await (nothing awaits unless showdamage is on or the wail fires).
  */
 /**
  * C ref: hack.c showdamage `:4247–4253` — `[HP -dmg, uhp left]` when
@@ -1908,7 +1909,7 @@ export async function showdamage(dmg, hpLeft = null) {
     await pline(`[HP ${-(dmg | 0)}, ${left} left]`);
 }
 
-export function losehp(n, knam, k_format = KILLED_BY) {
+export async function losehp(n, knam, k_format = KILLED_BY) {
     const u = game.u || (game.u = {});
     if (!game.flags) game.flags = {};
     game.flags.botl = true;
@@ -1922,12 +1923,8 @@ export function losehp(n, knam, k_format = KILLED_BY) {
 
     if (Upolyd(u)) {
         u.mh = (u.mh || 0) - n;
-        // C `:4269` showdamage(n) — deferred: capture post-decrement mh
-        // (C prints before the max clamp; the clamp never lowers current).
-        if (game.iflags?.showdamage && n) {
-            if (!game._losehp_showdamage) game._losehp_showdamage = [];
-            game._losehp_showdamage.push({ dmg: n, hp: u.mh | 0 });
-        }
+        // C `:4269` showdamage(n) — post-decrement mh, before the max clamp.
+        if (game.iflags?.showdamage && n) await showdamage(n, u.mh | 0);
         if ((u.mhmax || 0) < (u.mh || 0)) u.mhmax = u.mh;
         if ((u.mh || 0) < 1) {
             // C `:4275–4276` rehumanize() — return to normal form, NOT
@@ -1937,17 +1934,14 @@ export function losehp(n, knam, k_format = KILLED_BY) {
             // clamp mh; callers continue (C rehumanize returns).
             game._losehp_needs_rehumanize = true;
         } else if (n > 0 && (u.mh | 0) * 10 < (u.mhmax | 0) && Unchanging(u)) {
-            game._needs_maybe_wail = true;
+            await maybe_wail(); // C `:4277`
         }
         return;
     }
 
     u.uhp = (u.uhp || 0) - n;
-    // C `:4280` showdamage(n) — deferred like the `:4269` site.
-    if (game.iflags?.showdamage && n) {
-        if (!game._losehp_showdamage) game._losehp_showdamage = [];
-        game._losehp_showdamage.push({ dmg: n, hp: u.uhp | 0 });
-    }
+    // C `:4280` showdamage(n) — post-decrement uhp, before the max clamp.
+    if (game.iflags?.showdamage && n) await showdamage(n, u.uhp | 0);
     if ((u.uhp || 0) > (u.uhpmax || 0)) u.uhpmax = u.uhp;
     // C hack.c losehp: do not clamp uhp on fatal — leave negative so bot()
     // no-ops when uhp==-1 (exact overkill) and prior botl stays through the
@@ -1966,7 +1960,7 @@ export function losehp(n, knam, k_format = KILLED_BY) {
         game.killer.name = knam || '';
         game.killer.format = k_format;
     } else if (n > 0 && (u.uhp | 0) * 10 < (u.uhpmax | 0)) {
-        game._needs_maybe_wail = true;
+        await maybe_wail(); // C `:4290`
     }
 }
 
@@ -2005,8 +1999,10 @@ export async function finish_losehp_rehumanize() {
 }
 
 /**
- * C ref: hack.c losehp → maybe_wail (You_hear / pline may `--More--`).
- * Call after losehp when `_needs_maybe_wail` may be set.
+ * Post-losehp drain kept at its ~180 call sites. Since D-4058 losehp
+ * prints showdamage and maybe_wail inline (no writer sets the queue or
+ * `_needs_maybe_wail` any more), so this only runs the deferred
+ * `:4276` rehumanize; the wail/showdamage arms are inert.
  */
 export async function finish_maybe_wail() {
     await finish_losehp_showdamage();
@@ -3946,7 +3942,7 @@ export async function dosinkfall() {
         u.HLevitation = 0;
         await pline('You crash to the floor!');
         const dmg = rn1(8, 25 - (acurr(A_CON) | 0));
-        losehp(maybe_half_phys(dmg), fell_on_sink, NO_KILLER_PREFIX);
+        await losehp(maybe_half_phys(dmg), fell_on_sink, NO_KILLER_PREFIX);
         await finish_maybe_wail();
         if (game._losehp_needs_done) {
             const { finish_losehp_done } = await import('./end.js');
@@ -3959,7 +3955,7 @@ export async function dosinkfall() {
         for (let obj = objects_at(u.ux | 0, u.uy | 0); obj; obj = obj.nexthere) {
             if (obj.oclass === WEAPON_CLASS || is_weptool_hack(obj)) {
                 await pline(`You fell on ${doname(obj)}.`);
-                losehp(
+                await losehp(
                     maybe_half_phys(rnd(3)),
                     fell_on_sink,
                     NO_KILLER_PREFIX,

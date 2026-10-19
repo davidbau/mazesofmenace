@@ -393,7 +393,7 @@ export async function losestr(num, knam, k_format) {
             k_format = KILLED_BY;
         }
         const { losehp } = await import('./hack.js');
-        losehp(dmg, knam, k_format);
+        await losehp(dmg, knam, k_format);
         if (game._losehp_needs_done || game.program_state?.gameover) {
             const { finish_losehp_done } = await import('./end.js');
             await finish_losehp_done();
@@ -497,7 +497,7 @@ export async function poisoned(reason, typ, pkiller, fatal, thrown_weapon) {
             const newuhpmax = (u.uhpmax | 0) - Math.trunc(loss / 2);
             setuhpmax(Math.max(newuhpmax, minuhpmax(3)), true);
             loss = adjuhploss(loss, olduhp);
-            losehp(loss, killer, kprefix);
+            await losehp(loss, killer, kprefix);
             /* C attrib.c:378 losehp runs its full tail (showdamage,
                rehumanize, maybe_wail) before :379 adjattrib — drain the
                deferred tail (the :391 i>5-arm idiom below); a
@@ -520,7 +520,7 @@ export async function poisoned(reason, typ, pkiller, fatal, thrown_weapon) {
         let loss = thrown_weapon ? rnd(6) : rn1(10, 6);
         if ((blast || cloud) && Half_gas_damage()) // worn towel
             loss = Math.trunc((loss + 1) / 2);
-        losehp(loss, killer, kprefix);
+        await losehp(loss, killer, kprefix);
         /* C attrib.c:391 losehp is noreturn when fatal (done(DIED) inside);
            drain the deferred death here so the trailing done() below —
            unreachable in C on this path — never reports death without

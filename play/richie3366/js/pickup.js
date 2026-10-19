@@ -4185,7 +4185,7 @@ async function do_loot_cont(cobj, cindex = 1, ccount = 1) {
         await You(`carefully open ${theArt(xname(cobj))}...`); // C `:2153`
         await pline('It develops a huge set of teeth and bites you!'); // C `:2154`
         const tmp = rnd(10); // C `:2155`
-        losehp(maybe_half_phys(tmp), 'carnivorous bag', KILLED_BY_AN); // C `:2156`
+        await losehp(maybe_half_phys(tmp), 'carnivorous bag', KILLED_BY_AN); // C `:2156`
         if (game._losehp_needs_done || game.program_state?.gameover) {
             // C done() is noreturn; ECMD_TIME is this arm's value.
             const { finish_losehp_done } = await import('./end.js');
@@ -5055,7 +5055,7 @@ export async function tipcontainer(box) {
                 }
                 targetbox = null;
                 nobj = null;
-                losehp(d(6, 6), 'magical explosion', KILLED_BY_AN);
+                await losehp(d(6, 6), 'magical explosion', KILLED_BY_AN);
             } else {
                 add_to_container(targetbox, otmp);
             }

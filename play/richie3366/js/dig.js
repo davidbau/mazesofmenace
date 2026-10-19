@@ -1396,7 +1396,7 @@ export async function zap_dig() {
                 await pline(`It falls on your ${body_part(HEAD)}!`);
                 const { hard_helmet } = await import('./do_wear.js');
                 const dmg = rnd(hard_helmet(u.uarmh) ? 2 : 6);
-                losehp(maybe_half_phys(dmg), 'falling rock', KILLED_BY_AN);
+                await losehp(maybe_half_phys(dmg), 'falling rock', KILLED_BY_AN);
                 if (game._losehp_needs_done
                     || game.program_state?.gameover) {
                     const { finish_losehp_done } = await import('./end.js');
@@ -2358,7 +2358,7 @@ async function dig() {
                 if (dmg < 1) dmg = 1;
                 else if (u.uarmf) dmg = (((dmg + 1) / 2) | 0);
                 await pline(`You hit yourself in the ${body_part(FOOT)}.`);
-                losehp(
+                await losehp(
                     maybe_half_phys(dmg),
                     `chopping off ${uhis()} own ${body_part(FOOT)}`,
                     KILLED_BY,

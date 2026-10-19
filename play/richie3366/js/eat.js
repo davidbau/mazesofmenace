@@ -137,7 +137,9 @@ import {
 } from './trap.js';
 import { done, delayed_killer } from './end.js';
 import { explode } from './explode.js';
-import { polymon, polyself, rehumanize, change_sex, body_part } from './polyself.js';
+import {
+    polymon, polyself, rehumanize, change_sex, body_part, Unchanging,
+} from './polyself.js';
 import { costly_alteration, costly_spot, sellobj_state } from './shk.js';
 import {
     wield_tool, uwepgone, uswapwepgone, uqwepgone, welded,
@@ -1370,7 +1372,7 @@ async function touchfood(otmp) {
  */
 export async function poison_strdmg(strloss, dmg, knam, k_format) {
     await losestr(strloss, knam, k_format);
-    if (!game.program_state?.gameover) losehp(dmg, knam, k_format);
+    if (!game.program_state?.gameover) await losehp(dmg, knam, k_format);
 }
 
 /**
@@ -1942,8 +1944,9 @@ async function cpostfx(pm) {
     case PM_SMALL_MIMIC: {
         tmp += 20;
         const youdata = hero_form_data();
-        const Unchanging = !!(u.Unchanging || u.HUnchanging || u.EUnchanging);
-        if (youdata?.mlet !== 'S_MIMIC' && !Unchanging) {
+        // C youprop.h Unchanging — H || E incl. worn-amulet uprops (D-4059).
+        const unchanging = Unchanging(u);
+        if (youdata?.mlet !== 'S_MIMIC' && !unchanging) {
             const hallu = !!(u.Hallucination
                 || ((u.HHallucination | 0) & TIMEOUT));
             const tempshape = hallu ? 'an orange' : 'a pile of gold';
@@ -2005,8 +2008,9 @@ async function cpostfx(pm) {
     case PM_DOPPELGANGER:
     case PM_SANDESTIN:
     case PM_GENETIC_ENGINEER: {
-        const Unchanging = !!(u.Unchanging || u.HUnchanging || u.EUnchanging);
-        if (Unchanging) {
+        // C youprop.h Unchanging — H || E incl. worn-amulet uprops (D-4059).
+        const unchanging = Unchanging(u);
+        if (unchanging) {
             await You_feel('momentarily different.');
         } else {
             if (game.context?.tin?.tin) {
@@ -2141,10 +2145,11 @@ async function fpostfx(otmp) {
         // C `:2529–2559` — killer-bee heroes may morph to queen; otherwise
         // VERY healthy: gainstr, +-rnd(20) HP (cursed can kill), heal_legs.
         const u = game.u || {};
-        const Unchanging = !!(u.Unchanging || u.HUnchanging || u.EUnchanging);
+        // C youprop.h Unchanging — H || E incl. worn-amulet uprops (D-4059).
+        const unchanging = Unchanging(u);
         const formndx = (hero_form_data()?.mndx
             ?? game.youmonst?.mnum ?? u.umonnum) | 0;
-        if (!(formndx === PM_KILLER_BEE && !Unchanging
+        if (!(formndx === PM_KILLER_BEE && !unchanging
             && await polymon(PM_QUEEN_BEE))) {
             /* This stuff seems to be VERY healthy! */
             await gainstr(otmp, 1, true);
@@ -2502,8 +2507,9 @@ export async function eatcorpse(otmp) {
     const form0 = hero_form_data();
     const u0 = game.u || {};
     const Slimed0 = !!((u0.Slimed | 0) & TIMEOUT);
-    const Unchanging0 = !!(u0.Unchanging || u0.HUnchanging || u0.EUnchanging);
-    const slimeable = mnum === PM_GREEN_SLIME && !Slimed0 && !Unchanging0
+    // C youprop.h Unchanging — H || E incl. worn-amulet uprops (D-4059).
+    const unchanging = Unchanging(u0);
+    const slimeable = mnum === PM_GREEN_SLIME && !Slimed0 && !unchanging
         && !slimeproof(form0);
     const Stone_resistance0 = !!(u0.Stone_resistance || u0.HStone_resistance
         || u0.EStone_resistance);
@@ -2583,7 +2589,7 @@ export async function eatcorpse(otmp) {
         // : "acidic glob", KILLED_BY_AN) — canonical: Upolyd/mh,
         // end_running, killer attribution, death path (D-2402 was inline).
         // Must call rnd() (logs rnd(N)=…) not 1+rn2 (logs rn2(N)=…).
-        losehp(rnd(15), !glob ? 'acidic corpse' : 'acidic glob', KILLED_BY_AN);
+        await losehp(rnd(15), !glob ? 'acidic corpse' : 'acidic glob', KILLED_BY_AN);
         if (game._losehp_needs_done || game.program_state?.gameover) {
             // C hack.c:4287–4288 — done(DIED) returns after lifesave or a
             // wizard/explore "Die?" decline (end.c:1113–1117); only a real
@@ -2636,7 +2642,7 @@ export async function eatcorpse(otmp) {
         // C eat.c:1942 losehp(rnd(8), !glob ? "cadaver" : "rotted glob",
         // KILLED_BY_AN) — canonical: Upolyd/mh, end_running, killer
         // attribution, death path (D-2402 was inline).
-        losehp(rnd(8), !glob ? 'cadaver' : 'rotted glob', KILLED_BY_AN);
+        await losehp(rnd(8), !glob ? 'cadaver' : 'rotted glob', KILLED_BY_AN);
         if (game._losehp_needs_done || game.program_state?.gameover) {
             // C hack.c:4287–4288 — done returns after lifesave or a
             // wizard/explore "Die?" decline (end.c:1113–1117); only a real
@@ -3196,8 +3202,7 @@ async function eataccessory(otmp) {
         if (game.flags) game.flags.botl = true;
         break;
     case AMULET_OF_UNCHANGING:
-        if (!u.Unchanging && !((u.HUnchanging | 0) & FROMOUTSIDE)
-            && Upolyd(u)) {
+        if (!Unchanging(u) && Upolyd(u)) { // C eat.c:2379
             await accessory_has_effect(otmp);
             makeknown(typ);
             await rehumanize();
@@ -3779,8 +3784,9 @@ async function cprefx(pm) {
     case PM_GREEN_SLIME: {
         const u = game.u || {};
         const Slimed = !!(u.Slimed & TIMEOUT);
-        const Unchanging = !!(u.Unchanging || u.HUnchanging || u.EUnchanging);
-        if (!Slimed && !Unchanging && !slimeproof(hero_form_data())) {
+        // C youprop.h Unchanging — H || E incl. worn-amulet uprops (D-4059).
+        const unchanging = Unchanging(u);
+        if (!Slimed && !unchanging && !slimeproof(hero_form_data())) {
             await pline("You don't feel very well.");
             await make_slimed(10, null);
             delayed_killer(SLIMED, KILLED_BY_AN, '');
@@ -4331,8 +4337,9 @@ async function edibility_prompts(otmp) {
             && !(u.Stone_resistance || u.HStone_resistance || u.EStone_resistance)
             && !poly_when_stoned(youdata));
         if (mnum === PM_GREEN_SLIME || otmp.otyp === GLOB_OF_GREEN_SLIME) {
-            const Unchanging = !!(u.Unchanging || u.HUnchanging || u.EUnchanging);
-            stoneorslime = !Unchanging && !slimeproof(youdata);
+            // C youprop.h Unchanging — H || E incl. worn-amulet uprops (D-4059).
+            const unchanging = Unchanging(u);
+            stoneorslime = !unchanging && !slimeproof(youdata);
         }
         if (cadaver && !nonrotting_corpse(mnum)) {
             const age = peek_at_iced_corpse_age(otmp);

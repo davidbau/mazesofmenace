@@ -501,7 +501,7 @@ async function inside_gas_cloud(reg, mtmp) {
             await wake_nearto(u.ux | 0, u.uy | 0, 2);
             let dam = maybe_half_phys(rnd(dam0) + 5);
             if (Half_gas_damage()) dam = Math.trunc((dam + 1) / 2);
-            losehp(dam, 'gas cloud', KILLED_BY_AN);
+            await losehp(dam, 'gas cloud', KILLED_BY_AN);
             if (game._losehp_needs_done) {
                 const { finish_losehp_done } = await import('./end.js');
                 await finish_losehp_done();

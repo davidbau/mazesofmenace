@@ -1408,7 +1408,7 @@ export async function doseduce(mon) {
             await You_feel('exhausted.');
             exercise(A_STR, false);
             const tmp = rn1(10, 6);
-            losehp(maybe_half_phys(tmp), 'exhaustion', KILLED_BY);
+            await losehp(maybe_half_phys(tmp), 'exhaustion', KILLED_BY);
             if (game._losehp_needs_done) await finish_losehp_done();
             break;
         }

@@ -712,7 +712,7 @@ async function cursed_book(bp) {
                 `As you read the book, it ${EXPLODES} in your face!`,
             );
             dmg = 2 * rnd(10) + 5;
-            losehp(maybe_half_phys(dmg), 'exploding rune', KILLED_BY_AN);
+            await losehp(maybe_half_phys(dmg), 'exploding rune', KILLED_BY_AN);
         }
         return true;
     }
@@ -2467,7 +2467,7 @@ async function wand_duplicate_weffects(pseudo, atme, physical_damage) {
                 if (physical_damage) {
                     damage = maybe_half_phys(damage);
                 }
-                losehp(
+                await losehp(
                     damage,
                     `zapped ${uhim()}self with a spell`,
                     NO_KILLER_PREFIX,
@@ -2669,7 +2669,7 @@ export async function spelleffects(spell_otyp, atme, force) {
                     if (!game.u.dx && !game.u.dy && !game.u.dz) {
                         const damage = await zapyourself(pseudo, true);
                         if (damage) {
-                            losehp(
+                            await losehp(
                                 damage,
                                 `zapped ${uhim()}self with a spell`,
                                 NO_KILLER_PREFIX,

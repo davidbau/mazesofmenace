@@ -841,7 +841,7 @@ function display_stinking_cloud_positions(on_off) {
  */
 async function explode_losehp(dmg, how) {
     const { losehp, maybe_half_phys, finish_maybe_wail } = await import('./hack.js');
-    losehp(maybe_half_phys(dmg), how, KILLED_BY_AN);
+    await losehp(maybe_half_phys(dmg), how, KILLED_BY_AN);
     await finish_maybe_wail();
     if (game._losehp_needs_done || game.program_state?.gameover) {
         const { finish_losehp_done } = await import('./end.js');
@@ -862,7 +862,7 @@ export async function wand_explode(obj, chg) {
             || otyp === WAN_LIGHTNING || otyp === WAN_MAGIC_MISSILE) ? 8
         : otyp === WAN_NOTHING ? 4 : 6;
     const dmg = d(n, k);
-    obj.in_use = true; /* C `:2441` in case losehp() is fatal */
+    obj.in_use = true; /* C `:2441` in case await losehp() is fatal */
     await pline(`${Yname2(obj)} ${expl} explodes!`);
     await explode_losehp(dmg, 'exploding wand');
     useup_live(obj);
@@ -1721,7 +1721,7 @@ async function drop_boulder_on_player(confused, helmet_protects, byu, skip_uswal
         }
         if (game.program_state?.gameover) return;
     }
-    if (dmg) losehp(maybe_half_phys(dmg), 'scroll of earth', KILLED_BY_AN);
+    if (dmg) await losehp(maybe_half_phys(dmg), 'scroll of earth', KILLED_BY_AN);
     // C `:2336–2337` — losehp→done is noreturn: drain the deferred
     // wail/done finishers here (explode_losehp idiom) so the queued
     // hit screens render before 'You die...' + Die? (scen-sokoban-
@@ -1906,7 +1906,7 @@ async function seffect_fire(sobj) {
             const hands = makeplural(body_part(HAND));
             // C pline_The — plain pline with the The-phrase (cf. zap.js).
             await pline(`The scroll catches fire and you burn your ${hands}.`);
-            losehp(1, 'scroll of fire', KILLED_BY_AN);
+            await losehp(1, 'scroll of fire', KILLED_BY_AN);
             // C `:1886` — losehp→done is noreturn (drop_boulder_on_player
             // idiom): drain here so a fatal burn shows its screens.
             const { finish_maybe_wail } = await import('./hack.js');

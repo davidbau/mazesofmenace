@@ -2610,7 +2610,7 @@ export async function mind_blast(mtmp) {
             await pline(`It locks on to your ${lock}!`);
             let dmg = rnd(15);
             if (Half_spell_damage()) dmg = Math.trunc((dmg + 1) / 2);
-            losehp(dmg, 'psychic blast', KILLED_BY_AN);
+            await losehp(dmg, 'psychic blast', KILLED_BY_AN);
             await finish_maybe_wail();
             if (game._losehp_needs_done) {
                 const { finish_losehp_done } = await import('./end.js');

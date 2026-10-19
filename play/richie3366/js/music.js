@@ -513,7 +513,7 @@ async function do_pit(x, y, tu_pit) {
         } else if (!tu_pit || !u.utrap || (u.utraptype | 0) !== TT_PIT) {
             await pline('You fall into a chasm!');
             set_utrap(rn1(6, 2), TT_PIT);
-            losehp(
+            await losehp(
                 maybe_half_phys(rnd(6)),
                 'fell into a chasm',
                 NO_KILLER_PREFIX,
@@ -525,7 +525,7 @@ async function do_pit(x, y, tu_pit) {
                     || ((acurr(A_DEX) > 7) && rn2(5))));
             await pline('You are jostled around violently!');
             set_utrap(rn1(6, 2), TT_PIT);
-            losehp(
+            await losehp(
                 maybe_half_phys(rnd(keepfooting ? 2 : 4)),
                 'hurt in a chasm',
                 NO_KILLER_PREFIX,
@@ -829,7 +829,7 @@ async function do_improvisation(instr) {
             if (damage) {
                 const buf = `using a magical horn on ${uhim()}self`;
                 Hero_playnotes(itmp_otyp, improvisation, 50);
-                losehp(damage, buf, KILLED_BY);
+                await losehp(damage, buf, KILLED_BY);
             }
         } else {
             const type = BZ_OFS_AD(

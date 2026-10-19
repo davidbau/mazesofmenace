@@ -2661,7 +2661,7 @@ export async function use_crystal_ball(obj) {
             await pline(`${Tobjnam(otmp, 'explode')}!`);
             useup(otmp);
             otmp = null;
-            losehp(
+            await losehp(
                 maybe_half_phys(rnd(30)),
                 'exploding crystal ball',
                 KILLED_BY_AN,

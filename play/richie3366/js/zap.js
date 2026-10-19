@@ -1756,7 +1756,7 @@ async function maybe_destroy_item(carrier, obj, dmgtyp) {
                 const one = cnt === 1;
                 if (dmgtyp === AD_FIRE && osym === FOOD_CLASS) // C `:5945`
                     how = 'exploding glob of slime';
-                losehp(dmg, one ? how : makeplural(how),
+                await losehp(dmg, one ? how : makeplural(how),
                        one ? KILLED_BY_AN : KILLED_BY);
                 /* C zap.c:5947–5949 + hack.c losehp:4287 — losehp is
                  * noreturn on death (done(DIED) unless life-saved);
@@ -2306,7 +2306,7 @@ async function zhitu(type, nd, fltxt, sx, sy) {
     if (dam) {
         // C hack.c losehp → done(DIED) noreturn — must not resume weffects
         // learnwand (D-0737; same contract as thitu/mbhitm D-0255/D-0323).
-        losehp(dam, kbuf, KILLED_BY_AN); // C :4588
+        await losehp(dam, kbuf, KILLED_BY_AN); // C :4588
         if (game._losehp_needs_done || game.program_state?.gameover) {
             await finish_losehp_done();
         } else {
@@ -4683,7 +4683,7 @@ export async function lightdamage(obj, ordinary, amt) {
         const buf = `${ord ? 'zapped' : 'blasted'} ${uhim()}self with ${how}`;
         // C: might rehumanize(); fatal only for Unchanging — losehp
         // poly-death still named (hack.c rehumanize deferred).
-        losehp(maybe_half_phys(dmg), buf, NO_KILLER_PREFIX);
+        await losehp(maybe_half_phys(dmg), buf, NO_KILLER_PREFIX);
         // C hack.c losehp:4289–4291 — maybe_wail runs inline;
         // drain the deferred flag (zhitu :2322 shape).
         await finish_maybe_wail();
@@ -7036,7 +7036,7 @@ async function zap_updown(obj) {
                 `A rock is dislodged from the ${ceiling(x, y)} and falls on your ${body_part(HEAD)}.`,
             );
             const dmg = rnd(hard_helmet(game.u?.uarmh) ? 2 : 6);
-            losehp(maybe_half_phys(dmg), 'falling rock', KILLED_BY_AN);
+            await losehp(maybe_half_phys(dmg), 'falling rock', KILLED_BY_AN);
             if (game._losehp_needs_done || game.program_state?.gameover) {
                 await finish_losehp_done();
                 // C zap.c:3314-3316, like dig.c:1597-1598 — done() returns
@@ -7391,7 +7391,7 @@ async function backfire(otmp) {
     otmp.in_use = true;
     await pline(`${The(xname(otmp))} suddenly explodes!`);
     const dmg = d((otmp.spe | 0) + 2, 6);
-    losehp(maybe_half_phys(dmg), 'exploding wand', KILLED_BY_AN);
+    await losehp(maybe_half_phys(dmg), 'exploding wand', KILLED_BY_AN);
     if (game._losehp_needs_done || game.program_state?.gameover) {
         await finish_losehp_done();
         if (game.program_state?.gameover) return;
@@ -7447,7 +7447,7 @@ export async function dozap() {
         if (damage) {
             // C zap.c:2661–2663 uhim() + killer_xname (D-1345; not xname)
             const buf = `zapped ${uhim()}self with ${killer_xname(obj)}`;
-            losehp(maybe_half_phys(damage), buf, NO_KILLER_PREFIX);
+            await losehp(maybe_half_phys(damage), buf, NO_KILLER_PREFIX);
             // C losehp is noreturn on fatal damage (done(DIED) inside);
             // JS defers via _losehp_needs_done — process it like the
             // backfire arm above so a fatal self-zap actually kills.

@@ -2247,7 +2247,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
                 } else {
                     // C: losehp(Maybe_Half_Phys(rnd(3)), …, KILLED_BY)
                     // → maybe_wail (You_hear --More--)
-                    losehp(
+                    await losehp(
                         maybe_half_phys(rnd(3)),
                         atLadder
                             ? 'falling off a ladder'
@@ -2478,7 +2478,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     if (do_fall_dmg) {
         let dmg = d(Math.max(dist | 0, 1), 6);
         dmg = maybe_half_phys(dmg);
-        losehp(dmg, 'falling down a mine shaft', KILLED_BY);
+        await losehp(dmg, 'falling down a mine shaft', KILLED_BY);
         await finish_maybe_wail();
         if (game._losehp_needs_done) {
             const { finish_losehp_done } = await import('./end.js');
@@ -3588,7 +3588,7 @@ export async function dodown() {
             if ((await y_n(`Try to squeeze ${down_or_thru}?`)) === 'y') {
                 if (!rn2(3)) {
                     actn = 'manage to squeeze';
-                    losehp(
+                    await losehp(
                         maybe_half_phys(rnd(4)),
                         'contusion from a small passage',
                         KILLED_BY,

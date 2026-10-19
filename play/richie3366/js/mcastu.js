@@ -458,7 +458,7 @@ export async function touch_of_death(mtmp) {
         const newuhpmax = (u.uhpmax | 0) - drain;
         setuhpmax(Math.max(newuhpmax, uhpmin), false);
         const dmg = adjuhploss(dmg0, olduhp);
-        losehp(dmg, kbuf, KILLED_BY);
+        await losehp(dmg, kbuf, KILLED_BY);
         if (game._losehp_needs_done || game.program_state?.gameover) {
             await finish_losehp_done();
             return;

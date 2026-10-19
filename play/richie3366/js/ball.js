@@ -163,7 +163,7 @@ export async function ballfall() {
             }
         }
         // C: losehp → maybe_wail (You_hear --More--)
-        losehp(
+        await losehp(
             maybe_half_phys(dmg),
             'crunched in the head by an iron ball',
             NO_KILLER_PREFIX,
@@ -230,7 +230,7 @@ export async function drag_down() {
         if (rn2(6)) {
             await pline('The iron ball drags you downstairs!');
             // C: losehp → maybe_wail (You_hear --More--)
-            losehp(
+            await losehp(
                 maybe_half_phys(rnd(6)),
                 'dragged downstairs by an iron ball',
                 NO_KILLER_PREFIX,
@@ -243,7 +243,7 @@ export async function drag_down() {
             // Soundeffect(se_iron_ball_hits_you, 25) deferred
             await pline('The iron ball smacks into you!');
             // C: losehp → maybe_wail (You_hear --More--)
-            losehp(
+            await losehp(
                 maybe_half_phys(rnd(20)),
                 'iron ball collision',
                 KILLED_BY_AN,
@@ -254,7 +254,7 @@ export async function drag_down() {
         }
         if (dragchance >= rnd(6)) {
             await pline('The iron ball drags you downstairs!');
-            losehp(
+            await losehp(
                 maybe_half_phys(rnd(3)),
                 'dragged downstairs by an iron ball',
                 NO_KILLER_PREFIX,
@@ -1038,7 +1038,7 @@ export async function drop_ball(x, y) {
                 if (!u.usteed) {
                     await pline(`Your ${(side === LEFT_SIDE) ? 'left' : 'right'} ${body_part(LEG)} is severely damaged.`);
                     // C: losehp → maybe_wail (You_hear --More--)
-                    losehp(
+                    await losehp(
                         maybe_half_phys(2),
                         'leg damage from being pulled out of a bear trap',
                         KILLED_BY,

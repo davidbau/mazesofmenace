@@ -1752,7 +1752,7 @@ export async function toss_up(obj, hitsroof) {
         await hitfloor(obj, true);
         game.thrownobj = null;
         if (!harmless) {
-            losehp(dmg, 'falling object', KILLED_BY_AN);
+            await losehp(dmg, 'falling object', KILLED_BY_AN);
             const { finish_losehp_done } = await import('./end.js');
             await finish_losehp_done();
             await finish_maybe_wail();
@@ -2015,7 +2015,7 @@ export async function throwit_returning_missile(
             dmg = dmgBox.dmg | 0;
         }
         // C dothrow.c:1747–1748 killer_xname + KILLED_BY (D-1346; not xname)
-        losehp(maybe_half_phys(dmg), killer_xname(obj), KILLED_BY);
+        await losehp(maybe_half_phys(dmg), killer_xname(obj), KILLED_BY);
         const { finish_losehp_done } = await import('./end.js');
         await finish_losehp_done();
         await finish_maybe_wail();
@@ -3052,7 +3052,7 @@ export async function hurtle_step(rangeArg, x, y) {
         }
         if (why) {
             const dmg = rnd(2 + (rangeArg.n | 0));
-            losehp(maybe_half_phys(dmg), why, KILLED_BY);
+            await losehp(maybe_half_phys(dmg), why, KILLED_BY);
             // C dothrow.c:836 — losehp runs inline: a fatal hit
             // done(DIED)s noreturn (never reaches wake_nearto); on
             // survival hack.c:4289–4291 maybe_wail prints before

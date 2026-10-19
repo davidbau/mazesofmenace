@@ -2034,7 +2034,7 @@ export async function polyself(psflags = 0) {
         // C: if (rn2(20) > ACURR(A_CON)) system shock
         if (rn2(20) > acurr(A_CON)) {
             await pline('You shudder for a moment.');
-            losehp(rnd(30), 'system shock', KILLED_BY_AN);
+            await losehp(rnd(30), 'system shock', KILLED_BY_AN);
             // C polyself.c:492→493 — showdamage/rehumanize run synchronously
             // inside losehp, so the mh<1 revert (umonnum := umonster) lands
             // before the :493 exercise reads Upolyd. Drain in C order first;

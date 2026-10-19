@@ -2371,7 +2371,7 @@ async function trapeffect_pit(mtmp, trap, trflags) {
         if (!await steedintrap(trap, null)) {
             if (relevant_spikes) {
                 const oldumort = u.umortality | 0;
-                losehp(
+                await losehp(
                     maybe_half_phys(rnd(conj_pit ? 4 : adj_pit ? 6 : 10)),
                     plunged
                         ? 'deliberately plunged into a pit of iron spikes'
@@ -2399,7 +2399,7 @@ async function trapeffect_pit(mtmp, trap, trflags) {
             } else if (!conj_pit && !deliberate
                 && !(plunged && (hero_Flying()
                     || is_clinger(game.youmonst?.data)))) {
-                losehp(
+                await losehp(
                     maybe_half_phys(rnd(adj_pit ? 3 : 6)),
                     plunged ? 'deliberately plunged into a pit'
                         : 'fell into a pit',
@@ -3858,7 +3858,7 @@ async function trapeffect_bear_trap(mtmp, trap, trflags) {
                 await set_wounded_legs(
                     rn2(2) ? RIGHT_SIDE : LEFT_SIDE, rn1(10, 10),
                 );
-                losehp(maybe_half_phys(dmg), 'bear trap', KILLED_BY_AN);
+                await losehp(maybe_half_phys(dmg), 'bear trap', KILLED_BY_AN);
                 if (await finish_hero_losehp()) return Trap_Effect_Finished;
             }
         }
@@ -4007,7 +4007,7 @@ async function trapeffect_rust_trap(mtmp, trap, _trflags) {
         if ((u.umonnum | 0) === PM_IRON_GOLEM) {
             const dam = u.mhmax | 0;
             await pline('You are covered with rust!');
-            losehp(maybe_half_phys(dam), 'rusting away', KILLED_BY);
+            await losehp(maybe_half_phys(dam), 'rusting away', KILLED_BY);
             if (await finish_hero_losehp()) return Trap_Effect_Finished;
         } else if ((u.umonnum | 0) === PM_GREMLIN && rn2(3)) {
             // C trap.c:1652–1653 split_mon(&youmonst, NULL)
@@ -4158,7 +4158,7 @@ async function trapeffect_rocktrap(mtmp, trap, _trflags) {
         stackobj(otmp);
         newsym(u.ux, u.uy);
         if (!harmless) {
-            losehp(maybe_half_phys(dmg), 'falling rock', KILLED_BY_AN);
+            await losehp(maybe_half_phys(dmg), 'falling rock', KILLED_BY_AN);
             if (await finish_hero_losehp()) return Trap_Effect_Finished;
             exercise(A_STR, false);
         }
@@ -5086,7 +5086,7 @@ async function dofiretrap(box) {
         );
         if (Fire_resistance()) await You('are uninjured.');
         else {
-            losehp(rnd(3), 'boiling water', KILLED_BY);
+            await losehp(rnd(3), 'boiling water', KILLED_BY);
             await finish_hero_losehp();
         }
         return;
@@ -5154,7 +5154,7 @@ async function dofiretrap(box) {
     }
     if (!num) await You('are uninjured.');
     else {
-        losehp(num, TOWER_OF_FLAME, KILLED_BY_AN); /* fire damage */
+        await losehp(num, TOWER_OF_FLAME, KILLED_BY_AN); /* fire damage */
         if (await finish_hero_losehp()) return;
     }
     await burn_away_slime(); /* C `:4305`, static timeout.js import */
@@ -5319,7 +5319,7 @@ async function trapeffect_magic_trap(mtmp, trap, trflags) {
             deltrap(trap);
             newsym(u.ux, u.uy); /* update position */
             await pline('You are caught in a magical explosion!');
-            losehp(rnd(10), 'magical explosion', KILLED_BY_AN);
+            await losehp(rnd(10), 'magical explosion', KILLED_BY_AN);
             if (await finish_hero_losehp()) return Trap_Effect_Finished;
             await pline('Your body absorbs some of the magical energy!');
             u.uenmax = (u.uenmax | 0) + 2;
@@ -5748,7 +5748,7 @@ async function trapeffect_anti_magic(mtmp, trap, _trflags) {
                 : dmgval2 >= ((hp / 4) | 0) ? 'very lethargic.'
                 : 'sluggish.');
             /* opposite of magical explosion */
-            losehp(dmgval2, 'anti-magic implosion', KILLED_BY_AN);
+            await losehp(dmgval2, 'anti-magic implosion', KILLED_BY_AN);
             if (await finish_hero_losehp()) return Trap_Effect_Finished;
         }
 
@@ -6701,7 +6701,7 @@ export async function drown() {
         const i = maybe_half_phys(d(2, 6));
         if ((u.mhmax | 0) > i)
             u.mhmax = (u.mhmax | 0) - i;
-        losehp(i, 'rusting away', KILLED_BY);
+        await losehp(i, 'rusting away', KILLED_BY);
         if (game._losehp_needs_done || game.program_state?.gameover) {
             const { finish_losehp_done } = await import('./end.js');
             await finish_losehp_done();
@@ -6967,7 +6967,7 @@ export async function lava_effects() {
         if (liveWwalking()) {
             await pline(`The ${hliquid('lava')} here burns you!`);
             if (usurvive) {
-                losehp(dmg, lava_killer, KILLED_BY); /* lava damage */
+                await losehp(dmg, lava_killer, KILLED_BY); /* lava damage */
                 if (await finish_hero_losehp()) return false;
                 return gotoBurnStuff();
             }
@@ -7070,7 +7070,7 @@ export async function lava_effects() {
         if (heroFireRes) monstseesu(M_SEEN_FIRE);
         else monstunseesu(M_SEEN_FIRE);
         if ((u.uhp | 0) > 1) {
-            losehp(!boil_away ? 1 : ((u.uhp | 0) / 2) | 0, lava_killer, KILLED_BY);
+            await losehp(!boil_away ? 1 : ((u.uhp | 0) / 2) | 0, lava_killer, KILLED_BY);
             if (await finish_hero_losehp()) return false;
         }
     }
@@ -8205,7 +8205,7 @@ export async function chest_trap(obj, bodypart, disarm) {
                 otmp = otmp2;
             }
             await wake_nearby(false);
-            losehp(maybe_half_phys(d(6, 6)), buf, KILLED_BY_AN);
+            await losehp(maybe_half_phys(d(6, 6)), buf, KILLED_BY_AN);
             if (await finish_hero_losehp()) return chestgone;
             exercise(A_STR, false);
             if (costly && loss) {
@@ -8263,7 +8263,7 @@ export async function chest_trap(obj, bodypart, disarm) {
                 );
             }
             if (dmg) {
-                losehp(dmg, 'electric shock', KILLED_BY_AN);
+                await losehp(dmg, 'electric shock', KILLED_BY_AN);
                 if (await finish_hero_losehp()) return false;
             }
             break;
