@@ -22,11 +22,12 @@ import { can_saddle, put_saddle_on_mon } from './dog.js';
 import { on_level } from './dungeon.js';
 import { game } from './gstate.js';
 import {
+    addToContainerRuntime,
     add_to_container,
     delete_contents,
     obj_extract_self,
     obfree,
-    stackobj,
+    stackobjRuntime,
 } from './invent.js';
 import { makemon } from './makemon_create.js';
 import { mongone } from './mon.js';
@@ -465,9 +466,14 @@ function putInCurrentContainer(obj, context, env) {
         obfree(obj, null, env);
         return null;
     }
-    const survivor = add_to_container(parent, obj, env);
-    parent.owt = weight(parent, env);
-    return survivor;
+    const placed = addToContainerRuntime(parent, obj, env);
+    const finishPlacement = (survivor) => {
+        parent.owt = weight(parent, env);
+        return survivor;
+    };
+    return placed && typeof placed.then === 'function'
+        ? Promise.resolve(placed).then(finishPlacement)
+        : finishPlacement(placed);
 }
 
 function heroCanSeeCarrier(monster, env, specification) {
@@ -634,17 +640,22 @@ function populateMedusaStatue(obj, specification, env) {
 }
 
 function finalizeTopLevelObject(obj, specification, context, env) {
-    stackobj(obj, env);
-    if (specification.lit) begin_burn(obj, false, env);
-    if (!specification.buried) return obj;
+    const finishPlacement = (stacked) => {
+        if (specification.lit) begin_burn(stacked, false, env);
+        if (!specification.buried) return stacked;
 
-    return bury_an_obj(obj, env).then(({ deallocated }) => {
-        if (!deallocated) return obj;
-        if (context.containers.length) {
-            context.containers[context.containers.length - 1] = null;
-        }
-        return null;
-    });
+        return bury_an_obj(stacked, env).then(({ deallocated }) => {
+            if (!deallocated) return stacked;
+            if (context.containers.length) {
+                context.containers[context.containers.length - 1] = null;
+            }
+            return null;
+        });
+    };
+    const stacked = stackobjRuntime(obj, env);
+    return stacked && typeof stacked.then === 'function'
+        ? Promise.resolve(stacked).then(finishPlacement)
+        : finishPlacement(stacked);
 }
 
 function createOneObject(specification, croom, env) {
@@ -663,26 +674,33 @@ function createOneObject(specification, croom, env) {
     let obj = constructObject(specification, coordinate, env);
     obj = applyObjectFields(obj, specification, env);
 
-    if (specification.content || context.inventCarryingMonster) {
-        obj = placeSpecialObject(obj, specification, context, env);
+    const continueCreation = (placed) => {
+        obj = placed;
         if (!obj) return null;
-    }
-    if (specification.container && obj)
-        pushContainer(obj, context, env);
+        if (specification.container)
+            pushContainer(obj, context, env);
 
-    const finish = (populated) => {
-        obj = populated;
-        if (specification.achievement) {
-            initializeAchievementObject(obj, env);
-        }
+        const finish = (populated) => {
+            obj = populated;
+            if (specification.achievement) {
+                initializeAchievementObject(obj, env);
+            }
 
-        if (!specification.content && obj)
-            obj = finalizeTopLevelObject(obj, specification, context, env);
-        return obj;
+            if (!specification.content && obj)
+                obj = finalizeTopLevelObject(obj, specification, context, env);
+            return obj;
+        };
+        const maybeObj = populateMedusaStatue(obj, specification, env);
+        return maybeObj && typeof maybeObj.then === 'function'
+            ? maybeObj.then(finish) : finish(maybeObj);
     };
-    const maybeObj = populateMedusaStatue(obj, specification, env);
-    return maybeObj && typeof maybeObj.then === 'function'
-        ? maybeObj.then(finish) : finish(maybeObj);
+    if (specification.content || context.inventCarryingMonster) {
+        const placed = placeSpecialObject(obj, specification, context, env);
+        return placed && typeof placed.then === 'function'
+            ? Promise.resolve(placed).then(continueCreation)
+            : continueCreation(placed);
+    }
+    return continueCreation(obj);
 }
 
 // Source-shaped single-object primitive. A caller using this directly owns

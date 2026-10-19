@@ -324,6 +324,8 @@ import {
     carried,
     unknwn_contnr_contents,
     weight,
+    obj_absorb,
+    pudding_merge_message,
 } from './obj.js';
 import { get_obj_location, obj_merge_light_sources } from './light.js';
 import {
@@ -3787,9 +3789,9 @@ function mergedEnv(env) {
 // Mutation prefix of invent.c merged(), through the point immediately before
 // its comparison-discovery pline().  The live pickup path can suspend at that
 // call boundary before obfree() deletes the incoming object.
-function beginMerged(otmp, obj, env = {}) {
+function beginMerged(otmp, obj, env = {}, globMode = 'sync') {
     const normalized = mergedEnv(env);
-    if (!preflightMerged(otmp, obj, normalized)) return null;
+    if (!preflightMerged(otmp, obj, normalized, globMode)) return null;
 
     if (!obj.lamplit && !obj.globby) {
         obj.age = Math.trunc(obj.age);
@@ -3838,16 +3840,13 @@ function beginMerged(otmp, obj, env = {}) {
     }
     if (obj.bypass) otmp.bypass = true;
     if (obj.globby) {
-        requiredHook(normalized, 'absorbGlob', obj)(otmp, obj, normalized);
-        const absorbed = obj.where === OBJ_DELETED || obj.where === OBJ_LUAFREE;
-        if (!absorbed || obj.nobj || obj.nexthere || obj.cobj) {
-            throw new Error(
-                'absorbGlob must deallocate the absorbed object',
-            );
-        }
-        if (otmp.where === OBJ_DELETED || otmp.where === OBJ_LUAFREE)
-            throw new Error('absorbGlob must preserve the target object');
-        return { normalized, target: otmp, object: null };
+        return {
+            comparisonDiscovered: false,
+            globby: true,
+            normalized,
+            target: otmp,
+            object: obj,
+        };
     }
     const comparisonDiscovered = discovered
         && otmp.where === OBJ_INVENT
@@ -3867,6 +3866,15 @@ function finishMerged(plan) {
     return true;
 }
 
+function validateGlobAbsorption(target, absorbed) {
+    if ((absorbed.where !== OBJ_DELETED && absorbed.where !== OBJ_LUAFREE)
+        || absorbed.nobj || absorbed.nexthere || absorbed.cobj) {
+        throw new Error('glob absorption must deallocate the absorbed object');
+    }
+    if (target.where === OBJ_DELETED || target.where === OBJ_LUAFREE)
+        throw new Error('glob absorption must preserve the target object');
+}
+
 function isThenable(value) {
     return typeof value?.then === 'function';
 }
@@ -3875,6 +3883,13 @@ function isThenable(value) {
 export function merged(otmp, obj, env = {}) {
     const plan = beginMerged(otmp, obj, env);
     if (!plan) return false;
+    if (plan.globby) {
+        requiredHook(plan.normalized, 'absorbGlob', plan.object)(
+            plan.target, plan.object, plan.normalized,
+        );
+        validateGlobAbsorption(plan.target, plan.object);
+        return true;
+    }
     if (plan.comparisonDiscovered) {
         requiredHook(
             plan.normalized,
@@ -3890,8 +3905,43 @@ export function merged(otmp, obj, env = {}) {
 // still complete synchronously so merely scanning incompatible stacks cannot
 // introduce an observable scheduling boundary.
 export function mergedRuntime(otmp, obj, env = {}) {
-    const plan = beginMerged(otmp, obj, env);
+    const normalized = mergedEnv(env);
+    if (normalized.planning && obj?.globby
+        && preflightMerged(otmp, obj, normalized, 'runtime')) {
+        if (typeof normalized.requestPlanningInput !== 'function')
+            throw new TypeError(
+                'planned glob merge requires a message input handoff',
+            );
+        return normalized.requestPlanningInput(
+            'mkobj.c pudding_merge_message', otmp, obj, normalized,
+        );
+    }
+    const plan = beginMerged(otmp, obj, normalized, 'runtime');
     if (!plan) return false;
+    if (plan.globby) {
+        return (async () => {
+            const message = plan.normalized.message
+                ?? plan.normalized.hooks?.message;
+            await pudding_merge_message(
+                plan.target,
+                plan.object,
+                plan.normalized.state,
+                message
+                    ? { ...plan.normalized, message }
+                    : plan.normalized,
+            );
+            const survivor = await obj_absorb(
+                plan.target,
+                plan.object,
+                plan.normalized.state,
+                plan.normalized,
+            );
+            if (survivor !== plan.target)
+                throw new Error('glob absorption must preserve its target');
+            validateGlobAbsorption(plan.target, plan.object);
+            return true;
+        })();
+    }
     if (plan.comparisonDiscovered) {
         const wait = requiredHook(
             plan.normalized,
@@ -3908,13 +3958,16 @@ export function mergedRuntime(otmp, obj, env = {}) {
 // Dependency-only prefix of invent.c merged().  Pickup plans an entire
 // selected floor sequence before observing or unlinking its first object, so
 // the merge target can be the projected result of an earlier selection.
-function preflightMerged(otmp, obj, normalized) {
+function preflightMerged(otmp, obj, normalized, globMode = 'sync') {
     normalized = mergedEnv(normalized);
     if (!mergable(otmp, obj, normalized)) return false;
     if (obj.timed) requiredHook(normalized, 'stopObjectTimers', obj);
     if (obj.owornmask && otmp.where === OBJ_INVENT)
         requiredHook(normalized, 'mergeWornMasks', obj);
-    if (obj.globby) requiredHook(normalized, 'absorbGlob', obj);
+    if (obj.globby && globMode === 'sync')
+        requiredHook(normalized, 'absorbGlob', obj);
+    // Runtime and projection modes use the canonical owners statically
+    // imported above; module linking guarantees both dependencies exist.
     if (!obj.globby
         && comparisonWillDiscover(otmp, obj, normalized.state)
         && otmp.where === OBJ_INVENT
@@ -3929,10 +3982,7 @@ function preflightMerged(otmp, obj, normalized) {
     return true;
 }
 
-// C ref: invent.c stackobj(). Preserve the newly placed object by merging an
-// older compatible pile member into it, which is the pointer order used by C.
-export function stackobj(obj, env = {}) {
-    const normalized = inventoryEnv(env);
+function floorPileForStacking(obj, normalized) {
     if (!obj || typeof obj !== 'object')
         throw new TypeError('stackobj requires an object');
     const pile = normalized.state.level?.objects?.[obj.ox]?.[obj.oy];
@@ -3949,6 +3999,14 @@ export function stackobj(obj, env = {}) {
         if (!linked)
             throw new Error('stackobj: object is not on its floor pile');
     }
+    return pile;
+}
+
+// C ref: invent.c stackobj(). Preserve the newly placed object by merging an
+// older compatible pile member into it, which is the pointer order used by C.
+export function stackobj(obj, env = {}) {
+    const normalized = inventoryEnv(env);
+    const pile = floorPileForStacking(obj, normalized);
     // sp_lev.c also calls stackobj() after putting a direct custom-inventory
     // object into OBJ_MINVENT (or after mpickobj merged and deleted it).  C
     // simply scans the remembered coordinate's floor pile in every case.
@@ -3956,6 +4014,29 @@ export function stackobj(obj, env = {}) {
         if (current !== obj && merged(obj, current, normalized)) break;
     }
     return obj;
+}
+
+// Runtime counterpart for callers that must finish a source glob merge before
+// continuing. C stackobj stops at the first successful merge, so a pending
+// pudding message is awaited before either returning or scanning the next pile
+// member. The synchronous stackobj contract remains available to other callers.
+export function stackobjRuntime(obj, env = {}) {
+    const normalized = inventoryEnv(env);
+    const pile = floorPileForStacking(obj, normalized);
+    const scan = (current) => {
+        for (let candidate = current; candidate; candidate = candidate.nexthere) {
+            if (candidate === obj) continue;
+            const next = candidate.nexthere;
+            const result = mergedRuntime(obj, candidate, normalized);
+            if (isThenable(result)) {
+                return Promise.resolve(result).then((didMerge) =>
+                    didMerge ? obj : scan(next));
+            }
+            if (result) break;
+        }
+        return obj;
+    };
+    return scan(pile);
 }
 
 // C ref: shk.c delete_contents(). Preflight the whole sibling chain before
@@ -4366,12 +4447,14 @@ function projectAddinv(obj, projectedEnv) {
     if (prize) obj.nomerge = false;
 
     let target = null;
-    if (state.uquiver && preflightMerged(state.uquiver, obj, projectedEnv)) {
+    if (state.uquiver
+        && preflightMerged(state.uquiver, obj, projectedEnv, 'projection')) {
         target = state.uquiver;
     } else {
         let previous = null;
         let current = inventoryHead(state);
-        while (current && !preflightMerged(current, obj, projectedEnv)) {
+        while (current
+            && !preflightMerged(current, obj, projectedEnv, 'projection')) {
             previous = current;
             current = current.nobj;
         }
@@ -4935,6 +5018,43 @@ export function add_to_minv(monster, obj, env = {}) {
     return false;
 }
 
+// Runtime counterpart of mkobj.c:add_to_minv(). Preserve the synchronous
+// boolean result for an ordinary insertion or non-waiting merge; a merge
+// whose source effects wait for message input resumes the same inventory
+// scan only after that merge reports whether it consumed obj.
+export function addToMinvRuntime(monster, obj, env = {}) {
+    const normalized = inventoryEnv(env);
+    if (!monster || typeof monster !== 'object')
+        throw new TypeError('addToMinvRuntime requires a monster');
+    if (obj.where !== OBJ_FREE) {
+        throw new Error(
+            `addToMinvRuntime: object where=${obj.where}, expected OBJ_FREE`,
+        );
+    }
+
+    const insert = () => {
+        obj.where = OBJ_MINVENT;
+        obj.ocarry = monster;
+        obj.nobj = monster.minvent ?? null;
+        monster.minvent = obj;
+        return false;
+    };
+    const scan = (current) => {
+        while (current) {
+            const next = current.nobj ?? null;
+            const absorbed = mergedRuntime(current, obj, normalized);
+            if (isThenable(absorbed)) {
+                return Promise.resolve(absorbed).then((didAbsorb) =>
+                    didAbsorb ? true : scan(next));
+            }
+            if (absorbed) return true;
+            current = next;
+        }
+        return insert();
+    };
+    return scan(monster.minvent ?? null);
+}
+
 export function add_to_container(container, obj, env = {}) {
     const normalized = inventoryEnv(env);
     if (obj.where !== OBJ_FREE) {
@@ -4965,6 +5085,53 @@ export function add_to_container(container, obj, env = {}) {
             ? released.then(attach) : attach();
     }
     return attach();
+}
+
+// Runtime counterpart of mkobj.c add_to_container(). Preserve the legacy
+// synchronous helper above; a glob absorption that waits for message input
+// resumes this same ordered scan before returning its actual surviving object.
+export function addToContainerRuntime(container, obj, env = {}) {
+    const normalized = inventoryEnv(env);
+    if (obj.where !== OBJ_FREE) {
+        throw new Error(
+            `addToContainerRuntime: object where=${obj.where}, expected OBJ_FREE`,
+        );
+    }
+    if (obj.nobj || obj.nexthere) {
+        throw new Error(
+            'addToContainerRuntime: free object retains a chain link',
+        );
+    }
+
+    const insert = () => {
+        obj.where = OBJ_CONTAINED;
+        obj.ocontainer = container;
+        obj.nobj = container.cobj ?? null;
+        container.cobj = obj;
+        return obj;
+    };
+    const scan = (current) => {
+        while (current) {
+            const next = current.nobj ?? null;
+            const absorbed = mergedRuntime(current, obj, normalized);
+            if (isThenable(absorbed)) {
+                return Promise.resolve(absorbed).then((didAbsorb) =>
+                    didAbsorb ? current : scan(next));
+            }
+            if (absorbed) return current;
+            current = next;
+        }
+        return insert();
+    };
+    if (container.where !== OBJ_INVENT && container.where !== OBJ_MINVENT) {
+        const released = requiredHook(normalized, 'objectNoLongerHeld', obj)(
+            obj, normalized,
+        );
+        return isThenable(released)
+            ? Promise.resolve(released).then(() => scan(container.cobj ?? null))
+            : scan(container.cobj ?? null);
+    }
+    return scan(container.cobj ?? null);
 }
 
 export function useupall(obj, env = {}) {
@@ -5454,14 +5621,14 @@ async function doorganize_core(obj, state = game, hooks = {}) {
             if (!displayed) continue;
             letValue = displayed;
             if (letValue === '\x1b') {
-                if (splitting) merged(splitting, obj, { state, hooks });
+                if (splitting) await mergedRuntime(splitting, obj, { state, hooks });
                 if (!everMind) await ttyPline(Never_mind, state);
                 return ECMD_OK;
             }
         }
         if (quitchars.includes(letValue)
             || (splitting && letValue === obj.invlet)) {
-            if (splitting) merged(splitting, obj, { state, hooks });
+            if (splitting) await mergedRuntime(splitting, obj, { state, hooks });
             if (!everMind) await ttyPline(Never_mind, state);
             return ECMD_OK;
         }
@@ -5473,7 +5640,7 @@ async function doorganize_core(obj, state = game, hooks = {}) {
         if ((letter(letValue) && letValue !== '@')
             || (available.includes(letValue) && letValue !== '-')) break;
         if (tryCount === 5) {
-            if (splitting) merged(splitting, obj, { state, hooks });
+            if (splitting) await mergedRuntime(splitting, obj, { state, hooks });
             if (!everMind) await ttyPline(Never_mind, state);
             return ECMD_OK;
         }
@@ -5489,7 +5656,7 @@ async function doorganize_core(obj, state = game, hooks = {}) {
         const objectName = oname(obj);
         if (collect) {
             if ((!currentName || (objectName && currentName === objectName))
-                && merged(current, obj, { state, hooks })) {
+                && await mergedRuntime(current, obj, { state, hooks })) {
                 obj = current;
                 const afterCurrent = obj.nobj;
                 state.invent = extract_nobj(obj, inventoryHead(state));
@@ -5498,7 +5665,7 @@ async function doorganize_core(obj, state = game, hooks = {}) {
             }
         } else if (current.invlet === letValue) {
             if ((!currentName || (objectName && currentName === objectName))
-                && merged(current, obj, { state, hooks })) {
+                && await mergedRuntime(current, obj, { state, hooks })) {
                 adjType = 'Merging:';
                 obj = current;
                 state.invent = extract_nobj(obj, inventoryHead(state));
@@ -5515,12 +5682,12 @@ async function doorganize_core(obj, state = game, hooks = {}) {
                     obj.oextra ??= {};
                     obj.oextra.oname = savedName;
                 }
-                if (merged(current, obj, { state, hooks })) {
+                if (await mergedRuntime(current, obj, { state, hooks })) {
                     adjType = 'Splitting and merging:';
                     obj = current;
                     state.invent = extract_nobj(obj, inventoryHead(state));
                 } else if (inv_cnt(false, state) >= INVLET_BASIC) {
-                    merged(splitting, obj, { state, hooks });
+                    await mergedRuntime(splitting, obj, { state, hooks });
                     await ttyPline('Your pack is too full.', state);
                     return ECMD_OK;
                 } else {
