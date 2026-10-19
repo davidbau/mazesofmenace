@@ -12594,32 +12594,38 @@ function load_mon_strt() {
         }
     }
 
+    // C nhlsel.c l_selection_rndcoord `:407–428`: an empty selection
+    // returns {x=-1, y=-1} (no rn2), and des.trap/des.monster then place
+    // at a random location (create_trap / create_monster
+    // get_location_coord). JS selection_rndcoord returns null there — it
+    // is "random", never "skip" (D-4061: spacelocs is only 2 cells, both
+    // darts take them, all 12 siege monsters spawn at random).
     // des.trap("dart", spacelocs:rndcoord(1)) × 2
     for (let i = 0; i < 2; i++) {
         const pos = selection_rndcoord(spacelocs, true);
-        if (!pos) continue;
+        if (!pos) {
+            splev_create_trap(DART_TRAP);
+            continue;
+        }
         const ttmp = maketrap(pos.x, pos.y, DART_TRAP);
         mktrap_seen_victim(ttmp, {});
     }
     // des.trap() × 4
     for (let i = 0; i < 4; i++) splev_create_trap();
 
-    // Monsters on siege duty: 8 earth elementals then 4 xorns
+    // Monsters on siege duty: 8 earth elementals then 4 xorns —
+    // des.monster(name, coord) → create_monster (sp_lev.c:1925–2050),
+    // coord relative to xstart/ystart like get_location_coord.
+    const siege_coord = (pos) => (pos
+        ? { rx: pos.x - (g.splev_xstart | 0), ry: pos.y - (g.splev_ystart | 0) }
+        : {});
     for (let i = 0; i < 8; i++) {
         const pos = selection_rndcoord(spacelocs, true);
-        const { mndx, female } = find_montype_gender('earth elemental');
-        induced_align(80);
-        if (!pos || mndx < 0 || mndx === NON_PM) continue;
-        const mtmp = makemon(mons(mndx), pos.x, pos.y, 0);
-        if (mtmp) mtmp.female = female;
+        splev_create_monster('earth elemental', undefined, siege_coord(pos));
     }
     for (let i = 0; i < 4; i++) {
         const pos = selection_rndcoord(spacelocs, true);
-        const { mndx, female } = find_montype_gender('xorn');
-        induced_align(80);
-        if (!pos || mndx < 0 || mndx === NON_PM) continue;
-        const mtmp = makemon(mons(mndx), pos.x, pos.y, 0);
-        if (mtmp) mtmp.female = female;
+        splev_create_monster('xorn', undefined, siege_coord(pos));
     }
 
     // des.object({ id="tin", coord = {29, 9}, quantity=2, montype="spinach" })
@@ -18780,8 +18786,10 @@ export async function movebubbles() {
         }
     } else if (Is_airlevel(uz)) {
         /* C `:1653–1654`: levl[x][y] = air_pos — glyph S_cloud, typ AIR,
-         * lit 1 — then recalc_block_point per cell (docrt paints
-         * lev->glyph for the whole map before vision). */
+         * lit 1, every other rm field 0 (seenv too: only vision re-marks
+         * what the hero sees, so engulfed nothing stays seen — D-4077) —
+         * then recalc_block_point per cell (docrt paints lev->glyph for
+         * the whole map before vision). */
         const airGlyph = { ch: '#', color: CLR_GRAY, decgfx: false };
         for (let x = 1; x <= COLNO - 1; x++) {
             for (let y = 0; y <= ROWNO - 1; y++) {
@@ -18789,7 +18797,16 @@ export async function movebubbles() {
                 if (!loc) continue;
                 loc.remembered_glyph = { ...airGlyph };
                 loc.typ = AIR;
+                loc.seenv = 0;
+                loc.flags = 0;
+                loc.doormask = 0;
+                loc.wall_info = 0;
+                loc.horizontal = false;
                 loc.lit = true;
+                loc.waslit = false;
+                loc.roomno = 0;
+                loc.edge = false;
+                if (loc.candig) loc.candig = 0;
                 recalc_block_point(x, y);
                 /* C `:1655–1663`: break up the all-air/all-cloud
                  * perimeter; CLOUD cells block. */
@@ -22124,15 +22141,15 @@ function lua_random2(lo, hi) {
     return lo + rn2(hi - lo + 1);
 }
 
-// C ref: sp_lev.c create_object :2422–2423 — top-level .lev OBJECTs stack.
-// splev_create_object stands in for create_object on class-only lines
-// (containment is always 0 here, so the !SP_OBJ_CONTENT gate passes).
+// C ref: sp_lev.c lspo_object :3556–3755 for the hand-rolled loaders'
+// class-only lines: `des.object()` (null) is the empty-table arm
+// (lcheck_param_table, nhlua.c:229–230) and `des.object("<c>")` the
+// one-letter string arm (:3594–3598). Both reach create_object
+// :2193–2439, whose tail resets what mkobj gave a default record:
+// erosion and erodeproof (:2273–2283) and grease (:2296), then stackobj.
 function splev_create_object(oclass) {
-    const pos = get_location_random();
-    const otmp = (oclass == null)
-        ? mkobj_at(RANDOM_CLASS, pos.x, pos.y, true)
-        : mkobj_at(oclass, pos.x, pos.y, true);
-    if (otmp) stackobj(otmp);
+    if (oclass == null) l_create_object({});
+    else l_create_object(def_oc_syms[oclass].sym);
 }
 
 function splev_create_boulder() {
@@ -24243,15 +24260,13 @@ function get_location_coord_in_room(croom, humidity) {
 }
 
 /**
- * C ref: sp_lev.c create_object with croom (des.object inside des.room).
+ * C ref: sp_lev.c lspo_object → create_object(&tmpobj, coder->croom)
+ * (des.object inside des.room). Same two arms as splev_create_object;
+ * create_object's tail resets erosion/erodeproof/grease, then stackobj.
  */
 function splev_room_object(croom, oclass = null) {
-    // C create_object → get_location_coord(DRY) — includes coord double-try
-    const pos = get_location_coord_in_room(croom, DRY);
-    if (pos.x < 0) return;
-    // C sp_lev.c create_object :2422-2423 — stack non-content des OBJECTs
-    if (oclass == null) stackobj(mkobj_at(RANDOM_CLASS, pos.x, pos.y, true));
-    else stackobj(mkobj_at(oclass, pos.x, pos.y, true));
+    if (oclass == null) l_create_object({}, null, croom);
+    else l_create_object(def_oc_syms[oclass].sym, croom);
 }
 
 /**
@@ -28058,25 +28073,14 @@ function load_sanctum() {
     for (let i = 0; i < 5; i++) splev_create_object(SCROLL_CLASS);
 
     // Monsters — named with coords (random amask) then noalign clerics
+    // des.monster({ id=…, x, y, peaceful=0 }) → create_monster
+    // (sp_lev.c:1925–2050) — the faithful splev_create_monster, like the
+    // clerics below: the inline clone skipped `:1949–1953` (an extinct
+    // unique never spawns; a genocided/extinct type becomes a random
+    // monster — C rndmonst for a genocided erinys, D-4063) and the
+    // pm_to_humidity location arm.
     const placeNamed = (id, rx, ry, peaceful) => {
-        const { mndx, female } = find_montype_gender(id);
-        const pm = (mndx >= 0 && mndx !== NON_PM) ? mons(mndx) : null;
-        // C: no align → AM_SPLEV_RANDOM → induced_align(80)
-        induced_align(80);
-        let x = mx + rx, y = my + ry;
-        if (pm) {
-            // humidity path omitted for these dry demons
-        }
-        if (m_at(x, y)) {
-            const cc = { x: 0, y: 0 };
-            if (enexto(cc, x, y, pm)) { x = cc.x; y = cc.y; }
-        }
-        const mtmp = makemon(pm, x, y, 0);
-        if (!mtmp) return;
-        mtmp.female = female;
-        if (peaceful != null && peaceful > BOOL_RANDOM)
-            mtmp.mpeaceful = peaceful;
-        set_malign(mtmp);
+        splev_create_monster(id, peaceful, { rx, ry });
     };
     const placeNoalignCleric = (rx, ry) => {
         // C: align=noalign → AM_NONE; create_monster → mk_roamer (D-1553)

@@ -6397,8 +6397,10 @@ async function status_core_lines(final = 0, opts = {}) {
                 : blindfoldOnly ? 'deliberately'
                     : 'temporarily';
         let buf = `${kind} blind`;
-        // C: wizard && HBlinded == BlindedTimeout && !Blindfolded.
-        if (wizard && (hb & TIMEOUT) === hb && !u.ublindf) {
+        // C: wizard && HBlinded == BlindedTimeout && !Blindfolded, where
+        // youprop.h:96 Blindfolded ≡ EBlinded — worn lenses never set it,
+        // so not `!u.ublindf` (D-4088).
+        if (wizard && (hb & TIMEOUT) === hb && !(u.EBlinded | 0)) {
             buf += ` (${hb & TIMEOUT})`;
         }
         // C insight.c:1070-1071 — current form youmonst.data (set_uasmon
@@ -6546,7 +6548,11 @@ async function status_core_lines(final = 0, opts = {}) {
         out.push(overlay ? ` ${line}` : line);
     }
     // C insight.c:1190-1194 — Hunger rapid (magic || cause_known).
-    if (((u.HHunger | 0) || (u.EHunger | 0)) && (magic || cause_known(HUNGER))) {
+    // youprop.h Hunger ≡ uprops[HUNGER] H || E; a worn ring sets only the
+    // uprops extrinsic, so read both stores (D-4090).
+    if (((u.HHunger | 0) || (u.EHunger | 0)
+        || (u.uprops?.[HUNGER]?.intrinsic | 0) || (u.uprops?.[HUNGER]?.extrinsic | 0))
+        && (magic || cause_known(HUNGER))) {
         const line = enlght_line_txt(
             You_,
             final ? 'hungered' : 'hunger',
@@ -7020,7 +7026,11 @@ export async function enlightenment(mode, final = 0) {
             ));
         }
         // C insight.c:1571-1580 — See_invisible before telepathic.
-        if ((u.HSee_invisible | 0) || (u.ESee_invisible | 0)) {
+        // youprop.h See_invisible ≡ uprops[SEE_INVIS] H || E; a worn ring
+        // sets only the uprops extrinsic, so read both stores (D-4091).
+        if ((u.HSee_invisible | 0) || (u.ESee_invisible | 0)
+            || (u.uprops?.[SEE_INVIS]?.intrinsic | 0)
+            || (u.uprops?.[SEE_INVIS]?.extrinsic | 0)) {
             if (!Blind()) {
                 lines.push(enlght_line_txt(
                     You_, final ? 'saw' : 'see', ' invisible',
@@ -8111,8 +8121,11 @@ export async function doattributes(enl_mode = null) {
                 from_what(BLND_RES),
             )));
         }
-        // C insight.c:1571-1580 — See_invisible (^X final=0 → "see").
-        if ((u.HSee_invisible | 0) || (u.ESee_invisible | 0)) {
+        // C insight.c:1571-1580 — See_invisible (^X final=0 → "see");
+        // both stores, as the disclosure arm (D-4091).
+        if ((u.HSee_invisible | 0) || (u.ESee_invisible | 0)
+            || (u.uprops?.[SEE_INVIS]?.intrinsic | 0)
+            || (u.uprops?.[SEE_INVIS]?.extrinsic | 0)) {
             if (!Blind()) {
                 lines.push(o(enlght_line_txt(
                     'You ', 'see', ' invisible', from_what(SEE_INVIS),

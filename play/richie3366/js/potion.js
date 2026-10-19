@@ -119,7 +119,7 @@ import {
 import { yn_function } from './getline.js';
 import {
     doname, xname, short_oname, thesimpleoname, simpleonames, makeplural,
-    makesingular, The, the, vtense, an, cxname, yname, Yobjnam2,
+    makesingular, The, the, vtense, an, cxname, yname, Yobjnam2, is_plural,
 } from './objnam.js';
 import {
     dipfountain, drinkfountain, drinksink, dipsink,
@@ -200,6 +200,7 @@ import { obj_resists, finish_meating } from './dogmove.js';
 import { livelog_printf } from './pline.js';
 import { uhis } from './roles.js';
 import { hard_helmet } from './do_wear.js';
+import { pair_of } from './wield.js';
 import { strange_feeling } from './detect.js';
 import { In_W_tower, has_ceiling, on_level, ledger_no } from './dungeon.js';
 
@@ -2746,8 +2747,8 @@ export async function dodip() {
     if (await inacc_dip(obj, 'dip', false)) return ECMD_OK;
 
     const is_hands = obj === hands_obj;
-    // C: is_hands || is_plural || pair_of → "them" (pair_of deferred)
-    const shortestname = (is_hands || (obj.quan | 0) !== 1) ? 'them' : 'it';
+    // C `:2286` is_hands || is_plural || pair_of → "them" (D-4069)
+    const shortestname = (is_hands || is_plural(obj) || pair_of(obj)) ? 'them' : 'it';
     drink_ok_extra = 0;
     // C: short_oname(doname, thesimpleoname, QBUFSZ - sizeof getobj dip prompt)
     // so fountain yn reuses the getobj-budgeted name (D-0881).

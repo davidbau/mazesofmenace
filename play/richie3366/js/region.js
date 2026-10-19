@@ -28,7 +28,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rn1, d, rnd } from './rng.js';
-import { pline, You_feel, You_see, show_glyph_cell, newsym, impossible } from './display.js';
+import { pline, You_feel, You_see, show_glyph_cell, newsym, impossible, cmap_to_glyph } from './display.js';
 import { CLR_GRAY, CLR_BRIGHT_GREEN } from './terminal.js';
 import {
     isok, ACCESSIBLE, COLNO, ROWNO, u_at, TIMEOUT, REG_HERO_INSIDE,
@@ -37,7 +37,7 @@ import {
     M_SEEN_POISON, M_POISONGAS_OK, M_POISONGAS_MINOR, M_POISONGAS_BAD,
     Is_waterlevel,
     MON_OFFMAP,
-    FM_FMON,
+    FM_FMON, S_cloud, S_poisoncloud,
 } from './const.js';
 import {
     is_pool, is_lava, losehp, maybe_half_phys, finish_maybe_wail,
@@ -108,15 +108,17 @@ export function visible_region_at(x, y) {
 
 /**
  * C ref: region.c show_region — show_glyph(x, y, reg->glyph).
- * JS has no integer cmap ids; make_gas_cloud tags 'S_poisoncloud'
- * or 'S_cloud' (defsym.h '#' / CLR_BRIGHT_GREEN vs CLR_GRAY).
+ * make_gas_cloud tags 'S_poisoncloud' or 'S_cloud' (defsym.h '#' /
+ * CLR_BRIGHT_GREEN vs CLR_GRAY); the cell also stores that cmap's integer
+ * glyph so glyph_at/lookat see the cloud, not NO_GLYPH (D-4086).
  * Callers: display.c _map_location (show && !Blind) and newsym
  * cansee early overlay (D-1528). Does not write hero_memory.
  */
 export function show_region(reg, x, y) {
     if (!reg) return;
     const poison = reg.glyph === 'S_poisoncloud';
-    show_glyph_cell(x, y, '#', poison ? CLR_BRIGHT_GREEN : CLR_GRAY, false);
+    show_glyph_cell(x, y, '#', poison ? CLR_BRIGHT_GREEN : CLR_GRAY, false, 0,
+        cmap_to_glyph(poison ? S_poisoncloud : S_cloud));
 }
 
 /**

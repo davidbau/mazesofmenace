@@ -1627,7 +1627,7 @@ export async function do_storms() {
             const diry = rn2(3) - 1;
             if (dirx !== 0 || diry !== 0) {
                 /* BZ_M_SPELL(BZ_OFS_AD(AD_ELEC)): monster LIGHTNING spell */
-                game.buzzer = null; /* unspecified attacker */
+                game._buzzer = null; /* unspecified attacker */
                 await buzz(BZ_M_SPELL(BZ_OFS_AD(AD_ELEC)), 8, x, y, dirx, diry);
             }
         }

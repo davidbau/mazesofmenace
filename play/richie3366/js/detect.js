@@ -58,7 +58,7 @@ import { rnl, rn2, rnd } from './rng.js';
 import {
     newsym, pline, magic_map_background, map_background, obj_glyph,
     show_glyph_cell, display_self, map_trap, map_engraving, canspotmon, sensemon,
-    map_invisible, glyph_is_invisible, glyph_is_monster, warning_of, You_feel,
+    map_invisible, glyph_is_invisible, glyph_is_monster, glyph_to_mon, warning_of, You_feel,
     feel_location, feel_newsym, unmap_invisible, map_object, Norep, You_see,
     see_monsters, flush_screen, docrt, cls, more, set_msg_xy, unmap_object, flush_topl_more,
     remember_shown_glyph,
@@ -89,7 +89,7 @@ import { resists_blnd } from './mondata.js';
 import { find_drawbridge, open_drawbridge } from './dbridge.js';
 import { expels, digests } from './mhitu.js';
 import { is_hider, hides_under } from './monsters.js';
-import { Monnam, x_monnam, x_monnam_tame, trycall, s_suffix } from './do_name.js';
+import { Monnam, x_monnam, x_monnam_tame, trycall, s_suffix, hcolor } from './do_name.js';
 import {
     objectNames, MAXOCLASSES, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS,
     AMULET_CLASS, TOOL_CLASS, FOOD_CLASS, POTION_CLASS, SCROLL_CLASS,
@@ -279,15 +279,7 @@ function poly_gender() {
     return game.flags?.female ? 1 : 0;
 }
 
-/** C potion.c hcolor — Hallucination synonym deferred; null → random. */
-function hcolor(colorword) {
-    if (colorword) return colorword;
-    const colors = [
-        'black', 'amber', 'golden', 'light blue', 'red', 'green',
-        'silver', 'blue', 'purple', 'white', 'orange',
-    ];
-    return colors[rn2(colors.length)];
-}
+/* hcolor: live js/do_name.js export — core-rn2 clone deleted (D-4067). */
 
 /* C mondata.c resists_blnd — live export from './mondata.js' (clone removed). */
 
@@ -1210,6 +1202,13 @@ export async function do_vicinity_map(sobj) {
             if (u_at(zx, zy)) continue;
             const newglyph = glyph_at_disp(zx, zy);
             if (newglyph.kind !== 'monster') continue;
+            // C `glyph_to_mon(newglyph) != PM_LONG_WORM_TAIL` reads the
+            // DISPLAYED glyph: under Hallucination map_monst painted a
+            // display-RNG monster, and a worm-tail draw leaves the spot for
+            // see_monsters → newsym (remembered terrain), never 'I'
+            // (D-4062). m_at's mnum is the real monster (a tail segment's
+            // m_at is the worm head), kept only as the fallback.
+            if (glyph_to_mon(newglyph.glyph) === PM_LONG_WORM_TAIL) continue;
             const mtmp = m_at(zx, zy);
             const mnum = mtmp?.mnum ?? mtmp?.data?.mndx;
             if (mnum === PM_LONG_WORM_TAIL) continue;

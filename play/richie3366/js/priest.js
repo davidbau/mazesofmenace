@@ -400,13 +400,13 @@ export async function ghod_hitsu(priest) {
     /* bolt of lightning cast by unspecified monster */
     const oldcurrwand = game.current_wand;
     game.current_wand = null;
-    const oldbuzzer = game.buzzer;
-    game.buzzer = null;
+    const oldbuzzer = game._buzzer;
+    game._buzzer = null;
     try {
         await buzz(BZ_M_SPELL(BZ_OFS_AD(AD_ELEC)), 6, x, y,
             sgn(game._tbx || 0), sgn(game._tby || 0));
     } finally {
-        game.buzzer = oldbuzzer;
+        game._buzzer = oldbuzzer;
         game.current_wand = oldcurrwand;
     }
     exercise(A_WIS, false);

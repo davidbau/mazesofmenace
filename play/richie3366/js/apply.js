@@ -2120,18 +2120,12 @@ const SPELLBOOK_FADENESS = [
 /** C decl.h NH_RED — c_color_names.c_red. */
 const NH_RED = 'red';
 
-/**
- * C ref: do_name.c hcolor — identity when not hallucinating.
- * Hallucination display-rng hcolors[] synonyms deferred.
- */
-function hcolor_apply(colorpref) {
-    return colorpref || 'colorless';
-}
+/* hcolor_apply: identity clone deleted — do_name.js hcolor already imported (D-4067). */
 
 /**
  * C ref: apply.c flip_through_book — apply a spellbook (including blank /
  * novel / Book of the Dead). Underwater is ECMD_OK (no time); else TIME.
- * Named omit: Soundeffect rustling; Hallucination hcolor display-rng.
+ * Named omit: Soundeffect rustling.
  * @returns {Promise<number>} ECMD_OK or ECMD_TIME
  */
 export async function flip_through_book(obj) {
@@ -2149,7 +2143,7 @@ export async function flip_through_book(obj) {
             const sound = Hallucination() ? 'chuckling' : 'rustling';
             await You_hear('the pages make an unpleasant %s sound.', sound);
         } else if (!Blind()) {
-            await You_see('the pages glow faintly %s.', hcolor_apply(NH_RED));
+            await You_see('the pages glow faintly %s.', hcolor(NH_RED));
         } else {
             await You_feel('the pages tremble.');
         }

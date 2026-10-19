@@ -655,8 +655,9 @@ function oclass_to_name(oclass) {
 /**
  * C ref: o_init.c choose_disco_sort `:611–657` — the 'm'-prefix
  * discovery-sort menu. mode 2 (class disco) appends the single-class note;
- * the current-sort MENU_ITEMFLAGS_SELECTED highlight has no
- * select_menu_pick_one equivalent (presentation only; choice stands).
+ * the current sort is MENU_ITEMFLAGS_SELECTED (`:628–630`, «o *»), and
+ * tty end_menu sets the prompt above a blank row (D-4081, set_vanq_order
+ * shape).
  * Returns 1 on pick (C n > 0), -1 on dismiss (C n < 0); the C n > 1
  * skip-preselected arm cannot happen under PICK_ONE.
  */
@@ -669,6 +670,7 @@ export async function choose_disco_sort(mode) {
         selectable: true,
         selector: DISCO_ORDER_LET[i],
         a_int: DISCO_ORDER_LET[i],
+        selected: DISCO_ORDER_LET[i] === game.flags?.discosort,
     }));
     if ((mode | 0) === 2) {
         // C: single-class 'a'/'c' sorts coincide, but the choice sticks.
@@ -691,6 +693,7 @@ export async function choose_disco_sort(mode) {
     }
     const pick = await select_menu_pick_one([
         { text: 'Ordering of discoveries', attr: ATR_INVERSE, selectable: false },
+        { text: '', attr: 0, selectable: false },
         ...items,
     ]);
     if (pick.kind !== 'pick' || !pick.item) return -1;

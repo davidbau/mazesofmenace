@@ -54,6 +54,7 @@ import { is_fainted } from './eat.js';
 import { setuhpmax } from './exper.js';
 import { done, finish_losehp_done } from './end.js';
 import { burn_away_slime, Invis as hero_Invis } from './timeout.js';
+import { Displaced as hero_Displaced } from './monmove.js';
 // C ref: mhitu.c mdamageu — castmu FIRE/COLD/MAGM tail (imports.mjs: hoisted, cycle-safe).
 import { mdamageu } from './mhitu.js';
 import { Soundeffect } from './sndprocs.js';
@@ -402,8 +403,10 @@ async function mcast_summon_mons(mtmp) {
         const one = count === 1;
         const mappear = one ? 'A monster appears' : 'Monsters appear';
         const u = game.u || {};
-        const Invis = !!(u.Invis || u.HInvis || u.EInvis);
-        const Displaced = !!(u.Displaced || u.HDisplaced || u.EDisplaced);
+        // C youprop.h Invis/Displaced macros — live readers, not the
+        // phantom u.Invis/u.Displaced flats (D-4074).
+        const Invis = hero_Invis();
+        const Displaced = hero_Displaced();
         if (Invis && !perceives(mtmp.data)
             && ((mtmp.mux | 0) !== (u.ux | 0) || (mtmp.muy | 0) !== (u.uy | 0))) {
             await pline(`${mappear} ${one ? 'at' : 'around'} a spot near you!`);
@@ -906,7 +909,10 @@ async function cursetxt(mtmp, undirected) {
         // timeout.js Invis(), the same reader set_apparxy/m_move use
         // (Caveman-582707 s900: worn-item extrinsic Invis, zero flats set).
         const Invis_now = hero_Invis();
-        const Displaced = !!(u.Displaced || u.HDisplaced || u.EDisplaced);
+        // C youprop.h:204 Displaced — live monmove.js reader (the one
+        // set_apparxy uses to pick mux/muy); a worn cloak sets only
+        // uprops[DISPLACED].extrinsic, never the u.Displaced flats (D-4074).
+        const Displaced = hero_Displaced();
         let point_msg;
         if (undirected) {
             point_msg = 'all around, then curses';
@@ -993,8 +999,9 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
         let where = '';
         if (!is_undirected_spell(spellnum)) {
             const u = game.u || {};
-            const Invis = !!(u.Invis || u.HInvis || u.EInvis);
-            const Displaced = !!(u.Displaced || u.HDisplaced || u.EDisplaced);
+            // C youprop.h Invis/Displaced macros — live readers (D-4074).
+            const Invis = hero_Invis();
+            const Displaced = hero_Displaced();
             const atHero = ((mtmp.mux | 0) === (u.ux | 0)
                 && (mtmp.muy | 0) === (u.uy | 0));
             if (Invis && !perceives(mtmp.data) && !atHero) {

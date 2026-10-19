@@ -124,7 +124,7 @@ import {
     doname, xname, the, The, vtense, an, yname, yobjnam, corpse_xname, is_plural,
     otense, makeplural, body_part_latebound, Tobjnam,
 } from './objnam.js';
-import { Monnam, Amonnam, Adjmonnam, mon_nam, s_suffix, hliquid, rndmonnam, trycall, obj_pmname, y_monnam } from './do_name.js';
+import { Monnam, Amonnam, Adjmonnam, mon_nam, s_suffix, hliquid, rndmonnam, trycall, obj_pmname, y_monnam, hcolor } from './do_name.js';
 import { revive } from './zap.js';
 import {
     near_capacity, learn_unseen_invent, encumber_msg,
@@ -492,10 +492,7 @@ function Luck() {
     const u = game.u || {};
     return (u.uluck | 0) + (u.moreluck | 0);
 }
-/** C potion.c hcolor — Hallucination synonym deferred. */
-function hcolor(colorword) {
-    return colorword;
-}
+/* hcolor: live js/do_name.js export — local identity clone deleted (D-4067). */
 /** C objnam.c Yname2 — capitalized yname; floor ≈ The(xname). */
 function Yname2(obj) {
     const s = the(xname(obj));
@@ -846,6 +843,16 @@ export async function flooreffects(obj, x, y, verb) {
                     'squished under a boulder',
                     NO_KILLER_PREFIX,
                 );
+                // C: a fatal losehp runs done() inline, so disclosure
+                // sees the pit before deletedwithboulder's reset_utrap;
+                // drain JS's deferred wail/done here (D-4092). Lifesaved
+                // → falls through like C; a real death never returns.
+                await finish_maybe_wail();
+                if (game._losehp_needs_done || game.program_state?.gameover) {
+                    const { finish_losehp_done } = await import('./end.js');
+                    await finish_losehp_done();
+                }
+                if (game.program_state?.gameover) return true;
                 squished = true; // C: goto deletedwithboulder
             } else {
                 await reset_utrap(true);
@@ -2221,7 +2228,10 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             // fall (rnd(3) losehp) / ordinary verbose climb-down.
             if (!(u.dz | 0)) {
                 ; // stayed on same level? (no transit effects)
-            } else if (u.Flying) {
+            } else if (Flying()) {
+                // C youprop.h Flying — live mhitu.js reader, not the
+                // phantom u.Flying flat (worn extrinsics never set it,
+                // D-4078).
                 if (game.flags?.verbose !== false) {
                     await pline(atLadder
                         ? 'You fly down along the ladder.'

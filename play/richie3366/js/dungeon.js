@@ -1754,18 +1754,18 @@ function find_mapseen(lev) {
 }
 
 /**
- * C ref: dungeon.c init_mapseen — create mapseen node sorted by
- * dnum then dlevel; clear lastseentyp only when allocating a new node
- * (≡ C memset on first entry). Re-entry returns existing without wiping
- * lastseentyp (C never re-calls init for the same level).
+ * C ref: dungeon.c init_mapseen `:2835–2869` — always allocate a node and
+ * insertion-sort it by dnum then dlevel (after any equal node); clear
+ * lastseentyp each call. No duplicate check: mklev re-entering a level
+ * whose file was discarded (leaving the tutorial, then a wizard-mode
+ * level teleport back in) adds a second node, which final disclosure
+ * prints twice (D-4070).
  */
 export function init_mapseen(lev) {
     const uz = lev || game.u?.uz || { dnum: 0, dlevel: 1 };
     const dnum = uz.dnum | 0;
     const dlevel = uz.dlevel | 0;
     if (!game.mapseenchn) game.mapseenchn = [];
-    const existing = find_mapseen(uz);
-    if (existing) return existing;
     const nrooms = (MAXNROFROOMS + 1) * 2;
     const init = {
         lev: { dnum, dlevel },
@@ -1778,7 +1778,7 @@ export function init_mapseen(lev) {
         // C: mapseen.msrooms[(MAXNROFROOMS+1)*2]
         msrooms: Array.from({ length: nrooms }, () => ({ seen: 0, untended: 0 })),
     };
-    // C: memset lastseentyp on each init_mapseen (new level only)
+    // C :2848 memset lastseentyp on each init_mapseen
     game.lastseentyp = null;
     let inserted = false;
     for (let i = 0; i < game.mapseenchn.length; i++) {

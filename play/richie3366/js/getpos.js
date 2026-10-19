@@ -26,7 +26,7 @@ import {
     glyph_at, glyph_is_cmap, glyph_to_cmap, back_to_glyph,
     glyph_is_monster, GLYPH_MON_MALE_OFF, GLYPH_MON_FEM_OFF,
     glyph_is_object, objnum_to_glyph,
-    glyph_is_nothing, glyph_is_unexplored,
+    glyph_is_nothing, glyph_is_unexplored, clear_nhwindow_message,
 } from './display.js';
 import { cansee } from './vision.js';
 import { do_screen_description } from './pager.js';
@@ -1514,7 +1514,6 @@ export async function getpos(ccp, force, goal) {
                     cmdq_clear(CQ_CANNED);
                     ccp.x = cx;
                     ccp.y = cy;
-                    g._pending_message = '';
                     if (getpos_hilitefunc) getpos_hilitefunc(false);
                     getpos_sethilite(null, null);
                     return -1;
@@ -1539,7 +1538,7 @@ export async function getpos(ccp, force, goal) {
         if (key === getpos_spkey(NHKF_ESC)) { // C `:893–898`
             ccp.x = -10; // C `:894` — cx = cy = -10 (was -1; D-3403)
             ccp.y = -10;
-            g._pending_message = '';
+            msg_given = true; // C `:895` — force clear (exitgetpos)
             if (getpos_hilitefunc) getpos_hilitefunc(false);
             getpos_sethilite(null, null);
             return -1;
@@ -1671,6 +1670,7 @@ export async function getpos(ccp, force, goal) {
         if (ch === ' ' || key === 13 || key === 10) {
             if (force) continue;
             await pline('Done.');
+            msg_given = false; // C `:1137` — suppress clear
             ccp.x = -1;
             ccp.y = 0;
             return 0; // C: result = 0 (not -1)
@@ -1836,6 +1836,7 @@ export async function getpos(ccp, force, goal) {
         msg_given = true;
         if (force) continue;
         await pline('Done.');
+        msg_given = false; // C `:1137` — suppress clear
         ccp.x = -1;
         ccp.y = 0;
         // C: msg_given = FALSE; /* suppress clear */ — exitgetpos must
@@ -1851,6 +1852,11 @@ export async function getpos(ccp, force, goal) {
         // like C's exitgetpos label; order vs the dx/dy/dz restore below
         // is unobservable (disjoint state).
         lock_mouse_buttons(false);
+        // C `:1156–1157` exitgetpos — clear the message window unless a
+        // pick under autodescribe (or "Done.") reset msg_given; JS's pick
+        // arms return straight here, so the clear lives in the funnel
+        // (D-4072).
+        if (msg_given) clear_nhwindow_message();
         if (g.u) {
             g.u.dx = udx;
             g.u.dy = udy;

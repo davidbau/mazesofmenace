@@ -1606,10 +1606,14 @@ export async function extcmd_via_menu() {
         }
         if (acount) flush(prevAccel); // C `:862–868`
 
+        // C cmd.c:856–857 end_menu prompt: tty_end_menu (wintty.c
+        // `:2685–2689`) paints it with tty_menu_promptstyle over a blank
+        // item (D-4083).
         raw.unshift({
-            text: `Extended Command: ${cbuf}`, // C cmd.c:856 end_menu prompt
+            text: `Extended Command: ${cbuf}`,
             selectable: false,
-        });
+            ...menu_prompt_style(),
+        }, { text: '', selectable: false });
         const res = await select_menu_pick_one(raw); // C `:871` PICK_ONE + destroy
         if (res.kind === 'pick') { // C `:873` n == 1
             if (matchlevel > (QBUFSZ - 2)) { // C `:874`

@@ -942,8 +942,8 @@ export function temp_resist(prop) {
  * ≥2000: if !iseating || canchoke then choke(piece)+reset_eat (eating)
  * else choke(opentin?tin:0); else ≥1500 && !Hunger && (!eating ||
  * !fullwarn) pline + nomovemsg; !eating multi=-2 else fullwarn +
- * paranoid Continue when canchoke && bites remain.
- * Named omissions: adj_victual_nutrition (lembas/cram race).
+ * paranoid Continue when canchoke && bites remain. The stored nomovemsg
+ * is printed by done_eating or unmul (nomul(0) keeps it, hack.c:4160).
  */
 export async function lesshungry(num) {
     if (!game.u) return;

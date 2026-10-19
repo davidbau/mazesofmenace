@@ -94,7 +94,7 @@
 
 import { game } from './gstate.js';
 import { quest_info } from './questpgr.js';
-import { pline, You, You_cant, Your, urgent_pline, newsym, You_feel, verbalize, canspotmon, tmp_at, cmap_to_glyph, map_invisible, shieldeff, monsym, Hallucination } from './display.js';
+import { pline, You, You_cant, Your, urgent_pline, newsym, You_feel, verbalize, canspotmon, tmp_at, cmap_to_glyph, map_invisible, shieldeff, monsym, Hallucination, hero_Invisible } from './display.js';
 import { xname, makeplural, an, vtense, otense, otyp_is_charged, Yname2, Yobjnam2, Tobjnam, doname, actualoname, singular, tshirt_text, apron_text, hawaiian_design, shk_your, simpleonames, candy_wrapper_text } from './objnam.js';
 import {
     SCROLL_CLASS, SPBOOK_CLASS, COIN_CLASS, WEAPON_CLASS, GEM_CLASS,
@@ -136,7 +136,7 @@ import {
     EXPL_FIERY, PLNMSG_TOWER_OF_FLAME, M_SEEN_FIRE, u_at, OBJ_AT,
     something, POLY_REVERT, POLYMORPH,
 } from './const.js';
-import { vision_recalc, do_clear_area, cansee, unblock_point } from './vision.js';
+import { vision_recalc, do_clear_area, cansee, unblock_point, vision_off_newsym_gbuf } from './vision.js';
 import { valid_cloud_pos, create_gas_cloud } from './region.js';
 import { getpos, getpos_sethilite } from './getpos.js';
 import { bcsign, BY_COOKIE, outrumor } from './rumors.js';
@@ -531,6 +531,12 @@ export async function litroom(on, obj) {
     }
 
     if (!Blind) {
+        // C vision_recalc(2)'s update loop newsyms every prior IN_SIGHT
+        // spot while !cansee — under Hallucination a warned-of monster's
+        // display_warning draws rn2_on_display_rng(WARNCOUNT - 1). JS
+        // vision_recalc(2) skips that loop, so run its newsyms on the live
+        // viz first, Hallu-gated like docrt's D-0852 call (D-4065).
+        if (Hallucination()) vision_off_newsym_gbuf({ useLiveViz: true });
         vision_recalc(2);
 
         /* C `:2610–2612` — replace ball&chain after the forced redraw. */
@@ -1471,7 +1477,9 @@ async function seffect_confuse_monster(sobj) {
     const scursed = !!sobj.cursed;
     const u = game.u || (game.u = {});
     const confused = !!((u.HConfusion | 0) || (u.Confusion | 0));
-    const Blind = !!((u.Blinded | 0) || u.Blind || u.ublind);
+    // C `:1405` altfeedback = (Blind || Invisible): the live youprop.h
+    // readers, not the phantom u.Blind/u.Invisible flats (D-4087).
+    const altfeedback = Blind() || hero_Invisible();
     const { body_part } = await import('./polyself.js');
     const { make_confused } = await import('./potion.js');
     const hands = makeplural(body_part(HAND));
@@ -1483,7 +1491,6 @@ async function seffect_confuse_monster(sobj) {
         await make_confused((u.HConfusion | 0) + rnd(100), false);
     } else if (confused) {
         if (!sblessed) {
-            const altfeedback = Blind || !!u.Invisible;
             if (altfeedback) {
                 await pline(`Your ${hands} begin to tingle.`);
             } else {
@@ -1491,7 +1498,6 @@ async function seffect_confuse_monster(sobj) {
             }
             await make_confused((u.HConfusion | 0) + rnd(100), false);
         } else {
-            const altfeedback = Blind || !!u.Invisible;
             if (altfeedback) {
                 await pline(`A faint buzz surrounds your ${body_part(HEAD)}.`);
             } else {
@@ -1501,7 +1507,6 @@ async function seffect_confuse_monster(sobj) {
         }
     } else {
         let incr = (sobj.oclass === SCROLL_CLASS) ? 3 : 0;
-        const altfeedback = Blind || !!u.Invisible;
         if (!sblessed) {
             if (altfeedback) {
                 await pline(`Your ${hands} tingle${u.umconf ? ' even more' : ''}.`);

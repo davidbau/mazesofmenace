@@ -5451,11 +5451,14 @@ export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_su
     if (hero_memory) {
         const mem = loc.remembered_glyph;
         levl_glyph = mem ? copy_glyph(mem) : copy_glyph(default_glyph);
-        // C levl[][].glyph is the remembered int; unseen BSS 0 is the stone
-        // int, same as default_id.
+        // C levl[][].glyph is the remembered int. A never-remembered spot
+        // keeps clear_level_structures' zerorm value GLYPH_UNEXPLORED
+        // (mklev.c:852), not stone: the swallowed `:2210` path shows it as
+        // is, and lookat names it "unexplored area" (pager.c:736).
         attach_glyph(
             levl_glyph,
-            mem && typeof mem.glyph === 'number' ? mem.glyph : default_id,
+            !mem ? GLYPH_UNEXPLORED
+                : typeof mem.glyph === 'number' ? mem.glyph : default_id,
         );
     } else {
         levl_glyph = seenv
@@ -5604,6 +5607,13 @@ export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_su
             glyph_shows_cloud =
                 !mon_overrides_region(mon_at_display(x, y), x, y);
         }
+    } else if (!swallowed && reg && cansee(x, y) && !hero_Blind()
+               && kind !== 'mon' && kind !== 'invisible') {
+        // C newsym's `_map_location(x, y, 1)` fallback (no shown monster
+        // or I) ends `if (show && !Blind && reg) show_region()`
+        // (display.c `:470–471`), with no ACCESSIBLE gate: a cloud over a
+        // tree or wall is still the displayed glyph (D-4094).
+        glyph_shows_cloud = true;
     }
     if (glyph_shows_cloud) {
         // C reg->glyph — the region's own cloud glyph (show_region
@@ -8941,6 +8951,14 @@ export async function flush_screen(mode) {
         else if (flags.time_botl) await timebot();
         // Mid goto_level / getbones: keep stale map cells like C gbuf.
         if (!game.level || game._stale_map_flush) {
+            // C gbuf is level-independent, so a pline between the leave
+            // vision_recalc(2) update loop and mklev/getlev (goto_level's
+            // «returning to discarded level?» impossible, do.c:1696)
+            // prints the cells it newsym'd: seen monsters → memory. JS
+            // keeps that gbuf on the detached leave level (D-4073).
+            if (!game.level && !game._stale_map_flush && game._leave_gbuf_level) {
+                paint_gbuf_level_to_terminal(game._leave_gbuf_level);
+            }
             _paintToplineAndStatus();
             return;
         }

@@ -25,7 +25,6 @@
 //              COUNT→ALPHA_MIX fallback, class headers, extinct suffix,
 //              genocided/extinct tallies) + num_extinct/num_gone +
 //              set_vanq_order pick-one menu. Named: DUMPLOG file arm;
-//              single-entry yn ESC-pad ('ynq', cf. list_vanquished);
 //              sort-menu n>1 preselect-skip branch (primitive is pick-one).
 
 import { game } from './gstate.js';
@@ -1258,8 +1257,8 @@ const MLET_EXPLAIN = {
 /**
  * C ref: insight.c list_vanquished `:2784–2949` — #vanquished / disclosure /
  * dumplog ('A' force-sort menu, 'd' => 'y'). ask-path yn (`:2834–2843`;
- * single-type C `"ynq\033a"` ESC-pad simplified to 'ynq' — named, same as
- * list_genocided); 'q' bumps done_stopprint (`:2848–2849`); 'a' with
+ * single-type C `"ynq\033a"`: 'a' hidden after the ESC but accepted, D-4075);
+ * 'q' bumps done_stopprint (`:2848–2849`); 'a' with
  * ntypes>1 goes through set_vanq_order(TRUE), cancel returns (`:2854–2855`);
  * class-header modes head each mlet run with the upstart'ed def_monsyms
  * explain, Riders under their own "Rider" header (`:2873–2886`; ATR_NONE at
@@ -1310,9 +1309,9 @@ export async function list_vanquished(defquery, ask) {
             if (ntypes > 1) {
                 allow = 'ynaq'; /* ynaqchars (`:2835`; decl.c) */
             } else {
-                allow = 'ynq'; /* ynqchars (`:2837`); C `:2838` appends
-                    "\033a" so a lone type still accepts 'a' — ESC-pad
-                    simplified (named, same as list_genocided) */
+                /* ynqchars (`:2837`) + "\033a" (`:2838`): tty_yn_function
+                   shows [ynq] but still accepts 'a' (D-4075) */
+                allow = 'ynq\x1ba';
                 if (dq === 'a') /* potential default from 'disclose' */
                     dq = 'y';
             }
@@ -1512,7 +1511,8 @@ export async function list_genocided(defquery, ask) {
         const c = ask
             ? await yn_function(
                 genocided_prompt(nextinct, ngenocided),
-                ngone > 1 ? 'ynaq' : 'ynq',
+                /* C `:3040` "ynq\033a": hidden 'a' after the ESC (D-4075) */
+                ngone > 1 ? 'ynaq' : 'ynq\x1ba',
                 defquery,
             )
             : defquery;

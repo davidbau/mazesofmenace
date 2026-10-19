@@ -68,7 +68,7 @@ const ARM_BOOTS = 4;
 /**
  * C obj.h pair_of — LENSES / gloves / boots.
  */
-function pair_of(o) {
+export function pair_of(o) {
     if (!o) return false;
     if (objectNames[o.otyp] === 'LENSES') return true;
     if (o.oclass !== ARMOR_CLASS) return false;

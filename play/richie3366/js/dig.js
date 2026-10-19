@@ -998,7 +998,9 @@ export async function digactualhole(x, y, madeby, ttyp) {
             }
         }
     }
-    newsym(x, y);
+    // C dig.c:828 — the body ends here: no trailing newsym (maketrap /
+    // seetrap / vision_recalc already repaint). An extra one re-drew a
+    // hallucinated pile and shifted the display RNG (D-4064).
 }
 
 /**

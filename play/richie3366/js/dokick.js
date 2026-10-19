@@ -67,7 +67,7 @@ import {
 import { abuse_dog } from './dog.js';
 import { monflee, set_apparxy, maybe_unhide_at, get_iter_mons_xy, hero_Deaf } from './monmove.js';
 import { m_in_out_region } from './region.js';
-import { mon_nam, Monnam, christen_orc, free_oname, hliquid } from './do_name.js';
+import { a_monnam, mon_nam, Monnam, christen_orc, free_oname, hliquid } from './do_name.js';
 import { martial_bonus, use_skill, special_dmgval } from './weapon.js';
 import {
     verysmall, bigmonst, thick_skinned, nohands, haseyes, nolimbs, slithy,
@@ -947,7 +947,8 @@ export async function kick_monster(mon, x, y) {
         mon.mundetected = 0;
         if (!canspotmon(mon)) map_invisible(x, y);
         else newsym(x, y);
-        const who = canspotmon(mon) ? mon_nam(mon) : 'something hidden';
+        // C `:173–174` — There("is %s here.", canspotmon ? a_monnam : …)
+        const who = canspotmon(mon) ? a_monnam(mon) : 'something hidden';
         await pline(`There is ${who} here.`);
     }
 

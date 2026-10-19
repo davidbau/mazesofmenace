@@ -129,7 +129,7 @@ import { yn_function, getlin } from './getline.js';
 import { t_at, dotrap, water_damage, uteetering_at_seen_pit, uescaped_shaft } from './trap.js';
 import { losehp, finish_maybe_wail, is_pool, is_lava, On_stairs, db_under_typ } from './hack.js';
 import { burn_away_slime } from './timeout.js';
-import { hliquid, christen_monst, mon_nam, Monnam, s_suffix } from './do_name.js';
+import { hliquid, christen_monst, mon_nam, Monnam, s_suffix, hcolor } from './do_name.js';
 import { mhis } from './mondata.js';
 /* worn.js which_armor (hoisted function, call-time use only — imports.mjs SAFE). */
 import { which_armor } from './worn.js';
@@ -214,10 +214,7 @@ function u_wield_art(art) {
 
 /* which_armor: live js/worn.js export — local minvent-array clone deleted (D-3449). */
 
-/** C ref: potion.c hcolor — Hallucination synonym deferred. */
-function hcolor(colorword) {
-    return colorword || 'odd';
-}
+/* hcolor: live js/do_name.js export — local identity clone deleted (D-4067). */
 
 /** C ref: objnam.c Tobjnam — The(xname) + otense verb. */
 function Tobjnam(otmp, verb) {

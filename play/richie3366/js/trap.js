@@ -389,6 +389,9 @@ export async function animate_statue(statue, x, y, cause, fail_reason = null) {
                 && quest_info(MS_GUARDIAN) !== mnum)) {
             mmflags |= MM_NOCOUNTBIRTH | MM_ADJACENTOK;
             mon = makemon(mons(PM_DOPPELGANGER), x, y, mmflags);
+            // C makemon tail (makemon.c:1476–1504): occupation dochugw
+            // stops a search before the find message (D-4080).
+            if (mon) await makemon_appear_msg(mon, mon.mx | 0, mon.my | 0, mmflags);
             if (mon && ismnum(mon.cham)) {
                 // C trap.c :785 — newcham NO_NC_FLAGS; await so unleash /
                 // Elbereth finish before christen/seemimic (D-1648).
@@ -397,6 +400,8 @@ export async function animate_statue(statue, x, y, cause, fail_reason = null) {
         } else {
             if (cause === ANIMATE_SPELL) mmflags |= MM_ADJACENTOK;
             mon = makemon(mptr, x, y, mmflags);
+            // C makemon tail, as above (D-4080).
+            if (mon) await makemon_appear_msg(mon, mon.mx | 0, mon.my | 0, mmflags);
         }
     }
 

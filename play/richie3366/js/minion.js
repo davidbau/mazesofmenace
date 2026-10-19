@@ -19,6 +19,7 @@ import { livelog_printf } from './pline.js';
 import { acurr, A_CHA } from './attrib.js';
 import { select_hwep } from './weapon.js';
 import { which_armor, m_dowear } from './worn.js';
+import { Conflict } from './mhitu.js';
 import { bless, mksobj } from './mkobj.js';
 import { Hear_again, is_fainted, reset_faint } from './eat.js';
 import { mk_roamer } from './mklev.js';
@@ -470,7 +471,7 @@ export async function gain_guardian_angel() {
     const u = game.u || {};
     const deaf = !!((u.HDeaf | 0) || (u.EDeaf | 0)
         || u.uroleplay?.deaf || u.Deaf);
-    if (u.HConflict || u.EConflict) {
+    if (Conflict()) {
         if (!deaf) {
             await pline('A voice booms:');
         } else {

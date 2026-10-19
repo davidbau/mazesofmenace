@@ -504,7 +504,7 @@ export async function breamm(mtmp, mattk, mtarg) {
                         `${Monnam(mtmp)} breathes ${breathwep_name(typ)}!`,
                     );
                 }
-                game.buzzer = mtmp;
+                game._buzzer = mtmp;
                 try {
                     await dobuzz(
                         BZ_M_BREATH(BZ_OFS_AD(typ)),
@@ -514,7 +514,7 @@ export async function breamm(mtmp, mattk, mtarg) {
                         utarget, utarget, false,
                     );
                 } finally {
-                    game.buzzer = null;
+                    game._buzzer = null;
                 }
                 // C: dobuzz → losehp → done(DIED) never returns on a true
                 // death — neither nomul(0) nor the :1132 mspec gate runs.

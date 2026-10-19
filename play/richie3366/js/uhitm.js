@@ -42,7 +42,7 @@ import {
 import { exercise, A_STR, A_DEX, A_WIS, A_CON, acurr, adjalign, change_luck, ALIGNLIM, Fumbling } from './attrib.js';
 import { overexertion, nomul, losehp, is_pool, maybe_half_phys, noattacks, check_capacity, in_rooms, end_running } from './hack.js';
 import { ing_suffix, upstart, highc, strstri, dist2 } from './hacklib.js';
-import { pline, pline_mon, newsym, canseemon, canspotmon, sensemon, tp_sensemon, map_invisible, unmap_object, unmap_invisible, memory_glyph_is_invisible, glyph_at, glyph_is_cmap, glyph_to_cmap, glyph_is_warning, glyph_is_invisible_id, flush_topl_more, You_feel, tmp_at, map_location, nh_delay_output, mon_glyph, shieldeff, impossible, see_monsters, hero_Blind_telepat, You, Your, pline_The } from './display.js';
+import { pline, pline_mon, newsym, canseemon, canspotmon, sensemon, tp_sensemon, map_invisible, unmap_object, unmap_invisible, memory_glyph_is_invisible, glyph_at, glyph_is_cmap, glyph_to_cmap, glyph_is_warning, glyph_is_invisible_id, flush_topl_more, You_feel, tmp_at, map_location, nh_delay_output, mon_glyph, shieldeff, impossible, see_monsters, hero_Blind_telepat, You, Your, pline_The, hero_Invisible } from './display.js';
 import { cansee } from './vision.js';
 import {
     dmgval, hitval, P_SKILL, weapon_hit_bonus, martial_bonus,
@@ -1924,6 +1924,10 @@ async function umconf_tail(mon, hand_to_hand) {
 async function hmon_hitmon(mon, obj, thrown, _dieroll) {
     // C hmon_hitmon_misc_obj CREAM_PIE / BLINDING_VENOM before weapon dmg
     if (obj && (obj.otyp === CREAM_PIE || obj.otyp === BLINDING_VENOM)) {
+        // C do_hit `:1410–1411` saved_oname = cxname(obj) precedes the
+        // misc_obj arm; xname's observe_object discovers the pie/venom
+        // type (disco[] for `\`) — this early block bypasses do_hit (D-4093).
+        cxname(obj);
         mon.msleeping = 0;
         const aatyp = obj.otyp === BLINDING_VENOM ? AT_SPIT : AT_WEAP;
         if (can_blnd(game.youmonst || youmonst, mon, aatyp, obj)) {
@@ -2275,7 +2279,7 @@ async function nohandglow(mon) {
     if (!(u.umconf | 0) || mon?.mconf) return;
     const hands = makeplural(body_part(HAND));
     /* C :6322 — Invisible == Invis && !See_invisible. */
-    const altfeedback = Blind() || Invisible_you();
+    const altfeedback = Blind() || hero_Invisible();
     if ((u.umconf | 0) === 1) {
         if (altfeedback) await Your('%s stop tingling.', hands);
         else await Your('%s stop glowing %s.', hands, hcolor('red'));
@@ -3946,13 +3950,8 @@ function he_prop(flat, H, E, uprop) {
     const p = uprop != null ? u.uprops?.[uprop] : null;
     return !!(p?.intrinsic || p?.extrinsic);
 }
-function Invisible_you() {
-    const u = game.u || {};
-    const invis = !!(u.Invis
-        || (((u.HInvis | 0) || (u.EInvis | 0)) && !(u.BInvis | 0)));
-    return invis && !((u.HSee_invisible | 0) || (u.ESee_invisible | 0)
-        || u.See_invisible);
-}
+/* Invisible_you: retired flat-only clone — call display.js hero_Invisible
+ * (youprop.h Invisible over uprops, D-4087). */
 
 /** C mondata.c resists_* — mresists|mextrinsics|mintrinsics. */
 function resists_elem_mon(mon, bit) {
@@ -3993,7 +3992,7 @@ async function start_engulf(mdef) {
     const u = game.u || {};
     const ym = game.youmonst || {};
     const u_digest = engl_ad(ym.data, AD_DGST);
-    if (!Invisible_you()) {
+    if (!hero_Invisible()) {
         map_location(u.ux | 0, u.uy | 0, true);
         tmp_at(DISP_ALWAYS, mon_glyph(ym));
         tmp_at(mdef.mx | 0, mdef.my | 0);
@@ -4004,7 +4003,7 @@ async function start_engulf(mdef) {
     await nh_delay_output();
 }
 function end_engulf() {
-    if (!Invisible_you()) {
+    if (!hero_Invisible()) {
         tmp_at(DISP_END, 0);
         newsym(game.u?.ux | 0, game.u?.uy | 0);
     }

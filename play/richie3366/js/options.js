@@ -598,8 +598,12 @@ export function regex_error_desc(re) {
  * @returns {Promise<number>}
  */
 async function query_msgtype() {
-    // C `:7719` end_menu prompt, painted as the header row.
-    const raw = [{ text: 'How to show the message', selectable: false }];
+    // C `:7719` end_menu prompt: tty_end_menu (wintty.c `:2685–2689`)
+    // paints it with tty_menu_promptstyle, then a blank item (D-4082).
+    const raw = [
+        { text: 'How to show the message', selectable: false, ...menu_prompt_style() },
+        { text: '', selectable: false }, // C wintty.c blank item
+    ];
     for (let i = 0; i < msgtype_names.length; i++) { // C `:7712`
         if (msgtype_names[i].descr) { // C `:7713`
             raw.push({
@@ -1904,8 +1908,12 @@ export async function handler_msg_window() {
         const sep = game.iflags.menu_tab_sep ? '\t' : ' '; // C `:5845`
         const old_prevmsg_window = game.iflags.prevmsg_window; // C `:5846`
         // C `:5849–5851` create_nhwindow/start_menu/zeroany — raw menu below.
-        // C `:5867` end_menu prompt painted as header (D-2762 precedent).
-        const raw = [{ text: 'Select message history display type:', selectable: false }];
+        // C `:5867` end_menu prompt: tty_end_menu (wintty.c `:2685–2689`)
+        // paints it with tty_menu_promptstyle, then a blank item (D-4082).
+        const raw = [
+            { text: 'Select message history display type:', selectable: false, ...menu_prompt_style() },
+            { text: '', selectable: false }, // C wintty.c blank item
+        ];
         for (let i = 0; i < msgwind.length; i++) { // C `:5853` SIZE(menutype) == 4 over msgwind[4]
             if (i < 2 && is_curses) continue; // C `:5854–5855`
             const line1 = `${msgwind[i][0].slice(0, 12).padEnd(12, ' ')}${sep}${msgwind[i][1].slice(0, 60)}`; // C `:5856–5857` "%-12.12s%c%.60s"
@@ -5833,7 +5841,9 @@ export async function dotogglepickup() {
     } else {
         buf = 'OFF';
     }
-    await pline(`Autopickup: ${buf}.`);
+    // C `:9272` — buf is an argument, not format text: a '%' class char
+    // must not reach vsnprintf (D-4076).
+    await pline('Autopickup: %s.', buf);
     return ECMD_OK;
 }
 
@@ -7656,11 +7666,15 @@ export async function handler_msgtype() {
             }
             continue; // C `:6526` goto msgtypes_again
         } else { // C `:6527` list (1) or remove (2)
-            // C `:6553–6555` end_menu prompt, painted as the header row.
+            // C `:6553–6555` end_menu prompt: tty_end_menu (wintty.c
+            // `:2685–2689`) paints it with tty_menu_promptstyle, then a
+            // blank item (D-4082).
             const raw = [{
                 text: `${opt_idx === 1 ? 'List of' : 'Remove which'} message types`,
                 selectable: false,
-            }];
+                ...menu_prompt_style(),
+            },
+            { text: '', selectable: false }]; // C wintty.c blank item
             let mt_idx = 0; // C `:6539`
             for (let tmp = gp.plinemsg_types; tmp; tmp = tmp.next) { // C `:6541`
                 mt_idx++; // C `:6544` any.a_int = ++mt_idx

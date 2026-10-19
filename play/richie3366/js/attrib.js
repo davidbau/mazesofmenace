@@ -59,6 +59,7 @@ import {
     LL_ALIGNMENT,
     WEAK,
     ismnum,
+    FLYING, SWIMMING, TELEPAT, HUNGER, LEVITATION, REGENERATION, PROTECTION, WWALKING, MAGICAL_BREATHING, DISPLACED, SLOW_DIGESTION, PASSES_WALLS, TELEPORT, POLYMORPH, UNCHANGING, AGGRAVATE_MONSTER, CONFLICT, SLEEPY, WARN_OF_MON, FREE_ACTION, REFLECTING, ANTIMAGIC, HALLUC_RES,
 } from './const.js';
 import { objectNames } from './objects.js';
 import { pline, pline_The, You_feel, impossible, Hallucination, see_monsters, shieldeff } from './display.js';
@@ -1242,6 +1243,36 @@ const PROP_HFIELD = {
     [ACID_RES]: 'HAcid_resistance',
     [SICK_RES]: 'HSick_resistance',
     [STONE_RES]: 'HStone_resistance',
+    // C is_innate reads u.uprops[propidx].intrinsic for every prop; the
+    // JS split store keeps some FROMOUTSIDE/FROMFORM bits only on these
+    // flats, so innately() ORs the flat with uprops (D-4089).
+    [FLYING]: 'HFlying',
+    [SWIMMING]: 'HSwimming',
+    [FUMBLING]: 'HFumbling',
+    [TELEPAT]: 'HTelepat',
+    [HUNGER]: 'HHunger',
+    [LEVITATION]: 'HLevitation',
+    [REGENERATION]: 'HRegeneration',
+    [PROTECTION]: 'HProtection',
+    [WWALKING]: 'HWwalking',
+    [MAGICAL_BREATHING]: 'HMagical_breathing',
+    [INVIS]: 'HInvis',
+    [DISPLACED]: 'HDisplaced',
+    [SLOW_DIGESTION]: 'HSlow_digestion',
+    [PASSES_WALLS]: 'HPasses_walls',
+    [TELEPORT]: 'HTeleportation',
+    [POLYMORPH]: 'HPolymorph',
+    [CLAIRVOYANT]: 'HClairvoyant',
+    [UNCHANGING]: 'HUnchanging',
+    [AGGRAVATE_MONSTER]: 'HAggravate_monster',
+    [CONFLICT]: 'HConflict',
+    [SLEEPY]: 'HSleepy',
+    [WARN_OF_MON]: 'HWarn_of_mon',
+    [DEAF]: 'HDeaf',
+    [FREE_ACTION]: 'HFree_action',
+    [REFLECTING]: 'HReflecting',
+    [ANTIMAGIC]: 'HAntimagic',
+    [HALLUC_RES]: 'HHalluc_resistance',
 };
 
 /**
@@ -1271,13 +1302,18 @@ function check_innate_abil(propField, frommask) {
 
 /**
  * C ref: attrib.c innately(long *ability)
- * @param {string} propField
+ * @param {number} propidx
+ * @param {string} [propField]
  */
-function innately(propField) {
-    const ability = game.u?.[propField] | 0;
-    let iptr = check_innate_abil(propField, FROMEXPER);
+function innately(propidx, propField) {
+    // C `*ability` is u.uprops[propidx].intrinsic: read the JS split store
+    // (flat H-field OR uprops slot — set_uasmon writes both, other
+    // writers only one) (D-4089).
+    const ability = (propField ? (game.u?.[propField] | 0) : 0)
+        | (game.u?.uprops?.[propidx]?.intrinsic | 0);
+    let iptr = propField ? check_innate_abil(propField, FROMEXPER) : null;
     if (iptr) return iptr.ulevel === 1 ? FROM_ROLE_REASON : FROM_EXP;
-    iptr = check_innate_abil(propField, FROMRACE);
+    iptr = propField ? check_innate_abil(propField, FROMRACE) : null;
     if (iptr) return FROM_RACE_REASON;
     if ((ability & FROMOUTSIDE) !== 0) return FROM_INTR;
     if ((ability & FROMFORM) !== 0) return FROM_FORM_REASON;
@@ -1294,8 +1330,7 @@ export function is_innate(propidx) {
     if (propidx === DRAIN_RES && (game.u?.ulycn | 0) > 0) return FROM_LYCN;
     if (propidx === FAST && Very_fast()) return FROM_NONE;
     const field = PROP_HFIELD[propidx];
-    if (!field) return FROM_NONE;
-    const innateness = innately(field);
+    const innateness = innately(propidx, field);
     if (innateness !== FROM_NONE) return innateness;
     if (
         propidx === JUMPING
