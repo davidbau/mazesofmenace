@@ -51,7 +51,7 @@ import { make_confused, make_deaf, make_hallucinated, make_sick, make_slimed, ma
 import { make_blinded } from './do.js';
 import { Fumbling, Fast, Very_fast, acurr, adjattrib, exercise, stone_luck, A_STR, A_DEX, A_CON } from './attrib.js';
 import { pline, You, Your, You_feel, You_see, newsym, canseemon, verbalize, Norep, see_monsters, impossible, urgent_pline, Hallucination, Warn_of_mon } from './display.js';
-import { inv_weight, update_inventory, useup, useupall } from './invent.js';
+import { inv_weight, update_inventory, useup, useupall, Blind } from './invent.js';
 import { doname, makeplural, xname, an, the, vtense, Yname2, shk_your } from './objnam.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import { objectNames } from './objects.js';
@@ -200,8 +200,8 @@ async function slip_or_trip() {
         let what;
         if ((game.iflags?.last_msg | 0) === PLNMSG_ONE_ITEM_HERE) {
             what = ((otmp.quan | 0) === 1) ? 'it'
-                : (u.Hallucination ? 'they' : 'them');
-        } else if (otmp.dknown || !u.Blind) {
+                : (Hallucination() ? 'they' : 'them');
+        } else if (otmp.dknown || !Blind()) {  // C timeout.c:1242–1243
             what = doname(otmp);
         } else {
             const rock = sobj_at(ROCK, u.ux | 0, u.uy | 0);
@@ -1058,8 +1058,27 @@ export async function nh_timeout() {
     }
     // C `:649–650` — cream-pie blindness tick.
     if (u.ucreamed) u.ucreamed = (u.ucreamed | 0) - 1;
-    // C `:662–665` — gallop tick (the usptime haze block `:652–661`
-    // runs post-loop below, pre-existing D-1390 order).
+    /* C timeout.c :652–661 — dissipate SPE_PROTECTION (D-1390), after
+     * mtimedone / ucreamed and before ugallop and the uprops `--` loop:
+     * the !Blind test reads blindness before this turn's BLINDED timeout
+     * expires (D-4120). */
+    if (u.usptime) {
+        u.usptime = ((u.usptime | 0) - 1) & 0xff;
+        if (u.usptime === 0 && (u.uspellprot | 0)) {
+            u.usptime = u.uspmtime | 0;
+            u.uspellprot = ((u.uspellprot | 0) - 1) & 0xff;
+            find_ac();
+            if (!Blind()) {
+                const hgolden = hcolor('golden'); /* NH_GOLDEN */
+                await Norep(
+                    `The ${hgolden} haze around you ${
+                        u.uspellprot ? 'becomes less dense' : 'disappears'
+                    }.`,
+                );
+            }
+        }
+    }
+    // C `:662–665` — gallop tick.
     if (u.ugallop) {
         u.ugallop = (u.ugallop | 0) - 1;
         if (!(u.ugallop | 0) && u.usteed)
@@ -1575,26 +1594,6 @@ export async function nh_timeout() {
         }
     }
 
-    /* C timeout.c :652–661 — dissipate SPE_PROTECTION (D-1390).
-     * After mtimedone / ucreamed; before ugallop / uprops in C.
-     * JS uprops arms already ran above (pre-existing order). */
-    if (u.usptime) {
-        u.usptime = ((u.usptime | 0) - 1) & 0xff;
-        if (u.usptime === 0 && (u.uspellprot | 0)) {
-            u.usptime = u.uspmtime | 0;
-            u.uspellprot = ((u.uspellprot | 0) - 1) & 0xff;
-            find_ac();
-            if (!Blind()) {
-                const hgolden = hcolor('golden'); /* NH_GOLDEN */
-                await Norep(
-                    `The ${hgolden} haze around you ${
-                        u.uspellprot ? 'becomes less dense' : 'disappears'
-                    }.`,
-                );
-            }
-        }
-    }
-
     // C: run_timers() at end of nh_timeout — corpse rot / object timers
     await run_timers();
 }
@@ -1724,12 +1723,6 @@ export function arti_light_radius(obj) {
     if (obj === game.u?.uskin) res = 1;
     else if ((obj.otyp | 0) === GOLD_DRAGON_SCALE_MAIL) res++;
     return res;
-}
-
-function Blind() {
-    const u = game.u || {};
-    return !!((u.HBlind | 0) || (u.EBlind | 0) || u.Blind
-        || ((u.HBlinded | 0) & TIMEOUT) || (u.EBlinded | 0));
 }
 
 const MUMMY_WRAPPING = objectNames.indexOf('MUMMY_WRAPPING');

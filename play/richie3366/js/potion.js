@@ -151,7 +151,7 @@ import {
     COST_UNCURS, COST_UNBLSS, PLNMSG_OBJ_GLOWS,
     P_CROSSBOW, P_NONE, FINGER, FOOT, FACE, LL_CONDUCT,
     GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, GETOBJ_EXCLUDE_INACCESS,
-    GETOBJ_EXCLUDE_NONINVENT, GETOBJ_NOFLAGS,
+    GETOBJ_EXCLUDE_NONINVENT, GETOBJ_NOFLAGS, GETOBJ_PROMPT,
     HANDS_SYM,
 } from './const.js';
 import { hands_obj, P_SKILL } from './weapon.js';
@@ -295,59 +295,6 @@ function drink_ok(obj) {
 function drink_prompt_lets(raw) {
     if (!raw || raw.length <= 5) return raw;
     return compactify_invlets(raw);
-}
-
-/** Compact consecutive invent letters (C invent.c compactify). */
-function compact_lets(lets) {
-    if (!lets.length) return '';
-    if (lets.length <= 5) return lets.join('');
-    let out = lets[0];
-    let runStart = lets[0];
-    let prev = lets[0];
-    for (let i = 1; i < lets.length; i++) {
-        const ch = lets[i];
-        if (ch.charCodeAt(0) === prev.charCodeAt(0) + 1) {
-            prev = ch;
-            continue;
-        }
-        if (prev !== runStart) {
-            out += prev === String.fromCharCode(runStart.charCodeAt(0) + 1)
-                ? prev
-                : `-${prev}`;
-        }
-        out += ch;
-        runStart = prev = ch;
-    }
-    if (prev !== runStart) {
-        out += prev === String.fromCharCode(runStart.charCodeAt(0) + 1)
-            ? prev
-            : `-${prev}`;
-    }
-    return out;
-}
-
-/** C ref: potion.c dip_ok `:2220–2224` — suggest non-coin, accessible invent,
- * uncompacted, C sortloot INVLET order. Gold EXCLUDE `:2220–2221`;
- * inaccessible_equipment EXCLUDE_INACCESS `:2223–2224` (dropped from the
- * prompt; a letter pick still returns so the caller presents the failure,
- * dodip `:2282`). `inacc` is do_wear.c inaccessible_equipment via
- * apply.js (no clone). */
-function dippable_lets_raw(inacc) {
-    const inv = game.invent || [];
-    const lets = [];
-    for (const o of inv) {
-        if (o.oclass === COIN_CLASS) continue;
-        if (inacc && inacc(o, false)) continue;
-        if (o.invlet) lets.push(o.invlet);
-    }
-    // C sortloot_cmp `:473` — invletter_value, not ASCII (C «bG», not «Gb»).
-    lets.sort((a, b) => invletter_value(a) - invletter_value(b));
-    return lets.join('');
-}
-
-/** C ref: potion.c dip_ok `:2220–2224` — suggest non-coin, accessible invent. */
-function dippable_lets(inacc) {
-    return compact_lets(dippable_lets_raw(inacc).split(''));
 }
 
 /** C ref: invent.c useup() — consume one from a stack / remove if gone. */
@@ -2542,106 +2489,19 @@ export async function dodrink() {
 }
 
 /**
- * C ref: invent.c getobj("dip", dip_ok / dip_hands_ok, GETOBJ_PROMPT)
- * (potion.c `:2279`: at_here ? dip_hands_ok : dip_ok). Hands `-` is listed
- * in the prompt only when the NULL verdict is SUGGEST (invent.c
- * `:1833–1837`), accepted-but-unlisted on DOWNPLAY; both set allownone.
- * Canned CMDQ_KEY answers before the prompt (invent.c `:1776–1820`;
- * HANDS_SYM `:1790–1794`). `?`/`*` → pickinv menu (invent.c
- * `:1963–1992`). Loop on missing letter. Covered-item letters are dropped
- * from the prompt via dip_ok `:2223–2224` (a letter pick still returns so
- * dodip `:2282` presents the failure).
+ * C ref: potion.c dodip `:2279` — getobj("dip", at_here ? dip_hands_ok :
+ * dip_ok, GETOBJ_PROMPT). The live invent.c getobj does the rest:
+ * reassign when !fixinv, sortloot, compactify, force_invmenu, counts,
+ * '-' hands and the EXCLUDE_INACCESS pseudo-valid return that dodip
+ * `:2282` reports. dip_ok's covered-item verdict uses apply.js
+ * equipment_is_inaccessible (dynamic import: apply.js imports potion.js).
  */
 export async function getobj_dip(at_here) {
-    // C potion.c:2279 — obj_ok selected once, NULL verdict before the loop.
-    // The verdict carries dip_ok `:2223–2224` (inaccessible_equipment via
-    // apply.js, no clone). Dynamic import: apply.js already imports
-    // potion.js (dip_into/dodip shape, no new edge).
     const { equipment_is_inaccessible } = await import('./apply.js');
     const obj_ok = at_here
         ? ((o) => dip_hands_ok(o, equipment_is_inaccessible))
         : ((o) => dip_ok(o, equipment_is_inaccessible));
-    // C invent.c:1776-1820 — canned CMDQ_KEY answers before the prompt
-    // (shared verdict helper, like sibling getobj_dip_ok).
-    const canned = cmdq_pop_getobj_key(obj_ok);
-    if (canned !== undefined) return canned;
-    const handsListed = obj_ok(null) === GETOBJ_SUGGEST; // C invent.c:1832
-    const { getobj_display_pickinv } = await import('./invent.js');
-    for (;;) {
-        await flush_topl_more();
-        // C invent.c:1835-1836 + :1905: '- ' prefix, '-' alone when empty
-        const rawLets = dippable_lets(equipment_is_inaccessible);
-        const lets = handsListed ? (rawLets ? `- ${rawLets}` : '-') : rawLets;
-        const query = lets
-            ? `What do you want to dip? [${lets} or ?*]`
-            : 'What do you want to dip? [*]';
-        const prompt = `${query} `;
-        game._pending_message = prompt;
-        await flush_screen(1);
-        const disp = game.nhDisplay;
-        if (disp?.setCursor) disp.setCursor(prompt.length, 0);
-
-        const key = await nhgetch();
-        const ch = String.fromCharCode(key);
-        if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
-            if (game.flags?.verbose !== false) await pline('Never mind.');
-            return null;
-        }
-        if (ch === '-') {
-            // C invent.c:1955-1958 — allownone is TRUE under SUGGEST or
-            // DOWNPLAY alike, so '-' always returns &hands_obj
-            game._pending_message = '';
-            return hands_obj;
-        }
-        if (ch === '?' || ch === '*') {
-            // C invent.c:1963-1992 — pickinv menu over the SUGGEST lets
-            // (uncompacted `lets`; the prompt compacts `buf` only).
-            // Mirror of sibling getobj_dip_ok; GETOBJ_NOFLAGS → no count.
-            const counted = { cnt: 0, cntgiven: false };
-            const ilet = await getobj_display_pickinv(
-                ch, dippable_lets_raw(equipment_is_inaccessible), false, counted,
-                { word: 'dip', allownone: true, promptHasHands: handsListed },
-            );
-            if (ilet === '\x1b') {
-                if (game.flags?.verbose !== false) await pline('Never mind.');
-                return null;
-            }
-            if (!ilet) continue;
-            if (ilet === HANDS_SYM) return hands_obj;
-            const picked = (game.invent || []).find((o) => o.invlet === ilet);
-            // C order as in the letter path: gold gate, `:2049` botl
-            // (fires before silly_thing too), then verify.
-            if (picked && picked.oclass === COIN_CLASS) {
-                await pline('You cannot dip gold.');
-                return null;
-            }
-            if (game.flags) game.flags.botl = true;
-            if (!picked) {
-                await pline("You don't have that object.");
-                continue;
-            }
-            if (obj_ok(picked) === GETOBJ_EXCLUDE) {
-                await pline('That is a silly thing to dip.');
-                return null;
-            }
-            game._pending_message = '';
-            return picked;
-        }
-        const otmp = (game.invent || []).find((o) => o.invlet === ch);
-        // C invent.c getobj `:2003–2049` — gold gate, then disp.botl on
-        // every pick past it, before the verify (bad letters repaint too).
-        if (otmp && otmp.oclass === COIN_CLASS) {
-            await pline('You cannot dip that!');
-            return null;
-        }
-        if (game.flags) game.flags.botl = true;
-        if (!otmp) {
-            await pline("You don't have that object.");
-            continue;
-        }
-        game._pending_message = '';
-        return otmp;
-    }
+    return getobj('dip', obj_ok, GETOBJ_PROMPT);
 }
 
 /**
@@ -4080,7 +3940,9 @@ export async function potionhit(mon, obj, how) {
         ty = u.uy | 0;
         distance = 0;
         // C: pline blocks through --More-- while m_throw tmp_at flash still shows
-        await pline(`The ${botlnam} crashes on your head and breaks into shards.`);
+        // C `:1636–1637` — body_part(HEAD): a headless or vortex form says
+        // "body" / "central core".
+        await pline(`The ${botlnam} crashes on your ${body_part(HEAD)} and breaks into shards.`);
         const killer = (how === POTHIT_OTHER_THROW)
             ? 'propelled potion'
             : 'thrown potion';
@@ -4126,12 +3988,9 @@ export async function potionhit(mon, obj, how) {
     }
 
     // oil doesn't instantly evaporate; Neither does a saddle hit
+    // C `:1678–1679` — one Tobjnam(obj, "evaporate") for hero and monster.
     if ((obj.otyp | 0) !== POT_OIL && !hit_saddle && cansee(tx, ty)) {
-        if (isyou) {
-            await pline(`The ${xname(obj)} evaporates.`);
-        } else {
-            await pline(`${Tobjnam_pot(obj, 'evaporate')}.`);
-        }
+        await pline(`${Tobjnam_pot(obj, 'evaporate')}.`);
     }
 
     if (isyou) {

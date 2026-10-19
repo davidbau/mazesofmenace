@@ -101,7 +101,7 @@ import { mon_offmap, monflee } from './monmove.js';
 import { cansee, couldsee, do_clear_area } from './vision.js';
 import { del_engr_at, make_grave } from './engrave.js';
 import { monstseesu, monstunseesu, mhis, mhe } from './mondata.js';
-import { observe_object, enlightenment, update_inventory, useup } from './invent.js';
+import { observe_object, enlightenment, update_inventory, useup, Blind } from './invent.js';
 import {
     hliquid, hcolor, Hallucination, rndmonnam, oname,
     trycall, a_monnam, Amonnam,
@@ -248,8 +248,8 @@ async function get_iter_mons(bfunc) {
  */
 async function dofindgem() {
     const u = game.u || {};
-    const Blind = !!(u.Blind || u.ublind);
-    if (!Blind) {
+    const blind = Blind(); // C youprop.h Blind
+    if (!blind) {
         await pline('You spot a gem in the sparkling waters!');
     } else {
         await You_feel('a gem here!');
@@ -332,17 +332,17 @@ export async function breaksink(x, y) {
  */
 export async function sink_backs_up(x, y) {
     const u = game.u || {};
-    const Blind = !!(u.Blind || u.ublind);
+    const blind = Blind(); // C youprop.h Blind
     const Deaf = !!(u.Deaf || u.HDeaf || u.EDeaf || u.uroleplay?.deaf);
     let buf;
-    if (!Blind) buf = 'Muddy waste pops up from the drain';
+    if (!blind) buf = 'Muddy waste pops up from the drain';
     else if (!Deaf) buf = 'You hear a sloshing sound';
     else buf = `Something splashes you in the ${body_part(FACE)}`;
     await pline(`${!Deaf ? 'Flupp!  ' : ''}${buf}.`);
 
     const loc = game.level?.at(x, y);
     if (loc && !((loc.looted | 0) & S_LRING)) {
-        if (!Blind) await You_see('a ring shining in its midst.');
+        if (!blind) await You_see('a ring shining in its midst.');
         mkobj_at(RING_CLASS, x, y, true);
         newsym(x, y);
         exercise(A_DEX, true);
@@ -396,8 +396,8 @@ export async function drinksink() {
         } else {
             const mtmp = makemon(mons(PM_SEWER_RAT), u.ux, u.uy, MM_NOMSG);
             if (mtmp) {
-                const Blind = !!(u.Blind || u.ublind);
-                const what = (Blind || !canspotmon(mtmp))
+                const blind = Blind(); // C youprop.h Blind
+                const what = (blind || !canspotmon(mtmp))
                     ? 'something squirmy'
                     : a_monnam(mtmp);
                 await pline(`Eek!  There's ${what} in the sink!`);
@@ -418,10 +418,10 @@ export async function drinksink() {
         }
         otmp.cursed = 0;
         otmp.blessed = 0;
-        const Blind = !!(u.Blind || u.ublind);
-        const liquid = Blind ? 'odd' : hcolor(potion_descr(otmp.otyp));
+        const blind = Blind(); // C youprop.h Blind
+        const liquid = blind ? 'odd' : hcolor(potion_descr(otmp.otyp));
         await pline(`Some ${liquid} liquid flows from the faucet.`);
-        if (!(Blind || u.Hallucination)) observe_object(otmp);
+        if (!(blind || u.Hallucination)) observe_object(otmp);
         otmp.quan = (otmp.quan | 0) + 1; // Avoid panic upon useup()
         otmp.fromsink = 1;
         // Dynamic import avoids potion↔fountain cycle; peffect_* partial
@@ -554,8 +554,8 @@ async function dowatersnakes() {
     let num = rn1(5, 2);
     const gone = ((game.mvitals?.[PM_WATER_MOCCASIN]?.mvflags ?? 0) & G_GONE) !== 0;
     if (!gone) {
-        const Blind = !!(u.Blind || u.ublind);
-        if (!Blind) {
+        const blind = Blind(); // C youprop.h Blind
+        if (!blind) {
             // C fountain.c:45–46 — ternary is the pline %s; rndmonnam
             // is display-rng and is not evaluated when !Hallucination.
             const what = Hallucination()
@@ -589,8 +589,8 @@ async function dowaterdemon() {
     if (!gone) {
         const mtmp = makemon(mons(PM_WATER_DEMON), u.ux, u.uy, MM_NOMSG);
         if (mtmp) {
-            const Blind = !!(u.Blind || u.ublind);
-            if (!Blind) {
+            const blind = Blind(); // C youprop.h Blind
+            if (!blind) {
                 await You(`unleash ${a_monnam(mtmp)}!`);
             } else {
                 await You_feel('the presence of evil.');
@@ -618,7 +618,7 @@ async function dowaterdemon() {
  */
 async function dowaternymph() {
     const u = game.u || {};
-    const Blind = !!(u.Blind || u.ublind);
+    const blind = Blind(); // C youprop.h Blind
     const gone = ((game.mvitals?.[PM_WATER_NYMPH]?.mvflags ?? 0) & G_GONE) !== 0;
     let mtmp = null;
     if (!gone) {
@@ -626,7 +626,7 @@ async function dowaternymph() {
     }
     // C: if (!(G_GONE) && (mtmp = makemon(...)) != 0)
     if (!gone && mtmp) {
-        if (!Blind) {
+        if (!blind) {
             await pline(`You attract ${a_monnam(mtmp)}!`);
         } else {
             await You_hear('a seductive voice.');
@@ -635,7 +635,7 @@ async function dowaternymph() {
         if (t_at(mtmp.mx, mtmp.my)) {
             await mintrap(mtmp, NO_TRAP_FLAGS);
         }
-    } else if (!Blind) {
+    } else if (!blind) {
         await pline('A large bubble rises to the surface and pops.');
     } else {
         await You_hear('a loud pop.');
@@ -896,7 +896,7 @@ export async function drinkfountain() {
             break;
         }
         case 25: // See invisible
-            if (u.Blind || u.ublind) {
+            if (Blind()) {
                 if (u.HInvis || u.EInvis || u.Invis) {
                     await pline('You feel transparent.');
                 } else {
@@ -991,13 +991,6 @@ export async function wash_hands() {
     }
     if (was_glib && res === ER_NOTHING) res = ER_GREASED;
     return res;
-}
-
-/** C youprop.h Blind — (HBlinded || EBlinded) && !BBlinded. */
-function Blind() {
-    const u = game.u || {};
-    if (u.uroleplay?.blind) return true;
-    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
 }
 
 /** C youprop.h Deaf — HDeaf || EDeaf || uroleplay.deaf. */

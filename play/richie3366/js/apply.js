@@ -38,7 +38,7 @@ import {
     SUPPRESS_IT, SUPPRESS_INVISIBLE, Is_stronghold, REVIVE_MON, u_at, Has_contents,
     SUPPRESS_SADDLE, has_mgivenname, has_mcorpsenm, MCORPSENM,
     PLNMSG_enum, NO_TRAP_FLAGS, Is_airlevel, Is_waterlevel,
-    LANDMINE, BEAR_TRAP, FORCEBUNGLE, SHOPBASE, P_RIDING, NO_MM_FLAGS,
+    LANDMINE, BEAR_TRAP, FORCEBUNGLE, SHOPBASE, P_RIDING, NO_MM_FLAGS, MM_ASYNCGROUP,
     MAX_SPELL_STUDY, HOMEMADE_TIN, G_GONE, NO_MINVENT, MM_NOMSG, TT_BURIEDBALL,
     IS_TREE, W_NONPASSWALL, FIG_TRANSFORM, TIMER_OBJECT, OBJ_MINVENT,
     EXACT_NAME, DISP_BEAM, DISP_END, HI_ZAP,
@@ -5179,12 +5179,15 @@ export async function bagotricks(bag, tipping = false, seencount = null) {
     let seecount = 0;
     if (!rn2(23)) creatcnt += rnd(7);
     do {
-        const mtmp = makemon(null, game.u?.ux | 0, game.u?.uy | 0, NO_MM_FLAGS);
+        // MM_ASYNCGROUP (D-4014 pattern): C's makemon `:1430–1439` runs a
+        // grouped summons' member appears inline, so a member Norep
+        // --More-- lands before the next member is placed.
+        const mtmp = makemon(null, game.u?.ux | 0, game.u?.uy | 0, NO_MM_FLAGS | MM_ASYNCGROUP);
         if (mtmp) {
             moncount++;
             // C: the appear Norep is inside makemon (:1476–1500); sync
             // makemon can't await it, so each caller emits it (D-2096).
-            await makemon_appear_msg(mtmp, mtmp.mx | 0, mtmp.my | 0, NO_MM_FLAGS);
+            await makemon_appear_msg(mtmp, mtmp.mx | 0, mtmp.my | 0, NO_MM_FLAGS | MM_ASYNCGROUP);
             const ap = M_AP_TYPE(mtmp);
             if ((canseemon(mtmp) && (ap === M_AP_NOTHING || ap === M_AP_MONSTER))
                 || sensemon(mtmp)) {

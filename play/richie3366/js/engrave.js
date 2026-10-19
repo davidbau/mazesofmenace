@@ -34,8 +34,7 @@
 // dungeon.c:1750 export in sit.js (D-2884), not a floor stub.
 // wipeout_text seeded (non-zero) path; invent lookhere / pickup() still
 // pass FALSE/TRUE vs C `trap && is_pit` at those callers;
-// display.js feel_can_reach_floor clone still omits hugs / ceiling /
-// Flying (uses FALSE so check_pit N/A).
+// display.js feel_location reads this live export (clone removed).
 // Ported: Levitation (H||E)&&!B D-1070; ustuck AT_HUGS + !sticks
 // D-1071 (local mondata.c sticks — avoid engrave←monmove cycle);
 // sticks exported for sit.js dosit lap D-1072; ceiling_hider +

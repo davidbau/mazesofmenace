@@ -467,6 +467,9 @@ export async function hitmsg(mtmp, mattk) {
             && prev
             && mattk._slot
             && prev._slot
+            // C pointer compare: same mattk[] array (a vampshifter's
+            // vamprises newcham mid-mattacku moves to another permonst)
+            && mattk._slots === prev._slots
             && (mattk._indx | 0) === ((prev._indx | 0) + 1)
             && (mattk.aatyp | 0) === (prev.aatyp | 0)
         ) ? ' again' : '';

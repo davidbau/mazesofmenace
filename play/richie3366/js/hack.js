@@ -45,7 +45,7 @@ import {
     pline, vpline, You, You_cant, There, Norep, newsym, canspotmon, canseemon, map_invisible, You_feel,
     set_msg_xy, feel_location, map_object, unmap_object, glyph_is_invisible, glyph_to_obj, verbalize, curs_on_u,
     nh_delay_output, back_to_glyph, glyph_to_cmap, glyph_is_cmap, pline_dir,
-    impossible, raw_printf, Hallucination as youprop_Hallucination,
+    impossible, raw_printf, Hallucination as youprop_Hallucination, glyph_at,
 } from './display.js';
 import { cmdq_peek, ext_func_tab_from_func } from './cmd.js';
 import { dokick } from './dokick.js';
@@ -353,19 +353,6 @@ export function test_move_hero_passes_bars() {
 }
 
 /**
- * C hack.c test_move :1025–1028 — DO_MOVE rust/corr/metallivore chew
- * instead of occupying bars. Passes_walls already allowed the cell in
- * C's first branch, so skip chew. Named: Underwater obstacle; generic
- * rock Passes_walls / tunnels / autodig.
- */
-export function test_move_hero_chews_bars() {
-    if (Passes_walls_prop()) return false;
-    const data = game.youmonst?.data;
-    return !!(dmgtype(data, AD_RUST) || dmgtype(data, AD_CORR)
-        || metallivorous(data));
-}
-
-/**
  * C hack.c squeezeablylightinvent — empty pack or inv_weight() <= -WT_SQUEEZABLE_INV.
  */
 function squeezeablylightinvent() {
@@ -393,27 +380,6 @@ export function could_move_onto_boulder(sx, sy) {
     }
     if (verysmall(game.youmonst?.data)) return true;
     return squeezeablylightinvent();
-}
-
-/**
- * C hack.c test_move 1216 — outer boulder gate (Sokoban || !Passes_walls).
- */
-export function test_move_boulder_is_blocking(x, y) {
-    return !!(sobj_at(BOULDER, x, y) && (Sokoban_here() || !Passes_walls_prop()));
-}
-
-/**
- * C hack.c test_move 1217–1221 — run>=2 abort (mode != TEST_TRAV).
- * Caller prints pline_dir on DO_MOVE + flags.mention_walls (D-1226).
- */
-export function test_move_run_blocked_by_boulder(x, y) {
-    if (!test_move_boulder_is_blocking(x, y)) return false;
-    if ((game.context?.run | 0) < 2) return false;
-    const u = game.u || {};
-    const Blind = !!(u.Blind || u.ublind || Blind_im());
-    if (Blind || Hallucination()) return false;
-    if (could_move_onto_boulder(x, y)) return false;
-    return true;
 }
 
 /**
@@ -1261,20 +1227,13 @@ function glyph_at_fp(x, y) {
 
 /**
  * C hack.c moverock_core `:358–363` — `glyph_to_obj(glyph_at(x,y)) == BOULDER`.
- * C glyph_at is the shown glyph, not live floor — never use sobj_at here (the
- * while loop already knows a boulder is present). remembered_glyph.glyph is
- * the levl.glyph integer model (display.h glyph_to_obj `:902–913`); the
- * .boulder boolean is only map_object's stamp (D-1281), which integer-only
- * writers (show_map_spot `:1410–1413` oldglyph restore via
- * remember_shown_glyph) do not set — read both.
+ * C glyph_at (display.c `:2477–2483`) is gg.gbuf — the glyph on screen, not
+ * levl.glyph memory: a remembered boulder that the screen currently shows as
+ * something else (a sensed monster, an object, `I`) is not "seen", so the
+ * blind hero feels it. JS gbuf is the live display.js glyph_at (D-1767).
  */
 function glyph_to_obj_is_boulder(x, y) {
-    const loc = game.level?.at(x, y);
-    if (!loc) return false;
-    const rg = loc.remembered_glyph;
-    if (rg?.invisible) return false;
-    if (rg?.boulder) return true;
-    return glyph_to_obj(rg?.glyph) === BOULDER;
+    return glyph_to_obj(glyph_at(x, y)) === BOULDER;
 }
 
 /**

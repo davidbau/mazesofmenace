@@ -1650,7 +1650,7 @@ export async function domonnoise(mtmp) {
         await pline('You freeze for a moment.');
         nomul(-2);
         game.multi_reason = 'scared by rattling';
-        game.nomovemsg = 0;
+        game.nomovemsg = null; // C `gn.nomovemsg = 0` (NULL): unmul says "You can move again."
         return ECMD_TIME;
     } else if (msound === MS_LAUGH) {
         // C sounds.c MS_LAUGH `:989–996` laugh_msg[rn2(4)].

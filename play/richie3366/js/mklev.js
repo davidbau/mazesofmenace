@@ -105,7 +105,7 @@ import {
 } from './objects.js';
 import { shtypes, stock_room } from './shknam.js';
 import { nh_getenv } from './mail.js';
-import { setgemprobs } from './o_init.js';
+import { oinit } from './o_init.js';
 import { maketrap, t_at, undestroyable_trap, deltrap, reset_utrap, mintrap, set_levltyp, set_levltyp_lit } from './trap.js';
 import {
     mkobj, mksobj, mksobj_at, mk_tt_object, mksobj_migr_to_species, mkobj_at, mkgold,
@@ -2874,12 +2874,6 @@ export async function u_on_dnstairs() {
         return;
     }
     await u_on_sstairs(1);
-}
-
-// oinit — C ref: o_init.c oinit() → setgemprobs(&u.uz)
-// setgemprobs uses ledger_no(u.uz) to zero first (9 - lev/3) gems.
-function oinit() {
-    setgemprobs(game.u?.uz || null);
 }
 
 /* level_difficulty: canonical import from hacklib.js (dungeon.c:2026–2084). */
@@ -14235,24 +14229,21 @@ function load_tower1() {
         if (g.level) g.level.dnstair = { x: lx, y: ly };
     }
 
+    // tower1.lua des.monster ×7 → lspo_monster → sp_lev.c create_monster
+    // (splev_create_monster): it ends with `mtmp->female = m->female`
+    // (:2125), so Vlad (is_male) and the "V" class picks (tmpmons.female
+    // = 0, :3230) are male; the ladies keep find_montype's FEMALE.
     // des.monster("Vlad the Impaler", 06, 05)
-    {
-        find_montype_gender('Vlad the Impaler');
-        induced_align(80);
-        const pmIdx = name_to_mon('Vlad the Impaler');
-        if (pmIdx >= 0 && pmIdx !== NON_PM)
-            makemon(mons(pmIdx), mx + 6, my + 5, 0);
-    }
+    splev_create_monster('Vlad the Impaler', undefined, { rx: 6, ry: 5 });
 
     // des.monster("V", niches[1..3])
     for (let i = 0; i < 3; i++) {
         const [rx, ry] = niches[i];
-        induced_align(80);
-        const pm = mkclass('S_VAMPIRE', G_NOGEN);
-        if (pm) makemon(pm, mx + rx, my + ry, 0);
+        splev_create_monster('V', undefined, { rx, ry });
     }
 
-    // vampire ladies with names + waiting
+    // des.monster({ id="vampire lady", coord=niches[4..6],
+    //               name=Vnames[1..3], waiting=1 })
     {
         const vampPm = name_to_mon('vampire');
         const Vgenod = vampPm >= 0
@@ -14260,22 +14251,10 @@ function load_tower1() {
         const Vnames = Vgenod ? [null, null, null] : ['Madame', 'Marquise', 'Countess'];
         for (let i = 0; i < 3; i++) {
             const [rx, ry] = niches[i + 3];
-            const { mndx, female } = find_montype_gender('vampire lady');
-            induced_align(80);
-            if (mndx < 0 || mndx === NON_PM) continue;
-            const mtmp = makemon(mons(mndx), mx + rx, my + ry, 0);
-            if (!mtmp) continue;
-            mtmp.female = female;
-            if (Vnames[i]) christen_monst(mtmp, Vnames[i]);
-            // C: waiting → STRAT_WAITFORU; vampshifted → newcham back to cham
-            mtmp.mstrategy = (mtmp.mstrategy || 0) | STRAT_WAITFORU;
-            if (mtmp.cham != null && mtmp.cham !== NON_PM
-                && mtmp.data?.mlet !== 'S_VAMPIRE') {
-                // C sp_lev waiting vampshifted → newcham back to cham.
-                // Sync load_tower1 cannot await; mklev is not
-                // mleashed / not mon_moving (D-1648).
-                newcham(mtmp, mons(mtmp.cham), 0);
-            }
+            // C :2160–2167 waiting: STRAT_WAITFORU, and a vampshifted
+            // lady newchams back to her cham form.
+            splev_create_monster('vampire lady', undefined,
+                { rx, ry, name: Vnames[i] ?? undefined, waiting: 1 });
         }
     }
 
@@ -14478,12 +14457,13 @@ function load_tower2() {
     twDoor(10, 4, D_LOCKED);
     twDoor(9, 7, D_LOCKED);
 
-    // des.monster("&", place[10]) / place[1] — Lua 1-based → JS [9]/[0]
+    // des.monster("&", place[10]) / place[1] — Lua 1-based → JS [9]/[0].
+    // sp_lev.c create_monster (splev_create_monster) ends with
+    // `mtmp->female = m->female` (:2125): a class pick keeps
+    // tmpmons.female = 0 (:3230), so an erinys here is "his".
     for (const idx of [9, 0]) {
         const [rx, ry] = place[idx];
-        induced_align(80);
-        const pm = mkclass('S_DEMON', G_NOGEN);
-        if (pm) makemon(pm, mx + rx, my + ry, 0);
+        splev_create_monster('&', undefined, { rx, ry });
     }
     // des.monster("hell hound pup", place[2]/place[3]); winter wolf place[4]
     for (const [name, idx] of [
@@ -14492,11 +14472,7 @@ function load_tower2() {
         ['winter wolf', 3],
     ]) {
         const [rx, ry] = place[idx];
-        const { mndx, female } = find_montype_gender(name);
-        induced_align(80);
-        if (mndx < 0 || mndx === NON_PM) continue;
-        const mtmp = makemon(mons(mndx), mx + rx, my + ry, 0);
-        if (mtmp) mtmp.female = female;
+        splev_create_monster(name, undefined, { rx, ry });
     }
 
     // Chests with amulet contents — create_object get_location_coord(DRY)
@@ -14689,26 +14665,15 @@ function load_tower3() {
         }
     }
 
-    // des.monster("D", 13, 05) — mkclass S_DRAGON after induced_align
-    {
-        induced_align(80);
-        const pm = mkclass('S_DRAGON', G_NOGEN);
-        let x = mx + 13;
-        let y = my + 5;
-        const moved = splev_resolve_occupied(x, y, pm);
-        x = moved.x;
-        y = moved.y;
-        if (pm) makemon(pm, x, y, 0);
-    }
+    // tower3.lua des.monster → sp_lev.c create_monster
+    // (splev_create_monster), whose `mtmp->female = m->female` (:2125)
+    // makes every class/random pick here male (tmpmons.female = 0 :3230;
+    // the table form's BOOL_RANDOM → 0 :3355–3356).
+    // des.monster("D", 13, 05)
+    splev_create_monster('D', undefined, { rx: 13, ry: 5 });
     // des.monster({ x=12, y=04 }) / { x=12, y=06 } — random at fixed coords
     for (const [rx, ry] of [[12, 4], [12, 6]]) {
-        induced_align(80);
-        let x = mx + rx;
-        let y = my + ry;
-        const moved = splev_resolve_occupied(x, y, null);
-        x = moved.x;
-        y = moved.y;
-        makemon(null, x, y, 0);
+        splev_create_monster(null, undefined, { rx, ry });
     }
     // des.monster() × 6 — fully random
     for (let i = 0; i < 6; i++) splev_create_monster(null);

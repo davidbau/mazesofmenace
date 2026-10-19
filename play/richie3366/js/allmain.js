@@ -1025,8 +1025,8 @@ export async function newgame() {
  */
 async function ask_do_tutorial() {
     if (game.tutorial_set_in_config) return !!game.flags.tutorial;
-    // C flushes pending topline --More-- (welcome) before the tutorial menu
-    await flush_topl_more();
+    // The pending welcome --More-- is the menu display's own
+    // tty_display_nhwindow(WIN_MESSAGE) more()+clear (paint_corner_nhw_menu).
     let pass = 0;
     for (;;) {
         // C: nh_basename(get_configfile()) — contest sessions use .nethackrc

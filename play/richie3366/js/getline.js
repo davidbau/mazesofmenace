@@ -377,6 +377,57 @@ const EXT_CMDS = [
         },
     },
     {
+        // C: cmd.c `:1687–1688` 'C' "call" IFBURIED|GENERALCMD (no
+        // AUTOCOMPLETE) → docallcmd; rhack's cmdbind_get('C') path runs it.
+        name: 'call',
+        wiz: false,
+        autocomplete: false,
+        run: async () => {
+            const { docallcmd } = await import('./do_name.js');
+            return docallcmd();
+        },
+    },
+    {
+        // C: cmd.c `:1818–1819` C('r') "redraw" IFBURIED|GENERALCMD|CMD_INSANE.
+        name: 'redraw',
+        wiz: false,
+        autocomplete: false,
+        run: async () => {
+            const { doredraw } = await import('./display.js');
+            return doredraw();
+        },
+    },
+    {
+        // C: cmd.c `:1820–1821` 'R' "remove", flags 0.
+        name: 'remove',
+        wiz: false,
+        autocomplete: false,
+        run: async () => {
+            const { doremring } = await import('./do_wear.js');
+            return doremring();
+        },
+    },
+    {
+        // C: cmd.c `:1831–1832` C('_') "retravel", flags 0.
+        name: 'retravel',
+        wiz: false,
+        autocomplete: false,
+        run: async () => {
+            const { dotravel_target } = await import('./cmd.js');
+            return dotravel_target();
+        },
+    },
+    {
+        // C: cmd.c `:1934–1935` '&' "whatdoes" IFBURIED|GENERALCMD.
+        name: 'whatdoes',
+        wiz: false,
+        autocomplete: false,
+        run: async () => {
+            const { dowhatdoes } = await import('./pager.js');
+            return dowhatdoes();
+        },
+    },
+    {
         name: 'pray',
         wiz: false,
         autocomplete: true,

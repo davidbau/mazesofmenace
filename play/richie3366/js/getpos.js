@@ -1337,7 +1337,6 @@ export async function show_getpos_tip() {
     ];
     for (;;) {
         await paint_corner_nhw_menu(lines, '(end) ');
-        await flush_screen(1);
         const key = await nhgetch();
         if (key === 27 || key === 13 || key === 10 || key === 32) break;
         // other keys: stay open (C xwaitforspace / PICK_NONE)

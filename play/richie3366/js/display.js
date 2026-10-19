@@ -137,6 +137,7 @@ import {
     WC2_HILITE_STATUS,
     WC2_FLUSH_STATUS,
     WC2_U_UTF8STR,
+    WC2_EXTRACOLORS,
     TTY_WINCAP2,
     PLNMSG_UNKNOWN,
     BUFSZ,
@@ -177,10 +178,8 @@ import { msgtype_type } from './options.js';
 import { mapxy_valid } from './getpos.js';
 import { mungspaces } from './getline.js';
 import { Unaware } from './eat.js';
-import { Levitation, Flying } from './mhitu.js'; // feel_can_reach_floor property reads (hoisted fns, runtime use only — imports.mjs SAFE)
-import { sticks } from './monmove.js'; // feel_can_reach_floor ustuck arm (canonical engrave.js binding via the monmove re-export; runtime body reads only — imports.mjs CHECK)
-import { attacktype } from './mondata.js'; // feel_can_reach_floor ustuck arm (hoisted fn — imports.mjs SAFE)
-import { AT_HUGS } from './mhitm.js'; // feel_can_reach_floor ustuck arm (const; runtime body reads only — imports.mjs CHECK)
+import { Levitation, Flying } from './mhitu.js'; // property reads (hoisted fns, runtime use only — imports.mjs SAFE)
+import { can_reach_floor } from './engrave.js'; // feel_location `:777` (hoisted fn, runtime use only — imports.mjs SAFE)
 
 const CORPSE_OTYP = objectNames.indexOf('CORPSE');
 const STATUE_OTYP = objectNames.indexOf('STATUE');
@@ -630,18 +629,12 @@ const DEF_OC_SYM = {
 
 // C ref: drawing.c def_r_oc_syms + symbols.c init_rogue_symbols `:201`
 // (gr.rogue_syms[O] = def_r_oc_syms) swapped into showsyms by
-// assign_graphics ROGUESET (do.c goto_level; js do.js:1604). Rogue level
-// renders armor ']' (not '['), amulet ',' (not '"'), food ':' (not '%');
-// gold '*' via live_showsyms and VENOM/others are unchanged.
-const DEF_R_OC_SYM = {
-    [ARMOR_CLASS]: ']',
-    [AMULET_CLASS]: ',',
-    [FOOD_CLASS]: ':',
-};
+// assign_graphics ROGUESET (do.c goto_level; js do.js:1604). The table is
+// DEF_R_OC_SYM_FULL below: armor ']', amulet ',', food ':' and gold
+// GEM_SYM '*' (drawing.c `:79`) differ from def_oc_syms.
 function oc_display_sym(oclass) {
-    if ((game.currentgraphics | 0) === ROGUESET
-        && DEF_R_OC_SYM[oclass] != null)
-        return DEF_R_OC_SYM[oclass];
+    if ((game.currentgraphics | 0) === ROGUESET && DEF_R_OC_SYM_FULL[oclass])
+        return DEF_R_OC_SYM_FULL[oclass];
     return DEF_OC_SYM[oclass] || ']';
 }
 
@@ -2332,8 +2325,7 @@ function display_monster(x, y, mon, sightflags, worm_tail) {
 function objnum_to_display_glyph(onum) {
     const def = game.objects?.[onum | 0];
     const oclass = def?.oc_class ?? ILLOBJ_CLASS;
-    let ch = oc_display_sym(oclass);
-    if (oclass === COIN_CLASS) ch = String.fromCharCode(live_showsyms(COIN_CLASS + SYM_OFF_O));
+    const ch = oc_display_sym(oclass);
     const color = def?.oc_color ?? NO_COLOR;
     return { ch, color, dec: false, glyph: objnum_to_glyph(onum) };
 }
@@ -2769,6 +2761,9 @@ const TOPLINE_SPECIAL_PROMPT = 3;
 const CTRL_P = 0x10;
 let _toplines = '';
 let _toplin = TOPLINE_EMPTY;
+// Text left visible on row 0 when mark_topline_empty set EMPTY without
+// a wipe (C tty_display_nhwindow NHW_MESSAGE non-NEED_MORE arm).
+let _stale_topline = null;
 // C wintty.h ttyDisplay->inread — getline/yn set this; command ^P is 0.
 let _tty_inread = 0;
 // C wintty.h DisplayDesc.intr — non-zero if inread was interrupted
@@ -3342,7 +3337,11 @@ export function hooked_getlin_epilogue(suppress_history) {
  * without going through pline's NEED_MORE path).
  */
 export function clear_nhwindow_message() {
-    if (_toplin === TOPLINE_EMPTY && !(game._pending_message)) {
+    // An EMPTY window whose visible text is the stale leftover
+    // mark_topline_empty recorded is C's no-op (toplin EMPTY → no erase);
+    // only a JS painter's un-flagged prompt takes the extension below.
+    if (_toplin === TOPLINE_EMPTY && (!(game._pending_message)
+            || game._pending_message === _stale_topline)) {
         if (_msg_cw) {
             _msg_cw.curx = 0;
             _msg_cw.cury = 0;
@@ -3360,7 +3359,20 @@ export function clear_nhwindow_message() {
         _msg_cw.curx = 0;
         _msg_cw.cury = 0;
     }
+    topline_home_cl_end(); // C `:1050–1051` home(); cl_end()
     if (wrapped) resync_map_row0();
+}
+
+/**
+ * C wintty.c tty_clear_nhwindow NHW_MESSAGE `:1050–1051` home(); cl_end()
+ * — the visible erase of message row 0 (no wait for a later flush; the
+ * menu overlay paints without one).
+ */
+function topline_home_cl_end() {
+    const display = game?.nhDisplay;
+    if (!display?.setCell) return;
+    for (let c = 0; c < (display.cols | 0); c++)
+        display.setCell(c, 0, ' ', NO_COLOR, 0);
 }
 
 /**
@@ -3373,6 +3385,7 @@ export function clear_nhwindow_message() {
  */
 export function mark_topline_empty() {
     _toplin = TOPLINE_EMPTY;
+    _stale_topline = game._pending_message || null;
     if (_msg_cw) {
         _msg_cw.curx = 0;
         _msg_cw.cury = 0;
@@ -3425,8 +3438,12 @@ export function clear_message_window_menu_overlay() {
         _msg_cw.cury = 0;
     }
     if (_toplin === TOPLINE_EMPTY) return;
+    // C `:1050–1053` home(); cl_end(); if (cw->cury) docorner(1, cury+1, 0)
+    const wrapped = (game._pending_message || '').includes('\n');
     _toplin = TOPLINE_EMPTY;
     game._pending_message = '';
+    topline_home_cl_end();
+    if (wrapped) resync_map_row0();
 }
 
 // ── ANSI color codes ──
@@ -3583,7 +3600,7 @@ function showsyms_defaults(set) {
     for (let i = SYM_OFF_O; i < SYM_OFF_M; i++) {
         const c = i - SYM_OFF_O;
         if (rogue) {
-            d[i] = DEF_R_OC_SYM[c] ?? (c === COIN_CLASS ? '*' : null) ?? DEF_OC_SYM[c] ?? 0;
+            d[i] = DEF_R_OC_SYM_FULL[c] ?? 0;
         } else {
             d[i] = DEF_OC_SYM[c] ?? 0;
         }
@@ -3749,7 +3766,7 @@ function showsyms_table() {
 
 // C drawing.c def_r_oc_syms `:72–82` — the full 18-entry rogue object-class
 // table (index 0 is the '\0' random-class placeholder like primary).
-// DEF_R_OC_SYM above is the 3-diff partial for the display fast path.
+// Read by oc_display_sym, showsyms_defaults and init_rogue_symbols.
 const DEF_R_OC_SYM_FULL = [
     0, ']', ')', ']', '=', ',', '(', ':', '!', '?', '+',
     '/', '*', '*', '`', '0', '_', '.',
@@ -4342,10 +4359,9 @@ function do_crwall(seenv, row) {
  * MAC mines corners record default fg). C's further gates — wincap2
  * EXTRACOLORS (unconditional on unix tty, wintty.c:122), colorcount ≥ 256
  * (judge/recorder env, D-0283), !calling_from_update_inventory (map paint)
- * — all hold here, as in C. RGB customcolors (Enhanced mines/knox) take
- * C's :3903–3906 extracolor arm, which the recorder does not hook
- * (D-4031 class): gray, C's own unappliable-customcolor fallback, stands
- * in — named.
+ * — all hold here, as in C. RGB customcolors (Enhanced mines/knox) keep
+ * the gray base here; show_glyph_cell's extracolor arm (C :3903–3906,
+ * D-4117) paints them with the default fg the recorder captures.
  */
 function wall_cmap_color(idx) {
     const gid = cmap_walls_to_glyph(idx); // C display.h:598 branch bank
@@ -5265,6 +5281,29 @@ export async function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false
     // (stores) below. Core validation + the map_glyphinfo resolve above
     // already ran, as in C.
     if (game.program_state?.done_hup) return;
+    // C tty_print_glyph `:3891–3913` extracolor arm: under use_color, with
+    // WC2_EXTRACOLORS (unconditional in tty_procs `:122`, the installed
+    // TTY_WINCAP2 word), a stamped glyphmap customcolor (glyphs.c
+    // apply_customizations → coloratt.c set_map_customcolor), colorcount
+    // >= 256 (the recorder/judge terminal, D-0283) and a map paint
+    // (!calling_from_update_inventory). A basic customcolor (color.h:57
+    // NH_BASIC_COLOR bit) replaces the color with COLORVAL (`:3909`). An
+    // RGB one goes to termcap.c term_start_extracolor (`:3904–3907`,
+    // `ESC[38;5;Nm`), which patch 006 never hooks. ttyDisplay->color is
+    // already NO_COLOR here (every paint ends with term_end_color and the
+    // reset, `:4022–4029`), so no term_end_color fires and the recorded
+    // cell keeps the default fg. gbuf keeps the C color; the grid writers
+    // paint NO_COLOR for disp_extracolor.
+    let extraColor = false;
+    if (game.iflags?.wc_color !== false
+            && (install_tty_wincap2() & WC2_EXTRACOLORS) !== 0
+            && gid >= 0 && gid < MAX_GLYPH) {
+        const cust = (game.glyphmap?.[gid]?.customcolor | 0) >>> 0;
+        if (cust !== 0) {
+            if ((cust & NH_BASIC_COLOR) === 0) extraColor = true; // C :3903
+            else color = cust & 0xffffff; // C :3909 COLORVAL
+        }
+    }
     // C tty_print_glyph `:3945–3953` + g_pututf8 `:3795–3803`
     // (ENHANCED_SYMBOLS live, config.h:368): with the port advertising
     // WC2_U_UTF8STR (tty_procs `:120`, the installed TTY_WINCAP2 word),
@@ -5308,6 +5347,7 @@ export async function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false
     loc.disp_decgfx = !!decgfx;
     loc.disp_attr = attr | 0;
     loc.disp_capture_drop = captureDrop;
+    loc.disp_extracolor = extraColor;
     loc.disp_kind = kind;
     // Resolved first: two glyph ids can share one ttychar (altar and
     // fountain are both '{'), so the id is part of the change test below.
@@ -6283,35 +6323,6 @@ export function engr_can_be_felt(ep) {
 }
 
 /**
- * Inline can_reach_floor(FALSE) for feel_location — avoid engrave↔display
- * import cycle (engrave.js imports newsym from display). C engrave.c:187
- * reads the Levitation/Flying PROPERTIES (H||E, !B); the flat u.Levitation
- * / u.Flying mirrors are never set by set_uasmon (FROMFORM lands on H* +
- * uprops), so read the live mhitu.js exports (D-3825 pattern; imports.mjs
- * VERDICT: SAFE, hoisted functions, cycle-safe).
- * Named omission: usteed P_RIDING < P_BASIC (C :201); ceiling hider
- * (:203); msize >= MZ_HUGE (:206, TRUE-arm subsumed by the fallthrough
- * since check_pit is skipped for the FALSE arg).
- */
-function feel_can_reach_floor() {
-    const u = game.u || {};
-    if (u.uswallow) return false;
-    // C `:192–197` — hug-held hero whose own form doesn't stick has pinned
-    // arms: can't reach the floor. Mirrors the canonical engrave.js
-    // can_reach_floor (display can't import it: engrave↔display cycle);
-    // sticks via the monmove.js re-export, attacktype/AT_HUGS live.
-    if (u.ustuck && !sticks(game.youmonst?.data)
-        && attacktype(u.ustuck.data, AT_HUGS)) {
-        return false;
-    }
-    if (Levitation() && !(Is_airlevel(u.uz) || Is_waterlevel(u.uz))) {
-        return false;
-    }
-    if (Flying()) return true;
-    return true;
-}
-
-/**
  * C ref: display.c suppress_map_output / _suppress_map_output.
  * gi.in_mklev || program_state.saving || program_state.restoring
  * (hangup done_hup still named).
@@ -6332,7 +6343,8 @@ export function suppress_map_output() {
  * dark adjust; then `:901–908` sensed mon overlay when !u_at (sensemon
  * includes MATCH_WARN D-1514) with is_worm_tail (D-1749). newsym
  * Detect_monsters skips tails; this overlay does not.
- * Named omissions: usteed P_RIDING in can_reach_floor (feel_can_reach_floor).
+ * `:777` reads the live engrave.js can_reach_floor (an unskilled rider
+ * can't feel what lies below; the local clone lacked that arm).
  */
 export function feel_location(x, y) {
     // C `:754–758` — same mklev/save/restore gate as newsym/show_glyph.
@@ -6354,7 +6366,7 @@ export function feel_location(x, y) {
 
     set_seenv(loc, u.ux | 0, u.uy | 0, x, y);
 
-    if (!feel_can_reach_floor()) {
+    if (!can_reach_floor(false)) {
         // C `:777–858` — Levitation Rules in C order: stone/walls/closed
         // doors felt as background; boulders felt before doorways (sobj_at
         // finds a boulder anywhere in the pile, not just the pile top);
@@ -6577,6 +6589,17 @@ export function newsym(x, y) {
     // in a state of flux (in_mklev/saving/restoring; same gate as
     // feel_location :754–758 and show_glyph).
     if (suppress_map_output()) return;
+    // C `:928–935` — should never happen; same error handling as
+    // u_on_newpos(): off the map panics, column 0 (misuse, less severe)
+    // is impossible(). newsym is sync here, so the column-0 report is
+    // left pending for the awaiting caller (see_monsters, C `:1510`).
+    if (!isok(x, y)) {
+        if (x < 0 || y < 0 || x > COLNO - 1 || y > ROWNO - 1)
+            panic('newsym: attempting screen update for <%d,%d>', x, y);
+        else
+            game._newsym_misuse = { x: x | 0, y: y | 0 };
+        return;
+    }
     const loc = game.level?.at(x, y);
     if (!loc) return;
 
@@ -6928,11 +6951,20 @@ export async function see_monsters() {
     const warn_obj = (game.context?.warntype?.obj | 0) >>> 0;
     const warn_of_mon = Warn_of_mon();
     // C `:1505–1518` — no position guard: every live, arrived monster is
-    // newsym'd (newsym itself no-ops off-map) and counts for Sting.
+    // newsym'd and counts for Sting. A monster parked at <0,0> (bubble
+    // or migration limbo) hits newsym's column-0 impossible() here, in
+    // loop order, before the remaining monsters are redrawn.
+    game._newsym_misuse = null;
     for (const mon of game.fmon || []) {
         if (!mon || (mon.mhp != null && mon.mhp <= 0)) continue;
         if (((mon.mstate | 0) & MON_STILL_ARRIVING) !== 0) continue;
         newsym(mon.mx, mon.my);
+        if (game._newsym_misuse) {
+            const bad = game._newsym_misuse;
+            game._newsym_misuse = null;
+            await impossible('newsym: attempting screen update for <%d,%d>',
+                bad.x, bad.y);
+        }
         if (mon.wormno) see_wsegs(mon);
         if (warn_of_mon
             && (warn_obj & (mon.data?.mflags2 | 0)) !== 0) {
@@ -7258,7 +7290,7 @@ export async function docrt_flags(refresh_flags) {
             // C `:1758` — see what is to be seen.
             vision_recalc(0);
             // C `:1761` — overlay with monsters.
-            see_monsters();
+            await see_monsters();
         }
         // C `:1766–1772` post_map (every arm lands here): perm_invent
         // update + disp.botlx = TRUE ("caller needs to call bot() to
@@ -7305,7 +7337,8 @@ function render_map_row(y) {
     for (let x = firstCol; x <= lastCol; x++) {
         const loc = game.level.at(x, y);
         const ch = loc?.disp_ch ?? ' ';
-        const color = loc?.disp_color ?? NO_COLOR;
+        const color = loc?.disp_extracolor ? NO_COLOR
+            : (loc?.disp_color ?? NO_COLOR);
         const dec = !!loc?.disp_decgfx;
 
         if (ch === ' ') {
@@ -8190,6 +8223,16 @@ function _paintToplineOnly() {
 }
 
 /**
+ * Message-window repaint without the map/status flush: the menu overlay
+ * (tty_display_nhwindow NHW_MENU) never calls flush_screen, so the core
+ * gbuf changes stay unpainted under it, as in C; only WIN_MESSAGE's
+ * visible state (the clear arm's home+cl_end) reaches the grid.
+ */
+export function paint_message_window_only() {
+    _paintToplineOnly();
+}
+
+/**
  * C getline.c show_topl / topl_putsym wrap at CO-1: cl_end the wrapped
  * message row so a corner menu's first item does not stay beside the
  * continuation. Ordinary `_paintToplineOnly` must not blank map row 1.
@@ -8286,7 +8329,9 @@ export function paint_gbuf_level_to_terminal(level) {
                 continue;
             }
             let ch = loc.disp_ch ?? ' ';
-            const color = loc.disp_color ?? NO_COLOR;
+            // Unhooked term_start_extracolor: default fg (show_glyph).
+            const color = loc.disp_extracolor ? NO_COLOR
+                : (loc.disp_color ?? NO_COLOR);
             const attr = loc.disp_attr ?? 0;
             // Same capture drops as _paint_gbuf_cell (nomux_putch ch < 32,
             // unhooked g_pututf8): the stale grid cell stays in place.
@@ -8356,7 +8401,9 @@ function _paint_gbuf_cell(mx, my) {
             && ch !== '|' && ch !== 'o' && ch !== 's')
             ch = uni;
     }
-    display.setCell(sc, sr, ch, loc.disp_color ?? NO_COLOR, loc.disp_attr ?? 0);
+    // Unhooked term_start_extracolor: default fg (show_glyph).
+    const color = loc.disp_extracolor ? NO_COLOR : (loc.disp_color ?? NO_COLOR);
+    display.setCell(sc, sr, ch, color, loc.disp_attr ?? 0);
 }
 
 /**
@@ -9407,6 +9454,11 @@ export async function message_menu(letch, how, mesg) {
         return _morc === 27 ? '\x1b' : String.fromCharCode(_morc);
     }
     return null;
+}
+
+/** C wintty.h `ttyDisplay->toplin == TOPLINE_NEED_MORE`. */
+export function topline_need_more() {
+    return _toplin === TOPLINE_NEED_MORE;
 }
 
 /** C ref: flush pending topline --More-- before menus / non-pline UI */

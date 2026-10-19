@@ -110,6 +110,13 @@ export function setgemprobs(dlev) {
     game.oclass_prob_totals[GEM_CLASS] = sum;
 }
 
+// C ref: o_init.c oinit `:367–372` — level dependent initialization.
+// Callers: mklev.c makelevel `:1264`, sp_lev.c `:6007`, do.c goto_level
+// `:1713` (revisited level after getlev).
+export function oinit() {
+    setgemprobs(game.u?.uz || null);
+}
+
 // C ref: o_init.c randomize_gem_colors
 function randomize_gem_colors() {
     const objects = objs();

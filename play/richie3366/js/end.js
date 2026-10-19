@@ -11,6 +11,7 @@ import { rn2, d } from './rng.js';
 import { deepest_lev_reached, depth, strstri, upstart } from './hacklib.js';
 import {
     pline, flush_topl_more, bot, You_feel, clear_nhwindow_message,
+    display_nhwindow_message,
     canspotmon, Hallucination, curs_on_u, newsym, impossible, You,
     mark_topline_empty, vpline_expand, set_bot_disabled, tty_raw_print,
     tty_wait_synch,
@@ -1362,6 +1363,11 @@ async function really_done(how) {
     // C really_done `:1376–1378` — wait_synch then free pickinv cache
     // before tearing down WIN_INVEN / drawing the RIP window.
     free_pickinv_cache();
+    // C `:1383` display_nhwindow(WIN_MESSAGE, TRUE) before the map/status/
+    // message windows go: a pending NEED_MORE line (savebones' float_down
+    // → pickup look_here «There are several objects here.») gets its
+    // --More-- and the topline clear, then the tombstone window.
+    await display_nhwindow_message();
 
     // C: outrip + goodbye into NHW_TEXT then display_nhwindow(TRUE)
     await show_death_rip_and_summary(how, umoney, endtime);

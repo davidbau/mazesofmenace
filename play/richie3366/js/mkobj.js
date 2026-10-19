@@ -1087,11 +1087,11 @@ export function mon_is_local(mon) {
 
 /**
  * C ref: timeout.c obj_is_local — floor/buried stay; invent/migrating
- * follow the hero; contained/minvent recurse. OBJ_FREE panics in C;
- * JS treats it as non-local so a stale timer is not saved onto a level.
+ * follow the hero; contained/minvent recurse. Any other `where` (OBJ_FREE,
+ * e.g. the tutorial gamestate stash of a lit pack lamp reached from
+ * goto_level → savelev → save_light_sources) panics like C `:2574`.
  */
 export function obj_is_local(obj) {
-    if (!obj) return false;
     switch (obj.where | 0) {
     case OBJ_INVENT:
     case OBJ_MIGRATING:
@@ -1103,9 +1103,10 @@ export function obj_is_local(obj) {
         return obj_is_local(obj.ocontainer);
     case OBJ_MINVENT:
         return mon_is_local(obj.ocarry);
-    default:
-        return false;
     }
+    panic('obj_is_local'); // C :2574.
+    /*NOTREACHED*/
+    return false;
 }
 
 /**

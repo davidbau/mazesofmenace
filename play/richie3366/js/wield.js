@@ -23,11 +23,13 @@ import {
     P_NONE, P_BOW, P_CROSSBOW, P_DART, P_BOOMERANG, P_POLEARMS, P_LANCE,
     ECMD_OK, ECMD_TIME, ECMD_FAIL, ECMD_CANCEL, Upolyd, HAND, RIGHT_HANDED,
     has_oname, ONAME, COST_DEGRD, COST_DECHNT, CXN_PFX_THE, STONE_RES,
+    GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE,
+    GETOBJ_PROMPT, GETOBJ_ALLOWCNT,
 } from './const.js';
 import { retouch_object, set_artifact_intrinsic, halresTalk, is_art, u_wield_art, restrict_name, arti_speak } from './artifact.js';
 import { setworn, reset_remarm } from './do_wear.js';
 import { ART_SNICKERSNEE, ART_MAGICBANE, ART_OGRESMASHER, ART_SUNSWORD } from './generated/artifacts_data.js';
-import { makeknown, encumber_msg, compactify_invlets, invletter_value, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq, getobj_display_pickinv, splittable, freeinv, prinv } from './invent.js';
+import { getobj, makeknown, encumber_msg, compactify_invlets, invletter_value, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq, getobj_display_pickinv, splittable, freeinv, prinv } from './invent.js';
 import { uncurse, weight, unsplitobj, clear_splitobjs, splitobj } from './mkobj.js';
 import { trycall, hcolor } from './do_name.js';
 import { addinv_nomerge } from './u_init.js';
@@ -55,10 +57,6 @@ export function empty_handed() {
     return 'not wielding anything';
 }
 
-/** C invent getobj callback ranks (subset). */
-const GETOBJ_SUGGEST = 1;
-const GETOBJ_DOWNPLAY = 2;
-const GETOBJ_EXCLUDE = 3;
 /** C invent.c invlet_basic — a-zA-Z. */
 const invlet_basic = 52;
 /** C objclass.h ARM_GLOVES / ARM_BOOTS for pair_of. */
@@ -905,114 +903,6 @@ function ready_ok(obj) {
     return GETOBJ_DOWNPLAY;
 }
 
-/** SUGGEST letters for #quiver in C sortloot INVLET order (C getobj; '-' space when SUGGEST). */
-function ready_suggest_lets() {
-    const lets = [];
-    for (const o of game.invent || []) {
-        if (!o?.invlet) continue;
-        if (ready_ok(o) === GETOBJ_SUGGEST) lets.push(o.invlet);
-    }
-    // C sortloot_cmp `:473` — invletter_value, not invent order.
-    lets.sort((a, b) => invletter_value(a) - invletter_value(b));
-    return lets.join('');
-}
-
-/**
- * C ref: invent.c getobj(verb, ready_ok, GETOBJ_PROMPT|GETOBJ_ALLOWCNT)
- * Count prefix + split_otmp live; '-' → hands_obj; DOWNPLAY letters still
- * accepted. Canned CMDQ_INT/KEY live. `?`/`*` → display_pickinv `&ctmp`
- * (D-1559) + xtra_choice handsbuf (D-1569). Coin partial ready is doquiver.
- */
-async function getobj_ready(verb) {
-    const cq = getobj_from_cmdq(ready_ok, true, hands_obj);
-    if (!cq.skip) {
-        if (!cq.otmp) return undefined;
-        return cq.otmp;
-    }
-    for (;;) {
-        await flush_topl_more();
-        const lets = ready_suggest_lets();
-        const dash = ready_ok(null) === GETOBJ_SUGGEST
-            ? (lets ? '- ' : '-')
-            : '';
-        const inner = dash || lets
-            ? `${dash}${lets}`
-            : '';
-        const query = inner
-            ? `What do you want to ${verb}? [${inner} or ?*]`
-            : `What do you want to ${verb}? [*]` ;
-        const prompt = `${query} `;
-        game._pending_message = prompt;
-        await flush_screen(1);
-        const disp = game.nhDisplay;
-        if (disp?.setCursor) disp.setCursor(prompt.length, 0);
-
-        const key = await nhgetch();
-        let ch = String.fromCharCode(key);
-        const counted = await getobj_take_count(ch, true);
-        if (counted.retry) continue;
-        ch = counted.ch;
-        if (ch.charCodeAt(0) === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
-            if (game.flags?.verbose !== false) await pline('Never mind.');
-            return undefined;
-        }
-        if (ch === '-') {
-            game._pending_message = '';
-            return hands_obj;
-        }
-        if (ch === '?' || ch === '*') {
-            const ilet = await getobj_display_pickinv(ch, lets, true, counted, {
-                word: verb,
-                allownone: true,
-                promptHasHands: ready_ok(null) === GETOBJ_SUGGEST,
-            });
-            if (ilet === '\x1b') {
-                if (game.flags?.verbose !== false) await pline('Never mind.');
-                return undefined;
-            }
-            if (!ilet) continue;
-            if (ilet === '-') {
-                game._pending_message = '';
-                return hands_obj;
-            }
-            const otmp = (game.invent || []).find((o) => o.invlet === ilet);
-            if (!otmp) {
-                await pline("You don't have that object.");
-                continue;
-            }
-            const rank = ready_ok(otmp);
-            if (rank === GETOBJ_EXCLUDE) {
-                await pline(`You cannot ${verb} that!`);
-                return undefined;
-            }
-            const got = await getobj_apply_count(
-                otmp, verb, counted.cntgiven, counted.cnt,
-            );
-            if (!got) return undefined;
-            if (got.retry) continue;
-            game._pending_message = '';
-            return got;
-        }
-        const otmp = (game.invent || []).find((o) => o.invlet === ch);
-        if (!otmp) {
-            await pline("You don't have that object.");
-            continue;
-        }
-        const rank = ready_ok(otmp);
-        if (rank === GETOBJ_EXCLUDE) {
-            await pline(`You cannot ${verb} that!`);
-            return undefined;
-        }
-        const got = await getobj_apply_count(
-            otmp, verb, counted.cntgiven, counted.cnt,
-        );
-        if (!got) return undefined;
-        if (got.retry) continue;
-        game._pending_message = '';
-        return got;
-    }
-}
-
 /**
  * C ref: wield.c doquiver_core — #quiver / Q and dofire refill.
  * clear_splitobjs; getobj child → unsplit (already parent / gold) or
@@ -1027,8 +917,10 @@ export async function doquiver_core(verb) {
     }
 
     clear_splitobjs();
-    let newquiver = await getobj_ready(verb);
-    if (newquiver === undefined) return 0; // cancel
+    // C wield.c `:532–536` — getobj(verb, ready_ok, GETOBJ_PROMPT |
+    // GETOBJ_ALLOWCNT); Null is a cancel.
+    let newquiver = await getobj(verb, ready_ok, GETOBJ_PROMPT | GETOBJ_ALLOWCNT);
+    if (!newquiver) return 0;
 
     const u = game.u || (game.u = {});
     let was_uwep = false;

@@ -11,7 +11,7 @@ import { rn2, rn1, rnd } from './rng.js';
 import { getnow } from './calendar.js';
 import { timet_delta } from './allmain.js';
 import {
-    newsym, flush_screen, pline, You, You_cant, impossible, pline_dir, pline_xy, pline_The, set_msg_xy,
+    newsym, flush_screen, pline, You, You_cant, impossible, pline_xy, pline_The, set_msg_xy,
     clear_nhwindow_message, tty_nhbell,
     mon_visible, sensemon, canspotmon, glyph_at, objnum_to_glyph, hero_glyph, glyph_is_invisible_id,
     glyph_is_statue, glyph_is_monster, glyph_to_cmap, back_to_glyph, glyph_is_cmap,
@@ -22,7 +22,7 @@ import {
     Hallucination, raw_printf, feel_location, doredraw,
 } from './display.js';
 import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR, ICE,
-         D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN, D_ISOPEN, SCORR, LAVAWALL,
+         D_CLOSED, D_LOCKED, D_ISOPEN, SCORR, LAVAWALL,
          DRAWBRIDGE_UP, ROOMOFFSET,
          IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_STWALL, IS_WALL, IS_TREE,
          IS_FOUNTAIN, IS_SINK, IS_THRONE, IS_ALTAR, IS_ROOM, IS_WATERWALL, IS_AIR,
@@ -45,10 +45,10 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR, ICE,
          SUPPRESS_HISTORY,
          In_sokoban, Is_waterlevel, Is_airlevel,
          TRAVP_TRAVEL, TRAVP_VALID,
-         TEST_MOVE,
+         TEST_MOVE, DO_MOVE,
          WIN_ERR,
          } from './const.js';
-import { FOOD_CLASS, objectNames, is_pick } from './objects.js';
+import { FOOD_CLASS, objectNames } from './objects.js';
 import { EXTCMDLIST, CMD_PARAM } from './generated/extcmdlist_data.js';
 import { PM_GRID_BUG, PM_DWARF } from './generated/monsters_data.js';
 
@@ -91,7 +91,7 @@ import {
 import { dig_typ, use_pick_axe2 } from './dig.js';
 import { rehumanize, body_part, domonability } from './polyself.js';
 import { Levitation, Flying } from './mhitu.js';
-import { doopen, doopen_indir, doclose, doforce, getdir, dxdy_moveok } from './lock.js';
+import { doopen, doclose, doforce, getdir, dxdy_moveok } from './lock.js';
 import { doextcmd, getlin, mungspaces, extcmd_run_by_txt, paranoid_query } from './getline.js';
 import { strstri, strsubst, upstart, trimspaces, dist2 } from './hacklib.js';
 import { dosearch, doterrain } from './detect.js';
@@ -122,7 +122,7 @@ import {
 } from './const.js';
 import { config_error_add } from './botl.js';
 import { an, doname, makeplural, ansimpleoname, the } from './objnam.js';
-import { m_monnam, mon_nam, a_monnam, YMonnam, docallcmd, x_monnam, y_monnam } from './do_name.js';
+import { m_monnam, mon_nam, a_monnam, YMonnam, docallcmd, x_monnam } from './do_name.js';
 import { dobugreport } from './report.js';
 import { spoteffects, dopickup, doloot, dotip } from './pickup.js';
 import { objects_at, sobj_at } from './mkobj.js';
@@ -133,13 +133,12 @@ import { dopay, block_entry, block_door } from './shk.js';
 import { dotalk } from './sounds.js';
 import { getpos, getpos_menu, gather_locs_interesting, auto_describe_text, auto_describe } from './getpos.js';
 import {
-    nomul, moverock, boulder_at, swim_move_danger, trapmove,
+    nomul, boulder_at, swim_move_danger, trapmove,
     impaired_movement, is_pool, is_lava, carrying_too_much,
     invocation_message, avoid_trap_andor_region,
     hero_tread_disturb_buried_zombies, hero_hideunder_after_move,
     hero_mimic_unhide_after_move, domove_swap_with_pet,
-    test_move_run_blocked_by_boulder, test_move_boulder_is_blocking,
-    test_move_hero_passes_bars, test_move_hero_chews_bars, still_chewing,
+    test_move_hero_passes_bars,
     could_move_onto_boulder, Passes_walls_prop,
     end_running, carrying, runmode_delay_output,
     water_turbulence, move_out_of_bounds, avoid_running_into_trap_or_liquid,
@@ -149,7 +148,6 @@ import {
     test_move, doorless_door, crawl_destination,
 } from './hack.js';
 import { t_at, dountrap, reset_utrap } from './trap.js';
-import { acurr, exercise, A_DEX, Fumbling } from './attrib.js';
 import { drag_ball, move_bc } from './ball.js';
 import { in_out_region } from './region.js';
 import { m_postmove_effect, can_ooze, accessible } from './monmove.js';
@@ -3901,48 +3899,6 @@ async function travel_test_move(ux, uy, dx, dy) {
 
 
 /**
- * C ref: hack.c test_move DO_MOVE + flags.mention_walls on IS_OBSTRUCTED.
- * Prose via live back_to_glyph + glyph_to_cmap + S_stone check
- * (:1056–1070, incl. wall_angle seenv/wall_info modes — a mode-1/mode-2
- * wall seen from an excluded angle reads "solid stone", not "a wall").
- * C: pline_dir(xytodir(dx,dy), "It's %s.", buf) (D-1216).
- * Deferred: Blind feel_location, Passes_walls/may_passwall on rock,
- * Underwater, is_db_wall, Sokoban resist.
- * tunnels/still_chewing rock is live in domove (test_move :1037–1042).
- * autodig/use_pick_axe2 rock is live in domove (test_move :1042–1048).
- * IRONBARS pass/chew is D-1270 (blocksMove / still_chewing, not here).
- * run>=2 boulder pline_dir is D-1226 (test_move, not this bump).
- * OOB / testdiag doorway / run-into-trap-or-liquid mention_walls is D-1800.
- */
-async function mention_walls_obstructed(x, y) {
-    if (!game.flags?.mention_walls) return;
-    const loc = game.level?.at(x, y);
-    if (!loc) return;
-    if (loc.typ === IRONBARS) {
-        await pline('You cannot pass through the bars.');
-        return;
-    }
-    // C hack.c test_move :1056–1070 — the prose comes from back_to_glyph
-    // (wall_angle's seenv/wall_info modes), not from typ+seenv alone: a
-    // mode-1/mode-2 wall seen from an excluded angle reads S_stone
-    // (95400@1274: VWALL seenv=SV2|SV3 mode-2 → "solid stone", C-measured
-    // glyph=3929 sym=0). Same shape as js/hack.js test_move :1056–1070.
-    const glyph = back_to_glyph(x, y);
-    const sym = glyph_is_cmap(glyph) ? glyph_to_cmap(glyph) : -1;
-    let buf;
-    if (sym === S_stone) // C :1062–1063
-        buf = 'solid stone';
-    else if (sym >= 0) // C :1064–1065 an(defsyms[sym].explanation)
-        buf = an(defsym_explanation(sym));
-    else // C :1066–1068
-        buf = `impossible [background glyph=${glyph}]`;
-    const u = game.u || {};
-    const dx = ((x | 0) - (u.ux | 0)) | 0;
-    const dy = ((y | 0) - (u.uy | 0)) | 0;
-    await pline_dir(xytodir(dx, dy), `It's ${buf}.`);
-}
-
-/**
  * C ref: hack.c domove_fight_empty `:2229–2338`.
  * Force-fight an empty or solid square, or a remembered invisible glyph
  * with no monster and no m-prefix, spends the turn. Returns false when
@@ -4972,7 +4928,7 @@ export async function is_valid_travelpt(x, y) {
  * C ref: cmd.c dotravel_target — travel to iflags.travelcc / u.tx,u.ty.
  * @returns {Promise<number>} ECMD_*
  */
-async function dotravel_target() {
+export async function dotravel_target() {
     if (!game.iflags) game.iflags = {};
     if (!game.iflags.travelcc) game.iflags.travelcc = { x: 0, y: 0 };
     const tcc = game.iflags.travelcc;
@@ -6885,260 +6841,16 @@ export async function domove(dx, dy) {
             if (!moved) return;
         }
 
-        // C ref: hack.c test_move — closed_door autoopen / orthogonal bump
-        // Passes_walls / ooze / Underwater / tunnels deferred (named in
-        // c-js-map turns); steed lead-through live below.
-        // Fumbling ≡ Fumbling() H||E (D-0691/D-0696) — not sticky u.Fumbling.
-        if (closed_door_at(newx, newy)) {
-            if (Blind()) feel_location(newx, newy); // C test_move :1076–1077
-            if (!game.context) game.context = {};
-            game.context.door_opened = false;
-            // C: check !context.run BEFORE clearing run — rush must bump, not autoopen
-            const autoopen = game.flags?.autoopen !== false;
-            // C hack.c test_move :1100–1102 !Confusion && !Stunned —
-            // Confusion ≡ HConfusion, Stunned ≡ HStun
-            // (youprop.h:80–84); read both flats: the set_uasmon
-            // FROMFORM grant syncs HStun/HConfusion, not the legacy
-            // u.Stunned/u.Confusion mirrors (D-3772 idiom).
-            const impaired = !!((u.HConfusion | 0) || u.Confusion
-                || (u.HStun | 0) || u.Stunned || Fumbling());
-            if (autoopen && !game.context.run && !impaired) {
-                await doopen_indir(newx, newy);
-                // C: door_opened = !closed_door; move = (pos changed) → usually 0.
-                game.context.door_opened = !closed_door_at(newx, newy);
+        // C hack.c domove_core :2841–2847 — the live test_move(DO_MOVE)
+        // (hack.js, C :995–1276 whole); a failure without door_opened
+        // ends move = 0; nomul(0).
+        if (!(await test_move(u.ux | 0, u.uy | 0, newx - (u.ux | 0),
+            newy - (u.uy | 0), DO_MOVE))) {
+            if (!game.context?.door_opened) {
                 game.context.move = 0;
-                return;
+                nomul(0);
             }
-            // C: else if (x == ux || y == uy) — orthogonal only
-            if (newx === u.ux || newy === u.uy) {
-                const Blind = !!(u.Blind || u.ublind
-                    || (((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0)));
-                // C :1113–1114 Stunned ≡ HStun (youprop.h:80–81) — read
-                // both flats (FROMFORM grant skips the mirror, D-3772).
-                if (Blind || (u.HStun | 0) || u.Stunned || acurr(A_DEX) < 10 || Fumbling()) {
-                    if (u.usteed) { // C :1115–1117 — riding hero leads, never Ouch
-                        await pline(`You can't lead ${y_monnam(u.usteed)} through that closed door.`);
-                    } else { // C :1118–1120
-                        await pline('Ouch!  You bump into a door.');
-                        exercise(A_DEX, false);
-                    }
-                    // C: door_opened = move = TRUE; nomul(0) stops running
-                    game.context.door_opened = true;
-                    game.context.move = 1;
-                    nomul(0);
-                    return;
-                }
-                await pline('That door is closed.');
-            }
-            // C domove_core: !door_opened → move=0; nomul(0)
-            game.context.move = 0;
-            nomul(0);
             return;
-        }
-
-        // C ref: hack.c test_move :1024–1036 — IRONBARS DO_MOVE chew for
-        // rust/corr/metallivore before the Passes_walls || passes_bars
-        // allow (D-1270). TEST_MOVE/TRAV skip chew via blocksMove.
-        const destTyp = game.level?.at(newx, newy)?.typ;
-        // C test_move :1014–1016 — a Passes_walls hero phases through rock
-        // and bars (may_passwall vetoes non-passwall Sokoban walls); skips
-        // chew, tunnels, autodig and the bump below (C's first branch,
-        // before Underwater :1017).
-        const phaseRock = (IS_OBSTRUCTED(destTyp) || destTyp === IRONBARS)
-            && Passes_walls_prop() && may_passwall(newx, newy);
-        // C test_move :1012–1013 — a blind hero feels rock, walls and bars
-        // before any pass-through, chew or bump outcome.
-        if ((IS_OBSTRUCTED(destTyp) || destTyp === IRONBARS) && Blind())
-            feel_location(newx, newy);
-        if (destTyp === IRONBARS && test_move_hero_chews_bars()) {
-            if (await still_chewing(newx, newy)) {
-                // C hack.c:2843–2848 — !test_move && !door_opened
-                if (game.context) game.context.move = 0;
-                nomul(0);
-                return;
-            }
-        }
-
-        // C ref: hack.c test_move :1037–1042 — a tunneling polyform eats
-        // obstructed rock via still_chewing (TRUE → move=0, nomul(0) per
-        // domove_core :2843–2848; FALSE = chewed through → fall past the
-        // bump below to occupy the fresh cell, tmpr is a live pointer).
-        // C order: after the IRONBARS arm, before autodig/bump; Underwater
-        // blocks first (:1017–1025 — its message stays deferred, the gate
-        // keeps this arm from firing where C never reaches it) and
-        // Passes_walls+may_passwall passes first (:1014–1016, phaseRock).
-        {
-            const ydat = game.youmonst?.data;
-            if (destTyp !== IRONBARS && IS_OBSTRUCTED(destTyp)
-                && !phaseRock
-                && !(u.uinwater | 0)
-                && ydat && tunnels(ydat) && !needspick(ydat)
-                && await still_chewing(newx, newy)) {
-                if (game.context) game.context.move = 0;
-                nomul(0);
-                return;
-            }
-        }
-
-        // C ref: hack.c test_move :1042–1048 MRKR — autodig when moving
-        // into obstructed rock while wielding a pick-axe: use_pick_axe2
-        // sets the dig occupation ("You start digging."). In C order
-        // after the tunnels chew, before the generic bump; FALSE with
-        // !door_opened → move=0, nomul(0) per domove_core :2843–2848.
-        // Underwater blocks first (:1017–1025 — message deferred, gate
-        // preserved like the tunnels arm); Passes_walls+may_passwall
-        // (:1014) passes first (phaseRock above).
-        // C :1037–1048 — the obstructed chain is else-if: when the
-        // tunnels arm matches (tunnels && !needspick) but still_chewing
-        // returns FALSE (chewed through this move), C skips the :1042
-        // autodig arm and returns TRUE (:1253). Without this guard JS
-        // fires use_pick_axe2 on the stale destTyp (review 2702:
-        // tunnels polyform + wielded pick + autodig).
-        const chewDat = game.youmonst?.data;
-        if (destTyp !== IRONBARS && IS_OBSTRUCTED(destTyp)
-            && !phaseRock
-            && !(u.uinwater | 0)
-            && !(chewDat && tunnels(chewDat) && !needspick(chewDat))
-            && game.flags?.autodig && !(game.context.run | 0)
-            && !(game.context.nopick | 0)
-            && u.uwep && is_pick(u.uwep)) {
-            await use_pick_axe2(u.uwep);
-            game.context.move = 0;
-            nomul(0);
-            return;
-        }
-
-        // C ref: hack.c test_move :1049–1072 — the generic rock/bars
-        // bump precedes the door branch (:1074) and the doorway-OUT
-        // check (:1229–1235), so it runs before both diagonal checks
-        // below: a doorway hero bumping a wall reads the wall.
-        // C :1014 — a phasing hero never reaches the bump (phaseRock).
-        if (blocksMove(newx, newy) && !phaseRock) {
-            // C ref: hack.c test_move — DO_MOVE + mention_walls on rock/bars
-            const bloc = game.level?.at(newx, newy);
-            if (bloc && (IS_OBSTRUCTED(bloc.typ) || bloc.typ === IRONBARS)) {
-                await mention_walls_obstructed(newx, newy);
-            }
-            // out-of-bounds is move_out_of_bounds (D-1800), not this bump
-            // C hack.c domove_core :2841-2846 — !test_move(DO_MOVE)
-            // without door_opened ends move = 0; nomul(0). Without the
-            // nomul a stale mv-replay (multi >= COLNO, run cleared)
-            // rebumped this wall forever (scen-ride-Knight-94415 hang).
-            game.context.move = 0;
-            nomul(0);
-            return;
-        }
-
-        // C ref: hack.c test_move testdiag — no diagonal into intact doorway
-        // (open/closed/locked; only doorless D_NODOOR/D_BROKEN allowed).
-        if (u.dx && u.dy) {
-            const dest = game.level?.at(newx, newy);
-            if (dest && IS_DOOR(dest.typ)
-                && (!doorless_door(newx, newy) || await block_door(newx, newy))) {
-                if (Blind()) feel_location(newx, newy); // C test_move testdiag :1144–1145
-                // C test_move testdiag: Underwater || flags.mention_walls
-                if ((u.uinwater | 0) || game.flags?.mention_walls) {
-                    await pline("You can't move diagonally into an intact doorway.");
-                }
-                // C hack.c domove_core :2841-2846 — !test_move(DO_MOVE)
-                // without door_opened ends move = 0; nomul(0) (nomul owns
-                // the end_running(true) teardown, multi/mv included).
-                game.context.move = 0;
-                nomul(0);
-                return;
-            }
-            // C: diagonal out of a doorway that still has a door
-            const here = game.level?.at(u.ux, u.uy);
-            if (here && IS_DOOR(here.typ)
-                && (!doorless_door(u.ux, u.uy)
-                    || (!Passes_walls_prop() && await block_entry(newx, newy)))) {
-                if (game.flags?.mention_walls) {
-                    await pline("You can't move diagonally out of an intact doorway.");
-                }
-                // C hack.c domove_core :2841-2846 — move = 0; nomul(0).
-                game.context.move = 0;
-                nomul(0);
-                return;
-            }
-        }
-
-        // C ref: hack.c test_move — after dest obstacles, before boulder:
-        // dx&&dy && bad_rock flanks → cant_squeeze_thru. Case 3 = Sokoban
-        // "cannot pass that way." Must not run when dest is IS_OBSTRUCTED
-        // (C returns earlier in that arm — often silent without mention_walls).
-        if (u.dx && u.dy) {
-            const ym = game.youmonst;
-            if (ym?.data
-                && bad_rock(ym.data, u.ux, newy)
-                && bad_rock(ym.data, newx, u.uy)) {
-                const why = cant_squeeze_thru(ym);
-                if (why) {
-                    if (why === 3) {
-                        await pline('You cannot pass that way.');
-                    } else if (why === 2) {
-                        await pline('You are carrying too much to get through.');
-                    } else if (why === 1) {
-                        await pline('Your body is too large to fit through.');
-                    }
-                    // C hack.c domove_core :2841-2846 — move = 0; nomul(0).
-                    game.context.move = 0;
-                    nomul(0);
-                    return;
-                }
-            }
-        }
-
-        // C hack.c test_move :1188–1192 — diagonal across consecutive
-        // long-worm segments is blocked. The `else if` runs only when the
-        // squeeze `if` above did not: bad-rock flanks skip it even when
-        // cant_squeeze_thru returned 0 (can squeeze through).
-        {
-            const wdat = game.youmonst?.data;
-            const tightDiag = !!(wdat && u.dx && u.dy
-                && bad_rock(wdat, u.ux, newy) && bad_rock(wdat, newx, u.uy));
-            if ((u.dx && u.dy) && !tightDiag
-                && worm_cross(u.ux | 0, u.uy | 0, newx, newy)) {
-                await pline(`${YMonnam(mon_at(u.ux | 0, newy))} is in your way.`);
-                // C hack.c domove_core :2841-2846 — move = 0; nomul(0).
-                game.context.move = 0;
-                nomul(0);
-                return;
-            }
-        }
-
-        // C hack.c test_move 1216–1230 — sobj_at(BOULDER) && (Sokoban ||
-        // !Passes_walls): run>=2 abort before moverock (D-1226). TEST_TRAV
-        // excluded in C; this is DO_MOVE. Passes_walls && !Sokoban skips the
-        // whole arm (walk onto the boulder). cannot_push squeeze D-1239;
-        // giant pickup/maneuver D-1253; nopick m-dir over/against D-1262.
-        if (test_move_boulder_is_blocking(newx, newy)) {
-            // C test_move starts door_opened = FALSE; moverock may set it.
-            if (game.context) game.context.door_opened = false;
-            if (test_move_run_blocked_by_boulder(newx, newy)) {
-                if (game.flags?.mention_walls) {
-                    await pline_dir(
-                        xytodir(u.dx | 0, u.dy | 0),
-                        'A boulder blocks your path.',
-                    );
-                }
-                if (!game.context?.door_opened) {
-                    if (game.context) game.context.move = 0;
-                    nomul(0);
-                }
-                return;
-            }
-            const mr = await moverock();
-            if (mr < 0) {
-                // C hack.c:2841–2846 — !test_move && !door_opened ends
-                // move = 0; nomul(0) (nopick in-way learned a glyph keeps
-                // move when door_opened; D-1262).
-                if (!game.context?.door_opened) {
-                    game.context.move = 0;
-                    nomul(0);
-                }
-                return;
-            }
-            // moverock pushed boulder(s); fall through to occupy vacated cell
         }
 
         // C ref: hack.c swim_move_danger — after test_move, before occupying cell

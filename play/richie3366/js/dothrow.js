@@ -2742,7 +2742,7 @@ export async function dofire() {
                 return 0;
             } else {
                 // C `:527` You("have no ammunition readied.") leaves NEED_MORE.
-                // doquiver_core → getobj_ready flush_topl_more → more() like
+                // doquiver_core → getobj → yn_function more() like
                 // C getobj/yn_function. D-0484 mark_topline_seen skipped that
                 // --More-- (corpus first-diff).
                 await pline('You have no ammunition readied.');

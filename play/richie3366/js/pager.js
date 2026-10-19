@@ -2129,7 +2129,9 @@ export function lookat(x, y) {
         u_at(x, y) && canspotself()
         && !(save_uswallow
             && u.ustuck
-            && glyph === mon_to_glyph(u.ustuck, rn2_on_display_rng))
+            // C `:666` int compare; JS mon_to_glyph returns the
+            // banked record, its id is `.glyph`.
+            && glyph === mon_to_glyph(u.ustuck, rn2_on_display_rng).glyph)
         && (!terrainmode || (terrainmode & TER_MON) !== 0)
     ) {
         buf = self_lookat();
@@ -2886,8 +2888,6 @@ export async function do_look(mode = 0, click_cc = null) {
                 } else {
                     await pline(`Pick ${WHAT_IS_A_LOCATION}.`);
                 }
-                // Force --More-- before getpos when message is long
-                if ((game._pending_message || '').length > 40) await more();
                 // C: getpos(&cc, quick, …) — quick glance uses force=TRUE
                 ans = await getpos(cc, quick, WHAT_IS_A_LOCATION);
                 if (ans < 0 || cc.x < 0) break; /* done */

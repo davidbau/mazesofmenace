@@ -386,7 +386,7 @@ import {
     has_mcorpsenm, ERODE_CORRODE,
     LL_WISH, LL_CONDUCT, LL_ARTIFACT, ONAME_WISH, ONAME_KNOW_ARTI,
     FM_FMON, REVIVE_MON, ROT_CORPSE, TIMER_OBJECT, thats_enough_tries,
-    MAX_SPELL_STUDY, CXN_NO_PFX,
+    MAX_SPELL_STUDY, CXN_NO_PFX, CXN_PFX_THE,
 } from './const.js';
 import { monstseesu, monstunseesu, defended, Resists_Elem, resists_blnd, resists_blnd_by_arti, resists_magm } from './mondata.js';
 import { spell_skilltype } from './spell.js';
@@ -3313,7 +3313,11 @@ function zombie_can_dig(x, y) {
  * @returns {Promise<object|null>} revived monst or null
  */
 export async function revive(corpse, by_hero) {
-    if (!corpse || (corpse.otyp | 0) !== CORPSE) return null;
+    if (!corpse) return null;
+    if ((corpse.otyp | 0) !== CORPSE) { // C zap.c :896–899
+        await impossible(`Attempting to revive ${xname(corpse)}?`);
+        return null;
+    }
     let montype = corpse.corpsenm | 0;
     if (!ismnum(montype)) return null;
 
@@ -3394,10 +3398,11 @@ export async function revive(corpse, by_hero) {
     if (corpse.norevive
         || (mptr.mlet === 'S_EEL'
             && !IS_POOL(game.level?.at?.(x, y)?.typ ?? 0))) {
+        // C zap.c :967–972 — upstart(corpse_xname(corpse, NULL,
+        // CXN_PFX_THE)): «The troll corpse twitches feebly.»
         if (cansee(x, y)) {
-            const nm = xname(corpse) || 'corpse';
-            const up = nm.charAt(0).toUpperCase() + nm.slice(1);
-            await pline(`${up} twitches feebly.`);
+            await pline(`${upstart(corpse_xname(corpse, null, CXN_PFX_THE))
+            } twitches feebly.`);
         }
         return null;
     }

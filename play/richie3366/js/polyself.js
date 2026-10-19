@@ -2815,7 +2815,7 @@ export async function dogaze() {
                                 (mtmp.data?.mattk?.[0]?.damd | 0))
                             : -200);
                         game.multi_reason = "frozen by a monster's gaze";
-                        game.nomovemsg = 0;
+                        game.nomovemsg = null; // C :1746 NULL → unmul default
                         return ECMD_TIME;
                     } else {
                         // C polyself.c:1749 You("stiffen momentarily under %s

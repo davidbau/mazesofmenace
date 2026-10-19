@@ -3291,6 +3291,11 @@ export function doname_base(obj, doname_flags = 0) {
     if (!Blind() && !(game.distantname | 0) && _xname_observe) {
         _xname_observe(obj);
     }
+    // C doname_base `:1247` bp = xname(obj) → xname `:660–661`: a seen
+    // artifact (real obj->dknown, not the override_ID variant) is
+    // find_artifact'd (livelog «found …» by obj->where) before the name
+    // is built — this inlined xname preamble needs it too (D-4121).
+    if (obj.oartifact && obj.dknown && _find_artifact) _find_artifact(obj);
     const otyp = obj.otyp;
     const oclass = obj.oclass;
     // C doname_base: switch (is_weptool(obj) ? WEAPON_CLASS : obj->oclass)

@@ -42,7 +42,7 @@ import {
 import { exercise, A_STR, A_DEX, A_WIS, A_CON, acurr, adjalign, change_luck, ALIGNLIM, Fumbling } from './attrib.js';
 import { overexertion, nomul, losehp, is_pool, maybe_half_phys, noattacks, check_capacity, in_rooms, end_running } from './hack.js';
 import { ing_suffix, upstart, highc, strstri, dist2 } from './hacklib.js';
-import { pline, pline_mon, newsym, canseemon, canspotmon, sensemon, tp_sensemon, map_invisible, unmap_object, unmap_invisible, memory_glyph_is_invisible, glyph_at, glyph_is_cmap, glyph_to_cmap, glyph_is_warning, glyph_is_invisible_id, flush_topl_more, You_feel, tmp_at, map_location, nh_delay_output, mon_glyph, shieldeff, impossible, see_monsters, hero_Blind_telepat, You, Your, pline_The, hero_Invisible } from './display.js';
+import { pline, pline_mon, newsym, canseemon, canspotmon, sensemon, tp_sensemon, map_invisible, unmap_object, unmap_invisible, memory_glyph_is_invisible, glyph_at, glyph_is_cmap, glyph_to_cmap, glyph_is_object, glyph_to_obj, glyph_is_monster, glyph_to_mon, glyph_is_warning, glyph_is_invisible_id, flush_topl_more, You_feel, tmp_at, map_location, nh_delay_output, mon_glyph, shieldeff, impossible, see_monsters, hero_Blind_telepat, You, Your, pline_The, hero_Invisible } from './display.js';
 import { cansee } from './vision.js';
 import {
     dmgval, hitval, P_SKILL, weapon_hit_bonus, martial_bonus,
@@ -67,7 +67,7 @@ import {
     AT_TUCH, AT_BITE, AT_BUTT, AT_STNG, AT_MAGC, AT_TENT,
     AT_EXPL, AT_ENGL, AT_BREA, AT_GAZE, AD_PHYS, AD_POLY, AD_DRIN, AD_SLEE,
     AD_DRST, AD_DRDX, AD_DRCO, AD_SAMU, AD_DRLI, AD_SITM, AD_SEDU, AD_SSEX,
-    AD_CONF, AD_WERE, AD_FAMN,
+    AD_CONF, AD_WERE, AD_FAMN, set_mm_vis,
 } from './mhitm.js';
 import { resists_drli, resists_cold, resists_poison, destroy_items, resist, drain_item, exclam } from './zap.js';
 import {
@@ -86,7 +86,7 @@ import {
 } from './monsters.js';
 import {
     mkobj, mksobj_at, place_object, stackobj, delobj, relobj_on_death, obj_extract_self,
-    weight, obj_stop_timers, objects_at, splitobj, sobj_at,
+    weight, obj_stop_timers, objects_at, splitobj, sobj_at, dealloc_obj,
 } from './mkobj.js';
 import {
     monnear, record_mvitals_died, seemimic, wakeup, setmangry,
@@ -103,7 +103,7 @@ import { mon_nam, l_monnam, Monnam, Adjmonnam, x_monnam, x_monnam_tame, Hallucin
 import { artifact_hit, youmonst, is_art, artifact_exists, shade_glare, find_artifact, u_wield_art, permapoisoned, bare_artifactname } from './artifact.js';
 // imports.mjs --can uhitm.js timeout.js artifact_light: SAFE (hoisted).
 import { artifact_light } from './timeout.js';
-import { xname, vtense, The, the, An, an, singular, makeplural, cxname, simpleonames, obj_is_pname, otense, mshot_xname, Yobjnam2, Yname2, doname, corpse_xname, ysimple_name, yname } from './objnam.js';
+import { xname, vtense, The, the, An, an, singular, makeplural, cxname, simpleonames, obj_is_pname, otense, is_plural, mshot_xname, Yobjnam2, Yname2, doname, corpse_xname, ysimple_name, yname } from './objnam.js';
 import { abuse_dog, tamedog } from './dog.js';
 import { makemon, makemon_appear_msg, newcham, clone_mon, mpickobj } from './makemon.js';
 import { ndemon } from './minion.js';
@@ -4235,6 +4235,9 @@ export async function hmonas(mon) {
     const attk_count = { v: 0 };
     const role_roll_penalty = { v: 0 };
 
+    /* not used here but umpteen mhitm_ad_xxxx() need this */
+    set_mm_vis(canseemon(mon) || m_next2u(mon)); // C `:5434` gv.vis
+
     for (let i = 0; i < NATTK; i++) {
         const pre = get_mattk(ym, i, mon, sum);
         if (pre.aatyp === AT_WEAP) multi_weap++;
@@ -4477,6 +4480,7 @@ export async function hmonas(mon) {
         if ((game.multi | 0) < 0) break;
         if (skip_passive) break;
     }
+    set_mm_vis(false); // C `:5856` gv.vis = FALSE; /* reset */
     gt_twohits = 0;
     return (mon.mhp | 0) >= 1;
 }
@@ -4496,26 +4500,12 @@ function Blind_that() {
     return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
 }
 
-/** C youprop.h Blind_telepat — HTelepat||ETelepat. */
-function Blind_telepat_that() {
-    const u = game.u || {};
-    return !!((u.HTelepat | 0) || (u.ETelepat | 0) || u.Blind_telepat);
-}
-
 /** C youprop.h See_invisible — HSee_invisible||ESee_invisible. */
 function See_invisible_that() {
     const u = game.u || {};
     return !!(u.See_invisible
         || (u.HSee_invisible | 0)
         || (u.ESee_invisible | 0));
-}
-
-/**
- * C obj.h is_plural — quan!=1. Eyes of the Overworld artifact named omit
- * (undiscovered_artifact not live here).
- */
-function is_plural_that(otmp) {
-    return (otmp?.quan | 0) !== 1;
 }
 
 /**
@@ -4558,11 +4548,10 @@ const STRANGE_OBJECT_THAT = objectNames.indexOf('STRANGE_OBJECT');
 
 /**
  * C ref: uhitm.c that_is_a_mimic `:6201–6276`.
- * Fake object names via pager object_from_map (not local mksobj).
- * M_AP_TYPE is the cmap/object/monster discriminator; the shown
- * disp_glyph is read only for the M_AP_OBJECT trapped-chest cmap
- * disjunct (`:6228–6230`). Named: hallu glyphs; Eyes is_plural;
- * Blind_telepat hallu.
+ * The wording comes from what the map shows (`glyph_at`, `:6219`), not
+ * from the mimic's appearance: display_monster's zeroed fake object has
+ * oclass 0, so a mimic posing as an unseen spellbook or gem is drawn as
+ * the strange-object glyph and named "strange object" here.
  */
 export async function that_is_a_mimic(mtmp, mimic_flags) {
     const generic = 'a monster';
@@ -4570,61 +4559,50 @@ export async function that_is_a_mimic(mtmp, mimic_flags) {
     let what = null;
     const reveal_it = (mimic_flags & MIM_REVEAL) !== 0;
     const omit_wait = (mimic_flags & MIM_OMIT_WAIT) !== 0;
-    const ap = that_map_type(mtmp);
 
-    if (Blind_that()) {
-        if (!Blind_telepat_that()) {
-            what = generic;
-        } else if (ap === M_AP_MONSTER) {
-            what = a_monnam(mtmp);
+    if (Blind()) {
+        if (!hero_Blind_telepat()) {
+            what = generic; /* with default fmt */
+        } else if (that_map_type(mtmp) === M_AP_MONSTER) {
+            what = a_monnam(mtmp); /* differs from what was sensed */
         }
     } else {
         const x = mtmp.mx | 0;
         const y = mtmp.my | 0;
-        if (ap === M_AP_FURNITURE) {
-            // C: glyph_is_cmap && (M_AP_FURNITURE || trapped-chest object).
-            // JS: furniture mappearance is the cmap id (D-1543 S_*); the
-            // trapped-chest object disjunct is in the M_AP_OBJECT arm.
-            const expl = defsym_explanation(mtmp.mappearance | 0);
-            fmtbuf = `That ${expl} actually is %s!`;
-        } else if (ap === M_AP_OBJECT) {
-            // C uhitm.c:6222–6230 — a shown trapped-chest cmap (seen chest
-            // trap under the mimic) takes the furniture wording even for
-            // object mimics: "That trapped chest actually is %s!".
-            const shown = glyph_at(x, y);
-            if (glyph_is_cmap(shown)
-                && glyph_to_cmap(shown) === S_TRAPPED_CHEST) {
-                fmtbuf = `That ${defsym_explanation(S_TRAPPED_CHEST)} actually is %s!`;
-            } else {
-                let fakeobj = false;
-                let otmp = null;
-                await pager_bind();
-                if (_object_from_map) {
-                    const got = _object_from_map(mtmp.mappearance | 0, x, y);
-                    fakeobj = !!got?.fakeobj;
-                    otmp = got?.otmp || null;
-                }
-                // C uhitm.c:6234 — simpleonames alone (it pluralizes for
-                // quan != 1 itself); no makeplural wrapper.
-                const otmp_name = (otmp && (otmp.otyp | 0) !== STRANGE_OBJECT_THAT)
-                    ? simpleonames(otmp)
-                    : 'strange object';
-                const those = (otmp && is_plural_that(otmp)) ? 'Those' : 'That';
-                const are = otmp ? otense(otmp, 'are') : 'is';
-                fmtbuf = `${those} ${otmp_name} ${are} %s!`;
-                if (fakeobj && otmp) {
-                    otmp.where = OBJ_FREE;
-                }
+        const glyph = glyph_at(x, y);
+
+        if (glyph_is_cmap(glyph)) {
+            const sym = glyph_to_cmap(glyph);
+
+            if (that_map_type(mtmp) === M_AP_FURNITURE
+                || (that_map_type(mtmp) === M_AP_OBJECT && sym === S_TRAPPED_CHEST))
+                fmtbuf = `That ${defsym_explanation(sym)} actually is %s!`;
+        } else if (glyph_is_object(glyph)) {
+            let fakeobj = false;
+            let otmp = null;
+
+            await pager_bind();
+            if (_object_from_map) {
+                const got = _object_from_map(glyph_to_obj(glyph), x, y, glyph);
+                fakeobj = !!got?.fakeobj;
+                otmp = got?.otmp || null;
             }
-        } else if (ap === M_AP_MONSTER) {
-            const mndx = mtmp.mappearance | 0;
-            if (mndx >= LOW_PM && mndx < NUMMONS) {
-                const g = mtmp.female ? FEMALE : MALE;
-                const mtmp_name = pmname(mndx, g);
-                fmtbuf = `Wait!  That ${mtmp_name} is really %s!`;
+            const otmp_name = (otmp && (otmp.otyp | 0) !== STRANGE_OBJECT_THAT)
+                ? simpleonames(otmp) : 'strange object';
+            fmtbuf = `${(otmp && is_plural(otmp)) ? 'Those' : 'That'} ${otmp_name} ${
+                otmp ? otense(otmp, 'are') : 'is'} %s!`;
+            if (fakeobj && otmp) {
+                otmp.where = OBJ_FREE; /* object_from_map set to OBJ_FLOOR */
+                dealloc_obj(otmp);
             }
+        } else if (glyph_is_monster(glyph)) {
+            const mndx = glyph_to_mon(glyph); /* C asserts LOW_PM..HIGH_PM */
+            const mtmp_name = pmname(mndx, Mgender(mtmp));
+            fmtbuf = `Wait!  That ${mtmp_name} is really %s!`;
         }
 
+        /* cloned Wiz starts out mimicking some other monster and
+           might make himself invisible before being revealed */
         if (mtmp.minvis && !See_invisible_that()) {
             what = generic;
         } else if (that_map_type(mtmp) === M_AP_MONSTER) {
@@ -4633,6 +4611,7 @@ export async function that_is_a_mimic(mtmp, mimic_flags) {
             && (that_map_type(mtmp) === M_AP_OBJECT
                 || that_map_type(mtmp) === M_AP_FURNITURE)
             && (mtmp.msleeping || mtmp.mfrozen)) {
+            /* BUG: this will misclassify a paralyzed mimic as sleeping */
             what = x_monnam(mtmp, ARTICLE_A, 'sleeping', 0, false);
         } else {
             what = a_monnam(mtmp);
