@@ -2221,7 +2221,7 @@ export async function wiz_migrate_mons() {
             mtmp = (game.fmon || [])[0] || null;
         }
         if (mtmp)
-            migrate_to_level(mtmp, ledger_no(tolevel), MIGR_RANDOM, null);
+            await migrate_to_level(mtmp, ledger_no(tolevel), MIGR_RANDOM, null);
         mcount--;
     }
     game.iflags.debug_mongen = mongen_saved;

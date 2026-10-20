@@ -1384,7 +1384,7 @@ async function break_armor() {
             if (donning(otmp)) cancel_don(); /* C :1164–1165 */
             if (otmp.lamplit) end_burn(otmp, false);
             await pline('You break out of your armor!');
-            exercise(A_STR, false);
+            await exercise(A_STR, false);
             await Armor_gone();
             useup(otmp);
         }
@@ -1624,7 +1624,7 @@ export async function polymon(mntmp) {
     }
     u.uconduct.polyselfs = (u.uconduct.polyselfs | 0) + 1;
 
-    exercise(A_CON, false);
+    await exercise(A_CON, false);
     exercise(A_WIS, true);
 
     if (!Upolyd(u)) {
@@ -2043,7 +2043,7 @@ export async function polyself(psflags = 0) {
             if (game._losehp_needs_done || game.program_state?.gameover) {
                 await finish_losehp_done();
             }
-            exercise(A_CON, false);
+            await exercise(A_CON, false);
             return;
         }
     }

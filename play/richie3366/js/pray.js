@@ -1976,7 +1976,7 @@ export async function prayer_done() {
         await rehumanize();
         await losehp(rnd(20), 'residual undead turning effect', KILLED_BY_AN);
         await finish_maybe_wail();
-        exercise(A_CON, false);
+        await exercise(A_CON, false);
         return 1;
     }
     if (Inhell()) {

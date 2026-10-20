@@ -545,7 +545,7 @@ async function peffect_sickness(otmp) {
                     await finish_maybe_wail();
                 }
             }
-            exercise(A_CON, false);
+            await exercise(A_CON, false);
         }
     }
     const u = game.u || {};
@@ -1099,7 +1099,7 @@ export async function make_sick(xtime, cause, talk, type) {
 
     const kptr = find_delayed_killer(SICK);
     if (u.Sick) {
-        exercise(A_CON, false);
+        await exercise(A_CON, false);
         if (xtime || !old || !kptr) {
             // C potion.c — a "#wizintrinsic" cause takes KILLED_BY (bare
             // killer name, no article); every other cause KILLED_BY_AN.
@@ -1207,7 +1207,7 @@ export async function make_hallucinated(xtime, talk, mask = 0) {
         /* C potion.c:416–418 — orange mimic's end message when hallu ends. */
         if (!hero_Hallucination()) eatmupdate();
         if (u.uswallow) {
-            swallowed(0); // C :421 redraw swallow display
+            await swallowed(0); // C :421 redraw swallow display
         } else {
             // C :425-427 see_* BEFORE the pline
             see_monsters();
@@ -1259,7 +1259,7 @@ async function peffect_healing(otmp) {
         !!otmp.blessed,
         !otmp.cursed,
     );
-    exercise(A_CON, true);
+    await exercise(A_CON, true);
 }
 
 /**
@@ -1276,8 +1276,8 @@ async function peffect_extra_healing(otmp) {
         true,
     );
     await make_hallucinated(0, true, 0);
-    exercise(A_CON, true);
-    exercise(A_STR, true);
+    await exercise(A_CON, true);
+    await exercise(A_STR, true);
     // C: Wounded_legs ≡ HWounded_legs || EWounded_legs
     const u = game.u || {};
     const wounded = !!(
@@ -1308,8 +1308,8 @@ async function peffect_full_healing(otmp) {
         await pluslvl(false);
     }
     await make_hallucinated(0, true, 0);
-    exercise(A_STR, true);
-    exercise(A_CON, true);
+    await exercise(A_STR, true);
+    await exercise(A_CON, true);
     const wounded = !!(
         u.Wounded_legs
         || ((u.HWounded_legs | 0) & TIMEOUT)
@@ -1632,7 +1632,7 @@ async function peffect_water(otmp) {
     if (hates) {
         if (otmp.blessed) {
             await pline(`This burns like ${hliquid('acid')}!`);
-            exercise(A_CON, false);
+            await exercise(A_CON, false);
             if (ismnum(u.ulycn)) {
                 const nm = pmnames[u.ulycn | 0]?.[NEUTRAL]
                     || pmnames[u.ulycn | 0]?.[2]
@@ -1661,14 +1661,14 @@ async function peffect_water(otmp) {
             await You_feel('quite proud of yourself.');
             await healup(d(2, 6), 0, false, false);
             if (ismnum(u.ulycn) && !Upolyd(u)) await you_were();
-            exercise(A_CON, true);
+            await exercise(A_CON, true);
         }
     } else if (otmp.blessed) {
         await You_feel('full of awe.');
         // C potion.c:750: make_sick(0L, NULL, TRUE, SICK_ALL)
         await make_sick(0, null, true, SICK_ALL);
         exercise(A_WIS, true);
-        exercise(A_CON, true);
+        await exercise(A_CON, true);
         if (ismnum(u.ulycn)) await you_unwere(true); // "Purified"
     } else {
         if ((u.ualign?.type | 0) === A_LAWFUL) {
@@ -1691,7 +1691,7 @@ async function peffect_water(otmp) {
             await You_feel('full of dread.');
         }
         if (ismnum(u.ulycn) && !Upolyd(u)) await you_were();
-        exercise(A_CON, false);
+        await exercise(A_CON, false);
     }
 }
 
@@ -1827,7 +1827,7 @@ async function peffect_acid(otmp) {
         } else {
             await finish_maybe_wail();
         }
-        exercise(A_CON, false);
+        await exercise(A_CON, false);
     }
     if (Stoned(u)) {
         await fix_petrification();
@@ -2954,7 +2954,7 @@ export async function potionbreathe(obj) {
             await make_blinded(0, !(u.ucreamed | 0));
             await make_deaf(0, true);
         }
-        exercise(A_CON, true);
+        await exercise(A_CON, true);
         break;
     case POT_SICKNESS:
         if (!Role_if_healer()) {
@@ -2965,7 +2965,7 @@ export async function potionbreathe(obj) {
             }
             if (game.disp) game.disp.botl = true;
             if (game.flags) game.flags.botl = true;
-            exercise(A_CON, false);
+            await exercise(A_CON, false);
         }
         break;
     case POT_HALLUCINATION:
@@ -3052,7 +3052,7 @@ export async function potionbreathe(obj) {
         break;
     case POT_ACID:
     case POT_POLYMORPH:
-        exercise(A_CON, false);
+        await exercise(A_CON, false);
         break;
     /*
      * C-commented: POT_GAIN_LEVEL / POT_GAIN_ENERGY / POT_LEVITATION /
@@ -3242,7 +3242,7 @@ async function dip_potion_explosion(obj, dmg) {
         obj.in_use = 1;
         await pline(`${!Deaf_pot() ? 'BOOM!  ' : ''}They explode!`);
         await wake_nearto(u.ux, u.uy, (BOLT_LIM + 1) * (BOLT_LIM + 1));
-        exercise(A_STR, false);
+        await exercise(A_STR, false);
         const yd = game.youmonst?.data;
         if (!breathless(yd) || haseyes(yd)) await potionbreathe(obj);
         useupall(obj);

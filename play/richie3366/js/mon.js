@@ -1085,7 +1085,7 @@ async function m_calcdistress(mtmp) {
     if (!mtmp || (mtmp.mhp | 0) < 1) return;
     // C: mmove==0 must still check liquid once/turn (mon.c:1186–1191)
     if ((mtmp.data?.mmove | 0) === 0) {
-        if (game.vision_full_recalc) vision_recalc(0);
+        if (game.vision_full_recalc) await vision_recalc(0);
         if (await minliquid(mtmp)) return;
     }
     mon_regen(mtmp, false);
@@ -1896,7 +1896,7 @@ export async function migrate_mon(mtmp, target_lev, xyloc) {
         await unstuck(mtmp);
         await mdrop_special_objs(mtmp);
     }
-    migrate_to_level(mtmp, target_lev, xyloc, null);
+    await migrate_to_level(mtmp, target_lev, xyloc, null);
 }
 
 /**
@@ -3374,7 +3374,7 @@ export async function movemon_singlemon(mtmp) {
 
     // C mon.c:1258 — vision! (gv.vision_full_recalc live: vision.js sets it
     // on block/unblock_point; vision_recalc(0) clears it on consume)
-    if (game.vision_full_recalc) vision_recalc(0);
+    if (game.vision_full_recalc) await vision_recalc(0);
     // C mon.c:1261-1264 — reset obj bypasses before next monster moves
     if (game.context?.bypasses) clear_bypasses();
     clear_splitobjs();

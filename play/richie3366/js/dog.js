@@ -524,7 +524,7 @@ export async function keepdogs(pets_only = false) {
             mtmp.wormno = numSegs; /* C `:865` — seg count rides in wormno */
             mtmp.mlstmv = game.moves | 0;
         } else if (keep_mon_accessible(mtmp)) {
-            migrate_to_level(mtmp, ledger_no(u.uz), MIGR_EXACT_XY, null);
+            await migrate_to_level(mtmp, ledger_no(u.uz), MIGR_EXACT_XY, null);
         } else {
             if (mtmp.mleashed) {
                 /* quest leader can eject the hero while a leashed pet

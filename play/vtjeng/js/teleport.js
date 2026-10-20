@@ -55,6 +55,7 @@ import {
     PICK_ONE,
     PASSES_WALLS,
     RLOC_MSG,
+    RLOC_NONE,
     RLOC_NOMSG,
     RLOC_ERR,
     ROWNO,
@@ -233,6 +234,7 @@ import {
     costly_spot,
     find_objowner,
     inhishop,
+    make_angry_shk,
     onshopbill,
     stolen_value,
     subfrombill,
@@ -241,7 +243,8 @@ import {
 import { note_unported } from './unported.js';
 import { menuTitleStyle } from './tty_menu.js';
 import { morehungry } from './eat.js';
-import { deltrap, fill_pit, Flying, reset_utrap, t_at, unconscious }
+import { clamp_hole_destination, deltrap, fill_pit, Flying, reset_utrap,
+    t_at, unconscious }
     from './trap.js';
 import { mintrap } from './trap_effects.js';
 import { somexyspace } from './mklev.js';
@@ -656,8 +659,20 @@ export async function teleport_pet(monster, forceIt, rawEnv = {}) {
     return true;
 }
 
-// C ref: teleport.c mtele_trap(), bounded to ordinary fixed or random D:1
-// destinations. One-shot vault teleportation remains an explicit gap.
+// C ref: teleport.c mvault_tele() (1937-1949). A one-shot monster trap favors
+// a viable vault square, then falls back to the usual random relocation.
+async function mvault_tele(monster, env) {
+    const croom = search_special(VAULT, env.state);
+    const c = { x: 0, y: 0 };
+    if (croom && somexyspace(croom, c, env)
+        && goodpos(c.x, c.y, monster, NO_MM_FLAGS, env)) {
+        await rloc_to(monster, c.x, c.y, env);
+        return;
+    }
+    await rloc(monster, RLOC_NONE, env);
+}
+
+// C ref: teleport.c mtele_trap() (1962-2001).
 export async function mtele_trap(
     monster,
     trap,
@@ -669,11 +684,6 @@ export async function mtele_trap(
     if (noteleport_level(monster, state)) return;
     if (monster === state.u?.usteed) return;
     if (!await teleport_pet(monster, false, env)) return;
-    if (trap.once) {
-        throw new UnsupportedPositionCheckError(
-            'one-shot vault teleportation',
-        );
-    }
     const message = inSight ? (env.message ?? ttyPline) : null;
     if (inSight && typeof message !== 'function') {
         throw new TypeError(
@@ -687,7 +697,9 @@ export async function mtele_trap(
     const name = capitalizedMonsterName(monster, state);
     const destinationX = trap.teledest?.x;
     const destinationY = trap.teledest?.y;
-    if (isok(destinationX, destinationY)) {
+    if (trap.once) {
+        await mvault_tele(monster, env);
+    } else if (isok(destinationX, destinationY)) {
         if (!m_at(destinationX, destinationY, state)
             && (state.u.ux !== destinationX
                 || state.u.uy !== destinationY)) {
@@ -842,9 +854,7 @@ export async function mlevel_tele_trap(
             }
             return 'finished';
         }
-        const bottom = dungeon?.num_dunlevs;
-        if (Number.isInteger(bottom))
-            destination.dlevel = Math.min(destination.dlevel, bottom);
+        clamp_hole_destination(destination, state);
     }
     if (!Number.isInteger(destination.dnum)
         || !Number.isInteger(destination.dlevel)) {
@@ -1293,7 +1303,10 @@ function rloc_to_core(monster, x, y, rawEnv = {}) {
 
     const finishTail = () => {
         if (residentShk && !inhishop(monster, state))
-            note_unported('shk.c make_angry_shk');
+            return thenResult(
+                make_angry_shk(monster, oldx, oldy, state, env),
+                runShopItems,
+            );
 
         return runShopItems();
     };

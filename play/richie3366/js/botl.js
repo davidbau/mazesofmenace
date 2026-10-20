@@ -103,7 +103,7 @@ import {
 // options.js statically imports botl.js; this back-edge is cycle-safe only
 // because match_optname is a hoisted function declaration, called at
 // runtime, never at module top level (`imports.mjs --can` verdict SAFE).
-import { match_optname } from './options.js';
+import { match_optname, menu_prompt_style } from './options.js';
 // getline.js takes no botl edge (`imports.mjs --can` verdict SAFE).
 import { getlin } from './getline.js';
 
@@ -2217,7 +2217,7 @@ export async function cond_menu() {
         sequence.sort(order ? cond_cmp : menualpha_cmp);
         const raw = [
             // C `:1422` end_menu prompt rides the title row (wiz_intrinsic precedent).
-            { text: 'Choose status conditions to toggle', selectable: false, attr: ATR_INVERSE },
+            { text: 'Choose status conditions to toggle', selectable: false, ...menu_prompt_style() },
             { text: '', selectable: false },
             // C `:1402–1408` sort-change row: any.a_int 1, 'S'
             // accelerator, SKIPINVERT.
@@ -3957,11 +3957,12 @@ function blstatFldName(fld) {
 }
 
 // tty_end_menu prepends the prompt and a blank row. Same shape as
-// cond_menu / getpos_menu: the prompt is the inverse title, then a gap,
-// then the add_menu rows in C order.
+// cond_menu / getpos_menu: the prompt is the title row in
+// tty_menu_promptstyle (wintty.c `:2685–2689`), then a gap, then the
+// add_menu rows in C order.
 function hiliteMenuRows(prompt, rows) {
     return [
-        { text: prompt, attr: ATR_INVERSE, selectable: false },
+        { text: prompt, selectable: false, ...menu_prompt_style() },
         { text: '', attr: ATR_NONE, selectable: false },
         ...rows,
     ];

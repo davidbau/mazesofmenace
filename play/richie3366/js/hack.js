@@ -760,7 +760,7 @@ async function dopush(sx, sy, rx, ry, otmp, costly) {
                 `With ${easypush ? 'little' : 'great'} effort you move ${what}.`,
             );
         }
-        if (!easypush) exercise(A_STR, true);
+        if (!easypush) await exercise(A_STR, true);
     } else if (givemesg) {
         await pline(`${YMonnam(u.usteed)} moves ${what}.`);
     }
@@ -1552,7 +1552,7 @@ export async function carrying_too_much() {
     }
     if (wtcap < OVERLOADED) {
         await pline("You don't have enough stamina to move.");
-        exercise(A_CON, false);
+        await exercise(A_CON, false);
     } else {
         await pline('You collapse under your load.');
     }
@@ -1576,7 +1576,7 @@ export async function overexert_hp() {
         game.flags.botl = true;
     } else {
         await pline('You pass out from exertion!');
-        exercise(A_CON, false);
+        await exercise(A_CON, false);
         /* C hack.c:3045 — fall_asleep(-10, FALSE). */
         await fall_asleep(-10, false);
     }
@@ -3556,7 +3556,7 @@ function notice_distu(x, y) {
 /**
  * C hack.c notice_mon — a11y.mon_notices You see/notice once per mspotted.
  * Hiders that are mundetected or appearing as furniture/object are not
- * "spot". Named omit: monmove.c postmov caller.
+ * "spot". Callers: monmove.js postmov entry (C monmove.c:1470).
  */
 export async function notice_mon(mtmp) {
     const a = a11y_state();
@@ -3597,10 +3597,9 @@ function notice_mons_cmp(m1, m2) {
 /**
  * C hack.c notice_all_mons — if a11y.mon_notices && !blocked, count
  * canspotmon, qsort distu, notice_mon each. reset=TRUE clears mspotted
- * on unspotted even when cnt==0 (first-loop else). Named omit:
- * vision.c vision_recalc; read.c seffect_magic_mapping;
- * wizcmds.c; save.c. do.c goto_level wrap is D-1194;
- * allmain.c newgame wrap is D-1200.
+ * on unspotted even when cnt==0 (first-loop else). Callers: vision.js
+ * vision_recalc `skip:` tail (C vision.c:856), do.c goto_level wrap
+ * (D-1194), allmain.c newgame wrap (D-1200), teleport.c teleds.
  */
 export async function notice_all_mons(reset) {
     const a = a11y_state();
@@ -3931,7 +3930,7 @@ export async function dosinkfall() {
                     await finish_losehp_done();
                     return;
                 }
-                exercise(A_CON, false);
+                await exercise(A_CON, false);
             }
         }
         u.ELevitation = save_ELev;

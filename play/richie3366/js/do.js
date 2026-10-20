@@ -1857,7 +1857,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         vision_off_newsym_gbuf({ useLiveViz: true });
         game._leave_viz_burned = true;
     }
-    vision_recalc(2);
+    await vision_recalc(2);
 
     // C: do.c goto_level — discard level-local travel destination cache
     if (!game.iflags) game.iflags = {};
@@ -3734,7 +3734,7 @@ export async function toggle_blindness() {
     if (game.flags) game.flags.botl = true;
     if (game.disp) game.disp.botl = true;
     game.vision_full_recalc = 1;
-    vision_recalc(0);
+    await vision_recalc(0);
     const blind_telepat = !!((u.HTelepat | 0) || (u.ETelepat | 0)
         || (u.uprops?.[TELEPAT]?.intrinsic | 0)
         || (u.uprops?.[TELEPAT]?.extrinsic | 0));

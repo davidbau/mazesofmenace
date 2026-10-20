@@ -234,7 +234,7 @@ function fully_identify_obj(obj) {
  * return panics in C ("merged saddle?") and is unreachable (saddles
  * never merge), so a merge just skips the worn marking. The old local
  * pick_saddle linked minvent without where/ocarry, hanging
- * relobj_on_death's `while (minvent)` on the first saddled-mon death
+ * the old relobj_on_death's `while (minvent)` on the first saddled-mon death
  * (scen-normal-Knight-92182). imports.mjs --can: mpickobj is hoisted,
  * cycle-safe. update_mon_extrinsics wired per C steed.c:162 (no RNG
  * for ordinary saddle).
@@ -480,7 +480,7 @@ async function teleds_simple(nux, nuy, _flags) {
     await u_on_newpos(nux, nuy);
     newsym(ox, oy);
     newsym(nux, nuy);
-    vision_recalc(1);
+    await vision_recalc(1);
     if (!game.flags) game.flags = {};
     game.flags.botl = true;
 }
@@ -1059,7 +1059,7 @@ export async function dismount_steed(reason) {
         if (!game.flags) game.flags = {};
         game.flags.botl = true;
         await encumber_msg();
-        vision_recalc(1);
+        await vision_recalc(1);
     } else {
         if (!game.flags) game.flags = {};
         game.flags.botl = true;

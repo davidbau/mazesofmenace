@@ -1,6 +1,7 @@
 import { formatFeltMessage, publishHeardMessage } from './hero_speech.js';
-import { recorderLocalEpochSeconds } from './calendar.js';
+import { recorderLocalDate, recorderLocalEpochSeconds } from './calendar.js';
 import { slipOrTrip } from './fumbling.js';
+import { heroLegName } from './body_parts.js';
 import { recoverTimedLuck } from './timeout_luck.js';
 import { doStorms } from './storms.js';
 import { advanceBodyTimeouts, advanceGallopingTimeout } from './timeout_body.js';
@@ -265,27 +266,19 @@ async function showInlineMore(message) {
     await plineWithContinuation(message);
     await flushPendingTopline();
 }
-// C ref: calendar.c phase_of_the_moon(), friday_13th().  Session datetimes
-// are deliberately fixed, so calculate from that value rather than the host
-// clock.  UTC arithmetic keeps the result independent of the judge's locale.
+// C ref: calendar.c phase_of_the_moon(), friday_13th(), both from getlt().
 export function fixedCalendar(datetime) {
-    if (!datetime || !/^\d{14}$/.test(datetime))
+    const date = recorderLocalDate(datetime);
+    if (!date)
         return { moonphase: null, friday13: false };
-    const year = Number(datetime.slice(0, 4));
-    const month = Number(datetime.slice(4, 6));
-    const day = Number(datetime.slice(6, 8));
-    const start = Date.UTC(year, 0, 1);
-    const current = Date.UTC(year, month - 1, day);
-    const diy = Math.floor((current - start) / 86400000);
+    const { year, month, day, weekday } = date;
+    const diy = Math.floor((Date.UTC(year, month - 1, day) - Date.UTC(year, 0, 1)) / 86400000);
     const goldn = ((year - 1900) % 19) + 1;
     let epact = (11 * goldn + 18) % 30;
     if ((epact === 25 && goldn > 11) || epact === 24)
         epact++;
     const moonphase = (Math.floor(((((diy + epact) * 6) + 11) % 177) / 22)) & 7;
-    return {
-        moonphase,
-        friday13: new Date(current).getUTCDay() === 5 && day === 13,
-    };
+    return { moonphase, friday13: weekday === 5 && day === 13 };
 }
 async function applyCalendarMessages() {
     const game = requireInitializedGame();
@@ -1599,17 +1592,18 @@ async function monsterAttackMessage(monster, attack, previousAttack = null, rand
         return attack.blindMessage ? `${subject} blinds you!` : null;
     if (attack.effect === 'leg-natural') {
         const side = attack.legSide || 'left';
+        const leg = heroLegName(game);
         const contact = attack.legContact === 'reach'
-            ? `tries to reach your ${side} leg`
+            ? `tries to reach your ${side} ${leg}`
             : attack.legContact === 'nuzzle'
-                ? `nuzzles against your ${side} leg`
+                ? `nuzzles against your ${side} ${leg}`
                 : attack.legContact === 'exposed-prick'
-                    ? `pricks the exposed part of your ${side} leg`
+                    ? `pricks the exposed part of your ${side} ${leg}`
                     : attack.legContact === 'boot-prick'
                         ? `pricks through your ${side} boot`
                         : attack.legContact === 'boot-scratch'
                             ? `scratches your ${side} boot`
-                            : `pricks your ${side} leg`;
+                            : `pricks your ${side} ${leg}`;
         return `${subject} ${contact}!`;
     }
     const verb = attack.attackType === 16 ? 'tentacles suck your brain'
@@ -1631,6 +1625,10 @@ async function monsterAttackMessage(monster, attack, previousAttack = null, rand
         && attack.effectiveAttack === MONSTER_ATTACKS[monster.mnum]?.[attack.attackIndex]
         ? ' again' : '';
     return `${attack.attackType === 16 ? possessiveName(subject) : subject} ${verb}${again}!`;
+}
+// C Some_Monnam(): unseen thieves are "Someone" or "Something".
+function wornItemRemover(monster, state) {
+    return monsterName(monster, { state, capitalized: true, augmentIt: true });
 }
 function wornTheftObjectDescription(object) {
     // C steal.c:worn_item_removal() starts from doname(), then massages only
@@ -1724,7 +1722,7 @@ async function resolveDeferredHeroItemTheft(action, monster, attack, random) {
     }
     if (!object) {
         if (!animal && game.uchain && draw(4)) {
-            await plineWithContinuation(`${subject} takes off ${wornTheftObjectDescription(game.uchain)}.`);
+            await plineWithContinuation(`${wornItemRemover(monster, game)} takes off ${wornTheftObjectDescription(game.uchain)}.`);
             await removeWornHeroItem(game.uchain, game);
         }
         else if (!animal && game.u.utrap && game.u.utraptype === TT_BURIEDBALL && !draw(4)) {
@@ -1848,7 +1846,8 @@ async function resolveDeferredHeroItemTheft(action, monster, attack, random) {
         const description = wornTheftObjectDescription(removalItem);
         const verb = removalItem === object && wasWeapon ? 'disarms'
             : wasAccessory ? 'removes' : 'takes off';
-        removalMessage = `${subject} ${verb} ${description}.`;
+        // worn_item_removal() names the thief again with Some_Monnam().
+        removalMessage = `${wornItemRemover(monster, game)} ${verb} ${description}.`;
     }
     if (removalMessage && !charmed) {
         await plineWithContinuation(removalMessage);
@@ -2937,7 +2936,10 @@ async function presentMonsterPostMove(action, game) {
     // C postmov() repaints the old square before mintrap(), but delays
     // the destination newsym() until the trap's message has returned.
     // A pager on the prior topline must still show the floor object.
-    const deferredTrapDestination = !!(movement?.moved && movement?.trap);
+    // dog_move() can return MMOVE_MOVED without a step; postmov() still
+    // repaints the old square and runs mintrap() there.
+    const deferredTrapDestination = !!((movement?.moved
+        || movement?.postMoveOldSquarePainted) && movement?.trap);
     const deferredHideUnderDestination = !!(movement?.moved
         && movement?.hideUnder?.message);
     if (movement?.moved || movement?.postMoveOldSquarePainted) {

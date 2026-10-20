@@ -319,7 +319,7 @@ export async function getlin(query, bufp) {
         // (a summon-light recalc pending at a docall prompt must paint
         // before the prompt blocks). Once: echo repaints are addtopl, no
         // vpline (yn precedent: tty_yn_function below).
-        vpline_flush_vision();
+        if (game.vision_full_recalc) await vpline_flush_vision();
         await paint();
         for (;;) {
             const c = await nhgetch();
@@ -1732,7 +1732,7 @@ export async function get_ext_cmd() {
         // C getline.c `:60–67` custompline → vpline `:266–271`, same as
         // getlin above: flush a pending vision_full_recalc once before
         // the initial paint (echo repaints are addtopl, no vpline).
-        vpline_flush_vision();
+        if (game.vision_full_recalc) await vpline_flush_vision();
         await paint();
         for (;;) {
             const c = await nhgetch();
@@ -2238,7 +2238,7 @@ async function tty_yn_function(query, resp = 'yn', def = 'n') {
         // flushes a pending vision_full_recalc before flush_screen/putmesg
         // (polymon-blindness clears the stale monster glyph for the eyeless
         // hero). Once: repaints are C addtopl (`:442,458`), no vpline.
-        vpline_flush_vision();
+        if (game.vision_full_recalc) await vpline_flush_vision();
         await paint();
         if (!resp) {
             const c = await nhgetch();

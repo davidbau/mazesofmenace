@@ -765,7 +765,7 @@ export async function special_throne_effect(effect) {
             'acidic chair',
             KILLED_BY_AN,
         );
-        exercise(A_CON, false);
+        await exercise(A_CON, false);
         break;
     }
     case 13:
@@ -828,7 +828,7 @@ async function throne_sit_effect() {
                 'electric chair',
                 KILLED_BY_AN,
             );
-            exercise(A_CON, false);
+            await exercise(A_CON, false);
             break;
         }
         case 4: {
@@ -1275,7 +1275,7 @@ export async function dosit() {
                     )) {
                         return ECMD_TIME;
                     }
-                    exercise(A_STR, false);
+                    await exercise(A_STR, false);
                 } else {
                     await pline('You sit down in the pit.');
                 }

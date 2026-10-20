@@ -695,7 +695,7 @@ export async function ugolemeffects(damtype, dam) {
         if (game.disp) game.disp.botl = true;
         if (game.flags) game.flags.botl = true;
         await pline('Strangely, you feel better than before.');
-        exercise(A_STR, true);
+        await exercise(A_STR, true);
     }
 }
 
@@ -768,7 +768,7 @@ async function mhitm_ad_phys_u(mtmp, mattk, mhm) {
                 mhm.hitflags |= M_ATTK_HIT;
             }
         } else if (u.ustuck === mtmp) {
-            exercise(A_STR, false);
+            await exercise(A_STR, false);
             const n = mtmp.data?.mndx ?? mtmp.mnum;
             const how = n === PM_ROPE_GOLEM ? 'choked' : 'crushed';
             await pline(`You are being ${how}.`);
@@ -816,7 +816,7 @@ async function mhitm_ad_phys_u(mtmp, mattk, mhm) {
         const mat = game.objects?.[otmp.otyp]?.oc_material ?? 99;
         if (mat === SILVER && Hate_silver()) {
             await pline('The silver sears your flesh!');
-            exercise(A_CON, false);
+            await exercise(A_CON, false);
         }
         // C `:4080–4089` — soak into tmp before the split check below:
         // negative-AC rnd(-uac) (the corpus first-diff), min 1, Half.
@@ -830,7 +830,7 @@ async function mhitm_ad_phys_u(mtmp, mattk, mhm) {
             && (mat === IRON || mat === METAL)
             && (((u.umonnum | 0) === PM_BLACK_PUDDING)
                 || ((u.umonnum | 0) === PM_BROWN_PUDDING))) {
-            if (tmp > 1) exercise(A_STR, false);
+            if (tmp > 1) await exercise(A_STR, false);
             u.mh = (u.mh | 0) - tmp;
             if (game.disp) game.disp.botl = true;
             if (game.flags) game.flags.botl = true;
@@ -1380,14 +1380,14 @@ export async function doseduce(mon) {
             u.uen = 0;
             const halfPhys = !!(u.HHalf_physical_damage || u.EHalf_physical_damage);
             u.uenmax = (u.uenmax | 0) - rnd(halfPhys ? 5 : 10);
-            exercise(A_CON, false);
+            await exercise(A_CON, false);
             if ((u.uenmax | 0) < 0) u.uenmax = 0;
             break;
         }
         case 1:
             await pline('You are down in the dumps.');
             await adjattrib(A_CON, -1, true);
-            exercise(A_CON, false);
+            await exercise(A_CON, false);
             botl_mark();
             break;
         case 2:
@@ -1403,13 +1403,13 @@ export async function doseduce(mon) {
             } else {
                 await pline('You have a curious feeling...');
             }
-            exercise(A_CON, false);
+            await exercise(A_CON, false);
             exercise(A_DEX, false);
             exercise(A_WIS, false);
             break;
         case 4: {
             await You_feel('exhausted.');
-            exercise(A_STR, false);
+            await exercise(A_STR, false);
             const tmp = rn1(10, 6);
             await losehp(maybe_half_phys(tmp), 'exhaustion', KILLED_BY);
             if (game._losehp_needs_done) await finish_losehp_done();
@@ -1426,7 +1426,7 @@ export async function doseduce(mon) {
         switch (rn2(5)) {
         case 0: {
             await You_feel('raised to your full potential.');
-            exercise(A_CON, true);
+            await exercise(A_CON, true);
             u.uenmax = (u.uenmax | 0) + rnd(5);
             u.uen = u.uenmax;
             if ((u.uenpeak | 0) < (u.uenmax | 0)) u.uenpeak = u.uenmax;
@@ -1435,7 +1435,7 @@ export async function doseduce(mon) {
         case 1:
             await You_feel('good enough to do it again.');
             await adjattrib(A_CON, 1, true);
-            exercise(A_CON, true);
+            await exercise(A_CON, true);
             botl_mark();
             break;
         case 2:
@@ -1453,7 +1453,7 @@ export async function doseduce(mon) {
             await You_feel('restored to health!');
             u.uhp = u.uhpmax;
             if (Upolyd(u)) u.mh = u.mhmax;
-            exercise(A_STR, true);
+            await exercise(A_STR, true);
             botl_mark();
             break;
         default:
@@ -1789,7 +1789,7 @@ async function gulpmu(mtmp, mattk) {
         // #992-class mid-screen regression possible at this site);
         // D-3807 precedent (departure gate removal).
         vision_off_newsym_gbuf({ useLiveViz: true });
-        vision_recalc(2);
+        await vision_recalc(2);
         u.uswallow = 1;
         if ((mattk.adtyp | 0) === AD_DGST) {
             tim_tmp = (acurr(A_CON) | 0) + 10 - (u.uac | 0) + rn2(20);
@@ -1801,9 +1801,9 @@ async function gulpmu(mtmp, mattk) {
             tim_tmp = rnd((mtmp.m_lev | 0) + Math.trunc(10 / 2));
         }
         u.uswldtim = (tim_tmp < 2) ? 2 : tim_tmp;
-        // C: swallowed(1) — stomach map; Hallu burns what_mon per cell
-        // (C cls/bot inside swallowed; JS clears disp in swallowed(first))
-        swallowed(1);
+        // C: swallowed(1) — stomach map (cls + bot inside); Hallu burns
+        // what_mon per cell
+        await swallowed(1);
         if (!flaming(mtmp.data)) {
             /* C: snuff every lit invent item; nextobj pre-fetched (D-1242 shape) */
             const seen = new Set();
@@ -1868,7 +1868,7 @@ async function gulpmu(mtmp, mattk) {
                 : (u.uswldtim === 1) ? ' utterly' : '';
             await pline(`${Monnam(mtmp)}${adv} digests you!`);
             // C mhitu.c:1434 — exercise(A_STR, FALSE) after the digest pline
-            exercise(A_STR, false);
+            await exercise(A_STR, false);
         }
         break;
     case AD_PHYS:
@@ -1884,7 +1884,7 @@ async function gulpmu(mtmp, mattk) {
         } else {
             await pline(`You are ${enfolds(mtmp.data) ? 'being squashed' : 'pummeled with debris'}!`);
             // C mhitu.c:1452 — exercise(A_STR, FALSE) after the pummel pline
-            exercise(A_STR, false);
+            await exercise(A_STR, false);
         }
         break;
     case AD_ACID:
@@ -1898,7 +1898,7 @@ async function gulpmu(mtmp, mattk) {
             else
                 await pline('You are covered in slime!  It burns!');
             // C mhitu.c:1467 — exercise(A_STR, FALSE) after the slime pline
-            exercise(A_STR, false);
+            await exercise(A_STR, false);
             monstunseesu(M_SEEN_ACID);
         }
         break;
@@ -2218,7 +2218,7 @@ async function mhitm_ad_legs_u(mtmp, _mattk, mhm) {
 
         // C: set_wounded_legs(side, rnd(60 - ACURR(A_DEX)));
         await set_wounded_legs(side, rnd(60 - acurr(A_DEX)));
-        exercise(A_STR, false);
+        await exercise(A_STR, false);
         exercise(A_DEX, false);
     }
 }
@@ -2529,7 +2529,7 @@ async function mhitm_ad_famn_u(mtmp, mattk, mhm) {
     void mattk;
     void mhm; /* leftover d() stays */
     await pline_mon(mtmp, `${Monnam(mtmp)} reaches out, and your body shrivels.`);
-    exercise(A_CON, false);
+    await exercise(A_CON, false);
     if (!is_fainted()) await morehungry(rn1(40, 40));
 }
 
@@ -2618,8 +2618,8 @@ async function mhitm_ad_heal_u(mtmp, mattk, mhm) {
             }
             if ((u.uhp | 0) > (u.uhpmax | 0)) u.uhp = u.uhpmax;
         }
-        if (!rn2(3)) exercise(A_STR, true);
-        if (!rn2(3)) exercise(A_CON, true);
+        if (!rn2(3)) await exercise(A_STR, true);
+        if (!rn2(3)) await exercise(A_CON, true);
         if ((u.Sick | 0)) await make_sick(0, null, false, SICK_ALL);
         if (game.disp) game.disp.botl = true;
         if (game.flags) game.flags.botl = true;
@@ -2688,7 +2688,7 @@ async function mhitm_ad_were_u(mtmp, mattk, mhm) {
         && !defends(AD_WERE, u.uwep || null)
         && !(await mhitm_mgc_atk_negated(mtmp, null, true))) {
         await urgent_pline('You feel feverish.');
-        exercise(A_CON, false);
+        await exercise(A_CON, false);
         set_ulycn(mtmp?.data?.mndx ?? mtmp?.mnum);
         /* C uhitm.c:4285 — new lycanthrope form, drop weapons only. */
         await retouch_equipment(2);
@@ -2732,7 +2732,7 @@ async function mhitm_ad_acid_u(mtmp, mattk, mhm) {
             mhm.damage = 0;
         } else {
             await pline(`You're covered in ${hliquid('acid')}!  It burns!`);
-            exercise(A_STR, false);
+            await exercise(A_STR, false);
             monstunseesu(M_SEEN_ACID);
         }
     } else {

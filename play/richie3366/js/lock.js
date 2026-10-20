@@ -1035,9 +1035,9 @@ export async function doopen_indir(x, y) {
         // (Blind feel_location, else newsym).
         feel_newsym(x, y);
         recalc_block_point(x, y);
-        vision_recalc(1);
+        await vision_recalc(1);
     } else {
-        exercise(A_STR, true);
+        await exercise(A_STR, true);
         set_msg_xy(x, y); // C `:918`
         await pline('The door resists!');
     }
@@ -1231,9 +1231,9 @@ export async function doclose() {
             loc.doormask = D_CLOSED;
             feel_newsym(x, y); /* C lock.c:1042 — Blind maps it felt */
             recalc_block_point(x, y); // C: block_point
-            vision_recalc(1);
+            await vision_recalc(1);
         } else {
-            exercise(A_STR, true);
+            await exercise(A_STR, true);
             await pline('The door resists!');
         }
     }
@@ -1756,7 +1756,7 @@ export async function doorlock(otmp, x, y) {
                 }
             }
             /* force vision recalc before printing more messages */
-            if (game.vision_full_recalc) vision_recalc(0);
+            if (game.vision_full_recalc) await vision_recalc(0);
             loudness = 20;
         } else {
             res = false;

@@ -1039,7 +1039,7 @@ async function m_dowear_type(mon, flag, creation, racialexception) {
     if (autocurse) curse(best);
     if (artifact_light(best) && !best.lamplit) {
         begin_burn(best, false);
-        vision_recalc(1);
+        await vision_recalc(1);
         if (!creation && best.lamplit && cansee(mon.mx, mon.my)) {
             const adesc = arti_light_description(best);
             if (sawmon) { /* could already see monster */

@@ -15,7 +15,7 @@ import { disco_typename, Japanese_item_name } from './objnam.js';
 import { append_price_quote, gem_learned } from './shk.js';
 import { let_to_name, DEF_INV_ORDER, sortloot_descr } from './invent.js';
 import { docall, objtyp_is_callable } from './do_name.js';
-import { select_menu_pick_one } from './options.js';
+import { select_menu_pick_one, menu_prompt_style } from './options.js';
 import { PM_SAMURAI } from './generated/monsters_data.js';
 import { ledger_no, maxledgerno } from './dungeon.js';
 import {
@@ -699,7 +699,8 @@ export async function choose_disco_sort(mode) {
         });
     }
     const pick = await select_menu_pick_one([
-        { text: 'Ordering of discoveries', attr: ATR_INVERSE, selectable: false },
+        // C `:644` end_menu prompt: tty_end_menu paints it in tty_menu_promptstyle.
+        { text: 'Ordering of discoveries', selectable: false, ...menu_prompt_style() },
         { text: '', attr: 0, selectable: false },
         ...items,
     ]);

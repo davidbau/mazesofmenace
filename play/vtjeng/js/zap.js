@@ -188,7 +188,7 @@ import {
 import { mcureblindness, mon_reflects, ureflects } from './muse.js';
 import { in_rooms } from './rooms.js';
 import {
-    check_unpaid, billable, contained_cost, costly_spot, inhishop, inside_shop, add_damage, pay_for_damage, shkcatch, shop_keeper, shk_your, stolen_value, } from './shk.js';
+    check_unpaid, billable, contained_cost, costly_spot, inhishop, inside_shop, add_damage, pay_for_damage, shkcatch, shop_keeper, shk_your, stolen_value, addtobill, hot_pursuit, make_angry_shk, } from './shk.js';
 import { Shknam, shkname } from './shknam.js';
 import { messageAt } from './startup_a11y.js';
 import { MIM_OMIT_WAIT, MIM_REVEAL } from './const.js';
@@ -376,7 +376,15 @@ export async function boomhit(
                 await thitu(
                     10 + (obj.spe ?? 0), maybeHalfPhysical(damage, state),
                     obj, 'boomerang', state,
-                    { message: ttyPline, losehp, exercise, random: { rnd } },
+                    {
+                        message: ttyPline,
+                        losehp,
+                        random: { rnd },
+                        exercise: (index, increase, subject) => exercise(
+                            index, increase, subject, { rn2 },
+                            { encumberMessage: encumber_msg },
+                        ),
+                    },
                 );
                 // C's accepted death enters done() and does not return.
                 if (state.program_state?.gameover) return null;
@@ -2146,7 +2154,7 @@ export function obj_shudders(obj, state = game, random = { rn2 }) {
 // C ref: zap.c do_osshock() (1637-1674).  delobj() consumes the final
 // object-resistance draw after the system-shock roll, so keep deletion in the
 // source order instead of using a direct grid splice.
-export function do_osshock(obj, state = game, random = { rn2, rnd }, rawEnv = {}) {
+export async function do_osshock(obj, state = game, random = { rn2, rnd }, rawEnv = {}) {
     if (!obj || typeof obj !== 'object')
         throw new TypeError('do_osshock requires an object');
     // MAIL_STRUCTURES is enabled by the recorder build.  C never shocks a
@@ -2173,23 +2181,21 @@ export function do_osshock(obj, state = game, random = { rn2, rnd }, rawEnv = {}
         obj = splitobj(obj, splitQuantity,
             zapObjectEnv(state, random, rawEnv));
     }
-    // do_osshock() is floor-only, but its source still accounts for the
-    // square's shop before deleting the shocked object.  Both billing helpers
-    // are void calls at this site, so retain their exact source boundaries.
+    // do_osshock() is floor-only. Bill the affected stock before delobj()
+    // transfers its unpaid object to the shop's used-item bill chain.
     if (costly_spot(obj.ox, obj.oy, state)) {
-        const roomno = in_rooms(obj.ox, obj.oy, SHOPBASE, state)[0] ?? 0;
-        const shopkeeper = shop_keeper(roomno, state);
-        if (shopkeeper && state.u?.ushops?.[0])
-            note_unported('shk.c addtobill');
+        if (state.u?.ushops?.[0])
+            await addtobill(obj, false, false, false, state,
+                zapObjectEnv(state, random, rawEnv));
         else
-            note_unported('shk.c stolen_value');
+            await stolen_value(obj, obj.ox, obj.oy, false, false, state);
     }
     delobj_core(obj, false, zapObjectEnv(state, random, rawEnv));
 }
 
 // C ref: zap.c polyuse() (1505-1544).  The object successor is captured
 // before each deletion because delobj() changes both pile chains.
-export function polyuse(objhdr, material, minwt, state = game,
+export async function polyuse(objhdr, material, minwt, state = game,
     random = { rn2 }, rawEnv = {}) {
     let current = objhdr;
     while (minwt > 0 && current) {
@@ -2202,17 +2208,12 @@ export function polyuse(objhdr, material, minwt, state = game,
                 === material;
             if (sameMaterial === (random.rn2(minwt + 1) !== 0)) {
                 if (costly_spot(current.ox, current.oy, state)) {
-                    const roomno = in_rooms(
-                        current.ox,
-                        current.oy,
-                        SHOPBASE,
-                        state,
-                    )[0] ?? 0;
-                    const shopkeeper = shop_keeper(roomno, state);
-                    if (shopkeeper && state.u?.ushops?.[0])
-                        note_unported('shk.c addtobill');
+                    if (state.u?.ushops?.[0])
+                        await addtobill(current, false, false, false, state,
+                            zapObjectEnv(state, random, rawEnv));
                     else
-                        note_unported('shk.c stolen_value');
+                        await stolen_value(current, current.ox, current.oy,
+                            false, false, state);
                 }
                 minwt = current.quan < 0x7fffffff
                     ? Math.max(0, minwt - Math.trunc(current.quan)) : 0;
@@ -2307,7 +2308,7 @@ export async function create_polymon(obj, material, state = game,
     );
     const made = monster && typeof monster.then === 'function'
         ? await monster : monster;
-    polyuse(pileHead, material,
+    await polyuse(pileHead, material,
         state.mons?.[pmidx]?.cwt ?? 0, state, random, rawEnv);
     if (made && cansee(made.mx, made.my, state)) {
         const name = a_monnam(made, { ...rawEnv, state, random });
@@ -2556,8 +2557,8 @@ export async function poly_obj(obj, id, state = game,
 
     // The billing expression is intentionally after replacement and before
     // delobj(), just as C uses the replacement's carried status and the old
-    // object's no_charge/unpaid fields. The two angry-shopkeeper helpers
-    // remain discarded gaps; their source messages are ported here.
+    // object's no_charge/unpaid fields. The source anger branch handles its
+    // message and billing separately from the immediate pursuit branch.
     if (((replacement && !carried(replacement)) || obj.unpaid)
         && costly_spot(ox, oy, state)) {
         const roomno = in_rooms(ox, oy, SHOPBASE, state)[0] ?? 0;
@@ -2584,14 +2585,14 @@ export async function poly_obj(obj, id, state = game,
                 if (state.u?.ushops?.[0]
                     && heroRoom === keeperRoom
                     && !costly_spot(state.u.ux, state.u.uy, state)) {
-                    note_unported('shk.c make_angry_shk');
+                    await make_angry_shk(shopkeeper, ox, oy, state, env);
                 } else {
                     await (env.message ?? ttyPline)(
                         `${Shknam(shopkeeper, state, namingEnv)} gets angry!`,
                         state,
                         env,
                     );
-                    note_unported('shk.c hot_pursuit');
+                    hot_pursuit(shopkeeper, state);
                 }
             } else {
                 await (env.norepMessage ?? ttyNorep)(
@@ -3810,8 +3811,9 @@ export async function bhitm(monster, wand, state = game,
             ...rawEnv, state, random,
         });
         await m_respond(monster, { ...rawEnv, state, random });
-        if (monster.isshk && !state.u?.ushops?.length)
-            note_unported('shk.c hot_pursuit');
+        // C tests *u.ushops, the first room entry, not the array length.
+        if (monster.isshk && !state.u?.ushops?.[0])
+            hot_pursuit(monster, state);
     }
     if (reveal_invis && monster.mhp >= 1
         && cansee(hitpos.x, hitpos.y, state)

@@ -3010,7 +3010,7 @@ async function choke(food) {
         await You_feel('like a glutton!');
     }
 
-    exercise(A_CON, false);
+    await exercise(A_CON, false);
 
     if (Breathless() || Hunger() || (!Strangled() && !rn2(20))) {
         if (food && (food.otyp | 0) === AMULET_OF_STRANGULATION) {
@@ -3296,7 +3296,7 @@ async function eatspecial() {
     }
     if ((otmp.otyp | 0) === FLINT && !otmp.cursed) {
         await pline('Yabba-dabba delicious!');
-        exercise(A_CON, true);
+        await exercise(A_CON, true);
     }
 
     const u = game.u || {};

@@ -51,7 +51,7 @@ import {
     NC_SHOW_MSG, NO_NC_FLAGS, PLNMSG_HIDE_UNDER,
     AGGRAVATE_MONSTER,
 } from './const.js';
-import { is_pool, is_lava, in_town, stop_occupation, noattacks, disturb_buried_zombies, losehp, finish_maybe_wail, dissolve_bars, SURFACE_AT, in_rooms, You_hear } from './hack.js';
+import { is_pool, is_lava, in_town, stop_occupation, noattacks, disturb_buried_zombies, losehp, finish_maybe_wail, dissolve_bars, SURFACE_AT, in_rooms, You_hear, notice_mon } from './hack.js';
 import {
     COIN_CLASS, WEAPON_CLASS, ARMOR_CLASS,
     GEM_CLASS, FOOD_CLASS, AMULET_CLASS, POTION_CLASS, SCROLL_CLASS,
@@ -1351,12 +1351,12 @@ export async function mb_trapped(mtmp, canseeit) {
 /**
  * C: UnblockDoor macro — set doormask, newsym, recalc vision, refresh cansee.
  */
-function unblock_door(here, mtmp, what, didseeit) {
+async function unblock_door(here, mtmp, what, didseeit) {
     here.doormask = what;
     if (here.flags !== undefined) here.flags = what;
     newsym(mtmp.mx, mtmp.my);
     recalc_block_point(mtmp.mx, mtmp.my);
-    vision_recalc(0);
+    await vision_recalc(0);
     return didseeit || cansee(mtmp.mx, mtmp.my);
 }
 
@@ -1701,8 +1701,10 @@ export async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, ca
     // mintrap (:1514); both arms assign below.
     let ptr = mtmp.data;
 
+    // C :1470 — notice_mon(mtmp) on entry, before the MMOVE_MOVED arm.
+    await notice_mon(mtmp);
+
     if (mmoved === MMOVE_MOVED) {
-    // notice_mon deferred
     let canseeit = cansee(mtmp.mx, mtmp.my);
     const didseeit = canseeit;
 
@@ -1775,7 +1777,7 @@ export async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, ca
                 );
             }
         } else if ((dm & D_LOCKED) !== 0 && can_unlock) {
-            canseeit = unblock_door(
+            canseeit = await unblock_door(
                 here, mtmp, !btrapped ? D_ISOPEN : D_NODOOR, didseeit,
             );
             if (btrapped) {
@@ -1791,7 +1793,7 @@ export async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, ca
                 }
             }
         } else if (dm === D_CLOSED && can_open) {
-            canseeit = unblock_door(
+            canseeit = await unblock_door(
                 here, mtmp, !btrapped ? D_ISOPEN : D_NODOOR, didseeit,
             );
             if (btrapped) {
@@ -1812,7 +1814,7 @@ export async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, ca
                 || ((dm & D_LOCKED) !== 0 && !rn2(2)))
                 ? D_NODOOR
                 : D_BROKEN;
-            canseeit = unblock_door(here, mtmp, mask, didseeit);
+            canseeit = await unblock_door(here, mtmp, mask, didseeit);
             if (btrapped) {
                 if (await mb_trapped(mtmp, canseeit)) return MMOVE_DIED;
             } else if (verbose) {
@@ -1869,7 +1871,7 @@ export async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, ca
         u.ux0 = u.ux;
         u.uy0 = u.uy;
         await u_on_newpos(mtmp.mx, mtmp.my); // C monmove.c:1653
-        swallowed(0); // C monmove.c:1654 — repaint the swallow 3x3
+        await swallowed(0); // C monmove.c:1654 — repaint the swallow 3x3
     } else if (mtmp.mx) {
         newsym(mtmp.mx, mtmp.my);
     }

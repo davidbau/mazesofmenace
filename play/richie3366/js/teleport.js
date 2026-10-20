@@ -1534,7 +1534,7 @@ export async function teleds(nux, nuy, teleds_flags) {
      * notice_all_mons(TRUE) does not fire until after materialize /
      * switch_terrain / vault / spoteffects / invocation_message. */
     notice_mon_off();
-    vision_recalc(0);
+    await vision_recalc(0);
     if (!game.flags) game.flags = {};
     game.flags.botl = true;
     /* C: after vision so --More-- paints the destination map */
@@ -2836,7 +2836,7 @@ export async function teleport_pet(mtmp, force_it) {
  * idiom). The C `#if 0` :2711–2713 mx/my zeroing stays out (C keeps
  * stale coords valid).
  */
-export function migrate_to_level(mtmp, tolev, xyloc, cc) {
+export async function migrate_to_level(mtmp, tolev, xyloc, cc) {
     if (!mtmp) return;
     const mx = mtmp.mx | 0;
     const my = mtmp.my | 0;
@@ -3020,7 +3020,7 @@ export function migrate_to_level(mtmp, tolev, xyloc, cc) {
     /* C dog.c:928–931 — don't extinguish a mobile light; it still
      * exists but changed from local (mx > 0) to global (mx == 0). */
     if (emits_light(mtmp.data))
-        vision_recalc(0);
+        await vision_recalc(0);
 }
 
 /* seetrap / mon_has_amulet / is_home_elemental: canonical static imports
@@ -3127,6 +3127,6 @@ export async function mlevel_tele_trap(mtmp, trap, force_it, in_sight) {
         mtmp.mconf = 1;
     }
     /* C teleport.c:2094 — ledger_no(&tolevel) via live dungeon.js export. */
-    migrate_to_level(mtmp, ledger_no(tolevel), migrate_typ, null);
+    await migrate_to_level(mtmp, ledger_no(tolevel), migrate_typ, null);
     return Trap_Moved_Mon;
 }

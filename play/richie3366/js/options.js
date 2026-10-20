@@ -249,7 +249,7 @@ import {
 import {
     clearrolefilter, setrolefilter, rolefilterstring,
 } from './player_selection.js';
-import { rcfile, read_config_file, config_error_init, config_error_done, config_error_add, assure_syscf_file, parse_conf_file } from './cfgfiles.js';
+import { rcfile, read_config_file, config_error_init, config_error_done, config_error_add, config_error_nextline, assure_syscf_file, parse_conf_file } from './cfgfiles.js';
 import { nh_terminate, panic } from './end.js';
 import { do_deferred_showpaths } from './files.js'; // C initoptions `:7112` (imports.mjs: hoisted fn, lazy reads only)
 
@@ -2060,7 +2060,7 @@ export async function handler_menu_objsyms() {
     // with tty_menu_promptstyle (= menu_headings, default ATR_INVERSE),
     // then a blank separator item (pickup_burden precedent; D-3403).
     const raw = [
-        { text: 'Set object symbols in menus to what?', selectable: false, attr: ATR_INVERSE }, // C `:5818`
+        { text: 'Set object symbols in menus to what?', selectable: false, ...menu_prompt_style() }, // C `:5818`
         { text: '', selectable: false }, // C wintty.c blank item
     ];
     for (let i = 0; i < objsymvals.length; ++i) { // C `:5807`
@@ -2105,7 +2105,7 @@ export async function handler_paranoid_confirmation() {
     // default ATR_INVERSE), then a blank separator item (handler_menu_objsyms
     // precedent).
     const raw = [
-        { text: 'Actions requiring extra confirmation:', selectable: false, attr: ATR_INVERSE }, // C `:5992`
+        { text: 'Actions requiring extra confirmation:', selectable: false, ...menu_prompt_style() }, // C `:5992`
         { text: '', selectable: false }, // C wintty.c blank item
     ];
     for (let i = 0; paranoia[i].flagmask !== 0; ++i) { // C `:5966`
@@ -2377,7 +2377,7 @@ export async function handler_whatis_coord() {
     // with tty_menu_promptstyle (= menu_headings, default ATR_INVERSE),
     // then a blank separator item (pickup_burden precedent; D-3403).
     const raw = [
-        { text: 'Select coordinate display when auto-describing a map position:', selectable: false, attr: ATR_INVERSE }, // C `:6264–6265`
+        { text: 'Select coordinate display when auto-describing a map position:', selectable: false, ...menu_prompt_style() }, // C `:6264–6265`
         { text: '', selectable: false }, // C wintty.c blank item
     ];
     // C `:6219–6245` five add_menu rows: a_char + letter = GPCOORDS_*, gacc 0,
@@ -2495,7 +2495,7 @@ export async function do_symset(rogueflag) {
             defindx = 1; // C `:971`
         const prompt = `Select ${rogue ? 'rogue level ' : ''}symbol set:`; // C `:1003–1004`
         const raw = [
-            { text: prompt, selectable: false, attr: ATR_INVERSE }, // C `:1005`
+            { text: prompt, selectable: false, ...menu_prompt_style() }, // C `:1005`
             { text: '', selectable: false }, // C wintty.c blank row
             // C `:972–976` "Default Symbols" (a_int 1, SELECTED iff defindx)
             { text: 'Default Symbols', selectable: true, selected: 1 === defindx, a_int: 1 },
@@ -2728,7 +2728,7 @@ export async function handler_number_pad() {
     // with tty_menu_promptstyle (= menu_headings, default ATR_INVERSE),
     // then a blank separator item (handler_menu_objsyms precedent; D-3403).
     const raw = [
-        { text: 'Select number_pad mode:', selectable: false, attr: ATR_INVERSE }, // C `:5915`
+        { text: 'Select number_pad mode:', selectable: false, ...menu_prompt_style() }, // C `:5915`
         { text: '', selectable: false }, // C wintty.c blank item
     ];
     for (let i = 0; i < npchoices.length; ++i) { // C `:5910`
@@ -3101,7 +3101,7 @@ export async function handler_pickup_burden() {
     // with tty_menu_promptstyle (= menu_headings, default ATR_INVERSE),
     // then a blank separator, then the add_menu items (pickup.js precedent).
     const raw = [
-        { text: 'Select encumbrance level:', selectable: false, attr: ATR_INVERSE }, // C `:6103` end_menu prompt
+        { text: 'Select encumbrance level:', selectable: false, ...menu_prompt_style() }, // C `:6103` end_menu prompt
         { text: '', selectable: false }, // C wintty.c blank item
     ];
     for (let i = 0; i < BURDENTYPE.length; i++) { // C `:6097` SIZE(burdentype)
@@ -3238,7 +3238,7 @@ export async function handler_autounlock(optidx) {
     // with tty_menu_promptstyle (= menu_headings, default ATR_INVERSE),
     // then a blank separator item (pickup_burden/rebind_keys precedent).
     const raw = [
-        { text: `Select '${optname.slice(0, 20)}' actions:`, selectable: false, attr: ATR_INVERSE }, // C `:5648–5649`
+        { text: `Select '${optname.slice(0, 20)}' actions:`, selectable: false, ...menu_prompt_style() }, // C `:5648–5649`
         { text: '', selectable: false }, // C wintty.c blank item
     ];
     for (let i = 0; i < UNLOCKTYPES.length; ++i) { // C `:5639` SIZE(unlocktypes)
@@ -3378,7 +3378,7 @@ export async function handler_whatis_filter() {
     const raw = [{ // C `:6311–6312` end_menu prompt as header
         text: 'Select location filtering when going for next/previous map position:',
         selectable: false,
-        attr: ATR_INVERSE,
+        ...menu_prompt_style(),
     },
     { text: '', selectable: false }, // C wintty.c blank item
     ];
@@ -4474,7 +4474,7 @@ export async function handler_versinfo() {
     // with tty_menu_promptstyle (= menu_headings, default ATR_INVERSE),
     // then a blank separator item (pickup_burden precedent; D-3403).
     const raw = [
-        { text: 'Select version information flags:', selectable: false, attr: ATR_INVERSE }, // C `:6603`
+        { text: 'Select version information flags:', selectable: false, ...menu_prompt_style() }, // C `:6603`
         { text: '', selectable: false }, // C wintty.c blank item
         // C `:6585–6588` a_int = n = VI_NUMBER, letter 'n', gacc n+'0'.
         { text: 'version number', selectable: true, selected: (vi & VI_NUMBER) !== 0, a_int: VI_NUMBER, selector: 'n', gselector: '1' },
@@ -4974,7 +4974,7 @@ function parse_iflags_wizmgender(result, value) {
  * @param {string} op
  * @returns {number} optn_* result
  */
-function rc_do_set_role_family(canonName, optfn, negated, opts, op) {
+function rc_do_set_role_family(canonName, optfn, negated, opts, op, duplicate) {
     const matchidx = allopt_idx(canonName); // C parseoptions matchidx
     if (!game.go) game.go = {};
     const savedInitial = game.go.opt_initial;
@@ -4982,15 +4982,49 @@ function rc_do_set_role_family(canonName, optfn, negated, opts, op) {
     const savedDup = duplicateOpt;
     game.go.opt_initial = true; // C `:504` tinitial TRUE
     game.go.opt_from_file = true; // C `:505` tfrom_file TRUE
-    duplicateOpt = duplicate_opt_detection(matchidx); // C `:621`
-    if (duplicateOpt && matchidx >= 0 && matchidx < allopt.length
-        && !OPT_DUPEOK_YES.has(allopt[matchidx].name)) // C `:622`
-        complain_about_duplicate(matchidx); // C `:623`
+    // C `:621–623` — detected (and complained about) by rc_parseoptions_dups.
+    duplicateOpt = !!duplicate;
     const reslt = optfn(matchidx, REQ_DO_SET, negated, opts, op, true);
     duplicateOpt = savedDup;
     game.go.opt_initial = savedInitial;
     game.go.opt_from_file = savedFromFile;
     return reslt;
+}
+
+/**
+ * C options.c parseoptions `:513–623` for one OPTIONS= line, the part
+ * parseNethackrc (the startup stand-in for parse_config_line →
+ * parseoptions(bufp, TRUE, TRUE), cfgfiles.c `:1059`) does not run per
+ * option: the elements right to left (`:513–520` recursion), each trimmed
+ * (`:530–533`), matched (parseoptions_match), then duplicate_opt_detection
+ * and complain_about_duplicate (`:619–623`). Returns each element's
+ * `duplicate` by left-to-right index for the optfn dispatch.
+ * Named: `Option too long` (`:522`), `Empty statement` (`:535`) and the
+ * unknown-option / bad-negation errors (`:626`, `:662–684`) stay unreported.
+ * @param {string[]} elems the line's comma-separated elements
+ * @returns {boolean[]}
+ */
+function rc_parseoptions_dups(elems) {
+    const dups = elems.map(() => false);
+    if (!game.go) game.go = {};
+    const savedInitial = game.go.opt_initial;
+    const savedFromFile = game.go.opt_from_file;
+    game.go.opt_initial = true; // C `:504` tinitial TRUE
+    game.go.opt_from_file = true; // C `:505` tfrom_file TRUE
+    for (let k = elems.length - 1; k >= 0; k--) {
+        const opts = elems[k].trim();
+        if (!opts || opts.length > BUFSZ / 2) continue; // C `:522`, `:535`
+        usingAliasOpt = false; // C `:503`
+        const { gotMatch, matchidx } = parseoptions_match(opts);
+        if (!gotMatch || matchidx < 0 || matchidx >= OPTCOUNT // C `:619–620`
+            || allopt[matchidx].disregarded) continue;
+        dups[k] = !!duplicate_opt_detection(matchidx); // C `:621`
+        if (dups[k] && !OPT_DUPEOK_YES.has(allopt[matchidx].name)) // C `:622`
+            complain_about_duplicate(matchidx); // C `:623`
+    }
+    game.go.opt_initial = savedInitial;
+    game.go.opt_from_file = savedFromFile;
+    return dups;
 }
 
 export function parseNethackrc(rc, defaultsInitialized = false) {
@@ -5054,7 +5088,13 @@ export function parseNethackrc(rc, defaultsInitialized = false) {
     }
     if (!rc) return result;
 
-    for (const rawLine of rc.split('\n')) {
+    const rcLines = rc.split('\n');
+    if (rcLines[rcLines.length - 1] === '') rcLines.pop(); // fgets: no line after the last '\n'
+    for (const rawLine of rcLines) {
+        // C parse_conf_buf `:1726–1730`: trailing blanks trimmed, then every
+        // physical line (blank and comment lines too) advances the
+        // config-error frame (line_num, origline). No secure frame here.
+        config_error_nextline(rawLine.replace(/[ \t\r]+$/, ''));
         const line = rawLine.trim();
         if (!line || line.startsWith('#')) continue;
 
@@ -5113,8 +5153,10 @@ export function parseNethackrc(rc, defaultsInitialized = false) {
         const optMatch = line.match(/^OPTIONS=(.+)/i);
         if (!optMatch) continue;
 
-        for (const opt of optMatch[1].split(',')) {
-            const trimmed = opt.trim();
+        const elems = optMatch[1].split(',');
+        const dups = rc_parseoptions_dups(elems); // C parseoptions `:513–623`
+        for (let ei = 0; ei < elems.length; ei++) {
+            const trimmed = elems[ei].trim();
             if (!trimmed) continue;
 
             const negated = trimmed.startsWith('!');
@@ -5137,7 +5179,7 @@ export function parseNethackrc(rc, defaultsInitialized = false) {
                     // parseoptions `:621` sets duplicate first. OPTN_SILENTERR
                     // (parse_role_opt `:7987–7990`) keeps the previous spelling.
                     const reslt = rc_do_set_role_family(
-                        'role', optfn_role, negated, stripped, val);
+                        'role', optfn_role, negated, stripped, val, dups[ei]);
                     if (reslt !== OPTN_SILENTERR) {
                         result.role = val;
                         result.flags.initrole = game.flags?.initrole;
@@ -5146,7 +5188,7 @@ export function parseNethackrc(rc, defaultsInitialized = false) {
                 }
                 else if (key === 'race') {
                     const reslt = rc_do_set_role_family(
-                        'race', optfn_race, negated, stripped, val);
+                        'race', optfn_race, negated, stripped, val, dups[ei]);
                     if (reslt !== OPTN_SILENTERR) {
                         result.race = val;
                         result.flags.initrace = game.flags?.initrace;
@@ -5155,7 +5197,7 @@ export function parseNethackrc(rc, defaultsInitialized = false) {
                 }
                 else if (key === 'gender') {
                     const reslt = rc_do_set_role_family(
-                        'gender', optfn_gender, negated, stripped, val);
+                        'gender', optfn_gender, negated, stripped, val, dups[ei]);
                     if (reslt !== OPTN_SILENTERR) {
                         result.gender = val;
                         result.flags.initgend = game.flags?.initgend;
@@ -5165,7 +5207,7 @@ export function parseNethackrc(rc, defaultsInitialized = false) {
                 }
                 else if (key === 'align' || key === 'alignment') {
                     const reslt = rc_do_set_role_family(
-                        'alignment', optfn_alignment, negated, stripped, val);
+                        'alignment', optfn_alignment, negated, stripped, val, dups[ei]);
                     if (reslt !== OPTN_SILENTERR) {
                         result.align = val;
                         result.flags.initalign = game.flags?.initalign;
@@ -5678,19 +5720,19 @@ export function parseNethackrc(rc, defaultsInitialized = false) {
                     // C optfn_role do_set, valueless (opt_initial). `character`
                     // is the role alias, so the counter is the role row.
                     rc_do_set_role_family(
-                        'role', optfn_role, negated, stripped, EMPTY_OPTSTR);
+                        'role', optfn_role, negated, stripped, EMPTY_OPTSTR, dups[ei]);
                 }
                 else if (lname === 'race') {
                     rc_do_set_role_family(
-                        'race', optfn_race, negated, stripped, EMPTY_OPTSTR);
+                        'race', optfn_race, negated, stripped, EMPTY_OPTSTR, dups[ei]);
                 }
                 else if (lname === 'gender') {
                     rc_do_set_role_family(
-                        'gender', optfn_gender, negated, stripped, EMPTY_OPTSTR);
+                        'gender', optfn_gender, negated, stripped, EMPTY_OPTSTR, dups[ei]);
                 }
                 else if (lname === 'align' || lname === 'alignment') {
                     rc_do_set_role_family(
-                        'alignment', optfn_alignment, negated, stripped, EMPTY_OPTSTR);
+                        'alignment', optfn_alignment, negated, stripped, EMPTY_OPTSTR, dups[ei]);
                 }
                 else if (lname === 'disclose') {
                     // C optfn_disclose do_set, valueless (opt_initial):
@@ -5902,7 +5944,7 @@ export async function choose_classes_menu(prompt, category, way, classList, clas
     for (;;) {
         // C: tty_end_menu prompt uses menu_headings (ATR_INVERSE)
         const entries = [
-            { text: prompt, attr: ATR_INVERSE },
+            { text: prompt, ...menu_prompt_style() },
             { text: '', attr: 0 },
         ];
         for (const it of items) {
@@ -5933,10 +5975,12 @@ export async function choose_classes_menu(prompt, category, way, classList, clas
         await paint_corner_nhw_menu(entries, '(end) '); // C :1744 end_menu
         await flush_screen(1);
         const key = await nhgetch(); // C :1745 select_menu, way ? PICK_ANY : PICK_ONE
-        const dismiss = async () => { // C :1746 destroy_nhwindow
-            game._menu_overlay = false;
-            await docrt();
-            await flush_screen(1);
+        // C :1746 destroy_nhwindow → tty_dismiss_nhwindow →
+        // erase_menu_or_text: docrt only for a fullscreen menu (offx 0);
+        // a corner menu is docorner, which runs no vision_recalc, so no
+        // notice_mon re-post (scen-options-Knight-50355037 s87).
+        const dismiss = async () => {
+            await dismiss_nhw_menu();
         };
 
         // C process_menu_window: letter toggles stay inside the menu —
@@ -6084,7 +6128,7 @@ async function handler_perminv_mode() {
         {
             text: 'Choose permanent inventory mode:',
             selectable: false,
-            attr: ATR_INVERSE,
+            ...menu_prompt_style(),
         },
         { text: '', selectable: false },
     ];
@@ -7254,7 +7298,7 @@ async function handle_add_list_remove(optname, numtotal) {
     // wintty.c `:2680–2689`, options.c `:7188–7189`), then a blank
     // separator item (wintty.c `:2685–2686`; pickup.js precedent).
     const raw = [
-        { text: 'Do what?', selectable: false, attr: ATR_INVERSE },
+        { text: 'Do what?', selectable: false, ...menu_prompt_style() },
         { text: '', selectable: false },
     ];
     let a_int = 0; // C: any = cg.zeroany → a_int starts 0
@@ -7561,7 +7605,7 @@ export async function handler_menu_colors() {
             // separator item (pickup_burden precedent; D-3403).
             const prompt = `${opt_idx === 1 ? 'List of' : 'Remove which'} menu colors`;
             raw.unshift({ text: '', selectable: false }); // C wintty.c blank item
-            raw.unshift({ text: prompt, selectable: false, attr: ATR_INVERSE });
+            raw.unshift({ text: prompt, selectable: false, ...menu_prompt_style() });
             let pick_list = null; // C :6452
             if (opt_idx === 1) { // C :6485–6487 PICK_NONE
                 pickCnt = await select_menu_pick_none(raw);
@@ -8315,7 +8359,7 @@ export async function handler_runmode() {
     // C tty_end_menu (wintty.c `:2685–2689`): promptstyle (= menu_headings,
     // default ATR_INVERSE) + blank separator, then items (pickup.js precedent).
     const raw = [
-        { text: 'Select run/travel display mode:', selectable: false, attr: ATR_INVERSE }, // C `:6142` end_menu prompt
+        { text: 'Select run/travel display mode:', selectable: false, ...menu_prompt_style() }, // C `:6142` end_menu prompt
         { text: '', selectable: false }, // C wintty.c blank item
     ];
     for (let i = 0; i < RUNMODES.length; i++) { // C `:6136`
@@ -8935,7 +8979,7 @@ export async function handler_sortloot() {
     // with tty_menu_promptstyle (= menu_headings, default ATR_INVERSE),
     // then a blank separator item (pickup_burden precedent; D-3403).
     const raw = [
-        { text: 'Select loot sorting type:', selectable: false, attr: ATR_INVERSE }, // C `:6188`
+        { text: 'Select loot sorting type:', selectable: false, ...menu_prompt_style() }, // C `:6188`
         { text: '', selectable: false }, // C wintty.c blank item
     ];
     for (let i = 0; i < SORTLTYPE.length; i++) { // C `:6179`
@@ -10235,9 +10279,10 @@ async function doset_simple_menu() {
     let toggled_help = false; // C `:8550`
 
     for (;;) {
-        // C: tty_end_menu prepends prompt then blank (via reverse+prepend)
+        // C: tty_end_menu prepends prompt then blank (via reverse+prepend),
+        // the prompt in tty_menu_promptstyle (wintty.c `:2685–2689`).
         const raw = [
-            { text: 'Options', attr: ATR_INVERSE, selectable: false },
+            { text: 'Options', selectable: false, ...menu_prompt_style() },
             { text: '', attr: 0, selectable: false },
         ];
         if (game.simple_options_help) {
@@ -10257,8 +10302,9 @@ async function doset_simple_menu() {
 
         for (const section of dosetSimpleSections) { // C `:8580`
             raw.push({ text: '', attr: 0, selectable: false }); // C `:8582`
-            // C `:8583` Sprintf(buf, " %-30s ", OptS_type[section]).
-            raw.push({ text: ` ${section.padEnd(30)} `, attr: ATR_INVERSE, selectable: false });
+            // C `:8584–8585` Sprintf(buf, " %-30s ", OptS_type[section]);
+            // add_menu_heading (windows.c `:1815–1828`: live menu_headings).
+            raw.push({ text: ` ${section.padEnd(30)} `, selectable: false, ...menu_heading_style() });
             for (const opt of dosetSimpleOpts) { // C `:8585`
                 if (opt.section !== section) continue; // C `:8586–8587`
                 // C `:8588–8590` wc/wc2 gate is outcome-dead on contest tty:
@@ -10764,8 +10810,13 @@ const DOSET_BOOL_DEFAULT_ON = new Set([
     'use_darkgray', 'use_inverse', 'verbose',
 ]);
 
-/** C options.c doset fmtstr_doset: "%s%-Ns [%s]" with indent for non-select. */
+/**
+ * C options.c doset fmtstr_doset: "%s%-Ns [%s]" with indent for
+ * non-select, or fmtstr_tab_doset "%s%s\t[%s]" under menu_tab_sep
+ * (`:8760`, `:8822–8827`).
+ */
 function format_doset_opt_line(name, value, indent = '') {
+    if (game.iflags?.menu_tab_sep) return `${indent}${name}\t[${value}]`;
     return `${indent}${String(name).padEnd(dosetSimpleNameWidth)} [${value}]`;
 }
 
@@ -11003,7 +11054,7 @@ export async function optfn_boolean(optidx, req, negated, opts) {
             if (!invlet_constant()) reassign();
             update_inventory();
         } else if (name === 'lit_corridor' || name === 'dark_room') {
-            vision_recalc(2); // C shut down vision
+            await vision_recalc(2); // C shut down vision
             game.vision_full_recalc = 1; // C `gv.vision_full_recalc` (vision.js:270)
             // C `:5373` `if (iflags.use_color)` reads TRUE on the
             // color-terminal build (tty TERM probes); JS has no probe
@@ -11176,7 +11227,7 @@ export async function optfn_boolean_do_set(name, negated, initial = false) {
     if (name === 'lit_corridor' || name === 'dark_room') {
         // C options.c optfn_boolean `:5362–5374` — the vision system is
         // set up here (not initializing: see the `initial` return above).
-        vision_recalc(2); // C shut down vision
+        await vision_recalc(2); // C shut down vision
         game.vision_full_recalc = 1; // C `gv.vision_full_recalc` (vision.js:270)
         // C `:5373` — unset means on (whole-optfn note above).
         if (game.iflags?.wc_color !== false) mark_opt_need_redraw();
@@ -11517,7 +11568,9 @@ export async function doset() {
         });
         for (const name of DOSET_BOOL_NONMOD) {
             if (doset_skip_unsupported(name)) continue;
-            const line = format_doset_opt_line(name, doset_bool_term(name), '    ');
+            // C `:8852` indent = (pass == 0 && !menu_tab_sep) ? "    " : "".
+            const line = format_doset_opt_line(name, doset_bool_term(name),
+                game.iflags?.menu_tab_sep ? '' : '    ');
             // C `:8855–8857` pass-0 enhance_menu_text (live no-op, wired for order).
             enhance_menu_text(line, line.length + 1, 0,
                 doset_bool_value(name), allopt[allopt_idx(name)]);
@@ -12990,44 +13043,19 @@ export async function toggle_bool_option(p) {
     return ret; // C `:9296`
 }
 
-export function parseoptions(opts, tinitial, tfromFile) {
-    let negated = false, gotMatch = false, pfxMatch = false; // C `:496`
-    let matchidx = -1, optresult = OPTN_ERR, retval = true; // C `:499`
-
-    duplicateOpt = false; // C `:502`
-    usingAliasOpt = false; // C `:503`
-    if (!game.go) game.go = {};
-    game.go.opt_initial = !!tinitial; // C `:504`
-    game.go.opt_from_file = !!tfromFile; // C `:505`
-
-    if (tinitial) { // C `:513`
-        const comma = String(opts).indexOf(','); // C `strchr(opts, ',')`
-        if (comma >= 0) { // C `:513 != 0`
-            const rest = String(opts).slice(comma + 1); // C `:514 *op++ = 0`
-            opts = String(opts).slice(0, comma);
-            if (!parseoptions(rest, game.go.opt_initial, // C `:519`
-                    game.go.opt_from_file))
-                retval = false; // C `:520`
-        }
-    }
-    opts = String(opts);
-    if (opts.length > BUFSZ / 2) { // C `:522`
-        config_error_add('Option too long, max length is %i characters', // C `:523–524`
-            BUFSZ / 2);
-        return false; // C `:526`
-    }
-
-    let start = 0; // C `:530–531`
-    while (start < opts.length && isOptSpace(opts[start])) start++;
-    let end = opts.length; // C `:532–533`
-    while (end > start && isOptSpace(opts[end - 1])) end--;
-    opts = opts.slice(start, end);
-
-    if (!opts) { // C `:535`
-        config_error_add('Empty statement'); // C `:536`
-        return false; // C `:537`
-    }
-    negated = false; // C `:539`
+/**
+ * C options.c parseoptions `:539–613` — strip the negation prefixes, the
+ * name length without its value, then match allopt (prefix options,
+ * minmatch with the `Ambiguous option` complaint, aliases; sets the
+ * using_alias file static). Callers: parseoptions below, and
+ * rc_parseoptions_dups (parseNethackrc's per-element duplicate pass).
+ * @param {string} opts trimmed element
+ * @returns {{ opts: string, negated: boolean, gotMatch: boolean,
+ *   pfxMatch: boolean, matchidx: number }}
+ */
+function parseoptions_match(opts) {
+    let gotMatch = false, pfxMatch = false, matchidx = -1;
+    let negated = false; // C `:539`
     for (;;) { // C `:540`
         if (opts[0] === '!') { // C `*opts == '!'`
             opts = opts.slice(1); negated = !negated; // C `:541–542`
@@ -13076,6 +13104,48 @@ export function parseoptions(opts, tinitial, tfromFile) {
             }
         }
     }
+
+    return { opts, negated, gotMatch, pfxMatch, matchidx };
+}
+
+export function parseoptions(opts, tinitial, tfromFile) {
+    let negated = false, gotMatch = false, pfxMatch = false; // C `:496`
+    let matchidx = -1, optresult = OPTN_ERR, retval = true; // C `:499`
+
+    duplicateOpt = false; // C `:502`
+    usingAliasOpt = false; // C `:503`
+    if (!game.go) game.go = {};
+    game.go.opt_initial = !!tinitial; // C `:504`
+    game.go.opt_from_file = !!tfromFile; // C `:505`
+
+    if (tinitial) { // C `:513`
+        const comma = String(opts).indexOf(','); // C `strchr(opts, ',')`
+        if (comma >= 0) { // C `:513 != 0`
+            const rest = String(opts).slice(comma + 1); // C `:514 *op++ = 0`
+            opts = String(opts).slice(0, comma);
+            if (!parseoptions(rest, game.go.opt_initial, // C `:519`
+                    game.go.opt_from_file))
+                retval = false; // C `:520`
+        }
+    }
+    opts = String(opts);
+    if (opts.length > BUFSZ / 2) { // C `:522`
+        config_error_add('Option too long, max length is %i characters', // C `:523–524`
+            BUFSZ / 2);
+        return false; // C `:526`
+    }
+
+    let start = 0; // C `:530–531`
+    while (start < opts.length && isOptSpace(opts[start])) start++;
+    let end = opts.length; // C `:532–533`
+    while (end > start && isOptSpace(opts[end - 1])) end--;
+    opts = opts.slice(start, end);
+
+    if (!opts) { // C `:535`
+        config_error_add('Empty statement'); // C `:536`
+        return false; // C `:537`
+    }
+    ({ opts, negated, gotMatch, pfxMatch, matchidx } = parseoptions_match(opts)); // C `:539–613`
 
     if (!game.program_state) game.program_state = {};
     game.program_state.in_parseoptions = // C `:617`

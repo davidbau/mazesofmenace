@@ -18628,7 +18628,7 @@ export async function movebubbles() {
      * vision_recalc(0) compares against the blanked array and its
      * not_in_sight arm (old IN_SIGHT || COULD_SEE xor) cannot fire. */
     vision_off_newsym_gbuf({ useLiveViz: true });
-    vision_recalc(2);
+    await vision_recalc(2);
 
     const bounds = g.waterlevel_bounds || {
         gbxmin: 4, gbymin: 2, gbxmax: 77, gbymax: 19,

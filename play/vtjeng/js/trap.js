@@ -352,7 +352,8 @@ import { newsym, bot, shieldeff } from './display.js';
 import { m_next2u } from './mhitu.js';
 import { linedup } from './mthrowu.js';
 import { destroy_items } from './zap_destroy_items.js';
-import { add_damage, costly_spot, sellobj, shop_keeper, shk_your, shopdig } from './shk.js';
+import { add_damage, costly_spot, sellobj, shop_keeper, shk_your, shopdig,
+    stolen_value } from './shk.js';
 import { quest_info } from './questpgr.js';
 import { mon_has_amulet } from './wizard.js';
 import { canspotmon } from './display.js';
@@ -3544,7 +3545,9 @@ export async function animate_statue(
         const keeper = shop_keeper(in_rooms(x, y, SHOPBASE, state)[0] ?? 0, state);
         if (keeper && (carried(statue) ? statue.unpaid : !statue.no_charge)
             && monster !== keeper)
-            note_unported('shk.c stolen_value');
+            await stolen_value(
+                statue, x, y, Boolean(keeper.mpeaceful), false, state,
+            );
     }
     if (state.urole?.mnum === PM_ARCHEOLOGIST
         && (statue.spe & CORPSTAT_HISTORIC)
@@ -3652,6 +3655,9 @@ export async function b_trapped(item, bodypart, state = game, env = {}) {
 export async function chest_trap(obj, bodypart, disarm, state = game) {
     const u = state.u;
     const Luck = (u.uluck ?? 0) + (u.moreluck ?? 0);
+    const exerciseEnv = {
+        encumberMessage: (subject) => encumber_msg(subject),
+    };
 
     const loc = get_obj_location(obj, 0, state);
     if (loc) {
@@ -3726,21 +3732,28 @@ export async function chest_trap(obj, bodypart, disarm, state = game) {
 
             // Destroy everything at the spot.
             let chestgone = false;
-            const objects_at = state.level?.at(ox, oy)?.objects;
-            if (objects_at) {
-                // Walk a copy because delobj mutates the list.
-                for (const otmp of [...objects_at]) {
-                    if (costly) {
-                        note_unported('shk.c stolen_value');
-                    }
-                    if (otmp === obj)
-                        chestgone = true;
-                    delobj(otmp, { state });
+            const objectEnv = {
+                state,
+                hooks: {
+                    extractExternalObject: remove_object,
+                    recalcBlockPoint: (bx, by, operationEnv) =>
+                        recalc_block_point(bx, by, operationEnv.state),
+                },
+            };
+            let otmp = state.level.objects[ox]?.[oy] ?? null;
+            while (otmp) {
+                const next = otmp.nexthere;
+                if (costly) {
+                    note_unported('shk.c stolen_value');
                 }
+                if (otmp === obj)
+                    chestgone = true;
+                delobj(otmp, objectEnv);
+                otmp = next;
             }
             await wake_nearby({ state });
             await losehp(Maybe_Half_Phys(d(6, 6), state), buf, KILLED_BY_AN, state);
-            await exercise(A_STR, false, state);
+            await exercise(A_STR, false, state, { rn2 }, exerciseEnv);
             if (costly) {
                 // C: shop accounting messages and make_angry_shk().
                 note_unported('shk.c stolen_value');
@@ -3761,7 +3774,7 @@ export async function chest_trap(obj, bodypart, disarm, state = game) {
                     false, state, poisonedEnv(state));
             else
                 await create_gas_cloud(obj.ox, obj.oy, 1, 8, { state });
-            await exercise(A_CON, false, state);
+            await exercise(A_CON, false, state, { rn2 }, exerciseEnv);
             break;
         case 16: case 15: case 14: case 13:
             // Poisoned needle.
@@ -3771,7 +3784,7 @@ export async function chest_trap(obj, bodypart, disarm, state = game) {
             );
             await poisoned('needle', A_CON, 'poisoned needle', 10, false,
                 state, poisonedEnv(state));
-            await exercise(A_CON, false, state);
+            await exercise(A_CON, false, state, { rn2 }, exerciseEnv);
             break;
         case 12: case 11: case 10: case 9:
             // Fire trap.

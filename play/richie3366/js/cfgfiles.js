@@ -224,9 +224,11 @@ function trunc(s, n) {
 }
 
 function configMsg(text) {
-    // C pline during early config is raw_print. Windowed pline + wait_synch
-    // is named (parser stays sync, same precedent as parseoptions).
-    raw_printf('%s', text);
+    // C pline: before window_inited, vpline's raw arm (pline.c `:243–249`)
+    // raw_print()s synchronously, so the unawaited call prints in C order.
+    // The windowed pline of config_error_done (`:1613`) stays named: the
+    // parser is sync (same precedent as parseoptions).
+    if (!game.iflags?.window_inited) void pline('%s', text);
 }
 
 /**
@@ -253,8 +255,12 @@ export function config_error_init(fromFile, sourcename, secure) {
     game.program_state.config_error_ready = true; // C `:1490`
 }
 
-/** C ref: cfgfiles.c config_error_nextline `:1492–1512` (staticfn). */
-function config_error_nextline(line) {
+/**
+ * C ref: cfgfiles.c config_error_nextline `:1492–1512` (staticfn).
+ * Exported for options.js parseNethackrc, the JS startup stand-in for
+ * parse_conf_buf's per-line call (`:1730`).
+ */
+export function config_error_nextline(line) {
     const ced = configErrorData; // C `:1495`
     if (!ced) return false; // C `:1497–1498`
     if (ced.num_errors && ced.secure) return false; // C `:1500–1501`
@@ -375,6 +381,10 @@ function cnf_error(text) {
 /**
  * C ref: cfgfiles.c config_error_done `:1591–1621`.
  * USER_SOUNDS is off, so the no_sound_notified addend (`:1600–1607`) is live.
+ * The `:1615` wait_synch belongs to the caller (this stays sync): C waits
+ * exactly when the returned count is non-zero, so an async caller writes
+ * `if (config_error_done()) await tty_wait_synch();` (jsmain.js start,
+ * the rcfile `:1945` site). The other callers' waits stay named.
  * @returns {number}
  */
 export function config_error_done() {

@@ -22,7 +22,7 @@ import { livelog_printf } from './pline.js';
 import { rn2, rnd, rn1, d, rnl, rn2_on_display_rng } from './rng.js';
 import { rank_of } from './roles.js';
 import {
-    mksobj, place_object, weight, stackobj, dealloc_obj, relobj_on_death,
+    mksobj, place_object, weight, stackobj, dealloc_obj,
     is_flammable, is_rustprone, is_rottable, is_corrodeable, is_crackable,
     erosion_matters, delobj, mkcorpstat, add_to_container, obj_extract_self,
     objects_at, sobj_at, splitobj, nxtobj, add_to_migration,
@@ -126,6 +126,7 @@ import {
     maybe_half_phys, nomul, unmul, losehp, finish_maybe_wail, stop_occupation,
     in_rooms, set_uinwater, test_move, fall_asleep, You_hear, spot_checks,
     monst_to_any, check_capacity, u_locomotion, movobj,
+    Levitation_st as hero_Levitation, Flying_st as hero_Flying,
 } from './hack.js';
 import { goodpos, mlevel_tele_trap, mtele_trap, tele_trap, level_tele_trap, domagicportal, rloco, random_teleport_level, teleds, safe_teleds, noteleport_level, dotele, unconscious, single_level_branch } from './teleport.js';
 import { emits_light, del_light_source } from './light.js'; // mongone_statue_donor del arm (same SCC; hoisted fns, runtime use only)
@@ -1585,19 +1586,10 @@ function floor_trigger(ttyp) {
  * C ref: trap.c check_in_air — HURTLING / Levitation·floater /
  * Flying·flyer (!plunged). Clinger mundetected is m_in_air only, not here.
  * Hero Levitation/Flying are youprop.h macros, not sticky u.Levitation
- * / u.Flying (D-1070).
+ * / u.Flying (D-1070): hack.js Levitation_st/Flying_st, which also read
+ * u.uprops[LEVITATION/FLYING] — a worn amulet of flying sets only the
+ * uprops extrinsic (confer_oc_oprop), never the EFlying flat.
  */
-function hero_Levitation() {
-    const u = game.u || {};
-    return !!(((u.HLevitation | 0) || (u.ELevitation | 0))
-        && !(u.BLevitation | 0));
-}
-function hero_Flying() {
-    const u = game.u || {};
-    const steedFlyer = !!(u.usteed && is_flyer(u.usteed.data));
-    return !!(((u.HFlying | 0) || (u.EFlying | 0) || steedFlyer)
-        && !(u.BFlying | 0));
-}
 function check_in_air(mtmp, trflags) {
     const is_you = is_youmonst(mtmp);
     const plunged = (trflags & (TOOKPLUNGE | VIASITTING)) !== 0;
@@ -2422,7 +2414,7 @@ async function trapeffect_pit(mtmp, trap, trflags) {
             }
             if (!conj_pit) await selftouch('Falling, you');
             game.vision_full_recalc = 1;
-            exercise(A_STR, false);
+            await exercise(A_STR, false);
             exercise(A_DEX, false);
         }
         return Trap_Effect_Finished;
@@ -3618,8 +3610,8 @@ export async function b_trapped(item, bodypart = NO_PART) {
     await wake_nearby(false);
     await losehp(maybe_half_phys(dmg), 'explosion', KILLED_BY_AN);
     if (await finish_hero_losehp()) return;
-    exercise(A_STR, false);
-    if ((bodypart | 0) !== NO_PART) exercise(A_CON, false);
+    await exercise(A_STR, false);
+    if ((bodypart | 0) !== NO_PART) await exercise(A_CON, false);
     const u = game.u || (game.u = {});
     await make_stunned(((u.HStun | 0) & TIMEOUT) + dmg, true);
 }
@@ -4165,7 +4157,7 @@ async function trapeffect_rocktrap(mtmp, trap, _trflags) {
         if (!harmless) {
             await losehp(maybe_half_phys(dmg), 'falling rock', KILLED_BY_AN);
             if (await finish_hero_losehp()) return Trap_Effect_Finished;
-            exercise(A_STR, false);
+            await exercise(A_STR, false);
         }
         return Trap_Effect_Finished;
     }
@@ -6737,7 +6729,7 @@ export async function drown() {
             await unplacebc();
             await placebc();
         }
-        vision_recalc(2); /* unsee old position */
+        await vision_recalc(2); /* unsee old position */
         await set_uinwater(1); /* u.uinwater = 1 */
         await under_water(1);
         game.vision_full_recalc = 1;
@@ -7266,7 +7258,7 @@ export async function openholdingtrap(mon) {
         await pline(`${buf} released from ${whichSpaced}${trapdescr}.`);
         game.vision_full_recalc = 1;
         await reset_utrap(true);
-        if (game.vision_full_recalc) vision_recalc(0);
+        if (game.vision_full_recalc) await vision_recalc(0);
     } else {
         if (!(mon.mtrapped | 0)) return { happened: false, noticed: false };
         mon.mtrapped = 0;
@@ -7541,7 +7533,7 @@ async function move_into_trap(ttmp) {
         await u_on_newpos(x, y);
         u.umoved = true;
         newsym(ux0, uy0);
-        vision_recalc(1);
+        await vision_recalc(1);
         await check_leash(ux0, uy0);
         if (isPunished) move_bc(0, bc, bx, by, cx, cy);
         ttmp.tseen = 0; // hack for check_here()
@@ -8212,7 +8204,7 @@ export async function chest_trap(obj, bodypart, disarm) {
             await wake_nearby(false);
             await losehp(maybe_half_phys(d(6, 6)), buf, KILLED_BY_AN);
             if (await finish_hero_losehp()) return chestgone;
-            exercise(A_STR, false);
+            await exercise(A_STR, false);
             if (costly && loss) {
                 if (insider) {
                     await pline(
@@ -8237,12 +8229,12 @@ export async function chest_trap(obj, bodypart, disarm) {
             } else {
                 await create_gas_cloud(obj.ox | 0, obj.oy | 0, 1, 8);
             }
-            exercise(A_CON, false);
+            await exercise(A_CON, false);
             break;
         case 16: case 15: case 14: case 13:
             await You_feel('a needle prick your %s.', body_part(bodypart));
             await poisoned('needle', A_CON, 'poisoned needle', 10, false);
-            exercise(A_CON, false);
+            await exercise(A_CON, false);
             break;
         case 12: case 11: case 10: case 9:
             await dofiretrap(obj);

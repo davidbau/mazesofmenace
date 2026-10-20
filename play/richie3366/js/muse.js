@@ -2460,7 +2460,7 @@ export async function use_defensive(mtmp) {
                 const flev = { dnum: 0, dlevel: 0 };
                 get_level(flev, nlev);
                 /* C muse.c:903 — ledger_no(&flev) via live dungeon.js export. */
-                migrate_to_level(mtmp, ledger_no(flev), MIGR_RANDOM, null);
+                await migrate_to_level(mtmp, ledger_no(flev), MIGR_RANDOM, null);
             }
         } else {
             await m_tele(mtmp, vismon, oseen, SCR_TELEPORTATION);
@@ -2528,7 +2528,7 @@ export async function use_defensive(mtmp) {
         await fill_pit(mx, my);
         /* C: we made sure that there is a level for mtmp to go to */
         /* C muse.c:969 — ledger_no(&u.uz) + 1 via live dungeon.js export. */
-        migrate_to_level(mtmp, ledger_no(game.u?.uz) + 1, MIGR_RANDOM, null);
+        await migrate_to_level(mtmp, ledger_no(game.u?.uz) + 1, MIGR_RANDOM, null);
         return 2;
     }
     case MUSE_WAN_UNDEAD_TURNING: {
@@ -2610,7 +2610,7 @@ export async function use_defensive(mtmp) {
         if (mtmp.wormno) worm_move(mtmp);
         newsym(m.trapx, m.trapy);
         /* C muse.c:1062 — ledger_no(&u.uz) + 1 via live dungeon.js export. */
-        migrate_to_level(mtmp, ledger_no(game.u?.uz) + 1, MIGR_RANDOM, null);
+        await migrate_to_level(mtmp, ledger_no(game.u?.uz) + 1, MIGR_RANDOM, null);
         return 2;
     }
     case MUSE_UPSTAIRS: {
@@ -2630,12 +2630,12 @@ export async function use_defensive(mtmp) {
                 );
             }
             /* C muse.c:1083 — ledger_no(&u.uz) + 1 via live dungeon.js export. */
-            migrate_to_level(mtmp, ledger_no(game.u?.uz) + 1, MIGR_RANDOM, null);
+            await migrate_to_level(mtmp, ledger_no(game.u?.uz) + 1, MIGR_RANDOM, null);
         } else {
             if (vismon) {
                 await pline_mon(mtmp, `${Monnam(mtmp)} escapes upstairs!`);
             }
-            migrate_to_level(
+            await migrate_to_level(
                 /* C muse.c:1088 — ledger_no(&stway->tolev) via live dungeon.js export. */
                 mtmp, ledger_no(stway.tolev), MIGR_STAIRS_DOWN, null);
         }
@@ -2649,7 +2649,7 @@ export async function use_defensive(mtmp) {
             await pline_mon(mtmp, `${Monnam(mtmp)} escapes downstairs!`);
         }
         /* C muse.c:1099 — ledger_no(&stway->tolev) via live dungeon.js export. */
-        migrate_to_level(mtmp, ledger_no(stway.tolev), MIGR_STAIRS_UP, null);
+        await migrate_to_level(mtmp, ledger_no(stway.tolev), MIGR_STAIRS_UP, null);
         return 2;
     }
     case MUSE_UP_LADDER: {
@@ -2660,7 +2660,7 @@ export async function use_defensive(mtmp) {
             await pline_mon(mtmp, `${Monnam(mtmp)} escapes up the ladder!`);
         }
         /* C muse.c:1109 — ledger_no(&stway->tolev) via live dungeon.js export. */
-        migrate_to_level(mtmp, ledger_no(stway.tolev), MIGR_LADDER_DOWN, null);
+        await migrate_to_level(mtmp, ledger_no(stway.tolev), MIGR_LADDER_DOWN, null);
         return 2;
     }
     case MUSE_DN_LADDER: {
@@ -2671,7 +2671,7 @@ export async function use_defensive(mtmp) {
             await pline_mon(mtmp, `${Monnam(mtmp)} escapes down the ladder!`);
         }
         /* C muse.c:1119 — ledger_no(&stway->tolev) via live dungeon.js export. */
-        migrate_to_level(mtmp, ledger_no(stway.tolev), MIGR_LADDER_UP, null);
+        await migrate_to_level(mtmp, ledger_no(stway.tolev), MIGR_LADDER_UP, null);
         return 2;
     }
     case MUSE_SSTAIRS: {
@@ -2687,7 +2687,7 @@ export async function use_defensive(mtmp) {
                 `${Monnam(mtmp)} escapes ${stway.up ? 'up' : 'down'}stairs!`);
         }
         /* C muse.c:1137 — ledger_no(&stway->tolev) via live dungeon.js export. */
-        migrate_to_level(mtmp, ledger_no(stway.tolev), MIGR_SSTAIRS, null);
+        await migrate_to_level(mtmp, ledger_no(stway.tolev), MIGR_SSTAIRS, null);
         return 2;
     }
     case MUSE_TELEPORT_TRAP: {
@@ -3053,7 +3053,7 @@ export async function use_misc(mtmp) {
                         await trycall(otmp);
                     }
                     m_useup(mtmp, otmp);
-                    migrate_to_level(
+                    await migrate_to_level(
                         /* C muse.c:2419 — ledger_no(&tolevel) via live dungeon.js export. */
                         mtmp, ledger_no(tolevel), MIGR_RANDOM, null,
                     );

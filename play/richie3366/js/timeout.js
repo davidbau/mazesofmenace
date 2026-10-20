@@ -587,7 +587,7 @@ async function vomiting_dialogue() {
         break;
     }
     if (txt) await pline(`You ${txt}`);
-    exercise(A_CON, false);
+    await exercise(A_CON, false);
 }
 
 /* C timeout.c choke_texts[] / choke_texts2[] — Strangled TIMEOUT 1..5. */
@@ -629,7 +629,7 @@ async function choke_dialogue() {
             await stop_occupation();
         }
     }
-    exercise(A_STR, false);
+    await exercise(A_STR, false);
 }
 
 /* C timeout.c sickness_texts[] — odd remaining TIMEOUT, i = j/2. */
@@ -660,7 +660,7 @@ async function sickness_dialogue() {
         }
         await urgent_pline(buf);
     }
-    exercise(A_CON, false);
+    await exercise(A_CON, false);
 }
 
 /* C timeout.c levi_texts[] — last float_down message is not in this table. */
@@ -1387,7 +1387,7 @@ export async function nh_timeout() {
                 // C: You("have recovered from your illness.")
                 await pline('You have recovered from your illness.');
                 await make_sick(0, null, false, SICK_ALL);
-                exercise(A_CON, false);
+                await exercise(A_CON, false);
                 await adjattrib(A_CON, -1, 1);
             } else {
                 await urgent_pline('You die from your illness.');
@@ -2449,7 +2449,7 @@ export async function hatch_egg(egg, timeout) {
     if ((egg.corpsenm | 0) === NON_PM) return;
 
     const { enexto } = await import('./teleport.js');
-    const { makemon } = await import('./makemon.js');
+    const { makemon, makemon_appear_msg } = await import('./makemon.js');
     const { tamedog } = await import('./dog.js');
     // NB: useup is the static invent.js import (timeout.js:54); eat.js does
     // not export it — a dynamic re-import here shadowed it with undefined.
@@ -2483,6 +2483,12 @@ export async function hatch_egg(egg, timeout) {
                     || !(mon = makemon(ptr, cc.x, cc.y, NO_MINVENT | MM_NOMSG))) {
                     break;
                 }
+                // C makemon's tail (makemon.c `:1502–1504`): MM_NOMSG skips
+                // the appear message, but an occupation still gets the
+                // dochugw threat check, so a hatchling in view stops a
+                // counted search before the hatch message.
+                await makemon_appear_msg(mon, mon.mx | 0, mon.my | 0,
+                    NO_MINVENT | MM_NOMSG);
                 if ((yours && !silent)
                     || (carried(egg) && mon.data?.mlet === 'S_DRAGON')) {
                     if (await tamedog(mon, null, false)) {

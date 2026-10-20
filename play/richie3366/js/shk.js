@@ -2069,7 +2069,7 @@ export async function make_happy_shk(shkp, silentkops) {
             if (sensemon(shkp)) vanished = true;
             const { mdrop_special_objs } = await import('./mon.js');
             await mdrop_special_objs(shkp);
-            migrate_to_level(
+            await migrate_to_level(
                 shkp, ledger_no(eshkp?.shoplevel), MIGR_APPROX_XY, eshkp?.shd,
             );
             if (eshkp) eshkp.dismiss_kops = true;

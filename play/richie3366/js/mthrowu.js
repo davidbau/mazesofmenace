@@ -688,7 +688,7 @@ export async function thitu(tlev, dam, objp, name) {
         if (obj && (game.objects?.[obj.otyp | 0]?.oc_material | 0) === SILVER
             && Hate_silver()) {
             await pline_The('silver sears your flesh!');
-            exercise(A_CON, false);
+            await exercise(A_CON, false);
         }
         // C `:141–144`
         if (is_acid) {
@@ -716,7 +716,7 @@ export async function thitu(tlev, dam, objp, name) {
             await finish_losehp_done();
             if (game.program_state?.gameover) return 1;
         }
-        exercise(A_STR, false);
+        await exercise(A_STR, false);
     }
     return 1;
 }

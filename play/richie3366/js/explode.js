@@ -803,7 +803,7 @@ export async function explode(x, y, typeIn, dam, olet, expltype) {
             await done(adtyp === AD_FIRE ? BURNING : DIED);
             }
         }
-        exercise(A_STR, false);
+        await exercise(A_STR, false);
     }
 
     if (shopdamage.v) {

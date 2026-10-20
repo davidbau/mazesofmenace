@@ -46,12 +46,12 @@ import {
     COIN_CLASS, ARMOR_CLASS, WEAPON_CLASS, TOOL_CLASS, AMULET_CLASS, RING_CLASS,
     FOOD_CLASS, ROCK_CLASS, objectNames, objects,
 } from './objects.js';
-import { monnear } from './mon.js';
+import { monnear, mdrop_obj } from './mon.js';
 import { is_animal, throws_rocks, can_teleport, slithy, dmgtype, touch_petrifies, mons } from './monsters.js';
-import { subfrombill, shop_keeper, money_cnt } from './shk.js';
+import { subfrombill, shop_keeper, money_cnt, obfree } from './shk.js';
 import { tele_restrict, rloc } from './teleport.js';
 import { ART_ORB_OF_DETECTION } from './generated/artifacts_data.js';
-import { canspotmon, pline, urgent_pline, newsym, impossible } from './display.js';
+import { canspotmon, canseemon, pline, urgent_pline, newsym, impossible } from './display.js';
 import { Monnam, Some_Monnam, Adjmonnam, s_suffix, y_monnam } from './do_name.js';
 import { doname, yname, makeplural, otense } from './objnam.js';
 import {
@@ -73,7 +73,7 @@ import { g_at, add_to_minv, obj_extract_self, splitobj } from './mkobj.js';
 import { mbodypart, body_part, skinback } from './polyself.js';
 import { monflee } from './monmove.js';
 import { Levitation, Flying } from './mhitu.js';
-import { obj_resists } from './dogmove.js';
+import { obj_resists, droppables } from './dogmove.js';
 import { touch_artifact } from './artifact.js';
 import { cansee } from './vision.js';
 import { upstart, copynchars, strsubst, strstri, dist2 } from './hacklib.js';
@@ -898,4 +898,33 @@ export async function stealamulet(mtmp) {
         }
         await encumber_msg();
     }
+}
+
+/**
+ * C ref: steal.c relobj `:874–898` — release (drop onto the map) every object
+ * a monster carries: a vault guard's gold vanishes, then mdrop_obj per
+ * minvent head (droppables for a pet, which keeps wielded/worn gear), so
+ * extract_from_minvent's end_burn/mwepgone (the wielded-artifact "stops
+ * shining" pline) runs on a death drop as in C.
+ * Callers: mon.c m_detach :2779 (mhitm.js m_detach), vault.c grddead :181
+ * (mhitm.js grddead), dogmove.c dog_invent :420 (dogmove.js dog_invent).
+ */
+export async function relobj(mtmp, show, is_pet) {
+    let otmp;
+    const omx = mtmp.mx, omy = mtmp.my;
+
+    /* vault guard's gold goes away rather than be dropped... */
+    if (mtmp.isgd && (otmp = findgold(mtmp.minvent)) != null) {
+        if (canspotmon(mtmp)) {
+            await pline(`${s_suffix(Monnam(mtmp))} gold ${canseemon(mtmp) ? 'vanishes' : 'seems to vanish'}.`);
+        }
+        obj_extract_self(otmp);
+        obfree(otmp, null);
+    } /* isgd && has gold */
+
+    while ((otmp = (is_pet ? droppables(mtmp) : mtmp.minvent)) != null) {
+        await mdrop_obj(mtmp, otmp, !!(is_pet && game.flags?.verbose !== false));
+    }
+
+    if (show && cansee(omx, omy)) newsym(omx, omy);
 }

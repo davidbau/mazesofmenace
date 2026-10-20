@@ -698,12 +698,15 @@ export function u_wipe_engr(cnt) {
  */
 export async function read_engr_at(x, y) {
     const ep = engr_at(x, y);
+    // C `:321`: surface() runs before the engraving test, on every call;
+    // over water/lava while hallucinating it spends hliquid's display-RNG
+    // draw even when nothing is engraved here.
+    const eloc = surface(x, y);
     if (!ep) return;
     const text = ep.engr_txt?.actual_text || '';
     if (!text) return;
 
     const blind = Blind();
-    const eloc = surface(x, y);
     let sensed = false;
 
     switch (ep.engr_type) {

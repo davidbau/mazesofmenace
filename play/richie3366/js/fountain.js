@@ -871,7 +871,7 @@ export async function drinkfountain() {
             } else {
                 await finish_maybe_wail();
             }
-            exercise(A_CON, false);
+            await exercise(A_CON, false);
             break;
         }
         case 22: // Fountain of snakes
@@ -883,7 +883,7 @@ export async function drinkfountain() {
         case 24: { // Maybe curse some items — C fountain.c:317–334
             await pline("This water's no good!");
             await morehungry(rn1(20, 11));
-            exercise(A_CON, false);
+            await exercise(A_CON, false);
             // more severe than rndcurse(); coins skipped
             let buc_changed = 0;
             for (const obj of [...(game.invent || [])]) {

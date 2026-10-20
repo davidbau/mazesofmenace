@@ -987,7 +987,7 @@ export async function melt_ice(x, y, msg) {
     obj_ice_effects(x, y, false);
     await unearth_objs(x, y);
     /* C zap.c:5059–5060 — Underwater ≡ u.uinwater (youprop.h:279; D-3400 idiom). */
-    if ((game.u?.uinwater | 0)) vision_recalc(1);
+    if ((game.u?.uinwater | 0)) await vision_recalc(1);
     newsym(x, y);
     if (cansee(x, y) || u_at(x, y)) await Norep(msg);
     let otmp = sobj_at(BOULDER, x, y);
@@ -1762,7 +1762,7 @@ async function maybe_destroy_item(carrier, obj, dmgtyp) {
                 // C hack.c losehp:4289–4291 — maybe_wail runs inline;
                 // drain the deferred flag (zhitu :2322 shape).
                 await finish_maybe_wail();
-                exercise(A_STR, false);
+                await exercise(A_STR, false);
             }
         }
     }
@@ -2108,7 +2108,7 @@ async function zhitu(type, nd, fltxt, sx, sy) {
             monstseesu(M_SEEN_MAGR);
         } else {
             dam = d(nd, 6);
-            exercise(A_STR, false);
+            await exercise(A_STR, false);
             monstunseesu(M_SEEN_MAGR);
         }
         break;
@@ -2229,7 +2229,7 @@ async function zhitu(type, nd, fltxt, sx, sy) {
             await ugolemeffects(AD_ELEC, orig_dam);
         } else {
             dam = orig_dam;
-            exercise(A_CON, false); // C :4519
+            await exercise(A_CON, false); // C :4519
             monstunseesu(M_SEEN_ELEC); // C :4520
         }
         if (!rn2(3)) { // C :4522
@@ -2254,7 +2254,7 @@ async function zhitu(type, nd, fltxt, sx, sy) {
         } else {
             await pline(`The ${hliquid('acid')} burns!`); // C :4534
             dam = d(nd, 6); // C :4535
-            exercise(A_STR, false); // C :4536
+            await exercise(A_STR, false); // C :4536
             monstunseesu(M_SEEN_ACID); // C :4537
         }
         // using two weapons at once makes both of them more vulnerable
@@ -4847,7 +4847,7 @@ export async function zapyourself(obj, ordinary) {
             } else {
                 damage = d(1 + (obj.spe | 0), 6);
             }
-            exercise(A_STR, false);
+            await exercise(A_STR, false);
         }
         break;
 
@@ -5006,7 +5006,7 @@ export async function zapyourself(obj, ordinary) {
         if (!Shock_resistance()) {
             await You('shock yourself!');
             damage = orig_dmg;
-            exercise(A_CON, false);
+            await exercise(A_CON, false);
             // monstunseesu deferred
         } else {
             // shieldeff / monstseesu still deferred (C zap.c:2739–2741).
@@ -7430,7 +7430,7 @@ export async function dozap() {
     } else if (obj.cursed && !rn2(WAND_BACKFIRE_CHANCE)) {
         await backfire(obj); /* the wand blows up in your face! */
         if (game.program_state?.gameover) return 1;
-        exercise(A_STR, false);
+        await exercise(A_STR, false);
         return 1;
     } else if (need_dir && !(await getdir_zap(null))) {
         // cancel direction — still paid a charge via zappable

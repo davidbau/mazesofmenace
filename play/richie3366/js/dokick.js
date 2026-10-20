@@ -273,7 +273,7 @@ async function kick_dumb(x, y) {
         if (Blind()) feel_location(x, y);
     } else {
         await pline('Dumb move!  You strain a muscle.');
-        exercise(A_STR, false);
+        await exercise(A_STR, false);
         // C: set_wounded_legs(RIGHT_SIDE, 5 + rnd(5)) — ATEMP(DEX)-- (D-0785)
         await set_wounded_legs(RIGHT_SIDE, 5 + rnd(5));
     }
@@ -330,7 +330,7 @@ export function kickstr(kickobjnam) {
 export async function kick_ouch(x, y, kickobjnam = '') {
     await pline('Ouch!  That hurts!');
     exercise(A_DEX, false);
-    exercise(A_STR, false);
+    await exercise(A_STR, false);
     if (isok(x, y)) {
         if (Blind()) feel_location(x, y); /* we know we hit it */
         /* C dokick.c:892–897 — portcullis: pline_The + find_drawbridge
@@ -462,33 +462,33 @@ async function kick_door(x, y, avrg_attrib) {
             if (game.flags?.verbose !== false) {
                 await pline('You kick the door.');
             }
-            exercise(A_STR, false);
+            await exercise(A_STR, false);
             loc.doormask = D_NODOOR;
             if (loc.flags !== undefined) loc.flags = loc.doormask;
             await b_trapped('door', FOOT);
             feel_newsym(x, y); /* we know we broke it */
             recalc_block_point(x, y);
-            vision_recalc(1);
+            await vision_recalc(1);
         } else if (acurr(A_STR) > 18 && !rn2(5) && !shopdoor) {
             // C: Soundeffect before the message (draw-free no-op here).
             Soundeffect(se_kick_door_it_shatters, 50);
             await pline('As you kick the door, it shatters to pieces!');
-            exercise(A_STR, true);
+            await exercise(A_STR, true);
             loc.doormask = D_NODOOR;
             if (loc.flags !== undefined) loc.flags = loc.doormask;
             feel_newsym(x, y);
             recalc_block_point(x, y);
-            vision_recalc(1);
+            await vision_recalc(1);
         } else {
             // C: Soundeffect before the message (draw-free no-op here).
             Soundeffect(se_kick_door_it_crashes_open, 50);
             await pline('As you kick the door, it crashes open!');
-            exercise(A_STR, true);
+            await exercise(A_STR, true);
             loc.doormask = D_BROKEN;
             if (loc.flags !== undefined) loc.flags = loc.doormask;
             feel_newsym(x, y);
             recalc_block_point(x, y);
-            vision_recalc(1);
+            await vision_recalc(1);
         }
         if (shopdoor) {
             const { add_damage, pay_for_damage } = await import('./shk.js');
@@ -498,7 +498,7 @@ async function kick_door(x, y, avrg_attrib) {
         if (in_town(x, y)) await get_iter_mons(watchman_thief_arrest);
     } else {
         if (Blind()) feel_location(x, y); /* we know we hit it */
-        exercise(A_STR, true);
+        await exercise(A_STR, true);
         // C dokick.c:966 (Deaf || !rn2(3)) — Deaf ≡ youprop.h:125
         // HDeaf||EDeaf||uroleplay.deaf via hero_Deaf() (D-3572 pattern);
         // short-circuits to Thwack without drawing rn2(3).

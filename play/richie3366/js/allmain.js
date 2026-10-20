@@ -567,7 +567,10 @@ async function regen_pw(wtcap) {
  * C ref: attrib.c exerper — hunger / encumbrance / status exercise ticks.
  * Named omissions: full Sick/Vomiting timeout bodies (flags only when set).
  */
-function exerper() {
+async function exerper() {
+    // C attrib.c exercise `:516–517` ends in encumber_msg for STR/CON,
+    // whose pline can block at a --More-- before exerper returns.
+    const ex = async (i, inc) => { const p = exercise(i, inc); if (p) await p; };
     const moves = game.moves || 0;
     const u = game.u || {};
     // C attrib.c:523–524 — exerper hunger/encumbrance ticks every 10 moves.
@@ -580,29 +583,29 @@ function exerper() {
             // C attrib.c:534–536 — SATIATED Monk also trains WIS
             if (isMonk) exercise(A_WIS, false);
         } else if (hunger > 150) {
-            exercise(A_CON, true);
+            await ex(A_CON, true);
         } else if (hunger > 50) {
             /* HUNGRY — no exercise in switch until WEAK */
         } else if (hunger > 0) {
-            exercise(A_STR, false);
+            await ex(A_STR, false);
             // C attrib.c:542–544 — WEAK fasting Monk trains WIS
             if (isMonk) exercise(A_WIS, true);
         } else {
-            exercise(A_CON, false);
+            await ex(A_CON, false);
         }
 
         // Encumbrance Checks
         switch (near_capacity()) {
         case MOD_ENCUMBER:
-            exercise(A_STR, true);
+            await ex(A_STR, true);
             break;
         case HVY_ENCUMBER:
-            exercise(A_STR, true);
+            await ex(A_STR, true);
             exercise(A_DEX, false);
             break;
         case EXT_ENCUMBER:
             exercise(A_DEX, false);
-            exercise(A_CON, false);
+            await ex(A_CON, false);
             break;
         default:
             break;
@@ -619,12 +622,12 @@ function exerper() {
         if (hasClair && !blockClair) exercise(A_WIS, true);
         const regenProp = u.uprops?.[REGENERATION];
         if ((u.HRegeneration | 0) || (regenProp?.intrinsic | 0)) {
-            exercise(A_STR, true);
+            await ex(A_STR, true);
         }
         // C: Confusion ≡ HConfusion (youprop.h:84); Hallucination ≡
         // HHallucination && !Halluc_resistance (:120), resistance H||E
         // (:119) via the house hallucResisted union (D-4046).
-        if (u.Sick || u.Vomiting) exercise(A_CON, false);
+        if (u.Sick || u.Vomiting) await ex(A_CON, false);
         if ((u.HConfusion | u.Confusion)
             || ((u.HHallucination | 0) && !hallucResisted(u))
             || u.Hallucination) {
@@ -662,7 +665,7 @@ const EXERTEXT = [
  */
 async function exerchk() {
     /* C `:602–604`: check out the periodic accumulations first. */
-    exerper();
+    await exerper();
     const g = game;
     const moves = g.moves || 0;
     if (!g.context) g.context = {};
@@ -941,7 +944,7 @@ export async function newgame() {
     init_vision_globals();
     initrack(); // C: allmain.c / cmd.c — clear hero track ring
     vision_reset();
-    vision_recalc(0);
+    await vision_recalc(0);
     await cls();
     await docrt();
     await flush_screen(1);
@@ -1094,7 +1097,7 @@ async function maybe_do_tutorial() {
     game.iflags.nofollowers = true;
     schedule_goto(sp.dlevel, UTOTYPE_NONE, 'Entering the tutorial.', null);
     await deferred_goto();
-    vision_recalc(0);
+    await vision_recalc(0);
     await docrt();
     game.iflags.nofollowers = false;
 }
@@ -1480,7 +1483,7 @@ export async function moveloop_core() {
                 await see_monsters();
                 see_objects();
                 see_traps();
-                if (u.uswallow) swallowed(0);
+                if (u.uswallow) await swallowed(0);
             } else {
                 // C youprop.h Unblind_telepat ≡ ETelepat
                 const Unblind_telepat = !!(u.ETelepat | 0)
@@ -1492,7 +1495,7 @@ export async function moveloop_core() {
             }
             // C :470–471 — inside the gate, after the see arms.
             if (g.vision_full_recalc) {
-                vision_recalc(0);
+                await vision_recalc(0);
             }
         }
     }
@@ -1595,7 +1598,7 @@ export async function moveloop_core() {
     // so next iteration's monsters see post-hero-action vision (D-1863:
     // pit fall restricts to 3×3 before the monsters move).
     if (g.vision_full_recalc) {
-        vision_recalc(0);
+        await vision_recalc(0);
         g.vision_full_recalc = 0;
     }
     // C allmain.c:543–547 — CLIPPING (config.h:538, compiled in):

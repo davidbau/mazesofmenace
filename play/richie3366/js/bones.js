@@ -668,6 +668,7 @@ function getlev_bones(payload) {
             cell.remembered_glyph = undefined;
             cell.disp_ch = ' ';
             cell.disp_color = 8;
+            cell.disp_color_raw = 8;
             cell.disp_decgfx = false;
             cell.disp_attr = 0;
             cell.gnew = 0;

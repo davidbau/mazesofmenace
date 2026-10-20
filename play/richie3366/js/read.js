@@ -536,7 +536,7 @@ export async function litroom(on, obj) {
         // vision_recalc(2) skips that loop, so run its newsyms on the live
         // viz first, Hallu-gated like docrt's D-0852 call (D-4065).
         if (Hallucination()) vision_off_newsym_gbuf({ useLiveViz: true });
-        vision_recalc(2);
+        await vision_recalc(2);
 
         /* C `:2610–2612` — replace ball&chain after the forced redraw. */
         if (u.uball && u.uchain && !on)
@@ -547,7 +547,7 @@ export async function litroom(on, obj) {
     /* C `:2615–2633` — after vision is current, monsters hit by the light
        take effect now (vision_recalc(0) first; can't delay after all). */
     if (gremlins.length) {
-        vision_recalc(0);
+        await vision_recalc(0);
         while (gremlins.length) {
             const grm = gremlins.shift();
             await light_hits_gremlin(grm, rnd(5));
@@ -863,7 +863,7 @@ export async function wand_explode(obj, chg) {
     await pline(`${Yname2(obj)} ${expl} explodes!`);
     await explode_losehp(dmg, 'exploding wand');
     useup_live(obj);
-    exercise(A_STR, false);
+    await exercise(A_STR, false);
 }
 
 /** C read.c charge_ok :688–724. */
@@ -1266,8 +1266,8 @@ export async function seffect_destroy_armor(sobj) {
     if (confused) { // C `:1333–1352`
         if (!otmp) { // C `:1334–1339`
             await strange_feeling(sobj, 'Your bones itch.');
-            exercise(A_STR, false);
-            exercise(A_CON, false);
+            await exercise(A_STR, false);
+            await exercise(A_CON, false);
             return null; // C: *sobjp = 0 (useup ran inside strange_feeling)
         }
         const old_erodeproof = !!otmp.oerodeproof; // C `:1340`
@@ -1318,8 +1318,8 @@ export async function seffect_destroy_armor(sobj) {
             return sobj;
         } else if (!(await destroy_arm())) { // C `:1392`
             await strange_feeling(sobj, 'Your skin itches.');
-            exercise(A_STR, false);
-            exercise(A_CON, false);
+            await exercise(A_STR, false);
+            await exercise(A_CON, false);
             return null; // C: *sobjp = 0 (useup ran inside strange_feeling)
         } else { // C `:1394–1395`
             known = true;
@@ -1559,8 +1559,8 @@ async function seffect_enchant_armor(sobj) {
         await strange_feeling(sobj, !Blind()
             ? 'Your skin glows then fades.'
             : 'Your skin feels warm for a moment.');
-        exercise(A_CON, !scursed);
-        exercise(A_STR, !scursed);
+        await exercise(A_CON, !scursed);
+        await exercise(A_STR, !scursed);
         return null;
     }
     if (confused) {

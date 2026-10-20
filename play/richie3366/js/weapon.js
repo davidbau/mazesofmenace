@@ -13,7 +13,8 @@ import {
 } from './display.js';
 import { cansee, couldsee } from './vision.js';
 import { select_menu_pick_none } from './invent.js';
-import { select_menu_pick_one } from './options.js';
+import { select_menu_pick_one, menu_prompt_style, menu_heading_style } from './options.js';
+import { ATR_NONE } from './terminal.js';
 import { yn_function } from './getline.js';
 import { Monnam, mon_nam, s_suffix } from './do_name.js';
 import { doname, xname, vtense, The, the, distant_name, otense, Tobjnam, Yname2, makeplural, is_plural, arti_light_description } from './objnam.js';
@@ -65,7 +66,6 @@ import { acurr, A_STR, A_DEX } from './attrib.js';
 import { adj_lev } from './makemon.js';
 import { m_carrying, mon_has_shield } from './mon.js';
 import { mhis, monsndx } from './mondata.js';
-import { ATR_INVERSE, ATR_NONE } from './terminal.js';
 import {
     skill_based_spellbook_id, spell_skilltype,
 } from './spell.js';
@@ -1181,9 +1181,10 @@ export async function enhance_weapon_skill() {
             const slots = game.u?.weapon_slots | 0;
             prompt += `  (${slots} slot${plur(slots)} available)`;
         }
-        // C tty_end_menu: prepend prompt then blank
+        // C `:1388` end_menu(win, buf): tty_end_menu prepends the prompt
+        // (tty_menu_promptstyle, wintty.c `:2685–2689`) then a blank.
         raw.unshift(
-            { text: prompt, attr: ATR_INVERSE, selectable: false },
+            { text: prompt, selectable: false, ...menu_prompt_style() },
             { text: '', attr: 0, selectable: false },
         );
 
@@ -1209,6 +1210,7 @@ export async function enhance_weapon_skill() {
             await select_menu_pick_none(raw.map((it) => ({
                 text: it.text,
                 attr: it.attr || 0,
+                color: it.color,
             })));
         }
     } while (speedy && n > 0);
@@ -1586,10 +1588,12 @@ function add_skills_to_menu(entries, selectable, speedy) {
         for (let i = skill_ranges[pass].first; i <= skill_ranges[pass].last; i++) {
             /* C: add_menu_heading before the P_RESTRICTED skip. */
             if (i === skill_ranges[pass].first) {
+                // windows.c add_menu_heading: live menu_headings, none
+                // during end-of-game disclosure (menu_heading_style).
                 entries.push({
                     text: skill_ranges[pass].name,
-                    attr: game.program_state?.gameover ? ATR_NONE : ATR_INVERSE,
                     selectable: false,
+                    ...menu_heading_style(),
                 });
             }
             if (P_RESTRICTED(i)) continue;

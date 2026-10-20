@@ -241,9 +241,13 @@ export function exercise(i, inc_or_dec) {
         }
     }
     // C `:516–517` — STR/CON re-sync encumbrance feedback once play begins.
+    // C blocks in encumber_msg's pline (a --More--); this stays sync for
+    // its many sync callers and returns the promise so async ones (exerper)
+    // wait where C does. Callers that drop it float the message (as before).
     if (((game.moves ?? 0) > 0) && (i === A_STR || i === A_CON)) {
-        void encumber_msg();
+        return encumber_msg();
     }
+    return undefined;
 }
 
 function attrMax(i) {

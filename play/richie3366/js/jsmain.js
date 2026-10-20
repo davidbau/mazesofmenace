@@ -20,8 +20,10 @@ import { getmailstatus } from './mail.js';
 import { try_restore_save } from './save.js';
 import { vision_init, vision_recalc, init_vision_globals } from './vision.js';
 import { parseNethackrc, set_playmode, init_fruit_chain, initoptions_init, RC_FILE_OPT, set_configfile_name } from './options.js';
-import { flush_screen, serialize_for_scoring, reset_display_messages, docrt, bot, pline } from './display.js';
+import { flush_screen, serialize_for_scoring, reset_display_messages, docrt, bot, pline, tty_wait_synch } from './display.js';
+import { config_error_init, config_error_done } from './cfgfiles.js';
 import { GameDisplay } from './game_display.js';
+import { nomux_marker } from './nomux_capture.js';
 import { askname_if_needed } from './askname.js';
 import { player_selection } from './player_selection.js';
 import { check_special_room } from './hack.js';
@@ -74,6 +76,10 @@ export class NethackGame {
         this._storage = opts.storage || createEphemeralStorage();
         this._screens = [];
         this._cursors = [];
+        // Recorder raw-mode statics hit by nomux_out overflows
+        // (nomux_capture.js); C zero-initialises them.
+        this._nomuxRaw = { mem: new Uint8Array(12) };
+        this._nomuxAnimId = 0; // C nomux_anim_id: anim markers so far
         this._rngSlices = [];
         // Animation frames captured during each step.  Outer index
         // matches _screens (one entry per input boundary); inner array
@@ -111,14 +117,17 @@ export class NethackGame {
     async animationFrame() {
         const disp = game?.nhDisplay;
         const term = disp?.terminal || disp;
+        // C nomux_capture_write_screen: an anim marker renders the screen
+        // too, so it can overflow nomux_out (nomux_capture.js).
         this._pendingAnimFrames.push({
             screen: term?.serialize ? term.serialize() : '',
-            cursor: term?.getCursor
-                ? term.getCursor()
-                : (disp
-                    ? [disp.cursorCol ?? 0, disp.cursorRow ?? 0,
-                        disp.cursorVisible ?? 1]
-                    : null),
+            cursor: (this._nomuxAnimId++, nomux_marker(this._nomuxRaw, term,
+                term?.getCursor
+                    ? term.getCursor()
+                    : (disp
+                        ? [disp.cursorCol ?? 0, disp.cursorRow ?? 0,
+                            disp.cursorVisible ?? 1]
+                        : null)).cursor),
         });
         if (typeof requestAnimationFrame === 'function') {
             await new Promise((resolve) => requestAnimationFrame(resolve));
@@ -157,9 +166,25 @@ export class NethackGame {
         // Stored now for future C time predicates; consumers remain incomplete.
         g.datetime = this._datetime;
 
+        // C termcap.c nomux_buf: the recorder's shadow screen exists before
+        // init_nhwindows (unixmain.c:174) allocates ttyDisplay, and every
+        // tty_nhgetch emits a marker, so a config error's raw_print and
+        // getret wait are captured on the pending display.
+        g._nomuxShadow = this._pendingDisplay;
+        this._installCaptureHook();
+        // C iflags.cbreak is 0 until tty_init_nhwindows → setftty
+        // (wintty.c:533): getret's xwaitforspace takes only return here.
+        g.iflags.cbreak = false;
+
         // Overlay the user rc on the initialized live option bags. No
         // defaults may be reapplied after the system configuration pass.
+        // C rcfile `:1943–1945`: no -nethackrc / NETHACKOPTIONS file, so
+        // nameval is NULL and the frame is not CONFIG_ERROR_SECURE.
+        config_error_init(true, null, false);
         const opts = parseNethackrc(this._nethackrc, true);
+        // C config_error_done `:1613–1615`: errors pline (raw_print, no
+        // window yet), then wait_synch → tty_wait_synch → getret.
+        if (config_error_done()) await tty_wait_synch();
         g.plname = opts.name;
         // C ref: options.c / symbols.c — default Primary ASCII; symset:DECgraphics
         // (or boolean DECgraphics) loads H_DEC showsyms. Never assume DEC.
@@ -221,11 +246,9 @@ export class NethackGame {
         // iflags.window_inited (yn_menuable_resp needs it; D-1728).
         if (!g.iflags) g.iflags = {};
         g.iflags.window_inited = !!g.nhDisplay;
+        g.iflags.cbreak = true; // C tty_init_nhwindows → setftty (wintty.c:533)
         // C nh_delay_output → contest animationFrame (throw/zap beams)
         g.animationFrame = this.animationFrame.bind(this);
-
-        // Install capture hook
-        this._installCaptureHook();
 
         // C unixmain.c:188–190 — #ifdef MAIL getmailstatus() after
         // init_nhwindows, before set_playmode. libnhmain.c:220 is the
@@ -308,7 +331,7 @@ export class NethackGame {
             // screen scoring is the Terminal: contestants drive it
             // however they like, judge reads back terminal.serialize()
             // and compares to the C session's recorded screen.
-            const disp = game?.nhDisplay;
+            const disp = game?.nhDisplay || game?._nomuxShadow;
             const term = disp?.terminal || disp;
             // Count / --More-- prompts: keep cursor on topline even if a
             // later flush reset it to the hero (C get_count / more()).
@@ -317,22 +340,30 @@ export class NethackGame {
                 for (let c = 0; c < (disp.cols || 80); c++)
                     row0 += disp.grid[0][c]?.ch || ' ';
                 const t = row0.trimEnd();
-                if (t.startsWith('Count:') || t.endsWith('--More--'))
+                if (t.startsWith('Count:'))
                     disp.setCursor(t.length, 0);
             }
+            // C nomux_emit_marker: the recorder renders the screen into
+            // nomux_out before reading the cursor; an overflow there
+            // replaces the reported cursor and, past obuf, corrupts the
+            // recorded screen itself (nomux_capture.js).
+            const marker = nomux_marker(nhGame._nomuxRaw, term,
+                term?.getCursor
+                    ? term.getCursor()
+                    : (disp
+                        ? [disp.cursorCol ?? 0, disp.cursorRow ?? 0,
+                            disp.cursorVisible ?? 1]
+                        : null),
+                { kind: 'input', seq: nhGame._screens.length + 1,
+                    anim: nhGame._nomuxAnimId });
             nhGame._screens.push(
-                term?.grid
-                    ? serialize_for_scoring(term)
-                    : (term?.serialize ? term.serialize() : ''),
+                marker.screen != null ? marker.screen
+                    : (term?.grid
+                        ? serialize_for_scoring(term)
+                        : (term?.serialize ? term.serialize() : '')),
             );
             nhGame._rngSlices.push(slice);
-
-            const cursor = term?.getCursor
-                ? term.getCursor()
-                : (disp
-                    ? [disp.cursorCol ?? 0, disp.cursorRow ?? 0,
-                        disp.cursorVisible ?? 1]
-                    : null);
+            const cursor = marker.cursor;
             nhGame._cursors.push(cursor);
 
             // Commit animation frames accumulated since the previous

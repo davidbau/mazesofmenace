@@ -25,6 +25,7 @@ import { mattacku } from './mhitu.js';
 import { newsym, pline, canseemon, mon_visible, canspotmon, pline_mon, pline_xy, impossible, You_feel, glyph_is_object, glyph_at, You, Your, more } from './display.js';
 import { doname, distant_name, vtense, an, xname } from './objnam.js';
 import { unpaid_cost, costly_alteration } from './shk.js';
+import { relobj } from './steal.js'; // C: dogmove.c dog_invent :420 (hoisted fn, runtime use)
 import { currency } from './invent.js';
 import { defsym_explanation } from './uhitm.js';
 import { mpickobj, is_vampshifter } from './makemon.js';
@@ -835,7 +836,7 @@ export async function dog_goal(mtmp, edog, after, udist, whappr) {
  * not mon.mwep. No RNG. Callers: dogmove.c:416 dog_invent apport check,
  * dogmove.c:502 dog_has_minvent, steal.c:892 relobj is_pet arm.
  */
-function droppables(mon) {
+export function droppables(mon) {
     // C: dummy = cg.zeroobj; dummy.otyp = GOLD_PIECE; dummy.oartifact = 1.
     // JS null idiom: fresh sentinel per call, never returned.
     const dummy = { otyp: GOLD_PIECE, oartifact: 1 };
@@ -925,16 +926,8 @@ function droppables(mon) {
 // mon_moving doaltarobj arm — and every other landing effect — for apport
 // drops; C has one mdrop_obj, steal.c:808–849).
 
-// C ref: steal.c relobj — is_pet uses droppables; vault-guard gold omitted
-async function relobj(mtmp, show, is_pet) {
-    const omx = mtmp.mx, omy = mtmp.my;
-    let otmp;
-    while ((otmp = (is_pet ? droppables(mtmp) : mtmp.minvent)) != null) {
-        await mdrop_obj(mtmp, otmp, !!(is_pet && game.flags?.verbose !== false));
-    }
-    // C: if (show && cansee(omx, omy)) newsym(...)
-    if (show && cansee(omx, omy)) newsym(omx, omy);
-}
+// C ref: steal.c relobj — imported live from steal.js (one relobj for
+// dog_invent, m_detach and grddead, steal.c:874–898).
 
 // C ref: dogmove.c dog_starve `:348–360` (staticfn) — leash goes slack,
 // visible starves pline, else Hallu-bummed/sad feel; then mondied.

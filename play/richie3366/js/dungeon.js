@@ -154,7 +154,7 @@ import { builds_up, strsubst, trimspaces, strstri, strncmpi } from './hacklib.js
 import { align_gname } from './roles.js';
 import { altarmask_at } from './pray.js';
 import { is_drawbridge_wall } from './dbridge.js';
-import { db_under_typ } from './hack.js';
+import { db_under_typ, Levitation_st } from './hack.js';
 import { shop_keeper, inhishop } from './shk.js';
 import { m_at } from './mon.js';
 import { canseemon, impossible } from './display.js';
@@ -2563,8 +2563,10 @@ export function recalc_mapseen() {
         }
     }
 
-    // C: if (!Levitation) update_lastseentyp(u.ux, u.uy);
-    if (u && !u.Levitation && u.ux > 0) {
+    // C `:3191–3192`: if (!Levitation) update_lastseentyp(u.ux, u.uy).
+    // youprop.h Levitation reads u.uprops[LEVITATION] (ring/boots set only
+    // the extrinsic), not the sticky u.Levitation flat.
+    if (u && !Levitation_st() && u.ux > 0) {
         update_lastseentyp(u.ux, u.uy);
     }
     ensure_lastseentyp();

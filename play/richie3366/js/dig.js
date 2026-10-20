@@ -631,7 +631,7 @@ export async function unearth_you() {
         u.Strangled = 0; // C :2236
         if (u.uprops?.[STRANGLED]) u.uprops[STRANGLED].intrinsic = 0;
     }
-    vision_recalc(0); // C :2237
+    await vision_recalc(0); // C :2237
 }
 
 /**
@@ -991,7 +991,7 @@ export async function digactualhole(x, y, madeby, ttyp) {
                         await make_angry_shk(mtmp, 0, 0);
                     }
                     /* C dig.c:823 — ledger_no(&tolevel) via live dungeon.js export. */
-                    migrate_to_level(
+                    await migrate_to_level(
                         mtmp, ledger_no(tolevel), MIGR_RANDOM, null,
                     );
                 }
@@ -1952,7 +1952,7 @@ export async function fracture_rock(obj) {
         const fy = obj.oy | 0;
         if (!does_block(fx, fy, game.level?.at?.(fx, fy))) {
             unblock_point(fx, fy);
-            vision_recalc(0);
+            await vision_recalc(0);
         }
         if (cansee(fx, fy)) newsym(fx, fy);
     }

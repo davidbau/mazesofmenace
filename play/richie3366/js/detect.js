@@ -127,6 +127,7 @@ import {
 import { room_discovered } from './dungeon.js';
 import { spec_ability, SPFX_SEARCH } from './artifact.js';
 import { def_char_is_furniture } from './drawing.js';
+import { finish_losehp_done } from './end.js';
 
 const PM_LONG_WORM = monsterNames.indexOf('PM_LONG_WORM');
 
@@ -2665,6 +2666,10 @@ export async function use_crystal_ball(obj) {
                 'exploding crystal ball',
                 KILLED_BY_AN,
             );
+            // C losehp's fatal arm is urgent_pline + done(DIED) inline;
+            // JS defers it to finish_losehp_done (apply.js wand-break
+            // precedent).
+            if (game._losehp_needs_done) await finish_losehp_done();
             break;
         default:
             break;

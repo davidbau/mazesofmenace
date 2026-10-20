@@ -470,6 +470,8 @@ import {
     donate_gold,
     inside_shop,
     is_unpaid,
+    hot_pursuit,
+    make_angry_shk,
     shop_keeper,
     sellobj,
     stolen_value,
@@ -1799,7 +1801,7 @@ export async function breakobj(
                     && (room !== state.u?.ushops?.[0]
                         || !inside_shop(state.u?.ux, state.u?.uy, state))
                     && heroSeq !== eshk.break_seq) {
-                    note_unported('shk.c make_angry_shk');
+                    await make_angry_shk(keeper, x, y, state, objectEnv);
                 }
                 // C calls make_angry_shk() only on the first breakage of a
                 // hero move, then records this sequence even when no theft
@@ -2513,10 +2515,7 @@ export async function throwit_mon_hit(mon, obj, state = game) {
             || !in_rooms(after.mx, after.my, SHOPBASE, state).includes(
                 state.u.ushops?.[0],
             ))) {
-        // C discards hot_pursuit()'s return. Its shopkeeper movement arm is
-        // still unported, so preserve the source boundary without changing
-        // the missile's landing state or adding a replacement RNG draw.
-        note_unported('shk.c hot_pursuit');
+        hot_pursuit(after, state);
     }
     if (objGone) clearThrownObject(state);
     return false;

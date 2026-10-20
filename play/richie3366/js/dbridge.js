@@ -776,7 +776,7 @@ export async function close_drawbridge(x, y) {
     newsym(x, y);
     newsym(x2, y2);
     recalc_block_point(x2, y2); // C block_point
-    vision_recalc(0);
+    await vision_recalc(0);
     nokiller();
 }
 
@@ -832,7 +832,7 @@ export async function open_drawbridge(x, y) {
     newsym(x, y);
     newsym(x2, y2);
     recalc_block_point(x2, y2); // C unblock_point — JS rebuilds
-    vision_recalc(0);
+    await vision_recalc(0);
     if (Is_stronghold(game.u?.uz)) {
         const uu = game.u || {};
         if (!uu.uevent) uu.uevent = {};
@@ -934,7 +934,7 @@ export async function destroy_drawbridge(x, y) {
     newsym(x, y);
     newsym(x2, y2);
     if (!does_block(x2, y2, lev2)) unblock_point(x2, y2); // C: vision
-    vision_recalc(0);
+    await vision_recalc(0);
 
     if (Is_stronghold(game.u?.uz)) {
         const u = game.u || {};

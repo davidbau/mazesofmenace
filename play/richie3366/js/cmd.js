@@ -7038,7 +7038,7 @@ export async function domove(dx, dy) {
     // ustuck) skips the clue.
     if (did_step) {
         newsym(oldx, oldy);
-        vision_recalc(1);
+        await vision_recalc(1);
         await invocation_message();
     }
 

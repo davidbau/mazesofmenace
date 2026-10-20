@@ -1754,7 +1754,7 @@ export async function retouch_object(obj, loseit) {
                 await finish_losehp_done();
                 if (game.program_state?.gameover) return 0;
             }
-            exercise(A_CON, false);
+            await exercise(A_CON, false);
         }
     }
     /* C :2561–2571 — removing a worn item might destroy it (levitation loss

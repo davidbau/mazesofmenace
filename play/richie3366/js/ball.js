@@ -249,7 +249,7 @@ export async function drag_down() {
                 KILLED_BY_AN,
             );
             await finish_maybe_wail();
-            exercise(A_STR, false);
+            await exercise(A_STR, false);
             dragchance -= 2;
         }
         if (dragchance >= rnd(6)) {
@@ -260,7 +260,7 @@ export async function drag_down() {
                 NO_KILLER_PREFIX,
             );
             await finish_maybe_wail();
-            exercise(A_STR, false);
+            await exercise(A_STR, false);
             await litter();
         }
     }

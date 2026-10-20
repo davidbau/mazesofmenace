@@ -85,7 +85,7 @@ import {
     is_watch,
 } from './monsters.js';
 import {
-    mkobj, mksobj_at, place_object, stackobj, delobj, relobj_on_death, obj_extract_self,
+    mkobj, mksobj_at, place_object, stackobj, delobj, obj_extract_self,
     weight, obj_stop_timers, objects_at, splitobj, sobj_at, dealloc_obj,
 } from './mkobj.js';
 import {
@@ -3380,7 +3380,7 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                 await passive_obj(mon, weapon, mattk);
             }
         }
-        exercise(A_STR, false);
+        await exercise(A_STR, false);
         break;
     case AD_STON:
         // C uhitm.c passive :5930-5956 — touch-petrify: worn armor for
@@ -4116,7 +4116,7 @@ export async function gulpum(mdef, mattk) {
                         if (!he_prop('Unchanging', 'HUnchanging', 'EUnchanging')) {
                             await (await import('./potion.js')).make_slimed(5, null);
                         }
-                    } else exercise(A_CON, true);
+                    } else await exercise(A_CON, true);
                 }
                 game.mswallower = null;
                 end_engulf();
@@ -5094,7 +5094,7 @@ export async function do_attack(mtmp) {
         }
     }
 
-    exercise(A_STR, true); // you're exercising muscles
+    await exercise(A_STR, true); // you're exercising muscles
     /* C uhitm.c do_attack `:551–553` — after exercise, before leprechaun
        evade / hitum: u_wipe_engr(3) (andrew@orca: no unlimited pick-axe
        attacks). Callee D-1051; no extra RNG with no engraving /

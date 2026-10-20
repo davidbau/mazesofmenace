@@ -779,7 +779,7 @@ export async function show_transient_light(obj, x, y) {
         ls.y = y | 0;
     }
 
-    vision_recalc(0);
+    await vision_recalc(0);
     await flush_screen(0);
 
     const radius_squared = (ls.range | 0) * (ls.range | 0);
@@ -817,7 +817,7 @@ export function discard_flashes() {
  */
 export async function transient_light_cleanup() {
     discard_flashes();
-    if (game.vision_full_recalc) vision_recalc(0);
+    if (game.vision_full_recalc) await vision_recalc(0);
 
     let mtempcount = 0;
     for (const mon of game.fmon || []) {

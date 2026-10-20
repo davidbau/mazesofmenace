@@ -123,12 +123,12 @@ import {
 import { objectNames, WEAPON_CLASS } from './objects.js';
 import { ART_TROLLSBANE, ART_STORMBRINGER, ART_VORPAL_BLADE, ART_SNICKERSNEE, ART_OGRESMASHER } from './generated/artifacts_data.js';
 import {
-    relobj_on_death, mkcorpstat, stackobj, mksobj_at, obj_nexto,
+    mkcorpstat, stackobj, mksobj_at, obj_nexto,
     obj_meld, pudding_merge_message, place_object, add_to_container,
     weight, mksobj, set_corpsenm, obj_stop_timers, mkgold, clear_dknown,
     obj_extract_self, add_to_minv,
 } from './mkobj.js';
-import { findgold, stealarm, unstolenarm } from './steal.js';
+import { findgold, stealarm, unstolenarm, relobj } from './steal.js';
 import { flooreffects } from './do.js';
 import { end_burn } from './timeout.js';
 import { obj_resists, finish_meating } from './dogmove.js';
@@ -3730,23 +3730,13 @@ export async function vamprises(mtmp) {
  * destroy the guard's gold, drop the rest, park at <0,0>, retry). isgd is
  * cleared for dmonsfree only when the corridor is fully disposed.
  * clear_fcorr/parkguard join the vault.js edge (same SCC, hoisted).
- * The isgd-gold-vanish arm is steal.c relobj's (`:874–898`); the drop-rest
- * half is relobj_on_death (mkobj.js, mdrop_obj per head).
+ * relobj (steal.js) destroys the guard's gold and drops the rest.
  */
 export async function grddead(grd) {
     let dispose = await clear_fcorr(grd, true);
     if (!dispose) {
-        const gold = findgold(grd.minvent);
-        if (grd.isgd && gold) {
-            if (canspotmon(grd)) {
-                await pline(
-                    `${s_suffix(Monnam(grd))} gold ${canseemon(grd) ? 'vanishes' : 'seems to vanish'}.`,
-                );
-            }
-            obj_extract_self(gold);
-            obfree(gold, null);
-        }
-        await relobj_on_death(grd);
+        /* destroy guard's gold; drop any other inventory */
+        await relobj(grd, 0, false);
         grd.mhp = 0;
         parkguard(grd);
         dispose = await clear_fcorr(grd, true);
@@ -3890,9 +3880,9 @@ export async function m_detach(mtmp, mptr, due_to_death) {
             if (await stinky_nemesis(mtmp)) await nemesis_stinks(mx, my);
         }
         if ((mtmp.data?.msound | 0) === MS_LEADER) leaddead();
-        await relobj_on_death(mtmp);
-        // C relobj show=1: drop, then newsym if hero can see the spot.
-        if (mx > 0 && cansee(mx, my)) newsym(mx, my);
+        /* release (drop onto map) all objects carried by mtmp; assumes that
+           mtmp->mx,my contains the appropriate location */
+        await relobj(mtmp, 1, false); /* drop mtmp->minvent, issue newsym(mx,my) */
     }
 
     // C m_id==stealmid; the stealmid guard skips JS's unset m_id 0

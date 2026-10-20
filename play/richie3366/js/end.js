@@ -1968,6 +1968,7 @@ async function savebones(how, when, corpse) {
                     cell.remembered_glyph = undefined;
                     cell.disp_ch = ' ';
                     cell.disp_color = 8; // NO_COLOR
+                    cell.disp_color_raw = 8;
                     cell.disp_decgfx = false;
                     cell.disp_attr = 0;
                     cell.gnew = 0;

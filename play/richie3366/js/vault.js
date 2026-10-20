@@ -53,7 +53,7 @@ import {
     A_LAWFUL, Has_contents, IS_ROOM, ACCESSIBLE, isok,
     GD_EATGOLD, GD_DESTROYGOLD, ARTICLE_A, FCSIZ,
     RLOC_NOMSG, RLOC_MSG, RLOC_ERR, FEMALE, MALE, IN_SIGHT, COULD_SEE,
-    NEED_HTH_WEAPON, MELT_ICE_AWAY, IS_OBSTRUCTED, Upolyd,
+    NEED_HTH_WEAPON, MELT_ICE_AWAY, IS_OBSTRUCTED, Upolyd, MON_OFFMAP,
 } from './const.js';
 import { MON_WEP, mon_wield_item } from './weapon.js';
 import { m_at, m_carrying, mnexto, mpickgold, setmangry, mongone } from './mon.js';
@@ -183,13 +183,14 @@ export async function clear_fcorr(grd, forceshow) {
             return false;
         }
 
-        let monThere = null;
-        for (const m of game.fmon || []) {
-            if ((m.mx | 0) === fcx && (m.my | 0) === fcy && (m.mhp | 0) > 0) {
-                monThere = m;
-                break;
-            }
-        }
+        // C `:80` m_at is level.monsters[x][y], no DEADMONSTER test. mongone
+        // zeroes the guard's mhp before grddead (mon.c `:3272–3276`) while he
+        // still stands on the grid, so he is found here and grddead takes
+        // its relobj + parkguard arm; JS m_at skips mhp <= 0 (mondead's
+        // removal), hence the explicit grd test (D-4175).
+        const monThere = m_at(fcx, fcy)
+            || ((grd.mx | 0) === fcx && (grd.my | 0) === fcy
+                && !((grd.mstate | 0) & MON_OFFMAP) ? grd : null);
         /* C vault.c:80–87 — move the occupant aside, then keep clearing. */
         if (monThere) {
             if (monThere.isgd) return false;

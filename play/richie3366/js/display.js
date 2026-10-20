@@ -445,39 +445,36 @@ function hilite_pet_opt() {
 /**
  * C ref: wintype.h `:128–134` enum, stored by options.c optfn_petattr
  * `:3163` (`match_str2attr`). Paint is wintty.c tty_print_glyph
- * `:3928` `term_start_attr(iflags.wc2_petattr)`, which calls
- * termcap.c `s_atr2str` `:1339–1376` (`term_start_attr` `:1434`).
+ * `:3928` `term_start_attr(iflags.wc2_petattr)` (termcap.c `:1792–1803`).
  *
  * Frozen terminal.js is a bitfield, not that enum. wintype ATR_BOLD
  * is 1 and terminal ATR_INVERSE is 1, so a stored bold must not pass
- * through. The ANSI default tty (`termcap.c:157–160`) sets `nh_HI`,
- * `nh_US`, and `MR`. `ZH`, `MB`, `MD`, and `MH` stay null (`:46–47`).
- * `s_atr2str` then emits underline for italic, bold for blink, and
- * nothing for dim. Those strings are the terminal bits below.
+ * through.
+ *
+ * The scored screen is the contest recorder's shadow buffer (patch 006).
+ * term_start_attr records the cell attribute with `nomux_set_attr(attr)`
+ * (termcap.c `:768–774`) before `s_atr2str` picks the escape string. It
+ * switches on the wintype enum, and only ATR_INVERSE, ATR_BOLD and
+ * ATR_ULINE set a bit. Italic, blink and dim record nothing, even where
+ * `s_atr2str` would fall back to underline (italic) or bold (blink) on
+ * the real terminal (D-2810 modelled that fallback; the recording keeps
+ * the enum, scen-options-Knight-50457009 step 159). Recorder behaviour,
+ * not NetHack's; ported because the shadow buffer is what is scored.
  *
  * An unset field stands in for initoptions `:7264` (wintype ATR_INVERSE).
- * A stored 0 is ATR_NONE: `term_start_attr` `:1433` skips attr 0.
+ * A stored 0 is ATR_NONE: `term_start_attr` `:1795` skips attr 0.
  */
 function petattr_to_tty(a) {
     if (a == null) return ATR_INVERSE;
-    const n = a | 0;
-    // termcap.c s_atr2str :1340–1375. Capability tests are the ANSI
-    // default: ZH/MB/MD/MH null, nh_US/nh_HI/MR set.
-    switch (n) {
-    case 3: // wintype ATR_ITALIC — ZH null, fall through (:1343–1347)
-    case 5: // wintype ATR_BLINK
-    case 4: // wintype ATR_ULINE
-        // Blink: MB is null, so this arm does not return (:1349–1351).
-        // Italic and underline: nh_US is set (:1352–1356).
-        if (n !== 5) return ATR_UNDERLINE;
-        // FALLTHROUGH — blink only.
-    case 1: // wintype ATR_BOLD — MD null, nh_HI set (:1359–1364)
-        return ATR_BOLD;
-    case 7: // wintype ATR_INVERSE — MR set (:1366–1368)
+    // termcap.c nomux_set_attr :769–773.
+    switch (a | 0) {
+    case 7: // wintype ATR_INVERSE
         return ATR_INVERSE;
-    case 2: // wintype ATR_DIM — MH null, no fallthrough (:1370–1374)
-        return 0;
-    default: // wintype ATR_NONE and any other value → nulstr
+    case 1: // wintype ATR_BOLD
+        return ATR_BOLD;
+    case 4: // wintype ATR_ULINE
+        return ATR_UNDERLINE;
+    default: // ATR_NONE, ATR_DIM, ATR_ITALIC, ATR_BLINK: no shadow bit
         return 0;
     }
 }
@@ -575,6 +572,25 @@ function engrcorr_map_attr(gid) {
  * handling, never active on contest tty; same standing as the
  * litcorr/engrcorr twins).
  */
+/**
+ * C ref: display.c reglyph_darkroom `:1850–1853` — the
+ * `gs.showsyms[S_darkroom]` equate: S_room's symbol when dark_room and
+ * use_color are on, else SYM_NOTHING's (blank). JS keeps no showsyms slot
+ * for it (map_glyphinfo derives the darkroom paint live), so C readers of
+ * showsyms[S_darkroom] read this. It reflects the current flags; C's
+ * value is the one set at the last reglyph_darkroom call (startup,
+ * goto_level, restore, an option redraw), which only lags inside the
+ * color toggle's own reset_glyphmap (options.c `:8983` before `:8999`).
+ * @returns {number}
+ */
+function darkroom_showsym() {
+    const darkRoom = game.flags?.dark_room !== false;
+    const useColor = game.iflags?.wc_color !== false;
+    return (darkRoom && useColor)
+        ? live_showsyms(S_ROOM_CMAP + SYM_OFF_P)
+        : live_showsyms(SYM_NOTHING + SYM_OFF_X);
+}
+
 function lava_ice_sink_map_attr(gid) {
     // C `:2890`: the whole BW chain runs only with color off.
     if (game.iflags?.wc_color !== false) return 0;
@@ -595,9 +611,11 @@ function lava_ice_sink_map_attr(gid) {
         hit = sym === live_showsyms(S_POOL_CMAP + SYM_OFF_P)
             || sym === live_showsyms(S_WATER_CMAP + SYM_OFF_P);
     } else if (cmap === S_ICE_CMAP) {
-        // C `:2904–2907`: collide with room or dark room.
+        // C `:2904–2907`: collide with room or dark room. C's
+        // showsyms[S_darkroom] is the reglyph_darkroom equate, never the
+        // symset's own slot (D-4176).
         hit = sym === live_showsyms(S_ROOM_CMAP + SYM_OFF_P)
-            || sym === live_showsyms(S_DARKROOM + SYM_OFF_P);
+            || sym === darkroom_showsym();
     } else {
         // C `:2909–2911`: sink collides with fountain.
         hit = sym === live_showsyms(S_FOUNTAIN_CMAP + SYM_OFF_P);
@@ -2595,7 +2613,11 @@ export function map_object(obj, show) {
     const attr = obj_map_attr(obj);
     const pile = obj_is_piletop(obj);
     if (game.level?.flags?.hero_memory && loc) {
-        // C: Hallu+STATUE → levl glyph = random_obj_to_glyph (not display glyph)
+        // C: Hallu+STATUE → levl glyph = random_obj_to_glyph (not display
+        // glyph; display.h `:933–936`). The int rides with the memory:
+        // show_map_spot's `glyph_is_object(oldglyph)` restore (detect.c
+        // `:1410`) and newsym's memory paint read it, so an id-less record
+        // was wiped by magic mapping (scen-sweep-Barbarian-50055075 s564).
         if (game.u?.Hallucination && obj.otyp === STATUE_OTYP) {
             const otyp = rn2_on_display_rng(NUM_OBJECTS - FIRST_OBJECT)
                 + FIRST_OBJECT;
@@ -2609,6 +2631,7 @@ export function map_object(obj, show) {
                     decgfx: false,
                     objpile: pile,
                     otyp,
+                    glyph: mnum + GLYPH_BODY_OFF,
                 };
             } else {
                 const def = game.objects?.[otyp];
@@ -2621,6 +2644,7 @@ export function map_object(obj, show) {
                     otyp,
                     statue: otyp === STATUE_OTYP,
                     boulder: otyp === BOULDER_OTYP,
+                    glyph: objnum_to_glyph(otyp),
                 };
             }
             loc.remembered_glyph = mem;
@@ -3264,9 +3288,16 @@ export function reset_display_messages() {
     _tty_intr = 0;
     _tty_inmore = 0;
     _tty_rawprint = 0;
-    _nomux_raw_active = false;
+    _nomux_raw_active = 0;
     _nomux_raw_row = 0;
     _nomux_raw_col = 0;
+    // wintty statics a previous game's recorder overflow may have
+    // rewritten (nomux_wintty_poke); C starts each process at 0.
+    erasing_tty_screen = 0;
+    resize_mesg = 0;
+    clipping = false;
+    clipx = clipy = clipxmax = clipymax = 0;
+    _nomux_shadow.clear();
     _msg_cw = null;
     _snapshot_mesgs = null;
     _putmsghistory_initd = false;
@@ -3365,11 +3396,17 @@ export function clear_nhwindow_message() {
     const wrapped = (game._pending_message || '').includes('\n');
     _toplines = '';
     _toplin = TOPLINE_EMPTY;
-    game._pending_message = '';
     if (_msg_cw) {
         _msg_cw.curx = 0;
         _msg_cw.cury = 0;
     }
+    // C `:1049` the screen erase only `if (!erasing_tty_screen)`; else
+    // the text stays as stale pixels under EMPTY (mark_topline_empty).
+    if (erasing_tty_screen) {
+        _stale_topline = game._pending_message || null;
+        return;
+    }
+    game._pending_message = '';
     topline_home_cl_end(); // C `:1050–1051` home(); cl_end()
     if (wrapped) resync_map_row0();
 }
@@ -3452,6 +3489,10 @@ export function clear_message_window_menu_overlay() {
     // C `:1050–1053` home(); cl_end(); if (cw->cury) docorner(1, cury+1, 0)
     const wrapped = (game._pending_message || '').includes('\n');
     _toplin = TOPLINE_EMPTY;
+    if (erasing_tty_screen) { // C `:1049`, as in clear_nhwindow_message
+        _stale_topline = game._pending_message || null;
+        return;
+    }
     game._pending_message = '';
     topline_home_cl_end();
     if (wrapped) resync_map_row0();
@@ -3504,6 +3545,8 @@ const S_BARS = 17;
 const S_TREE_CMAP = 18;
 const S_ROOM_CMAP = 19;
 const S_DARKROOM = 20;
+// defsym.h symbols whose color is CLR_BLACK (S_darkroom, S_pit, S_spiked_pit).
+const DEFSYM_CLR_BLACK = new Set([20, 59, 60]);
 const S_ENGROOM = 21;
 const S_CORR = 22;
 const S_LITCORR = 23;
@@ -5364,6 +5407,13 @@ export async function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false
     // fountain are both '{'), so the id is part of the change test below.
     const newGlyphId = typeof glyph === 'number' ? glyph | 0
         : (ch === 'I' && !decgfx) ? GLYPH_INVISIBLE : NO_GLYPH;
+    // Unmapped glyph color for the contest recorder's shadow cell, which
+    // keeps CLR_BLACK as dark gray (nomux_capture.js); tty_map_color drops
+    // it. Cmap painters pass the defsym.h CLR_BLACK symbols (S_darkroom
+    // `:113`, S_pit/S_spiked_pit `:167–168`) as NO_COLOR already, so the
+    // glyph id restores C's glyphmap color for those.
+    loc.disp_color_raw = (color === NO_COLOR && glyph_is_cmap(newGlyphId)
+        && DEFSYM_CLR_BLACK.has(glyph_to_cmap(newGlyphId))) ? CLR_BLACK : color;
     // C `:2031–2056` — gnew + span when the buffered glyphinfo
     // actually differs (glyph id, ttychar, gm color/flags/tile), or
     // unconditionally under iflags.use_background_glyph (FALSE on tty —
@@ -5596,7 +5646,14 @@ export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_su
                         }
                     }
                 }
-                if (kind === 'other') {
+                if (kind === 'other' && glyph_at(x, y) === GLYPH_UNEXPLORED) {
+                    // C `:2209` glyph = glyph_at(x, y): an unexplored
+                    // displayed cell takes no strip arm and stays
+                    // unexplored, whatever seenv says (a blind hero's
+                    // unmapped neighbour; scen-sweep-Caveman-50055035
+                    // step 885 pool cell).
+                    glyph = attach_glyph(copy_glyph(default_cell), GLYPH_UNEXPLORED);
+                } else if (kind === 'other') {
                     // C glyph_at for terrain/engraving — prefer memory / back_to_glyph
                     // over disp_* (disp_color is already tty-mapped). The int id
                     // travels with the cell: C returns glyph_at untouched when no
@@ -5683,8 +5740,18 @@ export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_su
     if ((!keep_mons && kind === 'mon')) {
         glyph = copy_glyph_id(levl_glyph);
         was_mon = true;
-        if (glyph?.invisible) kind = 'invisible';
-        else {
+        // C `:2219–2231` test the int now in `glyph` (levl_glyph), not the
+        // live pile: a remembered object under the hero or a monster is
+        // stripped even when what lies there now is a different object
+        // (scen-chain-Monk-50450082 step 195: remembered `(` under `@`,
+        // a rock there now). The char match below is only for a memory
+        // that carries no int.
+        const memId = typeof glyph?.glyph === 'number' ? glyph.glyph | 0 : NO_GLYPH;
+        if (glyph?.invisible || memId === GLYPH_INVISIBLE) kind = 'invisible';
+        else if (memId !== NO_GLYPH) {
+            kind = glyph_is_object(memId) ? 'obj'
+                : glyph_is_trap(memId) ? 'trap' : 'other';
+        } else {
             const obj = objects_at(x, y);
             if (obj && !covers_objects(x, y)) {
                 const og = obj_glyph(obj);
@@ -6882,7 +6949,7 @@ function swallow_cell(x, y, part, swallowerMnum) {
     show_glyph_cell(x, y, g.ch, color, g.dec, 0, glyph);
 }
 
-export function swallowed(first = 0) {
+export async function swallowed(first = 0) {
     const u = game.u;
     if (!u?.ux || !u.ustuck) return;
     const ux = u.ux | 0;
@@ -6890,18 +6957,14 @@ export function swallowed(first = 0) {
     const swallower = u.ustuck.mnum ?? u.ustuck.data?.mndx ?? 0;
 
     if (first) {
-        // C `:1337–1339` — cls(); bot(). cls() is display.c:2196–2201:
-        // message flush + botlx + clear_nhwindow(WIN_MAP) +
-        // clear_glyph_buffer() (`:2200` — the gbuf wipe). The gulp path
-        // (mhitu.c:1396) calls swallowed(1) directly, not via docrt, so
-        // the wipe must live here: without it the pre-swallow glyphs
-        // (monsters the hero can no longer see) stay readable via
-        // glyph_at and getpos 'm' cycles to phantom squares (D-3579).
-        // The physical clear rides along: every cell is blanked + dirty
-        // below, so the next flush repaints blanks. The async cls()
-        // (terminal/message side) stays the docrt arm's; bot() runs
-        // sync-called as before.
-        clear_glyph_buffer();
+        // C `:1337–1339` — cls(); bot(). cls() is display.c:2190–2203:
+        // pending --More-- (message flush) + botlx + clear_nhwindow(WIN_MAP)
+        // + clear_glyph_buffer() (the gbuf wipe D-3579 needs: pre-swallow
+        // glyphs must not stay readable via glyph_at). Both callers reach
+        // it here — docrt's swallow arm and the gulp path (mhitu.c:1396) —
+        // so the physical screen is cleared too: monsters drawn before the
+        // engulf do not survive around the stomach box.
+        await cls();
         void bot();
     } else if (_swallow_lastx) {
         // C `:1341–1348` — clear the old 3x3 with show_glyph(x, y,
@@ -7260,12 +7323,8 @@ export async function docrt_flags(refresh_flags) {
             // no vision_recalc/cls), then post_map.
             await redraw_map(0);
         } else if (game.u.uswallow) {
-            // C `:1726–1728` — swallowed(1) does cls()+bot(). The async
-            // cls() stays here (terminal/message side); swallowed(first)
-            // wipes gbuf itself via clear_glyph_buffer (C :1338→:2200),
-            // which the direct gulp-path caller (mhitu.c:1396) needs.
-            await cls();
-            swallowed(1);
+            // C `:1726–1728` — swallowed(1) does cls()+bot().
+            await swallowed(1);
         } else if ((game.u.uinwater | 0) && !Is_waterlevel(game.u.uz)) {
             // C `:1730–1732` — engulfed-water map arm (Underwater ≡
             // u.uinwater, youprop.h:279; the water level has its routines).
@@ -7290,7 +7349,7 @@ export async function docrt_flags(refresh_flags) {
                 }
             }
             // C `:1739` — shut down vision.
-            vision_recalc(2);
+            await vision_recalc(2);
             // C `:1741–1748` — cls() fills the physical screen with rock
             // and clears the glyph buffer.
             if (!nocls) await cls();
@@ -7299,7 +7358,7 @@ export async function docrt_flags(refresh_flags) {
                 for (let y = 0; y < ROWNO; y++)
                     show_memory_glyph(x, y);
             // C `:1758` — see what is to be seen.
-            vision_recalc(0);
+            await vision_recalc(0);
             // C `:1761` — overlay with monsters.
             await see_monsters();
         }
@@ -8126,7 +8185,11 @@ function _buildScreenOutput() {
         // cursor — C leaves gt.toplines but parse() positions on the hero.
         if (msg.startsWith('Count:')) {
             display.setCursor(msg.length, 0);
-        } else if (msg.endsWith('--More--') && !msg.includes('\n')) {
+        } else if (_tty_inmore && msg.endsWith('--More--') && !msg.includes('\n')) {
+            // Inside more() (topl.c `:218–230`) the cursor stays after
+            // the --More-- putsyms wrote; otherwise flush_screen(1) puts it
+            // on the hero even when the message text itself ends in
+            // "--More--" (rumors.fal `:389` fortune, D-4172).
             display.setCursor(msg.length, 0);
         } else if (msg.includes('\n--More--')) {
             display.setCursor(8, 1);
@@ -8389,6 +8452,58 @@ function map_screen_cell(mx, my) {
 }
 
 /**
+ * Contest recorder patch 006 (termcap.c nomux_putch / nomux_set_fg) keeps
+ * each map cell as the raw DECgraphics byte with a decgfx flag, in the
+ * glyph's own color; the Terminal keeps only the converted char and the
+ * tty_map_color'd color. For screen cell (sc, sr) still showing the gbuf
+ * glyph _paint_gbuf_cell painted (same char and color), return
+ * { dec: DEC byte or null, color: unmapped glyph color }; else null
+ * (text, menus). Used by nomux_capture.js to rebuild the shadow buffer.
+ */
+export function nomux_cell_gbuf(sc, sr, cell) {
+    const key = ((sr | 0) << 8) | (sc & 0xff);
+    const res = nomux_cell_gbuf_now(sc, sr, cell);
+    if (res) {
+        _nomux_shadow.set(key, { ch: cell.ch, color: cell.color, res });
+        return res;
+    }
+    // Under a CLIPPING pan the cells the pan leaves unpainted still hold
+    // the pre-pan map paint (and nomux's raw byte for it), which the
+    // current offsets no longer reach.
+    if (!clipping || !cell) return null;
+    const e = _nomux_shadow.get(key);
+    return (e && e.ch === cell.ch && e.color === cell.color) ? e.res : null;
+}
+
+// Recorder shadow (patch 006 nomux_putch keeps each cell's raw byte):
+// what nomux_cell_gbuf last matched per screen cell.
+const _nomux_shadow = new Map();
+
+function nomux_cell_gbuf_now(sc, sr, cell) {
+    const mx = (sc | 0) + 1 + (clipping ? clipx : 0);
+    const my = (sr | 0) - 1 + (clipping ? clipy : 0);
+    if (mx < 1 || mx >= COLNO || my < 0 || my >= ROWNO) return null;
+    const loc = game.level?.at(mx, my);
+    if (!loc || loc.disp_ch == null || loc.disp_ch === '') return null;
+    const raw = loc.disp_ch;
+    if (raw.charCodeAt(0) < 32 || loc.disp_capture_drop) return null;
+    let ch = raw;
+    if (loc.disp_decgfx) {
+        const uni = DEC_TO_UNICODE[raw];
+        if (uni && raw !== '{' && raw !== '`' && raw !== 'g'
+            && raw !== '|' && raw !== 'o' && raw !== 's')
+            ch = uni;
+    }
+    const color = loc.disp_extracolor ? NO_COLOR : (loc.disp_color ?? NO_COLOR);
+    if (!cell || cell.ch !== ch || cell.color !== color) return null;
+    return {
+        dec: loc.disp_decgfx ? raw : null,
+        color: loc.disp_extracolor ? NO_COLOR
+            : (loc.disp_color_raw ?? loc.disp_color ?? NO_COLOR),
+    };
+}
+
+/**
  * One gbuf cell onto the Terminal (C print_glyph / row_refresh).
  * @param {number} mx map x (1..COLNO-1)
  * @param {number} my map y (0..ROWNO-1)
@@ -8635,6 +8750,57 @@ export async function redraw_map(cursor_on_u) {
 let clipping = false;
 let clipx = 0, clipxmax = 0;
 let clipy = 0, clipymax = 0;
+// C wintty.c `:174` `volatile int erasing_tty_screen` (term_clear_screen
+// → erase_tty_screen → tty_clear_nhwindow reentrancy flag) and `:356`
+// `volatile int resize_mesg` (RESIZABLE `:35–40`, set by the SIGWINCH
+// path). JS has neither path, so both stay 0 unless the recorder's
+// nomux_out overflow writes them (nomux_capture.js).
+let erasing_tty_screen = 0;
+let resize_mesg = 0;
+
+/**
+ * The wintty statics the contest recorder's nomux_out overflow reaches
+ * (nomux_capture.js), as C holds them: `clipping` is a schar.
+ * @returns {{ erasing_tty_screen: number, clipping: number, clipx: number,
+ *   clipy: number, clipxmax: number, clipymax: number, resize_mesg: number }}
+ */
+export function nomux_wintty_statics() {
+    return {
+        erasing_tty_screen,
+        clipping: clipping === true ? 1 : (clipping | 0),
+        clipx, clipy, clipxmax, clipymax,
+        resize_mesg,
+    };
+}
+
+/**
+ * Store the wintty statics after a recorder overflow rewrote them
+ * (nomux_capture.js overflow_wintty). C acts on whatever lands there.
+ * @param {object} v same shape as nomux_wintty_statics()
+ */
+export function nomux_wintty_poke(v) {
+    erasing_tty_screen = v.erasing_tty_screen | 0;
+    clipping = v.clipping | 0;
+    clipx = v.clipx | 0;
+    clipy = v.clipy | 0;
+    clipxmax = v.clipxmax | 0;
+    clipymax = v.clipymax | 0;
+    resize_mesg = v.resize_mesg | 0;
+}
+
+/**
+ * C wintty.c tty_nhgetch `:4154–4160` (RESIZABLE): after the key read,
+ * `if (resize_mesg) { resize_mesg = 0; tty_clear_nhwindow(WIN_MESSAGE);
+ * i = '\033'; }`. Returns true when the arm ran (the caller replaces
+ * the key by ESC).
+ * @returns {boolean}
+ */
+export function tty_resize_mesg_arm() {
+    if (!resize_mesg) return false;
+    resize_mesg = 0;
+    clear_message_window_menu_overlay(); // tty_clear_nhwindow(WIN_MESSAGE)
+    return true;
+}
 
 /**
  * C wintty.c CLIPPING file statics `:186–193` — read-only view for the
@@ -9087,6 +9253,7 @@ export function clear_glyph_buffer() {
             if (!loc) continue;
             loc.disp_ch = ' ';
             loc.disp_color = NO_COLOR;
+            loc.disp_color_raw = NO_COLOR;
             loc.disp_decgfx = false;
             loc.disp_attr = 0;
             loc.disp_kind = 'unexplored';
@@ -9115,7 +9282,9 @@ export async function cls() {
     if (!game.flags) game.flags = {};
     game.flags.botlx = true;
     const display = game?.nhDisplay;
-    if (display?.clearScreen) display.clearScreen();
+    // C tty_clear_nhwindow NHW_MAP `:1104–1109`: term_clear_screen
+    // only `if (!erasing_tty_screen)`.
+    if (display?.clearScreen && !erasing_tty_screen) display.clearScreen();
     // C: clear_glyph_buffer() after clear_nhwindow(WIN_MAP)
     clear_glyph_buffer();
     game._pending_message = '';
@@ -9359,14 +9528,43 @@ async function getret() {
 
 // C termcap.c NOMUX_CAPTURE raw shadow (`nomux_raw_active/row/col`
 // `:871–873`) — the recorder's view of tty_raw_print output. Entered on
-// the first non-empty raw_print and never left (`:875–883`).
-let _nomux_raw_active = false;
+// the first non-empty raw_print and never left (`:875–883`). C ints:
+// nomux_out overflows rewrite them (nomux_capture.js), and every marker
+// reports CX/CY from the raw counters once raw_active is non-zero
+// (nomux_get_cursor `:952–960`).
+let _nomux_raw_active = 0;
 let _nomux_raw_row = 0;
 let _nomux_raw_col = 0;
 
+/**
+ * The raw-mode statics as C holds them (nomux_capture.js loads them before
+ * a marker's overflow and reads the cursor from them).
+ * @returns {{ active: number, row: number, col: number }}
+ */
+export function nomux_raw_statics() {
+    return { active: _nomux_raw_active, row: _nomux_raw_row, col: _nomux_raw_col };
+}
+
+/**
+ * Store the raw-mode statics after a recorder overflow rewrote them.
+ * @param {{ active: number, row: number, col: number }} v
+ */
+export function nomux_raw_poke(v) {
+    _nomux_raw_active = v.active | 0;
+    _nomux_raw_row = v.row | 0;
+    _nomux_raw_col = v.col | 0;
+}
+
+// The recorder's shadow screen (termcap.c nomux_buf) exists before
+// init_nhwindows allocates ttyDisplay: until jsmain installs the display,
+// raw output lands on the pending display (game._nomuxShadow).
+function nomux_shadow() {
+    return game.nhDisplay || game._nomuxShadow || null;
+}
+
 /** C termcap.c nomux_raw_putch `:885–900`. */
 function nomux_raw_putch(ch, attr) {
-    const disp = game.nhDisplay;
+    const disp = nomux_shadow();
     if (ch === '\n') {
         _nomux_raw_row++;
         _nomux_raw_col = 0;
@@ -9387,10 +9585,10 @@ function nomux_raw_putch(ch, attr) {
  * The shadow's fg/attr carry no stale colour here (recorded plain text).
  */
 function nomux_raw_emit(s, bold) {
-    const disp = game.nhDisplay;
+    const disp = nomux_shadow();
     if (!_nomux_raw_active) {
-        if (disp && !s) return; // in-game flush (markers always on)
-        _nomux_raw_active = true; // nomux_enter_raw_mode
+        if (game.nhDisplay && !s) return; // in-game flush (markers always on)
+        _nomux_raw_active = 1; // nomux_enter_raw_mode
         _nomux_raw_row = 0;
         _nomux_raw_col = 0;
         disp?.clearScreen?.();
@@ -9991,10 +10189,9 @@ function vpline_truncate(line, ln) {
  * You_cant / pline_The / There / verbalize below, plus the file-idiom
  * prefixed `pline("You ...")` sites (hack.js/lock.js idiom) which now
  * flow through here via pline().
- * Named omissions: `raw_print` (pre-window/recursive terminal path —
- * C prints then sets last_msg UNKNOWN and jumps to pline_done; JS has
- * no scored pre-window surface, so it sets UNKNOWN and returns after
- * dumplog); `alloc` (prefixed accessiblemsg tmp — JS strings, GC);
+ * Named omissions: the recursive arm's `raw_print` (`:245` — the
+ * pre-window arm is live via tty_raw_print, the recorder's raw shadow);
+ * `alloc` (prefixed accessiblemsg tmp — JS strings, GC);
  * `maybe_play_sound` (USER_SOUNDS compiled out of the contest C).
  * `ln > BIGBUFSZ-1` throws (C panic stand-in; never hit).
  * `putmesg` is the file-local below (C staticfn); its one caller is
@@ -10045,7 +10242,7 @@ export async function vpline(fmt, ...args) {
             await _prevTail;
         }
         // C `:243–249` — `if (in_pline++ || !window_inited)`: raw_print
-        // path. C prints via raw_print (named omit above), sets
+        // path. C prints via raw_print (pre-window arm live), sets
         // last_msg UNKNOWN, and jumps to pline_done (SPEECH clear +
         // --in_pline). Post-chain in_pline is 0 unless nested (kept as
         // the backstop) or pre-window.
@@ -10053,6 +10250,10 @@ export async function vpline(fmt, ...args) {
         _vpline_in_pline++;
         try {
             if (_wasIn || !game.iflags?.window_inited) {
+                // C `:245` raw_print — live before the windows are up (config
+                // errors); the recursive arm stays named (JS nests where C
+                // does not, D-3830).
+                if (!_wasIn) tty_raw_print(line);
                 if (game.iflags) game.iflags.last_msg = PLNMSG_UNKNOWN;
                 return;
             }
@@ -10385,12 +10586,12 @@ function putmesg(line) {
  * "Die?" prompt arrives with polymon's recalc pending, and the prompt's
  * flush is what clears the stale monster glyph for the eyeless hero.
  */
-export function vpline_flush_vision() {
+export async function vpline_flush_vision() {
     if (game.vision_full_recalc) {
         const _savedInPline = _vpline_in_pline;
         _vpline_in_pline = 0;
         try {
-            vision_recalc(0);
+            await vision_recalc(0);
         } finally {
             _vpline_in_pline = _savedInPline;
         }
@@ -10406,7 +10607,7 @@ async function pline_after_consume(msg, alreadyDumplogged = false) {
     if (suppress) return;
     // C pline.c vpline `:266–271` — flush before flush_screen (helper:
     // same statements, shared with the yn-prompt paint below).
-    vpline_flush_vision();
+    if (game.vision_full_recalc) await vpline_flush_vision();
     // C `:277–278` — if (u.ux) flush_screen(NO_CURS_ON_U ? 0 : 1).
     if (game.u?.ux) await flush_screen((gp.pline_flags & NO_CURS_ON_U) ? 0 : 1);
     // C `:276` putmesg(line). debug_prevent_pline returns before
