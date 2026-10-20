@@ -393,8 +393,13 @@ export async function losestr(num, knam, k_format) {
             knam = 'terminal frailty';
             k_format = KILLED_BY;
         }
-        const { losehp } = await import('./hack.js');
+        const { losehp, finish_maybe_wail } = await import('./hack.js');
         await losehp(dmg, knam, k_format);
+        // C losehp `:4314–4315` rehumanizes inline when a poly'd hero's mh
+        // drops below 1, so the `Upolyd` reads below (max-HP cut, Str
+        // loss gate) already see the restored form; drain JS's deferred
+        // rehumanize before them.
+        await finish_maybe_wail();
         if (game._losehp_needs_done || game.program_state?.gameover) {
             const { finish_losehp_done } = await import('./end.js');
             await finish_losehp_done();

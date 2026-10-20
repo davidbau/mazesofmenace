@@ -47,7 +47,7 @@ import {
 } from './zap.js';
 import { lined_up } from './mthrowu.js';
 import { burnarmor, ignite_items } from './trap.js';
-import { mkclass, makemon, set_malign } from './makemon.js';
+import { mkclass, makemon, makemon_appear_msg, set_malign } from './makemon.js';
 import { monster_census } from './minion.js';
 import { enexto, unconscious } from './teleport.js';
 import { is_fainted } from './eat.js';
@@ -714,8 +714,14 @@ async function mcast_insects(mtmp) {
             return;
         pm = mkclass(mlet, 0);
         mtmp2 = null;
-        if (pm)
+        if (pm) {
             mtmp2 = makemon(pm, bypos.x, bypos.y, MM_ANGRY | MM_NOMSG);
+            /* makemon.c:1502–1504 tail (occupation dochugw) runs inside
+               makemon in C, before the field clears below. */
+            if (mtmp2)
+                await makemon_appear_msg(mtmp2, mtmp2.mx | 0, mtmp2.my | 0,
+                    MM_ANGRY | MM_NOMSG);
+        }
         if (mtmp2) {
             success = true;
             mtmp2.msleeping = mtmp2.mpeaceful = mtmp2.mtame = 0;

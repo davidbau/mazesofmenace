@@ -142,7 +142,9 @@ import { UNCHANGING as UNCHANGING_PROP } from './const.js';
  * itself calls the same global function; not duplicating it here). */
 import { poly_gender } from './makemon.js';
 import { livelog_newform } from './polyself.js';
-import { trycall } from './cmd.js';
+import { trycall, dismount_steed as dismount_steed_fu } from './cmd.js';
+import { W_ARTI } from './const.js';
+import { Monnam as Monnam_fu } from './mcastu.js';
 /* C objects.h — AMULET_OF_RESTFUL_SLEEP is otyp 204 (same numbering
  * js/mklev.js:370 uses for the amulet_curse table). */
 const AMULET_OF_RESTFUL_SLEEP_DW = 204;
@@ -3515,7 +3517,23 @@ export async function float_up() {
     } else {
         await pline('You start to float in the air!');
     }
-    /* steed branch (u.usteed) — none. */
+    /* C trap.c:3991-3999 */
+    if (u.usteed) {
+        const sd = u.usteed.data;
+        const mlet = sd ? (sd.mlet | 0) : -1;
+        if (mlet !== 5 && mlet !== 25 && !pooleffects_is_flyer(sd)) {
+            const lev = u.uprops[LEVITATION_PROP];
+            const H = lev.intrinsic | 0, E = lev.extrinsic | 0;
+            const lev_at_will = (((H & I_SPECIAL) !== 0 || (E & W_ARTI) !== 0)
+                && (H & ~(I_SPECIAL | PROP_TIMEOUT)) === 0 && (E & ~W_ARTI) === 0);
+            if (lev_at_will) {
+                await pline(`${Monnam_fu(u.usteed)} magically floats up!`);
+            } else {
+                await pline(`You cannot stay on ${mon_nam(u.usteed)}.`);
+                await dismount_steed_fu(0 /* DISMOUNT_GENERIC */);
+            }
+        }
+    }
     /* Flying branch — not flying. */
     float_vs_flight();
     /* levitation gives maximum carrying capacity, so encumbrance state may

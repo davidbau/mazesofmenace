@@ -50,7 +50,7 @@ import { PM_MINOTAUR, PM_ARCHEOLOGIST, PM_WIZARD, PM_FIRE_VORTEX, PM_FLAMING_SPH
 import { dat_content } from './dat_source.js';
 import { tokenize } from './lua/lexer.js';
 import { parse } from './lua/parser.js';
-import { nhl_init, nhl_done } from './nhlua.js';
+import { nhl_init, nhl_done, nhl_loadlua } from './nhlua.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import monPmnamesPack from './makemon_pmnames.json' with { type: 'json' };
 import { create_drawbridge } from './dokick.js';
@@ -6272,6 +6272,21 @@ async function loadLuaFile(name) {
         await nhl_done(interp);
     }
     return true;
+}
+
+// C ref: nhlua.c:2391-2411 load_lua(): fresh state, run the file, nhl_done.
+// Returns FALSE when the file cannot be loaded (ret value is ignored by
+// wiz_load_lua, wizcmds.c:368).
+export async function load_lua(name) {
+    let ret = true;
+    const L = await nhl_init();
+    if (!L) {
+        ret = false;
+    } else if (!(await nhl_loadlua(L, name))) {
+        ret = false;
+    }
+    await nhl_done(L);
+    return ret;
 }
 
 // C ref: sp_lev.c:6460-6515 load_special(). See

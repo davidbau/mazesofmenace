@@ -9,7 +9,7 @@ import { mondied as mondied_ml } from './makemon.js';
 import { xkilled as xkilled_ml } from './uhitm.js';
 import { XKILL_NOMSG, DISMOUNT_GENERIC } from './const.js';
 import { flooreffects_obj_meld, flooreffects_obj_nexto_xy, flooreffects_pudding_merge_message, switch_terrain } from './cmd.js';
-import { water_damage_chain as water_damage_chain_ml } from './cmd.js';
+import { water_damage_chain as water_damage_chain_ml, useup as useup_inv } from './cmd.js';
 import { hliquid as hliquid_ml } from './mhitm.js';
 import { W_AMUL, HEALTHY_TIN } from './const.js';
 import { may_passwall, in_town, breaktest, fire_damage_chain,
@@ -119,7 +119,7 @@ import { init_rect, rnd_rect, get_rect, split_rects, within_bounded_area } from 
 import { insert_branch } from './dungeon_rng.js';
 import { depth as depth_of_level, distmin, dist2 } from './hacklib.js';
 import { oinit } from './o_init.js';
-import { LOW_PM, COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, LADDER, IS_AIR, MAX_TYPE, INVALID_TYPE, NO_ROOM, AIR, CLOUD, THRONE, HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, D_NODOOR, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED, D_SECRET, OROOM, VAULT, THEMEROOM, ROOMOFFSET, MAXNROFROOMS, SHARED, Is_rogue_level, COURT, ZOO, BEEHIVE, ANTHOLE, COCKNEST, LEPREHALL, MORGUE, BARRACKS, SWAMP, TEMPLE, SHOPBASE, SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, ALTAR, GRAVE, DIR_N, DIR_S, DIR_E, DIR_W, DIR_180, IS_WALL, IS_STWALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL, SPACE_POS, isok, MATCH_WALL, W_NONDIGGABLE, W_NONPASSWALL, W_ARMG, FILL_NONE, FILL_NORMAL, WM_MASK, WM_W_LEFT, WM_W_RIGHT, WM_W_TOP, WM_W_BOTTOM, WM_T_LONG, WM_T_BL, WM_T_BR, WM_C_OUTER, WM_C_INNER, WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR, ICE, MOAT, POOL, WATER, TREE, LAVAPOOL, LAVAWALL, DBWALL, A_LAWFUL, Align2amask, LR_TELE, LR_UPTELE, LR_DOWNTELE, RLOC_NOMSG, NO_MINVENT, In_quest, In_endgame, In_mines, In_V_tower, Is_oracle_level, Is_waterlevel, CORPSTAT_INIT, CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_NEUTER, CORPSTAT_SPE_VAL, CORPSTAT_NONE, G_GONE, FIRE_RES, NO_TRAP, TRAPNUM, ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP, VIBRATING_SQUARE, TRAPPED_DOOR, TRAPPED_CHEST, MKTRAP_NOFLAGS, MKTRAP_NOSPIDERONWEB, MKTRAP_SEEN, MKTRAP_MAZEFLAG, MKTRAP_NOVICTIM, is_pit, is_hole, Is_knox_level, ROT_AGE, TAINT_AGE, TROLL_REVIVE_CHANCE, DUST, BURN, MARK, ENGR_BLOOD, HEADSTONE, N_ENGRAVE, OBJ_FREE, OBJ_FLOOR, OBJ_CONTAINED, OBJ_BURIED, OBJ_DELETED, OBJ_INVENT, OBJ_MIGRATING, OBJ_ONBILL, ACCESSIBLE, u_at, GP_AVOID_MONPOS, GP_CHECKSCARY, MM_IGNOREWATER, MM_MINVIS, STRAT_WAITFORU, STRAT_CLOSE, STRAT_APPEARMSG, MM_NOWAIT, MM_EGD, MM_EPRI, MM_EMIN, MM_NOCOUNTBIRTH, MM_NOMSG, ismnum, In_sokoban, ALLOW_MDISP, ALLOW_TRAPS, ALLOW_U, ALLOW_M, ALLOW_TM, ALLOW_ALL, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_BARS, ALLOW_SANCT, ALLOW_SSM, NOGARLIC, CONFLICT, IS_TREE, IS_WATERWALL, DRAWBRIDGE_UP, DISPLACED, INVIS, W_ARMS, engulfing_u, POISON_RES, MAGICAL_BREATHING, M_POISONGAS_OK, M_POISONGAS_MINOR, M_POISONGAS_BAD, SET_LIT_NOCHANGE, ZAP_POS, is_xport, N_DIRS, Is_botlevel, Is_stronghold, XL_UP, XL_DOWN, XL_LEFT, XL_RIGHT, SP_COORD_IS_RANDOM,
+import { LOW_PM, COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, LADDER, IS_AIR, MAX_TYPE, INVALID_TYPE, NO_ROOM, AIR, CLOUD, THRONE, HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, D_NODOOR, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED, D_SECRET, OROOM, VAULT, THEMEROOM, ROOMOFFSET, MAXNROFROOMS, SHARED, Is_rogue_level, COURT, ZOO, BEEHIVE, ANTHOLE, COCKNEST, LEPREHALL, MORGUE, BARRACKS, SWAMP, TEMPLE, SHOPBASE, SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, ALTAR, GRAVE, DIR_N, DIR_S, DIR_E, DIR_W, DIR_180, IS_WALL, IS_STWALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL, SPACE_POS, isok, MATCH_WALL, W_NONDIGGABLE, W_NONPASSWALL, W_ARMG, FILL_NONE, FILL_NORMAL, WM_MASK, WM_W_LEFT, WM_W_RIGHT, WM_W_TOP, WM_W_BOTTOM, WM_T_LONG, WM_T_BL, WM_T_BR, WM_C_OUTER, WM_C_INNER, WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR, ICE, MOAT, POOL, WATER, TREE, LAVAPOOL, LAVAWALL, DBWALL, A_LAWFUL, Align2amask, LR_TELE, LR_UPTELE, LR_DOWNTELE, RLOC_NOMSG, NO_MINVENT, In_quest, In_endgame, In_mines, In_V_tower, Is_oracle_level, Is_waterlevel, CORPSTAT_INIT, CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_NEUTER, CORPSTAT_SPE_VAL, CORPSTAT_NONE, G_GONE, FIRE_RES, NO_TRAP, TRAPNUM, ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP, VIBRATING_SQUARE, TRAPPED_DOOR, TRAPPED_CHEST, MKTRAP_NOFLAGS, MKTRAP_NOSPIDERONWEB, MKTRAP_SEEN, MKTRAP_MAZEFLAG, MKTRAP_NOVICTIM, is_pit, is_hole, Is_knox_level, ROT_AGE, TAINT_AGE, TROLL_REVIVE_CHANCE, DUST, BURN, MARK, ENGR_BLOOD, HEADSTONE, N_ENGRAVE, OBJ_FREE, OBJ_FLOOR, OBJ_CONTAINED, OBJ_BURIED, OBJ_DELETED, OBJ_INVENT, OBJ_MIGRATING, OBJ_ONBILL, ACCESSIBLE, u_at, GP_AVOID_MONPOS, GP_CHECKSCARY, MM_IGNOREWATER, MM_MINVIS, STRAT_WAITFORU, STRAT_CLOSE, STRAT_APPEARMSG, MM_NOWAIT, MM_EGD, MM_EPRI, MM_EMIN, MM_NOCOUNTBIRTH, MM_NOMSG, MM_MALE, MM_FEMALE, CORPSTAT_GENDER, ismnum, In_sokoban, ALLOW_MDISP, ALLOW_TRAPS, ALLOW_U, ALLOW_M, ALLOW_TM, ALLOW_ALL, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_BARS, ALLOW_SANCT, ALLOW_SSM, NOGARLIC, CONFLICT, IS_TREE, IS_WATERWALL, DRAWBRIDGE_UP, DISPLACED, INVIS, W_ARMS, engulfing_u, POISON_RES, MAGICAL_BREATHING, M_POISONGAS_OK, M_POISONGAS_MINOR, M_POISONGAS_BAD, SET_LIT_NOCHANGE, ZAP_POS, is_xport, N_DIRS, Is_botlevel, Is_stronghold, XL_UP, XL_DOWN, XL_LEFT, XL_RIGHT, SP_COORD_IS_RANDOM,
 /* mktemple()'s shrine bit (mkroom.c:618) */
 AM_SHRINE,
 /* selection_do_grow() direction mask — themerms.lua make_garden_walls' `data.sel:grow()`
@@ -7760,6 +7760,10 @@ async function themeroom_fill_rng(aroom, difficulty) {
                     //       + spe gender rn2(2)? + set_corpsenm#1 → start_corpse_timeout#1
                     //    (place_object follows in C but consumes no RNG)
                     const _corpse = await mksobj(CORPSE, true, false);
+                    // 3a'. lspo_object:3706-3714 gives a corpse with no
+                    //     historic/male/female field spe = 0, and create_object
+                    //     (sp_lev.c:2230-2231) assigns it over mksobj's gender.
+                    _corpse.spe = 0;
                     // 3b. lspo_object:2263 set_corpsenm(specific_pm) → start_corpse_timeout#2
                     //     Zombifiable are never PM_LIZARD/PM_LICHEN/S_TROLL/rider, so
                     //     always rnz(25) = rn2(1000)+rne(4)+rn2(2). gz.zombify=0 during mklev.
@@ -13861,10 +13865,17 @@ export async function revive_corpse(otmp, do_msgs = true) {
     }
     /* C zap.c:895/1003: revive() suppresses inventory and waiting strategy,
      * and does not count the revived monster as a new birth. */
+    let mmflags = NO_MINVENT | MM_NOWAIT | MM_NOMSG | MM_NOCOUNTBIRTH;
+    /* C zap.c:974-979: applicable when montraits isn't used */
+    const cgend = (otmp.spe | 0) & CORPSTAT_GENDER;
+    if (cgend === CORPSTAT_MALE)
+        mmflags |= MM_MALE;
+    else if (cgend === CORPSTAT_FEMALE)
+        mmflags |= MM_FEMALE;
     // C zap.c:1000-1007: a corpse with saved traits restores that monster.
     const mon = otmp.oextra?.omonst
         ? await montraits(otmp, { x, y }, false)
-        : await makemon(mdat, x, y, NO_MINVENT | MM_NOWAIT | MM_NOMSG | MM_NOCOUNTBIRTH);
+        : await makemon(mdat, x, y, mmflags);
     if (otmp.oextra?.omonst && mon?.mtame && !mon.isminion)
         await wary_dog(mon, true);
     if (!mon)
@@ -13879,6 +13890,13 @@ export async function revive_corpse(otmp, do_msgs = true) {
         await dealloc_obj(otmp);
         if (wasFloor)
             newsym(otmp.ox | 0, otmp.oy | 0);
+    } else if (where0 === OBJ_INVENT) {
+        /* C zap.c:1108-1110: useup(corpse) -- no delobj obj_resists roll */
+        await useup_inv(otmp);
+    } else if (where0 === OBJ_CONTAINED) {
+        /* C zap.c:1117-1121 */
+        obj_extract_self(otmp);
+        await obfree(otmp, null);
     } else {
         await delobj_real(otmp);
     }

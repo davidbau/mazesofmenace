@@ -719,6 +719,11 @@ function _wish_mergable(into, obj) {
     if ((obj.cursed | 0) !== (into.cursed | 0)) return false;
     if ((obj.blessed | 0) !== (into.blessed | 0)) return false;
     if ((obj.spe | 0) !== (into.spe | 0)) return false;
+    /* C invent.c:4416-4418 — obroken/otrapped/lamplit must match; opoisoned
+     * is a union alias of otrapped, so a poisoned wish never joins a plain stack. */
+    if ((obj.obroken | 0) !== (into.obroken | 0)
+        || (obj.otrapped | 0) !== (into.otrapped | 0)
+        || (obj.lamplit | 0) !== (into.lamplit | 0)) return false;
     /* C invent.c:4425 — dknown MUST match. */
     if ((obj.dknown | 0) !== (into.dknown | 0)) return false;
     /* FOOD oeaten/orotten match (mergable invent.c:4421) */
@@ -2204,6 +2209,23 @@ export async function wiz_objprobs() {
         lines.push(`${String(prob).padStart(4)} / ${String(probsum[oclass]).padStart(4)} (${pct.padStart(6)}%): ${OC_NAME[otyp]}`);
     }
     await display_text_window(lines);
+    return ECMD_OK;
+}
+
+/* C ref: wizcmds.c:351-372 wiz_load_lua(void) — #wizloadlua: load and
+ * execute an arbitrary lua file. */
+export async function wiz_load_lua() {
+    if (wizard()) {
+        let buf = await getlin('Load which lua file?');
+        if (buf === '' || buf[0] === '\x1b')
+            return ECMD_CANCEL;
+        if (!buf.includes('.'))
+            buf += '.lua';
+        const sp = await import('./sp_lev.js');
+        await sp.load_lua(buf);
+    } else {
+        await pline('Unavailable command \'wizloadlua\'.');
+    }
     return ECMD_OK;
 }
 

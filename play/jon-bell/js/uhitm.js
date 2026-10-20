@@ -150,7 +150,7 @@ import { end_running, is_pool as is_pool_uh, accessible } from './look.js';
  * this file, so this is a late-bound ES-module cycle like the cmd.js one above;
  * all three are hoisted function declarations, so the cycle cannot leave them
  * in TDZ at call time. */
-import { in_rooms, tended_shop, dopay } from './shk.js';
+import { in_rooms, tended_shop, dopay, delete_contents } from './shk.js';
 import { couldsee, cansee } from './vision.js';
 import { dist2, s_suffix } from './hacklib.js';
 import { m_carrying, mon_adjust_speed, drain_en, m_useup, monkilled_trap, mintrap, t_at } from './trap.js';
@@ -2113,7 +2113,11 @@ export async function do_attack(mtmpOrX, y) {
     /* Step 6: hitum() — find_roll_to_hit (pure arithmetic) + rnd(20) + ... */
     const u = game.u;
 
-    check_caitiff(mtmp);
+    if (!Upolyd(u))
+        check_caitiff(mtmp);
+    /* Upolyd: hmonas passes one attknum through every row's find_roll_to_hit
+     * (uhitm.c:5423+), so check_caitiff fires in _hmonas on the first row
+     * that rolls to hit -- never for AT_EXPL (uhitm.c:5762-5767). */
 
     let mndx = 0, _tmpBase = 0, _armorpenalty = 0;
     /* find_roll_to_hit's target-dependent terms; re-run per target by
@@ -2630,7 +2634,7 @@ export async function do_attack(mtmpOrX, y) {
                                             aatypRow | 0, _curAdtyp, !!mhitRow))
                 _knockedBreak = true;
         };
-        let _curAdtyp = 0, _knockedBreak = false;
+        let _curAdtyp = 0, _knockedBreak = false, _caitiffDone = false;
         let weapon_used = false;
         /* C uhitm.c:5540-5561 — the use_weapon tail shared by AT_WEAP and the
          * AT_CLAW use_weapon row: DEF_DIED if killed; the m_at(u.ux+u.dx) worm
@@ -2661,6 +2665,11 @@ export async function do_attack(mtmpOrX, y) {
             const row = rows[i] || { aatyp: 0, adtyp: 0, damn: 0, damd: 0 };
             const aatyp = row.aatyp | 0;
             _curAdtyp = row.adtyp | 0;
+            if (!_caitiffDone && aatyp !== 0 && aatyp !== AT_BOOM && aatyp !== AT_EXPL_H
+                && aatyp !== AT_BREA_H && aatyp !== AT_SPIT_H && aatyp !== AT_GAZE_H) {
+                _caitiffDone = true; /* find_roll_to_hit's !(*attk_count)++ */
+                check_caitiff(mtmp);
+            }
             /* C uhitm.c:5464 */
             if (game.s.skipdrin && aatyp === 16 /* AT_TENT */ && _curAdtyp === 32 /* AD_DRIN */)
                 continue;
@@ -3642,11 +3651,18 @@ export async function corpse_chance(mtmp, magr, was_swallowed) {
 }
 
 async function _uh_dealloc_and_bump(otmp) {
+    /* C mkobj.c delobj_core -> shk.c obfree: Has_contents -> delete_contents
+     * before dealloc_obj (a random drop may be a chest/box with contents). */
+    let n = 1;
+    const count = (o) => { for (let c = o.cobj; c; c = c.nobj) { n++; count(c); } };
+    count(otmp);
+    if (otmp.cobj)
+        await delete_contents(otmp);
     await dealloc_obj(otmp);
     const store = game.__bridge__ || (game.__bridge__ = {});
     const key = 'objs_deleted.count';
     const cur = store[key] !== undefined ? Number(store[key]) : 0;
-    store[key] = String(cur + 1);
+    store[key] = String(cur + n);
 }
 
 export async function xkilled(mtmp, xkflags) {

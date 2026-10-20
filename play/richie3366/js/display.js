@@ -712,6 +712,17 @@ function mon_at_display(x, y) {
     // is what newsym uses (display.c:969); skipping the bit too keeps
     // the vacated cell empty. The fmon scan is only for heads whose
     // grid slot was never written.
+    // C m_at (rm.h `:515–516`) has no DEADMONSTER test: a monster whose
+    // mhp is already 0 stays on level.monsters[][] until m_detach →
+    // remove_monster, so monstone's newsym (mon.c `:3360–3361`) still
+    // draws it (D-4156).
+    const cell = game._level_monsters?.get(`${x},${y}`);
+    if (cell && cell !== steed && (cell.mhp | 0) <= 0
+        && !((cell.mstate | 0) & MON_OFFMAP)
+        && (((cell.mx | 0) === (x | 0) && (cell.my | 0) === (y | 0))
+            || cell.wormno)) {
+        return cell;
+    }
     const seg = level_mon_at(x, y);
     if (seg && seg !== steed) return seg;
     for (const m of game.fmon || []) {
@@ -8166,6 +8177,12 @@ function resync_map_row0() {
     // y+clipy-offy (offy 1), x from xmin+clipx-offx (offx 0).
     const my = clipping ? clipy : 0;
     const x0 = 1 + (clipping ? clipx : 0);
+    // C docorner `:3742–3744` — tty_curs(BASE_WINDOW, 1, y) + cl_end()
+    // blanks the whole screen row before row_refresh, so cells the
+    // refresh leaves unpainted (unexplored, capture-dropped symset
+    // chars) end up blank rather than keeping the message's text.
+    const cols = display.cols || 80;
+    for (let c = 0; c < cols; c++) display.setCell(c, 1, ' ', NO_COLOR, 0);
     for (let x = x0; x <= COLNO - 1; x++) {
         const loc = game.level?.at(x, my);
         if (!loc) continue;

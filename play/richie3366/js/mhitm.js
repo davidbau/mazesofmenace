@@ -1274,7 +1274,7 @@ export async function mhitm_ad_fire(magr, mattk, mdef, mhm) {
                 ? 'burns completely' : 'is totally engulfed in flames';
             await pline_mon(mdef, `${Monnam(mdef)} ${how}!`);
         }
-        await monkilled(mdef, '', AD_FIRE);
+        await monkilled(mdef, null, AD_FIRE); // C `:2602` (char *) 0 — no kill line
         if (!deadmonster(mdef)) {
             mhm.hitflags = M_ATTK_MISS;
             mhm.done = true;

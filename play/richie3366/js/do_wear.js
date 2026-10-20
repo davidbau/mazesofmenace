@@ -61,7 +61,7 @@ import {
     ALL_FINISHED, ALL_TYPES_SELECTED, ALL_TYPES, WORN_TYPES, UNPAID_TYPES,
     BUCX_TYPES, SIGNAL_NOMENU, USE_INVLET, INVORDER_SORT, PICK_ANY,
     CXN_ARTICLE,
-    HAND, FOOT, FINGER, NECK, FACE, TT_BEARTRAP, TT_INFLOOR, TT_LAVA, TT_BURIEDBALL, P_SHORT_SWORD, P_SABER,
+    HAND, FOOT, FINGER, NECK, FACE, HEAD, TT_BEARTRAP, TT_INFLOOR, TT_LAVA, TT_BURIEDBALL, P_SHORT_SWORD, P_SABER,
     something,
     Is_waterlevel, Is_airlevel,
     rightleftchars, RIGHT_HANDED,
@@ -297,8 +297,7 @@ async function on_msg(otmp) {
         const otmp_name = xname(otmp);
         let how = '';
         if (otmp.otyp === TOWEL) {
-            // C: body_part(HEAD); human "head" — poly deferred
-            how = ' around your head';
+            how = ` around your ${body_part(HEAD)}`; // C do_wear.c:95
         }
         const named = obj_is_pname(otmp) ? the(otmp_name) : an(otmp_name);
         await pline(`You are now wearing ${named}${how}.`);

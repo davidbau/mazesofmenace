@@ -1388,7 +1388,15 @@ async function really_done(how) {
 
     // C: !toptenwin → exit_nhwindows then topten raw_print; nh_terminate
     // captures final screen (contest nomux input boundary, no nhgetch).
-    topten(how, endtime, formatkiller(how, true));
+    await topten(how, endtime, formatkiller(how, true));
+    // C `:1581–1582` — toptenwin kept the windows up through topten, so
+    // exit_nhwindows runs now: tty_exit_nhwindows → tty_suspend_nhwindows
+    // → settty → term_end_screen → term_clear_screen (unixtty.c `:237`,
+    // termcap.c `:545`), a blank screen homed at (0,0) for the last frame.
+    if (game.iflags?.toptenwin) {
+        tty_exit_nhwindows(null);
+        game.nhDisplay?.clearScreen?.();
+    }
     // C: if (done_stopprint) { raw_print(""); raw_print(""); }
     if (game.program_state?.done_stopprint) {
         raw_print_blanks(2);

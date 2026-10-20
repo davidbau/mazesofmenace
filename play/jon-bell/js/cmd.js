@@ -1,5 +1,6 @@
 export { _interesting_to_discover, _disco_typename, _disco_append_price_quote, _sortloot_classify, disco_fmt_uniq, OCLASS_NAME, INV_ORDER, align_str };
 import { finish_quest } from './quest.js';
+import { map_menu_cmd } from './cmd_config.js';
 import { delobj as delobj_invent } from './dokick.js';
 import { unpunish as unpunish_invent } from './dig.js';
 import { noveltitle, read_tribute } from './do_name.js';
@@ -57,7 +58,7 @@ import { do_death_sequence, done2, done, deadhero, yn_function, nh_terminate } f
 import { wall_angle_is_stone } from './display.js';
 import { _pline_flush_frame_record, urgent_pline, force_more_pages, flush_pending_messages, time_botl_moves_incremented } from './display.js';
 import { STONING, MENU_TRADITIONAL, MENU_PARTIAL, MENU_COMBINATION, BURN_OBJECT as _BURN_OBJECT_PU } from './const.js';
-import { PARANOID_CONFIRM, PARANOID_PRAY, PARANOID_BREAKWAND, PARANOID_SWIM } from './const.js';
+import { PARANOID_CONFIRM, PARANOID_PRAY, PARANOID_BREAKWAND, PARANOID_SWIM, PARANOID_AUTOALL } from './const.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import monPmnamesPack from './makemon_pmnames.json' with { type: 'json' };
 import { PM_DEATH, PM_FAMINE, PM_PESTILENCE, PM_HIGH_PRIEST, PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER, PM_AIR_ELEMENTAL, PM_MANES, PM_HUMAN, PM_ELF } from './pm.generated.js';
@@ -127,13 +128,13 @@ import { dodrink, dodip, dip_into, potionbreathe, vomit as potion_vomit } from '
 import { make_deaf, make_hallucinated, make_sick, make_slimed, make_stoned,
          make_stunned, make_vomiting, make_glib, make_confused, set_itimeout } from './potion.js';
 /* wizcmds.c:1063 — the species #wizintrinsic's WARN_OF_MON arm warns of. */
-import { PM_PRISONER } from './pm.generated.js';
+import { PM_PRISONER, PM_WATER_DEMON } from './pm.generated.js';
 import { PM_GRID_BUG, PM_LONG_WORM, PM_DISPLACER_BEAST, PM_COYOTE } from './pm.generated.js';
 import { PM_WOOD_NYMPH, PM_WATER_NYMPH, PM_MOUNTAIN_NYMPH, PM_GIANT_EEL, PM_ELECTRIC_EEL } from './pm.generated.js';
 import { do_attack, force_attack, is_safemon, m_at, mon_nam, MONS_NAMES, hitval, xkilled, XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT, add_weapon_skill, dmgval, more_experienced, newexplevel, weapon_type, can_advance, weapon_descr, attack_checks, stumble_onto_mimic, overexertion, autoreturn_weapon, minstapetrify, spec_abon, setmnotwielded, dbon, uwep_skill_type, use_skill, attacks } from './uhitm.js';
 import { resist, dozap, obj_resists, zapyourself, make_blinded, BlindedTimeout, HBlinded, set_HBlinded, incr_HBlinded, zappable, explode, bhito, bhitpile, bhitm, _bhitm_wand_epilogue, zapsetup, zapwrapup, findit, release_hold, boomhit } from './zap.js';
 import { wiz_rumor_check, wiz_mon_diff } from './display.js';
-import { wiz_level_change, wiz_wish, getlin, touch_artifact_youmonst, wiz_genesis, wiz_kill, wiz_show_stats, wiz_flip_level, wiz_detect, wiz_show_seenv, wiz_show_vision, wiz_show_wmodes, wiz_makemap, wiz_debug_cmd_bury, wiz_timeout_queue, wiz_light_sources, wiz_objprobs, wiz_load_splua, wiz_telekinesis } from './wizcmds.js';
+import { wiz_level_change, wiz_wish, getlin, touch_artifact_youmonst, wiz_genesis, wiz_kill, wiz_show_stats, wiz_flip_level, wiz_detect, wiz_show_seenv, wiz_show_vision, wiz_show_wmodes, wiz_makemap, wiz_debug_cmd_bury, wiz_timeout_queue, wiz_light_sources, wiz_objprobs, wiz_load_splua, wiz_load_lua, wiz_telekinesis } from './wizcmds.js';
 import { usmellmon } from './mklev.js';
 import { docast, dovspell, dowizcast, known_spell, force_learn_spell, num_spells, isqrt,
          spelleffects as spelleffects_real, book_disappears, spell_skilltype } from './spell.js';
@@ -167,6 +168,8 @@ import { remdun_mapseen, mapseen_notreachable, recalc_mapseen_reachability } fro
 import { throne_sit_effect as throne_sit_effect_real, attrcurse, rndcurse } from './sit.js';
 import { is_ice as is_ice_real } from './engrave.js';
 import { dryup as dryup_real } from './potion.js';
+import { initedog as initedog_cu } from './dog.js';
+const MM_EDOG_CU = 0x00000800;
 import { bury_an_obj, set_utrap } from './dig.js';
 /* C ref: prop.h — the #wizintrinsic property arms (wizcmds.c:1023-1095). */
 import { FIRE_RES, GLIB, WARN_OF_MON, PROT_FROM_SHAPE_CHANGERS, WWALKING } from './const.js';
@@ -612,6 +615,12 @@ function blocksMove(x, y) {
     if (IS_OBSTRUCTED(loc.typ) || loc.typ === IRONBARS) {
         /* C hack.c:1012 — Passes_walls && may_passwall: not blocked. */
         if (_uprop_active('PASSES_WALLS') && may_passwall(x, y))
+            return false;
+        /* C hack.c:1023-1035 — IRONBARS: !(Passes_walls || passes_bars(youmonst.data))
+         * blocks; a polyformed hero (vortex, amorphous, unsolid, ...) passes.
+         * The Underwater arm (hack.c:1019) precedes it and always blocks. */
+        if (loc.typ === IRONBARS && !_Underwater()
+            && (_uprop_active('PASSES_WALLS') || _passes_bars_hero()))
             return false;
         return true;
     }
@@ -1201,8 +1210,18 @@ async function domonability_tail(uptr) {
     const pmidx = uptr ? (uptr.pmidx | 0) : NON_PM;
     if (pmidx === PM_MIND_FLAYER || pmidx === PM_MASTER_MIND_FLAYER)
         return await domindblast();
-    if (pmidx === PM_GREMLIN)
+    if (pmidx === PM_GREMLIN) {
+        const gloc = g.level?.at(u.ux | 0, u.uy | 0);
+        if (gloc && IS_FOUNTAIN(gloc.typ | 0)) {
+            if (await _split_mon())
+                await _dryup(u.ux | 0, u.uy | 0, true);
+        } else if (_is_pool(u.ux | 0, u.uy | 0)) {
+            await _split_mon();
+        } else {
+            await pline("There is no fountain here.");
+        }
         return ECMD_OK;
+    }
     /* C cmd.c:929-931 — `else if (is_unicorn(uptr)) { use_unicorn_horn(
      * (struct obj **) 0); return ECMD_TIME; }` (apply.c:2259: a null optr means
      * the polyself unicorn's own horn, so the cursed/blessed tests read as
@@ -2898,7 +2917,13 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, st = null) {
             }
             /* C zap.c:4087 — paint each traversed square after the
              * collision checks.  This is display state only; the glyph
-             * draw above is the RNG-relevant part. */
+             * draw above is the RNG-relevant part.
+             * C zap.c:4082-4086 — 'I' present but no monster: erase; do this
+             * before tmp_at(). */
+            if (glyph_is_invisible_at(_lx, _ly) && cansee(_lx, _ly)) {
+                unmap_object(_lx, _ly);
+                newsym(_lx, _ly);
+            }
             tmp_at(_lx, _ly);
             /* C zap.c:4092-4093 — `if (IS_SINK(typ) && weapon != FLASHED_LIGHT)
              * break;`: physical objects fall onto a sink and stop there. */
@@ -4413,7 +4438,11 @@ async function _run_pickinv_menu(windowLines, lineItems, selectables, opts) {
      * the whole inventory fits, no paging keys are exercised here). */
     let selectedObj = null, cancelled = false;
     while (true) {
-        const keyCode = await nhgetch();
+        const rawKeyCode = await nhgetch();
+        /* C ref: wintty.c:1554-1561 — an explicit selector on this page wins; any
+         * other key goes through map_menu_cmd (menu_next_page:; etc.). */
+        const keyCode = (!opts?.pickNone && (pageSelectable || selectables).has(rawKeyCode))
+            ? rawKeyCode : map_menu_cmd(rawKeyCode);
         const countText = pendingCount;
         // tty resets the count after every non-digit menu operation.
         if (keyCode < 48 || keyCode > 57) pendingCount = '';
@@ -9004,8 +9033,27 @@ async function doddrop() {
     const windowLines = [];
     windowLines.push(menu_heading_text(prompt)); /* C allmain.c:728, wintty.c:2688 */
     windowLines.push('');                          /* blank line after title */
+    /* CHOOSE_ALL cluster: 'A' Auto-select + hint + blank.  C ref:
+     * pickup.c:1316-1338.  verify_All = (how == PICK_ANY) && ParanoidAutoAll;
+     * without it the "(ignored unless ...)" hint shows on the first call (or
+     * always with cmdassist); with it the "'a' is implied" hint shows on the
+     * first call (or with cmdassist) only when show_a. */
+    const ddropBits = (g.flags?.paranoia_bits
+                       ?? PARANOID_CONFIRMATION_DEFAULT_BITS) | 0;
+    const verifyAll = !!(ddropBits & PARANOID_AUTOALL);
+    g.ga ||= {};
     windowLines.push('A - Auto-select every relevant item');
-    windowLines.push('    (ignored unless some other choices are also picked)');
+    if (!verifyAll) {
+        const firstHint = g.ga.A_first_hint | 0;
+        g.ga.A_first_hint = firstHint + 1;
+        if (!firstHint || (g.iflags?.cmdassist ?? true))
+            windowLines.push('    (ignored unless some other choices are also picked)');
+    } else if (show_a) {
+        const secondHint = g.ga.A_second_hint | 0;
+        g.ga.A_second_hint = secondHint + 1;
+        if (!secondHint || (g.iflags?.cmdassist ?? true))
+            windowLines.push("    (if no other choices are picked, 'a' is implied)");
+    }
     windowLines.push('');                          /* blank separator */
     /* show_a: 'a' All types (pickup.c:1341-1348). */
     let invlet = 97; /* 'a' */
@@ -9043,11 +9091,8 @@ async function doddrop() {
             : 'P - Items you just picked up');
     }
     windowLines.push('(end)');
-    const maxLen = windowLines.reduce((max, ln) => {
-        const vis = ln.replace(/\x1b\[[0-9;]*m/g, '');
-        return Math.max(max, vis.length);
-    }, 0);
-    const WIN_COL = 80 - maxLen - 2;
+    /* C wintty.c:1908 (H2344_BROKEN) offx clamp, min(cols/2, cols-maxcol-1). */
+    const WIN_COL = tty_window_offx(windowLines, 'end');
     const uac = u.uac ?? 0;
     /* Cursor after '(end)': WIN_COL + len('(end)') + 1, row = last line. */
     const endRow = windowLines.length - 1;
@@ -9162,14 +9207,40 @@ async function doddrop() {
             .then((fin) => { ddropTitleErased = true; return fin; }));
     if (ddropKey === 27)
         ddropSelected.clear();
+    /* C pickup.c:1454-1502 — query_category's AutoAll post-processing.
+     * ALL_TYPES_SELECTED is tracked apart from the 'a' selector, since without
+     * show_a the first class row is the one lettered 'a'. */
+    let ddropAllTypes = show_a && ddropSelected.has('a');
+    if (ddropSelected.size > 0 && verifyAll && ddropSelected.has('A')) {
+        switch (await paranoid_ynq(!!(ddropBits & PARANOID_CONFIRM),
+                                   'Really autoselect All?', true)) {
+        case 'y':
+            break;
+        case 'n':
+            ddropSelected.delete('A');
+            /* lone 'A' declined becomes ALL_TYPES_SELECTED (qflags has ALL_TYPES) */
+            if (ddropSelected.size === 0) ddropAllTypes = true;
+            break;
+        default:
+            ddropSelected.clear();
+            break;
+        }
+    } else if (ddropSelected.size === 1 && !verifyAll && ddropSelected.has('A')) {
+        ddropSelected.clear();
+        await pline('No relevant items selected.');
+    }
+    /* C do.c:1003-1018 — 'A' sets drop_everything; any class/BUC/P choice
+     * (listed after 'A') clears it; ALL_TYPES_SELECTED does not. */
+    const dropEverything = ddropSelected.has('A')
+        && ![...ddropSelected].some((ch) => ch !== 'A' && !(show_a && ch === 'a'));
     /* C do.c:981-1063 menu_drop() — CHOOSE_ALL ('A') is meaningful only when
      * another category was selected.  In that case C walks the live inventory
      * with bypass_objlist/nxt_unbypassed_obj, because drop() may unlink or split
      * the current object. */
     const autoPick = ddropSelected.has('A');
     let autoDropped = false;
-    if (autoPick && ddropSelected.size > 1) {
-        const allSelected = show_a && ddropSelected.has('a');
+    if (autoPick) {
+        const allSelected = ddropAllTypes;
         const classRows = new Map();
         const firstClassRow = 1 + (show_a ? 1 : 0);
         for (let k = 0; k < carried.length; k++) {
@@ -9182,7 +9253,7 @@ async function doddrop() {
         const selectedBuc = new Set([...ddropSelected].filter((ch) => 'BCUX'.includes(ch)));
         const pickedSelected = ddropSelected.has('P');
         const matches = (obj) => {
-            if (allSelected) return true;
+            if (dropEverything || allSelected) return true;
             /* C pickup.c:523-527 — a selected coin class is accepted before
              * the picked-up or BUC predicates. */
             if ((obj.oclass | 0) === COIN_CLASS_C && selectedClasses.size)
@@ -9234,8 +9305,8 @@ async function doddrop() {
      * continuation separate from CHOOSE_ALL/autopick: the selected category
      * filters are applied by the object menu, and the chosen object is then
      * passed through the ordinary drop() path. */
-    if (!autoDropped && !autoPick && ddropSelected.size > 0) {
-        const allSelected = show_a && ddropSelected.has('a');
+    if (!autoDropped && !autoPick && (ddropSelected.size > 0 || ddropAllTypes)) {
+        const allSelected = ddropAllTypes;
         const firstClassRow = 1 + (show_a ? 1 : 0);
         const classRows = new Map();
         for (let k = 0; k < carried.length; k++) {
@@ -21298,6 +21369,7 @@ export async function doapply() {
              * the canned doapply -> getdir prompt never reaches parse()'s
              * flush_screen, so the getdir --More-- freezes the map as of the
              * LAST flush, before the pet moved.  Remember that frame. */
+            const _botlDischargesPre = g._botlDischarges | 0;
             const _preWorldFrame = g._lastFlushFrame
                 ? { cells: g._lastFlushFrame.cells, moves: g._lastFlushFrame.moves } : null;
             /* The wield consumed a turn (ECMD_TIME); its banked per-turn world
@@ -21405,8 +21477,28 @@ export async function doapply() {
                 see_traps();
             }
             if (g._pending_message) {
+                const _pgs = _topl_more_pages(g._pending_message,
+                    _topl_joins_snapshot(g._pending_message) || undefined);
+                for (let _i = 0; _i < _pgs.length - 1; ++_i) {
+                    const _pm = `${_pgs[_i]}--More--`;
+                    const _showPg = async () => {
+                        g._pending_message = _pm;
+                        await flush_screen(1);
+                        set_cursor(_pm.length, 0);
+                    };
+                    await _showPg();
+                    await await_topl_more_dismiss(_showPg);
+                }
+                g._pending_message = _pgs[_pgs.length - 1];
+            }
+            if (g._pending_message) {
                 /* C topl.c update_topl: the getdir prompt cannot join the
                  * wield/monster message, so it is paged with --More--. */
+                /* C allmain.c:474-478 — a botl/botlx raised by the wield turn runs
+                 * bot(); curs_on_u() (a flush_screen) before the canned doapply reaches
+                 * getdir, so the --More-- frame is not frozen at the pre-world flush. */
+                const _botlFlush = !!(g.disp?.botl || g.disp?.botlx)
+                    || ((g._botlDischarges | 0) !== _botlDischargesPre);
                 const msgP = `${g._pending_message}--More--`;
                 const _showP = async () => {
                     g._pending_message = msgP;
@@ -21423,7 +21515,15 @@ export async function doapply() {
                         g._paintedSnapshot = overlay_live_warning_cells({ cells: _worldPf.cells,
                             moves: (_fz != null) ? (_fz | 0) : (g.moves | 0) });
                         g._inMovemonMore = true;
-                    } else if (_preWorldFrame && !_cmd_Hallucination()) {
+                    } else if (_preWorldFrame && !_cmd_Hallucination() && !_botlFlush
+                        /* C allmain.c:474-480 — before rhack() reads the canned
+                         * doapply, `else if (disp.time_botl) { timebot(); curs_on_u(); }`
+                         * and curs_on_u() is flush_screen(1) (display.c:1687-1690),
+                         * which repaints the map gbuf.  With the time option the wield
+                         * turn's moves++ set time_botl (allmain.c:261-263), so the map
+                         * is NOT frozen at the pre-world flush. */
+                        && !(g.flags?.time && g._timeBotlFrozenMoves == null
+                            && (g.moves | 0) !== (_preWorldFrame.moves | 0))) {
                         /* C dig.c:1100-1107: the wield turn ran fully (moves++, bot()
                          * before the canned doapply reaches getdir), so the status
                          * row shows the NEW T while the map stays frozen at the last
@@ -23376,6 +23476,13 @@ async function _doswapweapon() {
         if (g._wieldToolSwap && u.uswapwep) {
             const _wtSwapLine = _weapon_prinv_line(u.uswapwep,
                 `(alternate weapon${((u.uswapwep.quan ?? 1) | 0) === 1 ? '' : 's'}; not wielded)`);
+            /* wield.c:489 prinv() leaves the line on the topline; use_pole's
+             * "Where do you want to hit?" pline (apply.c:3275) raises its more()
+             * AFTER the swap turn's movemon, so the --More-- carries the
+             * post-world map (pline.c:274 flush precedes putmesg). */
+            if (is_pole(u.uwep) && _swapMorc !== 27) {
+                g._resultMessage = _wtSwapLine + '.';
+            } else
             await _topline_more(_wtSwapLine);
         } else if (_swapMorc === 27 && !is_pole(oldswap)
                    && cmdq_peek(CQ_CANNED)?.ec_entry?.func === 'dofire') {
@@ -25253,6 +25360,13 @@ async function _attributes_enlightenment() {
     }
     if (on(DISPLACED)) out.push(_you_are(`displaced${(await _from_what(DISPLACED))}`, ''));
     if (on(STEALTH)) out.push(_you_are(`stealthy${(await _from_what(STEALTH))}`, ''));
+    else {
+        /* C insight.c:1669-1674 — BStealth && (HStealth || EStealth) */
+        const ps = prop(STEALTH);
+        if (ps && (ps.blocked | 0) && ((ps.intrinsic | 0) || (ps.extrinsic | 0)))
+            out.push(_enlght_line('You ', _enl_tense('would be', 'would have been'),
+                ` stealthy${((ps.blocked | 0) === FROMOUTSIDE) ? ' if not mounted' : ''}`, ''));
+    }
     /* C insight.c:1676 enl_msg("You aggravate", "", "d", " monsters", …) —
      * the tense pair is the empty string / a bare "d" appended to the verb. */
     if (on(AGGRAVATE_MONSTER)) out.push(_enlght_line('You aggravate', _enl_tense('', 'd'), ' monsters', (await _from_what(AGGRAVATE_MONSTER))));
@@ -29540,12 +29654,45 @@ function _eggs_in_water() {
         && (ym.mlet | 0) === S_EEL_SIT
         && (mf1 & M1_SWIM_SIT) !== 0;
 }
-function _split_mon() { return false; }
+/* C potion.c:2875 split_mon(&gy.youmonst, NULL) — hero arm, with mhitu.c:2616
+ * cloneu().  Returns the clone or null. */
+async function _split_mon() {
+    const u = game.u;
+    if ((u.mh | 0) > (u.mhmax | 0))
+        u.mh = u.mhmax | 0;
+    let mtmp2 = null;
+    if ((u.mh | 0) > 1) {
+        const ym = game.youmonst;
+        const mndx = u.umonnum | 0;
+        if (!((game.mvitals?.[mndx]?.mvflags | 0) & G_EXTINCT)) {
+            const mon = await mklev_makemon(ym.data, u.ux | 0, u.uy | 0,
+                                            NO_MINVENT | MM_EDOG_CU | MM_NOMSG);
+            if (mon) {
+                mon.mcloned = 1;
+                _fl_christen_monst(mon, game.plname);
+                initedog_cu(mon, true);
+                mon.m_lev = ym.data.mlevel | 0;
+                mon.mhpmax = u.mhmax | 0;
+                mon.mhp = Math.trunc((u.mh | 0) / 2);
+                u.mh = (u.mh | 0) - mon.mhp;
+                game.disp.botl = true;
+                mtmp2 = mon;
+            }
+        }
+    }
+    if (mtmp2) {
+        mtmp2.mhpmax = Math.trunc((u.mhmax | 0) / 2);
+        u.mhmax = (u.mhmax | 0) - mtmp2.mhpmax;
+        game.disp.botl = true;
+        await You("multiply!");
+    }
+    return mtmp2;
+}
 /* was an empty body — a file-local stub shadowing the real port; same class
  * as the money_cnt/hliquid re-points above.  Real body: js/potion.js:421
  * dryup(x,y,isyou) (C: fountain.c dryup()), `async` (it awaits a wizard-mode
  * y_n() prompt on one branch), so this wrapper is too.  All three dosit call
- * sites are inside `if (_split_mon()) { ... }`, and `_split_mon` is left
+ * sites are inside `if (await _split_mon()) { ... }`, and `_split_mon` is left
  * stubbed `return false` (no real body found anywhere in js/ — see this
  * file's other dosit-stub notes), so this repoint is currently dead code on
  * every reachable path; wiring it now means the day split_mon lands, dryup
@@ -29681,7 +29828,7 @@ export async function dosit() {
     } else if (_is_pool(u.ux | 0, u.uy | 0) && !_Underwater()) {
         await You("sit in the %s.", _hliquid("water"));
         if (Upolyd && (u.umonnum | 0) === 78) {
-            if (_split_mon()) {
+            if (await _split_mon()) {
                 if ((loc && (loc.typ | 0) === FOUNTAIN)) {
                     await _dryup(u.ux | 0, u.uy | 0, true);
                 }
@@ -29699,7 +29846,7 @@ export async function dosit() {
     } else if (Upolyd && (u.umonnum | 0) === 78
                && ((loc && (loc.typ | 0) === FOUNTAIN) || _is_pool(u.ux | 0, u.uy | 0))) {
         await You("sit in the %s.", _hliquid("water"));
-        if (_split_mon()) {
+        if (await _split_mon()) {
             if ((loc && (loc.typ | 0) === FOUNTAIN)) {
                 await _dryup(u.ux | 0, u.uy | 0, true);
             }
@@ -29795,7 +29942,7 @@ export async function dosit() {
     } else if (_is_pool(u.ux | 0, u.uy | 0) && !_eggs_in_water()) {
         await You("sit in the %s.", _hliquid("water"));
         if (Upolyd && (u.umonnum | 0) === 78) {
-            if (_split_mon()) {
+            if (await _split_mon()) {
                 if ((loc && (loc.typ | 0) === FOUNTAIN)) {
                     await _dryup(u.ux | 0, u.uy | 0, true);
                 }
@@ -33380,12 +33527,13 @@ async function _dolook() {
     }
 
     /* C invent.c:4161-4176 — the !skip_objects region/trap preamble.
-     * visible_region_at() (gas clouds) is not modelled, so `reg` is always 0;
-     * `trap` is the tile's trap, dropped unless the hero has seen it. */
+     * `reg` is visible_region_at(); `trap` is the tile's trap, dropped unless
+     * the hero has seen it. */
+    const _lhReg = visible_region_at(x, y);
     let trap = t_at(x, y);
     if (trap && !trap.tseen) trap = null;
-    if (trap)
-        _result_append_join(g, `There is ${an(trapname(trap.ttyp | 0, false))} here.`);
+    if (_lhReg || trap)
+        _result_append_join(g, `There is ${_lhReg ? `a ${reg_damg(_lhReg) ? 'poison gas' : 'vapor'} cloud` : ''}${(_lhReg && trap) ? ' and ' : ''}${trap ? an(trapname(trap.ttyp | 0, false)) : ''} here.`);
 
     /* C invent.c:4178 — otmp = svl.level.objects[u.ux][u.uy]. */
     const head = g.level?.levelObjects?.[x]?.[y] ?? null;
@@ -34217,9 +34365,15 @@ async function _pickup_lift_list(pickOrder, _oldcap) {
             } else {
                 /* C addinv (invent.c:1108-1114): merge into an existing mergable
                  * inventory stack if possible; otherwise link a new node. */
-                for (let otmp = game.invent; otmp; otmp = otmp.nobj) {
-                    if (_pickup_mergable(otmp, obj)) { _mergeStack = otmp; break; }
-                }
+                /* C invent.c:1098-1106 — merge with the quiver in preference to any
+                 * other inventory slot (extra on a quivered stack beats a wielded
+                 * or alternate one). */
+                if (game.u?.uquiver && _pickup_mergable(game.u.uquiver, obj))
+                    _mergeStack = game.u.uquiver;
+                else
+                    for (let otmp = game.invent; otmp; otmp = otmp.nobj) {
+                        if (_pickup_mergable(otmp, obj)) { _mergeStack = otmp; break; }
+                    }
                 if (_mergeStack) {
                     _mergeLiftedQuan = (obj.quan == null) ? 1 : (obj.quan | 0);
                     const _discovered = _pickup_merged(_mergeStack, obj);
@@ -35665,6 +35819,11 @@ async function dispatch_command(command, outcome = {}, queued = false) {
     case "done2": {
         g.context.move = 0;
         await done2();
+    }
+        return true;
+    case "wiz_load_lua": {
+        g.context.move = 0; // wizcmds.c:371 returns ECMD_OK
+        await wiz_load_lua();
     }
         return true;
     case "wiz_load_splua": {
@@ -38195,6 +38354,7 @@ function self_lookat() {
         || _i(DETECT_MONSTERS) || _e(DETECT_MONSTERS);
     let buf = `${_invis && (_senseself || !_blind) ? 'invisible ' : ''}`
         + `${_self_lookat_base()} called ${game.plname || ''}`;
+    if (game.u?.usteed) buf += `, mounted on ${y_monnam(game.u.usteed)}`;
     if (visible_region_at(game.u?.ux | 0, game.u?.uy | 0) !== null)
         buf += _mhidden_region_tail(game.u?.ux | 0, game.u?.uy | 0);
     if (_st_Punished()) {
@@ -44798,7 +44958,10 @@ async function dotip() {
                 return ECMD_OK;
             if (c === 'n')
                 continue;
-            return (await tipcontainer(cobj)) ? ECMD_TIME : ECMD_OK;
+            /* C pickup.c:3614-3616: tipcontainer() is void; the turn is spent
+             * even when the box is locked or the destination menu is cancelled. */
+            await tipcontainer(cobj);
+            return ECMD_TIME;
         }
     }
 
@@ -44824,7 +44987,9 @@ async function dotip() {
      * ? ECMD_TIME : ECMD_OK;` (the potion arm precedes it, statue arm follows). */
     if (u.uarmh && obj === u.uarmh && (obj.oclass | 0) !== 8 /* POTION_CLASS */)
         return (await tiphat()) ? ECMD_TIME : ECMD_OK;
-    return (await tipcontainer(obj)) ? ECMD_TIME : ECMD_OK;
+    /* C pickup.c:3630-3631: tipcontainer() is void; always ECMD_TIME. */
+    await tipcontainer(obj);
+    return ECMD_TIME;
 }
 
 /* C ref: sounds.c:1457 responsive_mon_at(x, y) */
@@ -51399,7 +51564,7 @@ export async function domonnoise(mtmp) {
     if (ptr && (ptr.msound | 0) === MS_SILENT && !mtmp.isshk)
         return ECMD_OK;
 
-    let pline_msg = null, verbl_msg = null;
+    let pline_msg = null, verbl_msg = null, verbl_msg_mcan = null;
     let msound = ptr ? (ptr.msound | 0) : -1;
     /* C sounds.c:695-697 — "leader might be poly'd; if he can still speak, give
      * leader speech."
@@ -51520,6 +51685,16 @@ export async function domonnoise(mtmp) {
     else if (msound === 8 /* MS_CHIRP */) pline_msg = 'chirps.';
     else if (msound === 14 /* MS_WAIL */) pline_msg = 'wails mournfully.';
     else if (msound === 15 /* MS_GURGLE */) pline_msg = 'gurgles.';
+    /* C sounds.c:995-1004 — MS_DJINNI. */
+    else if (msound === MS_DJINNI) {
+        const _pm = (mtmp.mndx ?? mtmp.mnum) | 0;
+        if (mtmp.mtame) verbl_msg = "Sorry, I'm all out of wishes.";
+        else if (mtmp.mpeaceful) {
+            if (_pm === PM_WATER_DEMON) pline_msg = 'gurgles.';
+            else verbl_msg = "I'm free!";
+        } else if (_pm !== PM_PRISONER) verbl_msg = 'This will teach you not to disturb me!';
+        else verbl_msg = 'Get me out of here.';
+    }
     else if (msound === 16 /* MS_BURBLE */) pline_msg = 'burbles.';
     /* C sounds.c:951-956 — MS_TRUMPET: the elephant's noise, wakes everything within 11 squares. */
     else if (msound === 17 /* MS_TRUMPET */) {
@@ -51554,6 +51729,22 @@ export async function domonnoise(mtmp) {
             pline_msg = 'comes on to you.';
         else
             pline_msg = 'cajoles you.';
+    }
+    /* C sounds.c:1160-1171 — MS_NURSE. */
+    else if (msound === 30 /* MS_NURSE */) {
+        verbl_msg_mcan = 'I hate this job!';
+        const u = g.u;
+        const _uw = u.uwep;
+        if (_uw && ((_uw.oclass | 0) === OCLASS_WEAPON || is_weptool(_uw)))
+            verbl_msg = 'Put that weapon away before you hurt someone!';
+        else if (u.uarmc || u.uarm || u.uarmh || u.uarms || u.uarmg || u.uarmf)
+            verbl_msg = _Role_if_PM_HEALER()
+                ? "Doc, I can't help you unless you cooperate."
+                : 'Please undress so I can examine you.';
+        else if (u.uarmu)
+            verbl_msg = 'Take off your shirt, please.';
+        else
+            verbl_msg = "Relax, this won't hurt a bit.";
     }
     /* C sounds.c:1156-1159 — MS_SPELL: deliberately vague, no spell is cast. */
     else if (msound === 42 /* MS_SPELL */) {
@@ -51743,6 +51934,8 @@ export async function domonnoise(mtmp) {
      *     else if (verbl_msg) { SetVoice(...); verbalize1(verbl_msg); } */
     if (pline_msg)
         void pline(`${Monnam(mtmp)} ${pline_msg}`);
+    else if (mtmp.mcan && verbl_msg_mcan)
+        await verbalize('%s', verbl_msg_mcan);
     else if (verbl_msg) {
         if ((ptr.pmidx ?? mtmp.mndx ?? mtmp.mnum) === PM_DEATH)
             await pline(verbl_msg.toUpperCase());

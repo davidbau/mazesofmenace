@@ -62,6 +62,8 @@ import {
     IS_STWALL,
     IS_TREE,
     IRONBARS,
+    MIGR_NOWHERE,
+    MIGR_RANDOM,
     In_quest,
     KILLED_BY,
     KILLED_BY_AN,
@@ -130,6 +132,7 @@ import {
     W_SWAPWEP,
     W_WEP,
     IS_DOOR,
+    IS_OBSTRUCTED,
     WT_ELF,
     has_mgivenname,
     helpless,
@@ -148,6 +151,7 @@ import {
     map_trap, newsym, obj_to_glyph, shieldeff, tmp_at,
 } from './display.js';
 import { flooreffects, set_wounded_legs } from './do.js';
+import { down_gate, ship_object } from './dokick.js';
 import { del_engr_at } from './engrave.js';
 import {
     destroy_drawbridge,
@@ -160,6 +164,8 @@ import {
     at_dgn_entrance,
     Can_fall_thru,
     ceiling,
+    depth,
+    get_level,
     on_level,
     surface,
 } from './dungeon.js';
@@ -291,16 +297,17 @@ import {
 } from './monsters.js';
 import { m_at } from './monst.js';
 import { mpickobj } from './steal.js';
-import { ohitmon, thitu } from './mthrowu.js';
+import { hits_bars, ohitmon, thitu } from './mthrowu.js';
 import { sleep_monst } from './mhitm.js';
 import {
     snuff_lit,
     splash_monster_light,
 } from './apply_splash_lit.js';
 import {
-    dealloc_obj,
+    add_to_migration,
     carried,
     costly_alteration,
+    dealloc_obj,
     mksobj,
     newObject,
     objectType,
@@ -324,6 +331,7 @@ import {
     IRON,
     ROCK,
     SADDLE,
+    STATUE,
     WAND_CLASS,
     SPE_REMOVE_CURSE,
     SPBOOK_CLASS,
@@ -368,9 +376,11 @@ import {
     level_tele_trap,
     mlevel_tele_trap,
     mtele_trap,
+    random_teleport_level,
+    rloco,
     tele_trap,
 } from './teleport.js';
-import { Fire_resistance, poly_obj, resist } from './zap.js';
+import { Fire_resistance, fracture_rock, poly_obj, resist } from './zap.js';
 import { Punished } from './steed.js';
 import { ttyPline } from './tty_message.js';
 import { burnarmor } from './trap_erode_obj.js';
@@ -2619,7 +2629,7 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style, state, rawEnv = {}
     const env = {
         ...rawEnv,
         state,
-        random: rawEnv.random ?? { rn2, rnd },
+        random: { d, rn1, rn2, rnd, rne, ...rawEnv.random },
     };
     const planning = Boolean(env.planning);
     const message = env.message ?? ((line, target) =>
@@ -2692,8 +2702,21 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style, state, rawEnv = {}
         obj_extract_self(singleobj, objectEnv);
     }
     redraw(x1, y1);
-    // C: if the boulder is being dug out, clear the dig context. The port does
-    // not yet track context.digging, so this is a no-op.
+    const digging = state.context?.digging;
+    if ((otyp === BOULDER || otyp === STATUE)
+        && digging?.pos?.x === singleobj.ox
+        && digging.pos.y === singleobj.oy) {
+        state.context.digging = {
+            effort: 0,
+            level: { dnum: 0, dlevel: 0 },
+            pos: { x: 0, y: 0 },
+            lastdigtime: 0,
+            down: false,
+            chew: false,
+            warned: false,
+            quiet: false,
+        };
+    }
 
     let dist = distmin(x1, y1, x2, y2);
     let x, y;
@@ -2876,21 +2899,88 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style, state, rawEnv = {}
                 });
         }
         if (style === ROLL) {
-            // down_gate / ship_object: not reached
-            if (typeof state.level?.dnstair?.sx === 'number') {
-                // The down_gate check tests for stairs/ladders/portals.
-                // Not ported; throw only if the boulder is actually on one.
+            if (down_gate(x, y, state) !== MIGR_NOWHERE
+                && await ship_object(singleobj, x, y, false, {
+                    ...env,
+                    hooks: objectHooks,
+                })) {
+                used_up = true;
+                launch_drop_spot(null, 0, 0, state);
+                break;
             }
             const t = t_at(x, y, state);
             if (t && otyp === BOULDER) {
+                let newlev = 0;
                 // C has a switch on t.ttyp for LANDMINE, LEVEL_TELEP,
                 // TELEP_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR. The default
                 // arm does nothing (break), so traps outside that list are
                 // ignored and the boulder keeps rolling.
                 switch (t.ttyp) {
                 case LANDMINE:
+                    if (env.random.rn2(10) <= 2) break;
+                    await message(messageAt(
+                        `KAABLAMM!!!${cansee(x, y, state)
+                            ? '  The rolling boulder triggers a land mine.'
+                            : ''}`,
+                        x, y, state,
+                    ), state, env);
+                    deltrap(t, state);
+                    del_engr_at(x, y, state);
+                    {
+                        const placement = place_object(singleobj, x, y, objectEnv);
+                        if (placement && typeof placement.then === 'function')
+                            await placement;
+                    }
+                    singleobj.otrapped = 0;
+                    await fracture_rock(singleobj, state, env.random, {
+                        ...env, hooks: objectHooks,
+                    });
+                    await scatter(x, y, 4,
+                        SCATTER_MAY_DESTROY | SCATTER_MAY_HIT
+                            | SCATTER_MAY_FRACTURE | SCATTER_VIS_EFFECTS,
+                        null, state, {
+                            ...env,
+                            hooks: objectHooks,
+                            newsym: env.newsym ?? redraw,
+                        });
+                    if (cansee(x, y, state)) redraw(x, y);
+                    used_up = true;
+                    launch_drop_spot(null, 0, 0, state);
+                    break;
                 case LEVEL_TELEP:
+                    newlev = random_teleport_level(state, {
+                        random: env.random,
+                    });
+                    if (newlev === depth(state.u.uz, state)) break;
+                    // FALLTHROUGH
                 case TELEP_TRAP:
+                    if (cansee(x, y, state)) {
+                        await message(messageAt(
+                            'Suddenly the rolling boulder disappears!',
+                            x, y, state,
+                        ), state, env);
+                    } else if (!heroIsDeaf(state)) {
+                        const heard = youHear(
+                            'a rumbling stop abruptly.', state);
+                        if (heard) await message(heard, state, env);
+                    }
+                    singleobj.otrapped = 0;
+                    if (t.ttyp === TELEP_TRAP) {
+                        await rloco(singleobj, {
+                            ...env, hooks: objectHooks, redraw,
+                        });
+                    } else {
+                        add_to_migration(singleobj, state);
+                        const destination = {};
+                        get_level(destination, newlev, state);
+                        singleobj.ox = destination.dnum;
+                        singleobj.oy = destination.dlevel;
+                        singleobj.owornmask = MIGR_RANDOM;
+                    }
+                    seetrap(t, { ...env, redraw });
+                    used_up = true;
+                    launch_drop_spot(null, 0, 0, state);
+                    break;
                 case PIT:
                 case SPIKED_PIT:
                 case HOLE:
@@ -2920,21 +3010,43 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style, state, rawEnv = {}
                 launch_drop_spot(null, 0, 0, state);
                 break;
             }
-            if (otyp === BOULDER && sobj_at(BOULDER, x, y, state)) {
-                // Boulder-chain collision: not reached in the session.
-                throw new Error(
-                    'launch_obj boulder-chain collision not yet ported');
+            const nextBoulder = otyp === BOULDER
+                ? sobj_at(BOULDER, x, y, state) : null;
+            if (nextBoulder) {
+                const fx = x + dx, fy = y + dy;
+                const hitsAnother = !isok(fx, fy) || !dist
+                    || IS_OBSTRUCTED(state.level.at(fx, fy).typ);
+                const suffix = cansee(x, y, state)
+                    ? hitsAnother
+                        ? ' as one boulder hits another'
+                        : ' as one boulder sets another in motion'
+                    : '';
+                note_unported('sounds.c Soundeffect');
+                const heard = youHear(`a loud crash${suffix}!`, state);
+                if (heard) await message(heard, state, env);
+                obj_extract_self(nextBoulder, objectEnv);
+                nextBoulder.otrapped = singleobj.otrapped;
+                singleobj.otrapped = 0;
+                const placement = place_object(singleobj, x, y, objectEnv);
+                if (placement && typeof placement.then === 'function')
+                    await placement;
+                singleobj = nextBoulder;
+                await wake_nearto(x, y, 100, env);
             }
         }
-        // closed_door: boulder crashes through a door. Not reached.
         if (otyp === BOULDER) {
             const loc = state.level?.at(x, y);
             if (loc && loc.typ === DOOR
-                && (loc.doormask & (D_LOCKED | D_CLOSED))) {
-                // C: closed_door() check + boulder crashes through door.
-                // Not reached in the session.
-                throw new Error(
-                    'launch_obj boulder-through-door not yet ported');
+                && ((loc.flags || loc.doormask || 0)
+                    & (D_LOCKED | D_CLOSED))) {
+                if (cansee(x, y, state))
+                    await message(messageAt(
+                        'The boulder crashes through a door.', x, y, state,
+                    ), state, env);
+                loc.doormask = D_BROKEN;
+                loc.flags = D_BROKEN;
+                if (dist)
+                    objectHooks.recalcBlockPoint(x, y, objectEnv);
             }
         }
 
@@ -2945,14 +3057,22 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style, state, rawEnv = {}
             const typ = loc?.typ ?? 0;
 
             if (typ === IRONBARS) {
-                // hits_bars: not ported
-                throw new Error(
-                    'launch_obj boulder-hits-iron-bars not yet ported');
+                x2 = x; y2 = y;
+                const moving = { obj: singleobj };
+                if (await hits_bars(moving, x2, y2, fx, fy,
+                    !env.random.rn2(20), 0, state, env.random, env)) {
+                    singleobj = moving.obj;
+                    if (!singleobj) {
+                        used_up = true;
+                        launch_drop_spot(null, 0, 0, state);
+                    }
+                    break;
+                }
             } else if (IS_STWALL(typ) || IS_TREE(typ, state)) {
                 x2 = x; y2 = y; // object stops here
                 if (!heroIsDeaf(state))
                     await message('Thump!');
-                wake_nearto(x2, y2, 16, state);
+                await wake_nearto(x2, y2, 16, env);
                 break;
             }
         }

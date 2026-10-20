@@ -831,8 +831,13 @@ function _statusLine2Raw(uacOverride, pwOverride) {
      * u_init_skills_discoveries()'s starting-Pw boost (u_init.c:1405) mutates
      * u.uen/u.uenmax WITHOUT a subsequent bot(), so the legacy-quote frame shows
      * the stale (pre-boost) Pw.  When provided, use it in place of live u.uen. */
-    const uen = pwOverride !== undefined ? pwOverride.uen : (u.uen || 0);
-    const uenmax = pwOverride !== undefined ? pwOverride.uenmax : (u.uenmax || 0);
+    /* A window drawn without an intervening bot() keeps the physical Pw: display.js
+     * records it in _botlStaleUen/_botlStaleUenmax when u.uen changes with no
+     * botl set (chain lightning's u.uen--, spell.c:1086-1087). */
+    const uen = pwOverride !== undefined ? pwOverride.uen
+        : (g._botlStaleUen !== undefined ? g._botlStaleUen : (u.uen || 0));
+    const uenmax = pwOverride !== undefined ? pwOverride.uenmax
+        : (g._botlStaleUenmax !== undefined ? g._botlStaleUenmax : (u.uenmax || 0));
     /* C ref: botl.c:837 money_cnt(gi.invent) — gold from the hero's LIVE
      * inventory chain.  The `g._ini_inv_chain ??` prefix that used to be here
      * made the status row read a post-u_init snapshot instead; see the long

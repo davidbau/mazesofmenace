@@ -85,7 +85,7 @@ import { Monnam, perceives } from "./mcastu.js";
 import { helpless, Resists_Elem, killed, y_monnam, l_monnam } from './mhitm.js';
 import { s_suffix } from './hacklib.js';
 import { nonliving, poly_gender } from './makemon.js';
-import { livelog_printf, rank_of, retouch_equipment } from './display.js';
+import { livelog_printf, rank_of, retouch_equipment, status_reassess } from './display.js';
 import { LL_MINORAC } from './const.js';
 import { bhp_bury_objs, dismount_steed as dismount_steed_real } from './cmd.js';
 import { in_rooms, add_damage, pay_for_damage } from './shk.js';
@@ -404,9 +404,12 @@ export function set_uasmon() {
         float_vs_flight();
     polysense(mndx);
 
-    // STATUS_HILITES/VIA_WINDOWPORT status_initialize(REASSESS_ONLY): no JS
-    // status-hilite subsystem exists to reassess; omitted (no observable
-    // effect on any tracked state).
+    // STATUS_HILITES/VIA_WINDOWPORT status_initialize(REASSESS_ONLY)
+    // (polyself.c:122-123): sets disp.botlx (botl.c:1719), so the next
+    // pline's flush_screen() repaints status with the new form BEFORE
+    // polymon's later botl flag (polyself.c:1016).  The first pline after
+    // set_uasmon (break_armor's) freezes its --More-- frame on that paint.
+    status_reassess();
 
     g.gw = g.gw || {};
     g.gw.were_changes = 0;

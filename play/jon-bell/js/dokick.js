@@ -652,7 +652,7 @@ export async function kick_nondoor(x, y, avrg_attrib) {
         if (rn2(3)) {
             /* C: if (!rn2(6) && !(svm.mvitals[PM_KILLER_BEE].mvflags & G_GONE)) */
             if (!rn2(6) && !((g.mvitals?.[PM_KILLER_BEE]?.mvflags | 0) & G_GONE)) {
-                /* You_hear("a low buzzing.") — no RNG */
+                await You_hear("a low buzzing."); /* a warning */
             }
             await kick_ouch(x, y, "");
             return ECMD_TIME;

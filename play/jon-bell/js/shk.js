@@ -238,16 +238,18 @@ export async function money2mon(mon, amount) {
 /* C shk.c:1279 check_credit(tmp, shkp) — spend the hero's credit first and
  * return what is still owed (negative when the shk owes change back).  The
  * body this replaces was `return _cost`, which silently ignored credit. */
-function check_credit(tmp, shkp) {
+async function check_credit(tmp, shkp) {
     const eshkp = ESHK(shkp);
     const credit = eshkp ? (eshkp.credit | 0) : 0;
 
     if (credit <= 0) {
         /* nothing to do */
     } else if (credit >= tmp) {
+        await pline('The price is deducted from your credit.');
         eshkp.credit -= tmp;
         tmp = 0;
     } else {
+        await pline('The price is partially covered by your credit.');
         eshkp.credit = 0;
         tmp -= credit;
     }
@@ -258,7 +260,7 @@ function check_credit(tmp, shkp) {
 async function pay(tmp, shkp) {
     const eshkp = ESHK(shkp);
     let robbed = eshkp ? (eshkp.robbed | 0) : 0;
-    const balance = (tmp <= 0) ? tmp : check_credit(tmp, shkp);
+    const balance = (tmp <= 0) ? tmp : await check_credit(tmp, shkp);
 
     if (balance > 0)
         await money2mon(shkp, balance);
@@ -1425,9 +1427,22 @@ export async function sellobj(obj, x, y) {
         } else
             qbuf = ''; /* just to pacify lint */
 
-        switch (g.gs.sell_response
-                ? g.gs.sell_response
-                : await yn_function_shk(qbuf, 'ynaq', 'n')) {
+        let sell_ans = g.gs.sell_response;
+        if (!sell_ans) {
+            sell_ans = await yn_function_shk(qbuf, 'ynaq', 'n');
+            /* C topl.c:536-546 — tty_yn_function only rewrites gt.toplines;
+             * the answered prompt stays on the terminal until the next
+             * command's clear_nhwindow(WIN_MESSAGE).  nhgetch() dropped
+             * _pending_message, so park it in the paint-time fallback (a
+             * later pline still wins).  Same mechanism as eat.js/lock.js.
+             * The prompt carries a trailing space (topl.c:410); when it wraps
+             * onto row 1, clean_up's tty_clear_nhwindow (topl.c:547-548)
+             * erases it, so nothing stays on the topline. */
+            const shown = `${qbuf} [ynaq] (n)`;
+            if (topl_park_cursor(null, shown + ' ')[1] === 0)
+                g._topl_sticky = shown;
+        }
+        switch (sell_ans) {
         case 'q':
             g.gs.sell_response = 'n';
             /*FALLTHRU*/
@@ -1717,7 +1732,7 @@ export async function stolen_value(obj, x, y, peaceful, silent) {
 
     if (peaceful) {
         const creditUse = !!(ESHK(shkp)?.credit | 0);
-        value = check_credit(value, shkp);
+        value = await check_credit(value, shkp);
         if (ANGRY(shkp)) ESHK(shkp).robbed = (ESHK(shkp).robbed | 0) + value;
         else ESHK(shkp).debit = (ESHK(shkp).debit | 0) + value;
         if (!silent) {
@@ -2822,9 +2837,12 @@ function _shk_Blind() {
            && !(bp.blocked | 0);
 }
 /* C youprop.h Invis / Deaf, read off the one uprops spelling this port writes. */
+/* C ref: youprop.h:198 #define Invis ((HInvis || EInvis) && !BInvis) */
 function _shk_Invis() {
+    /* C youprop.h:198 — Invis = (HInvis || EInvis) && !BInvis */
     const p = game.u?.uprops?.[INVIS];
-    return !!((p?.intrinsic | 0) || (p?.extrinsic | 0));
+    return !!(((p?.intrinsic | 0) || (p?.extrinsic | 0)) && !(p?.blocked | 0));
+    return !!((p?.intrinsic | 0) || (p?.extrinsic | 0)) && !(p?.blocked | 0);
 }
 function _shk_Deaf() {
     const p = game.u?.uprops?.[DEAF];
@@ -3047,7 +3065,7 @@ export async function pay_for_damage(dmgstr, cant_mollify) {
         const was_outside = !inhishop(shkp);
         const sx = shkp.mx | 0, sy = shkp.my | 0;
 
-        cost_of_damage = check_credit(cost_of_damage, shkp);
+        cost_of_damage = await check_credit(cost_of_damage, shkp);
         if (cost_of_damage > 0) {
             await money2mon(shkp, cost_of_damage);
             SET_BOTL();

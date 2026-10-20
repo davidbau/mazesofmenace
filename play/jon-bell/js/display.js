@@ -2924,6 +2924,18 @@ function _maybe_snapshot_painted_screen() {
     if (!g.level) return;
     const _pend = g._pending_message || '';
     let msg = _pend;
+    /* Post-meal cross-turn more() (allmain.js, _occ_committed_topl.postMeal):
+     * the FIRST movemon pline of the turn after an occupation ended meets the
+     * still-committed occupation topline.  When it does not join, update_topl
+     * calls more() inside that pline, after vpline's flush_screen (pline.c:
+     * 273-276) painted every newsym made so far this turn -- and nothing
+     * later (a monster moving after the pet's pickup stays unpainted).  Pin
+     * the gbuf at that instant for occupation_force_more.  DISPLAY-ONLY. */
+    const _pm = g._occ_committed_topl;
+    if (_pm?.postMeal && !g.occupation && _pend && g._postMealPlineFrame === null) {
+        g._postMealPlineFrame = _topl_joins_committed(_pm.text, _pend.split('  ')[0])
+            ? false : { cells: _capture_painted_cells() };
+    }
     if (_topl_split_for_more(msg) === null) {
         /* C pline.c:274-277: a line already committed to the topline (the eat
          * occupation's fprefx text) joins the monster's pline, and the overflow
@@ -4001,7 +4013,8 @@ function _statusLine2Parts() {
     const _hpmax = Math.min(Upolyd ? (_bu.mhmax | 0) : (_bu.uhpmax || 0), 9999);
     const _pw = Math.min((!_bs && game._botlStaleUen !== undefined
                           ? game._botlStaleUen : _bu.uen) || 0, 9999);
-    const _pwmax = Math.min(_bu.uenmax || 0, 9999);
+    const _pwmax = Math.min((!_bs && game._botlStaleUenmax !== undefined
+                             ? game._botlStaleUenmax : _bu.uenmax) || 0, 9999);
     const _lp = game._lastPaintedBotl;
     const _uac = (_bs && _bs.uac != null) ? _bs.uac
         : (_lp && _lp.uacUnset && u.uac != null && game.disp && (game.disp.botl | 0))
@@ -4049,6 +4062,9 @@ function _statusLine2Parts() {
     // the FROZEN uhs (the per-turn bot() value) rather than the live one — C shows the
     // "Satiated" even though lesshungry's newuhs() has already crossed the threshold).
     let _uhs = (u.uhs | 0);
+    if (game._saved_hs && game._botlPaintedUhs != null && !game.occupation
+        && !(game.disp && ((game.disp.botl | 0) || (game.disp.botlx | 0))))
+        _uhs = (game._botlPaintedUhs | 0);
     /* A fainting transition can finish its countdown in the same dispatch
      * that publishes a teleport result.  C paints that result frame before
      * the subsequent unfaint callback, so retain the FAINTED label while the
@@ -5471,6 +5487,7 @@ function _capture_botl(paint = false) {
     const _d = game.disp;
     if (_d && ((_d.botl | 0) || (_d.botlx | 0))) {
         game._botlStaleUen = undefined;
+        game._botlStaleUenmax = undefined;
         game._botlStaleUhp = undefined;
         game._botlPaintedCap = near_capacity() | 0;
         /* Same PAINT-time rule for the Deaf condition — see the `deaf` field
@@ -5498,7 +5515,7 @@ function _capture_botl(paint = false) {
             ?? money_cnt(game.invent ?? null),
         mh: u.mh, mhmax: u.mhmax,
         uen: game._botlStaleUen !== undefined ? game._botlStaleUen : u.uen,
-        uenmax: u.uenmax,
+        uenmax: game._botlStaleUenmax !== undefined ? game._botlStaleUenmax : u.uenmax,
         /* C botl.c:867-869 BL_AC — bot() reads u.uac, which only find_ac() writes
          * and which SET_BOTL()s on every change; see the SCOPE note above. */
         uac: u.uac ?? 0,
@@ -5632,6 +5649,18 @@ function _pline_flush_frame_select(committedEnd, full, frames = game?._plineFlus
         return f;
     }
     return null;
+}
+// The pline-flush frame of the LAST message joined strictly inside one page
+// (start offset in (lo, hi)), i.e. the most recent flush that page's text saw.
+function _pline_flush_frame_select_within(lo, hi, full, frames) {
+    if (!frames || !frames.length || typeof full !== 'string') return null;
+    let best = null;
+    for (const f of frames) {
+        if (!(f.off > lo && f.off < hi)) continue;
+        if (full.slice(f.off + 2, f.off + 2 + f.msg.length) !== f.msg) continue;
+        if (!best || f.off >= best.off) best = f;
+    }
+    return best;
 }
 // Drop the per-window pline-flush frame log.  DISPLAY-ONLY.
 function _pline_flush_frames_reset() {
@@ -6186,6 +6215,17 @@ async function _topl_more(committed, dismissMore) {
      * this port is marked urgent, so there is no NOSTOP guard to model. */
     if (morc === 27)
         game._topl_win_stop_armed = true;
+    /* The eat occupation's committed taste line (fprefx, eat.c:2002) lives only
+     * while it is still the topline; once a page that begins with it has been
+     * dismissed (more() topl.c:274 runs before :290 replaces gt.toplines) the
+     * stop_occupation fold (allmain.js) must not re-join it in front of later
+     * plines. */
+    {
+        const _oc = game._occ_committed_topl;
+        if (_oc && !_oc.postMeal && _oc.text
+            && String(committed ?? '').startsWith(_oc.text))
+            game._occ_committed_topl = null;
+    }
     return morc;
 }
 
@@ -6372,6 +6412,10 @@ export async function force_more(committed, dismissMore, alreadyPainted = false)
          * (display.c:2196), not a pline's, so the last page shows the status as of
          * the latest bot(), not the flush frame of its own pline. */
         const _lastFromCls = g._moreFromCls && i === _pages.length - 1;
+        /* A page holding several joined plines was last flushed by its LAST
+         * pline (pline.c:273-274), not its first: the more() raised after it
+         * (a prompt or tip) shows the map as of that latest flush. */
+        if (!_pf && i > 0 && !_lastFromCls) _pf = _pline_flush_frame_select_within(_ownOff, _end, _full, _flushFrames);
         if (!_pf && i > 0 && !_lastFromCls) _pf = _pline_flush_frame_select(_ownOff, _full, _flushFrames);
         if (!_pf && i > 0 && !_lastFromCls) _pf = _frameLog?.[i];
         let _ownFlushPf = false;
@@ -6420,6 +6464,14 @@ export async function force_more(committed, dismissMore, alreadyPainted = false)
         _morc = await _topl_more(_pages[i], dismissMore);
         if (_usePlineFrame) g._paintedSnapshot = _sv;
         if (_morc === 27 && i === _pages.length - 2 && _pages[i + 1] === 'You die...') {
+            g._pending_message = '';
+            break;
+        }
+        const _dieClears = String(_pages[i + 1] ?? '').startsWith('You die')
+            && _pages[i].length + 2 + _pages[i + 1].length < TOPL_LIMIT;
+        if (_morc === 27 && i === _pages.length - 2 && !_dieClears) {
+            g._topl_win_stop_armed = false;
+            g._topl_win_stop = true;
             g._pending_message = '';
             break;
         }
@@ -6533,7 +6585,9 @@ export async function occupation_force_more(committed, frame, framesMoves, frame
     // as of the per-turn bot() flush — C froze the status line at that flush, so the
     // --More-- shows the pre-message hunger (e.g. NOT_HUNGRY at the lesshungry page,
     const _hadSnap = g._paintedSnapshot;
-    if (frame && g._occ_committed_topl?.postMeal && g._lastFlushFrame)
+    if (frame && g._occ_committed_topl?.postMeal && g._postMealPlineFrame)
+        frame = g._postMealPlineFrame.cells;
+    else if (frame && g._occ_committed_topl?.postMeal && g._lastFlushFrame)
         frame = g._lastFlushFrame.cells;
     if (frame) {
         g._paintedSnapshot = { cells: frame, moves: (framesMoves | 0),
@@ -7179,6 +7233,11 @@ export async function bot() {
     if (game) game._timeBotlFrozenMoves = null;
     // C ref: botl.c:277 — bot() resets disp flags after rendering
     if (game && game.disp) {
+        /* Count the bot() calls that had a pending botl/botlx to discharge:
+         * C moveloop_core runs `bot(); curs_on_u();` (a flush_screen) for
+         * exactly those (allmain.c:474-478); doapply's wield turn reads it. */
+        if (game.disp.botl || game.disp.botlx)
+            game._botlDischarges = ((game._botlDischarges | 0) + 1) | 0;
         game.disp.botl = 0;
         game.disp.botlx = 0;
         game.disp.time_botl = 0;

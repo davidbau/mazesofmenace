@@ -39,6 +39,7 @@ import {
     block_point, cansee, does_block, unblock_point, vision_recalc,
 } from './vision.js';
 import { mksobj_at } from './obj.js';
+import { objectGenerationEnv } from './object_generation.js';
 import { ttyPline } from './tty_message.js';
 import { vtense } from './objnam.js';
 
@@ -592,8 +593,9 @@ export async function close_drawbridge(x, y, state = game, env = {}) {
             || dist2(state.u.ux, state.u.uy, x2, y2)
                 < dist2(state.u.ux, state.u.uy, x, y);
         await (env.message ?? ttyPline)(`You see a drawbridge ${coming ? 'coming' : 'going'} up!`, state);
-    } else if (!heroDeaf(state)) {
-        await (env.message ?? ttyPline)('You hear chains rattling and gears turning.', state);
+    } else {
+        const heard = youHear('chains rattling and gears turning.', state);
+        if (heard) await (env.message ?? ttyPline)(heard, state);
     }
     bridge.typ = DRAWBRIDGE_UP;
     const wall = state.level.at(x2, y2);
@@ -609,12 +611,15 @@ export async function close_drawbridge(x, y, state = game, env = {}) {
     await do_entity(first, state, { ...env, random: randomEnv });
     set_entity(x2, y2, second, state);
     await do_entity(second, state, { ...env, random: randomEnv });
-    if (OBJ_AT(x, y, state) && !heroDeaf(state))
-        await (env.message ?? ttyPline)('You hear smashing and crushing.', state);
+    if (OBJ_AT(x, y, state) && !heroDeaf(state)) {
+        const heard = youHear('smashing and crushing.', state);
+        if (heard) await (env.message ?? ttyPline)(heard, state);
+    }
     await revive_nasty(x, y, null, state);
     await revive_nasty(x2, y2, null, state);
-    delallobj(x, y, { state });
-    delallobj(x2, y2, { state });
+    const objectEnv = objectGenerationEnv({ ...env, state });
+    delallobj(x, y, objectEnv);
+    delallobj(x2, y2, objectEnv);
     const firstTrap = t_at(x, y, state), secondTrap = t_at(x2, y2, state);
     if (firstTrap) deltrap(firstTrap, state);
     if (secondTrap) deltrap(secondTrap, state);
@@ -638,8 +643,9 @@ export async function open_drawbridge(x, y, state = game, env = {}) {
         const coming = dist2(state.u.ux, state.u.uy, x2, y2)
             >= dist2(state.u.ux, state.u.uy, x, y);
         await (env.message ?? ttyPline)(`You see a drawbridge ${coming ? 'coming' : 'going'} down!`, state);
-    } else if (!heroDeaf(state)) {
-        await (env.message ?? ttyPline)('You hear gears turning and chains rattling.', state);
+    } else {
+        const heard = youHear('gears turning and chains rattling.', state);
+        if (heard) await (env.message ?? ttyPline)(heard, state);
     }
     bridge.typ = DRAWBRIDGE_DOWN;
     const wall = state.level.at(x2, y2);
@@ -652,7 +658,7 @@ export async function open_drawbridge(x, y, state = game, env = {}) {
     set_entity(x2, y2, second, state);
     await do_entity(second, state, { ...env, random: randomEnv });
     await revive_nasty(x, y, null, state);
-    delallobj(x, y, { state });
+    delallobj(x, y, objectGenerationEnv({ ...env, state }));
     for (const [tx, ty] of [[x, y], [x2, y2]]) {
         const trap = t_at(tx, ty, state);
         if (trap) deltrap(trap, state);
@@ -707,6 +713,10 @@ async function do_entity(entity, state, env = {}) {
         if (atPortcullis && !e_jumps(entity, state, random)) {
             if (inview)
                 await message(`${E_phrase(entity, 'are', state)} crushed by the falling portcullis!`, state);
+            else if (!heroDeaf(state)) {
+                const heard = youHear('a crushing sound.', state);
+                if (heard) await message(heard, state);
+            }
             await e_died(entity, XKILL_NOCORPSE | (inview ? XKILL_GIVEMSG : XKILL_NOMSG), CRUSHING, state, env);
             return;
         }
@@ -751,8 +761,10 @@ async function do_entity(entity, state, env = {}) {
         }
         return;
     }
-    if (is_pool(entity.ex, entity.ey, state) && !inview && !heroDeaf(state))
-        await message('You hear a splash.', state);
+    if (is_pool(entity.ex, entity.ey, state) && !inview && !heroDeaf(state)) {
+        const heard = youHear('a splash.', state);
+        if (heard) await message(heard, state);
+    }
     if (e_survives_at(entity, entity.ex, entity.ey, state)) {
         if (inview && !is_flyer(entity.edata) && !is_floater(entity.edata)) {
             await message(`${E_phrase(entity, 'fall', state)} from the bridge.`, state);

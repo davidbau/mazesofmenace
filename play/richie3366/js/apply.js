@@ -498,9 +498,8 @@ async function use_stethoscope(obj) {
     let res = seq === (game.context.stethoscope_seq ?? 0) ? ECMD_TIME : ECMD_OK;
     game.context.stethoscope_seq = seq;
 
-    if (!game._bhitpos) game._bhitpos = { x: 0, y: 0 };
-    game._bhitpos.x = u.ux; game._bhitpos.y = u.uy; /* C `:347` tentative */
-    game.bhitpos = game._bhitpos;
+    if (!game.bhitpos) game.bhitpos = { x: 0, y: 0 };
+    game.bhitpos.x = u.ux; game.bhitpos.y = u.uy; /* C `:347` tentative */
     game.notonhead = !!u.uswallow; /* C `:348` */
     if (u.usteed && (u.dz | 0) > 0) {
         if (interference) {
@@ -561,7 +560,7 @@ async function use_stethoscope(obj) {
             SUPPRESS_IT | SUPPRESS_INVISIBLE, false);
 
         /* C `:392` gb.bhitpos needed by mstatusline() iff long worm */
-        game._bhitpos.x = rx; game._bhitpos.y = ry;
+        game.bhitpos.x = rx; game.bhitpos.y = ry;
         game.notonhead = ((mtmp.mx | 0) !== (rx | 0)
             || (mtmp.my | 0) !== (ry | 0));
 
@@ -1331,11 +1330,10 @@ async function do_break_wand(obj) {
         const y = (obj.oy | 0) + (ydir[i] | 0);
         if (!isok(x, y)) continue;
 
-        /* C gb.bhitpos single slot; hit reads game.bhitpos, bhitm game._bhitpos */
-        if (!game._bhitpos) game._bhitpos = { x: 0, y: 0 };
-        game._bhitpos.x = x;
-        game._bhitpos.y = y;
-        game.bhitpos = game._bhitpos;
+        /* C gb.bhitpos single slot (game.bhitpos) */
+        if (!game.bhitpos) game.bhitpos = { x: 0, y: 0 };
+        game.bhitpos.x = x;
+        game.bhitpos.y = y;
 
         if (obj.otyp === WAN_DIGGING) {
             const dcres = dig_check(BY_OBJECT, x, y);

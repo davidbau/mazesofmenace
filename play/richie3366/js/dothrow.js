@@ -929,7 +929,7 @@ export async function throw_gold(obj) {
     }
 
     const bhitpos = game.bhitpos || (game.bhitpos = { x: 0, y: 0 });
-    game._bhitpos = bhitpos;
+    game.bhitpos = bhitpos;
 
     if (u.dz) {
         // C dothrow.c:2682–2693 — ceiling() from dungeon.c.

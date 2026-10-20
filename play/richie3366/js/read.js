@@ -1669,7 +1669,7 @@ async function seffect_enchant_armor(sobj) {
 }
 
 /** C read.c drop_boulder_on_player `:2294–2338`. */
-async function drop_boulder_on_player(confused, helmet_protects, byu, skip_uswallow) {
+export async function drop_boulder_on_player(confused, helmet_protects, byu, skip_uswallow) {
     const u = game.u || {};
     if (u.uswallow && !skip_uswallow) {
         await drop_boulder_on_monster(u.ux | 0, u.uy | 0, confused, byu);
@@ -1730,7 +1730,7 @@ async function drop_boulder_on_player(confused, helmet_protects, byu, skip_uswal
 }
 
 /** C read.c drop_boulder_on_monster `:2341–2410`. */
-async function drop_boulder_on_monster(x, y, confused, byu) {
+export async function drop_boulder_on_monster(x, y, confused, byu) {
     const otmp2 = mksobj(confused ? ROCK : BOULDER, false, false);
     if (!otmp2) return false;
     otmp2.quan = confused ? rn1(5, 2) : 1;

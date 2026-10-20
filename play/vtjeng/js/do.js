@@ -961,7 +961,8 @@ export async function boulder_hits_pool(otmp, rx, ry, pushing = false, rawEnv = 
                     state,
                 );
             } else if (!heroIsDeaf(state)) {
-                await message(`You hear a${lava ? ' sizzling' : ''} splash.`, state);
+                const heard = youHear(`a${lava ? ' sizzling' : ''} splash.`, state);
+                if (heard) await message(heard, state);
             }
             await (rawEnv.wakeNear ?? wake_nearto)(rx, ry, 40, {
                 ...rawEnv,
@@ -1080,12 +1081,8 @@ export async function flooreffects(obj, x, y, verb, rawEnv = {}) {
                 const message = rawEnv.message ?? ttyPline;
                 const blind = heroIsBlind(state);
                 if (blind && u_at(x, y, state)) {
-                    if (!heroIsDeaf(state))
-                        await message(
-                            `You hear ${the(xnameFresh(obj, state), state)} `
-                                + 'tumble downwards.',
-                            state,
-                        );
+                    const heard = youHear('a CRASH! beneath you.', state);
+                    if (heard) await message(heard, state);
                 } else if (!blind && cansee(x, y, state)) {
                     const trigger = trap.ttyp === TRAPDOOR && !trap.tseen
                         ? 'The boulder triggers and ' : 'The boulder ';
@@ -1093,8 +1090,9 @@ export async function flooreffects(obj, x, y, verb, rawEnv = {}) {
                         ? 'plugs a trap door'
                         : trap.ttyp === HOLE ? 'plugs a hole' : 'fills a pit';
                     await message(`${trigger}${action}.`, state);
-                } else if (!heroIsDeaf(state)) {
-                    await message(`You hear a boulder ${verb}.`, state);
+                } else {
+                    const heard = youHear(`a boulder ${verb}.`, state);
+                    if (heard) await message(heard, state);
                 }
             }
             const currentTrap = t_at(x, y, state);
@@ -1197,10 +1195,9 @@ export async function flooreffects(obj, x, y, verb, rawEnv = {}) {
                         `${is_plural(obj, state) ? 'They shatter' : 'It shatters'} from the heat!`,
                         state,
                     );
-                } else if (!heroIsDeaf(state)) {
-                    await (rawEnv.message ?? ttyPline)(
-                        'You hear a shattering noise.', state,
-                    );
+                } else {
+                    const heard = youHear('a shattering noise.', state);
+                    if (heard) await (rawEnv.message ?? ttyPline)(heard, state);
                 }
                 const { breakobj } = await import('./dothrow.js');
                 await breakobj(obj, x, y, false, false, {
@@ -1377,10 +1374,11 @@ async function dosinkring(obj, state = game, rawEnv = {}) {
     case RIN_SHOCK_RESISTANCE:
         await ttyPline('Static electricity surrounds the sink.', state);
         break;
-    case RIN_CONFLICT:
-        if (!heroIsDeaf(state))
-            await ttyPline('You hear loud noises coming from the drain.', state);
+    case RIN_CONFLICT: {
+        const heard = youHear('loud noises coming from the drain.', state);
+        if (heard) await ttyPline(heard, state);
         break;
+    }
     case RIN_SUSTAIN_ABILITY:
         await ttyPline(`The ${hliquid('water', { state })} flow seems fixed.`, state);
         break;
@@ -1523,8 +1521,9 @@ async function dosinkring(obj, state = game, rawEnv = {}) {
 
     if (ideed) {
         await trycall(obj, state);
-    } else if (!nosink && !heroIsDeaf(state)) {
-        await ttyPline('You hear the ring bouncing down the drainpipe.', state);
+    } else if (!nosink) {
+        const heard = youHear('the ring bouncing down the drainpipe.', state);
+        if (heard) await ttyPline(heard, state);
     }
 
     // C evaluates rn2(20) before checking nosink, so even a successful sink

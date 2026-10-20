@@ -5236,8 +5236,16 @@ async function object_detect(detector, oclass) {
         }
     }
 
-    if (g._pending_message)
-        await force_more(g._pending_message);
+    if (g._pending_message) {
+        const morc = await force_more(g._pending_message);
+        /* No incoming update_topl owns this more(): ESC's WIN_STOP
+         * (topl.c:232-235) is live for the turn's later monster plines. */
+        if (morc === 27 && g._topl_win_stop_armed) {
+            g._topl_win_stop_armed = false;
+            g._topl_win_stop = true;
+            g._topl_win_stop_buf = g._topl_last_more_committed;
+        }
+    }
     /* docrt() -> cls() -> clear_nhwindow(WIN_MAP) blanks the physical topline
      * too, so browse_map's standing getpos autodescribe line is gone
      * (detect.c:787, display.c:2196; same as monster_detect above). */

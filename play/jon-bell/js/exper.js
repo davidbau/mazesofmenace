@@ -353,14 +353,6 @@ export async function pluslvl(incr) {
     }
     /* C exper.c:384: SET_BOTL() */
     if (g.disp) g.disp.botl = 1;
-    if (!incr) {
-        /* per-pline flush_screen() above already paged each overflow at the moment
-         * its pline landed (matching update_topl timing + the frozen-status level);
-         * a final flush_screen here is a no-op (the fitting tail does not overflow)
-         * but is kept for the kill-impossible MAXULEV edge where no Welcome pline
-         * ran yet a "You feel more experienced." remained accumulated. */
-        await flush_screen(1);
-    }
 }
 /* C ref: exper.c more_experienced(int exper, int rexp) — void, updates u.uexp/u.urexp */
 export function more_experienced(exper, rexp) {

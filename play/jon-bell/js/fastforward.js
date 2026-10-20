@@ -1319,44 +1319,6 @@ async function _ff_generic_regen_hp() {
     if (needs)
         await regen_hp(UNENCUMBERED);
 }
-/* C allmain.c:307-342 — teleport / polymorph checks.  The calibrated generic
- * turns omitted them, so a Teleportation or Polymorph hero lost rn2(85) /
- * rn2(100) on every turn here (the doapply wield-turn, cmd.js:24495). */
-async function _ff_generic_teleport_polymorph() {
-    const u = game.u;
-    if (!u || u.uinvulnerable)
-        return;
-    const property = index => !!(u.uprops?.[index]?.intrinsic
-                                || u.uprops?.[index]?.extrinsic);
-    if (property(TELEPORT) && !rn2(85)) {
-        const old_ux = u.ux, old_uy = u.uy;
-        await tele();
-        if (u.ux !== old_ux || u.uy !== old_uy) {
-            if (!next_to_u())
-                await check_leash(old_ux, old_uy);
-            cmdq_clear(CQ_CANNED);
-            cmdq_clear(CQ_REPEAT);
-        }
-    }
-    if ((game.mvl_change === 1 && !property(POLYMORPH))
-        || (game.mvl_change === 2 && (u.ulycn | 0) === NON_PM))
-        game.mvl_change = 0;
-    if (property(POLYMORPH) && !rn2(100))
-        game.mvl_change = 1;
-    else if (ismnum(u.ulycn | 0) && !Upolyd(u)
-             && !rn2(80 - (20 * night())))
-        game.mvl_change = 2;
-    if (game.mvl_change && !property(UNCHANGING)) {
-        if ((game.multi | 0) >= 0) {
-            await stop_occupation();
-            if (game.mvl_change === 1)
-                await polyself(POLY_NOFLAGS);
-            else
-                await you_were();
-            game.mvl_change = 0;
-        }
-    }
-}
 /* Generic turn for step 1 only — no dochug dispatch because monsters have
  * movement=0 at the initial mapstate checkpoint (C's movemon fires 0 RNG).
  * C ref: allmain.c:263 — movemon() returns FALSE immediately (no monster can move),
@@ -1380,12 +1342,16 @@ async function fastforward_step_generic_turn_nodochug() {
      * here (the doapply wield-turn, js/cmd.js). */
     await _ff_generic_regen_hp();
     await _ff_tele_poly_changes();
-    await _ff_generic_teleport_polymorph();
     /* C ref: allmain.c:395-397 — intrinsic autosearch: if (Searching &&
      * !noautosearch && gm.multi >= 0) dosearch0(1).  Fires BEFORE dosounds. */
     await autosearch_rng();
     /* C ref: allmain.c:345-346 — if (Warning) warnreveal(). */
     if (Warning()) await warnreveal();
+    /* C allmain.c:347-350 — a were-change in this turn's mcalcdistress re-derives
+     * the hero's innate properties: set_uasmon() -> float_vs_flight() (botl) and
+     * status_initialize(REASSESS_ONLY) (botlx). */
+    if (game.gw?.were_changes)
+        set_uasmon();
     /* C ref: allmain.c:405 dosounds() — dynamic level-flag dispatch. */
     dosounds_rng();
     /* C ref: allmain.c:353 do_storms() — Plane of Air lightning. */
@@ -1440,12 +1406,16 @@ async function fastforward_step_generic_turn() {
     if (game._ff_nh_timeout_hook) await game._ff_nh_timeout_hook();
     await _ff_generic_regen_hp();
     await _ff_tele_poly_changes();
-    await _ff_generic_teleport_polymorph();
     /* C ref: allmain.c:395-397 — intrinsic autosearch: if (Searching &&
      * !noautosearch && gm.multi >= 0) dosearch0(1).  Fires BEFORE dosounds. */
     await autosearch_rng();
     /* C ref: allmain.c:345-346 — if (Warning) warnreveal(). */
     if (Warning()) await warnreveal();
+    /* C allmain.c:347-350 — a were-change in this turn's mcalcdistress re-derives
+     * the hero's innate properties: set_uasmon() -> float_vs_flight() (botl) and
+     * status_initialize(REASSESS_ONLY) (botlx). */
+    if (game.gw?.were_changes)
+        set_uasmon();
     /* C ref: allmain.c:405 dosounds() — dynamic level-flag dispatch. */
     dosounds_rng();
     /* C ref: allmain.c:353 do_storms() — Plane of Air lightning. */

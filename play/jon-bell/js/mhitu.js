@@ -101,7 +101,7 @@ import { paralyze_monst as paralyze_monst_mu } from './dogmove.js';
 import { destroy_items as destroy_items_zap, destroy_items_mon as destroy_items_mon_zap } from './zap.js';
 import { mon_nam as uhitm_mon_nam } from './uhitm.js';
 import { xkilled as xkilled_uh, XKILL_NOMSG as XKILL_NOMSG_UH } from './uhitm.js';
-import { dmgtype, mattackm, can_carry as can_carry_mu } from './dogmove.js';
+import { dmgtype, mattackm, can_carry as can_carry_mu, rustm as rustm_mu } from './dogmove.js';
 import { name_to_mon, permonstTemplate, gender, poly_gender, find_offensive, lined_up, monflee, monPmname } from './makemon.js';
 import { noteleport_level as noteleport_level_mu, Inhell } from './makemon.js';
 /* js/mhitu.js:262 declares a local `mon_nam` stub that returns the literal
@@ -1156,7 +1156,8 @@ async function mhitm_ad_phys_u(mtmp, mattk, mhm) {
         void ptmp;
         /* C:4106 rustm(&gy.youmonst, otmp) — RNG-free unless the DEFENDER has an
          * AD_CORR/AD_RUST/AD_FIRE attack (a polymorphed hero); its rn2(chance)
-         * sits behind `dmgtyp != ERODE_NONE`.  GAP. */
+         * sits behind `dmgtyp != ERODE_NONE`. */
+        await rustm_mu(game.youmonst, otmp);
         return;
     }
     const u_pt = game.u || {};

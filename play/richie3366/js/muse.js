@@ -886,7 +886,7 @@ async function mbhitm(mtmp, otmp, hits_you) {
         break;
     }
     if (reveal_invis && mtmp && (mtmp.mhp | 0) >= 1) {
-        const bp = game._bhitpos;
+        const bp = game.bhitpos;
         if (bp && cansee(bp.x, bp.y) && !canspotmon(mtmp)) {
             map_invisible(bp.x, bp.y);
         }
@@ -929,7 +929,7 @@ async function fhito_loc(obj, tx, ty, fhito) {
  * map_invisible shipped above.
  */
 async function mbhit(mon, range, obj) {
-    const bhitpos = game._bhitpos || (game._bhitpos = { x: 0, y: 0 });
+    const bhitpos = game.bhitpos || (game.bhitpos = { x: 0, y: 0 });
     bhitpos.x = mon.mx;
     bhitpos.y = mon.my;
     const ddx = sgn((mon.mux ?? game.u?.ux) - mon.mx);
@@ -1076,6 +1076,9 @@ export async function use_offensive(mtmp) {
         if (m.has_offense === MUSE_WAN_STRIKING) mtmp.mwandexp = true;
         return 2;
     case MUSE_SCR_EARTH: {
+        // C muse.c calls read.c's drop_boulder_on_monster / _on_player
+        // (one C body each; the muse.js clones drifted — D-4149).
+        const { drop_boulder_on_monster, drop_boulder_on_player } = await import('./read.js');
         const confused = !!mtmp.mconf;
         const mmx = mtmp.mx | 0;
         const mmy = mtmp.my | 0;
@@ -1193,114 +1196,6 @@ async function mplayhorn(mtmp, otmp, self) {
         await stop_occupation();
     }
     otmp.spe = (otmp.spe | 0) - 1;
-}
-
-/**
- * C ref: read.c drop_boulder_on_player `:2293`.
- * Named omit: engulfed-hero mbodypart You_hear polish (player path still
- * runs via drop_boulder_on_monster when !skip_uswallow).
- */
-async function drop_boulder_on_player(
-    confused, helmet_protects, byu, skip_uswallow,
-) {
-    const u = game.u || {};
-    if (u.uswallow && !skip_uswallow) {
-        await drop_boulder_on_monster(u.ux, u.uy, confused, byu);
-        return;
-    }
-    const otmp2 = mksobj(confused ? ROCK : BOULDER, false, false);
-    if (!otmp2) return;
-    otmp2.quan = confused ? rn1(5, 2) : 1;
-    otmp2.owt = weight(otmp2);
-    let dmg = 0;
-    const youdata = game.youmonst?.data;
-    const passes = (u.HPasses_walls | 0) || (u.EPasses_walls | 0);
-    if (!amorphous(youdata) && !passes
-        && !noncorporeal(youdata) && !unsolid(youdata)) {
-        await pline(`You are hit by ${doname(otmp2)}!`);
-        dmg = (dmgval(otmp2, game.youmonst) * (otmp2.quan | 0)) | 0;
-        if (u.uarmh && helmet_protects) {
-            if (hard_helmet(u.uarmh)) {
-                await pline('Fortunately, you are wearing a hard helmet.');
-                if (dmg > 2) dmg = 2;
-            } else if (game.flags?.verbose !== false) {
-                await pline(`${Yname2(u.uarmh)} does not protect you.`);
-            }
-        }
-    }
-    await wake_nearto(u.ux, u.uy, 4 * 4);
-    if (!(await flooreffects(otmp2, u.ux, u.uy, 'fall'))) {
-        place_object(otmp2, u.ux, u.uy);
-        stackobj(otmp2);
-        newsym(u.ux, u.uy);
-    }
-    if (dmg) {
-        await losehp(maybe_half_phys(dmg), 'scroll of earth', KILLED_BY_AN);
-    }
-}
-
-/**
- * C ref: read.c drop_boulder_on_monster `:2340`.
- * Named omit: engulfing_u You_hear mbodypart/body_part polish.
- */
-async function drop_boulder_on_monster(x, y, confused, byu) {
-    const otmp2 = mksobj(confused ? ROCK : BOULDER, false, false);
-    if (!otmp2) return false;
-    otmp2.quan = confused ? rn1(5, 2) : 1;
-    otmp2.owt = weight(otmp2);
-    const mtmp = m_at(x, y);
-    if (mtmp && !amorphous(mtmp.data) && !passes_walls(mtmp.data)
-        && !noncorporeal(mtmp.data) && !unsolid(mtmp.data)) {
-        const helmet = which_armor(mtmp, W_ARMH);
-        if (cansee(mtmp.mx, mtmp.my)) {
-            await pline(`${Monnam(mtmp)} is hit by ${doname(otmp2)}!`);
-            if (mtmp.minvis && !canspotmon(mtmp)) {
-                map_invisible(mtmp.mx, mtmp.my);
-            }
-        }
-        let mdmg = dmgval(otmp2, mtmp) * (otmp2.quan | 0);
-        if (helmet) {
-            if (hard_helmet(helmet)) {
-                if (canspotmon(mtmp)) {
-                    await pline(
-                        `Fortunately, ${mon_nam(mtmp)} is wearing a hard helmet.`,
-                    );
-                } else {
-                    const u = game.u || {};
-                    const deaf = (u.HDeaf | 0) || (u.EDeaf | 0)
-                        || u.uroleplay?.deaf || u.Deaf;
-                    if (!deaf) await You_hear('a clanging sound.');
-                }
-                if (mdmg > 2) mdmg = 2;
-            } else if (canspotmon(mtmp)) {
-                await pline(
-                    `${Monnam(mtmp)}'s ${xname(helmet)} does not protect ${mhim(mtmp)}.`,
-                );
-            }
-        }
-        mtmp.mhp = (mtmp.mhp | 0) - mdmg;
-        if ((mtmp.mhp | 0) < 1) {
-            if (byu) {
-                await killed(mtmp);
-            } else {
-                await pline(`${Monnam(mtmp)} is killed.`);
-                await mondied(mtmp);
-            }
-        } else {
-            await wakeup(mtmp, byu);
-        }
-        await wake_nearto(x, y, 4 * 4);
-    } else if (engulfing_u(mtmp)) {
-        obfree(otmp2, null);
-        await drop_boulder_on_player(confused, true, false, true);
-        return true;
-    }
-    if (!(await flooreffects(otmp2, x, y, 'fall'))) {
-        place_object(otmp2, x, y);
-        stackobj(otmp2);
-        newsym(x, y);
-    }
-    return true;
 }
 
 /* objdescr_is — canonical export in js/apply.js (o_init.c `:352-365`). */

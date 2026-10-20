@@ -296,6 +296,10 @@ const HEXDD = '00112233445566778899aAbBcCdDeEfF';
 // Same sentinel allmain.js uses for create_nhwindow(NHW_STATUS).
 const WIN_STATUS_ID = 11;
 
+// C wins[WIN_STATUS]->maxrow — the status window's row count, fixed when
+// tty_status_init (re)creates it; 0 until then (statusRows() stands in).
+let statusWinRows = 0;
+
 // C wintty.c:229 StatusRows — wc2_statuslines <= 2 → 2 else 3.
 function statusRows() {
     const n = game.iflags?.wc2_statuslines | 0;
@@ -365,6 +369,7 @@ export function tty_status_enablefield(fieldidx, nm, fmt, enable) {
 // this function).
 export function tty_status_init() {
     const num_rows = statusRows();
+    statusWinRows = num_rows; // C tty_create_nhwindow(NHW_STATUS) rows
     ttyFieldorder = (num_rows !== 3) ? twolineorder : threelineorder;
     for (let i = 0; i < MAXBLSTATS; ++i) {
         const lth = ttyStatus[NOW][i]?.lth | 0;
@@ -1166,12 +1171,11 @@ export function status_initialize(reassessment) {
 export function new_status_window() {
     const win = game.WIN_STATUS;
     if (win != null && (win | 0) !== WIN_ERR) {
-        // C `:494-498` first tty_clear_nhwindow (pre-destroy blank so a
-        // shrinking window drops no stale rows) + destroy. The WinDesc
-        // table is not ported; drop the sentinel the way destroy
-        // assigns WIN_ERR. (The blank rides with the second clear
-        // below: iflags already holds the new size, so one blanking of
-        // the new rows covers the old rows too.)
+        // C `:494-498` first tty_clear_nhwindow (pre-destroy blank of the
+        // OLD window's rows, so a shrinking window drops no stale rows)
+        // + destroy. The WinDesc table is not ported; drop the sentinel
+        // the way destroy assigns WIN_ERR.
+        clear_status_window();
         game.WIN_STATUS = WIN_ERR;
     }
     genl_status_finish();
@@ -1185,11 +1189,10 @@ export function new_status_window() {
 }
 
 // C wintty.c:1066-1073 tty_clear_nhwindow NHW_STATUS arm — blank the
-// window buffer and its tty rows. Both clears in one (`:496` pre-destroy
-// over the old rows, `:503` over the new): iflags already holds the new
-// size, so blank the union — grid rows 21..23 cover both geometries'
-// status rows (the dropped row 21 on a 3→2 shrink blanks like C's first
-// clear; the map repaints it at menu teardown). The committed-line cache
+// window buffer and its tty rows: only this window's rows (C tty_curs +
+// cl_end per row 0..maxrow-1 at offy = LI - rows), never the map row
+// above a 2-row window (D-4152: a rejected `statuslines:6` blanked map
+// row 20 under the old rows-21..23 union). The committed-line cache
 // blanks with it (house mirror: C has no such strings; the blank cache
 // makes the next flush paint blank like C's cleared tty until the
 // BL_RESET render recommits — status_initialize already set update_all
@@ -1198,7 +1201,8 @@ function clear_status_window() {
     for (let r = 0; r < statusWinData.length; r++) statusWinData[r].fill(' ');
     const disp = game.nhDisplay;
     if (disp?.setCell) {
-        for (let r = 21; r < 24; r++) {
+        const rows = statusWinRows || statusRows();
+        for (let r = 24 - rows; r < 24; r++) {
             for (let c = 0; c < STATUS_COLS; c++) disp.setCell(c, r, ' ', NO_COLOR, 0);
         }
     }

@@ -660,16 +660,22 @@ function dragBallMoveBc(before, control, uball, uchain, ballx, bally, chainx, ch
     }
     if (before) {
         // ball.c:519-527
+        // ball.c:517-524: nothing moving -> remember which of ball/chain was
+        // on top; move_bc(0, ...) places the pair back in that order.
+        if (!control) game.u.bc_order = bc_order(uball, uchain);
         remove_object(uchain);
+        maybe_unhide_at(uchain.ox, uchain.oy);
         newsym(uchain.ox, uchain.oy);
         if (!carried(uball)) {
             remove_object(uball);
+            maybe_unhide_at(uball.ox, uball.oy);
             newsym(uball.ox, uball.oy);
         }
     } else {
         // ball.c:529-547
         const onFloor = !carried(uball);
-        if ((control & BC_CHAIN) !== 0) {
+        if ((control & BC_CHAIN) !== 0
+            || (!control && game.u.bc_order === BCPOS_CHAIN)) {
             if (onFloor) placeObjectOnFloor(uball, ballx, bally);
             placeObjectOnFloor(uchain, chainx, chainy);
         } else {

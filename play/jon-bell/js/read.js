@@ -1,4 +1,4 @@
-import { ggetobj, costly_alteration } from './cmd.js';
+import { ggetobj, costly_alteration, fully_identify_obj as fully_identify_obj_cmd } from './cmd.js';
 import { COST_UNCHRG } from './const.js';
 // @ts-nocheck
 import { rn2, rnd, rn1, rnl, d } from './rng.js';
@@ -4461,16 +4461,8 @@ function count_unidentified(chain) {
  * identified; no display updating.  makeknown(otyp) → discover_object(credit
  * hero=TRUE) → exercise(A_WIS) → rn2(19). */
 function fully_identify_obj(otmp) {
-    const otyp = otmp.otyp | 0;
-    /* C: makeknown(otmp->otyp) == discover_object(otyp, TRUE, TRUE, TRUE). */
-    discover_object(otyp, true, true, true);
-    /* C: observe_object / set_cknown_lknown / artifact / egg — set the per-obj
-     * known flags so the item is no longer not_fully_identified. */
-    otmp.known = 1;
-    otmp.bknown = 1;
-    otmp.rknown = 1;
-    otmp.dknown = 1;
-    if (otmp.oclass === 5 /* AMULET? */ || otmp.otyp === undefined) { /* no-op */ }
+    /* invent.c:2636 — the full body (observe_object, set_cknown_lknown, egg) lives in cmd.js */
+    fully_identify_obj_cmd(otmp);
 }
 
 /* C ref: invent.c:2650 identify(otmp) — identify one object and give immediate

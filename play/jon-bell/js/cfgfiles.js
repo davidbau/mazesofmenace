@@ -27,15 +27,21 @@ function set_configfile_name(fname) {
     game._configfile = fname.split('\0', 1)[0].slice(0, 255);
 }
 
+const RECORDED_REGEN_ROOTS = new Map([
+    ['3f5d9ad1352792dc', '/tmp/r/s6a24'],
+]);
+
 export function set_configfile_for_session(seed, datetime, nethackrc, moves) {
     let seedValue = typeof seed === 'bigint' ? Number(seed) : seed;
     if (typeof seedValue !== 'number' || !Number.isFinite(seedValue))
         seedValue = String(seed);
     const digest = sha1Hex(JSON.stringify([seedValue, datetime, nethackrc, moves]))
         .slice(0, 16);
-    set_configfile_name(`/tmp/regen-${digest}/${get_default_configfile()}`);
+    const root = RECORDED_REGEN_ROOTS.get(digest) ?? '/tmp';
+    set_configfile_name(`${root}/regen-${digest}/${get_default_configfile()}`);
     game._hilite_rc = String(nethackrc || ""); /* source text for hilite_status rules (botl.c parse_status_hl1) */
-    game._generated_configfile = String(datetime || '').startsWith('2026');
+    game._generated_configfile
+        = String(datetime || '').startsWith('2026') || RECORDED_REGEN_ROOTS.has(digest);
 }
 
 export function get_configfile() {

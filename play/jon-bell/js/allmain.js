@@ -1660,6 +1660,12 @@ async function eat_occupation_turn() {
      * hunger message, its flush painted the pre-update hunger (eat.c:3468-3513). */
     const _displayedUhs = (part) => (g.occupation
         ? (g._saved_hs ? (g._save_hs | 0) : thisTurnUhs)
+        /* stop_occupation() plines "You stop eating" BEFORE clearing go.occupation
+         * and raising botl (allmain.c:684-695), so its flush_screen() repaints
+         * nothing: the status row is still the mid-meal one (bite()'s newuhs
+         * stored u.uhs without SET_BOTL, eat.c:3396-3402), not the live uhs. */
+        : (g._saved_hs && /^You stop eating\b/.test(part || ''))
+            ? ((g._botlPaintedUhs != null ? g._botlPaintedUhs : g._save_hs) | 0)
         : (g._newuhsMsgUhs && g._newuhsMsgUhs.msg === part) ? (g._newuhsMsgUhs.uhs | 0)
         : (g.u && g.u.uhs != null ? (g.u.uhs | 0) : thisTurnUhs));
     let _committed = prior ? prior.text : null;
@@ -1731,7 +1737,11 @@ async function eat_occupation_turn() {
                 ? `${hidden}  ${part}` : part;
             continue;
         }
-        if (_committed && _topl_joins_committed(_committed, part.split('  ')[0])) {
+        /* A part cut at recorded joins is ONE pline: its internal "  " (a
+         * two-sentence message) is part of the text update_topl measures, so
+         * test the whole part (topl.c:257 uses strlen of the whole bp). */
+        const _partJoined = (_fromPreEat ? preEatJoins : eatMsgJoins)?.length > 0;
+        if (_committed && _topl_joins_committed(_committed, _partJoined ? part : part.split('  ')[0])) {
             // C: Strcat(gt.toplines, "  "); Strcat(gt.toplines, bp) — the committed line
             // stays and this pline is appended to it.  _topl_merge_result keeps the
             // per-pline join offsets so a LATER turn's pline still pages at the right
@@ -1761,7 +1771,17 @@ async function eat_occupation_turn() {
                  * frozen at eatcorpse time. */
                 const _interrupt = !_fromPreEat && /^You stop eating\b/.test(part);
                 if (_interrupt && _tickBotl) g._occCurBotl = _tickBotl;
-                const _pageFrame = _pf?.cells || (_interrupt && _tickFrame) || thisTurnFrame;
+                /* C pline.c:273-274: the incoming eat-effect pline flushed the screen
+                 * (running bot()) before raising this page's more(), so the
+                 * status row is the one ITS flush painted -- e.g. polymon's
+                 * "Your armor falls around you!" over the new form's HD/Overloaded
+                 * -- not the pre-effect eat-start frame (_eatPre.botl). */
+                let _ownFrame = null;
+                if (!_fromPreEat && !_interrupt) {
+                    _ownFrame = (g._plineFlushFrames || []).findLast((f) => f.botl && f.msg === part) || null;
+                    if (_ownFrame) g._occCurBotl = _ownFrame.botl;
+                }
+                const _pageFrame = _pf?.cells || _ownFrame?.cells || (_interrupt && _tickFrame) || thisTurnFrame;
                 /* The movemon pline's flush_screen()/bot() ran before moves++
                  * (allmain.c:261), so its --More-- shows that frame's T:. */
                 const morc = await occupation_force_more(
@@ -2646,7 +2666,11 @@ async function moveloop_core_faithful() {
     // is drawn at its step-4 square during the step-5 --More--, then advances at step 6).
     // DISPLAY-ONLY: snapshots cells, no RNG, no state mutation.
     let _postMealPreFrame = null;
+    /* display.js _maybe_snapshot_painted_screen: armed for this turn's first
+     * movemon pline (null = not yet seen; undefined = no post-meal carry). */
+    g._postMealPlineFrame = undefined;
     if (g._occ_committed_topl && g._occ_committed_topl.postMeal) {
+        g._postMealPlineFrame = null;
         if (g._occPostMealNeedsRefresh) occupation_painted_tick();
         g._occPostMealNeedsRefresh = false;
         // Usually keep the final occupation flush: capturing here would replace
@@ -2900,7 +2924,10 @@ async function moveloop_core_faithful() {
     if (typeof process !== 'undefined' && ENV?.FF_DISPLAY_TRACE === '1') {
         pushRngLogEntry(`^vision_boundary[phase=before_redraw moves=${g.moves | 0} mv=${g.context?.mv ? 1 : 0} blind=${Blind() ? 1 : 0} full=${g.vision_full_recalc ? 1 : 0}]`);
     }
-    faithful_input_redraw();
+    if (g._ff_input_tail_done)
+        g._ff_input_tail_done = false;
+    else
+        faithful_input_redraw();
     if (typeof process !== 'undefined' && ENV?.FF_DISPLAY_TRACE === '1') {
         pushRngLogEntry(`^vision_boundary[phase=after_redraw moves=${g.moves | 0} mv=${g.context?.mv ? 1 : 0} blind=${Blind() ? 1 : 0} full=${g.vision_full_recalc ? 1 : 0}]`);
     }
@@ -3437,10 +3464,13 @@ async function moveloop_core_faithful() {
             // C allmain.c:504-507 — monster_nearby() → stop_occupation() +
             // reset_eat(), the SAME interrupt every occupation takes.  It is
             // NOT interrupt its 31-turn open in the recording.
+            // C then RETURNS with context.move still 1, so (unlike a stop
+            // inside the world block above) the next moveloop_core runs one
+            // more world block before rhack() reads a key: tinInterrupted
+            // stays false and the post-occupation turn below fires.
             if (g.occupation === opentin && monster_nearby()) {
                 await stop_occupation();
                 reset_eat();
-                tinInterrupted = true;
             }
             // C win/tty/topl.c — page the accumulated topline now; this turn's
             // movemon map is the frozen frame.  flush_screen more()s every
@@ -3455,9 +3485,9 @@ async function moveloop_core_faithful() {
         // C ref: allmain.c:209 — the occupation has cleared with context.move
         // still 1, so C's next moveloop_core runs ONE more world block before
         // rhack reads the next key.  Run it here and suppress the next head
-        // (context.move = 0), the dig/learn/picklock driver pattern.  Skipped on
-        // the interrupt path for the learn driver's reason: stop_occupation
-        // fired DURING the last turn's block, which already ran.
+        // (context.move = 0), the dig/learn/picklock driver pattern.  Skipped
+        // only when stop_occupation fired DURING the last turn's world block
+        // (C falls through to rhack in that same invocation).
         if (!tinInterrupted) {
             await faithful_moveloop_turn();
             if (g.vision_full_recalc) {
@@ -4083,6 +4113,11 @@ async function moveloop_core_faithful() {
                 // really does run one more head block first, which is why
                 // context.move stays 1 on that path.)
                 g.context.move = 0;
+                /* ...and the once-per-input tail (find_ac + see_monsters,
+                 * allmain.c:453-470) has run just above, so the next JS
+                 * invocation, which stands for the rest of this C call, must
+                 * not run it again before rhack. */
+                g._ff_input_tail_done = true;
                 break;
             }
             // C allmain.c:485 — (*go.occupation)(); 0 ends the occupation.

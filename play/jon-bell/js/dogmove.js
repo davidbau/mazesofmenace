@@ -1076,8 +1076,14 @@ function mergable_dm(otmp, obj) {
     if ((obj.cursed | 0) !== (otmp.cursed | 0) || (obj.blessed | 0) !== (otmp.blessed | 0))
         return false;
 
-    /* how_lost (LOST_EXPLODING etc.) — not tracked on the pet path; both undefined → equal */
-    if ((obj.how_lost | 0) !== (otmp.how_lost | 0))
+    /* C invent.c:4398-4402 — LOST_EXPLODING (3) never merges; and the check is
+     * ASYMMETRIC: only a non-NONE `otmp` (the stack merged INTO) demands a
+     * match, so a freshly placed thrown object (LOST_THROWN) will not merge
+     * into a pile member that was never lost, while a never-lost object
+     * absorbs a thrown one. */
+    if ((obj.how_lost | 0) === 3 || (otmp.how_lost | 0) === 3)
+        return false;
+    if ((otmp.how_lost | 0) !== 0 && (obj.how_lost | 0) !== (otmp.how_lost | 0))
         return false;
 
     if (obj.globby)
@@ -1138,6 +1144,11 @@ function merged_dm(otmp, obj) {
     } else if (!otmp.globby) {
         otmp.owt = obj_weight(otmp);
     }
+    /* C invent.c:858-872 — identification states union (the `discovered`
+     * pline is OBJ_INVENT-only). */
+    if ((obj.known | 0) !== (otmp.known | 0)) otmp.known = 1;
+    if ((obj.rknown | 0) !== (otmp.rknown | 0)) otmp.rknown = 1;
+    if ((obj.bknown | 0) !== (otmp.bknown | 0)) otmp.bknown = 1;
     /* obj_extract_self(obj): unlink from per-tile nexthere + global fobj, mark deleted. */
     const xi = obj.ox | 0, yi = obj.oy | 0;
     const lvlObjs = game.level?.levelObjects;

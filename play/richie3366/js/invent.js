@@ -7925,21 +7925,6 @@ export async function doattributes(enl_mode = null) {
         : (game.urole?.name?.m || 'Tourist');
     const atype = u.ualign?.type ?? A_NEUTRAL;
 
-    // C ref: insight.c basics_enlightenment `:779–802` — gold; like doprgold
-    // but without shop billing; includes container contents (hidden_gold).
-    // Overlay format keeps this builder's two-space prefix (final=0 → "is").
-    const umoney = money_cnt_local();
-    const hmoney = hidden_gold(0);
-    let wbuf = !umoney
-        ? '  Your wallet is empty'
-        : `  Your wallet contains ${umoney} ${currency(umoney)}`;
-    wbuf += !hmoney ? '.' : !umoney ? ', but' : ', and';
-    const wallet = wbuf;
-    // C `:797–801` — contained gold on its own continuation line.
-    const walletCont = hmoney
-        ? `  You have ${hmoney} ${umoney ? 'more' : currency(hmoney)} stashed away in your pack.`
-        : '';
-
     // C insight.c basics_enlightenment `:732–744` — poly'd HP reads u.mh;
     // negative HP shows 0; "all" only when max > 1.
     let hp = Upolyd(u) ? (u.mh | 0) : (u.uhp | 0);
@@ -7965,11 +7950,6 @@ export async function doattributes(enl_mode = null) {
     const hdLine = Upolyd(u)
         ? basics_hitdice_buf(mons(u.umonnum)?.mlevel)
         : '';
-    // C insight.c basics_enlightenment `:772–777` — find_ac enforces the
-    // AC_MAX cap before the value is read.
-    find_ac();
-    const acBuf = basics_ac_buf(u.uac ?? 10);
-
     const wizard = !!(game.flags?.wizard || game.flags?.debug);
     const discover = !!(game.flags?.explore || game.flags?.discover);
     // C insight.c doattributes: BASIC, OR MAGIC when wizard||discover.
@@ -7987,6 +7967,26 @@ export async function doattributes(enl_mode = null) {
     if (!(mode & BASICENLIGHTENMENT)) lines.push('');
     if (mode & BASICENLIGHTENMENT) {
         lines.push(...background_enlightenment(mode, 0));
+        // C insight.c basics_enlightenment runs only under BASIC (`:406–413`),
+        // after background: find_ac and the gold lines (whose currency()
+        // rolls rn2 while hallucinating) never run for MAGIC-only callers.
+        // C `:772–777` — find_ac enforces the AC_MAX cap before the read.
+        find_ac();
+        const acBuf = basics_ac_buf(u.uac ?? 10);
+        // C `:779–802` — gold; like doprgold but without shop billing;
+        // includes container contents (hidden_gold). Overlay format keeps
+        // this builder's two-space prefix (final=0 → "is").
+        const umoney = money_cnt_local();
+        const hmoney = hidden_gold(0);
+        let wbuf = !umoney
+            ? '  Your wallet is empty'
+            : `  Your wallet contains ${umoney} ${currency(umoney)}`;
+        wbuf += !hmoney ? '.' : !umoney ? ', but' : ', and';
+        const wallet = wbuf;
+        // C `:797–801` — contained gold on its own continuation line.
+        const walletCont = hmoney
+            ? `  You have ${hmoney} ${umoney ? 'more' : currency(hmoney)} stashed away in your pack.`
+            : '';
         lines.push(
             '',
             ' Basics:',

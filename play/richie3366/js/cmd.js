@@ -2465,11 +2465,18 @@ export function reset_commands(initial) {
  * Async only because JS menu/getlin/plines await input (Constitution §2);
  * C callers treat it as a plain blocking call. select_menu_pick_one
  * auto-letters selector-less rows ≡ tty_end_menu (helper cites wintty.c).
- * C `:2363`/`:2379` Strcat cmdstr onto the uninitialized buffer (upstream
- * wart — only sane as assignment) is a plain assignment below.
+ * C `:2356` `char cmdstr[BUFSZ];` is never initialized, and `:2363` /
+ * `:2379` Strcat the name onto it, so the result starts with whatever the
+ * stack held. In the recorder build that is never empty: every recorded
+ * «nothing» / plain-command pick ends in «Key binding failed?!» (5/5
+ * corpus sessions). REBIND_UNINIT_PREFIX stands for those leftover bytes;
+ * bind_key then matches no extcmd (`:2689–2693`) and returns FALSE with no
+ * side effect. The CMD_PARAM arm Snprintf's (`:2376`), so it binds.
  * Sole caller: handler_rebind_keys `:2440` (live below).
  * @param {boolean} keyfirst
  */
+const REBIND_UNINIT_PREFIX = '\x7f';
+
 async function handler_rebind_keys_add(keyfirst) {
     let key = 0; // C `:2300` uchar key = '\0'
 
@@ -2538,7 +2545,7 @@ async function handler_rebind_keys_add(keyfirst) {
     let cmdstr;
     if (i === -1) { // C `:2361`
         ec = null; // C `:2362`
-        cmdstr = 'nothing'; // C `:2363` (Strcat wart — see doc)
+        cmdstr = `${REBIND_UNINIT_PREFIX}nothing`; // C `:2363` Strcat (see doc)
         // C `:2364` goto bindit.
     } else {
         ec = EXTCMDLIST[i - 1]; // C `:2366` &extcmdlist[i-1]
@@ -2550,7 +2557,7 @@ async function handler_rebind_keys_add(keyfirst) {
             // C `:2376–2377`: Snprintf(cmdstr, BUFSZ-1, "%s(%s)") + NUL.
             cmdstr = `${ec.txt}(${parambuf})`.slice(0, BUFSZ - 1);
         } else {
-            cmdstr = ec.txt; // C `:2379` (Strcat wart — see doc)
+            cmdstr = `${REBIND_UNINIT_PREFIX}${ec.txt}`; // C `:2379` Strcat (see doc)
         }
     }
 // bindit: // C `:2382`
@@ -3699,20 +3706,34 @@ const RHACK_REPEAT_RUN_TXT = {
     l: 'runeast', n: 'runsoutheast', j: 'runsouth', b: 'runsouthwest',
 };
 
+/**
+ * C reset_commands `:3433–3435`, `:3462–3467` — the walk keys are
+ * Cmd.dirchars (sdir, sdir_swap_yz under the QWERTZ number_pad mode, or
+ * the ndir layouts), bound in sdir order to move_funcs. Returns the sdir
+ * letter (DIR_DX/RHACK_REPEAT_* key) for a walk key, else undefined.
+ * @param {string} ch
+ * @returns {string|undefined}
+ */
+function dirchar_sdir(ch) {
+    if (game.Cmd?.num_pad) return numpad_walk_dir(ch);
+    const dirchars = game.Cmd?.dirchars || 'hykulnjb><';
+    const i = dirchars.indexOf(ch);
+    return (ch && i >= 0 && i < 8) ? 'hykulnjb'[i] : undefined;
+}
+
 function isMovementKey(ch) {
-    // C `:3439–3472` — the movement binds are sdir letters when !num_pad
-    // (letters restored to commands_init binds under num_pad: h→help,
-    // j→jump, k→kick, l→loot, u→untrap, the rest unbound) and ndir
-    // digits when num_pad.
-    if (game.Cmd?.num_pad) return ch in NUMPAD_WALK;
-    return 'hjklyubn'.includes(ch);
+    // C `:3439–3472` — the movement binds are Cmd.dirchars: sdir letters
+    // when !num_pad (y/z swapped under swap_yz, so 'y' is unbound there),
+    // ndir digits when num_pad (letters restored to commands_init binds:
+    // h→help, j→jump, k→kick, l→loot, u→untrap, the rest unbound).
+    return dirchar_sdir(ch) !== undefined;
 }
 
 function isRunKey(ch) {
-    // C `:3464–3471` — capital-letter run exists only when !num_pad;
+    // C `:3464–3466` — highc(dirchars[i]) runs, only when !num_pad;
     // under num_pad run is M(digit) (handled at the run arm).
     if (game.Cmd?.num_pad) return false;
-    return 'HJKLYUBN'.includes(ch);
+    return ch !== ch.toLowerCase() && dirchar_sdir(ch.toLowerCase()) !== undefined;
 }
 
 /** C ref: cmd.c reset_commands — C(dirchars[i]) → do_rush_* (!number_pad). */
@@ -3725,8 +3746,8 @@ function rushDirFromCtrl(key) {
     // (106 & 0x1f)+96 === 'j'. C('j')==10=='\n' is rush-south.
     if (key < 1 || key > 26) return null;
     const letter = String.fromCharCode(key + 96); // 1..26 → a..z
-    if (!isMovementKey(letter)) return null;
-    return letter;
+    // C `:3467` C(dirchars[i]) → move_funcs[i][MV_RUSH]: the sdir letter.
+    return dirchar_sdir(letter) || null;
 }
 
 // C ref: hack.c — check if a cell blocks movement
@@ -5779,7 +5800,7 @@ export async function rhack(key) {
         // plain walk ends any run (e.g. travel's run=8); without this the
         // EOT time_botl stays suppressed and T: goes stale after travel.
         // Under num_pad the key is an ndir digit walking its sdir letter.
-        const wch = numpad_walk_dir(ch) || ch;
+        const wch = dirchar_sdir(ch); // C `:3463` dirchars[i] → move_funcs[i]
         const mu = game.u || (game.u = {});
         mu.dz = 0; // C `:1389` u.dz = zdir[dir] (0 for planar)
         mu.dx = DIR_DX[wch]; // C `:1390`
@@ -5838,7 +5859,7 @@ export async function rhack(key) {
     } else if (isRunKey(ch) || rushDir || metaRunDir) {
         // C ref: cmd.c do_run_* → run=1; do_rush_* (C(dir)) → run=3.
         // metaRunDir is do_run_* (M(digit) under num_pad) → run=1.
-        const low = rushDir || metaRunDir || ch.toLowerCase();
+        const low = rushDir || metaRunDir || dirchar_sdir(ch.toLowerCase());
         if (!game.context) game.context = {};
         // Pending F + capital/ctrl dir: forcefight one step (not rush)
         if (game.context.forcefight) {
@@ -6608,7 +6629,7 @@ export async function earth_sense() {
     const u = game.u || {};
     // C: Race_if(PM_DWARF) — urace.mnum.
     if ((game.urace?.mnum | 0) !== PM_DWARF) return;
-    if (u.usteed || Flying() || Levitation() || Upolyd) return;
+    if (u.usteed || Flying() || Levitation() || Upolyd(u)) return; // C `:1554`
     const typ = game.level?.at?.(u.ux | 0, u.uy | 0)?.typ | 0;
     if (typ !== CORR && typ !== ROOM) return;
     const buried = game.level?.buriedobjlist;

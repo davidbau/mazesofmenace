@@ -498,9 +498,12 @@ function _invletter_value(letter) {
         : c >= 65 && c <= 90 ? c - 65 + 28
         : c === 36 ? 1 : c === 35 ? 54 : 55;
 }
-function _sortloot(list, byInvlet = false) {
+function _sortloot(list, byInvlet = false, filterfunc = null) {
     const arr = [];
-    for (let o = list; o; o = o.nobj) arr.push({ obj: o, indx: arr.length, orderclass: 0 });
+    /* C invent.c:610-618 — filterfunc rejects an object BEFORE it is populated
+     * into sliarray, so loot_classify()'s observe_object() (invent.c:170-171)
+     * never runs on it. */
+    for (let o = list; o; o = o.nobj) if (!filterfunc || filterfunc(o)) arr.push({ obj: o, indx: arr.length, orderclass: 0 });
     /* C invent.c:632 — `if (mode && n > 1)`; no comparisons, no classify. */
     if (arr.length > 1) {
         for (const sli of arr) {
@@ -1096,7 +1099,7 @@ async function _menu_loot_items(chainHead, contents, action, useInvlet) {
      * description, but USE_INVLET selects letter order for the hero's pack.
      * sortloot='f' requests description order for both directions. */
     const byInvlet = useInvlet && game.flags?.sortloot !== 'f';
-    const sorted = _sortloot(chainHead, byInvlet).filter((o) => contents.includes(o));
+    const sorted = _sortloot(chainHead, byInvlet, (o) => contents.includes(o));
 
     /* C:1103-1141 the pack walk: one heading per contributing class, rows in
      * sortloot order within the class. */

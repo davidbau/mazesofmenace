@@ -60,7 +60,7 @@ import { float_vs_flight } from './mhitm.js';
 import { LEVITATION, FLYING, STEALTH, CXN_NO_PFX, Has_contents } from './const.js';
 /* rot_organic/rot_corpse leaf callees, imported from their C homes. */
 import { obfree } from './dokick.js';
-import { m_at, setmnotwielded, do_attack } from './uhitm.js';
+import { m_at, setmnotwielded, do_attack, abon as uhitm_abon } from './uhitm.js';
 import { corpse_xname, otense } from './objnam.js';
 import { remove_worn_item } from './steal.js';
 import { stop_occupation } from './allmain.js';
@@ -109,6 +109,16 @@ import { explode, fracture_rock, break_statue } from './zap.js';
  * (dig.c:1372-1409). PM_WATCHMAN/PM_WATCH_CAPTAIN for its is_watch(ptr) test
  * (mondata.h:159). */
 import { get_iter_mons, angry_guards } from './mklev.js';
+/* C dbridge.c destroy_drawbridge occupant handling (e_died / e_missed). */
+import { xkilled, mon_nam } from './uhitm.js';
+import { canspotmon } from './display.js';
+import { mondied_dm } from './dogmove.js';
+import { nonliving, mhe } from './makemon.js';
+import { vtense } from './objnam.js';
+import { helpless } from './mhitm.js';
+import { done } from './end.js';
+import { spoteffects } from './landing-effects.js';
+import { XKILL_GIVEMSG, XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT, CRUSHING, KILLED_BY_AN, PASSES_WALLS } from './const.js';
 import { m_canseeu } from './dochug.js';
 import { seetrap, feeltrap } from './trap.js';
 import { cansee } from './vision.js';
@@ -117,8 +127,7 @@ import { mkclass } from './makemon.js';
 /* C fountain.c furniture handlers: these bodies are shared with potion.js. */
 import { dogushforth, dryup, breaksink } from './potion.js';
 
-/* C dbridge.c:888-1010: bridge terrain, debris, and vision transitions.
- * The occupant death handling remains in the wider dbridge porting scope. */
+/* C dbridge.c:888-1019: bridge terrain, debris, vision, and the occupants. */
 export async function destroy_drawbridge(x, y) {
     const ox = x | 0, oy = y | 0;
     const inputDir = is_drawbridge_wall(ox, oy);
@@ -169,8 +178,131 @@ export async function destroy_drawbridge(x, y) {
     if (!does_block(wx, wy)) unblock_point(wx, wy);
     vision_recalc(0);
     if (Is_stronghold(game.u.uz))
-        Object.assign(game.u.uevent, { uopened_dbridge: true, uheard_tune: 3 });
+        game.u.uevent.uopened_dbridge = true;
+
+    /* C dbridge.c:978-1015: the occupants of the portcullis and span squares. */
+    const etmp2 = db_set_entity(wx, wy); /* currently only automissers can be here */
+    if (etmp2.edata) {
+        const e_inview = db_e_canseemon(etmp2);
+        if (!db_automiss(etmp2)) {
+            if (e_inview)
+                await pline('%s blown apart by flying debris.', db_E_phrase(etmp2, 'are'));
+            db_set_killer('exploding drawbridge');
+            await db_e_died(etmp2, XKILL_NOCORPSE | (e_inview ? XKILL_GIVEMSG : XKILL_NOMSG),
+                            CRUSHING); /* no corpse */
+        } /* nothing which is vulnerable can survive this */
+    }
+    const etmp1 = db_set_entity(bx.value, by.value);
+    if (etmp1.edata) {
+        const e_inview = db_e_canseemon(etmp1);
+        if (db_e_missed(etmp1, true)) {
+            /* if there is water or lava here, fall in now */
+            if (db_is_u(etmp1)) await spoteffects(false);
+            else await minliquid(etmp1.emon);
+        } else {
+            if (e_inview) {
+                if (!db_is_u(etmp1) && _dig_hallucination())
+                    await pline('%s into some heavy metal!', db_E_phrase(etmp1, 'get'));
+                else
+                    await pline('%s hit by a huge chunk of metal!', db_E_phrase(etmp1, 'are'));
+            } else if (!Deaf_dg() && !db_is_u(etmp1) && !is_pool(bx.value, by.value)) {
+                await You_hear('a crushing sound.');
+            }
+            db_set_killer('collapsing drawbridge');
+            await db_e_died(etmp1, XKILL_NOCORPSE | (e_inview ? XKILL_GIVEMSG : XKILL_NOMSG),
+                            CRUSHING); /* no corpse */
+            /* C dbridge.c:1012-1013 `if (levl[ex][ey].typ == MOAT) do_entity(etmp1);`
+             * do_entity has no js/ body yet; for a monster e_died has already
+             * cleared edata, which is do_entity's first early return. */
+        }
+    }
+    if (game.svk?.killer) { game.svk.killer.name = ''; game.svk.killer.format = 0; } /* nokiller() */
+    if (Is_stronghold(game.u.uz))
+        game.u.uevent.uheard_tune = 3; /* bridge is gone so tune is now useless */
     return true;
+}
+
+/* C dbridge.c:303-337 struct entity / m_to_e / u_to_e / set_entity. */
+function db_set_entity(x, y) {
+    if (game.u.ux === x && game.u.uy === y)
+        return { emon: game.youmonst, ex: game.u.ux, ey: game.u.uy, edata: game.youmonst?.data };
+    const mtmp = m_at(x, y);
+    /* long worm tail squares (m_to_e's PM_LONG_WORM_TAIL arm) are not modeled */
+    return mtmp ? { emon: mtmp, ex: x, ey: y, edata: mtmp.data } : { emon: null, ex: 0, ey: 0, edata: null };
+}
+function db_is_u(etmp) { return etmp.emon === game.youmonst; }
+function db_e_canseemon(etmp) { return db_is_u(etmp) || canseemon(etmp.emon); }
+/* C dbridge.c:359-373 E_phrase() */
+function db_E_phrase(etmp, verb) {
+    const who = db_is_u(etmp) ? 'You' : Monnam(etmp.emon);
+    return `${who} ${db_is_u(etmp) ? verb : vtense(null, verb)}`;
+}
+function db_set_killer(name) {
+    game.svk ||= {};
+    game.svk.killer ||= {};
+    game.svk.killer.format = KILLED_BY_AN;
+    game.svk.killer.name = name;
+}
+/* mondata.h:29,31 passes_walls / noncorporeal */
+function db_passes_walls(ptr) { return ((ptr?.mflags1 | 0) & 0x00000008) !== 0; }
+function db_noncorporeal(ptr) { return ptr?.mlet === 54; /* S_GHOST */ }
+/* C dbridge.c:485-490 automiss() */
+function db_automiss(etmp) {
+    const pw = db_is_u(etmp)
+        ? !!((u_prop_(game.u, PASSES_WALLS).intrinsic | 0) || (u_prop_(game.u, PASSES_WALLS).extrinsic | 0))
+        : db_passes_walls(etmp.edata);
+    return pw || db_noncorporeal(etmp.edata);
+}
+/* C dbridge.c:495-523 e_missed() */
+function db_e_missed(etmp, chunks) {
+    if (db_automiss(etmp)) return true;
+    let misses;
+    if (is_flyer_(etmp.edata) && (db_is_u(etmp) ? !Unaware_real() : !helpless(etmp.emon)))
+        misses = 5; /* flying requires mobility */
+    else if (is_floater_(etmp.edata) || (db_is_u(etmp) && Levitation_()))
+        misses = 3; /* doesn't require mobility */
+    else if (chunks && is_pool(etmp.ex, etmp.ey))
+        misses = 2; /* sitting ducks */
+    else
+        misses = 0;
+    if (is_db_wall(etmp.ex, etmp.ey)) misses -= 3; /* less airspace */
+    return misses >= rnd(8);
+}
+/* C dbridge.c:410-480 e_died() */
+async function db_e_died(etmp, xkill_flags, how) {
+    if (db_is_u(etmp)) {
+        /* how is always CRUSHING from destroy_drawbridge; the DROWNING/BURNING
+         * arms and the post-lifesave force-teleport (enexto+teleds) belong to
+         * do_entity's callers, which are not ported. */
+        if (!game.svk?.killer?.name) db_set_killer('falling drawbridge');
+        await done(how);
+        etmp.ex = game.u.ux; etmp.ey = game.u.uy;
+        return;
+    }
+    if (game.svk?.killer) game.svk.killer.name = '';
+    const msg = (xkill_flags & XKILL_NOMSG) ? null : '';
+    if (game.context?.mon_moving) await db_monkilled_dgst(etmp.emon, msg);
+    else await xkilled(etmp.emon, xkill_flags);
+    /* if etmp gets life-saved, kill it again */
+    if ((etmp.emon.mhp | 0) >= 1) {
+        const seeit = canspotmon(etmp.emon);
+        xkill_flags |= XKILL_NOMSG | XKILL_NOCONDUCT;
+        if (game.context?.mon_moving) await db_monkilled_dgst(etmp.emon, '');
+        else await xkilled(etmp.emon, xkill_flags);
+        if ((etmp.emon.mhp | 0) < 1 && seeit)
+            await pline('Unfortunately for %s, %s is still crushed.', mon_nam(etmp.emon), mhe(etmp.emon));
+    }
+    etmp.edata = null;
+}
+/* C mon.c:3364-3417 monkilled(mdef, fltxt, AD_DGST): mk_corpse(XKILL_NOCORPSE)
+ * is AD_DGST, so gd.disintegested is set and mondead() runs without a corpse. */
+async function db_monkilled_dgst(mdef, fltxt) {
+    if (fltxt !== null && cansee(mdef.mx | 0, mdef.my | 0))
+        await pline('%s is %s!', Monnam(mdef), nonliving(mdef.data) ? 'destroyed' : 'killed');
+    else
+        (game.iflags ||= {}).sad_feeling = !!mdef.mtame;
+    (game.gd ||= {}).disintegested = true;
+    await mondied_dm(mdef, true);
 }
 
 function _drawbridge_pair(x, y) {
@@ -282,26 +414,12 @@ export function is_pick(obj) {
     return t === PICK_AXE || t === DWARVISH_MATTOCK;
 }
 
-// C ref: weapon.c:949 abon(void) — strength & dexterity attack bonus.  Ported
-// STR18(100) are the 18/50 and 18/100 thresholds; for str < 17 they are never
+// C ref: weapon.c:950 abon(void) — strength & dexterity attack bonus.  The
+// one port lives in js/uhitm.js; it carries the Upolyd arm (weapon.c:955-956,
+// adj_lev(&mons[u.umonnum]) - 3) that this file's former private copy omitted,
+// so a polymorphed hero's dig effort used the natural-form Str/Dex ladder.
 export function abon() {
-    const u = game.u || {};
-    const str = acurr(u, 0); /* A_STR = 0 */
-    const dex = acurr(u, 3); /* A_DEX = 3 (attrib.h: STR,INT,WIS,DEX,CON,CHA) */
-    let sbon;
-    if (str < 6) sbon = -2;
-    else if (str < 8) sbon = -1;
-    else if (str < 17) sbon = 0;
-    else if (str <= 50 + 18 /* STR18(50) packed */) sbon = 1;
-    else if (str < 100 + 18) sbon = 2;
-    else sbon = 3;
-    /* game-tuning kludge: easier to hit at low level */
-    sbon += ((u.ulevel | 0) < 3) ? 1 : 0;
-    if (dex < 4) return sbon - 3;
-    else if (dex < 6) return sbon - 2;
-    else if (dex < 8) return sbon - 1;
-    else if (dex < 14) return sbon;
-    else return sbon + dex - 14;
+    return uhitm_abon();
 }
 
 // C ref: invent.c greatest_erosion(obj) — max(oeroded, oeroded2).  A fresh
@@ -1203,6 +1321,24 @@ export async function dig() {
      * g.context.digging.tool (the apply object), since the JS uwep wiring may
      * differ from C's (the pick-axe is the C uwep). */
     const tool = d.tool || u.uwep || {};
+    /* C dig.c:309-315 — "perhaps a nymph stole your pick-axe while you were
+     * busy digging, or perhaps you teleported away": end the occupation
+     * silently when swallowed, the pick is gone, the hero left the dig level,
+     * or (digging down) the hero is no longer on the dig square / (sideways)
+     * no longer adjacent to it. */
+    {
+        const uw = u.uwep;
+        const dlv = d.level || {}, uz = u.uz || {};
+        const onLevel = (dlv.dnum | 0) === (uz.dnum | 0)
+                        && (dlv.dlevel | 0) === (uz.dlevel | 0);
+        const dpx0 = d.pos.x | 0, dpy0 = d.pos.y | 0;
+        const moved = d.down
+            ? (dpx0 !== (u.ux | 0) || dpy0 !== (u.uy | 0))
+            : (Math.abs(dpx0 - (u.ux | 0)) > 1 || Math.abs(dpy0 - (u.uy | 0)) > 1);
+        if (u.uswallow || !uw || (!is_pick(uw) && !is_axe(uw))
+            || !onLevel || moved)
+            return 0;
+    }
 
     /* C dig.c:317-322 — digging down: dig_check on the hero's square. */
     if (d.down) {
@@ -1308,7 +1444,13 @@ export async function dig() {
             }
         } else if (lev && IS_WALL(lev.typ)) {
             /* C dig.c:488-500 — ordinary wall → doorless doorway. */
-            lev.typ = DOOR; lev.doormask = D_NODOOR;
+            if (game.level.flags.is_maze_lev) {
+                lev.typ = ROOM; lev.flags = 0;
+            } else if (game.level.flags.is_cavernous_lev && !in_town(dpx, dpy)) {
+                lev.typ = CORR; lev.flags = 0;
+            } else {
+                lev.typ = DOOR; lev.doormask = D_NODOOR;
+            }
             digtxt = 'You make an opening in the wall.';
         } else if (lev && lev.typ === SDOOR) {
             /* C dig.c:501-505 */

@@ -1518,7 +1518,7 @@ async function really_kick_object(x, y) {
             && kicked.ocarry === mon) {
             return 1; /* alert shk caught it */
         }
-        const bp = game._bhitpos || game.bhitpos || {};
+        const bp = game.bhitpos || {};
         game.notonhead = ((mon.mx | 0) !== (bp.x | 0)
             || (mon.my | 0) !== (bp.y | 0));
         if (isgold) {
@@ -1530,7 +1530,7 @@ async function really_kick_object(x, y) {
 
     if (kicked.where === OBJ_MIGRATING) return 1;
 
-    const bp = game._bhitpos || game.bhitpos || { x, y };
+    const bp = game.bhitpos || { x, y };
     const bx = bp.x | 0;
     const by = bp.y | 0;
     const bhitroom = (in_rooms(bx, by, SHOPBASE) || '')[0] || '';

@@ -3262,10 +3262,9 @@ export async function bhito(obj, wand, state = game,
                             && !nonliving(state.mons?.[corpsenm])) {
                             const name = type_is_pname(state.mons?.[corpsenm])
                                 ? corpseName : an(corpseName, state);
-                            if (!Hallucination(state))
-                                await message(`You hear ${name} reviving.`, state, rawEnv);
-                            else
-                                await message('You hear a defibrillator.', state, rawEnv);
+                            const heard = youHear(!Hallucination(state)
+                                ? `${name} reviving.` : 'a defibrillator.', state);
+                            if (heard) await message(heard, state, rawEnv);
                             learn_it = byHero ? true : Boolean(state.gz?.zap_oseen);
                         }
                         if (canspotmon(monster, state))
@@ -5309,8 +5308,9 @@ export async function zap_over_floor(
                         `The ${liquid(lavawall ? 'lava' : 'water')} freezes for a moment.`,
                         state, env,
                     );
-                } else if (!heroIsDeaf(state)) {
-                    await message('You hear a soft crackling.', state, env);
+                } else {
+                    const heard = youHear('a soft crackling.', state);
+                    if (heard) await message(heard, state, env);
                 }
                 rangemod -= 1000;
             } else {
@@ -5348,8 +5348,9 @@ export async function zap_over_floor(
                                 : `The ${liquid('water')} freezes.`, state, env,
                     );
                     redrawAt(x, y, state);
-                } else if (!lava && !heroIsDeaf(state)) {
-                    await message('You hear a crackling sound.', state, env);
+                } else if (!lava) {
+                    const heard = youHear('a crackling sound.', state);
+                    if (heard) await message(heard, state, env);
                 }
                 if (u_at(x, y, state)) {
                     if (state.u.uinwater) {
@@ -5507,19 +5508,19 @@ export async function zap_over_floor(
         case ZT_COLD:
             newDoormask = D_NODOOR;
             seeText = 'The door freezes and shatters!';
-            hearText = 'You hear a deep cracking sound.';
+            hearText = 'a deep cracking sound.';
             break;
         case ZT_DEATH:
             if (Math.abs(type) === 20 + ZT_DEATH) {
                 newDoormask = D_NODOOR;
                 seeText = 'The door disintegrates!';
-                hearText = 'You hear crashing wood.';
+                hearText = 'crashing wood.';
             }
             break;
         case ZT_LIGHTNING:
             newDoormask = D_BROKEN;
             seeText = 'The door splinters!';
-            hearText = 'You hear crackling.';
+            hearText = 'crackling.';
             break;
         default:
             if (exploding_wand_typ > 0
@@ -5554,7 +5555,8 @@ export async function zap_over_floor(
             } else if (senseText) {
                 await message(senseText, state, env);
             } else if (hearText) {
-                await message(hearText, state, env);
+                const heard = youHear(hearText, state);
+                if (heard) await message(heard, state, env);
             }
             if (picking_at(x, y, state)) {
                 await stop_occupation(state, { message: ttyPline });

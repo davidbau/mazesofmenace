@@ -1672,7 +1672,7 @@ function size_str(msize) {
  * EWounded_legs&BOTH_SIDES mbodypart LEG makeplural); leashed :3381;
  * x_monnam ARTICLE_YOUR SUPPRESS_IT|SUPPRESS_INVISIBLE :3386; pline :3391.
  * Callers set gb.bhitpos (apply.c:395 stethoscope rx,ry; zap bhitm);
- * JS reads game.bhitpos ?? game._bhitpos, falling back to the head pos
+ * JS reads game.bhitpos, falling back to the head pos
  * when no caller set it (apply stethoscope currently doesn't).
  */
 export async function mstatusline(mtmp) {
@@ -1701,7 +1701,7 @@ export async function mstatusline(mtmp) {
             info += ', single segment';
         } else {
             const nsegs = (nsegs0 | 0) + 1; // include head
-            const bhit = game.bhitpos ?? game._bhitpos;
+            const bhit = game.bhitpos;
             const segndx = wseg_at(mtmp,
                 (bhit?.x ?? mtmp.mx) | 0, (bhit?.y ?? mtmp.my) | 0);
             info += `, ${segndx | 0}${ordin(segndx)} of ${nsegs} segments`;
@@ -1715,7 +1715,7 @@ export async function mstatusline(mtmp) {
     if (mtmp.meating) info += ', eating';
     // C :3315–3319 — stethoscope exposes mimic first; probing wand doesn't
     {
-        const bhit = game.bhitpos ?? game._bhitpos;
+        const bhit = game.bhitpos;
         const bx = ((bhit?.x ?? mtmp.mx) | 0);
         const by = ((bhit?.y ?? mtmp.my) | 0);
         if (mtmp.mundetected || (mtmp.m_ap_type | 0)

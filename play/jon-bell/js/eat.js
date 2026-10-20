@@ -4089,6 +4089,10 @@ function eye_of_newt_buzz() {
     if (!u) return;
     if (rn2(3) || 3 * (u.uen | 0) <= 2 * (u.uenmax | 0)) {
         const old_uen = u.uen | 0;
+        if (!(game.disp && ((game.disp.botl | 0) || (game.disp.botlx | 0)))) {
+            if (game._botlStaleUen === undefined) game._botlStaleUen = old_uen;
+            if (game._botlStaleUenmax === undefined) game._botlStaleUenmax = u.uenmax | 0;
+        }
         u.uen = (u.uen | 0) + rnd(3);
         if ((u.uen | 0) > (u.uenmax | 0)) {
             if (!rn2(3)) {
@@ -4099,7 +4103,7 @@ function eye_of_newt_buzz() {
         }
         if (old_uen !== (u.uen | 0)) {
             _emit_eat_pline('You feel a mild buzz.');
-            game._botl = true; /* C: disp.botl = TRUE */
+            if (game.disp) game.disp.botl = true; /* C eat.c:1120 */
         }
     }
 }

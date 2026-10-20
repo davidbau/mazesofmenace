@@ -772,7 +772,7 @@ export async function show_transient_light(obj, x, y) {
     }
 
     if (obj) {
-        const bp = game.bhitpos || game._bhitpos || { x, y };
+        const bp = game.bhitpos || { x, y };
         place_object(obj, bp.x | 0, bp.y | 0);
     } else {
         ls.x = x | 0;

@@ -34,6 +34,7 @@ import { rnd } from './rng.js';
 import { set_corpsenm } from './mkobj.js';
 import { oname } from './do_name.js';
 import { impossible } from './display.js';
+import { show_text_pages } from './pager.js';
 import {
     PM_HUMAN, PM_RANGER, NON_PM, monsterNames,
 } from './generated/monsters_data.js';
@@ -821,14 +822,12 @@ function outentry(rank, t1, so, emit) {
  * lock_file/unlock_file/fopen_datafile (VFS read_record_entries/
  * write_record_entries never lock or fail; a null record reads as the
  * shipped-empty RECORD an installed C game always has, not the missing-file
- * "Cannot open record file!" `:749` arm); toptenwin NHW_TEXT create/
- * display/destroy (`:656`, showwin/destroywin — render_topten_lines is the
- * !toptenwin raw panel); UPDATE_RECORD_IN_PLACE fpos mechanics (`:14` —
+ * "Cannot open record file!" `:749` arm); UPDATE_RECORD_IN_PLACE fpos mechanics (`:14` —
  * VFS exact-write carries the same bytes, no fpos/sentinel/TRUNCATE);
  * free_ttlist/dealloc_ttentry (GC); TOS restore_colors (platform ifdef).
  * (`prscore` lives in this file now, below.)
  */
-export function topten(how, when = 0, deathStr = '') {
+export async function topten(how, when = 0, deathStr = '') {
     // C `:652` — mid-panic: cut out topten entirely (alloc use).
     if (game.program_state?.panicking) return;
 
@@ -841,21 +840,30 @@ export function topten(how, when = 0, deathStr = '') {
     const flags = game.flags || {};
     const u = game.u || {};
 
+    // C `:655–658` — iflags.toptenwin: topten_print / topten_print_bold
+    // putstr into an NHW_TEXT window (`:165–181`), shown at showwin.
+    const toptenwin = !!game.iflags?.toptenwin;
+
     // C `:725–736` wizard||discover arm — message then goto showwin
-    // (RECORD never touched; `:656` toptenwin create is a named omit).
+    // (RECORD never touched).
     const wizard = !!(flags.debug || flags.wizard);
     const discover = !!(flags.explore || flags.discover);
     if (wizard || discover) {
+        const lines = [];
         if (how !== PANICKED && hup_ok) {
             const mode = wizard ? 'wizard' : 'discover';
-            // C topten_print is not gated by done_stopprint; showwin is.
-            render_topten_lines([
-                { text: '', bold: false },
-                {
-                    text: `Since you were in ${mode} mode, the score list will not be checked.`,
-                    bold: false,
-                },
-            ]);
+            lines.push({ text: '', bold: false });
+            lines.push({
+                text: `Since you were in ${mode} mode, the score list will not be checked.`,
+                bold: false,
+            });
+        }
+        if (toptenwin) {
+            // C showwin `:908–912` (done_stopprint-gated) + destroywin.
+            if (!done_stopprint) await topten_showwin(lines);
+        } else if (lines.length) {
+            // C topten_print raw_print path is not gated by done_stopprint.
+            render_topten_lines(lines);
         }
         return;
     }
@@ -1023,10 +1031,26 @@ export function topten(how, when = 0, deathStr = '') {
 
     void t0_used; // C `:919` dealloc_ttentry is GC here
 
-    // C showwin `:908–917` — the !toptenwin path is a no-op `;`, so the
-    // collected panel goes out here; destroywin `:919–925` needs nothing
-    // (no window was created).
-    if (!done_stopprint) render_topten_lines(outLines);
+    // C showwin `:908–917` — toptenwin: display_nhwindow(TRUE) then
+    // destroywin `:919–925`; the !toptenwin path is a no-op `;`, so the
+    // collected raw panel goes out here instead.
+    if (!done_stopprint) {
+        if (toptenwin) await topten_showwin(outLines);
+        else render_topten_lines(outLines);
+    }
+}
+
+/**
+ * C topten.c showwin/destroywin `:908–925` for iflags.toptenwin — the
+ * NHW_TEXT window built by topten_print (ATR_NONE) / topten_print_bold
+ * (ATR_BOLD) is shown with display_nhwindow(TRUE) (wintty.c
+ * process_text_window + dmore) and destroyed: pager.js show_text_pages.
+ * @param {{ text: string, bold: boolean }[]} lines
+ */
+async function topten_showwin(lines) {
+    await show_text_pages(lines.map((l) => ({
+        text: l.text ?? '', attr: l.bold ? ATR_BOLD : 0,
+    })));
 }
 
 /**

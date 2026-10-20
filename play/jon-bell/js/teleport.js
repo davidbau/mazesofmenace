@@ -288,6 +288,8 @@ export function teleok(x, y, trapok) {
             || (!Is_waterlevel_local() && !is_waterwall_local(x, y)
                 && (Levitation_hero() || Flying_hero() || Wwalking_hero()))))
             return false;
+    } else if ((mdat?.mlet | 0) === S_EEL && rn2(13)) {         /* C 148-149 */
+        return false; /* hero polyd into an eel: goodpos draws rn2(13) */
     } else if (is_lava_local(x, y)) {                           /* C 148-157 */
         const uarmf = game.u?.uarmf;
         if (!(Levitation_hero() || Flying_hero()

@@ -777,8 +777,10 @@ export async function flooreffects(obj, x, y, verb) {
     }
     obj.nobj = obj.nexthere = null;
 
-    const save = game._bhitpos ? { ...game._bhitpos } : null;
-    game._bhitpos = { x: x | 0, y: y | 0 };
+    // C `save_bhitpos = gb.bhitpos; gb.bhitpos.x = x, gb.bhitpos.y = y;`
+    // (gb.bhitpos is a zero-initialized static, so a first save is 0,0).
+    const save = { x: game.bhitpos?.x | 0, y: game.bhitpos?.y | 0 };
+    game.bhitpos = { x: x | 0, y: y | 0 };
 
     // C: struct trap *t; struct monst *mtmp; int ttyp = NO_TRAP, res = FALSE.
     // t/levl are read per-branch like C (no hoist past boulder_hits_pool).
@@ -966,8 +968,7 @@ export async function flooreffects(obj, x, y, verb) {
         }
     }
 
-    if (save) game._bhitpos = save;
-    else delete game._bhitpos;
+    game.bhitpos = save; // C `gb.bhitpos = save_bhitpos;`
     return res;
 }
 
@@ -1068,6 +1069,16 @@ export async function boulder_hits_pool(otmp, rx, ry, pushing) {
             await burn_away_slime(); /* C do.c:137 — before the damage roll */
             const dmg = d(Fire_resistance ? 1 : 3, 6);
             await losehp(maybe_half_phys(dmg), 'molten lava', KILLED_BY);
+            // C losehp runs urgent_pline("You die...") + done(DIED) inline
+            // (hack.c `:4329–4330`); drain JS's deferred finisher here
+            // (D-4092 idiom). Lifesaved / wizard "Die? n" falls through to
+            // obfree like C; a real death never returns.
+            await finish_maybe_wail();
+            if (game._losehp_needs_done || game.program_state?.gameover) {
+                const { finish_losehp_done } = await import('./end.js');
+                await finish_losehp_done();
+            }
+            if (game.program_state?.gameover) return true;
         } else if (!fills_up && game.flags?.verbose
             && (pushing ? !Blind() : cansee(rx, ry))) {
             await pline('It sinks without a trace!');
