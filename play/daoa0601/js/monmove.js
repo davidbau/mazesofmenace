@@ -76,6 +76,7 @@ import { releaseMonsterLeash } from './monster_leash.js';
 import { ammunitionMatchesLauncher, isPick, isPolearm, returningWeaponRangeSquared, willWeld, } from './weapon_type.js';
 import { growMonster } from './monster_growth.js';
 import { monsterLocomotion } from './monster_locomotion.js';
+import { trapName } from './trap_name.js';
 import { makePlural, verbForSubject } from './object_grammar.js';
 import { drainObjectEnchantment } from './object_state.js';
 import { currentAttribute, exerciseAttribute } from './attrib.js';
@@ -685,7 +686,7 @@ export async function finishDeferredMonsterMiscItem(action, state = requireIniti
         if (canSeeMonster(monster) || trapVisible) {
             const subject = canonicalMonsterName(monster, { state, capitalized: true, augmentIt: true });
             const verb = verbForSubject(subject, monsterLocomotion(monster.mnum, 'jump'));
-            await plineWithContinuation(`${subject} deliberately ${verb} onto a ${misc.trap.tseen ? 'polymorph trap' : 'hidden trap'}!`);
+            await plineWithContinuation(`${subject} deliberately ${verb} onto a ${misc.trap.tseen ? trapName(misc.trap.ttyp, { state }) : 'hidden trap'}!`);
         }
         const oldx = monster.mx, oldy = monster.my;
         placeMonsterAt(monster, misc.trap.tx, misc.trap.ty);
@@ -3236,10 +3237,27 @@ async function advanceHeroAttackSequence(sequence, state, random, rollOne, rollD
             return sequence.current;
         }
         sequence.current = null;
+        // A slot that reaches the end of mattacku()'s switch without an
+        // attack still commits pending status; its continue paths do not.
+        if (!attackSlotContinues(sequence, effectiveAttack[0], state)
+            && state === game && state.context.botl)
+            await bot();
     }
     sequence.current = null;
     sequence.done = true;
     return null;
+}
+// C mattacku() loop entries that `continue` before reaching bot().
+function attackSlotContinues(sequence, attackType, state) {
+    const monster = sequence.monster;
+    if (state.u.uswallow && attackType !== AT_ENGL)
+        return true;
+    if (sequence.skipNonMagic && attackType !== AT_MAGC)
+        return true;
+    if (attackType !== AT_KICK || !monster.mtrapped)
+        return false;
+    const trap = trapAt(state, monster.mx, monster.my);
+    return trap?.ttyp === PIT || trap?.ttyp === SPIKED_PIT;
 }
 async function attackHeroWithRangedWeapon(monster, state, random, rollOne, calls, publish) {
     requirePerceivedHero(monster);
@@ -6405,6 +6423,10 @@ async function completeMovedMonsterAction(monster, movement, state, random, roll
             movement.postMoveStatus = passage.status === 'died' || passage.heroDied
                 ? MMOVE_DIED : MMOVE_DONE;
             movement.actionCompleted = true;
+            // postmov() returns here after dissolving bars or a fatal door
+            // trap. The passage handled display; the presenter must not
+            // add the destination redraw that this return skips in C.
+            movement.postMoveDestinationPainted = true;
             await finishDochugAfterMovement(monster, movement, state, random, rollOne, rollDice, calls, dochugContext);
             return movement;
         }
@@ -6590,15 +6612,37 @@ export async function resumeDeferredMonsterTrap(action, state, { random = rn2, r
                 ...(describeMonster ? { describeMonster } : {}),
             });
             break;
-        case 'land-mine':
+        case 'land-mine': {
+            // A victim relocated by the blast meets mintrap(FORCETRAP) at
+            // its new square, which may end its stay on this level.
+            const relocated = { action: null };
             await finishMonsterLandMine(action.monster, event, state, {
                 finishDeath,
                 publish,
                 random: recordedRandom,
                 rollOne: recordedRollOne,
                 ...(describeMonster ? { describeMonster } : {}),
+                forceTrapAtMonster: async (victim) => {
+                    relocated.action = await finishImmediateMonsterTrap(await triggerImmediateMonsterTrap(victim, state, {
+                        force: true, random: recordedRandom, rollOne: recordedRollOne,
+                        rollDice, publish,
+                    }), state, {
+                        publish, random: recordedRandom, rollOne: recordedRollOne, rollDice,
+                        finishDeath,
+                        ...(describeMonster ? { describeMonster } : {}),
+                    });
+                },
             });
+            const nested = relocated.action?.movement;
+            if (nested?.heroDied)
+                movement.heroDied = true;
+            if (nested?.actorLeftLevel && !movement.heroDied) {
+                movement.actorLeftLevel = true;
+                movement.actionCompleted = true;
+                return action;
+            }
             break;
+        }
         case 'pit-trap':
             await finishMonsterPitTrap(action.monster, event, {
                 publish,

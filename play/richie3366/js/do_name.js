@@ -1582,10 +1582,11 @@ async function docallcmd_menu() {
            erase_menu_or_text clearscreen=FALSE) reprints stored gbuf
            only: no newsym, no Hallu what_mon re-roll (C keeps 'v' at
            scen-trap-Wizard-94001 step 238; docrt() re-rolled '\'').
-           dismiss_nhw_menu is that destroy (invent.js corner arm);
-           the flush blits stored state. */
+           dismiss_nhw_menu is that destroy (invent.js corner arm). No
+           flush_screen either: its bot() would repaint a WIN_STATUS that
+           C leaves as is (docorner bot()s only when the menu reaches the
+           status rows). */
         await dismiss_nhw_menu();
-        await flush_screen(1);
         const raw = String.fromCharCode(key);
         if (key === 27 || raw === 'q') return 'q';
         if (raw === '\r' || raw === '\n' || raw === ' ') continue;

@@ -1670,7 +1670,9 @@ export async function drop_upon_death(mtmp, cont, x, y) {
         // C `:287–288` after owornmask=0, before rn2(5) curse
         if ((otmp.otyp | 0) === SLIME_MOLD) goodfruit(otmp.spe);
 
-        if (rn2(5)) curse(otmp);
+        // C `:290–291` — curse is async: a book the hero died reading
+        // slams shut (spell.c book_cursed) before the next object drops.
+        if (rn2(5)) await curse(otmp);
         if (mtmp) {
             // C `:290` — the risen monster takes the hero's inventory.
             add_to_minv(mtmp, otmp);

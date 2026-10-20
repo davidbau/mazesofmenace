@@ -1838,7 +1838,11 @@ export async function meatcorpse(mtmp, rawEnv = {}) {
                     rawEnv,
                 );
         } else {
-            await monsterMessage('You hear a masticating sound.', null, state, rawEnv);
+            if (state.flags?.verbose) {
+                const heard = youHear('a masticating sound.', state);
+                if (heard !== null)
+                    await monsterMessage(heard, null, state, rawEnv);
+            }
         }
         await m_consume_obj(mtmp, obj, { ...rawEnv, state });
         if (mtmp.data !== original) return mtmp.data ? 1 : 2;
@@ -4303,11 +4307,9 @@ export async function were_change(monster, rawEnv = {}) {
                     normalized,
                 );
             }
-            await normalized.message(
-                `You hear a ${howler} howling at the moon.`,
-                state,
-                normalized,
-            );
+            const heard = youHear(`a ${howler} howling at the moon.`, state);
+            if (heard !== null)
+                await normalized.message(heard, state, normalized);
             await wakeNearForWereHowl(
                 monster.mx,
                 monster.my,

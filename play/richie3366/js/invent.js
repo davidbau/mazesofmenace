@@ -55,7 +55,7 @@ import {
     clear_nhwindow_message, Hallucination, set_bot_disabled,
     clear_committed_status, clear_message_window_menu_overlay,
     topline_need_more, display_nhwindow_message, paint_message_window_only,
-    erase_menu_or_text, dxdy_to_dist_descr, tty_map_color,
+    erase_menu_or_text, dxdy_to_dist_descr, tty_map_color, map_glyphinfo,
 } from './display.js';
 import { xprname, an, the, vtense, doname, distant_name, Japanese_item_name, xname, cxname_singular, set_xname_observe, set_distant_cansee, ansimpleoname, simpleonames, gloves_simple_name, set_not_fully_identified, makeplural, makesingular, body_part_latebound, corpse_xname, killer_xname, maybereleaseobuf, safe_qbuf } from './objnam.js';
 import { yn_function, y_n, getlin, mungspaces } from './getline.js';
@@ -2966,6 +2966,44 @@ function statusLine2() {
 }
 
 /**
+ * C invent.c display_pickinv `:3319–3320` — tmpglyph = obj_to_glyph(otmp,
+ * rn2_on_display_rng) (the Hallu display-RNG burn), then
+ * map_glyphinfo(0, 0, tmpglyph, 0U, &tmpglyphinfo) for add_menu. Menu
+ * rows keep the two fields tty reads: ttychar and gm.sym.color.
+ * @returns {{ ttychar: string, color: number }}
+ */
+function pickinv_obj_glyphinfo(otmp) {
+    const gi = map_glyphinfo(0, 0, obj_glyph(otmp), 0);
+    return { ttychar: gi.ch, color: gi.color };
+}
+
+/**
+ * C wintty.c process_menu_window `:1335–1336`, `:1386–1393` —
+ * show_obj_syms = iflags.use_menu_glyphs, but with menu_objsyms bit 4
+ * ("conditional") it is off when any entry of the whole menu (cw->mlist:
+ * headings and the tty_end_menu prompt rows too) has a zero identifier.
+ * Entries mark a nonzero C identifier with `identifier: true`.
+ * @param {Array<object|string>} entries the whole menu, every page
+ */
+function menu_show_obj_syms(entries) {
+    if (!game.iflags?.use_menu_glyphs) return false;
+    if (((game.iflags?.menuobjsyms | 0) & 4) === 0) return true;
+    return entries.every((e) => typeof e !== 'string' && !!e.identifier);
+}
+
+/**
+ * C wintty.c process_menu_window `:1474–1486` — for an item (nonzero
+ * identifier) that is not selected and has a glyph, str[2] (the `-` of
+ * tty_add_menu's "%c - %s") is drawn as glyphinfo.ttychar in
+ * gm.sym.color, ATR_NONE. Returns the cell to paint, or null.
+ */
+function menu_objsym_cell(entry, show) {
+    if (!show || typeof entry === 'string' || !entry.identifier
+        || entry.selected || !entry.glyphinfo) return null;
+    return { ch: entry.glyphinfo.ttychar, color: tty_map_color(entry.glyphinfo.color) };
+}
+
+/**
  * Draw a full-screen text overlay (no map/status unless withStatus).
  * lines: string[] or {text, attr}[]
  */
@@ -2989,8 +3027,14 @@ function paint_overlay(lines, opts = {}) {
             : tty_map_color(entry.color ?? NO_COLOR);
         const split = typeof entry === 'string' ? 0 : (entry.split | 0);
         const col = opts.col || 0;
+        // C `:1474–1486` show_obj_syms slot (str[2], after the pad).
+        const objsym = typeof entry === 'string' ? null : (entry.objsym || null);
         // C tty: leading pad space is not part of item ATR_INVERSE/heading
         for (let i = 0; i < text.length && col + i < disp.cols; i++) {
+            if (objsym && i === 3) {
+                disp.setCell(col + i, r, objsym.ch, objsym.color, 0);
+                continue;
+            }
             const pre = i < split || (i === 0 && text[0] === ' ');
             disp.setCell(col + i, r, text[i], pre ? NO_COLOR : color, pre ? 0 : attr);
         }
@@ -3097,6 +3141,8 @@ export async function paint_corner_nhw_menu(entries, morestr = '(end) ') {
     if (topline_need_more()) await display_nhwindow_message();
     const disp = display();
     if (!disp) return null;
+    // C process_menu_window `:1386–1393` — decided once over cw->mlist.
+    const show_obj_syms = menu_show_obj_syms(entries);
     // C wintty.c tty_end_menu `:2728–2733` runs before display: cut
     // overlong item strs (paint-time copy — caller arrays stay full-text).
     entries = entries.map((e) => {
@@ -3143,6 +3189,7 @@ export async function paint_corner_nhw_menu(entries, morestr = '(end) ') {
             attr: typeof e === 'string' ? 0 : (e.attr || 0),
             color: typeof e === 'string' ? NO_COLOR : (e.color ?? NO_COLOR),
             split: typeof e === 'string' ? 0 : ((e.descStart | 0) + 1),
+            objsym: menu_objsym_cell(e, show_obj_syms),
         }));
         painted.push({ text: ` ${morestr}`, attr: 0 });
         paint_overlay(painted, {
@@ -3164,11 +3211,16 @@ export async function paint_corner_nhw_menu(entries, morestr = '(end) ') {
         const color = typeof entry === 'string' ? NO_COLOR
             : tty_map_color(entry.color ?? NO_COLOR);
         const split = typeof entry === 'string' ? 0 : (entry.descStart | 0);
+        const objsym = menu_objsym_cell(entry, show_obj_syms); // C `:1474–1486`
         // cl_end from offx to EOL
         for (let c = offx; c < disp.cols; c++)
             disp.setCell(c, r, ' ', NO_COLOR, 0);
         disp.setCell(offx, r, ' ', NO_COLOR, 0);
         for (let i = 0; i < text.length && offx + 1 + i < disp.cols; i++) {
+            if (objsym && i === 2) {
+                disp.setCell(offx + 1 + i, r, objsym.ch, objsym.color, 0);
+                continue;
+            }
             const pre = i < split;
             disp.setCell(offx + 1 + i, r, text[i], pre ? NO_COLOR : color, pre ? 0 : attr);
         }
@@ -3873,13 +3925,14 @@ function pickinv_build_inuse(lets, wizid, opts = null) {
             const handsLine = xprname(null, HANDS_SYM, false, 0, barehands);
             const handsCol = pickinv_menu_coloring(handsLine);
             if (doing_perm_invent) ttyinv_add_menu(letch, handsCol.color, barehands);
-            entries.push({ text: handsLine, ...handsCol });
+            // C `:3315–3316` add_menu(&nul_glyphinfo, a_char ilet)
+            entries.push({ text: handsLine, ...handsCol, identifier: true });
             /* C invent.c:3313–3330 — formattedobj is the makeplural obuf. */
             maybereleaseobuf(hands);
             continue;
         }
         if (!Blind()) observe_object(otmp);
-        obj_glyph(otmp);
+        const glyphinfo = pickinv_obj_glyphinfo(otmp);
         byLet.set(letch, otmp);
         listed.push(otmp);
         pickItems.push({
@@ -3893,7 +3946,7 @@ function pickinv_build_inuse(lets, wizid, opts = null) {
         } else {
             desc = xprname(otmp);
         }
-        entries.push({ text: desc, ...pickinv_menu_coloring(desc) });
+        entries.push({ text: desc, ...pickinv_menu_coloring(desc), identifier: true, glyphinfo });
         /* C invent.c:3322–3330 — release the doname/xprname obuf. */
         maybereleaseobuf(desc);
     }
@@ -4091,7 +4144,8 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null, o
         byLet.set(HANDS_SYM, { _hands: true });
         pickItems.push({ selector: HANDS_SYM, gselector: '' });
         const xtraLine = xprname(null, HANDS_SYM, false, 0, xtra.choice);
-        entries.push({ text: xtraLine, ...pickinv_menu_coloring(xtraLine) });
+        // C `:3258` add_menu(&nul_glyphinfo, a_char HANDS_SYM)
+        entries.push({ text: xtraLine, ...pickinv_menu_coloring(xtraLine), identifier: true });
     }
     if (inuse_only) {
         const built = pickinv_build_inuse(lets, wizid);
@@ -4140,7 +4194,7 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null, o
                 if (!Blind()) observe_object(otmp);
                 // C: invent.c display_pickinv — obj_to_glyph(otmp, rn2_on_display_rng)
                 // then map_glyphinfo + add_menu (Hallu display-RNG burn).
-                obj_glyph(otmp);
+                const glyphinfo = pickinv_obj_glyphinfo(otmp);
                 const letch = otmp.invlet || '?';
                 byLet.set(letch, otmp);
                 pickItems.push({
@@ -4150,7 +4204,10 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null, o
                 const formattedobj = xprname(otmp);
                 /* C invent.c:3322–3330 */
                 maybereleaseobuf(formattedobj);
-                entries.push({ text: formattedobj, ...pickinv_menu_coloring(formattedobj) });
+                entries.push({
+                    text: formattedobj, ...pickinv_menu_coloring(formattedobj),
+                    identifier: true, glyphinfo,
+                });
             }
         }
         unsortloot(sorted); // C `:3368` — free-only; GC no-op in JS.
@@ -4162,7 +4219,7 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null, o
         byLet.set(special.ch, { _special: special.ch });
         pickItems.push({ selector: special.ch, gselector: '' });
         const specialLine = `${special.ch} - ${special.text}`;
-        entries.push({ text: specialLine, ...pickinv_menu_coloring(specialLine) });
+        entries.push({ text: specialLine, ...pickinv_menu_coloring(specialLine), identifier: true });
     }
     /* C `:3378–3415` — an empty menu still runs end_menu/select_menu
        with no pline (empty select → 0 → '\0'); the tty empty-menu UX is
@@ -4221,11 +4278,13 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null, o
             // C wintty.c tty_end_menu `:2728–2733`: cut overlong item strs.
             // Carry entry color/split like paint_corner_nhw_menu's own
             // fullscreen arm (pad shifts attr_n by one).
+            const show_obj_syms = menu_show_obj_syms(entries); // C `:1386–1393`
             const painted = page.map((e) => ({
                 text: ` ${end_menu_cut_str(typeof e === 'string' ? e : e.text)}`,
                 attr: typeof e === 'string' ? 0 : (e.attr || 0),
                 color: typeof e === 'string' ? NO_COLOR : (e.color ?? NO_COLOR),
                 split: typeof e === 'string' ? 0 : ((e.descStart | 0) + 1),
+                objsym: menu_objsym_cell(e, show_obj_syms),
             }));
             painted.push({ text: ` ${morestr}`, attr: 0 });
             paint_overlay(painted, {

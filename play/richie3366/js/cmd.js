@@ -5099,7 +5099,9 @@ function get_count_inkey_code(inkey) {
  * prevmsg, minus dumplog).
  * GC_SAVEHIST / GC_CONDHIST put "Count: N "+key2txt in putmsghistory
  * (D-1588). parse uses GC_NOFLAGS; getobj uses GC_SAVEHIST.
- * altmeta input_state / num_pad NHKF_COUNT named.
+ * Keys come from readchar() with the caller's input_state put back
+ * before each read (`:5018`, `:5039–5041`), so parse's commandInp keeps
+ * the altmeta `ESC c` pairing for every key of the count.
  * @param {string|null} [allowchars]
  * @param {string|number} [inkey]
  * @param {number} [maxcount]
@@ -5125,13 +5127,19 @@ export async function get_count(
     let backspaced = false;
     let showzero = true;
     let key = 0;
+    if (!game.program_state) game.program_state = {};
+    const save_input_state = game.program_state.input_state; // C `:5018`
 
     for (;;) {
         if (pending) {
             key = pending;
             pending = 0;
         } else {
-            key = await nhgetch();
+            /* C `:5037–5041` — if readchar() has already been called in
+               this loop, it will have reset input_state; put that back to
+               its previous value */
+            game.program_state.input_state = save_input_state;
+            key = await readchar();
         }
 
         if (key >= 48 && key <= 57) {
@@ -5145,7 +5153,7 @@ export async function get_count(
             showzero = false;
             cnt = Math.trunc(cnt / 10);
             backspaced = true;
-        } else if (key === 27) {
+        } else if (key === cmd_spkey(NHKF_ESC)) { // C `:5061`
             break;
         } else if (!allowchars
                    || allowchars.includes(String.fromCharCode(key))) {
@@ -5402,8 +5410,6 @@ function cmd_spkey(nhkf) {
  * repeat/prevmsg/extcmd binds keep `last_command_count` (the save just
  * above makes those two arms copy the count `get_count` stored).
  * `gm.multi` is the count minus one when the count is non-zero.
- * JS `get_count` reads `nhgetch` rather than `readchar`, so this stores
- * `otherInp` the way `readchar_done` (`:5267–5271`) would have.
  * @returns {Promise<number>} `gc.cmd_key`
  */
 async function parse() {
@@ -5428,7 +5434,6 @@ async function parse() {
         const cntbox = { n: 0 };
         foo = await get_count(null, '\0', LARGEST_INT, cntbox, GC_NOFLAGS);
         game.context.command_count = cntbox.n | 0;
-        game.program_state.input_state = otherInp;
     }
     game.last_command_count = game.context.command_count | 0; // C `:5120`
 

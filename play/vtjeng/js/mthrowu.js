@@ -107,7 +107,7 @@ import {
     breaks,
     hero_breaks,
 } from './dothrow.js';
-import { m_carrying, mondied, seemimic, setmangry, xkilled } from './mon.js';
+import { m_carrying, mondied, seemimic, setmangry, wake_nearto, xkilled } from './mon.js';
 import { m_at } from './monst.js';
 import { minstapetrify } from './trap.js';
 import { down_gate, ship_object } from './dokick.js';
@@ -159,7 +159,7 @@ import {
 // back for m_move()'s item search. Both sides of that cycle are hoisted
 // function declarations, which an ES module cycle initializes before either
 // module body runs; nothing here reads the import at module scope.
-import { closed_door } from './monmove.js';
+import { closed_door, dissolve_bars } from './monmove.js';
 import {
     ammo_and_launcher,
     is_flammable,
@@ -261,6 +261,8 @@ import { makeplural } from './fruit.js';
 import { body_part, mbodypart, polymon } from './polyself.js';
 import { passive_obj, shade_miss } from './uhitm.js';
 import { ttyPline } from './tty_message.js';
+import { youHear } from './pline.js';
+import { messageAt } from './startup_a11y.js';
 
 import { obj_sheds_light } from './light.js';
 import {
@@ -841,13 +843,17 @@ async function ucatchgem(gem, mon, rawEnv = {}) {
         const mon_s_name = s_suffix(monsterCommonName(mon, state));
 
         if (gem.otyp >= FIRST_GLASS_GEM) {
-            note_unported('pline.c pline'); /* You("catch the %s.", gem_xname) */
-            note_unported('pline.c pline'); /* You("are not interested in %s junk.", mon_s_name) */
+            const message = env.message ?? ttyPline;
+            await message(`You catch the ${gem_xname}.`, state, env);
+            await message(`You are not interested in ${mon_s_name} junk.`,
+                state, env);
             /* makeknown(gem->otyp) = discover_object(otyp, TRUE, TRUE, TRUE) */
             discover_object(gem.otyp, true, true, true, state);
             await dropy(gem, env);
         } else {
-            note_unported('pline.c pline'); /* You("accept %s gift in the spirit ...") */
+            await (env.message ?? ttyPline)(
+                `You accept ${mon_s_name} gift in the spirit in which it was intended.`,
+                state, env);
             await hold_another_object(gem, 'You catch, but drop, %s.',
                                       gem_xname, 'You catch:', env);
         }
@@ -1014,6 +1020,10 @@ export async function m_throw(monster, x, y, dx, dy, range, obj, rawEnv = {}) {
                     POTHIT_MONST_THROW,
                     env,
                 );
+                // Fatal crash damage ends in C's really_done(); the JS
+                // potion handler returns after recording the final screen.
+                if (state.program_state?.gameover)
+                    return 0;
                 break;
             }
             const oldumort = state.u.umortality;
@@ -1093,6 +1103,10 @@ export async function m_throw(monster, x, y, dx, dy, range, obj, rawEnv = {}) {
                     note_unported('attrib.c poisoned');
                 }
             }
+            // Fatal poison damage reaches C's really_done() from poisoned();
+            // JS returns with gameover set and must not settle the missile.
+            if (state.program_state?.gameover)
+                return 0;
             if (hit && can_blnd(
                 null,
                 state.youmonst,
@@ -1330,11 +1344,10 @@ export async function return_from_mtoss(magr, otmp, tethered_weapon, state = gam
                         );
                     }
                 } else if (!Deaf(state)) {
-                    if (typeof env.message === 'function')
-                        await env.message(
-                            `You hear something land near ${mon_nam(magr, state)}.`,
-                            state,
-                        );
+                    const heard = youHear(
+                        `Something land near ${mon_nam(magr, state)}.`, state);
+                    if (heard && typeof env.message === 'function')
+                        await env.message(heard, state);
                 }
             } else {
                 /* Hits thrower's arm. */
@@ -1348,11 +1361,11 @@ export async function return_from_mtoss(magr, otmp, tethered_weapon, state = gam
                             state,
                         );
                 } else if (!Deaf(state)) {
-                    if (typeof env.message === 'function')
-                        await env.message(
-                            `You hear something hit ${mon_nam(magr, state)} with a thud!`,
-                            state,
-                        );
+                    const heard = youHear(
+                        `something hit ${mon_nam(magr, state)} with a thud!`,
+                        state);
+                    if (heard && typeof env.message === 'function')
+                        await env.message(heard, state);
                 }
                 hits_thrower_flag = true;
             }
@@ -1360,9 +1373,11 @@ export async function return_from_mtoss(magr, otmp, tethered_weapon, state = gam
         }
     } else {
         /* it didn't make it back to thrower's location */
-        if (tethered_weapon)
-            note_unported('display.c tmp_at'); /* tmp_at(DISP_END, 0) */
-        note_unported('pline.c pline'); /* "You hear a loud snap!" */
+        if (tethered_weapon && typeof env.temporaryDisplay === 'function')
+            await env.temporaryDisplay(DISP_END, 0, state);
+        const heard = youHear('a loud snap!', state);
+        if (heard)
+            await (env.message ?? ttyPline)(heard, state, env);
         notcaught = true;
     }
     if (otmp) {
@@ -1473,7 +1488,7 @@ export async function spitmm(mtmp, mattk, mtarg, rawEnv = {}) {
 
     if (mtmp.mcan) {
         if (!Deaf(state) && mdistu(mtmp, state) < BOLT_LIM * BOLT_LIM) {
-            if (canseemon(mtmp, state)) {
+            if (canspotmon(mtmp, state)) {
                 if (typeof env.message === 'function')
                     await env.message(
                         `A dry rattle comes from ${s_suffix(mon_nam(mtmp, state))} throat.`,
@@ -1481,8 +1496,9 @@ export async function spitmm(mtmp, mattk, mtarg, rawEnv = {}) {
                     );
             } else {
                 note_unported('sound.c Soundeffect');
-                if (typeof env.message === 'function')
-                    await env.message('You hear a dry rattle nearby.', state);
+                const heard = youHear('a dry rattle nearby.', state);
+                if (heard && typeof env.message === 'function')
+                    await env.message(heard, state);
             }
         }
         return M_ATTK_MISS;
@@ -1571,8 +1587,9 @@ export async function breamm(mtmp, mattk, mtarg, rawEnv = {}) {
                         await env.message(`${Monnam(mtmp, state)} coughs.`, state);
                 } else {
                     note_unported('sound.c Soundeffect');
-                    if (typeof env.message === 'function')
-                        await env.message('You hear a cough.', state);
+                    const heard = youHear('a cough.', state);
+                    if (heard && typeof env.message === 'function')
+                        await env.message(heard, state);
                 }
             }
             return M_ATTK_MISS;
@@ -1669,11 +1686,12 @@ export async function monshoot(monster, missile, launcher, rawEnv = {}) {
                 displayRandom: env.displayRandom,
             })
             : '';
-        note_unported('pline.c set_msg_xy'); /* set_msg_xy(mtmp->mx, mtmp->my) */
         const monsterName = requireRangedOperation(env, 'monsterName');
         const message = requireRangedOperation(env, 'message');
         await message(
-            `${monsterName(monster, state)} ${state.m_shot.s ? 'shoots' : 'throws'} ${onm}${mtarg ? ' at ' : ''}${trgbuf}!`,
+            messageAt(
+                `${monsterName(monster, state)} ${state.m_shot.s ? 'shoots' : 'throws'} ${onm}${mtarg ? ' at ' : ''}${trgbuf}!`,
+                monster.mx, monster.my, state),
             state,
         );
         state.m_shot.o = missile.otyp;
@@ -1805,6 +1823,10 @@ export async function thrwmu(monster, rawEnv = {}) {
         } else {
             note_unported('mthrowu.c thitu');
         }
+        // C's fatal losehp() enters really_done() and never reaches
+        // stop_occupation(); JS death handling returns with gameover set.
+        if (state.program_state?.gameover)
+            return 0;
         if (typeof env.stopOccupation === 'function')
             await env.stopOccupation(state, env);
         else
@@ -2042,13 +2064,17 @@ export async function hit_bars(objRef, objx, objy, barsx, barsy, breakflags, sta
         objRef.obj = null; /* object is now gone */
         /* breakage makes its own noises */
         if (obj_type === POT_ACID) {
+            const message = rawEnv.message ?? ttyPline;
             if (cansee(barsx, barsy, state) && !nodissolve) {
-                note_unported('pline.c pline'); /* "The iron bars are dissolved!" */
+                await message('The iron bars are dissolved!', state, rawEnv);
             } else {
-                note_unported('pline.c pline'); /* You_hear hissing */
+                note_unported('sounds.c Soundeffect');
+                const heard = youHear(Hallucination(state)
+                    ? 'angry snakes!' : 'a hissing noise.', state);
+                if (heard) await message(heard, state, rawEnv);
             }
             if (!nodissolve)
-                note_unported('monmove.c dissolve_bars');
+                await dissolve_bars(barsx, barsy, state);
         }
     } else {
         if (!Deaf(state)) {
@@ -2073,7 +2099,9 @@ export async function hit_bars(objRef, objx, objy, barsx, barsy, breakflags, sta
                     bsindx = barsounds.length - 1;
                 }
             }
-            note_unported('pline.c pline'); /* pline("%s!", barsounds[bsindx]) */
+            note_unported('sounds.c Soundeffect');
+            await (rawEnv.message ?? ttyPline)(
+                `${barsounds[bsindx]}!`, state, rawEnv);
         }
         if (!(harmless_missile(otmp, state) || is_flimsy(otmp, state)))
             noise = 4 * 4;
@@ -2086,14 +2114,15 @@ export async function hit_bars(objRef, objx, objy, barsx, barsy, breakflags, sta
             const chance = (melee_attk ? 40 : 60) - acurrstr(state) - spe;
 
             if (!random.rn2(Math.max(2, chance))) {
-                note_unported('pline.c pline'); /* "You break the bars apart!" */
-                note_unported('monmove.c dissolve_bars');
+                await (rawEnv.message ?? ttyPline)(
+                    'You break the bars apart!', state, rawEnv);
+                await dissolve_bars(barsx, barsy, state);
                 noise = noise * 2;
             }
         }
 
         if (noise)
-            note_unported('mon.c wake_nearto');
+            await wake_nearto(barsx, barsy, noise, { ...rawEnv, state });
     }
 }
 

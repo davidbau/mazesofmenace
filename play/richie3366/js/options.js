@@ -9953,13 +9953,14 @@ function simple_opt_get_val(opt) {
         return holder.buf;
     }
     if (name === 'symset') {
-        // C doset_simple_menu `:8602–8620` calls the optfn get_val for
-        // every compound row — no hand-rolled value. k-swap `:8603–8608`:
-        // on a rogue level the row shows the roguesymset entry (the name
-        // half of the swap is at the doset_simple_menu call site).
-        if (Is_rogue_level())
-            return doset_compopt_get_val(optfn_roguesymset, 'roguesymset');
+        // C doset_simple_menu `:8614–8616` calls the optfn get_val for
+        // every compound row — no hand-rolled value.
         return doset_compopt_get_val(optfn_symset, 'symset');
+    }
+    if (name === 'roguesymset') {
+        // C `:8605–8611` k-swap row (the doset_simple_menu call site
+        // passes the roguesymset row on a rogue level).
+        return doset_compopt_get_val(optfn_roguesymset, 'roguesymset');
     }
     if (name === 'statuslines') {
         // C `:4101` supported arm (contest tty sets the bit; the live
@@ -10001,8 +10002,8 @@ async function simple_bool_toggle(opt) {
     await optfn_boolean_do_set(opt.name, simple_bool_value(opt), false);
 }
 
-async function format_simple_opt_line(opt, nameWidth, tabSep = false, dispName = null) {
-    const name = dispName ?? opt.name;
+async function format_simple_opt_line(opt, nameWidth, tabSep = false) {
+    const name = opt.name;
     let val;
     if (opt.opttyp === 'Bool') {
         val = simple_bool_value(opt) ? 'X' : ' ';
@@ -10273,14 +10274,17 @@ async function doset_simple_menu() {
                     // C `:8597`: tiled-map hides color.
                     if (game.iflags?.wc_tiled_map && allopt_idx(opt.name) === allopt_idx('color')) continue;
                 }
-                // C `:8602–8607`: on a rogue level the symset row shows the
-                // roguesymset entry (same optfn_symset get_val).
-                const dispName = (opt.name === 'symset' && Is_rogue_level()) ? 'roguesymset' : opt.name;
+                // C `:8605–8611` k-swap: on a rogue level the symset row
+                // becomes the roguesymset row — its name, its optfn get_val
+                // (`:8614–8616`) and its pick (`any.a_int = k + 1`), so
+                // choosing it reaches handler_symset with opt_roguesymset.
+                const k = (opt.name === 'symset' && Is_rogue_level())
+                    ? { ...opt, name: 'roguesymset' } : opt;
                 raw.push({
-                    text: await format_simple_opt_line(opt, nameWidth, tabSep, dispName),
+                    text: await format_simple_opt_line(k, nameWidth, tabSep),
                     attr: 0,
                     selectable: true,
-                    opt,
+                    opt: k,
                 });
                 if (game.simple_options_help && opt.descr) { // C `:8627–8631`
                     raw.push({ text: `    ${opt.descr}`, attr: 0, selectable: false });

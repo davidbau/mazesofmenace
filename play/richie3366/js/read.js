@@ -433,7 +433,6 @@ function set_lit(x, y, val) {
  */
 export async function litroom(on, obj) {
     const u = game.u || {};
-    const Blind = !!(u.Blind || u.ublind);
     const blessed_effect = !!(obj && obj.oclass === SCROLL_CLASS && obj.blessed);
     // C `:2498` — no_op ≡ uswallow || Underwater || waterlevel.
     const no_op = !!(u.uswallow || (u.uinwater | 0) || Is_waterlevel(u.uz));
@@ -451,13 +450,13 @@ export async function litroom(on, obj) {
                 else
                     /* wielded Sunsword or worn gold dragon scales/mail;
                        maybe lower its BUC state if not already cursed */
-                    await impact_arti_light(otmp, true, !Blind);
+                    await impact_arti_light(otmp, true, !Blind());
 
                 if (otmp.lamplit)
                     ++still_lit;
             }
         }
-        if (!Blind) {
+        if (!Blind()) {
             if (still_lit) {
                 await pline('The ambient light seems dimmer.');
             } else if (u.uswallow) {
@@ -474,13 +473,13 @@ export async function litroom(on, obj) {
                 if (otmp.lamplit && artifact_light(otmp))
                     /* wielded Sunsword or worn gold dragon scales/mail;
                        maybe raise its BUC state if not already blessed */
-                    await impact_arti_light(otmp, false, !Blind);
+                    await impact_arti_light(otmp, false, !Blind());
             }
         }
         if (u.uswallow) {
             /* C read.c litroom `:2554–2562` — the light goes off inside the
                swallower (D-2263). */
-            if (!Blind && u.ustuck) {
+            if (!Blind() && u.ustuck) {
                 if (digests(u.ustuck.data)) {
                     await pline(`${s_suffix(Monnam(u.ustuck))} ${mbodypart(u.ustuck, STOMACH)} is lit.`);
                 } else if (is_whirly(u.ustuck.data)) {
@@ -489,7 +488,7 @@ export async function litroom(on, obj) {
                     await pline(`${Monnam(u.ustuck)} glistens.`);
                 }
             }
-        } else if (!Blind && (!Is_rogue_level(u.uz)
+        } else if (!Blind() && (!Is_rogue_level(u.uz)
             || game.level?.at(u.ux, u.uy)?.typ !== CORR)) {
             await pline(`A lit field ${no_op ? 'briefly ' : ''}surrounds you!`);
         }
@@ -501,7 +500,7 @@ export async function litroom(on, obj) {
        and sighted: pick the ball&chain up first so an out-of-sight
        ball/chain is not remembered; re-placed after vision_recalc(2)
        below (D-2263). */
-    if (u.uball && u.uchain && !on && !Blind)
+    if (u.uball && u.uchain && !on && !Blind())
         move_bc(1, 0, u.uball.ox | 0, u.uball.oy | 0, u.uchain.ox | 0, u.uchain.oy | 0);
 
     if (Is_rogue_level(u.uz)) {
@@ -530,7 +529,7 @@ export async function litroom(on, obj) {
         );
     }
 
-    if (!Blind) {
+    if (!Blind()) {
         // C vision_recalc(2)'s update loop newsyms every prior IN_SIGHT
         // spot while !cansee — under Hallucination a warned-of monster's
         // display_warning draws rn2_on_display_rng(WARNCOUNT - 1). JS
@@ -573,11 +572,10 @@ async function seffect_light(sobj) {
     // C `:1746` — Confusion ≡ HConfusion (youprop.h, D-1048;
     // seffect_teleportation sibling convention keeps the flat flag).
     const confused = !!(u.HConfusion || u.Confusion);
-    const Blind = !!(u.Blind || u.ublind);
 
     if (!confused) {
         // C `:1748–1754`
-        if (!Blind) known = true;
+        if (!Blind()) known = true;
         await litroom(!scursed, sobj);
         if (!scursed) {
             // C zap.c lightdamage — dynamic import avoids zap↔read cycle
@@ -756,13 +754,6 @@ function cap_spe(obj) {
     }
 }
 
-/** C youprop.h Blind — (H||E Blinded) && !BBlinded. */
-function Blind_read() {
-    const u = game.u || {};
-    if (u.uroleplay?.blind) return true;
-    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
-}
-
 /** C ref: read.c stripspe :652–664 / p_glow1–3 :667–685. */
 async function stripspe(obj) {
     if (obj.blessed || (obj.spe | 0) <= 0) {
@@ -776,10 +767,10 @@ async function stripspe(obj) {
     if ((obj.otyp | 0) === OIL_LAMP || (obj.otyp | 0) === BRASS_LANTERN) obj.age = 0;
 }
 async function p_glow1(otmp) {
-    await pline(`${Yobjnam2(otmp, Blind_read() ? 'vibrate' : 'glow')} briefly.`);
+    await pline(`${Yobjnam2(otmp, Blind() ? 'vibrate' : 'glow')} briefly.`);
 }
 async function p_glow2(otmp, color) {
-    const blind = Blind_read();
+    const blind = Blind();
     await pline(
         `${Yobjnam2(otmp, blind ? 'vibrate' : 'glow')}${blind ? '' : ' '}${blind ? '' : hcolor(color)} for a moment.`,
     );
@@ -787,7 +778,7 @@ async function p_glow2(otmp, color) {
 
 /** C read.c p_glow3 `:680–685` — feeble glow (wishing recharge). */
 async function p_glow3(otmp, color) {
-    const blind = Blind_read();
+    const blind = Blind();
     await pline(
         `${Yobjnam2(otmp, blind ? 'vibrate' : 'glow')} feebly${blind ? '' : ' '}${blind ? '' : hcolor(color)} for a moment.`,
     );
@@ -1006,7 +997,7 @@ export async function recharge(obj, curse_bless) {
             if (is_cursed) {
                 await stripspe(obj);
                 if (obj.lamplit) {
-                    if (!Blind_read()) await pline(`${Tobjnam(obj, 'go')} out!`);
+                    if (!Blind()) await pline(`${Tobjnam(obj, 'go')} out!`);
                     end_burn(obj, true);
                 }
             } else if (is_blessed) {
@@ -1563,10 +1554,9 @@ async function seffect_enchant_armor(sobj) {
     const scursed = !!sobj.cursed;
     const u = game.u || {};
     const confused = !!((u.HConfusion | 0) || (u.Confusion | 0));
-    const Blind = Blind_read();
     const otmp = some_armor(game.youmonst);
     if (!otmp) {
-        await strange_feeling(sobj, !Blind
+        await strange_feeling(sobj, !Blind()
             ? 'Your skin glows then fades.'
             : 'Your skin feels warm for a moment.');
         exercise(A_CON, !scursed);
@@ -1577,7 +1567,7 @@ async function seffect_enchant_armor(sobj) {
         const old_erodeproof = !!otmp.oerodeproof;
         const new_erodeproof = !scursed;
         otmp.oerodeproof = 0;
-        if (Blind) {
+        if (Blind()) {
             otmp.rknown = 0;
             await pline(`${Yobjnam2(otmp, 'feel')} warm for a moment.`);
         } else {
@@ -1588,7 +1578,7 @@ async function seffect_enchant_armor(sobj) {
         if (new_erodeproof && ((otmp.oeroded | 0) || (otmp.oeroded2 | 0))) {
             otmp.oeroded = 0;
             otmp.oeroded2 = 0;
-            await pline(`${Yobjnam2(otmp, Blind ? 'feel' : 'look')} as good as new!`);
+            await pline(`${Yobjnam2(otmp, Blind() ? 'feel' : 'look')} as good as new!`);
         }
         if (old_erodeproof && !new_erodeproof) {
             otmp.oerodeproof = 1;
@@ -1608,11 +1598,11 @@ async function seffect_enchant_armor(sobj) {
         same_color = (otyp === SILVER_DRAGON_SCALE_MAIL || otyp === SILVER_DRAGON_SCALES
             || otyp === SHIELD_OF_REFLECTION);
     }
-    if (Blind) same_color = false;
+    if (Blind()) same_color = false;
     let s = scursed ? -(otmp.spe | 0) : (otmp.spe | 0);
     if (s > (special_armor ? 5 : 3) && rn2(s)) {
         otmp.in_use = true;
-        await pline(`${Yname2(otmp)} violently ${otense(otmp, Blind ? 'vibrate' : 'glow')}${(!Blind && !same_color) ? ' ' : ''}${(Blind || same_color) ? '' : hcolor(scursed ? NH_BLACK : NH_SILVER)} for a while, then ${otense(otmp, 'evaporate')}.`);
+        await pline(`${Yname2(otmp)} violently ${otense(otmp, Blind() ? 'vibrate' : 'glow')}${(!Blind() && !same_color) ? ' ' : ''}${(Blind() || same_color) ? '' : hcolor(scursed ? NH_BLACK : NH_SILVER)} for a while, then ${otense(otmp, 'evaporate')}.`);
         const { remove_worn_item } = await import('./steal.js');
         await remove_worn_item(otmp, false);
         useup(otmp);
@@ -1657,7 +1647,7 @@ async function seffect_enchant_armor(sobj) {
         if (old_light) await maybe_adjust_light(otmp, old_light);
         return sobj;
     }
-    await pline(`${Yname2(otmp)} ${s === 0 ? 'violently ' : ''}${otense(otmp, Blind ? 'vibrate' : 'glow')}${(!Blind && !same_color) ? ' ' : ''}${(Blind || same_color) ? '' : hcolor(scursed ? NH_BLACK : NH_SILVER)} for a ${(s * s > 1) ? 'while' : 'moment'}.`);
+    await pline(`${Yname2(otmp)} ${s === 0 ? 'violently ' : ''}${otense(otmp, Blind() ? 'vibrate' : 'glow')}${(!Blind() && !same_color) ? ' ' : ''}${(Blind() || same_color) ? '' : hcolor(scursed ? NH_BLACK : NH_SILVER)} for a ${(s * s > 1) ? 'while' : 'moment'}.`);
     if (s < 0) await costly_alteration(otmp, COST_DECHNT);
     if (scursed && !otmp.cursed) await curse(otmp);
     else if (sblessed && !otmp.blessed) await bless(otmp);
@@ -1673,7 +1663,7 @@ async function seffect_enchant_armor(sobj) {
         if (applied > 0 && otmp.unpaid) alter_cost(otmp, 0);
     }
     if ((otmp.spe | 0) > (special_armor ? 5 : 3) && (special_armor || !rn2(7))) {
-        await pline(`${Yobjnam2(otmp, 'suddenly vibrate')} ${Blind ? 'again' : 'unexpectedly'}.`);
+        await pline(`${Yobjnam2(otmp, 'suddenly vibrate')} ${Blind() ? 'again' : 'unexpectedly'}.`);
     }
     return sobj;
 }
@@ -1901,7 +1891,7 @@ async function seffect_fire(sobj) {
             await shieldeff(u.ux | 0, u.uy | 0);
             monstseesu(M_SEEN_FIRE);
             const hands = makeplural(body_part(HAND));
-            if (!Blind_read()) {
+            if (!Blind()) {
                 await pline(`Oh, look, what a pretty fire in your ${hands}.`);
             } else {
                 await You_feel(`a pleasant warmth in your ${hands}.`);
@@ -1978,9 +1968,7 @@ async function seffect_mail(sobj) {
  * doread returns ECMD_TIME, C read.c:646) instead of the old -1 no-time path.
  */
 async function seffect_blank_paper(sobj) {
-    const u = game.u || {};
-    const Blind = !!((u.Blinded | 0) || u.Blind || u.ublind);
-    if (Blind) await pline("You don't remember there being any magic words on this scroll.");
+    if (Blind()) await pline("You don't remember there being any magic words on this scroll.");
     else await pline('This scroll seems to be blank.');
     known = true;
 }
@@ -2039,7 +2027,7 @@ export async function punish(sobj) {
     if (!u.uswallow) {
         await placebc();
         // C read.c:3059 — already Blind: set up ball and chain variables
-        if (Blind_read()) set_bc(1);
+        if (Blind()) set_bc(1);
         newsym(u.ux | 0, u.uy | 0);
     }
 }
