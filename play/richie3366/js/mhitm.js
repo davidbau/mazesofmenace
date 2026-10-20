@@ -3637,7 +3637,7 @@ export async function lifesaved_monster(mtmp) {
  * vamp_rise_msg, closed-door smash (You_hear/You_see/pline_The in C order,
  * then D_NODOOR + recalc, trapped mb_trapped with verbose suppression +
  * unconditional "is destroyed!" when the trap kills), newsym. Unaware is
- * the house u.Unaware field.
+ * the live eat.js macro (youprop.h:399).
  * Named omissions:
  * gd.disintegested writer in xkilled (uhitm names it; monkilled sets it).
  */
@@ -3653,7 +3653,7 @@ export async function vamprises(mtmp) {
             || noncorporeal(mtmp.data)
             || amorphous(mtmp.data);
         const x = mtmp.mx, y = mtmp.my;
-        const unaware = !!(game.u?.Unaware);
+        const unaware = Unaware(); // C youprop.h:399 multi<0 && (unconscious || fainted)
 
         const action = `${unaware ? 'you dream that ' : ''}${x_monnam(
             mtmp, ARTICLE_THE, spec_mon ? null : 'seemingly dead',

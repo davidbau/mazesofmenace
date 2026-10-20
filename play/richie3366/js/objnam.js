@@ -1095,11 +1095,6 @@ export function xname_flags(obj, cxn_flags) {
         // observe_object (which can set dknown), before obj_is_pname.
         if (obj?.oartifact && realDknown && _find_artifact) _find_artifact(obj);
         const n = objectNames[obj.otyp];
-        if (n === 'CORPSE') {
-            let base = 'corpse';
-            if (!singular && (obj.quan || 1) !== 1) base = makeplural(base);
-            return base;
-        }
         // C `:674–676` — obj_is_pname(obj) → goto nameit (bare ONAME, no
         // base type / poisoned prefix / pluralize / gameover suffix).
         // Partial-ID artifacts fall through to actualn + " named ONAME".
@@ -1115,7 +1110,13 @@ export function xname_flags(obj, cxn_flags) {
             }
             return nm;
         }
-        let base = pretty_base(obj);
+        // C FOOD_CLASS `:775–789` — a corpse is bare actualn ("corpse"),
+        // with "partly eaten " under partly_eaten_hack; the monster type is
+        // corpse_xname's (pretty_base's arm serves doname). It then takes
+        // the shared tail: pluralize, gameover suffix, " named " ONAME.
+        let base = (n === 'CORPSE')
+            ? `${(game.iflags?.partly_eaten_hack && obj.oeaten) ? 'partly eaten ' : ''}corpse`
+            : pretty_base(obj);
         /* C ROCK_CLASS `:814–823` — BOULDER && next_boulder==1 formats
            "next boulder" then clears to 0. Overloaded corpsenm defaults
            to NON_PM (-1); check ==1 not !=0. D-1294. */

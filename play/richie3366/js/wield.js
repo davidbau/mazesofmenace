@@ -5,7 +5,7 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, pline, You, Your } from './display.js';
-import { xprname, xname, yname, yobjnam, aobjnam, makeplural, vtense, an, doname, The, body_part_latebound, simpleonames, is_plural, otense, Yname2, Yobjnam2 as objnam_Yobjnam2, arti_light_description, Tobjnam as objnam_Tobjnam, corpse_xname, killer_xname } from './objnam.js';
+import { xprname, xname, yname, yobjnam, aobjnam, makeplural, vtense, an, doname, The, body_part_latebound, simpleonames, is_plural, otense, Yname2, Yobjnam2, arti_light_description, Tobjnam, corpse_xname, killer_xname } from './objnam.js';
 import { strstri } from './hacklib.js';
 import { yn_function } from './getline.js';
 import { hands_obj, is_wet_towel } from './weapon.js';
@@ -29,8 +29,9 @@ import {
 import { retouch_object, set_artifact_intrinsic, halresTalk, is_art, u_wield_art, restrict_name, arti_speak } from './artifact.js';
 import { setworn, reset_remarm } from './do_wear.js';
 import { ART_SNICKERSNEE, ART_MAGICBANE, ART_OGRESMASHER, ART_SUNSWORD } from './generated/artifacts_data.js';
-import { getobj, makeknown, encumber_msg, compactify_invlets, invletter_value, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq, getobj_display_pickinv, splittable, freeinv, prinv } from './invent.js';
-import { uncurse, weight, unsplitobj, clear_splitobjs, splitobj } from './mkobj.js';
+import { Blind, getobj, makeknown, encumber_msg, compactify_invlets, invletter_value, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq, getobj_display_pickinv, splittable, freeinv, prinv } from './invent.js';
+import { uncurse, weight, unsplitobj, clear_splitobjs, splitobj, set_bknown } from './mkobj.js';
+import { Glib } from './potion.js';
 import { trycall, hcolor } from './do_name.js';
 import { addinv_nomerge } from './u_init.js';
 import { inv_cnt } from './steal.js';
@@ -375,8 +376,8 @@ export function setuwep(obj) {
             /* C `:115–118` — artifact_light then lamplit; pline if !Blind. */
             if (u.uwep === obj && artifact_light(olduwep) && olduwep.lamplit) {
                 end_burn(olduwep, false);
-                if (!Blind_w()) {
-                    await pline(`${objnam_Tobjnam(olduwep, 'stop')} shining.`);
+                if (!Blind()) {
+                    await pline(`${Tobjnam(olduwep, 'stop')} shining.`);
                 }
             }
         } finally {
@@ -400,25 +401,6 @@ export function setuqwep(obj) {
 }
 
 /**
- * C ref: objnam.c Tobjnam — The(xname) + optional otense verb.
- */
-function Tobjnam(obj, verb) {
-    let bp = The(xname(obj));
-    if (verb) {
-        const plural = (obj?.quan | 0) !== 1;
-        bp += ` ${plural ? verb : vtense(null, verb)}`;
-    }
-    return bp;
-}
-
-/** C youprop.h Blind — (HBlinded || EBlinded) && !BBlinded. */
-function Blind_w() {
-    const u = game.u || {};
-    if (u.Blind || u.ublind) return true;
-    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
-}
-
-/**
  * C ref: wield.c uwepgone — clear W_WEP before destroying last wielded item.
  * artifact_light end_burn + Tobjnam shine before clearing the slot (D-1204).
  * C calls setworn here, not setuwep; this still calls setuwep so unweapon
@@ -433,7 +415,7 @@ export async function uwepgone() {
     const { artifact_light, end_burn } = await import('./timeout.js');
     if (artifact_light(uwep) && uwep.lamplit) {
         end_burn(uwep, false);
-        if (!Blind_w()) {
+        if (!Blind()) {
             await pline(`${Tobjnam(uwep, 'stop')} shining.`);
         }
     }
@@ -652,7 +634,7 @@ async function ready_weapon(wep) {
     const { artifact_light, begin_burn } = await import('./timeout.js');
     if (artifact_light(wep) && !wep.lamplit) {
         begin_burn(wep, false);
-        if (!Blind_w()) {
+        if (!Blind()) {
             await pline(`${Tobjnam(wep, 'begin')} to shine ${arti_light_description(wep)}!`);
         }
     }
@@ -1121,11 +1103,11 @@ export async function drop_uswapwep() {
     const left_hand = `left ${body_part_latebound(HAND)}`;
     if (!obj.cursed) {
         // C `:819–821` — attempting to two-weapon while Glib.
-        await pline('%s from your %s!', objnam_Yobjnam2(obj, 'slip'), left_hand);
+        await pline('%s from your %s!', Yobjnam2(obj, 'slip'), left_hand);
     } else if (!game.u.twoweap) {
         // C `:822–825` — attempting to two-weapon when uswapwep is cursed.
         await pline('%s your grasp and %s from your %s!',
-            objnam_Yobjnam2(obj, 'evade'), otense(obj, 'drop'), left_hand);
+            Yobjnam2(obj, 'evade'), otense(obj, 'drop'), left_hand);
     } else {
         // C `:826–829` — already two-weaponing; uswapwep has become cursed.
         await Your('%s spasms and drops %s!', left_hand, yobjnam(obj, null));
@@ -1138,9 +1120,6 @@ export async function drop_uswapwep() {
 /**
  * C ref: wield.c can_twoweapon — dual-wield eligibility + failure plines.
  * TWOWEAPOK/bimanual arms use live Yname2 (objnam.js) + is_plural (obj.h:421).
- * Named omissions: artifact-resist arm uses xname (live Yobjnam2 export
- * not wired; local clone stays), empty-hands body_part(HAND) is a 'hand'
- * literal; Glib prop may be incomplete until timeout wiring.
  * `cant_wield_corpse` is the wield.c:794 arm.
  */
 export async function can_twoweapon() {
@@ -1160,7 +1139,7 @@ export async function can_twoweapon() {
             await pline(`${makeplural(nm)} aren't able to use two weapons at once.`);
         }
     } else if (!uwep || !uswapwep) {
-        let hand_s = 'hand';
+        let hand_s = body_part_latebound(HAND);
         if (!uwep && !uswapwep) hand_s = makeplural(hand_s);
         const which = uwep ? 'left ' : uswapwep ? 'right ' : '';
         await pline(`Your ${which}${hand_s} ${vtense(hand_s, 'are')} empty.`);
@@ -1179,12 +1158,12 @@ export async function can_twoweapon() {
     } else if (u.uarms) {
         await pline("You can't use two weapons while wearing a shield.");
     } else if (uswapwep.oartifact) {
-        await pline(`${xname(uswapwep)} resists being held second to another weapon!`);
+        await pline(`${Yobjnam2(uswapwep, 'resist')} being held second to another weapon!`);
     } else if ((uswapwep.otyp | 0) === CORPSE && await cant_wield_corpse(uswapwep)) {
         // C :794–796 — !TWOWEAPOK normally prevents this. Life-save lands
         // here; the function already instapetrified. Fall through to FALSE.
-    } else if (u.Glib || uswapwep.cursed) {
-        if (!u.Glib) uswapwep.bknown = 1;
+    } else if (Glib() || uswapwep.cursed) { // C wield.c:797–800
+        if (!Glib()) set_bknown(uswapwep, 1);
         await drop_uswapwep();
     } else {
         return true;
@@ -1203,15 +1182,6 @@ export async function untwoweapon() {
         set_twoweap(false);
         update_inventory();
     }
-}
-
-/**
- * C ref: objnam.c Yobjnam2 — "Your <xname> <otense verb>".
- * shk_your / pname / artifact article arms deferred.
- */
-function Yobjnam2(obj, verb) {
-    const nam = xname(obj);
-    return `Your ${nam} ${vtense(nam, verb)}`;
 }
 
 /**

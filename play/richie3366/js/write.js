@@ -13,14 +13,14 @@
 import { game } from './gstate.js';
 import { strstri, mungspaces, strncmpi } from './hacklib.js';
 import { nhgetch } from './input.js';
-import { flush_screen, flush_topl_more, impossible, pline } from './display.js';
+import { flush_screen, flush_topl_more, impossible, pline, Hallucination } from './display.js';
 import {
     SCROLL_CLASS, SPBOOK_CLASS, objectNames, objectNameStrs, objectDescrs,
 } from './objects.js';
 import {
     ECMD_OK, ECMD_TIME, ECMD_CANCEL, MAXULEV, GETOBJ_NOFLAGS, LL_CONDUCT,
 } from './const.js';
-import { compactify_invlets, makeknown, observe_object, hold_another_object, getobj_display_pickinv, useup, getobj, update_inventory } from './invent.js';
+import { compactify_invlets, makeknown, observe_object, hold_another_object, getobj_display_pickinv, useup, getobj, update_inventory, Blind } from './invent.js';
 import { obfree, check_unpaid } from './shk.js';
 import { getlin } from './getline.js';
 import { rn2, rn1, rnl } from './rng.js';
@@ -30,7 +30,9 @@ import { A_WIS, exercise } from './attrib.js';
 import { bcsign } from './rumors.js';
 import { wipeout_text } from './engrave.js';
 import { dropx } from './do.js';
-import { doname, Ysimple_name2, an } from './objnam.js';
+import { Ysimple_name2, an, Tobjnam, aobjnam, The } from './objnam.js';
+import { Glib } from './potion.js';
+import { fingers_or_gloves } from './do_wear.js';
 import { known_spell, spe_Unknown, spe_Fresh, spe_GoingStale } from './spell.js';
 import { livelog_printf } from './pline.js';
 import { PM_WIZARD } from './generated/monsters_data.js';
@@ -69,11 +71,6 @@ const GETOBJ_SUGGEST = 2;
 
 /* SPE_UNKNOWN retired (D-3426) — live spell.js spe_Unknown/spe_Fresh/
    spe_GoingStale + known_spell are imported above. */
-
-function Blind() {
-    const u = game.u || {};
-    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
-}
 
 function Role_if(pm) {
     return (game.urole?.mnum | 0) === pm;
@@ -168,9 +165,8 @@ export async function dowrite(pen) {
         await pline('You need hands to be able to write!');
         return ECMD_OK;
     }
-    if (game.u?.Glib) {
-        // Tobjnam / fingers_or_gloves polish deferred
-        await pline(`${doname(pen)} slips from your fingers.`);
+    if (Glib()) { // C write.c:90–94
+        await pline(`${Tobjnam(pen, 'slip')} from your ${fingers_or_gloves(false)}.`);
         await dropx(pen);
         return ECMD_TIME;
     }
@@ -273,7 +269,7 @@ export async function dowrite(pen) {
     if (i === SPE_NOVEL) {
         const fanfic = !rn2(3);
         const tearup = !rn2(3);
-        const hallu = !!(game.u?.Hallucination);
+        const hallu = Hallucination();
         if (!fanfic) {
             await pline(
                 `You ${!tearup ? 'prepare' : 'try'} to write the Great `
@@ -338,12 +334,12 @@ export async function dowrite(pen) {
             await pline(
                 'The spellbook is left unfinished and your writing fades.',
             );
+            update_inventory(); // C `:262` — pen charges
         } else {
             await pline('The scroll is now useless and disappears!');
             useup(paper);
         }
         obfree(new_obj);
-        update_inventory(); // C `:262` — pen spe changed.
         return ECMD_TIME;
     }
     pen.spe = (pen.spe | 0) - actualcost;
@@ -413,7 +409,7 @@ export async function dowrite(pen) {
     await hold_another_object(
         new_obj,
         'Oops!  %s out of your grasp!',
-        `The ${doname(new_obj)} slips`,
+        The(aobjnam(new_obj, 'slip')), // C write.c:382
         null,
     );
     return ECMD_TIME;

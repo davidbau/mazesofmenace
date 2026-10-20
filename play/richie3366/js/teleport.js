@@ -71,18 +71,18 @@ import { in_out_region, update_player_regions, update_monster_region } from './r
 import { SetVoice, voice_deity } from './sndprocs.js';
 import { uhis } from './roles.js';
 /* Canonical callees (hoisted, call-time use only — cycle-safe per imports.mjs):
- * seetrap + clamp_hole_destination (trap.js), mon_has_amulet + m_unleash +
- * mhis_leash (apply.js), is_home_elemental (makemon.js). Local onscary
+ * seetrap + clamp_hole_destination (trap.js), mon_has_amulet + m_unleash
+ * (apply.js), mhis (mondata.js), is_home_elemental (makemon.js). Local onscary
  * stays (D-1110). */
 import { seetrap, clamp_hole_destination, t_at, reset_utrap } from './trap.js';
-import { mon_has_amulet, m_unleash, mhis_leash } from './apply.js';
+import { mon_has_amulet, m_unleash } from './apply.js';
 import { is_home_elemental } from './makemon.js';
 /* dog.js back-edge (same SCC; hoisted function, call-time use only). */
 import { mon_leave } from './dog.js';
 /* monmove.js back-edge (same SCC; hoisted function, call-time use only). */
 import { get_iter_mons } from './monmove.js';
 /* mondata.js (same SCC; hoisted function, call-time use only — imports.mjs SAFE). */
-import { set_mon_data } from './mondata.js';
+import { set_mon_data, mhis } from './mondata.js';
 /* light.js (same SCC; hoisted function, call-time use only — imports.mjs SAFE). */
 import { emits_light } from './light.js';
 /* mon.js (same SCC; hoisted functions, call-time use only — imports.mjs SAFE).
@@ -2854,7 +2854,7 @@ export function migrate_to_level(mtmp, tolev, xyloc, cc) {
         if (canseemon(mtmp)) {
             void pline_mon(
                 mtmp,
-                `${Monnam(mtmp)} pulls free of ${mhis_leash(mtmp)} leash!`,
+                `${Monnam(mtmp)} pulls free of ${mhis(mtmp)} leash!`,
             );
         } else {
             void pline('Your leash falls slack.');

@@ -282,7 +282,7 @@ import {
 } from './uhitm.js';
 import { mon_nam, Monnam, a_monnam, noit_Monnam, noname_monnam, type_is_pname, christen_monst, hliquid, Hallucination, rndmonnam, free_oname, Amonnam, s_suffix, hcolor } from './do_name.js';
 import { rnd_hallublast, m_useup, hit } from './mthrowu.js';
-import { finish_losehp_done, done } from './end.js';
+import { finish_losehp_done, done, panic } from './end.js';
 import {
     burnarmor, t_at, maketrap, delfloortrap, dotrap, mintrap, deltrap,
     trap_ice_effects, set_utrap, reset_utrap,
@@ -1540,22 +1540,6 @@ export function exclam(force) {
 /* zap.c hit — canonical mthrowu.js import above (D-3801 removed the
    canseemon-gated hit_zap clone; C reads canspotmon, not canseemon). */
 
-/**
- * C ref: invent.c useup — consume one from hero invent array.
- */
-function useup_invent(obj) {
-    if (!obj) return;
-    if ((obj.quan | 0) > 1) {
-        obj.in_use = false; /* C invent.c:1326 — no longer in use */
-        obj.quan = (obj.quan | 0) - 1;
-        if (typeof weight === 'function') obj.owt = weight(obj);
-        return;
-    }
-    const inv = game.invent || [];
-    const idx = inv.indexOf(obj);
-    if (idx >= 0) inv.splice(idx, 1);
-}
-
 function is_youmonst_carrier(mon) {
     return !!(mon && (mon === game.youmonst || mon._youmonst));
 }
@@ -1744,7 +1728,7 @@ async function maybe_destroy_item(carrier, obj, dmgtyp) {
         }
 
         for (let i = 0; i < cnt; i++) {
-            if (u_carry) useup_invent(obj);
+            if (u_carry) useup(obj); // C zap.c:5931 via live invent.js useup
             else m_useup(carrier, obj); // C zap.c:5933 via live mthrowu.js import (D-3338)
         }
         if (dmg) {
@@ -3394,6 +3378,13 @@ export async function revive(corpse, by_hero) {
 
     let mptr = mons(montype);
     if (!mptr) return null;
+    // C zap.c :961–964 — bump off an occupied square before the twitch
+    // arm tests IS_POOL / cansee at the (possibly moved) spot.
+    const xy = { x, y };
+    if (m_at(x, y) && enexto(xy, x, y, mptr)) {
+        x = xy.x;
+        y = xy.y;
+    }
 
     if (corpse.norevive
         || (mptr.mlet === 'S_EEL'
@@ -3405,12 +3396,6 @@ export async function revive(corpse, by_hero) {
             } twitches feebly.`);
         }
         return null;
-    }
-
-    const xy = { x, y };
-    if (m_at(x, y) && enexto(xy, x, y, mptr)) {
-        x = xy.x;
-        y = xy.y;
     }
 
     let mmflags = NO_MINVENT | MM_NOWAIT | MM_NOMSG;
@@ -3534,7 +3519,7 @@ export async function revive(corpse, by_hero) {
     }
 
     if (has_oname(used) && !unique_corpstat(mtmp.data)) {
-        christen_monst(mtmp, ONAME(used));
+        mtmp = christen_monst(mtmp, ONAME(used));
     }
     if (used.oeaten) {
         mtmp.mhp = eaten_stat(mtmp.mhp | 0, used);
@@ -3543,7 +3528,7 @@ export async function revive(corpse, by_hero) {
 
     switch (used.where) {
     case OBJ_INVENT:
-        useup_invent(used);
+        useup(used); // C zap.c:1108 — setnotworn + freeinv + obfree
         break;
     case OBJ_FLOOR:
         delobj_core(used, true);
@@ -3561,11 +3546,9 @@ export async function revive(corpse, by_hero) {
             obfree(used, null);
             break;
         }
-        // C panics for non-zombie buried — leave corpse
-        break;
-    default:
-        // C panics; do not invent delobj RNG burn
-        break;
+        // FALLTHROUGH — C zap.c :1129–1137
+    default: // OBJ_FREE, OBJ_MIGRATING, OBJ_ONBILL, OBJ_LUAFREE
+        panic('revive default case %d', used.where | 0);
     }
     return mtmp;
 }

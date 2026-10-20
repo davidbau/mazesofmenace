@@ -1,3 +1,4 @@
+import { setHeroGrip } from './hero_grip.js';
 import { heroCouldMoveOntoBoulder, pushBouldersAt } from './boulder_push.js';
 import { useMagicMarker } from './write.js';
 import { formatFeltMessage, formatSeenMessage, publishHeardMessage } from './hero_speech.js';
@@ -229,7 +230,7 @@ import { captureRunmodeDelay, startRun, stopRun } from './runmode.js';
 import { armorSlotFor, armorSimpleName, armorOffMessage, findArmorClass, heroIsDisplaced, removeHeroArmor, wearHeroArmor, } from './armor.js';
 import { findMonsterArmorClass, } from './monworn.js';
 import { finishHeroMonsterKill, finishHeroMonsterKillOutcome } from './hero_monster_death.js';
-import { wakeMonstersNear } from './monster_wake.js';
+import { wakeMonstersNearWithMessages } from './monster_wake.js';
 import { aggravateMonsters, angerAttackedMonster, wakeAttackedMonster, } from './monster_anger.js';
 import { publishMonsterNoise } from './monster_sound.js';
 import { doride, moveSteedWithHero, ridingPreventsMovement, stuckSteed } from './steed.js';
@@ -1804,10 +1805,7 @@ async function monsterPreventsStairTravel(up) {
         game.context.move = 1;
         return true;
     }
-    game.u.ustuck = null;
-    game.u.uswallow = 0;
-    game.u.uswldtim = 0;
-    game.context.botl = true;
+    setHeroGrip(null);
     await plineWithContinuation(`You release ${monsterName(holder)}.`);
     return false;
 }
@@ -1961,7 +1959,7 @@ async function kickOuch(x, y, objectName = '') {
             x = bridge.x;
             y = bridge.y;
         }
-        wakeMonstersNear(x, y, 25);
+        await wakeMonstersNearWithMessages(x, y, 25);
     }
     if (rn2(3) === 0) {
         await woundHeroLegs('right', 5 + rnd(5));
@@ -2065,7 +2063,7 @@ async function kickLiveMonster(monster, x, y) {
         else
             game.context.forcefight = forcefight;
     }
-    wakeMonstersNear(game.u.ux, game.u.uy, (game.u?.ulevel ?? 1) * 20);
+    await wakeMonstersNearWithMessages(game.u.ux, game.u.uy, (game.u?.ulevel ?? 1) * 20);
     wipeHeroEngraving(2);
     await angerAttackedMonster(monster);
     if (await levitatingKickMisses(monster)) {
@@ -2206,7 +2204,7 @@ async function dokick() {
     // dokick() wakes the broad hero-level neighborhood before it dispatches
     // the concrete terrain owner.  kick_ouch() then performs the smaller
     // impact-centered wake after its attribute exercise draws.
-    wakeMonstersNear(game.u.ux, game.u.uy, (game.u?.ulevel ?? 1) * 20);
+    await wakeMonstersNearWithMessages(game.u.ux, game.u.uy, (game.u?.ulevel ?? 1) * 20);
     wipeHeroEngraving(2);
     if (!isok(x, y)) {
         await kickOuch(x, y);
@@ -6592,7 +6590,7 @@ async function throwCommand(selectedItem = null, capabilityChecked = false, supp
         objectClass: thrownObjectClass,
         selectedQuantity,
         wakeMonster: wakeAttackedMonster,
-        wakeNearby: wakeMonstersNear,
+        wakeNearby: wakeMonstersNearWithMessages,
         finishKill: (monster, death) => finishOrdinarySwallowedConsumedKill(monster, 'swallowed-potion', death),
     }))
         return;
@@ -6628,7 +6626,7 @@ async function throwCommand(selectedItem = null, capabilityChecked = false, supp
         dy,
         captureFlight: captureThrownObjectFlight,
         wakeMonster: wakeAttackedMonster,
-        wakeNearby: wakeMonstersNear,
+        wakeNearby: wakeMonstersNearWithMessages,
         finishKill: finishOrdinaryMapPotionKill,
     }))
         return;
@@ -6741,7 +6739,7 @@ async function fightEmptyDestination(x, y) {
     await pline(`You ${manner}${explosion ? 'explode at' : 'attack'} ${target}.`);
     endVoluntaryMultiTurn(game);
     if (explosion) {
-        wakeMonstersNear(game.u.ux, game.u.uy, 49, game);
+        await wakeMonstersNearWithMessages(game.u.ux, game.u.uy, 49, game);
         if ((await resolveHeroCombatExplosion(null, explosion, { state: game })).heroDied)
             return true;
         game.u.mh = -1;

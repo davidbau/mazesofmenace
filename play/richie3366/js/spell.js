@@ -128,7 +128,7 @@ import {
     nh_delay_output, flush_topl_more,
 } from './display.js';
 import { paint_corner_nhw_menu, dismiss_nhw_menu, discover_object, makeknown, near_capacity, update_inventory, observe_object, useup as useup_inv, cmdq_add_key } from './invent.js';
-import { yn_function } from './getline.js';
+import { yn_function, y_n } from './getline.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import { weight, mksobj, delobj, noveltitle, set_bknown } from './mkobj.js';
 import { acurr, A_WIS, A_STR, A_INT, exercise } from './attrib.js';
@@ -1183,7 +1183,7 @@ export async function study_book(spellbook) {
         // as the `:508` blank-paper arm: the spell may be undiscovered
         // when learned via divine gift).
         makeknown(booktype);
-        if ((await yn_function('Refresh your memory anyway?', 'yn', 'n')) === 'n') {
+        if ((await y_n('Refresh your memory anyway?')) === 'n') { // C spell.c:571
             return 0;
         }
     }
@@ -1203,7 +1203,7 @@ export async function study_book(spellbook) {
                 const qbuf = `This spellbook is ${
                     read_ability < 12 ? 'very ' : ''
                 }difficult to comprehend.  Continue?`;
-                if ((await yn_function(qbuf, 'yn', 'n')) !== 'y') {
+                if ((await y_n(qbuf)) !== 'y') { // C spell.c:593
                     spellbook.in_use = false;
                     return 1;
                 }

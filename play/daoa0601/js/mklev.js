@@ -5470,7 +5470,6 @@ export async function generateMinetown(active) {
         throw new RangeError(`unknown Minetown layout ${active?.variant}`);
     }
     active.file = `minetn-${active.variant}.lua`;
-    level.flags.has_town = true;
     await generateSpecialAndFixup(generateLuaSpecialLevel, active);
     for (const room of level.rooms.slice(0, level.nroom))
         if (isRoom(room))
@@ -6199,7 +6198,7 @@ async function createLuaObjectPiece(context, options, corpseSpecies, parentConta
         && game._activeSpecialLevel?.prototype === 'medusa'
         && options.montype == null;
     if (randomMedusaStatue) {
-        object = await medusaEmptyStatue(context, point);
+        object = await medusaEmptyStatue(context, point, Object.hasOwn(options, 'contents'));
     }
     else if (objectType != null) {
         object = point
@@ -6311,7 +6310,7 @@ async function createLuaObjectPiece(context, options, corpseSpecies, parentConta
             game.context.achieveo[`${prefix}_prize_otyp`] = object.otyp;
         }
     }
-    if (Object.hasOwn(options, 'contents'))
+    if (Object.hasOwn(options, 'contents') && !randomMedusaStatue)
         object.contents = [];
     if (parentContainer) {
         removeFloorObject(object);
@@ -7146,7 +7145,7 @@ async function putGeneratedMonsterInventoryInStatue(monster, statue) {
     }
     statue.owt = objectWeight(statue);
 }
-async function medusaEmptyStatue(context, fixedPoint = null) {
+async function medusaEmptyStatue(context, fixedPoint, deleteContents) {
     const point = fixedPoint
         ? {
             x: context.xstart + fixedPoint.x,
@@ -7156,9 +7155,11 @@ async function medusaEmptyStatue(context, fixedPoint = null) {
     if (!point)
         return null;
     const statue = await mksobj_at(STATUE, point.x, point.y, true, true);
-    // `contents=0` removes any randomly initialized spellbook before the
-    // Medusa petrified-monster special case creates the temporary actor.
-    statue.contents = [];
+    // sp_lev.c create_object() empties a `contents=` container (removing any
+    // random spellbook) before the Medusa petrified-monster special case
+    // moves the temporary actor's inventory into the statue.
+    if (deleteContents)
+        statue.contents = [];
     let mndx = statue.corpsenm ?? null;
     for (let attempt = 0; attempt < 1000; attempt++, mndx = rndmonnum()) {
         const was = await makemon(mndx, 0, 0, MM_NOCOUNTBIRTH | MM_NOMSG);
@@ -7571,6 +7572,10 @@ export async function fixupSpecial(active) {
         await fixupBaalz(active);
     if (active.file === 'minetn-1.lua' && In_mines(game.u.uz))
         await createOrcRaid();
+    // Minetown becomes a town only now, so the level's own monsters (and any
+    // raiders) were created while in_town() still reported false.
+    if (specialLevelAt()?.flags.town)
+        level.flags.has_town = true;
     // sp_lev.c explicitly places deferred portals, stairs, and branches
     // before premap_detect(); otherwise their remembered glyphs retain the
     // underlying terrain even though the live level cell was updated.

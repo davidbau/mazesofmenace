@@ -1,5 +1,6 @@
 // Hero form changes and equipment.
 // C refs: polyself.c polyself(), polymon(), break_armor(), drop_weapon().
+import { setHeroGrip } from './hero_grip.js';
 import { formatFeltMessage } from './hero_speech.js';
 import { monsterEmitsLight } from './vision.js';
 import { weaponDescription } from './weapon_description.js';
@@ -36,7 +37,7 @@ import { isFlimsyObject } from './object_properties.js';
 import { adjustObjectLightAfterBlessing as adjustObjectLight, endObjectBurn, objectLightRadius, } from './light.js';
 import { A_CHA, A_CON, A_DEX, A_STR, A_WIS, G_GENOD, I_SPECIAL, In_endgame, M_AP_NOTHING, M_AP_OBJECT, STR18, STR19, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, Upolyd, POLY_CONTROLLED, POLY_LOW_CTRL, POLY_MONSTER, POLY_NOFLAGS, POLY_REVERT, W_ACCESSORY, W_ARMOR, W_SADDLE, } from './const.js';
 import { exerciseAttribute } from './attrib.js';
-import { heroIsBlind, setHeroBlindnessTurns, syncBlindness } from './senses.js';
+import { heroIsBlind, setHeroBlindnessTimeout, syncBlindness } from './senses.js';
 import { nameToMonster, nameToMonsterClass } from './mondata.js';
 import { counterWereSpecies } from './monster_species.js';
 import { isWereMonster, wereBeastForSpecies } from './were.js';
@@ -336,7 +337,7 @@ async function finishHumanFormChange(restored, state, publish) {
     if (hero.utrap && hero.utraptype === TT_PIT)
         hero.utrap = rn1(6, 2);
     if (restored.regainedSight) {
-        setHeroBlindnessTurns(1, state);
+        setHeroBlindnessTimeout(1, state);
         await makeBlinded(0, { state, publish });
     }
     await restartAmuletStrangulation(state, publish);
@@ -533,7 +534,7 @@ export async function polymonHero(mnum, options = {}) {
     if (game.u.utrap && game.u.utraptype === TT_PIT)
         game.u.utrap = rn1(6, 2);
     if (wasBlind && !heroIsBlind(game)) {
-        setHeroBlindnessTurns(1, game);
+        setHeroBlindnessTimeout(1, game);
         await makeBlinded(0, { state: game });
     }
     game.vision_full_recalc = 1;
@@ -572,7 +573,7 @@ export async function polymonHero(mnum, options = {}) {
     else if (holder && !wasHolding && (heroFormSticks() || unsolid)) {
         const subject = canSpotMonster(holder)
             ? monsterName(holder, { capitalized: true }) : body.holderName;
-        hero.ustuck = null;
+        setHeroGrip(null);
         await plineWithContinuation(`${subject} loses its grip on you.`);
     }
     else if (wasHolding && !heroFormSticks()) {

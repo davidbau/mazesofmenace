@@ -28,7 +28,7 @@ import {
     M_AP_TYPE, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_NOTHING,
     ACCESSIBLE, IS_STWALL, IS_DOOR, IS_FURNITURE, IS_OBSTRUCTED, IS_WATERWALL,
     IS_AIR, AIR, CLOUD,
-    TELEDS_NO_FLAGS, TELEDS_ALLOW_DRAG, INTRINSIC, STONE, LAVAWALL, TT_PIT,
+    TELEDS_NO_FLAGS, TELEDS_ALLOW_DRAG, INTRINSIC, JUMPING, STONE, LAVAWALL, TT_PIT,
     TT_BEARTRAP, TT_WEB, TT_LAVA, TT_INFLOOR, FORCETRAP, TOOKPLUNGE,
     LEFT_SIDE, RIGHT_SIDE, UNENCUMBERED,
     EXT_ENCUMBER, COST_DSTROY, COST_DEGRD, COST_SPLAT, HEAD, HAND, NOSE, LEG, NON_PM, STOMACH,
@@ -56,7 +56,7 @@ import {
     compactify_invlets, makeknown, near_capacity, observe_object, prinv,
     hold_another_object, consume_obj_charge, freeinv, update_inventory, getobj,
     getobj_from_cmdq, getobj_record_repeat, getobj_display_pickinv, useupall,
-    useup, useupf, cmdq_add_key, invletter_value,
+    useup, useupf, cmdq_add_key, invletter_value, Blind,
 } from './invent.js';
 import { rn2, rn1, rnd, d, rnl, shuffle_int_array } from './rng.js';
 import {
@@ -73,9 +73,9 @@ import {
     splitobj, unsplitobj, delobj, objects_at, sobj_at, nxtobj, unbless, attach_egg_hatch_timeout, kill_egg,
     obj_extract_self, place_object, stackobj, weight, mksobj, stop_timer,
     start_timer, hornoplenty, spot_stop_timers, get_mtraits, obj_has_timer,
-    init_dummyobj,
+    init_dummyobj, set_bknown,
 } from './mkobj.js';
-import { xname, the, The, makeplural, vtense, doname, an, singular, cxname, thesimpleoname, simpleonames, simple_typename, yname, Yname2, shk_your, Tobjnam, gloves_simple_name, otense, safe_qbuf } from './objnam.js';
+import { xname, the, The, makeplural, vtense, doname, an, singular, cxname, thesimpleoname, simpleonames, simple_typename, yname, Yname2, Yobjnam2, shk_your, Tobjnam, gloves_simple_name, otense, safe_qbuf } from './objnam.js';
 import { obj_resists } from './dogmove.js';
 import { acurr, A_CHA, A_STR, A_DEX, A_CON, change_luck, Fumbling } from './attrib.js';
 import { Monnam, mon_nam, x_monnam, y_monnam, Hallucination, a_monnam, Amonnam, monverbself, l_monnam, type_is_pname, pmname, Mgender, hliquid, YMonnam, obj_pmname, hcolor, s_suffix, Ugender } from './do_name.js';
@@ -1052,13 +1052,6 @@ async function use_camera(obj) {
     return ECMD_TIME;
 }
 
-/** C youprop.h Blind ≡ (HBlinded || EBlinded) && !BBlinded (D-0716: no sticky). */
-function Blind() {
-    const u = game.u || {};
-    if (u.uroleplay?.blind) return true;
-    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
-}
-
 /** C youprop.h BlindedTimeout — HBlinded & TIMEOUT. */
 function BlindedTimeout() {
     return (game.u?.HBlinded | 0) & TIMEOUT;
@@ -1451,14 +1444,6 @@ function s_suffix_leash(s) {
     return `${buf}'s`;
 }
 
-/** C you.h mhis — hallu rn2 deferred (leash pull-free msg).
- * Exported: migrate_to_level's sync leash arm initiates the TRUE-arm
- * message while the live m_unleash(FALSE) runs the state clear (D-3281). */
-export function mhis_leash(mtmp) {
-    if (mtmp?.female) return 'her';
-    return 'his';
-}
-
 /**
  * C ref: wizard.c mon_has_amulet — minvent holds AMULET_OF_YENDOR.
  */
@@ -1528,7 +1513,7 @@ export async function m_unleash(mtmp, feedback) {
         if (canseemon(mtmp)) {
             await pline_mon(
                 mtmp,
-                `${Monnam(mtmp)} pulls free of ${mhis_leash(mtmp)} leash!`,
+                `${Monnam(mtmp)} pulls free of ${mhis(mtmp)} leash!`, // C apply.c:731–732
             );
         } else {
             await pline('Your leash falls slack.');
@@ -1802,14 +1787,6 @@ function Deaf_hero() {
 /** C youprop.h Underwater ≡ u.uinwater (D-3400 idiom; u.Underwater unwritten). */
 function Underwater_hero() {
     return !!((game.u?.uinwater | 0));
-}
-
-/** C objnam.c Yobjnam2 thin. */
-function Yobjnam2_apply(obj, verb) {
-    const nam = xname(obj);
-    // vtense deferred — glow/glows for singular tools
-    const v = verb === 'glow' ? 'glows' : verb;
-    return `Your ${nam} ${v}`;
 }
 
 /* C hacklib.c upstart — live export from './hacklib.js' (clone removed D-3358). */
@@ -2639,13 +2616,9 @@ export async function doapply() {
         if (obj.blessed) {
             await use_magic_whistle(obj);
             if (!rn2(49)) {
-                const Blind = !!(game.u?.Blind || game.u?.ublind
-                    || ((game.u?.HBlinded | 0) & TIMEOUT));
-                if (!Blind) {
-                    await pline(
-                        `${Yobjnam2_apply(obj, 'glow')} brown.`,
-                    );
-                    obj.bknown = 1;
+                if (!Blind()) { // C apply.c:4317–4320
+                    await pline(`${Yobjnam2(obj, 'glow')} ${hcolor('brown')}.`);
+                    set_bknown(obj, 1);
                 }
                 unbless(obj);
             }
@@ -5277,8 +5250,7 @@ export async function dorub() {
             makeknown(MAGIC_LAMP);
             update_inventory();
         } else if (rn2(2)) {
-            const Blind = !!(u.Blind);
-            await pline(`You ${Blind ? 'smell' : 'see a puff of'} smoke.`);
+            await You(`${!Blind() ? 'see a puff of' : 'smell'} smoke.`); // C apply.c:1833
         } else {
             await pline(nothing_happens);
         }
@@ -5301,10 +5273,22 @@ const J_HORZ = 1;
 const J_VERT = 2;
 const J_DIAG = 3;
 
-/** C: Jumping (HJumping || EJumping). */
-function Jumping() {
+/** C youprop.h:221 HJumping ≡ u.uprops[JUMPING].intrinsic; the Knight's
+ * innate FROMOUTSIDE is still written to the flat u.HJumping (u_init.js). */
+function HJumping() {
     const u = game.u || {};
-    return !!(u.HJumping || u.EJumping);
+    return (u.uprops?.[JUMPING]?.intrinsic | 0) | (u.HJumping | 0);
+}
+
+/** C youprop.h:222 EJumping ≡ u.uprops[JUMPING].extrinsic (jumping boots). */
+function EJumping() {
+    const u = game.u || {};
+    return (u.uprops?.[JUMPING]?.extrinsic | 0) | (u.EJumping | 0);
+}
+
+/** C youprop.h:223 Jumping ≡ (HJumping || EJumping). */
+function Jumping() {
+    return !!(HJumping() || EJumping());
 }
 
 /** C: Passes_walls — not needed for knight physical jump; stub false. */
@@ -5356,11 +5340,9 @@ function check_jump(traj, x, y) {
  */
 async function is_valid_jump_pos(x, y, magic, showmsg) {
     const u = game.u || {};
-    const HJumping = u.HJumping | 0;
-    const EJumping = u.EJumping | 0;
     // C: !magic && !(HJumping & ~INTRINSIC) && !EJumping && distu != 5
     // Knight FROMOUTSIDE is inside INTRINSIC → chess-only unless extrinsic.
-    if (!magic && !(HJumping & ~INTRINSIC) && !EJumping && distu_xy(x, y) !== 5) {
+    if (!magic && !(HJumping() & ~INTRINSIC) && !EJumping() && distu_xy(x, y) !== 5) {
         if (showmsg) await pline('Illegal move!');
         return false;
     } else if (distu_xy(x, y) > (magic ? 6 + magic * 3 : 9)) {
@@ -5419,9 +5401,7 @@ function get_valid_jump_position(x, y) {
  */
 function is_valid_jump_pos_sync(x, y, magic) {
     const u = game.u || {};
-    const HJumping = u.HJumping | 0;
-    const EJumping = u.EJumping | 0;
-    if (!magic && !(HJumping & ~INTRINSIC) && !EJumping && distu_xy(x, y) !== 5) {
+    if (!magic && !(HJumping() & ~INTRINSIC) && !EJumping() && distu_xy(x, y) !== 5) {
         return false;
     }
     if (distu_xy(x, y) > (magic ? 6 + magic * 3 : 9)) return false;
@@ -5839,14 +5819,12 @@ export async function catch_lit(obj) {
     }
 
     const u = game.u || {};
-    const Blind = !!((u.HBlind | 0) || (u.EBlind | 0) || u.Blind
-        || ((u.HBlinded | 0) & TIMEOUT) || (u.EBlinded | 0));
     const invent = obj.where === OBJ_INVENT
         || (game.invent || []).includes(obj);
     if (invent || cansee(loc.x, loc.y)) {
         if (obj.where === OBJ_FLOOR && cansee(loc.x, loc.y)) // C `:1600`
             set_msg_xy(loc.x, loc.y);
-        await pline(`${Yname2(obj)} ${otense(obj, Blind ? 'feel' : 'catch')} ${Blind ? 'warm.' : 'light!'}`); // C `:1601–1604`
+        await pline(`${Yname2(obj)} ${otense(obj, Blind() ? 'feel' : 'catch')} ${Blind() ? 'warm.' : 'light!'}`); // C `:1601–1604`
     }
     if (t === POT_OIL) makeknown(obj.otyp);
     // C apply.c:1608–1618 — carried unpaid on a costly spot
