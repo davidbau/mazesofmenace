@@ -6,6 +6,7 @@ import {
     A_CON,
     A_DEX,
     A_STR,
+    AIR,
     NO_PART,
     ARTICLE_NONE,
     ARTICLE_A,
@@ -13,6 +14,7 @@ import {
     ARTICLE_YOUR,
     BLINDED,
     COLD_RES,
+    CLOUD,
     CONFUSION,
     CONFLICT,
     COLNO,
@@ -28,6 +30,7 @@ import {
     DO_MOVE,
     DOMOVE_RUSH,
     DOMOVE_WALK,
+    DRAWBRIDGE_DOWN,
     DRAWBRIDGE_UP,
     D_BROKEN,
     D_ISOPEN,
@@ -155,6 +158,7 @@ import {
     TRAPNUM,
     TT_BEARTRAP,
     TT_BURIEDBALL,
+    TT_INFLOOR,
     TT_LAVA,
     TT_PIT,
     TT_WEB,
@@ -1577,6 +1581,10 @@ export function requireSimpleHeroDestination(
             // gate and reaches spoteffects(), which owns its melt timer and
             // underfoot effects.
             || location.typ === ICE
+            // The naturally open drawbridge on the Valkyrie quest goal is
+            // neither IS_OBSTRUCTED nor a DOOR. C test_move() admits the
+            // ordinary step onto its lowered span.
+            || location.typ === DRAWBRIDGE_DOWN
             || IS_AIR(location.typ)
             || IS_FURNITURE(location.typ)
             || doorway);
@@ -1712,11 +1720,23 @@ function requireOrdinarySafeMonsterSwap(monster, x, y, state) {
     // seam names only the arrival behavior that domove_core() still needs
     // after the helper succeeds.
     const destination = state.level?.at(x, y);
+    // C records a pony on wished ICE and CLOUD, a little dog in both an
+    // intact open doorway and a kicked-broken doorway, and a tame water
+    // elemental in a pool. test_move() admits those destinations and
+    // domove_core() completes their arrival effects. The pool witness has
+    // water walking and paranoid_confirm:-swim, so swim_move_danger() does
+    // not stop the swap before arrival.
     const ordinaryDestination = destination
         && (destination.typ === ROOM
             || destination.typ === CORR
+            || destination.typ === ICE
+            || destination.typ === CLOUD
+            || destination.typ === POOL
             || IS_FURNITURE(destination.typ)
-            || (destination.typ === DOOR && doorMask(destination) === 0));
+            || (destination.typ === DOOR
+                && (doorMask(destination) === 0
+                    || doorMask(destination) === D_ISOPEN
+                    || doorMask(destination) === D_BROKEN)));
     // hack.c:test_move() also admits physical obstacles when Passes_walls and
     // may_passwall() both allow the step. Preserve that path for a safe-monster
     // swap; the committed movement still runs the ordinary arrival effects.
@@ -1769,12 +1789,8 @@ function requireOrdinarySafeMonsterSwap(monster, x, y, state) {
             throw new UnsupportedHeroMoveBoundaryError(error.reason);
         }
     }
-    if (engr_at(x, y, state)
-        || engr_at(state.u.ux, state.u.uy, state)) {
-        throw new UnsupportedHeroMoveBoundaryError(
-            'pet swap engraving interaction',
-        );
-    }
+    // Engravings at either square are handled after committed movement by
+    // domove()'s maybe_smudge_engr(), including its source-ordered RNG draws.
 }
 
 // C ref: hack.c domove_core():2830-2841, which hands the step to trapmove()
@@ -3977,46 +3993,41 @@ async function domove_fight_empty(x, y, state) {
     // hack.c:2232 reads the drawn glyph before selecting the floor object.
     // It is deliberately separate from the glyph read after newsym().
     const glyph = glyph_at(x, y, state);
-    // 2253 and 2306-2312. Underwater skips the boulder and digging tests and
-    // then takes a message arm of its own, which names an air bubble or
-    // nothing at all rather than the terrain.
-    if (state.u.uinwater) {
-        throw new UnsupportedHeroMoveBoundaryError(
-            'force-fight while underwater',
-        );
-    }
     // 2254-2260. C starts with a boulder, then replaces that selection with a
     // statue only when the drawn glyph shows a statue (or hallucination makes
     // a monster glyph look like one). A statue hidden under a remembered
     // invisible-monster marker therefore remains out of the message, even
     // though it is still on the floor; reading sobj_at(STATUE) unconditionally
     // would answer a different question and refuse a C thin-air swing.
-    let boulder = sobj_at(BOULDER, x, y, state);
-    if (glyph_is_statue(glyph)
-        || (heroHallucinating(state) && glyph_is_monster(glyph))) {
-        boulder = sobj_at(STATUE, x, y, state);
-    }
-    // 2267-2276. A hero who force-fights while wielding a digging tool starts
-    // digging instead through dig.c use_pick_axe2() when the source's full
-    // target and glyph tests pass. C discards its result; dig.c dig() remains
-    // an occupation callback gap after the immediate direction handling.
-    // An axe reaches that fall-through at every wall, rock, pool and furniture
-    // square, and a pick at ROOM, CORR and a tree.
-    //
-    // C's block is `if (svc.context.forcefight && uwep && dig_typ(...) &&
-    // !glyph_is_invisible(glyph) && !glyph_is_monster(glyph))`. The forcefight
-    // conjunct is written below because the entry test now admits a second
-    // way in: a hero walking into a remembered 'I' arrives here with
-    // context.forcefight clear, and that is a path on which C skips the dig
-    // block outright and swings.
-    //
-    // The glyph tests are kept in C order: a remembered invisible marker or a
-    // monster glyph is swung at instead of handed to the digging routine.
-    if (state.context.forcefight && state.uwep
-        && dig_typ(state.uwep, x, y, state) !== DIGTYP_UNDIGGABLE
-        && !glyph_is_invisible(glyph) && !glyph_is_monster(glyph)) {
-        await use_pick_axe2(state.uwep, state);
-        return true;
+    let boulder = null;
+    if (!state.u.uinwater) {
+        boulder = sobj_at(BOULDER, x, y, state);
+        if (glyph_is_statue(glyph)
+            || (heroHallucinating(state) && glyph_is_monster(glyph))) {
+            boulder = sobj_at(STATUE, x, y, state);
+        }
+        // 2267-2276. A hero who force-fights while wielding a digging tool starts
+        // digging instead through dig.c use_pick_axe2() when the source's full
+        // target and glyph tests pass. C discards its result; dig.c dig() remains
+        // an occupation callback gap after the immediate direction handling.
+        // An axe reaches that fall-through at every wall, rock, pool and furniture
+        // square, and a pick at ROOM, CORR and a tree.
+        //
+        // C's block is `if (svc.context.forcefight && uwep && dig_typ(...) &&
+        // !glyph_is_invisible(glyph) && !glyph_is_monster(glyph))`. The forcefight
+        // conjunct is written below because the entry test now admits a second
+        // way in: a hero walking into a remembered 'I' arrives here with
+        // context.forcefight clear, and that is a path on which C skips the dig
+        // block outright and swings.
+        //
+        // The glyph tests are kept in C order: a remembered invisible marker or a
+        // monster glyph is swung at instead of handed to the digging routine.
+        if (state.context.forcefight && state.uwep
+            && dig_typ(state.uwep, x, y, state) !== DIGTYP_UNDIGGABLE
+            && !glyph_is_invisible(glyph) && !glyph_is_monster(glyph)) {
+            await use_pick_axe2(state.uwep, state);
+            return true;
+        }
     }
 
     // 2246-2247. `solid` is misleadingly named, as C's own comment at 2316
@@ -4033,7 +4044,7 @@ async function domove_fight_empty(x, y, state) {
     // screen the port has already diverged from. It is hoisted instead, which
     // is the one place the port deliberately departs from C's order, and only
     // on the arm it refuses.
-    if (!boulder && solid
+    if (!boulder && !(state.u.uinwater && !is_pool(x, y, state)) && solid
         && !(location.seenv || IS_STWALL(location.typ)
              || location.typ === SDOOR || location.typ === SCORR)) {
         throw new UnsupportedHeroMoveBoundaryError(
@@ -4050,6 +4061,9 @@ async function domove_fight_empty(x, y, state) {
     let buf;
     if (boulder) {
         buf = ansimpleoname(boulder, state);
+    } else if (state.u.uinwater && !is_pool(x, y, state)) {
+        buf = Is_waterlevel(state.u.uz) && location.typ === AIR
+            ? 'an air bubble' : 'nothing';
     } else if (solid) {
         buf = the(CMAP_EXPLANATIONS[
             glyph_to_cmap(back_to_glyph(x, y, state))
@@ -4086,8 +4100,8 @@ async function domove_fight_empty(x, y, state) {
 //
 // TT_PIT now delegates to trap.c:climb_pit(), except for the adjacent visible
 // pit that C permits the hero to enter. The remaining unported arm is
-// TT_INFLOOR. The buried-ball arm below preserves the
-// shared wriggle_free label's anchored message and punishment restoration.
+// The buried-ball and solidified-floor arms below share C's wriggle_free
+// label, with punishment restoration only for the anchored ball.
 async function trapmove(x, y, desttrap, state = game) {
     const u = state.u;
 
@@ -4139,46 +4153,56 @@ async function trapmove(x, y, desttrap, state = game) {
         u.umoved = true;
         return false;
     }
-    // C ref: hack.c:1632-1680, only the anchored TT_BURIEDBALL arm.
-    if (u.utraptype === TT_BURIEDBALL) {
-        const cc = { x: u.ux, y: u.uy };
-        if (buried_ball(cc, state) && dist2(x, y, cc.x, cc.y) <= 2) {
-            if (state.flags.verbose)
-                await ttyNorep("You move within the chain's reach.", state);
-            return true;
-        }
+    // C ref: hack.c:1632-1680. Solidified floor and the buried ball share
+    // the countdown, but only the ball permits a step inside its tether.
+    if (u.utraptype === TT_INFLOOR || u.utraptype === TT_BURIEDBALL) {
+        const anchored = u.utraptype === TT_BURIEDBALL;
         const steedname = u.usteed ? y_monnam(u.usteed, state) : null;
+        if (anchored) {
+            const cc = { x: u.ux, y: u.uy };
+            if (buried_ball(cc, state) && dist2(x, y, cc.x, cc.y) <= 2) {
+                if (state.flags.verbose)
+                    await ttyNorep("You move within the chain's reach.", state);
+                return true;
+            }
+        }
         if (--u.utrap) {
-            if (state.flags.verbose)
-                await ttyNorep(steedname
-                    ? `You and ${steedname} are chained to the buried ball.`
-                    : 'You are chained to the buried ball.', state);
+            if (state.flags.verbose) {
+                const culprit = anchored ? 'buried ball' : surface(u.ux, u.uy, state);
+                await ttyNorep(anchored
+                    ? steedname
+                        ? `You and ${steedname} are chained to the ${culprit}.`
+                        : `You are chained to the ${culprit}.`
+                    : steedname
+                        ? `${upstart(steedname)} is stuck in the ${culprit}.`
+                        : `You are stuck in the ${culprit}.`, state);
+            }
         } else {
-            await ttyPline(steedname
-                ? `${upstart(steedname)} finally wrenches the ball free.`
-                : 'You finally wrench the ball free.', state);
-            await buried_ball_to_punishment(state);
+            await ttyPline(anchored
+                ? steedname
+                    ? `${upstart(steedname)} finally wrenches the ball free.`
+                    : 'You finally wrench the ball free.'
+                : steedname
+                    ? `${upstart(steedname)} finally lurches free.`
+                    : 'You finally wriggle free.', state);
+            if (anchored) await buried_ball_to_punishment(state);
         }
         return false;
     }
     if (u.utraptype !== TT_BEARTRAP) {
         throw new UnsupportedHeroMoveBoundaryError('held hero movement');
     }
-    // C ref: hack.c:1556 and 1569-1570. A mounted hero is named by
-    // y_monnam(u.usteed) and reported instead of the hero, where the lines
-    // below name the hero. This is now the only refusal on the path: the
-    // steed gate above answers false for a healthy steed and falls through to
-    // here, and what keeps u.utrap and u.usteed from being set together today
-    // is js/trap.js's own mounted refusal in dotrap(). Delete this and a
-    // mounted hero in a bear trap prints the unmounted lines instead of
-    // stopping.
-    if (u.usteed) {
-        throw new UnsupportedHeroMoveBoundaryError('a steed in a bear trap');
-    }
+    // hack.c:1556-1579 names the trapped steed on both the continuing and
+    // successful escape arms. The diagonal short circuit still draws no RNG.
+    const steedname = u.usteed ? y_monnam(u.usteed, state) : null;
     if (state.flags?.verbose)
-        await ttyNorep('You are caught in a bear trap.', state);
+        await ttyNorep(steedname
+            ? `${upstart(steedname)} is caught in a bear trap.`
+            : 'You are caught in a bear trap.', state);
     if ((u.dx && u.dy) || !rn2(5)) --u.utrap;
-    if (!u.utrap) await ttyPline('You finally wriggle free.', state);
+    if (!u.utrap) await ttyPline(steedname
+        ? `${upstart(steedname)} finally lurches free.`
+        : 'You finally wriggle free.', state);
     return false;
 }
 

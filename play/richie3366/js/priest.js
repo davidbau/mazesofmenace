@@ -510,7 +510,7 @@ export async function intemple(roomno) {
 
         if (can_speak && !Deaf && moves >= (epri.intone_time | 0)) {
             const save_priest = priest.ispriest;
-            if (sanctum && !u.Hallucination) priest.ispriest = 0;
+            if (sanctum && !Hallucination()) priest.ispriest = 0; // C priest.c:438
             // C: canseemon (not canspotmon) — ESP alone → "A nearby voice"
             const who = canseemon(priest)
                 ? (await import('./do_name.js')).Monnam(priest)

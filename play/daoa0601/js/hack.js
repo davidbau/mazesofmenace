@@ -6,6 +6,7 @@ import { formatFeltMessage } from './hero_speech.js';
 import { monsterHasMapPosition } from './monster_location.js';
 import { heroIsBlind, heroIsHallucinating } from './senses.js';
 import { BURNING, D_BROKEN, D_CLOSED, D_LOCKED, DISMOUNT_FELL, DISMOUNT_GENERIC, DISSOLVED, DROWNING, DOOR, IS_AIR, IS_OBSTRUCTED, IS_STWALL, IS_WALL, IS_WATERWALL, Is_waterlevel, LAVAPOOL, LAVAWALL, PARANOID_SWIM, POOL, ROOM, STONE, FAINTED, M_SEEN_FIRE, TREE, TT_LAVA, Upolyd, WATER, W_NONDIGGABLE, W_NONPASSWALL, WT_TOOMUCH_DIAGONAL, } from './const.js';
+import { TIP_SWIM } from './const.js';
 import { bot, displayLiquidName, docrt, feel_newsym, newsym, plineWithContinuation, under_water, updateLastSeenTerrain } from './display.js';
 import { heroPassesWalls, heroFormSticks, heroSpecies } from './hero_species.js';
 import { heroHasConflict } from './hero_conflict.js';
@@ -146,7 +147,7 @@ export function heroShouldAvoidLiquid(x, y, state = game) {
     if (!dangerousPool && !dangerousLava && !liquidWall)
         return false;
     if (state.context?.nopick) {
-        state._tipSwimShown = true;
+        state.context.tips = (state.context.tips ?? 0) | (1 << TIP_SWIM);
         return false;
     }
     return liquidWall
@@ -317,9 +318,9 @@ async function reviveHeroFromLiquid(state, publish, random) {
     return true;
 }
 async function finishLiquidDeath(options) {
-    // The liquid effect has already announced the death. done() still owns
-    // life saving and the wizard/explore recovery question.
-    return await finishHeroDeath({ ...options, deathLineShown: true });
+    // The liquid effect has usually announced the death already. done() still
+    // owns life saving and the wizard/explore recovery question.
+    return await finishHeroDeath({ ...options, deathLineShown: options.deathLineShown ?? true });
 }
 async function teleportHeroOutOfLiquid({ state, random, rollOne, repaint, resetVision, recalculateVision, applyLandingEffects, }) {
     const destination = safeTeleportDestination(state, random, rollOne);
@@ -401,8 +402,9 @@ async function heroLavaEffects(options) {
 }
 async function finishLavaEffects({ state, location, publish, random, rollDice, rollOne, repaint, resetVision, recalculateVision, applyLandingEffects, die, }) {
     // Ordinary death returns no value; damage handling needs the final state.
+    // These deaths come through losehp(), which prints "You die..." itself.
     const finishDamageDeath = async (options) => {
-        await die(options);
+        await die({ ...options, deathLineShown: false });
         return !!state.program_state.gameover;
     };
     const hero = state.u;

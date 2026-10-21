@@ -12769,7 +12769,15 @@ function load_mon_loca() {
                 quan: 2, buc: 'blessed', montype: 'spinach',
             });
             // des.engraving({ coord=tinloc, type="burn", text="Elbereth" })
-            make_engr_at(tinloc.x, tinloc.y, 'Elbereth', null, 0, BURN);
+            // C sp_lev.c lspo_engraving :3930-3934 — the table has no guardobjects
+            // field and degrade defaults TRUE, so C overwrites make_engr_at's
+            // in_mklev Elbereth guardobjects=1 (engrave.c:446-447) with 0 and
+            // sets nowipeout = !wipeout = 0.
+            const ep = make_engr_at(tinloc.x, tinloc.y, 'Elbereth', null, 0, BURN);
+            if (ep) {
+                ep.guardobjects = 0;
+                ep.nowipeout = 0;
+            }
         }
     }
 
@@ -13972,10 +13980,15 @@ function load_bar_loca() {
         }
         const mtmp = makemon(pm, x, y, 0);
         if (!mtmp) return;
-        if (spec.id) mtmp.female = female;
-        // C: peaceful > BOOL_RANDOM → override (0 here)
-        if (spec.peaceful != null && spec.peaceful > BOOL_RANDOM)
+        // C sp_lev.c create_monster :2125 — mtmp->female = m->female for every
+        // spec; a class-only spec keeps lspo_monster's 0 (:3355–3356).
+        mtmp.female = female;
+        // C :2126–2129 — peaceful > BOOL_RANDOM → override (0 here), then
+        // set_malign: makemon's malign was computed for the old mpeaceful
+        if (spec.peaceful != null && spec.peaceful > BOOL_RANDOM) {
             mtmp.mpeaceful = spec.peaceful;
+            set_malign(mtmp);
+        }
     };
 
     for (const [rx, ry] of [
@@ -14957,7 +14970,17 @@ function load_soko1_1() {
                 impossible('multiple prizes on %s level', 'sokoban end');
             }
         }
-        make_engr_at(pt.x, pt.y, 'Elbereth', null, 0, BURN);
+        // C sp_lev.c lspo_engraving :3930-3934 — the table has no guardobjects
+        // field and degrade defaults TRUE, so C overwrites make_engr_at's
+        // in_mklev Elbereth guardobjects=1 (engrave.c:446-447) with 0 and
+        // sets nowipeout = !wipeout = 0.
+        {
+            const ep = make_engr_at(pt.x, pt.y, 'Elbereth', null, 0, BURN);
+            if (ep) {
+                ep.guardobjects = 0;
+                ep.nowipeout = 0;
+            }
+        }
         {
             const otmp = mksobj_at(SCR_SCARE_MONSTER, pt.x, pt.y, true, true);
             if (otmp) curse(otmp);
@@ -15138,7 +15161,17 @@ function load_soko1_2() {
                 impossible('multiple prizes on %s level', 'sokoban end');
             }
         }
-        make_engr_at(pt.x, pt.y, 'Elbereth', null, 0, BURN);
+        // C sp_lev.c lspo_engraving :3930-3934 — the table has no guardobjects
+        // field and degrade defaults TRUE, so C overwrites make_engr_at's
+        // in_mklev Elbereth guardobjects=1 (engrave.c:446-447) with 0 and
+        // sets nowipeout = !wipeout = 0.
+        {
+            const ep = make_engr_at(pt.x, pt.y, 'Elbereth', null, 0, BURN);
+            if (ep) {
+                ep.guardobjects = 0;
+                ep.nowipeout = 0;
+            }
+        }
         {
             const otmp = mksobj_at(SCR_SCARE_MONSTER, pt.x, pt.y, true, true);
             if (otmp) curse(otmp);
@@ -25027,7 +25060,15 @@ function load_castle() {
                 if (WAN_WISHING >= 0) addContent(WAN_WISHING);
                 if (POT_GAIN_LEVEL >= 0) addContent(POT_GAIN_LEVEL);
             }
-            make_engr_at(loc.x, loc.y, 'Elbereth', null, 0, BURN);
+            // C sp_lev.c lspo_engraving :3930-3934 — the table has no guardobjects
+            // field and degrade defaults TRUE, so C overwrites make_engr_at's
+            // in_mklev Elbereth guardobjects=1 (engrave.c:446-447) with 0 and
+            // sets nowipeout = !wipeout = 0.
+            const ep = make_engr_at(loc.x, loc.y, 'Elbereth', null, 0, BURN);
+            if (ep) {
+                ep.guardobjects = 0;
+                ep.nowipeout = 0;
+            }
             {
                 const otmp = mksobj_at(SCR_SCARE_MONSTER, loc.x, loc.y, true, true);
                 if (otmp) curse(otmp);

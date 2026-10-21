@@ -10,11 +10,11 @@
 // IA_ENGRAVE_OBJ (D-1675) + IA_BUY_OBJ shop pay (D-1676) +
 // IA_TWOWEAPON (D-1677) + IA_RUB_OBJ / IA_SWAPWEAPON / IA_WHATIS_OBJ
 // (D-1686). Corner process_menu_window cl_end from offx (D-1831).
-// Named omissions: dungeon.c surface terrain nouns; cantwield skip of
-// `'w'`; doengrave non-hands stylus body; Traditional itemize yn.
+// Named omissions: doengrave non-hands stylus body; Traditional itemize yn.
 // `'i'` getobj is D-1681.
 
 import { game } from './gstate.js';
+import { surface } from './sit.js';
 import { nhgetch } from './input.js';
 import { flush_screen, impossible, set_bot_disabled, tty_nhbell } from './display.js';
 import { paint_corner_nhw_menu, dismiss_nhw_menu, inuse_headers_accessories, inuse_headers_set_accessories, check_invent_gold, process_menu_search, cmdq_add_key, display_inventory } from './invent.js';
@@ -457,9 +457,7 @@ function MAYBETWOWEAPON(obj) {
 
 /**
  * C ref: iactions.c itemactions — NHW_MENU PICK_ONE of context actions.
- * Named omissions: dungeon.c `surface` terrain nouns (ROOM → "floor"
- * here, matching the four existing `surface` stubs). `cantwield` skip
- * of `'w'`.
+ * Engrave verb noun is the live dungeon.c surface (sit.js export, D-4187).
  * O/T/V pushkeys are D-1665. Unwield/name/eat/engrave are D-1675.
  * Shop pay is D-1676. Two-weapon `'X'` is D-1677. Rub/swap/whatis
  * pushkeys are D-1686.
@@ -624,12 +622,11 @@ export async function itemactions(otmp) {
         const verb = (blade || otmp.oclass === WAND_CLASS
             || ((otmp.oclass === GEM_CLASS || otmp.oclass === RING_CLASS)
                 && ocl_e?.oc_tough)) ? 'Engrave' : 'Write';
-        /* dungeon.c surface: ROOM → "floor"; full terrain is the four
-           existing stubs (always "floor"). Do not add clone #5. */
+        /* C `:443` surface(u.ux, u.uy) — stairs/altar/fountain/ice/... */
         add(
             IA_ENGRAVE_OBJ,
             'E',
-            `${verb} on the floor with ${(otmp.quan ?? 1) > 1 ? 'one of these items' : 'this item'}`,
+            `${verb} on the ${surface(u.ux, u.uy)} with ${(otmp.quan ?? 1) > 1 ? 'one of these items' : 'this item'}`,
         );
     }
 

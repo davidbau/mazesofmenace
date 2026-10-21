@@ -254,7 +254,7 @@ import {
 } from './attrib.js';
 import { ing_suffix, strstri, strsubst, ordin, highc, lcase, strncmpi } from './hacklib.js';
 import { visctrl } from './dokeylist.js';
-import { map_menu_cmd, select_menu_pick_any, select_menu_pick_one, hide_unhide_msgtypes, set_option_mod_status, SET_GAMEVIEW, get_menu_coloring, cattr_to_cell } from './options.js';
+import { map_menu_cmd, select_menu_pick_any, select_menu_pick_one, hide_unhide_msgtypes, set_option_mod_status, SET_GAMEVIEW, get_menu_coloring, cattr_to_cell, menu_heading_style, menu_prompt_style } from './options.js';
 import { rn2 } from './rng.js';
 import { background_enlightenment, enlght_line as enlght_line_txt } from './insight.js';
 import {
@@ -3318,7 +3318,7 @@ export async function reroll_menu() {
     // pick there returns a_char 0 → FALSE, same outcome.
     const lootabc = !!(game.flags && game.flags.lootabc);
     const entries = [
-        { text: 'Reroll this character?', attr: ATR_INVERSE },
+        { text: 'Reroll this character?', ...menu_prompt_style() }, // C invent.c:2599 end_menu prompt
         {
             text: 'start the game with this character',
             attr: 0,
@@ -3775,14 +3775,6 @@ set_xname_observe(observe_object);
 set_distant_cansee(cansee);
 
 /**
- * C windows.c add_menu_heading `:1815–1828` — iflags.menu_headings.attr
- * unless program_state.gameover (end-game disclosure: ATR_NONE).
- */
-function add_menu_heading_attr() {
-    return game.program_state?.gameover ? 0 : ATR_INVERSE;
-}
-
-/**
  * C ref: windows.c add_menu `:1803–1807` — menu-color patterns replace
  * the caller color/attr when use_menu_color (matched against the bare
  * str, pre-selector; display_pickinv's caller color/attr is ATR_NONE /
@@ -3810,13 +3802,13 @@ function pickinv_menu_coloring(text) {
 export function invent_lines(lets) {
     const inv = game.invent || [];
     const lines = [];
-    const headingAttr = add_menu_heading_attr();
+    const headingStyle = menu_heading_style(); // C windows.c add_menu_heading
     const filterLets = lets || '';
     for (const oclass of DEF_INV_ORDER) {
         const items = inv.filter((o) => o.oclass === oclass
             && (!filterLets || (o.invlet && filterLets.includes(o.invlet))));
         if (!items.length) continue;
-        lines.push({ text: let_to_name(oclass, false, false), attr: headingAttr });
+        lines.push({ text: let_to_name(oclass, false, false), ...headingStyle });
         for (const otmp of items) {
             // C ref: invent.c sortloot_item — observe_object before naming
             // Prop Blind — sticky u.Blind misses FROMFORM molds (D-0928 #1186).
@@ -3911,7 +3903,7 @@ function pickinv_build_inuse(lets, wizid, opts = null) {
     const pickItems = [];
     let inusecount = 0;
     let prevorderclass = 0;
-    const headingAttr = add_menu_heading_attr();
+    const headingStyle = menu_heading_style(); // C windows.c add_menu_heading
     for (const srt of sorted) {
         const otmp = srt.obj;
         if (!otmp) continue;
@@ -3920,12 +3912,12 @@ function pickinv_build_inuse(lets, wizid, opts = null) {
             // C `:3277–3280` doing_perm_invent ? "In use" : "Inventory in use"
             entries.push({
                 text: doing_perm_invent ? 'In use' : 'Inventory in use',
-                attr: headingAttr,
+                ...headingStyle,
             });
         }
         if (srt.orderclass !== prevorderclass) {
             const hdr = inuse_headers[srt.orderclass];
-            if (hdr) entries.push({ text: hdr, attr: headingAttr });
+            if (hdr) entries.push({ text: hdr, ...headingStyle });
             prevorderclass = srt.orderclass;
         }
         const letch = otmp.invlet || '?';
@@ -4147,11 +4139,11 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null, o
     const wizid = false;
     /* C display_pickinv `:3291` — withsym only when the menu answers. */
     const withsym = !!(want_reply && game.iflags?.menu_head_objsym);
-    const headingAttr = add_menu_heading_attr();
+    const headingStyle = menu_heading_style(); // C windows.c add_menu_heading
     if (usextra) {
         // C display_pickinv :3253–3260 — wizard ID and xtra_choice exclusive
         if (game.flags?.sortpack !== false) {
-            entries.push({ text: 'Miscellaneous', attr: headingAttr });
+            entries.push({ text: 'Miscellaneous', ...headingStyle });
         }
         byLet.set(HANDS_SYM, { _hands: true });
         pickItems.push({ selector: HANDS_SYM, gselector: '' });
@@ -4198,7 +4190,7 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null, o
                 if (sortpack && !classcount) {
                     entries.push({
                         text: let_to_name(oclass, false, withsym),
-                        attr: headingAttr,
+                        ...headingStyle,
                     });
                 }
                 classcount++;
@@ -4227,7 +4219,7 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null, o
     // C display_pickinv `:3345–3366` — after class items, before end_menu
     const special = force_invmenu_special(lets, allowxtra, usextra);
     if (special) {
-        entries.push({ text: 'Special', attr: headingAttr });
+        entries.push({ text: 'Special', ...headingStyle });
         byLet.set(special.ch, { _special: special.ch });
         pickItems.push({ selector: special.ch, gselector: '' });
         const specialLine = `${special.ch} - ${special.text}`;
@@ -4252,7 +4244,7 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null, o
         // prompt lands above it, in tty_menu_promptstyle (menu_headings,
         // options.c:5790).
         entries.unshift({ text: '', attr: 0 });
-        entries.unshift({ text: query, attr: add_menu_heading_attr() });
+        entries.unshift({ text: query, ...menu_prompt_style() });
     }
 
     // C ref: wintty.c tty_end_menu / process_menu_window PICK_ONE —
@@ -4489,7 +4481,7 @@ export function build_wizid_pickinv_items() {
         if (sortpack && otmp.oclass !== prevclass) {
             items.push({
                 text: let_to_name(otmp.oclass, false, false),
-                attr: ATR_INVERSE,
+                ...menu_heading_style(), // C windows.c add_menu_heading
                 selectable: false,
             });
             prevclass = otmp.oclass;
@@ -4682,7 +4674,7 @@ export async function display_minventory(mon, dflags, title) {
         hdr = `${s_suffix_inv(noit_Monnam(mon))} ${
             do_all ? 'possessions' : 'armament'}:`;
     }
-    const headingAttr = game.program_state?.gameover ? 0 : ATR_INVERSE;
+    const headingStyle = menu_heading_style(); // C windows.c add_menu_heading
     const items = [];
     for (let otmp = mon.minvent; otmp; otmp = otmp.nobj) items.push(otmp);
     const incl_hero = do_all && engulfing_u(mon);
@@ -4723,7 +4715,7 @@ export async function display_minventory(mon, dflags, title) {
     const shown = do_all ? items : items.filter(worn_wield_only);
     if (!(do_all ? have_any : shown.length > 0)) {
         await select_menu_pick_none([
-            { text: hdr, attr: headingAttr },
+            { text: hdr, ...headingStyle },
             { text: '', attr: 0 },
             { text: '(none)', attr: 0 },
         ]);
@@ -4759,7 +4751,7 @@ export async function display_minventory(mon, dflags, title) {
         // C tty_end_menu `:2680–2690`: a prompt prepends "" then the
         // title, so rows are [title, "", ...items].
         const entries = [
-            { text: hdr, attr: headingAttr },
+            { text: hdr, ...menu_prompt_style() },
             { text: '', attr: 0 },
         ];
         // C query_objlist `:1094–1100` — pack walks flags.inv_order;
@@ -4774,7 +4766,7 @@ export async function display_minventory(mon, dflags, title) {
                 if (!otmp || (otmp.oclass | 0) !== oclass) continue;
                 if (!allowFn(otmp)) continue; // C `:1122`
                 if (!printed) {
-                    entries.push({ text: let_to_name(oclass), attr: headingAttr });
+                    entries.push({ text: let_to_name(oclass), ...headingStyle });
                     printed = true;
                 }
                 obj_glyph(otmp);
@@ -4796,7 +4788,7 @@ export async function display_minventory(mon, dflags, title) {
             if (n > 1) {
                 entries.push({
                     text: `${digests(game.u?.ustuck?.data) ? 'Swallowed' : 'Engulfed'} Creatures`,
-                    attr: headingAttr,
+                    ...headingStyle,
                 });
             }
             // C `:1155–1163` — fake row, CONTAINED_SYM selector, no
@@ -4860,8 +4852,8 @@ function pair_of_inv(obj) {
  * INVORDER_SORT uses class headings; else nexthere order (pool overlay).
  */
 async function query_objlist_pick_none_binv(title, items, invorder_sort) {
-    const headingAttr = game.program_state?.gameover ? 0 : ATR_INVERSE;
-    const entries = [{ text: title, attr: headingAttr }];
+    const headingStyle = menu_heading_style(); // C windows.c add_menu_heading
+    const entries = [{ text: title, ...menu_prompt_style() }];
     if (!game.iflags) game.iflags = {};
     game.iflags.suppress_price = (game.iflags.suppress_price | 0) + 1;
     try {
@@ -4872,7 +4864,7 @@ async function query_objlist_pick_none_binv(title, items, invorder_sort) {
             for (const oclass of classes) {
                 const group = items.filter((o) => (o.oclass | 0) === oclass);
                 if (!group.length) continue;
-                entries.push({ text: let_to_name(oclass), attr: headingAttr });
+                entries.push({ text: let_to_name(oclass), ...headingStyle });
                 for (const otmp of group) {
                     obj_glyph(otmp);
                     entries.push({ text: doname(otmp), attr: 0 });
@@ -5044,9 +5036,9 @@ export async function display_cinventory(obj) {
         pick_list = res.pick_list;
     } else {
         // C `:5463–5464` — invdisp_nothing(qbuf, "(empty)"); n = 0.
-        const headingAttr = game.program_state?.gameover ? 0 : ATR_INVERSE;
+        const headingStyle = menu_heading_style(); // C windows.c add_menu_heading
         await select_menu_pick_none([
-            { text: qbuf, attr: headingAttr },
+            { text: qbuf, ...headingStyle },
             { text: '', attr: 0 },
             { text: '(empty)', attr: 0 },
         ]);
@@ -10871,7 +10863,7 @@ export function build_used_invlets_items(avoidlet = 0) {
     const entries = [];
     const byLet = new Map();
     const skip = (ilet) => !!(avoidlet && avoidlet !== '\0' && ilet === avoidlet);
-    const headingAttr = game.program_state?.gameover ? 0 : ATR_INVERSE;
+    const headingStyle = menu_heading_style(); // C windows.c add_menu_heading
     const pushItem = (otmp) => {
         if (!otmp || skip(otmp.invlet)) return false;
         // C: obj_to_glyph(otmp, rn2_on_display_rng) then doname
@@ -10892,7 +10884,7 @@ export function build_used_invlets_items(avoidlet = 0) {
                 if (!classcount) {
                     entries.push({
                         text: let_to_name(oclass, false, false),
-                        attr: headingAttr,
+                        ...headingStyle,
                     });
                     classcount++;
                 }
@@ -10922,7 +10914,7 @@ export async function display_used_invlets(avoidlet = 0) {
     // blank + prompt (non-selectable).
     // tty_add_menu prepends (`:2621–2622`): blank first, prompt above it.
     entries.unshift({ text: '', attr: 0 });
-    entries.unshift({ text: 'Inventory letters used:', attr: add_menu_heading_attr() });
+    entries.unshift({ text: 'Inventory letters used:', ...menu_prompt_style() });
 
     const rows = display()?.rows || 24;
     const lmax = Math.min(52, rows - 1);

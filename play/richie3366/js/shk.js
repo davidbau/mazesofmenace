@@ -4748,7 +4748,7 @@ export async function pri_move(priest) {
             }
             avoid = false;
         }
-    } else if (game.u?.Invis) {
+    } else if (Invis()) { // C youprop.h Invis (live timeout.js export)
         avoid = false;
     }
 
