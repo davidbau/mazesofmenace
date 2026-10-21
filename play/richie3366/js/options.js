@@ -10737,7 +10737,7 @@ const DOSET_BOOL_ADDR = {
     debug_mongen: { obj: 'iflags', key: 'debug_mongen' }, // C optlist.h:279 &iflags.debug_mongen
     debug_overwrite_stairs: { obj: 'iflags', key: 'debug_overwrite_stairs' }, // C optlist.h:282 &iflags.debug_overwrite_stairs (no JS consumer yet)
     dropped_nopick: { obj: 'flags', key: 'nopick_dropped' },
-    eight_bit_tty: { obj: 'iflags', key: 'eight_bit_tty' },
+    eight_bit_tty: { obj: 'iflags', key: 'wc_eight_bit_input' }, // C optlist.h:300–301 &iflags.wc_eight_bit_input (flag.h:505 eight_bit_tty ≡ wc_eight_bit_input)
     extmenu: { obj: 'iflags', key: 'extmenu' },
     fireassist: { obj: 'iflags', key: 'fireassist' }, // C optlist.h:310 &iflags.fireassist
     fixinv: { obj: 'flags', key: 'invlet_constant' }, // C: flags.invlet_constant
@@ -10772,7 +10772,7 @@ const DOSET_BOOL_ADDR = {
     query_menu: { obj: 'iflags', key: 'query_menu' },
     quick_farsight: { obj: 'flags', key: 'quick_farsight' },
     rest_on_space: { obj: 'flags', key: 'rest_on_space' },
-    safe_pet: { obj: 'flags', key: 'safe_pet' },
+    safe_pet: { obj: 'flags', key: 'safe_dog' }, // C optlist.h:633–634 &flags.safe_dog (is_safemon reads safe_dog; the safe_pet key was a phantom)
     safe_wait: { obj: 'flags', key: 'safe_wait' },
     sanity_check: { obj: 'iflags', key: 'sanity_check' }, // C optlist.h:639 &iflags.sanity_check
     showdamage: { obj: 'iflags', key: 'showdamage' },
@@ -11653,10 +11653,10 @@ export async function doset() {
             { name: 'boulder', get_val: () => doset_compopt_get_val(optfn_boulder, 'boulder') },
             { name: 'crash_email', get_val: () => doset_compopt_get_val(optfn_crash_email, 'crash_email') || 'unknown' }, // C `:9043` "unknown" unless non-empty
             { name: 'crash_name', get_val: () => doset_compopt_get_val(optfn_crash_name, 'crash_name') || 'unknown' }, // C `:9043` "unknown" unless non-empty
-            { name: 'crash_urlmax', val: '-1' },
+            { name: 'crash_urlmax', get_val: () => doset_compopt_get_val(optfn_crash_urlmax, 'crash_urlmax') }, // C `:9038` → `:1335` gc.crash_urlmax
             { name: 'disclose', get_val: () => doset_compopt_get_val(optfn_disclose, 'disclose'), handler: true },
             { name: 'fruit', get_val: () => doset_compopt_get_val(optfn_fruit, 'fruit') || 'unknown' }, // C `:9043` "unknown" unless non-empty (optfn_fruit get_val `:1770` Sprintfs pl_fruit; was hardcoded 'slime mold')
-            { name: 'glyph', val: '(to be done)' },
+            { name: 'glyph', get_val: () => doset_compopt_get_val(optfn_glyph, 'glyph') }, // C `:9038` → `:1841` to_be_done
             { name: 'hilite_status', get_val: () => doset_compopt_get_val(optfn_hilite_status, 'hilite_status') },
             { name: 'menu_headings', get_val: () => doset_compopt_get_val(optfn_menu_headings, 'menu_headings'), handler: true },
             { name: 'menu_objsyms', get_val: () => doset_compopt_get_val(optfn_menu_objsyms, 'menu_objsyms'), handler: true },
@@ -11673,7 +11673,7 @@ export async function doset() {
             { name: 'petattr', get_val: () => doset_compopt_get_val(optfn_petattr, 'petattr'), handler: true },
             { name: 'pickup_burden', get_val: () => doset_compopt_get_val(optfn_pickup_burden, 'pickup_burden'), handler: true },
             { name: 'pickup_types', get_val: () => doset_compopt_get_val(optfn_pickup_types, 'pickup_types'), handler: true },
-            { name: 'pile_limit', val: '5' },
+            { name: 'pile_limit', get_val: () => doset_compopt_get_val(optfn_pile_limit, 'pile_limit') }, // C `:9038` → optfn_pile_limit `:3430–3432` flags.pile_limit (was a '5' literal)
             { name: 'roguesymset', get_val: () => doset_compopt_get_val(optfn_roguesymset, 'roguesymset'), handler: true }, // C has_handler (optlist.h) → handler_symset
             { name: 'runmode', get_val: () => doset_compopt_get_val(optfn_runmode, 'runmode'), handler: true },
             { name: 'scores', get_val: () => doset_compopt_get_val(optfn_scores, 'scores') },

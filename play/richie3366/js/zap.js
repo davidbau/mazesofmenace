@@ -4786,12 +4786,13 @@ export async function zapyourself(obj, ordinary) {
     case SPE_SLEEP:
         learn_it = true;
         if (Sleep_resistance()) {
-            // shieldeff / monstseesu deferred (no RNG)
+            await shieldeff(game.u.ux, game.u.uy); // C zap.c:2855
             await pline("You don't feel sleepy!");
+            monstseesu(M_SEEN_SLEEP);
         } else {
             if (ordinary) await pline('The sleep ray hits you!');
             else await pline('You fall asleep!');
-            // monstunseesu deferred
+            monstunseesu(M_SEEN_SLEEP); // C zap.c:2863
             /* C zap.c:2864 — fall_asleep(-rnd(50), TRUE). */
             await fall_asleep(-rnd(50), true);
         }
@@ -4842,7 +4843,9 @@ export async function zapyourself(obj, ordinary) {
     case SPE_FORCE_BOLT:
         learn_it = true;
         if (Antimagic()) {
+            await shieldeff(game.u.ux, game.u.uy); // C zap.c:2716
             await pline('Boing!');
+            monstseesu(M_SEEN_MAGR);
         } else {
             if (ordinary) {
                 await pline('You bash yourself!');
@@ -4851,6 +4854,7 @@ export async function zapyourself(obj, ordinary) {
                 damage = d(1 + (obj.spe | 0), 6);
             }
             await exercise(A_STR, false);
+            monstunseesu(M_SEEN_MAGR); // C zap.c:2726
         }
         break;
 
@@ -4968,13 +4972,15 @@ export async function zapyourself(obj, ordinary) {
         learn_it = true;
         const orig_dmg = d(12, 6);
         if (Fire_resistance()) {
-            // shieldeff / monstseesu still deferred (C zap.c:2757–2759).
+            await shieldeff(game.u.ux, game.u.uy); // C zap.c:2757
             await You_feel('rather warm.');
+            monstseesu(M_SEEN_FIRE);
             // C zap.c:2760
             await ugolemeffects(AD_FIRE, orig_dmg);
         } else {
             await pline("You've set yourself afire!");
             damage = orig_dmg;
+            monstunseesu(M_SEEN_FIRE); // C zap.c:2764
         }
         await burn_away_slime();
         await burnarmor(game.youmonst || { _youmonst: true });
@@ -4989,12 +4995,15 @@ export async function zapyourself(obj, ordinary) {
         learn_it = true;
         const orig_dmg = d(12, 6);
         if (Cold_resistance()) {
+            await shieldeff(game.u.ux, game.u.uy); // C zap.c:2778
             await You_feel('a little chill.');
+            monstseesu(M_SEEN_COLD);
             // C zap.c:2781
             await ugolemeffects(AD_COLD, orig_dmg);
         } else {
             await pline('You imitate a popsicle!');
             damage = orig_dmg;
+            monstunseesu(M_SEEN_COLD); // C zap.c:2785
         }
         await destroy_items(game.youmonst || { _youmonst: true }, AD_COLD, orig_dmg);
         break;
@@ -5010,10 +5019,11 @@ export async function zapyourself(obj, ordinary) {
             await You('shock yourself!');
             damage = orig_dmg;
             await exercise(A_CON, false);
-            // monstunseesu deferred
+            monstunseesu(M_SEEN_ELEC); // C zap.c:2737
         } else {
-            // shieldeff / monstseesu still deferred (C zap.c:2739–2741).
+            await shieldeff(game.u.ux, game.u.uy); // C zap.c:2739
             await You('zap yourself, but seem unharmed.');
+            monstseesu(M_SEEN_ELEC);
             // C zap.c:2742
             await ugolemeffects(AD_ELEC, orig_dmg);
         }
@@ -5030,13 +5040,17 @@ export async function zapyourself(obj, ordinary) {
     case SPE_MAGIC_MISSILE:
         // C zap.c zapyourself :2790–2802 — always learn;
         // Antimagic (youprop.h uprops, D-1367) → pline_The bounce
-        // (no d()); else d(4,6)+Idiot. shieldeff / monstseesu named.
+        // (no d()); else d(4,6)+Idiot; shieldeff + monstseesu /
+        // monstunseesu(M_SEEN_MAGR) as in C.
         learn_it = true;
         if (Antimagic()) {
+            await shieldeff(game.u.ux, game.u.uy); // C zap.c:2794
             await pline('The missiles bounce!');
+            monstseesu(M_SEEN_MAGR);
         } else {
             damage = d(4, 6);
             await pline("Idiot!  You've shot yourself!");
+            monstunseesu(M_SEEN_MAGR); // C zap.c:2800
         }
         break;
 

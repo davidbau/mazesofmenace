@@ -640,10 +640,10 @@ async function findone(zx, zy, found) {
         found.num_traps++;
     }
     /* trapped chests */
-    detect_obj_traps(game.level?.buriedobjlist, true, 0, found);
-    detect_obj_traps(floor_objects(), true, 0, found);
-    if (mtmp) detect_obj_traps(mtmp.minvent, true, 0, found);
-    if (u_at(zx, zy)) detect_obj_traps(game.invent, true, 0, found);
+    await detect_obj_traps(game.level?.buriedobjlist, true, 0, found);
+    await detect_obj_traps(floor_objects(), true, 0, found);
+    if (mtmp) await detect_obj_traps(mtmp.minvent, true, 0, found);
+    if (u_at(zx, zy)) await detect_obj_traps(game.invent, true, 0, found);
 
     if (mtmp && (!canspotmon(mtmp) || mtmp.mundetected || M_AP_TYPE(mtmp))) {
         if (M_AP_TYPE(mtmp)) {
@@ -2348,12 +2348,17 @@ export function sense_trap(trap, x, y, src_cursed) {
 }
 
 /**
- * C ref: detect.c detect_obj_traps — chest otrapped on a list.
- * flash_glyph_at / foundone when ft non-null named omit (counts still).
+ * C ref: detect.c detect_obj_traps `:906–953` — chest otrapped on a list,
+ * in C order: location filter (`:926–932`), tknown + observe_object +
+ * OTRAP_HERE/THERE (`:933–936`), flash_glyph_at the TRAPPED_CHEST glyph
+ * when called by findone (`:937–939`), sense_trap when show_them
+ * (`:940–943`), then foundone + num_traps (`:944–947`); foundone's newsym
+ * shows the box itself, not the trap glyph. Recurses into contents.
  */
-function detect_obj_traps(objlist, show_them, how, ft) {
+async function detect_obj_traps(objlist, show_them, how, ft) {
     let result = OTRAP_NONE;
     dummytrap.ttyp = TRAPPED_CHEST;
+    const trapglyph = ft ? trap_to_glyph(dummytrap) : null; // C `:923`
     for (const otmp of iter_objs(objlist)) {
         let x = 0;
         let y = 0;
@@ -2371,17 +2376,21 @@ function detect_obj_traps(objlist, show_them, how, ft) {
             otmp.tknown = 1;
             observe_object(otmp);
             result |= u_at(x, y) ? OTRAP_HERE : OTRAP_THERE;
+            if (ft) {
+                await flash_glyph_at(x, y, trapglyph, FOUND_FLASH_COUNT); // C `:938`
+            }
             if (show_them) {
                 dummytrap.tx = x;
                 dummytrap.ty = y;
                 sense_trap(dummytrap, x, y, how);
             }
             if (ft) {
+                foundone(x, y, trapglyph); // C `:945`
                 ft.num_traps++;
             }
         }
         if (Has_contents(otmp)) {
-            result |= detect_obj_traps(otmp.cobj, show_them, how, ft);
+            result |= await detect_obj_traps(otmp.cobj, show_them, how, ft);
         }
     }
     return result;
@@ -2397,13 +2406,13 @@ async function display_trap_map(cursed_src) {
 
     await cls();
     unconstrain_map();
-    detect_obj_traps(game.level?.buriedobjlist, true, cursed_src, null);
-    detect_obj_traps(floor_objects(), true, cursed_src, null);
+    await detect_obj_traps(game.level?.buriedobjlist, true, cursed_src, null);
+    await detect_obj_traps(floor_objects(), true, cursed_src, null);
     for (const mon of game.fmon || []) {
         if (!mon || (mon.mhp | 0) < 1 || (mon.isgd && !(mon.mx | 0))) continue;
-        detect_obj_traps(mon.minvent, true, cursed_src, null);
+        await detect_obj_traps(mon.minvent, true, cursed_src, null);
     }
-    detect_obj_traps(game.invent, true, cursed_src, null);
+    await detect_obj_traps(game.invent, true, cursed_src, null);
 
     for (const ttmp of ftrap_list()) {
         if (ttmp) sense_trap(ttmp, 0, 0, cursed_src);
@@ -2468,7 +2477,7 @@ export async function trap_detect(sobj) {
         }
         found = true;
     }
-    let tr = detect_obj_traps(floor_objects(), false, 0, null);
+    let tr = await detect_obj_traps(floor_objects(), false, 0, null);
     if (tr !== OTRAP_NONE) {
         if (tr & OTRAP_THERE) {
             await display_trap_map(cursed_src);
@@ -2476,7 +2485,7 @@ export async function trap_detect(sobj) {
         }
         found = true;
     }
-    tr = detect_obj_traps(game.level?.buriedobjlist, false, 0, null);
+    tr = await detect_obj_traps(game.level?.buriedobjlist, false, 0, null);
     if (tr !== OTRAP_NONE) {
         if (tr & OTRAP_THERE) {
             await display_trap_map(cursed_src);
@@ -2486,7 +2495,7 @@ export async function trap_detect(sobj) {
     }
     for (const mon of game.fmon || []) {
         if (!mon || (mon.mhp | 0) < 1 || (mon.isgd && !(mon.mx | 0))) continue;
-        tr = detect_obj_traps(mon.minvent, false, 0, null);
+        tr = await detect_obj_traps(mon.minvent, false, 0, null);
         if (tr !== OTRAP_NONE) {
             if (tr & OTRAP_THERE) {
                 await display_trap_map(cursed_src);
@@ -2495,7 +2504,7 @@ export async function trap_detect(sobj) {
             found = true;
         }
     }
-    if (detect_obj_traps(game.invent, false, 0, null) !== OTRAP_NONE) {
+    if (await detect_obj_traps(game.invent, false, 0, null) !== OTRAP_NONE) {
         found = true;
     }
     const doors = game.level?.doors || [];

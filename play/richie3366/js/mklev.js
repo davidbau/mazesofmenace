@@ -32700,15 +32700,23 @@ function make_garden_walls_postprocess(data) {
 // C ref: themerms.lua make_dig_engraving `:1052–1070` — negate-all then
 // filter "." (JS selection_all_room_floors), rndcoord(0) without removal,
 // then "Dig" + directional words from (data.x - pos.x - 1, data.y - pos.y).
-// The -1 mirrors the lua; stored postprocess coords are absolute level
-// cells (chest ox/oy), same frame as the negate selection.
+// data.x/y are the chest's absolute ox/oy (obj totable), but pos is in the
+// lua frame: C nhlsel.c l_selection_rndcoord `:413–421` runs update_croom()
+// and subtracts the coder subroom's lx/ly, else xstart/ystart — 1/0 here,
+// set by themerooms_post_level_generate's reset_xystart_size. The lua `- 1`
+// cancels that xstart. des.engraving's get_location_coord adds the same
+// offset back, so the engraving itself lands on the absolute pos.
 function make_dig_engraving_postprocess(data) {
     if (!data) return;
     const floors = selection_all_room_floors();
     const pos = selection_rndcoord(floors, false);
     if (!pos) return;
-    const tx = (data.x | 0) - pos.x - 1;
-    const ty = (data.y | 0) - pos.y;
+    update_croom(); // C nhlsel.c :414
+    const croom = game.gc?.coder?.croom ?? null; // C :415
+    const luaX = pos.x - (croom ? (croom.lx | 0) : (game.splev_xstart | 0)); // C :416 / :419
+    const luaY = pos.y - (croom ? (croom.ly | 0) : (game.splev_ystart | 0)); // C :417 / :420
+    const tx = (data.x | 0) - luaX - 1;
+    const ty = (data.y | 0) - luaY;
     let dig = '';
     if (tx === 0 && ty === 0) {
         dig = ' here';

@@ -40,7 +40,7 @@ import {
     glyph_to_body_corpsenm, glyph_to_statue_corpsenm,
     set_bot_disabled, tty_nhbell, MG_FLAG_NOOVERRIDE, SYM_OFF_X, SYM_MAX,
     SYM_OFF_M, SYM_OFF_O, SYM_OFF_W, live_showsyms,
-    clear_message_window_menu_overlay,
+    clear_message_window_menu_overlay, topl_raw_utf8,
 } from './display.js';
 import { howmonseen, couldsee, cansee } from './vision.js';
 import { getlin, mungspaces, y_n } from './getline.js';
@@ -1442,6 +1442,20 @@ function rendered_glyph_char(x, y) {
 }
 
 /**
+ * C pager.c `:1271` encglyph prefix as the message window receives it: a
+ * cell drawn through g_pututf8 (H_UTF8 symset + WC2_U_UTF8STR, the
+ * show_glyph_cell disp_capture_drop arm) reaches pline as tty_putmixed's
+ * mixed_to_utf8 bytes (wintty.c `:4183–4187`), which topl_putsym writes a
+ * column each and the capture drops; any other cell renders as its char.
+ */
+function encglyph_message_prefix(x, y) {
+    const loc = game.level?.at?.(x, y);
+    if (loc?.disp_capture_drop && typeof loc.disp_ch === 'string' && loc.disp_ch.length)
+        return topl_raw_utf8(loc.disp_ch);
+    return rendered_glyph_char(x, y);
+}
+
+/**
  * C ref: pager.c do_screen_description `:1247–1627` — the whole symbol-table
  * description of one map cell (looked) or one queried symbol, in C order:
  * restricted vision `:1291–1305`, x_str `:1307–1325`, check_monsters
@@ -1484,7 +1498,7 @@ export function do_screen_description(cc, looked, sym, outStr, firstMatch, forSu
         sym = sym | 0;
     }
     // C `:1271/:1273` — encglyph prefix (rendered) vs `%c` prefix (raw sym).
-    const prefix = `${looked ? rendered_glyph_char(cc.x, cc.y) : String.fromCharCode(sym & 0xFF)}        `;
+    const prefix = `${looked ? encglyph_message_prefix(cc.x, cc.y) : String.fromCharCode(sym & 0xFF)}        `;
     // C `:1291–1305` — restricted vision first.
     let xStr = null;
     const terrainmode = game.iflags?.terrainmode | 0;

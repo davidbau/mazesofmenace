@@ -8936,8 +8936,10 @@ export async function doattributes(enl_mode = null) {
     // C items are the line minus that space, and the NOMUX shadow capture
     // omits the putchar(' '), landing the same grid cells. Corner ⟺
     // single page (nitems ≤ 22): one paint + "(end) " morestr + wait.
-    // C dmore → xwaitforspace: only space/CR/LF advance; ESC cancels;
-    // other keys bell and stay (still a capture boundary).
+    // C insight.c enlightenment `:451–460` (en_via_menu) ends in
+    // select_menu(PICK_NONE) → wintty.c process_menu_window: the key
+    // switch below follows `:1604–1649` (multi-page) and dmore →
+    // xwaitforspace (getline.c `:230–257`) for the corner page.
     // C wintty.c tty_end_menu `:2728–2733`: lines carry the menu's one
     // leading space, so cap at 79 (space + 78-char str). In place: lines
     // is function-local (C cuts mlist in place too).
@@ -8962,7 +8964,37 @@ export async function doattributes(enl_mode = null) {
     if (offx === 0) {
         const PAGE = 23;
         const pageCount = Math.max(1, Math.ceil(lines.length / PAGE));
-        for (let p = 0; p < pageCount; p++) {
+        let p = 0;
+        let newPage = true;
+        for (;;) {
+            if (!newPage) {
+                // C `:1548–1551` — same page: cursor back, xwaitforspace.
+                const key = map_menu_cmd(await nhgetch());
+                const ch = String.fromCharCode(key);
+                // C `:1604–1614` ESC cancels; `:1616–1620` Return/LF
+                // finish (PICK_NONE included).
+                if (key === 27 || key === 13 || key === 10) break;
+                if (key === 32 || ch === MENU_NEXT_PAGE) {
+                    // C `:1622–1631` — ' ' finishes on the last page,
+                    // '>' does not.
+                    if (p < pageCount - 1) {
+                        p++;
+                        newPage = true;
+                    } else if (key === 32) {
+                        break;
+                    }
+                } else if (ch === MENU_PREVIOUS_PAGE) { // C `:1632–1637`
+                    if (p > 0) { --p; newPage = true; }
+                } else if (ch === MENU_FIRST_PAGE) { // C `:1638–1643`
+                    if (p > 0) { p = 0; newPage = true; }
+                } else if (ch === MENU_LAST_PAGE) { // C `:1644–1649`
+                    if (p < pageCount - 1) { p = pageCount - 1; newPage = true; }
+                }
+                // counts, select/unselect commands and search change nothing
+                // on a PICK_NONE screen; unlisted keys bell in xwaitforspace.
+                continue;
+            }
+            newPage = false;
             const chunk = lines.slice(p * PAGE, (p + 1) * PAGE);
             // C wintty.c tty_end_menu `:2742–2750` + process_menu_window
             // `:1537–1543`: single-page menus show "(end) " (trailing
@@ -8977,7 +9009,6 @@ export async function doattributes(enl_mode = null) {
                 cursor: [morestr.length + 1, endRow],
             });
             await flush_screen(1);
-            if (await waitMenuKey()) break;
         }
     } else {
         const disp = display();

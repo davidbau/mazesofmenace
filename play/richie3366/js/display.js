@@ -166,7 +166,7 @@ import { stairway_at, known_branch_stairs, xy_set_wall_state } from './mklev.js'
 import {
     A_INT, A_WIS, A_DEX, A_CON, A_CHA, acurr, get_strength_str,
 } from './attrib.js';
-import { depth, dist2, strncmpi } from './hacklib.js';
+import { depth, dist2, strncmpi, unicodeval_to_utf8str } from './hacklib.js';
 import { purge_custom_entries, clear_all_glyphmap_colors, free_all_glyphmap_u } from './glyphs.js'; // clear_symsetentry (same SCC; hoisted fns, runtime use only — imports.mjs IN-SCC)
 import { monsterNames } from './generated/monsters_data.js';
 import { DEFSYMS } from './generated/defsyms_data.js';
@@ -4041,7 +4041,8 @@ export function symset_render_char(code, handling) {
     const h = handling | 0;
     let out;
     if (h === H_IBM || h === H_UTF8
-        || (game.iflags?.eight_bit_tty && (h !== H_DEC || (c & 0x7F) < 0x60))) {
+        || (game.iflags?.wc_eight_bit_input // C flag.h:505 eight_bit_tty
+            && (h !== H_DEC || (c & 0x7F) < 0x60))) {
         out = { ch: String.fromCharCode(c & 0x7F), dec: false };
     } else if (c & 0x80) {
         out = { ch: String.fromCharCode(c ^ 0x80), dec: true };
@@ -8291,6 +8292,31 @@ function resync_map_row0() {
     }
 }
 
+/* C byte b of a message, carried as U+F700+b (Private Use Area): the
+ * message keeps C's byte count (curx, wrap, --More-- column) while the
+ * topline painter skips the high bytes the capture drops. */
+const TOPL_RAW_BYTE = 0xF700;
+
+/**
+ * C utf8map.c mixed_to_utf8 `:104–111` copies a glyph's utf8str bytes into
+ * the message; topl_putsym (topl.c `:302–342`) then writes them one byte,
+ * one column at a time. Returns those bytes as TOPL_RAW_BYTE chars
+ * (unicodeval_to_utf8str per code point, hacklib.c `:883–918`).
+ * @param {string} str decoded utf8str (glyphs.js fromCodePoint)
+ * @returns {string}
+ */
+export function topl_raw_utf8(str) {
+    let out = '';
+    for (const ch of String(str ?? '')) {
+        const buf = [0, 0, 0, 0, 0, 0];
+        if (!unicodeval_to_utf8str(ch.codePointAt(0), buf, buf.length)) continue;
+        for (let i = 0; i < buf.length && buf[i]; i++)
+            out += buf[i] < 0x80 ? String.fromCharCode(buf[i])
+                : String.fromCharCode(TOPL_RAW_BYTE + buf[i]);
+    }
+    return out;
+}
+
 /** Paint message rows only; leave map/status cells untouched. */
 /**
  * C topl.c putsyms `:348–353` → topl_putsym `:302–342` per char, then
@@ -8300,11 +8326,16 @@ function resync_map_row0() {
  * into the message (RogueEpyx hero `\x01` in a farlook line) leaves the
  * cell's previous content while the cursor advances — the same capture
  * rule as the map's C0 drop (D-3962). cl_end clears from the text end.
+ * The hook passes topl_putsym's plain `char`, so on the x86_64 recorder
+ * build a byte >= 0x80 (a UTF-8 glyph from tty_putmixed's mixed_to_utf8)
+ * is negative and dropped the same way; JS carries such bytes as
+ * TOPL_RAW_BYTE chars (topl_raw_utf8), one per C byte (D-4205).
  */
 function topline_putsyms_cl_end(display, row, line, cols) {
     const n = Math.min(line.length, cols);
     for (let c = 0; c < n; c++) {
-        if (line.charCodeAt(c) < 32) continue;
+        const code = line.charCodeAt(c);
+        if (code < 32 || (code >= TOPL_RAW_BYTE + 0x80 && code <= TOPL_RAW_BYTE + 0xFF)) continue;
         display.setCell(c, row, line[c], NO_COLOR, 0);
     }
     for (let c = n; c < cols; c++)

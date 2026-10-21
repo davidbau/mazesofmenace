@@ -114,7 +114,7 @@ import { obj_resists } from './dogmove.js';
 import { u_wipe_engr } from './engrave.js';
 import { cutworm } from './worm.js';
 import { m_unleash, objdescr_is } from './apply.js';
-import { mhe, mhis, defended, resists_blnd, resists_blnd_by_arti, monstseesu, monstunseesu, attacktype } from './mondata.js';
+import { mhe, mhis, monsndx, defended, resists_blnd, resists_blnd_by_arti, monstseesu, monstunseesu, attacktype } from './mondata.js';
 import { Unaware, carried } from './eat.js';
 import { helm_simple_name, cloak_simple_name } from './do_wear.js';
 import { findgold, inv_cnt } from './steal.js';
@@ -166,6 +166,7 @@ const BOULDER = objectNames.indexOf('BOULDER');
 const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
 const PM_VLAD_THE_IMPALER = monsterNames.indexOf('PM_VLAD_THE_IMPALER');
 const PM_ORACLE = monsterNames.indexOf('PM_ORACLE');
+const PM_RAVEN = monsterNames.indexOf('PM_RAVEN');
 const PM_STONE_GOLEM = monsterNames.indexOf('PM_STONE_GOLEM');
 // C monflag.h — quest msound ranks (makemon.js:701–702 keeps the same values)
 const MS_NEMESIS = 37;
@@ -366,9 +367,11 @@ export function can_blnd(magr, mdef, aatyp, obj) {
     if (!haseyes(mdef?.data)) return false;
     // C :320–321 — permanently blinded already: deed done (monst.h:253)
     if (!is_you && !(mdef.mcansee | 0) && !(mdef.mblinded | 0)) return false;
-    // C :327–328 — crow will not pluck out the eye of another crow
-    const raven = mons(monsterNames.indexOf('PM_RAVEN'));
-    if (magr && raven && magr.data === raven && mdef.data === raven) {
+    // C :327–328 — crow will not pluck out the eye of another crow.
+    // C compares permonst pointers to &mons[PM_RAVEN]; JS mons() builds a
+    // fresh record per call, so compare the mons[] index (monsndx).
+    if (magr && monsndx(magr.data) === PM_RAVEN
+        && monsndx(mdef.data) === PM_RAVEN) {
         return false;
     }
     switch (aatyp | 0) { // C :330

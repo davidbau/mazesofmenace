@@ -34,6 +34,7 @@ import {
     MM_NOMSG,
     RLOC_ERR,
     RLOC_MSG,
+    RLOC_NOMSG,
     ROOM,
     ROOMOFFSET,
     ROWNO,
@@ -51,37 +52,41 @@ import {
     map_invisible, map_location, newsym, unset_seenv, xy_set_wall_state,
 } from './display.js';
 import { assign_level, on_level } from './dungeon.js';
-import { youHear } from './pline.js';
+import { verbalize, youHear } from './pline.js';
 import { reset_faint } from './eat.js';
 import { del_engr_at } from './engrave.js';
 import { mungspaces } from './fruit.js';
 import { game } from './gstate.js';
+import { dist2 } from './hacklib.js';
 import { nomul } from './hack.js';
-import { money_cnt, obj_extract_self, obfree, sobj_at } from './invent.js';
+import { add_to_minv, money_cnt, obj_extract_self, obfree, sobj_at } from './invent.js';
 import { set_malign } from './makemon.js';
-import { gender, is_silent, sticks } from './mondata.js';
-import { PM_GUARD } from './monsters.js';
+import { gender, is_silent, noit_mhis, sticks } from './mondata.js';
+import { PM_CROESUS, PM_GUARD } from './monsters.js';
 import {
     m_at, mon_track_clear, place_monster, remove_monster,
 } from './monst.js';
-import { m_carrying, m_into_limbo, mongone, mpickgold } from './mon.js';
+import { m_carrying, m_into_limbo, mnexto, mongone, mpickgold } from './mon.js';
 import {
     capitalizedAlwaysVisibleMonsterName,
     alwaysVisibleMonsterName,
     capitalizedMonsterName,
     Monnam,
+    noit_Monnam,
     pmname,
+    Some_Monnam,
     x_monnam,
 } from './do_name.js';
 import { makeplural } from './fruit.js';
 import { adjalign } from './attrib.js';
 import { carried, g_at, hasContents } from './obj.js';
+import { objectGenerationEnv } from './object_generation.js';
 import { BOULDER, ROCK, TIN_WHISTLE } from './objects.js';
 import { in_rooms } from './rooms.js';
 import { contained_gold } from './shk.js';
 import { relobj } from './steal.js';
 import { um_dist } from './apply.js';
-import { rloc } from './teleport.js';
+import { enexto, rloc } from './teleport.js';
 import { spot_stop_timers } from './timeout.js';
 import { t_at, deltrap } from './trap.js';
 import {
@@ -93,6 +98,7 @@ import {
 } from './vision.js';
 import { getlin } from './windows.js';
 import { canspotmon, mon_visible } from './display.js';
+import { set_voice } from './sounds.js';
 
 // Thrown where vault.c reaches vault-guard handling this port has not ported.
 export class UnsupportedVaultGuardError extends Error {
@@ -588,10 +594,18 @@ export async function gd_move(grd, env = {}) {
         return -1; // teleported guard — treat as normal monster
 
     if (egrd.witness) {
-        // Guard witnessed hero consuming or destroying gold
-        throw new UnsupportedVaultGuardError(
-            'gd_move() guard witnessed gold consumption/destruction',
-        );
+        // C ref: vault.c:933-944. The guard reacts before the ordinary
+        // pursuit path; clear the observation so it is announced once.
+        if (!Deaf(state)) {
+            set_voice(grd, 0, 80, 0, state);
+            await verbalize(
+                `How dare you ${egrd.witness & GD_EATGOLD ? 'consume' : 'destroy'} that gold, scoundrel!`,
+                state, { message },
+            );
+        }
+        egrd.witness = 0;
+        grd.mpeaceful = 0;
+        return -1;
     }
 
     const umoney = money_cnt(state.invent);
@@ -622,13 +636,19 @@ export async function gd_move(grd, env = {}) {
                 const m = grd.mx;
                 const n = grd.my;
                 if (!Deaf(state)) {
-                    await message('"You\'ve been warned, knave!"', state, gdEnv);
+                    set_voice(grd, 0, 80, 0, state);
+                    await verbalize('You\'ve been warned, knave!',
+                        state, { message });
                 }
                 grd.mpeaceful = 0;
-                // mnexto is not exercised here; throw on the hostile path
-                throw new UnsupportedVaultGuardError(
-                    'gd_move() guard turns hostile at warncnt 7',
-                );
+                await mnexto(grd, RLOC_NOMSG, { ...env, state });
+                const entry = state.level.at(m, n);
+                entry.typ = egrd.fakecorr[0].ftyp;
+                entry.flags = egrd.fakecorr[0].flags;
+                recalc_block_point(m, n, state);
+                del_engr_at(m, n, state);
+                newsym(m, n);
+                return -1;
             }
             // Don't count warnings when hero is fainted or paralyzed
             if (state.multi >= 0
@@ -668,10 +688,40 @@ export async function gd_move(grd, env = {}) {
         }
         if (u_carry_gold && (in_fcorridor(grd, state.u.ux, state.u.uy)
             || (egrd.fcend > 1 && u_in_vault))) {
-            // Hero carrying gold inside corridor or vault
-            throw new UnsupportedVaultGuardError(
-                'gd_move() hero carrying gold in corridor (fcend > 1)',
-            );
+            // C ref: vault.c gd_move(): the escort makes one demand, then
+            // turns hostile if the hero still carries gold on the next turn.
+            if (!grd.mx) {
+                await restfakecorr(grd, state, gdEnv);
+                return -2;
+            }
+            if (egrd.warncnt < 6) {
+                egrd.warncnt = 6;
+                if (Deaf(state)) {
+                    if (!Blind(state)) {
+                        await message(
+                            `${noit_Monnam(grd, state)} holds out ${noit_mhis(grd, { state })} palm demandingly!`,
+                            state, gdEnv,
+                        );
+                    }
+                } else {
+                    set_voice(grd, 0, 80, 0, state);
+                    await verbalize('Drop all your gold, scoundrel!', state, { message });
+                }
+                return 0;
+            }
+            if (Deaf(state)) {
+                if (!Blind(state)) {
+                    await message(
+                        `${noit_Monnam(grd, state)} rubs ${noit_mhis(grd, { state })} hands with enraged delight!`,
+                        state, gdEnv,
+                    );
+                }
+            } else {
+                set_voice(grd, 0, 80, 0, state);
+                await verbalize('So be it, rogue!', state, { message });
+            }
+            grd.mpeaceful = 0;
+            return -1;
         }
     }
 
@@ -688,10 +738,70 @@ export async function gd_move(grd, env = {}) {
         }
     }
     if (goldincorridor && !egrd.gddone) {
-        // Gold in corridor: not exercised by the witness
-        throw new UnsupportedVaultGuardError(
-            'gd_move() gold in corridor pickup',
-        );
+        // C ref: vault.c gd_pick_corridor_gold(). The guard may collect gold
+        // beneath the hero or briefly move to a different corridor square.
+        const underHero = goldX === state.u.ux && goldY === state.u.uy;
+        const see_it = cansee(goldX, goldY, state);
+        const guardX = grd.mx;
+        const guardY = grd.my;
+        if (underHero) {
+            const guardDistance = dist2(guardX, guardY, state.u.ux, state.u.uy);
+            if (see_it && guardDistance > 2) {
+                let bestDistance = guardDistance;
+                let bestX = guardX;
+                let bestY = guardY;
+                // C initializes tryct to 9 and uses a do/while (--tryct >= 0),
+                // which calls enexto ten times, even after finding a near spot.
+                for (let tryct = 9; tryct >= 0; --tryct) {
+                    const next = enexto(goldX, goldY, grd.data, { ...env, state });
+                    if (!next) continue;
+                    const distance = dist2(next.x, next.y, state.u.ux, state.u.uy);
+                    if (distance < bestDistance || (distance === bestDistance
+                        && dist2(next.x, next.y, guardX, guardY)
+                            < dist2(bestX, bestY, guardX, guardY))) {
+                        bestDistance = distance;
+                        bestX = next.x;
+                        bestY = next.y;
+                    }
+                }
+                if (bestDistance < guardDistance) {
+                    remove_monster(guardX, guardY, state);
+                    newsym(guardX, guardY, state);
+                    place_monster(grd, bestX, bestY, state);
+                    newsym(grd.mx, grd.my, state);
+                }
+            }
+            const gold = g_at(goldX, goldY, state);
+            const objectEnv = objectGenerationEnv({ ...env, state });
+            obj_extract_self(gold, objectEnv);
+            add_to_minv(grd, gold, objectEnv);
+            newsym(goldX, goldY, state);
+        } else if (goldX === guardX && goldY === guardY) {
+            mpickgold(grd, { ...env, state });
+        } else {
+            await gd_mv_monaway(grd, goldX, goldY, state, gdEnv);
+            if (see_it) {
+                remove_monster(grd.mx, grd.my, state);
+                newsym(grd.mx, grd.my, state);
+                place_monster(grd, goldX, goldY, state);
+            }
+            mpickgold(grd, { ...env, state });
+        }
+        if (see_it) {
+            await message(
+                `${Some_Monnam(grd, state)}${grd.mpeaceful && egrd.warncnt > 5 ? ' calms down and' : ''} picks up the gold${underHero ? ' from beneath you' : ''}.`,
+                state, gdEnv,
+            );
+        }
+        if (grd.mx !== guardX || grd.my !== guardY) {
+            remove_monster(grd.mx, grd.my, state);
+            newsym(grd.mx, grd.my, state);
+            place_monster(grd, guardX, guardY, state);
+            newsym(guardX, guardY, state);
+        }
+        if (!grd.mpeaceful) return -1;
+        egrd.warncnt = 5;
+        return 0;
     }
 
     if (um_dist(grd.mx, grd.my, 1, state) || egrd.gddone) {
@@ -1097,31 +1207,62 @@ export async function invault(state, env = {}) {
     if (buf.toLowerCase() === 'croesus'
         || buf.toLowerCase() === 'kroisos'
         || buf.toLowerCase() === 'creosote') {
+        if (!state.mvitals[PM_CROESUS].died) {
+            if (Deaf(state)) {
+                if (!Blind(state))
+                    await message(`${noit_Monnam(guard, state)} waves goodbye.`, state);
+            } else {
+                set_voice(guard, 0, 80, 0, state);
+                await verbalize(
+                    'Oh, yes, of course.  Sorry to have disturbed you.',
+                    state, { message },
+                );
+            }
+            await mongone(guard, { state });
+            return;
+        }
         throw new UnsupportedVaultGuardError(
-            'invault() hero claims to be Croesus',
+            'invault() Croesus is dead and guard turns hostile',
         );
     }
 
     if (Deaf(state)) {
-        throw new UnsupportedVaultGuardError(
-            'invault() deaf hero name response',
-        );
+        await message(`${noit_Monnam(guard, state)} doesn't ${Blind(state) ? '' : 'appear to '}recognize you.`);
+    } else {
+        await message('"I don\'t know you."');
     }
-    // "I don't know you."
-    await message('"I don\'t know you."');
 
     const umoney = money_cnt(state.invent);
     if (!umoney && !hidden_gold(true, state)) {
-        // No gold — "Please follow me."
-        await message('"Please follow me."');
-    } else {
-        if (!umoney) {
-            await message('"You have hidden gold."');
+        if (Deaf(state)) {
+            await message(`${noit_Monnam(guard, state)} stomps${Blind(state) ? '' : ' and beckons'}.`);
+        } else {
+            await message('"Please follow me."');
         }
-        await message(
-            '"Most likely all your gold was stolen from this vault."',
-        );
-        await message('"Please drop that gold and follow me."');
+    } else {
+        if (Deaf(state)) {
+            if (!umoney) {
+                if (!Blind(state)) {
+                    await message(
+                        `${noit_Monnam(guard, state)} glares at you${state.invent ? 'r stuff' : ''}.`,
+                    );
+                }
+            }
+            if (!Blind(state)) {
+                const possessive = noit_mhis(guard, { state });
+                await message(
+                    `${noit_Monnam(guard, state)} holds out ${possessive} palm and beckons with ${possessive} other hand.`,
+                );
+            }
+        } else {
+            if (!umoney) {
+                await message('"You have hidden gold."');
+            }
+            await message(
+                '"Most likely all your gold was stolen from this vault."',
+            );
+            await message('"Please drop that gold and follow me."');
+        }
         EGD(guard).dropgoldcnt++;
     }
     EGD(guard).gdx = gdx;

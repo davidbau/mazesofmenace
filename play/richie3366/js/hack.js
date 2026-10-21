@@ -930,10 +930,11 @@ async function moverock_core(sx, sy) {
 
         /* C hack.c moverock_core :382–413 — m<dir> (context.nopick)
            steps over (giant) or squeezes over/against without pushing;
-           else in-way. Glyph change spends the turn via door_opened.
+           else in-way. A change of the gbuf glyph (display.js glyph_at,
+           C display.c glyph_at) spends the turn via door_opened.
            Before Levitation leverage abort. D-1262. */
         if (game.context?.nopick) {
-            const oldglyph = glyph_at_fp(sx, sy);
+            const oldglyph = glyph_at(sx, sy); /* before feel_location() */
             feel_location(sx, sy);
             if (throws_rocks(game.youmonst?.data)) {
                 await pline(
@@ -949,7 +950,7 @@ async function moverock_core(sx, sy) {
                 return 0;
             }
             await There('is a boulder in your way.');
-            if (glyph_at_fp(sx, sy) !== oldglyph) {
+            if (glyph_at(sx, sy) !== oldglyph) {
                 if (!game.context) game.context = {};
                 game.context.door_opened = true;
                 game.context.move = 1;
@@ -1206,25 +1207,6 @@ export async function moverock() {
     const ret = await moverock_core(sx, sy);
     moverock_done(sx, sy);
     return ret;
-}
-
-/**
- * C display.c glyph_at — JS has no integer glyph IDs; fingerprint
- * gbuf disp_* plus remembered_glyph for the nopick in-way compare.
- */
-function glyph_at_fp(x, y) {
-    const loc = game.level?.at(x, y);
-    if (!loc) return '';
-    const rg = loc.remembered_glyph;
-    return [
-        loc.disp_ch ?? '',
-        loc.disp_color ?? '',
-        loc.disp_decgfx ? 1 : 0,
-        loc.disp_attr | 0,
-        rg?.ch ?? '',
-        rg?.color ?? '',
-        rg?.invisible ? 1 : 0,
-    ].join('\0');
 }
 
 /**
