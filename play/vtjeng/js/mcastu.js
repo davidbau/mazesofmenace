@@ -457,12 +457,12 @@ async function cursetxt(mtmp, undirected, env = {}) {
             point_msg = 'at you, then curses';
         }
         if (message) {
-            await message(
+            await message(messageAt(
                 `${env.monsterName?.(mtmp)
                     ?? capitalizedMonsterNameFallback(mtmp, state)
                 } points ${point_msg}.`,
-                state,
-            );
+                mtmp.mx, mtmp.my, state,
+            ), state);
         }
     } else if (!(state.moves % 4) || !random.rn2(4)) {
         if (!Deaf(state)) {
@@ -550,7 +550,8 @@ export async function castmu(
                 ? (env.monsterName?.(mtmp)
                     ?? capitalizedMonsterNameFallback(mtmp, state))
                 : 'Something';
-            await message(`${casterName} casts a spell at thin air!`, state);
+            await message(messageAt(`${casterName} casts a spell at thin air!`,
+                mtmp.mx, mtmp.my, state), state);
         }
         return M_ATTK_MISS;
     }
@@ -559,13 +560,13 @@ export async function castmu(
     if (random.rn2(ml * 10) < (mtmp.mconf ? 100 : 20)) {
         /* fumbled attack */
         if (canseemon(mtmp, state) && !Deaf(state) && message) {
-            await message(
+            await message(messageAt(
                 `The air crackles around ${
                     env.monnam?.(mtmp)
                     ?? mon_nam(mtmp, state, env)
                 }.`,
-                state,
-            );
+                mtmp.mx, mtmp.my, state,
+            ), state);
         }
         return M_ATTK_MISS;
     }
@@ -589,7 +590,8 @@ export async function castmu(
             } else {
                 target = ' at you';
             }
-            await message(`${casterName} casts a spell${target}!`, state);
+            await message(messageAt(`${casterName} casts a spell${target}!`,
+                mtmp.mx, mtmp.my, state), state);
         }
     }
 
@@ -736,12 +738,12 @@ async function m_cure_self(mtmp, dmg, env = {}) {
 
     if (mtmp.mhp < mtmp.mhpmax) {
         if (canseemon(mtmp, state) && message) {
-            await message(
+            await message(messageAt(
                 `${env.monsterName?.(mtmp)
                     ?? capitalizedMonsterNameFallback(mtmp, state)
                 } looks better.`,
-                state,
-            );
+                mtmp.mx, mtmp.my, state,
+            ), state);
         }
         /* note: player healing does 6d4; this used to do 1d8 */
         healmon(mtmp, random.d(3, 6), 0);
@@ -1358,14 +1360,14 @@ export async function buzzmu(mtmp, mattk, rawEnv = {}) {
     if (lined_up(mtmp, env) && random.rn2(3)) {
         nomul(0, state);
         if (canseemon(mtmp, state) && message) {
-            await message(
+            await message(messageAt(
                 `${env.monsterName?.(mtmp)
                     ?? capitalizedMonsterNameFallback(mtmp, state)
                 } zaps you with a ${
                     flash_str(BZ_OFS_AD(mattk.adtyp), false, state)
                 }!`,
-                state,
-            );
+                mtmp.mx, mtmp.my, state,
+            ), state);
         }
         state.gb ??= {};
         state.gb.buzzer = mtmp;

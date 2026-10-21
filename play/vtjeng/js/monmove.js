@@ -734,7 +734,10 @@ async function mind_blast(mtmp, env = {}) {
 
     if (canseemon(mtmp, state)) {
         await message(
-            `${capitalizedMonsterName(mtmp, state)} concentrates.`,
+            messageAt(
+                `${capitalizedMonsterName(mtmp, state)} concentrates.`,
+                mtmp.mx, mtmp.my, state,
+            ),
             state,
             env,
         );
@@ -3676,7 +3679,10 @@ export async function itsstuck(monster, rawEnv = {}) {
         const message = rawEnv.message
             ?? (rawEnv.planning ? async () => {} : ttyPline);
         const result = message(
-            `${capitalizedMonsterName(monster, state)} cannot escape from you!`,
+            messageAt(
+                `${capitalizedMonsterName(monster, state)} cannot escape from you!`,
+                monster.mx, monster.my, state,
+            ),
             state,
             rawEnv,
         );

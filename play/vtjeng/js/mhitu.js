@@ -467,7 +467,10 @@ export async function summonmu(monster, youseeit, rawEnv = {}) {
     const visible = { value: 0 };
     const genericWere = { value: 'creature' };
     if (youseeit) {
-        await message(`${Monnam(monster, state, rawEnv)} summons help!`, state);
+        await message(messageAt(
+            `${Monnam(monster, state, rawEnv)} summons help!`,
+            monster.mx, monster.my, state,
+        ), state);
     }
     const numhelp = await were_summon(
         currentData,
@@ -1339,7 +1342,8 @@ export async function hitmsg(mtmp, mattk, state = game, env = {}) {
                    && prevIndex >= 0
                    && mtmp.data.mattk[prevIndex + 1] === mattk
                    && mattk.aatyp === gh.hitmsg_prev.aatyp) ? ' again' : '';
-    await message(`${Monst_name} ${verb}${again}${punct}`, state);
+    await message(messageAt(`${Monst_name} ${verb}${again}${punct}`,
+        mtmp.mx, mtmp.my, state), state);
 
     gh.hitmsg_mid = mtmp.m_id;
     gh.hitmsg_prev = mattk;
@@ -1421,7 +1425,7 @@ async function mswings(mtmp, otemp, bash, rawEnv = {}) {
 
     if (state.flags?.verbose && !activeHeroProperty(state, BLINDED)
         && visible(mtmp, state)) {
-        await message(
+        await message(messageAt(
             `${capitalizedMonsterName(mtmp, state)} `
             + `${mswings_verb(otemp, bash, rawEnv)} `
             + `${(otemp.quan > 1) ? 'one of ' : ''}`
@@ -1429,8 +1433,8 @@ async function mswings(mtmp, otemp, bash, rawEnv = {}) {
                 ...rawEnv,
                 canSpotMonster: rawEnv.canSpotMonster ?? canspotmon,
             })} ${xnameFresh(otemp, state)}.`,
-            state,
-        );
+            mtmp.mx, mtmp.my, state,
+        ), state);
     }
 }
 
@@ -2118,7 +2122,10 @@ export async function expels(mtmp, rawEnv = {}) {
             await message('You get regurgitated!', state, rawEnv);
         } else if (enfolds(mdat)) {
             await message(
-                `${Monnam(mtmp, state, rawEnv)} unfolds and you are released!`,
+                messageAt(
+                    `${Monnam(mtmp, state, rawEnv)} unfolds and you are released!`,
+                    mtmp.mx, mtmp.my, state,
+                ),
                 state,
                 rawEnv,
             );
@@ -3108,12 +3115,11 @@ export async function gazemu(monster, attack, rawEnv = {}) {
                 // include/youprop.h:84 defines Confusion as HConfusion only;
                 // an extrinsic property does not suppress this source message.
                 if (!property?.intrinsic) {
-                    await message(
+                    await message(messageAt(
                         `${monsterPossessive(monster, state, true, env)} gaze `
                         + 'confuses you!',
-                        state,
-                        env,
-                    );
+                        monster.mx, monster.my, state,
+                    ), state, env);
                 } else {
                     await message(
                         'You are getting more and more confused.', state, env,
@@ -3201,12 +3207,11 @@ export async function gazemu(monster, attack, rawEnv = {}) {
                 const originalDamage = draw('d', 2, 6);
                 let damage = originalDamage;
                 const level = monster.m_lev;
-                await message(
+                await message(messageAt(
                     `${Monnam(monster, state, env)} attacks you`
                     + ' with a fiery gaze!',
-                    state,
-                    env,
-                );
+                    monster.mx, monster.my, state,
+                ), state, env);
                 await mattackuStopOccupation(env);
                 if (Fire_resistance(state)) {
                     await shieldeff(state.u.ux, state.u.uy, state);

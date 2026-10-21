@@ -15,7 +15,7 @@ import { cansee, couldsee } from './vision.js';
 import { select_menu_pick_none } from './invent.js';
 import { select_menu_pick_one, menu_prompt_style, menu_heading_style } from './options.js';
 import { ATR_NONE } from './terminal.js';
-import { yn_function } from './getline.js';
+import { y_n } from './getline.js';
 import { Monnam, mon_nam, s_suffix } from './do_name.js';
 import { doname, xname, vtense, The, the, distant_name, otense, Tobjnam, Yname2, makeplural, is_plural, arti_light_description } from './objnam.js';
 import {
@@ -1131,9 +1131,11 @@ export async function enhance_weapon_skill() {
     if (game.context) game.context.tips = (game.context.tips | 0) | (1 << 0);
 
     let speedy = false;
-    // C: y_n(query) → yn_function(query, ynchars, 'n', TRUE)
+    // C `:1340` y_n(query) → yn_function(query, ynchars, 'n', TRUE): the
+    // shared ynchars table, so a query_menu player gets the Yes/No menu
+    // (cmd.c yn_menuable_resp compares the pointer).
     if (wizardMode()
-        && (await yn_function('Advance skills without practice?', 'yn', 'n')) === 'y') {
+        && (await y_n('Advance skills without practice?')) === 'y') {
         speedy = true;
     }
 

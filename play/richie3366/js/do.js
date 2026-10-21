@@ -777,10 +777,14 @@ export async function flooreffects(obj, x, y, verb) {
     }
     obj.nobj = obj.nexthere = null;
 
-    // C `save_bhitpos = gb.bhitpos; gb.bhitpos.x = x, gb.bhitpos.y = y;`
+    // C `:182–183` `save_bhitpos = gb.bhitpos; gb.bhitpos.x = x, gb.bhitpos.y = y;`
     // (gb.bhitpos is a zero-initialized static, so a first save is 0,0).
+    // gb.bhitpos is one global: write its fields, never swap the object —
+    // zap.js bhit holds an alias it advances (bhitm reads game.bhitpos).
     const save = { x: game.bhitpos?.x | 0, y: game.bhitpos?.y | 0 };
-    game.bhitpos = { x: x | 0, y: y | 0 };
+    if (!game.bhitpos) game.bhitpos = { x: 0, y: 0 };
+    game.bhitpos.x = x | 0;
+    game.bhitpos.y = y | 0;
 
     // C: struct trap *t; struct monst *mtmp; int ttyp = NO_TRAP, res = FALSE.
     // t/levl are read per-branch like C (no hoist past boulder_hits_pool).
@@ -968,7 +972,9 @@ export async function flooreffects(obj, x, y, verb) {
         }
     }
 
-    game.bhitpos = save; // C `gb.bhitpos = save_bhitpos;`
+    // C `:357` `gb.bhitpos = save_bhitpos;` (struct copy into the global).
+    game.bhitpos.x = save.x;
+    game.bhitpos.y = save.y;
     return res;
 }
 
@@ -2486,21 +2492,26 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         await fix_shop_damage();
     }
 
-    // C do.c:1988–1994 — trap-door/hole fall after shop repair, before
-    // pickup. losehp is noreturn on death so skip pickup (D-1179).
+    // C do.c:1989–1994 — trap-door/hole fall after shop repair, before
+    // pickup. losehp runs done(DIED) inline (hack.c `:4287–4288`); drain
+    // JS's deferred finisher here (D-4092 idiom). Lifesaved / wizard
+    // "Die? n" returns from done() and falls through to pickup(1) like C
+    // (blind "You try to feel what is lying here"); a real death never
+    // returns.
     if (do_fall_dmg) {
         let dmg = d(Math.max(dist | 0, 1), 6);
         dmg = maybe_half_phys(dmg);
         await losehp(dmg, 'falling down a mine shaft', KILLED_BY);
         await finish_maybe_wail();
-        if (game._losehp_needs_done) {
+        if (game._losehp_needs_done || game.program_state?.gameover) {
             const { finish_losehp_done } = await import('./end.js');
             await finish_losehp_done();
-            return;
         }
+        if (game.program_state?.gameover) return;
     }
 
-    // C: goto_level ends with pickup(1) — autopick or check_here/engr
+    // C do.c:1996 — goto_level ends with pickup(1) — autopick or
+    // check_here/engr
     await pickup(1);
 }
 

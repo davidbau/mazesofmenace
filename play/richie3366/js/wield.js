@@ -38,6 +38,7 @@ import { inv_cnt } from './steal.js';
 import { alter_cost, costly_alteration, shop_keeper, inside_shop, Shk_Your } from './shk.js';
 import { strange_feeling } from './detect.js';
 import { shkname } from './shknam.js';
+import { condtests } from './botl.js';
 
 /** C: are_no_longer_twoweap / can_no_longer_twoweap */
 const are_no_longer_twoweap = 'are no longer using two weapons at once';
@@ -539,17 +540,19 @@ async function cant_wield_corpse(obj) {
  * C ref: wield.c ready_weapon `:168–273` — full arm order: empty-hands,
  * corpse (`cant_wield_corpse`), bimanual+shield, retouch, will_weld pline vs
  * prinv (+AKLYS tether), setuwep, twoweap message, artifact light, shop.
- * `arti_speak` wired below (C `:241–243`); res already TIME here so only
- * its rumor/pline side effect is new.
+ * Single exit like C: every arm reaches the `:270–271` barehanded botl tail.
  * @returns {number} C ECMD_* — ECMD_OK / ECMD_FAIL (shield) / ECMD_TIME.
- * Callers (dowield, doswapweapon) pass the value straight through like C.
+ * Callers (dowield :451, doswapweapon :483) pass the value straight
+ * through like C; wield_tool :742 discards it.
  */
 async function ready_weapon(wep) {
     const u = game.u || {};
-    const had_wep = !!u.uwep;
+    let res = ECMD_OK;
     const was_twoweap = !!u.twoweap;
+    const had_wep = !!u.uwep;
 
     if (!wep) {
+        // C :175–182 — no weapon
         if (u.uwep) {
             await pline(`You are ${empty_handed()}.`);
             {
@@ -563,90 +566,89 @@ async function ready_weapon(wep) {
                 if (halres) await halres;
                 if (shine) await shine;
             }
-            return ECMD_TIME;
+            res = ECMD_TIME;
+        } else {
+            await pline(`You are already ${empty_handed()}.`);
         }
-        await pline(`You are already ${empty_handed()}.`);
-        return ECMD_OK;
-    }
-
-    // C :183–185 — corpse that petrifies bare-handed is not wielded; turn spent.
-    if ((wep.otyp | 0) === CORPSE && await cant_wield_corpse(wep)) {
-        // C :270–271 — life-save may have changed uwep; same botl tail as the wield arm.
-        if (had_wep !== !!game.u?.uwep && game.flags) game.flags.botl = true;
-        return ECMD_TIME;
-    }
-    if (u.uarms && bimanual(wep)) {
+    } else if ((wep.otyp | 0) === CORPSE && await cant_wield_corpse(wep)) {
+        // C :183–185 — hero must have been life-saved to get here; use a turn
+        res = ECMD_TIME; /* corpse won't be wielded */
+    } else if (u.uarms && bimanual(wep)) {
         // C :186–190 — ECMD_FAIL (no turn, but the FAIL bit clears a canned tail).
         const what = is_sword(wep) ? 'sword'
             : ((wep.otyp | 0) === BATTLE_AXE ? 'axe' : 'weapon');
         await pline(`You cannot wield a two-handed ${what} while wearing a shield.`);
-        return ECMD_FAIL;
-    }
-
-    if (!(await retouch_object(wep, false))) {
-        return ECMD_TIME; // C: ECMD_TIME even when not wielded
-    }
-
-    // C: Weapon WILL be wielded after this point → ECMD_TIME
-    if (will_weld(wep)) {
-        // C :196–209 — weld pline before setuwep
-        let tmp = xname(wep);
-        const thestr = 'The ';
-        if (!tmp.startsWith(thestr) && The(tmp).startsWith(thestr)) tmp = thestr;
-        else tmp = '';
-        const itself = ((wep.quan ?? 1) | 0) === 1 ? 'itself' : 'themselves';
-        const URIGHTY = ((game.u?.uhandedness | 0) === RIGHT_HANDED);
-        const hand = body_part_latebound(HAND);
-        await pline(`${tmp}${aobjnam(wep, 'weld')} ${itself} to your ${bimanual(wep) ? '' : (URIGHTY ? 'dominant right ' : 'dominant left ')}${bimanual(wep) ? makeplural(hand) : hand}!`);
-        wep.bknown = 1;
-        update_inventory(); // C: set_bknown → update_inventory when in invent
+        res = ECMD_FAIL;
+    } else if (!(await retouch_object(wep, false))) {
+        res = ECMD_TIME; // C :191–192 — takes a turn even though it doesn't get wielded
     } else {
-        const dummy = wep.owornmask || 0;
-        wep.owornmask = dummy | W_WEP;
-        if ((wep.otyp | 0) === AKLYS && ((wep.owornmask | 0) & W_WEP) !== 0)
-            await pline('You secure the tether.'); // C: You("secure the tether.")
-        await prinv(null, wep, 0); // C wield.c:226, including !fixinv.
-        wep.owornmask = dummy;
-    }
+        // C :193–194 — Weapon WILL be wielded after this point
+        res = ECMD_TIME;
+        if (will_weld(wep)) {
+            // C :196–209 — weld pline before setuwep
+            let tmp = xname(wep);
+            const thestr = 'The ';
+            if (!tmp.startsWith(thestr) && The(tmp).startsWith(thestr)) tmp = thestr;
+            else tmp = '';
+            const itself = ((wep.quan ?? 1) | 0) === 1 ? 'itself' : 'themselves';
+            const URIGHTY = ((game.u?.uhandedness | 0) === RIGHT_HANDED);
+            const hand = body_part_latebound(HAND);
+            await pline(`${tmp}${aobjnam(wep, 'weld')} ${itself} to your ${bimanual(wep) ? '' : (URIGHTY ? 'dominant right ' : 'dominant left ')}${bimanual(wep) ? makeplural(hand) : hand}!`);
+            wep.bknown = 1;
+            update_inventory(); // C: set_bknown → update_inventory when in invent
+        } else {
+            const dummy = wep.owornmask || 0;
+            wep.owornmask = dummy | W_WEP;
+            if ((wep.otyp | 0) === AKLYS && ((wep.owornmask | 0) & W_WEP) !== 0)
+                await pline('You secure the tether.'); // C: You("secure the tether.")
+            await prinv(null, wep, 0); // C wield.c:226, including !fixinv.
+            wep.owornmask = dummy;
+        }
 
-    {
-        const prev_wep = game.u?.uwep ?? null;
-        const shine = setuwep(wep);
-        // C artifact.c:788-796 HALRES talk half (D-3223 named): boring when a
-        // resist-granter arrives while a timeout runs (removed-talk first per
-        // C worn.c:106 → :130) — before the shine-stop pline (C setuwep:
-        // setworn :106 precedes the :114 shine pline) and the ECMD_TIME turn.
-        const halres = halresTalk(prev_wep, wep);
-        if (halres) await halres;
-        if (shine) await shine;
-    }
-    // C :231–237 — was_twoweap && !u.twoweap && verbose → are/can_no_longer
-    if (was_twoweap && !game.u?.twoweap && game.flags?.verbose !== false && game.u?.uwep) {
-        const ok = TWOWEAPOK(game.u.uwep) && !bimanual(game.u.uwep);
-        await pline(`You ${ok ? are_no_longer_twoweap : can_no_longer_twoweap}.`);
-    }
+        {
+            const prev_wep = game.u?.uwep ?? null;
+            const shine = setuwep(wep);
+            // C artifact.c:788-796 HALRES talk half (D-3223 named): boring when a
+            // resist-granter arrives while a timeout runs (removed-talk first per
+            // C worn.c:106 → :130) — before the shine-stop pline (C setuwep:
+            // setworn :106 precedes the :114 shine pline) and the ECMD_TIME turn.
+            const halres = halresTalk(prev_wep, wep);
+            if (halres) await halres;
+            if (shine) await shine;
+        }
+        // C :231–237 — was_twoweap && !u.twoweap && verbose → are/can_no_longer
+        if (was_twoweap && !game.u?.twoweap && game.flags?.verbose !== false && game.u?.uwep) {
+            const ok = TWOWEAPOK(game.u.uwep) && !bimanual(game.u.uwep);
+            await pline(`You ${ok ? are_no_longer_twoweap : can_no_longer_twoweap}.`);
+        }
 
-    // C :241–243 — KMH talking artifacts: res |= arti_speak(wep).
-    // JS ready_weapon returns ECMD_TIME unconditionally past retouch, so
-    // the OR is a no-op on res; the await keeps the rumor/pline side effect.
-    if (wep.oartifact) await arti_speak(wep);
-    // C :245–250 — artifact light begins to burn + shine pline
-    const { artifact_light, begin_burn } = await import('./timeout.js');
-    if (artifact_light(wep) && !wep.lamplit) {
-        begin_burn(wep, false);
-        if (!Blind()) {
-            await pline(`${Tobjnam(wep, 'begin')} to shine ${arti_light_description(wep)}!`);
+        // C :241–243 — KMH talking artifacts: res |= arti_speak(wep)
+        // (sets the ECMD_TIME bit if the artifact speaks).
+        if (wep.oartifact) res |= await arti_speak(wep);
+        // C :245–250 — artifact light begins to burn + shine pline
+        const { artifact_light, begin_burn } = await import('./timeout.js');
+        if (artifact_light(wep) && !wep.lamplit) {
+            begin_burn(wep, false);
+            if (!Blind()) {
+                await pline(`${Tobjnam(wep, 'begin')} to shine ${arti_light_description(wep)}!`);
+            }
+        }
+        // C :260–268 — unpaid shopkeeper warning
+        if (wep.unpaid) {
+            const this_shkp = shop_keeper(inside_shop(game.u?.ux | 0, game.u?.uy | 0));
+            if (this_shkp) {
+                await pline(`${shkname(this_shkp)} says "You be careful with my ${xname(wep)}!"`);
+            }
         }
     }
-    // C :260–268 — unpaid shopkeeper warning
-    if (wep.unpaid) {
-        const this_shkp = shop_keeper(inside_shop(game.u?.ux | 0, game.u?.uy | 0));
-        if (this_shkp) {
-            await pline(`${shkname(this_shkp)} says "You be careful with my ${xname(wep)}!"`);
-        }
+    // C :270–271 — shared by every arm: the bare-handed status changed and
+    // the opt-in `barehanded` condition is enabled (condtests[bl_bareh] is
+    // entry 0, botl.h enum; js/do_wear.js:1126 idiom, read lazily).
+    if ((had_wep !== !!game.u?.uwep) && condtests[0]?.enabled) {
+        if (!game.flags) game.flags = {};
+        game.flags.botl = true;
     }
-    if (had_wep !== !!game.u?.uwep && game.flags) game.flags.botl = true;
-    return ECMD_TIME;
+    return res;
 }
 
 /**

@@ -83,7 +83,7 @@ import {
     newsym, pline, pline_The, canseemon as display_canseemon, pline_mon, pline_xy,
     You_see, swallowed,
     canspotmon as display_canspotmon, sensemon, Norep, verbalize, set_msg_xy,
-    display_nhwindow_message,
+    display_nhwindow_message, impossible,
 } from './display.js';
 import { dog_move, finish_meating, cursed_object_at, dogfood, could_reach_item } from './dogmove.js'; // C: dogmove.c could_reach_item (single home; clone removed)
 import { worm_move, worm_nomove, see_wsegs, worm_known, wormhitu } from './worm.js';
@@ -1872,8 +1872,20 @@ export async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, ca
         u.uy0 = u.uy;
         await u_on_newpos(mtmp.mx, mtmp.my); // C monmove.c:1653
         await swallowed(0); // C monmove.c:1654 — repaint the swallow 3x3
-    } else if (mtmp.mx) {
+    } else {
+        // C `:1655–1657` — no position guard. A vault guard that
+        // gd_move_cleanup just parked at <0,0> (gd_move → 1, MMOVE_MOVED)
+        // hits newsym's column-0 impossible() here, as in C. JS newsym
+        // is sync and leaves the report pending; raise it now
+        // (see_monsters idiom).
+        game._newsym_misuse = null;
         newsym(mtmp.mx, mtmp.my);
+        if (game._newsym_misuse) {
+            const bad = game._newsym_misuse;
+            game._newsym_misuse = null;
+            await impossible('newsym: attempting screen update for <%d,%d>',
+                bad.x, bad.y);
+        }
     }
     } // end MMOVE_MOVED
 

@@ -3071,9 +3071,12 @@ async function moveHostile(monster, state, random, rollDice, rollOne, calls, cap
                 state, calls, random, rollOne, flags: RLOC_MSG,
             });
             // Native m_move() returns MOVED even if rloc() finds no square,
-            // and skips postmov() for this fallback.
-            return finishMovement(relocation || {
-                oldx, oldy, x: oldx, y: oldy, moved: false,
+            // and skips postmov() for this fallback; rloc() already redrew
+            // both squares.
+            return finishMovement({
+                ...(relocation || { oldx, oldy, x: oldx, y: oldy, moved: false }),
+                postMoveOldSquarePainted: true,
+                postMoveDestinationPainted: true,
             }, MMOVE_MOVED, 'dochug');
         }
         if (monster.wormno)
@@ -4491,6 +4494,7 @@ async function beginHeroAttackSlot(sequence, slot, state, random, rollOne, rollD
     if (hiddenUnder) {
         if (!canSpotMonster(monster))
             map_invisible(monster.mx, monster.my);
+        slot.attackerMapped = true;
         monster.mundetected = 0;
         if (!senseWithTelepathy(monster) && !heroDetectsMonsters(state)) {
             const object = state.level?.objects[monster.mx]?.[monster.my]?.[0];

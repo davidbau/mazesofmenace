@@ -1056,6 +1056,21 @@ export class NhPanic extends Error {
 }
 
 /**
+ * C end.c nh_terminate (`:1674`) ends the process (nethack_exit), so
+ * nothing after really_done runs in C. JS throws this at the end of
+ * really_done; runSegment catches it and returns what was captured.
+ * Without it, the caller that reached done() kept unwinding with the
+ * windows already gone (chest_trap's bot() after exit_nhwindows hit
+ * tty_putstatusfield's WIN_ERR panic).
+ */
+export class NhTerminate extends Error {
+    constructor() {
+        super('nh_terminate');
+        this.name = 'NhTerminate';
+    }
+}
+
+/**
  * C ref: end.c panic `:394–402` — the entry: the message (C `:466`
  * vsnprintf, hoisted — it only feeds raw_print/paniclog) and the re-entry
  * latch `if (program_state.panicking++) NH_abort(NULL)`.
@@ -1386,8 +1401,15 @@ async function really_done(how) {
         /* don't bother counting to see whether it should be plural */
     }
 
-    // C: !toptenwin → exit_nhwindows then topten raw_print; nh_terminate
-    // captures final screen (contest nomux input boundary, no nhgetch).
+    // C `:1579–1580` — !toptenwin: exit_nhwindows *before* topten, so its
+    // raw_print lines go out with ttyDisplay gone: tty_exit_nhwindows →
+    // settty → term_end_screen → term_clear_screen, then the recorder's
+    // raw shadow (display.js tty_raw_print). nh_terminate captures the
+    // final screen (contest nomux input boundary, no nhgetch).
+    if (!game.iflags?.toptenwin) {
+        tty_exit_nhwindows(null);
+        game.nhDisplay?.clearScreen?.();
+    }
     await topten(how, endtime, formatkiller(how, true));
     // C `:1581–1582` — toptenwin kept the windows up through topten, so
     // exit_nhwindows runs now: tty_exit_nhwindows → tty_suspend_nhwindows
@@ -1402,6 +1424,7 @@ async function really_done(how) {
         raw_print_blanks(2);
     }
     nh_terminate_capture();
+    throw new NhTerminate(); // C `:1589` nh_terminate(EXIT_SUCCESS)
 }
 
 /**

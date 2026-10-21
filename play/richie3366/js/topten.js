@@ -21,7 +21,7 @@ import {
     ACH_RNK5, ACH_RNK6, ACH_RNK7, ACH_RNK8,
     ONAME_NO_FLAGS, CORPSTAT_FEMALE, CORPSTAT_MALE,
 } from './const.js';
-import { ATR_BOLD, NO_COLOR } from './terminal.js';
+import { ATR_BOLD } from './terminal.js';
 import { formatkiller } from './end.js';
 import { money_cnt } from './shk.js';
 import { hidden_gold } from './vault.js';
@@ -33,7 +33,7 @@ import { rnd } from './rng.js';
    no top-level read of the binding). */
 import { set_corpsenm } from './mkobj.js';
 import { oname } from './do_name.js';
-import { impossible } from './display.js';
+import { impossible, tty_raw_print, tty_raw_print_bold } from './display.js';
 import { show_text_pages } from './pager.js';
 import {
     PM_HUMAN, PM_RANGER, NON_PM, monsterNames,
@@ -621,39 +621,29 @@ function align_filecode() {
 }
 
 /**
- * Raw topten panel (!toptenwin): clear + lines; bold pads to COLNO-1.
+ * Raw topten panel (!toptenwin): one raw print per line.
  * C ref: topten_print / topten_print_bold after exit_nhwindows.
  */
 function render_topten_lines(lines) {
-    const disp = game.nhDisplay;
-    if (!disp) return;
-    disp.clearScreen();
-    let row = 0;
+    // C topten_print / topten_print_bold `:165–181` with toptenwin ==
+    // WIN_ERR: raw_print / raw_print_bold, one line each, through the
+    // recorder's raw shadow (display.js tty_raw_print: enters raw mode,
+    // or — when a nomux_out overflow already set raw_active — keeps the
+    // overflow's row/col). outentry pads a standout line to COLNO-1
+    // (`:1075–1077`, `:1099–1102`).
     for (const item of lines) {
-        const text = item.text ?? '';
-        const bold = !!item.bold;
-        const attr = bold ? ATR_BOLD : 0;
-        const width = bold ? (COLNO - 1) : Math.min(text.length, COLNO);
-        for (let i = 0; i < width; i++) {
-            const ch = i < text.length ? text[i] : ' ';
-            disp.setCell(i, row, ch, NO_COLOR, attr);
-        }
-        row++;
+        const text = String(item.text ?? '');
+        if (item.bold) tty_raw_print_bold(text.padEnd(COLNO - 1));
+        else tty_raw_print(text);
     }
-    disp.setCursor(0, row);
 }
 
 /**
- * C ref: end.c really_done trailing raw_print("") x2 when done_stopprint.
+ * C ref: end.c really_done `:1585–1588` trailing raw_print("") x2 when
+ * done_stopprint — real raw prints, so the recorder's raw row advances.
  */
 export function raw_print_blanks(n) {
-    const disp = game.nhDisplay;
-    if (!disp?.setCursor) return;
-    // Prefer cursorRow (GameDisplay delegates); getCursor may be absent.
-    const row = (disp.cursorRow != null)
-        ? (disp.cursorRow | 0)
-        : (disp.getCursor?.()?.[1] | 0);
-    disp.setCursor(0, row + (n | 0));
+    for (let i = 0; i < (n | 0); i++) tty_raw_print('');
 }
 
 function outheader(emit) {

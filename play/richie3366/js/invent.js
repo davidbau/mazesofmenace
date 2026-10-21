@@ -3034,6 +3034,8 @@ function paint_overlay(lines, opts = {}) {
         const col = opts.col || 0;
         // C `:1474–1486` show_obj_syms slot (str[2], after the pad).
         const objsym = typeof entry === 'string' ? null : (entry.objsym || null);
+        // C set_item_state `:1175–1194` mark cell (str[2], after the pad).
+        const markStyle = typeof entry === 'string' ? null : (entry.markStyle || null);
         // C tty: leading pad space is not part of item ATR_INVERSE/heading
         for (let i = 0; i < text.length && col + i < disp.cols; i++) {
             if (objsym && i === 3) {
@@ -3044,6 +3046,10 @@ function paint_overlay(lines, opts = {}) {
             // recorder's nomux_putch drops ch < 32 (termcap.c patch 006),
             // so a menu_tab_sep tab leaves its cell as cleared.
             if (text.charCodeAt(i) < 32) continue;
+            if (markStyle && i === 3) {
+                disp.setCell(col + i, r, text[i], tty_map_color(markStyle.color ?? NO_COLOR), markStyle.attr || 0);
+                continue;
+            }
             const pre = i < split || (i === 0 && text[0] === ' ');
             disp.setCell(col + i, r, text[i], pre ? NO_COLOR : color, pre ? 0 : attr);
         }
@@ -3199,6 +3205,7 @@ export async function paint_corner_nhw_menu(entries, morestr = '(end) ') {
             color: typeof e === 'string' ? NO_COLOR : (e.color ?? NO_COLOR),
             split: typeof e === 'string' ? 0 : ((e.descStart | 0) + 1),
             objsym: menu_objsym_cell(e, show_obj_syms),
+            markStyle: typeof e === 'string' ? null : (e.markStyle || null),
         }));
         painted.push({ text: ` ${morestr}`, attr: 0 });
         paint_overlay(painted, {
@@ -3221,6 +3228,9 @@ export async function paint_corner_nhw_menu(entries, morestr = '(end) ') {
             : tty_map_color(entry.color ?? NO_COLOR);
         const split = typeof entry === 'string' ? 0 : (entry.descStart | 0);
         const objsym = menu_objsym_cell(entry, show_obj_syms); // C `:1474–1486`
+        // C set_item_state `:1175–1194` — a runtime-toggled mark (str[2])
+        // carries the item's own attr/color.
+        const markStyle = typeof entry === 'string' ? null : (entry.markStyle || null);
         // cl_end from offx to EOL
         for (let c = offx; c < disp.cols; c++)
             disp.setCell(c, r, ' ', NO_COLOR, 0);
@@ -3233,6 +3243,10 @@ export async function paint_corner_nhw_menu(entries, morestr = '(end) ') {
             // C0 byte (menu_tab_sep tab): dropped by nomux_putch, cell
             // keeps the cl_end blank (paint_overlay comment).
             if (text.charCodeAt(i) < 32) continue;
+            if (markStyle && i === 2) {
+                disp.setCell(offx + 1 + i, r, text[i], tty_map_color(markStyle.color ?? NO_COLOR), markStyle.attr || 0);
+                continue;
+            }
             const pre = i < split;
             disp.setCell(offx + 1 + i, r, text[i], pre ? NO_COLOR : color, pre ? 0 : attr);
         }
@@ -9639,8 +9653,9 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
 
     // C: display_nhwindow(WIN_MESSAGE, FALSE) then NHW_MENU putstr list.
     // WIN_MESSAGE FALSE: NEED_MORE → more() + clear; else toplin EMPTY
-    // without wipe — getpos leftovers stay left of the overlay
-    // (keep_message_leftover) and survive the next parse() clear.
+    // without wipe — getpos leftovers stay left of the overlay (the
+    // corner menu's tty_clear_nhwindow(WIN_MESSAGE) is a no-op on EMPTY)
+    // and survive the next parse() clear.
     await display_nhwindow_message();
     const lines = [];
     if (dfeature && !skip_dfeature && fbuf) {
@@ -9667,7 +9682,7 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
         lines.push(doname_with_price(o));
     }
     const { show_nhw_menu_text } = await import('./pager.js');
-    await show_nhw_menu_text(lines, { keep_message_leftover: true });
+    await show_nhw_menu_text(lines);
     if (felt_cockatrice) await feel_cockatrice(felt_obj, false);
     {
         const { read_engr_at } = await import('./engrave.js');

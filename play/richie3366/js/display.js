@@ -3291,6 +3291,7 @@ export function reset_display_messages() {
     _nomux_raw_active = 0;
     _nomux_raw_row = 0;
     _nomux_raw_col = 0;
+    _tty_display_freed = 0;
     // wintty statics a previous game's recorder overflow may have
     // rewritten (nomux_wintty_poke); C starts each process at 0.
     erasing_tty_screen = 0;
@@ -5571,6 +5572,9 @@ export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_su
     let kind = 'other'; // mon | obj | trap | invisible | other
     let glyph;
     let was_mon = false;
+    // C `:2209` reads the displayed int; set when the gbuf carried one.
+    let fromGbuf = false;
+    let gbufId = NO_GLYPH;
 
     if (swallowed) {
         glyph = copy_glyph_id(levl_glyph);
@@ -5605,7 +5609,29 @@ export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_su
         }
     } else {
         const u = game.u || {};
-        if (u.ux === x && u.uy === y && canspotself()) {
+        // C `:2209` glyph = glyph_at(x, y): the buffered glyphinfo (gbuf,
+        // JS loc.disp_*), classified by its int like C `:2213–2231`. A
+        // seen trap the display still shows under an object pile that
+        // arrived unseen stays the trap (scen-symset-Healer-50555020
+        // step 478: rock trap `^` with rocks on it). An id-less paint
+        // (NO_GLYPH) or an unexplored cell has no int to classify; the
+        // live-layer reconstruction below stands in for those.
+        const gid = glyph_at(x, y);
+        if (gid !== NO_GLYPH && gid !== GLYPH_UNEXPLORED) {
+            fromGbuf = true;
+            gbufId = gid;
+            glyph = {
+                ch: loc.disp_ch,
+                color: loc.disp_color_raw ?? loc.disp_color ?? NO_COLOR,
+                dec: !!loc.disp_decgfx,
+                glyph: gid,
+            };
+            if (glyph_is_monster(gid) || glyph_is_warning(gid)) kind = 'mon';
+            else if (glyph_is_swallow(gid)) kind = 'swallow';
+            else if (gid === GLYPH_INVISIBLE) kind = 'invisible';
+            else if (glyph_is_object(gid)) kind = 'obj';
+            else if (glyph_is_trap(gid)) kind = 'trap';
+        } else if (u.ux === x && u.uy === y && canspotself()) {
             kind = 'mon';
             glyph = hero_display_glyph();
         } else {
@@ -5706,7 +5732,12 @@ export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_su
     // overlay there — but reg itself stays live for the !seenv
     // unexplored arm, like C.
     let glyph_shows_cloud = false;
-    if (!swallowed && reg && cansee(x, y) && (ACCESSIBLE(loc.typ | 0)
+    if (fromGbuf) {
+        // C detect.c:2162 glyph_is_gascloud on the displayed int.
+        glyph_shows_cloud = !!reg && glyph_is_cmap(gbufId)
+            && (glyph_to_cmap(gbufId) === S_poisoncloud
+                || glyph_to_cmap(gbufId) === S_cloud);
+    } else if (!swallowed && reg && cansee(x, y) && (ACCESSIBLE(loc.typ | 0)
                 || (reg.visible && is_pool_or_lava_disp(x, y)))) {
         const uu = game.u || {};
         if (uu.ux === x && uu.uy === y) {
@@ -5737,7 +5768,8 @@ export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_su
     }
 
     // C: !keep_mons && (monster|warning) || swallow → levl_glyph
-    if ((!keep_mons && kind === 'mon')) {
+    // `|| glyph_is_swallow(glyph)`, keep_mons or not (C `:2213–2215`).
+    if ((!keep_mons && kind === 'mon') || kind === 'swallow') {
         glyph = copy_glyph_id(levl_glyph);
         was_mon = true;
         // C `:2219–2231` test the int now in `glyph` (levl_glyph), not the
@@ -5767,7 +5799,7 @@ export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_su
     }
 
     // C glyph_is_trap after memory/terrain pick (levl.glyph may be trap)
-    if (kind === 'other' && glyph_is_trap_at(glyph, x, y)) {
+    if (kind === 'other' && !fromGbuf && glyph_is_trap_at(glyph, x, y)) {
         kind = 'trap';
     }
 
@@ -9535,6 +9567,20 @@ async function getret() {
 let _nomux_raw_active = 0;
 let _nomux_raw_row = 0;
 let _nomux_raw_col = 0;
+// C wintty.c tty_exit_nhwindows (recorder tree `:863–864`; FREE_ALL_MEMORY, config.h:632)
+// frees ttyDisplay. JS keeps the grid (game.nhDisplay), so the raw-print
+// paths read this flag where C tests ttyDisplay.
+let _tty_display_freed = 0;
+
+/** C tty_exit_nhwindows `:863–864` — ttyDisplay = NULL. */
+export function tty_display_free() {
+    _tty_display_freed = 1;
+}
+
+/** C ttyDisplay != NULL (allocated by init_nhwindows, freed at exit). */
+function tty_display_alive() {
+    return !!game.nhDisplay && !_tty_display_freed;
+}
 
 /**
  * The raw-mode statics as C holds them (nomux_capture.js loads them before
@@ -9587,7 +9633,7 @@ function nomux_raw_putch(ch, attr) {
 function nomux_raw_emit(s, bold) {
     const disp = nomux_shadow();
     if (!_nomux_raw_active) {
-        if (game.nhDisplay && !s) return; // in-game flush (markers always on)
+        if (tty_display_alive() && !s) return; // in-game flush (markers always on)
         _nomux_raw_active = 1; // nomux_enter_raw_mode
         _nomux_raw_row = 0;
         _nomux_raw_col = 0;
@@ -9608,9 +9654,22 @@ function nomux_raw_emit(s, bold) {
  */
 export function tty_raw_print(str) {
     const s = String(str ?? '');
-    if (game.nhDisplay) _tty_rawprint++;
+    if (tty_display_alive()) _tty_rawprint++;
     else if (s && game.iflags) game.iflags.raw_printed = (game.iflags.raw_printed | 0) + 1;
     nomux_raw_emit(s, false);
+}
+
+/**
+ * C ref: wintty.c tty_raw_print_bold (upstream `:4021`; recorder `:4084–4108`) — same counters, then
+ * standout text; the recorder shadow takes it with the bold attr
+ * (nomux_raw_emit(str, 1)).
+ * @param {string} str
+ */
+export function tty_raw_print_bold(str) {
+    const s = String(str ?? '');
+    if (tty_display_alive()) _tty_rawprint++;
+    else if (s && game.iflags) game.iflags.raw_printed = (game.iflags.raw_printed | 0) + 1;
+    nomux_raw_emit(s, true);
 }
 
 /**

@@ -40,6 +40,7 @@ import {
     glyph_to_body_corpsenm, glyph_to_statue_corpsenm,
     set_bot_disabled, tty_nhbell, MG_FLAG_NOOVERRIDE, SYM_OFF_X, SYM_MAX,
     SYM_OFF_M, SYM_OFF_O, SYM_OFF_W, live_showsyms,
+    clear_message_window_menu_overlay,
 } from './display.js';
 import { howmonseen, couldsee, cansee } from './vision.js';
 import { getlin, mungspaces, y_n } from './getline.js';
@@ -624,13 +625,8 @@ function howmonseen_look_buf(mtmp) {
  * — only space/CR/ESC advance; hjklyubn stay on the page (capture still).
  *
  * @param {string[]} lines
- * @param {{ keep_message_leftover?: boolean }} [opts]
- *   When true (look_here only): model invent.c `display_nhwindow(WIN_MESSAGE,
- *   FALSE)` before the menu — toplin EMPTY without wipe, so NHW_MENU's
- *   `tty_clear_nhwindow(WIN_MESSAGE)` is a no-op and getpos leftovers stay
- *   left of offx through dismiss. Ordinary corner menus clear (D-0929).
  */
-export async function show_nhw_menu_text(lines, opts = {}) {
+export async function show_nhw_menu_text(lines) {
     // C ref: wintty.c tty_display_nhwindow(NHW_MENU) — toplin NEED_MORE
     // flushes WIN_MESSAGE blocking first (the look putmixed + --More--
     // wait precedes the checkfile menu paint).
@@ -669,11 +665,13 @@ export async function show_nhw_menu_text(lines, opts = {}) {
     // not through process_menu_window.
     const utf8Handling = game.gs?.symset?.[(game.currentgraphics | 0)]?.handling === H_UTF8;
 
-    // Default: clear topline (C NHW_MENU corner tty_clear when toplin!=EMPTY,
-    // fullscreen always). look_here opts.keep_message_leftover skips clear
-    // for corner — prior WIN_MESSAGE FALSE left glyphs / _pending_message.
-    const keepLeftover = !!opts.keep_message_leftover && offx !== 0;
-    if (!keepLeftover) game._pending_message = '';
+    // C wintty.c `:1924–1942`: fullscreen clears the screen (toplin
+    // EMPTY); a corner menu calls tty_clear_nhwindow(WIN_MESSAGE), which
+    // erases the topline only when toplin != EMPTY. A prompt already
+    // answered (death disclose's «Die? [yn] (n)», look_here after
+    // display_nhwindow(WIN_MESSAGE, FALSE)) stays left of the menu.
+    if (offx === 0) game._pending_message = '';
+    else clear_message_window_menu_overlay();
     game._menu_overlay = false;
     // C wintty.c tty_display_nhwindow(NHW_MENU) `:1907–1946` paints menu
     // text with no bot() on the path (message-window clear + bare paint +
@@ -771,8 +769,7 @@ export async function show_nhw_menu_text(lines, opts = {}) {
     // docrt+flush. destroy_nhwindow does no flush_screen of its own, so
     // the corner arm adds none: a pending botl must not repaint status
     // rows docorner left alone (D-4085). docorner touches no toplin
-    // state, so the D-0929 dismiss-time save/restore is dead (paint-time
-    // keep_message_leftover above stays).
+    // state, so the D-0929 dismiss-time save/restore is dead.
     await erase_menu_or_text(offx, 0, maxrow, false);
 }
 

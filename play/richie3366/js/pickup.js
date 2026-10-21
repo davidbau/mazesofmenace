@@ -101,12 +101,11 @@ import {
 } from './const.js';
 import { nhgetch } from './input.js';
 import { m_at, mnexto, hideunder, ceiling_hider } from './mon.js';
-import { oclass_to_sym, regex_match, select_menu_pick_any, select_menu_pick_one } from './options.js';
+import { oclass_to_sym, regex_match, select_menu_pick_any, select_menu_pick_one, menu_prompt_style, menu_heading_style, get_menu_coloring, cattr_to_cell } from './options.js';
 import {
     objectNames, COIN_CLASS, VENOM_CLASS, POTION_CLASS,
     def_oc_syms, def_char_to_objclass, is_pick,
 } from './objects.js';
-import { ATR_INVERSE } from './terminal.js';
 import {
     addtobill, costly_spot, check_unpaid_usage, doname_with_price,
     remote_burglary, shop_keeper, subfrombill, stolen_value, obfree, sellobj, sellobj_state,
@@ -708,7 +707,7 @@ export async function query_category(qstr, olist, qflags, how) {
     }
 
     const raw = [
-        { selectable: false, text: qstr, attr: ATR_INVERSE },
+        { selectable: false, text: qstr, ...menu_prompt_style() }, // C end_menu(win, qstr)
         { selectable: false, text: '' },
         ...items,
     ];
@@ -856,7 +855,7 @@ export async function query_objlist(qstr, olist, qflags, how, allow) {
                         text: let_to_name(pack, false,
                             how !== PICK_NONE
                             && !!game.iflags?.menu_head_objsym),
-                        attr: ATR_INVERSE,
+                        ...menu_heading_style(), // C `:1125` add_menu_heading
                     });
                     printed = true;
                 }
@@ -924,7 +923,7 @@ export async function query_objlist(qstr, olist, qflags, how, allow) {
             items.push({
                 selectable: false,
                 text: `${digests(game.u?.ustuck?.data) ? 'Swallowed' : 'Engulfed'} Creatures`,
-                attr: ATR_INVERSE,
+                ...menu_heading_style(), // C `:1153` add_menu_heading
             });
         }
         items.push({ // C :1155–1163 (fake invlet, no group accelerator)
@@ -943,7 +942,7 @@ export async function query_objlist(qstr, olist, qflags, how, allow) {
         raw.push({ selectable: false, text: game.this_title });
     }
     if (qstr) {
-        raw.push({ selectable: false, text: qstr, attr: ATR_INVERSE });
+        raw.push({ selectable: false, text: qstr, ...menu_prompt_style() }); // C end_menu(win, qstr)
         raw.push({ selectable: false, text: '' });
     }
     raw.push(...items);
@@ -2611,7 +2610,7 @@ async function in_or_out_menu(
 
     // C tty_end_menu: prompt uses tty_menu_promptstyle (= menu_headings,
     // default ATR_INVERSE); blank separator; then add_menu items.
-    const entries = [{ text: prompt, attr: ATR_INVERSE }, { text: '', attr: 0 }];
+    const entries = [{ text: prompt, ...menu_prompt_style() }, { text: '', attr: 0 }];
     // C pickup.c:3420 — "Look inside %s" via thesimpleoname, which is
     // discovery-aware (known sack → "the sack", never the local "bag").
     const simple = thesimpleoname_objnam(obj);
@@ -4236,7 +4235,7 @@ async function loot_which_containers_menu(x, y) {
     }));
     for (;;) {
         const entries = [
-            { text: 'Loot which containers?', attr: ATR_INVERSE },
+            { text: 'Loot which containers?', ...menu_prompt_style() }, // C end_menu prompt
             { text: '', attr: 0 },
         ];
         for (const row of rows) {
@@ -4701,78 +4700,65 @@ async function able_to_loot(x, y, looting) {
  * @returns {Promise<{target:object|null, cancelled:boolean}>}
  */
 async function tipcontainer_gettarget(box) {
-    const dummyobj = {};
-    const rows = [];
-    // C: tip-to-floor row first, MENU_ITEMFLAGS_SELECTED; blank separator.
-    rows.push({
-        obj: dummyobj, isDummy: true, selected: true, selector: '-', text: 'on the floor',
-    });
-    rows.push({ kind: 'blank' });
+    const dummyobj = {}; // C: only its address matters
+    // C `:3896–3903` — tip to floor does not require free hands;
+    // preselected (MENU_ITEMFLAGS_SELECTED), then add_menu_str(win, "").
+    const raw = [
+        // C `:3925` end_menu(win, buf): tty_end_menu paints the prompt in
+        // tty_menu_promptstyle, then a blank separator (wintty.c `:2685–2689`).
+        null,
+        { selectable: false, text: '' },
+        { selectable: true, selector: '-', selected: true, obj: dummyobj, text: 'on the floor' },
+        { selectable: false, text: '' },
+    ];
     let n_conts = 0;
     let hands_available = true;
-    const ocKnown = (otyp) => !!(game.objects?.[otyp]?.oc_name_known);
     for (const otmp of (game.invent || [])) {
         if (!otmp || otmp === box) continue;
-        // C: skip non-containers; known bag of tricks fails Is_container use.
-        if (!Is_container(otmp)) continue;
-        if ((otmp.otyp | 0) === BAG_OF_TRICKS && otmp.dknown && ocKnown(otmp.otyp)) continue;
-        if (!n_conts++) hands_available = await u_handsy();
-        // C: container-to-container needs free hands; locked-known excluded.
-        const exclude = !hands_available || !!(otmp.olocked && otmp.lknown);
-        let sel = '';
-        if (!exclude) {
-            sel = (typeof otmp.invlet === 'string') ? otmp.invlet
-                : (otmp.invlet ? String.fromCharCode(otmp.invlet) : '');
+        // C `:3907–3912` — skip non-containers; bag of tricks passes
+        // Is_container(), include it only if not known to be one.
+        if (!Is_container(otmp)
+            || ((otmp.otyp | 0) === BAG_OF_TRICKS && otmp.dknown
+                && game.objects?.[otmp.otyp]?.oc_name_known))
+            continue;
+        if (!n_conts++) hands_available = await u_handsy(); // might issue message
+        // C `:3915–3922` — container-to-container tip requires free hands;
+        // exclude a target known to be locked (a_obj 0, no invlet, indent).
+        const exclude_it = !hands_available || !!(otmp.olocked && otmp.lknown);
+        const buf = `${!exclude_it ? '' : '    '}${doname(otmp)}`;
+        if (!exclude_it) {
+            const invlet = (typeof otmp.invlet === 'string') ? otmp.invlet
+                : String.fromCharCode(otmp.invlet | 0);
+            raw.push({ selectable: true, selector: invlet, obj: otmp, text: buf });
+        } else {
+            // C windows.c add_menu `:1803–1807` — menu colours apply to the
+            // identifier-less row too (painted whole-row, no selector).
+            const mc = get_menu_coloring(buf);
+            raw.push({
+                selectable: false, text: buf,
+                ...(mc ? { attr: cattr_to_cell(mc.attr), color: mc.color } : {}),
+            });
         }
-        rows.push({
-            obj: exclude ? null : otmp,
-            selected: false,
-            selector: sel,
-            text: `${exclude ? '    ' : ''}${doname(otmp)}`,
-        });
     }
-    // C: Sprintf(buf, "Where to tip the contents of %s", doname(box)).
-    const title = `Where to tip the contents of ${doname(box)}`;
-    let cancelled = false;
-    for (;;) {
-        const entries = [{ text: title, attr: ATR_INVERSE }, { text: '', attr: 0 }];
-        for (const row of rows) {
-            if (row.kind === 'blank') {
-                entries.push({ text: '', attr: 0 });
-                continue;
-            }
-            if (!row.obj) {
-                entries.push({ text: row.text, attr: 0 });
-                continue;
-            }
-            const mark = row.selected ? '*' : '-';
-            entries.push({ text: `${row.selector} ${mark} ${row.text}`, attr: 0 });
-        }
-        await paint_corner_nhw_menu(entries, '(end) ');
-        await flush_screen(1);
-        const key = await nhgetch();
-        await dismiss_nhw_menu();
-        if (key === 27) {
-            cancelled = true;
-            break;
-        }
-        // C: \n \r space finish without toggling (tty select_menu PICK_ONE).
-        if (key === 13 || key === 10 || key === 32) break;
-        const ch = String.fromCharCode(key);
-        const hit = rows.find((r) => r.obj && r.selector === ch);
-        if (!hit) continue; // C nhbell; stay open
-        hit.selected = !hit.selected;
-        // C PICK_ONE: letter toggles then menu finishes.
-        break;
+    // C `:3924` Sprintf(buf, "Where to tip the contents of %s", doname(box)).
+    raw[0] = {
+        selectable: false,
+        text: `Where to tip the contents of ${doname(box)}`,
+        ...menu_prompt_style(),
+    };
+    // C `:3926–3927` select_menu(win, PICK_ONE, &pick_list); destroy_nhwindow.
+    const res = await select_menu_pick_one(raw);
+    // C `:3929–3938` — PICK_ONE with the preselected floor row returns it
+    // alone (Return), both (another letter: the non-dummy one wins), or
+    // none ('-' deselects it): every non-cancel outcome is the picked item
+    // or the floor.
+    let otmp = null;
+    if (res.kind === 'pick' && res.item?.obj && res.item.obj !== dummyobj) {
+        otmp = res.item.obj;
     }
-    if (cancelled) return { target: null, cancelled: true };
-    const pick_list = rows.filter((r) => r.obj && r.selected);
-    const n = pick_list.length;
-    let otmp = n <= 0 ? null : pick_list[0].obj;
-    // C: PICK_ONE with preselected item might return 2; take non-dummy.
-    if (n > 1 && otmp === dummyobj) otmp = pick_list[1].obj;
-    if (otmp === dummyobj) otmp = null; // floor
-    return { target: otmp, cancelled: false };
+    // C `:3939` *cancelled = (n == -1): ESC. With the floor row always
+    // preselected, Return/space finish with it, so 'cancel' here is ESC.
+    return { target: otmp, cancelled: res.kind !== 'pick' };
 }
 
 // C ref: pickup.c tipcontainer_checks `:3680-3684` — TIPCHECK_foo enum,
@@ -5168,7 +5154,7 @@ async function choose_tip_container_menu() {
     let cancelled = false;
     for (;;) {
         const entries = [
-            { text: 'Tip which container?', attr: ATR_INVERSE },
+            { text: 'Tip which container?', ...menu_prompt_style() }, // C end_menu prompt
             { text: '', attr: 0 },
         ];
         for (const row of rows) {

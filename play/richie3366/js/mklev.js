@@ -773,8 +773,10 @@ export async function u_on_rndspot(upflag) {
  * row-major scan with oneshot TRUE. Stair, portal, and branch return
  * true in this turn. Tele returns a Promise that settles only after
  * rloc / m_into_limbo / u_on_newpos (mkmaze.c:444–455); every caller
- * chains it. Total failure calls impossible and does not return that
- * Promise (the message is not the placement result).
+ * chains it. Total failure returns impossible()'s Promise for the same
+ * reason: C prints all three report lines (mkmaze.c:409) before
+ * place_lregion returns, so the caller (goto_level's u_on_rndspot →
+ * docrt/cls) must not run ahead of them.
  */
 export function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
     if (!lx) { /* default to whole level */
@@ -826,7 +828,8 @@ export function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
                 return placed;
         }
 
-    impossible("Couldn't place lregion type %d!", rtype);
+    // C mkmaze.c:409 — impossible() completes before the caller resumes.
+    return impossible("Couldn't place lregion type %d!", rtype);
 }
 
 /** C ref: decl.c gb.bughack — preserve baalz insect legs during wallify. */

@@ -10411,9 +10411,9 @@ function invert_pick_any_matching(items, acc, count = -1) {
             it.count = -1;
         } else {
             it.selected = true;
-            it._retoggled = true;
             if (count > 0) it.count = count;
         }
+        it._retoggled = true; // C `:1264` set_item_state either way
     }
 }
 
@@ -10481,8 +10481,9 @@ export async function select_menu_pick_any(rawItems, opts = {}) {
                     // C wintty.c process_menu_window `:1467–1473` — the
                     // initial page paint shows '*' for preselected
                     // (count -1), '#' for count picks; C set_item_state
-                    // `:1182` runtime toggles show '+'. _retoggled marks
-                    // runtime selection since the last page paint (D-3403).
+                    // `:1182` runtime toggles show '+'. _retoggled marks an
+                    // entry set_item_state repainted since the last page
+                    // paint (D-3403).
                     const mark = !it.selected ? '-'
                         : ((it.count | 0) === -1
                             ? (it._retoggled ? '+' : '*') : '#');
@@ -10498,6 +10499,10 @@ export async function select_menu_pick_any(rawItems, opts = {}) {
                         attr: mattr,
                         color: mcolor,
                         descStart: 4,
+                        // C set_item_state `:1175–1194` paints the mark in
+                        // item->attr/color (post-menucolor, windows.c `:1803`);
+                        // the page paint leaves it plain (before attr_n).
+                        ...(it._retoggled ? { markStyle: { attr: mattr, color: mcolor } } : {}),
                     };
                 }
                 // Non-selectable rows carry their caller color (pick_one
@@ -10595,6 +10600,7 @@ export async function select_menu_pick_any(rawItems, opts = {}) {
                     if (!menuitem_invert_test(2, it.itemflags | 0, true)) continue;
                     it.selected = false;
                     it.count = -1;
+                    it._retoggled = true; // C unset_all_on_page set_item_state `:1233`
                 }
                 continue;
             }
@@ -10620,6 +10626,7 @@ export async function select_menu_pick_any(rawItems, opts = {}) {
                     if (!menuitem_invert_test(2, it.itemflags | 0, true)) continue;
                     it.selected = false;
                     it.count = -1;
+                    it._retoggled = true; // C unset_all_on_page set_item_state `:1233`
                 }
                 continue;
             }
@@ -10654,18 +10661,19 @@ export async function select_menu_pick_any(rawItems, opts = {}) {
             const hit = page.find((it) => it.selectable && it.selector === ch);
             if (ch === MENU_SEARCH && !hit) {
                 // C wintty.c:1698–1731 — search toggles carry the count.
-                const wasSel = new Map(items.map((it) => [it, !!it.selected]));
+                const was = new Map(items.map((it) => [it, `${!!it.selected}/${it.count}`]));
                 await process_menu_search(items, PICK_ANY, counting, count);
-                for (const it of items) // newly selected → '+' (D-3403)
-                    if (it.selected && !wasSel.get(it)) it._retoggled = true;
+                // toggle_menu_curr's set_item_state: every changed entry (D-3403)
+                for (const it of items)
+                    if (`${!!it.selected}/${it.count}` !== was.get(it)) it._retoggled = true;
                 continue;
             }
             if (hit) {
                 // C wintty.c toggle_menu_curr `:1112–1151` — a pending
                 // count sticks to an already-selected entry; a plain
                 // toggle clears it. Runtime selection paints '+' (D-3403).
-                toggle_menu_curr(hit, counting, count);
-                if (hit.selected) hit._retoggled = true;
+                // set_item_state runs whenever toggle_menu_curr acts.
+                if (toggle_menu_curr(hit, counting, count)) hit._retoggled = true;
                 continue;
             }
             if (gacc && gacc.includes(ch)) {

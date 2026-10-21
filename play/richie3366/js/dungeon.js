@@ -3047,7 +3047,7 @@ export function mapseen_cemetery_lines(mptr, why, reason, ctx) {
  * @param {number} why
  * @param {number} reason
  * @param {boolean} printdun
- * @param {{ ATR_INVERSE: number, endgamelevelname: Function, ldrname: Function, formatkiller: Function }} ctx
+ * @param {{ menu_heading_style: Function, endgamelevelname: Function, ldrname: Function, formatkiller: Function }} ctx
  */
 function print_mapseen(entries, mptr, why, reason, printdun, ctx) {
     const TAB = '   ';
@@ -3076,9 +3076,11 @@ function print_mapseen(entries, mptr, why, reason, printdun, ctx) {
         } else {
             hdr = `${dname}: levels ${depthstart} to ${depthstart + ureached - 1}`;
         }
+        // C `:3553` add_menu_heading (windows.c `:1815–1828`): live
+        // iflags.menu_headings attr + colour, none during final disclosure.
         entries.push({
             text: hdr,
-            attr: why > 0 ? 0 : ctx.ATR_INVERSE,
+            ...ctx.menu_heading_style(),
             selectable: false,
         });
     }
@@ -3266,13 +3268,13 @@ export async function donamelevel() {
  */
 export async function show_overview(why = 0, reason = 0) {
     const { formatkiller } = await import('./end.js');
-    const { ATR_INVERSE } = await import('./terminal.js');
     const { flush_topl_more, endgamelevelname } = await import('./display.js');
     const { select_menu_pick_none } = await import('./invent.js');
     const { ldrname } = await import('./questpgr.js');
+    const { menu_heading_style } = await import('./options.js');
 
     recalc_mapseen();
-    const ctx = { ATR_INVERSE, endgamelevelname, ldrname, formatkiller };
+    const ctx = { menu_heading_style, endgamelevelname, ldrname, formatkiller };
     const entries = [];
     const lastdun = { v: -1 };
     const u = game.u || {};
@@ -3543,13 +3545,13 @@ export async function print_dungeon(bymenu, dest = null) {
         return 0;
     }
 
-    const { ATR_INVERSE } = await import('./terminal.js');
-    const { select_menu_pick_one } = await import('./options.js');
+    const { select_menu_pick_one, menu_prompt_style, menu_heading_style } = await import('./options.js');
 
     // C tty_end_menu(prompt): prepends blank then prompt onto reversed
-    // mlist → display order is prompt, "", items (wintty.c).
+    // mlist → display order is prompt, "", items (wintty.c), in
+    // tty_menu_promptstyle (`:2369` end_menu).
     const raw = [
-        { text: 'Level teleport to where:', attr: ATR_INVERSE, selectable: false },
+        { text: 'Level teleport to where:', ...menu_prompt_style(), selectable: false },
         { text: '', attr: 0, selectable: false },
     ];
     const lchoices = {
@@ -3580,7 +3582,7 @@ export async function print_dungeon(bymenu, dest = null) {
             if (entryLev === nlev) buf += ', entrance from below';
             else buf += `, entrance on ${depthStart + entryLev - 1}`;
         }
-        raw.push({ text: buf, attr: ATR_INVERSE, selectable: false });
+        raw.push({ text: buf, ...menu_heading_style(), selectable: false }); // C `:2331` add_menu_heading
 
         let lastLevel = 0;
         for (const slev of game.sp_levchn || []) {

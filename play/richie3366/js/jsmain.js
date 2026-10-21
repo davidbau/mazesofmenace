@@ -29,7 +29,7 @@ import { player_selection } from './player_selection.js';
 import { check_special_room } from './hack.js';
 import { y_n } from './getline.js';
 import { delete_savefile } from './files.js';
-import { NhPanic, panic_tail } from './end.js';
+import { NhPanic, NhTerminate, panic_tail } from './end.js';
 import { apply_customizations, free_glyphid_cache, glyphid_cache_status } from './glyphs.js';
 
 // ── NethackGame ──
@@ -472,6 +472,8 @@ export async function runSegment(input) {
         // block on input; the harness has none). Previously it escaped
         // runSegment and voided the run (0/0) instead of comparing.
         if (String(e?.message || '').includes('Input queue empty')) return nhGame;
+        // C end.c nh_terminate exits the process: the game is over.
+        if (e instanceof NhTerminate) return nhGame;
         // C end.c panic is noreturn: the NhPanic throw unwound to here, so
         // run the rest of its body (Oops, getret wait, then the process
         // aborts). Any other throw is a port bug and still propagates.

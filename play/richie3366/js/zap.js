@@ -1280,8 +1280,11 @@ export async function zap_over_floor(x, y, type, shopdamage, ignoremon, explodin
         else if (ztype < ZT_BREATH_0) zapverb = 'spell';
     } else if (exploding_wand_typ === POT_OIL
         || exploding_wand_typ === SCR_FIRE) {
+        // C zap.c:5387–5394 — burning oil / scroll of fire explosion:
+        // keep "blast", and yourzap stays FALSE (computed above while
+        // exploding_wand_typ was nonzero) — "the blast", even when the
+        // hero caused it. Only exploding_wand_typ is cleared.
         exploding_wand_typ = 0;
-        yourzap = (type | 0) >= 0 && !exploding_wand_typ;
     }
 
     // secret door → regular door

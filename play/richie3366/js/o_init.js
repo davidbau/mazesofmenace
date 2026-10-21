@@ -378,6 +378,13 @@ export function savenames() {
         oc_material: oc.oc_material | 0,
         oc_prob: oc.oc_prob | 0,
         oc_encountered: oc.oc_encountered | 0,
+        // objclass.h `:108–111` shop price-quote memory (shk.c
+        // record_price_quote); the historical Sfo_objclass writes the
+        // whole struct, so these survive save/restore in C.
+        oc_sell_minseen: oc.oc_sell_minseen,
+        oc_sell_maxseen: oc.oc_sell_maxseen,
+        oc_buy_minseen: oc.oc_buy_minseen,
+        oc_buy_maxseen: oc.oc_buy_maxseen,
         oc_uname: oc.oc_uname || null,
     }));
     return { objects: outObjects, bases: outBases, disco: outDisco };
@@ -415,6 +422,12 @@ export function restnames(saved) {
             dst.oc_material = src.oc_material | 0;
             dst.oc_prob = src.oc_prob | 0;
             dst.oc_encountered = src.oc_encountered | 0;
+            // objclass.h `:108–111` price-quote memory (a save without
+            // the keys keeps the fresh table's unseen values).
+            if (src.oc_sell_minseen != null) dst.oc_sell_minseen = src.oc_sell_minseen;
+            if (src.oc_sell_maxseen != null) dst.oc_sell_maxseen = src.oc_sell_maxseen;
+            if (src.oc_buy_minseen != null) dst.oc_buy_minseen = src.oc_buy_minseen;
+            if (src.oc_buy_maxseen != null) dst.oc_buy_maxseen = src.oc_buy_maxseen;
             // C `:429-435` uname marker arm.
             if (src.oc_uname) dst.oc_uname = src.oc_uname;
         }
