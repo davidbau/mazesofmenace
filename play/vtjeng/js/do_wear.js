@@ -56,6 +56,7 @@ import {
     A_CHAOTIC,
     A_CON,
     A_CURRENT,
+    A_ORIGINAL,
     A_DEX,
     A_INT,
     A_LAWFUL,
@@ -368,6 +369,7 @@ import {
 import { discover_object, observe_object } from './o_init.js';
 import {
     an,
+    ansimpleoname,
     boots_simple_name,
     cloak_simple_name,
     corpse_xname,
@@ -3571,12 +3573,15 @@ async function accessory_or_armor_on(obj, state = game) {
 
         if (obj.otyp === HELM_OF_OPPOSITE_ALIGNMENT
             && state.qstart_level?.dnum === state.u.uz.dnum) { /* in quest */
-            // do_wear.c:2230-2237 zeroes u.ublessed, calls makeknown() and
-            // redraws AC before returning ECMD_TIME without wearing the helm.
-            // No ported path descends the Quest branch, so nothing reaches it.
-            throw new UnsupportedWearError(
-                'accessory_or_armor_on() quest helm',
-            );
+            if (state.u.ualignbase[A_CURRENT]
+                === state.u.ualignbase[A_ORIGINAL])
+                await ttyPline('You narrowly avoid losing all chance at your goal.', state);
+            else
+                await ttyPline('You are suddenly overcome with shame and change your mind.', state);
+            state.u.ublessed = 0;
+            discover_object(obj.otyp, true, true, true, state);
+            state.disp.botl = true;
+            return ECMD_TIME;
         }
     } else {
         /*
@@ -3689,11 +3694,8 @@ async function accessory_or_armor_on(obj, state = game) {
             }
         } else if (eyewear) {
             if (!has_head(state.youmonst.data)) {
-                // ansimpleoname() is unported; this arm fires only for a
-                // headless polymorph form, which no ported path produces.
-                throw new UnsupportedWearError(
-                    'ansimpleoname() for headless polymorph',
-                );
+                await ttyPline(`You have no head to wear ${ansimpleoname(obj, state)} on.`, state);
+                return ECMD_OK;
             }
             if (state.ublindf) {
                 if (state.ublindf.otyp === TOWEL) {

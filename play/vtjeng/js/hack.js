@@ -155,7 +155,9 @@ import {
     TRAPNUM,
     TT_BEARTRAP,
     TT_BURIEDBALL,
+    TT_LAVA,
     TT_PIT,
+    TT_WEB,
     Upolyd,
     VIBRATING_SQUARE,
     WARNING,
@@ -181,6 +183,7 @@ import {
     Trap_Killed_Mon,
     Trap_Moved_Mon,
     OVERLOADED,
+    P_UNSKILLED,
     PROT_FROM_SHAPE_CHANGERS,
     helpless,
     is_pit,
@@ -191,6 +194,7 @@ import {
     UNCHANGING,
     Ugender,
 } from './const.js';
+import { ART_STING, attacks } from './artifacts.js';
 import { isok } from './cmd_isok.js';
 import { body_part, float_vs_flight, rehumanize } from './polyself.js';
 import { adjalign, acurrstr, acurr, exercise } from './attrib.js';
@@ -326,6 +330,7 @@ import {
 import {
     add_to_migration,
     is_pick,
+    is_blade,
     splitobj,
     is_weptool,
     obj_ice_effects,
@@ -335,6 +340,7 @@ import {
 } from './obj.js';
 import {
     an,
+    bare_artifactname,
     simple_typename,
     The,
     the,
@@ -396,7 +402,7 @@ import {
 } from './mon.js';
 import { m_next2u, mdamageu } from './mhitu.js';
 import { m_at, place_monster, remove_monster } from './monst.js';
-import { S_PIERCER } from './monsters.js';
+import { AD_FIRE, S_PIERCER } from './monsters.js';
 import { abuse_dog } from './dog.js';
 import {
     accessible,
@@ -472,6 +478,7 @@ import {
 import { collectMonsterNoticeMessage, collectMonsterNoticeMessages, messageAt } from './startup_a11y.js';
 import { exercise_steed, rider_cant_reach, stucksteed } from './steed.js';
 import { P_SKILL } from './startup_skills.js';
+import { use_skill, uwep_skill_type, weapon_descr } from './weapon.js';
 import { CMAP_EXPLANATIONS } from './symbol_data.js';
 import {
     S_hcdoor,
@@ -1156,12 +1163,10 @@ export function spot_checks(x, y, oldTyp, state = game, env = {}) {
 // why wield.c doswapweapon() zeroes gm.multi by assignment rather than
 // through this function.
 //
-// gm.multi_reason and gm.multireasonbuf have no ported reader. They are
-// written anyway because they are the reason string for the interrupted
-// action, and losing the clear would leave the previous action's reason
-// standing for the next one that sets it -- the same stale-string defect
-// dropping done_eating()'s nomovemsg reset produces. C zeroes them together
-// and only for nval 0, so both stay under that one guard.
+// The death report reads multi_reason, while multireasonbuf tracks the
+// monster that caused it. Clear both when the interruption ends so a later
+// action cannot inherit an old helplessness reason. C does this only for
+// nval 0, so both stay under that one guard.
 export function nomul(nval, state = game) {
     const multi = state.multi ?? 0;
     if (multi < nval) return; /* This is a bug fix by ab@unido */
@@ -3858,20 +3863,50 @@ async function domove_fight_ironbars(x, y, state) {
     return false;
 }
 
-// C ref: hack.c domove_fight_web() (2018-2113). Its whole body is the TRUE
-// arm: a force-fight at a seen web cuts or burns at it, choosing among four
-// messages by weapon skill and artifact, and drawing rn2() before any of them.
-// Nothing of that is ported, so the guard that selects the arm stops here.
-//
-// C reads the trap unconditionally and tests it inside the condition; the
-// order matters no more than it does in C, because t_at() has no side effect.
-function domove_fight_web(x, y, state) {
+// C ref: hack.c domove_fight_web() (2018-2113).
+async function domove_fight_web(x, y, state) {
     const trap = t_at(x, y, state);
     if (state.context.forcefight && trap && trap.ttyp === WEB && trap.tseen) {
-        throw new UnsupportedHeroMoveBoundaryError(
-            'force-fight against a spider web',
-        );
+        const wtype = uwep_skill_type(state);
+        const wskill_minus_2 = Math.max(P_SKILL(wtype, state), P_UNSKILLED) - 2;
+        const uwep = state.uwep;
+        const roll = rn2(uwep ? 20 : 45 - 5 * wskill_minus_2, state);
+
+        if (uwep && (uwep.oartifact === ART_STING
+            || (uwep.oartifact && attacks(AD_FIRE, uwep, state)))) {
+            await ttyPline(`${bare_artifactname(uwep, state)} ${uwep.oartifact === ART_STING ? 'cuts' : 'burns'} through the web!`, state);
+        } else if (uwep && !is_blade(uwep, state)
+            && (!state.u.twoweap || !is_blade(state.uswapwep, state))) {
+            const uwepbuf = weapon_descr(uwep, state);
+            const scndbuf = state.u.twoweap ? weapon_descr(state.uswapwep, state) : '';
+            const onewep = !scndbuf || uwepbuf === scndbuf;
+            let uwepstr;
+            if (['armor', 'food', 'venom'].includes(uwepbuf.toLowerCase())) {
+                uwepstr = uwepbuf;
+            } else if (uwep.quan === 1 && !(state.u.twoweap && onewep)) {
+                uwepstr = an(uwepbuf);
+            } else {
+                uwepstr = makeplural(uwepbuf);
+            }
+            const scndstr = !onewep
+                ? (state.uswapwep.quan === 1 ? an(scndbuf) : makeplural(scndbuf))
+                : '';
+            await ttyPline(`You can't cut a web with ${uwepstr}${onewep ? '' : ` or ${scndstr}`}!`, state);
+            return true;
+        } else if (roll > acurrstr(state) - 2
+            + (uwep ? uwep.spe + wskill_minus_2 : 0)) {
+            await ttyPline(`You ${uwep ? 'hack' : 'thrash'} ineffectually at some of the strands.`, state);
+            return true;
+        } else {
+            await ttyPline(`You ${uwep ? 'cut' : 'punch'} through the web.`, state);
+            await use_skill(wtype, 1, state);
+        }
+
+        deltrap(trap, state);
+        newsym(x, y, state);
+        return true;
     }
+    return false;
 }
 
 // C ref: hack.c domove_fight_empty() (2227-2338). The hero has swung the 'F'
@@ -4039,7 +4074,8 @@ async function domove_fight_empty(x, y, state) {
 }
 
 // C ref: hack.c trapmove() (1549-1691), the TT_PIT arm (1580-1586), the
-// TT_BEARTRAP arm (1565-1579) and the wriggle_free label (1671-1680). TRUE
+// TT_LAVA arm (1612-1632), the TT_BEARTRAP arm (1565-1579) and the
+// wriggle_free label (1671-1680). TRUE
 // means the hero may go on to test_move(); FALSE means the step is spent
 // trying to escape and the turn still passes.
 //
@@ -4049,8 +4085,8 @@ async function domove_fight_empty(x, y, state) {
 // no random number at all.
 //
 // TT_PIT now delegates to trap.c:climb_pit(), except for the adjacent visible
-// pit that C permits the hero to enter. The remaining unported arms are
-// TT_WEB, TT_LAVA and TT_INFLOOR. The buried-ball arm below preserves the
+// pit that C permits the hero to enter. The remaining unported arm is
+// TT_INFLOOR. The buried-ball arm below preserves the
 // shared wriggle_free label's anchored message and punishment restoration.
 async function trapmove(x, y, desttrap, state = game) {
     const u = state.u;
@@ -4064,6 +4100,43 @@ async function trapmove(x, y, desttrap, state = game) {
         if (desttrap && desttrap.tseen && is_pit(desttrap.ttyp))
             return true; /* move into adjacent pit */
         await climb_pit(state);
+        return false;
+    }
+    // C ref: hack.c:1592-1613. Sting cuts the hero free without destroying
+    // the trap; otherwise each attempted step shortens the hold by one turn.
+    if (u.utraptype === TT_WEB) {
+        if (state.uwep?.oartifact === ART_STING) {
+            u.utrap = 0;
+            await ttyPline('Sting cuts through the web!', state);
+        } else if (--u.utrap) {
+            if (state.flags.verbose)
+                await ttyNorep(u.usteed
+                    ? `${upstart(y_monnam(u.usteed, state))} is stuck to the web.`
+                    : 'You are stuck to the web.', state);
+        } else {
+            await ttyPline(u.usteed
+                ? `${upstart(y_monnam(u.usteed, state))} breaks out of the web.`
+                : 'You disentangle yourself.', state);
+        }
+        return false;
+    }
+    if (u.utraptype === TT_LAVA) {
+        const steedname = u.usteed ? y_monnam(u.usteed, state) : null;
+        if (state.flags.verbose)
+            await ttyNorep(steedname
+                ? `${upstart(steedname)} is stuck in the lava.`
+                : 'You are stuck in the lava.', state);
+        if (!is_lava(x, y, state)) {
+            --u.utrap;
+            if ((u.utrap & 0xff) === 0) {
+                u.utrap = 0;
+                const liquid = hliquid('lava', { state });
+                await ttyPline(steedname
+                    ? `You lead ${steedname} to the edge of the ${liquid}.`
+                    : `You pull yourself to the edge of the ${liquid}.`, state);
+            }
+        }
+        u.umoved = true;
         return false;
     }
     // C ref: hack.c:1632-1680, only the anchored TT_BURIEDBALL arm.
@@ -4288,7 +4361,10 @@ async function domove_core(state = game) {
             state.domoveAttempting = 0;
             return;
         }
-        domove_fight_web(newx, newy, state);
+        if (await domove_fight_web(newx, newy, state)) {
+            state.domoveAttempting = 0;
+            return;
+        }
         if (await domove_fight_empty(newx, newy, state)) {
             state.domoveAttempting = 0;
             return;
@@ -4797,11 +4873,10 @@ export async function lookaround(state = game) {
                 if ((state.context.run !== 1 && !is_safemon(mtmp, state))
                     || (infront && !state.context.travel)) {
                     if (state.flags?.mention_walls) {
-                        // "%s blocks your path." needs a_monnam(), which has
-                        // no ported owner.
-                        throw new UnsupportedHeroMoveBoundaryError(
-                            'a blocked-path message',
-                        );
+                        await ttyPline(messageAt(
+                            `${upstart(a_monnam(mtmp, { state }))} blocks your path.`,
+                            x, y, state,
+                        ), state);
                     }
                     return LOOKAROUND_STOP;
                 }

@@ -3275,6 +3275,24 @@ export async function load_special(name) {
  * coder fields); the Free+NULL half lives in the `finally` here so the next
  * level's create_des_coder guard re-inits fresh state exactly like C.
  */
+/**
+ * C ref: sp_lev.c load_special `:6464–6471`, the head of the epilogue every
+ * special level runs right after its script: link_doors_rooms,
+ * remove_boundary_syms, ensure_way_out when the level has the
+ * "inaccessibles" flag (the coder's check_inaccessibles), map_cleanup.
+ * Each per-level port calls it once, right before its wallification
+ * (soko1–3 via soko_load_epilogue, fakewiz1–2 via load_fakewiz_tower);
+ * lspo_finalize_level runs the same steps for the des path.
+ */
+function load_special_head(check_inaccessibles = false) {
+    link_doors_rooms(); // C :6464
+    remove_boundary_syms(); // C :6465
+    // TODO: ensure_way_out() needs rewrite (C's own note)
+    if (check_inaccessibles || game.gc?.coder?.check_inaccessibles) // C :6468
+        ensure_way_out(); // C :6469
+    map_cleanup(); // C :6471
+}
+
 async function load_special_proto(protofile) {
     create_des_coder(); // C :6459 at load_special entry (full init inside)
     try {
@@ -4195,6 +4213,7 @@ function solidify_map() {
  * wallify → flip → solidify → fixup → premap_detect.
  */
 function soko_load_epilogue(allowFlips = 3) {
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!game.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(allowFlips, false);
@@ -4308,6 +4327,7 @@ function load_bigrm_2() {
     for (let i = 0; i < 28; i++) splev_create_monster(null);
 
     // C load_special: wallification when !corrmaze; fixup_special
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     return fixup_special();
@@ -4315,7 +4335,7 @@ function load_bigrm_2() {
 
 /**
  * C ref: dat/bigrm-3.lua via load_special.
- * Named omissions: ensure_way_out / solidify / premap; other bigrm-N.
+ * Named omissions: other bigrm-N.
  */
 function load_bigrm_3() {
     const g = game;
@@ -4408,6 +4428,7 @@ function load_bigrm_3() {
     }
 
     // C load_special: wallification when !corrmaze; noflip → skip flip
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     return fixup_special();
@@ -4415,7 +4436,7 @@ function load_bigrm_3() {
 
 /**
  * C ref: dat/bigrm-4.lua via load_special.
- * Named omissions: ensure_way_out / solidify / premap; other bigrm-N.
+ * Named omissions: other bigrm-N.
  */
 function load_bigrm_4() {
     const g = game;
@@ -4498,6 +4519,7 @@ function load_bigrm_4() {
     for (let i = 0; i < 28; i++) splev_create_monster(null);
 
     // C load_special: wallification when !corrmaze; noflip → skip flip
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     return fixup_special();
@@ -4582,6 +4604,7 @@ function load_bigrm_5() {
     for (let i = 0; i < 28; i++) splev_create_monster(null);
 
     // C load_special: wallification when !corrmaze; noflip → skip flip
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     return fixup_special();
@@ -4589,7 +4612,7 @@ function load_bigrm_5() {
 
 /**
  * C ref: dat/bigrm-6.lua via load_special — four lobes, trees and fountains.
- * Named omissions: ensure_way_out / solidify / premap.
+ * Named omissions: none.
  */
 function load_bigrm_6() {
     const g = game;
@@ -4643,6 +4666,7 @@ function load_bigrm_6() {
     for (let i = 0; i < 28; i++) splev_create_monster(null);
 
     // C load_special: wallification when !corrmaze; noflip → skip flip
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     return fixup_special();
@@ -4678,7 +4702,7 @@ export function selection_iterate_lua(sel, fn) {
 /**
  * C ref: dat/bigrm-11.lua via load_special — maze corrwid 3+rn2(3),
  * wallthick 1, deadends=percent(50); walls → floor+boulder; rolling boulders.
- * Named omissions: ensure_way_out / solidify / premap.
+ * Named omissions: none.
  */
 function load_bigrm_11() {
     const g = game;
@@ -4726,6 +4750,7 @@ function load_bigrm_11() {
     for (let i = 0; i < 28; i++) splev_create_monster(null);
 
     // C load_special: wallification when !corrmaze; noflip → skip flip
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     return fixup_special();
@@ -4734,7 +4759,7 @@ function load_bigrm_11() {
 /**
  * C ref: dat/bigrm-1.lua via load_special — rectangular room, percent(80)
  * decoration (line / twin lines / plus / brackets / snake / none).
- * Named omissions: ensure_way_out / solidify / premap.
+ * Named omissions: none.
  */
 function load_bigrm_1() {
     const g = game;
@@ -4831,6 +4856,7 @@ function load_bigrm_1() {
     for (let i = 0; i < 28; i++) splev_create_monster(null);
 
     // C load_special: wallification when !corrmaze; noflip → skip flip
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     return fixup_special();
@@ -4839,7 +4865,7 @@ function load_bigrm_1() {
 /**
  * C ref: dat/bigrm-10.lua via load_special — cloud/fog maze, optional
  * replace C, down-tele exclude, mazewalk, levregion stair-up.
- * Named omissions: ensure_way_out / solidify / premap.
+ * Named omissions: none.
  */
 function load_bigrm_10() {
     const g = game;
@@ -4916,6 +4942,7 @@ function load_bigrm_10() {
 
     // C load_special: wallification when !corrmaze; noflip → skip flip;
     // fixup_special places LR_UPSTAIR / copies LR_DOWNTELE
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     return fixup_special();
@@ -4925,7 +4952,7 @@ function load_bigrm_10() {
  * C ref: dat/bigrm-13.lua via load_special — 7×3 pillar grid, 8 Lua
  * filters (math.random pick; filter 6 draws rn2(2) per cell).
  * Nested des.map coord is absolute xstart (lspo_map no croom).
- * Named omissions: ensure_way_out / solidify / premap.
+ * Named omissions: none.
  */
 function load_bigrm_13() {
     const g = game;
@@ -5012,6 +5039,7 @@ function load_bigrm_13() {
     for (let i = 0; i < 28; i++) splev_create_monster(null);
 
     // C load_special: wallification when !corrmaze; noflip → skip flip
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     return fixup_special();
@@ -5519,6 +5547,7 @@ async function load_medusa_1() {
     for (let i = 0; i < 10; i++) splev_create_monster(null);
 
     // C load_special: wallification → flip → lregions → fixup
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -5558,8 +5587,7 @@ async function load_medusa_1() {
  * C ref: dat/medusa-3.lua via load_special — raven-tree Medusa variant.
  * Map cells + stair + doors carry the game SpLev_Map marks
  * (C :6292/:4189/:4661; D-3538).
- * Named omissions: worn/artifact STONE_RES in resists_ston;
- * ensure_way_out / solidify.
+ * Named omissions: worn/artifact STONE_RES in resists_ston.
  * Statue disposals call the live mongone (sp_lev.c:2374/:2387).
  * D-0928: flip updates lregions; land still JS@(43,6) vs C@(42,7).
  */
@@ -5792,9 +5820,7 @@ async function load_medusa_3() {
 
     // C load_special: link_doors_rooms → remove_boundary_syms → map_cleanup
     // → wallification → flip → fixup (tele copied from flipped lregions)
-    link_doors_rooms();
-    remove_boundary_syms();
-    map_cleanup();
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -5835,8 +5861,8 @@ async function load_medusa_3() {
  * Map cells + stairs + door carry the game SpLev_Map marks
  * (C :6292/:4189/:4661; D-3538).
  * Named omissions: worn/artifact STONE_RES in resists_ston;
- * ensure_way_out / solidify; create_object Medusa fill (uses
- * medusa_empty_statue_at); count_level_features / premap.
+ * create_object Medusa fill (uses
+ * medusa_empty_statue_at); / premap.
  */
 async function load_medusa_2() {
     const g = game;
@@ -5988,9 +6014,7 @@ async function load_medusa_2() {
 
     // C load_special: link_doors → remove_boundary_syms → map_cleanup
     // → wallification → flip → fixup (lregions after flip)
-    link_doors_rooms();
-    remove_boundary_syms();
-    map_cleanup();
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -6002,8 +6026,8 @@ async function load_medusa_2() {
  * Map cells + stair + doors carry the game SpLev_Map marks
  * (C :6292/:4189/:4661; D-3538).
  * Named omissions: worn/artifact STONE_RES in resists_ston;
- * ensure_way_out / solidify; create_object Medusa fill (uses
- * medusa_empty_statue_at); count_level_features / premap.
+ * create_object Medusa fill (uses
+ * medusa_empty_statue_at); / premap.
  */
 async function load_medusa_4() {
     const g = game;
@@ -6150,9 +6174,7 @@ async function load_medusa_4() {
         splev_create_monster('black naga');
     }
 
-    link_doors_rooms();
-    remove_boundary_syms();
-    map_cleanup();
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -6161,7 +6183,7 @@ async function load_medusa_4() {
 
 /**
  * C ref: dat/bigrm-7.lua via load_special.
- * Named omissions: ensure_way_out / solidify / premap; other bigrm-N.
+ * Named omissions: other bigrm-N.
  */
 function load_bigrm_7() {
     const g = game;
@@ -6231,6 +6253,7 @@ function load_bigrm_7() {
     for (let i = 0; i < 28; i++) splev_create_monster(null);
 
     // C load_special: wallification → flip_level_rnd → fixup_special
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -6239,7 +6262,7 @@ function load_bigrm_7() {
 
 /**
  * C ref: dat/bigrm-8.lua via load_special.
- * Named omissions: ensure_way_out / solidify / premap; other bigrm-N.
+ * Named omissions: other bigrm-N.
  */
 function load_bigrm_8() {
     const g = game;
@@ -6307,6 +6330,7 @@ function load_bigrm_8() {
     for (let i = 0; i < 28; i++) splev_create_monster(null);
 
     // C load_special: wallification → flip_level_rnd → fixup_special
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -6315,7 +6339,7 @@ function load_bigrm_8() {
 
 /**
  * C ref: dat/bigrm-9.lua via load_special — water/lava "eye" bigroom.
- * Named omissions: ensure_way_out / solidify / premap; other bigrm-N.
+ * Named omissions: other bigrm-N.
  */
 function load_bigrm_9() {
     const g = game;
@@ -6380,6 +6404,7 @@ function load_bigrm_9() {
     for (let i = 0; i < 28; i++) splev_create_monster(null);
 
     // C load_special: wallification when !corrmaze; noflip → skip flip
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     return fixup_special();
@@ -6387,7 +6412,7 @@ function load_bigrm_9() {
 
 /**
  * C ref: dat/bigrm-12.lua via load_special — two hexagons (pool/lava).
- * Named omissions: ensure_way_out / solidify / premap; other bigrm-N.
+ * Named omissions: other bigrm-N.
  */
 function load_bigrm_12() {
     const g = game;
@@ -6480,6 +6505,7 @@ function load_bigrm_12() {
     for (let i = 0; i < 28; i++) splev_create_monster(null);
 
     // C load_special: wallification → flip_level_rnd(noflipy→2) → fixup
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(allowFlips, false);
@@ -6697,6 +6723,7 @@ function load_bar_strt() {
         delarea: { x1: -1, y1: -1, x2: -1, y2: -1 },
     });
     // C load_special: wallification → flip_level_rnd → fixup_special
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -6708,7 +6735,7 @@ function load_bar_strt() {
  * solidfill + cloud replace_terrain + tower clear + leader invent.
  * Map cells + stairs + doors carry the game SpLev_Map marks
  * (C :6292/:4189/:4661; D-3540).
- * Named omissions: count_level_features /
+ * Named omissions:
  * level_finalize_topology / fill_special_room;
  * sp_lev.c lspo_reset_level / lspo_finalize_level still named
  * (cmd.c makemap_prepost post rndspot is D-1288).
@@ -6943,9 +6970,7 @@ function load_wiz_strt() {
 
     // C load_special epilogue: link_doors_rooms → remove_boundary_syms →
     // map_cleanup → wallification → flip_level_rnd → lregions → fixup
-    link_doors_rooms();
-    remove_boundary_syms();
-    map_cleanup();
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -7162,9 +7187,7 @@ function load_wiz_loca() {
 
     // C load_special: link_doors_rooms → remove_boundary_syms →
     // map_cleanup → wallification → flip_level_rnd → fixup
-    link_doors_rooms();
-    remove_boundary_syms();
-    map_cleanup();
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -7174,7 +7197,7 @@ function load_wiz_loca() {
 /**
  * C ref: dat/Wiz-fila.lua via load_special — quest filler above locate.
  * Ordinary des.room + imp/vampire-bat stock + des.random_corridors.
- * Named omissions: failed-room / ensure_way_out.
+ * Named omissions: failed-room.
  */
 function load_wiz_fila() {
     const g = game;
@@ -7218,6 +7241,7 @@ function load_wiz_fila() {
 
     makecorridors();
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -7227,7 +7251,7 @@ function load_wiz_fila() {
 /**
  * C ref: dat/Wiz-filb.lua via load_special — quest filler below locate.
  * Ordinary des.room + xorn/imp/vampire-bat stock + des.random_corridors.
- * Named omissions: failed-room / ensure_way_out.
+ * Named omissions: failed-room.
  */
 function load_wiz_filb() {
     const g = game;
@@ -7270,6 +7294,7 @@ function load_wiz_filb() {
 
     makecorridors();
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -7451,9 +7476,7 @@ function load_wiz_goal() {
 
     // C load_special: link_doors_rooms → remove_boundary_syms →
     // map_cleanup → wallification → flip_level_rnd → fixup
-    link_doors_rooms();
-    remove_boundary_syms();
-    map_cleanup();
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -7670,6 +7693,7 @@ function load_pri_strt() {
         delarea: { x1: -1, y1: -1, x2: -1, y2: -1 },
     });
     // C load_special: wallification → flip_level_rnd → fixup_special
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -7683,7 +7707,7 @@ function load_pri_strt() {
  * .lit); morgue regions stock undead; temple flood re-lights.
  * Named omissions: humidity-aware get_location; flip_level (noflip);
  * spo_end_moninvent m_dowear; add_doors_to_room mid-region (doors are
- * linked once via link_doors_rooms before wallify, ≡ C load_special).
+ * linked once via before wallify, ≡ C load_special).
  * SpLev_Map game bitmap C-complete (C :6292/:4189/:4661; D-3550).
  */
 async function load_pri_loca() {
@@ -7872,9 +7896,9 @@ async function load_pri_loca() {
     // C load_special: link_doors_rooms before wallify/fixup (sp_lev.c).
     // Door linkage makes fill_zoo skip morgue door-edges → fill count
     // matches lua hx=39 (D-0645 hx=35 clip removed; D-0658).
-    link_doors_rooms();
 
     // des.level_flags noflip — wallify then fixup (skip flip_level_rnd)
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     return fixup_special();
@@ -7987,6 +8011,7 @@ xxxxx...xxxxxx....xxxxxxxx
     splev_create_monster('W');
 
     // C load_special: wallification → flip_level_rnd → fixup
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -8199,6 +8224,7 @@ function load_arc_strt() {
         delarea: { x1: -1, y1: -1, x2: -1, y2: -1 },
     });
     // C load_special: wallification → flip_level_rnd → fixup_special
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -8429,6 +8455,7 @@ function load_arc_loca() {
     splev_create_monster('M');
 
     // C load_special: wallification → flip_level_rnd → fixup_special
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -8587,6 +8614,7 @@ function load_arc_goal() {
     splev_create_monster('M');
 
     // C load_special: wallification → flip_level_rnd → fixup_special
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -8598,7 +8626,7 @@ function load_arc_goal() {
  * solidfill ROOM then mines fg=bg="." lit-field kludge; Camelot map;
  * COURT FILL_LVFLAGS; CUSTOM_INVENT Excalibur + plate; warhorse saddles.
  * King Arthur invent wears via m_dowear (sp_lev.c spo_end_moninvent).
- * Named omissions: humidity get_location; ensure_way_out / map_cleanup.
+ * Named omissions: humidity get_location.
  * (String-form region wall expansion is live via light_region.)
  */
 async function load_kni_strt() {
@@ -8820,6 +8848,7 @@ async function load_kni_strt() {
         delarea: { x1: -1, y1: -1, x2: -1, y2: -1 },
     });
     // C load_special: wallification → flip_level_rnd → fixup_special
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -8831,7 +8860,7 @@ async function load_kni_strt() {
  * (Isle of Glass). Mines fg="." bg="P" joined swamp, map 'x' keeps pool;
  * temple FILL_LVFLAGS + shrine priestini.
  * Named omissions: humidity get_location; spo_end_moninvent m_dowear;
- * ensure_way_out / map_cleanup; light_region wall expansion.
+ * light_region wall expansion.
  */
 async function load_kni_loca() {
     const g = game;
@@ -8948,6 +8977,7 @@ xxxxxxxxx.......xxxxxx.....xxxxxxxxxxxxx
     splev_create_monster('j', 0);
 
     // C load_special: wallification → flip_level_rnd → fixup_special
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -8957,7 +8987,7 @@ xxxxxxxxx.......xxxxxx.....xxxxxxxxxxxxx
 /**
  * C ref: dat/Kni-fila.lua via load_special — quest filler above locate.
  * Mines swamp (fg="." bg="P" joined lit=1); noflip.
- * Named omissions: humidity get_location; ensure_way_out.
+ * Named omissions: humidity get_location.
  */
 async function load_kni_fila() {
     const g = game;
@@ -8988,6 +9018,7 @@ async function load_kni_fila() {
     splev_create_monster('ochre jelly', 0);
     for (let i = 0; i < 4; i++) splev_create_trap();
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // des.level_flags("mazelevel", "noflip") — skip flip_level_rnd
@@ -8997,7 +9028,7 @@ async function load_kni_fila() {
 /**
  * C ref: dat/Kni-filb.lua via load_special — quest filler below locate.
  * Same mines swamp as Kni-fila; more objects and ochre jellies; noflip.
- * Named omissions: humidity get_location; ensure_way_out.
+ * Named omissions: humidity get_location.
  */
 async function load_kni_filb() {
     const g = game;
@@ -9025,6 +9056,7 @@ async function load_kni_filb() {
     for (let i = 0; i < 3; i++) splev_create_monster('ochre jelly', 0);
     for (let i = 0; i < 4; i++) splev_create_trap();
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // des.level_flags("mazelevel", "noflip") — skip flip_level_rnd
@@ -9154,6 +9186,7 @@ function load_kni_goal() {
     splev_create_monster('j', 0);
 
     // C load_special: wallification → flip_level_rnd → fixup_special
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -9165,8 +9198,7 @@ function load_kni_goal() {
  * Thieves). Solidfill + mazelevel/noteleport/hardfloor/nommap; 76×21 map;
  * shuffle four exits (stair vs mimics appear_as ter:staircase down);
  * floodfill streets; CUSTOM_INVENT; lua math.random wanderers.
- * Named omissions: humidity get_location;
- * ensure_way_out.
+ * Named omissions: humidity get_location.
  */
 function load_rog_strt() {
     const g = game;
@@ -9348,6 +9380,7 @@ function load_rog_strt() {
         inarea: { x1: mx + 19, y1: my + 9, x2: mx + 19, y2: my + 9 },
         delarea: { x1: -1, y1: -1, x2: -1, y2: -1 },
     });
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -9357,7 +9390,7 @@ function load_rog_strt() {
 /**
  * C ref: dat/Rog-loca.lua via load_special — Rogue quest locate.
  * Solidfill + mazelevel; 76×21 map; region lit grow; random stairs.
- * Named omissions: humidity get_location; ensure_way_out.
+ * Named omissions: humidity get_location.
  */
 function load_rog_loca() {
     const g = game;
@@ -9425,6 +9458,7 @@ function load_rog_loca() {
     for (let i = 0; i < 3; i++) splev_create_monster('N', 0);
     for (let i = 0; i < 5; i++) splev_create_monster('chameleon', 0);
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -9434,7 +9468,7 @@ function load_rog_loca() {
 /**
  * C ref: dat/Rog-fila.lua via load_special — quest filler above locate.
  * Ordinary des.room + leprechaun/naga/nymph stock + des.random_corridors.
- * Named omissions: failed-room / ensure_way_out.
+ * Named omissions: failed-room.
  */
 function load_rog_fila() {
     const g = game;
@@ -9483,6 +9517,7 @@ function load_rog_fila() {
 
     makecorridors();
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -9492,7 +9527,7 @@ function load_rog_fila() {
 /**
  * C ref: dat/Rog-filb.lua via load_special — quest filler below locate.
  * Same ordinary-room stock as Rog-fila; des.random_corridors.
- * Named omissions: failed-room / ensure_way_out.
+ * Named omissions: failed-room.
  */
 function load_rog_filb() {
     const g = game;
@@ -9541,6 +9576,7 @@ function load_rog_filb() {
 
     makecorridors();
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -9551,7 +9587,7 @@ function load_rog_filb() {
  * C ref: dat/Rog-goal.lua via load_special — Rogue quest goal (Master
  * Assassin / Master Key of Thievery). Solidfill + mazelevel/noteleport;
  * levregion stair-up region_islev; named key; chameleon tin; sharks in moat.
- * Named omissions: humidity get_location for water-likers; ensure_way_out.
+ * Named omissions: humidity get_location for water-likers.
  */
 function load_rog_goal() {
     const g = game;
@@ -9638,6 +9674,7 @@ function load_rog_goal() {
     for (const [rx, ry] of [[51, 14], [53, 9], [55, 15], [58, 10]])
         splev_create_monster('shark', 0, { rx, ry });
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -9652,7 +9689,7 @@ function load_rog_goal() {
  * Norn CUSTOM_INVENT (banded mail +5, long sword +4) + chest + warriors;
  * non_diggable audience chamber; 6 fire traps; fixed fire-ant siege + 2
  * hostile fire giants.
- * Named omissions: ensure_way_out.
+ * Named omissions: none.
  */
 function load_val_strt() {
     const g = game;
@@ -9788,6 +9825,7 @@ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
         inarea: { x1: mx + 66, y1: my + 17, x2: mx + 66, y2: my + 17 },
         delarea: { x1: -1, y1: -1, x2: -1, y2: -1 },
     });
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -9800,7 +9838,7 @@ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
  * 40×13 map with pool/lava edges; whole-map lit region; off-map up stair;
  * whole-map non_diggable; 15 objects; 4 fire + 2 random traps; 17 fire ants
  * + class a + 2 hostile H + 7 hostile fire giants.
- * Named omissions: humidity get_location; ensure_way_out.
+ * Named omissions: humidity get_location.
  */
 async function load_val_loca() {
     const g = game;
@@ -9880,6 +9918,7 @@ xPPPPxx                         xxxxPPPP
     for (let i = 0; i < 7; i++) splev_create_monster('fire giant', 0);
     splev_create_monster('H', 0);
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // des.level_flags noflip — skip flip_level_rnd
@@ -9894,7 +9933,7 @@ xPPPPxx                         xxxxPPPP
  * then percent-75 open else random); the Orb of Fate (blessed +5 crystal
  * ball) + 14 objects; fixed + random board/fire traps; Lord Surtur, fire
  * ants, class a, 10 fixed + 2 random hostile fire giants, hostile H.
- * Named omissions: humidity get_location; ensure_way_out.
+ * Named omissions: humidity get_location.
  */
 async function load_val_goal() {
     const g = game;
@@ -10007,6 +10046,7 @@ xxxxxxxxx..................xxxxxxxx
     splev_create_monster('fire giant', 0);
     splev_create_monster('H', 0);
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -10018,7 +10058,7 @@ xxxxxxxxx..................xxxxxxxx
  * Solidfill ice + mines fg="." bg="I" (smoothed, joined, lit, noflip);
  * random up/down stairs; 9 objects; 5 fire ants + class a + hostile fire
  * giant; 7 random traps.
- * Named omissions: humidity get_location; ensure_way_out.
+ * Named omissions: humidity get_location.
  */
 async function load_val_fila() {
     const g = game;
@@ -10050,6 +10090,7 @@ async function load_val_fila() {
     splev_create_monster('fire giant', 0);
     for (let i = 0; i < 7; i++) splev_create_trap();
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // des.level_flags noflip — skip flip_level_rnd
@@ -10061,7 +10102,7 @@ async function load_val_fila() {
  * Solidfill lava + mines fg="." bg="L" (smoothed, joined, lit, noflip);
  * random up/down stairs; 11 objects; 3 fire ants + class a + 3 hostile fire
  * giants; 5 fire + 2 random traps.
- * Named omissions: humidity get_location; ensure_way_out.
+ * Named omissions: humidity get_location.
  */
 async function load_val_filb() {
     const g = game;
@@ -10094,6 +10135,7 @@ async function load_val_filb() {
     for (let i = 0; i < 5; i++) splev_create_trap(FIRE_TRAP);
     for (let i = 0; i < 2; i++) splev_create_trap();
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // des.level_flags noflip — skip flip_level_rnd
@@ -10108,8 +10150,7 @@ async function load_val_filb() {
  * CUSTOM_INVENT (splint mail +5 / katana +4, eroded=-1 erodeproof,
  * not-cursed) + chest; 8 roshi chamber guards; whole-map non_diggable;
  * 6 random traps; 9 hostile ninja + 3 wolves + random stalker siege.
- * Named omissions: humidity-aware get_location for water-likers;
- * ensure_way_out.
+ * Named omissions: humidity-aware get_location for water-likers.
  */
 function load_sam_strt() {
     const g = game;
@@ -10265,6 +10306,7 @@ function load_sam_strt() {
         inarea: { x1: mx + 62, y1: my + 12, x2: mx + 70, y2: my + 17 },
         delarea: { x1: -1, y1: -1, x2: -1, y2: -1 },
     });
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -10278,8 +10320,7 @@ function load_sam_strt() {
  * (25,14); whole-map non_diggable; 8 gem + 8 armor + 8 weapon + 8 tool
  * class objects at fixed coords; 6 random traps; ninja/wolf/d monsters in
  * lua order + 9 random stalkers + 6 hostile samurai courtyard guards.
- * Named omissions: humidity-aware get_location for water-likers;
- * ensure_way_out.
+ * Named omissions: humidity-aware get_location for water-likers.
  */
 function load_sam_loca() {
     const g = game;
@@ -10415,6 +10456,7 @@ function load_sam_loca() {
     splev_create_monster('samurai', 0, { rx: 33, ry: 14 });
     splev_create_monster('samurai', 0, { rx: 34, ry: 14 });
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -10429,8 +10471,7 @@ function load_sam_loca() {
  * (4-choice, 4-choice, 2-choice); whole-map non_diggable; The Tsurugi of
  * Muramasa (blessed tsurugi) + 14 objects; 3 fixed board + 6 random traps;
  * Ashikaga Takauji + 5 hostile samurai + 5 hostile ninja + wolves/d/stalkers.
- * Named omissions: humidity-aware get_location for water-likers;
- * ensure_way_out.
+ * Named omissions: humidity-aware get_location for water-likers.
  */
 function load_sam_goal() {
     const g = game;
@@ -10541,6 +10582,7 @@ ${' '.repeat(45)}
     for (let i = 0; i < 2; i++) splev_create_monster('d', undefined);
     for (let i = 0; i < 9; i++) splev_create_monster('stalker', undefined);
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -10552,8 +10594,7 @@ ${' '.repeat(45)}
  * Solidfill " " + mazelevel/noflip; mines fg="." bg="P" (smoothed, joined,
  * walled; no lit key in lua); random up/down stairs; 9 objects; class d +
  * 5 wolves + stalker; 4 random traps.
- * Named omissions: humidity-aware get_location for water-likers;
- * ensure_way_out.
+ * Named omissions: humidity-aware get_location for water-likers.
  */
 async function load_sam_fila() {
     const g = game;
@@ -10584,6 +10625,7 @@ async function load_sam_fila() {
     splev_create_monster('stalker', undefined);
     for (let i = 0; i < 4; i++) splev_create_trap();
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // des.level_flags("mazelevel", "noflip") — skip flip_level_rnd
@@ -10595,8 +10637,7 @@ async function load_sam_fila() {
  * Solidfill " " + mazelevel; 60x16 twin-hall map; whole-map unlit region;
  * 4 closed doors; random up/down stairs; 9 objects; class d + 4 wolves +
  * 3 stalkers; 4 random traps.
- * Named omissions: humidity-aware get_location for water-likers;
- * ensure_way_out.
+ * Named omissions: humidity-aware get_location for water-likers.
  */
 function load_sam_filb() {
     const g = game;
@@ -10654,6 +10695,7 @@ function load_sam_filb() {
     for (let i = 0; i < 3; i++) splev_create_monster('stalker', undefined);
     for (let i = 0; i < 4; i++) splev_create_trap();
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -10668,8 +10710,7 @@ function load_sam_filb() {
  * (silver dagger +5) + chest + 8 attendant chamber guards; whole-map
  * non_diggable; 6 random traps; rats/eels/shark/semicolon siege + hostile
  * dragons/snakes in lua order; branch levregion point (04,12) after flip.
- * Named omissions: humidity-aware get_location for water-likers;
- * ensure_way_out.
+ * Named omissions: humidity-aware get_location for water-likers.
  * SpLev_Map game bitmap C-complete (C :6292/:4189/:4661; D-3554).
  */
 function load_hea_strt() {
@@ -10816,6 +10857,7 @@ PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
         inarea: { x1: mx + 4, y1: my + 12, x2: mx + 4, y2: my + 12 },
         delarea: { x1: -1, y1: -1, x2: -1, y2: -1 },
     });
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -10830,7 +10872,7 @@ PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
  * (20,06); rect non_diggable (11,02,21,07); 15 objects; 6 random traps;
  * rats/class-r/eels/kraken/sharks/semicolons/dragons/snakes in lua order.
  * Named omissions: humidity-aware get_location for water-likers;
- * spo_end_moninvent m_dowear; ensure_way_out.
+ * spo_end_moninvent m_dowear.
  * SpLev_Map game bitmap C-complete (C :6292/:4189/:4661; D-3554).
  */
 async function load_hea_loca() {
@@ -10958,6 +11000,7 @@ PPPPPPPPPPP........PPPPPPPPPPPP
     for (let i = 0; i < 5; i++) splev_create_monster('D', 0);
     for (let i = 0; i < 9; i++) splev_create_monster('S', 0);
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -10971,8 +11014,7 @@ PPPPPPPPPPP........PPPPPPPPPPPP
  * the Staff of Aesculapius (blessed +0 quarterstaff) + wand of lightning +
  * 14 objects; 6 random traps; hostile Cyclops + rats/class-r/eels/sharks/
  * semicolon/dragons/snakes in lua order.
- * Named omissions: humidity-aware get_location for water-likers;
- * ensure_way_out.
+ * Named omissions: humidity-aware get_location for water-likers.
  */
 async function load_hea_goal() {
     const g = game;
@@ -11055,6 +11097,7 @@ PPP..................................PPP.
     for (let i = 0; i < 5; i++) splev_create_monster('D', 0);
     for (let i = 0; i < 10; i++) splev_create_monster('S', 0);
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -11066,8 +11109,7 @@ PPP..................................PPP.
  * Solidfill "P" + mazelevel/noflip; mines fg="." bg="P" (lit=1,
  * walled=false); random up/down stairs; 8 objects; rat + 2 class-r + eels +
  * dragons + snakes in lua order; 4 random traps.
- * Named omissions: humidity-aware get_location for water-likers;
- * ensure_way_out.
+ * Named omissions: humidity-aware get_location for water-likers.
  */
 async function load_hea_fila() {
     const g = game;
@@ -11101,6 +11143,7 @@ async function load_hea_fila() {
     for (let i = 0; i < 3; i++) splev_create_monster('S', 0);
     for (let i = 0; i < 4; i++) splev_create_trap();
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // des.level_flags("mazelevel", "noflip") — skip flip_level_rnd
@@ -11112,8 +11155,7 @@ async function load_hea_fila() {
  * Solidfill "P" + mazelevel/noflip; mines fg="." bg="P" (lit=1,
  * walled=false); random up/down stairs; 11 objects; 2 rats + 2 class-r +
  * eels + dragons + snakes in lua order; 4 random traps.
- * Named omissions: humidity-aware get_location for water-likers;
- * ensure_way_out.
+ * Named omissions: humidity-aware get_location for water-likers.
  */
 async function load_hea_filb() {
     const g = game;
@@ -11147,6 +11189,7 @@ async function load_hea_filb() {
     for (let i = 0; i < 3; i++) splev_create_monster('S', 0);
     for (let i = 0; i < 4; i++) splev_create_trap();
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // des.level_flags("mazelevel", "noflip") — skip flip_level_rnd
@@ -11164,8 +11207,7 @@ async function load_hea_filb() {
  * (64,03) + CUSTOM_INVENT (walking shoes +3, hawaiian shirt +3) + chest;
  * 11 guides + 2 watchmen placed; giant eel + 2 piranhas + 2 krakens placed
  * in the moat; 9 random traps.
- * Named omissions: humidity-aware get_location for water-likers;
- * ensure_way_out.
+ * Named omissions: humidity-aware get_location for water-likers.
  */
 function load_tou_strt() {
     const g = game;
@@ -11330,6 +11372,7 @@ function load_tou_strt() {
     for (let i = 0; i < 9; i++) splev_create_trap();
 
     // C load_special: wallification → flip_level_rnd → fixup_special
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // des.levregion({ region={68,14,68,14}, type="branch" }) — store pre-flip
@@ -11355,8 +11398,7 @@ function load_tou_strt() {
  * area; up stair (10,04) + down stair (73,05); whole-map non_diggable;
  * 31 closed + 4 locked doors; 14 objects + 2 blank paper at (71,12);
  * 9 traps on '.' minus the 2 shops via rndcoord; 16 spiders + s/s.
- * Named omissions: humidity-aware get_location for water-likers;
- * ensure_way_out.
+ * Named omissions: humidity-aware get_location for water-likers.
  */
 function load_tou_loca() {
     const g = game;
@@ -11554,6 +11596,7 @@ function load_tou_loca() {
     splev_create_monster('s', undefined);
     splev_create_monster('s', undefined);
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -11569,8 +11612,7 @@ function load_tou_loca() {
  * Yendorian Express Card + 14 objects; 6 traps on '.' minus the shops via
  * rndcoord; hostile Master of Thieves + spiders + s/s + succubi/incubi +
  * Kops + prisoners + watchman; des.wallify() before the epilogue.
- * Named omissions: humidity-aware get_location for water-likers;
- * ensure_way_out.
+ * Named omissions: humidity-aware get_location for water-likers.
  */
 function load_tou_goal() {
     const g = game;
@@ -11772,6 +11814,7 @@ function load_tou_goal() {
         (g.splev_ystart | 0) + (g.splev_ysize | 0) + 1,
     );
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -11783,8 +11826,7 @@ function load_tou_goal() {
  * Solidfill " " + mazelevel/noflip; mines fg="." bg=" " (no lit key,
  * smoothed/joined/walled); random up/down stairs; 7 objects; 4 random
  * traps; 5 hostile soldiers + hostile class H + hostile class C.
- * Named omissions: humidity-aware get_location for water-likers;
- * ensure_way_out.
+ * Named omissions: humidity-aware get_location for water-likers.
  */
 async function load_tou_fila() {
     const g = game;
@@ -11815,6 +11857,7 @@ async function load_tou_fila() {
     splev_create_monster('H', 0);
     splev_create_monster('C', 0);
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // des.level_flags("mazelevel", "noflip") — skip flip_level_rnd
@@ -11826,8 +11869,7 @@ async function load_tou_fila() {
  * Solidfill " " + mazelevel/noflip; mines fg="." bg=" " (no lit key,
  * smoothed/joined/walled); random up/down stairs; 11 objects; 4 random
  * traps; hostile soldier + 2 captains + 2 class H + class C + s.
- * Named omissions: humidity-aware get_location for water-likers;
- * ensure_way_out.
+ * Named omissions: humidity-aware get_location for water-likers.
  */
 async function load_tou_filb() {
     const g = game;
@@ -11862,6 +11904,7 @@ async function load_tou_filb() {
     splev_create_monster('C', 0);
     splev_create_monster('s', 0);
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // des.level_flags("mazelevel", "noflip") — skip flip_level_rnd
@@ -11880,8 +11923,7 @@ async function load_tou_filb() {
  * Orion + leather armor/yumi/ya×50 CUSTOM_INVENT + chest + 8 hunter guards;
  * rect non_diggable; 2 fixed arrow + pit traps + spiked-pit/bear/bear;
  * asleep minotaur + 18 placed + 6 random plains centaurs + 2 scorpions.
- * Named omissions: humidity-aware get_location for water-likers;
- * ensure_way_out.
+ * Named omissions: humidity-aware get_location for water-likers.
  */
 async function load_ran_strt() {
     const g = game;
@@ -12038,6 +12080,7 @@ async function load_ran_strt() {
         inarea: { x1: 51, y1: 2, x2: 77, y2: 18 },
         delarea: { x1: -1, y1: -1, x2: -1, y2: -1 },
     });
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -12050,8 +12093,7 @@ async function load_ran_strt() {
  * (00,00,54,19); up stair (25,05) + down stair (27,18); rect non_diggable;
  * 8 objects; 2 spiked-pit + 2 teleport + 2 arrow random traps; asleep wumpus
  * at (27,18) + bats/forest/mountain centaurs/scorpions/s-class in lua order.
- * Named omissions: humidity-aware get_location for water-likers;
- * ensure_way_out.
+ * Named omissions: humidity-aware get_location for water-likers.
  */
 function load_ran_loca() {
     const g = game;
@@ -12146,6 +12188,7 @@ function load_ran_loca() {
     for (let i = 0; i < 4; i++) splev_create_monster('scorpion', 0);
     for (let i = 0; i < 2; i++) splev_create_monster('s', 0);
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -12160,8 +12203,7 @@ function load_ran_loca() {
  * 6 random traps; 3 locked + 11 closed doors; Scorpius + placed
  * forest/mountain centaurs + corner scorpions + randoms; trailing
  * des.wallify().
- * Named omissions: humidity-aware get_location for water-likers;
- * ensure_way_out.
+ * Named omissions: humidity-aware get_location for water-likers.
  */
 function load_ran_goal() {
     const g = game;
@@ -12308,6 +12350,7 @@ function load_ran_goal() {
         (g.splev_ystart | 0) + (g.splev_ysize | 0) + 1,
     );
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -12319,8 +12362,7 @@ function load_ran_goal() {
  * Solidfill " " + mazelevel/noflip; mines fg="." bg="T" (no lit key,
  * smoothed/joined/walled); random up/down stairs; 7 objects; 4 random
  * traps; 2 mountain + 3 forest centaurs + C + scorpion, all hostile.
- * Named omissions: humidity-aware get_location for water-likers;
- * ensure_way_out.
+ * Named omissions: humidity-aware get_location for water-likers.
  */
 async function load_ran_fila() {
     const g = game;
@@ -12352,6 +12394,7 @@ async function load_ran_fila() {
     splev_create_monster('C', 0);
     splev_create_monster('scorpion', 0);
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // des.level_flags("mazelevel", "noflip") — skip flip_level_rnd
@@ -12363,8 +12406,7 @@ async function load_ran_fila() {
  * Solidfill " " + mazelevel/noflip; mines fg="." bg=" " (no lit key,
  * smoothed/joined/walled); random up/down stairs; 11 objects; 4 random
  * traps; 4 mountain centaurs + C + 2 scorpions, all hostile.
- * Named omissions: humidity-aware get_location for water-likers;
- * ensure_way_out.
+ * Named omissions: humidity-aware get_location for water-likers.
  */
 async function load_ran_filb() {
     const g = game;
@@ -12395,6 +12437,7 @@ async function load_ran_filb() {
     splev_create_monster('C', 0);
     for (let i = 0; i < 2; i++) splev_create_monster('scorpion', 0);
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // des.level_flags("mazelevel", "noflip") — skip flip_level_rnd
@@ -12635,6 +12678,7 @@ function load_mon_strt() {
         delarea: { x1: -1, y1: -1, x2: -1, y2: -1 },
     });
     // C load_special: wallification → flip_level_rnd → fixup_special
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -12647,8 +12691,7 @@ function load_mon_strt() {
  * random up/down stairs; whole-map non_diggable; 15 objects; blessed
  * spinach tin pair on a negate-filter '.' rndcoord(0) cell with a burn
  * Elbereth engraving; 6 traps; 14 earth elementals + 9 xorns.
- * Named omissions: humidity-aware get_location for water-likers;
- * ensure_way_out.
+ * Named omissions: humidity-aware get_location for water-likers.
  */
 function load_mon_loca() {
     const g = game;
@@ -12740,6 +12783,7 @@ function load_mon_loca() {
         splev_create_monster('xorn', undefined);
 
     // C load_special: wallification → flip_level_rnd → fixup_special
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -12857,6 +12901,7 @@ xxxxx...xxxxxx....xxxxxxxx
         splev_create_monster('xorn', undefined);
 
     // C load_special: wallification → flip_level_rnd → fixup
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -12867,8 +12912,7 @@ xxxxx...xxxxxx....xxxxxxxx
  * C ref: dat/Mon-fila.lua via load_special — quest filler above locate.
  * Six ordinary des.room + des.random_corridors; E/X class-letter stock is
  * explicitly hostile (peaceful=0). Named omissions: other-role *-fila room
- * scripts; failed-room skip fidelity beyond create_room false;
- * ensure_way_out / link_doors_rooms extras.
+ * scripts; failed-room skip fidelity beyond create_room false.
  */
 async function load_mon_fila() {
     const g = game;
@@ -12915,6 +12959,7 @@ async function load_mon_fila() {
     makecorridors();
 
     // C load_special: wallification → flip_level_rnd(allow_flips=3) → fixup
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -12925,7 +12970,7 @@ async function load_mon_fila() {
  * C ref: dat/Mon-filb.lua via load_special — quest filler below locate.
  * Six ordinary des.room + des.random_corridors; E/X class-letter stock is
  * explicitly hostile (peaceful=0). Named omissions: other-role *-filb;
- * failed-room / ensure_way_out.
+ * failed-room.
  */
 async function load_mon_filb() {
     const g = game;
@@ -12968,6 +13013,7 @@ async function load_mon_filb() {
 
     makecorridors();
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -12985,8 +13031,7 @@ async function load_mon_filb() {
  * leather armor/club +5 CUSTOM_INVENT + chest + 8 neanderthal guards;
  * whole-map non_diggable; 2 fixed pits + 4 random traps; 12 hostile
  * bugbears on siege duty.
- * Named omissions: humidity-aware get_location for water-likers;
- * ensure_way_out.
+ * Named omissions: humidity-aware get_location for water-likers.
  */
 function load_cav_strt() {
     const g = game;
@@ -13200,7 +13245,7 @@ function load_cav_strt() {
     // a no-op; link_doors_rooms is doors-only (Named omission: door
     // registry). remove_boundary converts 'B'/CROSSWALL cells to ROOM
     // before wallification can retype them as walls (D-3929).
-    remove_boundary_syms();
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -13214,8 +13259,7 @@ function load_cav_strt() {
  * (28,11); up stair (04,03) + down stair (73,10); whole-map
  * non_diggable; 15 objects; 6 traps; bugbears/hill giants + h/H
  * class stock, all hostile.
- * Named omissions: humidity-aware get_location for water-likers;
- * ensure_way_out.
+ * Named omissions: humidity-aware get_location for water-likers.
  */
 function load_cav_loca() {
     const g = game;
@@ -13345,9 +13389,7 @@ function load_cav_loca() {
     // (sp_lev.c:6464-6466; Bar-loca pattern). remove_boundary_syms
     // converts the 'B' CROSSWALL markers to ROOM — without it the B
     // cells wallify to walls where C shows floors.
-    link_doors_rooms();
-    remove_boundary_syms();
-    map_cleanup();
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -13361,8 +13403,7 @@ function load_cav_loca() {
  * up stair; whole-map non_diggable; blessed +0 Sceptre of Might mace
  * (Mon-goal lenses idiom) + 14 objects; asleep Chromatic Dragon on
  * the prize cell + 3 placed shriekers.
- * Named omissions: humidity-aware get_location for water-likers;
- * ensure_way_out.
+ * Named omissions: humidity-aware get_location for water-likers.
  */
 function load_cav_goal() {
     const g = game;
@@ -13444,6 +13485,7 @@ function load_cav_goal() {
     );
 
     // C load_special: wallification → flip_level_rnd → fixup_special
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -13455,8 +13497,7 @@ function load_cav_goal() {
  * Solidfill " " + mazelevel/noflip; mines fg="." bg=" " (no lit key,
  * smoothed/joined/walled); random up/down stairs; 7 objects; 4 random
  * traps; 5 bugbears + h + hill giant, all hostile (Ran-fila idiom).
- * Named omissions: humidity-aware get_location for water-likers;
- * ensure_way_out.
+ * Named omissions: humidity-aware get_location for water-likers.
  */
 async function load_cav_fila() {
     const g = game;
@@ -13487,6 +13528,7 @@ async function load_cav_fila() {
     splev_create_monster('h', 0);
     splev_create_monster('hill giant', 0);
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // des.level_flags("mazelevel", "noflip") — skip flip_level_rnd
@@ -13498,8 +13540,7 @@ async function load_cav_fila() {
  * Solidfill " " + mazelevel/noflip; mines fg="." bg=" " (no lit key,
  * smoothed/joined/walled); random up/down stairs; 12 objects; 4 random
  * traps; 4 bugbears + 2× h + 2× hill giant, all hostile.
- * Named omissions: humidity-aware get_location for water-likers;
- * ensure_way_out.
+ * Named omissions: humidity-aware get_location for water-likers.
  */
 async function load_cav_filb() {
     const g = game;
@@ -13530,6 +13571,7 @@ async function load_cav_filb() {
     for (let i = 0; i < 2; i++) splev_create_monster('h', 0);
     for (let i = 0; i < 2; i++) splev_create_monster('hill giant', 0);
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // des.level_flags("mazelevel", "noflip") — skip flip_level_rnd
@@ -13549,8 +13591,7 @@ async function load_cav_filb() {
  * (03,10,07,13); arrival OROOM (06,15,09,16) + unlit entry walls;
  * irregular BARRACKS (62,03,71,04); 11 fixed doors; soldiers/lieutenant/
  * stone giant/D dragons/eels in lua order; corner gem stock.
- * Named omissions: humidity-aware get_location for water-likers;
- * ensure_way_out; count_level_features/solidify/premap.
+ * Named omissions: humidity-aware get_location for water-likers.
  */
 function load_knox() {
     const g = game;
@@ -13784,9 +13825,7 @@ function load_knox() {
     }
 
     // C load_special epilogue: link/remove/cleanup/wallify/flip/fixup
-    link_doors_rooms();
-    remove_boundary_syms();
-    map_cleanup();
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -13958,6 +13997,7 @@ function load_bar_loca() {
     placeMon({ cls: 'T', peaceful: 0 });
 
     // C load_special: wallification → flip_level_rnd → fixup_special
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -14089,9 +14129,7 @@ function load_bar_goal() {
 
     // C load_special: link_doors_rooms → remove_boundary_syms →
     // map_cleanup → wallification → flip_level_rnd → fixup
-    link_doors_rooms();
-    remove_boundary_syms();
-    map_cleanup();
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -14133,7 +14171,7 @@ function splev_map_aligned_start(wid, hei, halign, valign) {
 
 /**
  * C ref: dat/tower1.lua via load_special — Vlad's Tower upper stage.
- * Named omissions: map_cleanup lava/pool sweep; mon_has_special Vlad
+ * Named omissions: lava/pool sweep; mon_has_special Vlad
  * gate (makemon skips newcham for Vlad); full nh.is_genocided beyond
  * mvitals G_GENOD. Map cells + ladder + doors carry the game SpLev_Map
  * marks (C :6292/:4189/:4661; D-3528).
@@ -14315,6 +14353,7 @@ function load_tower1() {
     }
 
     // C load_special: wallification → flip → solidify → fixup_special
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -14332,7 +14371,7 @@ function load_tower1() {
 
 /**
  * C ref: dat/tower2.lua via load_special — Vlad's Tower middle stage.
- * Named omissions: map_cleanup; ensure_way_out; exclusion_zones.
+ * Named omissions: exclusion_zones.
  * Map cells + ladders + doors carry the game SpLev_Map marks
  * (C :6292/:4189/:4661; D-3528).
  * D-0673 pattern: map lit=FALSE clear after solidfill (≡ C lspo_map).
@@ -14528,6 +14567,7 @@ function load_tower2() {
     }
 
     // C load_special: wallification → flip → solidify → fixup_special
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -14544,7 +14584,7 @@ function load_tower2() {
 
 /**
  * C ref: dat/tower3.lua via load_special — Vlad's Tower entry (bottom).
- * Named omissions: map_cleanup; ensure_way_out; exclusion_zones.
+ * Named omissions: exclusion_zones.
  * Map cells + ladder + door carry the game SpLev_Map marks
  * (C :6292/:4189/:4661; D-3528).
  * D-0673 pattern: map lit=FALSE clear after solidfill (≡ C lspo_map).
@@ -14708,6 +14748,7 @@ function load_tower3() {
     }
 
     // C load_special: wallification → flip → solidify → branch lregion → fixup
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -15109,7 +15150,7 @@ function load_soko1_2() {
 
 /**
  * C ref: dat/soko3-1.lua via load_special.
- * Named omissions: ensure_way_out.
+ * Named omissions: none.
  */
 function load_soko3_1() {
     const g = game;
@@ -15210,7 +15251,7 @@ function load_soko3_1() {
 
 /**
  * C ref: dat/soko3-2.lua via load_special.
- * Named omissions: ensure_way_out.
+ * Named omissions: none.
  */
 function load_soko3_2() {
     const g = game;
@@ -15313,7 +15354,7 @@ function load_soko3_2() {
 
 /**
  * C ref: dat/soko4-1.lua via load_special — Sokoban entry (bottom).
- * Named omissions: ensure_way_out.
+ * Named omissions: none.
  */
 function load_soko4_1() {
     const g = game;
@@ -15415,6 +15456,7 @@ function load_soko4_1() {
     splev_create_object(WAND_CLASS);
 
     // C ref: sp_lev.c finalize_level — wallify, flip, solidify, fixup, premap
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -15444,7 +15486,7 @@ function load_soko4_1() {
 
 /**
  * C ref: dat/soko4-2.lua via load_special — Sokoban entry (bottom).
- * Named omissions: ensure_way_out.
+ * Named omissions: none.
  * Branch levregion stored pre-flip so flip_level remaps it (D-0782 pattern).
  */
 function load_soko4_2() {
@@ -15543,6 +15585,7 @@ function load_soko4_2() {
         delarea: { x1: -1, y1: -1, x2: -1, y2: -1 },
     });
     // C ref: sp_lev.c load_special — wallify, flip, levregion, solidify, fixup, premap
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -15740,6 +15783,7 @@ function load_earth() {
 
     splev_create_boulder();
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -15899,6 +15943,7 @@ L.....LLL......................LLLLL.........L.........LLLLLLLL..............LL
     for (let i = 0; i < 5; i++) splev_create_boulder();
 
     // C ref: sp_lev.c load_special — wallify, flip, then lregions / fixup
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -16057,6 +16102,7 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
         else splev_create_monster(spec[0]);
     }
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -16069,7 +16115,7 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
  * C ref: dat/water.lua via load_special — Plane of Water (endgame 4 of 5).
  * Bubbles: fixup_special calls setup_waterlevel after flip, before lregions.
  * Named omissions: water obj/mon/trap cons pickup+deposit;
- * humidity-aware get_location; ensure_way_out / solidify; astral.
+ * humidity-aware get_location; astral.
  */
 function load_water() {
     const g = game;
@@ -16128,6 +16174,7 @@ function load_water() {
         else splev_create_monster(spec[0]);
     }
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -16140,7 +16187,7 @@ function load_water() {
  * C ref: dat/astral.lua via load_special — Astral Plane (endgame 5 of 5).
  * Map cells + doors carry the game SpLev_Map marks
  * (no des.stair on the level; C :6292/:4661; D-3542).
- * Named omissions: ensure_way_out; humidity-aware get_location;
+ * Named omissions: humidity-aware get_location;
  * spo_end_moninvent m_dowear; fill_special_room TEMPLE beyond FILL_LVFLAGS
  * has_temple; G_UNIQ extinct return; fakewiz.
  */
@@ -16443,9 +16490,7 @@ function load_astral() {
 
     // C load_special: link_doors → remove_boundary → map_cleanup →
     // wallification → flip → solidify → fixup (lregions remapped by flip)
-    link_doors_rooms();
-    remove_boundary_syms();
-    map_cleanup();
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -16661,6 +16706,7 @@ function load_minend_1() {
     splev_create_monster('h');
 
     // C load_special: wallification → flip → fixup (no solidify/premap)
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -16892,6 +16938,7 @@ function load_minend_2() {
     splev_create_monster('h');
 
     // C load_special: wallification → flip → lregions → fixup
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -16931,8 +16978,8 @@ function load_minend_2() {
  * C ref: dat/minend-3.lua via load_special — Catacombs (Kelly Bailey).
  * solidfill fg="-" (HWALL) so mazewalk only carves map ' ' STONE; valign
  * bottom + nommap; mazewalk west stocked=false; lua wallify; mines prize.
- * Named omissions: ensure_way_out; link_doors_rooms; map_cleanup;
- * count_level_features; humidity-aware get_location; is_ok_location_dry
+ * Named omissions:
+ * humidity-aware get_location; is_ok_location_dry
  * boulder reject (D-0547).
  */
 function load_minend_3() {
@@ -17151,6 +17198,7 @@ function load_minend_3() {
     for (let i = 0; i < 4; i++) splev_create_monster('e');
 
     // C load_special: wallification → flip (no noflip) → fixup
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -17425,6 +17473,7 @@ async function load_minetn_1() {
         const ysize = g.splev_ysize | 0;
         wallify_map(mx - 1, my - 1, mx + xsize + 1, my + ysize + 1);
     }
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -17434,7 +17483,7 @@ async function load_minetn_1() {
 /**
  * C ref: dat/minetn-2.lua via load_special — Mines town "Town Square".
  * Nested des.room + create_subroom/create_door + shops/temple/watch.
- * Named omissions: link_doors_rooms extras; ensure_way_out.
+ * Named omissions: none.
  * minetn-6 is D-1503. minetn-7 is D-1504.
  */
 async function load_minetn_2() {
@@ -17527,6 +17576,7 @@ async function load_minetn_2() {
 
     makecorridors();
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -17536,7 +17586,7 @@ async function load_minetn_2() {
 /**
  * C ref: dat/minetn-3.lua via load_special — Mines town "Alley Town".
  * Nested des.room town + chance shops + temple align[1] + watch.
- * Named omissions: link_doors_rooms extras; ensure_way_out.
+ * Named omissions: none.
  * minetn-6 is D-1503. minetn-7 is D-1504.
  */
 async function load_minetn_3() {
@@ -17659,6 +17709,7 @@ async function load_minetn_3() {
 
     makecorridors();
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -17780,6 +17831,7 @@ async function load_minetn_4() {
 
     makecorridors();
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -18029,6 +18081,7 @@ function load_minetn_5() {
     }
 
     // C load_special: wallification → flip → fixup
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -18253,7 +18306,7 @@ xxxx-------xxxxxxxxxxxxxxx--------------
     // map_cleanup → wallification → flip_level_rnd → fixup_special.
     // map_cleanup stays a named omission (below); ensure_way_out must run
     // before wallification so its selection_rndcoord drain matches C.
-    ensure_way_out();
+    load_special_head(true); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -18264,8 +18317,8 @@ xxxx-------xxxxxxxxxxxxxxx--------------
  * C ref: dat/minetn-7.lua via load_special — Mines town "Bazaar Town".
  * Nested des.room town + chance shops + temple align[1] + sink + watch.
  * Town floor: C lua :155–165 three gnome then gnome lord + two
- * monkeys (D-1513; not four). Named omissions: link_doors_rooms
- * extras; ensure_way_out; map_cleanup; count_level_features.
+ * monkeys (D-1513; not four). Named omissions:
+ * none.
  */
 async function load_minetn_7() {
     const g = game;
@@ -18432,6 +18485,7 @@ async function load_minetn_7() {
 
     makecorridors();
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -19076,7 +19130,7 @@ function Deaf_fumaroles() {
 
 /**
  * C ref: dat/soko2-1.lua via load_special.
- * Named omissions: ensure_way_out.
+ * Named omissions: none.
  */
 function load_soko2_1() {
     const g = game;
@@ -19177,7 +19231,7 @@ function load_soko2_1() {
 
 /**
  * C ref: dat/soko2-2.lua via load_special.
- * Named omissions: ensure_way_out; humidity-aware get_location;
+ * Named omissions: humidity-aware get_location;
  * is_ok_location_dry boulder reject (D-0547).
  */
 function load_soko2_2() {
@@ -20573,6 +20627,7 @@ function load_tut1() {
     // C load_special `:6479–6480` — wallification when !corrmaze, before
     // flip (noflip) and fixup_special. map_cleanup / count_level_features
     // stay deferred.
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!game.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     return fixup_special();
@@ -20665,6 +20720,7 @@ function load_tut2() {
 
     // C load_special `:6479–6480` — wallification when !corrmaze, before
     // flip (noflip) and fixup_special.
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!game.level?.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     return fixup_special();
@@ -21907,12 +21963,17 @@ function create_drawbridge(x, y, dir, isOpen) {
     if (isOpen) { /* We want the bridge open */
         bridge.typ = DRAWBRIDGE_DOWN;
         wall.typ = DOOR;
-        wall.doormask = D_NODOOR;
+        wall.doormask = D_NODOOR; // C: the one flags field — clear the JS halves too
+        wall.flags = D_NODOOR;
+        wall.wall_info = D_NODOOR;
     } else {
         bridge.typ = DRAWBRIDGE_UP;
         wall.typ = DBWALL;
         /* Drawbridges are non-diggable. */
+        // C dbridge.c:275 assigns the one flags field (rm.h:213–215); JS keeps three.
         wall.wall_info = W_NONDIGGABLE;
+        wall.flags = W_NONDIGGABLE;
+        wall.doormask = W_NONDIGGABLE;
     }
     bridge.horizontal = !horiz;
     wall.horizontal = horiz;
@@ -24713,7 +24774,7 @@ function splev_room_monster_at(croom, id_or_class, rx, ry) {
 
 /**
  * C ref: dat/oracle.lua via load_special — Delphic Oracle level.
- * Named omissions: oracle verbalize / consultation; ensure_way_out.
+ * Named omissions: oracle verbalize / consultation.
  */
 async function load_oracle() {
     const g = game;
@@ -24776,6 +24837,7 @@ async function load_oracle() {
     // des.random_corridors → makecorridors
     makecorridors();
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // noflip — skip flip_level_rnd
@@ -24785,7 +24847,7 @@ async function load_oracle() {
 /**
  * C ref: dat/castle.lua via load_special — Gehennom stronghold.
  * Named omissions: passtune/drawbridge interaction; BARRACKS
- * squadmon loot arm in fill_zoo; ensure_way_out.
+ * squadmon loot arm in fill_zoo.
  */
 function load_castle() {
     const g = game;
@@ -25101,6 +25163,7 @@ function load_castle() {
     setLitArea(47, 5, 47, 6, false);
     setLitArea(47, 10, 47, 11, false);
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(allowFlips, false);
@@ -25407,8 +25470,7 @@ function load_valley() {
     for (let i = 0; i < 4; i++) splev_create_monster('M');
 
     // C load_special: link_doors → remove_boundary → wallify → flip → fixup
-    link_doors_rooms();
-    remove_boundary_syms();
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -25541,7 +25603,7 @@ function hell_tweaks(protectedArea) {
  * C ref: dat/asmodeus.lua via load_special — Asmodeus lair (Gehennom).
  * mazegrid + half-left main map + half-right mazewalk wing + hell_tweaks.
  * Named omissions: hellfill/wizard1–3/fakewiz;
- * ensure_way_out; selection.bounds fidelity beyond SpLev_Map union.
+ * selection.bounds fidelity beyond SpLev_Map union.
  */
 function load_asmodeus() {
     const g = game;
@@ -25797,7 +25859,7 @@ function load_asmodeus() {
     hell_tweaks(protectedSel);
 
     // C load_special: map_cleanup → wallify → flip
-    map_cleanup();
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -25836,7 +25898,7 @@ function load_asmodeus() {
 /**
  * C ref: dat/juiblex.lua via load_special — Juiblex swamp lair (Gehennom).
  * swamp init + two stair-guarantee pockets + centered lair map.
- * Named omissions: hellfill/wizard1–3/fakewiz; ensure_way_out;
+ * Named omissions: hellfill/wizard1–3/fakewiz;
  * mkswamp body (region filled=2 → FILL_LVFLAGS only).
  */
 function load_juiblex() {
@@ -26104,6 +26166,7 @@ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
     placeTrapRnd(MAGIC_TRAP);
 
     // C load_special: wallify; noflip → skip flip; lregions; fixup
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     {
@@ -26143,7 +26206,7 @@ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
  * solidfill + corrmaze + right/center map + west mazewalk (stocked);
  * baalz_fixup via fixup_special. Map cells + stair + door carry the game
  * SpLev_Map marks (C :6292/:4189/:4661; D-3536). Named omissions: hellfill/
- * wizard1–3/fakewiz; ensure_way_out; map_cleanup.
+ * wizard1–3/fakewiz.
  */
 function load_baalz() {
     const g = game;
@@ -26312,6 +26375,7 @@ function load_baalz() {
 
     // C load_special: !corrmaze wallify skipped; flip → lregions → fixup
     // (baalz_fixup from fixup_special)
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     flip_level_rnd(3, false);
     {
         const lregions = g.lregions || [];
@@ -26348,7 +26412,7 @@ function load_baalz() {
 /**
  * C ref: dat/orcus.lua via load_special — Orcus ghost town (Gehennom).
  * mazegrid + right/center map + west mazewalk (stocked) + hell_tweaks.
- * Named omissions: hellfill/wizard3/fakewiz; ensure_way_out;
+ * Named omissions: hellfill/wizard3/fakewiz;
  * full mongone/shkgone beyond stock_room invent+detach (D-0767).
  */
 function load_orcus() {
@@ -26608,7 +26672,7 @@ function load_orcus() {
     hell_tweaks(protectedSel);
 
     // C load_special: map_cleanup → wallify → flip
-    map_cleanup();
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -26647,7 +26711,7 @@ function load_orcus() {
 /**
  * C ref: dat/wizard1.lua via load_special — top (real) Wizard's Tower.
  * mazegrid + center map + east mazewalk + morgue secret door + hell_tweaks.
- * Named omissions: hellfill rnd_hell_prefab; ensure_way_out;
+ * Named omissions: hellfill rnd_hell_prefab;
  * arrival_room special migrate flag beyond ordinary OROOM.
  */
 function load_wizard1() {
@@ -26935,7 +26999,7 @@ function load_wizard1() {
     hell_tweaks(protectedSel);
 
     // C load_special: map_cleanup → wallify → flip
-    map_cleanup();
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -26974,7 +27038,7 @@ function load_wizard1() {
 /**
  * C ref: dat/wizard2.lua via load_special — middle Wizard's Tower stage.
  * mazegrid + center map + east mazewalk + zoo FILL_NORMAL + ladders +
- * hell_tweaks. Named omissions: hellfill rnd_hell_prefab; ensure_way_out;
+ * hell_tweaks. Named omissions: hellfill rnd_hell_prefab;
  * arrival_room migrate flag beyond ordinary OROOM.
  */
 function load_wizard2() {
@@ -27225,7 +27289,7 @@ function load_wizard2() {
     hell_tweaks(protectedSel);
 
     // C load_special: map_cleanup → wallify → flip → lregions → fixup
-    map_cleanup();
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -27265,7 +27329,7 @@ function load_wizard2() {
  * C ref: dat/wizard3.lua via load_special — bottom Wizard's Tower stage.
  * mazegrid + center map + portal→fakewiz1 + east mazewalk + morgue
  * FILL_LVFLAGS + beehive FILL_NORMAL + arrival secret door + hell_tweaks.
- * Named omissions: hellfill rnd_hell_prefab; ensure_way_out; arrival_room
+ * Named omissions: hellfill rnd_hell_prefab; arrival_room
  * migrate flag beyond ordinary OROOM.
  */
 function load_wizard3() {
@@ -27569,9 +27633,7 @@ function load_wizard3() {
 
     // C load_special: link_doors → remove_boundary → map_cleanup →
     // wallify → flip → fixup (lregions remapped by flip)
-    link_doors_rooms();
-    remove_boundary_syms();
-    map_cleanup();
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -27640,8 +27702,8 @@ function load_fakewiz2() {
  * mazegrid + center map + east mazewalk + Lich / vampire lord / kraken /
  * four board traps + hell_tweaks. fakewiz1 also portal→wizard3 and
  * irregular arrival_room; fakewiz2 places des.object("\"", 04,04).
- * Named omissions: ensure_way_out; arrival_room migrate flag beyond
- * ordinary OROOM; humidity-aware get_location; count_level_features.
+ * Named omissions: arrival_room migrate flag beyond
+ * ordinary OROOM; humidity-aware get_location.
  */
 function load_fakewiz_tower(isFake1) {
     const g = game;
@@ -27754,9 +27816,7 @@ function load_fakewiz_tower(isFake1) {
 
     // C load_special: link_doors → remove_boundary → map_cleanup →
     // wallify → flip → fixup (lregions remapped by flip)
-    link_doors_rooms();
-    remove_boundary_syms();
-    map_cleanup();
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -28057,7 +28117,7 @@ function load_sanctum() {
     });
 
     // C load_special: link_doors → wallify → flip → lregions → fixup
-    link_doors_rooms();
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -28116,6 +28176,12 @@ async function load_hellfill() {
 
     hellfill_populatemaze();
 
+    // C sp_lev.c load_special :6464–6471, after the script: link_doors_rooms,
+    // remove_boundary_syms (the crosswall-temple prefab's 'B' ring,
+    // hellfill.lua :207–219, becomes ROOM), ensure_way_out only with the
+    // "inaccessibles" flag (never set here), map_cleanup.
+
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // des.level_flags noflip — skip flip_level_rnd
@@ -28730,6 +28796,7 @@ async function load_minefill() {
 
     for (let i = 0; i < 6; i++) splev_create_trap();
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
 
@@ -28770,6 +28837,7 @@ async function load_bar_fila() {
     splev_create_monster('O', 0);
     splev_create_monster('rock troll', 0);
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // des.level_flags noflip — skip flip_level_rnd
@@ -28808,6 +28876,7 @@ async function load_bar_filb() {
     for (let i = 0; i < 3; i++) splev_create_monster('rock troll', 0);
     splev_create_monster('T', 0);
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     return fixup_special();
@@ -28817,7 +28886,7 @@ async function load_bar_filb() {
  * C ref: dat/Arc-fila.lua via load_special — quest filler above locate.
  * Six ordinary des.room + des.random_corridors. Named omissions:
  * other-role *-fila room scripts; failed-room skip fidelity beyond
- * create_room false; ensure_way_out / link_doors_rooms extras.
+ * create_room false.
  */
 function load_arc_fila() {
     const g = game;
@@ -28863,6 +28932,7 @@ function load_arc_fila() {
     makecorridors();
 
     // C load_special: wallification → flip_level_rnd(allow_flips=3) → fixup
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -28872,7 +28942,7 @@ function load_arc_fila() {
 /**
  * C ref: dat/Arc-filb.lua via load_special — quest filler below locate.
  * Same room scaffold as Arc-fila; first rooms use class "M" (mummy).
- * Named omissions: other-role *-filb; failed-room / ensure_way_out.
+ * Named omissions: other-role *-filb; failed-room.
  */
 function load_arc_filb() {
     const g = game;
@@ -28915,6 +28985,7 @@ function load_arc_filb() {
 
     makecorridors();
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -28925,7 +28996,7 @@ function load_arc_filb() {
  * C ref: dat/Pri-fila.lua via load_special — quest filler above locate.
  * Ordinary + morgue des.room + des.random_corridors. Named omissions:
  * other-role *-fila room scripts; failed-room skip fidelity beyond
- * create_room false; ensure_way_out / link_doors_rooms extras.
+ * create_room false.
  */
 async function load_pri_fila() {
     const g = game;
@@ -28967,6 +29038,7 @@ async function load_pri_fila() {
     makecorridors();
 
     // C load_special: wallification → flip_level_rnd(allow_flips=3) → fixup
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -28976,7 +29048,7 @@ async function load_pri_fila() {
 /**
  * C ref: dat/Pri-filb.lua via load_special — quest filler below locate.
  * Ordinary + morgue des.room + des.random_corridors. Named omissions:
- * other-role *-filb; failed-room / ensure_way_out.
+ * other-role *-filb; failed-room.
  */
 async function load_pri_filb() {
     const g = game;
@@ -29020,6 +29092,7 @@ async function load_pri_filb() {
 
     makecorridors();
 
+    load_special_head(); // C sp_lev.c load_special :6464-6471
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);

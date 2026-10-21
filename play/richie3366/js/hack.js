@@ -1108,7 +1108,9 @@ async function moverock_core(sx, sy) {
                     {
                         const holelev = game.level?.at(rx, ry);
                         if (holelev) {
+                            // C hack.c:562 clears the one wall_info ≡ flags field; JS clears both halves.
                             holelev.wall_info = (holelev.wall_info | 0) & ~W_NONDIGGABLE;
+                            holelev.flags = (holelev.flags | 0) & ~W_NONDIGGABLE;
                             holelev.candig = 1;
                         }
                     }

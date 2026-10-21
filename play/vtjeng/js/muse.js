@@ -202,6 +202,7 @@ import { stairway_at } from './stairs.js';
 import { heroIsBlind, messageAt } from './startup_a11y.js';
 import { pline_mon, verbalize } from './pline.js';
 import {
+    destroy_drawbridge,
     find_drawbridge,
     is_drawbridge_wall,
     is_pool,
@@ -823,9 +824,15 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
             state.gz.zap_oseen = oseen;
             await mzapwand(mtmp, otmp, false, state);
             state.m_using = true;
-            // bhito (zap.c) is unported; pass null so fhito_loc skips objects.
-            note_unported('zap.c bhito');
-            await mbhit(mtmp, rn1(8, 6), mbhitm, null, otmp, state);
+            const random = { d, rn1, rn2, rnd, rne, rnl, rnz,
+                ...(env.random ?? {}) };
+            await mbhit(
+                mtmp, rn1(8, 6), mbhitm,
+                (obj, wand, callbackState, callbackEnv) => bhito(
+                    obj, wand, callbackState, random, callbackEnv,
+                ),
+                otmp, state, env,
+            );
             /* monster learns that teleportation isn't useful here */
             if (noteleport_level(mtmp, state))
                 mon_learns_traps(mtmp, TELEP_TRAP);
@@ -953,9 +960,15 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
         state.gz.zap_oseen = oseen;
         await mzapwand(mtmp, otmp, false, state);
         state.m_using = true;
-        // bhito (zap.c) is unported; pass null so fhito_loc skips objects.
-        note_unported('zap.c bhito');
-        await mbhit(mtmp, rn1(8, 6), mbhitm, null, otmp, state);
+        const random = { d, rn1, rn2, rnd, rne, rnl, rnz,
+            ...(env.random ?? {}) };
+        await mbhit(
+            mtmp, rn1(8, 6), mbhitm,
+            (obj, wand, callbackState, callbackEnv) => bhito(
+                obj, wand, callbackState, random, callbackEnv,
+            ),
+            otmp, state, env,
+        );
         state.m_using = false;
         return 2;
     }
@@ -2456,7 +2469,9 @@ async function mbhit(mon, range, fhitm, fhito_fn, obj, state, rawEnv = {}) {
                over the moat in front of a closed drawbridge and doesn't
                hit any part of the bridge's mechanism */
             && ltyp !== DRAWBRIDGE_UP && find_drawbridge(drawbridge, state)) {
-            note_unported('dbridge.c destroy_drawbridge');
+            await destroy_drawbridge(
+                drawbridge.x, drawbridge.y, state, rawEnv,
+            );
         } else if (IS_DOOR(ltyp) || ltyp === SDOOR) {
             switch (otyp) {
             /* note: monsters don't use opening or locking magic

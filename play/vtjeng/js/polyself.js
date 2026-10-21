@@ -101,6 +101,7 @@ import {
     POLY_TRAP,
     POLYMORPH,
     POLYMORPH_CONTROL,
+    PROT_FROM_SHAPE_CHANGERS,
     REFLECTING,
     REGENERATION,
     ROCKTRAP,
@@ -480,8 +481,7 @@ async function check_strangling(on, state, rawEnv = {}) {
                 state,
                 rawEnv,
             );
-            // makeknown(AMULET_OF_STRANGULATION) -- discover_object
-            // is not ported; the wizard-mode gnome has no strangulation amulet
+            discover_object(AMULET_OF_STRANGULATION, true, true, true, state);
         }
     } else {
         // maybe block strangling
@@ -507,8 +507,11 @@ export function set_uasmon(state = game) {
     set_mon_data(state.youmonst, mdat, state);
     state.youmonst.m_id = 1;
 
-    // Protection_from_shape_changers — not ported, assumed false for now
-    if (is_vampire(state.youmonst.data))
+    // C checks the active property before assigning a vampire's shift base.
+    const shapeProtection = state.u.uprops[PROT_FROM_SHAPE_CHANGERS];
+    if (shapeProtection.intrinsic || shapeProtection.extrinsic)
+        state.youmonst.cham = NON_PM;
+    else if (is_vampire(state.youmonst.data))
         state.youmonst.cham = state.youmonst.mnum;
     else if (!was_vampshifter)
         state.youmonst.cham = NON_PM;

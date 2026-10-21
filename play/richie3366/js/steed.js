@@ -64,7 +64,6 @@ import {
 import { finish_meating } from './dogmove.js';
 import { an } from './objnam.js';
 import { pmnames, PM_KNIGHT, PM_GRID_BUG, monsterNames } from './generated/monsters_data.js';
-import { vision_recalc } from './vision.js';
 import { enexto, rloc_to, rloc, teleds } from './teleport.js';
 import { which_armor, update_mon_extrinsics } from './worn.js';
 import { acurr, exercise, Fumbling, adjalign } from './attrib.js';
@@ -459,33 +458,6 @@ async function maybewakesteed(steed) {
 }
 
 /**
- * C ref: teleport.c teleds — mount/dismount placement subset.
- * Ball/chain, swallow, hideunder, drag_ball, utrap clear deferred
- * (canonical teleds owns them; dismount saves u.utrap for mintrap).
- * Placement itself goes through the live u_on_newpos (C teleds `:525`):
- * same-level see_nearby_objects observes newly-near floor items
- * (dknown + specific repaint), cliparound, uundetected clear,
- * earth_sense — the open-coded ux/uy form skipped all four.
- */
-async function teleds_simple(nux, nuy, _flags) {
-    void _flags;
-    const u = game.u;
-    const ox = u.ux | 0;
-    const oy = u.uy | 0;
-    // C teleds `:490–491`: ux0/uy0 snap before u_on_newpos.
-    u.ux0 = ox;
-    u.uy0 = oy;
-    // C teleds `:525` — sets u.ux/uy + usteed mx/my, cliparound,
-    // same-level see_nearby_objects, earth_sense.
-    await u_on_newpos(nux, nuy);
-    newsym(ox, oy);
-    newsym(nux, nuy);
-    await vision_recalc(1);
-    if (!game.flags) game.flags = {};
-    game.flags.botl = true;
-}
-
-/**
  * C ref: steed.c landing_spot `:459–572`.
  * DISMOUNT_KNOCKED: prefer u.dx,u.dy (uhitm knockback), then
  * clockwise/counterclockwise 50:50 via rn2(2), then remaining dirs.
@@ -858,11 +830,10 @@ function stealth_now() {
  * teleds ALLOW_DRAG + boulder sokoban_guilt + save_utrap mintrap,
  * no-room BYCHOICE killed vs monkilled(""/-AD_PHYS), ENGULFED/BONES
  * float_down skip with botl-only else arm, encumber_msg, polearm unweapon.
- * Named omit: update_mon_extrinsics, teleds_simple subset (ball/chain,
- * utrap clear, swallow/hideunder/drag — canonical teleds owns them;
- * KNOCKED u.dx/u.dy caller wired js/mhitm.js:2963–2966).
- * teleds_simple places via the live u_on_newpos (C teleds `:525`):
- * same-level see_nearby_objects observes newly-near floor items.
+ * Named omit: update_mon_extrinsics (KNOCKED u.dx/u.dy caller wired
+ * js/mhitm.js:2963–2966). The hero-first arm calls the live teleds
+ * (`:765`; newsym origin + see_monsters + vision_recalc + spoteffects),
+ * and the tail only sets vision_full_recalc (`:815`), as in C.
  * landing_spot KNOCKED preferred-dir + enexto forceit D-1640.
  * float_down → pickup when !Air/Water
  * (D-0220 / D-0966). BYCHOICE D-0213.
@@ -1027,7 +998,7 @@ export async function dismount_steed(reason) {
                 // C: in_steed_dismounting around teleds so spoteffects skips
                 // pickup; float_down does the single pickup attempt.
                 game.in_steed_dismounting = true;
-                await teleds_simple(cc.x, cc.y, TELEDS_ALLOW_DRAG);
+                await teleds(cc.x, cc.y, TELEDS_ALLOW_DRAG);
                 if (sobj_at(BOULDER, cc.x, cc.y)) sokoban_guilt();
                 game.in_steed_dismounting = false;
 
@@ -1059,7 +1030,7 @@ export async function dismount_steed(reason) {
         if (!game.flags) game.flags = {};
         game.flags.botl = true;
         await encumber_msg();
-        await vision_recalc(1);
+        game.vision_full_recalc = 1;
     } else {
         if (!game.flags) game.flags = {};
         game.flags.botl = true;

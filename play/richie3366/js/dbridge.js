@@ -743,7 +743,11 @@ export async function close_drawbridge(x, y) {
         lev2.horizontal = false;
         break;
     }
+    // C `:810` assigns the one flags field (wall_info ≡ doormask ≡ flags,
+    // rm.h:213–215); JS keeps three, so write all of them.
     lev2.wall_info = W_NONDIGGABLE;
+    lev2.flags = W_NONDIGGABLE;
+    lev2.doormask = W_NONDIGGABLE;
     // C `:809–813` — entity crush/jump/relocation (span, then portcullis
     // with the worm-tail re-set between the two do_entity calls).
     const occ = occupants(); // C go.occupants
@@ -807,7 +811,9 @@ export async function open_drawbridge(x, y) {
 
     lev1.typ = DRAWBRIDGE_DOWN;
     lev2.typ = DOOR;
-    lev2.doormask = D_NODOOR;
+    lev2.doormask = D_NODOOR; // C: the one flags field — clear the JS halves too
+    lev2.flags = D_NODOOR;
+    lev2.wall_info = D_NODOOR;
     // C `:858–862` — entity crush/jump/relocation (span, then portcullis
     // with the worm-tail re-set between the two do_entity calls).
     const oocc = occupants(); // C go.occupants
@@ -911,7 +917,9 @@ export async function destroy_drawbridge(x, y) {
 
     await wake_nearto(x, y, 500);
     lev2.typ = DOOR;
-    lev2.doormask = D_NODOOR;
+    lev2.doormask = D_NODOOR; // C: the one flags field — clear the JS halves too
+    lev2.flags = D_NODOOR;
+    lev2.wall_info = D_NODOOR;
 
     {
         const t = t_at(x, y);

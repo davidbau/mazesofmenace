@@ -1733,7 +1733,8 @@ export async function hit_bars(objp, objx, objy, barsx, barsy, breakflags) {
     if (!otmp) return;
     const obj_type = otmp.otyp | 0;
     const loc = game.level?.at?.(barsx, barsy);
-    const nodissolve = !!((loc?.wall_info | 0) & W_NONDIGGABLE);
+    // C mthrowu.c:1425 wall_info ≡ flags (rm.h:215); JS splits them (D-0865).
+    const nodissolve = !!(((loc?.wall_info | 0) | (loc?.flags | 0)) & W_NONDIGGABLE);
     const your_fault = (breakflags & BRK_BY_HERO) !== 0;
     const melee_attk = (breakflags & BRK_MELEE) !== 0;
     let noise = 0;

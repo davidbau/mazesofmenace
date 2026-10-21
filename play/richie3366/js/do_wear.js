@@ -409,14 +409,17 @@ function count_worn_stuff(accessorizing) {
  */
 export function confer_oc_oprop(obj, mask, on) {
     if (!obj) return;
-    // C: prop #0 unused; items with no conferred property use 0
+    // C: items with no conferred property use prop #0. setworn/setnotworn
+    // (worn.c:96–98, :120–121, :168–169) still write uprops[0].extrinsic,
+    // and Ring_off_or_gone (do_wear.c:1353) reads it for the four
+    // oc_oprop-0 rings; only the E* flats below skip it.
     const p = (game.objects?.[obj.otyp]?.oc_oprop | 0);
-    if (!p) return;
     const u = game.u || (game.u = {});
     if (!u.uprops) u.uprops = {};
     if (!u.uprops[p]) u.uprops[p] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
     if (on) u.uprops[p].extrinsic = (u.uprops[p].extrinsic | 0) | mask;
     else u.uprops[p].extrinsic = (u.uprops[p].extrinsic | 0) & ~mask;
+    if (!p) return;
     // C youprop.h EBlinded/EFast/ETelepat/EStealth ≡ uprops[].extrinsic.
     if (p === BLINDED) {
         if (on) u.EBlinded = (u.EBlinded | 0) | mask;
@@ -3925,8 +3928,12 @@ export async function Ring_on(obj) {
 }
 
 /**
- * C ref: do_wear.c Ring_off_or_gone — clear ring slot + otyp side effects.
- * Branch envelope: setworn clear; SEE_INVIS/INVIS messages + set_mimic_blocking;
+ * C ref: do_wear.c Ring_off_or_gone `:1346–1437` — clear ring slot + otyp side effects.
+ * Head in C order: takeoff.mask clear, the "Strange... I didn't know you
+ * had that ring." impossible when uprops[oc_oprop].extrinsic lacks the
+ * ring's mask (`:1353–1354`; mask is 0 once owornmask is clear), then
+ * setnotworn (gone) or setworn(NULL, owornmask) (off) (`:1355–1358`).
+ * Branch envelope: SEE_INVIS/INVIS messages + set_mimic_blocking;
  * LEVITATION float_down; accuracy/damage; PROTECTION find_ac; PfSC restartcham;
  * WARNING see_monsters; adjust_attrib STR/CON/CHA; learnring;
  * RIN_STEALTH toggle_stealth (D-0970). Named omissions: none for sink
@@ -3942,15 +3949,13 @@ export async function Ring_off_or_gone(obj, gone) {
         game.context.takeoff.mask =
             (game.context.takeoff.mask | 0) & ~mask;
     }
-    // gone vs off: both clear via setworn(null, …); setnotworn ≡ clear slots
-    void gone;
-    if (mask & W_RINGL) setworn(null, W_RINGL);
-    if (mask & W_RINGR) setworn(null, W_RINGR);
-    // If owornmask already cleared, fall back to slot identity
-    if (!(mask & W_RING)) {
-        if (obj === u.uleft) setworn(null, W_RINGL);
-        else if (obj === u.uright) setworn(null, W_RINGR);
-    }
+    const p = game.objects?.[obj.otyp]?.oc_oprop | 0;
+    if (!((u.uprops?.[p]?.extrinsic | 0) & mask))
+        await impossible("Strange... I didn't know you had that ring.");
+    if (gone)
+        setnotworn(obj);
+    else
+        setworn(null, obj.owornmask | 0);
 
     const otyp = obj.otyp | 0;
     switch (otyp) {

@@ -859,7 +859,7 @@ export async function openit() {
 function skip_premap_detect(x, y) {
     const lev = game.level?.at(x, y);
     if (!lev || lev.typ !== STONE) return false;
-    const wi = (lev.wall_info | 0) || (lev.flags | 0);
+    const wi = (lev.wall_info | 0) | (lev.flags | 0); // C detect.c:2127 wall_info ≡ flags (D-0865)
     return (wi & (W_NONDIGGABLE | W_NONPASSWALL)) !== 0;
 }
 
