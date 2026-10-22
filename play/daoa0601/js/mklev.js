@@ -3790,7 +3790,14 @@ async function renewBonesIdentities(level, fruits) {
     }
 }
 function restoreBonesObjects(level) {
-    eachObjectInBonesGraph(level, object => prepareBonesObjectForRestore(object, game));
+    let newestOrder = game._fobjSerial ?? 0;
+    eachObjectInBonesGraph(level, object => {
+        prepareBonesObjectForRestore(object, game);
+        newestOrder = Math.max(newestOrder, object._fobjOrder ?? 0);
+    });
+    // C restore.c:getlev() keeps the bones fobj chain; objects placed
+    // afterwards are pushed in front of it.
+    game._fobjSerial = newestOrder;
 }
 function restoreBonesMonsterAttitudes(level) {
     for (const monster of level?.monsters || []) {
@@ -4274,10 +4281,19 @@ function specialMonsterHumidity(mndx) {
         humidity |= HOT;
     return humidity;
 }
+// C sp_lev.c:l_create_stairway() removes a trap left by earlier level
+// contents from the chosen stair or ladder square.
+function clearStairwaySquare(x, y) {
+    const trap = requireGameLevel().traps.find(candidate => candidate.tx === x && candidate.ty === y);
+    if (trap)
+        deleteTrap(trap);
+}
 async function specialStair(context, up) {
     const point = await specialRandomLocation(context, loc => loc.typ === ROOM || loc.typ === CORR || loc.typ === ICE);
-    if (point)
+    if (point) {
+        clearStairwaySquare(point.x, point.y);
         await mkstairs(point.x, point.y, up, null);
+    }
     return point;
 }
 function specialNonDiggable(context = null) {
@@ -4924,6 +4940,7 @@ function loadSpecialAsciiMap(rows, lit, origin = null) {
     return context;
 }
 async function specialStairAt(context, x, y, up) {
+    clearStairwaySquare(context.xstart + x, context.ystart + y);
     await mkstairs(context.xstart + x, context.ystart + y, up, null, true);
 }
 function specialLadderAt(context, x, y, up) {
@@ -4932,6 +4949,7 @@ function specialLadderAt(context, x, y, up) {
     const loc = requireGameLevel().at(ladderX, ladderY);
     if (!loc)
         return;
+    clearStairwaySquare(ladderX, ladderY);
     loc.typ = LADDER;
     loc.ladder = up ? 1 : 2;
     const currentLevel = game.u?.uz?.dlevel ?? 1;
