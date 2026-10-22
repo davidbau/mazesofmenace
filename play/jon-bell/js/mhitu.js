@@ -33,7 +33,7 @@ import monKbMsizePack from './makemon_msize.json' with { type: 'json' };
 import monKbMattkPack from './makemon_mattk.json' with { type: 'json' };
 import monKbMonsPack from './makemon_mons.json' with { type: 'json' };
 import { rn2, rn1, rnd, d, pushRngLogEntry } from './rng.js';
-import { pline, urgent_pline as urgent_pline_disp, newsym, mon_visible as mon_visible_disp, canspotmon as canspotmon_disp, map_invisible, glyph_is_invisible_at, tmp_at, obj_to_glyph, DISP_END, DISP_FLASH, DISP_TETHER, DISP_FREEMEM, Unaware as Unaware_real, shieldeff, _topline_more_pending, flush_pending_messages } from './display.js';
+import { pline, urgent_pline as urgent_pline_disp, newsym, mon_visible as mon_visible_disp, canspotmon as canspotmon_disp, map_invisible, glyph_is_invisible_at, tmp_at, obj_to_glyph, DISP_END, DISP_FLASH, DISP_TETHER, DISP_FREEMEM, Unaware as Unaware_real, shieldeff, _topline_more_pending, _more_never_dismissed, flush_pending_messages } from './display.js';
 import { m_at as uhitm_m_at, hitval, mon_wield_item, dmgval, select_rwep } from './uhitm.js';
 import { burnarmor as burnarmor_real, erode_obj, drain_en as drain_en_trap, goodpos } from './trap.js';
 import { msummon as msummon_real, attrcurse as attrcurse_mu } from './sit.js';
@@ -90,6 +90,7 @@ import { subfrombill as subfrombill_real, shop_keeper as shop_keeper_real } from
    binding was never imported, so reaching that arm threw a ReferenceError. */
 import { mwelded, showdamage as showdamage_mu, growl_sound } from './cmd.js';
 import { make_confused, make_stoned, make_sick, potionhit } from './potion.js';
+import { LIFESAVED as LIFESAVED_MU, GENOCIDED as GENOCIDED_MU } from './const.js';
 import { SICK_RES as SICK_RES_MU, SICK_NONVOMITABLE as SICK_NONVOMITABLE_MU } from './const.js';
 import { PM_MEDUSA, PM_ARCHON, PM_STONE_GOLEM, PM_INCUBUS, PM_HIGH_PRIEST, PM_PRIEST as PM_ALIGNED_CLERIC, PM_BARBED_DEVIL as PM_BARBED_DEVIL_MU, } from './pm.generated.js';
 /* C mhitu.c:2536 `u.umonnum == PM_FLOATING_EYE` — passiveum()'s AD_PLYS arm. */
@@ -106,7 +107,8 @@ import { name_to_mon, permonstTemplate, gender, poly_gender, find_offensive, lin
 import { noteleport_level as noteleport_level_mu, Inhell } from './makemon.js';
 /* js/mhitu.js:262 declares a local `mon_nam` stub that returns the literal
  * "monster"; tele_restrict's pline needs the real uhitm.c:232 body. */
-import { mon_nam as mon_nam_uh } from './uhitm.js';
+import { mon_nam as mon_nam_uh, sr_oc_material as sr_oc_material_mu, cloneu as cloneu_mu } from './uhitm.js';
+import { PM_BLACK_PUDDING as PM_BLACK_PUDDING_MU, PM_BROWN_PUDDING as PM_BROWN_PUDDING_MU } from './pm.generated.js';
 /* C mondata.c:1367 locomotion() — the "tries to run away with" verb. */
 import { locomotion, m_monnam as m_monnam_mu } from './mhitm.js';
 /* C mhitu.c:1176 Amonnam(mtmp) — the hider-reveal message's subject. */
@@ -229,6 +231,7 @@ function seemimic_mu(mtmp) { return seemimic_real(mtmp); }
 /* thrwmu/monshoot/m_throw dependencies (C mthrowu.c). */
 import { autoreturn_weapon, setmnotwielded, artifact_hit } from './uhitm.js';
 import { splitobj } from './makemon.js';
+import { mhe as mhe_mu } from './makemon.js';
 /* C mhitu.c:1917 — mdamageu()'s Upolyd arm. */
 import { rehumanize } from './polyself.js';
 /* C mhitu.c:924 mattacku's AT_MAGC case. */
@@ -437,7 +440,13 @@ export async function mdamageu(mtmp, n) {
  * line; do_death_sequence() still performs the wizard/lifesaving/game-over
  * handling at the command boundary.  The old empty body silently left a
  * stoned hero alive and discarded the killer state. */
-function done(how) { return deadhero(how, { noDeathLine: true }); }
+function done(how) {
+    /* end.c:1082: with Lifesaved, done() plines "But wait..." onto the live
+     * topline (e.g. "drowns you...") before anything pages it. */
+    const lifeSaved = !!([game.u?.uprops?.[LIFESAVED_MU], game.u?.uprops?.['LIFESAVED']]
+                         .find(p => p?.extrinsic | 0)) && (how | 0) <= GENOCIDED_MU;
+    return deadhero(how, { noDeathLine: true, prejoinButWait: lifeSaved });
+}
 function monstseesu(flag) { return monstseesu_mc(flag); }
 function monstunseesu(flag) { return monstunseesu_mc(flag); }
 function ugolemeffects(typ, dmg) { return ugolemeffects_mh(typ, dmg); }
@@ -762,7 +771,7 @@ export async function gazemu(mtmp, mattk) {
                     if (lev > rn2(20))
                         await burnarmor(game.youmonst);
                     if (lev > rn2(20)) {
-                        destroy_items(game.youmonst, AD_FIRE, orig_dmg);
+                        await destroy_items(game.youmonst, AD_FIRE, orig_dmg);
                         await ignite_items(gs.invent || null);
                     }
                     if (dmg)
@@ -982,6 +991,7 @@ export async function hitmsg(mtmp, mattk) {
         again = (mtmp.m_id === gs._hitmsg_mid
             && gs._hitmsg_prev_ai != null
             && mattk._ai != null
+            && mattk._ao === gs._hitmsg_prev_ao
             && (mattk._ai | 0) === (gs._hitmsg_prev_ai | 0) + 1
             && mattk.aatyp === gs._hitmsg_prev_aatyp) ? ' again' : '';
         await pline_mon(mtmp, '%s %s%s%s', Monst_name, verb, again, punct);
@@ -995,6 +1005,7 @@ export async function hitmsg(mtmp, mattk) {
         await flush_pending_messages();
     gs._hitmsg_mid = mtmp.m_id;
     gs._hitmsg_prev_ai = (mattk._ai != null ? (mattk._ai | 0) : null);
+    gs._hitmsg_prev_ao = mattk._ao;
     gs._hitmsg_prev_aatyp = mattk.aatyp;
 }
 
@@ -1019,6 +1030,7 @@ export function hitmsg_je(mtmp, mattk) {
     const again = (mtmp && mtmp.m_id === g._hitmsg_mid
         && g._hitmsg_prev_ai != null
         && mattk._ai != null
+        && mattk._ao === g._hitmsg_prev_ao
         && (mattk._ai | 0) === (g._hitmsg_prev_ai | 0) + 1
         && mattk.aatyp === g._hitmsg_prev_aatyp) ? ' again' : '';
     const Monst_name = je_Monnam(mtmp);
@@ -1027,6 +1039,7 @@ export function hitmsg_je(mtmp, mattk) {
     /* C ref: mhitu.c:80-81 — remember this monster + attack for the next hitmsg. */
     g._hitmsg_mid = mtmp ? mtmp.m_id : 0;
     g._hitmsg_prev_ai = (mattk._ai != null ? (mattk._ai | 0) : null);
+    g._hitmsg_prev_ao = mattk._ao;
     g._hitmsg_prev_aatyp = mattk.aatyp;
 }
 
@@ -1141,6 +1154,9 @@ async function mhitm_ad_phys_u(mtmp, mattk, mhm) {
         }
         if (!(otmp.oartifact | 0) || !arti_special) {
             hitmsg_je(mtmp, mattk);
+            /* hitmsg's pline blocks in more() when it overflows (topl.c:257-268);
+             * drain that page before the mhitu.c:1191 knockback draws run. */
+            if (_topline_more_pending()) await flush_pending_messages();
             mhm.hitflags |= M_ATTK_HIT;
         }
         /* C uhitm.c:4073-4074 */
@@ -1153,7 +1169,21 @@ async function mhitm_ad_phys_u(mtmp, mattk, mhm) {
         if (ptmp < 1)
             ptmp = 1;
         /* C:4088 Half_physical_damage halving of the local tmp — RNG-free. */
-        void ptmp;
+        ptmp = maybe_half_phys_mu(ptmp);
+        const _pmat = sr_oc_material_mu(otmp.otyp);
+        if (_u.mh - ptmp > 1
+            && (_pmat === 11 /* IRON */ || _pmat === 12 /* METAL */)
+            && (_u.umonnum === PM_BLACK_PUDDING_MU
+                || _u.umonnum === PM_BROWN_PUDDING_MU)) {
+            if (ptmp > 1)
+                exercise(0 /* A_STR */, false);
+            /* inflict damage now; we know it can't be fatal */
+            _u.mh -= ptmp;
+            (game.disp ||= {}).botl = 1;
+            mhm.damage = 0; /* don't inflict more damage below */
+            if (await cloneu_mu())
+                await pline(`You divide as ${mon_nam_uh(mtmp)} hits you!`);
+        }
         /* C:4106 rustm(&gy.youmonst, otmp) — RNG-free unless the DEFENDER has an
          * AD_CORR/AD_RUST/AD_FIRE attack (a polymorphed hero); its rn2(chance)
          * sits behind `dmgtyp != ERODE_NONE`. */
@@ -1163,6 +1193,7 @@ async function mhitm_ad_phys_u(mtmp, mattk, mhm) {
     const u_pt = game.u || {};
     if (mattk.aatyp !== AT_TUCH_ || mhm.damage !== 0 || mtmp !== u_pt.ustuck) {
         hitmsg_je(mtmp, mattk);
+        if (_topline_more_pending()) await flush_pending_messages();
         mhm.hitflags |= M_ATTK_HIT;
     }
 }
@@ -1684,6 +1715,8 @@ async function doname_mu(obj) {
 function monnear_mu(mon, x, y) {
     const dx = Math.abs((mon.mx | 0) - (x | 0));
     const dy = Math.abs((mon.my | 0) - (y | 0));
+    if (dx === 1 && dy === 1 && ((mon.mnum ?? mon.mndx ?? mon.data?.pmidx) | 0) === 116)
+        return false; /* NODIAG: PM_GRID_BUG */
     return dx <= 1 && dy <= 1;
 }
 import { noit_Monnam as noit_Monnam_ds, noit_mon_nam as noit_mon_nam_ds, resists_drli as resists_drli_ds } from './mhitm.js';
@@ -1744,7 +1777,7 @@ export async function doseduce(mon) {
     let tried_gloves = 0;
 
     if (mon.mcan || mon.mspec_used) {
-        pline(`${Monnam(mon)} acts as though ${mon.female ? 'she' : 'he'} has got a ${mon.mcan ? 'severe ' : ''}headache.`);
+        pline(`${Monnam(mon)} acts as though ${mhe_mu(mon)} has got a ${mon.mcan ? 'severe ' : ''}headache.`);
         return 0;
     }
     if (unresponsive_mu()) {
@@ -3672,6 +3705,7 @@ async function missmu_je(mtmp, nearmiss, mattk) {
      * next hit does not spuriously say "again". */
     game._hitmsg_mid = 0;
     game._hitmsg_prev_ai = null;
+    game._hitmsg_prev_ao = undefined;
     game._hitmsg_prev_aatyp = undefined;
     /* C ref: mhitu.c:90-91 — missmu marks the attacker's square the same way
      * hitmu does, and for the same reason: an unspottable monster that swings
@@ -3689,6 +3723,8 @@ async function missmu_je(mtmp, nearmiss, mattk) {
         pline(`${Monst_name} pretends to be friendly.`);
     else
         pline(`${Monst_name} ${nearmiss_verbose ? 'just ' : ''}misses!`);
+    if (_topline_more_pending() && _more_never_dismissed())
+        await flush_pending_messages();
     /* C mhitu.c:100 — stop_occupation() (RNG-neutral); emits "You stop studying."
      * into the combat stream when a miss interrupts the study. */
     await stop_occupation();
@@ -4220,7 +4256,7 @@ export function hits_bars_mu(obj, always_hit) {
 }
 
 /* objects.h class and skill ordinals used by hits_bars(). */
-const ARMOR_CLASS_MHU = 3, ROCK_CLASS_MHU = 4, FOOD_CLASS_MHU = 7,
+const ARMOR_CLASS_MHU = 3, ROCK_CLASS_MHU = 14, FOOD_CLASS_MHU = 7,
       SPBOOK_CLASS_MHU = 10, WAND_CLASS_MHU = 11, BALL_CLASS_MHU = 15,
       CHAIN_CLASS_MHU = 16, ARM_GLOVES_MHU = 3,
       P_KNIFE_MHU = 2, P_SPEAR_MHU = 17;
@@ -4236,7 +4272,7 @@ const SKELETON_KEY_MHU = 221, LOCK_PICK_MHU = 222, CREDIT_CARD_MHU = 223,
  * missile either breaks on the bars (breaks() -> breaktest -> obj_resists
  * rn2(100)) or clangs against them.  dissolve_bars() (POT_ACID) is not ported.
  * Returns TRUE when the object is gone (C: *objp = 0). */
-async function hit_bars_mu(otmp, objx, objy, barsx, barsy) {
+export async function hit_bars_mu(otmp, objx, objy, barsx, barsy) {
     const t = otmp.otyp | 0;
     if (await breaks_mu(otmp, objx, objy))
         return true;
@@ -5072,7 +5108,11 @@ function calc_mattacku_vars(mtmp) {
     const mdistu = dist2((mtmp.mx | 0), (mtmp.my | 0), (u.ux | 0), (u.uy | 0));
     const ranged = mdistu > 3;
     const adx = Math.abs((mtmp.mx | 0) - mux), ady = Math.abs((mtmp.my | 0) - muy);
-    const range2 = !(adx <= 1 && ady <= 1); /* !monnear(mux,muy) */
+    /* C mon.c:2461 monnear: dist2 < 3, but a grid bug (NODIAG) never
+     * counts a diagonal as near. */
+    const mnd2 = adx * adx + ady * ady;
+    const gridbug = ((mtmp.mnum ?? mtmp.mndx ?? mtmp.data?.pmidx) | 0) === 116; /* PM_GRID_BUG */
+    const range2 = !(mnd2 < 3 && !(mnd2 === 2 && gridbug)); /* !monnear(mux,muy) */
     const foundyou = (mux === (u.ux | 0) && muy === (u.uy | 0));
     return { ranged, range2, foundyou };
 }
@@ -5294,7 +5334,16 @@ export async function expels_gu(mtmp, mndx, message) {
                                             game._pending_message || '', _joins);
         if (_line) {
             game._resultMessage = '';
+            /* C's more() here (cls -> display_nhwindow(WIN_MESSAGE)) runs no
+             * pline, so pline.c:266-272's `if (vision_full_recalc) vision_recalc(0)`
+             * does not fire between unstuck()'s `vision_full_recalc = 1` and
+             * docrt_flags' own vision_recalc(2).  This port pages by re-plining
+             * an ESC-suppressed line (force_more), which would run that recalc
+             * early and, hallucinating, draw display-RNG glyphs C never draws. */
+            const _vfr = game.vision_full_recalc;
+            game.vision_full_recalc = 0;
             await force_more_pages_mu(_line);
+            game.vision_full_recalc = _vfr;
             /* This more() comes from cls()'s display_nhwindow(WIN_MESSAGE) (a
              * flush), not from update_topl, so topl.c:232-235's WIN_STOP is live
              * for the very next pline -- there is no incoming owner message that
@@ -5464,7 +5513,11 @@ async function gulpmu(mtmp, mattk) {
             monstseesu(M_SEEN_ACID);
             tmp = 0;
         } else {
-            pline('You are covered in slime!  It burns!');
+            /* mhitu.c:1463-1466 */
+            if (Hallucination(game))
+                pline("Ouch!  You've been slimed!");
+            else
+                pline('You are covered in slime!  It burns!');
             /* mhitu.c:1462 — acid damage exercises Strength when unresisted. */
             exercise(A_STR_AD, false);
             monstunseesu(M_SEEN_ACID);
@@ -6001,6 +6054,26 @@ export async function mattacku(mtmp) {
         return 0;
     }
 
+    /* C mhitu.c:664-679 — hero might be a mimic, concealed via #monster. */
+    if ((game.youmonst?.data?.mlet | 0) === 13 /* S_MIMIC */
+        && ((game.youmonst?.m_ap_type | 0) !== 0) && !range2
+        && foundyou && !(u.uswallow | 0)) {
+        const sticky = _kb_sticks(_hero_form_mndx_mu());
+        const youseeit1 = canseemon_mu(mtmp);
+        if (!canspotmon_disp(mtmp))
+            map_invisible(mtmp.mx | 0, mtmp.my | 0);
+        if (sticky && !youseeit1)
+            await pline('It gets stuck on you.');
+        else
+            await pline(`Wait, ${m_monnam_mu(mtmp)}!  That's a ${monPmname_mu(u.umonnum | 0, game.flags?.female ? 1 : 0)} named ${game.plname}!`);
+        if (sticky)
+            set_ustuck_mu(mtmp);
+        game.youmonst.m_ap_type = 0;
+        game.youmonst.mappearance = 0;
+        newsym(u.ux | 0, u.uy | 0);
+        return 0;
+    }
+
     /* C mhitu.c:707 — armor class differential.
      * tmp = AC_VALUE(u.uac) + 10; AC_VALUE(AC) = AC>=0 ? AC : -rnd(-AC). */
     const uac = u.uac | 0;
@@ -6083,6 +6156,9 @@ export async function mattacku(mtmp) {
         /* C ref: mhitu.c hitmsg "again" tracking — record this attack's slot
          * index so hitmsg_je can test mattk == hitmsg_prev + 1. */
         mattk._ai = mattk._alt ? null : i;
+        /* identity of the attack ARRAY: C's hitmsg_prev is a pointer, so an
+         * index from a previous polymorph form never satisfies prev + 1. */
+        mattk._ao = mtmp.data;
         switch (mattk.aatyp) {
             case AT_CLAW_:
             case AT_KICK_:

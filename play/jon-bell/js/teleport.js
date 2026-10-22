@@ -341,7 +341,7 @@ export async function teleds(nux, nuy, teleds_flags) {
     const uball = u.uball;
     let ball_active = !!(uball && (uball.where | 0) !== OBJ_FREE);
     let ball_still_in_range = false;
-    let allow_drag = true;
+    let allow_drag = (teleds_flags & 1) !== 0; /* TELEDS_ALLOW_DRAG, teleport.c:449 */
     if (!ball_active || near_capacity() > SLT_ENCUMBER
         || distmin(u.ux | 0, u.uy | 0, nux | 0, nuy | 0) > 1)
         allow_drag = false;
@@ -599,8 +599,14 @@ export async function scrolltele(scroll) {
         await pline('You feel disoriented for a moment.');
         /* C 867-870: if (!wizard || y_n("Override?") != 'y') return;
          * y_n(query) is yn_function(query, ynchars, 'n', TRUE) (hack.h). */
-        if (!wizard || (await yn_function('Override?', 'yn', 'n', true)) !== 'y')
+        if (!wizard)
             return;
+        if ((await yn_function('Override?', 'yn', 'n', true)) !== 'y') {
+            /* C win/tty/topl.c:545 — tty_yn_function never erases the answered
+             * prompt; it stays on the terminal until a later pline overwrites it. */
+            game._topl_sticky = 'Override? [yn] (n)';
+            return;
+        }
     }
 
     /* C 872-873 */

@@ -69,7 +69,7 @@ ARM, HEAD, MAY_HIT, MAY_DESTROY, MAY_FRACTURE, VIS_EFFECTS, } from './const.js';
 /* launch_obj()'s monster arm (trap.c:3408).  mhitu.js already imports thitu /
  * find_mac from this file, so the edge is mutual and runtime-only, the same
  * shape as the existing uhitm.js and makemon.js cycles. */
-import { ohitmon } from './mhitu.js';
+import { ohitmon, hits_bars_mu, hit_bars_mu } from './mhitu.js';
 import { poisoned } from './uhitm.js';
 import { tele_trap, mlevel_tele_trap, mtele_trap, domagicportal, next_to_u } from './teleport.js';
 import { make_stunned, make_hallucinated, self_invis_message, make_confused, potionhit as potionhit_thitu, polymorph_sink } from './potion.js';
@@ -291,6 +291,7 @@ async function t_missile(otyp, trap) {
     }
     const otmp = await mksobj(otyp, true, false);
     otmp.quan = 1;
+    otmp.owt = weight(otmp); /* trap.c:1023 */
     otmp.opoisoned = 0;
     otmp.ox = trap.tx | 0;
     otmp.oy = trap.ty | 0;
@@ -484,6 +485,18 @@ export async function monkilled_trap(mtmp, fltxt = '') {
      * part of this death's ordering. */
     /* C mon.c:3144-3162: mondead's S_KOP revival roll precedes m_detach. */
     await kop_revival(mtmp);
+    /* C mon.c:2756 m_detach -> mon_leaving_level (mon.c:2696-2728): the
+     * monster comes off the map and its square is repainted with newsym(mx,my)
+     * BEFORE relobj drops its inventory (steal.c:895-896 newsyms again) and
+     * before mondied's make_corpse places the corpse (it newsyms itself).  The
+     * caller's own death-square repaint (thitm trap.c:6758, m_move
+     * monmove.c:1511) follows.  This is NOT RNG-free: under Hallucination every
+     * newsym of a cell holding an object draws random_object on the display
+     * rng, so its position decides which picks C makes.  mtmp.mhp is already 0,
+     * so m_at() skips the dead monster and the repaint shows the bare square,
+     * as remove_monster() does in C. */
+    if (_dx > 0)
+        newsym(_dx, _dy);
     if (mtmp.iswiz) wizdeadorgone(); /* C mon.c:2761-2762, before relobj */
     await quest_monster_died(mtmp);
     await relobj_md(mtmp);
@@ -502,16 +515,10 @@ export async function monkilled_trap(mtmp, fltxt = '') {
     } else {
         mtmp.mstate = (mtmp.mstate | 0) | MON_DETACH;
     }
+    /* C leaves mx,my stale (mon.c:2712-2715 is #if 0); this port zeroes them,
+     * so callers that repaint the death square use a saved copy. */
     mtmp.mx = 0;
     mtmp.my = 0;
-    /* C mon.c:2711 mon_leaving_level → newsym(mx,my): repaint the vacated cell now
-     * that the monster is off the map.  With the corpse object placed above, this
-     * renders the corpse glyph ('%') in place of the live monster ('d') — matching
-     * C's step-28 screen.  The postmov caller (monmove.c:1537) also newsyms, but
-     * only when mtmp->mx is still set; after detach it is 0, so do it here.  newsym
-     * is RNG-free. */
-    if (_dx > 0)
-        newsym(_dx, _dy);
 }
 
 async function dealloc_obj_trap(obj) {
@@ -1671,7 +1678,13 @@ export async function dotrap(trap, trflags) {
     const adj_pit = adj_nonconjoined_pit(trap);
     /* C trap.c:3006: nomul(0) */
     nomul(0);
-    /* fixed_tele_trap(trap) is false (no teledest) */
+    /* C trap.c:3008-3011 / trap.h:125: fixed_tele_trap(trap) =
+     * (ttyp == TELEP_TRAP && isok(teledest.x, teledest.y)) → FORCETRAP, so the
+     * already-seen escape rn2(5) below is never drawn for it. */
+    if (ttype === TELEP_TRAP && isok(trap.teledest?.x | 0, trap.teledest?.y | 0)) {
+        trflags |= FORCETRAP;
+        forcetrap = true;
+    }
     if (In_sokoban(u?.uz) && (is_pit(ttype) || is_hole(ttype))) {
         /* The "air currents" message is still appropriate -- even when
          * the hero isn't flying or levitating -- because it conveys the
@@ -2675,11 +2688,15 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
 
             if (typ === IRONBARS_LO) {
                 x2 = x; y2 = y; /* object stops here */
-                /* C trap.c:3550 hits_bars(...) — UNPORTED CALLEE (no JS body);
-                 * it draws (`!rn2(20)` is its argument) and can destroy the
-                 * object, so report rather than guess which. */
-                impossible_('launch_obj: hits_bars not ported');
-                break;
+                /* C trap.c:3550 hits_bars(&singleobj, x2, y2, fx, fy, !rn2(20), 0) */
+                if (hits_bars_mu(singleobj, !rn2(20))) {
+                    if (await hit_bars_mu(singleobj, x2, y2, fx, fy)) {
+                        singleobj = null;
+                        used_up = true;
+                        launch_drop_spot(null, 0, 0);
+                    }
+                    break;
+                }
             } else if (IS_STWALL(typ) || IS_TREE(typ)) {
                 x2 = x; y2 = y; /* object stops here */
                 void pline('Thump!');
@@ -6423,7 +6440,9 @@ export async function erode_obj(otmp, ostr, type, ef_flags) {
     if (!ostr) ostr = _erode_xname(otmp);
     if (visobj && !(uvictim || vismon) && /^the /i.test(ostr)) ostr = ostr.slice(4);
     const visible = uvictim || vismon || visobj;
-    const subject = uvictim ? 'Your' : vismon ? s_suffix(Monnam(victim)) : 'The';
+    /* C trap.c:226-260 — Monnam(victim) is an argument of each pline, so it is
+     * evaluated (and, under hallucination, draws rndmonnam) only when printed. */
+    const subject = () => uvictim ? 'Your' : vismon ? s_suffix(Monnam(victim)) : 'The';
     const verbose = !!game.flags?.verbose;
     const print = !!(ef_flags & EF_VERBOSE);
     if (grease && otmp.greased) {
@@ -6432,7 +6451,7 @@ export async function erode_obj(otmp, ostr, type, ef_flags) {
     if (!_erosion_matters(otmp)) return ER_NOTHING;
     if (!vulnerable || (otmp.oerodeproof && otmp.rknown)) {
         if (verbose && print && (uvictim || vismon))
-            await pline(`${subject} ${ostr} ${_erode_vtense(ostr, 'are')} not affected by ${causes[type]}.`);
+            await pline(`${subject()} ${ostr} ${_erode_vtense(ostr, 'are')} not affected by ${causes[type]}.`);
         return ER_NOTHING;
     }
     if (otmp.oerodeproof || (otmp.blessed && !rnl(4))) {
@@ -6445,7 +6464,7 @@ export async function erode_obj(otmp, ostr, type, ef_flags) {
     }
     if (erosion < MAX_ERODE) {
         const adverb = erosion + 1 === MAX_ERODE ? ' completely' : erosion ? ' further' : '';
-        if (visible) await pline(`${subject} ${ostr} ${_erode_vtense(ostr, action[type])}${adverb}!`);
+        if (visible) await pline(`${subject()} ${ostr} ${_erode_vtense(ostr, action[type])}${adverb}!`);
         if (ef_flags & EF_PAY) await costly_alteration(otmp, cost);
         if (primary) otmp.oeroded = erosion + 1; else otmp.oeroded2 = erosion + 1;
         if (uvictim) update_inventory();
@@ -6454,7 +6473,7 @@ export async function erode_obj(otmp, ostr, type, ef_flags) {
     if (ef_flags & EF_DESTROY) {
         otmp.in_use = 1;
         const act = type === ERODE_CRACK ? 'shatters' : `${_erode_vtense(ostr, action[type])} away`;
-        if (visible) await pline(`${subject} ${ostr} ${act}!`);
+        if (visible) await pline(`${subject()} ${ostr} ${act}!`);
         if (ef_flags & EF_PAY) await costly_alteration(otmp, cost);
         if (otmp.owornmask) {
             if (uvictim) await remove_worn_item(otmp, true);
@@ -6466,7 +6485,7 @@ export async function erode_obj(otmp, ostr, type, ef_flags) {
     }
     if (verbose && print && visible) {
         const verb = uvictim && Blind() ? 'feel' : 'look';
-        await pline(`${subject} ${ostr} ${_erode_vtense(ostr, verb)} completely ${messages[type]}.`);
+        await pline(`${subject()} ${ostr} ${_erode_vtense(ostr, verb)} completely ${messages[type]}.`);
     }
     return ER_NOTHING;
 }
@@ -6722,9 +6741,9 @@ function clear_bypass(objchn) {
  */
 export function bypass_objlist(objchain, on) {
     if (on && objchain) {
-        const svc = game.svc || {};
-        const context = svc.context || {};
-        context.bypasses = true;
+        /* the setters in worn.js/zap.js/cmd.js write game.context */
+        game.context = game.context || {};
+        game.context.bypasses = true;
     }
     while (objchain) {
         objchain.bypass = on ? 1 : 0;
@@ -6796,9 +6815,8 @@ export function clear_bypasses() {
     }
 
     // Mark that context bypasses have been cleared
-    const svc = game.svc || {};
-    const context = svc.context || {};
-    context.bypasses = false;
+    if (game.context) game.context.bypasses = false;
+    if (game.svc && game.svc.context) game.svc.context.bypasses = false;
 }
 
 /* ---------------------------------------------------------------------------
@@ -6817,9 +6835,8 @@ export function nxt_unbypassed_obj(objchain) {
         if (!objchain.bypass) {
             // bypass_obj(objchain) inline
             objchain.bypass = 1;
-            const svc = game.svc || {};
-            const context = svc.context || {};
-            context.bypasses = true;
+            game.context = game.context || {};
+            game.context.bypasses = true;
             break;
         }
         objchain = objchain.nobj;
@@ -7040,6 +7057,9 @@ export function immune_to_trap(mon, ttype) {
         if ((game.level?.flags?.sokoban_rules ?? game.sokoban)
             && (is_pit(ttype) || is_hole(ttype)))
             return TRAP_NOT_IMMUNE;
+        /* C trap.c:2820-2821 — a rolling boulder trap is harmless in Sokoban */
+        if (In_sokoban(game?.u?.uz) && (ttype | 0) === ROLLING_BOULDER_TRAP)
+            return TRAP_CLEARLY_IMMUNE;
         if (_imm_is_floater(pm) || _imm_is_flyer(pm)
             || (_imm_is_clinger(pm) && _imm_has_ceiling(game?.u?.uz)))
             return TRAP_CLEARLY_IMMUNE;

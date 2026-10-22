@@ -15,7 +15,7 @@ import { attach_egg_hatch_timeout } from './timeout.js';
 import { OBJ_FREE, OBJ_FLOOR, OBJ_CONTAINED, OBJ_INVENT, OBJ_MINVENT, OBJ_BURIED,
          NO_MINVENT, MM_NOWAIT, MM_NOCOUNTBIRTH, MM_NOTAIL, MM_ADJACENTOK,
          MM_MALE, MM_FEMALE, CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE,
-         GRAVE, IS_POOL, LS_MONSTER, ONAME, has_oname, PLNMSG_OBJ_GLOWS, PROT_FROM_SHAPE_CHANGERS, OBJ_DELETED } from './const.js';
+         GRAVE, IS_POOL, LS_MONSTER, ONAME, has_oname, PLNMSG_OBJ_GLOWS, PLNMSG_ENVELOPED_IN_GAS, PROT_FROM_SHAPE_CHANGERS, OBJ_DELETED } from './const.js';
 import { PM_GHOST, PM_DOPPELGANGER } from './pm.generated.js';
 import { wearslot } from './worn.js';
 import { freeinv_core, addinv_core1, addinv_core2, setuwep, setuswapwep, setuqwep, set_twoweap } from './cmd.js';
@@ -61,7 +61,7 @@ import { terrain_glyph, update_lastseentyp, GLYPHCLS_CMAP, GLYPHCLS_TRAP } from 
 import { BURIED_TOO, CONTAINED_TOO, TRAPPED_CHEST, TRAPPED_DOOR, Has_contents } from './const.js';
 import { foundone } from './detect.js';
 import { pline, Norep, flush_screen, newsym, feel_newsym, canspotmon, canseemon, _topl_joins_snapshot, _topline_more_pending, _defer_until_more_dismissed, tmp_at, zapdir_to_glyph, map_invisible, unmap_invisible, DISP_BEAM, DISP_CHANGE, DISP_END, DISP_FLASH, newsym_force, _topl_merge_result, shieldeff as shieldeff_real, Deaf as _live_deaf_reading } from './display.js';
-import { topl_park_cursor, _topl_stash_result, flush_pending_messages } from './display.js';
+import { topl_park_cursor, _topl_stash_result, flush_pending_messages, _more_never_dismissed } from './display.js';
 import { bot, see_monsters, force_more, GLYPHCLS_INVIS, Unaware } from './display.js';
 import { deadhero, pending_death_is_final, do_death_sequence } from './end.js';
 /* unconscious()/is_fainted() — the two halves of youprop.h:399 Unaware, used by
@@ -94,7 +94,7 @@ import { exercise, get_artifact, arti_spfx, arti_cspfx, ART_NONARTIFACT, acurr, 
  * js/zap.js already imported discover_object from here, so no new edge. */
 import { discover_object, observe_object, isWanNothingNodir } from './o_init.js';
 import { FF_FAITHFUL, drain_pending_death_in_place } from './fastforward.js';
-import { obj_typename, an, An, makeplural, The, vtense, cloak_simple_name, suit_simple_name, helm_simple_name, gloves_simple_name, boots_simple_name, shield_simple_name, shirt_simple_name as shirt_simple_name_real, xname_ring, xname_wand, Tobjnam, simpleonames, distant_name as distant_name_real, aobjnam, killer_xname, is_quest_artifact } from './objnam.js';
+import { obj_typename, an, An, makeplural, The, vtense, cloak_simple_name, suit_simple_name, helm_simple_name, gloves_simple_name, boots_simple_name, shield_simple_name, shirt_simple_name as shirt_simple_name_real, xname_ring, xname_wand, Tobjnam, simpleonames, distant_name as distant_name_real, aobjnam, Yobjnam2, otense, killer_xname, is_quest_artifact } from './objnam.js';
 import { nomul } from './allmain.js';
 import { set_bc } from './ball.js';
 import { xname, yname, silly_thing_dw, hard_helmet } from './do_wear.js';
@@ -103,11 +103,12 @@ import { setnotworn, setworn } from './worn.js';
 import { Ring_gone as _ring_gone, Ring_off, Ring_on } from './do_wear.js';
 import { xytodir, throwit_mon_hit, endmultishot } from './cmd.js';
 import { ceiling, body_part, force_decor } from './cmd.js';
-import { delobj, hot_pursuit, losehp, obfree } from './dokick.js';
+import { breaks, delobj, hot_pursuit, losehp, obfree } from './dokick.js';
 import { weight } from './weight.js';
 import { ignite_items, mon_mattk_raw, poisoned_u, expels_gu } from './mhitu.js';
 import { stackobj } from './sp_lev.js';
-import { HEAD, EYE, FACE, FOOT, IS_FURNITURE } from './const.js';
+import { HEAD, EYE, FACE, FOOT, IS_FURNITURE, STOMACH } from './const.js';
+import { mbodypart } from './cmd.js';
 import { surface } from './cmd.js';
 import { on_level } from './dungeon.js';
 import { ok_to_quest, is_drawbridge_wall, db_under_typ } from './dokick.js';
@@ -700,6 +701,12 @@ function _u_resists_blnd_by_arti() {
 export async function flashburn(duration, via_lightning) {
     if (!(await _u_resists_blnd())) {
         await pline('You are blinded by the flash!');   /* zap.c:3058 */
+        /* C pline() -> update_topl() more() BLOCKS when this line overflows the
+         * live topline; make_blinded and the caller's learnwand() (exercise
+         * rn2(19), zap.c:3003-3007) run only after the --More-- is dismissed.
+         * At the end of recorded input C stays parked there. */
+        if (_topline_more_pending())
+            await flush_screen(1);
         /* C runs make_blinded right after the pline returns (zap.c:3059-3061);
          * the page frame of the message above is frozen at its own flush, so
          * it still shows the pre-blind status. */
@@ -724,12 +731,7 @@ async function recharge_ring(obj) {
          * Keep the two clauses in one pline: this is the text C gives to the
          * player before Ring_gone/useup, and it also preserves the message
          * ordering when the subsequent damage is fatal. */
-        let name = obj && obj._name;
-        if (!name && obj) {
-            try { name = obj_typename(obj.otyp | 0); } catch { /* fall back */ }
-        }
-        if (!name) name = 'ring';
-        await pline(`Your ${name} momentarily, then explodes!`);
+        await pline(`${Yobjnam2(obj, 'pulsate')} momentarily, then ${otense(obj, 'explode')}!`);
 
         /* C Ring_gone() must run before useup(): worn rings can update the
          * hero's equipment slots, and a dead hero must not retain the ring as
@@ -746,24 +748,14 @@ async function recharge_ring(obj) {
         await losehp(_zap_Maybe_Half_Phys(damage), 'exploding ring', KILLED_BY_AN);
     }
     else {
-        /* C read.c:818 Yname2(obj) -> "Your " + xname (appearance if unidentified) */
-        await pline(`Your ${xname_ring(obj)} spins clockwise for a moment.`);
-        /* C read.c:818: Yname2(obj) renders the ring by its appearance
-         * ("Your sapphire ring") unless identified; s<0 => "counter". */
+        /* C read.c:817-819: pline("%s spins %sclockwise for a moment.", Yname2(obj), s < 0 ? "counter" : "") */
         const is_on = (obj === game.u.uleft || obj === game.u.uright);
         const mask = is_on ? (obj === game.u.uleft ? W_RINGL : W_RINGR) : 0;
-        await pline(`${_Yname2(obj)} spins ${s < 0 ? 'counter' : ''}clockwise for a moment.`);
+        await pline(`${_Yname2(obj)} spins ${s < 0 ? "counter" : ""}clockwise for a moment.`);
         /* C read.c:822-826: update the ring while it is off. */
         if (is_on) await Ring_off(obj);
         obj.spe = (obj.spe | 0) + s;
         if (is_on) { await setworn(obj, mask); await Ring_on(obj); }
-        /* C read.c:818: pline("%s spins %sclockwise for a moment.", Yname2(obj), ...).
-         * Yname2 is the APPEARANCE name of an unidentified ring ("your sapphire
-         * ring"), not the identified otyp name. Using obj_typename here ("ring of
-         * gain strength") makes the combined "You shock yourself!  Your ... spins"
-         * topline too long, so a --More-- lands after "You shock yourself!" where
-         * C keeps both messages on one line (zap.c:2734 -> read.c:818). */
-        await pline(`${_Yname2(obj)} spins clockwise for a moment.`);
     }
 }
 /* ---------------------------------------------------------------------------
@@ -1233,7 +1225,7 @@ function get_container_location(obj, loc, nesting) {
 }
 
 /* C zap.c:862-876. Any trap prevents a buried zombie digging out. */
-function zombie_can_dig(x, y) {
+export function zombie_can_dig(x, y) {
     if (!isok(x, y) || t_at(x, y)) return false;
     const typ = game.level.locations[x][y].typ;
     return typ === ROOM || typ === CORR || typ === GRAVE;
@@ -1526,7 +1518,7 @@ export async function zapyourself(obj, ordinary) {
             if (_uhas(FIRE_RES)) {
                 /* C zap.c:2756-2760 */
                 shieldeff_real(game.u?.ux | 0, game.u?.uy | 0);
-                await pline('You feel rather warm.');
+                await pline((Unaware() ? 'You dream that you feel ' : 'You feel ') + 'rather warm.'); /* You_feel */
                 monstseesu(M_SEEN_FIRE);
                 ugolemeffects(AD_FIRE, orig_dmg);
             } else {
@@ -1553,7 +1545,7 @@ export async function zapyourself(obj, ordinary) {
             if (_uhas(COLD_RES)) {
                 /* C's resistance arm still destroys vulnerable inventory, but
                  * deals no HP damage and records the seen resistance. */
-                await pline('You feel a little chill.');
+                await pline((Unaware() ? 'You dream that you feel ' : 'You feel ') + 'a little chill.'); /* You_feel */
                 ugolemeffects(AD_COLD, orig_dmg);
             } else {
                 await pline('You imitate a popsicle!');
@@ -1582,7 +1574,9 @@ export async function zapyourself(obj, ordinary) {
             /* C zap.c:2799-2805: if (!Unchanging) { learn_it = TRUE; polyself(POLY_NOFLAGS); } */
             {
                 const u = game.u || {};
-                const unchanging = !!(u.uprops && u.uprops[UNCHANGING] && u.uprops[UNCHANGING].intrinsic);
+                /* Unchanging = HUnchanging || EUnchanging (youprop.h) */
+                const unchanging = !!(u.uprops && u.uprops[UNCHANGING]
+                    && ((u.uprops[UNCHANGING].intrinsic | 0) || (u.uprops[UNCHANGING].extrinsic | 0)));
                 if (!unchanging) {
                     learn_it = true;
                     await polyself(0 /* POLY_NOFLAGS */);
@@ -2849,12 +2843,10 @@ export async function zap_over_floor(x, y, type, shopdamage, ignoremon, explodin
                 create_gas_cloud(x, y, rnd(5), 0); /* 1..5, no damage */
                 /* C: if (iflags.last_msg == PLNMSG_ENVELOPED_IN_GAS)
                  *        msggiven = TRUE;
-                 * js/region.js make_gas_cloud emits that pline but does not set
-                 * the last_msg flag; read the same condition it tests. */
-                if (game._region_enveloped_msg) {
-                    msggiven = true;
-                    game._region_enveloped_msg = false;
-                }
+                 * make_gas_cloud sets iflags.last_msg; only a later pline clears
+                 * it, so later cells of the same ray stay suppressed too. */
+                if (game.iflags?.last_msg === PLNMSG_ENVELOPED_IN_GAS)
+                    msggiven = true; /* stays set until the next pline clears it */
             }
 
             if ((lev.typ | 0) !== POOL) { /* MOAT or DRAWBRIDGE_UP or WATER */
@@ -3132,7 +3124,7 @@ export async function zap_over_floor(x, y, type, shopdamage, ignoremon, explodin
                     else
                         await pline(`The door absorbs ${yourzap ? 'your' : 'the'} ${zapverb}!`);
                 } else {
-                    await pline('You feel vibrations.');
+                    await pline((Unaware() ? 'You dream that you feel ' : 'You feel ') + 'vibrations.'); /* You_feel, pline.c:387-400 */
                 }
             }
         }
@@ -4068,6 +4060,11 @@ export async function explode(x, y, type, dam, olet, expltype) {
             }
             await pline(`You are caught in the ${str}!`);
             if (game.iflags) game.iflags.last_msg = PLNMSG_CAUGHT_IN_EXPLOSION;
+            /* C topl.c update_topl() more() BLOCKS inside this pline when it does
+             * not fit beside the unacknowledged topline; with no dismiss key left
+             * C never reaches destroy_items() below (explode.c:617). */
+            if (_topline_more_pending() && _more_never_dismissed())
+                await flush_pending_messages();
         }
         /* property damage first, in case we end up leaving bones */
         if (adtyp === AD_FIRE)
@@ -4108,6 +4105,10 @@ export async function explode(x, y, type, dam, olet, expltype) {
             if (Upolyd(u)) {
                 await rehumanize_real();
             } else {
+                /* svk.killer is a static struct in C (decl.c); this port creates it lazily,
+                   and the guards below would skip every killer write when it is absent. */
+                if (!game.svk) game.svk = {};
+                if (!game.svk.killer) game.svk.killer = { id: 0, format: 0, name: '', next: null };
                 if (olet === MON_EXPLODE) {
                     /* generic: the blast was unseen, so str=="explosion" while
                        svk.killer.name is still "<mon>'s explosion" */
@@ -4374,7 +4375,8 @@ export async function _zhitm(mon, type, nd) {
         /* C zap.c:4345-4355: sufficiently powerful lightning blinds the monster.
          *   if (!resists_blnd(mon) && !(type>0 && engulfing_u(mon)) && nd > 2)
          *       rnd_tmp = rnd(50); mcansee=0; mblinded += rnd_tmp (cap 127). */
-        if (nd > 2) {
+        if (!resists_blnd_real(mon) && !(type > 0 && engulfing_u(mon))
+            && nd > 2) {
             const rnd_tmp = rnd(50);
             mon.mcansee = 0;
             const mb = (mon.mblinded | 0) + rnd_tmp;
@@ -4398,7 +4400,7 @@ export async function _zhitm(mon, type, nd) {
         }
         tmp = d(nd, 6);
         if (!rn2(6)) await acid_damage_zap(_MON_WEP_zap(mon));
-        if (!rn2(6)) { /* erode_armor(mon, CORRODE) — deferred */ }
+        if (!rn2(6)) await erode_armor(mon, ERODE_CORRODE); /* C zap.c:4381-4382 */
         break;
     case ZT_SLEEP:
         /* C zap.c:4290-4294: resistance/shield-effect/mimic-reveal are all
@@ -4823,6 +4825,21 @@ export async function zap_dig() {
     const u = g.u || {};
 
     if (u.uswallow) {
+        const mtmp = u.ustuck;
+        const mndx = (mtmp.mndx ?? mtmp.mnum) | 0;
+        /* is_whirly(): mlet == S_VORTEX (22) || PM_AIR_ELEMENTAL (154) */
+        const whirly = ((mtmp.data?.mlet | 0) === 22) || mndx === 154;
+        if (!whirly) {
+            const dig = _expl_digests(mtmp);
+            if (dig)
+                await pline(`You pierce ${s_suffix(mon_nam(mtmp))} ${mbodypart(mtmp, STOMACH)} wall!`);
+            /* unique_corpstat(): geno & G_UNIQ (0x1000) */
+            if (((mtmp.data?.geno | 0) & 0x1000) !== 0)
+                mtmp.mhp = ((mtmp.mhp | 0) + 1) >> 1;
+            else
+                mtmp.mhp = 1; /* almost dead */
+            await expels_gu(mtmp, mndx, !dig);
+        }
         return;
     }
 
@@ -4898,7 +4915,7 @@ export async function zap_dig() {
             await watch_dig(null, zx, zy, true);    /* C dig.c:1678 */
             room.doormask = D_NODOOR;               /* C dig.c:1679 */
             recalc_block_point(zx, zy);             /* C dig.c:1680 — vision */
-            feel_newsym(zx, zy);
+            newsym(zx, zy); /* tmp_at(DISP_END) redraw (display.c tmp_at), not feel_location */
             digdepth -= 2;                          /* C dig.c:1681 */
             if (maze_dig)
                 break;                              /* C dig.c:1682-1683 */
@@ -4911,7 +4928,7 @@ export async function zap_dig() {
                     }
                     room.typ = ROOM; room.flags = 0;
                     unblock_point(zx, zy);
-                    feel_newsym(zx, zy);
+                    newsym(zx, zy); /* tmp_at(DISP_END) redraw (display.c tmp_at), not feel_location */
                 } else if (!_Blind()) {
                     await pline('The wall glows then fades.'); /* C dig.c:1691-1692 */
                 }
@@ -4920,7 +4937,7 @@ export async function zap_dig() {
                 if (!(room.wall_info & W_NONDIGGABLE)) {
                     room.typ = ROOM; room.flags = 0;
                     unblock_point(zx, zy);
-                    feel_newsym(zx, zy);
+                    newsym(zx, zy); /* tmp_at(DISP_END) redraw (display.c tmp_at), not feel_location */
                 } else if (!_Blind()) {
                     await pline('The tree shudders but is unharmed.'); /* C dig.c:1699-1700 */
                 }
@@ -4929,7 +4946,7 @@ export async function zap_dig() {
                 if (!(room.wall_info & W_NONDIGGABLE)) {
                     room.typ = CORR; room.flags = 0;
                     unblock_point(zx, zy);
-                    feel_newsym(zx, zy);
+                    newsym(zx, zy); /* tmp_at(DISP_END) redraw (display.c tmp_at), not feel_location */
                 } else if (!_Blind()) {
                     await pline('The rock glows then fades.'); /* C dig.c:1707-1708 */
                 }
@@ -4960,7 +4977,7 @@ export async function zap_dig() {
                 digdepth--;
             }
             unblock_point(zx, zy);                  /* C dig.c:1733 — vision */
-            feel_newsym(zx, zy);
+            newsym(zx, zy); /* tmp_at(DISP_END) redraw (display.c tmp_at), not feel_location */
         }
         zx += udx;                                  /* C dig.c:1735-1736 */
         zy += udy;
@@ -4995,7 +5012,7 @@ const ZP_CHARGED_CLASSES = new Set([ZP_WAND_CLASS, ZP_WEAPON_CLASS,
 export function zapsetup() { game._obj_zapped = false; }
 export async function zapwrapup() {
     if (game._obj_zapped)
-        await pline("You feel shuddering vibrations.");
+        await pline((Unaware() ? "You dream that you feel " : "You feel ") + "shuddering vibrations."); /* You_feel, pline.c:387-400 */
     game._obj_zapped = false;
 }
 
@@ -5548,6 +5565,18 @@ export async function bhito(obj, otmp) {
         && (otmp.otyp | 0) !== SPE_STONE_TO_FLESH)
         return 0;
 
+    /* C zap.c:2181-2189 — the punishment ball and chain are never affected
+     * by a wand, except that opening/knock frees the hero from the chain. */
+    if (g.u && g.u.uball && obj === g.u.uball) {
+        return 0;
+    } else if (g.u && g.u.uchain && obj === g.u.uchain) {
+        if ((otmp.otyp | 0) === WAN_OPENING || (otmp.otyp | 0) === SPE_KNOCK) {
+            await unpunish();
+            learnwand(otmp);
+        }
+        return 0;
+    }
+
     switch (otmp.otyp | 0) {
     case WAN_POLYMORPH:
     case SPE_POLYMORPH: {
@@ -5658,7 +5687,9 @@ export async function bhito(obj, otmp) {
             }
         } else {
             const oox = obj.ox | 0, ooy = obj.oy | 0;
-            const broke = await hero_breaks(obj, oox, ooy, 0);
+            const broke = (game.context && game.context.mon_moving)
+                ? await breaks(obj, oox, ooy)
+                : await hero_breaks(obj, oox, ooy, 0); /* zap.c:2301 */
             if (!broke)
                 maybelearnit = false;
             else
@@ -6276,14 +6307,39 @@ async function _bhit_zapped_wand(ddx, ddy, range, obj) {
         g.bhitpos.x = x; g.bhitpos.y = y;
         if (!isok(x, y)) { g.bhitpos.x = x - ddx; g.bhitpos.y = y - ddy; break; }
         await _zap_map_probing(x, y, obj);
-        // C zap.c:3685-3717: lateral striking hits the span or portcullis.
-        if (((obj.otyp | 0) === WAN_STRIKING || (obj.otyp | 0) === SPE_FORCE_BOLT)
-            && _buzz_typ(x, y) !== DRAWBRIDGE_UP) {
+        // C zap.c:3685-3717: zap_map's lateral drawbridge block.
+        {
+            const ltyp = _buzz_typ(x, y);
+            let learn_it = false; /* C zap.c:3633; learnwand at :3798 */
             const dbx = { value: x }, dby = { value: y };
             if (find_drawbridge(dbx, dby)) {
-                await destroy_drawbridge(dbx.value, dby.value);
-                learnwand(obj);
+                switch (obj.otyp | 0) {
+                case WAN_OPENING:
+                case SPE_KNOCK:
+                    if (is_db_wall(x, y)) {
+                        if (cansee(dbx.value, dby.value) || cansee(x, y))
+                            learn_it = true;
+                        await open_drawbridge(dbx.value, dby.value);
+                    }
+                    break;
+                case WAN_LOCKING:
+                case SPE_WIZARD_LOCK:
+                    if ((cansee(dbx.value, dby.value) || cansee(x, y))
+                        && _buzz_typ(dbx.value, dby.value) === DRAWBRIDGE_DOWN)
+                        learn_it = true;
+                    await close_drawbridge(dbx.value, dby.value);
+                    break;
+                case WAN_STRIKING:
+                case SPE_FORCE_BOLT:
+                    if (ltyp !== DRAWBRIDGE_UP) {
+                        learn_it = true;
+                        await destroy_drawbridge(dbx.value, dby.value);
+                    }
+                    break;
+                }
             }
+            if (learn_it)
+                learnwand(obj);
         }
         const mtmp = m_at(x, y);
         if (mtmp) {
@@ -6859,7 +6915,7 @@ export async function release_hold() {
             if (!_Blind())
                 await pline(`${Monnam(mtmp)} opens its mouth!`);
             else
-                await pline('You feel a sudden rush of air!');
+                await pline((Unaware() ? 'You dream that you feel ' : 'You feel ') + 'a sudden rush of air!'); /* You_feel, pline.c:387-400 */
         }
         /* gives "you get regurgitated" or "you get expelled from <mon>" */
         await expels_gu(mtmp, mndx, true);

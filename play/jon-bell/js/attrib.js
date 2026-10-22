@@ -11,7 +11,7 @@ import { SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED, MOD_ENCUMBER, HV
     /* exerper() status-check properties — C attrib.c:570-583 */
     CLAIRVOYANT, REGENERATION, SICK, VOMITING, CONFUSION, HALLUC, HALLUC_RES,
     FUMBLING, WOUNDED_LEGS, STUNNED, TIMEOUT, KILLED_BY, FIXED_ABIL } from './const.js';
-import { pline, see_monsters, flush_pending_messages } from './display.js';
+import { pline, Unaware, see_monsters, flush_pending_messages } from './display.js';
 import { near_capacity, encumber_msg, encumber_msg_sync } from './weight.js';
 import { aligns } from './roles.js';
 import { uasmon_maxStr } from './polyself.js';
@@ -381,7 +381,7 @@ export function adjattrib(ndx, incr, msgflg) {
         game.disp.botl = 1;
 
     if (msgflg <= 0)
-        pline(`You feel ${(incr > 1 || incr < -1) ? "very " : ""}${attrstr}!`);
+        pline(`${Unaware() ? "You dream that you feel " : "You feel "}${(incr > 1 || incr < -1) ? "very " : ""}${attrstr}!`); /* You_feel, pline.c:387 */
 
     /* C attrib.c:190 — "Any successful change also resets abuse / exercise
      * level": AEXE(ndx) = 0. */
@@ -1251,11 +1251,11 @@ export async function poison_strdmg(strloss, dmg, knam, k_format) {
 /* feedback for attribute loss due to poisoning */
 export async function poisontell(typ, exclaim) {
     const poiseff_prefix = [
-        "You feel ",  /* A_STR */
+        Unaware() ? "You dream that you feel " : "You feel ",  /* A_STR */
         "Your ",      /* A_INT */
         "Your ",      /* A_WIS */
         "Your ",      /* A_DEX */
-        "You feel ",  /* A_CON */
+        Unaware() ? "You dream that you feel " : "You feel ",  /* A_CON */
         "You ",       /* A_CHA */
     ];
     const poiseff_msg = [

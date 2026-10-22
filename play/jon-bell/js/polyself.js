@@ -35,7 +35,7 @@ import {
 import { dropx, useup, welded, setuwep, surface, ceiling, waterbody_name, yname, You_cant, youhiding as youhiding_enlightenment, instapetrify as instapetrify_real } from './cmd.js';
 import { losehp } from './dokick.js';
 import { end_burn } from './timeout.js';
-import { make_sick, make_stoned, make_slimed } from './potion.js';
+import { make_sick, make_stoned, make_slimed, make_glib } from './potion.js';
 import { newuhs } from './eat.js';
 import { artifact_light, arti_light_radius, maybe_adjust_light, new_light_source, del_light_source, monst_to_any } from './light.js';
 import { emits_light } from './makemon.js';
@@ -86,7 +86,7 @@ import { helpless, Resists_Elem, killed, y_monnam, l_monnam } from './mhitm.js';
 import { s_suffix } from './hacklib.js';
 import { nonliving, poly_gender } from './makemon.js';
 import { livelog_printf, rank_of, retouch_equipment, status_reassess } from './display.js';
-import { LL_MINORAC } from './const.js';
+import { LL_MINORAC, LL_CONDUCT } from './const.js';
 import { bhp_bury_objs, dismount_steed as dismount_steed_real } from './cmd.js';
 import { in_rooms, add_damage, pay_for_damage } from './shk.js';
 import { may_dig as may_dig_look } from './look.js';
@@ -443,6 +443,9 @@ export async function polymon(mntmp) {
     // C polyself.c:751: count every successful form change, even when no
     // earlier action has materialized the embedded conduct struct in JS.
     u.uconduct = u.uconduct || {};
+    if (!(u.uconduct.polyselfs | 0))
+        livelog_printf(LL_CONDUCT, 'changed form for the first time, becoming %s',
+                       an(monPmname(mntmp, g.flags?.female ? FEMALE : MALE)));
     u.uconduct.polyselfs = (u.uconduct.polyselfs | 0) + 1;
 
     // C polyself.c:750-751 — exercise(A_CON,FALSE); exercise(A_WIS,TRUE).
@@ -544,6 +547,9 @@ export async function polymon(mntmp) {
 
     // C polyself.c:850 — the new form may be immune to strangulation.
     check_strangling_poly(false);
+    // C polyself.c:851-852 — `if (nohands(gy.youmonst.data)) make_glib(0);`
+    if (_nohands(ptr))
+        make_glib(0);
     // C polyself.c:855-870 — new-form max HP.
     const mlvl = ptr.mlevel | 0;
     let mhmax;

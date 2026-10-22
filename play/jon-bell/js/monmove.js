@@ -55,7 +55,7 @@ import { see_wsegs, worm_nomove, worm_move } from './worm.js';
 import { ranged_attk_available, mhis_mon } from './mhitu.js';
 import { mon_wield_item, sticks } from './dog.js';
 import { mwelded, is_pole, is_mines_prize, is_soko_prize, bill_dummy_object, mbodypart, verbalize, switch_terrain, coord_desc, notice_mon } from './cmd.js';
-import { is_pick, mdig_tunnel, mb_trapped } from './dig.js';
+import { is_pick, mdig_tunnel, mb_trapped, unpunish } from './dig.js';
 import { fracture_rock } from './zap.js';
 /* C monflag.h:37 — MZ_LARGE is the first monster size subject to the
  * diagonal tight-squeeze rejection in mfndpos(). */
@@ -1108,6 +1108,9 @@ export function mon_would_take_item(mtmp, otmp) {
     const mxload = max_mon_load(mtmp);
     const pctload = mxload > 0 ? Math.trunc((cload * 100) / mxload) : 100;
 
+    /* C monmove.c:1003-1004: if (otmp == uball || otmp == uchain) return FALSE; */
+    if (otmp === game.u?.uball || otmp === game.u?.uchain)
+        return false;
     if (mtmp.mtame && (otmp.cursed | 0))
         return false;
     const mindless = !!(mflags1 & M1_MINDLESS_MV);
@@ -1815,6 +1818,29 @@ export async function m_move(mtmp, after) {
         /* C: return postmov(mtmp, ptr, omx, omy, dog_move(mtmp, after), ...) */
         const res = await dog_move(mtmp, after);
         const _pdidsee = res === MMOVE_MOVED_MV && !!cansee(mtmp.mx | 0, mtmp.my | 0);
+        /* C postmov (monmove.c:1481-1507): a tame vampshifter that moved onto a
+         * closed/locked door shifts to fog first (vamp_shift, monmove.c:2377). */
+        if (res === MMOVE_MOVED_MV) {
+            const _nx = mtmp.mx | 0, _ny = mtmp.my | 0;
+            const _vl = game.level?.locations?.[_nx]?.[_ny];
+            if (is_vampshifter(mtmp) && !((mtmp.data?.mflags1 | 0) & M1_AMORPHOUS_MV)
+                && (_vl?.typ | 0) === DOOR_TYP_MV
+                && ((_vl?.doormask | 0) & (D_LOCKED_MV | D_CLOSED_MV)) !== 0
+                && can_fog(mtmp)) {
+                if (seenflgs) {
+                    mtmp.mx = _entry_omx; mtmp.my = _entry_omy;
+                    newsym(_nx, _ny); newsym(_entry_omx, _entry_omy);
+                }
+                const _pre = (seenflgs & 1) ? null : capture_flushed_cells();
+                await newcham(mtmp, PM_FOG_CLOUD, (seenflgs & 1) ? NC_SHOW_MSG : 0);
+                topl_force_break_now(false, _pre);
+                await flush_pending_messages();
+                if (seenflgs) {
+                    mtmp.mx = _nx; mtmp.my = _ny;
+                    newsym(_entry_omx, _entry_omy); newsym(_nx, _ny);
+                }
+            }
+        }
         if (res === MMOVE_MOVED_MV)
             newsym(_entry_omx, _entry_omy);
         if (res === MMOVE_MOVED_MV) {
@@ -1823,13 +1849,16 @@ export async function m_move(mtmp, after) {
                 /* C postmov (monmove.c:1535-1540): trapret = mintrap(mtmp,0); if
                  * the trap killed or moved the monster, newsym + return MMOVE_DIED
                  * so dochug stops (no post-move distfleeck recalc for a dead pet). */
+                /* C keeps the stale mx,my of a monster killed in mintrap (mon.c:2711-2715's
+                 * zeroing is #if 0), so postmov's newsym(mtmp->mx, mtmp->my) (monmove.c:1511-1512)
+                 * runs on the death square for EVERY trap kill.  monkilled_trap zeroes mx,my,
+                 * so repaint the pre-trap square instead.  Under Hallucination this repaint
+                 * draws on the display RNG when the cell holds an object. */
                 const _pmx = mtmp.mx | 0, _pmy = mtmp.my | 0;
-                const _pttyp = _trap.ttyp;
                 const trapret = await mintrap(mtmp, 0);
                 if (trapret === TRAP_KILLED_MON_MV || trapret === TRAP_MOVED_MON_MV) {
                     if (mtmp.mx) newsym(mtmp.mx | 0, mtmp.my | 0);
-                    else if (trapret === TRAP_KILLED_MON_MV && _pmx > 0
-                             && (_pttyp === 1 || _pttyp === 2 || _pttyp === 3)) /* ARROW/DART/ROCKTRAP */
+                    else if (trapret === TRAP_KILLED_MON_MV && _pmx > 0)
                         newsym(_pmx, _pmy);
                     return MMOVE_DIED_MV;
                 }
@@ -1880,7 +1909,23 @@ export async function m_move(mtmp, after) {
         return postmov(mtmp, res);
     }
 
-    /* C monmove.c:1802-1827: is_covetous branch — no RNG in stub (is_covetous=false for common monsters) */
+    /* C monmove.c:1802-1827: is_covetous branch.  A covetous monster (M3_COVETOUS
+     * = 0x001f) whose goal square holds another monster within dist2 <= 2
+     * attacks it with mattackm instead of moving; otherwise normal AI. */
+    if (!(mtmp.wormno | 0) && ((((mtmp.data && mtmp.data.mflags3) | 0) & 0x001f) !== 0)) {
+        const tx = mtmp.mgoal?.x | 0, ty = mtmp.mgoal?.y | 0;
+        const intruder = isok(tx, ty) ? m_at(tx, ty) : null;
+        if (intruder && intruder !== mtmp
+            && dist2(mtmp.mx | 0, mtmp.my | 0, tx, ty) <= 2) {
+            (game.gb ||= {}).bhitpos = { x: tx, y: ty };
+            (game.gn ||= {}).notonhead =
+                ((intruder.mx | 0) !== tx || (intruder.my | 0) !== ty);
+            const covetousattack = await mattackm(mtmp, intruder);
+            if (covetousattack & M_ATTK_AGR_DIED_MV)
+                return MMOVE_DIED_MV;
+            return postmov(mtmp, MMOVE_MOVED_MV);
+        }
+    }
 
     /* C monmove.c:1830-1851: shopkeeper/guard/priest — dispatch to their own
      * move fn (shk_move / gd_move / pri_move) and translate the return code.
@@ -1922,6 +1967,18 @@ export async function m_move(mtmp, after) {
          * (priest.c:122-124) itself only does newsym(nix,niy). */
         if (xm === 1) {
             newsym(_entry_omx, _entry_omy);
+            /* C monmove.c:1509 — postmov's `trapret = mintrap(mtmp, NO_TRAP_FLAGS)`
+             * runs for a moved priest too (its already_seen rn2(4), trap.c:3812). */
+            const _ptr = t_at(mtmp.mx | 0, mtmp.my | 0);
+            if (_ptr && _ptr.ttyp !== SQKY_BOARD_MV) {
+                const trapret = await mintrap(mtmp, 0);
+                if (trapret === TRAP_KILLED_MON_MV || trapret === TRAP_MOVED_MON_MV) {
+                    if (mtmp.mx) newsym(mtmp.mx | 0, mtmp.my | 0);
+                    return MMOVE_DIED_MV;
+                }
+            } else if (_ptr) {
+                await _handle_sqky_board_mon(mtmp, _ptr, mtmp.mx | 0, mtmp.my | 0);
+            }
             newsym(mtmp.mx | 0, mtmp.my | 0);
         }
         return postmov(mtmp, (xm !== 1) ? MMOVE_NOTHING_MV : MMOVE_MOVED_MV);
@@ -2191,6 +2248,9 @@ export async function m_move(mtmp, after) {
         const info_i = mfp_poss[i].info | 0;
         if (avoid && (info_i & NOTONL_MV)) continue; /* C monmove.c:1948 */
 
+        /* C monmove.c:1953-1954 */
+        if (m_avoid_kicked_loc(mtmp, nx, ny)) continue;
+
         /* C monmove.c:1980-1982: if (MON_AT(nx,ny) && (info[i]&ALLOW_MDISP)
          * && !(info[i]&ALLOW_M) && !better_with_displacing) continue;
          * Now real (was "MON_AT stub: no JS monster tracking; skip this
@@ -2318,6 +2378,10 @@ export async function m_move(mtmp, after) {
 
         maybe_unhide_at(mtmp.mx | 0, mtmp.my | 0);
 
+        /* C monmove.c:2062 — mon_track_add(mtmp, omx, omy) runs right after the move,
+         * BEFORE postmov() (whose iron-bars/dig arms can return early). */
+        mon_track_add(mtmp, omx, omy);
+
         /* C postmov (monmove.c:1467-1468):
          *     boolean canseeit = cansee(mtmp->mx, mtmp->my),
          *             didseeit = canseeit;
@@ -2360,10 +2424,19 @@ export async function m_move(mtmp, after) {
                           (seenflgs & 1) ? NC_SHOW_MSG : 0);
             /* C vamp_shift always calls display_nhwindow(WIN_MESSAGE,FALSE)
              * after newcham, even when no shape-change message was emitted. */
+            /* tty more() does not flush_screen, so a svm.moves++ since the last
+             * flush (time_botl set, allmain.c:261-263) is not yet on the status
+             * row: the --More-- shows the T: the last flush painted. */
+            const _lff = game._lastFlushFrame;
+            const _preMovesLatch = game._movemonStatusMoves;
+            if (game.flags?.time && _lff && (_lff.moves | 0) < (game.moves | 0))
+                game._movemonStatusMoves = _lff.moves | 0;
+            try {
             topl_force_break_now(false, _preShiftCells);
             // monmove.c:2391 blocks here, before restoring the monster's
             // position or letting later monsters append to the same topline.
             await flush_pending_messages();
+            } finally { game._movemonStatusMoves = _preMovesLatch; }
             if (seenflgs) {
                 mtmp.mx = nix;
                 mtmp.my = niy;
@@ -2384,13 +2457,16 @@ export async function m_move(mtmp, after) {
         {
             const _trap = t_at(nix, niy);
             if (_trap && _trap.ttyp !== SQKY_BOARD_MV) {
+                /* C keeps the stale mx,my of a monster killed in mintrap (mon.c:2711-2715's
+                 * zeroing is #if 0), so postmov's newsym(mtmp->mx, mtmp->my) (monmove.c:1511-1512)
+                 * runs on the death square for EVERY trap kill.  monkilled_trap zeroes mx,my,
+                 * so repaint the pre-trap square instead.  Under Hallucination this repaint
+                 * draws on the display RNG when the cell holds an object. */
                 const _pmx = mtmp.mx | 0, _pmy = mtmp.my | 0;
-                const _pttyp = _trap.ttyp;
                 const trapret = await mintrap(mtmp, 0);
                 if (trapret === TRAP_KILLED_MON_MV || trapret === TRAP_MOVED_MON_MV) {
                     if (mtmp.mx) newsym(mtmp.mx | 0, mtmp.my | 0);
-                    else if (trapret === TRAP_KILLED_MON_MV && _pmx > 0
-                             && (_pttyp === 1 || _pttyp === 2 || _pttyp === 3)) /* ARROW/DART/ROCKTRAP */
+                    else if (trapret === TRAP_KILLED_MON_MV && _pmx > 0)
                         newsym(_pmx, _pmy);
                     return MMOVE_DIED_MV;
                 }
@@ -2445,8 +2521,6 @@ export async function m_move(mtmp, after) {
             newsym(nix, niy);
         }
 
-        /* C mon_track_add(mtmp, omx, omy): update mtrack (monmove.c:79). */
-        mon_track_add(mtmp, omx, omy);
 
     } else {
         /* C monmove.c:2119-2122: a unicorn with no ordinary move can
@@ -2785,7 +2859,7 @@ function touch_artifact_mv(_otmp, _mtmp) {
     return true;
 }
 
-function _m_consume_metal_obj_mv(mtmp, otmp) {
+async function _m_consume_metal_obj_mv(mtmp, otmp) {
     const ispet = !!(mtmp.mtame | 0);
     if (!ispet && (mtmp.mhp | 0) < (mtmp.mhpmax | 0))
         healmon_real(mtmp, OC_WEIGHT[otmp.otyp | 0] | 0, 0);
@@ -2793,16 +2867,19 @@ function _m_consume_metal_obj_mv(mtmp, otmp) {
      * is `otmp->cobj != 0` (obj.h:334).  No vanilla container is metallic
      * (LARGE_BOX/CHEST are WOOD, ICE_BOX PLASTIC, the bags CLOTH), so this arm
      * is unreachable from meatmetal; meatbox is unported and is not guessed at. */
-    /* C:1403-1408 uball/uchain.  unpunish() does not exist in js/ (the only
-     * body, js/dig.js:1359, is a throwing stub), so:
-     *   - uchain: C calls unpunish() and does NOT delobj, i.e. draws NOTHING.
-     *     Return early to keep the RNG shape; the unpunish side effect is a
-     *     documented GAP.
-     *   - uball: C calls unpunish() then delobj(), i.e. the same draw as the
-     *     ordinary path.  Fall through; unpunish is the same documented GAP. */
+    /* C:1403-1408 uball/uchain.  unpunish() (read.c:3066-3077) is NOT
+     * draw-free: it delobj()s the chain, and delobj_core's obj_resists(0,0)
+     * (invent.c:1446) is one rn2(100).
+     *   - uchain: unpunish() only; the chain's delobj draw is the one draw.
+     *   - uball: unpunish() (chain draw) THEN delobj(ball) (second draw). */
     const _uchain = game.u?.uchain;
-    if (_uchain && otmp === _uchain)
-        return; /* GAP: unpunish() unported — no draw either way. */
+    const _uball = game.u?.uball;
+    if (_uchain && otmp === _uchain) {
+        await unpunish();
+        return;
+    }
+    if (_uball && otmp === _uball)
+        await unpunish();
     /* C:1421 delobj(otmp) -> delobj_core(otmp, FALSE)  (invent.c:1436-1461).
      * `if (!force && obj_resists(obj, 0, 0))` — rn2(100), and on a TRUE the
      * object SURVIVES (only in_use is cleared).  meatmetal returns 1 either
@@ -2878,7 +2955,7 @@ async function meatmetal_mv(mtmp) {
                  * the CACHED weight (place_object/mksobj set owt = weight(obj)).
                  * The countdown lives at js/monmove.js:1621 (monmove.c:1769). */
                 mtmp.meating = Math.trunc((otmp.owt | 0) / 2) + 1;
-                _m_consume_metal_obj_mv(mtmp, otmp);
+                await _m_consume_metal_obj_mv(mtmp, otmp);
                 /* C:1518-1519 DEADMONSTER(mtmp) — monst.h `(mtmp)->mhp < 1`. */
                 if ((mtmp.mhp | 0) < 1)
                     return 2;

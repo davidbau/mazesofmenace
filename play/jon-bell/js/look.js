@@ -54,7 +54,7 @@ import { visible_region_at, reg_damg } from './region.js';
 import { pushRngLogEntry } from './rng.js';
 import { Blind } from './vision.js';
 import { can_reach_floor } from './hold_another_object.js';
-import { doname, doname_with_price, corpse_xname, an, vtense, CXN_ARTICLE } from './objnam.js';
+import { doname, doname_with_price, corpse_xname, an, vtense, CXN_ARTICLE, CXN_PFX_THE } from './objnam.js';
 import { DEFSYM_EXPLANATION } from './defsym_data.js';
 import { ENV } from './hostenv.js';
 /* mbodypart: C polyself.c:1956 — needed only by look_here's u.uswallow arm
@@ -336,7 +336,7 @@ function _will_feel_cockatrice_lk(otmp, force_touch) {
 
 async function _feel_cockatrice_lk(otmp, force_touch) {
     if (!_will_feel_cockatrice_lk(otmp, force_touch)) return;
-    const name = corpse_xname(otmp, null, CXN_ARTICLE);
+    const name = corpse_xname(otmp, null, CXN_PFX_THE);
     if (poly_when_stoned(game.youmonst?.data))
         await pline(`You touched ${name} with your bare hands.`);
     else

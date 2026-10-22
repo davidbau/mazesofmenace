@@ -355,9 +355,18 @@ async function y_n(question) {
      * query.  First drain any width-driven pages; if their final message is
      * still live, acknowledge that too, just as TOPLINE_NEED_MORE does. */
     if (game._pending_message && !game._topl_win_stop) {
-        await flush_screen(1);
-        if (game._pending_message && !game._topl_win_stop)
-            await force_more_lone_frame(game._pending_message);
+        /* more() (topl.c:397-398) runs no bot(): status dirtied after the last
+         * pline flush (losehp's SET_BOTL, hack.c:4265) is not yet on the
+         * physical line, so hold the last painted status across the drain. */
+        const _lf = game._lonePlineFrame;
+        const _hold = !!game.disp?.botl && !!game._lastPaintedBotl
+            && !(_lf && _lf.msg === game._pending_message) && !game._botlPaintHeld;
+        if (_hold) game._botlPaintHeld = true;
+        try {
+            await flush_screen(1);
+            if (game._pending_message && !game._topl_win_stop)
+                await force_more_lone_frame(game._pending_message);
+        } finally { if (_hold) game._botlPaintHeld = false; }
     }
     const wraps = topl_park_cursor(null, prompt + ' ')[1] > 0;
     const paintPrompt = async () => {
@@ -1048,6 +1057,8 @@ export async function dipfountain(obj) {
         const _l = g.level?.at(u.ux, u.uy);
         if (_l) _l.flags = 0;
         newsym(u.ux, u.uy);
+        if (in_town(u.ux, u.uy)) /* fountain.c:445 */
+            await angry_guards(false);
         return;
     }
     const ER_NOTHING = 0;
@@ -2669,7 +2680,8 @@ async function You_feel(msg, ...args) {
     let s = msg;
     let ai = 0;
     s = s.replace(/%s/g, () => args[ai++] || '');
-    return pline('You feel ' + s);
+    /* C pline.c:387-397 You_feel: "You dream that you feel " when Unaware */
+    return pline((_Unaware() ? 'You dream that you feel ' : 'You feel ') + s);
 }
 function Your1(msg) {
     return pline('Your ' + msg);
@@ -3118,6 +3130,11 @@ const SICK_ALL = 3;
 export function healup(nhp, nxtra, curesick, cureblind) {
     const g = game;
     const u = g.u;
+    if (nhp && g.disp && !((g.disp.botl | 0) || (g.disp.botlx | 0))
+        && g._botlStaleHp === undefined) {
+        g._botlStaleHp = Upolyd(u) ? u.mh | 0 : u.uhp | 0;
+        g._botlStaleHpmax = Upolyd(u) ? u.mhmax | 0 : u.uhpmax | 0;
+    }
     if (nhp) {
         if (Upolyd(u)) {
             u.mh += nhp;

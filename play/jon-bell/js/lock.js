@@ -8,6 +8,8 @@ import { game, wizard } from './gstate.js';
 import { could_untrap, untrap_at, cmdq_add_ec, cmdq_add_dir, ysimple_name, set_msg_xy } from './cmd.js';
 import { yname } from './do_wear.js';
 import { t_at } from './trap.js';
+import { can_reach_floor } from './hold_another_object.js';
+import { cant_reach_floor } from './engrave.js';
 const WAND_CLASS = 11; /* objclass.h WAND_CLASS */
 import { Is_rogue_level, M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, AUTOUNLOCK_KICK } from './const.js';
 import { canspotmon, map_invisible } from './display.js';
@@ -195,6 +197,11 @@ export async function doopen_indir(x, y) {
             return await doloot();
         }
     }
+
+    if (_stumble_on_door_mimic_stub(cx, cy))
+        return ECMD_TIME;
+    if (_confusion_stub() || _stunned_stub())
+        res = ECMD_TIME;
 
     /* C lock.c:828 — portcullis = (is_drawbridge_wall(cc.x, cc.y) >= 0). */
     const loc = g.level?.at(cx, cy);
@@ -564,7 +571,7 @@ export async function doclose() {
         return;
     }
     /* C lock.c:970 — u.utrap && u.utraptype == TT_PIT */
-    if ((u.utrap | 0) && (u.utraptype | 0) === 0 /* TT_PIT=0 in C trap.h */) {
+    if (u.utrap && u.utraptype === TT_PIT) {
         await pline("You can't reach over the edge of the pit.");
         g.context = g.context || {};
         g.context.move = 0; /* ECMD_OK */
@@ -1189,6 +1196,11 @@ export async function doforce() {
         await pline(`You can't force anything ${phrase} weapon${usePlural ? 's' : ''}.`);
         return ECMD_OK;
     }
+    /* C lock.c:703-706 */
+    if (!can_reach_floor(true)) {
+        await cant_reach_floor(u.ux | 0, u.uy | 0, false, true, false);
+        return ECMD_OK;
+    }
 
     /* C lock.c:708 — picktyp = is_blade(uwep) && !is_pick(uwep). */
     const uwep = u.uwep;
@@ -1307,6 +1319,8 @@ export async function pick_lock(pick, rx, ry, container) {
         cx = rx | 0; cy = ry | 0;
     } else {
         if (!(await getdir(null))) {
+            /* C lock.c:424 get_adjacent_loc() -> cmd.c:3939 pline1(Never_mind) */
+            await pline('Never mind.');
             return PICKLOCK_DID_NOTHING; /* cancelled / invalid */
         }
         cx = (u.ux | 0) + (u.dx | 0);
@@ -1431,11 +1445,11 @@ export async function pick_lock(pick, rx, ry, container) {
     if (!door || !_IS_DOOR(door.typ)) {
         let res = PICKLOCK_DID_NOTHING;
         if (door) {
-            const rg = door.remembered_glyph;
-            if (rg && _darken_room_floor(door, rg)) {
-                show_glyph_cell(cx, cy, rg.ch, rg.color, rg.decgfx, 0, rg.cls);
+            const _sig = (r) => r ? `${r.ch}|${r.color}|${r.cls}|${r.decgfx ? 1 : 0}` : '';
+            const oldglyph = _sig(door.remembered_glyph);
+            feel_location(cx, cy);
+            if (_sig(door.remembered_glyph) !== oldglyph)
                 res = PICKLOCK_LEARNED_SOMETHING;
-            }
         }
         await pline(`You ${_blind_stub() ? 'feel' : 'see'} no door there.`);
         return res;

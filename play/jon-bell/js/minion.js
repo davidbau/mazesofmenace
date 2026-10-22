@@ -5,6 +5,19 @@ import { game } from './gstate.js';
 import { CONFLICT, STRAT_APPEARMSG } from './const.js';
 import { PM_ANGEL } from './pm.generated.js';
 import { rn1, rnd, d } from './rng.js';
+import { mon_has_amulet } from './sit.js';
+import { is_dprince, is_demon, set_malign, Inhell } from './makemon.js';
+import { tele_restrict, rloc } from './teleport.js';
+import { money_cnt } from './com_pager.js';
+import { is_fainted, reset_faint } from './eat.js';
+import { nomul, unmul, stop_occupation } from './allmain.js';
+import { money2mon, currency } from './shk.js';
+import { getlin } from './wizcmds.js';
+import { acurr } from './attrib.js';
+import { A_CHA, RLOC_MSG } from './const.js';
+import { canseemon, livelog_printf } from './display.js';
+import { mon_nam } from './uhitm.js';
+import { x_monnam, Amonnam } from './mhitm.js';
 import { pline, newsym, canspotmon, Deaf } from './display.js';
 import { Blind } from './vision.js';
 import { Monnam } from './mcastu.js';
@@ -115,4 +128,111 @@ export async function gain_guardian_angel() {
             }
         }
     }
+}
+
+/* C minion.c:255 — #define Athome (Inhell && (mtmp->cham == NON_PM)) */
+const S_DEMON = 56;
+const NON_PM = -1;
+const sgn = (x) => (x > 0) - (x < 0);
+function u_wield_art_mn(art) {
+    const uwep = game.u?.uwep;
+    return !!uwep && (uwep.oartifact | 0) === art;
+}
+
+/* C ref: minion.c:257-352 demon_talk() — returns 1 if it won't attack. */
+export async function demon_talk(mtmp) {
+    const u = game.u;
+    const ART_EXCALIBUR = 1, ART_DEMONBANE = 12;
+    if (u_wield_art_mn(ART_EXCALIBUR) || u_wield_art_mn(ART_DEMONBANE)) {
+        if (canspotmon(mtmp))
+            await pline(`${Amonnam(mtmp)} looks very angry.`);
+        else
+            await pline('You feel tension building.');
+        mtmp.mpeaceful = mtmp.mtame = 0;
+        set_malign(mtmp);
+        newsym(mtmp.mx, mtmp.my);
+        return 0;
+    }
+    if (is_fainted()) {
+        await reset_faint();
+    } else {
+        await stop_occupation();
+        if ((game.multi | 0) > 0) {
+            nomul(0);
+            await unmul(null);
+        }
+    }
+    /* Slight advantage given. */
+    if (is_dprince(mtmp.data ?? permonstTemplate(mtmp.mndx)) && mtmp.minvis) {
+        const wasunseen = !canspotmon(mtmp);
+        mtmp.minvis = mtmp.perminvis = 0;
+        if (wasunseen && canspotmon(mtmp)) {
+            await pline(`${Amonnam(mtmp)} appears before you.`);
+            mtmp.mstrategy &= ~STRAT_APPEARMSG;
+        }
+        newsym(mtmp.mx, mtmp.my);
+    }
+    const uPtr = ((u.umonnum | 0) > 0 && u.mtimedone) ? permonstTemplate(u.umonnum) : null;
+    if (uPtr && (uPtr.mlet | 0) === S_DEMON) { /* Won't blackmail their own. */
+        if (!Deaf())
+            await pline(`${Amonnam(mtmp)} says, "Good hunting, ${game.flags?.female ? 'Sister' : 'Brother'}."`);
+        else if (canseemon(mtmp))
+            await pline(`${Amonnam(mtmp)} says something.`);
+        if (!tele_restrict(mtmp))
+            await rloc(mtmp, RLOC_MSG);
+        return 1;
+    }
+    const cash = money_cnt(game.invent);
+    const mptr = mtmp.data ?? permonstTemplate(mtmp.mndx);
+    const athome = (Inhell() && (mtmp.cham ?? NON_PM) === NON_PM) ? 1 : 0;
+    let demand = Math.trunc((cash * (rnd(80) + 20 * athome))
+        / (100 * (1 + (sgn(u.ualign.type) === sgn(mptr.maligntyp) ? 1 : 0))));
+    if (!demand || (game.multi | 0) < 0) { /* you have no gold or can't move */
+        mtmp.mpeaceful = 0;
+        set_malign(mtmp);
+        return 0;
+    }
+    if (mon_has_amulet(mtmp) || Deaf())
+        demand = cash + rn1(1000, 125);
+    if (!Deaf())
+        await pline(`${Amonnam(mtmp)} demands ${demand} ${currency(demand)} for safe passage.`);
+    else if (canseemon(mtmp))
+        await pline(`${Amonnam(mtmp)} seems to be demanding something.`);
+    let offer = 0;
+    if (!Deaf() && ((offer = await bribe(mtmp, 'How much will you offer?')) >= demand)) {
+        await pline(`${Amonnam(mtmp)} vanishes, laughing about cowardly mortals.`);
+    } else if (offer > 0 && rnd(5 * acurr(u, A_CHA)) > (demand - offer)) {
+        await pline(`${Amonnam(mtmp)} scowls at you menacingly, then vanishes.`);
+    } else {
+        await pline(`${Amonnam(mtmp)} gets angry...`);
+        mtmp.mpeaceful = 0;
+        set_malign(mtmp);
+        return 0;
+    }
+    livelog_printf(0x0800 /* LL_UMONST */, `bribed ${x_monnam(mtmp, 1, null, 0x1F, false)} with ${offer} ${offer === 1 ? 'zorkmid' : 'zorkmids'} for safe passage`);
+    await mongone(mtmp);
+    return 1;
+}
+
+/* C ref: minion.c:354-382 bribe() */
+export async function bribe(mtmp, prompt) {
+    const umoney = money_cnt(game.invent);
+    const buf = await getlin(prompt);
+    let offer = parseInt(buf, 10);
+    if (!Number.isFinite(offer)) offer = 0;
+    if (offer < 0) {
+        await pline(`You try to shortchange ${mon_nam(mtmp)}, but fumble.`);
+        return 0;
+    } else if (offer === 0) {
+        await pline('You refuse.');
+        return 0;
+    } else if (offer >= umoney) {
+        await pline(`You give ${mon_nam(mtmp)} all your gold.`);
+        offer = umoney;
+    } else {
+        await pline(`You give ${mon_nam(mtmp)} ${offer} ${currency(offer)}.`);
+    }
+    await money2mon(mtmp, offer);
+    if (game.disp) game.disp.botl = 1;
+    return offer;
 }

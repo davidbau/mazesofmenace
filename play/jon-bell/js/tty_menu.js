@@ -97,12 +97,10 @@ export class TtyMenu {
         this.add_menu(0, 0, ATR_NONE, str);
     }
 
-    /* C ref: src/windows.c:1816 add_menu_heading — a non-selectable line drawn
-     * with iflags.menu_headings, whose default is {NO_COLOR, ATR_INVERSE}
-     * (options.c:2197 optfn_menu_headings). */
     add_menu_heading(str) {
-        this.mlist.push({ aInt: 0, selector: 0, attr: ATR_INVERSE, str: String(str),
-                          selected: false, count: -1, heading: true });
+        const gameover = !!(game && game.program_state && game.program_state.gameover);
+        this.mlist.push({ aInt: 0, selector: 0, attr: gameover ? ATR_NONE : ATR_INVERSE,
+                          str: String(str), selected: false, count: -1, heading: true });
     }
 
     /* C ref: tty_add_menu.  `aInt` is anything.a_int; a non-zero identifier

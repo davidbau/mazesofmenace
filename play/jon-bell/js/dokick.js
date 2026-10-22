@@ -135,7 +135,7 @@ import { del_engr_at as del_engr_at_dk, mksobj_at, mksobj, mpickobj, obj_extract
  * used to keep it file-local; exported there rather than re-derived here so
  * there is only one ROLL_FROM(treefruits) draw site in the tree. */
 import { rnd_treefruit_at, unpunish, cvt_sdoor_to_door } from './dig.js';
-import { feel_newsym } from './display.js';
+import { feel_newsym, feel_location } from './display.js';
 import { flooreffects } from './cmd.js';
 /* Historical alias, identical to the shared mkobj extraction above. */
 import { obj_extract_self_general } from './cmd.js';
@@ -263,6 +263,8 @@ async function kick_dumb(x, y) {
     if (martial() || dex >= 16 || rn2(3)) {
         /* C: You("kick at empty space."); if (Blind) feel_location(x,y) — no RNG */
         void pline("You kick at empty space.");
+        if (_Blind_dk())
+            feel_location(x, y);
     }
     else {
         /* Dumb move: strain a muscle */
@@ -287,7 +289,17 @@ export async function losehp(n, knam, k_format) {
     n |= 0;
     // C's preceding pline has completed update_topl/more before losehp starts.
     // Drain the port's queued pages while they still show the pre-damage HP.
+    /* C runs no flush_screen between the preceding pline and losehp's
+     * SET_BOTL (hack.c:4265): status dirtied since that pline's own
+     * flush_screen (kick_ouch's set_wounded_legs, dokick.c:900-901, ATEMP(A_DEX)--)
+     * is not on the physical line until a later bot().  The port's drain below
+     * must not paint it. */
+    const _d0 = (game.disp ||= {});
+    const _bl = _d0.botl, _blx = _d0.botlx;
+    _d0.botl = 0; _d0.botlx = 0;
     await flush_pending_messages();
+    if (_bl) _d0.botl = _bl;
+    if (_blx) _d0.botlx = _blx;
     (game.disp ||= {}).botl = 1;
     end_running(true);
     if (Upolyd(u)) {
@@ -414,6 +426,8 @@ async function kick_ouch(x, y, kickobjnam) {
     exercise(A_DEX, false);
     exercise(A_STR, false);
     /* C: isok check, feel_location, is_drawbridge_wall, wake_nearto — no RNG */
+    if (isok(x, y) && _Blind_dk())
+        feel_location(x, y); /* dokick.c:891 we know we hit it */
     /* C: if (!rn2(3)) set_wounded_legs(RIGHT_SIDE, 5 + rnd(5)) */
     if (!rn2(3)) {
         set_wounded_legs(RIGHT_SIDE, 5 + rnd(5));

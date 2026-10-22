@@ -62,7 +62,7 @@ PM_FLAMING_SPHERE, PM_FIRE_VORTEX, PM_FIRE_ELEMENTAL, PM_SALAMANDER, PM_WATER_EL
 PM_GHOST, PM_WIZARD_OF_YENDOR, PM_SHOPKEEPER, PM_ARCHEOLOGIST, PM_WIZARD, } from './pm.generated.js';
 import { cansee, couldsee, clear_path, is_lightblocker_mappear, does_block, unblock_point } from './vision.js';
 import { linedup } from './trap.js';
-import { mon_nam, exclam, artifact_hit, hmon_hitmon_do_hit, hmon_hitmon_poison, hmon_hitmon_splitmon, hmon_hitmon_msg_hit, hmon_hitmon_msg_silver, hmon_hitmon_msg_lightobj, hmon_hitmon_dmg_recalc, hmon_hitmon_special } from './uhitm.js';
+import { hmon_egg_petrify, mon_nam, exclam, artifact_hit, hmon_hitmon_do_hit, hmon_hitmon_poison, hmon_hitmon_splitmon, hmon_hitmon_msg_hit, hmon_hitmon_msg_silver, hmon_hitmon_msg_lightobj, hmon_hitmon_dmg_recalc, hmon_hitmon_special } from './uhitm.js';
 /* C mon.c:3470 killed() is a one-line wrapper over xkilled(), which lives in
  * js/uhitm.js.  mhitm.js already imports from uhitm.js (mon_nam, dmgval_weapon,
  * ...), so this rides the existing edge rather than adding a new one. */
@@ -2794,6 +2794,9 @@ async function _hmon_hitmon_misc_obj(hmd, mon, obj) {
         hmd.dmg = dmgval_weapon(obj, mon);
         return;
     }
+    /* C uhitm.c:1186-1219 case EGG, petrifying arm (ordinary eggs fall to the weight arm) */
+    if ((obj.otyp | 0) === 266 /* EGG */ && await hmon_egg_petrify(hmd, mon, obj))
+        return;
     if ((obj.otyp | 0) === CREAM_PIE || (obj.otyp | 0) === BLINDING_VENOM_HM) {
         mon.msleeping = 0;
         /* C uhitm.c:1265-1268 — AT_SPIT for venom, AT_WEAP for a thrown pie. */

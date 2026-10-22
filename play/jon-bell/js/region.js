@@ -1,6 +1,6 @@
 // region.js — port of nethack-c/src/region.c (scaffold: functions are added here
 
-import { NHF_BONESFILE, DOOR, MAGICAL_BREATHING, TELEDS_NO_FLAGS } from './const.js';
+import { NHF_BONESFILE, DOOR, MAGICAL_BREATHING, TELEDS_NO_FLAGS, PLNMSG_ENVELOPED_IN_GAS } from './const.js';
 import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
 const HALF_PHYSICAL_DAMAGE = 74; /* C prop.h HALF_PHYS_DAM */
@@ -1032,7 +1032,7 @@ function make_gas_cloud(cloud, damage, inside_cloud) {
     if (!in_mklev && !inside_cloud && is_hero_inside_gas_cloud()) {
         region_pline_sync("You are enveloped in a cloud of "
                           + (damage ? "noxious gas" : "steam") + "!");
-        game._region_enveloped_msg = true;
+        (game.iflags ||= {}).last_msg = PLNMSG_ENVELOPED_IN_GAS; /* region.c:1204 */
     }
 }
 

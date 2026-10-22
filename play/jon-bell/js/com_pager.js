@@ -163,7 +163,10 @@ function render_map_row_clipped(y, clipX) {
     let firstCol = -1, lastCol = -1;
     for (let x = 1; x <= clipX && x < COLNO; x++) {
         const loc = cellAt(x);
-        if (loc?.disp_ch && loc.disp_ch !== ' ') {
+        /* wintty.c:3930-3964 prints inverse spaces too (a sensed ghost/shade) */
+        /* C wintty.c:3930-3964 paints an ATR_INVERSE blank (sensed ghost/shade),
+         * so it bounds the row like any glyph (js/display.js render_map_row). */
+        if (loc?.disp_ch && (loc.disp_ch !== ' ' || ((loc.disp_attr | 0) & 1))) {
             if (firstCol < 0)
                 firstCol = x;
             lastCol = x;
@@ -192,7 +195,12 @@ function render_map_row_clipped(y, clipX) {
             ? NO_COLOR : (loc?.disp_color ?? NO_COLOR);
         const dec = !rogueMap && !!loc?.disp_decgfx;
         const inverse = !!((loc?.disp_attr | 0) & 1 /* ATR_INVERSE */);
-        if (ch === ' ') {
+        /* A blank glyph carrying ATR_INVERSE (a sensed ghost, S_ghost ' ' with
+         * the detected-monster highlight) is a painted glyph in C, not a gap
+         * (same rule as js/display.js render_map_row). */
+        /* A blank with ATR_INVERSE (MG_DETECT / MG_BW_* highlight on a dark-part
+         * or stone glyph) is a painted cell in C, not a gap (wintty.c:3927). */
+        if (ch === ' ' && !inverse) {
             // A blank map cell (S_stone / dark void) is always emitted at the
             // terminal default color in C, and the reset is written BEFORE the
             // blank run — `\e[33m+\e[39m\e[5C`, not `\e[33m+\e[5C\e[39m`.  This
@@ -211,7 +219,8 @@ function render_map_row_clipped(y, clipX) {
                 activeColor = ANSI_DEFAULT;
             }
             let run = 1;
-            while (x + run <= lastCol && (cellAt(x + run)?.disp_ch ?? ' ') === ' ')
+            while (x + run <= lastCol && (cellAt(x + run)?.disp_ch ?? ' ') === ' '
+                   && !((cellAt(x + run)?.disp_attr | 0) & 1))
                 run++;
             if (activeDec) {
                 output += '\x0f';
@@ -454,7 +463,8 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipCo
         || (!!_prevRows && _prevRows.length >= 24
         && (rows3 ? _prevRows[21] === '' : true)
         && _prevRows[22] === '' && _prevRows[23] === '' && statusClipCol == null
-        && _prevRows.slice(1, 22).some((r) => r.includes('\x0e') || r.trim() !== ''));
+        && _prevRows.slice(1, 22).some((r) => r.includes('\x0e')
+            || (r.trim() !== '' && r.trim() !== '--More--')));
     const winRows = windowLines.length;
     // CLIP_X: 1-indexed max map column to render when window covers this row.
     const CLIP_X = WIN_COL - 1 + mapClipExtra;
@@ -492,7 +502,12 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipCo
                 // _buildScreenOutput reads — a live _pending_message first,
                 // then the _topl_sticky fallback for text C left physically on
                 // the terminal after our per-read clear dropped it.
-                const topl = String(game._pending_message || game._topl_sticky
+                // A message plined after an ESC'd --More-- is swallowed by
+                // WIN_STOP (wintty.c tty_putstr / topl.c more():232-235) and
+                // never reaches the terminal, so the row is physically blank
+                // blowing you a kiss..." is held in _pending_message only).
+                const topl = String((game._topl_win_stop ? '' : game._pending_message)
+                                    || game._topl_sticky
                                     || '').replace(/\s+$/, '');
                 const left = topl.slice(0, Math.max(0, col - 1));
                 output += left;

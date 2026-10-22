@@ -276,7 +276,10 @@ export async function touch_artifact_youmonst(otmp) {
     /* C artifact.c:922: Role_if(oart->role) */
     const roleMatch = arti === (quest_info(0) | 0)
                       || _ARTI_GIFT_ROLE[arti] === ((g.flags?.initrole ?? -1) | 0);
-    const badclass = self_willed && ((p.role && !roleMatch) || p.race);
+    const _roleCleared = arti === 1 /* ART_EXCALIBUR */
+                         && ((g.flags?.initrole ?? -1) | 0) !== 4; /* Knight */
+    const badclass = self_willed && (((p.role && !_roleCleared) && !roleMatch)
+                                     || p.race);
     /* C artifact.c:88-104 hack_artifacts(): "gift" artifacts of the hero's own
      * role (artifact.c:92-95) and the hero's quest artifact (:103) have their
      * alignment rewritten to the hero's initial alignment, so a Valkyrie
@@ -405,8 +408,15 @@ export async function getlin(prompt) {
          * of that remainder.  Paging the whole accumulation in one force_more
          * instead renders it as a two-ROW topline, which is not a shape C's
          * tty ever produces. */
+        const _live = String(g._pending_message);
+        const _snap = g._toplResultSnapshot;
         await flush_screen(1);
         if (g._pending_message) await force_more(g._pending_message);
+        if (_snap && g._resultMessage === _snap && _live.startsWith(_snap)) {
+            g._resultMessage = null;
+            g._resultMessageJoins = null;
+            g._toplResultSnapshot = null;
+        }
     }
     /* C hooked_tty_getlin displays the query through custompline(), whose
      * vpline() tail updates gp.prevmsg even though SUPPRESS_HISTORY keeps the
@@ -742,6 +752,15 @@ function _wish_mergable(into, obj) {
         if ((obj.corpsenm ?? -1) !== (into.corpsenm ?? -1)) return false;
         if (ot === 266 && (obj.timed || into.timed)) return false;
     }
+    /* C invent.c:4467-4477 — if both are named, the names must match
+     * (a corpse needs equal name-presence too). */
+    const _nm1 = obj.oextra?.oname ?? '', _nm2 = into.oextra?.oname ?? '';
+    if (((_nm1.length !== _nm2.length)
+         && ((_nm1.length && _nm2.length) || ot === 265))
+        || (_nm1.length && _nm2.length && _nm1 !== _nm2)) return false;
+    /* C invent.c:4494 — an artifact never merges with a non-artifact (or a
+     * different artifact): a refused Magicbane wish is a plain athame. */
+    if ((obj.oartifact | 0) !== (into.oartifact | 0)) return false;
     /* C invent.c:4442-4446 — revivable corpses never merge (is_reviver:
      * mondata.h:170, S_TROLL or a Rider; MONS row[0] is mlet, S_TROLL = 46). */
     if (ot === 265 /* CORPSE */ && (into.corpsenm ?? -1) >= LOW_PM) {
@@ -1431,7 +1450,7 @@ export async function makewish() {
     let _wishRefused = false;
     if (otmp && (otmp.oartifact | 0)) {
         if (!_wish_Blind())
-            otmp.dknown = 1;
+            observe_object(otmp); /* o_init.c:447 skips under Hallucination */
         /* C invent.c:1218-1231 */
         place_object(otmp, g.u.ux | 0, g.u.uy | 0);
         const canTouch = await touch_artifact_youmonst(otmp);

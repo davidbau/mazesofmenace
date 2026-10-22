@@ -134,7 +134,9 @@ function propOn(id) {
 function Antimagic() { return propOn(ANTIMAGIC); }
 function Hallucination() { return propOn(HALLUC); }
 function Blinded() { return propOn(BLINDED); }
-function Deaf() { return propOn(DEAF) || !!game.u?.uroleplay?.deaf; }
+/* youprop.h Deaf == (HDeaf || EDeaf) || u.uroleplay.deaf; this port keeps the
+ * HDeaf timeout in the flat u.HDeaf slot (eat.c:3421 newuhs, js/eat.js:788). */
+function Deaf() { return propOn(DEAF) || ((game.u?.HDeaf | 0) !== 0) || !!game.u?.uroleplay?.deaf; }
 function Invis() {
     const p = game.u?.uprops?.[INVIS];
     return !!(p && (p.intrinsic || p.extrinsic) && !p.blocked);
@@ -739,7 +741,7 @@ import { makeplural, makesingular, vtense } from './objnam.js';
 import { bogusmon } from './do_name.js';
 import { make_confused } from './potion.js';
 import { dobuzz, zap_over_floor } from './zap.js';
-import { make_blinded } from './zap.js';
+import { make_blinded, flash_str } from './zap.js';
 import { unconscious } from './pickup.js';
 import { is_fainted } from './eat.js';
 import { PM_CYCLOPS as PM_CYCLOPS_MC, PM_FLOATING_EYE as PM_FLOATING_EYE_MC } from './pm.generated.js';
@@ -1397,11 +1399,6 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
 }
 
 // ── helpers needed by buzzmu (ported elsewhere but imported inline) ──
-function flash_str(idx, _something) {
-    const types = ["magic missile", "fire", "cold", "sleep",
-                   "disintegration", "lightning", "poison gas", "acid"];
-    return types[idx] || "energy";
-}
 function sgn(x) { return x > 0 ? 1 : x < 0 ? -1 : 0; }
 
 // ── BZ_ macros from zap.h ──

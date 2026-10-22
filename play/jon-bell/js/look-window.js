@@ -14,7 +14,6 @@ export async function displayLookWindow(lines) {
         g._topl_joins = [];
     } else if (g._pending_message) {
         const live = g._pending_message;
-        const snapshot = g._toplResultSnapshot;
         let _start = 0;
         for (const page of _topl_more_pages(live, _topl_joins_snapshot(live) || undefined)) {
             g._moreFullCtx = { full: String(live), start: _start };
@@ -25,9 +24,14 @@ export async function displayLookWindow(lines) {
                 g._moreFullCtx = null;
             }
         }
-        if (g._resultMessage != null && snapshot != null
-            && String(g._resultMessage) === String(snapshot)
-            && String(live).startsWith(String(snapshot))) {
+        if (g._resultMessage != null) {
+            g._resultMessage = null;
+            g._resultMessageJoins = null;
+        } else if (g._resultMessage && snapshot == null) {
+            /* display_nhwindow(WIN_MESSAGE) acknowledged the whole topline and
+             * the window's tty_clear_nhwindow(WIN_MESSAGE) wiped it: an earlier
+             * command-result line (e.g. "You swap places with Hachi.", already
+             * paged on its own --More--) must not rejoin the next message. */
             g._resultMessage = null;
             g._resultMessageJoins = null;
         }

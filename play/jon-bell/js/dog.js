@@ -10,9 +10,10 @@ import { NON_PM, MM_EDOG, NO_MINVENT, W_SADDLE, In_endgame, OBJ_FREE, OBJ_FLOOR,
          MM_IGNOREWATER, MM_NOMSG, MM_MALE, MM_FEMALE,
          CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE,
          G_EXTINCT, MAXMONNO, EYE, DISMOUNT_THROWN } from './const.js';
+import { expels_gu } from './mhitu.js';           /* C mhitu.c:264 expels() */
 import { placebc } from './ball.js';                /* C ball.c:193 — unstuck()'s Punished arm */
 import { PM_KITTEN, PM_LITTLE_DOG, PM_PONY, PM_MEDUSA, PM_LONG_WORM, PM_WATCHMAN, PM_WATCH_CAPTAIN } from './pm.generated.js';
-import { LS_MONSTER } from './const.js';
+import { LS_MONSTER, GP_CHECKSCARY, GP_AVOID_MONPOS } from './const.js';
 import { Upolyd } from './const.js';
 /* C light.c homes: del_light_source (light.c:98) and hack.c:97 monst_to_any.
  * Re-exported so this file's historical export surface is unchanged. */
@@ -227,7 +228,16 @@ export async function makedog() {
      * walks them with goodpos, returns the first valid position. */
     const ux = (game.u?.ux ?? 0) | 0;
     const uy = (game.u?.uy ?? 0) | 0;
-    const petPos = enexto_core(ux, uy) ?? { x: ux, y: uy };
+    /* C makemon.c:1162-1163,1180-1181 — gpflags = MM_IGNOREWATER | GP_CHECKSCARY |
+     * GP_AVOID_MONPOS; enexto_core(.., ptr, gpflags) || enexto_core(.., gpflags & ~GP_CHECKSCARY),
+     * with fakemon.data = ptr (m_id 0).  A scroll of scare monster under a candidate
+     * square rejects it on the first pass. */
+    const fakemon = { data: permonstTemplate(pettype), mnum: pettype, m_id: 0, wormno: 0,
+        mx: 0, my: 0, minvent: null };
+    const gpflags = MM_IGNOREWATER | GP_CHECKSCARY | GP_AVOID_MONPOS;
+    const petPos = enexto_core(ux, uy, fakemon, gpflags)
+        ?? enexto_core(ux, uy, fakemon, gpflags & ~GP_CHECKSCARY)
+        ?? { x: ux, y: uy };
     propagate(pettype, true, false);
     /* C makemon.c:1253 — mtmp->m_id = next_ident() consumes rnd(2) */
     const g = game;
@@ -1457,7 +1467,7 @@ export { mon_leave, relmon };
 /* mondata.c:53 attacktype — expose the canonical mhitm predicate rather than
  * retaining a false-returning shadow for external callers. */
 export function attacktype(data, attk) { return _attacktype_real(data, attk); }
-function expels(mtmp, data, flag) { /* stub */ }
+async function expels(mtmp, data, flag) { return expels_gu(mtmp, mtmp?.data?.pmidx, flag); }
 function make_happy_shk(mtmp, flag) { /* stub */ }
 /* weapon.c:797 mon_wield_item — was an empty-body stub here (returning
  * undefined, so every `if (mon_wield_item(mtmp))` caller read it as "did not
@@ -1599,7 +1609,7 @@ export async function tamedog(mtmp, obj, givemsg) {
 
     if (mtmp === (game.u?.ustuck ?? null)) {
         if (game.u?.uswallow ?? 0)
-            expels(mtmp, mtmp.data, true);
+            await expels(mtmp, mtmp.data, true);
         /* C dog.c:1188 -- !(Upolyd && sticks(gy.youmonst.data)).  This read
          * game.Upolyd, a property nothing in js/ ever writes, so the guard was
          * unconditionally true. */

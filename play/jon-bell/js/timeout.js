@@ -6,15 +6,15 @@ import { RANGE_GLOBAL, NHF_BONESFILE, TIMER_LEVEL, TIMER_OBJECT, TIMER_NONE,
          OBJ_INVENT, OBJ_MIGRATING, OBJ_FLOOR, OBJ_BURIED, OBJ_CONTAINED,
          OBJ_MINVENT, BURN_OBJECT, LS_OBJECT, SHRINK_GLOB, CONTAINED_TOO,
          BURIED_TOO, NO_MINVENT, MM_NOMSG, G_EXTINCT, G_GENOD,
-         MV_KNOWS_EGG, FIG_TRANSFORM } from './const.js';
+         MV_KNOWS_EGG, FIG_TRANSFORM, ROT_CORPSE, REVIVE_MON } from './const.js';
 import { rot_organic, rot_corpse } from './dig.js';
 import { game } from './gstate.js';
 import { eatfood } from './eat.js';
 import { COLNO, ROWNO, CLOUD } from './const.js';
-import { rn2, rn1 } from './rng.js';
+import { rn2, rn1, d } from './rng.js';
 import { pline, You_hear, urgent_pline } from './display.js';
 import { buzz, Monnam } from './mcastu.js';
-import { makemon, hideunder, ing_suffix, revive_corpse, zombie_form, set_corpsenm,
+import { rider_revival_time, is_rider_pm, makemon, hideunder, ing_suffix, revive_corpse, zombie_form, set_corpsenm,
          dealloc_obj, maybe_unhide_at } from './mklev.js';
 import { permonstTemplate, container_weight, emits_light, name_to_mon } from './makemon.js';
 import { enexto_out } from './teleport.js';
@@ -823,18 +823,52 @@ function Sfi_fe(nhfp, curr, name) { return curr; }
  * an uninitialised binding.
  * The expiration time must reach callbacks such as burn_object: it determines
  * whether to show a warning or silently catch up after time spent away. */
+/* C ref: do.c:2236-2296 revive_mon(). The is_displacer rloc arm (2257-2274)
+ * is not ported here. */
+async function revive_mon(arg) {
+    const body = arg?.a_obj;
+    if (!body) return;
+    if (!(await revive_corpse(body))) {
+        let when, action;
+        const rider = is_rider_pm(body.corpsenm | 0);
+        if (rider && rn2(99)) { /* Rider usually tries again */
+            action = REVIVE_MON;
+            when = rider_revival_time(body, true);
+        } else { /* rot this corpse away */
+            if (!obj_has_timer(body, ROT_CORPSE))
+                await pline(`You feel ${rider ? 'much ' : ''}less hassled.`);
+            action = ROT_CORPSE;
+            when = d(5, 50) - ((game.moves | 0) - (body.age | 0));
+            if (when < 1) when = 1;
+        }
+        if (!obj_has_timer(body, action))
+            start_timer(when, TIMER_OBJECT, action, arg);
+    }
+}
+
+/* C ref: do.c:2297-2315 zombify_mon(). */
+async function zombify_mon(arg, timeout) {
+    const body = arg?.a_obj;
+    if (!body) return;
+    const zmon = zombie_form(permonstTemplate(body.corpsenm | 0));
+    if (zmon !== -1 && !(((game.mvitals?.[zmon]?.mvflags) | 0) & G_GENOD)) {
+        if (body.oextra) {
+            body.oextra.omid = 0;
+            if ('oextra_omid' in body) body.oextra_omid = 0;
+            body.oextra.omonst = null;
+        }
+        set_corpsenm(body, zmon);
+        await revive_mon(arg, timeout);
+    } else {
+        await rot_corpse(arg, timeout);
+    }
+}
+
 const timeout_funcs = [
     { f: (arg, timeout) => rot_organic(arg, timeout), cleanup: 0, name: 'rot_organic' },
     { f: (arg, timeout) => rot_corpse(arg, timeout), cleanup: 0, name: 'rot_corpse' },
-    { f: async (arg) => await revive_corpse(arg?.a_obj), cleanup: 0, name: 'revive_mon' },
-    { f: async (arg) => {
-        const body = arg?.a_obj;
-        if (!body) return false;
-        const zmon = zombie_form(permonstTemplate(body.corpsenm | 0));
-        if (zmon === -1) return false;
-        set_corpsenm(body, zmon);
-        return await revive_corpse(body);
-    }, cleanup: 0, name: 'zombify_mon' },
+    { f: async (arg) => await revive_mon(arg), cleanup: 0, name: 'revive_mon' },
+    { f: async (arg, timeout) => await zombify_mon(arg, timeout), cleanup: 0, name: 'zombify_mon' },
     { f: (arg, timeout) => burn_object(arg, timeout),
       cleanup: (arg, expire_time) => cleanup_burn(arg, expire_time), name: 'burn_object' },
     { f: (arg, timeout) => hatch_egg(arg, timeout), cleanup: 0, name: 'hatch_egg' },

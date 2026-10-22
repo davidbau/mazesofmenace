@@ -27,7 +27,7 @@ import { l_nhcore_call, NHCORE_START_NEW_GAME, NHCORE_MOVELOOP_TURN,
 import { clear_bypasses, sink_into_lava } from './trap.js';
 import { notice_all_mons, pooleffects, rhack, check_special_room, domove, prayer_done, deferred_goto, schedule_goto, heal_legs, timed_occupation, cmdq_clear, wipeoff, body_part, surface, confdir, hurtle, instapetrify, runmode_delay_output, take_off_occ, dolookaround_cmd } from './cmd.js';
 import { lookaround, end_running, is_pool, is_pool_or_lava } from './look.js';
-import { docrt, cls, bot, timebot, time_botl_moves_incremented, time_botl_run_ended, flush_screen, pline, urgent_pline, Norep, _topl_joins_committed, _topl_record_join, occupation_painted_tick, occupation_freeze_snapshot, occupation_painted_reset, occupation_force_more, run_page_frame_tick, run_page_frame_reset, capture_painted_frame, capture_pre_movemon_botl, force_more, _topl_merge_result, _topl_joins_snapshot } from './display.js';
+import { docrt, cls, bot, timebot, time_botl_moves_incremented, time_botl_run_ended, flush_screen, pline, urgent_pline, Norep, _topl_joins_committed, _topl_record_join, occupation_painted_tick, occupation_freeze_snapshot, occupation_painted_reset, occupation_force_more, _movemon_page_frames_reset, run_page_frame_tick, run_page_frame_reset, capture_painted_frame, capture_pre_movemon_botl, force_more, _topl_merge_result, _topl_joins_snapshot } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { fastforward_pre_mklev, fastforward_post_mklev, fastforward_step, fastforward_fill_mineralize, fmon_dochug_dispatch, NORMAL_SPEED, FF_FAITHFUL, ff_movemon_phase, ff_head_phase, ff_head_phase_pre, ff_head_phase_post, vomiting_dialogue_ff, sickness_dialogue_ff, choke_dialogue_ff } from './fastforward.js';
 import { makedog, dismount_steed } from './dog.js';
@@ -62,7 +62,7 @@ import { engrave } from './engrave.js';
 import { m_at } from './uhitm.js';
 import { noattacks_mndx, stealarm_mu } from './mhitu.js';
 import { unstolenarm } from './steal.js';
-import { canspotmon, _topl_stash_result } from './display.js';
+import { canspotmon, Unaware, _topl_stash_result } from './display.js';
 import { pline_flush_point, under_water, under_ground } from './display.js';
 import { spoteffects } from './landing-effects.js';
 import { PM_COCKATRICE, PM_CHICKATRICE } from './pm.generated.js';
@@ -127,7 +127,9 @@ import { change_luck, acurr, stone_luck, adjattrib, exercise } from './attrib.js
 import { make_sick } from './potion.js';
 /* C timeout.c slip_or_trip()'s callees — imported rather than re-spelled. */
 import { inv_weight, encumber_msg_sync } from './weight.js';
-import { doname, makeplural } from './objnam.js';
+import { doname, makeplural, an } from './objnam.js';
+import { monPmname } from './makemon.js';
+import { Upolyd as _Upolyd } from './const.js';
 import { is_ice } from './engrave.js';
 import { wake_nearto } from './mklev.js';
 import { which_armor, onscary } from './makemon.js';
@@ -832,7 +834,12 @@ export async function stop_occupation(options) {
         pushRngLogEntry(`^ml_stopsite[caller=${_caller}]`);
     }
     if (g.occupation) {
-        if (!options?.silent && !(await maybe_finished_meal(true)))
+        /* The study occupation's clear is deferred (js/mhitu.js stop_occupation
+         * emits the message at the attack, the driver clears afterwards).  In C
+         * that first stop_occupation() already cleared go.occupation, so a
+         * later one in the same turn (dochugw, monmove.c:235) prints nothing. */
+        const _studyAlreadyStopped = g.occtxt === 'studying' && g._studyStopMsg;
+        if (!options?.silent && !_studyAlreadyStopped && !(await maybe_finished_meal(true)))
             await pline(`You stop ${g.occtxt}.`);
         /* The fprefx taste line ("This cram ration is bland.") plined by the
          * starting rhack is still the committed topline when the first eating
@@ -880,7 +887,14 @@ export async function unmul(msg_override) {
     /* C hack.c:4185 `if (*gn.nomovemsg)` — non-empty, which is exactly JS
      * string truthiness once the null case above is handled. */
     if (g.nomovemsg) {
+        const _survived = g.nomovemsg.slice(0, 18).toLowerCase() === 'you survived that ';
         await pline(g.nomovemsg);
+        /* C hack.c:4192-4194 — follow "You survived that attempt" with the current
+         * form when polymorphed (Ugender: you.h:555). */
+        if (_Upolyd(g.u) && _survived) {
+            const _ug = (g.u.mfemale ? 1 : 0);
+            await pline(`You are ${an(monPmname(g.u.umonnum | 0, _ug))}.`);
+        }
     }
     g.nomovemsg = null;
     /* C hack.c:4197 — unmul clears u.usleep (set by fall_asleep, timeout.c:972). */
@@ -1395,6 +1409,13 @@ async function faithful_moveloop_turn() {
             // et al., RNG-free; do_wear.c:909) and clears the immobilisation.  This
             // is the faithful placement that the prior outer-loop unconditional
             if ((g.multi | 0) < 0) {
+                const _rm = g.flags?.runmode | 0;
+                if (_rm !== PROPS.RUN_TPORT
+                    && (_rm !== PROPS.RUN_LEAP || !((g.moves | 0) % 7))) {
+                    if (g.disp) g.disp.time_botl = g.flags?.time | 0;
+                    pline_flush_point();
+                    g._runFlushSeq = (g._runFlushSeq | 0) + 1;
+                }
                 g.multi = (g.multi | 0) + 1;
                 if ((g.multi | 0) === 0) {
                     await unmul(null);
@@ -1519,6 +1540,12 @@ async function eat_occupation_turn() {
     const thisTurnMoves = g.moves | 0;
     // hunger state so the forced --More-- shows it (before lesshungry's newuhs() bump).
     const thisTurnUhs = (g.u && g.u.uhs != null) ? (g.u.uhs | 0) : null;
+    /* Mid-meal, newuhs() stores u.uhs without SET_BOTL (eat.c:3396-3402), so the
+     * physical status row holds whatever the last bot() painted.  A bot() that
+     * ran after an earlier bite (botl raised for another reason) already shows
+     * the new hunger; save_hs is only right when nothing repainted.  Freeze it at
+     * this turn's flush, before eatfood's bite can move it. */
+    const thisTurnPaintedUhs = (g._botlPaintedUhs != null) ? (g._botlPaintedUhs | 0) : null;
     g._eatPreEffectFrame = null;
     let prior = g._occ_committed_topl;
     // The committed topline (prior.text) was shown coming into this turn (the inter-turn
@@ -1659,7 +1686,7 @@ async function eat_occupation_turn() {
     /* `part` is the incoming pline that raises the page; when it is newuhs's own
      * hunger message, its flush painted the pre-update hunger (eat.c:3468-3513). */
     const _displayedUhs = (part) => (g.occupation
-        ? (g._saved_hs ? (g._save_hs | 0) : thisTurnUhs)
+        ? (g._saved_hs ? ((thisTurnPaintedUhs != null ? thisTurnPaintedUhs : g._save_hs) | 0) : thisTurnUhs)
         /* stop_occupation() plines "You stop eating" BEFORE clearing go.occupation
          * and raising botl (allmain.c:684-695), so its flush_screen() repaints
          * nothing: the status row is still the mid-meal one (bite()'s newuhs
@@ -1786,7 +1813,12 @@ async function eat_occupation_turn() {
                  * (allmain.c:261), so its --More-- shows that frame's T:. */
                 const morc = await occupation_force_more(
                     _committed, _pageFrame, _pf?.cells ? (_pf.moves | 0) : thisTurnMoves,
-                    _displayedUhs(part), !_fromPreEat && !g.occupation);
+                    /* A pre-eat pline (encumber_msg, allmain.c:208) pages over the status its own
+                     * flush_screen() painted, taken mid-meal (u.uhs not yet Satiated), not the
+                     * live post-meal u.uhs. */
+                    (_fromPreEat && g._occCurBotl && g._occCurBotl.uhs != null)
+                        ? (g._occCurBotl.uhs | 0) : _displayedUhs(part),
+                    !_fromPreEat && !g.occupation);
                 _ownerAfterEsc = morc === 27 && !!g._topl_win_stop_armed;
             }
             _committed = part;
@@ -1844,6 +1876,7 @@ async function eat_occupation_turn() {
             : (prior ? { text: prior.text, postMeal: true } : null);
         g._pending_message = '';
     }
+    _movemon_page_frames_reset();
     await flush_screen(1);
     /* The flush's pager may have raised a --More-- over the earlier plines of
      * the committed line (update_topl's CO-1-8 reserve); what stays on the
@@ -2101,7 +2134,8 @@ async function nh_timeout_fast() {
     const Very_fast = !!(hFast & ~INTRINSIC_BITS) || !!eFast;
     const Fast = !!hFast || !!eFast;
     if (!Very_fast)
-        await pline(`You feel yourself slow down${Fast ? ' a bit' : ''}.`);
+        /* C pline.c:387-400 You_feel: "You dream that you feel " while Unaware */
+        await pline(`${Unaware() ? 'You dream that you feel' : 'You feel'} yourself slow down${Fast ? ' a bit' : ''}.`);
 }
 
 /* C timeout.c:347-378 — the last two warnings before timed descent. */
@@ -2845,10 +2879,25 @@ async function moveloop_core_faithful() {
                     /* The interrupt pline's flush_screen()/bot() paints the NEW hunger (newuhs set
                      * botl) but HP as of the last flush, so only uhs is refreshed. */
                     if (g._occCurBotl && pmUhs != null) g._occCurBotl = { ...g._occCurBotl, uhs: pmUhs };
-                    await occupation_force_more(pm.text, _postMealPreFrame, (g.moves | 0) - 1, pmUhs);
+                    const _pmMorc = await occupation_force_more(pm.text, _postMealPreFrame, (g.moves | 0) - 1, pmUhs);
                     // The movemon pline becomes the committed topline / result line, read
                     // at the next rhack(0) restore like any command result.
                     g._resultMessage = movemonMsg;
+                    /* topl.c more():232-235 / update_topl:257,300 — ESC on this page sets
+                     * WIN_STOP.  `skip` was sampled before more(), so the pline that raised
+                     * the page (the first of this turn's movemon plines) is still drawn, but
+                     * every later pline of the turn is swallowed until the next
+                     * tty_nhgetch clears the bit (wintty.c:4065-4066). */
+                    if (_pmMorc === 27 && g._topl_win_stop_armed) {
+                        const _rj = g._resultMessageJoins?.src === movemonMsg
+                            ? g._resultMessageJoins.joins : null;
+                        const _cut = _rj && _rj.length ? _rj[0] : movemonMsg.indexOf('  ');
+                        if (_cut > 0) g._resultMessage = movemonMsg.slice(0, _cut);
+                        g._resultMessageJoins = null;
+                        g._topl_win_stop_armed = false;
+                        g._topl_win_stop = true;
+                        g._topl_win_stop_buf = g._resultMessage;
+                    }
                     g._movemonMsgTurn = (g.moves || 1) - 1;
                 }
             } else {
@@ -2926,7 +2975,7 @@ async function moveloop_core_faithful() {
     }
     if (g._ff_input_tail_done)
         g._ff_input_tail_done = false;
-    else
+    else if (!g._pendingDeath)
         faithful_input_redraw();
     if (typeof process !== 'undefined' && ENV?.FF_DISPLAY_TRACE === '1') {
         pushRngLogEntry(`^vision_boundary[phase=after_redraw moves=${g.moves | 0} mv=${g.context?.mv ? 1 : 0} blind=${Blind() ? 1 : 0} full=${g.vision_full_recalc ? 1 : 0}]`);
@@ -3415,6 +3464,13 @@ async function moveloop_core_faithful() {
             await moveloop_status_paint(); // C allmain.c:474 — guarded status paint
             await flush_screen(1);
         }
+        /* An interrupted study falls through to rhack() inside the SAME C
+         * moveloop_core call (allmain.c:494-496), so the once-per-input
+         * redraw tail (allmain.c:453-470) already ran in the loop above; the
+         * next JS invocation must not repeat it before reading the key (an
+         * extra hallucinatory see_monsters() draw on the DISPLAY rng). */
+        if (interrupted)
+            g._ff_input_tail_done = true;
         g.context = g.context || {};
         g.context.move = 0;
     }
@@ -3787,6 +3843,12 @@ async function moveloop_core_faithful() {
             let full = (g._resultMessage && g._pending_message)
                 ? _topl_merge_result(g._resultMessage, g._pending_message, _resHint)
                 : (g._resultMessage || g._pending_message || '');
+            if (full && !_topl_joins_snapshot(full) && Array.isArray(g._topl_joins)
+                && typeof g._topl_joins_src === 'string'
+                && g._topl_joins_src.startsWith(full + '  ')) {
+                g._topl_joins = g._topl_joins.filter(off => off < full.length);
+                g._topl_joins_src = full;
+            }
             for (const m of (g._forceMsgs || [])) {
                 const _prevLen = full.length;
                 full = full
@@ -3875,6 +3937,10 @@ async function moveloop_core_faithful() {
             // allmain.c:484 `if (go.occupation && !monster_nearby...)` then skips
             // the callback and falls through to rhack with no further turn.
             if (g.occupation !== wipeoff) { wipeInterrupted = true; break; }
+            // C allmain.c:484 — `if (gm.multi >= 0 && go.occupation)`: a hero put to
+            // sleep inside the world block (potionbreathe POT_SLEEPING, nomul(-rnd(5)))
+            // does not run the callback; the occupation survives until multi returns to 0.
+            if ((g.multi | 0) < 0) continue;
             // C allmain.c:496 — (*go.occupation)() == wipeoff(); 0 ends the wipe.
             const r = await wipeoff();
             if (r === 0) g.occupation = null;
@@ -4198,6 +4264,12 @@ async function moveloop_core_faithful() {
     // remove_worn_item) is already on the status line when that turn's unmul()
     if ((g.multi | 0) < 0 && !(g.context.move | 0)) {
         find_ac();
+        const redoVision = !(g.context && g.context.mv) || Blind();
+        faithful_input_redraw();
+        if (redoVision && g.vision_full_recalc) {
+            vision_recalc(0);
+            g.vision_full_recalc = 0;
+        }
         g.context.move = 1;
     }
     while ((g.multi | 0) < 0) {
@@ -4238,6 +4310,9 @@ async function moveloop_core_faithful() {
                 vision_recalc(0);
                 g.vision_full_recalc = 0;
             }
+            const _d = g.disp;
+            if (_d && ((_d.botl | 0) || (_d.botlx | 0) || (_d.time_botl | 0)))
+                pline_flush_point();
         }
         // C ref: allmain.c:513 — `u.umoved = FALSE;`, run in EVERY moveloop_core
         // invocation AFTER the per-turn world block and BEFORE the multi/rhack
@@ -4291,6 +4366,8 @@ async function moveloop_core_faithful() {
             g.context.move = 0;
         }
     }
+    if (countdownGuard && (g.multi | 0) >= 0 && g.context)
+        g.context.move = 0;
     _merge_countdown_pline();
     //
     // ===================== multi>0 RUN MOVEMENT LOOP (Stage C) =====================
@@ -4361,10 +4438,7 @@ async function moveloop_core_faithful() {
          * see_monsters/see_objects/see_traps, which under Hallucination draws
          * on the DISPLAY rng for every monster) runs after EVERY world block,
          * not only after the run's last iteration. */
-        /* A nomul(0) fired from inside the world block ends the repeat: C's
-         * rhack(0) arm then follows this very redraw, which the caller's
-         * post-loop faithful_input_redraw() supplies, so do not draw it twice. */
-        if ((g.multi | 0) > 0) faithful_input_redraw();
+        if ((g.multi | 0) !== 0) faithful_input_redraw();
         g.context.move = 1;
         // C ref: allmain.c:474-480 — every run turn is its own moveloop_core
         // invocation, so the guarded status paint runs after the world block.
@@ -4669,7 +4743,7 @@ async function moveloop_core_impl() {
     const g = game;
     // C allmain.c:232-235 — clear object-chain bypass bits before the
     // per-turn world block, but only when a bypass was actually requested.
-    if (g.svc?.context?.bypasses)
+    if (g.context?.bypasses || g.svc?.context?.bypasses)
         clear_bypasses();
     // C allmain.c:197-198 / wizcmds.c:1460-1480: sanity-check envelope.
     // Only the ball checker is ported here; the other subsystem checks remain

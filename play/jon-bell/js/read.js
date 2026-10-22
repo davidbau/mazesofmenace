@@ -644,7 +644,7 @@ import { erosion_matters, mkobj, place_object, makemon } from './mklev.js';
 import { initedog, tamedog } from './dog.js';
 import { setmangry } from './mklev.js';
 import { isok } from './const.js';
-import { canspotmon, _topl_stash_result } from './display.js';
+import { canspotmon, _topl_stash_result, _topl_joins_committed } from './display.js';
 import { MM_EDOG, NO_MINVENT, MM_NOMSG, G_GONE } from './const.js';
 /* C ref: ball.c:193 placebc() — punish()'s ball&chain placement lives in
  * ball.c, so it is ported in js/ball.js next to move_bc/drag_ball. */
@@ -4405,7 +4405,7 @@ async function seffect_identify(holder, otyp) {
     const is_scroll = (sobj.oclass | 0) === SCROLL_CLASS_OC;
     const sblessed = !!sobj.blessed;
     const scursed = !!sobj.cursed;
-    const confused = false;
+    const confused = (_Confusion() !== 0); /* read.c:2062 */
     /* C read.c:2063: already_known for a spellbook is TRUE; for a scroll it is
      * objects[otyp].oc_name_known. */
     const already_known = !is_scroll || _oc_name_known(otyp);
@@ -4560,7 +4560,23 @@ async function menu_identify(id_limit) {
 async function _identify_objlist_menu(promptText) {
     const g = game;
     if (g._pending_message) {
-        await topline_more_loop(g._pending_message);
+        const full = String(g._pending_message);
+        const joins = (g._topl_joins_src === full && Array.isArray(g._topl_joins))
+            ? g._topl_joins : [];
+        const segs = [];
+        let start = 0;
+        for (const j of joins) { segs.push(full.slice(start, j)); start = j + 2; }
+        segs.push(full.slice(start));
+        let page = segs[0];
+        for (let i = 1; i < segs.length; i++) {
+            if (_topl_joins_committed(page, segs[i])) {
+                page += '  ' + segs[i];
+            } else {
+                await topline_more_loop(page);
+                page = segs[i];
+            }
+        }
+        await topline_more_loop(page);
         g._pending_message = '';
     }
     /* Collect eligible items in invent order (invent.c reorder_invent keeps

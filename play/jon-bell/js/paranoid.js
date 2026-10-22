@@ -3,7 +3,7 @@
 // share it without routing input through cmd.js/end.js cycles.
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, force_more, topl_park_cursor, bot,
+import { flush_screen, force_more, force_more_lone_frame, topl_park_cursor, bot,
          _topline_more_pending, restore_occupation_topline, putmsghistory } from './display.js';
 import { PARANOID_CONFIRM, BUFSZ, QBUFSZ } from './const.js';
 
@@ -76,7 +76,7 @@ async function read_yn(prompt, acceptQ) {
     if (_topline_more_pending())
         await flush_screen(1);
     if (unacknowledged && g._pending_message)
-        await force_more(g._pending_message);
+        await force_more_lone_frame(g._pending_message);
     /* C tty_yn_function's flush after the --More-- paints the status with
      * disp.botl still set by done()'s force-HP-to-zero (end.c:1075), so the
      * zeroed HP shows while "Die?" is up. eat.js _done arms this for that one

@@ -83,6 +83,12 @@ import { healmon, mpickobj, m_respond } from './mklev.js';
 const DEADMONSTER_dc = (m) => (m.mhp | 0) <= 0;
 import { obj_extract_floor, distant_obj_name, Monnam_dm } from './dogmove.js';
 import { pline } from './display.js';
+import { demon_talk } from './minion.js';
+import { is_demon, set_malign } from './makemon.js';
+import { tele_restrict } from './teleport.js';
+import { canseemon } from './display.js';
+import { Amonnam } from './mhitm.js';
+import { set_msg_xy } from './cmd.js';
 import { ENV } from './hostenv.js';
 /* C mondata.h:81 perceives(ptr) — (ptr)->mflags1 & M1_SEE_INVIS. */
 const M1_SEE_INVIS = 0x01000000;
@@ -367,7 +373,26 @@ export async function dochug(mtmp) {
         if (await use_misc(mtmp) !== 0)
             return 1;
     }
-    /* C monmove.c:825-851 — Demonic Blackmail. L14: not ported; skip. */
+    /* C monmove.c:802-831 — Demonic Blackmail! */
+    if (nearby && ((permonstTemplate(mtmp.mndx ?? mtmp.mnum ?? 0)?.msound | 0) === 33 /* MS_BRIBE */)
+        && (mtmp.mpeaceful | 0) && !(mtmp.mtame | 0) && !engulfing_u(game.u)) {
+        if (mtmp.mux !== game.u.ux || mtmp.muy !== game.u.uy) {
+            await pline(`${cansee(mtmp.mux, mtmp.muy) ? Monnam_dm(mtmp) : 'It'} whispers at thin air.`);
+            const uPtr = ((game.u.umonnum | 0) > 0 && game.u.mtimedone) ? permonstTemplate(game.u.umonnum) : null;
+            if (uPtr && is_demon(uPtr)) {
+                if (!tele_restrict(mtmp))
+                    await rloc(mtmp, RLOC_MSG);
+            } else {
+                mtmp.minvis = mtmp.perminvis = 0;
+                if (canseemon(mtmp))
+                    set_msg_xy(mtmp.mx, mtmp.my);
+                await pline(`${Amonnam(mtmp)} gets angry!`);
+                mtmp.mpeaceful = 0;
+                set_malign(mtmp);
+            }
+        } else if (await demon_talk(mtmp))
+            return 1; /* you paid it off */
+    }
     const mndx = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
     if (is_watch_mndx(mndx)) {
         await watch_on_duty(mtmp);

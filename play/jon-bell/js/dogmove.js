@@ -50,7 +50,7 @@ import { closed_door, accessible, is_pool } from './look.js';
 import { erode_obj, mintrap as mintrap_real, goodpos as goodpos_real, m_useup as m_useup_dg } from './trap.js';
 import { PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER, PM_STEAM_VORTEX, PM_AIR_ELEMENTAL, PM_BLACK_PUDDING, PM_BROWN_PUDDING, PM_SHADE, PM_DEATH, PM_PESTILENCE, PM_FAMINE, PM_CHICKATRICE, PM_COCKATRICE, PM_MEDUSA, PM_STONE_GOLEM, PM_ANGEL, PM_RUST_MONSTER, PM_GELATINOUS_CUBE, PM_ARCHON } from './pm.generated.js';
 import { zombie_maker, dmgtype_fromattack, grow_up, nonliving, onscary, monPmname, splitobj, nextoid, which_armor, permonstTemplate, set_mon_data } from './makemon.js';
-import { pline, newsym, _topline_more_pending, mon_visible, canseemon, canspotmon, map_invisible, glyph_is_invisible_at, unmap_object, You_hear, Deaf, sensemon } from './display.js';
+import { pline, newsym, _topline_more_pending, _more_never_dismissed, flush_pending_messages, mon_visible, canseemon, canspotmon, map_invisible, glyph_is_invisible_at, unmap_object, You_hear, Deaf, sensemon } from './display.js';
 import { Japanese_item_name, xname_scroll, xname_armor, doname_potion, xname, doname, distant_name, in_distant_name, is_quest_artifact } from './objnam.js';
 /* C o_init.c:441-452 observe_object(obj) — the ONE side effect a formatting
  * call has, and the reason distant_name() exists at all.  Imported here
@@ -280,6 +280,7 @@ const WT_HUMAN     = 1450;
 const MZ_HUMAN     = 2; /* == MZ_MEDIUM */
 const MZ_LARGE     = 3;
 const MZ_HUGE      = 4;
+const BAG_OF_HOLDING_OTYP = 219; /* objects.h TOOL_CLASS BAG_OF_HOLDING */
 const STATUE_OTYP  = 476; /* objects.h ROCK_CLASS STATUE (215 was `chest`) */
 const ROCK_OTYP    = 474; /* objects.h ROCK */
 const HEAVY_IRON_BALL_OTYP = -1; /* not tracked in JS dog path */
@@ -336,7 +337,10 @@ function obj_weight(obj) {
         }
         let cwt = 0;
         for (let c = obj.cobj; c; c = c.nobj) cwt += obj_weight(c);
-        /* BAG_OF_HOLDING content scaling omitted: not on the pet path. */
+        if (otyp === BAG_OF_HOLDING_OTYP)
+            cwt = obj.cursed ? (cwt * 2)
+                : obj.blessed ? Math.trunc((cwt + 3) / 4)
+                    : Math.trunc((cwt + 1) / 2);
         return stwt + cwt;
     }
 
@@ -1534,6 +1538,8 @@ async function dog_invent(mtmp, edog, udist) {
                         /* C pline_xy(omx, omy, ...) = set_msg_xy + vpline (pline.c:150-157) */
                         set_msg_xy_dm(omx, omy);
                         void pline(`${Monnam_dm(mtmp)} picks up ${otmpname}.`);
+                        if (_topline_more_pending() && _more_never_dismissed())
+                            await flush_pending_messages();
                     }
                 }
                 /* C: obj_extract_self(otmp); newsym(omx,omy); mpickobj(mtmp,otmp). */
@@ -2295,6 +2301,7 @@ export function m_harmless_trap(mtmp, ttmp) {
     const mndx = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
     const mf1 = (mndx >= 0 && mndx < _MONS.length) ? (_MONS[mndx][6] | 0) : 0;
     const isFlyer = !!(mf1 & M1_FLY_DM);
+    const whirly = _mlet(mndx) === S_VORTEX || mndx === PM_AIR_ELEMENTAL;
     const amorphous = !!(mf1 & M1_AMORPHOUS_DM);
     const unsolid = !!(mf1 & M1_UNSOLID_DM);
     const msize = (mndx >= 0 && mndx < MONS_MSIZE.length) ? (MONS_MSIZE[mndx] | 0) : MZ_SMALL;
@@ -2315,7 +2322,7 @@ export function m_harmless_trap(mtmp, ttmp) {
             break;
         case T_BEAR:
             /* msize <= MZ_SMALL || amorphous || is_whirly || unsolid */
-            if (msize <= MZ_SMALL || amorphous || unsolid)
+            if (msize <= MZ_SMALL || amorphous || whirly || unsolid)
                 return true;
             break;
         case T_SLPGAS:
@@ -2333,7 +2340,7 @@ export function m_harmless_trap(mtmp, ttmp) {
             break;
         case T_WEB:
             /* C trap.c:1164 — webmakers are unharmed by webs. */
-            if (amorphous || unsolid || mndx === 94 || mndx === 96) return true;
+            if (amorphous || whirly || unsolid || mndx === 94 || mndx === 96) return true;
             break;
         case T_STATUE: return true;
         case T_MAGIC: return true;
@@ -2897,7 +2904,7 @@ export async function mattackm(magr, mdef) {
                     }
                 }
             } else {
-                missmm(magr, mdef, mattk);
+                await missmm(magr, mdef, mattk);
             }
             break;
 
@@ -2954,7 +2961,7 @@ export async function mattackm(magr, mdef) {
                 else
                     res[i] = await gulpmm(magr, mdef, mattk);
             } else {
-                missmm(magr, mdef, mattk);
+                await missmm(magr, mdef, mattk);
             }
             break;
 
@@ -3191,6 +3198,8 @@ async function monkilled_dm(mdef, mattk) {
     if (cansee(mdef.mx | 0, mdef.my | 0)) {
         const verb = nonliving(mdef.data) ? 'destroyed' : 'killed';
         pline_mon(mdef, `${Monnam_dm(mdef)} is ${verb}!`);
+        if (_topline_more_pending() && _more_never_dismissed())
+            await flush_pending_messages();
     } else {
         /* C mon.c:3390-3391 — the sad feeling is deferred until mondead()
          * has ruled out life-saving. */
@@ -3675,17 +3684,21 @@ async function hitmm(magr, mdef, mattk, mwep, dieroll) {
               + ' ' + mon_nam_dm(mdef) + '.');
     else
         noises_dm(magr, mattk); /* C mhitm.c:729 */
+    if (game.v?.vis && _topline_more_pending() && _more_never_dismissed())
+        await flush_pending_messages();
     return await mdamagem_dm(magr, mdef, mattk, mwep, dieroll);
 }
 
-function missmm(magr, mdef, mattk) {
+async function missmm(magr, mdef, mattk) {
     pre_mm_attack_dm(magr, mdef);
-    if (game.v?.vis)
-        pline(Monnam_dm(magr) + ' '
+    if (game.v?.vis) {
+        await pline(Monnam_dm(magr) + ' '
               + (((magr.mcan | 0) || !could_seduce(magr, mdef, mattk))
                  ? 'misses' : 'pretends to be friendly to')
               + ' ' + mon_nam_dm(mdef) + '.');
-    else
+        if (_topline_more_pending() && _more_never_dismissed())
+            await flush_pending_messages();
+    } else
         noises_dm(magr, mattk); /* C mhitm.c:89 */
 }
 /* mon_wield_item is the real weapon.c:797 port, kept in js/uhitm.js next to

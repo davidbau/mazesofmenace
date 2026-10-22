@@ -1998,6 +1998,10 @@ function _emit_eat_pline(msg) {
     }
     const prev = game._resultMessage;
     if (!prev) {
+        /* C pline.c:273-274 flushes before putmesg on EVERY pline, not only one
+         * that joins: getobj's disp.botl (invent.c:2049) is painted here, by
+         * fprefx's message, before bite()'s mid-meal newuhs (eat.c:3396-3402). */
+        pline_flush_point();
         game._resultMessage = msg;
         return;
     }
@@ -2240,8 +2244,16 @@ async function eatcorpse(otmp) {
                 game._resultMessageJoins = null;
                 game._pending_message = _ecch;
                 await flush_screen(1);
-                await force_more(_ecch);
+                const _morc = await force_more(_ecch);
                 game._pending_message = _unaff;
+                /* topl.c:257/:232-235 — `skip` was sampled before more(), so the
+                 * "unaffected" owner is still drawn, but ESC's WIN_STOP is live for
+                 * every later message (done_eating's finish line is suppressed). */
+                if (_morc === 27 && game._topl_win_stop_armed) {
+                    game._topl_win_stop_armed = false;
+                    game._topl_win_stop = true;
+                    game._topl_win_stop_buf = _unaff;
+                }
             }
         }
     /* C eat.c:1939 `} else if ((rotted > 5L || (rotted > 3L && rn2(5)))
@@ -4451,6 +4463,7 @@ export function You(line, ...args) {
     /* pline.c:246-262 vpline(): MSGTYPE=hide / norep drop the message first. */
     if (msgtype_suppressed(msg))
         return;
+    game._prevmsg = msg;
     if (game.vision_full_recalc && !game._topl_win_stop && !game._topl_win_stop_armed)
         vision_recalc(0);
     /* topl.c:257 update_topl: while WIN_STOP is live (an ESC-dismissed --More--
@@ -4644,8 +4657,12 @@ export async function floorfood(verb, corpsecheck) {
             let c = await yn_function(qbuf, ynqchars, 'n');
             if (c === 'y')
                 return otmp;
-            else if (c === 'q')
+            else if (c === 'q') {
+                /* topl.c clean_up: the answered prompt stays as dead topline text
+                 * (same as the iron-bars arm above). */
+                g._resultMessage = g._ynStaleTopline = qbuf + " [ynq] (n)";
                 return null;
+            }
             ++g.getobj_else;
         }
     }

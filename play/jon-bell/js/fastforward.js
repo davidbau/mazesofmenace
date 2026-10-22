@@ -344,14 +344,10 @@ async function fmon_mcalcmove() {
     const g = game;
     let n = 0;
     for (let m = g.fmon; m; m = m.nmon) {
-        /* C purges dead monsters at end of their round; skip any still-dead
-         * ones that may linger in the JS chain. */
-        if ((m.mhp ?? 1) > 0) {
-            if (m.movement == null)
-                m.movement = 0;
-            m.movement += mcalcmove(m, true); /* C allmain.c:277 — fires rn2(12) */
-            n++;
-        }
+        if (m.movement == null)
+            m.movement = 0;
+        m.movement += mcalcmove(m, true); /* C allmain.c:234 — fires rn2(12) */
+        n++;
     }
     return n;
 }

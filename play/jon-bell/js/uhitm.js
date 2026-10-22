@@ -46,7 +46,7 @@ import { near_capacity } from './weight.js';
 import { ARMOR_DATA } from './armor_data.js';
 import { Upolyd, STR18, P_BARE_HANDED_COMBAT, P_NONE, P_NUM_SKILLS, P_SKILL_LIMIT, P_ISRESTRICTED,
 P_BASIC, P_SKILLED, P_EXPERT, P_UNSKILLED, P_RIDING,
-P_BOW, P_SLING, P_CROSSBOW, P_FLAIL, P_PICK_AXE, W_SADDLE, LEFT_SIDE, RIGHT_SIDE, LEG, M_AP_TYPE, M_AP_MONSTER, M_ATTK_AGR_DIED, M_ATTK_MISS, W_ARMG, W_ARM, W_ARMC, W_ARMU, W_ARMH, W_ARMS, W_ARMF, W_AMUL, W_RINGL, W_RINGR, engulfing_u, M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_SLEEP, M_SEEN_ELEC, STRAT_WAITFORU, FIRE_RES, COLD_RES, SLEEP_RES, FREE_ACTION, SHOCK_RES, POISON_RES, DRAIN_RES, STONE_RES, SEE_INVIS, DETECT_MONSTERS, ERODE_RUST, ERODE_ROT, BLINDED, TIMEOUT,
+P_BOW, P_SLING, P_CROSSBOW, P_FLAIL, P_PICK_AXE, W_SADDLE, LEFT_SIDE, RIGHT_SIDE, LEG, M_AP_TYPE, M_AP_MONSTER, M_ATTK_AGR_DIED, M_ATTK_MISS, W_ARMG, W_ARM, W_ARMC, W_ARMU, W_ARMH, W_ARMS, W_ARMF, W_AMUL, W_RINGL, W_RINGR, engulfing_u, M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_SLEEP, M_SEEN_ELEC, STRAT_WAITFORU, FIRE_RES, COLD_RES, SLEEP_RES, FREE_ACTION, SHOCK_RES, POISON_RES, DRAIN_RES, STONE_RES, SEE_INVIS, DETECT_MONSTERS, ERODE_RUST, ERODE_ROT, ERODE_CORRODE, BLINDED, TIMEOUT,
 /* mon_nam's x_monnam call — C ref: nethack-c/src/do_name.c:1041-1046 */
 ARTICLE_THE, ARTICLE_NONE, SUPPRESS_SADDLE, SUPPRESS_IT, SUPPRESS_INVISIBLE,
 SUPPRESS_HALLUCINATION, SUPPRESS_NAME,
@@ -123,7 +123,7 @@ import { getObjName } from './o_init.js';
 import { mon_hates_blessings, mon_hates_silver, shade_miss, mon_nam_too, x_monnam,
          xm_has_mgivenname as has_mgivenname } from './mhitm.js';
 import { some_mon_nam, l_monnam } from './mhitm.js';
-import { Resists_Elem, sleep_monst, resists_blnd } from './mhitm.js';
+import { Resists_Elem, sleep_monst, resists_blnd, can_blnd } from './mhitm.js';
 import { y_monnam, helpless } from './mhitm.js';
 /* C uhitm.c:331 check_caitiff / mon.c:4331 wakeup — both live in js/mhitm.js,
  * which this file already imports from (see above). */
@@ -181,7 +181,8 @@ import { mstatusline, check_capacity as check_capacity_hit } from './cmd.js';
 import { ysimple_name as ysimple_name_hit, release_camera_demon as release_camera_demon_hit, useup } from './cmd.js';
 import { upstart, angry_guards } from './mklev.js';
 import { noit_Monnam, stagger } from './mhitm.js';
-import { deadhero } from './end.js';
+import { deadhero, pending_death_is_final } from './end.js';
+import { drain_pending_death_in_place } from './fastforward.js';
 /* C explode.c:1013 mon_explodes — corpse_chance()'s AT_BOOM arm calls it. */
 import { mon_explodes, _zhitm, explode as explode_uh, adtyp_to_expltype as adtyp_to_expltype_uh } from './zap.js';
 import { MON_EXPLODE } from './const.js';
@@ -192,7 +193,8 @@ const MONS_MATTK = /** @type {{aatyp:number,adtyp:number,damn:number,damd:number
 const NATTK_UH = 6;          /* C monattk.h:9 NATTK */
 const AT_BOOM = 14;          /* C monattk.h:24 — explodes when killed */
 import { tele, rloc, RLOC_NOMSG, u_teleport_mon as u_teleport_mon_real } from './teleport.js';
-import { sticks, abuse_dog, tamedog, unstuck } from './dog.js';
+import { sticks, abuse_dog, tamedog, unstuck, initedog } from './dog.js';
+import { christen_monst } from './mhitm.js';
 import { paralyze_monst, rustm, extract_from_minvent_dm, stackobj_dm, mondied_dm } from './dogmove.js';
 import { stackobj } from './sp_lev.js';
 import { nomul } from './allmain.js';
@@ -2155,6 +2157,17 @@ export async function do_attack(mtmpOrX, y) {
             tmp += ((ulevel / 3) | 0) + 2;
         }
     }
+    /* C uhitm.c:404-406 — elves hit orcs more easily:
+     *     if (is_orc(mtmp->data) && maybe_polyd(is_elf(youmonst.data), Race_if(PM_ELF))) tmp++;
+     * M2_ORC 0x80 / M2_ELF 0x10 (monflag.h:127,130) are mflags2, MONS column [7]. */
+    {
+        const _row = (mndx >= 0 && mndx < _MONS.length) ? _MONS[mndx] : null;
+        const _isOrc = !!_row && ((_row[7] | 0) & 0x80) !== 0;
+        const _elf = Upolyd(u)
+            ? (((_MONS[u.umonnum | 0]?.[7] | 0) & 0x10) !== 0)
+            : ((game.urace?.mnum | 0) === 264); /* PM_ELF */
+        if (_isOrc && _elf) tmp++;
+    }
     const _encumbrance = near_capacity();
     if (_encumbrance !== 0)
         tmp -= (_encumbrance * 2) - 1;
@@ -2652,7 +2665,12 @@ export async function do_attack(mtmpOrX, y) {
         };
         game.s = game.s || {};
         game.s.skipdrin = 0; /* C uhitm.c:5451 */
+        /* sum[i - 1] for the use_weapon bimanual test (uhitm.c:5483); only
+         * weapon rows record a sum, any other row leaves M_ATTK_MISS. */
+        let _lastRowSum = M_ATTK_MISS;
         for (let i = 0; i < NATTK_UH; i++) {
+            const _prevRowSum = _lastRowSum;
+            _lastRowSum = M_ATTK_MISS;
             /* uhitm.c:5455-5458 — after the first attack, skip if the target
              * has been knocked out of range or already died. */
             if (i > 0) {
@@ -2985,11 +3003,17 @@ export async function do_attack(mtmpOrX, y) {
                  * passive() draw comes from the shared tail below
                  * (_passiveAndKnockback), not from _swing itself — see
                  * _swing's own comment on `viaHmonas`. */
+                /* uhitm.c:5483-5486 — after a hit with a two-handed weapon the
+                 * next weapon row is skipped. */
+                if (weapon_used && _prevRowSum > M_ATTK_MISS
+                    && u.uwep && bimanual(u.uwep))
+                    continue;
                 weapon_used = true;
                 const _mhitRowWeap = await _swing(u && u.uwep, false, true, false, multi_weap > 1 ? ++weaponHits : 0);
                 const _sumWeap = await _weaponRowSum(row, _mhitRowWeap);
                 if (_sumWeap === null)
                     break; /* C i = NATTK; goto passivedone (worm split) */
+                _lastRowSum = _sumWeap;
                 await _passiveAndKnockback(aatyp, _sumWeap !== M_ATTK_MISS, u && u.uwep);
                 continue;
             }
@@ -3005,6 +3029,7 @@ export async function do_attack(mtmpOrX, y) {
                 const _sumClaw = await _weaponRowSum(row, _mhitRowClaw);
                 if (_sumClaw === null)
                     break; /* C i = NATTK; goto passivedone (worm split) */
+                _lastRowSum = _sumClaw;
                 await _passiveAndKnockback(aatyp, _sumClaw !== M_ATTK_MISS, u && u.uwep);
                 continue;
             }
@@ -3224,6 +3249,12 @@ export async function do_attack(mtmpOrX, y) {
     /* C uhitm.c:570-581 atk_done — an F-fight at a monster the hero cannot
      * spot leaves the 'I' marker AFTER the blow (attack_checks skips it for
      * forcefight, uhitm.c:201-214), unless the monster died. */
+    /* A lethal passive() runs done() IN PLACE (uhitm.c:700-ish): a final death never
+     * returns, a declined one (wizard 'Die? n') resumes at atk_done. */
+    if (game._pendingDeath) {
+        await drain_pending_death_in_place();
+        if (pending_death_is_final()) return true;
+    }
     if (game.context?.forcefight && (mtmp.mhp | 0) > 0 && !canspotmon(mtmp)
         && !glyph_is_invisible_at((game.u.ux | 0) + (game.u.dx | 0), (game.u.uy | 0) + (game.u.dy | 0))
         && !((game.u.uswallow | 0) && game.u.ustuck === mtmp))
@@ -4806,21 +4837,9 @@ function The(str) {
     return "The " + str;
 }
 
-/* can_blnd — local implementation (C ref: mhitm.c).
- * Returns true if mdef can be blinded by magr's attack. */
-function can_blnd(magr, mdef, aatyp, obj) {
-    if (mdef === game.youmonst) {
-        /* hero defender: check Blind state (from uprops) */
-        if (game.u && game.u.uprops && game.u.uprops[BLINDED]) {
-            if ((game.u.uprops[BLINDED].intrinsic & TIMEOUT) !== 0)
-                return false;
-        }
-        return true;
-    }
-    if (mdef.mblinded >= 127) return false;
-    if (!mdef.mcansee) return false;
-    return true;
-}
+/* can_blnd is the real mhitm.c:1214 body imported from js/mhitm.js; the former
+ * local stub wrongly refused already-blind defenders (C only checks
+ * mon_perma_blind) and ignored aatyp. */
 
 /* Your1(msg) — C ref: mhitu.c */
 function Your1(msg) {
@@ -5001,7 +5020,7 @@ const SR_BIMANUAL = new Set([
     SR_BEC_DE_CORBIN,
 ]);
 function sr_oc_bimanual(otyp) { return SR_BIMANUAL.has(otyp | 0) ? 1 : 0; }
-function sr_oc_material(otyp) { return MKOBJ_OC_MATERIAL[otyp | 0] | 0; }
+export function sr_oc_material(otyp) { return MKOBJ_OC_MATERIAL[otyp | 0] | 0; }
 function sr_oc_skill(otyp) { return MKOBJ_OC_SKILL[otyp | 0] | 0; }
 /* mondata.h flag macros (read mon->data->mflags{1,2}). */
 function sr_throws_rocks(data) { return ((data.mflags2 | 0) & SR_M2_ROCKTHROW) !== 0; }
@@ -5782,6 +5801,24 @@ export async function mhitm_ad_rust(magr, mattk, mdef, mhm) {
         await erode_armor(mdef, ERODE_RUST);
         mdef.mstrategy &= ~STRAT_WAITFORU;
         mhm.damage = 0; /* mdamagem(), int tmp */
+    }
+}
+
+/* mhitm_ad_corr — C uhitm.c:2338-2358 (uhitm and mhitm arms; mhitu is in mhitu.js).
+ * Was absent from mhitm_adtyping's switch, so a pet's corrosive bite
+ * (black pudding) skipped erode_armor's rn2(5) loop. */
+export async function mhitm_ad_corr(magr, mattk, mdef, mhm) {
+    if (magr === game.youmonst) {
+        /* uhitm */
+        await erode_armor(mdef, ERODE_CORRODE);
+        mhm.damage = 0;
+    } else {
+        /* mhitm */
+        if (magr.mcan)
+            return;
+        await erode_armor(mdef, ERODE_CORRODE);
+        mdef.mstrategy &= ~STRAT_WAITFORU;
+        mhm.damage = 0;
     }
 }
 
@@ -7403,6 +7440,9 @@ export async function mhitm_adtyping(magr, mattk, mdef, mhm) {
         await mhitm_ad_rust(magr, mattk, mdef, mhm);
         break;
     case AD_DCAY: await mhitm_ad_dcay(magr, mattk, mdef, mhm); break;
+    case 42: /* AD_CORR */
+        await mhitm_ad_corr(magr, mattk, mdef, mhm);
+        break;
     case AD_BLND:
         mhitm_ad_blnd(magr, mattk, mdef, mhm);
         break;
@@ -7622,7 +7662,7 @@ async function mhitm_ad_phys(magr, mattk, mdef, mhm) {
        KICK/CLAW/TUCH arm matched BUTT/TUCH/STNG instead. */
     const AT_WEAP = 254, AT_CLAW = 1, AT_KICK = 3, AT_TUCH = 5, AT_HUGS = 7;
     /* Material constants (objects.h); JS uses mkobj_erosion_meta indexing */
-    const SILVER_MAT = 14, IRON_MAT = 15, METAL_MAT = 16;
+    const SILVER_MAT = 14, IRON_MAT = 11, METAL_MAT = 12;
     /* Object otyp constants */
     const CORPSE = 265;
     const GAUNTLETS_OF_POWER = 161; /* objects.h:694; was 23 = CROSSBOW_BOLT
@@ -7755,7 +7795,7 @@ async function mhitm_ad_phys(magr, mattk, mdef, mhm) {
                     game.u.mh -= tmp;
                     SET_BOTL();
                     mhm.damage = 0; /* don't inflict more damage below */
-                    if (cloneu())
+                    if (await cloneu())
                         You("divide as %s hits you!", mon_nam(magr));
                 }
                 await rustm(game.youmonst, otmp);
@@ -8186,8 +8226,27 @@ function permapoisoned(otmp) {
  * the artilist[] readers it shares ARTI_SPEC with (js/uhitm.js:~618).  The
  * constant-FALSE stub that used to sit here has been retired; its two callers
  * below now consume the returned damage, which is what C's `*dmgptr` is for. */
-function cloneu() {
-    return false; /* stub */
+/* C mhitu.c:2616-2638 cloneu() */
+export async function cloneu() {
+    const mndx = game.u.umonnum | 0; /* monsndx(youmonst.data) */
+    if (game.u.mh <= 1)
+        return null;
+    if (((game.mvitals?.[mndx]?.mvflags | 0) & 0x01 /* G_EXTINCT */) !== 0)
+        return null;
+    let mon = await makemon(mndx, game.u.ux, game.u.uy,
+                            0x00000001 /* NO_MINVENT */ | 0x00000800 /* MM_EDOG */
+                            | 0x00020000 /* MM_NOMSG */);
+    if (!mon)
+        return null;
+    mon.mcloned = 1;
+    mon = christen_monst(mon, String(game.plname));
+    initedog(mon, true);
+    mon.m_lev = game.youmonst.data.mlevel;
+    mon.mhpmax = game.u.mhmax;
+    mon.mhp = Math.trunc(game.u.mh / 2);
+    game.u.mh -= mon.mhp;
+    SET_BOTL();
+    return mon;
 }
 function mhitm_really_poison(magr, mattk, mdef, mhm) {
     if (game.v?.vis && canspotmon(magr))
@@ -8244,3 +8303,32 @@ export function mon_maybe_unparalyze(mtmp) {
 }
 
 function is_vampshifter_uh(m) { const c = m.cham | 0; return c === 226 || c === 227 || c === 228; } /* monst.h:215 */
+
+/* C uhitm.c:1186-1219 hmon_hitmon_misc_obj case EGG, the petrifying-egg arm:
+ * returns true when C takes its early `return` (hmd->doreturn set). */
+export async function hmon_egg_petrify(hmd, mon, obj) {
+    const cn = obj.corpsenm | 0;
+    if (!(obj.corpsenm !== undefined && cn >= 0 && touch_petrifies_corpsenm(cn)))
+        return false;
+    const cnt = obj.quan | 0;
+    hmd.dmg = 1; /* nominal physical damage */
+    hmd.get_dmg_bonus = false;
+    hmd.hittxt = true; /* message always given */
+    if (obj === game.u.uwep) game.unweapon = true;
+    if (obj.spe) {
+        if ((obj.quan | 0) < 5) change_luck_uh(-(obj.quan | 0));
+        else change_luck_uh(-5);
+    }
+    const nm = obj.known ? (permonstTemplate(cn)?.pmnames?.[2] ?? 'petrifying') : 'petrifying';
+    await pline(`Splat!  You hit ${mon_nam(mon)} with ${obj.known ? 'the' : cnt > 1 ? 'some' : 'a'} ${nm} egg${cnt === 1 ? '' : 's'}!`);
+    obj.known = 1;
+    if (hmd.thrown) game.thrownobj = null; /* obfree */
+    else await useup(obj);
+    if (!(await munstone(mon, true)))
+        await minstapetrify(mon, true);
+    if (sh_resists_ston(mon))
+        return false;
+    hmd.doreturn = true;
+    hmd.retval = (mon.mhp | 0) > 0;
+    return true;
+}

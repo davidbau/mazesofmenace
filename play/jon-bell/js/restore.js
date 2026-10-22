@@ -1,3 +1,4 @@
+import { encumber_msg } from './weight.js';
 import { object_runtime_rest_snapshot } from './o_init.js';
 import { bubbles_rest_snapshot, bubbles_copy_snapshot } from './mkmaze.js';
 import { lights_rest_snapshot } from './light.js';
@@ -436,6 +437,10 @@ export async function restore_preamble() {
      * fix_shop_damage() has no shop-damage model to repair (message-only).
      * C allmain.c:91-96 encumber_msg(); then the deferred see_monsters() runs
      * AFTER the welcome and moon/Friday-13th plines and their --More-- frames. */
+    /* C allmain.c:91: encumber_msg() "in case they auto-picked up something".
+     * go.oldcap is a global (not in the savefile), so it starts at 0. */
+    g.u._oldcap = 0;
+    await encumber_msg();
     if (g.defer_see_monsters) {
         g.defer_see_monsters = 0;
         see_monsters();

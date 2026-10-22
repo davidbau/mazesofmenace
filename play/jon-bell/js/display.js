@@ -1723,8 +1723,11 @@ function _map_location_glyph(x, y, loc, tg) {
 }
 // C display.c show_mon_or_warn: showing a monster or warning retires the
 // remembered invisible marker, while preserving a visible object beneath it.
+let _map_monst_direct = false;
 function show_mon_or_warn(x, y, ch, color, decgfx, attr, cls, warning = false) {
-    if (game.level?.at(x, y)?.remembered_glyph?.cls === GLYPHCLS_INVIS) {
+    /* detect.c:120-134 map_monst calls show_glyph() directly, never
+     * show_mon_or_warn(), so a remembered 'I' under a detected monster survives. */
+    if (!_map_monst_direct && game.level?.at(x, y)?.remembered_glyph?.cls === GLYPHCLS_INVIS) {
         unmap_object(x, y);
         const obj = cansee(x, y) ? vobj_at(x, y) : null;
         if (obj) map_object(obj, false);
@@ -1866,8 +1869,13 @@ export function map_monst(mtmp, showtail) {
      * monster takes the plain pet/mon glyph. */
     const _mn = (mtmp.mnum ?? mtmp.mndx) | 0;
     const _ml = (_mn >= 0 && _mn < MON_MLET.length) ? MON_MLET[_mn] : 53;
-    _render_monster_glyph(x, y, mtmp, loc, tg, false, false,
-                          (DEF_MONSYM_CHARS[_ml] ?? '@') === ' ');
+    _map_monst_direct = true;
+    try {
+        _render_monster_glyph(x, y, mtmp, loc, tg, false, false,
+                              (DEF_MONSYM_CHARS[_ml] ?? '@') === ' ');
+    } finally {
+        _map_monst_direct = false;
+    }
     /* C detect.c:132-133: detection resolves one glyph for the whole tail. */
     if (showtail && ((mtmp.mnum ?? mtmp.mndx) | 0) === PM_LONG_WORM_DISP)
         detect_wsegs(mtmp, false);
@@ -3043,7 +3051,7 @@ function _topl_page_count(line) {
 }
 // Drop the per-page painted-frame log for a finished movemon paging window.
 // DISPLAY-ONLY.
-function _movemon_page_frames_reset() {
+export function _movemon_page_frames_reset() {
     const g = game;
     if (!g) return;
     g._movemonPageFrames = null;
@@ -3897,7 +3905,11 @@ function _statusLine1Raw() {
     const title = botl_title(name, role);
     const _a1s = (game._inMovemonMore && game._paintedSnapshot
                   && game._paintedSnapshot.botl
-                  && game._paintedSnapshot.botl.attrs) || null;
+                  && game._paintedSnapshot.botl.attrs)
+        /* botl.c:279 — a bot() that declined to paint (u.uhp == -1, or the death
+         * freeze) leaves the six attributes as the last paint put them. */
+        || ((((u.uhp | 0) === -1 || game._botlFrozenDeath) && game._lastPaintedBotl
+             && game._lastPaintedBotl.attrs) || null);
     const _hasAttrs = !!(_a1s || (u.acurr && u.acurr.a));
     const _A1_ORDER = [A_STR, A_DEX, A_CON, A_INT, A_WIS, A_CHA];
     const _acur = (ci) => {
@@ -4001,6 +4013,9 @@ function _statusLine2Parts() {
     /* trap.c sink_into_lava writes u.uhp with no SET_BOTL: the physical line keeps
      * the last bot()'s HP (js/trap.js records it in _botlStaleUhp). */
     if (!Upolyd && !_bs && game._botlStaleUhp !== undefined) _hp = game._botlStaleUhp | 0;
+    const _staleHpmax = (!_bs && game._botlStaleHp !== undefined)
+        ? game._botlStaleHpmax | 0 : undefined;
+    if (_staleHpmax !== undefined) _hp = game._botlStaleHp | 0;
     /* C paints the pre-reversion physical HP once when rehumanize() runs
      * inside movemon; the live value is already restored for later turns. */
     if (game._rehumanizeDisplayPending && !Upolyd && !_bs && (game._rehumanizeMoves | 0) === (game.moves | 0)
@@ -4010,7 +4025,8 @@ function _statusLine2Parts() {
     if (_hp < 0)
         _hp = 0;
     _hp = Math.min(_hp, 9999);
-    const _hpmax = Math.min(Upolyd ? (_bu.mhmax | 0) : (_bu.uhpmax || 0), 9999);
+    const _hpmax = Math.min(_staleHpmax !== undefined ? _staleHpmax
+        : Upolyd ? (_bu.mhmax | 0) : (_bu.uhpmax || 0), 9999);
     const _pw = Math.min((!_bs && game._botlStaleUen !== undefined
                           ? game._botlStaleUen : _bu.uen) || 0, 9999);
     const _pwmax = Math.min((!_bs && game._botlStaleUenmax !== undefined
@@ -4083,7 +4099,8 @@ function _statusLine2Parts() {
     if (game._inMovemonMore && game._paintedSnapshot
         && (game._paintedSnapshot.uhs != null
             || game._paintedSnapshot.botl?.uhs != null)) {
-        _uhs = (game._movemonPageFrames?.length
+        _uhs = ((game._movemonPageFrames?.length
+                || game._saved_hs)
                 && game._paintedSnapshot.botl?.uhs != null)
             ? (game._paintedSnapshot.botl.uhs | 0)
             : (game._paintedSnapshot.uhs != null)
@@ -4099,11 +4116,9 @@ function _statusLine2Parts() {
     /* newuhs() sets HDeaf after its fainting message has begun but before the
      * status repaint.  That specific page is post-update in C; don't let the
      * pre-message snapshot hide the new Deaf condition. */
-    /* A --More-- raised by the wake-up pline (unmul's nomovemsg, after the whole
-     * countdown ran) paints the status of the LAST bot(): the final turn's
-     * nh_timeout already cleared HDeaf, so no Deaf (HDeaf is 0 here). */
     const _wakeMore = !game._resultMessage && !!game._paintedSnapshot
-        && (game._pending_message || '').endsWith('--More--') && !(u.HDeaf | 0);
+        && (game._pending_message || '').endsWith('--More--')
+        && (!(u.HDeaf | 0) || (game._pending_message || '').includes('You regain consciousness.'));
     const _faintingPage = !_postUnfaint && !_wakeMore && _faintTop.includes('You faint from lack of food.');
     const _suffix = botl_status_suffix(_uhs, _cap, _p2s ? !!_p2s.blinded : undefined,
                             (!_faintingPage && _p2s && _p2s.deaf !== undefined)
@@ -5124,8 +5139,9 @@ function _buildScreenOutputWithMoreRows(rows) {
     for (let y = M - 1; y < ROWNO; y++)                /* rows M..21: map y=(M-1)..20 */
         output += render_map_row(y) + '\n';
     const _promptStatusRows = _prompt_physical_status_rows()?.slice(-2);
-    output += (_promptStatusRows?.[0] ?? _statusLine1()) + '\n'; /* row 22 */
-    output += (_promptStatusRows?.[1] ?? _statusLine2());        /* row 23 */
+    const _blankStatus = !!game._status_blanked;
+    output += (_promptStatusRows?.[0] ?? (_blankStatus ? '' : _statusLine1())) + '\n'; /* row 22 */
+    output += (_promptStatusRows?.[1] ?? (_blankStatus ? '' : _statusLine2()));        /* row 23 */
     game._screen_output = output;
     if (display.grid) {
         display.clearScreen();
@@ -5480,15 +5496,24 @@ function _live_deaf() {
 function _capture_botl(paint = false) {
     const u = game?.u;
     if (!u) return null;
+    const Upolyd = (u.umonnum | 0) !== (u.umonster | 0);
     if ((u.uhp | 0) === -1 || (!paint && game._botlFrozenDeath))
         return game._lastPaintedBotl || null;
     if (!paint && game._botlPaintHeld && game._lastPaintedBotl)
         return game._lastPaintedBotl;
     const _d = game.disp;
+    if (paint || (_d && ((_d.botl | 0) || (_d.botlx | 0)))) {
+        game._botlPaintedAttrs = (u.acurr && u.acurr.a)
+            ? [acurr(u, A_STR), acurr(u, A_DEX), acurr(u, A_CON),
+               acurr(u, A_INT), acurr(u, A_WIS), acurr(u, A_CHA)]
+            : null;
+    }
     if (_d && ((_d.botl | 0) || (_d.botlx | 0))) {
         game._botlStaleUen = undefined;
         game._botlStaleUenmax = undefined;
         game._botlStaleUhp = undefined;
+        game._botlStaleHp = undefined;
+        game._botlStaleHpmax = undefined;
         game._botlPaintedCap = near_capacity() | 0;
         /* Same PAINT-time rule for the Deaf condition — see the `deaf` field
          * below and botl_status_suffix's note. */
@@ -5510,10 +5535,14 @@ function _capture_botl(paint = false) {
          * at PAINT time. */
         cap: (game._botlPaintedCap != null)
             ? (game._botlPaintedCap | 0) : (near_capacity() | 0),
-        uhp: u.uhp, uhpmax: u.uhpmax,
+        /* healup() (potion.c:1428) flags botl only at its tail: a pline inside
+         * it freezes the pre-heal HP/max (js/potion.js records _botlStaleHp). */
+        uhp: (game._botlStaleHp !== undefined && !Upolyd) ? game._botlStaleHp : u.uhp,
+        uhpmax: (game._botlStaleHp !== undefined && !Upolyd) ? game._botlStaleHpmax : u.uhpmax,
         gold: game._tutorialStatusOverride?.gold ?? game._botlGoldStale
             ?? money_cnt(game.invent ?? null),
-        mh: u.mh, mhmax: u.mhmax,
+        mh: (game._botlStaleHp !== undefined && Upolyd) ? game._botlStaleHp : u.mh,
+        mhmax: (game._botlStaleHp !== undefined && Upolyd) ? game._botlStaleHpmax : u.mhmax,
         uen: game._botlStaleUen !== undefined ? game._botlStaleUen : u.uen,
         uenmax: game._botlStaleUenmax !== undefined ? game._botlStaleUenmax : u.uenmax,
         /* C botl.c:867-869 BL_AC — bot() reads u.uac, which only find_ac() writes
@@ -5532,10 +5561,12 @@ function _capture_botl(paint = false) {
             && !(_d && ((_d.botl | 0) || (_d.botlx | 0)))
             ? (game._botlPaintedUhs != null ? (game._botlPaintedUhs | 0) : (game._save_hs | 0))
             : (u.uhs | 0),
-        attrs: (u.acurr && u.acurr.a)
-            ? [acurr(u, A_STR), acurr(u, A_DEX), acurr(u, A_CON),
-               acurr(u, A_INT), acurr(u, A_WIS), acurr(u, A_CHA)]
-            : null,
+        attrs: (game._botlPaintedAttrs !== undefined)
+            ? game._botlPaintedAttrs
+            : ((u.acurr && u.acurr.a)
+                ? [acurr(u, A_STR), acurr(u, A_DEX), acurr(u, A_CON),
+                   acurr(u, A_INT), acurr(u, A_WIS), acurr(u, A_CHA)]
+                : null),
         mtimedone: u.mtimedone | 0,
         umonnum: u.umonnum | 0,
         /* C you.h:554 Upolyd is (u.umonnum != u.umonster); the snapshot carried
@@ -5925,7 +5956,10 @@ export function topl_force_break_after(msg, clears = false, fullLine = null, cel
  * boundary _topl_joins records. */
 /* The terminal as of the last flush, for callers whose display_nhwindow(WIN_MESSAGE)
  * runs after newsym() calls that C's gbuf has not yet flushed to the screen. */
-export function capture_flushed_cells() { return _capture_painted_cells(); }
+export function capture_flushed_cells() {
+    const f = game?._lastFlushFrame;
+    return f && f.cells ? new Map(f.cells) : _capture_painted_cells();
+}
 export function topl_force_break_now(clears = false, cells = null) {
     const g = game;
     /* C ref: win/tty/topl.c tty_display_nhwindow(WIN_MESSAGE) — more() fires
@@ -5963,18 +5997,30 @@ function _topl_force_break_here(seg, laterSegments = []) {
  * _topl_split_for_more) commits the WHOLE accumulated line, not just that
  * segment, so an equality-only lookup missed it — and with it the frozen frame
  * C's more() shows.  Matching on the committed text's tail covers both. */
-function _topl_force_break_entry(committed) {
+function _topl_force_break_entry(committed, laterSegments = null) {
     const fb = game?._topl_force_breaks;
     if (!fb || !fb.length || !committed) return -1;
+    const _owns = (e) => laterSegments == null
+        || ((e.fromEnd ?? 0) | 0) === laterSegments.reduce(
+            (n, later) => n + (later === e.text ? 1 : 0), 0);
     const _last = (pred) => { for (let i = fb.length - 1; i >= 0; --i) if (pred(fb[i])) return i; return -1; };
-    let k = _last((e) => e.text === committed);
+    let k = _last((e) => e.text === committed && _owns(e));
     if (k > 0) {
         const mv = fb[k].frame?.moves;
         while (k > 0 && fb[k - 1].text === committed && fb[k - 1].frame?.moves === mv) --k;
     }
     if (k < 0)
-        k = _last((e) => e.text && committed.endsWith('  ' + e.text));
+        k = _last((e) => e.text && committed.endsWith('  ' + e.text) && _owns(e));
     return k;
+}
+/* The pline segments of a split remainder, at its re-based join offsets. */
+function _topl_remainder_segments(rem, joins) {
+    if (!rem) return [];
+    const out = [];
+    let start = 0;
+    for (const j of (joins || [])) { out.push(rem.slice(start, j)); start = j + 2; }
+    out.push(rem.slice(start));
+    return out;
 }
 function _topl_split_for_more(line, joins) {
     if (joins === undefined) joins = _topl_joins_for(line);
@@ -6087,6 +6133,19 @@ export function _topline_more_pending() {
 }
 
 // ── Generic post-more() deferred-effect queue ────────────────────────────────
+// True when this is a headless replay (onEmptyQueue ends the input) and no key
+// still queued is one C's more() accepts: xwaitforspace("\033 ") (getline.c,
+// topl.c:230) breaks only on '\n', '\r', ESC or ' ' and beeps at the rest, so
+// a --More-- raised now is never dismissed and C stays parked in it for the
+// rest of the recorded input.  The generalization of cmd.js's empty-queue test
+// for the zoo/court wake loop.
+export function _more_never_dismissed() {
+    const disp = game?.nhDisplay;
+    if (!disp?.onEmptyQueue) return false;
+    const q = disp.terminal?._inputQueue || [];
+    return !q.some(c => c === 10 || c === 13 || c === 27 || c === 32);
+}
+
 // C's pline() -> update_topl() calls more() when the accumulated topline will
 // not fit, and more() BLOCKS: the statements that follow the pline in the C
 // caller do not run until the player dismisses the --More--.  This port's
@@ -6229,6 +6288,22 @@ async function _topl_more(committed, dismissMore) {
     return morc;
 }
 
+/* C hack.c:2996-3016: a RUN_LEAP step's curs_on_u() -> flush_screen(1) repaints
+ * the terminal without a pline, so a --More-- raised later by a yn prompt
+ * (tty_yn_function more() runs BEFORE its own flush) shows THAT paint, not the
+ * pline-time one.  Refresh the lone pline frame's cells in place after such a
+ * flush; its msg/seq stay, the topline is untouched. */
+export function lone_frame_run_flush() {
+    const f = game?._lonePlineFrame;
+    if (!f || f.ux === undefined || !game.level) return;
+    f.cells = _capture_painted_cells();
+    f.moves = _painted_moves();
+    f.botl = _capture_botl();
+    f.ux = game.u?.ux;
+    f.uy = game.u?.uy;
+    f.runFlush = game._runFlushSeq | 0;
+}
+
 /* C win/tty/topl.c:397-398 tty_yn_function: a still-unacknowledged topline is
  * more()'d BEFORE the prompt's custompline -> flush_screen, so the --More-- is
  * drawn over the terminal as last flushed.  allmain.c:473 bot() writes the status
@@ -6242,6 +6317,10 @@ export async function force_more_lone_frame(msg) {
     const _mo = game._plineFlushFrames?.at(-1);
     if (_mo?.mapOnly && _mo.msg === f.msg && game.flags?.time
         && (_mo.moves | 0) !== (_painted_moves() | 0)) return force_more(msg);
+    if (f.ux !== undefined && (f.ux !== game.u?.ux || f.uy !== game.u?.uy)
+        && ((game._toplShownSeq | 0) !== (f.seq | 0)
+            || (game._runFlushSeq | 0) !== (f.runFlush | 0)))
+        return force_more(msg);
     const saved = game._paintedSnapshot;
     game._paintedSnapshot = { cells: f.cells, moves: f.moves, botl: f.botl || _capture_botl() };
     try {
@@ -6311,8 +6390,27 @@ export async function force_more_pages(full, retainFinalFrame = true, textWindow
             botl: (textWindowOpens && i === pages.length - 1) ? _botl_text_window_open()
                 : (frame.botl || null),
         };
+        /* wintty.c:2277-2283: an URGENT message wipes a live WIN_STOP and holds
+         * WIN_NOSTOP across its own update_topl, so an ESC'd earlier page does
+         * not suppress it (mhitu.c:1337 "engulfs you!" after ESC at the page
+         * before it). */
+        if (i > 0 && page && (game._topl_urgent_marks || []).some(
+            (u) => page === u || page.startsWith(u + '  '))) {
+            game._topl_win_stop_armed = false;
+            game._topl_win_stop = false;
+        }
+        let pageShown = page;
+        if (i > 0 && page && (game._topl_win_stop || game._topl_win_stop_armed)) {
+            const u = (game._topl_urgent_marks || []).find(
+                (m) => m && page.endsWith('  ' + m));
+            if (u) {
+                pageShown = u;
+                game._topl_win_stop_armed = false;
+                game._topl_win_stop = false;
+            }
+        }
         try {
-            if (page) await force_more(page);
+            if (pageShown) await force_more(pageShown);
         } finally {
             game._paintedSnapshot = saved;
             game._movemonMsgTurn = savedTurn;
@@ -6355,7 +6453,12 @@ export async function force_more(committed, dismissMore, alreadyPainted = false)
         routeTag('force_more', committed); /* telemetry only; inert when env unset */
         g._topl_win_stop_armed = false;
         g._topl_win_stop = true;
-        await pline(String(committed ?? ''));
+        g._pline_no_vision_recalc = true;
+        try {
+            await pline(String(committed ?? ''));
+        } finally {
+            g._pline_no_vision_recalc = false;
+        }
         return 0;                          /* no page raised, so no morc */
     }
     routeTag('force_more', committed); /* telemetry only; inert when env unset */
@@ -6460,7 +6563,7 @@ export async function force_more(committed, dismissMore, alreadyPainted = false)
          * ran between this message and that flush, not as of its own pline. */
         const _ownStatusLive = _ownFlushPf && i === _pages.length - 1
             && _pages[i].length < 80;
-        if (_usePlineFrame) g._paintedSnapshot = { cells: _pf.cells, moves: _pf.moves, botl: _ownStatusLive ? null : (_pf.botl || null) };
+        if (_usePlineFrame) g._paintedSnapshot = { cells: _pf.cells, moves: _pf.moves, botl: (_ownStatusLive || (g._liveStatusMore && i === _pages.length - 1)) ? null : (_pf.botl || null) };
         _morc = await _topl_more(_pages[i], dismissMore);
         if (_usePlineFrame) g._paintedSnapshot = _sv;
         if (_morc === 27 && i === _pages.length - 2 && _pages[i + 1] === 'You die...') {
@@ -6473,6 +6576,23 @@ export async function force_more(committed, dismissMore, alreadyPainted = false)
             g._topl_win_stop_armed = false;
             g._topl_win_stop = true;
             g._pending_message = '';
+            break;
+        }
+        const _owner = String(_pages[i + 1] ?? '');
+        const _ownerUrgent = (g._topl_urgent_marks || []).some(
+            (u) => _owner === u || _owner.startsWith(u + '  '));
+        if (_morc === 27 && i < _pages.length - 2 && _owner
+            && _owner.length < TOPL_CO && !_dieClears && !_ownerUrgent) {
+            let _buf = _owner;
+            for (let j = i + 2; j < _pages.length; ++j) {
+                const _p = String(_pages[j] ?? '');
+                if (!_p) continue;
+                _buf = (_buf.length + 2 + _p.length < TOPL_LIMIT) ? (_buf + '  ' + _p) : _p;
+            }
+            g._topl_win_stop_armed = false;
+            g._topl_win_stop = true;
+            g._topl_win_stop_buf = _buf;
+            g._pending_message = _owner;
             break;
         }
     }
@@ -6624,24 +6744,27 @@ export async function occupation_force_more(committed, frame, framesMoves, frame
  * return inside the body because C's guard returns BEFORE the flush is
  * counted (patch 012 emits after `flushing = 1`), so the call site is where
  * the test belongs. */
-let _flush_screen_flushing = false;
-export function _flush_screen_in_progress() { return _flush_screen_flushing; }
+/* Depth counter, not a saved/restored boolean: async flush_screen() calls can
+ * interleave (an un-awaited call suspended in its pager while another runs), and
+ * a save/restore pair then restores a stale `true` after the outer one returns,
+ * leaving the reentrancy guard (display.c:2226) stuck on and silencing every
+ * later pline flush point. */
+let _flush_screen_flushing = 0;
+export function _flush_screen_in_progress() { return _flush_screen_flushing > 0; }
 function flush_screen_point(mode) {
     _levelgen_freeze_flush(game?._levelgenPaintFreeze);
-    const wasFlushing = _flush_screen_flushing;
-    _flush_screen_flushing = true;
+    _flush_screen_flushing++;
     try { _flush_screen_repaint(mode); }
-    finally { _flush_screen_flushing = wasFlushing; }
+    finally { _flush_screen_flushing--; }
 }
 export async function flush_screen(mode) {
     _levelgen_freeze_flush(game?._levelgenPaintFreeze);
     // C ref: update_topl/more() — if the accumulated topline won't fit on one
     // row, flush the committed portion with --More-- before showing the rest.
-    const wasFlushing = _flush_screen_flushing;
-    _flush_screen_flushing = true;
+    _flush_screen_flushing++;
     try {
         return await _flush_screen_body(mode);
-    } finally { _flush_screen_flushing = wasFlushing; }
+    } finally { _flush_screen_flushing--; }
 }
 export function tty_repaint(mode) {
     _flush_screen_repaint(mode);
@@ -6706,6 +6829,7 @@ async function _flush_screen_body(mode) {
         // which approximate the same instant at world-block granularity (they froze
         // the LAST message that still fitted, i.e. one hero step early on a counted
         let plineFrame = _pline_flush_frame_select(consumed + committed.length, fullTopl);
+        const _plineFrameRaisedPage = !!plineFrame;
         if (!plineFrame)
             plineFrame = _pline_flush_frame_select(consumed - 2, fullTopl);
         else if (committed.length >= 80
@@ -6721,9 +6845,13 @@ async function _flush_screen_body(mode) {
         // bot() (the pet had not moved, cap not yet repainted).  Install the
         let _pickupFrozen = false;
         let _pageFrozen = false;
-        const _forcedFrameIdx = _topl_force_break_entry(committed);
-        const _forcedFrame = (_forcedFrameIdx >= 0)
+        const _forcedFrameIdx = _topl_force_break_entry(committed,
+            _topl_remainder_segments(remainder, remainderJoins));
+        let _forcedFrame = (_forcedFrameIdx >= 0)
             ? (game._topl_force_breaks[_forcedFrameIdx].frame || null) : null;
+        if (_forcedFrame && plineFrame && _plineFrameRaisedPage
+            && (_forcedFrame.moves | 0) > (plineFrame.moves | 0))
+            _forcedFrame = null;
         if (ENV.FF_MLTRACE === '1') {
             const forcedText = _forcedFrameIdx >= 0
                 ? encodeURIComponent(String(game._topl_force_breaks[_forcedFrameIdx]?.text || '').slice(0,64)) : '';
@@ -6841,7 +6969,8 @@ async function _flush_screen_body(mode) {
         }
         let _pageWasForcedBreak = false;
         if (game._topl_force_breaks && game._topl_force_breaks.length) {
-            const k = _topl_force_break_entry(committed);
+            const k = _topl_force_break_entry(committed,
+                _topl_remainder_segments(remainder, remainderJoins));
             if (k >= 0) { game._topl_force_breaks.splice(k, 1); _pageWasForcedBreak = true; }
         }
         const pageHasIncomingOwner = !pageWrapped && !_pageWasForcedBreak;
@@ -7450,7 +7579,7 @@ export async function pline(msg, ...args) {
      * --More--) still runs it.  Leaving it to the paint path below skipped it
      * for every swallowed message and deferred its newsym() draws (display rng
      * under Hallucination) past the explosion's rndmonnam() draws. */
-    if (game._topl_win_stop && game.vision_full_recalc)
+    if (game._topl_win_stop && game.vision_full_recalc && !game._pline_no_vision_recalc)
         vision_recalc(0);
     if (game._topl_win_stop) {
         const _txt = String(msg);
@@ -7567,9 +7696,29 @@ export async function pline(msg, ...args) {
         // win/tty/topl.c — each pline()→update_topl() makes an independent
         // fit/more() decision per message, not per "  " in the rendered text.
         _topl_record_join(prev, joined);
+        /* pline.c:274 flush_screen() precedes update_topl(), so a more() raised
+         * by THIS join freezes the map as of here (drown: "You sink like a
+         * rock." pages before the crawl-out teleds moves the hero). */
+        if (!game._inMovemonBlock && !game._inGushforth && game.level
+            && _topl_split_for_more(joined) !== null)
+            _pline_flush_frame_record(prev.length, String(msg));
         /* pline.c:274 — each pline flushes the screen before update_topl()'s
          * more(); a page raised by THIS message froze the map as of here, not
          * as of the end of the hero's command (fountain gush: later pools). */
+        /* The same freeze holds for ANY join that raises more(): a later
+         * tty_yn_function more() (topl.c:397-398) precedes its own flush, so it
+         * shows the terminal as THIS pline flushed it, not monsters made since
+         * (fountain.c:51 dowatersnakes -> wizard-mode "Dry up fountain?"). */
+        const _joinMore = !game._inMovemonBlock && !game._inGushforth && game.level
+            && _topl_split_for_more(joined) !== null;
+        /* pline.c:274's flush_screen(1) also runs bot(), so the status as of
+         * this pline is on the physical line; a later losehp's SET_BOTL is not
+         * (fountain.c:299-308 poison_strdmg: losestr's encumber_msg pline, then
+         * losehp -> "Dry up fountain?" more() still shows the pre-damage HP). */
+        if (_joinMore)
+            game._lonePlineFrame = { msg: String(msg), tail: true,
+                                     cells: _capture_painted_cells(),
+                                     moves: _painted_moves(), botl: _capture_botl() };
         if (!game._inMovemonBlock && game._inGushforth) {
             _pline_flush_frame_record(prev.length, String(msg));
             /* A later yn prompt's more() shows the terminal as the LAST pline
@@ -7601,7 +7750,10 @@ export async function pline(msg, ...args) {
          * turn that ran in between (see force_more_lone_frame). */
         if (!_res && game.level)
             game._lonePlineFrame = { msg: String(msg), cells: _capture_painted_cells(),
-                                     moves: _painted_moves(), botl: _capture_botl() };
+                                     moves: _painted_moves(), botl: _capture_botl(),
+                                     ux: game.u?.ux, uy: game.u?.uy,
+                                     seq: (game._toplShownSeq | 0) + 1,
+                                     runFlush: game._runFlushSeq | 0 };
         game._pending_message = msg;
     }
     /* C ref: pline.c:282 — `(void) strncpy(gp.prevmsg, line, BUFSZ)`, run after
@@ -7617,6 +7769,13 @@ export async function pline(msg, ...args) {
      * Keep that state distinct from _pending_message, which also carries
      * command snapshots and prompt echoes that need no acknowledgement. */
     game._topl_unacknowledged = true;
+    /* Sequence stamp of the shown-pline flush (pline.c:273-274): every shown
+     * message flushed the terminal immediately before its putmesg, so this
+     * counter is "how many plines have painted since startup". force_more_
+     * lone_frame compares it against the lone frame's seq to tell a hero who
+     * stepped WITHOUT a later pline (terminal still at the lone frame) from
+     * one a later pline repainted (terminal moved on; use the live map). */
+    game._toplShownSeq = (game._toplShownSeq | 0) + 1;
     _maybe_snapshot_painted_screen();
     // C pline.c:283-284: stop/more blocks immediately after putmesg and
     // prevmsg, before the caller can continue or consume another command.

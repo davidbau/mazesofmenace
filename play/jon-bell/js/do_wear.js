@@ -60,7 +60,7 @@ import { setuwep, setuswapwep, setuqwep, empty_handed, cmdq_pop, cmdq_peek, drop
          carrying_stoning_corpse, Yname2 } from './cmd.js';
 import { otense, makesingular, corpse_xname as petrify_corpse_xname, killer_xname as petrify_killer_xname, simpleonames as petrify_simpleonames } from './objnam.js';
 import { HAND, FINGER, RIGHT_HANDED, LEFT_HANDED, CQ_CANNED, CXN_ARTICLE as PETRIFY_ARTICLE } from './const.js';
-import { W_WEP, W_SWAPWEP, W_QUIVER, W_RINGL, W_RINGR, W_TOOL,
+import { W_WEAPONS, W_WEP, W_SWAPWEP, W_QUIVER, W_RINGL, W_RINGR, W_TOOL,
          CMDQ_KEY, ECMD_FAIL, FOOT } from './const.js';
 const PETRIFY_CORPSE = 265; /* objects.h CORPSE */
 /* C mkobj.c:1865 set_bknown() — the project's real one (js/mklev.js:11078).
@@ -696,6 +696,12 @@ export async function Helmet_off() {
     if (otmp && (otmp.otyp | 0) === HELM_OF_BRILLIANCE
         && !cancelledDon)
         adj_abon(otmp, -(otmp.spe | 0));
+    if (otmp && ((otmp.otyp | 0) === HELM_OF_TELEPATHY_OTYP
+                 || (otmp.otyp | 0) === HELM_OF_CAUTION_OTYP)) {
+        await takeoff_slot('uarmh');
+        see_monsters();
+        return 0;
+    }
     const result = await takeoff_slot('uarmh');
     if (game.context?.takeoff)
         game.context.takeoff.cancelled_don = false;
@@ -926,6 +932,10 @@ export async function Cloak_off() {
             await pline(`You can ${_propOn(SEE_INVIS_PROP)
                 ? 'see through yourself' : 'no longer see yourself'}.`);
         }
+    } else if (otyp === ALCHEMY_SMOCK_OTYP) {
+        /* C do_wear.c:424-426 — the smock's second, hand-set property:
+         * EAcid_resistance &= ~WORN_CLOAK. */
+        _dw_set_extrinsic_mask(ACID_RES_PROP, W_ARMC, false);
     } else if (otyp === CLOAK_OF_INVISIBILITY_OTYP) {
         /* C do_wear.c:412-421 — removing the cloak of invisibility while no
          * other source of invisibility or blindness is in play reveals the
@@ -1058,6 +1068,10 @@ export async function Armor_on()  {
 }
 export function Shield_on() { return don_slot('uarms'); }
 const FEDORA_OTYP = 92, CORNUTHAUM_OTYP = 93;
+/* objects.h helmet order: 94 DUNCE_CAP, 95 DENTED_POT, 96 HELM_OF_BRILLIANCE,
+ * 97 HELMET, 98 HELM_OF_CAUTION, 99 HELM_OF_OPPOSITE_ALIGNMENT, 100
+ * HELM_OF_TELEPATHY (verified against OC_NAME indices). */
+const HELM_OF_TELEPATHY_OTYP = 100, HELM_OF_CAUTION_OTYP = 98;
 /* C attrib.c:1320 uchangealign(newalign, A_CG_HELM_ON) — the put-on arm only
  * (CONVERT/HELM_OFF are reached from pray.c and do_wear.c:556). Omitted:
  * livelog_printf (not game-visible) and retouch_equipment(0) (artifact.c:2640,
@@ -1892,6 +1906,10 @@ export async function armoron(otmp) {
     /* setworn(obj, mask): the object now occupies its armor slot.  src/u_init.ts
      * tags worn-armor records with .slot; tag the incoming object so find_ac and
      * the *_off path see a consistent record. */
+    /* C do_wear.c:2361-2364 — if the armor is wielded/alternate/quivered,
+     * release it for wearing (won't be welded even if cursed). */
+    if (otmp && ((otmp.owornmask | 0) & W_WEAPONS))
+        await remove_worn_item(otmp, false);
     if (otmp && slot) {
         otmp.slot = slot; // JS armor metadata; C stores its category in objects[].
         await setworn(otmp, SLOT_TO_WMASK[slot]);

@@ -3240,7 +3240,11 @@ function m_seenres(mtmp, mask) {
 }
 /* monnear: monster near target coordinates (diagonal/orthogonal */ 
 export function monnear(mtmp, x, y) {
-    return Math.abs(mtmp.mx - x) <= 1 && Math.abs(mtmp.my - y) <= 1;
+    const dx = Math.abs(mtmp.mx - x), dy = Math.abs(mtmp.my - y);
+    /* C mon.c:2461: dist2 == 2 && NODIAG(mon) -> not near */
+    if (dx === 1 && dy === 1 && ((mtmp.data?.pmidx ?? mtmp.mnum ?? mtmp.mndx) | 0) === 116)
+        return false;
+    return dx <= 1 && dy <= 1;
 }
 /* dmgtype: check if monster has a given damage type in any attack */
 function dmgtype(ptr, dtyp) {

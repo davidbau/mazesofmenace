@@ -652,8 +652,11 @@ async function update_bill(indx, ibillct, ibill, eshkp, bp, paiditem) {
         /* C copies the LAST bill_p[] entry into the vacated slot; `bp` is a
          * pointer INTO bill_p[], so find its index and overwrite in place. */
         const bpIdx = bill.indexOf(bp);
-        if (bpIdx >= 0)
-            bill[bpIdx] = bill[newebillct];
+        /* C copies the struct (`*bp = eshkp->bill_p[eshkp->billct]`); sharing the
+         * object would alias two slots, so a later add_one_tobill into the
+         * vacated slot rewrote the survivor too. */
+        if (bpIdx >= 0 && bpIdx !== newebillct && bill[newebillct])
+            bill[bpIdx] = { ...bill[newebillct] };
         for (let j = 0; j < ibillct; j++)
             if (ibill[j].bidx === newebillct)
                 ibill[j].bidx = bpIdx;
@@ -1976,7 +1979,7 @@ export async function sub_one_frombill(obj, shkp) {
         const bill = e.bill_p || e.bill;
         const idx = bill ? bill.indexOf(bp) : -1;
         const last = Math.max(0, (e.billct | 0) - 1);
-        if (bill && idx >= 0 && idx < last) bill[idx] = bill[last];
+        if (bill && idx >= 0 && idx < last) bill[idx] = { ...bill[last] };
         e.billct = last;
         return;
     }

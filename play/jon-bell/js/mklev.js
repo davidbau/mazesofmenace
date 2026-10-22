@@ -95,7 +95,7 @@ import { recalc_block_point } from './vision.js';
 import { does_block, unblock_point } from './vision.js';
 import { COULD_SEE, IN_SIGHT, TT_BURIEDBALL, NO_TRAP_FLAGS } from './const.js';
 import { buried_ball_to_punishment, reset_utrap, mintrap } from './trap.js';
-import { fracture_rock, montraits } from './zap.js';
+import { fracture_rock, montraits, zombie_can_dig } from './zap.js';
 import { is_pool } from './look.js';
 import { flush_screen, force_more } from './display.js';
 /* Vault guards are normally dismissed through mongone's common inventory
@@ -962,10 +962,22 @@ function nartifact_exist() {
         if (ae[k]) ++a;
     return a;
 }
+/* C artifact.c:2837 permapoisoned(obj) — currently only Grimtooth (artilist
+ * order: NONARTIFACT, EXCALIBUR, STORMBRINGER, MJOLLNIR, CLEAVER, GRIMTOOTH
+ * => 5).  Same local copy js/potion.js carries; js/objnam.js has a third,
+ * unexported one. */
+function permapoisoned_mka(o) {
+    return !!o && (o.oartifact | 0) === 5;
+}
+function mka_poison_tail(o) {
+    if (o && permapoisoned_mka(o))
+        o.opoisoned = 1;
+    return o;
+}
 async function mk_artifact(otmp, alignment, max_giftvalue, adjust_spe) {
     const by_align = (alignment !== A_NONE);
     if (by_align)
-        return otmp; /* not ported — see above */
+        return mka_poison_tail(otmp); /* not ported — see above */
     const o_typ = otmp ? (otmp.otyp | 0) : 0;
     /* C: unique = !by_align && otmp && objects[o_typ].oc_unique.  An oc_unique
      * base type suppresses the whole eligible scan.  game._oc_unique is the
@@ -990,7 +1002,7 @@ async function mk_artifact(otmp, alignment, max_giftvalue, adjust_spe) {
     }
 
     if (!eligible.length)
-        return otmp; /* C:299-310 — nothing appropriate; return the original */
+        return mka_poison_tail(otmp); /* C:299-310 — nothing appropriate; return the original */
 
     /* C artifact.c:259 — m = eligible[rn2(n)] */
     const m = eligible[rn2(eligible.length)];
@@ -1009,7 +1021,7 @@ async function mk_artifact(otmp, alignment, max_giftvalue, adjust_spe) {
         if (new_spe >= -10 && new_spe < 10)
             otmp.spe = new_spe;
     }
-    return otmp;
+    return mka_poison_tail(otmp);
 }
 /* C artifact.c:344 artiexist[m].exists, via the same game._artiexist store
  * js/objnam.js writes (an entry is either the legacy `true` or a full origin
@@ -1237,7 +1249,7 @@ function mkobj_erosions(otmp) {
     }
 }
 /** C mkobj.c rider_revival_time */
-function rider_revival_time(body, retry) {
+export function rider_revival_time(body, retry) {
     const minturn = retry ? 3 : (((body.corpsenm | 0) === PM_DEATH_R) ? 6 : 12);
     let when = minturn;
     for (; when < 67; when++)
@@ -1277,7 +1289,7 @@ function special_corpse(pmIdx) {
     const mlet = MONS_ROWS[n][0] | 0;
     return mlet === S_TROLL || is_rider_pm(n);
 }
-function is_rider_pm(pmIdx) {
+export function is_rider_pm(pmIdx) {
     const n = pmIdx | 0;
     return n === PM_DEATH_R || n === PM_PESTILENCE || n === PM_FAMINE;
 }
@@ -4121,9 +4133,10 @@ async function m_initgrp(mtmp, x, y, n, mmflags) {
             await makemon(mndx, mmx, mmy, (mmflags | MM_NOGRP));
             const mon = game.fmon;
             if (mon && (mon.mnum === mndx)) {
-                /* C makemon.c:137-139 — force hostile; set_malign has no RNG (skipped) */
+                /* C makemon.c:136-138 — force hostile, then recompute malign from the new state */
                 mon.mpeaceful = 0;
                 mon.mavenge = 0;
+                set_malign(mon);
             }
         }
     }
@@ -6016,8 +6029,14 @@ export function save_engravings() {
 export function rest_engravings(saved) {
     _engr_map.clear();
     if (saved)
-        for (const [k, ep] of saved)
-            _engr_map.set(k, ep);
+        for (const [k, ep] of saved) {
+            /* C engrave.c:1610-1613 rest_engravings(): re-advance the actual and
+             * remembered text pointers past leading spaces; `off` is how far. */
+            const text = ep.text.replace(/^ +/, '');
+            _engr_map.set(k, { ...ep, text,
+                               off: (ep.off | 0) + (ep.text.length - text.length),
+                               remembered: (ep.remembered ?? ep.text).replace(/^ +/, '') });
+        }
 }
 export { l_nhcore_init } from './nhlua.js';
 import { nh_callback_run, NHCB_LVL_ENTER } from './nhlua.js';
@@ -6564,6 +6583,14 @@ async function makelevel_generate() {
     else if (dgn && dgn.fill_lvl) {
         if (FILL_READY.has(dgn.fill_lvl)) {
             await js_makemaz(dgn.fill_lvl, null);
+            /* C mklev.c:1415-1418 — the chain falls out into the
+             * fill_special_room loop; hellfill's temple region sets
+             * has_temple there (sp_lev.c:2798). */
+            for (let ri = 0; ri < g.level.nroom; ri++) {
+                const rr = g.level.rooms[ri];
+                if (rr && rr.hx > 0)
+                    await fill_special_room(rr);
+            }
             return;
         }
     }
@@ -8617,7 +8644,11 @@ async function themerooms_contents_mausoleum(outerRoom) {
             // C ref: sp_lev.c create_object → mksobj_at(CORPSE,...) → mkobj.c mksobj:1186,
             //   mksobj_init CORPSE corpsenm:1208 (rndmonnum→rndmonst_adj),
             //   set_corpsenm:1227 → start_corpse_timeout:1414.
-            const corpse = await mksobj(CORPSE, true, false);
+            // create_object is mksobj_AT (sp_lev.c:2212): the corpse is PLACED
+            // in the crypt.  coord={0,0} is get_location's explicit-coord arm,
+            // croom->lx/ly plus 0 (sp_lev.c:1222-1225), no draw; artif=!named.
+            const corpse = await mksobj_at(CORPSE, cryptRoom.lx | 0, cryptRoom.ly | 0,
+                                           true, true);
             // C sp_lev.c:2259-2263 — apply the montype-resolved corpsenm override.
             // monsndx(pm) is just the PM index mkclass already returned.  This is
             // the SECOND set_corpsenm; for the resolved HUMAN PM (non-LIZARD/LICHEN)
@@ -8772,8 +8803,16 @@ async function themeroom_water_surrounded_vault_contents_rng(mapPos) {
      * find_montype drew.  The spec sets no asleep/waiting, so nothing else. */
     if (game.fmon)
         game.fmon.female = (nastyGend === 1 /* FEMALE */) ? 1 : 0;
-    /* themerms.lua:813 des.exclusion({type="teleport", ...}) — RNG-free and
-     * invisible to the 24x80 render; not modelled. */
+    /* themerms.lua:813 des.exclusion({type="teleport", region={2,2,3,3}}) —
+     * lspo_exclusion (sp_lev.c:5505-5539): RNG-free, but is_exclusion_zone
+     * (mkmaze.c:317) makes put_lregion_here reject these squares for a
+     * level-teleport arrival, costing C one more rn2(79)/rn2(21) pair per hit.
+     * Both corners go through get_location_coord, i.e. map-relative. */
+    if (!game.exclusion_zones)
+        game.exclusion_zones = [];
+    game.exclusion_zones.unshift({ zonetype: LR_TELE,
+                                   lx: mapPos.x + 2, ly: mapPos.y + 2,
+                                   hx: mapPos.x + 3, hy: mapPos.y + 3 });
 }
 // C ref: themerms.lua themerooms_generate()
 // "default" usually wins (frequency 1000 vs others ~1-10).
@@ -11521,6 +11560,8 @@ export function get_level_extends() {
         }
     }
     xmin -= (nonwall || !game.level?.flags?.is_maze_lev) ? 2 : 1;
+    if (xmin < 0) /* C mkmaze.c:1376 */
+        xmin = 0;
     found = false;
     nonwall = false;
     for (xmax = COLNO - 1; !found && xmax >= 0; xmax--) {
@@ -11534,6 +11575,8 @@ export function get_level_extends() {
         }
     }
     xmax += (nonwall || !game.level?.flags?.is_maze_lev) ? 2 : 1;
+    if (xmax >= COLNO) /* C mkmaze.c:1392 — without it a level whose last column is 79 gets xmax 80 and bound_digging never marks column 79 non-diggable */
+        xmax = COLNO - 1;
     found = false;
     nonwall = false;
     for (ymin = 0; !found && ymin <= ROWNO - 1; ymin++) {
@@ -13841,6 +13884,9 @@ export async function revive_corpse(otmp, do_msgs = true) {
         return false;
     /* C do.c:2121-2133: name, location and wield state are read BEFORE
      * revive() consumes the corpse. */
+    if (mdat.mlet === S_ZOMBIE && wasBuried
+        && !zombie_can_dig(otmp.ox | 0, otmp.oy | 0))
+        return false;
     const where0 = otmp.where | 0;
     const chewed = (otmp.oeaten | 0) !== 0;
     const is_uwep = otmp === game.u?.uwep;
@@ -16180,7 +16226,7 @@ function cant_squeeze_thru_mv(mon) {
     const mdat = mon.data;
     if (passes_walls_mv(mdat)) return 0;
     if (bigmonst_mv(mdat)
-        && !(amorphous_mv(mdat) || is_whirly_mv(mdat, mon.data_mndx) || noncorporeal_mv(mdat)
+        && !(amorphous_mv(mdat) || is_whirly_mv(mdat, (typeof mdat.pmidx === "number" ? mdat.pmidx : mon.data_mndx)) || noncorporeal_mv(mdat)
              || slithy_mv(mdat) || can_fog_mv(mon))) {
         return 1;
     }

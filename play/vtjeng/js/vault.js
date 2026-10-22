@@ -19,6 +19,7 @@ import {
     DOOR,
     EGD,
     FCSIZ,
+    FEMALE,
     GD_DESTROYGOLD,
     GD_EATGOLD,
     HWALL,
@@ -29,9 +30,11 @@ import {
     IS_STWALL,
     IS_WALL,
     M_AP_OBJECT,
+    MALE,
     MELT_ICE_AWAY,
     MM_EGD,
     MM_NOMSG,
+    NEED_HTH_WEAPON,
     RLOC_ERR,
     RLOC_MSG,
     RLOC_NOMSG,
@@ -49,7 +52,7 @@ import {
 } from './const.js';
 import { isok } from './cmd_isok.js';
 import {
-    map_invisible, map_location, newsym, unset_seenv, xy_set_wall_state,
+    map_invisible, map_invisible_planning, map_location, newsym, unset_seenv, xy_set_wall_state,
 } from './display.js';
 import { assign_level, on_level } from './dungeon.js';
 import { verbalize, youHear } from './pline.js';
@@ -59,14 +62,15 @@ import { mungspaces } from './fruit.js';
 import { game } from './gstate.js';
 import { dist2 } from './hacklib.js';
 import { nomul } from './hack.js';
-import { add_to_minv, money_cnt, obj_extract_self, obfree, sobj_at } from './invent.js';
+import { add_to_minv, currency, freeinv, money_cnt, obj_extract_self, obfree, sobj_at, stackobj } from './invent.js';
 import { set_malign } from './makemon.js';
-import { gender, is_silent, noit_mhis, sticks } from './mondata.js';
+import { gender, is_silent, mhe, noit_mhis, sticks } from './mondata.js';
 import { PM_CROESUS, PM_GUARD } from './monsters.js';
 import {
     m_at, mon_track_clear, place_monster, remove_monster,
 } from './monst.js';
-import { m_carrying, m_into_limbo, mnexto, mongone, mpickgold } from './mon.js';
+import { m_carrying, m_into_limbo, mnexto, mongone, mpickgold, setmangry } from './mon.js';
+import { mon_wield_item } from './weapon.js';
 import {
     capitalizedAlwaysVisibleMonsterName,
     alwaysVisibleMonsterName,
@@ -79,9 +83,10 @@ import {
 } from './do_name.js';
 import { makeplural } from './fruit.js';
 import { adjalign } from './attrib.js';
-import { carried, g_at, hasContents } from './obj.js';
+import { carried, g_at, hasContents, place_object, remove_object } from './obj.js';
 import { objectGenerationEnv } from './object_generation.js';
-import { BOULDER, ROCK, TIN_WHISTLE } from './objects.js';
+import { BOULDER, COIN_CLASS, GOLD_PIECE, ROCK, TIN_WHISTLE } from './objects.js';
+import { an, mimic_obj_name, simpleonames } from './objnam.js';
 import { in_rooms } from './rooms.js';
 import { contained_gold } from './shk.js';
 import { relobj } from './steal.js';
@@ -99,6 +104,9 @@ import {
 import { getlin } from './windows.js';
 import { canspotmon, mon_visible } from './display.js';
 import { set_voice } from './sounds.js';
+import { fracture_rock } from './zap.js';
+import { make_grave } from './grave.js';
+import { d, rn1, rn2, rnd, rne } from './rng.js';
 
 // Thrown where vault.c reaches vault-guard handling this port has not ported.
 export class UnsupportedVaultGuardError extends Error {
@@ -372,6 +380,20 @@ export async function grddead(grd, state = game, rawEnv = {}) {
     return dispose;
 }
 
+// C ref: vault.c move_gold(). Redraw the old location before choosing the
+// destination; stackobj preserves this moved pile while absorbing old gold.
+async function move_gold(gold, vroom, state, env) {
+    const objectEnv = objectGenerationEnv({ ...env, state });
+    remove_object(gold, objectEnv);
+    newsym(gold.ox, gold.oy, state);
+    const room = state.level.rooms[vroom];
+    const nx = room.lx + env.random.rn2(2);
+    const ny = room.ly + env.random.rn2(2);
+    await place_object(gold, nx, ny, objectEnv);
+    stackobj(gold, objectEnv);
+    newsym(nx, ny, state);
+}
+
 // C ref: vault.c wallify_vault() (645-731). Restore the vault walls after the
 // guard escort is done. Gold at wall positions moves into the vault, rocks and
 // boulders are subsumed into walls, traps are destroyed, and the vault
@@ -407,9 +429,8 @@ async function wallify_vault(grd, state, env) {
                 // Gold at wall position: move into vault
                 const gold = g_at(x, y, state);
                 if (gold) {
-                    throw new UnsupportedVaultGuardError(
-                        'wallify_vault() move_gold into vault',
-                    );
+                    await move_gold(gold, EGD(grd).vroom, state, env);
+                    movedgold = true;
                 }
                 // Destroy rocks and boulders (subsume them into the walls);
                 // other objects present stay intact and become embedded.
@@ -456,21 +477,21 @@ async function wallify_vault(grd, state, env) {
 
     if (movedgold || fixed) {
         if (in_fcorridor(grd, grd.mx, grd.my) || cansee(grd.mx, grd.my, state))
-            env.message(
+            await env.message(
                 `${capitalizedAlwaysVisibleMonsterName(grd, state)} whispers an incantation.`,
                 state, env,
             );
         else {
             const heard = youHear('a distant chant.', state);
-            if (heard) env.message(heard, state, env);
+            if (heard) await env.message(heard, state, env);
         }
         if (movedgold)
-            env.message(
+            await env.message(
                 'A mysterious force moves the gold into the vault.',
                 state, env,
             );
         if (fixed)
-            env.message(
+            await env.message(
                 "The damaged vault's walls are magically restored!",
                 state, env,
             );
@@ -661,10 +682,20 @@ export async function gd_move(grd, env = {}) {
 
         if (!u_in_vault) {
             if (u_carry_gold) {
-                // Hero teleported out with gold
-                throw new UnsupportedVaultGuardError(
-                    'gd_move() hero teleported out of vault carrying gold',
-                );
+                // C vault.c:986-997. Leaving before the first corridor
+                // extension restores the doorway and sets the guard loose.
+                const m = grd.mx;
+                const n = grd.my;
+                await rloc(grd, RLOC_MSG, { ...env, state });
+                const entry = state.level.at(m, n);
+                entry.typ = egrd.fakecorr[0].ftyp;
+                entry.flags = egrd.fakecorr[0].flags;
+                recalc_block_point(m, n, state);
+                del_engr_at(m, n, state);
+                newsym(m, n);
+                grd.mpeaceful = 0;
+                await gd_letknow(grd, state, gdEnv);
+                return -1;
             } else {
                 if (!Deaf(state)) {
                     await message('"Well, begone."', state, gdEnv);
@@ -1134,11 +1165,19 @@ export async function invault(state, env = {}) {
     // wakes the hero only when that callback is eat.c:unfaint().
     await reset_faint(state, { ...env, message });
 
-    // Boulder destruction at guard's position
-    if (sobj_at(BOULDER, guard.mx, guard.my, state)) {
-        throw new UnsupportedVaultGuardError(
-            'invault() destroying boulders at guard entry point',
-        );
+    // C vault.c invault clears every boulder before announcing the guard.
+    let boulder = sobj_at(BOULDER, guard.mx, guard.my, state);
+    if (boulder) {
+        const bname = simpleonames(boulder, state);
+        let count = 0;
+        do {
+            ++count;
+            await fracture_rock(boulder, state, random, { ...env, message });
+            boulder = sobj_at(BOULDER, guard.mx, guard.my, state);
+        } while (boulder);
+        const suffix = `${count === 1 ? an(bname) : makeplural(bname)} shatter.`;
+        const line = Blind(state) ? youHear(suffix, state) : `You see ${suffix}`;
+        if (line) await message(line);
     }
 
     const spotted = canspotmon(guard, state);
@@ -1149,37 +1188,48 @@ export async function invault(state, env = {}) {
         newsym(guard.mx, guard.my);
     } else {
         await message('Someone else has entered the Vault.');
-        map_invisible(guard.mx, guard.my, state);
+        if (state === game) map_invisible(guard.mx, guard.my, state);
+        else map_invisible_planning(guard.mx, guard.my, state);
     }
 
     if (u.uswallow) {
         if (!Deaf(state)) {
-            await message('"What\'s going on here?"');
+            set_voice(guard, 0, 80, 0, state);
+            await verbalize("What's going on here?", state, { message });
         }
         if (!spotted) {
             await message('The other presence vanishes.');
         }
-        throw new UnsupportedVaultGuardError(
-            'invault() removing guard while hero is swallowed',
-        );
+        await mongone(guard, { state, random });
+        return;
     }
     const uApType = state.youmonst?.m_ap_type ?? 0;
     if (uApType === M_AP_OBJECT || u.uundetected) {
-        throw new UnsupportedVaultGuardError(
-            'invault() guard encounters disguised or hidden hero',
-        );
+        if (uApType === M_AP_OBJECT
+            && state.youmonst.mappearance !== GOLD_PIECE && !Deaf(state)) {
+            set_voice(guard, 0, 80, 0, state);
+            await verbalize(
+                `Hey!  Who left that ${mimic_obj_name(state.youmonst, state)} in here?`,
+                state, { message },
+            );
+        }
+        await message(`Puzzled, ${mhe(guard, { state, random, canSpotMonster: canspotmon })} turns around and leaves.`);
+        await mongone(guard, { state, random });
+        return;
     }
     if (Strangled(state) || is_silent(state.youmonst?.data ?? u.umonster)
         || state.multi < 0) {
         if (Deaf(state)) {
-            throw new UnsupportedVaultGuardError(
-                'invault() guard leaves deaf+strangled hero',
+            await message(`${noit_Monnam(guard, state)} huffs and turns to leave.`);
+        } else {
+            set_voice(guard, 0, 80, 0, state);
+            await verbalize(
+                "I'll be back when you're ready to speak to me!",
+                state, { message },
             );
         }
-        await message('"I\'ll be back when you\'re ready to speak to me!"');
-        throw new UnsupportedVaultGuardError(
-            'invault() guard leaves strangled/silent hero (mongone)',
-        );
+        await mongone(guard, { state, random });
+        return;
     }
 
     await env.stopOccupation?.();
@@ -1221,9 +1271,22 @@ export async function invault(state, env = {}) {
             await mongone(guard, { state });
             return;
         }
-        throw new UnsupportedVaultGuardError(
-            'invault() Croesus is dead and guard turns hostile',
-        );
+        const guardEnv = { ...env, state, random, message };
+        await setmangry(guard, false, guardEnv);
+        if (Deaf(state)) {
+            if (!Blind(state))
+                await message(`${noit_Monnam(guard, state)} mouths something and looks very angry!`);
+        } else {
+            set_voice(guard, 0, 80, 0, state);
+            await verbalize("Back from the dead, are you?  I'll remedy that!",
+                state, { message });
+        }
+        // C arms the guard now so it does not spend its next turn wielding.
+        if (!guard.mw) {
+            guard.weapon_check = NEED_HTH_WEAPON;
+            await mon_wield_item(guard, guardEnv);
+        }
+        return;
     }
 
     if (Deaf(state)) {
@@ -1300,20 +1363,43 @@ export async function invault(state, env = {}) {
     EGD(guard).warncnt = 1;
 }
 
-// C ref: vault.c paygd() (1204-1247). Called from end.c really_done(). Only
-// the early return is ported: with no gold, or no guard on the level, the
-// function has nothing to settle. Every other arm moves the hero's gold to the
-// vault or a grave and then removes the guard, which needs mnexto(),
-// make_grave(), freeinv(), place_object() and stackobj() on a guard mongone()
-// itself refuses; those stop here.
-export function paygd(_silently, state = game) {
+// C ref: vault.c paygd() (1204-1247), called before end.c disclosure.
+export async function paygd(silently, state = game, rawEnv = {}) {
     const grd = findgd(state);
     const umoney = money_cnt(state.invent);
 
     if (!umoney || !grd) return;
-    throw new UnsupportedVaultGuardError(
-        'paygd() surrendering the hero\'s gold to a vault guard',
-    );
+    const random = rawEnv.random ?? { d, rn1, rn2, rnd, rne };
+    const message = rawEnv.message ?? ttyPline;
+    const env = objectGenerationEnv({ ...rawEnv, state, random, message });
+    let gdx, gdy;
+    if (state.u.uinvault) {
+        if (!silently) await message(
+            `Your ${umoney} ${currency(umoney, state, { random: random.rn2 })} goes into the Magic Memory Vault.`, state);
+        gdx = state.u.ux;
+        gdy = state.u.uy;
+    } else {
+        if (grd.mpeaceful) {
+            await mongone(grd, env);
+            return;
+        }
+        await mnexto(grd, RLOC_NOMSG, env);
+        if (!silently) await message(`${Monnam(grd, state)} remits your gold to the vault.`, state);
+        const room = state.level.rooms[EGD(grd).vroom];
+        gdx = room.lx + random.rn2(2);
+        gdy = room.ly + random.rn2(2);
+        const role = pmname(state.mons[state.u.umonster], state.flags.female ? FEMALE : MALE);
+        make_grave(gdx, gdy, `To Croesus: here's the gold recovered from ${state.plname} the ${role}.`, env);
+    }
+    for (let coins = state.invent, nextcoins; coins; coins = nextcoins) {
+        nextcoins = coins.nobj;
+        if (state.objects[coins.otyp].oc_class === COIN_CLASS) {
+            await freeinv(coins, env);
+            await place_object(coins, gdx, gdy, env);
+            stackobj(coins, env);
+        }
+    }
+    await mongone(grd, env);
 }
 
 // C ref: vault.c hidden_gold(). `even_if_unknown` false counts only gold in

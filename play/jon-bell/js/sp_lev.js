@@ -32,7 +32,9 @@ import { OC_NAME } from './oc_name_data.js';
 import { DEFSYM_EXPLANATION } from './defsym_data.js';
 import { MKOBJ_OC_CLASS } from './mkobj_data.js';
 import { weight } from './weight.js';
-import { name_to_mon, set_mon_data, set_malign, rndmonnum, can_saddle, mkclass, mkMplayer, rndOffensiveItem, rndDefensiveItem, rndMiscItem, propagate, permonstTemplate, check_gear_next_turn } from './makemon.js';
+import { name_to_mon, set_mon_data, set_malign, rndmonnum, can_saddle, mkclass, mkMplayer, rndOffensiveItem, rndDefensiveItem, rndMiscItem, propagate, permonstTemplate, check_gear_next_turn, emits_light } from './makemon.js';
+import { del_light_source, monst_to_any } from './light.js';
+import { LS_MONSTER } from './const.js';
 import { mongets } from './m_initweap.js';
 import { MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
 import { t_at, deltrap, maketrap, goodpos, update_mon_extrinsics, m_dowear } from './trap.js';
@@ -6028,6 +6030,13 @@ function _medusa_mongone(mdef, discard) {
             obj.where = OBJ_FREE;   /* removed from the game */
         }
     }
+    /* C mon.c:2728-2732 m_detach(): a light-emitting monster gives up its
+     * light source while it still has its coordinates.  Without this a
+     * statue's temporary yellow light etc. leaves any_light_source() true for
+     * the whole game, so movemon (mon.c:1333) dirties vision every turn and a
+     * pline's vision_recalc paints cells C has not yet recalculated. */
+    if ((mdef.mx | 0) > 0 && emits_light(mdef.data))
+        del_light_source(LS_MONSTER, monst_to_any(mdef));
     mdef.mhp = 0;
     /* C mon.c:2786-2787 m_detach(): if (mtmp->wormno) wormgone(mtmp) — a long worm
      * made for a statue must give its tail squares back to the grid. */

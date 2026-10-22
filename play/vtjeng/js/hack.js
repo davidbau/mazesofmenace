@@ -98,6 +98,7 @@ import {
     MELT_ICE_AWAY,
     MIGR_RANDOM,
     M_AP_FURNITURE,
+    M_AP_NOTHING,
     M_AP_OBJECT,
     M_AP_TYPE,
     M_AP_TYPMASK,
@@ -414,6 +415,7 @@ import {
     can_fog,
     closed_door,
     dissolve_bars,
+    m_postmove_effect,
     onscary,
     set_apparxy,
     wormCross,
@@ -4512,14 +4514,18 @@ async function domove_core(state = game) {
         state.domoveAttempting = 0;
         return;
     }
+    // C hack.c:2870 refreshes the target after movement/region checks.
+    destinationMonster = m_at(newx, newy, state);
     u.ux = newx;
     u.uy = newy;
 
+    // C hack.c:2877. The polymorphed hero leaves gas at the old square,
+    // after its tentative move and before the steed follows.
+    const postmoveEffect = m_postmove_effect(state.youmonst, { state });
+    if (postmoveEffect) await postmoveEffect;
+
     // C ref: domove_core():2879-2884. A ridden steed rides along on the
-    // tentative move. C's m_postmove_effect(&gy.youmonst) between the two is
-    // unported and empty for the hero: monmove.c gives it a body only for a
-    // hezrou or an uncancelled steam vortex, and no ported path polymorphs the
-    // hero into either.
+    // tentative move.
     if (u.usteed) {
         u.usteed.mx = u.ux;
         u.usteed.my = u.uy;
@@ -4527,12 +4533,35 @@ async function domove_core(state = game) {
         await exercise_steed(state); /* train riding skill */
     }
 
-    // C ref: hack.c domove_core():2921-2926 swaps a safe monster only when it
-    // is not a still-undetected hider. A ceiling hider remains on its square
-    // so the following spoteffects() call can deliver the surprise and move
-    // it with mnexto(); swapping it here changes both actor positions and the
-    // relocation RNG path.
-    if (destinationMonster
+    // C hack.c:2886-2926 distinguishes monster-initiated displacement from
+    // a hero-initiated safe-monster swap. Undetected ceiling hiders wait for
+    // spoteffects() to deliver their surprise and relocate them with mnexto().
+    if (destinationMonster && displaceu) {
+        // C hack.c:2886-2910. This swap was the monster's choice; do not
+        // use the hero-initiated pet swap's refusal or conduct penalties.
+        const noticed = canspotmon(destinationMonster, state)
+            || glyph_is_invisible(targetGlyph)
+            || glyph_is_warning(targetGlyph);
+        remove_monster(u.ux, u.uy, state);
+        place_monster(destinationMonster, u.ux0, u.uy0, state);
+        newsym(u.ux, u.uy);
+        newsym(u.ux0, u.uy0);
+        destinationMonster.mux = u.ux;
+        destinationMonster.muy = u.uy;
+        await ttyPline(`${noticed
+            ? upstart(y_monnam(destinationMonster, state))
+            : 'Something'} swaps places with you...`, state);
+        if (!canspotmon(destinationMonster, state))
+            map_invisible(u.ux0, u.uy0, state);
+        state.context.mon_moving = 1;
+        try {
+            const trapEnv = domove_monster_trap_env(state);
+            if (!await minliquid(destinationMonster, trapEnv))
+                await mintrap(destinationMonster, NO_TRAP_FLAGS, trapEnv);
+        } finally {
+            state.context.mon_moving = 0;
+        }
+    } else if (destinationMonster
         && is_safemon(destinationMonster, state)
         && !(is_hider(destinationMonster.data)
             && destinationMonster.mundetected)) {
@@ -4586,15 +4615,8 @@ async function domove_core(state = game) {
         nomul(0, state);
     }
 
-    // C ref: hack.c domove_core():2964-2967. Only a movement attempt
-    // marked WALK or RUSH earns the wrapper's success-only effects;
-    // automatic continuation steps have no bit in domoveAttempting.
-    state.domoveSucceeded |=
-        state.domoveAttempting & (DOMOVE_RUSH | DOMOVE_WALK);
-    u.umoved = true;
-
     if (hero_tread_disturbs_buried_zombies(state))
-        disturb_buried_zombies(newx, newy, state);
+        disturb_buried_zombies(u.ux, u.uy, state);
 
     // C ref: hack.c domove_core():2950-2952. Recheck concealment after the
     // final hero position is known, including failed movement attempts that
@@ -4605,13 +4627,29 @@ async function domove_core(state = game) {
         hideunder(state.youmonst, { state });
     }
 
+    // C hack.c:2954-2960. Directional movement exposes an imitation of
+    // something stationary, including an attempted swap that left us in place.
+    if ((u.dx || u.dy)
+        && (M_AP_TYPE(state.youmonst) === M_AP_OBJECT
+            || M_AP_TYPE(state.youmonst) === M_AP_FURNITURE)) {
+        state.youmonst.m_ap_type = M_AP_NOTHING;
+    }
+
     // C ref: hack.c domove_core():2962. The leash response precedes redraw,
     // vision refresh, and the destination's spot effects.
     await check_leash(u.ux0, u.uy0, { state });
 
-    newsym(oldx, oldy);
-    vision_recalc(1);
-    newsym(newx, newy);
+    // C hack.c:2964-2974. A refused swap restores the hero's position;
+    // it must not earn movement success or repeat the arrival redraw.
+    if (u.ux0 !== u.ux || u.uy0 !== u.uy) {
+        state.domoveSucceeded |=
+            state.domoveAttempting & (DOMOVE_RUSH | DOMOVE_WALK);
+        u.umoved = true;
+        newsym(oldx, oldy);
+        vision_recalc(1);
+        newsym(newx, newy);
+        await invocation_message(state);
+    }
     // C ref: hack.c domove_core():2976-2987. The attached objects return
     // before pickup effects, and dragging interrupts the next two moves only
     // after spoteffects() has had its chance to pick up the ball or chain.
@@ -4625,8 +4663,9 @@ async function domove_core(state = game) {
             chainy.value,
             state,
         );
-    // C ref: domove_core():2980 spoteffects(TRUE).
-    await spoteffects(true, state);
+    // C ref: domove_core():2979-2980. Staying put does not re-enter a
+    // floor pile, trap, or any other arrival effect.
+    if (u.umoved) await spoteffects(true, state);
     if (causeDelay.value) {
         nomul(-2, state);
         state.multi_reason = 'dragging an iron ball';
@@ -5007,6 +5046,75 @@ export async function lookaround(state = game) {
     }
 }
 
+// Shared operations for hack.c monster arrival after voluntary or
+// involuntary swaps. Their callers retain distinct conduct and blame rules.
+function domove_monster_trap_env(state, env = {}) {
+    const message = env.message ?? ttyPline;
+    // hack.c:2198-2199 and 2907-2908. minliquid() precedes mintrap(); both are
+    // invoked after the monster has arrived on the hero's former square.
+    // The movement caller commonly supplies only its candidate rn2 seam.
+    // minliquid's ordinary survivor path can reach teleport.c:rloc(), whose
+    // source contract also requires rnd; fill the standard operations here so
+    // the caller's supplied draws remain authoritative without a partial
+    // random object causing a relocation failure.
+    const random = {
+        d,
+        rn1,
+        rn2,
+        rnd,
+        rne,
+        rnl,
+        ...(env.random ?? {}),
+    };
+    const trapEnv = {
+        ...env,
+        state,
+        random,
+        message,
+        redraw: env.redraw ?? ((tx, ty) => newsym(tx, ty, state)),
+        mInAir: env.mInAir ?? ((mon, st) => m_in_air(mon, st)),
+        heroDeaf: env.heroDeaf ?? heroIsDeaf,
+        youHear: env.youHear ?? ((line, st) => youHear(line, st)),
+        // hack.c:2198-2199 calls minliquid() after the swap and consumes the
+        // rloc() result inside that source function. Supply the complete
+        // teleport.c operation set so a liquid survivor can relocate before
+        // mintrap() runs, including the planning-safe seams when a caller
+        // provides them.
+        relocateMonster: env.relocateMonster ?? (
+            (subject, flags, relocationEnv) => rloc(
+                subject,
+                flags,
+                {
+                    ...relocationEnv,
+                    state,
+                    random: relocationEnv.random ?? random,
+                    message,
+                    newsym: relocationEnv.newsym
+                        ?? ((tx, ty) => newsym(tx, ty, state)),
+                    onscary: relocationEnv.onscary
+                        ?? ((tx, ty, target) => onscary(tx, ty, target, state)),
+                    setApparxy: relocationEnv.setApparxy
+                        ?? ((target, setEnv) => set_apparxy(target, {
+                            ...setEnv,
+                            state,
+                            random: setEnv.random ?? random,
+                        })),
+                },
+            )
+        ),
+        // hack.c:2198-2199 consumes minliquid()'s return to choose
+        // Trap_Killed_Mon. Only the later deal_with_overcrowding() result is
+        // discarded when rloc() fails; keep that owner explicit instead of
+        // swallowing an exception.
+        dealWithOvercrowding: env.dealWithOvercrowding
+            ?? (() => note_unported('mon.c deal_with_overcrowding')),
+        unsupported: env.unsupported ?? ((reason) => {
+            throw new UnsupportedHeroMoveBoundaryError(reason);
+        }),
+    };
+    return trapEnv;
+}
+
 // C ref: hack.c domove_swap_with_pet() (2098-2228). The caller has already
 // run uhitm.c do_attack(); its FALSE result means that an unforced safe
 // monster can be displaced. This helper owns every source-side refusal and
@@ -5151,68 +5259,8 @@ export async function domove_swap_with_pet(
         state,
     );
 
-    // hack.c:2198-2226. minliquid() has precedence over mintrap(); both are
-    // invoked after the monster has arrived on the hero's former square.
-    // The movement caller commonly supplies only its candidate rn2 seam.
-    // minliquid's ordinary survivor path can reach teleport.c:rloc(), whose
-    // source contract also requires rnd; fill the standard operations here so
-    // the caller's supplied draws remain authoritative without a partial
-    // random object causing a relocation failure.
-    const random = {
-        d,
-        rn1,
-        rn2,
-        rnd,
-        rne,
-        rnl,
-        ...(env.random ?? {}),
-    };
-    const trapEnv = {
-        ...env,
-        state,
-        random,
-        message,
-        redraw: env.redraw ?? ((tx, ty) => newsym(tx, ty, state)),
-        mInAir: env.mInAir ?? ((mon, st) => m_in_air(mon, st)),
-        heroDeaf: env.heroDeaf ?? heroIsDeaf,
-        youHear: env.youHear ?? ((line, st) => youHear(line, st)),
-        // hack.c:2198-2199 calls minliquid() after the swap and consumes the
-        // rloc() result inside that source function. Supply the complete
-        // teleport.c operation set so a liquid survivor can relocate before
-        // mintrap() runs, including the planning-safe seams when a caller
-        // provides them.
-        relocateMonster: env.relocateMonster ?? (
-            (subject, flags, relocationEnv) => rloc(
-                subject,
-                flags,
-                {
-                    ...relocationEnv,
-                    state,
-                    random: relocationEnv.random ?? random,
-                    message,
-                    newsym: relocationEnv.newsym
-                        ?? ((tx, ty) => newsym(tx, ty, state)),
-                    onscary: relocationEnv.onscary
-                        ?? ((tx, ty, target) => onscary(tx, ty, target, state)),
-                    setApparxy: relocationEnv.setApparxy
-                        ?? ((target, setEnv) => set_apparxy(target, {
-                            ...setEnv,
-                            state,
-                            random: setEnv.random ?? random,
-                        })),
-                },
-            )
-        ),
-        // hack.c:2198-2199 consumes minliquid()'s return to choose
-        // Trap_Killed_Mon. Only the later deal_with_overcrowding() result is
-        // discarded when rloc() fails; keep that owner explicit instead of
-        // swallowing an exception.
-        dealWithOvercrowding: env.dealWithOvercrowding
-            ?? (() => note_unported('mon.c deal_with_overcrowding')),
-        unsupported: env.unsupported ?? ((reason) => {
-            throw new UnsupportedHeroMoveBoundaryError(reason);
-        }),
-    };
+    const trapEnv = domove_monster_trap_env(state, env);
+    const random = trapEnv.random;
     const trapResult = await minliquid(monster, trapEnv)
         ? Trap_Killed_Mon
         : await mintrap(monster, NO_TRAP_FLAGS, trapEnv);
@@ -5749,9 +5797,9 @@ export function invocation_pos(x, y, state = game) {
         && y === state.inv_pos?.y;
 }
 
-// C ref: hack.c invocation_message() (3064-3085). This runs after teleds()
-// finishes destination effects. C interrupts travel before its vibration
-// message, sets uvibrated after that message, then reports a lit, fully charged
+// C ref: hack.c invocation_message() (3064-3085). Walking calls this before
+// destination effects; teleds() calls it afterward. C interrupts travel before
+// its vibration message, sets uvibrated afterward, then reports a lit, fully charged
 // Candelabrum.
 export async function invocation_message(state = game, env = {}) {
     const { u } = state;

@@ -20,6 +20,7 @@ import { fix_ghostly_obj } from './bones.js';
 import {
     pline, _topl_stash_result, newsym, newsym_force, Norep, flush_screen,
     force_more, topl_park_cursor, topl_force_break_after,
+    _topline_more_pending, _more_never_dismissed, flush_pending_messages,
 } from './display.js';
 import { pline_with_more, money_cnt, build_window_screen, tty_window_offx } from './com_pager.js';
 import { autokey, pick_lock, getdir, u_have_forceable_weapon } from './lock.js';
@@ -457,6 +458,9 @@ async function doloot_core() {
                 }
                 if (anyfound) c = 'y';
             }
+        } else if (IS_GRAVE(game.level?.at?.(cc.x, cc.y)?.typ)) {
+            /* C pickup.c:2288 */
+            await pline("You need to dig up the grave to effectively loot it...");
         }
 
         if (c !== 'y' && (mon_beside(u.ux | 0, u.uy | 0)
@@ -866,6 +870,8 @@ async function read_engr_at(x, y) {
              && (last === '.' || last === '!' || last === '?')))
         endpunct = '.';
     await pline(`You ${isBlind ? 'feel the words' : 'read'}: "${et}"${endpunct}`);
+    if (_topline_more_pending() && _more_never_dismissed())
+        await flush_pending_messages();
     /* C engrave.c:398 — a successful read snapshots the current (possibly
      * wiped) actual text.  /e and /E later display this remembered copy. */
     ep.remembered = ep.text;

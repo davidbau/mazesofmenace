@@ -24,6 +24,7 @@ import { mon_learns_traps } from './trap.js';
 import { rloc } from './teleport.js';
 import { mongets } from './m_initweap.js';
 import { newsym } from './display.js';
+import { couldsee } from './vision.js';
 import { m_at } from './uhitm.js';
 import { mon_pmname, rndmonnam_ex as dn_rndmonnam_ex,
          bogon_is_pname as dn_bogon_is_pname } from './do_name.js';
@@ -541,13 +542,17 @@ function histemple_at(priest, x, y) {
 }
 
 /* m_canseeu — can the monster see the hero?
- * C: mon.c (m_canseeu).  Inlined from the pattern in move_special. */
+ * C vision.h:50-53: (!Invis || perceives(m->data)) && !Underwater
+ *                   && couldsee(m->mx, m->my).
+ * (Line of sight from the hero to the monster's square, NOT a straight-line
+ * test: this used online2() and so refused to chase a hero who was in view
+ * but off the priest's row/column/diagonal.)  The caller tests mcansee. */
 function m_canseeu(mtmp) {
     const u = game.u;
     const Invis = _hero_invis_priest(u);
     const perceives = !!((mtmp.data.mflags1 || 0) & 0x01000000 /* M1_SEE_INVIS */);
-    return !!(mtmp.mcansee | 0) && (!Invis || perceives)
-           && online2(mtmp.mx, mtmp.my, (u?.ux ?? 0) | 0, (u?.uy ?? 0) | 0);
+    return (!Invis || perceives) && !(u && u.uinwater)
+           && !!couldsee(mtmp.mx | 0, mtmp.my | 0);
 }
 
 export async function pri_move(priest) {
