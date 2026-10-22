@@ -139,7 +139,7 @@ import {
     dropx, setnotworn, fire_damage, make_blinded, revive_corpse,
     obj_no_longer_held,
 } from './do.js';
-import { polymon, mbodypart, body_part } from './polyself.js';
+import { polymon, mbodypart, body_part, poly_gender } from './polyself.js';
 import { unpunish } from './read.js';
 import { findit, openit, cvt_sdoor_to_door } from './detect.js';
 import { surface } from './sit.js';
@@ -661,14 +661,6 @@ function closed_door(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc || loc.typ !== DOOR) return false;
     return !!((loc.doormask | 0) & (D_CLOSED | D_LOCKED));
-}
-
-/**
- * C polyself.c poly_gender — 0 male / 1 female / 2 none.
- * Named omission: neuter poly forms always 2.
- */
-function poly_gender() {
-    return game.flags?.female ? 1 : 0;
 }
 
 /**

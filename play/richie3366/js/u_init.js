@@ -1966,6 +1966,16 @@ export async function u_init_misc() {
     g.flags.female = !!g.flags.initgend;
     g.flags.beginner = true;
 
+    // C u_init.c:954 memset(&u, 0, sizeof u) zeroes struct u_conduct
+    // (you.h:147–167): every counter exists at 0 from turn 1, so a
+    // first `!u.uconduct.gnostic++` (do.c doaltarobj) sees 0 and livelogs.
+    g.u.uconduct = {
+        unvegetarian: 0, unvegan: 0, food: 0, gnostic: 0, weaphit: 0,
+        killer: 0, literate: 0, polypiles: 0, polyselfs: 0, wishes: 0,
+        wisharti: 0, hf_reserved1: 0, sokocheat: 0, pets: 0,
+        reserved1: 0, reserved2: 0, reserved3: 0, reserved4: 0,
+    };
+
     g.u.uz = { dnum: 0, dlevel: 1 };
     g.u.uz0 = { dnum: 0, dlevel: 0 };
     g.u.utolev = { dnum: 0, dlevel: 1 };

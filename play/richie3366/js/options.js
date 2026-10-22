@@ -6278,6 +6278,21 @@ export function get_menu_coloring(str) {
     return null; // C `:1852`
 }
 
+/**
+ * C ref: windows.c add_menu `:1803–1807` for an identifier-less row
+ * (add_menu_str, or add_menu with a zero identifier): the menu-color
+ * match replaces ATR_NONE/NO_COLOR. The generic menus color selectable
+ * rows themselves and paint non-selectable rows in the caller's style,
+ * so callers spread this onto those rows (whole line: no "x - " prefix,
+ * wintty attr_n 0). Not for headings (SKIPMENUCOLORS) or the prompt.
+ * @param {string} str
+ * @returns {{color?:number,attr?:number}}
+ */
+export function menu_row_coloring(str) {
+    const mc = get_menu_coloring(str);
+    return mc ? { color: mc.color, attr: cattr_to_cell(mc.attr) } : {};
+}
+
 /* C wintty.c:2640 — the windowport's promptstyle snapshot, painted onto
  * every end_menu prompt (wintty.c `:2685–2689`). C's raw static default
  * is { NO_COLOR, ATR_NONE }, but the newgame relay (allmain.c:728, always
@@ -10206,9 +10221,13 @@ export async function select_menu_pick_one(rawItems) {
             }
             return { kind: 'cancel' };
         }
-        if (hit) return { kind: 'pick', item: hit };
+        // C wintty.c process_menu_window `:1744–1761`: the hit row is
+        // toggled (toggle_menu_curr / invert_all), so a preselected
+        // PICK_ONE row's own letter deselects it and finishes with nothing
+        // selected — tty_select_menu returns 0.
+        if (hit) return hit.selected ? { kind: 'cancel' } : { kind: 'pick', item: hit };
         if (wasFullscreen) clear_committed_status();
-        return { kind: 'pick', item: ghit };
+        return ghit.selected ? { kind: 'cancel' } : { kind: 'pick', item: ghit };
     }
     } finally {
         set_bot_disabled(_botPrev);
@@ -10843,11 +10862,14 @@ function format_doset_opt_line(name, value, indent = '') {
  */
 function doset_add_menu(name, value, indexoffset, extra = {}) {
     const indent = indexoffset === 0 ? '    ' : '';
+    const text = format_doset_opt_line(name, value, indent);
     return {
-        text: format_doset_opt_line(name, value, indent),
+        text,
         selectable: indexoffset !== 0,
         kind: 'comp',
         name,
+        // C `:9064` add_menu → windows.c menucolors (identifier-less row).
+        ...(indexoffset === 0 ? menu_row_coloring(text) : {}),
         ...extra,
     };
 }
@@ -11546,26 +11568,29 @@ export async function doset() {
         raw.push({ text: '', selectable: false });
         // C `:8843` — help rows unless skiphelp (first pass: !cmdassist).
         if (!skiphelp) {
-            // C: Sprintf(buf, "%4s%.75s", "", helptext[i])
-            raw.push({
-                text: '    For a brief explanation of how this works, type \'?\' to select',
-                selectable: false,
-            });
-            raw.push({
-                text: '    the next menu choice, then press <enter> or <return>.',
-                selectable: false,
-            });
-            raw.push({
-                text: 'view help for options menu',
-                selectable: true,
-                selector: '?',
-                kind: 'help',
-            });
-            raw.push({
-                text: '    [To suppress this menu help, toggle off the \'cmdassist\' option.]',
-                selectable: false,
-            });
-            raw.push({ text: '', selectable: false });
+            // C `:8790–8810`: help text surrounding the '?' choice (null).
+            const helptext = [
+                "For a brief explanation of how this works, type '?' to select",
+                'the next menu choice, then press <enter> or <return>.',
+                null, // actual '?' menu entry gets inserted here
+                "[To suppress this menu help, toggle off the 'cmdassist' option.]",
+                '',
+            ];
+            for (const ht of helptext) {
+                if (ht !== null) {
+                    // C: Sprintf(buf, "%4s%.75s", "", helptext[i]); add_menu_str
+                    // → windows.c add_menu `:1803–1807` menucolors.
+                    const buf = `    ${ht.slice(0, 75)}`;
+                    raw.push({ text: buf, selectable: false, ...menu_row_coloring(buf) });
+                } else {
+                    raw.push({
+                        text: 'view help for options menu',
+                        selectable: true,
+                        selector: '?',
+                        kind: 'help',
+                    });
+                }
+            }
         }
         // C add_menu_heading (windows.c `:1815–1828`): live
         // iflags.menu_headings, gameover-suppressed.
@@ -11585,6 +11610,7 @@ export async function doset() {
             raw.push({
                 text: line,
                 selectable: false,
+                ...menu_row_coloring(line), // C `:8858–8859` add_menu, zero identifier
             });
         }
         for (const name of doset_bool_mod_list()) {

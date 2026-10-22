@@ -2133,8 +2133,8 @@ export async function m_move(mtmp, after) {
     let can_tunnel;
     let can_open;
     let can_unlock;
-    const omx = mtmp.mx;
-    const omy = mtmp.my;
+    let omx = mtmp.mx;
+    let omy = mtmp.my;
 
     // C: mtrapped → mintrap before meating / dog_move (pets included)
     if (mtmp.mtrapped) {
@@ -2180,91 +2180,100 @@ export async function m_move(mtmp, after) {
     // C: set_apparxy before mtame / covetous / shk|gd|priest specials
     set_apparxy(mtmp);
 
-    // C: if (mtmp->mtame) return postmov(..., dog_move(...), ...)
-    if (mtmp.mtame) {
-        const mmoved = await dog_move(mtmp, after);
-        return postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, can_open, seenflgs);
-    }
+    // C `:1769–1770` — a long worm with segments skips every special arm
+    // below (dog_move, covetous, shk/gd/pri, mail daemon, tengu) and
+    // goes straight to not_special.
+    if (!mtmp.wormno) {
+        // C: if (mtmp->mtame) return postmov(..., dog_move(...), ...)
+        if (mtmp.mtame) {
+            const mmoved = await dog_move(mtmp, after);
+            return postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, can_open, seenflgs);
+        }
 
-    // C ref: monmove.c m_move `:1778–1800` — acquisitive (covetous)
-    // monsters attack the intruder sitting on their goal (D-3749: the
-    // D-3748-measured writer of the mattackm cliff — without it the
-    // wizard falls through to dochug/distfleeck).
-    if (is_covetous(ptr)) {
-        // C `:1781–1783` — mgoal is a zeroed struct in C; JS leaves it
-        // unset until wizard.js tactics writes it, so default to (0,0)
-        // (isok rejects it, same as C's goal=(0,0) gate negatives).
-        const tx = mtmp.mgoal?.x | 0;
-        const ty = mtmp.mgoal?.y | 0;
-        const intruder = isok(tx, ty) ? m_at(tx, ty) : null;
-        // C `:1788–1791` — short-circuit order kept (dist2 is pure);
-        // 5.0 `<= 2` admits adjacent-diagonal attacks.
-        if (intruder && intruder !== mtmp
-            && dist2(mtmp.mx, mtmp.my, tx, ty) <= 2) {
-            // C `:1792–1793` — stamps are live inside mattackm
-            // (failed_grab reads notonhead, mhitm.c:602/612); same
-            // game.* idiom as m_move_aggress above.
-            if (!game.bhitpos) game.bhitpos = { x: 0, y: 0 };
-            game.bhitpos.x = tx;
-            game.bhitpos.y = ty;
-            game.notonhead = ((intruder.mx | 0) !== tx
-                || (intruder.my | 0) !== ty);
-            const covetousattack = await mattackm(mtmp, intruder);
-            // C `:1795–1797` — 5.0 tests AGR_DIED (was erroneously == 2).
-            if (covetousattack & M_ATTK_AGR_DIED) return MMOVE_DIED;
+        // C ref: monmove.c m_move `:1778–1800` — acquisitive (covetous)
+        // monsters attack the intruder sitting on their goal (D-3749: the
+        // D-3748-measured writer of the mattackm cliff — without it the
+        // wizard falls through to dochug/distfleeck).
+        if (is_covetous(ptr)) {
+            // C `:1781–1783` — mgoal is a zeroed struct in C; JS leaves it
+            // unset until wizard.js tactics writes it, so default to (0,0)
+            // (isok rejects it, same as C's goal=(0,0) gate negatives).
+            const tx = mtmp.mgoal?.x | 0;
+            const ty = mtmp.mgoal?.y | 0;
+            const intruder = isok(tx, ty) ? m_at(tx, ty) : null;
+            // C `:1788–1791` — short-circuit order kept (dist2 is pure);
+            // 5.0 `<= 2` admits adjacent-diagonal attacks.
+            if (intruder && intruder !== mtmp
+                && dist2(mtmp.mx, mtmp.my, tx, ty) <= 2) {
+                // C `:1792–1793` — stamps are live inside mattackm
+                // (failed_grab reads notonhead, mhitm.c:602/612); same
+                // game.* idiom as m_move_aggress above.
+                if (!game.bhitpos) game.bhitpos = { x: 0, y: 0 };
+                game.bhitpos.x = tx;
+                game.bhitpos.y = ty;
+                game.notonhead = ((intruder.mx | 0) !== tx
+                    || (intruder.my | 0) !== ty);
+                const covetousattack = await mattackm(mtmp, intruder);
+                // C `:1795–1797` — 5.0 tests AGR_DIED (was erroneously == 2).
+                if (covetousattack & M_ATTK_AGR_DIED) return MMOVE_DIED;
+                return postmov(mtmp, omx, omy, MMOVE_MOVED, can_tunnel, can_unlock, can_open, seenflgs);
+            }
+            // Otherwise continue with the normal AI routine (C `:1802`).
+        }
+
+        // C ref: monmove.c m_move — shopkeeper / guard / priest special
+        if (mtmp.isshk || mtmp.isgd || mtmp.ispriest) {
+            let xm;
+            if (mtmp.isshk) xm = await shk_move(mtmp);
+            else if (mtmp.isgd) xm = await gd_move(mtmp);
+            else xm = await pri_move(mtmp);
+
+            if (xm === -2) return MMOVE_DIED;
+            if (xm !== -1) {
+                return postmov(
+                    mtmp, omx, omy,
+                    (xm !== 1) ? MMOVE_NOTHING : MMOVE_MOVED,
+                    can_tunnel, can_unlock, can_open, seenflgs,
+                );
+            }
+            // xm === -1: fall through to normal AI (follow outside shop)
+        }
+
+        // C ref: monmove.c:1829–1838 m_move — MAIL_STRUCTURES mail daemon
+        // departs ("I'm late!") via mongone, never the normal AI path.
+        // MAIL_STRUCTURES is unconditionally #defined (global.h:430).
+        if ((ptr?.mndx ?? -1) === PM_MAIL_DAEMON) {
+            if (!hero_Deaf() && display_canseemon(mtmp)) {
+                SetVoice(mtmp, 0, 80, 0);
+                await verbalize("I'm late!");
+            }
+            await mongone(mtmp);
+            return MMOVE_DIED;
+        }
+
+        // C ref: monmove.c m_move — Tengu nature teleport before not_special.
+        // !rn2(5) is evaluated for every Tengu (short-circuit after mndx).
+        // tele_restrict may pline+More when noteleport_level (D-0816).
+        if ((ptr?.mndx ?? -1) === PM_TENGU && !rn2(5) && !mtmp.mcan
+            && !(await tele_restrict(mtmp))) {
+            // C: mhp < 7 || peaceful || rn2(2) → rloc; else mnexto
+            if ((mtmp.mhp | 0) < 7 || mtmp.mpeaceful || rn2(2)) {
+                await rloc(mtmp, RLOC_MSG);
+            } else {
+                await mnexto(mtmp, RLOC_MSG);
+            }
             return postmov(mtmp, omx, omy, MMOVE_MOVED, can_tunnel, can_unlock, can_open, seenflgs);
         }
-        // Otherwise continue with the normal AI routine (C `:1802`).
-    }
-
-    // C ref: monmove.c m_move — shopkeeper / guard / priest special
-    if (mtmp.isshk || mtmp.isgd || mtmp.ispriest) {
-        let xm;
-        if (mtmp.isshk) xm = await shk_move(mtmp);
-        else if (mtmp.isgd) xm = await gd_move(mtmp);
-        else xm = await pri_move(mtmp);
-
-        if (xm === -2) return MMOVE_DIED;
-        if (xm !== -1) {
-            return postmov(
-                mtmp, omx, omy,
-                (xm !== 1) ? MMOVE_NOTHING : MMOVE_MOVED,
-                can_tunnel, can_unlock, can_open, seenflgs,
-            );
-        }
-        // xm === -1: fall through to normal AI (follow outside shop)
-    }
-
-    // C ref: monmove.c:1829–1838 m_move — MAIL_STRUCTURES mail daemon
-    // departs ("I'm late!") via mongone, never the normal AI path.
-    // MAIL_STRUCTURES is unconditionally #defined (global.h:430).
-    if ((ptr?.mndx ?? -1) === PM_MAIL_DAEMON) {
-        if (!hero_Deaf() && display_canseemon(mtmp)) {
-            SetVoice(mtmp, 0, 80, 0);
-            await verbalize("I'm late!");
-        }
-        await mongone(mtmp);
-        return MMOVE_DIED;
-    }
-
-    // C ref: monmove.c m_move — Tengu nature teleport before not_special.
-    // !rn2(5) is evaluated for every Tengu (short-circuit after mndx).
-    // tele_restrict may pline+More when noteleport_level (D-0816).
-    if ((ptr?.mndx ?? -1) === PM_TENGU && !rn2(5) && !mtmp.mcan
-        && !(await tele_restrict(mtmp))) {
-        // C: mhp < 7 || peaceful || rn2(2) → rloc; else mnexto
-        if ((mtmp.mhp | 0) < 7 || mtmp.mpeaceful || rn2(2)) {
-            await rloc(mtmp, RLOC_MSG);
-        } else {
-            await mnexto(mtmp, RLOC_MSG);
-        }
-        return postmov(mtmp, omx, omy, MMOVE_MOVED, can_tunnel, can_unlock, can_open, seenflgs);
     }
 
     // C: not_special — other monsters keep moving while hero is swallowed
     if (game.u?.uswallow && !mtmp.mflee && game.u?.ustuck !== mtmp) {
         return MMOVE_MOVED;
     }
+    // C `:1853–1854`: re-read the origin — gd_move / shk_move / pri_move
+    // returning -1 may have relocated the monster (gd_move rloc).
+    omx = mtmp.mx;
+    omy = mtmp.my;
 
     let ggx = mtmp.mux;
     let ggy = mtmp.muy;

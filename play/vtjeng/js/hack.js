@@ -1944,7 +1944,8 @@ async function cannot_push_msg(otmp, sx, sy, state, env) {
 // results are consumed by moverock_core() to decide whether movement proceeds.
 async function cannot_push(otmp, sx, sy, state, env) {
     if (throws_rocks(state.youmonst?.data)) {
-        const canpickup = !In_sokoban(state.u?.uz)
+        // C's Sokoban flag ends when this level's puzzle is completed.
+        const canpickup = !state.level?.flags?.sokoban_rules
             && (inv_cnt(false, state) < INVLET_BASIC
                 || !carrying(BOULDER, state));
         const willpickup = canpickup
@@ -2491,7 +2492,7 @@ async function moverock_core(sx, sy, state, env) {
 
         // 443-448. Sokoban's diagonal rule is local to moverock_core(); the
         // result of cannot_push() remains the source return value.
-        if (In_sokoban(state.u?.uz) && u.dx && u.dy) {
+        if (state.level?.flags?.sokoban_rules && u.dx && u.dy) {
             if (heroIsBlind(state)) feel_location(sx, sy, state);
             await message(
                 `${The(xnameFresh(otmp, state), state)} won't roll diagonally `
@@ -2992,7 +2993,7 @@ export async function test_move(
     // return-valued push transaction; its unsupported trap/liquid/pile arms
     // remain named in hack.js rather than being replaced with a guessed result.
     if (sobj_at(BOULDER, x, y, state)
-        && (In_sokoban(state.u?.uz) || !passesWalls)) {
+        && (state.level?.flags?.sokoban_rules || !passesWalls)) {
         if (mode !== TEST_TRAV && run >= 2
             && !(heroIsBlind(state) || heroHallucinating(state))
             && !could_move_onto_boulder(
@@ -3011,7 +3012,7 @@ export async function test_move(
             return false;
         }
         if (mode === TEST_TRAV) {
-            if (In_sokoban(state.u?.uz)) return false;
+            if (state.level?.flags?.sokoban_rules) return false;
             if (sobj_at(BOULDER, ux, uy, state)
                 && !passesWalls
                 && !could_move_onto_boulder(
@@ -3033,7 +3034,7 @@ export async function test_move(
         }
         if (mode === DO_MOVE) {
             if (tunnels(species) && !needspick(species)
-                && !In_sokoban(state.u?.uz)) {
+                && !state.level?.flags?.sokoban_rules) {
                 if (await chewBoulder(x, y)) return false;
             } else if (await pushBoulder() < 0) {
                 return false;
@@ -4036,24 +4037,6 @@ async function domove_fight_empty(x, y, state) {
     // says: it catches water, lava and furniture as well as rock and walls.
     const solid = !accessible(x, y, state) || IS_FURNITURE(location.typ);
 
-    // 2302-2305 decides this, below, but the test has to be read here. Blind
-    // or not, C does not reveal terrain the hero has never seen; it names such
-    // a square "an unknown obstacle" instead, which is a message arm this port
-    // leaves unported. C reaches that arm after unmap_object() and newsym()
-    // have run, so putting the port's refusal where C puts the test would let
-    // it fire after map memory and the display buffer had already been
-    // rewritten -- a stop that has changed state, which ends the segment on a
-    // screen the port has already diverged from. It is hoisted instead, which
-    // is the one place the port deliberately departs from C's order, and only
-    // on the arm it refuses.
-    if (!boulder && !(state.u.uinwater && !is_pool(x, y, state)) && solid
-        && !(location.seenv || IS_STWALL(location.typ)
-             || location.typ === SDOOR || location.typ === SCORR)) {
-        throw new UnsupportedHeroMoveBoundaryError(
-            'force-fight against terrain with no remembered appearance',
-        );
-    }
-
     /* about to become known empty -- remove 'I' if present */
     unmap_object(x, y, state);
     if (boulder) map_object(boulder, true, state);
@@ -4067,9 +4050,14 @@ async function domove_fight_empty(x, y, state) {
         buf = Is_waterlevel(state.u.uz) && location.typ === AIR
             ? 'an air bubble' : 'nothing';
     } else if (solid) {
-        buf = the(CMAP_EXPLANATIONS[
-            glyph_to_cmap(back_to_glyph(x, y, state))
-        ], state);
+        // C ref: hack.c:2302-2310. An attack does not identify unseen
+        // terrain; stone walls and secret doors/corridors are exceptions.
+        buf = location.seenv || IS_STWALL(location.typ)
+            || location.typ === SDOOR || location.typ === SCORR
+            ? the(CMAP_EXPLANATIONS[
+                glyph_to_cmap(back_to_glyph(x, y, state))
+            ], state)
+            : 'an unknown obstacle';
     } else {
         // 2314-2316. Everything accessible that is not furniture is thin air,
         // which is ordinary floor, a corridor, ice, and a doorway with no

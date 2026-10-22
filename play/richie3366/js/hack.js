@@ -39,7 +39,7 @@ import {
     LL_CONDUCT,
     has_mgivenname, RUN_TPORT, RUN_LEAP, RUN_STEP, RUN_CRAWL,
     DO_MOVE, TEST_MOVE, TEST_TRAV, TEST_TRAP, S_stone, ESHK, MELT_ICE_AWAY,
-    NEUTRAL, CQ_CANNED, CMDQ_EXTCMD,
+    NEUTRAL, CQ_CANNED, CMDQ_EXTCMD, TT_NONE,
 } from './const.js';
 import {
     pline, vpline, You, You_cant, There, Norep, newsym, canspotmon, canseemon, map_invisible, You_feel,

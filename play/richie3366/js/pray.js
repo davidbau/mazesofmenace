@@ -146,7 +146,7 @@ import {
     SDOOR, SCORR, W_SADDLE, EYE, STOMACH,
     P_LONG_SWORD, P_BROAD_SWORD, ONAME_GIFT, ONAME_KNOW_ARTI,
     nothing_happens, ACH_TUNE, PLNMSG_OBJ_GLOWS,
-    LARGEST_INT,
+    LARGEST_INT, ESCAPED, ASCENDED,
 } from './const.js';
 import { objectNameStrs } from './generated/objects_data.js';
 import { record_achievement } from './insight.js';

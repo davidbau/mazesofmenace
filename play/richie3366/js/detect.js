@@ -76,7 +76,7 @@ import {
 } from './vision.js';
 import { visible_region_at } from './region.js';
 import { an, the, xname, The, makeplural, vtense, otense } from './objnam.js';
-import { body_part } from './polyself.js';
+import { body_part, poly_gender } from './polyself.js';
 import { A_WIS, A_INT, acurr, exercise } from './attrib.js';
 import {
     t_at, activate_statue_trap, b_trapped, openholdingtrap, openfallingtrap,
@@ -273,11 +273,6 @@ function observe_recursively(obj) {
 function Tobjnam(obj, verb) {
     const bp = The(xname(obj));
     return verb ? `${bp} ${otense(obj, verb)}` : bp;
-}
-
-/** C polyself.c poly_gender — 0 male / 1 female / 2 none. */
-function poly_gender() {
-    return game.flags?.female ? 1 : 0;
 }
 
 /* hcolor: live js/do_name.js export — core-rn2 clone deleted (D-4067). */

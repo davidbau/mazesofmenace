@@ -115,7 +115,7 @@ import {
     nohands, nolimbs, M1_NOTAKE, touch_petrifies, poly_when_stoned, is_rider,
     mons, throws_rocks,
     monsterNames,
-    is_floater, is_swimmer, is_clinger, likes_lava, amphibious, grounded, is_flyer, breathless, hides_under,
+    is_floater, is_swimmer, is_clinger, likes_lava, amphibious, grounded, is_flyer, breathless, hides_under, bigmonst,
 } from './monsters.js';
 import { welded, weldmsg, setuwep, setuswapwep, setuqwep } from './wield.js';
 import { yn_function, getlin, paranoid_ynq } from './getline.js';

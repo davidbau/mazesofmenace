@@ -55,7 +55,7 @@ import {
     objectNames,
     objectNameStrs,
     objectDescrs,
-    def_oc_syms,
+    def_oc_syms, def_char_to_objclass,
 } from './objects.js';
 import {
     artifacts_globals_init,

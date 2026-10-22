@@ -875,7 +875,10 @@ export async function dismount_steed(reason) {
             if (game._losehp_needs_done) {
                 const { finish_losehp_done } = await import('./end.js');
                 await finish_losehp_done();
-                return;
+                // C falls through when a declined wizard «Die?» (savelife)
+                // keeps the hero alive: wounded legs, landing, the rest
+                // (D-4230; the do.js idiom).
+                if (game.program_state?.gameover) return;
             }
             await set_wounded_legs(BOTH_SIDES,
                 (u.HWounded_legs | 0) + rn1(5, 5));

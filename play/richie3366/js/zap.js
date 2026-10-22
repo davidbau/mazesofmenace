@@ -386,7 +386,7 @@ import {
     has_mcorpsenm, ERODE_CORRODE,
     LL_WISH, LL_CONDUCT, LL_ARTIFACT, ONAME_WISH, ONAME_KNOW_ARTI,
     FM_FMON, REVIVE_MON, ROT_CORPSE, TIMER_OBJECT, thats_enough_tries,
-    MAX_SPELL_STUDY, CXN_NO_PFX, CXN_PFX_THE,
+    MAX_SPELL_STUDY, CXN_NO_PFX, CXN_PFX_THE, EYE,
 } from './const.js';
 import { monstseesu, monstunseesu, defended, Resists_Elem, resists_blnd, resists_blnd_by_arti, resists_magm } from './mondata.js';
 import { spell_skilltype } from './spell.js';

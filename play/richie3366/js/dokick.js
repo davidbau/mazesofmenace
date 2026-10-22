@@ -133,7 +133,7 @@ import {
 } from './generated/seffects_data.js';
 import { hero_breaks, thitmonst, breaks, breaktest, hurtle } from './dothrow.js';
 import { finish_meating, obj_resists } from './dogmove.js';
-import { polymon, body_part } from './polyself.js';
+import { polymon, body_part, poly_gender } from './polyself.js';
 const BOULDER = objectNames.indexOf('BOULDER');
 const ROCK = objectNames.indexOf('ROCK');
 const CORPSE = objectNames.indexOf('CORPSE');
@@ -211,11 +211,6 @@ function Role_if(pm) {
 /** C hacklib.c sgn */
 function sgn(n) {
     return n > 0 ? 1 : n < 0 ? -1 : 0;
-}
-
-/** C ref: polyself.c poly_gender — 0/1 ≡ flags.female; neuter→2 deferred. */
-function poly_gender() {
-    return game.flags?.female ? 1 : 0;
 }
 
 function isok(x, y) {

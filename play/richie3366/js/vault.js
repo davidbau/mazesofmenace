@@ -18,7 +18,7 @@
 import { game } from './gstate.js';
 import { panic } from './end.js';
 import { rn2 } from './rng.js';
-import { makemon, set_malign, newegd } from './makemon.js';
+import { makemon, makemon_appear_msg, set_malign, newegd } from './makemon.js';
 import { mon_track_clear } from './monmove.js';
 import {
     pline, You, You_see, flush_topl_more, newsym, canspotmon, map_invisible, verbalize,
@@ -63,6 +63,7 @@ import { is_fainted, reset_faint, carried } from './eat.js';
 import { Punished } from './pray.js';
 
 import { remove_monster, place_monster } from './steed.js';
+import { level_mon_at } from './worm.js';
 import { obfree, money_cnt } from './shk.js';
 import { monsterNames, mons, pmnames } from './monsters.js';
 import { m_canseeu, mhe, noit_mhis, is_silent } from './mondata.js';
@@ -248,7 +249,11 @@ async function restfakecorr(grd) {
 
 /**
  * C ref: vault.c parkguard — park escort at <0,0> until corridor clears.
- * Named omission: polearm.hitmon clear; level.monsters[][] grid.
+ * C `m_at(0, 0)` is the raw grid cell (rm.h:516), so the test reads
+ * level_mon_at, not mon.js m_at: its fmon coordinate scan would find a
+ * guard findgd just relinked from migrating_mons (mx = my = 0) and
+ * skip place_monster, leaving MON_MIGRATING set, so movemon never gave
+ * the parked guard its gd_move (D-4226).
  */
 export function parkguard(grd) {
     if (!grd) return;
@@ -261,8 +266,8 @@ export function parkguard(grd) {
         remove_monster(grd.mx, grd.my);
         newsym(grd.mx, grd.my);
     }
-    // C `:165–166` — off-map hold at <0,0>.
-    if (m_at(0, 0) !== grd) place_monster(grd, 0, 0);
+    // C `:165–166` — off-map hold at <0,0>; place_monster sets MON_FLOOR.
+    if (level_mon_at(0, 0) !== grd) place_monster(grd, 0, 0);
     // C `:170–171` — EGD og follows mx,my (0,0 via place_monster).
     const egrd = EGD(grd);
     if (egrd) {
@@ -687,6 +692,11 @@ export async function invault() {
 
     guard = makemon(mons(PM_GUARD), x, y, MM_EGD | MM_NOMSG);
     if (!guard) return;
+    // C makemon.c `:1502–1504` runs inside makemon, before isgd/mpeaceful
+    // are set below: an occupied hero gets dochugw's threat check against
+    // the still-hostile guard, so «You stop searching.» precedes «Suddenly
+    // one of the Vault's guards enters!» (D-4229).
+    await makemon_appear_msg(guard, guard.mx | 0, guard.my | 0, MM_EGD | MM_NOMSG);
 
     guard.isgd = 1;
     guard.mpeaceful = 1;
@@ -782,7 +792,8 @@ export async function invault() {
                 ? 'You are required to supply your name. -'
                 : '"Hello stranger, who are you?" -',
         );
-        if (buf === '\x1b') buf = '';
+        // C `:504–505`: tty getlin returns "\033" on ESC — non-empty, so
+        // the loop ends and the ESC is the answer («I don't know you.»).
         buf = mungspaces(buf);
     } while (!buf && --trycount > 0);
 

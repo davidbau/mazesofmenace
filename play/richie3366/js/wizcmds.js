@@ -99,6 +99,7 @@ import { mhurtle, hurtle } from './dothrow.js';
 /* C detect.c findit — #wizdetect reveal arm
    (`imports.mjs --can wizcmds.js detect.js findit` SAFE). */
 import { findit } from './detect.js';
+import { show_text_pages } from './pager.js';
 
 const DEFAULT_TIMEOUT_INCR = 30;
 

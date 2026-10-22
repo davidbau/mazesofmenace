@@ -53,7 +53,7 @@ import {
     SUPPRESS_SADDLE, AUGMENT_IT, has_mgivenname, has_oname, RLOC_MSG,
     W_ARMU, W_ARM, W_ARMC, CXN_PFX_THE,
     ECMD_OK, ECMD_TIME, LARGEST_INT, CQ_CANNED,
-    DEAF, SHOPBASE, Is_waterlevel,
+    SHOPBASE, Is_waterlevel,
     GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, GETOBJ_PROMPT,
     GETOBJ_ALLOWCNT,
     WT_TOOMUCH_DIAGONAL,
@@ -68,7 +68,7 @@ import {
 import { acurr, acurrstr, A_CON, A_DEX, A_STR, change_luck, exercise, Fumbling } from './attrib.js';
 import {
     calc_capacity, fully_identify_obj, encumber_msg, getobj, prinv, cmdq_add_key,
-    inv_weight, weight_cap, freeinv,
+    inv_weight, weight_cap, freeinv, Blind,
 } from './invent.js';
 import { add_to_minv, mpickobj, makemon, set_malign } from './makemon.js';
 import { finish_quest, is_quest_artifact } from './quest.js';
@@ -457,13 +457,6 @@ export function special_obj_hits_leader(obj, mon) {
     return !!lid && (mon.m_id | 0) === lid;
 }
 
-/** C youprop.h Deaf — HDeaf || EDeaf || uroleplay.deaf. */
-function Deaf_youprop() {
-    const u = game.u || {};
-    const prop = u.uprops?.[DEAF];
-    return !!((prop?.intrinsic | 0) || (prop?.extrinsic | 0)
-        || u.uroleplay?.deaf);
-}
 
 /** C: global.h sgn — sign of an alignment value (-1, 0, 1). */
 function sgn(n) {
@@ -653,7 +646,7 @@ export async function thitmonst(mon, obj) {
             if ((u.uevent?.invoked && unique
                     && (obj.otyp | 0) !== AMULET_OF_YENDOR)
                 || !mon.mpeaceful) {
-                if (mon.mpeaceful && !Deaf_youprop()) {
+                if (mon.mpeaceful && !Deaf()) {
                     fully_identify_obj(obj);
                     await verbalize(
                         `${s_suffix(The(xname(obj)))} part in this is finished.`,
@@ -1091,13 +1084,12 @@ export async function throw_obj(obj, shotlimit) {
     if (quan > 1
         && (is_ammo(obj) ? ammo_and_launcher(obj, uwep)
             : (obj.oclass | 0) === WEAPON_CLASS)
-        && !(game.u?.Confusion || game.u?.Stunned
-            || game.Confusion || game.Stunned)) {
+        && !((game.u?.HConfusion | 0) || (game.u?.HStun | 0))) { // C Confusion ≡ HConfusion, Stunned ≡ HStun (youprop.h:84/:81)
         // C `:171–176` — weakmultishot: role/skill gating or poor dexterity
         const weakmultishot = Role_if(PM_WIZARD) || Role_if(PM_CLERIC)
             || (Role_if(PM_HEALER) && skill !== P_KNIFE)
             || (Role_if(PM_TOURIST) && skill !== -P_DART)
-            || game.Fumbling || game.u?.Fumbling
+            || Fumbling() // C youprop.h:129 (HFumbling || EFumbling)
             || acurr(A_DEX) <= 6;
 
         // C `:179–188` — proficiency bonus (EXPERT falls into SKILLED)
@@ -1202,13 +1194,10 @@ export async function throw_obj(obj, shotlimit) {
     game.m_shot.s = false;
     return unsplit_stack(); // C `:293` return res via unsplit_stack
 }
-/** C youprop.h Deaf subset used by dothrow sight gates — not You_hear. */
+/** C youprop.h:125 Deaf ≡ (HDeaf || EDeaf || u.uroleplay.deaf). */
 function Deaf() {
     const u = game.u || {};
-    return !!(u.HDeaf || u.Deaf);
-}
-function Blind() {
-    return !!(game.u?.Blind || game.u?.ublind);
+    return !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf);
 }
 /** C you.h:558 next2u — distu ≤ 2, the 3×3 incl. hero cell. */
 function next2u(x, y) {
@@ -1793,12 +1782,11 @@ function Tobjnam(obj, verb) {
 /** C youprop.h throwit impaired = Confusion||Stunned||Blind||Hallucination||Fumbling. */
 function throw_impaired() {
     const u = game.u || {};
-    return !!((u.HConfusion | 0) || u.Confusion
-        || (u.HStun | 0) || u.Stunned
+    return !!((u.HConfusion | 0)
+        || (u.HStun | 0)
         || Blind()
         || Hallucination()
-        || Fumbling()
-        || game.Confusion || game.Stunned || game.Fumbling);
+        || Fumbling());
 }
 
 /** C youprop.h Levitation — message "beneath" vs "at" feet. */
@@ -2042,11 +2030,6 @@ function URIGHTY() {
     return ((game.u?.uhandedness | 0) === RIGHT_HANDED);
 }
 
-/** C youprop.h Deaf — H||E||uroleplay.deaf (Klonk). */
-function Deaf_boom() {
-    const u = game.u || {};
-    return !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf);
-}
 
 /** C youprop.h Levitation — (H||E) && !B. throwit air/lev hurtle before boomhit. */
 function Levitation_boom() {
@@ -2174,7 +2157,7 @@ export async function boomhit(obj, dx, dy) {
         tmp_at(game.bhitpos.x, game.bhitpos.y);
         await nh_delay_output();
         if (IS_SINK(typ)) {
-            if (!Deaf_boom()) await pline('Klonk!');
+            if (!Deaf()) await pline('Klonk!');
             await wake_nearto(game.bhitpos.x, game.bhitpos.y, 20);
             break;
         }

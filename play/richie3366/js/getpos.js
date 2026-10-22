@@ -75,7 +75,7 @@ import { visctrl, cmd_from_func, cmdbind_get } from './dokeylist.js';
 import { distmin } from './hacklib.js';
 import { objectNames } from './objects.js';
 import { an } from './objnam.js';
-import { select_menu_pick_one } from './options.js';
+import { select_menu_pick_one, menu_row_coloring } from './options.js';
 import { PM_LONG_WORM_TAIL } from './generated/monsters_data.js';
 import {
     selection_new, selection_setpoint, selection_force_newsyms,
@@ -1335,8 +1335,11 @@ export async function show_getpos_tip() {
         'When in this mode, you can press ESC to return to normal game mode,',
         'and pressing ? will show the key help.',
     ];
+    // C nhl_text `:836`: each line is add_menu_str → windows.c add_menu
+    // `:1803–1807` menucolors (identifier-less row, whole line).
+    const rows = lines.map((str) => ({ text: str, attr: 0, color: NO_COLOR, ...menu_row_coloring(str) }));
     for (;;) {
-        await paint_corner_nhw_menu(lines, '(end) ');
+        await paint_corner_nhw_menu(rows, '(end) ');
         const key = await nhgetch();
         if (key === 27 || key === 13 || key === 10 || key === 32) break;
         // other keys: stay open (C xwaitforspace / PICK_NONE)

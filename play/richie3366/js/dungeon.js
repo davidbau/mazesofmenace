@@ -2927,9 +2927,11 @@ function mapseen_branch_line(mptr) {
     return `${buf}.`;
 }
 
-function add_overview_str(entries, text) {
+/* C add_menu_str → windows.c add_menu `:1803–1807`: menucolors apply
+ * to the identifier-less row (ctx.menu_row_coloring). */
+function add_overview_str(entries, text, ctx) {
     if (!text) return;
-    entries.push({ text, attr: 0, selectable: false });
+    entries.push({ text, attr: 0, selectable: false, ...ctx.menu_row_coloring(text) });
 }
 
 /**
@@ -3047,7 +3049,7 @@ export function mapseen_cemetery_lines(mptr, why, reason, ctx) {
  * @param {number} why
  * @param {number} reason
  * @param {boolean} printdun
- * @param {{ menu_heading_style: Function, endgamelevelname: Function, ldrname: Function, formatkiller: Function }} ctx
+ * @param {{ menu_heading_style: Function, menu_row_coloring: Function, endgamelevelname: Function, ldrname: Function, formatkiller: Function }} ctx
  */
 function print_mapseen(entries, mptr, why, reason, printdun, ctx) {
     const TAB = '   ';
@@ -3106,22 +3108,26 @@ function print_mapseen(entries, mptr, why, reason, printdun, ctx) {
                 : 'were';
         levLine += ` <- You ${verb} here.`;
     }
+    // C `:3583` add_menu: menucolors apply (windows.c `:1803–1807`); the
+    // selectable why==-1 row is colored by select_menu_pick_one.
     const levRow = { text: levLine, attr: 0, selectable: false };
     if (why === -1) {
         levRow.selectable = true;
         levRow.a_int = ledger_no(mptr.lev) + 1;
+    } else {
+        Object.assign(levRow, ctx.menu_row_coloring(levLine));
     }
     entries.push(levRow);
 
     if (mptr.flags?.forgot) return;
 
-    add_overview_str(entries, mapseen_feat_line(mptr));
+    add_overview_str(entries, mapseen_feat_line(mptr), ctx);
     for (const line of mapseen_named_place_lines(mptr, ctx.ldrname)) {
-        add_overview_str(entries, line);
+        add_overview_str(entries, line, ctx);
     }
-    add_overview_str(entries, mapseen_branch_line(mptr));
+    add_overview_str(entries, mapseen_branch_line(mptr), ctx);
     for (const line of mapseen_cemetery_lines(mptr, why, reason, ctx)) {
-        add_overview_str(entries, line);
+        add_overview_str(entries, line, ctx);
     }
 }
 
@@ -3271,10 +3277,10 @@ export async function show_overview(why = 0, reason = 0) {
     const { flush_topl_more, endgamelevelname } = await import('./display.js');
     const { select_menu_pick_none } = await import('./invent.js');
     const { ldrname } = await import('./questpgr.js');
-    const { menu_heading_style } = await import('./options.js');
+    const { menu_heading_style, menu_row_coloring } = await import('./options.js');
 
     recalc_mapseen();
-    const ctx = { menu_heading_style, endgamelevelname, ldrname, formatkiller };
+    const ctx = { menu_heading_style, menu_row_coloring, endgamelevelname, ldrname, formatkiller };
     const entries = [];
     const lastdun = { v: -1 };
     const u = game.u || {};

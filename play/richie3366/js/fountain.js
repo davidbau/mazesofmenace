@@ -81,7 +81,9 @@ import {
     POLY_NOFLAGS, UNCHANGING,
     DISP_ALWAYS, DISP_END,
     POISON_RES,
+    S_room, S_altar, S_grave, S_throne, S_sink, S_fountain,
 } from './const.js';
+import { defsym_explanation } from './uhitm.js'; // SAFE per imports.mjs (hoisted fn)
 import { hands_obj } from './weapon.js';
 import { PM_KNIGHT, monsterNames } from './generated/monsters_data.js';
 import { A_MAX, A_WIS, A_CON, A_DEX, adjattrib, exercise, acurr } from './attrib.js';
@@ -1018,9 +1020,10 @@ export function dipsink_set_levltyp(x, y, newtyp) {
 }
 
 /**
- * C ref: do.c polymorph_sink — tight dipsink POT_POLYMORPH callee.
- * Sink → fountain / throne / altar / grave-or-vanish via rn2(4).
- * defsyms explanations are the PCHAR strings (not PCHAR2 extra).
+ * C ref: do.c polymorph_sink `:402–455` — tight dipsink POT_POLYMORPH callee.
+ * Sink → fountain / throne / altar / grave-or-vanish via rn2(4); the
+ * message names `defsyms[sym].explanation` (PCHAR2's desc: S_throne is
+ * "opulent throne", defsym.h:132) through uhitm.js defsym_explanation.
  * Exported for do.c dosinkring RIN_POLYMORPH (D-2527).
  */
 export async function polymorph_sink() {
@@ -1028,39 +1031,39 @@ export async function polymorph_sink() {
     const loc = game.level?.at(u.ux, u.uy);
     if (!loc || loc.typ !== SINK) return;
 
+    let sym = S_sink; // C `:406`
     const sinklooted = (loc.looted | 0) !== 0;
     loc.flags = 0;
-    loc.looted = 0;
-    let expl = 'fountain';
+    loc.looted = 0; // rm.h:218 looted ≡ flags
     switch (rn2(4)) {
     default:
     case 0:
-        expl = 'fountain';
+        sym = S_fountain;
         dipsink_set_levltyp(u.ux, u.uy, FOUNTAIN);
         loc.blessedftn = 0;
         if (sinklooted) SET_FOUNTAIN_LOOTED(u.ux, u.uy);
         break;
     case 1:
-        expl = 'throne';
+        sym = S_throne;
         dipsink_set_levltyp(u.ux, u.uy, THRONE);
         if (sinklooted) loc.looted = T_LOOTED;
         break;
     case 2: {
-        expl = 'altar';
+        sym = S_altar;
         dipsink_set_levltyp(u.ux, u.uy, ALTAR);
         const algn = rn2(3) - 1;
         loc.altarmask = (Inhell() && rn2(3)) ? AM_NONE : Align2amask(algn);
         break;
     }
     case 3:
-        expl = 'floor of a room';
+        sym = S_room;
         dipsink_set_levltyp(u.ux, u.uy, ROOM);
         make_grave(u.ux, u.uy, null);
-        if (loc.typ === GRAVE) expl = 'grave';
+        if (loc.typ === GRAVE) sym = S_grave;
         break;
     }
     if (loc.typ !== ROOM) {
-        await pline(`The sink transforms into ${an(expl)}!`);
+        await pline(`The sink transforms into ${an(defsym_explanation(sym))}!`);
     } else {
         await pline('The sink vanishes.');
     }

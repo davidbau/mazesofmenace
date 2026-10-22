@@ -88,7 +88,7 @@ import {
     RLOC_MSG, XKILL_NOMSG, XKILL_NOCONDUCT, COULD_SEE, IN_SIGHT,
     P_DAGGER, P_KNIFE, NOTELL, TELL, TEMPLE, IS_OBSTRUCTED, IS_AIR,
     BZ_M_WAND, BZ_OFS_AD, DIR_LEFT2, DIR_RIGHT2, DIR_CLAMP, xytodir,
-    dirtocoord, engulfing_u, HAND,
+    dirtocoord, engulfing_u, HAND, In_V_tower,
 } from './const.js';
 import { MON_WEP, dmgval, hands_obj } from './weapon.js';
 import { welded, mwelded } from './wield.js';

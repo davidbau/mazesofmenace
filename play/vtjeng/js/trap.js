@@ -78,7 +78,6 @@ import {
     IS_ROOM,
     IS_WALL,
     IS_WATERWALL,
-    In_sokoban,
     Is_airlevel,
     KILLED_BY,
     KILLED_BY_AN,
@@ -1016,9 +1015,7 @@ export function maketrap(x, y, typ, rawEnv = {}) {
         if (!oldplace) {
             state.level.traps.unshift(trap);
         } else if (state.level?.flags?.sokoban_rules) {
-            // C's maybe_finish_sokoban() result is discarded. Keep its prize
-            // and luck side effects visible as an unported source boundary.
-            note_unported('trap.c maybe_finish_sokoban');
+            maybe_finish_sokoban(state);
         }
         return trap;
     };
@@ -2134,7 +2131,7 @@ export async function float_down(hmask, emask, state = game) {
         else if (Is_waterlevel(u.uz) && !noMsg)
             await ttyPline('You feel heavier.', state);
         else if (!u.uinwater && !noMsg && !(emask & W_SADDLE)) {
-            if (In_sokoban(u.uz) && trap) {
+            if (state.level?.flags?.sokoban_rules && trap) {
                 if (Hallucination(state))
                     await ttyPline("Bummer!  You've crashed.", state);
                 else
@@ -2213,7 +2210,7 @@ export async function climb_pit(state = game) {
         clearTtyMessageWindow(state);
         await ttyPline(`You free your ${body_part(LEG, state.youmonst)}.`, state);
     } else if ((Flying(state) || is_clinger(state.youmonst.data))
-        && !In_sokoban(u.uz)) {
+        && !state.level?.flags?.sokoban_rules) {
         await ttyPline(
             `You ${u_locomotion('climb', state)} from the ${pitname}.`,
             state,
@@ -2223,7 +2220,7 @@ export async function climb_pit(state = game) {
         state.vision_full_recalc = 1;
     } else if (!(--u.utrap) || m_easy_escape_pit(state.youmonst, state)) {
         await reset_utrap(false, state);
-        const escape = In_sokoban(u.uz) && Levitation(state)
+        const escape = state.level?.flags?.sokoban_rules && Levitation(state)
             ? 'struggle against the air currents and float'
             : u.usteed ? 'ride' : 'crawl';
         await ttyPline(`You ${escape} to the edge of the ${pitname}.`, state);

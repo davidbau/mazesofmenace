@@ -3415,8 +3415,20 @@ export async function select_menu_pick_none(entries) {
     const nitems = entries.length;
     const npages = Math.max(1, Math.floor((nitems + lmax - 1) / lmax));
     let curr_page = 0;
+    // C wintty.c process_menu_window `:1343–1345`: counting / count /
+    // reset_count (PICK_NONE has no gacc, so every digit counts).
+    let counting = false;
+    let count = 0;
+    let reset_count = true;
 
     for (;;) {
+        // C `:1395–1399`
+        if (reset_count) {
+            counting = false;
+            count = 0;
+        } else {
+            reset_count = true;
+        }
         const start = curr_page * lmax;
         const page = entries.slice(start, start + lmax);
         const morestr = npages > 1
@@ -3449,8 +3461,21 @@ export async function select_menu_pick_none(entries) {
         await flush_screen(1);
         // C wintty.c:1561 — PICK_NONE has no explicit selectors.
         const key = map_menu_cmd(await nhgetch());
+        // C `:1563–1603` — digits build a count; leading zeros are ignored.
+        if (key >= 48 && key <= 57) {
+            const next = append_long_digit(count, key - 48);
+            if (next < 0) continue; // overflow → reset_count stays True
+            count = next;
+            if (count !== 0) {
+                counting = true;
+                reset_count = false;
+            }
+            continue;
+        }
+        // C `:1604–1614` — ESC while counting only stops the count.
         // C tty_select_menu `:2796–2797` — ESC is pick_cnt -1; Enter/space is 0.
         if (key === 27) {
+            if (counting) continue;
             cancelled = true;
             break;
         }
@@ -8952,10 +8977,46 @@ export async function doattributes(enl_mode = null) {
     // inline painter lacked it, so an invoke-enlightenment covered the
     // queued low-HP wail instead of paging it first). NEED_MORE →
     // tty_display_nhwindow(WIN_MESSAGE, TRUE): more() + topline clear.
+    // C windows.c select_menu `:1858–1863` — gb.bot_disabled spans
+    // tty_select_menu: display, the key wait and tty_dismiss_nhwindow's
+    // erase_menu_or_text docrt. A pline from that docrt (a parked guard's
+    // <0,0> newsym impossible) flushes without bot(), so the status rows
+    // the menu covered stay blank until the command's next flush (D-4228).
+    const _botPrev = set_bot_disabled(true);
+    try {
     if (topline_need_more()) await display_nhwindow_message();
+    // C wintty.c process_menu_window `:1343–1345` counting / count /
+    // reset_count, reset at the top of each key pass (`:1395–1399`).
+    // xwaitforspace accepts digits and ESC on every page (`:1533`), so
+    // PICK_NONE digits build a count (`:1563–1603`) and ESC while
+    // counting only stops it (`:1604–1614`). Returns true when the
+    // key was consumed by the count.
+    let counting = false;
+    let count = 0;
+    let reset_count = true;
+    const menu_count_key = (key) => {
+        if (reset_count) {
+            counting = false;
+            count = 0;
+        } else {
+            reset_count = true;
+        }
+        if (key >= 48 && key <= 57) {
+            const next = append_long_digit(count, key - 48);
+            if (next < 0) return true; // overflow → reset_count stays True
+            count = next;
+            if (count !== 0) {
+                counting = true;
+                reset_count = false;
+            }
+            return true;
+        }
+        return key === 27 && counting;
+    };
     const waitMenuKey = async () => {
         for (;;) {
             const c = await nhgetch();
+            if (menu_count_key(c)) continue;
             if (c === 27) return true;
             if (c === 32 || c === 13 || c === 10) return false;
             // tty_nhbell — stay on this page (still a capture boundary)
@@ -8971,6 +9032,7 @@ export async function doattributes(enl_mode = null) {
                 // C `:1548–1551` — same page: cursor back, xwaitforspace.
                 const key = map_menu_cmd(await nhgetch());
                 const ch = String.fromCharCode(key);
+                if (menu_count_key(key)) continue;
                 // C `:1604–1614` ESC cancels; `:1616–1620` Return/LF
                 // finish (PICK_NONE included).
                 if (key === 27 || key === 13 || key === 10) break;
@@ -8990,8 +9052,8 @@ export async function doattributes(enl_mode = null) {
                 } else if (ch === MENU_LAST_PAGE) { // C `:1644–1649`
                     if (p < pageCount - 1) { p = pageCount - 1; newPage = true; }
                 }
-                // counts, select/unselect commands and search change nothing
-                // on a PICK_NONE screen; unlisted keys bell in xwaitforspace.
+                // select/unselect commands and search change nothing on a
+                // PICK_NONE screen; unlisted keys bell in xwaitforspace.
                 continue;
             }
             newPage = false;
@@ -9052,6 +9114,9 @@ export async function doattributes(enl_mode = null) {
         await docrt();
     } else {
         await erase_menu_or_text(offx, 0, lines.length + 1, false);
+    }
+    } finally {
+        set_bot_disabled(_botPrev);
     }
     await flush_screen(1);
     return ECMD_OK; // C insight.c:2018

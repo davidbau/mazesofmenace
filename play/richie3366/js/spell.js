@@ -127,7 +127,8 @@ import {
     clear_nhwindow_message, canseemon, map_invisible, zapdir_to_glyph,
     nh_delay_output, flush_topl_more,
 } from './display.js';
-import { paint_corner_nhw_menu, dismiss_nhw_menu, discover_object, makeknown, near_capacity, update_inventory, observe_object, useup as useup_inv, cmdq_add_key } from './invent.js';
+import { paint_corner_nhw_menu, dismiss_nhw_menu, discover_object, makeknown, near_capacity, update_inventory, observe_object, useup as useup_inv, cmdq_add_key, select_menu_pick_none } from './invent.js';
+import { select_menu_pick_one, menu_prompt_style, menu_heading_style, get_menu_coloring, cattr_to_cell } from './options.js'; // SAFE per imports.mjs (hoisted fns)
 import { yn_function, y_n } from './getline.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import { weight, mksobj, delobj, noveltitle, set_bknown } from './mkobj.js';
@@ -237,6 +238,7 @@ import {
     CMDQ_KEY, CQ_REPEAT,
     Never_mind,
     POISON_RES,
+    PICK_NONE, PICK_ONE,
 } from './const.js';
 import { objectNames, objectNameStrs } from './generated/objects_data.js';
 import { PM_KNIGHT, PM_WIZARD, monsterNames } from './generated/monsters_data.js';
@@ -1614,46 +1616,38 @@ function sortspells() {
 }
 
 /**
- * C ref: spell.c spellsortmenu `:1978–2017` — pick a sort order.
- * Single-key menu: letter commits, Return/Space accepts the preselected
- * (current sortmode → TRUE, re-sort is idempotent), Esc cancels (FALSE).
- * The C `n > 1` second-pick arm needs multi-select; unreachable here.
+ * C ref: spell.c spellsortmenu `:1978–2017` in C order — PICK_ONE menu of
+ * spl_sortchoices with the current sortmode preselected (`:1999–2001`),
+ * a blank add_menu_str row ahead of 'z' (`:1992–1995`), end_menu prompt
+ * `:2003`. n > 0 → the picked choice (`:2007–2013`; the `n > 1` skip of
+ * the preselected entry is select_menu_pick_one returning the other
+ * row); n <= 0 (ESC, or the preselected letter toggled off) → FALSE.
  */
 async function spellsortmenu() {
-    const sortmode = game.spl_sortmode | 0;
-    const entries = [
-        { text: 'View known spells list sorted', attr: ATR_INVERSE },
-        { text: '', attr: 0 },
+    const raw = [
+        { text: 'View known spells list sorted', selectable: false, ...menu_prompt_style() },
+        { text: '', selectable: false },
     ];
-    const choices = [];
     for (let i = 0; i < NUM_SPELL_SORTBY; i++) {
         let mlet; // C `char let`
         if (i === SORTRETAINORDER) {
             mlet = 'z'; // assumes fewer than 26 sort choices...
             // separate final choice from others with a blank line
-            entries.push({ text: '', attr: 0 });
+            raw.push({ text: '', selectable: false });
         } else {
             mlet = String.fromCharCode('a'.charCodeAt(0) + i);
         }
-        entries.push({ text: `${mlet} - ${spl_sortchoices[i]}`, attr: 0 });
-        choices.push({ key: mlet, idx: i });
+        raw.push({
+            text: spl_sortchoices[i], selectable: true, selector: mlet, choice: i,
+            selected: i === (game.spl_sortmode | 0), // C `:1999–2000`
+        });
     }
-    for (;;) {
-        await paint_corner_nhw_menu(entries, '(end) ');
-        await flush_screen(1);
-        const key = await nhgetch();
-        await dismiss_nhw_menu();
-        if (key === 27) return false;
-        if (key === 13 || key === 10 || key === 32) {
-            return true; // accept preselected = current sortmode
-        }
-        const hit = choices.find((c) => c.key === String.fromCharCode(key));
-        if (hit) {
-            game.spl_sortmode = hit.idx;
-            return true;
-        }
-        // invalid → re-prompt
+    const res = await select_menu_pick_one(raw); // C `:2005–2006`
+    if (res.kind === 'pick') {
+        game.spl_sortmode = res.item.choice; // C `:2012`
+        return true;
     }
+    return false;
 }
 
 /**
@@ -1673,122 +1667,95 @@ export async function show_spells() {
 }
 
 /**
- * C ref: spell.c dospellmenu — VIEW / CAST (PICK_NONE / PICK_ONE + sort).
- * Returns { ok, splnum }; ok false = cancel / decline.
- * VIEW first call: letter or `+` returns ok:true (dovspell dispatches
- * SORT vs swap). Second (swap) call with splaction >= 0: the preselected
- * letter declines (C `*spell_no == splaction` → FALSE → break);
- * Return/Space accepts the preselected → likewise FALSE.
- * The splaction row paints preselected '*' (C SELECTED + wintty paint).
- * CAST: letter returns ok:true with splnum.
+ * C ref: spell.c dospellmenu `:2075–2168` in C order. Heading
+ * (add_menu_heading `:2116`) per menu_tab_sep (`:2103–2112`) plus the
+ * wizard "turns" column (`:2113–2114`); one add_menu row per known spell
+ * (`:2117–2131`, preselected when splnum == splaction); VIEW adds
+ * "[sort spells]" or drops to PICK_NONE with one spell (`:2133–2143`);
+ * end_menu prompt (`:2144`); select_menu (`:2146`) through the generic
+ * tty menus, which apply menu colors to the rows (windows.c add_menu
+ * `:1803–1807`) and the heading/prompt styles.
+ * Returns { ok, splnum } for C's (boolean, *spell_no):
+ * n > 0 → the picked spell, FALSE when it is the preselected one
+ * (`:2149–2160`); n <= 0 with splaction >= 0 (ESC, or the preselected
+ * letter toggled off) → TRUE with spell_no = splaction (`:2161–2165`);
+ * else FALSE.
  */
 async function dospellmenu(prompt, splaction) {
     // C: wizard ≡ flags.debug (#define wizard flags.debug)
     const wizard = !!(game.flags?.wizard || game.flags?.debug);
-    // C tty menu_headings: ATR_INVERSE on label words; padding between
-    // %-20 / %-12 columns stays normal (observed seed0106 recording).
-    // C dospellmenu: if (wizard) Sprintf(eos(buf), "%c%6s", sep, "turns")
-    // — "turns" is 5 chars so %6s adds a leading pad → "  turns".
-    // C `:2104`: DUMP heading has no 4-space indent (no "a - " letters).
-    const nameHead = splaction === SPELLMENU_DUMP ? 'Name' : '    Name';
-    const headingParts = [
-        { text: nameHead, attr: ATR_INVERSE },
-        { text: '                 ', attr: 0 }, // rest of %-20s + ' ' before Level
-        { text: 'Level Category', attr: ATR_INVERSE },
-        { text: '     ', attr: 0 }, // Category pad + ' ' before Fail
-        {
-            text: wizard ? 'Fail Retention  turns' : 'Fail Retention',
-            attr: ATR_INVERSE,
-        },
-    ];
-    const heading = headingParts.map((p) => p.text).join('');
-    const entries = [
-        { text: prompt, attr: ATR_INVERSE },
-        { text: '', attr: 0 },
-        { text: heading, attr: 0 },
-    ];
-    const choices = [];
+    const tabSep = !!game.iflags?.menu_tab_sep;
+    let buf, sep;
+    if (!tabSep) { // C `:2103–2109`
+        buf = `${splaction === SPELLMENU_DUMP ? '' : '    '}${padR(20, 'Name')} Level ${padR(12, 'Category')} Fail Retention`;
+        sep = ' ';
+    } else { // C `:2110–2112`
+        buf = 'Name\tLevel\tCategory\tFail\tRetention';
+        sep = '\t';
+    }
+    if (wizard) buf += `${sep}${padL(6, 'turns')}`; // C `:2113–2114`
 
+    const raw = [
+        // C tty_end_menu: prompt row in tty_menu_promptstyle, then a gap.
+        { text: prompt, selectable: false, ...menu_prompt_style() },
+        { text: '', selectable: false },
+        { text: buf, selectable: false, ...menu_heading_style() }, // C `:2116`
+    ];
     for (let i = 0; i < MAXSPELL && spellid(i) !== NO_SPELL; i++) {
-        // C `:2119`: splnum = !gs.spl_orderindx ? i : gs.spl_orderindx[i]
+        // C `:2118`: splnum = !gs.spl_orderindx ? i : gs.spl_orderindx[i]
         const splnum = game.spl_orderindx ? game.spl_orderindx[i] : i;
         const fail = 100 - percent_success(splnum);
-        let line = `${padR(20, spellname(splnum))}  ${padL(2, spellev(splnum))}   `
-            + `${padR(12, spelltypemnemonic(spell_skilltype(spellid(splnum))))} `
-            + `${padL(3, fail)}% ${padL(9, spellretention(splnum))}`;
-        // C: if (wizard) Sprintf(eos(buf), "%c%6d", sep, spellknow(i));
-        // uses loop index i (not splnum) when orderindx is active
-        if (wizard) line += ` ${padL(6, spellknow(i))}`;
-        const letter = spellet(splnum);
-        // C `:2130–2132`: (splnum == splaction) → MENU_ITEMFLAGS_SELECTED;
-        // wintty `:1468–1473` initial paint shows selected (count -1) as '*'.
-        // Only the dovspell swap call passes a book index, so exactly one
-        // row matches there; VIEW/CAST/DUMP pass negatives (no match).
-        const marker = splnum === splaction ? '*' : '-';
-        entries.push({ text: `${letter} ${marker} ${line}`, attr: 0 });
-        choices.push({ key: letter, splnum });
+        const cat = spelltypemnemonic(spell_skilltype(spellid(splnum)));
+        buf = !tabSep // C `:2119–2122` fmt
+            ? `${padR(20, spellname(splnum))}  ${padL(2, spellev(splnum))}   ${padR(12, cat)} ${padL(3, fail)}% ${padL(9, spellretention(splnum))}`
+            : `${spellname(splnum)}\t${spellev(splnum)}\t${cat}\t${fail}%\t${spellretention(splnum)}`;
+        // C `:2123–2124`: spellknow(i) — the loop index, not splnum
+        if (wizard) buf += `${sep}${padL(6, spellknow(i))}`;
+        raw.push({ // C `:2126–2130`
+            text: buf, selectable: true, selector: spellet(splnum), splnum,
+            selected: splnum === splaction,
+        });
     }
-
-    let howPickNone = false;
+    let how = PICK_ONE;
     if (splaction === SPELLMENU_VIEW) {
         if (spellid(1) === NO_SPELL) {
-            howPickNone = true;
+            // only one spell => nothing to swap with
+            how = PICK_NONE;
         } else {
-            entries.push({ text: '+ - [sort spells]', attr: 0 });
-            choices.push({ key: '+', splnum: SPELLMENU_SORT });
+            // more than 1 spell, add an extra menu entry
+            raw.push({ text: '[sort spells]', selectable: true, selector: '+', splnum: SPELLMENU_SORT });
         }
     }
 
-    for (;;) {
-        const geom = await paint_corner_nhw_menu(entries, '(end) ');
-        // Re-paint heading with C menu_headings word/pad attr splits
-        const disp = game.nhDisplay;
-        if (disp?.setCell && geom && geom.offx != null) {
-            let col = geom.offx + 1;
-            const row = 2; // prompt, blank, heading
-            for (const part of headingParts) {
-                for (let i = 0; i < part.text.length; i++) {
-                    disp.setCell(col++, row, part.text[i], NO_COLOR, part.attr);
-                }
-            }
-        }
-        await flush_screen(1);
-        const key = await nhgetch();
-        // C: destroy_nhwindow → erase_menu_or_text (corner docorner /
-        // fullscreen docrt). Always-docrt desyncs Hallu once-per-input
-        // see_monsters after corner +/ESC (D-0857).
-        await dismiss_nhw_menu();
-
-        if (key === 27) return { ok: false, splnum: -1 };
-        if (howPickNone) {
-            // PICK_NONE: Esc/Return/Space dismiss
-            if (key === 13 || key === 10 || key === 32) {
-                return { ok: false, splnum: -1 };
-            }
-            continue;
-        }
-        // PICK_ONE space/return: first call (nothing preselected) → n==0
-        // → FALSE; swap call accepts the preselected → likewise FALSE.
-        // Both break the dovspell loop.
-        if (key === 13 || key === 10 || key === 32) {
-            return { ok: false, splnum: -1 };
-        }
-        const ch = String.fromCharCode(key);
-        const hit = choices.find((c) => c.key === ch);
-        if (hit) {
-            if (splaction === SPELLMENU_CAST || splaction === SPELLMENU_VIEW) {
-                return { ok: true, splnum: hit.splnum };
-            }
-            // swap call (splaction >= 0): picking the preselected entry
-            // declines — C `*spell_no == splaction` → FALSE (no swap).
-            // (C `n > 1` second-pick needs multi-select; unreachable here.)
-            if (hit.splnum === splaction) {
-                return { ok: false, splnum: hit.splnum };
-            }
-            return { ok: true, splnum: hit.splnum };
-        }
-        // invalid → re-prompt
+    let picked = null; // C `:2146–2147` select_menu + destroy_nhwindow
+    if (how === PICK_NONE) {
+        // PICK_NONE paints the same rows; select_menu_pick_none takes them
+        // pre-rendered (selector prefix, menu colors past attr_n = 4).
+        await select_menu_pick_none(raw.map((it) => {
+            if (!it.selectable) return { text: it.text, attr: it.attr || 0, color: it.color ?? NO_COLOR };
+            const mc = get_menu_coloring(it.text);
+            return {
+                text: `${it.selector} - ${it.text}`,
+                attr: mc ? cattr_to_cell(mc.attr) : 0,
+                color: mc ? mc.color : NO_COLOR,
+                descStart: 4,
+            };
+        }));
+    } else {
+        const res = await select_menu_pick_one(raw);
+        if (res.kind === 'pick') picked = res.item;
     }
+    if (picked) { // C `:2148–2160` n > 0
+        // default selection of preselected spell means that
+        // user chose not to swap it with anything
+        if (picked.splnum === splaction) return { ok: false, splnum: picked.splnum };
+        return { ok: true, splnum: picked.splnum };
+    } else if (splaction >= 0) { // C `:2161–2165`
+        // explicit de-selection of preselected spell means that
+        // user is still swapping but not for the current spell
+        return { ok: true, splnum: splaction };
+    }
+    return { ok: false, splnum: -1 };
 }
 
 /**

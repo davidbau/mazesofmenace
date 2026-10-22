@@ -47,7 +47,7 @@ import {
     FEMALE, MALE, W_ARMH, M_AP_FURNITURE, M_AP_OBJECT, IRONBARS,
     BOLT_LIM, nothing_happens,
 } from './const.js';
-import { body_part } from './polyself.js';
+import { body_part, poly_gender } from './polyself.js';
 import { night, midnight } from './calendar.js';
 import { aggravate, cuss } from './wizard.js';
 import { is_lminion } from './teleport.js';
@@ -1353,15 +1353,6 @@ export async function yelp(mtmp) {
             await wake_nearto(mtmp.mx, mtmp.my, (mtmp.data?.mlevel | 0) * 12);
         }
     }
-}
-
-/**
- * C ref: polyself.c poly_gender — 0/1 ≡ flags.female, 2=none.
- * Named omission: is_neuter non-humanoid → 2 (poly forms deferred).
- */
-function poly_gender() {
-    const u = game.u || {};
-    return game.flags?.female ? 1 : 0;
 }
 
 /** C context.h tribute_info.Deathnotice — saved with context. */

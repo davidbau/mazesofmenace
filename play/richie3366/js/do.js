@@ -723,23 +723,18 @@ export async function obj_no_longer_held(obj) {
 
 /**
  * C ref: do.c doaltarobj `:363–390` — drop/land feedback + bknown on altar.
- * C `:370–373`: `!gnostic++` — the post-increment always runs; the conduct
- * livelog fires only when the old value was 0.
+ * C `:370–373`: `!mon_moving && !gnostic++` — the conduct livelog fires
+ * only when the old value was 0 (u.uconduct exists from u_init_misc).
  */
 export async function doaltarobj(obj) {
     if (!obj || Blind()) return;
     if ((obj.oclass | 0) !== COIN_CLASS) {
-        if (!game.context?.mon_moving) {
-            const uc = game.u?.uconduct;
-            if (uc) {
-                const wasGnostic = uc.gnostic | 0; // C `:370` old value
-                uc.gnostic = wasGnostic + 1; // C `:370` ++ always runs
-                if (!wasGnostic) { // C `:370–373`
-                    livelog_printf(LL_CONDUCT,
-                        'eschewed atheism, by dropping %s on an altar',
-                        doname(obj));
-                }
-            }
+        // KMH, conduct — C `:370–373`: `!mon_moving && !gnostic++`; the
+        // post-increment runs only when !mon_moving (short-circuit).
+        if (!game.context?.mon_moving && !(game.u.uconduct.gnostic++)) {
+            livelog_printf(LL_CONDUCT,
+                'eschewed atheism, by dropping %s on an altar',
+                doname(obj));
         }
     } else {
         obj.blessed = obj.cursed = 0;
