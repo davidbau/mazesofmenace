@@ -10540,6 +10540,12 @@ function show_topl(str) {
     }
     const text = String(str ?? '');
     const CO = game?.nhDisplay?.cols || 80;
+    /* C addtopl → putsyms → topl_putsym: a character that would land at
+       curx == CO-1 first emits '\n' (`if (curx == CO - 1)
+       topl_putsym('\n')`), so an 84-char autodescribe line paints 79
+       columns on row 0 and the rest from row 1 column 0 (D-4237). The
+       painter only breaks on '\n', so the painted text carries them. */
+    let painted = '';
     let col = 0;
     let row = 0;
     for (let i = 0; i < text.length; i++) {
@@ -10549,15 +10555,17 @@ function show_topl(str) {
             row++;
         } else {
             if (col === CO - 1) {
+                painted += '\n';
                 col = 0;
                 row++;
             }
             col++;
         }
+        painted += ch;
     }
     cw.curx = col;
     cw.cury = row;
-    game._pending_message = text;
+    game._pending_message = painted;
     _toplin = TOPLINE_NEED_MORE;
     if (_delay_flushing) _paintToplineOnly();
     else _buildScreenOutput();

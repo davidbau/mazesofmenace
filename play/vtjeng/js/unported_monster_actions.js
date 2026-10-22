@@ -104,6 +104,8 @@ import {
 } from './mon.js';
 import {
     defended,
+    amorphous,
+    is_giant,
     is_swimmer,
     likes_lava,
     monsndx,
@@ -131,6 +133,7 @@ import {
 } from './monsters.js';
 import {
     INERT_DOOR_MASKS,
+    can_fog,
     dochug,
     dochugw,
     m_avoid_kicked_loc,
@@ -1023,6 +1026,20 @@ async function admitSimpleDestinationAndRegion(monster, x, y, env) {
     const inertDoorway = location?.typ === DOOR
         && INERT_DOOR_MASKS.has(doorMask);
     const opensDoor = opensClosedDoor(monster, location, doorMask);
+    // C mon.c mfndpos admits UNLOCKDOOR. m_move supplies the same captured
+    // can_unlock that its existing postmov door-opening branch consumes.
+    const unlocksDoor = location?.typ === DOOR
+        && (doorMask & D_LOCKED) && env.canUnlock;
+    // C mon.c mon_allowflags() gives giants BUSTDOOR, so mfndpos()
+    // selects locked doors for monmove.c postmov() to smash.
+    const breaksDoor = location?.typ === DOOR
+        && is_giant(monster.data) && (doorMask & D_LOCKED);
+    // C mon.c mfndpos() admits amorphous passage or a vampire that can_fog,
+    // unless engulfing the hero. That selection check already ran; postmov()
+    // changes the vampire's form before flowing under the intact door.
+    const flowsUnderDoor = location?.typ === DOOR
+        && (amorphous(monster.data) || can_fog(monster, state))
+        && (doorMask & (D_CLOSED | D_LOCKED));
     // mon.c:mfndpos() sets `thrudoor` when ALLOW_WALL is present, so a
     // wall-walker may follow its target through a closed doorway. postmov()
     // skips the ordinary door-opening block for that monster.
@@ -1067,6 +1084,9 @@ async function admitSimpleDestinationAndRegion(monster, x, y, env) {
             || location.typ === IRONBARS
             || inertDoorway
             || opensDoor
+            || unlocksDoor
+            || breaksDoor
+            || flowsUnderDoor
             || passWallDoorway
             || trappedDoor
             || passwallDestination
@@ -1099,7 +1119,7 @@ async function admitSimpleDestinationAndRegion(monster, x, y, env) {
             unsupported('a region transition');
     }
     // Last, so that a destination another guard rejects prepares nothing.
-    if (opensDoor || digsWall) admitTerrainChange(x, y, env);
+    if (opensDoor || unlocksDoor || breaksDoor || digsWall) admitTerrainChange(x, y, env);
     return m_in_out_region(monster, x, y, env);
 }
 

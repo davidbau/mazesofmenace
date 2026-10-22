@@ -96,7 +96,7 @@ const TIMEOUT_DEDICATED = new Set([
 ]);
 
 /** Flat H* mirrors that wiz_intrinsic / make_* keep beside uprops. */
-const TIMEOUT_FLAT = {
+export const TIMEOUT_FLAT = {
     [STUNNED]: 'HStun',
     [CONFUSION]: 'HConfusion',
     [HALLUC]: 'HHallucination',

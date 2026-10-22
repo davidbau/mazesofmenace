@@ -73,7 +73,7 @@ import { ensure_glyphmap, glyphid_cache_status, fill_glyphid_cache, wizcustom_gl
 /* C timeout.c property_by_index — #wizintrinsic menu order + reverse
    lookup (`imports.mjs --can wizcmds.js timeout.js` IN-SCC, called only
    at runtime — no top-level read). */
-import { property_by_index } from './timeout.js';
+import { property_by_index, TIMEOUT_FLAT } from './timeout.js';
 /* C uhitm.c xkilled — #wizkill hero-credited kill
    (`imports.mjs --can wizcmds.js uhitm.js xkilled` SAFE). */
 import { xkilled } from './uhitm.js';
@@ -103,29 +103,15 @@ import { show_text_pages } from './pager.js';
 
 const DEFAULT_TIMEOUT_INCR = 30;
 
-/** Flat H* mirrors used by exerper / nh_timeout / display gates. C youprop.h
- * keeps one storage (HSleepy ≡ uprops[SLEEPY].intrinsic); the mirror keeps
- * the flat readers (eat/do_wear/allmain) on the wizintrinsic default arm. */
-const PROP_FLAT = {
-    [SLEEPY]: 'HSleepy',
-    [STUNNED]: 'HStun',
-    [CONFUSION]: 'HConfusion',
-    [HALLUC]: 'HHallucination',
-    [BLINDED]: 'HBlinded',
-    [DEAF]: 'HDeaf',
-    [WOUNDED_LEGS]: 'HWounded_legs',
-    [FUMBLING]: 'HFumbling',
-    [LEVITATION]: 'HLevitation',
-    [INVIS]: 'HInvis',
-    [SEE_INVIS]: 'HSee_invisible',
-    [CLAIRVOYANT]: 'HClairvoyant',
-    [TELEPORT]: 'HTeleportation',
-    [REGENERATION]: 'HRegeneration',
-};
-
+/* C youprop.h keeps one storage per property (HFast ≡
+ * uprops[FAST].intrinsic); JS keeps a flat H* mirror beside the slot and
+ * every writer updates both. The mirror table is timeout.js TIMEOUT_FLAT,
+ * the one nh_timeout decrements through: a local copy here lacked FAST, so
+ * the default arm raised only the slot, nh_timeout's FAST arm then OR'd it
+ * with the stale flat and the timeout drifted (D-4234). */
 function prop_old_timeout(p) {
     const u = game.u || {};
-    const flat = PROP_FLAT[p];
+    const flat = TIMEOUT_FLAT[p];
     if (flat && (u[flat] | 0)) return (u[flat] | 0) & TIMEOUT;
     const pr = u.uprops?.[p];
     return pr ? (pr.intrinsic | 0) & TIMEOUT : 0;
@@ -140,7 +126,7 @@ function incr_prop_timeout(p, amt) {
     if (next > TIMEOUT) next = TIMEOUT;
     u.uprops[p].intrinsic =
         ((u.uprops[p].intrinsic | 0) & ~TIMEOUT) | (next & TIMEOUT);
-    const flat = PROP_FLAT[p];
+    const flat = TIMEOUT_FLAT[p];
     if (flat) {
         u[flat] = ((u[flat] | 0) & ~TIMEOUT) | (next & TIMEOUT);
         if (p === CONFUSION) u.Confusion = u.HConfusion;

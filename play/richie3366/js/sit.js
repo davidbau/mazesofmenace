@@ -609,6 +609,10 @@ function Half_physical_damage() {
 
 /**
  * C hack.c losehp then maybe_wail / done(DIED). Returns true if fatal.
+ * JS losehp defers C's inline done(DIED); drain it here. A hero who
+ * survives it (lifesaving, or a declined wizard «Die?») gets back from
+ * done() in C and the caller goes on, so only a real gameover is fatal
+ * (the do.js / steed.js idiom, D-4230).
  */
 async function sit_losehp(n, knam, k_format) {
     await losehp(n, knam, k_format);
@@ -616,9 +620,8 @@ async function sit_losehp(n, knam, k_format) {
     if (game._losehp_needs_done) {
         const { finish_losehp_done } = await import('./end.js');
         await finish_losehp_done();
-        return true;
     }
-    return false;
+    return !!game.program_state?.gameover;
 }
 
 /** C ref: youprop.h Drain_resistance — H || E. */
@@ -757,17 +760,18 @@ export async function special_throne_effect(effect) {
             await polyself(POLY_NOFLAGS);
         }
         break;
-    case 12: {
-        const { losehp } = await import('./hack.js');
+    case 12:
         await pline('The throne is covered in acid!');
-        await losehp(
+        // C sit.c:339 — losehp; done(DIED) does not return on a real death.
+        if (await sit_losehp(
             Acid_resistance() ? rnd(16) : rnd(80),
             'acidic chair',
             KILLED_BY_AN,
-        );
+        )) {
+            return;
+        }
         await exercise(A_CON, false);
         break;
-    }
     case 13:
         await pline('As you sit on the throne, your body and mind start to warp.');
         for (let ability = 0; ability < A_MAX; ++ability) {
@@ -809,28 +813,28 @@ async function throne_sit_effect() {
             return;
         }
         switch (effect | 0) {
-        case 1: {
-            const { losehp } = await import('./hack.js');
+        case 1:
             await adjattrib(rn2(A_MAX), -rn1(4, 3), 0);
-            await losehp(rnd(10), 'cursed throne', KILLED_BY_AN);
+            // C sit.c:71 — losehp; done(DIED) does not return on a real death.
+            if (await sit_losehp(rnd(10), 'cursed throne', KILLED_BY_AN)) return;
             break;
-        }
         case 2:
             await adjattrib(rn2(A_MAX), 1, 0);
             break;
-        case 3: {
-            const { losehp } = await import('./hack.js');
+        case 3:
             await pline(
                 `A${Shock_resistance() ? 'n' : ' massive'} electric shock shoots through your body!`,
             );
-            await losehp(
+            // C sit.c:79 — losehp; a survived death goes on to exercise.
+            if (await sit_losehp(
                 Shock_resistance() ? rnd(6) : rnd(30),
                 'electric chair',
                 KILLED_BY_AN,
-            );
+            )) {
+                return;
+            }
             await exercise(A_CON, false);
             break;
-        }
         case 4: {
             await You_feel('much, much better!');
             if (Upolyd(u)) {

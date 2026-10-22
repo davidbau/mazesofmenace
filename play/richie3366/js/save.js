@@ -19,7 +19,7 @@ import { change_luck } from './attrib.js';
 import {
     FULL_MOON, OBJ_INVENT, OBJ_CONTAINED, OBJ_FREE, OBJ_MIGRATING,
     ECMD_OK, BUFSZ, VISITED, LFILE_EXISTS, REST_GSTATE, REST_CURRENT_LEVEL,
-    W_WEP, W_SWAPWEP, W_QUIVER, W_BALL, W_CHAIN, PL_NSIZ,
+    W_BALL, W_CHAIN, PL_NSIZ,
     WRITING, FREEING, NHF_SAVEFILE, Is_rogue_level, ROGUESET,
     TRICKED,
 } from './const.js';
@@ -44,7 +44,7 @@ import { restore_timers, restore_light_sources, run_timers, dobjsfree, place_obj
 import { dmonsfree } from './mon.js';
 import { vision_reset } from './vision.js';
 import { setworn } from './do_wear.js';
-import { setuwep, setuswapwep, setuqwep } from './wield.js';
+import { setuwep } from './wield.js';
 import { restore_artifacts } from './artifact.js';
 import { save_oracles, restore_oracles } from './rumors.js';
 import {
@@ -442,26 +442,22 @@ function loadFruitchn(arr) {
 
 /**
  * C restore.c restgamestate `:687–699` setworn walk then setuwep so
- * unweapon recomputes. JS setworn does not place W_WEP/SWAP/QUIVER;
- * those slots use wield helpers, then C's pick-axe/grapple override.
+ * unweapon recomputes, then C's pick-axe/grapple override. setworn's
+ * worn[] walk places W_WEP / W_SWAPWEP / W_QUIVER too (do_wear.js WORN),
+ * so nothing re-places them: a second setworn(uswapwep, W_SWAPWEP) finds
+ * the slot occupied and runs setworn's `u.twoweap && oobj` arm, which
+ * ended two-weapon combat across every save/restore (D-4236).
  * @param {object[]} invent
  */
 function restWornFromInvent(invent) {
     const u = game.u || (game.u = {});
-    let wep = null;
-    let swap = null;
-    let quiver = null;
     for (const otmp of invent || []) {
         const mask = otmp?.owornmask | 0;
         if (!mask) continue;
         setworn(otmp, mask);
-        if (mask & W_WEP) wep = otmp;
-        if (mask & W_SWAPWEP) swap = otmp;
-        if (mask & W_QUIVER) quiver = otmp;
     }
-    if (swap) setuswapwep(swap);
-    if (quiver) setuqwep(quiver);
-    const otmp = wep || u.uwep || null;
+    /* C: otmp = uwep; uwep = 0; setuwep(otmp); */
+    const otmp = u.uwep || null;
     u.uwep = null;
     setuwep(otmp);
     if (!u.uwep || u.uwep.otyp === PICK_AXE || u.uwep.otyp === GRAPPLING_HOOK) {
