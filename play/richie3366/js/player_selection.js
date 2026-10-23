@@ -1221,10 +1221,16 @@ async function menu_pick(title, bodyLines, choices) {
             const pre = choices.find(c => c.preselected);
             return pre ? pre.value : ROLE_RANDOM;
         }
-        const hit = choices.find(c => c.key === ch || c.key === ch.toLowerCase()
-            || (c.altkey && (c.altkey === ch || c.altkey === ch.toLowerCase())));
+        // C wintty.c process_menu_window: gacc holds each group accelerator
+        // that differs from its item's selector and, for PICK_ONE, labels
+        // exactly one item (`:1352–1379`); the key arm tries gacc first,
+        // then the exact selector (`:1742–1762`). Both are case-sensitive:
+        // 'R' is Ranger's selector, not Rogue's 'r'.
+        const grp = choices.filter(c => c.altkey && c.altkey !== c.key
+            && c.altkey === ch);
+        const hit = grp.length === 1 ? grp[0] : choices.find(c => c.key === ch);
         if (hit) return hit.value;
-        // invalid → re-prompt (C select_menu stays open)
+        // invalid → re-prompt (C select_menu bells and stays open)
     }
 }
 
@@ -1706,8 +1712,10 @@ export async function genl_player_setup(screenheight) {
                 ], '(end) ');
                 const key = await nhgetch();
                 game._menu_overlay = false;
-                const ch = String.fromCharCode(key).toLowerCase();
-                if (key === 27 || ch === 'q') { choice = -1; break; }
+                // C role.c:2659–2671 selectors are case-sensitive (wintty.c
+                // `:1757`); 'q' is the Quit item's selector (value -1).
+                const ch = String.fromCharCode(key);
+                if (key === 27) { choice = -1; break; }
                 if (ch === ' ' || key === 13 || key === 10) { choice = 1; break; }
                 const hit = choices.find(c => c.key === ch);
                 if (hit) { choice = hit.value; break; }

@@ -1019,12 +1019,13 @@ async function admitSimpleDestinationAndRegion(monster, x, y, env) {
     // overrides lavaok to FALSE at :2169-2170. The pool test below is the
     // source's `(poolok || is_pool(nx,ny) == wantpool)` predicate, including
     // its second scan for an eel that starts on land.
-    let wantsPool = monster.data?.mlet === S_EEL;
+    const wantsPool = monster.data?.mlet === S_EEL;
     const poolOkay = (!on_level(state.u?.uz, state.water_level)
             && m_in_air(monster, state))
         || (is_swimmer(monster.data) && !wantsPool);
-    const sourceIsPool = is_pool(monster.mx, monster.my, state);
-    if (!poolOkay && wantsPool && !sourceIsPool) wantsPool = false;
+    // mfndpos() already selected this square. A stranded eel still prefers
+    // water; C retries land only when its first scan found no candidates.
+    // Land destinations are admitted below as ordinary terrain.
     const lavaOkay = (m_in_air(monster, state) || likes_lava(monster.data))
         && monsndx(monster.data) !== PM_FLOATING_EYE;
     const passwallDestination = IS_OBSTRUCTED(location?.typ)
@@ -1914,6 +1915,8 @@ export async function preflightSimpleMonsterActions(
     let beforeTeleport = false;
     let beforeSearch = false;
     let beforeChange = false;
+    let beforeLevelEffects = false;
+    let beforeStorms = false;
     try {
         try {
             const scan = await planSimpleMonsterTurn(
@@ -1927,6 +1930,8 @@ export async function preflightSimpleMonsterActions(
                     beforeTeleport = Boolean(result?.beforeTeleport);
                     beforeSearch = Boolean(result?.beforeSearch);
                     beforeChange = Boolean(result?.beforeChange);
+                    beforeLevelEffects = Boolean(result?.beforeLevelEffects);
+                    beforeStorms = Boolean(result?.beforeStorms);
                     return result;
                 } : null,
                 afterMonsterScan,
@@ -1988,6 +1993,8 @@ export async function preflightSimpleMonsterActions(
         beforeTeleport,
         beforeSearch,
         beforeChange,
+        beforeLevelEffects,
+        beforeStorms,
         inputBoundary,
     };
 }

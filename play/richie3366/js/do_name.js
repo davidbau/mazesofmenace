@@ -26,7 +26,6 @@ import { set_twoweap, can_no_longer_twoweap } from './wield.js';
 import { cmdq_pop, cmdq_clear } from './cmd.js';
 import { rn2, rn1, rn2_on_display_rng, rnd_on_display_rng } from './rng.js';
 import { wipeout_text } from './engrave.js';
-import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, canspotmon, pline,
     glyph_to_obj_at, glyph_is_swallow_at, see_with_infrared, sensemon,
@@ -35,7 +34,7 @@ import {
     Hallucination as youprop_Hallucination,
 } from './display.js';
 import {
-    paint_corner_nhw_menu, dismiss_nhw_menu, discover_object,
+    discover_object,
     getobj, update_inventory, Blind,
 } from './invent.js';
 import { rename_disco, undiscover_object } from './o_init.js';
@@ -59,6 +58,7 @@ import {
     CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, CORPSTAT_RANDOM,
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
+import { select_menu_pick_one } from './options.js';
 import { shkname } from './shknam.js';
 import { monsterNames } from './generated/monsters_data.js';
 import {
@@ -1546,55 +1546,37 @@ function cmdq_key_ch(cq) {
 }
 
 /**
- * C do_name.c docallcmd add_menu `:520–550` + select_menu.
- * acc = lootabc ? 0 : a_char; gacc C/y/n/,/\/l. i/o only when gi.invent.
- * Interactive analogue keeps the nhgetch loop (C select_menu inner);
- * Space/Return with no pick re-prompts (existing JS; C n==0 → 'q').
- * @returns {Promise<string>} item a_char, or 'q'
+ * C do_name.c docallcmd `:520–556` — the "What do you want to name?" menu:
+ * selector `abc ? 0 : a_char`, group accelerators C/y/n/,/\\/l, i/o only
+ * with gi.invent; select_menu PICK_ONE (select_menu_pick_one: tty_end_menu
+ * gives a 0 selector its a, b, c… letter; ESC, Return and the last-page
+ * Space finish with no pick) and destroy_nhwindow inside the helper.
+ * @returns {Promise<string>} item a_char, or 'q' (C `:551–555`)
  */
 async function docallcmd_menu() {
+    /* if player wants a,b,c instead of i,o when looting, do that here too */
     const abc = !!(game.flags && game.flags.lootabc);
-    const hasInvent = !!(game.invent && game.invent.length);
-    const rows = [
-        { acc: 'm', gacc: 'C', text: 'a monster' },
-        ...(hasInvent ? [
-            { acc: 'i', gacc: 'y', text: 'a particular object in inventory' },
-            { acc: 'o', gacc: 'n', text: 'the type of an object in inventory' },
-        ] : []),
-        { acc: 'f', gacc: ',', text: 'the type of an object upon the floor' },
-        { acc: 'd', gacc: '\\', text: 'the type of an object on discoveries list' },
-        { acc: 'a', gacc: 'l', text: 'record an annotation for the current level' },
-    ];
-    const entries = [
-        { text: 'What do you want to name?', attr: ATR_INVERSE },
-        { text: '', attr: 0 },
-        ...rows.map((it) => ({
-            text: `${abc ? it.gacc : it.acc} - ${it.text}`,
-            attr: 0,
-        })),
-    ];
-    for (;;) {
-        await paint_corner_nhw_menu(entries, '(end) ');
-        const key = await nhgetch();
-        /* C docallcmd :545–551: select_menu → destroy_nhwindow, then
-           straight to the arm's prompt — no docrt between menu and
-           prompt. Corner destroy (tty_destroy_nhwindow :1999 →
-           erase_menu_or_text clearscreen=FALSE) reprints stored gbuf
-           only: no newsym, no Hallu what_mon re-roll (C keeps 'v' at
-           scen-trap-Wizard-94001 step 238; docrt() re-rolled '\'').
-           dismiss_nhw_menu is that destroy (invent.js corner arm). No
-           flush_screen either: its bot() would repaint a WIN_STATUS that
-           C leaves as is (docorner bot()s only when the menu reaches the
-           status rows). */
-        await dismiss_nhw_menu();
-        const raw = String.fromCharCode(key);
-        if (key === 27 || raw === 'q') return 'q';
-        if (raw === '\r' || raw === '\n' || raw === ' ') continue;
-        for (const it of rows) {
-            if (raw === it.gacc) return it.acc;
-            if (!abc && raw === it.acc) return it.acc;
-        }
+    const items = [];
+    const add = (a_char, gch, text) => items.push({
+        text, attr: 0, color: NO_COLOR, selectable: true,
+        selector: abc ? '' : a_char, gselector: gch, a_char,
+    });
+    add('m', 'C', 'a monster');
+    if (game.invent && game.invent.length) {
+        /* we use y and n as accelerators so that we can accept user's
+           response keyed to old "name an individual object?" prompt */
+        add('i', 'y', 'a particular object in inventory');
+        add('o', 'n', 'the type of an object in inventory');
     }
+    add('f', ',', 'the type of an object upon the floor');
+    add('d', '\\', 'the type of an object on discoveries list');
+    add('a', 'l', 'record an annotation for the current level');
+    const res = await select_menu_pick_one([
+        { text: 'What do you want to name?', attr: ATR_INVERSE, selectable: false },
+        { text: '', attr: 0, selectable: false },
+        ...items,
+    ]);
+    return res.kind === 'pick' && res.item ? res.item.a_char : 'q';
 }
 
 /**

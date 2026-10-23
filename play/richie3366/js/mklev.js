@@ -34756,19 +34756,19 @@ function mktrap(num, mktrapflags, croom, tm) {
     }
     const m = { x: 0, y: 0 };
 
-    // C: no traps in pools (lava included — IS_POOL/IS_LAVA module idiom).
-    if (tm) {
-        const tmtyp = game.level?.at(tm.x, tm.y)?.typ;
-        if (tmtyp != null && (IS_POOL(tmtyp) || IS_LAVA(tmtyp))) return;
-    }
+    /* no traps in pools */
+    // C dbridge.c is_pool_or_lava: is_pool || is_lava (isok, and a raised
+    // drawbridge counts only over DB_MOAT / DB_LAVA — not IS_POOL(typ)).
+    if (tm && (is_pool(tm.x, tm.y) || is_lava(tm.x, tm.y)))
+        return;
 
     let kind;
     if ((num | 0) > NO_TRAP && (num | 0) < TRAPNUM) {
         kind = num | 0;
     } else if (Is_rogue_level(game.u?.uz)) {
         kind = traptype_roguelvl();
-    } else if ((game.dungeons?.[game.u?.uz?.dnum | 0]?.flags?.hellish) && !rn2(5)) {
-        // C: bias the frequency of fire traps in Gehennom.
+    } else if (Inhell() && !rn2(5)) {
+        /* bias the frequency of fire traps in Gehennom */
         kind = FIRE_TRAP;
     } else {
         do {

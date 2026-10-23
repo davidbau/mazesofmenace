@@ -10153,20 +10153,22 @@ export async function select_menu_pick_one(rawItems) {
         await flush_screen(1);
         const input = String.fromCharCode(await nhgetch());
         // C wintty.c:1555–1561 — explicit choices bypass command remapping.
+        const gacc = collect_menu_gacc(items.filter(it => it.selectable), PICK_ONE);
         const explicit = page.some(it => it.selectable && it.selector === input)
-            || collect_menu_gacc(items.filter(it => it.selectable), PICK_ONE).includes(input);
+            || gacc.includes(input);
         const key = (explicit ? input : map_menu_cmd(input)).charCodeAt(0);
         const ch = String.fromCharCode(key);
-        const hit = (key !== 27 && key !== 13 && key !== 10 && key !== 32
-            && ch !== '>' && ch !== '<' && ch !== '^' && ch !== '|')
-            ? page.find((it) => it.selectable && it.selector === ch)
-            : null;
-        /* C wintty.c process_menu_window group_accel — gch of add_menu
-         * (doextlist ':' / 's'). Whole menu, not the current page. */
-        const ghit = !hit && ch && ch !== '>' && ch !== '<'
-            && ch !== '^' && ch !== '|'
-            && key !== 27 && key !== 13 && key !== 10 && key !== 32
+        const cmdKey = key === 27 || key === 13 || key === 10 || key === 32
+            || ch === '>' || ch === '<' || ch === '^' || ch === '|';
+        /* C wintty.c process_menu_window default arm `:1742–1762`: a key in
+         * gacc goes to group_accel (whole menu, not the current page; for
+         * PICK_ONE gacc holds only gselectors that label one item) before
+         * the page's selectors are searched (doextlist ':' / 's'). */
+        const ghit = !cmdKey && ch && gacc.includes(ch)
             ? items.find((it) => it.selectable && it.gselector === ch)
+            : null;
+        const hit = !cmdKey && !ghit
+            ? page.find((it) => it.selectable && it.selector === ch)
             : null;
         // C: PICK_ONE resp_len includes gacc so ':' selector/gacc is
         // explicit, not MENU_SEARCH. Search only when neither hits.
