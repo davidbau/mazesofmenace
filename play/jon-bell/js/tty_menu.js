@@ -182,11 +182,12 @@ export class TtyMenu {
              * format, leaving mlist.str intact for geometry and MENU_SEARCH. */
             text = text.replace(/\t/g, '\x1b[1C');
             // C wintty.c:1441-1489: leave the margin and selector unstyled.
-            const attr_n = /^. [-+#] /.test(curr.str) ? 4 : 0;
+            const attr_n = /^. [-+#*] /.test(curr.str) ? 4 : 0;
             const mc = curr.menuColor;
-            const sgr = mc ? [mc.attr || '', mc.color === NO_COLOR ? ''
+            const sgr = mc ? [mc.attr || '', (mc.color === NO_COLOR || mc.color === 7) ? ''
                 : mc.color < 8 ? 30 + mc.color : 90 + mc.color - 8].filter(Boolean)
-                : curr.attr === ATR_INVERSE ? (curr.heading ? menu_heading_sgr() : [7]) : [];
+                : curr.attr === ATR_INVERSE ? (curr.heading ? menu_heading_sgr() : [7])
+                : curr.sgr || [];
             /* A run of more than four spaces inside reverse video reaches the
              * recorded terminal as cursor-forward (same rule as the status
              * bar's title bar, display.js ESC[<n>C), so those cells are
@@ -281,7 +282,10 @@ export class TtyMenu {
                 continue;
             }
 
-            if (morc >= '0' && morc <= '9') {
+            /* C wintty.c:1556-1562: a current-page item selector is an EXPLICIT
+             * choice even when it is a digit (menu_objsyms uses '0'..'5'). */
+            if (morc >= '0' && morc <= '9'
+                && !this.mlist.slice(from, to).some((c) => c.aInt && c.selector === morc)) {
                 /* C wintty.c:1570-1602: digits build a count; leading zeros
                  * are ignored. */
                 count = count * 10 + (key - 48);
@@ -383,7 +387,7 @@ export class TtyMenu {
                  * the CURRENT page are accepted (page_start..page_end). */
                 for (let i = from; i < to; i++) {
                     const curr = this.mlist[i];
-                    if (curr.aInt && curr.selector === morc) {
+                    if (how !== PICK_NONE && curr.aInt && curr.selector === morc) {
                         // C toggle_menu_curr toggles this entry even in
                         // PICK_ONE; a preselected entry can remain alongside
                         // the new pick. The option handler resolves that pair.
@@ -408,6 +412,10 @@ export class TtyMenu {
             game._statusBlankAfterDocrt = true;
             if (game.disp) game.disp.botlx = 1;
         }
+        /* erase_menu_or_text repaints the rows the window covered (wintty.c:966-983)
+         * with the symset handling live at dismissal. */
+        if (game._decStaleFrom != null)
+            game._decStaleFrom = Math.max(game._decStaleFrom, this._lines.length + 1);
         if (this.cancelled) return { count: -1, picks: [] };
         const picks = this.mlist.filter((c) => c.aInt && c.selected).map((c) => c.aInt);
         return { count: picks.length, picks };

@@ -791,9 +791,21 @@ export async function destroy_items(mon_is_hero, dmgtyp, dmg_in) {
      * for u_carry); reservoir-sample eligible stacks into items_to_destroy[0..limit).
      * The rn2(elig_stacks) at 6038 fires once for every eligible stack PAST the
      * first 'limit' (elig_stacks counts pre-increment). */
+    /* C zap.c:6034 bypass_objlist(*objchn, FALSE) clears the chain's bypass
+     * bits, then the while (nxt_unbypassed_obj(*objchn)) scan (worn.c:1142)
+     * runs bypass_obj() on every object it returns -- which sets
+     * svc.context.bypasses = TRUE.  The closing bypass_objlist(.., FALSE)
+     * (zap.c:6093) clears only the per-object bits, so context.bypasses
+     * STAYS TRUE until clear_bypasses() at the end of the monster move: a
+     * corpse made later this turn is bypass_obj()'d by make_corpse
+     * (mon.c:917) and a following bhitpile skips it (zap.c:2133). */
     const chain = [];
     for (let o = game.invent; o; o = o.nobj)
+        o.bypass = 0;
+    for (let o = game.invent; o; o = o.nobj) {
+        bypass_obj(o);
         chain.push(o);
+    }
     let elig_stacks = 0;
     const items_to_destroy = [];
     for (const obj of chain) {
@@ -833,6 +845,9 @@ export async function destroy_items(mon_is_hero, dmgtyp, dmg_in) {
         else
             dmg_out += await maybe_destroy_item(obj, dmgtyp);
     }
+    /* C zap.c:6093-6094: bypass_objlist(*objchn, FALSE) -- bits only. */
+    for (let o = game.invent; o; o = o.nobj)
+        o.bypass = 0;
     return dmg_out;
 }
 
@@ -3346,8 +3361,16 @@ export async function destroy_items_mon(mon, dmgtyp, dmg_in) {
     if (limit > MAX_ITEMS_DESTROYED) limit = MAX_ITEMS_DESTROYED;
     if (limit < 1) return 0;
     /* C zap.c:6031-6068: scan mon->minvent (a monster is never u_carry). */
+    /* zap.c:6034 bypass_objlist(FALSE) then nxt_unbypassed_obj() (worn.c:1142)
+     * bypass_obj()s every object it walks, setting svc.context.bypasses TRUE;
+     * that flag outlives the closing bypass_objlist(FALSE) (zap.c:6093) until
+     * clear_bypasses() -- see the hero path above. */
     const chain = [];
-    for (let o = mon && mon.minvent; o; o = o.nobj) chain.push(o);
+    for (let o = mon && mon.minvent; o; o = o.nobj) o.bypass = 0;
+    for (let o = mon && mon.minvent; o; o = o.nobj) {
+        bypass_obj(o);
+        chain.push(o);
+    }
     let elig_stacks = 0;
     const items_to_destroy = [];
     for (const obj of chain) {
@@ -3368,6 +3391,7 @@ export async function destroy_items_mon(mon, dmgtyp, dmg_in) {
         if (!obj) continue;
         dmg_out += (await maybe_destroy_item_mon(mon, obj, dmgtyp));
     }
+    for (let o = mon && mon.minvent; o; o = o.nobj) o.bypass = 0;
     return dmg_out;
 }
 
@@ -4024,7 +4048,9 @@ export async function explode(x, y, type, dam, olet, expltype) {
                     mtmp.mhp = (mtmp.mhp | 0) - (mdam + itemdmg);
                 }
                 if (DEADMONSTER(mtmp)) {
-                    const xkflg = 0;
+                    /* C explode.c:553-580 */
+                    const xkflg = (adtyp === AD_FIRE && _completely_burns(mtmp))
+                                  ? XKILL_NOCORPSE : 0;
 
                     if (!_expl_mon_moving()) {
                         await xkilled(mtmp, XKILL_GIVEMSG | xkflg);
@@ -4037,6 +4063,8 @@ export async function explode(x, y, type, dam, olet, expltype) {
                            monkilled_trap is this tree's monster-death-without-
                            hero-credit body, and is where resist() already routes
                            C's monkilled(mtmp, "", AD_RBRE). */
+                        if (xkflg)
+                            adtyp = AD_RBRE; /* no corpse (explode.c:579) */
                         await monkilled_trap(mtmp);
                     }
                 } else if (!_expl_mon_moving()) {
@@ -4609,8 +4637,7 @@ function _resists_elem_zap(mon, mask) {
 
 function _completely_burns(mon) {
     const mndx = (mon.mndx ?? mon.mnum) | 0;
-    void mndx;
-    return false;
+    return mndx === PM_PAPER_GOLEM || mndx === PM_STRAW_GOLEM;
 }
 
 /* C zap.c:3000 spell_damage_bonus — hero-cast spell damage modifier. */

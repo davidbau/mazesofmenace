@@ -133,7 +133,7 @@ import {
 import { emitGlyphUpdateNotices, emitStartupA11yNotices } from './startup_a11y.js';
 import { u_wipe_engr } from './engrave.js';
 import { check_special_room } from './rooms.js';
-import { rloc } from './teleport.js';
+import { rloc, tele } from './teleport.js';
 import {
     block_point,
     cansee,
@@ -980,67 +980,57 @@ async function finishElapsedTurnAfterTimeout(
     else await regen_hp(wtcap, state, regenEnv);
     // C ref: allmain.c's "moving around while encumbered is hard work" block,
     // between regen_hp() and regen_pw(). The gate is allmain.c's; what it
-    // guards is hack.c overexert_hp(), whose port lives in js/hack.js and
-    // stops only for the arm that prints, exercises Constitution and faints.
-    // Only a burdened hero can reach wtcap > MOD_ENCUMBER, and a burdened turn
-    // is planned on the clone first, which runs this block too: a hero already
-    // down to one hit point refuses there, and advanceElapsedTurn() converts
-    // that refusal into the turn's boundary before the live pass starts. So
-    // the live pass arrives here with a point to spare and spends it, marking
-    // the status line for redraw. scripts/allmain-turn.test.mjs's "heavy, 30th
-    // turn, healthy" row asserts that decrement.
+    // guards is hack.c overexert_hp(). Its fainting arm runs against the
+    // planning clone with the same RNG and silent output, then live in this
+    // source order before energy regeneration and the immobility countdown.
     if (wtcap > MOD_ENCUMBER && state.u.umoved
         && !(wtcap < EXT_ENCUMBER
             ? state.moves % 30
             : state.moves % 10)) {
-        overexert_hp(
-            state,
-            () => elapsedTurnBoundary('overexertion hit point loss'),
-        );
+        await overexert_hp(state, {
+            random,
+            message: turnMessage,
+            statusRefresh: turnStatusRefresh,
+            encumberMessage: (subject) => encumber_msg(
+                subject, { message: turnMessage },
+            ),
+        });
     }
     await regen_pw(wtcap, state, regenEnv);
 
-    // C ref: allmain.c:307-340. Prayer invulnerability suppresses both
-    // periodic teleportation and every delayed-change check, including
-    // invalidating an existing pending change.
-    if (!state.u.uinvulnerable) {
-        // C ref: allmain.c moveloop_core():307-320. Teleportation is the union of
-        // the intrinsic and extrinsic property bits. Keep invulnerability as the
-        // outer short-circuit so it suppresses rn2(85), and consume that draw
-        // before delayed polymorph, searching, warning, hunger, and engraving.
-        if (propertyActive(state, TELEPORT)
-            && !random.rn2(85)) {
-            const oldUx = state.u.ux;
-            const oldUy = state.u.uy;
-
-            // teleport.c:tele() is a discarded void call. Its current
-            // scrolltele()/safe_teleds() path bypasses this cloned turn's random
-            // context and uses shared display/input, so it cannot run safely from
-            // the allmain planning pass. Record the exact gap instead of inventing
-            // draws, messages, or a destination. The zero-result recipe under
-            // recipes/allmain.c/ documents the first blocked source entry.
-            note_unported('teleport.c tele');
-
-            // Keep the source's moved-square aftermath in order for when tele()
-            // is plan-safe: unchanged coordinates leave both queues untouched.
-            if (state.u.ux !== oldUx || state.u.uy !== oldUy) {
-                if (!(await next_to_u(state, {
-                    random,
-                    message: turnMessage,
-                }))) {
-                    // C ref: allmain.c moveloop_core():314, after a changed
-                    // teleport leaves an attached pet unable to stay adjacent.
-                    await check_leash(oldUx, oldUy, {
-                        state,
-                        random,
-                        message: turnMessage,
-                    });
-                }
-                cmdq_clear(CQ_CANNED, state);
-                cmdq_clear(CQ_REPEAT, state);
-            }
+    // C allmain.c:307-320. A periodic teleport may read a destination and
+    // change the map owning the remaining upkeep. Stop the clone before that
+    // call, run it live, then plan the tail from the actual destination.
+    if (!state.u.uinvulnerable && propertyActive(state, TELEPORT)
+        && !random.rn2(85)) {
+        if (planning) return { beforeTeleport: true };
+        const oldUx = state.u.ux;
+        const oldUy = state.u.uy;
+        await tele(state, { random, message: turnMessage });
+        if (state.program_state?.gameover) return { afterTeleport: true };
+        if (state.u.ux !== oldUx || state.u.uy !== oldUy) {
+            if (!(await next_to_u(state, { random, message: turnMessage })))
+                await check_leash(oldUx, oldUy, { state, random, message: turnMessage });
+            cmdq_clear(CQ_CANNED, state);
+            cmdq_clear(CQ_REPEAT, state);
         }
+        const tailPlan = await preflightElapsedTurnTail(state,
+            (planned, planningRandom) => finishElapsedTurnAfterTeleport(
+                planned, planningRandom, { planning: true },
+            ));
+        const result = await finishElapsedTurnAfterTeleport(state, random);
+        if (tailPlan?.beforeUnmul && !result?.afterUnmul)
+            throw new Error('elapsed-turn teleport tail disagreed with live delayed action');
+        return { ...result, afterTeleport: true };
+    }
+    return finishElapsedTurnAfterTeleport(state, random, { planning });
+}
 
+// C allmain.c moveloop_core(), immediately after periodic teleportation.
+// The live destination determines delayed changes and the remaining upkeep.
+async function finishElapsedTurnAfterTeleport(state, random, { planning = false } = {}) {
+    const turnMessage = planning ? async () => {} : ttyPline;
+    if (!state.u.uinvulnerable) {
         // C ref: allmain.c moveloop_core():322-339. `mvl_change` is a C static,
         // so keep its per-game, nonsaved value on the game object. planningState()
         // shallow-copies top-level scalars, giving the dry run its own pending
@@ -1060,61 +1050,64 @@ async function finishElapsedTurnAfterTimeout(
         }
         if (state.mvl_change && !propertyActive(state, UNCHANGING)
             && (state.multi ?? 0) >= 0) {
+            // Both transitions can read input and change the active form.
+            // The clone stops before occupation or transformation effects.
+            if (planning) return { beforeChange: true };
             await stop_occupation(state, { message: turnMessage });
             if (state.mvl_change === 1) {
-                // The C call discards polyself()'s return. Its existing body
-                // owns the transition; this caller does not inspect that value.
-                // polyself() currently draws from the live core context, so do
-                // not invoke it while simulating a planning clone.
-                if (planning)
-                    elapsedTurnBoundary('delayed polymorph needs clone-owned RNG');
                 await polyself(POLY_NOFLAGS, state);
             } else {
-                // Confirmation reads input, so defer the transition to the live
-                // turn just as the polymorph dispatch above does.
-                if (planning)
-                    elapsedTurnBoundary('delayed lycanthropy needs live input');
                 await you_were(state, { random, message: turnMessage });
             }
+            if (state.program_state?.gameover) return { afterChange: true };
             state.mvl_change = 0;
+            const tailPlan = await preflightElapsedTurnTail(state,
+                (planned, planningRandom) => finishElapsedTurnAfterChange(
+                    planned, planningRandom, { planning: true },
+                ));
+            const result = await finishElapsedTurnAfterChange(state, random);
+            if (tailPlan?.beforeUnmul && !result?.afterUnmul)
+                throw new Error('elapsed-turn shape-change tail disagreed with live delayed action');
+            return { ...result, afterChange: true };
         }
 
     }
 
-    // C ref: allmain.c moveloop_core():342-346. A Ranger or an Archeologist
-    // holds SEARCHING from experience level 1 (js/attrib.js ran_abil and
-    // arc_abil), so automatic searching runs on every turn that hero takes;
-    // the following Warning arm then reveals nearby hidden threats through
-    // detect.c warnreveal(). UnsupportedSearchError remains limited to the
-    // explicit `s` command's unported terrain/trap branches and is converted
-    // by js/cmd.js at that command boundary.
-    //
-    // detect.c:2079-2088, the trap block, is the one C does not gate on aflag,
-    // and js/detect.js preflightTrap() refuses its two unported branches --
-    // activate_statue_trap() and find_trap()'s hallucinatory display -- as
-    // plain Errors that would escape runSegment(). Neither is recordable yet:
-    // a statue trap needs level_difficulty() >= 8 (js/mktrap.js traptype_rnd())
-    // or a Statuary theme room, and across seeds 1-6000 no D:1 Statuary placed
-    // an unseen statue trap within a ten-step same-room walk of a Ranger's
-    // arrival square, while hallucination has no D:1 source this port reaches.
-    // Give them the boundary class, and this seam its catch, when a recorded
-    // case reaches one.
-    const searchEnv = {
-        state,
-        random,
-        planning,
-        // A planning clone must not repaint the live terminal.  The
-        // discovery state changes still run on the clone through
-        // detect.c's mfind0() and warning reveal path.
-        newSym: planning ? () => {} : (x, y) => newsym(x, y),
-    };
+    return finishElapsedTurnAfterChange(state, random, { planning });
+}
+
+// C allmain.c moveloop_core(), after delayed changes. A new monster form
+// owns the remaining search, warning, hunger and movement-allocation checks.
+async function finishElapsedTurnAfterChange(state, random, { planning = false } = {}) {
+    // C allmain.c:342-346. Search can reveal terrain, display a found trap,
+    // or animate a statue. Run those effects live and plan remaining upkeep
+    // from the resulting map rather than letting the clone consume input.
     if (propertyActive(state, SEARCHING)
         && !state.level.flags?.noautosearch
         && (state.multi ?? 0) >= 0) {
-        if (planning)
-            elapsedTurnBoundary('burdened multi-cycle automatic search');
-        await automatic_search(searchEnv);
+        if (planning) return { beforeSearch: true };
+        await automatic_search({ state, random });
+        if (state.program_state?.gameover) return { afterSearch: true };
+        const tailPlan = await preflightElapsedTurnTail(state,
+            (planned, planningRandom) => finishElapsedTurnAfterSearch(
+                planned, planningRandom, { planning: true },
+            ));
+        const result = await finishElapsedTurnAfterSearch(state, random);
+        if (tailPlan?.beforeUnmul && !result?.afterUnmul)
+            throw new Error('elapsed-turn search tail disagreed with live delayed action');
+        return { ...result, afterSearch: true };
     }
+    return finishElapsedTurnAfterSearch(state, random, { planning });
+}
+
+// C allmain.c moveloop_core(), after automatic searching and before warning.
+async function finishElapsedTurnAfterSearch(state, random, { planning = false } = {}) {
+    const turnMessage = planning ? async () => {} : ttyPline;
+    const turnStatusRefresh = planning ? async () => {} : () => bot();
+    const searchEnv = {
+        state, random, planning,
+        newSym: planning ? () => {} : (x, y) => newsym(x, y),
+    };
     if (propertyActive(state, WARNING)) {
         await warnreveal({
             ...searchEnv,
@@ -1539,11 +1532,17 @@ async function advanceElapsedTurn(state) {
             let afterUnmul;
             let afterTimeout;
             let afterHunger;
+            let afterTeleport;
+            let afterSearch;
+            let afterChange;
             try {
                 const result = await finishElapsedTurn(state, random);
                 afterUnmul = result?.afterUnmul;
                 afterTimeout = result?.afterTimeout;
                 afterHunger = result?.afterHunger;
+                afterTeleport = result?.afterTeleport;
+                afterSearch = result?.afterSearch;
+                afterChange = result?.afterChange;
             } catch (error) {
                 // A live-only timeout and its fresh tail can reach existing
                 // command or upkeep refusals after the prefix has completed.
@@ -1572,12 +1571,24 @@ async function advanceElapsedTurn(state) {
                     'elapsed-turn preflight disagreed with live timeout',
                 );
             }
+            if (preflight.beforeTeleport
+                && upkeepCount === preflight.upkeepCount && !afterTeleport) {
+                throw new Error('elapsed-turn preflight disagreed with live teleport');
+            }
+            if (preflight.beforeSearch
+                && upkeepCount === preflight.upkeepCount && !afterSearch) {
+                throw new Error('elapsed-turn preflight disagreed with live search');
+            }
+            if (preflight.beforeChange
+                && upkeepCount === preflight.upkeepCount && !afterChange) {
+                throw new Error('elapsed-turn preflight disagreed with live shape change');
+            }
             if (preflight.beforeHunger
                 && upkeepCount === preflight.upkeepCount && !afterHunger) {
                 throw new Error('elapsed-turn preflight disagreed with live hunger');
             }
             if (!pendingDeathReplan
-                && (afterUnmul || afterTimeout || afterHunger)
+                && (afterUnmul || afterTimeout || afterHunger || afterTeleport || afterSearch || afterChange)
                 && state.u.umovement < NORMAL_SPEED) {
                 preflight = await planElapsedTurn(state, {
                     consumeHeroRation: false,

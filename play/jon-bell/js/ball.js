@@ -24,9 +24,10 @@ import { near_capacity } from './weight.js';
 import { nomul } from './allmain.js';
 import { newsym, map_object, pline } from './display.js';
 import { Blind } from './vision.js';
-import { omon_adj, _spoteffects_pickup, welded, setuwep, setuswapwep,
+import { omon_adj, welded, setuwep, setuswapwep,
          setuqwep, freeinv, body_part, set_wounded_legs } from './cmd.js';
 import { find_mac, t_at, reset_utrap, fill_pit } from './trap.js';
+import { spoteffects } from './landing-effects.js';
 import { remove_object, obj_extract_self, maybe_unhide_at, place_object } from './mklev.js';
 import { flooreffects, Yname2 } from './cmd.js';
 import { rn1, rn2, rnd } from './rng.js';
@@ -715,9 +716,10 @@ async function dragSection(x, y, uball, uchain, bc_control, ballx, bally, chainx
             if (t) t.tseen = 1;
         } else {
             // ball.c:806-825
-            const dieroll = rnd(20);
+            await pline('You are jerked back by the iron ball!');
             const victim = m_at(chOx, chOy);
             if (victim) {
+                const dieroll = rnd(20);
                 let tmp = -2 + (game.u?.uluck | 0) + find_mac(victim);
                 tmp += omon_adj(victim, uball, true);
                 if (tmp >= dieroll) {
@@ -741,7 +743,7 @@ async function dragSection(x, y, uball, uchain, bc_control, ballx, bally, chainx
             /* C ball.c:825 — process effects at the square after dragging.
              * The shared arrival pickup body is the live portion of
              * spoteffects and preserves its async command conventions. */
-            await _spoteffects_pickup(true);
+            await spoteffects(true);
             return false;
         }
     }

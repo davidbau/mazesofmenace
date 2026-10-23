@@ -107,12 +107,30 @@ async function read_yn(prompt, acceptQ) {
     /* C topl.c:537-539 rewrites gt.toplines as prompt + key2txt(q) and
      * remember_topl() files THAT: the answered prompt, never the bare one. */
     const answered = (a) => { putmsghistory(`${shown} ${a}`, false); stick(); return a; };
+    let doprev = false;
     for (;;) {
         const sh = g._topl_suppress_history;
         g._topl_suppress_history = true;
         let key;
         try { key = await nhgetch(); }
         finally { g._topl_suppress_history = sh; }
+        /* C topl.c:432-459 — ^P recalls history (twice the first time); the next
+         * key is swallowed by the reprompt. */
+        if (key === 16) {
+            const { doprev_message } = await import('./cmd.js');
+            if (!doprev) await doprev_message();
+            await doprev_message();
+            /* redotoplin leaves the cursor after the recalled text. */
+            if (g.nhDisplay) topl_park_cursor(g.nhDisplay, g._topl_history_recall || '');
+            doprev = true;
+            continue;
+        } else if (doprev) {
+            g._pending_message = shown;
+            await flush_screen(1);
+            if (g.nhDisplay) topl_park_cursor(g.nhDisplay, `${shown} `);
+            doprev = false;
+            continue;
+        }
         const c = String.fromCharCode(key).toLowerCase();
         if (c === 'y' || c === 'n' || (acceptQ && c === 'q'))
             return answered(c);

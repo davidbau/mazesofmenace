@@ -198,6 +198,12 @@ export async function doopen_indir(x, y) {
         }
     }
 
+    /* C lock.c:818-821 — can't reach over the edge of the pit */
+    if (g.u.utrap && g.u.utraptype === TT_PIT) {
+        await pline("You can't reach over the edge of the pit.");
+        return ECMD_OK;
+    }
+
     if (_stumble_on_door_mimic_stub(cx, cy))
         return ECMD_TIME;
     if (_confusion_stub() || _stunned_stub())
@@ -624,11 +630,13 @@ export async function doclose() {
              * lastseentyp means "learned something" → ECMD_TIME. */
             const _fl = door;
             const _rg = _fl ? _fl.remembered_glyph : null;
-            const _og = _rg ? `${_rg.ch}|${_rg.color}|${_rg.cls}|${_rg.decgfx}` : '';
+            /* cls is a JS-side representation tag (absent on glyphs stored before
+             * the first feel_location); C compares only the glyph int. */
+            const _og = _rg ? `${_rg.ch}|${_rg.color}|${_rg.decgfx}` : '';
             const _ot = _fl ? (_fl.lastseentyp | 0) : 0;
             feel_location(x, y);
             const _ng0 = _fl ? _fl.remembered_glyph : null;
-            const _ng = _ng0 ? `${_ng0.ch}|${_ng0.color}|${_ng0.cls}|${_ng0.decgfx}` : '';
+            const _ng = _ng0 ? `${_ng0.ch}|${_ng0.color}|${_ng0.decgfx}` : '';
             if (_ng !== _og || (_fl ? (_fl.lastseentyp | 0) : 0) !== _ot)
                 res = ECMD_TIME;
         }
@@ -1223,7 +1231,7 @@ export async function doforce() {
         if (otmp.obroken || !otmp.olocked) {
             /* C lock.c:719 — already broken/unlocked. */
             otmp.lknown = 0;
-            await pline(`There is ${_force_box_doname(otmp)} here, but its lock is already ${otmp.obroken ? 'broken' : 'unlocked'}.`);
+            await pline(`There is ${await doname(otmp)} here, but its lock is already ${otmp.obroken ? 'broken' : 'unlocked'}.`);
             otmp.lknown = 1;
             continue;
         }

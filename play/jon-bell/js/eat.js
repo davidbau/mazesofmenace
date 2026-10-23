@@ -798,7 +798,8 @@ export async function newuhs(incr) {
         /* C hack.h SET_BOTL() */
         if (g.disp)
             g.disp.botl = 1;
-        /* bot() — not ported (no tty). */
+        /* C eat.c:3507-3508 disp.botl = TRUE; bot(). */
+        await bot();
     }
     /* return void; C eat.c:3514 */
 }
@@ -2279,12 +2280,7 @@ async function eatcorpse(otmp) {
     } else if ((rotted > 5 || (rotted > 3 && rn2(5))) && !_eat_Sick_resistance()) {
         tp++;
         _emit_eat_pline(`You feel ${_uprop_on(SICK) ? 'very ' : ''}sick.`);
-        const _dmg = rnd(8); /* eat.c:1942 losehp(rnd(8), ...) */
-        if (u) {
-            u.uhp = (u.uhp | 0) - (_dmg | 0);
-            if ((u.uhp | 0) > (u.uhpmax | 0))
-                u.uhpmax = u.uhp;
-        }
+        await losehp(rnd(8), "cadaver", KILLED_BY_AN); /* eat.c:1942 */
     }
 
     /* C eat.c:1945-1947 — delay is weight dependent. */
@@ -2689,7 +2685,7 @@ export function corpse_floor_xname(otmp) {
     if (q !== 1) return null; /* plural rendering not ported */
     let base = null;
     if ((otmp.otyp | 0) === CORPSE_OTYP) {
-        base = `${_monNameLower(otmp.corpsenm | 0)} corpse`;
+        base = corpse_xname(otmp, null, 1 /* CXN_SINGULAR */);
     } else {
         base = FLOOR_FOOD_XNAME[otmp.otyp | 0] || null;
     }

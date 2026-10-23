@@ -11,7 +11,7 @@ import { age_spells } from "./spell.js";
 import { exerchk, exercise, acurr, spec_ability } from "./attrib.js";
 import { overexert_hp } from "./uhitm.js";
 import { t_at, registerTrapMksobj, m_dowear, activate_statue_trap } from "./trap.js";
-import { Warning, newsym, feel_location, feel_newsym, pline, urgent_pline, flush_screen, _topl_merge_result, _topl_joins_snapshot, _topline_more_pending, You_hear } from "./display.js";
+import { Warning, newsym, feel_location, feel_newsym, pline, urgent_pline, flush_screen, _topl_merge_result, _topl_joins_snapshot, _topline_more_pending, _more_never_dismissed, _more_pages_exceed_input, flush_pending_messages, You_hear } from "./display.js";
 /* Runtime-only edge, same rule as the allmain/monmove/mklev imports below:
  * end.js does not import this module, so the cycle is one-directional and
  * do_death_sequence is only ever REFERENCED at call time. */
@@ -492,6 +492,20 @@ export async function drain_pending_death_in_place() {
          * freeze the "You die..." page's T: below the live turn. */
         if (game._movemonMsgTurn != null && (game._movemonMsgTurn | 0) < (game.moves | 0))
             game._movemonMsgTurn = null;
+        {
+            /* The fprefx taste line (eat.c:2128 "This satiates your stomach!")
+             * is still the committed topline when a lethal first-turn attack
+             * dies mid-movemon: C holds it IN FRONT of the attack plines
+             * (same fold as display.js flush_pending_messages). */
+            const _oc = game._occ_committed_topl;
+            const _live = String(game._pending_message || '');
+            if (_oc && !game.occupation && !game._resultMessage
+                && _live && !_live.startsWith(_oc.text)) {
+                game._pending_message = _topl_merge_result(_oc.text, _live,
+                                                           _topl_joins_snapshot(_oc.text));
+                game._occ_committed_topl = null;
+            }
+        }
         if (game._resultMessage) {
             /* The single-slot `_topl_joins_src` is keyed to whatever string
              * was last built by pline(), which by now is THIS turn's movemon
@@ -948,7 +962,7 @@ function temple_priest_sound(mtmp) {
     return false;
 }
 
-export function dosounds_rng() {
+export async function dosounds_rng() {
     const lf = game.level && game.level.flags;
     if (!lf)
         return;
@@ -1029,7 +1043,10 @@ export function dosounds_rng() {
             /* FALLTHRU (C sounds.c:265-266) */
             case 0:
                 /* C: Soundeffect(se_guards_footsteps, 30) — audio only. */
-                You_hear("the footsteps of a guard on patrol.");
+                await You_hear("the footsteps of a guard on patrol.");
+                if (_topline_more_pending()
+                    && (_more_never_dismissed() || _more_pages_exceed_input()))
+                    await flush_pending_messages();
                 break;
             case 2:
                 You_hear("Ebenezer Scrooge!");
@@ -1349,7 +1366,7 @@ async function fastforward_step_generic_turn_nodochug() {
     if (game.gw?.were_changes)
         set_uasmon();
     /* C ref: allmain.c:405 dosounds() — dynamic level-flag dispatch. */
-    dosounds_rng();
+    await dosounds_rng();
     /* C ref: allmain.c:353 do_storms() — Plane of Air lightning. */
     await do_storms();
     /* C ref: allmain.c:407 gethungry(). */
@@ -1413,7 +1430,7 @@ async function fastforward_step_generic_turn() {
     if (game.gw?.were_changes)
         set_uasmon();
     /* C ref: allmain.c:405 dosounds() — dynamic level-flag dispatch. */
-    dosounds_rng();
+    await dosounds_rng();
     /* C ref: allmain.c:353 do_storms() — Plane of Air lightning. */
     await do_storms();
     /* C ref: allmain.c:407 gethungry(). */
@@ -1581,6 +1598,8 @@ function regen_pw(wtcap) {
         u.uen = uen + rn1(upper, 1);
         if ((u.uen | 0) > uenmax)
             u.uen = uenmax;
+        /* C allmain.c:615 — disp.botl = TRUE (Pw changed; bot() repaints T: too). */
+        (game.disp ||= {}).botl = 1;
         if ((u.uen | 0) === uenmax)
             interrupt_multi("You feel full of energy.");
     }
@@ -1620,7 +1639,7 @@ export async function ff_head_phase_post() {
     if (game.gw?.were_changes)
         set_uasmon();
     /* C allmain.c:405 — dosounds(). */
-    dosounds_rng();
+    await dosounds_rng();
     /* C ref: allmain.c:353 do_storms() — Plane of Air lightning. */
     await do_storms();
     /* C allmain.c:407 — gethungry(). */

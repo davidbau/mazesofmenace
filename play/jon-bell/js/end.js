@@ -993,6 +993,21 @@ export async function yn_function(query, choices, defchoice, addcmdq = false, op
     (game.program_state ||= {}).input_state = 0; // otherInp
     return res;
 }
+/* C topl.c:439,484 tty_yn_function reads through readchar(), and cmd.c:5249-5258
+ * folds "ESC c" into M-c (c|0x80; ESC ESC stays ESC) when altmeta is on and
+ * input_state != otherInp (getdir sets getdirInp), so one logical key can span
+ * two recorded keystrokes. */
+async function _yn_readchar() {
+    const g = game;
+    let raw = await nhgetch();
+    let sym = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
+    if (sym === 27 && g.iflags?.altmeta && g.program_state?.input_state) {
+        raw = await nhgetch();
+        const c = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
+        sym = (c === -1 || c === 0 || c === 27) ? 27 : (c | 0x80);
+    }
+    return sym;
+}
 async function _yn_prompt(query, choices, defchoice, opts = {}) {
     const g = game;
     /* C tty_yn_function (topl.c:397-402) acknowledges TOPLINE_NEED_MORE
@@ -1065,10 +1080,11 @@ async function _yn_prompt(query, choices, defchoice, opts = {}) {
             const savedHistory = g._topl_suppress_history;
             let raw;
             g._topl_suppress_history = true;
-            try { raw = await nhgetch(); }
+            try { raw = await _yn_readchar(); }
             finally { g._topl_suppress_history = savedHistory; }
             const key = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
             putmsghistory(qbuf + ' ' + key2txt(key));
+            g._toplEmptyAfterSuppress = false; // topl.c:537-539 gt.toplines = prompt+key
             g._topl_unacknowledged = false; // TOPLINE_NON_EMPTY, not NEED_MORE
             if (row) {
                 g._pending_message = '';
@@ -1076,6 +1092,7 @@ async function _yn_prompt(query, choices, defchoice, opts = {}) {
             }
             return String.fromCharCode(key);
         }
+        let doprev = false;
         for (;;) {
             g._pending_message = qbuf;
             await flush_screen(1);
@@ -1087,11 +1104,25 @@ async function _yn_prompt(query, choices, defchoice, opts = {}) {
             const savedHist = g._topl_suppress_history;
             g._topl_suppress_history = true;
             let raw;
-            try { raw = await nhgetch(); }
+            try { raw = await _yn_readchar(); }
             finally { g._topl_suppress_history = savedHist; }
             const key = typeof raw === 'number' ? raw
                       : (raw && raw.charCodeAt ? raw.charCodeAt(0) : 0);
-            const _answered = (c) => { putmsghistory(qbuf + ' ' + key2txt(c.charCodeAt(0))); return c; };
+            const _answered = (c) => { g._toplEmptyAfterSuppress = false; putmsghistory(qbuf + ' ' + key2txt(c.charCodeAt(0))); return c; };
+            /* C topl.c:432-460 — ^P recalls message history (twice the first time,
+             * "need two initially"); the NEXT key is swallowed by the reprompt
+             * (topl.c:452-459 "BUG[?]") whatever it is. */
+            if (key === 16) {
+                const { doprev_message } = await import('./cmd.js');
+                if (!doprev) await doprev_message();
+                await doprev_message();
+                if (g.nhDisplay) topl_park_cursor(g.nhDisplay, g._topl_history_recall || '');
+                doprev = true;
+                continue;
+            } else if (doprev) {
+                doprev = false;
+                continue;
+            }
             if (key === 27) {
                 /* C win/tty/topl.c:463-470 — ESC resolves to 'q' when the response
                  * string offers one, else 'n', else the default. */
@@ -1368,15 +1399,22 @@ async function disclose(how, taken) {
             /* docorner() (wintty.c:3650-3720) repaints the status rows via
              * bot() only when `ymax >= wins[WIN_STATUS]->offy`; a menu shorter
              * than the status offy (22) leaves both status rows intact. */
-            const _statusClip = ((_discloseInv?.winRows ?? 99) < 22)
+            const _dRows = _discloseInv?.winRows ?? 99;
+            const _statusClip = (_dRows < 22)
                 ? undefined
-                : (_discloseInv?.WIN_COL === 0)
-                    /* offx 0: docorner(0, ...) (wintty.c:3650-3684) erases both
-                     * status rows from column 0 and the text window that
-                     * follows never repaints them (recorded: both blank). */
-                    ? 0
-                    : Math.max(0, (_discloseInv?.WIN_COL ?? 2) - 2);
+                : (_dRows === 22)
+                    ? -1
+                    : (_discloseInv?.WIN_COL === 0)
+                        /* offx 0: docorner(0, ...) (wintty.c:3650-3684) erases both
+                         * status rows from column 0 and the text window that
+                         * follows never repaints them (recorded: both blank). */
+                        ? 0
+                        : Math.max(0, (_discloseInv?.WIN_COL ?? 2) - 2);
+            const _savedPW = g._pickinv_window;
+            if (_statusClip === -1) g._pickinv_window = { ...(_savedPW || {}), WIN_COL: _discloseInv?.WIN_COL };
+            try {
             await container_contents(g.invent, true, true, false, _statusClip);
+            } finally { if (_statusClip === -1) g._pickinv_window = _savedPW; }
         }
         if (c === 'q')
             g.program_state.stopprint++;

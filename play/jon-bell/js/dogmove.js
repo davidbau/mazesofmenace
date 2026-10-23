@@ -13,7 +13,7 @@ import { set_apparxy as set_apparxy_dm, itsstuck, find_pmmonst, bee_eat_jelly } 
 // WIRE_PENDING: port-m_move-monmove-1779329519 — called from monmove.js:m_move
 import { rn1, rn2, rnd, d } from './rng.js';
 /* C zap.c:1458 obj_resists — the single body (see the re-export below). */
-import { obj_resists } from './zap.js';
+import { obj_resists, mon_explodes as mon_explodes_dm } from './zap.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 import { unstuck as unstuck_dm, m_unleash, sticks, dismount_steed as dismount_steed_qm } from './dog.js';
 import { topl_force_break_after as topl_force_break_after_qm, GLYPHCLS_OBJ as GLYPHCLS_OBJ_DM } from './display.js';
@@ -50,7 +50,7 @@ import { closed_door, accessible, is_pool } from './look.js';
 import { erode_obj, mintrap as mintrap_real, goodpos as goodpos_real, m_useup as m_useup_dg } from './trap.js';
 import { PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER, PM_STEAM_VORTEX, PM_AIR_ELEMENTAL, PM_BLACK_PUDDING, PM_BROWN_PUDDING, PM_SHADE, PM_DEATH, PM_PESTILENCE, PM_FAMINE, PM_CHICKATRICE, PM_COCKATRICE, PM_MEDUSA, PM_STONE_GOLEM, PM_ANGEL, PM_RUST_MONSTER, PM_GELATINOUS_CUBE, PM_ARCHON } from './pm.generated.js';
 import { zombie_maker, dmgtype_fromattack, grow_up, nonliving, onscary, monPmname, splitobj, nextoid, which_armor, permonstTemplate, set_mon_data } from './makemon.js';
-import { pline, newsym, _topline_more_pending, _more_never_dismissed, flush_pending_messages, mon_visible, canseemon, canspotmon, map_invisible, glyph_is_invisible_at, unmap_object, You_hear, Deaf, sensemon } from './display.js';
+import { pline, newsym, _topline_more_pending, _more_never_dismissed, _more_pages_exceed_input, flush_pending_messages, mon_visible, canseemon, canspotmon, map_invisible, glyph_is_invisible_at, unmap_object, You_hear, Deaf, sensemon } from './display.js';
 import { Japanese_item_name, xname_scroll, xname_armor, doname_potion, xname, doname, distant_name, in_distant_name, is_quest_artifact } from './objnam.js';
 /* C o_init.c:441-452 observe_object(obj) — the ONE side effect a formatting
  * call has, and the reason distant_name() exists at all.  Imported here
@@ -1507,6 +1507,11 @@ async function dog_invent(mtmp, edog, udist) {
     if (oc === BALL_CLASS || oc === CHAIN_CLASS || oc === ROCK_CLASS)
         return 0;
 
+    /* C dogmove.c:430-432 — #ifdef MAIL_STRUCTURES (defined, global.h:430):
+     * && obj->otyp != SCR_MAIL */
+    if ((floorObj.otyp | 0) === 364 /* SCR_MAIL */)
+        return 0;
+
     /* C: !(is_mines_prize || is_soko_prize) — skip special items */
     /* Stub: no mines/soko prize tracking in JS yet — assume not special */
 
@@ -2927,7 +2932,7 @@ export async function mattackm(magr, mdef) {
         case AT_EXPL:
             if (distmin(magr.mx, magr.my, mdef.mx, mdef.my) > 1)
                 continue;
-            res[i] = explmm(magr, mdef, mattk);
+            res[i] = await explmm(magr, mdef, mattk);
             if (res[i] === M_ATTK_MISS) {
                 strike = 0;
                 attk = 0;
@@ -3198,7 +3203,7 @@ async function monkilled_dm(mdef, mattk) {
     if (cansee(mdef.mx | 0, mdef.my | 0)) {
         const verb = nonliving(mdef.data) ? 'destroyed' : 'killed';
         pline_mon(mdef, `${Monnam_dm(mdef)} is ${verb}!`);
-        if (_topline_more_pending() && _more_never_dismissed())
+        if (_topline_more_pending() && (_more_never_dismissed() || _more_pages_exceed_input()))
             await flush_pending_messages();
     } else {
         /* C mon.c:3390-3391 — the sad feeling is deferred until mondead()
@@ -3487,7 +3492,39 @@ function a_monnam(mdef) {
     return x_monnam(mdef, ARTICLE_A, null, 0, true);
 }
 function clone_mon(mdef, _a, _b) { return split_mon_rt(mdef, null); }
-function explmm(magr, mdef, mattk) { return M_ATTK_MISS; }
+/* C mhitm.c:970-1010 explmm(magr, mdef, mattk) — AT_EXPL monster-vs-monster. */
+async function explmm(magr, mdef, mattk) {
+    let result;
+    if (magr.mcan)
+        return M_ATTK_MISS;
+    if (cansee(magr.mx | 0, magr.my | 0))
+        pline(Monnam_dm(magr) + ' explodes!');
+    else
+        noises_dm(magr, mattk);
+    /* monster explosion types which actually create an explosion */
+    const adt = mattk.adtyp | 0;
+    if (adt === _AD_FIRE || adt === _AD_COLD || adt === _AD_ELEC) {
+        await mon_explodes_dm(magr, mattk);
+        /* unconditionally set AGR_DIED here; lifesaving is accounted below */
+        result = M_ATTK_AGR_DIED | (DEADMONSTER_dm(mdef) ? M_ATTK_DEF_DIED : 0);
+    } else {
+        result = await mdamagem_dm(magr, mdef, mattk, null, 0);
+    }
+    /* Kill off aggressor if it didn't die. */
+    if (!(result & M_ATTK_AGR_DIED)) {
+        const was_leashed = !!(magr.mleashed | 0);
+        await mondead(magr);
+        if (!DEADMONSTER_dm(magr))
+            return result; /* life saved */
+        result |= M_ATTK_AGR_DIED;
+        /* mondead() -> m_detach() -> m_unleash() always suppresses the slack message */
+        if (was_leashed)
+            pline('Your leash falls slack.');
+    }
+    if (magr.mtame) /* give this one even if it was visible */
+        await You('have a melancholy feeling for a moment, then it passes.');
+    return result;
+}
 export function failed_grab(magr, mdef, mattk) {
     const notonhead = !!game.gn?.notonhead;
     const unsolid = unsolid_dm(mdef?.data);
@@ -4468,10 +4505,21 @@ export async function slept_monst(mon) {
     }
 }
 
-/* C mon.c:3300 mon_to_stone(): a non-stone golem becomes a stone golem. */
+/* C mon.c:3747-3764 mon_to_stone(): a non-stone golem becomes a stone golem. */
 export async function mon_to_stone(mtmp) {
-    if (mtmp)
-        await newcham(mtmp, PM_STONE_GOLEM, 0);
+    if (!mtmp) return;
+    if ((mtmp.data?.mlet | 0) === S_GOLEM) {
+        /* it's a golem, and not a stone golem */
+        if (canseemon(mtmp))
+            pline_mon(mtmp, '%s solidifies...', Monnam(mtmp));
+        if (await newcham(mtmp, PM_STONE_GOLEM, 0)) {
+            if (canseemon(mtmp))
+                pline(`Now it's ${an_qm(monPmname(mtmp.data?.pmidx | 0, Mgender_dm(mtmp)) || '')}.`);
+        } else {
+            if (canseemon(mtmp))
+                pline('... and returns to normal.');
+        }
+    }
 }
 
 /* C mon.c:3274-3359 — turn a monster into a statue (or rock), then detach it.
@@ -4523,6 +4571,18 @@ export async function monstone(mtmp) {
         statue = (await mksobj_at(ROCK_OTYP, x, y, true, false));
     }
     stackobj_dm(statue);
+    /* C mon.c:3340-3345 — "mondead() already does this, but we must do it
+     * before the newsym": unmap an 'I' glyph, then redraw the square (the
+     * hallucinated statue draws display-RNG here, before mondead's own). */
+    if (glyph_is_invisible_at(x, y)) unmap_object(x, y);
+    if (cansee(x, y)) {
+        /* C's m_at() reads the map grid, where mtmp (mhp already 0) is still
+         * placed until m_detach, so this newsym maps the statue and THEN draws
+         * the monster.  This port's m_at() skips mhp < 1, so show it alive. */
+        mtmp.mhp = 1;
+        newsym(x, y);
+        mtmp.mhp = 0;
+    }
     await mondead(mtmp);
 }
 /* seemimic: the LOCAL `no-op stub` IS DELETED.  It shadowed the C-faithful

@@ -18,7 +18,7 @@ import { PM_HEALER, PM_ROCK_MOLE, PM_WOODCHUCK, PM_PONY, PM_HORSE, PM_WARHORSE }
 import { PM_FIRE_VORTEX, PM_FLAMING_SPHERE, PM_FIRE_ELEMENTAL, PM_SALAMANDER } from './pm.generated.js';
 import { COLD_RES } from './const.js';
 import monPmnamesPack from './makemon_pmnames.json' with { type: 'json' };
-import { pline, flush_screen, newsym, force_more, force_more_lone_frame, await_topl_more_dismiss, canspotmon, canseemon, map_invisible, getobj_never_mind, You_see } from './display.js';
+import { pline, flush_screen, newsym, force_more, force_more_lone_frame, await_topl_more_dismiss, canspotmon, canseemon, map_invisible, getobj_never_mind, bot, You_see } from './display.js';
 import { unmap_object, glyph_is_invisible_at, tmp_at } from './display.js';
 import { DISP_ALWAYS, DISP_END } from './const.js';
 import { aggravate, monstseesu as monstseesu_real, burn_away_slime } from './mcastu.js';
@@ -80,6 +80,7 @@ import { is_ice } from './engrave.js';
 import { can_reach_floor, hold_another_object } from './hold_another_object.js';
 import { obj_extract_self } from './mklev.js';
 import { freeinv, useupall } from './cmd.js';
+import { setnotworn } from './worn.js';
 import { _pickup_burden_level } from './wizcmds.js';
 import { Tobjnam, Yobjnam2, aobjnam } from './objnam.js';
 import { makeplural as makeplural_objnam } from './objnam.js';
@@ -601,11 +602,15 @@ export async function monster_detect(otmp, mclass) {
         g.iflags = g.iflags || {};
         const savedTerrainmode = g.iflags.terrainmode;
         g.iflags.terrainmode = TER_DETECT | TER_MON;
+        /* detect.c:112-117 browse_map: autodescribe forced on, then restored */
+        const save_autodescribe = g.iflags.autodescribe;
+        g.iflags.autodescribe = true;
         try {
             /* browse_map: dummy_pos starts on the hero's own square. */
             await getpos({ x: u.ux, y: u.uy }, false, 'monster of interest');
         } finally {
             g.iflags.terrainmode = savedTerrainmode;
+            g.iflags.autodescribe = save_autodescribe;
             p.extrinsic = (p.extrinsic | 0) & ~I_SPECIAL;
         }
     }
@@ -755,11 +760,11 @@ export async function drinkfountain() {
                 {
                     let buc_changed = false;
                     for (let otmp = g.invent; otmp; otmp = otmp.nobj) {
-                        /* C fountain.c:331 — coins are excluded, but blessed
-                         * and cursed objects still take the rn2(5) chance and
-                         * then pass through curse(); curse() itself handles
-                         * their BUC transition. */
-                        if ((otmp.oclass | 0) === COIN_CLASS || rn2(5))
+                        /* C fountain.c:331 — obj->oclass != COIN_CLASS && !obj->cursed
+                         * && !rn2(5): already-cursed objects short-circuit
+                         * BEFORE the rn2(5) draw. */
+                        if ((otmp.oclass | 0) === COIN_CLASS || otmp.cursed
+                            || rn2(5))
                             continue;
                         curse(otmp);
                         buc_changed = true;
@@ -1651,6 +1656,9 @@ function useup_potion(obj) {
     let prev = null;
     for (let o = game.invent; o; prev = o, o = o.nobj) {
         if (o === obj) {
+            /* C invent.c:1312 useupall(): setnotworn(obj) before freeinv() — a
+             * quaffed potion that was wielded must clear uwep. */
+            setnotworn(obj);
             if (prev) prev.nobj = o.nobj; else game.invent = o.nobj;
             obj.nobj = null;
             /* Bump bridge objs_deleted.count to match C delobj counter. */
@@ -1876,6 +1884,8 @@ export async function dodrink() {
             g.context.move = 0;
             return ECMD_CANCEL;
         }
+        /* C invent.c:2020 (getobj): disp.botl = TRUE once a letter is chosen. */
+        if (g.disp) g.disp.botl = 1;
         /* Try to find item by invlet in game.invent if available. */
         if (g.invent) {
             otmp = null;
@@ -1887,6 +1897,7 @@ export async function dodrink() {
             }
             if (otmp)
                 break;
+            await bot(); /* pline's flush_screen paints the botl set above */
             await force_more("You don't have that object.");
             continue;
         }
@@ -5246,10 +5257,14 @@ async function object_detect(detector, oclass) {
         g.iflags = g.iflags || {};
         const savedTerrainmode = g.iflags.terrainmode;
         g.iflags.terrainmode = ter_typ;
+        /* detect.c:112-117 browse_map: autodescribe forced on, then restored */
+        const save_autodescribe = g.iflags.autodescribe;
+        g.iflags.autodescribe = true;
         try {
             await getpos({ x: u.ux, y: u.uy }, false, 'object');
         } finally {
             g.iflags.terrainmode = savedTerrainmode;
+            g.iflags.autodescribe = save_autodescribe;
         }
     }
 

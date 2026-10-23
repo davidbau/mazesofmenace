@@ -14,7 +14,7 @@ import {
 
 // Data structures from coloratt.c
 // static const struct color_names colornames[] = { ... } (lines 12-40)
-const colornames = [
+export const colornames = [
     { name: "black", color: CLR_BLACK },
     { name: "red", color: CLR_RED },
     { name: "green", color: CLR_GREEN },
@@ -46,7 +46,7 @@ const colornames = [
 
 // static const struct attr_names attrnames[] = { ... } (lines 47-59)
 // NOTE: hardcoded to sequential ATR_* values matching C (0,1,2,3,4,5,7)
-const attrnames = [
+export const attrnames = [
     { name: "none", attr: 0 },      // ATR_NONE
     { name: "bold", attr: 1 },      // ATR_BOLD
     { name: "dim", attr: 2 },       // ATR_DIM

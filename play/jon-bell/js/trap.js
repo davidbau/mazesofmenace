@@ -26,11 +26,11 @@ import { on_level, at_dgn_entrance } from './dungeon.js';
 function m_next2u(mon) { return dist2(mon.mx | 0, mon.my | 0, game.u?.ux | 0, game.u?.uy | 0) <= 2; }
 function pline_The(msg, ...args) { return pline('The ' + msg, ...args); }
 import { rn2, rn1, d, rnl, rnd, pushRngLogEntry } from './rng.js';
-import { exercise, change_luck, adjalign, adjattrib, minuhpmax, setuhpmax } from './attrib.js';
+import { acurr, exercise, change_luck, adjalign, adjattrib, minuhpmax, setuhpmax } from './attrib.js';
 import { losexp } from './exper.js';
 /* dofiretrap's Underwater/Drain_resistance guards (trap.c:4247, :4291). */
 import { DRAIN_RES, MON_DETACH } from './const.js';
-import { bot, pline, Norep, canseemon, canspotmon, newsym, map_trap, tmp_at, obj_to_glyph, glyph_is_invisible_at, unmap_object, You_hear, You_hear as _trap_You_hear, feel_newsym, map_invisible, livelog_printf, shieldeff, topl_force_break_now } from './display.js';
+import { bot, pline, Norep, canseemon, canspotmon, newsym, map_trap, tmp_at, obj_to_glyph, glyph_is_invisible_at, unmap_object, You_hear, Unaware as _trap_Unaware, You_hear as _trap_You_hear, feel_newsym, map_invisible, livelog_printf, shieldeff, topl_force_break_now } from './display.js';
 import { cansee, clear_path, couldsee, recalc_block_point, Blind, vision_recalc } from './vision.js';
 import { distmin, s_suffix as _s_suffix, dist2, depth } from './hacklib.js';
 import { sobj_at, in_rooms, obj_ice_effects, is_flammable, dealloc_obj, mk_trap_statue, engr_at, ordin,
@@ -106,7 +106,7 @@ import { spot_checks as _spot_checks } from './cmd.js';
 import { float_up, bimanual, hard_helmet, yname } from './do_wear.js';
 import { HALF_SPDAM, COST_DECHNT, ARTICLE_THE, ARTICLE_NONE,
          SUPPRESS_SADDLE, has_mgivenname, DISMOUNT_POLY, xdir, ydir } from './const.js';
-import { is_quest_artifact } from './objnam.js';
+import { is_quest_artifact, killer_xname as _thitu_killer_xname } from './objnam.js';
 import { defends_when_carried } from './mhitm.js';
 import { get_obj_location } from './light.js';
 import { prinv } from './cmd.js';
@@ -132,7 +132,7 @@ import { otrapped_of } from './const.js';   /* obj.h:139 #define opoisoned otrap
  * the long-worm segment count.  Both already ported; only this arm's caller
  * was missing. */
 import { Can_fall_thru, hole_destination } from './mklev.js';
-import { count_wsegs } from './worm.js';
+import { count_wsegs, remove_worm, wormgone } from './worm.js';
 import { attacktype, resists_magm, Resists_Elem, obj_pmname, num_horns, mons_see_trap, s_suffix, hcolor, stagger, wakeup, wakeup_attack, update_inventory, is_youmonst, pronoun_gender, sleep_monst, breakarm as breakarm_real, helpless } from './mhitm.js';
 import { mon_has_amulet } from './sit.js';
 import { dismount_steed } from './dog.js';
@@ -324,9 +324,9 @@ async function thitm(tlev, mon, obj, d_override, nocorpse) {
         /* C trap.c:6720-6745: hit — damage the monster.  harmless only for a
          * stone_missile passing a passes_rocks() monster (not ARROW/DART). */
         let dam = 1;
-        const harmless = false;
+        const harmless = !!obj && _thitu_stone_missile(obj) && _tr_passes_rocks(mon.data);
         if (obj && cansee(mon.mx | 0, mon.my | 0)) {
-            await pline(`${Monnam_t(mon)} is hit by ${await doname(obj)}!`);
+            await pline(`${Monnam_t(mon)} is hit by ${await doname(obj)}${harmless ? " but is not harmed." : "!"}`);
         }
         if (d_override) {
             dam = d_override | 0;
@@ -499,8 +499,16 @@ export async function monkilled_trap(mtmp, fltxt = '') {
         newsym(_dx, _dy);
     if (mtmp.iswiz) wizdeadorgone(); /* C mon.c:2761-2762, before relobj */
     await quest_monster_died(mtmp);
+    /* C mon.c:2708 mon_leaving_level(): a killed long worm's body leaves the grid. */
+    if (mtmp.wormno)
+        remove_worm(mtmp);
     await relobj_md(mtmp);
     if (mtmp.m_id === game.stealmid) thiefdead(); // C mon.c:2782-2783
+    /* C mon.c:2786-2787, end of m_detach(): `if (mtmp->wormno) wormgone(mtmp);`
+     * Without it the tail segments stay in worm.js's occupancy map after
+     * dmonsfree() zeroes the monster, and a later m_at() finds a phantom. */
+    if (mtmp.wormno)
+        wormgone(mtmp);
     const dropCorpse = await corpse_chance_mon(mtmp);
     if (dropCorpse) {
         const make_corpse = _trapFns.make_corpse_fn;
@@ -3656,13 +3664,6 @@ async function _mu_maybe_destroy_web(mtmp, domsg, trap) {
     return false;
 }
 function _u_locomotion_stub(word) { return u_locomotion_real(word); }
-function _x_monnam_stub(mtmp, article, adj, suppress, called) {
-    void suppress; void called;
-    let s = _monnam_safe(mtmp);
-    let prefix = adj ? adj + " " : "";
-    if (article === 1) prefix = "the " + prefix;
-    return prefix + s;
-}
 function _strongmonst_web(ptr) { return (ptr.mflags2 & _M2_STRONG_WEB) !== 0; }
 function _extra_nasty_web(ptr) { return (ptr.mflags2 & _M2_NASTY_WEB) !== 0; }
 function _count_wsegs_web(mtmp) {
@@ -3699,7 +3700,7 @@ async function trapeffect_web(trap, trflags) {
         if (forcetrap || viasitting) {
             verbbuf = "are caught by";
         } else if (u.usteed) {
-            verbbuf = "lead " + _x_monnam_stub(u.usteed, steed_article, "poor", 0x0008, false) + " into";
+            verbbuf = "lead " + x_monnam(u.usteed, steed_article, "poor", SUPPRESS_SADDLE, false) + " into";
         } else {
             verbbuf = _u_locomotion_stub("stumble") + " into";
         }
@@ -3709,7 +3710,7 @@ async function trapeffect_web(trap, trflags) {
     set_utrap(1, TT_WEB_);
 
     {
-        let tim, str = (u.acurr && u.acurr.a) ? (u.acurr.a[A_STR] | 0) : 18;
+        let tim, str = acurr(u, A_STR); /* C: ACURR(A_STR) (trap.c:2166) */
 
         if (u.usteed && webmsgok) {
             u.usteed.mx = u.ux;
@@ -3910,13 +3911,12 @@ function _thitu_stone_missile(o) { /* obj.h:274 */
     return (m === 20 || m === 21) && (o.oclass | 0) !== 4;
 }
 const KILLED_BY_THITU = 1; /* C hack.h KILLED_BY */
+/* C mthrowu.c:90-95: knm = killer_xname(obj) when thitu names the object itself
+ * (type identified: "orcish dagger", not "crude dagger"); a caller-supplied name is knm. */
 function _thitu_killer_name(otmp, name) {
     if (!otmp)
         return name || '';
-    const buf = xname(otmp);
-    if (((otmp.quan ?? 1) | 0) === 1 && !/'s |s' /.test(buf))
-        return obj_is_pname(otmp) ? the(buf) : an(buf);
-    return buf;
+    return _thitu_killer_xname(otmp);
 }
 /* C ref: mthrowu.c:88-98 — thitu's missile name.
  *   if (!name) name = (obj->quan > 1L) ? doname(obj) : mshot_xname(obj);
@@ -4030,8 +4030,14 @@ async function trapeffect_level_telep(mtmp, trap, trflags, isYou) {
  * above from js/eat.js).  A local copy rather than importing do_wear.js's
  * Your() (which routes through pline()/--More--) because every other message
  * in this file goes through the resultMessage channel You() writes to. */
-function _Your(line) {
+async function _Your(line) {
     const msg = 'Your ' + String(line);
+    /* C has one topline (topl.c update_topl): a message still live in the
+     * pending channel (look_here + "You are caught..." before losehp's flush)
+     * pages IN FRONT of this one.  _resultMessage is merged before pending, so
+     * writing it there reversed the order. */
+    if (game._pending_message)
+        return await pline(msg);
     game._resultMessage = game._resultMessage
         ? game._resultMessage + '  ' + msg
         : msg;
@@ -4051,10 +4057,22 @@ async function trapeffect_magic_trap(mtmp, trap, trflags, isYou) {
             const u = game.u;
             deltrap(trap);
             newsym(u.ux | 0, u.uy | 0); /* update position */
-            You('are caught in a magical explosion!');
+            await pline('You are caught in a magical explosion!');
             await losehp(rnd(10), 'magical explosion', KILLED_BY_AN);
-            _Your('body absorbs some of the magical energy!');
+            await pline('Your body absorbs some of the magical energy!');
+            /* C trap.c:2304-2305 sets u.uen/uenmax with no botl, so the
+             * physical status keeps the old Pw until the next bot(). */
+            if (u && !(game.disp && ((game.disp.botl | 0) || (game.disp.botlx | 0)))) {
+                if (game._botlStaleUen === undefined) game._botlStaleUen = u.uen | 0;
+                if (game._botlStaleUenmax === undefined) game._botlStaleUenmax = u.uenmax | 0;
+            }
             if (u) {
+                /* C trap.c:2306 changes u.uen/u.uenmax with no SET_BOTL, after
+                 * the pline's flush_screen->bot(): the physical status keeps the
+                 * pre-explosion Pw until the next flagged paint (same latch as
+                 * eat.js:4682). */
+                if (game._botlStaleUen === undefined) game._botlStaleUen = u.uen | 0;
+                if (game._botlStaleUenmax === undefined) game._botlStaleUenmax = u.uenmax | 0;
                 u.uenmax = (u.uenmax | 0) + 2;
                 u.uen = u.uenmax;
                 if ((u.uenmax | 0) > (u.uenpeak | 0))
@@ -5913,7 +5931,16 @@ export async function mintrap(mtmp, mintrapflags) {
         const mindless = ((mptr.mflags1 | 0) & 0x00010000 /* M1_MINDLESS */) !== 0;
         const already_seen = mon_knows_traps(mtmp, tt)
             || (tt === HOLE && !mindless);
-        /* C trap.c:3778-3781: fixed_tele_trap → FORCETRAP (no fixed dest here). */
+        /* C trap.c:3798-3801: fixed_tele_trap(trap) → FORCETRAP (trap.h:125:
+         * TELEP_TRAP with isok(teledest)); skips the already_seen rn2(4) below. */
+        /* C trap.c:3798-3801: fixed_tele_trap(trap) (trap.h: TELEP_TRAP with an
+         * ok() teledest) → FORCETRAP, so the already_seen rn2(4) below is never
+         * drawn.  A pet standing on the hero's arrival-linked trap whose
+         * destination is occupied (mtele_trap does nothing) drew it every turn. */
+        if (tt === TELEP_TRAP && isok(trap.teledest?.x | 0, trap.teledest?.y | 0)) {
+            mintrapflags |= FORCETRAP;
+            forcetrap = true;
+        }
         if (mtmp === game.u?.usteed) {
             ; /* true when called from dotrap, inescapable is not an option */
         } else if (In_sokoban(game.u?.uz) && (is_pit(tt) || is_hole(tt)) && !trap.madeby_u) {
@@ -7930,7 +7957,7 @@ export async function drain_en(n, max_already_drained) {
     /* after manipulating u.uen,uenmax and setting botl, so that
        You_feel() -> pline() will update status before the message.
        C: You_feel("%s%c", mesg, punct); */
-    await pline(`You feel ${mesg}${punct}`);
+    await pline(`${_trap_Unaware() ? "You dream that you feel " : "You feel "}${mesg}${punct}`); /* You_feel, pline.c:387-400 */
 }
 
 /* ------------------------------------------------------------------------

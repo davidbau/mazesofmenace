@@ -53,6 +53,8 @@ import {
     mhitm_ad_slow as mhitm_ad_slow_uh,
     mhitm_ad_tlpt as mhitm_ad_tlpt_uh,
     u_slow_down as u_slow_down_uh,
+    munstone as munstone_mu,
+    minstapetrify as minstapetrify_mu,
 } from './uhitm.js';
 const AD_ENCH_MU = 41;  /* monattk.h:83 */
 const AD_CURS_MU = 253; /* monattk.h:98 */
@@ -81,7 +83,7 @@ import { MKOBJ_OC_OPROP, MKOBJ_OC_MAGIC } from './mkobj_erosion_meta.js';
  * (uhitm.c:4033). */
 import { PM_ROPE_GOLEM as PM_ROPE_GOLEM_MU } from './pm.generated.js';
 import { set_apparxy as set_apparxy_kb } from './monmove.js';
-import { cmdq_clear, catch_lit as catch_lit_mu, hurtle as hurtle_cmd, test_move as test_move_kb } from './cmd.js';
+import { snuff_lit as snuff_lit_mu, cmdq_clear, catch_lit as catch_lit_mu, hurtle as hurtle_cmd, test_move as test_move_kb } from './cmd.js';
 import { mbodypart as mbodypart_mu, snuff_candle as snuff_candle_mu } from './cmd.js';
 /* C steal.c:569-570 — unpaid stolen objects are removed from the shop bill
  * before leaving inventory.  Reuse shk.js's canonical synchronous body. */
@@ -1910,8 +1912,14 @@ export async function doseduce(mon) {
         switch (rn2(5)) {
         case 0:
             pline('You feel drained of energy.');
+            /* C mhitu.c:2184-2186: Pw changes after the pline's flush_screen()
+             * with no disp.botl, so the status keeps the pre-drain Pw. */
+            if (!(g.disp && ((g.disp.botl | 0) || (g.disp.botlx | 0)))) {
+                if (g._botlStaleUen === undefined) g._botlStaleUen = u.uen | 0;
+                if (g._botlStaleUenmax === undefined) g._botlStaleUenmax = u.uenmax | 0;
+            }
             u.uen = 0;
-            u.uenmax -= rnd(10);
+            u.uenmax -= rnd(_half_phys_prop_mu() ? 5 : 10);
             exercise(A_CON_DS, false);
             if (u.uenmax < 0) u.uenmax = 0;
             break;
@@ -4235,7 +4243,7 @@ export function hits_bars_mu(obj, always_hit) {
     /* WEAPON_CLASS: C excludes bows, crossbows, darts, shuriken, spears,
      * knives; daggers are intentionally allowed to hit. */
     if (oclass === OCLASS_WEAPON_MHU)
-        return skill !== -20 && skill !== -21 && skill !== -23
+        return skill !== -20 && skill !== -22 && skill !== -23
             && skill !== -24 && skill !== P_SPEAR_MHU && skill !== P_KNIFE_MHU;
     if (oclass === ARMOR_CLASS_MHU)
         return (ARMOR_DATA_MU[otyp]?.armcat | 0) !== ARM_GLOVES_MHU;
@@ -4513,6 +4521,13 @@ export async function ohitmon(mtmp, otmp, range, verbose) {
             }
         }
 
+        /* C:451-456 — a thrown cockatrice EGG petrifies its target. */
+        if ((otmp.otyp | 0) === EGG_OHITMON_MU && touch_petrifies_mk(otmp.corpsenm)) {
+            if (!(await munstone_mu(mtmp, false)))
+                await minstapetrify_mu(mtmp, false);
+            if (resists_ston_mu(mtmp))
+                damage = 0;
+        }
 
         /* C:458-473 — apply the damage. */
         if (!harmless && (mtmp.mhp | 0) >= 1) {
@@ -5460,6 +5475,14 @@ async function gulpmu(mtmp, mattk) {
         /* C: u.uswldtim always set > 1 */
         u.uswldtim = (tim_tmp < 2) ? 2 : tim_tmp;
         swallowed_mu(1); /* update the map display, shows hero swallowed */
+        /* C mhitu.c:1396-1401 — a non-flaming engulfer snuffs every lit light. */
+        if (!flaming_gu(mndx)) {
+            let nextobj;
+            for (let o = game.invent; o; o = nextobj) {
+                nextobj = o.nobj;
+                await snuff_lit_mu(o);
+            }
+        }
     }
 
     if (mtmp !== u.ustuck)
@@ -6258,7 +6281,7 @@ export async function mattacku(mtmp) {
                         hittmp = hitval(mon_currwep, null,
                                         (game.u?.umonnum ?? -1) | 0);
                         tmp += hittmp;
-                        mswings(mtmp, mon_currwep, bash);
+                        await mswings(mtmp, mon_currwep, bash);
                     }
                     /* C:912 if (tmp > (j = gm.mhitu_dieroll = rnd(20 + i))) */
                     const j = rnd(20 + i);
@@ -6690,12 +6713,14 @@ function canspotmon_mhu(m)   { return !!canspotmon_disp(m); }
 /* C mhitu.c:129-142 mswings — monster swings obj.  RNG-free except through
  * mswings_verb, whose rn2(2) fires only for a weapon with PIERCE *plus*
  * another strike bit. */
-export function mswings(mtmp, otemp, bash) {
+export async function mswings(mtmp, otemp, bash) {
     const gs = game;
     if ((gs.flags?.verbose ?? true) && !Blind(gs) && mon_visible_disp(mtmp)) {
-        pline(`${Monnam_mhu(mtmp)} ${mswings_verb(otemp, bash)} `
+        await pline(`${Monnam_mhu(mtmp)} ${mswings_verb(otemp, bash)} `
               + `${((otemp.quan | 0) > 1) ? 'one of ' : ''}`
               + `${mhis_mon(mtmp)} ${xname(otemp)}.`);
+        if (_topline_more_pending() && _more_never_dismissed())
+            await flush_pending_messages();
     }
 }
 /* do_name.c Monnam() — mon_nam() with the first letter capitalized.  The

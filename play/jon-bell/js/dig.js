@@ -1719,6 +1719,7 @@ export async function dig() {
     if (!g.did_dig_msg) {
         const d_target = ['', 'rock', 'statue', 'boulder', 'door', 'tree'];
         await pline(`You hit the ${d_target[dig_typ(u.uwep || tool, dpx, dpy)]} with all your might.`);
+        wake_nearby_(false); /* C dig.c:561 */
         g.did_dig_msg = true;
     }
     return 1;

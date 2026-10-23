@@ -75,6 +75,7 @@ import {
 } from './dbridge.js';
 import { isok } from './cmd_isok.js';
 import {
+    In_W_tower,
     depth,
     ledger_no,
     ledger_to_dlev,
@@ -1009,11 +1010,6 @@ export async function keepdogs(pets_only, rawEnv = {}) {
                     break;
                 }
             }
-            const onWizardTowerLevel = [
-                state.wiz1_level,
-                state.wiz2_level,
-                state.wiz3_level,
-            ].some(level => sameLevel(level, u.uz));
             const trackAvailable = Array.isArray(mtmp.mtrack)
                 && mtmp.mtrack.length >= 3
                 && mtmp.mtrack.slice(0, 3).every(Boolean);
@@ -1024,7 +1020,6 @@ export async function keepdogs(pets_only, rawEnv = {}) {
                 && (appearance === M_AP_NOTHING
                     || appearance === M_AP_MONSTER)
                 && mtmp !== u.ustuck
-                && !onWizardTowerLevel
                 && onLevelChain
                 && m_at(mtmp.mx, mtmp.my, state) === mtmp
                 && trackAvailable
@@ -1422,20 +1417,13 @@ export async function migrate_to_level(
                 rawEnv,
             );
     }
-    if (monster.wormno)
-        throw new RangeError('long-worm migration is future work');
-    const appearance = monster.m_ap_type & M_AP_TYPMASK;
-    if (appearance !== M_AP_NOTHING && appearance !== M_AP_MONSTER)
-        throw new RangeError('disguised monster migration is future work');
-    if (monster === state.u.ustuck)
-        throw new RangeError('stuck-monster migration is future work');
     const onWizardTowerLevel = [
         state.wiz1_level,
         state.wiz2_level,
         state.wiz3_level,
     ].some((level) => sameLevel(level, state.u.uz));
     const inWizardTower = onWizardTowerLevel
-        ? migratingOperation(env, 'inWizardTower')
+        ? migratingOperation(env, 'inWizardTower', In_W_tower)
         : null;
     const isOnMap = m_at(monster.mx, monster.my, state) === monster;
     const isOffMapLimbo = monster.mx === 0

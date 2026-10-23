@@ -161,7 +161,7 @@ import { mwelded, body_part, flooreffects, _drop_doname, set_wounded_legs, is_po
 /* C wield.c:543 yname(obj) -- "your <xname>" / "the <xname>"; the one body
  * lives in js/do_wear.js.  do_attack's gu.unweapon line needs it. */
 import { yname, You, is_shield, bimanual, some_armor } from './do_wear.js';
-import { monstone, obj_resists, dmgtype, slept_monst, engulf_target } from './dogmove.js';
+import { monstone, mon_to_stone, obj_resists, dmgtype, slept_monst, engulf_target } from './dogmove.js';
 import { destroy_items as destroy_items_zap,
          destroy_items_mon as destroy_items_mon_zap } from './zap.js';
 import { poly_when_stoned } from './mhitm.js';
@@ -2668,9 +2668,11 @@ export async function do_attack(mtmpOrX, y) {
         /* sum[i - 1] for the use_weapon bimanual test (uhitm.c:5483); only
          * weapon rows record a sum, any other row leaves M_ATTK_MISS. */
         let _lastRowSum = M_ATTK_MISS;
+        const _sumHist = []; /* C sum[]: AT_HUGS reads sum[i-1], sum[i-2] */
         for (let i = 0; i < NATTK_UH; i++) {
             const _prevRowSum = _lastRowSum;
             _lastRowSum = M_ATTK_MISS;
+            _sumHist[i - 1] = _prevRowSum;
             /* uhitm.c:5455-5458 — after the first attack, skip if the target
              * has been knocked out of range or already died. */
             if (i > 0) {
@@ -3033,9 +3035,58 @@ export async function do_attack(mtmpOrX, y) {
                 await _passiveAndKnockback(aatyp, _sumClaw !== M_ATTK_MISS, u && u.uwep);
                 continue;
             }
-            if (aatyp === AT_HUGS_H || aatyp === AT_MAGC_H)
-                continue; /* NAMED GAP: grab/strangle and spellcaster-weapon-
-                             fallback state machines are not modelled. */
+            if (aatyp === AT_HUGS_H) {
+                /* C uhitm.c:5671-5753 AT_HUGS.  NAMED GAP: the
+                 * uunstick() call at 5683 and the 'unconcerned' 1d1
+                 * damage rewrite (5704-5713) are not modelled. */
+                const byhand = (u.umonnum | 0) === PM_ROPE_GOLEM;
+                const _hugHead = !((mtmp.data.mflags1 | 0) & 0x00008000 /* M1_NOHEAD */);
+                if (sticks(mtmp.data) || u.uswallow || game.gn?.notonhead
+                    || (byhand && (u.uwep || !_hugHead)))
+                    continue; /* not 'break'; bypass passive */
+                await wakeup(mtmp, true);
+                const _hugSilver = { value: 0 };
+                const _hugSpec = special_dmgval(game.youmonst, mtmp,
+                    byhand ? (W_ARMG | W_RINGL | W_RINGR) : (W_ARMC | W_ARM | W_ARMU),
+                    _hugSilver);
+                if ((mtmp.data.pmidx | 0) === PM_SHADE) {
+                    const hverb = byhand ? 'grasp' : 'hug';
+                    if (_hugSpec) {
+                        await You('%s %s%s', hverb, mon_nam(mtmp), exclam(_hugSpec));
+                        if (_hugSilver.value && game.flags.verbose)
+                            await silver_sears(game.youmonst, mtmp, _hugSilver.value);
+                        _lastRowSum = await _damageum(row, _hugSpec);
+                    } else {
+                        await Your('%s passes harmlessly through %s.', hverb, mon_nam(mtmp));
+                    }
+                } else {
+                    /* mhitm.c:597 failed_grab(): aatyp is AT_HUGS here */
+                    const _hugUnsolid = !!((mtmp.data.mflags1 | 0) & M1_UNSOLID_UH);
+                    const _hugTail = !!(game.gn && game.gn.notonhead);
+                    if (_hugUnsolid || _hugTail) {
+                        const nm = !_hugTail ? mon_nam(mtmp)
+                            : (s_suffix(some_mon_nam(mtmp)) + ' tail');
+                        await pline(`Your grab attempt ${!_hugTail ? 'passes right through' : 'fails to hold'} ${nm}!`);
+                    } else if (mtmp === u.ustuck) {
+                        await pline(`${Monnam(mtmp)} is being ${byhand ? 'throttled' : 'crushed'}.`);
+                        if (_hugSilver.value && game.flags.verbose)
+                            await silver_sears(game.youmonst, mtmp, _hugSilver.value);
+                        _lastRowSum = await _damageum(row, _hugSpec);
+                    } else if (i >= 2 && (_sumHist[i - 1] > M_ATTK_MISS)
+                               && (_sumHist[i - 2] > M_ATTK_MISS)) {
+                        await You('grab %s!', mon_nam(mtmp));
+                        set_ustuck(mtmp);
+                        if (_hugSilver.value && game.flags.verbose)
+                            await silver_sears(game.youmonst, mtmp, _hugSilver.value);
+                        _lastRowSum = await _damageum(row, _hugSpec);
+                    }
+                }
+                await _passiveAndKnockback(aatyp, _lastRowSum !== M_ATTK_MISS, null);
+                continue;
+            }
+            if (aatyp === AT_MAGC_H)
+                continue; /* NAMED GAP: spellcaster-weapon-fallback state
+                             machine is not modelled. */
             /* weaponless: AT_CLAW/AT_TUCH/AT_KICK/AT_BITE/AT_STNG/AT_BUTT/
              * AT_TENT [uhitm.c:5564-5568]. */
             /* C uhitm.c:5566 find_roll_to_hit() runs per attack row, so state
@@ -3164,6 +3215,7 @@ export async function do_attack(mtmpOrX, y) {
                  * here (find_roll_to_hit sets it only for !Upolyd Monks). */
                 await missum(mtmp, tmp + _armorpenalty > dieroll, row);
             }
+            _lastRowSum = _sumI; /* C sum[i], read by AT_HUGS / use_weapon */
             await _passiveAndKnockback(aatyp, _sumI !== M_ATTK_MISS, null);
         }
     };
@@ -3814,10 +3866,13 @@ export async function xkilled(mtmp, xkflags) {
         wormgone(mtmp);
 
     const _xk_mflags2 = (mndx >= 0 && mndx < _MONS.length) ? (_MONS[mndx][7] | 0) : 0;
-    const _xk_levelSpecificNoCorpse = Is_rogue_level(game.u?.uz)
+    /* mon.c:3567-3574: gs.stoned -> goto cleanup, and `nocorpse ||` short-circuits,
+     * both BEFORE the macro (and its graveyard rn2(3)) is evaluated. */
+    const _xk_levelSpecificNoCorpse = (_xk_stoned || nocorpse) ? false
+        : (Is_rogue_level(game.u?.uz)
         || !(game.level?.flags?.deathdrops)
         || (!!(game.level?.flags?.graveyard) && (_xk_mflags2 & M2_UNDEAD) !== 0
-            && !!rn2(3));
+            && !!rn2(3)));
     if (!_xk_stoned && !(nocorpse || _xk_levelSpecificNoCorpse)
         && (accessible(dx, dy) || is_pool_uh(dx, dy))) {
         {
@@ -7499,7 +7554,7 @@ function dynamic_multi_reason(mon, verb, by_gaze) {
 }
 
 /* stubs for mhitm_ad_ston unported helpers */
-async function munstone(mdef, by_you) {
+export async function munstone(mdef, by_you) {
     /* C muse.c:2884-2899: a monster carrying a lizard or acidic corpse can
      * eat it to interrupt petrification. */
     const CORPSE = 265, POT_ACID = 320, TIN = 296;
@@ -7525,7 +7580,7 @@ export async function minstapetrify(mdef, by_you) {
     if (!mdef) return;
     if (resists_ston_real(mdef)) return;
     if (poly_when_stoned(mdef.data)) {
-        await newcham(mdef, PM_STONE_GOLEM, 0);
+        await mon_to_stone(mdef);
         return;
     }
     /* vamp_stone (trap.c:3866) is not ported; non-vampshifters fall through. */
@@ -7566,7 +7621,7 @@ async function do_stone_mon(magr, mattk, mdef, mhm) {
         }
     }
     if (poly_when_stoned(mdef?.data)) {
-        await newcham(mdef, PM_STONE_GOLEM, 0);
+        await mon_to_stone(mdef);
         mhm.damage = 0;
         return;
     }
@@ -7588,29 +7643,12 @@ async function do_stone_mon(magr, mattk, mdef, mhm) {
     }
     if (canseemon(mdef))
         pline(`${Monnam(mdef)} turns to stone!`);
-    const x = mdef.mx | 0, y = mdef.my | 0;
-    const mndx = (mdef.mndx ?? mdef.mnum ?? -1) | 0;
-    const mrow = (mndx >= 0 && mndx < monsPack.mons.length) ? monsPack.mons[mndx] : null;
-    const msize = (mndx >= 0 && mndx < MONS_MSIZE.length) ? (MONS_MSIZE[mndx] | 0) : 2;
-    const geno = mrow ? (mrow[3] | 0) : 0;
-    const makeStatue = msize > 0 || !rn2(2 + (((geno & 7) > 2) ? 1 : 0));
-    const statue = makeStatue ? (await mkcorpstat(476, mdef, mdef.data, x, y, 0))
-                              : (await mksobj_at(474, x, y, true, false));
-    let obj;
-    while ((obj = mdef.minvent) != null) {
-        extract_from_minvent_dm(mdef, obj);
-        obj.owornmask = 0;
-        obj.nobj = 0;
-        if (makeStatue)
-            await add_to_container(statue, obj);
-        else
-            place_object(obj, x, y);
+    await monstone(mdef); /* C uhitm.c:3965: statue, newsym, then mondead */
+    if (!((mdef.mhp | 0) <= 0)) {
+        mhm.hitflags = M_ATTK_MISS;
+        mhm.done = true;
+        return;
     }
-    mdef.mhp = 0;
-    await mondead(mdef);
-    await stackobj(statue);
-    if (cansee(x, y))
-        newsym(x, y);
     mhm.hitflags = M_ATTK_DEF_DIED | (await grow_up(magr, mdef) ? 0 : M_ATTK_AGR_DIED);
     mhm.done = true;
     mhm.damage = 0;

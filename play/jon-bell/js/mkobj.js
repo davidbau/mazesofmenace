@@ -5,7 +5,8 @@
 // C ref: nethack-c/src/mklev.c:1055-1132 (fill_supply_chest body)
 //        nethack-c/src/mkobj.c:2680-2699  (add_to_container)
 import { rn2 } from './rng.js';
-import { mksobj, mkobj, newoextra, newomid, copy_mextra } from './mklev.js';
+import { mksobj, mkobj, add_to_container, newoextra, newomid, copy_mextra } from './mklev.js';
+const OBJ_CONTAINED = 2; // C: obj.h OBJ_CONTAINED
 import { permonstTemplate } from './makemon.js';
 import { forget_temple_entry } from './priest.js';
 import { weight } from './weight.js';
@@ -243,18 +244,6 @@ function spbook_oc_level(otyp) {
         return 0;
     return SPBOOK_OC_LEVEL[idx];
 }
-// ── add_to_container ─────────────────────────────────────────────────────────
-// C ref: nethack-c/src/mkobj.c:2680-2699
-// Mirrors the mklev.js-internal add_to_container exactly.
-// (mklev.js does not export add_to_container, so we carry our own copy here.)
-const OBJ_CONTAINED = 2; // C: obj.h OBJ_CONTAINED (3 is OBJ_INVENT)
-function add_to_container(container, obj) {
-    obj.where = OBJ_CONTAINED;
-    obj.ocontainer = container;
-    obj.nobj = container.cobj;
-    container.cobj = obj;
-    return obj;
-}
 // ── fill_supply_chest ────────────────────────────────────────────────────────
 export async function fill_supply_chest(supply_chest, dlevel) {
     // C mklev.c:1055  supply_chest->olocked = !!(rn2(6));
@@ -281,7 +270,7 @@ export async function fill_supply_chest(supply_chest, dlevel) {
         cursed = !!(otmp && otmp.cursed);
         // C mklev.c:1078  add_to_container(supply_chest, otmp);
         if (otmp)
-            add_to_container(supply_chest, otmp);
+            await add_to_container(supply_chest, otmp); /* invent.c add_to_container: merged() scan */
         // C mklev.c:1080-1084
         if (++tryct >= 50)
             break; // impossible() guard
@@ -315,7 +304,7 @@ export async function fill_supply_chest(supply_chest, dlevel) {
         }
         // C mklev.c:1128  add_to_container(supply_chest, otmp);
         if (otmp)
-            add_to_container(supply_chest, otmp);
+            await add_to_container(supply_chest, otmp); /* invent.c add_to_container: merged() scan */
     }
     // C mklev.c:1132  supply_chest->owt = weight(supply_chest);
     // js/weight.js:53 is a full port of C mkobj.c weight(), including the

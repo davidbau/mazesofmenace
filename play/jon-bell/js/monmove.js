@@ -27,7 +27,7 @@ import { OBJ_FLOOR, OBJ_DELETED, is_pit, IS_STWALL, IS_TREE, Is_rogue_level, NEE
          NC_SHOW_MSG, ARM, HEAD, ROOM, CORR, GPCOORDS_NONE, GPCOORDS_COMFULL,
          /* maybe_spin_web (monmove.c:1267) */ IS_OBSTRUCTED, STAIRS, LADDER, IRONBARS, WEB, In_sokoban } from './const.js';
 import { newsym, canspotmon, pline, canseemon,
-         topl_force_break_now, capture_flushed_cells, flush_pending_messages, Norep, You_hear, You_see, sensemon, Unaware, swallowed } from './display.js';
+         topl_force_break_now, capture_flushed_cells, flush_pending_messages, _topline_more_pending, _more_never_dismissed, Norep, You_hear, You_see, sensemon, Unaware, swallowed } from './display.js';
 import { cansee, vision_recalc, recalc_block_point, clear_path, couldsee } from './vision.js';
 import { curr_mon_load, max_mon_load, can_carry, could_reach_item, dmgtype,
          obj_extract_floor, distant_obj_name, Monnam_dm, finish_meating as finish_meating_real,
@@ -1718,6 +1718,8 @@ async function postmov_door(mtmp, _didseeit_pm, _mf1_ct, can_tunnel_mv) {
                     await You_hear('a door open.');
                 else if (_doormsg)
                     await pline(_doormsg);
+                if (_topline_more_pending() && _more_never_dismissed())
+                    await flush_pending_messages();
             } else if ((_dm_d & (D_LOCKED_MV | D_CLOSED_MV)) !== 0
                 && (_mf2_d & M2_GIANT_MAF) !== 0) {
                 /* C monmove.c:1617-1641.  mfndpos only admits this square
@@ -1959,7 +1961,8 @@ export async function m_move(mtmp, after) {
     if ((mtmp.ispriest | 0)) {
         const xm = await pri_move(mtmp);
         if (xm === -2) return MMOVE_DIED_MV;
-        if (xm === -1) return MMOVE_NOTHING_MV;
+        /* C monmove.c:1812-1814 case -1: mmoved = MMOVE_NOTHING; break — continue the normal AI */
+        if (xm !== -1) {
         /* C monmove.c:1823 — postmov(..., (xm != 1) ? MMOVE_NOTHING
          * : MMOVE_MOVED, ...) */
         /* C postmov (monmove.c:1508, :1656) — the MMOVED redraw pair around
@@ -1982,6 +1985,7 @@ export async function m_move(mtmp, after) {
             newsym(mtmp.mx | 0, mtmp.my | 0);
         }
         return postmov(mtmp, (xm !== 1) ? MMOVE_NOTHING_MV : MMOVE_MOVED_MV);
+        }
     }
     if ((mtmp.isgd | 0)) {
         const _gdomx = mtmp.mx | 0, _gdomy = mtmp.my | 0;
@@ -2429,10 +2433,16 @@ export async function m_move(mtmp, after) {
              * row: the --More-- shows the T: the last flush painted. */
             const _lff = game._lastFlushFrame;
             const _preMovesLatch = game._movemonStatusMoves;
-            if (game.flags?.time && _lff && (_lff.moves | 0) < (game.moves | 0))
-                game._movemonStatusMoves = _lff.moves | 0;
+            /* ...but allmain.c:474-480 paints bot()/timebot() directly, outside
+             * flush_screen, every moveloop_core call (also multi<0 ones). */
+            if (game.flags?.time && _lff
+                && Math.max(_lff.moves | 0, game._statusPaintMoves | 0) < (game.moves | 0))
+                game._movemonStatusMoves = Math.max(_lff.moves | 0, game._statusPaintMoves | 0);
             try {
-            topl_force_break_now(false, _preShiftCells);
+            /* tty more() does not flush_screen: the status row too is whatever the
+             * last bot() painted, not damage dealt since (kick_ouch's losehp). */
+            topl_force_break_now(false, _preShiftCells,
+                                 (seenflgs & 1) ? null : game._lastPaintedBotl);
             // monmove.c:2391 blocks here, before restoring the monster's
             // position or letting later monsters append to the same topline.
             await flush_pending_messages();

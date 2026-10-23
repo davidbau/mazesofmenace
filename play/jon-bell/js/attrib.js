@@ -1214,15 +1214,15 @@ export async function adjabil(oldlevel, newlevel) {
             /* C attrib.c:1056: pline only if not already intrinsic from another src */
             if (!((p.intrinsic | 0) & INTRINSIC & ~mask)) {
                 if (gainstr && gainstr.length)
-                    await pline(`You feel ${gainstr}!`);
+                    await pline(`${Unaware() ? 'You dream that you feel ' : 'You feel '}${gainstr}!`); /* You_feel, attrib.c:1052 */
             }
         } else if (oldlevel >= ulevel && newlevel < ulevel) {
             p.intrinsic = (p.intrinsic | 0) & ~mask;
             if (!((p.intrinsic | 0) & INTRINSIC)) {
                 if (losestr && losestr.length)
-                    await pline(`You feel ${losestr}!`);
+                    await pline(`${Unaware() ? 'You dream that you feel ' : 'You feel '}${losestr}!`); /* You_feel, attrib.c:1058 */
                 else if (gainstr && gainstr.length)
-                    await pline(`You feel less ${gainstr}!`);
+                    await pline(`${Unaware() ? 'You dream that you feel ' : 'You feel '}less ${gainstr}!`); /* You_feel, attrib.c:1060 */
             }
         }
         /* C attrib.c:1067-1068 — postadjabil() refreshes monster glyphs when

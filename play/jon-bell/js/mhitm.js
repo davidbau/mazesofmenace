@@ -2202,8 +2202,8 @@ export function raceptr(mtmp) {
 }
 
 export function shade_miss(magr, mdef, obj, thrown, verbose) {
-    const youagr = (magr.m_id | 0) === 0;
-    const youdef = (mdef.m_id | 0) === 0;
+    const youagr = is_youmonst(magr);
+    const youdef = is_youmonst(mdef);
 
     /* we're using dmgval() for zero/not-zero, not for actual damage amount */
     /* C uhitm.c:2028 calls the one dmgval() (weapon.c:216).  It is the SAME

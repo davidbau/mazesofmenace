@@ -1925,7 +1925,7 @@ export function set_cost(obj, shkp) {
             tmp = (((obj.otyp | 0) - 439) % (6 - ((shkp?.m_id | 0) % 3)) + 3) * (obj.quan | 0);
             divisor = 1;
         } else if (tmp > 1 && ((shkp?.m_id | 0) % 4) === 0) {
-            multiplier = 3; divisor = 4;
+            multiplier *= 3; divisor *= 4;
         }
     }
     if (tmp >= 1) {

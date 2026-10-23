@@ -2,7 +2,7 @@ import { quest_monster_died } from './quest.js';
 import { Norep } from './display.js';
 import { nonliving as lifesave_nonliving } from './makemon.js';
 import { m_useup as lifesave_m_useup } from './trap.js';
-import { discover_object as lifesave_discover_object } from './o_init.js';
+import { discover_object as lifesave_discover_object, isWanNothingNodir } from './o_init.js';
 import { s_suffix as lifesave_s_suffix } from './hacklib.js';
 import { wary_dog, dismount_steed as dismount_steed_mk, sticks } from './dog.js';
 import { mondied as mondied_ml } from './makemon.js';
@@ -127,7 +127,7 @@ AM_SHRINE,
 W_ANY, W_ARM, } from './const.js';
 import { themerooms_contents_twin_businesses } from './sp_lev.js';
 import { is_pool_or_lava, may_dig, closed_door } from './look.js';
-import { t_at, deltrap, mon_knows_traps, mon_learns_traps, m_carrying, linedup, goodpos, mon_adjust_speed, m_dowear, unearth_objs,
+import { t_at, fill_pit, deltrap, mon_knows_traps, mon_learns_traps, m_carrying, linedup, goodpos, mon_adjust_speed, m_dowear, unearth_objs,
          extract_from_minvent as extract_from_minvent_md,
          update_mon_extrinsics as update_mon_extrinsics_md } from './trap.js';
 /* prop.h-adjacent: trap.c's ALL_TRAPS sentinel for mon_learns_traps (const.js:2270). */
@@ -491,6 +491,7 @@ const WAN_CANCELLATION = 423;
 const WAN_FIRE = 430;
 /** C objects.h — contiguous NODIR wands WAN_LIGHT..WAN_STASIS (mkobj.c:1124–1125) */
 const WAN_STASIS = 415;
+const WAN_NOTHING = 416;
 const WAN_WISHING = 414;
 /** C mkobj.c:1064–1068 AMULET_CLASS curse branch */
 const AMULET_OF_STRANGULATION = 203;
@@ -1895,7 +1896,8 @@ async function mksobj_init(otmp, otyp, artif) {
         else if (otyp === WAN_STASIS)
             otmp.spe = rn1(4, 3);
         else {
-            const nodir = otyp >= WAN_LIGHT && otyp <= WAN_STASIS;
+            const nodir = (otyp >= WAN_LIGHT && otyp <= WAN_STASIS)
+                || (otyp === WAN_NOTHING && isWanNothingNodir()); /* o_init.c:234 */
             otmp.spe = rn1(5, nodir ? 11 : 4);
         }
         blessorcurse(otmp, 17);
@@ -5934,6 +5936,12 @@ export async function make_corpse(mtmp, x, y, corpseflags) {
         || dmgtype_fromattack(mdat, 35 /* AD_SSEX */, -1);
     const otmp = await mkcorpstat(CORPSE, keeptraits ? mtmp : null, mdat,
                                 x, y, corpstatflags | CORPSTAT_INIT);
+    /* C mon.c:915-918 — "if polymorph or undead turning has killed this
+     * monster, prevent the same attack beam from hitting its corpse":
+     * `if (svc.context.bypasses) bypass_obj(obj);` (destroy_items leaves the
+     * flag TRUE for the rest of the move, zap.c:6040). */
+    if (g.context?.bypasses)
+        bypass_obj(otmp);
     /* C mon.c:920-921 — the common tail names the corpse after a named
      * monster: `if (has_mgivenname(mtmp)) obj = oname(obj, MGIVENNAME(mtmp),
      * ONAME_NO_FLAGS);` (ONAME_NO_FLAGS == 0).  Missing here, so a named pet's
@@ -13926,6 +13934,10 @@ export async function revive_corpse(otmp, do_msgs = true) {
         await wary_dog(mon, true);
     if (!mon)
         return false;
+    /* C zap.c:1022-1023: reviving one corpse of a stack splits it off first
+     * (splitobj -> next_ident). */
+    if ((otmp.quan | 0) > 1)
+        otmp = await splitobj(otmp, 1);
     /* A timed corpse may be firing from the timeout queue right now; C's
      * object disposal removes every timer before the corpse leaves storage. */
     if (otmp.timed)
@@ -13948,8 +13960,11 @@ export async function revive_corpse(otmp, do_msgs = true) {
     }
     /* C do.c:2220-2238: a buried zombie digs out by creating a pit.  maketrap
      * unearths and stacks every other buried object on that square. */
-    if (wasBuried && (mdat.mlet | 0) === S_ZOMBIE)
+    let _zombie_pit = false;
+    if (wasBuried && (mdat.mlet | 0) === S_ZOMBIE) {
         await maketrap(mon.mx | 0, mon.my | 0, PIT);
+        _zombie_pit = true;
+    }
     /* C do.c:2151-2183: revival messages (revive_corpse() only; a direct
      * revive() caller such as unturn_dead prints none of them). */
     if (!do_msgs) {
@@ -13959,6 +13974,21 @@ export async function revive_corpse(otmp, do_msgs = true) {
             await pline(`The ${cname} writhes out of your grasp!`);
         else
             await pline('You feel squirming in your backpack!');
+    } else if (where0 === OBJ_BURIED && _zombie_pit) {
+        /* C do.c:2220-2238 -- OBJ_BURIED, is_zomb */
+        if (cansee(mon.mx | 0, mon.my | 0)) {
+            const ttmp = t_at(mon.mx | 0, mon.my | 0);
+            if (ttmp)
+                ttmp.tseen = true;
+            await pline('%s claws itself out of the ground!',
+                        canspotmon(mon) ? Amonnam(mon) : 'Something');
+            newsym(mon.mx | 0, mon.my | 0);
+        } else {
+            const dx = (mon.mx | 0) - (game.u.ux | 0), dy = (mon.my | 0) - (game.u.uy | 0);
+            if (dx * dx + dy * dy < 5 * 5)
+                await You_hear('scratching noises.');
+        }
+        await fill_pit(mon.mx | 0, mon.my | 0);
     } else if (where0 === OBJ_FLOOR) {
         if (cansee(corpsex, corpsey) || canseemon(mon)) {
             const pmi = mon.mnum ?? mon.pmidx;
@@ -16116,7 +16146,12 @@ async function minliquid_core(mtmp) {
      * the square, so it moves no rng either way. */
     if (cansee(mx, my))
         pline(`${Monnam_wm(mtmp)} burns to a crisp.`);
-    await mondead(mtmp); /* no corpse */
+    /* C mon.c:1037-1040 — the hero gets the experience when it is not
+     * the monster's own move. */
+    if (game.context && game.context.mon_moving)
+        await mondead(mtmp); /* no corpse */
+    else
+        await xkilled_ml(mtmp, XKILL_NOMSG);
     return 1;
 }
 

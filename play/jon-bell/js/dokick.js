@@ -297,7 +297,13 @@ export async function losehp(n, knam, k_format) {
     const _d0 = (game.disp ||= {});
     const _bl = _d0.botl, _blx = _d0.botlx;
     _d0.botl = 0; _d0.botlx = 0;
+    /* ...and neither is the map: the port's drain below flushes the gbuf
+     * (kick_ouch's feel_location paint), which C does not do here, so a later
+     * display_nhwindow(WIN_MESSAGE) that blocks without flushing (vamp_shift,
+     * monmove.c:2391) still shows the terminal as of the pline's own flush. */
+    const _lff0 = game._lastFlushFrame;
     await flush_pending_messages();
+    if (_lff0) game._lastFlushFrame = _lff0;
     if (_bl) _d0.botl = _bl;
     if (_blx) _d0.botlx = _blx;
     (game.disp ||= {}).botl = 1;

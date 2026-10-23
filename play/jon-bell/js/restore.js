@@ -270,7 +270,20 @@ export async function dorecover(save) {
     // the original current level. Bubble initial movement belongs to each read.
     const current = (g.dungeons?.[g.u.uz.dnum]?.ledger_start | 0) + g.u.uz.dlevel;
     for (const [lev, snap] of [...(g.levelStore ?? [])].sort((a, b) => a[0] - b[0])) {
-        if (lev === current || !snap.bubbles) continue;
+        if (lev === current) continue;
+        /* C restore.c:873-875 — each inactive level goes through getlev()
+         * (REST_LEVELS: monster catch-up skipped, :1201) and straight back out
+         * through restlevelfile() -> savelev(), which stamps it with the
+         * restored svm.moves (save.c:516).  rest_regions (region.c:813) ages
+         * its regions by the old stamp during that read.  So a revisit after
+         * restore measures elapsed from the SAVE, not from when it was left. */
+        const aged = (g.moves | 0) - (snap.omoves | 0);
+        for (let i = 0; i < (snap.regions?.n_regions | 0); i++) {
+            const reg = snap.regions.regions[i];
+            if (reg.ttl >= 0) reg.ttl = Math.max(0, reg.ttl - aged);
+        }
+        snap.omoves = g.moves | 0;
+        if (!snap.bubbles) continue;
         snap.bubbles = await bubbles_copy_snapshot(snap.bubbles, snap.level);
     }
     // The final current-level read rebuilds its worm occupancy as getlev does.
@@ -373,6 +386,14 @@ export async function restore_preamble() {
             msgs.push('NetHack is filmed in front of an undead studio audience.');
     }
     msgs.push(welcome_back_message());
+    /* C allmain.c:927 welcome(FALSE): print_level_annotation() (dungeon.c:2489)
+     * follows the welcome-back line, before unixmain.c's keep-save prompt. */
+    {
+        const uz = g.u?.uz || { dnum: 0, dlevel: 1 };
+        const annotation = g._level_custom?.[`${uz.dnum | 0}:${uz.dlevel | 0}`];
+        if (annotation)
+            msgs.push(`You remember this level as ${annotation}.`);
+    }
     let keptPrompt = '';
     /* C unixmain.c:264-274 — after a successful dorecover(), wizard and
      * explore-mode restores ask whether to keep the save file; this precedes

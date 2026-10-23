@@ -234,7 +234,7 @@ export async function makedog() {
      * square rejects it on the first pass. */
     const fakemon = { data: permonstTemplate(pettype), mnum: pettype, m_id: 0, wormno: 0,
         mx: 0, my: 0, minvent: null };
-    const gpflags = MM_IGNOREWATER | GP_CHECKSCARY | GP_AVOID_MONPOS;
+    const gpflags = GP_CHECKSCARY | GP_AVOID_MONPOS; /* dog.c:255 passes MM_EDOG|NO_MINVENT only: no MM_IGNOREWATER (makemon.c:1161) */
     const petPos = enexto_core(ux, uy, fakemon, gpflags)
         ?? enexto_core(ux, uy, fakemon, gpflags & ~GP_CHECKSCARY)
         ?? { x: ux, y: uy };

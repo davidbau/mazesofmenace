@@ -167,7 +167,7 @@ async function mzapwand(mtmp, otmp, self) {
                       ? (BOLT_LIM + 1) : (BOLT_LIM - 3);
         const near = dist2(mtmp.mx | 0, mtmp.my | 0,
                            game.u.ux | 0, game.u.uy | 0) <= range * range;
-        pline(`You hear a ${near ? "nearby" : "distant"} zap.`);
+        await You_hear(`a ${near ? "nearby" : "distant"} zap.`);
         /* KNOWN GAP — muse.c:181 unknow_object(otmp): the hero loses their
          * memory of the wand's charge count when an unseen monster uses it.
          * Missing dependency: unknow_object (o_init.c).  Display/knowledge

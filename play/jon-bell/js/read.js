@@ -90,6 +90,10 @@ const candy_wrappers = [
     "Fruity Oaty",              // Serenity
     "Wonka Bar",                // Charlie and the Chocolate Factory
 ];
+/* C read.c:294-300 candy_wrapper_text(obj) */
+export function candy_wrapper_text(obj) {
+    return candy_wrappers[(obj.spe | 0) % candy_wrappers.length];
+}
 /* ---------------------------------------------------------------------------
  * assign_candy_wrapper — assign a wrapper flavor to a candy bar stack.
  * C ref: nethack-c/src/read.c:303-311

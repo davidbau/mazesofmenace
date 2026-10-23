@@ -860,6 +860,22 @@ export async function runSegment(input, prevGame = null) {
             // frames, and park the cause on the game for the diagnosis tools.
             if (!String(e?.message || '').includes('Input queue empty'))
                 nhGame.replayError = e;
+            else if (game._moreRngMark != null) {
+                /* The recording ends on a --More-- C raised inside a pline (topl.c more()): C
+                 * never drew past that pline, but this port ran the rest of the turn ahead of
+                 * paging.  Drop those over-draws so they cannot shift the next segment. */
+                const _log = getRngLog();
+                if (_log && _log.length > game._moreRngMark) _log.length = game._moreRngMark;
+                let left = game._moreRngMark;
+                for (let i = 0; i < nhGame._rngSlices.length; i++) {
+                    const n = nhGame._rngSlices[i].length;
+                    if (left >= n) { left -= n; continue; }
+                    nhGame._rngSlices[i] = nhGame._rngSlices[i].slice(0, left);
+                    for (let k = i + 1; k < nhGame._rngSlices.length; k++) nhGame._rngSlices[k] = [];
+                    break;
+                }
+                game._moreRngMark = null;
+            }
             break;
         }
     }

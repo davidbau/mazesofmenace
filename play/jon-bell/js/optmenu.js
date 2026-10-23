@@ -12,15 +12,16 @@
 // content (labels + ordering) is fixed (it is the static set_in_game projection
 // of allopt[]); only the [value] fields are state-dependent.  Rendered
 import { game } from './gstate.js';
+import { dlb_file_lines, OPTMENUHELP } from './dispfile.js';
 import { ECMD_OK, gs } from './const.js';
 import { nhgetch } from './input.js';
-import { flush_screen, pline, force_more, docrt } from './display.js';
+import { flush_screen, pline, force_more, docrt, dec_mode } from './display.js';
 import { update_inventory } from './inventory_refresh.js';
 /* C options.c:8944 — the generic compound-option path reads its value with
  * getlin(); mungspaces (objnam.c) normalises it before it is stored. */
 import { getlin } from './wizcmds.js';
 import { mungspaces } from './mklev.js';
-import { optfn_fruit_set, optfn_statushilites_set, count_status_hilites, handler_autopickup_exception, compound_option_value, optfn_boulder_set } from './options.js';
+import { optfn_fruit_set, optfn_statushilites_set, count_status_hilites, optfn_hilite_status_set, handler_autopickup_exception, handle_add_list_remove, compound_option_value, optfn_boulder_set, DISCLOSURE_OPTIONS, END_DISCLOSE_DEFAULT } from './options.js';
 import { reset_needed_visuals } from './options_runtime.js';
 import { vision_recalc } from './vision.js';
 import { optfn_suppress_alert_set } from './feature_alert.js';
@@ -29,8 +30,9 @@ import { reset_commands, update_rest_on_space, cmdbind_get, bind_key } from './c
 import { EXTCMDLIST } from './cmd_extcmd_data.js';
 import { pgetchar, key2txt } from './cmd.js';
 import { display_text_window } from './com_pager.js';
-import { TtyMenu, PICK_ANY, PICK_ONE, ATR_NONE } from './tty_menu.js';
+import { TtyMenu, PICK_ANY, PICK_ONE, PICK_NONE, ATR_NONE, menu_heading_text } from './tty_menu.js';
 import { menutype } from './menustyle.js';
+import { colornames, attrnames } from './coloratt.js';
 import { choose_disco_sort } from './o_init.js';
 /* C ref: wintty.c process_menu_window's overlay composition — the shared
  * map-under-window renderer every other overlay in this port uses. */
@@ -38,7 +40,7 @@ import { build_window_screen, menu_search_case } from './com_pager.js';
 import { DOSET_BOOLS, DOSET_COMPOUNDS, DOSET_OTHERS, LONGEST_OPTION_NAME,
          term_for_boolean } from './doset_data.js';
 /* C ref: options.c:8060 oc_to_str — see js/drawing.js for why it lives there. */
-import { oc_to_str } from './drawing.js';
+import { oc_to_str, def_char_to_objclass } from './drawing.js';
 
 // C ref: cmd.c set_cursor — record the tty cursor position after a window draw.
 function set_cursor(col, row) {
@@ -124,7 +126,7 @@ const PAGES = [
         { name: 'symset', kind: 'comp', value: DOSET_COMPOUNDS.find(r => r.name === 'symset').val },
         { section: 'Status' },
         { name: 'hitpointbar', kind: 'bool', flag: 'hitpointbar' },
-        { name: 'menu colors', kind: 'othr', value: () => '(0 currently set)' },
+        { name: 'menu colors', kind: 'othr', value: () => `(${(game.menu_colorings || []).length} currently set)` },
         { name: 'showexp', kind: 'bool', flag: 'showexp' },
         { name: 'status condition fields', kind: 'othr', value: () => '(16 currently set)' },
         { name: 'status highlight rules', kind: 'othr', value: () => `(${count_status_hilites()} currently set)` },
@@ -432,7 +434,7 @@ function renderPickupSubmenu(marks, bgRows, classes, preserveStatus, titleErased
 
 async function numberPadSubmenu() {
     const rows = [
-        '\x1b[7mSelect number_pad mode:\x1b[0m', '',
+        menu_heading_text('Select number_pad mode:'), '',
         'a -  0 (off)', 'b -  1 (on)',
         'c -  2 (on, MSDOS compatible)',
         'd -  3 (on, phone-style digit layout)',
@@ -622,7 +624,12 @@ export async function doset_simple() {
      * repainted, so it stays blank until the page changes or select_menu is
      * re-entered (both of which redraw from page_start). */
     let titleErased = false;
+    /* C wintty.c:1334-1399,1565-1612 counting/count/reset_count: digits build
+     * a count and ESC while counting only stops the count. */
+    let counting = false, count = 0, reset_count = true;
     while (true) {
+        if (reset_count) { counting = false; count = 0; }
+        else reset_count = true;
         // renderPage sets game._screen_output to the menu frame; the nhgetch
         // NOT flush_screen here — flush_screen's _buildScreenOutput would rebuild
         // _screen_output from the map and clobber the menu (the dohelp /
@@ -630,6 +637,12 @@ export async function doset_simple() {
         renderPage(pageIdx, titleErased);
         const key = await nhgetch();
         const ch = String.fromCharCode(key);
+        if (key >= 48 && key <= 57) {
+            count = count * 10 + (key - 48);
+            if (count !== 0) { counting = true; reset_count = false; }
+            continue;
+        }
+        if (key === 27 /* ESC */ && counting) continue;
         if (key === 27 /* ESC */) break;
         if (key === 10 || key === 13 /* Enter: exit */) break;
         if (key === 32 /* space: next page (wraps off the end → exit) */) {
@@ -645,6 +658,13 @@ export async function doset_simple() {
         }
         if (ch === '<') {
             if (pageIdx > 0) { pageIdx--; titleErased = false; }
+            continue;
+        }
+        /* C ref: wintty.c:1611-1625 — MENU_FIRST_PAGE '^' / MENU_LAST_PAGE '|'
+         * jump to the first / last page and are no-ops already there. */
+        if (ch === '^' || ch === '|') {
+            const dest = ch === '^' ? 0 : pageCount() - 1;
+            if (pageIdx !== dest) { pageIdx = dest; titleErased = false; }
             continue;
         }
         // a letter accelerator on the current page → toggle / submenu.
@@ -816,6 +836,272 @@ export async function handler_menustyle(preserveStatus = false) {
         await pline(`'menustyle' ${chngd ? 'changed to' : 'is still'} "${menutype[game.flags.menu_style][0]}".`);
 }
 
+/* C options.c:273 objsymvals[] */
+const objsymvals = [
+    [0, 'none', "don't show object symbols in menus"],
+    [1, 'headers', 'show object symbols in menu header lines'],
+    [2, 'entries', 'show object symbols in individual menu entries'],
+    [3, 'both', 'show object symbols in headers and menu entries'],
+    [4, 'conditional', 'show objsyms in entries if no headers are shown'],
+    [5, 'one-or-other', 'show objsyms in header, in entries if no header'],
+];
+
+/* C options.c:7446 set_menuobjsyms_flags */
+function set_menuobjsyms_flags(newobjsyms) {
+    game.iflags.menuobjsyms = newobjsyms;
+    game.iflags.menu_head_objsym = (newobjsyms & 1) !== 0;
+    game.iflags.use_menu_glyphs = (newobjsyms & (2 | 4)) !== 0;
+}
+
+/* C options.c:5796 handler_menu_objsyms (tty). */
+export async function handler_menu_objsyms(preserveStatus = false) {
+    const sep = game.iflags.menu_tab_sep ? '\t' : ' ';
+    const cur = game.iflags.menuobjsyms ?? 4;
+    const m = new TtyMenu({ overlay: true, statusClipCol: preserveStatus ? undefined : 0 });
+    for (let i = 0; i < objsymvals.length; i++) {
+        const [num, nam, descr] = objsymvals[i];
+        const buf = nam.slice(0, 12).padEnd(12) + sep + descr.slice(0, 60);
+        m.add_menu(i + 1, String(i), ATR_NONE, buf, false, num === cur);
+    }
+    m.end_menu('Set object symbols in menus to what?');
+    const { count, picks } = await m.select_menu(PICK_ONE);
+    if (count > 0) {
+        let i = picks[0] - 1;
+        if (count > 1 && i === cur) i = picks[1] - 1;
+        set_menuobjsyms_flags(i);
+    }
+}
+
+/* C coloratt.c:530 basic_menu_colors(TRUE): temporary menucolor patterns that
+ * match the colour names (built last-in/first-out; black, white and no color
+ * are skipped), with 'menucolors' forced on.  Returns the restorer. */
+function basic_menu_colors() {
+    const save_use = game.iflags.use_menu_color;
+    const save_colorings = game.menu_colorings;
+    const cols = [];
+    for (const { name, color } of colornames) {
+        if (!name) break;
+        if (color === 0 || color === 15 || color === 8) continue;
+        cols.unshift({ match: new RegExp(name), color, attr: 0 });
+    }
+    game.iflags.use_menu_color = true;
+    game.menu_colorings = cols;
+    return () => {
+        game.iflags.use_menu_color = save_use;
+        game.menu_colorings = save_colorings;
+    };
+}
+
+/* C coloratt.c:475 query_color; returns -1 on ESC. */
+async function query_color(prompt, dflt_color, preserveStatus) {
+    const restore = basic_menu_colors();
+    const m = new TtyMenu({ overlay: true, statusClipCol: preserveStatus ? undefined : 0 });
+    for (let i = 0; i < colornames.length; i++) {
+        if (!colornames[i].name) break;
+        m.add_menu(i + 1, 0, ATR_NONE, colornames[i].name, false,
+                   colornames[i].color === dflt_color);
+    }
+    m.end_menu(prompt || 'Pick a color');
+    const { count, picks } = await m.select_menu(PICK_ONE);
+    restore();
+    if (count > 0) {
+        let i = colornames[picks[0] - 1].color;
+        if (count === 2 && i === 8) i = colornames[picks[1] - 1].color;
+        return i;
+    } else if (count === 0) {
+        return dflt_color;
+    }
+    return -1;
+}
+
+/* C coloratt.c:380 query_attr (PICK_ONE case); returns -1 on ESC. */
+async function query_attr_one(prompt, dflt_attr, preserveStatus) {
+    const m = new TtyMenu({ overlay: true, statusClipCol: preserveStatus ? undefined : 0 });
+    for (let i = 0; i < attrnames.length; i++) {
+        if (!attrnames[i].name) break;
+        m.add_menu(i + 1, 0, ATR_NONE, attrnames[i].name, false,
+                   attrnames[i].attr === dflt_attr);
+        /* tty term_start_attr: C ATR_BOLD/ULINE/INVERSE only (this port's
+         * ATR_* numbering differs from C's, so carry the SGR code itself). */
+        const sgr = { 1: 1, 4: 4, 7: 7 }[attrnames[i].attr];
+        if (sgr) m.mlist[m.mlist.length - 1].sgr = [sgr];
+    }
+    m.end_menu(prompt || 'Pick an attribute');
+    const { count, picks } = await m.select_menu(PICK_ONE);
+    if (count > 0) {
+        let j = picks[0] - 1;
+        if (count === 2 && attrnames[j].attr === dflt_attr) j = picks[1] - 1;
+        return attrnames[j].attr;
+    } else if (count === 0) {
+        return dflt_attr;
+    }
+    return -1;
+}
+
+/* C options.c:5779 handler_menu_headings + coloratt.c:304 query_color_attr. */
+export async function handler_menu_headings(preserveStatus = false) {
+    const mh = game.iflags.menu_headings ||= { color: 8, attr: 7 };
+    const prompt = 'How to highlight menu headings:';
+    const c = await query_color(prompt, mh.color, preserveStatus);
+    if (c === -1) return;
+    const a = await query_attr_one(prompt, mh.attr, true);
+    if (a === -1) return;
+    mh.color = c;
+    mh.attr = a;
+}
+
+/* C botl.c:703 initblstats[]: [fldname, anytype (S string, I int, L long, M mask),
+ * idxmax >= 0 (INIT_BLSTATP)]. */
+const INITBLSTATS = [
+    ['title', 'S'], ['strength', 'I'], ['dexterity', 'I'], ['constitution', 'I'],
+    ['intelligence', 'I'], ['wisdom', 'I'], ['charisma', 'I'], ['alignment', 'S'],
+    ['score', 'L'], ['carrying-capacity', 'I'], ['gold', 'L'], ['power', 'I', true],
+    ['power-max', 'I'], ['experience-level', 'I', true], ['armor-class', 'I'],
+    ['HD', 'I'], ['time', 'L'], ['hunger', 'I'], ['hitpoints', 'I', true],
+    ['hitpoints-max', 'I'], ['dungeon-level', 'S'], ['experience', 'L', true],
+    ['condition', 'M'], ['version', 'S'], ['weapon', 'S'], ['armor', 'S'], ['terrain', 'S'],
+];
+
+/* C botl.c:3707 status_hilite_menu_choose_behavior; returns the BL_TH_* value,
+ * 0 (BL_TH_NONE) for no pick, -1 (BL_TH_NONE - 1) for a cancelled menu. */
+async function status_hilite_menu_choose_behavior(fld, preserveStatus) {
+    const [fldname, at, hasMax] = INITBLSTATS[fld];
+    const isCond = fldname === 'condition', isCap = fldname === 'carrying-capacity';
+    const isHunger = fldname === 'hunger';
+    const m = new TtyMenu({ overlay: true, statusClipCol: preserveStatus ? undefined : 0 });
+    let nopts = 0, onlybeh = 0;
+    const ent = (beh, ch, text) => { m.add_menu(beh, ch, ATR_NONE, text, false, false); onlybeh = beh; nopts++; };
+    if (!isCond) ent(105, 'a', `Always highlight ${fldname}`);
+    if (isCond) ent(103, 'b', 'Bitmask of conditions');
+    if (!isCond && fldname !== 'version') ent(102, 'c', `${fldname} value changes`);
+    if (!isCap && !isHunger && (at === 'I' || at === 'L')) ent(101, 'n', 'Number threshold');
+    if (hasMax) ent(100, 'p', 'Percentage threshold');
+    if (fldname === 'hitpoints') ent(106, 'C', `Highlight critically low ${fldname}`);
+    if (at === 'S' || isCap || isHunger) ent(104, 't', `${fldname} text match`);
+    m.end_menu(`Select ${fldname} field hilite behavior:`);
+    let beh = -1;
+    if (nopts > 1) {
+        const { count, picks } = await m.select_menu(PICK_ONE);
+        if (count > 0) beh = picks[0];
+        else if (count === 0) beh = 0;
+    } else if (onlybeh !== 0) {
+        beh = onlybeh;
+    }
+    return beh;
+}
+
+/* C botl.c:4498 status_hilite_menu with the empty rule list (nothing to view,
+ * remove or count): picking a field reaches status_hilite_menu_add() at its
+ * choose_behavior step (botl.c:3922-3931); a cancelled behavior menu returns
+ * FALSE and the field menu is redone.  Defining a rule is not ported. */
+export async function status_hilite_menu(preserveStatus = false) {
+    if (count_status_hilites() > 0) return;
+    for (;;) {
+        const m = new TtyMenu(); /* 26 rows + header: full-screen, not an overlay */
+        INITBLSTATS.forEach(([name], i) => {
+            if (name === 'score') return; /* no SCORE_ON_BOTL, count 0 */
+            m.add_menu(i + 1, 0, ATR_NONE, name.padEnd(18), false, false);
+        });
+        m.end_menu('Status hilites:');
+        const { count, picks } = await m.select_menu(PICK_ONE);
+        if (count <= 0) return;
+        /* the 24-row menu window covered the status rows and its dismissal
+         * does not repaint them: the pending "You see your kitten." --More--
+         * (and the submenu after it) stand over blank status rows */
+        game._status_blanked = game._decStaleFrom != null;
+        await drainTopline();
+        game._status_blanked = false;
+        const beh = await status_hilite_menu_choose_behavior(picks[0] - 1, true);
+        if (beh > 0) throw new Error('not yet ported: status_hilite_menu_add value entry');
+        preserveStatus = true;
+    }
+}
+
+/* C options.c:7701 query_msgtype: ids are msgtyp + 1 (show, hide, stop, norep). */
+const MSGTYPE_DESCR = [['show', 'Show message normally'], ['hide', 'Hide message'],
+    ['stop', 'Prompt for more after the message'], ['norep', 'Do not repeat the message']];
+async function query_msgtype(preserveStatus) {
+    const m = new TtyMenu({ overlay: true, statusClipCol: preserveStatus ? undefined : 0 });
+    MSGTYPE_DESCR.forEach(([, d], i) => m.add_menu(i + 1, 0, ATR_NONE, d, false, false));
+    m.end_menu('How to show the message');
+    const { count, picks } = await m.select_menu(PICK_ONE);
+    return count > 0 ? picks[0] - 1 : -1;
+}
+
+/* C options.c:6502 handler_msgtype. */
+export async function handler_msgtype(preserveStatus = false) {
+    for (;;) {
+        const rules = game.msgtypes ||= [];
+        const opt_idx = await handle_add_list_remove('message type', rules.length, preserveStatus);
+        if (opt_idx === 3) return;
+        if (opt_idx === 0) {
+            game._status_blanked = !preserveStatus;
+            const mtbuf = mungspaces(await getlin('What new message pattern?'));
+            game._status_blanked = false;
+            if (mtbuf[0] === '\x1b') return;
+            let re = null;
+            if (mtbuf) { try { re = new RegExp(mtbuf); } catch (e) { re = null; } }
+            if (re) {
+                const mttyp = await query_msgtype(true);
+                if (mttyp !== -1)
+                    rules.unshift({ type: MSGTYPE_DESCR[mttyp][0], regex: re, pattern: mtbuf });
+            }
+            continue;
+        }
+        const m = new TtyMenu({ overlay: true, statusClipCol: preserveStatus ? undefined : 0 });
+        rules.forEach((r, i) => {
+            const pat = r.pattern ?? r.regex.source;
+            const ln = 255 - (r.type.padEnd(5).length + 2) - 1;
+            m.add_menu(i + 1, 0, ATR_NONE, `${r.type.padEnd(5)} "${pat.length > ln ? pat.slice(0, ln - 3) + '..."' : pat + '"'}`, false, false);
+        });
+        m.end_menu(opt_idx === 1 ? 'List of message types' : 'Remove which message types');
+        const { count, picks } = await m.select_menu(opt_idx === 1 ? PICK_NONE : PICK_ANY);
+        if (count > 0) {
+            for (let k = 0; k < count; k++) rules.splice(picks[k] - 1 - k, 1);
+        }
+        if (count < 0) return;
+    }
+}
+
+/* C options.c:6407 handler_menu_colors.  Add and exit are ported; the list /
+ * remove arms (opt_idx 1, 2) need the menucolor list menus and are not. */
+export async function handler_menu_colors(preserveStatus = false) {
+    for (;;) {
+        const nmc = (game.menu_colorings || []).length;
+        const opt_idx = await handle_add_list_remove('menucolor', nmc, preserveStatus);
+        if (opt_idx === 3) break;
+        if (opt_idx !== 0) throw new Error('not yet ported: menucolors list/remove');
+        game._status_blanked = !preserveStatus;
+        const mcbuf = mungspaces(await getlin('What new menucolor pattern?'));
+        game._status_blanked = false;
+        if (mcbuf[0] === '\x1b') break;
+        if (!mcbuf) continue;
+        let re;
+        try { re = new RegExp(mcbuf); } catch (e) { continue; }
+        const mcclr = await query_color(null, 8, true);
+        if (mcclr === -1) continue;
+        const mcattr = await query_attr_one(null, 0, true);
+        if (mcattr === -1) continue;
+        /* coloratt.c:543 add_menu_coloring_parsed prepends */
+        (game.menu_colorings ||= []).unshift({ match: re, color: mcclr, attr: mcattr });
+        game.iflags.use_menu_color = true;
+    }
+    /* C options.c:6417-6424 */
+    if (game.iflags?.use_menu_color && game.iflags?.perm_invent) update_inventory();
+}
+
+/* C options.c:4067-4098 optfn_statuslines(do_set); returns the error text. */
+function optfn_statuslines_set(text) {
+    const match = text.match(/^[\t\n\r\f\v ]*([+-]?\d+)/);
+    const n = match ? Number(match[1]) : 0;
+    if (n < 2 || n > 3)
+        return `'statuslines:${text}' is invalid; must be 2 or 3.`;
+    game.iflags ||= {};
+    game.iflags.wc2_statuslines = n;
+    if (game.disp) game.disp.botl = 1;
+    return null;
+}
+
 /* C options.c:195 msgwind[] */
 const msgwind = [
     ['single', '[show one old message at a time,', ' most recent first]'],
@@ -851,6 +1137,40 @@ export async function handler_msg_window(preserveStatus = false) {
     }
 }
 
+/* C options.c:5675 handler_disclose. */
+const DISCLOSURE_NAMES = ['inventory', 'attributes', 'vanquished', 'genocides', 'conduct', 'overview'];
+export async function handler_disclose(preserveStatus = false) {
+    const cur = [...(game.flags?.end_disclose || END_DISCLOSE_DEFAULT)];
+    const m = new TtyMenu({ overlay: true, statusClipCol: preserveStatus ? undefined : 0 });
+    DISCLOSURE_NAMES.forEach((n, i) => m.add_menu(i + 1, DISCLOSURE_OPTIONS[i], ATR_NONE,
+        `${n.padEnd(12)}[${cur[i]}${DISCLOSURE_OPTIONS[i]}]`, false, false));
+    m.end_menu('Change which disclosure options categories:');
+    const { count, picks } = await m.select_menu(PICK_ANY);
+    const disc = new Array(DISCLOSURE_NAMES.length).fill(0);
+    if (count > 0) for (const p of picks) disc[p - 1] = 1;
+    for (let i = 0; i < DISCLOSURE_NAMES.length; i++) {
+        if (!disc[i]) continue;
+        const c = cur[i];
+        const vg = DISCLOSURE_NAMES[i][0] === 'v' || DISCLOSURE_NAMES[i][0] === 'g';
+        const items = [['-', 'Never disclose, without prompting'],
+                       ['+', 'Always disclose, without prompting']];
+        if (vg) items.push(['#', 'Always disclose, pick sort order from menu']);
+        items.push(['n', 'Prompt, with default answer of "No"'],
+                   ['y', 'Prompt, with default answer of "Yes"']);
+        if (vg) items.push(['?', 'Prompt, with default answer of "Ask" to request sort menu']);
+        const m2 = new TtyMenu({ overlay: true, statusClipCol: preserveStatus ? undefined : 0 });
+        for (const [ch, txt] of items) m2.add_menu(ch.charCodeAt(0), 0, ATR_NONE, txt, false, c === ch);
+        m2.end_menu(`Disclosure options for ${DISCLOSURE_NAMES[i]}:`);
+        const r = await m2.select_menu(PICK_ONE);
+        if (r.count > 0) {
+            let nc = String.fromCharCode(r.picks[0]);
+            if (r.count > 1 && nc === c) nc = String.fromCharCode(r.picks[1]);
+            cur[i] = nc;
+            (game.flags ||= {}).end_disclose = cur.join('');
+        }
+    }
+}
+
 /* C options.c:6123 handler_runmode. */
 const runmodes = ['teleport', 'run', 'walk', 'crawl'];
 export async function handler_runmode(preserveStatus = false) {
@@ -859,6 +1179,46 @@ export async function handler_runmode(preserveStatus = false) {
     m.end_menu('Select run/travel display mode:');
     const { count, picks } = await m.select_menu(PICK_ONE);
     if (count > 0) game.flags.runmode = picks[0] - 1;
+}
+
+/* C options.c:6206 handler_whatis_coord: PICK_ONE; the id is the GPCOORDS
+ * letter itself (any.a_char), the current setting is preselected. */
+export async function handler_whatis_coord(preserveStatus = false) {
+    const iflags = (game.iflags ||= {});
+    const gpc = iflags.getpos_coords || 'n';
+    const m = new TtyMenu({ overlay: true, statusClipCol: preserveStatus ? undefined : 0 });
+    const ent = (c, s) => m.add_menu(c.charCodeAt(0), c, ATR_NONE, s, false, gpc === c);
+    ent('c', "compass ('east' or '3s' or '2n,4w')");
+    ent('f', "full compass ('east' or '3south' or '2north,4west')");
+    ent('m', 'map <x,y>');
+    ent('s', 'screen [row,column]');
+    ent('n', 'none (no coordinates displayed)');
+    m.add_menu_str('');
+    m.add_menu_str(`map: upper-left: <1,0>, lower-right: <79,20>${game.flags?.verbose ? '; column 0 unused, off left edge' : ''}`);
+    m.add_menu_str(`screen: upper-left: [02,01], lower-right: [22,79]${game.flags?.verbose ? '; column 80 is not used' : ''}`);
+    m.add_menu_str('');
+    m.end_menu('Select coordinate display when auto-describing a map position:');
+    const { count, picks } = await m.select_menu(PICK_ONE);
+    if (count > 0) {
+        iflags.getpos_coords = String.fromCharCode(picks[0]);
+        if (count > 1 && iflags.getpos_coords === gpc)
+            iflags.getpos_coords = String.fromCharCode(picks[1]);
+    }
+}
+
+/* C options.c:6254 handler_whatis_filter: ids are GFILTER_x + 1. */
+export async function handler_whatis_filter(preserveStatus = false) {
+    const iflags = (game.iflags ||= {});
+    const gfilt = iflags.getloc_filter || 0;
+    const m = new TtyMenu({ overlay: true, statusClipCol: preserveStatus ? undefined : 0 });
+    [['n', 'no filtering'], ['v', 'in view only'], ['a', 'in same area']].forEach(([c, s], i) =>
+        m.add_menu(i + 1, c, ATR_NONE, s, false, gfilt === i));
+    m.end_menu('Select location filtering when going for next/previous map position:');
+    const { count, picks } = await m.select_menu(PICK_ONE);
+    if (count > 0) {
+        iflags.getloc_filter = picks[0] - 1;
+        if (count > 1 && iflags.getloc_filter === gfilt) iflags.getloc_filter = picks[1] - 1;
+    }
 }
 
 /* C options.c:220 sortltype[]: none / loot / full. */
@@ -948,8 +1308,19 @@ export async function handler_symset(preserveStatus = false, rogueflag = false) 
     if (chosen > -1) {
         const sl = sets[chosen];
         if (!sl) return true;
+        const wasDec = dec_mode();
         cur.name = sl[0];
         cur.handling = sl[1];
+        /* rows still physically drawn under the old DEC shift until a window
+         * is dismissed over them (see com_pager render_map_row_clipped) */
+        if (wasDec && !dec_mode()) game._decStaleFrom = 0;
+        /* C symbols.c:909-1090 do_symset — init_primary_symbols() resets every
+         * showsym to its defsym default before read_sym_file loads the set, so
+         * S_darkroom paints '.' until reglyph_darkroom() restores the alias to
+         * S_room (display.c:1860-1897) at the doset tail's
+         * reset_needed_visuals.  display.js re-derives glyphs from this flag
+         * (see _remap_remembered_ibm / _terrain_glyph_base ROOM). */
+        game._symsetDarkroomPending = true;
     } else if (chosen === -1) {
         cur.name = null;
         cur.handling = 0;
@@ -1206,9 +1577,9 @@ export async function doset() {
              * either invert the boolean or run the compound's handler. */
             for (const a of picks) {
                 if (a === HELP_A_INT) {
-                    /* C: display_file(OPTMENUHELP) — the help text file is not
-                     * in the port's dat/ yet, so nothing is drawn; the pick is
-                     * still counted so the rerun below behaves as C's does. */
+                    /* C options.c:8917-8918: display_file(OPTMENUHELP, FALSE) */
+                    g._pending_message = '';
+                    await display_text_window(dlb_file_lines(OPTMENUHELP));
                     gavehelp = true;
                     continue;
                 }
@@ -1287,9 +1658,24 @@ export async function doset() {
                     await drainTopline();
                     await handler_rebind_keys();
                     statusRefreshed = true;
+                } else if (ent.row.name === 'whatis_coord') {
+                    await drainTopline();
+                    await handler_whatis_coord(statusRefreshed);
+                    /* the overlay menu does not cover the status rows, so a status
+                     * left blank by handler_symset (statusRefreshed false after a
+                     * DEC->other change) is still blank for the next menu */
+                    statusRefreshed = game._decStaleFrom == null;
+                } else if (ent.row.name === 'whatis_filter') {
+                    await drainTopline();
+                    await handler_whatis_filter(statusRefreshed);
+                    statusRefreshed = game._decStaleFrom == null;
                 } else if (ent.row.name === 'runmode') {
                     await drainTopline();
                     await handler_runmode(statusRefreshed);
+                    statusRefreshed = true;
+                } else if (ent.row.name === 'disclose') {
+                    await drainTopline();
+                    await handler_disclose(statusRefreshed);
                     statusRefreshed = true;
                 } else if (ent.row.name === 'sortdiscoveries') {
                     await drainTopline();
@@ -1298,6 +1684,26 @@ export async function doset() {
                 } else if (ent.row.name === 'sortloot') {
                     await drainTopline();
                     await handler_sortloot(statusRefreshed);
+                    statusRefreshed = true;
+                } else if (ent.row.name === 'menu_headings') {
+                    await drainTopline();
+                    await handler_menu_headings(statusRefreshed);
+                    statusRefreshed = true;
+                } else if (ent.row.name === 'menu colors') {
+                    await drainTopline();
+                    await handler_menu_colors(statusRefreshed);
+                    statusRefreshed = game._decStaleFrom == null;
+                } else if (ent.row.name === 'message types') {
+                    await drainTopline();
+                    await handler_msgtype(statusRefreshed);
+                    statusRefreshed = game._decStaleFrom == null;
+                } else if (ent.row.name === 'status highlight rules') {
+                    await drainTopline();
+                    await status_hilite_menu(statusRefreshed);
+                    statusRefreshed = game._decStaleFrom == null;
+                } else if (ent.row.name === 'menu_objsyms') {
+                    await drainTopline();
+                    await handler_menu_objsyms(statusRefreshed);
                     statusRefreshed = true;
                 } else if (ent.row.name === 'menustyle') {
                     await drainTopline();
@@ -1326,8 +1732,60 @@ export async function doset() {
                          * alone is not enough. */
                         const msg = optfn_fruit_set(mungspaces(abuf));
                         if (msg) g._pending_message = msg;
+                    } else if (abuf !== '\x1b' && ent.row.name === 'hilite_status') {
+                        const hlmsg = optfn_hilite_status_set(mungspaces(abuf));
+                        if (hlmsg) await pline(hlmsg);
                     } else if (abuf !== '\x1b' && ent.row.name === 'statushilites') {
                         optfn_statushilites_set(g.iflags, mungspaces(abuf));
+                    } else if (abuf !== '\x1b' && (ent.row.name === 'crash_email' || ent.row.name === 'crash_name')) {
+                        /* C options.c:1274-1290 / 1300-1316 optfn_crash_email/name(do_set):
+                         * string_for_opt() then gc.crash_* = dupstr(op); an empty
+                         * answer is optn_err and leaves it unchanged. */
+                        const op = mungspaces(abuf);
+                        if (op) game.gc[ent.row.name] = op;
+                    } else if (abuf !== '\x1b' && ent.row.name === 'crash_urlmax') {
+                        /* C options.c:1311-1331 optfn_crash_urlmax(do_set):
+                         * atoi(op); below 75 is optn_err, else gc.crash_urlmax. */
+                        const op = mungspaces(abuf);
+                        if (op) {
+                            const temp = parseInt(op, 10) || 0;
+                            if (temp >= 75) game.gc.crash_urlmax = temp;
+                        }
+                    } else if (abuf !== '\x1b' && ent.row.name === 'menuinvertmode') {
+                        /* C options.c:2297-2308 optfn_menuinvertmode(do_set):
+                         * atoi(op); outside 0..2 is optn_err. */
+                        const op = mungspaces(abuf);
+                        if (op) {
+                            const mode = parseInt(op, 10) || 0;
+                            if (mode >= 0 && mode <= 2) g.iflags.menuinvertmode = mode;
+                        }
+                    } else if (abuf !== '\x1b' && ent.row.name === 'packorder') {
+                        /* C options.c:2670-2680 optfn_packorder(do_set) -> 7466
+                         * change_inv_order: COIN first unless named, keep good
+                         * entries, append omissions from the previous order. */
+                        const op = mungspaces(abuf);
+                        if (op) {
+                            const previous = g.flags.inv_order || [12, 5, 2, 3, 7, 9, 10, 8, 4, 11, 6, 13, 14, 15, 16];
+                            const order = op.includes('$') ? [] : [12];
+                            for (let i = 0; i < op.length; i++) {
+                                const oc = def_char_to_objclass(op.charCodeAt(i));
+                                if (oc !== 18 && previous.includes(oc) && !op.includes(op[i], i + 1))
+                                    order.push(oc);
+                            }
+                            g.flags.inv_order = order.concat(previous.filter(oc => !order.includes(oc)));
+                        }
+                    } else if (abuf !== '\x1b' && ent.row.name === 'statuslines') {
+                        /* C options.c:4067-4098 optfn_statuslines(do_set) */
+                        const message = optfn_statuslines_set(mungspaces(abuf));
+                        if (message) {
+                            /* getline.c leaves bot() disabled: the --More-- is raised
+                             * with the status rows still blank. */
+                            g._pending_message = message;
+                            g._status_blanked = true;
+                            await drainTopline();
+                            g._status_blanked = false;
+                            statusRefreshed = false;
+                        }
                     } else if (abuf !== '\x1b' && ent.row.name === 'boulder') {
                         needVisuals = (await optfn_boulder_set(mungspaces(abuf))) || needVisuals;
                     } else if (abuf !== '\x1b' && ent.row.name === 'suppress_alert') {
@@ -1350,6 +1808,7 @@ export async function doset() {
 
     /* C options.c:8973 doset(): reset_needed_visuals() after the pick walk. */
     if (needVisuals) await reset_needed_visuals();
+    game._decStaleFrom = null;
     /* C: this handler returns ECMD_OK on every path; rhack() maps it. */
     return ECMD_OK;
 }

@@ -199,7 +199,7 @@ import {
     UNCHANGING,
     Ugender,
 } from './const.js';
-import { ART_STING, attacks } from './artifacts.js';
+import { ART_STING, ART_STORMBRINGER, attacks } from './artifacts.js';
 import { isok } from './cmd_isok.js';
 import { body_part, float_vs_flight, rehumanize } from './polyself.js';
 import { adjalign, acurrstr, acurr, exercise } from './attrib.js';
@@ -493,6 +493,7 @@ import {
     trap_to_defsym,
 } from './symbols.js';
 import {
+    fall_asleep,
     peek_timer,
     spot_stop_timers,
     spot_time_left,
@@ -810,31 +811,24 @@ export async function check_capacity(str, state = game) {
 // C ref: hack.c overexert_hp() (3035-3047). What working while overloaded
 // costs: one hit point, or consciousness when there is not one to spare.
 //
-// Upolyd is constantly false in this port, so C's `int *hp` is always
-// &u.uhp. Only the `*hp <= 1` arm (3042-3046) stops, and no longer for want of
-// the three statements it runs: You("pass out from exertion!"), attrib.c
-// exercise(A_CON, FALSE) and timeout.c fall_asleep(-10, FALSE) are all ported.
-// What stops it is the state it would leave behind. Both callers reach this
-// only from HVY_ENCUMBER upward, so a hero who faints here is immobile and
-// still overloaded, and js/allmain.js refuses that pair at its `burdened
-// multi-cycle immobility countdown` boundary: a burdened turn is planned on a
-// clone first, and the clone reaches that boundary in the same round the faint
-// would run in. Running the arm would also spend exercise()'s rn2(2) here and
-// make overexertion() below return `gm.multi < 0` for the first time, which
-// uhitm.c do_attack() (533) reads to abandon the attack. It needs a fresh C
-// case, not a comment change.
-//
-// `refuse` is the caller's own boundary, because hack.c overexertion() and
-// allmain.c moveloop_core() reach this from different commands and stop at
-// different classes.
-export function overexert_hp(state, refuse) {
-    if (typeof refuse !== 'function')
-        throw new TypeError('overexert_hp requires a refusal');
-    if (state.u.uhp > 1) {
-        state.u.uhp -= 1;
+// C selects the current form's HP for both the loss and fainting threshold.
+// Elapsed-turn planning supplies its cloned RNG and silent message owners;
+// the live combat caller uses the ordinary owners and awaits the sleep.
+export async function overexert_hp(state = game, env = {}) {
+    const hp = Upolyd(state.u) ? 'mh' : 'uhp';
+    if (state.u[hp] > 1) {
+        state.u[hp] -= 1;
         state.disp.botl = true;
     } else {
-        refuse();
+        const message = env.message ?? ttyPline;
+        await message('You pass out from exertion!', state);
+        await exercise(A_CON, false, state, env.random ?? { rn2 }, {
+            encumberMessage: env.encumberMessage ?? encumber_msg,
+        });
+        await fall_asleep(-10, false, state, {
+            message,
+            statusRefresh: env.statusRefresh ?? (() => bot()),
+        });
     }
 }
 
@@ -843,10 +837,8 @@ export function overexert_hp(state, refuse) {
 // of the turn loop's own gethungry(). Its rn2(20) is the first random-number
 // call any melee attempt makes.
 //
-// C's return value is `gm.multi < 0`, which is true only when overexert_hp()
-// forced the hero to faint. Nothing reachable from here sets gm.multi:
-// gethungry() never writes it, and the arm of overexert_hp() that would stops
-// instead. So the return is always false.
+// Return C's `gm.multi < 0` after the awaited faint so do_attack() abandons
+// the swing when the hero has become unconscious.
 export async function overexertion(state = game) {
     // The same four owners allmain.c's caller supplies at js/allmain.js:676.
     // gethungry() demands nearCapacity() always and the other three only when
@@ -858,13 +850,9 @@ export async function overexertion(state = game) {
         statusRefresh: () => bot(),
     });
     if ((state.moves % 3) !== 0 && near_capacity(state) >= HVY_ENCUMBER) {
-        overexert_hp(state, () => {
-            throw new UnsupportedHeroMoveBoundaryError(
-                'overexertion hit points',
-            );
-        });
+        await overexert_hp(state);
     }
-    return false;
+    return (state.multi ?? 0) < 0;
 }
 
 // near_capacity() without the cache write. hack.c's inv_weight() assigns
@@ -1691,7 +1679,7 @@ function requireOrdinaryHostileMelee(monster, state) {
 
 // The destination-monster seam. C splits by `is_safemon(mtmp) &&
 // !svc.context.forcefight` inside do_attack() (uhitm.c:462); this splits the
-// same way, because the two arms have nothing in common below that test. The
+// same way, including Stormbringer's inner exception to displacement. The
 // forcefight conjunct is what sends `F` at a pet down the attack arm instead
 // of down the displacement arm, so the prefix swings at the pet rather than
 // swapping places with it. A miss runs the whole swing, including wakeup(),
@@ -1709,7 +1697,8 @@ function requireSupportedDestinationMonster(monster, x, y, state) {
         && !(hides_under(monster.data) || monster.data?.mlet === S_EEL)) {
         return;
     }
-    if (!is_safemon(monster, state) || state.context?.forcefight) {
+    if (!is_safemon(monster, state) || state.context?.forcefight
+        || state.uwep?.oartifact === ART_STORMBRINGER) {
         requireOrdinaryHostileMelee(monster, state);
         return;
     }

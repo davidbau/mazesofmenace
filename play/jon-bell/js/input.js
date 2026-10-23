@@ -156,14 +156,22 @@ export async function nhgetch() {
     game._toplRunCommitted = null;
     _emitToplInputTrace('after');
     if (_inputQueue.length > 0) {
-        const key = _inputQueue.shift();
+        let key = _inputQueue.shift();
+        /* C wintty.c:4093-4094: map NUL to ESC since nethack doesn't expect NUL */
+        if (key === 0 || key === '\0') key = typeof key === 'number' ? 27 : '\x1b';
+        // C wintty.c:4093-4094: tty_nhgetch maps NUL to ESC.
+        if (key === 0) key = 27;
         _emitActionTrace(key);
         return key;
     }
     // Browser mode: wait for keypress from the display
     const display = game?.nhDisplay;
     if (display?.readKey) {
-        const key = await display.readKey({ bindings: KEY_BINDINGS.VI_KEYS });
+        let key = await display.readKey({ bindings: KEY_BINDINGS.VI_KEYS });
+        /* C wintty.c:4093-4094: map NUL to ESC since nethack doesn't expect NUL */
+        if (key === 0 || key === '\0') key = typeof key === 'number' ? 27 : '\x1b';
+        // C wintty.c:4093-4094: tty_nhgetch maps NUL to ESC.
+        if (key === 0) key = 27;
         _emitActionTrace(key);
         return key;
     }

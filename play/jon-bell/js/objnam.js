@@ -1,7 +1,7 @@
 import { is_unpaid, unpaid_cost, get_cost_of_shop_item, record_price_quote, append_price_quote, currency, obfree, delete_contents } from './shk.js';
 import { alter_cost, shk_your } from './shk.js'; // C do_name.c:410
 import { lookup_novel } from './do_name.js';
-import { apron_text } from './read.js';
+import { apron_text, tshirt_text, candy_wrapper_text } from './read.js';
 import { COST_CONTENTS, BURN_OBJECT, otrapped_of, GLIB as GLIB_PROP_ON } from './const.js';
 // @ts-nocheck
 // objnam.js — readobjnam and helpers for wish parsing.
@@ -5254,7 +5254,7 @@ function _xname_flags_body(obj, cxn_flags, side_effects) {
 
         /* C:960-994 — end-of-game disclosure text, keyed on o_id (zeroed by
          * minimal_xname so it is skipped there).
-         * KNOWN GAP: T_SHIRT " with text", CANDY_BAR " labeled". */
+         * T_SHIRT " with text" and CANDY_BAR " labeled" follow (C:983-990). */
         if (game.program_state?.gameover && obj.o_id && (obj.otyp | 0) === 136) {
             const motif = (((obj.o_id | 0) ^ ((game.u?.ubirthday ?? 0) | 0)) >>> 0)
                 % HAWAIIAN_MOTIFS_XN.length;
@@ -5264,6 +5264,14 @@ function _xname_flags_body(obj, cxn_flags, side_effects) {
             && (obj.otyp | 0) === ALCHEMY_SMOCK) {
             // C objnam.c:978-982; read.c:254-280 includes erosion of the text.
             buf += ` with text "${apron_text(obj)}"`;
+        }
+
+        if (game.program_state?.gameover && obj.o_id && (obj.otyp | 0) === 137) {
+            buf += ` with text "${tshirt_text(obj)}"`;
+        }
+        if (game.program_state?.gameover && obj.o_id && (obj.otyp | 0) === 288) {
+            const lbl = candy_wrapper_text(obj);
+            if (lbl) buf += ` labeled "${lbl}"`;
         }
 
         /* C:998-999 */

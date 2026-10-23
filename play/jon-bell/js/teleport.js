@@ -426,8 +426,14 @@ export async function teleds(nux, nuy, teleds_flags) {
      * (hack.c:3237-3268): a hero teleported out of water by a survived drowning
      * (trap.c:5199 safe_teleds) still has u.uinwater set, so C prints
      * back_on_ground(FALSE) and docrt()s here, before check_special_room. */
-    if (u.uinwater && !game.in_steed_dismounting && !game.iflags?.in_lava_effects)
-        await pooleffects(true);
+    /* hack.c:3339-3340 `if (pooleffects(TRUE)) goto spotdone;` — also the
+     * entering arm: a hero who jumps/teleports onto lava or water falls in
+     * (drown()/lava_effects()); true means she changed location, so the rest
+     * of spoteffects is skipped. */
+    if (!game.in_steed_dismounting && !game.iflags?.in_lava_effects) {
+        if (await pooleffects(true))
+            return;
+    }
     await check_special_room(false);
     /* The command-result publication used to sit immediately after the
      * materialize pline above, i.e. BEFORE spoteffects ran.  That snapshot is

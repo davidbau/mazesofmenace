@@ -363,9 +363,13 @@ export async function reset_needed_visuals() {
         if (go.opt_need_redraw) { check_gold_symbol(); reglyph_darkroom(); }
         /* C display.c cls() -> display_nhwindow(WIN_MESSAGE, FALSE): a topline
          * still showing a message gets its --More-- before the screen clears. */
+        /* a DEC->other symset change leaves the status rows blank (handler_symset)
+         * until doset() ends, so this --More-- stands over them */
+        game._status_blanked = game._decStaleFrom != null;
         await flush_screen(1);
         if (game._pending_message) await force_more(game._pending_message);
         game._pending_message = '';
+        game._status_blanked = false;
         await docrt();
     }
     if (go.opt_need_promptstyle) missing('adjust_menu_promptstyle');

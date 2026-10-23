@@ -34,10 +34,11 @@ import { game } from './gstate.js';
 import { gs, PRIMARYSET } from './const.js';
 import { aligns, genders } from './roles.js';
 /* C ref: options.c:8060 oc_to_str — see js/drawing.js for why it lives there. */
-import { oc_to_str } from './drawing.js';
+import { oc_to_str, def_oc_syms_chars } from './drawing.js';
 import { menutype } from './menustyle.js';
 import { feature_notice_version } from './feature_alert.js';
 import { count_status_hilites } from './options.js';
+import { clr2colorname, attr2attrname } from './coloratt.js';
 
 /* C ref: src/symbols.c:376 known_handling[] */
 const KNOWN_HANDLING = ['UNKNOWN', 'IBM', 'DEC', 'CURS', 'MAC', 'UTF8'];
@@ -198,11 +199,11 @@ export const DOSET_COMPOUNDS = [
     /* C: options.c:1235 optfn_boulder get_val -> showsyms[ROCK_CLASS] = "`" */
     { name: "boulder", sel: true, hasHandler: false, val: () => "`" },
     /* C: options.c:1274 — gc.crash_email is NULL, so opts stays empty and doset_add_menu (options.c:9026) keeps its "unknown" default */
-    { name: "crash_email", sel: true, hasHandler: false, val: () => "unknown" },
+    { name: "crash_email", sel: true, hasHandler: false, val: () => (game.gc && game.gc.crash_email) || "unknown" },
     /* C: options.c:1300 — same as crash_email */
-    { name: "crash_name", sel: true, hasHandler: false, val: () => "unknown" },
+    { name: "crash_name", sel: true, hasHandler: false, val: () => (game.gc && game.gc.crash_name) || "unknown" },
     /* C: options.c:1332 -> gc.crash_urlmax, init -1 */
-    { name: "crash_urlmax", sel: true, hasHandler: false, val: () => "-1" },
+    { name: "crash_urlmax", sel: true, hasHandler: false, val: () => String((game.gc && game.gc.crash_urlmax != null) ? game.gc.crash_urlmax : -1) },
     /* C: options.c:1546 — flags.end_disclose[] init DISCLOSE_PROMPT_DEFAULT_NO ('n') for i,a,v,g,c,o */
     { name: "disclose", sel: true, hasHandler: true, val: () => "ni na nv ng nc no" },
     /* C: options.c optfn_fruit get_val -> svp.pl_fruit */
@@ -210,21 +211,27 @@ export const DOSET_COMPOUNDS = [
     /* C: options.c:1840 optfn_glyph get_val -> to_be_done */
     { name: "glyph", sel: true, hasHandler: false, val: () => "(to be done)" },
     /* C: options.c:1883 — count_status_hilites() == 0 */
-    { name: "hilite_status", sel: true, hasHandler: false, val: () => "(none)" },
+    { name: "hilite_status", sel: true, hasHandler: false, val: () => (count_status_hilites() ? '(see "status highlight rules" below)' : "(none)") },
     /* C: options.c:2209 color_attr_to_str(iflags.menu_headings) with strNsubst " "->"-" */
-    { name: "menu_headings", sel: true, hasHandler: true, val: () => "no-color&inverse" },
+    { name: "menu_headings", sel: true, hasHandler: true, val: () => {
+        const mh = game.iflags?.menu_headings || { color: 8, attr: 7 };
+        return `${clr2colorname(mh.color)}&${attr2attrname(mh.attr)}`.replace(/ /g, "-");
+    } },
     /* C: options.c:2279 objsymvals[iflags.menuobjsyms].nam */
-    { name: "menu_objsyms", sel: true, hasHandler: true, val: () => "conditional" },
+    { name: "menu_objsyms", sel: true, hasHandler: true, val: () => ["none", "headers", "entries", "both", "conditional", "one-or-other"][game.iflags?.menuobjsyms ?? 4] },
     /* C: options.c:2312 iflags.menuinvertmode, init 1 */
-    { name: "menuinvertmode", sel: true, hasHandler: false, val: () => "1" },
+    { name: "menuinvertmode", sel: true, hasHandler: false, val: () => String(game.iflags?.menuinvertmode ?? 1) },
     /* C: options.c:2367 menutype[flags.menu_style][0]; init MENU_FULL */
     { name: "menustyle", sel: true, hasHandler: true, val: () => menutype[game.flags?.menu_style ?? 2][0] },
     /* C: options.c:2501 iflags.prevmsg_window 's' -> "single" */
-    { name: "msg_window", sel: true, hasHandler: true, val: () => "single" },
+    { name: "msg_window", sel: true, hasHandler: true, val: () => {
+        const t = game.iflags?.prevmsg_window ?? "s";
+        return t === "s" ? "single" : t === "c" ? "combination" : t === "f" ? "full" : "reversed";
+    } },
     /* C: options.c:2622 numpadmodes[0]; gc.Cmd.num_pad is FALSE */
     { name: "number_pad", sel: true, hasHandler: true, val: () => "0=off" },
     /* C: options.c:2684 oc_to_str(flags.inv_order) — the def_inv_order[] class list */
-    { name: "packorder", sel: true, hasHandler: false, val: () => "$\")[%?+!=/(*`0_" },
+    { name: "packorder", sel: true, hasHandler: false, val: () => oc_to_str((F().inv_order || [12, 5, 2, 3, 7, 9, 10, 8, 4, 11, 6, 13, 14, 15, 16]).map(oc => def_oc_syms_chars[oc])) },
     /* C: options.c:3021 — flags.paranoia_bits init PARANOID_PRAY|PARANOID_TRAP|PARANOID_SWIM */
     { name: "paranoid_confirmation", sel: true, hasHandler: true, val: () => "pray trap swim" },
     /* C: options.c:3177 attr2attrname(iflags.wc2_petattr); init ATR_INVERSE */

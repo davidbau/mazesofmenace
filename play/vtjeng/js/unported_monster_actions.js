@@ -13,7 +13,6 @@
 import {
     BURN,
     CORR,
-    CONFLICT,
     DOOR,
     D_CLOSED,
     D_LOCKED,
@@ -32,8 +31,9 @@ import {
     NORMAL_SPEED,
     OBJ_MINVENT,
     SLEEP_RES,
+    SDOOR,
+    SCORR,
     SLP_GAS_TRAP,
-    STEALTH,
     FIRE_TRAP,
     ANTI_MAGIC,
     Upolyd,
@@ -125,10 +125,6 @@ import {
     AD_SPEL,
     AT_MAGC,
     PM_FLOATING_EYE,
-    PM_KILLER_BEE,
-    PM_KITTEN,
-    PM_LITTLE_DOG,
-    PM_PONY,
     S_EEL,
 } from './monsters.js';
 import {
@@ -164,7 +160,6 @@ import {
 import { observe_object } from './o_init.js';
 import { encumber_msg } from './pickup.js';
 import { potionhit } from './potion.js';
-import { dist2 } from './hacklib.js';
 import {
     create_gas_cloud,
     inside_region,
@@ -205,8 +200,6 @@ import {
     setmnotwielded,
 } from './weapon.js';
 import { canseemon, canspotmon } from './display.js';
-
-const STARTING_PETS = new Set([PM_LITTLE_DOG, PM_KITTEN, PM_PONY]);
 
 // questpgr.c's two window-port calls, suppressed for the dry run. The pager
 // still shuffles nhlib's alignment table and converts every %-code, so the
@@ -274,7 +267,7 @@ function assertSimpleScanState(monster, state) {
     return true;
 }
 
-function assertSimpleActionState(monster, state) {
+function assertSimpleActionState(monster) {
     if (!monster.mcanmove) return;
     // STRAT_ARRIVE needs no guard: dog.c mon_arrive() is the only writer, and
     // monmove.c dochug() answers it at 704-708 by calling m_arrival(), which
@@ -294,26 +287,19 @@ function assertSimpleActionState(monster, state) {
         // the three species selected as a new game starting pet.
         if (!monster.mextra?.edog)
             unsupported('a tame pet without dog state');
-        // C dogmove.c:dog_goal() aborts before goal setup or random draws
-        // for the current steed. Keep this existing planning guard for both
-        // starting pets and later tame monsters; dog_move() owns other pet
-        // states. The planning clone maps both pointers to the same monster.
-        if (monster.msleeping) {
-            unsupported(STARTING_PETS.has(monster.data?.pmidx)
-                ? 'special starting-pet state' : 'special tame-pet state');
-        }
+        // C dochug() calls disturb() before m_move() reaches dog_move().
+        // Its sleeping return and wakeup path use the same cloned monster
+        // and random context as other admitted monster actions.
         return;
     }
 
-    // monmove.c:m_move() sends tame monsters, including the Astral guardian,
-    // through dogmove.c:dog_move(). Admit only its Conflict loss branch here;
-    // the guardian's other tame-minion movement remains behind this guard.
-    const conflict = state.u?.uprops?.[CONFLICT];
-    const losingGuardian = monster.mtame
+    // C m_move() sends the tame Astral guardian through dog_move(), whose
+    // null-edog path follows the hero without ordinary pet hunger/fetching.
+    // Its Conflict loss branch remains owned by dog_move() as well.
+    const guardian = monster.mtame
         && monster.isminion
-        && monster.data?.pmidx === PM_ANGEL
-        && Boolean(conflict?.intrinsic || conflict?.extrinsic);
-    if (monster.mtame && !losingGuardian)
+        && monster.data?.pmidx === PM_ANGEL;
+    if (monster.mtame && !guardian)
         unsupported('tame minion movement');
     // isgd is admitted: m_move() dispatches to gd_move() which handles the
     // peaceful escort path and throws on unported branches.
@@ -325,34 +311,9 @@ function assertSimpleActionState(monster, state) {
     // unported callees record their own gaps without stopping the turn.
     // Awake and sleeping leprechauns now reach canonical dochug(), including
     // its gold movement term, leppie_avoidance(), and AD_SGLD dispatch.
-    // C monmove.c:341-358 evaluates couldsee(), mdistu(), and Stealth before
-    // any wakeup RNG. A sleeping killer bee therefore takes dochug()'s
-    // ordinary no-op return when it is unseen, farther than ten squares, or
-    // the hero is stealthy; the later bee_eat_jelly() branch is unreachable on
-    // those turns. Keep a sleeping bee that may wake behind the special-action
-    // boundary. Awake bees enter dochug(), whose jelly-at-square condition
-    // already decides whether bee_eat_jelly() consumes the move or normal
-    // movement and attacks continue.
-    const sleepingOutOfWakeRangeKillerBee =
-        monster.data?.pmidx === PM_KILLER_BEE
-        && monster.msleeping
-        && (activeProperty(state, STEALTH)
-            || !couldsee(monster.mx, monster.my, state)
-            || dist2(
-                monster.mx,
-                monster.my,
-                state.u?.ux,
-                state.u?.uy,
-            ) > 100);
-    // monmove.c m_move() consumes Tengu's natural-teleport roll before
-    // tele_restrict() rejects it on a no-teleport level. m_move now admits
-    // the permitted relocation path through rloc()/mnexto(); sleeping-bee
-    // actions remain behind their own boundary.
-    if ((monster.data?.pmidx === PM_KILLER_BEE
-            && monster.msleeping
-            && !sleepingOutOfWakeRangeKillerBee)) {
-        unsupported('a special monster action');
-    }
+    // C dochug() owns sleeping-bee wakeup through disturb(), then checks
+    // the bee's square for royal jelly before ordinary movement and attacks.
+    // Both paths run against the planning clone before the live action.
 }
 
 function clonedRandom(state) {
@@ -985,10 +946,11 @@ function admitTerrainChange(x, y, env) {
 // Admit ordinary doors as well as walls and trees: postmov() skips opening
 // a door when can_tunnel is true, then mdig_tunnel() breaks it. The same
 // planning isolation is needed for that terrain and vision change.
-// Secret doors and corridors remain outside this movement adapter's scope.
+// mdig_tunnel first converts a secret door, then uses that same door arm.
+// Its secret-corridor arm also changes terrain and rebuilds vision.
 function digsDestination(location, x, y, env) {
     if (!env.canTunnel || !location) return false;
-    if (location.typ !== DOOR
+    if (location.typ !== DOOR && location.typ !== SDOOR && location.typ !== SCORR
         && !IS_STWALL(location.typ) && !IS_TREE(location.typ, env.state))
         return false;
     return may_dig(x, y, env.state);
@@ -1287,17 +1249,8 @@ async function moveSimplePet(monster, after, env) {
         // drop arm as ported functions with unported branches, so they refuse
         // through the caller's boundary class the way m_move() does.
         unsupported,
-        // No arm of the running game reaches this one, and it stays anyway.
-        // dog_invent() calls it only for a pet with AT_WEAP, and
-        // assertSimpleActionState() above refuses any tame monster outside
-        // STARTING_PETS, whose three species carry AT_BITE and AT_KICK alone
-        // (monsters.h:228-234, :381-388, :1002-1009). Without the injection
-        // inventoryOperation() would throw a bare TypeError the moment that
-        // boundary widens, which costs a session its whole matching prefix
-        // rather than ending the segment; keeping it makes that first
-        // widening a named refusal. scripts/unported-monster-actions.test.mjs
-        // fabricates an AT_WEAP pony to pin it, so the pair reads as dead
-        // code plus scaffolding and is neither.
+        // C dogmove.c dog_invent() equips weapon-using pets through
+        // weapon.c mon_wield_item().
         wieldPickedItem: (subject, actionEnv) =>
             mon_wield_item(subject, actionEnv),
     });
@@ -1334,8 +1287,6 @@ function monsterMissileEnv(monster, env) {
             actionEnv,
         ),
         hitHero: (hitv, damage, obj, actionEnv) => {
-            if (actionEnv.planning && actionEnv.state.iflags?.showdamage)
-                unsupported('monster missile hit with showdamage');
             return thitu(hitv, damage, obj, null, actionEnv.state, {
                 ...actionEnv,
                 exercise: (index, increase, state) => exercise(
@@ -1960,6 +1911,9 @@ export async function preflightSimpleMonsterActions(
     let beforeUnmul = false;
     let beforeTimeout = false;
     let beforeHunger = false;
+    let beforeTeleport = false;
+    let beforeSearch = false;
+    let beforeChange = false;
     try {
         try {
             const scan = await planSimpleMonsterTurn(
@@ -1970,6 +1924,9 @@ export async function preflightSimpleMonsterActions(
                     beforeUnmul = Boolean(result?.beforeUnmul);
                     beforeTimeout = Boolean(result?.beforeTimeout);
                     beforeHunger = Boolean(result?.beforeHunger);
+                    beforeTeleport = Boolean(result?.beforeTeleport);
+                    beforeSearch = Boolean(result?.beforeSearch);
+                    beforeChange = Boolean(result?.beforeChange);
                     return result;
                 } : null,
                 afterMonsterScan,
@@ -2028,6 +1985,9 @@ export async function preflightSimpleMonsterActions(
         beforeUnmul,
         beforeTimeout,
         beforeHunger,
+        beforeTeleport,
+        beforeSearch,
+        beforeChange,
         inputBoundary,
     };
 }

@@ -19,7 +19,7 @@ import { wake_nearto, resists_poison, setmangry } from './mklev.js';
 import { isok } from './hacklib.js';
 import { m_at } from './uhitm.js';
 import { cansee, Blind, block_point, unblock_point, does_block, vision_recalc } from './vision.js';
-import { newsym, pline, pline_flush_point, _topl_record_join, _topl_merge_result, _topl_joins_snapshot } from './display.js';
+import { newsym, pline, pline_flush_point, _pline_flush_frame_record, _topl_record_join, _topl_merge_result, _topl_joins_snapshot } from './display.js';
 import { m_poisongas_ok } from './mklev.js';
 import { is_pool_or_lava } from './look.js';
 
@@ -154,6 +154,10 @@ function region_pline_sync(msg) {
         const result = String(g._resultMessage);
         const joins = g._resultMessageJoins?.src === result
             ? g._resultMessageJoins.joins : _topl_joins_snapshot(result);
+        /* vpline's flush_screen (pline.c:273-274) painted the status as of THIS
+         * pline; record that frame at the result boundary as pline() does, so the
+         * --More-- it raises shows the post-moves++ T:. */
+        _pline_flush_frame_record(result.length, String(msg));
         g._resultMessage = null;
         g._resultMessageJoins = null;
         g._pending_message = _topl_merge_result(result, String(msg), joins || undefined);

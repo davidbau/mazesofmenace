@@ -244,7 +244,7 @@ function match_str2conditionbitmask(str) {
  * fldname_to_bl_indx() + the first-threshold classification of
  * parse_status_hl2() (botl.c:2814-2975).  Returns [fmt, arg] for the first
  * config_error_add() C would make, or null. */
-function hilite_status_config_error(op) {
+export function hilite_status_config_error(op) {
     const hsbuf = [''];
     let fldnum = 0;
     const check = () => {
@@ -1454,7 +1454,7 @@ function remove_autopickup_exception(whichape) {
 
 /* C options.c:9204: list/remove are omitted for an empty list, but keep
  * their identifiers; exit is preselected and loses to an explicit choice. */
-async function handle_add_list_remove(optname, numtotal, preserveStatus) {
+export async function handle_add_list_remove(optname, numtotal, preserveStatus) {
     const menu = new TtyMenu({ overlay: true,
         statusClipCol: preserveStatus ? undefined : 0 });
     const actions = [
@@ -1951,4 +1951,20 @@ export function count_status_hilites() {
         seen.add(parts.slice(2).join('/').split(/[&+]/).map(s => s.trim()).sort().join('&'));
     }
     return count + seen.size;
+}
+
+/* C options.c:1861-1876 optfn_hilite_status(do_set) reached from doset()'s
+ * getlin path (options.c:8944-8953 -> parseoptions): parse_status_hl1() keeps
+ * the rule exactly as the config-file path above does.  Returns the first
+ * config_error text (or null) so the caller can pline it. */
+export function optfn_hilite_status_set(op) {
+    if (!op) return "Value is mandatory for hilite_status";
+    const hlerr = hilite_status_config_error(op);
+    if (hlerr) return hlerr[0].replace('%s', hlerr[1]);
+    if (status_fieldname(op.split('/')[0]) === 'condition')
+        (game.status_condition_hilites ||= []).push(op);
+    else
+        (game.status_field_hilites ||= []).push(op);
+    if (!game.iflags.hilite_delta) game.iflags.hilite_delta = 3;
+    return null;
 }

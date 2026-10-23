@@ -22,7 +22,7 @@ import { pmatchi } from './strutil.js'; /* C strutil.c:151 — MENU_SEARCH's mat
 import { putmsghistory, _strengthStr, force_more, force_more_pages, await_more_dismiss,
          await_topl_more_dismiss, pline_flush_point,
          botl_pmname, botl_upstart_words, botl_mon_mlevel, botl_title,
-         gold_status_char, rogue_graphics, rogue_ibm_color, botl_status_suffix, fit_status_line_width, status_row_finish, _statusRows3, _threeStatusLines, docrt_flags, flush_screen, use_last_flush_snapshot, hitpointbar_status1, _hilite_status_wrap, _status_sgr } from './display.js';
+         gold_status_char, dec_mode, rogue_graphics, rogue_ibm_color, botl_status_suffix, fit_status_line_width, status_row_finish, _statusRows3, _threeStatusLines, docrt_flags, flush_screen, use_last_flush_snapshot, hitpointbar_status1, _hilite_status_wrap, _status_sgr } from './display.js';
 // ── ANSI color helpers (inlined from display.js — not exported there) ──
 const ANSI_DEFAULT = 39;
 // C ref: color.h:10-14 — CLR_BLACK(0) renders as bright-black (90); CLR_GRAY(7)
@@ -193,7 +193,12 @@ function render_map_row_clipped(y, clipX) {
         const ch = loc?.disp_ch ?? ' ';
         const color = ((rogueMap && !rogueColor) || game.iflags?.use_color === false)
             ? NO_COLOR : (loc?.disp_color ?? NO_COLOR);
-        const dec = !rogueMap && !!loc?.disp_decgfx;
+        /* C termcap.c g_putch/SYMHANDLING(H_DEC) decides the SO shift when a cell is
+         * (re)printed.  After handler_symset leaves DEC, rows no window has been
+         * dismissed over since still hold their old SO-shifted bytes (game._decStaleFrom);
+         * a repainted row prints the stored char raw. */
+        const dec = !rogueMap && !!loc?.disp_decgfx
+            && (dec_mode() || (game._decStaleFrom != null && y + 1 >= game._decStaleFrom));
         const inverse = !!((loc?.disp_attr | 0) & 1 /* ATR_INVERSE */);
         /* A blank glyph carrying ATR_INVERSE (a sensed ghost, S_ghost ' ' with
          * the detected-monster highlight) is a painted glyph in C, not a gap
@@ -428,7 +433,9 @@ export async function display_text_window(lines) {
              * only a quitchars[] member (decl.c:96 " \r\n\033") or
              * ttyDisplay->dismiss_more (' ') dismisses, anything else rings the
              * bell and re-reads. */
-            if (k === 32 || k === 10 || k === 13 || k === 27) { morc = k; break; }
+            if (k === 27) g._ttyDismissMore = 1;     /* getline.c:245-247 */
+            if (k === 32 || k === 10 || k === 13 || k === 27
+                || (k !== 0 && k === (g._ttyDismissMore | 0))) { morc = k; break; }
         }
         if (morc === 27) /* WIN_CANCELLED — skip the rest of the window */
             break;

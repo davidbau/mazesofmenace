@@ -6,7 +6,7 @@ import { u_safe_from_fatal_corpse } from './pickup.js';
 import { olfaction } from './makemon.js';
 import { usmellmon } from './mklev.js';
 import { body_part } from './cmd.js';
-import { ARM, ECMD_CANCEL, UTOTYPE_NONE } from './const.js';
+import { ARM, ECMD_CANCEL, UTOTYPE_NONE, Is_stronghold, Is_botlevel } from './const.js';
 import { getdir } from './lock.js';
 import { map_invisible, GLYPHCLS_MON, GLYPHCLS_INVIS } from './display.js';
 import { game, wizard } from './gstate.js';
@@ -50,7 +50,7 @@ import monsPack from './makemon_mons.json' with { type: 'json' };
  * TRUE)); it lives in js/cmd.js, which already imports this file — the cycle is
  * the tree's norm (20+ modules import from cmd.js) and both sides are hoisted
  * function declarations, so the binding resolves at call time. */
-import { setuqwep, y_n_default, addinv_core2, reorder_invent, inv_cnt, dropx, freeinv, hitfloor, getpos, addinv_core1, dropy, carry_obj_effects, hurtle, mhurtle } from './cmd.js';
+import { setuqwep, get_level, y_n_default, addinv_core2, reorder_invent, inv_cnt, dropx, freeinv, hitfloor, getpos, addinv_core1, dropy, carry_obj_effects, hurtle, mhurtle } from './cmd.js';
 import { place_object, remove_object } from './mklev.js';
 import { m_at, mon_nam, xkilled, XKILL_NOMSG } from './uhitm.js';
 import { x_monnam } from './mhitm.js';
@@ -418,6 +418,15 @@ export async function getlin(prompt) {
             g._toplResultSnapshot = null;
         }
     }
+    /* C getline.c:66-67 custompline() overwrites the single gt.toplines buffer
+     * with the query; a result message left on the topline (here one whose
+     * update_topl was suppressed by WIN_STOP after ESC at a --More--) does not
+     * survive the prompt to prefix the next pline. */
+    if (g._resultMessage && !g._pending_message) {
+        g._resultMessage = null;
+        g._resultMessageJoins = null;
+        g._toplResultSnapshot = null;
+    }
     /* C hooked_tty_getlin displays the query through custompline(), whose
      * vpline() tail updates gp.prevmsg even though SUPPRESS_HISTORY keeps the
      * query out of message history.  Keep Norep's comparison state in sync. */
@@ -433,9 +442,33 @@ export async function getlin(prompt) {
     renderPrompt();
     await flush_screen(1);
     placeCursor();
+    let doprev = false, prevIdx = 0;
     while (true) {
         const keyCode = await nhgetch();
-        if (keyCode === 27 /* ESC */ || keyCode === 3 /* ^C */) {
+        /* C getline.c:106-119 ctrl-P with msg_window:single (or combination
+         * behaving like single): recall earlier messages onto the topline and
+         * keep reading; the first recall re-shows the query (the "need two
+         * initially" call), later ones walk the history ring backwards. */
+        if (keyCode === 16) {
+            const pw = (g.iflags?.prevmsg_window || 's')[0];
+            if (pw === 's' || (pw === 'c' && !doprev)) {
+                const hist = Array.isArray(g._msg_history) ? g._msg_history : [];
+                if (hist.length) {
+                    prevIdx = doprev ? (prevIdx - 1 + hist.length) % hist.length : hist.length - 1;
+                    doprev = true;
+                    const text = hist[prevIdx];
+                    g._pending_message = text;
+                    g._topl_history_recall = text;
+                    await flush_screen(1);
+                    const d = g.nhDisplay;
+                    if (d) topl_park_cursor(d, text);
+                    continue;
+                }
+            }
+        }
+        doprev = false;
+        /* ^C is not special here: it falls to the tty_nhbell() arm (getline.c:185). */
+        if (keyCode === 27 /* ESC */) {
             if (buf.length > 0) {
                 buf = '';
                 renderPrompt();
@@ -828,6 +861,7 @@ async function _wish_encumber_msg(oldcap, prinvLine) {
     if (oldcap === newcap) return;
     const msg = _wish_encumber_text(oldcap, newcap);
     if (!msg) return;
+    const _botlOwed = !!(g.disp && g.disp.botl);
     if (g.disp) g.disp.botl = true;
     const prev = g._resultMessage;
     if (prev) {
@@ -841,9 +875,15 @@ async function _wish_encumber_msg(oldcap, prinvLine) {
                  * pline's flush_screen runs bot() with the POST-add capacity
                  * (the $ field is already updated; so is the cap). */
                 const _goldPrinv = prinvLine.startsWith('$ - ');
-                f.cap = (_goldPrinv ? newcap : oldcap) | 0;
+                /* Likewise when disp.botl was ALREADY set before the prinv
+                 * (touch_artifact's blast -> losehp, artifact.c touch_artifact
+                 * / hack.c losehp: disp.botl = TRUE): the prinv pline's
+                 * flush_screen (wintty.c tty_display_nhwindow -> bot()) paints
+                 * the post-addinv capacity before encumber_msg runs. */
+                const _postCap = _goldPrinv || _botlOwed;
+                f.cap = (_postCap ? newcap : oldcap) | 0;
                 g._pickupEncPreFrame = f;
-                g._pickupEncMorePending = { oldcap: (_goldPrinv ? newcap : oldcap) | 0, prinvText: prinvLine };
+                g._pickupEncMorePending = { oldcap: (_postCap ? newcap : oldcap) | 0, prinvText: prinvLine };
             }
         }
     } else {
@@ -1466,6 +1506,12 @@ export async function makewish() {
         if (blastMsg) {
             g._touch_artifact_blast_msg = null;
             await pline(blastMsg);
+            /* C runs this pline's flush_screen at artifact.c:951, BEFORE
+             * losehp() (artifact.c:957-958 -> hack.c losehp: disp.botl = TRUE),
+             * so bot() is still owed when prinv's pline flushes after addinv.
+             * Deferring the pline past losehp let its flush consume the flag;
+             * re-arm it so the prinv flush paints the post-addinv capacity. */
+            if (g.disp) g.disp.botl = true;
         }
         await _wish_addinv_prinv(otmp, _wishDropSpec);
     }
@@ -2275,6 +2321,44 @@ export async function wiz_load_splua() {
         }
     } else {
         await pline('Unavailable command \'wizloaddes\'.');
+    }
+    return ECMD_OK;
+}
+
+export async function wiz_migrate_mons() {
+    const g = game;
+    const uz = g.u.uz;
+    const dun = g.dungeons?.[uz.dnum];
+    let tolevel;
+    if (Is_stronghold(uz)) tolevel = { dnum: g.valley_level.dnum, dlevel: g.valley_level.dlevel };
+    else if (!Is_botlevel(uz)) tolevel = get_level((dun ? dun.depth_start : 1) + uz.dlevel - 1 + 1);
+    else tolevel = { dnum: 0, dlevel: 0 };
+
+    let here = 0, nxtlv = 0, other = 0;
+    for (let m = g.migrating_mons; m; m = m.nmon) {
+        if (m.mux === uz.dnum && m.muy === uz.dlevel) ++here;
+        else if (m.mux === tolevel.dnum && m.muy === tolevel.dlevel) ++nxtlv;
+        else ++other;
+    }
+    const plural = n => (n === 1 ? '' : 's');
+    if (here + nxtlv + other === 0) {
+        await pline('No monsters currently migrating.');
+    } else {
+        await pline('%d mon%s pending for current level, %d for next level, %d for others.',
+            here, plural(here), nxtlv, other);
+        let prmpt = '', xtra = '';
+        if (here) prmpt += 'c'; else xtra += 'c';
+        if (nxtlv) prmpt += 'n'; else xtra += 'n';
+        if (other) prmpt += 'o'; else xtra += 'o';
+        prmpt += 'a q';
+        if (xtra) prmpt += '\x1b' + xtra;
+        await yn_function('List which?', prmpt, 'q', true);
+    }
+
+    if (tolevel.dnum || tolevel.dlevel) {
+        await getlin('How many random monsters to migrate to next level? [0]');
+    } else {
+        await pline("Can't get there from here.");
     }
     return ECMD_OK;
 }

@@ -63,7 +63,7 @@ import { m_at } from './uhitm.js';
 import { noattacks_mndx, stealarm_mu } from './mhitu.js';
 import { unstolenarm } from './steal.js';
 import { canspotmon, Unaware, _topl_stash_result } from './display.js';
-import { pline_flush_point, under_water, under_ground } from './display.js';
+import { pline_flush_point, under_water, under_ground, recorder_localtime } from './display.js';
 import { spoteffects } from './landing-effects.js';
 import { PM_COCKATRICE, PM_CHICKATRICE } from './pm.generated.js';
 
@@ -144,11 +144,8 @@ import { get_configfile } from './cfgfiles.js';
 // "Friday the 13th" startup messages.  These derive from getlt()→getnow(),
 // which reads NETHACK_FIXED_DATETIME (YYYYMMDDHHMMSS) when present.
 //
-// C's getnow() uses time_from_yyyymmddhhmmss()→mktime()→localtime(); the
-// calendar fields (year/mon/mday + derived yday/wday) round-trip exactly to
-// the literal datetime components regardless of timezone (the only place TZ
-// could intrude is a DST transition straddling the literal instant, which the
-// directly from the literal Y/M/D using a UTC Date to avoid any local-TZ skew.
+// fixedDatetimeTm() is only the LITERAL fields getnow() hands to mktime().
+// They do NOT round-trip through localtime(): a winter datetime reads back an
 const FULL_MOON_PHASE = 4; /* const.js FULL_MOON */
 const NEW_MOON_PHASE = 0; /* const.js NEW_MOON */
 // Parse NETHACK_FIXED_DATETIME → {tm_year (years since 1900), tm_mon (0-based),
@@ -182,7 +179,7 @@ function fixedDatetimeTm() {
 }
 // C ref: calendar.c:200 phase_of_the_moon() — 0..7 (0=new, 4=full).
 export function phase_of_the_moon() {
-    const lt = fixedDatetimeTm();
+    const lt = getlt();
     if (!lt)
         return -1; /* unknown — emit nothing (matches non-deterministic C path being unrecorded) */
     const diy = lt.tm_yday;
@@ -194,16 +191,16 @@ export function phase_of_the_moon() {
 }
 // C ref: calendar.c:215 friday_13th() — Friday (wday 5) AND mday 13.
 export function friday_13th() {
-    const lt = fixedDatetimeTm();
+    const lt = getlt();
     if (!lt)
         return false;
     return lt.tm_wday === 5 && lt.tm_mday === 13;
 }
 // C ref: calendar.c:46 getlt() — returns struct tm *.
 export function getlt() {
-    return fixedDatetimeTm();
+    return fixedDatetimeTm() ? recorder_localtime(getnow()) : null;
 }
-const RECORDER_UTC_OFFSET_SEC = 10 * 3600;
+const RECORDER_UTC_OFFSET_SEC = -4 * 3600;
 export function getnow() {
     const lt = fixedDatetimeTm();
     if (!lt)
@@ -232,17 +229,7 @@ export function midnight() {
 // C's localtime() converts UTC time_t to local broken-down time.
 // In JavaScript, Date uses local timezone, so Date.constructor(ts*1000).get*() gives us local time.
 function localtime(dateParam) {
-    const d = new Date(dateParam * 1000);
-    return {
-        tm_year: d.getFullYear() - 1900,
-        tm_mon: d.getMonth(),
-        tm_mday: d.getDate(),
-        tm_hour: d.getHours(),
-        tm_min: d.getMinutes(),
-        tm_sec: d.getSeconds(),
-        tm_yday: Math.floor((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(d.getFullYear(), 0, 1)) / 86400000),
-        tm_wday: d.getDay(),
-    };
+    return recorder_localtime(dateParam);
 }
 
 // C ref: calendar.c:85 hhmmss(time_t date) — returns time as hhmmss (long).
@@ -686,18 +673,37 @@ export async function newgame() {
             // C ref: welcome(TRUE) pline → moveloop_preamble plines → (tutorial
             // pre-menu) display_nhwindow(WIN_MESSAGE, TRUE) → more() → nhgetch.
             let startupWinStop = false;
+            let startupPaged = false;
             for (let mi = 0; mi < startupMsgs.length; mi++) {
                 // C update_topl samples WIN_STOP before more() can set it.
-                const skipStartupMessage = startupWinStop;
+                let skipStartupMessage = startupWinStop;
                 pline_flush_point();                      /* C pline.c:274 */
-                if (mi > 0 && !startupWinStop) {          /* C update_topl more() */
+                if (mi > 0 && !startupWinStop && !startupPaged) { /* C update_topl more() */
                     const dismissed = await topl_more_page(startupMsgs[mi - 1], u?.uac ?? 0);
                     startupWinStop = dismissed === 27;
+                    /* A message of >= CO (80) columns wraps (cury != 0), so its
+                     * own redotoplin() raises the more() (topl.c:314-315) BEFORE
+                     * this message's update_topl runs: ESC's WIN_STOP is already
+                     * set when `skip` is sampled (topl.c:257), and this message
+                     * is suppressed. */
+                    if (startupWinStop && startupMsgs[mi - 1].length >= 80)
+                        skipStartupMessage = true;
                 }
-                if (!skipStartupMessage)
+                startupPaged = false;
+                if (!skipStartupMessage) {
                     g._pending_message = startupMsgs[mi];
+                    /* A message of CO (80) or more columns wraps onto row 1 and
+                     * redotoplin() raises its OWN more() (topl.c:131-137: cury != 0),
+                     * so an ESC there sets WIN_STOP before the NEXT message's
+                     * update_topl samples it (topl.c:257) and suppresses it. */
+                    if (startupMsgs[mi].length >= 80) {
+                        const dismissed = await topl_more_page(startupMsgs[mi], u?.uac ?? 0);
+                        startupWinStop = dismissed === 27;
+                        startupPaged = true;
+                    }
+                }
             }
-            if (tutorialWillRun && !startupWinStop) {
+            if (tutorialWillRun && !startupWinStop && !startupPaged) {
                 /* C order: moveloop_preamble's pickup(1) (allmain.c:75) runs
                  * BEFORE maybe_do_tutorial, so a message it prints (mention_decor's
                  * describe_decor) pages the standing welcome line and is itself
@@ -744,9 +750,23 @@ export async function newgame() {
     if (deferredLastStartupMsg !== null) {
         const decorMsg = g._pending_message || '';
         g._pending_message = '';
-        await topl_more_page(deferredLastStartupMsg, g.u?.uac ?? 0);
-        if (decorMsg)
-            await topl_more_page(decorMsg, g.u?.uac ?? 0);
+        /* C topl.c:262-270 update_topl(): a message arriving while the standing
+         * line is TOPLINE_NEED_MORE joins it ("  " between) when
+         * n0 + strlen(toplines) + 3 < CO - 8 and it is not "You die"; else
+         * more() pages the standing line.  pickup(1)'s plines are accumulated
+         * "  "-joined in _pending_message, so re-split them at the "You read:"
+         * boundary (read_engr_at's second pline, engrave.c:332/396). */
+        const decorParts = decorMsg ? decorMsg.split(/  (?=You (?:read|feel the words):)/) : [];
+        let standing = deferredLastStartupMsg;
+        for (const part of decorParts) {
+            if (part.length + standing.length + 3 < 80 - 8 && !part.startsWith('You die')) {
+                standing += '  ' + part;
+            } else {
+                await topl_more_page(standing, g.u?.uac ?? 0);
+                standing = part;
+            }
+        }
+        await topl_more_page(standing, g.u?.uac ?? 0);
     }
     g.disp = g.disp || { botl: 0, botlx: 0, time_botl: 0, toplin: 0, inmore: 0 };
     g.disp.botlx = 1;
@@ -1762,6 +1782,11 @@ async function eat_occupation_turn() {
             const hidden = String(g._topl_win_stop_buf || _committed || '');
             g._topl_win_stop_buf = (hidden.length + 2 + part.length < 71)
                 ? `${hidden}  ${part}` : part;
+            /* topl.c:257/300: the pline that raised the ESC'd more() was drawn
+             * (skip sampled before more()) and is the first pre-eat part here;
+             * it stays on the topline while WIN_STOP swallows what follows. */
+            if (_fromPreEat && _preEatSeen === 1)
+                { _committed = part; _emitted = true; }
             continue;
         }
         /* A part cut at recorded joins is ONE pline: its internal "  " (a
@@ -1875,6 +1900,10 @@ async function eat_occupation_turn() {
             ? { text: thisTurnMsg, postMeal: true }
             : (prior ? { text: prior.text, postMeal: true } : null);
         g._pending_message = '';
+        if (thisTurnMsg && /^You stop eating\b/.test(thisTurnMsg)) {
+            g._occ_committed_topl = null;
+            g._pending_message = thisTurnMsg;
+        }
     }
     _movemon_page_frames_reset();
     await flush_screen(1);
@@ -2638,17 +2667,32 @@ async function stop_occupation_learn() {
 // so a time-only status update must not re-latch the cap either — our bot()
 // clears all three flags, which is why the arms cannot be collapsed.
 //
-// curs_on_u() (display.c:1726-1730) is flush_screen(1), which every call site
+// curs_on_u() (display.c:1687-1690) is flush_screen(1), which every call site
 // here already runs unconditionally on the line below; C reaches an equivalent
 // flush through the tty read that follows.  Only the bot()/timebot() choice is
-// ported here.
+// ported here.  The one place the guard is observable is a fireassist retry:
+// the queued dofire's getdir pages the wield prinv with no flush of its own, so
+// whether the --More-- shows the post-movemon map depends on whether THIS
+// curs_on_u() ran.  When it does, the frozen pre-movemon frame is stale.
 async function moveloop_status_paint() {
     const d = game.disp;
     if (d && ((d.botl | 0) || (d.botlx | 0))) {
         await bot();
+        game._statusPaintMoves = game.moves | 0;
+        _status_paint_flushed();
     } else if (d && (d.time_botl | 0)) {
         timebot();
+        game._statusPaintMoves = game.moves | 0;
+        _status_paint_flushed();
     }
+}
+
+// C allmain.c:476/479 curs_on_u() -> display.c:1689 flush_screen(1): the
+// physical map now shows the post-movemon world, so a fireassist pre-movemon
+// DISPLAY-ONLY: no RNG, no state mutation.
+function _status_paint_flushed() {
+    if (game._fireSwapPending && game._fireSwapPreFrame)
+        game._fireSwapPreFrame = null;
 }
 
 // moveloop_core — FAITHFUL variant (FF_FAITHFUL=1).  Mirrors the calibrated
@@ -3026,6 +3070,11 @@ async function moveloop_core_faithful() {
             vision_recalc(0);
             g.vision_full_recalc = 0;
         }
+        // C allmain.c:474-480 — every moveloop_core call, including the
+        // multi<0 iterations that skip rhack, repaints bot()/timebot() before
+        // the next call's monster pass, so a --More-- raised by that pass
+        // (tty more() does not flush_screen) shows this turn's T:/HP.
+        await moveloop_status_paint();
         // C allmain.c:513 — see the post-rhack countdown loop's note.
         g.u.umoved = false;
         if (++headCountdownGuard >= 4096) break; // safety: never spin on broken multi
@@ -3457,6 +3506,14 @@ async function moveloop_core_faithful() {
         // turn's world block (which already ran), so no extra turn follows.
         if (!interrupted) {
             await faithful_moveloop_turn();
+            /* C allmain.c:453-471 — this turn's moveloop_core runs its redraw
+             * tail (see_monsters/see_objects/see_traps) BEFORE vision_recalc(0),
+             * so a light carried by a monster in movemon (mon.c:1332 sets
+             * vision_full_recalc) is still lighting its old squares while
+             * see_objects() newsym()s them.  Run the tail here, ahead of the
+             * recalc, and keep the next invocation from repeating it. */
+            faithful_input_redraw();
+            g._ff_input_tail_done = true;
             if (g.vision_full_recalc) {
                 vision_recalc(0);
                 g.vision_full_recalc = 0;
@@ -3506,6 +3563,11 @@ async function moveloop_core_faithful() {
                 tinInterrupted = true;
                 break;
             }
+            /* C allmain.c:453-470 — this moveloop_core invocation's once-per-input
+             * redraw tail (see_monsters/see_objects/see_traps when hallucinating)
+             * runs after the world block and before the occupation callback; each
+             * is a run of DISPLAY-stream draws (the engrave driver does the same). */
+            faithful_input_redraw();
             // C allmain.c:483 — svc.context.move = 1, unconditionally, ahead of
             // the occupation call.  This is the `^ctx_move[moveloop_core=1]`
             // marker that sits immediately before each opentin() in the trace.
@@ -4439,12 +4501,25 @@ async function moveloop_core_faithful() {
          * on the DISPLAY rng for every monster) runs after EVERY world block,
          * not only after the run's last iteration. */
         if ((g.multi | 0) !== 0) faithful_input_redraw();
+        /* C allmain.c:481 m_everyturn_effect(&gy.youmonst) runs on EVERY
+         * moveloop_core pass, so a polyed (fog cloud) hero leaves vapor at
+         * each intermediate square of a run/counted move too. */
+        if (g.youmonst && g.youmonst.data) m_everyturn_effect(g.youmonst);
         g.context.move = 1;
         // C ref: allmain.c:474-480 — every run turn is its own moveloop_core
         // invocation, so the guarded status paint runs after the world block.
         // A regen_hp() botl flag raised this turn repaints `T:' at THIS turn's
         // 219: the --More-- frame shows T:36, not the run's later T:38).
+        // Both arms end in curs_on_u() = flush_screen(1) (display.c:1687-1690),
+        // so the see_monsters() repaint above reaches the physical screen HERE,
+        // before the next run step's domove: a --More-- raised later without a
+        // pline (vamp_shift's display_nhwindow, monmove.c:2391) shows the warned
+        // step 668, regen_hp's botl).
+        const _sd = g.disp;
+        const _statusFlush = !!(_sd && ((_sd.botl | 0) || (_sd.botlx | 0)
+                                        || (_sd.time_botl | 0)));
         await moveloop_status_paint();
+        if (_statusFlush) pline_flush_point();
         // C ref: win/tty/topl.c more() during a run — each run turn's movemon plines
         // are painted onto the SAME accumulating topline (no nhgetch clears it between
         // run steps), and the physical terminal is repainted with the hero at THIS
