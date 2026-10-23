@@ -60,8 +60,8 @@ import {
 import {
     A_CHA, A_CON, A_DEX, A_INT, A_STR, A_WIS, ECMD_OK,
     AM_CHAOTIC, AM_LAWFUL, AM_MASK, AM_NEUTRAL, AM_SANCTUM,
-    ACCESSIBLE, BLINDED, BOLT_LIM, CONFUSION, DEAF, DETECT_MONSTERS, FLYING,
-    HALLUC, HALLUC_RES, INFRAVISION, SEE_INVIS,
+    ACCESSIBLE, BLINDED, BOLT_LIM, CONFUSION, DEAF, DETECT_MONSTERS, FLYING, GLIB,
+    HALLUC, HALLUC_RES, INFRAVISION, SEE_INVIS, WOUNDED_LEGS,
     H_IBM, H_UTF8, PRIMARYSET, ROGUESET,
     CORPSTAT_FEMALE, CORPSTAT_GENDER,
     HL_BOLD, HL_INVERSE, HL_ULINE, HL_UNDEF,
@@ -297,7 +297,7 @@ import {
 // C ref: drawing.c defsyms[].color, the last column of every defsym.h PCHAR
 // row, which display.c reads back through its cmap_color() macro.
 import { CMAP_COLORS, SYMBOL_INDEX_BY_NAME } from './symbol_data.js';
-import { t_at } from './trap.js';
+import { t_at, unconscious } from './trap.js';
 
 import { note_unported } from './unported.js';
 import { Sting_effects } from './artifacts.js';
@@ -4813,6 +4813,8 @@ const STATUS_CONDITION_SPECS = Object.freeze([
         forms: ['Bare', 'Bar', 'Bh'] },
     { option: 'blind', rank: 10, enabled: true,
         forms: ['Blind', 'Blnd', 'Bl'] },
+    { option: 'busy', rank: 20, enabled: false,
+        forms: ['Busy', 'Bsy', 'By'] },
     { option: 'conf', rank: 10, enabled: true,
         forms: ['Conf', 'Cnf', 'Cf'] },
     { option: 'deaf', rank: 10, enabled: true,
@@ -4837,10 +4839,16 @@ const STATUS_CONDITION_SPECS = Object.freeze([
         forms: ['InLava', 'Lav', 'La'] },
     { option: 'levitate', rank: 10, enabled: true,
         forms: ['Lev', 'Lev', 'Lv'] },
+    { option: 'paralyzed', rank: 20, enabled: false,
+        forms: ['Parlyz', 'Para', 'Par'] },
     { option: 'ride', rank: 10, enabled: true,
         forms: ['Ride', 'Rid', 'Rd'] },
+    { option: 'sleep', rank: 20, enabled: false,
+        forms: ['Zzz', 'Zzz', 'Zz'] },
     { option: 'slime', rank: 6, enabled: true,
         forms: ['Slime', 'Slim', 'Slm'] },
+    { option: 'slip', rank: 20, enabled: false,
+        forms: ['Slip', 'Slp', 'Sl'] },
     { option: 'stone', rank: 6, enabled: true,
         forms: ['Stone', 'Ston', 'Sto'] },
     { option: 'strngl', rank: 4, enabled: true,
@@ -4855,10 +4863,101 @@ const STATUS_CONDITION_SPECS = Object.freeze([
         forms: ['Teth', 'Tth', 'Te'] },
     { option: 'trap', rank: 20, enabled: false,
         forms: ['Trap', 'Trp', 'Tr'] },
+    { option: 'unconscious', rank: 20, enabled: false,
+        forms: ['Out', 'Out', 'KO'] },
+    { option: 'woundedlegs', rank: 20, enabled: false,
+        forms: ['WLegs', 'Leg', 'Lg'] },
 ]);
+
+// C botl.c:923 compares message/reason pointers. Keep the identity of the
+// named mutable buffers, including uhitm.c:104's pointer after "m_id:".
+// JS already stores that buffer and visible suffix separately (end.js).
+export function status_condition_cache_keys(state) {
+    const message = state.nomovemsg == null || state.nomovemsg === 0
+        ? null : state.nomovemsg;
+    const reason = state.multi_reason == null || state.multi_reason === 0
+        ? null : state.multi_reason;
+    let messageKey = message === null ? null : `literal:${message}`;
+    let reasonKey = reason === null ? null : `literal:${reason}`;
+    const colon = state.multireasonbuf?.indexOf(':') ?? -1;
+    if (reason !== null && colon > 0
+        && state.multireasonbuf.slice(colon + 1) === reason)
+        reasonKey = `multireasonbuf:${colon + 1}`;
+    if (message !== null) {
+        if (state.eatmbuf != null && message === state.eatmbuf)
+            messageKey = 'eatmbuf';
+        else if (reason === 'disrobing'
+            && message.startsWith('You finish taking off your '))
+            messageKey = 'offdelaybuf';
+        else if (reason === 'digesting something')
+            messageKey = 'engulf_msgbuf';
+    }
+    return { messageKey, reasonKey };
+}
+
+// C botl.c:923-951,1210-1235. Static C cache and condtests[].test live in
+// this game's gb so separate games cannot share classification or flags.
+// The cache survives multi>=0; only the four test flags clear on recovery.
+export function botl_incapacitated_conditions(state = game, u = state.u) {
+    state.gb ??= {};
+    const cache = state.gb.incapacitated_conditions ??= {
+        messageKey: null, reasonKey: null,
+        available: [false, false], result: [false, false],
+        tests: { unconscious: false, paralyzed: false, sleep: false, busy: false },
+    };
+    const enabled = state.iflags?.status_conditions ?? {};
+    if ((state.multi ?? 0) < 0) {
+        const { messageKey, reasonKey } = status_condition_cache_keys(state);
+        const clear = messageKey === null && reasonKey === null;
+        const refresh = !clear && (messageKey !== cache.messageKey
+            || reasonKey !== cache.reasonKey);
+        if (clear || refresh) {
+            cache.messageKey = messageKey;
+            cache.reasonKey = reasonKey;
+            cache.available.fill(false);
+            cache.result.fill(false);
+        }
+        if (enabled.unconscious && cache.messageKey !== null
+            && !cache.available[0]) {
+            cache.result[0] = !u.usleep && unconscious(state);
+            cache.available[0] = true;
+        }
+        if (enabled.paralyzed && cache.reasonKey !== null
+            && !cache.available[1]) {
+            cache.result[1] = state.multi_reason.startsWith('paralyzed')
+                || state.multi_reason.startsWith('frozen');
+            cache.available[1] = true;
+        }
+        // C retains earlier test flags during negative multi and consults
+        // cached results even if the corresponding option was disabled.
+        if (cache.available[0] && cache.result[0])
+            cache.tests.unconscious = true;
+        else if (cache.available[1] && cache.result[1])
+            cache.tests.paralyzed = true;
+        else if (enabled.sleep && u.usleep)
+            cache.tests.sleep = true;
+        else if (enabled.busy)
+            cache.tests.busy = true;
+    } else {
+        for (const option of Object.keys(cache.tests)) cache.tests[option] = false;
+    }
+    return cache.tests;
+}
+
+// C botl.c condopt(), setting branch. options.js owns initialization of
+// enabled defaults; this setter also clears a potentially lingering test.
+export function condopt(target, canonical, negated) {
+    target.iflags.status_conditions[canonical] = !negated;
+    const tests = target.gb?.incapacitated_conditions?.tests;
+    if (tests && Object.hasOwn(tests, canonical)) tests[canonical] = false;
+}
 
 export function statusConditionActive(option, u) {
     switch (option) {
+    case 'busy':
+    case 'paralyzed':
+    case 'sleep':
+    case 'unconscious': return botl_incapacitated_conditions(game, u)[option];
     case 'barehanded': return !game.uarmg && !game.uwep;
     case 'blind': return _propertyActiveUnblocked(u, BLINDED);
     case 'conf': return _propertyIntrinsic(u, CONFUSION);
@@ -4923,6 +5022,8 @@ export function statusConditionActive(option, u) {
     case 'levitate': return _propertyActiveUnblocked(u, LEVITATION);
     case 'ride': return Boolean(u.usteed);
     case 'slime': return _propertyIntrinsic(u, SLIMED);
+    // botl.c:1207 and youprop.h:112 use intrinsic Glib only.
+    case 'slip': return _propertyIntrinsic(u, GLIB);
     case 'stone': return _propertyIntrinsic(u, STONED);
     case 'strngl': return _propertyIntrinsic(u, STRANGLED);
     case 'stun': return _propertyIntrinsic(u, STUNNED);
@@ -4931,6 +5032,9 @@ export function statusConditionActive(option, u) {
     case 'termill':
         return _propertyIntrinsic(u, SICK)
             && Boolean((u.usick_type ?? 0) & SICK_NONVOMITABLE);
+    // botl.c:1208 and youprop.h:138 include both timeout and side bits,
+    // including a ridden steed's wounds stored in the same hero property.
+    case 'woundedlegs': return _propertyActive(u, WOUNDED_LEGS);
     default: return false;
     }
 }
@@ -4939,6 +5043,7 @@ export function statusConditionActive(option, u) {
 // absent at the new-game boundary because u_init_carry_attr_boost() guarantees
 // that the initial inventory is within capacity.
 function _statusConditionEntries(u, shrinkLevel = 0) {
+    botl_incapacitated_conditions(game, u);
     const configured = game.iflags?.status_conditions ?? {};
     return STATUS_CONDITION_SPECS
         .filter((spec) => (configured[spec.option] ?? spec.enabled)
@@ -5029,8 +5134,8 @@ export function describe_level(dflgs = 0, state = game) {
 // reach end.c done(), and every status drawn in that window, including the one
 // urgent_pline("You die...") flushes, shows zero rather than the debt.
 //
-// Both C sites clamp before their min(hp, 9999) cap; that cap is left out
-// because no ported path can lift a hero above 9999 hit points.
+// Retain the raw value here for comparisons and percentage highlights;
+// botl_vital applies the display cap when measuring and rendering status.
 //
 // C ref: botl.c bot_via_windowport() line 1037: `i = Upolyd ? u.mh : u.uhp`.
 // When polymorphed the hero's monster-form HP are shown instead of the base HP.
@@ -5056,8 +5161,23 @@ function _statusExperienceOrHD(u) {
         : `Xp:${u?.ulevel || 1}`;
 }
 
+// C ref: botl.c bot_via_windowport() BL_GOLD (1050-1072). Clamp the
+// displayed amount, retaining the raw nonnegative count for highlight changes.
+// Both layout measurement and field rendering must use the displayed value.
+export function botl_gold(money) {
+    const raw = Math.max(0, money);
+    return { value: Math.min(raw, 999999), compareValue: raw };
+}
+
+// C ref: botl.c bot_via_windowport() BL_HP/BL_HPMAX (1033-1045) and
+// BL_ENE/BL_ENEMAX (1075-1080). All four fields cap only their displayed
+// value; percentage() and change highlights retain the uncapped value.
+export function botl_vital(raw) {
+    return { value: Math.min(raw, 9999), compareValue: raw };
+}
+
 function _statusVitals(u) {
-    return `${_statusGoldSymbol()}:${money_cnt(game.invent)} HP:${_statusHitPoints(u)}(${_statusMaxHitPoints(u)}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} ${_statusExperienceOrHD(u)}`;
+    return `${_statusGoldSymbol()}:${botl_gold(money_cnt(game.invent)).value} HP:${botl_vital(_statusHitPoints(u)).value}(${botl_vital(_statusMaxHitPoints(u)).value}) Pw:${botl_vital(u.uen ?? 0).value}(${botl_vital(u.uenmax ?? 0).value}) AC:${u.uac ?? 10} ${_statusExperienceOrHD(u)}`;
 }
 
 // C ref: botl.c bot_via_windowport()'s BL_GOLD value.  check_gold_symbol()
@@ -5284,13 +5404,13 @@ function _optionalStatusFieldList() {
 function _vitalStatusFields(u) {
     const poly = u && Upolyd(u);
     const fields = [
-        _statusField(`${_statusGoldSymbol()}:${money_cnt(game.invent)}`, _fieldOwner('gold')),
+        _statusField(`${_statusGoldSymbol()}:${botl_gold(money_cnt(game.invent)).value}`, _fieldOwner('gold')),
         _statusField(' '),
-        _statusField(`HP:${_statusHitPoints(u)}`, _fieldOwner('hitpoints')),
-        _statusField(`(${_statusMaxHitPoints(u)})`, _fieldOwner('hitpoints-max')),
+        _statusField(`HP:${botl_vital(_statusHitPoints(u)).value}`, _fieldOwner('hitpoints')),
+        _statusField(`(${botl_vital(_statusMaxHitPoints(u)).value})`, _fieldOwner('hitpoints-max')),
         _statusField(' '),
-        _statusField(`Pw:${u.uen || 0}`, _fieldOwner('power')),
-        _statusField(`(${u.uenmax || 0})`, _fieldOwner('power-max')),
+        _statusField(`Pw:${botl_vital(u.uen ?? 0).value}`, _fieldOwner('power')),
+        _statusField(`(${botl_vital(u.uenmax ?? 0).value})`, _fieldOwner('power-max')),
         _statusField(' '),
         _statusField(`AC:${u.uac ?? 10}`, _fieldOwner('armor-class')),
         _statusField(' '),
@@ -5762,22 +5882,18 @@ function _statusFieldData(field, valueSnapshot = null) {
             text: enc_stat[capacity] ?? '',
         };
     }
-    case 'gold': {
-        const raw = money_cnt(game.invent);
-        return { value: Math.min(raw, 999999), compareValue: raw };
-    }
+    case 'gold': return botl_gold(money_cnt(game.invent));
     case 'power':
         {
             const raw = u?.uen ?? 0;
         return {
-                value: Math.min(raw, 9999),
-                compareValue: raw,
+                ...botl_vital(raw),
                 percent: _statusPercentage(raw, u?.uenmax ?? 0),
         };
         }
     case 'power-max': {
         const raw = u?.uenmax ?? 0;
-        return { value: Math.min(raw, 9999), compareValue: raw };
+        return botl_vital(raw);
     }
     case 'experience-level':
         return {
@@ -5799,14 +5915,13 @@ function _statusFieldData(field, valueSnapshot = null) {
         {
             const raw = _statusHitPoints(u);
         return {
-                value: Math.min(raw, 9999),
-                compareValue: raw,
+                ...botl_vital(raw),
                 percent: _statusPercentage(raw, _statusMaxHitPoints(u)),
         };
         }
     case 'hitpoints-max': {
         const raw = _statusMaxHitPoints(u);
-        return { value: Math.min(raw, 9999), compareValue: raw };
+        return botl_vital(raw);
     }
     case 'dungeon-level': return { text: _statusLevelDescription(u) };
     case 'experience':

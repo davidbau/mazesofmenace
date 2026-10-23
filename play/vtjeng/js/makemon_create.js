@@ -13,6 +13,7 @@ import {
     AM_CHAOTIC,
     AM_LAWFUL,
     AM_NEUTRAL,
+    AM_NONE,
     BLCORNER,
     BLINDED,
     BOLT_LIM,
@@ -279,7 +280,9 @@ import {
     PM_LICH,
     PM_LICHEN,
     PM_LITTLE_DOG,
+    PM_ERINYS,
     PM_LONG_WORM,
+    PM_RAVEN,
     PM_MANES,
     PM_MASTER_LICH,
     PM_NALFESHNEE,
@@ -371,6 +374,7 @@ import {
     S_OGRE,
     S_ORC,
     S_QUANTMECH,
+    S_QUADRUPED,
     S_SNAKE,
     S_SPIDER,
     S_TROLL,
@@ -390,6 +394,7 @@ import {
     set_corpsenm,
     weight,
 } from './obj.js';
+import { objectGenerationEnv } from './object_generation.js';
 import { vtense } from './objnam.js';
 import {
     AKLYS,
@@ -978,9 +983,14 @@ export function set_mimic_sym(monster, normalized) {
             } else if (symbol === COIN_CLASS) {
                 appearance = GOLD_PIECE;
             } else {
-                const temporary = mkobj(symbol, false, normalized);
+                // C constructs and frees the whole temporary object before
+                // choosing the mimic's separate species overlay. Retain
+                // constructor and cleanup owners for statues, figurines,
+                // container contents and timed objects on runtime callers.
+                const objectEnv = objectGenerationEnv(normalized);
+                const temporary = mkobj(symbol, false, objectEnv);
                 appearance = temporary.otyp;
-                obfree(temporary, null, normalized);
+                obfree(temporary, null, objectEnv);
             }
         }
     }
@@ -1016,8 +1026,12 @@ export function set_mimic_sym(monster, normalized) {
                && appearance === S_altar) {
         const alignment = random.rn2(3) - 1;
         newmcorpsenm(monster);
-        monster.mextra.mcorpsenm = alignment < 0 ? AM_CHAOTIC
-            : alignment > 0 ? AM_LAWFUL : AM_NEUTRAL;
+        // C makemon.c:2538-2542 chooses alignment before the Gehennom
+        // override, even when the extra draw makes this altar unaligned.
+        monster.mextra.mcorpsenm = In_hell(state.u.uz, state) && random.rn2(3)
+            ? AM_NONE
+            : alignment < 0 ? AM_CHAOTIC
+                : alignment > 0 ? AM_LAWFUL : AM_NEUTRAL;
     } else if (monster.mextra && 'mcorpsenm' in monster.mextra) {
         monster.mextra.mcorpsenm = NON_PM;
     }
@@ -1130,6 +1144,12 @@ function assertSupportedSpecies(species, env = {}) {
             && !beehiveSpecies
             && !barracksSpecies
             && !morgueSpecies
+            // C makemon() uses the generic lifecycle for every quadruped.
+            // All seven are animals with no weapon initialization; m_initinv
+            // retains its ordinary RNG tail while defensive/misc item
+            // selection rejects animals. Runtime rndmonst() can select the
+            // larger members above the old D:5 reservoir ceiling.
+            && species.mlet !== S_QUADRUPED
             // C makemon has no species gate for ordinary true giants.
             // Their S_GIANT weapon and gem arms already share the canonical
             // lifecycle; unique quest nemeses retain their separate boundary.
@@ -1299,6 +1319,15 @@ function preflightCreation(ptr, x, y, mmflags, normalized) {
         && !randomCoordinates
         && isok(x, y)
         && mmflags === NO_MM_FLAGS;
+    // makemon.c summon_furies() creates Erinyes at the hero square with
+    // adjacent placement and no initial waiting strategy. Keep this caller's
+    // exact species/coordinate/flag contract on the full runtime lifecycle.
+    const furiesCall = !state.in_mklev
+        && normalized._summonFuries === true
+        && ptr === state.mons[PM_ERINYS]
+        && x === state.u?.ux
+        && y === state.u?.uy
+        && mmflags === (MM_ADJACENTOK | MM_NOWAIT);
     // wizard.c:clonewiz() creates a Wizard at the hero's square with
     // MM_NOWAIT. makemon() relocates that request through enexto_core() and
     // runs the normal runtime tail; the marker ties this species/flag shape
@@ -1351,7 +1380,7 @@ function preflightCreation(ptr, x, y, mmflags, normalized) {
         && !(mmflags & ~(MM_NOMSG | MM_ANGRY | MM_MALE | MM_FEMALE));
     if (tutorialLevel && !runtimeRandomNoMsgCall
         && !runtimeExplicitRandomCall && !runtimeGroupCall
-        && !wereSummonCall && !cloneWizardCall
+        && !wereSummonCall && !cloneWizardCall && !furiesCall
         && !explicitCoordinateNoFlagsRuntimeCall
         && !explicitCoordinateNoMinventRuntimeCall
         && !explicitInventorylessHeroCall && !hatchEggCall
@@ -1514,7 +1543,7 @@ function preflightCreation(ptr, x, y, mmflags, normalized) {
         || deadbookCall || vaultGuardCall || revivalCall || statueAnimationCall
         || figurineAnimationCall || explicitInventorylessHeroCall
         || hatchEggCall || explicitCoordinateRuntimeCall
-        || cloneWizardCall || cloneuCall || minionSummonCall
+        || cloneWizardCall || furiesCall || cloneuCall || minionSummonCall
         || familiarCall || wereSummonCall || roamerCall
         // sp_lev.c finalizes topology before filling special rooms.  Those
         // explicit-coordinate calls still belong to level generation and
@@ -1588,7 +1617,7 @@ function preflightCreation(ptr, x, y, mmflags, normalized) {
         && !explicitCoordinateNoFlagsRuntimeCall
         && !explicitCoordinateNoMinventRuntimeCall
         && !vaultGuardCall
-        && !cloneWizardCall
+        && !cloneWizardCall && !furiesCall
         && !cloneuCall
         && (!isok(x, y) || !ACCESSIBLE(state.level?.at(x, y)?.typ))) {
         throw new UnsupportedMonsterCreationError(
@@ -1641,7 +1670,7 @@ function preflightCreation(ptr, x, y, mmflags, normalized) {
             && !statueInventoryCall
             && !specialRoomCall
             && !cloneuCall
-            && !cloneWizardCall
+            && !cloneWizardCall && !furiesCall
             // summon_minion uses the generic creation lifecycle; C imposes
             // no initial-level species reservoir on this divine caller.
             && !divineMinionCall
@@ -3011,9 +3040,6 @@ async function finishRuntimeCreationTail(monster, mmflags, normalized) {
 export function makemon(ptr, x, y, mmflags = 0, env = {}) {
     const normalized = creationEnv(env);
     const { random, state } = normalized;
-    const runtimeExplicitRandomCall = isRuntimeExplicitRandomCall(
-        ptr, x, y, mmflags, state,
-    );
     preflightCreation(ptr, x, y, mmflags, normalized);
 
     if (state.iflags?.debug_mongen
@@ -3062,8 +3088,11 @@ export function makemon(ptr, x, y, mmflags = 0, env = {}) {
         do {
             ptr = rndmonst(normalized);
             if (!ptr) return null;
-            if (!normalized._rndmonMklev && !runtimeExplicitRandomCall)
-                assertSupportedSpecies(ptr, normalized);
+            // C makemon.c accepts rndmonst's reservoir choice for every
+            // admitted null-species call, including natural runtime spawns.
+            // Placement retries below and concrete initialization helpers
+            // own their source restrictions; the initial-level species
+            // allowlist does not constrain this selection branch.
         } while (++attempts <= 50
             && ((attempts === 1
                 && throws_rocks(ptr)
@@ -3264,6 +3293,9 @@ export function makemon(ptr, x, y, mmflags = 0, env = {}) {
             redrawSquare(monster.mx, monster.my, normalized);
             set_apparxy(monster, normalized);
         }
+        // C ref: makemon.c:1403-1404. A wielded beaked polearm pacifies ravens.
+        if (mndx === PM_RAVEN && state.uwep?.otyp === BEC_DE_CORBIN)
+            monster.mpeaceful = true;
         // C ref: makemon.c:1405-1408.
         if (mndx === PM_LONG_WORM) {
             monster.wormno = get_wormno(state);

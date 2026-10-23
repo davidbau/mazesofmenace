@@ -151,7 +151,7 @@ import { add_to_container, carrying, freeinv, hands_obj, obfree, obj_extract_sel
 import { game } from './gstate.js';
 import { can_carry } from './moncarry.js';
 import { dist2, distmin, sgn, strsubst } from './hacklib.js';
-import { makemon, makemon_runtime } from './makemon_create.js';
+import { makemon_runtime } from './makemon_create.js';
 import { grow_up, rndmonst, set_malign } from './makemon.js';
 import { awaken_soldiers } from './music.js';
 import { m_next2u } from './mhitu.js';
@@ -324,7 +324,7 @@ function activeHeroProperty(state, property) {
 // nothing happened, 1 if the monster died, 2 if it was incapacitated.
 async function precheck(mon, obj, state, env = {}) {
     if (!obj) return 0;
-    const random = env.random ?? { rn2 };
+    const random = { d, rn1, rn2, rnd, rne, rnl, rnz, ...(env.random ?? {}) };
     const vis = cansee(mon.mx, mon.my, state);
 
     if (obj.oclass === O.POTION_CLASS) {
@@ -337,9 +337,9 @@ async function precheck(mon, obj, state, env = {}) {
                 if (!cc) return 0;
                 await mquaffmsg(mon, obj, state);
                 await m_useup(mon, obj, { state });
-                const mtmp = makemon(
+                const mtmp = await makemon_runtime(
                     state.mons[M.PM_GHOST], cc.x, cc.y, MM_NOMSG,
-                    { state },
+                    { ...env, state, random },
                 );
                 if (!mtmp) {
                     if (vis) {
@@ -377,9 +377,9 @@ async function precheck(mon, obj, state, env = {}) {
             if (!cc) return 0;
             await mquaffmsg(mon, obj, state);
             await m_useup(mon, obj, { state });
-            const mtmp = makemon(
+            const mtmp = await makemon_runtime(
                 state.mons[M.PM_DJINNI], cc.x, cc.y, MM_NOMSG,
-                { state },
+                { ...env, state, random },
             );
             if (!mtmp) {
                 if (vis) {
@@ -2335,7 +2335,14 @@ export async function mbhitm(mtmp, otmp, state, rawEnv = {}) {
         break;
     case O.WAN_TELEPORTATION:
         if (hits_you) {
-            await tele(state);
+            // C muse.c mbhitm() calls tele() on the active turn. Retain
+            // the planning input boundary, cloned RNG and display owners;
+            // monster missile callers name their redraw operation newsym.
+            await tele(state, {
+                ...rawEnv,
+                random,
+                redraw: rawEnv.redraw ?? rawEnv.newsym,
+            });
             if (state.gz?.zap_oseen)
                 discover_object(O.WAN_TELEPORTATION, true, true, true, state,
                     discoveryEnv);
@@ -2345,10 +2352,10 @@ export async function mbhitm(mtmp, otmp, state, rawEnv = {}) {
                 && in_rooms(mtmp.mx, mtmp.my, TEMPLE, state).length > 0) {
                 if (cansee(mtmp.mx, mtmp.my, state))
                     await pline_mon(mtmp,
-                        `${capitalizedMonsterName(mtmp, state)} resists the magic!`,
-                        state);
-            } else if (!(await tele_restrict(mtmp, state)))
-                await rloc(mtmp, RLOC_MSG, { state });
+                        `${capitalizedMonsterName(mtmp, state, rawEnv)} resists the magic!`,
+                        state, rawEnv);
+            } else if (!(await tele_restrict(mtmp, state, rawEnv)))
+                await rloc(mtmp, RLOC_MSG, { ...rawEnv, state, random });
         }
         break;
     case O.WAN_CANCELLATION:
