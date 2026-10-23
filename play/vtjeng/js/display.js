@@ -83,7 +83,7 @@ import {
     BC_BALL, BC_CHAIN,
     IS_DOOR, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_STWALL, u_at, Ugender, Upolyd, M_AP_TYPE,
     BEAR_TRAP, NO_TRAP, WEB, is_pit, Is_waterlevel,
-    TT_LAVA,
+    TT_BURIEDBALL, TT_LAVA,
     In_endgame, In_mines, In_quest, In_sokoban, Is_knox_level,
     MAXTCHARS,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
@@ -121,7 +121,7 @@ import {
 } from './terminal.js';
 import { rankOf, roles } from './roles.js';
 import { pmname } from './do_name.js';
-import { is_flyer, monsndx } from './mondata.js';
+import { is_flyer, monsndx, sticks } from './mondata.js';
 import { m_at } from './monst.js';
 import {
     dist2,
@@ -314,6 +314,7 @@ import {
     NUMMONS,
     PM_LONG_WORM_TAIL,
     PM_TENGU,
+    S_EEL,
     monsterClassSymbol,
 } from './monsters.js';
 import { rn2_on_display_rng } from './rng.js';
@@ -4820,11 +4821,19 @@ const STATUS_CONDITION_SPECS = Object.freeze([
         forms: ['Fly', 'Fly', 'Fl'] },
     { option: 'foodpois', rank: 6, enabled: true,
         forms: ['FoodPois', 'Fpois', 'Poi'] },
+    { option: 'glowhands', rank: 20, enabled: false,
+        forms: ['Glow', 'Glo', 'Gl'] },
+    { option: 'grab', rank: 2, enabled: true,
+        forms: ['Grab', 'Grb', 'Gr'] },
     { option: 'hallucinat', rank: 10, enabled: true,
         forms: ['Hallu', 'Hal', 'Hl'] },
+    { option: 'held', rank: 20, enabled: false,
+        forms: ['Held', 'Hld', 'Hd'] },
+    { option: 'holding', rank: 20, enabled: false,
+        forms: ['UHold', 'UHld', 'UHd'] },
     { option: 'ice', rank: 20, enabled: false,
         forms: ['Icy', 'Icy', 'Ic'] },
-    { option: 'inlava', rank: 8, enabled: true,
+    { option: 'lava', rank: 8, enabled: true,
         forms: ['InLava', 'Lav', 'La'] },
     { option: 'levitate', rank: 10, enabled: true,
         forms: ['Lev', 'Lev', 'Lv'] },
@@ -4838,8 +4847,14 @@ const STATUS_CONDITION_SPECS = Object.freeze([
         forms: ['Strngl', 'Stngl', 'Str'] },
     { option: 'stun', rank: 10, enabled: true,
         forms: ['Stun', 'Stun', 'St'] },
+    { option: 'submerged', rank: 15, enabled: false,
+        forms: ['Submrg', 'Subm', 'Sm'] },
     { option: 'termill', rank: 6, enabled: true,
         forms: ['TermIll', 'Ill', 'Ill'] },
+    { option: 'tethered', rank: 20, enabled: false,
+        forms: ['Teth', 'Tth', 'Te'] },
+    { option: 'trap', rank: 20, enabled: false,
+        forms: ['Trap', 'Trp', 'Tr'] },
 ]);
 
 export function statusConditionActive(option, u) {
@@ -4870,23 +4885,49 @@ export function statusConditionActive(option, u) {
     case 'foodpois':
         return _propertyIntrinsic(u, SICK)
             && Boolean((u.usick_type ?? 0) & SICK_VOMITABLE);
+    // botl.c:1195 reads the remaining confuse-monster hand charges.
+    case 'glowhands': return Boolean(u.umconf);
+    // botl.c:1164-1188 treats these as one mutually exclusive family.
+    // Swallowing precedes sticky polymorph; a disabled Grab falls back to
+    // Held even for an eel, when that optional condition is enabled.
+    case 'grab':
+    case 'held':
+    case 'holding': {
+        if (!u.ustuck) return false;
+        if (u.uswallow) return option === 'held';
+        if (Upolyd(u) && sticks(game.youmonst.data))
+            return option === 'holding';
+        const grab = (game.iflags?.status_conditions?.grab ?? true)
+            && u.ustuck.data.mlet === S_EEL;
+        return option === (grab ? 'grab' : 'held');
+    }
     case 'hallucinat':
         return _propertyIntrinsic(u, HALLUC)
             && !_propertyActive(u, HALLUC_RES);
     case 'ice':
         return game.level?.at(u.ux, u.uy)?.typ === ICE;
-    // botl.c bl_inlava is enabled by default and is true only while the
-    // hero's holding-trap type is TT_LAVA. It is distinct from the terrain
-    // word: a fire-resistant hero can remain in lava while the tile itself
-    // is still classified as LAVAPOOL.
-    case 'inlava': return Boolean(u?.utrap)
-        && u.utraptype === TT_LAVA;
+    // botl.c:1154-1163: enabled specific conditions suppress generic Trap.
+    // The canonical option is lava; retain the historical predicate alias.
+    case 'inlava':
+    case 'lava':
+    case 'tethered':
+    case 'trap': {
+        if (!u?.utrap) return false;
+        const configured = game.iflags?.status_conditions ?? {};
+        const lava = (configured.lava ?? true) && u.utraptype === TT_LAVA;
+        const tethered = (configured.tethered ?? false)
+            && u.utraptype === TT_BURIEDBALL;
+        const selected = lava ? 'lava' : tethered ? 'tethered' : 'trap';
+        return (option === 'inlava' ? 'lava' : option) === selected;
+    }
     case 'levitate': return _propertyActiveUnblocked(u, LEVITATION);
     case 'ride': return Boolean(u.usteed);
     case 'slime': return _propertyIntrinsic(u, SLIMED);
     case 'stone': return _propertyIntrinsic(u, STONED);
     case 'strngl': return _propertyIntrinsic(u, STRANGLED);
     case 'stun': return _propertyIntrinsic(u, STUNNED);
+    // botl.c:1203 uses Underwater, defined as u.uinwater in youprop.h.
+    case 'submerged': return Boolean(u.uinwater);
     case 'termill':
         return _propertyIntrinsic(u, SICK)
             && Boolean((u.usick_type ?? 0) & SICK_NONVOMITABLE);
