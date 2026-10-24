@@ -4,8 +4,9 @@ import { game } from './gstate.js';
 import { gotoLevel } from './level_change.js';
 import { nhgetch } from './input.js';
 import { canSeeMonster, flush_screen, pline, plineWithContinuation } from './display.js';
-import { MIN_QUEST_ALIGN, MIN_QUEST_LEVEL, STRAT_CLOSE, STRAT_WAITMASK, MAGIC_PORTAL, } from './const.js';
-import { MONSTER_NAME, MONSTER_SOUND } from './monster_data.js';
+import { MIN_QUEST_ALIGN, MIN_QUEST_LEVEL, STRAT_WAITMASK, MAGIC_PORTAL, } from './const.js';
+import { MONSTER_NAME } from './monster_data.js';
+import { questMonsterSound } from './role_monsters.js';
 import { displayQuestText, prepareQuestText, qtPager, comPager } from './quest_pager.js';
 import { artifactByName } from './artifacts.js';
 import { exerciseWisdom as exerciseQuestWisdom } from './attrib.js';
@@ -23,15 +24,10 @@ import { rn2 } from './rng.js';
 import { createPoisonGasCloud } from './regions.js';
 import { deleteTrap } from './trap_lifecycle.js';
 import { impossible } from './diagnostics.js';
-import { markOverviewUnreachable } from './dungeon.js';
+import { markOverviewUnreachable, sameDungeonLevel } from './dungeon.js';
 const MS_NEMESIS = 37;
 const MS_GUARDIAN = 38;
 const MS_LEADER = 36;
-// role_init() changes the selected nemesis's sound. The Master of Thieves
-// is otherwise a quest leader, so the Tourist needs this per-game override.
-export function questMonsterSound(species, state = game) {
-    return species === state.urole?.neminum ? MS_NEMESIS : MONSTER_SOUND[species] ?? 0;
-}
 // C struct q_score is global game state, not a property inferred from the
 // current special level.  Keeping the complete shape here makes the state
 // survive level cache changes and ordinary game serialization as later quest
@@ -74,19 +70,14 @@ export function checkQuestMonsterStatus(monster, state = game) {
         && Math.abs(monster.mx - state.u.ux) <= 1
         && Math.abs(monster.my - state.u.uy) <= 1;
 }
-// role_init() marks the selected role's leader species peaceful and M3_CLOSE;
-// makemon() then records the particular live identity in q_score.  Register
-// after ordinary construction so the constructor's existing RNG remains in
-// source order even while role metadata overrides the final attitude.
+// C makemon() records the quest leader's identity. Birth flags still control
+// anger and waiting; recording the identity must not change either one.
 export function registerQuestLeader(monster, g = game) {
     if (!monster || monster.mnum !== g.urole?.ldrnum)
         return false;
     const status = ensureQuestStatus(g);
     status.leader_m_id = monster.m_id;
-    status.ldrgend = monster.female ? 1 : 0;
     monster.questLeader = true;
-    monster.mpeaceful = 1;
-    monster.mstrategy = (monster.mstrategy || 0) | STRAT_CLOSE;
     return true;
 }
 export function isQuestLeader(monster, g = game) {
@@ -178,9 +169,12 @@ export async function prepareQuestArrival({ fromDepth } = {}, g = game) {
         return null;
     if (g.dungeons?.[g.u?.uz?.dnum ?? 0]?.dname !== 'The Quest')
         return null;
-    const prototype = g._activeSpecialLevel?.prototype || '';
+    // quest.c:onquest() classifies the destination by dungeon position
+    // (Is_qstart/Is_qlocate/Is_nemesis), not by the last generation script:
+    // a bones filler level keeps the departure level's prototype.
+    const at = (name) => sameDungeonLevel(currentDepth, g.specialLevels?.get(name));
     const status = ensureQuestStatus(g);
-    if (prototype.endsWith('-strt')) {
+    if (at('x-strt')) {
         if (!status.first_start) {
             return {
                 ...await prepareQtDelivery('firsttime', g),
@@ -202,7 +196,7 @@ export async function prepareQuestArrival({ fromDepth } = {}, g = game) {
         }
         return null;
     }
-    if (prototype.endsWith('-loca')) {
+    if (at('x-loca')) {
         if (status.killed_nemesis)
             return null;
         const fromAbove = (fromDepth?.dlevel ?? currentDepth.dlevel)
@@ -219,7 +213,7 @@ export async function prepareQuestArrival({ fromDepth } = {}, g = game) {
         if (fromAbove)
             return prepareQtDelivery('locate_next', g);
     }
-    if (prototype.endsWith('-goal')) {
+    if (at('x-goal')) {
         if (status.killed_nemesis)
             return null;
         if (!status.made_goal) {
@@ -240,13 +234,12 @@ export async function prepareQuestArrival({ fromDepth } = {}, g = game) {
     }
     return null;
 }
-// C do.c main-dungeon arrival branch: reaching the Quest entrance for the
-// first time invokes com_pager("quest_portal").  Loading quest.lua consumes
-// nhlib's alignment shuffle before its four plines collide with any pending
-// level-teleport message.
-export async function prepareMainQuestPortalCall({ firstVisit = true } = {}, g = game) {
-    if (!firstVisit)
-        return null;
+// C do.c main-dungeon arrival branch: every arrival at the Quest entrance
+// level from outside the Quest branch delivers the leader's summons
+// (quest_portal first, then quest_portal_again, or _demand for Rogues).
+// Loading quest.lua consumes nhlib's alignment shuffle before its plines
+// collide with any pending level-teleport message.
+export async function prepareMainQuestPortalCall({ fromDepth } = {}, g = game) {
     const event = g.u?.uevent || (g.u.uevent = {});
     const status = ensureQuestStatus(g);
     if (event.qcompleted || event.qexpelled || status.leader_is_dead)
@@ -263,6 +256,11 @@ export async function prepareMainQuestPortalCall({ firstVisit = true } = {}, g =
             || (hereIsEnd2 && branch.end1?.dnum === questDnum);
     });
     if (!entrance || currentDnum === questDnum)
+        return null;
+    // do.c delivers the summons only when the previous level was outside
+    // the Quest branch (In_quest(&u.uz0)); the wizard forced-destination
+    // teleport can leave the Quest without using the portal.
+    if (fromDepth?.dnum === questDnum)
         return null;
     const messageId = event.qcalled
         ? g.urole?.key === 'rogue' ? 'quest_portal_demand' : 'quest_portal_again'
@@ -334,9 +332,9 @@ async function questPurity(talk, g = game) {
         return 1;
     return currentBaseAlignment(g) !== original ? -1 : 0;
 }
+// C Is_qstart(&u.uz): the quest home is identified by dungeon position.
 export function onQuestStart(g = game) {
-    return g.dungeons?.[g.u?.uz?.dnum ?? 0]?.dname === 'The Quest'
-        && g._activeSpecialLevel?.prototype?.endsWith('-strt');
+    return sameDungeonLevel(g.u?.uz, g.specialLevels?.get('x-strt'));
 }
 // C quest.c:ok_to_quest() asks the non-interactive purity predicate.  Keep
 // that scorecard decision shared with pager and level-transition callers so

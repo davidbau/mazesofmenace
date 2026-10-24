@@ -1833,7 +1833,7 @@ export async function meatcorpse(mtmp, rawEnv = {}) {
             const name = distant_name(obj, donameFresh, state);
             if (state.flags?.verbose)
                 await monsterMessage(
-                    `${capitalizedMonsterName(mtmp, state)} eats ${name}!`,
+                    `${capitalizedMonsterName(mtmp, state, { displayRandom: rawEnv.displayRandom })} eats ${name}!`,
                     mtmp,
                     state,
                     rawEnv,
@@ -4538,7 +4538,13 @@ export function unstuck(mtmp, state = game, env = {}) {
             if (typeof env.docrt === 'function') {
                 await env.docrt({ ...env, state, overlayMonsters: false });
             } else if (!env.planning) {
-                await docrt({ overlayMonsters: false });
+                // This caller already brackets the remembered-map redraw
+                // with C's vision phases; docrt must not repeat them.
+                await docrt({
+                    overlayMonsters: false,
+                    suspendVision: () => {},
+                    restoreVision: () => {},
+                });
             } else if (typeof env.redraw === 'function') {
                 await env.redraw(state);
             }
@@ -5589,7 +5595,7 @@ async function make_corpse(mtmp, corpseflags, state, env) {
     // carry only the subset their own function uses, so fill this source
     // function's defaults before honoring supplied overrides.
     const random = { d, rn1, rn2, rnd, rne, rnl, rnz, ...(env.random ?? {}) };
-    const objectEnv = { ...env, state, random };
+    const objectEnv = objectGenerationEnv({ ...env, state, random });
     const message = env.message ?? ttyPline;
     const mdat = mtmp.data;
     const x = mtmp.mx;

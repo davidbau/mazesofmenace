@@ -1,4 +1,5 @@
 import { heroLocomotion } from './hero_locomotion.js';
+import { recorderLocalHour } from './calendar.js';
 import { impossible } from './diagnostics.js';
 // shk.js — Runtime shop ownership and entry policy.
 // C refs: hack.c move_update()/check_special_room(), shk.c inhishop(),
@@ -384,6 +385,22 @@ export function* visitBilledShopkeepers(state = game) {
         if (!keeper.mpeaceful && !keeper.eshk.surcharge)
             rileShopkeeper(keeper);
         yield keeper;
+    }
+}
+// C gem_learned(): identification changes the price of every live stack of
+// this gem on a bill. A missing live object stops this keeper's traversal:
+// the native loop does not advance its bill pointer after find_oid fails.
+export function repriceDiscoveredGems(otyp, state = game) {
+    const objects = objectsInTimerGraph(state);
+    for (const keeper of visitBilledShopkeepers(state)) {
+        for (const entry of keeper.eshk.bill) {
+            const object = objects.find(candidate => candidate.o_id === entry.bo_id
+                && candidate.where !== 'free' && candidate.where !== 'onbill');
+            if (!object)
+                break;
+            if (otyp === 0 ? object.oclass === GEM_CLASS : object.otyp === otyp)
+                entry.price = shopObjectUnitCost(object, keeper, state);
+        }
     }
 }
 export function billForObject(object, state = game, resident = null) {
@@ -1345,10 +1362,11 @@ function specialRoomEntryMessage(room, roomno) {
         }
         case LEPREHALL: return 'You enter a leprechaun hall!';
         case MORGUE: {
-            if (Number(String(game.datetime || '').slice(8, 10)) !== 0)
-                return 'You have an uncanny feeling...';
-            const verb = heroLocomotion('Run');
-            return `${verb} away!  ${verb} away!`;
+            if (recorderLocalHour(game.datetime) === 0) {
+                const verb = heroLocomotion('Run');
+                return `${verb} away!  ${verb} away!`;
+            }
+            return 'You have an uncanny feeling...';
         }
         case BEEHIVE: return 'You enter a giant beehive!';
         case COCKNEST: return 'You enter a disgusting nest!';

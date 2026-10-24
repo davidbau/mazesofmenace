@@ -16,7 +16,8 @@ import { objectClassForType } from './object_knowledge.js';
 import { d, rnd, rn2 } from './rng.js';
 import { GOLD_DRAGON_SCALE_MAIL, GOLD_DRAGON_SCALES, OBJECT_NAMES, OBJECT_SUBTYPE, OBJECT_UNIQUE, requireObjectData, } from './object_data.js';
 import { objectMaterial } from './object_material.js';
-import { MONSTER_ALIGNMENT, MONSTER_FLAGS2, MONSTER_MAGIC_RESISTANCE, MONSTER_SYMBOL, monsterIsCovetous, monsterIsPlayerMonster, } from './monster_data.js';
+import { questMonsterAlignment } from './role_monsters.js';
+import { MONSTER_FLAGS2, MONSTER_MAGIC_RESISTANCE, MONSTER_SYMBOL, monsterIsCovetous, monsterIsPlayerMonster, } from './monster_data.js';
 import { monsterWieldedWeapon } from './monster_weapon.js';
 import { monsterAlignmentType } from './monster_alignment.js';
 import { monsterHasColdResistance, monsterHasDrainResistance, monsterHasFireResistance, monsterHasShockResistance, } from './monster_resistance.js';
@@ -135,6 +136,7 @@ export function initializeArtifacts(state = game) {
     state._artifactRuntime = runtime;
     state._artifactExists = new Set();
     state._artifactFound = new Set();
+    state._artifactOrigins = new Map();
     state._artifactDiscoveries = [];
     return runtime;
 }
@@ -146,19 +148,15 @@ function existenceSet(state) {
 // C artifact.c:artifact_exists().  The caller has already created the base
 // object.  Naming commits both the object's identity and the global existence
 // bit; later random-artifact ranges consume the shared count.
-export function nameArtifact(object, artifact, { knownOrigin = false, state = game } = {}) {
+export function nameArtifact(object, artifact, { origin = 'random', knownOrigin = false, state = game } = {}) {
     if (!object || !artifact)
         return false;
     const exists = existenceSet(state);
     if (exists.has(artifact.id))
         return false;
-    exists.add(artifact.id);
-    if (knownOrigin)
-        markArtifactFound(artifact.id, state);
-    else
-        state._artifactFound?.delete(artifact.id);
     object.artifact = true;
     object.oartifact = artifact.id;
+    setArtifactOrigin(object, origin, { knownOrigin, state });
     object.oextra = {
         ...(object.oextra || {}),
         oname: artifact.name,
@@ -170,11 +168,35 @@ export function nameArtifact(object, artifact, { knownOrigin = false, state = ga
     object.quantity = 1;
     return true;
 }
+// C artifact.c:artifact_origin(). A wish or gift can replace the random
+// origin assigned by mk_artifact(); knowledge is reset at the same boundary.
+export function setArtifactOrigin(object, origin, { knownOrigin = false, state = game } = {}) {
+    const id = object.oartifact;
+    if (!id)
+        return;
+    existenceSet(state).add(id);
+    (state._artifactOrigins ??= new Map()).set(id, origin);
+    if (knownOrigin)
+        markArtifactFound(id, state);
+    else
+        state._artifactFound?.delete(id);
+}
+// C artifact.c:dump_artifact_info(). This includes artifacts the hero has
+// never encountered; the creation flags describe game state, not discoveries.
+export function artifactInfoLines(state = game) {
+    return artifactList(state).map(artifact => {
+        const exists = state._artifactExists?.has(artifact.id) ? 'exists;' : '';
+        const found = state._artifactFound?.has(artifact.id) ? ' hero knows;' : '';
+        const origin = state._artifactOrigins?.get(artifact.id);
+        return `  ${artifact.name.slice(0, 36).padEnd(36)}[${exists}${found}${origin ? ` ${origin}` : ''}]`;
+    });
+}
 export function uncreateArtifact(object, state = game) {
     if (!object?.oartifact)
         return false;
     const removed = state._artifactExists?.delete(object.oartifact) ?? false;
     state._artifactFound?.delete(object.oartifact);
+    state._artifactOrigins?.delete(object.oartifact);
     object.artifact = false;
     object.oartifact = 0;
     return removed;
@@ -370,7 +392,7 @@ function artifactAttackApplies(artifact, defender, { hero = false, random = rn2,
         case 'symbol':
             return MONSTER_SYMBOL[mnum] === SYMBOL_TARGETS[target.value];
         case 'alignment': {
-            const alignment = hero ? state.u?.ualign?.type : MONSTER_ALIGNMENT[mnum];
+            const alignment = hero ? state.u?.ualign?.type : questMonsterAlignment(mnum, state);
             if (hero)
                 return alignment !== artifact.alignment;
             return (alignment === -128 ||

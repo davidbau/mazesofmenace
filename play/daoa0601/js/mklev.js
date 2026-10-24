@@ -9,6 +9,7 @@ import { createObjectBase } from './object_constructor.js';
 import { deleteTrap, finishSokobanIfSolved } from './trap_lifecycle.js';
 import { randomGhostName, roguePlayerName, setMonsterGivenName } from './monster_given_name.js';
 import { game, requireGameLevel, requireLiveGame } from './gstate.js';
+import { placeHeroOnLevel } from './hero_location.js';
 import { lookupNovelTitle, novelTitle } from './novel_titles.js';
 import { addFruit } from './fruit.js';
 import { setTinVariety } from './tin.js';
@@ -38,9 +39,11 @@ import { impossible } from './diagnostics.js';
 import { PanicTermination } from './panic_termination.js';
 import { LUA_SOURCES } from './generated/lua_sources.js';
 import { createDesBindings, mapOrigin, objectTypeForName, tablePoint, } from './lua/des.js';
-import { luaInteger, luaString } from './lua/arguments.js';
+import { luaInteger, luaString, luaToInteger, luaNumberValue } from './lua/arguments.js';
 import { createSelectionApi } from './lua/selection.js';
-import { luaTableToArray, objectToLuaTable, } from './lua/runtime.js';
+import { LuaArgumentError, NethackLuaError } from './lua/errors.js';
+import { nameToMonster } from './mondata.js';
+import { luaTableToArray, objectToLuaTable, LuaTable, luaCheckString, luaCheckInteger, luaType, } from './lua/runtime.js';
 import { nextIdent } from './ident.js';
 import { erosionMatters, objectIsVulnerableToErosion } from './object_erosion.js';
 import { deallocateObject, deleteObject } from './object_delete.js';
@@ -48,7 +51,7 @@ import { eggSpeciesIsDead, hatchableEggSpecies } from './egg_species.js';
 import { attachFigurineTimer } from './figurine_timer.js';
 import { placeCreatedObject, remove_object, stack_object, updateIceObjectTimersAt, } from './floor_object.js';
 import { addBuriedObject, buryObject, unearthFloorObjectsAt, } from './buried_object.js';
-import { resetHeroTrap } from './terrain_movement.js';
+import { resetHeroTrap, switchHeroTerrain } from './terrain_movement.js';
 import { fillPitWithBoulderAt } from './pit_fill.js';
 import { addShopDamage, fixShopDamage } from './shop_damage.js';
 import { GameMap } from './game.js';
@@ -72,7 +75,7 @@ import { MAP_SYMBOLS } from './map_symbols.js';
 import { cleanupSpecialLevelMap, removeSpecialLevelBoundaries } from './special_level_cleanup.js';
 import { A_CHA, COLNO, ROWNO, STONE, MAX_TYPE, ROOM, CORR, DOOR, STAIRS, LADDER, HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, D_NODOOR, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED, OROOM, VAULT, COURT, SWAMP, BEEHIVE, MORGUE, BARRACKS, ZOO, TEMPLE, LEPREHALL, COCKNEST, ANTHOLE, DELPHI, THEMEROOM, SHOPBASE, ROOMOFFSET, MAXNROFROOMS, SHARED, SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, ALTAR, GRAVE, THRONE, HEADSTONE, ENGRAVE, BURN, MARK, DUST, ENGR_BLOOD, DIR_N, DIR_S, DIR_E, DIR_W, DIR_180, XL_UP, XL_DOWN, XL_LEFT, XL_RIGHT, ACCESSIBLE, IS_WALL, IS_STWALL, IS_DOOR, IS_ROOM, IS_OBSTRUCTED, ZAP_POS, IS_FURNITURE, IS_POOL, IS_AIR, IS_LAVA, In_endgame, Is_earthlevel, Is_botlevel, Is_stronghold, Invocation_lev, In_hell, In_quest, In_V_tower, Is_oracle_level, Is_waterlevel, Is_firelevel, Is_airlevel, Is_astralevel, Is_knox_level, Is_rogue_level, In_sokoban, SPACE_POS, isok, W_NONDIGGABLE, W_NONPASSWALL, FILL_NONE, FILL_NORMAL, ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DBWALL, ICED_POOL, ICED_MOAT, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, DB_MOAT, DB_LAVA, DB_UNDER, DB_FLOOR, SHOP_HOLE_COST, TREE, AIR, CLOUD, A_NONE, A_CHAOTIC, A_NEUTRAL, A_LAWFUL, AM_SHRINE, AM_SANCTUM, Align2amask, LR_DOWNSTAIR, LR_UPSTAIR, LR_UPTELE, LR_DOWNTELE, LR_TELE, LR_BRANCH, LR_PORTAL, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE, MM_ANGRY, MM_ASLEEP, MM_NONAME, MM_NOGRP, MM_EMIN, MM_EPRI, MM_ESHK, MM_NOWAIT, MM_NOTAIL, MM_IGNOREWATER, MM_ADJACENTOK, MM_NOCOUNTBIRTH, MM_NOMSG, MM_MALE, MM_FEMALE, MM_MINVIS, MM_EDOG, NO_MINVENT, G_EXTINCT, G_GENOD, G_GONE, G_NOCORPSE, ROT_AGE, TROLL_REVIVE_CHANCE, HEALTHY_TIN, RANDOM_TIN, MAX_OIL_IN_FLASK, CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_NEUTER, CORPSTAT_HISTORIC, CORPSTAT_INIT, CORPSTAT_SPE_VAL, STRAT_APPEARMSG, STRAT_CLOSE, STRAT_WAITFORU, ANTI_MAGIC, TT_BURIEDBALL, TT_BEARTRAP, TT_WEB, TT_PIT, TT_LAVA, } from './const.js';
 import { getObjectClassBounds, getObjectDefinition, requireObjectData, OBJECT_BASES, OBJECT_PROB, OBJECT_SPELL_LEVEL, OBJECT_MERGE, OBJECT_WEIGHT, OBJECT_COST, OBJECT_SUBTYPE, WORM_TOOTH, UNICORN_HORN, HELM_OF_OPPOSITE_ALIGNMENT, GAUNTLETS_OF_FUMBLING, FUMBLE_BOOTS, LEVITATION_BOOTS, AMULET_OF_STRANGULATION, AMULET_OF_RESTFUL_SLEEP, AMULET_OF_CHANGE, AMULET_OF_YENDOR, FAKE_AMULET_OF_YENDOR, LARGE_BOX, CHEST, ICE_BOX, SACK, OILSKIN_SACK, BAG_OF_HOLDING, BAG_OF_TRICKS, TALLOW_CANDLE, WAX_CANDLE, BRASS_LANTERN, OIL_LAMP, MAGIC_LAMP, EXPENSIVE_CAMERA, CRYSTAL_BALL, TINNING_KIT, CAN_OF_GREASE, FIGURINE, MAGIC_MARKER, MAGIC_FLUTE, FROST_HORN, FIRE_HORN, HORN_OF_PLENTY, MAGIC_HARP, DRUM_OF_EARTHQUAKE, CORPSE, EGG, MEAT_RING, GLOB_OF_GRAY_OOZE, GLOB_OF_BLACK_PUDDING, KELP_FROND, SLIME_MOLD, MELON, LUMP_OF_ROYAL_JELLY, CREAM_PIE, CANDY_BAR, TIN, GOLD_PIECE, SPE_NOVEL, SPE_BOOK_OF_THE_DEAD, SPE_DIG, POT_SICKNESS, DILITHIUM_CRYSTAL, LUCKSTONE, LOADSTONE, TOUCHSTONE, ROCK, BOULDER, STATUE, DART, DAGGER, SPEAR, SLING, ORCISH_DAGGER, MACE, QUARTERSTAFF, BULLWHIP, FEDORA, ELVEN_ARROW, ELVEN_SPEAR, ELVEN_DAGGER, ELVEN_SHORT_SWORD, ELVEN_BROADSWORD, ELVEN_BOW, ELVEN_LEATHER_HELM, ELVEN_MITHRIL_COAT, ELVEN_CLOAK, ELVEN_SHIELD, ELVEN_BOOTS, ORCISH_ARROW, ORCISH_SHORT_SWORD, ORCISH_BOW, ORCISH_HELM, ORCISH_CHAIN_MAIL, ORCISH_CLOAK, URUK_HAI_SHIELD, ORCISH_SHIELD, SCIMITAR, AXE, PICK_AXE, DWARVISH_SPEAR, DWARVISH_SHORT_SWORD, DWARVISH_MATTOCK, DWARVISH_IRON_HELM, DWARVISH_MITHRIL_COAT, DWARVISH_CLOAK, DWARVISH_ROUNDSHIELD, IRON_SHOES, HELMET, SPLINT_MAIL, RING_MAIL, SMALL_SHIELD, ROBE, CLOAK_OF_PROTECTION, CLOAK_OF_MAGIC_RESISTANCE, LEATHER_ARMOR, LEATHER_JACKET, LEATHER_GLOVES, LEATHER_CLOAK, MIRROR, POT_OBJECT_DETECTION, RIN_INVISIBILITY, SHIELD_OF_REFLECTION, SADDLE, WAN_CANCELLATION, WAN_LIGHT, WAN_LIGHTNING, objectDirection, } from './object_data.js';
-import { MONSTER_ATTACKS, MONSTER_BODY_META, MONSTER_DIFFICULTY, MONSTER_GENO, MONSTER_ALIGNMENT, MONSTER_LEVEL, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_FLAGS3, MONSTER_SYMBOL, MONSTER_SIZE, MONSTER_MOVE, MONSTER_SOUND, MONSTER_HAS_WEAPON_ATTACK, MONSTER_COLOR, MONSTER_NAME, MONSTER_RESISTS, SPECIAL_PM, monsterClassSymbol, monsterIsPlayerMonster, requireMonsterData, monsterIsAmorphous, monsterIsNoncorporeal, monsterIsWhirly, } from './monster_data.js';
+import { MONSTER_ATTACKS, MONSTER_BODY_META, MONSTER_DIFFICULTY, MONSTER_GENO, MONSTER_ALIGNMENT, MONSTER_LEVEL, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_SYMBOL, MONSTER_SIZE, MONSTER_MOVE, MONSTER_SOUND, MONSTER_HAS_WEAPON_ATTACK, MONSTER_COLOR, MONSTER_NAME, MONSTER_RESISTS, SPECIAL_PM, monsterClassSymbol, monsterIsPlayerMonster, requireMonsterData, monsterIsAmorphous, monsterIsNoncorporeal, monsterIsWhirly, } from './monster_data.js';
 import { isReviver, isRider, zombieForm, } from './corpse_species.js';
 import { adjustedMonsterLevel, isHomeElemental, newMonsterHitPoints, } from './monster_hit_points.js';
 import { changeMonsterForm, initialShapechangedBirth, pickNastyShape, shapechangerGender, } from './monster_polymorph.js';
@@ -85,6 +88,7 @@ import { premap_detect } from './detect.js';
 import { TRUE_RUMORS, FALSE_RUMORS, RANDOM_ENGRAVINGS, RANDOM_EPITAPHS, } from './random_text_data.js';
 import { deleteEngravingAt, forgetEngravings, makeEngravingAt, restoreEngravings, sanitizeEngravings, wipeEngravingAt, wipeoutText, } from './engrave.js';
 import { registerQuestLeader } from './quest.js';
+import { questMonsterAlignment, questMonsterFlags2, questMonsterFlags3, questMonsterSound } from './role_monsters.js';
 import { armorBonus } from './armor.js';
 import { initializeMonsterArmor } from './monworn.js';
 import { giveMonsterStartingObject } from './monster_starting_inventory.js';
@@ -302,16 +306,9 @@ function is_hole(t) { return t === HOLE || t === TRAPDOOR; }
 function is_pit(t) { return t === PIT || t === SPIKED_PIT; }
 // Stairway list management
 function stairway_add(x, y, up, isladder, dest) {
-    const currentDungeon = game.u?.uz?.dnum ?? 0;
-    const currentLevel = game.u?.uz?.dlevel ?? 1;
-    // mklev.c marks the main-dungeon level-one entrance as traversed: the
-    // hero conceptually began by coming down it, so its branch identity is
-    // already known even before the first player command.
-    const initialEntrance = !!up && currentDungeon === 0 && currentLevel === 1
-        && dest?.dnum !== undefined && dest.dnum !== currentDungeon;
     const node = {
         sx: x, sy: y, up, isladder, tolev: { ...dest },
-        u_traversed: initialEntrance,
+        u_traversed: false,
         next: game.stairs,
     };
     game.stairs = node;
@@ -330,16 +327,6 @@ function stairway_find_special_dir(up) {
     return null;
 }
 // ── Hero placement (C ref: stairs.c, mkmaze.c) ──
-function u_on_newpos(x, y) {
-    game.u.ux = x;
-    game.u.uy = y;
-    // dungeon.c:u_on_newpos() cannot retain a position on the departed level.
-    if (game.u.uz?.dnum !== game.u.uz0?.dnum
-        || game.u.uz?.dlevel !== game.u.uz0?.dlevel) {
-        game.u.ux0 = x;
-        game.u.uy0 = y;
-    }
-}
 // C refs: dungeon.c Can_dig_down()/Can_fall_thru().  A level's hard-floor
 // flag is only one of the gates: bottom levels and the invocation level also
 // reject holes, while the Castle is an explicit exception because its
@@ -439,7 +426,7 @@ async function putLregionHere(x, y, nlx, nly, nhx, nhy, type, oneshot, destinati
             if (!await randomMonsterRelocation(monster, { flags: RLOC_NOMSG }))
                 await sendMonsterToLimbo(monster);
         }
-        u_on_newpos(x, y);
+        await placeHeroOnLevel(x, y);
     }
     else if (type === LR_PORTAL) {
         if (!destination)
@@ -464,41 +451,59 @@ export async function mkportal(x, y, dnum, dlevel) {
     }
     portal.dst = { dnum, dlevel };
 }
-// C stairs.c:u_on_upstairs() uses downward travel rules for random arrivals.
+// C ref: stairs.c:u_on_sstairs() — place the hero on the special (branch)
+// staircase, falling back to a random arrival spot.
+export async function u_on_sstairs(upflag) {
+    const stway = stairway_find_special_dir(!!(upflag & 1));
+    if (stway) {
+        await placeHeroOnLevel(stway.sx, stway.sy);
+        return;
+    }
+    await u_on_rndspot(!!(upflag & 1));
+}
+// C ref: dungeon.c:u_on_rndspot() restricted to the flag bits the stairs.c
+// callers pass: arrivals use the level's up or down teleport region, and an
+// unset region lets place_lregion() default to the whole level.
+async function u_on_rndspot(up) {
+    const region = up ? game.level?.upTeleportRegion : game.level?.downTeleportRegion;
+    const area = region ?? { lx: 0, ly: 0, hx: 0, hy: 0 };
+    const excluded = region?.exclude ?? { lx: -1, ly: -1, hx: -1, hy: -1 };
+    await place_lregion(area.lx, area.ly, area.hx, area.hy, excluded.lx, excluded.ly, excluded.hx, excluded.hy, up ? LR_UPTELE : LR_DOWNTELE, null);
+    await switchHeroTerrain();
+}
+// C ref: stairs.c:u_on_upstairs() — place you on upstairs (or special
+// equivalent).
 export async function u_on_upstairs() {
     const stway = stairway_find_dir(true);
     if (stway) {
-        u_on_newpos(stway.sx, stway.sy);
+        await placeHeroOnLevel(stway.sx, stway.sy);
         return;
     }
-    const special = stairway_find_special_dir(false);
-    if (special) {
-        u_on_newpos(special.sx, special.sy);
-        return;
-    }
-    await place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_DOWNTELE, null);
+    await u_on_sstairs(0); /* destination upstairs implies moving down */
 }
-// C stairs.c:u_on_dnstairs() uses upward travel rules for random arrivals.
+// C ref: stairs.c:u_on_dnstairs() — place you on dnstairs (or special
+// equivalent).
 export async function u_on_downstairs() {
     const stway = stairway_find_dir(false);
     if (stway) {
-        u_on_newpos(stway.sx, stway.sy);
+        await placeHeroOnLevel(stway.sx, stway.sy);
         return;
     }
-    const special = stairway_find_special_dir(true);
-    if (special) {
-        u_on_newpos(special.sx, special.sy);
-        return;
-    }
-    await place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_UPTELE, null);
+    await u_on_sstairs(1); /* destination dnstairs implies moving up */
 }
 // Object probabilities are mutable because gemstone rarity changes with
 // dungeon depth.  This is the level-dependent half of o_init.c.
 let objectProb = OBJECT_PROB.slice();
+export function initializeObjectProbabilities() {
+    objectProb = OBJECT_PROB.slice();
+    setGemProbabilities(0);
+}
 export function oinit() {
+    setGemProbabilities(Math.min(ledgerNo(game.u?.uz), maxLedgerNo()));
+}
+function setGemProbabilities(ledger) {
     const firstGem = getObjectClassBounds(GEM_CLASS).first;
     const lastRealGem = 460;
-    const ledger = Math.min(ledgerNo(game.u?.uz), maxLedgerNo());
     let first = firstGem;
     for (let j = 0; j < 9 - Math.trunc(ledger / 3); j++) {
         objectProb[first++] = 0;
@@ -1457,10 +1462,15 @@ const G_SGROUP = 0x0080;
 // attitude before inventory creation; the live hero alignment record is an
 // input, so prayer and other alignment mutations remain observable here.
 export function peaceMinded(mndx) {
-    const flags = MONSTER_FLAGS2[mndx] || 0;
+    const flags = questMonsterFlags2(mndx);
     if (flags & M2_PEACEFUL)
         return true;
     if (flags & M2_HOSTILE)
+        return false;
+    const sound = questMonsterSound(mndx);
+    if (sound === 36 || sound === 38)
+        return true;
+    if (sound === 37)
         return false;
     // Erinyes are the one species whose attitude is controlled directly by
     // alignment abuse instead of the ordinary co-aligned random chance.
@@ -1473,7 +1483,7 @@ export function peaceMinded(mndx) {
         return true;
     if (flags & race.hatemask)
         return false;
-    const monsterAlignment = MONSTER_ALIGNMENT[mndx] || 0;
+    const monsterAlignment = questMonsterAlignment(mndx);
     const heroAlignment = game.u?.ualign?.type || 0;
     if (Math.sign(monsterAlignment) !== Math.sign(heroAlignment))
         return false;
@@ -1779,7 +1789,7 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
     propagateMonsterSpecies(mndx, !(mmflags & MM_NOCOUNTBIRTH), false);
     const monsterId = nextIdent();
     const { level: baseLevel, hp } = newMonsterHitPoints(mndx);
-    const genderFlags = MONSTER_FLAGS2[mndx] || 0;
+    const genderFlags = questMonsterFlags2(mndx);
     const isNeutralDemon = !!(genderFlags & M2_DEMON)
         && !(genderFlags & (M2_LORD | M2_PRINCE));
     const isQuestLeaderType = mndx === game.urole?.ldrnum;
@@ -1894,7 +1904,7 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
     }
     else if (mndx === PM_CROESUS)
         fixedItem = TWO_HANDED_SWORD;
-    else if (MONSTER_SOUND[mndx] === 37)
+    else if (questMonsterSound(mndx) === 37)
         fixedItem = BELL_OF_OPENING; // MS_NEMESIS
     else if (mndx === PM_PESTILENCE)
         fixedItem = POT_SICKNESS;
@@ -2702,7 +2712,7 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
     // covetous species unless the caller explicitly supplies MM_NOWAIT.
     // STRAT_APPEARMSG is consumed by the first visible relocation message;
     // it cannot be reconstructed later from the monster's current species.
-    const flags3 = MONSTER_FLAGS3[mndx] || 0;
+    const flags3 = questMonsterFlags3(mndx);
     let monsterStrategy = 0;
     if (!(mmflags & MM_NOWAIT)) {
         if (flags3 & 0x0040)
@@ -6303,7 +6313,7 @@ async function createLuaObjectPiece(context, options, corpseSpecies, parentConta
     if (options.name) {
         const artifact = artifactByName(options.name);
         if (artifact?.baseType === object.otyp) {
-            if (nameArtifact(object, artifact) && artifact.questArtifact)
+            if (nameArtifact(object, artifact, { origin: 'lvldef' }) && artifact.questArtifact)
                 object.questArtifact = true;
         }
         else {
@@ -6684,6 +6694,46 @@ async function ensureWaysOut() {
         floodAccessibleArea(reachable, unreachable.x, unreachable.y);
     }
 }
+// nhlua.c:nhl_get_timertype() takes luaL_checkoption over timeout_funcs'
+// timer names, in timeout.h order; timer_is_pos() admits only melt-ice.
+const LEVEL_TIMER_TYPE_NAMES = [
+    'rot-organic', 'rot-corpse', 'revive-mon', 'zombify-mon',
+    'burn-obj', 'hatch-egg', 'fig-transform', 'shrink-glob', 'melt-ice',
+];
+// nhlua.c:nhl_get_xy_params() over sp_lev.c:get_coord(), as reached by
+// nhl_timer_start_at() after the timer type and delay were popped: two
+// integers, or one table with x/y fields or a two-entry array.
+function luaTimerCoordinates(args) {
+    if (args.length === 4)
+        return { x: luaToInteger(args[0]), y: luaToInteger(args[1]) };
+    if (args.length === 3 && args[0] instanceof LuaTable) {
+        const table = args[0];
+        const x = table.get('x');
+        if (x != null) {
+            // get_coord() converts x with luaL_checkinteger before it
+            // looks for y at all.
+            const xValue = luaCheckInteger(-1, x);
+            const y = table.get('y');
+            if (y == null)
+                throw new NethackLuaError('Not a coordinate');
+            return { x: xValue, y: luaCheckInteger(-1, y) };
+        }
+        if (table.length() !== 2)
+            throw new NethackLuaError('Not a coordinate');
+        return { x: luaTimerArrayEntry(table, 1), y: luaTimerArrayEntry(table, 2) };
+    }
+    throw new NethackLuaError('nhl_timer_start_at: Wrong args');
+}
+// sp_lev.c:get_table_intarray_entry(): numbers and numeric strings
+// convert with lua_tointeger laxness, everything else raises nhl_error.
+// The C message hardcodes entry number 1 for both positions.
+function luaTimerArrayEntry(table, entry) {
+    const value = table.get(entry);
+    const converted = luaNumberValue(value);
+    if (converted === null)
+        throw new NethackLuaError(`Array entry #1 is ${luaType(value)}, expected number`);
+    return luaToInteger(converted);
+}
 function createLuaLevelSession() {
     const wholeLevel = {
         xstart: 1, ystart: 0, width: COLNO - 1, height: ROWNO,
@@ -6965,24 +7015,72 @@ function createLuaLevelSession() {
             return monster;
         },
     };
-    const selectionApi = createSelectionApi(() => context, (callable, args) => currentState().callValueAsync(callable, args));
+    const selectionApi = createSelectionApi(() => context, async (callable, args) => {
+        const state = currentState();
+        try {
+            await state.callValueAsync(callable, args);
+            return true;
+        }
+        catch (error) {
+            if (error instanceof PanicTermination)
+                throw error;
+            const detail = state.traceback.format(error);
+            await impossible(`Lua error: ${state.sid}:l_selection_iterate ${detail}`);
+            return false;
+        }
+    });
     const bindings = {
         nh: {
-            debug_themerm: () => null,
-            is_genocided: name => {
-                const target = String(name).toLowerCase();
-                const mndx = MONSTER_NAME.findIndex(candidate => candidate?.toLowerCase() === target);
+            debug_themerm: (...args) => {
+                if (args.length !== 1)
+                    throw new NethackLuaError('debug_themerm should have 1 boolean arg');
+                return null;
+            },
+            is_genocided: (...args) => {
+                if (args.length !== 1)
+                    throw new NethackLuaError('Wrong args');
+                // C nhl_is_genocided() resolves names with name_to_mon(),
+                // which accepts articles, plurals, and alternate spellings.
+                const mndx = nameToMonster(luaCheckString(1, args[0]));
                 return mndx >= 0
                     && !!((game.mvitals?.[mndx]?.mvflags ?? 0) & G_GENOD);
             },
-            level_difficulty: () => level_difficulty(),
-            start_timer_at: (x, y, kind, timeout) => {
-                const timerName = luaString(kind);
-                if (timerName !== 'melt-ice' && timerName !== LEVEL_TIMER_KIND.MELT_ICE_AWAY)
-                    throw new TypeError(`Unknown level timer: ${timerName}`);
-                const timerX = context.xstart + luaInteger(x);
-                const timerY = context.ystart + luaInteger(y);
-                const deadline = (game.moves ?? 0) + luaInteger(timeout);
+            level_difficulty: (...args) => {
+                if (args.length)
+                    throw new NethackLuaError('level_difficulty should not have any args');
+                return level_difficulty();
+            },
+            start_timer_at: (...args) => {
+                // nhl_get_timertype() takes luaL_checkoption over every
+                // timeout_funcs entry at stack index -2, so a bad name is
+                // lauxlib's argument error carrying that index; only
+                // melt-ice is a position timer (timer_is_pos()).
+                const timerIndex = -2;
+                if (args.length === 1) {
+                    // With one argument, stack index -2 holds the called
+                    // function itself. With none, C reads its caller's
+                    // frame; this interpreter cannot reproduce that
+                    // invalid access without Lua's VM stack.
+                    throw new LuaArgumentError(timerIndex, 'string expected, got function');
+                }
+                const timerName = luaCheckString(timerIndex, args[args.length - 2]);
+                const timerType = LEVEL_TIMER_TYPE_NAMES.indexOf(timerName);
+                if (timerType < 0)
+                    throw new LuaArgumentError(timerIndex, `invalid option '${timerName}'`);
+                const when = luaToInteger(args[args.length - 1]);
+                const point = luaTimerCoordinates(args);
+                if (timerType !== LEVEL_TIMER_TYPE_NAMES.indexOf('melt-ice'))
+                    return;
+                // nhl_timer_start_at() and cvt_to_abscoord() store signed
+                // 16-bit coordxy values. Narrow before addition so large
+                // Lua integers retain their low bits, then narrow the sum.
+                const relativeX = (point.x << 16) >> 16;
+                const relativeY = (point.y << 16) >> 16;
+                const timerX = ((context.xstart + relativeX) << 16) >> 16;
+                const timerY = ((context.ystart + relativeY) << 16) >> 16;
+                if (!isok(timerX, timerY))
+                    return;
+                const deadline = (game.moves ?? 0) + when;
                 stopLevelTimer(timerX, timerY, LEVEL_TIMER_KIND.MELT_ICE_AWAY, game);
                 scheduleLevelTimer(timerX, timerY, LEVEL_TIMER_KIND.MELT_ICE_AWAY, deadline, game);
             },
@@ -8026,8 +8124,14 @@ async function makelevel() {
         sort_rooms();
         await generate_stairs();
         const branchp = is_branchlev();
-        if (branchp)
-            await place_branch(branchp);
+        await placeRoomLevelBranch(branchp);
+        // C ref: mklev.c makelevel() skip0 tail.  C still counts
+        // ROOM_IS_FILLABLE rooms and draws the bonus-room selection here,
+        // but savelev() memsets svr.rooms when the previous level is
+        // released (save.c:564, reached from goto_level and #wizmakemap),
+        // so Rogue rooms always start with needfill FILL_NONE and the
+        // count is zero: every room is offered to fill_ordinary_room with
+        // no bonus flag and returns at its needfill gate.
         for (const croom of level.rooms.slice(0, level.nroom))
             if (isRoom(croom))
                 await fill_ordinary_room(croom, false);
@@ -8092,8 +8196,7 @@ async function makelevel() {
     // ordinary-room bonus and filling passes below.
     await maybeMakeSpecialRoom(roomThreshold);
     // Place dungeon branch
-    if (branchp)
-        await place_branch(branchp);
+    await placeRoomLevelBranch(branchp);
     // Choose one ordinary room for a level-specific bonus item, then fill all
     // ordinary rooms.  The choice uses the rooms on this level.
     const fillableRooms = level.rooms
@@ -10349,6 +10452,15 @@ async function place_branch(branchp) {
     const mp = { x: 0, y: 0 };
     find_branch_room(mp);
     await placeBranchAt(branchp, mp.x, mp.y);
+}
+// C mklev.c:makelevel() marks the entrance after placing a room level's
+// branch. Lua and maze branches keep stairway_add()'s untraversed state.
+async function placeRoomLevelBranch(branch) {
+    const previous = game.stairs;
+    await place_branch(branch);
+    if (game.u.uz?.dnum === 0 && game.u.uz.dlevel === 1
+        && game.stairs && game.stairs !== previous)
+        game.stairs.u_traversed = true;
 }
 // ============================================================
 // Wallification

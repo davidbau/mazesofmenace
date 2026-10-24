@@ -17,7 +17,12 @@ export function initializeRoleQuestGenders() {
     const role = game.urole;
     if (!role)
         throw new Error('Quest gender initialization requires a selected role');
-    const quest = ensureQuestStatus();
+    rollQuestFigureGenders(role, ensureQuestStatus());
+}
+// The rolls role_init() makes whenever the quest figure's own species has
+// no fixed gender. On restore they run inside restgamestate() before the
+// hero is even read, and the saved quest_status then overwrites the values.
+export function rollQuestFigureGenders(role, quest) {
     quest.ldrgend = questMonsterGender(role.ldrnum);
     if (role.neminum !== undefined)
         quest.nemgend = questMonsterGender(role.neminum);
@@ -40,9 +45,12 @@ export async function initializeSourceStartup() {
     initializeRoleQuestGenders();
     // role_init(): Priests borrow a pantheon from a random non-Priest role.
     if (game.urole?.key === 'priest') {
-        do
-            game._priestPantheonIndex = rn2(13);
-        while (game._priestPantheonIndex === 6);
+        let pantheon = 6;
+        let attempts = 0;
+        while (pantheon === 6 && ++attempts < 100)
+            pantheon = rn2(13);
+        // C falls back to the first role with gods after 99 failed draws.
+        game._priestPantheonIndex = pantheon === 6 ? 0 : pantheon;
     }
     await init_dungeons();
     initializeArtifacts(game);
