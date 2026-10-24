@@ -3585,6 +3585,9 @@ export async function decide_to_shapeshift(monster, rawEnv = {}) {
             await rloc_to(monster, destination.x, destination.y, {
                 ...shapeEnv,
                 state,
+                // Teleport reads newsym, while shape upkeep owns redrawSquare.
+                // Keep a planned door escape on that same silent map owner.
+                newsym: (x, y) => shapeRedraw(x, y, shapeEnv),
             });
         }
     }
@@ -5982,7 +5985,7 @@ export async function monkilled(mdef, fltxt, how, state = game, env = {}) {
         ? worm_known(mdef, state) : cansee(mdef.mx, mdef.my, state))) {
         await message(
             messageAt(
-                `${capitalizedMonsterName(mdef, state)} is`
+                `${capitalizedMonsterName(mdef, state, { displayRandom: env.displayRandom })} is`
                 + ` ${nonliving(mptr) ? 'destroyed' : 'killed'}`
                 + `${fltxt ? ' by the ' : ''}${fltxt}!`,
                 mdef.mx,

@@ -2320,6 +2320,17 @@ export async function do_attack(mtmpOrX, y) {
                 } else {
                     dmg = ((MONS_MSIZE[cn] | 0) + 1);
                 }
+            } else if ((uwep.otyp | 0) === 284 /* CLOVE_OF_GARLIC */) {
+                /* C uhitm.c:1259-1264 hmon_hitmon_misc_obj CLOVE_OF_GARLIC:
+                 * "no effect against demons"; undead and vampshifters flee for
+                 * d(2,4), and the hit does a nominal 1 with get_dmg_bonus left
+                 * TRUE.  Without this arm the veggy default below zeroed the
+                 * damage and clamped it to 0, so a wielded clove never hurt the
+                 * monster and a fleeing one kept its full hp (monmove.c:759). */
+                const _gMflags2 = (_MONS[mtmp.mnum | 0] ? (_MONS[mtmp.mnum | 0][7] | 0) : 0);
+                if ((_gMflags2 & M2_UNDEAD) !== 0 || is_vampshifter_uh(mtmp))
+                    await monflee(mtmp, d(2, 4), false, true);
+                dmg = 1;
             } else {
                 dmg = _uh_misc_obj_dmg(uwep, mtmp);
                 /* C uhitm.c:1346-1349: veggy/paper objects set dmg = 0 AND
@@ -3865,7 +3876,8 @@ export async function xkilled(mtmp, xkflags) {
     if (mtmp.wormno)
         wormgone(mtmp);
 
-    const _xk_mflags2 = (mndx >= 0 && mndx < _MONS.length) ? (_MONS[mndx][7] | 0) : 0;
+    /* C mon.c:3564-3565 re-reads mdat/mndx AFTER mondead() reverted a chameleon/were to its true form (_died_mndx). */
+    const _xk_mflags2 = (_died_mndx >= 0 && _died_mndx < _MONS.length) ? (_MONS[_died_mndx][7] | 0) : 0;
     /* mon.c:3567-3574: gs.stoned -> goto cleanup, and `nocorpse ||` short-circuits,
      * both BEFORE the macro (and its graveyard rn2(3)) is evaluated. */
     const _xk_levelSpecificNoCorpse = (_xk_stoned || nocorpse) ? false
@@ -3878,10 +3890,10 @@ export async function xkilled(mtmp, xkflags) {
         {
             const tx = (mtmp.mx | 0), ty = (mtmp.my | 0);
             const u = game.u || {};
-            const geno = (mndx >= 0 && mndx < _MONS.length) ? (_MONS[mndx][3] | 0) : 0;
-            const mlet_x = (mndx >= 0 && mndx < _MONS.length) ? (_MONS[mndx][0] | 0) : -1;
+            const geno = (_died_mndx >= 0 && _died_mndx < _MONS.length) ? (_MONS[_died_mndx][3] | 0) : 0;
+            const mlet_x = (_died_mndx >= 0 && _died_mndx < _MONS.length) ? (_MONS[_died_mndx][0] | 0) : -1;
             const mf2 = _xk_mflags2;
-            const msize_x = (mndx >= 0 && mndx < MONS_MSIZE.length) ? (MONS_MSIZE[mndx] | 0) : 2;
+            const msize_x = (_died_mndx >= 0 && _died_mndx < MONS_MSIZE.length) ? (MONS_MSIZE[_died_mndx] | 0) : 2;
             if (rn2(6) === 0
                 && (geno & G_NOCORPSE) === 0
                 && (tx !== (u.ux | 0) || ty !== (u.uy | 0))

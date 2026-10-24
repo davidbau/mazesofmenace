@@ -24,7 +24,7 @@ import { domove, blocksMove, test_move_quiet, getpos_walkdir, getpos_rushdir, ge
 import { moveloop_turn, moveloop_input_redraw, end_turn_callbacks } from './allmain.js';
 import { exercise } from './attrib.js';
 import { A_CON } from './const.js';
-import { cls_flush_messages, m_at, vobj_at, covers_objects, object_glyph, trap_glyph, flush_screen, newsym, pline, update_topl, topl_more, display_nhwindow_message, wrap_topl, y_n, docrt, show_glyph_cell, terrain_background_glyph, getpos_is_feature_sym, getpos_find_feature, is_cmap_engraving_at, engraving_glyph, bg_attr, feel_location, canspotself, mimic_object_glyph, obj_is_generic, remember_topl, note_topl, Hallucination_u, terrain_glyph, displayed_doormask, You_feel } from './display.js';
+import { cls_flush_messages, m_at, vobj_at, covers_objects, object_glyph, trap_glyph, flush_screen, newsym, pline, update_topl, topl_more, display_nhwindow_message, wrap_topl, y_n, docrt, show_glyph_cell, terrain_background_glyph, getpos_is_feature_sym, getpos_find_feature, is_cmap_engraving_at, engraving_glyph, bg_attr, feel_location, canspotself, mimic_object_glyph, obj_is_generic, remember_topl, note_topl, Hallucination_u, remembered_glyph_otyp, terrain_glyph, displayed_doormask, You_feel } from './display.js';
 import { do_screen_description, look_at_object, look_at_monster, decode_mixed, set_pager_deps } from './pager.js';
 import { fruit_from_name } from './objnam.js';
 import { def_monsyms, S_WORM_TAIL, S_air, S_cloud, S_water } from './symbols.js';
@@ -46,7 +46,7 @@ import { roles, races } from './role.js';
 import { DATABASE_ENTRIES } from './data_base_data.js';
 import { NO_COLOR, ATR_INVERSE, DEC_TO_UNICODE, CLR_WHITE } from './terminal.js';
 import { scrolltele } from './read.js';
-import { COLNO, ROWNO, STONE, ROOM, CORR, DOOR, ICE, STAIRS, FOUNTAIN,
+import { COLNO, ROWNO, STONE, ROOM, CORR, DOOR, ICE, STAIRS, LADDER, FOUNTAIN,
          POOL, MOAT, WATER, LAVAPOOL, LAVAWALL,
          D_CLOSED, D_LOCKED, D_ISOPEN, D_BROKEN, D_NODOOR, IRONBARS,
          TREE, SDOOR, SCORR, THRONE, SINK, GRAVE, ALTAR,
@@ -1807,6 +1807,8 @@ function terrain_description(x, y, full = false) {
         return (sd === 'staircase down' && on_qstart_level_hk() && !ok_to_quest_hk())
                ? 'blocked staircase down' : sd;
     }
+    // C ref: defsym.h S_upladder/S_dnladder/S_brupladder/S_brdnladder explanations.
+    if (typ === LADDER) return stair_descr(x, y, true);
     if (typ === FOUNTAIN) return 'fountain';
     // C ref: defsym.h PCHAR desc field (defsyms[].explanation), the string
     // do_screen_description() hands back as *firstmatch for a single cmap
@@ -1909,7 +1911,8 @@ function look_at_object_here(x, y, describing = false) {
         if (describing && (remembered?.objotyp || remembered?.hallucotyp)
             && remembered.ch === loc.disp_ch)
             return look_at_object(x, y, { kind: 'object', obj: null,
-                otyp: remembered.objotyp || remembered.hallucotyp, corpsenm: remembered.corpsenm, x, y });
+                otyp: remembered.objotyp ? remembered_glyph_otyp(remembered) : remembered.hallucotyp,
+                corpsenm: remembered.corpsenm, x, y });
         return null;
     }
     // C dispatches on the DISPLAYED glyph: an object lying on a square whose
@@ -1928,7 +1931,8 @@ function look_at_object_here(x, y, describing = false) {
         // pile has since been changed by a monster out of sight) and
         // object_from_map() looks for a matching sobj_at(), else mksobj()s one.
         if (hrem?.objotyp && hrem.ch === loc.disp_ch)
-            return look_at_object(x, y, { kind: 'object', obj: null, otyp: hrem.objotyp,
+            return look_at_object(x, y, { kind: 'object', obj: null,
+                                          otyp: remembered_glyph_otyp(hrem),
                                           corpsenm: hrem.corpsenm, x, y });
         return null;
     }
@@ -1938,7 +1942,8 @@ function look_at_object_here(x, y, describing = false) {
     // finds no matching sobj_at() and mksobj()s a stand-in of the glyph's type.
     if (describing && !game.u?.uhallu && hrem?.objotyp && hrem.ch === loc.disp_ch
         && hrem.objotyp !== obj.otyp)
-        return look_at_object(x, y, { kind: 'object', obj: null, otyp: hrem.objotyp,
+        return look_at_object(x, y, { kind: 'object', obj: null,
+                                      otyp: remembered_glyph_otyp(hrem),
                                       corpsenm: hrem.corpsenm, x, y });
     // C ref: display.h generic_obj_to_glyph() — an undescribed potion/gem/
     // spellbook is shown as its class's generic object, so lookat() fabricates
@@ -1983,14 +1988,14 @@ function on_qstart_level_hk() {
 // C ref: quest.c ok_to_quest() lives in js/questok.js (leaf module).
 const ok_to_quest_hk = ok_to_quest;
 
-function stair_descr(x, y) {
+function stair_descr(x, y, ladder = false) {
     const loc = game.level?.at(x, y);
     const up = loc ? !stairs_go_down(loc, x, y)
                    : (game.level?.upstair?.x === x && game.level?.upstair?.y === y);
     const sway = stairway_at_local(x, y);
     const branch = known_branch_stairs_local(sway);
-    if (branch) return up ? 'branch staircase up' : 'branch staircase down';
-    return up ? 'staircase up' : 'staircase down';
+    const what = ladder ? 'ladder' : 'staircase';
+    return `${branch ? 'branch ' : ''}${what} ${up ? 'up' : 'down'}`;
 }
 
 // C ref: dothrow.c walk_path() — Bresenham line from src to dest, calling
@@ -3604,6 +3609,19 @@ function look_pick_description(x, y) {
             found: 1,
         };
     }
+    // C ref: pager.c do_screen_description() `if (sym == DEF_INVISIBLE)` — the
+    // remembered-unseen-creature 'I' glyph names the creature, with no lookat()
+    // parenthetical (need_to_look stays false).
+    const unseen = unseen_creature_desc(x, y, false);
+    if (unseen)
+        return { text: `I        ${an(unseen)}`, firstmatch: unseen, found: 1 };
+    // C ref: do_screen_description()'s def_warnsyms loop — a drawn warning digit
+    // reads "<n>        <warning desc>" with no lookat() tail.
+    if (loc0?.disp_warning && def_warnsyms[Number(loc0.disp_ch)]) {
+        const text = { s: '' }, firstmatch = { s: '' };
+        const found = do_screen_description({ x, y }, true, '', text, firstmatch, {});
+        return { text: text.s, firstmatch: firstmatch.s, found };
+    }
     const loc = game.level?.at(x, y);
     const typ = loc ? loc.typ : STONE;
     const prefix = `${look_prefix_char(loc)}        `;
@@ -4158,7 +4176,7 @@ async function do_look_traps(nearby) {
             const tg = trap_glyph(t);
             // The displayed symbol; the hero (not stored in the map memory) is
             // drawn as '@'.
-            const cover = (x === u.ux && y === u.uy) ? '@'
+            const cover = (x === u.ux && y === u.uy && canspotself()) ? '@'
                 : (loc && loc.disp_ch)
                     ? (loc.disp_decgfx ? (DEC_TO_UNICODE[loc.disp_ch] || loc.disp_ch) : loc.disp_ch)
                     : ' ';
@@ -4229,8 +4247,8 @@ async function do_look_engrs(nearby) {
             // map memory) covers when standing on the cell; otherwise the map
             // memory's display char is the top glyph.
             let coverChar, coverDropped = false;
-            if (x === u.ux && y === u.uy) {
-                coverChar = '@'; // player-monster symbol (non-polymorphed hero)
+            if (x === u.ux && y === u.uy && canspotself()) {
+                coverChar = hero_glyph().ch; // the hero's displayed symbol ('@', or the polyform's class letter)
             } else {
                 // The encglyph() escape is decoded by tty's text window into the
                 // raw DECgraphics byte (high bit set), which the terminal drops:
@@ -4292,8 +4310,9 @@ async function do_look_all(nearby, do_mons) {
             const loc = game.level?.at(x, y);
             let lookbuf = '', sym = '';
             if (do_mons) {
-                if (x === u.ux && y === u.uy) {
-                    // canspotself: hero visible on their own square.
+                if (x === u.ux && y === u.uy && canspotself()) {
+                    // canspotself: hero visible on their own square (an unseen
+                    // hero's square shows terrain, so glyph_is_monster() fails).
                     lookbuf = self_lookat();
                     // encglyph(glyph_at(u.ux,u.uy)): the hero's displayed
                     // symbol ('&' while polymorphed into a vrock, not '@').

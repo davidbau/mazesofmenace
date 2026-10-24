@@ -11,7 +11,7 @@ import { FF_FAITHFUL } from './fastforward.js';
 import { parseNethackrc, init_fruit_chain } from './options.js';
 import { reset_commands, update_rest_on_space } from './cmd_binds.js';
 import { set_configfile_for_session } from './cfgfiles.js';
-import { gs, H_DEC, H_UNK, PRIMARYSET, INFRAVISION, ESCAPED, RUN_LEAP } from './const.js';
+import { gs, H_DEC, H_IBM, H_UNK, PRIMARYSET, INFRAVISION, ESCAPED, RUN_LEAP } from './const.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import { roleOptionToIndex, raceOptionToIndex, genderOptionToIndex, alignOptionToIndex, genlPlayerSetupRandomPicksForY, sessionNeedsRandomPlayerPicks, extractChargenPreInitRng, replayChargenPreInitRng, detectInteractiveChargenFromSession, } from './roles.js';
 import { GameDisplay } from './game_display.js';
@@ -131,6 +131,7 @@ export class NethackGame {
          * whole end-of-game score list, header included.  sysopt comes from
          * sys.c:67-68: entrymax = max(ENTRYMAX, 10), pointsmin = max(POINTSMIN, 1). */
         g.flags = { verbose: true, end_top: 3, end_around: 2, end_own: false,
+                    sortloot: 'l' /* C options.c:7208 */,
                     rest_on_space: false,
                     dark_room: true, menu_style: 2 /* MENU_FULL */, apelist: null,
                     /* C options.c:7176 default; OPTIONS=runmode overrides it. */
@@ -192,7 +193,8 @@ export class NethackGame {
         // C ref: options.c optfn_DECgraphics / handler_symset — sets gs.symset[PRIMARYSET].handling.
         // Default (no symset option) keeps H_UNK → ASCII PCHAR glyphs from defsym.h.
         // "DECgraphics" → H_DEC → DEC line-drawing characters.
-        gs.symset[PRIMARYSET].handling = (opts.symset === 'DECgraphics') ? H_DEC : H_UNK;
+        gs.symset[PRIMARYSET].handling = (opts.symset === 'DECgraphics') ? H_DEC
+            : (opts.symset === 'IBMgraphics') ? H_IBM : H_UNK;
         // C ref: options.c optfn_symset — the chosen set's NAME is stored too, and
         // gc.currentgraphics is switched to PRIMARYSET.  optfn_symset's get_val
         // (options.c:4180) renders "<name>, active, handler=<H>" from exactly

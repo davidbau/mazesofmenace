@@ -54,7 +54,7 @@ import { TELEPAT as TELEPAT_MV, HALF_SPDAM as HALF_SPDAM_MV, KILLED_BY_AN as KIL
 import { see_wsegs, worm_nomove, worm_move } from './worm.js';
 import { ranged_attk_available, mhis_mon } from './mhitu.js';
 import { mon_wield_item, sticks } from './dog.js';
-import { mwelded, is_pole, is_mines_prize, is_soko_prize, bill_dummy_object, mbodypart, verbalize, switch_terrain, coord_desc, notice_mon } from './cmd.js';
+import { mwelded, is_pole, is_mines_prize, is_soko_prize, bill_dummy_object, mbodypart, verbalize, switch_terrain, coord_desc, notice_mon, set_msg_xy } from './cmd.js';
 import { is_pick, mdig_tunnel, mb_trapped, unpunish } from './dig.js';
 import { fracture_rock } from './zap.js';
 /* C monflag.h:37 — MZ_LARGE is the first monster size subject to the
@@ -1820,6 +1820,7 @@ export async function m_move(mtmp, after) {
         /* C: return postmov(mtmp, ptr, omx, omy, dog_move(mtmp, after), ...) */
         const res = await dog_move(mtmp, after);
         const _pdidsee = res === MMOVE_MOVED_MV && !!cansee(mtmp.mx | 0, mtmp.my | 0);
+        await notice_mon(mtmp);
         /* C postmov (monmove.c:1481-1507): a tame vampshifter that moved onto a
          * closed/locked door shifts to fog first (vamp_shift, monmove.c:2377). */
         if (res === MMOVE_MOVED_MV) {
@@ -1907,8 +1908,11 @@ export async function m_move(mtmp, after) {
             newsym(mtmp.mx | 0, mtmp.my | 0);
         /* C monmove.c:1773 — the pet path IS a `return postmov(...)`, so it runs
          * postmov's trailing hides_under/S_EEL block too (a tame hider that just
-         * moved re-hides and draws its rn2(5) exactly like a hostile one). */
-        return postmov(mtmp, res);
+         * moved re-hides and draws its rn2(5) exactly like a hostile one).
+         * skipNotice: this branch already opened with notice_mon above, at
+         * monmove.c:1470's position — BEFORE the newsym pair — so postmov()
+         * must not announce the same move a second time. */
+        return postmov(mtmp, res, true);
     }
 
     /* C monmove.c:1802-1827: is_covetous branch.  A covetous monster (M3_COVETOUS
@@ -2777,10 +2781,15 @@ async function maybe_spin_web(mtmp) {
     }
 }
 
-export async function postmov(mtmp, mmoved) {
+export async function postmov(mtmp, mmoved, skipNotice = false) {
     /* C ref: monmove.c:1470 — postmov() opens with notice_mon(mtmp) (a11y
-     * spot_monsters: "You see a peaceful gnome lord."), before any mmoved test. */
-    await notice_mon(mtmp);
+     * spot_monsters: "You see a peaceful gnome lord."), before any mmoved test.
+     * The PET branch of m_move inlines postmov's middle (vampshifter door
+     * dance, the newsym redraw pair, mintrap) AROUND dog_move and calls this
+     * only for the late tail, so IT fires notice_mon itself at C's instant —
+     * before those newsyms (monmove.c:1470 ahead of :1508/:1656) — and passes
+     * skipNotice so the a11y notice is not announced twice for one move. */
+    if (!skipNotice) await notice_mon(mtmp);
     if (mmoved !== MMOVE_MOVED_MV && mmoved !== MMOVE_DONE_MV)
         return mmoved;
     /* C:1692 — `ptr` inside postmov is re-read from mtmp->data after mintrap
@@ -3054,8 +3063,11 @@ export async function mpickstuff(mtmp) {
              * message is not printed, so it is called before the extract. */
             if (cansee(mtmp.mx | 0, mtmp.my | 0)) {
                 const otmpname = await distant_obj_name(otmp); /* mon.c:1895 names otmp, not otmp3 */
-                if (game.flags?.verbose !== false)
+                if (game.flags?.verbose !== false) {
+                    /* C mon.c:1897 pline_mon(mtmp, ...) = set_msg_xy(mx, my) + vpline */
+                    set_msg_xy(mtmp.mx | 0, mtmp.my | 0);
                     void pline(`${Monnam_dm(mtmp)} picks up ${otmpname}.`);
+                }
             }
             obj_extract_floor(otmp3);
             /* C:1903 mpickobj(mtmp, otmp3) — may merge and free otmp3 */

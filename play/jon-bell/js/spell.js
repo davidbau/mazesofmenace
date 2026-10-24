@@ -20,7 +20,8 @@ import { mkinvokearea } from './mklev.js';
 import { CANDELABRUM_OF_INVOCATION, BELL_OF_OPENING } from './objclass_ranges.js';
 import { ACH_INVK } from './const.js';
 import { record_achievement } from './cmd.js';
-import { build_window_screen, tty_window_offx } from './com_pager.js';
+import { build_window_screen, tty_window_offx, menu_search_getlin } from './com_pager.js';
+import { pmatchi } from './strutil.js';
 import { CORR, DOOR, ROOM, NO_SPELL, UNKNOWN_SPELL, CONFUSION, STUNNED, TIMEOUT, BLINDED, CLAIRVOYANT, SICK, SLIMED, HEAD,
     ECMD_OK, ECMD_TIME, ECMD_FAIL, CMDQ_KEY, CQ_REPEAT } from './const.js';
 /* study_book's too_hard block (spell.c:575-620) and cursed_book (spell.c:113).
@@ -1514,11 +1515,17 @@ async function dospellmenu_render_and_read(prompt, headingRaw, items, how) {
         '(end)',
     ];
 
-    const WIN_COL = tty_window_offx(rawLines, 'end');
+    /* C ref: wintty.c:1925-1928 — `!iflags.menu_overlay` drops the menu to
+     * offx 0 on a cleared screen (wintty.c:1407), content at col 1, nothing of
+     * the map or status left behind. */
+    const noOverlay = g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0;
+    const WIN_COL = noOverlay ? 1 : tty_window_offx(rawLines, 'end');
 
     /* C ref: tty_display_nhwindow + build_window_screen — render menu over map. */
     const uac = g.u?.uac ?? 0;
-    const screenOutput = build_window_screen(windowLines, WIN_COL, uac);
+    const screenOutput = noOverlay
+        ? windowLines.map((t) => (t === '' ? '' : ` ${t}`)).join('\n')
+        : build_window_screen(windowLines, WIN_COL, uac);
     g._screen_output = screenOutput;
 
     /* Cursor parks after "(end)": WIN_COL + len("(end)") + 1. */
@@ -1549,9 +1556,33 @@ async function dospellmenu_render_and_read(prompt, headingRaw, items, how) {
         const ch = String.fromCharCode(key);
         if (key === 27 /* ESC — C ref: tty menu cancel */)
             return { count: 0, picked: 0 };
-        if (ch === ' ' || ch === '\n' || ch === '\r')
-            /* Confirm/dismiss: single-page menu with nothing selected. */
+        if (ch === ' ' || ch === '\n' || ch === '\r') {
+            /* Confirm/dismiss: tty returns the still-selected (preselected)
+             * entry, if any (wintty.c process_menu_window finished path). */
+            const pre = items.find((it) => it.sel);
+            if (pre && how !== 'PICK_NONE')
+                return { count: 1, picked: pre.a_int };
             return { count: 0, picked: 0 };
+        }
+        if (ch === ':') {
+            /* C ref: wintty.c:1700-1730 MENU_SEARCH — PICK_NONE bells; else
+             * tty_getlin("Search for:") over row 0 only, then pmatchi("*ans*")
+             * against each selectable entry; PICK_ONE finishes at the first
+             * hit.  Row 0 stays blank afterwards (getline.c:213). */
+            if (how === 'PICK_NONE') continue;
+            const frame = g._screen_output;
+            const answer = await menu_search_getlin(() => frame.split('\n'));
+            const rows = frame.split('\n');
+            rows[0] = '';
+            g._screen_output = rows.join('\n');
+            if (disp) { disp.cursorCol = endCursorCol; disp.cursorRow = endRow; }
+            if (answer && answer !== '\x1b') {
+                const searchbuf = `*${answer}*`;
+                const m = items.find((it) => pmatchi(searchbuf, it.raw));
+                if (m) return { count: 1, picked: m.a_int };
+            }
+            continue;
+        }
         const hit = items.find((it) => it.accel === ch);
         if (hit)
             /* PICK_ONE/PICK_NONE both terminate on an accelerator; PICK_NONE

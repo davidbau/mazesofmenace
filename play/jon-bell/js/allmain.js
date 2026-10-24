@@ -27,7 +27,7 @@ import { l_nhcore_call, NHCORE_START_NEW_GAME, NHCORE_MOVELOOP_TURN,
 import { clear_bypasses, sink_into_lava } from './trap.js';
 import { notice_all_mons, pooleffects, rhack, check_special_room, domove, prayer_done, deferred_goto, schedule_goto, heal_legs, timed_occupation, cmdq_clear, wipeoff, body_part, surface, confdir, hurtle, instapetrify, runmode_delay_output, take_off_occ, dolookaround_cmd } from './cmd.js';
 import { lookaround, end_running, is_pool, is_pool_or_lava } from './look.js';
-import { docrt, cls, bot, timebot, time_botl_moves_incremented, time_botl_run_ended, flush_screen, pline, urgent_pline, Norep, _topl_joins_committed, _topl_record_join, occupation_painted_tick, occupation_freeze_snapshot, occupation_painted_reset, occupation_force_more, _movemon_page_frames_reset, run_page_frame_tick, run_page_frame_reset, capture_painted_frame, capture_pre_movemon_botl, force_more, _topl_merge_result, _topl_joins_snapshot } from './display.js';
+import { docrt, cls, bot, timebot, status_eval_next_unhilite, time_botl_moves_incremented, time_botl_run_ended, flush_screen, pline, urgent_pline, Norep, _topl_joins_committed, _topl_record_join, occupation_painted_tick, occupation_freeze_snapshot, occupation_painted_reset, occupation_force_more, _movemon_page_frames_reset, run_page_frame_tick, run_page_frame_reset, capture_painted_frame, capture_pre_movemon_botl, force_more, _topl_merge_result, _topl_joins_snapshot } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { fastforward_pre_mklev, fastforward_post_mklev, fastforward_step, fastforward_fill_mineralize, fmon_dochug_dispatch, NORMAL_SPEED, FF_FAITHFUL, ff_movemon_phase, ff_head_phase, ff_head_phase_pre, ff_head_phase_post, vomiting_dialogue_ff, sickness_dialogue_ff, choke_dialogue_ff } from './fastforward.js';
 import { makedog, dismount_steed } from './dog.js';
@@ -1462,6 +1462,8 @@ async function faithful_moveloop_turn() {
     /* C allmain.c:403 — monster actions and timeout processing can alter the
      * load after the first check, so C checks again after the outer loop. */
     encumber_msg_sync();
+    // C allmain.c:405-407 — STATUS_HILITES: flush pending per-field chg to botl.
+    if (g.iflags?.hilite_delta) status_eval_next_unhilite();
     // C allmain.c:464-470 — once-per-hero-took-time SEER counter.  Uses the
     // post-increment turn counter (svm.moves >= seer_turn).  In the faithful path
     // g.moves is incremented INSIDE the HEAD block at C's svm.moves++ point, so by
@@ -1765,7 +1767,7 @@ async function eat_occupation_turn() {
         if (_pf) g._occCurBotl = _pf.botl;
     }
     const _preEatSegs = _plineSegments(preEat, preEatJoins);
-    let _preEatSeen = 0, _preEatPage = 0;
+    let _preEatSeen = 0, _preEatPage = 0, _ebCorpseUsed = false;
     for (const part of [
         ..._preEatSegs,
         ..._plineSegments(eatMsg, eatMsgJoins),
@@ -1810,7 +1812,12 @@ async function eat_occupation_turn() {
                 const _eb = (g._earlyBotl && g._earlyBotl.cells && g._earlyBotl.turn === thisTurnMoves - 1) ? g._earlyBotl : null;
                 const _pf = (_fromPreEat || (_preEatSeen <= _preEatConsumed
                                              && g._movemonPageFrames?.[_preEatPage]))
-                    ? (g._movemonPageFrames?.[_preEatPage++] || _eb
+                    ? ((_fromPreEat && !_ebCorpseUsed && _eb?.corpse && (_ebCorpseUsed = true) && _eb)
+                        /* The corpse-flavor line is still on C's topline, so the first
+                         * movemon pline that overflows it (pet pickup, dogmove.c:451-461)
+                         * runs more() at ITS pline.c:274 flush -- before the pet's move
+                         * (display.js _eb corpse pin) -- not at a later page's frame. */
+                        || g._movemonPageFrames?.[_preEatPage++] || _eb
                         /* encumber_msg's pline (allmain.c:208) runs BEFORE movemon:
                          * its more() pages over the gbuf its own flush_screen synced,
                          * pet not yet moved. */
@@ -2679,10 +2686,12 @@ async function moveloop_status_paint() {
     if (d && ((d.botl | 0) || (d.botlx | 0))) {
         await bot();
         game._statusPaintMoves = game.moves | 0;
+        game._statusPaintSeq = (game._statusPaintSeq | 0) + 1;
         _status_paint_flushed();
     } else if (d && (d.time_botl | 0)) {
         timebot();
         game._statusPaintMoves = game.moves | 0;
+        game._statusPaintSeq = (game._statusPaintSeq | 0) + 1;
         _status_paint_flushed();
     }
 }
@@ -3911,7 +3920,7 @@ async function moveloop_core_faithful() {
                 g._topl_joins = g._topl_joins.filter(off => off < full.length);
                 g._topl_joins_src = full;
             }
-            for (const m of (g._forceMsgs || [])) {
+            for (const [_mi, m] of (g._forceMsgs || []).entries()) {
                 const _prevLen = full.length;
                 full = full
                     ? _topl_merge_result(full, m, _topl_joins_snapshot(full) || undefined)
@@ -3919,7 +3928,8 @@ async function moveloop_core_faithful() {
                 if (forceFrame && _prevLen > 0) {
                     if (!Array.isArray(g._plineFlushFrames)) g._plineFlushFrames = [];
                     g._plineFlushFrames.push({ off: _prevLen, msg: m, cells: forceFrame,
-                        moves: forceFrameMoves | 0, botl: null });
+                        moves: forceFrameMoves | 0,
+                        botl: g._forceMsgBotls?.[_mi] ?? g._forceBotl ?? null });
                 }
             }
             if (_postTail) {
@@ -3943,6 +3953,7 @@ async function moveloop_core_faithful() {
                     : _postTail;
             }
             g._forceMsgs = null;
+            g._forceMsgBotls = null;
             g._resultMessage = null;
             g._resultMessageJoins = null;
             g._pending_message = full;
@@ -3950,10 +3961,12 @@ async function moveloop_core_faithful() {
         const _savedForceSnap = g._paintedSnapshot;
         if (forceFrame) {
             g._paintedSnapshot = { cells: forceFrame, moves: (forceFrameMoves | 0),
+                botl: g._forceBotl ?? undefined,
                 uhs: (forceFrameUhs == null ? null : (forceFrameUhs | 0)) };
         }
         await flush_screen(1);
         if (forceFrame) g._paintedSnapshot = _savedForceSnap || null;
+        g._forceBotl = null;
         // The final (unpaged) remainder becomes the committed command result, read at
         // the next rhack(0) exactly as before.
         if (g._pending_message) {
@@ -4327,7 +4340,17 @@ async function moveloop_core_faithful() {
     if ((g.multi | 0) < 0 && !(g.context.move | 0)) {
         find_ac();
         const redoVision = !(g.context && g.context.mv) || Blind();
-        faithful_input_redraw();
+        /* A death survived INSIDE this call's world block (the study driver's
+         * post-occupation turn: savelife() sets move = 0, multi = -1) still
+         * reaches that moveloop_core's own tail at allmain.c:453-470 and then
+         * `svc.context.move = 1` (:480), so the countdown turn runs in the
+         * NEXT call with no tail of its own in between.  The driver already
+         * ran that tail (g._ff_input_tail_done); repeating it here is an extra
+         * hallucinatory see_monsters() run on the DISPLAY rng. */
+        if (g._ff_input_tail_done)
+            g._ff_input_tail_done = false;
+        else
+            faithful_input_redraw();
         if (redoVision && g.vision_full_recalc) {
             vision_recalc(0);
             g.vision_full_recalc = 0;
@@ -4501,6 +4524,10 @@ async function moveloop_core_faithful() {
          * on the DISPLAY rng for every monster) runs after EVERY world block,
          * not only after the run's last iteration. */
         if ((g.multi | 0) !== 0) faithful_input_redraw();
+        if (!(g.context && g.context.mv) || Blind()) {
+            if (g.vision_full_recalc)
+                vision_recalc(0);
+        }
         /* C allmain.c:481 m_everyturn_effect(&gy.youmonst) runs on EVERY
          * moveloop_core pass, so a polyed (fog cloud) hero leaves vapor at
          * each intermediate square of a run/counted move too. */

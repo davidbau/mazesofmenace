@@ -38,7 +38,9 @@ import { oc_to_str, def_oc_syms_chars } from './drawing.js';
 import { menutype } from './menustyle.js';
 import { feature_notice_version } from './feature_alert.js';
 import { count_status_hilites } from './options.js';
+import { EXTCMDLIST } from './cmd_extcmd_data.js';
 import { clr2colorname, attr2attrname } from './coloratt.js';
+import { _threeStatusLines } from './display.js';
 
 /* C ref: src/symbols.c:376 known_handling[] */
 const KNOWN_HANDLING = ['UNKNOWN', 'IBM', 'DEC', 'CURS', 'MAC', 'UTF8'];
@@ -190,8 +192,12 @@ export const DOSET_COMPOUNDS = [
     { name: "horsename", sel: false, hasHandler: false, val: () => game.flags?.horsename || "(none)" },
     /* C: options.c optfn_msghistory get_val -> iflags.msg_history (init 20) */
     { name: "msghistory", sel: false, hasHandler: false, val: () => "20" },
-    /* C: options.c optfn_pettype get_val -> gp.preferred_pet 0 -> "random" */
-    { name: "pettype", sel: false, hasHandler: false, val: () => "random" },
+    /* C: options.c optfn_pettype get_val -> gp.preferred_pet (options.c:3237-3242) */
+    /* C: options.c optfn_pettype get_val -> gp.preferred_pet (options.c:3237-3243) */
+    { name: "pettype", sel: false, hasHandler: false, val: () => {
+        const pp = game.preferred_pet;
+        return pp === 'c' ? "cat" : pp === 'd' ? "dog" : pp === 'h' ? "horse" : pp === 'n' ? "none" : "random";
+    } },
     /* C: options.c optfn_soundlib get_val -> soundlib_name(gs.active_soundlib) */
     { name: "soundlib", sel: false, hasHandler: false, val: () => "nosound" },
     /* C: options.c:1145 optfn_autounlock get_val; flags.autounlock init AUTOUNLOCK_APPLY_KEY */
@@ -241,7 +247,7 @@ export const DOSET_COMPOUNDS = [
     /* C: options.c optfn_pickup_types get_val -> oc_to_str(flags.pickup_types), empty -> "all" */
     { name: "pickup_types", sel: true, hasHandler: true, val: () => pickupTypes() },
     /* C: options.c:3430 flags.pile_limit; init PILE_LIMIT_DFLT = 5 */
-    { name: "pile_limit", sel: true, hasHandler: false, val: () => "5" },
+    { name: "pile_limit", sel: true, hasHandler: false, val: () => String(F().pile_limit ?? 5) },
     /* C: options.c:3573 optfn_roguesymset get_val. */
     { name: "roguesymset", sel: true, hasHandler: true, val: () => {
         const name = gs.symset[1].name;
@@ -250,20 +256,35 @@ export const DOSET_COMPOUNDS = [
     /* C: options.c:3658 runmodes[flags.runmode]; init RUN_LEAP -> "run" */
     { name: "runmode", sel: true, hasHandler: true, val: () => ["teleport", "run", "walk", "crawl"][F().runmode ?? 1] ?? "run" },
     /* C: options.c:3745 — flags.end_top 3, end_around 2, end_own FALSE */
-    { name: "scores", sel: true, hasHandler: false, val: () => "3 top/2 around" },
+    { name: "scores", sel: true, hasHandler: false, val: () => {
+        const f = F();
+        let o = "";
+        if (f.end_top > 0) o += `${f.end_top} top`;
+        if (f.end_around > 0) o += `${f.end_top > 0 ? "/" : ""}${f.end_around} around`;
+        if (f.end_own) o += `${(f.end_top > 0 || f.end_around > 0) ? "/" : ""}own`;
+        return o || "none";
+    } },
     /* C: options.c:3902 get_sortdisco(); init SORTDISCO_DFLT */
     { name: "sortdiscoveries", sel: true, hasHandler: true, val: () => "by order of discovery within each class" },
     /* C: options.c:3943 sortltype[] entry for flags.sortloot; init 'l' */
-    { name: "sortloot", sel: true, hasHandler: true, val: () => "loot" },
+    { name: "sortloot", sel: true, hasHandler: true, val: () => ({ n: "none", l: "loot", f: "full" })[F().sortloot ?? "l"] ?? "loot" },
     /* C: options.c:3991 vanqorders[flags.vanq_sortmode]; get_val appends ": <descr>" */
-    { name: "sortvanquished", sel: true, hasHandler: true, val: () => "t: traditional: by monster level" },
+    { name: "sortvanquished", sel: true, hasHandler: true, val: () => {
+        const V = [["t", "traditional: by monster level"], ["d", "by monster difficulty rating"],
+            ["a", "alphabetically, unique monsters separate"], ["A", "alphabetically, unique monsters intermixed"],
+            ["C", "by monster class, high to low level in class"], ["c", "by monster class, low to high level in class"],
+            ["n", "by count, high to low"], ["z", "by count, low to high"]];
+        const v = V[F().vanq_sortmode | 0] ?? V[0];
+        return `${v[0]}: ${v[1]}`;
+    } },
     /* C options.c:4044-4050: report the live highlight duration. */
     { name: "statushilites", sel: true, hasHandler: false,
       val: () => game.iflags?.hilite_delta
           ? `${game.iflags.hilite_delta} (on: highlight status for ${game.iflags.hilite_delta} turns)`
           : "0 (off: don't highlight status fields)" },
     /* C: options.c:4099 — iflags.wc2_statuslines < 3 */
-    { name: "statuslines", sel: true, hasHandler: false, val: () => "2" },
+    { name: "statuslines", sel: true, hasHandler: false,
+      val: () => (_threeStatusLines() ? "3" : "2") },
     /* C: options.c:4150 — live FEATURE_NOTICE_VER_{MAJ,MIN,PATCH} fields. */
     { name: "suppress_alert", sel: true, hasHandler: false,
       val: () => F().suppress_alert ? feature_notice_version(F().suppress_alert) : "(none)" },
@@ -278,26 +299,26 @@ export const DOSET_COMPOUNDS = [
         if (set.handling) v += ', handler=' + KNOWN_HANDLING[set.handling];
         return v;
     } },    /* C: options.c:4517 — flags.versinfo 1 (VI_NUMBER), status_version() "5.0.0" */
-    { name: "versinfo", sel: true, hasHandler: true, val: () => "1: number (5.0.0)" },
+    { name: "versinfo", sel: true, hasHandler: true, val: () => { const v = F().versinfo ?? 1; return v + ": " + ((v & 2) ? "name" : "") + ((v & 4) && (v & 2) ? "+" : "") + ((v & 4) ? "branch" : "") + ((v & 1) && (v & 6) ? "+" : "") + ((v & 1) ? "number" : "") + " (" + ((v & 2) ? "nethack " : "") + "5.0.0)"; } },
     /* C: options.c:4732 — iflags.getpos_coords GPCOORDS_NONE */
-    { name: "whatis_coord", sel: true, hasHandler: true, val: () => "none" },
+    { name: "whatis_coord", sel: true, hasHandler: true, val: () => ({ m: "map", c: "compass", f: "full compass", s: "screen" })[game.iflags?.getpos_coords] || "none" },
     /* C: options.c:4783 — iflags.getloc_filter GFILTER_NONE */
-    { name: "whatis_filter", sel: true, hasHandler: true, val: () => "none" },
+    { name: "whatis_filter", sel: true, hasHandler: true, val: () => ["none", "view", "area"][game.iflags?.getloc_filter | 0] || "none" },
 ];
 
 export const DOSET_OTHERS = [
     /* C: options.c optfn_o_autocomplete get_val -> count_autocompletions() */
-    { name: "autocompletions", sel: true, val: () => "(0 currently set)" },
+    { name: "autocompletions", sel: true, val: () => `(${EXTCMDLIST.filter(e => e.flags & 0x2000).length} currently set)` },
     /* C: options.c optfn_o_autopickup_exceptions get_val */
     { name: "autopickup exceptions", sel: true, val: () => `(${(game.apelist || []).length} currently set)` },
     /* C: options.c optfn_o_bind_keys get_val */
     { name: "bind keys", sel: true, val: () => "(0 currently set)" },
     /* C: options.c optfn_o_menu_colors get_val */
-    { name: "menu colors", sel: true, val: () => "(0 currently set)" },
+    { name: "menu colors", sel: true, val: () => `(${(game.menu_colorings || []).length} currently set)` },
     /* C: options.c optfn_o_message_types get_val */
-    { name: "message types", sel: true, val: () => "(0 currently set)" },
+    { name: "message types", sel: true, val: () => `(${(game.msgtypes || []).length} currently set)` },
     /* C: options.c optfn_o_status_cond get_val — 16 conditions */
-    { name: "status condition fields", sel: true, val: () => "(16 currently set)" },
+    { name: "status condition fields", sel: true, val: () => `(${game._condEnabled ? game._condEnabled.filter(Boolean).length : 16} currently set)` },
     /* C: options.c optfn_o_status_hilites get_val */
     { name: "status highlight rules", sel: true, val: () => `(${count_status_hilites()} currently set)` },
 ];

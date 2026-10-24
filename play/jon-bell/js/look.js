@@ -55,7 +55,6 @@ import { pushRngLogEntry } from './rng.js';
 import { Blind } from './vision.js';
 import { can_reach_floor } from './hold_another_object.js';
 import { doname, doname_with_price, corpse_xname, an, vtense, CXN_ARTICLE, CXN_PFX_THE } from './objnam.js';
-import { DEFSYM_EXPLANATION } from './defsym_data.js';
 import { ENV } from './hostenv.js';
 /* mbodypart: C polyself.c:1956 — needed only by look_here's u.uswallow arm
  * ("Contents of <mon's> stomach").  js/cmd.js already imports FROM this file
@@ -198,7 +197,6 @@ export function _dfeature_at(x, y) {
 const _CORPSE_OTYP = 265;
 const _PM_CHICKATRICE = 9;
 const _PM_COCKATRICE = 10;
-const _S_ARROW_TRAP_LK = 49; /* rm.h trap_to_defsym: S_arrow_trap + ttyp - 1 */
 
 /* C ref: hack.h Underwater = !!u.uinwater.  Mirrored locally (established
  * convention: js/cmd.js and js/pickup.js each carry their own copy rather
@@ -207,13 +205,8 @@ function _Underwater() {
     return !!(game.u && game.u.uinwater);
 }
 
-/* C ref: trap.c:7100 trapname(ttyp, override), non-hallucinating half only —
- * defsyms[S_arrow_trap + ttyp - 1].explanation.  Mirrors js/trap.js's
- * file-local _tr_trapname (not exported); the hallucinating half draws on the
- * DISPLAY isaac64 stream and is out of scope for a message-only line. */
-function _trapname_lk(ttyp) {
-    return DEFSYM_EXPLANATION[_S_ARROW_TRAP_LK + (ttyp | 0) - 1] ?? 'trap';
-}
+/* trap.c:7100 trapname(ttyp, override) is js/makemon.js trapname(); look_here
+ * calls it with FALSE so a hallucinating hero draws the DISPLAY stream. */
 
 /* C ref: dungeon.c:1750-1786 surface(x, y) — the narrative terrain word used
  * by read_engr_at's "on the <eloc>" and look_here's Blind "lying here on the
@@ -404,7 +397,7 @@ export async function look_here(obj_cnt = 0, lookhere_flags = LOOKHERE_NOFLAGS) 
         if (reg || trap) {
             const regPart = reg ? `a ${reg_damg(reg) ? 'poison gas' : 'vapor'} cloud` : '';
             const joiner = (reg && trap) ? ' and ' : '';
-            const trapPart = trap ? an(_trapname_lk(trap.ttyp | 0)) : '';
+            const trapPart = trap ? an(trapname(trap.ttyp | 0, false)) : '';
             await pline(`There is ${regPart}${joiner}${trapPart} here.`);
         }
     }

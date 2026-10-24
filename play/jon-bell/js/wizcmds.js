@@ -488,6 +488,13 @@ export async function getlin(prompt) {
             /* getline.c:165-167 — bufp - obufp < BUFSZ - 1 && bufp - obufp < COLNO;
              * a longer line is refused (tty_nhbell) and the frame is unchanged. */
             buf += String.fromCharCode(keyCode);
+        } else if (keyCode === 21 /* kill_char = VKILL = ^U */) {
+            /* C getline.c:196-202 `else if (c == kill_char || c == '\177')`:
+             * putsyms("\b \b") back to the start of the input, emptying the
+             * line and leaving the bare prompt (the backspaces cross a wrapped
+             * row).  0177 never gets here: it is the pty's erase_char and takes
+             * the erase arm above first. */
+            buf = '';
         }
         renderPrompt();
         await flush_screen(1);

@@ -5,7 +5,8 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, force_more, force_more_lone_frame, topl_park_cursor, bot,
          _topline_more_pending, restore_occupation_topline, putmsghistory } from './display.js';
-import { PARANOID_CONFIRM, BUFSZ, QBUFSZ } from './const.js';
+import { vision_recalc } from './vision.js';
+import { PARANOID_CONFIRM, BUFSZ, QBUFSZ, COLNO } from './const.js';
 
 function mungspaces(s) {
     return String(s).trim().replace(/\s+/g, ' ');
@@ -53,7 +54,8 @@ async function read_getlin(prompt) {
                 await paint();
                 continue;
             }
-            if (key >= 32 && key <= 126 && buf.length < BUFSZ - 1) {
+            /* getline.c:169: bufp - obufp < COLNO */
+            if (key >= 32 && key <= 126 && buf.length < BUFSZ - 1 && buf.length < COLNO) {
                 buf += String.fromCharCode(key);
                 await paint();
             }
@@ -95,6 +97,10 @@ async function read_yn(prompt, acceptQ) {
     const wraps = topl_park_cursor(null, `${shown} `)[1] > 0;
     if (wraps) g._topl_prompt_echo = true;
     try {
+    /* C topl.c:420-425 custompline -> vpline (pline.c:266-272): a pending
+     * vision_full_recalc is consumed before the prompt's flush_screen. */
+    if (g.vision_full_recalc) vision_recalc(0);
+    g._prevmsg = `${shown} `;
     g._pending_message = shown;
     await flush_screen(1);
     if (g.nhDisplay) topl_park_cursor(g.nhDisplay, `${shown} `);

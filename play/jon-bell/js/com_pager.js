@@ -16,13 +16,14 @@ import { acurr } from './attrib.js';
 import { describe_level_buf } from './dungeon.js';
 // WRITE-ONLY route-attribution telemetry (inert unless NH_ROUTE_TELEMETRY=1 —
 import { routeTag } from './route_telemetry.js';
-import { NO_COLOR } from './terminal.js';
-import { pmatchi } from './strutil.js'; /* C strutil.c:151 — MENU_SEARCH's matcher */
+import { NO_COLOR, CLR_WHITE } from './terminal.js';
+import { pmatchi } from './strutil.js';
+import { menu_heading_text } from './tty_menu.js'; /* C strutil.c:151 — MENU_SEARCH's matcher */
 // putmsghistory: feed the quest synopsis into the ^P message-history ring.
 import { putmsghistory, _strengthStr, force_more, force_more_pages, await_more_dismiss,
          await_topl_more_dismiss, pline_flush_point,
          botl_pmname, botl_upstart_words, botl_mon_mlevel, botl_title,
-         gold_status_char, dec_mode, rogue_graphics, rogue_ibm_color, botl_status_suffix, fit_status_line_width, status_row_finish, _statusRows3, _threeStatusLines, docrt_flags, flush_screen, use_last_flush_snapshot, hitpointbar_status1, _hilite_status_wrap, _status_sgr } from './display.js';
+         gold_status_char, dec_mode, rogue_graphics, rogue_hero_showrace_cell, rogue_ibm_color, botl_status_suffix, fit_status_line_width, status_row_finish, _statusRows3, _threeStatusLines, docrt_flags, flush_screen, use_last_flush_snapshot, hitpointbar_status1, _hilite_status_wrap, _status_sgr, _status_row1_map_overlay } from './display.js';
 // ── ANSI color helpers (inlined from display.js — not exported there) ──
 const ANSI_DEFAULT = 39;
 // C ref: color.h:10-14 — CLR_BLACK(0) renders as bright-black (90); CLR_GRAY(7)
@@ -192,7 +193,8 @@ function render_map_row_clipped(y, clipX) {
         const loc = cellAt(x);
         const ch = loc?.disp_ch ?? ' ';
         const color = ((rogueMap && !rogueColor) || game.iflags?.use_color === false)
-            ? NO_COLOR : (loc?.disp_color ?? NO_COLOR);
+            ? ((rogueMap && !rogueColor && rogue_hero_showrace_cell(x, y)) ? CLR_WHITE : NO_COLOR)
+            : (loc?.disp_color ?? NO_COLOR);
         /* C termcap.c g_putch/SYMHANDLING(H_DEC) decides the SO shift when a cell is
          * (re)printed.  After handler_symset leaves DEC, rows no window has been
          * dismissed over since still hold their old SO-shifted bytes (game._decStaleFrom);
@@ -448,8 +450,9 @@ export async function display_text_window(lines) {
         await flush_screen(1);
     }
 }
-export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipCol, pwOverride,
+export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipArg, pwOverride,
                                     fullScreen = false, mapClipExtra = 0, clipRow23 = false) {
+    let statusClipCol = statusClipArg;
     const _prevRows = (typeof game._screen_output === 'string')
         ? game._screen_output.split('\n') : null;
     /* wintty.c:4289-4298 / 3814: with statuslines:3 the status rows are
@@ -461,10 +464,23 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipCo
      * Same flag as the menu path below (line ~1049); display.js _equipView() reads it. */
     const _preInvRows3 = rows3 && pwOverride !== undefined;
     if (_preInvRows3) game._botlPreInv = true;
+    /* Same frame, same stale bot(): u_init.c:1410-1411's starting-Pw boost ran
+     * after allmain.c:891's paint, so row 22 keeps the pre-boost Pw exactly as
+     * the two-line arm's pwOverride does.  Paint it via the stale-Pw slots. */
+    const _savedPw = _preInvRows3 ? [game._botlStaleUen, game._botlStaleUenmax] : null;
+    if (_preInvRows3 && _savedPw[0] === undefined && _savedPw[1] === undefined) {
+        game._botlStaleUen = pwOverride.uen;
+        game._botlStaleUenmax = pwOverride.uenmax;
+    }
     let st3 = null;
     try { st3 = rows3 ? _statusRows3() : null; }
-    finally { if (_preInvRows3) game._botlPreInv = false; }
-    const rowStatus = (r) => rows3 ? st3[r - 21]
+    finally {
+        if (_preInvRows3) {
+            game._botlPreInv = false;
+            [game._botlStaleUen, game._botlStaleUenmax] = _savedPw;
+        }
+    }
+    const rowStatus = (r) => rows3 ? _status_sgr(st3[r - 21])
         : (r === 22 ? _statusLine1() : _statusLine2(uacStep0, pwOverride));
     const statusStillBlank = (game._statusBlankAfterDocrt === true && statusClipCol == null)
         || (!!_prevRows && _prevRows.length >= 24
@@ -485,6 +501,10 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipCo
     // bot().  When undefined, no clipping (the normal full-status case).
     let output = '';
     for (let screenRow = 0; screenRow <= 23; screenRow++) {
+        /* docorner() of a menu ending at row 20 erases only the first of three
+         * status rows (wintty.c:3650-3684); rows 22/23 stay whole. */
+        if (game._statusClipFirstRowOnly && rows3)
+            statusClipCol = screenRow === 21 ? statusClipArg : undefined;
         const inWindow = screenRow < winRows;
         const winLine = inWindow ? windowLines[screenRow] : null;
         if (screenRow === 0) {
@@ -580,8 +600,13 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipCo
                 /* docorner() clears only offx..79, so every status cell left of
                  * priorWinCol-2 survives (title, cursor-forward gap, and any
                  * stat text that starts before the clip: "...S" of "St:"). */
+                /* three status rows: each of rows 21/22 is its own botl line
+                 * (wintty.c:3650-3684 clears all of them from offx), and the cut
+                 * leaves no painted blanks at the row end. */
                 output += priorCol != null
-                    ? _overlay_status_line(_statusLine1(), Math.max(0, priorCol - 2), '')
+                    ? (rows3
+                        ? _overlay_status_line(rowStatus(screenRow), Math.max(0, priorCol - 2), '').replace(/ +$/, '')
+                        : _overlay_status_line(_statusLine1(), Math.max(0, priorCol - 2), ''))
                     : title;
                 output += '\n';
                 continue;
@@ -622,8 +647,14 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipCo
                 const leftStatus = statusClipCol != null
                     ? Math.min(statusClipCol, marginCol)
                     : marginCol;
-                output += _overlay_status_line(rowStatus(screenRow), leftStatus, '')
-                    + `\x1b[${Math.max(1, col - leftStatus)}C` + text;
+                let clipped = _overlay_status_line(rowStatus(screenRow), leftStatus, '');
+                let run = Math.max(1, col - leftStatus);
+                const base0 = run;
+                for (let tail; (tail = /( +|\x1b\[(\d+)C)$/.exec(clipped));) {
+                    run += tail[2] !== undefined ? parseInt(tail[2], 10) : tail[1].length;
+                    clipped = clipped.slice(0, tail.index);
+                }
+                output += clipped + (run > base0 && run <= 4 ? ' '.repeat(run) : `\x1b[${run}C`) + text;
             }
             else if (statusClipCol != null) {
                 // Below a shorter window after a taller window's dismiss:
@@ -631,6 +662,11 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipCo
                 // pad nothing — _overlay_status_line with empty text and the
                 // clip width gives exactly the truncated-left status line).
                 output += _overlay_status_line(rowStatus(screenRow), statusClipCol, '');
+            }
+            else if (rows3 && screenRow === 21) {
+                /* wintty.c:3814: map y=20 still prints onto status row 1 (see
+                 * _status_row1_map_overlay), and no window covers it here. */
+                output += _status_row1_map_overlay(rowStatus(21));
             }
             else {
                 output += rowStatus(screenRow);
@@ -964,7 +1000,7 @@ export async function topl_more_page(msg, uacAtCapture) {
     if (_threeStatusLines()) {
         /* wintty.c:4289-4298: three status rows at 21/22/23; map row 21 gone */
         const st3 = _statusRows3();
-        output = output.replace(/[^\n]*\n$/, '') + st3[0] + '\n' + st3[1] + '\n' + st3[2];
+        output = output.replace(/[^\n]*\n$/, '') + _status_sgr(st3[0]) + '\n' + _status_sgr(st3[1]) + '\n' + _status_sgr(st3[2]);
     } else {
         output += _statusLine1() + '\n';
         // Row 23: status line 2 (with uac = actual post-find_ac value)
@@ -1172,7 +1208,9 @@ export async function ask_do_tutorial() {
     for (;;) {
         // C ref: options.c:466-494 — build window lines for this iteration.
         const windowLines = [
-            '\x1b[7mDo you want a tutorial?\x1b[0m', // end_menu title in reverse video
+            /* tty_end_menu adds the prompt with tty_menu_promptstyle = iflags.menu_headings
+             * (wintty.c:2680-2689, windows.c:1769, options.c:5790) */
+            menu_heading_text('Do you want a tutorial?'),
             '', // blank separator (add_menu_str)
             mlist[0].str, // a_char='y' option
             mlist[1].str, // a_char='n' option
@@ -1184,7 +1222,10 @@ export async function ask_do_tutorial() {
             windowLines.push("(Please choose 'y' or 'n'.)");
         }
         windowLines.push('(end)'); // tty footer line for single-page menus
-        const WIN_COL = tty_window_offx(windowLines, footerKind);
+        /* C ref: wintty.c:1925-1928 — `!iflags.menu_overlay` drops the menu to
+         * offx 0 and clears the whole screen; the content is drawn at column 1. */
+        const fullScreen = g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0;
+        const WIN_COL = fullScreen ? 1 : tty_window_offx(windowLines, footerKind);
         // Cursor: at end of "(end)" row, one past last character.
         // C: tty select_menu positions cursor after last char of footer row.
         // "(end)" is 5 chars at column WIN_COL → cursor at WIN_COL + 5 + 1 = 27.
@@ -1205,7 +1246,9 @@ export async function ask_do_tutorial() {
             const lines = titleErased ? ['', ...windowLines.slice(1)] : windowLines;
             // Build the combined map+window overlay screen.
             // uac: pass the real post-find_ac value for _statusLine2().
-            g._screen_output = build_window_screen(lines, WIN_COL, uac);
+            g._screen_output = fullScreen
+                ? lines.map((ln) => (ln === '' ? '' : ' ' + ln)).join('\n')
+                : build_window_screen(lines, WIN_COL, uac);
             if (disp) {
                 disp.cursorCol = endCursorCol;
                 disp.cursorRow = endRow;
@@ -1297,25 +1340,52 @@ export async function menu_search_getlin(frameRows) {
     const disp = g?.nhDisplay;
     const query = 'Search for:';
     let buf = '';
+    /* C ref: getline.c:50,106-137 — ^P recall state: `doprev` and the text the
+     * recalled message left on the topline (null when the prompt is showing). */
+    let doprev = false, recall = null, prevIdx = 0;
+    const hist = () => (g._msg_history ||= []);
+    const remember = (text) => {
+        /* tty_getlin is not SUPPRESS_HISTORY: gt.toplines ("Search for: " + what
+         * was typed) is pushed to the history ring by the next message. */
+        if (text.length > 0) hist().push(text);
+    };
     /* C ref: getline.c:63 custompline(..., "%s ", query) — the trailing space is
      * part of the prompt, and the cursor sits just past what has been typed. */
     const render = async () => {
         const rows = (await frameRows()).slice();
-        rows[0] = (query + ' ' + buf).replace(/\s+$/, '');
+        rows[0] = recall !== null ? recall : (query + ' ' + buf).replace(/\s+$/, '');
         g._screen_output = rows.join('\n');
         if (disp) {
-            disp.cursorCol = query.length + 1 + buf.length;
+            disp.cursorCol = recall !== null ? recall.length : query.length + 1 + buf.length;
             disp.cursorRow = 0;
         }
     };
     for (;;) {
         await render();
         const keyCode = await nhgetch();
+        if (keyCode === 16 /* ^P */) {
+            /* C ref: getline.c:106-119 msg_window:single (or combination acting
+             * like single): "need two initially" tty_doprev_message() calls — the
+             * first re-shows gt.toplines, the second recalls the newest history
+             * entry — then keep reading. */
+            const pw = (g.iflags?.prevmsg_window || 's')[0];
+            if (pw === 's' || (pw === 'c' && !doprev)) {
+                const h = hist();
+                if (h.length) {
+                    prevIdx = doprev ? (prevIdx - 1 + h.length) % h.length : h.length - 1;
+                    recall = h[prevIdx];
+                }
+                doprev = true;
+                continue;
+            }
+        }
+        if (doprev) { doprev = false; recall = null; } /* C ref: getline.c:134-141 */
         if (keyCode === 27 /* ESC */) {
             /* C ref: getline.c:88-95 — ESC with something typed is a KILL-LINE
              * that re-prompts; ESC on an empty buffer returns the cancel
              * sentinel. */
             if (buf.length > 0) { buf = ''; continue; }
+            remember(query + ' ');
             return '\x1b';
         }
         if (keyCode === 10 /* \n */ || keyCode === 13 /* \r */)
@@ -1337,6 +1407,7 @@ export async function menu_search_getlin(frameRows) {
     }
     /* C ref: getline.c:213 clear_nhwindow(WIN_MESSAGE) — row 0 goes blank, and
      * the caller must keep it blank because the menu is not repainted. */
+    remember(query + ' ' + buf);
     return buf;
 }
 

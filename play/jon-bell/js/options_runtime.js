@@ -6,7 +6,7 @@
 import { game } from './gstate.js';
 import { OPTION_DEFINITIONS } from './options_data.js';
 import { ECMD_OK, ECMD_FAIL, PRIMARYSET, STONE, WC_PERM_INVENT } from './const.js';
-import { pline, bot, docrt, reglyph_darkroom, check_gold_symbol, flush_screen, force_more, status_reassess } from './display.js';
+import { pline, bot, docrt, reglyph_darkroom, check_gold_symbol, force_more, status_reassess, use_last_flush_snapshot } from './display.js';
 import { vision_recalc } from './vision.js';
 import { update_rest_on_space } from './cmd_binds.js';
 import { classifyTerrain as classify_terrain } from './terrain-status.js';
@@ -358,6 +358,7 @@ export async function reset_needed_visuals() {
      * port maps glyphs on demand (js/symbols.js reset_glyphmap is likewise a no-op). */
     if (go.opt_reset_customcolors || go.opt_update_basic_palette || go.opt_reset_customsymbols || go.opt_need_redraw) {
         if (go.opt_update_basic_palette) { missing('change_palette'); go.opt_update_basic_palette = false; }
+        if (go.opt_need_glyph_reset) game._gm_use_color = undefined; /* reset_glyphmap() */
         if (go.opt_reset_customcolors) reset_customcolors();
         if (go.opt_reset_customsymbols) reset_customsymbols();
         if (go.opt_need_redraw) { check_gold_symbol(); reglyph_darkroom(); }
@@ -366,8 +367,17 @@ export async function reset_needed_visuals() {
         /* a DEC->other symset change leaves the status rows blank (handler_symset)
          * until doset() ends, so this --More-- stands over them */
         game._status_blanked = game._decStaleFrom != null;
-        await flush_screen(1);
-        if (game._pending_message) await force_more(game._pending_message);
+        if (game._pending_message) {
+            /* tty more() shows the PHYSICAL screen as of the last flush: silent
+             * option toggles after the last pline (give_opt_msg FALSE) changed
+             * the gbuf and status fields, but nothing painted them. */
+            const release = use_last_flush_snapshot();
+            if (game._paintedSnapshot && game._lastPaintedBotl)
+                game._paintedSnapshot.botl = game._lastPaintedBotl;
+            game._moreFromCls = game._statusHeldPhysical = true;
+            try { await force_more(game._pending_message); } finally { game._moreFromCls = game._statusHeldPhysical = false; }
+            release();
+        }
         game._pending_message = '';
         game._status_blanked = false;
         await docrt();

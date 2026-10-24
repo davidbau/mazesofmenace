@@ -78,7 +78,7 @@ import { ARMOR_DATA } from './armor_data.js';
 import { MKOBJ_OC_PROB } from './mkobj_data.js';
 /* mquaffmsg (muse.c:292) helpers — see the port below. */
 import { DEAF, MM_NOMSG } from './const.js';
-import { verbalize } from './cmd.js';
+import { verbalize, set_msg_xy as set_msg_xy_mm } from './cmd.js';
 import { a_monnam } from './mhitm.js';
 import { rndmonnam } from './do_name.js';
 import { paralyze_monst } from './dogmove.js';
@@ -6356,7 +6356,13 @@ function monsndx_mm(ptr) {
  * already used by js/mhitu.js's local pline_mon. Fire-and-forget (async
  * pline): grow_up must stay synchronous to match its `struct permonst *`
  * return contract. */
-function pline_mon(_mtmp, msg) { pline(msg); }
+/* C pline.c:138-146: set_msg_xy to the hero (0,0) or the monster's square;
+ * vpline's accessiblemsg prefix reads it. */
+function pline_mon(mtmp, msg) {
+    if (mtmp === game.youmonst) set_msg_xy_mm(0, 0);
+    else if (mtmp) set_msg_xy_mm(mtmp.mx, mtmp.my);
+    return pline(msg);
+}
 
 /**
  * C makemon.c:2049 grow_up(mtmp, victim) — a monster levels up (killed a

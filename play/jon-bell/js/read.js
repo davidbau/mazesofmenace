@@ -5,8 +5,9 @@ import { rn2, rnd, rn1, rnl, d } from './rng.js';
 import { discover_object } from './o_init.js';
 import { MKOBJ_OC_CLASS } from './mkobj_data.js';
 import { game } from './gstate.js';
+import { reassign } from './inventory_refresh.js';
 import { snuff_light_source } from './light.js';
-import { pline, getobj_never_mind, bot as bot_read, gamelog_add, obj_to_glyph } from './display.js';
+import { pline, putmsghistory, getobj_never_mind, bot as bot_read, gamelog_add, obj_to_glyph } from './display.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import {
     PM_GUARD, PM_SHOPKEEPER, PM_PRIEST as PM_ALIGNED_CLERIC,
@@ -598,7 +599,7 @@ export async function recharge(obj, curse_bless) {
 // Scope: only the "spellbook already known + Refresh prompt" branch is ported;
 // Other doread branches (scrolls, T-shirt, credit card, blank, level filter,
 // ─────────────────────────────────────────────────────────────────────────────
-import { flush_screen, docrt, cls, under_water, under_ground, newsym, terrain_glyph, occupation_force_more, force_more, map_trap, map_engraving, map_object, unmap_object, show_glyph_cell, update_lastseentyp, GLYPHCLS_TRAP, GLYPHCLS_OBJ, GLYPHCLS_CMAP, GLYPHCLS_ENGR } from './display.js';
+import { flush_screen, docrt, cls, under_water, under_ground, newsym, terrain_glyph, occupation_force_more, force_more, map_trap, map_engraving, map_object, unmap_object, show_glyph_cell, objpile_attr, update_lastseentyp, GLYPHCLS_TRAP, GLYPHCLS_OBJ, GLYPHCLS_CMAP, GLYPHCLS_ENGR } from './display.js';
 import { t_at } from './trap.js';
 import { oc_merge as oc_merge_rd } from './oc_merge.generated.js';
 import { NUMMONS } from './pm.generated.js';
@@ -1014,6 +1015,9 @@ export async function doread() {
           SPE_NOVEL_RD = 408, SPE_BOOK_OF_THE_DEAD_RD = 409;
     const _read_ok = (o) =>
         (o.oclass | 0) === SCROLL_CLASS || (o.oclass | 0) === SPBOOK_CLASS_OC;
+    /* C invent.c:1856-1857 getobj(): `if (!flags.invlet_constant) reassign();`
+     * runs before the prompt letters are collected (fixinv off relabels the pack). */
+    if (!(g.flags?.invlet_constant ?? true)) reassign();
     let letters = '';
     for (let o = g.invent; o; o = o.nobj) {
         if (_read_ok(o) && o.invlet)
@@ -1023,6 +1027,14 @@ export async function doread() {
      * (invent.c:1964 `allowed_choices = bp`) — bp is the raw buffer, built
      * BEFORE the range collapse that only shapes the prompt bracket. */
     const rawLetters = letters;
+    /* C invent.c:1884-1889 — read_ok DOWNPLAYs every other item into `altlets`;
+     * force_invmenu's first key is '?' when lets OR altlets is non-empty
+     * (invent.c:1925) and '?' with empty lets lists altlets (invent.c:1969). */
+    let altlets = '';
+    for (let o = g.invent; o; o = o.nobj) {
+        if (!_read_ok(o) && o.invlet)
+            altlets += String.fromCharCode(o.invlet | 0);
+    }
     /* C ref: invent.c getobj — collapse a run of >=3 consecutive letters to
      * "<first>-<last>" (e.g. "ijklm" → "i-m").  This is the compact bracket
      * form the recorded prompt uses ("[i-mp or ?*]"). */
@@ -1037,7 +1049,12 @@ export async function doread() {
     const _q = await getobj_cmdq_drain(
         (o) => !o ? GETOBJ_EXCLUDE
             : (_read_ok(o) ? GETOBJ_SUGGEST : GETOBJ_DOWNPLAY));
-    if (!_q.drained) {
+    /* C invent.c:1922-1930 — iflags.force_invmenu skips the yn_function prompt
+     * and enters the menu directly ('?' if anything is suggested, else '*'),
+     * recording the bare question in message history. */
+    const _forceMenu = !!g.iflags?.force_invmenu && !g.in_doagain;
+    let _oneloop = false;
+    if (!_q.drained && !_forceMenu) {
         g._pending_message = prompt;
         await flush_screen(1);
         set_cursor(prompt.length + 1, 0); /* TTY: cursor past prompt + trailing space */
@@ -1053,7 +1070,12 @@ export async function doread() {
         else cancelled = true;
     }
     while (!_q.drained) {
-        const raw = await nhgetch();
+        let raw;
+        if (_forceMenu && !_oneloop) {
+            putmsghistory('What do you want to read?', false);
+            raw = (rawLetters || altlets) ? 63 : 42;
+            _oneloop = true;
+        } else raw = await nhgetch();
         keyCode = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
         /* C invent.c:1937-1948 tests digits before quitchars.  doread's
          * getobj call does not pass GETOBJ_ALLOWCNT, so a digit reports this
@@ -1072,11 +1094,13 @@ export async function doread() {
             break;
         }
         if (keyCode === 63 /* '?' */ || keyCode === 42 /* '*' */) {
-            const pick = await getobj_redo_menu(keyCode, rawLetters, '');
+            const pick = await getobj_redo_menu(keyCode, rawLetters, altlets, null, { word: 'read', allownone: false, buf: letters });
             /* invent.c:1989-1993 — ESC out of the menu: "Never mind." (already
              * plined by getobj_redo_menu) and getobj returns NULL. */
             if (pick === 27) { cancelled = true; break; }
-            /* invent.c:1982-1986 — no selection → re-prompt and re-read. */
+            /* invent.c:1982-1986 — no selection → re-prompt and re-read
+             * (oneloop, set only by force_invmenu, returns NULL instead). */
+            if (!pick && _oneloop) { cancelled = true; break; }
             if (!pick) {
                 g._pending_message = prompt;
                 await flush_screen(1);
@@ -4840,16 +4864,16 @@ export function magic_map_background(loc, x, y, show = false) {
                        || (rg.ch === '~' && rg.decgfx && rg.color === NO_COLOR))) {
             /* display.c:245-247 — without dark_room+use_color the glyph is
              * GLYPH_NOTHING (blank), not a dark dot. */
-            rg = { ch: ' ', color: NO_COLOR, decgfx: false };
+            rg = { ch: ' ', color: NO_COLOR, decgfx: false, nothing: true };
         } else if (loc.typ === ROOM && game.flags?.dark_room === false
                    && ((rg.ch === '.' && !rg.decgfx) || (rg.ch === '~' && rg.decgfx))
                    && rg.color === NO_COLOR) {
             /* C display.c:245-247: !flags.dark_room → GLYPH_NOTHING (blank). */
-            rg = { ch: ' ', color: NO_COLOR, decgfx: false };
+            rg = { ch: ' ', color: NO_COLOR, decgfx: false, nothing: true };
         } else if (loc.typ === ROOM && !darkRoomOn
                    && ((rg.ch === '.' && !rg.decgfx && rg.color === NO_COLOR)
                        || (rg.ch === '~' && rg.decgfx && rg.color === NO_COLOR))) {
-            rg = { ch: ' ', color: NO_COLOR, decgfx: false };
+            rg = { ch: ' ', color: NO_COLOR, decgfx: false, nothing: true };
         } else if (loc.typ === ROOM && rg.ch === '.' && !rg.decgfx && rg.color === NO_COLOR) {
             rg.color = CLR_BLACK;
         } else if (loc.typ === ROOM && rg.ch === '~' && rg.decgfx && rg.color === NO_COLOR) {
@@ -4886,6 +4910,8 @@ export function show_map_spot(loc, x, y, cnf) {
     const oldCls = loc.disp_cls;
     const oldGlyph = { ch: loc.disp_ch, color: loc.disp_color, decgfx: !!loc.disp_decgfx,
                        cls: oldCls, attr: loc.disp_attr | 0,
+                       /* the glyph NUMBER carries piletop-ness (MG_OBJPILE) */
+                       objpile: !!loc.remembered_glyph?.objpile && oldCls === GLYPHCLS_OBJ,
                        /* the glyph number encodes the object type (and a statue's
                           or corpse's species), which object farlook decodes */
                        otyp: loc.disp_obj_otyp, corpsenm: loc.disp_obj_corpsenm };
@@ -4913,12 +4939,14 @@ export function show_map_spot(loc, x, y, cnf) {
             /* C detect.c:1412-1414 show_glyph(x,y,oldglyph) + (hero_memory)
              * lev->glyph = oldglyph — put back the trap/object the background
              * overwrite just wiped. */
-            show_glyph_cell(x, y, oldGlyph.ch, oldGlyph.color, oldGlyph.decgfx, 0, oldCls,
+            show_glyph_cell(x, y, oldGlyph.ch, oldGlyph.color, oldGlyph.decgfx,
+                            objpile_attr(oldGlyph.objpile), oldCls,
                             false, oldGlyph.otyp, oldGlyph.corpsenm);
             if (game.level?.flags?.hero_memory)
                 loc.remembered_glyph = { ch: oldGlyph.ch, color: oldGlyph.color,
                                          decgfx: oldGlyph.decgfx, cls: oldCls,
                                          otyp: oldGlyph.otyp,
+                                         objpile: oldGlyph.objpile,
                                          corpsenm: oldGlyph.corpsenm };
         }
     }

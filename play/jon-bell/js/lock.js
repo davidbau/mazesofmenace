@@ -16,12 +16,15 @@ import { canspotmon, map_invisible } from './display.js';
 import { s_suffix } from './hacklib.js';
 import { Some_Monnam } from './mhitm.js';
 import { set_occupation, confdir, movecmd, cmdq_pop, cmdq_clear, cmdq_add_key, redraw_cmd, dxdy_moveok, xytodir, readchar,
-    show_direction_keys, dowhatdoes_core, useup } from './cmd.js';
+    show_direction_keys, dowhatdoes_core, useup, getpos } from './cmd.js';
 import { visctrl } from './cmd_binds.js';
-import { CQ_REPEAT, CQ_CANNED, CMDQ_DIR, CMDQ_KEY, NHKF_GETDIR_HELP, NHKF_GETDIR_SELF, NHKF_GETDIR_SELF2 } from './const.js';
+import { CQ_REPEAT, CQ_CANNED, CMDQ_DIR, CMDQ_KEY, NHKF_GETDIR_HELP, NHKF_GETDIR_SELF, NHKF_GETDIR_SELF2,
+         NHKF_GETDIR_MOUSE, NHKF_GETPOS_PICK, NHKF_GETPOS_PICK_Q, NHKF_GETPOS_PICK_O, NHKF_GETPOS_PICK_V,
+         CLICK_1, CLICK_2 } from './const.js';
 import { impossible } from './pline.js';
 import { pline, force_more, newsym, feel_newsym, flush_screen, docrt_flags, _darken_room_floor, show_glyph_cell, canseemon, You_hear, Unaware } from './display.js';
 import { mb_trapped } from './dig.js';
+import { capture_pre_movemon_botl, _topl_joins_snapshot } from './display.js';
 import { topl_park_cursor, putmsghistory, feel_location, flush_pending_messages, _topl_stash_result } from './display.js';
 import { block_point, recalc_block_point, vision_recalc, unblock_point } from './vision.js';
 import { nhgetch } from './input.js';
@@ -451,6 +454,50 @@ async function _getdir_read(g, u, s, noPrompt, cmdq) {
         u.dx = 0; u.dy = 0; u.dz = 0;
         confdir(false);
         return 1;
+    }
+    if (dircode === (g.Cmd?.spkeys?.[NHKF_GETDIR_MOUSE] ?? 95 /* '_' */)) {
+        const qbuf = `desired location, then type '${
+            visctrl(g.Cmd?.spkeys?.[NHKF_GETPOS_PICK_Q] ?? 44 /* ',' */)}' for left click, '${
+            visctrl(g.Cmd?.spkeys?.[NHKF_GETPOS_PICK] ?? 46 /* '.' */)}' for right`;
+        /* cc.x = u.ux, cc.y = u.uy — starting cursor location for getpos(). */
+        const cc = { x: u.ux | 0, y: u.uy | 0 };
+        let pos = await getpos(cc, true, qbuf);
+        let mod;
+        if (pos < 0) {
+            /* ESC or other rejection */
+            u.dx = u.dy = u.dz = 0;
+            mod = 0; /* neither CLICK_1 nor CLICK_2 */
+        } else {
+            /* caller expects simulated click to be relative to hero's spot */
+            u.dx = (cc.x | 0) - (u.ux | 0);
+            u.dy = (cc.y | 0) - (u.uy | 0);
+            /* non-zero getdir_click actually means ok to click farther than
+             * one spot away from hero; adjacent click is always allowed */
+            if (!g.iflags?.getdir_click) {
+                u.dx = u.dx < 0 ? -1 : (u.dx > 0 ? 1 : 0);
+                u.dy = u.dy < 0 ? -1 : (u.dy > 0 ? 1 : 0);
+            }
+            u.dz = 0;
+            switch (pos + NHKF_GETPOS_PICK) {
+            case NHKF_GETPOS_PICK_Q: /* 1: quick:   ',' */
+            case NHKF_GETPOS_PICK_O: /* 2: once:    ';' */
+                mod = CLICK_1;
+                break;
+            case NHKF_GETPOS_PICK:   /* 0: normal:  '.' */
+            case NHKF_GETPOS_PICK_V: /* 3: verbose: ':' */
+                mod = CLICK_2;
+                break;
+            default:
+                /* C: "something which should never happen" */
+                await impossible(`getpos successful but not one of [.,;:] (${pos})`);
+                mod = 0; /* neither CLICK_1 nor CLICK_2 */
+                pos = -1; /* return failure */
+                break;
+            }
+        }
+        if (g.iflags?.getdir_click)
+            g.iflags.getdir_click = mod;
+        return pos >= 0;
     }
     /* C cmd.c:4095 — `else if (!(is_mov = movecmd(dirsym, MV_ANY)) && !u.dz)`.
      * movecmd writes u.dx/u.dy/u.dz for every bound direction key (walk, run
@@ -1042,10 +1089,12 @@ export async function forcelock() {
 
 /* Stage a force-occupation message for the driver's cross-turn --More-- paging.
  * When no driver is consuming the queue (defensive), fall back to a plain pline. */
-function _forceEmit(msg) {
+function _forceEmit(msg, botl = capture_pre_movemon_botl()) {
     const g = game;
-    if (g._forceMsgs) g._forceMsgs.push(msg);
-    else g._pending_message = msg;
+    if (g._forceMsgs) {
+        g._forceMsgs.push(msg);
+        (g._forceMsgBotls ||= [])[g._forceMsgs.length - 1] = botl;
+    } else g._pending_message = msg;
 }
 
 /* C ref: mon.c wake_nearby(petcall) → wake_nearto_core(ux,uy,ulevel*20,...).
@@ -1130,6 +1179,8 @@ async function chest_shatter_msg(otmp) {
          * stage so generation order (succeed, destroyed, shatter, dizzy) holds. */
         const res0 = game._resultMessage ?? null;
         const before = game._pending_message || '';
+        const beforeJoins = _topl_joins_snapshot(before);
+        game._forceBotl = capture_pre_movemon_botl();
         await potionbreathe(otmp);
         /* pline() may have folded the committed result into the live line. */
         const after = game._pending_message || '';
@@ -1137,7 +1188,11 @@ async function chest_shatter_msg(otmp) {
         if (after.startsWith(prefix) && after.length > prefix.length) {
             game._resultMessage = res0;
             game._pending_message = before;
-            _forceEmit(after.slice(prefix.length).trim());
+            if (beforeJoins) {
+                game._topl_joins = beforeJoins;
+                game._topl_joins_src = before;
+            }
+            _forceEmit(after.slice(prefix.length).trim(), game._forceBotl);
         }
         return;
     }
@@ -1252,6 +1307,7 @@ export async function doforce() {
             : `You start bashing it with ${_wepname(uwep)}.`);
         _topl_stash_result();
         g._forceMsgs = [];
+        g._forceMsgBotls = [];
         x.box = otmp;
         x.chance = (WEAPON_WLDAM[uwep.otyp | 0] | 0) * 2; /* objects[uwep].oc_wldam * 2 */
         x.picktyp = picktyp;

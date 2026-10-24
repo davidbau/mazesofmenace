@@ -496,14 +496,19 @@ export async function drain_pending_death_in_place() {
             /* The fprefx taste line (eat.c:2128 "This satiates your stomach!")
              * is still the committed topline when a lethal first-turn attack
              * dies mid-movemon: C holds it IN FRONT of the attack plines
-             * (same fold as display.js flush_pending_messages). */
+             * (same fold as display.js flush_pending_messages).  The eat occupation
+             * is still set here (stop_occupation has not run on the killing
+             * blow's path), so occupation is not part of the test. */
             const _oc = game._occ_committed_topl;
             const _live = String(game._pending_message || '');
-            if (_oc && !game.occupation && !game._resultMessage
+            if (_oc && !game._resultMessage
                 && _live && !_live.startsWith(_oc.text)) {
                 game._pending_message = _topl_merge_result(_oc.text, _live,
                                                            _topl_joins_snapshot(_oc.text));
                 game._occ_committed_topl = null;
+                /* The hit's damage is not yet on the physical status: the page
+                 * that holds the earlier line froze it before mdamageu. */
+                game._botlFrozenDeath = true;
             }
         }
         if (game._resultMessage) {

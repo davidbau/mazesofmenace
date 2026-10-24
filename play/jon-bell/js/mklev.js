@@ -10,7 +10,7 @@ import { xkilled as xkilled_ml } from './uhitm.js';
 import { XKILL_NOMSG, DISMOUNT_GENERIC } from './const.js';
 import { flooreffects_obj_meld, flooreffects_obj_nexto_xy, flooreffects_pudding_merge_message, switch_terrain } from './cmd.js';
 import { water_damage_chain as water_damage_chain_ml, useup as useup_inv } from './cmd.js';
-import { hliquid as hliquid_ml } from './mhitm.js';
+import { hliquid as hliquid_ml, on_fire as on_fire_ml } from './mhitm.js';
 import { W_AMUL, HEALTHY_TIN } from './const.js';
 import { may_passwall, in_town, breaktest, fire_damage_chain,
          is_mines_prize as is_mines_prize_real,
@@ -5763,12 +5763,20 @@ const _MUMMY_ZOMBIE_MNDX = new Set([
  * randomly-rolled corpsenm with monsndx(ptr) and re-fire the corpse timeout when
  * either the old or the new species is special.  The random pick's RNG is
  * consumed regardless — bug-for-bug faithful, see this function's header. */
-async function _mkcorpstat_corpse(corpsenm, x, y, corpstatflags) {
+async function _mkcorpstat_corpse(corpsenm, x, y, corpstatflags, mtmp = null) {
     const otmp = await mksobj(CORPSE, true, false);
     /* C mkobj.c:2101 mkcorpstat — `otmp->spe = (corpstatflags & CORPSTAT_SPE_VAL)`.
      * RNG-free, but it is the corpse's recorded gender and make_corpse's caller
      * cannot set it any other way. */
     otmp.spe = ((corpstatflags | 0) & CORPSTAT_SPE_VAL) | 0;
+    /* C mkobj.c:2087-2102 — `mtmp` non-null: save_mtraits() attaches the dead
+     * monster's omonst, which mergable() (invent.c:4462 has_omonst) treats as
+     * never-mergeable, so zombie/mummy/vampire corpses never stack. */
+    if (mtmp) {
+        save_mtraits(otmp, mtmp);
+        if (mtmp.mcan && !is_rider_pm(mtmp.mndx ?? mtmp.mnum ?? 0))
+            otmp.norevive = 1;
+    }
     const old_corpsenm = otmp.corpsenm | 0;
     otmp.corpsenm = corpsenm | 0;
     otmp.owt = weight(otmp);
@@ -5796,7 +5804,7 @@ export async function make_corpse(mtmp, x, y, corpseflags) {
     else if (((mtmp.data?.mflags2 | 0) & M2_NEUTER) === 0) corpstatflags |= CORPSTAT_MALE;
     if (_MUMMY_ZOMBIE_MNDX.has(mndx)) {
         const obj = await _mkcorpstat_corpse(undead_to_corpse(mndx), x, y,
-                                       corpstatflags | CORPSTAT_INIT);
+                                       corpstatflags | CORPSTAT_INIT, mtmp);
         obj.age = (obj.age | 0) - (TAINT_AGE + 1);
         newsym(x | 0, y | 0);
         return obj;
@@ -5804,7 +5812,7 @@ export async function make_corpse(mtmp, x, y, corpseflags) {
     /* C mon.c:622-628 — vampires: the corpse of the BASE creature, old. */
     if (mndx === 226 /* PM_VAMPIRE */ || mndx === 227 /* PM_VAMPIRE_LEADER */) {
         const obj = await _mkcorpstat_corpse(undead_to_corpse(mndx), x, y,
-                                       corpstatflags | CORPSTAT_INIT);
+                                       corpstatflags | CORPSTAT_INIT, mtmp);
         obj.age = (obj.age | 0) - (TAINT_AGE + 1);
         newsym(x | 0, y | 0);
         return obj;
@@ -14483,6 +14491,19 @@ export async function mondead(mtmp) {
     /* C mon.c:3103-3104 */
     if ((mtmp.data?.pmidx ?? mtmp.mndx ?? mtmp.mnum) === PM_STEAM_VORTEX)
         create_gas_cloud(mx, my, rn2(10) + 5, 0); /* harmless */
+    /* C mon.c:3113-3123 — restore chameleon, lycanthropes to true form at
+     * death, before mvitals and m_detach.  mon_explodes (explode.c:1053-1058)
+     * formats the killer name from mon->data AFTER this mondead, so a
+     * chameleon exploding as a freezing sphere is "the chameleon's explosion". */
+    if (ismnum(mtmp.cham)) {
+        set_mon_data(mtmp, permonstTemplate(mtmp.cham | 0));
+        mtmp.cham = NON_PM;
+    } else if ((mtmp.mnum | 0) === PM_WEREJACKAL)
+        set_mon_data(mtmp, permonstTemplate(PM_HUMAN_WEREJACKAL));
+    else if ((mtmp.mnum | 0) === PM_WEREWOLF)
+        set_mon_data(mtmp, permonstTemplate(PM_HUMAN_WEREWOLF));
+    else if ((mtmp.mnum | 0) === PM_WERERAT)
+        set_mon_data(mtmp, permonstTemplate(PM_HUMAN_WERERAT));
     mtmp.mtrapped = 0;
     await unstuck_mk(mtmp);
     /* C mon.c:3121 svm.mvitals[mndx].died++ (no rng), capped at 255. */
@@ -16140,12 +16161,13 @@ async function minliquid_core(mtmp) {
         }
         return 0;
     }
-    /* C picks the verb from on_fire(mtmp->data, &mattk[0]): "boils away" /
-     * "melts away" / "burns to a crisp".  on_fire is unported; "burns to a
-     * crisp" is C's default arm.  Screen-only and only when the hero can see
-     * the square, so it moves no rng either way. */
-    if (cansee(mx, my))
-        pline(`${Monnam_wm(mtmp)} burns to a crisp.`);
+    /* C mon.c:1027-1031 — verb from on_fire(mtmp->data, &mattk[0]). */
+    if (cansee(mx, my)) {
+        const a0 = (mon_mattk_raw(ptr.pmidx ?? mtmp.mnum) || [])[0] || [0];
+        const how = on_fire_ml({ pmidx: mndx }, { aatyp: a0[0] | 0 });
+        pline(`${Monnam_wm(mtmp)} ${how === "boiling" ? "boils away"
+            : how === "melting" ? "melts away" : "burns to a crisp"}.`);
+    }
     /* C mon.c:1037-1040 — the hero gets the experience when it is not
      * the monster's own move. */
     if (game.context && game.context.mon_moving)

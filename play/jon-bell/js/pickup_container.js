@@ -481,15 +481,21 @@ function _loot_disco(obj) {
 function _loot_xname(obj) {
     return String(cxname_singular(obj) || '');
 }
+/* C invent.c:155-159 def_srt_order: COIN AMULET RING WAND POTION SCROLL
+ * SPBOOK GEM FOOD TOOL WEAPON ARMOR ROCK BALL CHAIN. */
+const _LOOT_DEF_SRT_ORDER = [12, 5, 4, 11, 8, 9, 10, 13, 7, 6, 2, 3, 14, 15, 16];
 function _loot_classify(obj) {
     /* C invent.c:170-171 — the dknown side effect; Blind is not tracked on
      * this path (a blind hero cannot read a container menu's item names
      * either, so the gap is self-cancelling here). */
     if (!Blind()) observe_object(obj);   /* C invent.c:170-171 */
-    /* C invent.c:174-181 — class order.  flags.sortpack is On by default
-     * (optlist.h:687 opt_out/On), so the table is flags.inv_order. */
-    const k = _QC_INV_ORDER.indexOf(obj.oclass | 0);
-    return (k >= 0) ? (1 + k) : (1 + _QC_INV_ORDER.length + 1);
+    /* C invent.c:174-181 — class order: flags.inv_order under sortpack (On
+     * by default, optlist.h opt_out/On), else def_srt_order (invent.c:155-159),
+     * which moves the classes most likely to be picked up to the front. */
+    const classorder = (game.flags?.sortpack === false) ? _LOOT_DEF_SRT_ORDER
+                                                        : _QC_INV_ORDER;
+    const k = classorder.indexOf(obj.oclass | 0);
+    return (k >= 0) ? (1 + k) : (1 + classorder.length + 1);
 }
 /* C invent.c invletter_value(), including overflow and gold letters. */
 function _invletter_value(letter) {
@@ -607,7 +613,10 @@ async function _container_contents_one(box, identified, all_containers, reportem
         }
         /* C:1655 display_nhwindow(tmpwin, TRUE) -> process_text_window. */
         lines.push('--More--');
-        const WIN_COL = tty_window_offx(lines, 'more');
+        /* C wintty.c:1925-1928 — `!iflags.menu_overlay` drops the window to
+         * offx 0 and term_clear_screen()s (map and status included). */
+        const fullScreen = g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0;
+        const WIN_COL = fullScreen ? 1 : tty_window_offx(lines, 'more');
         const uac = g.u?.uac ?? 0;
         const moreRow = lines.length - 1;
         const moreCursorCol = WIN_COL + '--More--'.length;
@@ -617,8 +626,10 @@ async function _container_contents_one(box, identified, all_containers, reportem
          * those rows.  Carry the previous menu's surviving prefix into this
          * frame (end.c disclose() passes it); ordinary container lookups have
          * no predecessor clip and retain the normal full status. */
-        const screenOutput = build_window_screen(lines, WIN_COL, uac,
-                                                 statusClipCol);
+        const screenOutput = fullScreen
+            ? lines.map((ln, i) => (i === lines.length - 1 ? ' ' : '')
+                + String(ln).replace(/\s+$/, '')).join('\n')
+            : build_window_screen(lines, WIN_COL, uac, statusClipCol);
         /* C wintty.c:1546 — a pending topline is paged before the window
          * covers it (tty_display_nhwindow(WIN_MESSAGE, TRUE)). */
         for (;;) {

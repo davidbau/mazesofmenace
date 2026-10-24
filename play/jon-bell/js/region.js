@@ -19,7 +19,7 @@ import { wake_nearto, resists_poison, setmangry } from './mklev.js';
 import { isok } from './hacklib.js';
 import { m_at } from './uhitm.js';
 import { cansee, Blind, block_point, unblock_point, does_block, vision_recalc } from './vision.js';
-import { newsym, pline, pline_flush_point, _pline_flush_frame_record, _topl_record_join, _topl_merge_result, _topl_joins_snapshot } from './display.js';
+import { newsym, Unaware, pline, pline_flush_point, _pline_flush_frame_record, _topl_record_join, _topl_merge_result, _topl_joins_snapshot } from './display.js';
 import { m_poisongas_ok } from './mklev.js';
 import { is_pool_or_lava } from './look.js';
 
@@ -687,7 +687,9 @@ export async function run_regions() {
         gg.gas_cloud_diss_within = false;
     }
     if (gg.gas_cloud_diss_seen) {
-        region_pline_sync("You see "
+        /* C ref: pline.c:454-467 You_see() prefix */
+        region_pline_sync((Unaware() ? "You dream that you see "
+                          : Blind() ? "You sense " : "You see ")
                           + ((gg.gas_cloud_diss_seen === 1) ? "a" : "some")
                           + " gas cloud" + plur(gg.gas_cloud_diss_seen)
                           + " dissipate.");

@@ -740,6 +740,12 @@ export async function newuhs(incr) {
     }
     /* C eat.c:3451-3513 — update u.uhs, notify. */
     if (newhs !== (u.uhs | 0)) {
+        if (!u.atemp) u.atemp = { a: [0, 0, 0, 0, 0, 0] };
+        if (!u.atemp.a) u.atemp.a = [0, 0, 0, 0, 0, 0];
+        if (newhs >= WEAK && (u.uhs | 0) < WEAK)
+            u.atemp.a[0] = -1;
+        else if (newhs < WEAK && (u.uhs | 0) >= WEAK)
+            u.atemp.a[0] = 0;
         /* C eat.c:3468-3513 plines the hunger message while u.uhs still holds the
          * pre-update value (the restored save_hs after a meal); u.uhs = newhs comes
          * after it.  That pline's flush_screen()/bot() (pline.c:273-274) therefore
@@ -788,12 +794,6 @@ export async function newuhs(incr) {
             break;
         }
         if (_hsMsg) g._newuhsMsgUhs = { uhs: (u.uhs | 0), msg: _hsMsg };
-        if (!u.atemp) u.atemp = { a: [0, 0, 0, 0, 0, 0] };
-        if (!u.atemp.a) u.atemp.a = [0, 0, 0, 0, 0, 0];
-        if (newhs >= WEAK && (u.atemp.a[0] | 0) >= 0)
-            u.atemp.a[0] = -1;
-        else if (newhs < WEAK && (u.atemp.a[0] | 0) < 0)
-            u.atemp.a[0] = 0;
         u.uhs = newhs;
         /* C hack.h SET_BOTL() */
         if (g.disp)

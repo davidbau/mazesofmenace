@@ -971,6 +971,14 @@ export function vision_recalc(control = 0) {
                             if (!(ov & IN_SIGHT) || oldseenv !== loc.seenv)
                                 newsym(col, row);
                         }
+                        else if ((ov & IN_SIGHT)
+                                 || ((nv & COULD_SEE) ^ (ov & COULD_SEE))) {
+                            /* C vision.c:781-782 `goto not_in_sight` (820-836):
+                             * the adjacent square is dark, so the wall/door is
+                             * not seen; still newsym a spot that was in sight. */
+                            if (col !== 0)
+                                newsym(col, row);
+                        }
                     }
                     else {
                         next_row[col] |= IN_SIGHT;

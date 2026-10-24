@@ -43,6 +43,7 @@
 
 import { PORT_ID } from './platform_identity.js';
 import { game } from './gstate.js';
+import { menu_heading_text } from './tty_menu.js'; // wintty.c:2688
 import { tty_menu_overlay, tty_base_window_prompt } from './display.js';
 import { str2role, str2race, str2gend, str2align } from './roles.js';
 
@@ -528,6 +529,14 @@ function cursorForAsknameAtRow(row, namePrefix) {
 //             lines have padLeft=4).  Empty content → blank row.
 // title    = string in reverse-video at row 0
 // fitsIn24 = if false, force indent=0 left-align
+// C ref: wintty.c:1925-1928 — `!iflags.menu_overlay` forces offx 0 and
+// term_clear_screen() (offy is 0 for NHW_MENU), the same full-screen layout
+// as a menu too tall for the terminal; dismissal then clears the whole screen
+// (erase_menu_or_text, wintty.c:971-976) instead of docorner().
+function menuNoOverlay() {
+    return game.iflags?.menu_overlay === false || game.iflags?.menu_overlay === 0;
+}
+
 function renderMenu(title, lines, fitsIn24, background = null) {
     // Compute max effective line length (content + padLeft).  Empty lines
     // contribute 0.
@@ -537,7 +546,7 @@ function renderMenu(title, lines, fitsIn24, background = null) {
         if (eff > maxLen) maxLen = eff;
     }
     let indent;
-    if (!fitsIn24) {
+    if (!fitsIn24 || menuNoOverlay()) {
         // Left-aligned full role menu: content starts at col 1 (col 0 is a
         // recorded ` (end)` puts "(end)" at cols 1..5 and cursor at col 7
         // (1-indexed) = 6 (0-indexed), i.e. col-after-")" + 1.
@@ -553,7 +562,7 @@ function renderMenu(title, lines, fitsIn24, background = null) {
 function renderMenuAt(title, lines, indent) {
     let out = '';
     // Row 0: title (reverse-video)
-    out += emitLeading(indent, 0) + '\x1b[7m' + title + '\x1b[0m';
+    out += emitLeading(indent, 0) + menu_heading_text(title);
     // Row 1+: lines (each followed by '\n' before the next row).  Empty
     // content → blank row.  Last line has no trailing newline.
     let cursorCol = 0, cursorRow = 0;
@@ -959,7 +968,7 @@ function renderFilterPage(pageItems, morestr) {
                                       : it.text;
         if (!content) { rows.push(''); continue; }
         rows.push(emitLeading(INDENT, 0)
-                  + (it.prompt ? '\x1b[7m' + content + '\x1b[0m' : content));
+                  + (it.prompt ? menu_heading_text(content) : content));
     }
     rows.push(emitLeading(INDENT, 0) + morestr.replace(/\s+$/, ''));
     return {
@@ -1074,7 +1083,7 @@ function buildIsThisOkFrame(name, infoLine, opts = {}) {
                 s += run;
             }
         }
-        if (r === 0) s = s.replace(title, '\x1b[7m' + title + '\x1b[0m');
+        if (r === 0) s = s.replace(title, menu_heading_text(title));
         rowStrs.push(s);
     }
     let lastRow = rowStrs.length - 1;
@@ -2364,7 +2373,7 @@ export async function playChargen(ctx) {
     function confirmFrame() {
         rigid_role_checks_live(st, rn2);   // plsel_startmenu, role.c:2814
         const info = buildConfirmInfoLine(st, plname);
-        if (overlayBanner) {
+        if (overlayBanner && !menuNoOverlay()) {
             const f = buildIsThisOkFrame(plname, info, {
                 mark: yesMark, bannerClip, row10: renameRow10, renameallowed,
                 row12Name: asknameResidual,
@@ -2436,10 +2445,15 @@ export async function playChargen(ctx) {
                 // column offx-1 == indent-2 rightwards, permanently.
                 if (overlayBanner && lastConfirmIndent !== null)
                     bannerClip = Math.min(bannerClip, lastConfirmIndent - 2);
+                // !menu_overlay: the offx-0 menu's dismissal cleared the whole
+                // screen, so the re-ask lands on row 1 of a blank BASE_WINDOW.
+                const fullScreen = menuNoOverlay();
+                const askRow = fullScreen ? 1 : 10;
+                if (fullScreen) menuBackground.fill('');
                 do {
-                    renameResidual = await doAskname(typed => overlayBanner
+                    renameResidual = await doAskname(typed => (overlayBanner && !fullScreen)
                         ? buildAsknameOverBanner(typed, asknameResidual, bannerClip)
-                        : tty_base_window_prompt(menuBackground, 10, ASKNAME_TEXT + (typed ? ' ' + typed : ''), cursorForAsknameAtRow(10, typed)));
+                        : tty_base_window_prompt(menuBackground, askRow, ASKNAME_TEXT + (typed ? ' ' + typed : ''), cursorForAsknameAtRow(askRow, typed)));
                     if (renameResidual === null) return quit();
                     renameRow10 = ASKNAME_TEXT + (renameResidual ? ' ' + renameResidual : '');
                     plname = plnamesuffix(renameResidual, { ...st }); // role.c:2695-2699 restores facets

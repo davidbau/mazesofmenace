@@ -24,6 +24,8 @@ import { wipe_engr_at, wake_msg, angry_guards, mdrop_obj_md } from './mklev.js';
 import { STEALTH as STEALTH_DH, AGGRAVATE_MONSTER as AGGRAVATE_MONSTER_DH } from './const.js';
 import { PM_ETTIN as PM_ETTIN_DH, PM_JABBERWOCK as PM_JABBERWOCK_DH } from './pm.generated.js';
 import { castmu, cuss } from './mcastu.js';
+import { pending_death_is_final } from './end.js';
+import { drain_pending_death_in_place } from './fastforward.js';
 import { couldsee, cansee } from './vision.js';
 import { newsym } from './display.js';
 import { HALLUC as HALLUC_DH, HALLUC_RES as HALLUC_RES_DH } from './const.js';
@@ -655,6 +657,16 @@ export async function dochug(mtmp) {
             }
         }
     }
+    /* C's done() never returns (end.c:1023): a hero killed by mattacku above
+     * ends the game before quest_talk()/cuss() (monmove.c:979-984) can run.
+     * This port defers the death to the command boundary, so stop here. */
+    if (pending_death_is_final())
+        return 0;
+    /* In wizard/explore mode done() opens "Die?" and RETURNS on 'n'
+     * (end.c:1068-1117), so quest_talk()/cuss() follow it: run the deferred
+     * death interaction now rather than at the pass boundary. */
+    if (game._pendingDeath)
+        await drain_pending_death_in_place();
     /* C monmove.c:979-981 — "special speeches for quest monsters":
      *     if (!helpless(mtmp) && nearby) quest_talk(mtmp);
      * helpless(mon) is monst.h:249 msleeping || !mcanmove.  `nearby` is the

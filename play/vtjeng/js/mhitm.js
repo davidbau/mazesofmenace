@@ -74,7 +74,6 @@ import {
     mon_nam_too,
     noname_monnam,
     a_monnam,
-    monsterPossessive,
     some_mon_nam,
     x_monnam,
 } from './do_name.js';
@@ -482,11 +481,14 @@ async function missmm(magr, mdef, mattk, env) {
     pre_mm_attack(magr, mdef, env);
 
     if (state.gv.vis) {
+        // C names use canonical sensing; the combat visibility seam is not
+        // the naming predicate. Keep both random owners for reflexive names.
+        const nameEnv = { random: env.random, displayRandom: env.displayRandom };
         await message(
-            `${capitalizedMonsterName(magr, state)} `
+            `${capitalizedMonsterName(magr, state, nameEnv)} `
             + `${(magr.mcan || !could_seduce(magr, mdef, mattk, env))
                 ? 'misses' : 'pretends to be friendly to'} `
-            + `${mon_nam_too(mdef, magr, state, env)}.`,
+            + `${mon_nam_too(mdef, magr, state, nameEnv)}.`,
             state,
         );
     } else {
@@ -1294,7 +1296,8 @@ async function hitmm(magr, mdef, mattk, mwep, dieroll, env) {
         return M_ATTK_MISS; /* bypass mdamagem() */
 
     if (state.gv.vis) {
-        const magr_name = capitalizedMonsterName(magr, state);
+        const nameEnv = { random: env.random, displayRandom: env.displayRandom };
+        const magr_name = capitalizedMonsterName(magr, state, nameEnv);
         let buf = '';
 
         if (compat) {
@@ -1302,7 +1305,7 @@ async function hitmm(magr, mdef, mattk, mwep, dieroll, env) {
             // compat's nymph gender result to choose the adverb.
             await message(
                 `${magr_name} ${mdef.mcansee ? 'smiles at' : 'talks to'} `
-                + `${mon_nam(mdef, state, env)} `
+                + `${mon_nam(mdef, state, nameEnv)} `
                 + `${compat === 2 ? 'engagingly' : 'seductively'}.`,
                 state,
             );
@@ -1313,7 +1316,7 @@ async function hitmm(magr, mdef, mattk, mwep, dieroll, env) {
             case AT_BUTT: buf = `${magr_name} butts`; break;
             case AT_TUCH: buf = `${magr_name} touches`; break;
             case AT_TENT:
-                buf = `${monsterPossessive(magr, state, true)} tentacles suck`;
+                buf = `${s_suffix(magr_name)} tentacles suck`;
                 break;
             case AT_HUGS:
                 if (magr !== state.u.ustuck) {
@@ -1328,13 +1331,13 @@ async function hitmm(magr, mdef, mattk, mwep, dieroll, env) {
             }
             if (buf) {
                 await message(
-                    `${buf} ${mon_nam_too(mdef, magr, state, env)}.`,
+                    `${buf} ${mon_nam_too(mdef, magr, state, nameEnv)}.`,
                     state,
                 );
             }
 
             if (mon_hates_silver(mdef) && silverhit) {
-                let mdefName = mon_nam_too(mdef, magr, state, env);
+                let mdefName = mon_nam_too(mdef, magr, state, nameEnv);
                 const attackerName = s_suffix(magr_name);
                 if (!noncorporeal(mdef.data) && !amorphous(mdef.data)) {
                     if (mdef !== magr) {
@@ -1406,7 +1409,7 @@ async function mswingsm(magr, mdef, otemp, env) {
         `${Monnam(magr, state, env)} `
             + `${mswings_verb(otemp, bash, { ...env, state, random })} `
             + `${otemp.quan > 1 ? 'one of ' : ''}${mhis(magr, pronounEnv)} `
-            + `${xnameFresh(otemp, state)} at ${mon_nam(mdef, state, env)}.`,
+            + `${xnameFresh(otemp, state)} at ${mon_nam(mdef, state, pronounEnv)}.`,
         state,
         env,
     );
@@ -1755,19 +1758,20 @@ async function passivemm(magr, mdef, mhitb, mdead, mwep, env) {
     switch (mddat.mattk[i].adtyp) {
     case AD_ACID:
         if (mhitb && !random.rn2(2)) {
-            const attackerName = Monnam(magr, state, env);
+            const nameEnv = { displayRandom: env.displayRandom };
+            const attackerName = Monnam(magr, state, nameEnv);
             if (canseemon(magr, state)) {
                 await message(
                     `${attackerName} is splashed by `
-                        + `${s_suffix(mon_nam(mdef, state, env))} `
-                        + `${hliquid('acid', { ...env, state })}!`,
+                        + `${s_suffix(mon_nam(mdef, state, nameEnv))} `
+                        + `${hliquid('acid', { state, displayRandom: env.displayRandom })}!`,
                     state,
                 );
             }
             if (Resists_Elem(magr, ACID_RES, state)) {
                 if (canseemon(magr, state)) {
                     await message(
-                        `${Monnam(magr, state, env)} is not affected.`, state,
+                        `${Monnam(magr, state, nameEnv)} is not affected.`, state,
                     );
                 }
                 tmp = 0;

@@ -60,7 +60,7 @@ import { get_obj_location } from './light.js';
 import { terrain_glyph, update_lastseentyp, GLYPHCLS_CMAP, GLYPHCLS_TRAP } from './display.js';
 import { BURIED_TOO, CONTAINED_TOO, TRAPPED_CHEST, TRAPPED_DOOR, Has_contents } from './const.js';
 import { foundone } from './detect.js';
-import { pline, Norep, flush_screen, newsym, feel_newsym, canspotmon, canseemon, _topl_joins_snapshot, _topline_more_pending, _defer_until_more_dismissed, tmp_at, zapdir_to_glyph, map_invisible, unmap_invisible, DISP_BEAM, DISP_CHANGE, DISP_END, DISP_FLASH, newsym_force, _topl_merge_result, shieldeff as shieldeff_real, Deaf as _live_deaf_reading } from './display.js';
+import { pline, Norep, flush_screen, newsym, feel_newsym, canspotmon, canseemon, _topl_joins_snapshot, _topline_more_pending, _defer_until_more_dismissed, tmp_at, zapdir_to_glyph, map_invisible, unmap_invisible, DISP_BEAM, DISP_CHANGE, DISP_END, DISP_FLASH, newsym_force, _topl_merge_result, shieldeff as shieldeff_real, explode_shield_effect, Deaf as _live_deaf_reading } from './display.js';
 import { topl_park_cursor, _topl_stash_result, flush_pending_messages, _more_never_dismissed } from './display.js';
 import { bot, see_monsters, force_more, GLYPHCLS_INVIS, Unaware } from './display.js';
 import { deadhero, pending_death_is_final, do_death_sequence } from './end.js';
@@ -101,7 +101,7 @@ import { xname, yname, silly_thing_dw, hard_helmet } from './do_wear.js';
 import { useup as _destroy_useup, useupf, compactify, getobj_redo_menu, check_capacity, learn_unseen_invent, confdir, getObjFromGetobj, hero_breaks, boulder_hits_pool, obj_extract_self_general, costly_alteration as costly_alteration_real } from './cmd.js';
 import { setnotworn, setworn } from './worn.js';
 import { Ring_gone as _ring_gone, Ring_off, Ring_on } from './do_wear.js';
-import { xytodir, throwit_mon_hit, endmultishot } from './cmd.js';
+import { xytodir, throwit_mon_hit, endmultishot, set_msg_xy } from './cmd.js';
 import { ceiling, body_part, force_decor } from './cmd.js';
 import { breaks, delobj, hot_pursuit, losehp, obfree } from './dokick.js';
 import { weight } from './weight.js';
@@ -2673,7 +2673,9 @@ export async function dobuzz(type, nd, sxIn, syIn, dxIn, dyIn, sayhit, saymiss, 
                 }
             } else if (!forcemiss && zap_hit(u.uac | 0, 0)) {
                 range -= 2;
-                /* "<The flash> hits you!" */
+                /* "<The flash> hits you!" — C zap.c:4964 pline_dir(xytodir(-dx,-dy)):
+                 * set_msg_dir = hero + dirtocoord(dir) (pline.c:84-90) */
+                set_msg_xy(u.ux - Math.sign(dx), u.uy - Math.sign(dy));
                 await pline(`The ${flash_str(fltyp)} hits you!`);
                 // C update_topl blocks on overflow before applying the hit.
                 // Include command-result text stashed by earlier ray effects.
@@ -3928,11 +3930,18 @@ export async function explode(x, y, type, dam, olet, expltype) {
                 starting = false;
             }
 
-        if (any_shield && game.flags?.sparkle) {
+        if (any_shield) {
             /* C explode.c:396-425 — the SHIELD_COUNT shield-flash loop, entered
-               only when some target RESISTED.  The AD_PHYS mask never sets a
-               shield bit, so a gas spore cannot reach it. */
-            shieldeff_real(x, y);
+               only when some target RESISTED (and flags.sparkle).  The AD_PHYS
+               mask never sets a shield bit, so a gas spore cannot reach it.
+               Per resisting CELL, not at the centre, and with no cansee(). */
+            const shieldCells = [];
+            for (i = 0; i < 3; i++)
+                for (j = 0; j < 3; j++)
+                    if ((explmask[i][j] & (EXPL_MON | EXPL_HERO)) !== 0)
+                        shieldCells.push({ x: x + i - 1, y: y + j - 1,
+                            glyph: explosion_to_glyph(expltype, _explosion_cmap[i][j]) });
+            explode_shield_effect(shieldCells);
         }
         /* C explode.c:427-430 else: two nh_delay_output() calls — pure pacing. */
 

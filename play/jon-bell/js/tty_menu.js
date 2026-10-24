@@ -42,7 +42,7 @@ export function menu_heading_sgr() {
     const codes = [];
     if (mh.attr) codes.push(mh.attr);
     if (mh.color >= 0 && mh.color < 8) codes.push(30 + mh.color);
-    else if (mh.color >= 8 && mh.color < 16) codes.push(90 + mh.color - 8);
+    else if (mh.color > 8 && mh.color < 16) codes.push(90 + mh.color - 8); /* 8 is NO_COLOR */
     return codes;
 }
 /* putstr(win, iflags.menu_headings.attr, str) — attribute only, no colour
@@ -211,7 +211,13 @@ export class TtyMenu {
         /* keep any leading escape untouched: selectable lines never carry one */
         /* a row the MENU_SEARCH getlin blanked is still painted at column 3
          * (tty_curs + putchar on an otherwise empty row) */
-        this._lines[lineIdx] = l.padEnd(3).slice(0, 3) + ch + l.slice(4);
+        /* C wintty.c:1186-1193: the indicator is drawn with the item's own
+         * attr/color (a menucolor match applies to it too). */
+        const mc = curr.menuColor;
+        const sgr = mc ? [mc.attr || '', (mc.color === NO_COLOR || mc.color === 7) ? ''
+            : mc.color < 8 ? 30 + mc.color : 90 + mc.color - 8].filter(Boolean) : [];
+        const cell = sgr.length ? `\x1b[${sgr.join(';')}m${ch}${ESC_RESET}` : ch;
+        this._lines[lineIdx] = l.padEnd(3).slice(0, 3) + cell + l.slice(4);
     }
 
     /* Publish the current frame and park the cursor where dmore() leaves it. */

@@ -46,6 +46,7 @@ import { obj_resists } from './zap.js';
 import { arti_light_radius, maybe_adjust_light } from './light.js';
 import { curse } from './mkobj.js';
 import { heal_legs, unfixable_trouble_count, doup, body_part as body_part_cmd, ceiling, altar_wrath } from './cmd.js';
+import { reassign } from './inventory_refresh.js';
 import { WOUNDED_LEGS } from './const.js';
 /* C hack.h:129-149 enum bodypart_types — the indices body_part() takes. */
 import { EYE, FINGER, HAND, LEG, ARM, STOMACH, FACE } from './const.js';
@@ -1810,6 +1811,7 @@ export async function dodrink() {
             ++drink_ok_extra;
         }
     }
+    if (!(g.flags?.invlet_constant ?? true)) reassign();
     let _drinkLets = '';
     for (let o = g.invent; o; o = o.nobj) {
         if ((o.oclass | 0) === POTION_CLASS) {
@@ -1832,7 +1834,18 @@ export async function dodrink() {
     /* Hoisted above the loop: C's getobj resolves the invlet INSIDE its for(;;)
      * (invent.c:2002-2062) so an unmatched letter can re-prompt. */
     let otmp = null;
+    /* C invent.c:1922-1930 — iflags.force_invmenu skips yn_function: the first
+     * pass feeds '?' into redo_menu (lets is non-empty here, else the "don't
+     * have anything to drink" return above fired), files the bare qbuf once,
+     * and sets oneloop so a dismissed menu returns NULL. */
+    const _force = !!(g.iflags?.force_invmenu && !g.in_doagain);
+    let _oneloop = false;
     for (;;) {
+        if (_force && !_oneloop) {
+            putmsghistory('What do you want to drink?', false);
+            _oneloop = true;
+            itemKey = _drinkLets ? 63 /* '?' */ : 42 /* '*' */;
+        } else {
         g._pending_message = _qbuf;
         await flush_screen(1);
         /* C tty: cursor parked one past the prompt + trailing space (qbuf len+1). */
@@ -1850,6 +1863,7 @@ export async function dodrink() {
         // C leaves the getobj prompt physically painted after the answer.
         // Preserve it until the next input when a potion emits no new message.
         g._topl_sticky = _qbuf;
+        }
         /* C invent.c:1960-1999 `redo_menu` — '?'/'*' are handled here, BEFORE the
          * invlet walk at invent.c:2002, by display_pickinv (restricted to `lets`
          * for '?', the whole pack for '*').  `altlets` is empty for this command:
@@ -1857,7 +1871,8 @@ export async function dodrink() {
          * GETOBJ_EXCLUDE or GETOBJ_EXCLUDE_NONINVENT, never GETOBJ_DOWNPLAY, so
          * nothing is ever collected into the altlets buffer at invent.c:1884. */
         if (itemKey === 63 /* '?' */ || itemKey === 42 /* '*' */) {
-            itemKey = await getobj_redo_menu(itemKey, _drinkLets, '');
+            itemKey = await getobj_redo_menu(itemKey, _drinkLets, '', null,
+                { word: 'drink', allownone: false, buf: _drinkLets });
             /* invent.c:1989-1993 — ESC out of the menu: "Never mind." (already
              * plined by the helper) → getobj returns NULL → dodrink's
              * `if (!otmp) return ECMD_CANCEL` (potion.c:576). */
@@ -1868,8 +1883,10 @@ export async function dodrink() {
             /* invent.c:1982-1986 — display_pickinv answered 0 (dismissed with no
              * selection); `oneloop` is set only by iflags.force_invmenu, which is
              * Off, so C `continue`s the prompt loop rather than cancelling. */
-            if (itemKey === 0)
+            if (itemKey === 0) {
+                if (_oneloop) { g.context.move = 0; return ECMD_CANCEL; }
                 continue;
+            }
         }
         /* C invent.c:1937-1942 — the digit arm runs BEFORE the quitchars test;
          * dodrink passes GETOBJ_NOFLAGS (potion.c:573), so allowcnt is false:
@@ -3272,7 +3289,7 @@ function _simpleonames(obj) {
     if ((obj.quan | 0) !== 1) return makeplural_objnam(base);
     return base;
 }
-function _thesimpleoname(obj) { return `the ${_simpleoname(obj)}`; }
+function _thesimpleoname(obj) { return `the ${_simpleonames(obj)}`; } /* objnam.c:2474: the(simpleonames(obj)) */
 /* doname-with-article (for the obuf in the "dip <X> into" prompt). */
 function _doname_potion(obj) {
     const base = _simpleoname(obj);
@@ -4179,7 +4196,7 @@ export async function dodip() {
     }
 
     /* "What do you want to dip <obj> into? [xyz or ?*]" */
-    const word2 = `dip ${obuf} into`;
+    const word2 = `dip ${g.flags?.verbose === false ? shortestname : obuf} into`; /* C potion.c:2364 */
     /* C potion.c:2367 — potion = getobj(qbuf, drink_ok, GETOBJ_NOFLAGS).
      * NOFLAGS, not PROMPT, and drink_ok's null arm never sets allownone, so this
      * prompt DOES take getobj's no-candidates early-out: a hero with no potion

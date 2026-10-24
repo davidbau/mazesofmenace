@@ -85,6 +85,11 @@ import { learnscroll } from './read.js';
 /* C potion.c:260 make_blinded — canonical transient-blindness transition. */
 import { make_blinded } from './zap.js';
 import { ENV } from './hostenv.js';
+import { closed_door as closed_door_vr } from './look.js';
+import { cansee as cansee_vr, recalc_block_point as recalc_block_point_vr } from './vision.js';
+import { You_hear as You_hear_vr, You_see as You_see_vr } from './display.js';
+import { mb_trapped as mb_trapped_vr } from './dig.js';
+import { D_TRAPPED as D_TRAPPED_VR, D_NODOOR as D_NODOOR_VR } from './const.js';
 import { newcham as newcham_vr, upstart as upstart_vr } from './mklev.js';
 import { expels_gu as expels_gu_vr } from './mhitu.js';
 import { x_monnam as x_monnam_vr } from './mhitm.js';
@@ -2001,7 +2006,7 @@ export async function u_teleport_mon(mtmp, give_feedback) {
  * reverts to vampire instead.  If it was engulfing the hero, expels() (the
  * mnexto ring shuffle + spoteffects) runs first, then newcham back to the
  * vampire.  Returns TRUE when the monster rose (mondead() then returns early).
- * NOT modelled: the closed_door arm (mon.c:2949-2975, door smash / booby trap). */
+ */
 export async function vamprises(mtmp) {
     const mndx = mtmp.cham | 0;
     if (!ismnum_vr(mndx) || mndx === ((mtmp.data?.pmidx ?? mtmp.mnum) | 0)
@@ -2014,6 +2019,7 @@ export async function vamprises(mtmp) {
     const specMon = nonliving_vr(ptr) || noncorp || amorph;
     const specDeath = !!game.gd?.disintegested || noncorp || amorph;
     const unaware = Unaware_vr();
+    const x0 = mtmp.mx | 0, y0 = mtmp.my | 0;
     const action = (unaware ? 'you dream that ' : '')
         + x_monnam_vr(mtmp, ARTICLE_THE_VR, specMon ? null : 'seemingly dead',
                       SUPPRESS_INVISIBLE_VR | AUGMENT_IT_VR, false)
@@ -2042,6 +2048,28 @@ export async function vamprises(mtmp) {
                           SUPPRESS_NAME_VR | SUPPRESS_IT_VR | SUPPRESS_INVISIBLE_VR, false) + '!');
         game.vamp_rise_msg = true;
     }
-    newsym(mtmp.mx | 0, mtmp.my | 0);
+    /* mon.c:2949-2975: a revived vampire on a closed door spot smashes it */
+    if (closed_door_vr(x0, y0)) {
+        const lev = game.level.at(x0, y0);
+        const trapped = ((lev.doormask | 0) & D_TRAPPED_VR) !== 0;
+        const seeit = cansee_vr(x0, y0);
+        if (!seeit)
+            await You_hear_vr(trapped ? 'an explosion' : 'a door being smashed');
+        else if (!canspotmon(mtmp))
+            await You_see_vr(trapped ? 'a door exploding' : 'a door being smashed');
+        else if (!unaware)
+            await pline(trapped ? 'The door is smashed and it explodes!' : 'The door is smashed.');
+        lev.doormask = D_NODOOR_VR;
+        recalc_block_point_vr(x0, y0);
+        if (trapped) {
+            const save_verbose = game.flags.verbose;
+            game.flags.verbose = false;
+            const trap_killed = await mb_trapped_vr(mtmp, seeit);
+            game.flags.verbose = save_verbose;
+            if (trap_killed && canspotmon(mtmp) && !unaware)
+                await pline(`${Monnam(mtmp)} is destroyed!`);
+        }
+    }
+    newsym(x0, y0);
     return true;
 }

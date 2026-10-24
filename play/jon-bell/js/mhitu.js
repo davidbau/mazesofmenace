@@ -212,6 +212,7 @@ import { miss as miss_mu, hit as hit_mu,
          incr_HBlinded as incr_HBlinded_mu } from './zap.js';
 import { distant_name as distant_name_mu, killer_xname as killer_xname_mu } from './objnam.js';
 import { The as The_mu } from './objnam.js';
+import { otense as otense_mu } from './objnam.js';
 import { find_mac as find_mac_mu } from './trap.js';
 import { reset_utrap as reset_utrap_mu } from './trap.js';
 import { omon_adj as omon_adj_mu } from './cmd.js';
@@ -1632,8 +1633,16 @@ async function mhitm_knockback_u(mtmp, mattk, hitflags) {
     /* C uhitm.c:5398 — if (!Stunned && !rn2(4)) make_stunned(knockdistance+1). */
     const Stunned = (HStun(game) & 0xffffff) !== 0;
     if (!Stunned) {
-        if (!rn2(4))
+        if (!rn2(4)) {
+            /* potion.c:120-128: "You stagger..." flushes (bot() paints the
+             * pre-stun line) BEFORE make_stunned raises disp.botl, so the
+             * botl flag is raised AFTER that flush and mdamageu's pre-damage
+             * latch must not repaint it — same shape as mhitm_ad_drli_u.
+             * Unaware suppresses the pline, so nothing flushed then. */
+            const _talked = !Unaware();
             make_stunned(knockdistance + 1, true);
+            if (_talked) game._botlRaisedAfterFlush = true;
+        }
     }
     return true;
 }
@@ -1960,6 +1969,11 @@ export async function doseduce(mon) {
         switch (rn2(5)) {
         case 0:
             pline('You feel raised to your full potential.');
+            /* C mhitu.c:2229-2231: Pw changes after the pline with no botl flag. */
+            if (!(g.disp && ((g.disp.botl | 0) || (g.disp.botlx | 0)))) {
+                if (g._botlStaleUen === undefined) g._botlStaleUen = u.uen | 0;
+                if (g._botlStaleUenmax === undefined) g._botlStaleUenmax = u.uenmax | 0;
+            }
             exercise(A_CON_DS, true);
             u.uen = (u.uenmax += rnd(5));
             if (u.uenmax > u.uenpeak) u.uenpeak = u.uenmax;
@@ -3728,9 +3742,9 @@ async function missmu_je(mtmp, nearmiss, mattk) {
     /* C mhitu.c:93-94 — a seductive attacker (nymph/incubus) that misses a
      * hero it could seduce "pretends to be friendly" instead. */
     if (could_seduce(mtmp, game.youmonst ?? game.u, mattk) && !mtmp.mcan)
-        pline(`${Monst_name} pretends to be friendly.`);
+        await pline_mon(mtmp, `${Monst_name} pretends to be friendly.`);   /* mhitu.c:94 */
     else
-        pline(`${Monst_name} ${nearmiss_verbose ? 'just ' : ''}misses!`);
+        await pline_mon(mtmp, `${Monst_name} ${nearmiss_verbose ? 'just ' : ''}misses!`);   /* mhitu.c:96 */
     if (_topline_more_pending() && _more_never_dismissed())
         await flush_pending_messages();
     /* C mhitu.c:100 — stop_occupation() (RNG-neutral); emits "You stop studying."
@@ -4097,6 +4111,7 @@ export async function monshoot(mtmp, otmp, mwep) {
          * path always has mtarg == 0, and the monster-vs-monster caller
          * (thrwmm) is not wired to monshoot in this port. */
         const trgbuf = mtarg ? some_mon_nam(mtarg) : '';
+        set_msg_xy_mu(mtmp.mx, mtmp.my); /* C mthrowu.c:289 */
         pline(`${je_Monnam(mtmp)} ${gm.m_shot.s ? 'shoots' : 'throws'} ${onm}`
               + `${mtarg ? ' at ' : ''}${trgbuf}!`);
         gm.m_shot.o = otmp.otyp | 0;
@@ -4850,7 +4865,11 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
              * volley overshoots in view. */
             /* no 'range &&' here: C's range test guards only the sink arm; the
              * 'misses' arm also fires when the volley ran out of range. */
-            if (gm.m_shot && (gm.m_shot.n | 0) > 1
+            if (range && cansee_mu(bx, by)
+                && ((game.level?.at(bx, by)?.typ | 0) === SINK_MU))
+                /* C mthrowu.c:803-806 — a missile stopped by a sink. */
+                await pline(`${The_mu(mshot_xname(singleobj))} ${otense_mu(singleobj, Hallucination(game) ? 'plop' : 'drop')} onto the sink.`);
+            else if (gm.m_shot && (gm.m_shot.n | 0) > 1
                 && (!gm.mesg_given || bx !== (game.u?.ux | 0) || by !== (game.u?.uy | 0))
                 && (cansee_mu(bx, by) || (gm.marcher && canseemon_mu(gm.marcher))))
                 pline(`${The_mu(mshot_xname(singleobj))} misses.`);
@@ -6716,6 +6735,7 @@ function canspotmon_mhu(m)   { return !!canspotmon_disp(m); }
 export async function mswings(mtmp, otemp, bash) {
     const gs = game;
     if ((gs.flags?.verbose ?? true) && !Blind(gs) && mon_visible_disp(mtmp)) {
+        set_msg_xy_mu(mtmp.mx, mtmp.my); /* C mhitu.c:136 pline_mon */
         await pline(`${Monnam_mhu(mtmp)} ${mswings_verb(otemp, bash)} `
               + `${((otemp.quan | 0) > 1) ? 'one of ' : ''}`
               + `${mhis_mon(mtmp)} ${xname(otemp)}.`);

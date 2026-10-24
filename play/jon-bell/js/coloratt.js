@@ -360,7 +360,7 @@ export function add_menu_coloring(tmpstr) {
     const ATTRS = { none: 0, bold: 1, dim: 2, underline: 4, blink: 5, inverse: 7 };
     let attr = 0;
     if (m[3]) for (const a of m[3].split('+')) attr = ATTRS[a.trim().toLowerCase()] ?? attr;
-    (game.menu_colorings ||= []).unshift({ match: re, color: c, attr });
+    (game.menu_colorings ||= []).unshift({ match: re, color: c, attr, origstr: m[1] });
     if (game.iflags) game.iflags.use_menu_color = true;
     return true;
 }

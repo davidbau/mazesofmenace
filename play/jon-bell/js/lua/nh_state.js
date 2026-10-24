@@ -245,13 +245,23 @@ export async function createLevelLuaState() {
         const parsed = parse_lua_config(lua_checkstring(args[0]), parseNethackrc);
         if (!game)
             return undefined;
-        if (parsed.flags && Object.keys(parsed.flags).length) {
+        /* parseNethackrc seeds its result with startup defaults (iflags.hilite_delta
+         * 0, flags.autounlock, flags.inv_order).  C's parse_config_line only
+         * touches what the line names, so a default-valued entry must not
+         * overwrite the live value (tut-1.lua's OPTIONS=mention_walls was
+         * zeroing hilite_delta and with it every hilite_status rule). */
+        const defaults = parseNethackrc('');
+        const fresh = (live, dflt) => Object.fromEntries(Object.entries(live || {})
+            .filter(([k, v]) => JSON.stringify(v) !== JSON.stringify(dflt?.[k])));
+        const pflags = fresh(parsed.flags, defaults.flags);
+        const piflags = fresh(parsed.iflags, defaults.iflags);
+        if (Object.keys(pflags).length) {
             if (!game.flags) game.flags = {};
-            Object.assign(game.flags, parsed.flags);
+            Object.assign(game.flags, pflags);
         }
-        if (parsed.iflags && Object.keys(parsed.iflags).length) {
+        if (Object.keys(piflags).length) {
             if (!game.iflags) game.iflags = {};
-            Object.assign(game.iflags, parsed.iflags);
+            Object.assign(game.iflags, piflags);
         }
         return undefined;
     });

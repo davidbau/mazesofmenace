@@ -786,10 +786,22 @@ export async function finishElapsedTurn(
     // so they get a live evaluator below rather than this value, which
     // nh_timeout() and the hunger transition can already have invalidated.
     const wtcap = near_capacity(state);
+    // Shape-change upkeep names monsters before random births and timers.
+    // All planned naming callers share this clone-owned cosmetic stream.
+    const planningDisplayRandom = planning
+        ? state.displayCtx
+            ? createCoreRandom(state.displayCtx, state).rn2
+            : () => {
+                throw new TypeError(
+                    'planned monster naming requires initialized display RNG',
+                );
+            }
+        : undefined;
     state.gw.were_changes = 0;
     await mcalcdistress(state, {
         state,
         random,
+        displayRandom: planningDisplayRandom,
         planning,
         message: turnMessage,
         redrawSquare: planning ? () => {} : newsym,
@@ -809,15 +821,6 @@ export async function finishElapsedTurn(
             random.rn2,
         );
     }
-    const planningDisplayRandom = planning
-        ? state.displayCtx
-            ? createCoreRandom(state.displayCtx, state).rn2
-            : () => {
-                throw new TypeError(
-                    'planned monster naming requires initialized display RNG',
-                );
-            }
-        : undefined;
     // A random mimic can be born during this cloned allocation. makemon.c
     // set_mimic_sym() rebuilds vision after choosing a blocking disguise, so
     // run that tail against the cloned monster map and mark the borrowed
@@ -1729,8 +1732,15 @@ export async function moveloop_core() {
         await makewish(g);
     }
 
-    // Vision + display
-    if (g.vision_full_recalc) {
+    const hallucination = g.u.uprops?.[HALLUC];
+    const hallucinating = Boolean(
+        hallucination?.intrinsic
+        && !hallucination?.blocked
+        && !propertyActive(g, HALLUC_RES),
+    );
+    // Keep the existing non-hallucinatory vision/region ordering. Hallucination
+    // below follows C's sensing layers before spending pending vision work.
+    if (!hallucinating && g.vision_full_recalc) {
         vision_recalc(0);
         g.vision_full_recalc = 0;
     }
@@ -1743,12 +1753,6 @@ export async function moveloop_core() {
     // layers and redraws the swallowed stomach. The latter bypasses newsym(),
     // so the swallowed guard alone is not enough: omitting this branch leaves
     // the stale pre-hallucination DEC/Unicode stomach on the terminal.
-    const hallucination = g.u.uprops?.[HALLUC];
-    const hallucinating = Boolean(
-        hallucination?.intrinsic
-        && !hallucination?.blocked
-        && !propertyActive(g, HALLUC_RES),
-    );
     const blind = Boolean(g.u.uprops?.[BLINDED]?.intrinsic
         || g.u.uprops?.[BLINDED]?.extrinsic)
         && !g.u.uprops?.[BLINDED]?.blocked;
@@ -1767,6 +1771,12 @@ export async function moveloop_core() {
             // allmain.c:462-467. These sensing modes need only the monster
             // overlay; objects and traps retain their ordinary memory.
             await see_monsters(g);
+        }
+        // C ref: allmain.c:470-471. Recalculate after the sensing layers;
+        // a blind hero's tactile repaint can itself consume display RNG.
+        if (hallucinating && g.vision_full_recalc) {
+            vision_recalc(0);
+            g.vision_full_recalc = 0;
         }
     }
     // C ref: allmain.c moveloop_core() (473-478). The status line repaints

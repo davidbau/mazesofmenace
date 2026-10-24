@@ -32,7 +32,7 @@ import { savebones, no_bones_level } from './bones.js';
 import { launch_in_progress, force_launch_placement } from './trap.js';
 import { force_more, force_more_lone_frame, pline, urgent_pline, flush_screen, bot, _topl_joins_committed,
          _topline_more_pending, capture_painted_frame_with_status } from './display.js';
-import { topl_park_cursor, canspotmon } from './display.js';
+import { topl_park_cursor, canspotmon, _threeStatusLines } from './display.js';
 import { putmsghistory, Unaware, livelog_printf, pline_flush_point } from './display.js';
 import { LL_LIFESAVE } from './const.js';
 import { cmdq_pop, cmdq_clear, cmdq_add_key, key2txt } from './cmd.js';
@@ -1400,7 +1400,7 @@ async function disclose(how, taken) {
              * bot() only when `ymax >= wins[WIN_STATUS]->offy`; a menu shorter
              * than the status offy (22) leaves both status rows intact. */
             const _dRows = _discloseInv?.winRows ?? 99;
-            const _statusClip = (_dRows < 22)
+            const _statusClip = (_dRows < (_threeStatusLines() ? 21 : 22))
                 ? undefined
                 : (_dRows === 22)
                     ? -1
@@ -1412,9 +1412,10 @@ async function disclose(how, taken) {
                         : Math.max(0, (_discloseInv?.WIN_COL ?? 2) - 2);
             const _savedPW = g._pickinv_window;
             if (_statusClip === -1) g._pickinv_window = { ...(_savedPW || {}), WIN_COL: _discloseInv?.WIN_COL };
+            g._statusClipFirstRowOnly = _threeStatusLines() && _dRows === 21;
             try {
             await container_contents(g.invent, true, true, false, _statusClip);
-            } finally { if (_statusClip === -1) g._pickinv_window = _savedPW; }
+            } finally { g._statusClipFirstRowOnly = false; if (_statusClip === -1) g._pickinv_window = _savedPW; }
         }
         if (c === 'q')
             g.program_state.stopprint++;

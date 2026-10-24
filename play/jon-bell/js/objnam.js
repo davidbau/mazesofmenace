@@ -5082,7 +5082,13 @@ async function doname_base(obj, doname_flags) {
         if (mask & (W_RINGL_D | W_RINGR_D)) bp += `${body_part(HAND_D)})`;
         if (known && _oc_charged(obj)) prefix += _plusd(obj.spe | 0);
     }
-    /* C:1556-1624 — GAP: the wizmgender statue/corpse/figurine suffix. */
+    /* C:1549-1559 — the wizmgender statue/corpse/figurine suffix. */
+    if ((otyp === STATUE || otyp === CORPSE || otyp === FIGURINE)
+        && g.flags?.debug && g.iflags?.wizmgender) {
+        const cgend = (obj.spe | 0) & CORPSTAT_GENDER;
+        bp += ` (${cgend === CORPSTAT_RANDOM ? 'unspecified gender'
+            : cgend === CORPSTAT_MALE ? 'male' : cgend === CORPSTAT_FEMALE ? 'female' : 'neuter'})`;
+    }
 
     /* C:1560-1611 — the wielded-weapon suffix. */
     const u = g.u || {};

@@ -48,7 +48,7 @@ import { place_object, set_ustuck, resists_ston, resists_poison,
          mksobj as mksobj_dg, healmon as healmon_dg, wake_nearto as wake_nearto_dg, mlifesaver as mlifesaver_dg, set_corpsenm as set_corpsenm_dg } from './mklev.js';
 import { closed_door, accessible, is_pool } from './look.js';
 import { erode_obj, mintrap as mintrap_real, goodpos as goodpos_real, m_useup as m_useup_dg } from './trap.js';
-import { PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER, PM_STEAM_VORTEX, PM_AIR_ELEMENTAL, PM_BLACK_PUDDING, PM_BROWN_PUDDING, PM_SHADE, PM_DEATH, PM_PESTILENCE, PM_FAMINE, PM_CHICKATRICE, PM_COCKATRICE, PM_MEDUSA, PM_STONE_GOLEM, PM_ANGEL, PM_RUST_MONSTER, PM_GELATINOUS_CUBE, PM_ARCHON } from './pm.generated.js';
+import { PM_GHOUL, PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER, PM_STEAM_VORTEX, PM_AIR_ELEMENTAL, PM_BLACK_PUDDING, PM_BROWN_PUDDING, PM_SHADE, PM_DEATH, PM_PESTILENCE, PM_FAMINE, PM_CHICKATRICE, PM_COCKATRICE, PM_MEDUSA, PM_STONE_GOLEM, PM_ANGEL, PM_RUST_MONSTER, PM_GELATINOUS_CUBE, PM_ARCHON } from './pm.generated.js';
 import { zombie_maker, dmgtype_fromattack, grow_up, nonliving, onscary, monPmname, splitobj, nextoid, which_armor, permonstTemplate, set_mon_data } from './makemon.js';
 import { pline, newsym, _topline_more_pending, _more_never_dismissed, _more_pages_exceed_input, flush_pending_messages, mon_visible, canseemon, canspotmon, map_invisible, glyph_is_invisible_at, unmap_object, You_hear, Deaf, sensemon } from './display.js';
 import { Japanese_item_name, xname_scroll, xname_armor, doname_potion, xname, doname, distant_name, in_distant_name, is_quest_artifact } from './objnam.js';
@@ -714,7 +714,22 @@ export function dogfood(mtmp, obj) {
         const starving = !!(mtmp.mtame && !(mtmp.isminion | 0) && edog && (edog.mhpmax_penalty | 0));
         /* C dog.c:1040 — mblind: !mcansee && haseyes (kittens have eyes). */
         const mblind = !(mtmp.mcansee | 0); /* haseyes ~ true for early pets */
-        /* C dog.c:1045-1054 GHOUL special — no early-game pet is a ghoul; skip. */
+        /* C dog.c:1043-1053 — ghouls prefer old corpses and unhatchable eggs and
+         * regard every other food as TABU (so dog_goal's `otyp > gg.gtyp` test
+         * skips it; a ghoul pet never takes the ACCFOOD goal arm). */
+        if (mndx === PM_GHOUL) {
+            const fxg = (obj.corpsenm ?? -1) | 0;
+            if (otyp === CORPSE_OTYP)
+                return ((obj.on_ice ? peek_at_iced_corpse_age_js(obj, (game.moves ?? 0) | 0) : (obj.age | 0)) + 50
+                        <= ((game.moves ?? 0) | 0)
+                        && !(fxg === PM_LIZARD_C || fxg === PM_LICHEN_C)) ? DOGFOOD
+                    : (starving && !(ismnum_js(fxg) && _vegan(fxg))) ? ACCFOOD
+                        : POISON;
+            if (otyp === EGG_OTYP)
+                return ((((game.moves ?? 0) | 0) - (obj.age | 0)) > 2 * 200 /* MAX_EGG_HATCH_TIME */)
+                    ? CADAVER : starving ? ACCFOOD : POISON;
+            return TABU;
+        }
 
         /* C dog.c:1056-1111 switch(obj->otyp): */
         switch (otyp) {
@@ -1220,12 +1235,6 @@ async function dog_obj_name(obj) {
     /* A greased corpse is "a greased jackal corpse" (objnam.c:1370-1371), which
      * the species shortcut below cannot render; only a bare corpse may take it. */
     /* wizweight (objnam.c:1696-1702) appends " (N aum)" in doname; so must not shortcut. */
-    if (otyp === CORPSE_OTYP && !(obj.greased | 0)
-        && !(wizard() && game.iflags?.wizweight)) {
-        const sp = obj_pmname_dm(obj);
-        const base = sp ? sp + ' corpse' : 'corpse';
-        return an_qm(base);
-    }
     if (otyp === 230 /* MIRROR */)
         return 'a looking glass';
     return await distant_name(obj, doname);
@@ -1259,7 +1268,7 @@ async function _dm_doname(obj) {
         obj.bknown = 1;
 
     const otyp = obj.otyp | 0;
-    if (otyp === CORPSE_OTYP) {
+    if (otyp === CORPSE_OTYP && !(obj.oeaten | 0)) {
         const sp = obj_pmname_dm(obj);
         return an_dm(sp ? sp + ' corpse' : 'corpse');
     }
@@ -3632,6 +3641,7 @@ async function gulpmm(magr, mdef, mattk) {
     }
     const ax = magr.mx, ay = magr.my, dx = mdef.mx, dy = mdef.my;
     /* move the aggressor onto the defender's square (mdef stays in fmon) */
+    mdef._mapRemoved = true; /* remove_monster(dx, dy): off the grid, still on fmon */
     magr.mx = dx; magr.my = dy;
     newsym(ax, ay);
     newsym(dx, dy);
@@ -3639,6 +3649,7 @@ async function gulpmm(magr, mdef, mattk) {
     game.gm.mswallower = magr; /* corpse_chance() wants this */
     let status = await mdamagem_dm(magr, mdef, mattk, null, 0);
     game.gm.mswallower = null;
+    delete mdef._mapRemoved;
 
     if ((status & (M_ATTK_AGR_DIED | M_ATTK_DEF_DIED))
         === (M_ATTK_AGR_DIED | M_ATTK_DEF_DIED)) {

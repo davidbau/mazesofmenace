@@ -562,7 +562,8 @@ export function optfn_sortdiscoveries_set(value, negated, flags) {
 // C o_init.c:610-655.  Keep the selected default when the menu is accepted
 // unchanged, and skip it when another entry was selected alongside it.
 export async function choose_disco_sort(mode, preserveStatus = false) {
-    const menu = new TtyMenu({ overlay: true,
+    const menu = new TtyMenu({
+        overlay: !(game.iflags?.menu_overlay === false || game.iflags?.menu_overlay === 0), /* wintty.c:1927 */
         statusClipCol: mode === 0 && !preserveStatus ? 0 : undefined });
     for (let i = 0; i < disco_orders_descr.length; ++i) {
         const c = disco_order_let[i];

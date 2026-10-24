@@ -469,6 +469,7 @@ export async function use_offensive(mtmp) {
     case MUSE_POT_ACID:
         if (cansee(mtmp.mx | 0, mtmp.my | 0)) {
             observe_object(otmp);
+            set_msg_xy(mtmp.mx, mtmp.my); /* pline_mon muse.c:2017 */
             pline(`${Monnam(mtmp)} hurls ${(await singular(otmp, doname))}!`);
         }
         await m_throw(mtmp, mtmp.mx | 0, mtmp.my | 0,

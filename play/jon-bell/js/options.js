@@ -25,7 +25,7 @@ import { config_error_add } from './cmd_binds.js';
 import { str2role, str2race, str2gend, str2align, setrolefilter, gr as roleGlobals } from './roles.js';
 import { glyphrep_to_custom_map_entries } from './glyphs.js';
 import { config_line_error, config_statement, choose_random_part, config_error_nextline, is_config_section, parse_autopickup_exception, parse_msgtype } from './cfgfiles.js';
-import { add_menu_coloring, match_str2clr } from './coloratt.js';
+import { add_menu_coloring, match_str2clr, attr2attrname } from './coloratt.js';
 import { TtyMenu, PICK_NONE, PICK_ONE, PICK_ANY, ATR_NONE } from './tty_menu.js';
 import { getlin } from './wizcmds.js';
 import { mungspaces } from './mklev.js';
@@ -64,7 +64,7 @@ const MAXOCLASSES = 18; /* objclass.h:141 */
  *     the symbols, comparing symbols is the same test.
  * C preserves the ORDER the value was written in — oc_to_str (options.c:8061)
  * walks the stored array — so this must not sort into def_inv_order order. */
-function parse_pickup_types(op) {
+export function parse_pickup_types(op) {
     let i = 0;
     while (op.charAt(i) === ' ') i++;
     const rest = op.slice(i);
@@ -153,20 +153,22 @@ const PARANOID_ALL_MASK = 0x1fff;
  * beats "A"utoall beats "a"ll on a one-letter abbreviation, which falls out
  * of first-match-wins over this array in DECLARATION order — so this array
  * must stay in the same order as the C table. */
-const PARANOIA_OPTS = [
-    { mask: 0x0001, name: 'Confirm',     minLen: 1, syn: 'Paranoia',        synMinLen: 2 },
-    { mask: 0x0002, name: 'quit',        minLen: 1, syn: 'explore',         synMinLen: 2 },
-    { mask: 0x0004, name: 'die',         minLen: 1, syn: 'death',           synMinLen: 2 },
-    { mask: 0x0008, name: 'bones',       minLen: 1 },
-    { mask: 0x0010, name: 'attack',      minLen: 1, syn: 'hit',             synMinLen: 1 },
-    { mask: 0x0080, name: 'wand-break',  minLen: 2, syn: 'break-wand',      synMinLen: 2 },
-    { mask: 0x0200, name: 'eat',         minLen: 1, syn: 'continue',        synMinLen: 4 },
-    { mask: 0x0100, name: 'Were-change', minLen: 2 },
-    { mask: 0x0020, name: 'pray',        minLen: 1 },
-    { mask: 0x0800, name: 'trap',        minLen: 1, syn: 'move-trap',       synMinLen: 1 },
-    { mask: 0x1000, name: 'Autoall',     minLen: 2, syn: 'autoselect-all',  synMinLen: 2 },
-    { mask: 0x0400, name: 'swim',        minLen: 1 },
-    { mask: 0x0040, name: 'Remove',      minLen: 1, syn: 'Takeoff',         synMinLen: 1 },
+/* `explain` = paranoia[].explain (options.c:149-178) verbatim — the right-hand
+ * column handler_paranoid_confirmation paints into the PICK_ANY submenu. */
+export const PARANOIA_OPTS = [
+    { mask: 0x0001, name: 'Confirm',     minLen: 1, syn: 'Paranoia',        synMinLen: 2, explain: 'for "yes" confirmations, require "no" to reject' },
+    { mask: 0x0002, name: 'quit',        minLen: 1, syn: 'explore',         synMinLen: 2, explain: 'yes vs y to quit or to enter explore mode' },
+    { mask: 0x0004, name: 'die',         minLen: 1, syn: 'death',           synMinLen: 2, explain: 'yes vs y to die (explore mode or debug mode)' },
+    { mask: 0x0008, name: 'bones',       minLen: 1, explain: 'yes vs y to save bones data when dying in debug mode' },
+    { mask: 0x0010, name: 'attack',      minLen: 1, syn: 'hit',             synMinLen: 1, explain: 'yes vs y to attack a peaceful monster' },
+    { mask: 0x0080, name: 'wand-break',  minLen: 2, syn: 'break-wand',      synMinLen: 2, explain: 'yes vs y to break a wand via (a)pply' },
+    { mask: 0x0200, name: 'eat',         minLen: 1, syn: 'continue',        synMinLen: 4, explain: 'yes vs y to continue eating after first bite when satiated' },
+    { mask: 0x0100, name: 'Were-change', minLen: 2, explain: 'yes vs y to change form when lycanthropy is controllable' },
+    { mask: 0x0020, name: 'pray',        minLen: 1, explain: 'y required to pray (supersedes old "prayconfirm" option)' },
+    { mask: 0x0800, name: 'trap',        minLen: 1, syn: 'move-trap',       synMinLen: 1, explain: 'y required to enter known trap unless considered harmless' },
+    { mask: 0x1000, name: 'Autoall',     minLen: 2, syn: 'autoselect-all',  synMinLen: 2, explain: 'y required to pick filter choice \'A\' for menustyle:Full' },
+    { mask: 0x0400, name: 'swim',        minLen: 1, explain: "'m' prefix necessary to deliberately walk into lava or water" },
+    { mask: 0x0040, name: 'Remove',      minLen: 1, syn: 'Takeoff',         synMinLen: 1, explain: 'always pick from inventory for Remove and Takeoff' },
     { mask: PARANOID_NONE_MASK, name: 'none', minLen: 4 },
     { mask: PARANOID_ALL_MASK,  name: 'all',  minLen: 3 },
 ];
@@ -602,8 +604,36 @@ export function compound_option_value(name) {
         return [...DISCLOSURE_OPTIONS].map((c, i) => value[i] + c).join(' ');
     }
     if (name === 'boulder') return game.symbolOverrides?.S_boulder || '`';
+    /* C options.c:3025-3040 optfn_paranoid_confirmation get_val: paranoia[]
+     * table order; bones hidden during play except wizard mode; "none" if
+     * no bits are set. */
+    if (name === 'paranoid_confirmation') {
+        const bits = game.flags?.paranoia_bits ?? PARANOID_CONFIRMATION_DEFAULT_BITS;
+        /* C's loop bound is `paranoia[i].flagmask != 0`, which stops at the
+         * "none" row — the "all" terminator (~0) is never a value row. */
+        const set = [];
+        for (const p of PARANOIA_OPTS) {
+            if (!p.mask) break;
+            if ((bits & p.mask) !== 0
+                && (p.mask !== PARANOID_BONES || game.flags?.debug))
+                set.push(p.name);
+        }
+        return set.length ? set.join(' ') : 'none';
+    }
+    /* C options.c:3165-3167 optfn_petattr get_val (tty branch). */
+    if (name === 'petattr')
+        return attr2attrname(game.iflags?.wc2_petattr ?? 7 /* ATR_INVERSE */);
+    /* C options.c:3297-3299 optfn_pickup_burden get_val. */
+    if (name === 'pickup_burden')
+        return burdentype[game.flags?.pickup_burden ?? 2 /* MOD_ENCUMBER */];
     return null;
 }
+
+/* C options.c:213-215 burdentype[] — pickup_burden's value table, indexed by
+ * flags.pickup_burden (0..5) and walked by handler_pickup_burden's submenu. */
+const burdentype = ['unencumbered', 'burdened', 'stressed', 'strained',
+    'overtaxed', 'overloaded'];
+export const BURDENTYPE = burdentype;
 
 // C options.c:884 and parse_role_opt(:7905). Only the rc-file phase enters
 // parseNethackrc; saved values here preserve that phase's duplicate/filter
@@ -1236,12 +1266,13 @@ export function parseNethackrc(rc) {
                     result.flags.explore = true;
                 else if (key === 'pettype' || key === 'pet') {
                     result.flags.pettype = val;
-                    if (val === 'none' || val === 'n')
-                        result.preferred_pet = 'n';
-                    else if (val === 'dog' || val === 'd')
-                        result.preferred_pet = 'd';
-                    else if (val === 'cat' || val === 'c')
-                        result.preferred_pet = 'c';
+                    /* optfn_pettype do_set (options.c:3207-3227): first letter */
+                    switch (String(val || '').charAt(0).toLowerCase()) {
+                    case 'd': result.preferred_pet = 'd'; break;
+                    case 'c': case 'f': result.preferred_pet = 'c'; break;
+                    case 'h': case 'q': result.preferred_pet = 'h'; break;
+                    case 'n': result.preferred_pet = 'n'; break;
+                    }
                 }
                 /* C options.c optfn_roguesymset -> load_symset(ROGUESET): the Rogue
                  * IBM sets (dat/symbols "Handling: IBM", "Color: Yes") are the only
@@ -1275,7 +1306,14 @@ export function parseNethackrc(rc) {
                     }
                 }
                 else if (key === 'msg_window')
-                    result.iflags.prevmsg_window = val;
+                {
+                    /* C options.c:2475-2493: bare => 'f'; else lowc(*op), s/c/f/r only */
+                    const c = val ? val.charAt(0).toLowerCase() : 'f';
+                    if ('scfr'.includes(c))
+                        result.iflags.prevmsg_window = c;
+                    else
+                        config_error_add(`Unknown msg_window parameter '${val}'`);
+                }
                 /* C options.c:3627-3656 optfn_runmode().  str_start_is()
                  * accepts abbreviations; invalid or empty values leave the
                  * initialized default unchanged after C reports an error. */
@@ -1528,7 +1566,8 @@ import { rnd, rn2 } from './rng.js';
  * rewrite reads all four. */
 import { makesingular, makeplural } from './objnam.js';
 import { name_to_mon } from './makemon.js';
-import { ROLE_NONE, gs, ismnum, RUN_TPORT, RUN_LEAP, RUN_STEP, RUN_CRAWL } from './const.js';
+import { ROLE_NONE, gs, ismnum, RUN_TPORT, RUN_LEAP, RUN_STEP, RUN_CRAWL,
+    PARANOID_BONES } from './const.js';
 import { OC_NAME } from './oc_name_data.js';
 import { MKOBJ_OC_CLASS, MKOBJ_SVB_BASES } from './mkobj_data.js';
 const FOOD_CLASS = 7;

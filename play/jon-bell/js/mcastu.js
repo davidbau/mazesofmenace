@@ -48,7 +48,7 @@ import { deadhero } from './end.js';
 import { drain_pending_death_in_place } from './fastforward.js';
 import { rehumanize } from './polyself.js';
 /* C polyself.c:2129 body_part(part) = mbodypart(&gy.youmonst, part). */
-import { body_part } from './cmd.js';
+import { body_part, set_msg_xy } from './cmd.js';
 import { make_slimed } from './potion.js';
 
 // monattk.h attack-damage types used by castmu.
@@ -1007,10 +1007,13 @@ export function mcast_open_wounds(dmg) {
 // in the codebase (e.g. js/display.js's local impossible()).
 function impossible(_msg, ..._args) { }
 
-// pline_mon / pline_The — C ref: pline.c. set_msg_xy() (message-origin coord,
-// used only for MSGTYPE color/mute rules) is not modeled; mirrors the
-// established local convention in js/mhitu.js.
-function pline_mon(_mtmp, msg, ...args) { pline(msg, ...args); }
+// pline_mon / pline_The — C ref: pline.c:138-146. set_msg_xy() to the hero
+// (0,0) or the monster's square; vpline's accessiblemsg prefix reads it.
+function pline_mon(mtmp, msg, ...args) {
+    if (mtmp === game.youmonst) set_msg_xy(0, 0);
+    else if (mtmp) set_msg_xy(mtmp.mx, mtmp.my);
+    return pline(msg, ...args);
+}
 function pline_The(msg) { pline('The ' + msg); }
 
 export function Monnam(mtmp) {

@@ -2759,9 +2759,11 @@ async function trapeffect_rolling_boulder_trap_mon(mtmp, trap) {
     let trapkilled = false;
 
     newsym(mtmp.mx | 0, mtmp.my | 0);
-    if (in_sight)
+    if (in_sight) {
+        set_msg_xy_trap(mtmp.mx, mtmp.my); /* pline_mon (trap.c:2692) */
         void pline(`${!_lo_deaf() ? 'Click!  ' : ''}${Monnam_t(mtmp)} triggers `
                    + `${trap.tseen ? 'a rolling boulder trap' : 'something'}.`);
+    }
     if (await launch_obj(BOULDER_OTYP, trap.launch?.x | 0, trap.launch?.y | 0,
                    trap.launch2?.x | 0, trap.launch2?.y | 0, style)) {
         if (in_sight)
@@ -4988,6 +4990,7 @@ async function trapeffect_pit_mon(mtmp, trap) {
     }
     const _pit_in_sight = canseemon(mtmp);
     if (_pit_in_sight) {
+        set_msg_xy_trap(mtmp.mx, mtmp.my); /* pline_mon trap.c:1992 */
         void pline(`${Monnam_t(mtmp)} falls into ${_a_your(trap.madeby_u)} pit!`);
         /* C trap.c:2019 `seetrap(trap);` — after the pline, and it newsyms. */
         seetrap(trap);
@@ -5217,6 +5220,7 @@ async function trapeffect_landmine_mon(mtmp, trap, trflags) {
         }
     } else if (in_sight) {
         newsym(mtmp.mx | 0, mtmp.my | 0);
+        set_msg_xy_trap(mtmp.mx, mtmp.my); /* pline_mon (trap.c:2626) */
         await pline(`${!_hero_Deaf() ? 'KAABLAMM!!!  ' : ''}${await Monnam(mtmp)} `
             + `triggers ${_a_your(trap.madeby_u)} land mine!`);
     }
@@ -6218,7 +6222,7 @@ export async function water_damage(obj, ostr, force) {
         return ER_NOTHING;
     } else if ((obj.oclass | 0) === _WD_SCROLL_CLASS) {
         /* C trap.c:4759-4774 — blank the scroll.  RNG-free. */
-        if (otyp === _SCR_BLANK_PAPER_OTYP)
+        if (otyp === _SCR_BLANK_PAPER_OTYP || otyp === 364 /* SCR_MAIL */)
             return ER_NOTHING;
         if (in_invent)
             await pline(`Your ${ostr} ${vtense(ostr, 'fade')}.`);
@@ -7335,12 +7339,14 @@ export function mon_adjust_speed(mon, adjust, obj) {
         if (petrify) {
             /* C worn.c:543-544 */
             if (game.flags && game.flags.verbose)
-                pline(Monnam_t(mon) + " is slowing down.");
+                { set_msg_xy_trap(mon.mx, mon.my); pline(Monnam_t(mon) + " is slowing down."); } /* pline_mon worn.c:544 */
         } else if ((adjust | 0) > 0 || (mon.mspeed | 0) === UME_MFAST) {
             /* C worn.c:546-547 */
+            set_msg_xy_trap(mon.mx, mon.my); /* pline_mon worn.c:546 */
             pline(Monnam_t(mon) + " is suddenly moving " + howmuch + "faster.");
         } else {
             /* C worn.c:549-550 */
+            set_msg_xy_trap(mon.mx, mon.my); /* pline_mon worn.c:549 */
             pline(Monnam_t(mon) + " seems to be moving " + howmuch + "slower.");
         }
 

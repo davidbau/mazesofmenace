@@ -7,7 +7,7 @@ import { adjustHeroAlignment, convertHeroAlignment, deityName } from './alignmen
 import { artifactById, artifactExistCount, createArtifactGift, discoverArtifact, markArtifactFound, } from './artifacts.js';
 import { adjustAttribute, exerciseAttribute } from './attrib.js';
 import { heroFootName } from './body_parts.js';
-import { A_NONE, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, Is_astralevel, LUCKMAX, LUCKMIN, MM_NOMSG, ROOM, STRAT_APPEARMSG, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_SUGGEST, } from './const.js';
+import { A_NONE, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, Is_astralevel, LUCKMAX, LUCKMIN, MM_NOMSG, ROOM, STRAT_APPEARMSG, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_NONINVENT, GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_SUGGEST, } from './const.js';
 import { isRider } from './corpse_species.js';
 import { reviveCorpseImmediately } from './corpse_revival.js';
 import { displayColorName, newsym, plineWithContinuation as pline, } from './display.js';
@@ -39,7 +39,7 @@ import { promptYesNo, promptYesNoQuit } from './query.js';
 import { rn2, rnl, rnd, rnz } from './rng.js';
 import { heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
 import { unrestrictHeroSkill } from './skills.js';
-import { heroResistsStoning, touchPetrifies, touchPetrifyingCorpse } from './stoning.js';
+import { feelPetrifyingCorpse, heroResistsStoning, touchPetrifies } from './stoning.js';
 const AMULET_CLASS = 5;
 const FOOD_CLASS = 7;
 const M2_UNDEAD = 0x00000002;
@@ -96,7 +96,7 @@ async function chooseOffering() {
         for (const corpse of corpses) {
             if (heroIsBlind(game) && !(game.uarmg || hero.uarmg)
                 && !heroResistsStoning() && touchPetrifies(corpse.corpsenm)) {
-                await touchPetrifyingCorpse(corpse);
+                await feelPetrifyingCorpse(corpse);
                 return null;
             }
             const single = objectQuantity(corpse) === 1;
@@ -116,7 +116,7 @@ async function chooseOffering() {
         if (![CORPSE, AMULET_OF_YENDOR, FAKE_AMULET_OF_YENDOR].includes(object.otyp))
             return GETOBJ_EXCLUDE_SELECTABLE;
         return astral !== (object.oclass === AMULET_CLASS) ? GETOBJ_DOWNPLAY : GETOBJ_SUGGEST;
-    }, { emptyMessage: `You don't have anything ${declinedFloor ? 'else ' : ''}to sacrifice.` });
+    }, { hands: declinedFloor ? GETOBJ_EXCLUDE_NONINVENT : GETOBJ_EXCLUDE });
     if (object && object.oclass !== AMULET_CLASS && object.otyp !== CORPSE) {
         await pline("You can't sacrifice that!");
         return null;
@@ -131,7 +131,7 @@ async function offerCorpse(corpse, highAltar, alignment) {
     if (!conduct.gnostic)
         recordGameLogEvent(`rejected atheism by offering ${inventoryItemDescription(corpse)} on an altar of ${deityName(alignment)}`);
     conduct.gnostic = (conduct.gnostic || 0) + 1;
-    await touchPetrifyingCorpse(corpse);
+    await feelPetrifyingCorpse(corpse, { forceTouch: true });
     if (game.program_state.gameover)
         return;
     if (isRider(corpse.corpsenm)) {

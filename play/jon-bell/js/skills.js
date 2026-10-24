@@ -30,6 +30,7 @@ import { yn_function } from './end.js';
 import { OC_NAME } from './oc_name_data.js';
 import { is_ammo } from './cmd.js';
 import { build_window_screen } from './com_pager.js';
+import { menu_heading_text } from './tty_menu.js';
 import { PM_PONY } from './pm.generated.js';
 import { ROLE_PM_MNUM } from './roles.js';
 import { weapon_type, can_advance, slots_required } from './uhitm.js';
@@ -519,7 +520,7 @@ async function enhance_menu(items, prompt, pickOne) {
             const wl = page.map((it, i) => {
                 const a = accel[start + i];
                 const body = a ? `${a} - ${it.text}` : it.text;
-                return it.heading ? `\x1b[7m${body}\x1b[0m` : body;
+                return it.heading ? menu_heading_text(body) : body;
             });
             wl.push('(end)');
             g._screen_output = build_window_screen(wl, overlayCol, g.u?.uac ?? 0);
@@ -532,8 +533,8 @@ async function enhance_menu(items, prompt, pickOne) {
             const it = page[i];
             const a = accel[start + i];
             const body = a ? `${a} - ${it.text}` : it.text;
-            /* Headings are drawn with iflags.menu_headings (ATR_INVERSE). */
-            rows[i] = ' ' + (it.heading ? `\x1b[7m${body}\x1b[0m` : body);
+            /* Headings are drawn with iflags.menu_headings (wintty.c:2688). */
+            rows[i] = ' ' + (it.heading ? menu_heading_text(body) : body);
         }
         rows[page.length] = ` ${morestr}`;
         g._screen_output = rows.join('\n');

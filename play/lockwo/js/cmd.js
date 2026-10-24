@@ -5,6 +5,7 @@
 // Contestants should add: search, kick, eat, drink, read, zap,
 // wear, wield, drop, throw, pray, cast, and all other commands.
 
+import { worm_cross } from './worm.js';
 import { game, svc_context_run } from './gstate.js';
 import { nhgetch } from './input.js';
 import { maybe_adjust_hero_bubble, water_friction } from './mkmaze.js';
@@ -47,7 +48,7 @@ import { spoteffects, t_at, immune_to_trap, into_vs_onto, trap_explanation, trap
          TRAP_CLEARLY_IMMUNE, deltrap, fill_pit, blow_up_landmine, seetrap,
          launch_obj, ROLL, LAUNCH_KNOWN, Levitation_fu, Flying_fu, u_locomotion } from './trap.js';
 import { doset, dosetSimple } from './doset.js';
-import { do_run, do_run_prefixed, isRunKey, RUN_DX, RUN_DY, do_farlook, do_look_full, dotele_wizard, doterrain, avoid_moving_on_trap, run_stop_for_monster_at, could_move_onto_boulder, getpos, gather_locs_interesting, set_msg_xy, cannot_push_msg, rock_disappear_msg, runmode_delay_output, nomul, handle_tip } from './hack.js';
+import { do_run, do_run_prefixed, isRunKey, RUN_DX, RUN_DY, do_farlook, do_look_full, dotele_wizard, doterrain, avoid_moving_on_trap, run_stop_for_monster_at, could_move_onto_boulder, getpos, gather_locs_interesting, set_msg_xy, cannot_push_msg, rock_disappear_msg, runmode_delay_output, nomul, handle_tip, invocation_message } from './hack.js';
 import { menuHeadAttr } from './menuattr.js';
 import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
          D_ISOPEN, D_BROKEN, D_NODOOR, D_TRAPPED,
@@ -841,8 +842,13 @@ export function test_move_quiet(x, y, dx = game.u.dx, dy = game.u.dy) {
     // C ref: hack.c:1153-1172 — a tight diagonal between two rock/boulder-in-
     // Sokoban squares that cant_squeeze_thru() refuses (mode != DO_MOVE: no
     // message, return FALSE).
-    if (x !== u.ux && y !== u.uy && bad_rock_hero(u.ux, y) && bad_rock_hero(x, u.uy)
-        && cant_squeeze_thru_hero()) return false;
+    if (x !== u.ux && y !== u.uy && bad_rock_hero(u.ux, y) && bad_rock_hero(x, u.uy)) {
+        if (cant_squeeze_thru_hero()) return false;
+    } else if (x !== u.ux && y !== u.uy && worm_cross(u.ux, u.uy, x, y)) {
+        /* C ref: hack.c:1173 `else if (dx && dy && worm_cross(ux, uy, x, y))` —
+           consecutive long worm segments sit on <ux,y> and <x,uy>. */
+        return false;
+    }
     // C ref: hack.c:1180-1199 — "Pick travel path that does not require
     // crossing a trap.  Avoid water and lava using the usual running rules."
     // This sits in test_move() for every mode but DO_MOVE, so TEST_MOVE refuses
@@ -1626,6 +1632,11 @@ export async function rhack(key) {
         // C ref: cmd.c 'e' (#eat) -> eat.c doeat().  Eats carried/floor food
         // (ECMD_TIME when a bite is taken).
         game.context.move = (await doeat()) ? 1 : 0;
+        // C ref: cmd.c rhack():3814-3816 — doeat() returning ECMD_OK/CANCEL
+        // runs reset_cmd_vars(), whose `gm.multi = 0` cancels the multi = -1
+        // savelife() left when floorfood()'s feel_cockatrice() killed and
+        // revived the hero; the pending nomovemsg is never announced.
+        if (!game.context.move) game.multi = 0;
     } else if (ch === 'o') {
         // C ref: cmd.c doopen -> lock.c doopen_indir(0,0): open an adjacent
         // door (reads a direction).  Sets the turn flag from doopen's result.
@@ -3321,9 +3332,8 @@ export async function pick_lock_resume(pick) {
 async function pick_lock_door(pick, cx, cy, door) {
     const resumed = await pick_lock_resume(pick);
     if (resumed !== null) return resumed;
-    const toolname = pick.otyp === LOCK_PICK ? 'your lock pick'
-                   : pick.otyp === SKELETON_KEY ? 'your key'
-                   : 'your credit card';
+    /* C ref: lock.c:486 yname(pick) — "your osaku" for a Samurai, "your credit card named Fido" */
+    const toolname = (await import('./invent.js')).yname(pick);
     game._yn_need_more = true;
     const c = await y_n(`Unlock it with ${toolname}?`, 'ynq\x1b', 'q');
     if (c !== 'y') return 0;
@@ -3958,6 +3968,12 @@ async function domove_core(dx, dy, attemptTracked) {
                 nomul(0);
                 return;
             }
+        } else if (!displaceu && u.dx && u.dy && !blocksMove(newx, newy)
+                   && worm_cross(u.ux, u.uy, newx, newy)) {
+            await pline(`${YMonnam(m_at(u.ux, newy))} is in your way.`);
+            game.context.move = 0;
+            nomul(0);
+            return;
         }
         // C ref: hack.c:2852 — swim_move_danger() follows test_move() on every
         // !displaceu step, so a pet standing in water/lava is no way around it:
@@ -4001,6 +4017,7 @@ async function domove_core(dx, dy, attemptTracked) {
         // swap/displace path too (even when the swap was refused).
         hero_tread_disturbs_zombies();
         await hero_rehides();
+        await hero_check_leash();
         u.umoved = (u.ux !== _umoved_ux0 || u.uy !== _umoved_uy0);
         // C ref: hack.c:2964-2974 — the old square is cleaned and vision redone
         // only `if (u.ux0 != u.ux || u.uy0 != u.uy)`; a refused swap redraws
@@ -4008,6 +4025,7 @@ async function domove_core(dx, dy, attemptTracked) {
         if (u.umoved) {
             newsym(u.ux0, u.uy0);
             vision_recalc(1);
+            await invocation_message(); // hack.c:2974
             newsym(u.ux, u.uy);
         }
         // C ref: hack.c domove_core() — after swapping with a pet, C still
@@ -4377,6 +4395,13 @@ async function domove_core(dx, dy, attemptTracked) {
             game.context.move = 0;
             return;
         }
+    } else if (u.dx && u.dy && !blocksMove(newx, newy)
+               && worm_cross(u.ux, u.uy, newx, newy)) {
+        /* C ref: hack.c:1175 — consecutive long worm segments at <ux,y> and <x,uy> */
+        await pline(`${YMonnam(m_at(u.ux, newy))} is in your way.`);
+        game.context.move = 0;
+        nomul(0);
+        return;
     }
 
     // ── push a boulder ──  C ref: hack.c test_move() DO_MOVE branch -> moverock().
@@ -4575,6 +4600,8 @@ async function domove_core(dx, dy, attemptTracked) {
     // nearby (buried) zombies.
     hero_tread_disturbs_zombies();
     await hero_rehides();
+    // C ref: hack.c:2962 (after the mimic-unhide, before the umoved bookkeeping).
+    await hero_check_leash();
 
     // Update display.  C ref: hack.c:2969-2972 — "Clean old position --
     // vision_recalc() will print our new one": vision_recalc() ends with its
@@ -4583,6 +4610,7 @@ async function domove_core(dx, dy, attemptTracked) {
     // the object under a hallucinating hero.
     newsym(oldx, oldy);
     vision_recalc(1);
+    if (oldx !== u.ux || oldy !== u.uy) await invocation_message(); // hack.c:2974
 
     // C ref: hack.c domove_core() -> spoteffects(TRUE): pickup(1) runs before
     // a non-pit trap (after a pit trap), then dotrap(). pickup_after_move is
@@ -5718,7 +5746,7 @@ export async function pickup_after_move(x, y) {
         // check_here() (look_here_after_move) does its own `if (run) nomul(0)`.
         if (hasObj) await look_here_after_move(x, y, false, decorAnnounced);
         else await read_engr_at(x, y);
-        if (hasObj) await pline('You are physically incapable of picking anything up.');
+        if (objAt) await pline('You are physically incapable of picking anything up.');
         return;
     }
     // C ref: pickup.c:720-732 — `(gm.multi && !svc.context.run)` sends the
@@ -5863,6 +5891,14 @@ async function hero_rehides() {
     const data = youmonst_data_pub();
     if (hides_under_flag(data) || data?.mcls === 57 /* S_EEL */ || u.dx || u.dy)
         await (await import('./monmove.js')).hideunder(game.u);
+}
+
+// C ref: hack.c:2962 — `check_leash(u.ux0, u.uy0)` closes every domove_core
+// move: a leashed pet that is now farther away is tugged, choked or let go.
+async function hero_check_leash() {
+    const u = game.u;
+    if (!(game.invent || []).some((o) => (o.leashmon | 0) !== 0)) return;
+    await (await import('./apply.js')).check_leash(u.ux0, u.uy0);
 }
 
 // C ref: hack.c domove_swap_with_pet(mtmp, x, y) — swap the hero and a tame
