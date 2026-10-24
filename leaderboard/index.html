@@ -513,6 +513,15 @@ function timeAgo(ts) {
     return Math.floor(hours / 24) + 'd ago';
 }
 
+// Round a percentage DOWN to `digits` decimals: never report 100% (or any
+// higher figure) while divergences remain, so 99.96% shows as 99.9%.
+function pctFloor(pct, digits) {
+    const f = 10 ** digits;
+    let v = Math.floor(pct * f + 1e-9) / f;  // 1e-9 absorbs float noise, far below one mismatch
+    if (pct < 100 && v >= 100) v = 100 - 1 / f;
+    return v.toFixed(digits);
+}
+
 function pctClass(pct) {
     if (pct >= 100) return 'pass';
     if (pct >= 50) return 'partial';
@@ -779,12 +788,12 @@ async function loadLeaderboard() {
                     <td class="team"><a href="https://github.com/${team.fork}" target="_blank" rel="noopener">${team.name}</a>${errBadge}</td>
                     <td class="action">${playCell}</td>
                     <td class="action"><a class="lb-btn tests" href="${viewerUrl}" title="Open the Session Viewer for this fork">Tests</a></td>
-                    <td class="pts" title="Total points: ${combinedPct.toFixed(2)}% of ${fmt(totalMaxPoints)} (public + held-out).">
+                    <td class="pts" title="Total points: ${pctFloor(combinedPct, 2)}% of ${fmt(totalMaxPoints)} (public + held-out).">
                         <span class="${pctClass(combinedPct)}">${fmt(pubPoints)}</span>
                         <span class="pts-max">+ ${fmt(heldPoints)}</span>
                     </td>
-                    <td class="pct" title="PRNG match across public + held-out sessions (weighted)."><span class="${pctClass(rngPct)}">${rngPct.toFixed(1)}%</span></td>
-                    <td class="pct" title="Screen match across public + held-out sessions."><span class="${pctClass(scrPct)}">${scrPct.toFixed(1)}%</span></td>
+                    <td class="pct" title="PRNG match across public + held-out sessions (weighted)."><span class="${pctClass(rngPct)}">${pctFloor(rngPct, 1)}%</span></td>
+                    <td class="pct" title="Screen match across public + held-out sessions."><span class="${pctClass(scrPct)}">${pctFloor(scrPct, 1)}%</span></td>
                     <td class="pct supplemental" title="${fmt(animMatched)} of ${animTotalRow ? fmt(animTotalRow) : 'no'} animation frames matched (supplemental, not part of the official ranking).">
                         ${animMatched > 0
                             ? `<span class="${pctClass(animTotalRow > 0 ? animMatched / animTotalRow * 100 : 0)}">${fmt(animMatched)}</span>`
