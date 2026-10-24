@@ -54,7 +54,7 @@ import { applyHeroLocationEffects, heroCouldMoveOntoBoulder } from './cmd.js';
 import { finishDestinationSpotEffects } from './location_effects.js';
 import { adjustHeroAlignment } from './alignment.js';
 import { resetCommandVariables } from './command_state.js';
-import { resumeDeferredMonsterTrap, triggerImmediateMonsterTrap } from './monmove.js';
+import { finishImmediateMonsterTrap, triggerImmediateMonsterTrap } from './monmove.js';
 import { levelHasCeiling, isAccessibleAt, isLavaAt, isPoolAt, isWaterwallAt } from './terrain_properties.js';
 import { isPolearm } from './weapon_type.js';
 import { surfaceName } from './terrain_name.js';
@@ -139,9 +139,8 @@ export async function handleRidingAfterFormChange() {
     if (touchPetrifies(steed.mnum) && !game.u.stoneResistance && rnl(3)) {
         await plineWithContinuation(`No longer petrify-resistant, you touch ${monsterName(steed)}.`);
         const species = monsterTypeName(steed.mnum, !!steed.female);
-        const article = /^[aeiou]/i.test(species) ? 'an' : 'a';
         const result = await resolveImmediatePetrification({
-            killer: `riding ${article} ${species}`,
+            killer: `riding ${withIndefiniteArticle(species)}`,
         });
         if (result.died)
             return result;
@@ -637,8 +636,7 @@ export async function stuckSteed(checkFeeding = true, state = game) {
 }
 function unnamedSteedMessage(steed) {
     const name = monsterTypeName(steed.mnum, !!steed.female);
-    const article = /^[aeiou]/i.test(name) ? 'an' : 'a';
-    return `You've been through the dungeon on ${article} ${name} with no name.`;
+    return `You've been through the dungeon on ${withIndefiniteArticle(name)} with no name.`;
 }
 export async function dismountHero(reason, { state = game, random = rn2, announce = plineWithContinuation, } = {}) {
     // Dismounting mutates the world (hero move, spot effects, the descent
@@ -776,7 +774,7 @@ export async function dismountHero(reason, { state = game, random = rn2, announc
                 }
                 if (wasTrapped) {
                     const action = await triggerImmediateMonsterTrap(steed, state);
-                    await resumeDeferredMonsterTrap(action, state, {
+                    await finishImmediateMonsterTrap(action, state, {
                         publish: announce, describeMonster: monster => monsterName(monster, { capitalized: true }),
                     });
                 }

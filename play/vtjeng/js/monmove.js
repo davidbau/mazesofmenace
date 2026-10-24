@@ -117,7 +117,9 @@ import {
     NEED_HTH_WEAPON,
     NEED_PICK_AXE,
     NEED_PICK_OR_AXE,
+    NC_SHOW_MSG,
     NEED_WEAPON,
+    NO_NC_FLAGS,
     NOGARLIC,
     NO_TRAP_FLAGS,
     NOTONL,
@@ -209,7 +211,7 @@ import { delobj, money_cnt, obj_extract_self, sobj_at } from './invent.js';
 import { picking_lock } from './lock.js';
 import { grow_up, set_malign } from './makemon.js';
 import {
-    healmon, m_in_air, mnearto, mongone, newcham_distress,
+    healmon, m_in_air, mnearto, mongone, newcham,
 } from './mon.js';
 import { mattackm, mdisplacem } from './mhitm.js';
 import { ranged_attk_available } from './mhitu.js';
@@ -451,7 +453,7 @@ import {
     rloc_to,
     tele_restrict,
 } from './teleport.js';
-import { ttyNorep, ttyPline } from './tty_message.js';
+import { displayPendingTtyMessageWindow, ttyNorep, ttyPline } from './tty_message.js';
 import { note_unported } from './unported.js';
 import { gd_move } from './vault.js';
 import { cuss, tactics } from './wizard.js';
@@ -781,15 +783,17 @@ async function mind_blast(mtmp, env = {}) {
         }
     }
     /* affect other monsters on the level */
-    for (let m2 = state.fmon; m2; m2 = m2.nmon) {
+    // C caches nmon before wakeup or a lethal blast can unlink the target.
+    for (let m2 = state.level.monlist, next = null; m2; m2 = next) {
+        next = m2.nmon;
         if (m2.mhp <= 0) continue; /* DEADMONSTER */
-        if (m2.mpeaceful === mtmp.mpeaceful) continue;
+        if (Boolean(m2.mpeaceful) === Boolean(mtmp.mpeaceful)) continue;
         if (mindless(m2.data)) continue;
         if (m2 === mtmp) continue;
         if ((telepathic(m2.data) && (random.rn2(2) || m2.mblinded))
             || !random.rn2(10)) {
             /* wake it up first, to bring hidden monster out of hiding */
-            await wakeup(m2, false, { state });
+            await wakeup(m2, false, { ...env, state, random, message });
             if (cansee(m2.mx, m2.my, state)) {
                 await message(
                     `It locks on to ${monsterCommonName(m2, state)}.`,
@@ -1774,28 +1778,23 @@ export function can_fog(monster, state = game) {
         && !stuff_prevents_passage(monster, state);
 }
 
-// C ref: monmove.c vamp_shift() (2377-2397). A vampire shifts into the
-// given form. Returns 1 if it was already that form or the shift succeeded,
-// 0 on failure or non-vampshifter. domsg controls whether a message is shown.
-// display_nhwindow(WIN_MESSAGE, FALSE) follows newcham to flush messages;
-// the tty port flushes automatically so the call is a no-op here.
+// C ref: monmove.c vamp_shift() (2377-2397). A real vampire shift
+// displays the message window even when the shape-change message is silent.
+// The TTY call can wait on an earlier message before later monsters act.
 async function vamp_shift(mon, ptr, domsg, env = {}) {
     let reslt = 0;
     if (mon.data === ptr) {
-        /* already right shape */
         reslt = 1;
     } else if (is_vampshifter(mon)) {
-        if (domsg) {
-            reslt = await newcham_distress(mon, ptr, env) ? 1 : 0;
-        } else {
-            // NO_NC_FLAGS: silent shift. apply_newcham_form is not exported,
-            // so use newcham_distress with a no-op message function.
-            reslt = await newcham_distress(mon, ptr, {
-                ...env,
-                message: async () => {},
-            }) ? 1 : 0;
+        reslt = await newcham(mon, ptr, {
+            ...env,
+            ncflags: domsg ? NC_SHOW_MSG : NO_NC_FLAGS,
+        }) ? 1 : 0;
+        if (!env.planning) {
+            const displayMessageWindow = env.displayMessageWindow
+                ?? displayPendingTtyMessageWindow;
+            await displayMessageWindow(env.state);
         }
-        // C: display_nhwindow(WIN_MESSAGE, FALSE) -- tty flushes automatically
     }
     return reslt;
 }
@@ -3320,7 +3319,7 @@ export async function postmov(
             if (await vamp_shift(monster, state.mons?.[PM_FOG_CLOUD], domsg, {
                 ...env,
                 message,
-                // newcham_distress passes its normalized operation bundle as
+                // newcham passes its normalized operation bundle as
                 // the second argument to this seam; adapt it to the display
                 // owner's (monster, state) contract without exposing the
                 // bundle as a state object.

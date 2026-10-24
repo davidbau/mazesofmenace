@@ -397,15 +397,11 @@ async function precheck(mon, obj, state, env = {}) {
                     state);
                 // SetVoice() is a no-op in the tty build.
                 if (random.rn2(2)) {
-                    // verbalize("You freed me!") is You_hear('"...')
-                    const freed = youHear('"You freed me!"', state);
-                    if (freed) await ttyPline(freed, state);
+                    await verbalize("You freed me!", state);
                     mtmp.mpeaceful = 1;
                     set_malign(mtmp, state);
                 } else {
-                    // verbalize("It is about time.")
-                    const about = youHear('"It is about time."', state);
-                    if (about) await ttyPline(about, state);
+                    await verbalize("It is about time.", state);
                     if (vis) {
                         await ttyPline(
                             `${capitalizedMonsterName(mtmp, state)} vanishes.`,
@@ -3108,6 +3104,7 @@ function formatReflectionMessage(format, values) {
 }
 
 export async function mon_reflects(mon, str, state = game, rawEnv = {}) {
+    const objectEnv = { ...rawEnv, state };
     const message = rawEnv.message
         ?? (rawEnv.planning ? async () => {} : ttyPline);
     const reflectMessage = (kind) => formatReflectionMessage(str, [
@@ -3120,7 +3117,7 @@ export async function mon_reflects(mon, str, state = game, rawEnv = {}) {
         if (str) {
             await message(reflectMessage('shield'), state, rawEnv);
             // makeknown(SHIELD_OF_REFLECTION)
-            discover_object(O.SHIELD_OF_REFLECTION, true, true, true, state);
+            discover_object(O.SHIELD_OF_REFLECTION, true, true, true, state, objectEnv);
         }
         return true;
     }
@@ -3136,7 +3133,7 @@ export async function mon_reflects(mon, str, state = game, rawEnv = {}) {
     if (orefl && orefl.otyp === O.AMULET_OF_REFLECTION) {
         if (str) {
             await message(reflectMessage('amulet'), state, rawEnv);
-            discover_object(O.AMULET_OF_REFLECTION, true, true, true, state);
+            discover_object(O.AMULET_OF_REFLECTION, true, true, true, state, objectEnv);
         }
         return true;
     }

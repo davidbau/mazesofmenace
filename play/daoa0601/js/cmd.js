@@ -5,7 +5,7 @@ import { formatFeltMessage, formatSeenMessage, publishHeardMessage } from './her
 import { ingSuffix } from './hacklib.js';
 import { heroLocomotion } from './hero_locomotion.js';
 import { autokey, autoUnlockFlags, continuePicking, pickLock } from './lock_pick.js';
-import { resetPick } from './lock_context.js';
+import { resetOccupations } from './occupation_reset.js';
 import { petRefusesHeroSwap, settlePetHeroDisplacement } from './hero_pet_displacement.js';
 import { airTurbulenceStopsHero, waterTurbulenceStopsHero } from './hero_movement_turbulence.js';
 import { maybeAdjustHeroBubble } from './elemental.js';
@@ -28,6 +28,7 @@ import { wizFuzzer, wizPanic } from './wizard_debug_commands.js';
 import { wizSmell } from './wizard_smell.js';
 import { wizBury } from './wizard_bury.js';
 import { wizMigrateMonsters } from './wizard_migration.js';
+import { wizMakeMap } from './wizard_makemap.js';
 import { wizardTeleportCommand } from './wizard_teleport.js';
 import { hurtleMonster } from './monster_hurtle.js';
 import { isRoom } from './map_types.js';
@@ -279,7 +280,7 @@ import { useStethoscope } from './stethoscope.js';
 import { useBagOfTricks } from './bag_of_tricks.js';
 import { useHornOfPlenty } from './horn_of_plenty.js';
 import { useTinningKit } from './tinning_kit.js';
-import { continueTrapSetting, resetTrapSetting, useSettableTrap } from './trap_setting.js';
+import { continueTrapSetting, useSettableTrap } from './trap_setting.js';
 import { useSaddle } from './steed.js';
 import { isRoyalJelly, useRoyalJelly, } from './royal_jelly.js';
 import { useBullwhip } from './bullwhip.js';
@@ -302,7 +303,7 @@ import { canLetGo, finishInventoryRemoval } from './hero_inventory.js';
 import { removeHeroEquipment } from './hero_equipment.js';
 import { shouldShowGetposTip, showGetposTip, selectMapPosition, } from './getpos.js';
 import { onQuestStart, okToQuest } from './quest.js';
-import { performPetRangedAttack, resumeDeferredMonsterTrap, triggerImmediateMonsterTrap, } from './monmove.js';
+import { finishImmediateMonsterTrap, performPetRangedAttack, triggerImmediateMonsterTrap, } from './monmove.js';
 import { hurtleHero, kickRecoilRange } from './hero_hurtle.js';
 import { announceInvocationSquare } from './invocation.js';
 import { abuseKickedPet, levitatingKickMisses, prepareKick, prepareKickDamage, rollKickDamage, tryKickEvasion, tryKickReel, } from './monster_kick.js';
@@ -1402,9 +1403,7 @@ async function runCommandHandler(binding, { cannedCommand = null, } = {}) {
             resetCommandVariables(true);
         game.context.move = Number((result & ECMD_TIME) !== 0);
         if (result) {
-            resetBulkTakeoff();
-            resetPick();
-            resetTrapSetting();
+            resetOccupations();
             if (game._occupation?.key === 'pick-lock')
                 game._occupation = null;
         }
@@ -1574,7 +1573,7 @@ async function triggerFountainTrap(monster) {
     const state = requireInitializedGame();
     const action = await triggerImmediateMonsterTrap(monster, state);
     if (!state.program_state.gameover) {
-        await resumeDeferredMonsterTrap(action, state, {
+        await finishImmediateMonsterTrap(action, state, {
             describeMonster: fountainActorVisibleSubject,
             publish: plineWithContinuation,
         });
@@ -1822,8 +1821,13 @@ async function monsterPreventsStairTravel(up) {
 export async function travelStairs(up) {
     const level = requireGameLevel();
     requireInitializedHero(game.u);
+    // C do.c doup()/dodown() start with set_move_cmd(): the menu prefix's
+    // no-pickup request and the cleared travel state outlive a refusal.
     game.u.dx = game.u.dy = 0;
     game.u.dz = up ? -1 : 1;
+    if (game.iflags.menu_requested)
+        game.context.nopick = true;
+    game.context.travel = game.context.travel1 = false;
     if (MONSTER_MOVE[game.u.umonnum] === 0) {
         const where = propertyIsActive('levitation', game) || Is_airlevel(game.u.uz)
             || Is_waterlevel(game.u.uz) ? 'in place' : 'to the ground';
@@ -2045,6 +2049,7 @@ async function recoilFromKick(range) {
 function applyKickPassive(monster, hit) {
     return applyHeroContactPassive(monster, {
         hit,
+        defenderSurvived: monster.mhp > 0,
         attackType: AT_KICK,
         weapon: game.uarmf || game.u?.uarmf || null,
     });
@@ -3355,6 +3360,7 @@ const EXTENDED_COMMAND_HANDLERS = new Map([
     ['wizidentify', wizIdentify],
     ['wizintrinsic', wizIntrinsic],
     ['wizmap', wizMap],
+    ['wizmakemap', wizMakeMap],
 ]);
 // C refs: artifact.c:doinvoke(), invoke_ok(), arti_invoke().  getobj()
 // suggests artifacts and other unique objects; an artifact with inv_prop 0
@@ -5539,9 +5545,7 @@ async function dodrop() {
             return;
         }
         game.context.move = 1;
-        resetBulkTakeoff();
-        resetPick();
-        resetTrapSetting();
+        resetOccupations();
         if (game._occupation?.key === 'pick-lock')
             game._occupation = null;
     }
@@ -6789,9 +6793,7 @@ export async function applyHeroLocationEffects(publish = plineWithContinuation, 
 async function finishHeroMovement({ oldx, oldy, loc, ballChainMove = null, }) {
     const u = game.u;
     await placeHeroOnLevel(u.ux, u.uy);
-    resetBulkTakeoff();
-    resetPick();
-    resetTrapSetting();
+    resetOccupations();
     // An active non-travel run ends upon entering a doorway, obstruction, or
     // furniture square even when actor displacement, rather than the plain
     // terrain branch, performed the coordinate move.

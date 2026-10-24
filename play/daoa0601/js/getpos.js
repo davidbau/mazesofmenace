@@ -1,7 +1,7 @@
 // C refs: getpos.c:getpos(), drawing.c:defsyms[], symbols.c:gs.showsyms[],
 // display.c:tmp_at() for the valid-location marking overlay.
 import { COLNO, D_ISOPEN, DOOR, GFILTER_NONE, GFILTER_VIEW, HI_ZAP, LOOK_ONCE, LOOK_QUICK, LOOK_TRADITIONAL, LOOK_VERBOSE, NHW_MENU, PICK_ONE, ROWNO, SCORR, STONE, VIBRATING_SQUARE, WEB, IS_WALL, TREE, } from './const.js';
-import { bot, clearMessageWindow, flush_screen, glyphAt, lastDirtyMapCursor, newsym_force, pline, plineWithContinuation, show_glyph_cell, showUnrememberedTopline, terrain_glyph, } from './display.js';
+import { clearMessageWindow, flush_screen, glyphAt, lastDirtyMapCursor, newsym_force, pline, plineWithContinuation, show_glyph_cell, showUnrememberedTopline, terrain_glyph, } from './display.js';
 import { game } from './gstate.js';
 import { nhgetch, readchar } from './input.js';
 import { currentLuaLifecycle } from './lua/lifecycle.js';
@@ -18,6 +18,7 @@ import { farlookLocationDescription } from './cmd.js';
 import { tty_add_menu, tty_create_nhwindow, tty_destroy_nhwindow, tty_end_menu, tty_select_menu, tty_start_menu, } from './tty_menu.js';
 import { rememberCommandKey, takeRepeatCommand } from './command_repeat.js';
 import { visibleCommandKey } from './command_keys.js';
+import { withIndefiniteArticle } from './object_grammar.js';
 // defsym.h S_goodpos: the dollar sign doubles as the default getpos key
 // which toggles valid-position marking, so the mark glyph shares it.
 const GOODPOS_CH = '$';
@@ -215,7 +216,8 @@ export async function paintGetposCursor(cursor, message, markedSpots = null) {
         for (const { x, y } of markedSpots)
             await markers.show(x, y);
     }
-    await bot();
+    // C getpos() only flushes, so a status change nothing marked for
+    // redisplay stays unpainted.
     await flush_screen(1);
     if (message)
         showUnrememberedTopline(message);
@@ -280,7 +282,6 @@ async function describeSelectedPosition(describe, cursor, fallback) {
 async function selectGetposMenu(spots, kind) {
     const names = { mon: 'monster', obj: 'item', door: 'door', unexplored: 'unexplored area', all: 'interesting thing', valid: 'valid location' };
     const name = names[kind];
-    const article = ['item', 'unexplored area', 'interesting thing'].includes(name) ? 'an' : 'a';
     const filter = game.iflags.getloc_filter === 1 ? ' in view' : game.iflags.getloc_filter === 2 ? ' in this area' : '';
     const window = tty_create_nhwindow(NHW_MENU);
     try {
@@ -295,7 +296,7 @@ async function selectGetposMenu(spots, kind) {
         }
         // getpos_menu() supplies an end_menu prompt, so the tty owner applies
         // the configured prompt attributes and color while items stay plain.
-        tty_end_menu(window, `Pick ${article} ${name}${filter}`);
+        tty_end_menu(window, `Pick ${withIndefiniteArticle(name)}${filter}`);
         const result = await tty_select_menu(window, PICK_ONE);
         if (result.cancelled)
             return null;

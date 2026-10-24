@@ -159,6 +159,7 @@ import {
     is_lord,
     is_male,
     is_mercenary,
+    is_minion,
     is_ndemon,
     is_bat,
     is_neuter,
@@ -564,7 +565,7 @@ import {
     WAX_CANDLE,
     WEAPON_CLASS,
 } from './objects.js';
-import { newepri } from './priest.js';
+import { mon_aligntyp, newepri } from './priest.js';
 import { newegd } from './vault.js';
 import { d, rn1, rn2, rnd, rne, rnz } from './rng.js';
 import { enexto_core, goodpos, noteleport_level } from './teleport.js';
@@ -1526,7 +1527,6 @@ function preflightCreation(ptr, x, y, mmflags, normalized) {
         && x === state.u?.ux
         && y === state.u?.uy
         && mmflags === (MM_EMIN | MM_NOMSG);
-    const divineMinionCall = minionSummonCall && normalized._summon_minion === true;
     // wizard.c nasty() is called both by mcastu.c with a non-null summoner
     // (MM_NOMSG at enexto(summoner->mux, summoner->muy)) and by the late-game
     // harassment caller with NULL (NO_MM_FLAGS at the hero square). Keep its
@@ -1671,9 +1671,9 @@ function preflightCreation(ptr, x, y, mmflags, normalized) {
             && !specialRoomCall
             && !cloneuCall
             && !cloneWizardCall && !furiesCall
-            // summon_minion uses the generic creation lifecycle; C imposes
-            // no initial-level species reservoir on this divine caller.
-            && !divineMinionCall
+            // C msummon() and summon_minion() both use this complete
+            // lifecycle without an initial-level species reservoir gate.
+            && !minionSummonCall
             && !wereSummonCall
             && !deadbookCall
             && !runtimeGroupCall
@@ -1873,14 +1873,21 @@ function addFreshMonsterObject(monster, obj, normalized) {
     return merged ? null : obj;
 }
 
-// C ref: makemon.c mongets(). Gnome rulers use the source prince-quality
-// floor. Species generated during level creation can be any rndmonst result.
+// C ref: makemon.c mongets(). Lawful minions receive uncursed, nonnegative,
+// proofed gear; the separate prince-quality floor follows that normalization.
 export function mongets(monster, otyp, normalized) {
     if (!otyp) return null;
     const obj = mksobj(otyp, true, false, normalized);
     if (monster.data.mlet === S_DEMON) {
         if (obj.blessed) curse(obj, normalized);
-    } else if (monster.data.mflags2 & M2_PRINCE) {
+    } else if (is_minion(monster.data)
+               && mon_aligntyp(monster) === A_LAWFUL) {
+        obj.cursed = false;
+        if (obj.spe < 0) obj.spe = 0;
+        obj.oerodeproof = true;
+        obj.oeroded = obj.oeroded2 = 0;
+    }
+    if (monster.data.mflags2 & M2_PRINCE) {
         if (obj.oclass === WEAPON_CLASS && obj.spe < 1) obj.spe = 1;
         else if (obj.oclass === ARMOR_CLASS && obj.spe < 0) obj.spe = 0;
     }
