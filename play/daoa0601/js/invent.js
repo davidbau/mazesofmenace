@@ -2,6 +2,7 @@ import { bypassObjectList, clearBypasses, nextUnbypassedObject } from './object_
 // invent.js — Inventory display and look-here commands.
 // C ref: invent.c — ddoinv(), display_inventory(), dolook().
 import { game, requireGameLevel, requireLiveGame } from './gstate.js';
+import { hideUnhideMessageTypes } from './message_types.js';
 import { encyclopediaEntries } from './encyclopedia.js';
 import { objectBlessingDescription, objectDescription } from './object_description.js';
 import { primaryHandDescriptionDetail } from './object_equipment_description.js';
@@ -11,10 +12,10 @@ import { showChoiceWindow, showInventoryWindow, showMultiSelectWindow, } from '.
 import { nhgetch } from './input.js';
 import { reassignInventoryLetters } from './inventory_prompt.js';
 import { inventoryClassOrder, inventorySortMode, objectClassHeading, sortObjects } from './object_sort.js';
-import { ALTAR, ICE, Is_airlevel, Is_waterlevel, MENU_TRADITIONAL, MV_KNOWS_EGG, PICK_NONE, PICK_ONE, W_ACCESSORY, W_AMUL, W_ARMOR, W_RING, W_TOOL, is_pit, } from './const.js';
+import { ALTAR, ICE, Is_airlevel, Is_waterlevel, MENU_TRADITIONAL, MSGTYP_MASK_REP_SHOW, MV_KNOWS_EGG, PICK_NONE, PICK_ONE, W_ACCESSORY, W_AMUL, W_ARMOR, W_RING, W_TOOL, is_pit, } from './const.js';
 import { ALCHEMY_SMOCK, ARROW as FIRST_OBJECT, BAG_OF_TRICKS, EGG, CHEST, FORTUNE_COOKIE, GOLD_PIECE, HAWAIIAN_SHIRT, LARGE_BOX, MAGIC_MARKER, HEAVY_IRON_BALL, LOCK_PICK, CREDIT_CARD, SKELETON_KEY, OBJECT_BIMANUAL, OBJECT_NAMES, SCR_BLANK_PAPER, SPE_BLANK_PAPER, SPE_BOOK_OF_THE_DEAD, SPE_NOVEL, STATUE, TIN, TIN_OPENER, TOWEL, AMULET_OF_YENDOR, FAKE_AMULET_OF_YENDOR, BEARTRAP, BELL, BELL_OF_OPENING, BLINDFOLD, BRASS_LANTERN, BULLWHIP, CANDELABRUM_OF_INVOCATION, CAN_OF_GREASE, CORPSE, CREAM_PIE, CRYSTAL_BALL, DRUM_OF_EARTHQUAKE, DWARVISH_MATTOCK, EUCALYPTUS_LEAF, EXPENSIVE_CAMERA, FIGURINE, GRAPPLING_HOOK, HORN_OF_PLENTY, LAND_MINE, LEASH, LENSES, MAGIC_LAMP, MAGIC_WHISTLE, MEAT_RING, MIRROR, OBJECT_DESCRIPTIONS, OBJECT_UNIQUE, OIL_LAMP, PICK_AXE, POT_OIL, SADDLE, STETHOSCOPE, TALLOW_CANDLE, TINNING_KIT, TIN_WHISTLE, UNICORN_HORN, WAX_CANDLE, WOODEN_FLUTE, } from './object_data.js';
 import { MONSTER_GROWTH_TARGET } from './monster_data.js';
-import { definiteName, objectCombatName, objectLooksUnique, objectName, observeObjectForNaming, simpleObjectName, singularObjectName } from './objnam.js';
+import { definiteName, objectCombatName, objectLooksUnique, objectName, objectNameIsPlural, observeObjectForNaming, simpleObjectName, singularObjectName } from './objnam.js';
 import { learnObjectType, OBJECT_CLASS_SYMBOLS, recordObjectEncounter, recordObjectKnowledge } from './object_knowledge.js';
 import { getLine, promptYesNoAllQuit } from './query.js';
 import { isGrayStone, isWeaponTool, objectUsesCharges } from './object_properties.js';
@@ -45,6 +46,7 @@ import { objectTypeKnown, currentShopResident, shopkeeperInOwnShop } from './shk
 const COIN_CLASS = 12;
 const SCROLL_CLASS = 9;
 const SPBOOK_CLASS = 10;
+const SCR_MAIL = OBJECT_NAMES.indexOf('mail');
 // C check_invent_gold(): only malformed purses may be reorganized.
 export async function checkInventoryGold(why, state = game) {
     const gold = state.inventory.filter(object => object.oclass === COIN_CLASS);
@@ -193,7 +195,7 @@ async function identifyTraditionally(limit) {
         if (answer === null)
             continue;
         if (answer.includes('i')) {
-            await showInventoryWindow(inventorySections(candidates, false), { pickMode: PICK_ONE });
+            await showInventoryWindow(await inventorySections(candidates, false), { pickMode: PICK_ONE });
             continue;
         }
         const categories = await parseIdentificationCategories(answer);
@@ -222,7 +224,7 @@ async function identifyTraditionally(limit) {
                         const letter = game.flags.fixinv === false
                             ? letterOrder.charAt(Math.min(index + (inventory[0]?.oclass === COIN_CLASS ? 0 : 1), 53))
                             : object.invlet;
-                        const description = inventoryItemDescription(object, {
+                        const description = await inventoryItemDescription(object, {
                             primaryHandDetail: inventoryPrimaryHandDetail(object),
                         });
                         await flushPendingTopline();
@@ -252,7 +254,7 @@ async function identifyTraditionally(limit) {
 async function identificationMenu(candidates, first) {
     await flushPendingTopline();
     clearMessageWindow();
-    const sections = inventorySections(candidates, false).map(section => ({
+    const sections = (await inventorySections(candidates, false)).map(section => ({
         ...section,
         items: section.items.map(item => {
             if (item.key === undefined)
@@ -271,7 +273,7 @@ async function identificationMenu(candidates, first) {
 async function identifyAndDescribe(object) {
     fullyIdentifyObject(object);
     observeObjectForNaming(object);
-    await plineWithContinuation(`${object.invlet} - ${inventoryItemDescription(object, {
+    await plineWithContinuation(`${object.invlet} - ${await inventoryItemDescription(object, {
         primaryHandDetail: inventoryPrimaryHandDetail(object),
     })}.`);
 }
@@ -331,8 +333,8 @@ export function bucAdjectiveForName(item) {
 export function inventoryPrimaryHandDetail(item) {
     return primaryHandDescriptionDetail(item);
 }
-export function inventoryItemDescription(item, options = {}) {
-    return objectDescription(item, options);
+export async function inventoryItemDescription(item, options = {}) {
+    return await objectDescription(item, options);
 }
 export async function consumeInventoryItem(item, state = game) {
     requireLiveGame(state);
@@ -346,11 +348,11 @@ export async function consumeInventoryItem(item, state = game) {
     }
     await useUpInventoryStack(item, state);
 }
-function rerollItemDescription(item) {
+async function rerollItemDescription(item) {
     // invent.c:reroll_menu() brackets distant_name(doname) with
     // override_ID.  Identify a temporary view rather than mutating the live
     // object or discovery tables for a character which might be rejected.
-    return inventoryItemDescription({
+    return await inventoryItemDescription({
         ...item,
         known: true,
         bknown: true,
@@ -386,14 +388,16 @@ async function rerollFallbackPrompt() {
 export async function rerollMenu() {
     const acceptKey = game.flags?.lootabc ? 'a' : 'p';
     const rerollKey = game.flags?.lootabc ? 'b' : 'r';
+    const descriptions = [];
+    for (const item of game.inventory || []) {
+        observeObjectForNaming(item, { distant: true });
+        descriptions.push(await rerollItemDescription(item));
+    }
     const entries = [
         { key: acceptKey, text: 'start the game with this character' },
         { key: rerollKey, text: 'reroll another character' },
         '',
-        ...(game.inventory || []).map(item => {
-            observeObjectForNaming(item, { distant: true });
-            return rerollItemDescription(item);
-        }),
+        ...descriptions,
         '',
         rerollAttributeLine(),
     ];
@@ -412,10 +416,10 @@ export async function rerollMenu() {
     }
     return reroll;
 }
-function inventorySections(items = game.inventory || [], includeGold = true) {
-    return inventorySectionsInOrder(sortObjects(items, { mode: inventorySortMode() }), includeGold);
+async function inventorySections(items = game.inventory || [], includeGold = true) {
+    return await inventorySectionsInOrder(sortObjects(items, { mode: inventorySortMode() }), includeGold);
 }
-function inventorySectionsInOrder(items, includeGold = true) {
+async function inventorySectionsInOrder(items, includeGold = true) {
     const grouped = new Map();
     for (const item of items) {
         if (!includeGold && item.oclass === COIN_CLASS)
@@ -430,7 +434,7 @@ function inventorySectionsInOrder(items, includeGold = true) {
         }
         section.push({
             ...(item.invlet == null ? {} : { key: item.invlet }),
-            text: inventoryItemDescription(item, {
+            text: await inventoryItemDescription(item, {
                 primaryHandDetail: inventoryPrimaryHandDetail(item),
             }),
         });
@@ -453,25 +457,26 @@ function itemActionEntries(item, state, repairGold) {
     const entries = [];
     const alreadyWorn = !!((item.owornmask ?? 0) & (W_ARMOR | W_ACCESSORY));
     const stack = item.quan > 1;
+    const plural = objectNameIsPlural(item, state);
     const shoot = ammunitionMatchesLauncher(item, state.uwep);
     if (item === state.uwep || item === state.uswapwep || item === state.uquiver) {
         const quivered = item === state.uquiver;
         const verb = quivered ? 'Quiver' : 'Wield';
         const action = quivered ? 'un-ready' : 'un-wield';
         const noun = item.oclass === 2 || isWeaponTool(item) ? 'weapon' : 'item';
-        entries.push({ key: '-', text: `${verb} '-' to ${action} ${stack ? `these ${noun}s` : `this ${noun}`}` });
+        entries.push({ key: '-', text: `${verb} '-' to ${action} ${plural ? `these ${noun}s` : `this ${noun}`}` });
     }
     const apply = itemApplyText(item, state);
     if (apply)
         entries.push({ key: 'a', text: apply });
     if (item.oclass !== COIN_CLASS && item.dknown && !item.oartifact && item.otyp !== SPE_NOVEL) {
         const named = !!(item.oextra?.oname || item.oname);
-        entries.push({ key: 'c', text: `${named ? 'Rename or un-name' : 'Name'} ${objectLooksUnique(item, state) ? 'the' : stack ? 'this stack of' : 'this specific'} ${itemName}` });
+        entries.push({ key: 'c', text: `${named ? 'Rename or un-name' : 'Name'} ${objectLooksUnique(item, state) ? 'the' : plural ? 'this stack of' : 'this specific'} ${itemName}` });
     }
     const callName = state._objectCallNames?.[item.otyp];
     if (item.dknown && objectTypeCallable(item, state) && (!objectTypeKnown(item, state) || callName)) {
         const noun = objectLooksUnique(item, state) ? definiteName(itemName, state)
-            : stack ? itemName : makePlural(itemName);
+            : plural ? itemName : makePlural(itemName);
         entries.push({ key: 'C', text: `${callName ? 'Re-call or un-call' : 'Call'} the type for ${noun}` });
     }
     if (!alreadyWorn)
@@ -679,7 +684,8 @@ function itemReadingText(item, state) {
     if (item.otyp === HAWAIIAN_SHIRT)
         return 'Look at the pattern on the shirt';
     if (item.oclass === SCROLL_CLASS) {
-        const magic = item.dknown && (item.otyp !== SCR_BLANK_PAPER || !known)
+        const magic = item.dknown && item.otyp !== SCR_MAIL
+            && (item.otyp !== SCR_BLANK_PAPER || !known)
             ? ' to activate its magic' : '';
         return `Read this scroll${magic}`;
     }
@@ -750,7 +756,7 @@ export async function selectUsedInventoryLetter(avoidLetter) {
     // not reorder items within a class, even when it sorts other menus.
     const ordered = game.flags.sortpack === false ? items
         : inventoryClassOrder().flatMap(oclass => items.filter(item => item.oclass === oclass));
-    const result = await showInventoryWindow(inventorySectionsInOrder(ordered), {
+    const result = await showInventoryWindow(await inventorySectionsInOrder(ordered), {
         title: 'Inventory letters used:', pickMode: PICK_ONE,
     });
     return result.key;
@@ -810,13 +816,13 @@ export async function selectInventoryObject({ letters, includeGold = true, title
         const letter = item ? item.invlet : '-';
         if (!letter)
             throw new Error('A carried inventory choice has no letter');
-        const description = item ? inventoryItemDescription(item, {
+        const description = item ? await inventoryItemDescription(item, {
             primaryHandDetail: inventoryPrimaryHandDetail(item),
         }) : extraChoice;
         const key = await showMessageMenu(letter, item ? pickMode : PICK_ONE, `${letter} - ${description}.`);
         return { key, count: null };
     }
-    const sections = inventorySections(visible, true);
+    const sections = await inventorySections(visible, true);
     if (extraChoice && !wizardIdentification)
         sections.unshift({
             heading: game.flags.sortpack === false ? null : 'Miscellaneous',
@@ -833,6 +839,15 @@ export async function selectInventoryObject({ letters, includeGold = true, title
     });
 }
 export async function dolook() {
+    hideUnhideMessageTypes(true, MSGTYP_MASK_REP_SHOW, game.iflags.messageTypes);
+    try {
+        await inspectHere();
+    }
+    finally {
+        hideUnhideMessageTypes(false, MSGTYP_MASK_REP_SHOW, game.iflags.messageTypes);
+    }
+}
+async function inspectHere() {
     if (game.u.uswallow && game.u.ustuck) {
         await lookInsideSwallower(game.u.ustuck);
         game.context.move = heroIsBlind() ? 1 : 0;

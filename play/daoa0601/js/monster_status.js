@@ -9,6 +9,7 @@ import { monsterAlignmentType } from './monster_alignment.js';
 import { objectAtMonsterDescription } from './monster_birth.js';
 import { MONSTER_FLAGS1, MONSTER_NAME, MONSTER_SIZE, MONSTER_SYMBOL, monsterDigests, monsterEnfolds, monsterIsAnimal, monsterTypeName, } from './monster_data.js';
 import { monsterName as nameMonster } from './monster_name.js';
+import { wormSegmentIndexAt } from './monster_worm.js';
 import { findMonsterArmorClass } from './monworn.js';
 import { makePlural, withIndefiniteArticle } from './object_grammar.js';
 import { visibleRegionAt } from './regions.js';
@@ -41,10 +42,8 @@ export async function monsterStatusLine(monster, { state = game, x = monster.mx,
     else if (monster.mpeaceful)
         conditions.push('peaceful');
     if (MONSTER_NAME[monster.mnum] === 'long worm') {
-        const segments = monster.wormSegments || [];
-        const count = segments.length + 1;
-        const index = x === monster.mx && y === monster.my ? 1
-            : segments.findIndex(segment => segment.x === x && segment.y === y) + 2;
+        const count = (monster.wormno ? monster.wormSegments?.length ?? 0 : 0) + 1;
+        const index = wormSegmentIndexAt(monster, x, y, state);
         const suffix = index % 100 >= 11 && index % 100 <= 13 ? 'th'
             : ['', 'st', 'nd', 'rd'][index % 10] || 'th';
         conditions.push(count === 1 ? 'single segment' : `${index}${suffix} of ${count} segments`);
@@ -53,18 +52,21 @@ export async function monsterStatusLine(monster, { state = game, x = monster.mx,
         conditions.push('shapechanger');
     if (monster.meating)
         conditions.push('eating');
-    conditions.push(...await monsterHiddenConditions(monster, state));
+    // Native gates this on the probed square, even though the hidden
+    // description itself uses the head square for a long worm.
+    if (monster.mundetected || monster.m_ap_type || visibleRegionAt(state, x, y))
+        conditions.push(...await monsterHiddenConditions(monster, state));
     if (monster.mcan)
         conditions.push('cancelled');
     if (monster.mconf)
         conditions.push('confused');
-    if (monster.mblinded || monster.mcansee === 0)
+    if (monster.mblinded || !monster.mcansee)
         conditions.push('blind');
     if (monster.mstun)
         conditions.push('stunned');
     if (monster.msleeping)
         conditions.push('asleep');
-    else if (monster.mfrozen || monster.mcanmove === 0)
+    else if (monster.mfrozen || !monster.mcanmove)
         conditions.push("can't move");
     else if ((monster.mstrategy ?? 0) & STRAT_WAITMASK)
         conditions.push('meditating');

@@ -1,4 +1,7 @@
 import { warningSymbols } from './warning_symbols.js';
+import { truncatePlineMessage, truncateRawMessage } from './pline_text.js';
+import { messageTypeFor } from './message_types.js';
+import { coordinateDescription } from './pager_lists.js';
 // display.js — Map rendering and terminal output.
 // C ref: display.c — newsym, show_glyph, docrt, cls, flush_screen.
 import { game, requireGameLevel } from './gstate.js';
@@ -24,11 +27,11 @@ import { statusTerrain } from './status_terrain.js';
 import { hitpointBar } from './status_hitpoint_bar.js';
 import { criticallyLowHp } from './prayer_trouble.js';
 import { cansee, couldsee, set_seenv, vision_recalc } from './vision.js';
-import { A_CHA, A_CON, A_DEX, A_INT, A_STR, A_WIS, ACCESSIBLE, BC_BALL, BC_CHAIN, COLNO, ROWNO, STONE, ROOM, CORR, SCORR, SDOOR, DOOR, STAIRS, FOUNTAIN, THRONE, SINK, GRAVE, ALTAR, ICE, HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, HI_ZAP, TREE, IRONBARS, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, AIR, CLOUD, IS_POOL, IS_OBSTRUCTED, IS_ROOM, IS_WALL, LADDER, LA_DOWN, DBWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED, D_BROKEN, SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR, BEAR_TRAP, WEB, VIBRATING_SQUARE, CORPSTAT_GENDER, CORPSTAT_FEMALE, ENGRAVE, BURN, HEADSTONE, EXPL_FROSTY, EXPL_MAGICAL, EXPL_WET, EXPL_MUDDY, EXPL_NOXIOUS, EXPL_FIERY, is_pit, M_AP_NOTHING, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, def_warnsyms, MON_STILL_ARRIVING, In_endgame, In_quest, Is_rogue_level, Is_waterlevel, Is_knox_level, In_sokoban, PLNMSG_UNKNOWN, MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS, MONSEEN_TELEPAT, MONSEEN_XRAYVIS, MONSEEN_DETECT, MONSEEN_WARNMON, PICK_NONE, PICK_ONE, Upolyd, ismnum, } from './const.js';
+import { A_CHA, A_CON, A_DEX, A_INT, A_STR, A_WIS, ACCESSIBLE, BC_BALL, BC_CHAIN, BUFSZ, MSGTYP_NORMAL, MSGTYP_NOREP, MSGTYP_NOSHOW, MSGTYP_STOP, xdir, ydir, isok, COLNO, ROWNO, STONE, ROOM, CORR, SCORR, SDOOR, DOOR, STAIRS, FOUNTAIN, THRONE, SINK, GRAVE, ALTAR, ICE, HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, HI_ZAP, TREE, IRONBARS, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, AIR, CLOUD, IS_POOL, IS_OBSTRUCTED, IS_ROOM, IS_WALL, LADDER, LA_DOWN, DBWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED, D_BROKEN, SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR, BEAR_TRAP, WEB, VIBRATING_SQUARE, CORPSTAT_GENDER, CORPSTAT_FEMALE, ENGRAVE, BURN, HEADSTONE, EXPL_FROSTY, EXPL_MAGICAL, EXPL_WET, EXPL_MUDDY, EXPL_NOXIOUS, EXPL_FIERY, is_pit, M_AP_NOTHING, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, def_warnsyms, MON_STILL_ARRIVING, In_endgame, In_quest, Is_rogue_level, Is_waterlevel, Is_knox_level, In_sokoban, PLNMSG_UNKNOWN, MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS, MONSEEN_TELEPAT, MONSEEN_XRAYVIS, MONSEEN_DETECT, MONSEEN_WARNMON, PICK_NONE, PICK_ONE, Upolyd, ismnum, } from './const.js';
 import { NO_COLOR, ATR_INVERSE, CLR_BLACK, CLR_RED, CLR_GREEN, CLR_GRAY, CLR_BROWN, CLR_MAGENTA, CLR_CYAN, CLR_WHITE, CLR_YELLOW, CLR_BLUE, CLR_ORANGE, CLR_BRIGHT_GREEN, CLR_BRIGHT_BLUE, CLR_BRIGHT_MAGENTA, DEC_TO_UNICODE, } from './terminal.js';
 import { LARGE_BOX, CHEST, GOLD_PIECE, FOOD_RATION, CORPSE, TOWEL, STATUE, BOULDER, OBJECT_BASES, OBJECT_COLOR, } from './object_data.js';
 import { MONSTER_COLOR, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_FLAGS3, MONSTER_GENO, MONSTER_LEVEL, MONSTER_NAME, MONSTER_SYMBOL, SPECIAL_PM, monsterTypeName, } from './monster_data.js';
-import { rn2Display } from './rng.js';
+import { rn2, rn2Display } from './rng.js';
 import { BOGUS_MONSTERS, BOGUS_MONSTER_FILE_SIZE, } from './random_text_data.js';
 import { depth as dungeonDepth, endgameLevelName } from './hacklib.js';
 import { OBJECT_CLASS_SYMBOLS, recordObjectEncounter } from './object_knowledge.js';
@@ -110,9 +113,11 @@ export function seeMonsterWithInfrared(monster) {
 function canPhysicallyProjectMonster(monster, x, y) {
     return monsterVisible(monster) && (cansee(x, y) || seeMonsterWithInfrared(monster));
 }
-// C worm.c:worm_known(). The live head and occupied body share actor identity.
+// C worm.c:worm_known(). A head-only relocation leaves the hidden segment
+// behind until worm_move() or place_wsegs() updates it.
 export function wormKnown(monster) {
-    return cansee(monster.mx, monster.my)
+    const head = monster.wormHead;
+    return !!head && cansee(head.x, head.y)
         || (monster.wormSegments ?? []).some(segment => segment.x && cansee(segment.x, segment.y));
 }
 // C mon.c:monkilled(). Its death line is square-visible or worm-known,
@@ -1125,9 +1130,9 @@ function objectGlyphNumber(object, piletop) {
         + (objectUsesGenericGlyph(object) ? object.oclass : object.otyp);
 }
 // C display.h:mon_to_glyph(). Ignore disguises for a revelation flash.
-export function transientMonsterGlyph(monster) {
+export function transientMonsterGlyph(monster, monsterState = 'normal') {
     return displayMonsterGlyph(heroIsHallucinating()
-        ? rn2Display(MONSTER_COLOR.length) : monster.mnum, !!monster.female);
+        ? rn2Display(MONSTER_COLOR.length) : monster.mnum, !!monster.female, monsterState);
 }
 // Native zapdir_to_glyph() and reset_glyphmap(): direction selects one of
 // four symbols; the beam type retains a separate glyph even for equal colors.
@@ -2026,6 +2031,19 @@ export function displayColorName(preferred, state = game) {
         throw new Error('Display RNG returned an invalid color index');
     return color;
 }
+const OBJECT_COLOR_NAMES = [
+    'black', 'red', 'green', 'brown', 'blue', 'magenta', 'cyan', 'gray',
+    'colorless', 'orange', 'bright green', 'yellow', 'bright blue',
+    'bright magenta', 'bright cyan', 'white',
+];
+// C do_name.c:rndcolor() draws an ordinary color even when hcolor() will
+// replace it with a hallucinated color from the display stream.
+export function randomColorName(state = game, random = rn2) {
+    const color = OBJECT_COLOR_NAMES[random(OBJECT_COLOR_NAMES.length)];
+    if (color === undefined)
+        throw new RangeError('Random color selection is outside the color table');
+    return displayColorName(color, state);
+}
 // C do_name.c:Monnam() requests ARTICLE_THE, except personal bogus-monster
 // names suppress the article before the result is sentence-capitalized.
 export function randomDisplayMonsterSubject(forceThe = false) {
@@ -2636,7 +2654,8 @@ function refreshStatusLines() {
     if (!display || game._statusUpdatesDisabled || game.program_state.saving
         || game.program_state.windows_exited || game._suppressMapStatusForFlush)
         return;
-    if (game.u.uhp === -1) {
+    // Native bot() needs youmonst.data, installed with the hero's species.
+    if (game.u.uhp === -1 || game.u.umonnum === undefined) {
         game.context.botl = false;
         game.context.time_botl = false;
         return;
@@ -2706,13 +2725,16 @@ export async function setTopline(msg) {
         vision_recalc(0);
     if (game.u.ux)
         await flush_screen(1);
+    replaceTopline(msg);
+    game._lastPlineMessage = msg;
+    game._lastPlineKind = PLNMSG_UNKNOWN;
+}
+function replaceTopline(msg) {
     if (game.nhDisplay)
         game.nhDisplay.stoppedTopline = game._suppressMessagesUntilInput ? msg : null;
     game._pending_message = msg;
     game._retained_message = '';
     game._last_message = msg;
-    game._lastPlineMessage = msg;
-    game._lastPlineKind = PLNMSG_UNKNOWN;
 }
 function decodeMixedTopline(message) {
     const cells = [];
@@ -2821,15 +2843,24 @@ export async function showMessageMenu(letter, pickMode, message) {
         await plineWithContinuation(message);
         return 0;
     }
-    game._pending_message = message;
-    game._retained_message = '';
+    // dismiss_more is set first, so the letter also acknowledges older prose.
     const menuLetter = letter.charCodeAt(0);
-    const key = await pageTopline(message, { menuLetter });
+    let key = await updateTopline(message, { dismissKey: menuLetter });
+    // Wrapped text has already paged. A stopped window may have kept older
+    // visible prose, but update_topl() never draws the suppressed choice.
+    if (game._pending_message) {
+        key = await pageTopline(game._pending_message, {
+            dismissKey: key === 27 ? 1 : menuLetter,
+        });
+        clearMessageWindow();
+    }
+    // tty_message_menu() treats Escape as cancelling this selection only.
+    game._suppressMessagesUntilInput = false;
     return key === menuLetter || key === 27 ? key : 0;
 }
 // tty more() acknowledges existing output. A window-only display does not
 // call bot(), so it must retain status even if game state changed meanwhile.
-async function pageTopline(message, { urgent = false, menuLetter } = {}) {
+async function pageTopline(message, { urgent = false, dismissKey } = {}) {
     const display = game.nhDisplay;
     const columns = display?.cols ?? 80;
     const lines = toplineRows(message, columns);
@@ -2855,20 +2886,8 @@ async function pageTopline(message, { urgent = false, menuLetter } = {}) {
     let key;
     do
         key = await nhgetch();
-    while (key !== menuLetter && ![27, 32, 10, 13].includes(key));
+    while (key !== dismissKey && ![27, 32, 10, 13].includes(key));
     game._pending_message = '';
-    if (menuLetter !== undefined) {
-        // Escape cancels this selection only. Both wrapped text and a More
-        // marker pushed onto a map row need native more()'s docorner cleanup.
-        game._suppressMessagesUntilInput = false;
-        game._retained_message = '';
-        if (lines.length > 1)
-            _buildScreenOutput();
-        else
-            display?.clearRow(0);
-        display?.setCursor(0, 0);
-        return key;
-    }
     // more() repairs covered map rows after any dismissal. Escape also
     // erases a one-line message; WIN_NOSTOP only prevents output suppression.
     game._retained_message = '';
@@ -2907,39 +2926,86 @@ export async function displayMessageWindow() {
     clearMessageWindow();
     return dismissal;
 }
-// C tty topl.c:update_topl().  A later pline either appends to the pending
-// topline or owns a --More-- boundary before replacing it.  Keep this policy
-// at the terminal layer so source callers can remain ordinary sequential
-// pline() producers.
-// C pline.c:vpline() always reaches tty through update_topl().
+// C pline.c: the next vpline consumes the message location, even when hidden.
+export function set_msg_dir(direction) {
+    const previous = game.iflags.messageLocation ?? { x: 0, y: 0 };
+    const dx = xdir[direction], dy = ydir[direction];
+    game.iflags.messageLocation = {
+        x: game.u.ux + (dx ?? previous.x), y: game.u.uy + (dy ?? previous.y),
+    };
+}
+export function set_msg_xy(x, y) {
+    game.iflags.messageLocation = { x, y };
+}
+export async function pline_dir(direction, message) {
+    set_msg_dir(direction);
+    await pline(message);
+}
+export async function pline_xy(x, y, message) {
+    set_msg_xy(x, y);
+    await pline(message);
+}
+export async function pline_mon(monster, message) {
+    if ('mx' in monster)
+        set_msg_xy(monster.mx, monster.my);
+    else
+        set_msg_xy(0, 0);
+    await pline(message);
+}
+// C tty topl.c:update_topl(): successive messages join or page older prose.
 export async function pline(msg) {
-    if (!msg) {
-        await setTopline(msg);
-        return;
-    }
     await plineWithContinuation(msg);
 }
-export async function plineWithContinuation(msg, { noRepeat = false, urgent = false } = {}) {
-    if (!msg)
+export async function plineWithContinuation(msg, { noRepeat = false, urgent = false, overrideMessageType = false, position, } = {}) {
+    const location = position ?? game.iflags.messageLocation;
+    delete game.iflags.messageLocation;
+    msg = msg.split('\0', 1)[0] ?? '';
+    if (!msg || game.program_state.wizkit_wishing)
         return;
+    if (game.flags.accessiblemsg && location && isok(location.x, location.y)) {
+        const mode = game.iflags.getpos_coords;
+        const coordinates = coordinateDescription(location.x, location.y, !mode || mode === 'n' ? 'f' : mode);
+        msg = `${coordinates}: ${msg}`;
+    }
+    const length = new TextEncoder().encode(msg).length;
+    if (length > 5 * BUFSZ - 1) {
+        const { panic } = await import('./diagnostics.js');
+        await panic(`pline attempting to print ${length} characters!`);
+    }
+    msg = truncatePlineMessage(msg);
     if (game.program_state?.windows_exited) {
         rawPrint(msg);
         game._lastPlineKind = PLNMSG_UNKNOWN;
         return;
     }
+    const messageType = overrideMessageType ? MSGTYP_NORMAL
+        : messageTypeFor(msg, noRepeat, game.iflags.messageTypes);
+    if (!urgent && (messageType === MSGTYP_NOSHOW
+        || (messageType === MSGTYP_NOREP && msg === game._lastPlineMessage)))
+        return;
     if (urgent && game._suppressMessagesUntilInput) {
         game._suppressMessagesUntilInput = false;
         game._pending_message = '';
         game._retained_message = '';
     }
-    if (!urgent && noRepeat && msg === game._lastPlineMessage)
-        return;
     // vpline() flushes the map before tty decides whether older prose needs
     // acknowledgment. Direct message-window display does not do this.
     if (game.vision_full_recalc)
         vision_recalc(0);
     if (game.u.ux)
         await flush_screen(1);
+    const dismissal = await updateTopline(msg, { urgent });
+    // C pline.c tracks the last individual message, not the joined tty line.
+    game._lastPlineMessage = msg;
+    game._lastPlineKind = PLNMSG_UNKNOWN;
+    return messageType === MSGTYP_STOP ? await displayMessageWindow() : dismissal;
+}
+// C update_topl() also owns bare tty_putstr() output from singleton menus.
+// Sample WIN_STOP on entry: Escape at an older line suppresses subsequent
+// calls, while the incoming line from this call still gets drawn.
+async function updateTopline(msg, options = {}) {
+    const paging = { ...options };
+    const urgent = paging.urgent ?? false;
     const pending = game._pending_message || '';
     const visibleLength = (message) => /[\x0e\x0f]|\x1b\[[0-9;]*C/.test(message)
         ? decodeMixedTopline(message).length : message.length;
@@ -2957,32 +3023,33 @@ export async function plineWithContinuation(msg, { noRepeat = false, urgent = fa
         // keeps WIN_STOP set through the following survival question.
         if (game.nhDisplay)
             game.nhDisplay.stoppedTopline = fits && !restarts ? `${stopped}  ${msg}` : msg;
-        game._lastPlineMessage = msg;
         if (!restarts)
-            return;
+            return null;
         game._suppressMessagesUntilInput = false;
-        await setTopline(msg);
-        return wraps ? await pageTopline(msg) : null;
+        replaceTopline(msg);
+        return wraps ? await pageTopline(msg, paging) : null;
     }
     let dismissal;
     if (!pending) {
-        await setTopline(msg);
+        replaceTopline(msg);
         dismissal = wraps
-            ? await pageTopline(msg, { urgent }) : null;
+            ? await pageTopline(msg, paging) : null;
     }
     else if (!msg.startsWith('You die')
         && visibleLength(msg) + visibleLength(pending) + 3 < columns - 8) {
-        await setTopline(`${pending}  ${msg}`);
+        replaceTopline(`${pending}  ${msg}`);
+        dismissal = null;
     }
     else {
-        dismissal = await pageTopline(pending, { urgent });
+        dismissal = await pageTopline(pending, paging);
+        // xwaitforspace() replaces dismiss_more with 1 on Escape.
+        if (dismissal === 27)
+            paging.dismissKey = 1;
         // Escape suppresses later lines, not the line which forced this pager.
-        await setTopline(msg);
+        replaceTopline(msg);
         if (wraps)
-            dismissal = await pageTopline(msg, { urgent });
+            dismissal = await pageTopline(msg, paging);
     }
-    // C pline.c tracks the last individual message, not the joined tty line.
-    game._lastPlineMessage = msg;
     return dismissal;
 }
 function writeRawText(text) {
@@ -2999,6 +3066,11 @@ function writeRawText(text) {
                 display.scrollUp();
             display.setCursor(0, Math.min(row, display.rows - 1));
         }
+        else if (ch === '\t') {
+            // tty_raw_print() leaves tabs for the terminal's eight-column stops.
+            const nextTab = display.cursorCol + 8 - display.cursorCol % 8;
+            display.setCursor(Math.min(nextTab, display.cols - 1), display.cursorRow);
+        }
         else {
             if (display.cursorCol >= display.cols)
                 writeRawText('\n');
@@ -3007,6 +3079,12 @@ function writeRawText(text) {
         }
     }
     display.flush();
+}
+export function rawPrintf(message) {
+    rawPrint(truncateRawMessage(message));
+    // Both raw_printf() and vraw_printf() increment the early-message count.
+    if (!game.program_state.beyond_savefile_load)
+        game.earlyRawMessages += 2;
 }
 export function rawPrint(message) {
     writeRawText(`${message}\n`);

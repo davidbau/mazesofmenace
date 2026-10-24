@@ -27,7 +27,7 @@ import { igniteItems } from './light.js';
 import { destroyFireInventory } from './zap.js';
 import { releaseAllMonsterLeashes } from './monster_leash.js';
 import { splitHeroMonsterForm } from './mklev.js';
-import { MONSTER_FLAGS1, MONSTER_MOVE, MONSTER_SIZE, MONSTER_SYMBOL, } from './monster_data.js';
+import { MONSTER_FLAGS1, MONSTER_MOVE, MONSTER_NAME, MONSTER_SIZE, MONSTER_SYMBOL, } from './monster_data.js';
 import { AMULET_OF_LIFE_SAVING, BOULDER, LOADSTONE, OBJECT_MATERIAL, } from './object_data.js';
 import { ownedObjectAction } from './objnam.js';
 import { heroFormClings, heroFormFlags, heroHidesOnCeiling, heroIsFlying, } from './polyself.js';
@@ -95,7 +95,7 @@ const S_EYE = 5;
 const S_VORTEX = 22;
 const S_LIGHT = 25;
 const PM_GREMLIN = 40;
-const PM_GRID_BUG = 112;
+const PM_GRID_BUG = MONSTER_NAME.indexOf('grid bug');
 const PM_AIR_ELEMENTAL = 154;
 const PM_IRON_GOLEM = 259;
 function heroIsInAir(state) {
@@ -208,13 +208,13 @@ export function heroTightDiagonalReason(state = game) {
     return 0;
 }
 // C hack.c:crawl_destination(): goodpos() first, then diagonal limits.
-async function crawlDestinationAllowed(state, x, y, random, publish) {
+export async function crawlDestinationAllowed(state, x, y, random, publish) {
     const u = state.u;
     if (!goodPosition(x, y, { kind: 'hero' }, { state, random }))
         return false;
     if (x === u.ux || y === u.uy)
         return true;
-    if ((u.mtimedone ?? 0) > 0 && u.umonnum === PM_GRID_BUG)
+    if (u.umonnum === PM_GRID_BUG)
         return false;
     if (heroPassesWalls(state))
         return true;
@@ -610,13 +610,6 @@ async function emergencyDisrobe(state, random) {
         findArmorClass(state);
     return { escaped: true, dropped };
 }
-function heroMovedWithinPool(state, x, y) {
-    if (!state.u?.uinwater)
-        return false;
-    const previousX = Number.isInteger(state.u.ux0) ? state.u.ux0 : x;
-    const previousY = Number.isInteger(state.u.uy0) ? state.u.uy0 : y;
-    return isPoolAt(previousX, previousY, state);
-}
 async function wakeHeroForCrawl(state, publish) {
     if (state.u.usleep)
         await finishHeroHelplessness('Suddenly you wake up!', state, publish);
@@ -744,9 +737,8 @@ async function leaveWater({ state, location, publish, }) {
 // default.  entry 'float-down' (C trap.c:float_down() -> drown()/
 // lava_effects()) skips the spoteffects-only stages: leaving water, the
 // mounted-steed dismount, and the ceiling-hider check, none of which the
-// direct drown()/lava_effects() calls perform.  Entry 'drown' also skips
-// their terrain-entry guards: a submerged hero still drowns while held
-// by a monster or wearing water-walking boots (C Amulet_off()).
+// direct drown()/lava_effects() calls perform. Entries 'drown' and 'lava'
+// also skip their terrain-entry guards, including being held by a monster.
 export async function heroLiquidEffects(options = {}) {
     const { state = game, publish = plineWithContinuation, random = rn2, recalculateVision = vision_recalc, resetVision = vision_reset, repaint = newsym, rollDice = d, rollOne = rnd, chooseTeleportDestination = null, applyLandingEffects = async () => { }, die = finishLiquidDeath, entry = 'spot-effects', } = options;
     const fromFloatDown = entry === 'float-down';
@@ -759,6 +751,11 @@ export async function heroLiquidEffects(options = {}) {
     let location = state.level?.at?.(x, y);
     if (!u || !location)
         return null;
+    if (entry === 'lava')
+        return heroLavaEffects({
+            state, location, publish, random, rollDice, rollOne,
+            repaint, resetVision, recalculateVision, applyLandingEffects, die,
+        });
     if (entry !== 'drown') {
         const leftWater = fromFloatDown ? false : await leaveWater({ state, location, publish });
         const airborne = u.levitating || u.levitation
@@ -803,7 +800,9 @@ export async function heroLiquidEffects(options = {}) {
     const waterWall = location.typ === WATER;
     let canLiveUnderwater = heroCanLiveUnderwater(state);
     let stayingInPool = false;
-    if (heroMovedWithinPool(state, x, y) && canLiveUnderwater) {
+    // drown() uses the retained direction, including zero, after relocation.
+    if (u.uinwater && isPoolAt(x - (u.dx ?? 0), y - (u.dy ?? 0), state)
+        && canLiveUnderwater) {
         if (random(5) !== 0)
             return { entered: true, moved: false, died: false };
         stayingInPool = true;

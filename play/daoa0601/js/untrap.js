@@ -14,6 +14,7 @@ import { artifactById } from './artifacts.js';
 import { heroHasMagicKey } from './monster_key.js';
 import { currentAttribute, exerciseAttribute } from './attrib.js';
 import { triggerChestTrap } from './chest_trap.js';
+import { heroFingerName } from './body_parts.js';
 import { A_CON, A_DEX, A_STR, A_WIS, ARROW_TRAP, BEAR_TRAP, DART_TRAP, DISMOUNT_FELL, DOOR, D_BROKEN, D_ISOPEN, D_NODOOR, D_TRAPPED, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, LANDMINE, MAXULEV, PIT, SPIKED_PIT, SQKY_BOARD, WEB, isok, } from './const.js';
 import { displayMessageWindow, newsym, pline, plineWithContinuation } from './display.js';
 import { level_difficulty } from './dungeon.js';
@@ -661,13 +662,13 @@ async function handleBoxes(boxes, { state, force, ask, publish, random, rollOne,
         const known = box.tknown && box.dknown;
         if (!known)
             observeObjectForNaming(box, { state });
-        const answer = await ask(objectQuestion(box, {
+        const answer = await ask(await objectQuestion(box, {
             prefix: known ? 'Disarm this ' : 'There is ',
             suffix: known ? '' : ' here.  Check it for traps?',
             fallback: 'a box',
-            format: (object, nameState) => known
+            format: async (object, nameState) => known
                 ? objectCombatName(object, { state: nameState, includeCorpseSpecies: false })
-                : objectDescription(object, { state: nameState }),
+                : await objectDescription(object, { state: nameState }),
             shortFormat: simpleObjectNameWithArticle,
         }, state));
         if (answer === 'q')
@@ -725,7 +726,7 @@ async function disarmBox(box, { state, force, publish, random, rollOne, rollDice
     if (!force && (heroIsImpaired(state) || heroIsFumbling(state)
         || rollOne(75 + Math.trunc(level_difficulty() / 2)) > chance)) {
         const trap = await triggerChestTrap(box, {
-            state, disarm: true, publish, random, rollDice,
+            state, disarm: true, bodyPart: heroFingerName(state), publish, random, rollDice,
         });
         if (trap?.died)
             return;

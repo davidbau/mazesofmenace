@@ -6,10 +6,11 @@ import { formatFeltMessage } from './hero_speech.js';
 import { nomul, setMulti } from './command_state.js';
 import { heroHasWaterWalking } from './armor.js';
 import { beginBallAndChainMove, finishBallAndChainMove, heroIsPunished, } from './ball.js';
-import { D_CLOSED, D_ISOPEN, D_LOCKED, DOOR, FIRE_TRAP, IRONBARS, IS_OBSTRUCTED, Is_waterlevel, KILLED_BY, MAGIC_PORTAL, TREE, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_WEB, Upolyd, VIBRATING_SQUARE, W_NONPASSWALL, is_hole, is_pit, isok, } from './const.js';
+import { D_CLOSED, D_ISOPEN, D_LOCKED, DOOR, FIRE_TRAP, IRONBARS, IS_OBSTRUCTED, IS_STWALL, Is_waterlevel, KILLED_BY, MAGIC_PORTAL, TREE, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_WEB, Upolyd, VIBRATING_SQUARE, W_NONPASSWALL, is_hole, is_pit, isok, } from './const.js';
 import { canSpotMonster, flush_screen, glyphAt, map_invisible, newsym, plineWithContinuation, } from './display.js';
 import { heroTestMove } from './cmd.js';
 import { game, requirePlayingGame } from './gstate.js';
+import { endHeroVolley } from './hero_multishot.js';
 import { blocksDiagonalDoor, heroBadRock, heroLiquidEffects, heroTightDiagonalReason, } from './hack.js';
 import { triggerHeroTrap } from './hero_traps.js';
 import { finishDestinationSpotEffects } from './location_effects.js';
@@ -67,7 +68,7 @@ function wallPassage(location) {
     return {
         hasAbility,
         mayPass: hasAbility
-            && !((location.wall_info ?? 0) & W_NONPASSWALL),
+            && !(IS_STWALL(location.typ) && (location.wall_info & W_NONPASSWALL)),
     };
 }
 function obstacleReason(location, openDoorFrame) {
@@ -252,10 +253,10 @@ async function settleLiquid(options, remaining) {
     if (isLavaAt(x, y)) {
         if (!options.jumping || remaining.value >= 2)
             await plineWithContinuation('You move over some lava.', { noRepeat: true });
-        return null;
+        return false;
     }
     if (!isPoolAt(x, y) || game.u.uinwater)
-        return null;
+        return false;
     const staysAboveWater = game.u?.levitating || game.u?.levitation
         || game.u.flying
         || heroHasWaterWalking(game) || options.jumping;
@@ -264,18 +265,22 @@ async function settleLiquid(options, remaining) {
             && (!options.jumping || remaining.value >= 2)) {
             await plineWithContinuation(`You move over ${isMoatAt(x, y) ? 'a moat' : 'a pool'}.`, { noRepeat: true });
         }
-        return null;
+        return false;
     }
     setMulti(0);
     game._helplessReason = null;
     game._helplessDoneMessage = null;
-    return heroLiquidEffects({
+    // C hurtle_step() calls drown() directly, then stops even if a swimmer
+    // survives in place. pooleffects() would check the steed too early.
+    await heroLiquidEffects({
+        entry: 'drown',
         chooseTeleportDestination: options.chooseTeleportDestination ?? null,
         applyLandingEffects: ({ from, to, pick = true }) => finishDestinationSpotEffects({
             oldx: from.x, oldy: from.y, newx: to.x, newy: to.y,
             pick, trapOptions: hurtleTrapOptions(options),
         }),
     });
+    return true;
 }
 async function moveOneSquare(x, y, options, remaining) {
     requirePlayingGame(game);
@@ -321,11 +326,10 @@ async function moveOneSquare(x, y, options, remaining) {
     const currentLocation = game.level.at(x, y);
     if (!previousLocation || !currentLocation)
         throw new Error(`Hurtle moved between invalid map cells ${oldx},${oldy} and ${x},${y}`);
-    if (options.jumping && previousLocation.typ !== currentLocation.typ)
+    if (previousLocation.typ !== currentLocation.typ)
         await switchHeroTerrain(game);
     await checkSpecialRoom();
-    const liquid = await settleLiquid(options, remaining);
-    if (liquid?.moved || liquid?.died)
+    if (await settleLiquid(options, remaining))
         return false;
     const trap = game.level?.traps?.find(candidate => candidate.tx === x && candidate.ty === y);
     if (await triggerLandingTrap(trap, options, remaining))
@@ -351,7 +355,7 @@ export async function hurtleJumpTo(x, y, options = {}) {
     // square on failure, even if a portal or liquid moved the actor.
     return reached;
 }
-export async function hurtleHero(dx, dy, range, { verbose = false, finishTeleport = null, gotoLevel = null, chooseTeleportDestination = null, finishMonsterDeath = null, } = {}) {
+export async function hurtleHero(dx, dy, range, { verbose = false, finishTeleport = null, gotoLevel = null, chooseTeleportDestination = null, finishMonsterDeath = null, volley, } = {}) {
     requirePlayingGame(game);
     const ball = game.uball || game.u.uball;
     if (heroIsPunished()
@@ -376,6 +380,8 @@ export async function hurtleHero(dx, dy, range, { verbose = false, finishTelepor
     if (verbose) {
         await plineWithContinuation(`You ${range > 1 ? 'hurtle' : 'float'} in the opposite direction.`);
     }
+    if (volley)
+        await endHeroVolley(volley);
     const remaining = { value: range };
     const options = {
         finishTeleport, gotoLevel, chooseTeleportDestination,

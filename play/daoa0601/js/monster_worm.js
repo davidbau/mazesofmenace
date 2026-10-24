@@ -1,6 +1,6 @@
 // Long-worm body ownership.
 // C refs: makemon.c:initworm(), worm.c:place_worm_tail_randomly(), wormgone().
-import { MAX_NUM_WORMS, MHPMAX, MON_FLOOR, MON_OFFMAP, NORMAL_SPEED, isok, xdir, ydir } from './const.js';
+import { MAX_NUM_WORMS, MHPMAX, MON_FLOOR, NORMAL_SPEED, isok, xdir, ydir } from './const.js';
 import { canSpotMonster, newsym, plineWithContinuation } from './display.js';
 import { game, requireGameLevel, requireLiveGame } from './gstate.js';
 import { MONSTER_NAME } from './monster_data.js';
@@ -42,49 +42,58 @@ export async function cutWorm(monster, x, y, sliceOrChop, { state = game, random
     }
     const severed = monster.wormSegments.slice(cutIndex);
     monster.wormSegments = monster.wormSegments.slice(0, cutIndex);
-    const wormno = monster.m_lev >= 3 && random(3) === 0 ? nextWormNumber(state) : 0;
-    const clone = wormno ? await cloneMonster(monster, state, {
-        position: { x, y }, random,
-    }) : null;
-    if (!clone) {
-        let message = null;
-        if (!state.context.mon_moving) {
-            message = `You cut part of the tail off of ${monsterName(monster, { state })}.`;
+    monster.wormDetachedSegments = severed;
+    try {
+        const wormno = monster.m_lev >= 3 && random(3) === 0 ? nextWormNumber(state) : 0;
+        // clone_mon() needs an empty head square. The remaining detached
+        // cells stay owned by the original worm until place_wsegs().
+        if (wormno)
+            monster.wormDetachedSegments = severed.slice(1);
+        const clone = wormno ? await cloneMonster(monster, state, {
+            position: { x, y }, random,
+        }) : null;
+        if (!clone) {
+            monster.wormDetachedSegments = severed;
+            let message = null;
+            if (!state.context.mon_moving) {
+                message = `You cut part of the tail off of ${monsterName(monster, { state })}.`;
+            }
+            else if (canSpotMonster(monster)) {
+                const name = monsterName(monster, { state });
+                const possessive = name === 'it' ? 'its' : /s$/i.test(name) ? `${name}'` : `${name}'s`;
+                message = `Part of ${possessive} tail has been cut off.`;
+            }
+            if (message)
+                await publish(message);
+            // toss_wsegs() clears and redraws each cell from tail to cut.
+            while (severed.length) {
+                const segment = severed.pop();
+                if (segment?.x)
+                    newsym(segment.x, segment.y);
+            }
+            if (monster.mhp > 1)
+                monster.mhp = Math.trunc(monster.mhp / 2);
+            return;
         }
-        else if (canSpotMonster(monster)) {
-            const name = monsterName(monster, { state });
-            const possessive = name === 'it' ? 'its' : /s$/i.test(name) ? `${name}'` : `${name}'s`;
-            message = `Part of ${possessive} tail has been cut off.`;
-        }
-        // C toss_wsegs removes map occupancy after the cut-off message.
-        // Keep the detached body's cells occupied while that pager is open.
-        monster.wormSegments.push(...severed);
-        if (message)
-            await publish(message);
-        monster.wormSegments.length = cutIndex;
-        for (let index = severed.length - 1; index >= 0; index--) {
-            const segment = severed[index];
-            if (segment)
-                newsym(segment.x, segment.y);
-        }
-        if (monster.mhp > 1)
-            monster.mhp = Math.trunc(monster.mhp / 2);
-        return;
+        clone.wormno = wormno;
+        clone.mcloned = 0;
+        monster.m_lev = Math.max(monster.m_lev - 2, 3);
+        clone.m_lev = monster.m_lev;
+        clone.mhpmax = clone.mhp = rollDice(clone.m_lev, 8);
+        monster.mhpmax = rollDice(monster.m_lev, 8);
+        monster.mhp = Math.min(monster.mhp, monster.mhpmax);
+        clone.wormSegments = severed.slice(1);
+        clone.wormHead = { x, y };
+        clone.wormGrowTime = 0;
+        delete monster.wormDetachedSegments;
+        if (state.context.mon_moving)
+            await publish(`${monsterName(monster, { state, capitalized: true })} is cut in half.`);
+        else
+            await publish(`You cut ${monsterName(monster, { state })} in half.`);
     }
-    clone.wormno = wormno;
-    clone.mcloned = 0;
-    monster.m_lev = Math.max(monster.m_lev - 2, 3);
-    clone.m_lev = monster.m_lev;
-    clone.mhpmax = clone.mhp = rollDice(clone.m_lev, 8);
-    monster.mhpmax = rollDice(monster.m_lev, 8);
-    monster.mhp = Math.min(monster.mhp, monster.mhpmax);
-    clone.wormSegments = severed.slice(1);
-    clone.wormHead = { x, y };
-    clone.wormGrowTime = 0;
-    if (state.context.mon_moving)
-        await publish(`${monsterName(monster, { state, capitalized: true })} is cut in half.`);
-    else
-        await publish(`You cut ${monsterName(monster, { state })} in half.`);
+    finally {
+        delete monster.wormDetachedSegments;
+    }
 }
 function nextWormNumber(state) {
     const used = new Set((state.level?.monsters || [])
@@ -94,6 +103,19 @@ function nextWormNumber(state) {
     while (wormno < MAX_NUM_WORMS && used.has(wormno))
         wormno++;
     return wormno < MAX_NUM_WORMS ? wormno : 0;
+}
+// C worm.c:wseg_at(). Segment numbers run from the hidden head toward the
+// tail. A displaced live head need not coincide with any stored segment.
+export function wormSegmentIndexAt(monster, x, y, state = game) {
+    if (!monster?.wormno || monsterAtPosition(requireGameLevel(state), x, y) !== monster)
+        return 0;
+    requireWormBody(monster);
+    for (let index = monster.wormSegments.length - 1; index >= 0; index--) {
+        const segment = monster.wormSegments[index];
+        if (segment?.x === x && segment.y === y)
+            return index + 2;
+    }
+    return monster.wormHead.x === x && monster.wormHead.y === y ? 1 : 0;
 }
 // C worm.c:worm_cross(). The head and each body segment are consecutive.
 export function wormCrossesBetween(x1, y1, x2, y2, state = game) {
@@ -125,21 +147,20 @@ export function clearMonsterWormFromMap(monster) {
         const point = monster.wormSegments[i];
         if (point?.x) {
             monster.wormSegments[i] = { x: 0, y: point.y };
-            newsym(point.x, point.y);
+            clearWormSquare(monster, point);
         }
     }
-    // C removes the head's grid entry without changing its coordinates or
-    // lifecycle state. Hide it only for this synchronous repaint.
-    const previousState = monster.mstate;
-    monster.mstate = (monster.mstate ?? MON_FLOOR) | MON_OFFMAP;
     if (monster.wormHead.x)
-        newsym(monster.wormHead.x, monster.wormHead.y);
-    if (previousState === undefined)
-        delete monster.mstate;
-    else
-        monster.mstate = previousState;
+        clearWormSquare(monster, monster.wormHead);
     monster.wormHead = { x: 0, y: monster.wormHead.y };
     return count;
+}
+function clearWormSquare(monster, point) {
+    // The hidden segment normally shares the live head's square. A literal
+    // head-only move can leave it behind; remove_worm follows the segments.
+    if (monster.mx === point.x && monster.my === point.y)
+        monster.headOnMap = false;
+    newsym(point.x, point.y);
 }
 export function removeMonsterWormBody(monster) {
     if (!monster?.wormno)
@@ -296,6 +317,7 @@ export function validMonsterWormBodies(level) {
             || typeof monster.mx !== 'number' || !Number.isInteger(monster.mx)
             || typeof monster.my !== 'number' || !Number.isInteger(monster.my)
             || monster.mstate !== undefined && typeof monster.mstate !== 'number'
+            || monster.headOnMap !== undefined && typeof monster.headOnMap !== 'boolean'
             || monster.wormno !== undefined && typeof monster.wormno !== 'number'
             || monster.wormGrowTime !== undefined
                 && typeof monster.wormGrowTime !== 'number')
@@ -337,6 +359,8 @@ function savedWormPoint(value) {
 // C restore.c calls place_wsegs(), which normalizes only the hidden head.
 export function restoreMonsterWormHeads(level) {
     for (const monster of level.monsters) {
+        // The native monster grid is rebuilt from fmon when loading a level.
+        delete monster.headOnMap;
         if (monster.wormno)
             monster.wormHead = { x: monster.mx, y: monster.my };
     }

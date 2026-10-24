@@ -72,7 +72,7 @@ async function publishBreakMessage(object, visible, publish, state) {
         || [LENSES, MIRROR, CRYSTAL_BALL, EXPENSIVE_CAMERA].includes(object.otyp)
         ? ' into a thousand pieces' : '';
     observeObjectForNaming(object, { state });
-    const description = objectDescription(object, { state });
+    const description = await objectDescription(object, { state });
     const subject = description.charAt(0).toUpperCase() + description.slice(1);
     await publish(`${subject} ${quantity === 1 ? 'shatters' : 'shatter'}${intoPieces}!`);
 }
@@ -169,8 +169,9 @@ export async function breakObjectAtLocation(object, { x = object.ox, y = object.
     if (heroCaused)
         applyHeroEggLuckPenalty(object, state);
     if (oilExplosion) {
+        // Blast credit follows the active turn, independently of breakage.
         const explosion = await explodeLitOilPotion(object, x, y, {
-            state, heroCaused, publish, random, rollDice,
+            state, heroCaused: !state.context.mon_moving, publish, random, rollDice,
         });
         if (explosion.heroDied)
             return { destroyed: false, observed: visible || audible, heroDied: true };
@@ -184,7 +185,7 @@ export async function breakObjectAtLocation(object, { x = object.ox, y = object.
     await delobj(object, state, random);
     if (eggExplosion) {
         await explodePyroliskEggAt(x, y, {
-            state, heroCaused, publish, random, rollDice,
+            state, heroCaused: !state.context.mon_moving, publish, random, rollDice,
         });
     }
     return {

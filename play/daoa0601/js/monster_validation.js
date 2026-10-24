@@ -2,6 +2,7 @@ import { AM_CHAOTIC, AM_LAWFUL, AM_NEUTRAL, AM_NONE, M_AP_FURNITURE, M_AP_MONSTE
 import { SLIME_MOLD } from './object_data.js';
 import { isSavedRecord } from './saved_graph.js';
 import { validSavedSpeciesOrNone } from './species_validation.js';
+import { validSavedHeroAlignment } from './character_validation.js';
 import { arrayOf, boolean, closedFieldsMatch, integer, nullable, optional, string, validateSavedEntity, } from './saved_validation.js';
 const flag = (value) => typeof value === 'boolean' || value === 0 || value === 1;
 const position = (value) => closedFieldsMatch(value, { x: integer, y: integer });
@@ -89,7 +90,7 @@ const bones = (value) => closedFieldsMatch(value, {
     parentmid: integer,
     role: integer,
     race: integer,
-    oldalign: integer,
+    oldalign: validSavedHeroAlignment,
     deathlevel: integer,
     luck: integer,
     mnum: ismnum,
@@ -132,7 +133,10 @@ function monsterFields(value, context) {
         mx: integer,
         my: integer,
         mstate: optional(integer),
+        headOnMap: optional(boolean),
         wormSegments: optional(arrayOf(position)),
+        // Saving is unavailable while cutworm is awaiting a message pager.
+        wormDetachedSegments: (entry) => entry === undefined,
         m_id: integer,
         mnum: ismnum,
         m_lev: integer,
@@ -237,7 +241,7 @@ export function validSavedMonster(value, context) {
     return validateSavedEntity(value, 'monster', context, monsterFields(value, context));
 }
 export function validSavedMonsterTraits(value, context) {
-    const { minvent, inventory, mw, wormSegments, wormHead, wormGrowTime, lightRemoved, ...fields } = monsterFields(value, context);
+    const { minvent, inventory, mw, wormSegments, wormDetachedSegments, wormHead, wormGrowTime, lightRemoved, headOnMap, ...fields } = monsterFields(value, context);
     return validateSavedEntity(value, 'savedMonster', context, fields);
 }
 //# sourceMappingURL=monster_validation.js.map
