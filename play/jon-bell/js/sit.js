@@ -11,6 +11,7 @@
  *   case 1: rn2(A_MAX=6), rn1(4,3), rnd(10)   — 3 calls
  *   case 2: rn2(A_MAX=6)                        — 1 call
  *   case 3: rnd(6) or rnd(30)                   — 1 call (Shock_resistance)
+ *          + exercise(A_CON,FALSE) rn2(2)       — 1 call (unless abs(AEXE)>=AVAL)
  *   case 6: rn2(5)                              — 1 call (luck branch only)
  *   case 7: rnd(10), [rn2(60)+rn2(3*difficulty)] per monster  — ≥2 calls
  *   case 9: rn1(100,250), optionally rnd(2)     — 1–2 calls (Luck>0)
@@ -26,10 +27,15 @@
  * @ts-nocheck — js sibling imports; ambient game types not declared.
  */
 import { game, wizard } from './gstate.js';
+import { Blind } from './vision.js';
+import { EYE, HEAD, FROMOUTSIDE } from './const.js';
+import { PM_CYCLOPS, PM_FLOATING_EYE } from './pm.generated.js';
+import { body_part } from './cmd.js';
+import { vtense } from './objnam.js';
 import { PM_NINJA } from './pm.generated.js';
 import { block_point, unblock_point, cansee } from './vision.js';
 import { rn2, rnd, rn1 } from './rng.js';
-import { In_V_tower, NON_PM, MAGIC_PORTAL, EMIN, CONFUSION, HALLUC, HALLUC_RES, ACID_RES, SHOCK_RES, DRAIN_RES, BLINDED, SEE_INVIS as SEE_INVIS_PROP, TELEPAT as TELEPAT_PROP, TIMEOUT, MM_ANGRY, MM_EMIN, MM_NOMSG, G_GONE, G_GENOD, LOW_PM, G_EXTINCT, NO_MINVENT, A_NONE } from './const.js';
+import { In_V_tower, NON_PM, MAGIC_PORTAL, EMIN, CONFUSION, HALLUC, HALLUC_RES, ACID_RES, SHOCK_RES, DRAIN_RES, BLINDED, SEE_INVIS as SEE_INVIS_PROP, TELEPAT as TELEPAT_PROP, TIMEOUT, MM_ANGRY, MM_EMIN, MM_NOMSG, G_GONE, G_GENOD, LOW_PM, G_EXTINCT, NO_MINVENT, A_NONE, A_CON } from './const.js';
 import { PM_WATER_DEMON, PM_AIR_ELEMENTAL, PM_WATER_ELEMENTAL, PM_FOG_CLOUD, PM_ICE_VORTEX, PM_FREEZING_SPHERE, PM_STEAM_VORTEX, PM_ENERGY_VORTEX, PM_SHOCKING_SPHERE, PM_EARTH_ELEMENTAL, PM_DUST_VORTEX, PM_FIRE_ELEMENTAL, PM_FIRE_VORTEX, PM_FLAMING_SPHERE, PM_YELLOW_LIGHT, NUMMONS, PM_ARCHON, PM_ANGEL, PM_BONE_DEVIL, PM_JUIBLEX, PM_YEENOGHU, PM_ORCUS, PM_DEMOGORGON, PM_WIZARD_OF_YENDOR, PM_SKELETON, PM_SAMURAI, PM_HIGH_PRIEST } from './pm.generated.js';
 
 function _hero_resists(prop) {
@@ -53,7 +59,7 @@ import { identify_pack, do_mapping } from './read.js';
 import { You as You_rc } from './do_wear.js';
 import { Tobjnam as Tobjnam_rc, Yobjnam2, makeplural, quest_info, an } from './objnam.js';
 import { curse, unbless } from './mkobj.js';
-import { spec_ability, adjattrib, change_luck } from './attrib.js';
+import { spec_ability, adjattrib, change_luck, exercise } from './attrib.js';
 import { hcolor, Amonnam } from './mhitm.js';
 import { update_inventory } from './mhitm.js';
 import { which_armor } from './makemon.js';
@@ -89,7 +95,7 @@ import { W_SADDLE } from './const.js';
 import { make_blinded } from './zap.js';
 /* losehp's C home is hack.c:4219.  js/potion.js used to carry a throwing
  * local stub for it too, since fixed to import this same body. */
-import { losehp } from './dokick.js';
+import { losehp, delobj } from './dokick.js';
 /* exper.c:212 losexp() — use the canonical experience-drain implementation
  * for the throne's permanent-drain arm. */
 import { losexp as losexp_real } from './exper.js';
@@ -99,6 +105,7 @@ import { schedule_goto } from './cmd.js';
 import { remove_worn_item } from './steal.js';
 import { done, delayed_killer } from './end.js';
 import { GENOCIDED, POLYMORPH } from './const.js';
+import { ROOM } from './const.js';
 import { rehumanize, udeadinside } from './polyself.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 /* ---------------------------------------------------------------------------
@@ -123,23 +130,13 @@ const KILLED_BY = 1;
 /* losehp: LOCAL EMPTY STUB DELETED — see import above. */
 /* C sit.c:14-35 take_gold() — remove every coin object from inventory. */
 export async function take_gold() {
-    let prev = null;
     let lost_money = false;
     for (let obj = game.invent; obj;) {
         const next = obj.nobj || null;
         if ((obj.oclass | 0) === 12 /* COIN_CLASS */) {
             lost_money = true;
-            await remove_worn_item(obj, false); /* C sit.c:24 */
-            if (prev) prev.nobj = next;
-            else game.invent = next;
-            obj.nobj = null;
-            obj.where = 9 /* OBJ_DELETED */;
-            const store = game.__bridge__ || (game.__bridge__ = {});
-            const key = 'objs_deleted.count';
-            const cur = store[key] !== undefined ? Number(store[key]) : 0;
-            store[key] = String(cur + 1);
-        } else {
-            prev = obj;
+            await remove_worn_item(obj, false); /* C sit.c:23 */
+            await delobj(obj);                  /* C sit.c:24 (obj_resists draw, invent.c:1446) */
         }
         obj = next;
     }
@@ -264,9 +261,11 @@ export async function do_class_genocide() {
 export async function do_genocide(flags = 1) {
     const really = (flags & 1) !== 0;
     const onThrone = (flags & 4) !== 0;
-    let selected = null;
-    let killPlayer0 = false;
-    for (let i = 0; ; i++) {
+    // C read.c:2838-2843: confused reading selects the base hero type
+    // directly, even while polymorphed, without asking for a monster name.
+    let selected = (flags & 2) ? game.u.umonster : null;
+    let killPlayer0 = (flags & 2) !== 0;
+    for (let i = 0; selected === null; i++) {
         if (i >= 5) {
             /* cursed effect => no free pass (unless rndmonst() fails) */
             if (!really) {
@@ -920,8 +919,15 @@ export async function throne_sit_effect() {
             case 3: {
                 /* RNG: rnd(6) or rnd(30) — Shock_resistance determines range */
                 const shock_res = _hero_resists(SHOCK_RES);
+                /* C sit.c:76-77 — the pline comes BEFORE the damage draw */
+                await pline("A%s electric shock shoots through your body!",
+                            shock_res ? "n" : " massive");
                 const dmg = shock_res ? rnd(6) : rnd(30);
                 await losehp(dmg, "electric chair", KILLED_BY_AN);
+                /* C sit.c:79 — exercise(A_CON, FALSE): draws rn2(2) when
+                 * abs(AEXE(A_CON)) < AVAL; runs after a declined wizard
+                 * death too, since done() returns to losehp's caller. */
+                exercise(A_CON, false);
                 break;
             }
             case 4:
@@ -1001,23 +1007,40 @@ export async function throne_sit_effect() {
                 /* RNG: rnd(30) on the nommap path */
                 const luck = (u.uluck | 0) + (u.moreluck | 0);
                 const sip = u.uprops?.[SEE_INVIS_PROP];
-                const see_invis = !!((sip?.intrinsic | 0) || (sip?.extrinsic | 0));
+                const see_invis = !!((sip?.intrinsic | 0) & INTRINSIC);
                 const nommap = !!(lvl && lvl.flags && lvl.flags.nommap);
                 if (luck < 0 || see_invis) {
                     if (nommap) {
+                        await pline("A terrible drone fills your head!");
                         /* RNG: rnd(30) confused duration */
                         /* C HConfusion == u.uprops[CONFUSION].intrinsic
                          * (youprop.h:83); `u.hconfusion_timeout` is a spelling
                          * nothing in js/ assigns. */
-                        const cdur = ((u.uprops?.[CONFUSION]?.intrinsic) | 0) + rnd(30);
+                        const cdur = ((u.uprops?.[CONFUSION]?.intrinsic | 0) & TIMEOUT) + rnd(30);
                         make_confused(cdur, false);
                     }
                     else {
+                        await pline("An image forms in your mind.");
                         await do_mapping();
                     }
                 }
                 else {
-                    /* grant see invisible — no RNG */
+                    /* C sit.c:156-184: feedback precedes the permanent grant. */
+                    if (!Blind()) {
+                        await Your("vision becomes clear.");
+                    } else {
+                        const data = game.youmonst?.data || permonstTemplate(u.umonnum | 0);
+                        const eyes = (data.mflags1 & 0x00001000 /* M1_NOEYES, monflag.h:97 */) ? 0
+                            : (data.pmidx === PM_CYCLOPS || data.pmidx === PM_FLOATING_EYE) ? 1 : 2;
+                        if (eyes) {
+                            const eye = eyes === 1 ? body_part(EYE) : makeplural(body_part(EYE));
+                            await Your("%s %s...", eye, vtense(eye, "tingle"));
+                        } else {
+                            await You("have a very strange feeling in your %s.", body_part(HEAD));
+                        }
+                    }
+                    u.uprops[SEE_INVIS_PROP] ||= { intrinsic: 0, extrinsic: 0, blocked: 0 };
+                    u.uprops[SEE_INVIS_PROP].intrinsic |= FROMOUTSIDE;
                     newsym(u.ux, u.uy);
                 }
                 break;
@@ -1034,13 +1057,16 @@ export async function throne_sit_effect() {
                 break;
             }
             case 12: {
-                /* RNG: rn2(5) — identify_pack uses this if invent non-empty */
-                if (gi.invent) {
+                /* C sit.c:199 — the insight message precedes the identify */
+                await You("are granted an insight!");
+                if (game.invent) {
                     await identify_pack(rn2(5), false);
                 }
                 break;
             }
             case 13: {
+                /* C sit.c:202 */
+                await Your("mind turns into a pretzel!");
                 /* RNG: rn1(7,16) — confusion duration */
                 const cdur = ((u.uprops?.[CONFUSION]?.intrinsic) | 0) + rn1(7, 16);
                 make_confused(cdur, false);
@@ -1066,12 +1092,17 @@ export async function throne_sit_effect() {
         /* C sit.c:226 — levl[tx][ty].typ = ROOM, levl[tx][ty].flags = 0; */
         const tloc = lvl ? lvl.at(tx, ty) : null;
         if (tloc) {
-            tloc.typ = /* ROOM */ 5;
+            tloc.typ = ROOM;
             tloc.flags = 0;
         }
         map_background(tx, ty, false);
         newsym_force(tx, ty);
-        /* C sit.c:231 */
+        /* C sit.c:231 — the answered prompt is dead topline text (topl.c:257-266
+         * only joins while toplin == NEED_MORE), so this pline overwrites it. */
+        if (wizard() && game._resultMessage === game._ynStaleTopline) {
+            game._resultMessage = '';
+            game._ynStaleTopline = null;
+        }
         await pline_The("throne %s in a puff of logic.",
                         cansee(tx, ty) ? "vanishes" : "has vanished");
     }

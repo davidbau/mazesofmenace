@@ -22,6 +22,7 @@ import { rehumanize } from './polyself.js';
 import { helm_simple_name, cloak_simple_name, an, doname, mshot_xname } from './objnam.js';
 import { corpse_xname, the as the_sh, xname, cxname as cxname_sh, Tobjnam as Tobjnam_sh, makeplural, simpleonames, obj_is_pname, bare_artifactname, otense, distant_name, vtense,
          Yobjnam2 as Yobjnam2_real,
+         singular,
          makesingular as makesingular_real } from './objnam.js';
 import { rn2, rnd, d, rn1, pushRngLogEntry } from './rng.js';
 import { m_move } from './monmove.js';
@@ -179,7 +180,7 @@ import { rnl } from './rng.js';
 import { FUMBLING as FUMBLING_UH, P_LANCE } from './const.js';
 import { mstatusline, check_capacity as check_capacity_hit } from './cmd.js';
 import { ysimple_name as ysimple_name_hit, release_camera_demon as release_camera_demon_hit, useup } from './cmd.js';
-import { upstart, angry_guards } from './mklev.js';
+import { upstart, angry_guards, setmangry } from './mklev.js';
 import { noit_Monnam, stagger } from './mhitm.js';
 import { deadhero, pending_death_is_final } from './end.js';
 import { drain_pending_death_in_place } from './fastforward.js';
@@ -2320,6 +2321,42 @@ export async function do_attack(mtmpOrX, y) {
                 } else {
                     dmg = ((MONS_MSIZE[cn] | 0) + 1);
                 }
+            } else if ((uwep.otyp | 0) === 287 /* CREAM_PIE */ || (uwep.otyp | 0) === 479 /* BLINDING_VENOM */) {
+                /* C uhitm.c:1266-1316 hmon_hitmon_misc_obj CREAM_PIE/BLINDING_VENOM:
+                 * wakes the monster; if it can be blinded the pie splashes,
+                 * setmangry, mcansee = 0 and dmg = rn1(25, 21) is added to
+                 * mblinded; otherwise "Splat!".  The pie is used up, hittxt is
+                 * set and the hit does no damage and no damage bonus. */
+                const isPie = (uwep.otyp | 0) === 287;
+                mtmp.msleeping = 0;
+                if (can_blnd(game.youmonst, mtmp, isPie ? 254 /* AT_WEAP */ : 233 /* AT_SPIT */, uwep)) {
+                    if (_uh_Blind()) {
+                        await pline(isPie ? "Splat!" : "Splash!");
+                    } else if (!isPie) {
+                        await pline_The(`venom blinds ${mon_nam(mtmp)}${mtmp.mcansee ? "" : " further"}!`);
+                    } else {
+                        let whom = mon_nam(mtmp);
+                        let what = The(xname(uwep));
+                        if ((uwep.quan | 0) > 1)
+                            what = an(await singular(uwep, xname)).replace(/^./, (c) => c.toUpperCase());
+                        if (!(((hmd.mdat?.mflags1) | 0) & 0x00001000 /* !haseyes */)
+                            && (hmd.mdat?.pmidx | 0) !== PM_FLOATING_EYE_UH)
+                            whom = s_suffix(whom) + " " + mbodypart(mtmp, 2 /* FACE */);
+                        await pline(`${what} ${vtense(what, "splash")} over ${whom}!`);
+                    }
+                    await setmangry(mtmp, true);
+                    mtmp.mcansee = 0;
+                    const bdmg = rn1(25, 21);
+                    mtmp.mblinded = ((mtmp.mblinded | 0) + bdmg > 127) ? 127 : ((mtmp.mblinded | 0) + bdmg);
+                } else {
+                    await pline(isPie ? "Splat!" : "Splash!");
+                    await setmangry(mtmp, true);
+                }
+                await useup(uwep);
+                _wepDestroyed = !u.uwep;
+                _potHittxt = true;
+                _noDmgBonus = true;
+                dmg = 0;
             } else if ((uwep.otyp | 0) === 284 /* CLOVE_OF_GARLIC */) {
                 /* C uhitm.c:1259-1264 hmon_hitmon_misc_obj CLOVE_OF_GARLIC:
                  * "no effect against demons"; undead and vampshifters flee for

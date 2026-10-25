@@ -2,7 +2,7 @@
 // shk.js — Shopkeeper AI and commerce.
 // C ref: nethack-c/src/shk.c
 
-import { growl as growl_mhitm, yelp as yelp_mhitm, y_monnam as y_monnam_shk } from './mhitm.js';
+import { growl as growl_mhitm, yelp as yelp_mhitm, y_monnam as y_monnam_shk, pronoun_gender } from './mhitm.js';
 import { game } from './gstate.js';
 import { locomotion, x_monnam as x_monnam_shk } from './mhitm.js';
 import { ARTICLE_THE as ARTICLE_THE_SHK } from './const.js';
@@ -52,6 +52,7 @@ import { holetime } from './dig.js';
 import { carrying, count_unpaid, currency as currency_real,
          mbodypart as mbodypart_real, body_part as body_part_real,
          merge_choice, inv_cnt, dropy, getpos, record_achievement } from './cmd.js';
+import { xprname as xprname_cmd, dbase_display_window as dbase_display_window_cmd } from './cmd.js';
 import { addinv } from './hold_another_object.js';
 import { mattacku } from './mhitu.js';
 import { m_at } from './uhitm.js';
@@ -209,6 +210,58 @@ function find_oid(id) {
 function bp_to_obj(bp) {
     const id = bp.bo_id >>> 0;
     return bp.useup ? o_on(id, game.billobjs) : find_oid(id);
+}
+
+/* C shk.c:4197 doinvbill(mode) — mode 0: count the used-up bill entries (so
+ * dotypeinv can decide whether to offer 'x'); mode 1: page the
+ * "Unpaid articles already used up:" window. */
+export async function doinvbill(mode) {
+    const shkp = shop_keeper(game.u?.ushops?.[0] ?? 0);
+    if (!shkp || !inhishop(shkp))
+        return 0;   /* C impossible()s first when mode != 0 */
+    const eshkp = ESHK(shkp);
+    const bill = eshkp.bill_p || eshkp.bill || [];
+    const billct = eshkp.billct | 0;
+    if (mode === 0) {
+        let cnt = !(eshkp.debit | 0) ? 0 : 1;
+        for (let i = 0; i < billct; i++) {
+            const bp = bill[i];
+            let obj;
+            if (bp.useup
+                || ((obj = bp_to_obj(bp)) != null && (obj.quan | 0) < (bp.bquan | 0)))
+                cnt++;
+        }
+        return cnt;
+    }
+    const lines = ['Unpaid articles already used up:', ''];
+    let totused = 0;
+    for (let i = 0; i < billct; i++) {
+        const bp = bill[i];
+        const obj = bp_to_obj(bp);
+        if (!obj)
+            return 0;   /* C: impossible("Bad shopkeeper administration.") */
+        if (bp.useup || (bp.bquan | 0) > (obj.quan | 0)) {
+            const uquan = bp.useup ? (bp.bquan | 0) : (bp.bquan | 0) - (obj.quan | 0);
+            const thisused = (bp.price | 0) * uquan;
+            totused += thisused;
+            game.iflags.suppress_price = (game.iflags.suppress_price | 0) + 1;
+            /* Why 'x'?  To match `I x', more or less. */
+            lines.push(await xprname_cmd(obj, null, 'x', false, thisused, uquan));
+            game.iflags.suppress_price = (game.iflags.suppress_price | 0) - 1;
+        }
+    }
+    if (eshkp.debit | 0) {
+        /* additional shop debt which has no itemization available */
+        if (totused)
+            lines.push('');
+        totused += eshkp.debit | 0;
+        lines.push(await xprname_cmd(null, 'usage charges and/or other fees',
+            '$', false, eshkp.debit | 0, 0));
+    }
+    lines.push('');
+    lines.push(await xprname_cmd(null, 'Total:', '*', false, totused, 0));
+    await dbase_display_window_cmd(lines);
+    return 0;
 }
 
 export async function money2mon(mon, amount) {
@@ -705,10 +758,22 @@ async function dopayobj(shkp, bp, obj, which, itemize, unseen) {
              * so safe_qbuf selects C's singular Doname2 wording when
              * appropriate. */
             const qsfx = Sprintf(" for %ld %s.  Pay?", ltmp, currency(ltmp));
-            const qbuf = await safe_qbuf('', '', qsfx, obj, doname_pay,
-                                   thesimpleoname_real,
+            // C shk.c:2269 and objnam.c:2303: Doname2 capitalizes only
+            // singular purchases; plural purchases retain doname's case.
+            const namer = quan === 1 ? async (item) => {
+                const name = await doname_pay(item);
+                return highc(name.charAt(0)) + name.slice(1);
+            } : doname_pay;
+            const qbuf = await safe_qbuf('', '', qsfx, obj, namer,
+                                   ansimpleoname,
                                    (quan === 1) ? 'that' : 'those');
             const answer = await yn_function_shk(qbuf, 'yn', 'n');
+            // C topl.c:544-548 leaves a one-line answered prompt painted.
+            // nhgetch clears our message channel, so retain its physical text
+            // until the next key; subsequent plines still replace it.
+            const prompt = `${qbuf} [yn] (n)`;
+            if (topl_park_cursor(null, prompt + ' ')[1] === 0)
+                game._topl_sticky = prompt;
             if (answer === 'n')
                 buy = PAY_SKIP;
         }
@@ -4046,7 +4111,12 @@ export async function finish_paybill() {
     await drop_upon_death(0, 0, ox, oy);
 }
 function adjalign(n) { return adjalign_real(n); }
-function noit_mhis(_shkp) { return "his"; }
+/* C you.h:330-331; mondata.c:1191-1207.  PRONOUN_NO_IT | PRONOUN_HALLU
+ * preserves species gender without a visibility fallback, randomizing only
+ * while hallucinating.  role.c:688-693 supplies the possessive pronouns. */
+function noit_mhis(shkp) {
+    return ['his', 'her', 'its', 'their'][pronoun_gender(shkp, 3)];
+}
 function noit_mhim(mon) { return mon?.female ? 'her' : 'him'; }
 /* C polyself.c:1956-2046 mbodypart(mon, part) — the real general port lives
  * in js/cmd.js (mbodypart_real, imported above). */

@@ -37,7 +37,7 @@ import { aligns, genders } from './roles.js';
 import { oc_to_str, def_oc_syms_chars } from './drawing.js';
 import { menutype } from './menustyle.js';
 import { feature_notice_version } from './feature_alert.js';
-import { count_status_hilites } from './options.js';
+import { count_status_hilites, BURDENTYPE } from './options.js';
 import { EXTCMDLIST } from './cmd_extcmd_data.js';
 import { clr2colorname, attr2attrname } from './coloratt.js';
 import { _threeStatusLines } from './display.js';
@@ -242,8 +242,10 @@ export const DOSET_COMPOUNDS = [
     { name: "paranoid_confirmation", sel: true, hasHandler: true, val: () => "pray trap swim" },
     /* C: options.c:3177 attr2attrname(iflags.wc2_petattr); init ATR_INVERSE */
     { name: "petattr", sel: true, hasHandler: true, val: () => "inverse" },
-    /* C: options.c:3297 burdentype[flags.pickup_burden]; init MOD_ENCUMBER... -> "stressed" */
-    { name: "pickup_burden", sel: true, hasHandler: true, val: () => "stressed" },
+    /* C: options.c:3297 burdentype[flags.pickup_burden]; init MOD_ENCUMBER -> "stressed".
+     * Live: optfn_pickup_burden(do_set) (js/options.js, rc "pickup_burden:<v>")
+     * and handler_pickup_burden both write flags.pickup_burden. */
+    { name: "pickup_burden", sel: true, hasHandler: true, val: () => BURDENTYPE[game.flags?.pickup_burden ?? 2 /* MOD_ENCUMBER */] },
     /* C: options.c optfn_pickup_types get_val -> oc_to_str(flags.pickup_types), empty -> "all" */
     { name: "pickup_types", sel: true, hasHandler: true, val: () => pickupTypes() },
     /* C: options.c:3430 flags.pile_limit; init PILE_LIMIT_DFLT = 5 */
@@ -306,13 +308,27 @@ export const DOSET_COMPOUNDS = [
     { name: "whatis_filter", sel: true, hasHandler: true, val: () => ["none", "view", "area"][game.iflags?.getloc_filter | 0] || "none" },
 ];
 
+/* C cmd.c:2208 count_bind_keys() — extended commands bound to a non-default
+ * key, plus commands that should have a key but have none. */
+export function count_bind_keys() {
+    const keys = new Uint8Array(256);
+    let nbinds = 0;
+    for (let bind = game.Cmd?.cmdbinds; bind; bind = bind.next) {
+        keys[bind.key] = 1;
+        if (bind.userbind && bind.cmd && bind.cmd.key !== bind.key) nbinds++;
+    }
+    for (const ec of EXTCMDLIST)
+        if (ec.key && !keys[ec.key]) nbinds++;
+    return nbinds;
+}
+
 export const DOSET_OTHERS = [
     /* C: options.c optfn_o_autocomplete get_val -> count_autocompletions() */
     { name: "autocompletions", sel: true, val: () => `(${EXTCMDLIST.filter(e => e.flags & 0x2000).length} currently set)` },
     /* C: options.c optfn_o_autopickup_exceptions get_val */
     { name: "autopickup exceptions", sel: true, val: () => `(${(game.apelist || []).length} currently set)` },
     /* C: options.c optfn_o_bind_keys get_val */
-    { name: "bind keys", sel: true, val: () => "(0 currently set)" },
+    { name: "bind keys", sel: true, val: () => `(${count_bind_keys()} currently set)` },
     /* C: options.c optfn_o_menu_colors get_val */
     { name: "menu colors", sel: true, val: () => `(${(game.menu_colorings || []).length} currently set)` },
     /* C: options.c optfn_o_message_types get_val */

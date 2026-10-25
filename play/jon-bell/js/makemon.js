@@ -4176,7 +4176,7 @@ async function mquaffmsg(mtmp, otmp) {
         pline_mon(mtmp, `${Monnam(mtmp)} drinks ${await mquaffmsg_singular_doname(otmp)}!`);
     } else if (!mquaffmsg_Deaf()) {
         /* C muse.c:298-301 — Soundeffect() is audio only. */
-        mquaffmsg_You_hear('a chugging sound.');
+        await mquaffmsg_You_hear('a chugging sound.');
     }
 }
 /* C ref: youprop.h:169 Hallucination = (HHallucination && !Halluc_resistance),
@@ -4269,7 +4269,7 @@ async function mzapwand(mtmp, otmp, self) {
                       ? (BOLT_LIM_MM + 1) : (BOLT_LIM_MM - 3);
         const near = dist2(mtmp.mx | 0, mtmp.my | 0,
                            game.u.ux | 0, game.u.uy | 0) <= range * range;
-        mquaffmsg_You_hear(`a ${near ? 'nearby' : 'distant'} zap.`);
+        await mquaffmsg_You_hear(`a ${near ? 'nearby' : 'distant'} zap.`);
     } else if (self) {
         /* C muse.c:182-184 — monverbself (do_name.c:1221-1248) inlined. */
         const selfbuf = mon_nam_too(mtmp, mtmp);
@@ -4916,7 +4916,7 @@ export async function use_defensive(mtmp) {
         if (vismon) {
             pline_mon(mtmp, `${Monnam(mtmp)} plays ${await doname(otmp)}!`);
         } else if (!mquaffmsg_Deaf()) {
-            mquaffmsg_You_hear('a bugle playing reveille!');
+            await mquaffmsg_You_hear('a bugle playing reveille!');
         }
         {
             const { awaken_soldiers } = await import('./music.js');

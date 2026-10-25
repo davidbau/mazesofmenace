@@ -413,8 +413,12 @@ export class TtyMenu {
         }
 
         if (!this.overlay) {
-            const { docrt } = await import('./display.js');
+            const { docrt, status_r1_menu_docrt } = await import('./display.js');
             await docrt();
+            /* docrt's seen-stone row-20 blanks precede the botlx bot() that
+             * rewrites status row 1, so they do not wipe it (cmd.js
+             * _dismissMenu's same ordering). */
+            status_r1_menu_docrt();
             game._statusBlankAfterDocrt = true;
             if (game.disp) game.disp.botlx = 1;
         }

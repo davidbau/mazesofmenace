@@ -4335,7 +4335,10 @@ export async function cpostfx(pm) {
         break;
     case PM_LIZARD:
         /* C eat.c:1236-1242 — make_stunned/make_confused clamps (RNG-free). */
-        make_confused_shared(Math.min(_eat_HConfusion(), 2), false);
+        if (((game.u?.uprops?.[STUNNED]?.intrinsic | 0) & TIMEOUT) > 2)
+            make_stunned(2, false);
+        if ((_eat_HConfusion() & TIMEOUT) > 2)
+            make_confused_shared(2, false);
         check_intrinsics = true; /* might convey temporary stoning resist */
         break;
     case PM_CHAMELEON:

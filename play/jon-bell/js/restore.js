@@ -436,23 +436,17 @@ export async function restore_preamble() {
         else
             g._pending_message = msgs[i];
     }
+    /* C topl.c:544 leaves an answered question TOPLINE_NON_EMPTY, so
+     * update_topl():262-275 replaces it without joining or calling more().
+     * Keep only its physical text; it is not an unacknowledged pline. */
     if (keptPrompt && !msgs.length)
-        g._pending_message = keptPrompt;
-    /* C allmain.c:86-89: read_engr_at(u.ux, u.uy) after the welcome-back
-     * message.  The welcome is still parked in _pending_message; when an
-     * engraving is going to print, page it first so the read follows it. */
+        g._topl_sticky = keptPrompt;
+    /* C allmain.c:86-89 calls read_engr_at directly.  Its ordinary plines
+     * share the pending topline: update_topl (topl.c:260-275) joins messages
+     * that fit and pages only when the next message needs a new line. */
     {
         const { read_engr_at } = await import('./look.js');
-        const { engr_at } = await import('./mklev.js');
-        const ep = engr_at(g.u.ux, g.u.uy);
-        if (ep && ep.text) {
-            if (g._pending_message) {
-                const pm = g._pending_message;
-                g._pending_message = '';
-                await pline_with_more(pm, g.u?.uac ?? 0);
-            }
-            await read_engr_at(g.u.ux, g.u.uy);
-        }
+        await read_engr_at(g.u.ux, g.u.uy);
     }
     /* C allmain.c:86-89, the `if (resuming)` arm — read_engr_at is above;
      * fix_shop_damage() has no shop-damage model to repair (message-only).

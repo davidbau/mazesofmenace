@@ -38,6 +38,8 @@ import { chest_trap } from './trap.js';
 import { nomul } from './allmain.js';
 import { pline, urgent_pline, Norep, flush_screen, bot, force_more, canspotmon } from './display.js';
 import { build_window_screen, tty_window_offx } from './com_pager.js';
+import { menu_heading_text } from './tty_menu.js';
+import { menucolor_row } from './coloratt.js';
 import { nhgetch } from './input.js';
 import { weight } from './weight.js';
 import { doname_with_price, simpleonames, cxname, cxname_singular, getObjDescr, Tobjnam, xname, the, The, otense, oname } from './objnam.js';
@@ -338,7 +340,8 @@ async function in_or_out_menu(promptText, box, outokay, inokay, alreadyused, mor
     /* Menu lines mirror C in_or_out_menu add_menu order: ':', then (outokay) 'o',
      * (inokay) 'i', (outokay) 'b', (inokay) 'r'+'s', blank, (more) 'n', 'q'. */
     const lines = [];
-    lines.push(`\x1b[7m${promptText}\x1b[0m`);
+    /* tty_end_menu adds the prompt in iflags.menu_headings' style (wintty.c:2680-2689). */
+    lines.push(menu_heading_text(promptText));
     lines.push('');
     const LOOTCHARS = '_:oibrsnq';
     const ABC_CHARS = '_:abcdenq';
@@ -389,9 +392,15 @@ async function in_or_out_menu(promptText, box, outokay, inokay, alreadyused, mor
      * repaints status until the next bot()), e.g. the category menu. */
     g._carryStatusClip = statusClip !== undefined
         ? { clip: statusClip, moves: g.moves } : null;
-    const screenOutput = build_window_screen(lines, WIN_COL, uac, statusClip);
+    /* C wintty.c:1925-1928 — `!iflags.menu_overlay` drops the menu to offx 0 and
+     * term_clear_screen()s, so the map and status are gone and every row is
+     * drawn from column 1. */
+    const fullScreen = g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0;
+    const screenOutput = fullScreen
+        ? lines.map((ln) => (ln === '' ? '' : ' ' + ln)).join('\n')
+        : build_window_screen(lines, WIN_COL, uac, statusClip);
     const endRow = lines.length - 1;
-    const endCursorCol = WIN_COL + 5 + 1; /* WIN_COL + len('(end)') + 1 */
+    const endCursorCol = (fullScreen ? 1 : WIN_COL) + 5 + 1; /* col + len('(end)') + 1 */
 
     const BYKEY = new Map(items.map((it) => [it.disp.charCodeAt(0), it.canon]));
     const cancelDefault = qDefault ? 'q' : 'n';
@@ -968,10 +977,11 @@ async function _query_category(contents, action, withJustPicked) {
                 itemByLine.push(null);
                 clusterOpened = true;
             }
-            out.push(`${e.key} ${e.item.selected ? (e.item.count > 0 ? '#' : '+') : '-'} ${e.txt}`);
+            out.push(menucolor_row(
+                `${e.key} ${e.item.selected ? (e.item.count > 0 ? '#' : '+') : '-'} ${e.txt}`));
             itemByLine.push(e.item);
             if (e.kind === 'A') {
-                if (hintLine) { out.push(hintLine); itemByLine.push(null); }
+                if (hintLine) { out.push(menucolor_row(hintLine)); itemByLine.push(null); }
                 out.push('');
                 itemByLine.push(null);
             }

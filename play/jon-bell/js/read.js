@@ -2652,6 +2652,21 @@ async function seffect_remove_curse(sobj) {
                 }
             }
         }
+        /* C read.c:1581-1598 — include the ridden steed's saddle. */
+        if (g.u.usteed && (obj = which_armor(g.u.usteed, W_SADDLE))) {
+            if (confused) {
+                await _blessorcurse(obj, 2);
+                obj.bknown = 0;
+            } else if (obj.cursed) {
+                _uncurse(obj);
+                if (!_Blind()) {
+                    await pline(`${Yobjnam2(obj, 'glow')} ${hcolor_real('amber')}.`);
+                    obj.bknown = _Hallucination() ? 0 : 1;
+                } else {
+                    obj.bknown = 0;
+                }
+            }
+        }
     }
     if (_Punished() && !confused)
         await unpunish_rd();                            /* C read.c:1600 */
@@ -3999,6 +4014,7 @@ function free_lit(ptr) {}
 
 import { impact_arti_light } from './potion.js';
 import { light_hits_gremlin } from './cmd.js'; /* C uhitm.c:6425 — real body lives in cmd.js */
+import { menu_heading_text } from './tty_menu.js'; /* wintty.c:2688 iflags.menu_headings */
 /* C ref: read.c:2470-2489 set_lit(x, y, val) — the do_clear_area() callback
  * litroom() drives.  `val` is a non-null pointer flag, not a value: non-null
  * lights the square, null darkens it.
@@ -4660,10 +4676,10 @@ async function _identify_objlist_menu(promptText) {
     const entries = []; /* {obj, selected} */
     function buildLines() {
         const lines = [];
-        lines.push(`\x1b[7m${promptText}\x1b[0m`);
+        lines.push(menu_heading_text(promptText));
         lines.push('');
         for (const oc of classOrder) {
-            lines.push(`\x1b[7m${CLASS_HEADER[oc] ?? 'Items'}\x1b[0m`);
+            lines.push(menu_heading_text(CLASS_HEADER[oc] ?? 'Items'));
             for (const e of entries) {
                 if ((e.obj.oclass | 0) !== oc) continue;
                 const letter = String.fromCharCode(e.obj.invlet | 0);
@@ -4977,6 +4993,11 @@ export async function do_mapping() {
         await map_redisplay_rd();
     } else {
         reconstrain_map_rd();
+        /* show_map_spot's newsym() reprinted map y=20 AFTER the last bot(): with
+         * statuslines:3 that row is physical status row 1 (wintty.c:3814), so a
+         * seen-stone cell prints a blank over it (display.c back_to_glyph S_stone
+         * vs the unexplored gbuf).  The whole-row latch would hide that. */
+        game._status1Whole = false;
     }
     /* C detect.c:1443: exercise(A_WIS, TRUE) → rn2(19) */
     exercise(2 /* A_WIS */, true);

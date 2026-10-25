@@ -1,10 +1,12 @@
 // Native tty menu window ownership (win/tty/wintty.c).
-import { BUFSZ, ROWNO, NHW_MENU, PICK_NONE, PICK_ONE, PICK_ANY, MENU_ITEMFLAGS_SELECTED, MENU_ITEMFLAGS_SKIPINVERT } from './const.js';
+import { BUFSZ, ROWNO, NHW_MENU, PICK_NONE, PICK_ONE, PICK_ANY, MENU_ITEMFLAGS_SELECTED, MENU_ITEMFLAGS_SKIPINVERT, MENU_ITEMFLAGS_SKIPMENUCOLORS } from './const.js';
 import { game } from './gstate.js';
+import { getMenuColoring } from './menu_coloring.js';
 import { nhgetch } from './input.js';
 import { bot, clearMessageWindow, docrt, flushPendingTopline, flush_screen } from './display.js';
 import { getLine } from './query.js';
 import { NO_COLOR } from './terminal.js';
+import { C_ATR_INVERSE, terminalAttrFromCAttr } from './color_attr.js';
 const ATR_NONE = 0;
 function display() { return game.nhDisplay; }
 function putLine(col, row, text, attr = ATR_NONE) {
@@ -130,10 +132,23 @@ export async function tty_start_menu(window) {
 }
 export function tty_add_menu(window, entry) {
     requireWindow(window);
+    // C windows.c:add_menu() consults the menucoloring rules before the
+    // entry reaches the window port: the first matching rule replaces both
+    // the caller's color and attribute, so entries that carry their own
+    // style are recolored too. Headings opt out with SKIPMENUCOLORS.
+    let attr = entry.attr;
+    let color = entry.color;
+    if (!((entry.itemflags ?? 0) & MENU_ITEMFLAGS_SKIPMENUCOLORS)) {
+        const rule = getMenuColoring(entry.text);
+        if (rule) {
+            attr = terminalAttrFromCAttr(rule.attr);
+            color = rule.color;
+        }
+    }
     window.entries.push({
         text: entry.identifier === null ? entry.text : selectableMenuText(entry.selector || '?', entry.text),
-        attr: entry.attr ?? ATR_NONE,
-        color: entry.color ?? NO_COLOR,
+        attr: attr ?? ATR_NONE,
+        color: color ?? NO_COLOR,
         identifier: entry.identifier,
         key: entry.selector ?? '',
         group: entry.group ?? '',
@@ -146,7 +161,7 @@ export function tty_add_menu(window, entry) {
 export function tty_end_menu(window, prompt = null) {
     requireWindow(window);
     if (prompt !== null) {
-        const heading = { text: prompt, attr: game.iflags.menu_headings?.attr ?? 1,
+        const heading = { text: prompt, attr: terminalAttrFromCAttr(game.iflags.menu_headings?.attr ?? C_ATR_INVERSE),
             color: game.iflags.menu_headings?.color ?? NO_COLOR,
             identifier: null, key: '', group: '', itemflags: 0, selected: false, count: -1 };
         window.entries.unshift(heading, { ...heading, text: '', attr: ATR_NONE, color: NO_COLOR });

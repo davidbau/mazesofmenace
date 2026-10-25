@@ -7,6 +7,10 @@ import {
     ALTAR,
     AIR,
     ARTICLE_NONE,
+    ARTICLE_A,
+    ARTICLE_YOUR,
+    SUPPRESS_SADDLE,
+    has_mgivenname,
     AM_CHAOTIC,
     AM_LAWFUL,
     AM_MASK,
@@ -62,7 +66,6 @@ import {
     TREE,
     FIRE_RES,
     WATER,
-    W_SADDLE,
     D_BROKEN,
     D_CLOSED,
     D_ISOPEN,
@@ -88,6 +91,7 @@ import {
     coyotename,
     distant_monnam,
     hliquid,
+    x_monnam,
 } from './do_name.js';
 import {
     fruit_from_indx,
@@ -101,7 +105,8 @@ import { objectGenerationEnv } from './object_generation.js';
 import { just_an } from './objnam.js';
 import { observe_object } from './o_init.js';
 import { obj_stop_timers } from './timeout.js';
-import { locomotion } from './mondata.js';
+import { locomotion, type_is_pname } from './mondata.js';
+import { rn2_on_display_rng } from './rng.js';
 import {
     glyph_at,
     glyph_is_cmap,
@@ -543,15 +548,7 @@ export function queueGlyphUpdateNotice(
 
     const description = describeGlyphUpdate(current, x, y, state);
     if (!description) return false;
-    let glyphFrame;
-    const frameTracker = state._glyphNoticeFrameTracker;
-    if (frameTracker) {
-        glyphFrame = { changes: frameTracker.pending };
-        frameTracker.pending = new Map();
-    } else {
-        glyphFrame = { base: captureGlyphBuffer(state) };
-        state._glyphNoticeFrameTracker = { pending: new Map() };
-    }
+    const glyphFrame = takeNoticeGlyphFrame(state);
     const notice = {
         x,
         y,
@@ -568,6 +565,30 @@ export function queueGlyphUpdateNotice(
     };
     (state._glyphUpdateNotices ??= []).push(notice);
     return true;
+}
+
+function takeNoticeGlyphFrame(state) {
+    let glyphFrame;
+    const frameTracker = state._glyphNoticeFrameTracker;
+    if (frameTracker) {
+        glyphFrame = { changes: frameTracker.pending };
+        frameTracker.pending = new Map();
+    } else {
+        glyphFrame = { base: captureGlyphBuffer(state) };
+        state._glyphNoticeFrameTracker = { pending: new Map() };
+    }
+    return glyphFrame;
+}
+
+// C vision.c vision_recalc() ends with hack.c notice_all_mons(TRUE).
+// Capture its messages on the existing source-ordered TTY frame queue; the
+// async emitter drains it before later messages or monster movement.
+export function queueVisionMonsterNotices(state) {
+    if (!state.a11y?.mon_notices || state.a11y.mon_notices_blocked) return;
+    for (const message of collectMonsterNoticeMessages(state)) {
+        const glyphFrame = takeNoticeGlyphFrame(state);
+        (state._glyphUpdateNotices ??= []).push({ message, glyphFrame });
+    }
 }
 
 export async function emitGlyphUpdateNotices(state, env = {}) {
@@ -919,18 +940,16 @@ export function describeMonster(monster, env = {}) {
     return text;
 }
 
-function noticeMonsterName(monster) {
-    const given = monster.mextra?.mgivenname ?? monster.mgivenname;
-    if (given) return given;
-    const base = speciesName(monster);
-    const saddled = monster.misc_worn_check & W_SADDLE ? 'saddled ' : '';
-    if (monster.mtame) return `your ${saddled}${base}`;
-    if (monster.mpeaceful) {
-        const described = `peaceful ${saddled}${base}`;
-        return `${indefiniteArticle(described)} ${described}`;
-    }
-    const described = `${saddled}${base}`;
-    return `${indefiniteArticle(described)} ${described}`;
+// C hack.c notice_mon(): canonical x_monnam argument bindings.
+function noticeMonsterName(monster, state) {
+    const given = has_mgivenname(monster);
+    const article = monster.mtame ? ARTICLE_YOUR
+        : !given && !type_is_pname(monster.data) ? ARTICLE_A : ARTICLE_NONE;
+    return x_monnam(monster, article,
+        monster.mpeaceful && !monster.mtame ? 'peaceful' : null,
+        given ? SUPPRESS_SADDLE : 0, false, state, {
+            displayRandom: bound => rn2_on_display_rng(bound, state),
+        });
 }
 
 export function furnitureDescription(symbol) {
@@ -1466,7 +1485,7 @@ function updateMonsterNotice(monster, state) {
 
     monster.mspotted = true;
     return messageAt(
-        `You ${canseemon(monster, state) ? 'see' : 'notice'} ${noticeMonsterName(monster)}.`,
+        `You ${canseemon(monster, state) ? 'see' : 'notice'} ${noticeMonsterName(monster, state)}.`,
         monster.mx,
         monster.my,
         state,

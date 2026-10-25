@@ -4,7 +4,7 @@
 // Ported scope: simple closed-door open path (lock.c:781-935) and doclose
 // (lock.c:957-1052). The drawbridge predicates used by the shared branches
 // are implemented locally below to keep lock.js independent of dokick.js.
-import { game, wizard } from './gstate.js';
+import { game } from './gstate.js';
 import { could_untrap, untrap_at, cmdq_add_ec, cmdq_add_dir, ysimple_name, set_msg_xy } from './cmd.js';
 import { yname } from './do_wear.js';
 import { t_at } from './trap.js';
@@ -1031,17 +1031,6 @@ function _wepname(uwep) {
     return (owned ? 'your ' : 'the ') + cxname(uwep);
 }
 
-/* C ref: objnam.c doname() for a known-locked box in the force prompt:
- * "There is a locked large box here; ..."  lknown=1 + olocked → "locked" prefix. */
-function _force_box_doname(box) {
-    let name = box_xname(box);
-    if (box.olocked && box.lknown) name = 'locked ' + name;
-    else if (box.obroken && box.lknown) name = 'broken ' + name;
-    /* objnam.c:1697-1702 — wizweight appends " (N aum)" to doname() */
-    if (wizard() && game.iflags?.wizweight) name += ` (${box.owt >>> 0} aum)`;
-    return _an(name);
-}
-
 /* C ref: lock.c:215 forcelock() — the occupation callback, fired once per turn
  * by the moveloop occupation driver.  Returns 1 while still busy, 0 when done. */
 export async function forcelock() {
@@ -1290,8 +1279,9 @@ export async function doforce() {
             otmp.lknown = 1;
             continue;
         }
-        /* C lock.c:730 — "There is <box> here; force its lock?" [ynq] (q). */
-        const qbuf = `There is ${_force_box_doname(otmp)} here; force its lock?`;
+        /* C lock.c:729-730 — format the full name before learning the lock. */
+        const qbuf = await safe_qbuf('', 'There is ', ' here; force its lock?',
+                                     otmp, doname, ansimpleoname, 'a box');
         otmp.lknown = 1;
         const c = await _ynq(qbuf);
         if (c === 'q') return ECMD_OK;

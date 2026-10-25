@@ -51,10 +51,10 @@ import monsPack from './makemon_mons.json' with { type: 'json' };
  * the tree's norm (20+ modules import from cmd.js) and both sides are hoisted
  * function declarations, so the binding resolves at call time. */
 import { setuqwep, get_level, y_n_default, addinv_core2, reorder_invent, inv_cnt, dropx, freeinv, hitfloor, getpos, addinv_core1, dropy, carry_obj_effects, hurtle, mhurtle } from './cmd.js';
-import { place_object, remove_object } from './mklev.js';
+import { place_object, remove_object, upstart } from './mklev.js';
 import { m_at, mon_nam, xkilled, XKILL_NOMSG } from './uhitm.js';
 import { x_monnam } from './mhitm.js';
-import { nonliving } from './makemon.js';
+import { nonliving, mondied } from './makemon.js';
 import { ARTICLE_YOUR, ARTICLE_THE, ARTICLE_A, SUPPRESS_IT,
          SUPPRESS_HALLUCINATION, SUPPRESS_SADDLE, has_mgivenname } from './const.js';
 import { dmonsfree } from './mkmaze.js';
@@ -548,6 +548,9 @@ export async function wiz_smell() {
     }
 }
 
+/* C ref: wizcmds.c:243-342 wiz_kill(void).  This is a no-time wizard
+ * command: repeatedly position the cursor on a monster, crediting the hero
+ * unless the 'm' prefix requests a monster kill. */
 export async function wiz_kill() {
     const g = game;
     const savedVerbose = g.flags?.verbose;
@@ -601,8 +604,18 @@ export async function wiz_kill() {
         const adjs = tame ? (!seen ? 'poor, unseen' : 'poor')
                           : (!seen ? 'unseen' : null);
         const Mn = x_monnam(mtmp, articl, adjs, flgs, false);
-        await pline(`You ${nonliving(mtmp.data) ? 'destroy' : 'kill'} ${Mn}!`);
-        await xkilled(mtmp, XKILL_NOMSG);
+        if (!g.iflags.menu_requested) {
+            await pline(`You ${nonliving(mtmp.data) ? 'destroy' : 'kill'} ${Mn}!`);
+            await xkilled(mtmp, XKILL_NOMSG);
+        } else {
+            // C wizcmds.c:316-328; mon.c:3381-3403 monkilled(NULL, AD_PHYS).
+            g.context.mon_moving = true;
+            await pline(`${upstart(Mn)} is ${nonliving(mtmp.data) ? 'destroyed' : 'killed'}.`);
+            g.iflags.sad_feeling = !!mtmp.mtame;
+            (g.gd ||= {}).disintegested = false;
+            await mondied(mtmp);
+            g.context.mon_moving = false;
+        }
         if (g.u?.utotype) break;
     }
     dmonsfree();

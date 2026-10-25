@@ -384,3 +384,17 @@ export function menucolor_text(body, matchText = body) {
     }
     return body;
 }
+
+/* C ref: windows.c:1796-1809 add_menu() menucolors the entry's RAW str (the
+ * BUC/unpaid/class rows of query_category arrive this way, pickup.c:1320-1445);
+ * tty_add_menu bakes "%c - " on AFTER (wintty.c:2604-2611) and the tty colours
+ * from char 4 (wintty.c:1449-1456).  An add_menu_str line (no selector) is
+ * coloured whole; its pad spaces' colour is unobservable, so keep the pad
+ * outside the SGR for the compositor's indent read (js/com_pager.js /^ +/). */
+export function menucolor_row(text) {
+    const t = String(text ?? '');
+    const m = /^(.) ([-+#]) (.*)$/.exec(t);
+    if (m) return `${m[1]} ${m[2]} ${menucolor_text(m[3])}`;
+    const pad = (/^ +/.exec(t) || [''])[0];
+    return pad + menucolor_text(t.slice(pad.length));
+}

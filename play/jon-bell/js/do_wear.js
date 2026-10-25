@@ -37,6 +37,7 @@ import { see_monsters, retouch_object_hero } from './display.js';
 import { topl_park_cursor } from './display.js';
 import { flush_screen, _topline_more_pending, _topl_stash_result } from './display.js';
 import { _topl_merge_result, _topl_joins_snapshot, _topl_record_join } from './display.js';
+import { msgtype_suppressed } from './display.js'; /* C pline.c:246-262 vpline MSGTYPE check */
 import { nhgetch } from './input.js';
 import { nomul, unmul, stop_occupation } from './allmain.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js';
@@ -2412,10 +2413,11 @@ export async function accessory_or_armor_on(obj) {
             for (;;) {
                 const raw = await nhgetch();
                 const key = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
-                if (key === 0 || key === 27 /* ESC */) {
-                    return ECMD_OK;
-                }
-                if (key === 32 || key === 13 || key === 10) {
+                /* C tty_yn_function (topl.c:463-474) maps ESC and
+                 * space/CR/LF to the NUL default.  Its cleanup leaves a
+                 * single-row prompt painted (topl.c:533-548); nhgetch()
+                 * cleared our live buffer, so preserve that paint. */
+                if (key === 0 || key === 27 || key === 32 || key === 13 || key === 10) {
                     g._topl_sticky = promptText;
                     return ECMD_OK;
                 }
@@ -2467,6 +2469,11 @@ export async function accessory_or_armor_on(obj) {
         return ECMD_TIME;
     }
     if (amulet) {
+        /* C do_wear.c:2318-2322: reject an occupied slot before retouching. */
+        if (u.uamul) {
+            await already_wearing('an amulet');
+            return ECMD_OK;
+        }
         /* do_wear.c:2355 */
         if (!(await retouch_object_hero(obj, false))) return ECMD_TIME;
         await remove_worn_item(obj, false);
@@ -2717,6 +2724,10 @@ async function on_msg(otmp) {
     if ((otmp.owornmask | 0) & W_AMUL_C) {
         const invlet = String.fromCharCode(otmp.invlet | 0);
         const line = `${invlet} - ${(await doname(otmp))}.`;
+        if (!msgtype_suppressed(line)) {
+            if (g.iflags) g.iflags.last_msg = 0;
+            g._prevmsg = line;
+        }
         const committed = g._pending_message || '';
         const merged = committed
             ? _topl_merge_result(committed, line, _topl_joins_snapshot(committed))

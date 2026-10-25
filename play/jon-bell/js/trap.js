@@ -105,7 +105,7 @@ import { DRAWBRIDGE_DOWN } from './const.js';
 import { spot_checks as _spot_checks } from './cmd.js';
 import { float_up, bimanual, hard_helmet, yname } from './do_wear.js';
 import { HALF_SPDAM, COST_DECHNT, ARTICLE_THE, ARTICLE_NONE,
-         SUPPRESS_SADDLE, has_mgivenname, DISMOUNT_POLY, xdir, ydir } from './const.js';
+         SUPPRESS_SADDLE, has_mgivenname, DISMOUNT_POLY, DISMOUNT_GENERIC, xdir, ydir } from './const.js';
 import { is_quest_artifact, killer_xname as _thitu_killer_xname } from './objnam.js';
 import { defends_when_carried } from './mhitm.js';
 import { get_obj_location } from './light.js';
@@ -318,6 +318,7 @@ async function thitm(tlev, mon, obj, d_override, nocorpse) {
     if (!strike) {
         /* C trap.c:6714-6716: "<Monnam> is almost hit by <doname(obj)>!" when seen. */
         if (obj && cansee(mon.mx | 0, mon.my | 0)) {
+            set_msg_xy_trap(mon.mx, mon.my); /* pline_mon, trap.c:6733 */
             await pline(`${Monnam_t(mon)} is almost hit by ${await doname(obj)}!`);
         }
     } else {
@@ -509,6 +510,14 @@ export async function monkilled_trap(mtmp, fltxt = '') {
      * dmonsfree() zeroes the monster, and a later m_at() finds a phantom. */
     if (mtmp.wormno)
         wormgone(mtmp);
+    /* C mon.c:2798-2800, the last thing m_detach() does (before mondied's
+     * corpse roll): "hero is thrown from his steed when it dies" —
+     * dismount_steed(DISMOUNT_GENERIC), silent, landing_spot rn2s first.
+     * steedintrap's own dismount_steed(DISMOUNT_POLY) (trap.c:3163) then
+     * finds u.usteed already NULL and returns without "You can no longer
+     * ride". */
+    if (mtmp === game.u.usteed)
+        await dismount_steed(DISMOUNT_GENERIC);
     const dropCorpse = await corpse_chance_mon(mtmp);
     if (dropCorpse) {
         const make_corpse = _trapFns.make_corpse_fn;
@@ -4531,7 +4540,7 @@ async function trapeffect_bear_trap(trap, trflags) {
     }
     set_utrap(rn1(4, 4), TT_BEARTRAP_);
     if (u.usteed) {
-        await pline(`${trap.madeby_u ? "Your" : "A"} bear trap closes on ${_s_suffix(_monnam_safe(u.usteed))} ${_mbodypart(u.usteed, 0)}!`);
+        await pline(`${trap.madeby_u ? "Your" : "A"} bear trap closes on ${_s_suffix(mon_nam(u.usteed))} ${_mbodypart(u.usteed, 0)}!`);
         if (await thitm(0, u.usteed, null, dmg, false))
             await reset_utrap(true);
     } else {

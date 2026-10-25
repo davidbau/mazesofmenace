@@ -181,15 +181,16 @@ export function _dfeature_at(x, y) {
             + ` (${_align_str(Amask2align(amask & ~AM_SHRINE))})`;
         return { text, article: 1 };
     }
-    if (_is_grave(typ))    return { text: 'grave', article: 1 };
-    if (typ === TREE)      return { text: 'tree', article: 1 };
-    if (typ === IRONBARS)  return { text: 'set of iron bars', article: 1 };
-    if (typ === DRAWBRIDGE_DOWN) return { text: 'lowered drawbridge', article: 1 };
-    if (typ === DBWALL)    return { text: 'raised drawbridge', article: 1 };
-
     const stway = stairway_at(x, y);
     if (stway)
         return { text: stairs_description(stway, null, true), article: 1 };
+    // C invent.c:4081-4093: a surviving stairway takes precedence over these
+    // terrain types, even when the square's typ has been changed by a wish.
+    if (typ === DRAWBRIDGE_DOWN) return { text: 'lowered drawbridge', article: 1 };
+    if (typ === DBWALL)    return { text: 'raised drawbridge', article: 1 };
+    if (_is_grave(typ))    return { text: 'grave', article: 1 };
+    if (typ === TREE)      return { text: 'tree', article: 1 };
+    if (typ === IRONBARS)  return { text: 'set of iron bars', article: 1 };
     return null;
 }
 

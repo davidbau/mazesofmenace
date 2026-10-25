@@ -23,7 +23,7 @@ import { menu_heading_text } from './tty_menu.js'; /* C strutil.c:151 — MENU_S
 import { putmsghistory, _strengthStr, force_more, force_more_pages, await_more_dismiss,
          await_topl_more_dismiss, pline_flush_point,
          botl_pmname, botl_upstart_words, botl_mon_mlevel, botl_title,
-         gold_status_char, dec_mode, rogue_graphics, rogue_hero_showrace_cell, rogue_ibm_color, botl_status_suffix, fit_status_line_width, status_row_finish, _statusRows3, _threeStatusLines, docrt_flags, flush_screen, use_last_flush_snapshot, hitpointbar_status1, _hilite_status_wrap, _status_sgr, _status_row1_map_overlay } from './display.js';
+         gold_status_char, dec_mode, rogue_graphics, rogue_hero_showrace_cell, rogue_ibm_color, botl_status_suffix, fit_status_line_width, status_row_finish, _statusRows3, _threeStatusLines, docrt_flags, flush_screen, use_last_flush_snapshot, hitpointbar_status1, _hilite_status_wrap, _status_sgr, _status_row1_map_overlay, _status_row1_whole_with_tail } from './display.js';
 // ── ANSI color helpers (inlined from display.js — not exported there) ──
 const ANSI_DEFAULT = 39;
 // C ref: color.h:10-14 — CLR_BLACK(0) renders as bright-black (90); CLR_GRAY(7)
@@ -447,11 +447,14 @@ export async function display_text_window(lines) {
     // With live windows, erase_menu_or_text still redraws vision/monsters.
     if (g.iflags.window_inited) {
         docrt_flags(0);
-        await flush_screen(1);
+        /* erase_menu_or_text (wintty.c:975-976): docrt(); flush_screen(1) with bot()
+         * enabled — the pending BL_RESET status rewrite precedes the map print. */
+        game._docrtMapAfterBot = true;
+        try { await flush_screen(1); } finally { game._docrtMapAfterBot = false; }
     }
 }
 export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipArg, pwOverride,
-                                    fullScreen = false, mapClipExtra = 0, clipRow23 = false) {
+                                    fullScreen = false, mapClipExtra = 0, clipRow23 = false, clipMaxRow = 23) {
     let statusClipCol = statusClipArg;
     const _prevRows = (typeof game._screen_output === 'string')
         ? game._screen_output.split('\n') : null;
@@ -501,6 +504,9 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipAr
     // bot().  When undefined, no clipping (the normal full-status case).
     let output = '';
     for (let screenRow = 0; screenRow <= 23; screenRow++) {
+        /* docorner's erase loop stops at ymax-1 (wintty.c:3684): rows below the
+         * dismissed window's last row keep their status text. */
+        statusClipCol = screenRow > clipMaxRow ? undefined : statusClipArg;
         /* docorner() of a menu ending at row 20 erases only the first of three
          * status rows (wintty.c:3650-3684); rows 22/23 stay whole. */
         if (game._statusClipFirstRowOnly && rows3)
@@ -581,6 +587,12 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipAr
         }
         if (statusStillBlank && (screenRow === 22 || screenRow === 23
                                  || (rows3 && screenRow === 21))) {
+            /* docrt() cls()s the terminal, then prints the whole map: with
+             * statuslines:3 map y=20 lands on screen row 21 (wintty.c:3814) and
+             * only the status TEXT stays blank until bot().  A window not
+             * covering the row leaves those glyphs on the terminal. */
+            if (rows3 && screenRow === 21 && !inWindow)
+                output += render_map_row_clipped(ROWNO - 1, COLNO - 1).str;
             if (screenRow < 23) output += '\n';
             continue;
         }
@@ -665,8 +677,13 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipAr
             }
             else if (rows3 && screenRow === 21) {
                 /* wintty.c:3814: map y=20 still prints onto status row 1 (see
-                 * _status_row1_map_overlay), and no window covers it here. */
-                output += _status_row1_map_overlay(rowStatus(21));
+                 * _status_row1_map_overlay), and no window covers it here.
+                 * After a whole-row BL_RESET rewrite (botl.c:1670,
+                 * wintty.c:5251-5255) every field sits over map y=20, so only
+                 * the tail past the text can still show map glyphs. */
+                output += game._status1Whole
+                    ? _status_row1_whole_with_tail(st3[0])
+                    : _status_row1_map_overlay(rowStatus(21));
             }
             else {
                 output += rowStatus(screenRow);

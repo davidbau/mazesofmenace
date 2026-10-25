@@ -76,7 +76,8 @@ const RING_CLASS = 4;
 import { getObjName, discover_object, observe_object } from './o_init.js';
 import { bottlename } from './lock.js';
 import { surface as surface_cmd, body_part, trycall as trycall_cmd, trycall_noprompt, reorder_invent } from './cmd.js';
-import { attacktype_fordmg, splitobj } from './makemon.js';
+import { attacktype_fordmg, splitobj, mhe } from './makemon.js';
+import { mhis_mon } from './mhitu.js';
 import { is_ice } from './engrave.js';
 import { can_reach_floor, hold_another_object } from './hold_another_object.js';
 import { obj_extract_self } from './mklev.js';
@@ -801,7 +802,7 @@ export async function drinkfountain() {
                 /* if (monster_detect((struct obj *) 0, 0))
                  *     pline_The("%s tastes like nothing.", hliquid("water")); */
                 if (await monster_detect(null, 0))
-                    await pline('The water tastes like nothing.');
+                    await pline(`The ${hliquid('water')} tastes like nothing.`);
                 await exercise(A_WIS, true);
                 break;
             case 27: /* C fountain.c:355-361 — find a gem in the sparkling waters */
@@ -822,7 +823,7 @@ export async function drinkfountain() {
             case 29: /* Scare — bad breath, monflee all monsters */
                 {
                     /* C fountain.c:368-378 */
-                    await pline('This water gives you bad breath!');
+                    await pline(`This ${hliquid('water')} gives you bad breath!`);
                     for (let mtmp = g.fmon; mtmp; mtmp = mtmp.nmon) {
                         if ((mtmp.mhp | 0) >= 1)
                             await monflee(mtmp, 0, false, false);
@@ -833,7 +834,7 @@ export async function drinkfountain() {
                 await dogushforth(true);
                 break;
             default:
-                await pline('This tepid water is tasteless.');
+                await pline(`This tepid ${hliquid('water')} is tasteless.`);
                 break;
         }
     }
@@ -901,6 +902,8 @@ async function dowaterdemon() {
             /* C fountain.c:76-78 — "Give those on low levels a (slightly)
                better chance of survival". */
             if (rnd(100) > (80 + level_difficulty())) {
+                // C fountain.c:79-80: announce the wish before removing the demon.
+                await pline(`Grateful for ${mhis_mon(mtmp)} release, ${mhe(mtmp)} grants you a wish!`);
                 await _mongrantswish(mtmp);
             } else if (t_at(mtmp.mx, mtmp.my)) {
                 await mintrap(mtmp, 0 /* NO_TRAP_FLAGS */);
@@ -1199,8 +1202,8 @@ async function peffect_water(otmp) {
     const g = game;
     const u = g.u;
     if (!otmp.blessed && !otmp.cursed) {
-        /* C potion.c:722-724 — uncursed water: hunger boost */
-        await pline('This tastes like water.');
+        /* C potion.c:720-724 — liquid name, then uncursed water hunger boost. */
+        await pline(`This tastes like ${hliquid('water')}.`);
         u.uhunger += rnd(10);
         await newuhs(false);
         return;
@@ -1211,7 +1214,7 @@ async function peffect_water(otmp) {
     if (mon_hates_blessings(g.youmonst) || u.ualign.type === -1 /* A_CHAOTIC */) {
         if (otmp.blessed) {
             /* C potion.c:731-742: blessed, hates blessings → burns */
-            await pline('This burns like acid!');
+            await pline(`This burns like ${hliquid('acid')}!`);
             exercise(A_CON, false);
             if (ismnum(u.ulycn)) {
                 /* C potion.c:736 indexes the canonical mons[] name table. */
@@ -1252,7 +1255,7 @@ async function peffect_water(otmp) {
         } else {
             /* C potion.c:759-766: cursed, likes blessings → dread/burns */
             if (u.ualign.type === 1 /* A_LAWFUL */) {
-                await pline('This burns like acid!');
+                await pline(`This burns like ${hliquid('acid')}!`);
                 await losehp(d(2, 6), 'potion of unholy water', 35 /* KILLED_BY_AN */);
             } else
                 You_feel('full of dread.');

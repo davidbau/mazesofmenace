@@ -150,7 +150,7 @@ function ColdResistance() { return propOn(COLD_RES); }
 
 // (all 15 records: thinks_it_foundyou=0, mpeaceful=1, adtyp in {AD_SPEL,
 // AD_CLRC}) — thrown loudly rather than silently no-op'd, per charter. ──
-export function cursetxt(mtmp, undirected) {
+export async function cursetxt(mtmp, undirected) {
     const u = game.u || {};
     const mux_off = ((mtmp.mux | 0) !== (u.ux | 0) || (mtmp.muy | 0) !== (u.uy | 0));
     if (canseemon(mtmp) && couldsee(mtmp.mx, mtmp.my)) {
@@ -167,10 +167,10 @@ export function cursetxt(mtmp, undirected) {
         else
             point_msg = 'at you, then curses';
 
-        pline_mon(mtmp, Monnam(mtmp) + ' points ' + point_msg + '.');
+        await pline_mon(mtmp, Monnam(mtmp) + ' points ' + point_msg + '.');
     } else if ((!((game.moves | 0) % 4) || !rn2(4))) {
         if (!Deaf())
-            Norep('You hear a mumbled curse.');   /* Deaf-aware */
+            await Norep('You hear a mumbled curse.');   /* Deaf-aware */
     }
 }
 /* C monst.h is_obj_mappear(mon, otyp) —
@@ -1289,7 +1289,7 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
     /* monster unable to cast spells? */
     if (mtmp.mcan || mtmp.mspec_used || !ml
         || m_seenres(mtmp, cvt_adtyp_to_mseenres(mattk.adtyp))) {
-        cursetxt(mtmp, is_undirected_spell(spellnum));
+        await cursetxt(mtmp, is_undirected_spell(spellnum));
         return M_ATTK_MISS;
     }
 
@@ -1426,7 +1426,7 @@ export async function buzzmu(mtmp, mattk) {
         return M_ATTK_MISS;
 
     if (mtmp.mcan || m_seenres(mtmp, cvt_adtyp_to_mseenres(mattk.adtyp))) {
-        cursetxt(mtmp, false);
+        await cursetxt(mtmp, false);
         return M_ATTK_MISS;
     }
     if (lined_up(mtmp) && rn2(3)) {

@@ -44,7 +44,7 @@ import { t_at, split_mon_rt, find_mac as find_mac_mon, extract_from_minvent as e
 import { pushRngLogEntry } from './rng.js';
 import { IS_ROOM, OBJ_FREE, OBJ_DELETED, OBJ_MINVENT, OBJ_FLOOR, W_WEP, W_SADDLE, IRONBARS, IS_OBSTRUCTED, IS_TREE, ERODE_NONE, ERODE_CORRODE, ERODE_RUST, ERODE_BURN, EF_GREASE, EF_VERBOSE, PASSES_WALLS } from './const.js';
 import { place_object, set_ustuck, resists_ston, resists_poison,
-         mkcorpstat, mksobj_at, mondead, add_to_container, dealloc_obj, newcham, mongone, makemon, minliquid as minliquid_real,
+         mkcorpstat, mksobj_at, OC_MERGE, mondead, add_to_container, dealloc_obj, newcham, mongone, makemon, minliquid as minliquid_real,
          mksobj as mksobj_dg, healmon as healmon_dg, wake_nearto as wake_nearto_dg, mlifesaver as mlifesaver_dg, set_corpsenm as set_corpsenm_dg } from './mklev.js';
 import { closed_door, accessible, is_pool } from './look.js';
 import { erode_obj, mintrap as mintrap_real, goodpos as goodpos_real, m_useup as m_useup_dg } from './trap.js';
@@ -1141,9 +1141,7 @@ function mergable_dm(otmp, obj) {
  * The dropped pet-apport items are FOOD/COIN, which this admits. */
 const _POTION_CLASS_DM = 8, _SCROLL_CLASS_DM = 9, _WEAPON_CLASS_DM = 2;
 function _oc_merge_dm(obj) {
-    const oc = obj.oclass | 0;
-    return oc === FOOD_CLASS || oc === _POTION_CLASS_DM || oc === _SCROLL_CLASS_DM
-        || oc === GEM_CLASS || oc === COIN_CLASS_ || oc === _WEAPON_CLASS_DM;
+    return !!OC_MERGE[obj.otyp | 0];
 }
 
 function merged_dm(otmp, obj) {
@@ -3304,6 +3302,7 @@ export async function mondied_dm(mdef, mondead_only = false) {
             mdef.cham = -1; /* NON_PM */
         } else if (_cur === 15 /* PM_WEREJACKAL */) _true = 262; /* PM_HUMAN_WEREJACKAL */
         else if (_cur === 21 /* PM_WEREWOLF */) _true = 263; /* PM_HUMAN_WEREWOLF */
+        else if (_cur === 91 /* PM_WERERAT */) _true = 261; /* PM_HUMAN_WERERAT, mon.c:3117 */
         if (_true >= 0) set_mon_data(mdef, permonstTemplate(_true));
     }
     {
@@ -3509,7 +3508,7 @@ async function explmm(magr, mdef, mattk) {
     if (cansee(magr.mx | 0, magr.my | 0))
         pline(Monnam_dm(magr) + ' explodes!');
     else
-        noises_dm(magr, mattk);
+        await noises_dm(magr, mattk);
     /* monster explosion types which actually create an explosion */
     const adt = mattk.adtyp | 0;
     if (adt === _AD_FIRE || adt === _AD_COLD || adt === _AD_ELEC) {
@@ -3691,7 +3690,7 @@ function pre_mm_attack_dm(magr, mdef) {
     return pre_mm_attack_real(magr, mdef);
 }
 
-function noises_dm(magr, mattk) {
+async function noises_dm(magr, mattk) {
     const u = game.u;
     if (!u) return;
     const farq = dist2(magr.mx | 0, magr.my | 0, u.ux | 0, u.uy | 0) > 15;
@@ -3706,7 +3705,7 @@ function noises_dm(magr, mattk) {
         game.far_noise = farq;
         game.noisetime = moves;
         /* C mhitm.c:33 You_hear("%s%s.", ...) — one call, two conversions. */
-        You_hear("%s%s.",
+        await You_hear("%s%s.",
                  ((mattk?.aatyp | 0) === AT_EXPL) ? "an explosion" : "some noises",
                  farq ? " in the distance" : "");
     }
@@ -3731,7 +3730,7 @@ async function hitmm(magr, mdef, mattk, mwep, dieroll) {
                : Monnam_dm(magr) + ' ' + attack_verb_dm(mattk.aatyp | 0))
               + ' ' + mon_nam_dm(mdef) + '.');
     else
-        noises_dm(magr, mattk); /* C mhitm.c:729 */
+        await noises_dm(magr, mattk); /* C mhitm.c:729 */
     if (game.v?.vis && _topline_more_pending() && _more_never_dismissed())
         await flush_pending_messages();
     return await mdamagem_dm(magr, mdef, mattk, mwep, dieroll);
@@ -3747,7 +3746,7 @@ async function missmm(magr, mdef, mattk) {
         if (_topline_more_pending() && _more_never_dismissed())
             await flush_pending_messages();
     } else
-        noises_dm(magr, mattk); /* C mhitm.c:89 */
+        await noises_dm(magr, mattk); /* C mhitm.c:89 */
 }
 /* mon_wield_item is the real weapon.c:797 port, kept in js/uhitm.js next to
  * its sibling select_rwep/select_hwep rather than copied here; mattackm's
@@ -4231,7 +4230,7 @@ export async function dog_move(mtmp, after) {
             const what = o ? (await distant_obj_name(o)) : 'something';
             const verb = locomotion_step(mtmp);
             const prep = (is_flyer_dm(mtmp) || is_floater_dm(mtmp)) ? 'over' : 'onto';
-            void pline(`${noit_Monnam(mtmp)} ${verb} reluctantly ${prep} ${what}.`);
+            pline_mon(mtmp, "%s", `${noit_Monnam(mtmp)} ${verb} reluctantly ${prep} ${what}.`);
         }
         /* C: mon_track_add(mtmp, omx, omy) — update mtrack */
         if (!mtmp.mtrack) mtmp.mtrack = [];
@@ -4573,7 +4572,14 @@ export async function monstone(mtmp) {
         obj = next;
     }
     if (makeStatue) {
-        statue = (await mkcorpstat(STATUE_OTYP, mtmp, mtmp.data, x, y, CORPSTAT_NONE));
+        /* C mon.c:3335-3343: the statue records the victim's gender (and
+         * historic-ness for uniques) in obj->spe via corpstatflags. */
+        let corpstatflags = CORPSTAT_NONE;
+        if (mtmp.female) corpstatflags |= 0x01;                /* CORPSTAT_FEMALE */
+        else if (!(((_MONS[mndx]?.[7]) | 0) & 0x00040000))     /* !is_neuter: M2_NEUTER */
+            corpstatflags |= 0x02;                             /* CORPSTAT_MALE */
+        if (geno & 0x1000) corpstatflags |= 0x04;              /* G_UNIQ -> CORPSTAT_HISTORIC */
+        statue = (await mkcorpstat(STATUE_OTYP, mtmp, mtmp.data, x, y, corpstatflags));
         /* C mon.c:3345-3346: oname(otmp, MGIVENNAME(mdef)) */
         if (_has_mgivenname_dm(mtmp))
             statue = await oname_dm(statue, mtmp.mextra?.mgivenname || mtmp.mgivenname, 0);

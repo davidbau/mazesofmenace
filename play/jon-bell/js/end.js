@@ -717,6 +717,9 @@ export async function do_death_sequence(opts) {
     if (!pd.prejoinButWait) {
         if (!_earlyBot) {
             if (g.disp) g.disp.botlx = 1;
+            /* botl.c:1670 — botlx at bot() entry sends BL_RESET, which wintty
+             * turns into FORCE_RESET: row 1 is rewritten whole over the map. */
+            g._status1WholeNext = true;
             await bot();
         }
         done_death_context(pd.how);

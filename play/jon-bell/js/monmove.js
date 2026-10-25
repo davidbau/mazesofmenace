@@ -1956,7 +1956,14 @@ export async function m_move(mtmp, after) {
              * mintrap: newsym(omx,omy) then newsym(mtmp->mx,mtmp->my).  move_special
              * (priest.c:122-124) itself only does newsym(nix,niy). */
             if (xm === 1) {
+                const didseeit = !!cansee(mtmp.mx | 0, mtmp.my | 0);
                 newsym(_entry_omx, _entry_omy);
+                /* C postmov(), monmove.c:1530-1593: shopkeepers also
+                 * open doors before the final newsym and item-pickup tail. */
+                const mf1 = mtmp.data?.mflags1 | 0;
+                const doorResult = await postmov_door(mtmp, didseeit, mf1,
+                    !Is_rogue_level(game.u?.uz) && !!(mf1 & M1_TUNNEL_MDW));
+                if (doorResult === MMOVE_DIED_MV) return doorResult;
                 newsym(mtmp.mx | 0, mtmp.my | 0);
             }
             return postmov(mtmp, (xm !== 1) ? MMOVE_NOTHING_MV : MMOVE_MOVED_MV);

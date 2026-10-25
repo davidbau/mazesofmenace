@@ -703,12 +703,15 @@ export async function newgame() {
                     }
                 }
             }
-            if (tutorialWillRun && !startupWinStop && !startupPaged) {
+            if (tutorialWillRun && !startupWinStop) {
                 /* C order: moveloop_preamble's pickup(1) (allmain.c:75) runs
                  * BEFORE maybe_do_tutorial, so a message it prints (mention_decor's
                  * describe_decor) pages the standing welcome line and is itself
                  * the one the tutorial's pre-menu flush pages. */
-                deferredLastStartupMsg = startupMsgs[startupMsgs.length - 1];
+                /* A last message that wrapped (>= CO columns) already paged
+                 * itself (topl.c:131-137), so nothing stands; pickup(1)'s
+                 * message becomes the line the tutorial flush pages. */
+                deferredLastStartupMsg = startupPaged ? '' : startupMsgs[startupMsgs.length - 1];
             }
         }
         else {
@@ -744,9 +747,20 @@ export async function newgame() {
         g._notice_mon_ready = true; /* allmain.c:844 notice_mon_on() */
         notice_all_mons(true);
     }
-    if (deferredLastStartupMsg !== null)
+    /* A welcome that already paged itself (>= 80 columns) leaves no standing
+     * line, but pickup(1)'s describe_decor pline is still flushed by the
+     * tutorial menu's display_nhwindow(WIN_MESSAGE, TRUE) (wintty.c NHW_MENU
+     * arm), i.e. paged with --More-- before the menu is drawn. */
+    const tutorialFlushesDecor = deferredLastStartupMsg === null && !chargenIncomplete
+        && !g.tutorial_set_in_config;
+    if (deferredLastStartupMsg !== null || tutorialFlushesDecor)
         g._pending_message = '';
     await pickup(1);
+    if (tutorialFlushesDecor) {
+        const decorOnly = g._pending_message || '';
+        g._pending_message = '';
+        if (decorOnly) await topl_more_page(decorOnly, g.u?.uac ?? 0);
+    }
     if (deferredLastStartupMsg !== null) {
         const decorMsg = g._pending_message || '';
         g._pending_message = '';
@@ -759,14 +773,16 @@ export async function newgame() {
         const decorParts = decorMsg ? decorMsg.split(/  (?=You (?:read|feel the words):)/) : [];
         let standing = deferredLastStartupMsg;
         for (const part of decorParts) {
-            if (part.length + standing.length + 3 < 80 - 8 && !part.startsWith('You die')) {
+            if (standing === '') {
+                standing = part;
+            } else if (part.length + standing.length + 3 < 80 - 8 && !part.startsWith('You die')) {
                 standing += '  ' + part;
             } else {
                 await topl_more_page(standing, g.u?.uac ?? 0);
                 standing = part;
             }
         }
-        await topl_more_page(standing, g.u?.uac ?? 0);
+        if (standing !== '') await topl_more_page(standing, g.u?.uac ?? 0);
     }
     g.disp = g.disp || { botl: 0, botlx: 0, time_botl: 0, toplin: 0, inmore: 0 };
     g.disp.botlx = 1;
@@ -1907,7 +1923,7 @@ async function eat_occupation_turn() {
             ? { text: thisTurnMsg, postMeal: true }
             : (prior ? { text: prior.text, postMeal: true } : null);
         g._pending_message = '';
-        if (thisTurnMsg && /^You stop eating\b/.test(thisTurnMsg)) {
+        if (thisTurnMsg && /(?:^|  )You stop eating\b/.test(thisTurnMsg)) {
             g._occ_committed_topl = null;
             g._pending_message = thisTurnMsg;
         }
@@ -3727,6 +3743,12 @@ async function moveloop_core_faithful() {
             // plined here; it persists on the topline until the next nhgetch.
             const r = await picklock();
             if (r === 0) g.occupation = null;
+            // C allmain.c:504-507: interrupt after the callback, before
+            // the next world turn can let an adjacent monster attack.
+            if (monster_nearby()) {
+                await stop_occupation();
+                reset_eat();
+            }
         }
         // C ref: allmain.c:209 — the occupation has cleared with context.move
         // still 1, so the next moveloop_core runs ONE more world block before
@@ -4780,6 +4802,8 @@ function _run_commit_result(g) {
         if (hint && hint.length) { g._topl_joins = hint.slice(); g._topl_joins_src = line; }
     }
     g._toplRunCommitted = g._pending_message || null;
+    if (g._pending_message)
+        g._topl_unacknowledged = true;
 }
 
 // trailing per-turn world block (the last time-command's MOVEMON/HEAD block) that
@@ -5077,6 +5101,11 @@ async function moveloop_core_impl() {
             const r = await picklock();
             if (r === 0) {
                 g.occupation = null;
+            }
+            // C allmain.c:504-507: the same check follows the first callback.
+            if (monster_nearby()) {
+                await stop_occupation();
+                reset_eat();
             }
         }
         // ── DIG occupation (multi-turn) ──────────────────────────────────────

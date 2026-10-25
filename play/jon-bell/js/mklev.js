@@ -11832,11 +11832,10 @@ export function letter(c) {
 }
 /* C ref: mkobj.c:626 — clear_splitobjs: reset split object context */
 export function clear_splitobjs() {
-    if (!game.svc)
-        game.svc = {};
-    if (!game.svc.context)
-        game.svc.context = {};
-    game.svc.context.objsplit = { parent_oid: 0, child_oid: 0 };
+    // splitobj/unsplitobj store C's svc.context.objsplit in game.context.
+    // splitobj() and its callers store C's svc.context in game.context.
+    game.context = game.context || {};
+    game.context.objsplit = { parent_oid: 0, child_oid: 0 };
 }
 /* C ref: hacklib.c:257 — eos: return pointer to end of string (the NUL
  * terminator). In C this is `s + strlen(s)`; the only thing callers do with it

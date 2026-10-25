@@ -43,7 +43,7 @@ import {
     LOST_NONE, LOST_THROWN, LOST_DROPPED, LOST_STOLEN, LOST_EXPLODING,
     STONE, MENU_TRADITIONAL, MENU_FULL,
     AUTOSELECT_SINGLE, INVORDER_SORT, FEEL_COCKATRICE, BY_NEXTHERE,
-    PICK_ANY, PICK_ONE,
+    PICK_ANY, PICK_ONE, W_SADDLE, ARTICLE_THE, SUPPRESS_SADDLE,
     ICE, MOAT, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, LAVAPOOL, DB_UNDER, DB_ICE, DB_LAVA, DB_MOAT,
     IS_POOL, IS_LAVA, IS_FURNITURE, PLNMSG_BACK_ON_GROUND, FUMBLING, TIMEOUT,
     LOOKHERE_NOFLAGS, LOOKHERE_PICKED_SOME, LOOKHERE_SKIP_DFEATURE,
@@ -55,10 +55,10 @@ import {
     SHOPBASE, ESHK, STONE_RES, KILLED_BY_AN,
 } from './const.js';
 /* C ref: pickup.c:2293 the `lootmon` branch — mon_beside() needs m_at(). */
-import { m_at } from './uhitm.js';
+import { m_at, mon_nam } from './uhitm.js';
 /* C ref: dungeon.c:1770 surface()'s `hliquid("water"/"lava")` calls — real
  * body, no import cycle (js/mhitm.js does not import this file). */
-import { hliquid } from './mhitm.js';
+import { hliquid, x_monnam } from './mhitm.js';
 /* pickup()'s own guard cascade (pickup.c:690-735) — real, already-ported
  * bodies from their owning files, imported read-only. */
 import { is_pool, look_here } from './look.js';
@@ -74,7 +74,7 @@ import { remove_object, upstart, engr_at, On_stairs } from './mklev.js';
 import {
     max_capacity, calc_capacity, near_capacity, weight,
 } from './weight.js';
-import { ansimpleoname, an, doname, makesingular, cxname_singular, getObjDescr, xname, the, otense } from './objnam.js';
+import { ansimpleoname, thesimpleoname, an, doname, makesingular, cxname_singular, getObjDescr, xname, the, otense } from './objnam.js';
 import { observe_object, discover_object } from './o_init.js';
 /* C ref: describe_decor()'s own callees (invent.c dfeature_at, dungeon.c
  * waterbody_name, trap.c back_on_ground) are all real, tested bodies that
@@ -493,7 +493,7 @@ async function doloot_core() {
                 if (!underfoot && container_at(cc.x, cc.y, false)) {
                     if (mtmp) {
                         await pline(`You can't loot anything ${prev_inquiry ? 'else ' : ''}there`
-                                    + ` with ${mon_nam_loot(mtmp)} in the way.`);
+                                    + ` with ${mon_nam(mtmp)} in the way.`);
                         return timepassed ? ECMD_TIME : ECMD_OK;
                     }
                     await pline('You have to be at a container to loot it.');
@@ -545,11 +545,14 @@ async function get_adjacent_loc(prompt, emsg, x, y, cc) {
     return 1;
 }
 
+/* C ref: pickup.c:2431 loot_mon(mtmp, passed_info, prev_loot) — 3.3.1's
+ * "remove the saddle from your steed" and 3.4.0's loot-the-swallower.  C's two
+ * out-params are carried in one box (this tree's {value}-style convention). */
 export async function loot_mon(mtmp, box) {
-    if (mtmp && mtmp !== game.u?.usteed && (which_armor(mtmp, _W_SADDLE) || _which_saddle(mtmp))) {
-        const saddle = which_armor(mtmp, _W_SADDLE) || _which_saddle(mtmp);
+    if (mtmp && mtmp !== game.u?.usteed && which_armor(mtmp, W_SADDLE)) {
+        const saddle = which_armor(mtmp, W_SADDLE);
         if (box) box.passed_info = 1;
-        const ans = await yn_function(`Do you want to remove the saddle from ${mon_nam_loot(mtmp)}?`, 'ynq', 'n');
+        const ans = await yn_function(`Do you want to remove the saddle from ${x_monnam(mtmp, ARTICLE_THE, null, SUPPRESS_SADDLE, false)}?`, 'ynq', 'n');
         if (ans === 'y') {
             const mflags1 = (game.youmonst?.data?.mflags1 ?? game.u?.umonnum?.mflags1 ?? 0) | 0;
             if ((mflags1 & 0x6000) === 0x6000) {
@@ -557,7 +560,7 @@ export async function loot_mon(mtmp, box) {
                 return 0;
             }
             if (saddle.cursed) {
-                await pline(`You can't.  The saddle seems to be stuck to ${mon_nam_loot(mtmp)}.`);
+                await pline(`You can't.  The saddle seems to be stuck to ${x_monnam(mtmp, ARTICLE_THE, null, SUPPRESS_SADDLE, false)}.`);
                 return 1;
             }
             /* C extract_from_minvent(mtmp,saddle): unlink and clear worn state. */
@@ -568,8 +571,10 @@ export async function loot_mon(mtmp, box) {
                 cur.nobj = null; cur.ocarry = null; cur.where = OBJ_FREE;
             }
             cur.owornmask = 0;
-            mtmp.misc_worn_check = (mtmp.misc_worn_check | 0) & ~_W_SADDLE;
-            await pline(`You take ${(await doname(cur))} off of ${mon_nam_loot(mtmp)}.`);
+            mtmp.misc_worn_check = (mtmp.misc_worn_check | 0) & ~W_SADDLE;
+            /* C pickup.c:2461-2463: use the simple definite object name. */
+            if (game.flags.verbose)
+                await pline(`You take ${thesimpleoname(cur)} off of ${mon_nam(mtmp)}.`);
             await hold_another_object(cur, 'You drop %s!', (await doname(cur)), null);
             if (box) box.prev_loot = true;
             return rnd(3);
@@ -582,18 +587,6 @@ export async function loot_mon(mtmp, box) {
     }
     return 0;
 }
-const _SADDLE_OTYP = 235;
-const _W_SADDLE = 0x00080000; /* obj.h W_SADDLE */
-function _which_saddle(mtmp) {
-    for (let o = mtmp.minvent; o; o = o.nobj)
-        if ((o.otyp | 0) === _SADDLE_OTYP && ((o.owornmask | 0) & _W_SADDLE))
-            return o;
-    return null;
-}
-function mon_nam_loot(mtmp) {
-    return `the ${mtmp?.data?.mname ?? 'monster'}`;
-}
-
 /* C ref: mondata.h:52 nohands(ptr) = ((ptr->mflags1 & M1_NOHANDS) != 0),
  * applied to gy.youmonst.data — the hero's CURRENT form (polyself.c set_uasmon
  * points youmonst.data at mons[u.umonnum] whether polymorphed or not).  RNG-free.

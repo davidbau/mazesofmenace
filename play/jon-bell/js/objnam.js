@@ -3659,7 +3659,7 @@ export function yobjnam(obj, verb) {
     let s = aobjnam(obj, verb);
     if (!carried(obj) || !obj_is_pname(obj)
         || obj.oartifact >= 21 /* ART_ORB_OF_DETECTION */) {
-        s = "your " + s;
+        s = shk_your('', obj) + s;
     }
     return s;
 }

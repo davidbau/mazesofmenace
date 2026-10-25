@@ -24,7 +24,7 @@ import { can_reach_floor } from "./hold_another_object.js";
  * back through this edge at module-init time, and nomul is a hoisted function
  * declaration called only at runtime, so this cycle resolves. */
 import { nomul, stop_occupation, interrupt_multi, night } from "./allmain.js";
-import { warnreveal, halu_gname, obj_here, pooleffects_breathless, body_part, check_leash, cmdq_clear, find_trap } from "./cmd.js";
+import { warnreveal, halu_gname, obj_here, pooleffects_breathless, body_part, check_leash, cmdq_clear, find_trap, set_msg_xy } from "./cmd.js";
 import { vtense } from "./objnam.js";
 import { rehumanize, polyself, set_uasmon } from "./polyself.js";
 import { you_were } from "./were.js";
@@ -40,7 +40,7 @@ import { EPRI, Is_astralevel } from "./const.js";
 import { m_everyturn_effect, dochugw } from "./monmove.js";
 /* C ref: mon.c:1285 — movemon_singlemon's hider re-hide roll. Same
  * runtime-only-reference cycle rule as the imports above. */
-import { restrap, mcalcdistress, hideunder as hideunder_ff, get_iter_mons } from "./mklev.js";
+import { restrap, mcalcdistress, hideunder as hideunder_ff } from "./mklev.js";
 /* C ref: mon.c:2487 dmonsfree() — end-of-movemon purge of dead-but-linked
  * (MON_DETACH / mhp<1, non-guard) monsters from fmon.  mkmaze.js does not
  * import fastforward.js, so this static edge introduces no cycle (same rule
@@ -700,6 +700,7 @@ async function autosearch_rng() {
                 exercise(A_WIS, true);     /* C: exercise(A_WIS, TRUE) — no RNG */
                 nomul(0);
                 feel_location(x, y);
+                set_msg_xy(x, y); /* detect.c:2050 */
                 pline("You find a hidden door.");
             } else if (typ === SCORR_T) {
                 /* C: if (rnl(7 - fund)) continue; */
@@ -711,6 +712,7 @@ async function autosearch_rng() {
                  * set_msg_xy(x,y); You("find a hidden passage."). */
                 nomul(0);
                 feel_newsym(x, y);
+                set_msg_xy(x, y); /* detect.c:2060 */
                 pline("You find a hidden passage.");
             } else {
                 /* aflag=1: m_at/mfind0 and unmap_invisible (!aflag) skipped. */
@@ -801,6 +803,18 @@ function g_at(x, y) {
     return null;
 }
 
+/* get_iter_mons (mklev.js) for predicates that pline: C's pline blocks inside
+ * the callback (a MSGTYPE=stop page holds the program), so the walk awaits. */
+async function get_iter_mons_aw(bfunc) {
+    for (let mtmp = game.fmon, next; mtmp; mtmp = next) {
+        next = mtmp.nmon;
+        if ((mtmp.mhp | 0) < 1)       /* DEADMONSTER */
+            continue;
+        if (await bfunc(mtmp))
+            return mtmp;
+    }
+    return null;
+}
 /* C sounds.c:19-26 mon_in_room(mon, rmtyp) —
  *     int rno = levl[mon->mx][mon->my].roomno;
  *     if (rno >= ROOMOFFSET)
@@ -818,7 +832,7 @@ function mon_in_room(mon, rmtyp) {
 }
 /* C sounds.c:29-57 throne_mon_sound(mtmp) — the get_iter_mons predicate behind
  * dosounds' has_court branch; one rn2(3) for the first qualifying monster. */
-function throne_mon_sound(mtmp) {
+async function throne_mon_sound(mtmp) {
     const f1 = (mtmp.data?.mflags1 | 0), f2 = (mtmp.data?.mflags2 | 0);
     if (((mtmp.msleeping | 0) || (f2 & 0x00000400) /* is_lord */
          || (f2 & 0x00000800) /* is_prince */)
@@ -832,22 +846,22 @@ function throne_mon_sound(mtmp) {
         ];
         const which = rn2(3) + (Hallucination() ? 1 : 0);
         if (which !== 2)
-            You_hear(throne_msg[which]);
+            await You_hear(throne_msg[which]);
         else
-            pline(throne_msg[2].replace('%s', game.flags?.female ? 'her' : 'his'));
+            await pline(throne_msg[2].replace('%s', game.flags?.female ? 'her' : 'his'));
         return true;
     }
     return false;
 }
 /* C sounds.c:68-91 beehive_mon_sound(). */
-function beehive_mon_sound(mtmp) {
+async function beehive_mon_sound(mtmp) {
     const data = mtmp.data;
     if ((data?.mlet | 0) !== 1 /* S_ANT */
         || !((data?.mflags1 | 0) & 0x00000001) /* M1_FLY */
         || !mon_in_room(mtmp, 5 /* BEEHIVE; const.js */))
         return false;
     const selection = rn2(2) + (Hallucination() ? 1 : 0);
-    You_hear(selection === 0 ? 'a low buzzing.'
+    await You_hear(selection === 0 ? 'a low buzzing.'
         : selection === 1 ? 'an angry drone.'
             : `bees in your ${game.u?.uarmh ? '' : '(nonexistent) '}bonnet!`);
     return true;
@@ -868,7 +882,7 @@ const M1_ANIMAL_FF = 0x00040000;
  *     }
  *     return FALSE;
  * The rn2(2) is INSIDE the guard, so a non-qualifying monster draws nothing. */
-function zoo_mon_sound(mtmp) {
+async function zoo_mon_sound(mtmp) {
     if (((mtmp.msleeping | 0)
          || (((mtmp.data?.mflags1 | 0) & M1_ANIMAL_FF) !== 0))
         && mon_in_room(mtmp, ZOO)) {
@@ -878,7 +892,7 @@ function zoo_mon_sound(mtmp) {
             "a sound reminiscent of an elephant stepping on a peanut.",
             "a sound reminiscent of a seal barking.", "Doctor Dolittle!",
         ];
-        You_hear(zoo_msg[selection]);
+        await You_hear(zoo_msg[selection]);
         return true;
     }
     return false;
@@ -891,7 +905,7 @@ const M2_UNDEAD_FF = 0x00000002;
 const PM_VAMPIRE_FF = 226;
 const PM_VAMPIRE_LORD_FF = 227;
 const PM_VLAD_THE_IMPALER_FF = 228;
-function morgue_mon_sound(mtmp) {
+async function morgue_mon_sound(mtmp) {
     const data = mtmp.data;
     const undead = ((data?.mflags2 | 0) & M2_UNDEAD_FF) !== 0;
     const vampshifter = (mtmp.cham | 0) === PM_VAMPIRE_FF
@@ -901,11 +915,11 @@ function morgue_mon_sound(mtmp) {
         const selection = rn2(2) + (Hallucination() ? 1 : 0);
         const hair = body_part(HAIR);
         if (selection === 0) {
-            pline("You suddenly realize it is unnaturally quiet.");
+            await pline("You suddenly realize it is unnaturally quiet.");
         } else if (selection === 1) {
-            pline(`The ${hair} on the back of your ${body_part(NECK)} ${vtense(hair, "stand")} up.`);
+            await pline(`The ${hair} on the back of your ${body_part(NECK)} ${vtense(hair, "stand")} up.`);
         } else {
-            pline(`The ${hair} on your ${body_part(HEAD)} ${vtense(hair, "seem")} to stand up.`);
+            await pline(`The ${hair} on your ${body_part(HEAD)} ${vtense(hair, "seem")} to stand up.`);
         }
         return true;
     }
@@ -916,7 +930,7 @@ function _is_sanctum(uz) {
     const s = game?.sanctum_level;
     return !!uz && !!s && uz.dnum === s.dnum && uz.dlevel === s.dlevel;
 }
-function oracle_sound(mtmp) {
+async function oracle_sound(mtmp) {
     const mndx = (mtmp.data?.pmidx ?? mtmp.mndx ?? mtmp.mnum ?? -1) | 0;
     if (mndx !== 274)
         return false;
@@ -927,12 +941,12 @@ function oracle_sound(mtmp) {
             "a strange wind.", "convulsive ravings.", "snoring snakes.",
             "someone say \"No more woodchucks!\"", "a loud ZOT!",
         ];
-        You_hear(ora_msg[rn2(3) + hallu * 2]);
+        await You_hear(ora_msg[rn2(3) + hallu * 2]);
     }
     return true;
 }
 /* C sounds.c:147-198 temple_priest_sound(mtmp) — get_iter_mons predicate. */
-function temple_priest_sound(mtmp) {
+async function temple_priest_sound(mtmp) {
     if (mtmp.ispriest && inhistemple(mtmp)
         && !helpless(mtmp)
         && temple_occupied(game.u?.urooms || "") !== EPRI(mtmp).shroom) {
@@ -959,9 +973,9 @@ function temple_priest_sound(mtmp) {
         while (!/[A-Za-z]/.test(msg[i])) ++i; /* skip control flags */
         msg = msg.slice(i);
         if (msg.includes('%'))
-            You_hear(msg.replace('%s', halu_gname(EPRI(mtmp).shralign)));
+            await You_hear(msg.replace('%s', halu_gname(EPRI(mtmp).shralign)));
         else
-            You_hear(msg);
+            await You_hear(msg);
         return true;
     }
     return false;
@@ -987,19 +1001,19 @@ export async function dosounds_rng() {
             "bubbling water.", "water falling on coins.",
             "the splashing of a naiad.", "a soda fountain!",
         ];
-        You_hear(fountain_msg[rn2(3) + hallu]);
+        await You_hear(fountain_msg[rn2(3) + hallu]);
     }
     if (lf.nsinks && !rn2(300)) {
         /* C sounds.c:220-224 — You_hear1(sink_msg[rn2(2) + hallu]). */
         const sink_msg = [
             "a slow drip.", "a gurgling noise.", "dishes being washed!",
         ];
-        You_hear(sink_msg[rn2(2) + hallu]);
+        await You_hear(sink_msg[rn2(2) + hallu]);
     }
     if (lf.has_court && !rn2(200)) {
         /* C sounds.c:226-229 — `if (get_iter_mons(throne_mon_sound)) return;`;
          * falls through to has_swamp when no qualifying monster exists. */
-        if (get_iter_mons(throne_mon_sound))
+        if (await get_iter_mons_aw(throne_mon_sound))
             return;
     }
     if (lf.has_swamp && !rn2(200)) {
@@ -1010,7 +1024,7 @@ export async function dosounds_rng() {
             "hear mosquitoes!", "smell marsh gas!", /* so it's a smell... */
             "hear Donald Duck!",
         ];
-        pline("You " + swamp_msg[rn2(2) + hallu]);
+        await pline("You " + swamp_msg[rn2(2) + hallu]);
         return; /* C: unconditional return after swamp sound (sounds.c:236) */
     }
     if (lf.has_vault && !rn2(200)) {
@@ -1034,13 +1048,13 @@ export async function dosounds_rng() {
                 if (vault_occupied(game.u.urooms)
                     !== (ROOM_INDEX(sroom) + ROOMOFFSET)) {
                     if (gold_in_vault) {
-                        You_hear(!hallu
+                        await You_hear(!hallu
                                  ? "someone counting gold coins."
                                  : "the quarterback calling the play.");
                     } else {
                         /* C: Soundeffect(se_someone_searching, 30) — audio
                          * only, no screen or RNG effect. */
-                        You_hear("someone searching.");
+                        await You_hear("someone searching.");
                     }
                     break;
                 }
@@ -1054,20 +1068,20 @@ export async function dosounds_rng() {
                     await flush_pending_messages();
                 break;
             case 2:
-                You_hear("Ebenezer Scrooge!");
+                await You_hear("Ebenezer Scrooge!");
                 break;
             }
         }
         return; /* C sounds.c:277 */
     }
     if (lf.has_beehive && !rn2(200)) {
-        if (get_iter_mons(beehive_mon_sound))
+        if (await get_iter_mons_aw(beehive_mon_sound))
             return;
     }
     if (lf.has_morgue && !rn2(200)) {
         /* C sounds.c:282-285 — the callback's rn2(2) is conditional on a
          * live undead or vampire-shifter in the morgue. */
-        if (get_iter_mons(morgue_mon_sound))
+        if (await get_iter_mons_aw(morgue_mon_sound))
             return;
     }
     if (lf.has_barracks && !rn2(200)) {
@@ -1079,11 +1093,11 @@ export async function dosounds_rng() {
             "General MacArthur!",
         ];
         let count = 0;
-        if (get_iter_mons((mtmp) => {
+        if (await get_iter_mons_aw(async (mtmp) => {
             if ((((mtmp.data?.mflags2) | 0) & 0x00000200) !== 0 /* is_mercenary */
                 && mon_in_room(mtmp, BARRACKS)
                 && ((mtmp.msleeping | 0) || ++count > 5)) {
-                You_hear(barracks_msg[rn2(3) + (Hallucination() ? 1 : 0)]);
+                await You_hear(barracks_msg[rn2(3) + (Hallucination() ? 1 : 0)]);
                 return true;
             }
             return false;
@@ -1091,7 +1105,7 @@ export async function dosounds_rng() {
             return;
     }
     if (lf.has_zoo && !rn2(200)) {
-        if (get_iter_mons(zoo_mon_sound))
+        if (await get_iter_mons_aw(zoo_mon_sound))
             return;
     }
     if (lf.has_shop && !rn2(200)) {
@@ -1109,7 +1123,7 @@ export async function dosounds_rng() {
                 "Neiman and Marcus arguing!",
             ];
             /* C pline.c You_hear1(str) — You_hear with a literal string. */
-            You_hear(shop_msg[rn2(2) + hallu]);
+            await You_hear(shop_msg[rn2(2) + hallu]);
             noisy_shop(sroom);
         }
         return; /* C sounds.c:328 */
@@ -1117,11 +1131,11 @@ export async function dosounds_rng() {
     if (lf.has_temple && !rn2(200)
         && !(Is_astralevel(game.u?.uz) || _is_sanctum(game.u?.uz))) {
         /* C sounds.c:330-334 */
-        if (get_iter_mons(temple_priest_sound))
+        if (await get_iter_mons_aw(temple_priest_sound))
             return;
     }
     if (Is_oracle_level(game.u?.uz) && !rn2(400)) {
-        if (get_iter_mons(oracle_sound))
+        if (await get_iter_mons_aw(oracle_sound))
             return;
     }
 }
@@ -1248,12 +1262,10 @@ export async function sickness_dialogue_ff() {
 // gethungry() replaces the former hardcoded rn2(20) at that position.
 export async function fastforward_step(stepNum) {
     const steps = [
-        /* step 1: use no-dochug generic turn — at the initial mapstate checkpoint all
-         * monsters have movement=0 so C's movemon() fires 0 RNG. Generic no-dochug
-         * variant fires only mcalcmove (rn2(12)/monster) + rest of per-turn block.
-         * C ref: allmain.c:274-290 mcalcmove+makemon, allmain.c:405 dosounds,
-         * allmain.c:407 gethungry, allmain.c:413 u_wipe_engr. */
-        async () => { await fastforward_step_generic_turn_nodochug(); },
+        /* C allmain.c:212-234: even the first turn runs movemon() before
+         * allocating movement.  Monsters with no movement do not act, but
+         * movemon's dmonsfree() (mon.c:1340) must still purge dead nodes. */
+        async () => { await fastforward_step_generic_turn(); },
         async () => { await fastforward_step_generic_turn(); },
         async () => { await fastforward_step_generic_turn(); },
         async () => { await fastforward_step_generic_turn(); },

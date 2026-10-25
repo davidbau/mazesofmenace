@@ -22,7 +22,7 @@ import { game } from './gstate.js';
 import { dist2, distmin } from './hacklib.js';
 import { near_capacity } from './weight.js';
 import { nomul } from './allmain.js';
-import { newsym, map_object, pline } from './display.js';
+import { newsym, map_object, pline, Unaware } from './display.js';
 import { Blind } from './vision.js';
 import { omon_adj, welded, setuwep, setuswapwep,
          setuqwep, freeinv, body_part, set_wounded_legs } from './cmd.js';
@@ -69,7 +69,7 @@ async function hmon(mon, obj, thrown, dieroll) {
 /* miss: LOCAL throwing stub DELETED — use zap.js's canonical body below. */
 // C pline.c:387-400 You_feel(line) — preserve the feedback when dragging a
 // punished ball through a pool/hole while levitating.
-function You_feel(msg) { return pline('You feel ' + msg); }
+function You_feel(msg) { return pline((Unaware() ? 'You dream that you feel ' : 'You feel ') + msg); }
 // BCPOS_* — ball.c:107-109.
 const BCPOS_DIFFER = 0; // ball & chain at different positions
 const BCPOS_CHAIN = 1;  // chain on top of ball

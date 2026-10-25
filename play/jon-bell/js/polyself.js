@@ -24,7 +24,7 @@ import { pline, urgent_pline, newsym, see_monsters, flush_screen, force_more, _t
 import { exercise, acurr, getAbase, getAmax, C_ATTR_TO_DISP, redist_attr, adjabil, setuhpmax } from './attrib.js';
 import { the_unique_pm, permonstTemplate, monPmname, name_to_mon, name_to_monclass, mkclass, dmgtype_fromattack, sliparm, attacktype_fordmg, set_mon_data, is_home_elemental as is_home_elemental_real } from './makemon.js';
 import { getlin } from './wizcmds.js';
-import { mungspaces, valid_vampshiftform, set_ustuck, mksobj, setmangry, mkclass_poly_nc } from './mklev.js';
+import { mungspaces, valid_vampshiftform, set_ustuck, mksobj, setmangry, mkclass_poly_nc, hideunder } from './mklev.js';
 import * as cmdNS from './cmd.js';
 import { mnexto } from './teleport.js';
 import { rndexp } from './exper_pure.js';
@@ -430,6 +430,7 @@ export async function polymon(mntmp) {
     const g = game;
     const u = g.u;
     const sticking = sticks(g.youmonst.data) && u.ustuck && !u.uswallow;
+    const was_hiding_under = u.uundetected && _hides_under(g.youmonst.data);
     let ptr = permonstTemplate(mntmp);
 
     // C: if (svm.mvitals[mntmp].mvflags & G_GENOD) { You_feel rather %s-ish; exercise(A_WIS,TRUE); return 0; }
@@ -580,7 +581,10 @@ export async function polymon(mntmp) {
     await break_armor();
     await drop_weapon(1);
     find_ac();
-    // is never hiding under an object when polymorphing.
+    // C polyself.c:892-894 — recheck hiding under objects with the new body;
+    // don't auto-hide a hero who wasn't already hiding under something.
+    if (was_hiding_under)
+        hideunder(g.youmonst);
 
     // C polyself.c:896-898 — pit-trap escape timer reset (draws rn1(6,2)).
     if (u.utrap && (u.utraptype | 0) === TT_PIT) {
@@ -1545,7 +1549,7 @@ async function polyself_body(psflags, st) {
     const polymorphControl = Polymorph_control_ps();
     const stunned = !!(u.uprops && u.uprops[STUNNED] && u.uprops[STUNNED].intrinsic);
     const unaware = !!(g.flags && g.flags.unaware);
-    const controllable_poly = polymorphControl && !(stunned || unaware);
+    const controllable_poly = !formrevert && polymorphControl && !(stunned || unaware);
     /* C HUnchanging || EUnchanging: an extrinsic amulet/ring source blocks
      * the transform just as an intrinsic source does. */
     const unchangingProp = u.uprops?.[UNCHANGING_PS];
@@ -1649,6 +1653,19 @@ async function polyself_body(psflags, st) {
             if (g.youmonst?.cham >= LOW_PM
                 && !_is_vampire(currentData) && !rn2(2))
                 mntmp = g.youmonst.cham | 0;
+        }
+        // C polyself.c:682-687 — do_vampyr also confirms #monster shifts
+        // when polymorph control is active; form reversion disables control.
+        if (controllable_poly) {
+            const query = `Become ${an(monPmname(mntmp, NEUTRAL))}?`;
+            const answer = await yn_function(query, 'yn', 'n', true);
+            if (answer !== 'y') {
+                // C tty/topl.c:545-550 leaves this single-row prompt visible
+                // when polyself returns without announcing a new form.
+                g._topl_sticky = `${query} [yn] (n)`;
+                st.old_light = null;
+                return;
+            }
         }
         await polymon(mntmp);
         return;

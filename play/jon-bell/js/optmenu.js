@@ -39,7 +39,7 @@ import { choose_disco_sort } from './o_init.js';
  * map-under-window renderer every other overlay in this port uses. */
 import { build_window_screen, menu_search_case } from './com_pager.js';
 import { DOSET_BOOLS, DOSET_COMPOUNDS, DOSET_OTHERS, LONGEST_OPTION_NAME,
-         term_for_boolean } from './doset_data.js';
+         term_for_boolean, count_bind_keys } from './doset_data.js';
 /* C ref: options.c:8060 oc_to_str — see js/drawing.js for why it lives there. */
 import { oc_to_str, def_char_to_objclass, def_oc_syms_chars } from './drawing.js';
 
@@ -1776,19 +1776,6 @@ export async function handler_autounlock(preserveStatus = false) {
         await pline(`'autounlock' ${chngd ? 'changed to' : 'is still'} '${autounlockStr()}'.`);
 }
 
-/* C cmd.c:2208 count_bind_keys() — extended commands bound to a non-default
- * key, plus commands that should have a key but have none. */
-function count_bind_keys() {
-    const keys = new Uint8Array(256);
-    let nbinds = 0;
-    for (let bind = game.Cmd?.cmdbinds; bind; bind = bind.next) {
-        keys[bind.key] = 1;
-        if (bind.userbind && bind.cmd && bind.cmd.key !== bind.key) nbinds++;
-    }
-    for (const ec of EXTCMDLIST)
-        if (ec.key && !keys[ec.key]) nbinds++;
-    return nbinds;
-}
 
 /* C cmd.c:2243 get_changed_key_binds(NULL) — text window form. */
 async function get_changed_key_binds() {

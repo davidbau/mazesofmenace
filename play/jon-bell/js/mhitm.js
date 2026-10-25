@@ -2050,7 +2050,7 @@ export function on_fire(mptr, mattk) {
 export function pronoun_gender(mtmp, pg_flags) {
     const override_vis = (pg_flags & 1) ? true : false;
     const hallu_rand = (pg_flags & 2) ? true : false;
-    if (hallu_rand && game.u?.uprops?.[HALLUC]?.intrinsic)
+    if (hallu_rand && xm_Hallucination())
         return rn2(4);
     if (!override_vis && !canspotmon(mtmp))
         return 2;

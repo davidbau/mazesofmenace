@@ -790,13 +790,12 @@ export function parseNethackrc(rc) {
                  * glyphrep_to_custom_map_entries() (glyphs.c:111) */
                 if (/^\s*G_/.test(entry))
                     glyphrep_to_custom_map_entries(entry.trim(), { value: 0 });
-                /* C symbols.c loadsyms: an explicit S_<name>:<char> replaces the
-                 * symset glyph for that cmap symbol.  Retained here only for the
-                 * consumers that exist: S_pool, S_boulder and the wall cmap
-                 * names resolved by _wall_angle_glyph (display.js). */
-                const symMatch = entry.match(/^\s*(S_(?:pool|boulder|stone|vwall|hwall|tlcorn|trcorn|blcorn|brcorn|crwall|tuwall|tdwall|tlwall|trwall))\s*:\s*(.)/i);
+                const symMatch = entry.match(/^\s*(S_(?:pool|boulder|vodoor|hodoor|room|corr|litcorr|stone|vwall|hwall|tlcorn|trcorn|blcorn|brcorn|crwall|tuwall|tdwall|tlwall|trwall))\s*:\s*(.)/i);
                 if (symMatch)
                     (result.symbolOverrides ||= {})['S_' + symMatch[1].slice(2).toLowerCase()] = symMatch[2];
+                const terrMatch = entry.match(/^\s*(S_(?:room|corr|litcorr|ndoor|vodoor|hodoor|vcdoor|hcdoor|fountain))\s*:\s*(?:'([^'])'|([^'\s]))\s*$/i);
+                if (terrMatch)
+                    (result.symbolOverrides ||= {})['S_' + terrMatch[1].slice(2).toLowerCase()] = terrMatch[2] ?? terrMatch[3];
             }
             continue;
         }
@@ -1343,6 +1342,22 @@ export function parseNethackrc(rc) {
                         if (vi >= 0) result.flags.vanq_sortmode = vi;
                         else if ('01234567'.includes(val[0]))
                             result.flags.vanq_sortmode = val.charCodeAt(0) - 48;
+                    }
+                }
+                else if (key === 'pickup_burden') {
+                    if (negated)
+                        config_error_add('The pickup_burden option may not both have a value and be negated.');
+                    else if (!val)
+                        config_error_add("Missing parameter for '%s'", menuopts);
+                    else {
+                        const c = val.charAt(0).toLowerCase();
+                        if (c === 'u') result.flags.pickup_burden = 0; /* UNENCUMBERED */
+                        else if (c === 'b') result.flags.pickup_burden = 1; /* SLT_ENCUMBER */
+                        else if (c === 's') result.flags.pickup_burden = 2; /* MOD_ENCUMBER */
+                        else if (c === 'n') result.flags.pickup_burden = 3; /* HVY_ENCUMBER */
+                        else if (c === 'o' || c === 't') result.flags.pickup_burden = 4; /* EXT_ENCUMBER */
+                        else if (c === 'l') result.flags.pickup_burden = 5; /* OVERLOADED */
+                        else config_error_add("Unknown pickup_burden parameter '%s'", val);
                     }
                 }
                 else if (key === 'pickup_types') {
@@ -2006,4 +2021,19 @@ export function optfn_hilite_status_set(op) {
         (game.status_field_hilites ||= []).push(op);
     if (!game.iflags.hilite_delta) game.iflags.hilite_delta = 3;
     return null;
+}
+
+/* C hack.h:722-726 — MSGTYP_NOREP 1, MSGTYP_NOSHOW 2, MSGTYP_STOP 3, and the
+ * mask dolook() passes so "You see here" rules don't eat ':' feedback. */
+const MSGTYP_VALUE = { norep: 1, hide: 2, stop: 3 };
+export const MSGTYP_MASK_REP_SHOW = (1 << 1) | (1 << 2);
+
+export function hide_unhide_msgtypes(hide, hide_mask) {
+    for (const tmp of game.msgtypes || []) {
+        let mt = (MSGTYP_VALUE[tmp.type] ?? 0) * (tmp.negated ? -1 : 1);
+        if (!hide)
+            mt = -mt;
+        if (mt > 0 && ((1 << mt) & hide_mask))
+            tmp.negated = !tmp.negated;
+    }
 }

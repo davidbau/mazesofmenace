@@ -96,7 +96,7 @@ import { LIFESAVED as LIFESAVED_MU, GENOCIDED as GENOCIDED_MU } from './const.js
 import { SICK_RES as SICK_RES_MU, SICK_NONVOMITABLE as SICK_NONVOMITABLE_MU } from './const.js';
 import { PM_MEDUSA, PM_ARCHON, PM_STONE_GOLEM, PM_INCUBUS, PM_HIGH_PRIEST, PM_PRIEST as PM_ALIGNED_CLERIC, PM_BARBED_DEVIL as PM_BARBED_DEVIL_MU, } from './pm.generated.js';
 /* C mhitu.c:2536 `u.umonnum == PM_FLOATING_EYE` — passiveum()'s AD_PLYS arm. */
-import { PM_FLOATING_EYE as PM_FLOATING_EYE_MU } from './pm.generated.js';
+import { PM_FLOATING_EYE as PM_FLOATING_EYE_MU, PM_CYCLOPS as PM_CYCLOPS_MU } from './pm.generated.js';
 /* C mhitm.c:1210 paralyze_monst(mon, amt) — passiveum()'s AD_PLYS arm
  * (mhitu.c:2551/:2557) shares the same body uhitm.js already wires for the
  * hero-attacks-monster direction. */
@@ -172,7 +172,7 @@ import { PM_BLACK_LIGHT as PM_BLACK_LIGHT_MU, PM_VIOLET_FUNGUS as PM_VIOLET_FUNG
 import { isok as isok_mu, IS_OBSTRUCTED as IS_OBSTRUCTED_MU, IRONBARS as IRONBARS_MU,
          SINK as SINK_MU, u_at as u_at_mu } from './const.js';
 import { BACKTRACK as BACKTRACK_MU, W_WEP as W_WEP_MU, HAND as HAND_MU,
-         FOOT as FOOT_MU, LEG as LEG_MU, FACE as FACE_MU } from './const.js';
+         FOOT as FOOT_MU, LEG as LEG_MU, FACE as FACE_MU, EYE as EYE_MU } from './const.js';
 import { closed_door as closed_door_mu, is_pool as is_pool_mu } from './look.js';
 import { y_monnam as y_monnam_mu } from './mhitm.js';
 import { Is_waterlevel as Is_waterlevel_mu, Is_airlevel as Is_airlevel_mu, LEVITATION as LEVITATION_MU, FLYING as FLYING_MU, DROWNING as DROWNING_MU } from './const.js';
@@ -203,7 +203,7 @@ import { use_offensive } from './muse.js';
  * calls the other at evaluation time, so the cycle is inert. */
 import { dobuzz, destroy_items as destroy_items_hero_zap } from './zap.js';
 import { m_lined_up } from './makemon.js';
-import { cloak_simple_name, helm_simple_name, an, the, obj_is_pname, mshot_xname, singular, Tobjnam, makeplural } from './objnam.js';
+import { cloak_simple_name, helm_simple_name, an, the, obj_is_pname, mshot_xname, singular, Tobjnam, makeplural, vtense } from './objnam.js';
 import { xname, bimanual as bimanual_mu } from './do_wear.js';
 /* ohitmon dependencies (C mthrowu.c:321).  Each is imported under a `_mu` alias
  * because this file carries older file-local stubs of several of these names. */
@@ -1447,7 +1447,7 @@ function hurtle_u(dx, dy, range) {
     const u = game.u || (game.u = {});
     const uball = _kb_uball();
     if (uball && (uball.where | 0) !== 3 /* !carried: OBJ_INVENT */) {
-        pline('You feel a tug from the iron ball.');
+        pline((Unaware_real() ? 'You dream that you feel ' : 'You feel ') + 'a tug from the iron ball.'); /* You_feel, pline.c:387 */
         nomul(0);
         return;
     } else if (u.utrap) {
@@ -3628,6 +3628,18 @@ function haseyes_pu(ptr) {
     if (!ptr) return true;
     return (((ptr.mflags1 | 0) & M1_NOEYES_MU) === 0);
 }
+/* C mondata.h:48 eyecount(ptr) — decides singular vs plural only, so "more
+ * than 2" does not need distinguishing.  Same local-macro-copy convention as
+ * haseyes_pu above (js/mcastu.js's eyecount_mc is not exported either).
+ * Takes the hero-as-monster record, mirroring C's eyecount(gy.youmonst.data)
+ * at mthrowu.c:770. */
+function eyecount_mu(mon) {
+    const ptr = mon && mon.data;
+    if (!haseyes_pu(ptr))
+        return 0;
+    const mndx = (ptr && (ptr.pmidx ?? ptr.mnum)) | 0;
+    return (mndx === PM_CYCLOPS_MU || mndx === PM_FLOATING_EYE_MU) ? 1 : 2;
+}
 /* C youprop.h Invis / Displaced / Underwater, read the one way anything in js/
  * actually WRITES them (u.uprops[<numeric>]) — the same reader
  * js/monmove.js:2362 set_apparxy and js/mcastu.js:73 already use. */
@@ -4837,8 +4849,16 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
                         pline("Yecch!  You've been creamed.");
                     else
                         pline(`There's something sticky all over your ${mbodypart_mu(_hero_monst_mu(), FACE_MU)}.`);
-                } else if ((singleobj.otyp | 0) === BLINDING_VENOM_MU && !Blind(game))
-                    pline('The venom blinds you.');
+                } else if ((singleobj.otyp | 0) === BLINDING_VENOM_MU) {
+                    let eyes = mbodypart_mu(_hero_monst_mu(), EYE_MU);
+                    if (eyecount_mu(_hero_monst_mu()) !== 1)
+                        eyes = makeplural(eyes);
+                    /* venom in the eyes */
+                    if (!Blind(game))
+                        pline('The venom blinds you.');
+                    else
+                        pline(`Your ${eyes} ${vtense(eyes, 'sting')}.`);
+                }
             }
             if (game._pendingDeath)
                 break;
