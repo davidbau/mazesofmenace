@@ -401,7 +401,7 @@ footer a { color: var(--color-text-muted); }
 </main>
 
 <script>
-// Inline leaderboard renderer. Fetches /leaderboard/data-new.json (which the
+// Inline leaderboard renderer. Fetches /leaderboard/data.json (which the
 // judge mirrors here every 6 hours) and paints the table above. Each row
 // links to /play/<owner>/ for the playable build and to the Session
 // Viewer for per-session inspection — both are mirrored from each fork
@@ -422,7 +422,7 @@ footer a { color: var(--color-text-muted); }
     let grandfathered = {};
     try {
         const [dataResp, gfResp] = await Promise.all([
-            fetch('/leaderboard/data-new.json?t=' + Date.now(), { cache: 'no-store' }),
+            fetch('/leaderboard/data.json?t=' + Date.now(), { cache: 'no-store' }),
             fetch('/leaderboard/grandfathered.json?t=' + Date.now(), { cache: 'no-store' }),
         ]);
         data = await dataResp.json();

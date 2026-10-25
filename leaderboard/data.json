@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-10-25T19:41:37.275Z",
+  "timestamp": "2026-10-25T23:02:14.904Z",
   "contestPhase": "open",
   "teams": [
     {
@@ -48,15 +48,15 @@
         "animTotal": 1483
       },
       "heldOut": {
-        "points": 2524,
-        "maxPoints": 11265,
+        "points": 2810,
+        "maxPoints": 13126,
         "passing": 2,
-        "total": 44,
-        "rngPct": 15.389694676014882,
-        "rngStepsPct": 76.41107561235356,
-        "screenPct": 22.405681313803814,
+        "total": 56,
+        "rngPct": 17.68579893228809,
+        "rngStepsPct": 78.17046233528829,
+        "screenPct": 21.407892731982326,
         "animMatched": 0,
-        "animTotal": 2959
+        "animTotal": 3006
       },
       "history": [
         {
@@ -2542,15 +2542,15 @@
         "animTotal": 1483
       },
       "heldOut": {
-        "points": 11264,
-        "maxPoints": 11265,
-        "passing": 43,
-        "total": 44,
-        "rngPct": 100,
-        "rngStepsPct": 100,
-        "screenPct": 99.99112294718154,
-        "animMatched": 2959,
-        "animTotal": 2959
+        "points": 13007,
+        "maxPoints": 13126,
+        "passing": 50,
+        "total": 56,
+        "rngPct": 97.78239648478947,
+        "rngStepsPct": 99.6039302307868,
+        "screenPct": 99.09340240743563,
+        "animMatched": 2986,
+        "animTotal": 3006
       },
       "history": [
         {
@@ -5036,15 +5036,15 @@
         "animTotal": 1483
       },
       "heldOut": {
-        "points": 10426,
-        "maxPoints": 11265,
-        "passing": 39,
-        "total": 44,
-        "rngPct": 95.31121916629883,
-        "rngStepsPct": 95.34966276180333,
-        "screenPct": 92.55215268530847,
+        "points": 11943,
+        "maxPoints": 13126,
+        "passing": 44,
+        "total": 56,
+        "rngPct": 93.86221689614567,
+        "rngStepsPct": 95.62038235966182,
+        "screenPct": 90.98735334450708,
         "animMatched": 0,
-        "animTotal": 2959
+        "animTotal": 3006
       },
       "history": [
         {
@@ -9874,15 +9874,15 @@
         "animTotal": 1483
       },
       "heldOut": {
-        "points": 9964,
-        "maxPoints": 11265,
-        "passing": 39,
-        "total": 44,
-        "rngPct": 91.43574728411204,
-        "rngStepsPct": 95.67802626908059,
-        "screenPct": 88.45095428317798,
+        "points": 11528,
+        "maxPoints": 13126,
+        "passing": 43,
+        "total": 56,
+        "rngPct": 91.86764283663508,
+        "rngStepsPct": 96.05453576053013,
+        "screenPct": 87.82568947127838,
         "animMatched": 0,
-        "animTotal": 2959
+        "animTotal": 3006
       },
       "history": [
         {
@@ -12368,15 +12368,15 @@
         "animTotal": 1483
       },
       "heldOut": {
-        "points": 11079,
-        "maxPoints": 11265,
-        "passing": 35,
-        "total": 44,
-        "rngPct": 99.48829113509899,
-        "rngStepsPct": 99.18352857649982,
-        "screenPct": 98.34886817576565,
-        "animMatched": 2883,
-        "animTotal": 2959
+        "points": 12775,
+        "maxPoints": 13126,
+        "passing": 39,
+        "total": 56,
+        "rngPct": 99.4156919530473,
+        "rngStepsPct": 99.19262700891157,
+        "screenPct": 97.3259180252933,
+        "animMatched": 2925,
+        "animTotal": 3006
       },
       "history": [
         {
@@ -14862,15 +14862,15 @@
         "animTotal": 1483
       },
       "heldOut": {
-        "points": 10499,
-        "maxPoints": 11265,
-        "passing": 35,
-        "total": 44,
-        "rngPct": 98.52709701290992,
-        "rngStepsPct": 97.58608448704295,
-        "screenPct": 93.20017754105638,
-        "animMatched": 2236,
-        "animTotal": 2959
+        "points": 12095,
+        "maxPoints": 13126,
+        "passing": 38,
+        "total": 56,
+        "rngPct": 98.10320937722354,
+        "rngStepsPct": 97.73783227968619,
+        "screenPct": 92.14536035349687,
+        "animMatched": 2278,
+        "animTotal": 3006
       },
       "history": [
         {
@@ -17356,15 +17356,15 @@
         "animTotal": 1483
       },
       "heldOut": {
-        "points": 10424,
-        "maxPoints": 11265,
-        "passing": 43,
-        "total": 44,
-        "rngPct": 95.27124377020334,
-        "rngStepsPct": 95.18104366347177,
-        "screenPct": 92.53439857967155,
-        "animMatched": 1618,
-        "animTotal": 2959
+        "points": 11478,
+        "maxPoints": 13126,
+        "passing": 52,
+        "total": 56,
+        "rngPct": 94.08722282556683,
+        "rngStepsPct": 95.58229872800669,
+        "screenPct": 87.44476611305805,
+        "animMatched": 1657,
+        "animTotal": 3006
       },
       "history": [
         {
@@ -19850,15 +19850,15 @@
         "animTotal": 1483
       },
       "heldOut": {
-        "points": 9914,
-        "maxPoints": 11265,
-        "passing": 32,
-        "total": 44,
-        "rngPct": 87.02167832417429,
-        "rngStepsPct": 95.82002129925452,
-        "screenPct": 88.00710164225477,
-        "animMatched": 2843,
-        "animTotal": 2959
+        "points": 10435,
+        "maxPoints": 13126,
+        "passing": 35,
+        "total": 56,
+        "rngPct": 84.68461720905267,
+        "rngStepsPct": 95.2471627694417,
+        "screenPct": 79.49870486058205,
+        "animMatched": 2864,
+        "animTotal": 3006
       },
       "history": [
         {
@@ -22344,15 +22344,15 @@
         "animTotal": 1483
       },
       "heldOut": {
-        "points": 10490,
-        "maxPoints": 11265,
-        "passing": 29,
-        "total": 44,
-        "rngPct": 93.20358779179956,
-        "rngStepsPct": 97.78132765353213,
-        "screenPct": 93.1202840656902,
-        "animMatched": 2890,
-        "animTotal": 2959
+        "points": 11978,
+        "maxPoints": 13126,
+        "passing": 33,
+        "total": 56,
+        "rngPct": 93.9067395673395,
+        "rngStepsPct": 97.96633406961688,
+        "screenPct": 91.25399969526131,
+        "animMatched": 2934,
+        "animTotal": 3006
       },
       "history": [
         {
@@ -24838,15 +24838,15 @@
         "animTotal": 1483
       },
       "heldOut": {
-        "points": 3218,
-        "maxPoints": 11265,
+        "points": 3557,
+        "maxPoints": 13126,
         "passing": 1,
-        "total": 44,
-        "rngPct": 15.67237783411876,
-        "rngStepsPct": 75.96734114306,
-        "screenPct": 28.56635596981802,
+        "total": 56,
+        "rngPct": 19.746012724329766,
+        "rngStepsPct": 78.12476197730216,
+        "screenPct": 27.098887703793995,
         "animMatched": 0,
-        "animTotal": 2959
+        "animTotal": 3006
       },
       "history": [
         {
@@ -27332,15 +27332,15 @@
         "animTotal": 1483
       },
       "heldOut": {
-        "points": 1201,
-        "maxPoints": 11265,
+        "points": 1502,
+        "maxPoints": 13126,
         "passing": 2,
-        "total": 44,
-        "rngPct": 16.307820067886787,
-        "rngStepsPct": 76.26020589279375,
-        "screenPct": 10.661340434975589,
+        "total": 56,
+        "rngPct": 18.45079828733351,
+        "rngStepsPct": 78.2085459669434,
+        "screenPct": 11.442937680938595,
         "animMatched": 0,
-        "animTotal": 2959
+        "animTotal": 3006
       },
       "history": [
         {
@@ -29826,15 +29826,15 @@
         "animTotal": 1483
       },
       "heldOut": {
-        "points": 52,
-        "maxPoints": 11265,
+        "points": 69,
+        "maxPoints": 13126,
         "passing": 0,
-        "total": 44,
-        "rngPct": 6.006422237741771,
-        "rngStepsPct": 70.77564785232516,
-        "screenPct": 0.461606746560142,
+        "total": 56,
+        "rngPct": 7.136318432801975,
+        "rngStepsPct": 72.84637062990326,
+        "screenPct": 0.52567423434405,
         "animMatched": 0,
-        "animTotal": 2959
+        "animTotal": 3006
       },
       "history": [
         {
@@ -32321,14 +32321,14 @@
       },
       "heldOut": {
         "points": 0,
-        "maxPoints": 11265,
+        "maxPoints": 13126,
         "passing": 0,
-        "total": 44,
-        "rngPct": 5.424994378459925,
-        "rngStepsPct": 70.7667731629393,
+        "total": 56,
+        "rngPct": 5.934414360433909,
+        "rngStepsPct": 72.7854368192551,
         "screenPct": 0,
         "animMatched": 0,
-        "animTotal": 2959
+        "animTotal": 3006
       },
       "history": [
         {
@@ -34815,14 +34815,14 @@
       },
       "heldOut": {
         "points": 0,
-        "maxPoints": 11265,
+        "maxPoints": 13126,
         "passing": 0,
-        "total": 44,
-        "rngPct": 2.1154836844465965,
-        "rngStepsPct": 70.69577564785232,
+        "total": 56,
+        "rngPct": 2.4684076279402647,
+        "rngStepsPct": 72.7245030086069,
         "screenPct": 0,
         "animMatched": 0,
-        "animTotal": 2959
+        "animTotal": 3006
       },
       "history": [
         {
@@ -37309,14 +37309,14 @@
       },
       "heldOut": {
         "points": 0,
-        "maxPoints": 11265,
+        "maxPoints": 13126,
         "passing": 0,
-        "total": 44,
-        "rngPct": 2.1154836844465965,
-        "rngStepsPct": 70.69577564785232,
+        "total": 56,
+        "rngPct": 2.4684076279402647,
+        "rngStepsPct": 72.7245030086069,
         "screenPct": 0,
         "animMatched": 0,
-        "animTotal": 2959
+        "animTotal": 3006
       },
       "history": [
         {
@@ -39803,14 +39803,14 @@
       },
       "heldOut": {
         "points": 0,
-        "maxPoints": 11265,
+        "maxPoints": 13126,
         "passing": 0,
-        "total": 44,
-        "rngPct": 2.1154836844465965,
-        "rngStepsPct": 70.69577564785232,
+        "total": 56,
+        "rngPct": 2.4684076279402647,
+        "rngStepsPct": 72.7245030086069,
         "screenPct": 0,
         "animMatched": 0,
-        "animTotal": 2959
+        "animTotal": 3006
       },
       "history": [
         {
@@ -42297,14 +42297,14 @@
       },
       "heldOut": {
         "points": 0,
-        "maxPoints": 11265,
+        "maxPoints": 13126,
         "passing": 0,
-        "total": 44,
-        "rngPct": 2.1154836844465965,
-        "rngStepsPct": 70.69577564785232,
+        "total": 56,
+        "rngPct": 2.4684076279402647,
+        "rngStepsPct": 72.7245030086069,
         "screenPct": 0,
         "animMatched": 0,
-        "animTotal": 2959
+        "animTotal": 3006
       },
       "history": [
         {
@@ -44689,14 +44689,14 @@
       },
       "heldOut": {
         "points": 0,
-        "maxPoints": 11265,
+        "maxPoints": 13126,
         "passing": 0,
-        "total": 44,
-        "rngPct": 2.1154836844465965,
-        "rngStepsPct": 70.69577564785232,
+        "total": 56,
+        "rngPct": 2.4684076279402647,
+        "rngStepsPct": 72.7245030086069,
         "screenPct": 0,
         "animMatched": 0,
-        "animTotal": 2959
+        "animTotal": 3006
       },
       "history": [
         {
@@ -46967,14 +46967,14 @@
       },
       "heldOut": {
         "points": 0,
-        "maxPoints": 11265,
+        "maxPoints": 13126,
         "passing": 0,
-        "total": 44,
-        "rngPct": 2.1154836844465965,
-        "rngStepsPct": 70.69577564785232,
+        "total": 56,
+        "rngPct": 2.4684076279402647,
+        "rngStepsPct": 72.7245030086069,
         "screenPct": 0,
         "animMatched": 0,
-        "animTotal": 2959
+        "animTotal": 3006
       },
       "history": [
         {
@@ -49461,14 +49461,14 @@
       },
       "heldOut": {
         "points": 0,
-        "maxPoints": 11265,
+        "maxPoints": 13126,
         "passing": 0,
-        "total": 44,
-        "rngPct": 2.1154836844465965,
-        "rngStepsPct": 70.69577564785232,
+        "total": 56,
+        "rngPct": 2.4684076279402647,
+        "rngStepsPct": 72.7245030086069,
         "screenPct": 0,
         "animMatched": 0,
-        "animTotal": 2959
+        "animTotal": 3006
       },
       "history": [
         {
@@ -51955,14 +51955,14 @@
       },
       "heldOut": {
         "points": 0,
-        "maxPoints": 11265,
+        "maxPoints": 13126,
         "passing": 0,
-        "total": 44,
-        "rngPct": 4.383016643327856,
-        "rngStepsPct": 70.73127440539582,
+        "total": 56,
+        "rngPct": 4.416690592401187,
+        "rngStepsPct": 72.75496991393099,
         "screenPct": 0,
         "animMatched": 0,
-        "animTotal": 2959
+        "animTotal": 3006
       },
       "history": [
         {
