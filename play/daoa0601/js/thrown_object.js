@@ -5,7 +5,7 @@ import { objectMaterial } from './object_material.js';
 import { monsterAtPosition, monsterHasMapPosition } from './monster_location.js';
 import { monsterProjectileDisplay } from './monster_projectile_display.js';
 import { TemporaryMapEffect } from './temporary_map_effect.js';
-import { A_STR, BOLT_LIM, DOOR, D_CLOSED, D_LOCKED, IRONBARS, IS_SOFT, IS_WATERWALL, Is_airlevel, LAVAWALL, LOST_THROWN, M_AP_OBJECT, M_AP_TYPE, P_CROSSBOW, SINK, WEB, WT_SPLASH_THRESHOLD, ZAP_POS, isok, } from './const.js';
+import { A_STR, BOLT_LIM, DOOR, D_CLOSED, D_LOCKED, IRONBARS, IS_SOFT, IS_WATERWALL, Is_airlevel, LAVAWALL, LOST_THROWN, M_AP_OBJECT, M_AP_TYPE, P_CROSSBOW, SINK, TT_INFLOOR, WEB, WT_SPLASH_THRESHOLD, ZAP_POS, isok, } from './const.js';
 import { monsterName } from './monster_name.js';
 import { artifactById } from './artifacts.js';
 import { dropBall } from './ball.js';
@@ -23,6 +23,7 @@ import { addObjectToMonsterInventory } from './monster_inventory.js';
 import { objectName, ownedObjectName } from './objnam.js';
 import { impactDisturbsZombies } from './object_impact.js';
 import { isPick } from './weapon_type.js';
+import { shopkeeperCatch } from './shop_damage.js';
 import { MONSTER_FLAGS1, MONSTER_MOVE, MONSTER_NAME, MONSTER_SYMBOL } from './monster_data.js';
 import { breakObjectAtLocation, objectBreaksOnImpact } from './object_breakage.js';
 import { BOULDER, CANDELABRUM_OF_INVOCATION, HEAVY_IRON_BALL, OBJECT_SUBTYPE, ROCK, TALLOW_CANDLE, WAX_CANDLE, } from './object_data.js';
@@ -91,12 +92,32 @@ export function heroThrowRange(object, state = game) {
     return Math.max(1, Math.trunc(heroThrowStrength(state) / 2)
         - Math.trunc((object.owt ?? 1) / 40));
 }
+// C throw_gold(): the whole purse uses the thrown-object formula without
+// throwit()'s minimum of one, so a heavy purse can fail to leave the hero.
+export function heroDirectGoldThrowRange(object, state = game) {
+    return Math.trunc(heroThrowStrength(state) / 2)
+        - Math.trunc((object.owt ?? 1) / 40);
+}
 export function heroThrowTrajectory(object, state = game, launcher = null) {
     const launched = launcherMatchesAmmo(object, launcher);
     const crossbowing = launched && launcher !== null && launcher !== undefined
         && OBJECT_SUBTYPE[launcher.otyp] === P_CROSSBOW;
     const unweightedRange = Math.trunc((crossbowing ? 18 : heroThrowStrength(state)) / 2);
-    let range = Math.max(1, unweightedRange - Math.trunc((object.owt ?? 1) / 40));
+    // Balls are easy to throw or at least roll: the iron ball divides its
+    // weight by 100 rather than 40, and a ball still chained to the hero
+    // is limited by the chain (range 5) or by an engulfer holding it (1).
+    const attached = object === state.uball || object === state.u?.uball;
+    let range = unweightedRange
+        - Math.trunc((object.owt ?? 1)
+            / (object.otyp === HEAVY_IRON_BALL ? 100 : 40));
+    if (attached) {
+        if (state.u?.ustuck)
+            range = 1;
+        else if (range >= 5)
+            range = 5;
+    }
+    if (range < 1)
+        range = 1;
     if (isLauncherAmmunition(object)) {
         if (launched)
             range = crossbowing ? BOLT_LIM : range + 1;
@@ -114,6 +135,8 @@ export function heroThrowTrajectory(object, state = game, launcher = null) {
         range = 20;
     else if (artifactById(object.oartifact, state)?.name === 'Mjollnir')
         range = Math.trunc((range + 1) / 2);
+    else if (attached && state.u?.utrap && state.u?.utraptype === TT_INFLOOR)
+        range = 1;
     if (state.underwater || state.u.uinwater)
         range = 1;
     return { range, recoil };
@@ -255,6 +278,16 @@ async function flyPhysicalObject({ state = game, object, dx, dy, range, startX, 
             const previousY = y;
             x = nextX;
             y = nextY;
+            // zap.c bhit() lets the shop's keeper intercept a flying
+            // pick-axe on any in-shop square of its path.
+            if (isPick(object)) {
+                const catcher = await shopkeeperCatch(object, x, y, requireInitializedGame(state));
+                if (catcher) {
+                    contact = catcher;
+                    stoppedBy = 'monster';
+                    break;
+                }
+            }
             if (IS_WATERWALL(location.typ) || location.typ === LAVAWALL) {
                 stoppedBy = 'liquid-wall';
                 break;

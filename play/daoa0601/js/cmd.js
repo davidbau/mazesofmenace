@@ -10,7 +10,7 @@ import { petRefusesHeroSwap, settlePetHeroDisplacement } from './hero_pet_displa
 import { airTurbulenceStopsHero, waterTurbulenceStopsHero } from './hero_movement_turbulence.js';
 import { maybeAdjustHeroBubble } from './elemental.js';
 import { announceRunLiquid, announceRunTrap, knownRunTrap, runLiquidIsDangerous } from './run_hazards.js';
-import { AUTOUNLOCK_APPLY_KEY, AUTOUNLOCK_UNTRAP, ECMD_CANCEL, ECMD_FAIL, ECMD_TIME } from './const.js';
+import { AUTOUNLOCK_APPLY_KEY, AUTOUNLOCK_KICK, AUTOUNLOCK_UNTRAP, ECMD_CANCEL, ECMD_FAIL, ECMD_TIME } from './const.js';
 import { findDrawbridgeAt } from './dbridge.js';
 import { doorObstructed } from './door_magic.js';
 import { DBWALL, DRAWBRIDGE_DOWN, IS_DRAWBRIDGE, IS_TREE, LADDER, STAIRS, THRONE } from './const.js';
@@ -24,6 +24,7 @@ import { AKLYS, BOOMERANG, CRYSTAL_BALL } from './object_data.js';
 import { useCrystalBall } from './crystal_ball.js';
 import { leaveMovementCloud, updateHeroRegions, visibleRegionAt } from './regions.js';
 import { wizIntrinsic } from './wizard_intrinsics.js';
+import { wizTimeoutQueue } from './timeout_queue.js';
 import { wizFuzzer, wizPanic } from './wizard_debug_commands.js';
 import { wizSmell } from './wizard_smell.js';
 import { wizBury } from './wizard_bury.js';
@@ -1329,6 +1330,14 @@ async function executeCommandAction(binding, options = {}) {
         game._kickedLoc = null;
     }
 }
+// C invent.c:doperminv(). The recorder's tty port is built without
+// TTY_PERM_INVENT (config.h leaves it commented out and windconf.h is
+// WIN32-only), so it does not advertise WC_PERM_INVENT and the command
+// always reports the unsupported window port.
+async function doPermanentInventory() {
+    game.context.move = 0;
+    await pline("Persistent inventory display is not supported by 'tty'.");
+}
 // Admission belongs to the caller. Keep the selected binding, including its
 // parameter, rather than looking up a possibly rebound key inside the action.
 async function runCommandHandler(binding, { cannedCommand = null, } = {}) {
@@ -1363,6 +1372,20 @@ async function runCommandHandler(binding, { cannedCommand = null, } = {}) {
         queueCommandKeys(cannedCommand.invlet);
         try {
             await dowield();
+        }
+        finally {
+            clearCommandKeys();
+        }
+        return;
+    }
+    if (cannedCommand?.kind === 'kick') {
+        // C queues dokick() with cmdq_add_dir(); getdir() pops that canned
+        // direction instead of reading a key, so feed the bound movement key.
+        const key = kickDirectionKey(cannedCommand.dx, cannedCommand.dy);
+        if (key)
+            queueCommandKeys(String.fromCharCode(key));
+        try {
+            await dokick();
         }
         finally {
             clearCommandKeys();
@@ -1561,6 +1584,9 @@ async function runCommandHandler(binding, { cannedCommand = null, } = {}) {
     }
     else if (ch === '"') {
         enqueueInventoryAction(await inventoryReport('amulet'));
+    }
+    else if (ch === '|') {
+        await doPermanentInventory();
     }
     else if (key === 127) { // Delete: overview of known terrain.
         await doTerrainOverview();
@@ -2234,6 +2260,20 @@ async function kickLiveMonster(monster, x, y) {
         await useHeroSkill(35);
     game.context.move = 1;
     return true;
+}
+// C getdir() converts a cmdq_add_dir() entry through xytodir() into the
+// currently bound movement key for that delta; mirror that lookup so the
+// queued kick never prompts for a direction.
+function kickDirectionKey(dx, dy) {
+    for (let direction = 0; direction < 8; direction++) {
+        const key = game.commandBindings.keyForDirection(direction);
+        if (!key)
+            continue;
+        const movement = game.commandBindings.movementForKey(key, 0);
+        if (movement && !movement.dz && movement.dx === dx && movement.dy === dy)
+            return key;
+    }
+    return null;
 }
 async function dokick() {
     if (!await admitHeroKick())
@@ -3363,6 +3403,7 @@ const EXTENDED_COMMAND_HANDLERS = new Map([
     ['takeoffall', takeOffAll],
     ['conduct', doconduct],
     ['chronicle', doChronicle],
+    ['perminv', doPermanentInventory],
     ['vanquished', doVanquished],
     ['genocided', doGenocided],
     ['terrain', doTerrainOverview],
@@ -3422,6 +3463,7 @@ const EXTENDED_COMMAND_HANDLERS = new Map([
     ['wizmap', wizMap],
     ['wizmakemap', wizMakeMap],
     ['wizborn', doborn],
+    ['timeout', wizTimeoutQueue],
 ]);
 // C refs: artifact.c:doinvoke(), invoke_ok(), arti_invoke().  getobj()
 // suggests artifacts and other unique objects; an artifact with inv_prop 0
@@ -6705,9 +6747,22 @@ async function openLockedDoor(x, y) {
     if (!flags)
         return Boolean(game.context.move);
     game.u.dz = 0;
-    const tool = flags & AUTOUNLOCK_APPLY_KEY ? autokey(true) : null;
-    if (tool)
-        return pickLock(tool, { target: { x, y } });
+    if (flags & AUTOUNLOCK_APPLY_KEY) {
+        const tool = autokey(true);
+        if (tool)
+            return pickLock(tool, { target: { x, y } });
+    }
+    if (flags & AUTOUNLOCK_KICK && !game.u.usteed
+        && await promptYesNoQuit('Kick it?') === 'y') {
+        // lock.c queues dokick with the door direction; the open command
+        // itself spends no turn, the kick that follows owns the action.
+        game._cannedCommands ||= [];
+        game._cannedCommands.push({
+            kind: 'kick',
+            dx: Math.sign(x - game.u.ux), dy: Math.sign(y - game.u.uy),
+        });
+        return false;
+    }
     return Boolean(game.context.move);
 }
 // C ref: hack.c:domove_fight_empty(). Forced attacks at the map edge and

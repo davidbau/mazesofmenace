@@ -30,11 +30,13 @@ import {
     ACH_MINE,
     ACH_SOKO,
     A_DEX,
+    AIR,
     ALTAR,
     AM_NONE,
     Align2amask,
     BOTH_SIDES,
     BLINDED,
+    CLOUD,
     COLNO,
     DEAF,
     CORR,
@@ -1936,9 +1938,19 @@ export function preflight_dropx(obj, env = {}) {
         throw new UnsupportedDropError('a swallowed hero');
     // Direct dropx()/dropz() callers, including confused reverse_loot(), do
     // not test can_reach_floor(). Underwater drops still reach flooreffects;
-    // its pool arm suppresses splash messages while Underwater is true. Keep
-    // special-level display paths outside this ordinary drop admission.
-    if (on_level(u.uz, state.air_level) || on_level(u.uz, state.water_level))
+    // its pool arm suppresses splash messages while Underwater is true.
+    // C dropx/dropz has no plane exclusion on dry bubble floors. Keep the
+    // distinct Water-level liquid path outside this ordinary admission.
+    // do.c boulder_hits_pool never fills a Water-level pool. Underwater
+    // drops skip its splash/wakeup arm and consume the boulder through the
+    // existing live owner. Surface/private liquid effects stay excluded.
+    const submergedWaterBoulder = state === game && !normalized.planning
+        && obj.otyp === BOULDER && u.uinwater
+        && on_level(u.uz, state.water_level)
+        && is_pool(u.ux, u.uy, state);
+    if (on_level(u.uz, state.water_level)
+        && (is_pool(u.ux, u.uy, state) || is_lava(u.ux, u.uy, state))
+        && !submergedWaterBoulder)
         throw new UnsupportedDropError('special-level display');
     // dig.c:341 drops uwep directly; do.c:810 clears it in dropz after
     // extraction, shipping and altar handling. Admit only that primary mask.
@@ -1984,11 +1996,12 @@ export function preflight_dropx(obj, env = {}) {
     }
     // do.c:flooreffects routes ordinary objects through trap.c:lava_damage or
     // water_damage before floor placement. Boulder/pool has its separate
-    // boulder_hits_pool branch and stays outside this ordinary admission.
+    // boulder_hits_pool branch; only the live submerged Water case above is
+    // admitted here, without opening its surface or private-state effects.
     const pool = is_pool(x, y, state);
     const lava = is_lava(x, y, state);
     const ordinaryLiquid = lava || (pool && obj.otyp !== BOULDER);
-    if ((pool || lava) && !ordinaryLiquid)
+    if ((pool || lava) && !ordinaryLiquid && !submergedWaterBoulder)
         throw new UnsupportedDropError('liquid terrain');
     // do.c:flooreffects leaves a boulder intact on dry terrain without a
     // pit or hole. The trap and liquid guards above bound this floor path.
@@ -1999,7 +2012,8 @@ export function preflight_dropx(obj, env = {}) {
         && location.typ !== DOOR && location.typ !== SINK
         && location.typ !== THRONE && location.typ !== FOUNTAIN
         && !IS_ALTAR(location.typ) && !IS_STWALL(location.typ) && !stway
-        && !ordinaryLiquid) {
+        && location.typ !== AIR && location.typ !== CLOUD
+        && !ordinaryLiquid && !submergedWaterBoulder) {
         throw new UnsupportedDropError('non-ordinary terrain');
     }
     // do.c:dropx/dropz/flooreffects adds no effect for an engraving on dry
