@@ -1,4 +1,5 @@
 import { formatFeltMessage, publishHeardMessage } from './hero_speech.js';
+import { dungeonBuildsUp, initOverviewRecord } from './dungeon.js';
 import { recorderLocalDate, recorderLocalEpochSeconds } from './calendar.js';
 import { slipOrTrip } from './fumbling.js';
 import { heroLegName } from './body_parts.js';
@@ -443,7 +444,22 @@ async function enterTutorial() {
     game.u.ucamefrom = { ...oldDepth };
     await currentLuaLifecycle().changeTutorialMode(game, true);
     game.u.uz = { ...target };
+    // C's tutorial entry runs through goto_level(), which records the
+    // reached level for the destination dungeon (do.c:1678-1685) before
+    // mklev(); the hand-rolled transition must match that bookkeeping or
+    // the tutorial heading prints an empty level range.
+    const targetDungeon = game.dungeons[target.dnum];
+    if (targetDungeon) {
+        const reached = targetDungeon.dunlev_ureached || 0;
+        targetDungeon.dunlev_ureached = dungeonBuildsUp(target, game) && reached
+            ? Math.min(reached, target.dlevel)
+            : Math.max(reached, target.dlevel);
+    }
     game._specialLevelPrototype = 'tut-1';
+    // C's tutorial entry runs through goto_level(), so mklev() creates the
+    // tutorial level's overview record; this hand-rolled transition must
+    // match that mapseen creation.
+    initOverviewRecord(game.u.uz, game);
     await mklev();
     // goto_level() arrives through u_on_rndspot(), even when Lua restricts
     // the region to a single square.
@@ -1531,7 +1547,7 @@ async function settleHeroLiquidAfterAction() {
     }
     if (game.u?.umoved)
         return null;
-    return applyHeroLiquidEffects(plineWithContinuation);
+    return applyHeroLiquidEffects(plineWithContinuation, { entry: 'turn' });
 }
 async function drainQueuedHelplessRecoveryMessage() {
     const game = requireInitializedGame();
@@ -1682,11 +1698,13 @@ async function monsterAttackMessage(monster, attack, previousAttack = null, rand
                         : attack.attackType === 6 ? 'stings' : 'hits';
     // C hitmsg() requires adjacent slots in the species' attack array.
     // getmattk() replacements use a separate buffer and cannot be adjacent.
-    // Artifact prose skips hitmsg(), so it does not update that prior slot.
+    // Artifact prose skips hitmsg(), so it does not update that prior slot,
+    // and neither does a corpse hit that starts the hero's petrification.
     const again = previousAttack?.hit
         && previousAttack.kind === 'hero-attack'
         && !previousAttack.specialMessage
         && previousAttack.effect !== 'physical-hug'
+        && previousAttack.effect !== 'petrifying-corpse'
         && previousAttack.attackType === attack.attackType
         && previousAttack.attackIndex + 1 === attack.attackIndex
         && previousAttack.effectiveAttack === MONSTER_ATTACKS[monster.mnum]?.[previousAttack.attackIndex]
@@ -3545,6 +3563,9 @@ export async function newgame() {
     // Real mklev generates the level with correct room positions
     // Structural phase consumes RNG for rooms/corridors/doors/stairs
     await mklev();
+    // C mklev() begins with init_mapseen(): the starting level joins the
+    // overview history (dungeon.c:1582) before the hero takes a turn.
+    initOverviewRecord(g.u.uz ?? { dnum: 0, dlevel: 1 }, g);
     // C does this before makedog() so that the starting pet is placed next
     // to the hero rather than next to the level-generation origin.
     await u_on_upstairs();

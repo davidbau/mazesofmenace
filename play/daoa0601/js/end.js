@@ -1,12 +1,13 @@
 // end.js — End-of-game disclosure and terminal presentation.
 // C refs: end.c disclose()/really_done(), insight.c, dungeon.c.
 import { formatFeltMessage } from './hero_speech.js';
-import { recorderLocalEpochSeconds } from './calendar.js';
+import { recorderLocalEpochSeconds, recorderLocalHour } from './calendar.js';
 import { adjustAttribute, currentAttribute } from './attrib.js';
 import { reportHeroEncumbrance } from './encumbrance.js';
 import { cureHeroSickness } from './hero_illness.js';
 import { removeIntrinsicProperty, setPropertyTimeout } from './properties.js';
 import { resetHeroTrap } from './terrain_movement.js';
+import { stopRemainingVolleyShots } from './hero_multishot.js';
 import { PARANOID_DIE, PARANOID_QUIT, PLNMSG_OK_DONT_DIE } from './const.js';
 import { PanicTermination } from './panic_termination.js';
 import { endVoluntaryMultiTurn, setMulti } from './command_state.js';
@@ -41,7 +42,8 @@ import { hiddenGold } from './gold.js';
 import { heroGoldAmount } from './hero_gold.js';
 import { doneObjectCleanup } from './object_cleanup.js';
 import { restoreHeroNutrition } from './hunger.js';
-import { A_CON, A_WIS, ACH_BLND, ACH_NUDE, ACH_UWIN, ASCENDED, BURNING, CHOKING, DIED, ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD, ESCAPED, G_EXTINCT, G_GENOD, G_GONE, GENOCIDED, PANICKED, QUIT, STARVING, STONING, TRICKED, MENU_ITEMFLAGS_SKIPMENUCOLORS, In_endgame, In_quest, Is_astralevel, Is_knox_level, KILLED_BY, KILLED_BY_AN, NO_KILLER_PREFIX, PICK_ONE, TT_LAVA, Upolyd, } from './const.js';
+import { A_CON, A_WIS, ACH_BLND, ACH_NUDE, ACH_UWIN, ASCENDED, BURNING, CHOKING, DIED, ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD, ESCAPED, G_EXTINCT, G_GENOD, G_GONE, GENOCIDED, PANICKED, QUIT, STARVING, STONING, TRICKED, In_endgame, In_quest, Is_astralevel, Is_knox_level, KILLED_BY, KILLED_BY_AN, NO_KILLER_PREFIX, PICK_ONE, TT_LAVA, Upolyd, } from './const.js';
+import { dungeonOverviewDisclosure } from './cmd.js';
 import { AMULET_OF_LIFE_SAVING, BELL_OF_OPENING, FAKE_AMULET_OF_YENDOR, CANDELABRUM_OF_INVOCATION, JADE, OBJECT_COST, OBJECT_NAMES, SPE_BOOK_OF_THE_DEAD, } from './object_data.js';
 import { createBonesFromDeath } from './bones_death.js';
 import { canMakeBones } from './bones_admission.js';
@@ -135,6 +137,8 @@ export async function restoreHeroAfterDeath({ deathType = null } = {}) {
     setPropertyTimeout('unchanging', 0);
     removeIntrinsicProperty('unchanging');
     await flush_screen(1);
+    // end.c:savelife() truncates any in-flight volley (endmultishot(FALSE)).
+    stopRemainingVolleyShots(game);
     const holder = game.u.ustuck;
     if (game.u.uswallow) {
         if (!holder)
@@ -530,47 +534,12 @@ export async function listGenocided(defquery = 'y', ask = false) {
         restoreUnderlay: true,
     });
 }
-function visitedMainDungeonLevels() {
-    const levels = new Set();
-    if ((game.u?.uz?.dnum ?? 0) === 0)
-        levels.add(game.u.uz?.dlevel || 1);
-    for (const key of game._levelCache?.keys?.() || []) {
-        const [dnum, dlevel] = String(key).split(':').map(Number);
-        if (dnum === 0 && dlevel !== undefined && Number.isInteger(dlevel))
-            levels.add(dlevel);
-    }
-    return [...levels].sort((a, b) => a - b);
-}
-function overviewLines(killer, deathVerb = 'killed', deathCause = null) {
+// C dungeon.c show_overview() with why > 0.  The final disclosure prints
+// every visited level in every dungeon with the full mapseen projection;
+// only real deaths (final == 2) list the hero's own resting place.
+function overviewLines(killer, deathVerb = 'killed', deathCause = null, ending = null) {
     const cause = deathCause || deathCauseRecord(killer, deathVerb);
-    // C print_mapseen() emits each dungeon's name line via add_menu_heading(),
-    // which skips menu coloring; the level lines below it are add_menu_str().
-    const dungeonHeading = (text) => ({ text, itemflags: MENU_ITEMFLAGS_SKIPMENUCOLORS });
-    if (game._tutorialActive) {
-        return [
-            dungeonHeading('The Dungeons of Doom:'),
-            '   Level 1:',
-            dungeonHeading('The Tutorial:'),
-            '   Level 1: <- You were here.',
-            '      Final resting place for',
-            `         you, ${cause}.`,
-        ];
-    }
-    const levels = visitedMainDungeonLevels();
-    const first = levels[0] || 1;
-    const last = levels.at(-1) || first;
-    const range = first === last ? `level ${first}` : `levels ${first} to ${last}`;
-    const lines = [dungeonHeading(`The Dungeons of Doom: ${range}`)];
-    for (const level of levels) {
-        const current = (game.u?.uz?.dnum ?? 0) === 0
-            && (game.u?.uz?.dlevel ?? 1) === level;
-        lines.push(`   Level ${level}:${current ? ' <- You were here.' : ''}`);
-        if (current && !['quit', 'escaped', 'ascended'].includes(deathVerb)) {
-            lines.push('      Final resting place for');
-            lines.push(`         you, ${cause}.`);
-        }
-    }
-    return lines;
+    return dungeonOverviewDisclosure(ending, cause);
 }
 function gameSummaryValues(outcome, deathType = DIED) {
     requireInitializedHero(game.u);
@@ -1039,12 +1008,11 @@ async function waitForCurrentMore() {
 // asking; 'k' and 'd' are legacy aliases for vanquished and overview.  The
 // special 'a' answers only survive on the vanquished and genocided
 // categories; elsewhere they degrade to plain yes.
-const DISCLOSURE_CATEGORIES = ['i', 'a', 'v', 'g', 'c', 'o'];
-function endDiscloseSettings() {
+export const DISCLOSURE_CATEGORIES = ['i', 'a', 'v', 'g', 'c', 'o'];
+export function parseDisclosureSettings(raw) {
     const settings = {
         i: '', a: '', v: '', g: '', c: '', o: '',
     };
-    const raw = game.flags?.disclose;
     // An unset option leaves the zero-initialized defaults: ask, answer no.
     if (raw === undefined || raw === null)
         return settings;
@@ -1082,6 +1050,9 @@ function endDiscloseSettings() {
         }
     }
     return settings;
+}
+function endDiscloseSettings() {
+    return parseDisclosureSettings(game.flags?.disclose);
 }
 // C end.c:should_query_disclose_option().
 function shouldQueryDiscloseOption(category) {
@@ -1163,7 +1134,7 @@ async function ynQuestion(question, visible, defquery, { hiddenAll = false } = {
 // C end.c:disclose().  Shared by death, quitting, escape, and ascension.
 // Each category consults the end_disclose option first: it either fixes
 // the answer outright or asks with the option's default.
-async function discloseGame({ killer = '', deathVerb = 'died', deathCause = null, possessionAnswer = null, taken = false, survived = false, } = {}) {
+async function discloseGame({ killer = '', deathVerb = 'died', deathCause = null, possessionAnswer = null, taken = false, survived = false, deathType = null, } = {}) {
     // really_done() displays WIN_MESSAGE before disclosure or bones.
     await displayMessageWindow();
     // The final message window retains the status drawn by the fatal caller.
@@ -1254,7 +1225,15 @@ async function discloseGame({ killer = '', deathVerb = 'died', deathCause = null
             ? await ynQuestion('Do you want to see the dungeon overview?', 'ynq', defquery)
             : defquery;
         if (overview === 'y') {
-            await showDisclosureOverlay(overviewLines(killer, deathVerb, deathCause), {
+            // C end.c passes show_overview((how >= PANICKED) ? 1 : 2, how):
+            // the non-death endings (TRICKED included) disclose as final 1,
+            // so only a genuine death lists the hero's resting place.
+            const overviewEnding = !(survived || (deathType ?? DIED) >= PANICKED)
+                ? null
+                : deathVerb === 'ascended' ? 'ascended'
+                    : deathVerb === 'escaped' ? 'escaped'
+                        : 'quit';
+            await showDisclosureOverlay(overviewLines(killer, deathVerb, deathCause, overviewEnding), {
                 marker: '(end)',
                 // C show_overview() builds the window with add_menu(),
                 // so its paged layout keeps the selector column and
@@ -1278,6 +1257,13 @@ async function startGameExit(outcome, deathType = DIED) {
         await doneObjectCleanup();
     // really_done() fixes the finish time before any disclosure can wait.
     const endtime = recorderLocalEpochSeconds(game.datetime) || Date.now() / 1000;
+    // end.c:1169-1170 snapshots at_night/at_midnight here, before any
+    // disclosure prompt can wait, so a slow answer cannot rewrite them.
+    const finalHour = recorderLocalHour(game.datetime);
+    game._finalNight = {
+        night: finalHour < 6 || finalHour > 21,
+        midnight: finalHour === 0,
+    };
     if (achievementEntries(game).length || !game.flags.beginner) {
         if (game.u.uroleplay?.blind)
             recordAchievement(game, ACH_BLND);
@@ -1337,7 +1323,7 @@ async function completeOrdinaryDeath({ killer, possessionAnswer = null, deathVer
         showSummary = !game.program_state.stopprint;
     }
     else {
-        showSummary = await discloseGame({ killer, deathVerb, deathCause, possessionAnswer, taken });
+        showSummary = await discloseGame({ killer, deathVerb, deathCause, possessionAnswer, taken, deathType });
     }
     if (game._canMakeBones && taken)
         await finishShopkeeperRepossession();

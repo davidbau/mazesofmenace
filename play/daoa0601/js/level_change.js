@@ -11,6 +11,7 @@ import { game, requireGameLevel, requirePlayingGame } from './gstate.js';
 import { addExperience, checkExperienceLevel } from './exper.js';
 import { autopickupAtHero } from './pickup.js';
 import { runDueTimers } from './timer_effects.js';
+import { restoreLevelLightSources } from './light.js';
 import { loseHeroHp } from './hero_damage.js';
 import { finishLivingGame } from './end.js';
 import { currentLuaLifecycle } from './lua/lifecycle.js';
@@ -28,7 +29,7 @@ import { restoreMonsterShape } from './monster_polymorph.js';
 import { restoreMonsterWormHeads } from './monster_worm.js';
 import { restoreLevelRegions, updateHeroRegions } from './regions.js';
 import { mklev, oinit, place_lregion, u_on_downstairs, u_on_sstairs, u_on_upstairs } from './mklev.js';
-import { dungeonBuildsUp, level_difficulty, specialPrototypeAt, recordMappedOverviewState, recordOverviewBranch, markOverviewUnreachable, insideWizardTower, levelIsWizardTower, wizardTowerLevelAt } from './dungeon.js';
+import { dungeonBuildsUp, initOverviewRecord, level_difficulty, markOverviewUnreachable, recordMappedOverviewState, recordOverviewBranch, specialPrototypeAt, insideWizardTower, levelIsWizardTower, wizardTowerLevelAt } from './dungeon.js';
 import { findNearbyMonsterPosition } from './teleport_rules.js';
 import { moveMonsterNextToHero, randomMonsterRelocation, teleportHeroSafely, bringLeashedFollowers } from './teleport.js';
 import { placeHeroOnLevel } from './hero_location.js';
@@ -281,6 +282,11 @@ export async function gotoLevel(targetDepth, { arrival = 'random', ladder = fals
             restoreCachedLevelMetadata(cached);
             await restoreCachedMonsterState(cached);
             restoreLevelRegions(game, game.moves - cached.savedAt);
+            // C getlev() reloads the level's saved light sources onto the
+            // front of light_base (restore.c:1145), reversed from the
+            // newest-first save order and ahead of the hero's carried
+            // lights that never left the list.
+            restoreLevelLightSources(game);
         }
         finally {
             game.program_state.in_getlev = false;
@@ -290,6 +296,9 @@ export async function gotoLevel(targetDepth, { arrival = 'random', ladder = fals
         oinit();
     }
     else {
+        // C mklev() starts with init_mapseen(): a freshly generated level
+        // (bones included) joins the overview history before arrival.
+        initOverviewRecord(destinationDepth, game);
         game._specialLevelPrototype = specialPrototypeAt(destinationDepth.dnum, destinationDepth.dlevel);
         await mklev();
     }
