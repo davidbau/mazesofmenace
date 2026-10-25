@@ -5,7 +5,8 @@ import { finishHeroHelplessness } from './allmain.js';
 import { formatFeltMessage } from './hero_speech.js';
 import { heroIsBlind, heroIsHallucinating } from './senses.js';
 import { BURNING, D_BROKEN, D_CLOSED, D_LOCKED, DISMOUNT_FELL, DISMOUNT_GENERIC, DISSOLVED, DROWNING, DOOR, IS_AIR, IS_OBSTRUCTED, IS_STWALL, IS_WALL, IS_WATERWALL, Is_waterlevel, LAVAPOOL, LAVAWALL, PARANOID_SWIM, POOL, ROOM, STONE, FAINTED, M_SEEN_FIRE, TREE, TT_LAVA, Upolyd, WATER, W_NONDIGGABLE, W_NONPASSWALL, WT_TOOMUCH_DIAGONAL, } from './const.js';
-import { TIP_SWIM } from './const.js';
+import { TIP_SWIM, PLNMSG_BACK_ON_GROUND } from './const.js';
+import { heroIsPunished, placeBallAndChain, unplaceBallAndChain, } from './ball.js';
 import { bot, displayLiquidName, docrt, feel_newsym, newsym, plineWithContinuation, under_water, updateLastSeenTerrain } from './display.js';
 import { heroPassesWalls, heroFormSticks, heroSpecies } from './hero_species.js';
 import { heroHasConflict } from './hero_conflict.js';
@@ -45,9 +46,9 @@ import { destroyWornArmor, findArmorClass, heroHasWaterWalking, heroKnowsLavaWal
 import { clearHeroSliming, heroIsSliming } from './slime.js';
 import { isLavaAt, isPoolAt, levelHasCeiling, levelIsWaterLevel as heroIsOnWaterLevel } from './terrain_properties.js';
 import { propertyIsActive, refreshMovementProperties, setPropertyTimeout } from './properties.js';
-import { surfaceName, waterbodyName } from './terrain_name.js';
+import { waterbodyName } from './terrain_name.js';
 import { withIndefiniteArticle } from './object_grammar.js';
-import { iceDescriptionAt } from './dungeon_feature.js';
+import { backOnGroundMessage, iceDescriptionAt } from './dungeon_feature.js';
 // C hack.c:escape_from_sticky_mon(). True means this attempt was spent
 // struggling; release clears the grip directly, without unstuck's cooldown.
 export async function escapeFromStickyMonster(x, y) {
@@ -96,6 +97,9 @@ const S_VORTEX = 22;
 const S_LIGHT = 25;
 const PM_GREMLIN = 40;
 const PM_GRID_BUG = MONSTER_NAME.indexOf('grid bug');
+const PM_WATER_ELEMENTAL = MONSTER_NAME.indexOf('water elemental');
+const PM_STEAM_VORTEX = MONSTER_NAME.indexOf('steam vortex');
+const PM_FOG_CLOUD = MONSTER_NAME.indexOf('fog cloud');
 const PM_AIR_ELEMENTAL = 154;
 const PM_IRON_GOLEM = 259;
 function heroIsInAir(state) {
@@ -159,7 +163,7 @@ export function heroCanPassWallAt(state, x, y) {
     return !!location && heroPassesWalls(state)
         && !(IS_STWALL(location.typ) && (location.wall_info & W_NONPASSWALL));
 }
-function doorlessDoor(location) {
+export function doorlessDoor(location) {
     return location?.typ === DOOR
         // Rogue doorways have no doors but retain diagonal restrictions.
         && !game.level?.flags.is_rogue_level
@@ -332,7 +336,11 @@ async function teleportHeroOutOfLiquid({ state, random, rollOne, repaint, resetV
 async function finishLavaLifeSaving({ state, publish, random, rollOne, repaint, resetVision, recalculateVision, applyLandingEffects, die, }) {
     for (let attempt = 0; attempt < 2; attempt++) {
         state.u.uhp = -1;
-        await publish('You burn to a crisp...', { urgent: true });
+        // C trap.c:6922-6934: water elementals, steam vortices, and fog
+        // clouds boil away instead of burning to a crisp.
+        const boilsAway = [PM_WATER_ELEMENTAL, PM_STEAM_VORTEX, PM_FOG_CLOUD]
+            .includes(heroSpecies(state));
+        await publish(`You ${boilsAway ? 'boil away' : 'burn to a crisp'}...`, { urgent: true });
         if (!await reviveHeroFromLiquid(state, publish, random)) {
             await die({
                 killer: 'molten lava',
@@ -384,6 +392,9 @@ async function heroLavaEffects(options) {
     // a rescue that relocated the hero gets the explicit spoteffects(FALSE)
     // landing -- full destination effects, but auto-pickup suppressed.
     if (result?.moved && !result?.died && options.applyLandingEffects) {
+        // C trap.c:6957: rescued_from_terrain(BURNING) precedes the
+        // suppressed-pickup landing effects.
+        await announceTerrainRescue(BURNING, state, options.publish);
         const landing = await options.applyLandingEffects({
             from: result.from ?? from,
             to: { x: state.u.ux, y: state.u.uy },
@@ -650,41 +661,6 @@ async function finishLiquidTeleport(movement, { state, repaint, resetVision, rec
     const landing = await applyLandingEffects({ from, to });
     return { entered: true, moved: true, died: !!landing?.died, from, to };
 }
-// C trap.c:back_on_ground(). Both ordinary pool exit and rescue name
-// the current surface, including ice beneath a raised drawbridge.
-function backOnGroundMessage(rescued, state) {
-    const { ux, uy } = state.u;
-    let surface = surfaceName(ux, uy, state);
-    let preposition = state.u.levitating || state.u.levitation || state.u.flying ? 'over' : 'on';
-    switch (surface) {
-        case 'floor':
-        case 'ground':
-            surface = 'solid ground';
-            break;
-        case 'ice':
-            surface = iceDescriptionAt(ux, uy, { state });
-            break;
-        case 'bridge':
-        case 'altar':
-        case 'headstone':
-            surface = withIndefiniteArticle(surface);
-            break;
-        case 'stairs':
-        case 'lava':
-        case 'bottom':
-            surface = `the ${surface}`;
-            break;
-        case 'air':
-            surface = 'the air';
-            preposition = 'in';
-            break;
-        default:
-            surface = withIndefiniteArticle(surface);
-            preposition = 'in';
-    }
-    const subject = rescued ? 'You find yourself' : state.flags.verbose ? 'You are back' : 'Back';
-    return `${subject} ${preposition} ${surface}.`;
-}
 async function leaveWater({ state, location, publish, }) {
     const u = state.u;
     if (!u.uinwater)
@@ -835,6 +811,12 @@ export async function heroLiquidEffects(options = {}) {
             if (!heroIsOnWaterLevel(state))
                 await publish(heroIsHallucinating(state) ? 'Your keel hits the bottom.' : 'You touch bottom.');
         }
+        // C trap.c:5117-5120: the settling ball and chain are re-placed
+        // for the underwater position.
+        if (heroIsPunished(state)) {
+            await unplaceBallAndChain(state);
+            await placeBallAndChain(state);
+        }
         recalculateVision(2);
         await setHeroInWater(true, state);
         // drown() clears the whole map on every dive, even after surfacing
@@ -844,7 +826,8 @@ export async function heroLiquidEffects(options = {}) {
         state.vision_full_recalc = 1;
         return { entered: true, moved: false, died: false };
     }
-    const luck = u.uluck ?? 0;
+    // C Luck includes the luckstone bonus (u.uluck + u.moreluck).
+    const luck = (u.uluck ?? 0) + (u.moreluck ?? 0);
     if (heroCanTeleport(state) && !heroIsUnaware(state)
         && (heroControlsTeleport(state) || random(3) < luck + 2)) {
         await publish('You attempt a teleport spell.');
@@ -940,8 +923,12 @@ export async function heroLiquidEffects(options = {}) {
         const destination = safeTeleportDestination(state, random, rollOne);
         if (destination) {
             const movement = await moveHeroByTeleport(destination.x, destination.y, state);
+            // C trap.c:5189 -> safe_teleds(TELEDS_TELEPORT) -> teleds():
+            // the rescue relocation still prints the verbose materialize
+            // line (teleport.c:545-547).
             if (state.flags?.verbose !== false) {
-                await publish('You materialize in a different location!');
+                await publish(`You materialize in ${movement.oldx === movement.x && movement.oldy === movement.y
+                    ? 'the same' : 'a different'} location!`);
             }
             const escape = await finishLiquidTeleport(movement, {
                 state,
@@ -983,8 +970,13 @@ export async function announceTerrainRescue(how, state, publish = plineWithConti
     else {
         await publish(backOnGroundMessage(true, state));
     }
-    if (state === game)
+    if (state === game) {
+        // C trap.c:5051-5054: mark the message for describe_decor() and
+        // adopt the just-disclosed terrain as the previous decor.
+        state._lastPlineKind = PLNMSG_BACK_ON_GROUND;
         updateLastSeenTerrain(ux, uy);
+        state._prevDecorType = location.lastseentyp ?? location.typ;
+    }
 }
 // Terrain that blocks ordinary movement. C hack.c.
 export function blocksMove(x, y) {

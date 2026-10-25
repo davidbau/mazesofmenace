@@ -49,6 +49,7 @@ import { swallowed } from './display.js';
 import { Is_rogue_level } from './const.js';
 import { hasShopkeeperData } from './shop_types.js';
 import { disturbMealMimicry } from './meal_mimic.js';
+import { revealConcealedHeroToAttacker } from './hero_hider_reveal.js';
 import { monsterKnowsTrap, monsterLearnsTrap, monstersSeeTrap } from './trap_knowledge.js';
 import { woundHeroLegs } from './hero_legs.js';
 import { isAccessibleAt } from './terrain_properties.js';
@@ -1305,16 +1306,25 @@ function reduceHeroContactDamage(monster, damage, state, rollOne, calls) {
 // mhitu.c mdamageu(): subtract from the active body and clamp only down to
 // its maximum. Lethal HP stays negative until done() commits zero, after
 // done_in_by() has announced the death.
-function applyHeroContactDamage(state, damage) {
+async function applyHeroContactDamage(state, damage, publish = plineWithContinuation) {
     state.context.botl = true;
-    if (Upolyd(state.u))
-        state.u.mh = Math.min((state.u.mh ?? 1) - damage, state.u.mhmax ?? 1);
-    else
-        state.u.uhp = Math.min(state.u.uhp - damage, state.u.uhpmax);
+    // C mdamageu(): showdamage() prints the post-subtraction, pre-clamp HP.
+    if (Upolyd(state.u)) {
+        state.u.mh = (state.u.mh ?? 1) - damage;
+        if (state.flags.showdamage && damage)
+            await publish(`[HP ${-damage}, ${state.u.mh} left]`);
+        state.u.mh = Math.min(state.u.mh, state.u.mhmax ?? 1);
+    }
+    else {
+        state.u.uhp -= damage;
+        if (state.flags.showdamage && damage)
+            await publish(`[HP ${-damage}, ${state.u.uhp} left]`);
+        state.u.uhp = Math.min(state.u.uhp, state.u.uhpmax);
+    }
 }
 // Complete body loss before applying the old form's passive response.
 async function finishHeroContactDamage(monster, damage, attackType, oldForm, state, { random = rn2, rollDice = d, publish = plineWithContinuation, die } = {}) {
-    applyHeroContactDamage(state, damage);
+    await applyHeroContactDamage(state, damage, publish);
     if (Upolyd(state.u) && state.u.mh < 1) {
         const restored = await returnHeroToHumanForm(state, { publish, ...(die ? { die } : {}) });
         if (restored.died)
@@ -1436,18 +1446,8 @@ async function watchOnDuty(monster, state, random, calls) {
     const hero = state?.u || {};
     const requestedX = (hero.ux ?? 0) + (hero.dx ?? 0);
     const requestedY = (hero.uy ?? 0) + (hero.dy ?? 0);
-    if (!inTown(state?.level, requestedX, requestedY) || monster.mcansee === 0)
-        return false;
-    const flags1 = MONSTER_FLAGS1[monster.mnum] ?? 0;
-    const heroInvisible = !!(state?.invisible ||
-        hero.invisible ||
-        hero.invis ||
-        (hero.invisibleTurns ?? 0) > 0);
-    if ((heroInvisible && !(flags1 & M1_SEE_INVIS)) ||
-        state?.underwater ||
-        hero.underwater ||
-        hero.uinwater ||
-        !couldSeeFromHero(state, monster.mx, monster.my))
+    if (!inTown(state.level, requestedX, requestedY) || !monster.mcansee
+        || !monsterHasLineOfSightToHero(monster, state))
         return false;
     if (recordRandom(random, calls, 3) !== 0)
         return false;
@@ -2557,6 +2557,21 @@ async function movePet(monster, state, random, rollDice, rollOne, calls, resumeA
             }
         }
         if (edible) {
+            // C dog_move()'s food goto jumps to newdogpos, where the chosen
+            // candidate is re-tested for ALLOW_U first: a conflicted pet
+            // called to its master's square attacks the hero instead of
+            // stepping onto the food beneath the hero.
+            if (candidate.info & ALLOW_U) {
+                return finishPetMovePlan(monster, state, {
+                    oldx,
+                    oldy,
+                    nix: nx,
+                    niy: ny,
+                    selectedInfo: candidate.info,
+                    reluctant: false,
+                    inventoryAction,
+                }, random, rollDice, rollOne, calls);
+            }
             updateMonsterRegions(monster, state, { x: nx, y: ny });
             if (await readyMonsterDiggingWeapon(monster, state, nx, ny)) {
                 return {
@@ -3140,9 +3155,21 @@ export async function beginMonsterHeroAttack(monster, state, random, rollOne, ro
             return { heroAttackResult: attackerDied ? 1 : 0 };
         }
     }
+    // C mattacku(): a concealed hero (hiding or mimicking) is revealed
+    // instead of attacked, before the armor-class differential.
+    if (await revealConcealedHeroToAttacker(monster, {
+        state, random, rollOne, rollDice, calls,
+    }))
+        return {};
     if (await disturbMealMimicry(monster, { state }))
         return {};
     const threshold = monsterAttackThreshold(monster, state, rollOne, calls);
+    // C mhitu.c:721-724 — make eels visible the moment they hit or miss us.
+    if (MONSTER_SYMBOL[monster.mnum] === S_EEL && monster.minvis
+        && cansee(monster.mx, monster.my)) {
+        monster.minvis = 0;
+        newsym(monster.mx, monster.my);
+    }
     const alreadyFleeing = !!monster.mflee;
     await summonMonsterAttackHelp(monster, state, random);
     if (monster.mflee && !alreadyFleeing)
@@ -4266,7 +4293,10 @@ async function beginHeroAttackSlot(sequence, slot, state, random, rollOne, rollD
             nativeResult: M_ATTK_MISS,
         };
     }
-    if (attackType !== AT_MAGC && distant)
+    // C mattacku() lets a monster that is holding the hero (u.ustuck) use
+    // its hug attack even when it is not beside the hero's apparent spot.
+    if (attackType !== AT_MAGC && distant
+        && !(attackType === AT_HUGS && state.u.ustuck === monster))
         return null;
     if (naturalContact) {
         if (attackType === AT_KICK && monster.mtrapped) {
@@ -6705,6 +6735,18 @@ export async function resumeDeferredMonsterTrap(action, state, { random = rn2, r
         case 'shop-return':
         case 'teleport-trap':
             throw new Error(`Trap ${event.kind} has no ordinary deferred continuation`);
+    }
+    // C trap.c:3831-3837: a monster newly caught by the trap cannot stay
+    // hidden under an object; a first sighting reports that it appears.
+    if (!action.monster.dead && (action.monster.mhp ?? 0) > 0
+        && action.monster.mtrapped) {
+        const alreadySpotted = canSpotMonster(action.monster);
+        maybeUnhideAt(action.monster.mx, action.monster.my, state);
+        if (!alreadySpotted && canSeeMonster(action.monster)) {
+            await publish(`${canonicalMonsterName(action.monster, {
+                state, capitalized: true, article: 'a',
+            })} appears.`);
+        }
     }
     if (('heroDied' in event && event.heroDied)
         || ('death' in event && event.death?.heroDied)

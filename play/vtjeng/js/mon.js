@@ -721,7 +721,7 @@ import {
 import { getlin } from './windows.js';
 import { tt_doppel } from './topten.js';
 import { mwepgone, possibly_unwield } from './weapon.js';
-import { cansee, couldsee, does_block, is_lightblocker_mappear, m_canseeu, recalc_block_point, unblock_point, vision_recalc } from './vision.js';
+import { block_point, cansee, couldsee, does_block, is_lightblocker_mappear, m_canseeu, recalc_block_point, unblock_point, vision_recalc } from './vision.js';
 import { bypass_obj, mon_break_armor, which_armor } from './worn.js';
 import { body_part } from './polyself.js';
 import { mon_explodes } from './explode.js';
@@ -1871,7 +1871,7 @@ export async function mon_give_prop(mtmp, prop, rawEnv = {}) {
     mtmp.mintrinsics = (mtmp.mintrinsics ?? 0) | intrinsic;
     if (canseemon(mtmp, state) && message) {
         await monsterMessage(
-            message.replace('%s', capitalizedMonsterName(mtmp, state)),
+            message.replace('%s', capitalizedMonsterName(mtmp, state, { displayRandom: rawEnv.displayRandom })),
             mtmp,
             state,
             rawEnv,
@@ -1886,8 +1886,8 @@ export async function mon_givit(mtmp, ptr, rawEnv = {}) {
     const visible = canseemon(mtmp, state);
     if (ptr === state.mons?.[PM_STALKER]) {
         if (!mtmp.perminvis || mtmp.invis_blkd) {
-            const oldName = capitalizedMonsterName(mtmp, state);
-            mon_set_minvis(mtmp, false, state);
+            const oldName = capitalizedMonsterName(mtmp, state, { displayRandom: rawEnv.displayRandom });
+            mon_set_minvis(mtmp, false, state, rawEnv);
             if (visible) {
                 const text = !canspotmon(mtmp, state)
                     ? `${oldName} vanishes.`
@@ -4050,7 +4050,12 @@ export async function wakeup(monster, via_attack, rawEnv = {}) {
         monster.mundetected = 0;
         newsym(monster.mx, monster.my, state);
     }
-    finish_meating(monster);
+    // End the meal in this state; preflight must not repaint the live map.
+    finish_meating(monster, {
+        ...rawEnv,
+        redraw: rawEnv.redraw
+            ?? (!rawEnv.planning && state === game ? newsym : () => {}),
+    });
     if (via_attack) {
         const was_peaceful = monster.mpeaceful;
 
@@ -5357,7 +5362,20 @@ export async function mondead(mtmp, state = game, env = {}) {
             mtmp.my,
             random.rn2(10) + 5,
             0,
-            { ...env, state, random, message },
+            {
+                ...env, state, random, message,
+                blockPoint: env.blockPoint ?? ((x, y) => {
+                    if (env.planning && state !== game) {
+                        if (typeof env.admitPlannedVisionChange !== 'function')
+                            throw new TypeError('planned death cloud requires admitPlannedVisionChange');
+                        env.admitPlannedVisionChange(x, y, state);
+                    }
+                    return block_point(x, y, state);
+                }),
+                canSee: env.canSee ?? ((x, y) => cansee(x, y, state)),
+                newsym: env.newsym ?? env.redraw
+                    ?? (state === game ? newsym : () => {}),
+            },
         );
 
     /* "dead vault guard is actually kept at coordinate <0,0> until his

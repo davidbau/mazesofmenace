@@ -141,6 +141,7 @@ import { applyHeroWereChange, presentWereChange } from './were.js';
 import { sessionIsNight } from './monster_sound.js';
 import { burnHeroArmorByFire } from './trap.js';
 import { sinkHeroIntoLava } from './hack.js';
+import { deferredDecor } from './dungeon_feature.js';
 import { reportMonsterTeleportRestriction } from './teleport_rules.js';
 import { heroHasOlfaction, heroIsUnchanging, polymonHero, polymorphHero, returnHeroToHumanForm } from './polyself.js';
 import { healHeroLegs } from './hero_legs.js';
@@ -760,12 +761,15 @@ async function finishFumblingExpiryAfterMessage(fumbled, publish) {
         }
     }
     game.u.fumblingFromIce = false;
-    if (game.u?.fumblingFromArmor || game.u?.fumblingIntrinsic || propertyIsActive('fumbling', game))
+    if (game.u?.fumblingFromArmor || game.u.fumblingIntrinsic || propertyIsActive('fumbling', game))
         game.u.fumblingTurns = (game.u.fumblingTurns ?? 0) + rnd(20);
     game.u.fumbling = !!(game.u?.fumblingFromArmor
-        || game.u?.fumblingIntrinsic
+        || game.u.fumblingIntrinsic
         || propertyIsActive('fumbling', game)
         || (game.u.fumblingTurns !== undefined && game.u.fumblingTurns > 0));
+    // C timeout.c: a decor message deferred past the trip catches up here.
+    if (game.iflags.deferDecor)
+        await deferredDecor(false);
 }
 async function finishInitialTurnMaintenanceAfterAutomaticSearch({ sourceTurn, moveAmount, }) {
     if (game.u.warning)
@@ -2418,14 +2422,13 @@ async function presentMonsterAttackEffects(action, game, { random = rn2, rollDic
                             await publishHeardMessage('a cough.', publishSlotMessage);
                     }
                     if (breath.launched) {
+                        // C mthrowu.c:breamm() ends with dobuzz() and
+                        // nomul(0), both inside the resolver; the breath
+                        // neither stops the hero's occupation nor spends
+                        // the hero's next movement ration.
                         await resolveDeferredMonsterBreath(action, breath, game, publishSlotMessage);
                         if (game.program_state?.gameover)
                             return { heroDied: true };
-                        if (game._occupation)
-                            game._interruptedMultiActionDebt = true;
-                        game._occupation = null;
-                        if (game._runState)
-                            stopRun(game);
                     }
                     previousHeroAttack = heroAttack;
                     heroAttack = await completeHeroAttackSlot(action, game, random, rollDice, rollOne);
@@ -3611,12 +3614,10 @@ export async function moveloop_core() {
                 if (g.u.umovement < NORMAL_SPEED)
                     await reportHeroEncumbrance(g);
             }
-            if (g.u.umovement < NORMAL_SPEED)
-                continue;
-            if (!g._interruptedMultiActionDebt)
+            // C allmain.c's do/while exits as soon as the hero can act;
+            // no monster attack may spend the hero's movement ration.
+            if (g.u.umovement >= NORMAL_SPEED)
                 break;
-            g._interruptedMultiActionDebt = false;
-            g.u.umovement -= NORMAL_SPEED;
         }
         g._heroTimePending = false;
         g._heroActionSeq = (g._heroActionSeq ?? 0) + 1;

@@ -87,7 +87,7 @@ import { ttyNorep, ttyPline } from './tty_message.js';
 import { vtense } from './objnam.js';
 import { note_unported } from './unported.js';
 import { d, rn1, rn2, rnd, rne, rnz } from './rng.js';
-import { canspotmon } from './display.js';
+import { canspotmon, newsym } from './display.js';
 import { mnexto as moveMonsterNextTo, wake_nearto } from './mon.js';
 import { dist2 } from './hacklib.js';
 import { m_next2u } from './mhitu.js';
@@ -247,7 +247,11 @@ export async function clonewiz(state = game, rawEnv = {}) {
     if (!species)
         throw new Error('clonewiz requires the Wizard monster record');
 
-    const env = { ...rawEnv, state, random, _cloneWizard: true };
+    const env = {
+        ...rawEnv, state, random, _cloneWizard: true,
+        ...(rawEnv.planning && rawEnv.message === undefined
+            ? { message: async () => {} } : {}),
+    };
     const monster = await createMonster(
         species,
         state.u.ux,
@@ -272,7 +276,10 @@ export async function clonewiz(state = game, rawEnv = {}) {
             random.rn2(WIZARD_APPEARANCES.length)
         ];
     }
-    const redraw = rawEnv.redraw ?? rawEnv.redrawSquare;
+    // C redraws after the clone's final attitudes and disguise are set.
+    // Preserve planning isolation and caller-owned display operations.
+    const redraw = rawEnv.redraw ?? rawEnv.redrawSquare
+        ?? (!rawEnv.planning && state === game ? newsym : null);
     if (typeof redraw === 'function')
         await redraw(monster.mx, monster.my, state, rawEnv);
     return monster;

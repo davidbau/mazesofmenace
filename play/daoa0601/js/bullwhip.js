@@ -2,10 +2,11 @@
 // C ref: apply.c use_whip().
 import { monsterAtPosition } from './monster_location.js';
 import { currentAttribute } from './attrib.js';
-import { observeObjectForNaming } from './objnam.js';
+import { observeObjectForNaming, singularObjectName } from './objnam.js';
 import { heroFootName, heroHandName, monsterHandName, } from './body_parts.js';
 import { A_DEX, IS_FURNITURE, IS_WATERWALL, Is_airlevel, Is_waterlevel, LAVAWALL, TT_PIT, isok, } from './const.js';
-import { canSpotMonster, map_invisible, newsym, pline, plineWithContinuation, } from './display.js';
+import { canSenseMonster, canSpotMonster, map_invisible, newsym, pline, plineWithContinuation, } from './display.js';
+import { stumbleOntoMimic } from './mimic.js';
 import { placeObject, remove_object, stack_object, } from './floor_object.js';
 import { objectNoLongerHeld } from './object_release.js';
 import { pickupFloorObject } from './pickup.js';
@@ -22,11 +23,13 @@ import { unlinkMonsterObject } from './monster_inventory.js';
 import { unwieldMonsterWeapon } from './monster_weapon.js';
 import { monsterWieldedWeapon } from './monster_weapon.js';
 import { BOULDER, CORPSE, OBJECT_BIMANUAL, } from './object_data.js';
-import { makePlural } from './object_grammar.js';
+import { makePlural, withIndefiniteArticle } from './object_grammar.js';
+import { monsterName as describeMonsterName } from './monster_name.js';
 import { rnl, rn2, rnd } from './rng.js';
 import { strikeSteed } from './steed.js';
 import { snatchPetrifyingCorpse as snatchCorpseBareHanded } from './stoning.js';
 import { ceilingName, surfaceName } from './terrain_name.js';
+import { heroIsBlind } from './senses.js';
 import { isLavaAt, isPoolOrLavaAt } from './terrain_properties.js';
 import { moveHeroByTeleport } from './teleport.js';
 import { resetHeroTrap } from './terrain_movement.js';
@@ -119,7 +122,9 @@ async function snagFloorObject(proficiency, state) {
     if (!object || !proficiency)
         return false;
     observeObjectForNaming(object, { state });
-    await pline(`You wrap your bullwhip around ${await objectWithArticle(object)} on the ${surfaceName(state.u.ux, state.u.uy, state)}.`);
+    // C apply.c:3050 wraps an(singular(otmp, xname)): one item from a
+    // stack, "a +0 dagger", never the stack count.
+    await pline(`You wrap your bullwhip around ${withIndefiniteArticle(singularObjectName(object, state))} on the ${surfaceName(state.u.ux, state.u.uy, state)}.`);
     if (rnl(6) !== 0) {
         await pline('The bullwhip slips free.');
         return true;
@@ -281,8 +286,12 @@ async function revealWhipTarget(monster, x, y, state) {
         === 'invisible';
     if (!spotted && alreadyMarked)
         return;
-    const blind = !!(game.blind || (game.u?.blindTurns ?? 0) > 0);
-    await pline(`${spotted ? `A ${monsterName(monster)}` : 'A monster'} is there that you ${blind ? "hadn't noticed" : "couldn't see"}.`);
+    // C apply.c:3139 names a now-spotted target with Amonnam(): the
+    // capitalized form of a_monnam(), so "An acid blob", "A newt".
+    const name = spotted
+        ? describeMonsterName(monster, { article: 'a', capitalized: true, state })
+        : 'A monster';
+    await pline(`${name} is there that you ${heroIsBlind(state) ? "hadn't noticed" : "couldn't see"}.`);
     if (spotted)
         newsym(x, y);
     else
@@ -301,10 +310,13 @@ async function attackMonsterWithWhip(monster, x, y, proficiency, attackMonster, 
         return;
     }
     let snap = true;
-    if (monster.m_ap_type && !state.u?.protectionFromShapeChangers) {
-        monster.m_ap_type = 0;
-        monster.mappearance = 0;
-        newsym(monster.mx, monster.my);
+    // C apply.c:use_whip() stumbles onto an unsensed mimic instead of
+    // clearing its disguise silently; sensed mimics just get flicked.
+    if (monster.m_ap_type
+        && !state.u?.protectionFromShapeChangers
+        && !state.protectionFromShapeChangers
+        && !canSenseMonster(monster)) {
+        await stumbleOntoMimic(monster, state);
         snap = false;
     }
     else {
