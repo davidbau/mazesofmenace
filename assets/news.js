@@ -12,6 +12,17 @@
 
 const NEWS_ITEMS = [
     {
+        date: '2026-10-25',
+        dateText: 'October 25, 2026',
+        href: '/seeing-snakes/',
+        html: `<strong>Seeing the Snakes:</strong>
+        twelve new held-out sessions for the last month of phase 1,
+        bringing the total to 100, and no entry gets every new screen
+        right. A follow-up to Hunting Zombies on how contestants use
+        static code analysis to find bugs that no recorded game has
+        reached yet.`,
+    },
+    {
         date: '2026-07-16',
         dateText: 'July 16, 2026',
         href: '/hunting-zombies/',

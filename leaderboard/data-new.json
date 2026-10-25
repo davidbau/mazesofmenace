@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-10-25T19:41:37.275Z",
+  "timestamp": "2026-10-25T22:47:33.312Z",
   "contestPhase": "open",
   "preview": true,
   "includeInOfficial": false,
@@ -40,26 +40,26 @@
         "total_startup_ms": 4487
       },
       "public": {
-        "points": 11513,
-        "maxPoints": 12018,
+        "points": 11405,
+        "maxPoints": 11405,
         "passing": 44,
-        "total": 50,
-        "rngPct": 96.71950138227596,
-        "rngStepsPct": 99.00149775336995,
-        "screenPct": 95.79796971209852,
+        "total": 44,
+        "rngPct": 100,
+        "rngStepsPct": 100,
+        "screenPct": 100,
         "animMatched": 0,
-        "animTotal": 1498
+        "animTotal": 1483
       },
       "heldOut": {
-        "points": 2702,
-        "maxPoints": 12513,
+        "points": 2810,
+        "maxPoints": 13126,
         "passing": 2,
-        "total": 50,
-        "rngPct": 16.333399066587788,
-        "rngStepsPct": 78.06008309364015,
-        "screenPct": 21.5935427155758,
+        "total": 56,
+        "rngPct": 17.68579893228809,
+        "rngStepsPct": 78.17046233528829,
+        "screenPct": 21.407892731982326,
         "animMatched": 0,
-        "animTotal": 2991
+        "animTotal": 3006
       },
       "history": [
         {
@@ -1325,26 +1325,26 @@
         "total_startup_ms": 161969
       },
       "public": {
-        "points": 12018,
-        "maxPoints": 12018,
-        "passing": 50,
-        "total": 50,
+        "points": 11405,
+        "maxPoints": 11405,
+        "passing": 44,
+        "total": 44,
         "rngPct": 100,
         "rngStepsPct": 100,
         "screenPct": 100,
-        "animMatched": 1498,
-        "animTotal": 1498
+        "animMatched": 1483,
+        "animTotal": 1483
       },
       "heldOut": {
-        "points": 12394,
-        "maxPoints": 12513,
-        "passing": 44,
-        "total": 50,
-        "rngPct": 97.6644974692697,
-        "rngStepsPct": 99.58453179929691,
-        "screenPct": 99.04898905138656,
-        "animMatched": 2971,
-        "animTotal": 2991
+        "points": 13007,
+        "maxPoints": 13126,
+        "passing": 50,
+        "total": 56,
+        "rngPct": 97.78239648478947,
+        "rngStepsPct": 99.6039302307868,
+        "screenPct": 99.09340240743563,
+        "animMatched": 2986,
+        "animTotal": 3006
       },
       "history": [
         {
@@ -2610,26 +2610,26 @@
         "total_startup_ms": 10113
       },
       "public": {
-        "points": 11859,
-        "maxPoints": 12018,
-        "passing": 46,
-        "total": 50,
-        "rngPct": 98.29848127925302,
-        "rngStepsPct": 99.79197869861875,
-        "screenPct": 98.67698452321517,
+        "points": 11405,
+        "maxPoints": 11405,
+        "passing": 44,
+        "total": 44,
+        "rngPct": 100,
+        "rngStepsPct": 100,
+        "screenPct": 100,
         "animMatched": 0,
-        "animTotal": 1498
+        "animTotal": 1483
       },
       "heldOut": {
-        "points": 11489,
-        "maxPoints": 12513,
-        "passing": 42,
-        "total": 50,
-        "rngPct": 95.10429676373278,
-        "rngStepsPct": 95.60562480025567,
-        "screenPct": 91.8165108287381,
+        "points": 11943,
+        "maxPoints": 13126,
+        "passing": 44,
+        "total": 56,
+        "rngPct": 93.86221689614567,
+        "rngStepsPct": 95.62038235966182,
+        "screenPct": 90.98735334450708,
         "animMatched": 0,
-        "animTotal": 2991
+        "animTotal": 3006
       },
       "history": [
         {
@@ -5030,26 +5030,26 @@
         "total_startup_ms": 9120
       },
       "public": {
-        "points": 11888,
-        "maxPoints": 12018,
-        "passing": 46,
-        "total": 50,
-        "rngPct": 99.88316618451422,
-        "rngStepsPct": 99.95007488766849,
-        "screenPct": 98.91828923281743,
+        "points": 11405,
+        "maxPoints": 11405,
+        "passing": 44,
+        "total": 44,
+        "rngPct": 100,
+        "rngStepsPct": 100,
+        "screenPct": 100,
         "animMatched": 0,
-        "animTotal": 1498
+        "animTotal": 1483
       },
       "heldOut": {
-        "points": 11045,
-        "maxPoints": 12513,
-        "passing": 41,
-        "total": 50,
-        "rngPct": 91.54297859287013,
-        "rngStepsPct": 95.90923617769256,
-        "screenPct": 88.26820107088628,
+        "points": 11528,
+        "maxPoints": 13126,
+        "passing": 43,
+        "total": 56,
+        "rngPct": 91.86764283663508,
+        "rngStepsPct": 96.05453576053013,
+        "screenPct": 87.82568947127838,
         "animMatched": 0,
-        "animTotal": 2991
+        "animTotal": 3006
       },
       "history": [
         {
@@ -6315,26 +6315,26 @@
         "total_startup_ms": 21372
       },
       "public": {
-        "points": 11875,
-        "maxPoints": 12018,
-        "passing": 45,
-        "total": 50,
-        "rngPct": 99.88316618451422,
-        "rngStepsPct": 99.95007488766849,
-        "screenPct": 98.81011815609918,
-        "animMatched": 1482,
-        "animTotal": 1498
+        "points": 11405,
+        "maxPoints": 11405,
+        "passing": 44,
+        "total": 44,
+        "rngPct": 100,
+        "rngStepsPct": 100,
+        "screenPct": 100,
+        "animMatched": 1472,
+        "animTotal": 1483
       },
       "heldOut": {
-        "points": 12305,
-        "maxPoints": 12513,
-        "passing": 38,
-        "total": 50,
-        "rngPct": 99.49232016477136,
-        "rngStepsPct": 99.20102269095558,
-        "screenPct": 98.33772876208742,
-        "animMatched": 2915,
-        "animTotal": 2991
+        "points": 12775,
+        "maxPoints": 13126,
+        "passing": 39,
+        "total": 56,
+        "rngPct": 99.4156919530473,
+        "rngStepsPct": 99.19262700891157,
+        "screenPct": 97.3259180252933,
+        "animMatched": 2925,
+        "animTotal": 3006
       },
       "history": [
         {
@@ -7600,26 +7600,26 @@
         "total_startup_ms": 21779
       },
       "public": {
-        "points": 11787,
-        "maxPoints": 12018,
-        "passing": 45,
-        "total": 50,
-        "rngPct": 99.8860186886563,
-        "rngStepsPct": 99.95007488766849,
-        "screenPct": 98.07788317523715,
-        "animMatched": 1472,
-        "animTotal": 1498
+        "points": 11405,
+        "maxPoints": 11405,
+        "passing": 44,
+        "total": 44,
+        "rngPct": 100,
+        "rngStepsPct": 100,
+        "screenPct": 100,
+        "animMatched": 1462,
+        "animTotal": 1483
       },
       "heldOut": {
-        "points": 11713,
-        "maxPoints": 12513,
-        "passing": 37,
-        "total": 50,
-        "rngPct": 98.10743004886172,
-        "rngStepsPct": 97.67497603068072,
-        "screenPct": 93.60664908495166,
-        "animMatched": 2268,
-        "animTotal": 2991
+        "points": 12095,
+        "maxPoints": 13126,
+        "passing": 38,
+        "total": 56,
+        "rngPct": 98.10320937722354,
+        "rngStepsPct": 97.73783227968619,
+        "screenPct": 92.14536035349687,
+        "animMatched": 2278,
+        "animTotal": 3006
       },
       "history": [
         {
@@ -8885,26 +8885,26 @@
         "total_startup_ms": 4278
       },
       "public": {
-        "points": 11915,
-        "maxPoints": 12018,
-        "passing": 49,
-        "total": 50,
-        "rngPct": 97.96830392480798,
-        "rngStepsPct": 99.69212847395573,
-        "screenPct": 99.1429522383092,
-        "animMatched": 1498,
-        "animTotal": 1498
+        "points": 11405,
+        "maxPoints": 11405,
+        "passing": 44,
+        "total": 44,
+        "rngPct": 100,
+        "rngStepsPct": 100,
+        "screenPct": 100,
+        "animMatched": 1483,
+        "animTotal": 1483
       },
       "heldOut": {
-        "points": 10968,
-        "maxPoints": 12513,
-        "passing": 47,
-        "total": 50,
-        "rngPct": 95.64561011415675,
-        "rngStepsPct": 95.66155321188879,
-        "screenPct": 87.65284104531288,
-        "animMatched": 1642,
-        "animTotal": 2991
+        "points": 11478,
+        "maxPoints": 13126,
+        "passing": 52,
+        "total": 56,
+        "rngPct": 94.08722282556683,
+        "rngStepsPct": 95.58229872800669,
+        "screenPct": 87.44476611305805,
+        "animMatched": 1657,
+        "animTotal": 3006
       },
       "history": [
         {
@@ -10170,26 +10170,26 @@
         "total_startup_ms": 10809
       },
       "public": {
-        "points": 11666,
-        "maxPoints": 12018,
-        "passing": 45,
-        "total": 50,
-        "rngPct": 97.07024053741178,
-        "rngStepsPct": 99.20951905475121,
-        "screenPct": 97.07106007655184,
-        "animMatched": 1494,
-        "animTotal": 1498
+        "points": 11405,
+        "maxPoints": 11405,
+        "passing": 44,
+        "total": 44,
+        "rngPct": 100,
+        "rngStepsPct": 100,
+        "screenPct": 100,
+        "animMatched": 1483,
+        "animTotal": 1483
       },
       "heldOut": {
-        "points": 10174,
-        "maxPoints": 12513,
-        "passing": 34,
-        "total": 50,
-        "rngPct": 86.57091522601283,
-        "rngStepsPct": 95.77341003515501,
-        "screenPct": 81.30744026212739,
-        "animMatched": 2853,
-        "animTotal": 2991
+        "points": 10435,
+        "maxPoints": 13126,
+        "passing": 35,
+        "total": 56,
+        "rngPct": 84.68461720905267,
+        "rngStepsPct": 95.2471627694417,
+        "screenPct": 79.49870486058205,
+        "animMatched": 2864,
+        "animTotal": 3006
       },
       "history": [
         {
@@ -11455,26 +11455,26 @@
         "total_startup_ms": 0
       },
       "public": {
-        "points": 11809,
-        "maxPoints": 12018,
+        "points": 11396,
+        "maxPoints": 11405,
         "passing": 43,
-        "total": 50,
-        "rngPct": 99.8860186886563,
-        "rngStepsPct": 99.95007488766849,
-        "screenPct": 98.26094192045265,
-        "animMatched": 1495,
-        "animTotal": 1498
+        "total": 44,
+        "rngPct": 100,
+        "rngStepsPct": 100,
+        "screenPct": 99.92108724243752,
+        "animMatched": 1483,
+        "animTotal": 1483
       },
       "heldOut": {
-        "points": 11565,
-        "maxPoints": 12513,
+        "points": 11978,
+        "maxPoints": 13126,
         "passing": 33,
-        "total": 50,
-        "rngPct": 93.6878546856855,
-        "rngStepsPct": 97.91466922339406,
-        "screenPct": 92.42387916566771,
-        "animMatched": 2922,
-        "animTotal": 2991
+        "total": 56,
+        "rngPct": 93.9067395673395,
+        "rngStepsPct": 97.96633406961688,
+        "screenPct": 91.25399969526131,
+        "animMatched": 2934,
+        "animTotal": 3006
       },
       "history": [
         {
@@ -12740,26 +12740,26 @@
         "total_startup_ms": 5742
       },
       "public": {
-        "points": 10692,
-        "maxPoints": 12018,
+        "points": 10591,
+        "maxPoints": 11405,
         "passing": 43,
-        "total": 50,
-        "rngPct": 94.05193459208002,
-        "rngStepsPct": 98.16109169578965,
-        "screenPct": 88.96655017473789,
+        "total": 44,
+        "rngPct": 97.16095848079935,
+        "rngStepsPct": 98.97413415168785,
+        "screenPct": 92.86277948268304,
         "animMatched": 0,
-        "animTotal": 1498
+        "animTotal": 1483
       },
       "heldOut": {
-        "points": 3456,
-        "maxPoints": 12513,
+        "points": 3557,
+        "maxPoints": 13126,
         "passing": 1,
-        "total": 50,
-        "rngPct": 18.49602313810557,
-        "rngStepsPct": 77.88430808565036,
-        "screenPct": 27.61927595300887,
+        "total": 56,
+        "rngPct": 19.746012724329766,
+        "rngStepsPct": 78.12476197730216,
+        "screenPct": 27.098887703793995,
         "animMatched": 0,
-        "animTotal": 2991
+        "animTotal": 3006
       },
       "history": [
         {
@@ -14025,26 +14025,26 @@
         "total_startup_ms": 22796
       },
       "public": {
-        "points": 2162,
-        "maxPoints": 12018,
+        "points": 2073,
+        "maxPoints": 11405,
         "passing": 15,
-        "total": 50,
-        "rngPct": 28.847136680113056,
-        "rngStepsPct": 70.70227991346314,
-        "screenPct": 17.98968214345149,
+        "total": 44,
+        "rngPct": 28.033343507753163,
+        "rngStepsPct": 70.15344147303814,
+        "screenPct": 18.17623849188952,
         "animMatched": 4,
-        "animTotal": 1498
+        "animTotal": 1483
       },
       "heldOut": {
-        "points": 1413,
-        "maxPoints": 12513,
+        "points": 1502,
+        "maxPoints": 13126,
         "passing": 2,
-        "total": 50,
-        "rngPct": 17.191218037205022,
-        "rngStepsPct": 78.07606263982103,
-        "screenPct": 11.292256053704147,
+        "total": 56,
+        "rngPct": 18.45079828733351,
+        "rngStepsPct": 78.2085459669434,
+        "screenPct": 11.442937680938595,
         "animMatched": 0,
-        "animTotal": 2991
+        "animTotal": 3006
       },
       "history": [
         {
@@ -15310,26 +15310,26 @@
         "total_startup_ms": 2354
       },
       "public": {
-        "points": 183,
-        "maxPoints": 12018,
+        "points": 169,
+        "maxPoints": 11405,
         "passing": 1,
-        "total": 50,
-        "rngPct": 7.936141940606109,
-        "rngStepsPct": 64.04559826926277,
-        "screenPct": 1.5227159261108336,
+        "total": 44,
+        "rngPct": 7.188605995171775,
+        "rngStepsPct": 63.52476983779044,
+        "screenPct": 1.4818062253397632,
         "animMatched": 0,
-        "animTotal": 1498
+        "animTotal": 1483
       },
       "heldOut": {
-        "points": 55,
-        "maxPoints": 12513,
+        "points": 69,
+        "maxPoints": 13126,
         "passing": 0,
-        "total": 50,
-        "rngPct": 6.444488266614081,
-        "rngStepsPct": 72.80281240012783,
-        "screenPct": 0.43954287540957404,
+        "total": 56,
+        "rngPct": 7.136318432801975,
+        "rngStepsPct": 72.84637062990326,
+        "screenPct": 0.52567423434405,
         "animMatched": 0,
-        "animTotal": 2991
+        "animTotal": 3006
       },
       "history": [
         {
@@ -16596,25 +16596,25 @@
       },
       "public": {
         "points": 21,
-        "maxPoints": 12018,
+        "maxPoints": 11405,
         "passing": 0,
-        "total": 50,
-        "rngPct": 6.94834352707383,
-        "rngStepsPct": 63.82925611582626,
-        "screenPct": 0.1747378931602596,
+        "total": 44,
+        "rngPct": 6.626069890696461,
+        "rngStepsPct": 63.34064007014467,
+        "screenPct": 0.1841297676457694,
         "animMatched": 0,
-        "animTotal": 1498
+        "animTotal": 1483
       },
       "heldOut": {
         "points": 0,
-        "maxPoints": 12513,
+        "maxPoints": 13126,
         "passing": 0,
-        "total": 50,
-        "rngPct": 5.600582834856153,
-        "rngStepsPct": 72.7788430808565,
+        "total": 56,
+        "rngPct": 5.934414360433909,
+        "rngStepsPct": 72.7854368192551,
         "screenPct": 0,
         "animMatched": 0,
-        "animTotal": 2991
+        "animTotal": 3006
       },
       "history": [
         {
@@ -17881,25 +17881,25 @@
       },
       "public": {
         "points": 15,
-        "maxPoints": 12018,
+        "maxPoints": 11405,
         "passing": 0,
-        "total": 50,
-        "rngPct": 3.4675753477083697,
-        "rngStepsPct": 63.77101015143951,
-        "screenPct": 0.12481278082875688,
+        "total": 44,
+        "rngPct": 3.207338699709146,
+        "rngStepsPct": 63.279263480929416,
+        "screenPct": 0.131521262604121,
         "animMatched": 0,
-        "animTotal": 1498
+        "animTotal": 1483
       },
       "heldOut": {
         "points": 0,
-        "maxPoints": 12513,
+        "maxPoints": 13126,
         "passing": 0,
-        "total": 50,
-        "rngPct": 2.1892460395714193,
-        "rngStepsPct": 72.71492489613294,
+        "total": 56,
+        "rngPct": 2.4684076279402647,
+        "rngStepsPct": 72.7245030086069,
         "screenPct": 0,
         "animMatched": 0,
-        "animTotal": 2991
+        "animTotal": 3006
       },
       "history": [
         {
@@ -19166,25 +19166,25 @@
       },
       "public": {
         "points": 15,
-        "maxPoints": 12018,
+        "maxPoints": 11405,
         "passing": 0,
-        "total": 50,
-        "rngPct": 3.4675753477083697,
-        "rngStepsPct": 63.77101015143951,
-        "screenPct": 0.12481278082875688,
+        "total": 44,
+        "rngPct": 3.207338699709146,
+        "rngStepsPct": 63.279263480929416,
+        "screenPct": 0.131521262604121,
         "animMatched": 0,
-        "animTotal": 1498
+        "animTotal": 1483
       },
       "heldOut": {
         "points": 0,
-        "maxPoints": 12513,
+        "maxPoints": 13126,
         "passing": 0,
-        "total": 50,
-        "rngPct": 2.1892460395714193,
-        "rngStepsPct": 72.71492489613294,
+        "total": 56,
+        "rngPct": 2.4684076279402647,
+        "rngStepsPct": 72.7245030086069,
         "screenPct": 0,
         "animMatched": 0,
-        "animTotal": 2991
+        "animTotal": 3006
       },
       "history": [
         {
@@ -20451,25 +20451,25 @@
       },
       "public": {
         "points": 15,
-        "maxPoints": 12018,
+        "maxPoints": 11405,
         "passing": 0,
-        "total": 50,
-        "rngPct": 3.4675753477083697,
-        "rngStepsPct": 63.77101015143951,
-        "screenPct": 0.12481278082875688,
+        "total": 44,
+        "rngPct": 3.207338699709146,
+        "rngStepsPct": 63.279263480929416,
+        "screenPct": 0.131521262604121,
         "animMatched": 0,
-        "animTotal": 1498
+        "animTotal": 1483
       },
       "heldOut": {
         "points": 0,
-        "maxPoints": 12513,
+        "maxPoints": 13126,
         "passing": 0,
-        "total": 50,
-        "rngPct": 2.1892460395714193,
-        "rngStepsPct": 72.71492489613294,
+        "total": 56,
+        "rngPct": 2.4684076279402647,
+        "rngStepsPct": 72.7245030086069,
         "screenPct": 0,
         "animMatched": 0,
-        "animTotal": 2991
+        "animTotal": 3006
       },
       "history": [
         {
@@ -21736,25 +21736,25 @@
       },
       "public": {
         "points": 15,
-        "maxPoints": 12018,
+        "maxPoints": 11405,
         "passing": 0,
-        "total": 50,
-        "rngPct": 3.4675753477083697,
-        "rngStepsPct": 63.77101015143951,
-        "screenPct": 0.12481278082875688,
+        "total": 44,
+        "rngPct": 3.207338699709146,
+        "rngStepsPct": 63.279263480929416,
+        "screenPct": 0.131521262604121,
         "animMatched": 0,
-        "animTotal": 1498
+        "animTotal": 1483
       },
       "heldOut": {
         "points": 0,
-        "maxPoints": 12513,
+        "maxPoints": 13126,
         "passing": 0,
-        "total": 50,
-        "rngPct": 2.1892460395714193,
-        "rngStepsPct": 72.71492489613294,
+        "total": 56,
+        "rngPct": 2.4684076279402647,
+        "rngStepsPct": 72.7245030086069,
         "screenPct": 0,
         "animMatched": 0,
-        "animTotal": 2991
+        "animTotal": 3006
       },
       "history": [
         {
@@ -22919,25 +22919,25 @@
       },
       "public": {
         "points": 15,
-        "maxPoints": 12018,
+        "maxPoints": 11405,
         "passing": 0,
-        "total": 50,
-        "rngPct": 3.4675753477083697,
-        "rngStepsPct": 63.77101015143951,
-        "screenPct": 0.12481278082875688,
+        "total": 44,
+        "rngPct": 3.207338699709146,
+        "rngStepsPct": 63.279263480929416,
+        "screenPct": 0.131521262604121,
         "animMatched": 0,
-        "animTotal": 1498
+        "animTotal": 1483
       },
       "heldOut": {
         "points": 0,
-        "maxPoints": 12513,
+        "maxPoints": 13126,
         "passing": 0,
-        "total": 50,
-        "rngPct": 2.1892460395714193,
-        "rngStepsPct": 72.71492489613294,
+        "total": 56,
+        "rngPct": 2.4684076279402647,
+        "rngStepsPct": 72.7245030086069,
         "screenPct": 0,
         "animMatched": 0,
-        "animTotal": 2991
+        "animTotal": 3006
       },
       "history": [
         {
@@ -23988,25 +23988,25 @@
       },
       "public": {
         "points": 15,
-        "maxPoints": 12018,
+        "maxPoints": 11405,
         "passing": 0,
-        "total": 50,
-        "rngPct": 3.4675753477083697,
-        "rngStepsPct": 63.77101015143951,
-        "screenPct": 0.12481278082875688,
+        "total": 44,
+        "rngPct": 3.207338699709146,
+        "rngStepsPct": 63.279263480929416,
+        "screenPct": 0.131521262604121,
         "animMatched": 0,
-        "animTotal": 1498
+        "animTotal": 1483
       },
       "heldOut": {
         "points": 0,
-        "maxPoints": 12513,
+        "maxPoints": 13126,
         "passing": 0,
-        "total": 50,
-        "rngPct": 2.1892460395714193,
-        "rngStepsPct": 72.71492489613294,
+        "total": 56,
+        "rngPct": 2.4684076279402647,
+        "rngStepsPct": 72.7245030086069,
         "screenPct": 0,
         "animMatched": 0,
-        "animTotal": 2991
+        "animTotal": 3006
       },
       "history": [
         {
@@ -25273,25 +25273,25 @@
       },
       "public": {
         "points": 15,
-        "maxPoints": 12018,
+        "maxPoints": 11405,
         "passing": 0,
-        "total": 50,
-        "rngPct": 3.4675753477083697,
-        "rngStepsPct": 63.77101015143951,
-        "screenPct": 0.12481278082875688,
+        "total": 44,
+        "rngPct": 3.207338699709146,
+        "rngStepsPct": 63.279263480929416,
+        "screenPct": 0.131521262604121,
         "animMatched": 0,
-        "animTotal": 1498
+        "animTotal": 1483
       },
       "heldOut": {
         "points": 0,
-        "maxPoints": 12513,
+        "maxPoints": 13126,
         "passing": 0,
-        "total": 50,
-        "rngPct": 2.1892460395714193,
-        "rngStepsPct": 72.71492489613294,
+        "total": 56,
+        "rngPct": 2.4684076279402647,
+        "rngStepsPct": 72.7245030086069,
         "screenPct": 0,
         "animMatched": 0,
-        "animTotal": 2991
+        "animTotal": 3006
       },
       "history": [
         {
@@ -26558,25 +26558,25 @@
       },
       "public": {
         "points": 3,
-        "maxPoints": 12018,
+        "maxPoints": 11405,
         "passing": 0,
-        "total": 50,
-        "rngPct": 5.084232070228651,
-        "rngStepsPct": 63.72940589116326,
-        "screenPct": 0.024962556165751375,
+        "total": 44,
+        "rngPct": 5.017670696914124,
+        "rngStepsPct": 63.23542306006138,
+        "screenPct": 0.026304252520824196,
         "animMatched": 0,
-        "animTotal": 1498
+        "animTotal": 1483
       },
       "heldOut": {
         "points": 0,
-        "maxPoints": 12513,
+        "maxPoints": 13126,
         "passing": 0,
-        "total": 50,
-        "rngPct": 4.323385700826048,
-        "rngStepsPct": 72.74688398849473,
+        "total": 56,
+        "rngPct": 4.416690592401187,
+        "rngStepsPct": 72.75496991393099,
         "screenPct": 0,
         "animMatched": 0,
-        "animTotal": 2991
+        "animTotal": 3006
       },
       "history": [
         {

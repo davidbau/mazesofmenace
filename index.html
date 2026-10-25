@@ -326,7 +326,7 @@ footer a { color: var(--color-text-muted); }
                 <th class="pts">Points <span class="pts-max">/ <span id="lb-pts-total">22,670</span></span></th>
                 <th class="pct">PRNG</th>
                 <th class="pct">Screen</th>
-                <th class="pct">Sessions <span class="pts-max">/ <span id="lb-sess-total">88</span></span></th>
+                <th class="pct">Sessions <span class="pts-max">/ <span id="lb-sess-total">100</span></span></th>
             </tr>
         </thead>
         <tbody id="lb-tbody"></tbody>
@@ -343,8 +343,8 @@ footer a { color: var(--color-text-muted); }
         transpiling the C sources with tools.
         <strong>Points</strong> shown as <em>public + held-out</em>:
         matched 80&times;24 screens, one point per recorded step where
-        the fork&rsquo;s render matches C exactly. The 88 sessions
-        split 44/44 across the public corpus and a held-out set kept
+        the fork&rsquo;s render matches C exactly. The 100 sessions
+        split 44 public and 56 held-out; the held-out set is kept
         private until contest end. <strong>PRNG</strong> is shown as
         advisory progress &mdash; it&rsquo;s the structural prerequisite
         for screens to match. The <strong>Sessions</strong> column
@@ -371,8 +371,8 @@ footer a { color: var(--color-text-muted); }
         <div class="phase">
             <h3>Phase 1 &mdash; Foundation</h3>
             <div class="when">Opens May 2026 &middot; Deadline Sun Nov 29, 2026</div>
-            <p>Standard parity contest against NetHack 5.0. Score against 88 sessions
-               (44 public and 44 held-out). Top 10 teams qualify for Phase 2.</p>
+            <p>Standard parity contest against NetHack 5.0. Score against 100 sessions
+               (44 public and 56 held-out). Top 10 teams qualify for Phase 2.</p>
         </div>
         <div class="phase">
             <h3>Phase 2 &mdash; Generalization</h3>
@@ -401,7 +401,7 @@ footer a { color: var(--color-text-muted); }
 </main>
 
 <script>
-// Inline leaderboard renderer. Fetches /leaderboard/data.json (which the
+// Inline leaderboard renderer. Fetches /leaderboard/data-new.json (which the
 // judge mirrors here every 6 hours) and paints the table above. Each row
 // links to /play/<owner>/ for the playable build and to the Session
 // Viewer for per-session inspection — both are mirrored from each fork
@@ -422,7 +422,7 @@ footer a { color: var(--color-text-muted); }
     let grandfathered = {};
     try {
         const [dataResp, gfResp] = await Promise.all([
-            fetch('/leaderboard/data.json?t=' + Date.now(), { cache: 'no-store' }),
+            fetch('/leaderboard/data-new.json?t=' + Date.now(), { cache: 'no-store' }),
             fetch('/leaderboard/grandfathered.json?t=' + Date.now(), { cache: 'no-store' }),
         ]);
         data = await dataResp.json();

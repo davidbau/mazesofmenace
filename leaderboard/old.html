@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="The Teleport Coding Challenge — Leaderboard">
+<meta name="theme-color" content="#f9f7f1">
+<meta name="robots" content="noindex, nofollow">
+<title>The Teleport Coding Challenge — Leaderboard (88 sessions)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --color-bg: #f9f7f1;
+    --color-text: #333;
+    --color-text-muted: #888;
+    --color-accent: #6b2c2c;
+    --color-accent-dark: #4a2020;
+    --color-border: #d0c8b8;
+    --color-row-hover: #f0ece3;
+    --color-pass: #2a7a3a;
+    --color-partial: #b8860b;
+    --color-fail: #a03030;
+    --color-sparkline: #6b2c2c;
+    --font-serif: 'EB Garamond', Georgia, serif;
+    --font-mono: 'DejaVu Sans Mono', 'Consolas', monospace;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-serif);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2em 1em;
+    min-height: 100vh;
+}
+.container {
+    /* Wide enough for the 11-column results table (~63em natural
+       width) to fit without overflowing its margins; the body flex
+       centering keeps it centered on the page. */
+    max-width: 66em;
+    width: 100%;
+}
+.nav {
+    display: flex;
+    gap: 1.5em;
+    margin-bottom: 1.5em;
+    font-size: 1em;
+}
+.nav a {
+    color: var(--color-accent);
+    text-decoration: none;
+    font-weight: 500;
+}
+.nav a:hover { text-decoration: underline; }
+h1 {
+    font-size: 1.8em;
+    font-weight: 700;
+    color: var(--color-accent-dark);
+    margin-bottom: 0.15em;
+}
+.subtitle {
+    font-size: 1.1em;
+    font-style: italic;
+    color: var(--color-text-muted);
+    margin-bottom: 0.6em;
+}
+.updated {
+    font-size: 0.9em;
+    color: var(--color-text-muted);
+    margin-bottom: 1.2em;
+}
+.table-caption {
+    font-size: 0.85em;
+    color: var(--color-text-muted);
+    text-align: right;
+    margin: 0.4em 0 1.2em;
+    font-style: italic;
+}
+/* Staleness tiers on the caption. The judge mirrors every ~6h, and GitHub
+ * sometimes drops a scheduled tick, so a single missed round is normal and
+ * must NOT warn. Thresholds sit above the worst skip on record (13.7h over
+ * the 25 days to 2026-08-27; median gap 5.8h, p95 7.5h), so the notice means
+ * "worse than any skip we have seen" rather than "cron ran late".
+ *
+ * This is the only stall signal the page can raise by itself. The per-fork
+ * scoring-error badge is a field inside data.json, so it can only appear via
+ * a SUCCESSFUL mirror; if the mirror step is what broke, no fresher data of
+ * any kind reaches the site and the aging timestamp is all there is to go on. */
+.table-caption.stale {
+    color: var(--color-partial);
+    font-style: normal;
+}
+.table-caption.stalled {
+    color: var(--color-fail);
+    font-weight: 600;
+    font-style: normal;
+}
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.95em;
+}
+thead th {
+    text-align: left;
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text-muted);
+    font-weight: 600;
+    font-size: 0.85em;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-family: var(--font-serif);
+}
+/* Category split rows live in <tbody>, but should look like a header line,
+   without the bold 2px rule used by the table's column headers. */
+tbody tr.cat-row th {
+    text-align: left;
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text-muted);
+    font-weight: 600;
+    font-size: 0.85em;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-family: var(--font-serif);
+}
+td {
+    padding: 0.45em 0.7em;
+    border-bottom: 1px solid var(--color-border);
+}
+tr:hover td { background: var(--color-row-hover); }
+.rank { color: var(--color-text-muted); width: 2em; text-align: center; }
+.team a {
+    color: var(--color-accent);
+    text-decoration: none;
+    font-weight: 500;
+}
+.team a:hover { text-decoration: underline; }
+.action { width: 4em; text-align: center; padding-left: 0.3em; padding-right: 0.3em; }
+.lb-btn {
+    display: inline-block;
+    padding: 0.15em 0.6em;
+    border-radius: 3px;
+    font-size: 0.85em;
+    font-weight: 500;
+    text-decoration: none;
+    border: 1px solid transparent;
+    min-width: 3em;
+}
+.lb-btn.play   { background: var(--color-accent); color: var(--color-bg); border-color: var(--color-accent-dark); }
+.lb-btn.play:hover  { background: var(--color-accent-dark); text-decoration: none; }
+.lb-btn.play.disabled {
+    background: transparent;
+    color: var(--color-text-muted);
+    border-color: var(--color-border);
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+.lb-btn.tests  { background: transparent; color: var(--color-accent); border-color: var(--color-border); }
+.lb-btn.tests:hover { background: var(--color-row-hover); color: var(--color-accent-dark); text-decoration: none; }
+td.you-cta { text-align: center; font-style: italic; }
+td.you-cta a {
+    color: var(--color-accent);
+    text-decoration: none;
+    font-weight: 500;
+    font-style: normal;
+}
+td.you-cta a:hover { text-decoration: underline; }
+.pts { text-align: right; }
+td.pts {
+    font-family: var(--font-mono);
+    font-size: 0.95em;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+/* Supplemental columns are de-emphasised: lighter color + a small dagger
+ * footnote symbol in the header.  Same data shape as a percent cell, but
+ * never folded into the headline points/passing/RNG/Screen ranking. */
+.supplemental {
+    color: var(--color-text-muted);
+    opacity: 0.85;
+}
+/* Daggers/footnotes: position instead of vertical-align so they don't expand
+   the line box (otherwise ANIM baseline drops a couple pixels in the header,
+   and the surrounding line gets extra space wherever Anim† appears in prose). */
+sup {
+    font-size: 0.7em;
+    vertical-align: baseline;
+    position: relative;
+    top: -0.45em;
+    line-height: 0;
+}
+.pts-max { color: var(--color-text-muted); font-size: 0.85em; margin-left: 0.15em; font-weight: normal; text-transform: none; letter-spacing: 0; }
+thead th .pts-max { font-style: normal; }
+.pct { text-align: right; }
+td.pct {
+    font-family: var(--font-mono);
+    font-size: 0.88em;
+}
+.pct.sessions { min-width: 9em; }
+.hint {
+    margin-top: 1em;
+    font-size: 0.9em;
+    color: var(--color-text-muted);
+}
+.pass { color: var(--color-pass); font-weight: 600; }
+.partial { color: var(--color-partial); }
+.fail { color: var(--color-fail); }
+.hidden { color: var(--color-text-muted); font-style: italic; }
+
+/* Rich tooltip popup. Used for explaining Playable=no verdicts and
+ * Speed/Anim diagnostics with more than the browser's native title=
+ * affordance gives. Triggered on hover or keyboard focus. */
+.lb-tip {
+    position: relative;
+    cursor: help;
+}
+.lb-tip > .lb-tip-pop {
+    visibility: hidden;
+    opacity: 0;
+    position: absolute;
+    bottom: calc(100% + 0.4em);
+    right: 0;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    padding: 0.6em 0.85em;
+    border-radius: 4px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+    white-space: normal;
+    width: 22em;
+    text-align: left;
+    font-size: 0.85em;
+    font-family: var(--font-serif);
+    color: var(--color-text);
+    z-index: 10;
+    line-height: 1.45;
+    pointer-events: none;
+    transition: opacity 0.12s ease;
+}
+.lb-tip:hover > .lb-tip-pop,
+.lb-tip:focus-within > .lb-tip-pop {
+    visibility: visible;
+    opacity: 1;
+}
+.lb-tip-pop strong {
+    display: block;
+    color: var(--color-accent-dark);
+    font-weight: 600;
+    margin-bottom: 0.25em;
+}
+.lb-tip-pop ul {
+    margin: 0.35em 0 0 1em;
+    padding: 0;
+}
+.lb-tip-pop li {
+    margin: 0.15em 0;
+    list-style: disc;
+}
+.lb-tip-pop code {
+    font-family: var(--font-mono);
+    font-size: 0.92em;
+    background: var(--color-row-hover);
+    padding: 0 0.25em;
+    border-radius: 2px;
+    word-break: break-all;
+}
+.lb-tip-pop .err-class {
+    font-family: var(--font-mono);
+    color: var(--color-fail);
+}
+/* Scoring-error badge: shown next to the team name when the judge's most
+ * recent run could not score the fork (timeout/crash). The row keeps its
+ * last successful numbers; the badge + tooltip explain the staleness. */
+.score-err-badge {
+    display: inline-block;
+    margin-left: 0.45em;
+    padding: 0 0.4em;
+    border: 1px solid var(--color-fail);
+    border-radius: 3px;
+    color: var(--color-fail);
+    font-size: 0.72em;
+    font-family: var(--font-mono);
+    vertical-align: middle;
+    cursor: help;
+}
+/* The badge sits in the LEFTMOST column; the shared popup anchors right:0,
+ * which would push a 22em popup off-screen left. Anchor it left instead. */
+.score-err-badge > .lb-tip-pop {
+    right: auto;
+    left: 0;
+}
+.lb-tip-pop .stale-note {
+    color: var(--color-text-muted);
+    font-size: 0.92em;
+    margin-top: 0.3em;
+}
+.sparkline { width: 100px; }
+.sparkline svg { display: inline-block; vertical-align: middle; width: 100px; height: 20px; }
+.time {
+    font-size: 0.85em;
+    color: var(--color-text-muted);
+}
+.legend {
+    margin-top: 1.5em;
+    font-size: 0.85em;
+    color: var(--color-text-muted);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.2em;
+}
+.legend .dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 4px;
+    vertical-align: middle;
+}
+.phase-badge {
+    display: inline-block;
+    font-size: 0.75em;
+    font-family: var(--font-mono);
+    padding: 0.15em 0.5em;
+    border-radius: 3px;
+    background: var(--color-accent-dark);
+    color: var(--color-bg);
+    margin-left: 0.5em;
+    vertical-align: middle;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+/* News feed */
+.news-feed {
+    margin: 0.5em 0 1.5em;
+}
+.news-feed h2 {
+    color: var(--color-accent-dark);
+    text-transform: uppercase;
+    font-size: 0.85em;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+    margin-bottom: 0.5em;
+}
+.news-item {
+    border-left: 3px solid var(--color-accent);
+    background: var(--color-row-hover, rgba(0,0,0,0.03));
+    padding: 0.7em 1em 0.6em;
+    margin-bottom: 0.6em;
+    font-size: 0.98em;
+    line-height: 1.5;
+    border-radius: 0 3px 3px 0;
+}
+.news-item time {
+    display: block;
+    color: var(--color-text-muted);
+    font-size: 0.82em;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.25em;
+}
+.news-item p { margin-bottom: 0.5em; }
+.news-item p:last-child { margin-bottom: 0; }
+.news-item em { font-style: italic; }
+/* Whole-item link variant: makes the entire news-item clickable while
+   keeping the "title" looking like a link. Used for short news entries
+   that point at a single article. */
+.news-item-link a.news-item-link-wrap {
+    display: block;
+    color: inherit;
+    text-decoration: none;
+    font-weight: inherit;
+}
+.news-item-link a.news-item-link-wrap:hover { text-decoration: none; }
+.news-item-link a.news-item-link-wrap strong { color: var(--color-accent); }
+.news-item-link:hover a.news-item-link-wrap strong { text-decoration: underline; }
+.news-item-link .news-arrow {
+    color: var(--color-accent);
+    margin-left: 0.15em;
+    display: inline-block;
+    transition: transform 0.15s ease;
+}
+.news-item-link:hover .news-arrow { transform: translateX(3px); }
+.news-older summary {
+    cursor: pointer;
+    color: var(--color-accent);
+    font-size: 0.9em;
+    margin: 0.4em 0 0.6em;
+    list-style: none;
+    user-select: none;
+}
+.news-older summary::-webkit-details-marker { display: none; }
+.news-older summary::before {
+    content: '▸';
+    display: inline-block;
+    width: 1em;
+    color: var(--color-text-muted);
+}
+.news-older[open] > summary::before { content: '▾'; }
+.news-older summary:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+<div class="nav">
+    <a href="/">Home</a>
+    <a href="/announcement/">About</a>
+    <a href="https://github.com/davidbau/teleport-contest#readme">Enter the Contest</a>
+</div>
+
+<h1>Leaderboard: 88 Sessions <span class="phase-badge" id="phase">open</span></h1>
+<div class="subtitle">Port NetHack 5.0 C &rarr; JavaScript with bit-exact parity</div>
+<div class="subtitle">The ranking on the original 88 sessions (44 public, 44 held-out). Since October 25, 2026 the leaderboard also scores 12 new held-out sessions &mdash; see <a href="./">the current leaderboard</a>.</div>
+<div class="updated" id="updated">Loading&hellip;</div>
+
+<section class="news-feed" aria-label="News feed" data-news data-heading="h2"></section>
+    <script src="/assets/news.js"></script>
+
+<table id="leaderboard">
+<thead>
+<tr>
+  <th class="rank">#</th>
+  <th>Team</th>
+  <th class="actions" colspan="2"></th>
+  <th class="pts">Points <span class="pts-max">/ <span id="pts-total">22,670</span></span></th>
+  <th class="pct">PRNG</th>
+  <th class="pct">Screen</th>
+  <th class="pct supplemental" title="Supplemental count of matched animation frames. Not part of the official ranking.">Anim<sup>†</sup></th>
+  <th class="pct supplemental" title="Linear fit (startup + per-move) on the offline scoring path. Not part of the official ranking.">Speed<sup>†</sup></th>
+  <th class="pct supplemental" title="Two-part browser-playability check: (1) the fork's index.html loads in real headless Chromium with no script errors or failed module fetches; (2) per-keystroke aggregate cost stays under 5 ms/move. Both must pass. Not part of the official ranking.">Playable<sup>†</sup></th>
+  <th class="pct sessions">Sessions <span class="pts-max">/ <span id="sess-total">88</span></span></th>
+  <th class="sparkline">Progress</th>
+</tr>
+</thead>
+<tbody id="tbody">
+</tbody>
+</table>
+<p class="table-caption" id="table-caption">Loading&hellip;</p>
+<p class="hint">
+  <strong>Category</strong> is based on how the team plans to
+  produce most (over 50%) of the code. <strong>Agentic</strong>
+  codebases are mostly produced by generating code with an LLM
+  and <strong>Transpiled</strong> codebases rely mostly on
+  transpiling the C sources with tools.
+  <strong>Points</strong> shown as <em>public + held-out</em>: matched 80&times;24
+  screens, one point per recorded step where the fork&rsquo;s render matches
+  C exactly. The 88 sessions split 44/44 across the public corpus and a held-out
+  set kept private until contest end. <strong>PRNG</strong> is advisory &mdash;
+  the structural prerequisite for screens to match, but no points on its own.
+  <strong>Anim<sup>&dagger;</sup></strong> is a supplemental count of
+  matched animation frames: forks that opt in via the new animation API
+  render in-between frames (dart trajectories, explosion expansion, etc.)
+  and earn one credit per matched frame. Reported as a raw integer rather
+  than a percentage so a fork that opts in stays visible even when most
+  contestants haven&rsquo;t wired up the API. Not part of the official
+  ranking.
+  <strong>Speed<sup>&dagger;</sup></strong> is a linear fit on the offline
+  scoring path of the form <em>startup_ms + per_move_ms &times; moves</em>,
+  computed against the same 88 sessions every fork is scored on.
+  Two roughly-comparable numbers in one cell: how much fixed cost a
+  session pays before the first move, and how much each move adds.
+  <strong>Playable<sup>&dagger;</sup></strong> is a two-part
+  browser-playability check. First, the judge loads the fork's
+  <code>index.html</code> in real headless Chromium and watches for
+  failed module fetches, top-level script errors, or 4xx/5xx on any
+  subresource &mdash; catches deploy mistakes (missing files, broken
+  import paths) that look fine in offline scoring but break the
+  actual play page. Second, it drives the fork the same way the
+  browser does (one moveloop call per keypress) and asks whether the
+  aggregate ms/move stays under 5&nbsp;ms. Both must pass.
+  Neither column is part of the official ranking; both are reported as
+  diagnostics.
+  <strong>Play</strong> opens that contestant&rsquo;s build in your browser.
+  <strong>Tests</strong> opens the Session Viewer scoped to the fork &mdash;
+  scrub through each public session frame by frame and see where it diverges
+  from C.
+</p>
+
+<div class="legend">
+  <span><span class="dot" style="background:var(--color-pass)"></span> 100% match</span>
+  <span><span class="dot" style="background:var(--color-partial)"></span> 50&ndash;99%</span>
+  <span><span class="dot" style="background:var(--color-fail)"></span> &lt;50%</span>
+  <span class="hidden">Held-out totals public; per-session breakdown released at contest end</span>
+</div>
+
+</div>
+
+<script>
+const DATA_URL = 'data.json';
+const GRANDFATHERED_URL = 'grandfathered.json';
+const CATEGORY_ORDER = ['transpiled', 'agentic', 'other', 'none'];
+
+// Hours since the last successful mirror past which the caption warns.
+// See the .table-caption.stale CSS note for how these were chosen.
+const STALE_WARN_HOURS = 14;    // amber: more than one round missed
+const STALE_ALERT_HOURS = 24;   // red: ~4 rounds missed, not cron noise
+
+function hoursSince(ts) {
+    return (Date.now() - new Date(ts).getTime()) / 3600000;
+}
+
+function timeAgo(ts) {
+    const diff = Date.now() - new Date(ts).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return mins + 'm ago';
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return hours + 'h ago';
+    return Math.floor(hours / 24) + 'd ago';
+}
+
+// Round a percentage DOWN to `digits` decimals: never report 100% (or any
+// higher figure) while divergences remain, so 99.96% shows as 99.9%.
+function pctFloor(pct, digits) {
+    const f = 10 ** digits;
+    let v = Math.floor(pct * f + 1e-9) / f;  // 1e-9 absorbs float noise, far below one mismatch
+    if (pct < 100 && v >= 100) v = 100 - 1 / f;
+    return v.toFixed(digits);
+}
+
+function pctClass(pct) {
+    if (pct >= 100) return 'pass';
+    if (pct >= 50) return 'partial';
+    return 'fail';
+}
+
+function resolveCategory(team, grandfathered) {
+    let cat = (typeof team?.category === 'string' ? team.category : 'none');
+    if (!CATEGORY_ORDER.includes(cat)) cat = 'none';
+    if (cat === 'none') {
+        const gf = grandfathered && team && team.name ? grandfathered[team.name] : null;
+        if (typeof gf === 'string' && CATEGORY_ORDER.includes(gf)) cat = gf;
+    }
+    return cat;
+}
+
+// Scoring-rule cutoff. The metric stabilised on 2026-05-05T23:56Z
+// (judge commit b012071 — the first scoring run after the
+// screens-only switch). Before that we tried two intermediate
+// schemes: matched-PRNG-calls + matched-screens (max ~850k) and
+// rngSteps + screens (max ~22k). Both produced wildly larger
+// point values than the current screens-only metric (max ~11k),
+// so plotting them on the same sparkline made the post-cutoff
+// line look like a flat zero near the x-axis. Older history is
+// still in `team.history[]` (up to MAX_HISTORY) and in the
+// judge repo's git log; this only filters the rendered line.
+const RULES_CUTOFF_MS = Date.parse('2026-05-05T23:55:00Z');
+
+// Sparkline as SVG (crisp at any device pixel ratio — canvas at 100×20
+// looked chunky on retina). The SVG's viewBox is the natural 100×20
+// coordinate space; CSS controls the rendered size. Right padding
+// keeps the end-of-line dot fully inside the viewport.
+const SPARK_W = 100;
+const SPARK_H = 20;
+const SPARK_PAD_R = 4;     // reserve room for the dot on the right
+const SPARK_PAD_V = 2.5;   // top/bottom padding for the line
+const SPARK_DOT_R = 2.5;
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+function drawSparkline(svg, history) {
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    if (!history) return;
+    history = history.filter(p => Date.parse(p.ts) >= RULES_CUTOFF_MS);
+    if (history.length < 2) return;
+
+    // Older entries wrote `passing`; newer entries write `points` /
+    // `maxPoints`. Fall back gracefully across the schema bump.
+    const valueOf = (p) => (p.points != null ? p.points : (p.passing || 0));
+    const max = Math.max(...history.map(valueOf), 1);
+
+    const stroke = getComputedStyle(document.documentElement)
+        .getPropertyValue('--color-sparkline').trim();
+
+    const innerW = SPARK_W - SPARK_PAD_R;
+    const innerH = SPARK_H - 2 * SPARK_PAD_V;
+
+    const pts = history.map((p, i) => {
+        const x = (i / (history.length - 1)) * innerW;
+        const y = SPARK_H - SPARK_PAD_V - (valueOf(p) / max) * innerH;
+        return `${x.toFixed(2)},${y.toFixed(2)}`;
+    }).join(' ');
+
+    const line = document.createElementNS(SVG_NS, 'polyline');
+    line.setAttribute('fill', 'none');
+    line.setAttribute('stroke', stroke);
+    line.setAttribute('stroke-width', '1.5');
+    line.setAttribute('stroke-linecap', 'round');
+    line.setAttribute('stroke-linejoin', 'round');
+    line.setAttribute('points', pts);
+    svg.appendChild(line);
+
+    const last = history[history.length - 1];
+    const lx = innerW;
+    const ly = SPARK_H - SPARK_PAD_V - (valueOf(last) / max) * innerH;
+    const dot = document.createElementNS(SVG_NS, 'circle');
+    dot.setAttribute('cx', lx.toFixed(2));
+    dot.setAttribute('cy', ly.toFixed(2));
+    dot.setAttribute('r', String(SPARK_DOT_R));
+    dot.setAttribute('fill', stroke);
+    svg.appendChild(dot);
+}
+
+async function loadLeaderboard() {
+    try {
+        const [resp, gfResp] = await Promise.all([
+            fetch(DATA_URL + '?t=' + Date.now(), { cache: 'no-store' }),
+            fetch(GRANDFATHERED_URL + '?t=' + Date.now(), { cache: 'no-store' }),
+        ]);
+        const data = await resp.json();
+        const grandfathered = gfResp.ok ? await gfResp.json() : {};
+
+        document.getElementById('phase').textContent = data.contestPhase || 'open';
+        document.getElementById('updated').textContent =
+            'Last scored: ' + new Date(data.timestamp).toLocaleString();
+        // NaN (missing/malformed timestamp) fails both comparisons, so the
+        // caption degrades to its plain styling rather than false-alarming.
+        const capEl = document.getElementById('table-caption');
+        const staleHours = hoursSince(data.timestamp);
+        capEl.classList.remove('stale', 'stalled');
+        let staleNote = '';
+        if (staleHours >= STALE_ALERT_HOURS) {
+            capEl.classList.add('stalled');
+            staleNote = ' \u2014 scoring appears stalled';
+        } else if (staleHours >= STALE_WARN_HOURS) {
+            capEl.classList.add('stale');
+            staleNote = ' \u2014 scoring may be stalled';
+        }
+        capEl.textContent = 'Updated ' + timeAgo(data.timestamp) + staleNote;
+
+        const tbody = document.getElementById('tbody');
+        tbody.innerHTML = '';
+
+        const SCORE_SORT = (a, b) =>
+            (((b.public?.points || 0) + (b.heldOut?.points || 0)) - ((a.public?.points || 0) + (a.heldOut?.points || 0)))
+            || (((b.public?.passing || 0) + (b.heldOut?.passing || 0)) - ((a.public?.passing || 0) + (a.heldOut?.passing || 0)))
+            || ((b.public?.rngPct || 0) - (a.public?.rngPct || 0))
+        ;
+
+        const allTeams = (data.teams || []).slice().sort(SCORE_SORT);
+        const byCat = Object.fromEntries(CATEGORY_ORDER.map((c) => [c, []]));
+        allTeams.forEach((t) => byCat[resolveCategory(t, grandfathered)].push(t));
+
+        const fmt = (n) => Number(n || 0).toLocaleString();
+
+        // Lift per-row denominators into the headers. Every fork scores against
+        // the same session pool, so any team's max values are the totals.
+        const ref = allTeams[0] || { public: {}, heldOut: {} };
+        const totalMax  = (ref.public.maxPoints || 0) + ((ref.heldOut && ref.heldOut.maxPoints) || 0);
+        const totalSess = (ref.public.total     || 0) + ((ref.heldOut && ref.heldOut.total)     || 0);
+        if (totalMax  > 0) document.getElementById('pts-total').textContent  = fmt(totalMax);
+        if (totalSess > 0) document.getElementById('sess-total').textContent = fmt(totalSess);
+
+        const appendCategoryRow = (label) => {
+            const tr = document.createElement('tr');
+            tr.className = 'cat-row';
+            tr.innerHTML = `<th colspan="12">CATEGORY: ${label}</th>`;
+            tbody.appendChild(tr);
+        };
+
+        let rendered = 0;
+        CATEGORY_ORDER.forEach((cat) => {
+            const teams = byCat[cat] || [];
+            if (teams.length === 0) return;
+            rendered += teams.length;
+
+            appendCategoryRow((cat === 'none' ? 'NOT REPORTED' : cat).toUpperCase());
+            teams.forEach((team, i) => {
+                const tr = document.createElement('tr');
+                const pub = team.public;
+                const held = team.heldOut || {};
+
+                const pubPoints    = pub.points    || 0;
+                const pubMaxPoints = pub.maxPoints || 0;
+                const heldPoints    = held.points    || 0;
+                const heldMaxPoints = held.maxPoints || 0;
+                const totalPoints    = pubPoints + heldPoints;
+                const totalMaxPoints = pubMaxPoints + heldMaxPoints;
+                const combinedPct    = totalMaxPoints > 0 ? (totalPoints / totalMaxPoints * 100) : 0;
+
+                // PRNG and Screen rendered as combined percentages across both pools.
+                // PRNG is weighted by recorded steps (approximated via maxPoints).
+                // Screen percentage is by definition the same as combined-points
+                // percentage (points = matched screens, maxPoints = total screens).
+                const pubRngPct  = pub.rngPct  || 0;
+                const heldRngPct = held.rngPct || 0;
+                const rngPct = totalMaxPoints > 0
+                    ? ((pubRngPct * pubMaxPoints) + (heldRngPct * heldMaxPoints)) / totalMaxPoints
+                    : 0;
+                const scrPct = combinedPct;
+
+                const heldPassing     = held.passing || 0;
+                const heldTotal       = held.total || 0;
+                const combinedPass    = (pub.passing || 0) + heldPassing;
+                const combinedTotal   = (pub.total   || 0) + heldTotal;
+                const combinedSessPct = combinedTotal > 0 ? (combinedPass / combinedTotal * 100) : 0;
+
+                const animMatched  = (pub.animMatched || 0) + (held.animMatched || 0);
+                const animTotalRow = (pub.animTotal   || 0) + (held.animTotal   || 0);
+
+                // Speed: linear fit on the offline scoring path, of the form
+                //   total_session_ms = startup_ms + per_move_ms * moves
+                // The label is e.g. "170+0.20/turn". Computed by the judge
+                // against the same 44 public sessions every fork is scored on,
+                // so the values are directly comparable between forks.
+                const speed = team.speed || null;
+                // Playability: per-keystroke browser-play check. The runner
+                // calls moveloop_core() once per move (the same path the
+                // browser uses) and reports overall ms/move against a 1.0
+                // ms/move threshold. Forks slower than that score fine
+                // offline but feel unusable in a real browser.
+                const playability = team.playability || null;
+
+                const playUrl   = '/play/' + team.name + '/';
+                const viewerUrl = '/sessions-viewer/?fork=' + encodeURIComponent(team.name);
+
+                // Scoring-error badge (update-leaderboard.js carries the row
+                // through with its last-good numbers when the newest judge run
+                // could not score the fork — verifier timeout or crash). The
+                // badge tells the visitor (and the contestant) WHY the row is
+                // stale instead of the team silently disappearing.
+                const scoringError = team.scoringError || null;
+                const esc = (s) => String(s)
+                    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                function notPlayableWhy(p) {
+                    if (!p) return 'the browser playability check did not run';
+                    if (p.browser_ok === false) {
+                        return p.error_message
+                            ? `the build did not reach a playable game in a browser (${p.error_message})`
+                            : 'the build did not reach a playable game in a browser';
+                    }
+                    switch (p.not_playable_reason) {
+                        case 'latency':
+                            return `keystrokes are too slow (${Number(p.ms_per_move).toFixed(1)} ms/move`
+                                + ` vs ${p.threshold_ms_per_move} ms threshold)`;
+                        case 'failure-rate':
+                            return `too many sessions failed to run (${p.sessions_failed} of ${p.sessions})`;
+                        case 'aborted':
+                            return `the check ran out of time (${p.sessions_skipped} sessions not measured)`;
+                        case 'unmeasured':
+                            return 'no keystrokes could be measured';
+                        default:
+                            break;
+                    }
+                    // Pre-fix payloads carry no not_playable_reason. Infer rather
+                    // than assert a cause we cannot see.
+                    if (p.sessions_failed > 0) {
+                        return `${p.sessions_failed} of ${p.sessions} sessions failed to run`;
+                    }
+                    if (p.ms_per_move && p.threshold_ms_per_move
+                            && p.ms_per_move >= p.threshold_ms_per_move) {
+                        return `keystrokes are too slow (${Number(p.ms_per_move).toFixed(1)} ms/move`
+                            + ` vs ${p.threshold_ms_per_move} ms threshold)`;
+                    }
+                    return 'this build does not currently pass the browser playability check';
+                }
+                let errBadge = '';
+                if (scoringError) {
+                    const when = scoringError.at
+                        ? new Date(scoringError.at).toUTCString().replace(/:\d\d GMT$/, ' UTC') : 'recently';
+                    const lastGood = scoringError.lastGood
+                        ? new Date(scoringError.lastGood).toUTCString().replace(/:\d\d GMT$/, ' UTC') : 'an earlier run';
+                    const pop = [
+                        '<strong>Latest scoring run failed</strong>',
+                        `<div>The judge could not score this fork ${esc(when)}: <span class="err-class">${esc(scoringError.error || 'unknown error')}</span></div>`,
+                    ];
+                    if (scoringError.detail) {
+                        pop.push(`<div><code>${esc(scoringError.detail).slice(0, 400)}</code></div>`);
+                    }
+                    pop.push(`<div class="stale-note">Scores shown are from the last successful run (${esc(lastGood)}). The fork is re-scored on the next cycle.</div>`);
+                    errBadge = `<span class="score-err-badge lb-tip" tabindex="0">!<span class="lb-tip-pop">${pop.join('')}</span></span>`;
+                }
+
+                const playableOk = !(playability && playability.playable === false);
+                // Report the reason the verifier actually recorded. This used
+                // to quote ms/move unconditionally, so a fork disabled for a
+                // failed session rendered as "(1 ms/move vs 5 ms threshold)"
+                // -- numbers that plainly pass (teleport-contest#19).
+                const playCell = playableOk
+                    ? `<a class="lb-btn play" href="${playUrl}" title="Play this build in your browser">Play</a>`
+                    : `<span class="lb-btn play disabled" title="Play disabled: ${esc(notPlayableWhy(playability))}">Play</span>`;
+
+                tr.innerHTML = `
+                    <td class="rank">${i + 1}</td>
+                    <td class="team"><a href="https://github.com/${team.fork}" target="_blank" rel="noopener">${team.name}</a>${errBadge}</td>
+                    <td class="action">${playCell}</td>
+                    <td class="action"><a class="lb-btn tests" href="${viewerUrl}" title="Open the Session Viewer for this fork">Tests</a></td>
+                    <td class="pts" title="Total points: ${pctFloor(combinedPct, 2)}% of ${fmt(totalMaxPoints)} (public + held-out).">
+                        <span class="${pctClass(combinedPct)}">${fmt(pubPoints)}</span>
+                        <span class="pts-max">+ ${fmt(heldPoints)}</span>
+                    </td>
+                    <td class="pct" title="PRNG match across public + held-out sessions (weighted)."><span class="${pctClass(rngPct)}">${pctFloor(rngPct, 1)}%</span></td>
+                    <td class="pct" title="Screen match across public + held-out sessions."><span class="${pctClass(scrPct)}">${pctFloor(scrPct, 1)}%</span></td>
+                    <td class="pct supplemental" title="${fmt(animMatched)} of ${animTotalRow ? fmt(animTotalRow) : 'no'} animation frames matched (supplemental, not part of the official ranking).">
+                        ${animMatched > 0
+                            ? `<span class="${pctClass(animTotalRow > 0 ? animMatched / animTotalRow * 100 : 0)}">${fmt(animMatched)}</span>`
+                            : '<span class="hidden">0</span>'}
+                    </td>
+                    <td class="pct supplemental" title="${speed
+                            ? `Linear fit on offline scoring: total_session_ms = ${speed.startup_ms} + ${speed.per_move_ms} × moves (R² = ${speed.r2}, n = ${speed.sessions} sessions). Cell shows startup_ms + per_move_ms.`
+                            : 'Speed not yet measured for this fork.'}">
+                        ${speed
+                            ? `<span>${Math.round(speed.startup_ms)}+${(speed.per_move_ms ?? 0).toFixed(1)}</span>`
+                            : '<span class="hidden">&mdash;</span>'}
+                    </td>
+                    <td class="pct supplemental lb-tip" tabindex="${playability ? 0 : -1}">
+                        ${playability
+                            ? `<span class="${playability.playable ? 'pass' : 'fail'}">${playability.playable ? 'yes' : 'no'}</span>`
+                            : '<span class="hidden">&mdash;</span>'}
+                        ${(() => {
+                            if (!playability) {
+                                return '<span class="lb-tip-pop"><strong>Not measured</strong>The judge has not produced a playability result for this fork yet.</span>';
+                            }
+                            const pop = [];
+                            if (playability.playable) {
+                                pop.push('<strong>Playable</strong>');
+                            } else {
+                                pop.push('<strong>Not playable</strong>');
+                            }
+                            // Browser-load line.
+                            if (playability.browser_ok === false) {
+                                pop.push(
+                                    `<div>Browser load <span class="err-class">FAILED</span> &mdash; <span class="err-class">${playability.error_class || 'unknown'}</span></div>`
+                                );
+                                if (playability.error_message) {
+                                    const esc = String(playability.error_message)
+                                        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                                        .slice(0, 240);
+                                    pop.push(`<div><code>${esc}</code></div>`);
+                                }
+                            } else if (playability.browser_ok === true) {
+                                pop.push('<div>Browser load OK (page loaded in headless Chromium with no script errors).</div>');
+                            }
+                            // Timing line.
+                            if (playability.ms_per_move != null) {
+                                const t = playability.threshold_ms_per_move ?? 5;
+                                const overThresh = playability.ms_per_move >= t;
+                                const moves = fmt(playability.total_moves || 0);
+                                const sess = playability.sessions || 0;
+                                pop.push(
+                                    `<div>Timing: <code>${playability.ms_per_move.toFixed(2)} ms/move</code> across ${moves} moves in ${sess} sessions (threshold &lt; ${t}). `
+                                    + (overThresh
+                                        ? '<span class="err-class">Over threshold</span> &mdash; play would feel laggy when holding a movement key.'
+                                        : 'Under threshold.')
+                                    + '</div>'
+                                );
+                                if (playability.sessions_killed) {
+                                    pop.push(`<div><span class="err-class">${playability.sessions_killed}</span> session(s) hit the per-session budget and were killed before completing.</div>`);
+                                }
+                                if (playability.aborted_early) {
+                                    pop.push('<div><span class="err-class">Aborted early</span> on total time budget &mdash; remaining sessions were not exercised.</div>');
+                                }
+                            }
+                            pop.push('<div style="margin-top:.4em;color:var(--color-text-muted);font-size:.9em">Both checks must pass: browser load + ms/move under threshold.</div>');
+                            return `<span class="lb-tip-pop">${pop.join('')}</span>`;
+                        })()}
+                    </td>
+                    <td class="pct sessions" title="Sessions fully matched (public + held-out).">
+                        <span class="${pctClass(combinedSessPct)}">${pub.passing || 0}</span>
+                        <span class="pts-max">+ ${heldPassing}</span>
+                    </td>
+                    <td class="sparkline"><svg viewBox="0 0 100 20" id="spark-${cat}-${i}" class="spark-svg" aria-hidden="true"></svg></td>
+                `;
+                tbody.appendChild(tr);
+
+                if (team.history && team.history.length > 0) {
+                    requestAnimationFrame(() => {
+                        const canvas = document.getElementById('spark-' + cat + '-' + i);
+                        if (canvas) drawSparkline(canvas, team.history);
+                    });
+                }
+            });
+        });
+
+        if (rendered === 0) {
+            tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:var(--color-text-muted);padding:2em">No contestants yet. <a href="https://github.com/davidbau/teleport-contest#readme">Get started!</a></td></tr>';
+        }
+
+        appendCategoryRow('NEXT PLAYER');
+
+        const youTr = document.createElement('tr');
+        youTr.innerHTML = `
+            <td class="rank"></td>
+            <td class="team"><a href="https://github.com/davidbau/teleport-contest/fork">you</a></td>
+            <td class="action"><a class="lb-btn play" href="/play/skeleton/" title="Play the contest skeleton in your browser">Play</a></td>
+            <td class="action"><a class="lb-btn tests" href="https://github.com/davidbau/teleport-contest#readme" title="Read the contest rules">Rules</a></td>
+            <td class="you-cta" colspan="8"><a href="https://github.com/davidbau/teleport-contest/fork">Create your fork on GitHub &rarr;</a></td>
+        `;
+        tbody.appendChild(youTr);
+    } catch (e) {
+        document.getElementById('updated').textContent = 'Failed to load: ' + e.message;
+    }
+}
+
+loadLeaderboard();
+setInterval(loadLeaderboard, 300000);
+</script>
+</body>
+</html>

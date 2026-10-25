@@ -415,6 +415,7 @@ td.pct {
 
 <h1>Leaderboard <span class="phase-badge" id="phase">open</span></h1>
 <div class="subtitle">Port NetHack 5.0 C &rarr; JavaScript with bit-exact parity</div>
+<div class="subtitle" id="preview-note">Scored on 100 sessions: the original 88 plus <span id="supp-count">12</span> held-out sessions added October 25, 2026 (<a href="/seeing-snakes/">why</a>). The ranking on the original 88 is <a href="old.html">here</a>.</div>
 <div class="updated" id="updated">Loading&hellip;</div>
 
 <section class="news-feed" aria-label="News feed" data-news data-heading="h2"></section>
@@ -432,7 +433,7 @@ td.pct {
   <th class="pct supplemental" title="Supplemental count of matched animation frames. Not part of the official ranking.">Anim<sup>†</sup></th>
   <th class="pct supplemental" title="Linear fit (startup + per-move) on the offline scoring path. Not part of the official ranking.">Speed<sup>†</sup></th>
   <th class="pct supplemental" title="Two-part browser-playability check: (1) the fork's index.html loads in real headless Chromium with no script errors or failed module fetches; (2) per-keystroke aggregate cost stays under 5 ms/move. Both must pass. Not part of the official ranking.">Playable<sup>†</sup></th>
-  <th class="pct sessions">Sessions <span class="pts-max">/ <span id="sess-total">88</span></span></th>
+  <th class="pct sessions">Sessions <span class="pts-max">/ <span id="sess-total">100</span></span></th>
   <th class="sparkline">Progress</th>
 </tr>
 </thead>
@@ -448,8 +449,8 @@ td.pct {
   transpiling the C sources with tools.
   <strong>Points</strong> shown as <em>public + held-out</em>: matched 80&times;24
   screens, one point per recorded step where the fork&rsquo;s render matches
-  C exactly. The 88 sessions split 44/44 across the public corpus and a held-out
-  set kept private until contest end. <strong>PRNG</strong> is advisory &mdash;
+  C exactly. The 100 sessions split 44 public and 56 held-out; the held-out
+  set is kept private until contest end. <strong>PRNG</strong> is advisory &mdash;
   the structural prerequisite for screens to match, but no points on its own.
   <strong>Anim<sup>&dagger;</sup></strong> is a supplemental count of
   matched animation frames: forks that opt in via the new animation API
@@ -490,7 +491,7 @@ td.pct {
 </div>
 
 <script>
-const DATA_URL = 'data.json';
+const DATA_URL = 'data-new.json';
 const GRANDFATHERED_URL = 'grandfathered.json';
 const CATEGORY_ORDER = ['transpiled', 'agentic', 'other', 'none'];
 
@@ -614,6 +615,7 @@ async function loadLeaderboard() {
         const grandfathered = gfResp.ok ? await gfResp.json() : {};
 
         document.getElementById('phase').textContent = data.contestPhase || 'open';
+        if (data.supplementSessions) document.getElementById('supp-count').textContent = String(data.supplementSessions);
         document.getElementById('updated').textContent =
             'Last scored: ' + new Date(data.timestamp).toLocaleString();
         // NaN (missing/malformed timestamp) fails both comparisons, so the

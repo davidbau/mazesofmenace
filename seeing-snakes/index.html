@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A contest update: twelve new held-out sessions, and how static code analysis finds bugs in AI-written ports that no test has reached yet.">
+<meta name="theme-color" content="#f3e9cf">
+<title>Seeing the Snakes — Mazes of Menace</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&display=swap" rel="stylesheet">
+<style>
+:root {
+    --parchment:        #f9f7f1;
+    --parchment-dark:   #f0ece3;
+    --parchment-edge:   #d0c8b8;
+    --ink:              #2b2114;
+    --ink-soft:         #555;
+    --ink-faint:        #888;
+    --accent:           #6b2c2c;
+    --accent-dark:      #4a2020;
+    --rule:             #d0c8b8;
+    --font-serif:       'EB Garamond', 'Adobe Garamond Pro', Garamond, Georgia, serif;
+    --font-mono:        'DejaVu Sans Mono', 'Consolas', monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { background: var(--parchment); }
+
+body {
+    color: var(--ink);
+    font-family: var(--font-serif);
+    font-size: 19px;
+    line-height: 1.62;
+    background: var(--parchment);
+    min-height: 100vh;
+    padding: 0;
+}
+
+main {
+    max-width: 42em;
+    margin: 0 auto;
+    padding: 4em 1.5em 6em;
+    position: relative;
+}
+
+/* Top nav */
+.topnav {
+    max-width: 42em;
+    margin: 0 auto;
+    padding: 1.4em 1.5em 0;
+    font-size: 0.92em;
+    color: var(--ink-faint);
+    font-style: italic;
+}
+.topnav a {
+    color: var(--accent);
+    text-decoration: none;
+}
+.topnav a:hover { text-decoration: underline; }
+
+/* Header */
+header.post-header {
+    text-align: center;
+    margin-bottom: 2.6em;
+    padding-bottom: 1.6em;
+    border-bottom: 1px solid var(--rule);
+    position: relative;
+}
+header.post-header::after {
+    content: "";
+    display: block;
+    width: 40px;
+    height: 18px;
+    margin: 0.9em auto -1.7em;
+    background: var(--parchment);
+    /* fleuron-ish ornament: three dots */
+    background-image:
+        radial-gradient(circle at 8px 9px, var(--accent) 2px, transparent 2.5px),
+        radial-gradient(circle at 20px 9px, var(--accent) 2.5px, transparent 3px),
+        radial-gradient(circle at 32px 9px, var(--accent) 2px, transparent 2.5px);
+}
+header.post-header h1 {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 2.4em;
+    line-height: 1.15;
+    color: var(--accent-dark);
+    letter-spacing: 0.005em;
+    margin-bottom: 0.45em;
+}
+header.post-header .byline {
+    font-style: italic;
+    color: var(--ink-soft);
+    font-size: 1.02em;
+}
+header.post-header .byline a { color: var(--ink-soft); }
+header.post-header .byline a:hover { color: var(--accent); }
+
+/* Body text */
+article p {
+    margin-bottom: 1.05em;
+    text-align: left;
+    hyphens: auto;
+}
+article p.lead {
+    font-size: 1.08em;
+    color: var(--ink-soft);
+    font-style: italic;
+}
+
+/* Headings */
+article h2 {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 1.55em;
+    color: var(--accent-dark);
+    margin: 2.2em 0 0.55em;
+    padding-bottom: 0.18em;
+    border-bottom: 1px solid var(--rule);
+    letter-spacing: 0.01em;
+}
+article h2 small {
+    font-style: italic;
+    font-weight: 400;
+    color: var(--ink-faint);
+    font-size: 0.7em;
+    margin-left: 0.4em;
+}
+
+/* Links */
+article a {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px dotted rgba(107,44,44,0.45);
+    transition: border-color 0.15s, background 0.15s;
+}
+article a:hover {
+    border-bottom-color: var(--accent);
+    background: rgba(107,44,44,0.06);
+}
+
+/* Emphasis */
+article strong { color: var(--ink); font-weight: 600; }
+article em { font-style: italic; }
+
+/* Blockquote */
+article blockquote {
+    margin: 1.4em 0;
+    padding: 0.8em 1.2em 0.8em 1.4em;
+    border-left: 3px solid var(--accent);
+    background: var(--parchment-dark);
+    color: var(--ink-soft);
+    font-style: italic;
+    font-size: 0.96em;
+}
+article blockquote p { margin-bottom: 0.6em; }
+article blockquote p:last-child { margin-bottom: 0; }
+article blockquote code { font-style: normal; }
+
+/* Inline + block code */
+article code {
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    color: var(--accent-dark);
+    background: var(--parchment-dark);
+    padding: 0.05em 0.35em;
+    border-radius: 2px;
+}
+article pre {
+    font-family: var(--font-mono);
+    font-size: 0.72em;
+    line-height: 1.45;
+    color: var(--ink);
+    background: var(--parchment-dark);
+    border: 1px solid var(--parchment-edge);
+    border-radius: 2px;
+    padding: 1em 1.2em;
+    margin: 1.5em 0 1.7em;
+    overflow-x: auto;
+}
+article pre code {
+    background: transparent;
+    padding: 0;
+    font-size: inherit;
+    color: inherit;
+}
+article pre b { font-weight: 600; }
+
+/* Lists */
+article ul, article ol {
+    margin: 0.6em 0 1.2em 1.4em;
+    padding-left: 0.4em;
+}
+article li { margin-bottom: 0.35em; }
+article ul li::marker { color: var(--accent); }
+
+/* Figures */
+article figure {
+    margin: 1.6em 0 1.8em;
+    text-align: center;
+}
+article figure img {
+    max-width: 100%;
+    height: auto;
+    border: 1px solid var(--parchment-edge);
+    box-shadow:
+        0 1px 0 rgba(255,255,255,0.5) inset,
+        0 6px 18px rgba(80, 50, 10, 0.18);
+    background: #fff;
+    border-radius: 2px;
+}
+article figure figcaption {
+    margin-top: 0.7em;
+    font-size: 0.92em;
+    font-style: italic;
+    color: var(--ink-faint);
+}
+
+/* Footer */
+footer.post-footer {
+    margin-top: 4em;
+    padding-top: 1.5em;
+    border-top: 1px solid var(--rule);
+    text-align: center;
+    font-style: italic;
+    color: var(--ink-faint);
+    font-size: 0.95em;
+}
+footer.post-footer a {
+    color: var(--accent);
+    text-decoration: none;
+}
+footer.post-footer a:hover { text-decoration: underline; }
+
+@media (max-width: 600px) {
+    body { font-size: 17px; }
+    header.post-header h1 { font-size: 1.9em; }
+    header.post-header-small h1 { font-size: 1.5em; }
+    main { padding: 2em 1em 4em; }
+}
+
+/* Smaller header for blog-post-scale articles (this one) */
+header.post-header-small {
+    margin-bottom: 1.8em;
+    padding-bottom: 1.0em;
+}
+header.post-header-small h1 {
+    font-size: 1.7em;
+    margin-bottom: 0.3em;
+}
+header.post-header-small::after {
+    margin: 0.6em auto -1.2em;
+}
+
+/* Subsection headings */
+article h3 {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 1.22em;
+    color: var(--accent-dark);
+    margin: 1.8em 0 0.45em;
+}
+
+/* Tables */
+article table {
+    border-collapse: collapse;
+    margin: 1.3em 0 1.6em;
+    font-size: 0.86em;
+    line-height: 1.4;
+    width: 100%;
+    display: block;
+    overflow-x: auto;
+}
+article th, article td {
+    padding: 0.35em 0.7em;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+}
+article th {
+    font-weight: 600;
+    color: var(--accent-dark);
+    border-bottom: 2px solid var(--parchment-edge);
+    text-align: left;
+}
+article tbody tr:nth-child(even) { background: var(--parchment-dark); }
+</style>
+
+</head>
+<body>
+
+<nav class="topnav">
+    <a href="/">← Mazes of Menace</a>
+</nav>
+
+<main>
+
+<header class="post-header post-header-small">
+    <h1>Seeing the Snakes</h1>
+    <div class="byline">By <a href="https://davidbau.com/">David Bau</a> · October 25, 2026</div>
+</header>
+
+<article>
+
+<p class="lead">A contest update, and a follow-up to <a href="/hunting-zombies/">Hunting Zombies</a>: what static code analysis finds that tests miss.</p>
+
+<h2 id="a-contest-update-twelve-new-held-out-sessions">A contest update: twelve new held-out sessions</h2>
+<p>The teleport challenge has been running for almost six months! Porting NetHack to JavaScript is hard indeed, even for our superhuman AI code assistants. None of the contestants so far have been able to perfectly reproduce all the sessions, including the transpilers, which translate the C mechanically instead of porting it "by hand". But several of you have gotten very close, with scores in the high 90 percent! In particular, the transpiled entry from NoahBPeterson matches 99.996% of screens, only one screen short of perfect parity on the original 88 sessions.</p>
+<p>Remember that the contest remains open to all comers. And remember that in a month, I will snapshot your code and announce a phase 2 challenge that will challenge you to develop a new revision of the code that pursues a new objective, to test the flexibility and maintainability of your code. Before phase 2, it will be helpful for your phase 1 ports to be as perfect and as well-structured as possible.</p>
+<p>So as we enter the last month of phase 1, I am adding 12 new sessions to the held-out set, bringing the total to 100 sessions (44 public and 56 held out). These gameplay sessions exercise a few more scenarios, events, and actions in the game, and they give a slightly more complete view of how accurate each implementation is. Every contestant has some new blind spot among them, so they should help serve as a guide to perfecting the ports. On a preview scoring run today, no entry matched every screen of the twelve new sessions:</p>
+<table>
+<thead>
+<tr>
+<th>Entrant</th>
+<th style="text-align: right;">New sessions with every screen right (of 12)</th>
+<th style="text-align: right;">Screens matched</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>serteal</td>
+<td style="text-align: right;">9</td>
+<td style="text-align: right;">56.6%</td>
+</tr>
+<tr>
+<td>NoahBPeterson</td>
+<td style="text-align: right;">7</td>
+<td style="text-align: right;">93.7%</td>
+</tr>
+<tr>
+<td>jon-bell</td>
+<td style="text-align: right;">5</td>
+<td style="text-align: right;">81.5%</td>
+</tr>
+<tr>
+<td>daoa0601</td>
+<td style="text-align: right;">4</td>
+<td style="text-align: right;">80.0%</td>
+</tr>
+<tr>
+<td>lockwo</td>
+<td style="text-align: right;">4</td>
+<td style="text-align: right;">84.0%</td>
+</tr>
+<tr>
+<td>richie3366</td>
+<td style="text-align: right;">4</td>
+<td style="text-align: right;">91.1%</td>
+</tr>
+<tr>
+<td>rohitgandikota</td>
+<td style="text-align: right;">3</td>
+<td style="text-align: right;">85.8%</td>
+</tr>
+<tr>
+<td>vtjeng</td>
+<td style="text-align: right;">3</td>
+<td style="text-align: right;">28.0%</td>
+</tr>
+<tr>
+<td>all others</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">under 20%</td>
+</tr>
+</tbody>
+</table>
+<p>The two leading transpilers have the most perfect new sessions, serteal with 9/12 and NoahBPeterson with 7, but neither gets everything here. And several of the other ports are very very strong. I am impressed at how well the ports are doing in completely novel sessions that none of you have had any exposure to before.</p>
+<p>How did all the contestants get so strong?</p>
+<p>This is a good moment for a code review of the submissions. This time, let's look beyond the code and into the development processes you've been using.</p>
+<h2 id="two-ways-to-hunt">Two ways to hunt</h2>
+<p>Last time I wrote about <a href="https://mazesofmenace.ai/hunting-zombies/">Hunting Zombies</a>, and pointed out that testing is much stronger if it goes beyond visible outcomes and looks at the hidden variables. Now many contestants have taken up the zombie-hunting approach, with lots of clever ideas that I will write about in the future. Many of the contestants are taking measures to make hidden state observable, compare it after every keystroke, and fix any internal state that disagrees.</p>
+<p>But now another trend has emerged among the contestants: <strong>static code analysis</strong>. Instead of only looking at tests of gameplay, many of you have been analyzing the structure of your code directly, looking for places where the JavaScript, structurally, cannot possibly be doing what the C does.</p>
+<p>Unlike zombie hunting, code analysis can find a bug that no recorded game has reached yet. That helps explain how you can do so well on a deeply held-out test set like the new test sessions, where you have no idea what corners of the code new hidden sessions might exercise.</p>
+<p>Transpilation is the most extreme version of code analysis, since all the transpiled JavaScript is the output from a detailed compiler analysis of the original C code. But the agentic contestants have also been developing code analysis methods to supplement their work. Some of these are very simple but powerful.</p>
+<h2 id="reading-code-to-find-hidden-snakes-and-eels">Reading code to find hidden snakes and eels</h2>
+<p>Let's consider a simple approach used by richie3366, the hand port with the highest screen score on the new never-seen-before held-out sessions.</p>
+<p>In NetHack, some monsters can hide. An eel lurks under the water, and a snake can hide under a pile of stuff on the floor. But if you try to move onto a square where one is hiding, the game does not let you blunder into an ordinary attack. Kindly, it stops you and reveals the monster. Here is the code, in <code>attack_checks()</code> in <code>uhitm.c</code>:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="op">(</span>mtmp<span class="op">-&gt;</span>mundetected <span class="op">&amp;&amp;</span> <span class="op">!</span>canseemon<span class="op">(</span>mtmp<span class="op">)</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="op">&amp;&amp;</span> <span class="op">!</span>glyph_is_warning<span class="op">(</span>glyph<span class="op">)</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="op">&amp;&amp;</span> <span class="op">(</span>hides_under<span class="op">(</span>mtmp<span class="op">-&gt;</span>data<span class="op">)</span> <span class="op">||</span> mtmp<span class="op">-&gt;</span>data<span class="op">-&gt;</span>mlet <span class="op">==</span> S_EEL<span class="op">))</span> <span class="op">{</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    mtmp<span class="op">-&gt;</span>mundetected <span class="op">=</span> mtmp<span class="op">-&gt;</span>msleeping <span class="op">=</span> <span class="dv">0</span><span class="op">;</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    newsym<span class="op">(</span>mtmp<span class="op">-&gt;</span>mx<span class="op">,</span> mtmp<span class="op">-&gt;</span>my<span class="op">);</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">...</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span> <span class="cf">if</span> <span class="op">(</span>Blind <span class="op">||</span> <span class="op">(</span>is_pool<span class="op">(</span>mtmp<span class="op">-&gt;</span>mx<span class="op">,</span> mtmp<span class="op">-&gt;</span>my<span class="op">)</span> <span class="op">&amp;&amp;</span> <span class="op">!</span>Underwater<span class="op">))</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>        pline<span class="op">(</span><span class="st">&quot;Wait!  There&#39;s a hidden monster there!&quot;</span><span class="op">);</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span> <span class="cf">if</span> <span class="op">((</span>obj <span class="op">=</span> svl<span class="op">.</span>level<span class="op">.</span>objects<span class="op">[</span>mtmp<span class="op">-&gt;</span>mx<span class="op">][</span>mtmp<span class="op">-&gt;</span>my<span class="op">])</span> <span class="op">!=</span> <span class="dv">0</span><span class="op">)</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>        pline<span class="op">(</span><span class="st">&quot;Wait!  There&#39;s </span><span class="sc">%s</span><span class="st"> hiding under </span><span class="sc">%s</span><span class="st">!&quot;</span><span class="op">,</span> <span class="op">...);</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> TRUE<span class="op">;</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>The problem with this chunk of code is it describes a slightly rare event, one that is never exercised by any of the 44 public test sessions. How many games would you have to play to run into an undetected eel in a pool of water? By the time September came around, richie3366 had never tested this situation and their JavaScript code was totally missing these branches.</p>
+<p>On the other hand, the gap is easy to see on a quick code inspection. The string literal <code>"Wait!  There's a hidden monster there!"</code> appears clearly in the C source, and if that string never appears in your JavaScript codebase, you know that you're missing something.</p>
+<p>So if you can make a list of all gameplay strings in the C that do not appear in the JS, they will give you a map of potentially unimplemented pathways in the code! Finding all these pathways through exhaustive testing could take months. But compiling the list of strings takes a few seconds.</p>
+<h2 id="a-map-of-missing-strings">A map of missing strings</h2>
+<p>richie3366 wrote exactly this tool, which they called <code>c-literal-coverage.py</code>. It takes every string of 14 or more characters on a line of the C source that prints a message, and looks for its longest fixed piece (slicing out the C-style <code>%</code> format codes) in the JavaScript. Running a corrected version of it retroactively over their history shows how well this strategy tracked the progress of their port.</p>
+<table>
+<thead>
+<tr>
+<th>Date</th>
+<th style="text-align: right;">C messages absent from the JS (of 4,075)</th>
+<th style="text-align: right;">Held-out score they logged</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Jul 22</td>
+<td style="text-align: right;">2,198</td>
+<td style="text-align: right;">(public 44/44 the day before)</td>
+</tr>
+<tr>
+<td>Aug 15</td>
+<td style="text-align: right;">2,031</td>
+<td style="text-align: right;"></td>
+</tr>
+<tr>
+<td>Aug 31</td>
+<td style="text-align: right;">1,416</td>
+<td style="text-align: right;"></td>
+</tr>
+<tr>
+<td>Sep 10</td>
+<td style="text-align: right;">774</td>
+<td style="text-align: right;">7/44 (Sep 6)</td>
+</tr>
+<tr>
+<td>Sep 20</td>
+<td style="text-align: right;">413</td>
+<td style="text-align: right;">11/44</td>
+</tr>
+<tr>
+<td>Oct 1</td>
+<td style="text-align: right;">169</td>
+<td style="text-align: right;">13/44</td>
+</tr>
+<tr>
+<td>Oct 13</td>
+<td style="text-align: right;">97</td>
+<td style="text-align: right;">22/44</td>
+</tr>
+<tr>
+<td>Oct 23</td>
+<td style="text-align: right;">92</td>
+<td style="text-align: right;">35/44 (Oct 20)</td>
+</tr>
+</tbody>
+</table>
+<p>As you can see, the day after richie3366 scored perfect on public tests, they were missing more than 2000 strings in the JS, an excellent map of code paths their tests had never visited.</p>
+<p>But as clever as this idea was, richie3366 did not actually devise and use the string-comparison tool until very late in the process. It was committed on October 13, as one line item in an overhaul of their rules after their held-out score had been stuck at 22 for two days. The same overhaul required complete data tables, and with this tool in hand, they were able to go from 22 to 35 held-out sessions correct. By then the port was already down to about a hundred missing messages: months of porting, including the breadth phase described below, had closed nearly all of the gap before the tool was used.</p>
+<h2 id="the-massive-middle">The Massive Middle</h2>
+<p>Before that, richie3366 spent many weeks dealing with an interesting problem that all the contestants faced. In July, they had exhausted the public tests with a perfect 44/44, and yet the NetHack codebase, with more than 5,000 C functions, was too massive to review and port all at once.</p>
+<p>What to tackle first? I found it interesting to see the contestants try several ways of choosing what to port next. Here is the path richie3366 took.</p>
+<p><strong>July.</strong> <em>Public sessions: 44/44 by July 21.</em> They worked from the public sessions, fixing the code at the first point where a session diverged from C. Commits read like "so seed0002 RNG matches through music".</p>
+<p><strong>August to mid-September.</strong> <em>Held-out: 6/44 on September 3, 11/44 by September 17.</em> With the public sessions exhausted, they walked a function-by-function map of the C against their JS and ported whatever it listed as missing, with a second model reviewing each commit against the C. They also recorded hundreds of private C sessions and chased those divergences one at a time. But the approach stalled: their private corpus passed 91.7% while their official held-out score sat at 11/44.</p>
+<p><strong>September 18 to October 6, "breadth".</strong> <em>Held-out: 11 → 16. Screens: 50% → 64%. Missing C messages: 677 → 121.</em> Here is the interesting turn. richie3366 decided to port the game as completely as possible first, using a hybrid of code analysis and agentic coding. They ranked unported C functions by the call graph: how few calls separate each one from the main turn loop, how many callers it has, how often it rolls dice or prints, and whether the functions it calls exist in their JS at all. That gave a top-down ordering, and they walked through the codebase in that order, first porting the top functions whole, and later whole C files of 40 to 100 functions at a time. They wrote a huge amount of code, but the held-out score rose only modestly, and then sat flat for about 50 iterations.</p>
+<p>The modest gain seems to come from how they checked the work. After porting a function, their loop re-ran the passing sessions whose C trace went through it, and rejected the change if any of them broke. That catches regressions, but it cannot tell you whether the new code is right, and if no session reached a function, nothing checked it at all. Breadth was, by design, a code analysis approach. It was about porting exactly the parts of the code their tests did not touch.</p>
+<p><strong>October 6 to 13, "cliffs".</strong> <em>Held-out: 16 → 22.</em> They went back to divergences, now in a private test corpus they had grown to about 950 sessions aimed at the areas their tests had missed, and they worked first on the divergences that threw away the most dice rolls.</p>
+<p><strong>October 13 onward.</strong> <em>Held-out: 22 → 35 by October 20.</em> After two days stuck at 22, they generated complete data tables from the C data files and wrote the string-coverage tool.</p>
+<p>What worked was not giving up on breadth but building tests to go along with it. Breadth was something richie3366 needed to create a comprehensive implementation, but it did not get them to high accuracy on its own. Each branch still had to be ported correctly, and for that, they did need tests.</p>
+<h3 id="reading-the-c-without-a-test">Reading the C without a test</h3>
+<p>daoa0601 also ran the purest form of code analysis in the contest. Once their local pool of 2,500 generated sessions was passing, they assigned agents to "C-source audits of files the corpus barely runs".</p>
+<p>Each of daoa0601's audits reads one C file (<code>trap.c</code>, <code>zap.c</code>, <code>role.c</code>, the quest arrival code in <code>do.c</code>), comparing it against the port, and fixes what differs based on the code inspection. A second model reviews each fix against the C. Meanwhile, every fix must come with a test that fails before it.</p>
+<p>This discipline paid off handsomely on hidden test performance. On October 24 when they made a rapid gain of six held-out sessions, three of the wins came directly from these audits:</p>
+<ul>
+<li>two from an audit of quest text and arrival order. It found that C prints the familiar-level message before the quest leader's summons, so the random draws happen in a different order;</li>
+<li>one from an audit of <code>role.c</code>.</li>
+</ul>
+<p>Two more came from another <code>insight.c</code> port (the attributes shown when the game ends), and one from a character-creation menu fix.</p>
+<h2 id="what-remains-missing">What remains missing</h2>
+<p>Several of the contestants have been using code analysis the way richie3366 and daoa0601 do, to set the agenda for the coding agents to prioritize or review their work.</p>
+<p>But I think that there is still room for all the ports to benefit more from detailed static code analysis. It only takes seconds to extract a call graph, to pull the constants, to analyze and compare the C and JS code to identify structural differences. It is, potentially, much faster and cheaper than trying to guess at missing test sessions.</p>
+<p>Running a corrected version of richie3366's string-literal comparison script over the current code of the six strongest agentic ports gives the following stats:</p>
+<table>
+<thead>
+<tr>
+<th>Entrant</th>
+<th style="text-align: right;">C messages absent (of 4,075)</th>
+<th style="text-align: right;">in gameplay files</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>richie3366</td>
+<td style="text-align: right;">92</td>
+<td style="text-align: right;">24</td>
+</tr>
+<tr>
+<td>vtjeng</td>
+<td style="text-align: right;">239</td>
+<td style="text-align: right;">114</td>
+</tr>
+<tr>
+<td>lockwo</td>
+<td style="text-align: right;">242</td>
+<td style="text-align: right;">136</td>
+</tr>
+<tr>
+<td>rohitgandikota</td>
+<td style="text-align: right;">302</td>
+<td style="text-align: right;">153</td>
+</tr>
+<tr>
+<td>daoa0601</td>
+<td style="text-align: right;">305</td>
+<td style="text-align: right;">93</td>
+</tr>
+<tr>
+<td>jon-bell</td>
+<td style="text-align: right;">375</td>
+<td style="text-align: right;">220</td>
+</tr>
+</tbody>
+</table>
+<p>(The second column leaves out files that are mostly error handling, options parsing, file I/O and debugging output.)</p>
+<p>All the ports are missing a little something, but each port is different. Few of the missing pathways are shared by more than two ports. They cluster by subsystem: one port is thin on sinks, another on drawbridges, another on kicking objects or on engulfing.</p>
+<p>That matches what the new held-out sessions show. Every contestant has blind spots, and they are mostly not the same blind spots. But a simple static code analysis can give you quick insights.</p>
+<h2 id="what-else-the-contestants-are-analyzing">What else the contestants are analyzing</h2>
+<p>The string map is one of several static analyses running in the contest. A quick tour:</p>
+<p><strong>Missing <code>await</code>.</strong> In a JavaScript port of a single-threaded C game, every function that can wait for a key has to be <code>async</code>, and every call to it must be awaited. A call without <code>await</code> runs only until its first pause. Everything after that happens later, after the caller's next dice roll or message. rohitgandikota's <code>tools/unawaited.mjs</code> lists every statement-level call of an async function that lacks <code>await</code>. Its header records the bug that prompted it: a demon's <code>cuss()</code> left its neighbours asleep. daoa0601 gets the same check from the type checker, with <code>no-floating-promises</code> and <code>no-misused-promises</code> as errors. NoahBPeterson's transpiler has to solve the same problem from the other direction. It computes, over the call graph, which functions can reach a keystroke read. It computes this once on the C syntax tree and again on the generated JavaScript, and fails if the two disagree.</p>
+<p><strong>Type checking.</strong> daoa0601 wrote their port in strict TypeScript, with <code>noImplicitReturns</code>, <code>exactOptionalPropertyTypes</code> and an exhaustive-switch check, and with <code>any</code> and <code>@ts-ignore</code> banned. A function that C declares as returning a value cannot quietly fall off its end. (Our own reference port found eight commands doing exactly that this week. They returned <code>undefined</code> where C returns <code>ECMD_OK</code>.) Others get part of the benefit without a type system. vtjeng checks that every <code>ns.NAME</code> read on an imported module names something the module actually exports, because otherwise it silently evaluates to <code>undefined</code>. rohitgandikota checks for unbound names and missing exports, and an audit pass of richie3366's loop found ten latent <code>ReferenceError</code>s the same way.</p>
+<p><strong>One copy of each function.</strong> vtjeng's <code>check-duplicate-symbols.mjs</code> looks for C functions ported more than once. It found 13. Three of them disagreed with each other, and <code>artifact_light()</code> had five copies whose null checks differed.</p>
+<p><strong>The C compiler as a checker.</strong> rohitgandikota generates a C file with a <code>_Static_assert(NAME == value)</code> for every constant the JavaScript uses, and compiles it against the real headers. They report that it found 45 wrong values among 1,661 names. Nearly every strong entry extracts its tables with the real C preprocessor or a small C program, never with regular expressions.</p>
+<p><strong>Formal proof.</strong> daoa0601 is the only entry attempting real formal verification. A symbolic executor for C (working from clang's syntax tree) and one for JavaScript share an abstract random stream, and Z3 proves the two sides equal for every input in a stated domain and every random sequence: the same return value, the same draws consumed, the same log entries. So far it covers ten small functions: the RNG wrappers (<code>rn2</code>, <code>rnd</code>, <code>rn1</code>, <code>rnl</code>, <code>d</code>, <code>rne</code>, <code>rnz</code>, the display RNG) and two distance functions. Mutated versions must fail the proof, which guards against proofs that pass for the wrong reason. A companion pass uses the TypeScript checker to find every call site of an RNG function, about 2,353 by their count, and asks the solver whether each argument stays inside the proved domain.</p>
+<p><strong>Assigning a screen to its C function.</strong> richie3366's held-out proxy matches the first differing line of a screen against every C string literal, so that a screen-only divergence is charged to the C function that prints it, the way an RNG divergence is charged to the function that rolls.</p>
+<h2 id="what-nobody-is-doing-yet-the-call-graph">What nobody is doing yet: the call graph</h2>
+<p>Code analysis is a powerful technique, and I do not think the contestants have yet gotten all the benefit out of it.</p>
+<p>Most of the analyses above look at nodes: does a function exist, does a string exist, does a constant have the right value. Several entries keep lists of C functions and mark each as ported. richie3366's ledger even extracts the C call graph, but it uses the edges only to rank work by how reachable a function is. xeophon's C inventory says the limitation plainly in its first line: "A JavaScript symbol with the same name says nothing about its missing branches or callers."</p>
+<p>The next step is to compare the edges. Tally the static call graph of the C, tally the static call graph of the JavaScript, and line them up function by function. Every edge that C has and JavaScript lacks is a specific place to audit. Every edge JavaScript has and C lacks is another.</p>
+<p>Here is that comparison for one function, <code>mount_steed()</code>, which runs when you try to climb onto a saddled pet with <code>#ride</code>. Knights start the game with a saddled pony, so it is an ordinary thing to do. The C function is about 190 lines and calls about 45 different functions, most of them checks that stop you from mounting: you are hallucinating, your legs are wounded, the pony is trapped, your armor is rusty, and so on.</p>
+<p>For each strong hand port, I listed the functions C's <code>mount_steed()</code> calls that the port's <code>mount_steed()</code> never reaches, then read the code to throw out renames. Six calls are left:</p>
+<table>
+<thead>
+<tr>
+<th>C call in <code>mount_steed()</code></th>
+<th>What it handles</th>
+<th>richie3366</th>
+<th>lockwo</th>
+<th>daoa0601</th>
+<th>jon-bell</th>
+<th>vtjeng</th>
+<th>rohitgandikota</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>test_move()</code></td>
+<td>no mounting diagonally through a doorway or a tight squeeze</td>
+<td>yes</td>
+<td>yes</td>
+<td>yes</td>
+<td>yes</td>
+<td>yes</td>
+<td><strong>no</strong></td>
+</tr>
+<tr>
+<td><code>a_monnam()</code></td>
+<td>trying to mount a long worm's tail</td>
+<td>yes</td>
+<td>yes</td>
+<td>yes</td>
+<td>yes</td>
+<td>yes</td>
+<td><strong>no</strong></td>
+</tr>
+<tr>
+<td><code>instapetrify()</code></td>
+<td>touching a cockatrice you try to ride</td>
+<td>yes</td>
+<td>yes</td>
+<td>yes</td>
+<td>yes</td>
+<td><strong>stub</strong></td>
+<td><strong>no</strong></td>
+</tr>
+<tr>
+<td><code>m_unleash()</code></td>
+<td>non-Knights cost the pet a point of tameness on every attempt; at zero it resists</td>
+<td>yes</td>
+<td>yes</td>
+<td>yes</td>
+<td>yes</td>
+<td>yes</td>
+<td><strong>no</strong></td>
+</tr>
+<tr>
+<td><code>hliquid()</code></td>
+<td>no mounting while underwater</td>
+<td>yes</td>
+<td>yes</td>
+<td>yes</td>
+<td><strong>no</strong></td>
+<td>yes</td>
+<td><strong>no</strong></td>
+</tr>
+<tr>
+<td><code>x_monnam()</code></td>
+<td>the death reason when you slip: "a saddled pony"</td>
+<td>yes</td>
+<td>yes</td>
+<td>yes</td>
+<td>yes</td>
+<td>yes</td>
+<td><code>mon_nam()</code></td>
+</tr>
+</tbody>
+</table>
+<p>The table is short because these are strong ports. Half of them have every branch. Each of the other three has a different blind spot:</p>
+<ul>
+<li><p><strong>jon-bell</strong> goes straight from the tameness check to the saddle check, skipping the underwater test, so you can mount a non-swimming steed while underwater.</p></li>
+<li><p><strong>vtjeng</strong> prints "You touch the cockatrice." and then calls <code>note_unported('trap.c instapetrify')</code>. That is an honest label for an unfinished branch: the hero should turn to stone, and does not.</p></li>
+<li><p><strong>rohitgandikota</strong>, whose fork last changed on September 12, is missing five of the six. The quietest is the tameness rule. In C, every time a non-Knight tries to mount, the steed loses a point of tameness:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="op">(!</span>force <span class="op">&amp;&amp;</span> <span class="op">!</span>Role_if<span class="op">(</span>PM_KNIGHT<span class="op">)</span> <span class="op">&amp;&amp;</span> <span class="op">!(--</span>mtmp<span class="op">-&gt;</span>mtame<span class="op">))</span> <span class="op">{</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">/* no longer tame */</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    pline<span class="op">(</span><span class="st">&quot;</span><span class="sc">%s</span><span class="st"> resists</span><span class="sc">%s</span><span class="st">!&quot;</span><span class="op">,</span> Monnam<span class="op">(</span>mtmp<span class="op">),</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>          mtmp<span class="op">-&gt;</span>mleashed <span class="op">?</span> <span class="st">&quot; and its leash comes off&quot;</span> <span class="op">:</span> <span class="st">&quot;&quot;</span><span class="op">);</span></span></code></pre></div>
+<p>Without that line, a Valkyrie who tames a pony and tries to ride it a few times leaves its tameness unchanged. Nothing on screen changes until much later, when the pet behaves differently. This is a zombie in the sense of the last post: hidden state that the screens do not show. A call-graph diff finds it without a single recorded game.</p>
+<p>The missing <code>test_move()</code> is the more ordinary bug. Without it, a hero standing in a doorway can mount a pony on the diagonal, which C forbids. rohitgandikota checks <code>Fumbling</code> in its place. C does test <code>Fumbling</code>, but later, as one of the reasons you slip while mounting.</p></li>
+</ul>
+<p>Many of these gaps are invisible to the string map. I compared these few functions with a hundred-line script. Over the whole program the raw diff is large. A crude version that ignores helpers reports between 2,800 and 6,600 missing C edges per hand port. But there are many mismatched names, macros, and moved code that make it tricky. So the work is in making the comparison precise.</p>
+<p>That is the same kind of work as building the zombie-hunting oracle. You decide what correspondence must hold between the two programs, make it mechanically checkable, and then spend your attention only on the places where it fails.</p>
+<p>When code becomes too large to read, the code itself can still be read by a program. The question is what to ask it.</p>
+
+</article>
+
+<footer class="post-footer">
+    <a href="/">Mazes of Menace</a> · <a href="/leaderboard/">Leaderboard</a> · <a href="https://github.com/davidbau/teleport-contest">teleport-contest</a>
+</footer>
+
+</main>
+
+</body>
+</html>
