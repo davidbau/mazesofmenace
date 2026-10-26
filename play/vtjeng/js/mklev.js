@@ -1962,7 +1962,9 @@ async function ensureSpecialLevelLoaders() {
     const { ORCUS_LEVEL_LOADERS } = await import('./orcus_levels.js');
     const { WIZARD1_LEVEL_LOADERS } = await import('./wizard1_levels.js');
     const { WIZARD2_LEVEL_LOADERS } = await import('./wizard2_levels.js');
+    const { FAKEWIZ2_LEVEL_LOADERS } = await import('./fakewiz2_level.js');
     const { WIZARD3_LEVEL_LOADERS } = await import('./wizard3_levels.js');
+    const { FAKEWIZ1_LEVEL_LOADERS } = await import('./fakewiz1_levels.js');
     const { KNOX_LEVEL_LOADERS } = await import('./knox_levels.js');
     const { TUTORIAL_LEVEL_LOADERS } = await import('./tutorial_level.js');
     SPECIAL_LEVEL_LOADERS = {
@@ -1985,7 +1987,9 @@ async function ensureSpecialLevelLoaders() {
         ...ORCUS_LEVEL_LOADERS,
         ...WIZARD1_LEVEL_LOADERS,
         ...WIZARD2_LEVEL_LOADERS,
+        ...FAKEWIZ2_LEVEL_LOADERS,
         ...WIZARD3_LEVEL_LOADERS,
+        ...FAKEWIZ1_LEVEL_LOADERS,
         ...KNOX_LEVEL_LOADERS,
         ...TUTORIAL_LEVEL_LOADERS,
     };
@@ -3420,6 +3424,9 @@ function sel_set_door(dx, dy, typ, frame, state = game) {
             typ = D_CLOSED;
     }
     set_door_orientation(x, y, state); /* set/clear levl[x][y].horizontal */
+    // C's doormask aliases rm.flags. Coordinate doors can overwrite a
+    // room-wall door, so clear its prior flags when replacing the mask.
+    loc.flags = typ;
     loc.doormask = typ;
     frame.splevMap[x][y] = 1;
 }

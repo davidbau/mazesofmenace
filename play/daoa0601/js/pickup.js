@@ -29,7 +29,7 @@ import { clearJustPicked, markJustPicked } from './just_picked.js';
 import { unlinkMonsterObject } from './monster_inventory.js';
 import { touchArtifactByHero } from './artifact_touch.js';
 import { LOADSTONE, GOLD_PIECE, CORPSE, SCR_SCARE_MONSTER, } from './object_data.js';
-import { stopRun } from './runmode.js';
+import { endVoluntaryMultiTurn } from './command_state.js';
 import { isRider } from './corpse_species.js';
 import { reviveCorpseImmediately } from './corpse_revival.js';
 import { exerciseAttribute } from './attrib.js';
@@ -49,14 +49,18 @@ export function pickupClassOrder() {
 export async function pickupAtHero(count = Math.max(0, game._commandCount || 0)) {
     setMulti(0);
     const source = pickupSourceAtHero();
-    const objects = pickupObjects(source);
-    const problem = pickupLocationProblem({ state: game, objects, monster: source.monster });
+    // hack.c:pickup_checks() tests OBJ_AT, which counts the punishment
+    // chain; the empty-floor complaints only fire when the square has no
+    // object at all.  A chain-only square falls through to the pickup menu
+    // path, where all_but_uchain() filters it into an empty selection.
+    const problem = pickupLocationProblem({ state: game, objects: source.objects, monster: source.monster });
     if (problem) {
         for (const message of problem.messages)
             await plineWithContinuation(message);
         game.context.move = problem.spendsTurn ? 1 : 0;
         return;
     }
+    const objects = pickupObjects(source);
     game._pickupEncumbrance = 0;
     if (!source.monster && heroCannotTake(game)) {
         await pline('You are physically incapable of picking anything up.');
@@ -133,9 +137,10 @@ export async function autopickupAtHero() {
         }
         // pickup.c: pickup() stops only a real run (context.run != 8) when
         // stepping onto objects, and not at all for a no-pickup move.
+        // nomul(0) also requests the status refresh for the lifting message.
         if (objects.length && (game.context.run ?? 0) > 0
-            && game._runState?.mode !== 8 && !game.context.nopick)
-            stopRun();
+            && game.context.run !== 8 && !game.context.nopick)
+            endVoluntaryMultiTurn();
     }
     const eligible = [];
     for (const object of objects) {
@@ -517,9 +522,9 @@ async function checkHere(source, pickedSome) {
         await readFloorEngraving(x, y);
         return { died: false };
     }
-    // pickup.c:check_here() only interrupts a real run (context.run).
+    // check_here() uses nomul(0), including its pending status refresh.
     if ((game.context.run ?? 0) > 0)
-        stopRun();
+        endVoluntaryMultiTurn();
     // C check_here() flushes movement before look_here() can page a prior
     // message. The pager itself leaves pending map changes untouched.
     await flush_screen(1);
