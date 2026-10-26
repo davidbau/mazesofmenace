@@ -15,6 +15,7 @@ import {
     BUFSZ,
     CLR_MAX,
     COLNO,
+    ROWNO,
     DISCLOSE_PROMPT_DEFAULT_NO,
     DISCLOSE_PROMPT_DEFAULT_YES,
     DISCLOSE_PROMPT_DEFAULT_SPECIAL,
@@ -4260,6 +4261,137 @@ async function handler_menustyle(state, helpers) {
     return optn_ok;
 }
 
+// C ref: options.c handler_runmode() (6124-6153).  The menu uses one-based
+// a_int values, while flags.runmode stores the zero-based runmodes index.
+async function handler_runmode(state, helpers) {
+    const selected = await optionMenuSelect(state, {
+        items: runmodes.map((name, index) => ({
+            text: name,
+            value: index + 1,
+            selector: name[0],
+        })),
+        how: PICK_ONE,
+        title: 'Select run/travel display mode:',
+        cancelValue: null,
+    }, helpers);
+    const values = menuSelectionValues(selected);
+    if (values.length) state.flags.runmode = values[0] - 1;
+    return optn_ok;
+}
+
+// C ref: options.c handler_sortloot() (6166-6206).  The current mode is
+// preselected; selecting another row can return both it and the new choice.
+async function handler_sortloot(state, helpers) {
+    const old = state.flags.sortloot;
+    const selected = await optionMenuSelect(state, {
+        items: sortltype.map((name) => ({
+            text: name,
+            value: name[0],
+            selector: name[0],
+            selected: name[0] === old,
+        })),
+        how: PICK_ONE,
+        title: 'Select loot sorting type:',
+        cancelValue: null,
+    }, helpers);
+    const values = menuSelectionValues(selected);
+    if (values.length) {
+        const choice = values.length > 1 && values[0] === old
+            ? values[1] : values[0];
+        state.flags.sortloot = choice;
+        if (state.iflags.perm_invent) update_inventory({ state });
+    }
+    return optn_ok;
+}
+
+// C ref: options.c optfn_sortvanquished() do_handler arm (3997-4009).
+// insight.c owns the ordering menu; import it when invoked because insight.js
+// imports this module for its options value formatting.
+async function handler_sortvanquished(state, helpers) {
+    const old = state.flags.vanq_sortmode;
+    const { set_vanq_order } = await import('./insight.js');
+    await set_vanq_order(true, state, {
+        menu: (menuState, spec) => optionMenuSelect(menuState, spec, helpers),
+    });
+    const [name, description] = vanqorders[state.flags.vanq_sortmode];
+    await ttyPline(
+        `'sortvanquished' ${state.flags.vanq_sortmode === old
+            ? 'not changed, still' : 'changed to'} "${name}: ${description}".`,
+        state,
+    );
+    return optn_ok;
+}
+
+// C ref: options.c handler_whatis_filter() (6279-6314).  The menu returns
+// one-based a_char values, while iflags.getloc_filter stores a zero-based
+// GFILTER value.  PICK_ONE can include both the old preselection and new row.
+async function handler_whatis_filter(state, helpers) {
+    const old = state.iflags.getloc_filter;
+    const choices = [
+        [GFILTER_NONE, 'n', 'no filtering'],
+        [GFILTER_VIEW, 'v', 'in view only'],
+        [GFILTER_AREA, 'a', 'in same area'],
+    ];
+    const selected = await optionMenuSelect(state, {
+        items: choices.map(([value, selector, text]) => ({
+            value: value + 1,
+            selector,
+            text,
+            selected: value === old,
+        })),
+        how: PICK_ONE,
+        title: 'Select location filtering when going for next/previous map position:',
+        cancelValue: null,
+    }, helpers);
+    const values = menuSelectionValues(selected);
+    if (values.length) {
+        state.iflags.getloc_filter = values.length > 1 && values[0] - 1 === old
+            ? values[1] - 1 : values[0] - 1;
+    }
+    return optn_ok;
+}
+
+// C ref: options.c handler_whatis_coord() (6206-6277).  The five selectable
+// rows are followed by the tty coordinate examples; PICK_ONE may return the
+// preselected old row before the newly selected row.
+async function handler_whatis_coord(state, helpers) {
+    const old = state.iflags.getpos_coords;
+    const choices = [
+        [GPCOORDS_COMPASS, "compass ('east' or '3s' or '2n,4w')"],
+        [GPCOORDS_COMFULL, "full compass ('east' or '3south' or '2north,4west')"],
+        [GPCOORDS_MAP, 'map <x,y>'],
+        [GPCOORDS_SCREEN, 'screen [row,column]'],
+        [GPCOORDS_NONE, 'none (no coordinates displayed)'],
+    ];
+    const verbose = state.flags.verbose;
+    const items = choices.map(([value, text]) => ({
+        value,
+        selector: value,
+        text,
+        selected: value === old,
+    }));
+    items.push(
+        { text: '' },
+        { text: `map: upper-left: <1,0>, lower-right: <${COLNO - 1},${ROWNO - 1}>`
+            + (verbose ? '; column 0 unused, off left edge' : '') },
+        { text: `screen: upper-left: [02,01], lower-right: [${ROWNO - 1 + 2},${COLNO - 1}]`
+            + (COLNO === 80 && verbose ? '; column 80 is not used' : '') },
+        { text: '' },
+    );
+    const selected = await optionMenuSelect(state, {
+        items,
+        how: PICK_ONE,
+        title: 'Select coordinate display when auto-describing a map position:',
+        cancelValue: null,
+    }, helpers);
+    const values = menuSelectionValues(selected);
+    if (values.length) {
+        state.iflags.getpos_coords = values.length > 1 && values[0] === old
+            ? values[1] : values[0];
+    }
+    return optn_ok;
+}
+
 // C ref: options.c handler_align_misc() (5586-5623).  The item values are
 // the alignment constants themselves, so the selected value can update the
 // corresponding field without another enum conversion.
@@ -4478,21 +4610,26 @@ export function optfn_scores(result, optidx, req, negated, opts, op) {
     if (req === DO_SET) {
         const reportError = message => {
             if (result.go?.opt_initial === false) {
-                // cfgfiles.c:1554-1562 has a live pline()/wait_synch() arm.
-                // Its result is discarded; the existing frame-only owner
-                // cannot supply that output, so preserve the named gap.
-                note_unported('cfgfiles.c config_erradd');
+                // cfgfiles.c:1554-1562 prints a live option error and then
+                // synchronizes the TTY, without touching the startup frame.
+                const punct = '.!?'.includes(message.at(-1)) ? '' : '.';
+                return (async () => {
+                    await ttyPline(`${message}${punct}`, result);
+                    const { tty_wait_synch } = await import('./tty_rawprint.js');
+                    await tty_wait_synch(result);
+                })();
             } else {
                 configErrorAdd(result, message);
             }
+            return null;
         };
         // string_for_opt(opts,FALSE) reports a missing value through the same
         // discarded diagnostic owner. Read its value with TRUE and route that
         // diagnostic here so a live call does not mutate a startup frame.
         op = string_for_opt(opts, true);
         if (op === '') {
-            reportError(`Missing parameter for '${opts}'`);
-            return optn_err;
+            const reported = reportError(`Missing parameter for '${opts}'`);
+            return reported ? reported.then(() => optn_err) : optn_err;
         }
         result.flags.end_top = 0;
         result.flags.end_around = 0;
@@ -4524,14 +4661,16 @@ export function optfn_scores(result, optidx, req, negated, opts, op) {
                 result.flags.end_own = false;
             } else if (initial === '-'
                        && /^[0-9]$/u.test(op[index + 1] ?? '')) {
-                reportError(
+                const reported = reportError(
                     `Values for ${allopt[optidx].name}:top and`
                     + ` ${allopt[optidx].name}:around must not be negative`,
                 );
-                return optn_silenterr;
+                return reported ? reported.then(() => optn_silenterr) : optn_silenterr;
             } else {
-                reportError(`Unknown ${allopt[optidx].name} parameter '${op.slice(index)}'`);
-                return optn_silenterr;
+                const reported = reportError(
+                    `Unknown ${allopt[optidx].name} parameter '${op.slice(index)}'`,
+                );
+                return reported ? reported.then(() => optn_silenterr) : optn_silenterr;
             }
             while (letter(op[index] ?? '')) ++index;
             while (op[index] === ' ') ++index;
@@ -8171,10 +8310,19 @@ export function optfn_pickup_types(
         state.flags.pickup_types = parsed.types;
         if (parsed.badopt) {
             // C advances op to its terminating NUL before reporting it.
-            if (initial) configErrorAdd(
-                state, `Unknown ${allopt[optidx].name} parameter ''`,
-            );
-            else note_unported('cfgfiles.c config_error_add');
+            const message = `Unknown ${allopt[optidx].name} parameter ''`;
+            if (initial) {
+                configErrorAdd(state, message);
+            } else {
+                // cfgfiles.c:config_erradd() prints the live error and then
+                // synchronizes the TTY without changing the startup frame.
+                return (async () => {
+                    await ttyPline(`${message}.`, state);
+                    const { tty_wait_synch } = await import('./tty_rawprint.js');
+                    await tty_wait_synch(state);
+                    return optn_err;
+                })();
+            }
             return optn_err;
         }
         return optn_ok;
@@ -8417,6 +8565,11 @@ const OPTION_HANDLERS = Object.freeze({
     pickup_types: (state, helpers) => optfn_pickup_types(
         state, DO_HANDLER, false, '', undefined, helpers,
     ),
+    runmode: handler_runmode,
+    sortloot: handler_sortloot,
+    sortvanquished: handler_sortvanquished,
+    whatis_filter: handler_whatis_filter,
+    whatis_coord: handler_whatis_coord,
     menu_headings: (state, helpers) => handler_menu_headings(state, helpers),
     o_status_hilites: (state, helpers) => optfn_o_status_hilites(state, DO_HANDLER, '', helpers),
     petattr: handler_petattr,

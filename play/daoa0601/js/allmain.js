@@ -45,6 +45,10 @@ import { monsterAtPosition } from './monster_location.js';
 import { seeNearbyMonsters } from './monster_observation.js';
 import { purgeDeadMonsters } from './monster_level_departure.js';
 import { restoreMonsterShape } from './monster_polymorph.js';
+import { restoreMonsterCover } from './monster_hiding.js';
+import { runDueTimers } from './timer_effects.js';
+import { finishInUseInventory } from './object_cleanup.js';
+import { askKeepRestoredSave } from './save.js';
 import { placeHeroAtRandomArrival } from './level_change.js';
 import { monsterName, monsterSpellDeathReason, monsterSubjectPronoun, possessiveName } from './monster_name.js';
 import { touchHeroWithDeath } from './monster_death_touch.js';
@@ -107,7 +111,7 @@ import { stopRun } from './runmode.js';
 import { resolveMonsterGaze } from './monster_gaze.js';
 import { resolveMonsterMagicRay } from './monster_magic_ray.js';
 import { resolveMonsterSelfExplosion } from './monster_self_explosion.js';
-import { canSpotMonster, clearMessageWindow, displayColorName, displayMessageWindow, docrt, redrawMap, bot, flush_screen, flushPendingTopline, updateStatusLines, pline, plineWithContinuation, newsym, map_invisible, randomDisplayMonsterName, see_monsters, see_objects, see_traps, show_glyph_cell, swallowed, under_ground, under_water, canSeeMonster, monsterVisible, shieldeff, } from './display.js';
+import { canSpotMonster, clearMessageWindow, displayColorName, displayMessageWindow, docrt, redrawMap, bot, flush_screen, flushPendingTopline, updateStatusLines, pline, rememberToplines, plineWithContinuation, newsym, map_invisible, randomDisplayMonsterName, see_monsters, see_objects, see_traps, show_glyph_cell, swallowed, under_ground, under_water, canSeeMonster, monsterVisible, shieldeff, } from './display.js';
 import { cansee, couldsee, vision_note_blocker_change, vision_recalc, vision_reset_new_level, hasLightSources, } from './vision.js';
 import { nhgetch } from './input.js';
 import { NO_COLOR, CLR_BRIGHT_BLUE } from './terminal.js';
@@ -353,10 +357,8 @@ export async function restoregamePreamble() {
     // pickup.c's oldcap is process-local (decl.c), not restored save state.
     game._encumbranceLevel = 0;
     // C getlev() closes dorecover() with a fixup pass over every monster on
-    // the restored current level. Its other steps — steed and engulfer
-    // relinking, placement, hidden cover, and shopkeeper residency — are
-    // restored directly from the saved graph, and elapsed time is zero at a
-    // plain restore, so restore_cham() is the piece this pass still owes.
+    // the restored current level. Ownership links survive the saved graph,
+    // but hiding cover must be rechecked before restoring each shape.
     // Births append in the port, whereas C's fmon chain keeps the newest
     // monster first. The pass runs where C runs it, before vision_reset()
     // (restore.c:926) and with program_state.restoring still set, so plain
@@ -369,20 +371,27 @@ export async function restoregamePreamble() {
     game.vision_full_recalc = 0;
     try {
         for (const monster of [...(game.level?.monsters ?? [])].reverse()) {
+            await restoreMonsterCover(monster, game);
             await restoreMonsterShape(monster, game);
             if (game.program_state.gameover)
                 return;
         }
+        game.program_state.in_getlev = false;
+        await finishInUseInventory(false);
+        // C dorecover() rebuilds vision, then expires timers while map and
+        // status output are still suppressed by program_state.restoring.
+        vision_reset_new_level();
+        game.vision_full_recalc = 1;
+        await runDueTimers();
+        if (game.program_state.gameover)
+            return;
     }
     finally {
         game.program_state.in_getlev = false;
         game.program_state.restoring = false;
-        // C dorecover() rebuilds the unsaved vision state (restore.c:926-928)
-        // and clears program_state.restoring before docrt(); docrt() pages
-        // any pending line at cls()'s message flush, as tty does.
-        vision_reset_new_level();
-        game.vision_full_recalc = 1;
     }
+    // C clears program_state.restoring before docrt(), which pages any
+    // pending line at cls()'s message flush.
     await docrt();
     // The first flush paints the display state restored with the level.
     await bot();
@@ -393,6 +402,7 @@ export async function restoregamePreamble() {
     await checkSpecialRoom();
     if (game.flags?.explore)
         await plineWithContinuation('You are in non-scoring explore/discovery mode.');
+    await askKeepRestoredSave();
     await applyCalendarMessages();
     await readEngravingAt(game.u.ux, game.u.uy, plineWithContinuation);
     await fixShopDamage(game);
@@ -440,6 +450,7 @@ async function enterTutorial() {
         game._levelCache = new Map();
     game._levelCache.set(`${oldDepth.dnum ?? 0}:${oldDepth.dlevel ?? 1}`, {
         level: oldLevel, stairs: oldStairs, savedAt: game.moves,
+        billObjects: game.billObjects ?? [],
     });
     game.u.ucamefrom = { ...oldDepth };
     await currentLuaLifecycle().changeTutorialMode(game, true);
@@ -460,7 +471,18 @@ async function enterTutorial() {
     // tutorial level's overview record; this hand-rolled transition must
     // match that mapseen creation.
     initOverviewRecord(game.u.uz, game);
+    game.billObjects = [];
     await mklev();
+    // C goto_level() neutralizes the transition's vision state right after
+    // mklev(): the vision_reset() there is followed by
+    // gv.vision_full_recalc = 0, "don't let that reenable vision yet"
+    // (do.c:1718-1719), so no message flush during the arrival can run a
+    // vision recalc before docrt() rebuilds sight on the destination.  The
+    // hand-rolled transition needs the same hold: the entry pager below
+    // reprojects the source level, and a pending recalc would repaint it
+    // through the tutorial level's freshly reset blocker table, exposing
+    // source cells the hero cannot see.
+    game.vision_full_recalc = 0;
     // goto_level() arrives through u_on_rndspot(), even when Lua restricts
     // the region to a single square.
     await placeHeroAtRandomArrival(game.level.downTeleportRegion);
@@ -553,8 +575,18 @@ function appendTurnMessage(message) {
     const game = requireInitializedGame();
     if (game._suppressMessagesUntilInput)
         return;
-    game._pending_message = game._pending_message
+    const joins = !!game._pending_message;
+    game._pending_message = joins
         ? `${game._pending_message}  ${message}` : message;
+    // update_topl()'s negotiation keeps gt.toplines in step with the
+    // deferred publisher: a joinable line extends it, otherwise the
+    // previous line is remembered first.
+    if (joins)
+        game._toplines = `${game._toplines}  ${message}`;
+    else {
+        rememberToplines();
+        game._toplines = message;
+    }
     game._last_message = game._pending_message;
     game._lastPlineMessage = message;
 }
@@ -3606,8 +3638,17 @@ export async function newgame() {
     if (g.flags?.explore)
         await plineWithContinuation('You are in non-scoring explore/discovery mode.');
 }
-// C ref: allmain.c moveloop_core()
+let playStep = null;
+export function bindPlayStep(step) {
+    playStep = step;
+}
 export async function moveloop_core() {
+    if (playStep && playStep.state === game)
+        return playStep.step();
+    return runMoveloopCore();
+}
+// C ref: allmain.c moveloop_core()
+export async function runMoveloopCore() {
     const g = requireInitializedGame();
     g.program_state.in_moveloop = true;
     if (g.program_state?.gameover) {
@@ -3806,7 +3847,7 @@ export async function moveloop(resuming) {
     await docrt();
     await flush_screen(1);
     for (;;) {
-        await moveloop_core();
+        await runMoveloopCore();
         if (game.program_state?.gameover)
             break;
     }

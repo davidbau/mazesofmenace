@@ -33,6 +33,8 @@ import { relocateObjectRandomly } from './object_teleport.js';
 import { discardMonsterInventory, dropSpecialMonsterObjects } from './monster_drop.js';
 import { removeMonsterFromGame } from './monster_departure.js';
 import { purgeDeadMonsters } from './monster_level_departure.js';
+import { restoreLevelChains } from './level_restore.js';
+import { restoreLevelPetHistory } from './monster_restore.js';
 import { exerciseWisdom } from './attrib.js';
 import { currentLuaLifecycle } from './lua/lifecycle.js';
 import { impossible } from './diagnostics.js';
@@ -104,14 +106,14 @@ import { occupied, somex, somey, somexy, somexyspace, } from './mkroom.js';
 import { createGasCloudSelection, createPoisonGasCloud, restoreLevelRegions } from './regions.js';
 import { F_LOOTED, F_WARNED, S_LDWASHER, S_LPUDDING, S_LRING, T_LOOTED, TREE_LOOTED, TREE_SWARM } from './const.js';
 import { beginObjectBurn } from './light.js';
-import { LEVEL_TIMER_KIND, OBJECT_TIMER_KIND, objectTimers, objectsInTimerGraph, scheduleLevelTimer, scheduleObjectTimer, stopAllObjectTimers, stopObjectTimer, stopLevelTimer, } from './object_timers.js';
+import { LEVEL_TIMER_KIND, OBJECT_TIMER_KIND, objectTimers, objectsInTimerGraph, restoreLevelTimers, scheduleLevelTimer, scheduleObjectTimer, stopAllObjectTimers, stopObjectTimer, stopLevelTimer, } from './object_timers.js';
 import { setMonsterApparentHeroPosition } from './monster_perception.js';
 import { objectWeight } from './weight.js';
 import { createOrcRaid, deliverOrcRaidLoot } from './orc_raid.js';
 import { blessObjectState, curseObjectState, unblessObjectState, uncurseObjectState, objectResistsDestruction, } from './object_state.js';
 import { isMultiGeneratedWeapon, isPoisonableObject, } from './object_properties.js';
 import { addCreatedObjectToContainer, addObjectToContainer } from './object_container.js';
-import { monsterEmitsLight, vision_note_blocker_change } from './vision.js';
+import { monsterEmitsLight, vision_note_blocker_change, vision_reset_new_level } from './vision.js';
 import { goodPosition } from './teleport_rules.js';
 import { randomDefensiveMonsterItem, randomMiscMonsterItem, randomOffensiveMonsterItem, } from './muse.js';
 import { SpecialSelection, match_maptyps, mapCharacterType, specialSelectionFillRect, specialSelectionMatch, } from './selvar.js';
@@ -2962,10 +2964,12 @@ export async function cloneHeroMonsterForm(state = game) {
     clone.mhp = Math.trunc(u.mh / 2);
     u.mh -= clone.mhp;
     state.context.botl = true;
+    // C cloneu() never redraws the clone's square after taming it: the glyph
+    // cached by makemon()'s newsym() (warning digit for a blind warned hero,
+    // hostile monster glyph otherwise) stays until something else redraws it.
     if (!u.uconduct)
         u.uconduct = {};
     u.uconduct.pets = (u.uconduct.pets ?? 0) + 1;
-    newsym(clone.mx, clone.my);
     return clone;
 }
 // C refs: teleport.c enexto()/collect_coords() and makemon.c makemon().
@@ -3510,7 +3514,7 @@ export function randomEngraving() {
         text: wipeoutText(pristine, Math.trunc(pristine.length / 4)),
     };
 }
-const BONES_VERSION = 16;
+const BONES_VERSION = 17;
 function bonesStorageKey(level = game.u.uz) {
     return `teleport-bones:${level?.dnum ?? 0}:${level?.dlevel ?? 1}`;
 }
@@ -3836,6 +3840,7 @@ function restoreBonesFloorOrder(level) {
 // arrive immediately after the old hero's death, on the new hero's clock.
 function restoreBonesClock(level, savedAt) {
     const adjustment = game.moves - savedAt;
+    restoreLevelPetHistory(level, adjustment);
     const restoreObjectClock = (object, frozen = false) => {
         if (!frozen && !object.ageRelative && !ageStoresFuel(object))
             object.age += adjustment;
@@ -3916,13 +3921,14 @@ async function getbones() {
     restoreEngravings(payload.level);
     const sourceDisplayLevel = game.level;
     game.level = payload.level;
-    game.stairs = payload.stairs || null;
+    game.stairs = restoreLevelChains(game.level, payload.stairs || null);
     game._heroTrack = (payload.heroTrack || []).map(point => ({
         x: point.x, y: point.y,
     }));
     restoreBonesClock(game.level, payload.savedAt);
     await renewBonesIdentities(game.level, payload.fruits);
     restoreBonesFloorOrder(game.level);
+    restoreLevelTimers(game);
     await restoreBonesMonsters(game.level, game);
     restoreLevelRegions(game, 0);
     repairBonesConnections(game.level, location);
@@ -3959,6 +3965,10 @@ export async function mklev() {
     await currentLuaLifecycle().runCallbacks(g, 'level_enter');
     await level_finalize_topology();
     g.in_mklev = false;
+    // C pairs mklev() with vision_reset() (allmain.c) before anything can
+    // query sight, so the blocker dig table never outlives the level it
+    // was built for. Direct mklev() callers get that same fresh table here.
+    vision_reset_new_level();
 }
 export function countLevelFeatures(state = game) {
     const lvl = state.level;

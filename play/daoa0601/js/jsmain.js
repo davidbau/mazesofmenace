@@ -6,17 +6,18 @@ import { createHeroState } from './hero_types.js';
 import { initRng, enableRngLog, getRngLog } from './rng.js';
 import { bindInputGate, InputGate, nhgetch } from './input.js';
 import { bindLuaLifecycle, LuaLifecycle } from './lua/lifecycle.js';
-import { newgame, moveloop_core, restoregamePreamble } from './allmain.js';
+import { bindPlayStep, newgame, restoregamePreamble, runMoveloopCore } from './allmain.js';
 import { parseNethackOptions, parseNethackrc } from './options.js';
 import { displayConfigurationErrors } from './config_errors.js';
 import { parseCharacterName } from './character_name.js';
 import { GameDisplay } from './game_display.js';
-import { DEC_TO_UNICODE, NO_COLOR } from './terminal.js';
+import { DEC_TO_UNICODE, KEY_BINDINGS, NO_COLOR } from './terminal.js';
 import { askAboutPanicSave, dismissUnhealthyRestore, hasErrorSave, restoreGame, restoreRefusedAsUnhealthy } from './save.js';
 import { PanicTermination } from './panic_termination.js';
 import { discardTutorialState } from './tutorial_state.js';
 import { initializeFruitRegistry } from './fruit.js';
 import { selectCharacter } from './character_selection.js';
+import { MAX_MSG_HISTORY } from './const.js';
 const UNICODE_TO_DEC = new Map(Object.entries(DEC_TO_UNICODE).map(([dec, unicode]) => [unicode, dec]));
 // Serialize semantic terminal cells back into the tty wire form recorded by
 // the C harness. The frozen grid intentionally stores rendered Unicode and
@@ -344,10 +345,18 @@ export class Engine {
         };
         g.iflags = { ...opts.iflags };
         g._monTelecontrol = !!opts.monTelecontrol;
+        // tty_create_nhwindow(NHW_MESSAGE) clamps the recall depth in place
+        // once the window exists; msg_history is unsigned in C, so a
+        // negative atoi() wraps before the 20..MAX_MSG_HISTORY clamp.
+        if (g.iflags.msg_history !== undefined)
+            g.iflags.msg_history = Math.max(20, Math.min(MAX_MSG_HISTORY, g.iflags.msg_history >>> 0));
         g.commandBindings = opts.commandBindings;
         g.symset = opts.symset || null;
+        g.rogueSymset = opts.rogueSymset || null;
         if (opts.boulderSym !== undefined)
             g.boulderSym = opts.boulderSym;
+        if (opts.rogueBoulderSym !== undefined)
+            g.rogueBoulderSym = opts.rogueBoulderSym;
         if (opts.preferred_pet !== undefined)
             g.preferred_pet = opts.preferred_pet;
         if (opts.tutorial_set)
@@ -407,7 +416,7 @@ export class Engine {
             if (!started)
                 return;
             while (!this.state.program_state?.gameover)
-                await moveloop_core();
+                await runMoveloopCore();
         }
         catch (error) {
             if (error instanceof PanicTermination)
@@ -450,6 +459,45 @@ export class Engine {
     // of the official ranking; see API.md.
     getAnimationFramesByStep() {
         return this.capture.animationFramesByStep;
+    }
+}
+export class NethackGame {
+    _pendingDisplay = null;
+    _pendingStorage = null;
+    _storage;
+    engine = null;
+    options;
+    constructor(options = {}) {
+        this.options = options;
+        this._storage = options.storage ?? null;
+    }
+    // Runs the game up to its first key request. Each later moveloop_core()
+    // call reads one key from the display and runs to the next request.
+    async start() {
+        const display = this._pendingDisplay ?? game.nhDisplay ?? new GameDisplay(null);
+        const engine = new Engine({
+            seed: this.options.seed ?? 0,
+            datetime: this.options.datetime ?? null,
+            nethackrc: this.options.nethackrc ?? '',
+            storage: this._pendingStorage ?? this._storage,
+            display,
+        });
+        this.engine = engine;
+        const advance = async () => {
+            // A refused character or panic save stops without a gameover.
+            if ((await engine.runUntilInputNeeded()).kind !== 'input-needed')
+                engine.state.program_state.gameover = true;
+        };
+        await advance();
+        bindPlayStep({
+            state: engine.state,
+            step: async () => {
+                if (engine.state.program_state.gameover)
+                    return;
+                engine.inputGate.feedOne(await display.readKey({ bindings: KEY_BINDINGS.VI_KEYS }));
+                await advance();
+            },
+        });
     }
 }
 // ── Per-segment runner — the contest contract ──
