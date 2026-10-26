@@ -194,6 +194,7 @@ sup {
     line-height: 0;
 }
 .pts-max { color: var(--color-text-muted); font-size: 0.85em; margin-left: 0.15em; font-weight: normal; text-transform: none; letter-spacing: 0; }
+.pts-pub { color: var(--color-text-muted); font-size: 0.85em; margin-right: 0.15em; font-weight: normal; text-transform: none; letter-spacing: 0; }
 thead th .pts-max { font-style: normal; }
 .pct { text-align: right; }
 td.pct {
@@ -791,8 +792,8 @@ async function loadLeaderboard() {
                     <td class="action">${playCell}</td>
                     <td class="action"><a class="lb-btn tests" href="${viewerUrl}" title="Open the Session Viewer for this fork">Tests</a></td>
                     <td class="pts" title="Total points: ${pctFloor(combinedPct, 2)}% of ${fmt(totalMaxPoints)} (public + held-out).">
-                        <span class="${pctClass(combinedPct)}">${fmt(pubPoints)}</span>
-                        <span class="pts-max">+ ${fmt(heldPoints)}</span>
+                        <span class="pts-pub">${fmt(pubPoints)} +</span>
+                        <span class="${pctClass(heldMaxPoints > 0 ? heldPoints / heldMaxPoints * 100 : 0)}">${fmt(heldPoints)}</span>
                     </td>
                     <td class="pct" title="PRNG match across public + held-out sessions (weighted)."><span class="${pctClass(rngPct)}">${pctFloor(rngPct, 1)}%</span></td>
                     <td class="pct" title="Screen match across public + held-out sessions."><span class="${pctClass(scrPct)}">${pctFloor(scrPct, 1)}%</span></td>
@@ -861,8 +862,8 @@ async function loadLeaderboard() {
                         })()}
                     </td>
                     <td class="pct sessions" title="Sessions fully matched (public + held-out).">
-                        <span class="${pctClass(combinedSessPct)}">${pub.passing || 0}</span>
-                        <span class="pts-max">+ ${heldPassing}</span>
+                        <span class="pts-pub">${pub.passing || 0} +</span>
+                        <span class="${pctClass(heldTotal > 0 ? heldPassing / heldTotal * 100 : 0)}">${heldPassing}</span>
                     </td>
                     <td class="sparkline"><svg viewBox="0 0 100 20" id="spark-${cat}-${i}" class="spark-svg" aria-hidden="true"></svg></td>
                 `;

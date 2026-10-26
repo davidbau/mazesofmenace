@@ -199,6 +199,7 @@ a:hover { text-decoration: underline; }
 .lb-table .pts, .lb-table .pct { text-align: right; }
 .lb-table td.pts    { font-family: var(--font-mono); font-size: 0.95em; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .lb-table .pts-max { color: var(--color-text-muted); font-size: 0.85em; margin-left: 0.15em; font-weight: normal; text-transform: none; letter-spacing: 0; }
+.lb-table .pts-pub { color: var(--color-text-muted); font-size: 0.85em; margin-right: 0.15em; font-weight: normal; text-transform: none; letter-spacing: 0; }
 .lb-updated-caption { font-size: 0.85em; color: var(--color-text-muted); text-align: right; margin: 0.4em 0 1.2em; font-style: italic; }
 .lb-table td.pct    { font-family: var(--font-mono); font-size: 0.92em; font-variant-numeric: tabular-nums; }
 .lb-table td.time   { color: var(--color-text-muted); font-size: 0.9em; white-space: nowrap; }
@@ -527,14 +528,14 @@ footer a { color: var(--color-text-muted); }
                 <td class="action">${playCell}</td>
                 <td class="action"><a class="lb-btn tests" href="${viewerUrl}" title="Open the Session Viewer for this fork">Tests</a></td>
                 <td class="pts" title="Total points: ${combinedPct.toFixed(2)}% of ${fmt(totalMaxPoints)} (public + held-out).">
-                    <span class="${PCT_CLASS(combinedPct)}">${fmt(pubPoints)}</span>
-                    <span class="pts-max">+ ${fmt(heldPoints)}</span>
+                    <span class="pts-pub">${fmt(pubPoints)} +</span>
+                    <span class="${PCT_CLASS(heldMaxPoints > 0 ? heldPoints / heldMaxPoints * 100 : 0)}">${fmt(heldPoints)}</span>
                 </td>
                 <td class="pct" title="PRNG match across public + held-out sessions (weighted)."><span class="${PCT_CLASS(rngPct)}">${rngPct.toFixed(1)}%</span></td>
                 <td class="pct" title="Screen match across public + held-out sessions."><span class="${PCT_CLASS(scrPct)}">${scrPct.toFixed(1)}%</span></td>
                 <td class="pct" title="Sessions fully matched (public + held-out).">
-                    <span class="${PCT_CLASS(combinedSessPct)}">${pub.passing || 0}</span>
-                    <span class="pts-max">+ ${heldPassing}</span>
+                    <span class="pts-pub">${pub.passing || 0} +</span>
+                    <span class="${PCT_CLASS(heldTotal > 0 ? heldPassing / heldTotal * 100 : 0)}">${heldPassing}</span>
                 </td>
             `;
             tbody.appendChild(tr);
