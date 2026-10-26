@@ -311,8 +311,8 @@ export async function finish_quest(obj, env = {}) {
 }
 
 // C ref: quest.c chat_with_leader() (281-368). Rules 1 and 3 now wire the
-// complete finish_quest() owner. The posthanks/encourage text and the remaining
-// first-meeting verdicts retain their existing bounded refusals.
+// complete finish_quest() owner. The remaining first-meeting verdicts retain
+// their bounded refusals.
 async function chat_with_leader(mtmp, ops) {
     const state = ops.state;
     const qs = state.svq.quest_status;
@@ -329,7 +329,7 @@ async function chat_with_leader(mtmp, ops) {
         if (u.uhave.amulet)
             await finish_quest(null, ops);
         else
-            ops.unsupported('returning the quest artifact before the Amulet');
+            await ops.pager('posthanks');
     } else if (u.uhave.questart) {
         /* Rule 3: you've got the artifact and are back to return it. */
         let otmp = state.invent;
@@ -338,7 +338,7 @@ async function chat_with_leader(mtmp, ops) {
         await finish_quest(otmp, ops);
     } else if (qs.got_quest) {
         /* Rule 4: you haven't got the artifact yet. */
-        ops.unsupported('a quest leader encouraging the hero');
+        await ops.pager('encourage');
     } else {
         /* Rule 5: You aren't yet acceptable - or are you? */
         let purity = 0;
@@ -348,7 +348,7 @@ async function chat_with_leader(mtmp, ops) {
             qs.met_leader = true;
             qs.not_ready = 0;
         } else {
-            ops.unsupported('a repeat audience with the quest leader');
+            await ops.pager('leader_next');
         }
 
         /* the quest leader might have passed through the portal into
@@ -386,15 +386,17 @@ async function chat_with_leader(mtmp, ops) {
     }
 }
 
-// C ref: quest.c leader_speaks() (370-391). The !mpeaceful arm delivers
-// leader_last, sets pissed_off and clears STRAT_WAITMASK so that the leader
-// starts moving; that hostile leader is outside the monster-action boundary,
-// so the whole arm refuses rather than half-porting the strategy change.
+// C ref: quest.c leader_speaks() (370-391). A hostile leader gives its final
+// speech once, records the offense, and stops waiting before its next action.
 async function leader_speaks(mtmp, ops) {
     const state = ops.state;
     const qs = state.svq.quest_status;
-    if (!mtmp.mpeaceful)
-        ops.unsupported('an angry quest leader speaking');
+    if (!mtmp.mpeaceful) {
+        if (!qs.pissed_off)
+            await ops.pager('leader_last');
+        qs.pissed_off = true;
+        mtmp.mstrategy &= ~STRAT_WAITMASK;
+    }
     /* the quest leader might have passed through the portal into the
        regular dungeon; if so, mustn't perform "backwards expulsion" */
     if (!on_level(state.u.uz, state.qstart_level))

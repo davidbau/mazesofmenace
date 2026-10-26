@@ -151,7 +151,7 @@ import { nameIndividualObject } from './individual_naming.js';
 import { nameChosenMonster } from './monster_naming_command.js';
 import { nameFloorObject } from './floor_naming.js';
 import { chooseNamingCategory } from './naming_categories.js';
-import { displayLiquidName, displayMessageWindow, newsym, feel_newsym, flushPendingTopline, flush_screen, pline, plineWithContinuation, moreUntilDismissed, docrt, setTopline, putMessageHistory, rememberToplines, bot, terrain_glyph, glyphAt, canSeeMonster, canSpotMonster, canSenseMonster, canSpotHeroSelf, unblindTelepathyRange, monsterHasWarningProjection, show_glyph_cell, swallowed, transientMonsterGlyph, randomDisplayMonsterName, randomDisplayMonsterSubject, see_monsters, see_objects, see_traps, map_invisible, unmap_invisible, map_object, unmapObject, } from './display.js';
+import { displayLiquidName, displayMessageWindow, newsym, feel_newsym, flushPendingTopline, flush_screen, pline, plineWithContinuation, moreUntilDismissed, docrt, setTopline, putMessageHistory, rememberToplines, bot, terrain_glyph, glyphAt, canSeeMonster, canSpotMonster, canSenseMonster, canSpotHeroSelf, monsterVisible, unblindTelepathyRange, monsterHasWarningProjection, show_glyph_cell, swallowed, transientMonsterGlyph, randomDisplayMonsterName, randomDisplayMonsterSubject, see_monsters, see_objects, see_traps, map_invisible, unmap_invisible, map_object, unmapObject, } from './display.js';
 import { cansee, couldsee, vision_note_blocker_change, vision_recalc, vision_reset } from './vision.js';
 import { doprevMessage, keyText, messageWindowMode } from './prevmsg.js';
 import { transformMagicLampToOilLamp } from './light.js';
@@ -299,7 +299,7 @@ import { checkHeroAttackOverexertion } from './hero_overexertion.js';
 import { wieldTool } from './wield_tool.js';
 import { doenhance, useHeroSkill, } from './skills.js';
 import { objectOwnershipPrefix, chargeUnpaidUsage, checkSpecialRoom, objectTypeKnown, shopkeeperForHero, tendedShop, } from './shk.js';
-import { gameLogEvents } from './gamelog.js';
+import { gameLogEvents, isSpoilerGameLogEvent } from './gamelog.js';
 import { corpseName, killerObjectName } from './objnam.js';
 import { heroResistsStoning, resolveImmediatePetrification, touchPetrifies } from './stoning.js';
 import { GRAVE } from './const.js';
@@ -307,7 +307,7 @@ import { disturbGrave } from './grave.js';
 import { deleteEngravingAt, maybeSmudgeEngravings, wipeHeroEngraving } from './engrave.js';
 import { canLetGo, finishInventoryRemoval } from './hero_inventory.js';
 import { removeHeroEquipment } from './hero_equipment.js';
-import { shouldShowGetposTip, showGetposTip, selectMapPosition, } from './getpos.js';
+import { shouldShowGetposTip, showGetposTip, showGetposInstructions, selectMapPosition, } from './getpos.js';
 import { onQuestStart, okToQuest } from './quest.js';
 import { finishImmediateMonsterTrap, performPetRangedAttack, triggerImmediateMonsterTrap, } from './monmove.js';
 import { hurtleHero, kickRecoilRange } from './hero_hurtle.js';
@@ -727,12 +727,66 @@ function canSeeRunMonster(monster, x, y, g = game) {
         && (!monster.minvis || !!g.u.seeInvisible)
         && !monster.mundetected;
 }
-function travelInterruptedByMonster(g = game) {
-    return !!g.level?.monsters?.some(monster => monsterHasMapPosition(monster, g)
-        && Math.abs(monster.mx - g.u.ux) <= 1
-        && Math.abs(monster.my - g.u.uy) <= 1
-        && (monster.mx !== g.u.ux || monster.my !== g.u.uy)
-        && !monster.pet && !monster.mpeaceful && cansee(monster.mx, monster.my));
+// C hack.c:lookaround() for travel (context.run == 8): moveloop runs it
+// before every automatic travel step.  Travel stops for a grid-bug
+// diagonal, a visible monster that is not peaceful-safe, a known trap
+// directly ahead of the previous step's direction, or liquid ahead that
+// the hero cannot safely cross.  Doors, objects, stairs, and the corridor
+// turning of run modes do not stop travel.
+async function travelLookaroundStops(g = game) {
+    const u = g.u;
+    const noDiagonal = MONSTER_NAME[u.umonnum ?? -1] === 'grid bug';
+    if (noDiagonal && u.dx && u.dy) {
+        await plineWithContinuation('You cannot move diagonally.');
+        return true;
+    }
+    const level = g.level;
+    if (heroIsBlind(g) || !g.context.run || !level)
+        return false;
+    const confused = (u.confusionTurns ?? 0) > 0;
+    const stunned = !!(u.stunned || (u.stunnedTurns ?? 0) > 0);
+    const hallucinating = heroIsHallucinating(g);
+    const frontX = u.ux + (u.dx ?? 0), frontY = u.uy + (u.dy ?? 0);
+    // lookaround() checks each square's monster and terrain before moving
+    // to the next square, with columns outside rows.
+    for (let x = u.ux - 1; x <= u.ux + 1; x++) {
+        for (let y = u.uy - 1; y <= u.uy + 1; y++) {
+            if (!isok(x, y) || (x === u.ux && y === u.uy))
+                continue;
+            if (noDiagonal && x !== u.ux && y !== u.uy)
+                continue;
+            const monster = monsterAtPosition(level, x, y, g);
+            // display.h:_is_safemon(): safe_dog protects a peaceful monster
+            // the hero can spot, only while unconfused, unstunned, and sane.
+            const safeMonster = monster && (g.flags.safe_dog ?? true)
+                && monster.mpeaceful && canSpotMonster(monster)
+                && !confused && !hallucinating && !stunned;
+            if (monster && M_AP_TYPE(monster) !== M_AP_FURNITURE
+                && M_AP_TYPE(monster) !== M_AP_OBJECT
+                && monsterVisible(monster, g) && !safeMonster) {
+                if (g.flags.mention_walls)
+                    await plineWithContinuation(`${monsterName(monster, { state: g, article: 'a', capitalized: true })} blocks your path.`);
+                return true;
+            }
+            const location = level.at(x, y);
+            if (!location || location.typ === STONE)
+                continue;
+            if (x === u.ux - (u.dx ?? 0) && y === u.uy - (u.dy ?? 0))
+                continue;
+            if (x !== frontX || y !== frontY)
+                continue;
+            const trap = knownRunTrap(x, y, g);
+            if (trap) {
+                await announceRunTrap(trap, g);
+                return true;
+            }
+            if (runLiquidIsDangerous(x, y, g)) {
+                await announceRunLiquid(x, y, g);
+                return true;
+            }
+        }
+    }
+    return false;
 }
 function startTravel(targetX, targetY, g = game) {
     g._runState = {
@@ -934,7 +988,7 @@ export async function lookaroundRun(state = game._runState, g = game) {
 export async function continueRun(g = game) {
     const state = g._runState;
     if (state?.mode === 8) {
-        if (travelInterruptedByMonster(g)) {
+        if (await travelLookaroundStops(g)) {
             stopRun(g);
             g.context.move = 0;
             return false;
@@ -1297,7 +1351,7 @@ async function repeatLastCommand() {
         return;
     const saved = [...(game._repeatCommands ?? [])];
     if (!saved.length) {
-        await pline('There is no command available to repeat.');
+        await plineWithContinuation('There is no command available to repeat.', { noRepeat: true });
         resetCommandVariables(true);
         return;
     }
@@ -2128,7 +2182,7 @@ export async function travelStairs(up) {
     return changed !== false;
 }
 async function doTerrainOverview() {
-    await terrainCommand(farlookLocationDescription);
+    await terrainCommand();
 }
 async function kickOuch(x, y, objectName = '') {
     await plineWithContinuation('Ouch!  That hurts!');
@@ -3228,7 +3282,7 @@ async function wizKill() {
             const tipShown = await showGetposTip();
             target = await selectMapPosition({
                 start: cursor, prompt: tipShown ? 'Move cursor to a monster:' : game._pending_message,
-                goal: 'a monster', describe: farlookLocationDescription,
+                goal: 'a monster',
             });
         }
         finally {
@@ -3324,7 +3378,7 @@ async function wizTelekinesis() {
         if (tipShown)
             await plineWithContinuation('Move cursor to a monster:');
         const target = await selectMapPosition({
-            start: cursor, goal: 'a monster', describe: farlookLocationDescription,
+            start: cursor, goal: 'a monster',
             prompt: game._pending_message,
         });
         if (!target)
@@ -3722,7 +3776,7 @@ const EXTENDED_COMMAND_HANDLERS = new Map([
     ['wizcast', dowizcast],
     ['wizgenesis', wizGenesis],
     ['wizdetect', wizDetect],
-    ['wizsmell', () => wizSmell(farlookLocationDescription)],
+    ['wizsmell', () => wizSmell()],
     ['wizbury', wizBury],
     ['wiztelekinesis', wizTelekinesis],
     ['migratemons', wizMigrateMonsters],
@@ -4712,6 +4766,8 @@ async function doDungeonOverview() {
 // C ref: insight.c:do_gamelog()/show_gamelog(ENL_GAMEINPROGRESS).  Chronicle
 // is a projection of events recorded by their owning mechanics; it does not
 // infer history from the command transcript or current aggregate counters.
+// Spoiler-flagged lines (insight.c:spoilerevent) stay hidden outside wizard
+// mode; if every entry is one, the window still shows " none".
 async function doChronicle() {
     const events = gameLogEvents(game);
     if (!events.length) {
@@ -4719,13 +4775,19 @@ async function doChronicle() {
         game.context.move = 0;
         return;
     }
+    const visible = game.flags.debug
+        ? events : events.filter(event => !isSpoilerGameLogEvent(event));
+    const lines = ['Logged events:'];
+    if (visible.length) {
+        lines.push(' Turn');
+        lines.push(...visible.map(event => `${String(event.turn).padStart(5)}: ${event.text}`));
+    }
+    else {
+        lines.push(' none');
+    }
     // show_gamelog() putstr()s one formatted line at a time, so the tty
     // text window's compress_str() and wrap apply per event line.
-    await showTextWindow([
-        'Logged events:',
-        ' Turn',
-        ...events.map(event => `${String(event.turn).padStart(5)}: ${event.text}`),
-    ]);
+    await showTextWindow(lines);
     game._pending_message = '';
     game.context.move = 0;
 }
@@ -4874,14 +4936,13 @@ async function editExtendedCommand() {
     let completion = null;
     const initiator = visibleCommandKey(game.commandBindings.keyForCommand('#'));
     // custompline(SUPPRESS_HISTORY) files the line before the prompt, then
-    // the loop head makes the "# " line the current topline (getline.c:81),
-    // and hooked_tty_getlin() marks it TOPLINE_SPECIAL_PROMPT (getline.c:56).
+    // the loop head makes the "# " line the current topline. show_topl()'s
+    // addtopl() ends TOPLINE_SPECIAL_PROMPT as soon as it draws the prompt.
     await setTopline(`${initiator} `);
     game._toplines = `${initiator} `;
     game._pending_message = initiator;
     await flush_screen(1);
     game.nhDisplay?.setCursor(initiator.length + 1, 0);
-    game._promptOwnsTopline = true;
     const redrawCommand = async () => {
         const displayedCommand = completion || command;
         game._toplines = command ? `${initiator} ${displayedCommand}` : `${initiator} `;
@@ -4913,8 +4974,8 @@ async function editExtendedCommand() {
         if (key === 16) {
             // C win/tty/getline.c hooked_tty_getlin(): the "#" editor
             // browses history with ^P like any getlin, with inread clear
-            // so full/combination modes page their windows. A prompt owns
-            // the line, so a wrapped recall never pages.
+            // so full/combination modes page their windows. A wrapped
+            // editor line pages on its first recall too.
             const mode = messageWindowMode();
             if (mode === 's' || (mode === 'c' && !doprev)) {
                 if (!doprev)
@@ -5082,7 +5143,6 @@ export async function askMonsterTeleportDestination(monster, start) {
         await plineWithContinuation(`Move cursor to ${goal}:`);
     const destination = await selectMapPosition({
         start, prompt: game._pending_message, goal,
-        describe: wizardPositionDescription,
     });
     game._pending_message = '';
     return destination;
@@ -5105,7 +5165,6 @@ export async function askTeleportDestination({ onPrompt = null } = {}) {
             ? { ...target } : { x: game.u.ux, y: game.u.uy },
         prompt: game._pending_message,
         goal: 'the desired position',
-        describe: wizardPositionDescription,
     });
     game._pending_message = '';
     return destination;
@@ -5190,24 +5249,27 @@ async function dojump() {
 // its cursor and accepts terrain-symbol cycling before one of the pick keys.
 async function dotravel() {
     game.iflags.getloc_travelmode = true;
-    const firstUse = !game.iflags.menu_requested && shouldShowGetposTip();
-    if (firstUse) {
+    // C cmd.c dotravel(): the travel pline precedes getpos() and joins the
+    // instructions pline in the tty topline transaction; only the menu path
+    // skips both.
+    if (!game.iflags.menu_requested)
         await pline('Where do you want to travel to?');
-        await showGetposTip();
-    }
     // getpos_menu() omits auto_describe()'s travel-path warning.
     const cursor = game.iflags.menu_requested
         ? await selectTravelMenuPosition(wizardPositionDescription)
         : await selectMapPosition({
             start: game._travelTarget
                 ? { ...game._travelTarget } : { x: game.u.ux, y: game.u.uy },
-            prompt: firstUse
-                ? "(For instructions type a '?')  Move cursor to the desired destination:"
-                : game.flags?.verbose
-                    ? "Where do you want to travel to?  (For instructions type a '?')"
-                    : 'Where do you want to travel to?',
+            prompt: async () => {
+                // getpos() consumes a queued direction before handle_tip() and
+                // the instructions line; only keyboard selection needs these.
+                const firstUse = await showGetposTip();
+                await showGetposInstructions();
+                if (firstUse)
+                    await pline('Move cursor to the desired destination:');
+                return game._pending_message;
+            },
             goal: 'the desired destination',
-            describe: wizardPositionDescription,
         });
     if (!cursor) {
         game.iflags.getloc_travelmode = false;
@@ -5303,10 +5365,6 @@ async function doFarlook(quick = true) {
                 start: position, force: quick,
                 prompt: game._pending_message || game._retained_message,
                 goal: 'a monster, object or location',
-                describe: async (x, y) => {
-                    const screen = screenDescription(x, y, '');
-                    return screen.needsDetail ? await farlookLocationDescription(x, y) || screen.firstMatch : screen.firstMatch;
-                },
             });
             if (!cursor)
                 break;
@@ -6269,7 +6327,6 @@ async function applyPolearm(item, autohit = false) {
         state: game,
         autohit,
         ensureWielded: () => wieldTool(item, 'swing', { swapWeapons: doswapweapon }, game),
-        describeTarget: wizardPositionDescription,
     });
     if ('heroDied' in result && result.heroDied)
         return;
@@ -6420,6 +6477,9 @@ async function applyTool(item, underlay) {
         }
         const direction = await promptDirection();
         if (!direction) {
+            // use_whip() reports ECMD_CANCEL when getdir() is refused;
+            // rhack() clears both command queues for that cancellation.
+            resetCommandVariables(true);
             game.context.move = 0;
             return item;
         }
@@ -6468,7 +6528,6 @@ async function applyTool(item, underlay) {
         const result = await useGrapplingHook(item, {
             state: game,
             ensureWielded: () => wieldTool(item, 'cast', { swapWeapons: doswapweapon }, game),
-            describeTarget: wizardPositionDescription,
             hurtle: (dx, dy) => hurtleHero(dx, dy, 1, {
                 finishTeleport: finishTeleportArrival,
                 gotoLevel,
@@ -6902,8 +6961,10 @@ async function dofire(cannedShotLimit = null) {
             }
         }
         const throwResult = await throwCommand(fireObject, true, shotLimit);
-        // dofire() returns the time spent unwielding even if throw_obj()
-        // cancels. Only a cancellation without that elapsed turn clears recall.
+        // dofire() returns the quiver refill's ECMD_TIME in place of the
+        // cancelled throw's ECMD_CANCEL (dothrow.c:585); rhack() clears the
+        // queues only for CANCEL|FAIL, so a refill that spent the turn
+        // keeps them.
         if (quiverSelectionSpentTime)
             game.context.move = 1;
         else if (throwResult === 'cancelled')
@@ -7539,6 +7600,12 @@ async function domoveCore(dx, dy) {
         u.uy0 = u.uy;
         u.ux = monster.mx;
         u.uy = monster.my;
+        // hack.c:domove_core() applies the shared destination-monster block
+        // to u.ustuck too: nomul(0) for a non-safe monster or an explicit
+        // fight prefix cancels a count or run before do_attack(), while
+        // requesting a full status update.
+        if (!heroMayDisplaceMonster(monster) || game.context.forcefight)
+            nomul(0, game);
         return attackHostileMonster(monster, monster.mx, monster.my);
     }
     if (await airTurbulenceStopsHero())

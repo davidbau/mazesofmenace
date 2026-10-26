@@ -52,6 +52,9 @@ async function editLine(prompt, accepts, { suppressStatus = false, inMenu = fals
             game.nhDisplay?.putstr(0, row, line.slice(row * width, (row + 1) * width), NO_COLOR);
         }
         game.nhDisplay?.setCursor(cursorColumn, cursorRow);
+        // show_topl() draws the prompt through addtopl(), ending
+        // TOPLINE_SPECIAL_PROMPT before any answer is typed.
+        game._promptOwnsTopline = false;
     };
     const finish = (result) => {
         clearMessageWindow(renderedRows);
@@ -81,10 +84,8 @@ async function editLine(prompt, accepts, { suppressStatus = false, inMenu = fals
     }
     clearSuppressedStatus();
     renderEditor();
-    // hooked_tty_getlin() marks the line TOPLINE_SPECIAL_PROMPT
-    // (getline.c:56), and the loop head keeps gt.toplines equal to the
-    // query and typed text.
-    game._promptOwnsTopline = true;
+    // hooked_tty_getlin()'s loop head keeps gt.toplines equal to the
+    // query and typed text; typing uses putsyms(), without word wrapping.
     game._toplines = `${prompt} ${value}`;
     let doprev = false;
     for (;;) {
@@ -163,8 +164,7 @@ async function editLine(prompt, accepts, { suppressStatus = false, inMenu = fals
             }
         }
         game._pending_message = `${prompt} ${value}`;
-        // The loop head rebuilds gt.toplines from the query and the text
-        // typed so far before every key (getline.c:81).
+        // The loop head rebuilds gt.toplines from the query and typed text.
         game._toplines = game._pending_message;
         clearSuppressedStatus();
         renderEditor();
@@ -181,6 +181,9 @@ function renderChoicePrompt(message) {
     }
     const length = message.length;
     display.setCursor(length ? (length - 1) % width + 1 : 0, length ? Math.floor((length - 1) / width) : 0);
+    // show_topl() draws the prompt through addtopl(), ending
+    // TOPLINE_SPECIAL_PROMPT before any answer is typed (topl.c:428).
+    game._promptOwnsTopline = false;
 }
 // C tty_yn_function(): Escape prefers quit, then no; whitespace chooses
 // the displayed default. Invalid keys leave the same question active.
@@ -262,8 +265,9 @@ export async function tty_yn_function(query, responses, defaultAnswer = '', visi
     await setTopline(message);
     await flush_screen(1);
     renderChoicePrompt(message);
-    // tty_yn_function() marks the line TOPLINE_SPECIAL_PROMPT (topl.c:402).
-    game._promptOwnsTopline = true;
+    // custompline(SUPPRESS_HISTORY) drew the question through
+    // show_topl()'s addtopl(), which already ended TOPLINE_SPECIAL_PROMPT;
+    // an unread wrapped question pages on recall like any other line.
     let displayed = message;
     let coveredRows = (game.nhDisplay?.cursorRow ?? 0) + 1;
     const paint = (text) => {
