@@ -5,8 +5,16 @@ import { stopRun } from './runmode.js';
 import { clearCommandKeys } from './input.js';
 import { clearRepeatCommand } from './command_repeat.js';
 // C cmd.c:reset_cmd_vars(). Full command_count belongs to the next parse.
+// Unlike end_running(), reset_cmd_vars() zeroes context.run directly: no
+// time repaint is queued and the terrain classifier is not recomputed.
 export function resetCommandVariables(clearQueues) {
-    stopRun();
+    game.context.run = 0;
+    if (game._runState?.mode === 8)
+        delete game._runState.visited;
+    game._runState = null;
+    game.context.mv = false;
+    game.context.travel = false;
+    game.context.travel1 = false;
     game.context.nopick = false;
     game.context.forcefight = false;
     game.context.move = 0;
@@ -14,10 +22,14 @@ export function resetCommandVariables(clearQueues) {
     game.iflags.menu_requested = false;
     game._movementAttempt = null;
     if (clearQueues) {
-        game._cannedCommands = [];
-        clearCommandKeys();
+        clearCannedCommands();
         clearRepeatCommand();
     }
+}
+// C cmdq_clear(CQ_CANNED): commands and their answers share one queue.
+export function clearCannedCommands(state = game) {
+    state._cannedCommands = [];
+    clearCommandKeys();
 }
 // C has one multi counter; involuntary delays have a positive mirror here.
 export function currentMulti(state = game) {
@@ -47,7 +59,7 @@ export function nomul(value, state = game) {
     if (value === 0)
         state._helplessReason = null;
     stopRun(state);
-    state._cannedCommands = [];
+    clearCannedCommands(state);
 }
 // Keep the full command count and any occupation. A timed occupation may
 // still need its final callback after the remaining multi becomes zero.

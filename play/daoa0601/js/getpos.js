@@ -3,7 +3,7 @@
 import { COLNO, DOOR, GFILTER_NONE, GFILTER_VIEW, HI_ZAP, Invocation_lev, LOOK_ONCE, LOOK_QUICK, LOOK_TRADITIONAL, LOOK_VERBOSE, NHW_MENU, PICK_ONE, ROWNO, VIBRATING_SQUARE, WEB, TER_DETECT, TER_MAP, TER_MON, TER_OBJ, } from './const.js';
 import { clearMessageWindow, flush_screen, glyphAt, lastDirtyMapCursor, newsym_force, pline, plineWithContinuation, showUnrememberedTopline, terrain_glyph, } from './display.js';
 import { game } from './gstate.js';
-import { readchar } from './input.js';
+import { readcharPoskey, takeCommandPosition } from './input.js';
 import { currentLuaLifecycle } from './lua/lifecycle.js';
 import { MONSTER_NAME } from './monster_data.js';
 import { BOULDER, ROCK } from './object_data.js';
@@ -126,8 +126,9 @@ function matchingGetposSymbols(key, state) {
     }
     return matching;
 }
-// C glyphs.c:glyph_to_cmap(), restricted to the eligible getpos features.
-function getposGlyphSymbol(glyph) {
+// C glyphs.c:glyph_to_cmap(): the displayed glyph number to its defsyms[]
+// index, mapping each branch wall range back onto the base symbols.
+export function glyphToCmapSymbol(glyph) {
     if (glyph === undefined)
         return null;
     if (glyph === GlyphOffset.cmapStone)
@@ -146,7 +147,9 @@ function getposGlyphSymbol(glyph) {
         return glyph - GlyphOffset.cmapC + CmapSymbol.digbeam;
     return null;
 }
-function knownVibratingSquareAt(x, y, state) {
+// C getpos.c:known_vibrating_square_at(): only the genuine invocation
+// position counts, and only once the trap itself is known.
+export function knownVibratingSquareAt(x, y, state) {
     const invocation = state.level?.invocationPosition;
     return Invocation_lev(state.u.uz, state) && invocation?.x === x && invocation.y === y
         && !!state.level?.traps.some(trap => trap.tx === x && trap.ty === y
@@ -156,18 +159,18 @@ function getposFeatureMatches(x, y, key, matching, state) {
     const loc = state.level?.at?.(x, y);
     if (!loc)
         return false;
-    const current = getposGlyphSymbol(glyphAt(x, y, state)?.glyph);
+    const current = glyphToCmapSymbol(glyphAt(x, y, state)?.glyph);
     if (current !== null && matching.has(current))
         return true;
     if (state.level?.flags.hero_memory !== false && !state.iflags.terrainmode) {
-        const remembered = getposGlyphSymbol(loc.remembered_glyph?.glyph);
+        const remembered = glyphToCmapSymbol(loc.remembered_glyph?.glyph);
         if (remembered !== null && matching.has(remembered))
             return true;
     }
     if (key === '~' && knownVibratingSquareAt(x, y, state))
         return true;
     if (loc.seenv) {
-        const background = getposGlyphSymbol(terrain_glyph(loc, x, y).glyph);
+        const background = glyphToCmapSymbol(terrain_glyph(loc, x, y).glyph);
         if (background !== null && matching.has(background))
             return true;
     }
@@ -212,7 +215,7 @@ export function isGetposPickCharacter(ch) {
 }
 // getpos() flushes the existing glyph buffer. Recalculating sight here would
 // discover warnings or erase unseen-monster memory in the middle of a turn.
-export async function paintGetposCursor(cursor, message, markedSpots = null) {
+export async function paintGetposCursor(cursor, message, markedSpots = null, { flushPending = false } = {}) {
     if (message !== null)
         game._pending_message = message;
     // display.c:tmp_at() with DISP_BEAM shows the glyph only on squares the
@@ -231,7 +234,7 @@ export async function paintGetposCursor(cursor, message, markedSpots = null) {
     // redisplay stays unpainted.
     await flush_screen(1);
     if (message)
-        showUnrememberedTopline(message);
+        showUnrememberedTopline(message, { flushPending });
     game.nhDisplay?.setCursor(cursor.x - 1, cursor.y + 1);
     return markers;
 }
@@ -347,6 +350,18 @@ export async function describeGetposLocation(x, y) {
     return screen.needsDetail
         ? await farlookLocationDescription(x, y) || screen.firstMatch : screen.firstMatch;
 }
+// C getpos.c:auto_describe(), also used by cmd.c:doclicklook().
+export async function autoDescribePosition(x, y) {
+    const description = await describeSelectedPosition(null, { x, y }, null);
+    if (!description)
+        return;
+    game._pending_message = '';
+    game._retained_message = description;
+    game._cursorOverride = [x - 1, y + 1];
+    await flush_screen(0);
+    showUnrememberedTopline(description, { flushPending: true });
+    game.nhDisplay?.setCursor(x - 1, y + 1);
+}
 // selection_force_newsyms() redraws by column, then row. Hallucinated glyphs
 // consume display randomness in that order, independently of target cycling.
 function validMapSquares(isValidLocation) {
@@ -398,7 +413,7 @@ function getposArea(state) {
         const location = state.level?.at(tx, ty);
         if (!location || tx < 1 || tx >= COLNO || ty < 0 || ty >= ROWNO)
             return null;
-        const symbol = getposGlyphSymbol(terrain_glyph(location, tx, ty).glyph);
+        const symbol = glyphToCmapSymbol(terrain_glyph(location, tx, ty).glyph);
         if (symbol === null)
             return 0;
         if (symbol >= CmapSymbol.room && symbol <= CmapSymbol.darkroom
@@ -522,6 +537,9 @@ export async function selectTravelMenuPosition(describe) {
     }
 }
 export async function selectMapPosition({ start, prompt, goal, describe, afterPaint = null, isValidLocation = null, highlightHero = true, force = true, }) {
+    const queued = game._inDoAgain ? undefined : takeCommandPosition();
+    if (queued !== undefined)
+        return queued ? { ...queued, pickType: LOOK_TRADITIONAL } : null;
     const cursor = { ...start };
     const savedDirection = { dx: game.u.dx, dy: game.u.dy, dz: game.u.dz };
     const movePrompt = `Move cursor to ${goal}:`;
@@ -571,6 +589,8 @@ export async function selectMapPosition({ start, prompt, goal, describe, afterPa
         }
         return validity.cycle;
     };
+    const commandBindings = game.commandBindings;
+    commandBindings.lockMouseButtons(true);
     try {
         if (isValidLocation)
             setMapPositionHighlights(isValidLocation, hilite.state === 'background');
@@ -580,12 +600,16 @@ export async function selectMapPosition({ start, prompt, goal, describe, afterPa
             // pline() owns notices and goals, including their pager cleanup.
             // Cursor redraws only supply new text for the initial prompt or autodescribe.
             let message = firstPaint ? prompt : null;
+            // auto_describe() reports through a suppressed-history putstr,
+            // which first moves the pending top line into ^P recall.
+            let messageFlushesPending = false;
             if (showGoal) {
                 await pline(movePrompt);
                 showGoal = false;
             }
             else if (!firstPaint && autoDescription() && !clearMessageOnExit) {
                 message = await describeSelectedPosition(describe, cursor, isValidLocation);
+                messageFlushesPending = message !== null;
             }
             // The symbol callback runs only when entering that state. Cursor
             // movement keeps its temporary glyphs until a toggle or refresh.
@@ -593,7 +617,7 @@ export async function selectMapPosition({ start, prompt, goal, describe, afterPa
                 ? validMapSquares(isValidLocation).filter(({ x, y }) => cansee(x, y)
                     && (highlightHero || x !== game.u.ux || y !== game.u.uy))
                 : null;
-            const painted = await paintGetposCursor(cursor, message, paintedSpots);
+            const painted = await paintGetposCursor(cursor, message, paintedSpots, { flushPending: messageFlushesPending });
             if (painted)
                 marking = painted;
             if (firstPaint && initialMapCursor)
@@ -604,7 +628,8 @@ export async function selectMapPosition({ start, prompt, goal, describe, afterPa
             const queued = takeRepeatCommand();
             if (queued && queued.kind !== 'key')
                 return null;
-            let key = queued ? queued.key : (await readchar('position')) & 255;
+            let read = queued ? { key: queued.key, click: null } : await readcharPoskey();
+            let key = read.key & 255;
             if (!queued && game.iflags.remember_getpos)
                 rememberCommandKey(key);
             if (autoDescription())
@@ -616,8 +641,15 @@ export async function selectMapPosition({ start, prompt, goal, describe, afterPa
             let fast = false;
             if (key === game.commandBindings.keyForCommand('run')
                 || key === game.commandBindings.keyForCommand('rush')) {
-                key = (await readchar('position')) & 255;
+                read = await readcharPoskey();
+                key = read.key & 255;
                 fast = true;
+            }
+            if (key === 0) {
+                // Native repeat stores the click's NUL key without its
+                // coordinates; getpos initializes those to the hero square.
+                const target = read.click ?? { x: game.u.ux, y: game.u.uy };
+                return { x: target.x, y: target.y, pickType: LOOK_TRADITIONAL };
             }
             const ch = String.fromCharCode(key);
             const pickType = mapPositionPickType(key);
@@ -795,6 +827,7 @@ export async function selectMapPosition({ start, prompt, goal, describe, afterPa
         }
     }
     finally {
+        commandBindings.lockMouseButtons(false);
         if (clearMessageOnExit)
             clearMessageWindow();
         const hero = game.u;
