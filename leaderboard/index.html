@@ -495,6 +495,12 @@ td.pct {
 const DATA_URL = 'data.json';
 const GRANDFATHERED_URL = 'grandfathered.json';
 const CATEGORY_ORDER = ['transpiled', 'agentic', 'other', 'none'];
+// An entrant still on the unmodified contest template (it scores 15 public
+// points and nothing else) who has not declared a category is not shown.
+const TEMPLATE_PUBLIC_POINTS = 15;
+const isUndeclaredTemplate = (team, cat) => cat === 'none'
+    && (team.public?.points || 0) === TEMPLATE_PUBLIC_POINTS
+    && !(team.public?.passing) && !(team.heldOut?.points);
 
 // Hours since the last successful mirror past which the caption warns.
 // See the .table-caption.stale CSS note for how these were chosen.
@@ -651,7 +657,10 @@ async function loadLeaderboard() {
 
         const allTeams = (data.teams || []).slice().sort(SCORE_SORT);
         const byCat = Object.fromEntries(CATEGORY_ORDER.map((c) => [c, []]));
-        allTeams.forEach((t) => byCat[resolveCategory(t, grandfathered)].push(t));
+        allTeams.forEach((t) => {
+            const cat = resolveCategory(t, grandfathered);
+            if (!isUndeclaredTemplate(t, cat)) byCat[cat].push(t);
+        });
 
         const fmt = (n) => Number(n || 0).toLocaleString();
 

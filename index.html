@@ -409,6 +409,12 @@ footer a { color: var(--color-text-muted); }
 // at scoring time. See judge/scripts/score-fork.sh.
 (async function () {
     const CATEGORY_ORDER = ['transpiled', 'agentic', 'other', 'none'];
+    // An entrant still on the unmodified contest template (it scores 15 public
+    // points and nothing else) who has not declared a category is not shown.
+    const TEMPLATE_PUBLIC_POINTS = 15;
+    const isUndeclaredTemplate = (team, cat) => cat === 'none'
+        && (team.public?.points || 0) === TEMPLATE_PUBLIC_POINTS
+        && !(team.public?.passing) && !(team.heldOut?.points);
     const PCT_CLASS = (pct) => pct >= 100 ? 'pass' : (pct >= 50 ? 'partial' : 'fail');
     const TIME_AGO = (ts) => {
         const m = Math.floor((Date.now() - new Date(ts).getTime()) / 60000);
@@ -454,7 +460,10 @@ footer a { color: var(--color-text-muted); }
 
     const allTeams = (data.teams || []).slice().sort(SCORE_SORT);
     const byCat = Object.fromEntries(CATEGORY_ORDER.map((c) => [c, []]));
-    allTeams.forEach((t) => byCat[resolveCategory(t)].push(t));
+    allTeams.forEach((t) => {
+        const cat = resolveCategory(t);
+        if (!isUndeclaredTemplate(t, cat)) byCat[cat].push(t);
+    });
 
     const tbody = document.getElementById('lb-tbody');
     const table = document.getElementById('lb-table');
