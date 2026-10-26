@@ -526,64 +526,44 @@ article tbody tr:nth-child(even) { background: var(--parchment-dark); }
 <p>Most of the analyses above look at nodes: does a function exist, does a string exist, does a constant have the right value. Several entries keep lists of C functions and mark each as ported. richie3366's ledger even extracts the C call graph, but it uses the edges only to rank work by how reachable a function is. xeophon's C inventory says the limitation plainly in its first line: "A JavaScript symbol with the same name says nothing about its missing branches or callers."</p>
 <p>The next step is to compare the edges. Tally the static call graph of the C, tally the static call graph of the JavaScript, and line them up function by function. Every edge that C has and JavaScript lacks is a specific place to audit. Every edge JavaScript has and C lacks is another.</p>
 <p>Here is that comparison for one function, <code>mount_steed()</code>, which runs when you try to climb onto a saddled pet with <code>#ride</code>. Knights start the game with a saddled pony, so it is an ordinary thing to do. The C function is about 190 lines and calls about 45 different functions, most of them checks that stop you from mounting: you are hallucinating, your legs are wounded, the pony is trapped, your armor is rusty, and so on.</p>
-<p>For each strong hand port, I listed the functions C's <code>mount_steed()</code> calls that the port's <code>mount_steed()</code> never reaches, then read the code to throw out renames. Six calls are left; here are four of them:</p>
+<p>For each strong hand port, I listed the functions C's <code>mount_steed()</code> calls that the port's <code>mount_steed()</code> never reaches, then read the code to throw out renames. Six calls are left; here are four of them. richie3366, lockwo and daoa0601 make every one of these calls, so only the other three ports appear:</p>
 <table>
 <thead>
 <tr>
-<th>C call in <code>mount_steed()</code></th>
-<th>What it handles</th>
-<th>richie3366</th>
-<th>lockwo</th>
-<th>daoa0601</th>
-<th>jon-bell</th>
-<th>vtjeng</th>
-<th>rohitgandikota</th>
+<th>C call in <code>mount_steed()</code> and what it handles</th>
+<th style="white-space:nowrap">jon-bell</th>
+<th style="white-space:nowrap">vtjeng</th>
+<th style="white-space:nowrap">rohitgandikota</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>test_move()</code></td>
-<td>no mounting diagonally through a doorway or a tight squeeze</td>
-<td>yes</td>
-<td>yes</td>
-<td>yes</td>
+<td><code>test_move()</code>: no mounting diagonally through a doorway or a tight squeeze</td>
 <td>yes</td>
 <td>yes</td>
 <td><strong>no</strong></td>
 </tr>
 <tr>
-<td><code>instapetrify()</code></td>
-<td>touching a cockatrice you try to ride</td>
-<td>yes</td>
-<td>yes</td>
-<td>yes</td>
+<td><code>instapetrify()</code>: touching a cockatrice you try to ride</td>
 <td>yes</td>
 <td><strong>stub</strong></td>
 <td><strong>no</strong></td>
 </tr>
 <tr>
-<td><code>m_unleash()</code></td>
-<td>non-Knights cost the pet a point of tameness on every attempt; at zero it resists</td>
-<td>yes</td>
-<td>yes</td>
-<td>yes</td>
+<td><code>m_unleash()</code>: non-Knights cost the pet a point of tameness on every attempt; at zero it resists</td>
 <td>yes</td>
 <td>yes</td>
 <td><strong>no</strong></td>
 </tr>
 <tr>
-<td><code>hliquid()</code></td>
-<td>no mounting while underwater</td>
-<td>yes</td>
-<td>yes</td>
-<td>yes</td>
+<td><code>hliquid()</code>: no mounting while underwater</td>
 <td><strong>no</strong></td>
 <td>yes</td>
 <td><strong>no</strong></td>
 </tr>
 </tbody>
 </table>
-<p>The table is short because these are strong ports. Half of them have every branch. Each of the other three has a different blind spot:</p>
+<p>Each of these three has a different blind spot:</p>
 <ul>
 <li><p><strong>jon-bell</strong> goes straight from the tameness check to the saddle check, skipping the underwater test, so you can mount a non-swimming steed while underwater.</p></li>
 <li><p><strong>vtjeng</strong> prints "You touch the cockatrice." and then calls <code>note_unported('trap.c instapetrify')</code>. That is an honest label for an unfinished branch: the hero should turn to stone, and does not.</p></li>
