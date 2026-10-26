@@ -435,7 +435,7 @@ td.pct {
   <th class="pct supplemental" title="Linear fit (startup + per-move) on the offline scoring path. Not part of the official ranking.">Speed<sup>†</sup></th>
   <th class="pct supplemental" title="Two-part browser-playability check: (1) the fork's index.html loads in real headless Chromium with no script errors or failed module fetches; (2) per-keystroke aggregate cost stays under 5 ms/move. Both must pass. Not part of the official ranking.">Playable<sup>†</sup></th>
   <th class="pct sessions">Sessions <span class="pts-max">/ <span id="sess-total">100</span></span></th>
-  <th class="sparkline">Progress</th>
+  <th class="sparkline" title="Percent of all screens matched (public + held-out) at each scoring run. The line steps on October 25, 2026, when 12 held-out sessions were added.">Progress</th>
 </tr>
 </thead>
 <tbody id="tbody">
@@ -566,23 +566,29 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 function drawSparkline(svg, history) {
     while (svg.firstChild) svg.removeChild(svg.firstChild);
     if (!history) return;
-    history = history.filter(p => Date.parse(p.ts) >= RULES_CUTOFF_MS);
+    history = history.filter(p => Date.parse(p.ts) >= RULES_CUTOFF_MS && p.heldMaxPoints != null);
     if (history.length < 2) return;
-
-    // Older entries wrote `passing`; newer entries write `points` /
-    // `maxPoints`. Fall back gracefully across the schema bump.
-    const valueOf = (p) => (p.points != null ? p.points : (p.passing || 0));
-    const max = Math.max(...history.map(valueOf), 1);
-
-    const stroke = getComputedStyle(document.documentElement)
-        .getPropertyValue('--color-sparkline').trim();
 
     const innerW = SPARK_W - SPARK_PAD_R;
     const innerH = SPARK_H - 2 * SPARK_PAD_V;
 
+    // Percent of public + held-out screens matched. The held-out maximum
+    // grew when the 12 supplement sessions joined the official ranking
+    // (2026-10-25), so raw points would show a false jump there.
+    const valueOf = (p) => 100 * (p.points + p.heldPoints) / (p.maxPoints + p.heldMaxPoints);
+    // Scale to the series' own range, at least 5 points tall, so a climb
+    // from 72% to 99% fills the box instead of a sliver of it.
+    const vals = history.map(valueOf);
+    const lo = Math.min(...vals);
+    const hi = Math.max(...vals, lo + 5);
+    const yOf = (p) => SPARK_H - SPARK_PAD_V - ((valueOf(p) - lo) / (hi - lo)) * innerH;
+
+    const stroke = getComputedStyle(document.documentElement)
+        .getPropertyValue('--color-sparkline').trim();
+
     const pts = history.map((p, i) => {
         const x = (i / (history.length - 1)) * innerW;
-        const y = SPARK_H - SPARK_PAD_V - (valueOf(p) / max) * innerH;
+        const y = yOf(p);
         return `${x.toFixed(2)},${y.toFixed(2)}`;
     }).join(' ');
 
@@ -597,7 +603,7 @@ function drawSparkline(svg, history) {
 
     const last = history[history.length - 1];
     const lx = innerW;
-    const ly = SPARK_H - SPARK_PAD_V - (valueOf(last) / max) * innerH;
+    const ly = yOf(last);
     const dot = document.createElementNS(SVG_NS, 'circle');
     dot.setAttribute('cx', lx.toFixed(2));
     dot.setAttribute('cy', ly.toFixed(2));
