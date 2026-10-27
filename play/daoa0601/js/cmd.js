@@ -234,7 +234,7 @@ import { heroCanOoze } from './monster_perception.js';
 import { isLavaAt, isPoolAt, isPoolOrLavaAt } from './terrain_properties.js';
 import { drawbridgeUnderlyingType } from './drawbridge_terrain.js';
 import { dosave } from './save.js';
-import { arriveTravel, captureRunmodeDelay, startRun, stopRun } from './runmode.js';
+import { arriveTravel, captureRunmodeDelay, startRun, startWalkRepeat, stopRun } from './runmode.js';
 import { armorSlotFor, armorSimpleName, armorOffMessage, findArmorClass, heroIsDisplaced, heroKnowsLavaWalking, heroKnowsWaterWalking, removeHeroArmor, wearHeroArmor, } from './armor.js';
 import { findMonsterArmorClass, } from './monworn.js';
 import { finishHeroMonsterKill, finishHeroMonsterKillOutcome } from './hero_monster_death.js';
@@ -785,8 +785,8 @@ function startTravel(targetX, targetY, g = game) {
         mode: 8,
         targetX,
         targetY,
-        lastStrTurn: 0,
     };
+    g.lastStrTurn = 0;
     g._travelTarget = { x: targetX, y: targetY };
     if (!g.multi)
         g.multi = Math.max(COLNO, ROWNO);
@@ -809,7 +809,11 @@ export async function lookaroundRun(state = game._runState, g = game) {
     }
     if (heroIsBlind(g))
         return true;
-    if (state.mode === 0)
+    // C lookaround() reads svc.context.run live at every repeated step;
+    // a counted walk keeps whatever value an earlier rush or travel left
+    // behind, so the checks cannot key off this repeat's own mode.
+    const run = g.context.run ?? 0;
+    if (run === 0)
         return true;
     const u = g.u;
     let corrct = 0;
@@ -840,7 +844,7 @@ export async function lookaroundRun(state = game._runState, g = game) {
                 && !heroIsHallucinating(g);
             const visibleHostile = visibleMonster && !safeMonster;
             if (visibleMonster && (infront
-                || (state.mode !== 1 && visibleHostile))) {
+                || (run !== 1 && visibleHostile))) {
                 if (g.flags.mention_walls)
                     await plineWithContinuation(`${monsterName(monster, { state: g, article: 'a', capitalized: true })} blocks your path.`);
                 return false;
@@ -855,11 +859,11 @@ export async function lookaroundRun(state = game._runState, g = game) {
                 continue;
             let corridorLike = false;
             const trap = knownRunTrap(x, y, g);
-            if (trap && state.mode !== 1 && infront) {
+            if (trap && run !== 1 && infront) {
                 await announceRunTrap(trap, g);
                 return false;
             }
-            if (trap && state.mode === 1) {
+            if (trap && run === 1) {
                 corridorLike = true;
             }
             else if (IS_OBSTRUCTED(typ) || typ === ROOM || IS_AIR(typ)
@@ -871,15 +875,18 @@ export async function lookaroundRun(state = game._runState, g = game) {
                 if (closed) {
                     if (x !== u.ux && y !== u.uy)
                         continue;
-                    if (state.mode !== 1) {
+                    if (run !== 1) {
                         if (g.flags.mention_walls)
                             await plineWithContinuation('You stop in front of the door.');
                         return false;
                     }
                     corridorLike = true;
                 }
-                else if (state.mode === 1) {
+                else if (run === 1) {
                     corridorLike = true;
+                }
+                else if (run === 8) {
+                    continue;
                 }
                 else if (monster) {
                     continue;
@@ -908,11 +915,17 @@ export async function lookaroundRun(state = game._runState, g = game) {
                 continue;
             }
             else {
-                if (state.mode === 1) {
+                if (run === 1) {
                     // For run mode 1, stairs, furniture, and other non-room
                     // locations participate in corridor routing (the C
                     // bcorr branch) instead of being interesting stop points.
                     corridorLike = true;
+                }
+                else if (run === 8) {
+                    // hack.c:4012: a leftover travel value rides a counted
+                    // walk without travel set, so objects and stairs ahead
+                    // are not stop points for it.
+                    continue;
                 }
                 else if (monster) {
                     continue;
@@ -929,7 +942,7 @@ export async function lookaroundRun(state = game._runState, g = game) {
             }
             if (!corridorLike || currentTyp === ROOM)
                 continue;
-            if (state.mode === 1 || state.mode === 3) {
+            if (run === 1 || run === 3 || run === 8) {
                 const distance = runDist2(x, y, targetX, targetY);
                 if (distance > 2)
                     continue;
@@ -945,12 +958,12 @@ export async function lookaroundRun(state = game._runState, g = game) {
             corrct++;
         }
     }
-    if (corrct > 1 && state.mode === 2) {
+    if (corrct > 1 && run === 2) {
         if (g.flags.mention_walls)
             await plineWithContinuation('The corridor widens here.');
         return false;
     }
-    if ((state.mode === 1 || state.mode === 3) && !noturn && !m0 && i0
+    if ((run === 1 || run === 3 || run === 8) && !noturn && !m0 && i0
         && (corrct === 1 || (corrct === 2 && i0 === 1))) {
         let turn;
         if (i0 === 2) {
@@ -965,9 +978,9 @@ export async function lookaroundRun(state = game._runState, g = game) {
             turn = ((x0 - u.ux === y0 - u.uy && !state.dy)
                 || (x0 - u.ux !== y0 - u.uy && state.dy)) ? 1 : -1;
         }
-        turn += state.lastStrTurn;
+        turn += g.lastStrTurn ?? 0;
         if (turn >= -2 && turn <= 2) {
-            state.lastStrTurn = turn;
+            g.lastStrTurn = turn;
             state.dx = x0 - u.ux;
             state.dy = y0 - u.uy;
             u.dx = state.dx;
@@ -982,7 +995,7 @@ export async function continueRun(g = game) {
         if (await travelLookaroundStops(g)) {
             stopRun(g);
             g.context.move = 0;
-            return false;
+            return { attemptedMove: false, tookTime: false };
         }
         await captureRunmodeDelay(g, !!g.context.run || g.multi > 0);
         if (g.multi < COLNO && --g.multi === 0)
@@ -990,7 +1003,7 @@ export async function continueRun(g = game) {
         const outcome = await domove(g.u.dx ?? 0, g.u.dy ?? 0, false);
         const moved = outcome === 'time';
         if (g.program_state.gameover)
-            return false;
+            return { attemptedMove: true, tookTime: false };
         // C domove_core() skips runmode_delay_output() on early returns,
         // including attacks, blocked steps and the final travel pet bump.
         // A refused pet swap reaches the tail after restoring the hero.
@@ -1018,12 +1031,12 @@ export async function continueRun(g = game) {
         // C's restored run value and let screen flushes own time updates.
         else if (!g._runState && g.context.run === 8)
             arriveTravel(g);
-        return moved;
+        return { attemptedMove: true, tookTime: moved };
     }
     if (!state || !await lookaroundRun(state, g)) {
         stopRun(g);
         g.context.move = 0;
-        return false;
+        return { attemptedMove: false, tookTime: false };
     }
     await captureRunmodeDelay(g, !!g.context.run || g.multi > 0);
     if (g.multi < COLNO && --g.multi === 0)
@@ -1031,13 +1044,13 @@ export async function continueRun(g = game) {
     const outcome = await domove(state.dx, state.dy, false);
     const moved = outcome === 'time';
     if (g.program_state.gameover)
-        return false;
+        return { attemptedMove: true, tookTime: false };
     if (moved && g._domoveReachedTail)
         await captureRunmodeDelay(g, !!g.context.run || g.multi > 0);
     g.context.move = moved ? 1 : 0;
     if (!moved && outcome !== 'opened-door')
         stopRun(g);
-    return moved;
+    return { attemptedMove: true, tookTime: moved };
 }
 // C refs: cmd.c set_occupation()/timed_occupation() and
 // allmain.c:moveloop_core().  A count-prefixed search executes once in
@@ -1205,6 +1218,10 @@ export async function rhack(key) {
             resetCommandVariables(true);
             return;
         }
+        // C rhack() drops any pending travel destination for every command
+        // dispatched here (cmd.c:3674); the empty/ESC branches above clear
+        // it through reset_cmd_vars() instead.
+        game.context.travel = game.context.travel1 = false;
         const configured = repeated?.binding ?? configuredCommand(key);
         if (!cannedCommand && response === undefined) {
             game._pending_message = '';
@@ -1414,11 +1431,19 @@ async function dispatchMovement(binding, prefixes) {
     const mode = prefixes.walk || prefixes.rush
         ? game.context.run === 2 ? 2 : game.context.run === 3 ? 3 : 0
         : controlRushDirection(key) ? 3 : ch !== ch.toLowerCase() ? 1 : 0;
-    game.context.run = mode;
+    // C cmd.c:set_move_cmd() replaces context.run only when no movement
+    // prefix is pending (domove_attempting); an 'F' or rush-prefixed
+    // direction keeps the run value an earlier rush or travel left set.
+    if (!(prefixes.walk || prefixes.rush))
+        game.context.run = mode;
     if (game.iflags.menu_requested)
         game.context.nopick = true;
-    if (game.multi > 0 || rushDispatch || (mode && !prefixes.walk))
+    if (rushDispatch || (mode && !prefixes.walk))
         startRun(hero.dx, hero.dy, game, mode);
+    else if (game.multi > 0)
+        // A counted walk-style direction marks the repeat active without
+        // replacing context.run or granting a rush's movement ration.
+        startWalkRepeat(hero.dx, hero.dy, game);
     const outcome = await domove(hero.dx, hero.dy);
     const moved = outcome === 'time';
     if (game.program_state.gameover)
@@ -2861,6 +2886,25 @@ function contextMenuResponses(selection) {
         case 'wait': return;
     }
 }
+// windows.c:getlin() frees only the popped command entry, so any key or
+// direction C queued behind it stays queued for the next pop. Several
+// canned kinds bundle that tail inside one JS entry (dothrow.c:575-576,
+// dig.c:1104-1105, apply.c:1808-1809, 2966-2967, 3442-3443, 3745-3746 and
+// the cmd.c act_on_act() chains): restore it onto the response queue. The
+// drain only drops a canned entry after the response queue emptied, so
+// appending preserves the C order — tail first, then the remaining
+// canned commands.
+export function restoreCannedCommandTail(canned) {
+    if (canned.kind === 'rub' || canned.kind === 'apply' || canned.kind === 'wield') {
+        queueCommandResponses([canned.invlet.charCodeAt(0)]);
+    }
+    else if (canned.kind === 'kick') {
+        queueCommandResponses([{ dx: canned.dx, dy: canned.dy, dz: 0 }]);
+    }
+    else if (canned.kind === 'context-menu') {
+        contextMenuResponses(canned.selection);
+    }
+}
 async function doname() {
     // do_name.c:docallcmd() uses a queued key as the naming category.
     // Any other queued entry selects nothing and clears the canned queue.
@@ -2933,7 +2977,7 @@ async function doname() {
 async function getAdjacentLocation(prompt, errorMessage, x, y) {
     // C cmd.c:get_adjacent_loc() delegates input and command assistance to
     // getdir(), then turns its relative result into a checked map location.
-    const direction = await promptDirection(() => readDirectionKey(`${prompt} `));
+    const direction = await promptDirection((_message, retry) => readDirectionKey(`${prompt} `, retry));
     if (!direction) {
         await pline('Never mind.');
         game.context.move = 0;
@@ -3166,7 +3210,7 @@ async function dochat() {
         game.context.move = 1;
         return;
     }
-    const direction = await promptDirection(() => readDirectionKey('Talk to whom? (in what direction) '));
+    const direction = await promptDirection((_message, retry) => readDirectionKey('Talk to whom? (in what direction) ', retry));
     if (!direction) {
         commandResultCancelled(); // sounds.c:dochat() returns ECMD_CANCEL.
         return;
@@ -3396,7 +3440,7 @@ async function wizTelekinesis() {
         const atHero = cursor.x === game.u.ux && cursor.y === game.u.uy;
         if (!(monster && canSpotMonster(monster)) && !atHero)
             continue;
-        const direction = await promptDirection(() => readDirectionKey('which direction? '));
+        const direction = await promptDirection((_message, retry) => readDirectionKey('which direction? ', retry));
         if (!direction)
             break;
         if (monster) {
@@ -6076,6 +6120,9 @@ async function dodrop() {
         const object = await chooseInventoryObject('drop', () => GETOBJ_SUGGEST, { forcePrompt: true, allowCount: true });
         if (!object) {
             commandResultCancelled(); // do.c:dodrop() getobj ECMD_CANCEL.
+            // dodrop() resets occupations for every nonzero result,
+            // cancelled prompts included.
+            resetOccupations();
             return;
         }
         const spentTime = await dropHeroObject(object, {
@@ -6084,6 +6131,7 @@ async function dodrop() {
         if (!spentTime) {
             // do.c:drop() returns ECMD_FAIL for every refusal.
             commandResultFailed();
+            resetOccupations();
             return;
         }
         game.context.move = 1;
@@ -6203,7 +6251,7 @@ async function doopen(x = 0, y = 0) {
         const inPitWithContainer = game.u.utrap && game.u.utraptype === TT_PIT
             && boxes.some(object => isContainer(object));
         const direction = await promptDirection(inPitWithContainer
-            ? () => readDirectionKey('Open where? [.>] ') : readDirectionKey);
+            ? (_message, retry) => readDirectionKey('Open where? [.>] ', retry) : readDirectionKey);
         if (!direction) {
             await pline('Never mind.');
             game.context.move = 0;
@@ -6315,7 +6363,7 @@ async function openClosedDoor(door, x, y) {
     vision_note_blocker_change(x, y);
 }
 async function pickAxeDirection(prompt) {
-    return promptDirection(() => readDirectionKey(`${prompt} `));
+    return promptDirection((_message, retry) => readDirectionKey(`${prompt} `, retry));
 }
 async function applyPickAxe(item) {
     const result = await usePickAxe(item, {
@@ -7755,7 +7803,12 @@ async function domoveCore(dx, dy) {
         // destination terrain is insufficient when minvis hides its occupant;
         // that case must reach attack_checks() and install the invisible
         // marker instead.
-        if (game.context.run && !safeMonster
+        // hack.c:2764 gates this on !_is_safemon() alone; forcefight is not
+        // part of that macro.  An 'F' prefix that survives an intervening
+        // unbound key past a later 'G' run prefix therefore bypasses the
+        // guard for a visible peaceful pet, and the run step becomes a real
+        // attack in do_attack().
+        if (game.context.run && !heroMayDisplaceMonster(monster)
             && ((!heroIsBlind(game) && monsterVisible(monster, game)
                 && ((M_AP_TYPE(monster) !== M_AP_FURNITURE
                     && M_AP_TYPE(monster) !== M_AP_OBJECT)
