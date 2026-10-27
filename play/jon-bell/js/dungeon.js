@@ -95,7 +95,13 @@ export function Is_branchlev(lev) {
     if (!lev) return null;
     for (const br of (game._dungeon_branches || game.branches || [])) {
         if (!br) continue;
-        if ((br.end1 && on_level(lev, br.end1))
+        // C dungeon.c:1154 gives an unplaced Fort Ludios entrance a bogus
+        // dnum. This port records that state with end1_floating instead;
+        // its declared parent level is not a branch until placement.
+        /* C dungeon.c:1142-1154 floats an unplaced entrance's end1.dnum
+         * beyond the dungeon table.  Our equivalent flag must prevent that
+         * endpoint from matching until mk_knox_portal binds it. */
+        if ((!br.end1_floating && br.end1 && on_level(lev, br.end1))
             || (br.end2 && on_level(lev, br.end2)))
             return br;
     }
@@ -156,6 +162,8 @@ export function remdun_mapseen(dnum) {
     const dgn = game.dungeons?.[dnum];
     if (!dgn) return;
     const unreachable = (game._level_notreachable ||= {});
+    for (const entry of (game._mapseen_entries || []))
+        if (entry.dnum === dnum) entry.notreachable = true;
     const start = dgn.ledger_start | 0;
     const end = start + (dgn.num_dunlevs | 0);
     for (const key of Object.keys(game.level_info || {})) {
@@ -171,7 +179,8 @@ export function remdun_mapseen(dnum) {
 }
 
 export function mapseen_notreachable(lev) {
-    return !!game._level_notreachable?.[`${lev.dnum}:${lev.dlevel}`];
+    return lev.duplicate ? lev.notreachable
+        : !!game._level_notreachable?.[`${lev.dnum}:${lev.dlevel}`];
 }
 
 /* C dungeon.c:3096-3111, the reachability part of recalc_mapseen().
@@ -183,6 +192,8 @@ export function recalc_mapseen_reachability() {
     const unreachable = game._level_notreachable;
     unreachable[`${lev.dnum}:${lev.dlevel}`] = false;
     if (In_quest(lev)) {
+        for (const entry of (game._mapseen_entries || []))
+            if (entry.dnum === lev.dnum) entry.notreachable = false;
         for (const key of Object.keys(unreachable))
             if (Number(key.split(':')[0]) === lev.dnum)
                 unreachable[key] = false;

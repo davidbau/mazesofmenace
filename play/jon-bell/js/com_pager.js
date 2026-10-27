@@ -20,7 +20,7 @@ import { NO_COLOR, CLR_WHITE } from './terminal.js';
 import { pmatchi } from './strutil.js';
 import { menu_heading_text } from './tty_menu.js'; /* C strutil.c:151 — MENU_SEARCH's matcher */
 // putmsghistory: feed the quest synopsis into the ^P message-history ring.
-import { putmsghistory, _strengthStr, force_more, force_more_pages, await_more_dismiss,
+import { putmsghistory, tty_getlin_prompt, _strengthStr, force_more, force_more_pages, await_more_dismiss,
          await_topl_more_dismiss, pline_flush_point,
          botl_pmname, botl_upstart_words, botl_mon_mlevel, botl_title, botl_frozen_status_line,
          gold_status_char, dec_mode, generic_symset, rogue_graphics, rogue_hero_showrace_cell, rogue_ibm_color, botl_status_suffix, fit_status_line_width, status_row_finish, _statusRows3, _threeStatusLines, docrt_flags, flush_screen, use_last_flush_snapshot, hitpointbar_status1, _hilite_status_wrap, _status_sgr, _status_row1_map_overlay, _status_row1_whole_with_tail } from './display.js';
@@ -605,6 +605,15 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipAr
         }
         if (statusStillBlank && (screenRow === 22 || screenRow === 23
                                  || (rows3 && screenRow === 21))) {
+            /* wintty.c:1427-1491,1543-1545: menu rows and dmore() still
+             * paint over a blank status window; only the underlying status
+             * text is absent until bot() runs. */
+            if (inWindow && winLine) {
+                const indent = (winLine.match(/^ +/) || [''])[0].length;
+                const col = WIN_COL + indent;
+                output += col > 4 ? `\x1b[${col}C` : ' '.repeat(Math.max(0, col));
+                output += winLine.trim();
+            }
             /* docrt() cls()s the terminal, then prints the whole map: with
              * statuslines:3 map y=20 lands on screen row 21 (wintty.c:3814) and
              * only the status TEXT stays blank until bot().  A window not
@@ -876,7 +885,7 @@ function _statusLine1Raw() {
      * (u.mtimedone > 0), which is you.h:422, the poly TIMER, a different field. */
     const Upolyd = (u.umonnum | 0) !== (u.umonster | 0);
     const role = Upolyd
-        ? botl_upstart_words(botl_pmname(u.umonnum | 0, female ? 1 /* FEMALE */ : 0 /* MALE */))
+        ? botl_upstart_words(botl_pmname(u.umonnum | 0, u.mfemale ? 1 : 0 /* you.h:555 Ugender, Upolyd arm */))
         : (_cp_rank_of(ulevel, lookupName, female)
            || _cp_rank_of(ulevel, roleNameF, female)
            || (female ? g.urole?.name?.f : null)
@@ -946,14 +955,21 @@ function _statusLine2Raw(uacOverride, pwOverride) {
     const _hpmax = Math.min(Upolyd ? (u.mhmax | 0) : (u.uhpmax || 0), 9999);
     const _leveldescField = describe_level_buf(1, u.uz).replace(/ +$/, '');
     let s = `${_leveldescField} ${gold_status_char(gold)}:${gold} HP:${_hp}(${_hpmax}) Pw:${uen}(${uenmax}) AC:${uac}`;
-    if (Upolyd) {
-        s += ` HD:${botl_mon_mlevel(u.umonnum | 0)}`;
+    /* botl.c:1705-1706 enables XP/HD only at status_initialize(); a hero
+     * restored to human form without a reassessment keeps the enabled HD
+     * field's old text (same latch as js/display.js _statusLine2). */
+    const _xpFields = g._statusExperienceFields;
+    const _hdEnabled = _xpFields?.polymorphed ?? Upolyd;
+    const _shownLevel = Upolyd && !_hdEnabled ? (_xpFields?.level ?? 0) : (u.ulevel || 1);
+    const _shownExp = Upolyd && !_hdEnabled ? (_xpFields?.experience ?? 0) : (u.uexp || 0);
+    if (_hdEnabled) {
+        s += ` HD:${Upolyd ? botl_mon_mlevel(u.umonnum | 0) : (_xpFields?.hd ?? 0)}`;
     }
     else if (g.flags?.showexp) {
-        s += ` Xp:${u.ulevel || 1}/${u.uexp || 0}`;
+        s += ` Xp:${_shownLevel}/${_shownExp}`;
     }
     else {
-        s += ` Xp:${u.ulevel || 1}`;
+        s += ` Xp:${_shownLevel}`;
     }
     // C ref: botl.c — T: (turn count) only shown when time option set.
     if (g.flags?.time) {
@@ -1375,6 +1391,7 @@ export async function menu_search_getlin(frameRows) {
     const disp = g?.nhDisplay;
     const query = 'Search for:';
     let buf = '';
+    const prompt = tty_getlin_prompt(query);
     /* C ref: getline.c:50,106-137 — ^P recall state: `doprev` and the text the
      * recalled message left on the topline (null when the prompt is showing). */
     let doprev = false, recall = null, prevIdx = 0;
@@ -1388,11 +1405,13 @@ export async function menu_search_getlin(frameRows) {
      * part of the prompt, and the cursor sits just past what has been typed. */
     const render = async () => {
         const rows = (await frameRows()).slice();
-        rows[0] = recall !== null ? recall : (query + ' ' + buf).replace(/\s+$/, '');
-        g._screen_output = rows.join('\n');
+        /* C ref: getline.c:63,174 — paint the prompt once, then echo edits
+         * through putsyms().  The painter retains rows erased by wrapping;
+         * trailing blanks are trimmed only when encoding the screen. */
+        const frame = prompt.render(rows, recall);
+        g._screen_output = frame.screen;
         if (disp) {
-            disp.cursorCol = recall !== null ? recall.length : query.length + 1 + buf.length;
-            disp.cursorRow = 0;
+            [disp.cursorCol, disp.cursorRow] = frame.cursor;
         }
     };
     for (;;) {
@@ -1414,30 +1433,33 @@ export async function menu_search_getlin(frameRows) {
                 continue;
             }
         }
-        if (doprev) { doprev = false; recall = null; } /* C ref: getline.c:134-141 */
+        if (doprev) { prompt.reset(); prompt.append(buf); doprev = false; recall = null; } /* C ref: getline.c:134-141 */
         if (keyCode === 27 /* ESC */) {
             /* C ref: getline.c:88-95 — ESC with something typed is a KILL-LINE
              * that re-prompts; ESC on an empty buffer returns the cancel
              * sentinel. */
-            if (buf.length > 0) { buf = ''; continue; }
+            if (buf.length > 0) { prompt.reset(); buf = ''; continue; }
             remember(query + ' ');
             return '\x1b';
         }
         if (keyCode === 10 /* \n */ || keyCode === 13 /* \r */)
             break; /* C ref: getline.c:160-164 */
         if (keyCode === 127 /* erase_char */ || keyCode === 8 /* '\b' */) {
-            if (buf.length > 0) buf = buf.slice(0, -1);
+            if (buf.length > 0) { prompt.erase(1); buf = buf.slice(0, -1); }
             continue;
         }
         if (keyCode === 21 /* kill_char = VKILL = ^U */) {
             /* C ref: getline.c:196-207 — empty the line. */
+            prompt.erase(buf.length);
             buf = '';
             continue;
         }
         /* C ref: getline.c:165-172 — ' ' <= c && c != '\177' && the line still
          * fits (bufp - obufp < BUFSZ - 1 && bufp - obufp < COLNO). */
-        if (keyCode >= 32 && keyCode < 127 && buf.length < COLNO)
+        if (keyCode >= 32 && keyCode < 127 && buf.length < COLNO) {
             buf += String.fromCharCode(keyCode);
+            prompt.append(String.fromCharCode(keyCode));
+        }
         /* else: tty_nhbell(), frame unchanged (getline.c:208-209) */
     }
     /* C ref: getline.c:213 clear_nhwindow(WIN_MESSAGE) — row 0 goes blank, and

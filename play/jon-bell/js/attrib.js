@@ -363,7 +363,7 @@ export function adjattrib(ndx, incr, msgflg) {
     }
 
     if (acurr(u, ndx) === old_acurr) {
-        if (msgflg === 0 && game.flags && game.flags.verbose) {
+        if (msgflg == 0 && game.flags && game.flags.verbose) {
             if ((abase[di] | 0) === old_abase && (amax[di] | 0) === old_amax) {
                 pline(`You're ${abonflg ? "currently" : "already"} as ${attrstr} as you can get.`);
             } else {
@@ -656,7 +656,7 @@ const EXERTEXT = [
     ["leading a healthy life-style", "watching your health"],
     [0, 0],
 ];
-export function exerchk() {
+export async function exerchk() {
     const g = game;
     const u = g.u;
     if (!u)
@@ -714,11 +714,14 @@ export function exerchk() {
         }
         /* C attrib.c:659 — adjattrib(i, mod_val, -1) */
         if (adjattrib(i, mod_val, -1)) {
+            // C attrib.c:659-666: adjattrib's You_feel (including MSGTYP_STOP)
+            // returns before the explanation is printed.
+            await flush_pending_messages();
             /* C attrib.c:661-666 — changed: zero accumulation */
             aexe[i] = 0;
             ax = 0;
             /* C attrib.c:663-666 — then print an explanation */
-            pline(`You ${(mod_val > 0) ? "must have been" : "haven't been"} ${EXERTEXT[i][(mod_val > 0) ? 0 : 1]}.`);
+            await pline(`You ${(mod_val > 0) ? "must have been" : "haven't been"} ${EXERTEXT[i][(mod_val > 0) ? 0 : 1]}.`);
         }
         /* C attrib.c:671: nextattrib wear-off */
         aexe[i] = Math.trunc(Math.abs(ax) / 2) * mod_val;

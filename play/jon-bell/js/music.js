@@ -6,7 +6,7 @@ import { cansee, Blind } from './vision.js';
 import { exercise, acurr } from './attrib.js';
 import { resist, zapyourself, ubuzz, flash_str } from './zap.js';
 import { onscary, monflee } from './makemon.js';
-import { can_blow, x_monnam, sleep_monst, slept_monst } from './mhitm.js';
+import { can_blow, x_monnam, sleep_monst, slept_monst, Amonnam } from './mhitm.js';
 import { Monnam } from './mcastu.js';
 import { impossible } from './steed.js';
 import { discover_object } from './o_init.js';
@@ -16,7 +16,7 @@ import { thesimpleoname, Tobjnam, an, the, xname } from './objnam.js';
 import { yname } from './do_wear.js';
 import { dist2 } from './hacklib.js';
 import { tamedog } from './dog.js';
-import { consume_obj_charge, Yname2, record_achievement } from './cmd.js';
+import { consume_obj_charge, Yname2, record_achievement, align_str, desecrate_altar } from './cmd.js';
 import { find_drawbridge } from './dokick.js';
 import {
     ECMD_OK, ECMD_TIME,
@@ -47,7 +47,7 @@ import { m_at } from './uhitm.js';
 import { set_levltyp } from './mkmaze.js';
 import { M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER,
          STONE, SCORR, CORR, DOOR, SDOOR, D_NODOOR,
-         FOUNTAIN, SINK, ALTAR, GRAVE, THRONE, PIT, AM_SANCTUM } from './const.js';
+         FOUNTAIN, SINK, ALTAR, GRAVE, THRONE, PIT, AM_SANCTUM, AM_MASK, Amask2align } from './const.js';
 import { altarmask_at } from './cmd.js';
 import { getdir } from './lock.js';
 import { losehp } from './dokick.js';
@@ -297,7 +297,7 @@ async function charm_monsters(distance) {
 
 /* ── C music.c:221-310  do_pit ──────────────────────────────────────────── */
 const BOULDER_OTYP = 475;
-const M1_FLY_ = 0x00000001, M1_CLING_ = 0x00000040;
+const M1_FLY_ = 0x00000001, M1_CLING_ = 0x00000010;
 const M1_AMPHIBIOUS_ = 0x00000004;
 const M1_NOLIMBS_ = 0x00000200 | 0x00000400, M1_SLITHY_ = 0x00000800;
 function prop_on_(key) {
@@ -306,6 +306,10 @@ function prop_on_(key) {
 }
 function is_flyer_(ptr) { return (((ptr?.mflags1 | 0) >>> 0) & M1_FLY_) !== 0; }
 function is_clinger_(ptr) { return (((ptr?.mflags1 | 0) >>> 0) & M1_CLING_) !== 0; }
+/* C mondata.h:43-45: mimics hide and cling but are not ceiling hiders. */
+function ceiling_hider_(ptr) {
+    return !!(ptr?.mflags1 & 0x00000100) && ((is_clinger_(ptr) && ptr.mlet !== 13) || is_flyer_(ptr));
+}
 function humanoid_(ptr) { return (((ptr?.mflags1 | 0) >>> 0) & 0x00000400) !== 0; }
 function u_at_(x, y) { return (game.u.ux | 0) === x && (game.u.uy | 0) === y; }
 /* hero's own data: u.umonnum when polymorphed, else the player monster */
@@ -415,8 +419,6 @@ function Maybe_Half_Phys_(dmg) {
 }
 
 /* ── C music.c:342-470  do_earthquake ───────────────────────────────────── */
-/* NOT PORTED: desecrate_altar(FALSE, algn) on the ALTAR arm (no js/ body) and
- * add_damage's shop-door arm beyond what shk.js provides. */
 async function do_earthquake(force) {
     const u = game.u || {};
     const into_a_chasm = ' into a chasm';
@@ -437,8 +439,12 @@ async function do_earthquake(force) {
             if (mon.mundetected) {
                 mon.mundetected = 0;
                 newsym(x, y);
-                if (mon.data?.ceiling_hider && cansee(x, y))
-                    await pline(`${Monnam(mon)} is shaken loose from the ceiling!`);
+                if (ceiling_hider_(mon.data)) {
+                    if (cansee(x, y))
+                        await pline(`${Amonnam(mon)} is shaken loose from the ceiling!`);
+                    else if (!is_flyer_(mon.data))
+                        await You_hear('a thump.');
+                }
             }
             const ap = M_AP_TYPE(mon);
             if (ap !== M_AP_NOTHING && ap !== M_AP_MONSTER) seemimic(mon);
@@ -460,7 +466,9 @@ async function do_earthquake(force) {
             const amsk = altarmask_at(x, y) | 0;
             /* always preserve the high altars */
             if (amsk & AM_SANCTUM) break;
-            if (cansee(x, y)) await pline(`The altar falls${into_a_chasm}.`);
+            const algn = Amask2align(amsk & AM_MASK);
+            if (cansee(x, y)) await pline(`The ${align_str(algn)} altar falls${into_a_chasm}.`);
+            await desecrate_altar(false, algn);
             await do_pit(x, y, tu_pit);
             break;
         }
@@ -677,7 +685,10 @@ async function do_improvisation(instr) {
             const adtyp = (instr.otyp | 0) === FROST_HORN ? 3 : 2;
             if (!Blind())
                 await pline(`A ${flash_str(adtyp - 1, false)} blasts out of the horn!`);
+            game.gc_current_wand = instr; // C music.c:633 — identify the horn to zhitu().
+            game.gc_current_wand = instr; /* C music.c:633-635 */
             await ubuzz(adtyp - 1, rn1(6, 6));
+            game.gc_current_wand = 0;
         }
         makeknown(instr.otyp);
         break;

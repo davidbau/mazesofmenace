@@ -1,6 +1,6 @@
 // @ts-nocheck
 // muse.js — monsters using objects: the OFFENSIVE half of muse.c.
-// C ref: nethack-c/src/muse.c
+// C ref: nethack-c-v5/upstream/src/muse.c
 //
 // find_offensive() already lives in js/makemon.js (it was ported alongside the
 // verdict: precheck(), mzapwand(), use_offensive(), and the monster-side beam
@@ -16,7 +16,7 @@
 import { game } from './gstate.js';
 import { dist2 } from './hacklib.js';
 import { rn1, rn2, rnd, d } from './rng.js';
-import { pline, newsym, canspotmon, canseemon, map_invisible, You_hear } from './display.js';
+import { pline, newsym, canspotmon, canseemon, map_invisible, You_hear, shieldeff } from './display.js';
 import { cansee, couldsee } from './vision.js';
 import { m_at, mon_nam, exclam } from './uhitm.js';
 import { Monnam } from './mcastu.js';
@@ -26,7 +26,7 @@ import { Blind } from './vision.js';
 import { resists_blnd, wakeup } from './mhitm.js';
 import { verbalize } from './cmd.js';
 import { The, vtense, an, xname_wand, simple_typename, xname } from './objnam.js';
-import { doname, singular } from './objnam.js';
+import { doname, singular, simpleonames } from './objnam.js';
 import { distmin } from './hacklib.js';
 import { observe_object } from './o_init.js';
 import { m_throw } from './mhitu.js';
@@ -48,6 +48,8 @@ import { drop_boulder_on_monster, drop_boulder_on_player } from './read.js';
 import { ceiling, set_msg_xy } from './cmd.js';
 import { closed_door } from './look.js';
 import { IS_OBSTRUCTED, IS_AIR } from './const.js';
+import { HALLUC, HALLUC_RES } from './const.js';
+import { impossible } from './pline.js';
 
 /* C ref: muse.c:1272-1290 — the offensive MUSE_* values, verbatim.  Declared
  * again here (rather than imported) because js/makemon.js keeps its copies
@@ -195,10 +197,14 @@ async function mplayhorn(mtmp, otmp, self) {
                       ? (BOLT_LIM + 1) : (BOLT_LIM - 3);
         const near = dist2(mtmp.mx | 0, mtmp.my | 0,
                            game.u.ux | 0, game.u.uy | 0) <= range * range;
-        pline(`You hear a horn being played ${near ? "nearby" : "in the distance"}.`);
+        await You_hear(`a horn being played ${near ? "nearby" : "in the distance"}.`);
+        unknow_object(otmp); /* hero loses info when unseen obj is used */
     } else if (!self) {
         observe_object(otmp);
-        pline(`${Monnam(mtmp)} plays ${an(xname(otmp))} directed at you!`);
+        let objnamp = xname(otmp);
+        if (objnamp.length >= 128) /* QBUFSZ */
+            objnamp = simpleonames(otmp);
+        pline(`${Monnam(mtmp)} plays ${an(objnamp)} directed at you!`);
         makeknown(otmp.otyp | 0);
         await stop_occupation();
     }
@@ -229,6 +235,7 @@ async function mbhitm(mtmp, otmp) {
         if (hits_you) {
             if (Antimagic()) {
                 monstseesu(M_SEEN_MAGR);
+                shieldeff(u.ux | 0, u.uy | 0); /* C muse.c:1613 */
                 pline("Boing!");
                 learnit = true;
             } else if (rnd(20) < 10 + (u.uac | 0)
@@ -249,6 +256,7 @@ async function mbhitm(mtmp, otmp) {
             await stop_occupation();
             nomul(0);
         } else if (resists_magm(mtmp)) {
+            shieldeff(mtmp.mx | 0, mtmp.my | 0); /* C muse.c:1630 */
             pline("Boing!");
             learnit = true;
         } else if (rnd(20) < 10 + find_mac(mtmp)) {
@@ -401,10 +409,13 @@ async function mbhit(mon, range, fhitm, fhito, obj) {
     }
 }
 
-/* C ref: muse.c:1826-1900+ use_offensive(mtmp) — act on find_offensive()'s
- * verdict.  Returns 0 (nothing done), 1 (monster died) or 2 (acted).
- * Only MUSE_WAN_STRIKING is ported; every other arm returns C's own
- * no-action 0 and is documented as a KNOWN GAP in the switch's default. */
+/* C muse.c:864: defensive wands use the same monster/object hit callbacks. */
+export function mbhit_wand(mon, range, obj) {
+    return mbhit(mon, range, mbhitm, bhito, obj);
+}
+
+/* C muse.c:1826-2032 use_offensive(): act on find_offensive()'s verdict.
+ * The fire-scroll arm at 1956-2004 is disabled by C's #if 0. */
 export async function use_offensive(mtmp) {
     const otmp = game.offensive;
     let i;
@@ -542,8 +553,9 @@ export async function use_offensive(mtmp) {
         return DEADMONSTER(mtmp) ? 1 : 2;
     }
     case MUSE_CAMERA: {
-        /* C muse.c:1953-1970.  SetVoice is a no-op here. */
-        if (game.u?.uprops?.[23]?.intrinsic || game.u?.uprops?.[23]?.extrinsic) {
+        /* C muse.c:1938-1954.  SetVoice is a no-op here. */
+        /* C muse.c:1941, youprop.h:115-120: resistance suppresses the timeout. */
+        if (game.u?.uprops?.[HALLUC]?.intrinsic && !propOn(HALLUC_RES)) {
             await verbalize("Say cheese!");
         } else if (!Blind()) {
             pline(`${Monnam(mtmp)} takes a picture of you with ${an(xname(otmp))}!`);
@@ -558,7 +570,10 @@ export async function use_offensive(mtmp) {
         otmp.spe = (otmp.spe | 0) - 1;
         return 1;
     }
+    case 0:
+        return 0; /* C muse.c:2024-2025: an exploded wand. */
     default:
+        await impossible('%s wanted to perform action %d?', Monnam(mtmp), game.has_offense);
         return 0;
     }
 }

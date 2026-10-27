@@ -22,8 +22,7 @@ import { wake_nearto } from './mklev.js';
 /* C mon.c:4596 healmon() — m_cure_self()'s heal. */
 import { healmon } from './mklev.js';
 import { mon_adjust_speed, burnarmor } from './trap.js';
-/* mcast_stun_you's leaves: acurr (js/attrib.js:101), make_stunned
- * (js/mhitm.js:215 — still a no-op body), and the two prop ids. */
+/* mcast_stun_you's leaves: acurr, potion.js's make_stunned, and prop ids. */
 import { acurr as acurr_mc } from './attrib.js';
 import { make_stunned as make_stunned_mc } from './potion.js';
 import { FREE_ACTION as FREE_ACTION_MC, STUNNED as STUNNED_MC } from './const.js';
@@ -631,8 +630,10 @@ export function mcast_stun_you(dmg) {
 }
 /* C attrib.h A_DEX=3; C youprop.h Free_action / Stunned; C prop.h TIMEOUT. */
 const A_DEX_MC = 3;
-function FreeAction_mc() { return propOn(FREE_ACTION_MC); }
-function Stunned_mc() { return propOn(STUNNED_MC); }
+/* C youprop.h:383 Free_action is extrinsic only; :80-81 Stunned is HStun.
+ * In particular, a wizard-set intrinsic FREE_ACTION does not resist stun. */
+function FreeAction_mc() { return !!game.u?.uprops?.[FREE_ACTION_MC]?.extrinsic; }
+function Stunned_mc() { return !!game.u?.uprops?.[STUNNED_MC]?.intrinsic; }
 function HStun_timeout_mc() {
     const p = game.u?.uprops?.[STUNNED_MC];
     return (p?.intrinsic | 0) & 0x00FFFFFF; /* TIMEOUT */

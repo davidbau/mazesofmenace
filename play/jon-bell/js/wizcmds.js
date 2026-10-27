@@ -4,7 +4,7 @@
 // Hand-maintained JS (not tsc-emitted). Sibling imports from js/*.js.
 import { u_safe_from_fatal_corpse } from './pickup.js';
 import { olfaction } from './makemon.js';
-import { usmellmon, erosion_matters } from './mklev.js';
+import { usmellmon, erosion_matters, mungspaces } from './mklev.js';
 import { body_part } from './cmd.js';
 import { ARM, ECMD_CANCEL, UTOTYPE_NONE, Is_stronghold, Is_botlevel } from './const.js';
 import { getdir } from './lock.js';
@@ -17,8 +17,8 @@ import { s_suffix as _ta_s_suffix } from './hacklib.js';
 import { nhgetch } from './input.js';
 import { vision_recalc } from './vision.js';
 import { oc_merge } from './oc_merge.generated.js';
-import { pline, flash_mon, canspotmon, unmap_invisible, gamelog_add } from './display.js';
-import { topl_park_cursor, TOPL_LIMIT, bot } from './display.js';
+import { pline, flash_mon, canspotmon, unmap_invisible, gamelog_add, livelog_printf } from './display.js';
+import { topl_park_cursor, TOPL_LIMIT, bot, _topl_more_pages, use_last_flush_snapshot } from './display.js';
 import { flush_screen, force_more, _topl_record_join, capture_painted_frame,
          _topl_merge_result, _topl_joins_snapshot } from './display.js';
 import { pline_flush_point, _pline_flush_frame_record, prepare_deferred_pline } from './display.js';
@@ -30,9 +30,9 @@ import { FIRST_OBJECT } from './o_init.js';
 import { pluslvl, losexp } from './exper.js';
 import { findit, wish_history_add, wish_history_menu, wish_history_has } from './zap.js';
 import { rn2, d, rnd } from './rng.js';
-import { quest_info, readobjnam, hands_obj, getObjDescr, xname_scroll, xname_spellbook, xname_amulet, xname_armor, xname_weapon, xname_oname_tail, xname, the, The, aobjnam, Tobjnam, doname as doname_real } from './objnam.js';
+import { quest_info, readobjnam, hands_obj, getObjDescr, xname_scroll, xname_spellbook, xname_amulet, xname_armor, xname_weapon, xname_oname_tail, xname, artiname, the, The, aobjnam, Tobjnam, doname as doname_real } from './objnam.js';
 import { discover_object, observe_object } from './o_init.js';
-import { near_capacity, stagger_verb, encumber_msg_sync } from './weight.js';
+import { near_capacity, stagger_verb, encumber_msg_sync, weight } from './weight.js';
 import { exercise } from './attrib.js';
 import { losehp } from './dokick.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
@@ -70,7 +70,9 @@ import { bury_objs } from './zap.js';
 import { addinv_core0, can_reach_floor, is_missile, ammo_and_launcher } from './hold_another_object.js';
 import { A_WIS, KILLED_BY, ANTIMAGIC, HALF_PHDAM, LOW_PM, ECMD_OK, MM_MINVIS,
          Is_airlevel, Is_waterlevel, IRONBARS, ICE, FUMBLING, COLD_RES, LS_OBJECT, LS_MONSTER,
-         LL_CONDUCT, LL_WISH, LL_ARTIFACT } from './const.js';
+         LL_CONDUCT, LL_WISH, LL_ARTIFACT, Upolyd } from './const.js';
+import { _artifact_origin } from './objnam.js';
+import { ONAME_WISH, ONAME_KNOW_ARTI } from './const.js';
 
 /* C wizcmds.c:1113-1693 — #stats uses native allocation sizes rather than
  * JavaScript object sizes. These are the ABI values of the frozen C build. */
@@ -260,15 +262,19 @@ function _ta_xname(otmp) {
 
 /* C ref: artifact.c:992-1005 bane_applies(oart, &youmonst) → spec_applies
  * (SPFX_DFLAG2, yours): the hero's own race selfmask matches when !Upolyd
- * (artifact.c:1042-1045).  Orcrist/Sting carry M2_ORC (= MH_ORC; Grimtooth is
- * M2_ELF), so an unpolymorphed orcish hero is badalign and draws rn2(4) in
+ * (artifact.c:1042-1045).  Orcrist/Sting carry M2_ORC (= MH_ORC); Grimtooth is
+ * M2_ELF, so an unpolymorphed orcish/elven hero (respectively) is badalign and draws rn2(4) in
  * touch_artifact.  The other DFLAG2 banes (demon/were/giant/undead) match no
  * hero race. */
 export function bane_applies_hero(arti) {
     const u = game.u || {};
-    return (arti === 6 || arti === 7)
-        && ((game.flags?.initrace ?? -1) | 0) === 4 /* orc */
-        && !((u.mtimedone | 0) > 0);
+    /* spec_applies SPFX_DFLAG2 (artifact.c:1042-1045): !Upolyd &&
+     * (gu.urace.selfmask & weap->mtype).  Grimtooth's mtype is M2_ELF
+     * (artilist.h:123), so an unpolymorphed elven hero is badalign too. */
+    const race = (game.flags?.initrace ?? -1) | 0; /* 0 human 1 elf 2 dwarf 3 gnome 4 orc */
+    const matches = (arti === 5 && race === 1)
+                    || ((arti === 6 || arti === 7) && race === 4);
+    return matches && !((u.mtimedone | 0) > 0);
 }
 
 export async function touch_artifact_youmonst(otmp) {
@@ -400,12 +406,14 @@ export async function touch_artifact_youmonst(otmp) {
                 g._topl_win_stop = true;
             }
         }
-        if (dmg >= ((u.uhp ?? 0) | 0) && g._touch_artifact_blast_msg) {
+        /* C hack.c:4268-4274: losing monster HP can rehumanize and print
+         * inside losehp(), just as losing human HP can print a death line. */
+        if (dmg >= ((Upolyd(u) ? u.mh : u.uhp) | 0) && g._touch_artifact_blast_msg) {
             const _bm = g._touch_artifact_blast_msg;
             g._touch_artifact_blast_msg = null;
             await pline(_bm);
         }
-        await losehp(dmg, `touching ${_ta_xname(otmp)}`, KILLED_BY);
+        await losehp(dmg, `touching ${artiname(otmp.oartifact)}`, KILLED_BY);
         /* C artifact.c:959 */
         exercise(A_WIS, false);
     }
@@ -431,6 +439,7 @@ export async function getlin(prompt) {
     let buf = '';
     const renderPrompt = () => {
         g._pending_message = buf ? (prompt + ' ' + buf) : prompt;
+        g._topl_prompt_written = prompt + ' ' + buf;
     };
     const placeCursor = () => {
         const d = g.nhDisplay;
@@ -447,8 +456,17 @@ export async function getlin(prompt) {
          * tty ever produces. */
         const _live = String(g._pending_message);
         const _snap = g._toplResultSnapshot;
-        await flush_screen(1);
-        if (g._pending_message) await force_more(g._pending_message);
+        /* hooked_tty_getlin's more() is tty_display_nhwindow-free: it does no
+         * flush_screen, so a single-page topline pages over the map as of the
+         * LAST flush (makemon's "A ryoshu appears" pline), not the live gbuf
+         * (the newcham to Famine that follows in create_particular_creation). */
+        if (_topl_more_pages(_live, _topl_joins_snapshot(_live)).length > 1) {
+            await flush_screen(1);
+            if (g._pending_message) await force_more(g._pending_message);
+        } else {
+            const release = use_last_flush_snapshot();
+            try { await force_more(g._pending_message); } finally { release(); }
+        }
         if (_snap && g._resultMessage === _snap && _live.startsWith(_snap)) {
             g._resultMessage = null;
             g._resultMessageJoins = null;
@@ -475,6 +493,7 @@ export async function getlin(prompt) {
      * query out of message history.  Keep Norep's comparison state in sync. */
     g._prevmsg = prompt;
     const _saved_prompt_echo = g._topl_prompt_echo;
+    const savedWritten = g._topl_prompt_written;
     g._topl_prompt_echo = true;
     /* C getline.c:67 custompline(OVERRIDE_MSGTYPE | SUPPRESS_HISTORY) and the
      * echo loop (getline.c:97 gt.toplines rebuild) never reach message
@@ -505,6 +524,7 @@ export async function getlin(prompt) {
                     doprev = true;
                     const text = hist[prevIdx];
                     g._pending_message = text;
+                    g._topl_prompt_written = text;
                     g._topl_history_recall = text;
                     await flush_screen(1);
                     const d = g.nhDisplay;
@@ -564,6 +584,7 @@ export async function getlin(prompt) {
          * js/cmd.js's '#' prompt calls getlin-shaped code with the flag
          * already set and owns its own clear. */
         g._topl_prompt_echo = _saved_prompt_echo;
+        g._topl_prompt_written = savedWritten;
     }
 }
 
@@ -837,6 +858,10 @@ function _wish_mergable(into, obj) {
         || (obj.lamplit | 0) !== (into.lamplit | 0)) return false;
     /* C invent.c:4425 — dknown MUST match. */
     if ((obj.dknown | 0) !== (into.dknown | 0)) return false;
+    /* C invent.c:4426-4427 — bknown mismatch blocks the merge when Blind or
+     * Hallucinating (and not a Priest); a blind hero's wished stack stays apart. */
+    if ((obj.bknown | 0) !== (into.bknown | 0) && !_wish_role_is_priest()
+        && (_wish_Blind() || _wish_Hallu())) return false;
     /* FOOD oeaten/orotten match (mergable invent.c:4421) */
     if ((obj.oclass | 0) === 7) {
         if ((obj.oeaten | 0) !== (into.oeaten | 0)) return false;
@@ -876,6 +901,9 @@ function _wish_mergable(into, obj) {
             || n === PM_DEATH || n === PM_FAMINE || n === PM_PESTILENCE)
             return false;
     }
+    /* C invent.c:4496 — known mismatch blocks only when Blind or Hallucinating */
+    if ((obj.known | 0) !== (into.known | 0) && (_wish_Blind() || _wish_Hallu()))
+        return false;
     return true;
 }
 
@@ -941,7 +969,8 @@ async function _wish_encumber_msg(paintedCap, prinvLine) {
     if (oldcap === newcap) return;
     const msg = _wish_encumber_text(oldcap, newcap);
     if (!msg) return;
-    const _botlOwed = !!(g.disp && g.disp.botl);
+    const _botlOwed = !!(g.disp && (g.disp.botl || g.disp.botlx)) || g._wishBotlOwedAtPrinv === true;
+    g._wishBotlOwedAtPrinv = false;
     if (g.disp) g.disp.botl = true;
     const prev = g._resultMessage;
     if (prev) {
@@ -986,6 +1015,13 @@ function _wish_Blind() {
     const bp = u.uprops && u.uprops[BLINDED_WIZ];
     return !!bp && !!((bp.intrinsic | 0) || (bp.extrinsic | 0))
            && !(bp.blocked | 0);
+}
+
+/* C youprop.h Hallucination := (HHallucination || EHallucination); HALLUC is
+ * property 23 (const.js). */
+function _wish_Hallu() {
+    const hp = game.u?.uprops?.[23];
+    return !!hp && !!((hp.intrinsic | 0) || (hp.extrinsic | 0));
 }
 
 /* C youprop.h:135 Fumbling := (HFumbling || EFumbling).  Unlike Blind, the
@@ -1085,8 +1121,8 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
     for (let o = _wmerge; o; o = null) {
         if (o) {
             /* C invent.c:856-875 — reconcile knowledge dimensions; if a real
-             * discovery happened, C fires the comparison pline + forces a
-             * --More-- (invent.c:934-942, otmp->where==OBJ_INVENT and neither
+             * discovery happened, C fires the comparison pline
+             * (invent.c:934-942, otmp->where==OBJ_INVENT and neither
              * how_lost==LOST_THROWN — both true for a wished stack already held). */
             let discovered = false;
             const oquan = ((otmp.quan ?? 1) | 0); /* prinv's quan arg = wished obj's quan */
@@ -1104,14 +1140,18 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
                 o.age = Math.trunc((((o.age | 0) * ((o.quan ?? 1) | 0))
                     + ((otmp.age | 0) * oquan)) / (((o.quan ?? 1) | 0) + oquan));
             o.quan = ((o.quan ?? 1) | 0) + oquan;
+            /* C invent.c:838-842 merged(): recompute the combined stack's
+             * weight before knowledge reconciliation and encumbrance checks. */
+            o.owt = weight(o);
             /* C invent.c:838-839 — merged() clears bknown on merged gold
              * before comparing the id dimensions (:871) */
             if ((o.oclass | 0) === COIN_CLASS_WZ) o.bknown = 0;
             discovered = _wish_merged_reconcile(o, otmp);
-            o.owt = (o.owt | 0); /* weight recompute is weight-only/RNG-free */
             }
             if (discovered) {
-                await force_more('You learn more about your items by comparing them.');
+                /* C invent.c:941: prinv's following message joins this pline
+                 * when topl.c:262-264's width check leaves room for --More--. */
+                await pline('You learn more about your items by comparing them.');
             }
             const _c2msgs = [];
             o.pickup_prev = 1;
@@ -1261,6 +1301,9 @@ function _wish_core2_pages(deferred, prinvLine) {
  * any standing _pending_message ahead of it; key the frame where that puts
  * prinv's boundary.  `head` is the text joined in front of prinvLine. */
 function _wish_prinv_flush_record(head, prinvLine) {
+    /* the flush below runs bot() and clears disp.botl; remember whether it was
+     * owed (touch_artifact's blast losehp) so encumber_msg sees the post-add cap */
+    game._wishBotlOwedAtPrinv = !!(game.disp && (game.disp.botl || game.disp.botlx)); /* flush_screen: botl || botlx (display.c:2286) */
     const pend = game._pending_message ? String(game._pending_message) : '';
     const before = (pend ? pend.length + 2 : 0) + (head ? String(head).length + 2 : 0);
     if (!before)
@@ -1501,6 +1544,7 @@ export async function wiz_show_stats() {
  * instead of the throw-stub it used to carry. */
 export async function makewish() {
     const g = game;
+    if (g.context) g.context.resume_wish = 0; // C zap.c:6323
     const oldWisharti = g.u?.uconduct?.wisharti | 0; // C zap.c:6321: before readobjnam().
 
     /* C zap.c:6317 `struct obj otmp, nothing;` + zap.c:6323
@@ -1534,6 +1578,13 @@ export async function makewish() {
             buf = (await wish_history_menu()) ?? '';
         else
             buf = await getlin(promptbuf);
+
+        // C zap.c:6337-6341: defer an interrupted wish until the terminal returns.
+        if (g.iflags?.term_gone) {
+            if (!g.iflags.debug_fuzzer)
+                g.context.resume_wish = 1;
+            return;
+        }
 
         /* C zap.c:6343: (void) mungspaces(buf);
          * C zap.c:6344-6350:
@@ -1572,6 +1623,7 @@ export async function makewish() {
                 return; /* C: for safety; should never happen */
         } else if (otmp === nothing) {
             /* C zap.c:6369-6373 — explicitly declined the wish. */
+            livelog_printf(LL_WISH, 'declined to make a wish');
             return;
         } else if (otmp === hands_obj) {
             wish_history_add(wishstr);
@@ -1584,6 +1636,10 @@ export async function makewish() {
         wish_history_add(wishstr);
         break;
     }
+
+    // C zap.c:6381-6384: a granted artifact wish is already known to the hero.
+    if (otmp.oartifact)
+        _artifact_origin(otmp, ONAME_WISH | ONAME_KNOW_ARTI);
 
     const _wishPendingSrc = g._pending_message;
     const _wishPendingJoins = _topl_joins_snapshot(_wishPendingSrc);
@@ -1632,10 +1688,16 @@ export async function makewish() {
         if (!_wish_Blind())
             observe_object(otmp); /* o_init.c:447 skips under Hallucination */
         /* C invent.c:1218-1231 */
+        const wasUpolyd = Upolyd(g.u);
         place_object(otmp, g.u.ux | 0, g.u.uy | 0);
         const canTouch = await touch_artifact_youmonst(otmp);
+        /* C invent.c:1232-1238: a blast which ends polymorph also loses
+         * the hero's grip; the artifact never enters inventory. */
+        const lostGrip = canTouch && wasUpolyd && !Upolyd(g.u);
+        if (lostGrip)
+            await pline(_wishDropSpec.fmt.replace('%s', _wishDropSpec.arg));
         remove_object(otmp);
-        if (!canTouch) {
+        if (!canTouch || lostGrip) {
             await dropy(otmp);
             _wishRefused = true;
         }
@@ -1931,7 +1993,7 @@ export async function create_particular() {
 
     do {
         let buf = await getlin(prompt);
-        buf = String(buf).trim().replace(/\s+/g, ' ');   /* mungspaces */
+        buf = mungspaces(String(buf));
         if (buf.charCodeAt(0) === 27 /* '\033' */)
             return false;
 
@@ -1983,10 +2045,13 @@ export async function wiz_genesis() {
      * the bare `if (wizard)` this used to read was ALWAYS TRUE and the else arm
      * was dead.  fn-truthy-lint's HARD class. */
     if (wizard()) {
-        /* iflags.debug_mongen is saved/cleared/restored around the call; the
-           port has no debug_mongen, and makemon's rndmongen guard reads the
-           level flag, not this one. */
+        /* C wizcmds.c:206-210 — iflags.debug_mongen is saved/cleared/restored
+           around the call. */
+        if (!g.iflags) g.iflags = {};
+        const mongen_saved = g.iflags.debug_mongen;
+        g.iflags.debug_mongen = false;
         await create_particular();
+        g.iflags.debug_mongen = mongen_saved;
     } else {
         /* C wizcmds.c:212 pline(unavailcmd, ecname_from_fn(wiz_genesis)) —
          * ef_txt, with no leading '#'. */
@@ -2144,14 +2209,20 @@ async function makemap_remove_mons() {
     dmonsfree();
 }
 
-/* C ref: cmd.c:986-1062 makemap_prepost(pre, wiztower).  rm_mapseen() (the
- * #overview record) and the achievement revocation have no JS counterpart; both
- * are RNG-free and screen-invisible apart from Mine's-end/Soko-end prize levels. */
+/* C ref: cmd.c:986-1062 makemap_prepost(pre, wiztower). */
 export async function makemap_prepost(pre, wiztower) {
     const g = game;
     const u = g.u;
     if (pre) {
         await makemap_remove_mons();
+        // C cmd.c:993 / dungeon.c:2665: remove the first mapseen before mklev.
+        const entries = g._mapseen_entries || [];
+        const idx = entries.findIndex(e => e.dnum === u.uz.dnum
+            && e.dlevel === u.uz.dlevel);
+        if (idx >= 0) entries.splice(idx, 1);
+        for (const [i, entry] of entries.entries())
+            entry.duplicate = entries.slice(0, i).some(e => e.dnum === entry.dnum
+                && e.dlevel === entry.dlevel);
         if (u.uball) {
             const { ballrelease, unplacebc } = await import('./ball.js');
             await ballrelease(false);
@@ -2176,6 +2247,7 @@ export async function makemap_prepost(pre, wiztower) {
         (await import('./mklev.js')).dobjsfree();
         const dgn = g.dungeons?.[u.uz.dnum | 0];
         const ledger = (u.uz.dlevel | 0) + (dgn?.ledger_start | 0);
+        await (await import('./save.js')).savelev(ledger);
         (await import('./save.js')).savelev(ledger);
     } else {
         (await import('./vision.js')).vision_reset();

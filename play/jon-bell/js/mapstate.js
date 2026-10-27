@@ -34,6 +34,7 @@ import { game } from './gstate.js';
 import { pushRngLogEntry } from './rng.js';
 import { MAPSTATE_SCHEMA, expandGlobs } from './mapstate_schema.js';
 import { COLNO, ROWNO } from './const.js';
+import { ENV } from './hostenv.js';
 const FNV1A_OFFSET = 14695981039346656037n;
 const FNV1A_PRIME = 1099511628211n;
 const U64_MASK = 0xffffffffffffffffn;
@@ -115,6 +116,10 @@ function chainLen(head, linkField) {
 // "post_init", "pre_turn", etc. Returns nothing — output goes through
 // pushRngLogEntry into the rng log, where the dev runner picks it up.
 export function emitMapstate(phase) {
+    // ON by default so every dev instrument that reads the ^md channel keeps
+    // working.  Bulk scoring runners opt OUT with WEBHACK_MAPSTATE=0: the
+    // scored channels never consume these structural snapshots.
+    if (ENV.WEBHACK_MAPSTATE === '0') return;
     _uncomputableKeys.clear();
     const g = game;
     const u = g.u || {};

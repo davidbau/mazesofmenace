@@ -1409,7 +1409,7 @@ async function fastforward_step_generic_turn_nodochug() {
     /* C ref: allmain.c:408 age_spells() — decrement spell retention (no RNG). */
     age_spells();
     /* C ref: allmain.c:409 exerchk(). */
-    exerchk();
+    await exerchk();
     /* C ref: allmain.c:413 u_wipe_engr condition — dynamic DEX lookup. */
     u_wipe_engr_rng();
     /* C allmain.c:374-377: level activity also runs on generic turns. */
@@ -1450,6 +1450,12 @@ async function fastforward_step_generic_turn() {
      * monster-move loop; threaded into u_calc_moveamt (consumes no RNG). */
     const _wtcap = near_capacity();
     u_calc_moveamt(_wtcap);
+    /* C allmain.c:244 svm.moves++ follows u_calc_moveamt/settrack; everything
+     * from here down (nh_timeout, run_regions' gas-cloud plines, fumaroles) runs
+     * at the new turn, so a --More-- it raises paints the NEW T:.  The caller's
+     * movemon-time status pin (cmd.js wield turn) ends here; it restores its own
+     * latch in its finally. */
+    if (game._movemonStatusMoves != null) game._movemonStatusMoves = null;
     /* C ref: allmain.c:341-348 — regen_hp() sits between svm.moves++ and
      * dosounds in the per-turn block; this calibrated block omitted it, so a
      * wounded hero's rn2(100) (allmain.c:659) vanished on any turn run through
@@ -1479,7 +1485,7 @@ async function fastforward_step_generic_turn() {
     await gethungry();
     /* C ref: allmain.c:408 age_spells() — decrement spell retention (no RNG). */
     age_spells();
-    exerchk();
+    await exerchk();
     /* C ref: allmain.c:413 u_wipe_engr condition — dynamic DEX lookup. */
     u_wipe_engr_rng();
     /* C allmain.c:374-377: wielding a tool can spend this whole turn. */
@@ -1694,7 +1700,7 @@ export async function ff_head_phase_post() {
     /* C allmain.c:408 — age_spells() — decrement spell retention (no RNG). */
     age_spells();
     /* C allmain.c:409 — exerchk() (reads the POST-increment svm.moves). */
-    exerchk();
+    await exerchk();
     await invault();
     /* C allmain.c:358-359 — `if (u.uhave.amulet) amulet();` (wizard.c:60). */
     if (game.u?.uhave?.amulet)

@@ -21,6 +21,7 @@ import { PM_COCKATRICE, PM_CHICKATRICE, PM_STONE_GOLEM, PM_FLAMING_SPHERE, PM_FI
 function pline_The(msg, ...args) { return pline('The ' + msg, ...args); }
 function touch_petrifies(pd) { const i = pd?.pmidx | 0; return i === PM_COCKATRICE || i === PM_CHICKATRICE; }
 import { pline, urgent_pline, newsym, see_monsters, flush_screen, force_more, _topl_stash_result, _topl_merge_result, _topl_joins_snapshot, canspotmon, canseemon } from './display.js';
+import { impossible } from './pline.js';
 import { exercise, acurr, getAbase, getAmax, C_ATTR_TO_DISP, redist_attr, adjabil, setuhpmax } from './attrib.js';
 import { the_unique_pm, permonstTemplate, monPmname, name_to_mon, name_to_monclass, mkclass, dmgtype_fromattack, sliparm, attacktype_fordmg, set_mon_data, is_home_elemental as is_home_elemental_real } from './makemon.js';
 import { getlin } from './wizcmds.js';
@@ -30,9 +31,9 @@ import { mnexto } from './teleport.js';
 import { rndexp } from './exper_pure.js';
 import { newhp, newpw } from './exper.js';
 import {
-    find_ac, donning, encumber_msg, takeoff_slot_noac, Boots_off, Blindf_off, Cloak_off, Gloves_off, Helmet_off, worn_invent_obj, cancel_don,
+    find_ac, donning, encumber_msg, takeoff_slot_noac, Armor_gone, Boots_off, Blindf_off, Cloak_off, Gloves_off, Helmet_off, worn_invent_obj, cancel_don,
 } from './do_wear.js';
-import { dropx, useup, welded, setuwep, surface, ceiling, waterbody_name, yname, You_cant, youhiding as youhiding_enlightenment, instapetrify as instapetrify_real } from './cmd.js';
+import { dropx, useup, welded, could_twoweap, untwoweapon, surface, ceiling, waterbody_name, yname, You_cant, youhiding as youhiding_enlightenment, instapetrify as instapetrify_real } from './cmd.js';
 import { losehp } from './dokick.js';
 import { end_burn } from './timeout.js';
 import { make_sick, make_stoned, make_slimed, make_glib } from './potion.js';
@@ -47,7 +48,7 @@ import { the, cloak_simple_name, helm_simple_name, cxname, vtense, makeplural, s
 import { observe_object, discover_object } from './o_init.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_SKILL, MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js';
 import {
-    W_ARM, W_ARMOR, W_ACCESSORY, W_SADDLE, W_ARMU, W_WEP, W_SWAPWEP,
+    W_ARM, W_ARMOR, W_ACCESSORY, W_SADDLE, W_ARMU, W_SWAPWEP,
     NOT_HUNGRY, SATIATED, HUNGRY, WEAK, FAINTING, TT_PIT, TT_WEB, TT_BEARTRAP,
     TT_LAVA, TT_INFLOOR, TT_BURIEDBALL, MAXULEV, FROMFORM,
     PROT_FROM_SHAPE_CHANGERS, FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES,
@@ -63,8 +64,8 @@ import {
     MAGICAL_BREATHING,
     IS_FOUNTAIN,
 } from './const.js';
-import { getdir } from './lock.js';
-import { ubuzz, ubreatheu, make_blinded, set_HBlinded } from './zap.js';
+import { getdir, b_trapped } from './lock.js';
+import { ubuzz, ubreatheu, make_blinded, set_HBlinded, bury_objs } from './zap.js';
 /* C hack.h Blind — the same reader the status line and vision_recalc use. */
 import { Blind as Blind_vis, couldsee } from './vision.js';
 import { nomul, unmul } from './allmain.js';
@@ -87,11 +88,14 @@ import { s_suffix } from './hacklib.js';
 import { nonliving, poly_gender } from './makemon.js';
 import { livelog_printf, rank_of, retouch_equipment, status_reassess } from './display.js';
 import { LL_MINORAC, LL_CONDUCT } from './const.js';
-import { bhp_bury_objs, dismount_steed as dismount_steed_real } from './cmd.js';
+import { dismount_steed as dismount_steed_real } from './cmd.js';
 import { in_rooms, add_damage, pay_for_damage } from './shk.js';
 import { may_dig as may_dig_look } from './look.js';
 import { watch_dig } from './dig.js';
 import { morehungry } from './eat.js';
+import { dissolve_bars } from './monmove.js';
+import { OC_WEIGHT } from './oc_weight.generated.js';
+import { W_NONDIGGABLE, NO_PART } from './const.js';
 import { recalc_block_point } from './vision.js';
 import { LS_MONSTER, IS_OBSTRUCTED, IS_TREE, IS_WALL, IS_DOOR, DOOR, SDOOR, D_BROKEN, D_NODOOR, D_TRAPPED, ROOM, CORR, SHOPBASE, SHOP_DOOR_COST, DISMOUNT_POLY, IRONBARS } from './const.js';
 import { set_mimic_blocking } from './sit.js';
@@ -553,6 +557,17 @@ export async function polymon(mntmp) {
             await make_slimed(0, null);
         }
     }
+    // C polyself.c:834-841 — a stone/sickness-resistant form cures the condition.
+    {
+        const sr = u.uprops?.[STONE_RES], st = u.uprops?.[STONED];
+        if (((sr?.intrinsic | 0) || (sr?.extrinsic | 0)) && (st?.intrinsic | 0))
+            await make_stoned(0, 'You no longer seem to be petrifying.', 0, null);
+        const vr = u.uprops?.[SICK_RES], vk = u.uprops?.[SICK];
+        if (((vr?.intrinsic | 0) || (vr?.extrinsic | 0)) && (vk?.intrinsic | 0)) {
+            await make_sick(0, null, false, 3 /* SICK_ALL */);
+            await pline('You no longer feel sick.');
+        }
+    }
     // C polyself.c:850 — immunity from the new form can stop strangulation.
     await check_strangling_poly(false);
 
@@ -655,9 +670,10 @@ export async function polymon(mntmp) {
 
     // C polyself.c:967 find_ac() (repeated).
     find_ac();
-    const newUnsolid = (ptr.mflags1 & 0x00100000) !== 0; /* M1_UNSOLID */
-    const newWhirly = _is_whirly(ptr);
-    const newAmorphous = (ptr.mflags1 & 0x00000004) !== 0; /* M1_AMORPHOUS */
+    const ydat = g.youmonst.data;
+    const newUnsolid = (ydat.mflags1 & 0x00100000) !== 0; /* M1_UNSOLID */
+    const newWhirly = _is_whirly(ydat);
+    const newAmorphous = (ydat.mflags1 & 0x00000004) !== 0; /* M1_AMORPHOUS */
     const canSlip = newAmorphous || newWhirly || newUnsolid;
     const passesWalls = !!(u.uprops?.[PASSES_WALLS]
         && ((u.uprops[PASSES_WALLS].intrinsic | 0)
@@ -671,27 +687,28 @@ export async function polymon(mntmp) {
         await buried_ball_to_freedom();
         await reset_utrap(true);
     } else if (u.utrap && (u.utraptype | 0) === TT_LAVA
-               && (mntmp === PM_FIRE_ELEMENTAL || mntmp === PM_SALAMANDER)) {
+               && ((ydat.pmidx | 0) === PM_FIRE_ELEMENTAL
+                   || (ydat.pmidx | 0) === PM_SALAMANDER)) {
         await pline('The lava now feels soothing.');
         await reset_utrap(true);
     }
-    if (canSlip && u.utrap && (u.utraptype | 0) === TT_BURIEDBALL) {
-        await pline('You slip free of the buried ball and chain.');
-        await buried_ball_to_freedom();
-    }
+    /* C polyself.c:991-999 — if (Punished) ... else if buried ball. */
     if (canSlip && u.uball) {
         await pline('You slip out of the iron chain.');
         await unpunish();
+    } else if (canSlip && u.utrap && (u.utraptype | 0) === TT_BURIEDBALL) {
+        await pline('You slip free of the buried ball and chain.');
+        await buried_ball_to_freedom();
     }
     if (u.utrap && ((u.utraptype | 0) === TT_WEB
                     || (u.utraptype | 0) === TT_BEARTRAP)
-        && (canSlip || ((ptr.msize | 0) <= MZ_SMALL
+        && (canSlip || ((ydat.msize | 0) <= MZ_SMALL
                         && (u.utraptype | 0) === TT_BEARTRAP))) {
         await pline(`You are no longer stuck in the ${
             (u.utraptype | 0) === TT_WEB ? 'web' : 'bear trap'}.`);
         await reset_utrap(true);
     }
-    if (_webmaker(ptr) && u.utrap && (u.utraptype | 0) === TT_WEB) {
+    if (_webmaker(ydat) && u.utrap && (u.utraptype | 0) === TT_WEB) {
         await pline('You orient yourself on the web.');
         await reset_utrap(true);
     }
@@ -799,13 +816,23 @@ async function break_armor() {
         otmp = u.uarmc;
         /* mummy wrapping adapts to small and very big sizes */
         if (otmp && ((otmp.otyp | 0) !== MUMMY_WRAPPING || !WrappingAllowed(uptr))) {
-            /* C polyself.c:1178-1183 hands u.uarmc — one object — to both the
-             * message and dropp().  Resolve the gi.invent half BEFORE
+            /* C polyself.c:1175-1194 uses one u.uarmc object for the message
+             * and useup()/dropp(). Resolve the gi.invent half BEFORE
              * takeoff_slot_noac clears the mask; see do_wear.js worn_invent_obj. */
             const cloak = worn_invent_obj('uarmc');
-            await pline(`The clasp on your ${cloak_simple_name(otmp)} breaks open!`);
-            await Cloak_off();   /* C polyself.c:1186,1210 Cloak_off() — runs the otyp switch (toggle_displacement etc.) */
-            await dropp(cloak);
+            // C polyself.c:1179-1194: wrapping tears; smocks and cloaks drop.
+            if ((otmp.otyp | 0) === MUMMY_WRAPPING) {
+                await pline(`Your ${cloak_simple_name(otmp)} tears apart!`);
+                await Cloak_off();
+                await useup(cloak);
+            } else {
+                if ((otmp.otyp | 0) === ALCHEMY_SMOCK)
+                    await pline(`The knot on your ${cloak_simple_name(otmp)} is pulled apart!`);
+                else
+                    await pline(`The clasp on your ${cloak_simple_name(otmp)} breaks open!`);
+                await Cloak_off();
+                await dropp(cloak);
+            }
         }
         if (u.uarmu) {
             await pline('Your shirt rips to shreds!');
@@ -945,10 +972,10 @@ async function drop_weapon(alone) {
             else if (candropwep) { await dropx(otmp); await encumber_msg(); }
 
             if (updateinv) update_inventory();
-        } else if (!(u.uwep.owornmask & W_WEP)) {
-            /* C polyself.c:1348-1352 — setuwep(uwep) to re-establish the
-             * W_WEP mask when a form that can still wield keeps the weapon. */
-            await setuwep(u.uwep);
+        } else if (!could_twoweap(g.youmonst.data)) {
+            /* C polyself.c:1358-1359 — keep the weapons, but end dual wielding
+             * when the new form lacks multiple weapon attacks. */
+            untwoweapon();
         }
     }
 }
@@ -983,6 +1010,7 @@ const AD_ANY = -1;
 const AT_SPIT = 10;
 const AT_BREA = 12;
 const MUMMY_WRAPPING = 138;
+const ALCHEMY_SMOCK = 144;
 
 const _nohands = (ptr) => ((ptr.mflags1 | 0) & M1_NOHANDS) !== 0;
 const _verysmall = (ptr) => (ptr.msize | 0) < MZ_SMALL;
@@ -1043,12 +1071,6 @@ function canletgo_quiet(obj) {
     if ((obj.owornmask | 0) & W_SADDLE) return false;
     return true;
 }
-/* C do_wear.c:930 Armor_gone() — the take-off half of Armor_off without the
- * "you finish taking off" bookkeeping; same slot clear + AC recompute. */
-function Armor_gone() {
-    return takeoff_slot_noac('uarm');
-}
-
 /* C polyself.c:1942 skinback().  Dragon scale mail is temporarily stored in
  * uskin while the hero is in the matching dragon form.  Leaving that form
  * must put the object back into uarm and clear the I_SPECIAL marker which
@@ -1983,7 +2005,10 @@ async function losehp_systemshock(dmg) {
 // C polyself.c:1941 — release a monster the hero was holding.
 async function uunstick() {
     const mtmp = game.u.ustuck;
-    if (!mtmp) return; // C reports impossible() and returns.
+    if (!mtmp) {
+        await impossible('uunstick: no ustuck?');
+        return;
+    }
     set_ustuck(null); // Must precede the message and any input it requests.
     await pline('%s is no longer in your clutches.', Monnam(mtmp));
 }
@@ -2076,10 +2101,7 @@ export async function dobreathe() {
 
     const mattk = attacktype_fordmg(g.youmonst.data, AT_BREA, AD_ANY);
     if (!mattk) {
-        // C: impossible("bad breath attack?").  `impossible()` reports the
-        // invariant violation and returns; it does not abort the command.
-        // Keep the same fall-through to ECMD_TIME so a malformed/stale form
-        // cannot turn a recoverable game state into a JS process failure.
+        await impossible('bad breath attack?');
     } else if (!(u.dx | 0) && !(u.dy | 0) && !(u.dz | 0)) {
         await ubreatheu(mattk);
     } else {
@@ -2155,7 +2177,9 @@ export async function dospinweb() {
         }
         if ((sw.data.mlet | 0) === 22 /* S_VORTEX */ || (sw.data.pmidx | 0) === PM_AIR_ELEMENTAL) { /* is_whirly */
             const mattk = attacktype_fordmg(sw.data, 11 /* AT_ENGL */, AD_ANY);
-            if (mattk) {
+            if (!mattk) {
+                await impossible('Swallower has no engulfing attack?');
+            } else {
                 let sweep = '';
                 switch (mattk.adtyp | 0) {
                 case 2: sweep = 'ignites and '; break;            /* AD_FIRE */
@@ -2179,7 +2203,7 @@ export async function dospinweb() {
         case 11: case 12: /* PIT, SPIKED_PIT */
             await pline('You spin a web, covering up the pit.');
             deltrap(ttmp0);
-            await bhp_bury_objs(x, y);
+            await bury_objs(x, y);
             newsym(x, y);
             return ECMD_TIME;
         case 4: /* SQKY_BOARD */
@@ -2210,7 +2234,8 @@ export async function dospinweb() {
             await dotrap(ttmp0, 0);
             return ECMD_TIME;
         default:
-            throw new Error(`Webbing over trap type ${ttmp0.ttyp}?`); /* impossible() */
+            await impossible('Webbing over trap type %d?', ttmp0.ttyp);
+            return ECMD_OK;
         }
     } else if (On_stairs(x, y)) {
         /* cop out: don't let them hide the stairs */
@@ -2587,8 +2612,7 @@ function youhiding(via_enlghtmt, msgflag) {
 function plur(x) { return (x === 1) ? "" : "s"; }
 
 // ── C hack.c:624-742 still_chewing() — rock / wall / tree / door / secret door
-// (the boulder arm lives in cmd.js _still_chewing_boulder; iron bars are not
-// handled here).  Returns true while still eating, false when done.
+// Boulder arm: cmd.js _still_chewing_boulder. Returns true while still eating.
 export async function still_chewing(x, y) {
     const g = game;
     const u = g.u;
@@ -2603,9 +2627,16 @@ export async function still_chewing(x, y) {
     if (d.down) { resetDig(); }
     const dg = g.context.digging;
     const obstructed = IS_OBSTRUCTED(lev.typ);
-    if (obstructed && !may_dig_look(x, y)) {
+    const metallivore = ((g.youmonst.data.mflags1 | 0) & 0x80000000) !== 0;
+    if ((obstructed && !may_dig_look(x, y))
+        || (lev.typ === IRONBARS && (lev.wall_info & W_NONDIGGABLE))) {
         await pline('You hurt your teeth on the %s.'.replace('%s',
-            IS_TREE(lev.typ) ? 'tree' : 'hard stone'));
+            lev.typ === IRONBARS ? 'bars' : IS_TREE(lev.typ) ? 'tree' : 'hard stone'));
+        nomul(0);
+        return true;
+    }
+    if (lev.typ === IRONBARS && metallivore && u.uhunger > 1500) {
+        await pline('You are too full to eat the bars.');
         nomul(0);
         return true;
     }
@@ -2636,7 +2667,9 @@ export async function still_chewing(x, y) {
         return true;
     }
     // Okay, you've chewed through something
-    if (!(u.uconduct.food | 0)) { /* livelog only */ }
+    if (!(u.uconduct.food | 0))
+        livelog_printf(LL_CONDUCT, 'ate for the first time, by chewing through %s',
+            IS_TREE(lev.typ) ? 'a tree' : obstructed ? 'rock' : isbars ? 'iron bars' : 'a door');
     u.uconduct.food = (u.uconduct.food | 0) + 1;
     u.uhunger = (u.uhunger | 0) + rnd(20); /* hack.c:735 — a GAIN, not morehungry */
     let digtxt = null, dmgtxt = null;
@@ -2657,10 +2690,14 @@ export async function still_chewing(x, y) {
     } else if (IS_TREE(lev.typ)) {
         digtxt = 'chew through the tree.';
         lev.typ = ROOM;
+    } else if (isbars) {
+        if (metallivore) await morehungry(-OC_WEIGHT[477 /* HEAVY_IRON_BALL */]);
+        digtxt = u.ux === x && u.uy === y ? 'devour the iron bars.' : 'eat through the bars.';
+        await dissolve_bars(x, y);
     } else if (lev.typ === SDOOR) {
         if ((lev.doormask | 0) & D_TRAPPED) {
             lev.doormask = D_NODOOR;
-            // b_trapped() (trap.c) is not exported by any js/ module yet.
+            await b_trapped('secret door', NO_PART);
         } else {
             digtxt = 'chew through the secret door.';
             lev.doormask = D_BROKEN;
@@ -2673,7 +2710,7 @@ export async function still_chewing(x, y) {
         }
         if ((lev.doormask | 0) & D_TRAPPED) {
             lev.doormask = D_NODOOR;
-            // b_trapped() (trap.c) is not exported by any js/ module yet.
+            await b_trapped('door', NO_PART);
         } else {
             digtxt = 'chew through the door.';
             lev.doormask = D_BROKEN;

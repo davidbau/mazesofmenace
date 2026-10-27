@@ -96,7 +96,10 @@ export async function getlev(lev) {
      * — the level's own timers rejoin gt.timer_base.  adjust is 0 for one's own
      * saved level; the ones that expired while the hero was away fire at the
      * run_timers() goto_level makes after losedogs() (C do.c:1823). */
-    restore_timers_level(snap.timers);
+    // C restore.c:1111,1144 and timeout.c:2723-2724: bones timers retain
+    // their remaining delay across the old and new heroes' turn counters.
+    restore_timers_level(snap.timers, g.program_state?.reading_bonesfile
+        ? (g.moves | 0) - (snap.omoves | 0) : 0);
     if (snap.track && g._track) {
         g._track.utcnt = snap.track.utcnt | 0;
         g._track.utpnt = snap.track.utpnt | 0;

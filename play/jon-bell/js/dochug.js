@@ -80,6 +80,7 @@ import { quest_stat_check } from './quest.js';
 import { builds_up } from './dungeon.js';
 import { within_bounded_area } from './rect.js';
 import { dist2 } from './hacklib.js';
+import { unstuck } from './dog.js';
 import { mon_has_amulet } from './sit.js';
 import { healmon, mpickobj, m_respond } from './mklev.js';
 const DEADMONSTER_dc = (m) => (m.mhp | 0) <= 0;
@@ -606,6 +607,10 @@ export async function dochug(mtmp) {
                     newsym(mtmp.mx | 0, mtmp.my | 0);
                 break;
             case MMOVE_MOVED:
+                /* C monmove.c:936-938: if confused grabber has wandered off, let go. */
+                if (game.u && mtmp === game.u.ustuck
+                    && dist2(mtmp.mx | 0, mtmp.my | 0, game.u.ux | 0, game.u.uy | 0) > 2)
+                    await unstuck(mtmp);
                 /* C monmove.c:967-968: a grounded monster's footsteps can
                  * accelerate nearby buried-zombie timers. */
                 if (pooleffects_grounded(mtmp.data || permonstTemplate(mndx)))

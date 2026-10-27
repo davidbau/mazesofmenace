@@ -1,11 +1,11 @@
-import { ggetobj, _restrict_name, costly_alteration, fully_identify_obj as fully_identify_obj_cmd } from './cmd.js';
-import { ONAME, has_oname, COST_UNCHRG } from './const.js';
+import { ggetobj, _restrict_name, costly_alteration, fully_identify_obj as fully_identify_obj_cmd, _sortloot_within_class } from './cmd.js';
+import { ONAME, has_oname, COST_UNCHRG, COST_DEGRD, COST_DECHNT, COST_UNCURS } from './const.js';
 // @ts-nocheck
 import { rn2, rnd, rn1, rnl, d } from './rng.js';
 import { discover_object, isWanNothingNodir } from './o_init.js';
 import { MKOBJ_OC_CLASS } from './mkobj_data.js';
 import { game } from './gstate.js';
-import { reassign } from './inventory_refresh.js';
+import { reassign, update_inventory } from './inventory_refresh.js';
 import { snuff_light_source } from './light.js';
 import { pline, putmsghistory, getobj_never_mind, bot as bot_read, gamelog_add, obj_to_glyph } from './display.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
@@ -197,7 +197,7 @@ function _p_glow_Blind() {
 }
 /* color may be a string ('blue') or this file's numeric NH_* token. */
 function _p_glow_color(color) {
-    return hcolor_real(typeof color === 'number' ? hcolor(color) : color);
+    return typeof color === 'number' ? hcolor(color) : hcolor_real(color);
 }
 async function p_glow1(obj) {
     /* C read.c:669 */
@@ -638,7 +638,7 @@ import { simpleonames, suit_simple_name, actualoname as _actualoname } from './o
  * (js/mklev.js, the single live body -- see js/cmd.js:159) and shkname
  * (js/dokick.js).  s_suffix and y_monnam come from the js/mhitm.js import this
  * file already carries. */
-import { shop_keeper, costly_spot } from './shk.js';
+import { shop_keeper, costly_spot, alter_cost as _alter_cost } from './shk.js';
 import { inside_shop } from './mklev.js';
 import { KILLED_BY_AN } from './const.js';
 import { shkname, losehp } from './dokick.js';
@@ -680,6 +680,7 @@ import { GETOBJ_PROMPT, GETOBJ_ALLOWCNT, TIMEOUT, STUNNED } from './const.js';
  * from every arm); this file previously only set g.context.move as a side
  * effect and fell off the end with an implicit `undefined` return. */
 import { ECMD_OK, ECMD_TIME, ECMD_CANCEL, LL_CONDUCT } from './const.js';
+import { yn_function } from './end.js';
 /* C hack.h:538 GETOBJ_SUGGEST — see the enum note at js/do_wear.js's
  * any_worn_armor_ok; js/const.js's copy of that enum is not C's. */
 const GETOBJ_SUGGEST_RD = 2;
@@ -1176,7 +1177,7 @@ export async function doread() {
             await pline('You break up the cookie and throw away the pieces.');
         await outrumor(bcsign(scroll), BY_COOKIE);
         if (!_Blind())
-            _bump_literate();
+            _bump_literate('a fortune cookie');
         useup(scroll);
         game.context = game.context || {};
         game.context.move = 1;                     /* C ECMD_TIME */
@@ -1205,7 +1206,7 @@ export async function doread() {
             await _clear_botl();
             return ECMD_OK;
         }
-        _bump_literate();
+        _bump_literate((scroll.otyp | 0) === T_SHIRT_RD ? 'a T-shirt' : 'an apron');
         const mesg = (scroll.otyp | 0) === T_SHIRT_RD
             ? tshirt_text(scroll)
             : apron_text(scroll);
@@ -1292,7 +1293,7 @@ export async function doread() {
         await pline('%s on the %s.  It reads:  %s.',
                     !_Blind() ? 'There is writing' : 'You feel lettering',
                     simpleonames(scroll), cap_text);
-        _bump_literate();
+        _bump_literate((scroll.otyp | 0) === DUNCE_CAP_RD ? 'a dunce cap' : 'a cornuthaum');
         /* C: despite the fact that player will recognize the object type, don't
          * make it become a discovery for hero. */
         await trycall(scroll);
@@ -1342,7 +1343,7 @@ export async function doread() {
                     (!(oid % 3)) ? 1 : 0,
                     ((oid * 7) % 10),
                     (game.flags?.verbose || _Blind()) ? '.' : '');
-        _bump_literate();
+        _bump_literate('a credit card');
         game.context = game.context || {};
         game.context.move = 1;                     /* C ECMD_TIME */
         await _clear_botl();
@@ -1379,7 +1380,7 @@ export async function doread() {
         const buf = _pmname_neutral(mndx);
         await pline('"Magic Marker(TM) %s Red Ink Marker Pen.  Water Soluble."',
                     upwords(buf));
-        _bump_literate();
+        _bump_literate('a magic marker');
         game.context = game.context || {};
         game.context.move = 1;                     /* C ECMD_TIME */
         await _clear_botl();
@@ -1396,13 +1397,21 @@ export async function doread() {
         else if (game.flags?.verbose)
             await pline('You read:');
         await pline('"1 Zorkmid.  857 GUE.  In Frobs We Trust."');
-        _bump_literate();
+        _bump_literate("a coin's engravings");
         game.context = game.context || {};
         game.context.move = 1;                     /* C ECMD_TIME */
         await _clear_botl();
         return ECMD_TIME;
     }
 
+    if (scroll && scroll.oartifact === 32 /* ART_ORB_OF_FATE; read.c:529 */) {
+        await pline(_Blind() ? 'You feel the engraved signature:' : 'It is signed:');
+        await pline('"Odin."');
+        _bump_literate('the divine signature of Odin');
+        g.context.move = 1;
+        await _clear_botl();
+        return ECMD_TIME;
+    }
     /* C read.c:548-556 — CANDY_BAR.  candy_wrapper_text(obj) is
      * `candy_wrappers[obj->spe % SIZE(candy_wrappers)]` (read.c:294-300); index
      * 0 is the empty string and assign_candy_wrapper (already ported at the top
@@ -1425,7 +1434,7 @@ export async function doread() {
             return ECMD_OK;
         }
         await pline('The wrapper reads: "%s".', wrapper);
-        _bump_literate();
+        _bump_literate('a candy bar wrapper');
         game.context = game.context || {};
         game.context.move = 1;                     /* C ECMD_TIME */
         await _clear_botl();
@@ -1460,7 +1469,11 @@ export async function doread() {
         scroll._mail_confusion_override = true;   /* C read.c:581 confused = FALSE */
         const _lit = (game.u?.uconduct?.literate) | 0;
         if (!_lit && !(scroll.spe | 0)) {
-            void 0;
+            if (await yn_function('Reading mail will violate "illiterate" conduct.  Read anyway?', 'yn', 'n', true) !== 'y') {
+                g.context.move = 0;
+                await _clear_botl();
+                return ECMD_OK;
+            }
         }
     }
     if (scroll) {
@@ -1499,7 +1512,9 @@ export async function doread() {
         if (g._pending_message) {
             _topl_stash_result();
         }
-        await _clear_botl();
+        /* C read.c:635-646 returns without bot(): seffects() can flag status
+         * after its last pline (earth's losehp, for example). Leave that
+         * update pending for the next real flush_screen(). */
         return ECMD_TIME;
     }
 
@@ -1732,12 +1747,13 @@ function _pmname_neutral(mndx) {
 }
 
 /* C read.c's repeated `if (!u.uconduct.literate++) livelog_printf(LL_CONDUCT, ...)`.
- * The livelog line is not a terminal write and has no counterpart here; the
+ * The first read logs its conduct event for #chronicle; the
  * POST-INCREMENT is what matters, and js/read.js:1200 already bumps the same
  * counter on the scroll/spellbook path (insight.c:2170 reads it for #conduct). */
-function _bump_literate() {
+function _bump_literate(readWhat) {
     const _u = game.u || (game.u = {});
     _u.uconduct = _u.uconduct || {};
+    if (!_u.uconduct.literate && readWhat) gamelog_add(LL_CONDUCT, game.moves | 0, `became literate by reading ${readWhat}`);
     _u.uconduct.literate = (_u.uconduct.literate | 0) + 1;
 }
 const SPE_MAGIC_MAPPING = 396; /* objects.h spellbook block */
@@ -2160,12 +2176,7 @@ async function _blessorcurse(otmp, chance) {
         else _bless(otmp);
     }
 }
-/* C ref: shk.c costly_alteration() / alter_cost() — shop billing for an object
- * whose value the hero just changed.  Both are message+billing only (no RNG).
- * This port has no shop-bill model on the read path, so both are no-ops; an
- * unpaid object reaching here is a real gap and is flagged rather than faked. */
-function _costly_alteration(_obj, _cost_type) { /* not yet ported (no RNG) */ }
-function _alter_cost(_obj, _amount) { /* not yet ported (no RNG) */ }
+/* Shop billing uses the shared mkobj.c costly_alteration implementation. */
 /* C ref: potion.c:1462-1478 strange_feeling(obj, txt). */
 async function _strange_feeling(obj, txt) {
     const beginner = !!(game.flags && game.flags.beginner);
@@ -2243,7 +2254,7 @@ async function seffect_enchant_armor(sobjp) {
         }
         if (old_erodeproof && !new_erodeproof) {
             otmp.oerodeproof = 1;      /* C read.c:1156 restore before shop bill */
-            _costly_alteration(otmp, 'COST_DEGRD');
+            await costly_alteration(otmp, COST_DEGRD);
         }
         otmp.oerodeproof = new_erodeproof ? 1 : 0;
         return;
@@ -2325,7 +2336,7 @@ async function seffect_enchant_armor(sobjp) {
         otmp.known = 1;                                 /* C read.c:1244 */
         await setworn(otmp, W_ARM);
         if (otmp.unpaid)
-            _alter_cost(otmp, 0);
+            await _alter_cost(otmp, 0);
         otmp.lamplit = was_lit;
         return;
     }
@@ -2336,7 +2347,7 @@ async function seffect_enchant_armor(sobjp) {
                 + `${(Blind || same_color) ? '' : hcolor(scursed ? NH_BLACK : NH_SILVER)}`
                 + ` for a ${(s * s > 1) ? 'while' : 'moment'}.`);
     if (s < 0)
-        _costly_alteration(otmp, 'COST_DECHNT');        /* C read.c:1263 */
+        await costly_alteration(otmp, COST_DECHNT);   /* C read.c:1263 */
     if (scursed && !otmp.cursed)
         await _curse(otmp);
     else if (sblessed && !otmp.blessed)
@@ -2352,7 +2363,7 @@ async function seffect_enchant_armor(sobjp) {
             adj_abon(otmp, s);                          /* C read.c:1279 */
         g._gk_known = _armor_known(otmp);               /* C read.c:1280 */
         if (s > 0 && otmp.unpaid)
-            _alter_cost(otmp, 0);
+            await _alter_cost(otmp, 0);
     }
 
     if (((otmp.spe | 0) > (special_armor ? 5 : 3))
@@ -2446,7 +2457,7 @@ async function chwepon(otmp, amount) {
         if (uwep.cursed)
             _uncurse(uwep);
         if (uwep.unpaid)
-            _alter_cost(uwep, 0);
+            await _alter_cost(uwep, 0);
         if (otyp !== STRANGE_OBJECT)
             _makeknown(otyp);
         if (multiple)
@@ -2457,7 +2468,7 @@ async function chwepon(otmp, amount) {
         /* order matters: message, shop handling, transformation */
         await Your(`%s %s much duller now.`, simpleonames(uwep),
                   multiple ? 'fuse, and become' : 'is');
-        _costly_alteration(uwep, 'COST_DEGRD');
+        await costly_alteration(uwep, COST_DEGRD);
         uwep.otyp = WORM_TOOTH;
         uwep.oerodeproof = 0;
         if (multiple) {
@@ -2502,14 +2513,14 @@ async function chwepon(otmp, amount) {
             _makeknown(otyp);
     }
     if (amount < 0)
-        _costly_alteration(uwep, 'COST_DECHNT');
+        await costly_alteration(uwep, COST_DECHNT);
     uwep.spe = (uwep.spe | 0) + amount;
     if (amount > 0) {
         if (uwep.cursed)
             _uncurse(uwep);
         /* update shop bill to reflect new higher price */
         if (uwep.unpaid)
-            _alter_cost(uwep, 0);
+            await _alter_cost(uwep, 0);
     }
 
     /* C wield.c:1027-1039 — Magicbane's spe-dependent adverse reaction gives an
@@ -2575,7 +2586,7 @@ async function seffect_enchant_weapon(sobjp) {
         if (old_erodeproof && !new_erodeproof) {
             /* restore old_erodeproof before shop charges */
             uwep.oerodeproof = 1;
-            _costly_alteration(uwep, 'COST_DEGRD');
+            await costly_alteration(uwep, COST_DEGRD);
         }
         uwep.oerodeproof = new_erodeproof ? 1 : 0;
         return;
@@ -2658,10 +2669,10 @@ async function seffect_remove_curse(sobj) {
                     await _blessorcurse(obj, 2);        /* C read.c:1557 — RNG */
                     obj.bknown = 0;                     /* C read.c:1560 */
                     if (shop_h2o && (obj.cursed || obj.blessed))
-                        _alter_cost(obj, 0);
+                        await _alter_cost(obj, 0);
                 } else if (obj.cursed) {
                     if (shop_h2o)
-                        _costly_alteration(obj, 'COST_UNCURS');
+                        await costly_alteration(obj, COST_UNCURS);
                     _uncurse(obj);                      /* C read.c:1571 */
                     /* C read.c:1575-1576 — a cursed-known item becoming
                      * known-uncursed identifies the scroll. */
@@ -2691,6 +2702,7 @@ async function seffect_remove_curse(sobj) {
     /* C read.c:1602-1605 — buried-ball trap release.  u.utraptype TT_BURIEDBALL
      * is not modelled on this path; no RNG. */
     /* C read.c:1607 update_inventory() — display only, no RNG. */
+    update_inventory();
 }
 
 async function seffect_teleportation(sobj) {
@@ -2766,7 +2778,7 @@ async function seffect_destroy_armor(sobjp) {
         if (old_erodeproof && !new_erodeproof) {
             /* restore old_erodeproof before shop charges */
             otmp.oerodeproof = 1;
-            _costly_alteration(otmp, 'COST_DEGRD');
+            await costly_alteration(otmp, COST_DEGRD);
         }
         otmp.oerodeproof = new_erodeproof ? 1 : 0;
         return;
@@ -4455,19 +4467,18 @@ export function drain_weapon_skill(n) {
 function You_feel(msg) { return pline("You feel " + msg); }
 function Your(fmt, ...args) { return pline("Your " + fmt, ...args); }
 function body_part(part) { return part; }
-/* C do_name.c:2432 hcolor(colorstr) returns colorstr unchanged unless the hero
- * is hallucinating (that branch draws from rn2_on_display_rng, NOT the core RNG,
- * and is not modelled here — same simplification this helper has always made).
- * The table below is the identity map from this file's numeric NH_* tokens to
- * the C c_color_names strings (decl.c:16-19). */
+/* C do_name.c:2432 hcolor(colorstr): identity unless hallucinating, in which
+ * case mhitm.js hcolor draws from rn2_on_display_rng.  The table maps this
+ * file's numeric NH_* tokens to the C c_color_names strings (decl.c:16-19). */
 function hcolor(color) {
-    return color === NH_BLUE ? "blue"
+    const name = color === NH_BLUE ? "blue"
         : color === NH_RED ? "red"
         : color === NH_PURPLE ? "purple"
         : color === NH_BLACK ? "black"
         : color === NH_SILVER ? "silver"
         : color === NH_GOLDEN ? "golden"
         : "";
+    return name ? hcolor_real(name) : name;
 }
 
 function pline_The(fmt, ...args) { return pline("The " + fmt, ...args); }
@@ -4578,7 +4589,7 @@ export async function identify_pack(id_limit, learning_id) {
             } while ((id_limit -= n) > 0);
         if (n === 0 || n < -1) await menu_identify(id_limit);
     }
-    /* C: update_inventory() — display refresh, no RNG. */
+    update_inventory(); // C invent.c:2744, including the nothing-to-identify arm.
 }
 
 /* C invent.c:2669 query_objlist(..., SIGNAL_NOMENU, ...) returns -1 when the
@@ -4626,7 +4637,7 @@ async function menu_identify(id_limit) {
 /* C ref: invent.c query_objlist over gi.invent with not_fully_identified filter,
  * PICK_ANY | USE_INVLET | INVORDER_SORT, rendered as a full-screen tty menu with
  * per-class headers (Scrolls, Potions, Rings, ...).  Returns the array of picked
- * objects (in inventory order), or null if the player ESCs (C n == -2).
+ * objects (in menu order), or null if the player ESCs (C n == -2).
  *
  * The menu consumes navigation keystrokes (letter toggles, page keys) but no RNG;
  * RNG is fired only later by identify() per pick. */
@@ -4652,11 +4663,9 @@ async function _identify_objlist_menu(promptText) {
         await topline_more_loop(page);
         g._pending_message = '';
     }
-    /* Collect eligible items in invent order (invent.c reorder_invent keeps
-     * gi.invent sorted by inventory letter, which is also what SORTLOOT_INVLET
-     * gives query_objlist's within-class pass).  The CLASS grouping order comes
-     * from flags.inv_order, not from invent order — see INV_ORDER below. */
-    const eligible = [];
+    /* Collect in inventory-letter order; query_objlist uses SORTLOOT_INVLET
+     * unless sortloot:full requests SORTLOOT_LOOT (pickup.c:1079-1086). */
+    let eligible = [];
     for (let o = g.invent; o; o = o.nobj)
         if (not_fully_identified(o)) eligible.push(o);
     /* C pickup.c query_objlist: `if (!olist ...) return 0;` / the n == -1
@@ -4666,10 +4675,18 @@ async function _identify_objlist_menu(promptText) {
     if (!eligible.length)
         return NO_ELIGIBLE_ITEMS;
 
+    /* C invent.c:447-469: full sorting compares subclass and discovery
+     * before names, so armor such as cloaks precedes suits regardless of
+     * inventory letter. Reuse the same comparator as other object menus. */
+    if (g.flags.sortloot === 'f') {
+        const classes = [...new Set(eligible.map(o => o.oclass | 0))];
+        eligible = classes.flatMap(oc => _sortloot_within_class(eligible, oc));
+    }
+
     /* C pickup.c:1101 query_objlist — `pack = strcpy(packbuf, flags.inv_order)`
      * and the `do { ... pack++; } while (sorted && *pack)` loop walk the CLASS
      * ORDER, not the invent order: one pass per class in flags.inv_order, each
-     * pass scanning the (invlet-sorted) item list for members of that class.
+     * pass scanning the sorted item list for members of that class.
      * flags.inv_order is def_inv_order (options.c:136-140):
      *   COIN, AMULET, WEAPON, ARMOR, FOOD, SCROLL, SPBOOK, POTION, RING, WAND,
      *   TOOL, GEM, ROCK, BALL, CHAIN
@@ -4691,7 +4708,7 @@ async function _identify_objlist_menu(promptText) {
         16, /* CHAIN_CLASS  */
     ];
     const present = new Set(eligible.map(o => o.oclass | 0));
-    const classOrder = INV_ORDER.filter(oc => present.has(oc));
+    const classOrder = (g.flags.inv_order || INV_ORDER).filter(oc => present.has(oc));
     /* C invent.c:4789-4793 names[] (indexed by oclass), via let_to_name(). */
     const CLASS_HEADER = {
         1: 'Illegal objects', 2: 'Weapons', 3: 'Armor', 4: 'Rings',
@@ -4899,7 +4916,7 @@ export function magic_map_background(loc, x, y, show = false) {
     const tg = terrain_glyph(loc, x, y);
     /* C display.c:251-253 retains the terrain glyph identity; preserve its
      * MG_BW_LAVA/ICE/SINK metadata (2890-2915) when mapping it into memory. */
-    let rg = { ch: tg.ch, color: tg.color, decgfx: tg.dec, wallSymbol: tg.wallSymbol,
+    let rg = { ch: tg.ch, color: tg.color, decgfx: tg.dec, cmap: tg.cmap, wallSymbol: tg.wallSymbol,
                bwspec: tg.bwspec };
     /* C: if (!cansee(x,y) && !lev->waslit) — dark-room / dark-corridor correction. */
     if (!cansee(x, y) && !loc.waslit) {
@@ -4924,8 +4941,10 @@ export function magic_map_background(loc, x, y, show = false) {
             rg = { ch: ' ', color: NO_COLOR, decgfx: false, nothing: true };
         } else if (loc.typ === ROOM && rg.ch === '.' && !rg.decgfx && rg.color === NO_COLOR) {
             rg.color = CLR_BLACK;
+            rg.cmap = 20;
         } else if (loc.typ === ROOM && rg.ch === '~' && rg.decgfx && rg.color === NO_COLOR) {
             rg.color = CLR_BLACK;
+            rg.cmap = 20;
         }
         /* CORR S_litcorr → S_corr is already the plain corridor glyph here. */
     }

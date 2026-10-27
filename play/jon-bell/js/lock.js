@@ -5,6 +5,16 @@
 // (lock.c:957-1052). The drawbridge predicates used by the shared branches
 // are implemented locally below to keep lock.js independent of dokick.js.
 import { game } from './gstate.js';
+import { costly_alteration } from './cmd.js';
+import { costly_spot, shop_keeper, stolen_value, obfree, currency } from './shk.js';
+import { obj_extract_self, start_corpse_timeout } from './mklev.js';
+import { delobj } from './dokick.js';
+import { stackobj } from './sp_lev.js';
+import { COST_BRKLCK } from './const.js';
+import { bhp_is_lava as is_lava, verbalize } from './cmd.js';
+import { is_pool } from './look.js';
+import { hliquid } from './mhitm.js';
+import { touch_artifact } from './mklev.js';
 import { could_untrap, untrap_at, cmdq_add_ec, cmdq_add_dir, ysimple_name, set_msg_xy } from './cmd.js';
 import { yname } from './do_wear.js';
 import { t_at } from './trap.js';
@@ -12,7 +22,7 @@ import { can_reach_floor } from './hold_another_object.js';
 import { cant_reach_floor } from './engrave.js';
 const WAND_CLASS = 11; /* objclass.h WAND_CLASS */
 import { Is_rogue_level, M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, AUTOUNLOCK_KICK } from './const.js';
-import { canspotmon, map_invisible } from './display.js';
+import { canspotmon, map_invisible, update_mapseen_for } from './display.js';
 import { s_suffix } from './hacklib.js';
 import { Some_Monnam } from './mhitm.js';
 import { set_occupation, confdir, movecmd, cmdq_pop, cmdq_clear, cmdq_add_key, redraw_cmd, dxdy_moveok, xytodir, readchar,
@@ -228,7 +238,7 @@ export async function doopen_indir(x, y) {
     {
         const _sig = (l) => { const r = l.remembered_glyph;
             return r ? `${r.ch}|${r.color}|${r.cls}|${r.decgfx}` : ''; };
-        const _og = _sig(loc), _ot = loc.lastseentyp | 0;
+        const _og = _sig(loc), _ot = update_mapseen_for(cx, cy);
         await newsym(cx, cy);
         if (_sig(loc) !== _og || (loc.lastseentyp | 0) !== _ot)
             res = ECMD_TIME;
@@ -680,7 +690,7 @@ export async function doclose() {
             /* cls is a JS-side representation tag (absent on glyphs stored before
              * the first feel_location); C compares only the glyph int. */
             const _og = _rg ? `${_rg.ch}|${_rg.color}|${_rg.decgfx}` : '';
-            const _ot = _fl ? (_fl.lastseentyp | 0) : 0;
+            const _ot = update_mapseen_for(x, y);
             feel_location(x, y);
             const _ng0 = _fl ? _fl.remembered_glyph : null;
             const _ng = _ng0 ? `${_ng0.ch}|${_ng0.color}|${_ng0.decgfx}` : '';
@@ -1107,29 +1117,54 @@ export async function breakchestlock(box, destroyit) {
     const u = g.u || {};
     if (!destroyit) {
         /* C lock.c:164 — bill for the box (shop), then break the lock in place. */
+        const hide_contents = box.cobj;
+        box.cobj = null;
+        // Queue billing feedback after the staged force-success message, like potion feedback below.
+        const before = g._pending_message || '', result = g._resultMessage;
+        const joins = _topl_joins_snapshot(before);
+        await costly_alteration(box, COST_BRKLCK);
+        const prefix = [result, before].filter(Boolean).join('  ');
+        if (g._forceMsgs && (g._pending_message || '').startsWith(prefix) && g._pending_message.length > prefix.length) {
+            const after = g._pending_message; g._pending_message = before; g._resultMessage = result;
+            if (joins) { g._topl_joins = joins; g._topl_joins_src = before; }
+            _forceEmit(after.slice(prefix.length).trim());
+        }
+        box.cobj = hide_contents;
         box.olocked = 0;
         box.obroken = 1;
         box.lknown = 1;
         return;
     }
     /* C lock.c:173 — #force destroyed this box. */
+    const shkp = u.ushops?.length && costly_spot(u.ux, u.uy) ? shop_keeper(u.ushops[0]) : null;
+    const costly = !!shkp, peaceful_shk = costly && !!shkp.mpeaceful;
+    let loss = 0;
     _forceEmit(`In fact, you've totally destroyed ${_the(box_xname(box))}.`);
     /* C lock.c:184 — put the contents on the ground at the hero's feet. */
     let otmp;
     while ((otmp = box.cobj) != null) {
-        _extract_from_box(box, otmp);
+        obj_extract_self(otmp);
         /* C lock.c:186 — if (!rn2(3) || POTION) chest_shatter_msg(otmp). */
         if (!rn2(3) || (otmp.oclass | 0) === POTION_CLASS_OC) {
             await chest_shatter_msg(otmp);
+            if (costly) loss += await stolen_value(otmp, u.ux, u.uy, peaceful_shk, true);
             /* C lock.c:191 — quan==1 → obfree (gone); else useup (decrement). */
             if ((otmp.quan | 0) === 1) {
+                await obfree(otmp, null);
                 continue; /* obfree: object destroyed, not placed */
             }
-            otmp.quan = (otmp.quan | 0) - 1;
+            await useup(otmp);
+        }
+        if (box.otyp === ICE_BOX_OTYP && otmp.otyp === 265 /* CORPSE */) {
+            otmp.age = g.moves - otmp.age;
+            start_corpse_timeout(otmp);
         }
         place_object(otmp, u.ux | 0, u.uy | 0);
+        await stackobj(otmp);
     }
-    _delobj(box, u.ux | 0, u.uy | 0);
+    if (costly) loss += await stolen_value(box, u.ux, u.uy, peaceful_shk, true);
+    if (loss) _forceEmit(`You owe ${loss} ${currency(loss)} for objects destroyed.`);
+    await delobj(box);
 }
 
 /* C ref: mkobj.c obj_extract_self for a contained object (box->cobj chain). */
@@ -1346,6 +1381,11 @@ export function autokey(opening) {
     return key ? key : (pick ? pick : (card ? card : null));
 }
 
+async function _touch_lock_pick(pick) { // C artifact.c:910-973; flush the hero helper's deferred blast.
+    const result = await touch_artifact(pick, game.youmonst);
+    if (game._touch_artifact_blast_msg) { const msg = game._touch_artifact_blast_msg; game._touch_artifact_blast_msg = null; await pline(msg); }
+    return result;
+}
 export async function pick_lock(pick, rx, ry, container) {
     const g = game;
     const u = g.u = g.u || {};
@@ -1358,19 +1398,29 @@ export async function pick_lock(pick, rx, ry, container) {
 
     /* C lock.c:381 — resume an interrupted previous attempt. */
     if (x.usedtime && picktyp === x.picktyp) {
-        /* nohands/uswallow guarded out (human hero, not swallowed). */
+        if (_nohands_lk() || u.uswallow || (x.box && !can_reach_floor(true))) {
+            const what = picktyp === LOCK_PICK_OTYP ? 'pick' : picktyp === CREDIT_CARD_OTYP ? 'card' : 'key';
+            await pline(`Unfortunately, you can no longer ${_nohands_lk() ? 'hold the ' + what : 'reach the lock'}.`);
+            reset_pick();
+            return PICKLOCK_LEARNED_SOMETHING;
+        }
         const action = lock_action();
         await pline(`You resume your attempt at ${action}.`);
+        x.magic_key = is_magic_key_hero(pick);
         set_occupation(picklock, action, 0);
         return PICKLOCK_DID_SOMETHING;
     }
 
     /* C lock.c:408-411 — an engulfed hero cannot reach any lock; this runs
      * BEFORE the direction prompt at lock.c:424, so no getdir() happens. */
-    if (u.uswallow) {
+    if (_nohands_lk()) {
+        await pline(`You can't hold ${doname(pick)} -- you have no hands!`);
+        return PICKLOCK_DID_NOTHING;
+    } else if (u.uswallow) {
         await pline(`You can't ${picktyp === CREDIT_CARD_OTYP ? '' : 'lock or '}unlock ${mon_nam(u.ustuck)}.`);
         return PICKLOCK_DID_NOTHING;
     }
+    if (pick && ![SKELETON_KEY_OTYP, LOCK_PICK_OTYP, CREDIT_CARD_OTYP].includes(picktyp)) { await impossible('picking lock with object %d?', picktyp); return PICKLOCK_DID_NOTHING; }
 
     /* C lock.c:421 — autounlock provides coordinates; else getdir → u.dx/u.dy. */
     let cx, cy;
@@ -1384,6 +1434,7 @@ export async function pick_lock(pick, rx, ry, container) {
         }
         cx = (u.ux | 0) + (u.dx | 0);
         cy = (u.uy | 0) + (u.dy | 0);
+        if (!isok(cx, cy)) { await pline('Invalid location!'); return PICKLOCK_DID_NOTHING; }
     }
 
     /* C lock.c:429 — u_at(cc): pick the lock on a container at the hero's tile. */
@@ -1397,6 +1448,8 @@ export async function pick_lock(pick, rx, ry, container) {
             await pline(`There isn't any sort of lock up ${lev ? 'here' : 'there'}.`);
             return PICKLOCK_LEARNED_SOMETHING;
         }
+        if (is_lava(u.ux, u.uy)) { await pline(`Doing that would probably melt ${yname(pick)}.`); return PICKLOCK_LEARNED_SOMETHING; }
+        if (is_pool(u.ux, u.uy) && !u.uinwater) { await pline(`The ${hliquid('water')} has no lock.`); return PICKLOCK_LEARNED_SOMETHING; }
         let c = 'n';
         let count = 0;
         const lvlObjs = g.level?.levelObjects;
@@ -1405,6 +1458,7 @@ export async function pick_lock(pick, rx, ry, container) {
             if (autounlock && otmp !== container) continue;
             if (!_Is_box(otmp)) continue;
             ++count;
+            if (!can_reach_floor(true)) { await pline(`You can't reach ${_the(xname_flags(otmp, CXN_NORMAL))} from up here.`); return PICKLOCK_LEARNED_SOMETHING; }
             if (autounlock && (g.flags?.autounlock & AUTOUNLOCK_UNTRAP) && could_untrap(false, true)) { /* C lock.c:471-480 */
                 c = otmp.tknown ? (otmp.otrapped ? 'y' : 'n')
                     : await _ynq(await safe_qbuf('', 'Check ', ' for a trap?', otmp, yname, ysimple_name, 'this'));
@@ -1449,6 +1503,7 @@ export async function pick_lock(pick, rx, ry, container) {
                 return PICKLOCK_LEARNED_SOMETHING;
             }
             /* C lock.c:515 — autounlock touch_artifact check (no artifact pick). */
+            if (autounlock && !await _touch_lock_pick(pick)) return PICKLOCK_DID_SOMETHING;
             /* C lock.c:520-532 — chance computation (faithful constants). */
             let ch;
             const dex = acurr(u, A_DEX);
@@ -1464,7 +1519,7 @@ export async function pick_lock(pick, rx, ry, container) {
             x.picktyp = picktyp;
             x.chance = ch;
             x.usedtime = 0;
-            x.magic_key = false;
+            x.magic_key = is_magic_key_hero(pick);
             c = 'y';
             break;
         }
@@ -1474,6 +1529,7 @@ export async function pick_lock(pick, rx, ry, container) {
             return PICKLOCK_LEARNED_SOMETHING;
         }
         /* C lock.c:655 — set up the occupation and start picking. */
+        g.context.move = 0;
         set_occupation(picklock, lock_action(), 0);
         return PICKLOCK_DID_SOMETHING;
     }
@@ -1488,8 +1544,8 @@ export async function pick_lock(pick, rx, ry, container) {
     const mtmp = m_at(cx, cy);
     if (mtmp && canseemon(mtmp) && M_AP_TYPE(mtmp) !== M_AP_FURNITURE
         && M_AP_TYPE(mtmp) !== M_AP_OBJECT) {
-        if (picktyp === CREDIT_CARD_OTYP && mtmp.isshk)
-            await pline('No checks, no credit, no problem.');
+        if (picktyp === CREDIT_CARD_OTYP && (mtmp.isshk || (mtmp.data?.pmidx ?? mtmp.mndx) === 274))
+            await verbalize('No checks, no credit, no problem.');
         else
             await pline(`I don't think ${mon_nam(mtmp)} would appreciate that.`);
         return PICKLOCK_LEARNED_SOMETHING;
@@ -1506,11 +1562,13 @@ export async function pick_lock(pick, rx, ry, container) {
         if (door) {
             const _sig = (r) => r ? `${r.ch}|${r.color}|${r.cls}|${r.decgfx ? 1 : 0}` : '';
             const oldglyph = _sig(door.remembered_glyph);
+            const oldlastseentyp = update_mapseen_for(cx, cy);
             feel_location(cx, cy);
-            if (_sig(door.remembered_glyph) !== oldglyph)
+            if (_sig(door.remembered_glyph) !== oldglyph
+                || (door.lastseentyp | 0) !== oldlastseentyp)
                 res = PICKLOCK_LEARNED_SOMETHING;
         }
-        await pline(`You ${_blind_stub() ? 'feel' : 'see'} no door there.`);
+        await pline(`You ${_blind_stub() ? 'feel' : 'see'} no ${_is_drawbridge_wall_stub(cx, cy) >= 0 ? 'lock on the drawbridge' : 'door there'}.`);
         return res;
     }
     const mask = door.doormask | 0;
@@ -1544,6 +1602,7 @@ export async function pick_lock(pick, rx, ry, container) {
         return PICKLOCK_DID_NOTHING;
 
 
+    if (autounlock && !await _touch_lock_pick(pick)) return PICKLOCK_DID_SOMETHING;
     /* C lock.c:638-657 — chance computation. */
     const dex = acurr(u, A_DEX);
     let ch;
@@ -1562,6 +1621,7 @@ export async function pick_lock(pick, rx, ry, container) {
      * (lock.c:103) rather than sprung. */
     x.magic_key = is_magic_key_hero(pick);
     x.usedtime = 0;
+    g.context.move = 0;
     set_occupation(picklock, lock_action(), 0);
     return PICKLOCK_DID_SOMETHING;
 }

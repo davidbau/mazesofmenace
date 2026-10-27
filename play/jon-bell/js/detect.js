@@ -123,7 +123,9 @@ export async function do_vicinity_map(sobj) {
     for (let x = loX; x <= hiX; x++) for (let y = loY; y <= hiY; y++) {
         if (x === u.ux && y === u.uy) continue;
         const loc = g.level?.at(x, y), mon = m_at(x, y);
-        const mndx = mon?.mndx ?? mon?.mnum ?? mon?.data?.pmidx;
+        /* C: glyph_to_mon(glyph_at(zx, zy)) — the species DISPLAYED (a random
+         * one under Hallucination), not the occupant's own */
+        const mndx = loc?.disp_mon_pm ?? mon?.mndx ?? mon?.mnum ?? mon?.data?.pmidx;
         if (loc && _isMonGlyph(loc) && (mndx | 0) !== PM_LONG_WORM_TAIL
             && (!mon || !canspotmon(mon))) map_invisible(x, y);
     }

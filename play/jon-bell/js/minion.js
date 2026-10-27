@@ -18,7 +18,7 @@ import { A_CHA, RLOC_MSG } from './const.js';
 import { canseemon, livelog_printf } from './display.js';
 import { mon_nam } from './uhitm.js';
 import { x_monnam, Amonnam } from './mhitm.js';
-import { pline, newsym, canspotmon, Deaf } from './display.js';
+import { pline, newsym, canspotmon, Deaf, You_feel } from './display.js';
 import { Blind } from './vision.js';
 import { Monnam } from './mcastu.js';
 import { Hear_again } from './eat.js';
@@ -83,7 +83,7 @@ export async function gain_guardian_angel() {
         if (!Deaf())
             await pline('A voice booms:');
         else
-            await pline('You feel a booming voice:');
+            await You_feel('a booming voice:');
         await verbalize('Thy desire for conflict shall be fulfilled!');
         /* send in some hostile angels instead */
         await lose_guardian_angel(null);
@@ -91,7 +91,7 @@ export async function gain_guardian_angel() {
         if (!Deaf())
             await pline('A voice whispers:');
         else
-            await pline('You feel a soft voice:');
+            await You_feel('a soft voice:');
         await verbalize('Thou hast been worthy of me!');
         const mm = enexto_out(u.ux, u.uy, permonstTemplate(PM_ANGEL));
         let mtmp;
@@ -108,7 +108,7 @@ export async function gain_guardian_angel() {
             if (!Blind())
                 await pline('An angel appears near you.');
             else
-                await pline('You feel the presence of a friendly angel near you.');
+                await You_feel('the presence of a friendly angel near you.');
             /* make him strong enough vs. endgame foes */
             mtmp.m_lev = rn1(8, 15);
             mtmp.mhp = mtmp.mhpmax = d(mtmp.m_lev | 0, 10) + 30 + rnd(30);
@@ -147,7 +147,7 @@ export async function demon_talk(mtmp) {
         if (canspotmon(mtmp))
             await pline(`${Amonnam(mtmp)} looks very angry.`);
         else
-            await pline('You feel tension building.');
+            await You_feel('tension building.');
         mtmp.mpeaceful = mtmp.mtame = 0;
         set_malign(mtmp);
         newsym(mtmp.mx, mtmp.my);

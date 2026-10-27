@@ -5822,8 +5822,10 @@ export async function mkportal(x, y, todnum, todlevel) {
     // (js/trap.js maketrap header).  C's mkportal (mkmaze.c:1458) is
     // synchronous; awaiting here preserves the C statement order.
     const ttmp = await maketrap(x, y, MAGIC_PORTAL);
-    if (!ttmp)
-        return; // C: impossible("portal on top of portal?")
+    if (!ttmp) {
+        await impossible("portal on top of portal?");
+        return;
+    }
     ttmp.dst.dnum = todnum;
     ttmp.dst.dlevel = todlevel;
 }
@@ -5847,7 +5849,7 @@ async function splev_place_branch(branchp, x, y) {
         return;
     if (!x) { /* find random coordinates for branch */
         const m = { x: 0, y: 0 };
-        find_branch_room(m);
+        await find_branch_room(m);
         x = m.x;
         y = m.y;
     }
@@ -6352,7 +6354,7 @@ export async function lspo_reset_level() {
     const wt = (await import('./dochug.js')).In_W_tower_wz(game.u.ux | 0, game.u.uy | 0, game.u.uz);
     (game.iflags = game.iflags || {}).lua_testing = true;
     await (await import('./wizcmds.js')).makemap_prepost(true, wt);
-    game.in_mklev = true; oinit(); clear_level_structures();
+    game.in_mklev = true; await oinit(); clear_level_structures();
     return 0;
 }
 export async function lspo_finalize_level() {

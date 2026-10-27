@@ -24,7 +24,8 @@ import { load_special } from './sp_lev.js';
 import { obj_ice_effects, count_level_features, wallification } from './mklev.js';
 import { place_object, remove_object, u_on_newpos } from './mklev.js';
 import { stackobj } from './sp_lev.js';
-import { newsym, dec_mode } from './display.js';
+import { newsym, dec_mode, pline } from './display.js';
+import { impossible } from './pline.js';
 import { t_at } from './trap.js';
 import { remove_worm } from './worm.js';
 import { mnearto, mnexto, elemental_clog } from './teleport.js';
@@ -77,7 +78,7 @@ import { ENV } from './hostenv.js';
 // #define CAN_OVERWRITE_TERRAIN(ttyp) \
 //     (iflags.debug_overwrite_stairs || !((ttyp) == LADDER || (ttyp) == STAIRS))
 function CAN_OVERWRITE_TERRAIN(ttyp) {
-    const debug_overwrite_stairs = !!(game && game.flags && game.flags.debug_overwrite_stairs);
+    const debug_overwrite_stairs = !!(game && game.iflags && game.iflags.debug_overwrite_stairs);
     return debug_overwrite_stairs || !(ttyp === LADDER || ttyp === STAIRS);
 }
 
@@ -991,12 +992,22 @@ async function mv_bubble(b, dx, dy, ini) {
         if (b.y <= gbymin()) colli |= 1;
         if (b.x + b.bm[0] - 1 >= gbxmax()) colli |= 2;
         if (b.y + b.bm[1] - 1 >= gbymax()) colli |= 1;
-        /* C's four pline()-and-clamp arms are diagnostics for an out-of-range
-           bubble; mk_bubble already clamps, so they are dead here. */
-        if (b.x < gbxmin()) b.x = gbxmin();
-        if (b.y < gbymin()) b.y = gbymin();
-        if (b.x + b.bm[0] - 1 > gbxmax()) b.x = gbxmax() - b.bm[0] + 1;
-        if (b.y + b.bm[1] - 1 > gbymax()) b.y = gbymax() - b.bm[1] + 1;
+        if (b.x < gbxmin()) {
+            await pline("bubble xmin: x = %d, xmin = %d", b.x, gbxmin());
+            b.x = gbxmin();
+        }
+        if (b.y < gbymin()) {
+            await pline("bubble ymin: y = %d, ymin = %d", b.y, gbymin());
+            b.y = gbymin();
+        }
+        if (b.x + b.bm[0] - 1 > gbxmax()) {
+            await pline("bubble xmax: x = %d, xmax = %d", b.x + b.bm[0] - 1, gbxmax());
+            b.x = gbxmax() - b.bm[0] + 1;
+        }
+        if (b.y + b.bm[1] - 1 > gbymax()) {
+            await pline("bubble ymax: y = %d, ymax = %d", b.y + b.bm[1] - 1, gbymax());
+            b.y = gbymax() - b.bm[1] + 1;
+        }
         /* bounce if we're trying to move off the border */
         if (b.x === gbxmin() && dx < 0) dx = -dx;
         if (b.x + b.bm[0] - 1 === gbxmax() && dx > 0) dx = -dx;
@@ -1064,6 +1075,7 @@ async function mv_bubble(b, dx, dy, ini) {
                 break;
             }
             default:
+                await impossible("mv_bubble: unknown bubble contents");
                 break;
             }
         }

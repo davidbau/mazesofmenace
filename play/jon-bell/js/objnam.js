@@ -130,6 +130,7 @@ function strprepend(s, pref) {
         impossible('PREFIX too short (for %d).', pref.length);
         return s;
     }
+    if (pref.includes('\n')) return pref.split('\n', 1)[0]; // C copynchars terminates here.
     return pref + s;
 }
 
@@ -276,7 +277,7 @@ function _is_female_pm(P) { return ((P?.mflags2 | 0) & M2_FEMALE_OBJNAM) !== 0; 
 function _is_neuter_pm(P) { return ((P?.mflags2 | 0) & M2_NEUTER_OBJNAM) !== 0; }
 function _is_were_pm(P)   { return ((P?.mflags2 | 0) & M2_WERE_OBJNAM) !== 0; }
 /* C mon.c:470 genus() — a quest guardian's species, or (mode 1) its role. */
-function genus(mndx, mode) {
+export function genus(mndx, mode) {
     const g = (a, b) => (mode ? a : b);
     switch (mndx) {
     case PM_STUDENT: return g(PM_ARCHEOLOGIST, PM_HUMAN);
@@ -2975,7 +2976,7 @@ export function the_unique_obj(obj) {
 // For non-artifact objects, falls back to xname(obj).
 export function bare_artifactname(obj) {
     if (obj.oartifact) {
-        let outbuf = ARTILIST[obj.oartifact - 1].name;
+        let outbuf = artiname(obj.oartifact);
         if (outbuf.startsWith("The "))
             outbuf = lowc(outbuf[0]) + outbuf.substring(1);
         return outbuf;
@@ -3388,7 +3389,7 @@ export function makeplural(oldstr) {
     }
 
     if (!oldstr || !oldstr[0]) {
-        // impossible("plural of null?");
+        impossible("plural of null?");
         return "s";
     }
 
@@ -3456,7 +3457,7 @@ export function makeplural(oldstr) {
     /* man/men ("Wiped out all cavemen.") */
     if (len >= 3 && strcmpi(str.substring(spot - 2), "man") === 0
         && !badman(str, true)) {
-        str = str.substring(0, spot - 1) + "en";
+        str = strcasecpy_at(str, spot - 1, "en");
         if (excess)
             return str + excess;
         return str;
@@ -3469,7 +3470,7 @@ export function makeplural(oldstr) {
             ;  /* fall through to default (append 's') */
         } else if (strchr("lr", lo_c) || strchr(vowels, lo_c)) {
             /* [aeioulr]f to [aeioulr]ves */
-            str = str.substring(0, spot) + "ves";
+            str = strcasecpy_at(str, spot, "ves");
             if (excess)
                 return str + excess;
             return str;
@@ -3478,7 +3479,7 @@ export function makeplural(oldstr) {
 
     /* ium/ia (mycelia, baluchitheria) */
     if (len >= 3 && strcmpi(str.substring(spot - 2), "ium") === 0) {
-        str = str.substring(0, spot - 2) + "ia";
+        str = strcasecpy_at(str, spot - 2, "ia");
         if (excess)
             return str + excess;
         return str;
@@ -3491,7 +3492,7 @@ export function makeplural(oldstr) {
         || (len >= 6 && strcmpi(str.substring(spot - 5), "amoeba") === 0)
         || (len >= 8 && strcmpi(str.substring(spot - 7), "vertebra") === 0)) {
         /* a to ae */
-        str = str.substring(0, spot + 1) + "e";
+        str = strcasecpy_at(str, spot + 1, "e");
         if (excess)
             return str + excess;
         return str;
@@ -3501,7 +3502,7 @@ export function makeplural(oldstr) {
     if (len > 3 && strcmpi(str.substring(spot - 1), "us") === 0
         && !((len >= 5 && strcmpi(str.substring(spot - 4), "lotus") === 0)
              || (len >= 6 && strcmpi(str.substring(spot - 5), "wumpus") === 0))) {
-        str = str.substring(0, spot - 1) + "i";
+        str = strcasecpy_at(str, spot - 1, "i");
         if (excess)
             return str + excess;
         return str;
@@ -3509,7 +3510,7 @@ export function makeplural(oldstr) {
 
     /* sis/ses (nemesis) */
     if (len >= 3 && strcmpi(str.substring(spot - 2), "sis") === 0) {
-        str = str.substring(0, spot - 1) + "es";
+        str = strcasecpy_at(str, spot - 1, "es");
         if (excess)
             return str + excess;
         return str;
@@ -3517,7 +3518,7 @@ export function makeplural(oldstr) {
 
     if (len >= 3 && strcmpi(str.substring(spot - 2), "eau") === 0
         && BSTRCMPI(str, spot - 5, "bureau")) {
-        str = str.substring(0, spot + 1) + "x";
+        str = strcasecpy_at(str, spot + 1, "x");
         if (excess)
             return str + excess;
         return str;
@@ -3526,7 +3527,7 @@ export function makeplural(oldstr) {
     /* matzoh/matzot, possible food name */
     if (len >= 6 && (strcmpi(str.substring(spot - 5), "matzoh") === 0
                      || strcmpi(str.substring(spot - 5), "matzah") === 0)) {
-        str = str.substring(0, spot - 1) + "ot";
+        str = strcasecpy_at(str, spot - 1, "ot");
         if (excess)
             return str + excess;
         return str;
@@ -3534,7 +3535,7 @@ export function makeplural(oldstr) {
 
     if (len >= 5 && (strcmpi(str.substring(spot - 4), "matzo") === 0
                      || strcmpi(str.substring(spot - 4), "matza") === 0)) {
-        str = str.substring(0, spot) + "ot";
+        str = strcasecpy_at(str, spot, "ot");
         if (excess)
             return str + excess;
         return str;
@@ -3550,7 +3551,7 @@ export function makeplural(oldstr) {
             || strcmpi(str.substring(spot - 2), "tex") === 0)
        /* indices would have been ok too, but stick with indexes */
         && (strcmpi(str.substring(spot - 4), "index") !== 0)) {
-        str = str.substring(0, spot - 1) + "ices";
+        str = strcasecpy_at(str, spot - 1, "ices");
         if (excess)
             return str + excess;
         return str;
@@ -3562,7 +3563,7 @@ export function makeplural(oldstr) {
             && !(len >= 4 && lowc(str[spot - 1]) === 'c' && ch_ksound(str)))
         || (len >= 4 && strcmpi(str.substring(spot - 2), "ato") === 0)
         || (len >= 5 && strcmpi(str.substring(spot - 4), "dingo") === 0)) {
-        str = str.substring(0, spot + 1) + "es";
+        str = strcasecpy_at(str, spot + 1, "es");
         if (excess)
             return str + excess;
         return str;
@@ -3570,14 +3571,14 @@ export function makeplural(oldstr) {
 
     /* Ends in y preceded by consonant (note: also "qu") change to "ies" */
     if (lo_c === 'y' && !strchr(vowels, lowc(str[spot - 1]))) {
-        str = str.substring(0, spot) + "ies";
+        str = strcasecpy_at(str, spot, "ies");
         if (excess)
             return str + excess;
         return str;
     }
 
     /* Default: append an 's' */
-    str = str.substring(0, spot + 1) + "s";
+    str = strcasecpy_at(str, spot + 1, "s");
 
     if (excess)
         return str + excess;
@@ -4712,9 +4713,12 @@ export function mshot_xname(obj) {
     return onm;
 }
 
-/* C objnam.c:1122-1130 — char *singular(struct obj *otmp, char *(*func)(OBJ_P))
+/* C objnam.c:2091-2108 — char *singular(struct obj *otmp, char *(*func)(OBJ_P))
  * Format with quan temporarily forced to 1, then restore it. */
 export async function singular(otmp, func) {
+    // C objnam.c:2096-2098: xname alone omits a corpse's monster type.
+    if (otmp.otyp === CORPSE && func === xname)
+        func = cxname;
     const savequan = otmp.quan;
     otmp.quan = 1;
     const nam = await func(otmp);
@@ -5498,7 +5502,7 @@ export async function short_oname(obj, func, altfunc, lenlimit) {
     obj.oeroded2 = 0;
     outbuf = (await func(obj));
     if (altfunc && outbuf.length > lenlimit)
-        outbuf = altfunc(obj);
+        outbuf = await altfunc(obj);
     for (const k of Object.keys(save_obj))
         obj[k] = save_obj[k];
     if (save_oname) obj.oextra.oname = save_oname;

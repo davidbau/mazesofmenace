@@ -2,7 +2,9 @@
 // dog.c — Starting pet and pet AI helpers.
 // C ref: nethack-c/src/dog.c
 // @ts-nocheck — js sibling imports.
-import { pline, livelog_printf } from './display.js'; /* was an undeclared global: every pline() call in this file threw ReferenceError when reached */
+import { pline, livelog_printf, flush_pending_messages } from './display.js';
+import { raw_print } from './rawterm.js';           /* C wintty.c tty_raw_print */
+import { nhgetch } from './input.js'; /* was an undeclared global: every pline() call in this file threw ReferenceError when reached */
 import { LL_CONDUCT } from './const.js';
 import { mon_pmname } from './do_name.js';
 import { rn2, rnd, rn1, pushRngLogEntry } from './rng.js';
@@ -24,7 +26,7 @@ import { del_light_source, monst_to_any } from './light.js';
 import { set_ustuck as set_ustuck_dog, discard_minvent as discard_minvent_real, restore_cham,
          stairway_find_from, stairway_find_dir, somexy, mongone, monnear } from './mklev.js';
 import { enexto_core, mnexto, mnearto, rloc_to, rloc } from './teleport.js';
-import { put_saddle_on_mon, impossible } from './steed.js';
+import { put_saddle_on_mon, impossible, place_monster } from './steed.js';
 import { newMonHp, assignMakemonFemale, peaceMinded, permonstTemplate, propagate, newmextra, emits_light, humanoid } from './makemon.js';
 import { acurr } from './attrib.js';
 /* ── imports for the level-migration chain (mon_leaving_level / relmon /
@@ -32,19 +34,20 @@ import { acurr } from './attrib.js';
 import { isok, Has_contents, MON_MIGRATING, MAX_NUM_WORMS } from './const.js';
 import { within_bounded_area } from './rect.js';   /* C rect.c */
 import { newsym, force_more_from_cls, docrt } from './display.js';    /* C display.c */
-import { see_wsegs as see_wsegs_dog, remove_worm, wormgone, count_wsegs } from './worm.js';  /* C worm.c redraw_worm's stand-in */
+import { remove_worm, wormgone, count_wsegs } from './worm.js';
 import { yelp, growl, helpless, levl_follower, mon_has_amulet, seemimic } from './mhitm.js';
 import { vision_recalc } from './vision.js';       /* C vision.c */
 import { depth } from './hacklib.js';              /* C dungeon.c depth() */
 import { fill_pit, mintrap } from './trap.js';              /* C trap.c:5391 */
-import { on_level } from './dungeon.js';           /* C dungeon.c on_level() */
+import { on_level, builds_up } from './dungeon.js'; /* C dungeon.c */
+import { impossible as impossible_arrive } from './pline.js';
 import { ESHK, EPRI, EGD } from './const.js';      /* C mextra.h accessors */
 import { picked_container, deliver_obj_to_mon } from './dokick.js';    /* C shk.c:3084 */
 /* C steal.c:851-871 mdrop_special_objs — canonical special-inventory drop
  * handling; this module's keepdogs() steed branch reaches it directly. */
 import { mdrop_special_objs as mdrop_special_objs_real } from './steal.js';
 import { obfree } from './dokick.js';
-import { set_residency, in_rooms } from './shk.js';          /* C shk.c:1907 */
+import { set_residency, in_rooms, make_happy_shk } from './shk.js'; /* C shk.c:1395/1907 */
 import { mon_track_clear } from './monmove.js';      /* C monmove.c:90 */
 import { get_wormno, initworm } from './worm.js';    /* C worm.c:95/119 */
 /* C monattk.h attack/damage-type constants, in C's numbering — they are
@@ -62,7 +65,7 @@ import { healmon } from './mklev.js';
 /* C dog.c:271-274 — makedog's own call, on the starting pet, before christening.
  * see_monster_closeup's real body is js/mklev.js:10320 (C mon.c:5971). */
 import { see_monster_closeup } from './mklev.js';
-import { carrying, body_part, dismount_steed as dismount_steed_real } from './cmd.js';
+import { carrying, body_part, set_msg_xy, dismount_steed as dismount_steed_real } from './cmd.js';
 const EXPENSIVE_CAMERA = 229;
 /* C spellbook object type SPE_CREATE_FAMILIAR = 401 (objects.h X-macro; not
  * greppable, matches the value already duplicated at js/spell.js:75,
@@ -94,11 +97,11 @@ import { mbirth_limit, rndmonstAdj,
 import { spell_skilltype } from './spell.js';           /* C spell.c:855 */
 import { P_SKILL } from './skills.js';                  /* C attrib.c-adjacent skill table */
 /* C pline.c:132 pline_mon(mon, fmt, ...) — pline() preceded by set_msg_xy() for
- * the perm_invent/status highlight channel, which this port has no window for;
+ * message-origin coordinates and accessibility, matching
  * the same body js/mklev.js:14496 carries. */
 function pline_mon(mtmp, fmt, ...args) {
-    void mtmp;
-    pline(fmt, ...args);
+    set_msg_xy(mtmp === game.youmonst ? 0 : mtmp.mx, mtmp === game.youmonst ? 0 : mtmp.my);
+    return pline(fmt, ...args);
 }
 /* C youprop.h:116-120 — Hallucination is (HHallucination && !Halluc_resistance),
  * where HHallucination is u.uprops[HALLUC].intrinsic (INTRINSIC only; there is
@@ -958,16 +961,32 @@ export async function mon_arrive(mtmp, when) {
     case MIGR_PORTAL: {
         if (In_endgame(u.uz)) {
             const d = game.updest || {};
-            if ((d.hx | 0) >= (d.lx | 0) && (d.hy | 0) >= (d.ly | 0)) {
-                xlocale = rn1((d.hx | 0) - (d.lx | 0) + 1, d.lx | 0);
-                ylocale = rn1((d.hy | 0) - (d.ly | 0) + 1, d.ly | 0);
-            }
+            xlocale = rn1((d.hx | 0) - (d.lx | 0) + 1, d.lx | 0);
+            ylocale = rn1((d.hy | 0) - (d.ly | 0) + 1, d.ly | 0);
         } else {
+            let portal = null;
             for (let t = game.ftrap; t; t = t.ntrap) {
                 if ((t.ttyp | 0) === MAGIC_PORTAL) {
                     xlocale = t.tx | 0;
                     ylocale = t.ty | 0;
+                    portal = t;
                     break;
+                }
+            }
+            if (!portal) {
+                const st = game.iflags?.debug_fuzzer
+                    && stairway_find_dir(!builds_up(u.uz));
+                if (st) {
+                    xlocale = st.sx | 0;
+                    ylocale = st.sy | 0;
+                } else {
+                    // C dog.c:563-572: quest expulsion suppresses the diagnostic;
+                    // both missing-portal paths fall through to MIGR_RANDOM.
+                    if (!(u.uevent?.qexpelled && game.qstart_level
+                          && ((u.uz0 && on_level(u.uz0, game.qstart_level))
+                              || on_level(u.uz, game.qstart_level))))
+                        await impossible_arrive('mon_arrive: no corresponding portal?');
+                    xlocale = ylocale = 0;
                 }
             }
         }
@@ -1165,9 +1184,9 @@ export async function wary_dog(mtmp, was_dead) {
         const petHasEyes = !(mtmp.data?.mflags1 & 0x00001000);
         if (!quietly && cansee(mtmp.mx, mtmp.my) && heroHasEyes) {
             if (petHasEyes)
-                await pline(`${Monnam(mtmp)} ${mtmp.mpeaceful ? 'seems unable' : 'refuses'} to look you in the ${body_part(EYE)}.`);
+                await pline_mon(mtmp, `${Monnam(mtmp)} ${mtmp.mpeaceful ? 'seems unable' : 'refuses'} to look you in the ${body_part(EYE)}.`);
             else
-                await pline(`${Monnam(mtmp)} avoids your gaze.`);
+                await pline_mon(mtmp, `${Monnam(mtmp)} avoids your gaze.`);
         }
     } else {
         /* C's Pet Sematary chance. */
@@ -1178,7 +1197,7 @@ export async function wary_dog(mtmp, was_dead) {
 
     if (!mtmp.mtame) {
         if (!quietly && canspotmon(mtmp))
-            await pline(`${Monnam(mtmp)} ${mtmp.mpeaceful ? 'is no longer tame' : 'has become feral'}.`);
+            await pline_mon(mtmp, `${Monnam(mtmp)} ${mtmp.mpeaceful ? 'is no longer tame' : 'has become feral'}.`);
         newsym(mtmp.mx, mtmp.my);
         if (mtmp.mleashed)
             m_unleash(mtmp, true);
@@ -1228,10 +1247,10 @@ export function abuse_dog(mtmp) {
         if (!(mtmp.mtame | 0)) {
             newsym(mtmp.mx | 0, mtmp.my | 0);
             /* C dog.c:1396-1397 `if (mtmp->wormno) redraw_worm(mtmp);` —
-             * js/worm.js has no redraw_worm; see_wsegs() is the repaint this
+             * redraw_worm() is the full-chain repaint this
              * port uses for the same job. */
             if (mtmp.wormno)
-                see_wsegs_dog(mtmp);
+                redraw_worm(mtmp);
         }
     }
 }
@@ -1261,19 +1280,26 @@ export async function mdrop_special_objs(mtmp) {
 function ledger_no(lev) {
     return ((lev?.dlevel | 0) + (game.dungeons?.[lev?.dnum | 0]?.ledger_start | 0));
 }
-function ledger_to_dnum(ledgerno) {
+async function panic(_msg) {
+    await flush_pending_messages();
+    game.program_state.panicking = 1;
+    raw_print('');
+    raw_print('Oops...');
+    for (;;)
+        await nhgetch();
+}
+async function ledger_to_dnum(ledgerno) {
     const dgns = game.dungeons || [];
     for (let i = 0; i < dgns.length; i++) {
         const start = dgns[i]?.ledger_start | 0;
         if (start < ledgerno && ledgerno <= start + (dgns[i]?.num_dunlevs | 0))
             return i;
     }
-    /* C panics.  Returning 0 would silently migrate the monster into the main
-     * dungeon; surface it instead. */
-    throw new Error(`ledger_to_dnum(${ledgerno}): level number out of range`);
+    await panic(`level number out of range [ledger_to_dnum(${ledgerno})]`);
+    return 0;
 }
-function ledger_to_dlev(ledgerno) {
-    return ledgerno - (game.dungeons?.[ledger_to_dnum(ledgerno)]?.ledger_start | 0);
+async function ledger_to_dlev(ledgerno) {
+    return ledgerno - (game.dungeons?.[await ledger_to_dnum(ledgerno)]?.ledger_start | 0);
 }
 
 /* C dungeon.c:1923 In_W_tower(x, y, lev) — is (x,y) inside the Wizard's tower
@@ -1388,28 +1414,10 @@ function mon_leave(mtmp) {
 
     /* if this is a long worm, handle its tail segments before mtmp itself */
     if (mtmp.wormno) {
-        /* C dog.c:748-760.  This threw 'UNPORTED CALLEE: mon_leave long-worm
-         * tail (worm.c wormgone)' until wormgone() was ported; the throw was
-         * the honest outcome then and it is a live halt now that it is not.
-         *
-         * C's comment on the truncation is load-bearing: "since monst->wormno
-         * is overloaded to hold the number of tail segments during migration, a
-         * very long worm with more segments than can fit in that field gets
-         * truncated" — which is why the count is clamped to MAX_NUM_WORMS - 1
-         * and why migrate_to_level() below writes num_segs back into wormno.
-         *
-         * place_monster(mtmp, mx, my) puts the head back after wormgone() has
-         * taken it off; C guards it with `if (mx)` for "mtmp might not be on
-         * the map if this is happening during a failed attempt to migrate to
-         * this level".  place_monster is the fmon chain here and mon_leave does
-         * not unlink (relmon does, after), so the head is still on it — the
-         * call is the identity for everything except the coordinates it would
-         * re-assert, which have not changed.  Left as the comment rather than a
-         * fabricated re-link. */
-        const cnt = count_wsegs(mtmp);
+        const cnt = count_wsegs(mtmp), mx = mtmp.mx, my = mtmp.my;
         num_segs = Math.min(cnt, MAX_NUM_WORMS - 1);
         wormgone(mtmp);
-        /* C: if (mx) place_monster(mtmp, mx, my) — see above. */
+        if (mx) place_monster(mtmp, mx, my);
     }
 
     return num_segs;
@@ -1441,8 +1449,8 @@ export async function migrate_to_level(mtmp, tolev, xyloc, cc) {
     mtmp.mstate = (mtmp.mstate | 0) | MON_MIGRATING;
 
     const new_lev = {
-        dnum: ledger_to_dnum(tolev | 0),
-        dlevel: ledger_to_dlev(tolev | 0),
+        dnum: await ledger_to_dnum(tolev | 0),
+        dlevel: await ledger_to_dlev(tolev | 0),
     };
     /* overload mtmp->[mx,my], mtmp->[mux,muy], and mtmp->mtrack[] as
        destination codes */
@@ -1475,7 +1483,6 @@ export { mon_leave, relmon };
  * retaining a false-returning shadow for external callers. */
 export function attacktype(data, attk) { return _attacktype_real(data, attk); }
 async function expels(mtmp, data, flag) { return expels_gu(mtmp, mtmp?.data?.pmidx, flag); }
-function make_happy_shk(mtmp, flag) { /* stub */ }
 /* weapon.c:797 mon_wield_item — was an empty-body stub here (returning
  * undefined, so every `if (mon_wield_item(mtmp))` caller read it as "did not
  * take time").  The real port lives in js/uhitm.js beside its siblings
@@ -1538,6 +1545,13 @@ export async function unstuck(mtmp, skipDocrt = false) {
         /* skipDocrt: js/mhitu.js expels() pages and repaints itself at C's
          * position right after this call (mhitu.js:6177-6240). */
         if (!skipDocrt) {
+            /* A direct You() writer (eat.js) parks the standing topline in the
+             * result channel; it is the same gt.toplines cls() must page. */
+            if (!game._pending_message && game._resultMessage) {
+                game._pending_message = game._resultMessage;
+                game._resultMessage = null;
+                game._resultMessageJoins = null;
+            }
             if (game._pending_message) {
                 const morc = await force_more_from_cls(String(game._pending_message));
                 /* topl.c more():232-235 — this page is raised by cls(), not by an
@@ -1591,7 +1605,7 @@ export async function tamedog(mtmp, obj, givemsg) {
     }
 
     if ('mfrozen' in mtmp && mtmp.mfrozen)
-        mtmp.mfrozen = (mtmp.mfrozen + 1) / 2;
+        mtmp.mfrozen = Math.trunc((mtmp.mfrozen + 1) / 2);
     if ('msleeping' in mtmp && mtmp.msleeping)
         wake_nearto(mtmp.mx, mtmp.my, 1);
 
@@ -1601,7 +1615,7 @@ export async function tamedog(mtmp, obj, givemsg) {
         return false;
 
     if (givemsg && !('mpeaceful' in mtmp && mtmp.mpeaceful) && canspotmon(mtmp)) {
-        pline_mon(mtmp, "%s seems %s.", Monnam(mtmp),
+        await pline_mon(mtmp, "%s seems %s.", Monnam(mtmp),
               Hallucination() ? "really chill" : "more amiable");
         givemsg = false;
     }
@@ -1640,11 +1654,11 @@ export async function tamedog(mtmp, obj, givemsg) {
                     (obj.otyp === CORPSE && ismnum(obj.corpsenm)
                      && (permonstTemplate(obj.corpsenm)?.msize | 0)
                         > (mtmp.data?.msize | 0));
-                pline_mon(mtmp, "%s catches %s%s",
+                await pline_mon(mtmp, "%s catches %s%s",
                           Monnam(mtmp), the(xname(obj)),
                          !big_corpse ? "." : ", or vice versa!");
             } else if (cansee(mtmp.mx, mtmp.my))
-                pline("%s.", Tobjnam(obj, "stop"));
+                await pline("%s.", Tobjnam(obj, "stop"));
             place_object(obj, mtmp.mx, mtmp.my);
             await dog_eat(mtmp, obj, mtmp.mx, mtmp.my, false);
             return true;
@@ -1663,7 +1677,7 @@ export async function tamedog(mtmp, obj, givemsg) {
         return false;
     }
     if ('isshk' in mtmp && mtmp.isshk) {
-        make_happy_shk(mtmp, false);
+        await make_happy_shk(mtmp, false); /* C dog.c:1236: also pacifies watch */
         return false;
     }
 
@@ -1694,7 +1708,7 @@ export async function tamedog(mtmp, obj, givemsg) {
     }
 
     if (givemsg && canspotmon(mtmp))
-        pline_mon(mtmp, "%s seems quite %s.", Monnam(mtmp),
+        await pline_mon(mtmp, "%s seems quite %s.", Monnam(mtmp),
               Hallucination() ? "approachable" : "friendly");
 
     newsym(mtmp.mx, mtmp.my);

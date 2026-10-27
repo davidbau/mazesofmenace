@@ -12,6 +12,7 @@ import { canspotmon } from './display.js';
 import { Monnam } from './mcastu.js';
 import { s_suffix } from './hacklib.js';
 import { game } from './gstate.js';
+import { impossible } from './steed.js';
 import { cansee } from './vision.js';
 import { rn2, rnd, rn1, d, rn2_on_display_rng } from './rng.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
@@ -451,7 +452,7 @@ export function place_worm_tail_randomly(worm, x, y) {
     let ox = x, oy = y;
 
     if (wnum && (!wtails[wnum] || !wheads[wnum])) {
-        /* impossible("place_worm_tail_randomly: wormno is set without a tail!") */
+        impossible("place_worm_tail_randomly: wormno is set without a tail!");
         return;
     }
     if (wtails[wnum] === wheads[wnum]) {
@@ -459,7 +460,8 @@ export function place_worm_tail_randomly(worm, x, y) {
            should either have same coordinates or have seg->wx==0
            to indicate that it is not currently on the map */
         if (curr.wx && (curr.wx !== worm.mx || curr.wy !== worm.my)) {
-            /* impossible("... tail segment at <%d,%d>, worm at <%d,%d>") */
+            impossible("place_worm_tail_randomly: tail segment at <%d,%d>, worm at <%d,%d>",
+                       curr.wx, curr.wy, worm.mx, worm.my);
             if (m_at(curr.wx, curr.wy) === worm)
                 remove_monster(curr.wx, curr.wy);
         }
@@ -617,8 +619,8 @@ export function remove_worm(worm) {
 export function wormgone(worm) {
     const wnum = worm.wormno | 0;
 
-    /* C: if (!wnum) impossible("wormgone: wormno is 0") — a diagnostic; the
-     * body runs to completion either way, so no early return here. */
+    if (!wnum) /* note: continuing with wnum==0 runs to completion */
+        impossible("wormgone: wormno is 0");
 
     worm.wormno = 0; /* still a long worm but doesn't grow/shrink anymore */
     /*

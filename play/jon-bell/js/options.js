@@ -19,6 +19,7 @@ export const END_DISCLOSE_DEFAULT = 'nnnnnn';
 import { def_char_to_objclass } from './drawing.js';
 import { DOSET_BOOLS } from './doset_data.js';
 import { optfn_menustyle_set } from './menustyle.js';
+import { option_state } from './options_runtime.js';
 import { optfn_suppress_alert_set } from './feature_alert.js';
 import { parsebindings, parseautocomplete, optfn_number_pad_set, escapes, check_misc_menu_command, set_misc_menu_command } from './cmd_config.js';
 import { config_error_add } from './cmd_binds.js';
@@ -583,7 +584,7 @@ export async function optfn_boulder_set(op) {
     const changed = set_boulder_symbol(game, 'boulder:' + op, op, false,
         (...args) => errors.push(args));
     for (const args of errors) {
-        const message = nh_sprintf(...args);
+        const message = nh_sprintf(args[0], args.slice(1));
         await pline('%s%s%s', game.iflags.window_inited ? '' : 'config_error_add: ',
             message, /[.!?]$/.test(message) ? '' : '.');
     }
@@ -725,7 +726,8 @@ export function parseNethackrc(rc) {
         gender: '',
         align: '',
         flags: { autounlock: 2, inv_order: [12, 5, 2, 3, 7, 9, 10, 8, 4, 11, 6, 13, 14, 15, 16] }, // options.c:118,1076
-        iflags: { hilite_delta: 0 },
+        // C options.c:7181 initoptions_init: tty message history defaults to single.
+        iflags: { hilite_delta: 0, prevmsg_window: 's' },
         uroleplay: {blind: false, deaf: false, nudist: false, pauper: false},
     };
     if (!rc)
@@ -830,10 +832,12 @@ export function parseNethackrc(rc) {
             const hlerr = hilite_status_config_error(hlop);
             if (hlerr)
                 config_error_add(hlerr[0], hlerr[1]);
-            else if (status_fieldname(hlop.split('/')[0]) === 'condition')
+            else if (hlop.includes('/') && status_fieldname(hlop.split('/')[0]) === 'condition')
                 (game.status_condition_hilites ||= []).push(hlop);
-            else
+            else if (hlop.includes('/'))
                 (game.status_field_hilites ||= []).push(hlop);
+            else
+                store_status_hilite(hlop);
             // C botl.c:2643-2645: accepting a rule enables highlighting.
             if (!hlerr && !result.iflags.hilite_delta) result.iflags.hilite_delta = 3;
             continue;
@@ -1030,15 +1034,10 @@ export function parseNethackrc(rc) {
                     config_error_add(hlerr[0], hlerr[1]);
                     continue;
                 }
-                /* C botl.c:2593 parse_status_hl1() keeps the rule; a
-                 * condition/<name>/<colour>&<attr> rule is carried to
-                 * display.js, which paints the condition's own text. */
+                /* C botl.c:2637 -> parse_status_hl2(): store each accepted
+                 * rule once (field thresholds append at botl.c:3099). */
                 const hlop = menuopts.slice(menusep + 1).trim();
-                if (status_fieldname(hlop.split('/')[0]) === 'condition')
-                    (game.status_condition_hilites ||= []).push(hlop);
-                /* C botl.c:2593 parse_status_hl2(): a field rule (strength/always/yellow&inverse) is kept too; display.js paints the field's text. */
-                else
-                    (game.status_field_hilites ||= []).push(hlop);
+                store_status_hilite(hlop);
                 if (!result.iflags.hilite_delta) result.iflags.hilite_delta = 3;
             }
             /* C options.c:3446-3460 optfn_player_selection(do_set) */
@@ -1965,6 +1964,10 @@ export function optfn_fruit_set(op) {
     /* C options.c:1725 mungspaces(op) is the CALLER's job here — js/optmenu.js
      * already munges the getlin answer, matching parseoptions' order. */
     let forig = null;
+    /* C options.c:1724-1725 — `if (op == empty_optstr) return optn_err;`
+     * before any change: an empty answer leaves pl_fruit alone. */
+    if (!op)
+        return null;
     /* C options.c:1727-1743 — !go.opt_initial. */
     {
         const { f, highest_fid } = fruit_from_name(op);
@@ -1986,6 +1989,9 @@ export function optfn_fruit_set(op) {
     /* C options.c:1754-1756 — fruitadd(svp.pl_fruit, forig): svp.pl_fruit is
      * the argument, so this is the user_specified call. */
     fruitadd(g.pl_fruit, forig, true);
+    /* C options.c:1759: idlecheckpoint can leave give_opt_msg FALSE
+     * (5318); the fruit still changes, but no confirmation is printed. */
+    if (!option_state().give_opt_msg) return null;
     /* C options.c:1757 — pline("Fruit is now \"%s\".", svp.pl_fruit), read
      * AFTER fruitadd, which may have singularised or "candied "-prefixed it. */
     return `Fruit is now "${g.pl_fruit}".`;
@@ -2008,6 +2014,16 @@ export function count_status_hilites() {
     return count + seen.size;
 }
 
+function store_status_hilite(op) {
+    /* C botl.c:2610-2644: without a slash, fldnum stays zero and
+     * parse_status_hl1() succeeds without calling parse_status_hl2(). */
+    if (!op.includes('/')) return;
+    if (status_fieldname(op.split('/')[0]) === 'condition')
+        (game.status_condition_hilites ||= []).push(op);
+    else
+        (game.status_field_hilites ||= []).push(op);
+}
+
 /* C options.c:1861-1876 optfn_hilite_status(do_set) reached from doset()'s
  * getlin path (options.c:8944-8953 -> parseoptions): parse_status_hl1() keeps
  * the rule exactly as the config-file path above does.  Returns the first
@@ -2016,10 +2032,13 @@ export function optfn_hilite_status_set(op) {
     if (!op) return "Value is mandatory for hilite_status";
     const hlerr = hilite_status_config_error(op);
     if (hlerr) return hlerr[0].replace('%s', hlerr[1]);
-    if (status_fieldname(op.split('/')[0]) === 'condition')
-        (game.status_condition_hilites ||= []).push(op);
-    else
-        (game.status_field_hilites ||= []).push(op);
+    /* botl.c:2593-2640 parse_status_hl1(): parse_status_hl2() (which stores a
+     * rule) only runs for a token with at least one '/'; "1" stores nothing. */
+    if (!op.includes('/')) {
+        if (!game.iflags.hilite_delta) game.iflags.hilite_delta = 3;
+        return null;
+    }
+    store_status_hilite(op);
     if (!game.iflags.hilite_delta) game.iflags.hilite_delta = 3;
     return null;
 }

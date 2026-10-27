@@ -16,6 +16,8 @@
 // exercise pickup.c's real body directly.  Unifying the two remains the
 // @ts-nocheck — js sibling imports.
 import { game } from './gstate.js';
+import { impossible } from './pline.js';
+import { displayLookWindow } from './look-window.js';
 import { fix_ghostly_obj } from './bones.js';
 import {
     pline, _topl_stash_result, newsym, newsym_force, Norep, flush_screen,
@@ -30,6 +32,7 @@ import { nhgetch } from './input.js';
 import { touch_artifact_youmonst, _pickup_burden_level } from './wizcmds.js';
 import { poly_when_stoned } from './mhitm.js';
 import { polymon } from './polyself.js';
+import { exercise } from './attrib.js';
 import { PM_STONE_GOLEM } from './pm.generated.js';
 import { corpse_xname, killer_xname, CXN_SINGULAR, CXN_ARTICLE } from './objnam.js';
 import { Blind } from './vision.js';
@@ -54,7 +57,7 @@ import {
     IS_AIR, IS_ALTAR, IS_GRAVE, IS_FOUNTAIN, IS_WALL, IS_DOOR, IS_ROOM,
     SDOOR, CLOUD, Is_waterlevel, Is_earthlevel,
     In_sokoban, HAND, P_RIDING, P_BASIC,
-    SHOPBASE, ESHK, STONE_RES, KILLED_BY_AN,
+    SHOPBASE, ESHK, STONE_RES, KILLED_BY_AN, PARANOID_AUTOALL, A_WIS,
 } from './const.js';
 /* C ref: pickup.c:2293 the `lootmon` branch — mon_beside() needs m_at(). */
 import { m_at, mon_nam } from './uhitm.js';
@@ -64,7 +67,7 @@ import { hliquid, x_monnam } from './mhitm.js';
 /* pickup()'s own guard cascade (pickup.c:690-735) — real, already-ported
  * bodies from their owning files, imported read-only. */
 import { is_pool, look_here } from './look.js';
-import { t_at } from './trap.js';
+import { t_at, extract_from_minvent } from './trap.js';
 import { can_reach_floor, addinv_core0, hold_another_object } from './hold_another_object.js';
 import { freehand, cant_reach_floor } from './engrave.js';
 import { rider_cant_reach } from './steed.js';
@@ -72,7 +75,7 @@ import { P_SKILL } from './skills.js';
 import {
     safe_qbuf as safe_qbuf_shk, costly_spot, in_rooms, addtobill, shop_keeper, inhishop, remote_burglary,
 } from './shk.js';
-import { remove_object, upstart, engr_at, On_stairs } from './mklev.js';
+import { remove_object, upstart, engr_at, On_stairs, set_bknown, is_rider_pm, revive_corpse } from './mklev.js';
 import {
     max_capacity, calc_capacity, near_capacity, weight,
 } from './weight.js';
@@ -222,6 +225,17 @@ export async function fatal_corpse_mistake(obj, remotely) {
         corpse_xname(obj, null, CXN_SINGULAR | CXN_ARTICLE));
     const { instapetrify } = await _cmdModule();
     await instapetrify(killer_xname(obj));
+    return true;
+}
+
+/* C pickup.c:302-313: an attempted transfer revives a Rider, even remotely. */
+export async function rider_corpse_revival(obj, remotely) {
+    if (!obj || obj.otyp !== _CORPSE_OTYP || !is_rider_pm(obj.corpsenm))
+        return false;
+    await pline('At your %s, the corpse suddenly moves...',
+        remotely ? 'attempted acquisition' : 'touch');
+    await revive_corpse(obj);
+    exercise(A_WIS, false);
     return true;
 }
 
@@ -603,13 +617,13 @@ async function get_adjacent_loc(prompt, emsg, x, y, cc) {
  * "remove the saddle from your steed" and 3.4.0's loot-the-swallower.  C's two
  * out-params are carried in one box (this tree's {value}-style convention). */
 export async function loot_mon(mtmp, box) {
+    let timepassed = 0;
     if (mtmp && mtmp !== game.u?.usteed && which_armor(mtmp, W_SADDLE)) {
         const saddle = which_armor(mtmp, W_SADDLE);
         if (box) box.passed_info = 1;
-        const ans = await yn_function(`Do you want to remove the saddle from ${x_monnam(mtmp, ARTICLE_THE, null, SUPPRESS_SADDLE, false)}?`, 'ynq', 'n');
+        const ans = await yn_function(`Do you want to remove the saddle from ${x_monnam(mtmp, ARTICLE_THE, null, SUPPRESS_SADDLE, false)}?`, 'ynq', 'n', true);
         if (ans === 'y') {
-            const mflags1 = (game.youmonst?.data?.mflags1 ?? game.u?.umonnum?.mflags1 ?? 0) | 0;
-            if ((mflags1 & 0x6000) === 0x6000) {
+            if (nolimbs(game.youmonst?.data)) {
                 await pline("You can't do that without limbs.");
                 return 0;
             }
@@ -617,21 +631,14 @@ export async function loot_mon(mtmp, box) {
                 await pline(`You can't.  The saddle seems to be stuck to ${x_monnam(mtmp, ARTICLE_THE, null, SUPPRESS_SADDLE, false)}.`);
                 return 1;
             }
-            /* C extract_from_minvent(mtmp,saddle): unlink and clear worn state. */
-            let prev = null, cur = mtmp.minvent;
-            while (cur && cur !== saddle) { prev = cur; cur = cur.nobj; }
-            if (cur === saddle) {
-                if (prev) prev.nobj = cur.nobj; else mtmp.minvent = cur.nobj;
-                cur.nobj = null; cur.ocarry = null; cur.where = OBJ_FREE;
-            }
-            cur.owornmask = 0;
-            mtmp.misc_worn_check = (mtmp.misc_worn_check | 0) & ~W_SADDLE;
+            /* C pickup.c:2460 — also update extrinsics and schedule a gear check. */
+            await extract_from_minvent(mtmp, saddle, true, false);
             /* C pickup.c:2461-2463: use the simple definite object name. */
             if (game.flags.verbose)
-                await pline(`You take ${thesimpleoname(cur)} off of ${mon_nam(mtmp)}.`);
-            await hold_another_object(cur, 'You drop %s!', (await doname(cur)), null);
+                await pline(`You take ${thesimpleoname(saddle)} off of ${mon_nam(mtmp)}.`);
+            await hold_another_object(saddle, 'You drop %s!', (await doname(saddle)), null);
+            timepassed = rnd(3);
             if (box) box.prev_loot = true;
-            return rnd(3);
         }
         if (ans === 'q') return 0;
     }
@@ -639,7 +646,7 @@ export async function loot_mon(mtmp, box) {
         const count = box?.passed_info | 0;
         return await pickup(count);
     }
-    return 0;
+    return timepassed;
 }
 /* C ref: mondata.h:52 nohands(ptr) = ((ptr->mflags1 & M1_NOHANDS) != 0),
  * applied to gy.youmonst.data — the hero's CURRENT form (polyself.c set_uasmon
@@ -1464,7 +1471,8 @@ export async function lift_object(obj, container, cnt, telekinesis) {
                     : 'You have a little trouble';
                 const savequan = obj.quan;
                 obj.quan = cnt.v;
-                const qbuf = `${prefix} ${container ? 'removing' : 'lifting'} ${(await doname(obj))}.  Continue?`;
+                const qprefix = `${prefix} ${container ? 'removing' : 'lifting'} `;
+                const qbuf = await safe_qbuf_shk('', qprefix, '.  Continue?', obj, doname, ansimpleoname, 'something');
                 obj.quan = savequan;
                 const ans = await _lift_ynq(qbuf);
                 if (ans === 'q') result = -1;
@@ -1618,11 +1626,10 @@ export async function pickup_object(obj, count, telekinesis) {
         /* C pickup.c:1824-1829.  Remote acquisition is safe from the
          * bare-handed petrification check; direct pickup of a cockatrice or
          * chickatrice corpse is fatal unless gloves/resistance apply. */
-        if (await fatal_corpse_mistake(obj, telekinesis)) {
+        if (await fatal_corpse_mistake(obj, telekinesis)
+            || await rider_corpse_revival(obj, telekinesis)) {
             return -1;
         }
-        /* Rider revival remains isolated in mklev.js; ordinary corpses pass
-         * through to the normal carry path once the fatal-touch guard clears. */
     }
     if ((obj.otyp | 0) === _SCR_SCARE_MONSTER_OTYP) {
         /* C pickup.c:1830-1856.  Capacity is computed before changing the
@@ -1672,18 +1679,18 @@ function _is_cleric() {
 }
 
 /* C ref: pickup.c:523-590 allow_category() — query_objlist callback driven by
- * add_valid_menu_class()'s filters.  (ParanoidAutoAll is not modelled.) */
+ * add_valid_menu_class()'s filters and ParanoidAutoAll. */
 export function allow_category(obj) {
     const g = game;
     if (!g.gc?.class_filter && !g.gs?.shop_filter && !g.gb?.bucx_filter
-        && !g.gp?.picked_filter)
+        && !g.gp?.picked_filter && !((g.flags?.paranoia_bits | 0) & PARANOID_AUTOALL))
         return false;
     const vmc = g.gv?.valid_menu_classes || '';
     const oc = obj.oclass | 0;
     if (oc === _COIN_CLASS && g.gc?.class_filter)
         return vmc.includes(String.fromCharCode(_COIN_CLASS));
     if (_is_cleric() && !obj.bknown)
-        obj.bknown = 1;
+        set_bknown(obj, 1);
     if (g.gc?.class_filter && !vmc.includes(String.fromCharCode(oc)))
         return false;
     if (g.gs?.shop_filter && !obj.unpaid
@@ -1736,11 +1743,17 @@ function collect_obj_classes(otmp, here) {
     return { ilets, itemcount };
 }
 
-/* C ref: pickup.c:74-95 simple_look() — a lone object is a pline; the
- * multi-object text window is not modelled. */
+/* C pickup.c:74-95 simple_look(): NHW_MENU putstr window for multiple objects. */
 async function simple_look(otmp, here) {
-    if (!(here ? otmp.nexthere : otmp.nobj))
+    if (!otmp) await impossible('simple_look(null)');
+    else if (!(here ? otmp.nexthere : otmp.nobj))
         await pline('%s', await doname(otmp));
+    else {
+        const lines = [''];
+        for (; otmp; otmp = here ? otmp.nexthere : otmp.nobj)
+            lines.push(await doname(otmp));
+        await displayLookWindow(lines);
+    }
 }
 
 /* C ref: win/tty/topl.c tty_yn_function's '#' arm (see js/cmd.js

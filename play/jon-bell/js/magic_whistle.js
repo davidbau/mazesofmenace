@@ -4,14 +4,14 @@ import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { can_blow, seemimic, y_monnam } from './mhitm.js';
 import { mnexto, teleds, teleok } from './teleport.js';
-import { wake_nearby } from './mklev.js';
+import { wake_nearby, upstart } from './mklev.js';
 import { dist2 } from './hacklib.js';
 import { noteleport_level } from './makemon.js';
 import { fill_pit, mintrap } from './trap.js';
 import { canspotmon, pline, newsym, Deaf } from './display.js';
 import { discover_object } from './o_init.js';
 import { change_luck } from './attrib.js';
-import { ECMD_TIME, HALLUC, HALLUC_RES, isok, MON_FLOOR, RLOC_MSG,
+import { BUFSZ, ECMD_TIME, HALLUC, HALLUC_RES, isok, MON_FLOOR, RLOC_MSG,
     RLOC_NONE, NO_TRAP_FLAGS, TELEDS_TELEPORT,
     M_AP_TYPMASK, PLNMSG_MON_TAKES_OFF_ITEM } from './const.js';
 
@@ -98,23 +98,28 @@ export async function magic_whistled(obj) {
 
     let text = '';
     if (shift)
-        text = shift > 1 ? `${how_many(shift)} creatures shift locations` : shift_name;
+        text = upstart(shift > 1 ? `${how_many(shift)} creatures shift locations`
+            : shift_name).split(/[\0\n]/, 1)[0];
     if (appear) {
         const part = appear > 1
             ? `${how_many(appear)} ${shift === 0 ? 'creatures'
                 : shift === 1 ? 'other creatures' : 'others'} appear`
             : appear_name;
-        text = shift ? `${text}${disappear ? ',' : ' and'} ${part}` : part;
+        text = shift ? `${text}${disappear ? ',' : ' and'} ${part}`
+            : upstart(part).split(/[\0\n]/, 1)[0];
     }
     if (disappear) {
         const part = disappear > 1
             ? `${how_many(disappear)} ${!shift && !appear ? 'creatures'
                 : shift < 2 && appear < 2 ? 'other creatures' : 'others'} disappear`
             : disappear_name;
-        text = shift || appear ? `${text}${shift && appear ? ',' : ''} and ${part}` : part;
+        text = shift || appear ? `${text}${shift && appear ? ',' : ''} and ${part}`
+            : upstart(part).split(/[\0\n]/, 1)[0];
     }
+    // C copynchars() stops at newline; Snprintf() appends within buf[BUFSZ].
+    text = text.slice(0, BUFSZ - 1);
     if (text)
-        await pline(`${text[0].toUpperCase()}${text.slice(1)}.`);
+        await pline(`${text}.`);
 }
 
 /* C apply.c:495-514. */

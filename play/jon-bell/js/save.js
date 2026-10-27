@@ -29,7 +29,7 @@ function levelStore() {
 
 /* C ref: save.c:429 savelev(nhfp, lev).  `lev` is ledger_no(&u.uz) — the
  * absolute cross-branch level index, the same key getlev() reads back. */
-export function savelev(lev) {
+export async function savelev(lev) {
     /* C save.c:483-488 — savelev_core purges dead monsters before it writes
      * the level when iflags.purge_monsters is set.  mon.c:2796 increments
      * that counter when m_detach sets MON_DETACH; use that state as the
@@ -87,7 +87,7 @@ export function savelev(lev) {
         /* C save.c:490 save_light_sources(nhfp, RANGE_LEVEL) — takes this
          * level's mobile light sources off gl.light_base and writes them into
          * the level file; getlev() puts them back. */
-        light_sources: save_light_sources(RANGE_LEVEL),
+        light_sources: await save_light_sources(RANGE_LEVEL),
         /* track.c:88 save_track() ends with `if (release_data(nhfp)) initrack();`
          * and initrack() rewrites g._track's fields IN PLACE, so this one has to
          * be copied rather than referenced. */
@@ -165,6 +165,9 @@ export const NOT_SAVED = [
     // C options.c:7731 stores MSGTYPE rules in gp.plinemsg_types; save.c:265
     // savegamestate omits them. Each process rebuilds them from its own rc.
     'msgtypes',
+    // C decl.c:341,555 initializes these to FALSE/0; save.c:265-333 omits
+    // mhitm.c's noise throttle, so a restored process hears fights afresh.
+    'far_noise', 'noisetime',
     'nhDisplay', '_rawterm', '_screen_output', '_preNhgetchHook',
     'mockStorage', 'currentSeed', 'tutorial_set_in_config',
     '_pending_message', '_prevmsg', '_resultMessage', '_resultMessageJoins',

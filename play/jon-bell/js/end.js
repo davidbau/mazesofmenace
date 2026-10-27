@@ -31,7 +31,7 @@ import { clong, nowrap_add } from './integer.js';
 import { savebones, no_bones_level } from './bones.js';
 import { launch_in_progress, force_launch_placement } from './trap.js';
 import { force_more, force_more_lone_frame, pline, urgent_pline, flush_screen, bot, _topl_joins_committed,
-         _topline_more_pending, capture_painted_frame_with_status } from './display.js';
+         _topline_more_pending, capture_painted_frame_with_status, yn_function_menu } from './display.js';
 import { topl_park_cursor, canspotmon, _threeStatusLines } from './display.js';
 import { putmsghistory, Unaware, livelog_printf, pline_flush_point } from './display.js';
 import { LL_LIFESAVE } from './const.js';
@@ -44,13 +44,13 @@ import { paranoid_query } from './paranoid.js';
 import { routeTag } from './route_telemetry.js';
 import { acurr, minuhpmax, setuhpmax } from './attrib.js';
 import { rn2, d } from './rng.js';
-import { A_CON, A_CURRENT, A_ORIGINAL, Upolyd, DIED, CHOKING, STARVING, DROWNING, BURNING, STONING, TURNED_SLIME, QUIT, GENOCIDED, PANICKED, TRICKED, ESCAPED, ASCENDED, LIFESAVED, KILLED_BY, NO_KILLER_PREFIX, BASICENLIGHTENMENT, MAGICENLIGHTENMENT, ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD, PARANOID_QUIT, PARANOID_DIE, PARANOID_BONES } from './const.js';
+import { A_CON, A_CURRENT, A_ORIGINAL, Upolyd, DIED, CHOKING, STARVING, DROWNING, BURNING, DISSOLVED, STONING, TURNED_SLIME, QUIT, GENOCIDED, PANICKED, TRICKED, ESCAPED, ASCENDED, LIFESAVED, KILLED_BY, NO_KILLER_PREFIX, BASICENLIGHTENMENT, MAGICENLIGHTENMENT, ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD, PARANOID_QUIT, PARANOID_DIE, PARANOID_BONES } from './const.js';
 import { KILLED_BY_AN, MALE, FEMALE, In_quest, In_endgame, Is_astralevel } from './const.js';
 import { dunlev, Is_branchlev } from './dungeon.js';
 import { MAGIC_PORTAL } from './const.js';
 import { MGIVENNAME, has_mgivenname, has_ebones } from './const.js';
 import { SICK, SICK_ALL, TIMEOUT, TT_LAVA, UNCHANGING, HALLUC, HALLUC_RES } from './const.js';
-import { PM_TOURIST, PM_HUMAN_MUMMY, PM_ELF_MUMMY, PM_DWARF_MUMMY, PM_GNOME_MUMMY, PM_ORC_MUMMY, PM_HUMAN_ZOMBIE, PM_ELF_ZOMBIE, PM_DWARF_ZOMBIE, PM_GNOME_ZOMBIE, PM_ORC_ZOMBIE, PM_WRAITH, PM_VAMPIRE, PM_GHOUL, PM_HUMAN, PM_ELF, PM_DWARF, PM_GNOME, PM_ORC } from './pm.generated.js';
+import { PM_TOURIST, PM_HUMAN_MUMMY, PM_ELF_MUMMY, PM_DWARF_MUMMY, PM_GNOME_MUMMY, PM_ORC_MUMMY, PM_HUMAN_ZOMBIE, PM_ELF_ZOMBIE, PM_DWARF_ZOMBIE, PM_GNOME_ZOMBIE, PM_ORC_ZOMBIE, PM_WRAITH, PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER, PM_GHOUL, PM_HUMAN, PM_ELF, PM_DWARF, PM_GNOME, PM_ORC } from './pm.generated.js';
 import { G_GENOD } from './const.js';
 import { DOMOVE_WALK, DOMOVE_RUSH } from './const.js';
 import { shkname, free_oname } from './dokick.js';
@@ -97,7 +97,7 @@ const CORPSE_END = 265;        /* objects.h CORPSE otyp */
 import { hidden_gold, paygd } from './vault.js';
 import { clearpriests } from './priest.js';
 import { DISCLOSURE_OPTIONS, END_DISCLOSE_DEFAULT } from './options.js';
-import { enlightenment, list_vanquished, list_genocided, show_conduct, count_achievements, show_overview, inventory_menu_legacy } from './cmd.js';
+import { enlightenment, list_vanquished, list_genocided, show_conduct, count_achievements, show_overview, display_inventory } from './cmd.js';
 import { container_contents, SchroedingersBox, observe_quantum_cat } from './pickup_container.js';
 import { set_cknown_lknown } from './cmd.js';
 import { discover_object } from './o_init.js';
@@ -111,7 +111,6 @@ import { useup, endmultishot } from './cmd.js';
 import { schedule_goto, record_achievement } from './cmd.js';
 import { ACH_UWIN } from './const.js';
 import { Blind, vision_recalc } from './vision.js';
-import { placebc } from './ball.js';
 
 // C end.c:350-384 — avoid repeating the fatal condition as helplessness.
 function fixup_death(how) {
@@ -152,10 +151,9 @@ export async function done_object_cleanup() {
             if (g.gk && g.gk[key]) g.gk[key] = null;
         }
     }
-    // ball.c:236 lift_covet_and_placebc(override_restriction) always permits
-    // placement; placebc() already implements its placebc_core() behavior.
+    // C end.c:893: recover the chain even while bubble movement owns placement.
     if (u.uchain && u.uchain.where === OBJ_FREE)
-        await placebc();
+        await lift_covet_and_placebc(-1); // hack.h override_restriction
     g.iflags.perm_invent = false;
 }
 
@@ -362,13 +360,13 @@ export function done_in_by(mtmp, how) {
     }
     /* C end.c:186-190 — champtr/imitator/mimicker.  A chameleon stores its
      * original species in cham, while a mimic's monster appearance is held in
-     * mappearance.  Keep both pointers as data rows: done_in_by only needs the
-     * names and uniqueness flags, so this avoids manufacturing a monster. */
+     * mappearance.  Compare species indices: the raw mons row and the monster's
+     * decoded data object are distinct JS objects even for the same species. */
     const cham = Number.isInteger(mtmp?.cham) && (mtmp.cham | 0) >= 0
         ? (mtmp.cham | 0) : -1;
-    const champtr = cham >= 0 ? (MONS_ROWS_END[cham] || mptr) : mptr;
+    const champidx = cham >= 0 && MONS_ROWS_END[cham] ? cham : mptr?.pmidx;
     const mimicker = (M_AP_TYPE_END(mtmp) === M_AP_MONSTER_END);
-    const imitator = mimicker || (champtr && mptr && champtr !== mptr);
+    const imitator = mimicker || champidx !== mptr?.pmidx;
     /* C end.c:198 */
     g.svk.killer.format = KILLED_BY_AN;
     let buf = '';
@@ -413,15 +411,24 @@ export function done_in_by(mtmp, how) {
         const fakeptr = fakeRow
             ? { pmidx: fakeidx, geno: fakeRow[3] | 0, mflags2: fakeRow[7] | 0 }
             : mptr;
-        const fakenm = monPmname(fakeidx, mtmp?.female ? FEMALE : MALE);
+        let fakenm = monPmname(fakeidx, mtmp?.female ? FEMALE : MALE);
+        /* C end.c:227 is_vampshifter(mtmp) (monst.h:217) */
+        const alt = cham === PM_VAMPIRE || cham === PM_VAMPIRE_LORD
+                    || cham === PM_VLAD_THE_IMPALER;
+        if (!mimicker && alt && realnm.toLowerCase().includes('vampire')
+            && fakenm === 'vampire bat') {
+            /* C end.c:234-238: "vampire in bat form" */
+            fakenm = 'bat';
+        }
         let shape;
-        if (_type_is_pname_end(fakeptr) || !fakeptr)
+        if (alt || _type_is_pname_end(fakeptr) || !fakeptr)
             shape = fakenm;
         else if (the_unique_pm(fakeptr))
             shape = `the ${fakenm}`;
         else
             shape = an(fakenm);
-        buf += mimicker ? `${realnm} disguised as ${shape}`
+        buf += alt ? `${realnm} in ${shape} form`
+             : mimicker ? `${realnm} disguised as ${shape}`
                         : `${realnm} imitating ${shape}`;
     } else if (isGhost) {
         /* C end.c:260-264 */
@@ -453,6 +460,19 @@ export function done_in_by(mtmp, how) {
     }
     /* C end.c:284 */
     g.svk.killer.name = buf;
+    /* C end.c:286-313 — multireasonbuf holds "m_id:reason" and multi_reason
+     * points past the colon; when the killer caused the helplessness, cut the
+     * reason at its first space ("paralyzed by a ghoul" -> "paralyzed"). */
+    const mrb = g.multireasonbuf || '';
+    const colon = mrb.indexOf(':');
+    if (g.multi_reason && colon > 0 && g.multi_reason === mrb.slice(colon + 1)
+        && colon + 1 < mrb.length && (mtmp.m_id >>> 0) === (parseInt(mrb, 10) >>> 0)) {
+        const sp = mrb.indexOf(' ');
+        if (sp >= 0) {
+            g.multireasonbuf = mrb.slice(0, sp);
+            g.multi_reason = g.multireasonbuf.slice(colon + 1);
+        }
+    }
     deadhero(how | 0, { stoningDeathLine: how === STONING });
 }
 /* C monflag.h G_UNIQ 0x1000 — the same value js/read.js:3797 pins. */
@@ -550,9 +570,8 @@ export async function savelife(how, inPlace, countdown = false) {
         endmultishot(false);
     /* C end.c:749-758.  expels() is async here because its docrt page can read
      * input.  Await the whole release before the interrupted monster turn
-     * resumes; in C this call is synchronous.  expels_gu still names its
-     * missing spoteffects(TRUE) landing tail, so a landing trap remains a
-     * separate gap rather than being silently simulated here. */
+     * resumes; in C this call is synchronous.  expels_gu includes the landing
+     * spoteffects(TRUE) before returning. */
     const stuck = u.ustuck;
     if (u.uswallow && stuck) {
         await expels_gu(stuck, (stuck.mnum ?? stuck.data?.pmidx ?? 0) | 0, true);
@@ -997,11 +1016,12 @@ export async function yn_function(query, choices, defchoice, addcmdq = false, op
         else cmdq_clear(CQ_CANNED);
         addcmdq = false;
     } else {
-        res = await _yn_prompt(query, choices, defchoice, opts);
+        res = await yn_function_menu(query, choices, defchoice);
+        if (res === null) res = await _yn_prompt(query, choices, defchoice, opts);
     }
     if (addcmdq) cmdq_add_key(CQ_REPEAT, typeof res === 'number' ? res : res.charCodeAt(0));
     // C revalidates queued replies against the current context's response set.
-    // Its paniclog/impossible diagnostics, fuzzer and alternate menu reader
+    // Its paniclog/impossible diagnostics and fuzzer
     // remain separate dependencies; this is the normal tty/queue route.
     if (choices && res && res !== '\0' && !choices.includes(res))
         res = defchoice || '\x1b';
@@ -1418,9 +1438,11 @@ async function disclose(how, taken) {
             ? `Do you want to see what you had when you ${(how === QUIT) ? 'quit' : 'died'}?`
             : 'Do you want your possessions identified?';
         const [ask, defquery] = should_query_disclose_option('i');
-        c = ask ? await _yn_prompt(qbuf, 'ynq', defquery) : defquery;
+        c = ask ? await yn_function(qbuf, 'ynq', defquery, true) : defquery;
         if (c === 'y') {
-            const _discloseInv = await inventory_menu_legacy({ gameover: true });
+            g.iflags.force_invmenu = false;
+            await display_inventory(null, true);
+            const _discloseInv = g._pickinv_window;
             /* C dismisses the inventory NHW_MENU with docorner() before
              * container_contents() opens its NHW_TEXT window.  The corner
              * erase leaves only the prefix of each status row painted. */
@@ -1455,7 +1477,7 @@ async function disclose(how, taken) {
     }
     if (!done_stopprint()) {
         const [ask, defquery] = should_query_disclose_option('a');
-        c = ask ? await _yn_prompt('Do you want to see your attributes?', 'ynq', defquery)
+        c = ask ? await yn_function('Do you want to see your attributes?', 'ynq', defquery, true)
                 : defquery;
         if (c === 'y')
             /* C end.c:650-653 — `enlightenment(BASICENLIGHTENMENT |
@@ -1481,8 +1503,8 @@ async function disclose(how, taken) {
         const [ask_c, defq_c] = should_query_disclose_option('c');
         const acnt = count_achievements();
         c = ask_c
-            ? await _yn_prompt(`Do you want to see your conduct${acnt > 0 ? ' and achievements' : ''}?`,
-                               'ynq', defq_c)
+            ? await yn_function(`Do you want to see your conduct${acnt > 0 ? ' and achievements' : ''}?`,
+                               'ynq', defq_c, true)
             : defq_c;
         if (c === 'y')
             await show_conduct((how >= PANICKED) ? 1 : 2);
@@ -1492,7 +1514,7 @@ async function disclose(how, taken) {
     /* C end.c:690-699 — the dungeon overview. */
     if (!done_stopprint()) {
         const [ask_o, defq_o] = should_query_disclose_option('o');
-        c = ask_o ? await _yn_prompt('Do you want to see the dungeon overview?', 'ynq', defq_o)
+        c = ask_o ? await yn_function('Do you want to see the dungeon overview?', 'ynq', defq_o, true)
                   : defq_o;
         if (c === 'y')
             await show_overview((how >= PANICKED) ? 1 : 2, how);
@@ -1765,8 +1787,13 @@ async function really_done(how) {
         // C end.c:1203-1204 — restore an in-flight trap object before bones.
         if (bones_ok && launch_in_progress())
             force_launch_placement();
+        // C end.c:1207-1212: panic leaves no grave; burning/dissolving leaves no corpse.
+        if (how === PANICKED)
+            g.u.ugrave_arise = -4; /* NON_PM - 3 */
+        else if (how === BURNING || how === DISSOLVED)
+            g.u.ugrave_arise = -3; /* NON_PM - 2 */
         // C end.c:1211-1212: stoning leaves a statue, not a corpse or ghost.
-        if (how === STONING)
+        else if (how === STONING)
             g.u.ugrave_arise = LEAVESTATUE;
         // C end.c:1213-1219: sliming arises as a green slime unless genocided.
         else if (how === TURNED_SLIME
@@ -1797,7 +1824,9 @@ async function really_done(how) {
          * by do_death_sequence BEFORE really_done ran, which is one paybill too
          * early. */
         if (have_windows && g._pending_message)
-            await force_more(g._pending_message);
+            // tty_display_nhwindow pages the last physical map without flushing
+            // newsym changes from paybill's removal of nonlocal shopkeepers.
+            await force_more_lone_frame(g._pending_message);
         if (how !== PANICKED) {
             for (let obj = g.invent, nextobj = null; obj; obj = nextobj) {
                 nextobj = obj.nobj;
@@ -1995,7 +2024,10 @@ async function really_done(how) {
             let dname = String(g.dungeons?.[u.uz?.dnum | 0]?.dname ?? '');
             if (Is_astralevel(u.uz)) dname = 'The Astral Plane';
             let pbuf = `You ${_ENDS[how] ?? 'died'} in ${dname}`;
-            if (!In_endgame(u.uz) && !_single_level_branch(u.uz))
+            // C end.c:1523-1527: level teleport death at heaven or the surface.
+            if (u.uz.dnum === 0 && u.uz.dlevel <= 0)
+                pbuf = `You ${u.uz.dlevel < 0 ? 'passed away' : _ENDS[how]} beyond the confines of the dungeon`;
+            else if (!In_endgame(u.uz) && !_single_level_branch(u.uz))
                 pbuf += ` on dungeon level ${In_quest(u.uz) ? dunlev(u.uz) : depth(u.uz)}`;
             const urexp = clong(u.urexp);
             pbuf += ` with ${urexp} point${urexp === 1n ? '' : 's'},`;
@@ -2033,7 +2065,8 @@ async function really_done(how) {
             raw_print('');
             raw_print('');
         }
-        if (wizard() || discover())
+        /* topten.c:165-170: under toptenwin the notice went to the window. */
+        if ((wizard() || discover()) && !g.iflags.toptenwin)
             g._wizardScoreNoticePending = done_stopprint() ? 4 : 2;
         if (typeof g._preNhgetchHook === 'function')
             await g._preNhgetchHook();

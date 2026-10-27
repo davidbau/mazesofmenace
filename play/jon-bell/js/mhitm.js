@@ -313,6 +313,8 @@ function dynamic_multi_reason(mon, verb, by_gaze) {
         SUPPRESS_IT | SUPPRESS_INVISIBLE | SUPPRESS_HALLUCINATION
         | SUPPRESS_SADDLE | SUPPRESS_NAME, false);
     game.multi_reason = `${verb} by ${by_gaze ? s_suffix(who) : who}${by_gaze ? ' gaze' : ''}`;
+    /* C uhitm.c:113-122 — "m_id:" prefix kept for done_in_by()'s fixup */
+    game.multireasonbuf = `${mon.m_id >>> 0}:${game.multi_reason}`;
 }
 /* change_luck — MODULE-LOCAL STUB DELETED.  The real body (js/attrib.js:621,
  * C ref: attrib.c:411-418) is imported at the top of this file (attrib.js was
@@ -3686,19 +3688,17 @@ export function take_resists_blnd_impossible() {
     resists_blnd_impossible = null;
     return m;
 }
-/* C youprop.h Blnd_resist == (HBlnd_resist || EBlnd_resist).  Nothing in js/
- * writes uprops[BLND_RES] today, so this is an honest false; it is spelled out
- * rather than hard-coded because the C arm it guards is a can't-happen check
- * whose whole point is that it fires if a writer ever appears. */
+/* C youprop.h Blnd_resist == (HBlnd_resist || EBlnd_resist), including the
+ * extrinsic resistance from wielding Sunsword. */
 function _Blnd_resist() {
     const pr = game?.u?.uprops?.[BLND_RES];
     return !!(pr && ((pr.intrinsic | 0) || (pr.extrinsic | 0)));
 }
 /* C ref: mondata.c:278 resists_blnd_by_arti(mon). */
-function resists_blnd_by_arti(mon) {
-    const is_you = ((mon && mon.m_id) | 0) === 0;
+export function resists_blnd_by_arti(mon) {
+    const is_you = is_youmonst(mon);
     let o = is_you ? (game?.u?.uwep ?? null) : MON_WEP(mon);
-    if (o && defends(AD_BLND, o))
+    if (o && o.oartifact && defends(AD_BLND, o))
         return true;
     o = is_you ? (game.invent ?? null) : (mon.minvent ?? null);
     for (; o; o = o.nobj)
@@ -3837,6 +3837,7 @@ export function christen_monst(mtmp, name) {
     new_mgivenname(mtmp, lth); /* removes old name if one is present */
     if (lth)
         mtmp.mextra.mgivenname = name; /* C: Strcpy(MGIVENNAME(mtmp), name) */
+    if (mtmp.mleashed) update_inventory(); /* C do_name.c:148-149 */
     return mtmp;
 }
 

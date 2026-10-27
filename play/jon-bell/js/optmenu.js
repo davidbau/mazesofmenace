@@ -13,16 +13,16 @@
 // of allopt[]); only the [value] fields are state-dependent.  Rendered
 import { game } from './gstate.js';
 import { dlb_file_lines, OPTMENUHELP } from './dispfile.js';
-import { ECMD_OK, gs, PARANOID_BONES } from './const.js';
+import { ECMD_OK, gs, PARANOID_BONES, Is_rogue_level } from './const.js';
 import { nhgetch } from './input.js';
-import { flush_screen, pline, force_more, docrt, dec_mode, status_reassess, new_status_window, newclipping } from './display.js';
+import { flush_screen, pline, force_more, docrt, dec_mode, status_reassess, new_status_window, newclipping, reset_status_hilites } from './display.js';
 import { update_inventory } from './inventory_refresh.js';
 /* C options.c:8944 — the generic compound-option path reads its value with
  * getlin(); mungspaces (objnam.c) normalises it before it is stored. */
 import { getlin } from './wizcmds.js';
 import { mungspaces, strsubst } from './mklev.js';
 import { optfn_fruit_set, optfn_statushilites_set, count_status_hilites, optfn_hilite_status_set, handler_autopickup_exception, handle_add_list_remove, compound_option_value, status_fieldname, optfn_boulder_set, DISCLOSURE_OPTIONS, END_DISCLOSE_DEFAULT, parse_pickup_types, PARANOIA_OPTS, PARANOID_CONFIRMATION_DEFAULT_BITS, BURDENTYPE } from './options.js';
-import { reset_needed_visuals, option_state } from './options_runtime.js';
+import { reset_needed_visuals, option_state, string_for_opt } from './options_runtime.js';
 import { vision_recalc } from './vision.js';
 import { optfn_suppress_alert_set } from './feature_alert.js';
 import { number_pad_value, parseautocomplete } from './cmd_config.js';
@@ -122,9 +122,11 @@ const PAGES = [
         { name: 'hilite_pile', kind: 'bool', flag: 'hilite_pile' },
         { name: 'showrace', kind: 'bool', flag: 'showrace' },
         { name: 'sparkle', kind: 'bool', flag: 'sparkle', defOn: true },
-        /* C options.c:8614-8618: simple and full menus call the same get_val
-         * handler (optfn_symset, options.c:4205-4215). */
-        { name: 'symset', kind: 'comp', value: DOSET_COMPOUNDS.find(r => r.name === 'symset').val },
+        /* C options.c:8606-8610: on Rogue levels substitute the rogue
+         * option's name, get_val handler, and selected option index. */
+        { get name() { return Is_rogue_level(game.u?.uz) ? 'roguesymset' : 'symset'; },
+          kind: 'comp',
+          value() { return DOSET_COMPOUNDS.find(r => r.name === this.name).val(); } },
         { section: 'Status' },
         { name: 'hitpointbar', kind: 'bool', flag: 'hitpointbar' },
         { name: 'menu colors', kind: 'othr', value: () => `(${(game.menu_colorings || []).length} currently set)` },
@@ -277,7 +279,8 @@ function helpPages() {
                 continue;
             }
             items.push({ entry });
-            const d = OPT_DESCR[entry.name];
+            /* C options.c:8635: help still uses the original allopt[i].descr. */
+            const d = OPT_DESCR[entry.name === 'roguesymset' ? 'symset' : entry.name];
             if (d) { items.push({ line: '\x1b[5C' + d }); items.push({ line: '' }); }
         }
     }
@@ -550,8 +553,12 @@ async function pickupTypesSubmenu(bgRows, preserveStatus = false) {
             const rest = op.replace(/^ +/, '');
             if (rest.charAt(0) !== 'a' && rest.charAt(0) !== 'A'
                 && [...rest].some((ch) => def_char_to_objclass(ch.charCodeAt(0)) === 18
-                    || rest.indexOf(ch) !== rest.lastIndexOf(ch)))
+                    || rest.indexOf(ch) !== rest.lastIndexOf(ch))) {
+                /* C options.c:3384 -> cfgfiles.c:1560: config_erradd plines
+                 * before wait_synch, flushing the status after getlin. */
+                await pline("Unknown pickup_types parameter ''.");
                 await force_more("Unknown pickup_types parameter ''.");
+            }
             return;
         }
     }
@@ -914,9 +921,9 @@ export async function doset_simple() {
                 pageIdx = 0;
                 continue;
             }
-            if (entry.name === 'symset') {
+            if (entry.name === 'symset' || entry.name === 'roguesymset') {
                 /* C options.c:6321 handler_symset -> symbols.c:906 do_symset(). */
-                await handler_symset(false);
+                await handler_symset(false, entry.name === 'roguesymset');
                 g.go.opt_need_redraw = true;
                 pageIdx = 0;
                 continue;
@@ -966,6 +973,9 @@ export async function doset_simple() {
         }
         // any other key: ignore, menu stays displayed.
     }
+    /* C options.c:8733 — doset_simple ends with give_opt_msg = TRUE, undoing
+     * an earlier full doset()'s idlecheckpoint pick (options.c:5318). */
+    option_state().give_opt_msg = true;
     g._pending_message = '';
     /* C: this handler returns ECMD_OK on every path; rhack() maps it. */
     return ECMD_OK;
@@ -1007,8 +1017,13 @@ function boolValue(row) {
 }
 
 async function drainTopline() {
-    await flush_screen(1);
-    if (game._pending_message) await force_more(game._pending_message);
+    /* C wintty.c:1921-1922 only drains a standing topline when opening a
+     * menu. With no message, no flush_screen()/bot() repaints the status
+     * rows cleared by the preceding menu's docrt(). */
+    if (game._pending_message) {
+        await flush_screen(1);
+        if (game._pending_message) await force_more(game._pending_message);
+    }
     game._pending_message = '';
 }
 
@@ -1116,6 +1131,7 @@ async function query_color(prompt, dflt_color, preserveStatus) {
 
 /* C coloratt.c:380 query_attr (PICK_ONE case); returns -1 on ESC. */
 async function query_attr_one(prompt, dflt_attr, preserveStatus) {
+    const allow_many = /^Choose/i.test(prompt || ''); // C coloratt.c:387
     const m = new TtyMenu({ overlay: true, statusClipCol: preserveStatus ? undefined : 0 });
     for (let i = 0; i < attrnames.length; i++) {
         if (!attrnames[i].name) break;
@@ -1127,7 +1143,13 @@ async function query_attr_one(prompt, dflt_attr, preserveStatus) {
         if (sgr) m.mlist[m.mlist.length - 1].sgr = [sgr];
     }
     m.end_menu(prompt || 'Pick an attribute');
-    const { count, picks } = await m.select_menu(PICK_ONE);
+    const { count, picks } = await m.select_menu(allow_many ? PICK_ANY : PICK_ONE);
+    if (allow_many) {
+        if (count <= 0) return -1;
+        return picks.reduce((bits, pick) => bits | (attrnames[pick - 1].attr === 0
+            ? (count === 1 ? 1 : 0)
+            : HL_ATTRBITS.find(b => b[0] === attrnames[pick - 1].attr)[1]), 0);
+    }
     if (count > 0) {
         let j = picks[0] - 1;
         if (count === 2 && attrnames[j].attr === dflt_attr) j = picks[1] - 1;
@@ -1366,9 +1388,43 @@ export async function status_hilite_menu(preserveStatus = false) {
          * does not repaint them: the pending "You see your kitten." --More--
          * (and the submenu after it) stand over blank status rows */
         game._status_blanked = game._decStaleFrom != null;
+        /* the menu's dismissal docrt()s (display.c:1747 cls, 1769 botlx) and
+         * nothing calls bot() before the behavior menu, so its status rows
+         * stay blank unless a pending pline flushed them (pline.c flush_screen) */
+        const flushed = !!game._pending_message;
         await drainTopline();
         game._status_blanked = false;
-        const beh = await status_hilite_menu_choose_behavior(fld, true);
+        let beh = await status_hilite_menu_choose_behavior(fld, flushed);
+        // C botl.c:4225-4243,4285-4301: always rule, with color/attribute retries.
+        while (beh === 105) {
+            const name = INITBLSTATS[fld][0];
+            const color = await query_color(`Choose a color to always hilite ${name}:`, 8, flushed);
+            if (color < 0) {
+                beh = await status_hilite_menu_choose_behavior(fld, flushed);
+                continue;
+            }
+            const attr = await query_attr_one(`Choose attribute to always hilite ${name}:`, 0, flushed);
+            if (attr < 0) continue;
+            const attrs = attr === 1 ? 'normal' : HL_ATTRBITS.filter(b => attr & b[1]).map(b => b[2]).join('+');
+            const rule = `${name}/always/${clr2colorname(color).replace(/ /g, '-')}&${attrs}`;
+            (game.status_field_hilites ||= []).push(rule);
+            await pline('Added hilite %s', rule);
+            reset_status_hilites();
+            await drainTopline();
+            const current = new TtyMenu({ overlay: true }); // C botl.c:4369-4443
+            status_hilite_linestr_gather().filter(l => l.fld === fld).forEach((l, i) =>
+                current.add_menu(i + 1, 0, ATR_NONE, l.str, false, false));
+            current.add_menu_str('');
+            current.add_menu(-1, 'X', ATR_NONE, 'Remove selected hilites', false, false);
+            current.add_menu(-2, 'Z', ATR_NONE, 'Add new hilites', false, false);
+            current.end_menu(`Current ${name} hilites:`);
+            const selected = await current.select_menu(PICK_ANY);
+            /* botl.c:4430-4455: 'Z' (-2) creates new hilites via status_hilite_menu_add */
+            const mode = (selected.picks || []).slice(0, Math.max(selected.count, 0));
+            if (mode.includes(-1)) throw new Error('not yet ported: status hilite rule removal');
+            beh = mode.includes(-2)
+                ? await status_hilite_menu_choose_behavior(fld, true) : 0;
+        }
         if (beh > 0) throw new Error('not yet ported: status_hilite_menu_add value entry');
         preserveStatus = true;
     }
@@ -1406,6 +1462,12 @@ export async function handler_msgtype(preserveStatus = false) {
                         : /Unterminated group|Unmatched \)|parenthes/i.test(m) ? 'Unmatched ( or \\('
                         : /Unterminated character class/.test(m) ? 'Unmatched [, [^, [:, [., or [='
                         : /Invalid regular expression/.test(m) ? 'Invalid regular expression' : m;
+                    /* pline.c:273-274: vpline's flush_screen(1) runs bot() for the
+                       botlx the Options menu's docrt() left pending (display.c:1769,
+                       display.c:2236), so the --More-- shows the status rows. */
+                    game._statusBlankAfterDocrt = false;
+                    game.disp.botlx = 1;
+                    await flush_screen(1);
                     await force_more(`MSGTYPE regex: ${desc}.`);
                     preserveStatus = true; /* wait_synch -> flush_screen -> bot() repainted the status rows */
                     re = null;
@@ -1953,9 +2015,10 @@ export async function handler_change_autocompletions(preserveStatus = false) {
 
 /* C cmd.c:2408 handler_rebind_keys. */
 export async function handler_rebind_keys() {
-    /* The options window blanked the status rows; once any sub-step has
-     * flushed (pline, --More--), later menus overlay a painted status. */
-    let statusPainted = false;
+    /* C cmd.c:2408-2435 overlays the existing terminal.  A preceding
+     * option's pline (options.c:4514, pline.c:273-274) may already have
+     * repainted the status after the Options window was dismissed. */
+    let statusPainted = !game._statusBlankAfterDocrt;
     for (;;) {
         /* C: opening the window over a pending topline message more()s it. */
         await drainTopline();
@@ -1966,7 +2029,7 @@ export async function handler_rebind_keys() {
             m.add_menu(3, 0, ATR_NONE, 'view changed key binds', false, false);
         m.end_menu('Do what?');
         const { count, picks } = await m.select_menu(PICK_ONE);
-        if (count <= 0) return;
+        if (count <= 0) return statusPainted;
         const i = picks[0];
         if (i === 1 || i === 2) { if (await handler_rebind_keys_add(i === 1)) statusPainted = true; }
         else if (i === 3) { await get_changed_key_binds(); statusPainted = true; }
@@ -2094,6 +2157,17 @@ export async function doset() {
                     const box = boolBox(ent.row);
                     const negated = boolValue(ent.row);
                     box[ent.row.fld] = !negated;
+                    /* C options.c:5300-5312: retain an existing pet attribute,
+                     * default to inverse when enabling, and redraw after the walk. */
+                    /* C options.c:5300-5311: hilite_pet defaults petattr to
+                     * inverse and requests a redraw after the pick walk. */
+                    if (ent.row.name === 'hilite_pet') {
+                        if ((!g.windowprocs || ['tty', 'curses'].includes(g.windowprocs.name))
+                            && g.iflags.wc_hilite_pet && !g.iflags.wc2_petattr)
+                            g.iflags.wc2_petattr = 7; /* ATR_INVERSE (wintype.h) */
+                        g.go.opt_need_redraw = true;
+                        needVisuals = true;
+                    }
                     /* C flag.h:507 aliases use_color to wc_color; options.c:5408-5410
                      * requests a glyph reset and redraw when this option changes. */
                     if (ent.row.name === 'color') {
@@ -2177,15 +2251,13 @@ export async function doset() {
                     statusRefreshed = true;
                 } else if (ent.row.name === 'bind keys') {
                     await drainTopline();
-                    await handler_rebind_keys();
-                    statusRefreshed = true;
+                    if (await handler_rebind_keys()) statusRefreshed = true;
                 } else if (ent.row.name === 'whatis_coord') {
                     await drainTopline();
                     await handler_whatis_coord(statusRefreshed);
                     /* the overlay menu does not cover the status rows, so a status
                      * left blank by handler_symset (statusRefreshed false after a
                      * DEC->other change) is still blank for the next menu */
-                    statusRefreshed = game._decStaleFrom == null;
                 } else if (ent.row.name === 'whatis_filter') {
                     await drainTopline();
                     await handler_whatis_filter(statusRefreshed);
@@ -2204,7 +2276,8 @@ export async function doset() {
                 } else if (ent.row.name === 'runmode') {
                     await drainTopline();
                     await handler_runmode(statusRefreshed);
-                    statusRefreshed = true;
+                    /* handler_runmode (options.c:6124) issues no pline/bot(): the status
+                     * rows stay as the preceding docrt left them */
                 } else if (ent.row.name === 'disclose') {
                     await drainTopline();
                     await handler_disclose(statusRefreshed);
@@ -2251,7 +2324,9 @@ export async function doset() {
                 } else if (ent.row.name === 'menu_objsyms') {
                     await drainTopline();
                     await handler_menu_objsyms(statusRefreshed);
-                    statusRefreshed = true;
+                    /* handler_menu_objsyms (options.c:5795) plines and flushes
+                     * nothing, so a status row blanked by the dismissed Options
+                     * window stays blank for the next handler's menu. */
                 } else if (ent.row.name === 'menustyle') {
                     await drainTopline();
                     await handler_menustyle(statusRefreshed);
@@ -2267,7 +2342,6 @@ export async function doset() {
                      * runs reset_needed_visuals() (options.c:8973) which
                      * docrt()s so the pet repaints under the new attribute. */
                     needVisuals = true;
-                    statusRefreshed = true;
                 } else if (ent.row.name === 'pickup_burden') {
                     await drainTopline();
                     await handler_pickup_burden(statusRefreshed);
@@ -2298,10 +2372,20 @@ export async function doset() {
                          * PAGES 'fruit' entry above for why writing pl_fruit
                          * alone is not enough. */
                         const msg = optfn_fruit_set(mungspaces(abuf));
-                        if (msg) g._pending_message = msg;
+                        if (msg) {
+                            g._pending_message = msg;
+                            /* C pline.c vpline flushes before the message
+                             * (flush_screen -> bot()): the status rows come
+                             * back with "Fruit is now ...". */
+                            await flush_screen(1);
+                            statusRefreshed = true;
+                        }
                     } else if (abuf !== '\x1b' && ent.row.name === 'hilite_status') {
                         const hlmsg = optfn_hilite_status_set(mungspaces(abuf));
-                        if (hlmsg) await pline(hlmsg);
+                        // C cfgfiles.c:1552-1562 config_erradd(): interactive
+                        // option errors get a period unless already punctuated.
+                        if (hlmsg) await pline('%s%s', hlmsg,
+                            /[.!?]$/.test(hlmsg) ? '' : '.');
                     } else if (abuf !== '\x1b' && ent.row.name === 'statushilites') {
                         optfn_statushilites_set(g.iflags, mungspaces(abuf));
                     } else if (abuf !== '\x1b' && (ent.row.name === 'crash_email' || ent.row.name === 'crash_name')) {
@@ -2317,6 +2401,7 @@ export async function doset() {
                         if (op) {
                             const temp = parseInt(op, 10) || 0;
                             if (temp >= 75) game.gc.crash_urlmax = temp;
+                            else await pline('Invalid value %d for crash_urlmax.  Minimum value is 75.', temp);
                         }
                     } else if (abuf !== '\x1b' && ent.row.name === 'menuinvertmode') {
                         /* C options.c:2297-2308 optfn_menuinvertmode(do_set):
@@ -2328,9 +2413,10 @@ export async function doset() {
                         }
                     } else if (abuf !== '\x1b' && ent.row.name === 'scores') {
                         /* C options.c:3676-3733 optfn_scores(do_set): "5t[op] 5a[round] o[wn]" */
+                        // C :3679 rejects a missing value before changing flags.
+                        let op = await string_for_opt(`scores:${mungspaces(abuf)}`, false);
                         const fl = g.flags;
-                        fl.end_top = fl.end_around = 0; fl.end_own = false;
-                        let op = mungspaces(abuf);
+                        if (op) { fl.end_top = fl.end_around = 0; fl.end_own = false; }
                         scoresParse: while (op.length) {
                             let inum = 1;
                             const neg = op[0] === '!' || /^no/i.test(op);
@@ -2343,15 +2429,20 @@ export async function doset() {
                             case 'a': fl.end_around = neg ? 0 : inum; break;
                             case 'o': fl.end_own = !(neg || !inum); break;
                             case 'n': fl.end_top = fl.end_around = 0; fl.end_own = false; break;
-                            default: break scoresParse; /* config_error_add path: not ported */
+                            default:
+                                /* C options.c:3727-3729 -> config_erradd (cfgfiles.c:1557-1563):
+                                 * interactive 'O' prints the message via pline + period. */
+                                await pline("Unknown scores parameter '%s'.", op);
+                                break scoresParse;
                             }
                             op = op.replace(/^[A-Za-z]+/, '').replace(/^ +/, '').replace(/^\//, '');
                         }
                     } else if (abuf !== '\x1b' && ent.row.name === 'pile_limit') {
                         /* C options.c:3404-3428 optfn_pile_limit(do_set):
-                         * atoi(op); an empty value is PILE_LIMIT_DFLT (5) and
-                         * a negative result falls back to it as well. */
-                        const op = mungspaces(abuf);
+                         * string_for_opt(opts, FALSE) reports a missing value
+                         * before falling back to PILE_LIMIT_DFLT (5).
+                         * A negative atoi(op) result falls back to it as well. */
+                        const op = await string_for_opt(`pile_limit:${mungspaces(abuf)}`, false);
                         let lim = op ? (parseInt(op, 10) || 0) : 5;
                         if (lim < 0) lim = 5;
                         g.flags.pile_limit = lim;
@@ -2396,6 +2487,10 @@ export async function doset() {
                         const { message } = optfn_suppress_alert_set(g.flags, mungspaces(abuf), false, false);
                         if (message) await pline(message);
                     }
+                    /* C cfgfiles.c:1560 pline() -> flush_screen() -> bot():
+                     * an option error repaints status after the menu's docrt.
+                     * Preserve that paint in subsequent getlin prompts. */
+                    statusRefreshed = !g._statusBlankAfterDocrt;
                 }
             }
         }

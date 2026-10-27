@@ -2,6 +2,7 @@
 // teleport.c — collect_coords, enexto_core (C ref: teleport.c:86-275, 578-713).
 // @ts-nocheck — js sibling imports.
 import { rn2, rnd, pushRngLogEntry } from './rng.js';
+import { discover_object } from './o_init.js';
 /* C ref: dungeon.c on_level/In_tutorial — domagicportal's landed-from-another-
  * portal check and its tutorial-exit arm. */
 import { on_level, In_tutorial } from './dungeon.js';
@@ -37,6 +38,13 @@ import { VAULT, ANTIMAGIC } from './const.js';
 import { m_into_limbo, unstuck, mon_leaving_level, m_unleash } from './dog.js';
 import { yelp } from './mhitm.js';
 import { impossible } from './steed.js';
+import { impossible as rloc_impossible } from './pline.js';
+import { set_mon_data } from './makemon.js';
+import { GP_ALLOW_XY } from './const.js';
+import { is_youmonst } from './mhitm.js';
+import { hideunder } from './mklev.js';
+import { reset_utrap } from './trap.js';
+import { switch_terrain } from './cmd.js';
 /* C mon.c:4056 mnearto -> goodpos(newx, newy, mtmp, 0) — the FULL goodpos
  * (js/trap.js:1131), not this file's goodpos_simple/goodpos_full pair, which
  * enexto_core uses for its candidate filter. */
@@ -73,7 +81,7 @@ import { set_apparxy, mon_track_clear, dochugw } from './monmove.js';
 import { find_objowner, costly_spot, inhishop, onshopbill } from './shk.js';
 import { dist2, distmin, depth } from './hacklib.js';
 import { within_bounded_area } from './rect.js';
-import { in_out_region, update_monster_region as update_monster_region_real } from './region.js';
+import { in_out_region, update_player_regions, update_monster_region as update_monster_region_real } from './region.js';
 import { PM_ANGEL, PM_FIRE_ELEMENTAL, PM_SALAMANDER, PM_FLOATING_EYE, PM_MINOTAUR, PM_WIZARD_OF_YENDOR } from './pm.generated.js';
 import { TELEPORT_CONTROL, STUNNED, TT_BURIEDBALL, TIMEOUT } from './const.js';
 /* C ref: teleport.c:424-434 teleok's trap exceptions (rm.h/trap.h predicates). */
@@ -239,9 +247,11 @@ function goodpos_simple(x, y) {
     return true;
 }
 export function enexto_core(xx, yy, fakemon, entflags) {
-    const ok = fakemon
-        ? ((x, y) => goodpos_full(x, y, fakemon, entflags | 0))
-        : ((x, y) => goodpos_simple(x, y));
+    if (!fakemon) {
+        fakemon = { m_id: 0, wormno: 0, mx: 0, my: 0, minvent: null };
+        set_mon_data(fakemon, permonstTemplate(game.u.umonster));
+    }
+    const ok = (x, y) => goodpos_full(x, y, fakemon, entflags | 0);
     /* near pass: collect_coords with maxradius=3 */
     const near = collect_coords(xx, yy, 3, CC_NO_FLAGS, null);
     for (let i = 0; i < near.coords.length; i++) {
@@ -256,7 +266,7 @@ export function enexto_core(xx, yy, fakemon, entflags) {
         if (ok(c.x, c.y))
             return { x: c.x, y: c.y };
     }
-    /* C: allow_xx_yy is false for enexto() callers (GP_ALLOW_XY not set) */
+    if ((entflags & GP_ALLOW_XY) && ok(xx, yy)) return { x: xx, y: yy };
     return null;
 }
 /* C ref: hack.h MON_AT — any monster (not youmonst) at (x,y)? */
@@ -346,6 +356,8 @@ export async function teleds(nux, nuy, teleds_flags) {
     const u = game.u;
     const is_teleport = (teleds_flags & TELEDS_TELEPORT) !== 0;
     const vault_guard = vault_occupied(u.urooms) ? findgd() : null;
+    if (u.utraptype === TT_BURIEDBALL)
+        await buried_ball_to_punishment();
     const uball = u.uball;
     let ball_active = !!(uball && (uball.where | 0) !== OBJ_FREE);
     let ball_still_in_range = false;
@@ -363,13 +375,15 @@ export async function teleds(nux, nuy, teleds_flags) {
             unplacebc(); /* have to move the ball */
     }
     /* C 487: reset_utrap(FALSE) */
-    u.utrap = 0;
+    await reset_utrap(false);
     /* C 488-489: was_swallowed = u.uswallow; set_ustuck(Null) clears uswallow */
     const was_swallowed = !!u.uswallow;
     set_ustuck(null);
     /* C 490-491: u.ux0 = u.ux; u.uy0 = u.uy */
     u.ux0 = u.ux | 0;
     u.uy0 = u.uy | 0;
+    if (!hideunder(game.youmonst) && game.youmonst.data.mlet === 13 /* S_MIMIC */)
+        game.youmonst.m_ap_type = 0; /* M_AP_NOTHING; C teleport.c:493-496 */
     /* C 499-504: leaving an engulfer — ball&chain are off map while swallowed */
     if (was_swallowed) {
         if (u.uball) { /* Punished */
@@ -411,6 +425,8 @@ export async function teleds(nux, nuy, teleds_flags) {
     /* C 527-528: put back the ball & chain if they were taken off the map. */
     if (ball_active && u.uchain && (u.uchain.where | 0) === OBJ_FREE)
         await placebc();
+    /* C teleport.c:529: refresh cloud membership after moving the hero. */
+    update_player_regions();
     /* C 536: newsym(u.ux0, u.uy0) — clear hero from old spot */
     newsym(u.ux0, u.uy0);
     see_monsters();
@@ -422,6 +438,8 @@ export async function teleds(nux, nuy, teleds_flags) {
         const same = (nux === u.ux0 && nuy === u.uy0);
         await pline(`You materialize in ${same ? 'the same' : 'a different'} location!`);
     }
+    if (game.level.at(u.ux, u.uy).typ !== game.level.at(u.ux0, u.uy0).typ)
+        await switch_terrain();
     /* C teleport.c:551-566 — guard alarm precedes room-entry messages. */
     if (vault_guard) {
         const save_urooms = u.urooms;
@@ -709,7 +727,7 @@ export async function next_to_u() {
                 otmp = otmp.nobj;
             if (!otmp) {
                 impossible('leashed-unleashed mon?');
-                continue;
+                return false;
             }
             if (otmp.cursed)
                 return false;
@@ -1191,6 +1209,10 @@ async function rloc_to_core(mtmp, x, y, rlocflags) {
             const tail = next ? next : (nearu ? nearu : "");
             pline(`${nm} ${sudden}${verb}${tail}!`);
         }
+        /* wand discovery only happens if a message is delivered (C teleport.c:
+         * 1728-1731, "bug?"); current_wand is null for spell/attack/#invoke. */
+        if (game.gc_current_wand && (game.gc_current_wand.otyp | 0) === 424 /* WAN_TELEPORTATION */)
+            discover_object(424, true, true, true); /* makeknown */
     }
 
     /* shopkeepers will only teleport if you zap them with a wand of
@@ -1497,8 +1519,7 @@ function goodpos_full(x, y, mtmp, gpflags) {
 
     if (!allow_u) {
         const u = game.u;
-        const is_youmonst = (mtmp?.m_id | 0) === 1;
-        if (u_at(x, y) && !is_youmonst
+        if (u_at(x, y) && !is_youmonst(mtmp)
             && (mtmp !== u.ustuck || !u.uswallow)
             && (!u.usteed || mtmp !== u.usteed))
             return false;
@@ -1511,9 +1532,9 @@ function goodpos_full(x, y, mtmp, gpflags) {
         if (mtmp2 && (mtmp2 !== mtmp || mtmp.wormno)) return false;
 
         mdat = mtmp.data;
-        const is_youmonst = (mtmp.m_id | 0) === 1;
+        const is_hero = is_youmonst(mtmp);
         if (is_pool_local(x, y) && !ignorewater) {
-            if (is_youmonst) {
+            if (is_hero) {
                 return !!(Swimming_hero() || Amphibious_hero()
                     || (!Is_waterlevel_local() && !is_waterwall_local(x, y)
                         && (Levitation_hero() || Flying_hero() || Wwalking_hero())));
@@ -1527,7 +1548,7 @@ function goodpos_full(x, y, mtmp, gpflags) {
         } else if (is_lava_local(x, y) && !ignorelava) {
             if ((mdat.pmidx | 0) === PM_FLOATING_EYE) {
                 return false;
-            } else if (is_youmonst) {
+            } else if (is_hero) {
                 const uarmf = game.u?.uarmf;
                 return !!(Levitation_hero() || Flying_hero()
                     || (FireResistance_hero() && Wwalking_hero() && uarmf && uarmf.oerodeproof)
@@ -1666,7 +1687,7 @@ function rloc_pos_ok(x, y, mtmp) {
  *
  * RNG-free.  The leash object is found in the hero inventory by its leashmon
  * link, matching get_mleash()'s list walk in dog.c. */
-export function teleport_pet(mtmp, force_it) {
+export async function teleport_pet(mtmp, force_it) {
     if (mtmp === game.u?.usteed)
         return false;
 
@@ -1681,8 +1702,8 @@ export function teleport_pet(mtmp, force_it) {
             }
         }
         if (!leash) {
-            /* C's impossible() is diagnostic only; the pet is still released. */
-            impossible('%s is leashed, without a leash.', Monnam(mtmp));
+            /* C impossible() prints via urgent_pline, then release_it. */
+            await rloc_impossible('%s is leashed, without a leash.', Monnam(mtmp));
             m_unleash(mtmp, false);
             return true;
         }
@@ -1703,7 +1724,7 @@ export async function mlevel_tele_trap(mtmp, trap, force_it, in_sight) {
 
     if (mtmp === u?.ustuck) /* probably a vortex */
         return TRAP_EFFECT_FINISHED_MTT; /* temporary? kludge */
-    if (teleport_pet(mtmp, force_it)) {
+    if (await teleport_pet(mtmp, force_it)) {
         let tolevel = null;
         let migrate_typ = MIGR_RANDOM_MTT;
 
@@ -1795,10 +1816,20 @@ const NO_TRAP_MTT = 0, HOLE_MTT = 13, TRAPDOOR_MTT = 14;
 const LEVEL_TELEP_MTT = 16, MAGIC_PORTAL_MTT = 17;
 const MIGR_RANDOM_MTT = 0, MIGR_PORTAL_MTT = 8; /* dungeon.h */
 const S_ELEMENTAL_MTT = 31; /* defsym.h MONSYM(31, 'E', ELEMENTAL, S_ELEMENTAL) */
-/* C dungeon.c:1376 ledger_no(lev).  js/dog.js, js/mklev.js:2485 and
- * js/cmd.js:5626 each keep this same one-liner file-locally. */
+/* C dungeon.c:1376 ledger_no(lev), including its xint16 result. */
 function ledger_no_tp(lev) {
-    return ((lev?.dlevel | 0) + (game.dungeons?.[lev?.dnum | 0]?.ledger_start | 0));
+    const dnum = lev?.dnum | 0;
+    let start = game.dungeons?.[dnum]?.ledger_start | 0;
+    /* C dungeon.c:1376-1378 also indexes dungeons[-1] for a wished portal
+     * (trap.c:498).  Preserve that bug: in the reference layout, dungeon is
+     * 92 bytes and ledger_start is at offset 84, so this reads svd - 8,
+     * svc.context.jingle (decl.h:1122, context.h:185).  The xint16 return
+     * retains its first two bytes, including the string's terminating NUL. */
+    if (dnum === -1) {
+        const jingle = game.context?.jingle || '';
+        start = (jingle.charCodeAt(0) || 0) | ((jingle.charCodeAt(1) || 0) << 8);
+    }
+    return ((lev?.dlevel | 0) + start) << 16 >> 16;
 }
 
 /* C ref: teleport.c:1936-1947 mvault_tele(mtmp) — the monster half of
@@ -1843,7 +1874,7 @@ export async function mtele_trap(mtmp, trap, in_sight) {
     if (noteleport_level(mtmp))
         return;
 
-    if (teleport_pet(mtmp, false)) {
+    if (await teleport_pet(mtmp, false)) {
         /* save name with pre-movement visibility */
         const monname = Monnam(mtmp);
         const tdx = (trap?.teledest?.x | 0), tdy = (trap?.teledest?.y | 0);
@@ -1991,7 +2022,8 @@ export async function rloc(mtmp, rlocflags) {
     }
 
     if (!backupx) {
-        void RLOC_ERR;
+        if (rlocflags & RLOC_ERR)
+            await rloc_impossible("rloc(): couldn't relocate monster");
         return false;
     }
     await rloc_to_core(mtmp, backupx, backupy, rlocflags);

@@ -159,12 +159,6 @@ export function monsterKillLineVisible(monster) {
 }
 // C display.h:canseemon(), an actor-level optical sight query.
 export function canSeeMonster(monster) {
-    // While swallowed, the engulfer occupies the hero's coordinate but is
-    // not a map-visible monster for canseemon(); attack text can still name
-    // it through u.ustuck.
-    if ((game.u?.uswallow || game.uswallow)
-        && game.u?.ustuck === monster)
-        return false;
     return monster.wormno ? wormKnown(monster) && monsterVisible(monster)
         : canPhysicallyProjectMonster(monster, monster.mx, monster.my);
 }
@@ -2916,14 +2910,26 @@ function _buildScreenOutput() {
     let output = '';
     const blankMainWindow = !!game._suppressMapStatusForFlush;
     // Row 0: message
+    const preserveMessageRow = display.preserveEmptyMessageRow
+        && !game._pending_message && !game._retained_message && !game._promptOwnsTopline;
     const visibleMessage = game._pending_message
-        || game._retained_message || '';
+        || game._retained_message
+        || (preserveMessageRow ? display.grid[0]?.map(cell => cell.ch).join('').trimEnd() : '')
+        || '';
+    // A corner window's docorner() erased the physical top line past its
+    // left edge; the full-screen repaint must not restore it while the
+    // clipped message still owns the row. Every topline writer resets the
+    // clip when it repaints; the preserve cache holds the row otherwise.
+    const messageText = preserveMessageRow || display.toplineClipColumn === null
+        ? visibleMessage : clipToplineToColumn(visibleMessage, display.toplineClipColumn);
     if (game.program_state?.saving) {
-        display.clearRow(0);
-        display.putstr(0, 0, visibleMessage.slice(0, display.cols), NO_COLOR);
+        if (!preserveMessageRow) {
+            display.clearRow(0);
+            display.putstr(0, 0, messageText.slice(0, display.cols), NO_COLOR);
+        }
         return;
     }
-    output += visibleMessage + '\n';
+    output += messageText + '\n';
     // Rows 1-21: map (rendered with DEC + ANSI, per-row SO/SI)
     for (let y = 0; y < ROWNO; y++) {
         output += (blankMainWindow ? '' : render_map_row(y)) + '\n';
@@ -2935,23 +2941,27 @@ function _buildScreenOutput() {
     game._screen_output = output;
     // Also write to grid for serialize_terminal_grid
     if (display.grid) {
-        display.clearScreen();
-        // Message line. A mixed line's DEC markers do not occupy cells:
-        // tty_putmixed() folds them before update_topl() paints, and the
-        // glyph cell only holds the graphics character while the kludge
-        // painted it (see replaceTopline()).
-        const msg = visibleMessage;
-        if (msg.includes('\x0e')) {
-            const cells = decodeMixedTopline(msg);
-            for (const [c, cell] of cells.entries()) {
-                if (c >= display.cols)
-                    break;
-                display.setCell(c, 0, cell.dec && !game._toplineGlyphPainted ? ' ' : cell.ch, NO_COLOR, 0);
-            }
+        if (preserveMessageRow) {
+            for (let row = 1; row < display.rows; row++)
+                display.clearRow(row);
         }
         else {
-            for (let c = 0; c < Math.min(msg.length, display.cols); c++)
-                display.setCell(c, 0, msg.charAt(c), NO_COLOR, 0);
+            display.clearScreen();
+            // tty_putmixed() folds DEC markers before update_topl() paints.
+            // Only the graphics kludge paints the leading glyph cell.
+            const msg = messageText;
+            if (msg.includes('\x0e')) {
+                const cells = decodeMixedTopline(msg);
+                for (const [c, cell] of cells.entries()) {
+                    if (c >= display.cols)
+                        break;
+                    display.setCell(c, 0, cell.dec && !game._toplineGlyphPainted ? ' ' : cell.ch, NO_COLOR, 0);
+                }
+            }
+            else {
+                for (let c = 0; c < Math.min(msg.length, display.cols); c++)
+                    display.setCell(c, 0, msg.charAt(c), NO_COLOR, 0);
+            }
         }
         if (!blankMainWindow) {
             // Map — write characters to grid (DEC → Unicode for browser display)
@@ -2984,9 +2994,31 @@ function writeMapRow(display, y) {
         if (loc.disp_ch === ' ' && frameColor === null && !(attr & 5)
             && (color === NO_COLOR || color === CLR_GRAY))
             continue;
-        const ch = loc.disp_decgfx ? (DEC_TO_UNICODE[loc.disp_ch] || loc.disp_ch) : loc.disp_ch;
-        display.setMapCell(x - 1, y + 1, ch, color, attr, frameColor);
+        writeMapCell(display, x, y, loc, frameColor);
     }
+}
+// C display.c:row_refresh(). Repaint the current glyph buffer without
+// recomputing vision or choosing new hallucinated appearances.
+export function row_refresh(start, stop, y) {
+    const display = game.nhDisplay;
+    if (!display || y < 0 || y >= ROWNO)
+        return;
+    const highlight = game._mapPositionHighlight;
+    for (let x = Math.max(1, start); x <= Math.min(stop, COLNO - 1, display.cols - 1); x++) {
+        const loc = game.level?.at(x, y);
+        if (!loc?.disp_ch)
+            continue;
+        const framed = !!highlight?.background && highlight.isValidLocation(x, y);
+        const frameColor = framed && game.flags.color !== false ? HI_ZAP : null;
+        if (glyphAt(x, y)?.glyph === GlyphOffset.unexplored && !framed)
+            continue;
+        writeMapCell(display, x, y, loc, frameColor);
+        display.setCursor(x, y + 1);
+    }
+}
+function writeMapCell(display, x, y, loc, frameColor) {
+    const ch = loc.disp_decgfx ? (DEC_TO_UNICODE[loc.disp_ch] || loc.disp_ch) : loc.disp_ch;
+    display.setMapCell(x - 1, y + 1, ch, loc.disp_color ?? NO_COLOR, loc.disp_attr ?? 0, frameColor);
 }
 // ── flush_screen ──
 export async function flush_screen(mode) {
@@ -3047,6 +3079,9 @@ export async function cls() {
 export function clearMessageWindow(coveredRows) {
     const text = game._pending_message || game._retained_message || '';
     const display = game.nhDisplay;
+    if (display?.preserveEmptyMessageRow && !text && !game._promptOwnsTopline)
+        return;
+    resetToplineClip();
     // The line editor wraps at character boundaries, unlike update_topl().
     // Its rendered row count is authoritative when clearing its prompt.
     const rows = coveredRows ?? toplineRows(text, display?.cols ?? COLNO).length;
@@ -3173,8 +3208,12 @@ export async function setTopline(msg) {
     game._lastPlineKind = PLNMSG_UNKNOWN;
 }
 function replaceTopline(msg) {
-    if (game.nhDisplay)
+    // update_topl()/redotoplin() repaint the whole physical line.
+    resetToplineClip();
+    if (game.nhDisplay) {
+        game.nhDisplay.preserveEmptyMessageRow = false;
         game.nhDisplay.stoppedTopline = game._suppressMessagesUntilInput ? msg : null;
+    }
     // putmixed()'s graphics kludge painted this line's leading glyph onto
     // the physical row (topl.c redotoplin() with ttyDisplay->mixed); a
     // plain line paints no glyph cell.
@@ -3248,6 +3287,57 @@ function decodeMixedTopline(message) {
     }
     return cells;
 }
+// Every write that starts or extends a topline message goes through
+// update_topl()/addtopl(), whose output repaints the physical row, so a
+// docorner() clip of that row ends as soon as new text is written.
+export function resetToplineClip() {
+    if (game.nhDisplay)
+        game.nhDisplay.toplineClipColumn = null;
+}
+// docorner() cl_end()s physical columns, while a mixed topline also carries
+// \x0e/\x0f markers and ESC[nC spacing that occupy no cell. Keep the raw
+// byte segments whose decoded cells fall before the clip column, replacing
+// a partially covered spacing run with plain blanks so no code is cut in
+// half.
+function clipToplineToColumn(message, column) {
+    let clipped = '';
+    let cells = 0;
+    let dec = false;
+    for (let index = 0; index < message.length; index++) {
+        const ch = message.charAt(index);
+        if (ch === '\x0e' || ch === '\x0f') {
+            dec = ch === '\x0e';
+            clipped += ch;
+            continue;
+        }
+        if (ch === '\x1b' && message[index + 1] === '[') {
+            let end = index + 2;
+            while (end < message.length && /[0-9;]/.test(message.charAt(end)))
+                end++;
+            if (message[end] === 'C') {
+                const count = Number(message.slice(index + 2, end)) || 1;
+                if (cells + count <= column)
+                    clipped += message.slice(index, end + 1);
+                else
+                    clipped += ' '.repeat(column - cells);
+                cells += count;
+                index = end;
+                if (cells >= column)
+                    break;
+                continue;
+            }
+        }
+        if (cells >= column)
+            break;
+        clipped += ch;
+        cells++;
+    }
+    // A cut inside a graphics run still closes it, so the decoder reads
+    // the same cells the tty had on screen.
+    if (dec)
+        clipped += '\x0f';
+    return clipped;
+}
 export function toplineRows(message, columns, { splitWords = true } = {}) {
     const cells = decodeMixedTopline(message);
     // tty update_topl() replaces a space with a newline. A single oversized
@@ -3293,6 +3383,8 @@ export function showUnrememberedTopline(message, { flushPending = false } = {}) 
     const display = game.nhDisplay;
     if (!display?.grid)
         return;
+    // show_topl() repaints the row from home().
+    resetToplineClip();
     const lines = toplineRows(message, display.cols, { splitWords: false });
     for (const [row, line] of lines.entries()) {
         display.clearRow(row);
@@ -3307,6 +3399,7 @@ export function renderKeyPrompt(message, cursorOffset = 0) {
     const lines = toplineRows(message, display?.cols ?? COLNO);
     if (!display)
         return lines.length;
+    resetToplineClip();
     for (const [row, line] of lines.entries()) {
         display.clearRow(row);
         for (const [column, cell] of line.entries())
@@ -3408,9 +3501,17 @@ export async function flushPendingTopline() {
 }
 // C tty_display_nhwindow(WIN_MESSAGE): unlike a direct more(), the window
 // display honors Escape's WIN_STOP/WIN_CANCELLED flag before acknowledging.
+// Only TOPLINE_NEED_MORE erases the row; answered questions remain visible.
 export async function displayMessageWindow() {
     if (game._suppressMessagesUntilInput)
         return null;
+    if (!game._pending_message) {
+        game._retained_message = '';
+        game._promptOwnsTopline = false;
+        if (game.nhDisplay)
+            game.nhDisplay.preserveEmptyMessageRow = true;
+        return null;
+    }
     const dismissal = await flushPendingTopline();
     clearMessageWindow();
     return dismissal;
@@ -3492,6 +3593,25 @@ export async function plineWithContinuation(msg, { noRepeat = false, urgent = fa
 // C update_topl() also owns bare tty_putstr() output from singleton menus.
 // Sample WIN_STOP on entry: Escape at an older line suppresses subsequent
 // calls, while the incoming line from this call still gets drawn.
+// update_topl()'s WIN_STOP branch for prose that cannot restart the pager
+// (only "You die" does): gt.toplines and the recall history advance, but
+// redotoplin() never runs, so the screen keeps its suppressed line.
+export function appendSuppressedTopline(msg) {
+    const stopped = game.nhDisplay?.stoppedTopline ?? (game._pending_message || '');
+    const visibleLength = (message) => /[\x0e\x0f]|\x1b\[[0-9;]*C/.test(message)
+        ? decodeMixedTopline(message).length : message.length;
+    const columns = game.nhDisplay?.cols ?? 80;
+    const fits = visibleLength(msg) + visibleLength(stopped) + 3 < columns - 8;
+    const stored = (message) => wrapStoredToplines(message, columns);
+    if (game.nhDisplay)
+        game.nhDisplay.stoppedTopline = fits ? stored(`${stopped}  ${msg}`) : stored(msg);
+    if (fits)
+        game._toplines = stored(`${game._toplines}  ${msg}`);
+    else {
+        rememberToplines();
+        game._toplines = stored(msg);
+    }
+}
 async function updateTopline(msg, options = {}) {
     const paging = { ...options };
     const urgent = paging.urgent ?? false;
@@ -3511,21 +3631,14 @@ async function updateTopline(msg, options = {}) {
         // pending still holds an earlier wrapped message.
         const fits = visibleLength(msg) + visibleLength(stopped) + 3 < columns - 8;
         const restarts = fits && msg.startsWith('You die');
-        // Even hidden prose appends to or replaces gt.toplines. Native only
-        // compares "You die" after the length check, so a long stopped line
-        // keeps WIN_STOP set through the following survival question.
-        if (game.nhDisplay)
-            game.nhDisplay.stoppedTopline = fits && !restarts ? stored(`${stopped}  ${msg}`) : msgToplines;
-        if (fits && !restarts)
-            game._toplines = stored(`${game._toplines}  ${msg}`);
-        else {
-            // update_topl() remembers the replaced line even while WIN_STOP
-            // hides this one (topl.c:272-281).
-            rememberToplines();
-            game._toplines = msgToplines;
-        }
-        if (!restarts)
+        if (!restarts) {
+            appendSuppressedTopline(msg);
             return null;
+        }
+        // update_topl() always remembers the stopped line and installs the
+        // new one before redotoplin() resumes output.
+        rememberToplines();
+        game._toplines = msgToplines;
         game._suppressMessagesUntilInput = false;
         replaceTopline(msgToplines);
         return wraps ? await pageTopline(msgToplines, paging) : null;

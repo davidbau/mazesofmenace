@@ -1,6 +1,7 @@
 import { expels_gu } from './mhitu.js';
 import { stop_occupation } from './allmain.js';
-import { copy_oextra, free_omid } from './mkobj.js';
+import { mbhit_wand } from './muse.js';
+import { copy_oextra, free_omid, get_mtraits } from './mkobj.js';
 import { linedup, blocking_terrain } from './trap.js';
 import { newobj } from './game.js';
 import { M_AP_TYPMASK, M_AP_NOTHING, M_AP_MONSTER, M_AP_FURNITURE, M_AP_OBJECT, Is_knox_level,
@@ -45,7 +46,7 @@ import { DEFSYM_EXPLANATION } from './defsym_data.js';
 import { rank_of } from './rank_data.js';
 import { is_hole, is_pit, WEB, BEAR_TRAP } from './const.js';
 import { LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP, DB_UNDER, DB_LAVA } from './const.js';
-import { Norep, You_hear } from './display.js';
+import { Norep, You_hear, flash_mon } from './display.js';
 import { In_endgame, In_sokoban, Is_astralevel, Is_waterlevel, Is_firelevel, Is_earthlevel, Is_airlevel, Is_rogue_level, In_mines, MM_FEMALE, MM_MALE, NO_MINVENT, W_SADDLE, I_SPECIAL, COLNO, ROWNO, isok, SEE_INVIS, TELEPORT_CONTROL, STRANGLED, OBJ_MINVENT, REFLECTING, W_ARMS, W_WEP, W_AMUL, W_ARM, OBJ_FREE, OBJ_FLOOR, OBJ_LUAFREE, OBJ_INVENT, MIGR_RANDOM, NC_VIA_WAND_OR_SPELL, NC_SHOW_MSG, HAND, POLY_TRAP, Upolyd, IS_ALTAR, DISPLACED, FOOT, In_V_tower, RLOC_MSG, OBJ_CONTAINED, IS_FURNITURE, IS_DRAWBRIDGE, PIT, HOLE, FORCEBUNGLE, } from './const.js';
 import { NO_MM_FLAGS, MM_ADJACENTOK, MM_NOWAIT } from './const.js';
 import { OC_COST } from './oc_cost_data.js';
@@ -76,6 +77,7 @@ import { PM_GUARD, PM_SOLDIER, PM_SERGEANT, PM_LIEUTENANT, PM_CAPTAIN,
          PM_WATCHMAN, PM_WATCH_CAPTAIN } from './pm.generated.js';
 /* ARM_BONUS(obj) reads objects[otyp].a_ac (hack.h:1526). */
 import { ARMOR_DATA } from './armor_data.js';
+import { aligns } from './roles.js';
 import { MKOBJ_OC_PROB } from './mkobj_data.js';
 /* mquaffmsg (muse.c:292) helpers — see the port below. */
 import { DEAF, MM_NOMSG } from './const.js';
@@ -100,7 +102,7 @@ import { create_particular } from './wizcmds.js';
 import { YMonnam, little_to_big, update_inventory, Some_Monnam, mon_hates_silver, locomotion, s_suffix, Adjmonnam, poly_when_stoned, y_monnam, can_blow, resists_blnd, helpless, noit_mon_nam, mon_nam_too } from './mhitm.js';
 import { mon_nam, m_at } from './uhitm.js';
 import { unconscious } from './pickup.js';
-import { an, makeplural, makesingular, vtense, singular, doname, distant_name, ansimpleoname, bare_artifactname } from './objnam.js';
+import { an, the, makeplural, makesingular, vtense, singular, doname, distant_name, ansimpleoname, bare_artifactname } from './objnam.js';
 /* mloot_container (muse.c:2264, use_misc's MUSE_BAG arm) needs C's shared
  * can_carry(mon, obj) — the same function dog.c's pet-pickup path calls.
  * Creates a bidirectional import cycle with js/dogmove.js (which already
@@ -112,7 +114,7 @@ import { def_char_to_monclass } from './drawing.js';
 import { weight } from './weight.js';
 import { Monnam } from './mcastu.js';
 import { couldsee, cansee, recalc_block_point } from './vision.js';
-import { m_useup, seetrap, mintrap, mon_learns_traps, extract_from_minvent, maketrap, fill_pit } from './trap.js';
+import { m_useup, monkilled_trap, seetrap, mintrap, mon_learns_traps, extract_from_minvent, maketrap, fill_pit } from './trap.js';
 import { place_monster, impossible } from './steed.js';
 import { maybe_unhide_at, add_to_minv, obj_extract_self, obfree, is_drawbridge_wall } from './dokick.js';
 import { welded, trycall, body_part, freeinv, mbodypart } from './cmd.js';
@@ -364,20 +366,23 @@ export function levelDifficulty() {
     const uz = game.u?.uz;
     if (!uz)
         return 1;
+    let res;
     if (In_endgame(uz)) {
         const sanctum = game.sanctum_level;
         const depthSanctum = sanctum ? depth_of_level(sanctum) : 1;
-        return depthSanctum + Math.trunc((game.u?.ulevel ?? 1) / 2);
+        res = depthSanctum + Math.trunc((game.u?.ulevel ?? 1) / 2);
     }
-    if (game.u?.uhave?.amulet) {
+    else if (game.u?.uhave?.amulet) {
         // C dungeon.c:2033 includes quest depth when carrying the Amulet.
-        return deepest_lev_reached(false);
+        res = deepest_lev_reached(false);
     }
-    let res = depth_of_level(uz);
+    else {
+    res = depth_of_level(uz);
     if (builds_up(uz)) {
         const dun = game.dungeons?.[uz.dnum];
         const entryLev = dun?.entry_lev ?? 1;
         res += 2 * (entryLev - uz.dlevel + 1);
+    }
     }
     /* C dungeon.c:2078-2080 — ring of aggravate monster (EAggravate_monster,
      * extrinsic only) doubles the difficulty, capped at 50 above depth 25. */
@@ -769,6 +774,22 @@ const ROLE_NEMNUM = [
 const ROLE_GUARDNUM = [
     369, 370, 371, 372, 373, 374, 375, 377, 376, 379, 380, 381, 382,
 ];
+/**
+ * C role.c:2027-2047 role_init() "Fix up the quest leader" / "Fix up the quest
+ * guardians" MUTATE mons[ldrnum] and mons[guardnum]:
+ *     pm->maligntyp = alignmnt * 3;     alignmnt = aligns[flags.initalign].value
+ * MONS rows are immutable, so every maligntyp reader of a row goes through
+ * this.  E.g. a neutral Archeologist's Lord Carnarvon is maligntyp 0, not 20,
+ * which decides how many monsters his summon-nasties spell makes
+ * (wizard.c:615 castalign, wizard.c:698).
+ */
+export function role_maligntyp(mndx, mal) {
+    const ri = (game.flags?.initrole ?? -1) | 0;
+    if (ri >= 0 && ri < ROLE_LDRNUM.length
+        && (ROLE_LDRNUM[ri] === (mndx | 0) || ROLE_GUARDNUM[ri] === (mndx | 0)))
+        return ((aligns[(game.flags?.initalign ?? 0) | 0]?.value ?? 0) | 0) * 3;
+    return mal | 0;
+}
 /** C monflag.h — always_peaceful / always_hostile / is_minion bit masks */
 const M2_PEACEFUL = 0x00200000;
 const M2_HOSTILE = 0x00100000;
@@ -916,7 +937,7 @@ export function set_malign(mtmp) {
     const row = MONS[mndx];
     if (!row)
         return;
-    let mal = row[4] | 0; /* permonst.maligntyp */
+    let mal = role_maligntyp(mndx, row[4]); /* permonst.maligntyp */
     const mf2 = row[7] >>> 0; /* mflags2 */
     const msound = MONS_MSOUND[mndx] | 0;
     const peaceful = !!mtmp.mpeaceful;
@@ -1442,7 +1463,7 @@ export function permonstTemplate(mndx) {
         mlet: row[0] | 0,
         mlevel: row[1] | 0,
         geno: row[3] | 0,
-        maligntyp: row[4] | 0,
+        maligntyp: role_maligntyp(i, row[4]),
         mresists: row[5] | 0, // row[5]=mr1 (resist BITFIELD), NOT the mr% field (absent from MONS table)
         mr: MONS_MR[i] | 0,
         mflags1: row[6] >>> 0,  // unsigned uint32 bitfield — | 0 wraps high-bit values negative (raceptr V26)
@@ -4123,10 +4144,21 @@ async function precheck(mtmp, otmp) {
     }
     if ((otmp.oclass | 0) === WAND_CLASS_MM && (otmp.cursed | 0)
         && !rn2(WAND_BACKFIRE_CHANCE_MM)) {
-        /* KNOWN GAP — muse.c:1148-1173, the cursed-wand backfire (explosion for
-         * d(spe+2,6), possible monkilled, m_useup).  C's post-backfire state for
-         * a surviving monster is has_defense = has_offense = has_misc = 0 then
-         * `return 0`, which is what is reproduced here. */
+        /* C muse.c:130-156 — cursed-wand backfire: the wand explodes for
+         * d(spe+2,6), is used up, and may kill the zapper. */
+        const dam = d((otmp.spe | 0) + 2, 6);
+        if (vis) {
+            pline_mon(mtmp, `${Monnam(mtmp)} zaps ${an(xname(otmp))}, which suddenly explodes!`);
+        } else {
+            const range = couldsee(mtmp.mx, mtmp.my) ? (BOLT_LIM_MM + 1) : (BOLT_LIM_MM - 3);
+            await You_hear(`a zap and an explosion ${mdistu(mtmp) <= range * range ? 'nearby' : 'in the distance'}.`);
+        }
+        m_useup(mtmp, otmp);
+        mtmp.mhp -= dam;
+        if (mtmp.mhp < 1) { /* DEADMONSTER */
+            await monkilled_trap(mtmp, ''); /* monkilled(mon, "", AD_RBRE) */
+            return 1;
+        }
         game.has_defense = 0;
         game.has_offense = 0;
         game.has_misc = 0;
@@ -4255,7 +4287,8 @@ export async function mreadmsg(mtmp, otmp) {
         await mquaffmsg_You_hear(
             `${x_monnam(mtmp, ARTICLE_A_MM, null, mflags, false)} ${blindbuf}.`);
         (game.iflags ||= {}).last_msg = PLNMSG_UNKNOWN_MM;
-        /* KNOWN GAP — muse.c:283 flash_mon(mtmp); see function comment. */
+        if (tpindicator)
+            flash_mon(mtmp); /* C muse.c:284-285; consumes display RNG. */
     }
     if (mtmp.mconf) {
         /* C muse.c:286-288 */
@@ -4447,9 +4480,8 @@ export function removed_from_icebox(obj) {
     if (!age_is_relative(obj)) {
         obj.age = (game.moves | 0) - (obj.age | 0);
         if ((obj.otyp | 0) === CORPSE) {
-            const traits = obj.oextra?.omonst;
-            const iceTroll = traits && Number.isInteger(traits.mnum)
-                ? (traits.mnum | 0) === PM_ICE_TROLL
+            const traits = get_mtraits(obj, false);
+            const iceTroll = traits ? traits.data.pmidx === PM_ICE_TROLL
                 : (obj.corpsenm | 0) === PM_ICE_TROLL;
             obj.norevive = iceTroll ? 0 : 1;
             start_corpse_timeout(obj);
@@ -4714,7 +4746,6 @@ function pline_The(msg) { pline(msg); }
  * duplicate-body question. */
 const TRAP_KILLED_MON_MM = 2;
 
-function the(str) { return "the " + str; }
 const _TRAPNAME_HALU = [
     /* riffs on actual nethack traps */
     "bottomless pit", "polymorphism trap", "devil teleporter",
@@ -4947,12 +4978,27 @@ export async function use_defensive(mtmp) {
         await m_tele(mtmp, vismon, oseen, WAN_TELEPORTATION_OTYP);
         return 2;
     case MUSE_WAN_TELEPORTATION:
+        /* C muse.c:858-869: zap at a target rather than teleporting self. */
+        if (!otmp)
+            throw new Error("use_defensive: no wand of teleportation");
+        game.zap_oseen = oseen;
+        await mzapwand(mtmp, otmp, false);
+        game.m_using = true;
+        await mbhit_wand(mtmp, rn1(8, 6), otmp);
+        if (noteleport_level(mtmp))
+            mon_learns_traps(mtmp, TELEP_TRAP);
+        game.m_using = false;
+        return 2;
     case MUSE_WAN_UNDEAD_TURNING:
-        /* KNOWN GAP — muse.c:858-870 and muse.c:962-970.  Both zap the wand at
-         * a target through `mbhit(mtmp, rn1(8, 6), mbhitm, bhito, otmp)`;
-         * mbhit/mbhitm live in js/muse.js and are module-private there, and
-         * neither draws its rn1 from this module.  Returns C's no-action 0. */
-        return 0;
+        /* C muse.c:972-981: use the same beam callbacks as teleportation. */
+        if (!otmp)
+            throw new Error("use_defensive: no wand of undead turning");
+        game.zap_oseen = oseen;
+        await mzapwand(mtmp, otmp, false);
+        game.m_using = true;
+        await mbhit_wand(mtmp, rn1(8, 6), otmp);
+        game.m_using = false;
+        return 2;
     case MUSE_SCR_TELEPORTATION: {
         /* C muse.c:870-914.  mreadmsg/obfree are ported above/imported.
          * random_teleport_level()/get_level() are js/cmd.js's real bodies,

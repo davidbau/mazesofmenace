@@ -38,7 +38,7 @@ import { can_touch_safely, mfndpos, sobj_at, hideunder, maybe_unhide_at, mpickob
  healmon as healmon_real, meatobj as meatobj_real,
          meatcorpse as meatcorpse_real, newcham, u_on_newpos,
          extract_from_minvent, m_consume_obj, Is_special, mongone,
-         resists_ston } from './mklev.js';
+         resists_ston, obj_extract_self } from './mklev.js';
 import { accessible, closed_door, may_dig } from './look.js';
 import { m_at, mon_nam, autoreturn_weapon } from './uhitm.js';
 import { gettrack } from './track.js';
@@ -195,7 +195,7 @@ export async function itsstuck(mtmp) {
 }
 
 /* C monmove.c:2169-2180 — bars on a room edge leave a doorless doorway. */
-async function dissolve_bars(x, y) {
+export async function dissolve_bars(x, y) {
     const loc = game.level.locations[x][y];
     loc.typ = loc.edge === 1 ? DOOR_TYP_MV
         : Is_special(game.u.uz) || in_rooms(x, y, 0).length ? ROOM : CORR;
@@ -1681,7 +1681,7 @@ async function postmov_door(mtmp, _didseeit_pm, _mf1_ct, can_tunnel_mv) {
                 /* C monmove.c:1549-1553 — amorphous monsters flow/ooze under
                  * a closed or locked door; the door state is untouched. */
                 if (game.flags?.verbose !== false && canseemon(mtmp))
-                    await pline(`${YMonnam(mtmp)} ${(_mndx_d === 106 /* PM_FOG_CLOUD */
+                    await monmove_message(mtmp, `${YMonnam(mtmp)} ${(_mndx_d === 106 /* PM_FOG_CLOUD */
                         || (_mrow_d && (_mrow_d[0] | 0) === S_LIGHT_MV)) ? 'flows' : 'oozes'} under the door.`);
             } else if ((_dm_d & D_LOCKED_MV)
                 && ((_can_open_d && monhaskey(mtmp, true)) || mtmp.iswiz
@@ -1733,6 +1733,7 @@ async function postmov_door(mtmp, _didseeit_pm, _mf1_ct, can_tunnel_mv) {
                     _doorDone = true;
                 }
                 let _doormsg = null;
+                let _doormon = false;
                 let _doorhear = false;
                 if (game.flags?.verbose === false) {
                     /* C: the whole feedback block is skipped */
@@ -1756,6 +1757,7 @@ async function postmov_door(mtmp, _didseeit_pm, _mf1_ct, can_tunnel_mv) {
                 }
                 else {
                     _doormsg = `${Monnam_dm(mtmp)} opens a door.`;
+                    _doormon = true;
                 }
                 /* C monmove.c:1609-1613 routes every feedback arm through
                  * pline/You_see/You_hear.  Keep that real display call: its
@@ -1763,6 +1765,8 @@ async function postmov_door(mtmp, _didseeit_pm, _mf1_ct, can_tunnel_mv) {
                  * width-driven more() freezes. */
                 if (_doorhear)
                     await You_hear('a door open.');
+                else if (_doormon)
+                    await monmove_message(mtmp, _doormsg);
                 else if (_doormsg)
                     await pline(_doormsg);
                 if (_topline_more_pending() && _more_never_dismissed())
@@ -1791,7 +1795,7 @@ async function postmov_door(mtmp, _didseeit_pm, _mf1_ct, can_tunnel_mv) {
                      * earlier --More--) and paging apply; the old direct
                      * _pending_message write bypassed both. */
                     if (_canseeit_d && canspotmon(mtmp))
-                        await pline(`${Monnam_dm(mtmp)} smashes down a door.`);
+                        await monmove_message(mtmp, `${Monnam_dm(mtmp)} smashes down a door.`);
                     else if (_canseeit_d)
                         await You_see('a door crash open.');
                     else
@@ -1963,7 +1967,14 @@ export async function m_move(mtmp, after) {
             const covetousattack = await mattackm(mtmp, intruder);
             if (covetousattack & M_ATTK_AGR_DIED_MV)
                 return MMOVE_DIED_MV;
-            return postmov(mtmp, MMOVE_MOVED_MV);
+            /* C monmove.c:1798-1800 treats this attack as MMOVE_MOVED even
+             * when the attacker stays put. postmov's redraws (:1508, :1656)
+             * still run, retiring pre_mm_attack's transient invisible marker
+             * on levels without hero memory. Our postmov only has the tail. */
+            await notice_mon(mtmp); /* C postmov:1470, before either redraw */
+            newsym(_entry_omx, _entry_omy);
+            newsym(mtmp.mx | 0, mtmp.my | 0);
+            return postmov(mtmp, MMOVE_MOVED_MV, true);
         }
     }
 
@@ -2652,7 +2663,7 @@ export function set_apparxy(mtmp) {
     else if (notseen) {
         /* C: xorn with umoney → displ=0; others → displ=1 */
         const PM_XORN = 232;
-        const umoney = money_cnt(u.invent) | 0;
+        const umoney = money_cnt(game.invent ?? null) | 0;
         displ = ((mtmp.mnum | 0) === PM_XORN && umoney) ? 0 : 1;
     }
     else if (notthere) {
@@ -2805,11 +2816,8 @@ async function maybe_spin_web(mtmp) {
                 if (cansee(mtmp.mx | 0, mtmp.my | 0)) {
                     /* C:1284 `canspotmon(mtmp) ? y_monnam(mtmp) : something` */
                     const mbuf = canspotmon(mtmp) ? y_monnam(mtmp) : 'something';
-                    /* C:1286 pline_mon(mtmp, "%s spins a web.", upstart(mbuf));
-                     * pline_mon only adds monster-based message coloring, which
-                     * this tree does not render — every other js/ file spells it
-                     * as a plain pline() for the same reason. */
-                    pline(`${upstart(mbuf)} spins a web.`);
+                    /* C monmove.c:1286: pline_mon also supplies the location. */
+                    await monmove_message(mtmp, `${upstart(mbuf)} spins a web.`);
                     trap.tseen = 1;
                 }
                 if (in_rooms(mtmp.mx | 0, mtmp.my | 0, SHOPBASE_MV).length)
@@ -2873,7 +2881,7 @@ export async function postmov(mtmp, mmoved, skipNotice = false) {
         newsym(mtmp.mx | 0, mtmp.my | 0);
     }
     if (mtmp.isshk)
-        after_shk_move(mtmp);
+        await after_shk_move(mtmp);
     return mmoved;
 }
 
@@ -3001,12 +3009,10 @@ async function meatmetal_mv(mtmp) {
                     if (game.flags?.verbose !== false)
                         void pline(`${Monnam_dm(mtmp)} eats ${otmpname}!`);
                 } else {
-                    /* C:1512-1515 Soundeffect (screen/audio only, no RNG) then
-                     * You_hear("a crunching sound.").  GAP, same one every
-                     * You_hear in this file carries: the Deaf / Underwater /
-                     * Unaware prefixes of pline.c You_hear are not modelled. */
+                    /* C mon.c:1513 uses pline.c:436 You_hear, including its
+                     * Deaf/acoustics guard and Underwater/Unaware prefixes. */
                     if (game.flags?.verbose !== false)
-                        void pline('You hear a crunching sound.');
+                        await You_hear('a crunching sound.');
                 }
                 /* C:1516 mtmp->meating = otmp->owt / 2 + 1 — integer division on
                  * the CACHED weight (place_object/mksobj set owt = weight(obj)).
@@ -3107,7 +3113,9 @@ export async function mpickstuff(mtmp) {
                     void pline(`${Monnam_dm(mtmp)} picks up ${otmpname}.`);
                 }
             }
-            obj_extract_floor(otmp3);
+            /* C:1901, mkobj.c:2508-2522 — extraction also adjusts corpse
+             * timers when taking a corpse off ice. */
+            obj_extract_self(otmp3);
             /* C:1903 mpickobj(mtmp, otmp3) — may merge and free otmp3 */
             void (await mpickobj(mtmp, otmp3));
             /* C:1904-1905 let them try to equip it on the next turn */

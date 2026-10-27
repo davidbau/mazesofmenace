@@ -82,7 +82,8 @@ import { ubuzz, zap_dig } from './zap.js';
 import { mksobj, set_bknown as set_bknown_real } from './mklev.js';
 import { zapyourself, weffects } from './zap.js';
 import { seffects } from './read.js';
-import { peffects, healup } from './potion.js';
+import { peffects, healup, make_slimed } from './potion.js';
+import { obfree, check_unpaid_usage } from './shk.js';
 import { losehp } from './dokick.js';
 import { update_inventory } from './mhitm.js';
 import { getdir } from './lock.js';
@@ -1001,6 +1002,7 @@ export async function learn() {
         sp.delay = (sp.delay | 0) + 1; // not delay++ in the test, so ends at 0
         return 1;
     }
+    let faded_to_blank = false;
     // C spell.c:383 exercise(A_WIS, TRUE) — you're studying.
     exercise(A_WIS, true);
     let booktype = book ? (book.otyp | 0) : -1;
@@ -1019,17 +1021,18 @@ export async function learn() {
         if (id === booktype || id === 0 /* NO_SPELL */) break;
     }
     if (i >= MAXSPELL) {
-        // C impossible("Too many spells memorized!") — give up.
+        await impossible("Too many spells memorized!");
     } else if (spl[i] && (spl[i].sp_id | 0) === booktype) {
         // C spell.c:399-413 — already known: refresh retention.
       if ((book.spestudied | 0) > MAX_SPELL_STUDY) {
-        pline('This spellbook is too faint to be read any more.');
+        await pline('This spellbook is too faint to be read any more.');
         book.otyp = booktype = SPE_BLANK_PAPER;
+        faded_to_blank = true;
         /* reset spestudied as if polymorph had taken place */
         book.spestudied = rn2(book.spestudied | 0);
       } else {
         const splname = `"${SPBOOK_NAMES[booktype - SPBOOK_FIRST_OTYP] || 'spell'}"`;
-        pline(`Your knowledge of %s is %s.`.replace('%s', splname)
+        await pline(`Your knowledge of %s is %s.`.replace('%s', splname)
             .replace('%s', spl[i].sp_know ? 'keener' : 'restored'));
         /* C spell.c:410 incrnknow(i, 1) — sp_id/sp_lev are already this book's. */
         incrnknow(i, 1);
@@ -1038,8 +1041,9 @@ export async function learn() {
       }
     } else if ((book.spestudied | 0) >= MAX_SPELL_STUDY) {
         // C spell.c:416-422 — pre-used due to being the product of polymorph.
-        pline('This spellbook is too faint to read even once.');
+        await pline('This spellbook is too faint to read even once.');
         book.otyp = booktype = SPE_BLANK_PAPER;
+        faded_to_blank = true;
         book.spestudied = rn2(book.spestudied | 0);
     } else {
         // C spell.c:414-436 — learn a brand-new spell.
@@ -1061,8 +1065,8 @@ export async function learn() {
         const bookKnown = !!(g._oc_name_known && g._oc_name_known[booktype]);
         const rawName = SPBOOK_NAMES[booktype - SPBOOK_FIRST_OTYP] || 'spell';
         const splname = bookKnown ? `"${rawName}"` : `the "${rawName}" spell`;
-        if (!i) pline(`You learn ${splname}.`);
-        else pline(`You add ${splname} to your repertoire, as '${spellet(i)}'.`);
+        if (!i) await pline(`You learn ${splname}.`);
+        else await pline(`You add ${splname} to your repertoire, as '${spellet(i)}'.`);
     }
     // C spell.c:438-447 — if (i < MAXSPELL) makeknown((int) booktype).
     // makeknown(x) == discover_object(x, TRUE, TRUE, TRUE) (hack.h:1535).  With
@@ -1080,6 +1084,12 @@ export async function learn() {
             exercise(A_WIS, true); // o_init.c:481 — credit_hero discover exercise
         }
         discover_object(booktype, true, true);
+        if (faded_to_blank) update_inventory();
+    }
+    if (book.cursed && await cursed_book(book)) {
+        await useup(book);
+    } else {
+        check_unpaid_usage(book, false);
     }
     // C spell.c:460-462 — done studying.
     sp.book = null;
@@ -1986,8 +1996,7 @@ export async function spelleffects(spell_otyp, atme, force) {
         }
         /* FALLTHROUGH — C spell.c:1457 FALLTHRU into the wand-like group. */
     case SPE_FORCE_BOLT:
-        if (otyp === SPE_FORCE_BOLT)
-            physical_damage = true;         /* spell.c:1461 */
+        physical_damage = true;             /* C spell.c:1460: includes fallthrough */
         /* FALLTHROUGH */
     case SPE_SLEEP:
     case SPE_MAGIC_MISSILE:
@@ -2084,9 +2093,8 @@ export async function spelleffects(spell_otyp, atme, force) {
         healup(0, 0, true, false);
         if (was_sick || !was_slimed)
             await pline(`You are ${was_sick ? 'no longer' : 'not'} ill.`);
-        if (was_slimed) {
-            /* UNPORTED: make_slimed(0L, "The slime disappears!") */
-        }
+        if (was_slimed)
+            await make_slimed(0, 'The slime disappears!');
         break;
     }
     case SPE_CREATE_FAMILIAR:
@@ -2121,15 +2129,17 @@ export async function spelleffects(spell_otyp, atme, force) {
         await cast_chain_lightning(); /* C spell.c:1588-1589 */
         break;
     default:
-        /* C ref: spell.c:1591-1594 impossible("Unknown spell %d attempted.") */
-        break;
+        await impossible("Unknown spell %d attempted.", spell);
+        await obfree(pseudo, null);
+        g._spellPwStale = null;
+        return ECMD_OK;
     }
 
     /* C spell.c:1597-1601 — practice is the spell's level, not proficiency.
      * Forced casts skip practice; failed/refused casts already returned. */
     if (!force)
         await use_skill(skill, sb.sp_lev);
-    // obfree(pseudo, NULL) is handled by JS garbage collection.
+    await obfree(pseudo, null); // C spell.c:1601: object teardown has side effects.
     g._spellPwStale = null;
     return 1 /* ECMD_TIME */;
 }

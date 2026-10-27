@@ -16,7 +16,7 @@ import {
     IS_STWALL, IS_POOL, IS_ROOM, ACCESSIBLE, IS_OBSTRUCTED,
     MM_EGD, MM_NOMSG, M_AP_OBJECT, M_AP_NOTHING, A_LAWFUL, NEED_HTH_WEAPON, IS_WALL,
     TLCORNER, TRCORNER, BLCORNER, BRCORNER, MELT_ICE_AWAY, D_NODOOR,
-    RLOC_ERR, RLOC_MSG, OBJ_MINVENT,
+    RLOC_ERR, RLOC_MSG, OBJ_MINVENT, OBJ_INVENT,
     ARTICLE_A,
 } from './const.js';
 import { rn2, rn1 } from './rng.js';
@@ -33,7 +33,7 @@ import { in_rooms } from './shk.js';
 import { g_at, um_dist } from './cmd.js';
 import { freeinv as freeinv_real } from './cmd.js';
 import { add_to_minv, obfree } from './dokick.js';
-import { mnexto as mnexto_real, rloc, enexto_out } from './teleport.js';
+import { mnexto as mnexto_real, rloc, enexto_out, tele } from './teleport.js';
 import { m_at, mon_wield_item } from './uhitm.js';
 import { place_monster } from './steed.js';
 import { del_engr_at } from './mklev.js';
@@ -209,7 +209,8 @@ export function hidden_gold(even_if_unknown) {
 
 export async function paygd(silently) {
     const grd = findgd();
-    const umoney = money_cnt(game.fobj);
+    // C vault.c:1208,1236: only the hero's inventory is remitted to the vault.
+    const umoney = money_cnt(game.invent);
 
     if (!umoney || !grd)
         return;
@@ -229,15 +230,15 @@ export async function paygd(silently) {
             await mnexto(grd, RLOC_NOMSG);
             if (!silently)
                 pline("%s remits your gold to the vault.", Monnam(grd));
-            gdx = game.level.rooms[grd.egdvroom].lx + rn2(2);
-            gdy = game.level.rooms[grd.egdvroom].ly + rn2(2);
+            gdx = game.level.rooms[EGD(grd).vroom].lx + rn2(2);
+            gdy = game.level.rooms[EGD(grd).vroom].ly + rn2(2);
             const buf = "To Croesus: here's the gold recovered from " + game.plname + " the " + monPmname(game.u.umonster | 0, game.flags.female ? FEMALE : MALE) + ".";
             make_grave(gdx, gdy, buf);
         }
     }
 
     if (!skipForLoop) {
-        let coins = game.fobj;
+        let coins = game.invent;
         while (coins) {
             const nextcoins = coins.nobj;
             if ((coins.oclass | 0) === COIN_CLASS) {
@@ -321,8 +322,8 @@ export function in_fcorridor(grd, x, y) {
  * NOTE the C `goto incr_radius` from inside the inner loop: a CORR square whose
  * hero-ward neighbour is neither STONE nor CORR abandons THIS radius entirely
  * rather than continuing the scan, so it is a `break` out of both inner loops,
- * not a `continue`.  RNG-free. */
-function find_guard_dest(guard, out) {
+ * not a `continue`.  The fallback teleports when no corridor is found. */
+async function find_guard_dest(guard, out) {
     const u = game.u;
     const lev = game.level;
     for (let dd = 2; (dd < ROWNO || dd < COLNO); dd++) {
@@ -357,6 +358,7 @@ function find_guard_dest(guard, out) {
     }
     /* C: impossible("Not a single corridor on this level?"); tele(); */
     impossible("Not a single corridor on this level?");
+    await tele();
     return false;
 }
 
@@ -407,7 +409,7 @@ export async function invault() {
         const rc = { x: 0, y: 0 };
 
         /* first find the goal for the guard */
-        if (!find_guard_dest(null, rc))
+        if (!await find_guard_dest(null, rc))
             return;
         gdx = rc.x;
         gdy = rc.y;
@@ -794,6 +796,7 @@ async function clear_fcorr(grd, forceshow) {
     const egrd = EGD(grd);
     const u = game.u;
     let sawcorridor = false;
+    const silently = !!game.program_state?.stopprint;
     let fcbeg;
 
     if (!on_level(egrd.gdlevel, u.uz))
@@ -808,9 +811,9 @@ async function clear_fcorr(grd, forceshow) {
             && egrd.gddone)
             forceshow = true;
         if ((u_at(fcx, fcy) && !DEADMONSTER(grd))
-            || (!forceshow && couldsee(fcx, fcy)))
-            /* C's third disjunct is the Punished/uball test; this port has no
-             * ball-and-chain, so `Punished` is permanently false. */
+            || (!forceshow && couldsee(fcx, fcy))
+            || (u.uball && u.uball.where !== OBJ_INVENT
+                && u.uball.ox === fcx && u.uball.oy === fcy))
             return false;
 
         /* C's m_at() reads the map grid, where a guard killed this turn is
@@ -850,11 +853,11 @@ async function clear_fcorr(grd, forceshow) {
         game.vision_full_recalc = 1;
         egrd.fcbeg = (egrd.fcbeg | 0) + 1;
     }
-    if (sawcorridor)
-        pline("The corridor disappears.");
+    if (sawcorridor && !silently)
+        await pline("The corridor disappears.");
     if (IS_OBSTRUCTED(game.level.at(u.ux | 0, u.uy | 0).typ)
-        && (u.uhp | 0) > 0)
-        pline("You are encased in rock.");
+        && ((u.umonnum !== u.umonster ? u.mh : u.uhp) | 0) > 0 && !silently)
+        await pline("You are encased in rock.");
     return true;
 }
 
@@ -1451,7 +1454,7 @@ export async function gd_move(grd) {
                  * successful call writes them in place and the second half of
                  * the condition then compares the NEW goal with the old one. */
                 const rc = { x: egrd.gdx | 0, y: egrd.gdy | 0 };
-                const ok = find_guard_dest(grd, rc);
+                const ok = await find_guard_dest(grd, rc);
                 if (ok) {
                     egrd.gdx = rc.x;
                     egrd.gdy = rc.y;

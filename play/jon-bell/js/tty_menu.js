@@ -41,7 +41,11 @@ export function menu_heading_sgr() {
     if (!mh) return [7];
     const codes = [];
     if (mh.attr) codes.push(mh.attr);
-    if (mh.color >= 0 && mh.color < 8) codes.push(30 + mh.color);
+    /* termcap.c:1010 hilites[CLR_GRAY] = nilstring: gray emits no SGR. */
+    /* termcap.c:1013-1033: black uses bright black with darkgray enabled,
+     * otherwise blue; it never uses the invisible ANSI black foreground. */
+    if (mh.color === 0) codes.push((game.iflags?.wc2_darkgray ?? true) ? 90 : 34);
+    else if (mh.color > 0 && mh.color < 7) codes.push(30 + mh.color);
     else if (mh.color > 8 && mh.color < 16) codes.push(90 + mh.color - 8); /* 8 is NO_COLOR */
     return codes;
 }
@@ -255,8 +259,20 @@ export class TtyMenu {
      * order, or { count: -1, picks: [] } when cancelled with ESC.
      */
     async select_menu(how) {
+        /* C wintty.c:1925-1937 tty_display_nhwindow: !menu_overlay forces
+         * offx 0 for every menu, clearing the screen and using docrt on
+         * dismissal even when the menu would otherwise fit in a corner. */
+        if (game.iflags?.menu_overlay === false || game.iflags?.menu_overlay === 0)
+            this.overlay = false;
         this.how = how;
         this.cancelled = false;
+        /* C wintty.c:1923-1935 tty_display_nhwindow: `!iflags.menu_overlay`
+         * forces cw->offx = 0 and clears the screen, so an overlay caller's
+         * corner menu is drawn full-screen (and erase_menu_or_text then
+         * docrt()s on dismissal). */
+        if (this.overlay && (game.iflags?.menu_overlay === false
+                             || game.iflags?.menu_overlay === 0))
+            this.overlay = false;
         let curr_page = 0;
         let fresh = true;
         let finished = false;
@@ -430,6 +446,9 @@ export class TtyMenu {
                                 rows: Math.max(this._lines.length, prev?.rows ?? 0) };
             const { docorner_blank_utf8_captures } = await import('./display.js');
             docorner_blank_utf8_captures(this.contentCol - 1, this.maxrow + 1);
+            const { _threeStatusLines } = await import('./display.js');
+            if (this.maxrow + 1 >= LI - (_threeStatusLines() ? 3 : 2) && game.disp)
+                game.disp.botlx = 1;
         } else game._gm_corner = undefined;
         /* erase_menu_or_text repaints the rows the window covered (wintty.c:966-983)
          * with the symset handling live at dismissal. */

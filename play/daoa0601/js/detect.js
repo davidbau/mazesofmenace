@@ -238,7 +238,7 @@ async function searchAdjacentSecrets(automatic = false) {
 }
 // C detect.c:find_trap(). Only clutter in the remembered layer needs a
 // separate trap display; a visible monster overlays that layer.
-async function findTrap(trap) {
+export async function findTrap(trap) {
     trap.tseen = true;
     exerciseWisdom();
     feel_newsym(trap.tx, trap.ty);
@@ -462,7 +462,10 @@ export async function findit() {
                 found.unseen++;
             }
         }
-        else if (unmap_invisible(x, y, false)) {
+        else if (unmap_invisible(x, y)) {
+            // C's unmap_invisible() always follows unmap_object() with
+            // newsym(), so a visible square rediscovers its floor objects;
+            // the flash then ends on that glyph instead of bare background.
             await flashGlyphAt(x, y, { ch: 'I', kind: 'invisible' }, 6);
             found.clearedUnseen++;
         }

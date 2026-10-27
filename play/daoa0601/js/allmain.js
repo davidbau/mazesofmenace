@@ -65,7 +65,7 @@ import { armorSimpleName, heroHasFreeAction, heroIsDisplaced, stopDonning } from
 import { isBeingTakenOff } from './takeoff_state.js';
 import { OBJECT_DELAY } from './object_data.js';
 import { heroIsUnaware } from './hero_sleep.js';
-import { heroSpecies } from './hero_species.js';
+import { heroSpecies, setHeroSpecies } from './hero_species.js';
 import { heroHasConflict } from './hero_conflict.js';
 import { openHoldingTrap } from './trap_magic.js';
 import { AD_COLD, AD_DGST, AD_DRST, AD_FIRE, AD_MAGM, AD_SEDU, AD_SITM, AD_SSEX, AD_STCK } from './monster_attack_types.js';
@@ -111,7 +111,7 @@ import { stopRun } from './runmode.js';
 import { resolveMonsterGaze } from './monster_gaze.js';
 import { resolveMonsterMagicRay } from './monster_magic_ray.js';
 import { resolveMonsterSelfExplosion } from './monster_self_explosion.js';
-import { canSpotMonster, clearMessageWindow, displayColorName, displayMessageWindow, docrt, redrawMap, bot, flush_screen, flushPendingTopline, updateStatusLines, pline, rememberToplines, plineWithContinuation, newsym, map_invisible, randomDisplayMonsterName, see_monsters, see_objects, see_traps, show_glyph_cell, swallowed, under_ground, under_water, canSeeMonster, monsterVisible, shieldeff, } from './display.js';
+import { canSpotMonster, clearMessageWindow, displayColorName, displayMessageWindow, docrt, redrawMap, bot, flush_screen, flushPendingTopline, updateStatusLines, pline, rememberToplines, appendSuppressedTopline, resetToplineClip, plineWithContinuation, newsym, map_invisible, randomDisplayMonsterName, see_monsters, see_objects, see_traps, show_glyph_cell, swallowed, under_ground, under_water, canSeeMonster, monsterVisible, shieldeff, } from './display.js';
 import { cansee, couldsee, vision_note_blocker_change, vision_recalc, vision_reset_new_level, hasLightSources, } from './vision.js';
 import { nhgetch } from './input.js';
 import { NO_COLOR, CLR_BRIGHT_BLUE } from './terminal.js';
@@ -571,10 +571,19 @@ async function finishMoveloopPreamble() {
     game.context.move = 0;
     game._moveloopStarted = true;
 }
-function appendTurnMessage(message) {
+export function appendTurnMessage(message) {
     const game = requireInitializedGame();
-    if (game._suppressMessagesUntilInput)
+    if (game._suppressMessagesUntilInput) {
+        // update_topl() with WIN_STOP still advances gt.toplines and the
+        // recall history, but redotoplin() never runs: the screen keeps
+        // its suppressed line instead of showing this prose.
+        appendSuppressedTopline(message);
+        game._last_message = message;
+        game._lastPlineMessage = message;
         return;
+    }
+    // update_topl()'s new or joined line repaints the physical top row.
+    resetToplineClip();
     const joins = !!game._pending_message;
     game._pending_message = joins
         ? `${game._pending_message}  ${message}` : message;
@@ -822,6 +831,8 @@ async function finishFumblingExpiryAfterMessage(fumbled, publish) {
 async function finishInitialTurnMaintenanceAfterAutomaticSearch({ sourceTurn, moveAmount, }) {
     if (game.u.warning)
         await revealWarnedMonsters();
+    if (game.were_changes)
+        setHeroSpecies(heroSpecies(game), game);
     await warnWithMasterKey(game);
     // Each sound keeps its native message wait before later feature rolls.
     await dosounds();
@@ -3802,8 +3813,7 @@ export async function runMoveloopCore() {
             g.u.umovement = (g.u.umovement ?? 12) - 12;
             g._heroTimePending = true;
         }
-        const countedMultiActive = g.multi > 0;
-        await captureRunmodeDelay(g, countedMultiActive);
+        await captureRunmodeDelay(g, !!g.context.run || g.multi > 0);
         return;
     }
     // C resumes a Shift-direction run here, after the elapsed action's

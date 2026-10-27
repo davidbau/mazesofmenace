@@ -1,4 +1,4 @@
-import { delallobj, cmd_from_dir } from './cmd.js';
+import { delallobj, cmd_from_dir, flooreffects } from './cmd.js';
 // C ref: nethack-c/src/dig.c — the apply-a-pick-axe / dig occupation subsystem.
 //
 //   use_pick_axe2()  — the down-dig (u.dz > 0) branch: "You start digging
@@ -99,7 +99,7 @@ import { t_at, deltrap, delfloortrap, unearth_objs, maketrap, mintrap,
 import { On_stairs, On_ladder, stairway_at, In_hell } from './mklev.js';
 import { Monnam } from './mcastu.js';
 import { is_pool_or_lava } from './look.js';
-import { water_damage_chain, pooleffects, switch_terrain, boulder_hits_pool, check_special_room } from './cmd.js';
+import { water_damage_chain, pooleffects, switch_terrain, boulder_hits_pool } from './cmd.js';
 import { is_drawbridge_wall, find_drawbridge, delobj, impact_drop, is_db_wall } from './dokick.js';
 import { hliquid, mon_has_amulet } from './mhitm.js';
 import { distmin, s_suffix } from './hacklib.js';
@@ -148,9 +148,9 @@ export async function destroy_drawbridge(x, y) {
     const ox = x | 0, oy = y | 0;
     const inputDir = is_drawbridge_wall(ox, oy);
     const bx = { value: x | 0 }, by = { value: y | 0 };
-    if (!find_drawbridge(bx, by)) return false;
+    if (!find_drawbridge(bx, by)) return;
     const bridge = game.level?.at(bx.value, by.value);
-    if (!bridge || !IS_DRAWBRIDGE(bridge.typ | 0)) return false;
+    if (!bridge || !IS_DRAWBRIDGE(bridge.typ | 0)) return;
     let wx = bx.value, wy = by.value;
     if (inputDir >= 0) { wx = ox; wy = oy; }
     else {
@@ -172,19 +172,28 @@ export async function destroy_drawbridge(x, y) {
                 : 'The drawbridge collapses into the %s!', lava ? hliquid('lava') : 'moat');
         else await You_hear('a loud *SPLASH*!');
         bridge.typ = lava ? LAVAPOOL : MOAT;
+        // C dbridge.c:924-928: expose the liquid before dunking one boulder.
+        bridge.drawbridgemask = 0;
+        const boulder = sobj_at(BOULDER, bx.value, by.value);
+        if (boulder) {
+            obj_extract_self(boulder);
+            await flooreffects(boulder, bx.value, by.value, 'fall');
+        }
     } else {
-        await pline('The drawbridge disintegrates!');
+        if (cansee(bx.value, by.value) || (game.u.ux === bx.value && game.u.uy === by.value))
+            await pline('The drawbridge disintegrates!');
+        else await You_hear('a loud *CRASH*!');
         bridge.typ = iced ? ICE : ROOM;
+        // icedpool aliases drawbridgemask (rm.flags); retain ICED_MOAT on ice.
         bridge.icedpool = iced ? 16 : 0;
     }
-    bridge.drawbridgemask = 0;
+    wake_nearto(bx.value, by.value, 500);
     const wall = game.level?.at(wx, wy);
     if (wall) { wall.typ = DOOR; wall.doormask = D_NODOOR; }
     const bt = t_at(bx.value, by.value), wt = t_at(wx, wy);
     if (bt) deltrap(bt);
     if (wt && wt !== bt) deltrap(wt);
     del_engr_at(bx.value, by.value); del_engr_at(wx, wy);
-    wake_nearto(bx.value, by.value, 500);
     // C dbridge.c:949-959: create and scatter each piece of iron-chain debris.
     for (let i = rn2(6); i > 0; --i) {
         const obj = await mksobj_at(478 /* IRON_CHAIN */, rn2(2) ? bx.value : wx, rn2(2) ? by.value : wy, true, false);
@@ -234,7 +243,6 @@ export async function destroy_drawbridge(x, y) {
     if (game.svk?.killer) { game.svk.killer.name = ''; game.svk.killer.format = 0; } /* nokiller() */
     if (Is_stronghold(game.u.uz))
         game.u.uevent.uheard_tune = 3; /* bridge is gone so tune is now useless */
-    return true;
 }
 
 /* C dbridge.c:303-337 struct entity / m_to_e / u_to_e / set_entity. */
@@ -807,14 +815,12 @@ function Levitation_() {
     const p = u_prop_(u, LEVITATION);
     return !!((p.intrinsic | 0) || (p.extrinsic | 0)) && !(p.blocked | 0);
 }
-// C ref: include/youprop.h:247-254 — Flying also ORs in a flying steed; that
-// clause is not ported (no is_flyer() export reachable from this file), which
-// is a conservative simplification: it can only make Flying_() read FALSE
-// where C reads TRUE (a hero riding a flying steed), never the reverse.
+// C ref: include/youprop.h:247-254 — a flying steed also grants flight.
 function Flying_() {
     const u = game.u || {};
     const p = u_prop_(u, FLYING);
-    return !!((p.intrinsic | 0) || (p.extrinsic | 0)) && !(p.blocked | 0);
+    return !!((p.intrinsic | 0) || (p.extrinsic | 0)
+              || (u.usteed && is_flyer_(u.usteed.data))) && !(p.blocked | 0);
 }
 
 /* is_flyer(ptr)/is_floater(ptr) — C mondata.h:19-20 macros, needed by
@@ -1195,11 +1201,8 @@ function floorObjsAt_(x, y) {
 }
 
 // C ref: dig.c:639-834 digactualhole(x,y,madeby,ttyp) — create the actual
-// PIT/HOLE trap and its immediate consequences.  Only the at_u==true path is
-// ported (this file's only caller always digs at the hero's own square, so
-// C's `else if (mtmp)` monster-elsewhere branch is dead by construction
-// here); the fall-through-a-level arm (u.ustuck/wont_fall both false) throws,
-// since it needs spoteffects() which has no js/ body anywhere in this tree.
+// PIT/HOLE trap and its immediate consequences, including landing effects
+// after the hero falls onto the destination level.
 //
 // EXPORTED (was file-local): apply.c's do_break_wand WAN_DIGGING arm
 // Exporting adds no new caller in THIS file, so this file's own behaviour
@@ -1341,9 +1344,9 @@ export async function digactualhole_(x, y, madeby, ttyp, skipFurniture = false) 
                     dlevel: (u.uz.dlevel | 0) + 1,
                 };
                 await goto_level(newlevel, false, true, false);
-                /* C dig.c:793-804 — the fall's arrival does not pick up or
-                 * look_here again (goto_level's own arrival already did). */
-                await check_special_room(false);
+                /* C dig.c:792-793: process landing traps and terrain without
+                 * repeating goto_level's arrival pickup. */
+                await spoteffects(false);
             }
         } else {
             /* C dig.c:819-848: objects get a chance to fall, then a monster
@@ -1364,7 +1367,7 @@ export async function digactualhole_(x, y, madeby, ttyp, skipFurniture = false) 
                 if (mtmp === u.ustuck) /* probably a vortex */
                     return;           /* temporary? kludge */
 
-                if (teleport_pet(mtmp, false)) {
+                if (await teleport_pet(mtmp, false)) {
                     let tolevel;
 
                     if (Is_stronghold(u.uz)) {
@@ -2499,8 +2502,8 @@ export async function rot_corpse(arg, timeout) {
             const cname = corpse_xname(obj, null, CXN_NO_PFX);
 
             /* C: Your("%s%s %s away%c", ...) */
-            pline('Your ' + (obj === game.uwep ? 'wielded ' : '') + cname + ' '
-                  + otense(obj, 'rot') + ' away' + (obj === game.uwep ? '!' : '.'));
+            await pline('Your ' + (obj === game.u.uwep ? 'wielded ' : '') + cname + ' '
+                        + otense(obj, 'rot') + ' away' + (obj === game.u.uwep ? '!' : '.'));
         }
         if (obj.owornmask) {
             await remove_worn_item(obj, true);
@@ -2631,7 +2634,9 @@ function mdistu_dig(mon) {
  * asleep or paralyzed, instead of silently forcing the conscious branch. */
 function _dig_unaware() { return !!Unaware_real(); }
 function _dig_deaf() { return !!(game.flags?.deaf); }
-function You_feel(line) { pline("You feel " + line); }
+/* C ref: pline.c:387-400 You_feel(line) — "You feel <line>", or "You dream
+ * that you feel <line>" when Unaware (asleep/unconscious). */
+function You_feel(line) { pline((Unaware_real() ? "You dream that you feel " : "You feel ") + line); }
 /* C ref: pline.c:435-452 pline_mon(mtmp, ...) — a monster-attributed pline; the
  * SetVoice/Deaf routing is display-only, so this is plain pline as in
  * js/makemon.js:4296 and js/mcastu.js:237. */

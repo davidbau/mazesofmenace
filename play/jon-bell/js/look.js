@@ -19,6 +19,7 @@ import { trapname } from './makemon.js';
 // and a few decoration types via defsyms-style explanations.
 
 import { game } from './gstate.js';
+import { hide_unhide_msgtypes, MSGTYP_MASK_REP_SHOW } from './options.js';
 import { nomul } from './allmain.js';
 import { classifyTerrain, invalidateTerrainStatus } from './terrain-status.js';
 import { pline, mon_visible, canspotmon, time_botl_run_ended } from './display.js';
@@ -518,9 +519,11 @@ export async function look_here(obj_cnt = 0, lookhere_flags = LOOKHERE_NOFLAGS) 
 //   res = look_here(0, LOOKHERE_NOFLAGS);
 //   hide_unhide_msgtypes(FALSE, MSGTYP_MASK_REP_SHOW);
 //   return res;  // ECMD_OK or ECMD_TIME
-// MSGTYPE handling is a display-options feature we don't model; behavior is
 export async function dolook() {
-    return await look_here();
+    hide_unhide_msgtypes(true, MSGTYP_MASK_REP_SHOW);
+    const res = await look_here();
+    hide_unhide_msgtypes(false, MSGTYP_MASK_REP_SHOW);
+    return res;
 }
 
 // ── Terrain and trap predicates for lookaround ──
@@ -764,8 +767,9 @@ export async function lookaround() {
     if (!u) return;
     const ctx = game.context || {};
 
-    /* C hack.c:3823-3827 — grid bugs stop if moving diagonal */
+    /* C hack.c:3907-3910 — grid bugs stop if moving diagonal */
     if (NODIAG(u.umonnum | 0) && u.dx && u.dy) {
+        await pline('You cannot move diagonally.');
         nomul(0);
         return;
     }
@@ -937,8 +941,10 @@ export async function lookaround() {
         }
     }
 
-    /* C hack.c:3941-3944: corrct > 1 in run==2 → widen corridor → stop */
+    /* C hack.c:4025-4028: corrct > 1 in run==2 → widen corridor → stop */
     if (corrct > 1 && run === 2) {
+        if (game.flags?.mention_walls)
+            await pline('The corridor widens here.');
         nomul(0);
         _emitStop('corridor-widens');
         return;

@@ -37,7 +37,7 @@ import { Japanese_item_name } from './objnam.js';
 import { HALLUC, HALLUC_RES } from './const.js';
 import { TtyMenu, PICK_ONE, ATR_NONE, menu_heading_attr_text } from './tty_menu.js';
 import { display_text_window } from './com_pager.js';
-import { pline, flush_screen } from './display.js';
+import { pline, flush_screen, raw_print_wait } from './display.js';
 import { config_error_add } from './cmd_binds.js';
 import { OC_USES_KNOWN } from './mklev.js';
 import { ARTILIST, quest_info, simple_typename } from './objnam.js';
@@ -87,11 +87,15 @@ const FLUORITE = 457;
  *   remaining real gem j up to LAST_REAL_GEM.
  *   Recompute oclass_prob_totals[GEM_CLASS].
  */
-export function setgemprobs(dlev) {
+export async function setgemprobs(dlev) {
+    /* C: lev = (dlev) ? ledger_no(dlev) : 0
+     * ledger_no(dlev) = dlev->dlevel + dungeons[dlev->dnum].ledger_start
+     * Dungeon 0 (main dungeon) has ledger_start=0, so lev = dlev->dlevel.
+     * C dungeon.c:1376-1378 returns the sum as signed xint16. */
     let lev = 0;
-    if (dlev !== null) {
+    if (dlev != null) {
         const ledgerStart = game.dungeons?.[dlev.dnum]?.ledger_start ?? 0;
-        const raw = dlev.dlevel + ledgerStart;
+        const raw = (dlev.dlevel + ledgerStart) << 16 >> 16;
         lev = Math.min(raw, maxledgerno()); // C o_init.c:59-60
     }
     const first_base = MKOBJ_SVB_BASES[GEM_CLASS] | 0; /* 439 */
@@ -101,6 +105,11 @@ export function setgemprobs(dlev) {
         MKOBJ_OC_PROB[first_base + j] = 0;
     }
     const first = first_base + j; /* first non-zero real gem index */
+    // C o_init.c:68-73: diagnose an invalid gem table, wait, then continue.
+    if (first > LAST_REAL_GEM || MKOBJ_OC_CLASS[first] !== GEM_CLASS
+        || OC_NAME[first] == null) {
+        await raw_print_wait(`Not enough gems? - first=${first} j=${j} LAST_GEM=${LAST_REAL_GEM}`);
+    }
     /* C o_init.c:74-75: assign (171+j-first)/(LAST_REAL_GEM+1-first) */
     const denom = LAST_REAL_GEM + 1 - first;
     for (let k = first; k <= LAST_REAL_GEM; k++) {
@@ -115,8 +124,8 @@ export function setgemprobs(dlev) {
     MKOBJ_OCLASS_PROB_TOTALS[GEM_CLASS] = sum;
 }
 /* C o_init.c:369-372 — oinit(): level-dependent init, called each makelevel() */
-export function oinit() {
-    setgemprobs(game.u?.uz ?? null);
+export async function oinit() {
+    await setgemprobs(game.u?.uz ?? null);
 }
 export function randomize_gem_colors() {
     const g = game;

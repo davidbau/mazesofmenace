@@ -865,10 +865,15 @@ export function vision_recalc(control = 0) {
                 const start = Math.max(1, (u.ux | 0) - ranges[dyy]);
                 const stop = Math.min(COLNO - 1, (u.ux | 0) + ranges[dyy]);
                 for (let col = start; col <= stop; col++) {
+                    const old_row_val = next[row][col];
                     next[row][col] |= IN_SIGHT;
                     const xl = game.level?.at(col, row);
+                    const oldseenv = xl ? xl.seenv : SVALL;
                     if (xl)
                         xl.seenv = SVALL; /* see all! */
+                    /* Update if previously not in sight or new angle. */
+                    if (!(old_row_val & IN_SIGHT) || oldseenv !== SVALL)
+                        newsym(col, row);
                 }
                 next_rmin[row] = Math.min(start, next_rmin[row]);
                 next_rmax[row] = Math.max(stop, next_rmax[row]);

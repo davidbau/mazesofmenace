@@ -139,6 +139,9 @@ import { ENV } from './hostenv.js';
 import { nhgetch } from './input.js';
 import { raw_print } from './rawterm.js';
 import { get_configfile } from './cfgfiles.js';
+import { dobjsfree, clear_splitobjs, see_nearby_monsters } from './mklev.js';
+import { maybe_shuffle_customizations } from './glyphs.js';
+import { topl_force_break_now, force_more_pages } from './display.js';
 
 // ── calendar.c port (subset): getnow/getlt/phase_of_the_moon/friday_13th ──
 // C ref: calendar.c.  moveloop_preamble (allmain.c:60-71) calls
@@ -831,6 +834,20 @@ export async function newgame() {
 }
 // C ref: hack.c:4161 nomul(nval) — cancel running and queued commands,
 // or set a negative multi-turn delay without shortening an existing delay.
+/* C allmain.c:547-555 — after the hero's dispatch, a run/travel that shows no
+ * per-step display (runmode:teleport) refreshes the status every 7th step:
+ * `if (flags.time && context.run) disp.botl = TRUE;` makes the whole line,
+ * T: included, repaint at the next flush.  display_nhwindow(WIN_MAP) itself
+ * paints no status. */
+function run_tport_botl() {
+    const g = game;
+    if ((!(g.context.run | 0) || (g.flags?.runmode | 0) === PROPS.RUN_TPORT)
+        && (g.multi | 0)
+        && (!g.context.travel ? !((g.multi | 0) % 7) : !((g.moves | 0) % 7))) {
+        if (g.flags?.time && (g.context.run | 0)) g.disp.botl = 1;
+    }
+}
+
 export function nomul(nval) {
     const g = game;
     const cur = (g.multi | 0);
@@ -1055,7 +1072,12 @@ export function faithful_input_redraw() {
 // the +1 carry is consistent across both paths so the seer -1 correction and
 // downstream emission sites are unchanged).
 let _nh_timeout_turn = null;
-export async function nh_timeout_wield_turn() { if (_nh_timeout_turn) await _nh_timeout_turn(); }
+export async function nh_timeout_wield_turn() {
+    if (_nh_timeout_turn) await _nh_timeout_turn();
+    // C allmain.c:274: the folded wield turn also ages and processes regions
+    // immediately after nh_timeout(), before regeneration and other upkeep.
+    await run_regions();
+}
 async function faithful_moveloop_turn() {
     const g = game;
     // C allmain.c:245 — u.umovement -= NORMAL_SPEED (time passed this key).
@@ -1197,6 +1219,13 @@ async function faithful_moveloop_turn() {
             // once-per-turn upkeep block: exerchk etc. read the POST-increment
             // svm.moves (exerchk's % 10 / % 5 / next_attrib_check schedule).
             g.moves = (g.moves || 1) + 1;
+            // C allmain.c:243-257: terminate before any once-per-turn upkeep.
+            if (g.moves >= 1000000000) {
+                topl_force_break_now(false, capture_flushed_cells(), g._lastPaintedBotl || null);
+                if (g._pending_message) await force_more_pages(g._pending_message);
+                await urgent_pline('The dungeon capitulates.');
+                await done_end(PROPS.ESCAPED);
+            }
             if (_turnTrace)
                 pushRngLogEntry(`^turn_js[phase=head_increment moves=${g.moves | 0}]`);
             /* C allmain.c:261-263 — `if (flags.time && !svc.context.run)
@@ -1467,6 +1496,7 @@ async function faithful_moveloop_turn() {
                 g.multi = (g.multi | 0) + 1;
                 if ((g.multi | 0) === 0) {
                     await unmul(null);
+                    if (g.u.utotype) await deferred_goto(); // C allmain.c:384-385
                     // Signal to moveloop_core_faithful that a multi<0 countdown
                     // just completed this call (so it suppresses the next head's
                     // spurious per-turn block — C's banked-umv carryover).
@@ -1478,7 +1508,10 @@ async function faithful_moveloop_turn() {
             if (_turnTrace)
                 pushRngLogEntry(`^turn_js[phase=turn_end moves=${g.moves | 0}]`);
         }
-        if (++guard >= 64) break; // safety cap against a broken umovement balance
+        /* C's `while (u.umovement < NORMAL_SPEED)` has no pass cap: a speed-0
+         * hero (blue jelly) waits out 80+ turns in one call.  The cap is only
+         * a hang guard against a broken umovement balance. */
+        if (++guard >= 100000) break;
     } while ((g.u.umovement | 0) < NORMAL_SPEED);
     if (_turnTrace)
         pushRngLogEntry(`^turn_js[phase=outer_exit moves=${g.moves | 0} passes=${guard} umv=${g.u.umovement | 0}]`);
@@ -1526,6 +1559,7 @@ async function faithful_moveloop_turn() {
         under_water(0);
     else if (g.u && g.u.uburied)
         under_ground(0);
+    see_nearby_monsters(); // C allmain.c:436, after terrain/vision upkeep
     if (_heroTrace) {
         const u = g.u || {};
         pushRngLogEntry(
@@ -2434,9 +2468,7 @@ async function slip_or_trip() {
         if (!u.uarmf && (otmp.otyp | 0) === CORPSE_AM
             && ((otmp.corpsenm | 0) === PM_COCKATRICE
                 || (otmp.corpsenm | 0) === PM_CHICKATRICE))
-            await instapetrify(`tripping over ${
-                (otmp.corpsenm | 0) === PM_CHICKATRICE ? 'chickatrice' : 'cockatrice'
-            } corpse`);
+            await instapetrify(`tripping over ${an(monPmname(otmp.corpsenm, PROPS.NEUTRAL))} corpse`);
         return;
     }
     const HFumbling = (u.uprops?.[FUMBLING]?.intrinsic | 0);
@@ -3028,6 +3060,7 @@ async function moveloop_core_faithful() {
     // do_wear/polyself/spell paths), so a hero killed while wearing armor the
     // bolt and C renders AC:9 for all twelve frames after it, where this port
     // recomputed AC:10.
+    clear_splitobjs(); // C allmain.c:443, once per player input
     const _u_aw = g.u || {};
     if (!g._pendingDeath && (_u_aw.uhave && _u_aw.uhave.amulet)
         && !(_u_aw.uevent && _u_aw.uevent.amulet_wish)) {
@@ -3347,6 +3380,9 @@ async function moveloop_core_faithful() {
                 g._resultMessage = null;
             }
             while (g.occupation === dig && digGuard++ < 4096) {
+                // C allmain.c:453-470 precedes each occupation callback,
+                // including the first horizontal dig before its world block.
+                faithful_input_redraw();
                 const r = await dig();
                 if (r === 0) g.occupation = null;
                 // C allmain.c:504-507 — the occupation branch runs
@@ -3524,6 +3560,12 @@ async function moveloop_core_faithful() {
              * stream draws (see_monsters/see_objects/see_traps) after EVERY study
              * turn, not once after the whole study (cf. the engrave driver). */
             faithful_input_redraw();
+            // C allmain.c:471-472: update visibility before the occupation
+            // callback and monster_nearby(), including after moving bubbles.
+            if (g.vision_full_recalc) {
+                vision_recalc(0);
+                g.vision_full_recalc = 0;
+            }
             /* C mhitu.c stop_occupation() (allmain.c:684-693) clears go.occupation
              * the instant a monster attack interrupts the study; js/mhitu.js only
              * emits the message (g._studyStopMsg) and defers the clear.  Apply the
@@ -3569,10 +3611,6 @@ async function moveloop_core_faithful() {
             // unless guarded bot()/timebot() calls curs_on_u().  Drain deferred
             // update_topl pages without advancing the physical map otherwise;
             // display_nhwindow(WIN_MESSAGE) can still page it on a later turn.
-            if (g.vision_full_recalc) {
-                vision_recalc(0);
-                g.vision_full_recalc = 0;
-            }
             const repaintStudy = !!(g.disp?.botl || g.disp?.botlx || g.disp?.time_botl);
             await moveloop_status_paint(); // C allmain.c:474 — guarded status paint
             await flush_screen(1, repaintStudy);
@@ -4705,6 +4743,20 @@ async function moveloop_core_faithful() {
         // run_page_frame_select).  DISPLAY-ONLY: snapshots disp_* cells, consumes no
         // non-paging run / non-run command is byte-identical to before.
         run_page_frame_tick();
+        // C allmain.c:484-509: an occupation started by a repeated domove
+        // takes precedence over the next run step, just as one from rhack.
+        // In particular, a force-fight with a pick can start a downward dig
+        // while travel still has a positive multi count.
+        if ((g.multi | 0) >= 0 && g.occupation === dig) {
+            if (await dig() === 0) g.occupation = null;
+            if (monster_nearby()) {
+                await stop_occupation();
+                reset_eat();
+            }
+            await runmode_delay_output();
+            if (++runGuard >= 4096) break;
+            continue;
+        }
         // C ref: allmain.c:513 — `u.umoved = FALSE;`, between the per-turn world
         // block and the multi dispatch.  C's run is NOT a loop: each run step is
         // its own moveloop_core invocation (head block, then u.umoved = FALSE,
@@ -4806,6 +4858,7 @@ async function moveloop_core_faithful() {
                 await deferred_goto();
             if (g.vision_full_recalc)
                 vision_recalc(0);
+            run_tport_botl();
             if (ENV.FF_RUNBANK_TRACE === '1') {
                 pushRngLogEntry(`^ff_rundomove[moves=${g.moves | 0} ux=${g.u.ux | 0} uy=${g.u.uy | 0} multi=${g.multi | 0}]`);
             }
@@ -4989,6 +5042,9 @@ async function moveloop_core_impl() {
     if (!game.program_state) game.program_state = {};
     game.program_state.in_moveloop = 1;
     const g = game;
+    // C allmain.c:187-190: customization processing precedes deferred frees.
+    if (g.iflags.pending_customizations) maybe_shuffle_customizations();
+    dobjsfree();
     // C allmain.c:232-235 — clear object-chain bypass bits before the
     // per-turn world block, but only when a bypass was actually requested.
     if (g.context?.bypasses || g.svc?.context?.bypasses)
@@ -5005,6 +5061,7 @@ async function moveloop_core_impl() {
             g.program_state.in_sanity_check--;
         }
     }
+    if (g.context?.resume_wish) await makewish(); // C allmain.c:200-201
     // NOTE: the painted-screen snapshot is dropped at flush_screen after its
     // --More-- window is paged (see moveloop_core_faithful) — NOT reset here.
     // unless explicitly disabled, so the early return below ALWAYS fires and

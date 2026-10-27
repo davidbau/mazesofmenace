@@ -13,7 +13,7 @@ import { petRefusesHeroSwap, settlePetHeroDisplacement } from './hero_pet_displa
 import { airTurbulenceStopsHero, waterTurbulenceStopsHero } from './hero_movement_turbulence.js';
 import { maybeAdjustHeroBubble } from './elemental.js';
 import { announceRunLiquid, announceRunTrap, knownRunTrap, runLiquidIsDangerous } from './run_hazards.js';
-import { AUTOUNLOCK_APPLY_KEY, AUTOUNLOCK_KICK, AUTOUNLOCK_UNTRAP, ECMD_CANCEL, ECMD_FAIL, ECMD_TIME } from './const.js';
+import { AUTOUNLOCK_APPLY_KEY, AUTOUNLOCK_KICK, AUTOUNLOCK_UNTRAP, ECMD_CANCEL, ECMD_FAIL, ECMD_OK, ECMD_TIME } from './const.js';
 import { findDrawbridgeAt } from './dbridge.js';
 import { doorObstructed } from './door_magic.js';
 import { DBWALL, DRAWBRIDGE_DOWN, IS_DRAWBRIDGE, IS_TREE, LADDER, STAIRS, THRONE } from './const.js';
@@ -103,7 +103,7 @@ import { definiteName, objectCombatName, minimalObjectName, objectNameIsPlural, 
 import { woundHeroLegs } from './hero_legs.js';
 import { makeMonsterFlee } from './monster_flee.js';
 import { descendFromLevitation, floatingAbove } from './levitation_commands.js';
-import { clearCannedCommands, endVoluntaryMultiTurn, resetCommandVariables, nomul, setMulti } from './command_state.js';
+import { beginCommandResult, clearCannedCommands, commandResultCancelled, commandResultFailed, commandResultSpentTime, endVoluntaryMultiTurn, resetCommandVariables, nomul, setMulti } from './command_state.js';
 import { finishHeroHelplessness } from './allmain.js';
 import { grantIntrinsicProperty, propertyIsActive } from './properties.js';
 import { pickupAtHero, pickupObjectClass, pickupClassOrder, } from './pickup.js';
@@ -250,6 +250,7 @@ import { doUntrap } from './untrap.js';
 import { dosit } from './sit.js';
 import { continueEngraving, doengrave } from './engrave_command.js';
 import { climbOutOfPit, heroCanMoveFromTrap, triggerHeroTrapAt, triggerLevelTeleportTrap } from './hero_traps.js';
+import { resetHeroTrap } from './terrain_movement.js';
 import { applyDippedCoinFate, applyFountainDemonActor, applyFountainGemDiscovery, applyFountainNymphActor, applyFountainSnakeActors, resolveDippedSensationFate, } from './fountain_effects.js';
 import { dryFountainAt, gushForthFromFountain } from './fountain.js';
 import { heroArmName, heroFingerName, heroHandName } from './body_parts.js';
@@ -718,15 +719,6 @@ async function selectTravelStep(state) {
     }
     return direction;
 }
-function canSeeRunMonster(monster, x, y, g = game) {
-    if (g === game)
-        return canSeeMonster(monster);
-    const visibleSquare = !g.viz_array
-        || !!((g.viz_array?.[y]?.[x] ?? 0) & 0x2);
-    return !g.blind && !((g.u.blindTurns ?? 0) > 0) && visibleSquare
-        && (!monster.minvis || !!g.u.seeInvisible)
-        && !monster.mundetected;
-}
 // C hack.c:lookaround() for travel (context.run == 8): moveloop runs it
 // before every automatic travel step.  Travel stops for a grid-bug
 // diagonal, a visible monster that is not peaceful-safe, a known trap
@@ -834,17 +826,16 @@ export async function lookaroundRun(state = game._runState, g = game) {
             if (noDiagonal && x !== u.ux && y !== u.uy)
                 continue;
             const infront = x === targetX && y === targetY;
-            const monster = g.level.monsters?.find(mon => monsterHasMapPosition(mon, g) &&
-                mon.mx === x && mon.my === y);
+            const monster = monsterAtPosition(g.level, x, y, g);
             // hack.c:lookaround() considers an actor interesting only inside
             // its mon_visible() branch.  An invisible monster directly in
             // front must reach domove()/attack_checks(), which remembers the
             // unseen occupant instead of silently ending the run.
             const visibleMonster = monster && M_AP_TYPE(monster) !== M_AP_FURNITURE
                 && M_AP_TYPE(monster) !== M_AP_OBJECT
-                && canSeeRunMonster(monster, monster.mx, monster.my, g);
+                && monsterVisible(monster, g);
             const safeMonster = monster && (g.flags.safe_dog ?? true)
-                && monster.mpeaceful && !g.context.forcefight
+                && monster.mpeaceful && canSpotMonster(monster) && !g.context.forcefight
                 && !(u.confusionTurns ?? 0) && !u.stunned && !(u.stunnedTurns ?? 0)
                 && !heroIsHallucinating(g);
             const visibleHostile = visibleMonster && !safeMonster;
@@ -1041,8 +1032,8 @@ export async function continueRun(g = game) {
     const moved = outcome === 'time';
     if (g.program_state.gameover)
         return false;
-    if (moved)
-        await captureRunmodeDelay(g, !!g._runState);
+    if (moved && g._domoveReachedTail)
+        await captureRunmodeDelay(g, !!g.context.run || g.multi > 0);
     g.context.move = moved ? 1 : 0;
     if (!moved && outcome !== 'opened-door')
         stopRun(g);
@@ -1272,7 +1263,9 @@ export async function rhack(key) {
                         key: commandExecutionKey(lastExecuted.name)?.charCodeAt(0) ?? null,
                         command: lastExecuted, parameter: null,
                     }, false);
-                resetCommandVariables(false);
+                // doextcmd() reports ECMD_OK for a quit, so rhack() resets
+                // the queues only under an involuntary delay.
+                resetCommandVariables(game.multi < 0);
                 return;
             }
             if (game.iflags.menu_requested && !(selected.flags & NATIVE_COMMAND_FLAGS.CMD_M_PREFIX)) {
@@ -1411,20 +1404,27 @@ async function dispatchMovement(binding, prefixes) {
         resetCommandVariables(true);
         return;
     }
+    // C rhack() dispatches on gd.domove_attempting, which a run prefix
+    // followed by an unbound key leaves set with DOMOVE_RUSH.  That
+    // branch starts a run (multi = max(COLNO, ROWNO), context.mv) with
+    // whatever context.run now holds -- even 0 after nomul() -- so the
+    // step repeats until a move fails.  A pending DOMOVE_WALK bit takes
+    // precedence over RUSH in the dispatch order.
+    const rushDispatch = prefixes.rush && !prefixes.walk;
     const mode = prefixes.walk || prefixes.rush
         ? game.context.run === 2 ? 2 : game.context.run === 3 ? 3 : 0
         : controlRushDirection(key) ? 3 : ch !== ch.toLowerCase() ? 1 : 0;
     game.context.run = mode;
     if (game.iflags.menu_requested)
         game.context.nopick = true;
-    if (game.multi > 0 || (mode && !prefixes.walk))
+    if (game.multi > 0 || rushDispatch || (mode && !prefixes.walk))
         startRun(hero.dx, hero.dy, game, mode);
     const outcome = await domove(hero.dx, hero.dy);
     const moved = outcome === 'time';
     if (game.program_state.gameover)
         return;
-    if (mode && !prefixes.walk && moved)
-        await captureRunmodeDelay(game, !!game._runState);
+    if ((rushDispatch || mode) && !prefixes.walk && moved && game._domoveReachedTail)
+        await captureRunmodeDelay(game, !!game.context.run || game.multi > 0);
     game.context.move = moved ? 1 : 0;
     if (!moved && outcome !== 'opened-door')
         stopRun();
@@ -1435,11 +1435,25 @@ async function dispatchMovement(binding, prefixes) {
 // C cmd.c:rhack() clears kickedloc after an elapsed non-kick action.
 // doextcmd's selected action, not the outer # editor, owns that result.
 async function executeCommandAction(binding, options = {}) {
+    beginCommandResult();
     await runCommandHandler(binding, options);
     if (game.program_state.gameover)
         return;
-    if (!game.context.move)
+    // C cmd.c:rhack() result seam (3810-3826): ECMD_CANCEL and ECMD_FAIL
+    // reset both command queues, a time-taking result keeps them, and an
+    // ECMD_OK result resets them only under an involuntary delay. C's
+    // moveloop presets context.move before rhack(); JS handlers set it, so
+    // the TIME precedence over a cancellation reads the recorded result
+    // bits, not the possibly stale context.move.
+    const result = game._commandResult ?? ECMD_OK;
+    if (result & (ECMD_CANCEL | ECMD_FAIL)) {
+        resetCommandVariables(true);
+        if (result & ECMD_TIME)
+            game.context.move = 1;
+    }
+    else if (!game.context.move) {
         resetCommandVariables(game.multi < 0);
+    }
     if (game.context.move
         && binding.command?.handler !== 'dokick'
         && binding.command?.handler !== 'doextcmd') {
@@ -1608,8 +1622,9 @@ async function runCommandHandler(binding, { cannedCommand = null, } = {}) {
     }
     else if (ch === 'D') {
         const result = await dropMultipleObjects();
-        if (result & (ECMD_FAIL | ECMD_CANCEL))
-            resetCommandVariables(true);
+        // doddrop() returns the drop transaction's result bits (or the
+        // traditional-mode dropped count) to rhack() unchanged.
+        game._commandResult = result;
         game.context.move = Number((result & ECMD_TIME) !== 0);
         if (result) {
             resetOccupations();
@@ -1743,13 +1758,13 @@ function enqueueInventoryAction(action) {
 async function doquaff() {
     const result = await quaff();
     if (result.cancelled)
-        resetCommandVariables(true);
+        commandResultCancelled(); // potion.c:dodrink() ECMD_CANCEL.
     game.context.move = result.spentTime && !result.heroDied ? 1 : 0;
 }
 async function readCommand() {
     const result = await doread();
     if (result.cancelled)
-        resetCommandVariables(true);
+        commandResultCancelled(); // read.c:doread() ECMD_CANCEL.
 }
 function someGold(amount) {
     const gold = Math.min(0x7fffffff, Math.max(0, Math.trunc(amount ?? 0)));
@@ -2405,7 +2420,7 @@ async function dokick() {
         return;
     const direction = await promptDirection();
     if (!direction || (!direction.dx && !direction.dy)) {
-        resetCommandVariables(true); // dokick() returns ECMD_CANCEL.
+        commandResultCancelled(); // dokick() returns ECMD_CANCEL.
         return;
     }
     game.u.dx = direction.dx;
@@ -2640,7 +2655,7 @@ async function dotherecmdmenu() {
     const click = game.iflags.getdir_click;
     game.iflags.getdir_click = 0;
     if (!direction || !isok(game.u.ux + direction.dx, game.u.uy + direction.dy)) {
-        resetCommandVariables(true);
+        commandResultCancelled(); // cmd.c:there_cmdmenu() returns ECMD_CANCEL.
         return;
     }
     enqueueContextMenu(await selectContextMenu(game.u.ux + direction.dx, game.u.uy + direction.dy, direction.dx || direction.dy ? click : CLICK_1));
@@ -2959,16 +2974,6 @@ function inventoryActionCommand({ key, item }) {
     return NATIVE_COMMANDS.find(command => command.handler === handlers[key]) ?? null;
 }
 async function executeInventoryAction({ key, item }) {
-    try {
-        await runInventoryAction({ key, item });
-    }
-    finally {
-        // These keys belong to this item's prompts. Native rhack discards
-        // them if the command fails before it asks for the selected item.
-        clearCommandKeys();
-    }
-}
-async function runInventoryAction({ key, item }) {
     const letter = item.invlet;
     if (!letter || !game.inventory.includes(item)) {
         game.context.move = 0;
@@ -3071,7 +3076,8 @@ async function runInventoryAction({ key, item }) {
                 await tipCommand();
             return;
         case 't':
-            await dothrow(item);
+            queueCommandKeys(letter);
+            await dothrow();
             return;
         case 'w':
             queueCommandKeys(letter);
@@ -3110,11 +3116,11 @@ async function doswapweapon() {
     setMulti(0);
     if (heroHasNoHands(game) || heroIsVerySmall(game)) {
         await pline("Don't be ridiculous!");
-        resetCommandVariables(true);
+        commandResultFailed(); // wield.c:doswapweapon() ECMD_FAIL.
         return;
     }
     if (await refuseWeldedPrimary()) {
-        resetCommandVariables(true);
+        commandResultFailed(); // wield.c:doswapweapon() ECMD_FAIL.
         return;
     }
     const oldPrimary = game.uwep || game.u?.uwep || null;
@@ -3136,7 +3142,7 @@ async function doswapweapon() {
         await plineWithContinuation('You have no secondary weapon readied.');
     }
     if (result === 'failed')
-        resetCommandVariables(true);
+        commandResultFailed(); // ready_weapon() ECMD_FAIL.
     else
         game.context.move = result === 'time' ? 1 : 0;
 }
@@ -3162,7 +3168,7 @@ async function dochat() {
     }
     const direction = await promptDirection(() => readDirectionKey('Talk to whom? (in what direction) '));
     if (!direction) {
-        resetCommandVariables(true); // sounds.c:dochat() returns ECMD_CANCEL.
+        commandResultCancelled(); // sounds.c:dochat() returns ECMD_CANCEL.
         return;
     }
     const steed = game.u.usteed;
@@ -3799,7 +3805,7 @@ async function doinvoke() {
         || candidate.otyp === FAKE_AMULET_OF_YENDOR && !candidate.known
         ? GETOBJ_SUGGEST : GETOBJ_EXCLUDE, { forcePrompt: true });
     if (!object) {
-        resetCommandVariables(true);
+        commandResultCancelled(); // artifact.c:doinvoke() returns ECMD_CANCEL.
         return;
     }
     game._pending_message = '';
@@ -3839,6 +3845,10 @@ async function rubRoyalJelly(jelly) {
         const egg = await chooseInventoryObject('rub the royal jelly on', object => object.otyp === EGG ? GETOBJ_SUGGEST : GETOBJ_EXCLUDE, { forcePrompt: true });
         if (egg)
             game._pending_message = '';
+        // apply.c:use_royal_jelly() returns ECMD_CANCEL when getobj() for
+        // the egg target is declined.
+        else
+            commandResultCancelled();
         return egg;
     });
     game.context.move = used ? 1 : 0;
@@ -3859,9 +3869,9 @@ async function dorub(cannedInvlet = null) {
         : game.inventory.find(candidate => candidate.invlet === cannedInvlet
             && rubEligibleObject(candidate));
     if (!object) {
-        // apply.c:dorub() returns ECMD_CANCEL without an object; rhack()
-        // clears the repeat queue so ^A cannot replay the abandoned rub.
-        resetCommandVariables(true);
+        // apply.c:dorub() returns ECMD_CANCEL without an object; the
+        // rhack seam clears the queues so ^A cannot replay the rub.
+        commandResultCancelled();
         return;
     }
     // Interactive entry owns a getobj prompt which selection replaces.
@@ -4018,6 +4028,9 @@ async function domonability() {
         });
         if ('heroDied' in result && result.heroDied)
             return;
+        // polyself.c:dobreathe() returns ECMD_CANCEL for a refused direction.
+        if (!result.spentTime && result.reason === 'cancelled')
+            commandResultCancelled();
         game.context.move = result.spentTime ? 1 : 0;
         return;
     }
@@ -4026,6 +4039,9 @@ async function domonability() {
         const result = await useHeroSpit({ state: game, attack: spit });
         if ('heroDied' in result && result.heroDied)
             return;
+        // polyself.c:dospit() returns ECMD_CANCEL for a refused direction.
+        if (result.used === false && result.reason === 'cancelled')
+            commandResultCancelled();
         game.context.move = result.spentTime ? 1 : 0;
         return;
     }
@@ -4095,16 +4111,20 @@ async function domonability() {
 async function adjustSplit() {
     game.context.move = 0;
     const object = await chooseInventoryObject('split', candidate => candidate.oclass === 12 ? GETOBJ_EXCLUDE : GETOBJ_SUGGEST);
-    if (!object || object.quan < 2 || object.oclass === 12)
+    if (!object || object.quan < 2 || object.oclass === 12) {
+        commandResultFailed(); // invent.c:adjust_split() ECMD_FAIL.
         return;
+    }
     const amount = object.quan === 2 ? 1 : await readInventorySplitCount();
     if (amount === null) {
         await pline('Never mind.');
+        commandResultCancelled(); // adjust_split() quit answer ECMD_CANCEL.
         return;
     }
     if (amount < 1 || amount >= object.quan) {
         await pline(`Amount to split from current stack must be ${amount < 1
             ? 'at least 1' : `less than ${object.quan}`}.`);
+        commandResultCancelled(); // adjust_split() bad amount ECMD_CANCEL.
         return;
     }
     const split = splitObjectStack(object, amount, game);
@@ -4175,9 +4195,9 @@ async function doadjust(selected = null, splitting = null) {
     let object = selected || await chooseInventoryObject('adjust', candidate => candidate.oclass === 12 && !repairGold ? GETOBJ_EXCLUDE : GETOBJ_SUGGEST, { forcePrompt: true, allowCount: true });
     if (!object) {
         // invent.c:doorganize_core() returns ECMD_CANCEL when getobj() is
-        // dismissed; rhack() then clears the repeat queue.
+        // dismissed; the rhack seam clears both command queues.
         game.context.move = 0;
-        resetCommandVariables(true);
+        commandResultCancelled();
         return;
     }
     if (!splitting) {
@@ -4479,7 +4499,7 @@ async function dipFountain(object, loc) {
 }
 async function dodip() {
     if (await dip({ fountain: dipFountain }) === 'cancelled')
-        resetCommandVariables(true);
+        commandResultCancelled();
 }
 function visitedDungeonLevels() {
     const byDungeon = new Map();
@@ -5282,7 +5302,7 @@ async function dotravel() {
         if (game.iflags.menu_requested)
             game.context.move = 0;
         else
-            resetCommandVariables(true);
+            commandResultCancelled();
         return;
     }
     // getpos() leaves its painted location description on the physical tty
@@ -5570,8 +5590,8 @@ async function doputon() {
     const object = await chooseInventoryObject('put on', candidate => equipmentClassification(candidate, 'put on'));
     if (!object) {
         // do_wear.c:doputon() returns ECMD_CANCEL when getobj() is
-        // declined; rhack() clears the repeat queue after the command.
-        resetCommandVariables(true);
+        // declined; the rhack seam clears the queues after the command.
+        commandResultCancelled();
         return;
     }
     if (object.oclass === 3) {
@@ -5721,8 +5741,8 @@ async function removeWornItem(action, itemAction = false) {
     }
     if (!object) {
         // do_wear.c:dotakeoff()/doremring() return ECMD_CANCEL when
-        // getobj() is declined; rhack() clears the repeat queue.
-        resetCommandVariables(true);
+        // getobj() is declined; the rhack seam clears the queues.
+        commandResultCancelled();
         return;
     }
     if (!((object.owornmask ?? 0) & (W_ARMOR | W_ACCESSORY))) {
@@ -5858,7 +5878,7 @@ async function dowield() {
     setMulti(0);
     if (heroHasNoHands(game) || heroIsVerySmall(game)) {
         await pline("Don't be ridiculous!");
-        resetCommandVariables(true);
+        commandResultFailed(); // wield.c:dowield() cantwield ECMD_FAIL.
         return;
     }
     clearSplitObjects();
@@ -5869,12 +5889,12 @@ async function dowield() {
         handsText: `your ${game.uarmg ? 'gloved' : 'bare'} ${makePlural(heroHandName(game))}${game.uwep ? '' : ' (wielded)'}`,
     });
     if (selection.cancelled) {
-        resetCommandVariables(true);
+        commandResultCancelled(); // wield.c:dowield() getobj ECMD_CANCEL.
         return;
     }
     let object = selection.object;
     if (!selection.none && !object) {
-        resetCommandVariables(true);
+        commandResultCancelled(); // wield.c:dowield() ECMD_CANCEL.
         return;
     }
     let splitParent = null;
@@ -5896,7 +5916,7 @@ async function dowield() {
         resetBulkTakeoff();
         if (splitParent && object)
             await rejoinObjectStack(splitParent, object);
-        resetCommandVariables(true);
+        commandResultFailed(); // wield.c:dowield() welded ECMD_FAIL.
         return;
     }
     if (splitParent && object) {
@@ -5956,7 +5976,7 @@ async function dowield() {
     }
     else if ((object.owornmask ?? 0) & (W_ARMOR | W_ACCESSORY | W_SADDLE)) {
         await pline('You cannot wield that!');
-        resetCommandVariables(true);
+        commandResultFailed(); // wield.c:dowield() "cannot wield that" ECMD_FAIL.
         return;
     }
     await wieldSelectedWeapon(object);
@@ -5965,7 +5985,7 @@ async function reportAlreadyWielded(object) {
     await pline('You are already wielding that!');
     if (isWeaponTool(object) || isWetTowel(object))
         game._unweapon = false;
-    resetCommandVariables(true);
+    commandResultFailed(); // wield.c:dowield() already-wielded ECMD_FAIL.
 }
 async function wieldSelectedWeapon(object) {
     const oldPrimary = game.uwep || game.u.uwep || null;
@@ -5979,7 +5999,7 @@ async function wieldSelectedWeapon(object) {
     }
     await stopTwoWeaponCombat();
     if (result === 'failed')
-        resetCommandVariables(true);
+        commandResultFailed(); // ready_weapon() ECMD_FAIL.
     else
         game.context.move = result === 'time' ? 1 : 0;
 }
@@ -6017,8 +6037,8 @@ async function dowear() {
     const object = await chooseInventoryObject('wear', candidate => classifyWearChoice(candidate, 'wear'));
     if (!object) {
         // do_wear.c:dowear() returns ECMD_CANCEL when getobj() is
-        // declined; rhack() clears the repeat queue after the command.
-        resetCommandVariables(true);
+        // declined; the rhack seam clears the queues after the command.
+        commandResultCancelled();
         return;
     }
     if (object.oclass === 3)
@@ -6055,7 +6075,7 @@ async function dodrop() {
         // A cursed loadstone keeps the requested count for canletgo().
         const object = await chooseInventoryObject('drop', () => GETOBJ_SUGGEST, { forcePrompt: true, allowCount: true });
         if (!object) {
-            resetCommandVariables(true);
+            commandResultCancelled(); // do.c:dodrop() getobj ECMD_CANCEL.
             return;
         }
         const spentTime = await dropHeroObject(object, {
@@ -6063,7 +6083,7 @@ async function dodrop() {
         });
         if (!spentTime) {
             // do.c:drop() returns ECMD_FAIL for every refusal.
-            resetCommandVariables(true);
+            commandResultFailed();
             return;
         }
         game.context.move = 1;
@@ -6092,7 +6112,7 @@ async function doclose() {
     }
     const direction = await promptDirection();
     if (!direction) {
-        clearRepeatCommand(); // lock.c:doclose() returns ECMD_CANCEL.
+        commandResultCancelled(); // lock.c:doclose() returns ECMD_CANCEL.
         game.context.move = 0;
         return;
     }
@@ -6308,7 +6328,7 @@ async function applyPickAxe(item) {
     if ('died' in result && result.died)
         return;
     if (result.cancelled)
-        resetCommandVariables(true);
+        commandResultCancelled(); // dig.c:use_pick_axe() res|ECMD_CANCEL.
     if ('resume' in result && result.resume) {
         game._cannedCommands ||= [];
         game._cannedCommands.push({ kind: 'apply', invlet: inventoryCommandLetter(item) });
@@ -6327,6 +6347,12 @@ async function applyPolearm(item, autohit = false) {
         game._cannedCommands ||= [];
         game._cannedCommands.push({ kind: 'apply', invlet: inventoryCommandLetter(item) });
     }
+    // use_pole() returns ECMD_CANCEL for a refused target prompt and
+    // ECMD_FAIL for an out-of-range or unseen one (apply.c:3474-3505).
+    if ('cancelled' in result && result.cancelled)
+        commandResultCancelled();
+    if ('failure' in result && result.failure)
+        commandResultFailed();
     game.context.move = 'spentTime' in result && result.spentTime ? 1 : 0;
 }
 async function doapply(cannedInvlet = null) {
@@ -6348,7 +6374,7 @@ async function doapply(cannedInvlet = null) {
         : game.inventory.find(object => object.invlet === cannedInvlet
             && [GETOBJ_SUGGEST, GETOBJ_DOWNPLAY].includes(applySuggestion(object)));
     if (!item) {
-        resetCommandVariables(true); // doapply() returns ECMD_CANCEL without an object.
+        commandResultCancelled(); // doapply() returns ECMD_CANCEL without an object.
         return;
     }
     const touch = await retouchHeroObject(item);
@@ -6370,8 +6396,12 @@ async function doapply(cannedInvlet = null) {
     game.context.move = 0;
     const appliedObject = await applyTool(item, underlay);
     if (!game.program_state.gameover && appliedObject
-        && await speakArtifact(appliedObject))
+        && await speakArtifact(appliedObject)) {
+        // doapply() ORs arti_speak()'s ECMD_TIME into the tool result, so
+        // a cancelled tool use still spends its turn when it speaks.
+        commandResultSpentTime();
         game.context.move = 1;
+    }
 }
 // Return the surviving object for the native talking-artifact tail. Applied
 // stacks can split or disappear, so each destructive owner returns its object.
@@ -6471,8 +6501,8 @@ async function applyTool(item, underlay) {
         const direction = await promptDirection();
         if (!direction) {
             // use_whip() reports ECMD_CANCEL when getdir() is refused;
-            // rhack() clears both command queues for that cancellation.
-            resetCommandVariables(true);
+            // the rhack seam clears both command queues for that.
+            commandResultCancelled();
             game.context.move = 0;
             return item;
         }
@@ -6605,19 +6635,16 @@ async function applyTool(item, underlay) {
         return item;
     }
     await pline("Sorry, I don't know how to use that.");
-    // apply.c's default case returns ECMD_FAIL; rhack() clears the repeat
-    // queue so a later ^A reports nothing to repeat.
-    game.context.move = 0;
-    resetCommandVariables(true);
+    // apply.c's default case returns ECMD_FAIL; the rhack seam clears the
+    // queues so a later ^A reports nothing to repeat.
+    commandResultFailed();
     return null;
 }
 // C refs: dowieldquiver(), doquiver_core().  Q and empty-quiver fire share
 // one live inventory transaction; neither role nor recorded input selects a
 // different readiness implementation.
 async function doready() {
-    const result = await doquiverCore('ready');
-    if (result.cancelled)
-        resetCommandVariables(true);
+    await doquiverCore('ready');
 }
 function splitCarriedStack(item, count) {
     const split = splitObjectStack(item, count, game);
@@ -6662,6 +6689,7 @@ async function doquiverCore(verb) {
             : `your ${makePlural(heroHandName(game))}`,
     });
     if (selection.cancelled) {
+        commandResultCancelled(); // doquiver_core() getobj ECMD_CANCEL.
         game.context.move = 0;
         return { item: null, spentTime: false, cancelled: true };
     }
@@ -6678,6 +6706,7 @@ async function doquiverCore(verb) {
     }
     let item = selection.object;
     if (!item) {
+        commandResultCancelled(); // doquiver_core() getobj ECMD_CANCEL.
         game.context.move = 0;
         return { item: null, spentTime: false, cancelled: true };
     }
@@ -6884,16 +6913,18 @@ async function dofire(cannedShotLimit = null) {
             // A repeated direction cannot answer the empty-quiver picker.
             game._inDoAgain = false;
             const selection = await doquiverCore('fire');
-            if (selection.cancelled) {
-                resetCommandVariables(true);
+            // doquiverCore() reports its own ECMD_CANCEL from the declined
+            // verb prompt.
+            if (selection.cancelled)
                 return;
-            }
             fireObject = selection.item;
             quiverSelectionSpentTime = selection.spentTime;
         }
         if (!fireObject) {
+            // dofire() keeps the quiver refill's ECMD_TIME in place of the
+            // missing missile (dothrow.c:585).
             if (!quiverSelectionSpentTime)
-                resetCommandVariables(true);
+                commandResultCancelled();
             return;
         }
     }
@@ -6953,15 +6984,14 @@ async function dofire(cannedShotLimit = null) {
                 return;
             }
         }
-        const throwResult = await throwCommand(fireObject, true, shotLimit);
+        await throwCommand(fireObject, true, shotLimit);
         // dofire() returns the quiver refill's ECMD_TIME in place of the
-        // cancelled throw's ECMD_CANCEL (dothrow.c:585); rhack() clears the
-        // queues only for CANCEL|FAIL, so a refill that spent the turn
-        // keeps them.
-        if (quiverSelectionSpentTime)
+        // cancelled throw's ECMD_CANCEL (dothrow.c:585), so a refill that
+        // spent the turn drops the throw's cancellation.
+        if (quiverSelectionSpentTime) {
+            beginCommandResult();
             game.context.move = 1;
-        else if (throwResult === 'cancelled')
-            resetCommandVariables(true);
+        }
         return;
     }
 }
@@ -6986,8 +7016,7 @@ async function finishOrdinaryMapPotionKill(monster, death = {}) {
     return finishHeroMonsterKillOutcome(monster, monster.mx, monster.my, death);
 }
 async function dothrow(selectedItem = null) {
-    if (await throwCommand(selectedItem) === 'cancelled')
-        resetCommandVariables(true);
+    await throwCommand(selectedItem);
 }
 async function throwCommand(selectedItem = null, capabilityChecked = false, suppliedShotLimit = null) {
     const shotLimit = suppliedShotLimit === null
@@ -7024,7 +7053,8 @@ async function throwCommand(selectedItem = null, capabilityChecked = false, supp
     }
     const item = selectedItem;
     if (!item) {
-        return 'cancelled';
+        commandResultCancelled(); // dothrow.c:dothrow() getobj ECMD_CANCEL.
+        return;
     }
     const previous = game.inventory[game.inventory.indexOf(item) - 1];
     const splitParent = previous && previous.invlet === item.invlet ? previous : null;
@@ -7038,7 +7068,8 @@ async function throwCommand(selectedItem = null, capabilityChecked = false, supp
         // getdir() already cleared its prompt; a message it printed for
         // the rejected key ("What a strange direction!") stays visible in
         // C because throw_obj() just returns ECMD_CANCEL (dothrow.c).
-        return 'cancelled';
+        commandResultCancelled(); // throw_obj() getdir ECMD_CANCEL.
+        return;
     }
     const { dx, dy, dz } = direction;
     const selfThrow = !dx && !dy && !dz;
@@ -7047,6 +7078,7 @@ async function throwCommand(selectedItem = null, capabilityChecked = false, supp
             if (splitParent)
                 await rejoinObjectStack(splitParent, item, game);
             await pline('You cannot throw gold at yourself.');
+            commandResultCancelled(); // throw_gold() self ECMD_CANCEL.
             game.context.move = 0;
             return;
         }
@@ -7366,7 +7398,7 @@ async function finishHeroMovement({ oldx, oldy, loc, ballChainMove = null, }) {
     if (runMode > 0 && runMode < 8
         && (loc?.typ === DOOR || IS_OBSTRUCTED(loc?.typ ?? STONE)
             || IS_FURNITURE(loc?.typ ?? STONE)))
-        stopRun();
+        nomul(0);
     if (!propertyIsActive('levitation', game) && !propertyIsActive('flying', game)
         && !propertyIsActive('stealth', game)
         && (MONSTER_BODY_META[heroSpecies(game)]?.[0] ?? 0) >= 400)
@@ -7813,8 +7845,15 @@ async function domoveCore(dx, dy) {
         return true;
     if (heroTestMove(newx, newy) && !await confirmHeroStep(newx, newy))
         return false;
-    if (!await heroCanMoveFromTrap(newx, newy))
-        return true;
+    if (u.utrap) {
+        const canMove = await heroCanMoveFromTrap(newx, newy);
+        // domove_core() resets trapping again after trapmove() returns;
+        // the escape message may already have flushed its status update.
+        if (!u.utrap)
+            await resetHeroTrap(true);
+        if (!canMove)
+            return true;
+    }
     // C test_move(DO_MOVE) learns obstructed terrain by touch before trying
     // to pass through it, open a door, or reject a diagonal doorway entry.
     if (loc && heroIsBlind(game) && (IS_OBSTRUCTED(loc.typ)

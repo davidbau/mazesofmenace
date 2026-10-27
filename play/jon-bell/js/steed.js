@@ -4,10 +4,11 @@
 
 import { game } from './gstate.js';
 import { pline } from './display.js';
-import { MONS_NAMES, use_skill } from './uhitm.js';
+import { MONS_NAMES, use_skill, m_at as monster_at } from './uhitm.js';
 import { isok, MON_FLOOR, W_SADDLE, P_RIDING, DISMOUNT_FELL,
-         ARTICLE_YOUR, SUPPRESS_SADDLE } from './const.js';
-import { can_saddle } from './makemon.js';
+         ARTICLE_YOUR, SUPPRESS_SADDLE, NON_PM } from './const.js';
+import { PM_LONG_WORM, PM_LONG_WORM_TAIL } from './pm.generated.js';
+import { can_saddle, monPmname } from './makemon.js';
 import { mksobj, mpickobj } from './mklev.js';
 import { fully_identify_obj, can_ride, dismount_steed,
          steed_vs_stealth } from './cmd.js';
@@ -163,15 +164,20 @@ function DEADMONSTER(mon) {
  * js/shk.js, js/potion.js); the control-flow contract — log and return — is
  * what callers depend on. */
 export function impossible(_msg, ..._args) { }
+/* C do_name.c:1254-1287; permonst templates represent mons[] entries,
+ * without the native addresses used by C's corrupt-pointer diagnostics. */
 export function minimal_monnam(mon, ckloc) {
     if (!mon) return '[Null monster]';
-    const mndx = (mon.mndx ?? mon.mnum ?? -1) | 0;
-    const species = (mndx >= 0 && mndx < MONS_NAMES.length) ? MONS_NAMES[mndx] : '';
-    if (!species) return '[Null mon.data]';
+    if (!mon.data) return '[Null mon->data]';
+    const mndx = mon.data.pmidx | 0;
+    const gender = mon.female ? 1 : 0; /* monst.h:268 Mgender */
+    if (ckloc && mndx === PM_LONG_WORM && mon.mx
+        && monster_at(mon.mx, mon.my) !== mon)
+        return `${monPmname(PM_LONG_WORM_TAIL, gender)} <${mon.mx | 0},${mon.my | 0}>`;
     const prefix = (mon.mtame | 0) ? 'tame ' : ((mon.mpeaceful | 0) ? 'peaceful ' : '');
-    let name = `${prefix}${species} <${mon.mx | 0},${mon.my | 0}>`;
-    if (mon.cham != null && (mon.cham | 0) >= 0)
-        name += `{${MONS_NAMES[mon.cham | 0] || '?' }}`;
+    let name = `${prefix}${monPmname(mndx, gender)} <${mon.mx | 0},${mon.my | 0}>`;
+    if (mon.cham != null && mon.cham !== NON_PM)
+        name += `{${monPmname(mon.cham | 0, gender)}}`;
     return name;
 }
 

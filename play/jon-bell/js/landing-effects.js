@@ -13,6 +13,8 @@ import { m_at } from './uhitm.js';
 import { Amonnam, x_monnam } from './mhitm.js';
 import { helm_simple_name } from './objnam.js';
 import { mdamageu } from './mhitu.js';
+import { pending_death_is_final } from './end.js';
+import { drain_pending_death_in_place } from './fastforward.js';
 import { mnexto } from './teleport.js';
 import { rn2, rnd, d } from './rng.js';
 import { IS_SINK, MAX_TYPE, STONE, FAILEDUNTRAP, TIMEOUT, I_SPECIAL,
@@ -109,7 +111,16 @@ export async function spoteffects(pick) {
                     const half = u.uprops?.[HALF_PHDAM];
                     if ((half?.intrinsic | 0) || (half?.extrinsic | 0))
                         damage = Math.trunc((damage + 1) / 2);
+                    const deathBefore = game._pendingDeath || null;
                     await mdamageu(mon, damage);
+                    /* C hack.c:3439 mdamageu -> done_in_by: "You die..." pages
+                     * inside done(), before hack.c:3454's mnexto moves the
+                     * piercer off the hero's square, and done() never returns
+                     * unless the death is escaped. */
+                    if (game._pendingDeath && game._pendingDeath !== deathBefore) {
+                        await drain_pending_death_in_place();
+                        if (pending_death_is_final()) return;
+                    }
                 }
             } else if (mon.mtame) {
                 await pline(`${Amonnam(mon)} jumps near you from the ${ceiling(u.ux, u.uy)}.`);

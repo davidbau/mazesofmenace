@@ -468,7 +468,11 @@ export class NethackGame {
                 && keyIdx >= nhGame._moves.length
                 && String(game._screen_output || '').startsWith('Goodbye');
             const wizardScoreNoticePending = game._wizardScoreNoticePending != null;
+            /* topten.c:165-170 — with iflags.toptenwin the notice is putstr
+             * into gt.toptenwin and paged by display_nhwindow (topten.c:911),
+             * so the tty frame is that text window, not a raw_print. */
             const wizardScoreNotice = game.flags?.debug
+                && !game.iflags?.toptenwin
                 && (wizardScoreNoticePending
                     || String(game._screen_output || '').startsWith('\nSince you were in wizard mode,'));
             if (escapedTeardown || wizardScoreNotice) {

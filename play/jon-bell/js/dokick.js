@@ -10,6 +10,7 @@ import { credit_report } from './shk_credit.js';
 // RNG sites depend on terrain type and Luck/state; all inline rn2/rnd/rn1/rnl calls
 // mirror C's exact call ordering.
 import { game } from './gstate.js';
+import { update_inventory } from './inventory_refresh.js';
 import { abuse_dog } from './dog.js';
 import { Is_juiblex_level as Is_juiblex_level_real } from './const.js';
 import { rn2, rnd, rn1, rnl } from './rng.js';
@@ -25,7 +26,7 @@ function strchr(str, ch) {
  * otransit_msg(...)`) but never imported, so the first monster whose thrown
  * object shipped off the level killed the run with a ReferenceError. */
 import { recalc_block_point, unblock_point, cansee, couldsee } from './vision.js';
-import { D_WARNED, MON_FLOOR } from './const.js';
+import { D_WARNED, MON_FLOOR, ESHK } from './const.js';
 import { PM_WATCHMAN, PM_WATCH_CAPTAIN } from './pm.generated.js';
 import { mon_yells } from './monmove.js';
 import { in_town } from './cmd.js';
@@ -83,6 +84,7 @@ import { enexto_out } from './teleport.js';
 // at dokick.js:937 (ship_object's `unpaid` test) throw at runtime; re-exported
 // rather than re-implemented so there is no second body to drift.
 import { obfree, is_unpaid, in_rooms, shop_keeper, add_damage, pay_for_damage, oid_price_adjustment, costly_spot as shk_costly_spot, Shknam as shk_Shknam, hot_pursuit as shk_hot_pursuit, stolen_value, addtobill as shk_addtobill, delete_contents as shk_delete_contents, add_to_billobjs } from './shk.js';
+import { make_happy_shk } from './shk.js';
 import { stairway_at } from './mklev.js';
 import { remove_worn_item, rloco } from './steal.js';
 import { ismnum } from './const.js';
@@ -97,7 +99,8 @@ import { Tobjnam, corpse_xname, otense, CXN_PFX_THE } from './objnam.js';
 const CORPSE_DK = 265;
 import { dealloc_obj, add_to_minv } from './mklev.js';
 import { food_disappears } from './eat.js';
-import { t_at } from './trap.js';
+import { t_at, deltrap } from './trap.js';
+import { fracture_rock, break_statue } from './zap.js';
 import { deadhero, do_death_sequence } from './end.js';
 import { set_wounded_legs, ok_to_quest, breaktest, breakmsg, breakobj, altar_wrath, _delobj_useupf as delobj_core, currency as cmd_currency, snuff_candle, thitmonst } from './cmd.js';
 import { hurtle, showdamage, body_part } from './cmd.js';
@@ -122,14 +125,15 @@ import { weight_cap, inv_weight, weight } from './weight.js';
 import { goodpos, chest_trap, activate_statue_trap, mintrap } from './trap.js';
 import { closed_door } from './look.js';
 import { hero_breaks, find_trap, impact_disturbs_zombies } from './cmd.js';
-import { breakchestlock } from './lock.js';
-import { find_objowner } from './shk.js';
+import { breakchestlock, b_trapped } from './lock.js';
+import { FOOT, AIR, CLOUD, IS_POOL } from './const.js';
+import { find_objowner, costly_adjacent } from './shk.js';
 import { doname, singular } from './objnam.js';
 import { LEG, TT_PIT, is_pit, WEB, STATUE_TRAP, ZAP_POS } from './const.js';
 import { obj_resists } from './zap.js';
 import { useup } from './cmd.js';
 export { is_unpaid, in_rooms, shop_keeper };
-import { del_engr_at as del_engr_at_dk, mksobj_at, mksobj, mpickobj, obj_extract_self, rnd_class } from './mklev.js';
+import { del_engr_at as del_engr_at_dk, mksobj_at, mksobj, mpickobj, obj_extract_self, rnd_class, sobj_at } from './mklev.js';
 /* C mkobj.c:1977-1987 rnd_treefruit_at(x, y) — the one real body lives in
  * js/dig.js (a monster-digs-near-a-tree caller already exercises it), which
  * used to keep it file-local; exported there rather than re-derived here so
@@ -153,7 +157,7 @@ import { dmgval } from './uhitm.js';
 /* C objnam.c xname(obj) / An(str) — the one bodies live in js/objnam.js;
  * js/shk.js's own `xname` is a wrong twin (xname_flags_shk with a different
  * arg), so import by explicit path rather than trust an ambient name. */
-import { xname, An } from './objnam.js';
+import { xname, An, killer_xname } from './objnam.js';
 /* C objnam.c:347-408 distant_name(obj, func) / objnam.c:2233-2239 The(str).
  * distant_name is NOT optional sugar: on its far branch it brackets the
  * formatter call with ++gd.distantname / --gd.distantname (objnam.c:401-403),
@@ -446,7 +450,7 @@ async function kick_ouch(x, y, kickobjnam) {
     /* C: dmg = rnd(ACURR(A_CON) > 15 ? 3 : 5) */
     const con = acurr(u, A_CON) | 0;
     const dmg = rnd(con > 15 ? 3 : 5); /* consume RNG */
-    await losehp(dmg, kickstr(isok(x, y) ? g.level?.at(x, y) : null, kickobjnam), KILLED_BY);
+    await losehp(_dk_Maybe_Half_Phys(dmg), kickstr(isok(x, y) ? g.level?.at(x, y) : null, kickobjnam), KILLED_BY);
     /* C: if (Is_airlevel || Levitation) hurtle(-u.dx, -u.dy, rn1(2,4), TRUE)
      * Levitation now reads the real uprop (Levitation_dk, dokick.js:153) —
      * see kick_dumb's identical fix above (import-note "CHECKED, NOT
@@ -492,7 +496,7 @@ export async function kick_nondoor(x, y, avrg_attrib) {
             exercise(A_DEX, true);
             if (maploc.doormask & D_TRAPPED) {
                 maploc.doormask = D_NODOOR;
-                /* b_trapped("door", FOOT) — WIRE_PENDING (may consume RNG) */
+                await b_trapped("door", FOOT);
             }
             else if (maploc.doormask !== D_NODOOR
                 && !(maploc.doormask & D_LOCKED)) {
@@ -889,10 +893,10 @@ async function kick_door(x, y, avrg_attrib) {
         const shopdoor = in_rooms(x, y, SHOPBASE).length ? true : false;
         /* break the door */
         if (maploc.doormask & D_TRAPPED) {
-            void pline("You kick the door.");
+            if (g.flags.verbose) await pline("You kick the door.");
             exercise(A_STR, false);
             maploc.doormask = D_NODOOR;
-            /* b_trapped("door", FOOT) — WIRE_PENDING (may consume RNG) */
+            await b_trapped("door", FOOT);
         }
         else if ((acurr(u, A_STR) | 0) > 18 && !rn2(5) && !shopdoor) {
             void pline("As you kick the door, it shatters to pieces!");
@@ -956,7 +960,7 @@ const _KM_M1_NOHANDS = 0x00002000;  /* monflag.h:98 */
 const _KM_M1_THICK_HIDE = 0x00200000; /* monflag.h:106 */
 const _KM_MZ_SMALL = 1;             /* monflag.h:178 */
 const _KM_MZ_LARGE = 3;             /* monflag.h:181 */
-const _KM_M_AP_MONSTER = 1;         /* monst.h M_AP_MONSTER */
+const _KM_M_AP_MONSTER = 3;         /* monst.h M_AP_MONSTER */
 
 /* mondata.h — the flag tests kick_monster's long guard needs. */
 function _km_bigmonst(ptr) { return ((ptr?.msize | 0) >= _KM_MZ_LARGE); }
@@ -1314,7 +1318,7 @@ export async function container_impact_dmg(obj, x, y) {
         obj.owt = weight(obj);
 }
 
-/* C dokick.c:293-347 ghitm() -- return TRUE if caught (the gold taken care of),
+/* C dokick.c:293-408 ghitm() -- return TRUE if caught (the gold taken care of),
  * FALSE otherwise.  The gold object is not attached to the fobj chain. */
 async function ghitm(mtmp, gold) {
     const g = game;
@@ -1352,7 +1356,8 @@ async function ghitm(mtmp, gold) {
                 if (robbed < 0) robbed = 0;
                 await pline(`The amount ${!robbed ? '' : 'partially '}covers ${mhis_mon(mtmp)} recent losses.`);
                 eshk.robbed = robbed;
-                /* make_happy_shk(mtmp, FALSE) when !robbed: no real body in js/ */
+                if (!robbed)
+                    await make_happy_shk(mtmp, false);
             } else if (mtmp.mpeaceful) {
                 eshk.credit = (eshk.credit | 0) + value;
                 await pline(`You have ${eshk.credit} ${currency(eshk.credit)} in credit.`);
@@ -1401,14 +1406,14 @@ async function ghitm(mtmp, gold) {
 /* C ref: dokick.c:487-504 kick_object(x, y, kickobjnam) — jacket around
  * really_kick_object() that sets/clears gk.kickedobj (game.kickedobj here,
  * the slot js/cmd.js's thitmonst and js/mklev.js's obj-free path already
- * read/clear). kickobjnam is unused by any caller in this port (kick_ouch is
- * always invoked with "" below, matching kick_ouch's own established
- * signature), so it is dropped rather than threaded through as an out-param. */
-async function kick_object(x, y) {
+ * read/clear). Preserve the object's death-cause name before kicking it. */
+async function kick_object(x, y, kickobjnam) {
+    kickobjnam.value = '';
     const kickedobj = obj_at(x, y);
     if (!kickedobj)
         return 0;
     game.kickedobj = kickedobj;
+    kickobjnam.value = killer_xname(kickedobj);
     const res = await really_kick_object(x, y, kickedobj);
     game.kickedobj = null;
     return res;
@@ -1491,7 +1496,7 @@ async function really_kick_object(x, y, kickedobj) {
         range = 1;
 
     const shkp = await find_objowner(kickedobj, x, y);
-    const costly = !!(shkp && costly_spot(x, y));
+    const costly = !!(shkp && (costly_spot(x, y) || (costly_adjacent(shkp, x, y) && kickedobj.unpaid)));
 
     void pline(`You kick ${!isgold ? (await singular(kickedobj, doname)) : (await doname(kickedobj))}.`);
 
@@ -1532,7 +1537,7 @@ async function really_kick_object(x, y, kickedobj) {
         if (costly && !(costly_spot(u.ux | 0, u.uy | 0)
                         && in_rooms(u.ux | 0, u.uy | 0, SHOPBASE)[0] === in_rooms(x, y, SHOPBASE)[0])) {
             if (!kickedobj.no_charge)
-                add_damage(u.ux | 0, u.uy | 0, 0); /* addtobill stub: WIRE_PENDING */
+                await shk_addtobill(kickedobj, false, false, false);
             else
                 kickedobj.no_charge = 0;
         }
@@ -1822,14 +1827,15 @@ export async function dokick_resolve() {
         for (let o = objHere; o; o = o.nexthere)
             if ((o.otyp | 0) === _KO_BOULDER_OTYP) { hasBoulder = true; break; }
         if (!Levitation_dk(u) || Is_airlevel(u.uz) || hasBoulder) {
-            if (await kick_object(x, y)) {
+            const kickobjnam = { value: '' };
+            if (await kick_object(x, y, kickobjnam)) {
                 if (Is_airlevel(u.uz)) {
                     /* hurtle(-u.dx, -u.dy, 1, TRUE) -- WIRE_PENDING, same
                      * hurtle gap as kick_dumb/kick_ouch above. */
                 }
                 return ECMD_TIME;
             }
-            await kick_ouch(x, y, "");
+            await kick_ouch(x, y, kickobjnam.value);
             return ECMD_TIME;
         }
     }
@@ -2242,6 +2248,7 @@ function christen_monst(mtmp, name) {
     } else if (has_mgivenname(mtmp) && mtmp.mextra) {
         mtmp.mextra.mgivenname = null;
     }
+    if (mtmp.mleashed) update_inventory(); /* C do_name.c:148-149 */
     return mtmp;
 }
 
@@ -2657,9 +2664,10 @@ export async function obj_delivery(near_hero) {
 
     /* IS_SOFT: true for non-solid terrain (C rm.h) */
     function IS_SOFT(t) {
-        return t === POOL || t === MOAT || t === WATER || t === LAVAPOOL;
+        return t === AIR || t === CLOUD || IS_POOL(t);
     }
 
+    let nx = 0, ny = 0; /* C retains the preceding destination if no stair matches. */
     let otmp = g.gm?.migrating_objs ?? null;
     while (otmp) {
         const otmp2 = otmp.nobj;
@@ -2692,7 +2700,6 @@ export async function obj_delivery(near_hero) {
         };
 
         let isladder = false;
-        let nx = 0, ny = 0;
 
         switch (where) {
         case MIGR_LADDER_UP:
@@ -2818,8 +2825,8 @@ export async function scatter(sx, sy, blastforce, scflags, obj) {
             if (wasChain)
                 continue;
         }
-        if ((otmp.quan | 0) > 1) {
-            let qtmp = (otmp.quan | 0) - 1;
+        if (otmp.quan > 1) {
+            let qtmp = Math.min(otmp.quan - 1, 32767 /* LARGEST_INT */);
             qtmp = rnd(qtmp);
             otmp = (await splitobj(otmp, qtmp));
         } else {
@@ -2833,14 +2840,23 @@ export async function scatter(sx, sy, blastforce, scflags, obj) {
             && ((otmp.otyp | 0) === _KO_BOULDER_OTYP || (otmp.otyp | 0) === 476)
             && rn2(10)) {
             if ((otmp.otyp | 0) === _KO_BOULDER_OTYP) {
-                otmp.otyp = 474; /* ROCK */
-                otmp.oclass = _KO_GEM_CLASS;
-                otmp.quan = rn1(60, 7);
-                otmp.owt = weight(otmp);
+                if (cansee(sx, sy)) await pline('%s apart.', Tobjnam(otmp, 'break'));
+                else await You_hear('stone breaking.');
+                await fracture_rock(otmp);
+                place_object(otmp, sx, sy);
+                otmp = sobj_at(_KO_BOULDER_OTYP, sx, sy);
+                if (otmp) {
+                    obj_extract_self_general(otmp);
+                    place_object(otmp, sx, sy);
+                }
             } else {
-                await breakobj(otmp, sx | 0, sy | 0, false, false);
+                const trap = t_at(sx, sy);
+                if (trap && trap.ttyp === STATUE_TRAP) deltrap(trap);
+                if (cansee(sx, sy)) await pline('%s.', Tobjnam(otmp, 'crumble'));
+                else await You_hear('stone crumbling.');
+                await break_statue(otmp);
+                place_object(otmp, sx, sy);
             }
-            place_object(otmp, sx | 0, sy | 0);
             newsym(sx | 0, sy | 0);
             continue;
         }
@@ -2905,13 +2921,11 @@ export async function scatter(sx, sy, blastforce, scflags, obj) {
                     const dam = dmgval(stmp.obj, game.youmonst);
                     let hitvalu = 8 + (stmp.obj.spe | 0);
                     if (_km_bigmonst(game.youmonst?.data)) hitvalu++;
-                    /* thitu() here is js/trap.js's port, scoped to the "plain
-                     * hit" tail (non-acid/stone/potion/silver); it never nulls
-                     * its object arg (see the call's own note there), which
-                     * matches C for a FOOD_CLASS object like a tree fruit —
-                     * only the potion/acid/silver arms this port doesn't model
-                     * would null or specially damage it. */
                     const hitu = await thitu(hitvalu, _dk_Maybe_Half_Phys(dam), stmp.obj, null);
+                    if (hitu && (stmp.obj.oclass | 0) === 8 /* POTION_CLASS */) {
+                        stmp.obj = null;
+                        stmp.stopped = true;
+                    }
                     if (hitu) {
                         stmp.range -= 3;
                         await stop_occupation();

@@ -14,7 +14,9 @@ import { game } from './gstate.js';
 import { rn1, rn2, rnd } from './rng.js';
 import { goodpos } from './trap.js';
 import { is_pool } from './look.js';
-import { LAVAPOOL, LAVAWALL, CLOUD, IS_FOUNTAIN, IS_AIR, ACCESSIBLE } from './const.js';
+import { CLOUD, IS_FOUNTAIN, IS_AIR, ACCESSIBLE } from './const.js';
+import { db_under_typ } from './dokick.js';
+import { impossible } from './pline.js';
 import { permonstTemplate, is_demon } from './makemon.js';
 import { PM_GHOUL } from './pm.generated.js';
 import { wand_explode } from './read.js';
@@ -29,11 +31,11 @@ import { zappable, zapnodir, learnwand, make_blinded } from './zap.js';
 import { resists_blnd } from './mhitm.js';
 import { yn_function } from './end.js';
 import { getObjFromGetobj, welded, body_part, surface as surface_real, ceiling,
-         Yname2, yname, dry_a_towel, is_blade, is_art } from './cmd.js';
+         Yname2, yname, dry_a_towel, is_blade, is_art, pooleffects_is_lava as is_lava } from './cmd.js';
 import { bimanual, is_boots } from './do_wear.js';
 import { Yobjnam2, doname, xname, Tobjnam, otense } from './objnam.js';
 import { useup, altar_wrath, check_capacity } from './cmd.js';
-import { GETOBJ_PROMPT, HAND } from './const.js';
+import { GETOBJ_PROMPT, HAND, FINGERTIP } from './const.js';
 import { exercise } from './attrib.js';
 import { more_experienced } from './exper.js';
 import { object_tough } from './o_init.js';
@@ -45,7 +47,7 @@ import { update_inventory } from './inventory_refresh.js';
 import { can_reach_floor as can_reach_floor_real } from './hold_another_object.js';
 import { make_engr_at, del_engr_at, engr_at, random_engraving, engravings_list, makemon, xcrypt } from './mklev.js';
 import { DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, HEADSTONE, A_WIS,
-         ECMD_OK, ECMD_CANCEL, ECMD_FAIL, ECMD_TIME, ICE, IS_ALTAR,
+         ECMD_OK, ECMD_CANCEL, ECMD_FAIL, ECMD_TIME, ICE, IS_ALTAR, BUFSZ,
          DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DEAF, DB_ICE, DB_UNDER, BLINDED, CONFUSION, STUNNED, HALLUC } from './const.js';
 
 /* ── object class numbers (objclass.h OBJCLASS enum) ─────────────────────────── */
@@ -80,7 +82,7 @@ function uConfusion(u) { return _hasProp(u, CONFUSION); }
 function uStunned(u) { return _hasProp(u, STUNNED); }
 function uHallu(u) { return _hasProp(u, HALLUC); }
 
-function body_part_fingertip() { return 'fingertip'; }
+function body_part_fingertip() { return body_part(FINGERTIP); }
 function body_part_hand() { return 'hand'; }
 
 function surface(x, y) { return surface_real(x, y); }
@@ -127,12 +129,15 @@ function stylus_ok(obj) {
     return GETOBJ_DOWNPLAY;
 }
 
+/* C engrave.c:503-539 — can the hero engrave at their location at all? */
 async function u_can_engrave() {
     const u = game.u || {};
     /* C engrave.c:510-518 — swallowed: animal engulfers get the Jonah joke,
      * whirly ones cannot be reached; amorphous ones fall through (jello). */
     const lev = game.level?.at?.(u.ux, u.uy);
-    const levtyp = lev ? (lev.typ | 0) : 0;
+    /* C rm.h:146 SURFACE_AT includes the terrain under a raised drawbridge. */
+    const levtyp = lev?.typ === DRAWBRIDGE_UP
+        ? db_under_typ(lev.drawbridgemask) : (lev?.typ | 0);
     if (u.uswallow) {
         const sd = u.ustuck?.data;
         if (sd && ((sd.mflags1 | 0) & 0x00040000 /* M1_ANIMAL */) !== 0) {
@@ -145,7 +150,7 @@ async function u_can_engrave() {
         }
     } else if (lev) {
         /* C engrave.c:519-532 — terrain arms */
-        if (levtyp === LAVAPOOL || levtyp === LAVAWALL) {
+        if (is_lava(u.ux, u.uy)) {
             await pline(`You can't write on the ${surface_real(u.ux, u.uy)}!`);
             return false;
         } else if (is_pool(u.ux, u.uy) || IS_FOUNTAIN(levtyp)) {
@@ -260,7 +265,6 @@ function rloc_engr(ep, x, y) {
 async function doengrave_sfx_item_WAN(de) {
     const u = game.u || {};
     const blind = uBlind(u);
-    const surf = surface_real(u.ux, u.uy);
     switch (de.otmp.otyp) {
     case 410: case 411: case 415: case 413: case 414: case 412:
         await zapnodir(de.otmp);
@@ -270,7 +274,7 @@ async function doengrave_sfx_item_WAN(de) {
         break;
     case 424: /* WAN_TELEPORTATION (engrave.c:675-682) */
         if (de.oep && de.oep.engr_type !== HEADSTONE) {
-            if (!blind) await pline(`The engraving on the ${surf} vanishes!`);
+            if (!blind) await pline(`The engraving on the ${surface(u.ux, u.uy)} vanishes!`);
             de.teleengr = true;
         }
         break;
@@ -278,7 +282,7 @@ async function doengrave_sfx_item_WAN(de) {
         if (de.oep) {
             if (!blind) {
                 de.type = 0; /* random */
-                const re = random_engraving();
+                const re = await random_engraving();
                 de.buf = re.text;
                 de.ebuf = re.pristine;
             } else {
@@ -289,17 +293,17 @@ async function doengrave_sfx_item_WAN(de) {
         }
         break;
     case 419:
-        if (!blind) de.post_engr_text = `The bugs on the ${surf} slow down!`;
+        if (!blind) de.post_engr_text = `The bugs on the ${surface(u.ux, u.uy)} slow down!`;
         break;
     case 420:
-        if (!blind) de.post_engr_text = `The bugs on the ${surf} speed up!`;
+        if (!blind) de.post_engr_text = `The bugs on the ${surface(u.ux, u.uy)} speed up!`;
         break;
     case 429:
         de.ptext = true;
-        if (!blind) de.post_engr_text = `The ${surf} is riddled by bullet holes!`;
+        if (!blind) de.post_engr_text = `The ${surface(u.ux, u.uy)} is riddled by bullet holes!`;
         break;
     case 432: case 433:
-        if (!blind) de.post_engr_text = `The bugs on the ${surf} stop moving!`;
+        if (!blind) de.post_engr_text = `The bugs on the ${surface(u.ux, u.uy)} stop moving!`;
         break;
     case 431:
         if (!blind) de.post_engr_text = 'A few ice cubes drop from the wand.';
@@ -307,7 +311,7 @@ async function doengrave_sfx_item_WAN(de) {
         /* FALLTHRU */
     case 423: case 418:
         if (de.oep && de.oep.engr_type !== HEADSTONE) {
-            if (!blind) await pline(`The engraving on the ${surf} vanishes!`);
+            if (!blind) await pline(`The engraving on the ${surface(u.ux, u.uy)} vanishes!`);
             de.dengr = true;
         }
         break;
@@ -777,16 +781,22 @@ export async function engrave() {
 
     /* C engrave.c:1288 — teleported away from the engrave square → abort. */
     if (eng.pos.x !== u.ux || eng.pos.y !== u.uy) {
+        await pline('You are unable to continue engraving.');
         return 0;
     }
 
     const firsttime = (eng.actionct === 0);
     const neweng = (eng.actionct === 0);
-    eng.actionct++;
 
     /* C engrave.c:1322-1331 — compute rate.  DUST/fingertip → default rate 10. */
     let rate = 10;
     let stylus = eng.stylus;
+    if (stylus?.hands) stylus = null;
+    else {
+        for (stylus = g.invent; stylus && stylus !== eng.stylus; stylus = stylus.nobj) {}
+        if (!stylus) { await pline('You are unable to continue engraving.'); return 0; }
+    }
+    eng.actionct++;
     const dulling = (eng.type === ENGRAVE || eng.type === HEADSTONE) && stylus
         && stylus.oclass === WEAPON_CLASS && (stylus.otyp !== 38 /* ATHAME */ || stylus.cursed);
     // C engrave.c:1321-1325: rings and gems carve one character per action.
@@ -794,6 +804,8 @@ export async function engrave() {
         && (dulling || stylus.oclass === RING_CLASS || stylus.oclass === GEM_CLASS))
         rate = 1;
     const marker = !!(stylus && stylus.otyp === MAGIC_MARKER && eng.type === MARK);
+    if (dulling && !is_blade(stylus)) await impossible('carving with non-bladed weapon');
+    else if (eng.type === MARK && !marker) await impossible('making graffiti with non-marker stylus');
     if (marker) {
         /* C engrave.c:1326-1328 — one charge / 2 letters */
         rate = Math.min(rate, (stylus.spe | 0) * 2);
@@ -819,7 +831,10 @@ export async function engrave() {
             stylus.owornmask = 0;
         }
         if (eng.actionct % 2 === 1) {
-            if (stylus.spe <= -3) truncate = true;
+            if (stylus.spe <= -3) {
+                if (firsttime) await impossible('<= -3 weapon valid for engraving');
+                truncate = true;
+            }
             else if (endc < text.length || firsttime) { stylus.spe--; dulled = true; }
         }
         if (splitstack) {
@@ -833,16 +848,26 @@ export async function engrave() {
     if (marker) {
         let ink_cost = Math.max(Math.trunc(rate / 2), 1);
         if ((stylus.spe | 0) < ink_cost) {
+            await impossible('overly dry marker valid for graffiti?');
             ink_cost = stylus.spe | 0;
             truncate = true;
         }
         stylus.spe = (stylus.spe | 0) - ink_cost;
+        update_inventory();
         if ((stylus.spe | 0) === 0) {
-            void pline('Your marker dries out.');
+            await pline('Your marker dries out.');
             truncate = true;
         }
     }
-    /* C engrave.c:1455-1460 — worn-out stylus truncates the input */
+    // C engrave.c:1437-1447: check room before truncating worn-out stylus input.
+    let oep = engr_at(u.ux, u.uy);
+    let buf = oep?.text || '';
+    const space_left = BUFSZ - buf.length - 1;
+    if (endc - eng.nextc > space_left) {
+        await pline('You run out of room to write.');
+        endc = eng.nextc + space_left;
+        truncate = true;
+    }
     if (truncate && endc < text.length) {
         text = text.slice(0, endc);
         eng.text = text;
@@ -854,9 +879,6 @@ export async function engrave() {
     }
 
     /* C engrave.c:1438-1462 — append the engraved slice to any existing engraving. */
-    let buf = '';
-    let oep = engr_at(u.ux, u.uy);
-    if (oep) buf = oep.text || '';
     buf += text.slice(eng.nextc, endc);
 
     /* C engrave.c:1463 — make_engr_at(ux, uy, buf, NULL, svm.moves - gm.multi, type).
@@ -895,7 +917,7 @@ export async function engrave() {
         case ENGR_BLOOD: finishverb = 'scrawling'; break;
         default: finishverb = 'your weird engraving';
         }
-        void pline(`You finish ${finishverb}.`);
+        await pline(`You finish ${finishverb}.`);
     }
     eng.text = '';
     eng.nextc = 0;
@@ -916,7 +938,13 @@ export function forget_engravings() {
 /* C engrave.c:1706 — engraving and kicking share this grave disturbance. */
 export async function disturb_grave(x, y) {
     const loc = game.level.at(x, y);
-    if (loc.typ !== GRAVE_TYP || loc.disturbed) return;
+    if (loc.typ !== GRAVE_TYP) {
+        await impossible("Disturbing grave that isn't a grave? (%d)", loc.typ);
+        return;
+    } else if (loc.disturbed) {
+        await impossible('Disturbing already disturbed grave?');
+        return;
+    }
     await pline('You disturb the undead!');
     loc.disturbed = 1;
     await makemon(permonstTemplate(PM_GHOUL), x, y, 0);

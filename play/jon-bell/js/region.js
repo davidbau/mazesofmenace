@@ -140,6 +140,10 @@ function region_pline_sync(msg) {
     if (g.vision_full_recalc)
         vision_recalc(0);
     pline_flush_point();
+    /* C ref: pline.c:282 — gp.prevmsg is refreshed by every shown pline, so a
+     * later Norep() of different text (fumaroles' "You hear a whoosh!") is not
+     * suppressed against a stale earlier copy. */
+    g._prevmsg = msg;
     /* topl.c:257 skip = (flags & (WIN_STOP|WIN_NOSTOP)) == WIN_STOP: after an ESC
      * at a --More-- the message updates gt.toplines but is never drawn. */
     if (g._topl_win_stop) {

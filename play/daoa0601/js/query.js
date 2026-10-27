@@ -1,7 +1,7 @@
 // query.js — Shared tty line and confirmation input ownership.
 // C refs: cmd.c paranoid_query()/paranoid_ynq(), tty getlin/yn_function.
 import { COLNO, PARANOID_CONFIRM, QBUFSZ } from './const.js';
-import { clearMessageWindow, flushPendingTopline, flush_screen, pline, rememberToplines, setTopline } from './display.js';
+import { clearMessageWindow, flushPendingTopline, flush_screen, pline, rememberToplines, resetToplineClip, setTopline } from './display.js';
 import { game } from './gstate.js';
 import { nhgetch, readchar, takeCommandKey, takeCommandResponse } from './input.js';
 import { NO_COLOR } from './terminal.js';
@@ -104,6 +104,7 @@ export async function tty_getlin(prompt, accepts, { suppressStatus = false, inMe
         // active. A full screen flush here would replace it with the map.
         rememberToplines();
         game._pending_message = prompt;
+        resetToplineClip();
         game._retained_message = '';
     }
     else {
@@ -314,7 +315,6 @@ export async function tty_yn_function(query, responses, defaultAnswer = '', visi
         // clean_up rewrites gt.toplines with the answered question; the
         // recorded answer names the key like C key2txt().
         game._toplines = message + (count ? `#${count}` : keyText(answer.charCodeAt(0)));
-        // clean_up leaves TOPLINE_NON_EMPTY (topl.c:552).
         game._promptOwnsTopline = false;
         // Native cleanup marks the question seen even when fuzzer input
         // bypasses tty_nhgetch(). Keep a one-line question visible.

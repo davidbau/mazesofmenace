@@ -23,7 +23,7 @@
 import { game } from './gstate.js';
 import { impossible } from './pline.js';
 import { skill_based_spellbook_id } from './spell.js';
-import { pline, flush_screen, docrt, force_more } from './display.js';
+import { pline, flush_screen, docrt, force_more, docorner_blank_utf8_captures } from './display.js';
 import { topl_park_cursor } from './display.js';
 import { nhgetch } from './input.js';
 import { yn_function } from './end.js';
@@ -474,8 +474,11 @@ const SCREEN_ROWS = 24;
  * Page geometry: lmax = min(52, rows - 1) = 23 items per page; the morestr row
  * follows the last item of the page.  Every printed row is `putchar(' ')`
  * followed by the item string, i.e. a one-column left margin. */
+/* Geometry of the overlay window enhance_menu last left up (null: full-screen). */
+let enhance_overlay = null;
 async function enhance_menu(items, prompt, pickOne) {
     const g = game;
+    enhance_overlay = null;
     /* C ref: tty_end_menu — "Put the prompt at the beginning of the menu":
      * add_menu("") then add_menu(prompt), both PREPENDED after the list has
      * been reversed, so the prompt row comes first and the blank row second. */
@@ -501,7 +504,7 @@ async function enhance_menu(items, prompt, pickOne) {
      * the longest stored str + 2 (tty_end_menu, trailing blanks counted); only
      * offx == 10 / maxrow >= rows goes full-screen.  Same placement as
      * cmd.js tty_menu_pick_one_ext. */
-    let overlayCol = 0;
+    let overlayCol = 0, overlayRows = 0;
     if (npages === 1 && all.length + 1 < SCREEN_ROWS) {
         let maxlen = 5;
         for (let n = 0; n < all.length; n++) {
@@ -523,6 +526,7 @@ async function enhance_menu(items, prompt, pickOne) {
                 return it.heading ? menu_heading_text(body) : body;
             });
             wl.push('(end)');
+            overlayRows = wl.length;
             g._screen_output = build_window_screen(wl, overlayCol, g.u?.uac ?? 0);
             const disp = g.nhDisplay;
             if (disp) { disp.cursorCol = overlayCol + '(end) '.length; disp.cursorRow = page.length; }
@@ -543,6 +547,7 @@ async function enhance_menu(items, prompt, pickOne) {
         return { start, page, morestr };
     };
     let cur = await renderPage();
+    if (overlayCol) enhance_overlay = { col: overlayCol, rows: overlayRows };
     for (;;) {
         const key = await nhgetch();
         const ch = String.fromCharCode(key);
@@ -647,7 +652,14 @@ export async function enhance_weapon_skill() {
         /* C ref: weapon.c:1391 destroy_nhwindow(win).  The #enhance menu is a
          * full-screen (offx == 0) tty window, so tearing it down repaints the
          * map — C's term_clear_screen()/docrt() pair. */
-        await docrt();
+        if (enhance_overlay) {
+            /* An overlay (offx > 0) window is dismissed by docorner(), not
+             * docrt(): wintty.c:982,3684 clears and repaints only from offx
+             * on, so cells left of it (warning glyphs, never remembered)
+             * stay on the physical screen. */
+            docorner_blank_utf8_captures(enhance_overlay.col - 1, enhance_overlay.rows + 1);
+            await flush_screen(1);
+        } else await docrt();
         n = picked ? 1 : 0;
         if (n > 0) {
             pendingMore = await skill_advance(picked - 1); /* get item selected */

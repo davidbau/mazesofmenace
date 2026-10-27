@@ -44,8 +44,9 @@
 import { PORT_ID } from './platform_identity.js';
 import { game } from './gstate.js';
 import { menu_heading_text } from './tty_menu.js'; // wintty.c:2688
-import { tty_menu_overlay, tty_base_window_prompt } from './display.js';
-import { str2role, str2race, str2gend, str2align } from './roles.js';
+import { tty_menu_overlay, tty_base_window_prompt, tty_base_window_messages } from './display.js';
+import { str2role, str2race, str2gend, str2align,
+         validrace, validgend, validalign, randrace, randgend, randalign } from './roles.js';
 
 // ──────────────────────────────────────────────────────────────────────────
 // Copyright banner / askname constants (R1 — preserved)
@@ -1910,6 +1911,8 @@ function rigid_role_checks_live(st, rn2) {
     let tmp;
     if (st.role === ROLE_RANDOM) {
         st.role = pick_role_live(st.race, st.gender, st.align, PICK_RANDOM, rn2);
+        // role.c:1259 randrole_filtered() drops the incompatible preset facets.
+        if (st.role < 0) st.role = pick_role_live(ROLE_NONE, ROLE_NONE, ROLE_NONE, PICK_RANDOM, rn2);
         if (st.role < 0) st.role = randrole_live(rn2);
     }
     if (st.race === ROLE_RANDOM
@@ -2055,6 +2058,8 @@ export async function playChargen(ctx) {
     // C ref: role.c:2225 — picksomething is sampled BEFORE rigid_role_checks.
     const picksomething = (st.role === ROLE_NONE || st.race === ROLE_NONE
                            || st.gender === ROLE_NONE || st.align === ROLE_NONE);
+    if (ctx.flags?.randomall && picksomething)
+        for (const facet of ['role', 'race', 'gender', 'align']) if (st[facet] === ROLE_NONE) st[facet] = ROLE_RANDOM;
     rigid_role_checks_live(st, rn2);
 
     // `forcePick4u` is the `goto makepicks` re-entry (role.c:2705 case 'n'):
@@ -2082,6 +2087,7 @@ export async function playChargen(ctx) {
             .forEach((line, i) => { menuBackground[4 + i] = ' '.repeat(i ? BANNER_INDENT : 0) + line; });
         if (asknameText !== null) menuBackground[12] = ASKNAME_TEXT + ' ' + asknameText;
     }
+    const topline = tty_base_window_messages(menuBackground, read);
     // ── makepicks ────────────────────────────────────────────────────────
     // C ref: role.c:2288 — `nextpick = RS_ROLE; do { ... } while (any < 0);`
     // The blocks are sequential inside one iteration, so advancing nextpick
@@ -2108,6 +2114,7 @@ export async function playChargen(ctx) {
     //   {sel:index} | {switchTo:kind} | {random:true} | {quit:true} | {filter:true}
     async function menuPick(kind) {
         for (;;) {
+            await topline.flush();
             const f = menuFrame(kind);
             const key = await read(f.screen, f.cursor);
             const parsed = isMenuDefaultKey(key) ? { action: 'random' }
@@ -2231,6 +2238,11 @@ export async function playChargen(ctx) {
         return n > 0;
     }
 
+    async function fallback(k, message, choose) {
+        if (k >= 0) return k;
+        if (message) await topline.put(message);
+        return choose();
+    }
     let nextpick = RS_ROLE;
     for (;;) {
         if (nextpick === RS_ROLE) {
@@ -2239,7 +2251,7 @@ export async function playChargen(ctx) {
                 let k;
                 if (pick4u === 'y' || pick4u === 'a' || st.role === ROLE_RANDOM) {
                     k = pick_role_live(st.race, st.gender, st.align, PICK_RANDOM, rn2);
-                    if (k < 0) k = randrole_live(rn2);
+                    k = await fallback(k, 'Incompatible role!', () => randrole_live(rn2));
                 } else {
                     const c = await menuPick(RS_ROLE);
                     if (c.quit) return quit();
@@ -2261,16 +2273,18 @@ export async function playChargen(ctx) {
         }
         if (nextpick === RS_RACE) {
             nextpick = (st.role < 0) ? RS_ROLE : RS_GENDER;
-            if (st.race < 0 || !ok_race(st.role, st.race, ROLE_NONE, ROLE_NONE)) {
+            if (st.race < 0 || !validrace(st.role, st.race)) {
                 let k;
                 if (pick4u === 'y' || pick4u === 'a' || st.race === ROLE_RANDOM) {
                     k = pick_race_live(st.role, st.gender, st.align, PICK_RANDOM, rn2);
+                    k = await fallback(k, 'Incompatible race!', () => randrace(st.role));
                 } else {
                     // C ref: role.c:2387 — count valid races; only open the
                     // menu when more than one is possible.
                     let n = 0; k = 0;
                     for (let i = 0; i < RACES.length; i++)
                         if (ok_race(st.role, i, st.gender, st.align)) { n++; k = i; }
+                    if (n === 0) for (let i = 0; i < RACES.length; i++) if (validrace(st.role, i)) { n++; k = i; }
                     if (n > 1) {
                         const c = await menuPick(RS_RACE);
                         if (c.quit) return quit();
@@ -2280,7 +2294,7 @@ export async function playChargen(ctx) {
                             st.race = k = ROLE_NONE;
                             nextpick = (await resetRoleFiltering()) ? RS_ROLE : RS_RACE;
                         }
-                        else if (c.random) k = pick_race_live(st.role, st.gender, st.align, PICK_RANDOM, rn2);
+                        else if (c.random) k = await fallback(pick_race_live(st.role, st.gender, st.align, PICK_RANDOM, rn2), null, () => randrace(st.role));
                         else k = c.sel;
                     }
                 }
@@ -2289,14 +2303,16 @@ export async function playChargen(ctx) {
         }
         if (nextpick === RS_GENDER) {
             nextpick = (st.role < 0) ? RS_ROLE : (st.race < 0) ? RS_RACE : RS_ALGNMNT;
-            if (st.gender < 0 || !ok_gend(st.role, st.race, st.gender, ROLE_NONE)) {
+            if (st.gender < 0 || !validgend(st.role, st.race, st.gender)) {
                 let k;
                 if (pick4u === 'y' || pick4u === 'a' || st.gender === ROLE_RANDOM) {
                     k = pick_gend_live(st.role, st.race, st.align, PICK_RANDOM, rn2);
+                    k = await fallback(k, 'Incompatible gender!', () => randgend(st.role, st.race));
                 } else {
                     let n = 0; k = 0;
                     for (let i = 0; i < GENDERS.length; i++)
                         if (ok_gend(st.role, st.race, i, st.align)) { n++; k = i; }
+                    if (n === 0) for (let i = 0; i < GENDERS.length; i++) if (validgend(st.role, st.race, i)) { n++; k = i; }
                     if (n > 1) {
                         const c = await menuPick(RS_GENDER);
                         if (c.quit) return quit();
@@ -2306,7 +2322,7 @@ export async function playChargen(ctx) {
                             st.gender = k = ROLE_NONE;
                             nextpick = (await resetRoleFiltering()) ? RS_ROLE : RS_GENDER;
                         }
-                        else if (c.random) k = pick_gend_live(st.role, st.race, st.align, PICK_RANDOM, rn2);
+                        else if (c.random) k = await fallback(pick_gend_live(st.role, st.race, st.align, PICK_RANDOM, rn2), null, () => randgend(st.role, st.race));
                         else k = c.sel;
                     }
                 }
@@ -2315,14 +2331,16 @@ export async function playChargen(ctx) {
         }
         if (nextpick === RS_ALGNMNT) {
             nextpick = (st.role < 0) ? RS_ROLE : (st.race < 0) ? RS_RACE : RS_GENDER;
-            if (st.align < 0 || !ok_align(st.role, st.race, ROLE_NONE, st.align)) {
+            if (st.align < 0 || !validalign(st.role, st.race, st.align)) {
                 let k;
                 if (pick4u === 'y' || pick4u === 'a' || st.align === ROLE_RANDOM) {
                     k = pick_align_live(st.role, st.race, st.gender, PICK_RANDOM, rn2);
+                    k = await fallback(k, 'Incompatible alignment!', () => randalign(st.role, st.race));
                 } else {
                     let n = 0; k = 0;
                     for (let i = 0; i < ALIGNS.length; i++)
                         if (ok_align(st.role, st.race, st.gender, i)) { n++; k = i; }
+                    if (n === 0) for (let i = 0; i < ALIGNS.length; i++) if (validalign(st.role, st.race, i)) { n++; k = i; }
                     if (n > 1) {
                         const c = await menuPick(RS_ALGNMNT);
                         if (c.quit) return quit();
@@ -2332,7 +2350,7 @@ export async function playChargen(ctx) {
                             st.align = k = ROLE_NONE;
                             nextpick = (await resetRoleFiltering()) ? RS_ROLE : RS_ALGNMNT;
                         }
-                        else if (c.random) k = pick_align_live(st.role, st.race, st.gender, PICK_RANDOM, rn2);
+                        else if (c.random) k = await fallback(pick_align_live(st.role, st.race, st.gender, PICK_RANDOM, rn2), null, () => randalign(st.role, st.race));
                         else k = c.sel;
                     }
                 }
@@ -2347,7 +2365,7 @@ export async function playChargen(ctx) {
     // The 'y' (game-picks) confirm window overlays the still-visible
     // copyright banner and askname line; the 'n' (manual-menu) one paints
     // over the base-window residue left by the dismissed selection menus.
-    let getconfirmation = picksomething && pick4u !== 'a';
+    let getconfirmation = picksomething && pick4u !== 'a' && !ctx.flags?.randomall;
     const overlayBanner = (pick4u === 'y');
     // The rename re-prompt draws "Who are you? <name>" at row 10 (askname's
     // BASE_WINDOW cursor after the confirm window was dismissed).  The confirm
@@ -2406,6 +2424,7 @@ export async function playChargen(ctx) {
         // then discards because MENU_SELECT_ALL is PICK_ANY-only.
         yesMark = '*';
         for (;;) {
+            await topline.flush();
             const f = confirmFrame();
             const key = await read(f.screen, f.cursor);
             const ch = String.fromCharCode(key);
@@ -2482,6 +2501,7 @@ export async function playChargen(ctx) {
             // Not in resp: tty_nhbell() and read again (getline.c:254).
         }
     }
+    topline.finish(); // dungeon.c:1248 clears unpaged setup messages on newgame.
     return result();
 }
 

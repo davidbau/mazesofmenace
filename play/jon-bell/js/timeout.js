@@ -10,14 +10,14 @@ import { RANGE_GLOBAL, NHF_BONESFILE, TIMER_LEVEL, TIMER_OBJECT, TIMER_NONE,
 import { rot_organic, rot_corpse } from './dig.js';
 import { game } from './gstate.js';
 import { eatfood } from './eat.js';
-import { COLNO, ROWNO, CLOUD } from './const.js';
+import { COLNO, ROWNO, CLOUD, RLOC_NOMSG } from './const.js';
 import { rn2, rn1, d } from './rng.js';
 import { pline, You_hear, urgent_pline } from './display.js';
 import { buzz, Monnam } from './mcastu.js';
 import { rider_revival_time, is_rider_pm, makemon, hideunder, ing_suffix, revive_corpse, zombie_form, set_corpsenm,
          dealloc_obj, maybe_unhide_at } from './mklev.js';
 import { permonstTemplate, container_weight, emits_light, name_to_mon } from './makemon.js';
-import { enexto_out } from './teleport.js';
+import { enexto_out, rloc } from './teleport.js';
 import { tamedog } from './dog.js';
 import { make_familiar } from './dog.js';
 import { cansee } from './vision.js';
@@ -28,7 +28,7 @@ import { useup, useupall, obj_extract_self_general, verbalize, Yname2 } from './
 import { obfree, is_ice } from './dokick.js';
 import { m_at, setmnotwielded } from './uhitm.js';
 import { is_pool } from './look.js';
-import { s_suffix } from './hacklib.js';
+import { s_suffix, dist2 } from './hacklib.js';
 import { cry_sound } from './sounds.js';
 import { Blind } from './vision.js';
 import { Norep } from './display.js';
@@ -718,7 +718,10 @@ function _incr_HDeaf(incr) {
     const u = game.u;
     if (!u)
         return;
-    u.HDeaf = (u.HDeaf | 0) + (incr | 0);
+    const old = u.HDeaf | 0;
+    // C potion.c:55-85: clamp the timeout and preserve its origin flags.
+    u.HDeaf = (old & ~TIMEOUT)
+        | Math.min(TIMEOUT, Math.max(0, (old & TIMEOUT) + (incr | 0)));
 }
 
 export async function do_storms() {
@@ -828,6 +831,26 @@ function Sfi_fe(nhfp, curr, name) { return curr; }
 async function revive_mon(arg) {
     const body = arg?.a_obj;
     if (!body) return;
+    /* C do.c:2247-2262: a displacer's corpse bumps the monster on its square
+     * away with rloc() before reviving. */
+    const mptr = permonstTemplate(body.corpsenm | 0);
+    const M3_DISPLACES = 0x0400;
+    if (mptr && ((mptr.mflags3 | 0) & M3_DISPLACES) && (body.where | 0) === OBJ_FLOOR) {
+        const x = body.ox | 0, y = body.oy | 0;
+        const mtmp = m_at(x, y);
+        if (mtmp && (game.level?.flags?.stasis_until | 0) < (game.moves | 0)) {
+            const notice_it = canseemon(mtmp);
+            const monname = Monnam(mtmp);
+            if (await rloc(mtmp, RLOC_NOMSG)) {
+                if (notice_it && !canseemon(mtmp))
+                    await pline(`${monname} vanishes.`);
+                else if (!notice_it && canseemon(mtmp))
+                    await pline(`${Monnam(mtmp)} appears.`);
+                else if (notice_it && dist2(mtmp.mx, mtmp.my, x, y) > 2)
+                    await pline(`${monname} teleports.`);
+            }
+        }
+    }
     if (!(await revive_corpse(body))) {
         let when, action;
         const rider = is_rider_pm(body.corpsenm | 0);
@@ -875,10 +898,17 @@ const timeout_funcs = [
     { f: (arg, timeout) => fig_transform_timer(arg, timeout), cleanup: 0, name: 'fig_transform' },
     { f: (arg, timeout) => shrink_glob_timer(arg, timeout), cleanup: 0, name: 'shrink_glob' },
     { f: async (arg) => {
+        // C zap.c:5123-5131: natural melting must not credit/blame the hero.
+        const save_mon_moving = game.context.mon_moving;
+        game.context.mon_moving = true;
         const where = Number(arg?.a_long ?? 0);
         const x = (where >> 16) & 0xffff;
         const y = where & 0xffff;
-        await melt_ice_zap(x, y, 'Some ice melts away.');
+        try {
+            await melt_ice_zap(x, y, 'Some ice melts away.');
+        } finally {
+            game.context.mon_moving = save_mon_moving;
+        }
     }, cleanup: 0, name: 'melt_ice_away' },
 ];
 
@@ -970,7 +1000,7 @@ export function start_timer(when, kind, func_index, arg) {
     gnu.kind = kind;
     gnu.needs_fixup = 0;
     gnu.func_index = func_index;
-    gnu.arg = arg;
+    gnu.arg = { ...arg }; // C copies the anything union by value.
     insert_timer(gnu);
 
     if (kind === TIMER_OBJECT) /* increment object's timed count */

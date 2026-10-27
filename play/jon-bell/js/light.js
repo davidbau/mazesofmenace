@@ -174,7 +174,7 @@ export function obj_split_light_source(src, dest) {
     for (let ls = light_base; ls; ls = ls.next) {
         if (ls.type !== LS_OBJECT || ls.id?.a_obj !== src)
             continue;
-        const copy = { ...ls, id: { ...ls.id, a_obj: dest }, next: light_base };
+        const copy = { ...ls, id: obj_to_any(dest), next: light_base };
         if (Is_candle(src)) {
             ls.range = candle_light_range(src);
             copy.range = candle_light_range(dest);
@@ -314,7 +314,7 @@ export function light_sources_list() {
  * `is_global ^ (range == RANGE_LEVEL)` is false.
  *
  * Camera flashes have no object identity and are discarded before saving. */
-export function save_light_sources(range) {
+export async function save_light_sources(range) {
     discard_flashes();
     const taken = [];
     let prev = null, curr = light_base;
@@ -322,7 +322,10 @@ export function save_light_sources(range) {
     while (curr) {
         const next = curr.next;
         let is_global;
-        switch (curr.type) {
+        if (!(curr.id.a_obj ?? curr.id.a_monst)) {
+            await impossible('save_light_sources: no id! [range=%d]', range);
+            is_global = false;
+        } else switch (curr.type) {
         case LS_OBJECT:
             is_global = !obj_is_local(curr.id.a_obj);
             break;
@@ -331,6 +334,8 @@ export function save_light_sources(range) {
             break;
         default:
             is_global = false;
+            await impossible('save_light_sources: bad type (%d) [range=%d]',
+                curr.type, range);
             break;
         }
         /* if global and not doing local, or vice versa, remove it */

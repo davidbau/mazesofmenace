@@ -57,7 +57,7 @@ import { xdir, ydir, N_DIRS, FUMBLING, IS_SINK, TT_PIT } from './const.js';
 import { game, wizard } from './gstate.js';
 import { TtyMenu, PICK_ONE, ATR_NONE } from './tty_menu.js';
 import { get_obj_location } from './light.js';
-import { terrain_glyph, update_lastseentyp, GLYPHCLS_CMAP, GLYPHCLS_TRAP } from './display.js';
+import { terrain_glyph, update_lastseentyp, update_mapseen_for, GLYPHCLS_CMAP, GLYPHCLS_TRAP } from './display.js';
 import { BURIED_TOO, CONTAINED_TOO, TRAPPED_CHEST, TRAPPED_DOOR, Has_contents } from './const.js';
 import { foundone } from './detect.js';
 import { pline, Norep, flush_screen, newsym, feel_newsym, canspotmon, canseemon, _topl_joins_snapshot, _topline_more_pending, _defer_until_more_dismissed, tmp_at, zapdir_to_glyph, map_invisible, unmap_invisible, DISP_BEAM, DISP_CHANGE, DISP_END, DISP_FLASH, newsym_force, _topl_merge_result, shieldeff as shieldeff_real, explode_shield_effect, Deaf as _live_deaf_reading } from './display.js';
@@ -72,6 +72,7 @@ import { unconscious } from './pickup.js';
  * has one shared body rather than a sixth hand-written copy); find_ac is
  * do_wear.c's; rehumanize is polyself.c's. */
 import { unbless, uncurse } from './mkobj.js';
+import { COST_CANCEL, COST_UNCURS, COST_UNBLSS } from './const.js';
 import { find_ac, disintegrate_arm } from './do_wear.js';
 import { rehumanize } from './polyself.js';
 import { NOTELL, ANTIMAGIC, UNCHANGING, SLIMED, INVIS, DRAIN_RES, STONED } from './const.js';
@@ -103,7 +104,7 @@ import { setnotworn, setworn } from './worn.js';
 import { Ring_gone as _ring_gone, Ring_off, Ring_on } from './do_wear.js';
 import { xytodir, throwit_mon_hit, endmultishot, set_msg_xy } from './cmd.js';
 import { ceiling, body_part, force_decor } from './cmd.js';
-import { breaks, delobj, hot_pursuit, losehp, obfree } from './dokick.js';
+import { breaks, delobj, hot_pursuit, Shknam, losehp, obfree } from './dokick.js';
 import { weight } from './weight.js';
 import { ignite_items, mon_mattk_raw, poisoned_u, expels_gu } from './mhitu.js';
 import { stackobj } from './sp_lev.js';
@@ -190,18 +191,19 @@ import { LAVAPOOL, LAVAWALL, IRONBARS, DRAWBRIDGE_UP, ICE, VWALL, HWALL,
          Is_rogue_level, ERODE_CORRODE, EF_GREASE, EF_VERBOSE,
          M_SEEN_ACID } from './const.js';
 import { hliquid, hcolor } from './mhitm.js';
-import { You_hear } from './display.js';
+import { You_hear, You_feel } from './display.js';
 import { docrt } from './display.js';
 import { knowninvisible } from './display.js';
 import { couldsee } from './vision.js';
-import { in_rooms, add_damage, shop_keeper, costly_spot, currency, billable } from './shk.js';
+import { in_rooms, add_damage, shop_keeper, costly_spot, currency, billable, contained_cost } from './shk.js';
 import { picking_at, reset_pick, getdir, boxlock, doorlock } from './lock.js';
 import { stop_occupation } from './allmain.js';
 import { fix_wall_spines, obj_ice_effects, maybe_unhide_at } from './mklev.js';
 import { set_ustuck } from './mklev.js';
 import { On_stairs } from './mklev.js';
 import { unstuck } from './dog.js';
-import { spot_time_left, spot_stop_timers, start_timer } from './timeout.js';
+import { spot_time_left, spot_stop_timers, start_timer, stop_timer, peek_timer } from './timeout.js';
+import { TIMER_OBJECT, REVIVE_MON, ROT_CORPSE } from './const.js';
 import { spoteffects } from './landing-effects.js';
 import { is_moat, is_db_wall, find_drawbridge } from './dokick.js';
 import { shkname, stolen_value } from './dokick.js';
@@ -211,7 +213,7 @@ import { in_town } from './cmd.js';
 import { rloco } from './steal.js';
 import { reset_utrap } from './trap.js';
 import { waterbody_name, set_uinwater, switch_terrain } from './cmd.js';
-import { long_to_any, mstatusline, display_minventory, ustatusline } from './cmd.js';
+import { long_to_any, obj_to_any, mstatusline, display_minventory, ustatusline } from './cmd.js';
 import { display_cinventory, display_binventory, set_cknown_lknown } from './cmd.js';
 import { SchroedingersBox } from './pickup_container.js';
 import { the } from './objnam.js';
@@ -219,7 +221,7 @@ import { Invocation_lev } from "./mkmaze.js";
 import { noit_Monnam, resists_drli } from './mhitm.js';
 import { wakeup, wakeup_attack, update_inventory } from './mhitm.js';
 import { sticks, abuse_dog } from './dog.js';
-import { mhurtle } from './cmd.js';
+import { mhurtle, flash_hits_mon } from './cmd.js';
 import { XKILL_NOMSG, XKILL_NOCONDUCT } from './uhitm.js';
 /* C zap.c:341-347 bhitm's WAN_TELEPORTATION/SPE_TELEPORT_AWAY case needs
  * u_teleport_mon (teleport.c:2261-2292) — a real, fully-ported exported body
@@ -231,7 +233,7 @@ import { u_teleport_mon, tele } from './teleport.js';
  * (worn.c:1110, js/worn.js) — both real, fully-ported exported bodies. */
 import { newcham } from './mklev.js';
 import { bypass_obj } from './worn.js';
-import { NON_PM, MCORPSENM, ismnum, NO_NC_FLAGS, NC_SHOW_MSG, NC_VIA_WAND_OR_SPELL } from './const.js';
+import { LEVITATION, FLYING, NON_PM, MCORPSENM, ismnum, NO_NC_FLAGS, NC_SHOW_MSG, NC_VIA_WAND_OR_SPELL } from './const.js';
 import { PM_LONG_WORM } from './pm.generated.js';
 import { PM_RANGER, PM_ROGUE } from "./pm.generated.js";
 import { FAILEDUNTRAP, CONFUSION } from "./const.js";
@@ -824,7 +826,15 @@ export async function destroy_items(mon_is_hero, dmgtyp, dmg_in) {
         elig_stacks++;
         if (i < 0 || i >= limit)
             continue;
-        items_to_destroy[i] = obj;
+        /* C zap.c:6055-6068: hold off a worn levitation/flying item (and a were-trigger
+         * potion of water) until the second pass; losing it may dump us on a trap. */
+        const oprop = MKOBJ_OC_OPROP[obj.otyp | 0] | 0;
+        // C stores TRUE/FALSE; blessed/cursed are numeric bitfields in JS.
+        const deferred = !!(((obj.owornmask | 0) !== 0
+                          && (oprop === LEVITATION || oprop === FLYING))
+            || ((obj.otyp | 0) === 322 /* POT_WATER */ && ismnum(game.u.ulycn | 0)
+                && (Upolyd(game.u) ? obj.blessed : obj.cursed)));
+        items_to_destroy[i] = { otmp: obj, oid: obj.o_id, deferred };
     }
     /* C zap.c:6069-6071: clamp elig_stacks to limit for the destruction loops. */
     if (elig_stacks > limit)
@@ -834,6 +844,7 @@ export async function destroy_items(mon_is_hero, dmgtyp, dmg_in) {
      * AD_COLD/AD_FIRE potion path here, so a single pass over the selected stacks
      * is C-faithful (deferred==FALSE for every selected item). */
     const n = Math.min(elig_stacks, limit);
+    /* C zap.c:6072-6086: defer 0 then 1; skip an item no longer in inventory. */
     /* C zap.c:6079: dmg_out += maybe_destroy_item(mon, obj, dmgtyp); ...
      * C zap.c:6093: return dmg_out; — accumulated and returned regardless of
      * u_carry.  This hardcoded `return 0` dropped every per-item dmg, so a
@@ -841,14 +852,19 @@ export async function destroy_items(mon_is_hero, dmgtyp, dmg_in) {
      * caller (e.g. record #11: dmg_in=49 AD_FIRE, C returns 1) always read
      * back 0 here. */
     let dmg_out = 0;
-    for (let i = 0; i < n; i++) {
-        const obj = items_to_destroy[i];
-        if (!obj)
-            continue;
-        if (dmgtyp === AD_ELEC)
-            dmg_out += await maybe_destroy_item_elec(obj, dmgtyp);
-        else
-            dmg_out += await maybe_destroy_item(obj, dmgtyp);
+    for (let defer = 0; defer <= 1; ++defer) {
+        for (let i = 0; i < n; i++) {
+            const ent = items_to_destroy[i];
+            const obj = ent && ent.otmp;
+            if (obj && obj.o_id === ent.oid && obj.where === OBJ_INVENT
+                && ent.deferred === (defer === 1)) {
+                if (dmgtyp === AD_ELEC)
+                    dmg_out += await maybe_destroy_item_elec(obj, dmgtyp);
+                else
+                    dmg_out += await maybe_destroy_item(obj, dmgtyp);
+                ent.otmp = null;
+            }
+        }
     }
     /* C zap.c:6093-6094: bypass_objlist(*objchn, FALSE) -- bits only. */
     for (let o = game.invent; o; o = o.nobj)
@@ -3249,13 +3265,14 @@ export async function melt_ice_zap(x, y, msg) {
         await minliquid(m_at(x, y));
     }
 }
-/* C rm.h — LAVAPOOL/LAVAWALL; the same two-typ test js/teleport.js:1438 uses. */
+/* C dbridge.c:62-73: lava includes the surface beneath a raised bridge. */
 function _is_lava_zap(x, y) {
     if (!isok(x, y)) return false;
     const c = _buzz_cell(x, y);
     if (!c) return false;
     const typ = c.typ | 0;
-    return typ === LAVAPOOL || typ === LAVAWALL;
+    return typ === LAVAPOOL || typ === LAVAWALL
+        || (typ === DRAWBRIDGE_UP && db_under_typ(c.drawbridgemask | 0) === LAVAPOOL);
 }
 /* C defsyms[S_bars].explanation — js/defsym_data.js row 6. */
 const IRONBARS_NAME_ZAP = 'iron bars';
@@ -4285,8 +4302,10 @@ async function _expl_golemeffects(mon, damtype, dam) {
     }
     if (heal) {
         if (healmon(mon, heal, 0)) {
-            if (cansee(mon.mx | 0, mon.my | 0))
+            if (cansee(mon.mx | 0, mon.my | 0)) {
+                set_msg_xy(is_youmonst(mon) ? 0 : mon.mx, is_youmonst(mon) ? 0 : mon.my);
                 await pline(`${Monnam(mon)} seems healthier.`);
+            }
         }
     }
 }
@@ -5216,8 +5235,20 @@ async function do_osshock(obj) {
         }
     }
     /* if quan > 1 then some will survive intact */
-    if ((obj.quan | 0) > 1)
-        obj = (await splitobj(obj, rnd((obj.quan | 0) - 1)));
+    if ((obj.quan | 0) > 1) {
+        if ((obj.quan | 0) > LARGEST_INT)
+            obj = (await splitobj(obj, rnd(30000)));
+        else
+            obj = (await splitobj(obj, rnd((obj.quan | 0) - 1)));
+    }
+    /* appropriately add damage to bill (C zap.c:1664-1670) */
+    if (costly_spot(obj.ox | 0, obj.oy | 0)) {
+        if (g.u.ushops && g.u.ushops[0])
+            await addtobill(obj, false, false, false);
+        else
+            await stolen_value(obj, obj.ox | 0, obj.oy | 0, false, false);
+    }
+    /* zap the object */
     _zp_delobj(obj);
 }
 function _zp_Luck() { return (game.u?.uluck | 0); }
@@ -5347,6 +5378,31 @@ export async function poly_obj(obj, id) {
         if ((obj.otyp | 0) === ZP_BOULDER && (otmp.otyp | 0) !== ZP_BOULDER)
             unblock_point(ox, oy);
     }
+    /* C zap.c:1966-1987: note: if otmp is gone, billing for it was handled by
+     * useup().  The make_angry_shk arm (hero inside the shop, off a costly
+     * spot) has no js/ body yet; only the "gets angry!" arm is ported. */
+    if (((otmp && (otmp.where | 0) !== OBJ_INVENT) || obj.unpaid)
+        && costly_spot(ox, oy)) {
+        const rms = in_rooms(ox, oy, SHOPBASE) || [];
+        const shkp = shop_keeper(rms[0]);
+        if ((!obj.no_charge
+             || (Has_contents(obj)
+                 && (contained_cost(obj, shkp, 0, false, false) | 0) !== 0))
+            && shkp && inhishop(shkp)) {
+            if (shkp.mpeaceful) {
+                const u = game.u;
+                const inShopSame = u.ushops && u.ushops.charCodeAt(0)
+                    && ((in_rooms(u.ux, u.uy, 0) || [])[0]
+                        === (in_rooms(shkp.mx, shkp.my, 0) || [])[0])
+                    && !costly_spot(u.ux, u.uy);
+                if (!inShopSame) {
+                    await pline(`${Shknam(shkp)} gets angry!`);
+                    hot_pursuit(shkp);
+                }
+            } else
+                await Norep(`${Shknam(shkp)} is furious!`);
+        }
+    }
     _zp_delobj(obj);
     return otmp;
 }
@@ -5387,7 +5443,7 @@ export async function probe_monster(mtmp) {
         return; /* don't show minvent for long worm tail */
     if (mtmp.minvent) {
         _zp_probe_objchain(mtmp.minvent);
-        await display_minventory(mtmp, `${s_suffix(noit_Monnam(mtmp))} possessions:`);
+        await display_minventory(mtmp, null);
     } else {
         await pline("%s is not carrying anything%s.", noit_Monnam(mtmp),
                     engulfing_u(mtmp) ? " besides you" : "");
@@ -5964,10 +6020,34 @@ export async function bhitpile(obj, fhito, tx, ty, zz) {
     if (!cell || !cell[ty])
         return 0;
     let hitanything = 0;
+    /* C zap.c:2434: hiding under the top item while zapping up/down */
+    const hidingunder = (zz | 0) !== 0 && !!g.u?.uundetected
+        && _hides_under_zp(g.youmonst?.data);
+    let first = true;
+
+    if ((obj.otyp | 0) === SPE_FORCE_BOLT || (obj.otyp | 0) === WAN_STRIKING) {
+        const t = t_at(tx, ty);
+        const topofpile = cell[ty];
+        if (t && (t.ttyp | 0) === STATUE_TRAP
+            && await activate_statue_trap(t, tx, ty, true))
+            learnwand(obj);
+        if (g.level?.levelObjects?.[tx]?.[ty] !== topofpile)
+            first = false; /* top item was statue which activated */
+    }
 
     g._poly_zapped = -1;
-    for (let otmp = cell[ty], next_obj = null; otmp; otmp = next_obj) {
+    for (let otmp = g.level?.levelObjects?.[tx]?.[ty] || null, next_obj = null;
+         otmp; otmp = next_obj) {
         next_obj = otmp.nexthere;
+        if (hidingunder) {
+            if (first) {
+                first = false;
+                if ((zz | 0) > 0)
+                    continue;
+            } else if ((zz | 0) < 0) {
+                continue;
+            }
+        }
         if ((otmp.where | 0) !== ZP_OBJ_FLOOR
             || (otmp.ox | 0) !== tx || (otmp.oy | 0) !== ty)
             continue;
@@ -5999,6 +6079,8 @@ export async function bhitpile(obj, fhito, tx, ty, zz) {
             prevotyp = otmp.otyp | 0;
         }
     }
+    if (hidingunder) /* pile might have been destroyed or dispersed */
+        maybe_unhide_at(tx, ty);
     await fill_pit(tx, ty);
     return hitanything;
 }
@@ -6025,7 +6107,7 @@ async function _zap_map_engraving(x, y, obj) {
          * (js/mklev.js) rolls rnd(N_ENGRAVE-1) for a non-positive e_type,
          * matching C's rnd(N_ENGRAVE - 1) at engrave.c:452. */
         del_engr_at(x, y);
-        const { text: etxt, pristine } = random_engraving();
+        const { text: etxt, pristine } = await random_engraving();
         make_engr_at(x, y, etxt, pristine, game.moves | 0, 0);
         break;
     }
@@ -6077,7 +6159,8 @@ async function _zap_map_probing(x, y, obj) {
     show_map_spot(lev, x, y, false);
     if ((lev.lastseentyp | 0) !== oldtyp || _sig(lev) !== oldglyph)
         learn_it = true; /* TODO: ought to give some message */
-    if ((lev.typ | 0) === SDOOR) {
+    const ltyp = lev.typ === DRAWBRIDGE_UP ? db_under_typ(lev.drawbridgemask | 0) : (lev.typ | 0);
+    if (ltyp === SDOOR) {
         cvt_sdoor_to_door(lev);
         recalc_block_point(x, y);
         newsym(x, y);
@@ -6086,11 +6169,14 @@ async function _zap_map_probing(x, y, obj) {
             learn_it = true;
         } else if (Is_rogue_level(game.u?.uz))
             draft_message(false);
-    } else if ((lev.typ | 0) === SCORR) {
+    } else if (ltyp === SCORR) {
         lev.typ = CORR;
         unblock_point(x, y);
         newsym(x, y);
         await pline('Probing exposes a secret corridor.');
+        learn_it = true;
+    } else if ((ltyp === ICE || IS_FURNITURE(ltyp)) && game.u.dz > 0) {
+        force_decor(true); // C zap.c:3760-3765: before trap feedback and learnwand
         learn_it = true;
     }
     /* C zap.c:3757-3786: probing reveals undiscovered traps. */
@@ -6158,13 +6244,8 @@ async function zap_updown(obj) {
     const x = u.ux | 0, y = u.uy | 0;
     const otyp = obj ? (obj.otyp | 0) : 0;
 
-    /* C zap.c:3245-3410: the switch on obj->otyp.  Most cases (drawbridge/
-     * portcullis toggling, WAN_PROBING, trapdoor/hole transforms) remain a
-     * named gap — see the function comment above.  The WAN_STRIKING/
-     * SPE_FORCE_BOLT up-zap "falling rock" arm (zap.c:3299-3313) is ported
-     * here: unlike its siblings it needs no drawbridge/trap helper, only
-     * mksobj_at/stackobj (already used elsewhere in this file's zap paths)
-     * and hard_helmet (do_wear.js). */
+    /* C zap.c:3240-3409: vertical immediate effects, followed by the
+     * downward object/engraving or upward hiding-object handling. */
     let striking = false;
     const ttmp = t_at(x, y);
 
@@ -6176,7 +6257,7 @@ async function zap_updown(obj) {
             await pline(`You probe towards the ${ceiling(x, y)}.`);
         } else {
             const loc = g.level?.at(x, y);
-            const rememberedltyp = loc ? (loc.lastseentyp | 0) : 0;
+            const rememberedltyp = update_mapseen_for(x, y);
             ptmp += await bhitpile(obj, bhito, x, y, u.dz);
             const ltyp = loc?.typ === DRAWBRIDGE_UP
                 ? db_under_typ(loc.drawbridgemask | 0) : (loc?.typ | 0);
@@ -6184,10 +6265,6 @@ async function zap_updown(obj) {
             await _zap_map_probing(x, y, obj); // C zap.c:3248 zap_map probing tail
             let surf;
             if (ltyp === ICE || IS_FURNITURE(ltyp)) {
-                // C zap.c:3761-3765,3798-3799: zap_map's downward
-                // probing arm describes the surface before probing beneath it.
-                force_decor(true);
-                learnwand(obj);
                 surf = 'it';
                 if ((loc.lastseentyp | 0) !== rememberedltyp)
                     ptmp += 1;
@@ -6204,9 +6281,9 @@ async function zap_updown(obj) {
     case WAN_OPENING:
     case SPE_KNOCK: {
         /* C zap.c:3258-3293 */
-        let stway = stairway_at(x, y);
-        if (stway && (stway.isladder || stway.up || stway.tolev?.dnum !== u.uz.dnum))
-            stway = null;
+        let stway = g.stairs;
+        while (stway && (stway.isladder || stway.up || stway.tolev?.dnum !== u.uz.dnum))
+            stway = stway.next;
         if (is_db_wall(x, y)) {
             const bx = { value: x | 0 }, by = { value: y | 0 };
             if (find_drawbridge(bx, by)) {
@@ -6278,6 +6355,7 @@ async function zap_updown(obj) {
                 newsym(x, y);
                 await dotrap(ttmp, 0);
             } else if (!striking && (ttmp.ttyp | 0) === HOLE) {
+                ttmp.ttyp = TRAPDOOR; // C zap.c:3341: update before newsym and pline
                 if (_Blind() || !ttmp.tseen) {
                     await pline(`Some ${is_ice(x, y) ? 'frost' : 'dust'} swirls beneath you.`);
                 } else {
@@ -6286,7 +6364,6 @@ async function zap_updown(obj) {
                     await pline('A trapdoor appears beneath you.');
                     disclose = true;
                 }
-                ttmp.ttyp = TRAPDOOR;
             }
         }
         break;
@@ -6541,6 +6618,8 @@ function _bhitm_disguised_box_or_door(mtmp) {
 }
 async function _bhitm_wand(mtmp, obj) {
     const otyp = obj ? (obj.otyp | 0) : 0;
+    const bhitpos = game.bhitpos || { x: 0, y: 0 };
+    game.notonhead = (game.gn ||= {}).notonhead = mtmp.mx !== bhitpos.x || mtmp.my !== bhitpos.y;
     if (otyp === WAN_STRIKING || otyp === SPE_FORCE_BOLT) {
         /* C zap.c:190-191: reveal_invis = TRUE; learn_it = cansee(bhitpos);
          * -- set BEFORE the resists_magm branch, so "Boing!" retains
@@ -6725,13 +6804,16 @@ async function _bhitm_wand(mtmp, obj) {
         return ret;
     }
     if (otyp === WAN_SLOW_MONSTER || otyp === SPE_SLOW_MONSTER) {
-        /* C zap.c:218-232: resist() saving throw, then mon_adjust_speed(-1).
-         * seemimic() is the same message-only named gap as the arms below;
-         * the engulfing_u whirly expels() tail is likewise a named gap
-         * (expels lives in uhitm.c, outside this file's scope). */
+        /* C zap.c:218-232: slowing a whirly engulfer expels the hero. */
         if (!await resist(mtmp, (obj.oclass | 0), 0, 0 /* NOTELL */)) {
+            if (mtmp.data.mlet === 13 && M_AP_TYPE(mtmp)) seemimic(mtmp);
             mon_adjust_speed(mtmp, -1, obj);
             check_gear_next_turn(mtmp);
+            if (engulfing_u(mtmp) && (mtmp.data.mlet === 22 || mtmp.data.pmidx === 154)) {
+                await pline(`You disrupt ${mon_nam(mtmp)}!`);
+                await pline('A huge hole opens up...');
+                await expels_gu(mtmp, mtmp.data.pmidx, true);
+            }
         }
         return _bhitm_wand_epilogue(mtmp, false, false, false, obj);
     }
@@ -6941,6 +7023,29 @@ async function _bhitm_wand(mtmp, obj) {
         }
         return 0;
     }
+    if (otyp === WAN_LIGHT) { /* C zap.c:474-479 (broken wand) */
+        const noticed = !!(await flash_hits_mon(mtmp, obj));
+        return _bhitm_wand_epilogue(mtmp, false, noticed, noticed, obj);
+    }
+    if (otyp === SPE_STONE_TO_FLESH) { /* C zap.c:489-520 */
+        if (mtmp.data.mlet === 55 /* S_GOLEM */) {
+            const name = Monnam(mtmp);
+            let mesg = 'looks rather fleshy for a moment.';
+            if (mtmp.data.pmidx === PM_STONE_GOLEM && await newcham(mtmp, PM_FLESH_GOLEM, NO_NC_FLAGS))
+                mesg = 'turns to flesh!';
+            else if (mtmp.data.pmidx === PM_FLESH_GOLEM) mesg = 'seems fleshier...';
+            if (canseemon(mtmp)) await pline(`${name} ${mesg}`);
+        } else if (mtmp.data.mlet === 13 /* mkobj.c:1264-1297 stone_*_type */
+                   && ((M_AP_TYPE(mtmp) === M_AP_FURNITURE && ((mtmp.mappearance >= 1 && mtmp.mappearance <= 11)
+                            || [25, 26, 29, 30, 33, 35, 36].includes(mtmp.mappearance)))
+                       || (M_AP_TYPE(mtmp) === M_AP_OBJECT && [STF_BOULDER, STF_STATUE, STF_FIGURINE].includes(mtmp.mappearance)))) {
+            if (cansee(mtmp.mx, mtmp.my)) {
+                set_msg_xy(mtmp.mx, mtmp.my);
+                await that_is_a_mimic(mtmp, 3 /* MIM_REVEAL | MIM_OMIT_WAIT */);
+            }
+        } else return 0; /* wake = FALSE; reveal_invis = learn_it = FALSE */
+        return _bhitm_wand_epilogue(mtmp, false, false, false, obj);
+    }
     if (otyp === WAN_SLEEP) {
         /* C zap.c:480-487 bhitm() case WAN_SLEEP (broken wand): reveal_invis
          * = TRUE; if (sleep_monst(mtmp, d(1 + otmp->spe, 12), WAND_CLASS))
@@ -7145,13 +7250,16 @@ export async function dozap() {
     /* C zap.c:2639: need_dir = objects[obj->otyp].oc_dir != NODIR */
     const need_dir = (oc_dir_of(obj.otyp | 0) !== NODIR);
     /* C zap.c:2640: zappable(obj) — consume a charge (rn2(121) only when spe==0). */
-    if (!zappable(obj)) {
-        /* C zap.c:2641: pline1(nothing_happens); */
+    /* C zap.c:2645-2646: the !zappable arm is the HEAD of dozap's else-if
+     * chain, not an early return: control still reaches the shared tail
+     * (zap.c:2677), so a cancelled wand (spe -1) prints "Nothing happens."
+     * and then crumbles "to dust". */
+    const charged = zappable(obj);
+    if (!charged) {
+        /* C zap.c:2646: pline1(nothing_happens); */
         await pline('Nothing happens.');
-        g.context.move = 1;
-        return ECMD_TIME;
     }
-    if (obj.cursed && !rn2(WAND_BACKFIRE_CHANCE)) {
+    else if (obj.cursed && !rn2(WAND_BACKFIRE_CHANCE)) {
         await backfire(obj);           /* the wand blows up in your face! */
         exercise(A_STR, false);
         /* 'obj' is gone; skip update_inventory() because
@@ -7160,11 +7268,14 @@ export async function dozap() {
         return ECMD_TIME;
     }
     let dx = 0, dy = 0, dz = 0, nodir_given = false;
-    if (need_dir) {
+    if (charged && need_dir) {
         nodir_given = !(await getdir(null));
         dx = g.u.dx | 0; dy = g.u.dy | 0; dz = g.u.dz | 0;
     }
-    if (need_dir && nodir_given) {
+    if (!charged) {
+        /* C zap.c:2645-2646 arm above; fall through to the tail. */
+    }
+    else if (need_dir && nodir_given) {
         if (!_Blind())
             await pline(`${The(xname(obj))} glows and fades.`);
     }
@@ -7345,11 +7456,8 @@ function _ci_botl() {
     game.disp = game.disp || {};
     game.disp.botl = 1;
 }
-/* C shk.c costly_alteration(obj, cost_type) — bills the hero for damaging a
- * shopkeeper's goods.  Not ported here and RNG-FREE (it is a price adjustment
- * plus a shk pline); js/read.js:1681 already carries the same named stub for
- * the same reason.  Named at each of C's five call sites below rather than
- * dropped, so the gap stays visible where it belongs. */
+/* C mkobj.c:752 costly_alteration takes the numeric COST_* enum from hack.h,
+ * used to index alteration_verbs and recognize unblessing/uncursing. */
 async function _ci_costly_alteration(_obj, _cost_type) {
     return await costly_alteration_real(_obj, _cost_type);
 }
@@ -7432,26 +7540,26 @@ async function cancel_item(obj) {
             && otyp !== WAN_CANCELLATION      /* can't cancel cancellation */
             && otyp !== CI_MAGIC_LAMP         /* cancelling doesn't remove djinni */
             && otyp !== CANDELABRUM_OF_INVOCATION) {
-            await _ci_costly_alteration(obj, 'COST_CANCEL');
+            await _ci_costly_alteration(obj, COST_CANCEL);
             obj.spe = cancelled_spe;
         }
         switch (obj.oclass | 0) {
         case CI_SCROLL_CLASS:
-            await _ci_costly_alteration(obj, 'COST_CANCEL');
+            await _ci_costly_alteration(obj, COST_CANCEL);
             obj.otyp = CI_SCR_BLANK_PAPER;
             obj.spe = 0;
             break;
         case CI_SPBOOK_CLASS:
             if (otyp !== SPE_CANCELLATION && otyp !== CI_SPE_BOOK_OF_THE_DEAD_) {
-                await _ci_costly_alteration(obj, 'COST_CANCEL');
+                await _ci_costly_alteration(obj, COST_CANCEL);
                 obj.otyp = CI_SPE_BLANK_PAPER;
                 if (otyp === CI_SPE_NOVEL)
                     blank_novel(obj);
             }
             break;
         case CI_POTION_CLASS:
-            await _ci_costly_alteration(obj, (otyp !== CI_POT_WATER) ? 'COST_CANCEL'
-                                       : obj.cursed ? 'COST_UNCURS' : 'COST_UNBLSS');
+            await _ci_costly_alteration(obj, (otyp !== CI_POT_WATER) ? COST_CANCEL
+                                       : obj.cursed ? COST_UNCURS : COST_UNBLSS);
             if (otyp === CI_POT_SICKNESS || otyp === CI_POT_SEE_INVISIBLE) {
                 /* C's comment: sickness is "biologically contaminated" fruit
                  * juice; see invisible tastes like "enchanted" fruit juice. */
@@ -7464,7 +7572,17 @@ async function cancel_item(obj) {
         }
     }
 
-    void 0;
+    /* C zap.c:1347-1356: Riders retain their revival timer.  C passes the
+     * absolute peek_timer timeout to start_timer as a delay; preserve that. */
+    if (obj.otyp === CORPSE && obj.timed
+        && !_zp_is_rider(permonstTemplate(obj.corpsenm))) {
+        const a = { ...obj_to_any(obj) };
+        const timout = peek_timer(REVIVE_MON, a);
+        if (timout) {
+            stop_timer(REVIVE_MON, a);
+            start_timer(timout, TIMER_OBJECT, ROT_CORPSE, a);
+        }
+    }
 
     unbless(obj);
     uncurse(obj);
@@ -7479,7 +7597,7 @@ async function cancel_item(obj) {
  * RETURN VALUE: FALSE means "resisted cancellation".  For youdefend &&
  * youattack C never reaches resist(), so the hero self-zap always proceeds. */
 export async function cancel_monst(mdef, obj, youattack, allow_cancel_kill, self_cancel) {
-    const youdefend = (mdef === game.youmonst) || !mdef;
+    const youdefend = is_youmonst(mdef);
 
     if (youdefend ? (!youattack && _cm_Antimagic())
                   : await resist(mdef, obj.oclass | 0, 0, NOTELL))
@@ -7501,11 +7619,16 @@ export async function cancel_monst(mdef, obj, youattack, allow_cancel_kill, self
 
     /* now handle special cases */
     if (youdefend) {
-        /* C zap.c:3176-3195 — the Upolyd branch (clay-golem death, Unchanging
-         * amulet message, rehumanize()).  Upolyd is u.umonnum != u.umonster;
-         * this port's polyself.js owns rehumanize(), so the branch is wired
-         * through it rather than reimplemented. */
+        /* C zap.c:3184-3189: erasing a clay golem's writing is fatal even
+         * with Unchanging; rehumanize() handles the resulting death. */
         if (_cm_Upolyd()) {
+            if (game.u.umonnum === PM_CLAY_GOLEM) {
+                if (!Blind())
+                    await pline('Some writing vanishes from your head!');
+                else
+                    await You_feel('%s headed.', _Halluc() ? 'dark' : 'light');
+                game.u.mh = 0;
+            }
             if (_cm_Unchanging() && (game.u?.mh | 0) > 0)
                 await pline('Your amulet grows hot for a moment, then cools.');
             else
@@ -7529,7 +7652,7 @@ export async function cancel_monst(mdef, obj, youattack, allow_cancel_kill, self
                 if (youattack)
                     await xkilled(mdef, XKILL_GIVEMSG);
                 else
-                    await monkilled_trap(mdef, null);
+                    await monkilled_trap(mdef, ''); /* C: monkilled(mdef, "", AD_SPEL) */
             }
         }
     }
@@ -7989,6 +8112,7 @@ async function move_into_trap(ttmp) {
     if (_ut_test_move(u.ux, u.uy, sgn(x - u.ux), sgn(y - u.uy), TEST_MOVE)) {
         u.ux0 = u.ux; u.uy0 = u.uy;
         u.ux = x; u.uy = y;
+        if (u.usteed) { u.usteed.mx = x; u.usteed.my = y; }
         u.umoved = true;
         newsym(u.ux0, u.uy0);
         _ut_vision_recalc(1);
@@ -8188,10 +8312,9 @@ async function help_monster_out(mtmp, ttmp) {
     return 1;
 }
 
-export async function untrap_floor_trap(ttmp, x, y) {
+export async function untrap_floor_trap(ttmp, x, y, the_trap = `the ${trapname(ttmp.ttyp | 0, false)}`) {
     const u = game.u;
     const here = (x === (u.ux | 0) && y === (u.uy | 0));
-    const the_trap = `the ${trapname(ttmp.ttyp | 0, false)}`;
     if (u.utrap) {
         await pline(`You cannot deal with ${the_trap} while trapped${here ? ' in it' : ''}!`);
         return 1;

@@ -45,8 +45,10 @@ function _hero_resists(prop) {
 /* make_confused's C home is potion.c:88; the file-local copy below it replaced
  * was an empty body, so neither throne arm could confuse the hero. */
 import { make_confused, make_glib, make_sick } from './potion.js';
-import { mkclass, mkclassAligned, newmextra, name_to_mon, name_to_monclass, permonstTemplate, is_ndemon } from './makemon.js';
-import { pline, canseemon, canspotmon, map_background, newsym, newsym_force, see_monsters, force_more } from './display.js';
+import { mkclass, mkclassAligned, newmextra, name_to_mon, name_to_monclass, permonstTemplate, is_ndemon, monPmname } from './makemon.js';
+import { pline, canseemon, canspotmon, map_background, newsym, newsym_force, see_monsters, force_more, livelog_printf, Deaf } from './display.js';
+import { LL_CONDUCT, LL_GENOCIDE, UNCHANGING, POLY_REVERT } from './const.js';
+import { PM_VAMPIRE, PM_VAMPIRE_LORD as PM_VAMPIRE_LEADER, PM_VLAD_THE_IMPALER } from './pm.generated.js';
 import { identify_pack, do_mapping } from './read.js';
 /* rndcurse()'s leaves, each from the file that holds its one real body.  The
  * aliases exist because this file already carries same-named LOCAL stubs
@@ -63,7 +65,8 @@ import { spec_ability, adjattrib, change_luck, exercise } from './attrib.js';
 import { hcolor, Amonnam } from './mhitm.js';
 import { update_inventory } from './mhitm.js';
 import { which_armor } from './makemon.js';
-import { shieldeff as shieldeff_rc, aggravate } from './mcastu.js';
+import { shieldeff as shieldeff_rc, aggravate, Monnam } from './mcastu.js';
+import { show_transient_light, transient_light_cleanup } from './light.js';
 /* tele's C home is teleport.c:840. */
 import { tele } from './teleport.js';
 /* makewish's C home is wizcmds.c:38; the throne sources are sit.c:110/251. */
@@ -298,11 +301,12 @@ export async function do_genocide(flags = 1) {
                 : 'No type of monster specified');
             continue;
         }
-        if (buf[0] === '\x1b' || /^(?:'?none'?|nothing)$/i.test(buf)) {
+        if (buf[0] === '\x1b' || /^(?:none|'none'|nothing)$/i.test(buf)) {
             if (!really) {
                 const r = rndmonst();
                 if (r != null) { selected = r; break; }
             }
+            livelog_printf(LL_GENOCIDE, 'declined to perform genocide');
             return false;
         }
         if (buf === '?' || buf === "'?'") {
@@ -319,6 +323,12 @@ export async function do_genocide(flags = 1) {
             continue;
         }
         const ptr0 = permonstTemplate(mndx);
+        // C read.c:2897-2900: revert a vampire's shifted form first.
+        const hero = game.youmonst;
+        if (Upolyd(game.u) && [PM_VAMPIRE, PM_VAMPIRE_LEADER, PM_VLAD_THE_IMPALER].includes(hero?.cham)
+            && hero?.data?.mlet !== 48 /* S_VAMPIRE */
+            && (mndx === game.u.umonnum || mndx === hero.cham))
+            await polyself(POLY_REVERT);
         if (mndx === (game.urole?.mnum | 0) || mndx === (game.urace?.mnum | 0)) {
             killPlayer0 = true;
             selected = mndx;
@@ -328,13 +338,14 @@ export async function do_genocide(flags = 1) {
         if ((ptr0.mflags2 & 0x8) !== 0) adjalign_sit(-aln);
         if ((ptr0.mflags2 & 0x100) !== 0) adjalign_sit(aln);
         if (!(ptr0.geno & 0x20)) {
-            if (!game.u?.uprops?.[DEAF]?.intrinsic) {
+            if (!Deaf()) {
                 if (game.flags?.verbose !== false)
                     await pline('A thunderous voice booms through the caverns:');
                 await verbalize('No, mortal!  That will not be done.');
             }
             continue;
         }
+        if (_hero_resists(UNCHANGING) && mndx === game.u.umonnum) killPlayer0 = true;
         selected = mndx;
         break;
     }
@@ -355,7 +366,12 @@ export async function do_genocide(flags = 1) {
         }
         if (cnt) {
             cnt = monster_census(false) - census0;
-            const nm = data?.pmnames?.[2];
+            let nm = data.pmnames[2];
+            if ((game.u?.uprops?.[HALLUC]?.intrinsic | 0) && !_hero_resists(HALLUC_RES)) {
+                const roleName = game.urole.name;
+                nm = Upolyd(game.u) ? monPmname(game.u.umonnum, game.flags?.female ? 1 : 0)
+                    : ((game.flags?.female && roleName.f) || roleName.m).replace(/^./, c => c.toLowerCase());
+            }
             await pline('Sent in %s%s.', (cnt > 1) ? 'some ' : '',
                 (cnt > 1) ? makeplural(nm) : an(nm));
         } else {
@@ -364,12 +380,15 @@ export async function do_genocide(flags = 1) {
         return true;
     }
     /* C permits genocide of the player's role or race, and of the current
-     * polymorph form; all of those cases ultimately kill the hero. */
-    const role = game.urole?.mnum | 0;
-    const race = game.urace?.mnum | 0;
+     * polymorph form; Unchanging makes genocide of that form fatal. */
     const current = game.youmonst?.data?.pmidx ?? game.u?.umonnum;
-    const killPlayer = killPlayer0 || selected === role || selected === race
-        || (current != null && selected === (current | 0) && game.u?.unchanging);
+    const killPlayer = killPlayer0;
+    // C read.c:2955-2961: count existing genocides before setting G_GENOD.
+    if (!Object.entries(game.mvitals || {}).some(([i, v]) => i >= LOW_PM && i < NUMMONS && (v?.mvflags | 0) & G_GENOD))
+        livelog_printf(LL_CONDUCT | LL_GENOCIDE, 'performed %s first genocide (%s)',
+            game.flags?.female ? 'her' : 'his', makeplural(data.pmnames[2]));
+    else
+        livelog_printf(LL_GENOCIDE, 'genocided %s', makeplural(data.pmnames[2]));
     const vital = game.mvitals[selected] ||= { born: 0, died: 0, mvflags: 0 };
     vital.mvflags |= G_GENOD | 0x10; /* G_NOCORPSE */
     /* C read.c:2936-2966: which/buf selection, then makeplural unless the
@@ -378,7 +397,7 @@ export async function do_genocide(flags = 1) {
     let buf;
     if ((game.u?.uprops?.[HALLUC]?.intrinsic | 0) && !_hero_resists(HALLUC_RES)) {
         if (Upolyd(game.u)) {
-            buf = data?.pmnames?.[game.flags?.female ? 1 : 0] || data?.pmnames?.[2];
+            buf = monPmname(game.u.umonnum, game.flags?.female ? 1 : 0);
         } else {
             const nm = game.urole?.name;
             buf = (game.flags?.female && nm?.f) ? nm.f : nm?.m;
@@ -674,19 +693,26 @@ _ENV([PM_EARTH_ELEMENTAL, PM_DUST_VORTEX], 'cloud', 'dust'); _ENV([PM_FIRE_ELEME
 _ENV([PM_ANGEL, PM_YELLOW_LIGHT], 'flash', 'light');
 export async function msummon(mon) {
     const ptr = mon?.data || permonstTemplate(PM_WIZARD_OF_YENDOR);
+    const ART_DEMONBANE = 12;
+    /* C minion.c:69-74: Demonbane prevents summoning before any RNG. */
+    if (mon && game.u.uwep?.oartifact === ART_DEMONBANE && (ptr.mflags2 & M2_DEMON)) {
+        if (canseemon(mon)) await pline('%s looks puzzled for a moment.', Monnam(mon));
+        return 0;
+    }
     /* C minion.c:76-82: a priest or minion carries its own alignment; any
      * other species keeps A_NONE (the Wizard), which dprince()/dlord() read
      * as "any alignment".  Math.sign(A_NONE) is -1 and would reject every
      * prince of the other sign. */
-    const atyp = (mon?.ispriest && mon.mextra?.epri) ? Math.sign(mon.mextra.epri.shralign | 0)
-        : (mon?.isminion && mon.mextra?.emin) ? Math.sign(mon.mextra.emin.min_align | 0)
+    const atyp = (mon?.ispriest && mon.mextra?.epri) ? mon.mextra.epri.shralign
+        : (mon?.isminion && mon.mextra?.emin) ? mon.mextra.emin.min_align
         : ptr.maligntyp === A_NONE ? A_NONE : Math.sign(ptr.maligntyp | 0);
     let dtype = NON_PM, cnt = 0;
-    const princeOrWizard = !!(ptr.mflags2 & M2_PRINCE) || !mon;
+    const princeOrWizard = ((ptr.mflags2 & M2_DEMON) && (ptr.mflags2 & M2_PRINCE))
+        || ptr.pmidx === PM_WIZARD_OF_YENDOR;
     if (princeOrWizard) {
         dtype = !rn2(20) ? dprince(atyp) : !rn2(4) ? dlord(atyp) : ndemon(atyp);
         cnt = dtype !== NON_PM && !rn2(4) && is_ndemon(permonstTemplate(dtype)) ? 2 : 1;
-    } else if (ptr.mflags2 & M2_LORD) {
+    } else if ((ptr.mflags2 & M2_DEMON) && (ptr.mflags2 & M2_LORD)) {
         dtype = !rn2(50) ? dprince(atyp) : !rn2(20) ? dlord(atyp) : ndemon(atyp);
         cnt = dtype !== NON_PM && !rn2(4) && is_ndemon(permonstTemplate(dtype)) ? 2 : 1;
     } else if ((ptr.pmidx | 0) === PM_BONE_DEVIL) {
@@ -695,11 +721,14 @@ export async function msummon(mon) {
         dtype = !rn2(20) ? dlord(atyp) : !rn2(6) ? ndemon(atyp) : (ptr.pmidx | 0);
         cnt = 1;
     } else if (_is_lminion(mon, ptr)) {
-        dtype = (ptr.mflags2 & M2_LORD) && !rn2(20) ? (game.mvitals?.[PM_ARCHON]?.mvflags & 8 ? lminion() : PM_ARCHON)
+        dtype = (ptr.mflags2 & M2_LORD) && !rn2(20) ? (game.mvitals?.[PM_ARCHON]?.mvflags & G_GONE ? lminion() : PM_ARCHON)
             : ((ptr.mflags2 & M2_LORD) || !rn2(6)) ? lminion() : (ptr.pmidx | 0);
         cnt = dtype !== NON_PM && !rn2(4) && !(permonstTemplate(dtype).mflags2 & M2_LORD) ? 2 : 1;
     } else if ((ptr.pmidx | 0) === PM_ANGEL) {
-        dtype = !rn2(6) && atyp !== 1 ? ndemon(atyp) : PM_ANGEL;
+        if (rn2(6)) dtype = PM_ANGEL;
+        else if (atyp === 0)
+            dtype = [PM_AIR_ELEMENTAL, PM_FIRE_ELEMENTAL, PM_EARTH_ELEMENTAL, PM_WATER_ELEMENTAL][rn2(4)];
+        else if (atyp === -1 || atyp === A_NONE) dtype = ndemon(atyp);
         cnt = dtype !== NON_PM && !rn2(4) && !(permonstTemplate(dtype).mflags2 & M2_LORD) ? 2 : 1;
     }
     if (dtype === NON_PM) return 0;
@@ -712,7 +741,7 @@ export async function msummon(mon) {
     /* C:152 — "some candidates can generate a group of monsters, so simple
        count of non-null makemon() result is not sufficient" */
     const census = monster_census(false);
-    let result = 0;
+    let result = 0, xlight = false;
     while (cnt-- > 0) {
         const m = await makemon(dtype, game.u.ux | 0, game.u.uy | 0, MM_EMIN | MM_NOMSG);
         if (m) {
@@ -725,14 +754,18 @@ export async function msummon(mon) {
                 m.mextra.emin.min_align = atyp;
                 m.mextra.emin.renegade = ((atyp !== game.u.ualign.type) ^ !m.mpeaceful) ? 1 : 0;
             }
-            /* C:170-178 (show_transient_light is display-only, not ported) */
+            if (m.data.mlet === 27 && !Blind()) { /* C minion.c:162-170 */
+                await show_transient_light(null, m.mx, m.my);
+                xlight = true;
+            }
             if (cnt === 0 && canseemon(m)) {
                 const d = m.data, k = d.mlet === 27 ? PM_ANGEL : d.mlet === 26 ? PM_YELLOW_LIGHT : (d.pmidx | 0);
                 const [cloud, what] = _ENV_T[k] || ['cloud', 'smoke'];
-                pline(`${Amonnam(m)} appears in a ${cloud} of ${what}!`);
+                await pline(`${Amonnam(m)} appears in a ${cloud} of ${what}!`);
             }
         }
     }
+    if (xlight) await transient_light_cleanup(); /* C minion.c:183-188 */
     /* C:196-197 */
     if (result) result = monster_census(false) - census;
     return result;
@@ -751,7 +784,7 @@ function pline_The(fmt, ...args) {
 }
 /* ---------------------------------------------------------------------------
  * special_throne_effect — Vlad's Tower throne effects (effects 1-13).
- * C ref: nethack-c/src/sit.c:237 special_throne_effect(int effect)
+ * C ref: nethack-c-v5/upstream/src/sit.c:238 special_throne_effect(int effect)
  *
  * RNG calls (path-dependent):
  *   cases 1-4:  makewish() — no RNG here (wish has own RNG sequence)
@@ -768,7 +801,7 @@ function pline_The(fmt, ...args) {
  */
 async function special_throne_effect(effect) {
     const u = game.u || {};
-    const gi = game.gi || {};
+    const tx = u.ux, ty = u.uy;
     switch (effect) {
         case 1:
         case 2:
@@ -776,9 +809,15 @@ async function special_throne_effect(effect) {
         case 4:
             /* 4 chances of a wish; throne then disappears */
             await makewish();
-            /* side-effects: remove throne tile, newsym_force, pline_The */
+            const tloc = game.level.at(tx, ty);
+            tloc.typ = ROOM;
+            tloc.flags = 0;
+            map_background(tx, ty, false);
+            newsym_force(tx, ty);
+            await pline_The("throne disintegrates, having spent its power.");
             break;
         case 5:
+            await pline("Sitting on the throne was a terrible experience.");
             /* permanent level drain — no RNG call */
             /* C: if (!Drain_resistance) losexp(...) */
             if (!_hero_resists(DRAIN_RES)) {
@@ -788,30 +827,35 @@ async function special_throne_effect(effect) {
             }
             break;
         case 6: {
+            await pline("A greasy liquid sprays all over you!");
             /* grease hands and inventory */
             /* C: make_glib(rn1(101, 100)) */
-            const glib_dur = rn1(101, 100); /* RNG: rn1(101,100) */
-            make_glib(glib_dur);
-            for (let otmp = gi.invent; otmp; otmp = otmp.nobj) {
+            for (let otmp = game.invent; otmp; otmp = otmp.nobj) {
                 if (otmp.oclass !== /* COIN_CLASS */ 12)
                     otmp.greased = 1;
             }
+            make_glib(rn1(101, 100));
             update_inventory();
             break;
         }
         case 7:
             /* lose an intrinsic — attrcurse() has own logic but no RNG here */
             await attrcurse();
+            await pline_The("throne somehow seems to be amused.");
             break;
         case 8: {
             /* level teleport to Vibrating Square level — no RNG */
             const vs_level = {};
             find_hell(vs_level);
-            if (!(u.uhave && u.uhave.amulet))
+            vs_level.dlevel = game.dungeons[vs_level.dnum].num_dunlevs - 1;
+            if (u.uhave?.amulet)
+                await You_feel("extremely disoriented for a moment.");
+            else
                 schedule_goto(vs_level, 0, null, "You feel extremely out of place.");
             break;
         }
         case 9:
+            await pline_The("throne seeems to be calling for help!");
             /* summon demons × 3 — msummon() has its own RNG sequences */
             await msummon(null);
             await msummon(null);
@@ -845,17 +889,26 @@ async function special_throne_effect(effect) {
         }
         case 11:
             /* polymorph — polyself() has its own RNG */
-            await polyself(0);
+            if ((game.gy?.youmonst?.data || permonstTemplate(u.umonnum)).mlet === 48 /* S_VAMPIRE, mondata.h:213 */)
+                await You_feel("unworthy.");
+            else {
+                await pline("This throne was not meant for those such as you!");
+                await You_feel("a change coming over you.");
+                await polyself(0);
+            }
             break;
         case 12: {
+            await pline("The throne is covered in acid!");
             /* acid damage */
             /* C: losehp(Acid_resistance ? rnd(16) : rnd(80), ...) */
             const acid_res = _hero_resists(ACID_RES);
             const dmg = acid_res ? rnd(16) : rnd(80); /* RNG: rnd(16) or rnd(80) */
             await losehp(dmg, "acidic chair", KILLED_BY_AN);
+            exercise(A_CON, false);
             break;
         }
         case 13: {
+            await pline("As you sit on the throne, your body and mind start to warp.");
             /* ability shuffle: rn2(5) − 2 for each of A_MAX attributes */
             for (let ability = 0; ability < A_MAX; ++ability) {
                 const delta = rn2(5) - 2; /* RNG: rn2(5) × 6 */
@@ -1301,7 +1354,7 @@ export function monster_census(spotted) {
 
 /* youprop.h property indices, read the one spelling js/ actually writes
  * (u.uprops[NUMERIC]); same helper js/mcastu.js:99 uses. */
-const _RC_ANTIMAGIC = 12, _RC_HALF_SPDAM = 55, _RC_BLINDED = 15, _RC_HALLUC = 23;
+const _RC_ANTIMAGIC = 12, _RC_HALF_SPDAM = 55;
 function _rc_propOn(id) {
     const p = game.u?.uprops?.[id];
     return !!(p && (p.intrinsic || p.extrinsic));
@@ -1365,7 +1418,7 @@ export async function rndcurse() {
             if (otmp.blessed)                            /* C:611-614 */
                 unbless(otmp);
             else
-                curse(otmp);
+                await curse(otmp);
         }
         update_inventory();                              /* C:616 */
     }
@@ -1375,11 +1428,13 @@ export async function rndcurse() {
         if (otmp.blessed)
             unbless(otmp);
         else
-            curse(otmp);
-        if (!_rc_propOn(_RC_BLINDED)) {
+            await curse(otmp);
+        if (!Blind()) {
             await pline(`${Yobjnam2(otmp, 'glow')} ${
                 hcolor(otmp.cursed ? 'black' : 'brown')}.`);
-            otmp.bknown = _rc_propOn(_RC_HALLUC) ? 0 : 1; /* bypass set_bknown() */
+            /* C youprop.h:120: only intrinsic HALLUC, suppressed by resistance. */
+            otmp.bknown = u.uprops?.[HALLUC]?.intrinsic
+                && !_rc_propOn(HALLUC_RES) ? 0 : 1; /* bypass set_bknown() */
         } else {
             otmp.bknown = 0;                              /* bypass set_bknown() */
         }

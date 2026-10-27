@@ -45,18 +45,20 @@ import { savelev } from './save.js';
 import { encode_save_graph, decode_save_graph } from './save_graph.js';
 /* js/game.js makeLocation() seeds disp_color with terminal.js's NO_COLOR. */
 import { NO_COLOR as NO_COLOR_BONES } from './terminal.js';
-import { has_oname } from './const.js';
+import { has_oname, has_mgivenname, DEFUNCT_MONSTER, NON_PM } from './const.js';
 import { free_oname } from './dokick.js';
 import { In_quest, Is_botlevel, Is_oracle_level, ROOMOFFSET, DELPHI } from './const.js';
 import { DUNGEON_LUA_TABLE } from './dungeon_data.js';
 import { Is_branchlev } from './dungeon.js';
 import { formatkiller } from './topten.js';
-import { In_hell } from './mklev.js';
+import { In_hell, OC_USES_KNOWN } from './mklev.js';
 import { PM_ORACLE, PM_MEDUSA, PM_VLAD_THE_IMPALER } from './pm.generated.js';
-import { pline } from './display.js';
+import { pline, invalidate_map_row } from './display.js';
 import { the, xname, oname } from './objnam.js';
 import { LEAVESTATUE, CORPSTAT_NONE, NO_MINVENT, INTRINSIC } from './const.js';
 import { roles, races } from './roles.js';
+import { dismount_steed } from './cmd.js';
+import { DISMOUNT_BONES } from './const.js';
 
 /* C bones.c:513-538,818-829 — identify the deceased hero's remnant. */
 function save_ebones(mtmp) {
@@ -212,8 +214,10 @@ function resetobjs(ochain, restore) {
             resetobjs(otmp.cobj, restore);
         if (restore)
             continue;
-        /* C bones.c:118-127 — saving: forget everything the dead hero knew. */
-        otmp.known = 0;
+        /* C bones.c:103-105: only types with oc_uses_known lose known;
+         * clearing it on coins causes a false discovery when they merge. */
+        if (OC_USES_KNOWN[otmp.otyp | 0])
+            otmp.known = 0;
         otmp.dknown = 0;
         otmp.bknown = 0;
         otmp.rknown = 0;
@@ -238,7 +242,7 @@ function resetobjs(ochain, restore) {
  * OTHER caller — bones.c:257's own comment names both).  C's definition site is
  * bones.c:258; importing rather than re-deriving keeps one body, per the
  * two-real-bodies rule. */
-import { drop_upon_death } from './shk.js';
+import { drop_upon_death, fix_shop_damage } from './shk.js';
 
 async function fixuporacle(oracle) {
     if (!Is_oracle_level(game.u.uz))
@@ -246,12 +250,12 @@ async function fixuporacle(oracle) {
     oracle.mpeaceful = 1;
     const rooms = game.level.rooms;
     let o_ridx = game.level.locations[oracle.mx][oracle.my].roomno - ROOMOFFSET;
-    if (o_ridx >= 0 && rooms[o_ridx].rtype === DELPHI)
+    if (o_ridx >= 0 && rooms[o_ridx]?.rtype === DELPHI)
         return true;
 
     let ridx = 0;
     for (; ridx < rooms.length; ++ridx)
-        if (rooms[ridx].orig_rtype === DELPHI)
+        if (rooms[ridx]?.orig_rtype === DELPHI)
             break;
     if (o_ridx !== ridx && ridx < rooms.length) {
         const { enexto_out, rloc_to } = await import('./teleport.js');
@@ -304,6 +308,8 @@ export async function savebones(how, when, corpse) {
         const { unpunish } = await import('./dig.js');
         await unpunish();
     }
+    if (u.usteed)
+        await dismount_steed(DISMOUNT_BONES);
 
     /* C bones.c:445-446 iter_mons(remove_mon_from_bones); dmonsfree(); */
     {
@@ -340,7 +346,9 @@ export async function savebones(how, when, corpse) {
         const { m_carrying, m_dowear } = await import('./trap.js');
         if (mtmp.data?.mlet === 39 /* S_MUMMY */ && !m_carrying(mtmp, 138 /* MUMMY_WRAPPING */)) {
             const { mongets } = await import('./m_initweap.js');
-            await mongets(mtmp, 138);
+            const { mksobj } = await import('./mklev.js');
+            // C bones.c:477: mongets creates the missing mummy wrapping.
+            await mongets(mtmp, 138, mksobj);
         }
         await m_dowear(mtmp, true);
         // C bones.c:505-509 — fields common to every arise type.
@@ -412,6 +420,7 @@ export async function savebones(how, when, corpse) {
      * lastseentyp).  The next hero has not seen any of it. */
     const lev = g.level;
     if (lev?.locations) {
+        for (let y = 0; y < 21; y++) invalidate_map_row(y);
         for (let x = 1; x < 80; x++) {
             const col = lev.locations[x];
             if (!col) continue;
@@ -468,7 +477,7 @@ export async function savebones(how, when, corpse) {
      * too: savebones is the last thing that touches the level before the
      * process ends. */
     const ledger = ledger_no(u.uz);
-    savelev(ledger);
+    await savelev(ledger);
     const snap = game.levelStore?.get(ledger);
     if (!snap)
         return;
@@ -531,8 +540,12 @@ async function getbones_load(f) {
      *
      * getlev() must see the snapshot through the normal store, which is where
      * the bones file's copy is installed first. */
+    const { propagate } = await import('./makemon.js');
     for (let m = f.snap.fmon; m; m = m.nmon) {
         m.m_id = next_ident_bones();
+        // C restore.c:408-415: mark extinct/genocided bones monsters for purge.
+        if (!propagate(m.cham === NON_PM ? m.mnum : m.cham, true, true))
+            m.mhpmax = DEFUNCT_MONSTER;
         renumber_objchn(m.minvent);
     }
     renumber_objchn(f.snap.fobj);
@@ -544,10 +557,20 @@ async function getbones_load(f) {
     const { getlev } = await import('./restore.js');
     await getlev(ledger);
 
-    for (let m = g.fmon; m; m = m.nmon)
-        resetobjs(m.minvent, true);
+    /* C bones.c:714-731 — sanitize names, purge defunct monsters, repair shops. */
+    const { sanitize_name } = await import('./options.js');
+    const { mongone } = await import('./mklev.js');
+    for (let m = g.fmon; m; m = m.nmon) {
+        if (has_mgivenname(m))
+            m.mextra.mgivenname = sanitize_name(m.mextra.mgivenname);
+        if (m.mhpmax === DEFUNCT_MONSTER)
+            await mongone(m);
+        else
+            resetobjs(m.minvent, true);
+    }
     resetobjs(g.fobj, true);
     resetobjs(g.level?.buriedobjlist, true);
+    await fix_shop_damage();
 
     /* C bones.c:729-731 */
     g.program_state.reading_bonesfile = 0;

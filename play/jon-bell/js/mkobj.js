@@ -14,7 +14,8 @@ import { game } from './gstate.js';
 /* C mkobj.c curse()/unbless() side-effect arms, each imported from the file that
  * already holds its one real body: */
 import { confers_luck } from './attrib.js';   /* artifact.c:524 */
-import { set_moreluck } from './cmd.js';      /* attrib.c:454 */
+import { set_moreluck, drop_uswapwep } from './cmd.js'; /* attrib.c / wield.c */
+import { arti_light_radius, maybe_adjust_light } from './light.js';
 import { bimanual, reset_remarm } from './do_wear.js'; /* mondata.h:69 / do_wear.c */
 import { book_cursed } from './spell.js';     /* spell.c:2093 */
 import { cansee, Blind } from './vision.js';
@@ -375,12 +376,12 @@ export function uncurse(otmp) {
 }
 
 /* C mkobj.c:1781-1817 curse(struct obj *otmp). */
-export function curse(otmp) {
+export async function curse(otmp) {
     if (!otmp)
         return;
     if ((otmp.oclass | 0) === _BC_COIN_CLASS)
         return;                                       /* C:1787-1788 */
-    /* C:1789-1790 — lamplit old_light, omitted (a). */
+    const old_light = otmp.lamplit ? arti_light_radius(otmp) : 0;
     const already_cursed = !!otmp.cursed;             /* C:1791 */
     otmp.blessed = 0;
     otmp.cursed = 1;
@@ -388,8 +389,8 @@ export function curse(otmp) {
      * removal. */
     if (otmp === game.u?.uwep && bimanual(game.u.uwep))
         reset_remarm();
-    /* C:1796-1799 — `if (otmp == uswapwep && u.twoweap) drop_uswapwep();`
-     * omitted, see (b) above. */
+    if (otmp === game.u?.uswapwep && game.u.twoweap)
+        await drop_uswapwep();
     if (_bc_carried(otmp) && confers_luck(otmp)) {    /* C:1801-1802 */
         set_moreluck();
     } else if ((otmp.otyp | 0) === _BC_BAG_OF_HOLDING) {
@@ -406,7 +407,8 @@ export function curse(otmp) {
         if (!already_cursed)
             book_cursed(otmp);
     }
-    /* C:1814-1815 — if (otmp->lamplit) maybe_adjust_light(otmp, old_light); */
+    if (otmp.lamplit)
+        await maybe_adjust_light(otmp, old_light);
 }
 
 /* C mkobj.c:3843-3870 pudding_merge_message(): give a message if hero

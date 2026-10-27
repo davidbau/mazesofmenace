@@ -422,7 +422,7 @@ export async function mongets(mtmp, otyp, mksobjFn) {
      * (muse.c:2477-2479, cursed only). */
     if (otmp && monMlet(monsndx(mtmp)) === S_DEMON) {
         if (otmp.blessed)
-            curse(otmp);
+            await curse(otmp);
     } else if (otmp && _is_lminion(mtmp)) {
         /* C makemon.c:2193-2199 — lawful minions don't get cursed, bad, or
          * rusting objects. */

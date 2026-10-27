@@ -22,6 +22,7 @@
 // food scan (dogmove.c:618) fires obj_resists()->rn2(100) once per inventory
 
 import { ARMOR_DATA } from './armor_data.js';
+import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 import { ECMD_OK, ECMD_TIME, OBJ_FREE, OBJ_INVENT,
          PARANOID_AUTOALL, PARANOID_CONFIRM,
          SELL_NORMAL, SELL_DELIBERATE, SELL_DONTSELL, OBJ_FLOOR,
@@ -29,22 +30,24 @@ import { ECMD_OK, ECMD_TIME, OBJ_FREE, OBJ_INVENT,
          GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_SELECTABLE,
          GETOBJ_SUGGEST, GETOBJ_PROMPT, GETOBJ_ALLOWCNT,
          NO_MINVENT, MM_ADJACENTOK, MM_NOMSG, FOOT, ONAME_NO_FLAGS,
-         HAND, HALLUC, HALLUC_RES } from './const.js';
+         HAND, HALLUC, HALLUC_RES, LL_ACHIEVE } from './const.js';
 import { paranoid_ynq } from './paranoid.js';
 import { Ysimple_name2 } from './objnam.js';
 
 const COIN_CLASS = 12; /* objclass.h COIN_CLASS — gold */
 import { game } from './gstate.js';
+import { update_inventory } from './inventory_refresh.js';
 import { chest_trap } from './trap.js';
 import { nomul } from './allmain.js';
-import { pline, urgent_pline, Norep, flush_screen, bot, force_more, canspotmon } from './display.js';
-import { build_window_screen, tty_window_offx, menu_search_getlin } from './com_pager.js';
+import { obj_to_glyph, pline, urgent_pline, Norep, flush_screen, bot, force_more, canspotmon, docorner_blank_utf8_captures, livelog_printf } from './display.js';
+import { impossible } from './pline.js';
+import { build_window_screen, tty_window_offx, menu_search_getlin, display_text_window } from './com_pager.js';
 import { pmatchi } from './strutil.js';
 import { menu_heading_text } from './tty_menu.js';
 import { menucolor_row } from './coloratt.js';
 import { nhgetch } from './input.js';
 import { weight } from './weight.js';
-import { doname_with_price, simpleonames, cxname, cxname_singular, getObjDescr, Tobjnam, xname, the, The, otense, oname } from './objnam.js';
+import { doname, doname_with_price, simpleonames, cxname, cxname_singular, getObjDescr, Tobjnam, xname, the, The, otense, oname } from './objnam.js';
 /* C ref: pickup.c in_container's freeinv/add_to_container/weight trio. */
 import { freeinv, welded, weldmsg, setuwep, setuswapwep, setuqwep, snuff_lit,
          useup, useupf, obj_here, obj_extract_self_general,
@@ -441,11 +444,27 @@ const _QC_CLASS_SYM = {
     10: '+', 11: '/', 12: '$', 13: '*', 14: '`', 15: '0', 16: '_',
 };
 
-/* C ref: invent.c:259-297 loot_classify's FOOD_CLASS subclass switch.  The
- * other classes' subclass tables (ARMOR oc_armcat, WEAPON oc_skill, TOOL
- * container/instrument, GEM oc_material x discovery) are NOT ported and fall to
- * C's own `default: k = 1`; stated rather than faked, and no worse than the
- * previous state, which had no subclass tier at all. */
+/* ---------------------------------------------------------------------------
+ * sortloot — C ref: invent.c:592 sortloot() / :403 sortloot_cmp() / :150
+ * loot_classify().  Both container-loot displays run their list through it:
+ * container_contents() (end.c:1636) and query_objlist() (pickup.c:1086).
+ *
+ * WHY IT MATTERS BEYOND ORDER: loot_classify() opens with
+ *     if (!Blind) observe_object(obj);
+ * so merely sorting a container's contents sets dknown on every item in it.
+ * That is the ONLY reason C can print "a scroll labeled FOOBIE BLETCH" in a
+ * ':' contents window whose `identified` argument is FALSE -- xname() prints a
+ * bare "scroll" without dknown.  Miss this and the window renders four rows of
+ * the wrong text while looking structurally right.
+ *
+ * C runs the qsort only when n > 1, so a one-item container is NOT classified
+ * and its single item keeps dknown == 0.  That asymmetry is C's, and it is
+ * reproduced here rather than smoothed over.
+ *
+ * Classification precedes the name, BUCX, wear and original-index tiers below.
+ * In particular, gem subclasses take precedence over alphabetical order. */
+/* C invent.c:196-297 loot_classify's subclass switches.  The WEAPON oc_skill
+ * subclasses still fall through to the default below. */
 /* otyps resolved from js/oc_name_data.js OC_NAME (the generated objects.h
  * name table), not guessed: slime mold 285, tin 296, egg 266, corpse 265. */
 const _SLIME_MOLD_OTYP = 285, _TIN_OTYP = 296, _EGG_OTYP = 266, _CORPSE_OTYP = 265;
@@ -453,6 +472,18 @@ const _SLIME_MOLD_OTYP = 285, _TIN_OTYP = 296, _EGG_OTYP = 266, _CORPSE_OTYP = 2
  * GLOVES 3, BOOTS 4, CLOAK 5, SHIRT 6); out-of-range -> 7 -> armcat[7] = 8. */
 const _LOOT_ARMCAT = [7, 4, 1, 2, 3, 5, 6, 8];
 function _loot_subclass(obj) {
+    if ((obj.oclass | 0) === 13 /* GEM_CLASS */) {
+        /* C invent.c:260-288: gems/glass precede gray stones and rocks;
+         * unseen and undiscovered gems/glass must share a subclass. */
+        const t = obj.otyp | 0, seen = !!obj.dknown;
+        const discovered = !!game._oc_name_known?.[t];
+        switch (MKOBJ_OC_MATERIAL[t] | 0) {
+        case 20 /* GEMSTONE */: return !seen ? 1 : !discovered ? 2 : 3;
+        case 19 /* GLASS */:    return !seen ? 1 : !discovered ? 2 : 4;
+        default: /* MINERAL */
+            return !seen ? 5 : t !== 474 /* ROCK */ ? (!discovered ? 6 : 7) : 8;
+        }
+    }
     if ((obj.oclass | 0) === 3 /* ARMOR_CLASS */) {
         let k = ARMOR_DATA[obj.otyp | 0]?.armcat;
         if (k === undefined || k < 0 || k >= 7) k = 7;
@@ -621,8 +652,8 @@ async function _container_contents_one(box, identified, all_containers, reportem
     if (box.cobj) {
         const cat = SchroedingersBox(box);
         const lines = [];
-        /* C:1624-1625 */
-        lines.push(`Contents of ${_the(_box_xname(box))}:`);
+        /* C end.c:1627 — xname preserves the statue's monster and object names. */
+        lines.push(`Contents of ${the(xname(box))}:`);
         /* C:1626-1627 — the blank line is skipped only while dumping. */
         lines.push('');
         /* C:1628 buf[0] = buf[1] = ' ' — every item row carries two leading
@@ -714,7 +745,16 @@ function _invert_test(mode, skipinvert, is_selected) {
  * tty_dismiss_nhwindow docorner() erase of status line 1 (wintty.c:3684). */
 let _priorPickMenu = null;
 let _lastPickGeom = null;
+/* tty_dismiss_nhwindow -> erase_menu_or_text -> docorner(cw->offx, cw->maxrow + 1)
+ * (wintty.c:982): the dismissed overlay's cl_end() blanks the terminal cells it
+ * covered, so a UTF8 cell never re-painted since a pet stood there loses the pet. */
 async function _tty_pick_any_menu(renderLines, items, winColFooter, prior = null) {
+    const cancelled = await _tty_pick_any_menu_run(renderLines, items, winColFooter, prior);
+    if (_lastPickGeom.col > 0)
+        docorner_blank_utf8_captures(_lastPickGeom.col - 1, _lastPickGeom.rows + 1);
+    return cancelled;
+}
+async function _tty_pick_any_menu_run(renderLines, items, winColFooter, prior = null) {
     const g = game;
     _lastPickGeom = null;
     /* Same tty window boundary as in_or_out_menu: an insertion message must be
@@ -1230,6 +1270,9 @@ async function _menu_loot_items(chainHead, contents, action, useInvlet) {
             /* C:1133-1135 add_menu's `ch` argument:
              *   (qflags & USE_INVLET) ? curr->invlet
              *     : (first && curr->oclass == COIN_CLASS) ? '$' : 0 */
+            /* C:1131 tmpglyph = obj_to_glyph(curr, rn2_on_display_rng): under
+             * Hallucination each listed row draws on the DISPLAY rng. */
+            obj_to_glyph(o);
             const explicitSel = useInvlet
                 ? (o.invlet ? String.fromCharCode(o.invlet | 0) : 0)
                 : ((first && oc === COIN_CLASS) ? '$' : 0);
@@ -1292,8 +1335,10 @@ async function _menu_loot_items(chainHead, contents, action, useInvlet) {
 async function in_container(obj) {
     const g = game;
     const box = g.current_container;
-    if (!box)
+    if (!box) {
+        await impossible('<in> no gc.current_container?');
         return 0;
+    }
     const u = g.u;
     const floorContainer = !_carried_box(box);
     let wasUnpaid = false;
@@ -1380,7 +1425,8 @@ async function in_container(obj) {
             stop_timer(SHRINK_GLOB, { a_obj: obj, a_long: null });
         }
     } else if (Is_mbag(box) && mbag_explodes(obj, 0)) {
-        await urgent_pline(`As you put ${(await _item_doname(obj))} inside, you are blasted by a magical explosion!`);
+        livelog_printf(LL_ACHIEVE, 'just blew up %s bag of holding', g.flags?.female ? 'her' : 'his');
+        await urgent_pline(`As you put ${(await doname(obj))} inside, you are blasted by a magical explosion!`);
         if (wasUnpaid)
             await addtobill(obj, false, false, true);
         if ((obj.otyp | 0) === BAG_OF_HOLDING_OTYP)
@@ -1407,7 +1453,8 @@ async function in_container(obj) {
      * "the", not yname: C builds buf from the(xname()) even for a carried bag,
      * which is why the recorded line is "You put 1163 gold pieces into the
      * bag." while the menu above it said "your bag". */
-    await pline(`You put ${(await _item_doname(obj))} into ${_the(_box_xname(box))}.`);
+    const containerName = the(xname(box));
+    await pline(`You put ${(await doname(obj))} into ${containerName}.`);
     /* C:2702-2704: gold credit follows the put message, before linking the
      * object into the container. sellobj itself checks the shop at ox,oy. */
     if (floorContainer && (obj.oclass | 0) === COIN_CLASS)
@@ -1418,6 +1465,23 @@ async function in_container(obj) {
     /* C:2712 bot() — status refresh; gold left the purse. */
     await bot();
     return g.current_container ? 1 : -1;
+}
+
+/* C pickup.c:2910-2940 explain_container_prompt(): NHW_TEXT help window. */
+async function explain_container_prompt(more_containers) {
+    const lines = [
+        'Container actions:', '',
+        ' : -- Look: examine contents',
+        ' o -- Out: take things out',
+        ' i -- In: put things in',
+        ' b -- Both: first take things out, then put things in',
+        ' r -- Reversed: put things in, then take things out',
+        ' s -- Stash: put one item in', '',
+        ' n -- Next: loot next selected container',
+        ' q -- Quit: finished',
+        ' ? -- Help: display this text.', ''
+    ];
+    await display_text_window(lines.filter(line => more_containers || !line.startsWith(' n ')));
 }
 
 /* ---------------------------------------------------------------------------
@@ -1438,6 +1502,7 @@ export async function use_container_impl(cobjRef, held, more_containers) {
 
     if (!obj.lknown) {
         obj.lknown = 1;
+        if (held) update_inventory();
     }
     if (obj.olocked) {
         await pline(`The ${_box_xname(obj)} is locked.${held ? '  You must put it down to unlock.' : ''}`);
@@ -1529,7 +1594,7 @@ export async function use_container_impl(cobjRef, held, more_containers) {
                 g._topl_sticky = `${promptText} [${pbuf.split('\x1b')[0]}] (${ynDef})`;
         }
         if (c === '?') {
-            /* explain_container_prompt — not exercised; loop again. */
+            await explain_container_prompt(more_containers);
             continue;
         } else if (c === ':') { /* note: will set obj->cknown */
             /* C pickup.c:3119-3123 — gaining info costs a turn, then the
@@ -1781,7 +1846,7 @@ function _containerdone(box, used, cobjRef) {
     const g = game;
     if (used) {
         if (g.current_container) g.current_container.cknown = 1;
-        /* update_inventory: pure display refresh, RNG-free. */
+        update_inventory();
     }
     /* C restores accidental-sale handling even when an in_container attempt
      * failed, and writes the possibly-destroyed container back through objp. */

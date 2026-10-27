@@ -291,7 +291,10 @@ export async function merged(potmp, pobj, nomsg = false) {
      * source/timer registries and the timed count. */
     if (obj.lamplit)
         obj_merge_light_sources(obj, otmp);
-    if (obj.timed)
+    /* obj_meld (nomsg) reaches obj_absorb without merged(), so a glob's
+     * SHRINK_GLOB timer is still live for obj_absorb's stop_timer averaging
+     * (mkobj.c:3737-3742); stopping it here made tm2 0 instead of ~23. */
+    if (obj.timed && !(nomsg && obj.globby))
         obj_stop_timers(obj);
     /* C:862-875 — "objects can be identified by comparing them": each
      * dimension that differs becomes known on the combined stack, and (with
@@ -593,18 +596,20 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
         const oerodeproof = obj.oerodeproof;
         place_object(obj, u.ux | 0, u.uy | 0);
         const canTouch = await touch_artifact_youmonst(obj);
-        remove_object(obj);
         if (!canTouch) {
+            remove_object(obj);
             await dropy(obj);
             return obj;
         }
         if (wasUpolyd && !Upolyd(u)) {
             /* C:1232-1238 — losing the polymorphed form loses the grip. */
             if (drop_fmt)
-                pline(_fmt1(drop_fmt, drop_arg));
+                await pline(_fmt1(drop_fmt, drop_arg));
+            remove_object(obj);
             await dropy(obj);
             return obj;
         }
+        remove_object(obj);
         if (crysknife) {
             obj.otyp = 43;
             obj.oerodeproof = oerodeproof;
@@ -662,7 +667,7 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
             /* C:1287-1288 */
             if (hold_msg || drop_fmt)
                 await prinv(hold_msg, obj, oquan);
-            /* C:1290-1291 update_inventory(); encumber_msg(); */
+            update_inventory(); // C invent.c:1290, after the object stays in inventory.
             encumber_msg_sync();
             return obj;
         }

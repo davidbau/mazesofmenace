@@ -2,12 +2,13 @@
 // shk.js — Shopkeeper AI and commerce.
 // C ref: nethack-c/src/shk.c
 
-import { growl as growl_mhitm, yelp as yelp_mhitm, y_monnam as y_monnam_shk, pronoun_gender } from './mhitm.js';
+import { growl as growl_mhitm, yelp as yelp_mhitm, y_monnam as y_monnam_shk, pronoun_gender, a_monnam } from './mhitm.js';
 import { game } from './gstate.js';
 import { locomotion, x_monnam as x_monnam_shk } from './mhitm.js';
-import { ARTICLE_THE as ARTICLE_THE_SHK } from './const.js';
+import { ARTICLE_THE as ARTICLE_THE_SHK, ANY_SHOP } from './const.js';
+import { search_special } from './mkroom.js';
 import { makeplural } from './objnam.js';
-import { W_SWAPWEP, W_QUIVER } from './const.js';
+import { W_SWAPWEP, W_QUIVER, DISPLACED } from './const.js';
 import { make_happy_shoppers, migrate_to_level, mdrop_special_objs } from './dog.js';
 import { sensemon } from './display.js';
 import { MIGR_APPROX_XY } from './const.js';
@@ -22,7 +23,7 @@ import { pline, You_hear, Norep, topl_park_cursor, force_more } from './display.
  * existing contracts until their own closure is migrated. */
 import { You as You_real, Your as Your_real } from './do_wear.js';
 import { canspotmon, canseemon as canseemon_real } from './display.js';
-import { highc, shtype_name, inside_shop, makemon, angry_guards, next_ident, mksobj, del_engr_at, mpickobj } from './mklev.js';
+import { highc, shtype_name, inside_shop, makemon, angry_guards, next_ident, mksobj, del_engr_at, mpickobj, mongone as mongone_real } from './mklev.js';
 import { is_demon, poly_gender } from './makemon.js';
 import { is_pick } from './dig.js';
 import { ECMD_OK, ECMD_TIME, ESHK, SHARED, SHARED_PLUS, NO_ROOM, COLNO, ROWNO, IS_DOOR, IS_ROOM, IS_WALL, SHOPBASE, CANDLESHOP, D_BROKEN, D_CLOSED, BILLSZ, Has_contents, isok, u_at, ROOMOFFSET, RLOC_MSG, DEAF, INVIS, PASSES_WALLS, QBUFSZ, LL_ACHIEVE, G_GONE, MM_NOMSG, CONFLICT, REPAIR_DELAY, BOLT_LIM, ZAP_POS, D_LOCKED, LANDMINE, BEAR_TRAP, PIT, SPIKED_PIT, HOLE, ACH_SHOP, M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, DETECT_MONSTERS } from './const.js';
@@ -51,7 +52,7 @@ import { cansee } from './vision.js';
 import { holetime } from './dig.js';
 import { carrying, count_unpaid, currency as currency_real,
          mbodypart as mbodypart_real, body_part as body_part_real,
-         merge_choice, inv_cnt, dropy, getpos, record_achievement } from './cmd.js';
+         merge_choice, inv_cnt, dropy, getpos, record_achievement, check_special_room } from './cmd.js';
 import { xprname as xprname_cmd, dbase_display_window as dbase_display_window_cmd } from './cmd.js';
 import { addinv } from './hold_another_object.js';
 import { mattacku } from './mhitu.js';
@@ -217,8 +218,10 @@ function bp_to_obj(bp) {
  * "Unpaid articles already used up:" window. */
 export async function doinvbill(mode) {
     const shkp = shop_keeper(game.u?.ushops?.[0] ?? 0);
-    if (!shkp || !inhishop(shkp))
-        return 0;   /* C impossible()s first when mode != 0 */
+    if (!shkp || !inhishop(shkp)) {
+        if (mode !== 0) await lifecycle_impossible("doinvbill: no shopkeeper?");
+        return 0;
+    }
     const eshkp = ESHK(shkp);
     const bill = eshkp.bill_p || eshkp.bill || [];
     const billct = eshkp.billct | 0;
@@ -238,8 +241,10 @@ export async function doinvbill(mode) {
     for (let i = 0; i < billct; i++) {
         const bp = bill[i];
         const obj = bp_to_obj(bp);
-        if (!obj)
-            return 0;   /* C: impossible("Bad shopkeeper administration.") */
+        if (!obj) {
+            await lifecycle_impossible("Bad shopkeeper administration.");
+            return 0;
+        }
         if (bp.useup || (bp.bquan | 0) > (obj.quan | 0)) {
             const uquan = bp.useup ? (bp.bquan | 0) : (bp.bquan | 0) - (obj.quan | 0);
             const thisused = (bp.price | 0) * uquan;
@@ -331,14 +336,22 @@ async function pay(tmp, shkp) {
 /* C shk.c money2u() — transfer shopkeeper gold to the hero for change or a
  * sale. Extract a split stack from monster inventory before adding it to
  * hero inventory, so the two chains remain independent. */
-async function money2u(_mon, _amount) {
-    const mon = _mon, amount = _amount | 0;
-    const mongold = findgold(mon?.minvent);
-    if (amount <= 0 || !mongold || (mongold.quan | 0) < amount) return;
+async function money2u(mon, amount) {
+    const mongold = findgold(mon.minvent);
+    if (amount <= 0) {
+        await lifecycle_impossible('%s payment in money2u!', amount ? 'negative' : 'zero');
+        return;
+    }
+    if (!mongold || mongold.quan < amount) {
+        await lifecycle_impossible('%s paying without %s gold?', a_monnam(mon),
+                                   mongold ? 'enough' : '');
+        return;
+    }
     let change = mongold;
-    if ((change.quan | 0) > amount) change = (await splitobj(change, amount));
+    if (change.quan > amount) change = (await splitobj(change, amount));
     obj_extract_self(change);
     if (!merge_choice(game.invent, change) && inv_cnt(false) >= 52) {
+        await You_real('have no room for the gold!');
         await dropy(change);
     } else {
         await addinv(change);
@@ -501,7 +514,7 @@ async function make_itemized_bill(shkp) {
         let otmp = bp_to_obj(bp);
         if (!otmp)
             continue; /* C: impossible("Can't find shop bill entry ...") */
-        const bidx = i;
+        let bidx = i;
 
         if ((otmp.quan | 0) === 0 || (otmp.where | 0) === OBJ_ONBILL_SHK) {
             /* completely used up: restore the billed quantity */
@@ -787,7 +800,7 @@ async function dopayobj(shkp, bp, obj, which, itemize, unseen) {
             /* C:2272-2277 reject_purchase(): the shk will not sell the intact part
              * of a stack until the used-up part is paid for. */
             obj.quan = save_quan;
-            reject_purchase(shkp, obj, bp.bquan | 0);
+            await reject_purchase(shkp, obj, bp.bquan | 0);
             return PAY_SKIP;
         }
         if (buy === PAY_BUY && await insufficient_funds(shkp, obj, ltmp))
@@ -812,17 +825,23 @@ async function dopayobj(shkp, bp, obj, which, itemize, unseen) {
 
 /* C shk.c:2420 reject_purchase — refuse the intact portion of a partly used
  * stack until its consumed portion is paid. */
-function reject_purchase(shkp, obj, billedQuan) {
+async function reject_purchase(shkp, obj, billedQuan) {
     const intact = obj.quan | 0;
     obj.quan = (billedQuan | 0) - intact;
-    const name = simpleonames_real(obj);
     if (!_shk_Deaf() && !muteshk(shkp)) {
-        verbalize("%s for the other %s before buying %s.",
-                  ANGRY(shkp) ? "Pay" : "Please pay", name,
-                  intact > 1 ? "these" : "this one");
+        const which = (obj.where | 0) === OBJ_CONTAINED_SHK
+            ? `the one${plur(intact)} in ${thesimpleoname_real(obj.ocontainer)}`
+            : intact > 1 ? "these" : "this one";
+        SetVoice(shkp, 0, 80, 0);
+        await verbalize("%s for the other %s before buying %s.",
+                        ANGRY(shkp) ? "Pay" : "Please pay",
+                        simpleonames_real(obj), which);
     } else {
-        pline("%s %s your bill for the other %s first.",
-              Shknam(shkp), ANGRY(shkp) ? "angrily points out" : "points out", name);
+        const ptr = shkp.data || permonstTemplate(_mnum_of_shk(shkp));
+        await pline("%s %s%s your bill for the other %s first.",
+                    Shknam(shkp), ANGRY(shkp) ? "angrily " : "",
+                    (ptr.mflags1 & 0x6000) === 0x6000 ? "motions to" : "points out",
+                    simpleonames_real(obj));
     }
     obj.quan = intact;
 }
@@ -891,9 +910,10 @@ async function pay_billed_items(shkp, ibillct, ibill, stashed_gold, paidBox) {
         let buy;
         if (ibill[indx].usedup >= KnownContainer) {
             const result = await buy_container(shkp, indx, ibillct, ibill);
-            if (result === 1) { paidBox.value = true; return true; }
-            if (result === 2) return false;
-            buy = PAY_BUY;
+            if (result === 2)
+                await verbalize("You need to remove any unpaid items from that %s and buy them separately.",
+                                simpleonames_real(otmp));
+            buy = result === 0 ? PAY_BUY : PAY_CANT;
         } else {
             const bidx = ibill[indx].bidx;
             bp = bill[bidx];
@@ -933,7 +953,7 @@ async function buy_container(shkp, indx, ibillct, ibill) {
     for (let i = 0; i < (e.billct | 0); i++) {
         const bp = (e.bill_p || e.bill || [])[i], obj = bp && bp_to_obj(bp);
         if (!obj || outer(obj) !== container) continue;
-        if ((obj.quan | 0) < (bp.bquan | 0)) { reject_purchase(shkp, obj, bp.bquan | 0); return 1; }
+        if ((obj.quan | 0) < (bp.bquan | 0)) { await reject_purchase(shkp, obj, bp.bquan | 0); return 1; }
         if ((bp.bo_id >>> 0) !== (container.o_id >>> 0)) ids.push(bp.bo_id >>> 0);
     }
     if (container.unpaid) ids.push(container.o_id >>> 0);
@@ -995,7 +1015,9 @@ export async function dopay() {
         shkp = nxtm; /* C: goto proceed */
     } else {
         const Blind = _shk_Blind();
-        const Blind_telepat = false; /* no telepathy tracking in this port */
+        /* C youprop.h:154-156: Blind_telepat = HTelepat || ETelepat. */
+        const telepat = g.u?.uprops?.[TELEPAT];
+        const Blind_telepat = !!(telepat?.intrinsic || telepat?.extrinsic);
         if ((!sk && (!Blind || Blind_telepat)) || (!Blind && !seensk)) {
             await pline('There appears to be no shopkeeper here to receive your payment.');
             return ECMD_OK; /* C shk.c:1785 */
@@ -1388,7 +1410,7 @@ export async function sellobj(obj, x, y) {
             obj.no_charge = 1;
 
         if (!unpaid && (g.gs.sell_how !== SELL_DONTSELL)
-            && !special_stock(obj, shkp, false))
+            && !(await special_stock(obj, shkp, false)))
             await pline("%s seems uninterested.", Shknam(shkp));
         return;
     }
@@ -1751,7 +1773,7 @@ export function count_contents(container, nested, quantity, everything, newdrop)
         if (nested && Has_contents(ot))
             count += count_contents(ot, nested, quantity, everything, newdrop);
         if (everything || ot.unpaid || (shoppy && !ot.no_charge))
-            count += quantity ? (ot.quan | 0) : 1;
+            count += quantity ? ot.quan : 1;
     }
     return count;
 }
@@ -2033,7 +2055,7 @@ export function set_cost(obj, shkp) {
     }
     return tmp;
 }
-export function special_stock(obj, shkp, silent) {
+export async function special_stock(obj, shkp, silent) {
     const e = ESHK(shkp);
     if (!e || (e.shoptype | 0) !== CANDLESHOP || (obj?.otyp | 0) !== 262)
         return false;
@@ -2041,16 +2063,16 @@ export function special_stock(obj, shkp, silent) {
         const izchak = is_izchak(shkp, true);
         if (izchak && !(game.u?.uevent?.invoked | 0)) {
             if (_shk_Deaf() || muteshk(shkp)) {
-                pline("%s seems %s that you want to sell that.", Shknam(shkp), (obj.spe | 0) < 7 ? 'horrified' : 'concerned');
+                await pline("%s seems %s that you want to sell that.", Shknam(shkp), (obj.spe | 0) < 7 ? 'horrified' : 'concerned');
             } else {
-                verbalize("No thanks, I'd hang onto that if I were you.");
+                await verbalize("No thanks, I'd hang onto that if I were you.");
                 if ((obj.spe | 0) < 7)
-                    verbalize("You'll need %d more candles to go along with it.", 7 - (obj.spe | 0));
+                    await verbalize("You'll need %d%s candle%s to go along with it.", 7 - (obj.spe | 0), obj.spe > 0 ? ' more' : '', plur(7 - (obj.spe | 0)));
             }
         } else if (_shk_Deaf() || muteshk(shkp)) {
-            pline("%s shakes his head in refusal.", Shknam(shkp));
+            await pline("%s shakes %s %s in refusal.", Shknam(shkp), noit_mhis(shkp), mbodypart(shkp, HEAD));
         } else {
-            verbalize("I won't stock that.  Take it out of here!");
+            await verbalize("I won't stock that.  Take it out of here!");
         }
     }
     return true;
@@ -2078,7 +2100,10 @@ export async function sub_one_frombill(obj, shkp) {
         e.billct = last;
         return;
     }
-    if (obj.unpaid) obj.unpaid = 0;
+    if (obj.unpaid) {
+        await lifecycle_impossible("sub_one_frombill: unpaid object not on bill");
+        obj.unpaid = 0;
+    }
 }
 export async function subfrombill(obj, shkp) {
     await sub_one_frombill(obj, shkp);
@@ -2302,12 +2327,13 @@ export async function shk_move(shkp) {
         const cp = u.uprops?.[CONFLICT];
         const Conflict = !!((cp?.intrinsic | 0) || (cp?.extrinsic | 0));
         if (angry || (Conflict && !resist_conflict(shkp))) {
-            /* C shk.c:4899-4901: Displaced image message (omitted, no RNG),
-             * then mattacku(shkp); return 0. */
-            /* async since the AT_BREA port — see the note at js/priest.js's
-             * pri_move call site.  No shopkeeper form has an AT_BREA row, so
-             * no await executes and this runs synchronously. */
-            void mattacku(shkp);
+            /* C shk.c:4898-4900; youprop.h:202-204: Displaced ignores blocked. */
+            const dp = u.uprops?.[DISPLACED];
+            if ((dp?.intrinsic | 0) || (dp?.extrinsic | 0))
+                await Your("displaced image doesn't fool %s!", shkname(shkp));
+            /* C shk.c:4900 completes the attack before returning to m_move.
+             * Melee attacks also await messages and damage resolution. */
+            await mattacku(shkp);
             return 0;
         }
         if (eshkp && eshkp.following) {
@@ -2418,19 +2444,23 @@ export async function shk_move(shkp) {
     z = await move_special(shkp, inhishop(shkp), appr, uondoor, avoid, omx, omy,
                            gtx, gty);
     if (z > 0)
-        after_shk_move(shkp);
+        await after_shk_move(shkp);
 
     return z;
 }
 
-export function after_shk_move(shkp) {
+/* C ref: shk.c:4997 after_shk_move — re-enter-shop bookkeeping.
+ * Only acts when bill_p is the special -1000 sentinel (re-derive on re-entry). */
+export async function after_shk_move(shkp) {
     const eshkp = ESHK(shkp);
     if (!eshkp || !inhishop(shkp)) return;
     /* C uses (Bill *) -1000 as a sentinel while a migrating shopkeeper is
      * re-entering its shop; restore the real bill array before any occupancy
      * checks inspect it. */
-    if (eshkp.bill_p === -1000)
+    if (eshkp.bill_p === -1000) {
         eshkp.bill_p = eshkp.bill || [];
+        if (!game.program_state?.gameover) await check_special_room(false);
+    }
 }
 
 export function restshk(shkp, ghostly) {
@@ -2458,7 +2488,7 @@ function _ushops0_shk(u) {
     return us | 0;
 }
 
-async function make_happy_shk(shkp, silentkops) { // C shk.c:1395-1436
+export async function make_happy_shk(shkp, silentkops) { // C shk.c:1395-1436
     const eshkp = ESHK(shkp), wasmad = !shkp.mpeaceful;
     pacify_shk(shkp, false);
     eshkp.following = eshkp.robbed = 0;
@@ -3634,6 +3664,35 @@ function addupbill(shkp) {
     }
     return total;
 }
+/* C shk.c:4530 discard_damage_owned_by */
+function discard_damage_owned_by(shkp) {
+    for (let dam = game.level?.damagelist, next; dam; dam = next) {
+        next = dam.next;
+        if (in_rooms(dam.place.x, dam.place.y, SHOPBASE).includes(ESHK(shkp).shoproom))
+            discard_damage_struct(dam);
+    }
+}
+/* C shk.c:235 shkgone(), from m_detach() (mon.c:2785): the shop loses its resident. */
+export async function shkgone(mtmp) {
+    const eshk = ESHK(mtmp);
+    const sroom = game.level?.rooms?.[(eshk.shoproom | 0) - ROOMOFFSET];
+    if (!sroom || !on_level(eshk.shoplevel, game.u.uz)) return;
+    discard_damage_owned_by(mtmp);
+    sroom.resident = null;
+    if (!search_special(ANY_SHOP))
+        game.level.flags.has_shop = false;
+    for (let sx = sroom.lx; sx <= sroom.hx; sx++) /* shop goods revert to ordinary */
+        for (let sy = sroom.ly; sy <= sroom.hy; sy++)
+            for (let o = (game.level.levelObjects ?? game.level.objects)?.[sx]?.[sy]; o; o = o.nexthere)
+                o.no_charge = 0;
+    const us = typeof game.u.ushops === 'string' ? game.u.ushops : '';
+    const p = us.indexOf(String.fromCharCode(eshk.shoproom | 0));
+    if (p !== -1) {
+        await setpaid(mtmp);
+        eshk.bill_p = null;
+        game.u.ushops = us.slice(0, p) + us.slice(p + 1); /* drop shoproom from u.ushops */
+    }
+}
 async function setpaid(shkp) {
     const g = game;
     await clear_unpaid_chain(shkp, g.invent);
@@ -3667,7 +3726,7 @@ async function clear_unpaid_chain(shkp, chain) {
     }
 }
 async function clear_unpaid_floor(shkp) {
-    const objs = game.level?.objects;
+    const objs = (game.level?.levelObjects ?? game.level?.objects);
     if (!objs) return;
     for (let x = 0; x < COLNO; x++) {
         const col = objs[x];
@@ -3695,8 +3754,8 @@ function set_repo_loc(shkp) {
         || costly_adjacent(shkp, ox, oy)) {
         /* "shk.x,shk.y is the position immediately in front of the door;
            move in one more space" */
-        ox = (eshkp.shk?.x | 0);
-        oy = (eshkp.shk?.y | 0);
+        ox = (eshkp.shk_x ?? eshkp.shk?.x) | 0;
+        oy = (eshkp.shk_y ?? eshkp.shk?.y) | 0;
         ox += sgn(ox - (eshkp.shd?.x | 0));
         oy += sgn(oy - (eshkp.shd?.y | 0));
     }
@@ -3705,12 +3764,19 @@ function set_repo_loc(shkp) {
     g.repo.shopkeeper = shkp;
 }
 /* C shk.c:5368-5381 costly_adjacent(shkp, x, y). */
-function costly_adjacent(shkp, x, y) {
+export function costly_adjacent(shkp, x, y) {
     if (!shkp || !inhishop(shkp) || !isok(x, y))
         return false;
     const eshkp = ESHK(shkp);
     const loc = game.level?.at(x, y);
-    return !!(loc?.edge) || (x === (eshkp.shk?.x | 0) && y === (eshkp.shk?.y | 0));
+    // C shk.c:5380: the free spot uses the same home coordinate as costly_spot.
+    const homeX = (eshkp.shk_x ?? eshkp.shk?.x) | 0;
+    const homeY = (eshkp.shk_y ?? eshkp.shk?.y) | 0;
+    return !!(loc?.edge) || (x === homeX && y === homeY);
+    // C's eshkp->shk is stored as shk_x/shk_y by shkinit().
+    return !!(loc?.edge)
+        || (x === ((eshkp.shk_x ?? eshkp.shk?.x) | 0)
+            && y === ((eshkp.shk_y ?? eshkp.shk?.y) | 0));
 }
 function has_head_shk(_data) { return true; }
 /* C monst.h NOTANGRY(mon) = ((mon)->mpeaceful) — the file's own ANGRY() below
@@ -3718,13 +3784,11 @@ function has_head_shk(_data) { return true; }
 function NOTANGRY_SHK(mon) { return !!mon.mpeaceful; }
 /* C monsym.h LOW_PM = 0 — u.ugrave_arise < LOW_PM means "no revival". */
 const LOW_PM_SHK = 0;
+/* C shk.c:2567 calls mon.c:3267 mongone for a nonlocal shopkeeper.
+ * Use the full inventory disposal and deferred fmon unlink, including
+ * steal.c:862 obj_resists checks; unlinking fmon alone skips those draws. */
 export function mongone(mtmp) {
-    for (let prev = null, m = game.fmon; m; prev = m, m = m.nmon)
-        if (m === mtmp) {
-            if (prev) prev.nmon = m.nmon; else game.fmon = m.nmon;
-            m.nmon = null;
-            break;
-        }
+    return mongone_real(mtmp);
 }
 export function on_level(l1, l2) {
     return !!l1 && !!l2
@@ -3890,7 +3954,7 @@ function clear_no_charge(_shkp, chain) {
         if (otmp.cobj)
             clear_no_charge(_shkp, otmp.cobj);
     }
-    const objs = game.level?.objects;
+    const objs = (game.level?.levelObjects ?? game.level?.objects);
     if (!chain && objs) {
         for (let x = 0; x < COLNO; x++) {
             const col = objs[x];
@@ -3977,7 +4041,7 @@ async function home_shk(shkp, killkops) {
     if (game.level?.flags) game.level.flags.has_shop = true;
     /* Kops cleanup is not represented as a shared JS helper; the native
        movement and shop bookkeeping are the observable portion here. */
-    after_shk_move(shkp);
+    await after_shk_move(shkp);
 }
 /* C invent.c:1545 currency(amount) —
  *     res = Hallucination ? ROLL_FROM(currencies) : "zorkmid";
