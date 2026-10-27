@@ -1,6 +1,7 @@
 import { expels_gu } from './mhitu.js';
+import { stop_occupation } from './allmain.js';
 import { copy_oextra, free_omid } from './mkobj.js';
-import { linedup } from './trap.js';
+import { linedup, blocking_terrain } from './trap.js';
 import { newobj } from './game.js';
 import { M_AP_TYPMASK, M_AP_NOTHING, M_AP_MONSTER, M_AP_FURNITURE, M_AP_OBJECT, Is_knox_level,
          STAIRS, LADDER, W_NONDIGGABLE, W_ARMH, TELEP_TRAP,
@@ -46,7 +47,7 @@ import { is_hole, is_pit, WEB, BEAR_TRAP } from './const.js';
 import { LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP, DB_UNDER, DB_LAVA } from './const.js';
 import { Norep, You_hear } from './display.js';
 import { In_endgame, In_sokoban, Is_astralevel, Is_waterlevel, Is_firelevel, Is_earthlevel, Is_airlevel, Is_rogue_level, In_mines, MM_FEMALE, MM_MALE, NO_MINVENT, W_SADDLE, I_SPECIAL, COLNO, ROWNO, isok, SEE_INVIS, TELEPORT_CONTROL, STRANGLED, OBJ_MINVENT, REFLECTING, W_ARMS, W_WEP, W_AMUL, W_ARM, OBJ_FREE, OBJ_FLOOR, OBJ_LUAFREE, OBJ_INVENT, MIGR_RANDOM, NC_VIA_WAND_OR_SPELL, NC_SHOW_MSG, HAND, POLY_TRAP, Upolyd, IS_ALTAR, DISPLACED, FOOT, In_V_tower, RLOC_MSG, OBJ_CONTAINED, IS_FURNITURE, IS_DRAWBRIDGE, PIT, HOLE, FORCEBUNGLE, } from './const.js';
-import { NO_MM_FLAGS } from './const.js';
+import { NO_MM_FLAGS, MM_ADJACENTOK, MM_NOWAIT } from './const.js';
 import { OC_COST } from './oc_cost_data.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 import { MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
@@ -90,7 +91,7 @@ import { builds_up } from './dungeon.js';
 import { ESHK } from './const.js';
 import { oid_price_adjustment, inhishop, shop_keeper, onbill } from './shk.js';
 import { inhistemple } from './priest.js';
-import { force_more, force_more_pages, pline, urgent_pline as urgent_pline_disp, newsym, canspotmon, canseemon, map_invisible, sensemon, cls, docrt, show_glyph, show_monster_glyph_at, display_self } from './display.js';
+import { rank_of as rank_of_mnum, force_more, force_more_pages, pline, urgent_pline as urgent_pline_disp, newsym, canspotmon, canseemon, map_invisible, sensemon, cls, docrt, show_glyph, show_monster_glyph_at, display_self } from './display.js';
 /* create_critters (makemon.c:1556) reaches these two; both are cyclic imports
  * (teleport.js and wizcmds.js each import this file) but every binding used is
  * a hoisted function declaration, so the cycle resolves. */
@@ -118,7 +119,7 @@ import { welded, trycall, body_part, freeinv, mbodypart } from './cmd.js';
 import { remove_worn_item } from './steal.js';
 import { setnotworn } from './worn.js';
 import { dropy } from './cmd.js';
-import { place_object, mpickobj, upstart, Can_fall_thru, resists_ston } from './mklev.js';
+import { place_object, mpickobj, upstart, Can_fall_thru, resists_ston, unknow_object } from './mklev.js';
 /* C obj.h:257 bimanual(otmp) — one shared body; this file already imports
  * from do_wear.js on this line, so no module edge is added. */
 import { xname, yname, hard_helmet, bimanual } from './do_wear.js';
@@ -1078,6 +1079,15 @@ function mkGenOk(mndx, mvflagsmask, genomask) {
         return false;
     return true;
 }
+/* C makemon.c:2605-2612: create erinyes until the limit or extinction. */
+export async function summon_furies(limit) {
+    let i = 0;
+    while (mkGenOk(PM_ERINYS, G_GONE, 0) && (i < limit || !limit)) {
+        await makemon(permonstTemplate(PM_ERINYS), game.u.ux, game.u.uy,
+                      MM_ADJACENTOK | MM_NOWAIT);
+        i++;
+    }
+}
 /** @param {number} monindx */
 function montoostrong(monindx, lev) {
     return MONS[monindx][2] > lev;
@@ -1339,6 +1349,14 @@ const GOLD_PIECE_OTYP = 438; /* COIN_CLASS base in THIS build (MKOBJ_SVB_BASES[1
  * @param {any} mtmp
  * @param {number} amount
  */
+/* C mkobj.c:2652 add_to_minv tail: where/ocarry are what get_obj_location()
+ * (zap.c:654) reads, so distant_name() sees a carried object as located. */
+function _minv_link(mtmp, obj) {
+    obj.nobj = mtmp.minvent ?? null;
+    obj.where = OBJ_MINVENT;
+    obj.ocarry = mtmp;
+    mtmp.minvent = obj;
+}
 export async function mkmonmoney(mtmp, amount) {
     if (amount > 0) {
         const gold = await mksobj(GOLD_PIECE_OTYP, false, false);
@@ -1346,8 +1364,7 @@ export async function mkmonmoney(mtmp, amount) {
         gold.owt = weight(gold);
         gold.where = OBJ_MINVENT;
         gold.ocarry = mtmp;
-        gold.nobj = mtmp.minvent ?? null;
-        mtmp.minvent = gold;
+        _minv_link(mtmp, gold);
     }
 }
 const SCR_TELEPORTATION_OTYP = 333;
@@ -2150,18 +2167,18 @@ export async function mInitinv(mtmp, mksobjFn) {
             /* C makemon.c:734-739 — nymph: maybe mirror, maybe potion of obj detection */
             if (!rn2(2)) {
                 const mirr = await mksobjFn(MIRROR, true, false);
-                if (mirr) { mirr.nobj = mtmp.minvent ?? null; mtmp.minvent = mirr; }
+                if (mirr) { _minv_link(mtmp, mirr); }
             }
             if (!rn2(2)) {
                 const pot = await mksobjFn(POT_OBJECT_DETECTION, true, false);
-                if (pot) { pot.nobj = mtmp.minvent ?? null; mtmp.minvent = pot; }
+                if (pot) { _minv_link(mtmp, pot); }
             }
             break;
         case S_GIANT:
             if (mndx === PM_MINOTAUR) {
                 if (!rn2(8) || (game.in_mklev && Is_earthlevel(uz))) {
                     const w = await mksobjFn(WAN_DIGGING_OTYP, true, false);
-                    if (w) { w.nobj = mtmp.minvent ?? null; mtmp.minvent = w; }
+                    if (w) { _minv_link(mtmp, w); }
                 }
             } else if (((MONS[mndx][7] >>> 0) & M2_GIANT) !== 0) {
                 /* is_giant(ptr): mflags2 & M2_GIANT (row[7] is mflags2) */
@@ -2183,8 +2200,7 @@ export async function mInitinv(mtmp, mksobjFn) {
                 const rin = await mksobjFn(RIN_INVISIBILITY, false, false);
                 if (rin) {
                     rin.cursed = true;
-                    rin.nobj = mtmp.minvent ?? null;
-                    mtmp.minvent = rin;
+                    _minv_link(mtmp, rin);
                 }
             }
             break;
@@ -2203,8 +2219,7 @@ export async function mInitinv(mtmp, mksobjFn) {
                         otmp.spe = rnd(3);
                     if (!rn2(4))
                         otmp.oerodeproof = 1;
-                    otmp.nobj = mtmp.minvent ?? null;
-                    mtmp.minvent = otmp;
+                    _minv_link(mtmp, otmp);
                 }
             }
             break;
@@ -2358,8 +2373,7 @@ export async function mInitinv(mtmp, mksobjFn) {
                     if (whistle) {
                         whistle.blessed = 0;
                         whistle.cursed = 1;
-                        whistle.nobj = mtmp.minvent ?? null;
-                        mtmp.minvent = whistle;
+                        _minv_link(mtmp, whistle);
                     }
                 } else { /* soldiers and their officers */
                     if (!rn2(3))
@@ -2381,27 +2395,27 @@ export async function mInitinv(mtmp, mksobjFn) {
                 /* SKELETON_KEY: mongets → mksobj(SKELETON_KEY, TRUE, FALSE) */
                 {
                     const key = await mksobjFn(SKELETON_KEY_OTYP, true, false);
-                    if (key) { key.nobj = mtmp.minvent ?? null; mtmp.minvent = key; }
+                    if (key) { _minv_link(mtmp, key); }
                 }
                 /* switch(rn2(4)) with MAJOR fall-through */
                 {
                     const roll = rn2(4);
                     if (roll <= 0) {
                         const w = await mksobjFn(WAN_MAGIC_MISSILE_OTYP, true, false);
-                        if (w) { w.nobj = mtmp.minvent ?? null; mtmp.minvent = w; }
+                        if (w) { _minv_link(mtmp, w); }
                     }
                     if (roll <= 1) {
                         const p = await mksobjFn(POT_EXTRA_HEALING_OTYP, true, false);
-                        if (p) { p.nobj = mtmp.minvent ?? null; mtmp.minvent = p; }
+                        if (p) { _minv_link(mtmp, p); }
                     }
                     if (roll <= 2) {
                         const p = await mksobjFn(POT_HEALING_OTYP, true, false);
-                        if (p) { p.nobj = mtmp.minvent ?? null; mtmp.minvent = p; }
+                        if (p) { _minv_link(mtmp, p); }
                     }
                     /* case 3: always WAN_STRIKING */
                     {
                         const w = await mksobjFn(WAN_STRIKING_OTYP, true, false);
-                        if (w) { w.nobj = mtmp.minvent ?? null; mtmp.minvent = w; }
+                        if (w) { _minv_link(mtmp, w); }
                     }
                 }
             }
@@ -2412,11 +2426,11 @@ export async function mInitinv(mtmp, mksobjFn) {
                                          : CLOAK_OF_MAGIC_RESISTANCE_OTYP;
                 {
                     const c = await mksobjFn(cloakOtyp, true, false);
-                    if (c) { c.nobj = mtmp.minvent ?? null; mtmp.minvent = c; }
+                    if (c) { _minv_link(mtmp, c); }
                 }
                 {
                     const sh = await mksobjFn(SMALL_SHIELD_OTYP, true, false);
-                    if (sh) { sh.nobj = mtmp.minvent ?? null; mtmp.minvent = sh; }
+                    if (sh) { _minv_link(mtmp, sh); }
                 }
                 /* C makemon.c:576-586 mkmonmoney(mtmp, amount) — amount is
                  * always > 0 here (rn1(10,20) is 20..29), and mksobj is passed
@@ -2427,8 +2441,7 @@ export async function mInitinv(mtmp, mksobjFn) {
                     if (gold) {
                         gold.quan = amount;
                         gold.owt = weight(gold);
-                        gold.nobj = mtmp.minvent ?? null;
-                        mtmp.minvent = gold;
+                        _minv_link(mtmp, gold);
                     }
                 }
             }
@@ -2443,7 +2456,7 @@ export async function mInitinv(mtmp, mksobjFn) {
                 const cloakOtyp = rn2(11) ? ROBE_OTYP
                                           : CLOAK_OF_MAGIC_RESISTANCE_OTYP;
                 const c = await mksobjFn(cloakOtyp, true, false);
-                if (c) { c.nobj = mtmp.minvent ?? null; mtmp.minvent = c; }
+                if (c) { _minv_link(mtmp, c); }
             }
             break;
         default:
@@ -4270,6 +4283,7 @@ async function mzapwand(mtmp, otmp, self) {
         const near = dist2(mtmp.mx | 0, mtmp.my | 0,
                            game.u.ux | 0, game.u.uy | 0) <= range * range;
         await mquaffmsg_You_hear(`a ${near ? 'nearby' : 'distant'} zap.`);
+        unknow_object(otmp); /* muse.c:181 */
     } else if (self) {
         /* C muse.c:182-184 — monverbself (do_name.c:1221-1248) inlined. */
         const selfbuf = mon_nam_too(mtmp, mtmp);
@@ -4283,8 +4297,8 @@ async function mzapwand(mtmp, otmp, self) {
         pline(`${monnamtext} ${verbs} ${selfbuf} with ${await doname(otmp)}!`);
     } else {
         pline(`${Monnam(mtmp)} zaps ${an(xname(otmp))}!`);
-        if (game.occupation)
-            game.occupation = null; /* stop_occupation, as js/muse.js:94 */
+        /* C muse.c:187: also cancels running/travel when no occupation is active. */
+        await stop_occupation();
     }
     otmp.spe = (otmp.spe | 0) - 1;
 }
@@ -4742,7 +4756,7 @@ export function trapname(ttyp, override) {
             const src = rn2(3)
                 ? ((fem && game.urole?.name?.f) ? game.urole.name.f
                                                  : game.urole?.name?.m)
-                : rank_of(game.urole?.mnum | 0, u.ulevel | 0, fem);
+                : rank_of_mnum(u.ulevel | 0, game.urole?.mnum | 0, fem);
             const roletrap = String(src ?? "").slice(0, 27) + " trap";
             return roletrap.toLowerCase();
         } else if (nameidx >= TRAPNUM) {
@@ -5626,19 +5640,42 @@ export function lined_up(mtmp) {
  * inventory, so the guard is on the hot path for every offensive scan.  The
  * body proper (carrying(CORPSE) / linedup_chk_corpse / m_seenres) is not
  * ported and throws rather than silently declining to use the wand. */
+/* C mthrowu.c:1295-1327 linedup_callback with muse.c:1294 linedup_chk_corpse
+ * (sobj_at(CORPSE, x, y)) as the callback. */
+function _linedup_corpse(ax, ay, bx, by) {
+    const gt = game.gt || (game.gt = {});
+    gt.tbx = ax - bx;
+    gt.tby = ay - by;
+    if (!gt.tbx && !gt.tby)
+        return false;
+    if ((!gt.tbx || !gt.tby || Math.abs(gt.tbx) === Math.abs(gt.tby))
+        && Math.max(Math.abs(gt.tbx), Math.abs(gt.tby)) < 8) {
+        const dx = sgn_(ax - bx), dy = sgn_(ay - by);
+        do {
+            bx += dx, by += dy;
+            if (blocking_terrain(bx, by))
+                return false;
+            if (sobj_at(265, bx, by))
+                return true;
+        } while (bx !== ax || by !== ay);
+    }
+    return false;
+}
+function sgn_(n) { return n < 0 ? -1 : (n > 0 ? 1 : 0); }
 export function m_use_undead_turning(mtmp, obj) {
     if (!(obj && (obj.otyp | 0) === WAN_UNDEAD_TURNING && (obj.spe | 0) > 0))
         return;
-    /* KNOWN GAP — muse.c:1313-1359, the body proper: C decides whether the
-     * hero is carrying corpses worth turning (carrying(CORPSE)), whether a
-     * wielded cockatrice corpse makes this a defensive item instead, and
-     * whether any corpse lies on the line to the hero
-     * (linedup_chk_corpse), and only then sets gm.m.offensive /
-     * gm.m.has_offense = MUSE_WAN_UNDEAD_TURNING.  Missing dependencies:
-     * carrying (invent.c), linedup_chk_corpse and m_carrying_corpse (muse.c).
-     * Declining to select the wand is C's own outcome whenever those tests
-     * fail, and it is a void function, so returning is C-shaped.  Not thrown:
-     * a throw discards the replay's entire matched RNG prefix. */
+    const ax = (game.u.ux | 0) + sgn_(mtmp.mux - mtmp.mx) * 3;
+    const ay = (game.u.uy | 0) + sgn_(mtmp.muy - mtmp.my) * 3;
+    /* C muse.c:1313-1340 — hero carries a corpse, or one lies on the line
+     * from the monster to a point 3 steps beyond the hero. */
+    let carried = false;
+    for (let o = game.invent; o; o = o.nobj)
+        if ((o.otyp | 0) === 265 /* CORPSE */) { carried = true; break; }
+    if (carried || _linedup_corpse(ax, ay, mtmp.mx | 0, mtmp.my | 0)) {
+        game.offensive = obj;
+        game.has_offense = MUSE_WAN_UNDEAD_TURNING;
+    }
 }
 /* C ref: muse.c:1369-1391 mon_has_friends(mtmp) — "hostile monster has another
  * hostile next to it".  RNG-free.  m_at() here is the fmon walk (this file's

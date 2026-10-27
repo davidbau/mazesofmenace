@@ -43,7 +43,7 @@ import {
 import { t_at } from './trap.js';
 import { dist2 } from './hacklib.js';
 import { s_suffix } from './hacklib.js';
-import { is_safemon } from './uhitm.js';
+import { is_safemon, m_at } from './uhitm.js';
 import { mon_nam } from './uhitm.js';
 import { stairway_at, stairs_description, engr_at } from './mklev.js';
 /* hliquid: C do_name.c:1479 — the hallucination-substituted liquid word used by
@@ -812,12 +812,9 @@ export async function lookaround() {
             const typ = lev.typ;
 
             /* monster check */
-            let mtmp = null;
-            for (let m = game.fmon; m != null; m = m.nmon) {
-                if ((m.mhp | 0) < 1) continue; /* DEADMONSTER — C m_at/MON_AT reads the grid, which m_detach cleared */
-                if (m.mx === x && m.my === y) { mtmp = m; break; }
-            }
-            if (mtmp !== null
+            /* C m_at(): the map grid, which also holds long worm tail segments */
+            const mtmp = m_at(x, y);
+            if (mtmp != null
                 && M_AP_TYPE(mtmp) !== M_AP_FURNITURE
                 && M_AP_TYPE(mtmp) !== M_AP_OBJECT
                 && mon_visible(mtmp)) {

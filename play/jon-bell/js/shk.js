@@ -14,7 +14,7 @@ import { MIGR_APPROX_XY } from './const.js';
 import { ansimpleoname } from './objnam.js';
 import { stop_occupation } from './allmain.js';
 import { picking_at } from './lock.js';
-import { dochug } from './dochug.js';
+import { dochug, m_canseeu } from './dochug.js';
 import { newobj } from './game.js';
 import { pline, You_hear, Norep, topl_park_cursor, force_more } from './display.js';
 /* C pline.c You/Your — use the shared async formatters.  Sale settlement
@@ -25,7 +25,7 @@ import { canspotmon, canseemon as canseemon_real } from './display.js';
 import { highc, shtype_name, inside_shop, makemon, angry_guards, next_ident, mksobj, del_engr_at, mpickobj } from './mklev.js';
 import { is_demon, poly_gender } from './makemon.js';
 import { is_pick } from './dig.js';
-import { ECMD_OK, ECMD_TIME, ESHK, SHARED, SHARED_PLUS, NO_ROOM, COLNO, ROWNO, IS_DOOR, IS_ROOM, IS_WALL, SHOPBASE, CANDLESHOP, D_BROKEN, D_CLOSED, BILLSZ, Has_contents, isok, u_at, ROOMOFFSET, RLOC_MSG, DEAF, INVIS, PASSES_WALLS, QBUFSZ, LL_ACHIEVE, G_GONE, MM_NOMSG, CONFLICT, REPAIR_DELAY, BOLT_LIM, ZAP_POS, D_LOCKED, LANDMINE, BEAR_TRAP, PIT, SPIKED_PIT, HOLE, ACH_SHOP } from './const.js';
+import { ECMD_OK, ECMD_TIME, ESHK, SHARED, SHARED_PLUS, NO_ROOM, COLNO, ROWNO, IS_DOOR, IS_ROOM, IS_WALL, SHOPBASE, CANDLESHOP, D_BROKEN, D_CLOSED, BILLSZ, Has_contents, isok, u_at, ROOMOFFSET, RLOC_MSG, DEAF, INVIS, PASSES_WALLS, QBUFSZ, LL_ACHIEVE, G_GONE, MM_NOMSG, CONFLICT, REPAIR_DELAY, BOLT_LIM, ZAP_POS, D_LOCKED, LANDMINE, BEAR_TRAP, PIT, SPIKED_PIT, HOLE, ACH_SHOP, M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, DETECT_MONSTERS } from './const.js';
 import { PM_KNIGHT, PM_SAMURAI, PM_TOURIST, PM_VALKYRIE, PM_SHOPKEEPER, PM_ROGUE, PM_KEYSTONE_KOP, PM_KOP_SERGEANT, PM_KOP_LIEUTENANT, PM_KOP_KAPTAIN } from './pm.generated.js';
 import { goodpos } from './trap.js';
 import { t_at, deltrap } from './trap.js';
@@ -1029,7 +1029,7 @@ export async function dopay() {
             }
             const chosen = m_at(cx, cy);
             if (!cansee(cx, cy) && (!chosen || !canspotmon(chosen))) {
-                await pline(`You can't ${Blind ? 'see' : 'sense'} anyone there.`);
+                await pline(`You can't ${Blind ? 'sense' : 'see'} anyone there.`);
                 return ECMD_OK;
             }
             if (!chosen) {
@@ -1037,7 +1037,8 @@ export async function dopay() {
                 return ECMD_OK;
             }
             if (!chosen.isshk) {
-                await pline(`${y_monnam_shk(chosen)} is not interested in your payment.`);
+                // C shk.c:1841 uses Monnam(), including its article and capitalization.
+                await pline(`${Monnam_chat(chosen)} is not interested in your payment.`);
                 return ECMD_OK;
             }
             if (chosen !== resident && !m_next2u(chosen)) {
@@ -1264,6 +1265,35 @@ export function sellobj_state(deliberate) {
     game.gs.sell_how = deliberate;
     // C: ga.auto_credit = FALSE;
     game.ga.auto_credit = false;
+}
+
+/* C shk.c:722 deserted_shop(): message when entering an untended shop. */
+let empty_shops = ''; /* C shk.c static char empty_shops[5] */
+function _shk_prop(p) {
+    const bp = game.u?.uprops?.[p];
+    return !!bp && !!((bp.intrinsic | 0) || (bp.extrinsic | 0)) && !(bp.blocked | 0);
+}
+function deserted_shop(enterstring) {
+    const g = game;
+    const r = g.level?.rooms?.[enterstring.charCodeAt(0) - ROOMOFFSET];
+    let m = 0, n = 0;
+    for (let x = r.lx; x <= r.hx; ++x)
+        for (let y = r.ly; y <= r.hy; ++y) {
+            if (u_at(x, y))
+                continue;
+            const mtmp = m_at(x, y);
+            if (mtmp) {
+                ++n;
+                const ap = M_AP_TYPE(mtmp);
+                if (sensemon(mtmp) || ((ap === M_AP_NOTHING || ap === M_AP_MONSTER)
+                                       && canseemon_real(mtmp)))
+                    ++m;
+            }
+        }
+    /* Blind_telepat = Blind && Telepat (youprop.h) */
+    if (_shk_Blind() && !((_shk_prop(TELEPAT)) || _shk_prop(DETECT_MONSTERS)))
+        ++n; /* force feedback to be less specific */
+    pline(`This shop ${(m < n) ? 'seems to be' : 'is'} ${!n ? 'deserted' : 'untended'}.`);
 }
 
 /**
@@ -2183,14 +2213,15 @@ export function Shk_Your(buf, obj) {
     return highc(s.charAt(0)) + s.slice(1);
 }
 
+/* C shk.c:1039-1049: shared boundary squares belong only to the rooms
+ * returned by in_rooms(), which need not include this shopkeeper's shop. */
 export function inhishop(shkp) {
     const eshkp = ESHK(shkp);
     if (!eshkp) return false;
-    const loc = game.level?.locations?.[shkp.mx | 0]?.[shkp.my | 0];
-    if (!loc) return false;
-    const rno = loc.roomno | 0;
-    const shoproom = eshkp.shoproom | 0;
-    return rno === shoproom || rno === SHARED;
+    if (!on_level(eshkp.shoplevel, game.u.uz))
+        return false;
+    return in_rooms(shkp.mx | 0, shkp.my | 0, SHOPBASE)
+        .includes(eshkp.shoproom | 0);
 }
 
 /* C ref: shk.c:1117 tended_shop(sroom)
@@ -2331,7 +2362,7 @@ export async function shk_move(shkp) {
         gty = u.uy | 0;
     } else if (!(shkp.mpeaceful | 0)) { /* C shk.c:4952 ANGRY(shkp) */
         /* C shk.c:4953-4958: move toward hero if shk can see him. */
-        if ((shkp.mcansee | 0) && m_canseeu_shk(shkp)) {
+        if ((shkp.mcansee | 0) && m_canseeu(shkp)) {
             gtx = u.ux | 0;
             gty = u.uy | 0;
         }
@@ -2425,12 +2456,6 @@ function _ushops0_shk(u) {
     if (typeof us === 'string') return us.length ? us.charCodeAt(0) : 0;
     if (Array.isArray(us)) return us[0] | 0;
     return us | 0;
-}
-
-function m_canseeu_shk(_shkp) {
-    const u = game.u || {};
-    const Invis = _shk_Invis();
-    return !Invis && !u.uundetected;
 }
 
 async function make_happy_shk(shkp, silentkops) { // C shk.c:1395-1436
@@ -2789,7 +2814,21 @@ export async function u_entered_shop(enterstring) {
         return;
     const rmno = enterstring.charCodeAt(0);
     const shkp = shop_keeper(rmno);
-    if (!shkp || !inhishop(shkp)) {
+    if (!shkp) {
+        if (!empty_shops.includes(enterstring[0])
+            && (in_rooms(u.ux | 0, u.uy | 0, SHOPBASE).join()
+                !== in_rooms(u.ux0 | 0, u.uy0 | 0, SHOPBASE).join()))
+            deserted_shop(enterstring);
+        empty_shops = typeof u.ushops === 'string' ? u.ushops : '';
+        u.ushops = '';
+        return;
+    }
+    if (!inhishop(shkp)) {
+        /* C sets eshkp->bill_p to a poison pointer here ("dump core when
+         * referenced"); nothing reads it before the next entry resets it. */
+        if (!empty_shops.includes(enterstring[0]))
+            deserted_shop(enterstring);
+        empty_shops = typeof u.ushops === 'string' ? u.ushops : '';
         u.ushops = '';
         return;
     }
@@ -3976,9 +4015,12 @@ function likes_magic_fp(mndx) { return (monMflags2_fp(mndx) & M2_MAGIC) !== 0; }
 
 // C mon.c add_to_minv — untracked by this task's diff fields (monster
 // inventory chains aren't part of finish_paybill's state_diff_fields), so
-function add_to_minv_fp(_mtmp, _otmp) { }
+async function add_to_minv_fp(mtmp, otmp) {
+    const { add_to_minv } = await import('./mklev.js'); // C mkobj.c:2648
+    return add_to_minv(mtmp, otmp);
+}
 
-function give_to_nearby_mon(otmp, x, y) {
+async function give_to_nearby_mon(otmp, x, y) {
     let selected = null;
     let nmon = 0;
     for (let xx = x - 1; xx <= x + 1; xx++) {
@@ -3999,7 +4041,7 @@ function give_to_nearby_mon(otmp, x, y) {
         }
     }
     if (selected && can_carry(selected, otmp))
-        add_to_minv_fp(selected, otmp);
+        await add_to_minv_fp(selected, otmp);
     else
         place_object(otmp, x, y);
 }
@@ -4043,10 +4085,7 @@ export async function drop_upon_death(mtmp, cont, x, y) {
     const g = game;
     let otmp;
     while ((otmp = g.invent) != null) {
-        // obj_extract_self(otmp): otmp is always the OBJ_INVENT head here,
-        // so extraction is the freeinv() unlink of that head.
-        g.invent = otmp.nobj;
-        otmp.nobj = null;
+        await freeinv(otmp); // C bones.c:273: extract from OBJ_INVENT.
 
         if (!mtmp || is_undead(mtmp.data))
             obj_no_longer_held(otmp);
@@ -4062,19 +4101,24 @@ export async function drop_upon_death(mtmp, cont, x, y) {
             curse_fp(otmp);
 
         if (mtmp)
-            add_to_minv_fp(mtmp, otmp);
+            await add_to_minv_fp(mtmp, otmp);
         else if (cont)
             await add_to_container(cont, otmp);
         else if (!rn2_shk(8))
-            give_to_nearby_mon(otmp, x, y);
+            await give_to_nearby_mon(otmp, x, y);
         else
             place_object(otmp, x, y);
     }
     if (cont)
-        cont.owt = weight_fp(cont);
+        cont.owt = weight(cont); // C bones.c:302: include the statue's contents.
 }
-// C mkobj.c curse(otmp) — clear blessed, set cursed.
-function curse_fp(otmp) { if (otmp) { otmp.blessed = 0; otmp.cursed = 1; } }
+// C mkobj.c curse(otmp) — clear blessed, set cursed; coins are never cursed
+// (mkobj.c:1787 `if (otmp->oclass == COIN_CLASS) return;`).
+function curse_fp(otmp) {
+    if (!otmp || (otmp.oclass | 0) === COIN_CLASS) return;
+    otmp.blessed = 0;
+    otmp.cursed = 1;
+}
 // C nethack-c/include/mondata.h:95
 //   #define is_undead(ptr) (((ptr)->mflags2 & M2_UNDEAD) != 0L)
 // M2_UNDEAD == 0x00000002L (nethack-c/include/monflag.h:124).
@@ -4083,11 +4127,6 @@ function curse_fp(otmp) { if (otmp) { otmp.blessed = 0; otmp.cursed = 1; } }
 // `!mtmp ||`, so ptr is always non-null when this is reached.
 const M2_UNDEAD = 0x00000002; /* monflag.h:124 */
 function is_undead(data) { return ((data.mflags2 | 0) & M2_UNDEAD) !== 0; }
-// C mkobj.c weight(obj) — only reached when drop_upon_death's `cont` argument is
-// truthy.  finish_paybill() passes 0 and savebones() (js/bones.js, ported) passes
-// null, so no live caller reaches it; C's only truthy-cont caller is savebones'
-// to say, and that has not been true since savebones landed.)
-function weight_fp(obj) { return obj ? (obj.owt | 0) : 0; }
 
 export async function finish_paybill() {
     const g = game;

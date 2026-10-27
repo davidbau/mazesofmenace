@@ -1579,11 +1579,10 @@ import { rnd, rn2 } from './rng.js';
 /* C options.c:8194 makesingular(), :8204-8212 OBJ_NAME over the FOOD_CLASS
  * range, :8230-8236 name_to_mon()/ismnum() — fruitadd's user_specified name
  * rewrite reads all four. */
-import { makesingular, makeplural } from './objnam.js';
+import { makesingular, makeplural, objName } from './objnam.js';
 import { name_to_mon } from './makemon.js';
 import { ROLE_NONE, gs, ismnum, RUN_TPORT, RUN_LEAP, RUN_STEP, RUN_CRAWL,
     PARANOID_BONES } from './const.js';
-import { OC_NAME } from './oc_name_data.js';
 import { MKOBJ_OC_CLASS, MKOBJ_SVB_BASES } from './mkobj_data.js';
 const FOOD_CLASS = 7;
 
@@ -1852,7 +1851,9 @@ function _fruit_name_rewrite(nameIn) {
     const NUM_OBJECTS = MKOBJ_OC_CLASS.length;
     for (let i = MKOBJ_SVB_BASES[FOOD_CLASS] | 0;
          i < NUM_OBJECTS && (MKOBJ_OC_CLASS[i] | 0) === FOOD_CLASS; i++) {
-        const on = OC_NAME[i];
+        /* initoptions_finish (options.c:7341) renames SLIME_MOLD to "fruit";
+         * the collision scan needs OBJ_NAME's runtime name. */
+        const on = objName(i);
         if (on == null) continue;
         if (on === plf || (globpfx > 0 && on === plf.slice(globpfx))) {
             found = true;

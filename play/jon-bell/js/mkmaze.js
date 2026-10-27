@@ -28,7 +28,7 @@ import { newsym, dec_mode } from './display.js';
 import { t_at } from './trap.js';
 import { remove_worm } from './worm.js';
 import { mnearto, mnexto, elemental_clog } from './teleport.js';
-import { MON_BUBBLEMOVE } from './const.js';
+import { MON_BUBBLEMOVE, DEAF } from './const.js';
 /* The makemaz maze fallback (mkmaze.c:1197-1222) and populate_maze
  * (mkmaze.c:1095-1124) call these; all are C mklev.c/mkobj.c bodies that
  * already live in js/mklev.js. */
@@ -818,7 +818,10 @@ export async function fumaroles() {
                 loud = true;
         }
     }
-    if (snd)
+    /* C mkmaze.c:1512 `snd && !Deaf`; youprop.h Deaf = intrinsic||extrinsic||roleplay */
+    const _dp = game.u?.uprops?.[DEAF];
+    const _deaf = !!(_dp && ((_dp.intrinsic | 0) || (_dp.extrinsic | 0))) || !!(game.u?.HDeaf | 0) || !!game.u?.uroleplay?.deaf;
+    if (snd && !_deaf)
         await Norep(`You hear a ${loud ? 'loud ' : ''}whoosh!`);
 }
 

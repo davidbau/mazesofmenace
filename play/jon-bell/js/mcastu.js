@@ -454,10 +454,10 @@ export async function mcast_death_touch(mtmp) {
 
     pline(`Oh no, ${mhe(mtmp)}'s using the touch of death!`);
     if (nonliving(ydata) || is_demon(ydata)) {
-        You('seem no deader than before.');
+        await You('seem no deader than before.');
     } else if (!Antimagic() && rn2(mtmp.m_lev | 0) > 12) {
         if (Hallucination()) {
-            You('have an out of body experience.');
+            await You('have an out of body experience.');
         } else {
             await touch_of_death(mtmp);
         }
@@ -1378,7 +1378,7 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
         await mon_spell_hits_spot(mtmp, AD_COLD, game.u.ux, game.u.uy);
         break;
     case AD_MAGM:
-        You('are hit by a shower of missiles!');
+        await You('are hit by a shower of missiles!');
         if (Antimagic()) {
             shieldeff(game.u.ux, game.u.uy);
             pline_The('missiles bounce off!');
@@ -1478,7 +1478,7 @@ function is_minion(data) {
 }
 
 // monst.h:279-280 is_lminion(mon) — is_minion(mon->data) && lawful.
-function is_lminion(mtmp) {
+export function is_lminion(mtmp) {
     return is_minion(mtmp.data) && mon_aligntyp(mtmp) === A_LAWFUL;
 }
 

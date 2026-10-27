@@ -28,7 +28,7 @@ import {
     ACH_TUNE, STRAT_WAITMASK,
 } from './const.js';
 import { MKOBJ_OC_MAGIC } from './mkobj_erosion_meta.js';
-import { fillholetyp_, liquid_flow_, set_utrap, cvt_sdoor_to_door } from './dig.js';
+import { fillholetyp_, liquid_flow_, set_utrap, cvt_sdoor_to_door, close_drawbridge, open_drawbridge } from './dig.js';
 import { maketrap, t_at, reset_utrap, selftouch } from './trap.js';
 import { sobj_at, obj_extract_self, in_rooms } from './mklev.js';
 import { add_damage } from './shk.js';
@@ -796,7 +796,7 @@ export async function do_play_instrument(instr) {
         return (await do_improvisation(instr)) ? ECMD_TIME : ECMD_OK;
 
     /* C music.c:786-893 — play the castle passtune or enter a candidate. */
-    if ((u.uheard_tune | 0) === 2)
+    if ((u.uevent.uheard_tune | 0) === 2)
         c = await yn_function("Play the passtune?", ynqchars, 'q');
     if (c === 'q') {
         await pline("Never mind.");
@@ -806,8 +806,13 @@ export async function do_play_instrument(instr) {
     if (c === 'y') tune = String(game._tune || '');
     else {
         tune = await getlin("What tune are you playing? [5 notes, A-G]");
-        if (tune === '') return ECMD_OK;
-        tune = tune.trim().replace(/\s+/g, '').toUpperCase().replace(/H/g, 'B');
+        /* C music.c:794-796 mungspaces(buf); if (*buf == '\033') goto nevermind; */
+        tune = tune.trim().replace(/\s+/g, ' ');
+        if (tune[0] === '\x1b') {
+            await pline("Never mind.");
+            return ECMD_OK;
+        }
+        tune = tune.replace(/\s+/g, '').toUpperCase().replace(/H/g, 'B');
     }
     await pline(!Deaf() ? `You extract a strange sound from ${the(xname(instr))}!`
                          : `You can feel ${the(xname(instr))} emitting vibrations.`);
@@ -824,36 +829,17 @@ export async function do_play_instrument(instr) {
                 }
             if (found) {
                 const bridge = game.level.at(bx.value, by.value);
-                const dir = (bridge.drawbridgemask | 0) & DB_DIR;
-                let wx = bx.value, wy = by.value;
-                if (dir === DB_NORTH) wy--; else if (dir === DB_SOUTH) wy++;
-                else if (dir === DB_EAST) wx++; else if (dir === DB_WEST) wx--;
-                const wall = game.level.at(wx, wy);
-                u.uheard_tune = 2; record_achievement(ACH_TUNE);
-                // C music.c:824-829 / dbridge.c:788-798,853-860:
-                // announce the bridge before changing terrain or running the turn.
-                const visible = cansee(bx.value, by.value) || cansee(wx, wy);
-                const nearerWall = dist2(u.ux, u.uy, wx, wy) < dist2(u.ux, u.uy, bx.value, by.value);
-                if ((bridge.typ | 0) === DRAWBRIDGE_DOWN) {
-                    if (visible) await You_see('a drawbridge %s up!',
-                        (((u.ux === bx.value || u.uy === by.value) && !u.uinwater) || nearerWall) ? 'coming' : 'going');
-                    else await You_hear('chains rattling and gears turning.');
-                    bridge.typ = DRAWBRIDGE_UP;
-                    if (wall) { wall.typ = DBWALL; wall.wall_info = W_NONDIGGABLE; }
-                } else {
-                    if (visible) await You_see('a drawbridge %s down!', nearerWall ? 'going' : 'coming');
-                    else await You_hear('gears turning and chains rattling.');
-                    bridge.typ = DRAWBRIDGE_DOWN;
-                    if (wall) { wall.typ = DOOR; wall.doormask = D_NODOOR; }
-                    u.uopened_dbridge = true;
-                }
-                newsym(bx.value, by.value); newsym(wx, wy);
-                /* C dbridge.c:878 open_drawbridge: unblock_point(x2, y2) (vision) */
-                if ((bridge.typ | 0) === DRAWBRIDGE_DOWN) unblock_point(wx, wy);
+                u.uevent.uheard_tune = 2; record_achievement(ACH_TUNE);
+                // C music.c:824-827: the shared dbridge.c transitions handle
+                // occupants (e_missed/e_jumps), objects, traps and vision.
+                if ((bridge.typ | 0) === DRAWBRIDGE_DOWN)
+                    await close_drawbridge(bx.value, by.value);
+                else
+                    await open_drawbridge(bx.value, by.value);
                 return ECMD_TIME;
             }
         } else if (!Deaf()) {
-            if ((u.uheard_tune | 0) < 1) u.uheard_tune = 1;
+            if ((u.uevent.uheard_tune | 0) < 1) u.uevent.uheard_tune = 1;
             let nearby = false;
             for (let y = (u.uy | 0) - 1; y <= (u.uy | 0) + 1; y++)
                 for (let x = (u.ux | 0) - 1; x <= (u.ux | 0) + 1; x++) {
@@ -874,7 +860,7 @@ export async function do_play_instrument(instr) {
                 } else if (gears) {
                     await You_hear('%d gear%s turn.', gears, gears === 1 ? '' : 's');
                 }
-                if (!tumblers && gears === 5) { u.uheard_tune = 2; record_achievement(ACH_TUNE); }
+                if (!tumblers && gears === 5) { u.uevent.uheard_tune = 2; record_achievement(ACH_TUNE); }
             }
         }
     }

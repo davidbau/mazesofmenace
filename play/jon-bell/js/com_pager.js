@@ -11,7 +11,7 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { rank_of, role_index_by_name } from './rank_data.js';
-import { COLNO, ROWNO, A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA } from './const.js';
+import { COLNO, ROWNO, A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, gs, PRIMARYSET, H_UTF8 } from './const.js';
 import { acurr } from './attrib.js';
 import { describe_level_buf } from './dungeon.js';
 // WRITE-ONLY route-attribution telemetry (inert unless NH_ROUTE_TELEMETRY=1 —
@@ -22,8 +22,8 @@ import { menu_heading_text } from './tty_menu.js'; /* C strutil.c:151 — MENU_S
 // putmsghistory: feed the quest synopsis into the ^P message-history ring.
 import { putmsghistory, _strengthStr, force_more, force_more_pages, await_more_dismiss,
          await_topl_more_dismiss, pline_flush_point,
-         botl_pmname, botl_upstart_words, botl_mon_mlevel, botl_title,
-         gold_status_char, dec_mode, rogue_graphics, rogue_hero_showrace_cell, rogue_ibm_color, botl_status_suffix, fit_status_line_width, status_row_finish, _statusRows3, _threeStatusLines, docrt_flags, flush_screen, use_last_flush_snapshot, hitpointbar_status1, _hilite_status_wrap, _status_sgr, _status_row1_map_overlay, _status_row1_whole_with_tail } from './display.js';
+         botl_pmname, botl_upstart_words, botl_mon_mlevel, botl_title, botl_frozen_status_line,
+         gold_status_char, dec_mode, generic_symset, rogue_graphics, rogue_hero_showrace_cell, rogue_ibm_color, botl_status_suffix, fit_status_line_width, status_row_finish, _statusRows3, _threeStatusLines, docrt_flags, flush_screen, use_last_flush_snapshot, hitpointbar_status1, _hilite_status_wrap, _status_sgr, _status_row1_map_overlay, _status_row1_whole_with_tail } from './display.js';
 // ── ANSI color helpers (inlined from display.js — not exported there) ──
 const ANSI_DEFAULT = 39;
 // C ref: color.h:10-14 — CLR_BLACK(0) renders as bright-black (90); CLR_GRAY(7)
@@ -153,6 +153,11 @@ function render_map_row_clipped(y, clipX) {
      * (blank after a cls) -- the same rule as js/display.js _snapCellAt. */
     const cellAt = (x) => {
         const loc = game.level.at(x, y);
+        if (loc?.disp_capture_cell) {
+            const p = loc.disp_capture_cell;
+            return { disp_ch: p.ch, disp_color: p.color,
+                     disp_decgfx: p.dec, disp_attr: p.attr };
+        }
         if (loc?.disp_ch === '\x01') {
             const p = game._epyxPhys?.get(y * COLNO + x);
             return { disp_ch: p?.ch ?? ' ', disp_color: p?.color ?? NO_COLOR,
@@ -192,7 +197,8 @@ function render_map_row_clipped(y, clipX) {
     for (let x = firstCol; x <= lastCol; x++) {
         const loc = cellAt(x);
         const ch = loc?.disp_ch ?? ' ';
-        const color = ((rogueMap && !rogueColor) || game.iflags?.use_color === false)
+        const color = ((rogueMap && !rogueColor) || (((game._gm_corner && x >= game._gm_corner.col - 1 && y + 1 < game._gm_corner.rows)
+                ? game.iflags?.use_color : (game._gm_use_color ?? game.iflags?.use_color)) === false))
             ? ((rogueMap && !rogueColor && rogue_hero_showrace_cell(x, y)) ? CLR_WHITE : NO_COLOR)
             : (loc?.disp_color ?? NO_COLOR);
         /* C termcap.c g_putch/SYMHANDLING(H_DEC) decides the SO shift when a cell is
@@ -200,7 +206,7 @@ function render_map_row_clipped(y, clipX) {
          * dismissed over since still hold their old SO-shifted bytes (game._decStaleFrom);
          * a repainted row prints the stored char raw. */
         const dec = !rogueMap && !!loc?.disp_decgfx
-            && (dec_mode() || (game._decStaleFrom != null && y + 1 >= game._decStaleFrom));
+            && (dec_mode() || generic_symset() || (game._decStaleFrom != null && y + 1 >= game._decStaleFrom));
         const inverse = !!((loc?.disp_attr | 0) & 1 /* ATR_INVERSE */);
         /* A blank glyph carrying ATR_INVERSE (a sensed ghost, S_ghost ' ' with
          * the detected-monster highlight) is a painted glyph in C, not a gap
@@ -363,10 +369,22 @@ function _overlay_status_line(base, col, text) {
     out += text;
     return out;
 }
+export function tty_text_window_utf8_line(line) {
+    const row = String(line);
+    if (gs.symset?.[rogue_graphics() ? 1 : PRIMARYSET]?.handling !== H_UTF8)
+        return row;
+    return row.replace(/^((?:\x1b\[[0-9;]*m)*)(.)(.*?)((?:\x1b\[[0-9;]*m)*)$/,
+        (_, start, first, rest, end) => ' ' + start + (rest || first) + end);
+}
 export function build_text_window_screen(lines) {
     const rows = new Array(24).fill('');
-    for (let i = 0; i < lines.length && i < 23; i++)
-        rows[i] = _encode_blank_runs(String(lines[i]).replace(/\s+$/, ''));
+    for (let i = 0; i < lines.length && i < 23; i++) {
+        /* process_text_window (wintty.c:1810) prints at most cols-1 = 79 chars */
+        let row = tty_text_window_utf8_line(lines[i]);
+        if (row.length > 79 && !row.includes('\x1b'))
+            row = row.slice(0, 79);
+        rows[i] = _encode_blank_runs(row.replace(/\s+$/, ''));
+    }
     rows[23] = '--More--';
     return rows.join('\n');
 }
@@ -390,12 +408,12 @@ export function tty_fit_text_lines(lines) {
             let i = CO - 1;
             while (i > 0 && str.charAt(i) !== ' ')
                 i--;
+            /* wintty.c:2412-2419: `if (i)` — with no blank to break at the
+             * line is NOT split; process_text_window clips it to cols-1. */
             if (!i)
-                i = CO - 2;
+                break;
             emit(str.slice(0, i));
-            /* C skips the blank it broke at; with no blank (i == CO - 2) the
-             * next line resumes at the break column itself. */
-            str = str.charAt(i) === ' ' ? str.slice(i + 1) : str.slice(i);
+            str = str.slice(i + 1);
         }
         emit(str);
     }
@@ -832,7 +850,7 @@ function _cp_rank_of(ulevel, roleName, female) {
     return rank_of(idx, ulevel, female);
 }
 /* C wintty.c:5216-5240: status keeps its field highlights under a menu. */
-function _statusLine1() { return _status_sgr(_hilite_status_wrap(_statusLine1Raw())); }
+function _statusLine1() { return botl_frozen_status_line(1) ?? _status_sgr(_hilite_status_wrap(_statusLine1Raw())); }
 function _statusLine1Raw() {
     const g = game;
     const u = g.u;
@@ -889,7 +907,7 @@ export function money_cnt(otmp) {
 // C ref: botl.c — status line 2 format.
 // Respects flags.showexp and flags.time options.
 // Note: uac passed as parameter to allow caller control (step 0 = pre-find_ac, step 1+ = current).
-function _statusLine2(uacOverride, pwOverride) { return _status_sgr(_hilite_status_wrap(_statusLine2Raw(uacOverride, pwOverride))); }
+function _statusLine2(uacOverride, pwOverride) { return botl_frozen_status_line(2) ?? _status_sgr(_hilite_status_wrap(_statusLine2Raw(uacOverride, pwOverride))); }
 function _statusLine2Raw(uacOverride, pwOverride) {
     const g = game;
     const u = g.u;
@@ -927,7 +945,7 @@ function _statusLine2Raw(uacOverride, pwOverride) {
     _hp = Math.min(_hp, 9999);
     const _hpmax = Math.min(Upolyd ? (u.mhmax | 0) : (u.uhpmax || 0), 9999);
     const _leveldescField = describe_level_buf(1, u.uz).replace(/ +$/, '');
-    let s = `${_leveldescField} ${gold_status_char()}:${gold} HP:${_hp}(${_hpmax}) Pw:${uen}(${uenmax}) AC:${uac}`;
+    let s = `${_leveldescField} ${gold_status_char(gold)}:${gold} HP:${_hp}(${_hpmax}) Pw:${uen}(${uenmax}) AC:${uac}`;
     if (Upolyd) {
         s += ` HD:${botl_mon_mlevel(u.umonnum | 0)}`;
     }

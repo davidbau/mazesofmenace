@@ -5,7 +5,7 @@
 // C ref: nethack-c/src/mklev.c:1055-1132 (fill_supply_chest body)
 //        nethack-c/src/mkobj.c:2680-2699  (add_to_container)
 import { rn2 } from './rng.js';
-import { mksobj, mkobj, add_to_container, newoextra, newomid, copy_mextra } from './mklev.js';
+import { mksobj, mkobj, add_to_container, newoextra, newomid, copy_mextra, attach_fig_transform_timeout, dead_species } from './mklev.js';
 const OBJ_CONTAINED = 2; // C: obj.h OBJ_CONTAINED
 import { permonstTemplate } from './makemon.js';
 import { forget_temple_entry } from './priest.js';
@@ -396,15 +396,11 @@ export function curse(otmp) {
         otmp.owt = weight(otmp);
     } else if ((otmp.otyp | 0) === _BC_FIGURINE) {
         /* C:1805-1809 — a cursed figurine of a still-living species that is
-         * carried (by hero or monster) gets a transform timer:
-         *     if (otmp->corpsenm != NON_PM && !dead_species(otmp->corpsenm, TRUE)
-         *         && (carried(otmp) || mcarried(otmp)))
-         *         attach_fig_transform_timeout(otmp);
-         * Omitted for the same reason as (a)/(b): attach_fig_transform_timeout
-         * has no real body anywhere in js/ — js/mklev.js:1246 is an empty stub
-         * and js/cmd.js:39420 is a throw, and neither is exported.  RNG-free, so
-         * the draw order is unaffected; left as a comment rather than a call to
-         * a stub so the gap stays visible at the line it belongs on. */
+         * carried (by hero or monster) gets a transform timer. */
+        if ((otmp.corpsenm | 0) >= 0 && otmp.corpsenm != null
+            && !dead_species(otmp.corpsenm | 0, true)
+            && (_bc_carried(otmp) || otmp.ocarry))
+            attach_fig_transform_timeout(otmp);
     } else if ((otmp.oclass | 0) === _BC_SPBOOK_CLASS) {
         /* if book hero is reading becomes cursed, interrupt */
         if (!already_cursed)

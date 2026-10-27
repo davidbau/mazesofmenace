@@ -259,13 +259,14 @@ function _vision_rebuild_grid() {
 /* One row of the rebuild above; rows are independent (each reads only
  * _blocks(level, x, y) for its own y), so block_point() & co. rebuild just the
  * row they touch instead of the whole 21x80 grid. */
-function _vision_rebuild_row(level, y) {
+function _vision_rebuild_row(level, y, isblocked = (x) => _blocks(level, x, y)) {
     {
+        const cur = Array.from(viz_clear[y], (_v, x) => x >= 1 && isblocked(x));
         viz_clear[y].fill(0);
         let dig_left = 0;
         let block = true;
         for (let x = 1; x < COLNO; x++) {
-            const cur_block = _blocks(level, x, y);
+            const cur_block = cur[x];
             if (block !== cur_block) {
                 if (block) {
                     for (let i = dig_left; i < x; i++) {
@@ -821,7 +822,11 @@ export function vision_recalc(control = 0) {
         /* C ref: vision.c:589-604 — Underwater (not the Plane of Water): the
          * hero sees only the surrounding locations that are also pool; every
          * other square, lit or not, is neither COULD_SEE nor IN_SIGHT. */
-        if (u.uinwater && !Is_waterlevel(u.uz)) {
+        // C vision.c:583-585: Rogue vision takes precedence over the
+        // underwater and pit restrictions in the ordinary-vision branch.
+        if (Is_rogue_level(u.uz)) {
+            rogue_vision(next, next_rmin, next_rmax);
+        } else if (u.uinwater && !Is_waterlevel(u.uz)) {
             for (let row = (u.uy | 0) - 1; row <= (u.uy | 0) + 1; row++) {
                 for (let col = Math.max((u.ux | 0) - 1, 1); col <= (u.ux | 0) + 1; col++) {
                     if (!isok(col, row) || !is_pool(col, row))
@@ -840,8 +845,6 @@ export function vision_recalc(control = 0) {
                 for (let col = next_rmin[row]; col <= next_rmax[row]; col++)
                     next[row][col] = IN_SIGHT | COULD_SEE;
             }
-        } else if (Is_rogue_level(u.uz)) {
-            rogue_vision(next, next_rmin, next_rmax);
         } else {
             view_from(u.uy, u.ux, next, next_rmin, next_rmax);
         }
@@ -1110,18 +1113,60 @@ export function howmonseen(mon) {
         how |= MONSEEN_WARNMON;
     return how;
 }
-// C ref: vision.c:853 block_point(x, y) — make the location opaque to light.
-// C ref: vision.c:887 unblock_point(x, y) — make the location transparent.
+// C ref: vision.c:865 block_point(x, y) — make the location opaque to light.
+// C ref: vision.c:899 unblock_point(x, y) — make the location transparent.
 // In C these incrementally edit the viz_clear/left_ptrs/right_ptrs arrays via
-// fill_point()/dig_point().  Our JS viz_clear is a pure function of the level
-// grid (rebuilt wholesale by vision_reset from _blocks()), so a single
-// vision_reset() reproduces the same final block state as the incremental
-// C edit.  Both fns then set vision_full_recalc if the cell was could-see
+// fill_point()/dig_point() UNCONDITIONALLY: neither consults does_block(), so
+// viz_clear is STATE, not a function of the grid (only vision_reset() and
+// recalc_block_point() ask does_block()).  Unblocking rebuilds the row from
+// the current viz_clear with just <x,y> forced to `blocked`.  This wrapper
+// used to rebuild the row from _blocks(), which let does_block()'s
+// visible_region_at() arm re-block a Plane of Water bubble cell that
+// mv_bubble() had just unblock_point()ed under a poison-gas cloud (mkmaze.c:
+// 2020): C's couldsee() runs straight through it, ours did not, and linedup()
+// drew rn2(2 + boulderspots) (mthrowu.c:1369) that C never draws.  Both fns
+// then set vision_full_recalc if the cell was could-see
 // (C: "if (viz_array[y][x]) vision_full_recalc = 1") so the next vision_recalc
 // re-derives visibility through the now-changed cell.
-function _block_or_unblock(x, y) {
-    if (game.level && y >= 0 && y < ROWNO)
-        _vision_rebuild_row(game.level, y);
+// C vision.c:1050-1128 fill_point: preserve incremental pointer updates,
+// including the end-case writes to a blocked boundary column.
+function _fill_point(row, col) {
+    const clear = viz_clear[row], left = left_ptrs[row], right = right_ptrs[row];
+    if (!clear[col]) return;
+    clear[col] = 0;
+    let i;
+    if (col === 0) {
+        right[0] = clear[1] ? 0 : right[1];
+        if (!clear[1]) for (i = 1; i <= right[1]; i++) left[i] = 0;
+    } else if (col === COLNO - 1) {
+        left[col] = clear[col - 1] ? col : left[col - 1];
+        if (!clear[col - 1]) for (i = left[col - 1]; i < col; i++) right[i] = col;
+    } else if (clear[col - 1] && clear[col + 1]) {
+        for (i = left[col - 1] + 1; i <= col; i++) right[i] = col;
+        if (!left[col - 1]) right[0] = col;
+        for (i = col; i < right[col + 1]; i++) left[i] = col;
+        if (right[col + 1] === COLNO - 1) left[COLNO - 1] = col;
+    } else if (clear[col - 1]) {
+        for (i = col; i <= right[col + 1]; i++) left[i] = col;
+        for (i = left[col - 1] + 1; i < col; i++) right[i] = col;
+        if (!left[col - 1]) right[i] = col;
+        right[col] = right[col + 1];
+    } else if (clear[col + 1]) {
+        for (i = left[col - 1]; i <= col; i++) right[i] = col;
+        for (i = col + 1; i < right[col + 1]; i++) left[i] = col;
+        if (right[col + 1] === COLNO - 1) left[i] = col;
+        left[col] = left[col - 1];
+    } else {
+        for (i = left[col - 1]; i <= col; i++) right[i] = right[col + 1];
+        for (i = col; i <= right[col + 1]; i++) left[i] = left[col - 1];
+    }
+}
+function _block_or_unblock(x, y, blocked) {
+    if (game.level && y >= 0 && y < ROWNO && blocked)
+        _fill_point(y, x);
+    else if (game.level && y >= 0 && y < ROWNO)
+        _vision_rebuild_row(game.level, y,
+                            (cx) => (cx === x ? blocked : !viz_clear[y][cx]));
     if (game.viz_array?.[y]?.[x]) {
         game.vision_full_recalc = 1;
         if (typeof process !== 'undefined' && ENV?.FF_DISPLAY_TRACE === '1') {
@@ -1132,16 +1177,15 @@ function _block_or_unblock(x, y) {
     }
 }
 export function block_point(x, y) {
-    _block_or_unblock(x, y);
+    _block_or_unblock(x, y, true);
 }
 export function unblock_point(x, y) {
-    _block_or_unblock(x, y);
+    _block_or_unblock(x, y, false);
 }
-// C ref: vision.c:900 recalc_block_point — block or unblock per does_block().
-// _blocks() is JS's does_block(): walls/stone/closed doors block, open doors
-// don't branch here; we just rebuild and flag.
+// C ref: vision.c:911 recalc_block_point — block or unblock per does_block().
+// _blocks() is JS's does_block(); its verdict is forced into this one cell.
 export function recalc_block_point(x, y) {
-    _block_or_unblock(x, y);
+    _block_or_unblock(x, y, !!game.level && _blocks(game.level, x, y));
 }
 export function init_vision_globals() {
     game.viz_array = cs_buf0;

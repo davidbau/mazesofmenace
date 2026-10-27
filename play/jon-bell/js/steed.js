@@ -236,5 +236,5 @@ export async function put_saddle_on_mon(saddle, mtmp) {
     mtmp.misc_worn_check |= W_SADDLE;
     saddle.owornmask = W_SADDLE;
     saddle.leashmon = mtmp.m_id;
-    update_mon_extrinsics(mtmp, saddle, true, false);
+    await update_mon_extrinsics(mtmp, saddle, true, false);
 }

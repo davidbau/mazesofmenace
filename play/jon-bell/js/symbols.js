@@ -4,7 +4,9 @@
 
 import { game } from './gstate.js';
 import { lowc, mungspaces } from './mklev.js';
-import { SYM_CONTROL, H_UTF8 } from './const.js';
+import { gs, SYM_CONTROL, SYM_PCHAR, SYM_OC, SYM_MON, SYM_OTH, H_UTF8 } from './const.js';
+import { escapes } from './cmd_config.js';
+import { dat_content } from './dat_source.js';
 import { match_glyph as match_glyph_real,
          glyphrep_to_custom_map_entries as glyphrep_to_custom_map_entries_real } from './glyphs.js';
 
@@ -106,7 +108,7 @@ export function get_othersym(idx, which_set) {
 
     // Default symbols
     const DEF_NOTHING = ' '.charCodeAt(0);  // 32
-    const DEF_INVISIBLE = ' '.charCodeAt(0);  // 32 (default to space for invisible)
+    const DEF_INVISIBLE = 'I'.charCodeAt(0);  // defsym.h:336 MONSYM(INVISIBLE)
 
     // Object class for rocks
     const ROCK_CLASS = 14;
@@ -480,3 +482,290 @@ function savedsym_add() { }
 function update_ov_primary_symset() { }
 function update_ov_rogue_symset() { }
 function sym_val() { return 0; }
+
+/* ------------------------------------------------------------------------
+ * dat/symbols loading: read_sym_file (files.c:2631) -> parse_sym_line
+ * (symbols.c:465) -> load_symset (symbols.c:692), feeding gp.primary_syms[]
+ * and gs.showsyms[] exactly as C does.  The file is bundled (js/dat/symbols,
+ * nethack-c-v5/upstream/dat/symbols) because js/ never reads a filesystem.
+ * ---------------------------------------------------------------------- */
+const SYMF_OFF_O = 105, SYMF_OFF_M = 105 + 18, SYMF_OFF_W = 105 + 18 + 61,
+      SYMF_OFF_X = 105 + 18 + 61 + 6, SYMF_MAX = 105 + 18 + 61 + 6 + 6;
+
+/* symbols.c:398-432 loadsyms[] — SYM_CONTROL keywords, then the PCHAR,
+ * OBJCLASS and MONSYMS names in defsym.h order, then the SYM_OTH slots.
+ * match_sym() scans forward, so the MONSYM S_invisible ('I', idx M+37)
+ * shadows the SYM_OTH S_invisible exactly as in C. */
+const LOADSYMS = (() => {
+    const out = [
+        { range: SYM_CONTROL, idx: 0, name: 'start' }, { range: SYM_CONTROL, idx: 0, name: 'begin' },
+        { range: SYM_CONTROL, idx: 1, name: 'finish' }, { range: SYM_CONTROL, idx: 2, name: 'handling' },
+        { range: SYM_CONTROL, idx: 3, name: 'description' }, { range: SYM_CONTROL, idx: 4, name: 'color' },
+        { range: SYM_CONTROL, idx: 4, name: 'colour' }, { range: SYM_CONTROL, idx: 5, name: 'restrictions' },
+    ];
+    const pchar = ('stone vwall hwall tlcorn trcorn blcorn brcorn crwall tuwall tdwall tlwall trwall '
+        + 'ndoor vodoor hodoor vcdoor hcdoor bars tree room darkroom engroom corr litcorr engrcorr '
+        + 'upstair dnstair upladder dnladder brupstair brdnstair brupladder brdnladder altar grave '
+        + 'throne sink fountain pool ice lava lavawall vodbridge hodbridge vcdbridge hcdbridge air '
+        + 'cloud water arrow_trap dart_trap falling_rock_trap squeaky_board bear_trap land_mine '
+        + 'rolling_boulder_trap sleeping_gas_trap rust_trap fire_trap pit spiked_pit hole trap_door '
+        + 'teleportation_trap level_teleporter magic_portal web statue_trap magic_trap '
+        + 'anti_magic_trap polymorph_trap vibrating_square trapped_door trapped_chest vbeam hbeam '
+        + 'lslant rslant digbeam flashbeam boomleft boomright ss1 ss2 ss3 ss4 poisoncloud goodpos '
+        + 'sw_tl sw_tc sw_tr sw_ml sw_mr sw_bl sw_bc sw_br expl_tl expl_tc expl_tr expl_ml expl_mc '
+        + 'expl_mr expl_bl expl_bc expl_br').split(' ');
+    pchar.forEach((n, i) => out.push({ range: SYM_PCHAR, idx: i, name: 'S_' + n }));
+    ('strange_obj weapon armor ring amulet tool food potion scroll book wand coin gem rock ball '
+     + 'chain venom').split(' ')
+        .forEach((n, i) => out.push({ range: SYM_OC, idx: SYMF_OFF_O + i + 1, name: 'S_' + n }));
+    ('ANT BLOB COCKATRICE DOG EYE FELINE GREMLIN HUMANOID IMP JELLY KOBOLD LEPRECHAUN MIMIC NYMPH '
+     + 'ORC PIERCER QUADRUPED RODENT SPIDER TRAPPER UNICORN VORTEX WORM XAN LIGHT ZRUTY ANGEL BAT '
+     + 'CENTAUR DRAGON ELEMENTAL FUNGUS GNOME GIANT invisible JABBERWOCK KOP LICH MUMMY NAGA OGRE '
+     + 'PUDDING QUANTMECH RUSTMONST SNAKE TROLL UMBER VAMPIRE WRAITH XORN YETI ZOMBIE HUMAN GHOST '
+     + 'GOLEM DEMON EEL LIZARD WORM_TAIL MIMIC_DEF').split(' ')
+        .forEach((n, i) => out.push({ range: SYM_MON, idx: SYMF_OFF_M + i + 1, name: 'S_' + n }));
+    ['nothing', 'unexplored', 'boulder', 'invisible', 'pet_override', 'hero_override']
+        .forEach((n, i) => out.push({ range: SYM_OTH, idx: SYMF_OFF_X + i, name: 'S_' + n }));
+    return out;
+})();
+const KNOWN_HANDLING = ['UNKNOWN', 'IBM', 'DEC', 'CURS', 'MAC', 'UTF8'];
+
+/* drawing.c def_oc_syms[].sym / def_monsyms[].sym / def_warnsyms[].sym */
+const DEF_OC_SYM = '\0])[="(%!?+/$*`0_.';
+const DEF_MON_SYM = '\0abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@ \'&;:~]';
+/* defsym.h PCHAR sym column (same table init_rogue_symbols transcribes) */
+const DEFSYMS_SYM = ' |--------||.-|++##..`###<><><><>_|\\{{}.}}..## #}^^^^^^^^^^^^^^^^^"^^^^~^^|-\\/*!)(0#@*#$/-\\||\\-//-\\| |\\-/';
+
+function strcmpi(a, b) { return String(a).toLowerCase() === String(b).toLowerCase(); }
+
+/* symbols.c:868 match_sym() — strncmpi over the keyword part of buf */
+function match_sym_real(buf) {
+    if ((buf[0] === 'G' || buf[0] === 'g') && buf[1] === '_')
+        return null;
+    let p = buf.indexOf(':');
+    const q = buf.indexOf('=');
+    if (p < 0 || (q >= 0 && q < p))
+        p = q;
+    let len = buf.length;
+    if (p >= 0) {
+        if (p > 0 && buf[p - 1] === ' ')
+            p--;
+        len = p;
+    }
+    const key = buf.slice(0, len).toLowerCase();
+    for (const sp of LOADSYMS)
+        if (len >= sp.name.length && sp.name.toLowerCase().startsWith(key))
+            return sp;
+    const alternates = [['S_armour', 'S_armor'], ['S_explode1', 'S_expl_tl'], ['S_explode2', 'S_expl_tc'],
+        ['S_explode3', 'S_expl_tr'], ['S_explode4', 'S_expl_ml'], ['S_explode5', 'S_expl_mc'],
+        ['S_explode6', 'S_expl_mr'], ['S_explode7', 'S_expl_bl'], ['S_explode8', 'S_expl_bc'],
+        ['S_explode9', 'S_expl_br']];
+    for (const [alt, nm] of alternates)
+        if (len >= alt.length && alt.toLowerCase().startsWith(key))
+            return LOADSYMS.find((sp) => sp.name === nm) || null;
+    return null;
+}
+
+/* options.c:9385 sym_val() — the first byte of the unescaped value */
+function sym_val_real(strval) {
+    let buf = '';
+    if (!strval[0] || !strval[1]) {
+        if (strval[0] && !/\s/.test(strval[0]))
+            buf = strval[0];
+    } else if (strval[0] === '\'') {
+        if (strval[2] === '\'' && strval.length === 3) {
+            buf = strval[1];
+        } else if (strval[1] === '\\' && strval[2] && strval[3] === '\''
+                   && '\'"\\'.includes(strval[2]) && strval.length === 4) {
+            buf = strval[2];
+        } else {
+            const tmp = strval.slice(1);
+            const p = tmp.lastIndexOf('\'');
+            if (p >= 0)
+                buf = escapes(tmp.slice(0, p));
+        }
+    } else {
+        buf = escapes(strval);
+    }
+    return buf ? (buf.charCodeAt(0) & 0xff) : 0;
+}
+
+function ensure_sym_arrays() {
+    const gp = game.gp || (game.gp = {});
+    const go = game.go || (game.go = {});
+    if (!Array.isArray(gp.primary_syms) || gp.primary_syms.length < SYMF_MAX)
+        gp.primary_syms = new Array(SYMF_MAX).fill(0);
+    if (!Array.isArray(go.ov_primary_syms) || go.ov_primary_syms.length < SYMF_MAX)
+        go.ov_primary_syms = new Array(SYMF_MAX).fill(0);
+    return { gp, go };
+}
+
+/* symbols.c:165-184 init_primary_symbols() (primary set only; the
+ * clear_symsetentry() it ends with is done by load_symset's caller). */
+function init_primary_syms_real() {
+    const { gp } = ensure_sym_arrays();
+    gp.primary_utf8 = {};
+    for (let i = 0; i < 105; i++) gp.primary_syms[i] = DEFSYMS_SYM.charCodeAt(i);
+    for (let i = 0; i < 18; i++) gp.primary_syms[i + SYMF_OFF_O] = DEF_OC_SYM.charCodeAt(i);
+    for (let i = 0; i < 61; i++) gp.primary_syms[i + SYMF_OFF_M] = DEF_MON_SYM.charCodeAt(i);
+    for (let i = 0; i < 6; i++) gp.primary_syms[i + SYMF_OFF_W] = 48 + i;
+    for (let i = 0; i < 6; i++) gp.primary_syms[i + SYMF_OFF_X] = 0;
+    for (let i = 0; i < 6; i++) gp.primary_syms[i + SYMF_OFF_X] = get_othersym(i, 0);
+}
+
+/* symbols.c:465-658 parse_sym_line() for a chosen-set load (symset name
+ * non-null); the pick-list arm is do_symset's and is not needed here. */
+function parse_sym_line_real(line, which_set, st) {
+    let buf = line.replace(/\s+/g, ' ').trim();               /* mungspaces */
+    const hash = buf.lastIndexOf('#');
+    if (hash > 0 && buf[hash - 1] === ' ')
+        buf = buf.slice(0, hash - 1);
+    let bp = buf.indexOf('=');
+    const altp = buf.indexOf(':');
+    if (bp < 0 || (altp >= 0 && altp < bp))
+        bp = altp;
+    if (bp < 0) {
+        if (buf.slice(0, 6).toLowerCase() === 'finish') {
+            if (st.start) st.end = true;
+            st.start = false;
+            return 1;
+        }
+        return 0;
+    }
+    let val = buf.slice(bp + 1);
+    if (val[0] === ' ')
+        val = val.slice(1);
+    const symp = match_sym_real(buf);
+    const set = gs_symset(which_set);
+    if (!symp) {
+        /* G_ glyph lines (glyphs.c add_custom_urep_entry): a plain G_<cmap>
+         * line customizes that cmap glyph's UTF8 representation, as S_<cmap>
+         * would; level-variant G_ names (_sokoban, _gehennom) match nothing. */
+        if (st.start && which_set === 0 && set.handling === H_UTF8
+            && /^G_/.test(buf)) {
+            const gsym = match_sym_real('S_' + buf.slice(2));
+            const u = /^U\+([0-9a-f]+)/i.exec(val.trim());
+            if (gsym && gsym.range !== SYM_CONTROL && u && parseInt(u[1], 16))
+                game.gp.primary_utf8[gsym.idx] = parseInt(u[1], 16);
+        }
+        return 1;
+    }
+    if (symp.range === SYM_CONTROL) {
+        switch (symp.idx) {
+        case 0:
+            if (strcmpi(val, set.name)) {
+                st.start = true;
+                if (which_set === 0) {
+                    init_primary_syms_real();
+                    set.handling = 0; set.nocolor = 0; set.primary = 0; set.rogue = 0;
+                }
+            }
+            break;
+        case 1:
+            if (st.start) st.end = true;
+            st.start = false;
+            break;
+        case 2:
+            if (st.start) {
+                set.handling = 0;
+                const i = KNOWN_HANDLING.findIndex((h) => strcmpi(h, val));
+                if (i >= 0) set.handling = i;
+            }
+            break;
+        case 4:
+            if (st.start) {
+                if (/^(true|yes|on)$/i.test(val)) set.nocolor = 0;
+                else if (/^(false|no|off)$/i.test(val)) set.nocolor = 1;
+            }
+            break;
+        case 5:
+            if (st.start) {
+                if (strcmpi(val, 'primary')) set.primary = 1;
+                else if (strcmpi(val, 'rogue')) set.rogue = 1;
+            }
+            break;
+        default:
+            break;
+        }
+    } else if (st.start && which_set === 0) {
+        if (set.handling !== H_UTF8) {
+            game.gp.primary_syms[symp.idx] = sym_val_real(val);
+        } else {
+            /* symbols.c:638-641 -> glyphs.c:68-83: Unicode replaces the
+             * glyph's u entry, leaving its ordinary ttychar unchanged. */
+            const u = /^U\+([0-9a-f]+)/i.exec(val.trim());
+            if (u && parseInt(u[1], 16))
+                game.gp.primary_utf8[symp.idx] = parseInt(u[1], 16);
+        }
+    }
+    return 1;
+}
+
+/* gs.symset[] is const.js's decl.c global (display.js reads the same one) */
+function gs_symset(which_set) {
+    if (!Array.isArray(gs.symset)) gs.symset = [];
+    if (!gs.symset[which_set]) gs.symset[which_set] = {};
+    return gs.symset[which_set];
+}
+
+/* symbols.c:692 load_symset(s, PRIMARYSET) + files.c:2631 read_sym_file():
+ * fills gp.primary_syms[] and the set's handling/nocolor from dat/symbols.
+ * Returns false when the named set is not in the file (C then clears the
+ * entry and keeps the default symbols). */
+export function load_primary_symset_from_file(name) {
+    const text = dat_content('symbols');
+    if (!text || !name)
+        return false;
+    const set = gs_symset(0);
+    /* symbols.c:330-345 clear_symsetentry(PRIMARYSET, TRUE) */
+    set.handling = 0; set.nocolor = 0; set.primary = 0; set.rogue = 0;
+    set.name = name;
+    ensure_sym_arrays();
+    init_primary_syms_real();
+    const st = { start: false, end: false };
+    for (const raw of text.split('\n')) {
+        const line = raw.replace(/\r$/, '');
+        if (/^\s*(#|$)/.test(line))
+            continue;                       /* parse_conf_file skips comments */
+        parse_sym_line_real(line, 0, st);
+    }
+    game._symsetLoaded = (st.start || st.end) ? name : null;
+    return !!game._symsetLoaded;
+}
+
+/* symbols.c:303-307 update_ov_primary_symset() for a SYMBOLS=S_x:val pair */
+export function set_primary_symbol_override(symname, strval) {
+    const symp = match_sym_real(`${symname}:${strval}`);
+    if (!symp || symp.range === SYM_CONTROL)
+        return false;
+    const { go } = ensure_sym_arrays();
+    go.ov_primary_syms[symp.idx] = sym_val_real(strval);
+    return true;
+}
+
+/* symbols.c:236-239 showsyms[i] = ov_primary_syms[i] ? : primary_syms[i] */
+export function primary_showsym(idx) {
+    const go = game.go, gp = game.gp;
+    const ov = go?.ov_primary_syms?.[idx];
+    return ov ? ov : (gp?.primary_syms?.[idx] ?? 0);
+}
+
+export function primary_unicode_symbol(idx) {
+    return gs_symset(0).handling === H_UTF8 ? game.gp?.primary_utf8?.[idx] : 0;
+}
+
+export function symset_cell(sym) {
+    const handling = gs_symset(0).handling;
+    let cell;
+    if (!(sym & 0x80))
+        cell = { ch: String.fromCharCode(sym), dec: false };
+    else if (handling === 1 /* H_IBM */ || handling === H_UTF8)
+        cell = { ch: String.fromCharCode(sym & 0x7f), dec: false };
+    else
+        cell = { ch: String.fromCharCode(sym ^ 0x80), dec: true };
+    if (cell.ch.charCodeAt(0) < 0x20)
+        cell = { ch: ' ', dec: false, ctl: true };
+    return cell;
+}
+export const SYM_OFFSETS = { O: SYMF_OFF_O, M: SYMF_OFF_M, W: SYMF_OFF_W, X: SYMF_OFF_X };
+export function defsym_char(idx) { return DEFSYMS_SYM[idx]; }

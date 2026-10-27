@@ -20,12 +20,12 @@ import { game } from './gstate.js';
 // Preserve legacy import paths while all callers share invent.c's real body.
 import { update_inventory } from './inventory_refresh.js';
 export { update_inventory };
-import { W_ARMOR, W_ACCESSORY, W_WEP, W_SWAPWEP, A_WIS, IS_DOOR, ROOMOFFSET, OBJ_INVENT } from './const.js';
+import { W_ARMOR, W_ACCESSORY, W_WEP, W_SWAPWEP, A_WIS, IS_DOOR, ROOMOFFSET, OBJ_INVENT, HAND, SEE_INVIS } from './const.js';
 import { MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js';
 import { rn2, rnd, d, rn1, rn2_on_display_rng, pushRngLogEntry } from './rng.js';
 import { pline, sensemon, canspotmon, canseemon, rank_of, map_invisible, Deaf } from './display.js';
 import { exercise, acurr, arti_defn_adtyp, arti_cary_adtyp, change_luck } from './attrib.js';
-import { erode_obj, mon_learns_traps, m_carrying, split_mon_rt } from './trap.js';
+import { erode_obj, mon_learns_traps, m_carrying } from './trap.js';
 /* C obj.h:257 bimanual(otmp).  Placed immediately after the ./trap.js import
  * above because trap.js:95 already imports this same module, so do_wear.js is
  * already evaluated at this point in the DFS and this edge changes no module
@@ -69,7 +69,7 @@ import { hmon_egg_petrify, mon_nam, exclam, artifact_hit, hmon_hitmon_do_hit, hm
 import { xkilled as xkilled_mh, XKILL_GIVEMSG as XKILL_GIVEMSG_MH, XKILL_NOMSG as XKILL_NOMSG_MH } from './uhitm.js';
 import { dmgval as dmgval_weapon, weapon_dam_bonus, use_skill, weapon_type, dbon } from './uhitm.js';
 import { MKOBJ_OC_SKILL, MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
-import { setmangry, wake_msg, wake_nearto, healmon, angry_guards } from './mklev.js';
+import { setmangry, wake_msg, wake_nearto, healmon, angry_guards, split_mon_ml as split_mon } from './mklev.js';
 /* make_stunned — js/potion.js:5813 (C ref: potion.c:106-127) is the one real
  * body; re-export it so js/mcastu.js's `make_stunned as make_stunned_mc`
  * import (mcast_stun_you, its OWN monster-cast-stuns-hero path) also stops
@@ -81,10 +81,10 @@ import { abuse_dog, sticks, unstuck } from './dog.js';
  * exports a throw-stub and js/shk.js a "hand" constant).  cmd.js already
  * imports from this file, so this is a cycle — safe because mbodypart is a
  * hoisted function declaration and is only called at runtime. */
-import { mbodypart, a_gname_at, Breathless } from './cmd.js';
+import { mbodypart, a_gname_at, Breathless, body_part, is_pole } from './cmd.js';
 import { newsym as _wakeup_newsym } from './display.js';
 import { MKOBJ_OC_CLASS } from './mkobj_data.js';
-import { getObjDescr, just_an, The, vtense, xname, cxname, mshot_xname, Yobjnam2 } from './objnam.js';
+import { getObjDescr, just_an, The, vtense, xname, cxname, mshot_xname, Yobjnam2, makeplural } from './objnam.js';
 import { newoextra, lcase } from './mklev.js';
 import { str_start_is } from './mklev.js';   /* C hacklib.c:276 — title_to_mon's prefix test */
 import { ROLE_RANKS } from './rank_data.js'; /* C role.c roles[].rank[9] */
@@ -327,7 +327,6 @@ function dynamic_multi_reason(mon, verb, by_gaze) {
  * by the CALLER, C uhitm.c:6080, before healmon() runs).  The stub silently
  * dropped that heal — the AD_COLD passive counterattack heals the attacking
  * monster and this call site had no effect at all. */
-function split_mon(mon, you) { return split_mon_rt(mon, you); }
 function done_in_by(mon, how) { return done_in_by_real(mon, how); }
 /* canseemon is NOT a stub here — the real one (js/display.js:3105, C ref
  * display.h:129) is imported at the top of this file.  A module-local
@@ -1161,7 +1160,7 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                 }
                 else {
                     void pline("You are hit by magic missiles appearing from thin air!");
-                    mdamageu(mon, tmp);
+                    await mdamageu(mon, tmp);
                     monstunseesu(M_SEEN_MAGR);
                 }
             }
@@ -1222,8 +1221,7 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                                     const awis = (u ? acurr(u, A_WIS) : 0) | 0; /* C: ACURR(A_WIS) */
                                     nomul((awis > 12 || rn2(4)) ? -tmp : -127);
                                     dynamic_multi_reason(mon, "frozen", true);
-                                    if (game.n)
-                                        game.n.nomovemsg = 0;
+                                    game.nomovemsg = 0; /* uhitm.c:6045 */
                                 }
                             }
                         }
@@ -1245,8 +1243,7 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                     }
                     else {
                         void pline(`You are frozen by ${mon_nam(mon)}!`);
-                        if (game.n)
-                            game.n.nomovemsg = 0; /* You_can_move_again */
+                        game.nomovemsg = 'You can move again.'; /* uhitm.c:6058 You_can_move_again */
                         nomul(-tmp);
                         dynamic_multi_reason(mon, "frozen", false);
                         exercise(A_DEX, false);
@@ -1266,11 +1263,19 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                     }
                     monstunseesu(M_SEEN_COLD);
                     void pline("You are suddenly very cold!");
-                    mdamageu(mon, tmp);
+                    // C uhitm.c:6077 / mhitu.c:1925: resolve death before
+                    // healing or splitting; lifesaving or refusing death lets C return.
+                    const deathBeforeCold = game._pendingDeath || null;
+                    await mdamageu(mon, tmp);
+                    if (game._pendingDeath && game._pendingDeath !== deathBeforeCold) {
+                        await drain_pending_death_in_place();
+                        if (pending_death_is_final())
+                            return (malive | mhit);
+                    }
                     /* C uhitm.c:6080: healmon(mon, (tmp + rn2(2)) / 2, (tmp + 1) / 2) */
                     healmon(mon, ((tmp + rn2(2)) / 2) | 0, ((tmp + 1) / 2) | 0);
                     if ((mon.mhpmax | 0) > (((mon.m_lev | 0) + 1) * 8))
-                        split_mon(mon, null /* &gy.youmonst */);
+                        await split_mon(mon, game.youmonst);
                 }
                 break;
             case AD_STUN:
@@ -1294,7 +1299,7 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                     }
                     monstunseesu(M_SEEN_FIRE);
                     void pline("You are suddenly very hot!");
-                    mdamageu(mon, tmp);
+                    await mdamageu(mon, tmp);
                 }
                 break;
             case AD_ELEC:
@@ -1310,7 +1315,7 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                     }
                     monstunseesu(M_SEEN_ELEC);
                     void pline("You are jolted with electricity!");
-                    mdamageu(mon, tmp);
+                    await mdamageu(mon, tmp);
                 }
                 break;
             default:
@@ -2622,7 +2627,7 @@ export async function hmon_hitmon(mon, obj, thrown, dieroll) {
         get_dmg_bonus: true,
         unarmed: !uwep && !uarm && !uarms,
         hand_to_hand: (thrown === HMON_MELEE
-            || (thrown === HMON_APPLIED && uwep && is_pole_hmon(uwep))),
+            || (thrown === HMON_APPLIED && uwep && is_pole(uwep))),
         ispoisoned: false,
         unpoisonmsg: false,
         needpoismsg: false,
@@ -2692,7 +2697,26 @@ export async function hmon_hitmon(mon, obj, thrown, dieroll) {
             game.gm.mkcorpstat_norevive = false;
         }
     } else if (u.umconf && hmd.hand_to_hand) {
-        /* confusing touch — hand_to_hand only, not for THROWN */
+        /* C uhitm.c:1911-1918,6315-6337: nohandglow precedes resist. */
+        if (!mon.mconf) {
+            const hands = makeplural(body_part(HAND));
+            const altfeedback = _hero_blind()
+                || (_hero_prop_active(INVIS) && !(u.uprops?.[INVIS]?.blocked | 0)
+                    && !_hero_prop_active(SEE_INVIS));
+            if (u.umconf === 1) {
+                if (altfeedback) await pline('Your %s stop tingling.', hands);
+                else await pline('Your %s stop glowing %s.', hands, hcolor('red'));
+            } else {
+                if (altfeedback) await pline('The tingling in your %s lessens.', hands);
+                else await pline('Your %s no longer glow so brightly %s.', hands, hcolor('red'));
+            }
+            u.umconf--;
+            if (!await resist(mon, 10 /* SPBOOK_CLASS */, 0, 0 /* NOTELL */)) {
+                mon.mconf = 1;
+                if (!mon.mstun && !helpless(mon) && canseemon(mon))
+                    await pline('%s appears confused.', Monnam(mon));
+            }
+        }
     }
 
     if (hmd.unpoisonmsg) await pline(`Your ${hmd.saved_oname} ${vtense(hmd.saved_oname, 'are')} no longer poisoned.`);
@@ -2701,13 +2725,6 @@ export async function hmon_hitmon(mon, obj, thrown, dieroll) {
         void maybe_knockback;
     }
     return hmd.destroyed ? false : true;
-}
-
-function is_pole_hmon(otmp) {
-    const o = otmp.oclass | 0;
-    const sk = _oc_skill_hmon(otmp);
-    /* P_POLEARMS / P_LANCE skill ids */
-    return (o === _OCLASS_WEAPON || o === _OCLASS_TOOL) && (sk === 27 || sk === 26);
 }
 
 /* uhitm.c:1388 hmon_hitmon_do_hit */
@@ -3464,18 +3481,12 @@ const TOOL_CLASS = 6;
 const VENOM_CLASS = 17;
 const SCROLL_CLASS = 9;
 
-/** C ref: nethack-c/src/do_name.c:428-463 objtyp_is_callable(int i)
- *  boolean objtyp_is_callable(int i)
-/** C ref: nethack-c/src/do_name.c:428-463 objtyp_is_callable(int i)
- *  boolean objtyp_is_callable(int i)
- *  Determine if an object type can be called (given a user-defined name).
- *  Returns TRUE if the object class supports descriptions (except special amulets).
- *  No RNG, no state changes.
- *  Args: i (int) — object type index
- *  Return: boolean (1 for true, 0 for false)
- */
+// C v5 do_name.c:429-465: an existing user name always allows renaming;
+// otherwise only the listed classes with an appearance can be called.
 export function objtyp_is_callable(i) {
     const ityp = i | 0;
+    if (game._oc_uname?.[ityp] != null)
+        return 1;
     const oc_class = (MKOBJ_OC_CLASS[ityp] | 0);
 
     switch (oc_class) {
@@ -3495,8 +3506,7 @@ export function objtyp_is_callable(i) {
     case ARMOR_CLASS:
     case TOOL_CLASS:
     case VENOM_CLASS:
-        /* All objects in these classes have descriptions and can be called */
-        return 1; /* TRUE */
+        return getObjDescr(ityp) != null ? 1 : 0;
     default:
         break;
     }

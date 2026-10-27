@@ -102,7 +102,11 @@ async function read_yn(prompt, acceptQ) {
     if (g.vision_full_recalc) vision_recalc(0);
     g._prevmsg = `${shown} `;
     g._pending_message = shown;
-    await flush_screen(1);
+    /* pline.c:270-271 `if (u.ux) flush_screen()`: before the hero is placed
+     * (mklev's "Get bones?") C's prompt reaches the topline without a bot(). */
+    const _noBot = !g.u?.ux && !g._bot_disabled;
+    if (_noBot) g._bot_disabled = true;
+    try { await flush_screen(1); } finally { if (_noBot) g._bot_disabled = false; }
     if (g.nhDisplay) topl_park_cursor(g.nhDisplay, `${shown} `);
     } finally { g._topl_prompt_echo = savedEcho; }
     /* topl.c:545-546 — a prompt that wrapped (wins[WIN_MESSAGE]->cury) is

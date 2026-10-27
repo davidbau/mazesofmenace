@@ -4,7 +4,7 @@
 // Hand-maintained JS (not tsc-emitted). Sibling imports from js/*.js.
 import { u_safe_from_fatal_corpse } from './pickup.js';
 import { olfaction } from './makemon.js';
-import { usmellmon } from './mklev.js';
+import { usmellmon, erosion_matters } from './mklev.js';
 import { body_part } from './cmd.js';
 import { ARM, ECMD_CANCEL, UTOTYPE_NONE, Is_stronghold, Is_botlevel } from './const.js';
 import { getdir } from './lock.js';
@@ -15,11 +15,13 @@ import { COLNO } from './const.js';
 const IN_SIGHT_BIT = 0x2; /* vision.h IN_SIGHT */
 import { s_suffix as _ta_s_suffix } from './hacklib.js';
 import { nhgetch } from './input.js';
+import { vision_recalc } from './vision.js';
 import { oc_merge } from './oc_merge.generated.js';
 import { pline, flash_mon, canspotmon, unmap_invisible, gamelog_add } from './display.js';
-import { topl_park_cursor } from './display.js';
+import { topl_park_cursor, TOPL_LIMIT, bot } from './display.js';
 import { flush_screen, force_more, _topl_record_join, capture_painted_frame,
          _topl_merge_result, _topl_joins_snapshot } from './display.js';
+import { pline_flush_point, _pline_flush_frame_record, prepare_deferred_pline } from './display.js';
 import { display_text_window } from './com_pager.js';
 import { displayLookWindow } from './look-window.js';
 import { OC_NAME } from './oc_name_data.js';
@@ -30,7 +32,7 @@ import { findit, wish_history_add, wish_history_menu, wish_history_has } from '.
 import { rn2, d, rnd } from './rng.js';
 import { quest_info, readobjnam, hands_obj, getObjDescr, xname_scroll, xname_spellbook, xname_amulet, xname_armor, xname_weapon, xname_oname_tail, xname, the, The, aobjnam, Tobjnam, doname as doname_real } from './objnam.js';
 import { discover_object, observe_object } from './o_init.js';
-import { near_capacity, stagger_verb } from './weight.js';
+import { near_capacity, stagger_verb, encumber_msg_sync } from './weight.js';
 import { exercise } from './attrib.js';
 import { losehp } from './dokick.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
@@ -68,7 +70,7 @@ import { bury_objs } from './zap.js';
 import { addinv_core0, can_reach_floor, is_missile, ammo_and_launcher } from './hold_another_object.js';
 import { A_WIS, KILLED_BY, ANTIMAGIC, HALF_PHDAM, LOW_PM, ECMD_OK, MM_MINVIS,
          Is_airlevel, Is_waterlevel, IRONBARS, ICE, FUMBLING, COLD_RES, LS_OBJECT, LS_MONSTER,
-         LL_CONDUCT, LL_WISH } from './const.js';
+         LL_CONDUCT, LL_WISH, LL_ARTIFACT } from './const.js';
 
 /* C wizcmds.c:1113-1693 — #stats uses native allocation sizes rather than
  * JavaScript object sizes. These are the ABI values of the frozen C build. */
@@ -256,9 +258,23 @@ function _ta_xname(otmp) {
     return xname(otmp); /* GEM_CLASS etc. (objnam.c:624) */
 }
 
+/* C ref: artifact.c:992-1005 bane_applies(oart, &youmonst) → spec_applies
+ * (SPFX_DFLAG2, yours): the hero's own race selfmask matches when !Upolyd
+ * (artifact.c:1042-1045).  Orcrist/Sting carry M2_ORC (= MH_ORC; Grimtooth is
+ * M2_ELF), so an unpolymorphed orcish hero is badalign and draws rn2(4) in
+ * touch_artifact.  The other DFLAG2 banes (demon/were/giant/undead) match no
+ * hero race. */
+export function bane_applies_hero(arti) {
+    const u = game.u || {};
+    return (arti === 6 || arti === 7)
+        && ((game.flags?.initrace ?? -1) | 0) === 4 /* orc */
+        && !((u.mtimedone | 0) > 0);
+}
+
 export async function touch_artifact_youmonst(otmp) {
     const g = game;
     g._touch_artifact_blast_msg = null; /* C artifact.c:913 touch_blasted = FALSE */
+    g._deferredPline = null;
     const arti = (otmp && (otmp.oartifact | 0)) || 0;
     if (!arti) return 1; /* C artifact.c:914-915 ART_NONARTIFACT → return 1 */
     const p = ARTI_PROPS[arti];
@@ -295,6 +311,9 @@ export async function touch_artifact_youmonst(otmp) {
     let badalign = (p.spfx & SPFX_RESTR) !== 0
                    && al !== A_NONE
                    && (al !== ualignType || ualignRecord < 0);
+    /* C artifact.c:941-942 */
+    if (!badalign)
+        badalign = bane_applies_hero(arti);
 
     /* C artifact.c:941-942: if (!badalign) badalign = bane_applies(oart, mon).
      * bane_applies requires (spfx & SPFX_DBONUS) and spec_applies(hero).  For
@@ -321,6 +340,24 @@ export async function touch_artifact_youmonst(otmp) {
          *                     s_suffix(the(xname(obj)))) */
         g._touch_artifact_blast_msg =
             `You are blasted by ${_ta_s_suffix(the(_ta_xname(otmp)))} power!`;
+        /* artifact.c:951 vpline flushes before :953/:958 roll/apply damage. */
+        prepare_deferred_pline(g._touch_artifact_blast_msg);
+        if (g._statusBlankAfterDocrt && g.disp?.botlx) await bot();
+
+        /* tty update_topl (topl.c:262-277): the blast line cannot join a standing
+         * topline when n0 + strlen(toplines) + 3 >= CO - 8, so that standing line
+         * is more()d here, before artifact.c:953's d() and the losehp. */
+        if (g._rt_blast_page_standing && g._pending_message
+            && String(g._pending_message).length + 2 + g._touch_artifact_blast_msg.length >= 71) {
+            const _pm = String(g._pending_message);
+            g._pending_message = null;
+            /* pline.c:273-274: vpline flush_screen(1) runs bot() before update_topl. */
+            pline_flush_point();
+            _pline_flush_frame_record(_pm.length, g._touch_artifact_blast_msg);
+            /* the page's more() is keyed to the blast pline's flush frame */
+            g._moreFullCtx = { full: `${_pm}  ${g._touch_artifact_blast_msg}`, start: 0 };
+            try { await force_more(_pm); } finally { g._moreFullCtx = null; }
+        }
 
         /* tty update_topl (topl.c:277-290): a message of CO (80) or more columns is
          * split at a space and paged at once, so the --More-- (over the PRE-damage
@@ -378,7 +415,7 @@ export async function touch_artifact_youmonst(otmp) {
         const _blast = g._touch_artifact_blast_msg;
         if (_blast) {
             g._touch_artifact_blast_msg = null;
-            await force_more(_blast);
+            await pline(_blast);
         }
         if ((otmp.where | 0) !== OBJ_INVENT_WIZ)
             await pline(`${Tobjnam(otmp, 'evade')} your grasp!`);
@@ -418,6 +455,12 @@ export async function getlin(prompt) {
             g._toplResultSnapshot = null;
         }
     }
+    /* C getline.c:55 `cw->flags &= ~WIN_STOP;` — the ESC-at---More-- suppression
+     * ends with the getlin, so a later tty_yn_function (fountain.c:204
+     * "Dry up fountain?") pages the message the wish left on the topline. */
+    g._topl_win_stop = false;
+    g._topl_win_stop_armed = false;
+    g._topl_win_stop_buf = null;
     /* C getline.c:66-67 custompline() overwrites the single gt.toplines buffer
      * with the query; a result message left on the topline (here one whose
      * update_topl was suppressed by WIN_STOP after ESC at a --More--) does not
@@ -439,6 +482,10 @@ export async function getlin(prompt) {
     const _saved_suppress = g._topl_suppress_history;
     g._topl_suppress_history = true;
     try {
+    /* C getline.c:67 -> pline.c:266-272: the initial custompline refreshes
+     * dirty vision before flushing the prompt; subsequent echoes do not. */
+    if (g.vision_full_recalc)
+        vision_recalc(0);
     renderPrompt();
     await flush_screen(1);
     placeCursor();
@@ -637,7 +684,7 @@ export async function wiz_kill() {
  *          (or rnd(role.hirnd)/rnd(race.hirnd) above xlev)
  *   newpw: rn1(enrnd, enfix) = rn2(enrnd) + enfix, then enermod
  *
- * ECMD_OK — does NOT consume a game turn (C returns ECMD_OK=0). */
+ * ECMD_OK — does NOT consume a game turn. */
 export async function wiz_level_change() {
     const g = game;
     const u = g.u || {};
@@ -650,7 +697,7 @@ export async function wiz_level_change() {
     if (!buf || buf[0] === '\x1b' || buf[0] === '\0') {
         await pline('Never mind.');
         g.context.move = 0;
-        return;
+        return ECMD_OK;
     }
 
     /* C wizcmds.c:458: ret = sscanf(buf, "%d%c", &newlevel, &dummy) */
@@ -662,7 +709,7 @@ export async function wiz_level_change() {
         /* C wizcmds.c:460-463: ret != 1 → pline1(Never_mind) */
         await pline('Never mind.');
         g.context.move = 0;
-        return;
+        return ECMD_OK;
     }
     let newlevel = parsed | 0;
 
@@ -674,7 +721,7 @@ export async function wiz_level_change() {
         if ((u.ulevel | 0) === 1) {
             await pline('You are already as inexperienced as you can get.');
             g.context.move = 0;
-            return;
+            return ECMD_OK;
         }
         if (newlevel < 1) newlevel = 1;
         /* C wizcmds.c:473: while (u.ulevel > newlevel) losexp("#levelchange") */
@@ -685,7 +732,7 @@ export async function wiz_level_change() {
         if ((u.ulevel | 0) >= MAXULEV) {
             await pline('You are already as experienced as you can get.');
             g.context.move = 0;
-            return;
+            return ECMD_OK;
         }
         if (newlevel > MAXULEV) newlevel = MAXULEV;
         /* C wizcmds.c:482-484: while (u.ulevel < newlevel) pluslvl(FALSE) */
@@ -698,6 +745,7 @@ export async function wiz_level_change() {
     u.ulevelmax = u.ulevel;
 
     g.context.move = 0;
+    return ECMD_OK;
 }
 
 /* C ref: wizcmds.c:490-525 — #wiztelekinesis. Keep targeting until cancelled
@@ -798,6 +846,12 @@ function _wish_mergable(into, obj) {
     if ((obj.oeroded | 0) !== (into.oeroded | 0)
         || (obj.oeroded2 | 0) !== (into.oeroded2 | 0)
         || (obj.greased | 0) !== (into.greased | 0)) return false;
+    /* C invent.c:4432-4435 — where erosion matters, oerodeproof must match
+     * (rknown only when Blind/Hallucinating, which a sighted wish never is). */
+    if (erosion_matters(obj)
+        && (((obj.oerodeproof | 0) !== (into.oerodeproof | 0))
+            || ((obj.rknown | 0) !== (into.rknown | 0) && _wish_Blind())))
+        return false;
     /* C invent.c mergable(): corpses/eggs/tins merge only for the same
      * monster type; hatching eggs never merge. */
     const ot = obj.otyp | 0;
@@ -874,9 +928,15 @@ function _wish_encumber_text(oldcap, newcap) {
     return null;
 }
 
-async function _wish_encumber_msg(oldcap, prinvLine) {
+async function _wish_encumber_msg(paintedCap, prinvLine) {
     const g = game;
     const newcap = near_capacity();
+    /* C pickup.c:1980-1982: the comparison is against the GLOBAL go.oldcap, which
+     * only encumber_msg() writes — not the pre-addinv near_capacity().  A capacity
+     * change no encumber_msg() saw (e.g. arriving on the Plane of Water) leaves
+     * go.oldcap stale, and the wish's encumber_msg then reports it.  paintedCap
+     * (the pre-addinv capacity) is only what the last bot() painted. */
+    const oldcap = (g.u?._oldcap ?? 0) | 0;
     if (g.u) g.u._oldcap = newcap; /* C: go.oldcap = newcap at encumber_msg tail */
     if (oldcap === newcap) return;
     const msg = _wish_encumber_text(oldcap, newcap);
@@ -901,9 +961,9 @@ async function _wish_encumber_msg(oldcap, prinvLine) {
                  * flush_screen (wintty.c tty_display_nhwindow -> bot()) paints
                  * the post-addinv capacity before encumber_msg runs. */
                 const _postCap = _goldPrinv || _botlOwed;
-                f.cap = (_postCap ? newcap : oldcap) | 0;
+                f.cap = (_postCap ? newcap : paintedCap) | 0;
                 g._pickupEncPreFrame = f;
-                g._pickupEncMorePending = { oldcap: (_postCap ? newcap : oldcap) | 0, prinvText: prinvLine };
+                g._pickupEncMorePending = { oldcap: (_postCap ? newcap : paintedCap) | 0, prinvText: prinvLine };
             }
         }
     } else {
@@ -1056,8 +1116,15 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
             const _c2msgs = [];
             o.pickup_prev = 1;
             addinv_core2(o, _c2msgs);
+            let _c2last = _c2msgs.pop();
             for (const m of _c2msgs)
                 await force_more(m);
+            if (_c2last && (inv_cnt(false) > 52
+                || (((o.otyp | 0) !== 471 || !o.cursed)
+                    && near_capacity() > _dropCap))) {
+                await force_more(_c2last);
+                _c2last = undefined;
+            }
             if (inv_cnt(false) > 52
                 || (((o.otyp | 0) !== 471 || !o.cursed)
                     && near_capacity() > _dropCap)) {
@@ -1081,9 +1148,18 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
                  * arg), not the merged total. */
                 const totalbuf = (total_of && g.flags?.verbose) ? ` (${o.quan | 0} in total).` : '';
                 prinvLine = `${String.fromCharCode(o.invlet | 0)} - ${(await _wish_doname(o, oquan))}${dot}${totalbuf}`;
+                if (_c2last && _wish_core2_pages(_c2last, prinvLine)) {
+                    await force_more(_c2last);
+                    _c2last = undefined;
+                }
                 if (!g._topl_win_stop) /* topl.c:257 skip: ESC at the --More-- suppresses prinv's paint */
-                g._resultMessage = g._resultMessage ? g._resultMessage + '  ' + prinvLine : prinvLine;
+            _wish_prinv_flush_record(_c2last || g._resultMessage, prinvLine);
+        if (!g._topl_win_stop) /* topl.c:257 skip: ESC at the --More-- suppresses prinv's paint */
+                g._resultMessage = _c2last ? _c2last + '  ' + prinvLine
+                    : g._resultMessage ? g._resultMessage + '  ' + prinvLine : prinvLine;
+                _c2last = undefined;
             }
+            if (_c2last) await force_more(_c2last);
             await _wish_encumber_msg(_oldcap, prinvLine);
             return;
         }
@@ -1134,11 +1210,13 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
      * prinv line goes through game._resultMessage, which does not page a
      * predecessor.  Same treatment invent.c:941's compare-items line already
      * gets in the merge branch above. */
+    let _c2last = _core2msgs.pop();
     for (const m of _core2msgs)
         await force_more(m);
     if (inv_cnt(false) > 52
         || (((otmp.otyp | 0) !== 471 || !otmp.cursed)
             && near_capacity() > _dropCap)) {
+        if (_c2last) await force_more(_c2last);
         await _wish_drop_overburdened(otmp, dropSpec);
         return;
     }
@@ -1152,10 +1230,43 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
     if (otmp.invlet) {
         _wish_obj_to_let(otmp);
         prinvLine = `${String.fromCharCode(otmp.invlet | 0)} - ${(await _wish_doname(otmp))}.`;
+        if (_c2last && _wish_core2_pages(_c2last, prinvLine)) {
+            await force_more(_c2last);
+            _c2last = undefined;
+        }
         if (!g._topl_win_stop) /* topl.c:257 skip: ESC at the --More-- suppresses prinv's paint */
-                g._resultMessage = g._resultMessage ? g._resultMessage + '  ' + prinvLine : prinvLine;
+            _wish_prinv_flush_record(_c2last || g._resultMessage, prinvLine);
+        if (!g._topl_win_stop) /* topl.c:257 skip: ESC at the --More-- suppresses prinv's paint */
+                g._resultMessage = _c2last ? _c2last + '  ' + prinvLine
+                    : g._resultMessage ? g._resultMessage + '  ' + prinvLine : prinvLine;
+        _c2last = undefined;
     }
+    if (_c2last) await force_more(_c2last);
     await _wish_encumber_msg(_oldcap, prinvLine);
+}
+
+/* C topl.c:262-265 update_topl(): prinv's pline joins the standing
+ * TOPLINE_NEED_MORE topline ("You decipher the label on your scroll.") when
+ * n0 + strlen(gt.toplines) + 3 < CO - 8, and only pages (more()) when it does
+ * not.  Returns true when the deferred message must be paged now. */
+function _wish_core2_pages(deferred, prinvLine) {
+    return !prinvLine || (deferred.length + 2 + prinvLine.length) >= TOPL_LIMIT;
+}
+
+/* C invent.c prinv -> pline.c:274-277: prinv's vpline() flushes the screen
+ * BEFORE update_topl() more()s the line standing ahead of it, so a page that
+ * prinv raises freezes the map as of here -- before allmain.c:454-470's
+ * Warning see_monsters() paints a wished artifact's warnings.  This path
+ * publishes prinv through _resultMessage, not pline(), and makewish merges
+ * any standing _pending_message ahead of it; key the frame where that puts
+ * prinv's boundary.  `head` is the text joined in front of prinvLine. */
+function _wish_prinv_flush_record(head, prinvLine) {
+    const pend = game._pending_message ? String(game._pending_message) : '';
+    const before = (pend ? pend.length + 2 : 0) + (head ? String(head).length + 2 : 0);
+    if (!before)
+        return;
+    pline_flush_point();
+    _pline_flush_frame_record(before - 2, prinvLine);
 }
 
 /* C ref: zap.c:6160 #define MAXWISHTRY 5 */
@@ -1390,6 +1501,7 @@ export async function wiz_show_stats() {
  * instead of the throw-stub it used to carry. */
 export async function makewish() {
     const g = game;
+    const oldWisharti = g.u?.uconduct?.wisharti | 0; // C zap.c:6321: before readobjnam().
 
     /* C zap.c:6317 `struct obj otmp, nothing;` + zap.c:6323
      *     nothing = cg.zeroobj;   [lint suppression; only its address matters]
@@ -1483,17 +1595,25 @@ export async function makewish() {
      * rn1(100,50) below (Cardinal Rule 2: RNG order).  Non-artifact wishes
      * consume no RNG here.  We model only touch_artifact's RNG; the
      * inventory/encumbrance bookkeeping consumes none. */
+    /* C zap.c:6387-6397: readobjnam() increments wisharti even for an
+     * artifact already wished for; only its first transition breaks conduct.
+     * Preserve that event's text and flags for the chronicle. */
     if (otmp) {
         const _u = g.u || (g.u = {});
         _u.uconduct = _u.uconduct || {};
         const oldWishes = _u.uconduct.wishes | 0;
+        const wisharti = _u.uconduct.wisharti | 0;
+        const artifactFlag = oldWisharti < wisharti ? LL_ARTIFACT : 0;
+        const possessive = g.flags?.female ? 'her' : 'his';
         const wish = `"${wishedText}", got "${(await _wish_doname(otmp))}"`;
         if (!oldWishes) {
-            const possessive = g.flags?.female ? 'her' : 'his';
-            gamelog_add(LL_CONDUCT | LL_WISH, g.moves | 0,
+            gamelog_add(LL_CONDUCT | LL_WISH | artifactFlag, g.moves | 0,
                 `made ${possessive} first wish - ${wish}`);
+        } else if (!oldWisharti && wisharti) {
+            gamelog_add(LL_CONDUCT | LL_WISH | LL_ARTIFACT, g.moves | 0,
+                `made ${possessive} first artifact wish - ${wish}`);
         } else {
-            gamelog_add(LL_WISH, g.moves | 0, `wished for ${wish}`);
+            gamelog_add(LL_WISH | artifactFlag, g.moves | 0, `wished for ${wish}`);
         }
         _u.uconduct.wishes = (_u.uconduct.wishes | 0) + 1;
     }
@@ -1526,12 +1646,6 @@ export async function makewish() {
         if (blastMsg) {
             g._touch_artifact_blast_msg = null;
             await pline(blastMsg);
-            /* C runs this pline's flush_screen at artifact.c:951, BEFORE
-             * losehp() (artifact.c:957-958 -> hack.c losehp: disp.botl = TRUE),
-             * so bot() is still owed when prinv's pline flushes after addinv.
-             * Deferring the pline past losehp let its flush consume the flag;
-             * re-arm it so the prinv flush paints the post-addinv capacity. */
-            if (g.disp) g.disp.botl = true;
         }
         await _wish_addinv_prinv(otmp, _wishDropSpec);
     }
@@ -1584,6 +1698,9 @@ export async function wiz_wish() {
     } finally {
         g.flags.verbose = save_verbose;
     }
+    /* C wizcmds.c:40 — encumber_msg() after makewish (terrain wishes and
+     * hands_obj returns reach it too). */
+    encumber_msg_sync();
 
     /* C: this handler returns ECMD_OK on every path; rhack() maps it. */
     return ECMD_OK;
@@ -2107,6 +2224,11 @@ export async function makemap_prepost(pre, wiztower) {
         await flush_screen(1);  /* pline.c:273 flush_screen() per message: pages all but the last */
         if (g._pending_message)
             await disp.force_more(String(g._pending_message));
+        /* Under a live WIN_STOP (ESC at an earlier --More--) that more() is a
+         * no-op and the line it leaves is wiped by cls() (display.c:2196 ->
+         * tty_clear_nhwindow(WIN_MAP)), so docrt() repaints a blank topline. */
+        if (g._topl_win_stop)
+            g._pending_message = '';
         await disp.docrt();
         flush_screen(1);
         await (await import('./objnam.js')).deliver_splev_message();

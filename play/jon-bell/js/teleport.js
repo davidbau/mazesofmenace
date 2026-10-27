@@ -9,7 +9,9 @@ import { on_level, In_tutorial } from './dungeon.js';
 import { make_stunned } from './potion.js';
 /* C ref: do.c:2076 schedule_goto — domagicportal defers the actual level
  * change to the end of the turn, same as level_tele (js/cmd.js:11421). */
-import { schedule_goto, invocation_message } from './cmd.js';
+import { schedule_goto, invocation_message, number_leashed } from './cmd.js';
+import { update_inventory } from './inventory_refresh.js';
+const LEASH = 236; /* objects.h LEASH, as js/cmd.js LEASH_OTYP */
 import { yn_function } from './end.js';
 import { ROWNO, COLNO, ZAP_POS, ACCESSIBLE, D_CLOSED, D_LOCKED, DOOR, isok, u_at, TELEDS_TELEPORT, RLOC_MSG, TEMPLE, engulfing_u, STRAT_APPEARMSG, NO_TRAP_FLAGS, BOLT_LIM, IS_ALTAR, IS_STWALL, W_NONPASSWALL, MON_FLOOR, POOL, MOAT, WATER, DRAWBRIDGE_UP, DB_UNDER, DB_MOAT, DB_LAVA, LAVAPOOL, LAVAWALL, MM_IGNOREWATER, MM_IGNORELAVA, GP_CHECKSCARY, GP_ALLOW_U, GP_AVOID_MONPOS, LR_MONGEN, LR_TELE, LR_UPTELE, LR_DOWNTELE, FIRE_RES, NO_MM_FLAGS, IS_WATERWALL, In_endgame, Is_astralevel, Is_juiblex_level, MON_DETACH, MON_OBLITERATE, MON_ENDGAME_MIGR } from './const.js';
 import { game } from './gstate.js';
@@ -261,6 +263,7 @@ export function enexto_core(xx, yy, fakemon, entflags) {
 function MON_AT(x, y) {
     for (let m = game.fmon; m; m = m.nmon) {
         if ((m.mhp | 0) < 1) continue; /* DEADMONSTER — C m_at/MON_AT reads the grid, which m_detach cleared */
+        if (m === game.u?.usteed) continue; /* mount_steed remove_monster()s the steed: not in the grid */
         if (m.mx === x && m.my === y)
             return m;
     }
@@ -684,15 +687,37 @@ export async function scrolltele(scroll) {
 export async function tele() {
     await scrolltele(null);
 }
-export function next_to_u() {
-    /* C: get_iter_mons(mleashed_next2u) — any leashed monster more than one
-     * square away (apply.c:905-916) aborts the teleport. */
+/* C ref: apply.c:888-916 mleashed_next2u + next_to_u — a leashed monster that
+ * is not adjacent is pulled next to the hero via mnexto() (enexto's
+ * collect_coords shuffle: RNG); if it is STILL not adjacent a cursed leash
+ * holds (returns TRUE, i.e. next_to_u() FALSE), otherwise the leash goes
+ * slack.  Returns FALSE if any leashed monster is stuck far away, or if the
+ * steed carries the Amulet. */
+export async function next_to_u() {
     for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
         if (mtmp.mhp <= 0 || (mtmp.mstate | 0))
             continue;
-        if (mtmp.mleashed
-            && distmin(mtmp.mx | 0, mtmp.my | 0, game.u.ux | 0, game.u.uy | 0) > 1)
-            return false;
+        if (!mtmp.mleashed)
+            continue;
+        const u = game.u;
+        const next2u = () => dist2(mtmp.mx | 0, mtmp.my | 0, u.ux | 0, u.uy | 0) <= 2;
+        if (!next2u())
+            await mnexto(mtmp, RLOC_NOMSG);
+        if (!next2u()) {
+            let otmp = game.invent;
+            while (otmp && !((otmp.otyp | 0) === LEASH && (otmp.leashmon | 0) === (mtmp.m_id | 0)))
+                otmp = otmp.nobj;
+            if (!otmp) {
+                impossible('leashed-unleashed mon?');
+                continue;
+            }
+            if (otmp.cursed)
+                return false;
+            mtmp.mleashed = 0;
+            otmp.leashmon = 0;
+            update_inventory();
+            await pline(`You feel ${(number_leashed() > 1) ? 'a' : 'the'} leash go slack.`);
+        }
     }
     /* C 924-926: no pack mules for the Amulet */
     if (game.u.usteed && mon_has_amulet(game.u.usteed))
@@ -708,7 +733,7 @@ export function next_to_u() {
  * without digging.  RNG-LOAD-BEARING: somexyspace() draws somex()/somey()
  * inside the 2x2 vault (rn2(2) twice), where a fall-through to tele() draws
  * safe_teleds' rnd(COLNO-1)/rn2(ROWNO) instead. */
-async function vault_tele() {
+export async function vault_tele() {
     const croom = search_special(VAULT);
     const c = { x: 0, y: 0 };
 
@@ -736,7 +761,7 @@ export async function tele_trap(trap) {
             if (antimagic)
                 shieldeff(u.ux | 0, u.uy | 0);
             await pline('You feel a wrenching sensation.');
-        } else if (!next_to_u()) {
+        } else if (!(await next_to_u())) {
             await pline(shudder_for_moment);
         } else if (trap.once) {
             deltrap(trap);
@@ -782,7 +807,7 @@ export async function domagicportal(ttmp) {
         await _buried_ball_to_punishment_dmp();
 
     /* C 1453-1456 */
-    if (!next_to_u()) {
+    if (!(await next_to_u())) {
         await pline(shudder_for_moment); /* C: You1(shudder_for_moment) */
         return;
     }
@@ -1122,8 +1147,11 @@ async function rloc_to_core(mtmp, x, y, rlocflags) {
 
     if (u.ustuck === mtmp) {
         if (u.uswallow) {
-            u.ux = mtmp.mx | 0;
-            u.uy = mtmp.my | 0;
+            /* C teleport.c:1692-1694: moving the engulfer carries the hero
+             * and redraws the stomach before the teleport message. */
+            u_on_newpos(mtmp.mx | 0, mtmp.my | 0);
+            await check_special_room(false);
+            await docrt();
         } else if (dist2(mtmp.mx | 0, mtmp.my | 0, u.ux | 0, u.uy | 0) <= 2) {
             /* C teleport.c:1695 `!m_next2u(mtmp)`; you.h:553
                m_next2u(m) = distu(m->mx, m->my) <= 2, and hack.h:1536
@@ -1148,7 +1176,7 @@ async function rloc_to_core(mtmp, x, y, rlocflags) {
         set_msg_xy_local(x, y);
         mtmp.mstrategy = ((mtmp.mstrategy | 0) & ~STRAT_APPEARMSG) >>> 0; /* one chance only */
         if (mtmp === u.ustuck && !(u.ux0 === u.ux && u.uy0 === u.uy)) {
-            You(`and ${mon_nam(mtmp)} teleport together.`);
+            await You(`and ${mon_nam(mtmp)} teleport together.`);
         } else if (telemsg && (couldsee(x, y) || sensemon(mtmp))) {
             const olddu = dist2(oldx, oldy, u.ux | 0, u.uy | 0);
             const suffix = next ? next
@@ -1766,7 +1794,7 @@ const TRAP_EFFECT_FINISHED_MTT = 0, TRAP_MOVED_MON_MTT = 3;
 const NO_TRAP_MTT = 0, HOLE_MTT = 13, TRAPDOOR_MTT = 14;
 const LEVEL_TELEP_MTT = 16, MAGIC_PORTAL_MTT = 17;
 const MIGR_RANDOM_MTT = 0, MIGR_PORTAL_MTT = 8; /* dungeon.h */
-const S_ELEMENTAL_MTT = 46; /* defsym.h MONSYM(46, 'E', ELEMENTAL, S_ELEMENTAL) */
+const S_ELEMENTAL_MTT = 31; /* defsym.h MONSYM(31, 'E', ELEMENTAL, S_ELEMENTAL) */
 /* C dungeon.c:1376 ledger_no(lev).  js/dog.js, js/mklev.js:2485 and
  * js/cmd.js:5626 each keep this same one-liner file-locally. */
 function ledger_no_tp(lev) {
@@ -1988,7 +2016,7 @@ export async function u_teleport_mon(mtmp, give_feedback) {
         return false;
     } else if (engulfing_u(mtmp) && noteleport_level(mtmp)) {
         if (give_feedback)
-            You(`are no longer inside ${mon_nam(mtmp)}!`);
+            await You(`are no longer inside ${mon_nam(mtmp)}!`);
         await unstuck(mtmp);
         if (!await rloc(mtmp, RLOC_MSG))
             await m_into_limbo(mtmp);

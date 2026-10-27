@@ -1,4 +1,4 @@
-import { delallobj } from './cmd.js';
+import { delallobj, cmd_from_dir } from './cmd.js';
 // C ref: nethack-c/src/dig.c — the apply-a-pick-axe / dig occupation subsystem.
 //
 //   use_pick_axe2()  — the down-dig (u.dz > 0) branch: "You start digging
@@ -14,6 +14,9 @@ import { delallobj } from './cmd.js';
 import { rn2, rn1, rnd } from './rng.js';
 import { PM_DWARF as PM_DWARF_ } from './pm.generated.js';
 import { game } from './gstate.js';
+import { dbon } from './uhitm.js';
+import { yname } from './do_wear.js';
+import { OC_NAME } from './oc_name_data.js';
 import { end_burn, start_timer } from './timeout.js';
 import { pline, feel_newsym, canseemon, newsym, You_hear, You_see, Unaware as Unaware_real } from './display.js';
 import { unblock_point, does_block, Blind, vision_recalc } from './vision.js';
@@ -92,7 +95,7 @@ import { fire_damage, confdir, surface as surface_cmd, ceiling as ceiling_cmd, a
 import { angry_priest } from './priest.js';
 import { losehp } from './dokick.js';
 import { t_at, deltrap, delfloortrap, unearth_objs, maketrap, mintrap,
-         trapeffect_hole_mon, buried_ball_to_punishment } from './trap.js';
+         buried_ball_to_punishment } from './trap.js';
 import { On_stairs, On_ladder, stairway_at, In_hell } from './mklev.js';
 import { Monnam } from './mcastu.js';
 import { is_pool_or_lava } from './look.js';
@@ -124,7 +127,11 @@ import { DROWNING, BURNING, NO_KILLER_PREFIX, WWALKING, SWIMMING, MAGICAL_BREATH
          OBJ_AT } from './const.js';
 import { PM_FIRE_ELEMENTAL, PM_SALAMANDER } from './pm.generated.js';
 import { pooleffects_drown, pooleffects_lava_effects } from './cmd.js';
-import { enexto_out, teleds } from './teleport.js';
+import { enexto_out, teleds, teleport_pet } from './teleport.js';
+import { get_level, pooleffects_grounded } from './cmd.js';
+import { migrate_to_level } from './dog.js';
+import { count_wsegs } from './worm.js';
+import { depth } from './hacklib.js';
 import { place_monster } from './steed.js';
 import { update_monster_region } from './region.js';
 import { block_point } from './vision.js';
@@ -511,6 +518,13 @@ export async function open_drawbridge(x, y) {
     p.bridge.typ = DRAWBRIDGE_DOWN;
     const wall = game.level?.at(p.wx, p.wy);
     if (wall) { wall.typ = DOOR; wall.doormask = D_NODOOR; }
+    /* C dbridge.c:863-867: the occupants of the span and portcullis squares. */
+    db_occupants[0] = db_set_entity(p.bx, p.by);
+    db_occupants[1] = db_set_entity(p.wx, p.wy);
+    await db_do_entity(db_occupants[0]);          /* Do set_entity after first */
+    db_occupants[1] = db_set_entity(p.wx, p.wy); /* do_entity for worm tail */
+    await db_do_entity(db_occupants[1]);
+    /* C dbridge.c:868 revive_nasty(): only Rider corpses act; not ported. */
     await delallobj(p.bx, p.by); // C dbridge.c:869
     const bt = t_at(p.bx, p.by), wt = t_at(p.wx, p.wy);
     if (bt) deltrap(bt); if (wt && wt !== bt) deltrap(wt);
@@ -521,6 +535,7 @@ export async function open_drawbridge(x, y) {
         && game.u.uz.dnum === game.stronghold_level.dnum
         && game.u.uz.dlevel === game.stronghold_level.dlevel)
         game.u.uevent = { ...(game.u.uevent || {}), uopened_dbridge: true };
+    db_nokiller(); /* C dbridge.c:876 */
     return true;
 }
 
@@ -1331,16 +1346,46 @@ export async function digactualhole_(x, y, madeby, ttyp, skipFurniture = false) 
                 await check_special_room(false);
             }
         } else {
-            /* C dig.c:809-834: objects get a chance to fall before a monster
-             * is handled.  Reuse trap.c's complete hole-monster arm so its
-             * grounded, worm, size, pet leash, destination, and migration
-             * rules stay identical to ordinary trap activation. */
+            /* C dig.c:819-848: objects get a chance to fall, then a monster
+             * on the new hole migrates SILENTLY to the level below.  This is
+             * not trapeffect_hole_mon/mlevel_tele_trap: no "Suddenly, %s
+             * falls into a hole." message, and the destination is
+             * depth+1, not the hole's trap->dst. */
             if (shopdoor && heros_fault)
                 await pay_for_damage('ruin', false);
             if (newobjs)
                 await impact_drop(null, x, y, 0);
-            if (mtmp)
-                await trapeffect_hole_mon(mtmp, ttmp, NO_TRAP_FLAGS);
+            if (mtmp) {
+                /*[don't we need special sokoban handling here?]*/
+                if (!pooleffects_grounded(mtmp.data)
+                    || ((mtmp.wormno | 0) && count_wsegs(mtmp) > 5)
+                    || (mtmp.data.msize | 0) >= 4 /* MZ_HUGE */)
+                    return;
+                if (mtmp === u.ustuck) /* probably a vortex */
+                    return;           /* temporary? kludge */
+
+                if (teleport_pet(mtmp, false)) {
+                    let tolevel;
+
+                    if (Is_stronghold(u.uz)) {
+                        const valley = game.valley_level;
+                        tolevel = { dnum: valley.dnum | 0, dlevel: valley.dlevel | 0 };
+                    } else if (Is_botlevel(u.uz)) {
+                        if (canseemon(mtmp))
+                            await pline('%s avoids the trap.', Monnam(mtmp));
+                        return;
+                    } else {
+                        tolevel = get_level(depth(u.uz) + 1);
+                    }
+                    /* C: if (mtmp->isshk) make_angry_shk(mtmp, 0, 0);
+                     * make_angry_shk has no js/ body yet (see
+                     * js/teleport.js make_angry_shk_local). */
+                    await migrate_to_level(mtmp,
+                        (tolevel.dlevel | 0)
+                            + (game.dungeons?.[tolevel.dnum | 0]?.ledger_start | 0),
+                        0 /* MIGR_RANDOM */, null);
+                }
+            }
         }
     }
 }
@@ -1786,6 +1831,17 @@ export async function use_pick_axe2(obj) {
         return 1;
     }
     if (!(u.dx | 0) && !(u.dy | 0) && !dz) {
+        /* C dig.c:1180-1191 — hit yourself with the pick. */
+        let dam = rnd(2) + dbon() + (obj.spe | 0);
+        if (dam <= 0)
+            dam = 1;
+        await pline(`You hit yourself with ${yname(u.uwep)}.`);
+        const buf = `${g.flags?.female ? 'her' : 'his'} own ${OC_NAME[obj.otyp]}`;
+        const hp = u.uprops && u.uprops[HALF_PHDAM];
+        if (hp && ((hp.intrinsic | 0) || (hp.extrinsic | 0)))
+            dam = Math.trunc((dam + 1) / 2);
+        await losehp(dam, buf, KILLED_BY);
+        if (g.disp) g.disp.botl = true;
         g.context = g.context || {};
         g.context.move = 1;
         return 1;
@@ -2139,7 +2195,10 @@ export function dig_dirsyms(obj) {
     const PM_GRID_BUG = 116;
     let out = '';
     for (let dir = 0; dir < 10; dir++) {
-        const dirch = DIRCH[dir];
+        /* C dig.c:1124 cmd_from_dir(dir, MV_WALK): the key bound to the move,
+         * so number_pad shows digits; fall back to the letter if unbound. */
+        const bound = cmd_from_dir(dir, 0);
+        const dirch = bound ? (typeof bound === 'number' ? String.fromCharCode(bound) : bound) : DIRCH[dir];
         if (u.uswallow) {
             /* all directions are viable when swallowed */
         } else if (dir < 8) {

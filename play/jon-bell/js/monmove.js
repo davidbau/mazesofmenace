@@ -37,7 +37,8 @@ import { can_touch_safely, mfndpos, sobj_at, hideunder, maybe_unhide_at, mpickob
          /* meatmetal (mon.c:1473) */ is_rustprone,
  healmon as healmon_real, meatobj as meatobj_real,
          meatcorpse as meatcorpse_real, newcham, u_on_newpos,
-         extract_from_minvent, m_consume_obj, Is_special } from './mklev.js';
+         extract_from_minvent, m_consume_obj, Is_special, mongone,
+         resists_ston } from './mklev.js';
 import { accessible, closed_door, may_dig } from './look.js';
 import { m_at, mon_nam, autoreturn_weapon } from './uhitm.js';
 import { gettrack } from './track.js';
@@ -299,7 +300,7 @@ async function monflee_mv(mtmp, fleetime, first, fleemsg) {
                         : (u.uarm && artifact_light(u.uarm)) ? yname(u.uarm) : '[its imagination?]';
                     await pline(`${Monnam_dm(mtmp)} flees from the painful light of ${lsrc}.`);
                 } else {
-                    await pline('Bright light!');
+                    await verbalize('Bright light!'); /* C monmove.c:514 */
                 }
             } else {
                 await pline(`${Monnam_dm(mtmp)} turns to flee.`);
@@ -752,7 +753,7 @@ function m_harmless_trap_mv(mtmp, ttmp) {
      * mresists is MONS row column 5; sleep resistance is bit 0x04. */
     const resistsSleep = (mndx >= 0 && mndx < _MONS_MV.length)
         && (((_MONS_MV[mndx][5] | 0) & 0x04) !== 0);
-    if (floor_trigger_mv(ttyp) && isFlyer)
+    if (!In_sokoban(game.u?.uz) && floor_trigger_mv(ttyp) && isFlyer)
         return true;
     switch (ttyp) {
         case T_ARROW_MV: case T_DART_MV: case T_ROCK_MV: case T_SQKY_MV:
@@ -1138,8 +1139,9 @@ export function mon_would_take_item(mtmp, otmp) {
         return true;
     if (likes_magic && _magical_mv(oclass) && pctload < 85)
         return true;
-    /* throws_rocks && BOULDER && pctload<50 && !Sokoban */
-    if (!!(mflags2 & M2_ROCKTHROW_MV2) && otyp === BOULDER_OTYP_MV && pctload < 50)
+    /* C monmove.c:1023-1024: Sokoban rules suppress boulder collection. */
+    if (!!(mflags2 & M2_ROCKTHROW_MV2) && otyp === BOULDER_OTYP_MV && pctload < 50
+        && !(game.level?.flags?.sokoban_rules ?? game.sokoban))
         return true;
     if (mndx === PM_GELATINOUS_CUBE_MV
         && oclass !== ROCK_CLASS_MV && oclass !== BALL_CLASS_MV
@@ -1231,17 +1233,12 @@ function searches_for_item_mv(mon, obj) {
     case FOOD_CLASS_MV:
         /* C muse.c:2828-2841 */
         if (typ === CORPSE_OTYP_MV) {
-            /* C's second disjunct is
-             *     (!resists_ston(mon) && cures_stoning(mon, obj, FALSE))
-             * where cures_stoning() on a corpse is
-             *     corpsenm != NON_PM && (corpsenm == PM_LIZARD || acidic(...)).
-             * resists_ston(mon) is Resists_Elem(mon, STONE_RES) — the monster's
-             * live mextrinsics ORed with its mresists row, neither of which this
-             * module carries — so only the W_ARMG half is ported.  A
-             * stoning-resistant monster next to a lizard/acidic corpse is the
-             * one case this under-returns. */
-            return ((mon.misc_worn_check | 0) & W_ARMG_MV) !== 0
-                   && touch_petrifies_mv(obj.corpsenm | 0);
+            const _cn = obj.corpsenm ?? -1;
+            return (((mon.misc_worn_check | 0) & W_ARMG_MV) !== 0
+                    && touch_petrifies_mv(_cn | 0))
+                   || (!resists_ston(mon)
+                       && _cn !== -1 /* NON_PM */
+                       && ((_cn | 0) === PM_LIZARD_MV || acidic_mv(_cn | 0)));
         }
         if (typ === TIN_MV) {
             /* C: mcould_eat_tin(mon) && !resists_ston(mon)
@@ -1627,6 +1624,28 @@ export function leppie_avoidance(mon) {
     return !!gold && gold.quan > (findgold(game.invent)?.quan ?? 0);
 }
 
+/* C postmov (monmove.c:1623-1639) iron-bars arm, shared by the hostile and
+ * tame move paths.  Returns MMOVE_DONE_MV when the monster ate the bars. */
+async function postmov_bars(mtmp) {
+    const loc = game.level?.locations?.[mtmp.mx]?.[mtmp.my];
+    const ptr = mtmp.data;
+    if (loc?.typ === IRONBARS) {
+        if (!((loc.wall_info | 0) & 0x08 /* W_NONDIGGABLE */)
+            && (dmgtype(ptr, AD_RUST_BARS_MV)
+                || dmgtype(ptr, AD_CORR_BARS_MV) || metallivorous_mv(ptr))) {
+            if (canseemon(mtmp))
+                await monmove_message(mtmp, `${Monnam_dm(mtmp)} eats through the iron bars.`);
+            await dissolve_bars(mtmp.mx, mtmp.my);
+            return MMOVE_DONE_MV;
+        } else if (game.flags?.verbose !== false && canseemon(mtmp)) {
+            await Norep('%s %s %s the iron bars.', Monnam_dm(mtmp),
+                  makeplural(locomotion(ptr, 'pass')),
+                  ((ptr.mflags1 | 0) & M1_WALLWALK_MV) ? 'through' : 'between');
+        }
+    }
+    return 0;
+}
+
 /* C postmov (monmove.c:1543-1646) door arm: open a door, or crash through it,
  * if 'mtmp' can.  Shared by the hostile path in m_move and the pet path
  * (C: a tame mover reaches the same postmov).  Returns MMOVE_DIED_MV when
@@ -1664,6 +1683,34 @@ async function postmov_door(mtmp, _didseeit_pm, _mf1_ct, can_tunnel_mv) {
                 if (game.flags?.verbose !== false && canseemon(mtmp))
                     await pline(`${YMonnam(mtmp)} ${(_mndx_d === 106 /* PM_FOG_CLOUD */
                         || (_mrow_d && (_mrow_d[0] | 0) === S_LIGHT_MV)) ? 'flows' : 'oozes'} under the door.`);
+            } else if ((_dm_d & D_LOCKED_MV)
+                && ((_can_open_d && monhaskey(mtmp, true)) || mtmp.iswiz
+                    || _is_rider_mv(_mndx_d))) {
+                /* C monmove.c:1554-1575: unlock before the ordinary open and
+                 * doorbuster arms; UnblockDoor also refreshes visibility. */
+                _dloc.doormask = _btrapped_now ? D_NODOOR_MV : D_ISOPEN_MV;
+                newsym(mtmp.mx | 0, mtmp.my | 0);
+                recalc_block_point(mtmp.mx | 0, mtmp.my | 0);
+                vision_recalc(0);
+                const canseeit = _didseeit_pm || !!cansee(mtmp.mx | 0, mtmp.my | 0);
+                if (_btrapped_now) {
+                    if (await mb_trapped(mtmp, canseeit))
+                        return MMOVE_DIED_MV;
+                } else if (game.flags?.verbose !== false) {
+                    if (canseeit && canspotmon(mtmp))
+                        await monmove_message(mtmp, `${Monnam_dm(mtmp)} unlocks and opens a door.`);
+                    else if (canseeit)
+                        await You_see('a door unlock and open.');
+                    else {
+                        const u = game.u || {};
+                        const deaf = u.HDeaf || u.EDeaf || u.uprops?.[DEAF]?.intrinsic
+                            || u.uprops?.[DEAF]?.extrinsic || u.uroleplay?.deaf;
+                        if (!deaf)
+                            await You_hear('a door unlock and open.');
+                    }
+                }
+                if (_topline_more_pending() && _more_never_dismissed())
+                    await flush_pending_messages();
             } else if ((_dm_d & D_CLOSED_MV) === D_CLOSED_MV && !(_dm_d & D_LOCKED_MV)
                 && _can_open_d) {
                 let _doorDone = false;
@@ -1869,20 +1916,6 @@ export async function m_move(mtmp, after) {
                 await _handle_sqky_board_mon(mtmp, _trap, mtmp.mx | 0, mtmp.my | 0);
             }
         }
-        /* C postmov (monmove.c:1549-1553) — the door block runs for a tame mover
-         * too: an amorphous pet that moved onto a closed/locked door cell oozes
-         * under it, with the message and no state change.  (The open/unlock arms
-         * for pets are not ported on this path.) */
-        if (res === MMOVE_MOVED_MV) {
-            const _pdl = game.level?.locations?.[mtmp.mx | 0]?.[mtmp.my | 0];
-            if (_pdl && (_pdl.typ | 0) === DOOR_TYP_MV
-                && ((_pdl.doormask | 0) & (D_LOCKED_MV | D_CLOSED_MV)) !== 0
-                && mtmp.data && ((mtmp.data.mflags1 | 0) & M1_AMORPHOUS_MV) !== 0
-                && !(mtmp.data.mflags1 & M1_WALLWALK_MV)
-                && game.flags?.verbose !== false && canseemon(mtmp))
-                await pline(`${YMonnam(mtmp)} ${((mtmp.mndx ?? mtmp.mnum ?? 0) === 106
-                    || (mtmp.data.mlet | 0) === S_LIGHT_MV) ? 'flows' : 'oozes'} under the door.`);
-        }
         /* C postmov (monmove.c:1656) `newsym(mtmp->mx, mtmp->my);` — the SECOND
          * half of the pair, at the very end of the `mmoved == MMOVE_MOVED` block,
          * i.e. after mintrap and after the door block.  This is what finally puts
@@ -1897,6 +1930,7 @@ export async function m_move(mtmp, after) {
             const _pctun = !Is_rogue_level(game.u?.uz) && !!(_pmf1 & M1_TUNNEL_MDW);
             const _pdr = await postmov_door(mtmp, _pdidsee, _pmf1, _pctun);
             if (_pdr === MMOVE_DIED_MV) return _pdr;
+            if ((await postmov_bars(mtmp)) === MMOVE_DONE_MV) return MMOVE_DONE_MV;
             /* C postmov (monmove.c:1643-1646) "possibly dig" — the pet path
              * reaches it too: a tame dwarf/dwarf lord that moved draws
              * mdig_tunnel's unconditional rnd(12) (dig.c:1418). */
@@ -2002,12 +2036,26 @@ export async function m_move(mtmp, after) {
         const _gdomx = mtmp.mx | 0, _gdomy = mtmp.my | 0;
         const xm = await gd_move(mtmp);
         if (xm === -2) return MMOVE_DIED_MV;
-        if (xm === -1) return MMOVE_NOTHING_MV;
+        /* C monmove.c:1812-1814: -1 resumes ordinary movement, including
+         * pursuit by a hostile guard after the hero leaves the vault. */
+        if (xm !== -1) {
         if (xm === 1)
             newsym(_gdomx, _gdomy);
         if (xm === 1)
             newsym(mtmp.mx | 0, mtmp.my | 0);
         return postmov(mtmp, (xm !== 1) ? MMOVE_NOTHING_MV : MMOVE_MOVED_MV);
+        }
+    }
+
+    /* C monmove.c:1829-1836 (MAIL_STRUCTURES): the mail daemon delivers and vanishes. */
+    if ((mtmp.mndx ?? mtmp.mnum ?? 0) === 314 /* PM_MAIL_DAEMON */) {
+        const _ud = game.u || {};
+        const _df = ((_ud.HDeaf | 0) !== 0) || ((_ud.EDeaf | 0) !== 0)
+            || !!(_ud.uroleplay && _ud.uroleplay.deaf);
+        if (!_df && canseemon(mtmp))
+            verbalize("I'm late!");
+        await mongone(mtmp);
+        return MMOVE_DIED_MV;
     }
 
     /* C monmove.c:1864-1872: tengu teleport: if (PM_TENGU && !rn2(5) && !mcan && !tele_restrict)
@@ -2503,24 +2551,7 @@ export async function m_move(mtmp, after) {
 
         /* C monmove.c:1623-1639 — eating bars spends the rest of the move;
          * verbose only controls the ordinary passage message. */
-        {
-            const loc = game.level?.locations?.[mtmp.mx]?.[mtmp.my];
-            const ptr = mtmp.data;
-            if (loc?.typ === IRONBARS) {
-                if (!((loc.wall_info | 0) & 0x08 /* W_NONDIGGABLE */)
-                    && (dmgtype(ptr, AD_RUST_BARS_MV)
-                        || dmgtype(ptr, AD_CORR_BARS_MV) || metallivorous_mv(ptr))) {
-                    if (canseemon(mtmp))
-                        await monmove_message(mtmp, `${Monnam_dm(mtmp)} eats through the iron bars.`);
-                    await dissolve_bars(mtmp.mx, mtmp.my);
-                    return MMOVE_DONE_MV;
-                } else if (game.flags?.verbose !== false && canseemon(mtmp)) {
-                    await Norep('%s %s %s the iron bars.', Monnam_dm(mtmp),
-                          makeplural(locomotion(ptr, 'pass')),
-                          ((ptr.mflags1 | 0) & M1_WALLWALK_MV) ? 'through' : 'between');
-                }
-            }
-        }
+        if ((await postmov_bars(mtmp)) === MMOVE_DONE_MV) return MMOVE_DONE_MV;
 
         if (can_tunnel_mv && may_dig(mtmp.mx | 0, mtmp.my | 0)
             && await mdig_tunnel(mtmp))
@@ -3368,7 +3399,7 @@ export function m_avoid_kicked_loc(mtmp, nx, ny) {
     return ((!!(mtmp.mpeaceful | 0)) || (!!(mtmp.mtame | 0)))
         && (!!(mtmp.mcansee | 0))
         && !(mtmp.mconf | 0) && !(mtmp.mstun | 0)
-        /* && !Conflict (unmodeled → false) */
+        && !_conflict_mv()
         && klok
         && (nx | 0) === kx && (ny | 0) === ky
         && distu_sq <= 2;
@@ -3433,7 +3464,8 @@ export function m_avoid_soko_push_loc(mtmp, nx, ny) {
     /* C: !mtmp->mconf && !mtmp->mstun */
     if ((mtmp.mconf | 0) || (mtmp.mstun | 0)) return false;
 
-    /* C: && !Conflict (unmodeled → always true) */
+    /* C: && !Conflict */
+    if (_conflict_mv()) return false;
 
     const u = game.u;
     if (!u) return false;

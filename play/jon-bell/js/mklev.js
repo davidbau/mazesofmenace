@@ -1,5 +1,5 @@
 import { quest_monster_died } from './quest.js';
-import { Norep } from './display.js';
+import { Norep, Deaf as Deaf_live } from './display.js';
 import { nonliving as lifesave_nonliving } from './makemon.js';
 import { m_useup as lifesave_m_useup } from './trap.js';
 import { discover_object as lifesave_discover_object, isWanNothingNodir } from './o_init.js';
@@ -31,7 +31,8 @@ import { PM_GRAY_OOZE as PM_GRAY_OOZE_MK } from './pm.generated.js';
 import { PM_YELLOW_DRAGON as PM_YELLOW_DRAGON_MC, PM_WHITE_UNICORN as PM_WHITE_UNICORN_MC, PM_BLACK_UNICORN as PM_BLACK_UNICORN_MC } from './pm.generated.js';
 import { nexttodoor } from './mkroom.js';
 import { OBJ_MINVENT } from './const.js';
-import { fill_supply_chest, save_mtraits } from './mkobj.js';
+import { fill_supply_chest, save_mtraits, free_omid } from './mkobj.js';
+import { cant_revive } from './read.js';
 import { init_fruit_chain } from './options.js';
 import { MKOBJ_OC_CLASS, MKOBJ_OC_PROB, MKOBJ_OCLASS_PROB_TOTALS, MKOBJ_SVB_BASES, } from './mkobj_data.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_OPROP, MKOBJ_OC_SKILL, } from './mkobj_erosion_meta.js';
@@ -2840,7 +2841,7 @@ async function shkinit(shp, shpIndx, sroom) {
     const goldObj = await mksobj(GOLD_PIECE, false, false);
     if (goldObj) {
         goldObj.quan = capital;
-        goldObj.owt = capital * 4; /* C weight(gold): quan * 4 / 20 + ... simplified */
+        goldObj.owt = weight(goldObj); /* mkobj.c:1888 weight(): COIN_CLASS is (quan + 50) / 100 */
         await mpickobj(shk, goldObj);
     }
     /* C: if (shp->shknms == shkrings) mongets(shk, TOUCHSTONE) */
@@ -3071,11 +3072,10 @@ async function mk_zoo_thronemon(tx, ty) {
         mon.mpeaceful = 0;
         /* C: set_malign(mon) — no RNG, skip */
         /* C: mongets(mon, MACE) */
-        const sceptre = await mksobj(MACE_OTYP, true, false);
-        if (sceptre) {
-            sceptre.nobj = mon.minvent ?? null;
-            mon.minvent = sceptre;
-        }
+        /* mongets, not a bare mksobj + chain write: it applies the prince
+         * "inferior quality battle gear" spe >= 1 fix (makemon.c:2218-2223),
+         * which the throne-room ruler (M2_PRINCE) needs for its sceptre. */
+        await mongets(mon, MACE_OTYP, mksobj);
     }
 }
 export async function mk_tt_object(objtype, x, y) {
@@ -4143,9 +4143,14 @@ async function m_initgrp(mtmp, x, y, n, mmflags) {
         }
     }
 }
+/* C ref: makemon.c:2392-2549 set_mimic_sym(mtmp) — pick a mimic's disguise
+ * (m_ap_type + mappearance).  RNG-faithful port of every rn2/rnd/rn1 call in
+ * source order.  Called from makemon's S_MIMIC switch case (below).  Object-otyp
+ * / PCHAR symbol values match objects.h / defsym.h; the appearance fields drive
+ * later screen rendering and the restrap() RNG guard. */
 export async function set_mimic_sym(mon) {
-    const Protection_from_shape_changers = false;
-    if (!mon || Protection_from_shape_changers)
+    /* C makemon.c:2401: protected heroes prevent new mimic disguises. */
+    if (!mon || Protection_from_shape_changers_nc())
         return;
     /* local constants (objclass.h / objects.h / defsym.h / mextra.h) */
     const M_AP_OBJECT = 2, M_AP_FURNITURE = 1;
@@ -5819,7 +5824,7 @@ export async function make_corpse(mtmp, x, y, corpseflags) {
     }
     /* C mon.c:650-712 — golems leave their material instead of a corpse.
      * Each arm ends 'free_mgivenname(mtmp); break;' into the common tail
-     * (mon.c:896-934), which here is just newsym (no name/stack modelling). */
+     * (mon.c:896-938), ported below; 'obj' is the LAST drop of the loop. */
     {
         const PM_PAPER_GOLEM_MC = 250, PM_ROPE_GOLEM_MC = 251, PM_GOLD_GOLEM_MC = 252,
               PM_LEATHER_GOLEM_MC = 253, PM_WOOD_GOLEM_MC = 254, PM_CLAY_GOLEM_MC = 256,
@@ -5883,8 +5888,25 @@ export async function make_corpse(mtmp, x, y, corpseflags) {
         default:
             golem = false;
         }
+        /* C mon.c:655+ — every golem arm frees the dead monster's given name
+         * ("don't christen obj") except stone golem, whose named statue does
+         * get christened (C's own omission, ported). */
+        if (golem && mndx !== PM_STONE_GOLEM_MC && mtmp.mextra)
+            mtmp.mextra.mgivenname = null;
         if (golem) {
+            if (!obj) /* rope golem, rn2(3) == 0: C returns before newsym */
+                return null;
+            if (g.context?.bypasses)
+                bypass_obj(obj);
+            if (mtmp.mextra?.mgivenname)
+                await oname(obj, mtmp.mextra.mgivenname, 0);
+            if (_Blind_mk() && !sensemon(mtmp))
+                clear_dknown(obj);
+            await stackobj(obj);
             newsym(x | 0, y | 0);
+            /* C mon.c:936-938 — in case the drop landed off-spot */
+            if ((obj.ox | 0) !== (x | 0) || (obj.oy | 0) !== (y | 0))
+                newsym(obj.ox | 0, obj.oy | 0);
             return obj;
         }
     }
@@ -7615,7 +7637,10 @@ async function themeroom_fill_rng(aroom, difficulty) {
             // themerms.lua:50 des.terrain(ice, "I") runs BEFORE the melt draws:
             // sel_set_ter -> set_levltyp_lit(ICE); sp_lev.c:4625 icedpool only
             // when splev_init_present (not for a themeroom).
-            const iceCells = roomRndcoordCells(aroom);
+            /* nhlsel.c:938-940 l_selection_iterate walks y-outer, x-inner,
+             * unlike the dx-outer order roomRndcoordCells returns, so the
+             * i-th nh.rn2(1000) melt time lands on the i-th cell in row-major order. */
+            const iceCells = roomRndcoordCells(aroom).sort((p, q) => (p.y - q.y) || (p.x - q.x));
             for (const c of iceCells) {
                 const loc = game.level?.at(c.x, c.y);
                 if (loc) loc.typ = ICE;
@@ -11622,6 +11647,10 @@ export function get_level_extends() {
     return { xmin, xmax, ymin, ymax };
 }
 function bound_digging() {
+    /* C mkmaze.c:1446-1447: everything is diggable on the Plane of Earth. */
+    /* C mkmaze.c:1446-1447 — everything is diggable on the Plane of Earth. */
+    if (Is_earthlevel(game.u?.uz))
+        return;
     const map = game.level;
     const { xmin, xmax, ymin, ymax } = get_level_extends();
     for (let x = 0; x < COLNO; x++)
@@ -12473,7 +12502,7 @@ export async function m_respond(mtmp) {
 
 /* Unported helper for m_respond shrieker case */
 async function m_respond_shrieker(mtmp) {
-    if (!game.u?. deaf) {
+    if (!Deaf_live()) { /* C mon.c:4090 !Deaf */
         pline(`${Monnam(mtmp)} shrieks.`);
         /* C: mon.c:4092 stop_occupation() follows the shriek pline. */
         const { stop_occupation } = await import('./allmain.js');
@@ -13597,6 +13626,8 @@ export async function meatcorpse(mtmp) {
     const original_mnum = mtmp.mnum;
     const x = mtmp.mx, y = mtmp.my;
 
+    if (mtmp.mtame)
+        return 0;
 
     /* skips past any globs */
     for (otmp = sobj_at(CORPSE, x, y); otmp;
@@ -13924,19 +13955,58 @@ export async function revive_corpse(otmp, do_msgs = true) {
             y = spot.y | 0;
         }
     }
-    /* C zap.c:895/1003: revive() suppresses inventory and waiting strategy,
-     * and does not count the revived monster as a new birth. */
-    let mmflags = NO_MINVENT | MM_NOWAIT | MM_NOMSG | MM_NOCOUNTBIRTH;
+    /* C zap.c:967-973: a norevive corpse (or an eel out of water) twitches. */
+    if (otmp.norevive
+        || (mdat.mlet === 57 /* S_EEL */
+            && !IS_POOL(game.level.locations[x][y].typ))) {
+        if (cansee(x, y)) {
+            const nm = corpse_xname_rc(otmp, null, 4 /* CXN_PFX_THE */);
+            await pline(`${nm.charAt(0).toUpperCase()}${nm.slice(1)} twitches feebly.`);
+        }
+        return false;
+    }
+    /* C zap.c:895/1003: revive() suppresses inventory and waiting strategy;
+     * only the plain makemon() arm skips counting the revived monster as a
+     * new birth — the cant_revive() arm passes mmflags unchanged. */
+    let mmflags = NO_MINVENT | MM_NOWAIT | MM_NOMSG;
     /* C zap.c:974-979: applicable when montraits isn't used */
     const cgend = (otmp.spe | 0) & CORPSTAT_GENDER;
     if (cgend === CORPSTAT_MALE)
         mmflags |= MM_MALE;
     else if (cgend === CORPSTAT_FEMALE)
         mmflags |= MM_FEMALE;
-    // C zap.c:1000-1007: a corpse with saved traits restores that monster.
-    const mon = otmp.oextra?.omonst
-        ? await montraits(otmp, { x, y }, false)
-        : await makemon(mdat, x, y, mmflags);
+    /* C zap.c:982-999: guards/angels revive as human zombies and unique
+     * corpses without saved traits revive as a doppelganger (which then
+     * shapechanges to the corpse's own form); montype changes, mdat keeps
+     * the corpse's permonst for newcham().  This arm was missing here: a
+     * unique corpse (e.g. a Rider) revived as itself instead, drawing
+     * newmonhp's rider d(10,8) instead of the substitute's d(m_lev,8). */
+    const mtype = { value: mnum };
+    let mon;
+    if (cant_revive(mtype, true, otmp)) {
+        mon = await makemon(permonstTemplate(mtype.value), x, y, mmflags);
+        if (mon) {
+            /* skip ghost handling */
+            if (otmp.oextra?.omid)
+                free_omid(otmp);
+            if (otmp.oextra?.omonst) {
+                dealloc_mextra(otmp.oextra.omonst);
+                otmp.oextra.omonst = null;
+            }
+            if (mon.cham === PM_DOPPELGANGER_NC) {
+                /* change shape to match the corpse */
+                await newcham(mon, mnum, 0 /* NO_NC_FLAGS */);
+            } else if (mon.data.mlet === S_ZOMBIE) {
+                mon.mhp = mon.mhpmax = 100;
+                mon_adjust_speed(mon, 2, null); /* MFAST */
+            }
+        }
+    } else if (otmp.oextra?.omonst) {
+        // C zap.c:1000-1007: a corpse with saved traits restores that monster.
+        mon = await montraits(otmp, { x, y }, false);
+    } else {
+        mon = await makemon(mdat, x, y, mmflags | MM_NOCOUNTBIRTH);
+    }
     if (otmp.oextra?.omonst && mon?.mtame && !mon.isminion)
         await wary_dog(mon, true);
     if (!mon)
@@ -14612,7 +14682,7 @@ export async function mdrop_obj_md(mon, obj, verbosely) {
         await stackobj(obj);
     }
     if ((mon.mhp | 0) >= 1 && unwornmask)
-        update_mon_extrinsics_md(mon, obj, false, true);
+        await update_mon_extrinsics_md(mon, obj, false, true);
 }
 
 /* C steal.c:874-899 relobj(mtmp, show, is_pet) — "release the objects the
@@ -14756,6 +14826,7 @@ function mon_has_special_nc(mtmp) {
     return 0;
 }
 
+/* C youprop.h:355-360 Protection_from_shape_changers. */
 function Protection_from_shape_changers_nc() {
     const p = game.u?.uprops?.[PROT_FROM_SHAPE_CHANGERS];
     return !!p && !!((p.intrinsic | 0) || (p.extrinsic | 0));
@@ -15565,8 +15636,10 @@ export async function newcham(mtmp, mdat, ncflags) {
         wormgone_mk(mtmp);
         place_monster(mtmp, wmx, wmy);
     }
-    /* C mon.c:5344-5352 — endgame mplayer rank-title strip and seemimic()
-     * revert: no RNG, and neither applies here. */
+    /* C mon.c:5363-5364 — a non-mimic form loses its previous disguise. */
+    if (((mtmp.m_ap_type | 0) & 0x7 /* M_AP_TYPMASK */)
+        && (newdata.mlet | 0) !== 13 /* S_MIMIC */)
+        seemimic(mtmp);
 
     /* (this code used to try to adjust the monster's health based on a normal
        one of its type but there are too many special cases, so just give the
@@ -15969,7 +16042,10 @@ export async function clone_mon_ml(mon, x, y) {
 /* C ref: potion.c:2873 split_mon(mon, mtmp) — monster arm only (the hero arm
  * is cloneu).  Clone a gremlin or mold; HP halved, odd point stays. */
 export async function split_mon_ml(mon, mtmp) {
-    void mtmp;
+    // C potion.c:2881-2884: a non-null attacker supplies the heat's source.
+    const reason = mtmp
+        ? ` from ${mtmp === game.youmonst ? 'your' : lifesave_s_suffix(mon_nam_wm(mtmp))} heat`
+        : '';
     if ((mon.mhp | 0) > (mon.mhpmax | 0))
         mon.mhp = mon.mhpmax | 0;
     const m2 = (mon.mhp | 0) > 1 ? await clone_mon_ml(mon, 0, 0) : null;
@@ -15977,7 +16053,7 @@ export async function split_mon_ml(mon, mtmp) {
         m2.mhpmax = Math.trunc((mon.mhpmax | 0) / 2);
         mon.mhpmax = (mon.mhpmax | 0) - m2.mhpmax;
         if (canspotmon(mon))
-            await pline(`${Monnam_wm(mon)} multiplies!`);
+            await pline(`${Monnam_wm(mon)} multiplies${reason}!`);
     }
     return m2;
 }
@@ -17176,11 +17252,13 @@ export async function setmangry(mtmp, via_attack) {
     const Blind = _Blind_mk();
 
     // sengr_at: check for Elbereth engraving at (x,y)
-    function sengr_at(text, x, y, sense_only) {
+    // C engrave.c:251 sengr_at(s, x, y, strict): not a headstone, already finished
+    function sengr_at(text, x, y, strict) {
         const ep = _engr_map.get(`${x},${y}`);
-        if (!ep) return false;
-        // Check if engraving text contains the given text
-        return ep.text && ep.text.indexOf(text) >= 0;
+        if (!ep || (ep.engr_type | 0) === HEADSTONE || (ep.engr_time | 0) > (g.moves | 0))
+            return false;
+        const t = String(ep.text ?? '');
+        return strict ? t.toLowerCase() === text.toLowerCase() : t.indexOf(text) >= 0;
     }
 
     // humanoid: check M1_HUMANOID flag

@@ -1,8 +1,8 @@
-import { ggetobj, costly_alteration, fully_identify_obj as fully_identify_obj_cmd } from './cmd.js';
-import { COST_UNCHRG } from './const.js';
+import { ggetobj, _restrict_name, costly_alteration, fully_identify_obj as fully_identify_obj_cmd } from './cmd.js';
+import { ONAME, has_oname, COST_UNCHRG } from './const.js';
 // @ts-nocheck
 import { rn2, rnd, rn1, rnl, d } from './rng.js';
-import { discover_object } from './o_init.js';
+import { discover_object, isWanNothingNodir } from './o_init.js';
 import { MKOBJ_OC_CLASS } from './mkobj_data.js';
 import { game } from './gstate.js';
 import { reassign } from './inventory_refresh.js';
@@ -253,8 +253,10 @@ export async function recharge(obj, curse_bless) {
         if (otyp === WAN_WISHING) {
             lim = 1;
         }
-        else if (otyp < WAN_FIRST_NODIR || otyp > WAN_LAST_NODIR) {
-            /* WAN_NOTHING(416)+ or unrecognised — directional (oc_dir != NODIR) */
+        else if ((otyp < WAN_FIRST_NODIR || otyp > WAN_LAST_NODIR)
+                 && !(otyp === 416 && isWanNothingNodir())) {
+            /* WAN_NOTHING(416)+ or unrecognised — directional (oc_dir != NODIR);
+             * WAN_NOTHING's oc_dir is randomized in init_objects (o_init.c:234) */
             lim = 8;
         }
         else {
@@ -649,6 +651,8 @@ import { erosion_matters, mkobj, place_object, makemon } from './mklev.js';
 import { initedog, tamedog } from './dog.js';
 import { setmangry } from './mklev.js';
 import { isok } from './const.js';
+import { tmp_at } from './display.js';
+import { DISP_BEAM, DISP_END } from './const.js';
 import { canspotmon, _topl_stash_result, _topl_joins_committed } from './display.js';
 import { MM_EDOG, NO_MINVENT, MM_NOMSG, G_GONE } from './const.js';
 /* C ref: ball.c:193 placebc() — punish()'s ball&chain placement lives in
@@ -754,7 +758,7 @@ import { dmgtype } from './dogmove.js';
  * js/display.js also declares a private `observe_object`, but that one is a
  * bare `obj.dknown = 1` with neither the FIRST_OBJECT nor the Hallucination
  * guard, so it is NOT the copy to wire. */
-import { getObjFromGetobj, observe_object, level_tele, getobj_redo_menu, check_capacity, getpos, getpos_sethilite } from './cmd.js';
+import { mime_action, getObjFromGetobj, observe_object, level_tele, getobj_redo_menu, check_capacity, getpos, getpos_sethilite } from './cmd.js';
 /* C teleport.c:844 scrolltele() — the non-confused, non-cursed arm of
  * seffect_teleportation (read.c:1796). */
 import { scrolltele } from './teleport.js';
@@ -1090,6 +1094,13 @@ export async function doread() {
         }
         if (_isQuit(keyCode)) {
             await getobj_never_mind(prompt);
+            cancelled = true;
+            break;
+        }
+        /* C invent.c:1955-1959 — HANDS_SYM '-' with !allownone (doread's getobj
+         * has no hands choice): mime_action("read"), return NULL. */
+        if (keyCode === 45 /* '-' */) {
+            await mime_action('read');
             cancelled = true;
             break;
         }
@@ -2460,6 +2471,13 @@ async function chwepon(otmp, amount) {
         return 1;
     }
 
+    /* C wield.c:990-996 — a named artifact resists disenchantment. */
+    const wepname = has_oname(uwep) ? ONAME(uwep) : '';
+    if (amount < 0 && (uwep.oartifact | 0) && _restrict_name(uwep, wepname)) {
+        if (!Blind)
+            await pline(`${Yobjnam2(uwep, 'faintly glow')} ${color}.`);
+        return 1;
+    }
 
     /* C wield.c:997-1010 — soft upper/lower limit on uwep->spe. */
     if ((((uwep.spe | 0) > 5 && amount >= 0)
@@ -3598,6 +3616,22 @@ function can_center_cloud(x, y) {
     return !!cansee(x, y) && (dx * dx + dy * dy) < 32;
 }
 
+/* C ref: read.c:1088-1112 display_stinking_cloud_positions */
+function display_stinking_cloud_positions(on_off) {
+    const u = game.u;
+    if (on_off) {
+        tmp_at(DISP_BEAM, 4092 /* cmap_to_glyph(S_goodpos) */);
+        for (let dx = -6; dx <= 6; dx++)
+            for (let dy = -6; dy <= 6; dy++) {
+                const x = u.ux + dx, y = u.uy + dy;
+                if (x === u.ux && y === u.uy) continue;
+                if (can_center_cloud(x, y)) tmp_at(x, y);
+            }
+    } else {
+        tmp_at(DISP_END, 0);
+    }
+}
+
 /* C ref: read.c:1864-1932 seffect_fire.  The getpos_sethilite() highlight
  * (display_stinking_cloud_positions) is cosmetic and not modelled; its
  * validity callback (can_center_cloud) IS installed, because autodescribe
@@ -3645,7 +3679,7 @@ async function seffect_fire(holder) {
             /* C ref: read.c:1897-1898 getpos_sethilite(display_stinking_cloud_positions,
              * can_center_cloud) — the validity callback is what getpos's
              * autodescribe reads back for " (invalid target)" (getpos.c:655). */
-            await getpos_sethilite(() => {}, can_center_cloud);
+            await getpos_sethilite(display_stinking_cloud_positions, can_center_cloud);
             await getpos(cc, true, 'the desired position');
             if (!can_center_cloud(cc.x, cc.y)) {
                 /* try to reach too far, get burned */
@@ -3670,7 +3704,7 @@ async function do_stinking_cloud(sobj, mention_stinking) {
     const cc = { x: u.ux, y: u.uy };
     /* C ref: read.c:3090 getpos_sethilite(display_stinking_cloud_positions,
      * can_center_cloud) — installs the validity callback for autodescribe. */
-    await getpos_sethilite(() => {}, can_center_cloud);
+    await getpos_sethilite(display_stinking_cloud_positions, can_center_cloud);
     if ((await getpos(cc, true, 'the desired position')) < 0) {
         await pline('Never mind.');
         return;
@@ -4281,10 +4315,9 @@ export async function punish(sobj) {
         return;
     }
     /* C read.c:3036-3044 — an amorphous/whirly/unsolid polyform cannot be
-     * chained; the ball is created and immediately dropped.  Same two mkobj
-     * draws either way for the non-reuse case, so this arm is RNG-identical. */
+     * chained; create and drop only a ball, without creating a chain. */
     const ydata = g.youmonst && g.youmonst.data;
-    if (ydata && (_amorphous(ydata) || _is_whirly(ydata) || _unsolid(ydata))) {
+    if (ydata && (_amorphous(ydata) || is_whirly_lit(ydata) || _unsolid(ydata))) {
         if (!reuse_ball) {
             await pline("A ball and chain appears, then falls away.");
             await dropy((await mkobj(BALL_CLASS, true)));
@@ -4333,12 +4366,8 @@ function setworn_bc(obj, mask) {
 /* C ref: mondata.h amorphous/is_whirly/unsolid — the three polyform tests
  * punish() consults.  Same flag reads js/makemon.js:2911-2913 makes. */
 const M1_AMORPHOUS_RD = 0x00000004, M1_UNSOLID_RD = 0x00100000; /* monflag.h:87,105 */
-const S_VORTEX_RD = 23; /* monsym.h S_VORTEX; is_whirly = mlet == S_VORTEX || AIR_ELEMENTAL */
 function _amorphous(d) { return ((d.mflags1 | 0) & M1_AMORPHOUS_RD) !== 0; }
 function _unsolid(d) { return ((d.mflags1 | 0) & M1_UNSOLID_RD) !== 0; }
-function _is_whirly(d) {
-    return (d.mlet | 0) === S_VORTEX_RD || (d.pmidx | 0) === PM_AIR_ELEMENTAL;
-}
 
 function dropy(obj) {
     const u = game.u || {};
@@ -4868,7 +4897,10 @@ async function seffect_magic_mapping(sobj) {
 export function magic_map_background(loc, x, y, show = false) {
     if (!loc) return;
     const tg = terrain_glyph(loc, x, y);
-    let rg = { ch: tg.ch, color: tg.color, decgfx: tg.dec, wallSymbol: tg.wallSymbol };
+    /* C display.c:251-253 retains the terrain glyph identity; preserve its
+     * MG_BW_LAVA/ICE/SINK metadata (2890-2915) when mapping it into memory. */
+    let rg = { ch: tg.ch, color: tg.color, decgfx: tg.dec, wallSymbol: tg.wallSymbol,
+               bwspec: tg.bwspec };
     /* C: if (!cansee(x,y) && !lev->waslit) — dark-room / dark-corridor correction. */
     if (!cansee(x, y) && !loc.waslit) {
         const darkRoomOn = !!(game.flags?.dark_room && game.iflags?.use_color);
@@ -4957,7 +4989,8 @@ export function show_map_spot(loc, x, y, cnf) {
              * overwrite just wiped. */
             show_glyph_cell(x, y, oldGlyph.ch, oldGlyph.color, oldGlyph.decgfx,
                             objpile_attr(oldGlyph.objpile), oldCls,
-                            false, oldGlyph.otyp, oldGlyph.corpsenm);
+                            false, oldGlyph.otyp, oldGlyph.corpsenm, null, null,
+                            oldGlyph.objpile);
             if (game.level?.flags?.hero_memory)
                 loc.remembered_glyph = { ch: oldGlyph.ch, color: oldGlyph.color,
                                          decgfx: oldGlyph.decgfx, cls: oldCls,

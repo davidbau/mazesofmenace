@@ -13,7 +13,7 @@ import { game } from './gstate.js';
 import { abuse_dog } from './dog.js';
 import { Is_juiblex_level as Is_juiblex_level_real } from './const.js';
 import { rn2, rnd, rn1, rnl } from './rng.js';
-import { pline, newsym, You_hear, flush_pending_messages, canseemon } from './display.js';
+import { pline, newsym, You_hear, flush_pending_messages, canseemon, tmp_at, DISP_FLASH, DISP_END, obj_to_glyph } from './display.js';
 function strchr(str, ch) {
     if (str == null) return false;
     const want = typeof ch === 'number' ? ch : String(ch);
@@ -61,7 +61,7 @@ import { PM_KILLER_BEE, PM_BLACK_PUDDING, PM_ARCHEOLOGIST, PM_SAMURAI, PM_WIZARD
 import { hcolor, You, noit_mon_nam } from './mhitm.js';
 const PM_AMOROUS_DEMON_DK = 290;
 import { m_at, do_attack, overexertion } from './uhitm.js';
-import { wipe_engr_at, maybe_unhide_at, place_object, makemon, mkgold, wake_nearto } from './mklev.js';
+import { MONS_CWT, wipe_engr_at, maybe_unhide_at, place_object, makemon, mkgold, wake_nearto } from './mklev.js';
 import { stackobj } from './sp_lev.js';
 import { newmextra } from './makemon.js';
 import { book_disappears as spell_book_disappears } from './spell.js';
@@ -82,7 +82,7 @@ import { enexto_out } from './teleport.js';
 // used to carry a second, throwing copy of the name, which made the local call
 // at dokick.js:937 (ship_object's `unpaid` test) throw at runtime; re-exported
 // rather than re-implemented so there is no second body to drift.
-import { obfree, is_unpaid, in_rooms, shop_keeper, add_damage, pay_for_damage, oid_price_adjustment, costly_spot as shk_costly_spot, Shknam as shk_Shknam, hot_pursuit as shk_hot_pursuit, billable, get_cost, get_pricing_units, onbill, addtobill as shk_addtobill, delete_contents as shk_delete_contents, add_to_billobjs } from './shk.js';
+import { obfree, is_unpaid, in_rooms, shop_keeper, add_damage, pay_for_damage, oid_price_adjustment, costly_spot as shk_costly_spot, Shknam as shk_Shknam, hot_pursuit as shk_hot_pursuit, stolen_value, addtobill as shk_addtobill, delete_contents as shk_delete_contents, add_to_billobjs } from './shk.js';
 import { stairway_at } from './mklev.js';
 import { remove_worn_item, rloco } from './steal.js';
 import { ismnum } from './const.js';
@@ -363,6 +363,11 @@ async function maybe_wail() {
     if ((g.moves | 0) <= ((g.wailmsg | 0) + 50))
         return;
     g.wailmsg = g.moves | 0;
+    if (g._touch_artifact_blast_msg) {
+        const _bm = g._touch_artifact_blast_msg;
+        g._touch_artifact_blast_msg = null;
+        await pline(_bm);
+    }
     /* C you.h:240/290 Role_if/Race_if — gu.urole.mnum / gu.urace.mnum, the same
      * readers js/cmd.js:254 and js/cmd.js:11131 use. */
     const role = (g.urole && g.urole.mnum) | 0;
@@ -899,7 +904,7 @@ async function kick_door(x, y, avrg_attrib) {
             exercise(A_STR, true);
             maploc.doormask = D_BROKEN;
         }
-        newsym(x, y);
+        feel_newsym(x, y); /* dokick.c:951 we know we broke it */
         /* C: feel_newsym(x, y); recalc_block_point(x, y) — vision must learn the
          * door is now passable so couldsee()/view_from raycast through it.  The
          * call is RNG-free at this site but has downstream RNG consequences
@@ -922,9 +927,11 @@ async function kick_door(x, y, avrg_attrib) {
         }
     }
     else {
+        if (_Blind_dk())
+            feel_location(x, y); /* dokick.c:961 we know we hit it */
         exercise(A_STR, true);
         /* C: pline("%s!!", (Deaf || !rn2(3)) ? "Thwack" : "Whammm") */
-        void pline(`${(!rn2(3)) ? "Thwack" : "Whammm"}!!`);
+        void pline(`${(_Deaf_dk() || !rn2(3)) ? "Thwack" : "Whammm"}!!`);
         if (in_town(x, y)) {
             /* C mon.c:4562 get_iter_mons_xy, with the same async boundary. */
             for (let mon = g.fmon, next; mon; mon = next) {
@@ -1618,6 +1625,9 @@ async function really_kick_object(x, y, kickedobj) {
     newsym(x, y);
 
     let bx = x, by = y, bRange = range - 1, mon = null;
+    /* C zap.c:3868 tmp_at(DISP_FLASH, obj_to_glyph(obj, rn2_on_display_rng)):
+     * under Hallucination the glyph pick draws on the DISPLAY stream. */
+    tmp_at(DISP_FLASH, obj_to_glyph(kickedobj));
     while (bRange-- > 0) {
         const nx = bx + dxTo, ny = by + dyTo;
         if (!isok(nx, ny))
@@ -1644,7 +1654,11 @@ async function really_kick_object(x, y, kickedobj) {
             bx -= dxTo; by -= dyTo;
             break;
         }
+        /* C zap.c:4087 tmp_at(x, y) follows the stop tests above. */
+        tmp_at(bx, by);
     }
+    /* C zap.c:4127 / 4007 / 4052 — every exit path closes the flight. */
+    tmp_at(DISP_END, 0);
     g.gb = g.gb || {};
     g.gb.bhitpos = { x: bx, y: by };
 
@@ -1760,6 +1774,7 @@ export async function dokick_resolve() {
     const maploc = g.level?.at(x, y);
     /* C dokick.c:1404-1442 -- the first of the five ordered tests: monsters. */
     if (mtmp) {
+        const mdat_cwt = (mtmp.mndx ?? mtmp.mnum ?? -1) >= 0 ? (MONS_CWT[(mtmp.mndx ?? mtmp.mnum) | 0] | 0) : 0;
         await kick_monster(mtmp, x, y);
         /* see comment in attack_checks() */
         if ((mtmp.mhp | 0) < 1) {
@@ -1783,10 +1798,11 @@ export async function dokick_resolve() {
         }
         /* C dokick.c:1427-1440 -- recoil if floating */
         if ((Is_airlevel(u.uz) || Levitation_dk(u)) && g.context.move) {
-            let range = ((g.youmonst?.data?.cwt | 0) + (weight_cap() + inv_weight()));
+            const _cw = (m) => (MONS_CWT[(m?.mndx ?? m?.mnum ?? -1) | 0] | 0);
+            let range = (_cw(g.youmonst) || (MONS_CWT[(g.u?.umonnum ?? -1) | 0] | 0)) + (weight_cap() + inv_weight());
             if (range < 1)
                 range = 1; /* divide by zero avoidance */
-            range = Math.trunc((3 * (mtmp.data?.cwt | 0)) / range);
+            range = Math.trunc((3 * mdat_cwt) / range);
             if (range < 1)
                 range = 1;
             await hurtle(-(u.dx | 0), -(u.dy | 0), range, true);
@@ -1892,7 +1908,7 @@ export async function impact_drop(missile, x, y, dlev) {
      * stolen_value is called under the 'silent' flag to avoid
      * unsavory pline repetitions. */
     if (costly) {
-        let roomno = in_rooms(x, y, SHOPBASE);
+        let roomno = in_rooms(x, y, SHOPBASE)[0];
         shkp = shop_keeper(roomno); /* C: shop_keeper(*in_rooms(...)) */
         if (shkp) {
             let eshk = shkp.mextra?.eshk;
@@ -1932,8 +1948,9 @@ export async function impact_drop(missile, x, y, dlev) {
              *     (costly_spot(u.ux, u.uy)
              *      && strchr(u.urooms, *in_rooms(x, y, SHOPBASE))),
              *     TRUE); */
+            // C dereferences in_rooms(): compare the first room number.
             let in_shop = (costly_spot(u.ux, u.uy)
-                           && strchr(u.urooms, in_rooms(x, y, SHOPBASE)));
+                           && strchr(u.urooms, in_rooms(x, y, SHOPBASE)[0]));
             price += (await stolen_value(obj, x, y, in_shop, true));
             /* set obj->no_charge to 0 */
             if (Has_contents(obj))
@@ -2149,7 +2166,7 @@ export async function ship_object(otmp, x, y, shop_floor_obj) {
             void (await stolen_value(
                 otmp, ox, oy,
                 (costly_spot(u.ux, u.uy)
-                 && strchr(u.urooms, in_rooms(ox, oy, SHOPBASE))),
+                 && strchr(u.urooms, in_rooms(ox, oy, SHOPBASE)[0])),
                 false));
         }
         if (container)
@@ -2404,40 +2421,9 @@ export function shkname(mtmp) {
     /* C: if (!letter(*shknm)) ++shknm; — hacklib.c letter() is alpha only. */
     return /^[A-Za-z]/.test(shknm) ? shknm : shknm.slice(1);
 }
-export async function stolen_value(obj, x, y, in_shop, silent) {
-    /* C shk.c:3755-3850.  Kick paths reach the ordinary billable-object arm:
-     * settle the object's charge against the shopkeeper's debit when the
-     * hero remains in the shop, or record it as robbed after it leaves. */
-    if (!obj)
-        return 0;
-    const rooms = in_rooms(x, y, SHOPBASE);
-    const roomno = rooms.length ? rooms[0] : 0;
-    const shkpBox = { value: null };
-    let value = 0;
-    const bpShkp = roomno ? shop_keeper(roomno) : null;
-    const existing = bpShkp ? (await onbill(obj, bpShkp, true)) : null;
-    if (existing) {
-        value = (existing.bquan | 0) * (existing.price | 0);
-    } else if ((await billable(shkpBox, obj, roomno, true))) {
-        const shkp = shkpBox.value;
-        if ((obj.oclass | 0) === _KO_COIN_CLASS)
-            value = obj.quan | 0;
-        else
-            value = get_pricing_units(obj) * get_cost(obj, shkp);
-        if (value > 0) {
-            const eshk = shkp.mextra?.eshk
-                || ((shkp.mextra ||= {}).eshk = {});
-            if (in_shop)
-                eshk.debit = (eshk.debit | 0) + value;
-            else
-                eshk.robbed = (eshk.robbed | 0) + value;
-        }
-    }
-    /* C's messages are asynchronous in this port; billing state is the
-     * observable part needed by the surrounding kick/migration path. */
-    void silent;
-    return value;
-}
+/* C shk.c:3753-3877: share the full billing and message implementation,
+ * including breakobj()'s non-silent charge (dothrow.c:2559). */
+export { stolen_value };
 
 /* C ref: dokick.c:1853-1906 deliver_obj_to_mon(mtmp, cnt, deliverflags)
  * Deliver migrating objects to a monster if they match the species.

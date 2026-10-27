@@ -607,14 +607,9 @@ export async function pri_move(priest) {
         if (monnear(priest, u.ux, u.uy)) {
             if (Displaced)
                 Your("displaced image doesn't fool %s!", mon_nam(priest));
-            /* mattacku() is async since the AT_BREA port, and pri_move sits
-             * inside the SYNCHRONOUS m_move chain.  Safe: the only awaited
-             * arm in mattacku is `case AT_BREA`, and no priest form has an
-             * AT_BREA row in mattk[] — so the body runs to completion
-             * synchronously here and the returned promise is already settled.
-             * If a breathing monster ever reaches this call, m_move (and its
-             * dogmove/monmove callers) must become async first. */
-            void mattacku(priest);
+            /* C priest.c:201 — mattacku() must be awaited: it is async, and an
+             * unawaited call interleaves its draws with the rest of the turn. */
+            await mattacku(priest);
             return 0;
         } else if (u.urooms && u.urooms.indexOf(String.fromCharCode(temple)) !== -1) {
             /* chase player if inside temple & can see him */

@@ -319,7 +319,7 @@ export function adjattrib(ndx, incr, msgflg) {
 
     /* C attrib.c:129 — Dunce cap blocks Int/Wis changes */
     if ((ndx === A_INT || ndx === A_WIS) && u.uarmh && u.uarmh.otyp === DUNCE_CAP) {
-        if (msgflg === 0)
+        if (msgflg == 0 /* C: FALSE == 0 */)
             pline("Your cap constricts briefly, then relaxes again.");
         return false;
     }

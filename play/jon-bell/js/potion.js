@@ -18,16 +18,16 @@ import { PM_HEALER, PM_ROCK_MOLE, PM_WOODCHUCK, PM_PONY, PM_HORSE, PM_WARHORSE }
 import { PM_FIRE_VORTEX, PM_FLAMING_SPHERE, PM_FIRE_ELEMENTAL, PM_SALAMANDER } from './pm.generated.js';
 import { COLD_RES } from './const.js';
 import monPmnamesPack from './makemon_pmnames.json' with { type: 'json' };
-import { pline, flush_screen, newsym, force_more, force_more_lone_frame, await_topl_more_dismiss, canspotmon, canseemon, map_invisible, getobj_never_mind, bot, You_see } from './display.js';
+import { note_lone_pline_frame, pline, flush_screen, newsym, force_more, force_more_lone_frame, await_topl_more_dismiss, canspotmon, canseemon, map_invisible, getobj_never_mind, bot, You_see } from './display.js';
 import { unmap_object, glyph_is_invisible_at, tmp_at } from './display.js';
 import { DISP_ALWAYS, DISP_END } from './const.js';
 import { aggravate, monstseesu as monstseesu_real, burn_away_slime } from './mcastu.js';
 import { COLNO, ROWNO, INVIS } from './const.js';
 import { topl_park_cursor, _topl_stash_result, putmsghistory } from './display.js';
-import { key2txt } from './cmd.js';
+import { key2txt, mime_action } from './cmd.js';
 import { cls, docrt, map_monst, display_self, map_object, GLYPHCLS_OBJ } from './display.js';
 /* make_hallucinated()'s "changed" block (potion.c:415-433). */
-import { see_monsters, see_objects, see_traps, swallowed } from './display.js';
+import { see_monsters, see_objects, see_traps, swallowed, under_water, under_ground } from './display.js';
 /* make_sick()/make_stoned()/make_slimed() call the delayed-killer list on every
  * invocation (end.c:1706-1756). */
 import { delayed_killer, find_delayed_killer, dealloc_killer } from './end.js';
@@ -49,7 +49,7 @@ import { heal_legs, unfixable_trouble_count, doup, body_part as body_part_cmd, c
 import { reassign } from './inventory_refresh.js';
 import { WOUNDED_LEGS } from './const.js';
 /* C hack.h:129-149 enum bodypart_types — the indices body_part() takes. */
-import { EYE, FINGER, HAND, LEG, ARM, STOMACH, FACE } from './const.js';
+import { EYE, FINGER, HAND, LEG, ARM, STOMACH, FACE, FOOT } from './const.js';
 /* make_confused's C home is THIS file (potion.c:88); it used to be imported
  * from js/mhitu.js, where it was an exported empty body. */
 import { unconscious } from './pickup.js';
@@ -64,7 +64,7 @@ import { ERODE_CORRODE, ER_NOTHING, ER_GREASED, EF_GREASE, P_NONE, P_BOW, P_CROS
 import { DEAF, SICK, SICK_RES, STONED, VOMITING, GLIB, SLIMED, KILLED_BY_AN,
          M_AP_MONSTER, M_AP_NOTHING, M_AP_TYPMASK } from './const.js';
 import { getObjDescr, fruitname, docall_xname_potion, cxname, the, The, xname, otense, vtense as vtense_objnam } from './objnam.js';
-import { short_oname, thesimpleoname, exist_artifact, artiname, oname } from './objnam.js';
+import { short_oname, simpleonames, thesimpleoname, exist_artifact, artiname, oname } from './objnam.js';
 import { ONAME_VIA_DIP, ONAME_KNOW_ARTI } from './const.js';
 import { gloves_simple_name } from './objnam.js';
 /* obj.h / objclass.h predicate data for potion_dip's tail (see the block at
@@ -103,6 +103,9 @@ import { getobj_redo_menu, in_town, compactify, doname_body, getpos, getObjFromG
          costly_alteration } from './cmd.js';
 import { cansee, couldsee } from './vision.js';
 import { water_damage, erode_obj } from './trap.js';
+import { is_pool } from './look.js';
+import { waterbody_name } from './cmd.js';
+import { ER_DESTROYED } from './const.js';
 import { fingers_or_gloves } from './do_wear.js';
 import { t_at, delfloortrap, mon_adjust_speed } from './trap.js';
 import { do_clear_area, do_clear_area_async } from './vision.js';
@@ -357,13 +360,22 @@ async function y_n(question) {
     /* C tty_yn_function() acknowledges a pending message before painting its
      * query.  First drain any width-driven pages; if their final message is
      * still live, acknowledge that too, just as TOPLINE_NEED_MORE does. */
+    /* The wish/prinv line ("l - a glittering spellbook.") rides the command-result
+     * channel, not _pending_message, but on C's single topline it is the live
+     * TOPLINE_NEED_MORE message this query must page (wizard dryup, fountain.c:204
+     * after makewish).  Hand it back to the pending channel so the page runs. */
+    if (!game._pending_message && game._resultMessage && !game._topl_win_stop) {
+        game._pending_message = game._resultMessage;
+        game._resultMessage = null;
+    }
     if (game._pending_message && !game._topl_win_stop) {
-        /* more() (topl.c:397-398) runs no bot(): status dirtied after the last
+        /* more() (topl.c:390-392) runs no bot(): status dirtied after the last
          * pline flush (losehp's SET_BOTL, hack.c:4265) is not yet on the
-         * physical line, so hold the last painted status across the drain. */
-        const _lf = game._lonePlineFrame;
+         * physical line, so hold the last painted status across the drain.
+         * This also applies when the pending text matches its lone frame:
+         * that pline's flush preceded the later status change. */
         const _hold = !!game.disp?.botl && !!game._lastPaintedBotl
-            && !(_lf && _lf.msg === game._pending_message) && !game._botlPaintHeld;
+            && !game._botlPaintHeld;
         if (_hold) game._botlPaintHeld = true;
         try {
             await flush_screen(1);
@@ -568,9 +580,10 @@ export async function monster_detect(otmp, mclass) {
         await force_more(g._pending_message);
     await cls();
     const unconstrained = !!(u.uinwater || u.uburied || u.uswallow);
-    u.uinwater = 0;
-    u.uburied = 0;
-    u.uswallow = 0;
+    g.iflags = g.iflags || {};
+    g.iflags.save_uinwater = u.uinwater; u.uinwater = 0;
+    g.iflags.save_uburied = u.uburied; u.uburied = 0;
+    g.iflags.save_uswallow = u.uswallow; u.uswallow = 0;
     for (let mtmp = g.fmon; mtmp; mtmp = mtmp.nmon) {
         if ((mtmp.mhp | 0) < 1 || (mtmp.isgd && !mtmp.mx))
             continue;
@@ -633,7 +646,16 @@ export async function monster_detect(otmp, mclass) {
      * "Move cursor to ..." text standing (msg_given FALSE), and C's frame after
      * the '.' pick shows an empty row 0. */
     g._topl_sticky = null;
+    /* C detect.c:85-90 reconstrain_map(), then docrt(), then the restored
+     * Underwater / buried view (detect.c:94-102 map_redisplay). */
+    u.uinwater = g.iflags.save_uinwater; g.iflags.save_uinwater = 0;
+    u.uburied = g.iflags.save_uburied; g.iflags.save_uburied = 0;
+    u.uswallow = g.iflags.save_uswallow; g.iflags.save_uswallow = 0;
     await docrt();
+    if (u.uinwater)
+        under_water(2);
+    if (u.uburied)
+        under_ground(2);
     return 0;
 }
 /* C detect.c:35-36 TER_DETECT / TER_MON (flag.h terrainmode bits). */
@@ -1596,6 +1618,15 @@ async function _mongrantswish(mon) {
     tmp_at(DISP_ALWAYS, glyph);
     tmp_at(mx, my);
     await makewish();
+    /* C's prinv pline inside makewish flush_screen()s while the demon's
+     * DISP_ALWAYS glyph is still up; the wish line rides _resultMessage here,
+     * so do that flush now rather than after tmp_at(DISP_END) restores the map. */
+    if (!game._pending_message && game._resultMessage) {
+        game._pending_message = game._resultMessage;
+        game._resultMessage = null;
+        await flush_screen(1);
+        note_lone_pline_frame(game._pending_message);
+    }
     tmp_at(DISP_END, 0);
 }
 /* C potion.c:2815-2867 djinni_from_bottle(struct obj *obj).
@@ -1904,6 +1935,13 @@ export async function dodrink() {
             g.context.move = 0;
             return ECMD_CANCEL;
         }
+        /* C invent.c:1955-1959: drink_ok excludes hands, so '-' mimes
+         * the action and returns NULL before the inventory lookup. */
+        if (itemKey === 45 /* HANDS_SYM '-' */) {
+            await mime_action('drink');
+            g.context.move = 0;
+            return ECMD_CANCEL;
+        }
         /* C invent.c:2020 (getobj): disp.botl = TRUE once a letter is chosen. */
         if (g.disp) g.disp.botl = 1;
         /* Try to find item by invlet in game.invent if available. */
@@ -1948,7 +1986,7 @@ export async function dodrink() {
             && !(_mvflags(PM_GHOST) & G_GONE)
             && !rn2(POTION_OCCUPANT_CHANCE(_mborn(PM_GHOST)))) {
             await ghost_from_bottle();
-            useup_potion(otmp);
+            await useup(otmp);
             g.context.move = 1; /* C ECMD_TIME */
             if (g._pending_message)
                 _topl_stash_result();
@@ -1957,7 +1995,7 @@ export async function dodrink() {
                    && !(_mvflags(PM_DJINNI) & G_GONE)
                    && !rn2(POTION_OCCUPANT_CHANCE(_mborn(PM_DJINNI)))) {
             await djinni_from_bottle(otmp);
-            useup_potion(otmp);
+            await useup(otmp);
             g.context.move = 1; /* C ECMD_TIME */
             if (g._pending_message)
                 _topl_stash_result();
@@ -1980,7 +2018,7 @@ export async function dodrink() {
                     await _docall_potion(otmp);
                 }
             }
-            useup_potion(otmp);
+            await useup(otmp);
             g.disp.botl = 1;
         }
         else if (otmp.otyp === POT_OIL) {
@@ -1992,14 +2030,14 @@ export async function dodrink() {
                 discover_object(otmp.otyp, true, true, true);
                 more_experienced(0, 10);
             }
-            useup_potion(otmp);
+            await useup(otmp);
             g.disp.botl = 1;
         }
         else if (otmp.otyp === POT_PARALYSIS) {
             const bcsign = (otmp.blessed ? 1 : 0) - (otmp.cursed ? 1 : 0);
             const u2 = g.u;
             /* Your("%s are frozen to the %s!", makeplural(body_part(FOOT)), surface()) */
-            const feet = 'feet'; /* makeplural(body_part(FOOT)) for a humanoid */
+            const feet = makeplural_objnam(body_part(FOOT));
             const sfc = _surface(u2.ux, u2.uy);
             await pline(`Your ${feet} are frozen to the ${sfc}!`);
             /* nomul(-(rn1(10, 25 - 12*bcsign(otmp)))); rn1(x,y)=rn2(x)+y. */
@@ -2019,7 +2057,7 @@ export async function dodrink() {
                 discover_object(otmp.otyp, true, true, true);
                 more_experienced(0, 10);
             }
-            useup_potion(otmp);
+            await useup(otmp);
         }
         else if (otmp.otyp === POT_CONFUSION) {
             /* C potion.c:1015-1029 peffect_confusion */
@@ -2075,7 +2113,7 @@ export async function dodrink() {
                     await _docall_potion(otmp);
                 }
             }
-            useup_potion(otmp);
+            await useup(otmp);
         }
         else if (otmp.otyp === POT_GAIN_ABILITY) {
             /* C potion.c:1030-1049 peffect_gain_ability, then dopotion's tail
@@ -2100,7 +2138,7 @@ export async function dodrink() {
                     await _docall_potion(otmp);
                 }
             }
-            useup_potion(otmp);
+            await useup(otmp);
         }
         else if (otmp.otyp === POT_BOOZE) {
             g._potion_nothing = 0;
@@ -2154,7 +2192,7 @@ export async function dodrink() {
                     await _docall_potion(otmp);
                 }
             }
-            useup_potion(otmp);
+            await useup(otmp);
         }
         else if (otmp.otyp === POT_SLEEPING) {
             /* fall_asleep (timeout.c:966-973) also sets u.usleep, which
@@ -2166,7 +2204,7 @@ export async function dodrink() {
                 discover_object(otmp.otyp, true, true, true);
                 more_experienced(0, 10);
             }
-            useup_potion(otmp);
+            await useup(otmp);
         }
         else if (otmp.otyp === POT_FRUIT_JUICE) {
             /* C potion.c:1358-1361 peffects → peffect_see_invisible (also serves
@@ -2183,7 +2221,7 @@ export async function dodrink() {
                     await _docall_potion(otmp);
                 }
             }
-            useup_potion(otmp);
+            await useup(otmp);
         }
         else if (otmp.otyp === POT_SICKNESS) {
             /* C potion.c:963 peffect_sickness, reached through peffects'
@@ -2198,7 +2236,7 @@ export async function dodrink() {
                 discover_object(otmp.otyp, true, true, true);
                 more_experienced(0, 10);
             }
-            useup_potion(otmp);
+            await useup(otmp);
         }
         else if (otmp.otyp === POT_HEALING) {
             /* C potion.c:1120-1128 peffect_healing. Records are UNCURSED:
@@ -2214,7 +2252,7 @@ export async function dodrink() {
                 discover_object(otmp.otyp, true, true, true);
                 more_experienced(0, 10);
             }
-            useup_potion(otmp);
+            await useup(otmp);
         }
         else if (otmp.otyp === POT_FULL_HEALING) {
             /* C potion.c:1145-1165 peffect_full_healing */
@@ -2238,7 +2276,7 @@ export async function dodrink() {
                 discover_object(otmp.otyp, true, true, true);
                 more_experienced(0, 10);
             }
-            useup_potion(otmp);
+            await useup(otmp);
         }
         else if (otmp.otyp === POT_EXTRA_HEALING) {
             /* C potion.c:1127-1141 peffect_extra_healing, reached through
@@ -2253,7 +2291,7 @@ export async function dodrink() {
                 discover_object(otmp.otyp, true, true, true);
                 more_experienced(0, 10);
             }
-            useup_potion(otmp);
+            await useup(otmp);
         }
         else if (otmp.otyp === POT_SPEED) {
             /* C potion.c:1054-1073 peffect_speed */
@@ -2281,7 +2319,7 @@ export async function dodrink() {
                     await _docall_potion(otmp);
                 }
             }
-            useup_potion(otmp);
+            await useup(otmp);
             g.disp.botl = 1;
         }
         else if (otmp.otyp === POT_BLINDNESS) {
@@ -2303,7 +2341,7 @@ export async function dodrink() {
                     await _docall_potion(otmp);
                 }
             }
-            useup_potion(otmp);
+            await useup(otmp);
             g.disp.botl = 1;
         }
         else if (otmp.otyp === POT_LEVITATION) {
@@ -2323,7 +2361,7 @@ export async function dodrink() {
                     await _docall_potion(otmp);
                 }
             }
-            useup_potion(otmp);
+            await useup(otmp);
         }
         else if (otmp.otyp === POT_INVISIBILITY) {
             /* C potion.c:1352-1355:
@@ -2351,7 +2389,7 @@ export async function dodrink() {
                     await _docall_potion(otmp);
                 }
             }
-            useup_potion(otmp);
+            await useup(otmp);
             g.disp.botl = 1;
         }
         else if (otmp.otyp === POT_MONSTER_DETECTION) {
@@ -2382,7 +2420,7 @@ export async function dodrink() {
                         await _docall_potion(otmp);
                     }
                 }
-                useup_potion(otmp);
+                await useup(otmp);
                 g.disp.botl = 1;
             }
         }
@@ -2417,7 +2455,7 @@ export async function dodrink() {
                         await _docall_potion(otmp);
                     }
                 }
-                useup_potion(otmp);
+                await useup(otmp);
                 g.disp.botl = 1;
             }
         }
@@ -2444,7 +2482,7 @@ export async function dodrink() {
                     await _docall_potion(otmp);
                 }
             }
-            useup_potion(otmp);
+            await useup(otmp);
         }
         else if (otmp.otyp === POT_ENLIGHTENMENT) {
             /* C potion.c:1348-1350:
@@ -2468,7 +2506,7 @@ export async function dodrink() {
                     await _docall_potion(otmp);
                 }
             }
-            useup_potion(otmp);
+            await useup(otmp);
         }
         else if (otmp.otyp === POT_SEE_INVISIBLE) {
             g._potion_nothing = 0;
@@ -2487,7 +2525,7 @@ export async function dodrink() {
                     await _docall_potion(otmp);
                 }
             }
-            useup_potion(otmp);
+            await useup(otmp);
         }
         else if (otmp.otyp === POT_GAIN_ENERGY) {
             if (otmp.cursed) {
@@ -2511,7 +2549,7 @@ export async function dodrink() {
                 discover_object(otmp.otyp, true, true, true);
                 more_experienced(0, 10);
             }
-            useup_potion(otmp);
+            await useup(otmp);
         }
         else if (otmp.otyp === POT_RESTORE_ABILITY) {
             /* C potion.c:2020-2023 (peffects):
@@ -2539,7 +2577,7 @@ export async function dodrink() {
                     await _docall_potion(otmp);
                 }
             }
-            useup_potion(otmp);
+            await useup(otmp);
         }
         else if (otmp.otyp === POT_HALLUCINATION) {
             /* C potion.c:2024-2026 (peffects):
@@ -2564,7 +2602,7 @@ export async function dodrink() {
                     await _docall_potion(otmp);
                 }
             }
-            useup_potion(otmp);
+            await useup(otmp);
         }
         else if (otmp.otyp === POT_POLYMORPH) {
             /* C potion.c:1417-1419 (peffects): case POT_POLYMORPH:
@@ -2583,7 +2621,7 @@ export async function dodrink() {
                     await _docall_potion(otmp);
                 }
             }
-            useup_potion(otmp);
+            await useup(otmp);
         }
         else if (otmp.otyp === POT_ACID) {
             /* C potion.c:1417 (peffects): case POT_ACID: peffect_acid(otmp);
@@ -2601,7 +2639,7 @@ export async function dodrink() {
                     await _docall_potion(otmp);
                 }
             }
-            useup_potion(otmp);
+            await useup(otmp);
         }
         else {
             /* TODO: other potion types — when ported, mirror C dopotion's
@@ -3062,7 +3100,7 @@ async function strange_feeling(obj, txt) {
         return;
     if (obj.dknown)
         await trycall(obj);
-    useup_potion(obj);
+    await useup(obj);
 }
 /* potionbreathe() is synchronous in this port; avoid detaching the async
  * prompt-capable helper from that caller. */
@@ -3581,15 +3619,15 @@ async function potion_dip(obj, potion) {
                 qbuf = `${obj.quan | 0} of the`;
             }
         }
-        await pline(`${qbuf} ${_simpleonames(obj)} ${_otense(obj, 'mix')} with `
-            + `${(potion.quan | 0) > 1 ? 'one of ' : ''}${_thesimpleoname(potion)}...`);
+        await pline(`${qbuf} ${simpleonames(obj)} ${_otense(obj, 'mix')} with `
+            + `${(potion.quan | 0) > 1 ? 'one of ' : ''}${thesimpleoname(potion)}...`);
         _useup(potion); /* now gone */
 
         if (await _dip_potion_explosion(obj, amt + rnd(9)))
             return ECMD_TIME;
 
         obj.blessed = obj.cursed = obj.bknown = false;
-        /* if (Blind || Hallucination) obj.dknown = 0 — not on this path. */
+        if (_potion_Blind() || _potion_Hallucination()) obj.dknown = false;
 
         if (mixture !== STRANGE_OBJECT) {
             obj.otyp = mixture;
@@ -3619,19 +3657,17 @@ async function potion_dip(obj, potion) {
             }
             default:
                 _useupall(obj);
-                /* C potion.c:2576 pline_The("mixture %sevaporates.",
-                 * !Blind ? "glows brightly and " : "") — not Blind on this path. */
-                await pline('The mixture glows brightly and evaporates.');
+                await pline(`The mixture ${!_potion_Blind() ? 'glows brightly and ' : ''}evaporates.`);
                 return ECMD_TIME;
             }
         }
         obj.odiluted = (obj.otyp !== POT_WATER);
 
-        if (obj.otyp === POT_WATER) {
-            await pline('The mixture bubbles, then clears.');
-        } else {
-            const descr = getObjDescr(obj.otyp | 0) || '';
-            await pline(`The mixture looks ${descr}.`);
+        // C potion.c:2578-2582: only describe colors when they can be seen.
+        if (obj.otyp === POT_WATER && !_potion_Hallucination()) {
+            await pline(`The mixture bubbles${_potion_Blind() ? '' : ', then clears'}.`);
+        } else if (!_potion_Blind()) {
+            await pline(`The mixture looks ${hcolor(getObjDescr(obj.otyp | 0))}.`);
         }
 
         // C potion.c:2590-2591: mixing extracts before hold_potion measures load.
@@ -4143,7 +4179,7 @@ export async function dodip() {
     const u = g.u;
     const loc = g.level?.at(u.ux, u.uy);
     const here = loc ? loc.typ : 0;
-    const at_pool = false;
+    const at_pool = is_pool(u.ux, u.uy); /* potion.c:2272 */
     const at_fountain = loc ? IS_FOUNTAIN(here) : false;
     const at_sink = loc ? IS_SINK(here) : false;
     const menu_requested = false;
@@ -4160,7 +4196,7 @@ export async function dodip() {
     /* shortestname / verbose: flags.verbose is the default ON, so the obuf form
      * is used. obuf = doname-with-article (e.g. "a brown potion"). */
     let obuf;
-    if (is_hands) obuf = 'your hands';
+    if (is_hands) obuf = `your ${makeplural_objnam(body_part(HAND))}`; /* C potion.c:2297 */
     else obuf = (await short_oname(obj,
                             async (o) => (await doname_body(o, (u.uhandedness === RIGHT_HANDED) ? 'right' : 'left')),
                             thesimpleoname,
@@ -4191,6 +4227,24 @@ export async function dodip() {
         if (await y_n(qbuf) === 'y') {
             if (!is_hands) obj.pickup_prev = 0;
             await dipsink(obj);
+            g.context.move = 1;
+            if (g._pending_message) _topl_stash_result();
+            return ECMD_TIME;
+        }
+        ++drink_ok_extra;
+    } else if (!menu_requested && at_pool && can_reach_floor(false)) {
+        const pooltype = waterbody_name(u.ux, u.uy);
+        const qbuf = `Dip ${g.flags?.verbose === false ? shortestname : obuf} into the ${pooltype}?`;
+        if (await y_n(qbuf) === 'y') {
+            if (is_hands || obj === u.uarmg) {
+                if (!is_hands) obj.pickup_prev = 0;
+                await wash_hands();
+            } else {
+                obj.pickup_prev = 0;
+                if (obj.otyp === POT_ACID) obj.in_use = 1;
+                if (await water_damage(obj, 0, true) !== ER_DESTROYED && obj.in_use)
+                    await useup(obj);
+            }
             g.context.move = 1;
             if (g._pending_message) _topl_stash_result();
             return ECMD_TIME;
@@ -4237,9 +4291,8 @@ export async function potionhit(mon, obj, how) {
 
         /* C potion.c:1636-1640 */
         pline(`The ${botlnam} crashes on your ${body_part(HEAD)} and breaks into shards.`);
-        /* Maybe_Half_Phys(dmg) — Half_physical_damage is unported (js/mhitu.js:1983
-         * says the same), so the roll passes through unhalved. */
-        await losehp(rnd(2),
+        /* C potion.c:1640 — apply Half_physical_damage to the impact. */
+        await losehp(maybe_half_phys_pot(rnd(2)),
                ((how | 0) === POTHIT_OTHER_THROW) ? 'propelled potion' : 'thrown potion',
                KILLED_BY_AN_POT);
     } else {
@@ -5040,7 +5093,7 @@ function peffect_paralysis(otmp) {
             pline("You are frozen in place!");
         else {
             const sfc = _surface(u.ux, u.uy);
-            pline(`Your feet are frozen to the ${sfc}!`);
+            pline(`Your ${makeplural_objnam(body_part(FOOT))} are frozen to the ${sfc}!`);
         }
         const bcsign = (otmp.blessed ? 1 : 0) - (otmp.cursed ? 1 : 0);
         nomul(-(rn2(10) + (25 - 12 * bcsign)));
@@ -5258,9 +5311,10 @@ async function object_detect(detector, oclass) {
         }
     }
 
+    /* C detect.c:775-778 tests the displayed glyph, including objects mapped
+     * from a steed's inventory or the buried-object chain. */
     let ter_typ = TER_DETECT | TER_OBJ;
-    const heroHasObjGlyph = !!(g.level && g.level.levelObjects
-                                && g.level.levelObjects[u.ux] && g.level.levelObjects[u.ux][u.uy]);
+    const heroHasObjGlyph = g.level?.at(u.ux, u.uy)?.disp_cls === GLYPHCLS_OBJ;
     if (!heroHasObjGlyph) {
         newsym(u.ux, u.uy);
         ter_typ |= TER_MON;

@@ -3,6 +3,7 @@
 //
 // For browser play, see nethack.js.
 import { game, resetGame } from './gstate.js';
+import { load_primary_symset_from_file, set_primary_symbol_override, init_ov_primary_symbols } from './symbols.js';
 import { vfsDeleteFile } from './storage.js';
 import { savefile_name } from './save.js';
 import { initRng, enableRngLog, getRngLog, pushRngLogEntry } from './rng.js';
@@ -200,6 +201,15 @@ export class NethackGame {
         // (options.c:4180) renders "<name>, active, handler=<H>" from exactly
         // these two fields, which is what the 'O' menu's symset row shows; with
         // no name recorded it reports "default" for a set that is plainly active.
+        /* C options.c optfn_symset -> symbols.c load_symset(PRIMARYSET):
+         * the set's symbols and Handling come from dat/symbols; SYMBOLS=
+         * pairs then land in ov_primary_syms (symbols.c parsesymbols). */
+        g._symsetLoaded = null;
+        init_ov_primary_symbols();
+        if (opts.symset && load_primary_symset_from_file(opts.symset)) {
+            for (const [k, v] of Object.entries(opts.symbolOverrides || {}))
+                set_primary_symbol_override(k, v);
+        }
         if (opts.symset) {
             gs.symset[PRIMARYSET].name = opts.symset;
             /* C options.c:4198 optfn_symset sets these and nothing clears them

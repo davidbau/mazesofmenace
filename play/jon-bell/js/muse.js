@@ -21,9 +21,9 @@ import { cansee, couldsee } from './vision.js';
 import { m_at, mon_nam, exclam } from './uhitm.js';
 import { Monnam } from './mcastu.js';
 import { find_mac } from './trap.js';
-import { resist, miss, dobuzz, bhito, lightdamage, BlindedTimeout, make_blinded } from './zap.js';
+import { _zp_unturn_you, unturn_dead, cancel_monst, resist, miss, dobuzz, bhito, lightdamage, BlindedTimeout, make_blinded } from './zap.js';
 import { Blind } from './vision.js';
-import { resists_blnd } from './mhitm.js';
+import { resists_blnd, wakeup } from './mhitm.js';
 import { verbalize } from './cmd.js';
 import { The, vtense, an, xname_wand, simple_typename, xname } from './objnam.js';
 import { doname, singular } from './objnam.js';
@@ -37,8 +37,9 @@ import { nomul, stop_occupation } from './allmain.js';
 import { monstunseesu, seemimic as seemimic_real, resists_magm } from './mhitm.js';
 import { monstseesu as monstseesu_real } from './mcastu.js';
 import { discover_object } from './o_init.js';
-import { BOLT_LIM, M_AP_NOTHING, ANTIMAGIC, HALF_SPDAM, isok, IS_DOOR, SDOOR, DRAWBRIDGE_UP, D_LOCKED, D_CLOSED, D_BROKEN, SHOPBASE, POOL, OBJ_FLOOR, KILLED_BY_AN, TELL, TEMPLE, RLOC_MSG } from './const.js';
+import { BOLT_LIM, M_AP_NOTHING, ANTIMAGIC, HALF_SPDAM, isok, IS_DOOR, SDOOR, DRAWBRIDGE_UP, D_LOCKED, D_CLOSED, D_BROKEN, SHOPBASE, POOL, OBJ_FLOOR, KILLED_BY_AN, TELL, TEMPLE, RLOC_MSG, NOTELL } from './const.js';
 import { doorlock } from './lock.js';
+import { unknow_object } from './mklev.js';
 import { in_rooms, add_damage } from './shk.js';
 import { tele, tele_restrict, rloc } from './teleport.js';
 import { mreadmsg } from './makemon.js';
@@ -77,6 +78,7 @@ const WAN_MAGIC_MISSILE = 429;
  * marks the wand GENERIC entry "[11]"; 10 is SPBOOK_CLASS). */
 const POTION_CLASS = 8;
 const WAND_CLASS = 11;
+const WAN_CANCELLATION = 423, SPE_CANCELLATION = 402; /* zap.js:290, :360 */
 
 /* C ref: hack.h:1415 WAND_BACKFIRE_CHANCE. */
 const WAND_BACKFIRE_CHANCE = 100;
@@ -168,10 +170,7 @@ async function mzapwand(mtmp, otmp, self) {
         const near = dist2(mtmp.mx | 0, mtmp.my | 0,
                            game.u.ux | 0, game.u.uy | 0) <= range * range;
         await You_hear(`a ${near ? "nearby" : "distant"} zap.`);
-        /* KNOWN GAP — muse.c:181 unknow_object(otmp): the hero loses their
-         * memory of the wand's charge count when an unseen monster uses it.
-         * Missing dependency: unknow_object (o_init.c).  Display/knowledge
-         * only, RNG-free; the charge below is still spent, as in C. */
+        unknow_object(otmp); /* hero loses info when unseen obj is used */
     } else if (self) {
         /* KNOWN GAP — muse.c:182-184, the self-zap message
          * `pline("%s with %s!", monverbself(mtmp, Monnam(mtmp), "zap",
@@ -233,7 +232,7 @@ async function mbhitm(mtmp, otmp) {
                 pline("Boing!");
                 learnit = true;
             } else if (rnd(20) < 10 + (u.uac | 0)
-                       && !(game.buzzer && !game.buzzer.mwandexp)) {
+                       && !(game.gb?.buzzer && !game.gb.buzzer.mwandexp)) {
                 /* C muse.c:1618-1620 — the to-hit rnd(20) is evaluated FIRST
                  * and is therefore always drawn, even when the second test (a
                  * monster's first-ever wand shot always misses) forces a miss. */
@@ -281,19 +280,39 @@ async function mbhitm(mtmp, otmp) {
                 await rloc(mtmp, RLOC_MSG);
         }
         break;
+    case WAN_CANCELLATION:
+    case SPE_CANCELLATION:
+        /* C muse.c:1666-1668 */
+        await cancel_monst(mtmp, otmp, false, true, false);
+        break;
+    case WAN_UNDEAD_TURNING:
+        /* C muse.c:1669-1694 */
+        if (hits_you) {
+            await _zp_unturn_you();
+            learnit = !!game.zap_oseen;
+        } else {
+            let wake = false;
+
+            if (await unturn_dead(mtmp)) /* affects mtmp's invent, not mtmp */
+                wake = true;
+            if (((mtmp.data.mflags2 | 0) & 0x2 /* M2_UNDEAD */)
+                || [226, 227, 228].includes(mtmp.cham | 0)) {
+                wake = reveal_invis = true;
+                /* context.bypasses=True: if resist() happens to be fatal,
+                   make_corpse() will set obj->bypass on the new corpse */
+                game.context.bypasses = true;
+                await resist(mtmp, WAND_CLASS, rnd(8), NOTELL);
+            }
+            if (wake) {
+                if (!DEADMONSTER(mtmp))
+                    await wakeup(mtmp, false);
+                learnit = !!game.zap_oseen;
+            }
+        }
+        if (learnit)
+            makeknown(WAN_UNDEAD_TURNING);
+        break;
     default:
-        /* KNOWN GAP — muse.c:1669-1701 handles WAN_TELEPORTATION,
-         * WAN_CANCELLATION/SPE_CANCELLATION, WAN_UNDEAD_TURNING,
-         * WAN_POLYMORPH, WAN_SLOW_MONSTER, WAN_SPEED_MONSTER and
-         * WAN_DIGGING; several draw RNG (rloc, unturn_dead, newcham).
-         * Missing dependencies: rloc/tele_restrict (teleport.c), cancel_monst
-         * (zap.c), unturn_dead (zap.c), newcham (mon.c), dig (dig.c).
-         * Only reachable via mbhit, whose only caller is use_offensive's
-         * MUSE_WAN_STRIKING arm below (the TELEPORTATION/UNDEAD_TURNING arms
-         * return C's no-action 0 before ever calling mbhit), so this is
-         * currently dead — but it returns C's own `return 0` (muse.c:1702)
-         * rather than throwing, because a throw discards the entire matched
-         * RNG prefix of the replay, not just the work after it. */
         break;
     }
 
@@ -391,7 +410,7 @@ export async function use_offensive(mtmp) {
     let i;
 
     /* C muse.c:1834-1836 — mwandexp: a monster's FIRST attack-wand shot always
-     * misses (buzz_force_miss); mbhitm reads the same flag via game.buzzer. */
+     * misses (buzz_force_miss); mbhitm reads the same flag via game.gb.buzzer. */
 
     if (otmp.oclass !== POTION_CLASS && (i = await precheck(mtmp, otmp)) !== 0)
         return i;
@@ -412,7 +431,8 @@ export async function use_offensive(mtmp) {
         await mzapwand(mtmp, otmp, false);
         if (oseen) makeknown(otmp.otyp | 0);
         game.m_using = true;
-        game.buzzer = mtmp;
+        game.gc_current_wand = otmp;
+        (game.gb ||= {}).buzzer = mtmp;
         {
             const ofs = Math.abs((otmp.otyp | 0) - WAN_MAGIC_MISSILE) % 10;
             const nd = ((otmp.otyp | 0) === WAN_MAGIC_MISSILE) ? 2 : 6;
@@ -423,7 +443,8 @@ export async function use_offensive(mtmp) {
                          sgn((mtmp.mux | 0) - (mtmp.mx | 0)),
                          sgn((mtmp.muy | 0) - (mtmp.my | 0)), true, false, forceMiss);
         }
-        game.buzzer = 0;
+        game.gb.buzzer = 0;
+        game.gc_current_wand = 0;
         game.m_using = false;
         mtmp.mwandexp = true;
         return DEADMONSTER(mtmp) ? 1 : 2;
@@ -433,8 +454,8 @@ export async function use_offensive(mtmp) {
          * AD_FIRE/AD_COLD ray of rn1(6, 6) dice via BZ_M_WAND(BZ_OFS_AD()). */
         await mplayhorn(mtmp, otmp, false);
         game.m_using = true;
-        game.buzzer = mtmp;
-        game.current_wand = otmp;
+        (game.gb ||= {}).buzzer = mtmp;
+        game.gc_current_wand = otmp; /* needed by zhitu() (muse.c:1874) */
         {
             const ofs = Math.abs(((otmp.otyp | 0) === FROST_HORN ? AD_COLD : AD_FIRE) - AD_MAGM) % 10;
             const nd = rn1(6, 6);
@@ -442,8 +463,8 @@ export async function use_offensive(mtmp) {
                          sgn((mtmp.mux | 0) - (mtmp.mx | 0)),
                          sgn((mtmp.muy | 0) - (mtmp.my | 0)), true, false, !mtmp.mwandexp);
         }
-        game.buzzer = 0;
-        game.current_wand = 0;
+        game.gb.buzzer = 0;
+        game.gc_current_wand = 0;
         game.m_using = false;
         mtmp.mwandexp = true;
         return DEADMONSTER(mtmp) ? 1 : 2;
@@ -453,11 +474,11 @@ export async function use_offensive(mtmp) {
         game.zap_oseen = oseen;
         await mzapwand(mtmp, otmp, false);
         game.m_using = true;
-        game.buzzer = mtmp;
+        (game.gb ||= {}).buzzer = mtmp;
         /* C muse.c:1884 — rn1(8, 6) is the beam's range and is drawn BEFORE
          * mbhit runs (it is an argument). */
         await mbhit(mtmp, rn1(8, 6), mbhitm, bhito, otmp);
-        game.buzzer = 0;
+        game.gb.buzzer = 0;
         game.m_using = false;
         if ((game.has_offense | 0) === MUSE_WAN_STRIKING)
             mtmp.mwandexp = true;

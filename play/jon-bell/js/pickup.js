@@ -23,6 +23,7 @@ import {
     _topline_more_pending, _more_never_dismissed, flush_pending_messages,
 } from './display.js';
 import { pline_with_more, money_cnt, build_window_screen, tty_window_offx } from './com_pager.js';
+import { menu_heading_text } from './tty_menu.js';
 import { autokey, pick_lock, getdir, u_have_forceable_weapon } from './lock.js';
 import { nomul } from './allmain.js';
 import { nhgetch } from './input.js';
@@ -32,9 +33,10 @@ import { polymon } from './polyself.js';
 import { PM_STONE_GOLEM } from './pm.generated.js';
 import { corpse_xname, killer_xname, CXN_SINGULAR, CXN_ARTICLE } from './objnam.js';
 import { Blind } from './vision.js';
+import { ARMOR_DATA } from './armor_data.js';
 import { splitobj } from './makemon.js';
 import { which_armor } from './makemon.js';
-import { rnd } from './rng.js';
+import { rnd, rn2 } from './rng.js';
 import { losehp } from './dokick.js';
 import { yn_function } from './end.js';
 import {
@@ -364,6 +366,38 @@ export async function doloot() {
     return res;
 }
 
+async function reverse_loot() {
+    const u = game.u;
+    const x = u.ux, y = u.uy;
+    if (!rn2(3)) {
+        const cmd = await _cmdModule();
+        let n = cmd.inv_cnt(true);
+        for (let otmp = game.invent; otmp; --n, otmp = otmp.nobj)
+            if (!rn2(n + 1)) {
+                await cmd.prinv("You find old loot:", otmp, 0);
+                return true;
+            }
+        return false;
+    }
+    let goldob = null;
+    for (goldob = game.invent; goldob; goldob = goldob.nobj)
+        if (goldob.oclass === _COIN_CLASS) {
+            const contribution = Math.trunc((rnd(5) * goldob.quan + 4) / 5);
+            if (contribution < goldob.quan)
+                goldob = await splitobj(goldob, contribution);
+            break;
+        }
+    if (!goldob)
+        return false;
+    const { remove_worn_item } = await import('./steal.js');
+    await remove_worn_item(goldob, false);
+    const cmd = await _cmdModule();
+    await cmd.dropx(goldob);
+    if (cmd.g_at(x, y))
+        await pline("Ok, now there is loot here.");
+    return true;
+}
+
 async function doloot_core() {
     const g = game;
     const u = g.u;
@@ -388,7 +422,16 @@ async function doloot_core() {
         await pline("You have no hands!");
         return ECMD_OK;
     }
-    /* C pickup.c:2198 — Confusion: false. */
+    /* C pickup.c:2198-2205 — confused #loot: usually reverse_loot(), else
+     * a coin-flip "find nothing" (both cost a turn). */
+    if (((u.uprops?.[14]?.intrinsic) | 0) !== 0) { /* Confusion; CONFUSION = 14 */
+        if (rn2(6) && await reverse_loot())
+            return ECMD_TIME;
+        if (rn2(2)) {
+            await pline("Being confused, you find nothing to loot.");
+            return ECMD_TIME; /* costs a turn */
+        }             /* else fallthrough to normal looting */
+    }
 
     /* C's `lootcont:` label sits above the container block and the lootmon
      * branch jumps BACK to it when the player directs at their own square and
@@ -441,6 +484,10 @@ async function doloot_core() {
                     if (selected.length)
                         c = 'y';
                 }
+                /* C pickup.c:2273 — `if (n != 0) c = 'y'`: <esc> gives n == -1,
+                 * so a cancelled menu also skips the directional prompt. */
+                if (cancelled)
+                    c = 'y';
             } else {
                 /* C pickup.c:2268 — single container: walk the tile chain. */
                 const lvlObjs = g.level?.levelObjects;
@@ -485,6 +532,13 @@ async function doloot_core() {
                 prev_loot = box.prev_loot;
                 if (timepassed)
                     looted_mon = true;
+            }
+            /* C pickup.c:2314-2317 — "always use a turn when choosing a
+             * direction is impaired" (Confusion || Stunned). */
+            for (const p of [13, 14]) { /* STUNNED, CONFUSION */
+                const pr = u.uprops?.[p];
+                if (pr && (((pr.intrinsic | 0) !== 0) || ((pr.extrinsic | 0) !== 0)))
+                    timepassed = 1;
             }
 
             /* C pickup.c:2324-2338 — preserve pre-3.3.1 behaviour for
@@ -1004,8 +1058,16 @@ async function _select_menu(items, how, paint = null) {
         let pageStart = 0, pageEnd = items.length, pageCount = 1;
         if (paint) {
             const all = [`\x1b[7m${paint.title}\x1b[0m`, ''];
+            let lastHeading = null;
             for (const it of items)
+            {
+                /* C pickup.c:1100-1130 query_objlist: a class heading precedes
+                 * each run of same-class entries (invent.c:4790 names[]). */
+                if (it.heading && it.heading !== lastHeading)
+                    all.push(menu_heading_text(it.heading));
+                lastHeading = it.heading;
                 all.push(`${it.sel} ${it.selected ? '+' : '-'} ${it.text}`);
+            }
             all.push('(end)');
             const tall = all.length > 24;
             let lines = all;
@@ -1085,7 +1147,25 @@ async function _select_menu(items, how, paint = null) {
 const _PU_INV_ORDER = [12, 5, 2, 3, 7, 9, 10, 8, 4, 11, 6, 13, 14, 15, 16];
 const _PU_SLIME_MOLD_OTYP = 285, _PU_TIN_OTYP = 296, _PU_EGG_OTYP = 266,
       _PU_CORPSE_OTYP = 265;
+/* C invent.c:188-198 armcat[] indexed by oc_armcat (SUIT 0, SHIELD 1, HELM 2,
+ * GLOVES 3, BOOTS 4, CLOAK 5, SHIRT 6); out-of-range -> 7 -> armcat[7] = 8. */
+const _PU_LOOT_ARMCAT = [7, 4, 1, 2, 3, 5, 6, 8];
 function _pu_loot_subclass(obj) {
+    if ((obj.oclass | 0) === 3 /* ARMOR_CLASS */) {
+        let k = ARMOR_DATA[obj.otyp | 0]?.armcat;
+        if (k === undefined || k < 0 || k >= 7) k = 7;
+        return _PU_LOOT_ARMCAT[k];
+    }
+    if ((obj.oclass | 0) === 6 /* TOOL_CLASS */) {
+        /* C invent.c:215-240 */
+        const t = obj.otyp | 0;
+        if (obj.dknown && game._oc_name_known && game._oc_name_known[t]
+            && (t === 220 || t === 252))
+            return 2;
+        if (isContainer(obj)) return 1;
+        return ((t >= 247 && t <= 251) || t === 253 || t === 254
+                || (t >= 256 && t <= 258) || t === 252) ? 3 : 4;
+    }
     if ((obj.oclass | 0) !== 7 /* FOOD_CLASS */)
         return 1;
     switch (obj.otyp | 0) {
@@ -1117,7 +1197,7 @@ function _pu_strcmpi(a, b) {
     return x.length - y.length;
 }
 function _pu_loot_classify(obj) {
-    observe_object(obj);
+    if (!Blind()) observe_object(obj); /* invent.c:170-171 */
     const k = _PU_INV_ORDER.indexOf(obj.oclass | 0);
     return (k >= 0) ? (1 + k) : (1 + _PU_INV_ORDER.length + 1);
 }
@@ -1142,8 +1222,13 @@ function _pu_sortloot(eligible) {
     return arr.map((sli) => sli.obj);
 }
 
+const _QO_CLASS_NAME = {
+    1: 'Illegal objects', 2: 'Weapons', 3: 'Armor', 4: 'Rings', 5: 'Amulets',
+    6: 'Tools', 7: 'Comestibles', 8: 'Potions', 9: 'Scrolls', 10: 'Spellbooks',
+    11: 'Wands', 12: 'Coins', 13: 'Gems/Stones', 14: 'Boulders/Statues',
+    15: 'Iron balls', 16: 'Chains',
+};
 async function query_objlist(qstr, objchain, qflags, how, allow) {
-    void qstr;
     let n = 0, last = null;
     const eligible = [];
     for (let curr = objchain; curr; curr = _follow(curr, qflags))
@@ -1180,7 +1265,13 @@ async function query_objlist(qstr, objchain, qflags, how, allow) {
         if (gs) it.gsel = gs;
     }
 
-    const cancelled = await _select_menu(items, how);
+    /* C pickup.c:1096-1130 paints the menu: title, then a heading per object
+     * class (sortloot already groups by class) before its doname'd entries. */
+    for (const it of items) {
+        it.text = await doname(it.obj);
+        it.heading = _QO_CLASS_NAME[it.obj.oclass | 0] ?? 'Items';
+    }
+    const cancelled = await _select_menu(items, how, { title: qstr });
     if (cancelled) return [];
     const picked = items.filter((it) => it.selected);
     return picked.map((it) => ({ obj: it.obj, count: it.obj.quan | 0 }));

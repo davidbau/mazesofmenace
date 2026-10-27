@@ -2,7 +2,9 @@
 // dog.c — Starting pet and pet AI helpers.
 // C ref: nethack-c/src/dog.c
 // @ts-nocheck — js sibling imports.
-import { pline } from './display.js'; /* was an undeclared global: every pline() call in this file threw ReferenceError when reached */
+import { pline, livelog_printf } from './display.js'; /* was an undeclared global: every pline() call in this file threw ReferenceError when reached */
+import { LL_CONDUCT } from './const.js';
+import { mon_pmname } from './do_name.js';
 import { rn2, rnd, rn1, pushRngLogEntry } from './rng.js';
 import { game } from './gstate.js';
 import { NON_PM, MM_EDOG, NO_MINVENT, W_SADDLE, In_endgame, OBJ_FREE, OBJ_FLOOR, EDOG, MIGR_RANDOM, MIGR_APPROX_XY, MIGR_EXACT_XY, MIGR_STAIRS_UP, MIGR_STAIRS_DOWN, MIGR_LADDER_UP, MIGR_LADDER_DOWN, MIGR_SSTAIRS, MIGR_PORTAL, MIGR_WITH_HERO, MIGR_LEFTOVERS, MON_LIMBO, STRAT_ARRIVE, RLOC_NOMSG, COLNO, ROWNO, ROOMOFFSET, MAGIC_PORTAL,
@@ -29,7 +31,7 @@ import { acurr } from './attrib.js';
  * mon_leave / migrate_to_level, below).  Each names its C home. ── */
 import { isok, Has_contents, MON_MIGRATING, MAX_NUM_WORMS } from './const.js';
 import { within_bounded_area } from './rect.js';   /* C rect.c */
-import { newsym, force_more, docrt } from './display.js';             /* C display.c */
+import { newsym, force_more_from_cls, docrt } from './display.js';    /* C display.c */
 import { see_wsegs as see_wsegs_dog, remove_worm, wormgone, count_wsegs } from './worm.js';  /* C worm.c redraw_worm's stand-in */
 import { yelp, growl, helpless, levl_follower, mon_has_amulet, seemimic } from './mhitm.js';
 import { vision_recalc } from './vision.js';       /* C vision.c */
@@ -71,7 +73,7 @@ import { canseemon, canspotmon } from './display.js';   /* C display.c */
 import { cansee } from './vision.js';                   /* C vision.c */
 import { wake_nearto, place_object } from './mklev.js'; /* C sounds.c / mkobj.c */
 import { ismnum, has_edog, HALLUC, HALLUC_RES } from './const.js'; /* monst.h/mextra.h/youprop.h */
-import { the, xname, Tobjnam } from './objnam.js';      /* C objnam.c */
+import { the, xname, Tobjnam, an } from './objnam.js';  /* C objnam.c */
 import { Monnam } from './mcastu.js';                   /* C do_name.c (js home) */
 import { s_suffix } from './mhitm.js';                  /* C hacklib.c */
 import { dogfood, dog_eat } from './dogmove.js';        /* C dog.c / dogmove.c */
@@ -187,8 +189,13 @@ export function initedog(mtmp, everything) {
             killed_by_u: 0,
         };
     }
+    /* C dog.c:77-87: log the first pet acquired after startup, then count it.
+     * C you.h:316 uhis() uses flags.female, including while polymorphed. */
     const u = game.u || (game.u = {});
     if (!u.uconduct) u.uconduct = {};
+    if (!u.uconduct.pets && game.program_state?.in_moveloop)
+        livelog_printf(LL_CONDUCT, 'obtained %s first pet (%s)',
+                       game.flags?.female ? 'her' : 'his', an(mon_pmname(mtmp)));
     u.uconduct.pets = (u.uconduct.pets | 0) + 1;
 }
 /* C ref: dog.c:218–284 makedog — create hero's starting pet.
@@ -1532,7 +1539,7 @@ export async function unstuck(mtmp, skipDocrt = false) {
          * position right after this call (mhitu.js:6177-6240). */
         if (!skipDocrt) {
             if (game._pending_message) {
-                const morc = await force_more(String(game._pending_message));
+                const morc = await force_more_from_cls(String(game._pending_message));
                 /* topl.c more():232-235 — this page is raised by cls(), not by an
                  * owner message's update_topl, so ESC's WIN_STOP is live at once
                  * for every following message (until an urgent one clears it). */

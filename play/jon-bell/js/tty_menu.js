@@ -422,6 +422,15 @@ export class TtyMenu {
             game._statusBlankAfterDocrt = true;
             if (game.disp) game.disp.botlx = 1;
         }
+        /* wintty.c:3684 docorner(offx, ...) repaints map cells from offx on, in the
+         * rows the dismissed window covered, with the live use_color. */
+        if (this.overlay) {
+            const prev = game._gm_corner;
+            game._gm_corner = { col: Math.min(this.contentCol, prev?.col ?? Infinity),
+                                rows: Math.max(this._lines.length, prev?.rows ?? 0) };
+            const { docorner_blank_utf8_captures } = await import('./display.js');
+            docorner_blank_utf8_captures(this.contentCol - 1, this.maxrow + 1);
+        } else game._gm_corner = undefined;
         /* erase_menu_or_text repaints the rows the window covered (wintty.c:966-983)
          * with the symset handling live at dismissal. */
         if (game._decStaleFrom != null)

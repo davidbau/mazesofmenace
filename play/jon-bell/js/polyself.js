@@ -17,7 +17,7 @@
 //   d(mlvl,8)            new-form maxHP    polyself.c:868
 import { rn2, rnd, rn1, d } from './rng.js';
 import { game } from './gstate.js';
-import { PM_COCKATRICE, PM_CHICKATRICE, PM_STONE_GOLEM } from './pm.generated.js';
+import { PM_COCKATRICE, PM_CHICKATRICE, PM_STONE_GOLEM, PM_FLAMING_SPHERE, PM_FIRE_VORTEX, PM_GREEN_SLIME } from './pm.generated.js';
 function pline_The(msg, ...args) { return pline('The ' + msg, ...args); }
 function touch_petrifies(pd) { const i = pd?.pmidx | 0; return i === PM_COCKATRICE || i === PM_CHICKATRICE; }
 import { pline, urgent_pline, newsym, see_monsters, flush_screen, force_more, _topl_stash_result, _topl_merge_result, _topl_joins_snapshot, canspotmon, canseemon } from './display.js';
@@ -30,7 +30,7 @@ import { mnexto } from './teleport.js';
 import { rndexp } from './exper_pure.js';
 import { newhp, newpw } from './exper.js';
 import {
-    find_ac, donning, encumber_msg, takeoff_slot_noac, Boots_off, Cloak_off, Gloves_off, Helmet_off, worn_invent_obj, cancel_don,
+    find_ac, donning, encumber_msg, takeoff_slot_noac, Boots_off, Blindf_off, Cloak_off, Gloves_off, Helmet_off, worn_invent_obj, cancel_don,
 } from './do_wear.js';
 import { dropx, useup, welded, setuwep, surface, ceiling, waterbody_name, yname, You_cant, youhiding as youhiding_enlightenment, instapetrify as instapetrify_real } from './cmd.js';
 import { losehp } from './dokick.js';
@@ -55,7 +55,7 @@ import {
     SICK_RES, SICK, STONED, SLIMED, STUNNED, HALLUC_RES, SEE_INVIS, TELEPAT, INFRAVISION, INVIS,
     TELEPORT, TELEPORT_CONTROL, POLYMORPH_CONTROL, LEVITATION, FLYING, SWIMMING, PASSES_WALLS,
     REGENERATION, REFLECTING, BLINDED, BLND_RES, STRANGLED,
-    ECMD_OK, ECMD_TIME, ECMD_CANCEL, Is_airlevel, Is_waterlevel, KILLED_BY_AN,
+    ECMD_OK, ECMD_TIME, ECMD_CANCEL, Is_airlevel, Is_waterlevel, In_endgame, KILLED_BY_AN,
     KILLED_BY, DIED, GENOCIDED, STONING, POLYMORPH, NECK,
     HALLUC, CONFUSION, FREE_ACTION,
     I_SPECIAL, G_GENOD,
@@ -543,6 +543,16 @@ export async function polymon(mntmp) {
         if (abase[dStr] > amax[dStr]) abase[dStr] = amax[dStr];
     }
 
+    // C polyself.c:842-848 — a flaming form burns the slime away; becoming a
+    // green slime cures it silently.  flaming() = mondata.h:59-61.
+    if (u.uprops?.[SLIMED]?.intrinsic) {
+        if (mntmp === PM_FIRE_VORTEX || mntmp === PM_FLAMING_SPHERE
+            || mntmp === PM_FIRE_ELEMENTAL || mntmp === PM_SALAMANDER) {
+            await make_slimed(0, 'The slime burns away!');
+        } else if (mntmp === PM_GREEN_SLIME) {
+            await make_slimed(0, null);
+        }
+    }
     // C polyself.c:850 — immunity from the new form can stop strangulation.
     await check_strangling_poly(false);
 
@@ -555,7 +565,8 @@ export async function polymon(mntmp) {
     const mlvl = ptr.mlevel | 0;
     let mhmax;
     if (ptr.mlet === S_DRAGON && mntmp >= PM_GRAY_DRAGON) {
-        mhmax = 4 * mlvl + d(mlvl, 4);
+        // C polyself.c:861 — endgame adult dragons get maximum HP without a roll.
+        mhmax = In_endgame(u.uz) ? 8 * mlvl : 4 * mlvl + d(mlvl, 4);
     } else if (is_golem(ptr)) {
         mhmax = golemhp(mntmp);
     } else {
@@ -886,9 +897,11 @@ async function break_armor() {
     /* eyewear shouldn't stay worn without a head to wear it on */
     if (u.ublindf && !_has_head(uptr)) {
         const eyewearObj = u.ublindf;
-        const eyewear = simpleonames(eyewearObj);
-        await pline(`Your ${eyewear} fall off!`);
-        await takeoff_slot_noac('ublindf');
+        let eyewear = simpleonames(eyewearObj);
+        // C polyself.c:1295-1297: omit the lenses' "pair of" prefix.
+        if (eyewear.startsWith('pair of ')) eyewear = eyewear.slice(8);
+        await pline(`Your ${eyewear} ${vtense(eyewear, 'fall')} off!`);
+        await Blindf_off(null); /* C polyself.c:1299: Null skips the usual off mesg */
         await dropp(eyewearObj);
     }
     /* rings stay worn even when no hands */
@@ -1231,18 +1244,15 @@ export async function rehumanize() {
     /* C:1372-1386 — "You can't revert back while unchanging". */
     const p_unchg = u.uprops?.[UNCHANGING_PS];
     if (p_unchg && (((p_unchg.intrinsic | 0) !== 0) || ((p_unchg.extrinsic | 0) !== 0))) {
-        /* C:1373-1380 — done(DIED) is deferred by deadhero(), but the
-         * killer fields must be set before it.  An unchanging amulet cannot
-         * coexist with life saving in this arm, so there is no continuation
-         * which should fall through into rehumanization. */
+        /* C polyself.c:1373-1380 calls done() directly: there is no
+         * done_in_by() death message, and declining death keeps this form. */
         if ((u.mh | 0) < 1) {
             if (!g.svk) g.svk = {};
             if (!g.svk.killer)
                 g.svk.killer = { id: 0, format: 0, name: '', next: null };
             g.svk.killer.format = 2; /* NO_KILLER_PREFIX */
             g.svk.killer.name = 'killed while stuck in creature form';
-            deadhero(0 /* DIED */);
-            await do_death_sequence({ inPlace: true });
+            await done(0 /* DIED */);
             return;
         }
         /* C:1381-1385 — an amulet of unchanging announces that its power

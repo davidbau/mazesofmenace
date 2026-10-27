@@ -276,7 +276,7 @@ import { heroDetectsMonsters, heroIsBlind, heroIsDeaf, heroIsHallucinating, } fr
 import { beginBallAndChainMove, finishBallAndChainMove, heroIsPunished } from './ball.js';
 import { doborn, doquit, finishHeroDeath, listGenocided, listVanquished, } from './end.js';
 import { applyHeroContactPassive, } from './monster_passive.js';
-import { heroCannotTake, heroHasNoHands, heroHasNoLimbs, heroIsPolymorphed, heroIsVerySmall, heroCanChangeVampireShape, polymorphHero, returnHeroToHumanForm, } from './polyself.js';
+import { heroCannotTake, heroHasNoHands, heroHasNoLimbs, heroHasProtectionFromShapeChangers, heroIsPolymorphed, heroIsVerySmall, heroCanChangeVampireShape, polymorphHero, returnHeroToHumanForm, } from './polyself.js';
 import { applyEyewear, isEyewear, removeEyewear, wearEyewear, } from './eyewear.js';
 import { useCreamPie } from './cream_pie.js';
 import { useFigurine } from './figurine_apply.js';
@@ -1149,7 +1149,7 @@ function prepareTimedCommand(binding) {
     }
 }
 async function redrawCommand() {
-    await restoreCommandMap();
+    await docrt();
     game.context.move = 0;
 }
 async function performWaitCommand(force = game.iflags.menu_requested) {
@@ -2864,8 +2864,9 @@ async function doname() {
     }
     const choice = queuedChoice === undefined ? await chooseNamingCategory()
         : String.fromCharCode(queuedChoice);
-    if (queuedChoice === undefined)
-        await restoreCommandMap();
+    // C docallcmd() erases the category menu via its own dismissal
+    // (erase_menu_or_text() -> docorner for a corner menu, docrt() for a
+    // full-width one); no extra full redraw runs afterwards.
     // C refs: do_name.c:docallcmd()/do_oname() and
     // dungeon.c:donamelevel()/query_annotation().  The menu owns only the
     // category choice; level annotations live with mapseen, while an
@@ -2880,9 +2881,10 @@ async function doname() {
         await renameDiscoveredType();
     }
     else if (choice === 'a') {
+        // donamelevel() is a getlin() prompt on the message row; it redraws
+        // nothing, so no full-screen refresh follows it either.
         await queryLevelAnnotation();
         game._pending_message = '';
-        await restoreCommandMap();
     }
     else if (choice === 'i') {
         // C do_name.c:name_ok() marks unseen, artifact and novel objects as
@@ -4787,6 +4789,8 @@ async function doChronicle() {
     }
     // show_gamelog() putstr()s one formatted line at a time, so the tty
     // text window's compress_str() and wrap apply per event line.
+    // show_gamelog() destroys a full-screen NHW_TEXT window, whose tty
+    // dismissal (erase_menu_or_text()) already redraws map and status.
     await showTextWindow(lines);
     game._pending_message = '';
     game.context.move = 0;
@@ -5411,14 +5415,6 @@ async function offerFarlookInformation(description, withoutAsking) {
             await showDisclosureOverlay(match.entry.lines, { restoreUnderlay: true });
     }
 }
-async function restoreHelpMap() {
-    game._pending_message = '';
-    game._retained_message = '';
-    game.nhDisplay?.clearScreen();
-    await docrt();
-    await bot();
-    await flush_screen(1);
-}
 // C pager.c:do_look(0).  The initial menu is a true PICK_ONE overlay; choosing
 // the map entry destroys it, restores the map, then hands input ownership to
 // the shared getpos/farlook transaction above.
@@ -5448,7 +5444,6 @@ async function dowhatis() {
             sections: [{ items }],
         });
         choice = result[0] ?? '';
-        await restoreHelpMap();
     }
     if (choice === 'y')
         choice = '/';
@@ -5539,7 +5534,6 @@ async function dohelp() {
         title: 'Select one item:',
         entries,
     });
-    await restoreHelpMap();
     const choice = String.fromCharCode(key);
     if (choice === 'a')
         await doextversion();
@@ -7592,92 +7586,136 @@ async function domoveCore(dx, dy) {
     // zeroes the requested vector and follows the normal hero-melee owner at
     // the swallower's shared square; terrain and impaired movement are not
     // consulted.
+    let swallowerYielded = false;
     if (u?.uswallow && u.ustuck && !u.ustuck.dead) {
         const monster = u.ustuck;
         // C domove_core() zeroes the vector before attacking the swallower.
         u.dx = u.dy = 0;
+        dx = dy = 0;
         u.ux0 = u.ux;
         u.uy0 = u.uy;
         u.ux = monster.mx;
         u.uy = monster.my;
-        // hack.c:domove_core() applies the shared destination-monster block
-        // to u.ustuck too: nomul(0) for a non-safe monster or an explicit
-        // fight prefix cancels a count or run before do_attack(), while
-        // requesting a full status update.
-        if (!heroMayDisplaceMonster(monster) || game.context.forcefight)
+        // hack.c:domove_core() runs its shared target-monster block for the
+        // swallower as well: a target that is not safe to displace cancels
+        // running and count-prefixed repeats with nomul(0) before the
+        // m-prefix bump or do_attack(), so a swallowed attack never becomes
+        // an automatic multi-step sequence.
+        if (game.context.forcefight || !heroMayDisplaceMonster(monster))
             nomul(0, game);
-        return attackHostileMonster(monster, monster.mx, monster.my);
-    }
-    if (await airTurbulenceStopsHero())
-        return true;
-    checkSlipperyIce();
-    // C hack.c:impaired_movement() always checks Confusion before deriving
-    // the destination.  A nonzero rn2(5) keeps the requested direction; on
-    // impairment, confdir(TRUE) chooses cardinals first and retries only an
-    // out-of-bounds square or rock this body cannot traverse.
-    const confused = (u?.confusionTurns || 0) > 0;
-    const stunned = !!(u?.stunned || (u?.stunnedTurns || 0) > 0);
-    if (stunned || (confused && rn2(5) === 0)) {
-        let found = false;
-        for (let tries = 0; tries <= 50; tries++) {
-            confusePromptDirection(u, true);
-            dx = u.dx ?? 0;
-            dy = u.dy ?? 0;
-            const x = u.ux + dx, y = u.uy + dy;
-            if (!isok(x, y) || heroBadRock(game, x, y))
-                continue;
-            found = true;
-            break;
+        if (await bumpIntoMonster(monster, monster.mx, monster.my))
+            return true;
+        const safeMonster = !game.context.forcefight && heroMayDisplaceMonster(monster);
+        if (safeMonster && artifactById(game.uwep?.oartifact, game)?.name !== 'Stormbringer') {
+            // do_attack() returning FALSE (the swallower yields) continues
+            // domove_core() into its ordinary move checks with the zeroed
+            // vector.  The destination re-lookup below then finds the
+            // co-located swallower and offers the pet swap, exactly like
+            // hack.c's second m_at() and domove_swap_with_pet().
+            if ((await runSafepetDisplacement(monster)) !== 'evaded')
+                return true;
+            swallowerYielded = true;
         }
-        if (!found) {
-            endVoluntaryMultiTurn(game);
-            // Native nomul(0) ends repetition without clearing context.move.
+        else {
+            // domove_attackmon_at(): do_attack() runs the attack_checks()
+            // reveal sequence for the swallower exactly as for any target.
+            const verdict = await prepareAppliedWeaponAttack(monster, game.uwep ?? null, { state: game, struckAt: { x: monster.mx, y: monster.my } });
+            if (!verdict.proceed)
+                return verdict.spentTime;
+            await attackHostileMonster(monster, monster.mx, monster.my, {
+                confirmationOverridden: verdict.confirmationOverridden ?? false,
+            });
             return true;
         }
     }
-    // confdir() updates the same persistent vector selected by set_move_cmd().
-    u.dx = dx;
-    u.dy = dy;
-    if (await waterTurbulenceStopsHero())
-        return true;
-    dx = u.dx;
-    dy = u.dy;
-    // C stores direction in u.dx/u.dy, so confdir() permanently changes the
-    // pending Shift-direction run as well as this one destination.  The next
-    // automatic step must retain that impaired direction; it may immediately
-    // terminate against terrain which the originally requested line avoided.
-    if (game._runState && game._runState.mode !== 8) {
-        game._runState.dx = dx;
-        game._runState.dy = dy;
+    const confused = (u?.confusionTurns || 0) > 0;
+    const stunned = !!(u?.stunned || (u?.stunnedTurns || 0) > 0);
+    let newx;
+    let newy;
+    if (swallowerYielded) {
+        // C's swallowed branch owns its own prologue (hack.c:2733-2760):
+        // air_turbulence(), slippery_ice_fumbling(), impaired_movement(),
+        // water_turbulence(), the bounds/trap checks and
+        // escape_from_sticky_mon() all live in the non-swallowed else
+        // branch, so the yielded hero goes straight to the shared
+        // fight/test_move tail on the swallower's square.
+        newx = u.ux;
+        newy = u.uy;
     }
-    const newx = u.ux + dx;
-    const newy = u.uy + dy;
-    if (!isok(newx, newy))
-        return moveOutOfBounds(newx, newy);
-    if (game.context.run) {
-        const trap = knownRunTrap(newx, newy, game);
-        const liquid = heroIsBlind(game) && runLiquidIsDangerous(newx, newy, game);
-        if (trap || liquid) {
-            const stopBeforeStep = game.context.run >= 2;
-            if (stopBeforeStep) {
-                if (trap)
-                    await announceRunTrap(trap, game);
-                else
-                    await announceRunLiquid(newx, newy, game);
+    else {
+        if (await airTurbulenceStopsHero())
+            return true;
+        checkSlipperyIce();
+        // C hack.c:impaired_movement() always checks Confusion before deriving
+        // the destination.  A nonzero rn2(5) keeps the requested direction; on
+        // impairment, confdir(TRUE) chooses cardinals first and retries only an
+        // out-of-bounds square or rock this body cannot traverse.
+        if (stunned || (confused && rn2(5) === 0)) {
+            let found = false;
+            for (let tries = 0; tries <= 50; tries++) {
+                confusePromptDirection(u, true);
+                dx = u.dx ?? 0;
+                dy = u.dy ?? 0;
+                const x = u.ux + dx, y = u.uy + dy;
+                if (!isok(x, y) || heroBadRock(game, x, y))
+                    continue;
+                found = true;
+                break;
             }
-            endVoluntaryMultiTurn(game);
-            if (stopBeforeStep)
-                return false;
+            if (!found) {
+                endVoluntaryMultiTurn(game);
+                // Native nomul(0) ends repetition without clearing context.move.
+                return true;
+            }
         }
+        // confdir() updates the same persistent vector selected by set_move_cmd().
+        u.dx = dx;
+        u.dy = dy;
+        if (await waterTurbulenceStopsHero())
+            return true;
+        dx = u.dx;
+        dy = u.dy;
+        // C stores direction in u.dx/u.dy, so confdir() permanently changes the
+        // pending Shift-direction run as well as this one destination.  The next
+        // automatic step must retain that impaired direction; it may immediately
+        // terminate against terrain which the originally requested line avoided.
+        if (game._runState && game._runState.mode !== 8) {
+            game._runState.dx = dx;
+            game._runState.dy = dy;
+        }
+        newx = u.ux + dx;
+        newy = u.uy + dy;
+        if (!isok(newx, newy))
+            return moveOutOfBounds(newx, newy);
+        if (game.context.run) {
+            const trap = knownRunTrap(newx, newy, game);
+            const liquid = heroIsBlind(game) && runLiquidIsDangerous(newx, newy, game);
+            if (trap || liquid) {
+                const stopBeforeStep = game.context.run >= 2;
+                if (stopBeforeStep) {
+                    if (trap)
+                        await announceRunTrap(trap, game);
+                    else
+                        await announceRunLiquid(newx, newy, game);
+                }
+                endVoluntaryMultiTurn(game);
+                if (stopBeforeStep)
+                    return false;
+            }
+        }
+        if (await escapeFromStickyMonster(newx, newy))
+            return true;
     }
-    if (await escapeFromStickyMonster(newx, newy))
-        return true;
     const loc = game.level?.at(newx, newy);
     // C domove_core() resolves a destination monster before test_move()
     // applies terrain restrictions.  In particular, the hero can attack
     // diagonally across an intact doorway even though moving through that
     // same doorway would be rejected.
-    const monster = game.level ? monsterAtPosition(game.level, newx, newy) : null;
+    // The yielded swallower already passed through do_attack()'s safepet
+    // block above; C's fall-through only reaches the second m_at() lookup
+    // for the pet swap, never the attack again.
+    const monster = swallowerYielded ? null
+        : game.level ? monsterAtPosition(game.level, newx, newy) : null;
     const hiddenCeilingMonster = monster?.mundetected && !game.context.forcefight
         && !canSenseMonster(monster)
         && !((MONSTER_FLAGS1[monster.mnum] ?? 0) & 0x80)
@@ -7694,7 +7732,11 @@ async function domoveCore(dx, dy) {
         // that case must reach attack_checks() and install the invisible
         // marker instead.
         if (game.context.run && !safeMonster
-            && canSpotMonster(monster)) {
+            && ((!heroIsBlind(game) && monsterVisible(monster, game)
+                && ((M_AP_TYPE(monster) !== M_AP_FURNITURE
+                    && M_AP_TYPE(monster) !== M_AP_OBJECT)
+                    || heroHasProtectionFromShapeChangers(game)))
+                || canSenseMonster(monster))) {
             stopRun(game);
             return false;
         }

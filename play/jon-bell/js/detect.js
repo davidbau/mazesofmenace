@@ -4,7 +4,7 @@ import { game } from './gstate.js';
 import { COLNO, ROWNO, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL,
          TER_DETECT, TER_MAP, TER_TRP, TER_OBJ, TER_MON, I_SPECIAL, IN_SIGHT,
          CLAIRVOYANT, CONFUSION, DETECT_MONSTERS, SVALL, COULD_SEE } from './const.js';
-import { pline, flush_screen, docrt, map_invisible, map_object, map_monst,
+import { force_more, pline, flush_screen, docrt, map_invisible, map_object, map_monst,
          see_monsters, canspotmon, newsym, GLYPHCLS_MON, GLYPHCLS_INVIS,
          GLYPHCLS_CMAP, GLYPHCLS_TRAP, GLYPHCLS_ENGR } from './display.js';
 import { Blind } from './vision.js';
@@ -127,6 +127,16 @@ export async function do_vicinity_map(sobj) {
         if (loc && _isMonGlyph(loc) && (mndx | 0) !== PM_LONG_WORM_TAIL
             && (!mon || !canspotmon(mon))) map_invisible(x, y);
     }
+    /* docrt() -> cls() pages the standing "Done." of browse_map's getpos
+     * (getpos.c:1136; wintty.c:1874).  C's see_monsters() below only updates
+     * the glyph buffer, which tty flushes after that --More--, so the page
+     * shows the browse screen; this port paints at once, so page first. */
+    if (refresh && game._pending_message)
+        await force_more(game._pending_message);
     see_monsters();
-    if (refresh) await docrt();
+    if (refresh) {
+        game._topl_sticky = null;
+        await docrt();
+        game._pending_message = '';
+    }
 }

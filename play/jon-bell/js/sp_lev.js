@@ -4576,7 +4576,7 @@ async function create_monster(m, croom) {
                     otmp.owornmask = 0;
                     /* C worn.c:1405 — do_extrinsics is TRUE at this call site
                      * (mkobj.c:2531 passes TRUE, TRUE) and the monster is alive. */
-                    update_mon_extrinsics(mtmp, otmp, false, true);
+                    await update_mon_extrinsics(mtmp, otmp, false, true);
                     mtmp.misc_worn_check = (mtmp.misc_worn_check | 0) & ~unwornmask;
                     check_gear_next_turn(mtmp);
                 }

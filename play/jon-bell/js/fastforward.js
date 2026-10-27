@@ -10,7 +10,7 @@ import { make_confused, make_stunned, vomit, cantvomit } from "./potion.js";
 import { age_spells } from "./spell.js";
 import { exerchk, exercise, acurr, spec_ability } from "./attrib.js";
 import { overexert_hp } from "./uhitm.js";
-import { t_at, registerTrapMksobj, m_dowear, activate_statue_trap } from "./trap.js";
+import { clear_bypasses, t_at, registerTrapMksobj, m_dowear, activate_statue_trap } from "./trap.js";
 import { Warning, newsym, feel_location, feel_newsym, pline, urgent_pline, flush_screen, _topl_merge_result, _topl_joins_snapshot, _topline_more_pending, _more_never_dismissed, _more_pages_exceed_input, flush_pending_messages, You_hear } from "./display.js";
 /* Runtime-only edge, same rule as the allmain/monmove/mklev imports below:
  * end.js does not import this module, so the cycle is one-directional and
@@ -340,7 +340,16 @@ async function fmon_mcalcmove() {
      * caller of this function is that block, so the pairing lives here. */
     game.gw = game.gw || {};
     game.gw.were_changes = 0;
-    await mcalcdistress();
+    /* The doapply wield-turn caller has already bumped g.moves, but C runs
+     * mcalcdistress() BEFORE svm.moves++ (allmain.c:228 vs :295), so mon_regen's
+     * `svm.moves % 20 == 0` (monmove.c:310) must see the OLD counter. */
+    const _preInc = !!game._ff_moves_preinc;
+    if (_preInc) game.moves = (game.moves | 0) - 1;
+    try {
+        await mcalcdistress();
+    } finally {
+        if (_preInc) game.moves = (game.moves | 0) + 1;
+    }
     const g = game;
     let n = 0;
     for (let m = g.fmon; m; m = m.nmon) {
@@ -425,6 +434,10 @@ export async function ff_movemon_one_pass() {
          * visibility-dependent decisions, at C's per-monster boundary. */
         if (g.vision_full_recalc)
             vision_recalc(0);
+        /* C mon.c:1262-1263 — reset obj bypasses before the next monster moves
+         * (a bypass set by one monster's zap/loot must not outlive its move). */
+        if (g.context?.bypasses || g.svc?.context?.bypasses)
+            clear_bypasses();
         if (await minliquid(m))
             continue;
         if (((m.misc_worn_check | 0) & I_SPECIAL_FF) !== 0) {
@@ -480,6 +493,9 @@ export async function ff_movemon_one_pass() {
      * boundary or the enclosing loop consumes this flag. */
     if (any_light_source())
         g.vision_full_recalc = 1;
+    /* C mon.c:1336-1337 — reset obj bypasses after the last monster has moved. */
+    if (g.context?.bypasses || g.svc?.context?.bypasses)
+        clear_bypasses();
     dmonsfree();
     if (ENV.FF_MLTRACE === '1')
         pushRngLogEntry(`^ff_movemon_pass[moves=${g.moves | 0} pass=${g._ffMlPass | 0} roster=${roster.length | 0} somebody=${somebody_can_move ? 1 : 0}]`);
@@ -1312,7 +1328,7 @@ async function _ff_tele_poly_changes() {
                 const old_ux = u.ux, old_uy = u.uy;
                 await tele();
                 if (u.ux !== old_ux || u.uy !== old_uy) {
-                    if (!next_to_u())
+                    if (!(await next_to_u()))
                         await check_leash(old_ux, old_uy);
                     cmdq_clear(CQ_CANNED);
                     cmdq_clear(CQ_REPEAT);
@@ -1365,12 +1381,14 @@ async function fastforward_step_generic_turn_nodochug() {
      * Stage 1: applies result to g.u.umovement (RNG position unchanged). */
     /* C allmain.c:261 mvl_wtcap = near_capacity() — recomputed after the
      * monster-move loop; threaded into u_calc_moveamt (consumes no RNG). */
-    u_calc_moveamt(near_capacity());
+    const _wtcap = near_capacity();
+    u_calc_moveamt(_wtcap);
     /* C ref: allmain.c:341-348 — regen_hp() sits between svm.moves++ and
      * dosounds in the per-turn block; this calibrated block omitted it, so a
      * wounded hero's rn2(100) (allmain.c:659) vanished on any turn run through
      * here (the doapply wield-turn, js/cmd.js). */
     await _ff_generic_regen_hp();
+    regen_pw(_wtcap);
     await _ff_tele_poly_changes();
     /* C ref: allmain.c:395-397 — intrinsic autosearch: if (Searching &&
      * !noautosearch && gm.multi >= 0) dosearch0(1).  Fires BEFORE dosounds. */
@@ -1394,6 +1412,11 @@ async function fastforward_step_generic_turn_nodochug() {
     exerchk();
     /* C ref: allmain.c:413 u_wipe_engr condition — dynamic DEX lookup. */
     u_wipe_engr_rng();
+    /* C allmain.c:374-377: level activity also runs on generic turns. */
+    if (Is_waterlevel(game.u.uz) || Is_airlevel(game.u.uz))
+        await movebubbles();
+    else if (game.level?.flags?.fumaroles)
+        await fumaroles();
 }
 /* Generic turn for steps 11+ — includes dochug dispatch before mcalcmove.
  * C ref: allmain.c:253 movemon() loop fires dochug for each monster with
@@ -1425,7 +1448,8 @@ async function fastforward_step_generic_turn() {
      * Stage 1: applies result to g.u.umovement (RNG position unchanged). */
     /* C allmain.c:261 mvl_wtcap = near_capacity() — recomputed after the
      * monster-move loop; threaded into u_calc_moveamt (consumes no RNG). */
-    u_calc_moveamt(near_capacity());
+    const _wtcap = near_capacity();
+    u_calc_moveamt(_wtcap);
     /* C ref: allmain.c:341-348 — regen_hp() sits between svm.moves++ and
      * dosounds in the per-turn block; this calibrated block omitted it, so a
      * wounded hero's rn2(100) (allmain.c:659) vanished on any turn run through
@@ -1435,6 +1459,7 @@ async function fastforward_step_generic_turn() {
      * The wield-turn caller (js/cmd.js doapply) installs the hook. */
     if (game._ff_nh_timeout_hook) await game._ff_nh_timeout_hook();
     await _ff_generic_regen_hp();
+    regen_pw(_wtcap);
     await _ff_tele_poly_changes();
     /* C ref: allmain.c:395-397 — intrinsic autosearch: if (Searching &&
      * !noautosearch && gm.multi >= 0) dosearch0(1).  Fires BEFORE dosounds. */
@@ -1457,6 +1482,11 @@ async function fastforward_step_generic_turn() {
     exerchk();
     /* C ref: allmain.c:413 u_wipe_engr condition — dynamic DEX lookup. */
     u_wipe_engr_rng();
+    /* C allmain.c:374-377: wielding a tool can spend this whole turn. */
+    if (Is_waterlevel(game.u.uz) || Is_airlevel(game.u.uz))
+        await movebubbles();
+    else if (game.level?.flags?.fumaroles)
+        await fumaroles();
 }
 
 export const FF_FAITHFUL = !(typeof process !== 'undefined'

@@ -31,6 +31,8 @@ import { docrt, cls, bot, timebot, status_eval_next_unhilite, time_botl_moves_in
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { fastforward_pre_mklev, fastforward_post_mklev, fastforward_step, fastforward_fill_mineralize, fmon_dochug_dispatch, NORMAL_SPEED, FF_FAITHFUL, ff_movemon_phase, ff_head_phase, ff_head_phase_pre, ff_head_phase_post, vomiting_dialogue_ff, sickness_dialogue_ff, choke_dialogue_ff } from './fastforward.js';
 import { makedog, dismount_steed } from './dog.js';
+import { mnexto } from './teleport.js';
+import { RLOC_NOMSG } from './const.js';
 import { x_monnam } from './mhitm.js';
 import { initrack } from './track.js';
 import { emitMapstate } from './mapstate.js';
@@ -106,7 +108,7 @@ export async function seer_turn_check() {
  * Warning()/Blind(), which this tree already has too many of. */
 import { see_monsters, see_objects, see_traps, Warning, Warn_of_mon, swallowed, newsym } from './display.js';
 import { set_mimic_blocking } from './sit.js';
-import { topl_force_break_after } from './display.js';
+import { topl_force_break_after, capture_flushed_cells } from './display.js';
 import { makewish } from './wizcmds.js';
 import { Blind } from './vision.js';
 /* C timeout.c:156-164 BLINDED slice — the accessors that read and write the
@@ -384,6 +386,10 @@ export async function newgame() {
     await u_on_upstairs();
     // C ref: allmain.c newgame() — makedog() after mklev/vision/check_special_room.
     // Consumes pet_type() RNG (dog.c:100 rn2(2)) before post-mklev fast-forward.
+    /* C ref: allmain.c:812-813 — a monster generated on the arrival stairs is
+     * moved aside before the starting pet is placed. */
+    if (m_at(g.u.ux, g.u.uy))
+        await mnexto(m_at(g.u.ux, g.u.uy), RLOC_NOMSG);
     await makedog();
     // Fast-forward through post-mklev startup RNG calls.
     // Covers: u_init_role, ini_inv, attributes, moveloop_preamble.
@@ -786,6 +792,12 @@ export async function newgame() {
     }
     g.disp = g.disp || { botl: 0, botlx: 0, time_botl: 0, toplin: 0, inmore: 0 };
     g.disp.botlx = 1;
+    /* C ref: allmain.c:91 moveloop_preamble() — encumber_msg(); "in case they
+     * auto-picked up something" (pickup(1) above). */
+    if (!chargenIncomplete)
+        encumber_msg_sync();
+    /* C allmain.c:106: moveloop_preamble finishes before maybe_do_tutorial. */
+    if (!chargenIncomplete) g.program_state.in_moveloop = 1;
     // C ref: allmain.c:591-592 — if (!resuming) maybe_do_tutorial()
     // maybe_do_tutorial calls ask_do_tutorial() when the tutorial level exists.
     // ask_do_tutorial() shows the PICK_ONE menu unless the tutorial option was
@@ -1160,7 +1172,7 @@ async function faithful_moveloop_turn() {
             // full move (Fast double-move), break out to act again WITHOUT draining
             // the remaining monster movement and WITHOUT a new-turn block.
             if ((g.u.umovement | 0) >= NORMAL_SPEED) break;
-            if (++monPass >= 64) break; // safety: never spin on a broken move chain
+            if (++monPass >= 100000) break; // safety: never spin on a broken move chain
         } while (monscanmove);
         g._inMovemonBlock = false;
         /* C allmain.c:216 `svc.context.mon_moving = FALSE;` */
@@ -1845,6 +1857,21 @@ async function eat_occupation_turn() {
                  * already without the cured Stone), not the corpse-flavor frame
                  * frozen at eatcorpse time. */
                 const _interrupt = !_fromPreEat && /^You stop eating\b/.test(part);
+                /* A pre-eat pline paging the committed line ran its own flush_screen()
+                 * (pline.c:273-274) first: the status is that flush's, not the tick's
+                 * (eatcorpse's poison losehp before cprefx's "You cannibal!"). */
+                if (_fromPreEat) {
+                    const _pfs = (g._plineFlushFrames || []).findLast((f) => f.botl
+                        && f.off === _committed.length && f.msg === part)
+                        /* A later page's committed text is a lone part, but the
+                         * frames keep offsets into the full accumulated topline:
+                         * the pline that raises this more() is the one whose
+                         * own flush froze the frame (pline.c:273-277), polymon's
+                         * encumber_msg over "You turn into a grid bug!". */
+                        || (g._plineFlushFrames || []).findLast((f) => f.botl
+                            && f.msg === part);
+                    if (_pfs) g._occCurBotl = _pfs.botl;
+                }
                 if (_interrupt && _tickBotl) g._occCurBotl = _tickBotl;
                 /* C pline.c:273-274: the incoming eat-effect pline flushed the screen
                  * (running bot()) before raising this page's more(), so the
@@ -1854,7 +1881,11 @@ async function eat_occupation_turn() {
                 let _ownFrame = null;
                 if (!_fromPreEat && !_interrupt) {
                     _ownFrame = (g._plineFlushFrames || []).findLast((f) => f.botl && f.msg === part) || null;
-                    if (_ownFrame) g._occCurBotl = _ownFrame.botl;
+                    if (_ownFrame) {
+                        g._occCurBotl = _ownFrame.botl;
+                    } else if (_tickBotl) {
+                        g._occCurBotl = _tickBotl;
+                    }
                 }
                 const _pageFrame = _pf?.cells || _ownFrame?.cells || (_interrupt && _tickFrame) || thisTurnFrame;
                 /* The movemon pline's flush_screen()/bot() ran before moves++
@@ -3031,7 +3062,14 @@ async function moveloop_core_faithful() {
                                          _topl_joins_snapshot(_carry) || undefined)
                     : _carry;
                 const _cut = _carry.lastIndexOf('  ');
-                topl_force_break_after(_cut >= 0 ? _carry.slice(_cut + 2) : _carry);
+                /* C allmain.c:448 displays WIN_MESSAGE without flushing the
+                 * map.  final_level's new monsters are still only in gbuf.
+                 * tty more() (wintty.c:1873-1879) does no bot() either, so the
+                 * status row is the last paint: goto_level's Tourist
+                 * more_experienced (do.c:1962) is still pending here. */
+                topl_force_break_after(_cut >= 0 ? _carry.slice(_cut + 2) : _carry,
+                                      false, null, capture_flushed_cells(),
+                                      g._lastPaintedBotl || null);
             }
         }
         await urgent_pline('The Amulet is bestowing a wish upon you!');
@@ -3320,6 +3358,9 @@ async function moveloop_core_faithful() {
                     await stop_occupation();
                     reset_eat();
                 }
+                // C allmain.c:509: every occupation tick ends with this paint,
+                // including a tick which just finished or stopped digging.
+                await runmode_delay_output();
                 await faithful_moveloop_turn();
                 // Page this turn's accumulated topline (the dig + movemon plines).
                 if (g.vision_full_recalc) {
@@ -3343,6 +3384,14 @@ async function moveloop_core_faithful() {
             // C allmain.c:243-446 — a full new per-turn world block for this
             // occupation turn (movemon + HEAD; svm.moves++ inside).
             await faithful_moveloop_turn();
+            // C allmain.c:453-480 precedes the occupation callback, including
+            // the hallucination redraw before consuming pending vision changes.
+            find_ac();
+            faithful_input_redraw();
+            if (!(g.context && g.context.mv) || Blind()) {
+                if (g.vision_full_recalc) vision_recalc(0);
+            }
+            await moveloop_status_paint();
             // The world block's own stop_occupation() (distfleeck/dochugw,
             // then false, dig() does not run, and no further world block follows
             // (rhack reads the next key).
@@ -3360,6 +3409,9 @@ async function moveloop_core_faithful() {
                 await stop_occupation();
                 reset_eat();
             }
+            // C allmain.c:509: RUN_LEAP can repaint time on this tick even
+            // when context.run suppresses the ordinary moves++ update.
+            await runmode_delay_output();
         }
         // C ref: win/tty/topl.c — the dig occupation's terminating message
         // topline as the occupation's begin-message ("You start digging
@@ -3396,7 +3448,11 @@ async function moveloop_core_faithful() {
         // post-occupation turn (its breaking turn ran movemon-then-dig).
         if (!_digHorizontal && !digInterrupted) {
             await faithful_moveloop_turn();
+            find_ac();
+            faithful_input_redraw();
         }
+        // This invocation's input tail has already run, including on interrupt.
+        g._ff_input_tail_done = true;
         // The post-occupation turn's movemon plines (if any) share the dig topline
         // until the next nhgetch — merge into _resultMessage like the per-turn merge
         // in moveloop_core, so the combined "You start digging... You dig a pit..."
@@ -3509,17 +3565,17 @@ async function moveloop_core_faithful() {
                 if (stoppedInBlock)
                     interrupted = true;
             }
-            // C win/tty/topl.c — page the accumulated topline now (this turn's
-            // movemon map is the frozen frame).  flush_screen more()s every overflow
-            // page, each consuming one recorded space key; if nothing overflows it
-            // just repaints.  The final (non-overflowing) remainder stays on
-            // _pending_message and is read at the next rhack(0) like any command line.
+            // C allmain.c:473-509: the occupation return does not flush the map
+            // unless guarded bot()/timebot() calls curs_on_u().  Drain deferred
+            // update_topl pages without advancing the physical map otherwise;
+            // display_nhwindow(WIN_MESSAGE) can still page it on a later turn.
             if (g.vision_full_recalc) {
                 vision_recalc(0);
                 g.vision_full_recalc = 0;
             }
+            const repaintStudy = !!(g.disp?.botl || g.disp?.botlx || g.disp?.time_botl);
             await moveloop_status_paint(); // C allmain.c:474 — guarded status paint
-            await flush_screen(1);
+            await flush_screen(1, repaintStudy);
         }
         // C ref: allmain.c:543-565 — when the study completes NORMALLY (learn()
         // returned 0), C's outer for(;;) re-enters moveloop_core ONCE MORE with
@@ -3666,7 +3722,7 @@ async function moveloop_core_faithful() {
              * invocation; for a continuing one, the tail after the previous
              * world block.  Hallucinating, each is a run of DISPLAY-stream
              * draws, so omitting it shifts every later hallucinated name. */
-            faithful_input_redraw();
+            if (engrGuard === 1) faithful_input_redraw();
             const r = await engrave();
             if (r === 0) g.occupation = null;
             // C allmain.c:485-509 checks interruption after the callback,
@@ -3676,6 +3732,12 @@ async function moveloop_core_faithful() {
                 reset_eat();
             }
             await faithful_moveloop_turn();
+            /* C allmain.c:453-471 — the moveloop_core that ran this world
+             * block redraws (see_monsters/see_objects/see_traps) BEFORE its
+             * vision_recalc(0); a recalc newsym() ahead of the hallucinatory
+             * redraw spends a DISPLAY-rng draw out of order.  The occupation
+             * return (allmain.c:507) never reaches the post-rhack recalc. */
+            faithful_input_redraw();
             if (g.vision_full_recalc) {
                 vision_recalc(0);
                 g.vision_full_recalc = 0;
@@ -3683,6 +3745,7 @@ async function moveloop_core_faithful() {
             await moveloop_status_paint();
             await flush_screen(1);
         }
+        g._ff_input_tail_done = true;
         g.context = g.context || {};
         g.context.move = 0;
     }
@@ -3755,6 +3818,11 @@ async function moveloop_core_faithful() {
         // rhack reads the next key.  Run it here and suppress the next head
         // (context.move = 0 below) — the dig/learn/engrave driver pattern.
         if (!pickInterrupted) await faithful_moveloop_turn();
+        /* C allmain.c:453-471: finish this invocation's redraw tail before
+         * vision_recalc(), which can itself draw hallucinated objects.
+         * The next JS invocation resumes at rhack, past this tail. */
+        faithful_input_redraw();
+        g._ff_input_tail_done = true;
         if (g.vision_full_recalc) {
             vision_recalc(0);
             g.vision_full_recalc = 0;
@@ -3883,6 +3951,33 @@ async function moveloop_core_faithful() {
         // (context.move = 0) — the dig/picklock driver pattern.
         // Its plines (e.g. a confusion timeout) come AFTER forcelock()'s own
         // staged messages in C, so hold them back and append them last.
+        /* forcelock()'s plines (lock.c:247) precede the post-occupation turn's
+         * (hunger "You faint", allmain.c:~300), so they are on the topline
+         * BEFORE that turn runs: its update_topl pages/joins against them.
+         * Fold the staged lines in now when that turn will run. */
+        if (!forceInterrupted && g._forceMsgs?.length) {
+            let _early = (g._resultMessage && g._pending_message)
+                ? _topl_merge_result(g._resultMessage, g._pending_message,
+                                     _topl_joins_snapshot(g._resultMessage) || undefined)
+                : (g._resultMessage || g._pending_message || '');
+            for (const [_mi, m] of g._forceMsgs.entries()) {
+                const _prevLen = _early.length;
+                _early = _early
+                    ? _topl_merge_result(_early, m, _topl_joins_snapshot(_early) || undefined)
+                    : m;
+                if (forceFrame && _prevLen > 0) {
+                    if (!Array.isArray(g._plineFlushFrames)) g._plineFlushFrames = [];
+                    g._plineFlushFrames.push({ off: _prevLen, msg: m, cells: forceFrame,
+                        moves: forceFrameMoves | 0,
+                        botl: g._forceMsgBotls?.[_mi] ?? g._forceBotl ?? null });
+                }
+            }
+            g._forceMsgs = null;
+            g._forceMsgBotls = null;
+            g._resultMessage = null;
+            g._resultMessageJoins = null;
+            g._pending_message = _early;
+        }
         const _res0 = g._resultMessage ?? null;
         const _pend0 = g._pending_message || '';
         const _pendJoins0 = _topl_joins_snapshot(_pend0);
@@ -4256,6 +4351,16 @@ async function moveloop_core_faithful() {
                 vision_recalc(0);
                 g.vision_full_recalc = 0;
             }
+            // C allmain.c:474-480 — the guarded bot()/timebot() of this same
+            // invocation's tail.  Without it a counted search's regen_hp botl sat
+            // unpainted until the next pline's flush, which then ran AFTER
+            // timeout.c:670 had expired Sick and lost FoodPois from the page.
+            const statusFlush = !!(g.disp && (g.disp.botl || g.disp.botlx
+                                              || g.disp.time_botl));
+            await moveloop_status_paint();
+            // C allmain.c:475,478: curs_on_u() flushes the map after either
+            // status update, before the next occupation action can change it.
+            if (statusFlush) pline_flush_point();
             // C allmain.c:483 — svc.context.move = 1, before the occupation call.
             g.context = g.context || {};
             g.context.move = 1;
@@ -4475,6 +4580,21 @@ async function moveloop_core_faithful() {
     }
     if (countdownGuard && (g.multi | 0) >= 0 && g.context)
         g.context.move = 0;
+    if (countdownGuard && (g.multi | 0) >= 0 && g.occupation === timed_occupation) {
+        find_ac();
+        faithful_input_redraw();
+        g._ff_input_tail_done = true;
+        g.context.move = 1;
+        const r = await timed_occupation();
+        g.context.move = 1;
+        if (r === 0)
+            g.occupation = null;
+        if (monster_nearby()) {
+            await stop_occupation();
+            reset_eat();
+        }
+        await runmode_delay_output();
+    }
     _merge_countdown_pline();
     //
     // ===================== multi>0 RUN MOVEMENT LOOP (Stage C) =====================
@@ -4540,6 +4660,8 @@ async function moveloop_core_faithful() {
          * svc.context.move is set — a counted move into a door that opens
          * leaves move 0 and multi > 0 (hack.c:1108-1109, 2843-2848). */
         if (g.context.move) await faithful_moveloop_turn();
+        // C allmain.c:453: every run invocation refreshes AC after its world block.
+        find_ac();
         /* C allmain.c:453-470 — each run turn is its own moveloop_core
          * invocation, so the once-per-input redraw (`if (!context.mv || Blind)`
          * see_monsters/see_objects/see_traps, which under Hallucination draws

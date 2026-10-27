@@ -46,7 +46,7 @@ function _hero_resists(prop) {
  * was an empty body, so neither throne arm could confuse the hero. */
 import { make_confused, make_glib, make_sick } from './potion.js';
 import { mkclass, mkclassAligned, newmextra, name_to_mon, name_to_monclass, permonstTemplate, is_ndemon } from './makemon.js';
-import { pline, canseemon, canspotmon, map_background, newsym, newsym_force, see_monsters } from './display.js';
+import { pline, canseemon, canspotmon, map_background, newsym, newsym_force, see_monsters, force_more } from './display.js';
 import { identify_pack, do_mapping } from './read.js';
 /* rndcurse()'s leaves, each from the file that holds its one real body.  The
  * aliases exist because this file already carries same-named LOCAL stubs
@@ -161,6 +161,7 @@ export async function do_class_genocide() {
     const vit = (i) => (mvitals[i] ||= { born: 0, died: 0, mvflags: 0 });
     const roleM = game.urole?.mnum | 0, raceM = game.urace?.mnum | 0;
     let gameover = false;
+    let feel_dead = 0;
     for (let j = 0; ; j++) {
         if (j >= 5) {
             await pline("That's enough tries!");
@@ -180,6 +181,12 @@ export async function do_class_genocide() {
             continue;
         }
         if (buf[0] === '\x1b' || /^(?:'?none'?|nothing)$/i.test(buf)) return;
+        /* C read.c:2678-2682: "?" runs #genocided, then re-prompts */
+        if (buf === '?' || buf === "'?'") {
+            await list_genocided(0x67 /* 'g' */, false);
+            --j; /* don't count this iteration as one of the tries */
+            continue;
+        }
         let cls = name_to_monclass(buf, null);
         cls = (cls && typeof cls === 'object') ? (cls.mclass ?? cls.class ?? 0) : (cls | 0);
         let i;
@@ -228,7 +235,7 @@ export async function do_class_genocide() {
                 if (i === roleM || i === raceM) {
                     game.u.uhp = -1;
                     if (!game.u.upolyd) {
-                        await pline('You die.');
+                        if (!feel_dead++) await pline('You die.');
                         gameover = true;
                     }
                 }
@@ -251,6 +258,10 @@ export async function do_class_genocide() {
         if (gameover || game.u.uhp === -1) {
             game.__bridge__ ||= {};
             game.__bridge__['killer.name'] = 'scroll of genocide';
+            const killer = (game.svk ||= {}).killer ||= { id: 0, format: 0, name: '', next: null };
+            killer.format = KILLED_BY_AN;
+            killer.name = 'scroll of genocide';
+            if (gameover) await done(GENOCIDED);
         }
         return;
     }
@@ -295,7 +306,7 @@ export async function do_genocide(flags = 1) {
             return false;
         }
         if (buf === '?' || buf === "'?'") {
-            await list_genocided('g', false);
+            await list_genocided(0x67 /* 'g' */, false);
             --i;
             continue;
         }
@@ -475,9 +486,9 @@ const _ATTRCURSE_PROPS = [[FIRE_RES, 'HFire_resistance'], [TELEPORT, 'HTeleporta
     [POISON_RES, 'HPoison_resistance'], [TELEPAT, 'HTelepat'], [COLD_RES, 'HCold_resistance'],
     [INVIS, 'HInvis'], [SEE_INVIS, 'HSee_invisible'], [STEALTH, 'HStealth'],
     [PROTECTION, 'HProtection'], [AGGRAVATE_MONSTER, 'HAggravate_monster']];
-/* HFoo is u.uprops[FOO].intrinsic (youprop.h); this port also mirrors it in a
- * u.HFoo scalar that the cases below test.  #wizintrinsic/potions fill only the
- * uprops slot, so a cursed Invis survived "You feel paranoid." — sync both ways. */
+/* HFoo aliases u.uprops[FOO].intrinsic (youprop.h:26-46).  Refresh the
+ * scalars from that slot: OR-ing an old mirror back in restores intrinsics
+ * removed elsewhere, such as role abilities lost by adjabil (attrib.c:1055). */
 export async function attrcurse() {
     const u = game.u || {};
     const r = await _attrcurse_body(u);
@@ -489,7 +500,7 @@ export async function attrcurse() {
 }
 async function _attrcurse_body(u) {
     for (const [prop, name] of _ATTRCURSE_PROPS)
-        u[name] = (u[name] | 0) | ((u.uprops?.[prop]?.intrinsic | 0) & INTRINSIC);
+        u[name] = u.uprops?.[prop]?.intrinsic | 0;
     let ret = 0;
 
     switch (rnd(11)) {
@@ -625,7 +636,7 @@ function dprince(atyp) {
     }
     return dlord(atyp);
 }
-function dlord(atyp) {
+export function dlord(atyp) {
     const inEndgame = !!(game.u?.uz && game.astral_level
                           && game.u.uz.dnum === game.astral_level.dnum);
     for (let tries = inEndgame ? 0 : 20; tries > 0; --tries) {
@@ -868,6 +879,25 @@ async function special_throne_effect(effect) {
 /* C tty leaves the answered prompt on the topline until the next key read
  * (topl.c:257-266), so stash it for the post-rhack wipe in js/allmain.js. */
 async function analyze_throne() {
+    /* The wish's prinv/encumber lines wait in the command-result channel;
+     * tty_yn_function's more() (topl.c:390) pages them before the prompt, over
+     * the status as of the prinv flush (encumber_msg's SET_BOTL comes later). */
+    if (!game._pending_message && game._resultMessage) {
+        const msg = game._resultMessage;
+        const pep = game._pickupEncPreFrame;
+        const saved = game._paintedSnapshot;
+        if (pep)
+            game._paintedSnapshot = { cells: pep.cells, moves: pep.moves | 0,
+                                      cap: pep.cap | 0, botl: pep.botl || null };
+        try {
+            await force_more(msg);
+        } finally {
+            game._paintedSnapshot = saved;
+        }
+        game._resultMessage = '';
+        game._pickupEncPreFrame = null;
+        game._pickupEncMorePending = null;
+    }
     const ans = await y_n_default("Analyze throne?", 'n');
     game._resultMessage = game._ynStaleTopline = "Analyze throne? [yn] (n)";
     return ans;
@@ -1049,9 +1079,11 @@ export async function throne_sit_effect() {
                 /* No RNG here — tele() / aggravate() have own RNG */
                 const luck = (u.uluck | 0) + (u.moreluck | 0);
                 if (luck < 0) {
+                    await You_feel("threatened.");
                     aggravate();
                 }
                 else {
+                    await You_feel("a wrenching sensation.");
                     await tele();
                 }
                 break;

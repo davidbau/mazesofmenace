@@ -1,7 +1,7 @@
 // C invent.c look_here: NHW_MENU putstr window and blocking display_nhwindow.
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { build_window_screen, tty_window_offx, build_text_window_screen } from './com_pager.js';
+import { build_window_screen, tty_window_offx, build_text_window_screen, tty_text_window_utf8_line } from './com_pager.js';
 import { force_more, _topl_more_pages, _topl_joins_snapshot, docrt_flags, flush_screen } from './display.js';
 
 export async function displayLookWindow(lines) {
@@ -80,7 +80,11 @@ export async function displayLookWindow(lines) {
     const windowLines = [...lines, '--More--'];
     const col = tty_window_offx(windowLines, 'more');
     const underWindow = g._pending_message || g._topl_sticky || '';
-    const screen = build_window_screen(windowLines, col, g.u.uac);
+    /* C wintty.c:1943-1944 — a putstr NHW_MENU is painted by
+     * process_text_window; the trailing "--More--" is dmore's, not a line. */
+    const paintLines = windowLines.map((ln, i) =>
+        (i === windowLines.length - 1 ? ln : tty_text_window_utf8_line(ln)));
+    const screen = build_window_screen(paintLines, col, g.u.uac);
     for (;;) {
         g._screen_output = screen;
         if (g.nhDisplay) {

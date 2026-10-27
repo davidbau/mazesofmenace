@@ -32,10 +32,9 @@ import { obj_attach_mid } from './mkobj.js';
 //
 // ── WHAT IS PORTED HERE ─────────────────────────────────────────────────────
 // The bones "file" is the same in-memory-plus-VFS-stub arrangement js/save.js
-// already uses for the save file: a module-scoped Map holds the level snapshot
-// (which is a graph of live JS objects, not a serialisation), and a stub written
-// through js/storage.js carries the key across the runSegment() boundary.  That
-// is the ONLY channel that survives a segment change, and it is the channel the
+// already uses for the save file: a module-scoped Map holds the encoded level
+// snapshot; a stub written through js/storage.js carries the key across the
+// across segment changes.
 //
 // @ts-nocheck — js sibling imports.
 import { rn2, rnd } from './rng.js';
@@ -43,15 +42,35 @@ import { game, wizard } from './gstate.js';
 import { paranoid_query } from './paranoid.js';
 import { vfsReadFile, vfsWriteFile, vfsDeleteFile } from './storage.js';
 import { savelev } from './save.js';
+import { encode_save_graph, decode_save_graph } from './save_graph.js';
 /* js/game.js makeLocation() seeds disp_color with terminal.js's NO_COLOR. */
 import { NO_COLOR as NO_COLOR_BONES } from './terminal.js';
+import { has_oname } from './const.js';
+import { free_oname } from './dokick.js';
 import { In_quest, Is_botlevel, Is_oracle_level, ROOMOFFSET, DELPHI } from './const.js';
 import { DUNGEON_LUA_TABLE } from './dungeon_data.js';
 import { Is_branchlev } from './dungeon.js';
+import { formatkiller } from './topten.js';
 import { In_hell } from './mklev.js';
-import { PM_ORACLE } from './pm.generated.js';
+import { PM_ORACLE, PM_MEDUSA, PM_VLAD_THE_IMPALER } from './pm.generated.js';
 import { pline } from './display.js';
-import { the, xname } from './objnam.js';
+import { the, xname, oname } from './objnam.js';
+import { LEAVESTATUE, CORPSTAT_NONE, NO_MINVENT, INTRINSIC } from './const.js';
+import { roles, races } from './roles.js';
+
+/* C bones.c:513-538,818-829 — identify the deceased hero's remnant. */
+function save_ebones(mtmp) {
+    const { u, flags } = game;
+    mtmp.mextra ??= {};
+    const ebones = mtmp.mextra.ebones ??= { parentmid: mtmp.m_id };
+    Object.assign(ebones, {
+        role: roles.findIndex(r => r.name.m === game.urole?.name?.m),
+        race: races.findIndex(r => r.name === game.urace?.name),
+        oldalign: { ...u.ualign }, deathlevel: u.ulevel, luck: u.uluck,
+        mnum: game.urole.mnum, female: !!flags.female,
+        demigod: !!u.uevent?.udemigod, crowned: (u.uevent?.uhand_of_elbereth | 0) & 1,
+    });
+}
 
 /* ── the bones "file" ────────────────────────────────────────────────────────
  * C ref: files.c set_bonesfile_name() / open_bonesfile() / create_bonesfile() /
@@ -61,10 +80,9 @@ import { the, xname } from './objnam.js';
  * bones only on Dlvl 3).
  *
  * The BODY in the VFS is a stub, exactly as js/save.js:322 writes "NHSAVE 1\n…":
- * the level itself stays in `bonesStore` below, keyed by the id in the stub.
- * That is not a shortcut around serialisation for its own sake — the level is
- * already a live JS object graph, and C's file round-trip is a pointer swap
- * here (see js/save.js's savelev header for the same argument). */
+ * the encoded level stays in `bonesStore` below, keyed by the id in the stub.
+ * Each read decodes a detached graph, so gameplay cannot alter a retained
+ * bones file. */
 const bonesStore = new Map();
 let bonesSerial = 0;
 
@@ -147,13 +165,17 @@ function open_bonesfile(uz) {
     const snap = bonesStore.get(lines[2]);
     if (!snap)
         return null;
-    return { bonesid: lines[1], key: lines[2], snap };
+    /* C bones.c:707 getlev() reads fresh allocations from the file on every
+     * load.  In particular, declining "Unlink bones?" must leave the file
+     * unchanged by renumbering, stair reversal, and subsequent gameplay. */
+    return { bonesid: lines[1], key: lines[2], snap: decode_save_graph(snap) };
 }
 
 /* C files.c:1359 create_bonesfile() + :1400 commit_bonesfile(). */
 function create_bonesfile(uz, bonesid, snap) {
     const key = `b${++bonesSerial}`;
-    bonesStore.set(key, snap);
+    /* C bones.c:621 savelev() writes bytes, not aliases into the live level. */
+    bonesStore.set(key, encode_save_graph(snap));
     if (!vfsWriteFile(bones_filename(uz), `NHBONES 1\n${bonesid}\n${key}\n`)) {
         bonesStore.delete(key);
         return false;
@@ -200,6 +222,14 @@ function resetobjs(ochain, restore) {
         otmp.tknown = 0;
         otmp.invlet = 0;
         otmp.no_charge = 0;
+        /* C bones.c:115-129 — strip user-supplied names; statues, novels,
+         * artifacts and named corpses of special (unique) monsters keep theirs. */
+        if (has_oname(otmp)
+            && !((otmp.oartifact | 0) || otmp.otyp === 476 /* STATUE */
+                 || otmp.otyp === 408 /* SPE_NOVEL */
+                 || (otmp.otyp === 265 /* CORPSE */
+                     && (otmp.corpsenm | 0) >= 330 /* SPECIAL_PM */)))
+            free_oname(otmp);
     }
 }
 
@@ -239,10 +269,11 @@ async function fixuporacle(oracle) {
 }
 
 /* C bones.c:390 remove_mon_from_bones(mtmp), called by savebones. */
-const MS_LEADER = 22, MS_NEMESIS = 23; /* monflag.h */
+const MS_LEADER = 36, MS_NEMESIS = 37; /* monflag.h:51-52 */
 async function remove_mon_from_bones(mtmp, mongone) {
     const ptr = mtmp.data || {};
     if (mtmp.iswiz
+        || ptr.pmidx === PM_MEDUSA || ptr.pmidx === PM_VLAD_THE_IMPALER
         || ptr.msound === MS_NEMESIS
         || ptr.msound === MS_LEADER
         || (ptr.pmidx === PM_ORACLE && !await fixuporacle(mtmp)))
@@ -286,6 +317,46 @@ export async function savebones(how, when, corpse) {
 
     set_ghostly_objlist(g.invent);
 
+    if ((u.ugrave_arise | 0) >= 0) {
+        const { makemon } = await import('./mklev.js');
+        g.in_mklev = true; /* use <u.ux,u.uy> as-is */
+        let mtmp = await makemon(u.ugrave_arise | 0, u.ux | 0, u.uy | 0, NO_MINVENT);
+        g.in_mklev = false;
+        if (!mtmp) { /* arise-type might have been genocided */
+            await drop_upon_death(null, null, u.ux | 0, u.uy | 0);
+            u.ugrave_arise = -1; /* NON_PM */
+            return;
+        }
+        // C mondata.c:1586 give_u_to_m_resistances: FIRE_RES..STONE_RES
+        for (let intr = 1; intr <= 8; intr++) {
+            if ((u.uprops?.[intr]?.intrinsic | 0) & INTRINSIC)
+                mtmp.mintrinsics = (mtmp.mintrinsics | 0) | (1 << (intr - 1));
+        }
+        const { christen_monst } = await import('./mhitm.js');
+        christen_monst(mtmp, String(g.plname ?? g.u?.plname ?? ''));
+        const { newsym } = await import('./display.js');
+        newsym(u.ux | 0, u.uy | 0);
+        await drop_upon_death(mtmp, null, u.ux | 0, u.uy | 0);
+        const { m_carrying, m_dowear } = await import('./trap.js');
+        if (mtmp.data?.mlet === 39 /* S_MUMMY */ && !m_carrying(mtmp, 138 /* MUMMY_WRAPPING */)) {
+            const { mongets } = await import('./m_initweap.js');
+            await mongets(mtmp, 138);
+        }
+        await m_dowear(mtmp, true);
+        // C bones.c:505-509 — fields common to every arise type.
+        mtmp.m_lev = (u.ulevel | 0) ? (u.ulevel | 0) : 1;
+        mtmp.mhp = mtmp.mhpmax = (u.uhpmax | 0);
+        mtmp.female = !!g.flags?.female;
+        mtmp.msleeping = 1;
+        save_ebones(mtmp);
+    } else if (u.ugrave_arise === LEAVESTATUE) {
+        const { mkcorpstat } = await import('./mklev.js');
+        let statue = await mkcorpstat(476 /* STATUE */, null, u.umonnum,
+                                    u.ux | 0, u.uy | 0, CORPSTAT_NONE);
+        statue = await oname(statue, String(g.plname ?? u.plname ?? ''), 0);
+        await drop_upon_death(null, statue, u.ux | 0, u.uy | 0);
+    } else {
+    /* C bones.c:490-503: drop everything, then raise a ghost. */
     await drop_upon_death(null, null, u.ux | 0, u.uy | 0);
     const { makemon } = await import('./mklev.js');
     g.in_mklev = true; /* C bones.c:490 gi.in_mklev = TRUE — "use <u.ux,u.uy> as-is" */
@@ -299,14 +370,13 @@ export async function savebones(how, when, corpse) {
     }
     obj_attach_mid(corpse, mtmp.m_id); // C bones.c:503
 
-    /* C bones.c:499-539 — the ghost's own fields, plus the EBONES record that
-     * lets a later hero identify whose ghost it is.  EBONES has no reader in
-     * this port (nothing farlooks a bones ghost's role yet), so only the fields
-     * with live readers are set. */
+    /* C bones.c:505-539 — the ghost's own fields and deceased hero's identity. */
     mtmp.m_lev = (u.ulevel | 0) ? (u.ulevel | 0) : 1;
     mtmp.mhp = mtmp.mhpmax = (u.uhpmax | 0);
     mtmp.female = !!g.flags?.female;
     mtmp.msleeping = 1;
+    save_ebones(mtmp);
+    }
 
     /* C bones.c:541-550 — every monster on the level is stripped of its
      * relationship to the DEAD hero. */
@@ -321,9 +391,8 @@ export async function savebones(how, when, corpse) {
         m.seen_resistance = 0; /* M_SEEN_NOTHING */
     }
     /* C bones.c:551-554 — traps forget who made them; unhideable traps stay
-     * seen.  unhideable_trap() is the (ttyp == HOLE || is_pit || is_xport)
-     * family; without it every trap would arrive un-seen, which is C's
-     * behaviour for the hideable ones. */
+     * seen.  unhideable_trap() is (ttyp == HOLE) only (trap.h:115); all other
+     * traps arrive un-seen. */
     for (let t = g.ftrap; t; t = t.ntrap) {
         t.madeby_u = 0;
         t.tseen = unhideable_trap(t.ttyp | 0) ? 1 : 0;
@@ -374,6 +443,7 @@ export async function savebones(how, when, corpse) {
         const newbones = {
             who: `${plname}-${_fc3(g.urole?.filecode)}-${_fc3(g.urace?.filecode)}`
                  + `-${gender}-${alignFc}`,
+            how: formatkiller('', 256 /* sizeof newbones->how */, how, true),
             frpx: u.ux0 | 0,
             frpy: u.uy0 | 0,
             bonesknown: false,
@@ -406,12 +476,9 @@ export async function savebones(how, when, corpse) {
         create_bonesfile(u.uz, bonesid, snap);
 }
 
-const HOLE = 13, PIT = 11, SPIKED_PIT = 12, TRAPDOOR = 14,
-      TELEP_TRAP = 15, LEVEL_TELEP = 16, MAGIC_PORTAL = 17, VIBRATING_SQUARE = 24;
+const HOLE = 13;
 function unhideable_trap(ttyp) {
-    return ttyp === HOLE || ttyp === PIT || ttyp === SPIKED_PIT
-        || ttyp === TRAPDOOR || ttyp === TELEP_TRAP || ttyp === LEVEL_TELEP
-        || ttyp === MAGIC_PORTAL || ttyp === VIBRATING_SQUARE;
+    return ttyp === HOLE;
 }
 
 /* C ref: bones.c:628 getbones(void), called from mklev() (mklev.c:6102) on

@@ -1238,6 +1238,11 @@ function _An(str) { return _an(str).charAt(0).toUpperCase() + _an(str).slice(1);
 export async function doforce() {
     const g = game;
     const u = g.u || {};
+    /* C lock.c:687-690 — uswallow guard. */
+    if (u.uswallow) {
+        await pline("You can't force anything from inside here.");
+        return ECMD_OK;
+    }
     /* C lock.c:692 — must wield a forceable weapon. */
     if (!u_have_forceable_weapon()) {
         const uwep = u.uwep;

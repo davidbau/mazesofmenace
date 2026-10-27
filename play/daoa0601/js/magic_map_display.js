@@ -1,15 +1,10 @@
 // C detect.c:unconstrain_map(), browse_map(), map_monst(), map_redisplay().
-import { COLNO, ROWNO, TER_MAP, TER_MON, TER_OBJ, TER_TRP } from './const.js';
-import { displayedTrapDescription } from './pager_features.js';
-import { farlookLocationDescription } from './cmd.js';
-import { canSpotHeroSelf, cls, docrt, flush_screen, glyphAt, plineWithContinuation, show_glyph_cell, transientMonsterGlyph, under_ground, under_water, } from './display.js';
+import { COLNO, ROWNO } from './const.js';
+import { cls, docrt, flush_screen, plineWithContinuation, show_glyph_cell, transientMonsterGlyph, under_ground, under_water, } from './display.js';
 import { game } from './gstate.js';
 import { selectMapPosition, showGetposInstructions, showGetposTip } from './getpos.js';
 import { MONSTER_NAME, MONSTER_SYMBOL } from './monster_data.js';
-import { objectName } from './objnam.js';
-import { objectClassForType } from './object_knowledge.js';
 import { NO_COLOR } from './terminal.js';
-import { requireGameLevel } from './gstate.js';
 const LONG_WORM = MONSTER_NAME.indexOf('long worm');
 const LONG_WORM_TAIL = MONSTER_NAME.indexOf('long worm tail');
 export function unconstrainMap(state = game) {
@@ -66,32 +61,7 @@ export function mapDetectedMonster(monster, showTail, state = game) {
         show_glyph_cell(segment.x, segment.y, tail.ch, tail.color, false, attribute, tail);
     }
 }
-async function detectionDescription(x, y, terrainMode, objects, state) {
-    const glyph = glyphAt(x, y, state);
-    if (state.iflags.save_uswallow && x === state.u.ux && y === state.u.uy
-        && canSpotHeroSelf() && (glyph?.kind === 'monster'
-        || glyph?.kind === 'object' || glyph?.kind === 'trap'))
-        return farlookLocationDescription(x, y);
-    if (glyph?.kind === 'invisible')
-        return 'unseen creature';
-    if (glyph?.kind === 'object' && (terrainMode & TER_OBJ)) {
-        const detected = objects?.get(`${x},${y}`);
-        const object = detected?.otyp === glyph.otyp ? detected : null;
-        return objectName(object || { otyp: glyph.otyp,
-            oclass: objectClassForType(glyph.otyp), quan: 1, quantity: 1 });
-    }
-    if (glyph?.kind === 'monster' && (terrainMode & TER_MON)) {
-        return farlookLocationDescription(x, y);
-    }
-    if (glyph?.kind === 'trap' && (terrainMode & TER_TRP)) {
-        const trapType = glyph.trapType || requireGameLevel(state).traps.find(trap => trap.tx === x && trap.ty === y)?.ttyp;
-        return trapType === undefined ? 'trap' : displayedTrapDescription(trapType, x, y);
-    }
-    if (!(terrainMode & TER_MAP) || glyph?.kind === 'unexplored')
-        return 'unexplored area';
-    return farlookLocationDescription(x, y);
-}
-export async function browseDetectionMap(terrainMode, goal, { objects = null, state = game, } = {}) {
+export async function browseDetectionMap(terrainMode, goal, { state = game, } = {}) {
     const hadTip = await showGetposTip(state);
     const savedAutoDescribe = state.iflags.autodescribe;
     const savedTerrainMode = state.iflags.terrainmode;
@@ -101,11 +71,14 @@ export async function browseDetectionMap(terrainMode, goal, { objects = null, st
         await showGetposInstructions(state);
         if (hadTip)
             await plineWithContinuation(`Move cursor to ${goal}:`);
+        // C browse_map() supplies no description callback: getpos.c
+        // auto_describe() renders do_screen_description() with the browse's
+        // terrainmode active, and that mode already gates which glyph
+        // classes its symbol matching and lookat() detail report.
         await selectMapPosition({
             start: { x: state.u.ux, y: state.u.uy },
             prompt: state._pending_message,
             goal, force: false,
-            describe: (x, y) => detectionDescription(x, y, terrainMode, objects, state),
         });
     }
     finally {

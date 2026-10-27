@@ -9,11 +9,11 @@ import { impossible } from './pline.js';
 import { OC_NAME } from './oc_name_data.js';
 import { MKOBJ_SVB_BASES } from './mkobj_data.js';
 import { PM_WIZARD } from './pm.generated.js';
-import { P_NONE, P_MASTER, P_GRAND_MASTER } from './const.js';
+import { P_NONE, P_MASTER, P_GRAND_MASTER, MAX_SPELL_STUDY } from './const.js';
 import { P_SKILL } from './skills.js';
 import { roles } from './roles.js';
 import { nhgetch } from './input.js';
-import { cast_chain_lightning, pline, flush_screen, newsym, show_glyph_cell, topl_force_break_now } from './display.js';
+import { cast_chain_lightning, pline, shieldeff, flush_screen, newsym, show_glyph_cell, topl_force_break_now } from './display.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { d } from './rng.js';
 import { mkinvokearea } from './mklev.js';
@@ -32,7 +32,7 @@ import { CORR, DOOR, ROOM, NO_SPELL, UNKNOWN_SPELL, CONFUSION, STUNNED, TIMEOUT,
  * change the outcome.  Retiring the local shadow touches its other callers and
  * is out of this fix's scope. */
 import { acurr as acurr_real, poison_strdmg } from './attrib.js';
-import { POISON_RES, KILLED_BY_AN } from './const.js';
+import { POISON_RES, KILLED_BY_AN, ANTIMAGIC, FACE } from './const.js';
 import { nomul } from './allmain.js';
 import { iter_mons, On_stairs, makemon } from './mklev.js';
 import { set_malign, permonstTemplate } from './makemon.js';
@@ -1003,7 +1003,7 @@ export async function learn() {
     }
     // C spell.c:383 exercise(A_WIS, TRUE) — you're studying.
     exercise(A_WIS, true);
-    const booktype = book ? (book.otyp | 0) : -1;
+    let booktype = book ? (book.otyp | 0) : -1;
     // C spell.c:385-388 — Book of the Dead goes to deadbook() and ends the study.
     if (booktype === SPE_BOOK_OF_THE_DEAD) {
         await deadbook(book);
@@ -1022,6 +1022,12 @@ export async function learn() {
         // C impossible("Too many spells memorized!") — give up.
     } else if (spl[i] && (spl[i].sp_id | 0) === booktype) {
         // C spell.c:399-413 — already known: refresh retention.
+      if ((book.spestudied | 0) > MAX_SPELL_STUDY) {
+        pline('This spellbook is too faint to be read any more.');
+        book.otyp = booktype = SPE_BLANK_PAPER;
+        /* reset spestudied as if polymorph had taken place */
+        book.spestudied = rn2(book.spestudied | 0);
+      } else {
         const splname = `"${SPBOOK_NAMES[booktype - SPBOOK_FIRST_OTYP] || 'spell'}"`;
         pline(`Your knowledge of %s is %s.`.replace('%s', splname)
             .replace('%s', spl[i].sp_know ? 'keener' : 'restored'));
@@ -1029,6 +1035,12 @@ export async function learn() {
         incrnknow(i, 1);
         book.spestudied = (book.spestudied | 0) + 1;
         exercise(A_WIS, true);
+      }
+    } else if ((book.spestudied | 0) >= MAX_SPELL_STUDY) {
+        // C spell.c:416-422 — pre-used due to being the product of polymorph.
+        pline('This spellbook is too faint to read even once.');
+        book.otyp = booktype = SPE_BLANK_PAPER;
+        book.spestudied = rn2(book.spestudied | 0);
     } else {
         // C spell.c:414-436 — learn a brand-new spell.
         /* C spell.c:426-428 —
@@ -1119,12 +1131,18 @@ async function cursed_book(bp) {
             bp.in_use = was_in_use;
         }
         break;
-    case 6:
-        await pline('As you read the book, it explodes in your face!');
-        /* C spell.c:159 dmg = 2 * rnd(10) + 5 — one draw; losehp is the same
-         * KNOWN GAP as case 5.  oc_level >= 7 only. */
-        rnd(10);
+    case 6: { // C spell.c:169-179; explodes[] = "radiates explosive energy" (spell.c:111)
+        const am = g.u.uprops?.[ANTIMAGIC];
+        if (am && (am.intrinsic || am.extrinsic)) {
+            shieldeff(g.u.ux, g.u.uy);
+            await pline('The book radiates explosive energy, but you are unharmed!');
+        } else {
+            await pline(`As you read the book, it radiates explosive energy in your ${body_part(FACE)}!`);
+            const dmg = 2 * rnd(10) + 5;
+            await losehp(maybe_half_phys(dmg), 'exploding rune', KILLED_BY_AN);
+        }
         return true;
+    }
     default:
         /* rndcurse() — KNOWN GAP (see header). */
         break;
@@ -1583,7 +1601,7 @@ async function dospellmenu_render_and_read(prompt, headingRaw, items, how) {
             }
             continue;
         }
-        const hit = items.find((it) => it.accel === ch);
+        const hit = how === 'PICK_NONE' ? undefined : items.find((it) => it.accel === ch);
         if (hit)
             /* PICK_ONE/PICK_NONE both terminate on an accelerator; PICK_NONE
              * has no accelerators registered, so `hit` is never set there. */

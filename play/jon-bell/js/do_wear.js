@@ -33,7 +33,7 @@ function _hero_mflags1_dw() {
 const M1_HUMANOID_DW = 0x00020000;
 function _humanoid_dw() { return (_hero_mflags1_dw() & M1_HUMANOID_DW) !== 0; }
 import { pline, urgent_pline } from './display.js';
-import { see_monsters, retouch_object_hero } from './display.js';
+import { see_monsters, Sting_effects, retouch_object_hero, retouch_equipment } from './display.js';
 import { topl_park_cursor } from './display.js';
 import { flush_screen, _topline_more_pending, _topl_stash_result } from './display.js';
 import { _topl_merge_result, _topl_joins_snapshot, _topl_record_join } from './display.js';
@@ -54,7 +54,7 @@ import { HALLUC, HALLUC_RES } from './const.js';
 /* C mondata.c:632 sliparm(ptr) — the real one, exported by js/makemon.js:462.
  * canwearobj's cantweararm(ptr) is breakarm(ptr) || sliparm(ptr) (mondata.h:133);
  * both halves are imported rather than re-derived here. */
-import { sliparm, permonstTemplate } from './makemon.js';
+import { sliparm, permonstTemplate, summon_furies } from './makemon.js';
 import { canletgo } from './makemon.js';
 import { weapon_descr, touch_petrifies as corpse_touch_petrifies, mon_nam } from './uhitm.js';
 import { setuwep, setuswapwep, setuqwep, empty_handed, cmdq_pop, cmdq_peek, dropx, cmdq_clear, instapetrify as corpse_instapetrify,
@@ -102,7 +102,7 @@ import { ERODE_NONE, ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE,
  * that stub is gone, so these calls reach the real implementations rather than a
  * seventeenth copy.  See _uwep_welded_dw() below for the one C guard cmd.js's
  * `welded` omits. */
-import { welded, body_part, _plineVFmt, _spoteffects_pickup as _spoteffects_pickup_fd, surface, useup, getObjFromGetobj } from './cmd.js';
+import { welded, body_part, _plineVFmt, _spoteffects_pickup as _spoteffects_pickup_fd, surface, useup, getObjFromGetobj, learn_unseen_invent } from './cmd.js';
 const W_SADDLE_FD = 0x00100000;
 /* C's go.oldcap is ONE global (decl.h:741, BSS-zero at game start) and C has ONE
  * encumber_msg() (pickup.c:1978).  This file used to carry a SECOND body of it
@@ -241,6 +241,7 @@ import { W_TOOL as W_TOOL_C, HEAD as HEAD_DW, FACE as FACE_DW } from './const.js
  * so conferring EBlinded below is what makes it fire.  vision.js imports only
  * gstate/const/display, so this closes no cycle. */
 import { vision_recalc } from './vision.js';
+import { dmgtype } from './dogmove.js';
 /* objects.h:648 CLOAK_OF_DISPLACEMENT — same otyp used by ARMOR_DELAY_CAT_BY_OTYP. */
 const CLOAK_OF_DISPLACEMENT_OTYP = 149;
 /* C ref: o_init.c makeknown(x) == discover_object(x, TRUE, TRUE, TRUE).  The
@@ -668,7 +669,14 @@ export function takeoff_slot_noac(slot) {
  * arti-light half (do_wear.c:920-923) remains deferred. */
 export async function Armor_off()  {
     const otmp = game.u ? game.u.uarm : null;
+    const was_arti_light = !!otmp && !!otmp.lamplit && artifact_light(otmp);
     const r = await takeoff_slot('uarm');
+    /* C do_wear.c:920-924: non-fatal light loss before dragon_armor_handling */
+    if (was_arti_light && !artifact_light(otmp)) {
+        end_burn(otmp, false);
+        if (!_Blind_dw())
+            await pline(`${Tobjnam(otmp, 'stop')} shining.`);
+    }
     await dragon_armor_handling(otmp, false, true);
     return r;
 }
@@ -685,6 +693,9 @@ export async function Helmet_off() {
         if (((game.flags?.initrole ?? -1) | 0) === ARCHEOLOGIST_ROLE_IDX)
             change_luck(-1);
     }
+    // C do_wear.c:533-535: removing a dunce cap reveals normal Int/Wis.
+    if (otmp && (otmp.otyp | 0) === DUNCE_CAP_OTYP && game.disp)
+        game.disp.botl = 1;
     if (otmp && (otmp.otyp | 0) === CORNUTHAUM_OTYP
         && !cancelledDon) {
         // C do_wear.c:536-540: undo only a completed donning bonus.
@@ -697,6 +708,21 @@ export async function Helmet_off() {
     if (otmp && (otmp.otyp | 0) === HELM_OF_BRILLIANCE
         && !cancelledDon)
         adj_abon(otmp, -(otmp.spe | 0));
+    if (otmp && (otmp.otyp | 0) === 99 /* HELM_OF_OPPOSITE_ALIGNMENT */) {
+        // C do_wear.c:552-557, attrib.c:1325-1361: change alignment before
+        // the message flushes status, and retouch before clearing the slot.
+        const oldalign = u.ualign.type;
+        u.ublessed = 0;
+        if (game.disp) game.disp.botl = 1;
+        u.ualign.type = u.ualignbase[0]; /* A_CURRENT */
+        const hallu = u.uprops?.[HALLUC]?.intrinsic
+            && !(u.uprops[HALLUC_RES]?.intrinsic || u.uprops[HALLUC_RES]?.extrinsic);
+        await pline(`Your mind is ${hallu ? 'much of a muchness' : 'back in sync with your body'}.`);
+        if (u.ualign.type !== oldalign) {
+            u.ualign.record = 0;
+            await retouch_equipment(0);
+        }
+    }
     if (otmp && ((otmp.otyp | 0) === HELM_OF_TELEPATHY_OTYP
                  || (otmp.otyp | 0) === HELM_OF_CAUTION_OTYP)) {
         await takeoff_slot('uarmh');
@@ -1068,16 +1094,14 @@ export async function Armor_on()  {
     return 0;
 }
 export function Shield_on() { return don_slot('uarms'); }
-const FEDORA_OTYP = 92, CORNUTHAUM_OTYP = 93;
+const FEDORA_OTYP = 92, CORNUTHAUM_OTYP = 93, DUNCE_CAP_OTYP = 94;
 /* objects.h helmet order: 94 DUNCE_CAP, 95 DENTED_POT, 96 HELM_OF_BRILLIANCE,
  * 97 HELMET, 98 HELM_OF_CAUTION, 99 HELM_OF_OPPOSITE_ALIGNMENT, 100
  * HELM_OF_TELEPATHY (verified against OC_NAME indices). */
 const HELM_OF_TELEPATHY_OTYP = 100, HELM_OF_CAUTION_OTYP = 98;
 /* C attrib.c:1320 uchangealign(newalign, A_CG_HELM_ON) — the put-on arm only
  * (CONVERT/HELM_OFF are reached from pray.c and do_wear.c:556). Omitted:
- * livelog_printf (not game-visible) and retouch_equipment(0) (artifact.c:2640,
- * a no-op for artifact-free worn gear). summon_furies (makemon.c:2605) is NOT
- * ported: it throws if the rn2(50) < abuse arm fires, rather than skipping it. */
+ * livelog_printf (not game-visible). */
 async function uchangealign_helm_on(newalign) {
     const u = game.u;
     const oldalign = u.ualign.type;
@@ -1089,9 +1113,11 @@ async function uchangealign_helm_on(newalign) {
     await pline(`Your mind oscillates ${hallu ? 'wildly' : 'briefly'}.`);
     make_confused(rn2(2) + 3, false); /* C rn1(2,3) */
     if (Is_astralevel(u.uz) || ((rn2(50) >>> 0) < (u.ualign.abuse >>> 0)))
-        throw new Error('summon_furies (makemon.c:2605) unported: rn2(50) < abuse arm fired');
-    if (u.ualign.type !== oldalign)
+        await summon_furies(Is_astralevel(u.uz) ? 0 : 1);
+    if (u.ualign.type !== oldalign) {
         u.ualign.record = 0; /* slate is wiped clean */
+        await retouch_equipment(0); /* C attrib.c:1360 */
+    }
 }
 export async function Helmet_on() {
     const u = game.u;
@@ -1441,7 +1467,7 @@ const ARMCAT_OFF_FN = [
 ];
 // C do_wear.c:1893 — whether this particular worn object can be removed.
 const LENSES_OTYP_DW = 232;
-async function cursed_dw(otmp) {
+export async function cursed_dw(otmp) {
     const u = game.u;
     if (!otmp) {
         impossible('cursed without otmp');
@@ -2369,6 +2395,8 @@ export async function accessory_or_armor_on(obj) {
         if (!(await canwearobj(obj, maskbox, true))) {
             return ECMD_OK;
         }
+        /* do_wear.c:2355-2356 */
+        if (!(await retouch_object_hero(obj, false))) return ECMD_TIME;
         /* C do_wear.c:2375 — save underwater state before setworn/Boots_on.
          * Boots_on needs this to discover water-walking boots after the
          * property changes the hero's position. */
@@ -2805,6 +2833,8 @@ async function Ring_off_or_gone(obj, gone) {
             await pline('You sure are noisy.');
         }
     }
+    if ((obj.otyp | 0) === RIN_WARNING_OTYP)
+        see_monsters(); /* C do_wear.c:1382-1384 */
     if ((obj.otyp | 0) === RIN_SEE_INVISIBLE_OTYP) {
         const see = u.uprops?.[SEE_INVIS_PROP];
         const seeInvisible = !!((see?.intrinsic | 0) || (see?.extrinsic | 0));
@@ -3013,6 +3043,12 @@ export async function float_down(hmask, emask) {
         await pline(`Startled, ${mon_nam(u.ustuck)} can no longer hold you!`);
         set_ustuck(null);
     }
+    /* C trap.c:4066-4071 — still engulfed: no landing, no trap, no pickup. */
+    if (u.uswallow) {
+        await pline(`You float down, but you are still ${dmgtype(u.ustuck.data, 11 /* AD_DGST */) ? 'swallowed' : 'engulfed'}.`);
+        await encumber_msg();
+        return 1;
+    }
     /* uswallow/Punished branches deferred (FALSE here). */
     /* C trap.c:4086-4095 — a stuck-to hero (not swallowed) is released. */
     if (!Flying() && !u.uswallow && u.ustuck) {
@@ -3038,7 +3074,13 @@ export async function float_down(hmask, emask) {
             no_msg = true;
         }
     }
-    if (!u.uinwater && !no_msg && !(emask & W_SADDLE_FD)) {
+    // C trap.c:4114-4117: these plane messages precede the W_SADDLE test,
+    // so dismounting still gives feedback and flushes before monsters move.
+    if (Is_airlevel(u.uz)) {
+        await pline('You begin to tumble in place.');
+    } else if (Is_waterlevel(u.uz) && !no_msg) {
+        await pline('You feel heavier.');
+    } else if (!u.uinwater && !no_msg && !(emask & W_SADDLE_FD)) {
         const hallu = u.uprops?.[HALLUC]?.intrinsic
             && !(u.uprops[HALLUC_RES]?.intrinsic || u.uprops[HALLUC_RES]?.extrinsic);
         if (hallu) /* C trap.c:4138-4141 (is_pool arm deferred with the pool branch) */
@@ -3311,8 +3353,8 @@ function _Blind_dw() {
  * IN_SIGHT everywhere and repaints the remembered map.
  *
  * Refresh sensed monsters after vision changes, including stationary monsters
- * outside the cells vision_recalc repaints.  The remaining unported calls are
- * Sting_effects(-1) and learn_unseen_invent(). */
+ * outside the cells vision_recalc repaints.  The remaining unported call is
+ * learn_unseen_invent(). */
 function toggle_blindness_dw() {
     const g = game;
     // C potion.c:338,349-350: Blind_telepat || Infravision || Stinging.
@@ -3325,6 +3367,10 @@ function toggle_blindness_dw() {
     vision_recalc(0);
     if (has(TELEPAT_DISP_PROP) || has(INFRAVISION_PROP) || Stinging)
         see_monsters();
+    if (Stinging)
+        Sting_effects(-1); // C potion.c:359-360.
+    /* C potion.c:363 — `if (!Blind) learn_unseen_invent();` */
+    learn_unseen_invent();
 }
 
 async function eyewear_on_msg(otmp) {
@@ -3376,6 +3422,7 @@ export async function Blindf_off(otmp) {
     const g = game;
     const was_blind = _Blind_dw();
     let changed = false;
+    const nooffmsg = !otmp; /* C do_wear.c:1498 */
 
     if (!otmp) otmp = g.u?.ublindf;
     if (!otmp) return; /* C impossible("Blindf_off without eyewear?") */
@@ -3390,7 +3437,7 @@ export async function Blindf_off(otmp) {
     const savedFrameBlind = g._blindfoldOffFrameBlind;
     g._blindfoldOffFrameBlind = was_blind;
     try {
-        await eyewear_off_msg(otmp);
+        if (!nooffmsg) await eyewear_off_msg(otmp);
     } finally {
         if (savedFrameBlind === undefined) delete g._blindfoldOffFrameBlind;
         else g._blindfoldOffFrameBlind = savedFrameBlind;
@@ -3422,6 +3469,7 @@ const RIN_ADORNMENT_OTYP = 173;
 const RIN_INCREASE_ACCURACY_OTYP = 176;
 const RIN_INCREASE_DAMAGE_OTYP = 177;
 const RIN_PROTECTION_OTYP = 178;
+const RIN_WARNING_OTYP = 187; /* adornment 173 + 14 (objects.h ring order) */
 const RIN_STEALTH_OTYP = 181; /* adornment 173 + 8 (objects.h ring order) */
 /* property-only / break-only rings: no immediate side effect on don
  * (RIN_TELEPORTATION..RIN_SUSTAIN_ABILITY all `break;` in C). */
@@ -3594,6 +3642,10 @@ export async function Ring_on(obj) {
             }
             break;
         }
+        case RIN_WARNING_OTYP:
+            /* C do_wear.c:1285-1287 */
+            see_monsters();
+            break;
         case RIN_INVISIBILITY_OTYP: {
             const inv = u.uprops?.[INVIS_PROP];
             const hInvis = inv?.intrinsic | 0;

@@ -347,10 +347,12 @@ export function can_set_perm_invent() {
 }
 
 /* C utf8map.c reset_customsymbols(): free_all_glyphmap_u() then
- * apply_customizations(gc.currentgraphics, do_custom_symbols). This port keeps
- * no per-glyph custom-symbol (glyphmap u) storage and parses no S_/G_
- * customizations, so there is nothing to free or apply. */
-function reset_customsymbols() {}
+ * apply_customizations(gc.currentgraphics, do_custom_symbols). The symbol
+ * loader retains the Unicode definitions; display applies this enabled state
+ * when resolving them instead of allocating per-glyph u entries. */
+function reset_customsymbols() {
+    game._gm_customsymbols = game.iflags.customsymbols !== false;
+}
 
 export async function reset_needed_visuals() {
     const go = game.go;
@@ -358,7 +360,7 @@ export async function reset_needed_visuals() {
      * port maps glyphs on demand (js/symbols.js reset_glyphmap is likewise a no-op). */
     if (go.opt_reset_customcolors || go.opt_update_basic_palette || go.opt_reset_customsymbols || go.opt_need_redraw) {
         if (go.opt_update_basic_palette) { missing('change_palette'); go.opt_update_basic_palette = false; }
-        if (go.opt_need_glyph_reset) game._gm_use_color = undefined; /* reset_glyphmap() */
+        if (go.opt_need_glyph_reset) game._gm_use_color = game._gm_corner = undefined; /* reset_glyphmap() */
         if (go.opt_reset_customcolors) reset_customcolors();
         if (go.opt_reset_customsymbols) reset_customsymbols();
         if (go.opt_need_redraw) { check_gold_symbol(); reglyph_darkroom(); }

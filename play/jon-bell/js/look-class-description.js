@@ -65,7 +65,8 @@ function enabled(mode, name) {
  * after four matches but still uses the pre-collapse count for lookat().
  */
 export function collectScreenDescriptionClasses(options = {}) {
-    const selected = normalizeSymbol(options.ch, !!options.dec);
+    // C compares ttychar before terminal handling strips high bits/control bytes.
+    const selected = normalizeSymbol(options.symbol ?? options.ch, !!options.dec);
     const showsyms = Array.isArray(options.showsyms) ? options.showsyms : null;
     const classes = [];
     let assembled = '';
@@ -155,7 +156,7 @@ export function collectScreenDescriptionClasses(options = {}) {
             // pager.c rotates water/lava/lava-wall through this scan so its
             // phrase order stays useful when their symbols collide.
             const alt = i === 40 ? 48 : i === 41 ? 40 : i === 48 ? 41 : i;
-            const description = DEFSYM_EXPLANATION[alt];
+            const description = options.waterbodyNames?.[alt]?.[0] ?? DEFSYM_EXPLANATION[alt];
             if (!description || !matches(alt, PCHARS[alt])) continue;
             if (isNothing && alt === 20) continue;
             const isTrap = alt >= 49 && alt <= 73 && alt !== 71;
@@ -176,14 +177,16 @@ export function collectScreenDescriptionClasses(options = {}) {
             }
             if (alt === 71 && !options.allowVibratingSquare
                 && options.glyphKind !== 'trap') continue;
-            const plain = description === 'stone' || description === 'air' || description === 'land';
+            // C pager.c:1230: omit drawbridges after three prior matches.
+            if (matchCount >= 3 && alt >= 42 && alt <= 45) continue;
+            const plain = !!options.waterbodyNames?.[alt] || description === 'stone' || description === 'air' || description === 'land';
             const definite = description.includes(' of a room');
             const special = alt === 33 || (alt >= 49 && alt <= 73) || alt === 21 || alt === 24 || alt === 34;
             add(description, { needs: special, plain, definite });
             // S_pool and S_moat share a display symbol.  C appends moat as a
             // second possibility without increasing `found`.
             if (alt === 38 && matches(38, PCHARS[38]))
-                add('moat', { needs: true, count: false });
+                add(options.waterbodyNames?.[38]?.[1] ?? 'moat', { needs: true, count: false, plain: !!options.waterbodyNames?.[38] });
         }
     }
     const collapsed = matchCount > 4;

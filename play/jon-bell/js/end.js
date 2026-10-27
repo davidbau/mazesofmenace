@@ -48,7 +48,7 @@ import { A_CON, A_CURRENT, A_ORIGINAL, Upolyd, DIED, CHOKING, STARVING, DROWNING
 import { KILLED_BY_AN, MALE, FEMALE, In_quest, In_endgame, Is_astralevel } from './const.js';
 import { dunlev, Is_branchlev } from './dungeon.js';
 import { MAGIC_PORTAL } from './const.js';
-import { MGIVENNAME, has_mgivenname } from './const.js';
+import { MGIVENNAME, has_mgivenname, has_ebones } from './const.js';
 import { SICK, SICK_ALL, TIMEOUT, TT_LAVA, UNCHANGING, HALLUC, HALLUC_RES } from './const.js';
 import { PM_TOURIST, PM_HUMAN_MUMMY, PM_ELF_MUMMY, PM_DWARF_MUMMY, PM_GNOME_MUMMY, PM_ORC_MUMMY, PM_HUMAN_ZOMBIE, PM_ELF_ZOMBIE, PM_DWARF_ZOMBIE, PM_GNOME_ZOMBIE, PM_ORC_ZOMBIE, PM_WRAITH, PM_VAMPIRE, PM_GHOUL, PM_HUMAN, PM_ELF, PM_DWARF, PM_GNOME, PM_ORC } from './pm.generated.js';
 import { G_GENOD } from './const.js';
@@ -89,7 +89,7 @@ import { Has_contents, has_oname, IN_SIGHT } from './const.js';
 import { AMULET_CLASS, GEM_CLASS, FIRST_AMULET, FIRST_REAL_GEM,
     LAST_REAL_GEM, LAST_GLASS_GEM, BELL_OF_OPENING, SPE_BOOK_OF_THE_DEAD,
     CANDELABRUM_OF_INVOCATION } from './objclass_ranges.js';
-import { CORPSTAT_INIT, NON_PM, IS_GRAVE } from './const.js';
+import { CORPSTAT_INIT, NON_PM, LEAVESTATUE, IS_GRAVE } from './const.js';
 import monsPackEnd from './makemon_mons.json' with { type: 'json' };
 const MONS_ROWS_END = monsPackEnd.mons;
 const G_NOCORPSE_END = 0x0010; /* monflag.h G_NOCORPSE */
@@ -447,10 +447,9 @@ export function done_in_by(mtmp, how) {
     } else {
         /* C end.c:275 `Strcat(buf, pmname(mptr, Mgender(mtmp)))` */
         buf += monPmname(mptr?.pmidx | 0, mtmp?.female ? FEMALE : MALE);
-        /* C end.c:276-282 — " called <name>" (has_ebones is #if 0'd out in
-         * v5, so the connective is always "called"). */
+        /* C end.c:276-282 — former-player monsters retain their owner's name. */
         if (has_mgivenname(mtmp))
-            buf += ` called ${MGIVENNAME(mtmp)}`;
+            buf += ` ${has_ebones(mtmp) ? 'of' : 'called'} ${MGIVENNAME(mtmp)}`;
     }
     /* C end.c:284 */
     g.svk.killer.name = buf;
@@ -544,6 +543,9 @@ export async function savelife(how, inPlace, countdown = false) {
     u.ugrave_arise = NON_PM;
     if (u.uprops?.[UNCHANGING])
         u.uprops[UNCHANGING].intrinsic = 0;
+    /* C end.c:743 curs_on_u() -> display.c:1689 flush_screen(1):
+     * paint the restored status before a following prompt pages the topline. */
+    pline_flush_point();
     if (!g.context.mon_moving)
         endmultishot(false);
     /* C end.c:749-758.  expels() is async here because its docrt page can read
@@ -646,14 +648,13 @@ export async function do_death_sequence(opts) {
     }
     let remainder = String(g._pending_message || '');
     let _prejoinedButWait = false;
-    /* C end.c:1043-1046 — a direct done() caller (timeout.c done_timeout after
-     * polymon, no losehp "You die..." pline of its own) forces bot() BEFORE
-     * paranoid_query's more() pages the pending topline, so that --More--
-     * frame already carries the refreshed status (polymon's AC/encumbrance
-     * and done_timeout's I_SPECIAL "Slime"). */
+    /* C end.c:1043-1046 — callers with no additional death pline enter done()
+     * before paranoid_query's more() pages their pending topline.  Paint here
+     * for all such deaths: timeout.c:575-584 sets I_SPECIAL before done(), so
+     * its expired fatal condition must already be visible on that page. */
     let _earlyBot = false;
     if (remainder && pd.noDeathLine && !pd.prejoinButWait && !pd.urgentDeathLine
-        && !pd.stoningDeathLine && !pd.alreadySaidYouDie && (pd.how | 0) === TURNED_SLIME) {
+        && !pd.stoningDeathLine && !pd.alreadySaidYouDie) {
         if (g.disp) g.disp.botlx = 1;
         await bot();
         _earlyBot = true;
@@ -726,7 +727,7 @@ export async function do_death_sequence(opts) {
     }
     /* C end.c:1043-1075: bot() paints before HP is forced to zero.
      * tty_yn_function's more() uses that paint before its prompt flush. */
-    const deathPromptFrame = (pd.stoningDeathLine || pd.remainderIsFresh || _earlyBot)
+    let deathPromptFrame = (pd.stoningDeathLine || pd.remainderIsFresh || _earlyBot)
         ? capture_painted_frame_with_status() : null;
     /* C youprop.h:387 `#define Lifesaved u.uprops[LIFESAVED].extrinsic` reads
      * ONLY the extrinsic half (set when an amulet of life saving is worn).
@@ -842,6 +843,12 @@ export async function do_death_sequence(opts) {
     // and the "You die." it plined was already paged by the force_more above.
     if (!pd.alreadySaidYouDie && !pd.noDeathLine) {
         if (_winStopHere) {
+            /* C pline.c:266-274 vpline(): the swallowed "You die..." still recalcs
+             * vision and flush_screen()s BEFORE update_topl() decides anything,
+             * so the yn prompt's more() freezes the map as of the death turn
+             * (monsters that moved during the faint were newsym'd meanwhile). */
+            if (g.vision_full_recalc) vision_recalc(0);
+            pline_flush_point();
             const _wsBuf = (g._topl_win_stop_buf != null)
                 ? String(g._topl_win_stop_buf) : String(g._pending_message || '');
             if (_wsBuf.length + 2 + 'You die...'.length < TOPL_LIMIT_END) {
@@ -849,6 +856,8 @@ export async function do_death_sequence(opts) {
                 g._topl_win_stop_armed = false;
                 g._topl_win_stop_buf = null;
                 g._pending_message = 'You die...';
+                /* That flush is the terminal the Die? prompt's more() shows. */
+                deathPromptFrame = capture_painted_frame_with_status();
             } else {
                 /* notdied stays 1: buffered, not drawn, WIN_STOP survives into
                  * tty_yn_function, which therefore raises no more(). */
@@ -899,6 +908,9 @@ export async function do_death_sequence(opts) {
         die = await paranoid_query(false, 'Die?');
     }
     if (!die) {
+        /* done() returned: the fatal-blow move snapshot is spent, so a later
+         * QUIT reads the live svm.moves (end.c:1544), not this stale one. */
+        g._deathMoves = null;
         if (inPlace) {
             // C end.c:1117-1119 — pline("OK, so you don't die."); savelife(how),
             // both reached from inside movemon.  The pline goes to the LIVE topline
@@ -1064,6 +1076,9 @@ async function _yn_prompt(query, choices, defchoice, opts = {}) {
     // answered-prompt history still belong to this reader.
     if (qbuf.length <= 79 && !opts.retainFrame) {
         g._pending_message = qbuf;
+        /* C pline.c:266-272 — custompline's vpline recalcs dirty vision
+         * before flush_screen (litroom's vision_recalc(2) blanked the map). */
+        if (g.vision_full_recalc) vision_recalc(0);
         await flush_screen(1);
     }
     const savedEcho = g._topl_prompt_echo;
@@ -1241,6 +1256,10 @@ export async function done(how) {
      * causes it enters done()'s life-saving / wizard-query path before the
      * common teardown; excluding it here made a direct slime expiration
      * throw instead of reaching C's done(TURNED_SLIME). */
+    /* A fatal-blow snapshot left by an earlier declined/lifesaved death must not
+     * leak into this one's "after %ld moves" line; only the deferred sequence
+     * below (which re-sets it) may supply one. */
+    g._deathMoves = null;
     if (how >= DIED && how <= TURNED_SLIME && how !== QUIT) {
         /* done() appends "But wait..." (end.c:1082) to the live topline
          * before the pending message pages, when life saving applies. */
@@ -1294,6 +1313,11 @@ export async function done(how) {
         if (g.u) {
             g.u.umortality = (g.u.umortality | 0) + 1;
             if ((g.u.uhp | 0) !== 0 || (Upolyd(g.u) && (g.u.mh | 0) !== 0)) {
+                /* done()'s bot() above already ran; the zeroed HP is only
+                 * REQUESTED here, and tty_yn_function's more() (topl.c:390-392)
+                 * precedes the next flush, so hold the physical status until
+                 * the Die? query (same hold as js/eat.js _done). */
+                if (how <= GENOCIDED) g._botlHeldEat = true;
                 g.u.uhp = 0;
                 g.u.mh = 0;
                 if (g.disp) g.disp.botl = true;
@@ -1320,6 +1344,8 @@ export async function done(how) {
          * already performed its status update, mortality increment, killer
          * fix-up, and HP reset above. */
         if (lifesaved) {
+            /* pline's flush_screen (pline.c) paints the requested HP first. */
+            g._botlHeldEat = false;
             await pline('But wait...');
             discover_object(AMULET_OF_LIFE_SAVING_END, true, true, true);
             await pline(`Your medallion ${!Blind() ? 'begins to glow' : 'feels warm'}!`);
@@ -1342,7 +1368,10 @@ export async function done(how) {
             await pline('Unfortunately you are still genocided...');
         }
         if ((wizard() || discover()) && how <= GENOCIDED) {
+            g._botlReleaseAtDieQuery = true;
             const die = await paranoid_query(!!((g.flags?.paranoia_bits | 0) & PARANOID_DIE), 'Die?');
+            g._botlReleaseAtDieQuery = false;
+            g._botlHeldEat = false;
             if (!die) {
                 await pline("OK, so you don't %s.", ((how | 0) === CHOKING_END) ? "choke" : "die");
                 (g.iflags ||= {}).last_msg = PLNMSG_OK_DONT_DIE;
@@ -1355,6 +1384,7 @@ export async function done(how) {
             }
         }
     }
+    g._botlHeldEat = false;
     await really_done(how);
 }
 
@@ -1735,6 +1765,13 @@ async function really_done(how) {
         // C end.c:1203-1204 — restore an in-flight trap object before bones.
         if (bones_ok && launch_in_progress())
             force_launch_placement();
+        // C end.c:1211-1212: stoning leaves a statue, not a corpse or ghost.
+        if (how === STONING)
+            g.u.ugrave_arise = LEAVESTATUE;
+        // C end.c:1213-1219: sliming arises as a green slime unless genocided.
+        else if (how === TURNED_SLIME
+                 && !((g.mvitals?.[208]?.mvflags | 0) & G_GENOD))
+            g.u.ugrave_arise = 208; /* PM_GREEN_SLIME */
         /* C end.c:1221-1230, in C's order: AFTER bones_ok (which tests the
            pre-rewrite `how`) and BEFORE disclose(), the tombstone and
            topten(). */
@@ -1855,24 +1892,7 @@ async function really_done(how) {
                 || await paranoid_query(!!((g.flags?.paranoia_bits | 0) & PARANOID_BONES),
                                         'Save bones?');
             if (_save_bones) {
-                /* savebones clears the live level before C's final
-                 * display_nhwindow(WIN_MESSAGE, TRUE), but that window pages
-                 * over the terminal's already-painted death map and status. */
-                const _bonesPaint = _wizard_bones
-                    ? capture_painted_frame_with_status() : null;
                 await savebones(how, g._endtime | 0, _corpse);
-                /* C end.c:1384's final display_nhwindow(WIN_MESSAGE, TRUE)
-                 * acknowledges the wizard Save-bones window after savebones
-                 * returns.  The y_n read cleared the prompt text, so this is
-                 * the bare --More-- form. */
-                const _disclosePrompted = _end_disclose() !== 'none'
-                    && [...DISCLOSURE_OPTIONS].some((cat) => should_query_disclose_option(cat)[0]);
-                if (_wizard_bones && (g.urole?.filecode === 'Wiz' || _disclosePrompted)) {
-                    const _oldPaint = g._paintedSnapshot;
-                    if (_bonesPaint) g._paintedSnapshot = _bonesPaint;
-                    await force_more('');
-                    g._paintedSnapshot = _oldPaint;
-                }
             }
             _corpse = null; /* C end.c:1367 — 'corpse may be invalid pointer now' */
         }

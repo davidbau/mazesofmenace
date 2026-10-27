@@ -2476,6 +2476,18 @@ async function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cn
     /* C objnam.c:3946 d->tvariety defaults to RANDOM_TIN (-2); a caller that
      * never parsed a tin variety must not reach the rn2(4) at 5343. */
     if (dx.tvariety === undefined) dx = { ...dx, tvariety: -2 };
+    /* C objnam.c:5070-5083: resolve non-glob quantity before spe/corpsenm;
+     * its rnd(6) precedes the corpse/statue gender roll at :5163. */
+    if (!otmp.globby && cnt > 0 && _oc_merge_on(otmp.otyp)
+        && (wizard()
+            || cnt < rnd(6)
+            || (cnt <= 7 && _is_candle_on(otmp))
+            || (cnt <= 20
+                && ((otmp.otyp | 0) === ROCK_OTYP || (otmp.otyp | 0) === FLINT_OTYP
+                    || _is_missile_on(otmp)
+                    || ((otmp.oclass | 0) === WEAPON_CLASS && _is_ammo_on(otmp))))))
+        otmp.quan = cnt | 0;
+
     {
         const t = otmp.otyp | 0;
         switch (t) {
@@ -2586,6 +2598,9 @@ async function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cn
             break;
         case STATUE:
             otmp.corpsenm = mntmp;
+            // C objnam.c:5243-5244: tiny statues cannot contain a spellbook.
+            if (otmp.cobj && P.msize < 1 /* MZ_SMALL; verysmall(P) */)
+                await delete_contents(otmp);
             break;
         case SCALE_MAIL:
             // C objnam.c:5246-5249, after creating ordinary SCALE_MAIL.
@@ -2631,20 +2646,6 @@ async function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cn
         }
         cnt = 0;
     }
-    if (cnt > 0 && _oc_merge_on(otmp.otyp)
-        && (wizard()
-            || cnt < rnd(6)
-            || (cnt <= 7 && _is_candle_on(otmp))
-            || (cnt <= 20
-                && ((otmp.otyp | 0) === ROCK_OTYP || (otmp.otyp | 0) === FLINT_OTYP
-                    || _is_missile_on(otmp)
-                    || ((otmp.oclass | 0) === WEAPON_CLASS && _is_ammo_on(otmp)))))) {
-        otmp.quan = cnt | 0;
-        /* C also refreshes otmp->owt = weight(otmp); JS's inv_weight_raw
-         * recomputes weight() from oc_weight*quan and ignores the cached owt,
-         * so the placeholder owt does not need updating here. */
-    }
-
     if (islit && ((otmp.otyp | 0) === 227 /* OIL_LAMP */
                   || (otmp.otyp | 0) === 228 /* MAGIC_LAMP */
                   || (otmp.otyp | 0) === 226 /* BRASS_LANTERN */
@@ -5976,7 +5977,7 @@ async function wizterrainwish(bp, d) {
         feel_newsym(x, y); /* map the spot where the wish occurred */
         if (u.uinwater && !is_pool(u.ux, u.uy)) {
             set_uinwater(0);
-            await docrt();
+            await docrt(true);
         } else {
             if (u.utrap && (u.utraptype | 0) === TT_LAVA && !is_lava_t(game.level.at(u.ux, u.uy).typ | 0))
                 await reset_utrap(false);

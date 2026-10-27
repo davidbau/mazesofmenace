@@ -21,6 +21,7 @@
 // cobj chain and is appended to gi.invent, so the next dog_goal hero-inventory
 // food scan (dogmove.c:618) fires obj_resists()->rn2(100) once per inventory
 
+import { ARMOR_DATA } from './armor_data.js';
 import { ECMD_OK, ECMD_TIME, OBJ_FREE, OBJ_INVENT,
          PARANOID_AUTOALL, PARANOID_CONFIRM,
          SELL_NORMAL, SELL_DELIBERATE, SELL_DONTSELL, OBJ_FLOOR,
@@ -37,7 +38,8 @@ import { game } from './gstate.js';
 import { chest_trap } from './trap.js';
 import { nomul } from './allmain.js';
 import { pline, urgent_pline, Norep, flush_screen, bot, force_more, canspotmon } from './display.js';
-import { build_window_screen, tty_window_offx } from './com_pager.js';
+import { build_window_screen, tty_window_offx, menu_search_getlin } from './com_pager.js';
+import { pmatchi } from './strutil.js';
 import { menu_heading_text } from './tty_menu.js';
 import { menucolor_row } from './coloratt.js';
 import { nhgetch } from './input.js';
@@ -46,8 +48,8 @@ import { doname_with_price, simpleonames, cxname, cxname_singular, getObjDescr, 
 /* C ref: pickup.c in_container's freeinv/add_to_container/weight trio. */
 import { freeinv, welded, weldmsg, setuwep, setuswapwep, setuqwep, snuff_lit,
          useup, useupf, obj_here, obj_extract_self_general,
-         getObjFromGetobj, body_part, u_handsy, yname } from './cmd.js';
-import { add_to_container, set_bknown, makemon, set_corpsenm } from './mklev.js';
+         getObjFromGetobj, body_part, u_handsy, yname, count_unpaid } from './cmd.js';
+import { add_to_container, set_bknown, makemon, set_corpsenm, OC_USES_KNOWN } from './mklev.js';
 import { obj_is_burning, get_obj_location } from './light.js';
 import { addinv } from './hold_another_object.js';
 import { pickup_prinv, fatal_corpse_mistake, lift_object } from './pickup.js';
@@ -193,7 +195,7 @@ export function mbag_explodes(obj, depthin) {
     return false;
 }
 
-async function mbag_item_gone(held, item, silent) {
+export async function mbag_item_gone(held, item, silent) {
     if (!silent) {
         if (item.dknown)
             await pline(`${_Upstart((await _item_doname(item)))} ${otense(item, 'have')} vanished!`);
@@ -447,7 +449,15 @@ const _QC_CLASS_SYM = {
 /* otyps resolved from js/oc_name_data.js OC_NAME (the generated objects.h
  * name table), not guessed: slime mold 285, tin 296, egg 266, corpse 265. */
 const _SLIME_MOLD_OTYP = 285, _TIN_OTYP = 296, _EGG_OTYP = 266, _CORPSE_OTYP = 265;
+/* C invent.c:188-198 armcat[] indexed by oc_armcat (SUIT 0, SHIELD 1, HELM 2,
+ * GLOVES 3, BOOTS 4, CLOAK 5, SHIRT 6); out-of-range -> 7 -> armcat[7] = 8. */
+const _LOOT_ARMCAT = [7, 4, 1, 2, 3, 5, 6, 8];
 function _loot_subclass(obj) {
+    if ((obj.oclass | 0) === 3 /* ARMOR_CLASS */) {
+        let k = ARMOR_DATA[obj.otyp | 0]?.armcat;
+        if (k === undefined || k < 0 || k >= 7) k = 7;
+        return _LOOT_ARMCAT[k];
+    }
     if ((obj.oclass | 0) === 6 /* TOOL_CLASS */) {
         /* C invent.c:215-240: known bag of tricks / horn of plenty 2, other
          * container 1, instruments (and horn of plenty) 3, other tools 4. */
@@ -513,6 +523,23 @@ function _invletter_value(letter) {
         : c >= 65 && c <= 90 ? c - 65 + 28
         : c === 36 ? 1 : c === 35 ? 54 : 55;
 }
+/* C ref: invent.c:488-523 sortloot_cmp — greasing, erosion, erodeproofing and
+ * enchantment tiers between BUCX and the stable tiebreak. */
+function _sortloot_wear_tiers(o1, o2) {
+    let d = (o2.greased | 0) - (o1.greased | 0);
+    if (d) return d;
+    const er = (o) => Math.max(o.oeroded | 0, o.oeroded2 | 0);
+    d = er(o1) - er(o2);                       /* bigger is WORSE */
+    if (d) return d;
+    d = ((o2.rknown && o2.oerodeproof) ? 1 : 0) - ((o1.rknown && o1.oerodeproof) ? 1 : 0);
+    if (d) return d;
+    if ((OC_USES_KNOWN[o1.otyp | 0] | 0) && (o1.oclass | 0) !== 7 /* FOOD_CLASS */) {
+        const v1 = o1.known ? (o1.spe | 0) : -1000;
+        const v2 = o2.known ? (o2.spe | 0) : -1000;
+        if (v1 !== v2) return v2 - v1;         /* bigger is better */
+    }
+    return 0;
+}
 function _sortloot(list, byInvlet = false, filterfunc = null) {
     const arr = [];
     /* C invent.c:610-618 — filterfunc rejects an object BEFORE it is populated
@@ -542,6 +569,7 @@ function _sortloot(list, byInvlet = false, filterfunc = null) {
                 || (a.disco - b.disco)
                 || _strcmpi(a.str, b.str)
                 || (b.bucx - a.bucx)
+                || _sortloot_wear_tiers(a.obj, b.obj)
                 || (a.indx - b.indx);
         });
     }
@@ -695,6 +723,12 @@ async function _tty_pick_any_menu(renderLines, items, winColFooter, prior = null
         await force_more(g._pending_message);
     let count = 0, counting = false;
     let page = 0;
+    /* C wintty.c:1704-1730 MENU_SEARCH — the "Search for:" getlin blanks
+     * screen row 0 (getline.c:213 clear_nhwindow(WIN_MESSAGE)) and
+     * process_menu_window repaints a page only when page_start is reset
+     * (:1401 `if (!page_start)`), so once a search has run the window's own
+     * title stays erased until the player changes page. */
+    let titleErased = false;
     const bulk = (mode, apply) => {
         for (const it of items) {
             if (!_invert_test(mode, it.skipinvert,
@@ -729,9 +763,14 @@ async function _tty_pick_any_menu(renderLines, items, winColFooter, prior = null
             while (lines.length < 24) lines.push('');
         }
         /* tty_end_menu promotes a menu which fills rows-1 to the full-screen
-         * layout at column 1; shorter menus are right-aligned overlays. */
+         * layout at column 1; shorter menus are right-aligned overlays.
+         * The geometry comes from the UNERASED lines: cw->offx was fixed when
+         * the window was built, so the post-search blank title must not
+         * re-right-align the overlay. */
         const WIN_COL = tall ? 1 : lines.length >= 24 ? 1
             : tty_window_offx(lines, winColFooter);
+        if (titleErased)
+            lines = ['', ...lines.slice(1)];
         const uac = g.u?.uac ?? 0;
         g._pending_message = '';
         g._topl_sticky = null;
@@ -795,20 +834,24 @@ async function _tty_pick_any_menu(renderLines, items, winColFooter, prior = null
             return false;
         if (k === 32 || k === 62 /* > */) {
             count = 0; counting = false;
-            if (page < pageCount - 1) { page++; continue; }
+            if (page < pageCount - 1) { page++; titleErased = false; continue; }
             if (k === 32) return false; /* space finishes on the last page */
             continue;                  /* > is inert there */
         }
         if (k === 60 /* < */) {
             count = 0; counting = false;
-            if (page > 0) page--;
+            if (page > 0) { page--; titleErased = false; }
             continue;
         }
         if (k === 94 /* ^ */) {
-            count = 0; counting = false; page = 0; continue;
+            count = 0; counting = false;
+            if (page !== 0) { page = 0; titleErased = false; }
+            continue;
         }
         if (k === 124 /* | */) {
-            count = 0; counting = false; page = pageCount - 1; continue;
+            count = 0; counting = false;
+            if (page !== pageCount - 1) { page = pageCount - 1; titleErased = false; }
+            continue;
         }
         if (k === _MENU_SELECT_ALL || k === _MENU_SELECT_PAGE) {
             count = 0; counting = false;
@@ -832,6 +875,46 @@ async function _tty_pick_any_menu(renderLines, items, winColFooter, prior = null
             bulk(0, (it) => { if (!targets || targets.has(it)) {
                 it.selected = !it.selected; it.count = -1;
             }});
+            continue;
+        }
+        if (k === 0x3a /* ':' — C wintty.c:1704-1730 MENU_SEARCH.  This loop is
+                         * process_menu_window's PICK_ANY arm (query_category
+                         * and query_objlist), so the cw->how == PICK_NONE bell
+                         * and the PICK_ONE `finished` never apply here.  The
+                         * ':' at in_or_out_menu is an explicit selector, which
+                         * outranks the command (wintty.c:1552-1558) and never
+                         * reaches this case. */) {
+            /* tty_getlin drawn over row 0 of the live frame; on return row 0
+             * is blank and the page is not repainted (process_menu_window
+             * only redraws when page_start is reset), hence titleErased. */
+            const answer = await menu_search_getlin(
+                async () => String(g._screen_output).split('\n'));
+            titleErased = true;
+            if (answer && answer !== '\x1b') {
+                /* C: Sprintf(searchbuf, "*%s*", tmpbuf) — pmatchi matches the
+                 * str tty_add_menu stored ("%c - %s", wintty.c:2596-2604,
+                 * fixed up to the final selector at :2718-2722), never the
+                 * painted '*'/'+'/'#' form of the dash column. */
+                const searchbuf = `*${answer}*`;
+                for (const it of items) {
+                    if (!it.str || !pmatchi(searchbuf, it.str)) continue;
+                    /* C toggle_menu_curr (wintty.c:1114-1151).  The
+                     * set_item_state() repaint an on-page match gets in C is
+                     * produced by the loop-top re-render; an off-page match
+                     * changes no pixels at all, exactly as in C. */
+                    if (it.selected) {
+                        if (counting && count > 0) it.count = count;
+                        else { it.selected = false; it.count = -1; }
+                    } else if (counting && count > 0) {
+                        it.count = count;
+                        it.selected = true;
+                    } else if (!counting) {
+                        it.selected = true;
+                    }
+                }
+            }
+            count = 0;
+            counting = false;
             continue;
         }
         /* C:1740-1748 group accelerator — invert every row in that group. */
@@ -892,6 +975,8 @@ async function _query_category(contents, action, withJustPicked) {
     ];
     const bucPresent = _BUC_ROWS.filter(([c]) => contents.some((o) => _buc(o) === c));
     const num_buc_types = bucPresent.length;
+    /* C pickup.c:1252-1253; invent.c:3526 counts contained unpaid objects too. */
+    const doUnpaid = count_unpaid(contents[0]) > 0;
 
     /* C:1283-1285 — JUSTPICKED is in menu_loot's mflags for BOTH directions. */
     const justPicked = withJustPicked ? contents.filter((o) => o.pickup_prev) : [];
@@ -909,7 +994,7 @@ async function _query_category(contents, action, withJustPicked) {
 
     /* C pickup.c:1288 — a single category with at most one BUCX entry and no
      * unpaid/usedup rows needs no menu; the class is returned directly. */
-    if (ccount === 1 && num_buc_types <= 1)
+    if (ccount === 1 && !doUnpaid && num_buc_types <= 1)
         return { menuShown: false, autopick: false, lootEverything: false,
                  allCategories: false, classes: new Set(present) };
 
@@ -933,7 +1018,10 @@ async function _query_category(contents, action, withJustPicked) {
     const entries = [];  /* { key, txt, kind, oclass?, item } */
     const items = [];
     const addrow = (key, txt, kind, oclass, skipinvert, gsel) => {
-        const item = { sel: key, gsel: gsel || 0, skipinvert, selected: false };
+        /* `str` is what tty_add_menu stores ("%c - %s", wintty.c:2596-2604),
+         * the MENU_SEARCH pmatchi target. */
+        const item = { sel: key, gsel: gsel || 0, skipinvert, selected: false,
+                       str: `${key} - ${txt}` };
         entries.push({ key, txt, kind, oclass, item });
         items.push(item);
     };
@@ -950,7 +1038,8 @@ async function _query_category(contents, action, withJustPicked) {
                _QC_CLASS_SYM[oc] || 0);
         invlet = String.fromCharCode(invlet.charCodeAt(0) + 1);
     }
-    /* C:1404-1433 the BUCX cluster; every row SKIPINVERT. */
+    /* C:1387-1391 unpaid precedes BUCX; every row SKIPINVERT. */
+    if (doUnpaid) addrow('u', 'Unpaid items', 'UNPAID', undefined, true, 0);
     for (const [c, txt] of bucPresent)
         addrow(c, txt, 'BUCX', undefined, true, 0);
     /* C:1435-1449 the JUSTPICKED row.  count_justpicked/find_justpicked
@@ -972,7 +1061,7 @@ async function _query_category(contents, action, withJustPicked) {
         for (const e of entries) {
             /* C:1379-1382 — ONE blank line opens the whole
              * unpaid/usedup/BUCX/justpicked block. */
-            if ((e.kind === 'BUCX' || e.kind === 'P') && !clusterOpened) {
+            if ((e.kind === 'UNPAID' || e.kind === 'BUCX' || e.kind === 'P') && !clusterOpened) {
                 out.push('');
                 itemByLine.push(null);
                 clusterOpened = true;
@@ -1041,7 +1130,7 @@ async function _query_category(contents, action, withJustPicked) {
         } else if (e.kind === 'CLASS') {
             classes.add(e.oclass);
             lootEverything = false;
-        } else if (e.kind === 'BUCX') {
+        } else if (e.kind === 'BUCX' || e.kind === 'UNPAID') {
             classes.add(e.key);
             lootEverything = false;
         }
@@ -1068,15 +1157,17 @@ function _qc_allow(obj, sel) {
     if (sel.allCategories) return true;
     const classFilter = [...sel.classes].some((c) => typeof c === 'number');
     const bucxFilter = [...sel.classes].some((c) => _BUCX_KEYS.has(c));
+    const shopFilter = sel.classes.has('u');
     /* C:938-942 — no filter of any kind matches nothing.  'P' IS a filter
      * type, so a lone 'P' pick must not fall into this "nothing selected" arm. */
-    if (!classFilter && !bucxFilter) return sel.classes.has('P');
+    if (!classFilter && !bucxFilter && !shopFilter) return sel.classes.has('P');
     const oclass = obj.oclass | 0;
     /* C:948-950 — an explicit request for coins overrides everything else. */
     if (oclass === COIN_CLASS && classFilter)
         return sel.classes.has(COIN_CLASS);
     /* C:993-995 */
     if (classFilter && !sel.classes.has(oclass)) return false;
+    if (shopFilter && !obj.unpaid && !count_unpaid(obj.cobj)) return false;
     /* C:1002-1017 */
     if (bucxFilter) {
         const bucx = (oclass === COIN_CLASS)
@@ -1160,7 +1251,14 @@ async function _menu_loot_items(chainHead, contents, action, useInvlet) {
     /* C:1140 doname_with_price(curr) — evaluated once, AFTER sortloot has set
      * dknown, and cached so the row text cannot change mid-menu. */
     for (const e of entries)
-        if (e.item) e.text = (await _item_doname(e.item.obj));
+        if (e.item) {
+            e.text = (await _item_doname(e.item.obj));
+            /* What tty_add_menu stores as the entry's str: "%c - %s" of the
+             * FINAL selector (wintty.c:2596-2604, str[0] fixed up to the
+             * assigned accelerator at :2718-2722).  MENU_SEARCH's pmatchi
+             * matches against this dash form. */
+            e.item.str = `${e.item.sel} - ${e.text}`;
+        }
 
     const renderLines = () => {
         const out = [`\x1b[7m${action} what?\x1b[0m`, ''];
@@ -1462,7 +1560,20 @@ export async function use_container_impl(cobjRef, held, more_containers) {
             /* C pickup.c:3282-3311 menu_loot — with flags.menu_style ==
              * MENU_FULL (the default) the TYPE filter menu comes first. */
             g.pickup_encumbrance = 0;
-            const sel = _menu_style_is_full()
+            /* C pickup.c:3200-3201,3230-3260 traditional_loot(FALSE). */
+            let tradRetry = 0, tradDone = false;
+            if (g.flags?.menu_style === MENU_TRADITIONAL) {
+                const q = await query_classes('take out', obj.cobj, false, true);
+                if (q.ok) {
+                    if (await askchain(() => obj.cobj, q.one_at_a_time ? [] : q.oclasses,
+                        q.everything, (o) => out_container(obj, o), null, 0, 'take out'))
+                        used |= ECMD_TIME;
+                } else tradRetry = q.via_menu;
+                tradDone = !tradRetry;
+            }
+            const sel = tradRetry ? { ..._no_category_sel(), allCategories: tradRetry === -2 }
+                : tradDone ? { ..._no_category_sel(), allCategories: false }
+                : _menu_style_is_full()
                 ? await query_category_takeout(obj)
                 : _no_category_sel();
             if (!sel.autopick && !sel.allCategories && sel.classes.size === 0) {

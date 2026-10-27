@@ -22,7 +22,8 @@ import { sanitize_name } from './options.js';
 import { mon_nam } from './uhitm.js';
 import { nhgetch } from './input.js';
 import { pline, flush_screen, newsym } from './display.js';
-import { topl_park_cursor } from './display.js';
+import { topl_park_cursor, livelog_printf } from './display.js';
+import { LL_CONDUCT } from './const.js';
 import { getlin } from './wizcmds.js';
 import { zappable, zapnodir, learnwand, make_blinded } from './zap.js';
 import { resists_blnd } from './mhitm.js';
@@ -691,7 +692,12 @@ export async function doengrave() {
          * so the engraving half of the illiteracy conduct never counted either.
          * C's u.uconduct is a plain struct member; create the bag. */
         u.uconduct = u.uconduct || {};
-        u.uconduct.literate = (u.uconduct.literate | 0) + 1;
+        if (!((u.uconduct.literate | 0) )) {
+            u.uconduct.literate = 1;
+            livelog_printf(LL_CONDUCT, `became literate by engraving "${de.ebuf}"`);
+        } else {
+            u.uconduct.literate = (u.uconduct.literate | 0) + 1;
+        }
     }
 
     /* C engrave.c:1220-1230 — smudge loop: for each non-space char, with the chance

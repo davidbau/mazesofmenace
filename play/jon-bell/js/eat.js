@@ -26,13 +26,14 @@ import { FOOD_PROPS } from './food_props.js';
 import { pline, canseemon, canspotmon, nh_sprintf, newsym, You_hear,
          Deaf as hero_Deaf, livelog_printf,
          _topl_merge_result, _topl_joins_snapshot, _topl_stash_result,
-         _topl_record_join, capture_painted_frame_with_status, bot, urgent_pline } from './display.js';
+         _topl_record_join, capture_painted_frame_with_status, bot, urgent_pline,
+         _topl_joins_committed, _topl_more_pages, TOPL_LIMIT } from './display.js';
 import { stop_occupation } from './allmain.js';
 import { end_running, is_pool_or_lava } from './look.js';
 import { PM_ELF as PM_ELF_EAT } from './pm.generated.js';
 import { eos, getrumor, outrumor, BY_COOKIE, mksobj as mksobj_real, slimeproof, polyfood } from './mklev.js';
 import { discover_object } from './o_init.js';
-import { SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED, STARVED, HUNGER, CONFLICT, SLOW_DIGESTION, REGENERATION, W_ARTI, W_WEP, FROMFORM, W_RINGL, W_RINGR, SPINACH_TIN, HEALTHY_TIN, ROTTEN_TIN, HOMEMADE_TIN, NON_PM, A_STR, A_INT, M_ATTK_HIT, M_ATTK_MISS, M_ATTK_AGR_DIED, DIED, KILLED_BY_AN, KILLED_BY, M_AP_MONSTER, NO_KILLER_PREFIX, LIFESAVED, EDOG, STRANGLED, W_ARMOR, W_TOOL, W_AMUL, W_SADDLE, ECMD_OK, ECMD_TIME, GENOCIDED, PANICKED, POISONING, STONING, Upolyd, COST_BITE, LL_CONDUCT, CHOKING, STARVING, MAGICAL_BREATHING, A_LAWFUL } from './const.js';
+import { SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED, STARVED, HUNGER, CONFLICT, SLOW_DIGESTION, REGENERATION, W_ARTI, W_WEP, FROMFORM, W_RINGL, W_RINGR, W_RING, SPINACH_TIN, HEALTHY_TIN, ROTTEN_TIN, HOMEMADE_TIN, NON_PM, A_STR, A_INT, M_ATTK_HIT, M_ATTK_MISS, M_ATTK_AGR_DIED, DIED, KILLED_BY_AN, KILLED_BY, M_AP_MONSTER, NO_KILLER_PREFIX, LIFESAVED, EDOG, STRANGLED, W_ARMOR, W_TOOL, W_AMUL, W_SADDLE, ECMD_OK, ECMD_TIME, GENOCIDED, PANICKED, POISONING, STONING, Upolyd, COST_BITE, LL_CONDUCT, CHOKING, STARVING, MAGICAL_BREATHING, A_LAWFUL } from './const.js';
 /* C ref: invent.c:1752 getobj() — the ONE real (keystroke-consuming) getobj
  * body in this port; js/cmd.js:14406.  eat.js<->cmd.js is already a proven
  * circular import (js/potion.js<->js/cmd.js is the same shape) — safe because
@@ -63,7 +64,8 @@ import { on_level } from './dungeon.js';
 import { can_reach_floor } from './hold_another_object.js';
 import { BLINDED, CONFUSION, HALLUC, HALLUC_RES, LEVITATION, SICK, VOMITING,
          EXPL_FIERY, STONED, UNCHANGING, SICK_ALL, FROMOUTSIDE, INVIS as INVIS_PROP, SEE_INVIS as SEE_INVIS_PROP, TIMEOUT, LAST_PROP, AGGRAVATE_MONSTER,
-         FAST as FAST_PROP, DEAF as DEAF_PROP, SLIMED as SLIMED_PROP, WOUNDED_LEGS as WOUNDED_LEGS_PROP } from './const.js';
+         FAST as FAST_PROP, DEAF as DEAF_PROP, SLIMED as SLIMED_PROP, WOUNDED_LEGS as WOUNDED_LEGS_PROP,
+         Is_airlevel, Is_waterlevel } from './const.js';
 /* make_confused's C home is potion.c:88.  This file used to carry its own
  * `_eat_make_confused`, which wrote a flat `game.HConfusion` that only this
  * file's own reader consulted — so eating a confusing corpse set a word the
@@ -114,7 +116,8 @@ import { self_invis_message, make_hallucinated, make_glib, make_vomiting, make_s
  * edge, and this closes it, so the import is used LAZILY inside start_tin's
  * tail rather than at module scope). */
 import { set_occupation, dropx, dropy as dropy_real, instapetrify as instapetrify_eat,
-         useup as useup_eat, heal_legs, verbalize, pooleffects_breathless } from './cmd.js';
+         useup as useup_eat, heal_legs, verbalize, pooleffects_breathless,
+         welded, surface } from './cmd.js';
 import { near_capacity, weight, encumber_msg as encumber_msg_real } from './weight.js';
 import { obj_here } from './cmd.js';
 import { losehp } from './dokick.js';
@@ -130,18 +133,19 @@ import { obj_is_pname, getObjDescr } from './objnam.js';
 import { Ring_gone, float_up } from './do_wear.js';
 import { set_mimic_blocking } from './sit.js';
 import { see_monsters, curs_on_u } from './display.js';
-import { rescham, revive_corpse } from './mklev.js';
+import { rescham, revive_corpse, set_bknown } from './mklev.js';
 import { perceives } from './mcastu.js';
 import { change_sex } from './polyself.js';
 import { dopotion_unported as dopotion } from './potion.js';
 import { o_unleash, unpunish } from './dig.js';
-import { uwepgone, uqwepgone, uswapwepgone } from './steal.js';
+import { uwepgone, uqwepgone, uswapwepgone, remove_worn_item } from './steal.js';
 import { useupall, dismount_steed, body_part, trycall } from './cmd.js';
 import { vault_gd_watching } from './vault.js';
 import { SLEEPY, M_AP_NOTHING, M_AP_OBJECT, DISMOUNT_FELL, GD_EATGOLD, STOMACH } from './const.js';
 
 import { PM_FIRE_ELEMENTAL, PM_RUST_MONSTER, PM_GHOUL, PM_GELATINOUS_CUBE, PM_STALKER, PM_FLESH_GOLEM, PM_LEATHER_GOLEM, PM_ACID_BLOB } from './pm.generated.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js';
+import { stackobj } from './sp_lev.js';
 import { Has_contents } from './const.js';
 /* C you.h:562  #define u_at(x,y) ((x) == u.ux && (y) == u.uy).  This file
  * carried a local `function u_at(x, y) { return true; }` shadow, which made
@@ -551,7 +555,7 @@ export async function doeat() {
         return ECMD_OK;
     }
 
-    const otmp = await floorfood('eat', 0);
+    let otmp = await floorfood('eat', 0);
     if (!otmp) {
         /* C eat.c:2829: empty, declined or cancelled selection is ECMD_OK. */
         return ECMD_OK;
@@ -592,6 +596,42 @@ export async function doeat() {
         return ECMD_OK;
     }
 
+    if (_is_edible_metallic(otmp) && u.umonnum === PM_RUST_MONSTER
+        && otmp.oerodeproof) {
+        otmp.rknown = 1;
+        if ((otmp.quan | 0) > 1) { /* C eat.c:2879-2884 — split off one item */
+            if (!_eat_carried(otmp))
+                await splitobj(otmp, (otmp.quan | 0) - 1);
+            else
+                otmp = await splitobj(otmp, 1);
+        }
+        await pline(`Ulch - that ${xname_eat(otmp)} was rustproofed!`);
+        /* The regurgitated object's rustproofing is gone now */
+        otmp.oerodeproof = 0;
+        make_stunned(((game.u?.uprops?.[STUNNED]?.intrinsic | 0) & 0x00ffffff)
+                     + rn2(10), true);
+        /*
+         * We don't expect rust monsters to be wielding welded weapons
+         * or wearing cursed rings which were rustproofed, but guard
+         * against the possibility just in case.
+         */
+        if (welded(otmp) || (otmp.cursed && ((otmp.owornmask | 0) & W_RING))) {
+            set_bknown(otmp, 1); /* for ring; welded() does this for weapon */
+            await You(`spit out ${the(xname_eat(otmp))}.`);
+        } else {
+            await You(`spit ${the(xname_eat(otmp))} out onto the ${surface(u.ux, u.uy)}.`);
+            if (_eat_carried(otmp)) {
+                /* no need to check for leash in use; it's not metallic */
+                if (otmp.owornmask)
+                    await remove_worn_item(otmp, false);
+                _eat_freeinv(otmp);
+                await dropy_real(otmp);
+            }
+            await stackobj(otmp);
+        }
+        return ECMD_TIME;
+    }
+
     /* C eat.c:2891-2900 — slow digestion cannot be digested. */
     if (otmp.otyp === RIN_SLOW_DIGESTION) {
         await pline('This ring is indigestible!');
@@ -618,7 +658,7 @@ export async function doeat() {
              * earlier command must not freeze this command's --More-- frames
              * (C re-paints bot() at each pline flush, pline.c:276). */
             game._earlyBotl = null;
-            You(!one_bite_left ? 'resume your meal.' : 'consume the last bite of your meal.');
+            await You(!one_bite_left ? 'resume your meal.' : 'consume the last bite of your meal.');
             if (resumed) await start_eating(resumed, false);
             return ECMD_TIME;
         }
@@ -1055,7 +1095,11 @@ export async function choke(food) {
         g.svk.killer.name = 'quick snack';
     }
     await pline('You die...');
-    deadhero(CHOKING, { alreadySaidYouDie: true, noDeathLine: true });
+    /* topl.c:262-265: "You die" never joins, so it paged "You choke..." and
+     * now stands FRESH on the topline; done(CHOKING)'s lifesaving plines
+     * (end.c:1082-1090) join it ("You die...  But wait...  ...  You vomit
+     * ...--More--").  Only a later prompt/more() pages it, never done(). */
+    deadhero(CHOKING, { alreadySaidYouDie: true, noDeathLine: true, remainderIsFresh: true });
     await do_death_sequence({ inPlace: true });
 }
 
@@ -1199,6 +1243,9 @@ async function _done(how, opts) {
     if (!(wizard() || discover())) {
         /* C end.c:1128 — ordinary mode falls through to really_done(),
          * which this port defers through the shared death boundary. */
+        /* end.js do_death_sequence() redoes C end.c:1070's u.umortality++ for a
+         * deferred death; undo this function's own count so it is not doubled. */
+        u.umortality = (u.umortality | 0) - 1;
         deadhero(how, opts);
         return true;
     }
@@ -1213,6 +1260,9 @@ async function _done(how, opts) {
         /* C end.c:1115-1117 — an explicit yes falls through to
          * really_done(); defer that confirmed death through the shared
          * boundary just as ordinary mode does (the query is not re-asked). */
+        /* end.js do_death_sequence() redoes C end.c:1070's u.umortality++ for a
+         * deferred death; undo this function's own count so it is not doubled. */
+        u.umortality = (u.umortality | 0) - 1;
         deadhero(how, { ...opts, dieConfirmed: true });
         return true;
     }
@@ -1237,20 +1287,35 @@ function _Stone_resistance() {
     const p = game.u?.uprops?.[STONE_RES];
     return !!((p?.intrinsic | 0) || (p?.extrinsic | 0));
 }
-function _Stoned() { return !!game.stoned; }
+function _Stoned() { return !!((game.u?.uprops?.[STONED]?.intrinsic) | 0); } /* youprop.h:109 */
 /* C youprop.h:387 `#define Lifesaved u.uprops[LIFESAVED].extrinsic` — the intrinsic (#wizintrinsic) does NOT count. */
 function _Lifesaved() { const p = game.u?.uprops?.[LIFESAVED]; return !!(p && p.extrinsic); }
 
 /* C eat.c:576-600 eating_conducts — brain-eating conduct bookkeeping. */
-async function eating_conducts(pd) {
+export async function eating_conducts(pd) {
     const u = game.u || (game.u = {});
     u.uconduct = u.uconduct || {};
-    u.uconduct.food = (u.uconduct.food | 0) + 1;
+    let ll_conduct = 0;
     const mnum = (pd?.pmidx ?? pd?.mnum ?? pd) | 0;
-    if (!_veganE(mnum))
+    if (!(u.uconduct.food | 0)) {
+        livelog_printf(LL_CONDUCT, 'ate for the first time - %s', monPmname(mnum, 2));
+        ll_conduct++;
+    }
+    u.uconduct.food = (u.uconduct.food | 0) + 1;
+    if (!_veganE(mnum)) {
+        if (!(u.uconduct.unvegan | 0) && !ll_conduct) {
+            livelog_printf(LL_CONDUCT, 'consumed animal products (%s) for the first time',
+                monPmname(mnum, 2));
+            ll_conduct++;
+        }
         u.uconduct.unvegan = (u.uconduct.unvegan | 0) + 1;
-    if (!_vegetarianE(mnum))
+    }
+    if (!_vegetarianE(mnum)) {
+        if (!(u.uconduct.unvegetarian | 0) && !ll_conduct)
+            livelog_printf(LL_CONDUCT, 'tasted meat (%s) for the first time',
+                monPmname(mnum, 2));
         await _violated_vegetarian();
+    }
 }
 /* C eat.c:3920-3956 — keep opening an accessible tin if it might cure
  * the current threat. Unknown contents are always assumed helpful. */
@@ -1995,6 +2060,9 @@ function _emit_eat_pline(msg) {
         const prev = game._pending_message;
         game._pending_message = prev + '  ' + msg;
         _topl_record_join(prev, game._pending_message);
+        /* C pline.c:273-274: this pline's flush_screen() runs before its more(). */
+        pline_flush_point();
+        _pline_flush_frame_record(prev.length, String(msg));
         return;
     }
     const prev = game._resultMessage;
@@ -2100,6 +2168,9 @@ export function Hear_again() {
 }
 
 function rottenfood(obj) {
+    /* C eat.c:1815-1816: this pline flushes before the rotten-food effects,
+     * just as the ordinary corpse-flavor pline does at eat.c:2002. */
+    game._eatPreEffectFrame = capture_painted_frame_with_status();
     /* C eat.c:1815-1816 pline("Blecch!  %s %s!", ...) */
     _emit_eat_pline(`Blecch!  ${_is_rottable(obj) ? 'Rotten' : 'Awful'} ${_foodword(obj)}!`);
     if (!rn2(4)) { /* C eat.c:1817 */
@@ -2121,9 +2192,17 @@ function rottenfood(obj) {
     } else if (!rn2(3)) { /* C eat.c:1830 */
         /* C eat.c:1831-1848 — the "world spins" knockout. */
         const duration = rnd(10); /* C eat.c:1833 */
+        /* C eat.c:1836-1843.  surface() is dungeon.c:1750's: "ground" on a
+         * corridor or the Plane of Earth, so the word (and with it whether
+         * this pline fits beside "Blecch!" on the topline) follows the terrain. */
         let what, where;
         if (!_eat_Blind()) { what = 'goes'; where = 'dark'; }
-        else { what = 'you slap against the'; where = game.u?.usteed ? 'saddle' : 'floor'; }
+        else if (_uprop_on(LEVITATION) || Is_airlevel(game.u?.uz) || Is_waterlevel(game.u?.uz)) {
+            what = 'you lose control of'; where = 'yourself';
+        } else {
+            what = 'you slap against the';
+            where = game.u?.usteed ? 'saddle' : surface(game.u.ux, game.u.uy);
+        }
         _emit_eat_pline(`The world spins and ${what} ${where}.`);
         /* C eat.c:1845-1846 incr_itimeout(&HDeaf, duration); disp.botl = TRUE.
          * HDeaf is u.HDeaf in this port — the same slot js/monmove.js:1762 and
@@ -2174,15 +2253,32 @@ async function eatcorpse(otmp) {
     const mnum = otmp.corpsenm | 0;
     let rotted = 0;
     const glob = otmp.globby ? true : false;
+    /* C eat.c:1861-1867 — dangerous corpses bypass the tainted-food arm. */
+    const stoneable = _flesh_petrifies(permonstTemplate(mnum))
+        && !_Stone_resistance()
+        && !poly_when_stoned_eat(game.youmonst?.data);
+    const slimeable = mnum === PM_GREEN_SLIME_E
+        && !_uprop_on(SLIMED_PROP) && !_uprop_on(UNCHANGING)
+        && !slimeproof(game.youmonst?.data);
 
     /* C eat.c:1869-1884 — conduct.  unvegan / unvegetarian bumps + livelog
      * (RNG-free).  violated_vegetarian for non-vegetarian corpse. */
     if (u) u.uconduct = u.uconduct || {};
-    if (!_veganE(mnum)) {
-        if (u && !(u.uconduct.unvegan | 0)) u.uconduct.unvegan = 1;
-        else if (u) u.uconduct.unvegan = (u.uconduct.unvegan | 0) + 1;
+    let ll_conduct = 0;
+    if (!_veganE(mnum) && u) {
+        if (!(u.uconduct.unvegan | 0)) {
+            livelog_printf(LL_CONDUCT,
+                'consumed animal products for the first time, by eating %s',
+                an_eat(_food_xname(otmp, false)));
+            ll_conduct++;
+        }
+        u.uconduct.unvegan = (u.uconduct.unvegan | 0) + 1;
     }
     if (!_vegetarianE(mnum)) {
+        if (u && !(u.uconduct.unvegetarian | 0) && !ll_conduct)
+            livelog_printf(LL_CONDUCT,
+                'tasted meat for the first time, by eating %s',
+                an_eat(_food_xname(otmp, false)));
         await _violated_vegetarian();
     }
 
@@ -2194,7 +2290,7 @@ async function eatcorpse(otmp) {
         else if (otmp.blessed) rotted -= 2;
     }
 
-    const stoneable = false, slimeable = (mnum === PM_GREEN_SLIME_E); // simplified flags
+    /* C eat.c:1895 — petrification and sliming take precedence over taint. */
     if (!glob && !stoneable && !slimeable && rotted > 5) {
         /* tainted */
         /* C eat.c:1896-1921 */
@@ -2217,7 +2313,7 @@ async function eatcorpse(otmp) {
         return 2; /* corpse used up; no occupation */
     } else if (_acidicE(mnum) && !_eat_Acid_resistance()) {
         tp++;
-        You('have a very bad case of stomach acid.');
+        await You('have a very bad case of stomach acid.');
         await losehp(rnd(15), !glob ? 'acidic corpse' : 'acidic glob', KILLED_BY_AN);
     } else if (_poisonousE(mnum) && rn2(5)) { /* eat.c:1936 */
         tp++;
@@ -2293,10 +2389,21 @@ async function eatcorpse(otmp) {
             retcode = 1;
         }
         if (_cnutritE(mnum) === 0) {
-            /* no nutrition: rots away */
+            /* C eat.c:1958-1965: no nutrition; message only if conscious. */
+            if (!retcode)
+                _emit_eat_pline('The corpse rots away completely.');
+            if (_eat_carried(otmp)) await useup(otmp);
+            else await useupf(otmp, 1);
             retcode = 2;
         }
         if (!retcode) _consume_oeaten(otmp, 2); /* oeaten >>= 2 */
+    } else if ((mnum === PM_COCKATRICE || mnum === PM_CHICKATRICE)
+               && (_Stone_resistance() || _eat_Hallucination())) {
+        /* C eat.c:1969 */
+        _emit_eat_pline('This tastes just like chicken!');
+    } else if (mnum === PM_FLOATING_EYE && (game.u?.umonnum | 0) === 128 /* PM_RAVEN */) {
+        /* C eat.c:1971 */
+        _emit_eat_pline('You peck the eyeball with delight.');
     } else if (tp) {
         /* already messaged */
     } else {
@@ -2327,8 +2434,11 @@ async function eatcorpse(otmp) {
         /* C eat.c:2002-2014 — "This <food> tastes/is <adj>!/." */
         /* C eat.c:2000 pmxnam = food_xname(otmp, FALSE): a glob is named by
          * xname ("small glob of gray ooze"), a corpse by corpse_xname. */
-        const pmxnam = _food_xname(otmp, false);
-        const prefix = 'This '; /* type_is_pname/the_unique_pm false for goblin */
+        let pmxnam = _food_xname(otmp, false);
+        const _pmptr = permonstTemplate(mnum);
+        const prefix = _tin_type_is_pname(_pmptr) ? ''
+            : the_unique_pm(_pmptr) ? 'The ' : 'This ';
+        if (/^the /i.test(pmxnam)) pmxnam = pmxnam.slice(4);
         const verb = use_is ? 'is' : 'tastes';
         const adj = hallu
             ? (yummy ? (((game.u?.umonnum | 0) === 38 /* PM_TIGER */) ? 'gr-r-reat' : 'gnarly')
@@ -2899,6 +3009,9 @@ export async function doeat_food(otmp) {
     const v = _victual();
     let dont_start = false;
     const already_partly_eaten = (otmp.oeaten | 0) ? true : false;
+    /* C eat.c:2957-2985 starts a new meal.  A one-bite meal can leave its
+     * pre-effect paint unconsumed; it must not supply a later meal's frame. */
+    game._eatPreEffectFrame = null;
 
     otmp = await touchfood(otmp);
     if (!otmp) {
@@ -2913,12 +3026,15 @@ export async function doeat_food(otmp) {
 
     /* C eat.c:2962-2966 records the foodless-conduct break before dispatching
      * corpse versus ordinary food effects. */
+    let ll_conduct = 0;
     if (u) {
         u.uconduct = u.uconduct || {};
         const oldFood = u.uconduct.food | 0;
-        if (!oldFood)
+        if (!oldFood) {
             livelog_printf(LL_CONDUCT, 'ate for the first time - %s',
                 _food_xname(otmp, false));
+            ll_conduct++;
+        }
         u.uconduct.food = oldFood + 1;
     }
 
@@ -2930,13 +3046,33 @@ export async function doeat_food(otmp) {
         const mat = _oc_material(otmp.otyp | 0);
         if (u) u.uconduct = u.uconduct || {};
         if (mat === MATERIAL_FLESH) {
-            if (u) u.uconduct.unvegan = (u.uconduct.unvegan | 0) + 1;
-            if ((otmp.otyp | 0) !== EGG_OTYP) await _violated_vegetarian();
+            if (u) {
+                if (!(u.uconduct.unvegan | 0) && !ll_conduct) {
+                    livelog_printf(LL_CONDUCT,
+                        'consumed animal products for the first time, by eating %s',
+                        an_eat(_food_xname(otmp, false)));
+                    ll_conduct++;
+                }
+                u.uconduct.unvegan = (u.uconduct.unvegan | 0) + 1;
+            }
+            if ((otmp.otyp | 0) !== EGG_OTYP) {
+                if (u && !(u.uconduct.unvegetarian | 0) && !ll_conduct)
+                    livelog_printf(LL_CONDUCT,
+                        'tasted meat for the first time, by eating %s',
+                        an_eat(_food_xname(otmp, false)));
+                await _violated_vegetarian();
+            }
         } else if ([287 /* CREAM_PIE */, 288 /* CANDY_BAR */,
                     289 /* FORTUNE_COOKIE */, 286 /* LUMP_OF_ROYAL_JELLY */,
                     290 /* PANCAKE */].includes(otmp.otyp | 0)) {
-            /* C eat.c:2993-3001 — VEGGY animal-product cases. */
-            if (u) u.uconduct.unvegan = (u.uconduct.unvegan | 0) + 1;
+            /* C eat.c:3016-3022 — VEGGY animal-product cases. */
+            if (u) {
+                if (!(u.uconduct.unvegan | 0) && !ll_conduct)
+                    livelog_printf(LL_CONDUCT,
+                        'consumed animal products (%s) for the first time',
+                        _food_xname(otmp, false));
+                u.uconduct.unvegan = (u.uconduct.unvegan | 0) + 1;
+            }
         }
         /* C eat.c:3046 reqtime = objects[otyp].oc_delay. */
         v.reqtime = _oc_delay(otmp.otyp | 0);
@@ -3359,6 +3495,8 @@ async function consume_tin(mesg) {
     if ((tin.otrapped | 0)
         || ((tin.cursed | 0) && (r | 0) !== HOMEMADE_TIN && !rn2(8))) {
         await b_trapped_tin();
+        tin = (await costly_tin(COST_DSTROY)); /* C eat.c:1539 */
+        await use_up_tin(tin); /* C eat.c:1540 */
         return;
     }
 
@@ -3543,7 +3681,7 @@ export async function opentin() {
  * hero's current form (gy.youmonst.data).  Same predicate js/polyself.js:849
  * carries; resolved here through this file's own mndx-keyed permonst lookup so
  * it does not depend on g.youmonst being populated. */
-const M1_NOHANDS_TIN = 0x00010000; /* C monflag.h M1_NOHANDS */
+const M1_NOHANDS_TIN = 0x00002000; /* C monflag.h:98 M1_NOHANDS */
 const MZ_SMALL_TIN = 1;            /* C permonst.h MZ_SMALL */
 function _tin_cantwield() {
     const m = _heroMnum();
@@ -3655,7 +3793,7 @@ export async function use_tin_opener(obj) {
     let res = 0; /* ECMD_OK */
 
     if (!carrying(296)) { /* TIN = 296 */
-        You("have no tin to open.");
+        await You("have no tin to open.");
         return 0; /* ECMD_OK */
     }
 
@@ -4457,11 +4595,12 @@ export function eatmupdate() {
     }
 }
 
-export function You(line, ...args) {
+export async function You(line, ...args) {
     const msg = 'You ' + (args.length > 0 ? nh_sprintf(line, args) : String(line));
     /* pline.c:246-262 vpline(): MSGTYPE=hide / norep drop the message first. */
     if (msgtype_suppressed(msg))
         return;
+    const _prevmsgAtEntry = game._prevmsg;
     game._prevmsg = msg;
     if (game.vision_full_recalc && !game._topl_win_stop && !game._topl_win_stop_armed)
         vision_recalc(0);
@@ -4481,14 +4620,66 @@ export function You(line, ...args) {
      * makes; this direct writer bypassed it. */
     if (game.vision_full_recalc)
         vision_recalc_eat(0);
-    /* C has one topline.  If a prior pline is still live in the pending
-     * channel (for example a pet-swap message before its landing trap), this
-     * direct You() writer must extend that same line.  Writing resultMessage
-     * here makes the later stash prepend the trap text to the live message. */
     if (game._pending_message) {
         const prev = game._pending_message;
-        game._pending_message = prev + '  ' + msg;
-        _topl_record_join(prev, game._pending_message);
+        if (_topl_joins_committed(prev, msg)) {
+            game._pending_message = prev + '  ' + msg;
+            _topl_record_join(prev, game._pending_message);
+        } else {
+            const _pages = _topl_more_pages(prev, _topl_joins_snapshot(prev));
+            const _prevJoins = _topl_joins_snapshot(prev) || [];
+            const _morc = await force_more(prev, undefined, false, true);
+            if (_morc === 27 && _pages && _pages.length >= 2
+                && !game._pending_message) {
+                const _lastPage = String(_pages[_pages.length - 1] || '');
+                /* The owner is the ONE pline whose update_topl raised the
+                 * ESC'd more() — the first pline of the last page.  Later
+                 * plines already joined into that page (unmul's "You regain
+                 * consciousness." after the faint) arrive under the live
+                 * WIN_STOP: they extend the hidden buffer, never the screen. */
+                const _pageAt = prev.lastIndexOf(_lastPage);
+                const _cut = _lastPage
+                    ? _prevJoins.find((j) => j > _pageAt && j < _pageAt + _lastPage.length)
+                    : undefined;
+                const _owner = (_cut !== undefined) ? prev.slice(_pageAt, _cut) : _lastPage;
+                game._topl_win_stop = true;
+                game._topl_win_stop_armed = false;
+                game._pending_message = _owner;
+                const _buf = (game._topl_win_stop_buf != null)
+                    ? String(game._topl_win_stop_buf) : _lastPage;
+                game._topl_win_stop_buf = (_owner
+                    && _buf.length + 2 + msg.length < TOPL_LIMIT)
+                    ? (_buf + '  ' + msg) : msg;
+                return;
+            }
+            /* The remainder force_more left standing is gt.toplines as C
+             * holds it at THIS pline (NEED_MORE, cury 0).  Re-run the same
+             * join test against it: the join arm (:262-279) appends with no
+             * page of its own; a failure owes one more() over the remainder
+             * (:268-275) before bp replaces it (:289-301). */
+            /* An earlier page's ESC can have set WIN_STOP during the drain;
+             * this later update_topl must sample skip again (topl.c:257). */
+            if (game._topl_win_stop) {
+                game._prevmsg = _prevmsgAtEntry;
+                return pline(msg);
+            }
+            const _standing = String(game._pending_message || '');
+            if (_standing && _topl_joins_committed(_standing, msg)) {
+                game._pending_message = _standing + '  ' + msg;
+                _topl_record_join(_standing, game._pending_message);
+                return;
+            }
+            if (_standing) {
+                /* pline.c:273-277: this pline's flush_screen()/bot() ran before
+                 * the more() it raises, so that page shows THIS instant's
+                 * status; select it against the line it would have joined. */
+                _pline_flush_frame_record(_standing.length, msg);
+                game._moreFullCtx = { full: _standing + '  ' + msg, start: 0 };
+                try { await force_more(_standing); } finally { game._moreFullCtx = null; }
+            }
+            game._prevmsg = _prevmsgAtEntry;
+            return pline(msg);
+        }
     } else {
         /* topl.c:257-301 — each pline is its own update_topl decision; record
          * the join so the reserve rule can page between teleport/kick result
@@ -4594,7 +4785,7 @@ export async function floorfood(verb, corpsecheck) {
             if (nodig || u.uhunger > 1500) {
                 await pline(qbuf + " but you " + (nodig ? "cannot" : "are too full to") + " eat them.");
             } else {
-                let dig = g.svc && g.svc.context && g.svc.context.digging;
+                let dig = g.context && g.context.digging;
                 let resume = (dig && dig.chew
                               && u_at(dig.pos.x, dig.pos.y)
                               && on_level(dig.level, u.uz));

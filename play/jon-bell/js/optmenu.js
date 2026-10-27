@@ -15,7 +15,7 @@ import { game } from './gstate.js';
 import { dlb_file_lines, OPTMENUHELP } from './dispfile.js';
 import { ECMD_OK, gs, PARANOID_BONES } from './const.js';
 import { nhgetch } from './input.js';
-import { flush_screen, pline, force_more, docrt, dec_mode } from './display.js';
+import { flush_screen, pline, force_more, docrt, dec_mode, status_reassess, new_status_window, newclipping } from './display.js';
 import { update_inventory } from './inventory_refresh.js';
 /* C options.c:8944 — the generic compound-option path reads its value with
  * getlin(); mungspaces (objnam.c) normalises it before it is stored. */
@@ -820,18 +820,41 @@ export async function doset_simple() {
         }
         if (accMap.has(ch) || searchPick) {
             const entry = searchPick || accMap.get(ch);
+            /* C wintty.c:2794 tty_select_menu dismisses the Options window
+             * before options.c:8666 dispatches its selected handler.
+             * erase_menu_or_text (:978) docrt()s the map, clearing physical
+             * paint that a control-byte symbol cannot overwrite. */
+            await docrt();
             titleErased = false;   /* a pick ends select_menu; the next one repaints */
             if (entry.kind === 'bool') {
                 const { obj, fld } = simpleBox(entry);
                 obj[fld] = !flagOn(entry);
+                /* C options.c:5414-5416,8727: apply the pending Unicode reset
+                 * before doset_simple offers the menu again. */
+                if (entry.name === 'customsymbols') {
+                    g.go.opt_reset_customsymbols = true;
+                    await reset_needed_visuals();
+                }
                 /* C options.c:5344-5349,5386-5390 optfn_boolean: showscore/showvers/showexp/time/hitpointbar call
                  * status_initialize(REASSESS_ONLY), which sets gu.update_all; botl.c:1575-1577
                  * then zeroes every field's time and chg, dropping the up/down temp hilites. */
-                if (['showscore', 'showvers', 'showexp', 'time', 'hitpointbar'].includes(entry.name)) delete g._blTemp;
+                if (['showscore', 'showvers', 'showexp', 'time', 'hitpointbar'].includes(entry.name)) {
+                    delete g._blTemp;
+                    status_reassess();
+                }
                 if (entry.name === 'color') {
                     g.iflags.use_color = !!obj[fld];
                     /* C options.c:8727: reset_needed_visuals redraws before
                      * doset_simple offers the menu again. */
+                    g.go ||= {};
+                    g.go.opt_need_redraw = g.go.opt_need_glyph_reset = true;
+                    await reset_needed_visuals();
+                }
+                /* C options.c:5376-5385 optfn_boolean: these request a glyph reset and
+                 * redraw, which doset_simple()'s reset_needed_visuals() performs
+                 * (options.c:8727) before the menu is offered again. */
+                if (['wizmgender', 'showrace', 'use_inverse', 'hilite_pile',
+                     'ascii_map', 'tiled_map'].includes(entry.name)) {
                     g.go ||= {};
                     g.go.opt_need_redraw = g.go.opt_need_glyph_reset = true;
                     await reset_needed_visuals();
@@ -844,6 +867,17 @@ export async function doset_simple() {
                     if (g.iflags.wc_hilite_pet && !g.iflags.wc2_petattr)
                         g.iflags.wc2_petattr = 7; /* ATR_INVERSE (wintype.h) */
                     await docrt();
+                }
+                if (['wizmgender', 'showrace', 'use_inverse', 'hilite_pile',
+                     'perm_invent', 'ascii_map', 'tiled_map'].includes(entry.name)) {
+                    /* C options.c:5380-5385 optfn_boolean sets opt_need_redraw
+                     * and opt_need_glyph_reset; doset_simple() (options.c:8727)
+                     * then runs reset_needed_visuals() -> docrt() before the
+                     * menu is re-offered, so a later submenu's map background
+                     * already shows the new hero glyph. */
+                    g.go ||= {};
+                    g.go.opt_need_redraw = g.go.opt_need_glyph_reset = true;
+                    await reset_needed_visuals();
                 }
                 pageIdx = 0;
                 continue;
@@ -862,8 +896,20 @@ export async function doset_simple() {
                  * and falls through to the menu redraw. */
                 if (abuf !== '\x1b') {
                     const result = await entry.set(abuf);
+                    /* options.c:8956-8958 preference_update -> wintty.c:603 */
+                    if (entry.name === 'statuslines') {
+                        new_status_window();
+                        newclipping();
+                    }
                     if (result)
                         await force_more(result);
+                    else if (entry.name === 'statuslines') {
+                        /* options.c:4095 opt_need_redraw, then doset_simple()'s
+                         * reset_needed_visuals() (options.c:8997) */
+                        g.go ||= {};
+                        g.go.opt_need_redraw = true;
+                        await reset_needed_visuals();
+                    }
                 }
                 pageIdx = 0;
                 continue;
@@ -883,6 +929,25 @@ export async function doset_simple() {
             }
             if (entry.name === 'autopickup exceptions') {
                 await handler_autopickup_exception(false);
+                pageIdx = 0;
+                continue;
+            }
+            if (entry.name === 'status condition fields') {
+                /* C options.c:8664-8666 -> optfn_o_status_cond:8437. */
+                await cond_menu();
+                pageIdx = 0;
+                continue;
+            }
+            if (entry.name === 'status highlight rules') {
+                /* C options.c:8930-8953 -> optfn_o_status_hilites -> botl.c:4498
+                 * status_hilite_menu(). */
+                await status_hilite_menu(false);
+                pageIdx = 0;
+                continue;
+            }
+            if (entry.name === 'menu colors') {
+                /* C options.c:8930-8953 -> optfn_o_menu_colors -> handler_menu_colors (6407). */
+                await handler_menu_colors(false);
                 pageIdx = 0;
                 continue;
             }
@@ -2039,7 +2104,10 @@ export async function doset() {
                     }
                     if (ent.row.name === 'rest_on_space') update_rest_on_space();
                     /* same status_initialize(REASSESS_ONLY) -> update_all reset as doset_simple */
-                    if (['showscore', 'showvers', 'showexp', 'time', 'hitpointbar'].includes(ent.row.name)) delete g._blTemp;
+                    if (['showscore', 'showvers', 'showexp', 'time', 'hitpointbar'].includes(ent.row.name)) {
+                        delete g._blTemp;
+                        status_reassess();
+                    }
                     /* C options.c:5376-5385: these toggles reset glyphs and
                      * redraw after the pick walk, acknowledging pending messages
                      * through reset_needed_visuals() -> docrt() -> cls(). */
@@ -2305,6 +2373,9 @@ export async function doset() {
                     } else if (abuf !== '\x1b' && ent.row.name === 'statuslines') {
                         /* C options.c:4067-4098 optfn_statuslines(do_set) */
                         const message = optfn_statuslines_set(mungspaces(abuf));
+                        /* options.c:8685-8688 preference_update -> wintty.c:603 */
+                        new_status_window();
+                        newclipping();
                         if (!message) {
                             /* options.c:4091-4092: go.opt_need_redraw = TRUE */
                             g.go.opt_need_redraw = true;
