@@ -143,7 +143,7 @@ import { showKeyBindings, whatDoesCommand } from './command_help.js';
 import { availableExtendedCommands, completeExtendedCommand, extendedCommandMenu, showExtendedCommandList } from './extended_commands.js';
 import { chooseInventoryObject, compactInventoryLetters, inventoryLetterOrder, getobj, reassignInventoryLetters, } from './inventory_prompt.js';
 import { AT_EXPL, AT_KICK } from './monster_attack_types.js';
-import { confusePromptDirection, promptDirection, promptKey, readDirectionKey, restoreCommandMap, } from './tty_prompts.js';
+import { confusePromptDirection, promptDirection, promptKey, readDirectionKey, restoreCommandMap, ynSingleKey, } from './tty_prompts.js';
 import { getLine, paranoidQuery, promptYesNo, promptYesNoQuit, yn_function, } from './query.js';
 export { getLine, promptYesNo, promptYesNoQuit } from './query.js';
 import { callObjectType, objectTypeIsCallable, } from './object_call.js';
@@ -4118,7 +4118,7 @@ async function adjustSplit() {
 // first digit is filed for recall, with Escape leaving a count of zero.
 async function readInventorySplitCount() {
     await flushPendingTopline();
-    let key = await promptKey('Split off how many? ');
+    let key = await ynSingleKey('Split off how many? ');
     if (key < 48 || key > 57)
         return null;
     const firstDigit = key - 48;
@@ -5630,18 +5630,17 @@ async function putOnAccessoryObject(object) {
     }
     let hand;
     if (!game.uleft && !game.uright) {
-        for (;;) {
-            const finger = String.fromCharCode(await promptKey(`Which ${monsterIsHumanoid(heroSpecies(game)) ? 'ring-' : ''}${heroFingerName(game)}, Right or Left? [rl] `)).toLowerCase();
-            // tty_yn_function() returns the zero default for quit keys.
-            if (['\x1b', '\0', ' ', '\r', '\n'].includes(finger)) {
-                game.context.move = 0;
-                return;
-            }
-            if (finger === 'r' || finger === 'l') {
-                hand = finger === 'r' ? 'right' : 'left';
-                break;
-            }
+        // C calls yn_function(qbuf, rightleftchars, '\0', TRUE): a queued
+        // answer replays without prompting and any key outside "rl" is
+        // replaced by the NUL default; a live question keeps asking until
+        // 'r', 'l', or a quit key answers it, and only that final answer
+        // is recorded into CQ_REPEAT for the next do-again.
+        const { answer } = await yn_function(`Which ${monsterIsHumanoid(heroSpecies(game)) ? 'ring-' : ''}${heroFingerName(game)}, Right or Left?`, 'rl', '', true);
+        if (answer !== 'r' && answer !== 'l') {
+            game.context.move = 0;
+            return;
         }
+        hand = answer === 'r' ? 'right' : 'left';
     }
     else {
         hand = game.uright ? 'left' : 'right';
@@ -6117,11 +6116,11 @@ async function doclose() {
     game.context.move = game.u.confused || game.u.confusionTurns
         || game.u.stunned || game.u.stunnedTurns ? 1 : 0;
     if (loc && heroIsBlind(game)) {
-        const previousGlyph = glyphAt(x, y)?.glyph;
+        const previousGlyph = loc.remembered_glyph?.glyph;
         recordMappedOverviewState();
         const previousTerrain = loc.lastseentyp;
         feel_location(x, y);
-        if (glyphAt(x, y)?.glyph !== previousGlyph || loc.lastseentyp !== previousTerrain)
+        if (loc.remembered_glyph?.glyph !== previousGlyph || loc.lastseentyp !== previousTerrain)
             game.context.move = 1;
     }
     const portcullis = loc && (loc.typ === DOOR || loc.typ === DBWALL)
@@ -6215,13 +6214,13 @@ async function doopen(x = 0, y = 0) {
     let spentTime = !!(game.u.confused || game.u.confusionTurns
         || game.u.stunned || game.u.stunnedTurns);
     if (loc) {
-        const previousGlyph = glyphAt(x, y)?.glyph;
+        const previousGlyph = loc.remembered_glyph?.glyph;
         recordMappedOverviewState();
         const previousTerrain = loc.lastseentyp;
         newsym(x, y);
         // doopen_indir() uses a turn when looking at the target teaches
         // the hero something, even if the target has no door to open.
-        if (glyphAt(x, y)?.glyph !== previousGlyph || loc.lastseentyp !== previousTerrain)
+        if (loc.remembered_glyph?.glyph !== previousGlyph || loc.lastseentyp !== previousTerrain)
             spentTime = true;
     }
     game.context.move = Number(spentTime);
@@ -7036,7 +7035,9 @@ async function throwCommand(selectedItem = null, capabilityChecked = false, supp
     if (!direction) {
         if (splitParent)
             await rejoinObjectStack(splitParent, item, game);
-        game._pending_message = '';
+        // getdir() already cleared its prompt; a message it printed for
+        // the rejected key ("What a strange direction!") stays visible in
+        // C because throw_obj() just returns ECMD_CANCEL (dothrow.c).
         return 'cancelled';
     }
     const { dx, dy, dz } = direction;
@@ -7164,14 +7165,6 @@ async function throwSelectedUnit(item, dx, dy, volley) {
         finishKill: finishOrdinarySwallowedThrowKill,
     }))
         return false;
-    if (game.u?.uswallow
-        && (thrownObjectClass === 2
-            || (thrownObjectClass === 6
-                && (OBJECT_SUBTYPE[item.otyp] ?? 0) !== 0))) {
-        // The ordinary floor/projectile continuation cannot model
-        // thitmonst()->hmon() while engulfed, so do not pretend it can.
-        throw new Error('swallowed weapon throwing is not implemented');
-    }
     if (await resolveSwallowedPotionThrow({
         state: game,
         item,
@@ -7182,8 +7175,6 @@ async function throwSelectedUnit(item, dx, dy, volley) {
         finishKill: (monster, death) => finishOrdinarySwallowedConsumedKill(monster, 'swallowed-potion', death),
     }))
         return false;
-    if (game.u?.uswallow && thrownObjectClass === 8)
-        throw new Error('swallowed potion throwing is not implemented');
     if (await resolveSwallowedFoodThrow({
         state: game,
         item,
@@ -7200,10 +7191,11 @@ async function throwSelectedUnit(item, dx, dy, volley) {
         wakeMonster: wakeAttackedMonster,
     }))
         return false;
-    if (game.u?.uswallow && thrownObjectClass !== 8) {
-        // An unresolved swallowed object cannot use the ordinary floor path;
-        // that path targets map coordinates rather than the engulfing monster.
-        throw new Error('swallowed special-object throwing is not implemented');
+    if (game.u?.uswallow) {
+        // Every swallowed object class owns a monster-contact continuation
+        // above: C's throwit() never reaches its flight or floor paths
+        // while u.uswallow (dothrow.c:1569-1578, 1704-1706).
+        throw new Error('a swallowed throw reached no engulfer contact arm');
     }
     if (!game.u?.uswallow && await resolveMapPotionThrow({
         state: game,

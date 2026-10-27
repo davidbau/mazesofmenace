@@ -1,5 +1,5 @@
 import { currency } from './currency.js';
-import { A_CHA, DOOR, D_CLOSED, D_LOCKED, IS_SOFT, Is_airlevel, Is_waterlevel, LOST_THROWN, ZAP_POS, isok, } from './const.js';
+import { A_CHA, DOOR, D_CLOSED, D_LOCKED, Is_airlevel, Is_waterlevel, LOST_THROWN, ZAP_POS, isok, } from './const.js';
 import { hitFloorWithObject } from './object_drop.js';
 import { tossObjectUp } from './toss_up.js';
 import { monsterName, possessiveName } from './monster_name.js';
@@ -12,7 +12,7 @@ import { hiddenGold } from './gold.js';
 import { freeInventoryObject } from './hero_inventory.js';
 import { detachHeroGold, heroGoldAmount, heroGoldObject, } from './hero_gold.js';
 import { addObjectToMonsterInventory, linkObjectToMonsterInventory, } from './monster_inventory.js';
-import { MONSTER_FLAGS2, monsterDigests } from './monster_data.js';
+import { MONSTER_FLAGS2, monsterDigests, monsterIsWhirly } from './monster_data.js';
 import { finishMonsterEating } from './monster_eating.js';
 import { makeShopkeeperHappy } from './shop_damage.js';
 import { hasShopkeeperData } from './shop_types.js';
@@ -23,9 +23,8 @@ import { shipObject } from './object_migration.js';
 import { ceilingName, surfaceName } from './terrain_name.js';
 import { requireInitializedGame } from './gstate.js';
 import { applyFloorEffects } from './floor_effects.js';
-import { settleThrownShopObject } from './shk.js';
 import { rn2, rnd } from './rng.js';
-import { announceThrownObjectLiquidImpact, flyHeroThrownObject, heroDirectGoldThrowRange, heroThrowRange, prepareHeroThrownTarget, } from './thrown_object.js';
+import { finishHeroThrownObjectLanding, flyHeroThrownObject, heroDirectGoldThrowRange, heroThrowRange, prepareHeroThrownTarget, } from './thrown_object.js';
 import { cansee } from './vision.js';
 import { reportHeroThrownMiss } from './hero_physical_messages.js';
 import { offerThrownFood } from './thrown_food.js';
@@ -151,22 +150,16 @@ export async function resolveGoldMonsterContact({ state, monster, gold, wakeMons
     }
     return true;
 }
-async function settleGoldOnFloor(state, gold, x, y, dz = 0, sale = 'none') {
+async function settleGoldOnFloor(state, gold, x, y, dz = 0) {
     const floor = await applyFloorEffects(gold, x, y, { state, verb: 'fall' });
     if (state.program_state?.gameover || floor.finished)
         return floor.object;
     if (dz > 0)
         await pline(`The gold hits the ${surfaceName(x, y, state)}.`);
     placeObjectSynchronously(gold, x, y);
-    if (sale === 'sellobj') {
-        // throw_gold() sells unconditionally inside a shop; sellobj() itself
-        // decides whether the landing spot belongs to the resident keeper.
-        await sellHeroDroppedObject(gold, x, y, state);
-    }
-    else if (sale === 'checkShopObj' && (state.u?.ushops?.length || gold.unpaid)) {
-        // throwit() routes quivered coins through check_shop_obj().
-        await settleThrownShopObject(gold, x, y, state);
-    }
+    // throw_gold() sells unconditionally inside a shop; sellobj() itself
+    // decides whether the landing spot belongs to the resident keeper.
+    await sellHeroDroppedObject(gold, x, y, state);
     const survivor = await stack_object(gold, state) || gold;
     newsym(x, y);
     return survivor;
@@ -183,8 +176,15 @@ async function resolveQuiveredGoldMonsterContact({ state, monster, gold, swallow
     if (food)
         return food.handled;
     if (swallowed) {
+        // thitmonst()'s guaranteed-hit arm names the engulfer's entrails or
+        // currents (dothrow.c:2276-2298) before swallowit()'s mpickobj().
         await wakeMonster?.(monster);
-        await pline(`The gold piece vanishes into ${monsterName(monster, { state, capitalized: true }).toLowerCase()}.`);
+        const name = monsterName(monster, { state });
+        const trail = monsterDigests(monster) ? ' entrails'
+            : monsterIsWhirly(monster) ? ' currents' : '';
+        const destination = trail
+            ? `${possessiveName(name)}${trail}` : name;
+        await pline(`The gold piece vanishes into ${destination}.`);
         await addObjectToMonsterInventory(monster, gold, state);
         return true;
     }
@@ -218,7 +218,7 @@ export async function resolveDirectGoldThrow({ state, gold, dx = 0, dy = 0, dz =
                 await pline(`Fortunately, you are wearing ${withIndefiniteArticle(simpleArmorName(helmet, 'uarmh', state))}!`);
             }
         }
-        await settleGoldOnFloor(state, gold, state.u.ux, state.u.uy, dz, 'sellobj');
+        await settleGoldOnFloor(state, gold, state.u.ux, state.u.uy, dz);
         return true;
     }
     // throw_gold() never enters bhit() when the purse cannot leave the hero.
@@ -227,7 +227,7 @@ export async function resolveDirectGoldThrow({ state, gold, dx = 0, dy = 0, dz =
     const next = isok(nextX, nextY) ? state.level?.at(nextX, nextY) : null;
     if (!next || !ZAP_POS(next.typ)
         || next.typ === DOOR && !!(next.doormask & (D_CLOSED | D_LOCKED))) {
-        await settleGoldOnFloor(state, gold, state.u.ux, state.u.uy, 0, 'sellobj');
+        await settleGoldOnFloor(state, gold, state.u.ux, state.u.uy);
         return true;
     }
     const range = heroDirectGoldThrowRange(gold, state);
@@ -247,7 +247,7 @@ export async function resolveDirectGoldThrow({ state, gold, dx = 0, dy = 0, dz =
     })) {
         return true;
     }
-    await settleGoldOnFloor(state, gold, x, y, 0, 'sellobj');
+    await settleGoldOnFloor(state, gold, x, y);
     return true;
 }
 export async function resolveQuiveredGoldThrow({ state, gold, dx = 0, dy = 0, dz = 0, captureFlight = null, wakeMonster = null, }) {
@@ -294,12 +294,9 @@ export async function resolveQuiveredGoldThrow({ state, gold, dx = 0, dy = 0, dz
         if (handled)
             return true;
     }
-    const endpoint = state.level?.at?.(x, y);
-    if (endpoint && !IS_SOFT(endpoint.typ))
-        rn2(100);
-    // Quivered coins land through throwit(), which announces the splash.
-    await announceThrownObjectLiquidImpact(gold, x, y, { state });
-    await settleGoldOnFloor(state, gold, x, y, 0, 'checkShopObj');
+    await finishHeroThrownObjectLanding({
+        state, object: gold, x, y, contactedMonster: contact,
+    });
     return true;
 }
 //# sourceMappingURL=gold_throw.js.map
