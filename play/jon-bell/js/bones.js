@@ -58,6 +58,7 @@ import { the, xname, oname } from './objnam.js';
 import { LEAVESTATUE, CORPSTAT_NONE, NO_MINVENT, INTRINSIC } from './const.js';
 import { roles, races } from './roles.js';
 import { dismount_steed } from './cmd.js';
+import { update_mlstmv } from './dog.js';
 import { DISMOUNT_BONES } from './const.js';
 
 /* C bones.c:513-538,818-829 — identify the deceased hero's remnant. */
@@ -97,7 +98,7 @@ const MM_NONAME = 0x00000040;  /* js/const.js:2147 */
  * same key js/save.js savelev() and js/restore.js getlev() use.  cmd.c has a
  * file-local copy (ledger_no_cmd); this is the same arithmetic rather than a
  * new export, because cmd.c importing bones.c would close a cycle. */
-function ledger_no(uz) {
+export function ledger_no(uz) {
     const dgn = game.dungeons?.[uz?.dnum | 0];
     return (uz?.dlevel | 0) + (dgn?.ledger_start | 0);
 }
@@ -476,6 +477,12 @@ export async function savebones(how, when, corpse) {
      * frees the live copy — which is C's release_data arm and is correct here
      * too: savebones is the last thing that touches the level before the
      * process ends. */
+    /* C bones.c:620 `update_mlstmv();` ("update monsters for eventual
+     * restoration") -- after the :545 zeroing above, every live monster is
+     * stamped with the dying game's svm.moves before savelev(), and that value
+     * travels in the bones file.  A bones monster's mlstmv is read by
+     * dogmove.c:1159's return-attack guard in the NEXT game. */
+    update_mlstmv();
     const ledger = ledger_no(u.uz);
     await savelev(ledger);
     const snap = game.levelStore?.get(ledger);
@@ -544,7 +551,7 @@ async function getbones_load(f) {
     for (let m = f.snap.fmon; m; m = m.nmon) {
         m.m_id = next_ident_bones();
         // C restore.c:408-415: mark extinct/genocided bones monsters for purge.
-        if (!propagate(m.cham === NON_PM ? m.mnum : m.cham, true, true))
+        if (!await propagate(m.cham === NON_PM ? m.mnum : m.cham, true, true))
             m.mhpmax = DEFUNCT_MONSTER;
         renumber_objchn(m.minvent);
     }

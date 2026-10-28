@@ -764,7 +764,7 @@ export function symset_cell(sym) {
     else
         cell = { ch: String.fromCharCode(sym ^ 0x80), dec: true };
     if (cell.ch.charCodeAt(0) < 0x20)
-        cell = { ch: ' ', dec: false, ctl: true };
+        cell = { ch: ' ', dec: false, ctl: true, alt: !!cell.dec };
     return cell;
 }
 export const SYM_OFFSETS = { O: SYMF_OFF_O, M: SYMF_OFF_M, W: SYMF_OFF_W, X: SYMF_OFF_X };

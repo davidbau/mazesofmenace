@@ -725,7 +725,8 @@ export function parseNethackrc(rc) {
         race: '',
         gender: '',
         align: '',
-        flags: { autounlock: 2, inv_order: [12, 5, 2, 3, 7, 9, 10, 8, 4, 11, 6, 13, 14, 15, 16] }, // options.c:118,1076
+        // C optlist.h:687-688, options.c:7164-7167: sortpack defaults to On.
+        flags: { autounlock: 2, sortpack: true, inv_order: [12, 5, 2, 3, 7, 9, 10, 8, 4, 11, 6, 13, 14, 15, 16] }, // options.c:118,1076
         // C options.c:7181 initoptions_init: tty message history defaults to single.
         iflags: { hilite_delta: 0, prevmsg_window: 's' },
         uroleplay: {blind: false, deaf: false, nudist: false, pauper: false},

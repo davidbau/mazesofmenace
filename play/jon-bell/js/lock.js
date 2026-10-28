@@ -80,7 +80,7 @@ const SPE_POLYMORPH_OTYP_LK = 399;
  * the mons[] index 343 (js/pm.generated.js:345), the same reader js/dokick.js
  * maybe_wail() and js/cmd.js msnoise use: `game.urole.mnum === PM_WIZARD`. */
 const PM_WIZARD_LK = 343;
-import { simple_typename, xname_flags, cxname, doname, ansimpleoname } from './objnam.js';
+import { simple_typename, xname_flags, xname, singular, cxname, doname, ansimpleoname, The, An } from './objnam.js';
 import { safe_qbuf } from './shk.js';
 import { weapon_type, WEAPON_WLDAM, m_at, mon_nam } from './uhitm.js';
 import { place_object } from './mklev.js';
@@ -89,7 +89,7 @@ import { chest_trap } from './trap.js';
 import { FINGER } from './const.js';
 import { obj_resists } from './dogmove.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
-import { SHOPBASE, SDOOR, DOOR, D_CLOSED, D_ISOPEN, D_TRAPPED, D_NODOOR, D_BROKEN, D_LOCKED, A_STR, A_DEX, A_CON, ECMD_TIME, ECMD_OK, ECMD_CANCEL,
+import { SHOPBASE, SDOOR, DOOR, D_CLOSED, D_ISOPEN, D_TRAPPED, D_NODOOR, D_BROKEN, D_LOCKED, A_STR, A_WIS, A_DEX, A_CON, ECMD_TIME, ECMD_OK, ECMD_CANCEL,
          P_DAGGER, P_SABER, P_PICK_AXE, P_FLAIL, P_LANCE, PASSES_WALLS, BLINDED, CXN_NORMAL, MV_ANY } from './const.js';
 /* C mons[] rows (permonst) — row[6] = mflags1; makemon_msize.json carries
  * permonst.msize in the same MON() row order.  Imported as raw data packs (not
@@ -127,7 +127,7 @@ export async function b_trapped(item, bodypart) {
     const dmg = rnd(5 + (lvl < 5 ? lvl : 2 + Math.trunc(lvl / 2)));
     const hp = game.u?.uprops?.[HALF_PHDAM];
     const half = !!hp && !!((hp.intrinsic | 0) || (hp.extrinsic | 0));
-    await pline(`KABOOM!!  The ${item} was booby-trapped!`);
+    await pline(`KABOOM!!  ${The(item)} was booby-trapped!`);
     wake_nearby(false);
     await losehp(half ? Math.trunc((dmg + 1) / 2) : dmg, 'explosion', KILLED_BY_AN);
     exercise(A_STR, false);
@@ -982,7 +982,7 @@ export async function picklock() {
         if (mask === D_BROKEN) { await pline('This door is broken.'); x.usedtime = 0; return 0; }
     }
     /* C lock.c:92-96 — give up after 50 turns / no hands. */
-    if ((x.usedtime++ | 0) >= 50) {
+    if ((x.usedtime++ | 0) >= 50 || _nohands_lk()) {
         await pline(`You give up your attempt at ${lock_action()}.`);
         exercise(A_DEX, true);
         x.usedtime = 0; return 0;
@@ -991,11 +991,51 @@ export async function picklock() {
     if (rn2(100) >= (x.chance | 0)) {
         return 1; /* still busy */
     }
+    /* C lock.c:103-136 — the Master Key of Thievery finds traps and may disarm. */
+    if (x.magic_key
+        && (!x.door ? !!x.box.otrapped
+                    : (((g.level?.at?.(x.door.x, x.door.y)?.doormask) | 0) & D_TRAPPED) !== 0)) {
+        x.chance += 20; /* less effort needed next time */
+        const door = x.door ? g.level?.at?.(x.door.x, x.door.y) : null;
+        if (!x.door) {
+            if (!x.box.tknown)
+                await pline('You find a trap!');
+            x.box.tknown = 1;
+        }
+        if ((await yn_function('Do you want to try to disarm it?', 'yn', 'n', true)) === 'y') {
+            let what, alreadyunlocked;
+            if (door) {
+                door.doormask &= ~D_TRAPPED;
+                what = 'door';
+                alreadyunlocked = !(door.doormask & D_LOCKED);
+            } else {
+                x.box.otrapped = 0;
+                x.box.tknown = 0;
+                what = (x.box.otyp === CHEST_OTYP) ? 'chest' : 'box';
+                alreadyunlocked = !x.box.olocked;
+            }
+            await pline(`You succeed in disarming the trap.  The ${what} is still ${alreadyunlocked ? 'un' : ''}locked.`);
+            exercise(A_WIS, true);
+        } else {
+            await pline(`You stop ${lock_action()}.`);
+            exercise(A_WIS, false);
+        }
+        x.usedtime = 0; return 0;
+    }
+    /* C lock.c:138 — success path. */
     await pline(`You succeed in ${lock_action()}.`);
     if (x.door) {
         const door = g.level?.at?.(x.door.x, x.door.y) ?? null;
         if (door) {
-            if (door.doormask & D_LOCKED) door.doormask = D_CLOSED;
+            if (door.doormask & D_TRAPPED) {
+                /* C lock.c:141-147 */
+                await b_trapped('door', FINGER);
+                door.doormask = D_NODOOR;
+                unblock_point((u.ux | 0) + (u.dx | 0), (u.uy | 0) + (u.dy | 0));
+                if (in_rooms((u.ux | 0) + (u.dx | 0), (u.uy | 0) + (u.dy | 0), SHOPBASE).length)
+                    add_damage((u.ux | 0) + (u.dx | 0), (u.uy | 0) + (u.dy | 0), SHOP_DOOR_COST);
+                await newsym((u.ux | 0) + (u.dx | 0), (u.uy | 0) + (u.dy | 0));
+            } else if (door.doormask & D_LOCKED) door.doormask = D_CLOSED;
             else door.doormask = D_LOCKED;
         }
     } else if (x.box) {
@@ -1071,7 +1111,7 @@ export async function forcelock() {
             x.usedtime = 0; return 0;
         }
     } else {
-        wake_nearby_force();
+        wake_nearby(false);
     }
     /* C lock.c:244 — rn2(100) >= chance → still busy. */
     if (rn2(100) >= (x.chance | 0))
@@ -1094,22 +1134,6 @@ function _forceEmit(msg, botl = capture_pre_movemon_botl()) {
         g._forceMsgs.push(msg);
         (g._forceMsgBotls ||= [])[g._forceMsgs.length - 1] = botl;
     } else g._pending_message = msg;
-}
-
-/* C ref: mon.c wake_nearby(petcall) → wake_nearto_core(ux,uy,ulevel*20,...).
- * Wakes nearby sleeping monsters; consumes NO rng (wake_msg / mstrategy clear
- * are RNG-free).  Minimal faithful side-effect: clear msleeping on close mons. */
-function wake_nearby_force() {
-    const g = game;
-    const u = g.u || {};
-    const dist = (u.ulevel | 0) * 20;
-    for (let m = g.fmon; m; m = m.nmon) {
-        if (m.mhp != null && (m.mhp | 0) <= 0) continue;
-        const dx = (m.mx | 0) - (u.ux | 0), dy = (m.my | 0) - (u.uy | 0);
-        if (dist === 0 || (dx * dx + dy * dy) < dist) {
-            m.msleeping = 0;
-        }
-    }
 }
 
 export async function breakchestlock(box, destroyit) {
@@ -1195,8 +1219,11 @@ function g_levelObjects() { return game.level?.levelObjects ?? null; }
 /* C ref: lock.c:1268 chest_shatter_msg(otmp) — shatter/breathe a scattered item. */
 async function chest_shatter_msg(otmp) {
     if ((otmp.oclass | 0) === POTION_CLASS_OC) {
-        /* C lock.c:1284 — "You see a <bottle> shatter!" (bottlename rn2(7)). */
-        _forceEmit(`You see ${_an(bottlename())} shatter!`);
+        /* C lock.c:1284 — see/hear a bottle shatter (bottlename rn2(7)). */
+        _forceEmit(`You ${Blind() ? 'hear' : 'see'} ${_an(bottlename())} shatter!`);
+        // C lock.c:1285: vapors affect heroes who breathe or have eyes.
+        const form = _hero_mflags1_lk();
+        if ((form & 0x00000400 /* M1_BREATHLESS */) && (form & 0x00001000 /* M1_NOEYES */)) return;
         /* C lock.c:1286 — potionbreathe(otmp) (hero not breathless/has eyes). */
         /* potionbreathe()'s plines go straight to the topline, but the force
          * messages are staged and merged later; move what it printed into the
@@ -1223,14 +1250,11 @@ async function chest_shatter_msg(otmp) {
     const uprops = (game.u && game.u.uprops) ? game.u.uprops : null;
     const bl = uprops ? uprops[BLINDED] : null;
     const save_HBlinded = bl ? bl.intrinsic : 0;
-    const save_BBlinded = bl ? bl.extrinsic : 0;
-    if (bl) { bl.intrinsic = 1; bl.extrinsic = 0; }
-    /* C objnam.c:5069 singular(otmp, xname) — quan forced to 1 for the call. */
-    const save_quan = otmp.quan;
-    otmp.quan = 1;
-    const thing = xname_flags(otmp, CXN_NORMAL);
-    otmp.quan = save_quan;
-    if (bl) { bl.intrinsic = save_HBlinded; bl.extrinsic = save_BBlinded; }
+    const save_BBlinded = bl ? bl.blocked : 0;
+    if (bl) { bl.intrinsic = 1; bl.blocked = 0; }
+    /* C objnam.c:2091 singular() also uses cxname() for corpses. */
+    const thing = await singular(otmp, xname);
+    if (bl) { bl.intrinsic = save_HBlinded; bl.blocked = save_BBlinded; }
     /* C lock.c:1290-1320 — material-based "<thing> <disposition>!" (RNG-free). */
     const mat = oc_material(otmp.otyp | 0);
     let disposition;
@@ -1247,7 +1271,7 @@ async function chest_shatter_msg(otmp) {
         default: disposition = 'is destroyed'; break;
     }
     /* C lock.c:1315 — pline("%s %s!", An(thing), disposition). */
-    _forceEmit(`${_An(thing)} ${disposition}!`);
+    _forceEmit(`${An(thing)} ${disposition}!`);
 }
 
 /* C ref: potion.c:1478-1493 — hallucination uses a separate 24-entry table,
@@ -1265,9 +1289,6 @@ export function bottlename() {
     const names = hallu ? _hbottlenames : _bottlenames;
     return names[rn2(names.length)];
 }
-
-/* C ref: objnam.c An(str) — capitalised article. */
-function _An(str) { return _an(str).charAt(0).toUpperCase() + _an(str).slice(1); }
 
 /* C ref: lock.c:677 doforce(void) — the #force extended command. */
 export async function doforce() {
@@ -1389,6 +1410,9 @@ async function _touch_lock_pick(pick) { // C artifact.c:910-973; flush the hero 
 export async function pick_lock(pick, rx, ry, container) {
     const g = game;
     const u = g.u = g.u || {};
+    // C lock.c:373-377: use zeroobj for a null tool, retaining its identity.
+    const dummypick = pick == null;
+    if (dummypick) pick = { otyp: 0, oclass: 0, quan: 0 };
     const picktyp = pick ? (pick.otyp | 0) : 0;
     /* C lock.c:370 — autounlock := (rx != 0 || container != NULL). */
     const autounlock = ((rx | 0) !== 0) || (container != null);
@@ -1420,7 +1444,7 @@ export async function pick_lock(pick, rx, ry, container) {
         await pline(`You can't ${picktyp === CREDIT_CARD_OTYP ? '' : 'lock or '}unlock ${mon_nam(u.ustuck)}.`);
         return PICKLOCK_DID_NOTHING;
     }
-    if (pick && ![SKELETON_KEY_OTYP, LOCK_PICK_OTYP, CREDIT_CARD_OTYP].includes(picktyp)) { await impossible('picking lock with object %d?', picktyp); return PICKLOCK_DID_NOTHING; }
+    if (!dummypick && ![SKELETON_KEY_OTYP, LOCK_PICK_OTYP, CREDIT_CARD_OTYP].includes(picktyp)) { await impossible('picking lock with object %d?', picktyp); return PICKLOCK_DID_NOTHING; }
 
     /* C lock.c:421 — autounlock provides coordinates; else getdir → u.dx/u.dy. */
     let cx, cy;
@@ -1471,7 +1495,7 @@ export async function pick_lock(pick, rx, ry, container) {
             /* C lock.c:482 — AUTOUNLOCK_APPLY_KEY: "Unlock it with <pick>? [ynq]" */
             if (autounlock && ((g.flags?.autounlock ?? AUTOUNLOCK_APPLY_KEY) & AUTOUNLOCK_APPLY_KEY)) {
                 c = 'q';
-                if (pick) {
+                if (!dummypick) {
                     /* C lock.c:486 — Sprintf(qbuf,"Unlock it with %s?", yname(pick)) */
                     const ans = await _ynq(`Unlock it with ${_yname(pick)}?`);
                     c = ans;

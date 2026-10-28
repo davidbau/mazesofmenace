@@ -79,7 +79,11 @@ export async function displayLookWindow(lines) {
     }
     const windowLines = [...lines, '--More--'];
     const col = tty_window_offx(windowLines, 'more');
-    const underWindow = g._pending_message || g._topl_sticky || '';
+    /* C topl.c:257-301 buffers WIN_STOP messages without painting them.
+     * Preserve the same physical topline build_window_screen uses; suppressed
+     * text must not reappear when tty_dismiss_nhwindow restores the corner
+     * (wintty.c:1983-2020). */
+    const underWindow = (g._topl_win_stop ? '' : g._pending_message) || g._topl_sticky || '';
     /* C wintty.c:1943-1944 — a putstr NHW_MENU is painted by
      * process_text_window; the trailing "--More--" is dmore's, not a line. */
     const paintLines = windowLines.map((ln, i) =>

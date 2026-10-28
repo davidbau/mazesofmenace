@@ -42,7 +42,7 @@ import { OC_NAME } from './oc_name_data.js';
 /* zap.c:3571 miss() — canonical synchronous message helper. */
 import { miss as miss_real } from './zap.js';
 import {
-    W_BALL, W_CHAIN, W_WEAPONS, BC_BALL, BC_CHAIN, SLT_ENCUMBER,
+    W_BALL, W_CHAIN, W_WEAPONS, BC_BALL, BC_CHAIN, SLT_ENCUMBER, HMON_DRAGGED,
     OBJ_FREE, OBJ_FLOOR, OBJ_INVENT,
     IS_OBSTRUCTED, IS_DOOR, D_CLOSED, D_LOCKED,
     POOL, MOAT, WATER, DRAWBRIDGE_UP, DB_UNDER, DB_MOAT,
@@ -148,7 +148,7 @@ function bc_set_glyph_at(x, y, g) {
 }
 
 // movobj(obj, ox, oy) — hack.c:824-833.
-function movobj(obj, ox, oy) {
+export function movobj(obj, ox, oy) {
     remove_object(obj);
     maybe_unhide_at(obj.ox | 0, obj.oy | 0);
     newsym(obj.ox | 0, obj.oy | 0);
@@ -412,6 +412,11 @@ export async function drop_ball(x, y) {
     const tx = x | 0, ty = y | 0;
     if (tx === (u.ux | 0) && ty === (u.uy | 0)) return;
 
+    if (Blind()) {                          // ball.c:884-889
+        u.bc_order = bc_order(uball, uchain);
+        u.bglyph = u.bc_order ? u.cglyph : bc_glyph_at(tx, ty);
+    }
+
     const pullmsg = 'The ball pulls you out of the ';
     if ((u.utrap | 0) && (u.utraptype | 0) !== TT_INFLOOR
         && (u.utraptype | 0) !== TT_BURIEDBALL) {
@@ -450,9 +455,15 @@ export async function drop_ball(x, y) {
         u.ux = tx - (u.dx | 0); u.uy = ty - (u.dy | 0);
     }
     game.vision_full_recalc = 1;
-    remove_object(uchain);
-    place_object(uchain, u.ux | 0, u.uy | 0);
-    newsym(u.ux | 0, u.uy | 0);
+    if (Blind()) {                          // ball.c:944-951
+        if ((u.bc_felt | 0) & BC_CHAIN)     /* drop glyph under the chain */
+            bc_set_glyph_at(uchain.ox, uchain.oy, u.cglyph);
+        u.bc_felt = 0;                      /* feel nothing */
+        u.cglyph = u.bc_order ? u.bglyph : bc_glyph_at(u.ux | 0, u.uy | 0);
+    }
+    movobj(uchain, u.ux | 0, u.uy | 0);     /* has a newsym */
+    if (Blind())
+        u.bc_order = bc_order(uball, uchain);
     newsym(u.ux0 | 0, u.uy0 | 0);
 }
 
@@ -693,7 +704,7 @@ function dragBallMoveBc(before, control, uball, uchain, ballx, bally, chainx, ch
 async function dragSection(x, y, uball, uchain, bc_control, ballx, bally, chainx, chainy, cause_delay) {
     // ball.c:785-791
     if (near_capacity() > SLT_ENCUMBER && dist2(x, y, game.u.ux, game.u.uy) <= 2) {
-        You(`cannot ${game.invent ? 'carry all that and also ' : ''}drag the heavy iron ball.`);
+        await You(`cannot ${game.invent ? 'carry all that and also ' : ''}drag the heavy iron ball.`);
         nomul(0);
         return false;
     }
@@ -712,7 +723,7 @@ async function dragSection(x, y, uball, uchain, bc_control, ballx, bally, chainx
 
     if (poolCond || holeCond) {
         if (Levitation()) {
-            You_feel('a tug from the iron ball.');
+            await You_feel('a tug from the iron ball.');
             if (t) t.tseen = 1;
         } else {
             // ball.c:806-825
@@ -720,12 +731,13 @@ async function dragSection(x, y, uball, uchain, bc_control, ballx, bally, chainx
             const victim = m_at(chOx, chOy);
             if (victim) {
                 const dieroll = rnd(20);
-                let tmp = -2 + (game.u?.uluck | 0) + find_mac(victim);
+                // C ball.c:802; you.h:464 defines Luck as uluck + moreluck.
+                let tmp = -2 + (game.u?.uluck | 0) + (game.u?.moreluck | 0) + find_mac(victim);
                 tmp += omon_adj(victim, uball, true);
                 if (tmp >= dieroll) {
-                    await hmon(victim, uball, true, dieroll);
+                    await hmon(victim, uball, HMON_DRAGGED, dieroll);
                 } else {
-                    miss_real(xname(uball), victim);
+                    await miss_real(xname(uball), victim);
                 }
             }
             if (!m_at(chOx, chOy)) {
@@ -902,7 +914,7 @@ export async function drag_ball(x, y, bc_control, ballx, bally, chainx, chainy, 
             chainy.value = y;
             break;
         default:
-            impossible('bad chain movement');
+            await bc_impossible('bad chain movement');
             break;
         }
 

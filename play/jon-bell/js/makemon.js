@@ -46,7 +46,7 @@ import { DEFSYM_EXPLANATION } from './defsym_data.js';
 import { rank_of } from './rank_data.js';
 import { is_hole, is_pit, WEB, BEAR_TRAP } from './const.js';
 import { LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP, DB_UNDER, DB_LAVA } from './const.js';
-import { Norep, You_hear, flash_mon } from './display.js';
+import { Norep, You_hear, You_feel, Unaware, flash_mon } from './display.js';
 import { In_endgame, In_sokoban, Is_astralevel, Is_waterlevel, Is_firelevel, Is_earthlevel, Is_airlevel, Is_rogue_level, In_mines, MM_FEMALE, MM_MALE, NO_MINVENT, W_SADDLE, I_SPECIAL, COLNO, ROWNO, isok, SEE_INVIS, TELEPORT_CONTROL, STRANGLED, OBJ_MINVENT, REFLECTING, W_ARMS, W_WEP, W_AMUL, W_ARM, OBJ_FREE, OBJ_FLOOR, OBJ_LUAFREE, OBJ_INVENT, MIGR_RANDOM, NC_VIA_WAND_OR_SPELL, NC_SHOW_MSG, HAND, POLY_TRAP, Upolyd, IS_ALTAR, DISPLACED, FOOT, In_V_tower, RLOC_MSG, OBJ_CONTAINED, IS_FURNITURE, IS_DRAWBRIDGE, PIT, HOLE, FORCEBUNGLE, } from './const.js';
 import { NO_MM_FLAGS, MM_ADJACENTOK, MM_NOWAIT } from './const.js';
 import { OC_COST } from './oc_cost_data.js';
@@ -93,7 +93,7 @@ import { builds_up } from './dungeon.js';
 import { ESHK } from './const.js';
 import { oid_price_adjustment, inhishop, shop_keeper, onbill } from './shk.js';
 import { inhistemple } from './priest.js';
-import { rank_of as rank_of_mnum, force_more, force_more_pages, pline, urgent_pline as urgent_pline_disp, newsym, canspotmon, canseemon, map_invisible, sensemon, cls, docrt, show_glyph, show_monster_glyph_at, display_self } from './display.js';
+import { rank_of as rank_of_mnum, force_more, force_more_pages, pline, debugcore, urgent_pline as urgent_pline_disp, newsym, canspotmon, canseemon, map_invisible, sensemon, cls, docrt, show_glyph, show_monster_glyph_at, display_self } from './display.js';
 /* create_critters (makemon.c:1556) reaches these two; both are cyclic imports
  * (teleport.js and wizcmds.js each import this file) but every binding used is
  * a hoisted function declaration, so the cycle resolves. */
@@ -116,6 +116,7 @@ import { Monnam } from './mcastu.js';
 import { couldsee, cansee, recalc_block_point } from './vision.js';
 import { m_useup, monkilled_trap, seetrap, mintrap, mon_learns_traps, extract_from_minvent, maketrap, fill_pit } from './trap.js';
 import { place_monster, impossible } from './steed.js';
+import { impossible as bill_impossible } from './pline.js';
 import { maybe_unhide_at, add_to_minv, obj_extract_self, obfree, is_drawbridge_wall } from './dokick.js';
 import { welded, trycall, body_part, freeinv, mbodypart } from './cmd.js';
 import { remove_worn_item } from './steal.js';
@@ -3072,7 +3073,7 @@ export async function create_critters(cnt, mptr, neverask) {
     return known;
 }
 
-export function propagate(mndx, tally, ghostly) {
+export async function propagate(mndx, tally, ghostly) {
     mndx = mndx | 0;
     tally = tally ? 1 : 0;
     ghostly = ghostly ? 1 : 0;
@@ -3096,6 +3097,12 @@ export function propagate(mndx, tally, ghostly) {
     if ((mv.born | 0) >= lim
         && !(mons_row[3] & G_NOGEN)
         && !(mv.mvflags & 0x01)) { /* G_EXTINCT */
+        /* C makemon.c:975-978, include/lint.h:29-38 (ifdebug). */
+        if (wizard() && debugcore('makemon.c', true)) {
+            const saved = game.iflags.last_msg;
+            await pline('Automatically extinguished %s.', makeplural(MONS_PMNAMES[mndx][2]));
+            game.iflags.last_msg = saved;
+        }
         mv.mvflags |= 0x01; /* G_EXTINCT */
     }
     return result;
@@ -3158,7 +3165,8 @@ export async function stealgold(mtmp) {
         /* reduce "rear hooves/claws" to "hooves/claws" */
         if (what.startsWith("rear "))
             what = what.substring(5);
-        pline("%s quickly snatches some gold from %s %s %s!", Monnam(mtmp),
+        // C steal.c:91-98: finish the message before teleporting or fleeing.
+        await pline("%s quickly snatches some gold from %s %s %s!", Monnam(mtmp),
               (_hero_uprop_on(LEVITATION) || _hero_uprop_on(FLYING)) ? "beneath" : "between", whose, what);
         if (!ygold || !rn2(5)) {
             if (!tele_restrict(mtmp))
@@ -3175,7 +3183,8 @@ export async function stealgold(mtmp) {
             setnotworn(ygold);
         freeinv(ygold);
         await add_to_minv(mtmp, ygold);
-        pline("Your purse feels lighter.");
+        // C steal.c:109-113: a message stop precedes the thief's relocation.
+        await pline("Your purse feels lighter.");
         if (!tele_restrict(mtmp))
             await rloc(mtmp, RLOC_MSG);
         await monflee(mtmp, 0, false, false);
@@ -4099,7 +4108,7 @@ async function precheck(mtmp, otmp) {
             if (!cc)
                 return 0;
             await mquaffmsg(mtmp, otmp);
-            m_useup(mtmp, otmp);
+            await m_useup(mtmp, otmp);
             const mon = await makemon(permonstTemplate(PM_GHOST_MM), cc.x | 0, cc.y | 0, MM_NOMSG);
             if (!mon) {
                 if (vis)
@@ -4119,7 +4128,7 @@ async function precheck(mtmp, otmp) {
             if (!cc)
                 return 0;
             await mquaffmsg(mtmp, otmp);
-            m_useup(mtmp, otmp);
+            await m_useup(mtmp, otmp);
             const mon = await makemon(permonstTemplate(PM_DJINNI_MM), cc.x | 0, cc.y | 0, MM_NOMSG);
             if (!mon) {
                 if (vis)
@@ -4153,7 +4162,7 @@ async function precheck(mtmp, otmp) {
             const range = couldsee(mtmp.mx, mtmp.my) ? (BOLT_LIM_MM + 1) : (BOLT_LIM_MM - 3);
             await You_hear(`a zap and an explosion ${mdistu(mtmp) <= range * range ? 'nearby' : 'in the distance'}.`);
         }
-        m_useup(mtmp, otmp);
+        await m_useup(mtmp, otmp);
         mtmp.mhp -= dam;
         if (mtmp.mhp < 1) { /* DEADMONSTER */
             await monkilled_trap(mtmp, ''); /* monkilled(mon, "", AD_RBRE) */
@@ -4439,8 +4448,9 @@ async function you_aggravate(mtmp) {
     const mndx = Hallucination() ? rn2_on_display_rng(NUMMONS) : monsndx(mtmp);
     show_monster_glyph_at(mtmp.mx | 0, mtmp.my | 0, mndx);
     display_self();
-    const _agg2 = `You feel aggravated at ${noit_mon_nam(mtmp)}.`;
-    await pline(_agg2);
+    const aggravation = `aggravated at ${noit_mon_nam(mtmp)}.`;
+    const _agg2 = `${Unaware() ? 'You dream that you feel ' : 'You feel '}${aggravation}`;
+    await You_feel(aggravation); /* C muse.c:2640, including Unaware wording. */
     /* wintty.c:1884-1889 display_nhwindow(WIN_MAP, TRUE) pages the pending topline */
     /* display_nhwindow(WIN_MAP, TRUE) is a separate blocking page after _agg2's
      * pline completed: an ESC there leaves WIN_STOP live (topl.c:234) until the
@@ -6315,20 +6325,27 @@ export async function splitbill(obj, otmp) {
     const shops = game.u?.ushops || '';
     const roomno = typeof shops === 'string' ? shops.charCodeAt(0) : shops[0];
     const shkp = shops.length ? shop_keeper(roomno) : null;
-    if (!shkp || !inhishop(shkp)) return;
+    if (!shkp || !inhishop(shkp)) {
+        await bill_impossible('splitbill: no resident shopkeeper??');
+        return;
+    }
     const eshk = ESHK(shkp);
     const bp = await onbill(obj, shkp, false);
-    if (!eshk || !bp) return;
+    if (!bp) {
+        await bill_impossible('splitbill: not on bill?');
+        return;
+    }
 
     const childQuan = otmp.quan | 0;
     const billedQuan = bp.bquan | 0;
-    /* C reports impossible states here but continues with the quantity move;
-     * keep that mutation behavior (the diagnostics are intentionally silent
-     * in this port). */
+    if (billedQuan < childQuan)
+        await bill_impossible('Negative quantity on bill??');
+    if (billedQuan === childQuan)
+        await bill_impossible('Zero quantity on bill??');
     bp.bquan = billedQuan - childQuan;
 
     const billct = eshk.billct | 0;
-    if (billct >= BILLSZ) {
+    if (billct === BILLSZ) {
         otmp.unpaid = 0;
         return;
     }

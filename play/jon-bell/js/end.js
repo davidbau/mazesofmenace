@@ -28,13 +28,13 @@
 // keystrokes be consumed by the prompt instead of leaking to rhack.
 import { game, wizard, discover } from './gstate.js';
 import { clong, nowrap_add } from './integer.js';
-import { savebones, no_bones_level } from './bones.js';
+import { savebones, no_bones_level, ledger_no } from './bones.js';
 import { launch_in_progress, force_launch_placement } from './trap.js';
 import { force_more, force_more_lone_frame, pline, urgent_pline, flush_screen, bot, _topl_joins_committed,
          _topline_more_pending, capture_painted_frame_with_status, yn_function_menu } from './display.js';
 import { topl_park_cursor, canspotmon, _threeStatusLines } from './display.js';
-import { putmsghistory, Unaware, livelog_printf, pline_flush_point } from './display.js';
-import { LL_LIFESAVE } from './const.js';
+import { rebuild_screen_output, putmsghistory, Unaware, livelog_printf, pline_flush_point } from './display.js';
+import { LL_LIFESAVE, LL_DUMP, BUFSZ } from './const.js';
 import { cmdq_pop, cmdq_clear, cmdq_add_key, key2txt } from './cmd.js';
 import { CQ_CANNED, CQ_REPEAT, CMDQ_KEY, CMDQ_USER_INPUT, QBUFSZ, PLNMSG_UNKNOWN } from './const.js';
 import { PLNMSG_OK_DONT_DIE } from './const.js';
@@ -46,7 +46,7 @@ import { acurr, minuhpmax, setuhpmax } from './attrib.js';
 import { rn2, d } from './rng.js';
 import { A_CON, A_CURRENT, A_ORIGINAL, Upolyd, DIED, CHOKING, STARVING, DROWNING, BURNING, DISSOLVED, STONING, TURNED_SLIME, QUIT, GENOCIDED, PANICKED, TRICKED, ESCAPED, ASCENDED, LIFESAVED, KILLED_BY, NO_KILLER_PREFIX, BASICENLIGHTENMENT, MAGICENLIGHTENMENT, ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD, PARANOID_QUIT, PARANOID_DIE, PARANOID_BONES } from './const.js';
 import { KILLED_BY_AN, MALE, FEMALE, In_quest, In_endgame, Is_astralevel } from './const.js';
-import { dunlev, Is_branchlev } from './dungeon.js';
+import { dunlev, Is_branchlev, maxledgerno } from './dungeon.js';
 import { MAGIC_PORTAL } from './const.js';
 import { MGIVENNAME, has_mgivenname, has_ebones } from './const.js';
 import { SICK, SICK_ALL, TIMEOUT, TT_LAVA, UNCHANGING, HALLUC, HALLUC_RES } from './const.js';
@@ -63,13 +63,15 @@ import { monPmname, the_unique_pm, adjLev, zombie_maker } from './makemon.js';
 import { PM_HOUSECAT } from './pm.generated.js';
 import { exit_nhwindows, raw_print } from './rawterm.js';
 import { topten, formatkiller } from './topten.js';
-import { yyyymmdd, getnow } from './allmain.js';
+import { yyyymmdd, getnow, nomul, night, midnight } from './allmain.js';
+import { paniclog } from './files.js';
 import { depth, deepest_lev_reached } from './hacklib.js';
 import { In_tutorial } from './dungeon.js';
 /* C eat.c:126 init_uhunger() — savelife's starving/choking reset (end.c:721).
  * Runtime-only edge: eat.js does import end.js, but only for the death path, so
  * neither module needs the other at module-init time. */
 import { init_uhunger } from './eat.js';
+import { carrying } from './eat.js';
 import { make_sick } from './potion.js';
 import { reset_utrap } from './trap.js';
 import { display_text_window, money_cnt } from './com_pager.js';
@@ -109,7 +111,7 @@ import { useup, endmultishot } from './cmd.js';
 /* C do.c:2076 schedule_goto — done2's abandon_tutorial arm records the deferred
  * return to u.ucamefrom; allmain's moveloop executes it via deferred_goto(). */
 import { schedule_goto, record_achievement } from './cmd.js';
-import { ACH_UWIN } from './const.js';
+import { ACH_UWIN, ACH_BLND, ACH_NUDE } from './const.js';
 import { Blind, vision_recalc } from './vision.js';
 
 // C end.c:350-384 — avoid repeating the fatal condition as helplessness.
@@ -241,6 +243,9 @@ function can_make_bones() {
     const g = game;
     const u = g.u || {};
     if (g.flags && g.flags.bones === false)
+        return false;
+    /* C bones.c:361-362 */
+    if (ledger_no(u.uz) <= 0 || ledger_no(u.uz) > maxledgerno())
         return false;
     if (no_bones_level(u.uz))
         return false;
@@ -703,7 +708,7 @@ export async function do_death_sequence(opts) {
          * that --More-- freezes the map as of the death message (a fire ray
          * that lit a potion of oil: begin_burn's vision_full_recalc repaints
          * the hero over the ray flash). */
-        if (pd.urgentDeathLine) {
+        if (pd.urgentDeathLine || g.vision_full_recalc) {
             if (g.vision_full_recalc) vision_recalc(0);
             pline_flush_point();
         }
@@ -717,6 +722,10 @@ export async function do_death_sequence(opts) {
         g._liveStatusMore = _earlyBot;
         let _remainderMorc;
         try { _remainderMorc = await force_more(remainder); } finally { g._liveStatusMore = false; }
+        /* done()'s bot() (end.c:1045) already painted the status; the --More-- frame
+         * above is pinned to the pre-paint terminal, so the "Die?" prompt that
+         * follows must hold the new paint, not that page's rows. */
+        if (_earlyBot) rebuild_screen_output();
         if (_remainderMorc === 27
             && (/materialize/.test(remainder)
                 || (pd.alreadySaidYouDie && /You die\.\.\.$/.test(remainder)))) {
@@ -1207,8 +1216,9 @@ export async function done2() {
          * curs_on_u(), wait_synch(), and nomul(0) when multi > 0.  RNG-free. */
         g._pending_message = '';
         g._topl_sticky = null;
+        await flush_screen(1); // C end.c:104 curs_on_u(), then wait_synch().
         if ((g.multi | 0) > 0)
-            g.multi = 0;
+            nomul(0);
         if ((g.multi | 0) === 0) {
             if (g.u) { g.u.uinvulnerable = false; g.u.usleep = 0; }
         }
@@ -1226,7 +1236,7 @@ export async function done2() {
                 schedule_goto({ dnum: from.dnum | 0, dlevel: from.dlevel | 0 },
                               UTOTYPE_ATSTAIRS_END, 'Resuming regular play.', null);
         }
-        return;                              /* ECMD_OK */
+        return 0;                            /* ECMD_OK */
     }
     if (wizard()) {
         const c2 = await _yn_prompt('Dump core?', 'ynq', 'q');
@@ -1253,12 +1263,17 @@ function done_stopprint() { return (game.program_state.stopprint | 0) > 0; }
 
 export async function done(how) {
     const g = game;
-    if (how === TRICKED && wizard()) {
-        if (g.svk?.killer) {
+    if (how === TRICKED) {
+        (g.svk ||= {}).killer ||= { id: 0, name: '', format: KILLED_BY_AN, next: null };
+        if (g.svk?.killer?.name) {
+            paniclog('trickery', g.svk.killer.name);
             g.svk.killer.name = '';
-            g.svk.killer.format = KILLED_BY_AN;
         }
-        return;
+        if (wizard()) {
+            await pline('You are a very tricky wizard, it seems.');
+            g.svk.killer.format = KILLED_BY_AN;
+            return;
+        }
     }
     /* C end.c:1019 accepts GENOCIDED here as well.  Genocide is a terminal
      * outcome raised by the # genocide command after it has removed the
@@ -1307,7 +1322,7 @@ export async function done(how) {
     if (how !== PANICKED && how !== TRICKED && how !== QUIT
         && how !== ESCAPED && how !== ASCENDED && how !== GENOCIDED)
         throw new Error('not yet ported: done(how) for this death mode');
-    if (how === QUIT && done_stopprint()) {
+    if (g.program_state.panicking || g.program_state.done_hup || (how === QUIT && done_stopprint())) {
         /* C: disp.botl = disp.botlx = disp.time_botl = FALSE — no final status
            update.  Anything else would repaint the status row over a screen C
            is about to blank. */
@@ -1748,6 +1763,12 @@ async function really_done(how) {
         g.urealtime.finish_time = g._endtime;
         g.urealtime.realtime += Math.trunc(g._endtime - g.urealtime.start_timing);
     }
+    g.iflags.at_night = night();
+    g.iflags.at_midnight = midnight();
+    if (g.u.uachieved?.[0] || !g.flags.beginner) {
+        if (g.u.uroleplay?.blind) record_achievement(ACH_BLND);
+        if (g.u.uroleplay?.nudist) record_achievement(ACH_NUDE);
+    }
     /* C end.c:1178-1179 — always show ascension last. */
     if (how === ASCENDED)
         record_achievement(ACH_UWIN);
@@ -1844,8 +1865,13 @@ async function really_done(how) {
                 }
             }
         }
-        if (_end_disclose() !== 'none')
+        if (how !== PANICKED && _end_disclose() !== 'none')
             await disclose(how, taken);
+        // C end.c:1285-1288: log before the late Amulet suffixes are added.
+        if (how !== PANICKED) {
+            const reason = formatkiller('', BUFSZ, how, true) || _DEATHS[how];
+            livelog_printf(LL_DUMP, '%s', reason);
+        }
         /* C end.c:1294-1300.  This comes after disclosure and its dumplog
          * work, so accompanied pets remain in that output, but before the
          * end-window score summary consumes gm.mydogs. */
@@ -1944,6 +1970,14 @@ async function really_done(how) {
             const lines = (have_windows && how < GENOCIDED && (g.flags?.tombstone ?? true))
                 ? outrip_lines(how, g._endtime || 0)
                 : [];
+            if (u.uhave?.amulet)
+                g.svk.killer.name += ' (with the Amulet)';
+            else if (how === ESCAPED) {
+                if (Is_astralevel(u.uz))
+                    g.svk.killer.name += ' (in celestial disgrace)';
+                else if (carrying(212 /* FAKE_AMULET_OF_YENDOR */))
+                    g.svk.killer.name += ' (with a fake Amulet)';
+            }
             let nm = String(g.plname ?? g.u?.plname ?? '');
             const female = !!g.flags?.female;
             const roleTitl = how === ASCENDED ? (female ? 'Demigoddess' : 'Demigod')

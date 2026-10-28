@@ -11,7 +11,7 @@ import { age_spells } from "./spell.js";
 import { exerchk, exercise, acurr, spec_ability } from "./attrib.js";
 import { overexert_hp } from "./uhitm.js";
 import { clear_bypasses, t_at, registerTrapMksobj, m_dowear, activate_statue_trap } from "./trap.js";
-import { Warning, newsym, feel_location, feel_newsym, pline, urgent_pline, flush_screen, _topl_merge_result, _topl_joins_snapshot, _topline_more_pending, _more_never_dismissed, _more_pages_exceed_input, flush_pending_messages, You_hear } from "./display.js";
+import { Warning, mkot_trap_warn, newsym, feel_location, feel_newsym, pline, urgent_pline, flush_screen, _topl_merge_result, _topl_joins_snapshot, _topline_more_pending, _more_never_dismissed, _more_pages_exceed_input, flush_pending_messages, You_hear } from "./display.js";
 /* Runtime-only edge, same rule as the allmain/monmove/mklev imports below:
  * end.js does not import this module, so the cycle is one-directional and
  * do_death_sequence is only ever REFERENCED at call time. */
@@ -257,7 +257,9 @@ export async function fastforward_post_mklev(initrole = -1) {
      * can draw (next_ident via fake objects), so with mention_map the two draws
      * are deferred to allmain.js newgame(), after that look-around. */
     game.context = game.context || {};
-    if (game.a11y?.glyph_updates || game.flags?.mention_map) {
+    if (game.a11y?.glyph_updates || game.flags?.mention_map || game.u?.uroleplay?.reroll) {
+        /* reroll: newgame()'s reroll_menu loop (allmain.c:820) also runs before
+         * moveloop_preamble, so the two draws follow the last reroll. */
         game._ff_preamble_rng_deferred = true;
     } else {
         rnd(9000);
@@ -717,7 +719,9 @@ async function autosearch_rng() {
                 nomul(0);
                 feel_location(x, y);
                 set_msg_xy(x, y); /* detect.c:2050 */
-                pline("You find a hidden door.");
+                // C detect.c:2051: finish the message (including MSGTYP_STOP)
+                // before scanning another square or continuing turn upkeep.
+                await pline("You find a hidden door.");
             } else if (typ === SCORR_T) {
                 /* C: if (rnl(7 - fund)) continue; */
                 if (rnl(7 - fund)) continue;
@@ -729,7 +733,7 @@ async function autosearch_rng() {
                 nomul(0);
                 feel_newsym(x, y);
                 set_msg_xy(x, y); /* detect.c:2060 */
-                pline("You find a hidden passage.");
+                await pline("You find a hidden passage.");
             } else {
                 /* aflag=1: m_at/mfind0 and unmap_invisible (!aflag) skipped. */
                 /* C: if ((trap = t_at(x,y)) && !trap->tseen && !rnl(8)) {...} */
@@ -1400,6 +1404,7 @@ async function fastforward_step_generic_turn_nodochug() {
      * status_initialize(REASSESS_ONLY) (botlx). */
     if (game.gw?.were_changes)
         set_uasmon();
+    await mkot_trap_warn(); // C allmain.c:351, before dosounds()
     /* C ref: allmain.c:405 dosounds() — dynamic level-flag dispatch. */
     await dosounds_rng();
     /* C ref: allmain.c:353 do_storms() — Plane of Air lightning. */
@@ -1477,6 +1482,7 @@ async function fastforward_step_generic_turn() {
      * status_initialize(REASSESS_ONLY) (botlx). */
     if (game.gw?.were_changes)
         set_uasmon();
+    await mkot_trap_warn(); // C allmain.c:351, before dosounds()
     /* C ref: allmain.c:405 dosounds() — dynamic level-flag dispatch. */
     await dosounds_rng();
     /* C ref: allmain.c:353 do_storms() — Plane of Air lightning. */
@@ -1691,6 +1697,7 @@ export async function ff_head_phase_post() {
     // properties, even when no new hero transformation was requested.
     if (game.gw?.were_changes)
         set_uasmon();
+    await mkot_trap_warn(); // C allmain.c:351, before dosounds()
     /* C allmain.c:405 — dosounds(). */
     await dosounds_rng();
     /* C ref: allmain.c:353 do_storms() — Plane of Air lightning. */

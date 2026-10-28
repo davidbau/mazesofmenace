@@ -11,9 +11,8 @@ import { trapname } from './makemon.js';
 // function — uswallow stomach contents, the region/trap pre-message, the
 // Blind preamble, dfeature line construction, the lava/pool/no-object
 // short-circuit, the pile_limit summary, the single-object arm, and the
-// multi-object arm — not the earlier single-feature placeholder.  See the
-// block comment directly above look_here() for its remaining NAMED GAP (the
-// multi-object/uswallow arm's menu-window presentation, whose content is real).
+// multi-object arm. Swallowed inventories use the shared display_minventory
+// menu below.
 //
 // dfeature_at: cover DOOR/FOUNTAIN/THRONE/SINK/ALTAR/STAIRS/TREE/IRONBARS
 // and a few decoration types via defsyms-style explanations.
@@ -21,8 +20,9 @@ import { trapname } from './makemon.js';
 import { game } from './gstate.js';
 import { hide_unhide_msgtypes, MSGTYP_MASK_REP_SHOW } from './options.js';
 import { nomul } from './allmain.js';
+import { impossible } from './pline.js';
 import { classifyTerrain, invalidateTerrainStatus } from './terrain-status.js';
-import { pline, mon_visible, canspotmon, time_botl_run_ended } from './display.js';
+import { pline, mon_visible, canspotmon, time_botl_run_ended, You_see } from './display.js';
 import {
     DOOR, D_NODOOR, D_ISOPEN, D_BROKEN, FOUNTAIN, THRONE, SINK, ALTAR,
     GRAVE, TREE, IRONBARS, DRAWBRIDGE_DOWN, DBWALL,
@@ -55,6 +55,7 @@ import { visible_region_at, reg_damg } from './region.js';
 import { pushRngLogEntry } from './rng.js';
 import { Blind } from './vision.js';
 import { can_reach_floor } from './hold_another_object.js';
+import { is_ice } from './engrave.js';
 import { doname, doname_with_price, corpse_xname, an, vtense, CXN_ARTICLE, CXN_PFX_THE } from './objnam.js';
 import { ENV } from './hostenv.js';
 /* mbodypart: C polyself.c:1956 — needed only by look_here's u.uswallow arm
@@ -64,7 +65,7 @@ import { ENV } from './hostenv.js';
  * mhitm.js; mbodypart is a hoisted function declaration, so the cycle cannot
  * leave it in TDZ at call time (look_here only runs after both modules have
  * finished evaluating). */
-import { force_decor, mbodypart, set_msg_xy, instapetrify,
+import { force_decor, mbodypart, set_msg_xy, instapetrify, display_minventory,
          dfeature_at as _cmd_dfeature_at, pooleffects_is_flyer } from './cmd.js';
 
 const _DIRTRACE = (typeof process !== 'undefined' && ENV
@@ -225,7 +226,7 @@ function _surface_lk(x, y) {
              : (levtyp === CLOUD ? 'cloud' : 'air');
     if (is_pool(x, y))
         return (_Underwater() && !Is_waterlevel(game.u?.uz)) ? 'bottom' : hliquid('water');
-    if (lev.typ === ICE) return 'ice';
+    if (is_ice(x, y)) return 'ice';
     if (_is_lava_local(x, y)) return hliquid('lava');
     if (lev.typ === DRAWBRIDGE_DOWN) return 'bridge';
     if (IS_ALTAR(levtyp)) return 'altar';
@@ -238,6 +239,11 @@ function _surface_lk(x, y) {
     return 'ground';
 }
 
+/* C ref: engrave.c:318-407 read_engr_at(x, y).  Real body: locates the live
+ * engraving (js/mklev.js's `_engr_map`, the store js/engrave.js itself
+ * writes through and reads via `engr_at` — see the note this replaced,
+ * still true), builds the "sensing" line per engr_type, then the reveal
+ * line, capped at BUFSZ - sizeof "You feel the words: \"\"." (engrave.c:375). */
 export async function read_engr_at(x, y) {
     const ep = engr_at(x, y);
     /* C engrave.c:321 — eloc = surface(x, y) is computed before the engraving
@@ -276,19 +282,17 @@ export async function read_engr_at(x, y) {
     case ENGR_BLOOD:
         if (!blind) {
             sensed = true;
-            await pline('You see a message scrawled in blood here.');
+            await You_see('a message scrawled in blood here.');
         }
         break;
     default:
-        /* C: impossible("%s is written in a very strange way.", Something);
-         * sensed = TRUE; — impossible() is a debug/panic channel this port
-         * does not surface as a player-visible pline. */
+        await impossible('Something is written in a very strange way.');
         sensed = true;
         break;
     }
     if (!sensed) return;
     /* C engrave.c:373-407 — the reveal line and its trailing punctuation. */
-    const elen = ep.text.length;
+    const et = ep.text.slice(0, 232), elen = et.length; // C engrave.c:375-385
     const off = ep.off | 0;
     let endpunct = '.';
     if (elen >= 2) {
@@ -297,18 +301,18 @@ export async function read_engr_at(x, y) {
         if (pristineChar === actualChar && '.!?'.includes(actualChar))
             endpunct = '';
     }
-    await pline(`You ${blind ? 'feel the words' : 'read'}: "${ep.text}"${endpunct}`);
+    await pline(`You ${blind ? 'feel the words' : 'read'}: "${et}"${endpunct}`);
     /* C engrave.c:398 — a successful read copies actual_text into
      * remembered_text.  /e and /E later report this remembered copy, which
      * matters after movement has smudged an Elbereth engraving. */
     ep.remembered = ep.text;
     ep.eread = 1;
     ep.erevealed = 1;
+    if ((game.context?.run | 0) > 0) nomul(0);
 }
 /* Local is_ice(x,y) helper for read_engr_at (engrave.c is_ice). */
 function lev_is_ice_lk(x, y) {
-    const lev = game.level && game.level.at ? game.level.at(x, y) : null;
-    return !!lev && lev.typ === ICE;
+    return is_ice(x, y);
 }
 
 /* C ref: invent.c:4333 will_feel_cockatrice(otmp, force_touch).  Mirrors
@@ -348,11 +352,6 @@ async function _feel_cockatrice_lk(otmp, force_touch) {
  * obj_cnt > 0 means "autopickup in progress" (only used for skip_objects'
  * threshold test and its "two/a few/several/many [more]" wording).
  *
- * NAMED GAP, reached only on a path this port cannot fully model:
- *   - display_minventory() (invent.c:5341) for the uswallow arm's stomach
- *     listing: real content
- *     (doname_with_price per item), approximate presentation.
- *
  * Returns ECMD_TIME when blind, otherwise ECMD_OK; callers decide whether
  * that result controls command timing. Pickup ignores it, as in C. */
 export async function look_here(obj_cnt = 0, lookhere_flags = LOOKHERE_NOFLAGS) {
@@ -380,10 +379,9 @@ export async function look_here(obj_cnt = 0, lookhere_flags = LOOKHERE_NOFLAGS) 
             for (let o = otmp; o; o = o.nobj) {
                 if ((o.otyp | 0) === _CORPSE_OTYP) await _feel_cockatrice_lk(o, false);
             }
-            await pline(blind ? 'You feel:' : `Contents of ${suffix}:`);
-            for (let o = otmp; o; o = o.nobj) {
-                await pline((await doname_with_price(o)));
-            }
+            // C invent.c:4153: MINV_ALL | PICK_NONE includes the hero and
+            // suppresses prices while naming items with the engulfer's body.
+            await display_minventory(mtmp, blind ? 'You feel:' : `Contents of ${suffix}:`);
         } else {
             await pline(`You ${verb} no objects here.`);
         }

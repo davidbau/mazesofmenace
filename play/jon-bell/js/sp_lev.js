@@ -11,14 +11,14 @@
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, pushRngLogEntry } from './rng.js';
 import { FILL_NORMAL, MELT_ICE_AWAY, GRAVE } from './const.js';
-import { dig_corridor, mineralize, make_grave } from './mklev.js';
+import { dig_corridor, mineralize, make_grave, obj_timer_checks } from './mklev.js';
 import { ALTAR, DOOR, SDOOR, D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED, D_SECRET, W_RANDOM, W_NORTH, W_SOUTH, W_EAST, W_WEST, W_ANY, IS_OBSTRUCTED, isok, IS_WALL, IS_DOOR, STONE, MAX_TYPE, INVALID_TYPE, MATCH_WALL, IS_STWALL, IS_ROOM, CROSSWALL, HWALL, VWALL, COLNO, ROWNO, W_NONDIGGABLE, W_NONPASSWALL, ROOM, MOAT, TLCORNER, TRCORNER, BLCORNER, BRCORNER, TUWALL, TDWALL, TLWALL, TRWALL, DBWALL, AIR, CLOUD, FOUNTAIN, THRONE, SINK, POOL, WATER, TREE, IRONBARS, IS_DRAWBRIDGE, DB_DIR, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP, VIBRATING_SQUARE, NO_TRAP, CORR, ICE, ICED_POOL, ICED_MOAT, SCORR, LAVAPOOL, LAVAWALL, OROOM, THEMEROOM, COURT, SWAMP, VAULT, BEEHIVE, MORGUE, BARRACKS, ZOO, DELPHI, TEMPLE, ANTHOLE, COCKNEST, LEPREHALL, SHOPBASE, ARMORSHOP, SCROLLSHOP, POTIONSHOP, WEAPONSHOP, FOODSHOP, RINGSHOP, WANDSHOP, TOOLSHOP, BOOKSHOP, FODDERSHOP, CANDLESHOP, STAIRS, LADDER, MKTRAP_MAZEFLAG, MKTRAP_NOSPIDERONWEB, MKTRAP_SEEN, MKTRAP_NOVICTIM, SP_COORD_IS_RANDOM, OBJ_CONTAINED, OBJ_MINVENT, NON_PM, NEUTRAL, MALE, FEMALE, In_mines, AM_NONE, AM_CHAOTIC, AM_NEUTRAL, AM_LAWFUL, AM_MASK, AM_SPLEV_CO, AM_SPLEV_NONCO, AM_SPLEV_RANDOM, A_NONE, A_LAWFUL, A_ORIGINAL, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPMASK, PROT_FROM_SHAPE_CHANGERS, WET, HOT, SOLID, DEFAULT_INVENT, CUSTOM_INVENT, NO_INVENT, STRAT_WAITFORU, MM_NOTAIL, MM_NOGRP, MM_ADJACENTOK, MM_IGNOREWATER, MM_NOCOUNTBIRTH, MM_NOMSG, NO_MM_FLAGS, G_EXTINCT, G_GONE, LOW_PM, TUTORIAL, QUEST, DUNGEON_ALIGN_BY_DNUM, M_AP_MONSTER, DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, CORPSTAT_NONE, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_FEMALE, ROOMOFFSET, AM_SHRINE, AM_SANCTUM, Is_waterlevel, Is_airlevel, Is_stronghold, In_quest, LR_DOWNSTAIR, LR_UPSTAIR, LR_PORTAL, LR_BRANCH, LR_TELE, LR_UPTELE, LR_DOWNTELE, LR_MONGEN, GP_CHECKSCARY, IS_LAVA, IS_POOL, OBJ_FREE, LA_UP, LA_DOWN, MAX_NESTED_ROOMS, MAXNROFROOMS, IS_FURNITURE, F_LOOTED, F_WARNED, S_LPUDDING, S_LDWASHER, S_LRING, T_LOOTED, TREE_LOOTED, TREE_SWARM, SET_LIT_NOCHANGE, IS_TREE, is_pit, is_hole, TRAPNUM, Is_botlevel, In_endgame, EPRI, ESHK, ONAME_LEVEL_DEF, RLOC_ERR, RLOC_NOMSG, P_SPEAR, Amask2align, SVALL, } from './const.js';
 import { oinit } from './o_init.js';
 import { level_finalize_topology, fill_special_room, clear_level_structures, find_branch_room, OC_MERGE, newcham, add_door, makeroguerooms, themeroom_lspo_map_redo_maploc_rng, u_on_newpos, set_wall_state, mdrop_obj_md } from './mklev.js';
 import { flip_worm_segs_vertical, flip_worm_segs_horizontal, worm_seg_swap, wormgone } from './worm.js';
 import { In_hell, Can_fall_thru, mapfrag_get, mktrap, mksobj_at, mkobj_at, mksobj, makemon, somexy, somex, somey, mk_tt_object, mkcorpstat, resists_ston, del_engr_at, engr_at, make_engr_at, set_corpsenm, sobj_at, wallification, count_level_features, makecorridors, mkstairs, stairway_add, build_room, add_room, topologize, level_difficulty, get_level_extends, fix_wall_spines, occupied, mpickobj } from './mklev.js';
 import { set_levltyp_lit, create_maze, baalz_fixup, setup_waterlevel, stolen_booty } from './mkmaze.js';
-import { vision_reset, block_point } from './vision.js';
+import { vision_reset, block_point, recalc_block_point } from './vision.js';
 import { litstate_rnd, mkmap, flood_fill_rm } from './mkmap.js';
 import { priestini, mk_roamer } from './priest.js';
 import { oname, artifact_exists } from './objnam.js';
@@ -3441,6 +3441,8 @@ export async function spo_end_moninvent() {
 
 export function remove_object(otmp) {
     const xi = otmp.ox | 0, yi = otmp.oy | 0;
+    if (otmp.where !== 1)
+        throw new Error(`remove_object: obj where=${otmp.where}, not on floor`);
     const lvlObjs = game.level?.levelObjects;
     if (lvlObjs?.[xi]) {
         const h = lvlObjs[xi][yi];
@@ -3462,6 +3464,10 @@ export function remove_object(otmp) {
     otmp.nexthere = null;
     otmp.where = OBJ_FREE;
     otmp.nobj = null;
+    if (otmp.otyp === 475 /* BOULDER */)
+        recalc_block_point(xi, yi);
+    if (otmp.timed)
+        obj_timer_checks(otmp, xi, yi, 0);
 }
 
 export async function stackobj(obj) {
@@ -3695,7 +3701,7 @@ async function create_object(o, croom) {
             was = await makemon(wastyp, 0, 0, MM_NOCOUNTBIRTH | MM_NOMSG);
             if (was) {
                 if (!resists_ston(was) && !poly_when_stoned(_pm_of(wastyp))) {
-                    propagate(wastyp, true, false);
+                    await propagate(wastyp, true, false);
                     break;
                 }
                 _medusa_mongone(was, true);
@@ -5928,7 +5934,7 @@ async function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
                 if (!await rloc(mtmp, RLOC_NOMSG))
                     await m_into_limbo(mtmp);
             }
-            u_on_newpos(x, y);
+            await u_on_newpos(x, y);
         }
         break;
     case LR_PORTAL:
@@ -6069,7 +6075,7 @@ async function fixup_special() {
          * bubble subsystem (see its header for what the WATER half still
          * omits); this used to throw, which is what kept `air` and `water`
          * out of js/mklev.js's LOADER_READY. */
-        setup_waterlevel();
+        await setup_waterlevel();
         /* NO early return: C falls through into the lregion loop below (its
          * own comment says the water level "has to be set up BEFORE calling
          * place_lregions etc."). */

@@ -120,6 +120,12 @@ export async function do_vicinity_map(sobj) {
         if (detectProp) detectProp.extrinsic = savedDetect;
         if (g.viz_array?.[u.uy]) g.viz_array[u.uy][u.ux] = savedViz;
     }
+    /* docrt() -> cls() pages the standing "Done." of browse_map's getpos
+     * (getpos.c:1136; wintty.c:1874).  C's see_monsters() below only updates
+     * the glyph buffer, which tty flushes after that --More--, so the page
+     * shows the browse screen; this port paints at once, so page first. */
+    if (refresh && game._pending_message)
+        await force_more(game._pending_message);
     for (let x = loX; x <= hiX; x++) for (let y = loY; y <= hiY; y++) {
         if (x === u.ux && y === u.uy) continue;
         const loc = g.level?.at(x, y), mon = m_at(x, y);
@@ -129,12 +135,6 @@ export async function do_vicinity_map(sobj) {
         if (loc && _isMonGlyph(loc) && (mndx | 0) !== PM_LONG_WORM_TAIL
             && (!mon || !canspotmon(mon))) map_invisible(x, y);
     }
-    /* docrt() -> cls() pages the standing "Done." of browse_map's getpos
-     * (getpos.c:1136; wintty.c:1874).  C's see_monsters() below only updates
-     * the glyph buffer, which tty flushes after that --More--, so the page
-     * shows the browse screen; this port paints at once, so page first. */
-    if (refresh && game._pending_message)
-        await force_more(game._pending_message);
     see_monsters();
     if (refresh) {
         game._topl_sticky = null;

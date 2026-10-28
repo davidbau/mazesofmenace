@@ -1,5 +1,10 @@
 import { u_carried_gloves, set_msg_xy as set_msg_xy_mu, reset_occupations } from './cmd.js';
+import { registerStaticReset } from './statics.js';
 import { yyyymmdd } from './allmain.js';
+import { attacktype_fordmg } from './makemon.js';
+import { drain_item } from './zap.js';
+import { stagger } from './mhitm.js';
+let mon_currwep = null;
 import { spoteffects } from './landing-effects.js';
 // @ts-nocheck
 /* js/mhitu.js — gazemu(): monster gaze attack on hero.
@@ -85,7 +90,9 @@ import { MKOBJ_OC_OPROP, MKOBJ_OC_MAGIC } from './mkobj_erosion_meta.js';
  * (uhitm.c:4033). */
 import { PM_ROPE_GOLEM as PM_ROPE_GOLEM_MU } from './pm.generated.js';
 import { set_apparxy as set_apparxy_kb, dissolve_bars } from './monmove.js';
-import { You_hear } from './display.js';
+/* C uhitm.c:3866 -> pline.c:387-400: Death's touch uses the dream
+ * prefix while the hero is unaware, just like other You_feel messages. */
+import { You_hear, You_feel as You_feel_mu } from './display.js';
 import { impossible as impossible_breath } from './pline.js';
 import { snuff_lit as snuff_lit_mu, cmdq_clear, catch_lit as catch_lit_mu, hurtle as hurtle_cmd, test_move as test_move_kb,
          mhurtle as mhurtle_kb, will_hurtle as will_hurtle_mu } from './cmd.js';
@@ -1243,6 +1250,14 @@ async function mhitm_ad_phys_u(mtmp, mattk, mhm) {
          * AD_CORR/AD_RUST/AD_FIRE attack (a polymorphed hero); its rn2(chance)
          * sits behind `dmgtyp != ERODE_NONE`. */
         await rustm_mu(game.youmonst, otmp);
+        /* C:4107-4121 — the was_poisoned poisoned() call (was_poisoned is
+         * otmp->opoisoned || permapoisoned(otmp), fixed before dmgval). */
+        if (((otmp.opoisoned | 0) || _permapoisoned_mu(otmp))
+            && ((game.gm ||= {}).mhitu_dieroll | 0) <= 5) {
+            const buf = `${s_suffix(je_Monnam(mtmp))} ${mpoisons_subj(mtmp, mattk)}`;
+            await poisoned_u(buf, A_STR_AD, monPmname_mu((mtmp.mnum ?? mtmp.mndx ?? 0) | 0,
+                                               mtmp.female ? 1 : 0), 10, false);
+        }
         return;
     }
     const u_pt = game.u || {};
@@ -1264,7 +1279,10 @@ async function mhitm_ad_elec_u(mtmp, mattk, mhm) {
          * header documents), is what AD_FIRE's sibling gaze arm already uses. */
         if (Shock_resistance_gu()) {
             pline('The zap doesn\'t shock you!');
+            monstseesu(M_SEEN_ELEC);
             mhm.damage = 0;
+        } else {
+            monstunseesu(M_SEEN_ELEC);
         }
         /* C uhitm.c:2719: if ((int) magr->m_lev > rn2(20)) destroy_items(...) */
         if ((mtmp.m_lev | 0) > rn2(20)) {
@@ -1594,6 +1612,8 @@ function _hero_is_steadfast_mu() {
             return true;
     return false;
 }
+/* C artifact.c:2837 permapoisoned(obj) — only Grimtooth (artilist.h #5). */
+function _permapoisoned_mu(obj) { return !!obj && (obj.oartifact | 0) === 5; }
 async function mhitm_knockback_u(mtmp, mattk, hitflags) {
     const u = game.u || (game.u = {});
     /* C uhitm.c:5259 — int knockdistance = rn2(3) ? 1 : 2;  (unconditional) */
@@ -1871,11 +1891,11 @@ export async function doseduce(mon) {
     let tried_gloves = 0;
 
     if (mon.mcan || mon.mspec_used) {
-        pline(`${Monnam(mon)} acts as though ${mhe_mu(mon)} has got a ${mon.mcan ? 'severe ' : ''}headache.`);
+        pline_mon(mon, `${Monnam(mon)} acts as though ${mhe_mu(mon)} has got a ${mon.mcan ? 'severe ' : ''}headache.`);
         return 0;
     }
     if (unresponsive_mu()) {
-        pline(`${Monnam(mon)} seems dismayed at your lack of response.`);
+        pline_mon(mon, `${Monnam(mon)} seems dismayed at your lack of response.`);
         return 0;
     }
     const seewho = canseemon(mon);
@@ -1989,7 +2009,7 @@ export async function doseduce(mon) {
             } else
                 await verbalize_ds(`You're such a ${g.flags?.female ? 'sweet lady' : 'nice guy'}; I wish...`);
         } else if (seewho)
-            pline(`${Monnam(mon)} appears to sigh.`);
+            pline_mon(mon, `${Monnam(mon)} appears to sigh.`);
         if (!tele_restrict_mu(mon))
             await rloc(mon, RLOC_MSG_MU);
         return 1;
@@ -2091,9 +2111,11 @@ export async function doseduce(mon) {
     if (mon.mtame) {
         ; /* don't charge */
     } else if (rn2(20) < acurr(u, A_CHA_DS)) {
-        pline(`${noit_Monnam_ds(mon)} demands that you pay ${mon.female ? 'her' : 'him'}, but you refuse...`);
+        // C mhitu.c:2267 noit_mhim(): hallucination also draws rn2(4).
+        const whom = ['him', 'her', 'it', 'them'][pronoun_gender_nit_mu(mon)];
+        pline(`${noit_Monnam_ds(mon)} demands that you pay ${whom}, but you refuse...`);
     } else if ((u.umonnum | 0) === PM_LEPRECHAUN_DS) {
-        pline(`${noit_Monnam_ds(mon)} tries to take your gold, but fails...`);
+        pline_mon(mon, `${noit_Monnam_ds(mon)} tries to take your gold, but fails...`);
     } else {
         const umoney = money_cnt_ds(g.invent);
         let cost;
@@ -2113,7 +2135,7 @@ export async function doseduce(mon) {
             else
                 pline('No charge.');
         } else {
-            pline(`${noit_Monnam_ds(mon)} takes ${cost} ${currency_ds(cost)} for services rendered!`);
+            pline_mon(mon, `${noit_Monnam_ds(mon)} takes ${cost} ${currency_ds(cost)} for services rendered!`);
             await money2mon_ds(mon, cost);
             if (g.disp) g.disp.botl = true;
         }
@@ -2125,8 +2147,8 @@ export async function doseduce(mon) {
     return 1;
 }
 
-/* C monattk.h:65 AD_SSEX. */
-const AD_SSEX_ = 23;
+/* C monattk.h:77 AD_SSEX (23 is AD_TLPT). */
+const AD_SSEX_ = 35;
 
 const AD_SGLD_ = 20;      /* monattk.h:62 — steals gold (leprechaun) */
 import { stealgold as stealgold_mu } from './makemon.js';
@@ -2211,7 +2233,7 @@ async function worn_item_removal(mon, obj) {
     if (strip_art) {
         /* C:305 — "an iron chain (attached to you)" becomes "the ...", not
          * "your ...", when the caller passed uchain. */
-        objbuf = ((obj === g.uchain) ? 'the ' : 'your ') + objbuf.slice(strip_art);
+        objbuf = ((obj === g.u.uchain) ? 'the ' : 'your ') + objbuf.slice(strip_art);
     }
     objbuf = objbuf.replace(' (being worn)', '');
     objbuf = objbuf.replace(' (alternate weapon; not wielded)', '');
@@ -3033,7 +3055,6 @@ function Antimagic_mu() {
 function is_undead_mu(ptr) {
     return !!(ptr && ((ptr.mflags2 | 0) & 0x00000002 /* M2_UNDEAD */) !== 0);
 }
-function You_feel_mu(msg) { pline('You feel ' + msg); }
 const AD_DETH_MU = 37;    /* monattk.h:79 */
 const AD_FAMN_MU = 39;    /* monattk.h:81 */
 const ANTIMAGIC_MU = 12;  /* prop.h:30 (js/const.js:2339) */
@@ -3625,8 +3646,10 @@ async function passiveum(olduasmonMndx, mtmp, mattk) {
         }
         return M_ATTK_HIT;
     }
-    if (oldu_mattk.adtyp === AD_ENCH_UM)
+    if (oldu_mattk.adtyp === AD_ENCH_UM) {
+        if (mon_currwep) await drain_item(mon_currwep, true);
         return M_ATTK_HIT;
+    }
 
     /* C:2520-2521 */
     if (!Upolyd_fn(u))
@@ -3676,7 +3699,7 @@ async function passiveum(olduasmonMndx, mtmp, mattk) {
                 tmp = 0;
                 break;
             }
-            pline(`${je_Monnam(mtmp)} is suddenly very cold!`);
+            pline_mon(mtmp, `${je_Monnam(mtmp)} is suddenly very cold!`);
             /* C pline.c:273-274 vpline() flush_screen()->bot() paints the status line
              * (mdamageu's botl) BEFORE the heal below, which sets no botl flag, so
              * the --More-- raised by the next pline still shows the pre-heal HP. */
@@ -3693,7 +3716,7 @@ async function passiveum(olduasmonMndx, mtmp, mattk) {
         case AD_STUN_UM:   /* C:2576-2584 — yellow mold */
             if (!(mtmp.mstun | 0)) {
                 mtmp.mstun = 1;
-                pline(`${je_Monnam(mtmp)} staggers.`);
+                pline_mon(mtmp, `${je_Monnam(mtmp)} ${makeplural(stagger(mtmp.data, 'stagger'))}.`);
             }
             tmp = 0;
             break;
@@ -5095,6 +5118,11 @@ function sgn_mtoss(x) { return (x > 0) ? 1 : (x < 0) ? -1 : 0; }
  * throttles the "returns to <its> hand!" message to once per 500 moves.  It is
  * process lifetime in C, so it is module state here. */
 let _mtoss_do_not_annoy = 0;
+/* Each recorded segment is a fresh C process (statics.js), so the static
+ * starts again at its initialiser of 0. */
+registerStaticReset('mhitu.js: return_from_mtoss do_not_annoy (mthrowu.c:883)', () => {
+    _mtoss_do_not_annoy = 0;
+});
 
 async function return_from_mtoss(magr, otmp, tethered_weapon) {
     const impaired = !!((magr.mconf | 0) || (magr.mstun | 0)
@@ -5331,8 +5359,9 @@ function calc_mattacku_vars(mtmp) {
     const range2 = !(mnd2 < 3 && !(mnd2 === 2 && gridbug)); /* !monnear(mux,muy) */
     const foundyou = (mux === (u.ux | 0) && muy === (u.uy | 0));
     /* C mhitu.c:458-462: do_attack() uses bhitpos to set/clear notonhead; do
-     * likewise here -- a hero can't have a worm tail, so clear stale value. */
-    (game.gb ||= {}).bhitpos = { x: u.ux | 0, y: u.uy | 0 };
+     * likewise here -- a hero can't have a worm tail, so clear stale value.
+     * Zap effects read game.bhitpos; both names represent C's gb.bhitpos. */
+    game.bhitpos = (game.gb ||= {}).bhitpos = { x: u.ux | 0, y: u.uy | 0 };
     (game.gn ||= {}).notonhead = false;
     return { ranged, range2, foundyou };
 }
@@ -5615,6 +5644,15 @@ async function diseasemu_gu(mdat) {
     const mndx = (mdat?.pmidx ?? mdat?.mnum ?? 0) | 0;
     await make_sick(duration, monPmname_mu(mndx, 2 /* NEUTRAL */), true,
                     SICK_NONVOMITABLE_MU);
+    return true;
+}
+/* C mhitu.c:1271-1285: reapply engulfing blindness after sight is restored. */
+export async function gulp_blnd_check() {
+    const u = game.u, m = u.ustuck;
+    const a = !Blinded_gu() && u.uswallow && attacktype_fordmg(m.data, AT_ENGL_, AD_BLND_GU);
+    if (!a || !can_blnd_mu(m, game.youmonst, a.aatyp, null)) return false;
+    ++u.uswldtim;
+    await gulpmu(m, a);
     return true;
 }
 async function gulpmu(mtmp, mattk) {
@@ -6425,6 +6463,7 @@ export async function mattacku(mtmp) {
             if (firstfoundyou && !foundyou)
                 continue;
         }
+        mon_currwep = null; /* C mhitu.c:785 */
         const mattk = getmattk(mtmp, true, null, i, sum);
         if (!mattk) continue;
         if (ENV.FF_MATTACK_TRACE === '1')
@@ -6528,7 +6567,7 @@ export async function mattacku(mtmp) {
                         break;
                 }
                 if (foundyou) {
-                    const mon_currwep = MON_WEP(mtmp);
+                    mon_currwep = MON_WEP(mtmp);
                     if (mon_currwep) {
                         /* C:904-907 — a polearm used at melee range bashes. */
                         const bash = (is_pole_mhu(mon_currwep)
@@ -6753,7 +6792,7 @@ export function could_seduce(magr, mdef, mattk) {
         : dmgtype(pagr, AD_SSEX) ? AD_SSEX
         : dmgtype(pagr, AD_SEDU) ? AD_SEDU
         : AD_PHYS;
-    if (adtyp === AD_SSEX && !game.sysopt.seduce)
+    if (adtyp === AD_SSEX && !(game.sysopt?.seduce ?? true))
         adtyp = AD_SEDU;
 
     if (agrinvis && !defperc && adtyp === AD_SEDU)

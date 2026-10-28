@@ -5,10 +5,10 @@
 import { u_safe_from_fatal_corpse } from './pickup.js';
 import { olfaction } from './makemon.js';
 import { usmellmon, erosion_matters, mungspaces } from './mklev.js';
-import { body_part } from './cmd.js';
-import { ARM, ECMD_CANCEL, UTOTYPE_NONE, Is_stronghold, Is_botlevel } from './const.js';
+import { body_part, cmdq_pop } from './cmd.js';
+import { ARM, ECMD_CANCEL, UTOTYPE_NONE, Is_stronghold, Is_botlevel, CMDQ_KEY } from './const.js';
 import { getdir } from './lock.js';
-import { map_invisible, GLYPHCLS_MON, GLYPHCLS_INVIS } from './display.js';
+import { map_invisible, GLYPHCLS_MON, GLYPHCLS_INVIS, display_migrating_mons } from './display.js';
 import { game, wizard } from './gstate.js';
 import { reassign } from './inventory_refresh.js';
 import { COLNO } from './const.js';
@@ -39,7 +39,8 @@ import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 import { hates_silver, name_to_mon, name_to_monclass, permonstTemplate, monPmname, set_malign, mkclass, rndmonst, splitobj } from './makemon.js';
 import { makemon, newcham, engravings_list, mongone } from './mklev.js';
 import { count_wsegs } from './worm.js';
-import { tamedog } from './dog.js';
+import { tamedog, migrate_to_level } from './dog.js';
+import { MM_NOMSG, MIGR_RANDOM } from './const.js';
 import { put_saddle_on_mon } from './steed.js';
 import { is_pool } from './look.js';
 import { light_sources_list } from './light.js';
@@ -437,6 +438,20 @@ export async function touch_artifact_youmonst(otmp) {
 export async function getlin(prompt) {
     const g = game;
     let buf = '';
+    // C windows.c:1868-1896: queued keys bypass the tty line editor.  A
+    // repeat may supply answers saved by yn_function to this getlin instead;
+    // preserve that behavior, including an unterminated sequence of keys.
+    let got_cmdq = false, cmdq;
+    while ((cmdq = cmdq_pop()) !== null) {
+        if (cmdq.typ !== CMDQ_KEY) break;
+        got_cmdq = true;
+        if (cmdq.key === 10) break;
+        buf += String.fromCharCode(cmdq.key);
+    }
+    if (got_cmdq) {
+        await pline('%s %s', prompt, buf);
+        return buf;
+    }
     const renderPrompt = () => {
         g._pending_message = buf ? (prompt + ' ' + buf) : prompt;
         g._topl_prompt_written = prompt + ' ' + buf;
@@ -880,7 +895,7 @@ function _wish_mergable(into, obj) {
     /* C invent.c mergable(): corpses/eggs/tins merge only for the same
      * monster type; hatching eggs never merge. */
     const ot = obj.otyp | 0;
-    if (ot === 265 /* CORPSE */ || ot === 266 /* EGG */ || ot === 335 /* TIN */) {
+    if (ot === 265 /* CORPSE */ || ot === 266 /* EGG */ || ot === 296 /* TIN */) {
         if ((obj.corpsenm ?? -1) !== (into.corpsenm ?? -1)) return false;
         if (ot === 266 && (obj.timed || into.timed)) return false;
     }
@@ -1456,12 +1471,28 @@ export async function wiz_show_stats() {
     lines.push('---------------------------  ----- -------',
         _stats_row('  Mon total', monTotal.count, monTotal.size), '');
 
-    const mapseen = Array.isArray(g.mapseenchn) ? g.mapseenchn
-        : (g.mapseenchn ? [g.mapseenchn] : [level]);
+    // C dungeon.c:2760-2801 overview_stats: charge every mapseen and its data.
+    const mapseen = g._mapseen_entries || [];
     const overview = { count: mapseen.length, size: mapseen.length * STATS_MAPSEEN_SIZE };
     lines.push('  Overview', _stats_row(`general, size ${STATS_MAPSEEN_SIZE}`,
-        overview.count, overview.size),
-        '---------------------------  ----- -------',
+        overview.count, overview.size));
+    let bcount = 0, acount = 0, asize = 0;
+    for (const lev of mapseen) {
+        if (lev.duplicate) continue; // find_mapseen updates only the first entry.
+        const custom = g._level_custom?.[`${lev.dnum}:${lev.dlevel}`];
+        if (custom) { acount++; asize += new TextEncoder().encode(custom).length + 1; }
+        const ledger = g.dungeons[lev.dnum].ledger_start + lev.dlevel;
+        const remembered = lev.dnum === g.u.uz.dnum && lev.dlevel === g.u.uz.dlevel
+            ? level : g.levelStore?.get(ledger)?.level || g._mapseen_levels?.get(ledger);
+        for (let ce = remembered?.bonesinfo; ce; ce = ce.next) bcount++;
+    }
+    if (bcount)
+        lines.push(_stats_row(`cemetery, size ${STATS_CEMETERY_SIZE}`,
+            bcount, bcount * STATS_CEMETERY_SIZE));
+    if (acount) lines.push(_stats_row('annotations, text', acount, asize));
+    overview.count += bcount + acount;
+    overview.size += bcount * STATS_CEMETERY_SIZE + asize;
+    lines.push('---------------------------  ----- -------',
         _stats_row('  Over total', overview.count, overview.size), '');
 
     let trapCount = 0;
@@ -2241,7 +2272,7 @@ export async function makemap_prepost(pre, wiztower) {
         g.updest = { lx: 0, ly: 0, hx: 0, hy: 0, nlx: 0, nly: 0, nhx: 0, nhy: 0 };
         u.ustuck = null;
         u.uswallow = u.uswldtim = 0;
-        (await import('./cmd.js')).set_uinwater(0);
+        await (await import("./cmd.js")).set_uinwater(0);
         u.uundetected = 0;
         dmonsfree();
         (await import('./mklev.js')).dobjsfree();
@@ -2272,7 +2303,7 @@ export async function makemap_prepost(pre, wiztower) {
             if (!rn2(2)) {
                 const cc = tp.enexto_core(u.ux | 0, u.uy | 0);
                 if (cc && ((cc.x - u.ux) ** 2 + (cc.y - u.uy) ** 2) <= 2) {
-                    mk.u_on_newpos(cc.x, cc.y);
+                    await mk.u_on_newpos(cc.x, cc.y);
                     moved = true;
                 }
             }
@@ -2539,6 +2570,7 @@ export async function wiz_load_splua() {
     return ECMD_OK;
 }
 
+/* C wizcmds.c:1873-1941; DEBUG_MIGRATING_MONS is enabled by config.h. */
 export async function wiz_migrate_mons() {
     const g = game;
     const uz = g.u.uz;
@@ -2566,13 +2598,25 @@ export async function wiz_migrate_mons() {
         if (other) prmpt += 'o'; else xtra += 'o';
         prmpt += 'a q';
         if (xtra) prmpt += '\x1b' + xtra;
-        await yn_function('List which?', prmpt, 'q', true);
+        const choice = await yn_function('List which?', prmpt, 'q', true);
+        await display_migrating_mons(choice, tolevel);
     }
 
+    let inbuf = '';
     if (tolevel.dnum || tolevel.dlevel) {
-        await getlin('How many random monsters to migrate to next level? [0]');
+        inbuf = await getlin('How many random monsters to migrate to next level? [0]');
     } else {
         await pline("Can't get there from here.");
     }
+    if (!inbuf || inbuf[0] === '\x1b') return ECMD_OK;
+    const count = parseInt(inbuf, 10) || 0;
+    const mongen_saved = g.iflags.debug_mongen;
+    g.iflags.debug_mongen = false;
+    for (let n = Math.min(Math.abs(count), (COLNO - 1) * ROWNO); n > 0; --n) {
+        const mon = count < 0 ? g.fmon : await makemon(rndmonst(), 0, 0, MM_NOMSG);
+        if (mon) await migrate_to_level(mon,
+            tolevel.dlevel + g.dungeons[tolevel.dnum].ledger_start, MIGR_RANDOM, null);
+    }
+    g.iflags.debug_mongen = mongen_saved;
     return ECMD_OK;
 }

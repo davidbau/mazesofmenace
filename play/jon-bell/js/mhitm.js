@@ -20,10 +20,10 @@ import { game } from './gstate.js';
 // Preserve legacy import paths while all callers share invent.c's real body.
 import { update_inventory } from './inventory_refresh.js';
 export { update_inventory };
-import { W_ARMOR, W_ACCESSORY, W_WEP, W_SWAPWEP, A_WIS, IS_DOOR, ROOMOFFSET, OBJ_INVENT, HAND, SEE_INVIS } from './const.js';
+import { W_ARMOR, W_ACCESSORY, W_WEP, W_SWAPWEP, A_WIS, IS_DOOR, ROOMOFFSET, OBJ_INVENT, HAND, SEE_INVIS, PLNMSG_GROWL } from './const.js';
 import { MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js';
 import { rn2, rnd, d, rn1, rn2_on_display_rng, pushRngLogEntry } from './rng.js';
-import { pline, sensemon, canspotmon, canseemon, rank_of, map_invisible, Deaf } from './display.js';
+import { pline, sensemon, canspotmon, canseemon, rank_of, map_invisible, Deaf, impossible_sync } from './display.js';
 import { exercise, acurr, arti_defn_adtyp, arti_cary_adtyp, change_luck } from './attrib.js';
 import { erode_obj, mon_learns_traps, m_carrying } from './trap.js';
 /* C obj.h:257 bimanual(otmp).  Placed immediately after the ./trap.js import
@@ -62,7 +62,7 @@ PM_FLAMING_SPHERE, PM_FIRE_VORTEX, PM_FIRE_ELEMENTAL, PM_SALAMANDER, PM_WATER_EL
 PM_GHOST, PM_WIZARD_OF_YENDOR, PM_SHOPKEEPER, PM_ARCHEOLOGIST, PM_WIZARD, } from './pm.generated.js';
 import { cansee, couldsee, clear_path, is_lightblocker_mappear, does_block, unblock_point } from './vision.js';
 import { linedup } from './trap.js';
-import { hmon_egg_petrify, mon_nam, exclam, artifact_hit, hmon_hitmon_do_hit, hmon_hitmon_poison, hmon_hitmon_splitmon, hmon_hitmon_msg_hit, hmon_hitmon_msg_silver, hmon_hitmon_msg_lightobj, hmon_hitmon_dmg_recalc, hmon_hitmon_special } from './uhitm.js';
+import { hmon_egg_petrify, touch_petrifies, mon_nam, exclam, artifact_hit, hmon_hitmon_do_hit, hmon_hitmon_poison, hmon_hitmon_splitmon, hmon_hitmon_msg_hit, hmon_hitmon_msg_silver, hmon_hitmon_msg_lightobj, hmon_hitmon_dmg_recalc, hmon_hitmon_special } from './uhitm.js';
 /* C mon.c:3470 killed() is a one-line wrapper over xkilled(), which lives in
  * js/uhitm.js.  mhitm.js already imports from uhitm.js (mon_nam, dmgval_weapon,
  * ...), so this rides the existing edge rather than adding a new one. */
@@ -2384,17 +2384,15 @@ function growl_sound(ptr) {
     default: return 'scream';
     }
 }
-/* RETURN VALUE: C's growl() is void; its callers read `iflags.last_msg ==
- * PLNMSG_GROWL` afterwards to learn whether a growl message actually printed
- * (mon.c:4243).  js/ has no last_msg channel, so this returns that same
- * predicate — TRUE iff the pline below ran.  Every existing caller ignores it. */
+/* C sounds.c:397-423: growl is void; peacefuls_respond reads last_msg
+ * afterwards (mon.c:4243), which wake_nearto's messages can also change. */
 export function growl(mtmp) {
     const data = mtmp.data || permonstTemplate((mtmp.mndx ?? mtmp.mnum ?? -1) | 0);
-    if (!data) return false;
+    if (!data) return;
     /* C mondata.h helpless(mon) — msleeping || !mcanmove.  wakeup() clears
      * msleeping BEFORE calling growl, so this normally passes. */
     if ((mtmp.msleeping | 0) || !(mtmp.mcanmove | 0) || (data.msound | 0) === 0 /* MS_SILENT */)
-        return false;
+        return;
     /* C sounds.c:365-368 — `if (Hallucination) growl_verb = ROLL_FROM(h_sounds);
      * else growl_verb = growl_sound(mtmp);`.  The hallucination arm was missing,
      * and it is an rn2(35) on the CORE stream, not just a different word. */
@@ -2402,15 +2400,16 @@ export function growl(mtmp) {
         ? H_SOUNDS_MM[rn2(H_SOUNDS_MM.length)]
         : growl_sound(data);
     if (growl_verb) {
-        /* C: if (canseemon(mtmp) || !Deaf) — this port has no deaf hero. */
-        pline(Monnam_mm(mtmp) + ' ' + vtense(null, growl_verb) + '!');
-        /* C sounds.c:418-419 — a growl interrupts a run/rush. */
-        if (game.context?.run)
-            nomul(0);
+        /* C sounds.c:414 — if (canseemon(mtmp) || !Deaf) */
+        if (canseemon(mtmp) || !Deaf()) {
+            pline(Monnam_mm(mtmp) + ' ' + vtense(null, growl_verb) + '!');
+            (game.iflags ||= {}).last_msg = PLNMSG_GROWL; // C sounds.c:416
+            /* C sounds.c:418-419 — a growl interrupts a run/rush. */
+            if (game.context?.run)
+                nomul(0);
+        }
         wake_nearto(mtmp.mx | 0, mtmp.my | 0, (data.mlevel | 0) * 18);
-        return true;
     }
-    return false;
 }
 const H_SOUNDS_MM = [
     'beep',   'boing',   'sing',   'belche', 'creak',   'cough',
@@ -2816,6 +2815,27 @@ async function _hmon_hitmon_misc_obj(hmd, mon, obj) {
     /* C uhitm.c:1186-1219 case EGG, petrifying arm (ordinary eggs fall to the weight arm) */
     if ((obj.otyp | 0) === 266 /* EGG */ && await hmon_egg_petrify(hmd, mon, obj))
         return;
+    /* C uhitm.c:1186-1257 case EGG, ordinary egg(s), thrown: stale-egg
+     * petrify-monster and PYROLISK arms are left to the default arm below. */
+    if ((obj.otyp | 0) === 266 /* EGG */ && hmd.thrown
+        && (hmd.mdat ? !touch_petrifies(hmd.mdat) : true)
+        && (obj.corpsenm | 0) !== 11 /* PM_PYROLISK */) {
+        const cnt = obj.quan | 0;
+        const cn = obj.corpsenm;
+        hmd.dmg = 1; /* nominal physical damage */
+        hmd.get_dmg_bonus = false;
+        hmd.hittxt = true; /* message always given */
+        if (obj.spe && ismnum(cn))
+            change_luck(cnt < 5 ? -cnt : -5);
+        const eggp = (ismnum(cn) && obj.known)
+            ? 'the ' + permonstTemplate(cn).pmnames[NEUTRAL]
+            : (cnt > 1) ? 'some' : 'an';
+        await pline(`You hit ${mon_nam(mon)} with ${eggp} egg${cnt === 1 ? '' : 's'}.`);
+        await pline('Splat!');
+        game.thrownobj = null; /* useup_eggs: obfree */
+        exercise(A_WIS, false);
+        return;
+    }
     if ((obj.otyp | 0) === CREAM_PIE || (obj.otyp | 0) === BLINDING_VENOM_HM) {
         mon.msleeping = 0;
         /* C uhitm.c:1265-1268 — AT_SPIT for venom, AT_WEAP for a thrown pie. */
@@ -2913,7 +2933,7 @@ async function _hmon_hitmon_dmg_recalc(hmd, obj, u, uwep) {
         let skillwep = obj;
         if ((_is_ammo_hmon(obj) || _is_missile_hmon(obj)) && _ammo_and_launcher_hmon(obj, uwep))
             skillwep = uwep;
-        dmgbonus += weapon_dam_bonus(skillwep);
+        dmgbonus += await weapon_dam_bonus(skillwep);
         if (hmd.train_weapon_skill) {
             const wtype = hmd.thrown ? weapon_type(skillwep) : weapon_type(uwep);
             await use_skill(wtype, 1);
@@ -3605,7 +3625,7 @@ export function Resists_Elem(mon, propindx) {
     case BLND_RES:
         return resists_blnd(mon);
     default:
-        /* C calls impossible() here (a warning) then returns FALSE */
+        impossible_sync("Resists_Elem(%d), unexpected property type", propindx);
         return false;
     }
 
@@ -3654,7 +3674,6 @@ export function resists_drli(mon) {
 }
 
 export function resists_blnd(mon) {
-    resists_blnd_impossible = null;
     const ptr = mon ? mon.data : null;
     const is_you = is_youmonst(mon);
 
@@ -3675,18 +3694,10 @@ export function resists_blnd(mon) {
         return true;
     /* catchall */
     if (is_you && _Blnd_resist()) {
-        /* impossible() is async (js/pline.js) and this body is sync; record the
-         * message so an awaiting caller (js/zap.js _u_resists_blnd) emits it. */
-        resists_blnd_impossible = "'Blnd_resist' but not resists_blnd()?";
+        impossible_sync("'Blnd_resist' but not resists_blnd()?");
         return true;
     }
     return false;
-}
-export let resists_blnd_impossible = null;
-export function take_resists_blnd_impossible() {
-    const m = resists_blnd_impossible;
-    resists_blnd_impossible = null;
-    return m;
 }
 /* C youprop.h Blnd_resist == (HBlnd_resist || EBlnd_resist), including the
  * extrinsic resistance from wielding Sunsword. */

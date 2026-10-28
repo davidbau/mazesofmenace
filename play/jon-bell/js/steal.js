@@ -71,7 +71,7 @@ import { goodpos } from './trap.js';
 import { obj_extract_self, remove_object, place_object, mdrop_obj_md, revive_corpse, mpickobj, touch_artifact_mon } from './mklev.js';
 import { flooreffects, freeinv, body_part } from './cmd.js';
 import { encumber_msg } from './weight.js';
-import { find_objowner, costly_spot, in_rooms, inhishop, subfrombill, shop_keeper, addtobill as shk_addtobill, stolen_value } from './shk.js';
+import { find_objowner, costly_spot, costly_adjacent, in_rooms, inhishop, subfrombill, shop_keeper, addtobill as shk_addtobill, stolen_value } from './shk.js';
 import { within_bounded_area } from './rect.js';
 import { PM_DEATH, PM_FAMINE, PM_PESTILENCE } from './pm.generated.js';
 /* C zap.c:1458 obj_resists — the body WITH C's Rider-corpse clause
@@ -428,17 +428,9 @@ function _rloco_on_W_tower_level(lev) {
     return same(g.wiz1_level) || same(g.wiz2_level) || same(g.wiz3_level);
 }
 
-/* C ref: shk.c:5368-5381 costly_adjacent(shkp, x, y) — unexported file-local
- * in js/shk.js (which itself notes it "was a WRONG TWIN" pattern for
- * costly_spot); copied here rather than exported across files, same
- * one-file-scope reasoning as On_W_tower_level above. */
+/* C ref: shk.c:5368-5381 — canonical helper also handles stored shk_x/shk_y. */
 function _rloco_costly_adjacent(shkp, x, y) {
-    if (!shkp || !inhishop(shkp) || !isok(x, y))
-        return false;
-    const eshkp = ESHK(shkp);
-    const loc = game.level?.at ? game.level.at(x, y) : null;
-    return !!(loc?.edge)
-        || (x === (eshkp?.shk?.x | 0) && y === (eshkp?.shk?.y | 0));
+    return costly_adjacent(shkp, x, y);
 }
 
 /* First entry of in_rooms(x, y, typewanted), or 0 if the list is empty --
@@ -470,6 +462,8 @@ const RLOCO_CORPSE = 265; /* objects[].otyp CORPSE -- same literal js/dig.js,
                               js/dog.js and js/hold_another_object.js each use
                               locally for this otyp. */
 
+/* C ref: teleport.c:2101-2181 rloco(obj) — false if the object is gone.
+ * Await billing and its messages before placing the object, as C does. */
 export async function rloco(obj) {
     /* teleport.c:2107-2110 -- a Rider corpse revives instead of relocating;
      * C returns FALSE when revival consumes the object. */
@@ -533,14 +527,8 @@ export async function rloco(obj) {
             } else if (hinshop && _rloco_costly_adjacent(shkp, tx, ty)
                        && oo && _rloco_room_has(tx, ty, 0, oo)) {
                 if (!obj.unpaid) {
-                    /* C: addtobill(obj, FALSE, FALSE, FALSE).  rloco is
-                     * intentionally synchronous because its callers consume
-                     * the boolean return value.  The canonical billing body
-                     * performs all accounting before its first await (the
-                     * remaining await only emits the price quote), so invoke
-                     * it without awaiting here and preserve rloco's return
-                     * contract while still linking the object to the bill. */
-                    void shk_addtobill(obj, false, false, false);
+                    // C teleport.c:2174: finish billing before place_object().
+                    await shk_addtobill(obj, false, false, false);
                 }
             } else {
                 await stolen_value(obj, otx, oty, false, false);

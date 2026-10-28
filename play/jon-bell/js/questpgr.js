@@ -26,7 +26,7 @@ import { NEUTRAL, MIN_QUEST_LEVEL } from './const.js';
  * is_quest_artifact() lives in js/objnam.js (js/cmd.js's same-named export is a
  * throwing stub — the file-local-stub-shadows-real-port shape). */
 import { OBJ_INVENT, OBJ_FLOOR, OBJ_MINVENT, OBJ_MIGRATING, OBJ_BURIED, Has_contents } from './const.js';
-import { is_quest_artifact, makesingular } from './objnam.js';
+import { is_quest_artifact, makesingular, makeplural as _makeplural } from './objnam.js';
 import { rank_of } from './rank_data.js';
 import { putmsghistory } from './display.js';
 import { roles as ROLES } from './roles.js';
@@ -3707,7 +3707,7 @@ export function bind_cmdmod(mod) {
 }
 
 /* C questpgr.c:196 convert_arg(c) — expand one %-arg into cvt_buf. */
-function convert_arg(c) {
+export function convert_arg(c) {
     const u = game.u || {};
     switch (c) {
     case 'p': return String(game.plname ?? game.u?.plname ?? '');
@@ -3854,7 +3854,7 @@ function _Blind() {
     const BLINDED = 15; /* prop.h BLINDED */
     const p = game.u?.uprops?.[BLINDED];
     if (!p) return false;
-    return !!((p.intrinsic | 0) || (p.extrinsic | 0) || (p.blocked | 0) === -1);
+    return !!((p.intrinsic | 0) || (p.extrinsic | 0)) && !(p.blocked | 0);
 }
 
 function _impossible(msg) {
@@ -3927,7 +3927,6 @@ function convert_line(in_line) {
 function _highc(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
 function _an(s) { return (s && 'aeiouAEIOU'.includes(s[0])) ? `an ${s}` : `a ${s}`; }
 function _An(s) { return _highc(_an(s)); }
-function _makeplural(s) { return s.endsWith('s') ? s : `${s}s`; }
 
 /* C questpgr.c:436 deliver_by_window(msg, how) — one nhwindow, one putstr per
  * converted line, display_nhwindow(datawin, TRUE). */

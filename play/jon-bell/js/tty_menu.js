@@ -21,7 +21,8 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 /* C ref: wintty.c:1704 MENU_SEARCH → tty_getlin("Search for:", tmpbuf), and
  * :1714 pmatchi(searchbuf, curr->str) (strutil.c:151). */
-import { menu_search_getlin, build_window_screen, tty_window_offx } from './com_pager.js';
+import { menu_search_getlin, build_window_screen, tty_window_offx,
+         _overlay_status_line } from './com_pager.js';
 import { pmatchi } from './strutil.js';
 import { NO_COLOR } from './terminal.js';
 
@@ -196,7 +197,7 @@ export class TtyMenu {
              * recorded terminal as cursor-forward (same rule as the status
              * bar's title bar, display.js ESC[<n>C), so those cells are
              * unpainted: #wizcustom's heading records "identifier\e[29Csym". */
-            const gapped = (curr.attr === ATR_INVERSE && !mc)
+            const gapped = (curr.attr === ATR_INVERSE || mc)
                 ? text.slice(attr_n).replace(/ {5,}/g, m => `\x1b[${m.length}C`)
                 : text.slice(attr_n);
             if (sgr.length) text = text.slice(0, attr_n)
@@ -444,11 +445,23 @@ export class TtyMenu {
             const prev = game._gm_corner;
             game._gm_corner = { col: Math.min(this.contentCol, prev?.col ?? Infinity),
                                 rows: Math.max(this._lines.length, prev?.rows ?? 0) };
-            const { docorner_blank_utf8_captures } = await import('./display.js');
+            const { docorner_blank_utf8_captures, docorner_status_rows } = await import('./display.js');
             docorner_blank_utf8_captures(this.contentCol - 1, this.maxrow + 1);
+            docorner_status_rows(this.contentCol - 1, this.maxrow + 1);
             const { _threeStatusLines } = await import('./display.js');
-            if (this.maxrow + 1 >= LI - (_threeStatusLines() ? 3 : 2) && game.disp)
+            const statusOffy = LI - (_threeStatusLines() ? 3 : 2);
+            if (this.maxrow + 1 >= statusOffy && game.disp) {
                 game.disp.botlx = 1;
+                /* With that bot() a no-op, the status rows docorner() cl_end()ed
+                 * from offx (wintty.c:3685-3688) stay cut on the terminal until
+                 * the next paint; a getlin raised before it (show_overview's
+                 * query_annotation, dungeon.c:3336) shows them so. */
+                const rows = String(game._screen_output ?? '').split('\n');
+                for (let y = statusOffy; y < Math.min(this.maxrow + 1, LI, rows.length); y++)
+                    rows[y] = _overlay_status_line(rows[y], Math.max(0, this.contentCol - 2), '')
+                        .replace(/(?: |\x1b\[\d+C)+$/, '');
+                if (rows.length >= LI) game._screen_output = rows.join('\n');
+            }
         } else game._gm_corner = undefined;
         /* erase_menu_or_text repaints the rows the window covered (wintty.c:966-983)
          * with the symset handling live at dismissal. */

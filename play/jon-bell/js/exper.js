@@ -454,7 +454,7 @@ export async function losexp(drainer) {
        without reducing level and that isn't fatal so suppress the message
        in that situation */
     if (u.ulevel > 1 || drainer)
-        pline(`${Goodbye()} level ${u.ulevel}.`);
+        await pline(`${Goodbye()} level ${u.ulevel}.`);
 
     if (u.ulevel > 1) {
         u.ulevel -= 1;

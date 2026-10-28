@@ -11,20 +11,24 @@ import { delallobj, cmd_from_dir, flooreffects } from './cmd.js';
 // rn1(4,2) == rn2(4)+2 pit timeout.  The number of turns falls out of the C
 // effort formula (NOT hardcoded): for the level-1 archeologist (abon()==1,
 // pick-axe spe 0) the cumulative effort crosses 50 on the 4th turn.
-import { rn2, rn1, rnd } from './rng.js';
+import { rn2, rn1, rnd, rnl } from './rng.js';
 import { PM_DWARF as PM_DWARF_ } from './pm.generated.js';
 import { game } from './gstate.js';
-import { dbon } from './uhitm.js';
+import { dbon, dmgval } from './uhitm.js';
+import { body_part } from './cmd.js';
+import { FOOT, FORCETRAP } from './const.js';
+import { reset_utrap } from './trap.js';
 import { yname } from './do_wear.js';
 import { OC_NAME } from './oc_name_data.js';
 import { end_burn, start_timer } from './timeout.js';
-import { pline, feel_newsym, canseemon, newsym, You_hear, You_see, Unaware as Unaware_real } from './display.js';
+import { pline, feel_newsym, canseemon, newsym, You_hear, You_see, Unaware as Unaware_real, Deaf as Deaf_real, mkcavearea } from './display.js';
 import { unblock_point, does_block, Blind, vision_recalc } from './vision.js';
 import { scatter } from './dokick.js';
 import { MAY_HIT, Is_stronghold, MM_NOMSG } from './const.js';
 import { b_trapped } from './lock.js';
 import { NO_PART } from './const.js';
 import { acurr, exercise, adjalign } from './attrib.js';
+import { acurrstr } from './dokick.js';
 import { TT_PIT, STONE, SCORR, CORR, DOOR, D_NODOOR, IS_WALL, IS_OBSTRUCTED, IS_DOOR, D_CLOSED, TREE, isok,
          OBJ_FREE, OBJ_FLOOR, OBJ_CONTAINED, OBJ_INVENT, OBJ_MINVENT, OBJ_MIGRATING,
          OBJ_BURIED, OBJ_ONBILL, OBJ_LUAFREE, OBJ_DELETED, W_BALL, W_CHAIN, TT_BURIEDBALL,
@@ -142,6 +146,10 @@ import { PM_WATCHMAN, PM_WATCH_CAPTAIN, PM_ARCHEOLOGIST, PM_SAMURAI } from './pm
 import { mkclass } from './makemon.js';
 /* C fountain.c furniture handlers: these bodies are shared with potion.js. */
 import { dogushforth, dryup, breaksink } from './potion.js';
+import { dropx, welded, set_wounded_legs } from './cmd.js';
+import { RIGHT_SIDE } from './const.js';
+import { the, xname } from './objnam.js';
+import { PM_EARTH_ELEMENTAL, PM_XORN } from './pm.generated.js';
 
 /* C dbridge.c:888-1019: bridge terrain, debris, vision, and the occupants. */
 export async function destroy_drawbridge(x, y) {
@@ -206,7 +214,7 @@ export async function destroy_drawbridge(x, y) {
         game.u.uevent.uopened_dbridge = true;
 
     /* C dbridge.c:978-1015: the occupants of the portcullis and span squares. */
-    const etmp2 = db_set_entity(wx, wy); /* currently only automissers can be here */
+    const etmp2 = db_occupants[1] = db_set_entity(wx, wy); /* currently only automissers can be here */
     if (etmp2.edata) {
         const e_inview = db_e_canseemon(etmp2);
         if (!db_automiss(etmp2)) {
@@ -217,7 +225,7 @@ export async function destroy_drawbridge(x, y) {
                             CRUSHING); /* no corpse */
         } /* nothing which is vulnerable can survive this */
     }
-    const etmp1 = db_set_entity(bx.value, by.value);
+    const etmp1 = db_occupants[0] = db_set_entity(bx.value, by.value);
     if (etmp1.edata) {
         const e_inview = db_e_canseemon(etmp1);
         if (db_e_missed(etmp1, true)) {
@@ -240,7 +248,7 @@ export async function destroy_drawbridge(x, y) {
             if ((game.level.at(etmp1.ex, etmp1.ey)?.typ | 0) === MOAT) await db_do_entity(etmp1);
         }
     }
-    if (game.svk?.killer) { game.svk.killer.name = ''; game.svk.killer.format = 0; } /* nokiller() */
+    db_nokiller(); /* C dbridge.c:1016: clear the killer and both occupants. */
     if (Is_stronghold(game.u.uz))
         game.u.uevent.uheard_tune = 3; /* bridge is gone so tune is now useless */
 }
@@ -1574,10 +1582,8 @@ export async function dig() {
     const g = game;
     const u = g.u || {};
     const d = diggingCtx();
-    /* C dig.c:304 — the dig tool.  We stored the applied pick-axe as
-     * g.context.digging.tool (the apply object), since the JS uwep wiring may
-     * differ from C's (the pick-axe is the C uwep). */
-    const tool = d.tool || u.uwep || {};
+    // C dig.c:304,365: the current weapon supplies the digging bonuses.
+    const tool = u.uwep;
     /* C dig.c:309-315 — "perhaps a nymph stole your pick-axe while you were
      * busy digging, or perhaps you teleported away": end the occupation
      * silently when swallowed, the pick is gone, the hero left the dig level,
@@ -1598,8 +1604,9 @@ export async function dig() {
     }
 
     /* C dig.c:317-322 — digging down: dig_check on the hero's square. */
+    let dcresult = DIGCHECK_PASSED;
     if (d.down) {
-        const dcresult = dig_check_(BY_YOU_, u.ux | 0, u.uy | 0);
+        dcresult = dig_check_(BY_YOU_, u.ux | 0, u.uy | 0);
         if (dcresult >= DIGCHECK_FAILED) {
             await digcheck_fail_message_(dcresult, u.ux | 0, u.uy | 0, tool);
             return 0;
@@ -1626,6 +1633,31 @@ export async function dig() {
         }
     }
 
+    /* C dig.c:336-362: a fumble ends this attempt without adding effort. */
+    const fumbling = u_prop_(u, FUMBLING);
+    if ((fumbling.intrinsic || fumbling.extrinsic) && !rn2(3)) {
+        switch (rn2(3)) {
+        case 0:
+            if (!welded(u.uwep)) {
+                await pline('You fumble and drop %s.', yname(u.uwep));
+                await dropx(u.uwep);
+            } else {
+                if (u.usteed)
+                    await pline('%s and %s %s!', Yobjnam2(u.uwep, 'bounce'), otense(u.uwep, 'hit'), mon_nam(u.usteed));
+                else
+                    await pline('Ouch!  %s and %s you!', Yobjnam2(u.uwep, 'bounce'), otense(u.uwep, 'hit'));
+                set_wounded_legs(RIGHT_SIDE, 5 + rnd(5));
+            }
+            break;
+        case 1:
+            await pline('Bang!  You hit with the broad side of %s!', the(xname(u.uwep)));
+            wake_nearby(false);
+            break;
+        default:
+            await pline('Your swing misses its mark.');
+        }
+        return 0;
+    }
 
     /* C dig.c:365-366 — effort += 10 + rn2(5) + abon() + uwep->spe
      *                              - greatest_erosion(uwep) + u.udaminc. */
@@ -1638,9 +1670,9 @@ export async function dig() {
     if (d.down) {
         /* C dig.c:372-378 — effort > 250 → full hole (not reached: pit first). */
         const ttmp = t_at(d.pos.x | 0, d.pos.y | 0);
-        if (d.effort > 250 || (ttmp && is_hole(ttmp.ttyp))) {
+        if (d.effort > 250 || (ttmp && ttmp.ttyp === HOLE)) {
             await dighole(false, false, null);
-            d.effort = 0; d.pos = { x: 0, y: 0 }; d.level = { dnum: 0, dlevel: 0 };
+            d.effort = d.lastdigtime = 0; d.pos = { x: 0, y: 0 }; d.level = { dnum: 0, dlevel: 0 };
             d.down = false; d.chew = false; d.warned = false; d.quiet = false;
             return 0; /* done with digging */
         }
@@ -1648,6 +1680,36 @@ export async function dig() {
          * digging (the pit is made once; further turns only add effort). */
         if (d.effort <= 50 || (ttmp && (ttmp.ttyp === TRAPDOOR || is_pit(ttmp.ttyp)))) {
             return 1;
+        }
+        // C dig.c:383-425: trigger set traps, or chop an occupied bear trap.
+        if (ttmp && (ttmp.ttyp === LANDMINE || (ttmp.ttyp === BEAR_TRAP && !u.utrap))) {
+            await dotrap(ttmp, FORCETRAP);
+            d.effort = d.lastdigtime = 0; d.pos = { x: 0, y: 0 }; d.level = { dnum: 0, dlevel: 0 };
+            d.down = false; d.chew = false; d.warned = false; d.quiet = false;
+            return 0;
+        } else if (ttmp && ttmp.ttyp === BEAR_TRAP && u.utrap) {
+            if (rnl(7) > ((fumbling.intrinsic || fumbling.extrinsic) ? 1 : 4)) {
+                let dmg = dmgval(u.uwep, g.youmonst) + dbon();
+                if (dmg < 1) dmg = 1;
+                else if (u.uarmf) dmg = Math.trunc((dmg + 1) / 2);
+                await pline('You hit yourself in the %s.', body_part(FOOT));
+                const hp = u_prop_(u, HALF_PHDAM);
+                if (hp.intrinsic || hp.extrinsic) dmg = Math.trunc((dmg + 1) / 2);
+                await losehp(dmg, `chopping off ${g.flags?.female ? 'her' : 'his'} own ${body_part(FOOT)}`, KILLED_BY);
+            } else {
+                await pline('You destroy the bear trap with %s.', yobjnam(u.uwep, null));
+                deltrap(ttmp);
+                await reset_utrap(true);
+            }
+            d.effort = 0;
+            return 0;
+        } else if (ttmp && dcresult === DIGCHECK_PASSED_DESTROY_TRAP) {
+            const name = trapname(ttmp.ttyp, false);
+            if (is_pick(u.uwep))
+                await pline('You destroy %s with %s.', ttmp.tseen ? the(name) : an(name), yobjnam(u.uwep, null));
+            deltrap(ttmp);
+            d.effort = 0;
+            return 0;
         }
         /* C dig.c:427-430: anger the god and priest before digging the pit. */
         const lev = g.level.at(d.pos.x, d.pos.y);
@@ -1686,7 +1748,19 @@ export async function dig() {
             }
             digtxt = 'The boulder falls apart.';
         } else if (lev && (lev.typ === STONE || lev.typ === SCORR || IS_TREE(lev.typ))) {
-            /* C dig.c:468-485 (Is_earthlevel mkcavearea arm not reached here). */
+            // C dig.c:469-480: the cave effect skips debris and door handling.
+            if (Is_earthlevel(u.uz)) {
+                let cave = null;
+                if (u.uwep.blessed && !rn2(3)) cave = false;
+                else if ((u.uwep.cursed && !rn2(4)) || (!u.uwep.blessed && !rn2(6))) cave = true;
+                if (cave !== null) {
+                    await mkcavearea(cave);
+                    d.lastdigtime = g.moves | 0;
+                    d.quiet = false;
+                    d.level = { dnum: 0, dlevel: -1 };
+                    return 0;
+                }
+            }
             if (digtyp === DIGTYP_TREE) {
                 digtxt = 'You cut down the tree.';
                 lev.typ = ROOM; lev.flags = 0;
@@ -1701,6 +1775,10 @@ export async function dig() {
             }
         } else if (lev && IS_WALL(lev.typ)) {
             /* C dig.c:488-500 — ordinary wall → doorless doorway. */
+            if (in_rooms(dpx, dpy, SHOPBASE).length > 0) {
+                add_damage(dpx, dpy, 10 * acurrstr(game.u)); /* C dig.c:489-490 SHOP_WALL_DMG */
+                dmgtxt = 'damage';
+            }
             /* C dig.c:493-499 — maze wall → ROOM, cavernous → CORR, else doorless doorway. */
             if (game.level.flags.is_maze_lev) {
                 lev.typ = ROOM; lev.flags = 0;
@@ -1735,6 +1813,12 @@ export async function dig() {
             await pline(digtxt);
         if (dmgtxt)
             await pay_for_damage(dmgtxt, false); /* C dig.c:526-527 */
+        /* C dig.c:529-532: digging debris can become an elemental or xorn. */
+        if (Is_earthlevel(u.uz) && !rn2(3)) {
+            const mndx = rn2(2) ? PM_EARTH_ELEMENTAL : PM_XORN;
+            if (await makemon(mndx, dpx, dpy, MM_NOMSG))
+                await pline('The debris from your digging comes to life!');
+        }
         /* C dig.c:534-539 — destroying a trapped door sets off its blast. */
         if (IS_DOOR(lev.typ) && (lev.doormask & D_TRAPPED)) {
             lev.doormask = D_NODOOR;
@@ -2633,7 +2717,7 @@ function mdistu_dig(mon) {
  * predicate so trapped-door explosions say "You dream..." while the hero is
  * asleep or paralyzed, instead of silently forcing the conscious branch. */
 function _dig_unaware() { return !!Unaware_real(); }
-function _dig_deaf() { return !!(game.flags?.deaf); }
+function _dig_deaf() { return !!Deaf_real(); } /* youprop.h Deaf: HDeaf timeout (faint sets it, eat.c:3421) */
 /* C ref: pline.c:387-400 You_feel(line) — "You feel <line>", or "You dream
  * that you feel <line>" when Unaware (asleep/unconscious). */
 function You_feel(line) { pline((Unaware_real() ? "You dream that you feel " : "You feel ") + line); }

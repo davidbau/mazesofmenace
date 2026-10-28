@@ -38,6 +38,7 @@ import { HALLUC, HALLUC_RES } from './const.js';
 import { TtyMenu, PICK_ONE, ATR_NONE, menu_heading_attr_text } from './tty_menu.js';
 import { display_text_window } from './com_pager.js';
 import { pline, flush_screen, raw_print_wait } from './display.js';
+import { impossible } from './pline.js';
 import { config_error_add } from './cmd_binds.js';
 import { OC_USES_KNOWN } from './mklev.js';
 import { ARTILIST, quest_info, simple_typename } from './objnam.js';
@@ -440,18 +441,19 @@ export function discover_object(oindx, mark_as_known, mark_as_encountered, credi
  *
  * C's gem_learned(oindx) tail (o_init.c:520-521) re-prices unpaid gems.
  * RNG-free. */
-export function undiscover_object(oindx) {
+export async function undiscover_object(oindx) {
     const g = game;
     const idx = oindx | 0;
     if ((g._oc_name_known && g._oc_name_known[idx])
         || (g._oc_encountered && g._oc_encountered[idx]))
         return;
     const oclass = (MKOBJ_OC_CLASS_LOCAL(idx)) | 0;
-    const list = g._disco && g._disco[oclass];
-    if (!list) return;
+    const list = g._disco?.[oclass] ?? [];
     const at = list.indexOf(idx);
     if (at >= 0)
         list.splice(at, 1);
+    else
+        await impossible('named object not in disco'); // C o_init.c:517
     /* C o_init.c:520-521 */
     if ((MKOBJ_OC_CLASS[idx] | 0) === 13 /* GEM_CLASS */)
         gem_learned(idx); /* ok, it's actually been unlearned */

@@ -1,9 +1,9 @@
 // region.js — port of nethack-c/src/region.c (scaffold: functions are added here
 
-import { NHF_BONESFILE, DOOR, MAGICAL_BREATHING, TELEDS_NO_FLAGS, PLNMSG_ENVELOPED_IN_GAS } from './const.js';
+import { NHF_BONESFILE, DOOR, MAGICAL_BREATHING, TELEDS_NO_FLAGS, PLNMSG_ENVELOPED_IN_GAS, HALF_PHDAM } from './const.js';
 import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
-const HALF_PHYSICAL_DAMAGE = 74; /* C prop.h HALF_PHYS_DAM */
+const TOWEL = 234; /* C objects.h TOWEL; youprop.h Half_gas_damage */
 import { Monnam, monstseesu, monstunseesu } from './mcastu.js';
 import { You, Your } from './do_wear.js';
 import { makeplural } from './objnam.js';
@@ -19,7 +19,7 @@ import { wake_nearto, resists_poison, setmangry } from './mklev.js';
 import { isok } from './hacklib.js';
 import { m_at } from './uhitm.js';
 import { cansee, Blind, block_point, unblock_point, does_block, vision_recalc } from './vision.js';
-import { newsym, Unaware, pline, pline_flush_point, _pline_flush_frame_record, _topl_record_join, _topl_merge_result, _topl_joins_snapshot } from './display.js';
+import { newsym, Unaware, You_feel, impossible_sync, pline, pline_flush_point, _pline_flush_frame_record, _topl_record_join, _topl_merge_result, _topl_joins_snapshot } from './display.js';
 import { m_poisongas_ok } from './mklev.js';
 import { is_pool_or_lava } from './look.js';
 
@@ -936,8 +936,7 @@ export function expire_gas_cloud(p1, _p2) {
 //
 // RNG: the `rnd(dam) + 5` draws at region.c:1122 (hero) and :1152 (monster)
 // are the only ones, and both sit behind `if (dam < 1) return FALSE`.  Every
-// cloud this port can currently create is damage 0, so this function is
-// RNG-free in practice; the damaging arms are the KNOWN GAP below.
+// damaging cloud follows the hero or monster arm below.
 export async function inside_gas_cloud(p1, p2) {
     const reg = p1;
     const mtmp = p2;
@@ -964,11 +963,12 @@ export async function inside_gas_cloud(p1, p2) {
             await pline("Something is burning your " + makeplural(body_part(LUNG)) + "!");
             await You("cough and spit blood!");
             wake_nearto(game.u.ux | 0, game.u.uy | 0, 2);
-            const hp = game.u?.uprops?.[HALF_PHYSICAL_DAMAGE];
+            const hp = game.u?.uprops?.[HALF_PHDAM];
             let d = rnd(dam) + 5;
-            if (hp && ((hp.intrinsic | 0) || (hp.extrinsic | 0)) && !(hp.blocked | 0))
-                d = (d + 1) >> 1;
-            /* Half_gas_damage (worn towel) is not modeled; C region.c:1123 */
+            if (hp && ((hp.intrinsic | 0) || (hp.extrinsic | 0)))
+                d = Math.trunc((d + 1) / 2);
+            if (game.u.ublindf?.otyp === TOWEL && game.u.ublindf.spe > 0)
+                d = Math.trunc((d + 1) / 2);
             await losehp(d, "gas cloud", KILLED_BY_AN);
             /* monstunseesu(M_SEEN_POISON) — C region.c:1126 */
             monstunseesu(M_SEEN_POISON);
@@ -1099,7 +1099,7 @@ export function create_gas_cloud(x, y, cloudsize, damage) {
         inside_cloud = true;
 
     if (cloudsize > MAX_CLOUD_SIZE) {
-        /* C impossible("create_gas_cloud: cloud too large (%d)!", cloudsize) */
+        impossible_sync("create_gas_cloud: cloud too large (%d)!", cloudsize);
         cloudsize = MAX_CLOUD_SIZE;
     }
 
@@ -1225,7 +1225,7 @@ export async function region_safety() {
             const timeout = { value: p.intrinsic | 0 };
             set_itimeout(timeout, d(4, 4) + 4);
             p.intrinsic = timeout.value;
-            await You('feel able to breathe.');
+            await You_feel('able to breathe.');
         }
     } else if (r) {
         remove_region(r);

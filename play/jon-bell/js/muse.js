@@ -139,6 +139,7 @@ async function precheck(mon, obj) {
         // C v5 muse.c:131-160: consume the wand before applying blast damage.
         const dam = d(obj.spe + 2, 6);
         if (cansee(mon.mx, mon.my)) {
+            set_msg_xy(mon.mx, mon.my); /* muse.c:136: pline_mon */
             await pline(`${Monnam(mon)} zaps ${an(xname(obj))}, which suddenly explodes!`);
         } else {
             const range = couldsee(mon.mx, mon.my) ? BOLT_LIM + 1 : BOLT_LIM - 3;
@@ -347,21 +348,23 @@ async function fhito_loc(obj, tx, ty, fhito) {
 
 async function mbhit(mon, range, fhitm, fhito, obj) {
     const otyp = obj.otyp | 0;
-    const bhitpos = (game.bhitpos = game.bhitpos || { x: 0, y: 0 });
+    // C muse.c:1746-1807 reads the shared gb.bhitpos even after callbacks;
+    // drawbridge debris can change it (explode.c:843-856 scatter).
+    game.bhitpos ||= { x: 0, y: 0 };
 
-    bhitpos.x = mon.mx | 0;
-    bhitpos.y = mon.my | 0;
+    game.bhitpos.x = mon.mx | 0;
+    game.bhitpos.y = mon.my | 0;
     const ddx = sgn((mon.mux | 0) - (mon.mx | 0));
     const ddy = sgn((mon.muy | 0) - (mon.my | 0));
 
     while (range-- > 0) {
-        bhitpos.x += ddx;
-        bhitpos.y += ddy;
-        const x = bhitpos.x, y = bhitpos.y;
+        game.bhitpos.x += ddx;
+        game.bhitpos.y += ddy;
+        const x = game.bhitpos.x, y = game.bhitpos.y;
 
         if (!isok(x, y)) {
-            bhitpos.x -= ddx;
-            bhitpos.y -= ddy;
+            game.bhitpos.x -= ddx;
+            game.bhitpos.y -= ddy;
             break;
         }
         const u = game.u || {};
@@ -375,9 +378,9 @@ async function mbhit(mon, range, fhitm, fhito, obj) {
             await fhitm(mtmp, obj);
             range -= 3;
         }
-        if (await fhito_loc(obj, x, y, fhito))
+        if (await fhito_loc(obj, game.bhitpos.x, game.bhitpos.y, fhito))
             range--;
-        const loc = game.level?.at(x, y);
+        const loc = game.level?.at(game.bhitpos.x, game.bhitpos.y);
         const ltyp = loc ? (loc.typ | 0) : 0;
         /* C muse.c:1775-1783 — a striking beam destroys a drawbridge it
          * crosses, unless it is passing over the raised bridge's moat. */
@@ -389,21 +392,21 @@ async function mbhit(mon, range, fhitm, fhito, obj) {
             /* C muse.c:1783-1800 — monsters never zap opening/locking magic, so
              * WAN_STRIKING is the only case that does anything here. */
             if (otyp === WAN_STRIKING) {
-                if (await doorlock(obj, x, y)) {
+                if (await doorlock(obj, game.bhitpos.x, game.bhitpos.y)) {
                     if (game.zap_oseen)
                         makeknown(otyp);
                     /* C muse.c:1794-1797 — a shop door broken by the beam goes
                      * on the shopkeeper's repair list at NO charge. */
-                    if ((loc.doormask | 0) === D_BROKEN
-                        && in_rooms(x, y, SHOPBASE).length)
-                        add_damage(x, y, 0);
+                    if ((game.level.at(game.bhitpos.x, game.bhitpos.y).doormask | 0) === D_BROKEN
+                        && in_rooms(game.bhitpos.x, game.bhitpos.y, SHOPBASE).length)
+                        add_damage(game.bhitpos.x, game.bhitpos.y, 0);
                 }
             }
         }
         if (!ZAP_POS(ltyp)
-            || (IS_DOOR(ltyp) && ((loc.doormask | 0) & (D_LOCKED | D_CLOSED)))) {
-            bhitpos.x -= ddx;
-            bhitpos.y -= ddy;
+            || (IS_DOOR(ltyp) && ((game.level.at(game.bhitpos.x, game.bhitpos.y).doormask | 0) & (D_LOCKED | D_CLOSED)))) {
+            game.bhitpos.x -= ddx;
+            game.bhitpos.y -= ddy;
             break;
         }
     }
@@ -565,7 +568,7 @@ export async function use_offensive(mtmp) {
             pline("You are blinded by the flash of light!");
             make_blinded(BlindedTimeout() + rnd(1 + 50), false);
         }
-        lightdamage(otmp, true, 5);
+        await lightdamage(otmp, true, 5);
         game.m_using = false;
         otmp.spe = (otmp.spe | 0) - 1;
         return 1;

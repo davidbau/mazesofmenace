@@ -12,10 +12,11 @@ import { game } from './gstate.js';
 import { eatfood } from './eat.js';
 import { COLNO, ROWNO, CLOUD, RLOC_NOMSG } from './const.js';
 import { rn2, rn1, d } from './rng.js';
-import { pline, You_hear, urgent_pline } from './display.js';
+import { pline, You_hear, You_feel, urgent_pline } from './display.js';
+import { impossible } from './pline.js';
 import { buzz, Monnam } from './mcastu.js';
 import { rider_revival_time, is_rider_pm, makemon, hideunder, ing_suffix, revive_corpse, zombie_form, set_corpsenm,
-         dealloc_obj, maybe_unhide_at } from './mklev.js';
+         dealloc_obj, dealloc_mextra, maybe_unhide_at } from './mklev.js';
 import { permonstTemplate, container_weight, emits_light, name_to_mon } from './makemon.js';
 import { enexto_out, rloc } from './teleport.js';
 import { tamedog } from './dog.js';
@@ -23,8 +24,8 @@ import { make_familiar } from './dog.js';
 import { cansee } from './vision.js';
 import { m_monnam, locomotion, big_to_little, little_to_big, a_monnam } from './mhitm.js';
 import { makeplural, an, xname, the } from './objnam.js';
-import { newsym, You_see, canseemon, Deaf } from './display.js';
-import { useup, useupall, obj_extract_self_general, verbalize, Yname2 } from './cmd.js';
+import { newsym, You_see, canseemon, Deaf, impossible_sync } from './display.js';
+import { figurine_location_checks, useup, useupall, obj_extract_self_general, verbalize, Yname2 } from './cmd.js';
 import { obfree, is_ice } from './dokick.js';
 import { m_at, setmnotwielded } from './uhitm.js';
 import { is_pool } from './look.js';
@@ -151,15 +152,84 @@ export async function slimed_to_death(kptr) {
 /* C apply.c:2398 — delayed figurine transformation. */
 async function fig_transform_timer(arg, timeout) {
     const figurine = arg?.a_obj;
-    if (!figurine) return;
+    if (!figurine) {
+        await impossible('null figurine in fig_transform()');
+        return;
+    }
+    const S_MIMIC = 13, S_EEL = 57;
+    const silent = (timeout | 0) !== (game.moves | 0); /* happened while away */
     const xx = { value: 0 }, yy = { value: 0 };
-    if (!get_obj_location(figurine, xx, yy, 0)) {
+    let okay_spot = get_obj_location(figurine, xx, yy, 0);
+    let cc = { x: xx.value | 0, y: yy.value | 0 };
+    if (figurine.where === OBJ_INVENT || figurine.where === OBJ_MINVENT) {
+        cc = enexto_out(cc.x, cc.y, permonstTemplate(figurine.corpsenm | 0));
+        okay_spot = !!cc;
+    }
+    if (!okay_spot || !(await figurine_location_checks(figurine, cc, true))) {
+        /* reset the timer to try again later */
         start_timer(rnd(5000), TIMER_OBJECT, FIG_TRANSFORM, arg);
         return;
     }
-    const mon = await make_familiar(figurine, xx.value | 0, yy.value | 0, true);
-    if (mon)
+    const cansee_spot = cansee(cc.x, cc.y);
+    let redraw = false;
+    const mtmp = await make_familiar(figurine, cc.x, cc.y, true);
+    if (mtmp) {
+        let suppress_see = false, and_vanish = '';
+        const monnambuf = an(m_monnam(mtmp));
+        const seeInv = game.u?.uprops?.[SEE_INVIS];
+        const See_invisible = !!seeInv && !!((seeInv.intrinsic | 0) || (seeInv.extrinsic | 0)) && !(seeInv.blocked | 0);
+        if ((mtmp.minvis && !See_invisible)
+            || ((mtmp.data.mlet | 0) === S_MIMIC && (mtmp.m_ap_type | 0) !== 0))
+            suppress_see = true;
+        if (mtmp.mundetected) {
+            if ((mtmp.data.mlet | 0) === S_MIMIC || (mtmp.data.mlet | 0) === S_EEL)
+                suppress_see = true;
+            else
+                and_vanish = ' and vanish';
+        }
+        switch (figurine.where) {
+        case OBJ_INVENT:
+            if (Blind() || suppress_see)
+                await You_feel(`something ${locomotion(mtmp.data, 'drop')} from your pack!`);
+            else
+                await You_see(`${monnambuf} ${locomotion(mtmp.data, 'drop')} out of your pack${and_vanish}!`);
+            break;
+        case OBJ_FLOOR:
+            if (cansee_spot && !silent) {
+                if (suppress_see)
+                    await pline(`${an(xname(figurine))} suddenly vanishes!`);
+                else
+                    await You_see(`a figurine transform into ${monnambuf}${and_vanish}!`);
+                redraw = true; /* update figurine's map location */
+            }
+            break;
+        case OBJ_MINVENT:
+            if (cansee_spot && !silent && !suppress_see) {
+                const mon = figurine.ocarry;
+                let carriedby;
+                if (canseemon(mon) && (!mon.wormno || cansee(mon.mx, mon.my)))
+                    carriedby = `${s_suffix(a_monnam(mon))} pack`;
+                else if (is_pool(mon.mx, mon.my))
+                    carriedby = 'empty water';
+                else
+                    carriedby = 'thin air';
+                await You_see(`${monnambuf} ${locomotion(mtmp.data, 'drop')} out of ${carriedby}${and_vanish}!`);
+            }
+            break;
+        default:
+            await impossible('figurine came to life where? (%d)', figurine.where);
+            break;
+        }
+    }
+    /* free figurine now */
+    if (figurine.where === OBJ_INVENT) {
         await useup(figurine);
+    } else {
+        obj_extract_self_general(figurine);
+        await obfree(figurine, null);
+    }
+    if (redraw)
+        newsym(cc.x, cc.y);
 }
 
 function burn_hallucination() {
@@ -558,9 +628,9 @@ async function hatch_egg(arg, timeout) {
             if (!mon)
                 break;
             if ((yours && !silent)
-                || (carried && (mdat.mlet | 0) === S_DRAGON)) {
+                || (carried && (mon.data.mlet | 0) === S_DRAGON)) {
                 if (await tamedog(mon, null, false) && carried
-                    && (mdat.mlet | 0) !== S_DRAGON)
+                    && (mon.data.mlet | 0) !== S_DRAGON)
                     mon.mtame = 20;
             }
             if (game.mvitals?.[mnum]
@@ -582,7 +652,7 @@ async function hatch_egg(arg, timeout) {
     case OBJ_INVENT:
         knowsEgg = true;
         if (!canseeHatchspot)
-            await pline(`You feel something ${locomotion(mon.data, 'drop')} from your pack!`);
+            await You_feel(`something ${locomotion(mon.data, 'drop')} from your pack!`);
         else
             await You_see(`${name} ${locomotion(mon.data, 'drop')} out of your pack!`);
         if (yours) {
@@ -612,6 +682,9 @@ async function hatch_egg(arg, timeout) {
             }
             await You_see(`${name} ${locomotion(mon.data, 'drop')} out of ${carriedBy}!`);
         }
+        break;
+    default:
+        await impossible('egg hatched where? (%d)', egg.where);
         break;
     }
     if (canseeHatchspot && knowsEgg)
@@ -718,10 +791,13 @@ function _incr_HDeaf(incr) {
     const u = game.u;
     if (!u)
         return;
-    const old = u.HDeaf | 0;
+    const prop = u.uprops?.[DEAF];
+    const old = (u.HDeaf | 0) || (prop?.intrinsic | 0);
     // C potion.c:55-85: clamp the timeout and preserve its origin flags.
     u.HDeaf = (old & ~TIMEOUT)
         | Math.min(TIMEOUT, Math.max(0, (old & TIMEOUT) + (incr | 0)));
+    // C has one HDeaf: the property countdown must retain thunder's extension.
+    if (prop) prop.intrinsic = u.HDeaf;
 }
 
 export async function do_storms() {
@@ -878,6 +954,8 @@ async function zombify_mon(arg, timeout) {
         if (body.oextra) {
             body.oextra.omid = 0;
             if ('oextra_omid' in body) body.oextra_omid = 0;
+            // C do.c:2307 -> mkobj.c:134-135 frees the saved monster's mextra.
+            if (body.oextra.omonst) dealloc_mextra(body.oextra.omonst);
             body.oextra.omonst = null;
         }
         set_corpsenm(body, zmon);
@@ -1421,7 +1499,7 @@ export function begin_burn(obj, already_lit) {
         /* C:1726-1732 */
         turns = obj.age;
         if (obj.odiluted)
-            turns = Math.floor((3 * turns + 2) / 4);
+            turns = Math.trunc((3 * turns + 2) / 4);
         radius = 1; /* very dim light */
         break;
 
@@ -1460,12 +1538,7 @@ export function begin_burn(obj, already_lit) {
             do_timer = false;
             radius = arti_light_radius(obj);
         } else {
-            /* C impossible("begin burn: unexpected %s", xname(obj)) — a
-             * printed warning that then falls through to `turns = obj->age`.
-             * js/shk.js's impossible() is a deliberate no-op (it would ADD
-             * toplines C's does print, but printing them from a port that
-             * reaches impossible() where C does not is the worse error), so
-             * only the fallthrough is reproduced. */
+            impossible_sync('begin burn: unexpected %s', xname(obj));
             turns = obj.age;
         }
         break;
@@ -1493,7 +1566,8 @@ export function begin_burn(obj, already_lit) {
         if (get_obj_location(obj, x, y, CONTAINED_TOO | BURIED_TOO))
             new_light_source(x.value, y.value, radius, LS_OBJECT,
                              obj_to_any(obj));
-        /* else C impossible("begin_burn: can't get obj position") — see above */
+        else
+            impossible_sync("begin_burn: can't get obj position");
     }
 }
 
@@ -1501,8 +1575,10 @@ function cleanup_burn(arg, expire_time) {
     const obj = arg.a_obj;
 
     /* C:1832-1835 — impossible("cleanup_burn: obj %s not lit"); return. */
-    if (!obj.lamplit)
+    if (!obj.lamplit) {
+        impossible_sync('cleanup_burn: obj %s not lit', xname(obj));
         return;
+    }
 
     del_light_source(LS_OBJECT, obj_to_any(obj));
     /* C:1838-1839 — restore unused time */
@@ -1523,8 +1599,10 @@ function cleanup_burn(arg, expire_time) {
  */
 export function end_burn(obj, timer_attached) {
     /* C:1806-1809 — impossible("end_burn: obj %s not lit"); return. */
-    if (!obj.lamplit)
+    if (!obj.lamplit) {
+        impossible_sync('end_burn: obj %s not lit', xname(obj));
         return;
+    }
 
     /* C:1811-1812 */
     if ((obj.otyp | 0) === BURN_MAGIC_LAMP || artifact_light(obj))
@@ -1538,7 +1616,7 @@ export function end_burn(obj, timer_attached) {
         if (burn_carried(obj))
             update_inventory();
     } else if (!stop_timer(BURN_OBJECT, obj_to_any(obj))) {
-        /* C:1821-1822 impossible("end_burn: obj %s not timed!") */
+        impossible_sync('end_burn: obj %s not timed!', xname(obj));
     }
 }
 

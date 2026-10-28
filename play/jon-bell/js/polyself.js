@@ -15,17 +15,17 @@
 //   rn2(10)              gender dochange   polyself.c:792
 //   rn1(500,500)         poly timeout      polyself.c:813   (u.mtimedone)
 //   d(mlvl,8)            new-form maxHP    polyself.c:868
-import { rn2, rnd, rn1, d } from './rng.js';
+import { rn2, rnd, rn1, rnl, d } from './rng.js';
 import { game } from './gstate.js';
 import { PM_COCKATRICE, PM_CHICKATRICE, PM_STONE_GOLEM, PM_FLAMING_SPHERE, PM_FIRE_VORTEX, PM_GREEN_SLIME } from './pm.generated.js';
 function pline_The(msg, ...args) { return pline('The ' + msg, ...args); }
 function touch_petrifies(pd) { const i = pd?.pmidx | 0; return i === PM_COCKATRICE || i === PM_CHICKATRICE; }
-import { pline, urgent_pline, newsym, see_monsters, flush_screen, force_more, _topl_stash_result, _topl_merge_result, _topl_joins_snapshot, canspotmon, canseemon } from './display.js';
+import { pline, urgent_pline, newsym, see_monsters, flush_screen, force_more, _topl_stash_result, _topl_merge_result, _topl_joins_snapshot, canspotmon, canseemon, Unaware } from './display.js';
 import { impossible } from './pline.js';
 import { exercise, acurr, getAbase, getAmax, C_ATTR_TO_DISP, redist_attr, adjabil, setuhpmax } from './attrib.js';
 import { the_unique_pm, permonstTemplate, monPmname, name_to_mon, name_to_monclass, mkclass, dmgtype_fromattack, sliparm, attacktype_fordmg, set_mon_data, is_home_elemental as is_home_elemental_real } from './makemon.js';
 import { getlin } from './wizcmds.js';
-import { mungspaces, valid_vampshiftform, set_ustuck, mksobj, setmangry, mkclass_poly_nc, hideunder } from './mklev.js';
+import { mungspaces, valid_vampshiftform, set_ustuck, mksobj, setmangry, mkclass_poly_nc, hideunder, set_bknown, egg_type_from_parent } from './mklev.js';
 import * as cmdNS from './cmd.js';
 import { mnexto } from './teleport.js';
 import { rndexp } from './exper_pure.js';
@@ -35,7 +35,7 @@ import {
 } from './do_wear.js';
 import { dropx, useup, welded, could_twoweap, untwoweapon, surface, ceiling, waterbody_name, yname, You_cant, youhiding as youhiding_enlightenment, instapetrify as instapetrify_real } from './cmd.js';
 import { losehp } from './dokick.js';
-import { end_burn } from './timeout.js';
+import { end_burn, learn_egg_type } from './timeout.js';
 import { make_sick, make_stoned, make_slimed, make_glib } from './potion.js';
 import { newuhs } from './eat.js';
 import { artifact_light, arti_light_radius, maybe_adjust_light, new_light_source, del_light_source, monst_to_any } from './light.js';
@@ -48,7 +48,7 @@ import { the, cloak_simple_name, helm_simple_name, cxname, vtense, makeplural, s
 import { observe_object, discover_object } from './o_init.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_SKILL, MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js';
 import {
-    W_ARM, W_ARMOR, W_ACCESSORY, W_SADDLE, W_ARMU, W_SWAPWEP,
+    W_ARM, W_ARMOR, W_ACCESSORY, W_SADDLE, W_ARMU, W_SWAPWEP, A_DEX,
     NOT_HUNGRY, SATIATED, HUNGRY, WEAK, FAINTING, TT_PIT, TT_WEB, TT_BEARTRAP,
     TT_LAVA, TT_INFLOOR, TT_BURIEDBALL, MAXULEV, FROMFORM,
     PROT_FROM_SHAPE_CHANGERS, FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES,
@@ -426,8 +426,7 @@ function mon_nam_poly(mon) {
     return MONS_NAMES[idx] || 'the creature';
 }
 function _can_ride_poly(ptr, steed) {
-    return !!steed?.mtame && ((ptr.mflags1 | 0) & M1_HUMANOID) !== 0
-        && (ptr.msize | 0) >= MZ_SMALL && (ptr.msize | 0) < 3;
+    return cmdNS.can_ride(steed);
 }
 
 export async function polymon(mntmp) {
@@ -435,6 +434,8 @@ export async function polymon(mntmp) {
     const u = g.u;
     const sticking = sticks(g.youmonst.data) && u.ustuck && !u.uswallow;
     const was_hiding_under = u.uundetected && _hides_under(g.youmonst.data);
+    const was_blind = !!Blind_vis();
+    let was_expelled = false;
     let ptr = permonstTemplate(mntmp);
 
     // C: if (svm.mvitals[mntmp].mvflags & G_GENOD) { You_feel rather %s-ish; exercise(A_WIS,TRUE); return 0; }
@@ -502,6 +503,7 @@ export async function polymon(mntmp) {
         if ((g.sex_change_ok | 0) && !rn2(10)) dochange = true;
     }
 
+    const ustuckNam = u.ustuck ? Some_Monnam(u.ustuck) : '';
     if (dochange && g.flags) g.flags.female = !g.flags.female;
 
     // C polyself.c:793-798 — buf "new "/"" then, if dochange, a "female "/"male "
@@ -526,11 +528,6 @@ export async function polymon(mntmp) {
     }
 
     // C polyself.c:813 — u.mtimedone = rn1(500, 500).
-    // Latch Blind before set_uasmon() changes the form's BLINDED intrinsic;
-    // this is needed when an eyeless form reverts to one with eyes.
-    const was_blind = !!Blind_vis();
-    /* C polyself.c:796 — name saved before the change in case sight changes. */
-    const ustuckNam = u.ustuck ? Some_Monnam(u.ustuck) : '';
     u.mtimedone = rn1(500, 500);
     u.umonnum = mntmp;
     set_uasmon();
@@ -547,16 +544,6 @@ export async function polymon(mntmp) {
         if (abase[dStr] > amax[dStr]) abase[dStr] = amax[dStr];
     }
 
-    // C polyself.c:842-848 — a flaming form burns the slime away; becoming a
-    // green slime cures it silently.  flaming() = mondata.h:59-61.
-    if (u.uprops?.[SLIMED]?.intrinsic) {
-        if (mntmp === PM_FIRE_VORTEX || mntmp === PM_FLAMING_SPHERE
-            || mntmp === PM_FIRE_ELEMENTAL || mntmp === PM_SALAMANDER) {
-            await make_slimed(0, 'The slime burns away!');
-        } else if (mntmp === PM_GREEN_SLIME) {
-            await make_slimed(0, null);
-        }
-    }
     // C polyself.c:834-841 — a stone/sickness-resistant form cures the condition.
     {
         const sr = u.uprops?.[STONE_RES], st = u.uprops?.[STONED];
@@ -568,11 +555,20 @@ export async function polymon(mntmp) {
             await pline('You no longer feel sick.');
         }
     }
+    // C polyself.c:842-848 — a flaming form burns the slime away; becoming a
+    // green slime cures it silently.  flaming() = mondata.h:59-61.
+    if (u.uprops?.[SLIMED]?.intrinsic) {
+        if (mntmp === PM_FIRE_VORTEX || mntmp === PM_FLAMING_SPHERE
+            || mntmp === PM_FIRE_ELEMENTAL || mntmp === PM_SALAMANDER) {
+            await make_slimed(0, 'The slime burns away!');
+        } else if (mntmp === PM_GREEN_SLIME) {
+            await make_slimed(0, null);
+        }
+    }
     // C polyself.c:850 — immunity from the new form can stop strangulation.
     await check_strangling_poly(false);
 
     // C polyself.c:850 — the new form may be immune to strangulation.
-    check_strangling_poly(false);
     // C polyself.c:851-852 — `if (nohands(gy.youmonst.data)) make_glib(0);`
     if (_nohands(ptr))
         make_glib(0);
@@ -629,8 +625,12 @@ export async function polymon(mntmp) {
     // C polyself.c:903 newsym(u.ux, u.uy) — change symbol.
     newsym(u.ux, u.uy);
 
-    // C polyself.c:907-912 lays_eggs -> learn_egg_type: display-only egg
-    // knowledge, RNG-free and not tracked in JS.
+    // C polyself.c:907-912: recognize this form's eggs and its ordinary offspring.
+    if (_lays_eggs(g.youmonst.data)) {
+        learn_egg_type(u.umonnum);
+        learn_egg_type(egg_type_from_parent(u.umonnum, true));
+    }
+    ptr = g.youmonst.data; /* break_armor() can have rehumanized the hero. */
 
     /* C polyself.c:914-953 — changing shape can invalidate an engulfment or
      * hold.  Keep this synchronous state transition inside polymon: expels()
@@ -647,8 +647,9 @@ export async function polymon(mntmp) {
             /* C polyself.c:921-933 — the special line precedes expels(), which
              * runs unstuck() (rnd(2) mspec_used, docrt), mnexto and spoteffects. */
             if (newUnsolid)
-                await pline(`${canspotmon(swallower) ? Monnam(swallower) : Some_Monnam(swallower)} can no longer contain you.`);
+                await pline(`${canspotmon(swallower) ? Monnam(swallower) : ustuckNam} can no longer contain you.`);
             await expels_gu(swallower, swallower.data?.pmidx, !newUnsolid);
+            was_expelled = true;
         }
     } else if (u.ustuck && !sticking
                && (sticks(ptr) || ((ptr.mflags1 & 0x00100000) !== 0))) {
@@ -665,11 +666,27 @@ export async function polymon(mntmp) {
 
     /* C polyself.c:955-965 — if (!can_ride(u.usteed)) dismount_steed(DISMOUNT_POLY);
      * the steed.c body prints the message, releases the steed and places it. */
+    if (u.usteed && touch_petrifies(u.usteed.data)
+        && !(u.uprops?.[STONE_RES]?.intrinsic || u.uprops?.[STONE_RES]?.extrinsic)
+        && rnl(3)) {
+        await pline('%s touch %s.', NO_LONGER_PETRIFY_RESISTANT, mon_nam(u.usteed));
+        const steed = u.usteed;
+        await instapetrify(`riding ${an(monPmname(steed.data.pmidx, steed.female ? FEMALE : MALE))}`);
+    }
     if (u.usteed && !_can_ride_poly(ptr, u.usteed))
         await dismount_steed_real(DISMOUNT_POLY);
 
     // C polyself.c:967 find_ac() (repeated).
     find_ac();
+    // C polyself.c:968-974: losing flight/swimming may require landing effects.
+    const lev = u.uprops?.[LEVITATION], fly = u.uprops?.[FLYING];
+    const swim = u.uprops?.[SWIMMING], steedData = u.usteed?.data;
+    const levitating = (lev?.intrinsic || lev?.extrinsic) && !lev?.blocked;
+    const flying = (fly?.intrinsic || fly?.extrinsic || (steedData?.mflags1 & M1_FLY)) && !fly?.blocked;
+    const swimming = swim?.intrinsic || swim?.extrinsic || (steedData?.mflags1 & M1_SWIM);
+    if (((!levitating && !u.ustuck && !flying && is_pool_or_lava(u.ux, u.uy))
+         || (u.uinwater && !swimming)) && !was_expelled)
+        await spoteffects(true);
     const ydat = g.youmonst.data;
     const newUnsolid = (ydat.mflags1 & 0x00100000) !== 0; /* M1_UNSOLID */
     const newWhirly = _is_whirly(ydat);
@@ -689,7 +706,7 @@ export async function polymon(mntmp) {
     } else if (u.utrap && (u.utraptype | 0) === TT_LAVA
                && ((ydat.pmidx | 0) === PM_FIRE_ELEMENTAL
                    || (ydat.pmidx | 0) === PM_SALAMANDER)) {
-        await pline('The lava now feels soothing.');
+        await pline('The %s now feels soothing.', hliquid('lava'));
         await reset_utrap(true);
     }
     /* C polyself.c:991-999 — if (Punished) ... else if buried ball. */
@@ -1066,7 +1083,11 @@ function canletgo_quiet(obj) {
      * (was 208 = a weapon); js/mklev.js, js/dig.js and js/cmd.js all already
      * had LEASH = 236. */
     const LOADSTONE = 471, LEASH = 236;
-    if ((obj.otyp | 0) === LOADSTONE && obj.cursed) return false;
+    if ((obj.otyp | 0) === LOADSTONE && obj.cursed) {
+        obj.corpsenm = 0;
+        set_bknown(obj, 1);
+        return false;
+    }
     if ((obj.otyp | 0) === LEASH && (obj.leashmon | 0) !== 0) return false;
     if ((obj.owornmask | 0) & W_SADDLE) return false;
     return true;
@@ -1214,6 +1235,8 @@ async function polyman(msg) {
         && !(u.uprops[SEE_INVIS].blocked | 0));
     if (see_invis !== had_see_invis)
         set_mimic_blocking();
+    if (u.twoweap && !could_twoweap(g.youmonst.data))
+        await untwoweapon();
     if (u.utrap && (u.utraptype | 0) === TT_PIT) {
         // C: set_utrap(rn1(6, 2), TT_PIT), including its timer draw.
         set_utrap(rn1(6, 2), TT_PIT);
@@ -1260,8 +1283,7 @@ export async function rehumanize() {
     const steedWasFlying = !!(u.usteed?.data
         && ((u.usteed.data.mflags1 | 0) & M1_FLY));
     const was_flying = (!!((flyingProp?.intrinsic | 0)
-        || (flyingProp?.extrinsic | 0)) && !(flyingProp?.blocked | 0))
-        || steedWasFlying;
+        || (flyingProp?.extrinsic | 0) || steedWasFlying) && !(flyingProp?.blocked | 0));
 
     /* C:1372-1386 — "You can't revert back while unchanging". */
     const p_unchg = u.uprops?.[UNCHANGING_PS];
@@ -1311,15 +1333,14 @@ export async function rehumanize() {
     if (g.disp) g.disp.botl = true;              /* C:1408 */
     g.vision_full_recalc = 1;                    /* C:1409 */
     await encumber_msg();                        /* C:1410 */
+    update_inventory();                          /* C:1411 */
     const nowFlyingProp = u.uprops?.[FLYING];
     const steedNowFlying = !!(u.usteed?.data
         && ((u.usteed.data.mflags1 | 0) & M1_FLY));
     const now_flying = (!!((nowFlyingProp?.intrinsic | 0)
-        || (nowFlyingProp?.extrinsic | 0)) && !(nowFlyingProp?.blocked | 0))
-        || steedNowFlying;
+        || (nowFlyingProp?.extrinsic | 0) || steedNowFlying) && !(nowFlyingProp?.blocked | 0));
     if (was_flying && !now_flying && u.usteed)
-        await pline(`And ${mon_nam_poly(u.usteed)} return gently to the ${surface(u.ux, u.uy)}.`);
-    update_inventory();                          /* C:1411 */
+        await pline(`You and ${mon_nam(u.usteed)} return gently to the ${surface(u.ux, u.uy)}.`);
     /* C polyself.c:1415-1417 retouch_equipment(2) / selftouch(). */
     await retouch_equipment(2);
     if (!u.uarmg)
@@ -1580,7 +1601,7 @@ async function polyself_body(psflags, st) {
      * and could turn a survivable controlled request into system shock. */
     const polymorphControl = Polymorph_control_ps();
     const stunned = !!(u.uprops && u.uprops[STUNNED] && u.uprops[STUNNED].intrinsic);
-    const unaware = !!(g.flags && g.flags.unaware);
+    const unaware = Unaware();
     const controllable_poly = !formrevert && polymorphControl && !(stunned || unaware);
     /* C HUnchanging || EUnchanging: an extrinsic amulet/ring source blocks
      * the transform just as an intrinsic source does. */
@@ -1631,6 +1652,7 @@ async function polyself_body(psflags, st) {
             return false; // C allows the normal polymon failure path.
 
         const wasLit = !!suit.lamplit;
+        const arm_light = artifact_light(suit) ? arti_light_radius(suit) : 0;
         if (ot >= 111 && ot <= 120) {
             await pline('You merge with your scaly armor.');
         } else {
@@ -1640,6 +1662,7 @@ async function polyself_body(psflags, st) {
             await pline(`Your ${name} reverts to scales as you merge with them.`);
             suit.otyp = ot + (111 - 101);
             observe_object(suit);
+            if (g.disp) g.disp.botl = true;
         }
         // C polyself.c:656-659: uarm is zeroed directly (no setworn), so the
         // suit keeps its W_ARM bit; the "save/restore hack" only ORs I_SPECIAL.
@@ -1647,7 +1670,7 @@ async function polyself_body(psflags, st) {
         u.uarm = null;
         suit.owornmask = (suit.owornmask | 0) | I_SPECIAL;
         u.uskin = suit;
-        if (wasLit) suit.lamplit = true;
+        if (wasLit) await maybe_adjust_light(suit, arm_light);
         update_inventory();
         return dragon;
     };
@@ -1745,7 +1768,7 @@ async function polyself_body(psflags, st) {
             buf = mungspaces(buf);
             // C polyself.c:521-528 — ESC cancels (wizard #polyself → "Never mind.").
             if (buf.charCodeAt(0) === 27 /* '\033' */) {
-                if (forcecontrol) { await pline('Never mind.'); st.old_light = null; return; }
+                if (effectiveForcecontrol) { await pline('Never mind.'); st.old_light = null; return; }
                 buf = '*';
             }
             // C polyself.c:529-533 — explicit random request.
@@ -1769,7 +1792,8 @@ async function polyself_body(psflags, st) {
                     mntmp = draconian && monclass === S_DRAGON
                         ? armor_to_dragon(u.uarm.otyp) : mkclass_poly_nc(monclass);
                 if (mntmp < LOW_PM) {
-                    await pline('I\'ve never heard of such monsters.');
+                    if (monclass) await You_cant('polymorph into any of those.');
+                    else await pline('I\'ve never heard of such monsters.');
                     continue;
                 }
             }
@@ -1881,7 +1905,7 @@ async function polyself_body(psflags, st) {
         // through to the normal selected target.  A controlled vampire still
         // asks for confirmation before shifting to its chosen shape.
         if (isvamp && (tryct <= 0 || mntmp === PM_WOLF || mntmp === PM_FOG_CLOUD
-                       || mntmp === PM_VAMPIRE_BAT)) {
+                       || [PM_BAT, PM_GIANT_BAT, PM_VAMPIRE_BAT].includes(mntmp))) {
             if (mntmp < LOW_PM || (permonstTemplate(mntmp).geno & G_UNIQ)) {
                 if ((g.youmonst?.data?.pmidx | 0) === PM_VAMPIRE_LEADER && !rn2(10))
                     mntmp = PM_WOLF;
@@ -1961,7 +1985,7 @@ async function polyself_body(psflags, st) {
     const ptr = permonstTemplate(mntmp);
     let goNewman;
     if (!polyok(ptr)) goNewman = true;
-    else if (!forcecontrol && !rn2(5)) goNewman = true; /* rn2(5) only when !forcecontrol */
+    else if (!effectiveForcecontrol && !rn2(5)) goNewman = true; /* rn2(5) only when !forcecontrol */
     else if (your_race(ptr)) goNewman = true;
     else goNewman = false;
     if (goNewman) {
@@ -1982,11 +2006,13 @@ async function polyself_body(psflags, st) {
 export async function dopoly() {
     const g = game;
     const u = g.u;
+    if (!_is_vampire(g.youmonst.data) && ![PM_VAMPIRE, PM_VAMPIRE_LEADER, PM_VLAD_THE_IMPALER].includes(g.youmonst.cham))
+        return ECMD_TIME;
     const savedPmidx = (g.youmonst?.data?.pmidx ?? u.umonnum ?? NON_PM) | 0;
     await polyself(POLY_MONSTER);
     const newPmidx = (g.youmonst?.data?.pmidx ?? u.umonnum ?? NON_PM) | 0;
     if (savedPmidx !== newPmidx) {
-        const gender = g.flags?.female ? FEMALE : MALE;
+        const gender = (u.umonnum !== u.umonster ? u.mfemale : g.flags?.female) ? FEMALE : MALE;
         await pline(`You transform into ${an(monPmname(newPmidx, gender))}.`);
         newsym(u.ux, u.uy);
     }
@@ -2197,7 +2223,7 @@ export async function dospinweb() {
         await pline('You cannot spin webs while stuck in a trap.');
         return ECMD_OK;
     }
-    exercise(1 /* A_DEX */, true);
+    exercise(A_DEX, true);
     if (ttmp0) {
         switch (ttmp0.ttyp | 0) {
         case 11: case 12: /* PIT, SPIKED_PIT */
@@ -2283,8 +2309,10 @@ export async function dogaze() {
             break;
         }
     }
-    if (adtyp !== AD_CONF && adtyp !== AD_FIRE)
-        return ECMD_OK; // C reports impossible() on an unsupported attack.
+    if (adtyp !== AD_CONF && adtyp !== AD_FIRE) {
+        await impossible('gaze attack %d?', adtyp);
+        return ECMD_OK;
+    }
 
     if (Blind_vis()) {
         await pline("You can't see anything to gaze at.");
@@ -2324,11 +2352,17 @@ export async function dogaze() {
                        && !u.uprops?.[CONFUSION]?.intrinsic) {
                 await pline('You avoid gazing at %s.', y_monnam(mtmp));
             } else {
-                if (g.flags.confirm && mtmp.mpeaceful
+                if (g.flags.confirm !== false && mtmp.mpeaceful
                     && !u.uprops?.[CONFUSION]?.intrinsic) {
                     const verb = adtyp === AD_CONF ? 'confuse' : 'attack';
-                    if (await yn_function(`Really ${verb} ${mon_nam(mtmp)}?`, 'yn', 'n') !== 'y')
+                    const qbuf = `Really ${verb} ${mon_nam(mtmp)}?`;
+                    if (await yn_function(qbuf, 'yn', 'n', true) !== 'y') {
+                        /* tty_yn_function leaves the prompt on the topline until
+                         * parse()'s clear_nhwindow after the next command key */
+                        if (!g.gi?.in_doagain) /* a queued ^A reply paints nothing */
+                            g._topl_sticky = `${qbuf} [yn] (n)`;
                         continue;
+                    }
                 }
                 await setmangry(mtmp, true);
                 if (helpless(mtmp) || mtmp.mstun || !mtmp.mcansee

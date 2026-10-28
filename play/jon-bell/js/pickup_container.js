@@ -39,7 +39,7 @@ import { game } from './gstate.js';
 import { update_inventory } from './inventory_refresh.js';
 import { chest_trap } from './trap.js';
 import { nomul } from './allmain.js';
-import { obj_to_glyph, pline, urgent_pline, Norep, flush_screen, bot, force_more, canspotmon, docorner_blank_utf8_captures, livelog_printf } from './display.js';
+import { obj_to_glyph, pline, urgent_pline, Norep, flush_screen, bot, force_more, canspotmon, docorner_blank_utf8_captures, livelog_printf, docrt, status_r1_menu_docrt, DEFAULT_MENU_CMDS } from './display.js';
 import { impossible } from './pline.js';
 import { build_window_screen, tty_window_offx, menu_search_getlin, display_text_window } from './com_pager.js';
 import { pmatchi } from './strutil.js';
@@ -201,9 +201,9 @@ export function mbag_explodes(obj, depthin) {
 export async function mbag_item_gone(held, item, silent) {
     if (!silent) {
         if (item.dknown)
-            await pline(`${_Upstart((await _item_doname(item)))} ${otense(item, 'have')} vanished!`);
+            await pline(`${_Upstart((await doname(item)))} ${otense(item, 'have')} vanished!`);
         else
-            await pline(`You ${Blind() ? 'notice' : 'see'} ${(await _item_doname(item))} disappear!`);
+            await pline(`You ${Blind() ? 'notice' : 'see'} ${(await doname(item))} disappear!`);
     }
     let loss = 0;
     const shop = game.u?.ushops;
@@ -401,9 +401,11 @@ async function in_or_out_menu(promptText, box, outokay, inokay, alreadyused, mor
      * term_clear_screen()s, so the map and status are gone and every row is
      * drawn from column 1. */
     const fullScreen = g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0;
-    const screenOutput = fullScreen
+    const paint = () => (fullScreen
         ? lines.map((ln) => (ln === '' ? '' : ' ' + ln)).join('\n')
-        : build_window_screen(lines, WIN_COL, uac, statusClip);
+        : build_window_screen(lines, WIN_COL, uac, statusClip));
+    let screenOutput = paint();
+    let anySelected = qDefault || more_containers;
     const endRow = lines.length - 1;
     const endCursorCol = (fullScreen ? 1 : WIN_COL) + 5 + 1; /* col + len('(end)') + 1 */
 
@@ -415,9 +417,24 @@ async function in_or_out_menu(promptText, box, outokay, inokay, alreadyused, mor
         set_cursor(endCursorCol, endRow);
         const k = await nhgetch();
         if (k === 27 /* ESC */) { chosen = 'q'; break; }
-        if (k === 32 /* SPACE */) { chosen = cancelDefault; break; }
+        /* C wintty.c:1654-1657, 1679-1692 MENU_UNSELECT_PAGE / _ALL ('\\', '-')
+         * work in PICK_ONE too: the pre-marked entry is deselected and
+         * repainted '-' (set_item_state), so a later RETURN/SPACE commits
+         * nothing (n == 0). */
+        if (k === 92 || k === 45) {
+            if (anySelected) {
+                for (let i = 0; i < lines.length; i++)
+                    lines[i] = lines[i].replace(/^(\S) \* /, '$1 - ');
+                screenOutput = paint();
+                anySelected = false;
+            }
+            continue;
+        }
+        /* pickup.c:3476: n == 0 -> (more_containers ? 'n' : 'q'). */
+        const commit = anySelected ? cancelDefault : (more_containers ? 'n' : 'q');
+        if (k === 32 /* SPACE */) { chosen = commit; break; }
         /* RETURN/ENTER selects the default (the SELECTED entry: 'q' or 'n'). */
-        if (k === 10 || k === 13) { chosen = cancelDefault; break; }
+        if (k === 10 || k === 13) { chosen = commit; break; }
         if (BYKEY.has(k)) { chosen = BYKEY.get(k); break; }
         /* C tty: any other non-accelerator key is ignored; menu stays up. */
     }
@@ -573,17 +590,25 @@ function _sortloot_wear_tiers(o1, o2) {
 }
 function _sortloot(list, byInvlet = false, filterfunc = null) {
     const arr = [];
+    /* C pickup.c:1079-1086, end.c:1632-1637: SORTLOOT_LOOT is optional;
+     * sortloot:none still uses PACK's class/subclass/discovery tiers. */
+    const loot = game.flags?.sortloot === 'f'
+        || (game.flags?.sortloot === 'l' && !byInvlet);
+    const pack = game.flags?.sortpack !== false;
     /* C invent.c:610-618 — filterfunc rejects an object BEFORE it is populated
      * into sliarray, so loot_classify()'s observe_object() (invent.c:170-171)
      * never runs on it. */
     for (let o = list; o; o = o.nobj) if (!filterfunc || filterfunc(o)) arr.push({ obj: o, indx: arr.length, orderclass: 0 });
     /* C invent.c:632 — `if (mode && n > 1)`; no comparisons, no classify. */
-    if (arr.length > 1) {
+    if (arr.length > 1 && (loot || byInvlet || pack)) {
         for (const sli of arr) {
-            sli.orderclass = _loot_classify(sli.obj);
-            sli.subclass = _loot_subclass(sli.obj);
-            sli.disco = _loot_disco(sli.obj);
-            sli.str = _loot_xname(sli.obj);
+            /* C invent.c:430-432: INVLET without PACK skips classification. */
+            if (!byInvlet || pack) {
+                sli.orderclass = _loot_classify(sli.obj);
+                sli.subclass = _loot_subclass(sli.obj);
+                sli.disco = _loot_disco(sli.obj);
+            }
+            sli.str = loot ? _loot_xname(sli.obj) : '';
             /* C invent.c:404-405 — the BUCX tier, "bigger is better". */
             sli.bucx = (sli.obj.bknown
                         ? (sli.obj.blessed ? 3 : !sli.obj.cursed ? 2 : 1) : 0);
@@ -596,9 +621,11 @@ function _sortloot(list, byInvlet = false, filterfunc = null) {
             if (byInvlet)
                 return _invletter_value(a.obj.invlet) - _invletter_value(b.obj.invlet)
                     || (a.indx - b.indx);
-            return (a.subclass - b.subclass)
-                || (a.disco - b.disco)
-                || _strcmpi(a.str, b.str)
+            const groupOrder = (a.subclass - b.subclass) || (a.disco - b.disco);
+            if (groupOrder) return groupOrder;
+            /* C invent.c:479-480: no LOOT means the original-index tiebreak. */
+            if (!loot) return a.indx - b.indx;
+            return _strcmpi(a.str, b.str)
                 || (b.bucx - a.bucx)
                 || _sortloot_wear_tiers(a.obj, b.obj)
                 || (a.indx - b.indx);
@@ -749,10 +776,25 @@ let _lastPickGeom = null;
  * (wintty.c:982): the dismissed overlay's cl_end() blanks the terminal cells it
  * covered, so a UTF8 cell never re-painted since a pet stood there loses the pet. */
 async function _tty_pick_any_menu(renderLines, items, winColFooter, prior = null) {
-    const cancelled = await _tty_pick_any_menu_run(renderLines, items, winColFooter, prior);
-    if (_lastPickGeom.col > 0)
-        docorner_blank_utf8_captures(_lastPickGeom.col - 1, _lastPickGeom.rows + 1);
-    return cancelled;
+    // C windows.c:1861-1863: status is disabled through menu dismissal.
+    const savedBotDisabled = game._bot_disabled;
+    game._bot_disabled = true;
+    try {
+        const cancelled = await _tty_pick_any_menu_run(renderLines, items, winColFooter, prior);
+        if (_lastPickGeom.col === 1) {
+            // C wintty.c:978-979: erase_menu_or_text uses docrt + flush_screen.
+            await docrt();
+            status_r1_menu_docrt();
+            game._statusBlankAfterDocrt = true;
+        } else if (_lastPickGeom.col > 0) {
+            docorner_blank_utf8_captures(_lastPickGeom.col - 1, _lastPickGeom.rows + 1);
+        }
+        game._pending_message = '';
+        await flush_screen(1);
+        return cancelled;
+    } finally {
+        game._bot_disabled = savedBotDisabled;
+    }
 }
 async function _tty_pick_any_menu_run(renderLines, items, winColFooter, prior = null) {
     const g = game;
@@ -842,6 +884,19 @@ async function _tty_pick_any_menu_run(renderLines, items, winColFooter, prior = 
          * menu command with the same spelling. */
         const hit = items.find((it) => it.sel === ch
             && (!tall || visibleItems.has(it)));
+        /* C wintty.c:1529-1537, getline.c:230-257: xwaitforspace(resp)
+         * re-reads unaccepted keys without returning to process_menu_window.
+         * In particular, invalid input must preserve an unfinished count. */
+        if (!hit && k !== 27 && k !== 10 && k !== 13
+            && !(k >= 48 && k <= 57)
+            && !' <>^|,\\~.-@:'.includes(ch)
+            && !items.some((it) => it.gsel === ch))
+        /* C getline.c:236-254 xwaitforspace: an unaccepted key is consumed
+         * inside the read, preserving process_menu_window's pending count.
+         * Only a selector, group accelerator, or menu command ends that read. */
+        if (!hit && !items.some((it) => it.gsel === ch)
+            && !(' 0123456789\x1b\n\r' + DEFAULT_MENU_CMDS).includes(ch))
+            continue;
         if (hit) {
             if (counting && count > 0) {
                 hit.selected = true;
@@ -963,9 +1018,9 @@ async function _tty_pick_any_menu_run(renderLines, items, winColFooter, prior = 
                 if (it.gsel === ch) { it.selected = !it.selected; it.count = -1; }
             continue;
         }
-        /* C:1735-1739 — anything else rings the bell; the menu stays up. */
-        count = 0;
-        counting = false;
+        /* C tty/getline.c:230-255 xwaitforspace(resp) rejects unknown keys
+         * without returning to process_menu_window, so an unfinished count
+         * survives them.  ESC then cancels that count, not the menu. */
     }
 }
 
@@ -1123,8 +1178,6 @@ async function _query_category(contents, action, withJustPicked) {
 
     const cancelled = await _tty_pick_any_menu(render, items, 'end');
     _priorPickMenu = cancelled ? null : _lastPickGeom;
-    game._pending_message = '';
-    await flush_screen(1);
     if (cancelled)
         return { menuShown: true, autopick: false, lootEverything: false,
                  allCategories: false, classes: new Set() };
@@ -1325,11 +1378,14 @@ async function _menu_loot_items(chainHead, contents, action, useInvlet) {
     const prior = _priorPickMenu;
     _priorPickMenu = null;
     const cancelled = await _tty_pick_any_menu(renderLines, items, 'end', prior);
-    game._pending_message = '';
-    await flush_screen(1);
     if (cancelled) return [];
     return items.filter((it) => it.selected)
         .map((it) => ({ obj: it.obj, count: it.count }));
+}
+
+// C pickup.c:2903: an exploding bag has already freed the selected object.
+export function container_gone(fn) {
+    return (fn === in_container || fn === out_container) && !game.current_container;
 }
 
 async function in_container(obj) {
@@ -1796,7 +1852,10 @@ export async function use_container_impl(cobjRef, held, more_containers) {
             g.current_container.cknown = 1;
         } else {
             g.pickup_encumbrance = 0;
-            const sel = await query_category_takeout(g.current_container);
+            // C pickup.c:3281: reversed looting uses the same menu-style guard.
+            const sel = _menu_style_is_full()
+                ? await query_category_takeout(g.current_container)
+                : _no_category_sel();
             if (!sel.autopick && !sel.allCategories && sel.classes.size === 0) {
                 /* menu_loot cancelled before learning the contents */
             } else if (sel.autopick) {

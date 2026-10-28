@@ -12,6 +12,7 @@ import { SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED, MOD_ENCUMBER, HV
     CLAIRVOYANT, REGENERATION, SICK, VOMITING, CONFUSION, HALLUC, HALLUC_RES,
     FUMBLING, WOUNDED_LEGS, STUNNED, TIMEOUT, KILLED_BY, FIXED_ABIL } from './const.js';
 import { pline, Unaware, see_monsters, flush_pending_messages } from './display.js';
+import { impossible } from './pline.js';
 import { near_capacity, encumber_msg, encumber_msg_sync } from './weight.js';
 import { aligns } from './roles.js';
 import { uasmon_maxStr } from './polyself.js';
@@ -1080,7 +1081,7 @@ export async function losestr(num, knam, k_format) {
     const waspolyd = Upolyd(u);
 
     if (num <= 0 || getAbase(u)[C_ATTR_TO_DISP[A_STR]] < RACE_ATTRMIN) {
-        /* impossible("losestr: %d - %d", ABASE(A_STR), num); */
+        await impossible("losestr: %d - %d", getAbase(u)[C_ATTR_TO_DISP[A_STR]], num);
         return;
     }
     dmg = 0;

@@ -1,8 +1,10 @@
 import { is_unpaid, unpaid_cost, get_cost_of_shop_item, record_price_quote, append_price_quote, currency, obfree, delete_contents } from './shk.js';
 import { alter_cost, shk_your } from './shk.js'; // C do_name.c:410
-import { lookup_novel } from './do_name.js';
+import { lookup_novel, mon_pmname } from './do_name.js';
+import { paniclog } from './files.js';
+import { impossible as naming_impossible } from './pline.js';
 import { apron_text, tshirt_text, candy_wrapper_text } from './read.js';
-import { COST_CONTENTS, BURN_OBJECT, otrapped_of, GLIB as GLIB_PROP_ON } from './const.js';
+import { COST_CONTENTS, BURN_OBJECT, ZOMBIFY_MON, TIMER_OBJECT, otrapped_of, GLIB as GLIB_PROP_ON } from './const.js';
 // @ts-nocheck
 // objnam.js — readobjnam and helpers for wish parsing.
 // C ref: nethack-c-v5/upstream/src/objnam.c
@@ -18,6 +20,7 @@ import { COST_CONTENTS, BURN_OBJECT, otrapped_of, GLIB as GLIB_PROP_ON } from '.
 //   3. makewish end: rn2(100) for u.ublesscnt (zap.c:6414)
 import { pline, livelog_printf } from './display.js'; /* was an undeclared global: every pline() call in this file threw ReferenceError when reached */
 import { weight } from './weight.js';
+import { yn_function } from './end.js';
 import { WT_IRON_BALL_INCR, LL_CONDUCT, LL_ARTIFACT } from './const.js';
 import { rn2, rnd } from './rng.js';
 import { game, wizard, discover } from './gstate.js';
@@ -27,7 +30,7 @@ import { mksobj, mkobj, place_object, eos, lowc, highc, letter, mungspaces, digi
          /* C mkobj.c:1274 set_corpsenm — the CORPSE arm of readobjnam's corpsenm
           * block (objnam.c:5216-5222).  It re-runs start_corpse_timeout, so it
           * DRAWS; see the leaf note in _finalize_wish. */
-         set_corpsenm, can_be_hatched, Can_fall_thru } from './mklev.js';
+         set_corpsenm, can_be_hatched, Can_fall_thru, zombie_form } from './mklev.js';
 import { PM_LONG_WORM, PM_LONG_WORM_TAIL, PM_GRAY_OOZE, PM_BLACK_PUDDING,
          PM_GRAY_DRAGON, PM_YELLOW_DRAGON,
          PM_STUDENT, PM_CHIEFTAIN, PM_NEANDERTHAL, PM_ATTENDANT, PM_PAGE,
@@ -35,7 +38,7 @@ import { PM_LONG_WORM, PM_LONG_WORM_TAIL, PM_GRAY_OOZE, PM_BLACK_PUDDING,
          PM_APPRENTICE, PM_WARRIOR, PM_ARCHEOLOGIST, PM_BARBARIAN,
          PM_CAVEMAN, PM_HEALER, PM_KNIGHT, PM_MONK, PM_CLERIC, PM_RANGER,
          PM_ROGUE, PM_SAMURAI, PM_TOURIST, PM_WIZARD, PM_VALKYRIE, PM_HUMAN,
-         PM_ELF, PM_DWARF, PM_GNOME, PM_ORC } from './pm.generated.js';
+         PM_ELF, PM_DWARF, PM_GNOME, PM_ORC, PM_MAIL_DAEMON } from './pm.generated.js';
 import { MKOBJ_OC_PROB, MKOBJ_SVB_BASES, MKOBJ_OC_CLASS } from './mkobj_data.js';
 import { getObjName } from './o_init.js';
 import { OC_NAME } from './oc_name_data.js';
@@ -55,7 +58,7 @@ import { s_suffix,
  * wrong — see the cross-file note in the task report). */
 import { NEUTRAL, ONAME, has_oname, BLINDED, P_BOW, P_SHURIKEN,
          P_HAMMER, P_POLEARMS, MV_KNOWS_EGG,
-         PL_PSIZ, OBJ_INVENT, ONAME_VIA_NAMING, ONAME_WISH, ONAME_GIFT,
+         PL_PSIZ, OBJ_INVENT, OBJ_CONTAINED, ONAME_VIA_NAMING, ONAME_WISH, ONAME_GIFT,
          ONAME_VIA_DIP, ONAME_LEVEL_DEF, ONAME_BONES, ONAME_RANDOM,
          ONAME_KNOW_ARTI, ONAME_SKIP_INVUPD, SPE_LIM,
          /* readobjnam_preparse's female/male/neuter arms and the
@@ -70,7 +73,7 @@ import { feel_newsym, docrt } from './display.js';
 import { fire_damage_chain, water_damage_chain, pooleffects, switch_terrain, set_uinwater,
          waterbody_name, ice_descr } from './cmd.js';
 import { set_artifact_intrinsic, untwoweapon } from './cmd.js';
-import { make_grave, del_engr_at, fix_wall_spines, count_level_features } from './mklev.js';
+import { make_grave, del_engr_at, fix_wall_spines, count_level_features, inside_shop } from './mklev.js';
 import { recalc_block_point } from './vision.js';
 import { is_pool, is_pool_or_lava } from './look.js';
 import { is_ice } from './engrave.js';
@@ -106,7 +109,7 @@ import { tin_details } from './eat.js';
  * on.  Only ever called at runtime (never at module-evaluation time), which is
  * what makes the cycle safe in ESM. */
 import { body_part, obj_extract_self_general } from './cmd.js';
-import { begin_burn, peek_timer } from './timeout.js';
+import { begin_burn, peek_timer, start_timer } from './timeout.js';
 /* distant_name()'s near/far test (objnam.c:387).  js/vision.js imports only
  * gstate/const/display, so this edge closes no cycle back into objnam.js. */
 import { cansee as cansee_on } from './vision.js';
@@ -114,6 +117,7 @@ import { BOGUSMON_LINES } from './bogusmon_data.js';
 import { mons_cnutrit, obj_nutrition } from './food_props.js';
 import { counter_were } from './were.js';
 import { artifact_light, arti_light_description } from './light.js';
+import { convert_arg as quest_convert_arg } from './questpgr.js';
 
 /* C ref: nethack-c/src/pline.c:587-637 impossible(const char *s, ...) — it
  * logs to the message window / paniclog and RETURNS; it never aborts.  Callers
@@ -1155,6 +1159,9 @@ export function doname_potion(obj) {
                  || !_Role_if(ROLE_IDX_PRIEST))
             prefix += 'uncursed ';
     }
+    /* objnam.c:1370-1371 */
+    if (obj.greased)
+        prefix += 'greased ';
     /* a/an correction (objnam.c:1684-1691): recompute the article from whatever
      * now follows "a " (the BUC word if present, else the object name). */
     if (prefix.startsWith('a ')) {
@@ -2161,14 +2168,15 @@ async function readobjnam_postparse1(d) {
                         break;
                     }
                 }
-                const r = name_to_mon(filling, null);
+                const r = name_to_mon(filling, d.mgend);
                 d.mntmp = typeof r === 'object' ? r.mntmp : r;
                 if (typeof r === 'object' && r.gender !== undefined) d.mgend = r.gender;
             }
             d.typ = TIN;
             return 2;
         } else if ((p = _strstri(d.bp, ' of ')) >= 0) {
-            const r = name_to_mon(d.bp.slice(p + 4), null);
+            // C objnam.c:4393: a neutral name must preserve a parsed gender.
+            const r = name_to_mon(d.bp.slice(p + 4), d.mgend);
             d.mntmp = typeof r === 'object' ? r.mntmp : r;
             if (typeof r === 'object' && r.gender !== undefined) d.mgend = r.gender;
             if (d.mntmp >= LOW_PM) d.bp = d.bp.slice(0, p);
@@ -2477,6 +2485,22 @@ async function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cn
     /* C objnam.c:3946 d->tvariety defaults to RANDOM_TIN (-2); a caller that
      * never parsed a tin variety must not reach the rn2(4) at 5343. */
     if (dx.tvariety === undefined) dx = { ...dx, tvariety: -2 };
+    /* C objnam.c:5042-5071: glob weight and the wizard's limit override. */
+    if (otmp.globby) {
+        otmp.quan = 1;
+        otmp.owt = weight(otmp);
+        const gs = dx.gsize | 0;
+        if (gs > 1)
+            otmp.owt += (5 + (gs - 2) * 10) * otmp.owt;
+        if (cnt > 1) {
+            const rn1cnt = Math.min(rn1_local(5, 2), 6 - gs);
+            if (cnt > rn1cnt && (!wizard() || game.program_state?.wizkit_wishing
+                || await yn_function('Override glob weight limit?', 'yn', 'n', true) !== 'y'))
+                cnt = rn1cnt;
+            otmp.owt *= cnt;
+        }
+        cnt = 0;
+    }
     /* C objnam.c:5070-5083: resolve non-glob quantity before spe/corpsenm;
      * its rnd(6) precedes the corpse/statue gender roll at :5163. */
     if (!otmp.globby && cnt > 0 && _oc_merge_on(otmp.otyp)
@@ -2489,6 +2513,30 @@ async function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cn
                     || ((otmp.oclass | 0) === WEAPON_CLASS && _is_ammo_on(otmp))))))
         otmp.quan = cnt | 0;
 
+    /* C objnam.c:5091-5118 — non-wizard limits on a requested enchantment.
+     * The rnd(5) draw is C's (it fires only for armor/weapon/weptool/charged
+     * rings with an explicit +/-N).  JS applies the sign at the default arm
+     * below (spesgn * spe), so d.spe stays non-negative here. */
+    if (spesgn !== 0 && !wizard()) {
+        if ((otmp.oclass | 0) === ARMOR_CLASS || (otmp.oclass | 0) === WEAPON_CLASS
+            || _is_weptool(otmp)
+            || ((otmp.oclass | 0) === RING_CLASS && _oc_charged(otmp))) {
+            if (spe > rnd(5) && spe > (otmp.spe | 0))
+                spe = 0;
+            if (spe > 2 && (game.u?.uluck | 0) < 0)
+                spesgn = -1;
+        } else {
+            if ((otmp.oclass | 0) === WAND_CLASS
+                || (otmp.otyp | 0) === _otypByName('crystal ball')) {
+                if (spe > 1 && spesgn === -1)
+                    spe = 1;
+            } else if (spe > 0 && spesgn === -1) {
+                spe = 0;
+            }
+            if (spe > (otmp.spe | 0))
+                spe = otmp.spe | 0;
+        }
+    }
     {
         const t = otmp.otyp | 0;
         switch (t) {
@@ -2587,6 +2635,12 @@ async function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cn
                     set_corpsenm(otmp, mntmp);
                 }
             }
+            /* C objnam.c:5222-5225: zombie_form() returns NON_PM (nonzero)
+             * for non-zombifiable species, so C's truth test passes then too. */
+            if (dx.zombify && zombie_form(permonstTemplate(mntmp)) !== 0) {
+                start_timer(rn1_local(5, 10), TIMER_OBJECT, ZOMBIFY_MON,
+                            { a_obj: otmp, a_long: null });
+            }
             break;
         case EGG:
             // C objnam.c:5227: validate the species, then set its hatch timer.
@@ -2594,7 +2648,8 @@ async function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cn
             break;
         case FIGURINE:
             if (((P.geno | 0) & G_UNIQ_OBJNAM) === 0
-                && (!_is_human_pm(P) || _is_were_pm(P)))
+                && (!_is_human_pm(P) || _is_were_pm(P))
+                && mntmp !== PM_MAIL_DAEMON) /* objnam.c:5235 MAIL_STRUCTURES */
                 otmp.corpsenm = mntmp;
             break;
         case STATUE:
@@ -2627,25 +2682,6 @@ async function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cn
          * cursed. */
         otmp.cursed = true;
         otmp.blessed = false;
-    }
-    /* C objnam.c:5042-5071 — globs: quantity is always 1, the count magnifies
-     * weight instead.  (The wizard-mode "Override glob weight limit?" y_n at
-     * :5065 is not modelled; it only fires when cnt exceeds rn1(5, 2).) */
-    if (otmp.globby) {
-        otmp.quan = 1;
-        otmp.owt = weight(otmp);
-        const gs = dx.gsize | 0;
-        if (gs > 1)
-            otmp.owt += (5 + (gs - 2) * 10) * otmp.owt;
-        if (cnt > 1) {
-            let rn1cnt = rn1_local(5, 2);
-            if (rn1cnt > 6 - gs)
-                rn1cnt = 6 - gs;
-            if (cnt > rn1cnt && !wizard())
-                cnt = rn1cnt;
-            otmp.owt *= cnt;
-        }
-        cnt = 0;
     }
     if (islit && ((otmp.otyp | 0) === 227 /* OIL_LAMP */
                   || (otmp.otyp | 0) === 228 /* MAGIC_LAMP */
@@ -4333,6 +4369,7 @@ function _xn_ctx(obj, cxn_flags, side_effects) {
     if (!c.dn)
         c.dn = c.actualn;
 
+    if (!c.nn && OC_USES_KNOWN[typ] && game._oc_unique?.[typ]) obj.known = 0; // C:625-626
 
     if (side_effects) {
         /* C:627-628 — `if (!Blind && !gd.distantname) observe_object(obj);`
@@ -4906,7 +4943,7 @@ async function doname_base(obj, doname_flags) {
     const SLIME_MOLD = 285;
     const aname = (otyp === SLIME_MOLD) ? artifact_name(bp, false) : null;
     const fake_arti = !!aname;
-    const force_the = fake_arti && /^the /i.test(aname);
+    const force_the = fake_arti && /^the /i.test(aname.name);
 
     let prefix = '';
     const CORPSE = 265;
@@ -4944,6 +4981,7 @@ async function doname_base(obj, doname_flags) {
                                ? true : !!g.flags.implicit_uncursed))
                  || ((!known || !_oc_charged(obj)
                       || oclass === ARMOR_CLASS || oclass === RING_CLASS)
+                     && otyp !== SCR_MAIL_OTYP
                      && otyp !== FAKE_AMULET_OF_YENDOR
                      && otyp !== AMULET_OF_YENDOR
                      && !_Role_if(ROLE_IDX_PRIEST)))
@@ -4988,7 +5026,7 @@ async function doname_base(obj, doname_flags) {
         if (mask & W_ARM_ALL) {
             /* C objnam.c:1387-1396 — check doffing() before donning() because
              * donning() returns true for both cases. */
-            bp += doffing(obj) ? ' (being doffed)'
+            bp += obj === g.u?.uskin ? ' (embedded in your skin)' : doffing(obj) ? ' (being doffed)'
                 : donning(obj) ? ' (being donned)'
                 : ' (being worn)';
             /* C objnam.c:1397-1406 — Concat(bp, 1, "; slippery)") is
@@ -5021,7 +5059,8 @@ async function doname_base(obj, doname_flags) {
             if (mlsh && (mlsh.mhp | 0) >= 1) {
                 bp += ` (attached to ${noit_mon_nam(mlsh)})`;
             } else {
-                impossible_(mlsh ? 'leashed monster is dead' : 'leashed monster not found');
+                if (mlsh) await naming_impossible('leashed %s #%u is dead', mon_pmname(mlsh), obj.leashmon >>> 0);
+                else await naming_impossible('leashed monster #%u not found', obj.leashmon >>> 0);
                 obj.leashmon = 0;
             }
             break;
@@ -5192,7 +5231,21 @@ async function doname_base(obj, doname_flags) {
         else
             bp += ` (${obj.owt >>> 0} aum)`;
     }
-    return strprepend(bp, prefix);
+    // C objnam.c:1706-1749: final bounds and one-time diagnostics per process.
+    bp = strprepend(bp, prefix);
+    if (bp.length > 255) {
+        paniclog('doname', bp);
+        throw new Error('doname: long object description overflow.');
+    }
+    const offsetbp = (doname_flags & DONAME_FOR_MENU) ? 4 : 0;
+    if (bp.length + offsetbp >= 255) {
+        if ((g._doname_full = (g._doname_full || 0) + 1) === 1) {
+            paniclog('doname', bp);
+            paniclog('doname', `long object description${offsetbp ? ' truncated for menu use' : ''}.`);
+        }
+        bp = bp.slice(0, 255 - offsetbp);
+    }
+    return bp;
 }
 /* C objnam.c:1530 — recognize eggs after learning their species by hatching. */
 function _mvitals_knows_egg(omndx) {
@@ -5241,13 +5294,20 @@ const HAND_D = 6; /* body_part.h HAND */
 function _xname_flags_body(obj, cxn_flags, side_effects) {
     const c = _xn_ctx(obj, cxn_flags, side_effects);
 
-    /* C:660-661 — maybe find a previously unseen artifact.
-     * KNOWN GAP: find_artifact() (artifact.c:418-459) is not ported anywhere in
-     * js/.  It sets artiexist[a].found and emits a livelog event; livelog is not
-     * a scored channel and the call produces NO screen output and NO RNG.  The
-     * one observable it would feed is `undiscovered_artifact()` in
-     * not_fully_identified() above, which is itself gapped for the same reason. */
-    /* if (obj.oartifact && obj.dknown) find_artifact(obj); */
+    // C objnam.c:660-661, artifact.c:418-459: find_artifact also feeds #chronicle.
+    if (obj.oartifact && obj.dknown) {
+        const a = obj.oartifact | 0, info = _artiexist()[a];
+        if (!info?.found) {
+            if (a < 1 || a > ARTILIST.length) impossible('found_artifact: invalid artifact index! (%d)', a);
+            else if (!_arti_exists_bit(a)) impossible("found_artifact: artifact doesn't exist yet? (%d)", a);
+            else if (info === true) _artiexist()[a] = { exists: 1, found: 1 };
+            else info.found = 1;
+            const where = obj.where === OBJ_FLOOR_ON ? (inside_shop(obj.ox, obj.oy) ? ' in a shop' : ' on the floor')
+                : obj.where === OBJ_CONTAINED ? ' in a container'
+                : obj.where === OBJ_MINVENT_ON ? ' carried by a monster' : '';
+            livelog_printf(LL_ARTIFACT, 'found %s%s', bare_artifactname(obj), where);
+        }
+    }
 
     let buf;
     let nameit = false;
@@ -5258,14 +5318,20 @@ function _xname_flags_body(obj, cxn_flags, side_effects) {
         nameit = true;
     } else {
         buf = _xname_arm(obj, c);
+        if (buf.length > 175) {
+            paniclog('xname', 'buf[]=' + buf);
+            throw new Error('xname: buffer overflow before appending name.');
+        }
 
         /* C:953-958 — pluralize AFTER the switch (it can shorten buf). */
         if (c.pluralize)
             buf = makeplural(buf);
+        buf = buf.slice(0, 175); // C Concat after pluralization.
 
         /* C:960-994 — end-of-game disclosure text, keyed on o_id (zeroed by
          * minimal_xname so it is skipped there).
          * T_SHIRT " with text" and CANDY_BAR " labeled" follow (C:983-990). */
+        if (buf.length < 175) { // C:966: only disclose when buffer space remains.
         if (game.program_state?.gameover && obj.o_id && (obj.otyp | 0) === 136) {
             const motif = (((obj.o_id | 0) ^ ((game.u?.ubirthday ?? 0) | 0)) >>> 0)
                 % HAWAIIAN_MOTIFS_XN.length;
@@ -5284,6 +5350,8 @@ function _xname_flags_body(obj, cxn_flags, side_effects) {
             const lbl = candy_wrapper_text(obj);
             if (lbl) buf += ` labeled "${lbl}"`;
         }
+        buf = buf.slice(0, 174); // ConcatF1 uses snprintf's size, including NUL.
+        }
 
         /* C:998-999 */
         if (has_oname(obj) && c.dknown) {
@@ -5298,12 +5366,17 @@ function _xname_flags_body(obj, cxn_flags, side_effects) {
         /* downcase "The" in "<quest-artifact-item> named The ..." */
         if (obj.oartifact && nm.startsWith('The '))
             nm = lowc(nm[0]) + nm.slice(1);
-        buf += nm;
+        buf = (buf + nm).slice(0, 175); // C Concat bounds ONAME too.
     }
+    const full = buf.length === 175;
 
     /* C:1011-1012 — `if (!strncmpi(buf, "the ", 4)) buf += 4;` */
     if (buf.length >= 4 && buf.slice(0, 4).toLowerCase() === 'the ')
         buf = buf.slice(4);
+    if (full && (game._xname_full = (game._xname_full || 0) + 1) === 1) {
+        paniclog('xname', 'buf[]=' + buf);
+        paniclog('xname', 'used up entire obuf[PREFIX..BUFSX-1]');
+    }
 
     return buf;
 }
@@ -5592,32 +5665,11 @@ async function deliver_by_pline(str) {
 }
 
 // ── convert_arg (C questpgr.c:196-325) ──────────────────────────────────────
-// Expands one %-arg into C's gc.cvt_buf.  Only the arms reachable from the
-// dat/{air,astral,earth,water}.lua (9 calls), and the only %-arg any of them
-// uses is astral.lua's `%d`.  The remaining letters are REPORTED, not guessed —
-// emitting "" for a known-but-unported letter would silently drop text.  C's
-// own default arm (an unknown letter) yields "".
-//
-// NOTE: js/questpgr.js:225 holds a second convert_arg/convert_line pair for the
-// quest-text (qt_pager) delivery path, which in C is the SAME pair of static
-// functions.  They are duplicated here only because questpgr.js does not export
-// them; unifying them is a follow-up that needs write access to that file.
+// C uses the same argument expansion for des.message() and quest text.
+// Share the synchronous converter so level messages handle every argument,
+// including %o/%O and C's empty result for an unknown letter.
 async function convert_arg(c) {
-    switch (c) {
-    case 'p': /* svp.plname */
-        return String(game.plname ?? game.u?.plname ?? '');
-    case 'd': { /* align_gname(u.ualignbase[A_ORIGINAL]) — A_ORIGINAL == 1 */
-        const cmd = await import('./cmd.js');
-        return String(cmd.align_gname((game.u?.ualignbase?.[1]) | 0) ?? '');
-    }
-    case 'C': return 'chaotic';
-    case 'N': return 'neutral';
-    case 'L': return 'lawful';
-    case '%': return '%';
-    default:
-        impossible(`convert_arg: %${c} not ported`);
-        return '';
-    }
+    return quest_convert_arg(c);
 }
 
 // ── convert_line (C questpgr.c:326-419) ─────────────────────────────────────
@@ -5980,7 +6032,7 @@ async function wizterrainwish(bp, d) {
     if (madeterrain) {
         feel_newsym(x, y); /* map the spot where the wish occurred */
         if (u.uinwater && !is_pool(u.ux, u.uy)) {
-            set_uinwater(0);
+            await set_uinwater(0);
             await docrt(true);
         } else {
             if (u.utrap && (u.utraptype | 0) === TT_LAVA && !is_lava_t(game.level.at(u.ux, u.uy).typ | 0))

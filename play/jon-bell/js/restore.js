@@ -30,6 +30,7 @@ import { restore_light_sources } from './light.js';
 import { place_wsegs, worm_seg_clear_level } from './worm.js';
 import { change_luck } from './attrib.js';
 import { HALLUC, HALLUC_RES } from './const.js';
+import { ugenocided, udeadinside } from './polyself.js';
 import { phase_of_the_moon, friday_13th, getnow } from './allmain.js';
 
 /* C ref: mondata.h:90 hides_under(ptr) — ((ptr)->mflags1 & M1_CONCEAL). */
@@ -379,19 +380,26 @@ export async function restore_preamble() {
     const g = game;
     await l_nhcore_call(NHCORE_RESTORE_OLD_GAME);
     const msgs = [];
+    /* C allmain.c:863-866 welcome(FALSE): a polymorphed hero whose role or race
+     * was self-genocided skips the welcome-back line, the Hallucination line
+     * and the level annotation (early return). */
+    const doomed = ((g.u?.umonnum | 0) !== (g.u?.umonster | 0)) && ugenocided();
+    if (doomed)
+        msgs.push(`You're back, but you still feel ${udeadinside()} inside.`);
     /* C allmain.c:869-870 welcome(): the Hallucination line precedes the
      * welcome-back line.  Hallucination = HHallucination && !Halluc_resistance
      * (youprop.h:120). */
-    {
+    if (!doomed) {
         const up = g.u?.uprops;
         const res = ((up?.[HALLUC_RES]?.intrinsic | 0) !== 0) || ((up?.[HALLUC_RES]?.extrinsic | 0) !== 0);
         if (((up?.[HALLUC]?.intrinsic | 0) !== 0) && !res)
             msgs.push('NetHack is filmed in front of an undead studio audience.');
     }
-    msgs.push(welcome_back_message());
+    if (!doomed)
+        msgs.push(welcome_back_message());
     /* C allmain.c:927 welcome(FALSE): print_level_annotation() (dungeon.c:2489)
      * follows the welcome-back line, before unixmain.c's keep-save prompt. */
-    {
+    if (!doomed) {
         const uz = g.u?.uz || { dnum: 0, dlevel: 1 };
         const annotation = g._level_custom?.[`${uz.dnum | 0}:${uz.dlevel | 0}`];
         if (annotation)

@@ -7,6 +7,7 @@ import { get_rnd_line_from_section } from './mklev.js';
 import { BOGUSMON_LINES, BOGUSMON_OFFSETS, BOGUSMON_SIZE, MD_PAD_BOGONS } from './bogusmon_data.js';
 import { ENV } from './hostenv.js';
 import { game } from './gstate.js';
+import { The } from './objnam.js';
 
 /* C monflag.h enum mgender { MALE, FEMALE, NEUTRAL, NUM_MGENDERS } */
 const MALE = 0, FEMALE = 1;
@@ -163,26 +164,21 @@ export function noveltitle(novidx) {
  * established American/variant spellings map to the canonical title. */
 export function lookup_novel(lookname, idx) {
     const fold = (s) => String(s ?? '').toLowerCase();
-    const withoutArticle = (s) => {
-        const v = fold(s);
-        return v.startsWith('the ') ? v.slice(4) : v;
-    };
     let name = String(lookname ?? '');
-    const bare = withoutArticle(name);
-    if (bare === 'color of magic')
+    if (fold(The(name)) === 'the color of magic')
         name = sir_Terry_novels[NVL_COLOUR_OF_MAGIC];
-    else if (bare === 'sorcery')
+    else if (fold(name) === 'sorcery')
         name = sir_Terry_novels[NVL_SOURCERY];
-    else if (bare === 'masquerade')
+    else if (fold(name) === 'masquerade')
         name = sir_Terry_novels[NVL_MASKERADE];
-    else if (bare === 'amazing maurice')
+    else if (fold(The(name)) === 'the amazing maurice')
         name = sir_Terry_novels[NVL_AMAZING_MAURICE];
-    else if (bare === 'thud')
+    else if (fold(name) === 'thud')
         name = sir_Terry_novels[NVL_THUD];
 
     for (let k = 0; k < sir_Terry_novels.length; k++) {
         const title = sir_Terry_novels[k];
-        if (fold(name) === fold(title) || withoutArticle(name) === withoutArticle(title)) {
+        if (fold(name) === fold(title) || fold(The(name)) === fold(title)) {
             if (idx)
                 idx.value = k;
             return title;

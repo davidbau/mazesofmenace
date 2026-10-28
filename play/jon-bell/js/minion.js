@@ -209,7 +209,8 @@ export async function demon_talk(mtmp) {
         set_malign(mtmp);
         return 0;
     }
-    livelog_printf(0x0800 /* LL_UMONST */, `bribed ${x_monnam(mtmp, 1, null, 0x1F, false)} with ${offer} ${offer === 1 ? 'zorkmid' : 'zorkmids'} for safe passage`);
+    livelog_printf(0x0800 /* LL_UMONST */, 'bribed %s with %ld %s for safe passage',
+        x_monnam(mtmp, 1, null, 0x1F, false), offer, offer === 1 ? 'zorkmid' : 'zorkmids');
     await mongone(mtmp);
     return 1;
 }

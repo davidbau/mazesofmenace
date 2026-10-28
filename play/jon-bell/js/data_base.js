@@ -28,11 +28,13 @@
 // negative-match keys that make the whole entry skip), and the pass1offset
 // duplicate check (pager.c:1051-1055) compares entry indices instead of
 // fseek offsets.  Same decisions, same order, no 'data' build step.
+// pager.c:1072-1075's seek is the successful db[e] access below: the bundled
+// entries have no external file position which can fail with a seek error.
 //
 // DISPLAY-CHANNEL ONLY:  no rn2/rnd/d/rne/rnz call site exists anywhere in
 // checkfile(), so nothing here may consume RNG.
 import { dat_content } from './dat_source.js';
-import { makesingular } from './objnam.js';
+import { makesingular, fruit_from_name } from './objnam.js';
 
 // ── hacklib/strutil helpers this port did not have yet ──
 
@@ -164,8 +166,9 @@ export function dbase_entry_lines(dbase_str) {
  * that turns a doname()/xname() string into a data.base key. */
 function mangle_dbase_str(inp) {
     let s = String(inp).toLowerCase(); /* C ref: pager.c:867 lcase(dbase_str) */
+    let offset = 0; /* dbase_str's position within C's newstr buffer */
     const drop = (pfx) => {
-        if (s.startsWith(pfx)) { s = s.slice(pfx.length); return true; }
+        if (s.startsWith(pfx)) { s = s.slice(pfx.length); offset += pfx.length; return true; }
         return false;
     };
     const digit = (c) => c >= '0' && c <= '9';
@@ -178,6 +181,7 @@ function mangle_dbase_str(inp) {
         while (i < s.length && digit(s[i])) ++i;
         if (s[i] === ' ') ++i;
         s = s.slice(i);
+        offset += i;
     }
     drop('pair of ');
     if (!drop('tame ')) drop('peaceful ');
@@ -196,12 +200,15 @@ function mangle_dbase_str(inp) {
         while (i < s.length && digit(s[i])) ++i;
         if (s[i] === ' ') ++i;
         s = s.slice(i);
+        offset += i;
     }
     /* "moist towel" is looked up as "wet towel" (pager.c:936-940:
      * memcpy(dbase_str += 2, "wet", 3) — skip "mo", replace "ist") */
-    if (s.startsWith('moist towel'))
+    if (s.startsWith('moist towel')) {
         s = 'wet' + s.slice(5);
-    return s;
+        offset += 2;
+    }
+    return { dbase_str: s, offset };
 }
 
 /**
@@ -295,7 +302,7 @@ export function ia_checkfile(inp) {
  * C ref: pager.c:942-1012. */
 function checkfile_keys(inp, supplemental = null) {
     if (inp == null || String(inp).length > 255) return null;
-    let dbase_str = mangle_dbase_str(inp);
+    let { dbase_str, offset } = mangle_dbase_str(inp);
     if (!dbase_str) return null;         /* pager.c:944 "Make sure the name is non-empty" */
 
     /* C ref: pager.c:948-975 — adjust the input to remove "named "/"called ",
@@ -332,9 +339,14 @@ function checkfile_keys(inp, supplemental = null) {
         const aparen = alt.indexOf(' (');
         if (aparen > 0) alt = alt.slice(0, aparen);
     }
-    /* C ref: pager.c:977-983 fruit_from_name() — this port has no player
-     * fruitname, so the "fruit" alternate description never applies. */
-    if (alt === null)
+    /* C pager.c:977-989: a registered fruit uses "fruit" as its alternate
+     * description, unless an explicit named/called alternate already exists.
+     * options.c initoptions_finish sets obj_descr[SLIME_MOLD].oc_name to "fruit". */
+    if (alt === null && fruit_from_name(dbase_str, true, null)) {
+        alt = 'fruit';
+        // C copies into newstr, which aliases dbase_str: preserve that bug.
+        if (offset <= alt.length) dbase_str = alt.slice(offset);
+    } else if (alt === null)
         alt = makesingular(dbase_str);
 
     return { dbase_str, alt };

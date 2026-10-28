@@ -1,4 +1,5 @@
 import { spoteffects } from './landing-effects.js';
+import { gulp_blnd_check } from './mhitu.js';
 import { is_pool, is_pool_or_lava } from './look.js';
 import { SWIMMING, WWALKING } from './const.js';
 import { pooleffects_drown, pooleffects_lava_effects, pooleffects_is_lava,
@@ -9,7 +10,8 @@ import { pooleffects_drown, pooleffects_lava_effects, pooleffects_is_lava,
 import { game } from './gstate.js';
 import { shk_your as ownership_prefix } from './shk.js';
 import { setworn, setnotworn } from './worn.js';
-import { set_bc } from './ball.js';
+import { set_bc, movobj } from './ball.js';
+import { OBJ_INVENT, is_pit, is_hole } from './const.js';
 import { impossible as equipment_impossible } from './pline.js';
 import { begin_burn, end_burn } from './timeout.js';
 import { artifact_light, arti_light_description } from './light.js';
@@ -33,7 +35,9 @@ function _hero_mflags1_dw() {
  * monflag.h:102 M1_HUMANOID = 0x00020000L ("has humanoid head/arms/torso"). */
 const M1_HUMANOID_DW = 0x00020000;
 function _humanoid_dw() { return (_hero_mflags1_dw() & M1_HUMANOID_DW) !== 0; }
-import { pline, urgent_pline } from './display.js';
+import { pline, urgent_pline, livelog_printf } from './display.js';
+import { LL_ALIGNMENT } from './const.js';
+import { aligns } from './roles.js';
 import { see_monsters, Sting_effects, retouch_object_hero, retouch_equipment } from './display.js';
 import { topl_park_cursor } from './display.js';
 import { flush_screen, _topline_more_pending, _topl_stash_result } from './display.js';
@@ -45,7 +49,7 @@ import { MKOBJ_OC_MATERIAL, MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js';
 import { discover_object, observe_object } from './o_init.js';
 import { exercise, change_luck, acurr, C_ATTR_TO_DISP, adjalign } from './attrib.js';
 import { STR19, PROTECTION, INTRINSIC, Is_astralevel, A_CURRENT, A_ORIGINAL } from './const.js';
-import { PM_ARCHEOLOGIST, PM_HOBBIT, PM_MARILITH, PM_WINGED_GARGOYLE } from './pm.generated.js';
+import { PM_ARCHEOLOGIST, PM_HOBBIT, PM_MARILITH, PM_WINGED_GARGOYLE, PM_INCUBUS } from './pm.generated.js';
 import { float_vs_flight, breakarm, num_horns, obj_pmname, y_monnam, can_be_strangled } from './mhitm.js';
 import { s_suffix } from './hacklib.js';
 import { hcolor, hliquid } from './mhitm.js';
@@ -58,7 +62,7 @@ import { HALLUC, HALLUC_RES } from './const.js';
  * both halves are imported rather than re-derived here. */
 import { sliparm, permonstTemplate, summon_furies, trapname } from './makemon.js';
 import { canletgo } from './makemon.js';
-import { weapon_descr, touch_petrifies as corpse_touch_petrifies, mon_nam } from './uhitm.js';
+import { weapon_descr, touch_petrifies as corpse_touch_petrifies, mon_nam, m_at } from './uhitm.js';
 import { setuwep, setuswapwep, setuqwep, empty_handed, cmdq_pop, cmdq_peek, dropx, cmdq_clear, instapetrify as corpse_instapetrify,
          carrying_stoning_corpse, Yname2 } from './cmd.js';
 import { otense, makesingular, corpse_xname as petrify_corpse_xname, killer_xname as petrify_killer_xname, simpleonames as petrify_simpleonames } from './objnam.js';
@@ -147,7 +151,7 @@ import { UNCHANGING as UNCHANGING_PROP } from './const.js';
 /* C polyself.c poly_gender() — js/makemon.js:2112 is the ONE definition (do_wear.c
  * itself calls the same global function; not duplicating it here). */
 import { poly_gender } from './makemon.js';
-import { livelog_newform } from './polyself.js';
+import { livelog_newform, set_uasmon } from './polyself.js';
 import { trycall, dismount_steed as dismount_steed_fu } from './cmd.js';
 import { W_ARTI } from './const.js';
 import { Monnam as Monnam_fu } from './mcastu.js';
@@ -196,6 +200,9 @@ function change_sex_dw() {
     if (!upolyd) {
         u.umonnum = (u.umonster != null) ? (u.umonster | 0)
             : (g.urole ? (g.urole.mnum | 0) : (u.umonnum | 0));
+    } else if (u.umonnum === PM_INCUBUS) { // C polyself.c:294 PM_AMOROUS_DEMON
+        g.flags.female = !g.flags.female;
+        set_uasmon();
     }
 }
 /* C ref: youprop.h:372 Unchanging = (HUnchanging || EUnchanging). */
@@ -1003,8 +1010,10 @@ export async function Cloak_off() {
 }
 function don_slot(_slot) {
     const otmp = game.u ? game.u[_slot] : null;
-    if (otmp && !otmp.known)
+    if (otmp && !otmp.known) {
         otmp.known = 1;
+        update_inventory();
+    }
     /* NO find_ac() — symmetric with takeoff_slot() above and for the same C
      * reason: accessory_or_armor_on() (do_wear.c:2377) does setworn(obj, mask)
      * and then the *_on callback, and none of Armor_on/Shield_on/Helmet_on/
@@ -1118,15 +1127,25 @@ export async function Armor_on()  {
     }
     return 0;
 }
-export function Shield_on() { return don_slot('uarms'); }
+export async function Shield_on() {
+    // C do_wear.c:710-723; objects.h SMALL_SHIELD..SHIELD_OF_REFLECTION.
+    const otyp = game.u.uarms.otyp;
+    switch (otyp) {
+    case 150: case 151: case 152: // small, drain resistance, shock resistance
+    case 153: case 154: case 155: // elven, Uruk-hai, orcish
+    case 156: case 157: case 158: // large, dwarvish roundshield, reflection
+        break;
+    default: await equipment_impossible('Unknown type of %s (%d)', 'shield', otyp);
+    }
+    return don_slot('uarms');
+}
 const FEDORA_OTYP = 92, CORNUTHAUM_OTYP = 93, DUNCE_CAP_OTYP = 94;
 /* objects.h helmet order: 94 DUNCE_CAP, 95 DENTED_POT, 96 HELM_OF_BRILLIANCE,
  * 97 HELMET, 98 HELM_OF_CAUTION, 99 HELM_OF_OPPOSITE_ALIGNMENT, 100
  * HELM_OF_TELEPATHY (verified against OC_NAME indices). */
 const HELM_OF_TELEPATHY_OTYP = 100, HELM_OF_CAUTION_OTYP = 98;
 /* C attrib.c:1320 uchangealign(newalign, A_CG_HELM_ON) — the put-on arm only
- * (CONVERT/HELM_OFF are reached from pray.c and do_wear.c:556). Omitted:
- * livelog_printf (not game-visible). */
+ * (CONVERT/HELM_OFF are reached from pray.c and do_wear.c:556). */
 async function uchangealign_helm_on(newalign) {
     const u = game.u;
     const oldalign = u.ualign.type;
@@ -1139,6 +1158,8 @@ async function uchangealign_helm_on(newalign) {
     make_confused(rn2(2) + 3, false); /* C rn1(2,3) */
     if (Is_astralevel(u.uz) || ((rn2(50) >>> 0) < (u.ualign.abuse >>> 0)))
         await summon_furies(Is_astralevel(u.uz) ? 0 : 1);
+    /* C attrib.c:1350 — also shown by #chronicle; removal isn't logged. */
+    livelog_printf(LL_ALIGNMENT, 'used a helm to turn %s', aligns[1 - newalign].adj);
     if (u.ualign.type !== oldalign) {
         u.ualign.record = 0; /* slate is wiped clean */
         await retouch_equipment(0); /* C attrib.c:1360 */
@@ -1258,7 +1279,7 @@ export async function Boots_on() {
             /* C do_wear.c:229 — toggle_stealth() discovers the boots and
              * reports the new stealth state after setworn() has conferred
              * their extrinsic property. */
-            if (!oldprop && !((rec ? (rec.intrinsic | 0) : 0))
+            if (!g.initial_don && !oldprop && !((rec ? (rec.intrinsic | 0) : 0))
                 && !((rec ? (rec.blocked | 0) : 0))) {
                 makeknown_otyp(otyp);
                 if (Levitation() || Flying())
@@ -1270,6 +1291,7 @@ export async function Boots_on() {
         case WATER_WALKING_BOOTS_OTYP_DW:
             /* C do_wear.c:211-216 — Boots_on consumes the saved underwater
              * state after setworn has conferred water walking. */
+            if (u.uinwater) await spoteffects(true);
             if (g.wasinwater) {
                 if (!u.uinwater)
                     makeknown_otyp(otyp);
@@ -1304,11 +1326,10 @@ export async function Boots_on() {
             }
             break;
         default:
+            await equipment_impossible('Unknown type of boots (%d)', otyp);
             break;
     }
     /* do_wear.c:253-256 — boots' +/- is evident because of the status-line AC. */
-    if (!otmp.known)
-        otmp.known = 1;
     return don_slot('uarmf');
 }
 /* objects.h otyps for the cloak slot (OC_NAME row indices, cross-checked
@@ -1389,17 +1410,25 @@ export async function Cloak_on() {
             _dw_set_extrinsic_mask(ACID_RES_PROP, W_ARMC, true);
             break;
         default:
-            /* C: impossible(unknown_type, c_cloak, uarmc->otyp) — no state
-             * change, no RNG. */
+            await equipment_impossible('Unknown type of cloak (%d)', otmp.otyp);
             break;
     }
     return don_slot('uarmc');
 }
-export function Shirt_on()  { return don_slot('uarmu'); }
+export async function Shirt_on() {
+    // C do_wear.c:762-768; objects.h HAWAIIAN_SHIRT and T_SHIRT.
+    const otyp = game.u.uarmu.otyp;
+    switch (otyp) {
+    case 136: case 137:
+        break;
+    default: await equipment_impossible('Unknown type of %s (%d)', 'shirt', otyp);
+    }
+    return don_slot('uarmu');
+}
 /* objects.h otyps for the glove slot. */
 const LEATHER_GLOVES_OTYP = 159, GAUNTLETS_OF_FUMBLING_OTYP = 160,
       GAUNTLETS_OF_POWER_OTYP = 161, GAUNTLETS_OF_DEXTERITY_OTYP = 162;
-export function Gloves_on() {
+export async function Gloves_on() {
     const g = game;
     const u = g.u || (g.u = {});
     const otmp = u.uarmg;
@@ -1433,7 +1462,7 @@ export function Gloves_on() {
             adj_abon(otmp, otmp.spe | 0);
             break;
         default:
-            /* C: impossible(unknown_type, c_gloves, uarmg->otyp) */
+            await equipment_impossible('Unknown type of %s (%d)', 'gloves', otmp.otyp); // C do_wear.c:595
             break;
     }
     return don_slot('uarmg');
@@ -1470,7 +1499,7 @@ export async function armoroff(otmp) {
         case ARM_BOOTS: what = boots_simple_name_obj(otmp); g.afternmv = 'Boots_off'; break;
         case ARM_CLOAK: what = cloak_simple_name_obj(otmp); g.afternmv = 'Cloak_off'; break;
         case ARM_SHIRT: what = shirt_simple_name_obj(otmp); g.afternmv = 'Shirt_off'; break;
-        default: impossible('Taking off unknown armor (%d: %d), delay %d', otmp.otyp, armcat, delay);
+        default: await equipment_impossible('Taking off unknown armor (%d: %d), delay %d', otmp.otyp, armcat, delay);
         }
         if (what) g.nomovemsg = `You finish taking off your ${what}.`.slice(0, 59);
     } else {
@@ -1482,7 +1511,7 @@ export async function armoroff(otmp) {
         case ARM_BOOTS: await Boots_off(); break;
         case ARM_CLOAK: await Cloak_off(); break;
         case ARM_SHIRT: await Shirt_off(); break;
-        default: impossible('Taking off unknown armor (%d: %d), no delay', otmp.otyp, armcat);
+        default: await equipment_impossible('Taking off unknown armor (%d: %d), no delay', otmp.otyp, armcat);
         }
         await off_msg(otmp);
     }
@@ -1600,7 +1629,7 @@ async function select_off(otmp) {
     else if (otmp === u.uwep) doff.mask |= W_WEP;
     else if (otmp === u.uswapwep) doff.mask |= W_SWAPWEP;
     else if (otmp === u.uquiver) doff.mask |= W_QUIVER;
-    else impossible('select_off: %s???', (await doname(otmp)));
+    else await equipment_impossible('select_off: %s???', (await doname(otmp)));
     return 0;
 }
 
@@ -1642,7 +1671,7 @@ async function armor_or_accessory_off(obj) {
     } else if (obj === u.ublindf) {
         await Blindf_off(obj);
     } else {
-        impossible('removing strange accessory: %s', obj_typename(obj.otyp));
+        await equipment_impossible('removing strange accessory: %s', obj_typename(obj.otyp));
         if (obj.owornmask) await remove_worn_item(obj, false);
     }
     return ECMD_TIME;
@@ -2695,7 +2724,8 @@ export async function accessory_or_armor_on(obj, amuletEffectsOnly = false) {
         await Blindf_on(obj);
         return ECMD_TIME;
     }
-    return ECMD_TIME;
+    await pline("You can't wear that!"); // C do_wear.c:2350
+    return ECMD_OK;
 }
 /* C ref: do_wear.c:2213 `is_worn_eyewear(obj)` — objects.h:944-950's three
  * EYEWEAR rows (lenses 232, blindfold 233, towel 234).  Tested by otyp rather
@@ -3108,21 +3138,26 @@ export async function float_down(hmask, emask) {
     } else {
         float_vs_flight();
     }
-    /* C trap.c:4088-4096 — a stuck hero is released when levitation ends:
-     * "Startled, X can no longer hold you!" then set_ustuck(NULL). The
-     * sticks(youmonst.data) arm ("aren't able to maintain your hold") is
-     * deferred: the hero is never a sticker on this path. */
-    if (!Flying() && !u.uswallow && u.ustuck) {
-        await pline(`Startled, ${mon_nam(u.ustuck)} can no longer hold you!`);
-        set_ustuck(null);
-    }
     /* C trap.c:4066-4071 — still engulfed: no landing, no trap, no pickup. */
     if (u.uswallow) {
         await pline(`You float down, but you are still ${dmgtype(u.ustuck.data, 11 /* AD_DGST */) ? 'swallowed' : 'engulfed'}.`);
         await encumber_msg();
         return 1;
     }
-    /* uswallow/Punished branches deferred (FALSE here). */
+    // C trap.c:4074-4084: the grounded ball can pull the hero down to it.
+    let trap = null;
+    const ball = u.uball;
+    if (ball && ball.where !== OBJ_INVENT && !m_at(ball.ox, ball.oy)
+        && (is_pool(ball.ox, ball.oy)
+            || ((trap = t_at(ball.ox, ball.oy)) && (is_pit(trap.ttyp) || is_hole(trap.ttyp))))) {
+        u.ux0 = u.ux;
+        u.uy0 = u.uy;
+        u.ux = ball.ox;
+        u.uy = ball.oy;
+        movobj(u.uchain, ball.ox, ball.oy);
+        newsym(u.ux0, u.uy0);
+        g.vision_full_recalc = 1;
+    }
     /* C trap.c:4086-4095 — a stuck-to hero (not swallowed) is released. */
     if (!Flying() && !u.uswallow && u.ustuck) {
         const ym = game.youmonst;
@@ -3147,14 +3182,15 @@ export async function float_down(hmask, emask) {
             no_msg = true;
         }
     }
-    const trap = t_at(u.ux | 0, u.uy | 0);
+    const landingMessage = !trap; // C skips feedback if the ball selected a trap.
+    trap ||= t_at(u.ux | 0, u.uy | 0);
     // C trap.c:4114-4117: these plane messages precede the W_SADDLE test,
     // so dismounting still gives feedback and flushes before monsters move.
-    if (Is_airlevel(u.uz)) {
+    if (landingMessage && Is_airlevel(u.uz)) {
         await pline('You begin to tumble in place.');
-    } else if (Is_waterlevel(u.uz) && !no_msg) {
+    } else if (landingMessage && Is_waterlevel(u.uz) && !no_msg) {
         await pline('You feel heavier.');
-    } else if (!u.uinwater && !no_msg && !(emask & W_SADDLE_FD)) {
+    } else if (landingMessage && !u.uinwater && !no_msg && !(emask & W_SADDLE_FD)) {
         const hallu = u.uprops?.[HALLUC]?.intrinsic
             && !(u.uprops[HALLUC_RES]?.intrinsic || u.uprops[HALLUC_RES]?.extrinsic);
         // C trap.c:4122-4134: Sokoban air currents knock the hero down.
@@ -3164,8 +3200,11 @@ export async function float_down(hmask, emask) {
             if (u.usteed)
                 await dismount_steed_fu(DISMOUNT_FELL);
             await selftouch('As you fall, you');
-        } else if (hallu) /* C trap.c:4138-4141 (is_pool arm deferred with the pool branch) */
-            await pline("Bummer!  You've hit the ground.");
+        } else if (u.usteed && ([5, 25].includes(u.usteed.data.mlet)
+                               || pooleffects_is_flyer(u.usteed.data))) {
+            await pline('You settle more firmly in the saddle.');
+        } else if (hallu)
+            await pline(`Bummer!  You've ${is_pool(u.ux, u.uy) ? 'splashed down' : 'hit the ground'}.`);
         else
             await pline(`You float gently to the ${surface(u.ux, u.uy)}.`);
         // C update_topl may block here before landing triggers another effect.
@@ -3485,6 +3524,8 @@ export async function Blindf_on(otmp) {
         changed = true;
         if (game.flags && game.flags.verbose)
             await pline("You can't see any more.");
+        /* C do_wear.c:1474-1476: initialize ball/chain memory before redraw. */
+        if (game.u?.uball) set_bc(0);
     } else if (already_blind && !_Blind_dw()) {
         changed = true;
         // C do_wear.c:1480-1488: the Eyes end the blind-from-birth conduct.
@@ -3532,7 +3573,7 @@ export async function Blindf_off(otmp) {
             await pline("You can't see anything now!");
             if (g.u?.uball) set_bc(0);
         }
-    } else if (was_blind) {
+    } else if (was_blind && !(await gulp_blnd_check())) {
         changed = true;
         await pline('You can see again.');
     }
@@ -3605,6 +3646,7 @@ function learnring(ring, observed) {
     if (ring.dknown && g._oc_name_known[ringtype]) {
         if (ringtype >= RIN_BASE && ringtype <= RIN_LAST_CHARGED)
             ring.known = 1;
+        update_inventory();
     }
 }
 
@@ -3861,7 +3903,7 @@ export async function set_wear(obj) {
         await Amulet_on(u.uamul);
 
     if (!obj ? (u.uarmu != null) : (obj === u.uarmu))
-        Shirt_on();
+        await Shirt_on();
     if (!obj ? (u.uarm != null) : (obj === u.uarm))
         await Armor_on();
     if (!obj ? (u.uarmc != null) : (obj === u.uarmc))
@@ -3869,11 +3911,11 @@ export async function set_wear(obj) {
     if (!obj ? (u.uarmf != null) : (obj === u.uarmf))
         await Boots_on();
     if (!obj ? (u.uarmg != null) : (obj === u.uarmg))
-        Gloves_on();
+        await Gloves_on();
     if (!obj ? (u.uarmh != null) : (obj === u.uarmh))
         await Helmet_on();
     if (!obj ? (u.uarms != null) : (obj === u.uarms))
-        Shield_on();
+        await Shield_on();
 
     g.initial_don = false;
 }

@@ -595,7 +595,17 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
         const crysknife = (obj.otyp | 0) === 43;
         const oerodeproof = obj.oerodeproof;
         place_object(obj, u.ux | 0, u.uy | 0);
-        const canTouch = await touch_artifact_youmonst(obj);
+        // C invent.c:1227 / artifact.c:951: touching prints the blast before
+        // hold/drop messages, even when the artifact accepts the hero.
+        g._rt_blast_page_standing = true;
+        let canTouch;
+        try { canTouch = await touch_artifact_youmonst(obj); }
+        finally { g._rt_blast_page_standing = false; }
+        const blast = g._touch_artifact_blast_msg;
+        if (blast) {
+            g._touch_artifact_blast_msg = null;
+            await pline(blast);
+        }
         if (!canTouch) {
             remove_object(obj);
             await dropy(obj);

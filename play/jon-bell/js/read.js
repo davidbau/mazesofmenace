@@ -1,3 +1,5 @@
+import { dropy } from './cmd.js'; // C read.c:3040-3042; do.c:800-843.
+import { map_menu_cmd } from './cmd_config.js';
 import { ggetobj, _restrict_name, costly_alteration, fully_identify_obj as fully_identify_obj_cmd, _sortloot_within_class } from './cmd.js';
 import { ONAME, has_oname, COST_UNCHRG, COST_DEGRD, COST_DECHNT, COST_UNCURS } from './const.js';
 // @ts-nocheck
@@ -7,7 +9,8 @@ import { MKOBJ_OC_CLASS } from './mkobj_data.js';
 import { game } from './gstate.js';
 import { reassign, update_inventory } from './inventory_refresh.js';
 import { snuff_light_source } from './light.js';
-import { pline, putmsghistory, getobj_never_mind, bot as bot_read, gamelog_add, obj_to_glyph } from './display.js';
+import { end_burn } from './timeout.js';
+import { pline, putmsghistory, getobj_never_mind, bot as bot_read, gamelog_add, obj_to_glyph, msgtype_suppressed } from './display.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import {
     PM_GUARD, PM_SHOPKEEPER, PM_PRIEST as PM_ALIGNED_CLERIC,
@@ -341,15 +344,14 @@ export async function recharge(obj, curse_bless) {
         if (spe_cur > rn2(7) || spe_cur <= -5) {
             /* C read.c:808-814: ring explodes */
             await pline(`${Yobjnam2(obj, 'pulsate')} momentarily, then ${otense(obj, 'explode')}!`);
-            if (is_on) {
-                /* Ring_gone(obj) — remove ring from worn slots, no RNG */
-                obj.owornmask = 0;
-            }
+            if (is_on)
+                await Ring_gone_rd(obj); /* C read.c:810 */
             /* C read.c:812: s = rnd(3 * abs(obj->spe)) — damage */
             const dmg_s = rnd(3 * Math.abs(spe_cur));
             /* C read.c:813: useup(obj), obj = 0; losehp(Maybe_Half_Phys(s), ...) */
-            /* TODO: apply damage to u.uhp */
-            /* obj consumed — return since obj is gone */
+            await useup_cmd(obj);
+            await losehp(_uprop_on(HALF_PHDAM_er) ? Math.trunc((dmg_s + 1) / 2) : dmg_s,
+                         'exploding ring', KILLED_BY_AN);
             return;
         }
         else {
@@ -363,15 +365,14 @@ export async function recharge(obj, curse_bless) {
             if (s < 0) {
                 /* C read.c:821: costly_alteration(obj, COST_DECHNT) — no RNG */
             }
-            /* C read.c:823-824: cause attributes/properties to be updated */
-            if (is_on) {
-                /* Ring_off(obj) — no RNG */
-                obj.owornmask &= ~(LEFT_RING | RIGHT_RING);
-            }
+            /* C read.c:822-827: remove the old effects, then apply the new
+             * charge through the ordinary worn-ring handlers. */
+            if (is_on)
+                await Ring_off(obj);
             obj.spe += s; /* C read.c:825: update ring while off */
             if (is_on) {
-                obj.owornmask |= mask; /* setworn */
-                /* Ring_on(obj) — no RNG for RNG-score purposes */
+                await setworn(obj, mask);
+                await Ring_on(obj);
             }
             /* C read.c:831-832: alter_cost if s>0 && unpaid — no RNG */
         }
@@ -472,10 +473,9 @@ export async function recharge(obj, curse_bless) {
                     await stripspe(obj);
                     if (obj.lamplit) {
                         if (!game.u.blind) {
-                            await pline(`${obj._name || 'lamp'} goes out!`);
+                            await pline(`${Tobjnam_objnam(obj, 'go')} out!`);
                         }
-                        /* end_burn(obj, TRUE) — no RNG */
-                        obj.lamplit = false;
+                        end_burn(obj, true);
                     }
                 }
                 else if (is_blessed) {
@@ -500,7 +500,7 @@ export async function recharge(obj, curse_bless) {
                     /* C read.c:920-931: cursed removes charges */
                     if (!obj.cursed) {
                         await p_glow2(obj, 'black');
-                        obj.cursed = true; /* curse(obj) */
+                        await _curse(obj); /* C read.c:925; mkobj.c:1793 clears blessed. */
                     }
                     else {
                         await pline(`${obj._name || 'ball'} vibrates briefly.`);
@@ -513,7 +513,7 @@ export async function recharge(obj, curse_bless) {
                     obj.spe = 7;
                     await p_glow2(obj, obj.blessed ? 'blue' : 'light blue');
                     if (!obj.blessed)
-                        obj.blessed = true; /* bless(obj) */
+                        _bless(obj); /* C read.c:937; mkobj.c:1753 clears cursed. */
                 }
                 else {
                     /* C read.c:939-954: uncursed increments */
@@ -525,7 +525,7 @@ export async function recharge(obj, curse_bless) {
                         }
                         else {
                             await p_glow2(obj, 'amber');
-                            obj.cursed = false; /* uncurse(obj) */
+                            _uncurse(obj); /* C read.c:948 */
                         }
                     }
                     else {
@@ -603,6 +603,8 @@ export async function recharge(obj, curse_bless) {
 // ─────────────────────────────────────────────────────────────────────────────
 import { flush_screen, docrt, cls, under_water, under_ground, newsym, terrain_glyph, occupation_force_more, force_more, map_trap, map_engraving, map_object, unmap_object, show_glyph_cell, objpile_attr, update_lastseentyp, GLYPHCLS_TRAP, GLYPHCLS_OBJ, GLYPHCLS_CMAP, GLYPHCLS_ENGR } from './display.js';
 import { t_at } from './trap.js';
+import { get_obj_location } from './light.js';
+import { BURIED_TOO, CONTAINED_TOO } from './const.js';
 import { oc_merge as oc_merge_rd } from './oc_merge.generated.js';
 import { NUMMONS } from './pm.generated.js';
 import { engr_at } from './mklev.js';
@@ -631,7 +633,7 @@ import { setworn } from './worn.js';
 import { which_armor } from './makemon.js';
 import { NO_COLOR, CLR_BLACK } from './terminal.js';
 import { build_window_screen, tty_window_offx, menu_search_case } from './com_pager.js';
-import { getObjDescr, xname_scroll, makeplural, an, Yobjnam2, otense, not_fully_identified } from './objnam.js';
+import { getObjDescr, xname_scroll, makeplural, an, Yobjnam2, Tobjnam as Tobjnam_objnam, otense, not_fully_identified } from './objnam.js';
 import { simpleonames, suit_simple_name, actualoname as _actualoname } from './objnam.js';
 /* C read.c:384-390's "obscured by" guard needs shk_your()'s shop-owner arm
  * (shk.c:5885-5896 shk_owns): shop_keeper/costly_spot (js/shk.js), inside_shop
@@ -664,7 +666,7 @@ import { encumber_msg } from './weight.js';
  * seffect_enchant_armor / seffect_destroy_armor; adj_abon (C do_wear.c) is the
  * Dex/Int+Wis adjustment applied after an armor's spe changes.  Both are
  * already ported once in js/do_wear.js — import that single copy. */
-import { some_armor, adj_abon } from './do_wear.js';
+import { some_armor, adj_abon, Ring_off, Ring_on, Ring_gone as Ring_gone_rd } from './do_wear.js';
 /* C read.c:1362/:1380 disintegrate_arm, :1367 count_worn_armor, :1376
  * any_worn_armor_ok and :1387 destroy_arm — all do_wear.c functions, so they
  * live in js/do_wear.js next to some_armor rather than being re-derived here. */
@@ -849,10 +851,21 @@ async function topline_more_loop(msg) {
 async function study_book_already_known(spellName) {
     const g = game;
     const msg = `You know "${spellName}" quite well already.`;
+    /* C spell.c:566 You() runs vpline's last_msg/prevmsg writes
+     * (pline.c:281-282) before the following query pages this message. */
+    if (!msgtype_suppressed(msg)) {
+        if (g.iflags) g.iflags.last_msg = 0;
+        g._prevmsg = msg;
+    }
     /* C ref: pline + tty more() chain — pline sets the topline; the subsequent
      * y_n in C calls topl.c more() to clear the line.  Mirror that loop. */
     await topline_more_loop(msg);
     const ynPrompt = 'Refresh your memory anyway? [yn] (n)';
+    /* C topl.c:420 custompline(OVERRIDE_MSGTYPE | SUPPRESS_HISTORY)
+     * publishes the prompt with a trailing space, updating prevmsg too.
+     * Without this, a later Norep can suppress an older, unrelated message. */
+    if (g.iflags) g.iflags.last_msg = 0;
+    g._prevmsg = ynPrompt + ' ';
     let refresh = false;
     while (true) {
         g._pending_message = ynPrompt;
@@ -1178,7 +1191,7 @@ export async function doread() {
         await outrumor(bcsign(scroll), BY_COOKIE);
         if (!_Blind())
             _bump_literate('a fortune cookie');
-        useup(scroll);
+        await useup_cmd(scroll); /* C read.c:373: includes worn cleanup and stack weight. */
         game.context = game.context || {};
         game.context.move = 1;                     /* C ECMD_TIME */
         await _clear_botl();
@@ -2188,7 +2201,7 @@ async function _strange_feeling(obj, txt) {
         return;
     if (obj.dknown)
         await trycall(obj);
-    useup(obj);
+    await useup_cmd(obj); /* C potion.c:1475: consume through invent.c useup(). */
 }
 /* C ref: uwep && objects[uwep->otyp].oc_skill == P_SLING (weapon.c uslinging). */
 function _uslinging() {
@@ -2608,10 +2621,10 @@ async function seffect_enchant_weapon(sobjp) {
  * js/dig.js's unpunish skips that draw, so this local body follows C. */
 async function unpunish_rd() {
     const savechain = game.u?.uchain;
-    setworn_bc(null, W_CHAIN);                          /* sets 'uchain' to Null */
+    await setworn(null, W_CHAIN);                          /* sets 'uchain' to Null */
     if (savechain)
         await delobj_rd(savechain);
-    setworn_bc(null, W_BALL);                           /* sets 'uball' to Null */
+    await setworn(null, W_BALL);                           /* sets 'uball' to Null */
 }
 
 async function seffect_remove_curse(sobj) {
@@ -3418,9 +3431,15 @@ function _detect_obj_traps_scan(objlist, show_them = false, how = 0) {
     let result = 0;
     for (let otmp = objlist; otmp; otmp = otmp.nobj) {
         const isbox = (otmp.otyp | 0) === 214 || (otmp.otyp | 0) === 215;
+        const xp = { value: 0 }, yp = { value: 0 };
+        if ((isbox && otrapped_of(otmp)) || Has_contents(otmp)) {
+            if (!get_obj_location(otmp, xp, yp, BURIED_TOO | CONTAINED_TOO)
+                || !isok(xp.value, yp.value)) continue;
+        }
         if (isbox && otrapped_of(otmp)) {
             otmp.tknown = 1; /* C detect.c:934 */
-            const x = otmp.ox | 0, y = otmp.oy | 0;
+            observe_object(otmp);
+            const x = xp.value, y = yp.value;
             result |= (x === (u.ux | 0) && y === (u.uy | 0)) ? 1 : 2;
             if (show_them) /* C detect.c:938-942: dummytrap.ttyp == TRAPPED_CHEST */
                 _sense_trap({ tx: x, ty: y, ttyp: TRAPPED_CHEST_RD }, x, y, how);
@@ -3612,7 +3631,7 @@ async function seffect_charging(holder) {
         await pline('This is a charging scroll.');
         learnscroll(sobj);
     }
-    useup(sobj); /* so it is not in the getobj picklist */
+    await useup_cmd(sobj); /* C read.c:1822: clear worn slots before getobj. */
     holder.obj = null;
     const otmp = await getObjFromGetobj('charge', charge_ok, GETOBJ_PROMPT | GETOBJ_ALLOWCNT);
     if (otmp) await recharge(otmp, scursed ? -1 : sblessed ? 1 : 0);
@@ -4339,11 +4358,11 @@ export async function punish(sobj) {
         return;
     }
 
-    setworn_bc((await mkobj(CHAIN_CLASS, true)), W_CHAIN);            /* C read.c:3046 */
+    await setworn((await mkobj(CHAIN_CLASS, true)), W_CHAIN);            /* C read.c:3046 */
     if (!reuse_ball)
-        setworn_bc((await mkobj(BALL_CLASS, true)), W_BALL);          /* C read.c:3048 */
+        await setworn((await mkobj(BALL_CLASS, true)), W_BALL);          /* C read.c:3048 */
     else
-        setworn_bc(reuse_ball, W_BALL);
+        await setworn(reuse_ball, W_BALL);
 
     /* C read.c:3056-3061 — place them unless swallowed. */
     if (!u.uswallow) {
@@ -4354,37 +4373,12 @@ export async function punish(sobj) {
     }
 }
 
-/* C ref: worn.c:73 setworn(obj, mask), specialised to W_BALL / W_CHAIN.
- *
- * js/steal.js exports a setworn() but its body is `throw new Error('not yet
- * ported')`, so it cannot be used.  This is the ball/chain slice of the real
- * one: HEAVY_IRON_BALL and IRON_CHAIN both have oc_oprop 0, so the extrinsic /
- * w_blocks / artifact / twoweap arms of C's setworn are all no-ops for them and
- * what remains is the owornmask bit plus the `*(wp->w_obj) = obj` write to C's
- * uball / uchain globals.  js/ball.js and js/dig.js DERIVE uball/uchain by
- * scanning for the owornmask bit, and js/cmd.js:8502 / js/trap.js:3688 read
- * u.uball / u.uchain directly, so both representations are written here. */
-function setworn_bc(obj, mask) {
-    const u = game.u || (game.u = {});
-    const slot = (mask === W_BALL) ? 'uball' : 'uchain';
-    const oobj = u[slot];
-    if (oobj && oobj !== obj)
-        oobj.owornmask = (oobj.owornmask | 0) & ~mask;
-    u[slot] = obj;
-    if (obj)
-        obj.owornmask = (obj.owornmask | 0) | mask;
-}
 
 /* C ref: mondata.h amorphous/is_whirly/unsolid — the three polyform tests
  * punish() consults.  Same flag reads js/makemon.js:2911-2913 makes. */
 const M1_AMORPHOUS_RD = 0x00000004, M1_UNSOLID_RD = 0x00100000; /* monflag.h:87,105 */
 function _amorphous(d) { return ((d.mflags1 | 0) & M1_AMORPHOUS_RD) !== 0; }
 function _unsolid(d) { return ((d.mflags1 | 0) & M1_UNSOLID_RD) !== 0; }
-
-function dropy(obj) {
-    const u = game.u || {};
-    if (obj) place_object(obj, u.ux, u.uy);
-}
 
 /* C ref: read.c:1020 forget(int howmuch) — forget skills, and (if
  * howmuch & ALL_SPELLS) spells too, after a scroll of amnesia. */
@@ -4751,11 +4745,12 @@ async function _identify_objlist_menu(promptText) {
      * clear_nhwindow(WIN_MESSAGE), which blanks SCREEN row 0.  When this menu
      * is full-screen (offx == 0) row 0 is the prompt line, and
      * process_menu_window only repaints on a page change — which this renderer
-     * never performs, so once erased it stays erased. */
+     * now handles by restoring the erased text. */
     let titleErased = false;
     const SCREEN_ROWS = 24;
     /* C tty_end_menu: lmax = min(52, rows - 1) = 23 lines per page. */
     const PAGE_CONTENT = SCREEN_ROWS - 1;
+    let pageIndex = 0;
     /* offx is computed ONCE when the window is displayed and does not change
      * as selections toggle (a '+'/'-' swap cannot change a line's width), so
      * measure it from the un-erased first frame. */
@@ -4764,16 +4759,16 @@ async function _identify_objlist_menu(promptText) {
     const WIN_COL = FULL_SCREEN
         ? 1
         : tty_window_offx([...GEOM_LINES.slice(0, PAGE_CONTENT), '(end)'], 'end');
-    /* The entries whose row falls on page 1 (line 0 is the prompt, line 1 the
+    /* The entries whose row falls on the current page (line 0 is the prompt, line 1 the
      * separator, then one heading line per class ahead of its items). */
-    const onPage1 = () => {
+    const onPage = () => {
         const onPage = new Set();
         let line = 2;
         for (const oc of classOrder) {
             line++;
             for (const e of entries) {
                 if ((e.obj.oclass | 0) !== oc) continue;
-                if (line < PAGE_CONTENT) onPage.add(e);
+                if (line >= pageIndex * PAGE_CONTENT && line < (pageIndex + 1) * PAGE_CONTENT) onPage.add(e);
                 line++;
             }
         }
@@ -4782,8 +4777,8 @@ async function _identify_objlist_menu(promptText) {
     const frameRows = () => {
         const lines = buildLines();
         const pageCount = Math.max(1, Math.ceil(lines.length / PAGE_CONTENT));
-        const pageLines = lines.slice(0, PAGE_CONTENT);
-        const footer = (pageCount > 1) ? `(1 of ${pageCount})` : '(end)';
+        const pageLines = lines.slice(pageIndex * PAGE_CONTENT, (pageIndex + 1) * PAGE_CONTENT);
+        const footer = (pageCount > 1) ? `(${pageIndex + 1} of ${pageCount})` : '(end)';
         const footerRow = pageLines.length;
         if (FULL_SCREEN) {
             /* C: term_clear_screen() then each row at column offx + 1 = 1. */
@@ -4806,24 +4801,29 @@ async function _identify_objlist_menu(promptText) {
         set_cursor(WIN_COL + footer.length + (pageCount > 1 ? 0 : 1), footerRow);
 
         const k = await nhgetch();
-        const kc = typeof k === 'number' ? k : (k?.charCodeAt(0) ?? 0);
+        const raw = typeof k === 'number' ? k : (k?.charCodeAt(0) ?? 0);
+        const kc = onPage().has(LETTERSET.get(raw)) ? raw : map_menu_cmd(raw);
         if (kc === 27 /* ESC */) { escaped = true; break; }
         /* RETURN / ENTER finishes the menu with current selections. */
         if (kc === 10 || kc === 13) break;
-        if (kc === 32) {
-            /* single page → finish; multi-page → would advance.  We only render
-             * page 1, so treat space as finish to keep selections intact. */
-            break;
+        /* C wintty.c:1621-1650: Space accepts only on the last page. */
+        if ([32, 62, 60, 94, 124].includes(kc)) {
+            if (kc === 32 && pageIndex === pageCount - 1) break;
+            const target = kc === 94 ? 0 : kc === 124 ? pageCount - 1 : pageIndex + (kc === 60 ? -1 : 1);
+            if (target >= 0 && target < pageCount && target !== pageIndex) {
+                pageIndex = target; titleErased = false;
+            }
+            continue;
         }
         const e = LETTERSET.get(kc);
-        if (e) { e.selected = !e.selected; continue; }
+        if (onPage().has(e)) { e.selected = !e.selected; continue; }
         const BULK = {
             46: [false, 'set'], 45: [false, 'clear'], 64: [false, 'invert'],
             44: [true, 'set'], 92: [true, 'clear'], 126: [true, 'invert'],
         };
         if (BULK[kc]) {
             const [pageOnly, mode] = BULK[kc];
-            const targets = pageOnly ? onPage1() : entries;
+            const targets = pageOnly ? onPage() : entries;
             for (const t of targets)
                 t.selected = mode === 'invert' ? !t.selected : mode === 'set';
             continue;

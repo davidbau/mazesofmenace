@@ -39,7 +39,7 @@ import { yelp, growl, helpless, levl_follower, mon_has_amulet, seemimic } from '
 import { vision_recalc } from './vision.js';       /* C vision.c */
 import { depth } from './hacklib.js';              /* C dungeon.c depth() */
 import { fill_pit, mintrap } from './trap.js';              /* C trap.c:5391 */
-import { on_level, builds_up } from './dungeon.js'; /* C dungeon.c */
+import { on_level, builds_up, describe_level_buf } from './dungeon.js'; /* C dungeon.c */
 import { impossible as impossible_arrive } from './pline.js';
 import { ESHK, EPRI, EGD } from './const.js';      /* C mextra.h accessors */
 import { picked_container, deliver_obj_to_mon } from './dokick.js';    /* C shk.c:3084 */
@@ -248,7 +248,7 @@ export async function makedog() {
     const petPos = enexto_core(ux, uy, fakemon, gpflags)
         ?? enexto_core(ux, uy, fakemon, gpflags & ~GP_CHECKSCARY)
         ?? { x: ux, y: uy };
-    propagate(pettype, true, false);
+    await propagate(pettype, true, false);
     /* C makemon.c:1253 — mtmp->m_id = next_ident() consumes rnd(2) */
     const g = game;
     if (g.context == null)
@@ -1103,6 +1103,9 @@ export function dealloc_mextra(m) {
  * stale field values.  Zeroing is done in place on the caller's object rather
  * than by rebinding, mirroring the C struct assignment through the pointer. */
 export function dealloc_monst(mon) {
+    // C mon.c:2680-2683: linked monsters must not be cleared or freed.
+    if (mon.nmon)
+        throw new Error(`dealloc_monst with nmon on ${describe_level_buf(2)}`);
     if (mon.mextra)
         dealloc_mextra(mon);
     /* C: *mon = cg.zeromonst */

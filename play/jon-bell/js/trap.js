@@ -35,7 +35,7 @@ import { rn2, rn1, d, rnl, rnd, pushRngLogEntry } from './rng.js';
 import { acurr, exercise, change_luck, adjalign, adjattrib, minuhpmax, setuhpmax } from './attrib.js';
 import { losexp } from './exper.js';
 /* dofiretrap's Underwater/Drain_resistance guards (trap.c:4247, :4291). */
-import { DRAIN_RES, MON_DETACH } from './const.js';
+import { DRAIN_RES, MON_DETACH, SHOPBASE } from './const.js';
 import { bot, pline, Norep, canseemon, canspotmon, newsym, map_trap, tmp_at, obj_to_glyph, glyph_is_invisible_at, unmap_object, You_hear, Unaware as _trap_Unaware, You_hear as _trap_You_hear, feel_newsym, map_invisible, livelog_printf, shieldeff, topl_force_break_now, flush_pending_messages } from './display.js';
 import { cansee, clear_path, couldsee, recalc_block_point, Blind, vision_recalc } from './vision.js';
 import { distmin, s_suffix as _s_suffix, dist2, depth } from './hacklib.js';
@@ -47,7 +47,7 @@ import { shkgone } from './shk.js';
 import { mksobj as mksobj_ice } from './mklev.js';
 import { tamedog, unstuck, wary_dog } from './dog.js';
 import { seffects } from './read.js';
-import { seemimic } from './mhitm.js';
+import { seemimic, YMonnam } from './mhitm.js';
 import { rndmonnam } from './do_name.js';
 import { setnotworn } from './worn.js';
 /* read.c:3018 punish() — reused when digging or struggling uncovers the
@@ -632,6 +632,9 @@ export async function chest_trap(obj, bodypart, disarm) {
     await pline(disarm ? 'You set it off!' : 'You trigger a trap!');
     /* C: display_nhwindow(WIN_MESSAGE, FALSE) — no RNG */
     topl_force_break_now();
+    // C trap.c:6311 blocks here: an ESC sets WIN_STOP before the effect's
+    // next pline samples it (tty/wintty.c:1873-1880, tty/topl.c:257).
+    await flush_pending_messages();
     /* Compute Luck = u.uluck + u.moreluck */
     const luck = ((u.uluck | 0) + (u.moreluck | 0));
     /* RNG 1: luck saves check */
@@ -1467,23 +1470,14 @@ export async function buried_ball_to_freedom() {
     const u = game.u || {};
     const cc = { x: u.ux | 0, y: u.uy | 0 };
     const ball = buried_ball(cc);
-    if (!ball) return false;
-    let prev = null;
-    for (let cur = game.level && game.level.buriedobjlist; cur; cur = cur.nobj) {
-        if (cur !== ball) { prev = cur; continue; }
-        if (prev) prev.nobj = cur.nobj;
-        else if (game.level) game.level.buriedobjlist = cur.nobj;
-        cur.nobj = null;
-        cur.where = OBJ_FLOOR;
-        break;
-    }
+    if (!ball) return;
+    obj_extract_self(ball);
     place_object(ball, cc.x, cc.y);
     await stackobj(ball);
-    u.utrap = 0;
-    u.utraptype = 0;
+    // C dig.c:1974: restore levitation/flight suppressed by the buried ball.
+    await reset_utrap(true);
     del_engr_at(cc.x, cc.y);
     newsym(cc.x, cc.y);
-    return true;
 }
 /* C ref: trap.c:3567-3575 feeltrap() — like seetrap() but overrides vision. */
 export function feeltrap(trap) {
@@ -1554,14 +1548,7 @@ export async function maketrap(x, y, typ) {
                 || ((game.u.utraptype | 0) === TT_WEB_ && typ !== WEB)
                 || ((game.u.utraptype | 0) === TT_PIT_ && !is_pit(typ))
                 || ((game.u.utraptype | 0) === TT_LAVA_ && !is_lava_local(x, y)))) {
-            /* C: reset_utrap(FALSE) -> set_utrap(0, 0) */
-            const wasTrapped = !!(game.u.utrap | 0);
-            game.u.utrap = 0;
-            game.u.utraptype = 0; /* TT_NONE */
-            if (wasTrapped) {
-                if (!game.disp) game.disp = {};
-                game.disp.botl = true; /* SET_BOTL() */
-            }
+            await reset_utrap(false);
         }
         /* old <tx,ty> remain valid */
     } else if (!CAN_OVERWRITE_TERRAIN(lev_typ(x, y))
@@ -1579,6 +1566,9 @@ export async function maketrap(x, y, typ) {
     /* [re-]initialize all fields except ntrap and <tx,ty> */
     ttmp.vl = {};
     ttmp.launch = { x: -1, y: -1 };
+    ttmp.teledest = { x: -1, y: -1 }; // C trap.h:23 aliases launch.
+    ttmp.launch_otyp = ttmp.conjoined = ttmp.tnote = 0;
+    ttmp.launch2 = { x: 0, y: 0 }; // C trap.c:496 zeroes the whole vl union.
     ttmp.dst = { dnum: -1, dlevel: -1 };
     ttmp.madeby_u = 0;
     ttmp.once = 0;
@@ -1607,7 +1597,7 @@ export async function maketrap(x, y, typ) {
         case TRAPDOOR: {
             if (is_hole(typ))
                 hole_destination(ttmp.dst);
-            if (in_rooms(x, y, 8 /* SHOPBASE */)[0]
+            if (in_rooms(x, y, SHOPBASE)[0]
                 && (is_hole(typ) || IS_DOOR(lev_typ(x, y)) || IS_WALL(lev_typ(x, y)))) {
                 add_damage(x, y,
                     ((IS_DOOR(lev_typ(x, y)) || IS_WALL(lev_typ(x, y)))
@@ -1652,7 +1642,7 @@ export async function maketrap(x, y, typ) {
                 const ystart = (game.gy && game.gy.ystart) | 0;
                 ttmp.teledest = { x: xstart + lpx, y: ystart + lpy };
                 if (ttmp.teledest.x === x && ttmp.teledest.y === y) {
-                    impossible_('making fixed-dest tele trap pointing to itself');
+                    await trap_impossible('making fixed-dest tele trap pointing to itself');
                 }
             }
             break;
@@ -1741,7 +1731,7 @@ export async function dotrap(trap, trflags) {
         trflags |= FORCETRAP;
         forcetrap = true;
     }
-    if (In_sokoban(u?.uz) && (is_pit(ttype) || is_hole(ttype))) {
+    if ((game.level?.flags?.sokoban_rules ?? game.sokoban) && (is_pit(ttype) || is_hole(ttype))) {
         /* The "air currents" message is still appropriate -- even when
          * the hero isn't flying or levitating -- because it conveys the
          * reason why the player cannot escape the trap with a dexterity
@@ -2758,8 +2748,10 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
         }
         if (otyp === BOULDER_OTYP && closed_door_lo(x, y)) {
             /* C trap.c:3533-3541 */
-            if (cansee(x, y))
-                void pline('The boulder crashes through a door.');
+            if (cansee(x, y)) {
+                set_msg_xy_trap(x, y);
+                await pline('The boulder crashes through a door.');
+            }
             const loc = g.level?.at(x, y);
             if (loc) loc.doormask = D_BROKEN;
             if (dist)
@@ -2839,7 +2831,7 @@ async function trapeffect_rolling_boulder_trap_mon(mtmp, trap) {
     newsym(mtmp.mx | 0, mtmp.my | 0);
     if (in_sight) {
         set_msg_xy_trap(mtmp.mx, mtmp.my); /* pline_mon (trap.c:2692) */
-        void pline(`${!_lo_deaf() ? 'Click!  ' : ''}${Monnam_t(mtmp)} triggers `
+        await pline(`${!_lo_deaf() ? 'Click!  ' : ''}${Monnam_t(mtmp)} triggers `
                    + `${trap.tseen ? 'a rolling boulder trap' : 'something'}.`);
     }
     if (await launch_obj(BOULDER_OTYP, trap.launch?.x | 0, trap.launch?.y | 0,
@@ -4171,10 +4163,9 @@ async function trapeffect_magic_trap(mtmp, trap, trflags, isYou) {
             return Trap_Effect_Finished;
         }
         else {
-            /* C trap.c:2310: domagictrap() — not yet ported (its own RNG).
-             * WIRE_PENDING: port-domagictrap. */
             await domagictrap();
         }
+        await steedintrap(trap, null); /* C trap.c:2309 */
     }
     else {
         /* C trap.c:2315: monster — usually immune; rn2(21) chance to be hit by
@@ -4873,6 +4864,9 @@ async function trapeffect_pit(trap, trflags) {
     const sokoban = In_sokoban(u?.uz);
     const youdata = _lo_hero_monst().data;
 
+    /* C trap.c:1844-1848: named steeds need no article unless hallucinating. */
+    const steed_article = u.usteed && has_mgivenname(u.usteed) && !_tr_Hallucination()
+        ? ARTICLE_NONE : ARTICLE_THE;
 
     /* KMH -- You can't escape the Sokoban level traps */
     if (!sokoban && (uprop_active(LEVITATION)
@@ -4896,9 +4890,9 @@ async function trapeffect_pit(trap, trflags) {
 
         if (u.usteed) {
             if ((trflags & _RECURSIVETRAP_TR) !== 0)
-                verbbuf = `and ${_monnam_safe(u.usteed)} fall`;
+                verbbuf = `and ${x_monnam(u.usteed, steed_article, null, SUPPRESS_SADDLE, false)} fall`;
             else
-                verbbuf = `lead ${_monnam_safe(u.usteed)}`;
+                verbbuf = `lead ${x_monnam(u.usteed, steed_article, 'poor', SUPPRESS_SADDLE, false)}`;
         } else if (game.iflags?.menu_requested && already_known) {
             await You(`carefully ${_u_locomotion_stub('lower yourself')} into the pit.`);
             deliberate = true;
@@ -4928,7 +4922,7 @@ async function trapeffect_pit(trap, trflags) {
         const predicament = 'on a set of sharp iron spikes';
 
         if (u.usteed)
-            await pline(`${_monnam_safe(u.usteed)} `
+            await pline(`${upstart_local(x_monnam(u.usteed, steed_article, 'poor', SUPPRESS_SADDLE, false))} `
                         + `${conj_pit ? 'steps' : 'lands'} ${predicament}!`);
         else
             await You(`${conj_pit ? 'step' : 'land'} ${predicament}!`);
@@ -5010,7 +5004,7 @@ export async function climb_pit() {
         await flush_pending_messages();
         await You(`free your ${body_part(LEG_TR)}.`);
     } else if ((uprop_active(FLYING) || (youdata && _imm_is_clinger(youdata)))
-               && !In_sokoban(u?.uz)) {
+               && !(game.level?.flags?.sokoban_rules ?? game.sokoban)) {
         /* eg fell in pit, then poly'd to a flying monster;
            or used '>' to deliberately enter it */
         await You(`${_u_locomotion_stub('climb')} from the ${pitname}.`);
@@ -5019,7 +5013,7 @@ export async function climb_pit() {
         game.vision_full_recalc = 1; /* vision limits change */
     } else if (!(u.utrap = (u.utrap | 0) - 1) || _m_easy_escape_pit_u()) {
         await reset_utrap(false);
-        await You(`${(In_sokoban(u?.uz) && uprop_active(LEVITATION))
+        await You(`${((game.level?.flags?.sokoban_rules ?? game.sokoban) && uprop_active(LEVITATION))
                 ? 'struggle against the air currents and float'
                 : u.usteed ? 'ride' : 'crawl'} to the edge of the ${pitname}.`);
         await fill_pit(u.ux | 0, u.uy | 0);
@@ -5030,7 +5024,7 @@ export async function climb_pit() {
            many times without further user intervention by using a run
            attempt to keep retrying to escape from the pit) */
         if (u.usteed)
-            await Norep(`${_monnam_safe(u.usteed)} is still in a pit.`);
+            await Norep(`${YMonnam(u.usteed)} is still in a pit.`);
         else
             /* C's `(Hallucination && !rn2(5))` short-circuits on a
              * non-hallucinating hero, so no leaf is drawn there. */
@@ -5169,7 +5163,7 @@ async function trapeffect_level_telep_mon(mtmp, trap, trflags) {
  * branches of each leaf, which consume RNG but no async screen I/O.  Unported
  * types fall through to Trap_Effect_Finished. */
 /* C trap.c:3172-3218 — shared by the hero and monster landmine arms. */
-async function blow_up_landmine(trap) {
+export async function blow_up_landmine(trap) {
     const x = trap.tx | 0, y = trap.ty | 0;
     const lev = game.level?.at(x, y);
     const old_typ = lev ? lev.typ | 0 : 0;
@@ -5897,7 +5891,7 @@ export async function reward_untrap(ttmp, mtmp) {
     }
     if (!rn2(3) && !rnl(8) && (game.u?.ualign?.type | 0) === A_LAWFUL) {
         adjalign(1);
-        await pline('You feel that you did the right thing.');
+        await You_feel('that you did the right thing.');
     }
 }
 function humanoid_mlet_tr() { return 53; /* S_HUMAN */ }
@@ -6334,6 +6328,7 @@ export async function water_damage(obj, ostr, force) {
         obj.otyp = _SCR_BLANK_PAPER_OTYP;
         obj.dknown = 0;
         obj.spe = 0;
+        if (in_invent) update_inventory(); /* C trap.c:4790-4791 */
         return ER_DAMAGED;
     } else if ((obj.oclass | 0) === _WD_SPBOOK_CLASS) {
         /* C trap.c:4775-4809.  The Book of the Dead and blank paper are
@@ -7687,13 +7682,18 @@ export async function m_useup(mon, obj) {
  * lives in this file.  The other three call sites are deliberately NOT rewired
  * — each has its own callers to re-measure and that is a separate change.
  *
- * The gold-dragon-scales arm (worn.c:1399-1400) needs artifact_light + end_burn,
- * neither of which is importable here (js/dig.js's end_burn is a throwing stub);
- * it is a KNOWN GAP.  It fires only for a lit artifact_light suit. */
+ * Gold dragon armor must stop shedding light while its worn mask is intact. */
 export async function extract_from_minvent(mon, obj, do_extrinsics, silently) {
     const unwornmask = obj.owornmask | 0;
 
-    /* C worn.c:1402 obj_extract_self(obj).  js/dokick.js's obj_extract_self is
+    /* C worn.c:1393-1400. mongets/add_to_minv now maintain ownership. */
+    if (obj.where !== OBJ_MINVENT_TR) {
+        await trap_impossible("extract_from_minvent called on object not in minvent");
+        return;
+    }
+    if ((unwornmask & W_ARM) && obj.lamplit && artifact_light(obj))
+        end_burn(obj, false);
+    /* The earlier obj_extract_self implementation was
      * NOT C's mkobj.c:2557 switch — it walks only the gm.migrating_objs chain
      * and silently returns for every other obj->where, so calling it here left
      * the object in mon->minvent.  C's OBJ_MINVENT arm (mkobj.c:2575-2578) is
@@ -7703,20 +7703,7 @@ export async function extract_from_minvent(mon, obj, do_extrinsics, silently) {
      * nobj = 0.  Spelled here for the OBJ_MINVENT case this function is
      * defined for; widening obj_extract_self itself is a separate change with
      * its own callers to re-measure. */
-    {
-        let prev = null, curr = mon.minvent;
-        while (curr && curr !== obj) { prev = curr; curr = curr.nobj; }
-        if (!curr) {
-            impossible_tr("extract_nobj: object lost");
-        } else if (prev) {
-            prev.nobj = curr.nobj;
-        } else {
-            mon.minvent = curr.nobj;
-        }
-        obj.where = OBJ_FREE_TR;
-        obj.nobj = null;
-        obj.ocarry = null;
-    }
+    obj_extract_self(obj);
     obj.owornmask = 0;
     if (unwornmask) {
         if (!DEADMONSTER_TR(mon) && do_extrinsics) {
@@ -7734,7 +7721,6 @@ export async function extract_from_minvent(mon, obj, do_extrinsics, silently) {
 }
 /* C obj.h:79 OBJ_MINVENT == 4, hack.h W_WEP == 0x100 (js/const.js:1109, :2216). */
 const OBJ_MINVENT_TR = 4;
-const OBJ_FREE_TR = 0;
 const W_WEP_TR = 0x00000100;
 function DEADMONSTER_TR(mon) { return !mon || (mon.mhp | 0) <= 0; }
 function impossible_tr(msg) { pline("impossible: " + msg); }

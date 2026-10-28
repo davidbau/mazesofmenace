@@ -5,7 +5,7 @@ import { game, wizard, discover } from './gstate.js';
 import { make_blinded, resist, explode, explode_oil, potionhit_polymorph, poly_obj, obj_unpolyable, ubreatheu, melt_ice_zap } from './zap.js';
 import { spoteffects } from './landing-effects.js';
 import { nothing_happens, nothing_seems_to_happen } from './const.js';
-import { prinv, enlightenment, fire_damage, cmdq_peek, useup, discover_artifact } from './cmd.js';
+import { getobj_cmdq_drain, prinv, enlightenment, fire_damage, cmdq_peek, useup, discover_artifact } from './cmd.js';
 import { CQ_CANNED, ECMD_FAIL } from './const.js';
 import { EXPL_FIERY } from './const.js';
 import { RIGHT_HANDED, STRANGLED, A_STR, ismnum, BOLT_LIM, Upolyd } from './const.js';
@@ -14,18 +14,19 @@ import { SINK, GRAVE, THRONE, T_LOOTED, AM_NONE, Align2amask } from './const.js'
 import { In_hell, make_grave } from './mklev.js';
 import { an } from './objnam.js';
 import { rn2, rnd, d, rn1, rnl } from './rng.js';
-import { PM_HEALER, PM_ROCK_MOLE, PM_WOODCHUCK, PM_PONY, PM_HORSE, PM_WARHORSE } from './pm.generated.js';
+import { PM_HEALER, PM_ROCK_MOLE, PM_WOODCHUCK, PM_PONY, PM_HORSE, PM_WARHORSE, PM_LONG_WORM } from './pm.generated.js';
 import { PM_FIRE_VORTEX, PM_FLAMING_SPHERE, PM_FIRE_ELEMENTAL, PM_SALAMANDER } from './pm.generated.js';
 import { COLD_RES } from './const.js';
 import monPmnamesPack from './makemon_pmnames.json' with { type: 'json' };
-import { note_lone_pline_frame, pline, flush_screen, newsym, force_more, force_more_lone_frame, await_topl_more_dismiss, canspotmon, canseemon, map_invisible, getobj_never_mind, bot, You_see } from './display.js';
+import { note_lone_pline_frame, pline, flush_screen, newsym, force_more, force_more_lone_frame, await_topl_more_dismiss, canspotmon, canseemon, map_invisible, getobj_never_mind, bot, You_see, You_hear } from './display.js';
 import { unmap_object, glyph_is_invisible_at, tmp_at } from './display.js';
 import { DISP_ALWAYS, DISP_END } from './const.js';
 import { aggravate, monstseesu as monstseesu_real, burn_away_slime } from './mcastu.js';
 import { COLNO, ROWNO, INVIS } from './const.js';
-import { topl_park_cursor, _topl_stash_result, putmsghistory } from './display.js';
+import { topl_park_cursor, _topl_stash_result, putmsghistory, restore_command_topline } from './display.js';
 import { key2txt, mime_action, pair_of } from './cmd.js';
 import { cls, docrt, map_monst, display_self, map_object, GLYPHCLS_OBJ } from './display.js';
+import { unconstrain_map, map_redisplay } from './display.js';
 /* make_hallucinated()'s "changed" block (potion.c:415-433). */
 import { see_monsters, see_objects, see_traps, swallowed, under_water, under_ground } from './display.js';
 import { set_mimic_blocking } from './sit.js';
@@ -38,7 +39,7 @@ import { near_capacity, stagger_verb } from './weight.js';
 import { nhgetch } from './input.js';
 /* C ref: invent.c:2093 silly_thing(word, otmp) — shared with the 'W'/'P'
  * getobj path rather than re-derived. */
-import { silly_thing_dw, inaccessible_equipment, float_up, hard_helmet } from './do_wear.js';
+import { silly_thing_dw, inaccessible_equipment, float_up, hard_helmet, yname } from './do_wear.js';
 import { getlin } from './wizcmds.js';
 import { nomul } from './allmain.js';
 import { fall_asleep } from './timeout.js';
@@ -62,7 +63,7 @@ import { is_fainted } from './eat.js';
 import { stagger, hliquid, hcolor, monstunseesu, x_monnam, update_inventory,
          Resists_Elem, mon_hates_blessings, wakeup_attack, sleep_monst, killed } from './mhitm.js';
 import { float_vs_flight } from './mhitm.js';
-import { monkilled_trap, split_mon_rt } from './trap.js';
+import { monkilled_trap } from './trap.js';
 import { ERODE_CORRODE, ER_NOTHING, ER_GREASED, EF_GREASE, P_NONE, P_BOW, P_CROSSBOW, P_SHURIKEN,
          ROOM, ALTAR, IS_FOUNTAIN, FOUNTAIN, IS_SINK, A_WIS, A_DEX, A_CON, A_MAX, POISON_RES, FIXED_ABIL, HALLUC, HALLUC_RES, SEE_INVIS, FAST, ICE, ECMD_OK, ECMD_TIME, ECMD_CANCEL, Is_airlevel, Is_waterlevel, Is_earthlevel, FROMOUTSIDE, INTRINSIC, STUNNED, CONFUSION, BLINDED, FIRE_RES, UNCHANGING, KILLED_BY, G_GONE, MM_NOMSG, S_LRING, M_SEEN_FIRE, POLY_NOFLAGS, POLY_CONTROLLED, POLY_LOW_CTRL, ARTICLE_A, DETECT_MONSTERS, I_SPECIAL, LEVITATION, HALF_PHDAM, HEAD, FAINTING, SICK_VOMITABLE, FREE_ACTION, SLEEP_RES } from './const.js';
 /* prop.h indices + you.h/end.h flags the make_*() setters below need. */
@@ -85,6 +86,10 @@ import { attacktype_fordmg, splitobj, mhe } from './makemon.js';
 import { mhis_mon } from './mhitu.js';
 import { is_ice } from './engrave.js';
 import { can_reach_floor, hold_another_object } from './hold_another_object.js';
+import { pooleffects_is_swimmer as is_swimmer } from './cmd.js';
+import { rider_cant_reach } from './steed.js';
+import { P_SKILL } from './skills.js';
+import { P_RIDING, P_BASIC } from './const.js';
 import { obj_extract_self } from './mklev.js';
 import { freeinv, useupall } from './cmd.js';
 import { setnotworn } from './worn.js';
@@ -121,7 +126,7 @@ import { del_engr_at, minliquid, sobj_at, level_difficulty, stairway_at, in_room
  * named here with no binding in scope -- js-binding-audit's "unbound" class,
  * i.e. a ReferenceError the first time a hero dries a Minetown fountain. */
 import { angry_guards, get_iter_mons } from './mklev.js';
-import { somegold } from './steal.js';
+import { somegold, remove_worn_item } from './steal.js';
 import { money_cnt } from './com_pager.js';
 import { delobj, stolen_value } from './dokick.js';
 import { shop_keeper, subfrombill, alter_cost } from './shk.js';
@@ -383,7 +388,8 @@ async function y_n(question) {
             && !game._botlPaintHeld;
         if (_hold) game._botlPaintHeld = true;
         try {
-            await flush_screen(1);
+            // C topl.c:390-392 pages the old topline before custompline's flush.
+            await flush_screen(1, false);
             if (game._pending_message && !game._topl_win_stop)
                 await force_more_lone_frame(game._pending_message);
         } finally { if (_hold) game._botlPaintHeld = false; }
@@ -541,7 +547,7 @@ async function dofindgem() {
     if (!_blind())
         await pline('You spot a gem in the sparkling waters!');
     else
-        await pline('You feel a gem here!');
+        await You_feel('a gem here!');
     /* C fountain.c:170-171 */
     await mksobj_at(rnd_class(DILITHIUM_CRYSTAL, LUCKSTONE - 1), u.ux, u.uy,
               false, false);
@@ -592,7 +598,10 @@ export async function monster_detect(otmp, mclass) {
     for (let mtmp = g.fmon; mtmp; mtmp = mtmp.nmon) {
         if ((mtmp.mhp | 0) < 1 || (mtmp.isgd && !mtmp.mx))
             continue;
-        if (!mclass || (mtmp.data && mtmp.data.mlet === mclass))
+        /* C detect.c:833-836: '~' detects long worms as well as their tails. */
+        if (!mclass || (mtmp.data && mtmp.data.mlet === mclass)
+            || ((mtmp.mnum ?? mtmp.mndx ?? mtmp.data?.pmidx) === PM_LONG_WORM
+                && mclass === 59 /* S_WORM_TAIL, defsym.h */))
             map_monst(mtmp, true);
         /* C detect.c:838-842 — a CURSED detector wakes the helpless. */
         if (otmp && otmp.cursed && (mtmp.msleeping || mtmp.mfrozen
@@ -609,8 +618,7 @@ export async function monster_detect(otmp, mclass) {
     if (woken)
         await pline('Monsters sense the presence of you.');
     if ((otmp && otmp.blessed) && !unconstrained) {
-        await flush_screen(1);
-        await nhgetch();
+        await force_more(g._pending_message);
     } else {
         /* C detect.c:855-859 — one-shot detection: let the player move the
          * cursor around with autodescribe feedback.  EDetect_monsters gets
@@ -685,6 +693,10 @@ export async function drinkfountain() {
     /* C fountain.c:247: int fate = rnd(30) — MUST fire before any branch */
     const fate = rnd(30);
     /* C fountain.c:249-252: Levitation check */
+    if (_prop_active(LEVITATION)) {
+        await floating_above('fountain');
+        return;
+    }
     if (mgkftn && (u.uluck | 0) >= 0 && fate >= 10) {
         /* C fountain.c:254-276: Blessed magical fountain Wow! path */
         const A_MAX = 6;
@@ -741,7 +753,7 @@ export async function drinkfountain() {
         /* C fountain.c:286-387: switch(fate) */
         switch (fate) {
             case 19: /* C fountain.c:289-294 — self-knowledge */
-                await pline('You feel self-knowledgeable...');
+                await You_feel('self-knowledgeable...');
                 /* C fountain.c:289-290: display_nhwindow(WIN_MESSAGE, FALSE)
                  * blocks on the message before enlightenment opens its menu.
                  * Use the same message-window flush as the blessed-fountain
@@ -808,7 +820,8 @@ export async function drinkfountain() {
                     const seep = _uprop(SEE_INVIS);
                     const Blind = _potion_Blind();
                     const Invisible = !!(((invp.intrinsic | 0) || (invp.extrinsic | 0))
-                                          && !(invp.blocked | 0));
+                                          && !(invp.blocked | 0)
+                                          && !((seep.intrinsic | 0) || (seep.extrinsic | 0)));
                     if (Blind) {
                         if (Invisible)
                             await pline('You feel transparent.');
@@ -817,7 +830,7 @@ export async function drinkfountain() {
                             await pline('Then it passes.');
                         }
                     } else {
-                        await pline('You see an image of someone stalking you.');
+                        await You_see('an image of someone stalking you.');
                         await pline('But it disappears.');
                     }
                     seep.intrinsic = (seep.intrinsic | FROMOUTSIDE) >>> 0;
@@ -903,7 +916,7 @@ async function dowatersnakes() {
                 ? makeplural(rndmonnam()) : 'snakes';
             await pline(`An endless stream of ${what} pours forth!`);
         } else {
-            await pline('You hear something hissing!');
+            await You_hear('something hissing!');
         }
         while (num-- > 0) {
             const mtmp = await makemon(PM_WATER_MOCCASIN, u.ux, u.uy, MM_NOMSG);
@@ -924,7 +937,7 @@ async function dowaterdemon() {
             if (!_blind())
                 await pline(`You unleash ${a_monnam(mtmp)}!`);
             else
-                await pline('You feel the presence of evil.');
+                await You_feel('the presence of evil.');
 
             /* C fountain.c:76-78 — "Give those on low levels a (slightly)
                better chance of survival". */
@@ -951,14 +964,14 @@ async function dowaternymph() {
         if (!_blind())
             await pline(`You attract ${a_monnam(mtmp)}!`);
         else
-            await pline('You hear a seductive voice.');
+            await You_hear('a seductive voice.');
         mtmp.msleeping = 0;
         if (t_at(mtmp.mx, mtmp.my))
             await mintrap(mtmp, 0 /* NO_TRAP_FLAGS */);
     } else if (!_blind()) {
         await pline('A large bubble rises to the surface and pops.');
     } else {
-        await pline('You hear a loud pop.');
+        await You_hear('a loud pop.');
     }
 }
 
@@ -1160,7 +1173,7 @@ export async function dipfountain(obj) {
             await pline('A strange tingling runs up your %s.', body_part(ARM));
             break;
         case 27:
-            await pline('You feel a sudden chill.');
+            await You_feel('a sudden chill.');
             break;
         case 28: /* Bath / lose gold — not ported (TODO) */
             await pline('An urge to take a bath overwhelms you.');
@@ -1542,11 +1555,11 @@ export async function drinksink() {
     /* more odd messages --JJB */
     case 11:
         /* C:688-690 — Soundeffect() is not a scored channel. */
-        await pline('You hear clanking from the pipes...');
+        await You_hear('clanking from the pipes...');
         break;
     case 12:
         /* C:692-694 */
-        await pline('You hear snatches of song from among the sewers...');
+        await You_hear('snatches of song from among the sewers...');
         break;
     case 13:
         /* C:696-698 */
@@ -1856,14 +1869,27 @@ export async function dodrink() {
             ++drink_ok_extra;
         }
     }
-    if (!(g.flags?.invlet_constant ?? true)) reassign();
+    /* C invent.c:1779-1825 — getobj FIRST drains the command queue: the
+     * itemactions Quaff row (iactions.c:IA_QUAFF_OBJ) queues do_reqmenu,
+     * dodrink and the invlet, so the potion is chosen with no prompt. */
+    const _q = await getobj_cmdq_drain(drink_ok);
+    let otmp = null;
+    if (_q.drained) {
+        otmp = _q.obj;
+        if (!otmp) {
+            g.context = g.context || {};
+            g.context.move = 0; /* getobj NULL -> ECMD_CANCEL (potion.c:576) */
+            return ECMD_CANCEL;
+        }
+    }
+    if (!_q.drained && !(g.flags?.invlet_constant ?? true)) reassign();
     let _drinkLets = '';
     for (let o = g.invent; o; o = o.nobj) {
         if ((o.oclass | 0) === POTION_CLASS) {
             _drinkLets += String.fromCharCode(o.invlet || 0x3f);
         }
     }
-    if (!_drinkLets) {
+    if (!_q.drained && !_drinkLets) {
         /* js pline() takes a pre-formatted string (js/display.js:2723). */
         await pline("You don't have anything "
                     + (drink_ok_extra ? 'else ' : '') + 'to drink.');
@@ -1878,7 +1904,6 @@ export async function dodrink() {
     let itemKey;
     /* Hoisted above the loop: C's getobj resolves the invlet INSIDE its for(;;)
      * (invent.c:2002-2062) so an unmatched letter can re-prompt. */
-    let otmp = null;
     /* C invent.c:1922-1930 — iflags.force_invmenu skips yn_function: the first
      * pass feeds '?' into redo_menu (lets is non-empty here, else the "don't
      * have anything to drink" return above fired), files the bare qbuf once,
@@ -1886,11 +1911,21 @@ export async function dodrink() {
     const _force = !!(g.iflags?.force_invmenu && !g.in_doagain);
     let _oneloop = false;
     for (;;) {
+        if (_q.drained) break;
         if (_force && !_oneloop) {
             putmsghistory('What do you want to drink?', false);
             _oneloop = true;
             itemKey = _drinkLets ? 63 /* '?' */ : 42 /* '*' */;
         } else {
+        /* invent.c:1935 -> topl.c:390-394: a repeated quaff must acknowledge
+         * the preceding effect before tty_yn_function paints its new prompt.
+         * That effect can still be parked in the command-result channel. */
+        restore_command_topline();
+        if (g._pending_message && g._topl_unacknowledged
+            && !g._topl_win_stop && !g._topl_win_stop_armed)
+            await force_more_lone_frame(g._pending_message);
+        g._topl_win_stop = false;
+        g._topl_win_stop_armed = false;
         g._pending_message = _qbuf;
         await flush_screen(1);
         /* C tty: cursor parked one past the prompt + trailing space (qbuf len+1). */
@@ -1992,6 +2027,16 @@ export async function dodrink() {
     }
     if (otmp) {
         /* Full dispatch when inventory is available. */
+        /* C potion.c:591-598: drink one unworn potion, preserving any worn
+         * remainder of the stack.  Splitting also allocates its object id. */
+        if (otmp.owornmask) {
+            if (otmp.quan > 1) {
+                otmp = await splitobj(otmp, 1);
+                otmp.owornmask = 0;
+            } else {
+                await remove_worn_item(otmp, false);
+            }
+        }
         otmp.in_use = true;
         if (objdescr_is(otmp, 'milky')
             && !(_mvflags(PM_GHOST) & G_GONE)
@@ -3184,10 +3229,8 @@ function Role_if(pm) {
     return ((game.urole && game.urole.mnum) | 0) === (pm | 0);
 }
 function split_mon(monst, ptr) {
-    /* C potion.c:2087 split_mon(&gy.youmonst, NULL).  The trap layer owns the
-     * canonical clone/placement implementation and is synchronous, matching
-     * this potionbreathe call site. */
-    return split_mon_rt(monst, ptr);
+    // C potion.c:2873-2914: shared hero cloneu and monster clone_mon paths.
+    return split_mon_ml(monst, ptr);
 }
 function you_unwere(flag) {
     void you_unwere_real(flag);
@@ -4177,7 +4220,7 @@ export async function dipsink(obj) {
     case POT_ACID:
         try_call = true;
         if (!_potion_Blind()) await pline('The drain seems less clogged.');
-        else if (!_potion_Deaf()) await pline('You hear a sucking sound.');
+        else if (!_potion_Deaf()) await You_hear('a sucking sound.');
         else { await pline(nothing_seems_to_happen); try_call = false; }
         break;
     case POT_LEVITATION:
@@ -4213,13 +4256,15 @@ export async function dodip() {
     const at_pool = is_pool(u.ux, u.uy); /* potion.c:2272 */
     const at_fountain = loc ? IS_FOUNTAIN(here) : false;
     const at_sink = loc ? IS_SINK(here) : false;
-    const menu_requested = false;
+    const menu_requested = !!g.iflags?.menu_requested;
     const at_here = (!menu_requested && (at_pool || at_fountain || at_sink));
     /* C potion.c:2288 drink_ok_extra = 0 — reset before the first getobj. */
     drink_ok_extra = 0;
 
     const obj = await getObjFromGetobj('dip', at_here ? dip_hands_ok : dip_ok, GETOBJ_PROMPT);
     if (!obj) { g.context.move = 0; return ECMD_CANCEL; }
+    if (await inaccessible_equipment(obj, 'dip', false)) return ECMD_OK;
+    drink_ok_extra = 0;
 
     const is_hands = !!obj.hands;
     /* C potion.c:2288-2289 — the flags.verbose==FALSE fallback name. */
@@ -4266,10 +4311,16 @@ export async function dodip() {
         }
         ++drink_ok_extra;
     } else if (!menu_requested && at_pool && can_reach_floor(false)) {
+        /* C potion.c:2336-2361: air/water planes permit levitating reach. */
         const pooltype = waterbody_name(u.ux, u.uy);
         const qbuf = `Dip ${g.flags?.verbose === false ? shortestname : obuf} into the ${pooltype}?`;
         if (await y_n(qbuf) === 'y') {
-            if (is_hands || obj === u.uarmg) {
+            if (_prop_active(LEVITATION)) await floating_above(pooltype);
+            // C potion.c:2343-2345: a non-swimming steed can prevent reaching.
+            else if (u.usteed && !is_swimmer(u.usteed.data)
+                     && P_SKILL(P_RIDING) < P_BASIC)
+                await rider_cant_reach();
+            else if (is_hands || obj === u.uarmg) {
                 if (!is_hands) obj.pickup_prev = 0;
                 await wash_hands();
             } else {
@@ -4379,7 +4430,7 @@ export async function potionhit(mon, obj, how) {
             if (!_prop_active(ACID_RES)) {
                 pline(`This burns${obj.blessed ? ' a little' : obj.cursed ? ' a lot' : ''}!`);
                 const dmg = d(obj.cursed ? 2 : 1, obj.blessed ? 4 : 8);
-                await losehp(dmg, 'potion of acid', KILLED_BY_AN_POT);
+                await losehp(maybe_half_phys_pot(dmg), 'potion of acid', KILLED_BY_AN_POT);
             }
             break;
         default:
@@ -4446,7 +4497,7 @@ export async function potionhit(mon, obj, how) {
                 break;
             }
             if (dmgtype_pot(mon.data, AD_DISE_POT) || dmgtype_pot(mon.data, AD_PEST_POT)
-                || resists_poison_pot(mon)) {
+                || Resists_Elem(mon, POISON_RES)) {
                 if (canseemon(mon))
                     pline(`${Monnam(mon)} looks unharmed.`);
                 break;
@@ -4542,7 +4593,7 @@ export async function potionhit(mon, obj, how) {
             break;
         case POT_ACID: {
             const pdata = mon.data;
-            if (!resists_acid_pot(mon) && !await resist(mon, POTION_CLASS, 0, NOTELL)) {
+            if (!Resists_Elem(mon, ACID_RES) && !await resist(mon, POTION_CLASS, 0, NOTELL)) {
                 pline(`${Monnam(mon)} ${is_silent_pot(pdata) ? 'writhes' : 'shrieks'} in pain!`);
                 if (!is_silent_pot(pdata))
                     wake_nearto(tx, ty, (pdata.mlevel | 0) * 10);
@@ -4834,15 +4885,15 @@ export async function potionbreathe(obj) {
         break;
     case POT_WATER:
         if (u.umonnum === PM_GREMLIN) {
-            split_mon(g.youmonst, null);
+            await split_mon(g.youmonst, null);
         } else if (ismnum(u.ulycn)) {
             /* C potion.c:2088 `obj->blessed && gy.youmonst.data == &mons[u.ulycn]`
                — same permonst-pointer identity test as potion.c:736 above;
                ported as the form-index comparison (see that site's note). */
             if (obj.blessed && (g.youmonst.data ? (g.youmonst.data.pmidx | 0) : -1) === (u.ulycn | 0))
-                you_unwere(false);
+                await you_unwere_real(false);
             else if (obj.cursed && !Upolyd(u))
-                you_were();
+                await you_were_real();
         }
         break;
     case POT_ACID:
@@ -5042,6 +5093,10 @@ async function peffect_invisibility(otmp) {
     const BInvis = (ip.blocked | 0);
     const Invis = !!(((ip.intrinsic | 0) || (ip.extrinsic | 0)) && !BInvis);
 
+    if (otmp.oclass === SPBOOK_CLASS && BInvis && u.uarmc?.otyp === 138 /* MUMMY_WRAPPING */) {
+        await You_feel(`rather itchy under ${yname(u.uarmc)}.`);
+        return;
+    }
     if (Invis || _potion_Blind() || BInvis) {
         g._potion_nothing = (g._potion_nothing | 0) + 1;
     } else {
@@ -5193,7 +5248,7 @@ async function peffect_monster_detection(otmp) {
         if (!u.uswallow && !u.uinwater) {
             see_monsters();
             if (g._potion_unkn)
-                await pline("You feel lonely.");
+                await You_feel("lonely.");
             return 0;
         }
     }
@@ -5320,6 +5375,7 @@ async function object_detect(detector, oclass) {
     if (g._pending_message)
         await force_more(g._pending_message);
     await cls();
+    unconstrain_map();
     for (let o = g.level && g.level.buriedobjlist; o; o = o.nobj)
         map_object(o, 1);
     for (let x = 1; x < COLNO; x++) {
@@ -5339,7 +5395,10 @@ async function object_detect(detector, oclass) {
             map_object(otmp, 1);
         }
         if (is_cursed && M_AP_TYPE(mtmp) === M_AP_OBJECT) {
-            const corpsenm = (MCORPSENM(mtmp) !== NON_PM) ? MCORPSENM(mtmp) : PM_TENGU;
+            /* set_mimic_sym() (js/mklev.js) stores the disguise species flat on
+             * the monster, not in mextra; has_mcorpsenm() is MCORPSENM != NON_PM. */
+            const mcn = (MCORPSENM(mtmp) !== NON_PM) ? MCORPSENM(mtmp) : (mtmp.mcorpsenm ?? NON_PM);
+            const corpsenm = (mcn !== NON_PM) ? mcn : PM_TENGU;
             map_object({ otyp: mtmp.mappearance | 0, quan: 1,
                           ox: mtmp.mx, oy: mtmp.my, corpsenm }, 1);
         } else if (findgold(mtmp.minvent)) {
@@ -5393,7 +5452,7 @@ async function object_detect(detector, oclass) {
      * too, so browse_map's standing getpos autodescribe line is gone
      * (detect.c:787, display.c:2196; same as monster_detect above). */
     g._topl_sticky = null;
-    await docrt();
+    await map_redisplay();
     return 0;
 }
 /* C ref: detect.c:955-960 peffect_object_detection(struct obj *otmp).

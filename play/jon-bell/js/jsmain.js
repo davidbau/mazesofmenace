@@ -26,7 +26,7 @@ import { worms_rest_snapshot } from './worm.js';
 import { bubbles_reset_process_state } from './mkmaze.js';
 import { lights_rest_snapshot } from './light.js';
 import { regions_rest_snapshot } from './region.js';
-import { vision_debug_snapshot } from './vision.js';
+import { vision_debug_snapshot, vision_init } from './vision.js';
 // WRITE-ONLY route-attribution telemetry (inert unless NH_ROUTE_TELEMETRY=1 —
 import { routeTag, routeFrameTick } from './route_telemetry.js';
 import { restore_saved_game, dorecover, restore_preamble } from './restore.js';
@@ -133,6 +133,7 @@ export class NethackGame {
          * sys.c:67-68: entrymax = max(ENTRYMAX, 10), pointsmin = max(POINTSMIN, 1). */
         g.flags = { verbose: true, end_top: 3, end_around: 2, end_own: false,
                     sortloot: 'l' /* C options.c:7208 */,
+                    sortpack: true /* C optlist.h:687-688; options.c:7167 */,
                     rest_on_space: false,
                     dark_room: true, menu_style: 2 /* MENU_FULL */, apelist: null,
                     /* C options.c:7176 default; OPTIONS=runmode overrides it. */
@@ -276,6 +277,11 @@ export class NethackGame {
          * error report (and its wait for a key) precedes attempt_restore and
          * player_selection(). */
         if (this._playChargen) await report_config_errors();
+        /* C ref: sys/unix/unixmain.c:215 vision_init() — "must be before
+         * mklev() on a new game or before a level restore on a saved game".
+         * Without it gv.viz_array is unset when a startup bones load reaches
+         * hide_monst() (restore.c:1218 -> mon.c hide_monst viz_array[y][x]). */
+        vision_init();
         // ── attempt_restore (v5 cross-segment save channel) ───────────────
         // C ref: sys/unix/unixmain.c:220 `attempt_restore:` — after
         // initoptions()/plnamesuffix()/vision_init() and BEFORE

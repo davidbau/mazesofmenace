@@ -87,7 +87,10 @@ async function stinky_nemesis() {
     const raw = await quest_nemesis_death_text();
     if (!raw)
         return false;
-    const text = raw.replace(/\n/g, ' ').toLowerCase();
+    // C hacklib.c:strNsubst copies its BUFSZ buffer back only if it replaced
+    // a newline before the 255-character output limit.
+    const prefix = raw.slice(0, 255);
+    const text = (prefix.includes('\n') ? prefix.replace(/\n/g, ' ') : raw).toLowerCase();
     let pos = text.indexOf('noxious');
     if (pos < 0) pos = text.indexOf('poisonous');
     if (pos < 0) pos = text.indexOf('toxic');

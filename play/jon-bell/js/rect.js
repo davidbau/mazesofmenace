@@ -6,6 +6,7 @@
 import { game } from './gstate.js';
 import { COLNO, ROWNO } from './const.js';
 import { rn2 } from './rng.js';
+import { impossible_sync as impossible } from './display.js';
 const XLIM = 4;
 const YLIM = 3;
 // C ref: rect.c:28 init_rect()
@@ -94,7 +95,7 @@ export function remove_rect(r) {
 // C ref: rect.c:160 add_rect()
 export function add_rect(r) {
     if (game.rect_cnt >= game.n_rects) {
-        // impossible("n_rects may be too small.")
+        impossible("n_rects may be too small.");
         return;
     }
     if (get_rect(r))

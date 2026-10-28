@@ -16,6 +16,7 @@ const LEASH = 236; /* objects.h LEASH, as js/cmd.js LEASH_OTYP */
 import { yn_function } from './end.js';
 import { ROWNO, COLNO, ZAP_POS, ACCESSIBLE, D_CLOSED, D_LOCKED, DOOR, isok, u_at, TELEDS_TELEPORT, RLOC_MSG, TEMPLE, engulfing_u, STRAT_APPEARMSG, NO_TRAP_FLAGS, BOLT_LIM, IS_ALTAR, IS_STWALL, W_NONPASSWALL, MON_FLOOR, POOL, MOAT, WATER, DRAWBRIDGE_UP, DB_UNDER, DB_MOAT, DB_LAVA, LAVAPOOL, LAVAWALL, MM_IGNOREWATER, MM_IGNORELAVA, GP_CHECKSCARY, GP_ALLOW_U, GP_AVOID_MONPOS, LR_MONGEN, LR_TELE, LR_UPTELE, LR_DOWNTELE, FIRE_RES, NO_MM_FLAGS, IS_WATERWALL, In_endgame, Is_astralevel, Is_juiblex_level, MON_DETACH, MON_OBLITERATE, MON_ENDGAME_MIGR } from './const.js';
 import { game } from './gstate.js';
+import { You_feel } from './display.js';
 import { newsym, see_monsters, shieldeff, docrt } from './display.js';
 import { vision_recalc } from './vision.js';
 import { nomul } from './allmain.js';
@@ -36,6 +37,7 @@ import { m_at } from './uhitm.js';
 /* C ref: mkroom.h VAULT, youprop.h ANTIMAGIC slot. */
 import { VAULT, ANTIMAGIC } from './const.js';
 import { m_into_limbo, unstuck, mon_leaving_level, m_unleash } from './dog.js';
+import { mdrop_special_objs } from './steal.js';
 import { yelp } from './mhitm.js';
 import { impossible } from './steed.js';
 import { impossible as rloc_impossible } from './pline.js';
@@ -78,7 +80,7 @@ function carried(o) {
 }
 import { couldsee } from './vision.js';
 import { set_apparxy, mon_track_clear, dochugw } from './monmove.js';
-import { find_objowner, costly_spot, inhishop, onshopbill } from './shk.js';
+import { find_objowner, costly_spot, inhishop, onshopbill, make_angry_shk } from './shk.js';
 import { dist2, distmin, depth } from './hacklib.js';
 import { within_bounded_area } from './rect.js';
 import { in_out_region, update_player_regions, update_monster_region as update_monster_region_real } from './region.js';
@@ -419,7 +421,7 @@ export async function teleds(nux, nuy, teleds_flags) {
      * u_on_newpos — in particular the same-level see_nearby_objects()
      * (dungeon.c:1595-1598), which is how a hero who arrives by teleport gets
      * dknown set on the piles they land next to.  Call the real one. */
-    u_on_newpos(nux | 0, nuy | 0);
+    await u_on_newpos(nux | 0, nuy | 0);
     /* C 526: fill_pit(u.ux0, u.uy0) */
     await fill_pit(u.ux0 | 0, u.uy0 | 0);
     /* C 527-528: put back the ball & chain if they were taken off the map. */
@@ -712,7 +714,8 @@ export async function tele() {
  * slack.  Returns FALSE if any leashed monster is stuck far away, or if the
  * steed carries the Amulet. */
 export async function next_to_u() {
-    for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
+    for (let mtmp = game.fmon, next; mtmp; mtmp = next) {
+        next = mtmp.nmon; /* C mon.c:4550: mnexto can migrate this monster. */
         if (mtmp.mhp <= 0 || (mtmp.mstate | 0))
             continue;
         if (!mtmp.mleashed)
@@ -940,7 +943,7 @@ export async function elemental_clog(mon) {
     const last = game._elementalClogMessageMove | 0;
     if (!last || ((game.moves | 0) - last) > 200) {
         if (!last || rn2(2))
-            pline('You feel besieged.');
+            await You_feel('besieged.');
         game._elementalClogMessageMove = game.moves | 0;
     }
 
@@ -977,6 +980,10 @@ export async function elemental_clog(mon) {
     } else if (!Is_astralevel(u.uz)) {
         const dest = { dnum: u.uz?.dnum | 0, dlevel: ((u.uz?.dlevel | 0) - 1) | 0 };
         mon.mstate = ((mon.mstate | 0) | MON_ENDGAME_MIGR) >>> 0;
+        if (mon.mx) {
+            await unstuck(mon);
+            await mdrop_special_objs(mon);
+        }
         await migrate_to_level(mon, ledger_no_tp(dest), MIGR_RANDOM_MTT, null);
     }
 }
@@ -1167,7 +1174,7 @@ async function rloc_to_core(mtmp, x, y, rlocflags) {
         if (u.uswallow) {
             /* C teleport.c:1692-1694: moving the engulfer carries the hero
              * and redraws the stomach before the teleport message. */
-            u_on_newpos(mtmp.mx | 0, mtmp.my | 0);
+            await u_on_newpos(mtmp.mx | 0, mtmp.my | 0);
             await check_special_room(false);
             await docrt();
         } else if (dist2(mtmp.mx | 0, mtmp.my | 0, u.ux | 0, u.uy | 0) <= 2) {
@@ -1218,7 +1225,7 @@ async function rloc_to_core(mtmp, x, y, rlocflags) {
     /* shopkeepers will only teleport if you zap them with a wand of
        teleportation or if they've been transformed into a jumpy monster */
     if (resident_shk && !inhishop(mtmp))
-        make_angry_shk_local(mtmp, oldx, oldy);
+        await make_angry_shk(mtmp, oldx, oldy);
 
     /* if a monster carrying shop goods teleports out of the shop, blame
        it on the hero */
@@ -1295,12 +1302,13 @@ function Blind_local() {
 /* js/const.js:2327 BLINDED — the numeric prop index. */
 const BLINDED_TP = 15;
 
+/* C ref: shk.c onshopbill/stolen_value — shop goods carried by a relocated
+ * monster are checked against the owner's bill. */
 async function onshopbill_local(obj, shkp, silent) { return await onshopbill(obj, shkp, silent); }
 function stolen_value_local(_obj, _x, _y, _peaceful, _silent) {
     void _obj; void _x; void _y; void _peaceful; void _silent;
     return 0;
 }
-function make_angry_shk_local(_mtmp, _oldx, _oldy) { /* not yet ported: make_angry_shk (unreached: isshk always 0 in scope) */ }
 
 /* C ref: mondata.h DEADMONSTER(mon) macro — ((mon)->mhp <= 0). */
 function DEADMONSTER(mon) {
@@ -1711,7 +1719,7 @@ export async function teleport_pet(mtmp, force_it) {
             yelp(mtmp);
             return false;
         }
-        pline('Your leash goes slack.');
+        await pline('Your leash goes slack.');
         m_unleash(mtmp, false);
         return true;
     }

@@ -3,7 +3,7 @@ import { unturn_dead } from './zap.js';
 // C ref: nethack-c/src/spell.c
 // @ts-nocheck — sibling imports from hand-maintained js/*.js (no .d.ts yet).
 
-import { take_gold } from './sit.js';
+import { take_gold, rndcurse } from './sit.js';
 import { game } from './gstate.js';
 import { impossible } from './pline.js';
 import { OC_NAME } from './oc_name_data.js';
@@ -101,7 +101,7 @@ import { PM_FOG_CLOUD, PM_AIR_ELEMENTAL } from './pm.generated.js';
 import { make_familiar } from './dog.js';
 import { TtyMenu, PICK_ONE, ATR_NONE, menu_heading_text } from './tty_menu.js';
 import { do_vicinity_map } from './detect.js';
-import { You_hear } from './display.js';
+import { You_feel, You_hear } from './display.js';
 import { SPINE, DISP_BEAM, DISP_END } from './const.js';
 import { tmp_at } from './display.js';
 
@@ -711,7 +711,7 @@ async function spelleffects_check(spellSlot, res, energy) {
      * test, so the drain can itself make the cast fail. rnd(2 * energy) is a
      * real draw on the core stream. */
     if (u.uhave && u.uhave.amulet && (u.uen | 0) >= energy.value) {
-        await pline('You feel the amulet draining your energy away.');
+        await You_feel('the amulet draining your energy away.');
         u.uen = (u.uen | 0) - rnd(2 * energy.value);
         if ((u.uen | 0) < 0) u.uen = 0;
         if (g.disp) g.disp.botl = true;
@@ -948,9 +948,9 @@ async function deadbook(book2) {
         return;
     }
     switch (rn2(3)) {
-    case 0: pline('Your ancestors are annoyed with you!'); break;
-    case 1: pline('The headstones in the cemetery begin to move!'); break;
-    default: pline('Oh my!  Your name appears in the book!');
+    case 0: await pline('Your ancestors are annoyed with you!'); break;
+    case 1: await pline('The headstones in the cemetery begin to move!'); break;
+    default: await pline('Oh my!  Your name appears in the book!');
     }
 }
 
@@ -1031,7 +1031,8 @@ export async function learn() {
         /* reset spestudied as if polymorph had taken place */
         book.spestudied = rn2(book.spestudied | 0);
       } else {
-        const splname = `"${SPBOOK_NAMES[booktype - SPBOOK_FIRST_OTYP] || 'spell'}"`;
+        const rawName = SPBOOK_NAMES[booktype - SPBOOK_FIRST_OTYP] || 'spell';
+        const splname = g._oc_name_known?.[booktype] ? `"${rawName}"` : `the "${rawName}" spell`;
         await pline(`Your knowledge of %s is %s.`.replace('%s', splname)
             .replace('%s', spl[i].sp_know ? 'keener' : 'restored'));
         /* C spell.c:410 incrnknow(i, 1) — sp_id/sp_lev are already this book's. */
@@ -1102,11 +1103,11 @@ async function cursed_book(bp) {
     const lev = _spbook_oc(bp ? (bp.otyp | 0) : -1, SPBOOK_OC_LEVEL) | 0;
     switch (rn2(lev)) {
     case 0:
-        await pline('You feel a wrenching sensation.');
+        await You_feel('a wrenching sensation.');
         await tele();
         break;
     case 1:
-        await pline('You feel threatened.');
+        await You_feel('threatened.');
         aggravate();
         break;
     case 2:
@@ -1154,7 +1155,7 @@ async function cursed_book(bp) {
         return true;
     }
     default:
-        /* rndcurse() — KNOWN GAP (see header). */
+        await rndcurse(); /* C spell.c:180 */
         break;
     }
     return false;
@@ -1290,7 +1291,7 @@ export async function study_book_learn(spellbook) {
             : 'You begin to memorize the runes.');
     } else {
         // C spell.c:500-503 — continuing an interrupted study.
-        await pline('You continue your efforts to memorize the spell.');
+        await pline(`You continue your efforts to ${booktype === SPE_NOVEL ? 'read the novel' : 'memorize the spell'}.`);
     }
 
     // C spell.c:636-639 — set_occupation(learn, "studying", 0).
@@ -1436,8 +1437,10 @@ function format_spell_row_raw(i, splnum) {
     /* C ref: spell.c:2107 fmt — the "<letter> - " prefix is NOT part of fmt;
      * add_menu() prepends it (spell.c:2129), so the caller adds it here. */
     let row = `${padR(name, 20)}  ${padL(level, 2)}   ${padR(category, 12)} ${padL(fail, 3)}% ${padL(retention, 9)}`;
+    if (game.iflags?.menu_tab_sep)
+        row = `${name}\t${level}\t${category}\t${fail}%\t${retention}`;
     if (_wizard())
-        row += ' ' + padL(spellknow(i), 6); /* C ref: spell.c:2125 "%c%6d", sep=' ' */
+        row += (game.iflags?.menu_tab_sep ? '\t' : ' ') + padL(spellknow(i), 6);
     return row;
 }
 
@@ -1465,8 +1468,10 @@ async function dospellmenu(prompt, splaction) {
      * then, under `wizard`, Sprintf(eos(buf), "%c%6s", sep, "turns"). */
     let headingRaw = (splaction === SPELLMENU_DUMP ? '' : '    ')
         + padR('Name', 20) + ' Level ' + padR('Category', 12) + ' Fail Retention';
+    if (g.iflags?.menu_tab_sep)
+        headingRaw = 'Name\tLevel\tCategory\tFail\tRetention';
     if (_wizard())
-        headingRaw += ' ' + padL('turns', 6); /* C ref: spell.c:2115 "%c%6s" */
+        headingRaw += (g.iflags?.menu_tab_sep ? '\t' : ' ') + padL('turns', 6);
 
     /* C ref: spell.c:2116-2133 — one menu entry per known spell.  The loop
      * bound is `i < MAXSPELL && spellid(i) != NO_SPELL`; this port's spl_book
@@ -1502,10 +1507,9 @@ async function dospellmenu(prompt, splaction) {
     /* C ref: spell.c:2154-2168 — select_menu's return is turned into the
      * boolean result and *spell_no.
      *
-     * KNOWN GAP: C's `n > 1` de-selection arms (spell.c:2158-2160 and the
-     * a_int fixup) need a multi-select-capable menu; this reader is single
-     * selection only, so n is 0 or 1 and those arms are dead here.  They are
-     * kept in the control flow below so the shape stays C's. */
+     * When a different entry is chosen, C can return both it and the
+     * preselected entry; its fixup chooses the new entry, as this reader does
+     * directly. Toggling the preselected entry off instead returns no picks. */
     if (n.count > 0) {
         let spell_no = n.picked - 1;
         /* C ref: spell.c:2161-2164 — "default selection of preselected spell
@@ -1538,8 +1542,8 @@ async function dospellmenu_render_and_read(prompt, headingRaw, items, how) {
     const windowLines = [
         menu_heading_text(prompt),
         '',
-        menu_heading_text(collapseGaps(headingRaw)),
-        ...items.map((it) => collapseGaps(`${it.accel} ${it.sel ? '*' : '-'} ${it.raw}`)),
+        menu_heading_text(collapseGaps(headingRaw).replace(/\t/g, '\x1b[1C')),
+        ...items.map((it) => collapseGaps(`${it.accel} ${it.sel ? '*' : '-'} ${it.raw}`).replace(/\t/g, '\x1b[1C')),
         '(end)',
     ];
 
@@ -1607,7 +1611,7 @@ async function dospellmenu_render_and_read(prompt, headingRaw, items, how) {
             if (answer && answer !== '\x1b') {
                 const searchbuf = `*${answer}*`;
                 const m = items.find((it) => pmatchi(searchbuf, it.raw));
-                if (m) return { count: 1, picked: m.a_int };
+                if (m) return { count: m.sel ? 0 : 1, picked: m.a_int };
             }
             continue;
         }
@@ -1615,7 +1619,8 @@ async function dospellmenu_render_and_read(prompt, headingRaw, items, how) {
         if (hit)
             /* PICK_ONE/PICK_NONE both terminate on an accelerator; PICK_NONE
              * has no accelerators registered, so `hit` is never set there. */
-            return { count: 1, picked: hit.a_int };
+            // C wintty.c:1756 toggles the entry before finishing PICK_ONE.
+            return { count: hit.sel ? 0 : 1, picked: hit.a_int };
         if (how === 'PICK_NONE')
             /* C ref: a PICK_NONE picklist is display-only — any other key just
              * re-reads (the dismiss keys above already returned). */
@@ -1772,6 +1777,7 @@ export async function dovspell() {
     /* C ref: spell.c:2048-2051 — free spl_orderindx and reset the sort mode. */
     g.spl_orderindx = null;
     g.spl_sortmode = SORTBY_LETTER;
+    return ECMD_OK;
 }
 
 // ── litroom (light-spell side-effect) ───────────────────────────────────────
@@ -1942,6 +1948,10 @@ export async function spelleffects(spell_otyp, atme, force) {
      * (flush_screen after the effect); a menu raised by the effect (identify's
      * "What would you like to identify first?") overlays the stale row. */
     g._spellPwStale = { uen: u.uen | 0, uenmax: u.uenmax | 0 };
+    /* A --More-- raised before the next flush_screen() (e.g. casting hunger's
+     * "You feel weak." paged by the effect) still shows the pre-cast Pw. */
+    if (g._botlStaleUen === undefined) g._botlStaleUen = u.uen | 0;
+    if (g._botlStaleUenmax === undefined) g._botlStaleUenmax = u.uenmax | 0;
     u.uen = (u.uen | 0) - energy;
     if (g.disp) g.disp.botl = true;
     exercise(A_WIS, true);                 /* spell.c:1399 — rn2(19) */
@@ -2222,6 +2232,8 @@ async function throwspell() {
     if ((await getpos(cc, true, 'the desired position')) < 0)
         return 0; /* user pressed ESC */
     /* clear_nhwindow(WIN_MESSAGE): discard any autodescribe feedback */
+    game._pending_message = '';
+    game._topl_sticky = null;
     if (distmin(u.ux, u.uy, cc.x, cc.y) > 10) {
         await pline('The spell dissipates over the distance!');
         return 0;
@@ -2252,12 +2264,10 @@ function uhim_spell() {
     return (game.flags?.female) ? 'her' : 'him';
 }
 
-/* C ref: attrib.h Maybe_Half_Phys(dmg) = Half_physical_damage ? ((dmg)+1)/2
- * : (dmg).  Half_physical_damage is unported tree-wide (js/mhitu.js:1486,
- * js/wizcmds.js:115 both say so); with no source of it, C's own expression
- * reduces to dmg. */
+/* C hack.h Maybe_Half_Phys(dmg), youprop.h Half_physical_damage. */
 function maybe_half_phys(dmg) {
-    return dmg;
+    const p = game.u.uprops?.[56 /* HALF_PHDAM */];
+    return p?.intrinsic || p?.extrinsic ? Math.trunc((dmg + 1) / 2) : dmg;
 }
 
 // ────────────────────────────────────────────────────────────────────────────

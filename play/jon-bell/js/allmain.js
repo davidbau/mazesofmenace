@@ -21,13 +21,13 @@ import { FIRE_RES, COLD_RES, DISINT_RES, SHOCK_RES, POISON_RES, ACID_RES,
     STONE_RES, DRAIN_RES, SICK_RES, ANTIMAGIC, WARN_OF_MON, DETECT_MONSTERS, DISPLACED, WWALKING,
     MAGICAL_BREATHING, PASSES_WALLS } from './const.js';
 import * as PROPS from './const.js';
-import { mklev, l_nhcore_init, u_on_upstairs, engr_reset_text_pointers, restartcham } from './mklev.js';
+import { mklev, l_nhcore_init, u_on_upstairs, engr_reset_text_pointers, restartcham, upstart } from './mklev.js';
 import { l_nhcore_call, NHCORE_START_NEW_GAME, NHCORE_MOVELOOP_TURN,
     nh_callback_run, NHCB_END_TURN } from './nhlua.js';
 import { clear_bypasses, sink_into_lava } from './trap.js';
 import { notice_all_mons, pooleffects, rhack, check_special_room, domove, prayer_done, deferred_goto, schedule_goto, heal_legs, timed_occupation, cmdq_clear, wipeoff, body_part, surface, confdir, hurtle, instapetrify, runmode_delay_output, take_off_occ, dolookaround_cmd } from './cmd.js';
 import { lookaround, end_running, is_pool, is_pool_or_lava } from './look.js';
-import { docrt, cls, bot, timebot, status_eval_next_unhilite, time_botl_moves_incremented, time_botl_run_ended, flush_screen, pline, urgent_pline, Norep, _topl_joins_committed, _topl_record_join, occupation_painted_tick, occupation_freeze_snapshot, occupation_painted_reset, occupation_force_more, _movemon_page_frames_reset, run_page_frame_tick, run_page_frame_reset, capture_painted_frame, capture_pre_movemon_botl, force_more, _topl_merge_result, _topl_joins_snapshot } from './display.js';
+import { docrt, cls, bot, timebot, status_eval_next_unhilite, time_botl_moves_incremented, time_botl_run_ended, flush_screen, tty_repaint, pline, urgent_pline, Norep, _topl_joins_committed, _topl_record_join, occupation_painted_tick, occupation_freeze_snapshot, occupation_painted_reset, occupation_force_more, _movemon_page_frames_reset, run_page_frame_tick, run_page_frame_reset, capture_painted_frame, capture_pre_movemon_botl, force_more, _topl_merge_result, _topl_joins_snapshot } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { fastforward_pre_mklev, fastforward_post_mklev, fastforward_step, fastforward_fill_mineralize, fmon_dochug_dispatch, NORMAL_SPEED, FF_FAITHFUL, ff_movemon_phase, ff_head_phase, ff_head_phase_pre, ff_head_phase_post, vomiting_dialogue_ff, sickness_dialogue_ff, choke_dialogue_ff } from './fastforward.js';
 import { makedog, dismount_steed } from './dog.js';
@@ -531,6 +531,7 @@ export async function newgame() {
      * com_pager only runs after role_init() resolves role; skip when chargen
      * is still pending (initrole < 0 means role_init() has not yet been called). */
     let deferredLastStartupMsg = null;
+    let startupEscStop = false; /* WIN_STOP left live by ESC at a startup --More-- */
     if (!chargenIncomplete && g.flags?.legacy !== false) {
         await com_pager_legacy(!!(g.u?.uroleplay?.pauper), preInitAc, preInitPw);
     }
@@ -712,6 +713,28 @@ export async function newgame() {
                     }
                 }
             }
+            /* C topl.c:232-235: an ESC at a startup --More-- leaves WIN_STOP live,
+             * so pickup(1)'s describe_decor pline (allmain.c:78) is suppressed
+             * by update_topl's skip test (topl.c:257). */
+            if (startupWinStop) {
+                g._topl_win_stop = true;
+                g._topl_win_stop_buf = startupMsgs[startupMsgs.length - 1];
+            }
+            /* topl.c:232-235 more(): the ESC that dismissed the last page left
+             * WIN_STOP set on the message window; it stays live until
+             * tty_yn_function / clear_nhwindow clears it, so a prompt raised
+             * while the last startup message stands does not page it. */
+            if (startupWinStop) g._topl_win_stop = true;
+            /* topl.c:232 more() sets WIN_STOP on ESC at once; the page-ack armed it
+             * for the owner of the more().  That owner (the last message drawn
+             * above) has now been plined, so a later pline (pickup(1)'s
+             * describe_decor, allmain.c:78) samples skip == TRUE (topl.c:257):
+             * it is swallowed, not joined onto the standing line and paged. */
+            if (g._topl_win_stop_armed) {
+                g._topl_win_stop_armed = false;
+                g._topl_win_stop = true;
+            }
+            startupEscStop = startupWinStop;
             if (tutorialWillRun && !startupWinStop) {
                 /* C order: moveloop_preamble's pickup(1) (allmain.c:75) runs
                  * BEFORE maybe_do_tutorial, so a message it prints (mention_decor's
@@ -740,8 +763,8 @@ export async function newgame() {
     /* C ref: allmain.c:844-846 newgame() — if (a11y.glyph_updates) dolookaround();
      * then moveloop_preamble's rndencode = rnd(9000) / seer_turn = rnd(30)
      * (allmain.c:72,79), which fastforward_post_mklev deferred for this case. */
-    if ((g.a11y?.glyph_updates || g.flags?.mention_map) && g._ff_preamble_rng_deferred) {
-        await dolookaround_cmd();
+    if (g._ff_preamble_rng_deferred && (g.a11y?.glyph_updates || g.flags?.mention_map || g.u?.uroleplay?.reroll)) {
+        if (g.a11y?.glyph_updates || g.flags?.mention_map) await dolookaround_cmd();
         g._ff_preamble_rng_deferred = false;
         rnd(9000);
         g.context.seer_turn = rnd(30);
@@ -764,7 +787,13 @@ export async function newgame() {
         && !g.tutorial_set_in_config;
     if (deferredLastStartupMsg !== null || tutorialFlushesDecor)
         g._pending_message = '';
+    /* topl.c:257/:262 — ESC at a startup --More-- left WIN_STOP live, so
+     * pickup(1)'s plines (mention_decor) are swallowed: the standing moon /
+     * welcome line stays alone on the topline. */
+    const _stoppedTopl = startupEscStop ? (g._pending_message || '') : null;
     await pickup(1);
+    if (_stoppedTopl !== null && !tutorialFlushesDecor && deferredLastStartupMsg === null)
+        g._pending_message = _stoppedTopl;
     if (tutorialFlushesDecor) {
         const decorOnly = g._pending_message || '';
         g._pending_message = '';
@@ -1842,6 +1871,14 @@ async function eat_occupation_turn() {
          * but WIN_STOP suppresses every later pline in this same occupation
          * callback.  Keep updating gt.toplines' hidden buffer without changing
          * the physically committed line. */
+        /* ESC at a more() raised before this loop (cprefx's "You feel that
+         * eating the X was a bad idea.") left WIN_STOP armed; that owner was
+         * already drawn (skip sampled before more()), so it is live now. */
+        if (g._topl_win_stop_armed) {
+            g._topl_win_stop_armed = false;
+            g._topl_win_stop = true;
+            g._topl_win_stop_buf = _committed || '';
+        }
         if (g._topl_win_stop) {
             const hidden = String(g._topl_win_stop_buf || _committed || '');
             g._topl_win_stop_buf = (hidden.length + 2 + part.length < 71)
@@ -1994,7 +2031,10 @@ async function eat_occupation_turn() {
         }
     }
     _movemon_page_frames_reset();
-    await flush_screen(1);
+    // C allmain.c:508: a silent occupation turn only calls
+    // runmode_delay_output(); it does not flush the map unconditionally.
+    await flush_screen(1, false);
+    await runmode_delay_output();
     /* The flush's pager may have raised a --More-- over the earlier plines of
      * the committed line (update_topl's CO-1-8 reserve); what stays on the
      * topline is only the remainder, so the next turn's cross-turn more() must
@@ -2458,7 +2498,7 @@ async function slip_or_trip() {
                         : 'something';
         }
         if (_fumble_hallucinating()) {
-            const cap = what ? what.charAt(0).toUpperCase() + what.slice(1) : what;
+            const cap = upstart(what);
             await pline(`Egads!  ${cap} bite${(!otmp || (otmp.quan | 0) === 1) ? 's' : ''} your ${body_part(FOOT_AM)}!`);
         } else {
             await pline(`You trip over ${what}.`);
@@ -2486,9 +2526,7 @@ async function slip_or_trip() {
              * behavior rather than reading the raw mname field. */
             const rawSteedName = x_monnam(u.usteed, ARTICLE_THE, null,
                                          SUPPRESS_SADDLE, false);
-            const steedName = rawSteedName
-                ? rawSteedName.charAt(0).toUpperCase() + rawSteedName.slice(1)
-                : 'The steed';
+            const steedName = upstart(rawSteedName);
             await pline(`${steedName} ${slipslide}${currentlyIce ? 's on' : 's off'} the ice.`);
             const saddle = which_armor(u.usteed, W_SADDLE);
             const extrinsicFumbling = u.uprops?.[FUMBLING]?.extrinsic | 0;
@@ -2753,10 +2791,10 @@ async function stop_occupation_learn() {
 // so a time-only status update must not re-latch the cap either — our bot()
 // clears all three flags, which is why the arms cannot be collapsed.
 //
-// curs_on_u() (display.c:1687-1690) is flush_screen(1), which every call site
-// here already runs unconditionally on the line below; C reaches an equivalent
-// flush through the tty read that follows.  Only the bot()/timebot() choice is
-// ported here.  The one place the guard is observable is a fireassist retry:
+// curs_on_u() (display.c:1687-1690) is flush_screen(1). Flush its map paint
+// here too: occupations can take several turns before the next tty read.
+// tty_repaint runs the repaint half without paging the deferred topline.
+// The guard is also observable in a fireassist retry:
 // the queued dofire's getdir pages the wield prinv with no flush of its own, so
 // whether the --More-- shows the post-movemon map depends on whether THIS
 // curs_on_u() ran.  When it does, the frozen pre-movemon frame is stale.
@@ -2775,10 +2813,12 @@ async function moveloop_status_paint() {
     }
 }
 
-// C allmain.c:476/479 curs_on_u() -> display.c:1689 flush_screen(1): the
+// C allmain.c:475/478 curs_on_u() -> display.c:1689 flush_screen(1): the
 // physical map now shows the post-movemon world, so a fireassist pre-movemon
 // DISPLAY-ONLY: no RNG, no state mutation.
 function _status_paint_flushed() {
+    // C allmain.c:475/478: curs_on_u() follows either status update.
+    tty_repaint(1);
     if (game._fireSwapPending && game._fireSwapPreFrame)
         game._fireSwapPreFrame = null;
 }
@@ -3186,8 +3226,8 @@ async function moveloop_core_faithful() {
         // rhack is about to run.
         g._ff_countdown_done = false;
     }
-    // Vision + display (shared with calibrated path).
-    if (g.vision_full_recalc) {
+    // C allmain.c:453-473: pre-input vision shares the redraw guard.
+    if ((!(g.context && g.context.mv) || Blind()) && g.vision_full_recalc) {
         if (typeof process !== 'undefined' && ENV?.FF_DISPLAY_TRACE === '1') {
             pushRngLogEntry(`^vision_boundary[phase=before_recalc moves=${g.moves | 0} mv=${g.context?.mv ? 1 : 0} blind=${Blind() ? 1 : 0} full=1]`);
         }
@@ -3198,7 +3238,9 @@ async function moveloop_core_faithful() {
         }
     }
     await moveloop_status_paint();
-    await flush_screen(1);
+    // C allmain.c:473-508: status painting already calls curs_on_u().
+    // Otherwise an eating callback starts without flushing pending glyphs.
+    await flush_screen(1, g.occupation !== eatfood || (g.multi | 0) < 0);
     const preMoveUz = g.u && g.u.uz
         ? { dnum: g.u.uz.dnum, dlevel: g.u.uz.dlevel }
         : null;
@@ -3227,6 +3269,20 @@ async function moveloop_core_faithful() {
         // post-meal turn whose rhack reads the next recorded command).
         return;
     }
+    // C allmain.c:485-510: a repeated move can start autodig after the
+    // command's occupation driver has run. Continue it before reading a key.
+    if (g.occupation === dig && (g.multi | 0) >= 0) {
+        if (await dig() === 0) g.occupation = null;
+        if (monster_nearby()) {
+            await stop_occupation();
+            reset_eat();
+        }
+        await runmode_delay_output();
+        // topl.c:274: the dig pline's more() blocks before another world turn.
+        // Drain its deferred update_topl() page at this occupation boundary.
+        await flush_screen(1);
+        return;
+    }
     // C ref: allmain.c:513 — `u.umoved = FALSE;`, immediately after the
     // occupation block returns and before the gm.multi / rhack tail.  Note the
     // occupation early-return above (C allmain.c:557) happens BEFORE this line,
@@ -3240,13 +3296,30 @@ async function moveloop_core_faithful() {
     // from plines that were already on the channel when rhack was entered.
     const _preRhackMsg = g._pending_message || '';
     g._preMsgCleared = false;
-    await rhack(0);
+    // C ref: allmain.c:543-558 — a pending occupation (autodig's set_occupation(dig)
+    // started inside the counted-move repeat loop) runs INSTEAD of rhack; no key is
+    // read.  The dig driver below then plays that occupation turn.
+    const _occInsteadOfRhack = g.occupation === dig && (g.multi | 0) >= 0;
+    // C ref: allmain.c:573-599 — a counted command whose eat occupation has now
+    // ended (the early return at :557 above leaves gm.multi > 0) takes the
+    // `gm.multi > 0` repeat branch of THIS invocation instead of reading a key:
+    // lookaround(), --multi, rhack(cmd_key).  The head world block above already
+    // ran, so the repeat loop below must not run another.
+    const _countRepeatInsteadOfRhack = !_occInsteadOfRhack && !g.occupation
+        && (g.multi | 0) > 0 && !g.context.mv && !g.context.run
+        && !!g._eatCountRepeat;
+    if (_countRepeatInsteadOfRhack) {
+        g._eatCountRepeat = false;
+        g.context.move = 0;
+    }
+    if (!_occInsteadOfRhack && !_countRepeatInsteadOfRhack)
+        await rhack(0);
     // C ref: allmain.c:608-609 — if (u.utotype) deferred_goto(); /* after rhack() */
     // Executes any level change scheduled by schedule_goto() (e.g. wiz_level_tele /
     if (g.u?.utotype) {
         await deferred_goto();
     }
-    if (g.context?.move) {
+    if (g.context?.move && !_occInsteadOfRhack) {
         // C ref: win/tty/topl.c — the command's own pline stays on the topline
         // until the next tty_nhgetch.  In the common time-consuming-command case
         // the per-turn movemon plines of the NEXT turn replace it, so we clear it
@@ -3356,6 +3429,10 @@ async function moveloop_core_faithful() {
     // block (faithful_moveloop_turn, C's allmain.c:243-446) followed by dig()
     // (the effort rn2(5) at dig.c:366, terminating in the digactualhole pit
     // rn1(4,2) at dig.c:739).  The number of turns falls out of the C effort
+    /* C allmain.c:543-558: an occupation set by a counted-command repeat (the
+     * multi>0 tail below, e.g. "20n" autodigging out of a pit) runs before
+     * the next key is read, so the driver is re-invoked after that loop. */
+    const _dig_occupation_driver = async () => {
     if (g.occupation === dig && (g.multi | 0) >= 0) {
         let digGuard = 0;
         const _digHorizontal = !!(g.context && g.context.digging && !g.context.digging.down)
@@ -3506,6 +3583,8 @@ async function moveloop_core_faithful() {
         g.context.move = 0;
         } /* end pit-dig (non-horizontal) branch */
     }
+    };
+    await _dig_occupation_driver();
     // ===================== go.occupation DRIVER — LEARN (faithful) ================
     // C ref: allmain.c:543-565 — when gm.multi>=0 and go.occupation is set, the
     // outer for(;;) re-enters moveloop_core, runs the FULL per-turn world block,
@@ -4284,9 +4363,11 @@ async function moveloop_core_faithful() {
              * reserve paged the earlier text with a --More-- inside this rhack
              * (topl.c:257-274), leaving only the later pline committed. */
             let text = g._resultMessage;
+            // A normal pline can leave the joins live without a result-channel copy.
+            // Keep each update_topl decision (topl.c:261-274) at meal start too.
             const rj = g._resultMessageJoins?.src === text
                 && Array.isArray(g._resultMessageJoins.joins)
-                ? g._resultMessageJoins.joins : null;
+                ? g._resultMessageJoins.joins : _topl_joins_snapshot(text);
             if (rj && rj.length) {
                 const segs = [];
                 let st = 0;
@@ -4294,14 +4375,17 @@ async function moveloop_core_faithful() {
                 segs.push(text.slice(st));
                 const frame = g._eatPreEffectFrame;
                 let committed = segs[0];
+                let committedEnd = committed.length;
                 for (const seg of segs.slice(1)) {
                     if (_topl_joins_committed(committed, seg)) {
                         committed = committed + '  ' + seg;
                     } else {
                         await occupation_force_more(committed, frame?.cells || null,
-                                                    g.moves | 0, null);
+                                                    g.moves | 0, null, false,
+                                                    { full: text, end: committedEnd });
                         committed = seg;
                     }
+                    committedEnd += 2 + seg.length;
                 }
                 text = committed;
             }
@@ -4521,6 +4605,9 @@ async function moveloop_core_faithful() {
             g.vision_full_recalc = 0;
         }
         g.context.move = 1;
+        // C allmain.c:513 also runs on this no-time pass before multi skips
+        // rhack; the recovery turn must not retain the killing move's umoved.
+        g.u.umoved = false;
     }
     while ((g.multi | 0) < 0) {
         // C ref: allmain.c:243-446 — one more delayed turn: the full faithful
@@ -4678,7 +4765,15 @@ async function moveloop_core_faithful() {
     // frame log so this run's --More-- pages freeze on THIS run's per-turn hero
     // squares, not a stale prior run's.  DISPLAY-ONLY, no RNG.
     run_page_frame_reset();
-    while ((g.multi | 0) > 0) {
+    /* C allmain.c:543-558: a repeat that starts the dig occupation (hack.c:1042
+     * autodig, whose nomul(0) ends the count) is followed by the NEXT
+     * moveloop_core pass, which runs the occupation before rhack() reads a key. */
+    let occContinue = false;
+    while ((g.multi | 0) > 0 || occContinue) {
+        if (g.occupation === eatfood && !(g.context && g.context.mv)) {
+            g._eatCountRepeat = true;
+            break;
+        }
         const isMv = !!(g.context && g.context.mv);
         if (typeof process !== 'undefined' && ENV && ENV.FF_MLTRACE === '1') {
             pushRngLogEntry(`^ml_multi[moves=${g.moves | 0} multi=${g.multi | 0}`
@@ -4706,7 +4801,10 @@ async function moveloop_core_faithful() {
          * on the DISPLAY rng for every monster) runs after EVERY world block,
          * not only after the run's last iteration. */
         if ((g.multi | 0) !== 0) faithful_input_redraw();
-        if (!(g.context && g.context.mv) || Blind()) {
+        // When the world block stopped the repeat, its input redraw is
+        // deferred to the next invocation above. Defer this recalc with it:
+        // C allmain.c:454-471 redraws hallucinations BEFORE updating vision.
+        if ((g.multi | 0) !== 0 && (!(g.context && g.context.mv) || Blind())) {
             if (g.vision_full_recalc)
                 vision_recalc(0);
         }
@@ -4908,7 +5006,15 @@ async function moveloop_core_faithful() {
             // per the command's own ECMD_TIME/OK result; a 0-time command would
             // not have armed multi, so each repeat is a turn-consuming command.
             g.multi = (g.multi | 0) - 1;
-            await rhack(g.cmd_key | 0);
+            /* No key is read before a repeated '#': the previous command's
+             * topline is still TOPLINE_NEED_MORE when hooked_tty_getlin runs
+             * (getline.c:50-51). */
+            g._extRepeatNoKey = true;
+            try {
+                await rhack(g.cmd_key | 0);
+            } finally {
+                g._extRepeatNoKey = false;
+            }
             // Same post-dispatch boundary for counted commands.
             if (g.u?.utotype)
                 await deferred_goto();
@@ -4940,6 +5046,11 @@ async function moveloop_core_faithful() {
         //     faithful head fires that trailing turn.  (Skipping it was the keystone bug:
         //     it dropped the door-square turn and advanced the hero one square early.)
         if (stopped) {
+            if (dispatched && g.occupation === dig && (g.multi | 0) >= 0
+                && ++runGuard < 4096) {
+                occContinue = true;
+                continue;
+            }
             if (!dispatched) {
                 g.context.move = 0;
             }
@@ -4947,6 +5058,7 @@ async function moveloop_core_faithful() {
         }
         if (++runGuard >= 4096) break; // safety: never spin on a broken multi state
     }
+    if (g.occupation === dig) await _dig_occupation_driver();
 }
 
 function _run_commit_result(g) {

@@ -1,9 +1,9 @@
 import { shkgone, unpaid_cost, currency } from './shk.js';
-import { surface, costly_alteration, domonnoise } from './cmd.js';
+import { surface, costly_alteration, domonnoise, u_locomotion } from './cmd.js';
 import { COST_DEGRD, COST_CONTENTS } from './const.js';
 import { Amonnam, shade_miss as shade_miss_hm } from './mhitm.js';
 import { rloc_to } from './teleport.js';
-import { expels_gu } from './mhitu.js';
+import { expels_gu, digests_gu } from './mhitu.js';
 import { SUPPRESS_HALLUCINATION } from './const.js';
 import { quest_monster_died } from './quest.js';
 import { PM_MAIL_DAEMON } from './pm.generated.js';
@@ -28,7 +28,7 @@ import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 import { unstuck as unstuck_dm, m_unleash, sticks, dismount_steed as dismount_steed_qm } from './dog.js';
 import { topl_force_break_after as topl_force_break_after_qm, GLYPHCLS_OBJ as GLYPHCLS_OBJ_DM, Deaf as Deaf_dm } from './display.js';
 import { whimper as whimper_dm, mwelded as mwelded_dm, snuff_lit } from './cmd.js';
-import { PM_FIRE_VORTEX, PM_FLAMING_SPHERE } from './pm.generated.js';
+import { PM_FIRE_VORTEX, PM_FLAMING_SPHERE, PM_PYROLISK } from './pm.generated.js';
 import { SUPPRESS_NAME, SUPPRESS_IT, SUPPRESS_INVISIBLE, NO_NC_FLAGS } from './const.js';
 import { y_monnam as y_monnam_qm, mon_hates_silver, stagger as stagger_dm, locomotion } from './mhitm.js';
 import { an as an_qm, makeplural as makeplural_dm, oname as oname_dm, vtense, simpleonames } from './objnam.js';
@@ -39,7 +39,7 @@ import { monPmname as monPmname_qm, check_gear_next_turn as check_gear_next_turn
 import { NON_PM, In_sokoban, In_sokoban as In_sokoban_dm } from './const.js';
 import { PLNMSG_HIDE_UNDER as PLNMSG_HIDE_UNDER_C } from './const.js';
 import { HALLUC, HALLUC_RES } from './const.js';
-import { PROT_FROM_SHAPE_CHANGERS as PROT_SHAPE_QM } from './const.js';
+import { PROT_FROM_SHAPE_CHANGERS as PROT_SHAPE_QM, DISMOUNT_POLY } from './const.js';
 import { mon_mattk_raw, getmattk as getmattk_mhitu, could_seduce, mattacku, mswings_verb,
          breamm as breamm_mu, spitmm as spitmm_mu, mhis_mon as mhis_mon_mu } from './mhitu.js';
 import { monshoot } from './mhitu.js';
@@ -55,7 +55,7 @@ import { couldsee as couldsee_vision, clear_path, do_clear_area, cansee, recalc_
 import { gettrack, hastrack } from './track.js';
 import { t_at, split_mon_rt, find_mac as find_mac_mon, extract_from_minvent as extract_from_minvent_tp } from './trap.js';
 import { pushRngLogEntry } from './rng.js';
-import { obj_stop_timers, obj_split_timers } from './timeout.js';
+import { obj_stop_timers, obj_split_timers, end_burn } from './timeout.js';
 import { IS_ROOM, OBJ_FREE, OBJ_DELETED, OBJ_MINVENT, OBJ_FLOOR, W_WEP, W_ARMS, W_SADDLE, IRONBARS, IS_OBSTRUCTED, IS_TREE, ERODE_NONE, ERODE_CORRODE, ERODE_RUST, ERODE_BURN, EF_GREASE, EF_VERBOSE, PASSES_WALLS } from './const.js';
 import { place_object, set_ustuck, resists_ston, resists_poison,
          mkcorpstat, mksobj_at, OC_MERGE, mondead, add_to_container, dealloc_obj, newcham, mongone, makemon, minliquid as minliquid_real,
@@ -63,7 +63,9 @@ import { place_object, set_ustuck, resists_ston, resists_poison,
 import { closed_door, accessible, is_pool, may_dig } from './look.js';
 import { erode_obj, mintrap as mintrap_real, goodpos as goodpos_real, m_useup as m_useup_dg } from './trap.js';
 import { PM_GHOUL, PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER, PM_STEAM_VORTEX, PM_AIR_ELEMENTAL, PM_BLACK_PUDDING, PM_BROWN_PUDDING, PM_SHADE, PM_DEATH, PM_PESTILENCE, PM_FAMINE, PM_CHICKATRICE, PM_COCKATRICE, PM_MEDUSA, PM_STONE_GOLEM, PM_ANGEL, PM_RUST_MONSTER, PM_GELATINOUS_CUBE, PM_ARCHON } from './pm.generated.js';
-import { zombie_maker, dmgtype_fromattack, grow_up, nonliving, onscary, monPmname, splitobj, nextoid, which_armor, permonstTemplate, set_mon_data } from './makemon.js';
+import { zombie_maker, dmgtype_fromattack, grow_up, nonliving, onscary, monPmname, splitobj, nextoid, which_armor, permonstTemplate, set_mon_data, emits_light } from './makemon.js';
+import { del_light_source, monst_to_any } from './light.js';
+import { LS_MONSTER } from './const.js';
 import { pline, newsym, _topline_more_pending, _more_never_dismissed, _more_pages_exceed_input, flush_pending_messages, mon_visible, canseemon, canspotmon, map_invisible, glyph_is_invisible_at, unmap_object, You_hear, Deaf, sensemon } from './display.js';
 import { Japanese_item_name, xname_scroll, xname_armor, doname_potion, xname, doname, distant_name, in_distant_name, is_quest_artifact } from './objnam.js';
 /* C o_init.c:441-452 observe_object(obj) — the ONE side effect a formatting
@@ -105,7 +107,7 @@ import { mfndpos, make_corpse, zombie_form, On_stairs, is_rustprone } from './mk
 import { isok, is_pit, ARTICLE_A, ARTICLE_NONE, MON_DETACH, CORPSTAT_NONE, G_GONE, CONFLICT as CONFLICT_DM, engulfing_u as engulfing_u_const, MAGIC_PORTAL } from './const.js';
 import { thiefdead } from './steal.js';
 import { otrapped_of } from './const.js';   /* obj.h:139 #define opoisoned otrapped */
-import { should_displace, undesirable_disp, _can_open_mv, _passes_bars_mv, m_avoid_soko_push_loc, mon_allowflags } from './monmove.js';
+import { should_displace, undesirable_disp, _can_open_mv, _passes_bars_mv, m_avoid_soko_push_loc, mon_allowflags, m_digweapon_check } from './monmove.js';
 import { enexto_out, rloc as rloc_tp, tele_restrict as tele_restrict_tp, vamprises } from './teleport.js';
 import { stop_occupation as stop_occupation_dm } from './allmain.js';
 import { grddead } from './vault.js';
@@ -780,8 +782,12 @@ export function dogfood(mtmp, obj) {
             /* C dog.c:1057-1062 */
             return carni ? DOGFOOD : MANFOOD;
         case EGG_OTYP:
-            /* C dog.c:1063-1065: PYROLISK egg → POISON for non-fire (rare); else
-             * carni ? CADAVER : MANFOOD. */
+            /* C dog.c:1061-1064; likes_fire (mondata.h:196-198) is a
+             * species test, independent of fire resistance. */
+            if (obj.corpsenm === PM_PYROLISK
+                && ![PM_FIRE_VORTEX, PM_FLAMING_SPHERE,
+                     PM_FIRE_ELEMENTAL_DM, PM_SALAMANDER_DM].includes(mndx))
+                return POISON;
             return carni ? CADAVER : MANFOOD;
         case CORPSE_OTYP: {
             /* C dog.c:1067-1087 — corpse classification, ported bug-for-bug.
@@ -3459,6 +3465,7 @@ export async function mondied_dm(mdef, mondead_only = false) {
     }
     const deadMx = mdef.mx | 0;
     const deadMy = mdef.my | 0;
+    const priorData = mdef.data; /* C mon.c:3112: save for m_detach before restoring the form. */
     if (typeof process !== 'undefined' && ENV?.FF_DEATH_TRACE === '1') {
         const cell = game.level?.at(deadMx, deadMy);
         pushRngLogEntry(`^mondied_dm[x=${deadMx},y=${deadMy},mndx=${(mdef.mndx ?? mdef.mnum ?? -1) | 0},` +
@@ -3481,10 +3488,7 @@ export async function mondied_dm(mdef, mondead_only = false) {
         else if (_cur === 91 /* PM_WERERAT */) _true = 261; /* PM_HUMAN_WERERAT, mon.c:3117 */
         if (_true >= 0) set_mon_data(mdef, permonstTemplate(_true));
     }
-    {
-        mdef.mtrapped = 0;
-        await unstuck_dm(mdef);
-    }
+        /* Apply these writes at m_detach below, after its light teardown. */
     mdef.mhp = 0;
     {
         const g = game;
@@ -3501,6 +3505,15 @@ export async function mondied_dm(mdef, mondead_only = false) {
     await kop_revival(mdef);
     record_death_achievement((mdef.mndx ?? mdef.mnum ?? -1) | 0);
     if (glyph_is_invisible_at(deadMx, deadMy)) unmap_object(deadMx, deadMy);
+
+    /* C mon.c:2741-2749 m_detach: retire the old form's mobile light before
+     * mon_leaving_level.  Otherwise a freed monster keeps vision dirty and
+     * every later vision refresh consumes extra hallucination display draws. */
+    if (mdef.mleashed) m_unleash(mdef, false);
+    if (deadMx > 0 && emits_light(priorData))
+        del_light_source(LS_MONSTER, monst_to_any(mdef));
+    mdef.mtrapped = 0;
+    await unstuck_dm(mdef);
 
     /* C mon.c:2700 leaves mx/my untouched on death (the zeroing is #if 0'd
      * out in C itself — "too many places assume that the stale monst->mx,my
@@ -3720,7 +3733,7 @@ async function explmm(magr, mdef, mattk) {
     if (magr.mcan)
         return M_ATTK_MISS;
     if (cansee(magr.mx | 0, magr.my | 0))
-        pline(Monnam_dm(magr) + ' explodes!');
+        pline_mon(magr, '%s explodes!', Monnam_dm(magr));
     else
         await noises_dm(magr, mattk);
     /* monster explosion types which actually create an explosion */
@@ -4178,28 +4191,8 @@ export async function dog_move(mtmp, after) {
 
     if (_conflict_dm() && !resist_conflict(mtmp)) {
         if (!edog) {
-            /* C minion.c:468-510 — a guardian angel abandons a conflicted
-             * hero, then two to four hostile angels replace it. */
-            if (canspotmon(mtmp)) {
-                if (!Deaf)
-                    await pline(`${Monnam_dm(mtmp)} rebukes you, saying:`);
-                else
-                    await pline(`${Monnam_dm(mtmp)} vanishes!`);
-            }
-            await mongone(mtmp);
-            const count = rn1(3, 2);
-            for (let i = 0; i < count; ++i) {
-                const spot = enexto_out(game.u.ux | 0, game.u.uy | 0,
-                                        permonstTemplate(PM_ANGEL));
-                if (!spot)
-                    continue;
-                const angel = await makemon(permonstTemplate(PM_ANGEL), spot.x, spot.y, 0);
-                if (angel) {
-                    angel.mpeaceful = 0;
-                    angel.mtame = 0;
-                    angel.isminion = 1;
-                }
-            }
+            /* C dogmove.c:1050 lose_guardian_angel(mtmp) (minion.c:468) */
+            await lose_guardian_angel(mtmp);
             return MMOVE_DIED;
         }
     }
@@ -4479,6 +4472,10 @@ export async function dog_move(mtmp, after) {
         /* C dogmove.c:1289 */
         if (!m_in_out_region_dm(mtmp, nix, niy))
             return MMOVE_MOVED;
+        /* C dogmove.c:1291-1292: a tame digger heading into rock/wall/door
+         * spends this move wielding its pick (mon_wield_item) instead. */
+        if (await m_digweapon_check(mtmp, nix, niy))
+            return MMOVE_NOTHING;
         /* C dogmove.c:1354: wasseen = canseemon(mtmp) BEFORE the move. */
         const wasseen = !!canseemon(mtmp);
         /* C: move monster */
@@ -4695,7 +4692,7 @@ export async function quickmimic(mtmp) {
         return;
     const was_leashed = !!(mtmp.mleashed | 0);
     if (mtmp === u?.usteed)
-        await dismount_steed_qm(8 /* DISMOUNT_POLY */);
+        await dismount_steed_qm(DISMOUNT_POLY);
 
     let idx = 0, trycnt = 5;
     const mndx = (mtmp.data?.pmidx ?? mtmp.mnum) | 0;
@@ -4846,17 +4843,17 @@ export async function monstone(mtmp) {
     let statue;
     const kept = [];
     let obj = mtmp.minvent;
-    while (obj) {
+    while (makeStatue && obj) {
         const next = obj.nobj ?? null;
-        extract_from_minvent_dm(mtmp, obj);
+        await extract_from_minvent_tp(mtmp, obj, true, true);
         obj.owornmask = 0;
         obj.nobj = null;
         if ((obj.otyp | 0) === BOULDER_OTYP || obj_resists(obj, 0, 0)) {
-            place_object(obj, x, y);
-            stackobj_dm(obj);
+            if (!await flooreffects_dm(obj, x, y, 'fall'))
+                place_object(obj, x, y);
         } else {
-            if (obj.lamplit) obj.lamplit = 0;
-            kept.push(obj);
+            if (obj.lamplit) end_burn(obj, true);
+            kept.unshift(obj);
         }
         obj = next;
     }
@@ -4891,7 +4888,10 @@ export async function monstone(mtmp) {
         newsym(x, y);
         mtmp.mhp = 0;
     }
+    const wasinside = engulfing_u_const(mtmp);
     await mondead(mtmp);
+    if (wasinside && digests_gu(mtmp.data.pmidx))
+        await You('%s through an opening in the new %s.', u_locomotion('jump'), xname(statue));
 }
 /* seemimic: the LOCAL `no-op stub` IS DELETED.  It shadowed the C-faithful
  * body at js/mhitm.js:2609 (C mon.c:4409 — m_ap_type = M_AP_NOTHING,
@@ -4902,6 +4902,7 @@ export async function monstone(mtmp) {
  * already exists and is function-call-only (no module-evaluation-time use). */
 import { update_monster_region as update_monster_region_real } from './region.js';
 import { ENV } from './hostenv.js';
+import { lose_guardian_angel } from './minion.js';
 
 function place_worm_tail_randomly(mdef, fx, fy) {
     return place_worm_tail_randomly_real(mdef, fx, fy);

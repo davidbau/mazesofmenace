@@ -7,6 +7,7 @@
 import { game } from './gstate.js';
 import { Is_airlevel } from './const.js';
 import { is_pool } from './look.js';
+import { is_moat } from './dokick.js';
 import { Is_waterlevel, Is_rogue_level, ROOMOFFSET, COLNO, ROWNO, DOOR, SDOOR, POOL, WATER, LAVAWALL, CLOUD, D_CLOSED, D_LOCKED, D_TRAPPED, SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, SVALL, IS_WALL, isok, BLINDED, SEE_INVIS, DETECT_MONSTERS, MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS, MONSEEN_TELEPAT, MONSEEN_XRAYVIS, MONSEEN_DETECT, MONSEEN_WARNMON } from './const.js';
 import { newsym, canseemon, mon_visible, see_with_infrared, tp_sensemon, MATCH_WARN_OF_MON } from './display.js';
 import { worm_known } from './worm.js';
@@ -159,7 +160,8 @@ function _blocks(level, x, y) {
         if (mask & (D_CLOSED | D_LOCKED | D_TRAPPED))
             return true;
     }
-    if (typ === CLOUD || typ === WATER || typ === LAVAWALL)
+    if (typ === CLOUD || typ === WATER || typ === LAVAWALL
+        || (game.u?.uinwater && is_moat(x, y)))
         return true;
     const _objs = game.level?.levelObjects?.[x]?.[y] ?? null;
     for (let o = _objs; o; o = o.nexthere)

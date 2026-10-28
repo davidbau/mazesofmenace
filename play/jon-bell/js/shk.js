@@ -8,7 +8,7 @@ import { locomotion, x_monnam as x_monnam_shk } from './mhitm.js';
 import { ARTICLE_THE as ARTICLE_THE_SHK, ANY_SHOP } from './const.js';
 import { search_special } from './mkroom.js';
 import { makeplural } from './objnam.js';
-import { W_SWAPWEP, W_QUIVER, DISPLACED } from './const.js';
+import { W_SWAPWEP, W_QUIVER, DISPLACED, EYE } from './const.js';
 import { make_happy_shoppers, migrate_to_level, mdrop_special_objs } from './dog.js';
 import { sensemon } from './display.js';
 import { MIGR_APPROX_XY } from './const.js';
@@ -17,7 +17,7 @@ import { stop_occupation } from './allmain.js';
 import { picking_at } from './lock.js';
 import { dochug, m_canseeu } from './dochug.js';
 import { newobj } from './game.js';
-import { pline, You_hear, Norep, topl_park_cursor, force_more } from './display.js';
+import { pline, You_hear, Norep, topl_park_cursor, force_more, force_more_lone_frame } from './display.js';
 /* C pline.c You/Your — use the shared async formatters.  Sale settlement
  * awaits these message boundaries; older unrelated callers retain their
  * existing contracts until their own closure is migrated. */
@@ -31,8 +31,9 @@ import { PM_KNIGHT, PM_SAMURAI, PM_TOURIST, PM_VALKYRIE, PM_SHOPKEEPER, PM_ROGUE
 import { goodpos } from './trap.js';
 import { t_at, deltrap } from './trap.js';
 import { block_point } from './vision.js';
-import { newsym } from './display.js';
+import { newsym, map_invisible } from './display.js';
 import { weight } from './weight.js';
+import { OC_WEIGHT } from './oc_weight.generated.js';
 import { trapname } from './makemon.js';
 /* C ref: hack.c:4478 money_cnt — the single ported implementation lives in
  * js/com_pager.js; re-used here rather than the `return 0` stub this file
@@ -52,7 +53,7 @@ import { cansee } from './vision.js';
 import { holetime } from './dig.js';
 import { carrying, count_unpaid, currency as currency_real,
          mbodypart as mbodypart_real, body_part as body_part_real,
-         merge_choice, inv_cnt, dropy, getpos, record_achievement, check_special_room } from './cmd.js';
+         merge_choice, inv_cnt, dropy, getpos, record_achievement, check_special_room, obj_no_longer_held } from './cmd.js';
 import { xprname as xprname_cmd, dbase_display_window as dbase_display_window_cmd } from './cmd.js';
 import { addinv } from './hold_another_object.js';
 import { mattacku } from './mhitu.js';
@@ -116,6 +117,9 @@ import { observe_object, discover_object } from './o_init.js';
 import { MKOBJ_OC_MAGIC } from './mkobj_erosion_meta.js';
 import { veggy_item } from './mklev.js';
 import { is_izchak } from './cmd.js';
+import { You_feel } from './display.js';
+import { sobj_at } from './mklev.js';
+import { unplacebc, placebc } from './ball.js';
 
 // SELL_NORMAL constant from hack.h:1070
 const SELL_NORMAL = 0;
@@ -640,18 +644,33 @@ async function menu_pick_pay_items(ibillct, ibill) {
         if (titleErased) lines[0] = '';
         return build_window_screen(lines, WIN_COL, uac).split('\n');
     };
+    /* C wintty.c:1553-1612: invalid xwaitforspace keys preserve the count;
+     * ESC cancels a pending count before it can cancel the menu.
+     * C shk.c:1727-1736 deliberately ignores subset quantities when buying;
+     * only the selection and its indicator need to retain that distinction. */
+    let count = 0n;
     for (;;) {
         g._screen_output = frameRows().join('\n');
         set_cursor_shk(WIN_COL + '(end)'.length + 1, endRow);
         const k = await nhgetch();
+        if (!BY_SEL.has(k) && k >= 48 && k <= 57) {
+            count = count * 10n + BigInt(k - 48);
+            if (count > 9223372036854775807n) count = 0n; /* AppendLongDigit */
+            continue;
+        }
+        if (k === 27 && count > 0n) { count = 0n; continue; }
+        if (!BY_SEL.has(k) && k !== 0 && k !== 10 && k !== 13 && k !== 27
+            && !' ^|><.-@,\\~:'.includes(String.fromCharCode(k))) continue;
+        const counted = count > 0n;
+        count = 0n;
         if (k === 27) { cancelled = true; break; }     /* ESC */
         if (k === 10 || k === 13 || k === 32 || k === 0) break; /* commit */
         const e = BY_SEL.get(k);
         if (e) {
             /* C wintty.c toggle_menu_curr() + set_item_state(): the
              * incremental repaint marks a plain selection '+'. */
-            e.selected = !e.selected;
-            e.mark = e.selected ? '+' : '-';
+            e.selected = counted || !e.selected;
+            e.mark = e.selected ? (counted ? '#' : '+') : '-';
             continue;
         }
         /* C wintty.c process_menu_window() menu_* defaults (defaults.nh):
@@ -661,6 +680,9 @@ async function menu_pick_pay_items(ibillct, ibill) {
         if (k === 0x2e || k === 0x2c || k === 0x2d || k === 0x5c
             || k === 0x40 || k === 0x7e) {
             for (const en of entries) {
+                /* C wintty.c:1208: selecting an already selected entry
+                 * preserves its subset count (and its '#' indicator). */
+                if ((k === 0x2e || k === 0x2c) && en.selected) continue;
                 en.selected = (k === 0x2e || k === 0x2c) ? true
                     : (k === 0x2d || k === 0x5c) ? false : !en.selected;
                 en.mark = en.selected ? '+' : '-';
@@ -679,8 +701,8 @@ async function menu_pick_pay_items(ibillct, ibill) {
                 entries.map((en) => ({ str: `${en.selector} - ${en.text}`, en })),
                 frameRows,
                 (curr) => {
-                    curr.en.selected = !curr.en.selected;
-                    curr.en.mark = curr.en.selected ? '+' : '-';
+                    curr.en.selected = counted || !curr.en.selected;
+                    curr.en.mark = curr.en.selected ? (counted ? '#' : '+') : '-';
                 });
             titleErased = true;
             continue;
@@ -893,7 +915,7 @@ async function pay_billed_items(shkp, ibillct, ibill, stashed_gold, paidBox) {
                 via_menu = false;
             } else {
                 const iprompt = await yn_function_shk('Itemized billing?',
-                                                      'ynq m', 'q');
+                                                      'ynq m', 'q', true);
                 if (iprompt === 'q')
                     return true;
                 itemize = (iprompt === 'y');
@@ -947,12 +969,18 @@ async function buy_container(shkp, indx, ibillct, ibill) {
     const e = ESHK(shkp), container = ibill[indx].obj;
     const totalcost = ibill[indx].cost | 0;
     const unpaidcontainer = !!container.unpaid;
+    const sightunseen = ibill[indx].usedup === UndisclosedContainer || ibill[indx].usedup === KnownContainer;
     if (await insufficient_funds(shkp, container, 0) || await insufficient_funds(shkp, container, totalcost)) return 1;
     const outer = (obj) => { let o = obj; while ((o.where | 0) === OBJ_CONTAINED_SHK && o.ocontainer) o = o.ocontainer; return o; };
     const ids = [];
     for (let i = 0; i < (e.billct | 0); i++) {
         const bp = (e.bill_p || e.bill || [])[i], obj = bp && bp_to_obj(bp);
-        if (!obj || outer(obj) !== container) continue;
+        if (!obj) {
+            await lifecycle_impossible("Can't find contained item on shop bill (#%d).", bp.bo_id);
+            return 2;
+        }
+        if ((obj.where | 0) !== OBJ_CONTAINED_SHK && !Has_contents(obj)) continue;
+        if (outer(obj) !== container) continue;
         if ((obj.quan | 0) < (bp.bquan | 0)) { await reject_purchase(shkp, obj, bp.bquan | 0); return 1; }
         if ((bp.bo_id >>> 0) !== (container.o_id >>> 0)) ids.push(bp.bo_id >>> 0);
     }
@@ -962,14 +990,20 @@ async function buy_container(shkp, indx, ibillct, ibill) {
         const bill = e.bill_p || e.bill || [];
         const bp = bill.find(b => (b.bo_id >>> 0) === id);
         const obj = bp && bp_to_obj(bp);
-        if (!bp || !obj) return 2;
-        const buy = await dopayobj(shkp, bp, obj, 1, false, true);
-        if (buy !== PAY_BUY) continue;
+        if (!bp) {
+            await lifecycle_impossible("Buying %s contents: item #%u disappeared from bill.", simpleonames_real(container), id);
+            return 2;
+        }
+        const buy = await dopayobj(shkp, bp, obj, 1, false, sightunseen);
+        if (buy !== PAY_BUY) {
+            await lifecycle_impossible("Buying %s contents failed unexpectedly (#%u %d).", simpleonames_real(container), obj.o_id, buy);
+            continue;
+        }
         ibill[indx].cost -= (bp.price | 0) * (bp.bquan | 0);
         await update_bill((id === (container.o_id >>> 0)) ? indx : -1, ibillct, ibill, e, bp, obj);
         bought++;
     }
-    if (bought && ibill[indx]?.usedup >= KnownContainer) {
+    if (bought && sightunseen) {
         if (unpaidcontainer) {
             /* Preserve the pre-purchase wording: paydoname() should describe
              * an unpaid container and its contents while the final bill line
@@ -978,7 +1012,7 @@ async function buy_container(shkp, indx, ibillct, ibill) {
             container.no_charge = 1;
         }
         await shk_names_obj(shkp, container, 'bought %s for %ld gold piece%s.%s', totalcost, '');
-        if (unpaidcontainer) container.unpaid = container.no_charge = 0;
+        container.unpaid = container.no_charge = 0;
     }
     return bought ? 0 : 2;
 }
@@ -1045,6 +1079,10 @@ export async function dopay() {
             if ((await getpos(cc, true, 'the creature you want to pay')) < 0)
                 return ECMD_OK;
             const cx = cc.x | 0, cy = cc.y | 0;
+            if (cx < 0) {
+                await pline('Try again...');
+                return ECMD_OK;
+            }
             if (u_at(cx, cy)) {
                 await pline('You are generous to yourself.');
                 return ECMD_OK;
@@ -1295,7 +1333,7 @@ function _shk_prop(p) {
     const bp = game.u?.uprops?.[p];
     return !!bp && !!((bp.intrinsic | 0) || (bp.extrinsic | 0)) && !(bp.blocked | 0);
 }
-function deserted_shop(enterstring) {
+async function deserted_shop(enterstring) {
     const g = game;
     const r = g.level?.rooms?.[enterstring.charCodeAt(0) - ROOMOFFSET];
     let m = 0, n = 0;
@@ -1315,7 +1353,7 @@ function deserted_shop(enterstring) {
     /* Blind_telepat = Blind && Telepat (youprop.h) */
     if (_shk_Blind() && !((_shk_prop(TELEPAT)) || _shk_prop(DETECT_MONSTERS)))
         ++n; /* force feedback to be less specific */
-    pline(`This shop ${(m < n) ? 'seems to be' : 'is'} ${!n ? 'deserted' : 'untended'}.`);
+    await pline(`This shop ${(m < n) ? 'seems to be' : 'is'} ${!n ? 'deserted' : 'untended'}.`);
 }
 
 /**
@@ -2038,9 +2076,12 @@ export function set_cost(obj, shkp) {
     else divisor *= 2;
     const mat = MKOBJ_OC_MATERIAL[obj.otyp | 0] | 0;
     if (!obj.dknown || !(game._oc_name_known && game._oc_name_known[obj.otyp | 0])) {
-        if ((obj.oclass | 0) === 13 && (mat === 20 || mat === 19)) {
-            tmp = (((obj.otyp | 0) - 439) % (6 - ((shkp?.m_id | 0) % 3)) + 3) * (obj.quan | 0);
-            divisor = 1;
+        if ((obj.oclass | 0) === 13) {
+            // C shk.c:3165-3174: mineral gems also bypass the non-gem discount.
+            if (mat === 20 || mat === 19) {
+                tmp = (((obj.otyp | 0) - 439) % (6 - ((shkp?.m_id | 0) % 3)) + 3) * (obj.quan | 0);
+                divisor = 1;
+            }
         } else if (tmp > 1 && ((shkp?.m_id | 0) % 4) === 0) {
             multiplier *= 3; divisor *= 4;
         }
@@ -2082,7 +2123,7 @@ export async function sub_one_frombill(obj, shkp) {
     if (bp) {
         obj.unpaid = 0;
         if ((bp.bquan | 0) > (obj.quan | 0)) {
-            const rem = newobj(obj, { nobj: null, cobj: null, oextra: null });
+            const rem = newobj(obj, { oextra: null });
             bp.bo_id = rem.o_id = next_ident();
             rem.where = 0;
             rem.quan = (bp.bquan | 0) - (obj.quan | 0);
@@ -2575,6 +2616,26 @@ export function add_damage(x, y, cost) {
     if (cansee(x, y))
         loc.seenv = SVALL;
 }
+// C shk.c:4362-4399: an alert shopkeeper intercepts a flying digging tool.
+export async function shkcatch(obj, x, y) {
+    const shkp = shop_keeper(inside_shop(x, y)), u = game.u;
+    if (!shkp || !inhishop(shkp)) return null;
+    if (helpless(shkp) || (_ushops0_shk(u) === ESHK(shkp).shoproom && inside_shop(u.ux, u.uy))
+        || dist2(shkp.mx, shkp.my, x, y) >= 3 || (shkp.mx === x && shkp.my === y)) return null;
+    if (await mnearto(shkp, x, y, true, RLOC_NOMSG) === 2 && !_shk_Deaf() && !muteshk(shkp)) {
+        SetVoice(shkp, 0, 80, 0);
+        await verbalize('Out of my way, scum!');
+    }
+    if (cansee(x, y)) {
+        await pline('%s nimbly%s catches %s.', Shknam(shkp),
+                    x === shkp.mx && y === shkp.my ? '' : ' reaches over and', the_shk(xname_shk(obj)));
+        if (!canspotmon(shkp)) map_invisible(x, y);
+        // tty nh_delay_output/mark_synch only delay and flush stdout.
+    }
+    await subfrombill(obj, shkp);
+    await mpickobj(shkp, obj);
+    return shkp;
+}
 /* C ref: shk.c:5019-5114 shopdig(fall). */
 export async function shopdig(fall) {
     const u = game.u;
@@ -2582,7 +2643,7 @@ export async function shopdig(fall) {
     if (!shkp) return;
     if (!inhishop(shkp)) {
         if ((game.urole?.mnum | 0) === PM_KNIGHT) {
-            await pline('You feel like a common thief.');
+            await You_feel('like a common thief.');
             adjalign_real(-sgn(u.ualign?.type | 0));
         }
         return;
@@ -2630,7 +2691,7 @@ export async function shopdig(fall) {
                             female ? "Madam" : "Sir");
     }
     if ((game.urole?.mnum | 0) === PM_KNIGHT) {
-        await pline('You feel like a common thief.');
+        await You_feel('like a common thief.');
         adjalign_real(-sgn(u.ualign?.type | 0));
     }
 }
@@ -2848,7 +2909,7 @@ export async function u_entered_shop(enterstring) {
         if (!empty_shops.includes(enterstring[0])
             && (in_rooms(u.ux | 0, u.uy | 0, SHOPBASE).join()
                 !== in_rooms(u.ux0 | 0, u.uy0 | 0, SHOPBASE).join()))
-            deserted_shop(enterstring);
+            await deserted_shop(enterstring);
         empty_shops = typeof u.ushops === 'string' ? u.ushops : '';
         u.ushops = '';
         return;
@@ -2856,8 +2917,9 @@ export async function u_entered_shop(enterstring) {
     if (!inhishop(shkp)) {
         /* C sets eshkp->bill_p to a poison pointer here ("dump core when
          * referenced"); nothing reads it before the next entry resets it. */
+        ESHK(shkp).bill_p = -1000;
         if (!empty_shops.includes(enterstring[0]))
-            deserted_shop(enterstring);
+            await deserted_shop(enterstring);
         empty_shops = typeof u.ushops === 'string' ? u.ushops : '';
         u.ushops = '';
         return;
@@ -2873,11 +2935,11 @@ export async function u_entered_shop(enterstring) {
 
     const plname = g.plname || u.plname || '';
     if ((!(eshkp.visitct | 0) || (eshkp.customer && eshkp.customer.length))
-        && (eshkp.customer || '').toLowerCase() !== plname.toLowerCase()) {
+        && (eshkp.customer || '').substring(0, 32).toLowerCase() !== plname.substring(0, 32).toLowerCase()) {
         /* "You seem to be new here" */
         eshkp.visitct = 0;
         eshkp.following = 0;
-        eshkp.customer = plname.substring(0, 63);
+        eshkp.customer = plname.substring(0, 32);
         pacify_shk(shkp, true);
     }
 
@@ -2889,12 +2951,12 @@ export async function u_entered_shop(enterstring) {
     const shopname = shtype_name(rt - SHOPBASE);
 
     if (_shk_Invis()) {
-        pline(`${Shknam(shkp)} senses your presence.`);
+        await pline(`${Shknam(shkp)} senses your presence.`);
         if (!_shk_Deaf() && !muteshk(shkp)) {
             SetVoice(shkp, 0, 80, 0);
-            verbalize('Invisible customers are not welcome!');
+            await verbalize('Invisible customers are not welcome!');
         } else {
-            pline(`${Shknam(shkp)} stands firm as if he knows you are there.`);
+            await pline(`${Shknam(shkp)} stands firm as if ${noit_mhe(shkp)} knows you are there.`);
         }
         return;
     }
@@ -2902,29 +2964,33 @@ export async function u_entered_shop(enterstring) {
     if (ANGRY(shkp)) {
         if (!_shk_Deaf() && !muteshk(shkp)) {
             SetVoice(shkp, 0, 80, 0);
-            verbalize('So, %s, you dare return to %s %s?!', plname,
+            await verbalize('So, %s, you dare return to %s %s?!', plname,
                       s_suffix_shk(shkname(shkp)), shopname);
+        } else {
+            await pline('%s seems %s over your return to %s %s!', Shknam(shkp), ['quite upset', 'ticked off', 'furious'][rn2_shk(3)], noit_mhis(shkp), shopname);
         }
     } else if (eshkp.surcharge) {
         if (!_shk_Deaf() && !muteshk(shkp)) {
             SetVoice(shkp, 0, 80, 0);
-            verbalize("Back again, %s?  I've got my %s on you.", plname, 'eye');
+            await verbalize("Back again, %s?  I've got my %s on you.", plname, mbodypart(shkp, EYE));
         } else {
-            pline(`The atmosphere at ${s_suffix_shk(shkname(shkp))} ${shopname} seems unwelcoming.`);
+            await pline(`The atmosphere at ${s_suffix_shk(shkname(shkp))} ${shopname} seems unwelcoming.`);
         }
     } else if (eshkp.robbed) {
         if (!_shk_Deaf()) {
-            pline(`${Shknam(shkp)} mutters imprecations against shoplifters.`);
+            await pline(`${Shknam(shkp)} mutters imprecations against shoplifters.`);
+        } else {
+            await pline('%s is combing through %s inventory list.', Shknam(shkp), noit_mhis(shkp));
         }
     } else {
         const again = (eshkp.visitct | 0) ? ' again' : '';
         eshkp.visitct = (eshkp.visitct | 0) + 1;
         if (!_shk_Deaf() && !muteshk(shkp)) {
             SetVoice(shkp, 0, 80, 0);
-            verbalize('%s, %s!  Welcome%s to %s %s!', Hello(shkp), plname,
+            await verbalize('%s, %s!  Welcome%s to %s %s!', Hello(shkp), plname,
                       again, s_suffix_shk(shkname(shkp)), shopname);
         } else {
-            pline(`You enter ${s_suffix_shk(shkname(shkp))} ${shopname}${again}!`);
+            await pline(`You enter ${s_suffix_shk(shkname(shkp))} ${shopname}${again}!`);
         }
     }
     if (!inside_shop(u.ux, u.uy)) {
@@ -2958,6 +3024,11 @@ export async function u_entered_shop(enterstring) {
                                not_upset ? "doesn't want" : 'refuses', y_monnam_shk(game.u.usteed));
             await flush_screen(1);
             await dochug(shkp);
+        } else {
+            const fast = u.uprops?.[64]; // FAST; C youprop.h:376 HFast || EFast
+            if ((fast?.intrinsic || fast?.extrinsic)
+                && (sobj_at(PICK_AXE, u.ux, u.uy) || sobj_at(DWARVISH_MATTOCK, u.ux, u.uy)))
+                await dochug(shkp);
         }
     }
 }
@@ -3140,7 +3211,7 @@ export async function pay_for_damage(dmgstr, cant_mollify) {
         if (!cansee(shkp.mx | 0, shkp.my | 0))
             return;
         pursue = true;
-        getcad(shkp, dmgstr, x, y, uinshp, animal, pursue);
+        await getcad(shkp, dmgstr, x, y, uinshp, animal, pursue);
         return;
     }
 
@@ -3152,12 +3223,12 @@ export async function pay_for_damage(dmgstr, cant_mollify) {
          * unsatisfiable. */
         if (um_dist(shkp.mx | 0, shkp.my | 0, 1)
             && !um_dist(shkp.mx | 0, shkp.my | 0, 3)) {
-            pline(Sprintf("%s leaps towards you!", Shknam(shkp)));
+            await pline(Sprintf("%s leaps towards you!", Shknam(shkp)));
             await mnexto(shkp, RLOC_NOMSG);
         }
         pursue = um_dist(shkp.mx | 0, shkp.my | 0, 1);
         if (pursue) {
-            getcad(shkp, dmgstr, x, y, uinshp, animal, pursue);
+            await getcad(shkp, dmgstr, x, y, uinshp, animal, pursue);
             return;
         }
     } else {
@@ -3183,7 +3254,7 @@ export async function pay_for_damage(dmgstr, cant_mollify) {
     if ((um_dist(x, y, 1) && !uinshp) || cant_mollify
         || (money_cnt(g.invent) + (eshk ? eshk.credit : 0)) < cost_of_damage
         || !rn2_shk(50)) {
-        getcad(shkp, dmgstr, x, y, uinshp, animal, pursue);
+        await getcad(shkp, dmgstr, x, y, uinshp, animal, pursue);
         return;
     }
 
@@ -3350,7 +3421,7 @@ async function repair_damage(shkp, damg, catchup) {
     } else if (IS_WALL(damg.typ | 0)) {
         const u = game.u || {};
         if (inside_shop(u.ux | 0, u.uy | 0) === (ESHK(shkp).shoproom | 0))
-            await pline("You feel more claustrophobic than before.");
+            await You_feel("more claustrophobic than before.");
         else if (!_shk_Deaf() && !rn2_shk(10))
             await Norep("The dungeon acoustics noticeably change.");
     }
@@ -3385,9 +3456,20 @@ async function litter_getpos(litter, x, y, shkp) {
     return k;
 }
 
-/* C ref: shk.c:4621 litter_scatter (Punished ball&chain case not ported) */
+/* C ref: shk.c:4621 litter_scatter */
 const BOULDER = 475, ROCK = 474;
 async function litter_scatter(litter, x, y, shkp) {
+    const { uball, uchain, uswallow } = game.u;
+    if (uball && !uswallow
+        && ((uchain.ox === x && uchain.oy === y)
+            || (uball.where === OBJ_FLOOR_SHK && uball.ox === x && uball.oy === y))) {
+        if (!_shk_Deaf() && !muteshk(shkp)) {
+            SetVoice(shkp, 0, 80, 0);
+            await verbalize("Get your junk out of my wall!");
+        }
+        unplacebc();
+        await placebc();
+    }
     let otmp;
     while ((otmp = game.level.levelObjects?.[x]?.[y] ?? game.level.objects?.[x]?.[y])) {
         if (otmp.otyp === BOULDER || otmp.otyp === ROCK) {
@@ -3603,8 +3685,8 @@ const Izchak_speaks = [
     "%s says: 'You may well need something from this shop in the future.'",
     "%s comments about the Valley of the Dead as being a gateway.",
 ];
-/* C do_name.c noit_mhe(mon) — subjective pronoun, no "it" fallback. */
-function noit_mhe(mon) { return mon?.female ? 'she' : 'he'; }
+/* C you.h:326-329: PRONOUN_NO_IT | PRONOUN_HALLU for both pronouns. */
+function noit_mhe(mon) { return ['he', 'she', 'it', 'they'][pronoun_gender(mon, 3)]; }
 export async function shk_chat(shkp) {
     if (!shkp.isshk) {
         await pline(`${Monnam_chat(shkp)} asks whether you've seen any untended shops recently.`);
@@ -3948,6 +4030,15 @@ export function hot_pursuit(shkp) {
     clear_no_charge_pets(shkp);
 }
 
+export async function make_angry_shk(shkp, _ox, _oy) {
+    const e = ESHK(shkp);
+    if (e.billct || e.debit || e.loan || e.credit) {
+        e.robbed = Math.max(0, e.robbed + addupbill(shkp) + e.debit + e.loan - e.credit);
+        await setpaid(shkp);
+    }
+    await pline("%s %s!", Shknam(shkp), shkp.mpeaceful ? "gets angry" : "is furious");
+    hot_pursuit(shkp);
+}
 function clear_no_charge(_shkp, chain) {
     for (let otmp = chain; otmp; otmp = otmp.nobj) {
         otmp.no_charge = 0;
@@ -3979,7 +4070,7 @@ function clear_no_charge_pets(_shkp) {
 
 /* C ref: shk.c:5138-5172 getcad(shkp, dmgstr, x, y, uinshp, animal, pursue) —
  * the shopkeeper's "How dare you..." reaction to damage, then hot_pursuit. */
-function getcad(shkp, dmgstr, x, y, uinshp, animal, pursue) {
+async function getcad(shkp, dmgstr, x, y, uinshp, animal, pursue) {
     /* C: dugwall — "dig into" (wand) or "damage" (pick-axe) means the SHOP was
      * breached, anything else means the door was. */
     const dugwall = (dmgstr === "dig into" || dmgstr === "damage");
@@ -3987,32 +4078,27 @@ function getcad(shkp, dmgstr, x, y, uinshp, animal, pursue) {
 
     if (muteshk(shkp)) {
         if (animal && !helpless(shkp))
-            yelp(shkp);
+            await yelp(shkp);
     } else if (pursue || uinshp || !um_dist(x, y, 1)) {
         if (!_shk_Deaf()) {
             SetVoice(shkp, 0, 80, 0);
-            verbalize("How dare you %s my %s?", dmgstr,
+            await verbalize("How dare you %s my %s?", dmgstr,
                       dugwall ? "shop" : "door");
         } else {
-            /* KNOWN GAP — shk.c:5155-5158, the Deaf variant:
-             *   pline("%s is %s that you decided to %s %s %s!", Shknam(shkp),
-             *         ROLL_FROM(angrytexts), dmgstr, noit_mhis(shkp), ...)
-             * ROLL_FROM (hack.h:1498) is `array[rn2(SIZE(array))]`, so this
-             * arm draws one rn2 that is skipped here.  Missing dependency:
-             * the angrytexts[] table (shk.c) and noit_mhis (do_name.c).
-             * Message-only; hot_pursuit below still fires, which is the
-             * load-bearing state change.  Not thrown — a throw discards the
-             * replay's entire matched RNG prefix. */
+            await pline("%s is %s that you decided to %s %s %s!", Shknam(shkp),
+                        ['quite upset', 'ticked off', 'furious'][rn2_shk(3)],
+                        dmgstr, noit_mhis(shkp), dugwall ? "shop" : "door");
         }
     } else {
         if (!_shk_Deaf()) {
-            pline(Sprintf("%s shouts:", Shknam(shkp)));
+            await pline("%s shouts:", Shknam(shkp));
             SetVoice(shkp, 0, 80, 0);
-            verbalize("Who dared %s my %s?", dmgstr,
+            await verbalize("Who dared %s my %s?", dmgstr,
                       dugwall ? "shop" : "door");
         } else {
-            /* KNOWN GAP — shk.c:5166-5169, the same ROLL_FROM(angrytexts)
-             * Deaf variant for the out-of-earshot case; see above. */
+            await pline("%s is %s that someone decided to %s %s %s!", Shknam(shkp),
+                        ['quite upset', 'ticked off', 'furious'][rn2_shk(3)],
+                        dmgstr, noit_mhis(shkp), dugwall ? "shop" : "door");
         }
     }
     hot_pursuit(shkp);
@@ -4110,29 +4196,7 @@ async function give_to_nearby_mon(otmp, x, y) {
         place_object(otmp, x, y);
 }
 
-// C do.c obj_no_longer_held(obj) — things that must change when not held;
-// recurse into containers. The only branch with an observable effect is the
-// CRYSKNIFE reversion (rn2(10) when not oerodeproof); costly_alteration's
-// shop-billing side effect is untracked by this task's diff fields, so it is
-const CRYSKNIFE_OTYP = 43;
-const WORM_TOOTH_OTYP = 42;
-function costly_alteration_fp(_obj, _alter_type) { }
-function obj_no_longer_held(obj) {
-    if (!obj)
-        return;
-    if (Has_contents(obj)) {
-        for (let contents = obj.cobj; contents; contents = contents.nobj)
-            obj_no_longer_held(contents);
-    }
-    if (obj.otyp === CRYSKNIFE_OTYP) {
-        if (!obj.oerodeproof || rn2_shk(10) === 0) {
-            costly_alteration_fp(obj, 0 /* COST_DEGRD */);
-            obj.otyp = WORM_TOOTH_OTYP;
-            obj.oerodeproof = 0;
-        }
-    }
-}
-
+// C bones.c:276-277 uses do.c:893 obj_no_longer_held, including billing.
 function artifact_light_fp(obj) {
     return !!(obj && (obj.otyp === 102 /* GOLD_DRAGON_SCALE_MAIL */ || obj.otyp === 112 /* GOLD_DRAGON_SCALES */));
 }
@@ -4152,7 +4216,7 @@ export async function drop_upon_death(mtmp, cont, x, y) {
         await freeinv(otmp); // C bones.c:273: extract from OBJ_INVENT.
 
         if (!mtmp || is_undead(mtmp.data))
-            obj_no_longer_held(otmp);
+            await obj_no_longer_held(otmp);
 
         if ((cont || artifact_light_fp(otmp)) && obj_is_burning_fp(otmp))
             end_burn_fp(otmp, true);
@@ -4220,7 +4284,7 @@ function adjalign(n) { return adjalign_real(n); }
 function noit_mhis(shkp) {
     return ['his', 'her', 'its', 'their'][pronoun_gender(shkp, 3)];
 }
-function noit_mhim(mon) { return mon?.female ? 'her' : 'him'; }
+function noit_mhim(mon) { return ['him', 'her', 'it', 'them'][pronoun_gender(mon, 3)]; }
 /* C polyself.c:1956-2046 mbodypart(mon, part) — the real general port lives
  * in js/cmd.js (mbodypart_real, imported above). */
 function mbodypart(shkp, part) { return mbodypart_real(shkp, part); }
@@ -4298,9 +4362,11 @@ function Sprintf(fmt, ...args) {
 async function y_n(question) {
     const g = game;
     const prompt = `${question} [yn] (n)`;
-    await flush_screen(1);
+    /* C topl.c:397-398 tty_yn_function: more() precedes the prompt's
+     * custompline -> flush_screen, so the --More-- shows the terminal as last
+     * flushed (mnexto's newsym is still unflushed). */
     if (g._pending_message)
-        await force_more(g._pending_message);
+        await force_more_lone_frame(g._pending_message);
     for (;;) {
         g._pending_message = prompt;
         await flush_screen(1);
@@ -4604,8 +4670,16 @@ export function getprice(obj, shk_buying) {
     return tmp;
 }
 
+/* C shk.c:2846 get_pricing_units(obj) — quan, except globs sell by weight. */
 export function get_pricing_units(obj) {
-    return obj.quan | 0;
+    let units = obj.quan | 0;
+    if (obj.globby) {
+        const unit_weight = OC_WEIGHT[obj.otyp | 0] | 0;
+        const wt = obj.owt > 0 ? obj.owt : weight(obj);
+        if (unit_weight)
+            units = Math.trunc((wt + unit_weight - 1) / unit_weight);
+    }
+    return units;
 }
 
 /* C shk.c:2878 get_cost(obj, shkp) — "calculate the value that the shk will
@@ -4626,7 +4700,7 @@ export function get_cost(obj, shkp) {
             && (MKOBJ_OC_MATERIAL[otyp] | 0) === GLASS_SHK) {
             /* get a value that's 'random' from game to game, but the
                same within the same game */
-            const ubirthday = game.u?.ubirthday ?? 0;
+            const ubirthday = (game.u?.ubirthday ?? 0) | 0; // C: (int) ubirthday
             const pseudorand = ((ubirthday % otyp) >= Math.trunc(otyp / 2));
             const pair = GLASS_GEM_UPGRADE[otyp - FIRST_GLASS_GEM_SHK];
             /* all gems are priced high - real or not */

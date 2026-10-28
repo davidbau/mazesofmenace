@@ -20,13 +20,14 @@ import { impossible } from './pline.js';
 import { displayLookWindow } from './look-window.js';
 import { fix_ghostly_obj } from './bones.js';
 import {
-    pline, _topl_stash_result, newsym, newsym_force, Norep, flush_screen,
-    force_more, topl_park_cursor, topl_force_break_after,
+    pline, _topl_stash_result, newsym, newsym_force, Norep, flush_screen, obj_to_glyph,
+    force_more, topl_park_cursor, topl_force_break_after, You_see,
     _topline_more_pending, _more_never_dismissed, flush_pending_messages,
 } from './display.js';
 import { pline_with_more, money_cnt, build_window_screen, tty_window_offx } from './com_pager.js';
 import { menu_heading_text } from './tty_menu.js';
 import { autokey, pick_lock, getdir, u_have_forceable_weapon } from './lock.js';
+import { boxlock } from './lock.js';
 import { nomul } from './allmain.js';
 import { nhgetch } from './input.js';
 import { touch_artifact_youmonst, _pickup_burden_level } from './wizcmds.js';
@@ -36,6 +37,7 @@ import { exercise } from './attrib.js';
 import { PM_STONE_GOLEM } from './pm.generated.js';
 import { corpse_xname, killer_xname, CXN_SINGULAR, CXN_ARTICLE } from './objnam.js';
 import { Blind } from './vision.js';
+import { get_obj_location } from './light.js';
 import { ARMOR_DATA } from './armor_data.js';
 import { splitobj } from './makemon.js';
 import { which_armor } from './makemon.js';
@@ -58,6 +60,7 @@ import {
     SDOOR, CLOUD, Is_waterlevel, Is_earthlevel,
     In_sokoban, HAND, P_RIDING, P_BASIC,
     SHOPBASE, ESHK, STONE_RES, KILLED_BY_AN, PARANOID_AUTOALL, A_WIS,
+    IS_THRONE, T_LOOTED,
 } from './const.js';
 /* C ref: pickup.c:2293 the `lootmon` branch — mon_beside() needs m_at(). */
 import { m_at, mon_nam } from './uhitm.js';
@@ -69,17 +72,17 @@ import { hliquid, x_monnam } from './mhitm.js';
 import { is_pool, look_here } from './look.js';
 import { t_at, extract_from_minvent } from './trap.js';
 import { can_reach_floor, addinv_core0, hold_another_object } from './hold_another_object.js';
-import { freehand, cant_reach_floor } from './engrave.js';
+import { freehand, cant_reach_floor, is_ice } from './engrave.js';
 import { rider_cant_reach } from './steed.js';
 import { P_SKILL } from './skills.js';
 import {
-    safe_qbuf as safe_qbuf_shk, costly_spot, in_rooms, addtobill, shop_keeper, inhishop, remote_burglary,
+    safe_qbuf as safe_qbuf_shk, costly_spot, in_rooms, addtobill, shop_keeper, inhishop, remote_burglary, shk_your,
 } from './shk.js';
-import { remove_object, upstart, engr_at, On_stairs, set_bknown, is_rider_pm, revive_corpse } from './mklev.js';
+import { remove_object, obj_extract_self, upstart, engr_at, On_stairs, set_bknown, is_rider_pm, revive_corpse } from './mklev.js';
 import {
     max_capacity, calc_capacity, near_capacity, weight,
 } from './weight.js';
-import { ansimpleoname, thesimpleoname, an, doname, makesingular, cxname_singular, getObjDescr, xname, the, otense } from './objnam.js';
+import { ansimpleoname, thesimpleoname, simpleonames, an, doname, doname_with_price, makesingular, cxname_singular, getObjDescr, xname, the, otense } from './objnam.js';
 import { observe_object, discover_object } from './o_init.js';
 /* C ref: describe_decor()'s own callees (invent.c dfeature_at, dungeon.c
  * waterbody_name, trap.c back_on_ground) are all real, tested bodies that
@@ -380,6 +383,9 @@ export async function doloot() {
     return res;
 }
 
+/* C ref: pickup.c:2350 reverse_loot() — called when attempting to #loot while
+ * confused.  The throne-room branch (pickup.c:2386-2423, coffers/court
+ * monsters) follows C. */
 async function reverse_loot() {
     const u = game.u;
     const x = u.ux, y = u.uy;
@@ -406,6 +412,32 @@ async function reverse_loot() {
     const { remove_worn_item } = await import('./steal.js');
     await remove_worn_item(goldob, false);
     const cmd = await _cmdModule();
+    const tile = game.level.at(x, y);
+    if (IS_THRONE(tile.typ)) {
+        const { add_to_container, add_to_minv, courtmon, makemon } = await import('./mklev.js');
+        let coffers = null, mon;
+        const dist = o => (o.ox - x) ** 2 + (o.oy - y) ** 2;
+        for (let o = game.fobj; o; o = o.nobj) {
+            if (o.otyp === CHEST_OTYP && (o.spe === 2 || !coffers || dist(o) < dist(coffers))) coffers = o;
+            if (coffers?.spe === 2) break;
+        }
+        if (coffers) {
+            await cmd.verbalize('Thank you for your contribution to reduce the debt.');
+            cmd.freeinv(goldob);
+            await add_to_container(coffers, goldob);
+            coffers.owt = weight(coffers); coffers.cknown = 0;
+            if (!coffers.olocked) await boxlock(coffers, { otyp: 381 /* SPE_WIZARD_LOCK */ });
+        } else if (tile.looted !== T_LOOTED && (mon = await makemon(courtmon(), x, y, 0))) {
+            cmd.freeinv(goldob);
+            await add_to_minv(mon, goldob);
+            await pline('The exchequer accepts your contribution.');
+            if (!rn2(10)) tile.looted = T_LOOTED;
+        } else {
+            await pline('You drop %s.', await doname(goldob));
+            await cmd.dropx(goldob);
+        }
+        return true;
+    }
     await cmd.dropx(goldob);
     if (cmd.g_at(x, y))
         await pline("Ok, now there is loot here.");
@@ -757,7 +789,7 @@ function _surface_word(x, y) {
     if (is_pool(x, y))
         return (_Underwater() && !Is_waterlevel(game.u?.uz))
             ? 'bottom' : hliquid('water');
-    if (lev.typ === ICE)
+    if (is_ice(x, y))
         return 'ice';
     if (_is_lava(x, y))
         return hliquid('lava');
@@ -861,7 +893,7 @@ async function read_engr_at(x, y) {
     if (!ep || !ep.text || !ep.text[0])
         return;
     const isBlind = Blind();
-    const isIce = game.level?.at ? game.level.at(x, y)?.typ === ICE : false;
+    const isIce = is_ice(x, y);
     let sensed = false;
     switch (ep.engr_type) {
     case DUST:
@@ -892,18 +924,15 @@ async function read_engr_at(x, y) {
     case ENGR_BLOOD:
         if (!isBlind) {
             sensed = true;
-            await pline('You see a message scrawled in blood here.');
+            await You_see('a message scrawled in blood here.');
         }
         break;
     default:
-        /* C: impossible("%s is written in a very strange way.", Something);
-         * sensed = TRUE; — impossible() is a debug/panic channel this port
-         * does not surface as a player-visible pline (established
-         * convention, see js/look.js's identical `_read_engr_at` default
-         * arm). engr_type is written only by make_engr_at() call sites in
+        /* engr_type is written only by make_engr_at() call sites in
          * this tree and every one passes a DUST/ENGRAVE/BURN/MARK/
          * ENGR_BLOOD/HEADSTONE constant, so this default is dead on the
          * whole port today; ported anyway, matching Cardinal Rule 1. */
+        await impossible('Something is written in a very strange way.');
         sensed = true;
         break;
     }
@@ -913,7 +942,7 @@ async function read_engr_at(x, y) {
      * punctuation.  `off` is the actual-text pointer's offset into the
      * original buffer (js/mklev.js's make_engr_at/wipe_engr_at maintain it);
      * the pristine copy is looked up at that SAME offset, not re-based. */
-    const et = ep.text;
+    const et = ep.text.slice(0, 232); // C engrave.c:375-385
     const elen = et.length;
     const off = ep.off | 0;
     const pristine = (ep.pristine != null) ? ep.pristine : et;
@@ -992,7 +1021,7 @@ const DEF_OC_SYMS = [
     ']', ')', '[', '=', '"', '(', '%', '!',
     '?', '+', '/', '$', '*', '`', '0', '_', '.',
 ];
-async function autopick_testobj(otmp, calc_costly) {
+export async function autopick_testobj(otmp, calc_costly) {
     const g = game;
     const otypes = g.flags?.pickup_types || '';
 
@@ -1025,12 +1054,17 @@ async function autopick_testobj(otmp, calc_costly) {
  * out-param the way C's alloc()'d menu_item array works. */
 async function autopick(olist, follow) {
     const items = [];
+    let n = 0;
     let check_costly = true;
     for (let curr = olist; curr; curr = _follow(curr, follow)) {
         if (await autopick_testobj(curr, check_costly))
-            items.push({ obj: curr, count: curr.quan | 0 });
+            ++n;
         check_costly = false;
     }
+    if (n)
+        for (let curr = olist; curr; curr = _follow(curr, follow))
+            if (await autopick_testobj(curr, false))
+                items.push({ obj: curr, count: curr.quan | 0 });
     return items;
 }
 
@@ -1058,6 +1092,7 @@ const _QO_SELECT_ALL = 0x2e /* '.' */, _QO_UNSELECT_ALL = 0x2d /* '-' */,
  * class, anything else rings the bell and the menu stays up. */
 async function _select_menu(items, how, paint = null) {
     let page = 0;
+    let pendingCount = 0n;
     for (;;) {
         /* wintty.c tty_end_menu: a menu taller than the terminal paginates at
          * rows-1 (23) content rows with a "(N of M)" footer; each page is a
@@ -1073,7 +1108,7 @@ async function _select_menu(items, how, paint = null) {
                 if (it.heading && it.heading !== lastHeading)
                     all.push(menu_heading_text(it.heading));
                 lastHeading = it.heading;
-                all.push(`${it.sel} ${it.selected ? '+' : '-'} ${it.text}`);
+                all.push(`${it.sel} ${it.selected ? (it.count > 0 ? '#' : '+') : '-'} ${it.text}`);
             }
             all.push('(end)');
             const tall = all.length > 24;
@@ -1111,12 +1146,24 @@ async function _select_menu(items, how, paint = null) {
         const ch = String.fromCharCode(k);
         const hit = items.find((it, ix) => it.sel === ch
             && ix >= pageStart && ix < pageEnd);
+        // C wintty.c:1564-1615: digits accumulate a count; ESC cancels it.
+        if (!hit && k >= 48 && k <= 57
+            && (pendingCount || !items.some(it => it.gsel === ch))) {
+            pendingCount = pendingCount * 10n + BigInt(k - 48);
+            if (pendingCount > 0x7fffffffffffffffn) pendingCount = 0n;
+            continue;
+        }
+        const count = Number(pendingCount);
+        pendingCount = 0n;
         if (hit) {
-            hit.selected = !hit.selected;
+            // C toggle_menu_curr: a count replaces an existing selection.
+            hit.selected = count > 0 || !hit.selected;
+            hit.count = hit.selected ? (count || -1) : -1;
             if (how === PICK_ONE) return false;
             continue;
         }
         if (k === 27) {
+            if (count) continue;
             for (const it of items) it.selected = false;
             return true; /* cancelled */
         }
@@ -1135,15 +1182,18 @@ async function _select_menu(items, how, paint = null) {
             continue;
         }
         if (k === _QO_UNSELECT_ALL || k === _QO_UNSELECT_PAGE) {
-            for (const it of items) it.selected = false;
+            for (const it of items) { it.selected = false; it.count = -1; }
             continue;
         }
         if (how === PICK_ANY && (k === _QO_INVERT_ALL || k === _QO_INVERT_PAGE)) {
-            for (const it of items) it.selected = !it.selected;
+            for (const it of items) { it.selected = !it.selected; if (!it.selected) it.count = -1; }
             continue;
         }
         if (ch !== '\0' && items.some((it) => it.gsel === ch)) {
-            for (const it of items) if (it.gsel === ch) it.selected = !it.selected;
+            for (const it of items) if (it.gsel === ch) {
+                it.selected = !it.selected;
+                it.count = it.selected ? (count || -1) : -1;
+            }
             if (how === PICK_ONE) return false;
             continue;
         }
@@ -1241,6 +1291,10 @@ async function query_objlist(qstr, objchain, qflags, how, allow) {
     for (let curr = objchain; curr; curr = _follow(curr, qflags))
         if (allow(curr)) { last = curr; n++; eligible.push(curr); }
 
+    const engulfer_minvent = objchain?.where === OBJ_MINVENT
+        && game.u.uswallow && objchain.ocarry === game.u.ustuck;
+    if (engulfer_minvent && n === 1 && objchain.owornmask)
+        qflags &= ~AUTOSELECT_SINGLE;
     if (n === 0)
         return [];
     if (n === 1 && (qflags & AUTOSELECT_SINGLE))
@@ -1275,13 +1329,27 @@ async function query_objlist(qstr, objchain, qflags, how, allow) {
     /* C pickup.c:1096-1130 paints the menu: title, then a heading per object
      * class (sortloot already groups by class) before its doname'd entries. */
     for (const it of items) {
-        it.text = await doname(it.obj);
-        it.heading = _QO_CLASS_NAME[it.obj.oclass | 0] ?? 'Items';
+        if ((qflags & FEEL_COCKATRICE) && Blind() && !u_safe_from_fatal_corpse(it.obj, 0x0f)) {
+            await look_here(0, LOOKHERE_NOFLAGS);
+            return [];
+        }
+        obj_to_glyph(it.obj);
+        it.text = await doname_with_price(it.obj);
+        it.heading = (qflags & INVORDER_SORT) ? (_QO_CLASS_NAME[it.obj.oclass | 0] ?? 'Items') : null;
     }
     const cancelled = await _select_menu(items, how, { title: qstr });
     if (cancelled) return [];
-    const picked = items.filter((it) => it.selected);
-    return picked.map((it) => ({ obj: it.obj, count: it.obj.quan | 0 }));
+    const picked = [];
+    for (const it of items.filter((it) => it.selected)) {
+        if (engulfer_minvent && it.obj.owornmask) {
+            await pline("You can't pick %s up.", shk_your('', it.obj) + simpleonames({ ...it.obj, quan: 1 }));
+            continue;
+        }
+        picked.push(it);
+    }
+    // C pickup.c:1190-1191 bounds each selected count by the stack size.
+    return picked.map((it) => ({ obj: it.obj,
+        count: it.count > 0 ? Math.min(it.count, it.obj.quan) : it.obj.quan }));
 }
 
 /* C pickup.c:1544 delta_cwt().  A carried bag of holding contributes its
@@ -1521,32 +1589,15 @@ async function pick_obj(otmp) {
     const g = game;
     const u = g.u || {};
     const fromfloor = (otmp.where | 0) === OBJ_FLOOR;
-    const ox = otmp.ox | 0, oy = otmp.oy | 0;
+    const x = { value: 0 }, y = { value: 0 };
+    get_obj_location(otmp, x, y, 0); // C pickup.c:1904, including monster inventory.
+    const ox = x.value, oy = y.value;
 
     let robshop = !u.uswallow && otmp !== u.uball && costly_spot(ox, oy);
 
-    if (fromfloor) {
-        remove_object(otmp); /* real: js/mklev.js's C-faithful body */
+    obj_extract_self(otmp); // C pickup.c:1907; dispatch through the owning chain.
+    if (fromfloor)
         newsym(ox, oy);
-    } else if ((otmp.where | 0) === OBJ_MINVENT) {
-        const mon = otmp.ocarry;
-        if (mon) {
-            let prev = null;
-            for (let o = mon.minvent; o; prev = o, o = o.nobj) {
-                if (o === otmp) {
-                    if (prev) prev.nobj = o.nobj;
-                    else mon.minvent = o.nobj;
-                    break;
-                }
-            }
-        }
-        otmp.where = OBJ_FREE;
-        otmp.nobj = null;
-        otmp.ocarry = null;
-    } else {
-        throw new Error(`not yet ported: pick_obj from where=${otmp.where}`
-            + ' — pickup.c:1897-1938 only handles OBJ_FLOOR/OBJ_MINVENT');
-    }
 
     if (robshop) {
         /* C pickup.c:1921-1932 */
@@ -1810,11 +1861,11 @@ export async function query_classes(action, objs, here, menu_on_demand) {
     if (t.j) ilets += 'P';
 
     if (ilets.length > 1) {
-        let where = null;
+        let where = null, m_seen = false;
         for (;;) { /* ask_again */
             r.oclasses = [];
             r.one_at_a_time = r.everything = false;
-            let not_everything = false, filtered = false, m_seen = false;
+            let not_everything = false, filtered = false;
             let again = false;
             const inbuf = await getlin(`What kinds of thing do you want to ${action}? [${ilets}]`);
             if (inbuf && inbuf.charCodeAt(0) === 27) { r.ok = false; return r; }
@@ -1922,14 +1973,18 @@ async function _pickup_old_style(objchain, traverse_how, count) {
             const base = await safe_qbuf_shk('', 'Pick up ', '?', obj, doname,
                                              ansimpleoname, 'something');
             const rs = ((obj.quan | 0) < 2) ? 'ynaq' : 'yn#aq';
-            /* C hack.h ynaq()/ynNaq(): default 'y' (pickup.c:854) */
-            let sym = await yn_function(base, rs, 'y', false);
+            /* C hack.h:1331,1334 ynaq()/ynNaq(): record the answer for repeat. */
+            let sym = await yn_function(base, rs, 'y', true);
             let yn_number = 0;
             if (sym === '#') {
                 yn_number = await _yn_count_tail(`${base} [${rs}] (y)`);
                 if (yn_number < 0) { sym = 'n'; yn_number = 0; }
             }
             if (sym === 'q' || sym === '\x1b') return { n_tried, n_picked };
+            /* topl.c clean_up leaves the answered prompt on row 0 until
+             * parse()'s clear_nhwindow; nhgetch dropped _pending_message. */
+            if (base.length + rs.length + 8 <= 79)
+                g._topl_sticky = `${base} [${rs}] (y)`;
             if (sym === 'n') continue;
             if (sym === 'a') {
                 all_of_a_type = true;

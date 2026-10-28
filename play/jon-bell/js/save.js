@@ -159,6 +159,8 @@ export function savefile_name(plname) {
 export const NOT_SAVED = [
     'program_state', 'iflags', 'keybindings', 'sysopt', 'disp', 'env',
     'Cmd', '_command_binding_statics', 'nhcb_counts', 'nhcore_call_available', 'mvl_change',
+    // C save.c:246-333 omits artifact.c's process-local warning count.
+    'mkot_trap_warn_count',
     'n_menu_mapped', 'mapped_menu_cmds', 'mapped_menu_op', '_config_errors',
     // save.c:265-328 omits menu patterns; cfgfiles.c:1164 reloads them from rc.
     'menu_colorings', 'color_colorings', 'save_colorings',

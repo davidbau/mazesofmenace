@@ -46,7 +46,7 @@ function _hero_resists(prop) {
  * was an empty body, so neither throne arm could confuse the hero. */
 import { make_confused, make_glib, make_sick } from './potion.js';
 import { mkclass, mkclassAligned, newmextra, name_to_mon, name_to_monclass, permonstTemplate, is_ndemon, monPmname } from './makemon.js';
-import { pline, canseemon, canspotmon, map_background, newsym, newsym_force, see_monsters, force_more, livelog_printf, Deaf } from './display.js';
+import { pline, canseemon, canspotmon, map_background, newsym, newsym_force, see_monsters, force_more, livelog_printf, Deaf, urgent_pline } from './display.js';
 import { LL_CONDUCT, LL_GENOCIDE, UNCHANGING, POLY_REVERT } from './const.js';
 import { PM_VAMPIRE, PM_VAMPIRE_LORD as PM_VAMPIRE_LEADER, PM_VLAD_THE_IMPALER } from './pm.generated.js';
 import { identify_pack, do_mapping } from './read.js';
@@ -157,6 +157,9 @@ export async function take_gold() {
 /* makewish: LOCAL EMPTY STUB DELETED — see import above. */
 /* makemon: LOCAL EMPTY STUB DELETED — see import above. */
 
+/* C read.c:2638 do_class_genocide().  Reached from seffect_genocide when the
+ * scroll is blessed (read.c:1735); js/read.js must call this (out of file).
+ * Includes conduct logging and polymorphed self-genocide (read.c:2674-2816). */
 export async function do_class_genocide() {
     const G_GENO = 0x20, G_NOCORPSE = 0x10, G_UNIQ = 0x1000;
     const MS_LEADER = 36, MS_NEMESIS = 37, MS_GUARDIAN = 38;
@@ -164,7 +167,7 @@ export async function do_class_genocide() {
     const vit = (i) => (mvitals[i] ||= { born: 0, died: 0, mvflags: 0 });
     const roleM = game.urole?.mnum | 0, raceM = game.urace?.mnum | 0;
     let gameover = false;
-    let feel_dead = 0;
+    let feel_dead = 0, ll_done = 0;
     for (let j = 0; ; j++) {
         if (j >= 5) {
             await pline("That's enough tries!");
@@ -183,7 +186,10 @@ export async function do_class_genocide() {
                 : 'No class of monsters specified');
             continue;
         }
-        if (buf[0] === '\x1b' || /^(?:'?none'?|nothing)$/i.test(buf)) return;
+        if (buf[0] === '\x1b' || /^(?:none|'none'|nothing)$/i.test(buf)) {
+            livelog_printf(LL_GENOCIDE, 'declined to perform class genocide');
+            return;
+        }
         /* C read.c:2678-2682: "?" runs #genocided, then re-prompts */
         if (buf === '?' || buf === "'?'") {
             await list_genocided(0x67 /* 'g' */, false);
@@ -231,14 +237,33 @@ export async function do_class_genocide() {
             const nam = makeplural(t.pmnames[2]);
             if (i === roleM || i === raceM
                 || ((t.geno & G_GENO) && !(vit(i).mvflags & G_GENOD))) {
+                if (!ll_done++) {
+                    const sym = '?abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@ \'&;:~]'[cls];
+                    const prior = Object.entries(mvitals).some(([n, v]) => n >= LOW_PM && n < NUMMONS && (v?.mvflags & G_GENOD));
+                    if (!prior) livelog_printf(LL_CONDUCT | LL_GENOCIDE, 'performed %s first genocide (class %c)', game.flags?.female ? 'her' : 'his', sym);
+                    else livelog_printf(LL_GENOCIDE, 'genocided class %c', sym);
+                }
                 vit(i).mvflags |= (G_GENOD | G_NOCORPSE);
                 await kill_genocided_monsters();
                 update_inventory();
                 await pline('Wiped out all %s.', nam);
+                const hero = game.youmonst;
+                if (Upolyd(game.u) && [PM_VAMPIRE, PM_VAMPIRE_LEADER, PM_VLAD_THE_IMPALER].includes(hero?.cham)
+                    && hero.data.mlet !== 48 && (i === game.u.umonnum || i === hero.cham))
+                    await polyself(POLY_REVERT);
+                if (Upolyd(game.u) && i === game.u.umonnum) {
+                    game.u.mh = -1;
+                    if (_hero_resists(UNCHANGING)) {
+                        if (!feel_dead++) await urgent_pline('You die.');
+                        gameover = true;
+                    } else await rehumanize();
+                }
                 if (i === roleM || i === raceM) {
                     game.u.uhp = -1;
-                    if (!game.u.upolyd) {
-                        if (!feel_dead++) await pline('You die.');
+                    if (Upolyd(game.u)) {
+                        if (!feel_dead++) await pline('You feel %s inside.', udeadinside());
+                    } else {
+                        if (!feel_dead++) await urgent_pline('You die.');
                         gameover = true;
                     }
                 }
@@ -250,8 +275,8 @@ export async function do_class_genocide() {
                     && (snd !== MS_NEMESIS || quest_info(MS_NEMESIS) === i)
                     && (snd !== MS_GUARDIAN || quest_info(MS_GUARDIAN) === i)
                     && (i !== PM_NINJA || game.urole?.mnum === PM_SAMURAI)) {
-                    const named = /^[A-Z]/.test(t.pmnames[2]);
-                    const uniq = !!(t.geno & G_UNIQ);
+                    const named = !!(t.mflags2 & 0x00080000); /* M2_PNAME */
+                    const uniq = !!(t.geno & G_UNIQ) && i !== PM_HIGH_PRIEST;
                     await You("aren't permitted to genocide %s%s.",
                         (uniq && !named) ? 'the ' : '',
                         (uniq || named) ? t.pmnames[2] : nam);
@@ -972,8 +997,8 @@ export async function throne_sit_effect() {
     if (rnd(6) > 4) {
         /* RNG 2: which effect (1..13) */
         let effect = rnd(13);
-        /* C sit.c:46-60 — wizard && !iflags.debug_fuzzer (never set here) */
-        if (wizard()) {
+        /* C sit.c:49 — the fuzzer must not stop for an effect prompt. */
+        if (wizard() && !game.iflags?.debug_fuzzer) {
             const buf = String(await getlin("Throne sit effect (1..13) [0=random]"));
             if (buf[0] === '\x1b') {
                 await pline("%s", "Never mind.");
@@ -1039,7 +1064,8 @@ export async function throne_sit_effect() {
                 break;
             case 6: {
                 /* RNG: rn2(5) — only on the luck branch; makewish has own RNG */
-                const luck = (u.uluck | 0) + (u.moreluck | 0);
+                /* C sit.c:106 tests base luck, excluding luckstone bonuses. */
+                const luck = u.uluck | 0;
                 if (luck + rn2(5) < 0) {
                     await You_feel("your luck is changing.");
                     change_luck(1);
@@ -1153,7 +1179,7 @@ export async function throne_sit_effect() {
                 /* C sit.c:202 */
                 await Your("mind turns into a pretzel!");
                 /* RNG: rn1(7,16) — confusion duration */
-                const cdur = ((u.uprops?.[CONFUSION]?.intrinsic) | 0) + rn1(7, 16);
+                const cdur = ((u.uprops?.[CONFUSION]?.intrinsic | 0) & TIMEOUT) + rn1(7, 16);
                 make_confused(cdur, false);
                 break;
             }
@@ -1416,7 +1442,7 @@ export async function rndcurse() {
             }
 
             if (otmp.blessed)                            /* C:611-614 */
-                unbless(otmp);
+                await unbless(otmp);
             else
                 await curse(otmp);
         }
@@ -1426,7 +1452,7 @@ export async function rndcurse() {
     if (u.usteed && !rn2(4) && (otmp = which_armor(u.usteed, W_SADDLE)) != null
         && !otmp.cursed) {
         if (otmp.blessed)
-            unbless(otmp);
+            await unbless(otmp);
         else
             await curse(otmp);
         if (!Blind()) {

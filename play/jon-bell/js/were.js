@@ -9,7 +9,7 @@ import { canseemon } from './display.js';
 import { FULL_MOON, HALLUC, HALLUC_RES, PROT_FROM_SHAPE_CHANGERS,
     POLYMORPH_CONTROL, STUNNED, UNCHANGING, PARANOID_WERECHANGE, DEAF, NEUTRAL } from './const.js';
 import { rn1, rnd } from './rng.js';
-import { pline, newsym, You_hear } from './display.js';
+import { pline, newsym, You_hear, You_feel } from './display.js';
 import { set_uasmon, rehumanize } from './polyself.js';
 import { unconscious } from './pickup.js';
 import { is_fainted } from './eat.js';
@@ -66,7 +66,7 @@ export async function you_unwere(purify) {
     const paranoid = !!(paranoiaBits & PARANOID_WERECHANGE);
 
     if (purify) {
-        await pline('You feel purified.');
+        await You_feel('purified.');
         set_ulycn(NON_PM); /* C: cure lycanthropy, then refresh form data. */
     }
 

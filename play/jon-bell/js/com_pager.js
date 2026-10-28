@@ -22,7 +22,7 @@ import { menu_heading_text } from './tty_menu.js'; /* C strutil.c:151 — MENU_S
 // putmsghistory: feed the quest synopsis into the ^P message-history ring.
 import { putmsghistory, tty_getlin_prompt, _strengthStr, force_more, force_more_pages, await_more_dismiss,
          await_topl_more_dismiss, pline_flush_point,
-         botl_pmname, botl_upstart_words, botl_mon_mlevel, botl_title, botl_frozen_status_line,
+         botl_pmname, botl_upstart_words, botl_mon_mlevel, botl_title, botl_status1_tail, botl_frozen_status_line,
          gold_status_char, dec_mode, generic_symset, rogue_graphics, rogue_hero_showrace_cell, rogue_ibm_color, botl_status_suffix, fit_status_line_width, status_row_finish, _statusRows3, _threeStatusLines, docrt_flags, flush_screen, use_last_flush_snapshot, hitpointbar_status1, _hilite_status_wrap, _status_sgr, _status_row1_map_overlay, _status_row1_whole_with_tail } from './display.js';
 // ── ANSI color helpers (inlined from display.js — not exported there) ──
 const ANSI_DEFAULT = 39;
@@ -320,7 +320,7 @@ function render_map_row_clipped(y, clipX) {
 // title shows through to the left of a menu's "(end)" marker).
 // `base` may contain ANSI cursor-move escapes (\x1b[NC) and SGR escapes; we walk
 // it tracking the visible column and stop emitting once we reach `col`.
-function _overlay_status_line(base, col, text) {
+export function _overlay_status_line(base, col, text) {
     let out = '';
     let visCol = 0;       // current visible column
     let i = 0;
@@ -901,9 +901,10 @@ function _statusLine1Raw() {
     if (g.iflags?.wc2_hitpointbar)
         return hitpointbar_status1(title, stats, align, ulevel, Upolyd);
     const gap = Math.max(1, 31 - title.length);
+    const tail = botl_status1_tail(stats, align, title.length + gap);
     if (gap > 4)
-        return `${title}\x1b[${gap}C${stats} ${align}`;
-    return `${title}${' '.repeat(Math.max(0, gap))}${stats} ${align}`;
+        return `${title}\x1b[${gap}C${tail}`;
+    return `${title}${' '.repeat(Math.max(0, gap))}${tail}`;
 }
 /** C ref: hack.c:4478 money_cnt — walk invent chain, return COIN_CLASS (12) obj quan. */
 export function money_cnt(otmp) {
@@ -927,7 +928,7 @@ function _statusLine2Raw(uacOverride, pwOverride) {
     /* C botl.c:260 — no bot() paint under !status_updates: rows stay blank. */
     if (g.iflags?.status_updates === false)
         return '';
-    const uac = uacOverride !== undefined ? uacOverride : (u.uac ?? 10);
+    const uac = uacOverride !== undefined ? uacOverride : (u.uac ?? 0);
     /* pwOverride mirrors the same display-staleness workaround as uacOverride:
      * C's bot() at allmain.c:891 draws Pw with the pre-boost u.uen/u.uenmax, and
      * u_init_skills_discoveries()'s starting-Pw boost (u_init.c:1405) mutates
@@ -1135,7 +1136,10 @@ export async function com_pager_legacy(pauper = false, preInitAc = 0, preInitPw 
     const female = !!(g.flags?.female);
     const template = pauper ? PAUPER_LEGACY_TEXT : LEGACY_TEXT;
     const formattedText = format_legacy_text(template, roleIdx, alignType, female);
-    const windowLines = make_window_lines(formattedText);
+    /* C wintty.c:1943-1944 process_text_window: under a UTF8 symset every
+     * content line (not the dmore "--More--") loses its first byte. */
+    const windowLines = make_window_lines(formattedText).map((ln, i, all) =>
+        (i === all.length - 1 ? ln : tty_text_window_utf8_line(ln)));
     // The legacy window is shown by tty_display_nhwindow() and ends in
     // "--More--", so it takes the `79 - maxcol` branch of tty_window_offx().
     const footerKind = 'more';
@@ -1149,7 +1153,8 @@ export async function com_pager_legacy(pauper = false, preInitAc = 0, preInitPw 
     let screenOutput = fullScreen
         ? windowLines.map((ln, i) => (i === windowLines.length - 1 ? ' ' : '')
             + _encode_blank_runs(String(ln).replace(/\s+$/, ''))).join('\n')
-        : build_window_screen(windowLines, WIN_COL, preInitAc, undefined, preInitPw);
+        : build_window_screen(windowLines.map((ln, i) => (i === windowLines.length - 1 ? ln : tty_text_window_utf8_line(ln))),
+            WIN_COL, preInitAc, undefined, preInitPw); /* wintty.c:1943 process_text_window */
     /* allmain.c:826 read_wizkit() ran before the first docrt()/bot(): the map
      * and status rows below the window have never been painted. */
     if (g._blank_below_window) {

@@ -48,7 +48,7 @@ import { can_reach_floor as can_reach_floor_real } from './hold_another_object.j
 import { make_engr_at, del_engr_at, engr_at, random_engraving, engravings_list, makemon, xcrypt } from './mklev.js';
 import { DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, HEADSTONE, A_WIS,
          ECMD_OK, ECMD_CANCEL, ECMD_FAIL, ECMD_TIME, ICE, IS_ALTAR, BUFSZ,
-         DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DEAF, DB_ICE, DB_UNDER, BLINDED, CONFUSION, STUNNED, HALLUC } from './const.js';
+         DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DEAF, DB_ICE, DB_UNDER, BLINDED, CONFUSION, STUNNED, HALLUC, HALLUC_RES } from './const.js';
 
 /* ── object class numbers (objclass.h OBJCLASS enum) ─────────────────────────── */
 const WEAPON_CLASS = 2;
@@ -71,6 +71,7 @@ const HANDS_SYM = '-'; /* const.js HANDS_SYM — getobj's bare-hands option */
 const GETOBJ_DOWNPLAY = 1;
 const GETOBJ_SUGGEST = 2;
 
+/* Small property helpers for engraving's smudge checks (youprop.h). */
 function _hasProp(u, prop) {
     const p = u.uprops && u.uprops[prop];
     if (!p) return false;
@@ -80,7 +81,13 @@ function _hasProp(u, prop) {
 function uBlind(u) { return _hasProp(u, BLINDED); }
 function uConfusion(u) { return _hasProp(u, CONFUSION); }
 function uStunned(u) { return _hasProp(u, STUNNED); }
-function uHallu(u) { return _hasProp(u, HALLUC); }
+/* C youprop.h:115-120: Hallucination is an intrinsic timeout suppressed by
+ * intrinsic or extrinsic hallucination resistance, not HALLUC.blocked. */
+function uHallu(u) {
+    const resistance = u.uprops?.[HALLUC_RES];
+    return !!u.uprops?.[HALLUC]?.intrinsic
+        && !(resistance?.intrinsic || resistance?.extrinsic);
+}
 
 function body_part_fingertip() { return body_part(FINGERTIP); }
 function body_part_hand() { return 'hand'; }
@@ -490,6 +497,7 @@ export async function doengrave() {
     const de = {};
     doengrave_ctx_init(de);
     g.multi = 0;
+    g.nomovemsg = null; // C engrave.c:971 — clear the occupation end message.
 
     /* C engrave.c:979 — getobj("write with", stylus_ok, GETOBJ_PROMPT). */
     de.otmp = await getObjFromGetobj('write with', stylus_ok, GETOBJ_PROMPT);
@@ -603,7 +611,7 @@ export async function doengrave() {
     }
 
     if (de.oep) {
-        /* C engrave.c:907-954 — decide whether to append, wipe, or
+        /* C engrave.c:1109-1168 — decide whether to append, wipe, or
          * overwrite the existing engraving. */
         let c = 'n';
         const blind = uBlind(u);
@@ -644,6 +652,10 @@ export async function doengrave() {
                     await pline('You will overwrite the current message.');
                 de.eow = true;
             }
+        } else if (de.oep && de.oep.text.length >= BUFSZ - 1) {
+            await pline('There is no room to add anything else here.');
+            de.ret = ECMD_TIME;
+            return doengr_exit(de);
         }
         de.adding = !!(de.oep && !de.eow);
     }
@@ -698,7 +710,7 @@ export async function doengrave() {
         u.uconduct = u.uconduct || {};
         if (!((u.uconduct.literate | 0) )) {
             u.uconduct.literate = 1;
-            livelog_printf(LL_CONDUCT, `became literate by engraving "${de.ebuf}"`);
+            livelog_printf(LL_CONDUCT, 'became literate by engraving "%s"', de.ebuf);
         } else {
             u.uconduct.literate = (u.uconduct.literate | 0) + 1;
         }

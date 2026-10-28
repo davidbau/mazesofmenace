@@ -332,17 +332,17 @@ function _bc_carried(obj) {
     return false;
 }
 /* C mkobj.c:1766-1780 unbless(struct obj *otmp). */
-export function unbless(otmp) {
+export async function unbless(otmp) {
     if (!otmp)
         return;
-    /* C:1770-1771 — if (otmp->lamplit) old_light = arti_light_radius(otmp);
-     * omitted, see (a) above. */
+    const old_light = otmp.lamplit ? arti_light_radius(otmp) : 0;
     otmp.blessed = 0;
     if (_bc_carried(otmp) && confers_luck(otmp))
         set_moreluck();
     else if ((otmp.otyp | 0) === _BC_BAG_OF_HOLDING)
         otmp.owt = weight(otmp);
-    /* C:1778-1779 — if (otmp->lamplit) maybe_adjust_light(otmp, old_light); */
+    if (otmp.lamplit)
+        await maybe_adjust_light(otmp, old_light);
 }
 
 /* C mkobj.c:1818-1839 uncurse(struct obj *otmp) — the third member of the same

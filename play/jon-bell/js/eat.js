@@ -69,7 +69,7 @@ import { BLINDED, CONFUSION, HALLUC, HALLUC_RES, LEVITATION, SICK, VOMITING,
  * file's own reader consulted — so eating a confusing corpse set a word the
  * status line, u_maybe_impaired() and every other reader ignored.  The C-side
  * arity is (xtime, talk); every call here is C's talk=FALSE. */
-import { make_confused as make_confused_shared, make_stunned, make_stoned as make_stoned_shared } from './potion.js';
+import { make_confused as make_confused_shared, make_stunned, make_stoned as make_stoned_shared, make_deaf } from './potion.js';
 import { PM_VIOLET_FUNGUS, PM_WRAITH, PM_NURSE,
          PM_YELLOW_LIGHT, PM_GIANT_BAT, PM_BAT, PM_GIANT_MIMIC, PM_LARGE_MIMIC, PM_SMALL_MIMIC,
          PM_QUANTUM_MECHANIC, PM_LIZARD, PM_CHAMELEON, PM_DOPPELGANGER, PM_SANDESTIN,
@@ -133,7 +133,7 @@ import { OC_WEIGHT } from './oc_weight.generated.js';
 import { obj_is_pname, getObjDescr } from './objnam.js';
 import { Ring_gone, float_up } from './do_wear.js';
 import { set_mimic_blocking } from './sit.js';
-import { see_monsters, curs_on_u } from './display.js';
+import { see_monsters, putmsghistory, curs_on_u } from './display.js';
 import { rescham, revive_corpse, set_bknown } from './mklev.js';
 import { perceives } from './mcastu.js';
 import { change_sex } from './polyself.js';
@@ -347,6 +347,7 @@ async function eataccessory(otmp) {
         await accessory_has_effect(otmp);
         _give_fromoutside(PROTECTION);
         u.ublessed = bounded_increase(u.ublessed | 0, typ === RIN_PROTECTION ? otmp.spe | 0 : 2, typ);
+        game.disp.botl = true; /* C eat.c:2359 */
         break;
     case 192: // RIN_FREE_ACTION grants sleep resistance instead
         if (!_has_fromoutside(SLEEP_RES)) await accessory_has_effect(otmp);
@@ -358,6 +359,7 @@ async function eataccessory(otmp) {
         makeknown();
         change_sex();
         await pline(`You are suddenly very ${game.flags.female ? 'feminine' : 'masculine'}!`);
+        game.disp.botl = true; /* C eat.c:2375 */
         break;
     case 207: // AMULET_OF_UNCHANGING
         if (!_uprop_on(UNCHANGING) && Upolyd(u)) {
@@ -742,12 +744,11 @@ export async function newuhs(incr) {
                 /* C eat.c:3428 ga.afternmv = unfaint.  Sets the existing
                  * string-tag convention (is_fainted()/reset_faint() above
                  * already check for "unfaint"); allmain.js's
-                 * afternmv_dispatch() has no 'unfaint' case yet — see the
-                 * file header note. */
+                 * afternmv_dispatch() invokes unfaint's wake-up behavior. */
                 g.afternmv = 'unfaint';
                 newhs = FAINTED;
                 if (!_uprop_on(LEVITATION))
-                    void selftouch('Falling, you');
+                    await selftouch('Falling, you');
             }
         } else if (uh < -(100 + 10 * (acurr(u, A_CON) | 0))) {
             /* C eat.c:3436-3447 — starvation death. */
@@ -810,7 +811,7 @@ export async function newuhs(incr) {
                     g._pending_message = '';
                 }
             }
-            if (incr && g.occupation && g.occupation !== eatfood)
+            if (incr && g.occupation && g.occupation !== eatfood && g.occupation !== opentin)
                 await stop_occupation();
             end_running(true);
             break;
@@ -829,7 +830,7 @@ export async function newuhs(incr) {
                      : ((u.uhunger | 0) < 45) ? 'You feel weak.'
                        : 'You are beginning to feel weak.'));
             }
-            if (incr && g.occupation && g.occupation !== eatfood)
+            if (incr && g.occupation && g.occupation !== eatfood && g.occupation !== opentin)
                 await stop_occupation();
             end_running(true);
             break;
@@ -841,6 +842,19 @@ export async function newuhs(incr) {
             g.disp.botl = 1;
         /* C eat.c:3507-3508 disp.botl = TRUE; bot(). */
         await bot();
+        if ((Upolyd(u) ? u.mh : u.uhp) < 1) { // C eat.c:3505-3512
+            await You('die from hunger and exhaustion.');
+            // Hand the live topline to done(), as in the starvation arm above.
+            if (g._resultMessage && !g._pending_message) {
+                g._pending_message = g._resultMessage;
+                g._resultMessage = '';
+            }
+            g.svk = g.svk || { killer: { format: 0, name: '' } };
+            g.svk.killer.format = KILLED_BY;
+            g.svk.killer.name = 'exhaustion';
+            await done_end(STARVING);
+            return;
+        }
     }
     /* return void; C eat.c:3514 */
 }
@@ -1383,8 +1397,11 @@ export async function stoned_dialogue() {
         break;
     case 2: {
         const hd = u.uprops?.[DEAF_PROP];
-        const t = (hd?.intrinsic | 0) & TIMEOUT;
-        if (t > 0 && t < 5) hd.intrinsic = ((hd.intrinsic | 0) & ~TIMEOUT) | 5;
+        const t = ((hd?.intrinsic | 0) | (u.HDeaf | 0)) & TIMEOUT;
+        if (t > 0 && t < 5) { // C timeout.c:173-174: set the live HDeaf timer too.
+            if (hd) hd.intrinsic = ((hd.intrinsic | 0) & ~TIMEOUT) | 5;
+            u.HDeaf = ((u.HDeaf | 0) & ~TIMEOUT) | 5;
+        }
         if (_uprop_on(VOMITING)) await make_vomiting(0, false);
         if (_uprop_on(SLIMED_PROP)) await make_slimed(0, null);
         break;
@@ -1432,8 +1449,11 @@ export async function slime_dialogue() {
         break;
     case 2: {
         const hd = u.uprops?.[DEAF_PROP];
-        const dt = (hd?.intrinsic | 0) & TIMEOUT;
-        if (dt > 0 && dt < 5) hd.intrinsic = ((hd.intrinsic | 0) & ~TIMEOUT) | 5;
+        const dt = ((hd?.intrinsic | 0) | (u.HDeaf | 0)) & TIMEOUT;
+        if (dt > 0 && dt < 5) { // C timeout.c:433-434: avoid hearing again too soon.
+            if (hd) hd.intrinsic = ((hd.intrinsic | 0) & ~TIMEOUT) | 5;
+            u.HDeaf = ((u.HDeaf | 0) & ~TIMEOUT) | 5;
+        }
         break;
     }
     case 1:
@@ -1452,7 +1472,7 @@ function _cannibal_allowed() {
     const g = game;
     return ((g.flags?.initrole | 0) === 2) || ((g.urace?.mnum | 0) === 72);
 }
-function maybe_cannibal(pm, allowmsg) {
+async function maybe_cannibal(pm, allowmsg) {
     const g = game, u = g.u || {};
     const food = permonstTemplate(pm | 0);
     if (!food) return false;
@@ -1471,7 +1491,29 @@ function maybe_cannibal(pm, allowmsg) {
     if (allowmsg) {
         if (upolyd && yourRace)
             _emit_eat_pline('You have a bad feeling deep inside.');
-        _emit_eat_pline('You cannibal!  You will regret this!');
+        const _cmsg = 'You cannibal!  You will regret this!';
+        /* topl.c:257-268 — update_topl() joins only when n0 + strlen + 3 <
+         * CO - 8, else more() pages the earlier line first (a poisonous
+         * corpse's "Ecch" line, 37 + 36 + 3 = 76).  Page it now and keep
+         * the cannibal line alone, as the "unaffected" arm does. */
+        const _pend = game._pending_message;
+        if (_pend && !game._resultMessage
+            && _pend.length + _cmsg.length + 3 >= 72) {
+            await flush_screen(1);
+            /* flush_screen paged the earlier messages; only what it left
+             * pending is still on the topline for this more() to acknowledge. */
+            /* flush_screen paged every earlier split; only the standing
+             * remainder still owes this pline's more() (topl.c:268-275). */
+            await force_more(game._pending_message || _pend);
+            game._pending_message = null;
+        }
+        /* An ESC-dismissed page above leaves WIN_STOP armed: this message
+         * owns that page and is drawn, and the live pline() path is what
+         * arms the suppression of the messages after it (topl.c:257-301). */
+        if (game._topl_win_stop || game._topl_win_stop_armed)
+            await pline(_cmsg);
+        else
+            _emit_eat_pline(_cmsg);
     }
     _give_fromoutside(AGGRAVATE_MONSTER);
     change_luck(-rn1(4, 2));
@@ -1569,7 +1611,7 @@ export async function eat_brains(magr, mdef, visflag, dmg_p) {
             exercise(A_WIS, true);
             if (dmg_p) dmg_p.value += xtra_dmg;
         }
-        maybe_cannibal(pd.pmidx, true);
+        await maybe_cannibal(pd.pmidx, true);
     } else if (mdef_is_you) {
         const abase = getAbase(u);
         const di_int = C_ATTR_TO_DISP[A_INT];
@@ -2052,6 +2094,9 @@ async function _violated_vegetarian() {
  * next nhgetch (the moveloop merges _resultMessage with next-turn movemon plines;
  * matches the throw/dotalk message handling). */
 function _emit_eat_pline(msg) {
+    /* C pline.c:246-262 vpline(): a MSGTYPE=hide match is dropped before
+     * gp.prevmsg or the topline is touched. */
+    if (msgtype_suppressed(msg)) return;
     /* C pline.c:282: every emitted food message replaces gp.prevmsg with
      * that message, so a later Norep sees it rather than a stale warning. */
     game._prevmsg = String(msg);
@@ -2170,8 +2215,8 @@ function _eat_make_blinded(xtime) {
 
 export function Hear_again() {
     if (!rn2(2)) {
-        const u = game.u || (game.u = {});
-        u.HDeaf = 0;
+        // With talk=false the async setter completes all state writes synchronously.
+        make_deaf(0, false);
         game.disp = game.disp || {};
         game.disp.botl = 1;
     }
@@ -2198,6 +2243,13 @@ function rottenfood(obj) {
          * before returning from rottenfood, so monsters which were visible
          * immediately before the first bite disappear on this same frame. */
         make_blinded(_eat_BlindedTimeout() + d(2, 10), false);
+        /* toggle_blindness() repainted the map (potion.c:335-352) before the
+         * --More-- that the next flush raises, so that page shows the blind map. */
+        {
+            const _pre = game._eatPreEffectFrame;
+            const _now = capture_painted_frame_with_status();
+            if (_pre && _now) _pre.cells = _now.cells;
+        }
         if (!_eat_Blind()) /* C eat.c:1829-1830 Your1(vision_clears) */
             _emit_eat_pline('Your vision clears.');
     } else if (!rn2(3)) { /* C eat.c:1830 */
@@ -2303,7 +2355,7 @@ async function eatcorpse(otmp) {
     if (!glob && !stoneable && !slimeable && rotted > 5) {
         /* tainted */
         /* C eat.c:1896-1921 */
-        const cannibal = maybe_cannibal(mnum, false);
+        const cannibal = await maybe_cannibal(mnum, false);
         await pline(`Ulch - that ${_mletE(mnum) === S_FUNGUS_E ? 'fungoid vegetation'
             : _vegetarianE(mnum) ? 'protoplasm' : 'meat'} was tainted${cannibal ? ', you cannibal' : ''}!`);
         if (_eat_Sick_resistance()) {
@@ -2948,7 +3000,7 @@ async function _cprefx_domestic(pm) {
 
 /* C eat.c:790 — common pre-effects for corpses, globs and tin contents. */
 async function cprefx(pm) {
-    maybe_cannibal(pm, true);
+    await maybe_cannibal(pm, true);
     if (await _cprefx_petrify(pm)) return;
     if (pm === PM_DEATH_R || pm === PM_PESTILENCE || pm === PM_FAMINE) {
         await pline('Eating that is instantly fatal.');
@@ -4208,8 +4260,8 @@ function givit(type, ptr) {
             _emit_eat_pline(hallu ? 'You feel in touch with the cosmos.'
                 : 'You feel a strange mental acuity.');
             _give_fromoutside(TELEPAT);
-            /* C eat.c:1078 `if (Blind) see_monsters()` — WIRE_PENDING, display
-             * only, RNG-free. */
+            /* If blind, make sure monsters show up. */
+            if (hero_Blind()) see_monsters();
         }
         break;
     case ACID_RES:
@@ -4657,11 +4709,20 @@ export async function You(line, ...args) {
                     ? _prevJoins.find((j) => j > _pageAt && j < _pageAt + _lastPage.length)
                     : undefined;
                 const _owner = (_cut !== undefined) ? prev.slice(_pageAt, _cut) : _lastPage;
+                const _buf = (game._topl_win_stop_buf != null)
+                    ? String(game._topl_win_stop_buf) : _lastPage;
+                if (_owner && msg.startsWith('You die')
+                    && _buf.length + 2 + msg.length < TOPL_LIMIT) {
+                    putmsghistory(_owner);
+                    game._topl_win_stop = false;
+                    game._topl_win_stop_armed = false;
+                    game._topl_win_stop_buf = null;
+                    game._prevmsg = _prevmsgAtEntry;
+                    return pline(msg);
+                }
                 game._topl_win_stop = true;
                 game._topl_win_stop_armed = false;
                 game._pending_message = _owner;
-                const _buf = (game._topl_win_stop_buf != null)
-                    ? String(game._topl_win_stop_buf) : _lastPage;
                 game._topl_win_stop_buf = (_owner
                     && _buf.length + 2 + msg.length < TOPL_LIMIT)
                     ? (_buf + '  ' + msg) : msg;
@@ -4804,11 +4865,11 @@ export async function floorfood(verb, corpsecheck) {
             if (c === 'y')
                 return hands_obj;
             else if (c === 'q') {
-                /* C topl.c clean_up leaves gt.toplines = prompt + key2txt(q), and
-                 * tty never clears the answered prompt: the next parse() flush
-                 * still paints "There are iron bars here; eat them? [ynq] (n)"
-                 * until the next command key is read (cmd.c:5147). */
-                g._resultMessage = g._ynStaleTopline = qbuf + " [ynq] (n)";
+                /* topl.c:547-548 clears an answered prompt when it wrapped;
+                 * only a single-row prompt remains physically painted. */
+                const prompt = qbuf + " [ynq] (n)";
+                if (topl_park_cursor(null, prompt + ' ')[1] === 0)
+                    g._resultMessage = g._ynStaleTopline = prompt;
                 return null;
             }
             ++g.getobj_else;
@@ -4857,9 +4918,10 @@ export async function floorfood(verb, corpsecheck) {
             if (c === 'y')
                 return otmp;
             else if (c === 'q') {
-                /* topl.c clean_up: the answered prompt stays as dead topline text
-                 * (same as the iron-bars arm above). */
-                g._resultMessage = g._ynStaleTopline = qbuf + " [ynq] (n)";
+                /* topl.c:547-548 clears multi-row prompts on return. */
+                const prompt = qbuf + " [ynq] (n)";
+                if (topl_park_cursor(null, prompt + ' ')[1] === 0)
+                    g._resultMessage = g._ynStaleTopline = prompt;
                 return null;
             }
             ++g.getobj_else;

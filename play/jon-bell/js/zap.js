@@ -1,11 +1,11 @@
 import { fixup_oil, get_mtraits, free_omid } from './mkobj.js';
-import { dead_species, restore_cham, neweshk, mongone, add_to_minv } from './mklev.js';
+import { dead_species, restore_cham, neweshk, mongone, add_to_minv, sp_levchn_lookup } from './mklev.js';
 import { monhp_per_lvl, dmgtype_fromattack, container_weight, emits_light, monflee } from './makemon.js';
 import { dealloc_monst, dealloc_mextra, relmon, wary_dog, tamedog } from './dog.js';
 import { place_monster } from './steed.js';
 import { place_wsegs } from './worm.js';
 import { new_light_source, del_light_source, monst_to_any } from './light.js';
-import { inhishop, stolen_value as revive_stolen_value } from './shk.js';
+import { inhishop, stolen_value as revive_stolen_value, delete_contents } from './shk.js';
 import { cant_finish_meal, eaten_stat } from './eat.js';
 import { cant_revive } from './read.js';
 import { enexto_out } from './teleport.js';
@@ -18,6 +18,8 @@ import { OBJ_FREE, OBJ_FLOOR, OBJ_CONTAINED, OBJ_INVENT, OBJ_MINVENT, OBJ_BURIED
          GRAVE, IS_POOL, LS_MONSTER, ONAME, has_oname, PLNMSG_OBJ_GLOWS, PLNMSG_ENVELOPED_IN_GAS, PROT_FROM_SHAPE_CHANGERS, OBJ_DELETED } from './const.js';
 import { PM_GHOST, PM_DOPPELGANGER } from './pm.generated.js';
 import { wearslot } from './worn.js';
+import { otrapped_of } from './const.js';
+import { is_poisonable } from './objnam.js';
 import { freeinv_core, addinv_core1, addinv_core2, setuwep, setuswapwep, setuqwep, set_twoweap } from './cmd.js';
 import { bimanual, set_wear } from './do_wear.js';
 import { remove_worn_item } from './steal.js';
@@ -33,6 +35,8 @@ import { P_SKILL } from './skills.js';
 import { P_ISRESTRICTED, P_UNSKILLED, P_BASIC, P_SKILLED, P_EXPERT } from './const.js';
 import { mkobj, mksobj, rnd_class, OC_MERGE, m_respond, hideunder, dealloc_oextra, OC_USES_KNOWN, engr_at, del_engr_at, make_engr_at, wipe_engr_at, lowc, healmon, random_engraving, makemon, MONS_CWT, normal_shape, sobj_at, minliquid, mlifesaver } from './mklev.js';
 import { MKOBJ_OC_MAGIC, MKOBJ_OC_MATERIAL, MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js';
+import { OC_CHARGED } from './oc_cost_data.js';
+import { useupall } from './cmd.js';
 import { PM_FLESH_GOLEM, PM_IRON_GOLEM, PM_STONE_GOLEM, PM_CLAY_GOLEM, PM_WOOD_GOLEM,
          PM_LEATHER_GOLEM, PM_ROPE_GOLEM, PM_SKELETON, PM_GOLD_GOLEM, PM_GLASS_GOLEM,
          PM_PAPER_GOLEM, PM_STRAW_GOLEM } from './pm.generated.js';
@@ -41,7 +45,7 @@ import { is_demon, nonliving, check_gear_next_turn } from './makemon.js';
 import { resists_magm, Resists_Elem, defended, sleep_monst, slept_monst, seemimic,
          erode_armor } from './mhitm.js';
 import { x_monnam } from './mhitm.js';
-import { resists_blnd as resists_blnd_real, take_resists_blnd_impossible, resists_drli as resists_drli_mon } from './mhitm.js';
+import { resists_blnd as resists_blnd_real, resists_drli as resists_drli_mon } from './mhitm.js';
 import { impossible } from './pline.js';
 import { INFRAVISION, WARN_OF_MON } from './const.js';
 import { BLINDED, HALLUC, HALLUC_RES, WAND_BACKFIRE_CHANCE, MSLOW, ANIMATE_SPELL, LIFESAVED } from './const.js';
@@ -166,7 +170,7 @@ import { upstart } from './mklev.js';
 import { noname_monnam } from './mhitm.js';
 import { ARTICLE_THE } from './const.js';
 import { cxname_singular } from './objnam.js';
-import { bare_artifactname } from './objnam.js';
+import { bare_artifactname, ansimpleoname } from './objnam.js';
 import { Monnam, monstseesu, monstunseesu, cvt_adtyp_to_mseenres,
          death_inflicted_by, burn_away_slime } from './mcastu.js';
 import { s_suffix, ugolemeffects } from './mhitm.js';
@@ -182,6 +186,8 @@ import { pay_for_damage } from './shk.js';
 import { shk_your as shk_your_uy, Shk_Your as Shk_Your_uy } from './shk.js';
 import { corpse_xname as corpse_xname_uy } from './objnam.js';
 import { cxname_singular as cxname_singular_bh } from './objnam.js';
+import { livelog_printf } from './display.js';
+import { LL_CONDUCT } from './const.js';
 import { encumber_msg } from './weight.js';
 import { dist2 } from './hacklib.js';
 import { LAVAPOOL, LAVAWALL, IRONBARS, DRAWBRIDGE_UP, ICE, VWALL, HWALL,
@@ -231,7 +237,7 @@ import { u_teleport_mon, tele } from './teleport.js';
 /* C zap.c:263-333 bhitm's WAN_POLYMORPH/SPE_POLYMORPH/POT_POLYMORPH case needs
  * newcham (mon.c:5277, the real body — js/mklev.js:16429) and bypass_obj
  * (worn.c:1110, js/worn.js) — both real, fully-ported exported bodies. */
-import { newcham } from './mklev.js';
+import { newcham, vegetarian } from './mklev.js';
 import { bypass_obj } from './worn.js';
 import { LEVITATION, FLYING, NON_PM, MCORPSENM, ismnum, NO_NC_FLAGS, NC_SHOW_MSG, NC_VIA_WAND_OR_SPELL } from './const.js';
 import { PM_LONG_WORM } from './pm.generated.js';
@@ -241,7 +247,10 @@ import { rnl } from "./rng.js";
 import { is_blade } from "./cmd.js";
 import { trapname } from "./makemon.js";
 import { can_reach_floor } from "./hold_another_object.js";
-import { cnv_trap_obj, deltrap } from "./trap.js";
+import { cnv_trap_obj, deltrap, into_vs_onto } from "./trap.js";
+import { drag_ball, move_bc } from './ball.js';
+import { u_on_newpos } from './mklev.js';
+import { HVY_ENCUMBER } from './const.js';
 import { test_move as _ut_test_move, check_leash as _ut_check_leash, bad_rock as _ut_bad_rock, dismount_steed } from './cmd.js';
 import { vision_recalc as _ut_vision_recalc } from './vision.js';
 import { exercise as _ut_exercise } from './attrib.js';
@@ -691,11 +700,7 @@ export async function _u_resists_blnd() {
     /* C mondata.c:268 resists_blnd(&youmonst) in full: the Blind/Unaware arm,
      * the AD_BLND attack arm, Sunsword, and the Blnd_resist catchall
      * impossible() — the real body in mhitm.js. */
-    const r = resists_blnd_real(game.youmonst);
-    const msg = take_resists_blnd_impossible();
-    if (msg)
-        await impossible(msg);
-    return r;
+    return resists_blnd_real(game.youmonst);
 }
 function _u_resists_blnd_by_arti() {
     /* C artifact.c:2264 — `is_art(uquiver, ART_SUNSWORD)` is not involved;
@@ -1791,7 +1796,7 @@ export async function zapyourself(obj, ordinary) {
             /* C zap.c:2918: damage = lightdamage(obj, ordinary, damage).
              * Identity for every non-gremlin hero form (zap.c:3029 guard), so
              * this is RNG- and value-neutral outside gremlin polymorph. */
-            damage = lightdamage(obj, ordinary, damage);
+            damage = await lightdamage(obj, ordinary, damage);
             damage += rnd(25);
             /* C zap.c:2920-2921:
              *     if (flashburn((long) damage, FALSE))
@@ -2128,8 +2133,8 @@ export async function zapnodir(obj) {
         case SPE_LIGHT:
             /* C zap.c:2543-2549 */
             known = !!(obj.dknown && !_Blind());
-            litroom(true, obj);
-            lightdamage(obj, true, 5);
+            await litroom(true, obj);
+            await lightdamage(obj, true, 5);
             break;
         case WAN_SECRET_DOOR_DETECTION:
         case SPE_DETECT_UNSEEN:
@@ -3009,9 +3014,10 @@ export async function zap_over_floor(x, y, type, shopdamage, ignoremon, explodin
                 if (u_at(x, y)) {
                     const u = game.u;
                     if (u.uinwater) { /* not just `if (Underwater)' */
-                        set_uinwater(0);
+                        await set_uinwater(0);
                         u.uundetected = 0;
-                        await docrt();
+                        await docrt(true); /* cls() pages the pending topline (display.c:2064) */
+                        await docrt(true); /* cls() pages the pending topline (display.c:2196) */
                         game.vision_full_recalc = 1;
                     } else if (u.utrap && (u.utraptype | 0) === TT_LAVA) {
                         if (_uhas(PASSES_WALLS)) {
@@ -3076,9 +3082,9 @@ export async function zap_over_floor(x, y, type, shopdamage, ignoremon, explodin
                  * the terrain appropriate to the edge/special level and redraw
                  * the square. */
                 const edge = (lev.edge | 0) === 1;
-                const special = in_rooms(x, y, 0).length > 0;
+                const special = sp_levchn_lookup(game.u.uz) || in_rooms(x, y, 0).length > 0;
                 lev.typ = edge ? DOOR : (special ? ROOM : CORR);
-                lev.flags = 0; /* D_NODOOR */
+                lev.flags = lev.doormask = 0; /* D_NODOOR */
                 newsym(x, y);
                 if (u_at(x, y))
                     await switch_terrain();
@@ -3625,7 +3631,7 @@ function _expl_is_vampshifter(mon) {
  * only), the monster arm calls the full resists_*(m) family (uprops +
  * mon_resistancebits + wielded-artifact + worn/carried items).  NO RNG on
  * either side. */
-function explosionmask(m, adtyp, olet) {
+async function explosionmask(m, adtyp, olet) {
     const is_you = is_youmonst(m);
     if (is_you) {
         switch (adtyp) {
@@ -3651,7 +3657,7 @@ function explosionmask(m, adtyp, olet) {
         case AD_ACID:
             return _expl_hero_resist(ACID_RES) ? EXPL_HERO : EXPL_NO_ACTION;
         default:
-            /* C: impossible("explosion type %d?", adtyp); res stays EXPL_NONE. */
+            await impossible('explosion type %d?', adtyp);
             return EXPL_NO_ACTION;
         }
     } else {
@@ -3678,6 +3684,7 @@ function explosionmask(m, adtyp, olet) {
         case AD_ACID:
             return Resists_Elem(m, ACID_RES) ? EXPL_MON : EXPL_NO_ACTION;
         default:
+            await impossible('explosion type %d?', adtyp);
             return EXPL_NO_ACTION;
         }
     }
@@ -3938,7 +3945,7 @@ export async function explode(x, y, type, dam, olet, expltype) {
             explmask[i][j] = EXPL_NO_ACTION;
 
             if (u_at(xx, yy))
-                explmask[i][j] = explosionmask(game.youmonst, adtyp, olet);
+                explmask[i][j] = await explosionmask(game.youmonst, adtyp, olet);
             /* can be both you and mtmp if you're swallowed or riding */
             mtmp = m_at(xx, yy);
             if (!mtmp && u_at(xx, yy))
@@ -3946,7 +3953,7 @@ export async function explode(x, y, type, dam, olet, expltype) {
             if (mtmp && DEADMONSTER(mtmp))
                 mtmp = null;
             if (mtmp)
-                explmask[i][j] |= explosionmask(mtmp, adtyp, olet);
+                explmask[i][j] |= await explosionmask(mtmp, adtyp, olet);
 
             if (mtmp && cansee(xx, yy) && !canspotmon(mtmp))
                 map_invisible(xx, yy);
@@ -4110,7 +4117,7 @@ export async function explode(x, y, type, dam, olet, expltype) {
                         await xkilled(mtmp, XKILL_GIVEMSG | xkflg);
                     } else if (mdef && mtmp === mdef) {
                         if (cansee(mtmp.mx | 0, mtmp.my | 0) || canspotmon(mtmp))
-                            await pline(`${Monnam(mtmp)} is ${nonlivingMon((mtmp.mndx ?? mtmp.mnum) | 0) ? 'destroyed' : 'killed'}!`);
+                            await pline(`${Monnam(mtmp)} is ${xkflg ? 'burned completely' : nonlivingMon((mtmp.mndx ?? mtmp.mnum) | 0) ? 'destroyed' : 'killed'}!`);
                         await xkilled(mtmp, XKILL_NOMSG | XKILL_NOCONDUCT | xkflg);
                     } else {
                         /* C: monkilled(mtmp, "", adtyp).  monkilled is unported;
@@ -4339,6 +4346,8 @@ export async function splatter_burning_oil(x, y, diluted_oil) {
  * elsewhere). */
 export async function explode_oil(obj, x, y) {
     const diluted_oil = !!obj.odiluted;
+    if (!obj.lamplit)
+        await impossible('exploding unlit oil');
     end_burn(obj, true);
     obj.how_lost = LOST_EXPLODING;
     await splatter_burning_oil(x, y, diluted_oil);
@@ -4669,7 +4678,7 @@ export async function disintegrate_mon(mon, type, fltxt) {
         if (!amulet)
             await pline(`${Monnam(mon)} is disintegrated!`);
         else
-            await pline(`The ${fltxt} hits ${mon_nam(mon)}!`);
+            await hit(fltxt, mon, '!');
     }
 
     for (let obj = mon.minvent, next; obj; obj = next) {
@@ -4850,7 +4859,7 @@ export function learnwand(obj) {
             if (obj.dknown)
                 discover_object(otyp, true, true, true); /* makeknown */
         }
-        /* update_inventory() — no RNG. */
+        update_inventory();
     }
 }
 /* observe_object (C o_init.c:441-452) is imported from js/o_init.js at the head
@@ -5090,11 +5099,10 @@ const ZP_MAGIC_LAMP = 228, ZP_OIL_LAMP = 227, ZP_MAGIC_MARKER = 242,
       ZP_EGG = 273, ZP_LEASH = 231;
 const ZP_OBJ_FREE = 0, ZP_OBJ_FLOOR = 1, ZP_OBJ_INVENT = 3, ZP_OBJ_MINVENT = 4;
 /* zap.c:1687 charged_objs[] = { WAND_CLASS, WEAPON_CLASS, ARMOR_CLASS,
- * TOOL_CLASS, RING_CLASS, 0 } — the classes whose spe is carried across a
+ * 0 } — the classes whose spe is carried across a
  * polymorph. */
 const ZP_CHARGED_CLASSES = new Set([ZP_WAND_CLASS, ZP_WEAPON_CLASS,
-                                    ZP_ARMOR_CLASS, ZP_TOOL_CLASS,
-                                    ZP_RING_CLASS]);
+                                    ZP_ARMOR_CLASS]);
 
 export function zapsetup() { game._obj_zapped = false; }
 export async function zapwrapup() {
@@ -5290,8 +5298,14 @@ export async function poly_obj(obj, id) {
     if (obj.oeroded2)    otmp.oeroded2 = obj.oeroded2;
     if (obj.oerodeproof) otmp.oerodeproof = obj.oerodeproof;
 
-    if (obj.otrapped && otmp.otrapped !== undefined) otmp.otrapped = 1;
-    if (obj.opoisoned) otmp.opoisoned = 1;
+    /* C zap.c:1798-1802: otrapped and opoisoned alias the same bit
+     * (obj.h:139), preserved only for boxes or poisonable weapons. */
+    if (otrapped_of(obj) && _bhito_is_box(otmp)) otmp.otrapped = 1;
+    if (otrapped_of(obj) && is_poisonable(otmp)) otmp.opoisoned = 1;
+
+    /* C zap.c:1827-1829 — discard contents generated with the new object. */
+    if (Has_contents(otmp))
+        await delete_contents(otmp);
 
     /* 'n' merged objects may be fused into 1 object */
     if ((otmp.quan | 0) > 1
@@ -5584,6 +5598,7 @@ const STF_MEATBALL = 267, STF_MEAT_STICK = 268, STF_ENORMOUS_MEATBALL = 269,
       STF_MEAT_RING = 270;
 const STF_MINERAL = 21; /* objects.h MINERAL material code (zap.c:5419-5420) */
 const STF_M1_CARNIVORE = 0x20000000;
+const STF_S_GOLEM = 55; /* defsym.h S_GOLEM */
 async function stone_to_flesh_obj(obj) {
     let res = 1; /* affected object by default */
 
@@ -5608,23 +5623,54 @@ async function stone_to_flesh_obj(obj) {
         if (otyp === STF_BOULDER) {
             obj = (await poly_obj(obj, STF_ENORMOUS_MEATBALL));
             smell = true;
-        } else if (otyp === STF_STATUE) {
-            const failReason = { value: 0 };
-            const mon = await animate_statue(obj, oox, ooy,
-                ANIMATE_SPELL, failReason);
-            res = mon ? 1 : 0;
-        } else if (otyp === STF_FIGURINE) {
-            /* C zap.c:2027-2053: figurines create the saved monster form
-             * directly; unlike statues they do not use animate_statue's
-             * corpse-trait and statue-trap handling. */
-            const ptr = permonstTemplate(obj.corpsenm | 0);
-            const mon = ptr ? await makemon(ptr, oox, ooy, MM_NOMSG) : null;
-            if (mon) {
-                _zp_delobj(obj);
-                if (cansee(mon.mx | 0, mon.my | 0))
-                    await pline(`The figurine animates!`);
+        } else if (otyp === STF_STATUE || otyp === STF_FIGURINE) {
+            let ptr = permonstTemplate(obj.corpsenm | 0);
+            let golem_xform = false;
+            if (ptr && (ptr.mlet | 0) === STF_S_GOLEM) {
+                golem_xform = ((ptr.pmidx | 0) !== PM_FLESH_GOLEM);
+            } else if (vegetarian(ptr)) {
+                /* Don't animate monsters that aren't flesh */
+                obj = (await poly_obj(obj, STF_MEATBALL));
+                smell = true;
+                break;
             }
-            res = mon ? 1 : 0;
+            let mon = null;
+            if (otyp === STF_STATUE) {
+                /* animate_statue() forces all golems to become flesh golems */
+                const failReason = { value: 0 };
+                mon = await animate_statue(obj, oox, ooy,
+                    ANIMATE_SPELL, failReason);
+            } else { /* (obj->otyp == FIGURINE) */
+                if (golem_xform)
+                    ptr = permonstTemplate(PM_FLESH_GOLEM);
+                mon = ptr ? await makemon(ptr, oox, ooy,
+                    NO_MINVENT | MM_NOMSG) : null;
+                if (mon) {
+                    _zp_delobj(obj);
+                    if (cansee(mon.mx | 0, mon.my | 0))
+                        await pline(`The figurine ${golem_xform
+                            ? 'turns to flesh and ' : ''}animates!`);
+                }
+            }
+            if (mon) {
+                ptr = mon.data;
+                /* this golem handling is redundant... */
+                if ((ptr.mlet | 0) === STF_S_GOLEM && (ptr.pmidx | 0) !== PM_FLESH_GOLEM)
+                    await newcham(mon, permonstTemplate(PM_FLESH_GOLEM),
+                        NC_VIA_WAND_OR_SPELL);
+            } else if (((ptr.geno | 0) & (0x0010 /* G_NOCORPSE */ | 0x1000 /* G_UNIQ */)) !== 0) {
+                /* didn't revive but can't leave corpse either */
+                res = 0;
+            } else {
+                /* drop statue's contents, then become a corpse */
+                let item;
+                while ((item = obj.cobj) != null) {
+                    bypass_obj(item); /* make stone-to-flesh miss it */
+                    obj_extract_self_general(item);
+                    _zp_place_on_floor(item, oox, ooy);
+                }
+                obj = (await poly_obj(obj, CORPSE));
+            }
         } else { /* miscellaneous tool or unexpected rock... */
             res = 0;
         }
@@ -5697,6 +5743,7 @@ export async function bhito(obj, otmp) {
         if ((otmp.otyp | 0) === WAN_OPENING || (otmp.otyp | 0) === SPE_KNOCK) {
             await unpunish();
             learnwand(otmp);
+            return 1; // C zap.c:2186: opening affected the chain.
         }
         return 0;
     }
@@ -5709,12 +5756,21 @@ export async function bhito(obj, otmp) {
             break;
         }
         /* KMH, conduct */
-        if (g.u && g.u.uconduct)
-            g.u.uconduct.polypiles = (g.u.uconduct.polypiles | 0) + 1;
+        const conduct = (g.u.uconduct ||= {});
+        if (!(conduct.polypiles | 0))
+            livelog_printf(LL_CONDUCT, 'polymorphed %s first object', _expl_uhis());
+        conduct.polypiles = (conduct.polypiles | 0) + 1;
+        // C zap.c:2210: invalidate any lock occupation before polymorphing.
+        if (_bhito_is_box(obj))
+            await boxlock(obj, otmp);
         if (obj_shudders(obj)) {
+            const cover = obj === g.level?.levelObjects?.[g.u.ux]?.[g.u.uy]
+                && g.u.uundetected && _hides_under_zp(g.youmonst.data);
             if (cansee(obj.ox | 0, obj.oy | 0))
                 learn_it = true;
             await do_osshock(obj);
+            if (cover)
+                hideunder(g.youmonst);
             break;
         }
         obj = (await poly_obj(obj, STRANGE_OBJECT));
@@ -5832,6 +5888,8 @@ export async function bhito(obj, otmp) {
         maybe_unhide_at(ox, oy);
         break;
     }
+    case WAN_MAKE_INVISIBLE:
+        break; // C zap.c:2329: retain the default affected-object result.
     case WAN_UNDEAD_TURNING:
     case SPE_TURN_UNDEAD: {
         // C zap.c:2332-2390; revive() owns the glow and shop charge.
@@ -5901,6 +5959,8 @@ async function polyuse(objhdr, mat, minwt) {
             continue;
         if (obj_resists(otmp, 0, 0))
             continue; /* preserve unique objects */
+        if (otmp.otyp === 364 /* SCR_MAIL; C zap.c:1517, MAIL_STRUCTURES */)
+            continue;
         if (((MKOBJ_OC_MATERIAL[otmp.otyp | 0] | 0) === mat) === (rn2(minwt + 1) !== 0)) {
             /* appropriately add damage to bill */
             if (costly_spot(otmp.ox | 0, otmp.oy | 0)) {
@@ -5909,7 +5969,7 @@ async function polyuse(objhdr, mat, minwt) {
                 else
                     await stolen_value(otmp, otmp.ox | 0, otmp.oy | 0, false, false);
             }
-            if ((otmp.quan | 0) < LARGEST_INT)
+            if (otmp.quan < LARGEST_INT)
                 minwt -= (otmp.quan | 0);
             else
                 minwt = 0;
@@ -6861,6 +6921,8 @@ async function _bhitm_wand(mtmp, obj) {
          * resist() saving throw this case needs); this arm was simply never
          * wired to call it.  reveal_invis and learn_it are never set on this
          * arm, so both stay FALSE through the shared epilogue. */
+        if ((mtmp.data?.mlet | 0) === 13 /* S_MIMIC */ && (mtmp.m_ap_type | 0) !== 0)
+            seemimic(mtmp); /* C zap.c:337-338 */
         await cancel_monst(mtmp, obj, true, true, false);
         return _bhitm_wand_epilogue(mtmp, false, false, false, obj);
     }
@@ -7164,7 +7226,7 @@ async function backfire(otmp) {
     await pline(`${The(xname(otmp))} suddenly explodes!`);
     const dmg = d((otmp.spe | 0) + 2, 6);
     await losehp(_zap_Maybe_Half_Phys(dmg), 'exploding wand', KILLED_BY_AN);
-    _backfire_useupall(otmp);
+    await useupall(otmp);
 }
 /* C hack.h Maybe_Half_Phys(dmg) = Half_physical_damage ? (dmg+1)/2 : dmg. */
 function _zap_Maybe_Half_Phys(dmg) {
@@ -7174,9 +7236,7 @@ function _zap_Maybe_Half_Phys(dmg) {
 }
 const _ZAP_HALF_PHDAM = 56;   /* const.js:2353 HALF_PHDAM */
 /* C invent.c useupall(obj) = freeinv(obj) + obfree(obj).  js/cmd.js's useupall
- * is file-local, and importing more of cmd.js here closes no new cycle but
- * exports nothing usable, so unlink from gi.invent directly — the same
- * unlink the file's own useupf() path performs. */
+ * handles backfire; the legacy helper below is used for a wand turning to dust. */
 function _backfire_useupall(obj) {
     const g = game;
     let prev = null;
@@ -7358,7 +7418,8 @@ export function wish_history_add(buf) {
     let i;
     for (i = 0; i < MAX_WISH_HISTORY; i++) {
         const idx = (wish_history_idx + i) % MAX_WISH_HISTORY;
-        if (!wish_history[idx]) continue;
+        // C tests the allocated pointer: an empty wish is still an entry.
+        if (wish_history[idx] === null) continue;
         if (buf.slice(0, wish_history[idx].length).toLowerCase()
             === wish_history[idx].toLowerCase()) break;
     }
@@ -7380,20 +7441,20 @@ export async function wish_history_menu() {
     const menu = new TtyMenu({ overlay: true });
     for (let i = MAX_WISH_HISTORY - 1; i >= 0; i--) {
         const idx = (wish_history_idx + i) % MAX_WISH_HISTORY;
-        if (wish_history[idx])
+        if (wish_history[idx] !== null)
             menu.add_menu(i + 1, 0, ATR_NONE, wish_history[idx]);
     }
     menu.end_menu('Wish what?');
     const sel = await menu.select_menu(PICK_ONE);
     if (sel.count > 0) {
         const idx = (wish_history_idx + (sel.picks[0] - 1)) % MAX_WISH_HISTORY;
-        if (wish_history[idx]) return wish_history[idx];
+        if (wish_history[idx] !== null) return wish_history[idx];
     }
     return null;
 }
 
 /* C zap.c:6335 `wish_history[0]` test in makewish. */
-export function wish_history_has() { return !!wish_history[0]; }
+export function wish_history_has() { return wish_history[0] !== null; }
 
 /**
  * Flush all wish history entries (DEBUG-only in C).
@@ -7403,7 +7464,7 @@ export function wish_history_flush() {
     // In C, this is wrapped in #ifdef DEBUG, but we port it faithfully.
     // The function loops through wish_history, frees each entry, and resets the index.
     for (let idx = 0; idx < MAX_WISH_HISTORY; ++idx) {
-        if (wish_history[idx]) {
+        if (wish_history[idx] !== null) {
             // free(wish_history[idx]); — JavaScript handles garbage collection
             wish_history[idx] = null;
         }
@@ -7584,7 +7645,7 @@ async function cancel_item(obj) {
         }
     }
 
-    unbless(obj);
+    await unbless(obj);
     uncurse(obj);
 }
 
@@ -7698,12 +7759,21 @@ function drain_defends_when_carried(adtyp, _obj) {
     return adtyp === AD_DRLI ? false : false;
 }
 
+/* C ref: artifact.c defends(int adtyp, struct obj *otmp) — TRUE when otmp is
+ * an artifact whose defn.adtyp == adtyp, or dragon armour of the colour that
+ * resists adtyp (for AD_DRLI: BLACK_DRAGON_SCALES, after mail is folded onto
+ * scales).  C draws no RNG in defends() itself.
+ *
+ * The compiled object table has black dragon mail at 107 and scales at 117;
+ * shimmering dragon armor is excluded by #if 0 in objects.h. */
 function drain_defends(adtyp, obj) {
     /* C artilist.h:85-95,248 — Excalibur, Stormbringer, and the Staff of
      * Aesculapius all defend against AD_DRLI.  oartifact uses the artilist
      * ordinal (the same numbering consumed by js/attrib.js's artifact data). */
     if (adtyp === AD_DRLI) {
         const art = obj?.oartifact | 0;
+        if (!art && (obj.otyp === 107 || obj.otyp === 117))
+            return true;
         return art === 1 || art === 2 || art === 24;
     }
     return false;
@@ -7732,20 +7802,12 @@ export async function drain_item(obj, by_you) {
     if (!obj || obj.spe <= 0)
         return false;
 
-    // Check if object is potentially drainy:
-    // Rings 173-178 are oc_charged; weapons and armor always are; weptools via
-    // drain_is_weptool (a real oc_skill lookup now, not the former throw-stub).
-    // PRE-EXISTING DEVIATION, left as found: C tests
-    // objects[obj->otyp].oc_charged, and the port has no oc_charged table, so
-    // the ring range 173-178 stands in for it.  That under-reports wands and
-    // charged tools, whose only drain_item caller is zap.c:2319 (SPE_DRAIN_LIFE
-    const is_charged_ring = (obj.otyp >= RIN_BASE && obj.otyp <= RIN_LAST_CHARGED);
+    // C zap.c:1387-1389: charged tools use the same oc_charged bit as wands.
+    const is_charged = !!OC_CHARGED[obj.otyp];
     const is_weapon_or_armor = (obj.oclass === WEAPON_CLASS || obj.oclass === ARMOR_CLASS);
-    /* every wand is oc_charged (objects.h WAND(): chrg bit = 1) */
-    const is_wand = (obj.oclass | 0) === 11 /* WAND_CLASS */;
     const is_wep_tool = drain_is_weptool(obj);
 
-    if (!is_charged_ring && !is_wand && !is_weapon_or_armor && !is_wep_tool)
+    if (!is_charged && !is_weapon_or_armor && !is_wep_tool)
         return false;
     if (drain_defends(AD_DRLI, obj) || drain_defends_when_carried(AD_DRLI, obj)
         || obj_resists(obj, 10, 90))
@@ -8014,7 +8076,7 @@ export function miss(str, mtmp) {
     const by = g.bhitpos ? g.bhitpos.y : 0;
     const who = ((cansee(bx, by) || canspotmon(mtmp)) && g.flags.verbose)
         ? mon_nam(mtmp) : "it";
-    pline(`${The(str)} ${vtense(str, "miss")} ${who}.`);
+    return pline(`${The(str)} ${vtense(str, "miss")} ${who}.`);
 }
 
 /* C zap.c:3556-3569 hit(const char *str, struct monst *mtmp, const char *force)
@@ -8040,7 +8102,7 @@ export function hit(str, mtmp, force) {
  * guarded by `dmg && gy.youmonst.data == &mons[PM_GREMLIN]`; for every other
  * form it is `return amt` unchanged.  Was a throw-stub, on the same arm as
  * litroom above. */
-export function lightdamage(obj, ordinary, amt) {
+export async function lightdamage(obj, ordinary, amt) {
     const g = game;
     let dmg = amt | 0;
 
@@ -8055,8 +8117,15 @@ export function lightdamage(obj, ordinary, amt) {
             dmg = 20;
         /* C zap.c:3036 pline("Ow, that light hurts%c", ...) — resolved here;
          * js pline() takes a single already-formatted string. */
-        pline('Ow, that light hurts'
+        await pline('Ow, that light hurts'
               + ((dmg > 2 || (g.u && (g.u.mh | 0) <= 5)) ? '!' : '.'));
+        if (obj.oclass === SCROLL_CLASS || obj.oclass === SPBOOK_CLASS)
+            ordinary = false;
+        const how = obj.oclass === SPBOOK_CLASS ? 'spell of light'
+            : !obj.oartifact ? ansimpleoname(obj) : bare_artifactname(obj);
+        await losehp(_zap_Maybe_Half_Phys(dmg),
+            `${ordinary ? 'zapped' : 'blasted'} ${_expl_uhim()}self with ${how}`,
+            NO_KILLER_PREFIX_ZAP);
     }
     return dmg;
 }
@@ -8103,20 +8172,21 @@ function untrap_prob(ttmp) {
     return rn2(chance);
 }
 
-/* C trap.c:5393-5436 move_into_trap(): attempting to disarm an adjacent trap,
- * the hero has fallen into it.  (Punished drag_ball/move_bc not ported.) */
+/* C trap.c:5393-5436 move_into_trap(): failed disarming moves ball and chain too. */
 async function move_into_trap(ttmp) {
     const u = game.u;
     const x = ttmp.tx, y = ttmp.ty;
     const sgn = (v) => (v > 0) - (v < 0);
-    if (_ut_test_move(u.ux, u.uy, sgn(x - u.ux), sgn(y - u.uy), TEST_MOVE)) {
+    const bc = {}, bx = {}, by = {}, cx = {}, cy = {}, unused = {};
+    if (_ut_test_move(u.ux, u.uy, sgn(x - u.ux), sgn(y - u.uy), TEST_MOVE)
+        && (!u.uball || await drag_ball(x, y, bc, bx, by, cx, cy, unused, true))) {
         u.ux0 = u.ux; u.uy0 = u.uy;
-        u.ux = x; u.uy = y;
-        if (u.usteed) { u.usteed.mx = x; u.usteed.my = y; }
+        await u_on_newpos(x, y);
         u.umoved = true;
         newsym(u.ux0, u.uy0);
         _ut_vision_recalc(1);
         _ut_check_leash(u.ux0, u.uy0);
+        if (u.uball) move_bc(0, bc.value, bx.value, by.value, cx.value, cy.value);
         ttmp.tseen = 0; /* hack for check_here() */
         game.iflags = game.iflags || {};
         game.iflags.failing_untrap = (game.iflags.failing_untrap | 0) + 1;
@@ -8126,7 +8196,7 @@ async function move_into_trap(ttmp) {
         if (t2) t2.tseen = 1;
         _ut_exercise(A_WIS, false);
     } else {
-        const into = ((ttmp.ttyp | 0) === 5 || (ttmp.ttyp | 0) === WEB_ZAP || is_pit(ttmp.ttyp | 0));
+        const into = into_vs_onto(ttmp.ttyp);
         await pline(`Fortunately, you don't move ${into ? 'into' : 'onto'} it.`);
     }
 }
@@ -8242,7 +8312,7 @@ async function disarm_shooting_trap(ttmp, otyp) {
 
 /* C trap.c:5677-5694 try_lift() */
 async function try_lift(mtmp, ttmp, xtra_wt, stuff) {
-    if (_ut_calc_capacity(xtra_wt) >= 5 /* HVY_ENCUMBER */) {
+    if (_ut_calc_capacity(xtra_wt) >= HVY_ENCUMBER) {
         await pline(`${Monnam(mtmp)} is ${stuff ? 'carrying too much' : 'too heavy'} for you to lift.`);
         const d = mtmp.data;
         if (!ttmp.madeby_u && !mtmp.mpeaceful && mtmp.mcanmove
@@ -8299,7 +8369,7 @@ async function help_monster_out(mtmp, ttmp) {
         mtmp.mfrozen = 0;
         await pline(`${Monnam(mtmp)} stirs.`);
     }
-    let xtra_wt = mtmp.data.cwt | 0;
+    let xtra_wt = MONS_CWT[mtmp.data.pmidx] | 0; /* C trap.c:5773: permonst.cwt */
     if (!(await try_lift(mtmp, ttmp, xtra_wt, false))) return 1;
     if (mtmp.minvent) {
         for (let o = mtmp.minvent; o; o = o.nobj) xtra_wt += (o.owt | 0);

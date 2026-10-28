@@ -7,7 +7,7 @@
 import { pline, newsym, canspotmon, map_invisible, map_location, You_hear, You_see, mon_visible } from './display.js'; /* was an undeclared global: every pline() call in this file threw ReferenceError when reached */
 import { game } from './gstate.js';
 import { m_canseeu } from './dochug.js';
-import { unset_seenv } from './display.js';
+import { unset_seenv, Deaf } from './display.js';
 import {
     ROOMOFFSET, VAULT, EGD,
     RLOC_NOMSG, MALE, FEMALE, NEUTRAL, NUM_MGENDERS,
@@ -17,20 +17,21 @@ import {
     MM_EGD, MM_NOMSG, M_AP_OBJECT, M_AP_NOTHING, A_LAWFUL, NEED_HTH_WEAPON, IS_WALL,
     TLCORNER, TRCORNER, BLCORNER, BRCORNER, MELT_ICE_AWAY, D_NODOOR,
     RLOC_ERR, RLOC_MSG, OBJ_MINVENT, OBJ_INVENT,
-    ARTICLE_A,
+    ARTICLE_A, STRANGLED,
 } from './const.js';
-import { rn2, rn1 } from './rng.js';
+import { rn2 } from './rng.js';
 import { PM_GUARD, PM_CROESUS } from './pm.generated.js';
 import { newmextra, set_malign, mhe, monPmname } from './makemon.js';
-import { makemon, mungspaces, xy_set_wall_state, mongone, make_grave, place_object, remove_object, setmangry } from './mklev.js';
+import { makemon, mungspaces, xy_set_wall_state, mongone, make_grave, place_object, remove_object, obj_extract_self, setmangry } from './mklev.js';
 import { relobj } from './steal.js';
 import { stackobj } from './sp_lev.js';
 import { on_level } from './dungeon.js';
 import { contained_gold, currency } from './shk.js';
-import { makeplural, simpleonames, mimic_obj_name } from './objnam.js';
+import { an, makeplural, simpleonames, mimic_obj_name } from './objnam.js';
 import { upstart } from './mklev.js';
 import { in_rooms } from './shk.js';
-import { g_at, um_dist } from './cmd.js';
+import { g_at, um_dist, set_msg_xy } from './cmd.js';
+import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 import { freeinv as freeinv_real } from './cmd.js';
 import { add_to_minv, obfree } from './dokick.js';
 import { mnexto as mnexto_real, rloc, enexto_out, tele } from './teleport.js';
@@ -48,22 +49,14 @@ import { spot_stop_timers } from './timeout.js';
 import { stop_occupation, nomul, unmul } from './allmain.js';
 import { getlin } from './wizcmds.js';
 import { adjalign } from './attrib.js';
-import { noit_Monnam, x_monnam, yelp } from './mhitm.js';
-import { weight } from './weight.js';
+import { noit_Monnam, Some_Monnam, x_monnam, yelp, pronoun_gender } from './mhitm.js';
+import { fracture_rock } from './zap.js';
 
-/* ── hero-property macros (youprop.h), read the same way js/mcastu.js reads
- * them: uprops[<index>].intrinsic|extrinsic.  js/ has three spellings of the
- * hero property table and this is the live one. */
-const DEAF_PROP = 16;      /* C prop.h — DEAF */
-const STRANGLED_PROP = 27; /* C prop.h — STRANGLED */
-function _propOn(id) {
-    const p = game.u?.uprops?.[id];
-    return !!(p && ((p.intrinsic | 0) || (p.extrinsic | 0)));
-}
-/* C youprop.h: #define Deaf (u.uprops[DEAF].intrinsic || ... || u.uroleplay.deaf) */
-function Deaf() { return _propOn(DEAF_PROP) || !!game.u?.uroleplay?.deaf; }
-/* C youprop.h: #define Strangled u.uprops[STRANGLED].intrinsic */
-function Strangled() { return _propOn(STRANGLED_PROP); }
+/* C youprop.h:110,125: Strangled reads only intrinsic STRANGLED (19);
+ * Deaf also includes the flat HDeaf timeout used by this port's music. */
+function Strangled() { return !!(game.u?.uprops?.[STRANGLED]?.intrinsic | 0); }
+/* C you.h:330-331: noit_mhis, including each hallucination draw. */
+function noit_mhis(mon) { return ['his', 'her', 'its', 'their'][pronoun_gender(mon, 3)]; }
 /* C youprop.h:16 — #define U_AP_TYPE gy.youmonst.m_ap_type */
 function U_AP_TYPE() { return (game.youmonst?.m_ap_type | 0) || M_AP_NOTHING; }
 /* C mondata.h:104 — #define is_silent(ptr) ((ptr)->msound == MS_SILENT).  The
@@ -363,17 +356,7 @@ async function find_guard_dest(guard, out) {
 }
 
 async function fracture_vault_boulder(obj) {
-    const x = obj.ox | 0, y = obj.oy | 0;
-    remove_object(obj);
-    obj.otyp = ROCK;
-    obj.oclass = 13; /* GEM_CLASS */
-    obj.quan = rn1(60, 7);
-    obj.owt = weight(obj);
-    obj.where = 1;
-    place_object(obj, x, y);
-    await stackobj(obj);
-    newsym(x, y);
-    return true;
+    return fracture_rock(obj);
 }
 
 export async function invault() {
@@ -487,6 +470,8 @@ export async function invault() {
         await reset_faint(); /* if fainted - wake up */
         /* if there are any boulders in the guard's way, destroy them */
         if ((otmp = sobj_at(BOULDER, guard.mx, guard.my)) !== null) {
+            /* C vault.c:431-446 — fracture_rock() the whole pile, then
+             * You_see/You_hear "%s shatter." See zap.c:5537. */
             let count = 0;
             const bname = simpleonames(otmp);
             do {
@@ -495,7 +480,7 @@ export async function invault() {
                 otmp = sobj_at(BOULDER, guard.mx, guard.my);
             } while (otmp);
             const text = count === 1
-                ? `A ${bname} shatter.` : `${makeplural(bname)} shatter.`;
+                ? `${an(bname)} shatter.` : `${makeplural(bname)} shatter.`;
             if (Blind())
                 await You_hear(text);
             else
@@ -503,12 +488,13 @@ export async function invault() {
         }
         spotted = canspotmon(guard);
         if (spotted) {
-            pline("Suddenly one of the Vault's "
+            // C vault.c:444 / pline.c:283-284: MSGTYP_STOP blocks before newsym.
+            await pline("Suddenly one of the Vault's "
                   + makeplural(pmname(guard.data, Mgender(guard)))
                   + " enters!");
             newsym(guard.mx, guard.my);
         } else {
-            pline("Someone else has entered the Vault.");
+            await pline("Someone else has entered the Vault.");
             /* make sure that hero who can't see the guard knows where the
                wall is breeched, otherwise we couldn't follow the guard out */
             map_invisible(guard.mx, guard.my);
@@ -632,8 +618,7 @@ export async function invault() {
                 if (!Blind()) {
                     /* C vault.c:571-576: deaf heroes receive the guard's
                      * demand visually rather than through verbalize(). */
-                    const possessive = guard.female ? 'her' : 'his';
-                    pline(`${noit_Monnam(guard)} holds out ${possessive} palm and beckons with ${possessive} other hand.`);
+                    pline(`${noit_Monnam(guard)} holds out ${noit_mhis(guard)} palm and beckons with ${noit_mhis(guard)} other hand.`);
                 }
             } else {
                 SetVoice(guard, 0, 80, 0);
@@ -1012,7 +997,7 @@ async function gd_move_cleanup(grd, semi_dead, disappear_msg_seen) {
 }
 
 /* C ref: vault.c:869-885 gd_letknow(grd) — the guard has turned hostile. */
-function gd_letknow(grd) {
+async function gd_letknow(grd) {
     /* C vault.c:870-874: an unseen or invisible guard is announced by sound;
      * `cansee` alone is insufficient because the guard may be invisible or
      * undetected.  mon_visible is display.h's exact predicate. */
@@ -1020,29 +1005,37 @@ function gd_letknow(grd) {
         let hasWhistle = false;
         for (let obj = grd.minvent; obj; obj = obj.nobj)
             if ((obj.otyp | 0) === 245) { hasWhistle = true; break; }
-        You_hear(hasWhistle ? "the shrill sound of a guard's whistle"
-                            : "angry shouting");
+        await You_hear(hasWhistle ? "the shrill sound of a guard's whistle."
+                                 : "angry shouting.");
         return;
     }
     /* C vault.c:876-883: adjacent guards confront; otherwise they are seen
      * approaching. x_monnam supplies C's article/adjective handling. */
     const name = x_monnam(grd, ARTICLE_A, 'angry', 0, false);
-    pline(um_dist(grd.mx | 0, grd.my | 0, 2)
+    await pline(um_dist(grd.mx | 0, grd.my | 0, 2)
           ? `You see ${name} approaching.`
           : `You are confronted by ${name}.`);
 }
 
-/* C mon.c:2648 mpickgold() — consume the coin pile at the monster's square
+/* C mon.c:1827-1842 mpickgold() — consume the coin pile at the monster's square
  * and put it on the monster inventory chain. */
 async function mpickgold(grd) {
     const gold = g_at(grd.mx | 0, grd.my | 0);
     if (!gold)
-        return false;
-    remove_object(gold);
-    gold.where = OBJ_MINVENT;
+        return;
+    const mat_idx = game._objMaterials?.[gold.otyp] ?? MKOBJ_OC_MATERIAL[gold.otyp];
+    obj_extract_self(gold);
     await add_to_minv(grd, gold);
-    newsym(grd.mx | 0, grd.my | 0);
-    return true;
+    if (cansee(grd.mx | 0, grd.my | 0)) {
+        if (game.flags.verbose && !grd.isgd) {
+            // C pline.c:138-151 pline_mon(): set message origin, then pline.
+            set_msg_xy(grd === game.youmonst ? 0 : grd.mx,
+                       grd === game.youmonst ? 0 : grd.my);
+            await pline('%s picks up some %s.', Monnam(grd),
+                        mat_idx === 15 /* GOLD */ ? 'gold' : 'money');
+        }
+        newsym(grd.mx | 0, grd.my | 0);
+    }
 }
 
 /* C vault.c:632-644 move_gold() — return loose coins on the vault boundary
@@ -1064,7 +1057,6 @@ async function gd_pick_corridor_gold(grd, goldx, goldy) {
     const underHero = (goldx | 0) === (game.u.ux | 0)
                    && (goldy | 0) === (game.u.uy | 0);
     const seen = cansee(goldx | 0, goldy | 0);
-    let moved = false;
     if (underHero) {
         const gold = g_at(goldx | 0, goldy | 0);
         if (!gold)
@@ -1093,14 +1085,12 @@ async function gd_pick_corridor_gold(grd, goldx, goldy) {
                 newsym(guardx, guardy);
                 place_monster(grd, best.x, best.y);
                 newsym(grd.mx, grd.my);
-                moved = true;
             }
         }
         /* C extracts the hero-square object directly even when the guard was
          * moved closer first; it does not require the guard to stand on the
          * hero's square. */
-        remove_object(gold);
-        gold.where = OBJ_MINVENT;
+        obj_extract_self(gold);
         await add_to_minv(grd, gold);
         newsym(goldx | 0, goldy | 0);
     } else {
@@ -1115,9 +1105,9 @@ async function gd_pick_corridor_gold(grd, goldx, goldy) {
         await mpickgold(grd);
     }
     if (seen)
-        pline(`${Monnam(grd)}${grd.mpeaceful && (EGD(grd).warncnt | 0) > 5
+        await pline(`${Some_Monnam(grd)}${grd.mpeaceful && (EGD(grd).warncnt | 0) > 5
             ? ' calms down and' : ''} picks up the gold${underHero ? ' from beneath you' : ''}.`);
-    if (moved) {
+    if ((grd.mx | 0) !== guardx || (grd.my | 0) !== guardy) {
         remove_monster(grd.mx | 0, grd.my | 0);
         newsym(grd.mx | 0, grd.my | 0);
         place_monster(grd, guardx, guardy);
@@ -1163,7 +1153,7 @@ export async function gd_move(grd) {
             await wallify_vault(grd);
             if (!in_fcorridor(grd, grd.mx | 0, grd.my | 0))
                 await clear_fcorr(grd, true);
-            gd_letknow(grd);
+            await gd_letknow(grd);
             return -1;
         }
         if (!in_fcorridor(grd, grd.mx | 0, grd.my | 0))
@@ -1249,7 +1239,7 @@ export async function gd_move(grd) {
                     newsym(oldx, oldy);
                 }
                 grd.mpeaceful = 0;
-                gd_letknow(grd);
+                await gd_letknow(grd);
                 return -1;
             } else {
                 if (!Deaf()) {

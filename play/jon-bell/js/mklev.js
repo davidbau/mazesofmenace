@@ -1,5 +1,10 @@
 import { quest_monster_died } from './quest.js';
-import { Norep, Deaf as Deaf_live } from './display.js';
+import { surface } from './cmd.js';
+import { removed_from_icebox } from './makemon.js';
+import { explode } from './zap.js';
+import { EXPL_FIERY } from './const.js';
+import { PM_PYROLISK } from './pm.generated.js';
+import { Norep, Deaf as Deaf_live, rumor_file_open, init_rumors, rumor_rnd_line } from './display.js';
 import { You_feel } from './display.js';
 import { nonliving as lifesave_nonliving } from './makemon.js';
 import { m_useup as lifesave_m_useup } from './trap.js';
@@ -12,13 +17,13 @@ import { XKILL_NOMSG, DISMOUNT_GENERIC } from './const.js';
 import { flooreffects_obj_meld, flooreffects_obj_nexto_xy, flooreffects_pudding_merge_message, switch_terrain } from './cmd.js';
 import { water_damage_chain as water_damage_chain_ml, useup as useup_inv } from './cmd.js';
 import { hliquid as hliquid_ml, on_fire as on_fire_ml, is_youmonst } from './mhitm.js';
-import { W_AMUL, HEALTHY_TIN } from './const.js';
+import { W_AMUL, HEALTHY_TIN, FLYING, LEVITATION } from './const.js';
 import { may_passwall, in_town, breaktest, fire_damage_chain,
          is_mines_prize as is_mines_prize_real,
          is_soko_prize as is_soko_prize_real,
          disturb_buried_zombies } from './cmd.js';
 import { mons_cnutrit } from './food_props.js';
-import { unstuck as unstuck_mk, mon_leaving_level as mon_leaving_level_mk } from './dog.js';
+import { unstuck as unstuck_mk, mon_leaving_level as mon_leaving_level_mk, m_unleash as m_unleash_mk } from './dog.js';
 // @ts-nocheck
 // mklev.js — Level generation.
 // C ref: mklev.c — makelevel, makerooms, makecorridors, generate_stairs.
@@ -26,6 +31,8 @@ import { unstuck as unstuck_mk, mon_leaving_level as mon_leaving_level_mk } from
 // room placement, corridors, doors, stairs, niches, and fill.
 // Uses the real game PRNG (not a separate layout PRNG) for bit-exact parity.
 import { game, wizard } from './gstate.js';
+import { def_oc_syms_chars } from './drawing.js';
+import { BUFSZ, FODDERSHOP } from './const.js';
 import { PM_PURPLE_WORM as PM_PURPLE_WORM_MK, PM_MAIL_DAEMON } from './pm.generated.js';
 import { PM_PIRANHA, PM_ELECTRIC_EEL, PM_GREMLIN as PM_GREMLIN_ML, PM_IRON_GOLEM as PM_IRON_GOLEM_ML } from './pm.generated.js';
 import { PM_GRAY_OOZE as PM_GRAY_OOZE_MK } from './pm.generated.js';
@@ -42,7 +49,8 @@ import { rn2, rnd, rn1, rne, rnz, rnl as rnl_mc, d as d_ml, pushRngLogEntry } fr
 import { put_saddle_on_mon, place_monster, poly_steed } from './steed.js';
 import { rndmonstAdj, rndmonnumAdj, newMonHp, assignMakemonFemale, isArmedMndx, mInitweap, mInitinv, makemonDomesticSaddle, levelDifficulty, Inhell, mkclass, mkclassAligned, peaceMinded, monGeno, permonstTemplate, dmgtype_fromattack, splitobj as splitobj_real, m_in_air, noteleport_level, newmextra, is_ndemon, is_dprince, propagate, olfaction, mon_set_minvis, set_mon_data, grow_up } from './makemon.js';
 import { more_experienced } from './exper.js';
-import { dng_bottom } from './trap.js';
+import { dng_bottom, maybe_finish_sokoban } from './trap.js';
+import { TT_BEARTRAP, TT_WEB, TT_PIT, TT_LAVA } from './const.js';
 import { big_to_little, little_to_big, mon_hates_silver, passes_bars, resist_conflict, rndghostname, christen_monst, roguename, y_monnam, locomotion, Amonnam,
 /* growl: setmangry (:15355) calls C's mon.c growl() for a non-humanoid it has
  * just angered, and had NO binding for it in this module's scope — a
@@ -51,12 +59,13 @@ import { big_to_little, little_to_big, mon_hates_silver, passes_bars, resist_con
          growl, seemimic, update_inventory } from './mhitm.js';
 /* hideunder()'s "You see %s %s under %s." (C mon.c:4787-4796) */
 import { ansimpleoname, ARTILIST, ARTI_NOGEN, ARTI_GEN_SPE, oname, vtense,
-         quest_info, makeplural, artifact_exists as artifact_exists_real, getObjDescr } from './objnam.js';
+         quest_info, makeplural, artifact_exists as artifact_exists_real, getObjDescr, objName, simpleonames } from './objnam.js';
 const MS_LEADER = 36; /* C monflag.h MS_LEADER — your class leader */
 /* C mkobj.c:1248 mksobj()'s SPE_NOVEL arm calls do_name.c's noveltitle(). */
 import { noveltitle, safe_oname as safe_oname_real } from './do_name.js';
 import { set_msg_xy, set_quest_leader_m_id } from './cmd.js';
-import { PLNMSG_HIDE_UNDER, Is_earthlevel } from './const.js';
+import { _earth_sense } from './cmd.js';
+import { PLNMSG_HIDE_UNDER, PLNMSG_GROWL, Is_earthlevel } from './const.js';
 import { PROT_FROM_SHAPE_CHANGERS } from './const.js';
 import { DEFSYM_EXPLANATION } from './defsym_data.js';
 /* C makemon.c:1384 mongets() — makemon's `mitem` block hands the extra
@@ -68,7 +77,7 @@ import { attacktype_fordmg, emits_light, monflee, onscary, set_malign, mbirth_li
 import { monster_census, msummon } from './sit.js';
 import { aggravate as aggravate_real } from './mcastu.js';
 /* C makemon.c:1347-1349's light-source registration (light.c / monflag.h). */
-import { new_light_source, del_light_source, monst_to_any, artifact_light, obj_merge_light_sources } from './light.js';
+import { new_light_source, del_light_source, monst_to_any, artifact_light, obj_merge_light_sources, get_obj_location } from './light.js';
 import { LS_MONSTER } from './const.js';
 import { PM_WATCHMAN, PM_WATCH_CAPTAIN, PM_COCKATRICE, PM_CHICKATRICE, PM_GRID_BUG, PM_FLOATING_EYE, PM_AIR_ELEMENTAL, PM_FIRE_VORTEX, PM_FLAMING_SPHERE, PM_FIRE_ELEMENTAL, PM_SALAMANDER, PM_GREEN_SLIME, PM_MANES, PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER, PM_VROCK, PM_HEZROU, PM_MINOTAUR, PM_WUMPUS, PM_LONG_WORM, PM_GIANT_EEL, PM_ARCHEOLOGIST, PM_WIZARD, PM_ELF, PM_BAT, PM_GIANT_BAT, PM_VAMPIRE_BAT, PM_GRAY_DRAGON, PM_NURSE, PM_GELATINOUS_CUBE, PM_STONE_GOLEM, PM_BABY_PURPLE_WORM,
          PM_ROTHE, PM_BARBARIAN, PM_NEANDERTHAL, PM_HORNED_DEVIL, PM_BALROG,
@@ -119,6 +128,10 @@ import monPmnamesPack from './makemon_pmnames.json' with { type: 'json' };
 import { OC_WEIGHT } from './oc_weight.generated.js';
 import { init_rect, rnd_rect, get_rect, split_rects, within_bounded_area } from './rect.js';
 import { insert_branch } from './dungeon_rng.js';
+import { consumeDungeonInitRng } from './dungeon_rng.js';
+import { paniclog } from './files.js';
+import { registerStaticReset } from './statics.js';
+import { PM_LEPRECHAUN } from './pm.generated.js';
 import { depth as depth_of_level, distmin, dist2 } from './hacklib.js';
 import { oinit } from './o_init.js';
 import { LOW_PM, COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, LADDER, IS_AIR, MAX_TYPE, INVALID_TYPE, NO_ROOM, AIR, CLOUD, THRONE, HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, D_NODOOR, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED, D_SECRET, OROOM, VAULT, THEMEROOM, ROOMOFFSET, MAXNROFROOMS, SHARED, Is_rogue_level, COURT, ZOO, BEEHIVE, ANTHOLE, COCKNEST, LEPREHALL, MORGUE, BARRACKS, SWAMP, TEMPLE, SHOPBASE, SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, ALTAR, GRAVE, DIR_N, DIR_S, DIR_E, DIR_W, DIR_180, IS_WALL, IS_STWALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL, SPACE_POS, isok, MATCH_WALL, W_NONDIGGABLE, W_NONPASSWALL, W_ARMG, FILL_NONE, FILL_NORMAL, WM_MASK, WM_W_LEFT, WM_W_RIGHT, WM_W_TOP, WM_W_BOTTOM, WM_T_LONG, WM_T_BL, WM_T_BR, WM_C_OUTER, WM_C_INNER, WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR, ICE, MOAT, POOL, WATER, TREE, LAVAPOOL, LAVAWALL, DBWALL, A_LAWFUL, Align2amask, LR_TELE, LR_UPTELE, LR_DOWNTELE, RLOC_NOMSG, NO_MINVENT, In_quest, In_endgame, In_mines, In_V_tower, Is_oracle_level, Is_waterlevel, CORPSTAT_INIT, CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_NEUTER, CORPSTAT_SPE_VAL, CORPSTAT_NONE, G_GONE, FIRE_RES, NO_TRAP, TRAPNUM, ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP, VIBRATING_SQUARE, TRAPPED_DOOR, TRAPPED_CHEST, MKTRAP_NOFLAGS, MKTRAP_NOSPIDERONWEB, MKTRAP_SEEN, MKTRAP_MAZEFLAG, MKTRAP_NOVICTIM, is_pit, is_hole, Is_knox_level, ROT_AGE, TAINT_AGE, TROLL_REVIVE_CHANCE, DUST, BURN, MARK, ENGR_BLOOD, HEADSTONE, N_ENGRAVE, OBJ_FREE, OBJ_FLOOR, OBJ_CONTAINED, OBJ_BURIED, OBJ_DELETED, OBJ_INVENT, OBJ_MIGRATING, OBJ_ONBILL, ACCESSIBLE, u_at, GP_AVOID_MONPOS, GP_CHECKSCARY, MM_IGNOREWATER, MM_MINVIS, STRAT_WAITFORU, STRAT_CLOSE, STRAT_APPEARMSG, MM_NOWAIT, MM_EGD, MM_EPRI, MM_EMIN, MM_NOCOUNTBIRTH, MM_NOMSG, MM_MALE, MM_FEMALE, CORPSTAT_GENDER, ismnum, In_sokoban, ALLOW_MDISP, ALLOW_TRAPS, ALLOW_U, ALLOW_M, ALLOW_TM, ALLOW_ALL, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_BARS, ALLOW_SANCT, ALLOW_SSM, NOGARLIC, CONFLICT, IS_TREE, IS_WATERWALL, DRAWBRIDGE_UP, DISPLACED, INVIS, W_ARMS, engulfing_u, POISON_RES, MAGICAL_BREATHING, M_POISONGAS_OK, M_POISONGAS_MINOR, M_POISONGAS_BAD, SET_LIT_NOCHANGE, ZAP_POS, is_xport, N_DIRS, Is_botlevel, Is_stronghold, XL_UP, XL_DOWN, XL_LEFT, XL_RIGHT, SP_COORD_IS_RANDOM,
@@ -140,7 +153,7 @@ import { canseemon, canspotmon, pline, newsym, sensemon, unmap_object, glyph_is_
 import { invalidateTerrainStatus } from './terrain-status.js';
 /* rumors.c outrumor()'s is_fainted() guard.  CYCLIC (js/eat.js imports getrumor
  * from this file); is_fainted is a hoisted `export function`, so it resolves. */
-import { set_tin_variety, is_fainted, mon_givit, food_disappears } from './eat.js';
+import { set_tin_variety, is_fainted, mon_givit, food_disappears, eaten_stat } from './eat.js';
 import { book_disappears } from './spell.js';
 import { impossible as lifecycle_impossible } from './pline.js';
 import { LS_OBJECT } from './const.js';
@@ -160,7 +173,8 @@ import { shkgone } from './shk.js';
 import { subfrombill, find_objowner, onbill } from './shk.js';
 /* in_rooms: the ONE implementation (js/shk.js:490, C hack.c:3497).  Imported and
  * re-exported so the modules that import it from here get the real body. */
-import { in_rooms } from './shk.js';
+import { in_rooms, costly_spot } from './shk.js';
+import { W_SADDLE } from './const.js';
 import { add_damage } from './shk.js';
 import { spot_stop_timers } from './timeout.js';
 import { long_to_any } from './cmd.js';
@@ -197,14 +211,14 @@ import { set_apparxy, dochugw } from './monmove.js';           /* C monmove.c:14
  * imported here under _nc names.  The stubs are GONE as of the shadow-body
  * audit — every call site in this file now goes through these aliases. */
 import { readobjnam as readobjnam_mk, distant_name as distant_name_nc, doname as doname_nc, Tobjnam } from './objnam.js';
-import { simpleonames as simpleonames_mk, an as an_mk, corpse_xname as corpse_xname_rc, The as The_rc } from './objnam.js';
+import { simpleonames as simpleonames_mk, an as an_mk, corpse_xname as corpse_xname_rc, The as The_rc, xname } from './objnam.js';
 import { DEFSYM_EXPLANATION as DEFSYM_EXPLANATION_MK } from './defsym_data.js';
 import { Monnam as Monnam_rc } from './mcastu.js';
 import { Adjmonnam as Adjmonnam_rc } from './mhitm.js';
 import { observe_object as observe_object_mk } from './o_init.js';
 import { OC_NAME as OC_NAME_MK } from './oc_name_data.js';
 import { obfree, delobj as delobj_real, deliver_obj_to_mon } from './dokick.js';
-import { js_makemaz, mazexy, set_levltyp_lit, set_levltyp, bughack, bubbles_clear_level } from './mkmaze.js';
+import { Invocation_lev, js_makemaz, mazexy, set_levltyp_lit, set_levltyp, bughack, bubbles_clear_level } from './mkmaze.js';
 /* maybe_reset_pick — C lock.c:268; add_to_migration() below calls it when the
  * object leaving the level is a container.  RNG-free.  js/lock.js already
  * imports THIS module (wake_nearto, place_object); the resulting cycle is
@@ -678,9 +692,14 @@ export function stairway_find_from(fromdlev, isladder) {
     return tmp || null;
 }
 // ── Hero placement (C ref: dungeon.c:1568-1601 u_on_newpos) ──
-function u_on_newpos(x, y) {
+async function u_on_newpos(x, y) {
+    if (!isok(x, y)) {
+        if (x < 0 || y < 0 || x >= COLNO || y >= ROWNO) throw new Error(`panic: u_on_newpos: trying to place hero off map <${x},${y}>`);
+        await lifecycle_impossible('u_on_newpos: trying to place hero off map <%d,%d>', x, y);
+    }
     game.u.ux = x;
     game.u.uy = y;
+    game.u.uundetected = 0;
     /* C dungeon.c:1588 — on a level transition, remember the arrival square
      * in ux0/uy0 before rebuilding nearby visibility. */
     const uz = game.u.uz, uz0 = game.u.uz0;
@@ -705,10 +724,11 @@ function u_on_newpos(x, y) {
         game.u.usteed.mx = x;
         game.u.usteed.my = y;
     }
-    if (!_Blind_mk()
+    if (!(uz && uz0 && (uz.dnum !== uz0.dnum || uz.dlevel !== uz0.dlevel)) && !_Blind_mk()
         && !_Hallucination_mk()
         && !(game.u.uswallow | 0))
         see_nearby_objects();
+    await _earth_sense();
 }
 // C ref: mkmaze.c bad_location — mirrors C exactly.
 // Returns TRUE when the location is unsuitable for hero/portal placement.
@@ -788,7 +808,7 @@ async function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
             return false;
         }
     }
-    u_on_newpos(x, y);
+    await u_on_newpos(x, y);
     return true;
 }
 
@@ -836,7 +856,7 @@ export async function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, l
 export async function u_on_sstairs(upflag) {
     const stway = stairway_find_special_dir(upflag);
     if (stway) {
-        u_on_newpos(stway.sx, stway.sy);
+        await u_on_newpos(stway.sx, stway.sy);
         return;
     }
     await u_on_rndspot(upflag);
@@ -876,7 +896,7 @@ export async function u_on_rndspot(upflag) {
 export async function u_on_upstairs() {
     const stway = stairway_find_dir(true);
     if (stway) {
-        u_on_newpos(stway.sx, stway.sy);
+        await u_on_newpos(stway.sx, stway.sy);
         return;
     }
     // No upstair — try special stairs, then random.
@@ -889,7 +909,7 @@ export async function u_on_upstairs() {
 export async function u_on_dnstairs() {
     const stway = stairway_find_dir(false);
     if (stway) {
-        u_on_newpos(stway.sx, stway.sy);
+        await u_on_newpos(stway.sx, stway.sy);
         return;
     }
     // C: u_on_sstairs(1); /* destination dnstairs implies moving up */
@@ -1346,8 +1366,9 @@ export function start_corpse_timeout(body) {
  * ordinary randomized 23..27 turn interval; an explicit positive delay is
  * used when an overdue timer is caught up after returning to a level. */
 export function start_glob_timeout(obj, when) {
-    if (!obj?.globby)
-        return;
+    if (!obj.globby)
+        return lifecycle_impossible("start_glob_timeout for non-glob [%d: %s]?",
+                                    obj.otyp, simpleonames(obj));
     if (obj.timed)
         stop_timer(SHRINK_GLOB, obj_to_any(obj));
     if ((when | 0) < 1)
@@ -1604,6 +1625,8 @@ function tin_variety_random(mnum) {
 // C ref: mkobj.c mksobj_init — initialize object fields with RNG (mkobj.c:870-1176)
 async function mksobj_init(otmp, otyp, artif) {
     const oc = MKOBJ_OC_CLASS[otyp] | 0;
+    if (oc < WEAPON_CLASS || oc > VENOM_CLASS) // C mkobj.c:1164-1165
+        throw new Error(`mksobj tried to make type ${otyp}, class ${oc}.`);
     if (oc === WEAPON_CLASS) {
         /* C mkobj.c mksobj_init WEAPON_CLASS (mkobj.c:877-895)
          * 878: quan = is_multigen(otmp) ? rn1(6, 6) : 1 — hack.h rn1(x,y)=rn2(x)+y so leaf is rn2(6).
@@ -2063,8 +2086,10 @@ async function mkobj(oclass, artif) {
         while ((prob -= MKOBJ_OC_PROB[i]) > 0)
             ++i;
     }
-    if ((MKOBJ_OC_CLASS[i] | 0) !== oclass)
+    if ((MKOBJ_OC_CLASS[i] | 0) !== oclass || !objName(i)) {
+        await lifecycle_impossible("probtype error, oclass=%d i=%d", oclass, i);
         i = MKOBJ_SVB_BASES[oclass];
+    }
     if (typeof process !== 'undefined' && ENV?.FF_MKOBJ_TRACE === '1')
         pushRngLogEntry(`^mkobj_pick[class=${oclass | 0} otyp=${i | 0} artif=${artif ? 1 : 0}]`);
     return await mksobj(i, true, artif);
@@ -2644,6 +2669,8 @@ export function copy_mextra(mtmp2, mtmp1) {
             newedog(mtmp2);
         /* assert(has_edog(mtmp2)); */
         Object.assign(mtmp2.mextra.edog, mtmp1.mextra.edog);
+        /* C copies struct edog by value; ogoal is a nested struct, not a shared ref */
+        mtmp2.mextra.edog.ogoal = { ...mtmp1.mextra.edog.ogoal };
     }
     if (mtmp1.mextra.ebones) {
         if (!mtmp2.mextra.ebones)
@@ -3470,6 +3497,9 @@ function place_object(otmp, x, y) {
     game.fobj = otmp;
     if ((otmp.otyp | 0) === BOULDER && (!otmp2 || (otmp2.otyp | 0) !== BOULDER))
         block_point(xi, yi);
+    // C mkobj.c:2366-2367: placing a timed corpse on ice changes its decay rate.
+    if (otmp.timed)
+        obj_timer_checks(otmp, xi, yi, 0);
 }
 export function remove_object(otmp) {
     const x = otmp.ox | 0;
@@ -3849,11 +3879,7 @@ const CANDELABRUM_OF_INVOCATION = 262;
  * file (unlike js/weight.js, a replay-only simplification for inventory
  * reconstruction) always has live corpsenm/MONS_ROWS/MONS_CWT/MONS_MSIZE
  * data available for freshly-created objects.
- * The oeaten branches (CORPSE-with-oeaten, FOOD_CLASS-with-oeaten) are
- * omitted: every object this file's weight() is called on is newly
- * created via mksobj (obj.oeaten is always 0 from cg.zeroobj), so those
- * branches are unreachable here — matching C's actual behavior for this
- * call site, not a simplification of it. */
+ * container_weight() also reaches existing, partially eaten contents. */
 function weight(otmp) {
     if (!otmp) return 0;
     const otyp = otmp.otyp | 0;
@@ -3882,8 +3908,11 @@ function weight(otmp) {
     }
     if (otyp === CORPSE && ismnum(otmp.corpsenm)) {
         const long_wt = quan * (MONS_CWT[otmp.corpsenm] | 0);
-        return long_wt > 2147483647 ? 2147483647 : long_wt;
+        wt = long_wt > 32767 ? 32767 : long_wt; // C global.h:135 LARGEST_INT
+        return otmp.oeaten ? eaten_stat(wt, otmp) : wt;
     }
+    if ((otmp.oclass | 0) === FOOD_CLASS && otmp.oeaten)
+        return eaten_stat(quan * wt, otmp);
     if ((otmp.oclass | 0) === COIN_CLASS) {
         const cw = Math.trunc((quan + 50) / 100);
         return Math.max(cw, 1);
@@ -3952,11 +3981,13 @@ function sobj_at(otyp, x, y) {
 /* C mkobj.c:2068-2120 — mkcorpstat: make corpse/statue at (x,y) or random if x==0&&y==0 */
 export async function mkcorpstat(objtyp, mtmp, pm, x, y, flags) {
     const init = (flags & CORPSTAT_INIT) !== 0;
+    if (objtyp !== CORPSE && objtyp !== STATUE)
+        await lifecycle_impossible("making corpstat type %d", objtyp);
     let otmp;
     /* C mkobj.c:2080-2085 — x==0&&y==0 means random placement (rloco); otherwise mksobj_at */
     if (x === 0 && y === 0) {
         otmp = (await mksobj(objtyp, init, false));
-        /* rloco is not ported; object stays unplaced (no fobj entry) */
+        await steal_rloco(otmp);
     }
     else {
         otmp = (await mksobj_at(objtyp, x, y, init, false));
@@ -4400,7 +4431,7 @@ export async function makemon(mdat, x, y, mmflags) {
         return null;
     }
     const countbirth = (mmflags & MM_NOCOUNTBIRTH) === 0;
-    propagate(mndx, countbirth, false);
+    await propagate(mndx, countbirth, false);
     /* C makemon.c:1251-1252 — mtmp->nmon = fmon; fmon = mtmp; */
     const mon = {
         mx: x,
@@ -4842,10 +4873,7 @@ export function Can_dig_down(lev) {
         return false;
     if (Is_botlevel(lev))
         return false;
-    const dun = game.dungeons?.[lev?.dnum];
-    const invocation = In_hell(lev) && !!dun
-                       && lev.dlevel === (dun.num_dunlevs | 0) - 1;
-    return !invocation;
+    return !Invocation_lev(lev);
 }
 
 /* C dungeon.c:1661-1665 — "Like Can_dig_down, but also allows falling through
@@ -5115,7 +5143,7 @@ export async function mkroll_launch(ttmp, x, y, otyp, ocount) {
 /* C ref: pline.c impossible() — a warning channel, not a fault.  js/trap.js's
  * maketrap twin spells its no-op the same way (impossible_ at js/trap.js:1612);
  * this file had no such helper because no ported body here reached one. */
-function mklev_impossible(_msg, ..._args) { }
+function mklev_impossible(msg, ...args) { return lifecycle_impossible(msg, ...args); }
 async function maketrap(x, y, typ) {
     // C trap.c:464-465 — TRAPPED_DOOR and TRAPPED_CHEST are never physical traps
     if (typ === TRAPPED_DOOR || typ === TRAPPED_CHEST)
@@ -5124,10 +5152,18 @@ async function maketrap(x, y, typ) {
     if (oldtrap && (oldtrap.ttyp === MAGIC_PORTAL || oldtrap.ttyp === VIBRATING_SQUARE))
         return null;
     const oldplace = !!oldtrap;
+    // C trap.c:469-474: replacing a holding trap can release the hero.
+    const u = game.u;
+    if (oldplace && u.utrap && u_at(x, y)
+        && ((u.utraptype === TT_BEARTRAP && typ !== BEAR_TRAP)
+            || (u.utraptype === TT_WEB && typ !== WEB)
+            || (u.utraptype === TT_PIT && !is_pit(typ))
+            || (u.utraptype === TT_LAVA && !is_lava_mv(x, y))))
+        await reset_utrap(false);
     const _ltLoc = game.level?.at(x, y);
     const _lt = _ltLoc ? (_ltLoc.typ | 0) : STONE;
     if (!oldplace
-        && ((_lt === LADDER || _lt === STAIRS)
+        && ((!game.iflags?.debug_overwrite_stairs && (_lt === LADDER || _lt === STAIRS))
             || is_pool_or_lava(x, y)
             || (IS_FURNITURE(_lt) && typ !== PIT && typ !== HOLE)
             || (_lt === DRAWBRIDGE_UP && typ === MAGIC_PORTAL)
@@ -5146,11 +5182,10 @@ async function maketrap(x, y, typ) {
         dst: { dnum: -1, dlevel: -1 },
         ntrap: null, // C: ntrap pointer for gf.ftrap linked list
     };
-    /* C trap.c:496-502 — "[re-]initialize all fields except ntrap ... and
-     * <tx,ty>".  For a freshly built object these are already the values above;
-     * for the oldplace path they are the re-init C performs.  tnote is NOT in
-     * that list in C (it is a bitfield outside `vl`), so it is left alone and
-     * only re-derived by the SQKY_BOARD arm below, exactly as in C. */
+    /* C trap.c:496-502: zero vl, including tnote (trap.h:14), on reuse too. */
+    trap.vl = {};
+    trap.launch_otyp = trap.conjoined = trap.tnote = 0;
+    trap.launch2 = { x: 0, y: 0 };
     trap.ttyp = typ;
     trap.once = false;
     /* C trap.c:501 — unhideable_trap(typ), i.e. HOLE only (trap.h:115). */
@@ -5233,7 +5268,7 @@ async function maketrap(x, y, typ) {
             const ystart = (game.gy?.ystart) | 0;
             trap.teledest = { x: xstart + lpx, y: ystart + lpy };
             if (trap.teledest.x === x && trap.teledest.y === y)
-                mklev_impossible('making fixed-dest tele trap pointing to itself');
+                await mklev_impossible('making fixed-dest tele trap pointing to itself');
         }
     }
     // C trap.c:578-583 — `if (!oldplace) { ttmp->ntrap = gf.ftrap; gf.ftrap
@@ -5246,6 +5281,8 @@ async function maketrap(x, y, typ) {
         if (!game.level.traps)
             game.level.traps = [];
         game.level.traps.push(trap);
+    } else if (game.level.flags?.sokoban_rules ?? game.sokoban) {
+        maybe_finish_sokoban(); // C trap.c:584-589
     }
     return trap;
 }
@@ -5404,10 +5441,15 @@ const cookie_marker = '[cookie] ';
 // truth: 1 = true rumor, -1 = false rumor, 0 = either (rn2(2) decides).
 export async function getrumor(truth, exclude_cookie) {
     let rumor_buf = '';
+    if ((game.true_rumor_size ?? 0) < 0) return rumor_buf;
+    const rumors = await rumor_file_open();
+    if (!rumors) return rumor_buf;
     let count = 0;
     let adjtruth = 0;
     do {
         rumor_buf = '';
+        if ((game.true_rumor_size ?? 0) === 0 && !init_rumors(rumors))
+            return 'Error reading "rumors".'; /* C rumors.c:142 */
         /*
          *  C rumors.c:145-150 —
          *  input:      1    0   -1
@@ -5418,11 +5460,11 @@ export async function getrumor(truth, exclude_cookie) {
         switch (adjtruth) {
             case 2: /*(might let a bogus input arg sneak thru)*/
             case 1:
-                rumor_buf = get_rnd_line_from_section(TRUE_RUMORS, TRUE_RUMOR_OFFSETS, TRUE_RUMOR_SIZE, rn2, MD_PAD_RUMORS);
+                rumor_buf = rumor_rnd_line(rumors, true, rn2);
                 break;
             case 0: /* once here, 0 => false rather than "either" */
             case -1:
-                rumor_buf = get_rnd_line_from_section(FALSE_RUMORS, FALSE_RUMOR_OFFSETS, FALSE_RUMOR_SIZE, rn2, MD_PAD_RUMORS);
+                rumor_buf = rumor_rnd_line(rumors, false, rn2);
                 break;
             default:
                 await lifecycle_impossible('strange truth value for rumor');
@@ -5815,6 +5857,17 @@ async function _mkcorpstat_corpse(corpsenm, x, y, corpstatflags, mtmp = null) {
 }
 export async function make_corpse(mtmp, x, y, corpseflags) {
     const g = game;
+    // C mon.c:911-939: undead corpses also pass through the common tail.
+    async function finish_undead_corpse(obj) {
+        if (g.context?.bypasses) bypass_obj(obj);
+        if (mtmp.mextra?.mgivenname)
+            obj = await oname(obj, mtmp.mextra.mgivenname, 0);
+        if (_Blind_mk() && !sensemon(mtmp)) clear_dknown(obj);
+        await stackobj(obj);
+        newsym(x | 0, y | 0);
+        if (obj.ox !== x || obj.oy !== y) newsym(obj.ox, obj.oy);
+        return obj;
+    }
     if (ENV.FF_DEATH_TRACE === '1')
         pushRngLogEntry(`^make_corpse[id=${mtmp.m_id|0} pm=${(mtmp.mndx ?? mtmp.mnum ?? -1)|0} pos=${x|0},${y|0}]`);
     const mndx = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
@@ -5830,16 +5883,14 @@ export async function make_corpse(mtmp, x, y, corpseflags) {
         const obj = await _mkcorpstat_corpse(undead_to_corpse(mndx), x, y,
                                        corpstatflags | CORPSTAT_INIT, mtmp);
         obj.age = (obj.age | 0) - (TAINT_AGE + 1);
-        newsym(x | 0, y | 0);
-        return obj;
+        return await finish_undead_corpse(obj);
     }
     /* C mon.c:622-628 — vampires: the corpse of the BASE creature, old. */
     if (mndx === 226 /* PM_VAMPIRE */ || mndx === 227 /* PM_VAMPIRE_LEADER */) {
         const obj = await _mkcorpstat_corpse(undead_to_corpse(mndx), x, y,
                                        corpstatflags | CORPSTAT_INIT, mtmp);
         obj.age = (obj.age | 0) - (TAINT_AGE + 1);
-        newsym(x | 0, y | 0);
-        return obj;
+        return await finish_undead_corpse(obj);
     }
     /* C mon.c:650-712 — golems leave their material instead of a corpse.
      * Each arm ends 'free_mgivenname(mtmp); break;' into the common tail
@@ -6005,12 +6056,14 @@ export async function make_corpse(mtmp, x, y, corpseflags) {
      * corpse listed as "a little dog corpse" instead of "... named Slasher". */
     if (mtmp.mextra?.mgivenname)
         await oname(otmp, mtmp.mextra.mgivenname, 0);
+    if (_Blind_mk() && !sensemon(mtmp)) clear_dknown(otmp); // C mon.c:931-932
     // C mon.c:934-935 — make_corpse ends `stackobj(obj); newsym(x, y);`.  Every
     // newsym the death path issued before this one ran while the corpse did not
     // exist yet (mondead → m_detach → mon_leaving_level, mon.c:2725), so they
     // mergable() allows (C mon.c:934); 'obj' remains the survivor.
     await stackobj(otmp);
     newsym(x | 0, y | 0);
+    if (otmp.ox !== x || otmp.oy !== y) newsym(otmp.ox, otmp.oy); // C mon.c:938-939
     return otmp;
 }
 // C ref: mon.c:5002-5012 valid_vampshiftform(base, form)
@@ -6293,7 +6346,8 @@ async function roguecorr(x, y, dir) {
             fromy = _rogue_r[x][y].rly + _rogue_r[x][y].dy;
             fromx += 1 + 26 * x;
             fromy += 7 * y;
-            /* C: impossible("down: no wall at %d,%d?") — diagnostic only */
+            if (!IS_WALL(g.level.at(fromx, fromy).typ))
+                await lifecycle_impossible("down: no wall at %d,%d?", fromx, fromy);
             await dodoor(fromx, fromy, g.level.rooms[_rogue_r[x][y].nroom]);
             {
                 const loc = g.level.at(fromx, fromy);
@@ -6303,7 +6357,7 @@ async function roguecorr(x, y, dir) {
             fromy++;
         }
         if (y >= 2) {
-            /* C: impossible("down door from %d,%d going nowhere?") */
+            await lifecycle_impossible("down door from %d,%d going nowhere?", x, y);
             return;
         }
         y++;
@@ -6318,7 +6372,8 @@ async function roguecorr(x, y, dir) {
             toy = _rogue_r[x][y].rly - 1;
             tox += 1 + 26 * x;
             toy += 7 * y;
-            /* C: impossible("up: no wall at %d,%d?") */
+            if (!IS_WALL(g.level.at(tox, toy).typ))
+                await lifecycle_impossible("up: no wall at %d,%d?", tox, toy);
             await dodoor(tox, toy, g.level.rooms[_rogue_r[x][y].nroom]);
             {
                 const loc = g.level.at(tox, toy);
@@ -6341,8 +6396,8 @@ async function roguecorr(x, y, dir) {
             fromy = _rogue_r[x][y].rly + rn2(_rogue_r[x][y].dy);
             fromx += 1 + 26 * x;
             fromy += 7 * y;
-            /* C: impossible("down: no wall at %d,%d?") — C really does say
-             * "down" here; ported as-is (Cardinal Rule 1), diagnostic only */
+            if (!IS_WALL(g.level.at(fromx, fromy).typ))
+                await lifecycle_impossible("down: no wall at %d,%d?", fromx, fromy);
             await dodoor(fromx, fromy, g.level.rooms[_rogue_r[x][y].nroom]);
             {
                 const loc = g.level.at(fromx, fromy);
@@ -6352,7 +6407,7 @@ async function roguecorr(x, y, dir) {
             fromx++;
         }
         if (x >= 2) {
-            /* C: impossible("right door from %d,%d going nowhere?") */
+            await lifecycle_impossible("right door from %d,%d going nowhere?", x, y);
             return;
         }
         x++;
@@ -6367,7 +6422,8 @@ async function roguecorr(x, y, dir) {
             toy = _rogue_r[x][y].rly + rn2(_rogue_r[x][y].dy);
             tox += 1 + 26 * x;
             toy += 7 * y;
-            /* C: impossible("left: no wall at %d,%d?") */
+            if (!IS_WALL(g.level.at(tox, toy).typ))
+                await lifecycle_impossible("left: no wall at %d,%d?", tox, toy);
             await dodoor(tox, toy, g.level.rooms[_rogue_r[x][y].nroom]);
             {
                 const loc = g.level.at(tox, toy);
@@ -6379,7 +6435,7 @@ async function roguecorr(x, y, dir) {
         roguejoin(fromx, fromy, tox, toy, true);
         return;
     }
-    /* C: impossible("corridor in direction %d?", dir) */
+    await lifecycle_impossible("corridor in direction %d?", dir);
 }
 
 /* C extralev.c:137-190 — modified walkfrom() from mkmaze.c */
@@ -6495,7 +6551,10 @@ export async function makeroguerooms() {
                 await roguecorr(x, y, XL_DOWN);
             if (here.doortable & XL_RIGHT)
                 await roguecorr(x, y, XL_RIGHT);
-            /* C: impossible() for a leftover XL_LEFT / XL_UP */
+            if (here.doortable & XL_LEFT)
+                await lifecycle_impossible("left end of %d, %d never connected?", x, y);
+            if (here.doortable & XL_UP)
+                await lifecycle_impossible("up end of %d, %d never connected?", x, y);
         }
 }
 
@@ -6595,12 +6654,19 @@ const _XL_FOOD_RATION = 293;
 // C ref: mklev.c makelevel()
 async function makelevel() {
     await makelevel_generate();
+    await makelevel_postprocess();
     // C mklev.c:1422: applies to special, maze and ordinary levels alike.
     await nh_callback_run(NHCB_LVL_ENTER);
 }
 
 async function makelevel_generate() {
     const g = game;
+    if ((g.wiz1_level?.dlevel ?? 0) === 0) { // C mklev.c:1259-1262.
+        await lifecycle_impossible('makelevel() called when dungeon not yet initialized.');
+        rn2(3); rn2(2); // nhl_init's nhlib.lua alignment shuffle.
+        consumeDungeonInitRng();
+        g._tune = Array.from({ length: 5 }, () => String.fromCharCode(65 + rn2(7))).join(''); // C dungeon.c:1111-1117,1312.
+    }
     await oinit();
     clear_level_structures();
     // Reset postprocess trap accumulator for this level.
@@ -6641,7 +6707,7 @@ async function makelevel_generate() {
          * js_makemaz does not port.  Vlad's Tower is the only user: its
          * three dungeon levels resolve to tower1, tower2, and tower3. */
         if (dgn.proto === 'tower') {
-            const dunlev = (uz0?.dlevel | 0) - (dgn.depth_start | 0) + 1;
+            const dunlev = uz0?.dlevel | 0; // C dungeon.c:1325: dunlev is dlevel.
             if (dunlev >= 1 && dunlev <= 3) {
                 await js_makemaz(`tower${dunlev}`, null);
                 return;
@@ -6738,8 +6804,7 @@ async function makelevel_generate() {
         }
         await makerooms();
     }
-    if (g.level.nroom <= 0)
-        return;
+    if (g.level.nroom <= 0) throw new Error('makelevel: nroom > 0');
     sort_rooms();
     await generate_stairs();
     // Branch check
@@ -6807,14 +6872,16 @@ async function makelevel_generate() {
         const u_depth = depth_of_level(uz) | 0;
         const medusaDepth = g.medusa_level ? (depth_of_level(g.medusa_level) | 0) : 0;
         const nroom = g.level.nroom | 0;
-        if (u_depth > 1 && u_depth < medusaDepth
+        if (wizard() && (g.env?.SHOPTYPE ?? ENV.SHOPTYPE)?.length <= BUFSZ / 2)
+            await do_mkroom(SHOPBASE);
+        else if (u_depth > 1 && u_depth < medusaDepth
             && nroom >= room_threshold && rn2(u_depth) < 3) {
             await do_mkroom(SHOPBASE);
         }
         else if (u_depth > 4 && !rn2(6)) {
             await do_mkroom(COURT);
         }
-        else if (u_depth > 5 && !rn2(8) /* && !(mvitals[LEPRECHAUN] & G_GONE) */) {
+        else if (u_depth > 5 && !rn2(8) && !(g.mvitals?.[PM_LEPRECHAUN]?.mvflags & G_GONE)) {
             await do_mkroom(LEPREHALL);
         }
         else if (u_depth > 6 && !rn2(7)) {
@@ -6823,7 +6890,7 @@ async function makelevel_generate() {
         else if (u_depth > 8 && !rn2(5)) {
             await do_mkroom(TEMPLE);
         }
-        else if (u_depth > 9 && !rn2(5) /* && !(mvitals[KILLER_BEE] & G_GONE) */) {
+        else if (u_depth > 9 && !rn2(5) && !(g.mvitals?.[PM_KILLER_BEE]?.mvflags & G_GONE)) {
             await do_mkroom(BEEHIVE);
         }
         else if (u_depth > 11 && !rn2(6)) {
@@ -6832,13 +6899,13 @@ async function makelevel_generate() {
         else if (u_depth > 12 && !rn2(8) && antholemon() !== null) {
             await do_mkroom(ANTHOLE);
         }
-        else if (u_depth > 14 && !rn2(4) /* && !(mvitals[SOLDIER] & G_GONE) */) {
+        else if (u_depth > 14 && !rn2(4) && !(g.mvitals?.[PM_SOLDIER]?.mvflags & G_GONE)) {
             await do_mkroom(BARRACKS);
         }
         else if (u_depth > 15 && !rn2(6)) {
             await do_mkroom(SWAMP);
         }
-        else if (u_depth > 16 && !rn2(8) /* && !(mvitals[COCKATRICE] & G_GONE) */) {
+        else if (u_depth > 16 && !rn2(8) && !(g.mvitals?.[PM_COCKATRICE]?.mvflags & G_GONE)) {
             await do_mkroom(COCKNEST);
         }
     }
@@ -6890,6 +6957,9 @@ async function makelevel_generate() {
         if (rr && rr.hx > 0)
             await fill_special_room(rr);
     }
+}
+async function makelevel_postprocess() {
+    const g = game, dnum = g.u?.uz?.dnum ?? 0;
     if (g._luathemes_loaded?.[dnum]) {
         await themerooms_post_level_generate();
         wallification(1, 0, COLNO - 1, ROWNO - 1);
@@ -10285,8 +10355,9 @@ async function generate_stairs() {
     const g = game;
     const pos = { x: 0, y: 0 };
     // Down stairs
-    {
+    if (!Is_botlevel(g.u?.uz)) {
         const croom = generate_stairs_find_room();
+        if (!croom) throw new Error(`generate_stairs: failed to find a room! (${g.level.nroom})`);
         if (croom) {
             if (!somexyspace(croom, pos)) {
                 pos.x = somex(croom);
@@ -10298,6 +10369,7 @@ async function generate_stairs() {
     // Up stairs only if not level 1
     if ((g.u?.uz?.dlevel ?? 1) !== 1) {
         const croom = generate_stairs_find_room();
+        if (!croom) throw new Error(`generate_stairs: failed to find a room! (${g.level.nroom})`);
         if (croom) {
             if (!somexyspace(croom, pos)) {
                 pos.x = somex(croom);
@@ -10366,9 +10438,20 @@ function invalid_shop_shape(sroom) {
     }
     return false;
 }
+// C ref: mkroom.c:96 mkshop()
 async function mkshop() {
     const g = game;
     let i = -1;
+    const ep = wizard() ? (g.env?.SHOPTYPE ?? ENV.SHOPTYPE) : null;
+    if (ep != null && ep.length <= BUFSZ / 2) { // options.c:6848 nh_getenv() length limit
+        const c = (ep[0] || '\0').toLowerCase();
+        const types = { z: ZOO, m: MORGUE, b: BEEHIVE, t: COURT, '\\': COURT, s: BARRACKS, a: ANTHOLE, c: COCKNEST, l: LEPREHALL };
+        if (types[c] != null) { mkzoo(types[c]); return; }
+        if (c === '_') { await mktemple(); return; }
+        if (c === '}') { await mkswamp(); return; }
+        i = _shtypes.findIndex(t => (def_oc_syms_chars[t.symb] ?? '\0') === (ep[0] || '\0'));
+        if (i < 0 && (c === 'g' || c === 'v')) i = c === 'g' ? 0 : FODDERSHOP - SHOPBASE;
+    }
     /* gottype: scan rooms for first eligible shop room */
     let sroom = null;
     const rooms = g.level.rooms;
@@ -10378,14 +10461,14 @@ async function mkshop() {
         if (!r || r.hx < 0)
             return;
         if (idx >= g.level.nroom) {
-            /* C: impossible("rooms[] not closed by -1?"); return; */
+            await lifecycle_impossible("rooms[] not closed by -1?");
             return;
         }
         if (r.rtype !== OROOM)
             continue;
         if (has_dnstairs(r) || has_upstairs(r))
             continue;
-        if ((r.doorct | 0) === 1) {
+        if ((r.doorct | 0) === 1 || (ep != null && ep.length <= BUFSZ / 2 && (r.doorct | 0) !== 0)) {
             if (invalid_shop_shape(r))
                 continue;
             sroom = r;
@@ -10577,8 +10660,7 @@ async function do_mkroom(roomtype) {
         await mktemple();
         break;
     default:
-        /* C mkroom.c:87: impossible("Tried to make a room of type %d.") — logs
-         * and returns; js/ models impossible() as a no-op (see js/steed.js:102). */
+        await lifecycle_impossible("Tried to make a room of type %d.", roomtype);
         break;
     }
 }
@@ -12006,6 +12088,9 @@ export function strsubst(bp, orig, replacement) {
    n==0 => all occurrences; orig=="" => insert replacement in front of Nth char;
    replacement=="" => delete old substring; returns number of substitutions made */
 export function strNsubst(inoutbuf, orig, replacement, n) {
+    // A { value } buffer carries C's in-place result as well as the count.
+    const buffer = typeof inoutbuf === 'object' ? inoutbuf : null;
+    if (buffer) inoutbuf = buffer.value;
     const BUFSZ = 256;
     let len = orig.length;
     let ocount = 0;
@@ -12040,8 +12125,7 @@ export function strNsubst(inoutbuf, orig, replacement, n) {
         }
         rcount++;
     }
-    /* in C, if rcount>0, Strcpy(inoutbuf, workbuf); we can't mutate the JS arg,
-       but the return value is rcount */
+    if (buffer && rcount) buffer.value = result;
     return rcount;
 }
 /* C ref: hacklib.c:339-347 — strkitten: append a character to a string (in place)
@@ -13776,7 +13860,7 @@ function vegan(ptr) {
 }
 
 /* C mondata.h:239-241 — #define vegetarian(ptr) */
-function vegetarian(ptr) {
+export function vegetarian(ptr) {
     if (!ptr)
         return false;
     return vegan(ptr)
@@ -13876,23 +13960,24 @@ async function meatbox_consume(mtmp, box) {
     if (!box?.cobj || !isok(mtmp.mx | 0, mtmp.my | 0))
         return;
     const engulf = (mtmp.mndx ?? mtmp.data?.pmidx ?? -1) === PM_GELATINOUS_CUBE;
+    if (!engulf && cansee(mtmp.mx, mtmp.my))
+        await pline('%s contents spill out onto the %s.',
+            lifesave_s_suffix(The_rc(await distant_name_nc(box, xname))), surface(mtmp.mx, mtmp.my));
     while (box.cobj) {
         const obj = box.cobj;
-        box.cobj = obj.nobj ?? null;
-        obj.nobj = null;
-        obj.ocontainer = null;
-        obj.where = OBJ_FREE;
+        obj_extract_self(obj);
+        if (box.otyp === ICE_BOX) removed_from_icebox(obj);
         if (engulf)
             await mpickobj(mtmp, obj);
-        else
+        else if (!await flooreffects(obj, mtmp.mx, mtmp.my, ''))
             place_object(obj, mtmp.mx | 0, mtmp.my | 0);
     }
 }
 
 /* C mon.c:1392-1452 — consume an object after a monster has accepted it.
  * The object deletion and the ordinary food side effects are kept here rather
- * than duplicated in meatobj/meatcorpse.  A few rare aftermath helpers remain
- * explicit no-ops below because their JS ports do not exist yet; consuming the
+ * than duplicated in meatobj/meatcorpse.  Side effects follow C's order,
+ * including its CORPSE-only corpsenm assignment below; consuming the
  * object itself is still essential (and preserves delobj's obj_resists draw). */
 export async function m_consume_obj(mtmp, otmp) {
     const ispet = !!(mtmp?.mtame | 0);
@@ -13960,6 +14045,8 @@ export async function m_consume_obj(mtmp, otmp) {
      * meal/taming state cleanup and redraw. */
     if (ispet && deadmimic)
         await quickmimic_mk(mtmp);
+    if (otmp.otyp === EGG && corpsenm === PM_PYROLISK)
+        await explode(mtmp.mx, mtmp.my, -11, d_ml(3, 6), 0, EXPL_FIERY);
     if (corpsenm !== NON_PM)
         await mon_givit(mtmp, permonstTemplate(corpsenm));
 }
@@ -13972,9 +14059,12 @@ export async function revive_corpse(otmp, do_msgs = true) {
     const mdat = permonstTemplate(mnum);
     if (!mdat || mnum < 0)
         return false;
+    // C do.c:2124-2128: buried trolls and Riders dig out like zombies.
+    const is_zomb = mdat.mlet === S_ZOMBIE
+        || (wasBuried && (mdat.mlet === S_TROLL || is_rider_pm(mnum)));
     /* C do.c:2121-2133: name, location and wield state are read BEFORE
      * revive() consumes the corpse. */
-    if (mdat.mlet === S_ZOMBIE && wasBuried
+    if (is_zomb && wasBuried
         && !zombie_can_dig(otmp.ox | 0, otmp.oy | 0))
         return false;
     const where0 = otmp.where | 0;
@@ -13982,7 +14072,18 @@ export async function revive_corpse(otmp, do_msgs = true) {
     const is_uwep = otmp === game.u?.uwep;
     const cname = corpse_xname_rc(otmp, chewed ? 'bite-covered' : null, 1 /* CXN_SINGULAR */);
     const corpsex = otmp.ox | 0, corpsey = otmp.oy | 0;
+    /* C do.c:2134 mcarry = (where == OBJ_MINVENT) ? corpse->ocarry : 0 */
+    const mcarry = where0 === OBJ_MINVENT ? otmp.ocarry : null;
     let x = otmp.ox | 0, y = otmp.oy | 0;
+    /* C zap.c:910-912 get_obj_location(): a corpse carried by a monster or the
+     * hero is revived at the carrier's square, not at its stale ox/oy. */
+    if (where0 === OBJ_MINVENT || where0 === OBJ_INVENT) {
+        const lx = { value: 0 }, ly = { value: 0 };
+        if (get_obj_location(otmp, lx, ly, 0)) {
+            x = lx.value;
+            y = ly.value;
+        }
+    }
     if (otmp.where === OBJ_FLOOR && !isok(x, y))
         return false;
     if (!isok(x, y)) {
@@ -14072,6 +14173,9 @@ export async function revive_corpse(otmp, do_msgs = true) {
     } else if (where0 === OBJ_INVENT) {
         /* C zap.c:1108-1110: useup(corpse) -- no delobj obj_resists roll */
         await useup_inv(otmp);
+    } else if (where0 === OBJ_MINVENT) {
+        /* C zap.c:1112-1114: m_useup(corpse->ocarry, corpse) -- no obj_resists roll */
+        await lifesave_m_useup(otmp.ocarry, otmp);
     } else if (where0 === OBJ_CONTAINED) {
         /* C zap.c:1117-1121 */
         obj_extract_self(otmp);
@@ -14082,7 +14186,7 @@ export async function revive_corpse(otmp, do_msgs = true) {
     /* C do.c:2220-2238: a buried zombie digs out by creating a pit.  maketrap
      * unearths and stacks every other buried object on that square. */
     let _zombie_pit = false;
-    if (wasBuried && (mdat.mlet | 0) === S_ZOMBIE) {
+    if (wasBuried && is_zomb) {
         await maketrap(mon.mx | 0, mon.my | 0, PIT);
         _zombie_pit = true;
     }
@@ -14110,6 +14214,17 @@ export async function revive_corpse(otmp, do_msgs = true) {
                 await You_hear('scratching noises.');
         }
         await fill_pit(mon.mx | 0, mon.my | 0);
+    } else if (where0 === OBJ_MINVENT) {
+        /* C do.c:2178-2189 -- probably a nymph's */
+        if (cansee(mon.mx | 0, mon.my | 0)) {
+            if (mcarry && canseemon(mcarry))
+                await pline('Startled, %s drops %s as it %s!',
+                            mon_nam_wm(mcarry), an_mk(cname),
+                            canspotmon(mon) ? 'revives' : 'disappears');
+            else if (canspotmon(mon))
+                await pline('%s suddenly appears!',
+                            chewed ? Adjmonnam_rc(mon, 'bite-covered') : Monnam_rc(mon));
+        }
     } else if (where0 === OBJ_FLOOR) {
         if (cansee(corpsex, corpsey) || canseemon(mon)) {
             const pmi = mon.mnum ?? mon.pmidx;
@@ -14403,10 +14518,14 @@ const RIN_SLOW_DIGESTION = 193;
 
 /* C ref: mklev.c:2046 mktrap — general trap placement entry (num, flags, croom, tm).
    Reuses existing maketrap, mktrap_room, mktrap_victim. */
+let mktrap_err = 0; // C mklev.c:2036: diagnostic only on the first invalid call.
+registerStaticReset('mklev.mktrap_err', () => { mktrap_err = 0; });
 export async function mktrap(num, mktrapflags, croom, tm) {
+    const lvl = level_difficulty();
     /* C mklev.c:2055-2066 — argument-validation paniclog path; non-fatal */
     if (!tm && !croom && !(mktrapflags & MKTRAP_MAZEFLAG)) {
-        console.error('mktrap', `args (${num},${mktrapflags},null room,null location) are invalid`);
+        if (!mktrap_err++)
+            paniclog('mktrap', `args (${num},${mktrapflags},null room,null location) are invalid`);
         return;
     }
     
@@ -14464,7 +14583,6 @@ export async function mktrap(num, mktrapflags, croom, tm) {
         trap.dst.dlevel = game.u.ucamefrom.dlevel;
     }
     
-    const lvl = level_difficulty();
     if (game.in_mklev
         && kind !== NO_TRAP && !(mktrapflags & MKTRAP_NOVICTIM)
         && lvl <= rnd(4)
@@ -14644,6 +14762,9 @@ export async function mondead(mtmp) {
     /* C mon.c:3170-3171: retire remembered 'I' before m_detach. */
     if (glyph_is_invisible_at(mx, my))
         unmap_object(mx, my);
+    /* C mon.c:2741-2742 m_detach(): a dying leashed monster releases its leash. */
+    if (mtmp.mleashed)
+        m_unleash_mk(mtmp, false);
     /* C mon.c:2744-2746,2702-2703: m_detach follows death bookkeeping. */
     if (mx > 0 && emits_light(mptr))
         del_light_source(LS_MONSTER, monst_to_any(mtmp));
@@ -14728,6 +14849,11 @@ export async function mdrop_obj_md(mon, obj, verbosely) {
      * js/ definition at all (grep returns none), and the arm needs a TAME
      * SADDLED steed dying inside a shop the hero is standing in.  It sets a
      * shop-billing flag and draws nothing. */
+    if (unwornmask && mon.mtame && (unwornmask & W_SADDLE) !== 0
+        && !obj.unpaid && costly_spot(omx, omy)
+        && in_rooms(game.u.ux, game.u.uy, SHOPBASE)
+            .includes(game.level?.locations?.[omx]?.[omy]?.roomno | 0))
+        obj.no_charge = 1;
     /* C steal.c:835-836.  verbosely is (is_pet && flags.verbose) at the relobj
      * call site, and m_detach passes is_pet FALSE, so this never fires on the
      * path relobj_md() opens — kept because it is what makes the
@@ -14993,6 +15119,24 @@ export function pick_nasty(difcap) {
 }
 
 
+/* C makemon.c:1514 unmakemon(mon, mmflags) — undo a makemon() that the caller
+ * does not want after all; always returns null. */
+async function unmakemon(mon, mmflags) {
+    const countbirth = ((mmflags | 0) & MM_NOCOUNTBIRTH) === 0;
+    const mndx = (mon.mnum ?? mon.mndx ?? 0) | 0;
+    const mv = game.mvitals ? (game.mvitals[mndx] ||= { born: 0, died: 0, mvflags: 0 }) : null;
+    if (mv) {
+        if (countbirth && mv.born > 0 && mv.born < 255)
+            mv.born -= 1;
+        if ((MONS_ROWS[mndx][3] | 0) & 0x1000 /* G_UNIQ */)
+            mv.mvflags &= ~0x01; /* ~G_EXTINCT */
+    }
+    mon.mhp = 0; /* let discard_minvent() know that mon isn't being kept */
+    await discard_minvent(mon, true);
+    await mongone(mon);
+    return null;
+}
+
 export async function nasty(summoner) {
     const u = game.u;
     /* C:597 — "when a monster casts the 'summon nasties' spell, it gives
@@ -15059,12 +15203,20 @@ export async function nasty(summoner) {
                     set_malign(mtmp);
                 } else {
                     /* C:663-679 — random monster to substitute for a genocided
-                     * selection, then unmakemon() if it is a chain-summoning
-                     * spellcaster or the wrong side of the demon/angel line.
-                     * unmakemon() has no js body at all, so this arm cannot be
-                     * completed; it is reachable only when the DIRECTLY chosen
-                     * nasty has been genocided. */
-                    throw new Error('nasty: the genocided-substitute arm is unported (wizard.c:663-679)');
+                     * selection (or any failed placement), then unmakemon() if
+                     * it is a chain-summoning spellcaster or the wrong side of
+                     * the demon/angel line. */
+                    mtmp = await makemon(null, bypos.x, bypos.y, mmflags);
+                    if (mtmp) {
+                        const sndx = (mtmp.mnum ?? mtmp.mndx ?? 0) | 0;
+                        m_cls = MONS_ROWS[sndx][0] | 0;
+                        if ((difcap > 0 && (MONS_ROWS[sndx][2] | 0) >= difcap
+                             && rn2(In_endgame(game.u?.uz) ? 3 : 7)
+                             && attacktype(permonstTemplate(sndx), AT_MAGC_NC))
+                            || (s_cls === S_DEMON && m_cls === S_ANGEL_NC)
+                            || (s_cls === S_ANGEL_NC && m_cls === S_DEMON))
+                            mtmp = await unmakemon(mtmp, 0 /* NO_MM_FLAGS */);
+                    }
                 }
 
                 if (mtmp) {
@@ -16033,9 +16185,10 @@ async function m_calcdistress(mtmp) {
 /* port-gen-minliquid-001: minliquid — check mtmp and water/lava for compatibility */
 export async function minliquid(mtmp) {
     let res;
+    game.iflags.sad_feeling = !!mtmp.mtame && !canseemon(mtmp);
     res = await minliquid_core(mtmp);
     /* always clear the flag */
-    iflags.sad_feeling = false;
+    game.iflags.sad_feeling = false;
     return res;
 }
 
@@ -16098,6 +16251,7 @@ export async function clone_mon_ml(mon, x, y) {
         m2.mtame = 0;
         if (await tamedog_mk(m2, null, false))
             Object.assign(m2.mextra.edog, mon.mextra.edog);
+            m2.mextra.edog.ogoal = { ...mon.mextra.edog.ogoal }; /* by-value struct copy */
     }
     set_malign(m2);
     newsym(m2.mx, m2.my);
@@ -16178,6 +16332,11 @@ async function minliquid_core(mtmp) {
      * Water's WATER squares has inpool FALSE (is_flyer) and waterwall TRUE, so
      * this must be tested before the eel `else`, not inside the pool arm. */
     const waterwall = isok(mx, my) && IS_WATERWALL(typ);
+    // C mon.c:973-980: the rider's flight/levitation protects the steed.
+    const u = game.u, flight = u.uprops?.[FLYING], levitation = u.uprops?.[LEVITATION];
+    const flying = (flight?.intrinsic || flight?.extrinsic || (u.usteed?.data?.mflags1 & M1_FLY_ML)) && !flight?.blocked;
+    const floating = (levitation?.intrinsic || levitation?.extrinsic) && !levitation?.blocked;
+    if (mtmp === u.usteed && (flying || floating) && !waterwall) return 0;
     if (typeof process !== 'undefined' && ENV?.FF_LIQUID_TRACE === '2')
         pushRngLogEntry(`^liquid_decision[moves=${game.moves | 0} id=${mtmp?.m_id | 0}`
             + ` xy=${mx},${my} typ=${typ} lava=${is_lava_here ? 1 : 0}`
@@ -16302,9 +16461,8 @@ async function minliquid_core(mtmp) {
             if (cansee(mx, my))
                 pline(`${Monnam_wm(mtmp)} surrenders to the fire.`);
             await mondead(mtmp);
-            return 1;
-        }
-        if (cansee(mx, my))
+            if ((mtmp.mhp | 0) < 1) return 1;
+        } else if (cansee(mx, my))
             pline(`${Monnam_wm(mtmp)} burns slightly.`);
         if (!m_in_air(mtmp) && !likes_lava_mv(mndx)) {
             await fire_damage_chain(mtmp.minvent || null, false, false, mx, my);
@@ -16326,6 +16484,14 @@ async function minliquid_core(mtmp) {
         await mondead(mtmp); /* no corpse */
     else
         await xkilled_ml(mtmp, XKILL_NOMSG);
+    if ((mtmp.mhp | 0) > 0) {
+        if (!m_in_air(mtmp) && !likes_lava_mv(mtmp.data.pmidx)) {
+            await fire_damage_chain(mtmp.minvent || null, false, false, mx, my);
+            if (!await rloc(mtmp, RLOC_MSG_ML))
+                await deal_with_overcrowding(mtmp);
+        }
+        return 0;
+    }
     return 1;
 }
 
@@ -16845,7 +17011,8 @@ export function healmon(mtmp, amt, overheal) {
 }
 
 export async function restore_cham(mon) {
-    if (false || mon.mcan) {
+    /* C mon.c:4651 — arriving monsters must honor the hero's protection. */
+    if (Protection_from_shape_changers_nc() || mon.mcan) {
         await normal_shape(mon);
     } else if (mon.cham === NON_PM) {
         mon.cham = pm_to_cham(mon.data.pmidx);
@@ -17207,9 +17374,24 @@ function _sm_m_next2u(mon) {
     return dist2(mon.mx | 0, mon.my | 0, game.u.ux | 0, game.u.uy | 0) <= 2;
 }
 
+/* C ref: mon.c:4159-4256 peacefuls_respond(mtmp) — every OTHER peaceful monster
+ * that can see the hero attack `mtmp` reacts.
+ *
+ * RNG, in C's order, per qualifying monster:
+ *   humanoid/shk/priest arm : rn2(5) gasp roll (guarded by !Deaf), then, for a
+ *                             non-shk/non-priest/non-leader, rn2(10) against
+ *                             mlevel and rn2(50) for the flee timer.
+ *   same-mlet arm           : rn2(3), then rn2(4) growl and rn2(6) flee,
+ *                             the last with an rn2(25) timer.
+ *
+ *
+ * `exclaimed` after growl() tests C's `iflags.last_msg == PLNMSG_GROWL`.
+ * It is message-only: monflee's own two
+ * draws sit behind flees_light() (an artifact light source) and PM_VROCK,
+ * neither of which any of these monsters has. */
 async function peacefuls_respond(mtmp) {
     const mndx = (mtmp.data?.pmidx ?? mtmp.mnum ?? -1) | 0;
-    const Deaf = false;
+    const Deaf = Deaf_live();
 
     for (let mon = game.fmon; mon; mon = mon.nmon) {
         if ((mon.mhp | 0) < 1) continue;   /* DEADMONSTER */
@@ -17279,8 +17461,10 @@ async function peacefuls_respond(mtmp) {
         } else if ((mdata?.mlet | 0) === (mtmp.data?.mlet | 0)
                    && big_little_match_sm(mndx, (mdata?.pmidx | 0))
                    && !rn2(3)) {
-            if (!rn2(4))
-                exclaimed = !!growl(mon);
+            if (!rn2(4)) {
+                growl(mon);
+                exclaimed = game.iflags?.last_msg === PLNMSG_GROWL;
+            }
             if (rn2(6)) {
                 alreadyfleeing = (mon.mflee || mon.mfleetim);
                 await monflee(mon, rn2(25) + 15, true, !exclaimed);

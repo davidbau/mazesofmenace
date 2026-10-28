@@ -21,13 +21,13 @@
 
 import { game } from './gstate.js';
 import {
-    COLNO, ROWNO, MAX_RADIUS, LS_OBJECT, LS_MONSTER, TEMP_LIT, COULD_SEE,
+    COLNO, ROWNO, MAX_RADIUS, LS_NONE, LS_OBJECT, LS_MONSTER, TEMP_LIT, COULD_SEE,
     RANGE_LEVEL, OBJ_FREE, OBJ_INVENT, OBJ_FLOOR, OBJ_MINVENT, OBJ_BURIED, OBJ_CONTAINED,
     BURIED_TOO, CONTAINED_TOO, u_at, PLNMSG_OBJ_GLOWS,
 } from './const.js';
 import { clear_path, circle_ptr, vision_recalc, Blind, cansee } from './vision.js';
 import { place_object, remove_object } from './mklev.js';
-import { flush_screen, canseemon, canspotmon, map_invisible, pline } from './display.js';
+import { flush_screen, canseemon, canspotmon, map_invisible, pline, impossible_sync } from './display.js';
 import { Yname2 } from './cmd.js';
 import { xname, otense, simpleonames } from './objnam.js';
 import { impossible } from './pline.js';
@@ -38,6 +38,7 @@ import { end_burn } from './timeout.js';
 
 // C ref: light.c:41-43 — light_source flags.
 const LSF_SHOW = 0x1;           /* display the light source */
+const LSF_NEEDS_FIXUP = 0x2;    /* need oid fixup */
 
 // C ref: decl.h:539 light_source *light_base; (gl.light_base) — singly
 // linked list of mobile light sources.
@@ -147,25 +148,38 @@ function new_light_core(x, y, range, type, id) {
     return ls;
 }
 
-/* C ref: light.c:98-139 del_light_source(type, id).  Assumes at most one light
- * source is attached to an object at a time.  The C body compares
- * `curr->id.a_obj == (NEEDS_FIXUP ? tmp_id.a_obj : id->a_obj)`; NEEDS_FIXUP is
- * a save-file id-vs-pointer artifact and this port never restores a
- * partially-fixed-up source (getlev hands back live object references), so the
- * comparison is always against the caller's own pointer. */
+/* C light.c:98-139 del_light_source: match live pointers or unrestored IDs. */
 export function del_light_source(type, id) {
+    let tmp_id = 0;
+    switch (type) {
+    case LS_NONE:
+        impossible_sync('del_light_source:type=none');
+        break;
+    case LS_OBJECT:
+        tmp_id = id.a_obj ? id.a_obj.o_id : 0;
+        break;
+    case LS_MONSTER:
+        tmp_id = id.a_monst.m_id;
+        break;
+    }
     let curr;
     for (curr = light_base; curr; curr = curr.next) {
         if (curr.type !== type)
             continue;
-        if (curr.id.a_obj === id.a_obj)
+        if ((curr.id.a_obj ?? 0)
+            === ((curr.flags & LSF_NEEDS_FIXUP) ? tmp_id : (id.a_obj ?? 0)))
             break;
     }
     if (curr) {
         delete_ls(curr);
     }
-    /* else: C impossible("del_light_source: not found ...").  Not fabricated
-     * here — see new_light_core's note on impossible(). */
+    else {
+        // Native addresses are unavailable; use #timeout's object-address convention.
+        const ptr = id.a_obj, addr = ptr && typeof ptr === 'object'
+            ? 0x55d0c0de0000 + (((ptr.o_id ?? ptr.m_id) | 0) << 6) : (ptr || 0);
+        impossible_sync('del_light_source: not found type=%d, id=%s', type,
+                        '0x' + addr.toString(16));
+    }
 }
 
 /* C light.c:779-806 obj_split_light_source(src, dest).  Duplicate every

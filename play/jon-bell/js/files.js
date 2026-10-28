@@ -2,8 +2,27 @@
 // files.js — File handling and name conversion.
 // C ref: nethack-c/src/files.c
 import { game } from './gstate.js';
-import { PANICLOG } from './const.js';
+import { PANICLOG, LIVELOGFILE } from './const.js';
 import { vfsReadFile, vfsWriteFile } from './storage.js';
+import { getnow } from './allmain.js';
+import { genders, aligns } from './roles.js';
+import { pline } from './display.js';
+
+/* C files.c:3667-3705. VFS appends are synchronous, so there is no native
+ * file lock to acquire. The configured mask controls only the live log. */
+export function livelog_add(ll_type, str) {
+    const mask = ll_type & game.sysopt?.livelog;
+    if (!mask) return;
+    const g = game, u = g.u;
+    const line = `lltype=${mask}\tname=${g.plname}`
+        + `\trole=${g.urole.filecode}\trace=${g.urace.filecode}`
+        + `\tgender=${genders[g.flags.female ? 1 : 0].filecode}`
+        + `\talign=${aligns[1 - u.ualign.type].filecode}`
+        + `\tturns=${g.moves}\tstarttime=${u.ubirthday}`
+        + `\tcurtime=${getnow()}\tmessage=${str}\n`;
+    if (!vfsWriteFile(LIVELOGFILE, (vfsReadFile(LIVELOGFILE) || '') + line))
+        pline('Cannot open live log file!');
+}
 
 export function paniclog(type, reason) {
     const state = game.program_state;

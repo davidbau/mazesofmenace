@@ -18,7 +18,7 @@ import {
     POOL, IRONBARS, W_NONDIGGABLE,
     TLWALL, TRWALL, TUWALL, TDWALL, BLCORNER, BRCORNER, TLCORNER, TRCORNER,
     RLOC_ERR, RLOC_NOMSG,
-    SPACE_POS, VIBRATING_SQUARE,
+    SPACE_POS, VIBRATING_SQUARE, MAX_BMASK,
 } from './const.js';
 import { load_special } from './sp_lev.js';
 import { obj_ice_effects, count_level_features, wallification } from './mklev.js';
@@ -933,14 +933,16 @@ const _BUBBLE_BMASK = [
     [7, 4, 0x3e, 0x7f, 0x7f, 0x3e],
     [8, 4, 0x7e, 0xff, 0xff, 0x7e],
 ];
-function mk_bubble(x, y, n) {
+async function mk_bubble(x, y, n) {
     if (x >= gbxmax() || y >= gbymax())
         return;
     if (n >= _BUBBLE_BMASK.length) {
-        /* impossible("n too large (mk_bubble)") */
+        await impossible("n too large (mk_bubble)");
         n = _BUBBLE_BMASK.length - 1;
     }
     const bm = _BUBBLE_BMASK[n];
+    if (bm[1] > MAX_BMASK)
+        throw new Error("bmask size is larger than MAX_BMASK");
     if (x + bm[0] - 1 > gbxmax())
         x = gbxmax() - bm[0] + 1;
     if (y + bm[1] - 1 > gbymax())
@@ -959,7 +961,7 @@ function mk_bubble(x, y, n) {
     }
     b.next = null;
     _ebubbles = b;
-    void mv_bubble(b, 0, 0, true); // ini: cons is empty, so nothing awaits
+    await mv_bubble(b, 0, 0, true);
 }
 
 /* C mkmaze.c:1927-1939 maybe_adjust_hero_bubble — maybe change the movement
@@ -1062,7 +1064,7 @@ async function mv_bubble(b, dx, dy, ini) {
             case 'hero': {
                 const mtmp = m_at(cons.x, cons.y);
                 const ux0 = game.u.ux, uy0 = game.u.uy;
-                u_on_newpos(cons.x, cons.y);
+                await u_on_newpos(cons.x, cons.y);
                 newsym(ux0, uy0); /* clean up old position */
                 if (mtmp)
                     await mnexto(mtmp, RLOC_NOMSG);
@@ -1114,7 +1116,7 @@ function water_memory_glyph() {
 
 /* C mkmaze.c:1836-1880 setup_waterlevel() — called from fixup_special() when
  * the level being built is the Plane of Water or the Plane of Air. */
-export function setup_waterlevel() {
+export async function setup_waterlevel() {
     const uz = game.u?.uz;
     const waterlev = Is_waterlevel(uz);
     /* C panics when neither; the single call site already tested. */
@@ -1150,7 +1152,7 @@ export function setup_waterlevel() {
     }
     for (let x = gbxmin(); x <= gbxmax(); x += xskip)
         for (let y = gbymin(); y <= gbymax(); y += yskip)
-            mk_bubble(x, y, rn2(7));
+            await mk_bubble(x, y, rn2(7));
 }
 
 /* C mkmaze.c:1536-1682 movebubbles() — "augment the Planes of Water (for

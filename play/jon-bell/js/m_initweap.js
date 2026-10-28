@@ -58,7 +58,7 @@ const M2_PRINCE = 0x00000800;
 const M2_NASTY = 0x02000000;
 const M2_STRONG = 0x04000000;
 const WEAPON_CLASS = 2; /* objclass.h */
-const ARMOR_CLASS = 4;  /* objclass.h */
+const ARMOR_CLASS = 3;  /* objects.h:88 generic armor class [3] */
 /* weapons (WEAPON_CLASS otyp — order matches js/mkobj_data.js OBJECTS_INIT) */
 const ARROW = 18;
 const ELVEN_ARROW = 19;

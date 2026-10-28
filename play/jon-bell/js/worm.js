@@ -13,6 +13,7 @@ import { Monnam } from './mcastu.js';
 import { s_suffix } from './hacklib.js';
 import { game } from './gstate.js';
 import { impossible } from './steed.js';
+import { impossible as cutworm_impossible } from './pline.js';
 import { cansee } from './vision.js';
 import { rn2, rnd, rn1, d, rn2_on_display_rng } from './rng.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
@@ -260,7 +261,11 @@ export async function cutworm(worm, x, y, cuttier) {
     let curr = wtails[wnum];
     while (curr && ((curr.wx | 0) !== (x | 0) || (curr.wy | 0) !== (y | 0)))
         curr = curr.nseg;
-    if (!curr) return; /* impossible("cutworm: no segment at ...") */
+    if (!curr) {
+        // C worm.c:399: report the missing segment before returning.
+        await cutworm_impossible("cutworm: no segment at (%d,%d)", x, y);
+        return;
+    }
 
     /* If this is the tail segment, then the worm just loses it. */
     if (curr === wtails[wnum]) {

@@ -6,7 +6,7 @@ import { HALLUC, HALLUC_RES } from "./const.js";
 import { stop_occupation } from './allmain.js';
 import { rn2, rnd, rn1, d, pushRngLogEntry } from './rng.js';
 import { game } from './gstate.js';
-import { PM_LEPRECHAUN, PM_VROCK, PM_KILLER_BEE, PM_QUEEN_BEE } from './pm.generated.js';
+import { PM_LEPRECHAUN, PM_VROCK, PM_KILLER_BEE, PM_QUEEN_BEE, PM_ROGUE } from './pm.generated.js';
 import { bare_artifactname, makeplural, an, xname, vtense } from './objnam.js';
 import { yname } from './do_wear.js';
 import { acurr } from './attrib.js';
@@ -288,21 +288,25 @@ async function monflee_mv(mtmp, fleetime, first, fleemsg) {
         const apt = (mtmp.m_ap_type | 0) & M_AP_TYPMASK;
         if (!mtmp.mflee && fleemsg && canseemon(mtmp) && apt !== 1 /* M_AP_FURNITURE */ && apt !== 2 /* M_AP_OBJECT */) {
             if (!mtmp.mcanmove || !(mtmp.data ? mtmp.data.mmove | 0 : 0)) {
+                set_msg_xy(mtmp.mx, mtmp.my); /* C monmove.c:493 pline_mon */
                 await pline(`${Adjmonnam(mtmp, 'immobile')} seems to flinch.`);
             } else if (flees_light(mtmp)) {
                 const u = game.u || {};
                 const p = u.uprops ? u.uprops[DEAF] : null;
                 const deaf = !!((p && ((p.intrinsic | 0) || (p.extrinsic | 0))) || (u.uroleplay && u.uroleplay.deaf));
                 if (Unaware()) {
+                    set_msg_xy(mtmp.mx, mtmp.my); /* C monmove.c:498 pline_mon */
                     await pline(`${Monnam_dm(mtmp)} is frightened.`);
                 } else if (rn2(10) || deaf) {
                     const lsrc = (u.uwep && artifact_light(u.uwep)) ? bare_artifactname(u.uwep)
                         : (u.uarm && artifact_light(u.uarm)) ? yname(u.uarm) : '[its imagination?]';
+                    set_msg_xy(mtmp.mx, mtmp.my); /* C monmove.c:510 pline_mon */
                     await pline(`${Monnam_dm(mtmp)} flees from the painful light of ${lsrc}.`);
                 } else {
                     await verbalize('Bright light!'); /* C monmove.c:514 */
                 }
             } else {
+                set_msg_xy(mtmp.mx, mtmp.my); /* C monmove.c:517 pline_mon */
                 await pline(`${Monnam_dm(mtmp)} turns to flee.`);
             }
         }
@@ -592,7 +596,7 @@ export async function mind_blast(mtmp) {
     const g = game;
     const u = g.u;
     if (canseemon(mtmp))
-        await pline(`${Monnam_dm(mtmp)} concentrates.`);
+        await monmove_message(mtmp, `${Monnam_dm(mtmp)} concentrates.`);
     const mdx = (u.ux | 0) - (mtmp.mx | 0), mdy = (u.uy | 0) - (mtmp.my | 0);
     if (mdx * mdx + mdy * mdy > BOLT_LIM * BOLT_LIM) {
         await pline('You sense a faint wave of psychic energy.');
@@ -610,7 +614,8 @@ export async function mind_blast(mtmp) {
             if (u.uundetected) {
                 u.uundetected = 0;
                 newsym(u.ux, u.uy);
-            } else if (ym && (ym.m_ap_type | 0) !== M_AP_NOTHING && (ym.m_ap_type | 0) !== M_AP_MONSTER) {
+            } else if (ym && ((ym.m_ap_type | 0) & M_AP_TYPMASK) !== M_AP_NOTHING
+                       && ((ym.m_ap_type | 0) & M_AP_TYPMASK) !== M_AP_MONSTER) {
                 ym.m_ap_type = M_AP_NOTHING;
                 ym.mappearance = 0;
                 newsym(u.ux, u.uy);
@@ -1145,7 +1150,8 @@ export function mon_would_take_item(mtmp, otmp) {
         return true;
     if (mndx === PM_GELATINOUS_CUBE_MV
         && oclass !== ROCK_CLASS_MV && oclass !== BALL_CLASS_MV
-        && !(otyp === CORPSE_OTYP_MV /* && touch_petrifies — stub false */))
+        && !(otyp === CORPSE_OTYP_MV
+             && touch_petrifies_mndx_mwci(otmp.corpsenm | 0)))
         return true;
     return false;
 }
@@ -1615,6 +1621,20 @@ async function _handle_sqky_board_mon(mtmp, trap, nix, niy) {
     }
 }
 
+/* C monmove.c:1508-1520: special movers run the same post-move traps. */
+async function postmov_special_trap(mtmp) {
+    const x = mtmp.mx, y = mtmp.my, trap = t_at(x, y);
+    const result = trap?.ttyp === SQKY_BOARD_MV
+        ? (await _handle_sqky_board_mon(mtmp, trap, x, y), 0)
+        : await mintrap(mtmp, 0);
+    if (result === TRAP_KILLED_MON_MV || result === TRAP_MOVED_MON_MV) {
+        if (mtmp.mx) newsym(mtmp.mx, mtmp.my);
+        else if (result === TRAP_KILLED_MON_MV && x > 0) newsym(x, y);
+        return MMOVE_DIED_MV;
+    }
+    return (mtmp.mstate | 0) ? MMOVE_DONE_MV : null;
+}
+
 /* C monmove.c:1172 leppie_avoidance: a leprechaun with more visible
  * gold than the hero retreats rather than approaching to steal. */
 export function leppie_avoidance(mon) {
@@ -1657,22 +1677,24 @@ async function postmov_door(mtmp, _didseeit_pm, _mf1_ct, can_tunnel_mv) {
             const _mndx_d = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
             const _mrow_d = (_mndx_d >= 0 && _mndx_d < _MONS_MV.length) ? _MONS_MV[_mndx_d] : null;
             const _mf1_d = _mrow_d ? (_mrow_d[6] | 0) : 0;
-            const _mf2_d = _mrow_d ? (_mrow_d[7] | 0) : 0;
             const _msize_d = (_mndx_d >= 0 && _mndx_d < _MONS_MSIZE_MV.length)
                 ? (_MONS_MSIZE_MV[_mndx_d] | 0) : MZ_SMALL_MV;
             const _can_open_d = !((_mf1_d & M1_NOHANDS_MV) || (_msize_d < MZ_SMALL_MV));
             /* passes_walls / can_tunnel: false for the common ground walker
              * (the existing mfndpos posture); if either held the door is
              * skipped, as in C (the !passes_walls && !can_tunnel guard). */
-            const _dm_d = _dloc.doormask | 0;
+            let _dm_d = _dloc.doormask | 0;
             const _btrapped_d = (_dm_d & D_TRAPPED_MV) !== 0;
             let _btrapped_now = _btrapped_d;
             if (_btrapped_now) {
                 let _mk = mtmp.minvent;
+                /* C artifact.c:2777-2784: rogues need non-cursed; others blessed. */
                 for (; _mk; _mk = _mk.nobj)
-                    if ((_mk.oartifact | 0) === ART_MASTER_KEY_MV) break;
+                    if ((_mk.oartifact | 0) === ART_MASTER_KEY_MV
+                        && (_mndx_d === PM_ROGUE ? !_mk.cursed : _mk.blessed)) break;
                 if (_mk) {
                     _dloc.doormask = _dm_d & ~D_TRAPPED_MV;
+                    _dm_d = _dloc.doormask; /* C: test the disarmed door below. */
                     _btrapped_now = false;
                 }
             }
@@ -1711,8 +1733,7 @@ async function postmov_door(mtmp, _didseeit_pm, _mf1_ct, can_tunnel_mv) {
                 }
                 if (_topline_more_pending() && _more_never_dismissed())
                     await flush_pending_messages();
-            } else if ((_dm_d & D_CLOSED_MV) === D_CLOSED_MV && !(_dm_d & D_LOCKED_MV)
-                && _can_open_d) {
+            } else if (_dm_d === D_CLOSED_MV && _can_open_d) {
                 let _doorDone = false;
                 /* C UnblockDoor (monmove.c:1552): doormask = <what>; newsym;
                  * recalc_block_point; vision_recalc(0).  <what> is D_ISOPEN
@@ -1735,6 +1756,7 @@ async function postmov_door(mtmp, _didseeit_pm, _mf1_ct, can_tunnel_mv) {
                 let _doormsg = null;
                 let _doormon = false;
                 let _doorhear = false;
+                let _doorsee = false;
                 if (game.flags?.verbose === false) {
                     /* C: the whole feedback block is skipped */
                 } else if (_doorDone) {
@@ -1753,7 +1775,7 @@ async function postmov_door(mtmp, _didseeit_pm, _mf1_ct, can_tunnel_mv) {
                 } else if (!canspotmon(mtmp)) {
                     /* C monmove.c:1611: canseeit && !canspotmon →
                      * You_see("a door open."). */
-                    _doormsg = 'You see a door open.';
+                    _doorsee = true;
                 }
                 else {
                     _doormsg = `${Monnam_dm(mtmp)} opens a door.`;
@@ -1765,18 +1787,19 @@ async function postmov_door(mtmp, _didseeit_pm, _mf1_ct, can_tunnel_mv) {
                  * width-driven more() freezes. */
                 if (_doorhear)
                     await You_hear('a door open.');
+                else if (_doorsee)
+                    await You_see('a door open.');
                 else if (_doormon)
                     await monmove_message(mtmp, _doormsg);
                 else if (_doormsg)
                     await pline(_doormsg);
                 if (_topline_more_pending() && _more_never_dismissed())
                     await flush_pending_messages();
-            } else if ((_dm_d & (D_LOCKED_MV | D_CLOSED_MV)) !== 0
-                && (_mf2_d & M2_GIANT_MAF) !== 0) {
-                /* C monmove.c:1617-1641.  mfndpos only admits this square
-                 * for a doorbuster after the amorphous/unlock/open arms
-                 * have failed.  A locked door consumes the rn2(2) even
-                 * when it winds up merely broken. */
+            } else if ((_dm_d & (D_LOCKED_MV | D_CLOSED_MV)) !== 0) {
+                /* C monmove.c:1593-1620: the exact D_CLOSED test above also
+                 * sends trapped closed doors here for ordinary door openers;
+                 * preserve that C behavior and its shop repair registration.
+                 * A locked, untrapped door consumes rn2(2). */
                 const _maskd = (_btrapped_now
                     || ((_dm_d & D_LOCKED_MV) !== 0 && rn2(2) === 0))
                     ? D_NODOOR_MV : D_BROKEN_MV;
@@ -1798,7 +1821,10 @@ async function postmov_door(mtmp, _didseeit_pm, _mf1_ct, can_tunnel_mv) {
                         await monmove_message(mtmp, `${Monnam_dm(mtmp)} smashes down a door.`);
                     else if (_canseeit_d)
                         await You_see('a door crash open.');
-                    else
+                    else if (!(game.u?.HDeaf || game.u?.EDeaf
+                               || game.u?.uprops?.[DEAF]?.intrinsic
+                               || game.u?.uprops?.[DEAF]?.extrinsic
+                               || game.u?.uroleplay?.deaf))
                         await You_hear('a door crash open.');
                 }
                 if (in_rooms(mtmp.mx | 0, mtmp.my | 0, SHOPBASE_MV).length)
@@ -1919,6 +1945,8 @@ export async function m_move(mtmp, after) {
             } else if (_trap && _trap.ttyp === SQKY_BOARD_MV) {
                 await _handle_sqky_board_mon(mtmp, _trap, mtmp.mx | 0, mtmp.my | 0);
             }
+            if (mtmp.mstate | 0)
+                return MMOVE_DONE_MV; /* C postmov:1515, mon_offmap after mintrap. */
         }
         /* C postmov (monmove.c:1656) `newsym(mtmp->mx, mtmp->my);` — the SECOND
          * half of the pair, at the very end of the `mmoved == MMOVE_MOVED` block,
@@ -2002,7 +2030,10 @@ export async function m_move(mtmp, after) {
              * (priest.c:122-124) itself only does newsym(nix,niy). */
             if (xm === 1) {
                 const didseeit = !!cansee(mtmp.mx | 0, mtmp.my | 0);
+                await notice_mon(mtmp);
                 newsym(_entry_omx, _entry_omy);
+                const trapResult = await postmov_special_trap(mtmp);
+                if (trapResult !== null) return trapResult;
                 /* C postmov(), monmove.c:1530-1593: shopkeepers also
                  * open doors before the final newsym and item-pickup tail. */
                 const mf1 = mtmp.data?.mflags1 | 0;
@@ -2011,7 +2042,7 @@ export async function m_move(mtmp, after) {
                 if (doorResult === MMOVE_DIED_MV) return doorResult;
                 newsym(mtmp.mx | 0, mtmp.my | 0);
             }
-            return postmov(mtmp, (xm !== 1) ? MMOVE_NOTHING_MV : MMOVE_MOVED_MV);
+            return postmov(mtmp, (xm !== 1) ? MMOVE_NOTHING_MV : MMOVE_MOVED_MV, xm === 1);
         }
     }
     if ((mtmp.ispriest | 0)) {
@@ -2038,6 +2069,8 @@ export async function m_move(mtmp, after) {
             } else if (_ptr) {
                 await _handle_sqky_board_mon(mtmp, _ptr, mtmp.mx | 0, mtmp.my | 0);
             }
+            if (mtmp.mstate | 0)
+                return MMOVE_DONE_MV; /* C postmov:1515. */
             newsym(mtmp.mx | 0, mtmp.my | 0);
         }
         return postmov(mtmp, (xm !== 1) ? MMOVE_NOTHING_MV : MMOVE_MOVED_MV);
@@ -2050,11 +2083,15 @@ export async function m_move(mtmp, after) {
         /* C monmove.c:1812-1814: -1 resumes ordinary movement, including
          * pursuit by a hostile guard after the hero leaves the vault. */
         if (xm !== -1) {
-        if (xm === 1)
+        if (xm === 1) {
+            await notice_mon(mtmp);
             newsym(_gdomx, _gdomy);
+            const trapResult = await postmov_special_trap(mtmp);
+            if (trapResult !== null) return trapResult;
+        }
         if (xm === 1)
             newsym(mtmp.mx | 0, mtmp.my | 0);
-        return postmov(mtmp, (xm !== 1) ? MMOVE_NOTHING_MV : MMOVE_MOVED_MV);
+        return postmov(mtmp, (xm !== 1) ? MMOVE_NOTHING_MV : MMOVE_MOVED_MV, xm === 1);
         }
     }
 
@@ -2553,6 +2590,8 @@ export async function m_move(mtmp, after) {
             } else if (_trap && _trap.ttyp === SQKY_BOARD_MV) {
                 await _handle_sqky_board_mon(mtmp, _trap, nix, niy);
             }
+            if (mtmp.mstate | 0)
+                return MMOVE_DONE_MV; /* C postmov:1515. */
         }
 
         {
@@ -2578,7 +2617,7 @@ export async function m_move(mtmp, after) {
             && ((mtmp.mx | 0) !== omx || (mtmp.my | 0) !== omy)) {
             game.u.ux0 = game.u.ux;
             game.u.uy0 = game.u.uy;
-            u_on_newpos(mtmp.mx | 0, mtmp.my | 0);
+            await u_on_newpos(mtmp.mx | 0, mtmp.my | 0);
             swallowed(0);
         } else {
             newsym(nix, niy);
@@ -2856,12 +2895,12 @@ export async function postmov(mtmp, mmoved, skipNotice = false) {
         if ((ptr?.pmidx | 0) === PM_GELATINOUS_CUBE_MV) {
             const eaten = await meatobj_real(mtmp);
             if (eaten >= 2)
-                return MMOVE_DIED_MV;
+                return eaten; /* C monmove.c:1672: preserve eater's result. */
         }
         if (corpse_eater_mwci(ptr)) {
             const eaten = await meatcorpse_real(mtmp);
             if (eaten >= 2)
-                return MMOVE_DIED_MV;
+                return eaten; /* C monmove.c:1677: preserve eater's result. */
         }
         /* C:1680-1681 */
         if (await mpickstuff(mtmp))

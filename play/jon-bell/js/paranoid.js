@@ -5,7 +5,7 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, force_more, force_more_lone_frame, topl_park_cursor, bot,
          _topline_more_pending, restore_occupation_topline, putmsghistory,
-         yn_function_menu } from './display.js';
+         yn_function_menu, restore_command_topline } from './display.js';
 import { vision_recalc } from './vision.js';
 import { PARANOID_CONFIRM, BUFSZ, QBUFSZ, COLNO } from './const.js';
 
@@ -32,6 +32,11 @@ async function read_getlin(prompt) {
     const savedEcho = g._topl_prompt_echo;
     const savedWritten = g._topl_prompt_written;
     g._topl_prompt_echo = true;
+    /* C getline.c:67 custompline -> vpline (pline.c:266-272): the prompt's pline
+     * consumes a pending vision_full_recalc before its flush_screen, so the
+     * prompt freezes the map as of now (a hero just polymorphed into an eyeless
+     * green slime no longer shows infravision-only monsters at "Die?"). */
+    if (g.vision_full_recalc) vision_recalc(0);
     const paint = async () => {
         g._pending_message = buf ? `${prompt} ${buf}` : prompt;
         g._topl_prompt_written = `${prompt} ${buf}`;
@@ -71,6 +76,7 @@ async function read_getlin(prompt) {
 
 async function read_yn(prompt, acceptQ) {
     const g = game;
+    restore_command_topline();
     const choices = acceptQ ? 'ynq' : 'yn';
     // C cmd.c:5640-5645 calls yn_function, whose query_menu route precedes tty input.
     const menuAnswer = await yn_function_menu(prompt, choices, 'n');
@@ -82,10 +88,29 @@ async function read_yn(prompt, acceptQ) {
     // Width paging reads earlier pages (clearing the input flag), but leaves
     // its final remainder needing acknowledgement before the question.
     const unacknowledged = g._topl_unacknowledged;
+    /* Same held-result arm as end.js _yn_prompt: a line a command stashed into
+     * _resultMessage (float_down's "You float gently..." + look_here, drawn
+     * inside drop_upon_death) is still gt.toplines at TOPLINE_NEED_MORE, and
+     * tty_yn_function (topl.c:389-392) pages it before the question. */
+    if (g._resultMessage && !g._pending_message
+        && !g._topl_win_stop && !g._topl_win_stop_armed
+        && (prompt.length + choices.length + 3 + g._resultMessage.length + 3) >= 72) {
+        const held = g._resultMessage;
+        g._resultMessage = '';
+        await force_more(held);
+    }
     if (_topline_more_pending())
         await flush_screen(1);
     if (unacknowledged && g._pending_message)
         await force_more_lone_frame(g._pending_message);
+    else if (unacknowledged && g._resultMessage) {
+        /* C has one topline: float_down()'s "You float gently..." and look_here's
+         * pile text (stashed in the result channel by do_wear.js) are still
+         * TOPLINE_NEED_MORE when really_done raises "Save bones?" (topl.c:397). */
+        const held = g._resultMessage;
+        g._resultMessage = null;
+        await force_more_lone_frame(held);
+    }
     /* C tty_yn_function's flush after the --More-- paints the status with
      * disp.botl still set by done()'s force-HP-to-zero (end.c:1075), so the
      * zeroed HP shows while "Die?" is up. eat.js _done arms this for that one
