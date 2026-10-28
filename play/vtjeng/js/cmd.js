@@ -1718,7 +1718,10 @@ export async function get_count(
     state.program_state ??= {};
     const savedInputState = state.program_state.input_state;
     let key = inkey;
-    let count = 0;
+    // C uses a signed long here. Keep the decimal input exact through the
+    // LONG_MAX check and TTY echo; callers still receive Numbers for ordinary
+    // counts that JavaScript can represent exactly.
+    let count = 0n;
     let committedCount = 0;
     let first = inkey ? inkey - 0x30 : 0;
     let backspaced = false;
@@ -1729,12 +1732,13 @@ export async function get_count(
     const escape = commandBindings(state).specialKeys.escape ?? ESC;
 
     const storeCount = (value) => {
-        committedCount = value;
-        if (countOut && typeof countOut === 'object') countOut.value = value;
+        committedCount = value <= BigInt(Number.MAX_SAFE_INTEGER)
+            ? Number(value) : value;
+        if (countOut && typeof countOut === 'object') countOut.value = committedCount;
     };
     const appendLongDigit = (value, digitValue) => {
-        const appended = value * 10 + digitValue;
-        return appended > Number.MAX_SAFE_INTEGER ? -1 : appended;
+        const appended = value * 10n + BigInt(digitValue);
+        return appended > 9223372036854775807n ? -1n : appended;
     };
 
     for (;;) {
@@ -1749,13 +1753,14 @@ export async function get_count(
         if (isDigit(key)) {
             const dgt = key - 0x30;
             count = appendLongDigit(count, dgt);
-            if (count < 0) count = 0;
-            else if (maxcount > 0 && count > maxcount) count = maxcount;
+            if (count < 0n) count = 0n;
+            else if (maxcount > 0 && count > BigInt(maxcount))
+                count = BigInt(maxcount);
             showzero = key === 0x30;
         } else if (key === BACKSPACE || key === DELETE) {
             if (!count && !echoalways) break;
             showzero = false;
-            count = Math.trunc(count / 10);
+            count /= 10n;
             backspaced = true;
         } else if (key === escape) {
             break;
@@ -1764,7 +1769,7 @@ export async function get_count(
             break;
         }
 
-        if (count > 9 || backspaced || echoalways) {
+        if (count > 9n || backspaced || echoalways) {
             clearTtyMessageWindow(state);
             let countMessage;
             if (backspaced && !count && !showzero) {
@@ -1912,7 +1917,7 @@ export function end_of_input(state = game) {
 export const ADMITTED_COMMANDS = Object.freeze([
     'wait', 'look', 'inventory', 'showspells', 'known', 'attributes', 'search',
     'prevmsg', 'versionshort',
-    'call', 'name',
+    'call', 'name', 'turn',
     'eat', 'engrave', 'apply', 'rub', 'open', 'close', 'down', 'up', 'drop', 'droptype', 'pickup', 'pay',
     'takeoff', 'takeoffall', 'remove', 'wear',
     'puton', 'quaff', 'read', 'zap', 'cast', 'reqmenu', 'fight', 'rush', 'run', 'repeat',
@@ -5772,6 +5777,16 @@ export async function rhack(key, state = game, selectedPrefixEntry = null) {
             if (res & ECMD_TIME) commandTookTime(state);
             return;
         }
+        // C ref: cmd.c do_repeat() requeues the selected #pray row; rhack()
+        // invokes its function pointer just as doextcmd() does.
+        if (queuedExtcmdEntry?.ef_funct === 'dopray') {
+            const res = await dopray(state);
+            if (res & (ECMD_CANCEL | ECMD_FAIL)) resetCommandVars(state);
+            else if ((res & (ECMD_OK | ECMD_TIME)) === ECMD_OK)
+                resetCommandVars(state, state.multi < 0);
+            if (res & ECMD_TIME) commandTookTime(state);
+            return;
+        }
         // C ref: pickup.c:2144 queues lock.c:doforce() as a function
         // pointer. rhack() dispatches that row directly before reading a key.
         if (queuedExtcmdEntry?.ef_funct === 'doforce') {
@@ -6450,6 +6465,16 @@ export async function rhack(key, state = game, selectedPrefixEntry = null) {
             // and GENERALCMD and no movement flag.
             await dotogglepickup(state);
             resetCommandVars(state, state.multi < 0);
+            return;
+        }
+        if (command === 'turn') {
+            // C cmd.c rhack() dispatches a directly bound extcmd row through
+            // its handler, with the same ECMD result accounting as #turn.
+            const res = await doturn(state);
+            if (res & (ECMD_CANCEL | ECMD_FAIL)) resetCommandVars(state);
+            else if ((res & (ECMD_OK | ECMD_TIME)) === ECMD_OK)
+                resetCommandVars(state, state.multi < 0);
+            if (res & ECMD_TIME) commandTookTime(state);
             return;
         }
         if (command === 'wizwish') {
