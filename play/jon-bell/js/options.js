@@ -636,10 +636,12 @@ const burdentype = ['unencumbered', 'burdened', 'stressed', 'strained',
     'overtaxed', 'overloaded'];
 export const BURDENTYPE = burdentype;
 
-// C options.c:884 and parse_role_opt(:7905). Only the rc-file phase enters
+// C options.c:884/1789/3519/3601 and parse_role_opt(:7905). Only the rc-file phase enters
 // parseNethackrc; saved values here preserve that phase's duplicate/filter
 // semantics. Configuration-file export and C string ownership are separate.
-function optfn_alignment(result, opts, op, negated, state) {
+function optfn_role_facet(result, opts, op, negated, state, facet = 'align') {
+    const fullname = facet === 'align' ? 'alignment' : facet;
+    const mask = { role: 0, race: 0x0ff8, gender: 0xf000, align: 7 }[facet];
     const duplicate = state.duplicate;
     state.duplicate = true;
     if (!op) {
@@ -656,12 +658,12 @@ function optfn_alignment(result, opts, op, negated, state) {
             op = op.slice(op[0] === '!' ? 1 : op[2] === '-' ? 3 : 2);
         }
         if (!op || op[0] === ' ') {
-            config_error_add("Negated nothing for '%s'", 'alignment');
+            config_error_add("Negated nothing for '%s'", fullname);
             return;
         }
         if (!first) {
             if (val_negated !== prev_negated || (negated && val_negated)) {
-                config_error_add("Invalid mixed negation for '%s%s'", negated ? '!' : '', 'alignment');
+                config_error_add("Invalid mixed negation for '%s%s'", negated ? '!' : '', fullname);
                 return;
             } else if (!negated && !val_negated) {
                 config_error_add('Multiple role values only allowed when list is negated');
@@ -672,22 +674,27 @@ function optfn_alignment(result, opts, op, negated, state) {
         prev_negated = val_negated;
         const space = op.indexOf(' '), value = space < 0 ? op : op.slice(0, space);
         if (val_negated || negated) {
-            if (!state.saved?.startsWith('!')) roleGlobals.rfilter.mask &= ~7; // ROLE_ALIGNMASK
+            if (!state.saved?.startsWith('!')) {
+                if (facet === 'role') roleGlobals.rfilter.roles.fill(false);
+                else roleGlobals.rfilter.mask &= ~mask;
+            }
             if (!setrolefilter(value)) {
-                config_error_add("Invalid %s '%s'", 'alignment', value);
+                config_error_add("Invalid %s '%s'", fullname, value);
                 return;
             }
             // rolefilterstring(RS_ALGNMNT) returns empty if only another
             // character facet was named (setrolefilter accepts all four).
-            state.saved = ['lawful', 'neutral', 'chaotic']
+            state.saved = facet !== 'align'
+                ? ((facet === 'role' ? roleGlobals.rfilter.roles.some(Boolean) : roleGlobals.rfilter.mask & mask) ? '!' : '')
+                : ['lawful', 'neutral', 'chaotic']
                 .filter((_, i) => roleGlobals.rfilter.mask & (4 >> i))
                 .map(name => '!' + name).join(' ');
             selected = '!';
         } else {
             if (duplicate && state.saved?.startsWith('!')) {
                 const alias = opts.split(/[:=]/, 1)[0].trimEnd().toLowerCase() === 'align';
-                config_error_add('compound option specified multiple times: alignment%s',
-                    alias ? ' (via alias: align)' : '');
+                config_error_add('compound option specified multiple times: %s%s', fullname,
+                    facet === 'align' && alias ? ' (via alias: align)' : '');
                 return;
             }
             state.saved = value;
@@ -696,12 +703,12 @@ function optfn_alignment(result, opts, op, negated, state) {
         op = space < 0 ? '' : op.slice(space + 1);
     }
     if (selected !== '!') {
-        const n = str2align(selected);
+        const n = { role: str2role, race: str2race, gender: str2gend, align: str2align }[facet](selected);
         if (n === ROLE_NONE) {
-            result.align = '';
-            config_error_add("Unknown %s '%s'", 'alignment', selected);
+            result[facet] = '';
+            config_error_add("Unknown %s '%s'", fullname, selected);
         } else {
-            result.align = state.saved = n < 0 ? 'random' : ['lawful', 'neutral', 'chaotic'][n];
+            result[facet] = state.saved = facet === 'align' ? (n < 0 ? 'random' : ['lawful', 'neutral', 'chaotic'][n]) : selected;
         }
     }
 }
@@ -713,6 +720,7 @@ export function parseNethackrc(rc) {
     roleGlobals.rfilter.mask = 0;
     game.rc_rolefilter = roleGlobals.rfilter;
     const alignmentState = { saved: null, duplicate: false };
+    const facetStates = { role: {}, race: {}, gender: {} };
     const compoundSeen = new Set();
     const compoundDuplicate = name => {
         if (compoundSeen.has(name))
@@ -728,7 +736,9 @@ export function parseNethackrc(rc) {
         // C optlist.h:687-688, options.c:7164-7167: sortpack defaults to On.
         flags: { autounlock: 2, sortpack: true, inv_order: [12, 5, 2, 3, 7, 9, 10, 8, 4, 11, 6, 13, 14, 15, 16] }, // options.c:118,1076
         // C options.c:7181 initoptions_init: tty message history defaults to single.
-        iflags: { hilite_delta: 0, prevmsg_window: 's' },
+        iflags: { hilite_delta: 0, prevmsg_window: 's',
+            // C options.c:7188-7189: default headings are inverse, no color.
+            menu_headings: { attr: 7, color: 8 } },
         uroleplay: {blind: false, deaf: false, nudist: false, pauper: false},
     };
     if (!rc)
@@ -793,9 +803,18 @@ export function parseNethackrc(rc) {
                  * glyphrep_to_custom_map_entries() (glyphs.c:111) */
                 if (/^\s*G_/.test(entry))
                     glyphrep_to_custom_map_entries(entry.trim(), { value: 0 });
+                /* C symbols.c:811-844: every S_<name>:<val> pair, monster
+                 * classes included, lands in ov_primary_syms. */
+                const pairMatch = entry.match(/^\s*(S_[^:=\s]+)\s*[:=]\s*(.*?)\s*$/i);
+                if (pairMatch)
+                    (result.symbolPairs ||= []).push([pairMatch[1], pairMatch[2]]);
                 const symMatch = entry.match(/^\s*(S_(?:pool|boulder|vodoor|hodoor|room|corr|litcorr|stone|vwall|hwall|tlcorn|trcorn|blcorn|brcorn|crwall|tuwall|tdwall|tlwall|trwall))\s*:\s*(.)/i);
                 if (symMatch)
                     (result.symbolOverrides ||= {})['S_' + symMatch[1].slice(2).toLowerCase()] = symMatch[2];
+                // C symbols.c:820-844: other-symbol overrides use sym_val too.
+                const otherMatch = entry.match(/^\s*(S_(?:nothing|unexplored|pet_override|hero_override))\s*[:=]\s*(.*?)\s*$/i);
+                if (otherMatch)
+                    (result.symbolOverrides ||= {})['S_' + otherMatch[1].slice(2).toLowerCase()] = otherMatch[2];
                 const terrMatch = entry.match(/^\s*(S_(?:room|corr|litcorr|ndoor|vodoor|hodoor|vcdoor|hcdoor|fountain))\s*:\s*(?:'([^'])'|([^'\s]))\s*$/i);
                 if (terrMatch)
                     (result.symbolOverrides ||= {})['S_' + terrMatch[1].slice(2).toLowerCase()] = terrMatch[2] ?? terrMatch[3];
@@ -883,7 +902,11 @@ export function parseNethackrc(rc) {
                 continue;
             }
             if (menuname === 'align' || (menuname.length >= 6 && 'alignment'.startsWith(menuname))) {
-                optfn_alignment(result, menuopts, menuval, menunegated, alignmentState);
+                optfn_role_facet(result, menuopts, menuval, menunegated, alignmentState);
+                continue;
+            }
+            if (Object.hasOwn(facetStates, menuname)) {
+                optfn_role_facet(result, menuopts, menuval, menunegated, facetStates[menuname], menuname);
                 continue;
             }
             if (check_misc_menu_command(menuopts) >= 0) {
@@ -1146,7 +1169,7 @@ export function parseNethackrc(rc) {
             }
             /* C options.c:2225 optfn_menu_objsyms(do_set) + set_menuobjsyms_flags
              * (options.c:7446): menuobjsyms, menu_head_objsym = bit 0,
-             * use_menu_glyphs = TRUE (do_init, options.c:2234). */
+             * use_menu_glyphs = bits 1 or 2 (options.c:7450). */
             if (menuname.length >= 7 && 'menu_objsyms'.startsWith(menuname)) {
                 const OBJSYM_NAMES = ['none', 'headers', 'entries', 'both', 'conditional', 'one-or-other'];
                 const op = menusep < 0 ? '' : menuopts.slice(menusep + 1).trim();
@@ -1173,7 +1196,7 @@ export function parseNethackrc(rc) {
                 }
                 result.iflags.menuobjsyms = osyms;
                 result.iflags.menu_head_objsym = (osyms & 1) !== 0;
-                result.iflags.use_menu_glyphs = true;
+                result.iflags.use_menu_glyphs = (osyms & (2 | 4)) !== 0;
                 continue;
             }
             // determine_ambiguities(): "sup" uniquely identifies suppress_alert.
@@ -1250,7 +1273,17 @@ export function parseNethackrc(rc) {
                      * not stored (a leading '!' is the exclusion form). */
                     const str2 = { role: str2role, race: str2race,
                                    gender: str2gend, align: str2align }[key];
-                    if (val[0] !== '!' && str2(val) === ROLE_NONE) {
+                    if (val[0] === '!') {
+                        const rf = roleGlobals.rfilter;
+                        if (key === 'role') rf.roles.fill(false);
+                        else rf.mask &= ~(key === 'race' ? ROLE_RACEMASK : ROLE_GENDMASK);
+                        for (const tok of val.split(/\s+/)) {
+                            const nm = tok.replace(/^!+/, '');
+                            if (nm && !setrolefilter(nm))
+                                config_error_add("Invalid %s '%s'", key, nm);
+                        }
+                        result[key] = val;
+                    } else if (str2(val) === ROLE_NONE) {
                         config_error_add("Unknown %s '%s'",
                                          key, val);
                     } else {
@@ -1579,10 +1612,10 @@ import { rnd, rn2 } from './rng.js';
 /* C options.c:8194 makesingular(), :8204-8212 OBJ_NAME over the FOOD_CLASS
  * range, :8230-8236 name_to_mon()/ismnum() — fruitadd's user_specified name
  * rewrite reads all four. */
-import { makesingular, makeplural, objName } from './objnam.js';
+import { makesingular, makeplural, objName, fruit_from_name as fruit_from_name_real } from './objnam.js';
 import { name_to_mon } from './makemon.js';
 import { ROLE_NONE, gs, ismnum, RUN_TPORT, RUN_LEAP, RUN_STEP, RUN_CRAWL,
-    PARANOID_BONES } from './const.js';
+    PARANOID_BONES, ROLE_RACEMASK, ROLE_GENDMASK } from './const.js';
 import { MKOBJ_OC_CLASS, MKOBJ_SVB_BASES } from './mkobj_data.js';
 const FOOD_CLASS = 7;
 
@@ -1793,36 +1826,15 @@ export function init_fruit_chain() {
     g.svc.context.current_fruit = 1;
 }
 
-/* C objnam.c:443 fruit_from_name(fname, exact=FALSE, &highest_fid).
- *
- * PORTED ARMS: the exact-match scan (which is also what computes
- * *highest_fid) and the longest-prefix scan.  NOT PORTED: the two
- * makesingular()-based fallbacks that follow them, because makesingular() is
- * the plural-stripping engine and this port has no faithful copy of it; they
- * can only ever turn a MISS into a HIT, and a miss simply allocates the next
- * fid.  Stated rather than hidden: if a player names their fruit as the plural
- * of an orc-fruit name ("paddle cactuses"), C would reuse that fruit's fid and
- * this returns a new one.  No RNG either way. */
+/* C objnam.c:443 fruit_from_name(fname, exact=FALSE, &highest_fid) — the real
+ * body (all four arms, including the two makesingular() fallbacks) lives in
+ * js/objnam.js; this only adapts its out-parameter to the {f, highest_fid}
+ * shape the callers below use. */
 function fruit_from_name(fname) {
-    const head = _ffruit();
-    let highest_fid = 0;
-    /* C objnam.c:458 — `for (f = gf.ffruit; f; f = f->nextf)`. */
-    for (let f = head; f; f = f.nextf) {
-        if (f.fname === fname)
-            return { f, highest_fid };
-        if (f.fid > highest_fid)
-            highest_fid = f.fid;
-    }
-    /* prefix match: longest f->fname that is a whole-word prefix of fname */
-    let tentativef = null;
-    for (let f = head; f; f = f.nextf) {
-        const k = f.fname.length;
-        if (fname.slice(0, k) === f.fname
-            && (fname.length === k || fname[k] === ' ')
-            && (!tentativef || k > tentativef.fname.length))
-            tentativef = f;
-    }
-    return { f: tentativef, highest_fid };
+    _ffruit();
+    const hf = { value: 0 };
+    const f = fruit_from_name_real(fname, false, hf);
+    return { f: f || null, highest_fid: hf.value };
 }
 
 /* C options.c:8186-8232, the user_specified half of fruitadd's name rewrite:

@@ -107,6 +107,7 @@ import { PM_SAMURAI as PM_SAMURAI_HM, PM_ELF as PM_ELF_HM } from './pm.generated
  * the synchronous body used by mhitu's lethal damage paths; this wrapper
  * avoids a second implementation. */
 import { done_in_by as done_in_by_real } from './end.js';
+import { polymon } from './polyself.js';
 
 /* C youprop.h resistance macros: both intrinsic and extrinsic property bits
  * contribute to the hero's resistance. */
@@ -1105,13 +1106,13 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                     (protector === W_ARMH && !uarmh) ||
                     (protector === (W_ARMC | W_ARMG) && (!uarmc || !uarmg));
                 if (unprotected) {
+                    /* C uhitm.c:5949-5953: transform eligible hero forms before fatal stoning. */
                     const hero_uptr = (game.youmonst && game.youmonst.data)
                         ? game.youmonst.data
                         : permonstTemplate((u && u.umonnum) | 0);
-                    const polymon_to_stone_golem = false; /* KNOWN GAP, above */
                     if (!stone_res &&
                         !(hero_uptr && poly_when_stoned(hero_uptr)
-                          && polymon_to_stone_golem)) {
+                          && await polymon(PM_STONE_GOLEM))) {
                         done_in_by(mon, STONING);
                         // C uhitm.c:5952: done() returns here after lifesaving.
                         await drain_pending_death_in_place();
@@ -1230,7 +1231,7 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                     }
                     else {
                         /* C uhitm.c:6050: mon->mcansee == 0, monster is blind */
-                        void pline(`${Monnam(mon)} cannot defend itself.`);
+                        void pline(`${Adjmonnam(mon, "blind")} cannot defend itself.`);
                         /* C uhitm.c:6052: if (!rn2(500)) change_luck(-1) */
                         if (!rn2(500))
                             change_luck(-1);

@@ -120,6 +120,8 @@ import { is_izchak } from './cmd.js';
 import { You_feel } from './display.js';
 import { sobj_at } from './mklev.js';
 import { unplacebc, placebc } from './ball.js';
+import { obj_typename } from './objnam.js';
+import { bill_dummy_object } from './cmd.js';
 
 // SELL_NORMAL constant from hack.h:1070
 const SELL_NORMAL = 0;
@@ -1519,6 +1521,12 @@ export async function sellobj(obj, x, y) {
             qbuf = (await safe_qbuf(qbuf, qbuf, "?", obj, doname, thesimpleoname,
                              (obj.quan === 1) ? "that" : "those"));
             c = await yn_function_shk(qbuf, 'ynaq', 'y');
+            /* C topl.c:536-548 — the answered prompt stays painted until the
+             * next command's clear_nhwindow(WIN_MESSAGE); see the 'ynaq'
+             * reader below. */
+            const shown = `${qbuf} [ynaq] (y)`;
+            if (topl_park_cursor(null, shown + ' ')[1] === 0)
+                g._topl_sticky = shown;
             if (c === 'a') {
                 c = 'y';
                 g.ga.auto_credit = true;
@@ -4682,6 +4690,39 @@ export function get_pricing_units(obj) {
     return units;
 }
 
+/* C shk.c:5976-6098: absorber survives; absorbed is about to be freed. */
+export async function globby_bill_fixup(absorber, absorbed) {
+    if (!absorber.globby) await lifecycle_impossible('globby_bill_fixup called for non-globby object');
+    const floor = absorber.where === OBJ_FLOOR_SHK, x = floor ? absorber.ox : 0, y = floor ? absorber.oy : 0;
+    let shkp = null;
+    if (absorber.unpaid) {
+        for (shkp = next_shkp(game.fmon, true); shkp; shkp = next_shkp(shkp.nmon, true)) if (await onbill(absorber, shkp, true)) break;
+    } else if (absorbed.unpaid && absorbed.where === OBJ_FREE_SHK && floor && costly_spot(x, y)) shkp = shop_keeper(in_rooms(x, y, SHOPBASE)[0]);
+    if (!shkp) shkp = shop_keeper(game.u.ushops?.[0]);
+    if (!shkp) return;
+    const ba = await onbill(absorber, shkp, false), bp = await onbill(absorbed, shkp, false), e = ESHK(shkp), cost = set_cost(absorbed, shkp);
+    if (bp && (!absorber.no_charge || await billable({ value: shkp }, absorber, e.shoproom, false))) {
+        const amount = bp.price; Object.assign(bp, e.bill_p[--e.billct]);
+        if (await onbill(absorbed, shkp, true)) absorbed.unpaid = 0;
+        if (ba) ba.price += amount;
+    } else if (!ba && !bp && !absorber.no_charge) {
+        const amount = get_pricing_units(absorbed) * cost;
+        if (!saleable(shkp, absorbed)) return;
+        if (e.debit >= amount) {
+            if (e.loan) e.loan = Math.max(0, e.loan - amount);
+            e.debit -= amount; await pline('The donated %s %spays off your debt.', obj_typename(absorbed.otyp), e.debit ? 'partially ' : '');
+        } else {
+            const delta = amount - e.debit; e.credit += delta;
+            if (e.debit) { e.debit = e.loan = 0; await Your_real('debt is paid off.'); }
+            if (e.credit === delta) await pline('The %s established %ld %s credit.', obj_typename(absorbed.otyp), delta, currency(delta));
+            else await pline('The %s added %ld %s %s %ld %s.', obj_typename(absorbed.otyp), delta, currency(delta), 'to your credit; total is now', e.credit, currency(e.credit));
+        }
+    } else if (ba) ba.price += cost * get_pricing_units(absorbed);
+    else if (bp && (absorber.no_charge || (floor && !costly_spot(x, y)))) {
+        const amount = bp.price; await bill_dummy_object(absorbed); SetVoice(shkp, 0, 80, 0);
+        await verbalize('You owe me %ld %s for my %s that you %s with your%s', amount, currency(amount), obj_typename(absorbed.otyp), ANGRY(shkp) ? 'had the audacity to mix' : 'just mixed', ANGRY(shkp) ? ' stinking batch!' : 's.');
+    }
+}
 /* C shk.c:2878 get_cost(obj, shkp) — "calculate the value that the shk will
  * charge for [one of] an object".  Every multiplier is a rational folded into
  * C's single `(tmp * multiplier * 10 / divisor + 5) / 10` rounding, so the

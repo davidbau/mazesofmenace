@@ -35,7 +35,7 @@ import { isok, Has_contents, MON_MIGRATING, MAX_NUM_WORMS } from './const.js';
 import { within_bounded_area } from './rect.js';   /* C rect.c */
 import { newsym, force_more_from_cls, docrt } from './display.js';    /* C display.c */
 import { remove_worm, wormgone, count_wsegs } from './worm.js';
-import { yelp, growl, helpless, levl_follower, mon_has_amulet, seemimic } from './mhitm.js';
+import { yelp, growl, helpless, levl_follower, mon_has_amulet, seemimic, pronoun_gender, update_inventory } from './mhitm.js';
 import { vision_recalc } from './vision.js';       /* C vision.c */
 import { depth } from './hacklib.js';              /* C dungeon.c depth() */
 import { fill_pit, mintrap } from './trap.js';              /* C trap.c:5391 */
@@ -1147,20 +1147,24 @@ export function keep_mon_accessible(mtmp) {
 }
 /* C apply.c:726-743 — release one monster from its inventory leash.  The
  * leash object stores the monster id; clear that link and the monster flag.
- * The feedback text is presentation-only and is intentionally omitted here,
- * matching other migration-only callers which pass FALSE. */
+ * Return the feedback's paging promise for callers which can await it. */
 export function m_unleash(mtmp, force) {
-    void force;
     if (!mtmp)
         return;
+    const feedback = !force ? undefined : canseemon(mtmp)
+        ? pline_mon(mtmp, '%s pulls free of %s leash!', Monnam(mtmp),
+                    ['his', 'her', 'its', 'their'][pronoun_gender(mtmp, 2)])
+        : pline('Your leash falls slack.');
     const mid = mtmp.m_id | 0;
     for (let otmp = game.invent; otmp; otmp = otmp.nobj) {
         if ((otmp.otyp | 0) === 236 /* LEASH */ && (otmp.leashmon | 0) === mid) {
             otmp.leashmon = 0;
+            update_inventory();
             break;
         }
     }
     mtmp.mleashed = 0;
+    return feedback;
 }
 
 /* C dog.c:1292-1359 — revive/life-save disposition for a tame monster.

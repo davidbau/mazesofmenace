@@ -40,6 +40,7 @@ import { hates_silver, name_to_mon, name_to_monclass, permonstTemplate, monPmnam
 import { makemon, newcham, engravings_list, mongone } from './mklev.js';
 import { count_wsegs } from './worm.js';
 import { tamedog, migrate_to_level } from './dog.js';
+import { monster_census } from './sit.js';
 import { MM_NOMSG, MIGR_RANDOM } from './const.js';
 import { put_saddle_on_mon } from './steed.js';
 import { is_pool } from './look.js';
@@ -73,7 +74,8 @@ import { A_WIS, KILLED_BY, ANTIMAGIC, HALF_PHDAM, LOW_PM, ECMD_OK, MM_MINVIS,
          Is_airlevel, Is_waterlevel, IRONBARS, ICE, FUMBLING, COLD_RES, LS_OBJECT, LS_MONSTER,
          LL_CONDUCT, LL_WISH, LL_ARTIFACT, Upolyd } from './const.js';
 import { _artifact_origin } from './objnam.js';
-import { ONAME_WISH, ONAME_KNOW_ARTI } from './const.js';
+import { ONAME_WISH, ONAME_KNOW_ARTI, ONAME_SKIP_INVUPD, ONAME, has_oname } from './const.js';
+import { oname } from './objnam.js';
 
 /* C wizcmds.c:1113-1693 — #stats uses native allocation sizes rather than
  * JavaScript object sizes. These are the ABI values of the frozen C build. */
@@ -476,8 +478,13 @@ export async function getlin(prompt) {
          * LAST flush (makemon's "A ryoshu appears" pline), not the live gbuf
          * (the newcham to Famine that follows in create_particular_creation). */
         if (_topl_more_pages(_live, _topl_joins_snapshot(_live)).length > 1) {
-            await flush_screen(1);
-            if (g._pending_message) await force_more(g._pending_message);
+            // getline.c:53-54 pages before the query's custompline flush.
+            // Drain deferred update_topl pages without flushing newer glyphs.
+            await flush_screen(1, false);
+            if (g._pending_message) {
+                const release = use_last_flush_snapshot();
+                try { await force_more(g._pending_message); } finally { release(); }
+            }
         } else {
             const release = use_last_flush_snapshot();
             try { await force_more(g._pending_message); } finally { release(); }
@@ -916,6 +923,10 @@ function _wish_mergable(into, obj) {
             || n === PM_DEATH || n === PM_FAMINE || n === PM_PESTILENCE)
             return false;
     }
+    /* C invent.c:4485-4493 (MAIL_STRUCTURES, global.h:430) — SCR_MAIL with
+     * spe > 0 keeps its two o_id-parity flavors apart. */
+    if (ot === 364 /* SCR_MAIL */ && (obj.spe | 0) > 0
+        && ((obj.o_id | 0) % 2) !== ((into.o_id | 0) % 2)) return false;
     /* C invent.c:4496 — known mismatch blocks only when Blind or Hallucinating */
     if ((obj.known | 0) !== (into.known | 0) && (_wish_Blind() || _wish_Hallu()))
         return false;
@@ -1161,6 +1172,10 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
             /* C invent.c:838-839 — merged() clears bknown on merged gold
              * before comparing the id dimensions (:871) */
             if ((o.oclass | 0) === COIN_CLASS_WZ) o.bknown = 0;
+            /* C invent.c:843-844 — an unnamed survivor inherits the incoming
+             * stack's name before the merged stack is displayed. */
+            if (!has_oname(o) && has_oname(otmp))
+                await oname(o, ONAME(otmp), ONAME_SKIP_INVUPD);
             discovered = _wish_merged_reconcile(o, otmp);
             }
             if (discovered) {
@@ -1823,9 +1838,11 @@ function create_particular_parse(str) {
     /* quantity */
     const mq = /^([0-9]+) */.exec(bufp);
     if (mq) { d.quan = parseInt(mq[1], 10); bufp = bufp.slice(mq[0].length); }
-    const QUAN_LIMIT = 21 * 79;
+    /* C read.c:3161-3166 — out-of-range quantities fill the map after
+     * accounting for the monsters already on the level. */
+    const QUAN_LIMIT = ROWNO * (COLNO - 1);
     if (d.quan < 1 || d.quan > QUAN_LIMIT)
-        throw new Error('create_particular_parse: out-of-range quantity needs monster_census()');
+        d.quan = QUAN_LIMIT - monster_census(false);
 
     /* gear / state words — C memsets each match to spaces, then mungspaces. */
     const strip = (word) => {

@@ -26,15 +26,16 @@ import { newsym, map_object, pline, Unaware } from './display.js';
 import { Blind } from './vision.js';
 import { omon_adj, welded, setuwep, setuswapwep,
          setuqwep, freeinv, body_part, set_wounded_legs } from './cmd.js';
-import { find_mac, t_at, reset_utrap, fill_pit } from './trap.js';
+import { find_mac, t_at, deltrap, reset_utrap, fill_pit } from './trap.js';
 import { spoteffects } from './landing-effects.js';
 import { remove_object, obj_extract_self, maybe_unhide_at, place_object } from './mklev.js';
 import { flooreffects, Yname2 } from './cmd.js';
 import { rn1, rn2, rnd } from './rng.js';
-import { You, hard_helmet, encumber_msg } from './do_wear.js';
+import { You, Your, hard_helmet, encumber_msg } from './do_wear.js';
 import { xname } from './do_wear.js';
 import { losehp } from './dokick.js';
-import { hmon as hmon_real } from './mhitm.js';
+import { hmon as hmon_real, hliquid } from './mhitm.js';
+import { m_at as monster_at } from './uhitm.js';
 import { impossible } from './steed.js';
 import { impossible as bc_impossible } from './pline.js';
 import { simple_typename } from './objnam.js';
@@ -48,7 +49,7 @@ import {
     POOL, MOAT, WATER, DRAWBRIDGE_UP, DB_UNDER, DB_MOAT,
     Is_juiblex_level, Is_waterlevel,
     is_pit, is_hole,
-    LEVITATION, HEAD, NO_KILLER_PREFIX, HALF_PHDAM,
+    LEVITATION, HEAD, LEG, KILLED_BY, NO_KILLER_PREFIX, HALF_PHDAM,
     TT_INFLOOR, TT_BURIEDBALL, TT_PIT, TT_WEB, TT_LAVA, TT_BEARTRAP,
     LEFT_SIDE, RIGHT_SIDE,
 } from './const.js';
@@ -410,30 +411,31 @@ export async function drop_ball(x, y) {
     const { uball, uchain } = findBallChain();
     if (!uball || !uchain) return;
     const tx = x | 0, ty = y | 0;
-    if (tx === (u.ux | 0) && ty === (u.uy | 0)) return;
-
     if (Blind()) {                          // ball.c:884-889
         u.bc_order = bc_order(uball, uchain);
         u.bglyph = u.bc_order ? u.cglyph : bc_glyph_at(tx, ty);
     }
+    if (tx === (u.ux | 0) && ty === (u.uy | 0)) return;
 
     const pullmsg = 'The ball pulls you out of the ';
     if ((u.utrap | 0) && (u.utraptype | 0) !== TT_INFLOOR
         && (u.utraptype | 0) !== TT_BURIEDBALL) {
         switch (u.utraptype | 0) {
-        case TT_PIT: void pline('%spit!', pullmsg); break;
+        case TT_PIT: await pline('%spit!', pullmsg); break;
         case TT_WEB:
-            void pline('%sweb!', pullmsg);
-            void pline('The web is destroyed!');
+            await pline('%sweb!', pullmsg);
+            await pline('The web is destroyed!');
+            deltrap(t_at(u.ux | 0, u.uy | 0));  // ball.c:906
             break;
-        case TT_LAVA: void pline('%slava!', pullmsg); break;
+        case TT_LAVA: await pline('%s%s!', pullmsg, hliquid('lava')); break;
         case TT_BEARTRAP: {
             const side = rn2(3) ? LEFT_SIDE : RIGHT_SIDE;
-            void pline('%sbear trap!', pullmsg);
-            set_wounded_legs(side, 500 + rnd(1000));
+            await pline('%sbear trap!', pullmsg);
+            set_wounded_legs(side, rn1(1000, 500));
             if (!u.usteed) {
-                void You(`Your ${side === LEFT_SIDE ? 'left' : 'right'} leg is severely damaged.`);
-                await losehp(ball_Maybe_Half_Phys(2), 'leg damage from being pulled out of a bear trap', NO_KILLER_PREFIX);
+                // C ball.c:915-921: one injury message and one damage application.
+                await Your('%s %s is severely damaged.', side === LEFT_SIDE ? 'left' : 'right', body_part(LEG));
+                await losehp(ball_Maybe_Half_Phys(2), 'leg damage from being pulled out of a bear trap', KILLED_BY);
             }
             break;
         }
@@ -445,8 +447,8 @@ export async function drop_ball(x, y) {
 
     u.ux0 = u.ux | 0;
     u.uy0 = u.uy | 0;
-    const lev = !!(u.uprops?.[LEVITATION]?.intrinsic || u.uprops?.[LEVITATION]?.extrinsic);
-    const occupied = !!m_at(tx, ty);
+    const lev = Levitation();
+    const occupied = !!monster_at(tx, ty);
     const dt = t_at(tx, ty);
     if (!lev && !occupied && !u.utrap
         && (is_pool_here(tx, ty) || (dt && (is_pit(dt.ttyp) || is_hole(dt.ttyp))))) {
@@ -465,6 +467,8 @@ export async function drop_ball(x, y) {
     if (Blind())
         u.bc_order = bc_order(uball, uchain);
     newsym(u.ux0 | 0, u.uy0 | 0);
+    if (u.ux0 !== u.ux || u.uy0 !== u.uy)
+        await spoteffects(true);            // ball.c:957-958
 }
 
 // unplacebc() — ball.c:212-219 → ball.c:147-180 unplacebc_core(): take the ball

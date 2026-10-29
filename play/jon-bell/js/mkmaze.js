@@ -1107,11 +1107,12 @@ async function mv_bubble(b, dx, dy, ini) {
 
 /* S_water (dat/symbols:721 \xe0 under DECgraphics, '}' otherwise;
  * defsym.h:152 CLR_BRIGHT_BLUE) — same cell js/display.js terrain_glyph
- * draws for typ WATER. */
+ * draws for typ WATER. Keep cmap identity as C mkmaze.c:1834-1840 does;
+ * a moving bubble can change the terrain beneath this remembered glyph. */
 function water_memory_glyph() {
     return dec_mode()
-        ? { ch: '`', color: CLR_BRIGHT_BLUE, decgfx: true }
-        : { ch: '}', color: CLR_BRIGHT_BLUE, decgfx: false };
+        ? { ch: '`', color: CLR_BRIGHT_BLUE, decgfx: true, cmap: 48 }
+        : { ch: '}', color: CLR_BRIGHT_BLUE, decgfx: false, cmap: 48 };
 }
 
 /* C mkmaze.c:1836-1880 setup_waterlevel() — called from fixup_special() when
@@ -1244,7 +1245,8 @@ export async function movebubbles() {
                  * is AIR; only the cells the hero can actually see are painted
                  * from the terrain (blank for AIR).  That memory is what fills
                  * C's screen with 1593 '#' cells this port left blank. */
-                loc.remembered_glyph = { ch: '#', color: CLR_GRAY, decgfx: false };
+                loc.remembered_glyph = { ch: '#', color: CLR_GRAY, decgfx: false,
+                                         cmap: 47 }; /* S_cloud, independent of typ AIR */
                 loc.flags = 0;
                 loc.horizontal = false;
                 loc.waslit = false;

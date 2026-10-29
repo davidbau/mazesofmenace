@@ -401,7 +401,7 @@ import {
     selection_new,
     set_selection_floodfillchk,
 } from './themerooms.js';
-import { collectLookaroundMessages, messageAt } from './startup_a11y.js';
+import { collectLookaroundMessages, heroIsBlind, messageAt } from './startup_a11y.js';
 import { cansee, vision_reset } from './vision.js';
 import { m_at } from './monst.js';
 import { linedup } from './mthrowu.js';
@@ -853,14 +853,15 @@ export async function yn_function(query, resp, def, addcmdq, state = game) {
         cmdq_clear(CQ_CANNED, state);
         res = ESC;
         fromQueue = true;
-    } else {
+    }
+    if (!fromQueue && res === undefined) {
+        // A queued CMDQ_USER_INPUT asks for a fresh answer through the same
+        // menu-capable path as an ordinary prompt, after its marker is popped.
         const menuResult = await yn_function_menu(query, resp, def, state);
         res = menuResult === null
             ? await tty_yn_function(query, resp, def, state)
             : menuResult;
     }
-    if (!fromQueue && res === undefined)
-        res = await tty_yn_function(query, resp, def, state);
     if (addcmdq && !fromQueue) cmdq_add_key(CQ_REPEAT, res, state);
     // "in case we're called via getdir() which sets input_state".
     state.program_state.input_state = 'other';
@@ -1610,9 +1611,10 @@ export async function getdir(s, state = game) {
         }
         needsPrompt = true;
 
-        if (redraw_cmd(dirsym, state)) {
+        if (fromPrompt && redraw_cmd(dirsym, state)) {
             // cmd.c:4013-4015: refresh the current glyph buffer, then retry
-            // the prompt without adding the redraw key to CQ_REPEAT.
+            // the prompt without adding the redraw key to CQ_REPEAT. A queued
+            // direction jumps past this check to got_dirsym in C.
             // Planning clones have no terminal; the live replay owns the
             // source redraw, while both paths retry the same input prompt.
             if (state === game) await docrt({ refreshOnly: true });
@@ -2347,18 +2349,46 @@ export async function extcmd_via_menu(state = game) {
         }
         if (choices.length === 1) return extcmdlist.indexOf(choices[0]);
 
-        const groups = new Map();
+        const onePerLine = choices.length < ROWNO - 3;
+        const items = [];
+        let previousAccelerator = null;
+        let previousName = '';
+        let prompt = '';
+        let count = 0;
+        let wasTooLong = false;
+        const flush = () => {
+            if (count) items.push({
+                selector: previousAccelerator,
+                value: previousAccelerator,
+                label: prompt,
+            });
+            count = 0;
+        };
         for (const entry of choices) {
             const accelerator = entry.ef_txt[matchLevel];
             if (!accelerator) continue;
-            if (!groups.has(accelerator)) groups.set(accelerator, []);
-            groups.get(accelerator).push(entry);
+            const newAccelerator = accelerator !== previousAccelerator;
+            if (newAccelerator || onePerLine) wasTooLong = false;
+            const wrapped = count >= 2
+                && prompt.length + 4 + entry.ef_txt.length
+                    >= Math.min(QBUFSZ, COLNO - 6);
+            if (newAccelerator || onePerLine || wrapped) {
+                flush();
+                if (wrapped && !newAccelerator && !onePerLine)
+                    wasTooLong = true;
+            }
+            previousAccelerator = accelerator;
+            if (!count || onePerLine) {
+                prompt = `${wasTooLong ? 'or ' : ''}${entry.ef_txt} [${entry.ef_desc}]`;
+            } else if (count === 1) {
+                prompt = `${wasTooLong ? 'or ' : ''}${previousName} or ${entry.ef_txt}`;
+            } else {
+                prompt += ` or ${entry.ef_txt}`;
+            }
+            previousName = entry.ef_txt;
+            count++;
         }
-        const items = [...groups].map(([accelerator, rows]) => ({
-            selector: accelerator,
-            value: accelerator,
-            label: rows.map((row) => `${row.ef_txt} [${row.ef_desc}]`).join(' or '),
-        }));
+        flush();
         const selected = await select_menu(state, {
             items,
             how: PICK_ONE,
@@ -2766,7 +2796,8 @@ async function dotravel_target(state = game) {
         await ttyPline('You are already here.', state);
         state.iflags.travelcc.x = 0;
         state.iflags.travelcc.y = 0;
-        state.iflags.getloc_travelmode = false;
+        // C returns here before clearing getloc_travelmode. Its later
+        // location menu still carries the travel-destination title.
         return ECMD_OK;
     }
 
@@ -5686,6 +5717,9 @@ export async function rhack(key, state = game, selectedPrefixEntry = null) {
             // rhack() reset gm.multi after one display instead of asking
             // moveloop_core() to repeat this no-time command.
             && command !== 'inventory'
+            // A sighted dolook() returns ECMD_OK; rhack() clears its count
+            // after the single look instead of entering moveloop repetition.
+            && !(command === 'look' && !heroIsBlind(state))
             && !Object.hasOwn(MOVEMENT_INTENTS, command)
             // These commands clear a count with their no-time result.
             && command !== 'wizsmell' && command !== 'wizkill'
@@ -5854,8 +5888,13 @@ export async function rhack(key, state = game, selectedPrefixEntry = null) {
             if (res & ECMD_TIME) commandTookTime(state);
             return;
         }
-        if (command === 'doclicklook' || command === 'domouseaction') {
-            const result = command === 'doclicklook'
+        // Queued rows carry their display name in `command`; C dispatches
+        // the row's function pointer, so use ef_funct for this internal arm.
+        const queuedClickHandler = queuedExtcmdEntry?.ef_funct;
+        if (command === 'doclicklook' || command === 'domouseaction'
+            || queuedClickHandler === 'doclicklook'
+            || queuedClickHandler === 'domouseaction') {
+            const result = (queuedClickHandler ?? command) === 'doclicklook'
                 ? await doclicklook(state) : await domouseaction(state);
             if (result & (ECMD_CANCEL | ECMD_FAIL)) resetCommandVars(state);
             else if ((result & (ECMD_OK | ECMD_TIME)) === ECMD_OK)

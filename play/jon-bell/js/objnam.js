@@ -18,7 +18,7 @@ import { COST_CONTENTS, BURN_OBJECT, ZOMBIFY_MON, TIMER_OBJECT, otrapped_of, GLI
 //   1. rnd_otyp_by_namedesc: rn2(maxprob) when name match needed
 //   2. mksobj: rnd(2) @ next_ident, then class-specific init RNG
 //   3. makewish end: rn2(100) for u.ublesscnt (zap.c:6414)
-import { pline, livelog_printf } from './display.js'; /* was an undeclared global: every pline() call in this file threw ReferenceError when reached */
+import { pline, livelog_printf, impossible_sync } from './display.js'; /* was an undeclared global: every pline() call in this file threw ReferenceError when reached */
 import { weight } from './weight.js';
 import { yn_function } from './end.js';
 import { WT_IRON_BALL_INCR, LL_CONDUCT, LL_ARTIFACT } from './const.js';
@@ -1849,22 +1849,11 @@ function _singularize_word(word) {
     const sp = wl.lastIndexOf(' ');
     const lastword = sp >= 0 ? wl.slice(sp + 1) : wl;
     if (_AS_IS.has(lastword)) return word;
-    /* Common irregular plurals */
-    const irreg = [
-        ["boxes", "box"], ["axes", "axe"], ["glasses", "glass"],
-        ["knives", "knife"], ["lives", "life"], ["loaves", "loaf"],
-        ["shields", "shield"], ["scrolls", "scroll"],
-        ["potions", "potion"], ["wands", "wand"], ["rings", "ring"],
-        ["amulets", "amulet"], ["spellbooks", "spellbook"],
-        ["gems", "gem"], ["coins", "coin"],
-    ];
-    for (const [pl, sg] of irreg)
-        if (wl === pl) return sg;
     /* C objnam.c:3078-3160: suffix stripping on the (compound-trimmed) word. */
     const ends = (n, t) => wl.length >= n && wl.endsWith(t);
     const L = wl.length;
     const lc = (k) => (L - k >= 0 ? wl[L - k] : '');
-    const cut = (n, rep) => word.slice(0, L - n) + rep;
+    const cut = (n, rep) => strcasecpy_at(word, L - n, rep);
     /* a "start of string or space" guard: p - k == bp || p[-(k+1)] == ' ' */
     const atWordStart = (k) => L - k === 0 || wl[L - k - 1] === ' ';
     if (L >= 1 && lc(1) === 's') {
@@ -1910,7 +1899,24 @@ function _singularize_word(word) {
 }
 
 export function makesingular(str) {
-    if (!str || !str.length) return str;
+    // C objnam.c:3043-3050 checks for empty input after skipping spaces.
+    if (str) str = str.replace(/^ +/, '');
+    if (!str || !str.length) {
+        impossible_sync('singular of null?');
+        return '';
+    }
+    /* C objnam.c:3044-3066: skip leading spaces, then force plural
+     * pronouns to neuter singular, preserving only the initial's case. */
+    let pronoun = '';
+    if (strcmpi(genders[3].he, str) === 0)
+        pronoun = genders[2].he;
+    else if (strcmpi(genders[3].him, str) === 0)
+        pronoun = genders[2].him;
+    else if (strcmpi(genders[3].his, str) === 0)
+        pronoun = genders[2].his;
+    if (pronoun)
+        return str[0] === highc(str[0])
+            ? highc(pronoun[0]) + pronoun.slice(1) : pronoun;
     /* C: check for "foo of bar" so we can focus on "foo" (objnam.c:3066-3071).
      * Split at the compound separator, singularize only the prefix, then
      * reattach the excess (" of bar", " labeled foo", &c). */
@@ -2523,7 +2529,8 @@ async function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cn
             || ((otmp.oclass | 0) === RING_CLASS && _oc_charged(otmp))) {
             if (spe > rnd(5) && spe > (otmp.spe | 0))
                 spe = 0;
-            if (spe > 2 && (game.u?.uluck | 0) < 0)
+            // C you.h:464: Luck includes the bonus/penalty from luck items.
+            if (spe > 2 && (game.u?.uluck | 0) + (game.u?.moreluck | 0) < 0)
                 spesgn = -1;
         } else {
             if ((otmp.oclass | 0) === WAND_CLASS

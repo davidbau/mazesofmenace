@@ -7,7 +7,7 @@ import { newobj } from './game.js';
 import { M_AP_TYPMASK, M_AP_NOTHING, M_AP_MONSTER, M_AP_FURNITURE, M_AP_OBJECT, Is_knox_level,
          STAIRS, LADDER, W_NONDIGGABLE, W_ARMH, TELEP_TRAP,
          W_ARMC, W_ARMG, W_ARMF, W_ARMU } from './const.js';
-import { PM_LIZARD, PM_ICE_TROLL } from './pm.generated.js';
+import { PM_LIZARD, PM_ICE_TROLL, PM_BAT, PM_GIANT_BAT, PM_VAMPIRE_BAT, PM_STALKER } from './pm.generated.js';
 import { PM_FLAMING_SPHERE as PM_FLAMING_SPHERE_EL,
          PM_SHOCKING_SPHERE as PM_SHOCKING_SPHERE_EL,
          PM_BABY_GOLD_DRAGON as PM_BABY_GOLD_DRAGON_EL,
@@ -109,7 +109,7 @@ import { an, the, makeplural, makesingular, vtense, singular, doname, distant_na
  * imports several exports FROM this file); resolves fine because both sides
  * bind a hoisted function declaration, the same pattern already used for the
  * teleport.js / wizcmds.js cycle above. */
-import { can_carry, mondied_dm } from './dogmove.js';
+import { can_carry, mondied_dm, dog_nutrition } from './dogmove.js';
 import { def_char_to_monclass } from './drawing.js';
 import { weight } from './weight.js';
 import { Monnam } from './mcastu.js';
@@ -5374,11 +5374,36 @@ export async function use_defensive(mtmp) {
             makeknown(otmp.otyp);
         await m_useup(mtmp, otmp);
         return 2;
-    case MUSE_LIZARD_CORPSE:
-        /* KNOWN GAP — muse.c:1204-1208 `mon_consume_unstone(mtmp, otmp, FALSE,
-         * FALSE)`; mon_consume_unstone (muse.c:2701) has no js/ definition.
-         * Returns C's no-action 0. */
-        return 0;
+    case MUSE_LIZARD_CORPSE: {
+        /* C muse.c:1203-1208,2911-2990: mon_consume_unstone(FALSE,FALSE).
+         * This choice is always lizard food: no acid or stoning effects. */
+        if (!otmp) throw new Error("use_defensive: no lizard corpse");
+        const nutrit = dog_nutrition(mtmp, otmp);
+        if (vismon) {
+            const save_quan = otmp.quan;
+            otmp.quan = 1;
+            const name = await distant_name(otmp, doname);
+            pline_mon(mtmp, `${Monnam(mtmp)} ${otmp.otyp === TIN ? 'opens and eats the contents of' : 'eats'} ${name}.`);
+            otmp.quan = save_quan;
+        } else if (!mquaffmsg_Deaf()) {
+            await You_hear('chewing.');
+        }
+        await m_useup(mtmp, otmp);
+        if (mtmp.mconf || mtmp.mstun) {
+            mtmp.mconf = mtmp.mstun = 0;
+            const pm = mtmp.data?.pmidx;
+            if (vismon && ![PM_BAT, PM_GIANT_BAT, PM_VAMPIRE_BAT, PM_STALKER].includes(pm))
+                pline_mon(mtmp, `${Monnam(mtmp)} seems steadier now.`);
+        }
+        if (mtmp.mtame && !mtmp.isminion && nutrit > 0) {
+            const edog = mtmp.mextra.edog;
+            edog.hungrytime = Math.max(edog.hungrytime, game.moves) + nutrit;
+            mtmp.mconf = 0;
+        }
+        mtmp.movement -= 12; /* NORMAL_SPEED */
+        mtmp.mlstmv = game.moves;
+        return 2;
+    }
     case 0:
         return 0; /* i.e. an exploded wand */
     default:

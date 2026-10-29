@@ -220,7 +220,8 @@ export class TtyMenu {
          * attr/color (a menucolor match applies to it too). */
         const mc = curr.menuColor;
         const sgr = mc ? [mc.attr || '', (mc.color === NO_COLOR || mc.color === 7) ? ''
-            : mc.color < 8 ? 30 + mc.color : 90 + mc.color - 8].filter(Boolean) : [];
+            : mc.color < 8 ? 30 + mc.color : 90 + mc.color - 8].filter(Boolean)
+            : curr.attr === ATR_INVERSE ? [7] : curr.sgr || [];
         const cell = sgr.length ? `\x1b[${sgr.join(';')}m${ch}${ESC_RESET}` : ch;
         this._lines[lineIdx] = l.padEnd(3).slice(0, 3) + cell + l.slice(4);
     }
@@ -386,6 +387,9 @@ export class TtyMenu {
                      * goes blank and the page is NOT repainted, so it stays
                      * blank until page_start is reset (a page change). */
                     if (this._lines.length) this._lines[0] = '';
+                    /* docorner(1, cury + 1, 0): wrapped prompt rows revert to the map */
+                    for (let r = 1; r <= (game._menu_search_wrapped | 0) && r < this._lines.length; r++)
+                        this._lines[r] = '';
                     if (answer && answer !== '\x1b') {
                         const searchbuf = `*${answer}*`;
                         const page_start = this.plist[curr_page];

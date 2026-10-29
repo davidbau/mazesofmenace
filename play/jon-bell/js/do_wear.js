@@ -40,7 +40,7 @@ import { LL_ALIGNMENT } from './const.js';
 import { aligns } from './roles.js';
 import { see_monsters, Sting_effects, retouch_object_hero, retouch_equipment } from './display.js';
 import { topl_park_cursor } from './display.js';
-import { flush_screen, _topline_more_pending, _topl_stash_result } from './display.js';
+import { flush_screen, _topline_more_pending, _topl_stash_result, restore_command_topline } from './display.js';
 import { _topl_merge_result, _topl_joins_snapshot, _topl_record_join } from './display.js';
 import { msgtype_suppressed } from './display.js'; /* C pline.c:246-262 vpline MSGTYPE check */
 import { nhgetch } from './input.js';
@@ -50,7 +50,8 @@ import { discover_object, observe_object } from './o_init.js';
 import { exercise, change_luck, acurr, C_ATTR_TO_DISP, adjalign } from './attrib.js';
 import { STR19, PROTECTION, INTRINSIC, Is_astralevel, A_CURRENT, A_ORIGINAL } from './const.js';
 import { PM_ARCHEOLOGIST, PM_HOBBIT, PM_MARILITH, PM_WINGED_GARGOYLE, PM_INCUBUS } from './pm.generated.js';
-import { float_vs_flight, breakarm, num_horns, obj_pmname, y_monnam, can_be_strangled } from './mhitm.js';
+import { float_vs_flight, breakarm, num_horns, obj_pmname, y_monnam, can_be_strangled, x_monnam } from './mhitm.js';
+import { ARTICLE_YOUR, SUPPRESS_SADDLE, SUPPRESS_HALLUCINATION } from './const.js';
 import { s_suffix } from './hacklib.js';
 import { hcolor, hliquid } from './mhitm.js';
 import { Breathless, region_danger } from './cmd.js';
@@ -822,6 +823,14 @@ export async function wielding_corpse(obj, how, voluntary) {
         await remove_worn_item(obj, false);
 }
 
+/* C do_wear.c:131-137 toggle_stealth(): losing stealth while riding. */
+async function stealth_off_message() {
+    const steed = game.u?.usteed;
+    await pline(steed ? `You and ${x_monnam(steed, ARTICLE_YOUR, null,
+        SUPPRESS_SADDLE | SUPPRESS_HALLUCINATION, false)} are noisy.`
+        : 'You sure are noisy.');
+}
+
 export async function Boots_off() {
     const g = game;
     const u = g.u || {};
@@ -838,9 +847,9 @@ export async function Boots_off() {
          * stealth after setworn clears their extrinsic bit. */
         const HStealth = rec ? (rec.intrinsic | 0) : 0;
         const BStealth = rec ? (rec.blocked | 0) : 0;
-        if (!oldprop && !HStealth && !BStealth) {
+        if (!cancelled && !oldprop && !HStealth && !BStealth) {
             makeknown_otyp(otyp);
-            await pline('You sure are noisy.');
+            await stealth_off_message();
         }
     } else if (otyp === WATER_WALKING_BOOTS_OTYP_DW) {
         /* C do_wear.c:280-291 — removing the boots over a pool/lava square
@@ -979,7 +988,7 @@ export async function Cloak_off() {
             && !(propRec ? (propRec.intrinsic | 0) : 0)
             && !(propRec ? (propRec.blocked | 0) : 0)) {
             makeknown_otyp(otyp);
-            await pline('You sure are noisy.');
+            await stealth_off_message();
         }
     } else if (otyp === CLOAK_OF_DISPLACEMENT_OTYP || otyp === 'CLOAK_OF_DISPLACEMENT')
         await toggle_displacement(otmp, oldprop, false);
@@ -2762,6 +2771,12 @@ export async function dowear(otmp) {
     }
     return await accessory_or_armor_on(otmp);
 }
+/* C ref: do_wear.c:2455 doputon() — the 'P' command.  getobj("put on", puton_ok)
+ * then accessory_or_armor_on(otmp).
+ *
+ * The command dispatcher calls without an object so the full-slots guard
+ * precedes getobj, as in C. Callers with an already-resolved object can
+ * still pass it explicitly. */
 export async function doputon(otmp) {
     const g = game;
     const u = g.u || {};
@@ -2918,12 +2933,15 @@ async function Ring_off_or_gone(obj, gone) {
      * immediate off-effect are handled; the property/break rings fall through
      * with no effect (already deconferred above). */
     if ((obj.otyp | 0) === RIN_STEALTH_OTYP) {
+        /* C do_wear.c:1361 toggle_stealth(obj, EStealth & ~mask, FALSE) —
+         * (:107-138) the loss is announced iff no other extrinsic, intrinsic
+         * or blocked stealth remains. */
         const sp = u.uprops?.[STEALTH_PROP];
         const oldprop = (sp?.extrinsic | 0) & ~mask;
         if (!(game.context.takeoff.cancelled_don)
             && !oldprop && !(sp?.intrinsic | 0) && !(sp?.blocked | 0)) {
             learnring(obj, true);
-            await pline('You sure are noisy.');
+            await stealth_off_message();
         }
     }
     if ((obj.otyp | 0) === RIN_WARNING_OTYP)
@@ -3237,6 +3255,12 @@ export async function float_down(hmask, emask) {
          * topline order (float message, then "You see here ..."). */
         _topl_stash_result();
         await _spoteffects_pickup_fd();
+        // C trap.c:4173-4177, tty/topl.c:274: pickup's plines block here.
+        // In particular, freeinv must not continue dropping the bones gear
+        // while the landing's look_here messages still await acknowledgement.
+        restore_command_topline();
+        if (_topline_more_pending()) await flush_screen(1);
+        _topl_stash_result();
     }
     return 1;
 }
@@ -3755,6 +3779,12 @@ export async function Ring_on(obj) {
     const oprop = MKOBJ_OC_OPROP[otyp] | 0;
     const prop = u.uprops?.[oprop];
     let oldprop = prop?.extrinsic | 0;
+    /* C do_wear.c:1247-1254 — make sure ring isn't wielded; can't use
+     * remove_worn_item() here because it has already been set worn in a ring
+     * slot. */
+    if (obj === u.uwep) await setuwep(null);
+    else if (obj === u.uswapwep) await setuswapwep(null);
+    else if (obj === u.uquiver) await setuqwep(null);
     if ((oldprop & W_RING) !== W_RING)
         oldprop &= ~W_RING;
     switch (otyp) {

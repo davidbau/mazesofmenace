@@ -6,7 +6,7 @@ import { make_blinded, resist, explode, explode_oil, potionhit_polymorph, poly_o
 import { spoteffects } from './landing-effects.js';
 import { nothing_happens, nothing_seems_to_happen } from './const.js';
 import { getobj_cmdq_drain, prinv, enlightenment, fire_damage, cmdq_peek, useup, discover_artifact } from './cmd.js';
-import { CQ_CANNED, ECMD_FAIL } from './const.js';
+import { CQ_CANNED, ECMD_FAIL, SHOPBASE } from './const.js';
 import { EXPL_FIERY } from './const.js';
 import { RIGHT_HANDED, STRANGLED, A_STR, ismnum, BOLT_LIM, Upolyd } from './const.js';
 import { set_levltyp } from './mkmaze.js';
@@ -163,7 +163,7 @@ import { PM_DJINNI } from './pm.generated.js';
 import { In_endgame, In_sokoban } from './const.js';
 import { In_W_tower_wz } from './dochug.js';
 import { stairway_find_special_dir } from './mklev.js';
-import { goto_level } from './cmd.js';
+import { goto_level, get_level as get_level_potion } from './cmd.js';
 /* C zap.c:2527 do_enlightenment_effect() -> insight.c:383
  * enlightenment(MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS) — the MENU form.  Its
  * renderer lives beside doattributes()'s in js/cmd.js because they are the two
@@ -3424,7 +3424,9 @@ function _otense(obj, verb) {
 }
 
 function _potion_oc_magic(otyp) {
-    return !(otyp === POT_WATER || otyp === POT_FRUIT_JUICE);
+    return !(otyp === POT_WATER || otyp === POT_FRUIT_JUICE
+             || otyp === POT_BOOZE || otyp === POT_SICKNESS
+             || otyp === POT_ACID || otyp === POT_OIL);
 }
 
 /* C ref: potion.c:2124 mixtype(o1, o2) — alchemy reaction table. Returns the
@@ -3636,8 +3638,12 @@ async function potion_dip(obj, potion) {
 
     if (potion.otyp === POT_WATER) {
         /* C potion.c:2461 useeit = !Blind || (obj == ublindf && Blindfolded_only);
-         * the blindfold exception is not modelled here. */
-        const useeit = !_potion_Blind();
+         * Blindfolded_only (youprop.h:97) = Blindfolded && !Blinded. */
+        const bp = game.u?.uprops?.[BLINDED];
+        const blindfolded_only = !!bp && !!(bp.extrinsic | 0)
+            && !((bp.intrinsic | 0) && !(bp.blocked | 0));
+        const useeit = !_potion_Blind()
+            || (obj === game.u?.ublindf && blindfolded_only);
         const obj_glows = Yobjnam2(obj, 'glow');
         if (await _H2Opotion_dip(potion, obj, useeit, obj_glows)) {
             await _poof(potion);
@@ -3753,8 +3759,13 @@ async function potion_dip(obj, potion) {
     /* ── C potion.c:2597-2606 — acid on a lichen corpse ──────────────────── */
     if (potion.otyp === POT_ACID && (obj.otyp | 0) === CORPSE
         && (obj.corpsenm | 0) === PM_LICHEN) {
+        /* pline("%s %s %s around the edges.", The(cxname(obj)),
+         *       otense(obj, "turn"), Blind ? "wrinkled"
+         *                            : potion->odiluted ? hcolor(NH_ORANGE)
+         *                              : hcolor(NH_RED)); */
         await pline(`${The(cxname(obj))} ${otense(obj, 'turn')} `
-            + `${obj_dip_hcolor(potion.odiluted ? NH_ORANGE : NH_RED)} around the edges.`);
+            + `${_potion_Blind() ? 'wrinkled'
+                : obj_dip_hcolor(potion.odiluted ? NH_ORANGE : NH_RED)} around the edges.`);
         potion.in_use = false; /* didn't go poof */
         if (potion.dknown) await trycall_cmd(potion);
         return ECMD_TIME;
@@ -3829,10 +3840,14 @@ async function potion_dip(obj, potion) {
         } else if ((!_is_rustprone(obj) && !_is_corrodeable(obj))
                    || _is_ammo(obj)
                    || (!obj.oeroded && !obj.oeroded2)) {
-            await pline(`${_Yname2(obj)} ${otense(obj, 'gleam')} with an oily sheen.`);
+            /* C potion.c:2663-2668 — uses up the potion, doesn't set greased. */
+            if (!_potion_Blind())
+                await pline(`${_Yname2(obj)} ${otense(obj, 'gleam')} with an oily sheen.`);
+            else
+                await pline(`${_Yname2(obj)} ${otense(obj, 'feel')} oily.`);
         } else {
-            /* C potion.c:2675-2685 — oil removes rust and corrosion. */
-            await pline(`${_Yname2(obj)} ${otense(obj, 'are')} less `
+            /* C potion.c:2670-2679 — oil removes rust and corrosion. */
+            await pline(`${_Yname2(obj)} ${otense(obj, !_potion_Blind() ? 'are' : 'feel')} less `
                 + `${(obj.oeroded && obj.oeroded2) ? 'corroded and rusty'
                     : obj.oeroded ? 'rusty' : 'corroded'}.`);
             if ((obj.oeroded | 0) > 0) obj.oeroded = (obj.oeroded | 0) - 1;
@@ -4640,7 +4655,7 @@ export async function potionhit(mon, obj, how) {
      * debit/robbed accounting.  If the shopkeeper disappeared, C clears the
      * stale unpaid bit rather than leaving an unbillable object behind. */
     if (u.ushops && u.ushops.length > 0 && u.ushops.charCodeAt(0) !== 0 && obj.unpaid) {
-        const rooms = in_rooms(u.ux | 0, u.uy | 0, 8 /* SHOPBASE */);
+        const rooms = in_rooms(u.ux | 0, u.uy | 0, SHOPBASE);
         const shkp = shop_keeper(rooms.length ? rooms[0] : 0);
         if (!shkp)
             obj.unpaid = 0;
@@ -5635,7 +5650,9 @@ async function peffect_gain_level(otmp) {
                              dlevel: el ? (el.dlevel | 0) : 0 };
             } else {
                 const newlev = depth(u.uz) - 1;
-                newlevel = { dnum: u.uz.dnum | 0, dlevel: newlev };
+                /* C potion.c:1100 get_level(&newlevel, newlev) — maps depth to
+                 * (dnum, dlevel); in Gehennom depth != dlevel. */
+                newlevel = get_level_potion(newlev);
                 if (newlevel.dnum === (u.uz.dnum | 0)
                     && newlevel.dlevel === (u.uz.dlevel | 0)) {
                     await pline('It tasted bad.');

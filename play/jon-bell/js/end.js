@@ -294,6 +294,7 @@ export function deadhero(how, opts) {
                             alreadySaidYouDie: !!(opts && opts.alreadySaidYouDie),
                             prejoinButWait: !!(opts && opts.prejoinButWait),
                             urgentDeathLine: !!(opts && opts.urgentDeathLine),
+                            youDieFlush: !!(opts && opts.youDieFlush),
                             noDeathLine: !!(opts && opts.noDeathLine),
                             dieConfirmed: !!(opts && opts.dieConfirmed),
                             remainderIsFresh: !!(opts && opts.remainderIsFresh),
@@ -478,7 +479,8 @@ export function done_in_by(mtmp, how) {
             g.multi_reason = g.multireasonbuf.slice(colon + 1);
         }
     }
-    deadhero(how | 0, { stoningDeathLine: how === STONING });
+    deadhero(how | 0, { stoningDeathLine: how === STONING,
+                        youDieFlush: how !== STONING });
 }
 /* C monflag.h G_UNIQ 0x1000 — the same value js/read.js:3797 pins. */
 const G_UNIQ_END = 0x1000;
@@ -685,6 +687,15 @@ export async function do_death_sequence(opts) {
     }
     /* C's direct zhitu()->done() continuation paints status, appends
      * "But wait...", then lets the pending hit line page. */
+    /* C end.c:195 You("die...") -> pline -> flush_screen(1) -> bot() runs BEFORE
+     * update_topl pages the killing blow's line, so that --More-- carries the
+     * fatal HP (botl.c:279 still declines to paint at exactly -1). */
+    let _youDieBot = false;
+    if (remainder && pd.youDieFlush && !pd.noDeathLine && !pd.prejoinButWait
+        && !pd.urgentDeathLine && !pd.alreadySaidYouDie && !_earlyBot) {
+        await bot();
+        _youDieBot = true;
+    }
     if (pd.prejoinButWait) {
         if (g.disp) g.disp.botlx = 1;
         await bot();
@@ -708,20 +719,51 @@ export async function do_death_sequence(opts) {
          * that --More-- freezes the map as of the death message (a fire ray
          * that lit a potion of oil: begin_burn's vision_full_recalc repaints
          * the hero over the ray flash). */
-        if (pd.urgentDeathLine || g.vision_full_recalc) {
+        /* Direct done() callers have no death pline to recalculate vision
+         * (end.c:1019-1128). really_done() disables vision at end.c:1152
+         * before disclosure's first custompline can reach that recalc. */
+        if (!pd.noDeathLine) {
             if (g.vision_full_recalc) vision_recalc(0);
             pline_flush_point();
         }
+        /* end.c:195 You("die...") reaches pline.c:273-276's flush before
+         * update_topl pages the attack line.  mdamageu has flagged status since
+         * the hit message, so that page shows the killing blow's HP.  Pass this
+         * incoming pline's frame to the deferred pager; the attack's own flush
+         * frame predates the damage and cannot own this final page. */
+        const deathLineFrame = !pd.noDeathLine
+            ? capture_painted_frame_with_status() : null;
         /* C pline.c:266-272 — the "You die..." pline recalcs vision BEFORE
          * update_topl() pages the old line, so the --More-- frame already
          * carries what the death message's own turn changed (a potion of oil
          * catching light dirties vision and redraws the hero over a zap ray). */
         if (pd.urgentDeathLine && g.vision_full_recalc)
             vision_recalc(0);
+        /* bot() above already painted: the --More-- freezes THAT status, not the pline-time one.
+         * C pline.c:273-276 — the "You die..." pline flush_screen()s before update_topl()
+         * pages the standing line, and mdamageu (mhitu.c:1909) requested the repaint, so
+         * that --More-- carries the post-damage HP (botl.c:279 declines only at u.uhp == -1)
+         * rather than the stale paint of the earlier pline flush frame. */
+        g._liveStatusMore = _earlyBot
+            || (!pd.urgentDeathLine && !pd.stoningDeathLine && !pd.prejoinButWait
+                && (g.u?.uhp | 0) < 0 && (g.u.uhp | 0) !== -1 && !(g.u.mh | 0));
         /* bot() above already painted: the --More-- freezes THAT status, not the pline-time one. */
-        g._liveStatusMore = _earlyBot;
+        g._liveStatusMore = _earlyBot || _youDieBot;
+        /* C end.c:195 You("die...") -> pline.c:273 flush_screen(1) runs bot()
+         * BEFORE update_topl() pages `remainder` (topl.c:257-275, "You die"
+         * never joins), so that page shows the post-mdamageu status, not the
+         * hit pline's flush frame: "This sewer rat corpse tastes terrible!  The
+         * rock troll hits!--More--" reads HP:0 in C. */
+        const _deathLineFlush = !pd.noDeathLine && !pd.urgentDeathLine
+            && !pd.stoningDeathLine && !pd.alreadySaidYouDie;
+        if (_deathLineFlush && (g.disp?.botl || g.disp?.botlx))
+            await bot();
+        /* bot() above already painted: the --More-- freezes THAT status, not the pline-time one. */
+        g._liveStatusMore = _earlyBot || _deathLineFlush;
         let _remainderMorc;
-        try { _remainderMorc = await force_more(remainder); } finally { g._liveStatusMore = false; }
+        try {
+            _remainderMorc = await force_more(remainder, 0, false, false, deathLineFrame);
+        } finally { g._liveStatusMore = false; }
         /* done()'s bot() (end.c:1045) already painted the status; the --More-- frame
          * above is pinned to the pre-paint terminal, so the "Die?" prompt that
          * follows must hold the new paint, not that page's rows. */
@@ -901,7 +943,11 @@ export async function do_death_sequence(opts) {
         const savedPaint = g._paintedSnapshot;
         if (deathPromptFrame) g._paintedSnapshot = deathPromptFrame;
         try {
-            await force_more(g._pending_message);
+            /* topl.c:390-392 pages the last flushed map before the prompt.
+             * losehp's urgent death pline (hack.c:4287) can have repainted it
+             * since the ambient movemon snapshot, e.g. after regaining sight. */
+            if (deathPromptFrame) await force_more(g._pending_message);
+            else await force_more_lone_frame(g._pending_message);
         } finally {
             if (deathPromptFrame) g._paintedSnapshot = savedPaint;
         }
@@ -1073,7 +1119,11 @@ async function _yn_prompt(query, choices, defchoice, opts = {}) {
         await force_more(held);
     }
     if (!g._topl_win_stop && !g._topl_win_stop_armed) {
-        if (_topline_more_pending()) await flush_screen(1);
+        /* Drain only: each overflowing page already more()'d inside its own
+         * pline (topl.c:274), after that pline's flush (pline.c:273-274), so
+         * this is no flush_screen; topl.c:397-398 more()s the last one over
+         * the terminal as its pline left it. */
+        if (_topline_more_pending()) await flush_screen(1, false);
         if (unacknowledged && g._pending_message)
             await force_more_lone_frame(g._pending_message);
     }
@@ -1111,6 +1161,10 @@ async function _yn_prompt(query, choices, defchoice, opts = {}) {
         await flush_screen(1);
     }
     const savedEcho = g._topl_prompt_echo;
+    const savedWritten = g._topl_prompt_written;
+    /* topl.c:411 appends " " to the prompt; a 79-column query therefore writes
+     * 80 chars, and topl_putsym's wrap + cl_end (topl.c:331,350) clears row 1. */
+    g._topl_prompt_written = qbuf + ' ';
     g._topl_prompt_echo = true; // TOPLINE_SPECIAL_PROMPT wraps without more().
     try {
         if (choices === null) {
@@ -1184,6 +1238,13 @@ async function _yn_prompt(query, choices, defchoice, opts = {}) {
             if (key === 32 || key === 13 || key === 10)
                 return _answered(String(defchoice));
             const ch = String.fromCharCode(key);
+            /* C topl.c:462,478-488 digit_ok: with '#' in resp a leading digit
+             * starts the count as if '#' were typed; the tails below pick the
+             * digit up from g._yn_lead_digit. */
+            if (key >= 48 && key <= 57 && choices.indexOf('#') >= 0) {
+                g._yn_lead_digit = key - 48;
+                return '#';
+            }
             if (choices.indexOf(ch) >= 0)
                 return _answered(ch);
             if (choices.indexOf(ch.toLowerCase()) >= 0)
@@ -1193,6 +1254,7 @@ async function _yn_prompt(query, choices, defchoice, opts = {}) {
         }
     } finally {
         g._topl_prompt_echo = savedEcho;
+        g._topl_prompt_written = savedWritten;
     }
 }
 
@@ -1951,6 +2013,11 @@ async function really_done(how) {
             }
             _corpse = null; /* C end.c:1367 — 'corpse may be invalid pointer now' */
         }
+        /* C end.c:1376-1384 — `if (have_windows) { wait_synch(); ...
+         * display_nhwindow(WIN_MESSAGE, TRUE); ...}` pages any topline the
+         * bones processing left displayed and unacknowledged. */
+        if (have_windows && g._resultMessage && !g._pending_message)
+            await force_more_lone_frame(g._resultMessage);
         // C end.c:1375-1388 destroys the game windows before creating endwin.
         // tty_destroy_nhwindow(WIN_MESSAGE) clears this flag; the final text
         // window must not redraw those windows when it is dismissed.

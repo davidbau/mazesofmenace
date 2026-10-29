@@ -106,7 +106,9 @@ import { recalc_block_point } from './vision.js';
 import { does_block, unblock_point } from './vision.js';
 import { COULD_SEE, IN_SIGHT, TT_BURIEDBALL, NO_TRAP_FLAGS } from './const.js';
 import { buried_ball_to_punishment, reset_utrap, mintrap } from './trap.js';
-import { fracture_rock, montraits, zombie_can_dig } from './zap.js';
+import { fracture_rock, montraits, zombie_can_dig, get_container_location } from './zap.js';
+import { yname } from './do_wear.js';
+import { CONTAINED_TOO, BURIED_TOO } from './const.js';
 import { is_pool } from './look.js';
 import { flush_screen, force_more } from './display.js';
 /* Vault guards are normally dismissed through mongone's common inventory
@@ -11371,8 +11373,18 @@ export async function mkinvokearea() {
     if (wallct)
         await pline('The walls around you begin to bend and crumble!');
     // C display_nhwindow(WIN_MESSAGE, TRUE), before changing the terrain.
-    if (g._pending_message)
-        await force_more(g._pending_message);
+    if (g._pending_message) {
+        const shown = g._pending_message;
+        const morc = await force_more(shown);
+        /* topl.c:232-235: ESC sets WIN_STOP at once.  This more() is raised by
+         * display_nhwindow, not by a pline's update_topl, so no owner is
+         * redrawn afterwards: the next pline is already suppressed. */
+        if (morc === 27 && g._topl_win_stop_armed) {
+            g._topl_win_stop_armed = false;
+            g._topl_win_stop = true;
+            g._topl_win_stop_buf = shown;
+        }
+    }
 
     if (u.utrap) {
         if (u.utraptype === TT_BURIEDBALL)
@@ -14071,10 +14083,42 @@ export async function revive_corpse(otmp, do_msgs = true) {
     const chewed = (otmp.oeaten | 0) !== 0;
     const is_uwep = otmp === game.u?.uwep;
     const cname = corpse_xname_rc(otmp, chewed ? 'bite-covered' : null, 1 /* CXN_SINGULAR */);
-    const corpsex = otmp.ox | 0, corpsey = otmp.oy | 0;
+    const cx = { value: 0 }, cy = { value: 0 };
+    get_obj_location(otmp, cx, cy, CONTAINED_TOO | BURIED_TOO);
+    const corpsex = cx.value, corpsey = cy.value;
     /* C do.c:2134 mcarry = (where == OBJ_MINVENT) ? corpse->ocarry : 0 */
-    const mcarry = where0 === OBJ_MINVENT ? otmp.ocarry : null;
+    let mcarry = where0 === OBJ_MINVENT ? otmp.ocarry : null;
+    const container = where0 === OBJ_CONTAINED ? otmp.ocontainer : null;
+    const containerWhere = { value: 0 };
+    const containerNesting = { value: 0 };
+    if (container) {
+        const carrier = get_container_location(container, containerWhere, containerNesting);
+        if (containerWhere.value === OBJ_MINVENT) mcarry = carrier;
+    }
     let x = otmp.ox | 0, y = otmp.oy | 0;
+    if (where0 === OBJ_CONTAINED) {
+        // C zap.c:914-945: use the outer container's current location,
+        // including its monster carrier, before checking revival eligibility.
+        x = y = 0;
+        if (containerWhere.value === OBJ_MINVENT) {
+            x = mcarry.mx; y = mcarry.my;
+        } else if (containerWhere.value === OBJ_INVENT) {
+            x = game.u.ux; y = game.u.uy;
+        } else if (containerWhere.value === OBJ_FLOOR) {
+            x = corpsex; y = corpsey;
+        }
+        if (!x)
+            return false;
+        otmp.ox = x; otmp.oy = y;
+    }
+    /* C zap.c:938-948: revival from a container needs an unlocked, shallowly
+     * nested, non-statue container; a bag of holding usually blocks it
+     * (rn2(40) is drawn only when the earlier tests pass). */
+    if (container
+        && (container.olocked || containerNesting.value > 2
+            || (container.otyp | 0) === STATUE
+            || ((container.otyp | 0) === BAG_OF_HOLDING && rn2(40))))
+        return false;
     /* C zap.c:910-912 get_obj_location(): a corpse carried by a monster or the
      * hero is revived at the carrier's square, not at its stale ox/oy. */
     if (where0 === OBJ_MINVENT || where0 === OBJ_INVENT) {
@@ -14225,6 +14269,18 @@ export async function revive_corpse(otmp, do_msgs = true) {
                 await pline('%s suddenly appears!',
                             chewed ? Adjmonnam_rc(mon, 'bite-covered') : Monnam_rc(mon));
         }
+    } else if (where0 === OBJ_CONTAINED) {
+        // C do.c:2196-2218: preserve the container before revive consumes its corpse.
+        const mnam = canspotmon(mon) ? Amonnam(mon) : 'Something';
+        if (!container)
+            await lifecycle_impossible('reviving corpse from non-existent container');
+        else if (mcarry && canseemon(mcarry))
+            await pline('%s writhes out of %s!', mnam, yname(container));
+        else if (containerWhere.value === OBJ_INVENT)
+            await pline('%s %s out of %s in your pack!', mnam,
+                        locomotion(mon.data, 'writhes'), an_mk(xname(container)));
+        else if (containerWhere.value === OBJ_FLOOR && cansee(corpsex, corpsey))
+            await pline('%s escapes from %s!', mnam, an_mk(xname(container)));
     } else if (where0 === OBJ_FLOOR) {
         if (cansee(corpsex, corpsey) || canseemon(mon)) {
             const pmi = mon.mnum ?? mon.pmidx;
@@ -14653,7 +14709,10 @@ export async function lifesaved_monster(mon) {
     const survives = !((game.mvitals?.[mon.data.pmidx]?.mvflags | 0) & G_GENOD);
     mon.mcanmove = 1;
     mon.mfrozen = 0;
-    if (mon.mtame && !mon.isminion) await wary_dog(mon, !survives);
+    if (mon.mtame && !mon.isminion) {
+        mon._lifesaving = true; /* still on C's monster grid while mhp == 0 */
+        try { await wary_dog(mon, !survives); } finally { mon._lifesaving = false; }
+    }
     mon.mhpmax = Math.max(mon.mhpmax | 0, (mon.m_lev | 0) + 1, 10);
     mon.mhp = mon.mhpmax;
     if (!survives) {
@@ -15879,10 +15938,17 @@ export async function newcham(mtmp, mdat, ncflags) {
     const oldPermonst = mtmp.data;
     set_mon_data(mtmp, newdata);
 
-    /* C mon.c:5387-5395 — the leash arm: a just-created monster is not
-     * leashed, so m_unleash/update_inventory cannot fire.  No RNG.
-     *
-     * C mon.c:5397-5405 — the light-source swap:
+    /* C mon.c:5387-5395; apply.c:761-766 leashable(). */
+    if (mtmp.mleashed) {
+        const flags = newdata.mflags1 | 0;
+        if (newmndx === PM_LONG_WORM || unsolid_mv(newdata)
+            || ((flags & 0x00006000) === 0x00006000 && !has_head_nc(newdata)))
+            await m_unleash_mk(mtmp, true);
+        else
+            update_inventory();
+    }
+
+    /* C mon.c:5397-5405 — the light-source swap:
      *     if (emits_light(olddata) != emits_light(mtmp->data)) {
      *         if (emits_light(olddata)) del_light_source(LS_MONSTER, ...);
      *         if (emits_light(mtmp->data)) new_light_source(mtmp->mx, mtmp->my,

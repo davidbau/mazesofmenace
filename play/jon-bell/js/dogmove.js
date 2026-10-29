@@ -26,7 +26,7 @@ import { rn1, rn2, rnd, d } from './rng.js';
 import { obj_resists, drain_item, mon_explodes as mon_explodes_dm } from './zap.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 import { unstuck as unstuck_dm, m_unleash, sticks, dismount_steed as dismount_steed_qm } from './dog.js';
-import { topl_force_break_after as topl_force_break_after_qm, GLYPHCLS_OBJ as GLYPHCLS_OBJ_DM, Deaf as Deaf_dm } from './display.js';
+import { topl_force_break_after as topl_force_break_after_qm, GLYPHCLS_OBJ as GLYPHCLS_OBJ_DM, Deaf as Deaf_dm, flush_screen } from './display.js';
 import { whimper as whimper_dm, mwelded as mwelded_dm, snuff_lit } from './cmd.js';
 import { PM_FIRE_VORTEX, PM_FLAMING_SPHERE, PM_PYROLISK } from './pm.generated.js';
 import { SUPPRESS_NAME, SUPPRESS_IT, SUPPRESS_INVISIBLE, NO_NC_FLAGS } from './const.js';
@@ -64,7 +64,7 @@ import { closed_door, accessible, is_pool, may_dig } from './look.js';
 import { erode_obj, mintrap as mintrap_real, goodpos as goodpos_real, m_useup as m_useup_dg } from './trap.js';
 import { PM_GHOUL, PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER, PM_STEAM_VORTEX, PM_AIR_ELEMENTAL, PM_BLACK_PUDDING, PM_BROWN_PUDDING, PM_SHADE, PM_DEATH, PM_PESTILENCE, PM_FAMINE, PM_CHICKATRICE, PM_COCKATRICE, PM_MEDUSA, PM_STONE_GOLEM, PM_ANGEL, PM_RUST_MONSTER, PM_GELATINOUS_CUBE, PM_ARCHON } from './pm.generated.js';
 import { zombie_maker, dmgtype_fromattack, grow_up, nonliving, onscary, monPmname, splitobj, nextoid, which_armor, permonstTemplate, set_mon_data, emits_light } from './makemon.js';
-import { del_light_source, monst_to_any } from './light.js';
+import { del_light_source, monst_to_any, obj_merge_light_sources, obj_split_light_source } from './light.js';
 import { LS_MONSTER } from './const.js';
 import { pline, newsym, _topline_more_pending, _more_never_dismissed, _more_pages_exceed_input, flush_pending_messages, mon_visible, canseemon, canspotmon, map_invisible, glyph_is_invisible_at, unmap_object, You_hear, Deaf, sensemon } from './display.js';
 import { Japanese_item_name, xname_scroll, xname_armor, doname_potion, xname, doname, distant_name, in_distant_name, is_quest_artifact } from './objnam.js';
@@ -623,6 +623,7 @@ const S_LIGHT_C    = 25;
 const S_ELEMENTAL  = 31;
 const S_FUNGUS     = 32;
 const S_OGRE       = 41;
+const S_YETI       = 51;
 const S_GHOST      = 54;
 const S_GOLEM      = 55;
 /* Special PM indices (canonical pm.generated.js order; same as _MONS). */
@@ -836,8 +837,9 @@ export function dogfood(mtmp, obj) {
             /* C dog.c:1099-1100 */
             return (herbi || mblind) ? DOGFOOD : (starving ? ACCFOOD : MANFOOD);
         case BANANA_OTYP:
-            /* C dog.c:1101-1106 */
-            return (herbi || starving) ? ACCFOOD : MANFOOD;
+            /* C dog.c:1099-1104: herbivorous apes prefer bananas. */
+            return (_mlet(mndx) === S_YETI && herbi) ? DOGFOOD
+                : (herbi || starving) ? ACCFOOD : MANFOOD;
         case CLOVE_OF_GARLIC_OTYP:
             /* C dog.c:1091-1094: undead → TABU; else (herbi||starving)?ACCFOOD:MANFOOD. */
             return (herbi || starving) ? ACCFOOD : MANFOOD;
@@ -1274,8 +1276,10 @@ function merged_dm(otmp, obj) {
     /* C invent.c:825-828 merged(): "really should merge the timeouts" — what C
      * does is stop the absorbed object's, so its ROT_CORPSE never fires on a
      * deleted object. */
+    if (obj.lamplit)
+        obj_merge_light_sources(obj, otmp); /* invent.c:850 */
     if (obj.timed)
-        obj_stop_timers(obj);
+        obj_stop_timers(obj); /* follows lights */
     obj.where = OBJ_DELETED;
 }
 
@@ -1699,6 +1703,8 @@ function splitobj_dm(obj, num) {
     /* C mkobj.c:497-498 — `if (obj->timed) obj_split_timers(obj, otmp);` */
     if (obj.timed)
         obj_split_timers(obj, otmp);
+    if (obj.lamplit) /* obj_sheds_light(obj): mkobj.c:500 */
+        obj_split_light_source(obj, otmp);
     return otmp;
 }
 
@@ -4920,10 +4926,6 @@ function update_monster_region(mtmp) {
     return update_monster_region_real(mtmp);
 }
 function place_monster(mon, x, y) { /* no-op stub */ }
-function flush_screen(x) {
-    /* C ref: flush_screen calls bot() which resets disp.botl */
-    if (game && game.disp) game.disp.botl = 0;
-}
 
 /* Local helpers that exist in other modules but not exported */
 function mhis_dm(mon) { return mhis_mon_mu(mon); } /* C mondata.c pronoun_gender via mhis() */
@@ -5020,7 +5022,10 @@ export async function mdisplacem(magr, mdef, quietly) {
               is_rider_dm(pa) ? "the" : mhis_dm(magr));
     newsym(fx, fy);  /* see it       */
     newsym(tx, ty);  /*   all happen */
-    flush_screen(0); /* make sure it shows up */
+    await flush_screen(0); /* make sure it shows up */
+    /* the physical map now shows the post-move world: a fireassist
+     * pre-movemon frame (js/allmain.js) no longer describes the screen */
+    if (game._fireSwapPending && game._fireSwapPreFrame) game._fireSwapPreFrame = null;
 
     return M_ATTK_HIT;
 }

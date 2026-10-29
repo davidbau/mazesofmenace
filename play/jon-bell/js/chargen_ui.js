@@ -753,7 +753,9 @@ function buildRoleMenu(state) {
     for (let i = 0; i < ROLES.length; i++) if (shown(i)) nValid++;
     const n = 4 + nValid + 2 + 5 + 1;
     const excess = n > 24 ? n - 24 : 0;
-    const fitsIn24 = excess === 0;
+    // C wintty.c:2771 includes the footer in maxrow; :1927 uses full-screen
+    // mode when maxrow >= rows, even without any excess separator lines.
+    const fitsIn24 = n < 24;
 
     // Row 3: blank separator (unless excess >= 2 — squeezed)
     if (excess !== 2) lines.push({ content: '' });
@@ -1904,6 +1906,19 @@ function pick_align_live(rolenum, racenum, gendnum, pickhow, rn2) {
 // C ref: role.c:719 randrole(FALSE) — rn2(SIZE(roles) - 1).
 function randrole_live(rn2) { return rn2(ROLES.length); }
 
+// C ref: role.c:731 randrole_filtered() — honours the filter masks, falling
+// back to the unfiltered randrole(FALSE) only when nothing passes.
+function randrole_filtered_live(rn2) {
+    const set = [];
+    for (let i = 0; i < ROLES.length; i++)
+        if (ok_role(i, ROLE_NONE, ROLE_NONE, ROLE_NONE)
+            && ok_race(i, ROLE_RANDOM, ROLE_NONE, ROLE_NONE)
+            && ok_gend(i, ROLE_NONE, ROLE_RANDOM, ROLE_NONE)
+            && ok_align(i, ROLE_NONE, ROLE_NONE, ROLE_RANDOM))
+            set.push(i);
+    return set.length ? set[rn2(set.length)] : randrole_live(rn2);
+}
+
 // C ref: role.c:1235 rigid_role_checks().  Called from plsel_startmenu
 // (role.c:2814) before EVERY menu is opened, and once up front from
 // genl_player_setup (role.c:2243).  Order is race, align, gender.
@@ -1912,8 +1927,7 @@ function rigid_role_checks_live(st, rn2) {
     if (st.role === ROLE_RANDOM) {
         st.role = pick_role_live(st.race, st.gender, st.align, PICK_RANDOM, rn2);
         // role.c:1259 randrole_filtered() drops the incompatible preset facets.
-        if (st.role < 0) st.role = pick_role_live(ROLE_NONE, ROLE_NONE, ROLE_NONE, PICK_RANDOM, rn2);
-        if (st.role < 0) st.role = randrole_live(rn2);
+        if (st.role < 0) st.role = randrole_filtered_live(rn2);
     }
     if (st.race === ROLE_RANDOM
         && (tmp = pick_race_live(st.role, st.gender, st.align, PICK_RANDOM, rn2)) !== ROLE_NONE)
@@ -2081,7 +2095,7 @@ export async function playChargen(ctx) {
     }
 
     // C tty menus retain the base window until their rectangles erase it.
-    const menuBackground = Array(13).fill('');
+    const menuBackground = ctx.menuBackground || Array(13).fill('');
     if (!ctx.forcePick4u) {
         [COPYRIGHT_BANNER_A, COPYRIGHT_BANNER_B, COPYRIGHT_BANNER_C, COPYRIGHT_BANNER_D]
             .forEach((line, i) => { menuBackground[4 + i] = ' '.repeat(i ? BANNER_INDENT : 0) + line; });
@@ -2195,7 +2209,7 @@ export async function playChargen(ctx) {
                         it.mark = want ? '+' : '-';
                     }
             };
-            if (ch === '.') { setPage(true); continue; }               // SELECT_PAGE
+            if (ch === ',') { setPage(true); continue; }               // SELECT_PAGE
             if (ch === '\\') { setPage(false); continue; }             // UNSELECT_PAGE
             if (ch === '~') {                                          // INVERT_PAGE
                 for (const it of pageItems)
@@ -2205,7 +2219,7 @@ export async function playChargen(ctx) {
                     }
                 continue;
             }
-            if (ch === 'a') {                                          // SELECT_ALL
+            if (ch === '.') {                                          // SELECT_ALL
                 setPage(true);
                 for (const it of all) if (it.selectable) it.selected = true;
                 continue;
@@ -2448,11 +2462,22 @@ export async function playChargen(ctx) {
                 // discarded; control returns to makepicks.  Recursing keeps
                 // the pick4u/overlay state consistent without a second copy
                 // of the loop above.
+                // wintty.c:982: dismiss the corner menu, retaining the base window.
+                if (f.dismiss) {
+                    f.dismiss();
+                } else {
+                    // The automatic-pick confirmation uses its own banner renderer.
+                    for (let r = 0; r < 9; r++)
+                        menuBackground[r] = menuBackground[r].slice(0, bannerClip);
+                    if (renameRow10 !== null) menuBackground[10] = renameRow10;
+                    const menu = buildConfirmMenu(st, plname, yesMark, renameallowed);
+                    renderMenu(menu.title, menu.lines, true, menuBackground).dismiss();
+                }
                 return await playChargen({
                     flags: { initrole: ROLE_NONE, initrace: ROLE_NONE,
                              initgend: ROLE_NONE, initalign: ROLE_NONE },
                     plname, needAskname: false, rn2, read,
-                    forcePick4u: 'n', renameallowed, keepFilter: true,
+                    forcePick4u: 'n', renameallowed, keepFilter: true, menuBackground,
                 });
             }
             if (ch === 'a' && renameallowed) {

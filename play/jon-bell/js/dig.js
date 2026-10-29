@@ -15,13 +15,14 @@ import { rn2, rn1, rnd, rnl } from './rng.js';
 import { PM_DWARF as PM_DWARF_ } from './pm.generated.js';
 import { game } from './gstate.js';
 import { dbon, dmgval } from './uhitm.js';
-import { body_part } from './cmd.js';
+import { body_part, align_str, desecrate_altar } from './cmd.js';
+import { Amask2align, AM_MASK } from './const.js';
 import { FOOT, FORCETRAP } from './const.js';
 import { reset_utrap } from './trap.js';
 import { yname } from './do_wear.js';
 import { OC_NAME } from './oc_name_data.js';
 import { end_burn, start_timer } from './timeout.js';
-import { pline, feel_newsym, canseemon, newsym, You_hear, You_see, Unaware as Unaware_real, Deaf as Deaf_real, mkcavearea } from './display.js';
+import { tmp_at, DISP_BEAM, DISP_END, pline, feel_newsym, canseemon, newsym, You_hear, You_see, Unaware as Unaware_real, Deaf as Deaf_real, mkcavearea } from './display.js';
 import { unblock_point, does_block, Blind, vision_recalc } from './vision.js';
 import { scatter } from './dokick.js';
 import { MAY_HIT, Is_stronghold, MM_NOMSG } from './const.js';
@@ -1044,8 +1045,10 @@ export async function zap_dig_pit(trap_with_u, digdepth) {
     const diridx = xytodir(u.dx, u.dy);
     let zx = u.ux + u.dx, zy = u.uy + u.dy;
     let flow_x = -1, flow_y = -1, pitflow = false;
+    tmp_at(DISP_BEAM, 4083 /* cmap_to_glyph(S_digbeam) */); /* C dig.c:1623 */
     while (--digdepth >= 0) {
         if (!isok(zx, zy)) break;
+        tmp_at(zx, zy); /* C dig.c:1629 (nh_delay_output is pacing only) */
         let adjpit = t_at(zx, zy);
         if (diridx !== DIR_ERR && !conjoined_pits_dg(adjpit, trap_with_u, false)) {
             if (!(adjpit && is_pit(adjpit.ttyp))) {
@@ -1074,6 +1077,7 @@ export async function zap_dig_pit(trap_with_u, digdepth) {
         zx += u.dx;
         zy += u.dy;
     }
+    tmp_at(DISP_END, 0); /* C dig.c:1743 closing call: newsym()s the beam cells */
     if (pitflow && isok(flow_x, flow_y)) {
         const ttmp = t_at(flow_x, flow_y);
         if (ttmp && is_pit(ttmp.ttyp)) {
@@ -1252,10 +1256,14 @@ export async function digactualhole_(x, y, madeby, ttyp, skipFurniture = false) 
     const shopdoor = IS_DOOR(old_typ) && in_rooms(x, y, SHOPBASE)[0];
     const oldobjs = floorObjsAt_(x, y);
 
-    let surface_type, furniture = '';
+    let surface_type, furniture = '', old_aligntyp = 0;
     if (IS_FURNITURE(old_typ)) {
         surface_type = (IS_ROOM(old_typ) && !Is_earthlevel(u.uz)) ? 'floor' : 'ground';
-        furniture = surface_(x, y);
+        if (IS_ALTAR(old_typ)) {
+            old_aligntyp = Amask2align(((lev.altarmask ?? lev.flags) | 0) & AM_MASK);
+            furniture = align_str(old_aligntyp) + ' ';
+        }
+        furniture += surface_(x, y);
     } else {
         surface_type = surface_(x, y); /* computed before maketrap (dig.c:626-637) */
     }
@@ -1294,6 +1302,9 @@ export async function digactualhole_(x, y, madeby, ttyp, skipFurniture = false) 
     /* C dig.c:670-671 */
     if (IS_FURNITURE(old_typ) && cansee(x, y))
         await pline('The %s falls into the %s!', furniture, trapname(ttyp, true));
+    /* C dig.c:673-674 — wrath follows altar destruction message */
+    if (heros_fault && IS_ALTAR(old_typ))
+        await desecrate_altar(false, old_aligntyp);
 
     if (ttyp === PIT) {
         if (shopdoor && heros_fault) await pay_for_damage('ruin', false);

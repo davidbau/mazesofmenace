@@ -20,7 +20,7 @@ import { game } from './gstate.js';
 import { PM_COCKATRICE, PM_CHICKATRICE, PM_STONE_GOLEM, PM_FLAMING_SPHERE, PM_FIRE_VORTEX, PM_GREEN_SLIME } from './pm.generated.js';
 function pline_The(msg, ...args) { return pline('The ' + msg, ...args); }
 function touch_petrifies(pd) { const i = pd?.pmidx | 0; return i === PM_COCKATRICE || i === PM_CHICKATRICE; }
-import { pline, urgent_pline, newsym, see_monsters, flush_screen, force_more, _topl_stash_result, _topl_merge_result, _topl_joins_snapshot, canspotmon, canseemon, Unaware } from './display.js';
+import { pline, urgent_pline, newsym, see_monsters, flush_screen, _topl_stash_result, _topl_merge_result, _topl_joins_snapshot, canspotmon, canseemon, Unaware } from './display.js';
 import { impossible } from './pline.js';
 import { exercise, acurr, getAbase, getAmax, C_ATTR_TO_DISP, redist_attr, adjabil, setuhpmax } from './attrib.js';
 import { the_unique_pm, permonstTemplate, monPmname, name_to_mon, name_to_monclass, mkclass, dmgtype_fromattack, sliparm, attacktype_fordmg, set_mon_data, is_home_elemental as is_home_elemental_real } from './makemon.js';
@@ -34,7 +34,7 @@ import {
     find_ac, donning, encumber_msg, takeoff_slot_noac, Armor_gone, Boots_off, Blindf_off, Cloak_off, Gloves_off, Helmet_off, worn_invent_obj, cancel_don,
 } from './do_wear.js';
 import { dropx, useup, welded, could_twoweap, untwoweapon, surface, ceiling, waterbody_name, yname, You_cant, youhiding as youhiding_enlightenment, instapetrify as instapetrify_real } from './cmd.js';
-import { losehp } from './dokick.js';
+import { losehp, acurrstr } from './dokick.js';
 import { end_burn, learn_egg_type } from './timeout.js';
 import { make_sick, make_stoned, make_slimed, make_glib } from './potion.js';
 import { newuhs } from './eat.js';
@@ -97,6 +97,9 @@ import { dissolve_bars } from './monmove.js';
 import { OC_WEIGHT } from './oc_weight.generated.js';
 import { W_NONDIGGABLE, NO_PART } from './const.js';
 import { recalc_block_point } from './vision.js';
+import { block_point } from './vision.js';
+import { sobj_at } from './mklev.js';
+import { closed_door } from './look.js';
 import { LS_MONSTER, IS_OBSTRUCTED, IS_TREE, IS_WALL, IS_DOOR, DOOR, SDOOR, D_BROKEN, D_NODOOR, D_TRAPPED, ROOM, CORR, SHOPBASE, SHOP_DOOR_COST, DISMOUNT_POLY, IRONBARS } from './const.js';
 import { set_mimic_blocking } from './sit.js';
 import { sticks } from './dog.js';
@@ -1747,19 +1750,9 @@ async function polyself_body(psflags, st) {
                 : _rm;
             game._resultMessage = null;
         }
-        /* C hooked_tty_getlin (getline.c:53-54) more()s the standing topline
-         * BEFORE anything repaints the status: the physical status row is what
-         * the last bot() painted (the monster's damage), not this turn's
-         * moveloop regen_hp (allmain.c:~304) that has already raised disp.botl.
-         * Page it here with the paint held (do.c:1717 shape) so the frozen
-         * frame reads the last painted status. */
-        if (game._pending_message && game._lastPaintedBotl) {
-            game._botlPaintHeld = true;
-            try {
-                await flush_screen(1);
-                if (game._pending_message) await force_more(game._pending_message);
-            } finally { game._botlPaintHeld = false; }
-        }
+        /* C getline.c:53-67 pages the standing topline before the prompt's
+         * custompline flush.  getlin() preserves that last physical map and
+         * status; flushing here would paint pending monster moves too early. */
         do {
             mntmp = NON_PM;
             // C polyself.c:519 — getlin("Become what kind of monster? [type the name]").
@@ -2645,12 +2638,12 @@ function youhiding(via_enlghtmt, msgflag) {
 }
 function plur(x) { return (x === 1) ? "" : "s"; }
 
-// ── C hack.c:624-742 still_chewing() — rock / wall / tree / door / secret door
-// Boulder arm: cmd.js _still_chewing_boulder. Returns true while still eating.
+// C hack.c:647-824 still_chewing(): boulders take priority over their terrain.
 export async function still_chewing(x, y) {
     const g = game;
     const u = g.u;
     const lev = g.level.at(x, y);
+    const boulder = sobj_at(475 /* BOULDER */, x, y);
     const resetDig = () => {
         g.context.digging = { pos: { x: 0, y: 0 }, level: null, down: false,
             chew: false, warned: false, effort: 0 };
@@ -2662,8 +2655,8 @@ export async function still_chewing(x, y) {
     const dg = g.context.digging;
     const obstructed = IS_OBSTRUCTED(lev.typ);
     const metallivore = ((g.youmonst.data.mflags1 | 0) & 0x80000000) !== 0;
-    if ((obstructed && !may_dig_look(x, y))
-        || (lev.typ === IRONBARS && (lev.wall_info & W_NONDIGGABLE))) {
+    if (!boulder && ((obstructed && !may_dig_look(x, y))
+        || (lev.typ === IRONBARS && (lev.wall_info & W_NONDIGGABLE)))) {
         await pline('You hurt your teeth on the %s.'.replace('%s',
             lev.typ === IRONBARS ? 'bars' : IS_TREE(lev.typ) ? 'tree' : 'hard stone'));
         nomul(0);
@@ -2677,7 +2670,7 @@ export async function still_chewing(x, y) {
     // C hack.c:669-674 / 689-698 / 713-716: iron bars are "bar" in the start
     // message and "bars" in the continue message (C ref hack.c:703-716).
     const isbars = lev.typ === IRONBARS;
-    const what = IS_TREE(lev.typ) ? 'tree' : obstructed ? 'rock' : isbars ? 'bar' : 'door';
+    const what = boulder ? 'boulder' : IS_TREE(lev.typ) ? 'tree' : obstructed ? 'rock' : isbars ? 'bar' : 'door';
     const udaminc = u.udaminc | 0;
     if (!dg.chew || dg.pos.x !== x || dg.pos.y !== y
         || !dg.level || dg.level.dnum !== u.uz.dnum || dg.level.dlevel !== u.uz.dlevel) {
@@ -2687,15 +2680,14 @@ export async function still_chewing(x, y) {
         dg.pos = { x, y };
         dg.level = { dnum: u.uz.dnum, dlevel: u.uz.dlevel };
         dg.effort = (obstructed && !IS_TREE(lev.typ) ? 30 : 60) + udaminc;
-        await pline(`You start chewing ${(IS_TREE(lev.typ) || isbars) ? 'on a' : 'a hole in the'} ${what}.`
-            .replace('a hole in the tree', 'on a tree'));
+        await pline(`You start chewing ${(boulder || IS_TREE(lev.typ) || isbars) ? 'on a' : 'a hole in the'} ${what}.`);
         await watch_dig(null, x, y, false);
         return true;
     }
     dg.effort = (dg.effort | 0) + 30 + udaminc;
     if (dg.effort <= 100) {
         if (g.flags?.verbose !== false)
-            await pline(`You ${dg.chew ? 'continue' : 'begin'} chewing on the ${isbars ? 'bars' : what}.`);
+            await pline(`You ${dg.chew ? 'continue' : 'begin'} chewing on the ${!boulder && isbars ? 'bars' : what}.`);
         dg.chew = true;
         await watch_dig(null, x, y, false);
         return true;
@@ -2703,13 +2695,22 @@ export async function still_chewing(x, y) {
     // Okay, you've chewed through something
     if (!(u.uconduct.food | 0))
         livelog_printf(LL_CONDUCT, 'ate for the first time, by chewing through %s',
-            IS_TREE(lev.typ) ? 'a tree' : obstructed ? 'rock' : isbars ? 'iron bars' : 'a door');
+            boulder ? 'a boulder' : IS_TREE(lev.typ) ? 'a tree' : obstructed ? 'rock' : isbars ? 'iron bars' : 'a door');
     u.uconduct.food = (u.uconduct.food | 0) + 1;
     u.uhunger = (u.uhunger | 0) + rnd(20); /* hack.c:735 — a GAIN, not morehungry */
     let digtxt = null, dmgtxt = null;
-    if (IS_WALL(lev.typ)) {
+    if (boulder) {
+        await cmdNS._delobj_useupf(boulder);
+        await pline('You eat the boulder.');
+        if (obstructed || closed_door(x, y) || sobj_at(475 /* BOULDER */, x, y)) {
+            block_point(x, y);
+            resetDig();
+            return true;
+        }
+    } else if (IS_WALL(lev.typ)) {
         if (in_rooms(x, y, SHOPBASE).length) {
-            add_damage(x, y, 10 * Math.min(acurr(game.u, 0), 125));
+            // C hack.c:754 SHOP_WALL_DMG uses condensed ACURRSTR (3..25).
+            add_damage(x, y, 10 * acurrstr(u));
             dmgtxt = 'damage';
         }
         digtxt = 'chew a hole in the wall.';

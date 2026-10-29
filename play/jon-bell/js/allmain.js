@@ -1,5 +1,6 @@
 import { reroll_menu } from './cmd.js';
 import { u_init_inventory_attrs } from './u_init.js';
+import { nhlib_com_pager_rng } from './nhlib.js';
 // @ts-nocheck
 // allmain.js — Main game loop.
 // C ref: allmain.c — newgame, moveloop, moveloop_core.
@@ -25,7 +26,7 @@ import { mklev, l_nhcore_init, u_on_upstairs, engr_reset_text_pointers, restartc
 import { l_nhcore_call, NHCORE_START_NEW_GAME, NHCORE_MOVELOOP_TURN,
     nh_callback_run, NHCB_END_TURN } from './nhlua.js';
 import { clear_bypasses, sink_into_lava } from './trap.js';
-import { notice_all_mons, pooleffects, rhack, check_special_room, domove, prayer_done, deferred_goto, schedule_goto, heal_legs, timed_occupation, cmdq_clear, wipeoff, body_part, surface, confdir, hurtle, instapetrify, runmode_delay_output, take_off_occ, dolookaround_cmd } from './cmd.js';
+import { notice_all_mons, pooleffects, rhack, check_special_room, domove, prayer_done, deferred_goto, schedule_goto, heal_legs, timed_occupation, cmdq_clear, cmdq_peek, wipeoff, body_part, surface, confdir, hurtle, instapetrify, runmode_delay_output, take_off_occ, dolookaround_cmd } from './cmd.js';
 import { lookaround, end_running, is_pool, is_pool_or_lava } from './look.js';
 import { docrt, cls, bot, timebot, status_eval_next_unhilite, time_botl_moves_incremented, time_botl_run_ended, flush_screen, tty_repaint, pline, urgent_pline, Norep, _topl_joins_committed, _topl_record_join, occupation_painted_tick, occupation_freeze_snapshot, occupation_painted_reset, occupation_force_more, _movemon_page_frames_reset, run_page_frame_tick, run_page_frame_reset, capture_painted_frame, capture_pre_movemon_botl, force_more, _topl_merge_result, _topl_joins_snapshot } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
@@ -42,7 +43,7 @@ import { u_init_skills_discoveries } from './u_init.js';
 import { rn1, rn2, rnd, pushRngLogEntry } from './rng.js';
 /* C ref: allmain.c:325 — run_regions() in the once-per-turn upkeep block. */
 import { run_regions } from './region.js';
-import { LL_ACHIEVE, UTOTYPE_NONE, WOUNDED_LEGS, VOMITING, SLEEPY, SLEEP_RES, TIMEOUT, INVULNERABLE, FAST, CONFUSION, STUNNED, CQ_CANNED, FUMBLING, FROMOUTSIDE, LEVITATION, FLYING, HALLUC, HALLUC_RES, A_DEX, TELEPAT, FAINTING, CLAIRVOYANT, In_endgame, Is_waterlevel, ACCESSIBLE, W_SADDLE, DISMOUNT_FELL } from './const.js';
+import { LL_ACHIEVE, UTOTYPE_NONE, WOUNDED_LEGS, VOMITING, SLEEPY, SLEEP_RES, TIMEOUT, INVULNERABLE, FAST, CONFUSION, STUNNED, CQ_CANNED, CQ_REPEAT, FUMBLING, FROMOUTSIDE, LEVITATION, FLYING, HALLUC, HALLUC_RES, A_DEX, TELEPAT, FAINTING, CLAIRVOYANT, In_endgame, Is_waterlevel, ACCESSIBLE, W_SADDLE, DISMOUNT_FELL } from './const.js';
 /* C potion.c make_confused / set_itimeout — the CONFUSION slice of nh_timeout()
  * below runs C's arm verbatim, so it needs C's own two callees, not a local
  * re-spelling of them (this port already grew five make_confused copies once). */
@@ -533,6 +534,8 @@ export async function newgame() {
     let deferredLastStartupMsg = null;
     let startupEscStop = false; /* WIN_STOP left live by ESC at a startup --More-- */
     if (!chargenIncomplete && g.flags?.legacy !== false) {
+        // C allmain.c:832: the legacy Lua shuffle follows every reroll.
+        if (g.u?.uroleplay?.reroll) nhlib_com_pager_rng();
         await com_pager_legacy(!!(g.u?.uroleplay?.pauper), preInitAc, preInitPw);
     }
     // C allmain.c:835-836 — elapsed play starts after the introduction.
@@ -2851,6 +2854,11 @@ async function moveloop_core_faithful() {
     // recomputes u.uac) repainted AC:9 as AC:10 on all twelve remaining frames
     // while its docrt erased the still-painted fire beam off row 7.
     const incomingMove = !!(g.context?.move ?? 0) && !g._pendingDeath;
+    /* C allmain.c:241-565 — when study_book() started the occupation in an
+     * EARLIER invocation, this invocation's incoming world block (below) is the
+     * very block C runs before its first (*go.occupation)() == learn() call, so
+     * the learn driver must not run a second block ahead of that first call. */
+    const _learnBegunEarlier = incomingMove && g.occupation === learn;
     // Per-invocation moveloop_core_faithful entry marker — the JS analogue of C's
     // `^ctx_move[moveloop_core=N umv=N]` boundary.  Lets the per-turn / per-command
     // instruments (rng-slice-diff, turn-diff) read context.move AT EACH INVOCATION
@@ -3240,7 +3248,13 @@ async function moveloop_core_faithful() {
     await moveloop_status_paint();
     // C allmain.c:473-508: status painting already calls curs_on_u().
     // Otherwise an eating callback starts without flushing pending glyphs.
-    await flush_screen(1, g.occupation !== eatfood || (g.multi | 0) < 0);
+    // C cmd.c:3642-3651: rhack() pops a queued command (apply.c:2966 re-applies
+    // a just-wielded whip) without calling parse(), whose flush_screen(1)
+    // (cmd.c:5104) is the only other pre-command map paint; the getdir
+    // prompt's more() then shows the map as the last pline flushed it.
+    const cannedCmd = !g.occupation && (g.multi | 0) === 0
+        && !!cmdq_peek(g.gi?.in_doagain ? CQ_REPEAT : CQ_CANNED);
+    await flush_screen(1, (g.occupation !== eatfood || (g.multi | 0) < 0) && !cannedCmd);
     const preMoveUz = g.u && g.u.uz
         ? { dnum: g.u.uz.dnum, dlevel: g.u.uz.dlevel }
         : null;
@@ -3633,7 +3647,8 @@ async function moveloop_core_faithful() {
             // svm.moves++ inside).  Drains the per-turn RNG (mcalcmove, dosounds,
             // gethungry, monster moves) exactly as C records it during the study.
             // pline()s from this turn append onto the study topline (_pending_message).
-            await faithful_moveloop_turn();
+            if (learnGuard > 1 || !_learnBegunEarlier)
+                await faithful_moveloop_turn();
             /* C allmain.c:453-470 — each moveloop_core invocation ends with the
              * once-per-input redraw tail; hallucinating, it is a run of DISPLAY-
              * stream draws (see_monsters/see_objects/see_traps) after EVERY study
@@ -3860,7 +3875,10 @@ async function moveloop_core_faithful() {
                 g.vision_full_recalc = 0;
             }
             await moveloop_status_paint();
-            await flush_screen(1);
+            // C allmain.c:473-510: an occupation return only flushes the
+            // map through the guarded status paint above. Drain deferred
+            // messages without painting intermediate monster positions.
+            await flush_screen(1, false);
         }
         g._ff_input_tail_done = true;
         g.context = g.context || {};
@@ -5010,10 +5028,12 @@ async function moveloop_core_faithful() {
              * topline is still TOPLINE_NEED_MORE when hooked_tty_getlin runs
              * (getline.c:50-51). */
             g._extRepeatNoKey = true;
+            g._cmdRepeatNoKey = true;
             try {
                 await rhack(g.cmd_key | 0);
             } finally {
                 g._extRepeatNoKey = false;
+                g._cmdRepeatNoKey = false;
             }
             // Same post-dispatch boundary for counted commands.
             if (g.u?.utotype)

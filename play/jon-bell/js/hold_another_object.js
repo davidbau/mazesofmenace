@@ -52,6 +52,7 @@ import { pudding_merge_message } from './mkobj.js';
 import { pline } from './display.js';
 import { observe_object } from './o_init.js';
 import { obfree } from './shk.js';
+import { globby_bill_fixup } from './shk.js';
 import {
     mergable, prinv, reorder_invent, dropx, dropy, freeinv, hero_breaks,
     hitfloor, obj_extract_self_general,
@@ -252,6 +253,7 @@ export async function merged(potmp, pobj, nomsg = false) {
     const otmp = potmp.o, obj = pobj.o;
     if (!(await mergable(otmp, obj)))
         return false;
+    if (nomsg && obj.globby) await globby_bill_fixup(otmp, obj); // mkobj.c:3714, before extraction
 
     /* C:831-833 — approximate age, weighted by quantity.  C's arithmetic is
      * integer division on longs; Math.trunc matches (both operands are
@@ -347,6 +349,7 @@ export async function merged(potmp, pobj, nomsg = false) {
         /* obj_meld() reaches obj_absorb directly (mkobj.c:3789,3794) with no message; only invent.c merged() prints */
         if (!nomsg)
             await pudding_merge_message(otmp, obj); /* invent.c:929 */
+        if (!nomsg) await globby_bill_fixup(otmp, obj);
         const w1 = (otmp.oeaten | 0) || (otmp.owt | 0);
         const w2 = (obj.oeaten | 0) || (obj.owt | 0);
         const total = w1 + w2;
@@ -373,7 +376,7 @@ export async function merged(potmp, pobj, nomsg = false) {
         const tm2 = stop_timer(SHRINK_GLOB, { a_obj: obj, a_long: null });
         const tm = Math.trunc(((tm1 || 25) + (tm2 || 25) + 1) / 2);
         start_glob_timeout(otmp, tm); /* mkobj.c:3742 */
-
+        await dealloc_obj(obj); pobj.o = null; potmp.o = otmp; return true; /* mkobj.c:3746-3749 */
     }
 
     /* C:935-942 — and C's own reason for the how_lost exclusion: monsters

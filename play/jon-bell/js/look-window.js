@@ -2,7 +2,7 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { build_window_screen, tty_window_offx, build_text_window_screen, tty_text_window_utf8_line } from './com_pager.js';
-import { force_more, _topl_more_pages, _topl_joins_snapshot, docrt_flags, flush_screen } from './display.js';
+import { force_more, _topl_more_pages, _topl_joins_snapshot, docrt_flags, flush_screen, docorner_blank_utf8_captures } from './display.js';
 
 export async function displayLookWindow(lines) {
     const g = game;
@@ -98,6 +98,9 @@ export async function displayLookWindow(lines) {
         const key = await nhgetch();
         if (key === 32 || key === 10 || key === 13 || key === 27) break;
     }
+    /* C wintty.c:982,3684-3687: dismissing the corner window clears
+     * offx..79 through maxrow before row_refresh redraws the glyph buffer. */
+    docorner_blank_utf8_captures(col - 1, windowLines.length + 1);
     g._pending_message = '';
     // tty_dismiss_nhwindow repaints the map; row zero left of the window stays.
     if (underWindow) g._topl_sticky = underWindow;

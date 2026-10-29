@@ -8,7 +8,7 @@ import { discover_object, isWanNothingNodir } from './o_init.js';
 import { MKOBJ_OC_CLASS } from './mkobj_data.js';
 import { game } from './gstate.js';
 import { reassign, update_inventory } from './inventory_refresh.js';
-import { snuff_light_source } from './light.js';
+import { snuff_light_source, artifact_light, arti_light_radius, maybe_adjust_light } from './light.js';
 import { end_burn } from './timeout.js';
 import { pline, putmsghistory, getobj_never_mind, bot as bot_read, gamelog_add, obj_to_glyph, msgtype_suppressed } from './display.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
@@ -503,7 +503,7 @@ export async function recharge(obj, curse_bless) {
                         await _curse(obj); /* C read.c:925; mkobj.c:1793 clears blessed. */
                     }
                     else {
-                        await pline(`${obj._name || 'ball'} vibrates briefly.`);
+                        await pline(`${Yobjnam2(obj, 'vibrate')} briefly.`);
                     }
                     /* costly_alteration — no RNG */
                     obj.spe = 0;
@@ -601,7 +601,7 @@ export async function recharge(obj, curse_bless) {
 // Scope: only the "spellbook already known + Refresh prompt" branch is ported;
 // Other doread branches (scrolls, T-shirt, credit card, blank, level filter,
 // ─────────────────────────────────────────────────────────────────────────────
-import { flush_screen, docrt, cls, under_water, under_ground, newsym, terrain_glyph, occupation_force_more, force_more, map_trap, map_engraving, map_object, unmap_object, show_glyph_cell, objpile_attr, update_lastseentyp, GLYPHCLS_TRAP, GLYPHCLS_OBJ, GLYPHCLS_CMAP, GLYPHCLS_ENGR } from './display.js';
+import { flush_screen, docrt, cls, under_water, under_ground, newsym, terrain_glyph, occupation_force_more, force_more, use_last_flush_snapshot, map_trap, map_engraving, map_object, unmap_object, show_glyph_cell, objpile_attr, update_lastseentyp, GLYPHCLS_TRAP, GLYPHCLS_OBJ, GLYPHCLS_CMAP, GLYPHCLS_ENGR } from './display.js';
 import { t_at } from './trap.js';
 import { get_obj_location } from './light.js';
 import { BURIED_TOO, CONTAINED_TOO } from './const.js';
@@ -1073,6 +1073,18 @@ export async function doread() {
     const _forceMenu = !!g.iflags?.force_invmenu && !g.in_doagain;
     let _oneloop = false;
     if (!_q.drained && !_forceMenu) {
+        /* C tty_yn_function (wintty.c): a topline still TOPLINE_NEED_MORE is
+         * more()'d before the prompt is drawn.  A counted `2r` re-enters rhack
+         * (allmain.c:595-599) with no parse(), so the first read's result line
+         * is still unacknowledged when the second getobj prompt appears. */
+        if (g._cmdRepeatNoKey) {
+            g._cmdRepeatNoKey = false;
+            const standing = g._pending_message || g._resultMessage;
+            if (standing && !g._topl_win_stop) {
+                const release = use_last_flush_snapshot();
+                try { await force_more(standing); } finally { release(); }
+            }
+        }
         g._pending_message = prompt;
         await flush_screen(1);
         set_cursor(prompt.length + 1, 0); /* TTY: cursor past prompt + trailing space */
@@ -2160,6 +2172,7 @@ function _uncurse(otmp) {
 async function _curse(otmp) {
     if ((otmp.oclass | 0) === COIN_CLASS_OC)
         return;                                  /* C mkobj.c:1789 */
+    const old_light = otmp.lamplit ? arti_light_radius(otmp) : 0; /* C mkobj.c:1790-1791 */
     otmp.blessed = 0;
     otmp.cursed = 1;
     /* C mkobj.c:1796-1801: update wielded weapons before other curse effects. */
@@ -2168,6 +2181,8 @@ async function _curse(otmp) {
     if (otmp === game.u.uswapwep && game.u.twoweap)
         await drop_uswapwep();
     _bc_side_effects(otmp);
+    if (otmp.lamplit)
+        await maybe_adjust_light(otmp, old_light); /* C mkobj.c:1816-1817 */
 }
 function _bc_side_effects(otmp) {
     const otyp = otmp.otyp | 0;
@@ -2328,11 +2343,7 @@ async function seffect_enchant_armor(sobjp) {
 
     if (s >= 0 && _Is_dragon_scales(otmp)) {            /* C read.c:1223 */
         const was_lit = otmp.lamplit;
-        /* C read.c:1225: old_light = artifact_light(otmp) ? arti_light_radius(otmp)
-         * : 0.  No light-radius model in this port (see js/read.js
-         * impact_arti_light), and dragon scales are never an artifact light, so
-         * old_light is 0 here; the maybe_adjust_light() call below is therefore
-         * unreachable, not skipped.  No RNG either way. */
+        const old_light = artifact_light(otmp) ? arti_light_radius(otmp) : 0;
         await pline(`${_Yname2(nm)} merges and hardens!`);
         await setworn(null, W_ARM);                     /* C read.c:1230 */
         /* C read.c:1232 — assumes same order */
@@ -2351,6 +2362,8 @@ async function seffect_enchant_armor(sobjp) {
         if (otmp.unpaid)
             await _alter_cost(otmp, 0);
         otmp.lamplit = was_lit;
+        if (old_light)                                  /* C read.c:1249 */
+            await maybe_adjust_light(otmp, old_light);
         return;
     }
     await pline(`${_Yname2(nm)} `
@@ -2413,6 +2426,7 @@ const TIN_OPENER = 239;
 const WORM_TOOTH = 42;
 const CRYSKNIFE = 43;
 const STRANGE_OBJECT = 0;
+const ART_MAGICBANE = 8; /* artilist.h artifact ordinal */
 /* C obj.h — `#define erodeable_wep(o) (is_weptool(o) || (o)->oclass == WEAPON_CLASS
  *                                      || is_wep_artifact...)`; the shape C
  * actually ships is erosion_matters() restricted to the weapon side, which
@@ -2536,10 +2550,11 @@ async function chwepon(otmp, amount) {
             await _alter_cost(uwep, 0);
     }
 
-    /* C wield.c:1027-1039 — Magicbane's spe-dependent adverse reaction gives an
-     * obscure clue.  KNOWN GAP: u_wield_art(ART_MAGICBANE) has no equivalent in
-     * this port (js/objnam.js's _artiexist models only the wish-time existence
-     * bits), so the clue line is not emitted.  Message only; no RNG. */
+    /* C wield.c:1036-1039; obj.h u_wield_art tests the primary weapon. */
+    if ((uwep.oartifact | 0) === ART_MAGICBANE && (uwep.spe | 0) >= 0) {
+        await Your('right %s %sches!', food_body_part(6 /* HAND */),
+                   amount > 1 && (uwep.spe | 0) > 1 ? 'flin' : 'it');
+    }
 
     if ((uwep.spe | 0) > 5
         && (_is_elven_weapon(uwep) || uwep.oartifact || !rn2(7))) {
@@ -3264,7 +3279,16 @@ function _check_map_spot_gd(x, y, material) {
     const g = game;
     const loc = g.level && g.level.at ? g.level.at(x, y) : null;
     const rg = loc && loc.remembered_glyph;
-    if (!rg || rg.cls !== GLYPHCLS_OBJ || rg.ch !== '$')
+    if (!rg || rg.cls !== GLYPHCLS_OBJ)
+        return false;
+    /* C detect.c:275-291 decodes glyph_to_obj(glyph): the remembered otyp's
+     * oc_material / oc_class, not the rendered symbol (a boulder symbol may
+     * be '$').  Gold piece is the only COIN_CLASS object. */
+    if (rg.otyp != null) {
+        const ot = rg.otyp | 0;
+        if (material ? (MKOBJ_OC_MATERIAL_GD[ot] | 0) !== material : ot !== GOLD_PIECE_GD)
+            return false;
+    } else if (rg.ch !== '$')
         return false;
     const here = g.level.levelObjects?.[x]?.[y] ?? null;
     if (material) {
@@ -4723,7 +4747,7 @@ async function _identify_objlist_menu(promptText) {
             for (const e of entries) {
                 if ((e.obj.oclass | 0) !== oc) continue;
                 const letter = String.fromCharCode(e.obj.invlet | 0);
-                lines.push(`${letter} ${e.selected ? '+' : '-'} ${e.name}`);
+                lines.push(`${letter} ${e.selected ? (e.count > 0 ? '#' : '+') : '-'} ${e.name}`);
             }
         }
         return lines;
@@ -4795,7 +4819,11 @@ async function _identify_objlist_menu(promptText) {
             g._spellPwStale || undefined).split('\n');
         return { rows, footer, footerRow, pageCount };
     };
+    /* C wintty.c:1334-1399 counting/count/reset_count */
+    let counting = false, count = 0, reset_count = true;
     while (true) {
+        if (reset_count) { counting = false; count = 0; }
+        else reset_count = true;
         const { rows, footer, footerRow, pageCount } = frameRows();
         g._screen_output = rows.join('\n');
         set_cursor(WIN_COL + footer.length + (pageCount > 1 ? 0 : 1), footerRow);
@@ -4803,6 +4831,14 @@ async function _identify_objlist_menu(promptText) {
         const k = await nhgetch();
         const raw = typeof k === 'number' ? k : (k?.charCodeAt(0) ?? 0);
         const kc = onPage().has(LETTERSET.get(raw)) ? raw : map_menu_cmd(raw);
+        /* C wintty.c:1570-1602: digits build a count (not a selector here). */
+        if (kc >= 48 && kc <= 57 && !onPage().has(LETTERSET.get(raw))) {
+            count = count * 10 + (kc - 48);
+            if (count !== 0) { counting = true; reset_count = false; }
+            continue;
+        }
+        /* C: ESC while counting only stops the count. */
+        if (kc === 27 && counting) continue;
         if (kc === 27 /* ESC */) { escaped = true; break; }
         /* RETURN / ENTER finishes the menu with current selections. */
         if (kc === 10 || kc === 13) break;
@@ -4816,7 +4852,15 @@ async function _identify_objlist_menu(promptText) {
             continue;
         }
         const e = LETTERSET.get(kc);
-        if (onPage().has(e)) { e.selected = !e.selected; continue; }
+        if (onPage().has(e)) {
+            /* C toggle_menu_curr(.., counting, count) */
+            if (e.selected) {
+                if (counting && count > 0) e.count = count;
+                else { e.selected = false; e.count = -1; }
+            } else if (counting && count > 0) { e.count = count; e.selected = true; }
+            else if (!counting) e.selected = true;
+            continue;
+        }
         const BULK = {
             46: [false, 'set'], 45: [false, 'clear'], 64: [false, 'invert'],
             44: [true, 'set'], 92: [true, 'clear'], 126: [true, 'invert'],
@@ -4825,7 +4869,7 @@ async function _identify_objlist_menu(promptText) {
             const [pageOnly, mode] = BULK[kc];
             const targets = pageOnly ? onPage() : entries;
             for (const t of targets)
-                t.selected = mode === 'invert' ? !t.selected : mode === 'set';
+                { t.selected = mode === 'invert' ? !t.selected : mode === 'set'; if (!t.selected) t.count = -1; }
             continue;
         }
         if (kc === 0x3a /* ':' MENU_SEARCH */) {
@@ -4847,7 +4891,9 @@ async function _identify_objlist_menu(promptText) {
             titleErased = true;
             continue;
         }
-        /* C: non-accelerator keys ring the bell, menu stays up. */
+        /* C: non-accelerator keys ring the bell inside xwaitforspace (getline.c
+         * :250-254) and are re-read there, so a live count survives them. */
+        reset_count = false;
     }
     g._pending_message = '';
     await flush_screen(1);

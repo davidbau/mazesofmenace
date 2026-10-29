@@ -35,6 +35,7 @@ import { menutype } from './menustyle.js';
 import { MENU_TRADITIONAL, MENU_COMBINATION } from './const.js';
 import { colornames, attrnames, attr2attrname, clr2colorname, match_str2clr } from './coloratt.js';
 import { choose_disco_sort } from './o_init.js';
+import { ROLE_RANKS, role_index_by_name } from './rank_data.js';
 /* C ref: wintty.c process_menu_window's overlay composition — the shared
  * map-under-window renderer every other overlay in this port uses. */
 import { build_window_screen, menu_search_case } from './com_pager.js';
@@ -1295,8 +1296,9 @@ const HL_ATTRBITS = [[1, 2, 'bold'], [2, 4, 'dim'], [3, 8, 'italic'], [4, 16, 'u
     [5, 32, 'blink'], [7, 64, 'inverse']];
 function status_hilite2str_rules(spec) {
     const out = [], fz = s => s.replace(/[ \-_]/g, '').toLowerCase();
-    for (const one of spec.toLowerCase().split(' ').filter(Boolean)) {
-        const s = one.split('/');
+    const origs = spec.split(' ').filter(Boolean);
+    for (const [oi, one] of spec.toLowerCase().split(' ').filter(Boolean).entries()) {
+        const s = one.split('/'), os = origs[oi].split('/');
         const fldname = status_fieldname(s[0]);
         const fld = INITBLSTATS.findIndex(([n]) => n === fldname);
         if (fld < 0 || fldname === 'condition' || fldname === 'characteristics') continue;
@@ -1319,7 +1321,7 @@ function status_hilite2str_rules(spec) {
                     : null;
                 const k = arr ? arr.find(a => a.toLowerCase() === t) : null;
                 if (k) beh = k;
-                else if (at === 'S') beh = t.trim();
+                else if (at === 'S') beh = os[i].trim(); /* botl.c:3093 textmatch keeps case */
                 else break; /* config_error: rule rejected */
             }
             let clr = null, attr = 0;
@@ -1347,9 +1349,90 @@ function status_hilite_linestr_gather() {
     return lines;
 }
 
+/* C botl.c:2747 query_arrayvalue (arrmin 0): returns the index, -1 on ESC. */
+async function query_arrayvalue(querystr, arr, preserveStatus) {
+    const m = new TtyMenu({ overlay: true, statusClipCol: preserveStatus ? undefined : 0 });
+    arr.forEach((a, i) => m.add_menu(i + arr.length, 0, ATR_NONE, a, false, false));
+    m.end_menu(querystr);
+    const { count, picks } = await m.select_menu(PICK_ONE);
+    return count > 0 ? picks[0] - arr.length : -1;
+}
+
+/* C botl.c:4170-4300 status_hilite_menu_add, BL_TH_TEXTMATCH arm for BL_TITLE.
+ * The rolelist, the color/attribute retries and the " or " split into two rules
+ * follow C; other text fields are not ported. */
+async function status_hilite_add_title_textmatch(fld, preserveStatus) {
+    const name = INITBLSTATS[fld][0];
+    const ranks = ROLE_RANKS[role_index_by_name(game.urole?.name?.m || game.urole?.name?.f || '')].rank;
+    const female = !!game.flags?.female;
+    const rolelist = [];
+    for (let i = 0; i < 9; i++) {
+        const mbuf = `"${ranks[i][0]}"`;
+        let fbuf = '', obuf = '';
+        if (ranks[i][1]) {
+            fbuf = `"${ranks[i][1]}"`;
+            obuf = `${female ? fbuf : mbuf} or ${female ? mbuf : fbuf}`;
+        }
+        if (female) {
+            if (fbuf) rolelist.push(fbuf);
+            rolelist.push(mbuf);
+            if (obuf) rolelist.push(obuf);
+        } else {
+            rolelist.push(mbuf);
+            if (fbuf) rolelist.push(fbuf);
+            if (obuf) rolelist.push(obuf);
+        }
+    }
+    rolelist.push('"none of the above (polymorphed)"');
+    for (;;) {
+        const rv = await query_arrayvalue(`Choose ${name} text value to match:`, rolelist, preserveStatus);
+        if (rv < 0) return false;
+        let textmatch = rolelist[rv];
+        for (;;) {
+            const clr = await query_color(`Choose a color for when ${name} is '${textmatch}':`, 8, preserveStatus);
+            if (clr === -1) break;
+            const atr = await query_attr_one(`Choose attribute for when ${name} is '${textmatch}':`, 0, preserveStatus);
+            if (atr === -1) continue;
+            const attrs = atr === 1 ? 'normal' : HL_ATTRBITS.filter(b => atr & b[1]).map(b => b[2]).join('+');
+            const clrname = clr2colorname(clr).replace(/ /g, '-');
+            const p = textmatch.indexOf(' or ');
+            if (p >= 0) {
+                const first = textmatch.slice(0, p);
+                (game.status_field_hilites ||= []).push(`${name}/${first}/${clrname}&${attrs}`);
+                await pline('Added hilite %s', `${name}/${first}/${clrname}&${attrs}`);
+                textmatch = textmatch.slice(p + 4);
+            }
+            const rule = `${name}/${textmatch}/${clrname}&${attrs}`;
+            (game.status_field_hilites ||= []).push(rule);
+            await pline('Added hilite %s', rule);
+            reset_status_hilites();
+            await drainTopline();
+            return true;
+        }
+    }
+}
+
 /* C botl.c:4447 status_hilites_viewall. */
 async function status_hilites_viewall(lines) {
     await display_text_window(lines.map(l => `OPTIONS=hilite_status: ${l.str}`));
+}
+
+/* C botl.c:4369-4443 status_hilite_menu_fld's "Current %s hilites:" menu once a
+ * rule exists; returns the behavior for a further status_hilite_menu_add (0 = none). */
+async function status_hilite_menu_fld_current(fld, name) {
+    const current = new TtyMenu({ overlay: true }); // C botl.c:4369-4443
+    status_hilite_linestr_gather().filter(l => l.fld === fld).forEach((l, i) =>
+        current.add_menu(i + 1, 0, ATR_NONE, l.str, false, false));
+    current.add_menu_str('');
+    current.add_menu(-1, 'X', ATR_NONE, 'Remove selected hilites', false, false);
+    current.add_menu(-2, 'Z', ATR_NONE, 'Add new hilites', false, false);
+    current.end_menu(`Current ${name} hilites:`);
+    const selected = await current.select_menu(PICK_ANY);
+    /* botl.c:4430-4455: 'Z' (-2) creates new hilites via status_hilite_menu_add */
+    const mode = (selected.picks || []).slice(0, Math.max(selected.count, 0));
+    if (mode.includes(-1)) throw new Error('not yet ported: status hilite rule removal');
+    return mode.includes(-2)
+        ? await status_hilite_menu_choose_behavior(fld, true) : 0;
 }
 
 /* C botl.c:4498 status_hilite_menu.  Picking a field with no rules reaches
@@ -1411,19 +1494,11 @@ export async function status_hilite_menu(preserveStatus = false) {
             await pline('Added hilite %s', rule);
             reset_status_hilites();
             await drainTopline();
-            const current = new TtyMenu({ overlay: true }); // C botl.c:4369-4443
-            status_hilite_linestr_gather().filter(l => l.fld === fld).forEach((l, i) =>
-                current.add_menu(i + 1, 0, ATR_NONE, l.str, false, false));
-            current.add_menu_str('');
-            current.add_menu(-1, 'X', ATR_NONE, 'Remove selected hilites', false, false);
-            current.add_menu(-2, 'Z', ATR_NONE, 'Add new hilites', false, false);
-            current.end_menu(`Current ${name} hilites:`);
-            const selected = await current.select_menu(PICK_ANY);
-            /* botl.c:4430-4455: 'Z' (-2) creates new hilites via status_hilite_menu_add */
-            const mode = (selected.picks || []).slice(0, Math.max(selected.count, 0));
-            if (mode.includes(-1)) throw new Error('not yet ported: status hilite rule removal');
-            beh = mode.includes(-2)
-                ? await status_hilite_menu_choose_behavior(fld, true) : 0;
+            beh = await status_hilite_menu_fld_current(fld, name);
+        }
+        if (beh === 104 && INITBLSTATS[fld][0] === 'title') {
+            beh = await status_hilite_add_title_textmatch(fld, flushed)
+                ? await status_hilite_menu_fld_current(fld, INITBLSTATS[fld][0]) : 0;
         }
         if (beh > 0) throw new Error('not yet ported: status_hilite_menu_add value entry');
         preserveStatus = true;

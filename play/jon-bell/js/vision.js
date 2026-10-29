@@ -853,8 +853,10 @@ export function vision_recalc(control = 0) {
     }
     /* C ref: vision.c:628-667 — "Set the IN_SIGHT bit for xray".  xray_range
      * is -1 when the hero has none (an unset JS field reads as none); the
-     * update loop below does the newsym for squares not previously in sight. */
-    if (u.xray_range != null && (u.xray_range | 0) >= 0) {
+     * update loop below does the newsym for squares not previously in sight.
+     * It lives in the final else of C's `uswallow || control == 2` / Blind /
+     * rogue chain, so a refresh (control 2) or a swallowed hero skips it. */
+    if (!see_nothing && u.xray_range != null && (u.xray_range | 0) >= 0) {
         const xr = u.xray_range | 0;
         if (xr) {
             const ranges = circle_ptr(xr);

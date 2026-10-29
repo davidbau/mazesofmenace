@@ -249,7 +249,8 @@ export async function fastforward_post_mklev(initrole = -1) {
     // The actual C-shaped inventory phase owns role money, moves and objects.
     registerTrapMksobj(mksobj, place_object, make_corpse);
     await u_init_inventory_attrs();
-    if (game.flags?.legacy !== false)
+    // C allmain.c:820-832: rerolling finishes before com_pager's Lua state.
+    if (game.flags?.legacy !== false && !game.u?.uroleplay?.reroll)
         nhlib_com_pager_rng();
     /* C ref: allmain.c:831-846 newgame() runs welcome(TRUE) and, under
      * a11y.glyph_updates (mention_map), dolookaround() BEFORE moveloop_preamble's

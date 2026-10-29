@@ -65,7 +65,7 @@ const PM_AMOROUS_DEMON_DK = 290;
 import { m_at, do_attack, overexertion } from './uhitm.js';
 import { MONS_CWT, wipe_engr_at, maybe_unhide_at, place_object, makemon, mkgold, wake_nearto } from './mklev.js';
 import { stackobj } from './sp_lev.js';
-import { newmextra } from './makemon.js';
+import { newmextra, poly_gender } from './makemon.js';
 import { book_disappears as spell_book_disappears } from './spell.js';
 /* C mkobj.c:458-503 splitobj(obj, num) — the one body lives in js/makemon.js
  * (this repo's mkobj.c splitobj/nextoid host); scatter()'s object-stack
@@ -103,6 +103,7 @@ const CORPSE_DK = 265;
 import { dealloc_obj, add_to_minv } from './mklev.js';
 import { food_disappears } from './eat.js';
 import { t_at, deltrap } from './trap.js';
+import { can_reach_floor } from './hold_another_object.js';
 import { fracture_rock, break_statue } from './zap.js';
 import { deadhero, do_death_sequence } from './end.js';
 import { set_wounded_legs, ok_to_quest, breaktest, breakmsg, breakobj, altar_wrath, _delobj_useupf as delobj_core, currency as cmd_currency, snuff_candle, thitmonst } from './cmd.js';
@@ -672,7 +673,7 @@ export async function kick_nondoor(x, y, avrg_attrib) {
             await mksobj_at(474 /* ROCK */, x, y, true, false);
             del_engr_at_dk(x, y);
             if (Blind) {
-                void pline("Crack!  It broke!"); /* C: "Crack!  %s broke!", Something */
+                void pline("Crack!  Something broke!"); /* C: "Crack!  %s broke!", Something */
             }
             else {
                 void pline("The headstone topples over and breaks!"); /* C: pline_The(...) */
@@ -766,8 +767,7 @@ export async function kick_nondoor(x, y, avrg_attrib) {
     }
     /* ── SINK ── C ref: dokick.c:1194-1241 */
     if (IS_SINK(maploc.typ)) {
-        /* C: int gend = poly_gender() — no RNG */
-        const gend = 0; /* stub: poly_gender — WIRE_PENDING */
+        const gend = poly_gender(); /* C dokick.c:1195 */
         if (Levitation) {
             await kick_dumb(x, y);
             return ECMD_TIME;
@@ -1739,6 +1739,10 @@ async function really_kick_object(x, y, kickedobj) {
         if (mon.isshk && (kickedobj.where | 0) === 4 /* OBJ_MINVENT */
             && kickedobj.ocarry === mon)
             return 1; /* alert shk caught it */
+        /* C zap.c:4021-4028 bhit(KICKED_WEAPON): after ending the flight,
+         * remember an unseen target before thitmonst can report its miss. */
+        if (cansee(bx, by) && !canspotmon(mon))
+            map_invisible(bx, by);
         g.notonhead = ((bx | 0) !== (mon.mx | 0) || (by | 0) !== (mon.my | 0));
         if (isgold) {
             if (await ghitm(mon, kickedobj))
@@ -1937,11 +1941,8 @@ function u_wipe_engr(cnt) {
     if (can_reach_floor(true))
         wipe_engr_at(u.ux | 0, u.uy | 0, cnt, false);
 }
-function can_reach_floor(_check_pit) {
-    const u = game.u || {};
-    if (u.uswallow || u.usteed || u.uundetected) return false;
-    return true;
-}
+/* real body: js/hold_another_object.js (engrave.c:187), incl. the check_pit
+ * uteetering_at_seen_pit arm the stub dropped. */
 
 /* C ref: dbridge.c:169-173 is_db_wall(x, y) — verify drawbridge wall is UP.
  * RNG: none. Return boolean (drawbridge wall typ). */

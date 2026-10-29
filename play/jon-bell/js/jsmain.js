@@ -207,10 +207,12 @@ export class NethackGame {
          * pairs then land in ov_primary_syms (symbols.c parsesymbols). */
         g._symsetLoaded = null;
         init_ov_primary_symbols();
-        if (opts.symset && load_primary_symset_from_file(opts.symset)) {
-            for (const [k, v] of Object.entries(opts.symbolOverrides || {}))
-                set_primary_symbol_override(k, v);
-        }
+        if (opts.symset) load_primary_symset_from_file(opts.symset);
+        // C symbols.c:236-239: overrides also apply to the default symbol set.
+        for (const [k, v] of Object.entries(opts.symbolOverrides || {}))
+            set_primary_symbol_override(k, v);
+        for (const [k, v] of opts.symbolPairs || [])
+            set_primary_symbol_override(k, v);
         if (opts.symset) {
             gs.symset[PRIMARYSET].name = opts.symset;
             /* C options.c:4198 optfn_symset sets these and nothing clears them

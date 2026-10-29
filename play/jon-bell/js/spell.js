@@ -103,7 +103,7 @@ import { TtyMenu, PICK_ONE, ATR_NONE, menu_heading_text } from './tty_menu.js';
 import { do_vicinity_map } from './detect.js';
 import { You_feel, You_hear } from './display.js';
 import { SPINE, DISP_BEAM, DISP_END } from './const.js';
-import { tmp_at } from './display.js';
+import { tmp_at, docorner_blank_utf8_captures } from './display.js';
 
 // ── Object-type constants ────────────────────────────────────────────────────
 const SPBOOK_FIRST_OTYP = 366; // SPE_DIG = FIRST_SPELL
@@ -1583,6 +1583,7 @@ async function dospellmenu_render_and_read(prompt, headingRaw, items, how) {
      * and the next-page keys collapse into the dismiss below.  A spellbook
      * large enough to paginate (objclass.h MAXSPELL is 42 in the pinned build)
      * would need real paging. */
+    try {
     for (;;) {
         const key = await nhgetch();
         const ch = String.fromCharCode(key);
@@ -1626,6 +1627,11 @@ async function dospellmenu_render_and_read(prompt, headingRaw, items, how) {
              * re-reads (the dismiss keys above already returned). */
             continue;
         /* Unrecognised accelerator: bell, no redraw, read again. */
+    }
+    } finally {
+        /* spell.c:2153 destroy_nhwindow -> wintty.c:982 erase_menu_or_text:
+         * docorner(offx, maxrow + 1, 0); row_refresh skips GLYPH_UNEXPLORED. */
+        if (!noOverlay) docorner_blank_utf8_captures(WIN_COL - 1, windowLines.length + 1);
     }
 }
 

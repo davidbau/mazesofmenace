@@ -99,8 +99,11 @@ async function read_yn(prompt, acceptQ) {
         g._resultMessage = '';
         await force_more(held);
     }
+    // tty_yn_function's more() precedes the prompt's flush (topl.c:390-420).
+    // Drain deferred width pages without repainting the live map/status over
+    // the last pline's physical screen before acknowledging the remainder.
     if (_topline_more_pending())
-        await flush_screen(1);
+        await flush_screen(1, false);
     if (unacknowledged && g._pending_message)
         await force_more_lone_frame(g._pending_message);
     else if (unacknowledged && g._resultMessage) {

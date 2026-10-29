@@ -1,5 +1,5 @@
 import { fixup_oil, get_mtraits, free_omid } from './mkobj.js';
-import { dead_species, restore_cham, neweshk, mongone, add_to_minv, sp_levchn_lookup } from './mklev.js';
+import { dead_species, restore_cham, neweshk, mongone, add_to_minv, sp_levchn_lookup, can_be_hatched, set_corpsenm } from './mklev.js';
 import { monhp_per_lvl, dmgtype_fromattack, container_weight, emits_light, monflee } from './makemon.js';
 import { dealloc_monst, dealloc_mextra, relmon, wary_dog, tamedog } from './dog.js';
 import { place_monster } from './steed.js';
@@ -11,12 +11,13 @@ import { cant_revive } from './read.js';
 import { enexto_out } from './teleport.js';
 import { free_oname } from './dokick.js';
 import { christen_monst, Amonnam } from './mhitm.js';
-import { attach_egg_hatch_timeout } from './timeout.js';
+import { attach_egg_hatch_timeout, obj_stop_timers } from './timeout.js';
 import { OBJ_FREE, OBJ_FLOOR, OBJ_CONTAINED, OBJ_INVENT, OBJ_MINVENT, OBJ_BURIED,
          NO_MINVENT, MM_NOWAIT, MM_NOCOUNTBIRTH, MM_NOTAIL, MM_ADJACENTOK,
          MM_MALE, MM_FEMALE, CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE,
          GRAVE, IS_POOL, LS_MONSTER, ONAME, has_oname, PLNMSG_OBJ_GLOWS, PLNMSG_ENVELOPED_IN_GAS, PROT_FROM_SHAPE_CHANGERS, OBJ_DELETED } from './const.js';
-import { PM_GHOST, PM_DOPPELGANGER } from './pm.generated.js';
+import { PM_GHOST, PM_DOPPELGANGER, NUMMONS } from './pm.generated.js';
+import { HATCH_EGG } from './const.js';
 import { wearslot } from './worn.js';
 import { otrapped_of } from './const.js';
 import { is_poisonable } from './objnam.js';
@@ -59,6 +60,7 @@ import { POOL, MOAT, DRAWBRIDGE_DOWN, IS_FOUNTAIN, Is_waterlevel, Is_airlevel } 
 import { PIT, FIRE_RES, COLD_RES, SHOCK_RES, SLEEP_RES, ACID_RES, DISINT_RES, POISON_RES, W_ARMOR, W_ACCESSORY, W_WEP, W_ART, W_RING, W_ARMG, W_ARMC, W_ARM, W_ARMU, W_ARMH, W_ARMF, W_ARMS, W_AMUL, W_TOOL, W_RINGL, W_RINGR, SDOOR, SCORR, DOOR, CORR, ROOM, D_CLOSED, D_LOCKED, D_TRAPPED, D_NODOOR, BOLT_LIM, STATUE_TRAP, SVALL, COULD_SEE, IN_SIGHT, STONE, ZAP_POS, IS_WALL, IS_OBSTRUCTED, IS_TREE, IS_ROOM, isok, W_NONDIGGABLE, Is_earthlevel, u_at, TRAPDOOR, HOLE, NO_TRAP_FLAGS } from './const.js';
 import { xdir, ydir, N_DIRS, FUMBLING, IS_SINK, TT_PIT } from './const.js';
 import { game, wizard } from './gstate.js';
+import { merged } from './hold_another_object.js';
 import { TtyMenu, PICK_ONE, ATR_NONE } from './tty_menu.js';
 import { get_obj_location } from './light.js';
 import { terrain_glyph, update_lastseentyp, update_mapseen_for, GLYPHCLS_CMAP, GLYPHCLS_TRAP } from './display.js';
@@ -118,6 +120,7 @@ import { surface } from './cmd.js';
 import { on_level } from './dungeon.js';
 import { ok_to_quest, is_drawbridge_wall, db_under_typ } from './dokick.js';
 import { mksobj_at, stairway_at } from './mklev.js';
+import { erosion_matters, is_flammable, is_rustprone, is_crackable, is_corrodeable, is_rottable, is_damageable } from './mklev.js';
 
 /* C objnam.c:347 distant_name — use the canonical object naming body. */
 async function distant_name(otmp, func) { return await distant_name_real(otmp, func); }
@@ -1265,7 +1268,7 @@ function _zp_is_rider(ptr) {
 }
 
 /* C zap.c:840-858: a null object leaves *loc unchanged. */
-function get_container_location(obj, loc, nesting) {
+export function get_container_location(obj, loc, nesting) {
     if (nesting) nesting.value = 0;
     while (obj && obj.where === OBJ_CONTAINED) {
         if (nesting) nesting.value++;
@@ -1888,6 +1891,25 @@ export async function zapyourself(obj, ordinary) {
                     learn_it = true;
                 otmp = onxt;
             }
+            /* C zap.c:2984-3001: restart after each merge; skip worn
+             * destinations so distinct weapon slots remain distinct. */
+            {
+                let didmerge;
+                do {
+                    didmerge = false;
+                    for (let otmp = game.invent; !didmerge && otmp; otmp = otmp.nobj) {
+                        if (otmp.owornmask) continue;
+                        for (let onxt = otmp.nobj; onxt; onxt = onxt.nobj) {
+                            const dst = { o: otmp }, src = { o: onxt };
+                            if (await merged(dst, src)) {
+                                otmp = dst.o;
+                                didmerge = true;
+                                break;
+                            }
+                        }
+                    }
+                } while (didmerge);
+            }
             break;
         default:
             /* C zap.c:2999-3001: impossible */
@@ -2157,7 +2179,7 @@ export async function zapnodir(obj) {
             break;
         case WAN_WISHING:
             /* C zap.c:2572-2583 */
-            if ((g.u.uluck | 0) + rn2(5) < 0) {
+            if (_zp_Luck() + rn2(5) < 0) {
                 await pline("Unfortunately, nothing happens.");
                 known = false;
             } else {
@@ -3320,7 +3342,7 @@ function _resist_is_mplayer(mon) {
  * not through canseemon(): an unseen monster can still own the visible shield
  * and resistance message.  pline_mon's set_msg_xy bookkeeping is represented
  * by this port's shared accessibility message location. */
-async function shieldeff_mon(mon) {
+export async function shieldeff_mon(mon) {
     const x = mon.mx | 0, y = mon.my | 0;
     shieldeff_real(x, y);
     if (cansee(x, y)) {
@@ -5096,7 +5118,7 @@ const ZP_MAGIC_LAMP = 228, ZP_OIL_LAMP = 227, ZP_MAGIC_MARKER = 242,
       ZP_POT_OIL = 321,
       ZP_SPE_BLANK_PAPER = 407, ZP_SPE_NOVEL = 408, ZP_MAX_SPELL_STUDY = 3,
       ZP_BOULDER = 475, ZP_ROCK = 474, ZP_MINERAL = 21, ZP_CORPSE = 265,
-      ZP_EGG = 273, ZP_LEASH = 231;
+      ZP_EGG = 266, ZP_LEASH = 231;
 const ZP_OBJ_FREE = 0, ZP_OBJ_FLOOR = 1, ZP_OBJ_INVENT = 3, ZP_OBJ_MINVENT = 4;
 /* zap.c:1687 charged_objs[] = { WAND_CLASS, WEAPON_CLASS, ARMOR_CLASS,
  * 0 } — the classes whose spe is carried across a
@@ -5259,7 +5281,8 @@ async function do_osshock(obj) {
     /* zap the object */
     _zp_delobj(obj);
 }
-function _zp_Luck() { return (game.u?.uluck | 0); }
+/* C you.h:464: Luck includes the bonus or penalty from carried luck items. */
+function _zp_Luck() { return (game.u?.uluck | 0) + (game.u?.moreluck | 0); }
 
 export async function poly_obj(obj, id) {
     const g = game;
@@ -5287,6 +5310,26 @@ export async function poly_obj(obj, id) {
     if (obj_location === ZP_OBJ_INVENT)
         otmp.invlet = obj.invlet;
 
+    // C zap.c:1756-1779: eggs laid by the hero remain hero-laid eggs.
+    if (obj.otyp === ZP_EGG && obj.spe) {
+        if (otmp.otyp === ZP_EGG)
+            stop_timer(HATCH_EGG, obj_to_any(otmp)); // kill_egg()
+        else {
+            otmp.otyp = ZP_EGG;
+            otmp.owt = weight(otmp);
+        }
+        otmp.corpsenm = NON_PM;
+        otmp.spe = 0;
+        for (let tryct = 100; tryct > 0; --tryct) {
+            const mnum = can_be_hatched(rn2(NUMMONS));
+            if (mnum !== NON_PM && !dead_species(mnum, true)) {
+                otmp.spe = 1;
+                set_corpsenm(otmp, mnum);
+                break;
+            }
+        }
+    }
+
     /* keep special fields (including charges on wands) */
     if (ZP_CHARGED_CLASSES.has(otmp.oclass | 0))
         otmp.spe = obj.spe;
@@ -5294,9 +5337,14 @@ export async function poly_obj(obj, id) {
     otmp.cursed = obj.cursed;
     otmp.blessed = obj.blessed;
 
-    if (obj.oeroded)     otmp.oeroded = obj.oeroded;
-    if (obj.oeroded2)    otmp.oeroded2 = obj.oeroded2;
-    if (obj.oerodeproof) otmp.oerodeproof = obj.oerodeproof;
+    if (erosion_matters(otmp)) {
+        if (is_flammable(otmp) || is_rustprone(otmp) || is_crackable(otmp))
+            otmp.oeroded = obj.oeroded | 0;
+        if (is_corrodeable(otmp) || is_rottable(otmp))
+            otmp.oeroded2 = obj.oeroded2 | 0;
+        if (is_damageable(otmp))
+            otmp.oerodeproof = obj.oerodeproof | 0;
+    }
 
     /* C zap.c:1798-1802: otrapped and opoisoned alias the same bit
      * (obj.h:139), preserved only for boxes or poisonable weapons. */
@@ -5590,6 +5638,8 @@ export async function break_statue(obj) {
     return true;
 }
 
+/* C zap.c:1993-2110 stone_to_flesh_obj(): transform stone objects or animate
+ * statues/figurines, billing figurines and stopping timers before consumption. */
 const STF_ROCK_CLASS = 14, STF_TOOL_CLASS = TOOL_CLASS,
       STF_RING_CLASS = RING_CLASS, STF_WAND_CLASS = WAND_CLASS,
       STF_GEM_CLASS = 13, STF_WEAPON_CLASS = WEAPON_CLASS;
@@ -5609,12 +5659,10 @@ async function stone_to_flesh_obj(obj) {
     if (obj_resists(obj, 2, 98))
         return 0;
 
-    /* get_obj_location() uses the hero's square for carried objects.  The
-     * inventory arm is legal specifically because otmp is Stone to Flesh;
-     * using an absent inventory ox/oy would redraw (and animate) at (0,0). */
     const carried = (obj.where | 0) === ZP_OBJ_INVENT;
-    const oox = carried ? (game.u?.ux | 0) : (obj.ox | 0);
-    const ooy = carried ? (game.u?.uy | 0) : (obj.oy | 0);
+    const xp = { value: 0 }, yp = { value: 0 };
+    get_obj_location(obj, xp, yp, 0);
+    const oox = xp.value, ooy = yp.value;
     let smell = false;
     const oclass = obj.oclass | 0, otyp = obj.otyp | 0;
     switch (oclass) {
@@ -5646,7 +5694,17 @@ async function stone_to_flesh_obj(obj) {
                 mon = ptr ? await makemon(ptr, oox, ooy,
                     NO_MINVENT | MM_NOMSG) : null;
                 if (mon) {
-                    _zp_delobj(obj);
+                    if (costly_spot(oox, ooy)
+                        && (carried ? obj.unpaid : !obj.no_charge)) {
+                        const shkp = shop_keeper(in_rooms(oox, ooy, SHOPBASE)[0]);
+                        await stolen_value(obj, oox, ooy, !!shkp?.mpeaceful, false);
+                    }
+                    if (obj.timed)
+                        obj_stop_timers(obj);
+                    if (carried)
+                        await _destroy_useup(obj);
+                    else
+                        await delobj(obj);
                     if (cansee(mon.mx | 0, mon.my | 0))
                         await pline(`The figurine ${golem_xform
                             ? 'turns to flesh and ' : ''}animates!`);
@@ -6290,6 +6348,59 @@ function _zap_rloc_engr(x, y) {
     make_engr_at(tx, ty, e.text, e.pristine, 0, e.engr_type);
     newsym(tx, ty);
 }
+/* C zap.c:3087 zap_steed(obj) — wand or spell zapped down while riding.
+ * Returns FALSE if the steed was not hit by the wand. */
+async function zap_steed(obj) {
+    const g = game;
+    let steedhit = false;
+    g.bhitpos = { x: g.u.usteed.mx, y: g.u.usteed.my };
+    (g.gn ||= {}).notonhead = false;
+    g.notonhead = false;
+    switch (obj.otyp | 0) {
+    case WAN_PROBING:
+        await probe_monster(g.u.usteed);
+        learnwand(obj);
+        steedhit = true;
+        break;
+    case WAN_TELEPORTATION:
+    case SPE_TELEPORT_AWAY: {
+        const u = g.u;
+        await tele();
+        const control = u.uprops?.[TELEPORT_CONTROL];
+        const stunned = u.uprops?.[STUNNED]?.intrinsic;
+        if (((control?.intrinsic || control?.extrinsic) && !stunned)
+            || !couldsee(u.ux0, u.uy0)
+            || dist2(u.ux, u.uy, u.ux0, u.uy0) >= 16)
+            learnwand(obj);
+        steedhit = true;
+        break;
+    }
+    case 386 /* SPE_CURE_SICKNESS */:
+    case WAN_MAKE_INVISIBLE:
+    case WAN_CANCELLATION:
+    case SPE_CANCELLATION:
+    case WAN_POLYMORPH:
+    case SPE_POLYMORPH:
+    case WAN_STRIKING:
+    case SPE_FORCE_BOLT:
+    case WAN_SLOW_MONSTER:
+    case SPE_SLOW_MONSTER:
+    case WAN_SPEED_MONSTER:
+    case SPE_HEALING:
+    case SPE_EXTRA_HEALING:
+    case SPE_DRAIN_LIFE:
+    case WAN_OPENING:
+    case SPE_KNOCK:
+        await bhitm(g.u.usteed, obj);
+        steedhit = true;
+        break;
+    default:
+        steedhit = false;
+        break;
+    }
+    return steedhit;
+}
+
 /* C dungeon.h:132 Is_qstart(x) = Lcheck(x, &qstart_level).  js/cmd.js's own
  * _Is_qstart is file-local (not exported), so this re-derives the same
  * dnum/dlevel compare from game.qstart_level, the published field js/cmd.js
@@ -6485,8 +6596,12 @@ export async function weffects(obj) {
     /* C zap.c:3429: disclose stays FALSE unless a branch sets it (steed or the
      * directional RAY/spell else-branch); IMMEDIATE and NODIR do NOT disclose. */
     let disclose = false;
+    /* C zap.c:3437-3439: a steed zapped from above (dz > 0) is hit via zap_steed. */
     const dir = oc_dir_of(otyp);
-    if (dir === IMMEDIATE) {
+    if (g.u.usteed && dir !== NODIR && !(g.u.dx | 0) && !(g.u.dy | 0)
+        && (g.u.dz | 0) > 0 && await zap_steed(obj)) {
+        disclose = true;
+    } else if (dir === IMMEDIATE) {
         const udz = (g.u.dz | 0);
         zapsetup();                       /* C zap.c:3437 — reset obj_zapped */
         if (g.u.uswallow) {

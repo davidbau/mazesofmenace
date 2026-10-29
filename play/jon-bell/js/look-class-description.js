@@ -145,8 +145,10 @@ export function collectScreenDescriptionClasses(options = {}) {
     const otherOff = 190;
     if (options.glyphKind === 'invisible' || (selected.ch === 'I' && !selected.dec))
         add(options.blind ? 'unseen creature' : 'remembered, unseen, creature');
-    const isNothing = options.glyphKind === 'nothing' || matches(otherOff, ' ');
-    const isUnexplored = options.glyphKind === 'unexplored' || matches(otherOff + 1, ' ');
+    // pager.c:1419-1431: the symbol arms need `looked`; a typed one has no glyph.
+    const looked = options.looked !== false;
+    const isNothing = options.glyphKind === 'nothing' || (looked && matches(otherOff, ' '));
+    const isUnexplored = options.glyphKind === 'unexplored' || (looked && matches(otherOff + 1, ' '));
     if (isNothing) add('the dark part of a room', { plain: true });
     if (isUnexplored) add(options.submerged ? 'land' : 'unexplored', { plain: true });
 

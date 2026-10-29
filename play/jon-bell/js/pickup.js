@@ -24,7 +24,7 @@ import {
     force_more, topl_park_cursor, topl_force_break_after, You_see,
     _topline_more_pending, _more_never_dismissed, flush_pending_messages,
 } from './display.js';
-import { pline_with_more, money_cnt, build_window_screen, tty_window_offx } from './com_pager.js';
+import { pline_with_more, money_cnt, build_window_screen, tty_window_offx, menu_search_case } from './com_pager.js';
 import { menu_heading_text } from './tty_menu.js';
 import { autokey, pick_lock, getdir, u_have_forceable_weapon } from './lock.js';
 import { boxlock } from './lock.js';
@@ -482,10 +482,15 @@ async function doloot_core() {
     /* C's `lootcont:` label sits above the container block and the lootmon
      * branch jumps BACK to it when the player directs at their own square and
      * a container is there; a labelled loop is the transliteration. */
+    /* C pickup.c:2210-2211 — an `m` prefix (iflags.menu_requested) jumps
+     * straight to lootmon, skipping the container block on the first pass. */
+    let skipConts = !!g.iflags?.menu_requested;
     lootcont:
     for (;;) {
-        /* C pickup.c:2211 — container(s) at cc? */
-        const numConts = container_at(cc.x, cc.y, true);
+        /* C pickup.c:2214 — container(s) at cc? */
+        const jumped = skipConts;
+        const numConts = jumped ? 0 : container_at(cc.x, cc.y, true);
+        skipConts = false;
         if (numConts > 0) {
             if (!(await able_to_loot(cc.x, cc.y, true)))
                 return ECMD_OK;
@@ -551,7 +556,7 @@ async function doloot_core() {
                 }
                 if (anyfound) c = 'y';
             }
-        } else if (IS_GRAVE(game.level?.at?.(cc.x, cc.y)?.typ)) {
+        } else if (!jumped && IS_GRAVE(game.level?.at?.(cc.x, cc.y)?.typ)) {
             /* C pickup.c:2288 */
             await pline("You need to dig up the grave to effectively loot it...");
         }
@@ -1093,13 +1098,17 @@ const _QO_SELECT_ALL = 0x2e /* '.' */, _QO_UNSELECT_ALL = 0x2d /* '-' */,
 async function _select_menu(items, how, paint = null) {
     let page = 0;
     let pendingCount = 0n;
+    /* wintty.c:1704-1730 MENU_SEARCH: the getlin blanks row 0, and the page is
+     * not repainted afterwards, so the title stays erased (see
+     * pickup_container.js titleErased). */
+    let titleErased = false;
     for (;;) {
         /* wintty.c tty_end_menu: a menu taller than the terminal paginates at
          * rows-1 (23) content rows with a "(N of M)" footer; each page is a
          * full-screen window and bare selectors apply to the visible page. */
         let pageStart = 0, pageEnd = items.length, pageCount = 1;
         if (paint) {
-            const all = [`\x1b[7m${paint.title}\x1b[0m`, ''];
+            const all = [titleErased ? '' : `\x1b[7m${paint.title}\x1b[0m`, ''];
             let lastHeading = null;
             for (const it of items)
             {
@@ -1172,6 +1181,17 @@ async function _select_menu(items, how, paint = null) {
             if (k === 32) return false; /* space finishes on the last page */
             continue;
         }
+        if (k === 0x3a /* ':' MENU_SEARCH */) {
+            /* C wintty.c:1700-1730 — getlin, "*%s*", pmatchi on "%c - %s". */
+            const finished = await menu_search_case(
+                how === PICK_ONE ? 'ONE' : 'ANY',
+                items.map((it) => ({ str: `${it.sel} - ${it.text}`, it })),
+                () => String(game._screen_output).split('\n'),
+                (curr) => { curr.it.selected = !curr.it.selected; });
+            titleErased = true;
+            if (finished) return false;
+            continue;
+        }
         if (k === 60 /* < */) { if (page > 0) page--; continue; }
         if (k === 94 /* ^ */) { page = 0; continue; }
         if (k === 124 /* | */) { page = pageCount - 1; continue; }
@@ -1197,7 +1217,10 @@ async function _select_menu(items, how, paint = null) {
             if (how === PICK_ONE) return false;
             continue;
         }
-        /* wintty.c:1735-1739 — unacceptable input rings the bell; menu stays up. */
+        /* wintty.c:1735-1739 — unacceptable input rings the bell; menu stays up.
+         * The bell is inside xwaitforspace (getline.c:250-254), so a live
+         * count survives it (wintty.c:1396 reset_count stays FALSE). */
+        pendingCount = BigInt(count);
     }
 }
 
@@ -1813,6 +1836,11 @@ async function _yn_count_tail(qbuf) {
     const g = game;
     let text = qbuf + ' #';
     let value = 0, n_len = 1;
+    if (g._yn_lead_digit !== undefined) { /* topl.c:486-489 */
+        value = g._yn_lead_digit;
+        text += String(value); n_len++;
+        g._yn_lead_digit = undefined;
+    }
     for (;;) {
         g._pending_message = text;
         await flush_screen(1);
@@ -1980,11 +2008,11 @@ async function _pickup_old_style(objchain, traverse_how, count) {
                 yn_number = await _yn_count_tail(`${base} [${rs}] (y)`);
                 if (yn_number < 0) { sym = 'n'; yn_number = 0; }
             }
-            if (sym === 'q' || sym === '\x1b') return { n_tried, n_picked };
-            /* topl.c clean_up leaves the answered prompt on row 0 until
-             * parse()'s clear_nhwindow; nhgetch dropped _pending_message. */
+            /* topl.c:533-550 clean_up leaves the prompt on row 0 even for
+             * 'q', until parse()'s clear_nhwindow; nhgetch dropped it. */
             if (base.length + rs.length + 8 <= 79)
                 g._topl_sticky = `${base} [${rs}] (y)`;
+            if (sym === 'q' || sym === '\x1b') return { n_tried, n_picked };
             if (sym === 'n') continue;
             if (sym === 'a') {
                 all_of_a_type = true;

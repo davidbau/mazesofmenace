@@ -1891,9 +1891,8 @@ export async function m_move(mtmp, after) {
     /* C monmove.c:1785: set_apparxy(mtmp) */
     set_apparxy(mtmp);
 
-    /* C monmove.c:1793-1798: wormno goto not_special (worms skip tame/covetous check) */
-    /* C monmove.c:1796-1799: if (mtmp->mtame) → dog_move */
-    if (mtmp.mtame | 0) {
+    /* C monmove.c:1769-1773: wormno skips special movement, including dog_move. */
+    if (!(mtmp.wormno | 0) && (mtmp.mtame | 0)) {
         /* C: return postmov(mtmp, ptr, omx, omy, dog_move(mtmp, after), ...) */
         const res = await dog_move(mtmp, after);
         const _pdidsee = res === MMOVE_MOVED_MV && !!cansee(mtmp.mx | 0, mtmp.my | 0);

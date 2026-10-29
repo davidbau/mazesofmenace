@@ -279,7 +279,9 @@ import { W_ARMG as W_ARMG_MU } from './const.js';
 import { couldsee as couldsee_mu } from './vision.js';
 import { dist2, s_suffix } from './hacklib.js';
 import { acurr } from './attrib.js';
-import { calc_capacity } from './weight.js';
+import { calc_capacity, weight as weight_mu } from './weight.js';
+import { is_flammable as is_flammable_mu } from './mklev.js';
+import { bhp_is_lava as bhp_is_lava_mu } from './cmd.js';
 import { rnl } from './rng.js';
 import { BLINDED, STUNNED, FUMBLING, A_INT, A_DEX, A_CON } from './const.js';
 /* prop ids for the youprop.h macro block above (const.js:2310-2361). */
@@ -3135,14 +3137,15 @@ async function mhitm_ad_ston_u(mtmp, mattk, mhm) {
     await hitmsg(mtmp, mattk);
     if (!rn2(3)) {
         if (mtmp.mcan) {
-            if (!Deaf_mu()) pline(`You hear a cough from ${uhitm_mon_nam(mtmp)}!`);
+            if (!Deaf_mu()) await You_hear(`a cough from ${uhitm_mon_nam(mtmp)}!`);
         } else {
-            /* C:4232-4241 */
+            /* C uhitm.c:4217-4226 uses You_hear, including its Unaware
+             * dream wording and underwater/acoustics handling. */
             if (Hallucination(game) && !Blind_mu()) {
-                pline("You hear hissing.");
+                await You_hear("hissing.");
                 pline(`${Monnam(mtmp)} appears to be blowing you a kiss...`);
             } else if (!Deaf_mu()) {
-                pline(`You hear ${s_suffix_mu(uhitm_mon_nam(mtmp))} hissing!`);
+                await You_hear(`${s_suffix_mu(uhitm_mon_nam(mtmp))} hissing!`);
             } else if (!Blind_mu()) {
                 pline(`${Monnam(mtmp)} seems to grimace.`);
             }
@@ -5184,7 +5187,7 @@ async function return_from_mtoss(magr, otmp, tethered_weapon) {
                           + `${mon_nam_uh(magr)}, landing at ${mhis(magr)} `
                           + `${makeplural(mbodypart_mu(magr, FOOT_MU))}.`);
                 } else if (!Deaf_mu()) {
-                    You_hear_mu(`something land near ${mon_nam_uh(magr)}.`);
+                    You_hear_mu(`Something land near ${mon_nam_uh(magr)}.`);
                 }
             } else {
                 dmg += rnd(3);
@@ -5231,7 +5234,14 @@ async function return_from_mtoss(magr, otmp, tethered_weapon) {
                 place_object(otmp, x, y);
                 await stackobj(otmp);
             }
-            /* C:952-960 — sound effects and obj_sheds_light: GAP, RNG-free. */
+            /* C:952-958 sound effects when the item lands in water or lava */
+            if (!Deaf_mu() && !_Underwater_mu()) {
+                if (is_pool_mu(x, y)
+                    || (bhp_is_lava_mu(x, y) && !is_flammable_mu(otmp))) {
+                    await pline((weight_mu(otmp) > 9) ? 'Splash!' : 'Plop!');
+                }
+            }
+            /* C:959-960 obj_sheds_light: GAP, RNG-free. */
         }
     }
     /* C:963-964 */

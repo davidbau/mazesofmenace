@@ -310,7 +310,7 @@ function is_clinger_(ptr) { return (((ptr?.mflags1 | 0) >>> 0) & M1_CLING_) !== 
 function ceiling_hider_(ptr) {
     return !!(ptr?.mflags1 & 0x00000100) && ((is_clinger_(ptr) && ptr.mlet !== 13) || is_flyer_(ptr));
 }
-function humanoid_(ptr) { return (((ptr?.mflags1 | 0) >>> 0) & 0x00000400) !== 0; }
+function humanoid_(ptr) { return (((ptr?.mflags1 | 0) >>> 0) & 0x00020000) !== 0; }
 function u_at_(x, y) { return (game.u.ux | 0) === x && (game.u.uy | 0) === y; }
 /* hero's own data: u.umonnum when polymorphed, else the player monster */
 function youdata_() { return game.youmonst?.data ?? game.u?.data ?? null; }

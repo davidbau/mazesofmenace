@@ -20,7 +20,7 @@ import { NO_COLOR, CLR_WHITE } from './terminal.js';
 import { pmatchi } from './strutil.js';
 import { menu_heading_text } from './tty_menu.js'; /* C strutil.c:151 — MENU_SEARCH's matcher */
 // putmsghistory: feed the quest synopsis into the ^P message-history ring.
-import { putmsghistory, tty_getlin_prompt, _strengthStr, force_more, force_more_pages, await_more_dismiss,
+import { putmsghistory, tty_getlin_prompt, _strengthStr, force_more, force_more_pages, await_more_dismiss, docorner_blank_utf8_captures,
          await_topl_more_dismiss, pline_flush_point,
          botl_pmname, botl_upstart_words, botl_mon_mlevel, botl_title, botl_status1_tail, botl_frozen_status_line,
          gold_status_char, dec_mode, generic_symset, rogue_graphics, rogue_hero_showrace_cell, rogue_ibm_color, botl_status_suffix, fit_status_line_width, status_row_finish, _statusRows3, _threeStatusLines, docrt_flags, flush_screen, use_last_flush_snapshot, hitpointbar_status1, _hilite_status_wrap, _status_sgr, _status_row1_map_overlay, _status_row1_whole_with_tail } from './display.js';
@@ -987,7 +987,11 @@ function _statusLine2Raw(uacOverride, pwOverride) {
          * now: seffect_charging's useup() drops the scroll's weight before the
          * getobj menu opens, but nothing has SET_BOTL'd yet, so C keeps
          * " Burdened" on the inventory pages. */
-        s += botl_status_suffix(u.uhs | 0, g._botlPaintedCap);
+        /* Slimed likewise: timeout.c:654's countdown clears it without SET_BOTL, so the
+         * window leaves the painted Slime on the line until the next bot(). */
+        s += botl_status_suffix(u.uhs | 0, g._botlPaintedCap, undefined, undefined, undefined,
+                                undefined, undefined, undefined, undefined, undefined,
+                                g._botlPaintedSlimed != null ? !!g._botlPaintedSlimed : undefined);
         return status_row_finish(s);
     } finally {
         game._botlPreInv = false;
@@ -1111,6 +1115,8 @@ export async function topl_more_page(msg, uacAtCapture) {
             } else { disp.cursorCol = 8; disp.cursorRow = 1; }
         }
     });
+    // C topl.c:237-239 restores the rows covered by a multiline message.
+    if (!inlineMore) docorner_blank_utf8_captures(1, 2);
     // Clear message after --More-- dismissed
     g._pending_message = '';
     return morc;
@@ -1179,6 +1185,8 @@ export async function com_pager_legacy(pauper = false, preInitAc = 0, preInitPw 
     };
     await _show();
     await await_more_dismiss(_show);
+    if (!fullScreen)
+        docorner_blank_utf8_captures(WIN_COL - 1, windowLines.length);
     if (g._map_blanked && !fullScreen)
         g._map_corner = { xmin: WIN_COL, ymax: windowLines.length };
     // C ref: questpgr.c:597-608 com_pager_core — after deliver_by_window, the
@@ -1397,6 +1405,9 @@ export async function menu_search_getlin(frameRows) {
     const query = 'Search for:';
     let buf = '';
     const prompt = tty_getlin_prompt(query);
+    /* C ref: getline.c:63 custompline() -> vpline() pline.c:282 strncpy(gp.prevmsg)
+     * runs for the prompt too, so a later Norep() of an older message reprints. */
+    g._prevmsg = query + ' ';
     /* C ref: getline.c:50,106-137 — ^P recall state: `doprev` and the text the
      * recalled message left on the topline (null when the prompt is showing). */
     let doprev = false, recall = null, prevIdx = 0;
@@ -1470,7 +1481,19 @@ export async function menu_search_getlin(frameRows) {
     /* C ref: getline.c:213 clear_nhwindow(WIN_MESSAGE) — row 0 goes blank, and
      * the caller must keep it blank because the menu is not repainted. */
     remember(query + ' ' + buf);
+    /* clear_nhwindow(WIN_MESSAGE) -> docorner(1, cury + 1, 0) (wintty.c:1047-1056)
+     * when the typed text wrapped: rows 1..cury lose the menu text. */
+    g._menu_search_wrapped = prompt.rowsWrapped();
     return buf;
+}
+
+/* C ref: wintty.c:1047-1056 tty_clear_nhwindow(WIN_MESSAGE) -> docorner(1, cury + 1, 0):
+ * rows 1..cury, which the wrapped "Search for:" text overwrote, are cleared from
+ * column 1 and repainted from the map (the menu text on them does not return). */
+export function menu_search_docorner(rows) {
+    for (let r = 1; r <= (game._menu_search_wrapped | 0) && r < rows.length; r++)
+        rows[r] = render_map_row_clipped(r - 1, COLNO - 1).str;
+    return rows;
 }
 
 /* C ref: wintty.c:1700-1730 MENU_SEARCH, the whole case, for a menu whose

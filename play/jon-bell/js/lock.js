@@ -34,7 +34,7 @@ import { CQ_REPEAT, CQ_CANNED, CMDQ_DIR, CMDQ_KEY, NHKF_GETDIR_HELP, NHKF_GETDIR
 import { impossible } from './pline.js';
 import { pline, force_more, newsym, feel_newsym, flush_screen, docrt_flags, _darken_room_floor, show_glyph_cell, canseemon, You_hear, Unaware } from './display.js';
 import { mb_trapped } from './dig.js';
-import { capture_pre_movemon_botl, _topl_joins_snapshot } from './display.js';
+import { capture_pre_movemon_botl, _topl_joins_snapshot, commit_force_messages } from './display.js';
 import { topl_park_cursor, putmsghistory, feel_location, flush_pending_messages, _topl_stash_result } from './display.js';
 import { block_point, recalc_block_point, vision_recalc, unblock_point } from './vision.js';
 import { nhgetch } from './input.js';
@@ -1225,26 +1225,9 @@ async function chest_shatter_msg(otmp) {
         const form = _hero_mflags1_lk();
         if ((form & 0x00000400 /* M1_BREATHLESS */) && (form & 0x00001000 /* M1_NOEYES */)) return;
         /* C lock.c:1286 — potionbreathe(otmp) (hero not breathless/has eyes). */
-        /* potionbreathe()'s plines go straight to the topline, but the force
-         * messages are staged and merged later; move what it printed into the
-         * stage so generation order (succeed, destroyed, shatter, dizzy) holds. */
-        const res0 = game._resultMessage ?? null;
-        const before = game._pending_message || '';
-        const beforeJoins = _topl_joins_snapshot(before);
+        commit_force_messages();
         game._forceBotl = capture_pre_movemon_botl();
         await potionbreathe(otmp);
-        /* pline() may have folded the committed result into the live line. */
-        const after = game._pending_message || '';
-        const prefix = [res0, before].filter(Boolean).join('  ');
-        if (after.startsWith(prefix) && after.length > prefix.length) {
-            game._resultMessage = res0;
-            game._pending_message = before;
-            if (beforeJoins) {
-                game._topl_joins = beforeJoins;
-                game._topl_joins_src = before;
-            }
-            _forceEmit(after.slice(prefix.length).trim(), game._forceBotl);
-        }
         return;
     }
     const uprops = (game.u && game.u.uprops) ? game.u.uprops : null;

@@ -23,7 +23,7 @@ const BEARTRAP = 244;
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import corpseData from './eat_corpse_data.json' with { type: 'json' };
 import { FOOD_PROPS } from './food_props.js';
-import { pline, canseemon, canspotmon, nh_sprintf, newsym, You_hear,
+import { pline, canseemon, canspotmon, nh_sprintf, newsym, You_hear, You_feel,
          Deaf as hero_Deaf, livelog_printf, retouch_equipment, flush_pending_messages,
          _topl_merge_result, _topl_joins_snapshot, _topl_stash_result,
          _topl_record_join, capture_painted_frame_with_status, bot, urgent_pline,
@@ -110,7 +110,7 @@ import { polymon, rehumanize, still_chewing, polyself } from './polyself.js';
 import { toggle_displacement } from './do_wear.js';
 import { fingers_or_gloves } from './do_wear.js';
 import { b_trapped } from './lock.js';
-import { NO_PART, FIXED_ABIL } from './const.js';
+import { NO_PART, FIXED_ABIL, NOSE } from './const.js';
 import { self_invis_message, make_hallucinated, make_glib, make_vomiting, make_sick, vomit, make_slimed } from './potion.js';
 /* C cmd.c:206 set_occupation(fn, txt, xtime) — js/cmd.js holds the one body;
  * js/lock.js already imports it the same way (cmd.js -> eat.js is an existing
@@ -127,7 +127,7 @@ import { Monnam } from './mcastu.js';
 import { mon_nam } from './uhitm.js';
 import { s_suffix } from './mhitm.js';
 import { SICK_VOMITABLE } from './const.js';
-import { corpse_xname, xname as xname_eat, singular, objName, Tobjnam as Tobjnam_eat, an as an_eat } from './objnam.js';
+import { corpse_xname, CXN_SINGULAR, CXN_ARTICLE, xname as xname_eat, singular, objName, Tobjnam as Tobjnam_eat, an as an_eat } from './objnam.js';
 import { mondied } from './makemon.js';
 import { OC_WEIGHT } from './oc_weight.generated.js';
 import { obj_is_pname, getObjDescr } from './objnam.js';
@@ -529,7 +529,7 @@ async function doeat_nonfood(otmp) {
     }
     let nodelicious = false;
     if (otmp.cursed) {
-        rottenfood(otmp);
+        await rottenfood(otmp);
         nodelicious = true;
     } else if (material === 5) nodelicious = true;
     if (otmp.oclass === 2 && otmp.opoisoned) {
@@ -572,8 +572,8 @@ export async function doeat() {
     if (u.uedibility) {
         const res = await _edibility_prompts(otmp);
         if (res) {
-            /* body_part(NOSE) inlined (cmd.js import would cycle) */
-            _emit_eat_pline('Your nose stops tingling and your sense of smell returns to normal.');
+            /* C eat.c:2838-2840 names the current form's body part. */
+            _emit_eat_pline(`Your ${body_part(NOSE)} stops tingling and your sense of smell returns to normal.`);
             u.uedibility = 0;
             if (res === 1) return ECMD_OK;
         }
@@ -638,7 +638,7 @@ export async function doeat() {
     /* C eat.c:2891-2900 — slow digestion cannot be digested. */
     if (otmp.otyp === RIN_SLOW_DIGESTION) {
         await pline('This ring is indigestible!');
-        rottenfood(otmp);
+        await rottenfood(otmp);
         if (otmp.dknown) await trycall(otmp);
         return ECMD_TIME;
     }
@@ -1645,7 +1645,7 @@ export async function eat_brains(magr, mdef, visflag, dmg_p) {
             if (pending_death_is_final())
                 return result;
             abase[di_int] = 3 + 2;
-            await pline("You feel like a scarecrow.");
+            await You_feel("like a scarecrow."); /* eat.c:719; "You dream that..." when Unaware */
         }
         give_nutrit = true;
         exercise(A_WIS, false);
@@ -2100,6 +2100,12 @@ function _emit_eat_pline(msg) {
     /* C pline.c:282: every emitted food message replaces gp.prevmsg with
      * that message, so a later Norep sees it rather than a stale warning. */
     game._prevmsg = String(msg);
+    /* C pline.c:266-272 vpline(): vision_recalc runs BEFORE flush_screen and
+     * putmesg, so the frame a --More-- from this message freezes carries the
+     * post-recalc view (a dwarf's dig this turn lit the squares and showed the
+     * gnome lord; stop_occupation's "You finish eating" paged before it moved). */
+    if (game.vision_full_recalc && !game._topl_win_stop && !game._topl_win_stop_armed)
+        vision_recalc(0);
     /* C eat.c:2002 prints corpse flavor synchronously, before touchfood/
      * consumption and encumbrance updates.  Preserve that physical frame for
      * the later occupation pager; other eating messages retain the normal path. */
@@ -2223,26 +2229,29 @@ export function Hear_again() {
     return 0;
 }
 
-function rottenfood(obj) {
+async function rottenfood(obj) {
+    /* C eat.c:1815-1844 uses vpline: MSGTYP_STOP blocks before the
+     * following effect or RNG draw (pline.c:283-284).  The queued food
+     * emitter cannot provide that ordering; use the shared awaited pline. */
     /* C eat.c:1815-1816: this pline flushes before the rotten-food effects,
      * just as the ordinary corpse-flavor pline does at eat.c:2002. */
     game._eatPreEffectFrame = capture_painted_frame_with_status();
     /* C eat.c:1815-1816 pline("Blecch!  %s %s!", ...) */
-    _emit_eat_pline(`Blecch!  ${_is_rottable(obj) ? 'Rotten' : 'Awful'} ${_foodword(obj)}!`);
+    await pline(`Blecch!  ${_is_rottable(obj) ? 'Rotten' : 'Awful'} ${_foodword(obj)}!`);
     if (!rn2(4)) { /* C eat.c:1817 */
         /* C eat.c:1818-1821 */
-        _emit_eat_pline(_eat_Hallucination()
+        await pline(_eat_Hallucination()
             ? 'You feel rather trippy.'
             : 'You feel rather light headed.');
-        make_confused_shared(_eat_HConfusion() + d(2, 4), false); /* C eat.c:1822 */
+        await make_confused_shared(_eat_HConfusion() + d(2, 4), false); /* C eat.c:1822 */
     } else if (!rn2(4) && !_eat_Blind()) { /* C eat.c:1823 */
-        _emit_eat_pline('Everything suddenly goes dark.'); /* C eat.c:1824 */
+        await pline('Everything suddenly goes dark.'); /* C eat.c:1824 */
         /* C eat.c:1828 make_blinded(BlindedTimeout + (long) d(2,10), FALSE) */
         /* make_blinded(), rather than the timer-only compatibility helper,
          * also runs toggle_blindness() and vision_recalc().  C does that
          * before returning from rottenfood, so monsters which were visible
          * immediately before the first bite disappear on this same frame. */
-        make_blinded(_eat_BlindedTimeout() + d(2, 10), false);
+        await make_blinded(_eat_BlindedTimeout() + d(2, 10), false);
         /* toggle_blindness() repainted the map (potion.c:335-352) before the
          * --More-- that the next flush raises, so that page shows the blind map. */
         {
@@ -2251,7 +2260,7 @@ function rottenfood(obj) {
             if (_pre && _now) _pre.cells = _now.cells;
         }
         if (!_eat_Blind()) /* C eat.c:1829-1830 Your1(vision_clears) */
-            _emit_eat_pline('Your vision clears.');
+            await pline('Your vision clears.');
     } else if (!rn2(3)) { /* C eat.c:1830 */
         /* C eat.c:1831-1848 — the "world spins" knockout. */
         const duration = rnd(10); /* C eat.c:1833 */
@@ -2266,7 +2275,7 @@ function rottenfood(obj) {
             what = 'you slap against the';
             where = game.u?.usteed ? 'saddle' : surface(game.u.ux, game.u.uy);
         }
-        _emit_eat_pline(`The world spins and ${what} ${where}.`);
+        await pline(`The world spins and ${what} ${where}.`);
         /* C eat.c:1845-1846 incr_itimeout(&HDeaf, duration); disp.botl = TRUE.
          * HDeaf is u.HDeaf in this port — the same slot js/monmove.js:1762 and
          * js/cmd.js:8016 read for the Deaf macro.  RNG-free, but Hear_again
@@ -2434,7 +2443,7 @@ async function eatcorpse(otmp) {
     v.reqtime = 3 + ((!glob ? _cwtE(mnum) : (otmp.owt | 0)) >> 6);
 
     if (!tp && !_nonrotting_corpse(mnum) && ((otmp.orotten ? 1 : 0) || !rn2(7))) {
-        if (rottenfood(otmp)) {
+        if (await rottenfood(otmp)) {
             otmp.orotten = true;
             otmp = await touchfood(otmp); /* C eat.c:1951 */
             if (!otmp) return 1;
@@ -2847,7 +2856,10 @@ export function corpse_floor_xname(otmp) {
     if (q !== 1) return null; /* plural rendering not ported */
     let base = null;
     if ((otmp.otyp | 0) === CORPSE_OTYP) {
-        base = corpse_xname(otmp, null, 1 /* CXN_SINGULAR */);
+        /* C objnam.c:1505-1520: corpse_xname supplies the article and places
+         * adjectives after a possessive monster name (1824-1919). */
+        return corpse_xname(otmp, otmp.greased ? 'greased' : null,
+                            CXN_SINGULAR | CXN_ARTICLE);
     } else {
         base = FLOOR_FOOD_XNAME[otmp.otyp | 0] || null;
     }
@@ -3142,7 +3154,7 @@ export async function doeat_food(otmp) {
                     && ((game.moves | 0) - (otmp.age | 0)) > ((otmp.blessed ? 50 : 30))
                     && ((otmp.orotten ? 1 : 0) || !rn2(7))));
         if (rotten) {
-            if (rottenfood(otmp)) {
+            if (await rottenfood(otmp)) {
                 otmp.orotten = true;
                 dont_start = true;
             }
@@ -4695,7 +4707,15 @@ export async function You(line, ...args) {
         } else {
             const _pages = _topl_more_pages(prev, _topl_joins_snapshot(prev));
             const _prevJoins = _topl_joins_snapshot(prev) || [];
-            const _morc = await force_more(prev, undefined, false, true);
+            /* pline.c:273-277: this pline's flush_screen()/bot() runs before
+             * update_topl's more(), so a page it raises over the WHOLE standing
+             * line shows THIS instant's map and status (unfaint's FAINTING, the
+             * pet's move since the wake-up pline), not the wake-up's frame. */
+            _pline_flush_frame_record(prev.length, msg);
+            game._moreFullCtx = { full: prev + '  ' + msg, start: 0 };
+            let _morc;
+            try { _morc = await force_more(prev, undefined, false, true); }
+            finally { game._moreFullCtx = null; }
             if (_morc === 27 && _pages && _pages.length >= 2
                 && !game._pending_message) {
                 const _lastPage = String(_pages[_pages.length - 1] || '');
@@ -4843,6 +4863,9 @@ export async function floorfood(verb, corpsecheck) {
                 }
                 return beartrap;
             } else if (c === 'q') {
+                const prompt = qbuf + " [ynq] (n)";
+                if (topl_park_cursor(null, prompt + ' ')[1] === 0)
+                    g._resultMessage = g._ynStaleTopline = prompt;
                 return null;
             }
             ++g.getobj_else;

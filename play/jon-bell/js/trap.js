@@ -1,4 +1,8 @@
 import { montraits, blank_novel, fracture_rock } from './zap.js';
+import { delete_contents, make_angry_shk, currency } from './shk.js';
+import { inside_shop, wake_nearby } from './mklev.js';
+import { Tobjnam } from './objnam.js';
+import { unpunish } from './dig.js';
 import { rloco } from './steal.js';
 import { add_to_migration } from './mklev.js';
 import { random_teleport_level, get_level } from './cmd.js';
@@ -624,8 +628,12 @@ export async function chest_trap(obj, bodypart, disarm) {
     const gm = game.gm || {};
     const gn = game.gn || {};
     const gy = game.gy || {};
-    /* Update obj location from level objects if possible (obj might be carried) */
-    /* C: get_obj_location(obj, &cc.x, &cc.y, 0) — no RNG */
+    /* C trap.c:6304-6305: the cloud originates at the chest, even if carried. */
+    const x = { value: 0 }, y = { value: 0 };
+    if (get_obj_location(obj, x, y, 0)) {
+        obj.ox = x.value;
+        obj.oy = y.value;
+    }
     obj.tknown = 0; /* for xname(); will be set to 1 below */
     obj.otrapped = 0; /* trap is one-shot */
     /* C: You(disarm ? "set it off!" : "trigger a trap!") — no RNG */
@@ -674,41 +682,46 @@ export async function chest_trap(obj, bodypart, disarm) {
         }
         /* Dispatch on inner, mirroring C switch fall-through */
         if (inner >= 21 && inner <= 25) {
-            /* Explosion: cases 21-25 */
-            /* C: pline("%s!", Tobjnam(obj, "explode")) — no RNG */
-            /* C: costly_spot / stolen_value / delete_contents / wake_nearby — no RNG */
-            /* RNG 5: d(6,6) explosion damage */
-            const dmg = d(6, 6);
-            void dmg; /* C: losehp(Maybe_Half_Phys(dmg), buf, KILLED_BY_AN) */
-            /* C: exercise(A_STR, FALSE) — no RNG */
+            /* C trap.c:6352-6413: explosion lifecycle, superseding the stub notes above. */
+            const ox = obj.ox, oy = obj.oy, room = in_rooms(ox, oy, SHOPBASE)[0];
+            const shkp = costly_spot(ox, oy) ? shop_keeper(room) : null;
+            const insider = u.ushops && inside_shop(u.ux, u.uy) && room === u.ushops.charCodeAt(0);
+            let loss = 0, chestgone = false;
+            await pline('%s!', Tobjnam(obj, 'explode')); const buf = `exploding ${xname(obj)}`;
+            if (shkp) loss += await stolen_value(obj, ox, oy, !!shkp.mpeaceful, true);
+            await delete_contents(obj);
+            if (_tr_Punished() && ((u.uchain?.ox === ox && u.uchain?.oy === oy)
+                || (u.uball.where === OBJ_FLOOR && u.uball.ox === ox && u.uball.oy === oy))) await unpunish();
+            for (let otmp = game.level.levelObjects[ox][oy], next; otmp; otmp = next) {
+                next = otmp.nexthere;
+                if (shkp) loss += await stolen_value(otmp, otmp.ox, otmp.oy, !!shkp.mpeaceful, true);
+                if (otmp === obj) chestgone = true;
+                await delobj(otmp);
+            }
+            wake_nearby(false); await losehp(Maybe_Half_Phys_lo(d(6, 6)), buf, KILLED_BY_AN);
             exercise(A_STR, false);
-            /* C: if chestgone return TRUE */
-            /* We cannot know if chest was destroyed without full obj-list walk,
-             * so conservatively return false (safe: caller holds ref to obj).
-             * A full implementation would walk level.objects[ox][oy]. */
-            obj.tknown = 1;
-            await bot();
-            return false;
+            if (shkp && loss) {
+                if (insider) await You('owe %d %s for objects destroyed.', loss, currency(loss));
+                else { await You('caused %d %s worth of damage!', loss, currency(loss)); await make_angry_shk(shkp, ox, oy); }
+            }
+            if (chestgone) return true;
         }
         else if (inner >= 17 && inner <= 20) {
-            /* Noxious gas cloud: cases 17-20 */
-            /* C: pline("A cloud of noxious gas billows from %s.", ...) — no RNG */
-            /* RNG 6: rn2(3) — poison or create_gas_cloud */
+            /* C trap.c:6418-6424: announce gas before applying its effect. */
+            await pline('A cloud of noxious gas billows from %s.', the(xname(obj)));
             if (rn2(3)) {
-                /* C: poisoned("gas cloud", A_STR, ...) — no RNG in itself */
-                void A_STR;
+                await poisoned('gas cloud', A_STR, 'cloud of poison gas', 15, false);
             }
             else {
-                /* C: create_gas_cloud(obj->ox, obj->oy, 1, 8) — no RNG */
+                create_gas_cloud(obj.ox, obj.oy, 1, 8);
             }
             /* C: exercise(A_CON, FALSE) — no RNG */
             exercise(A_CON, false);
         }
         else if (inner >= 13 && inner <= 16) {
-            /* Poisoned needle: cases 13-16 */
-            /* C: You_feel("a needle prick your %s.", body_part(bodypart)) — no RNG */
-            /* C: poisoned("needle", A_CON, ...) — no RNG */
-            void bodypart;
+            /* C trap.c:6430-6432: poisoned() also reports resisted poison. */
+            await You_feel('a needle prick your %s.', body_part(bodypart));
+            await poisoned('needle', A_CON, 'poisoned needle', 10, false);
             exercise(A_CON, false);
         }
         else if (inner >= 9 && inner <= 12) {
@@ -2921,13 +2934,15 @@ export async function animate_statue(statue, x, y, cause, failReason) {
         let mmflags = NO_MINVENT | MM_NOMSG
             | (sgend === CORPSTAT_MALE ? MM_MALE : 0)
             | (sgend === CORPSTAT_FEMALE ? MM_FEMALE : 0);
-        if ((mnum === PM_DOPPELGANGER && mptr !== permonstTemplate(PM_DOPPELGANGER))
+        // C trap.c:776-785 preserves permonst identity; templates use pmidx,
+        // and newcham() expects that index rather than the template object.
+        if ((mnum === PM_DOPPELGANGER && mptr.pmidx !== PM_DOPPELGANGER)
             || ((mptr.msound | 0) === _STAT_MS_GUARDIAN
                 && quest_info(_STAT_MS_GUARDIAN) !== mnum)) {
             mmflags |= MM_NOCOUNTBIRTH | MM_ADJACENTOK;
             mon = await makemon(PM_DOPPELGANGER, x, y, mmflags);
             if (mon && ismnum(mon.cham | 0))
-                await newcham(mon, mptr, NO_NC_FLAGS);
+                await newcham(mon, mptr.pmidx, NO_NC_FLAGS);
         } else {
             if (cause === ANIMATE_SPELL)
                 mmflags |= MM_ADJACENTOK;
@@ -2960,7 +2975,7 @@ export async function animate_statue(statue, x, y, cause, failReason) {
         : 'comes to life';
 
     if (u_at(x, y) || cause === ANIMATE_SPELL) {
-        const shkp = shop_keeper((in_rooms(mon.mx | 0, mon.my | 0, 8 /* SHOPBASE */) || [])[0]);
+        const shkp = shop_keeper((in_rooms(mon.mx | 0, mon.my | 0, SHOPBASE) || [])[0]);
         const desc = (cause === ANIMATE_SPELL && (mon !== shkp || _stat_carried(statue)))
             ? xname(statue) : 'statue';
         const statuename = _stat_shk_your(statue) + desc;
@@ -2986,7 +3001,7 @@ export async function animate_statue(statue, x, y, cause, failReason) {
      * structurally dead for dotrap; kept for fidelity against other callers. */
     if (!(game.context && game.context.mon_moving)) {
         if (cause !== ANIMATE_NORMAL) {
-            const shkp2 = shop_keeper((in_rooms(x, y, 8 /* SHOPBASE */) || [])[0]);
+            const shkp2 = shop_keeper((in_rooms(x, y, SHOPBASE) || [])[0]);
             if (costly_spot(x, y)
                 && (_stat_carried(statue) ? statue.unpaid : !statue.no_charge)
                 && shkp2 && mon !== shkp2) {
@@ -3620,8 +3635,8 @@ async function trapeffect_arrow_trap(trap, trflags) {
     seetrap(trap);
     await pline('An arrow shoots out at you!');
     const otmp = await t_missile(OTYP_ARROW, trap);
-    /* C trap.c:1209: dam = dmgval() precedes the steed rn2(2). */
-    const dmg = missile_dmgval(OTYP_ARROW, otmp.spe | 0, game.u, otmp);
+    /* C trap.c:1210: use youmonst's current form, including polymorph size. */
+    const dmg = dmgval(otmp, _lo_hero_monst());
     if (game.u.usteed && !rn2(2) && await steedintrap(trap, otmp))
         return Trap_Effect_Finished;
     const hit = await thitu(8, Maybe_Half_Phys_lo(dmg), otmp, 'arrow');
@@ -3646,8 +3661,8 @@ async function trapeffect_dart_trap(trap, trflags) {
     const otmp = await t_missile(OTYP_DART, trap);
     if (!rn2(6)) otmp.opoisoned = 1; /* C trap.c:1272 */
     const oldumort = game.u.umortality | 0;
-    /* C trap.c:1275: dam = dmgval() precedes the steed rn2(2). */
-    const dmg = missile_dmgval(OTYP_DART, otmp.spe | 0, game.u, otmp);
+    /* C trap.c:1275: use youmonst's current form, including polymorph size. */
+    const dmg = dmgval(otmp, _lo_hero_monst());
     if (game.u.usteed && !rn2(2) && await steedintrap(trap, otmp))
         return Trap_Effect_Finished;
     const hit = await thitu(7, Maybe_Half_Phys_lo(dmg), otmp, 'little dart');
@@ -3932,7 +3947,7 @@ export async function thitu(tlev, dam, otmp, name) {
         if (Blind_thitu() || !(game.flags?.verbose ?? true)) {
             await pline('It misses.');
         } else if (uac + (tlev | 0) <= dieroll - 2) {
-            await pline(`${upstart_local(onm)} misses you.`);
+            await pline(`${upstart_local(onm)} ${vtense(onm, 'miss')} you.`);
         } else {
             await pline(`You are almost hit by ${onm}.`);
         }
@@ -7879,8 +7894,8 @@ export async function mon_break_armor(mon, polyspot) {
     if (breakarm(mdat)) {
         otmp = _which_armor(mon, W_ARM);
         if (otmp) {
-            if ((Is_dragon_scales(otmp) && mdat === Dragon_scales_to_pm(otmp))
-                || (Is_dragon_mail(otmp) && mdat === Dragon_mail_to_pm(otmp))) {
+            if ((Is_dragon_scales(otmp) && (mdat.pmidx | 0) === Dragon_scales_to_pm(otmp))
+                || (Is_dragon_mail(otmp) && (mdat.pmidx | 0) === Dragon_mail_to_pm(otmp))) {
                 /* no message here */
             } else {
                 Soundeffect(0, 100);
