@@ -1,5 +1,6 @@
 import { setHeroGrip } from './hero_grip.js';
 import { heroLocomotion } from './hero_locomotion.js';
+import { publishHeardMessage } from './hero_speech.js';
 import { seeTrap } from './trap.js';
 import { deleteTrap } from './trap_lifecycle.js';
 import { maybeResetPick } from './lock_context.js';
@@ -364,7 +365,7 @@ export async function gotoLevel(targetDepth, { arrival = 'random', ladder = fals
         if (enteredValley) {
             await plineWithContinuation('You arrive at the Valley of the Dead...');
             await plineWithContinuation('The odor of burnt flesh and decay pervades the air.');
-            await plineWithContinuation('You hear groans and moans everywhere.');
+            await publishHeardMessage('groans and moans everywhere.', plineWithContinuation, game);
         }
         let familiarMessage = '';
         // bones_include_name() matches through the hero name's trailing hyphen.
@@ -387,6 +388,12 @@ export async function gotoLevel(targetDepth, { arrival = 'random', ladder = fals
             await pline(familiarMessage);
         game._restoredBones = false;
     }
+    else {
+        // maybe_lvltport_feedback() (do.c:1854) delivers the
+        // "You materialize" line ahead of the special-level and Valley
+        // messages below on every arrival, not only bones ones.
+        await beforeGlow();
+    }
     // do.c:goto_level() runs familiar_level_msg() (whose deja-vu choice is
     // the first random call of the arrival) before onquest() and the quest
     // leader's summons, so their quest.lua loads stay behind it.  Quest
@@ -403,10 +410,6 @@ export async function gotoLevel(targetDepth, { arrival = 'random', ladder = fals
         fromDepth: oldDepth,
     });
     if (questArrival?.page || questArrival?.line) {
-        if (!bonesArrival && postMessage) {
-            await plineWithContinuation(postMessage);
-            await flushPendingTopline();
-        }
         await displayPreparedQuestArrival(questArrival);
         if (questArrival.page) {
             // A quest page replaces the earlier teleport message.
@@ -417,8 +420,6 @@ export async function gotoLevel(targetDepth, { arrival = 'random', ladder = fals
     else {
         if (questArrival)
             await displayPreparedQuestArrival(questArrival);
-        if (!bonesArrival && postMessage)
-            await plineWithContinuation(postMessage);
         // do.c:goto_level() announces a newly generated Rogue floor after
         // level-teleport feedback.  tty continuation therefore suspends on
         // the materialization line and exposes the classic Rogue map before
@@ -439,7 +440,7 @@ export async function gotoLevel(targetDepth, { arrival = 'random', ladder = fals
             // owns the two acknowledgement boundaries between these lines.
             await plineWithContinuation('You arrive at the Valley of the Dead...');
             await plineWithContinuation('The odor of burnt flesh and decay pervades the air.');
-            await plineWithContinuation('You hear groans and moans everywhere.');
+            await publishHeardMessage('groans and moans everywhere.', plineWithContinuation, game);
         }
         if (Is_knox_level(newDepth)
             && (!cached || !monsterDeathCount(MONSTER_NAME.indexOf('Croesus')))) {
@@ -536,15 +537,18 @@ export async function gotoLevel(targetDepth, { arrival = 'random', ladder = fals
             return true;
     }
     await autopickupAtHero();
+    if (game.program_state?.gameover)
+        return true;
     // deferred_goto() prints a deferred message that is not the
     // materialization line only after goto_level() has finished
-    // (do.c:2096); bones arrivals hold it until here.
-    if (bonesArrival && postMessage) {
+    // (do.c:2096), so it lands after the arrival, temperature, and
+    // annotation messages above.  C never reaches that print when the
+    // arrival pickup killed the hero: done() does not return, so the
+    // game-over check above comes first.
+    if (postMessage) {
         await plineWithContinuation(postMessage);
         postMessage = '';
     }
-    if (game.program_state?.gameover)
-        return true;
     game.u.uz0 = { ...game.u.uz };
     return true;
 }
