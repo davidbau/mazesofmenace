@@ -22,7 +22,7 @@
 // food scan (dogmove.c:618) fires obj_resists()->rn2(100) once per inventory
 
 import { ARMOR_DATA } from './armor_data.js';
-import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
+import { MKOBJ_OC_MATERIAL, MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
 import { ECMD_OK, ECMD_TIME, OBJ_FREE, OBJ_INVENT,
          PARANOID_AUTOALL, PARANOID_CONFIRM,
          SELL_NORMAL, SELL_DELIBERATE, SELL_DONTSELL, OBJ_FLOOR,
@@ -39,8 +39,9 @@ import { game } from './gstate.js';
 import { update_inventory } from './inventory_refresh.js';
 import { chest_trap } from './trap.js';
 import { nomul } from './allmain.js';
-import { obj_to_glyph, pline, urgent_pline, Norep, flush_screen, bot, force_more, canspotmon, docorner_blank_utf8_captures, livelog_printf, docrt, status_r1_menu_docrt, DEFAULT_MENU_CMDS } from './display.js';
+import { obj_to_glyph, pline, urgent_pline, Norep, flush_screen, bot, force_more, canspotmon, docorner_blank_utf8_captures, livelog_printf, docrt, status_r1_menu_docrt, DEFAULT_MENU_CMDS, _threeStatusLines } from './display.js';
 import { impossible } from './pline.js';
+import { topl_force_break_now, flush_pending_messages } from './display.js';
 import { build_window_screen, tty_window_offx, menu_search_getlin, display_text_window } from './com_pager.js';
 import { pmatchi } from './strutil.js';
 import { menu_heading_text } from './tty_menu.js';
@@ -390,9 +391,9 @@ async function in_or_out_menu(promptText, box, outokay, inokay, alreadyused, mor
     const prior = g._getobj_menu_win;
     g._getobj_menu_win = null;
     let statusClip;
-    if (prior && prior.moves === g.moves && prior.winRows >= 22 && lines.length <= 22)
-        statusClip = prior.winRows === 22
-            ? (prior.WIN_COL <= 34 ? -1 : prior.WIN_COL - 3) : prior.WIN_COL - 2;
+    if (prior && prior.moves === g.moves
+        && prior.winRows >= (_threeStatusLines() ? 21 : 22))
+        statusClip = Math.max(0, prior.WIN_COL - 2);
     /* The wiped corner stays wiped under the menus that follow (nothing
      * repaints status until the next bot()), e.g. the category menu. */
     g._carryStatusClip = statusClip !== undefined
@@ -403,7 +404,11 @@ async function in_or_out_menu(promptText, box, outokay, inokay, alreadyused, mor
     const fullScreen = g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0;
     const paint = () => (fullScreen
         ? lines.map((ln) => (ln === '' ? '' : ' ' + ln)).join('\n')
-        : build_window_screen(lines, WIN_COL, uac, statusClip));
+        /* wintty.c:3684-3687: use this getobj window's offx and ymax.
+         * The -1 clip sentinel instead reads the unrelated pickinv window.
+         * Only rows through maxrow were erased; lower status rows survive. */
+        : build_window_screen(lines, WIN_COL, uac, statusClip,
+                              undefined, false, 0, true, prior?.winRows ?? 23));
     let screenOutput = paint();
     let anySelected = qDefault || more_containers;
     const endRow = lines.length - 1;
@@ -505,6 +510,15 @@ function _loot_subclass(obj) {
         let k = ARMOR_DATA[obj.otyp | 0]?.armcat;
         if (k === undefined || k < 0 || k >= 7) k = 7;
         return _LOOT_ARMCAT[k];
+    }
+    if ((obj.oclass | 0) === 2 /* WEAPON_CLASS */) {
+        /* C invent.c:199-211: ammo 1, launcher 2, missile 3, stackable 4,
+         * other 5, polearm 6 (is_pole: P_POLEARMS 16 / P_LANCE 19 / Snickersnee 19) */
+        const k = MKOBJ_OC_SKILL[obj.otyp | 0] | 0;
+        return (k < 0) ? ((k >= -22 && k <= -20) ? 1 : 3)
+            : ((k >= 20 && k <= 22) ? 2
+               : (k === 17 || k === 1 || k === 2) ? 4
+                  : !(k === 16 || k === 19 || (obj.oartifact | 0) === 19) ? 5 : 6);
     }
     if ((obj.oclass | 0) === 6 /* TOOL_CLASS */) {
         /* C invent.c:215-240: known bag of tricks / horn of plenty 2, other
@@ -710,7 +724,8 @@ async function _container_contents_one(box, identified, all_containers, reportem
         lines.push('--More--');
         /* C wintty.c:1925-1928 — `!iflags.menu_overlay` drops the window to
          * offx 0 and term_clear_screen()s (map and status included). */
-        const fullScreen = g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0;
+        /* wintty.c:1924 maxrow >= rows: a 23-line window plus --More-- fills the screen. */
+        const fullScreen = lines.length >= 24 || g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0;
         const WIN_COL = fullScreen ? 1 : tty_window_offx(lines, 'more');
         const uac = g.u?.uac ?? 0;
         const moreRow = lines.length - 1;
@@ -721,23 +736,40 @@ async function _container_contents_one(box, identified, all_containers, reportem
          * those rows.  Carry the previous menu's surviving prefix into this
          * frame (end.c disclose() passes it); ordinary container lookups have
          * no predecessor clip and retain the normal full status. */
-        const screenOutput = fullScreen
-            ? lines.map((ln, i) => (i === lines.length - 1 ? ' ' : '')
-                + String(ln).replace(/\s+$/, '')).join('\n')
-            : build_window_screen(lines, WIN_COL, uac, statusClipCol);
-        /* C wintty.c:1546 — a pending topline is paged before the window
-         * covers it (tty_display_nhwindow(WIN_MESSAGE, TRUE)). */
-        for (;;) {
-            g._screen_output = screenOutput;
-            set_cursor(moreCursorCol, moreRow);
-            const raw = await nhgetch();
-            const k = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
-            /* C dmore(cw, quitchars) -> xwaitforspace(" \r\n\033"). */
-            if (k === 32 || k === 10 || k === 13 || k === 27)
-                break;
+        /* C wintty.c:1777-1790 process_text_window — an offx-0 window pages
+         * every ttyDisplay->rows - 1 lines: --More-- on the last row, screen
+         * cleared, next page from row 0; ESC cancels the rest. */
+        /* Row 0 left of the window stays physically on the terminal
+         * (wintty.c:1983-2020 docorner), so carry it to the next window. */
+        const underWindow = (g._topl_win_stop ? '' : g._pending_message) || g._topl_sticky || '';
+        const body = lines.slice(0, -1);
+        const pages = [];
+        if (fullScreen) {
+            for (let o = 0; o < Math.max(1, body.length); o += 23)
+                pages.push(body.slice(o, o + 23));
+        } else pages.push(null);
+        for (const page of pages) {
+            let pageOutput, pageMoreRow = moreRow, pageMoreCol = moreCursorCol;
+            if (page) {
+                const rows = page.map(ln => String(ln).replace(/\s+$/, ''));
+                pageMoreRow = rows.length;
+                rows.push(' --More--');
+                pageOutput = rows.join('\n');
+            } else pageOutput = build_window_screen(lines, WIN_COL, uac, statusClipCol);
+            let esc = false;
+            for (;;) {
+                g._screen_output = pageOutput;
+                set_cursor(pageMoreCol, pageMoreRow);
+                const raw = await nhgetch();
+                const k = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
+                /* C dmore(cw, quitchars) -> xwaitforspace(" \r\n\033"). */
+                if (k === 32 || k === 10 || k === 13 || k === 27) { esc = k === 27; break; }
+            }
+            if (esc) break;
         }
         g._pending_message = '';
         await flush_screen(1);
+        if (underWindow && !fullScreen) g._topl_sticky = underWindow;
         /* C:1658-1660 — `if (all_containers) container_contents(box->cobj,
          * identified, TRUE, reportempty);` — recurse into nested boxes. */
         if (all_containers)
@@ -749,6 +781,10 @@ async function _container_contents_one(box, identified, all_containers, reportem
          * Ysimple_name2(container) — "The bag is empty.", article included.
          * The article was MISSING here, so this site said "Bag is empty." */
         await pline(`${_Upstart(_the(_box_xname(box)))} is empty.`);
+        /* C end.c:1664: display_nhwindow(WIN_MESSAGE, FALSE) acknowledges
+         * this message before use_container can report the empty box again. */
+        topl_force_break_now();
+        await flush_pending_messages();
     }
 }
 
@@ -1852,8 +1888,23 @@ export async function use_container_impl(cobjRef, held, more_containers) {
             g.current_container.cknown = 1;
         } else {
             g.pickup_encumbrance = 0;
+            /* C pickup.c:3200-3201 traditional_loot(FALSE), as in the
+             * out-only path above. */
+            let tradRetry = 0, tradDone = false;
+            if (g.flags?.menu_style === MENU_TRADITIONAL) {
+                const cc = g.current_container;
+                const q = await query_classes('take out', cc.cobj, false, true);
+                if (q.ok) {
+                    if (await askchain(() => cc.cobj, q.one_at_a_time ? [] : q.oclasses,
+                        q.everything, (o) => out_container(cc, o), null, 0, 'take out'))
+                        used |= ECMD_TIME;
+                } else tradRetry = q.via_menu;
+                tradDone = !tradRetry;
+            }
             // C pickup.c:3281: reversed looting uses the same menu-style guard.
-            const sel = _menu_style_is_full()
+            const sel = tradRetry ? { ..._no_category_sel(), allCategories: tradRetry === -2 }
+                : tradDone ? { ..._no_category_sel(), allCategories: false }
+                : _menu_style_is_full()
                 ? await query_category_takeout(g.current_container)
                 : _no_category_sel();
             if (!sel.autopick && !sel.allCategories && sel.classes.size === 0) {

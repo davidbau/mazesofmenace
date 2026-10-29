@@ -54,7 +54,7 @@ import { closed_door, is_door_mappear } from './look.js';
 import { maybe_absorb_item } from './steal.js';
 import { stumble_onto_mimic } from './uhitm.js';
 import { TT_PIT } from './const.js';
-import { DEAF, HALLUC, STUNNED, CONFUSION, DBWALL, DB_DIR, DB_WEST, DB_EAST, DB_SOUTH, DB_NORTH,
+import { DEAF, HALLUC, HALLUC_RES, STUNNED, CONFUSION, DBWALL, DB_DIR, DB_WEST, DB_EAST, DB_SOUTH, DB_NORTH,
          IS_DRAWBRIDGE, HALF_PHDAM, KILLED_BY_AN, NO_PART, SHOP_DOOR_COST } from './const.js';
 /* C ref: objects.h — WAN_STRIKING otyp (js/makemon.js and js/muse.js pin the
  * same value); SPE_FORCE_BOLT shares doorlock's arm in C but is not reachable
@@ -1267,8 +1267,11 @@ const _hbottlenames = [
     'bowl', 'ampoule'
 ];
 export function bottlename() {
-    const p = game.u?.uprops?.[HALLUC];
-    const hallu = !!p && ((p.intrinsic | 0) || (p.extrinsic | 0)) && !(p.blocked | 0);
+    /* youprop.h:116-120 — Hallucination is (HHallucination && !Halluc_resistance):
+     * intrinsic-only, with HALLUC_RES intrinsic or extrinsic. */
+    const hr = game.u?.uprops?.[HALLUC_RES];
+    const hallu = !!(game.u?.uprops?.[HALLUC]?.intrinsic | 0)
+        && !((hr?.intrinsic | 0) || (hr?.extrinsic | 0));
     const names = hallu ? _hbottlenames : _bottlenames;
     return names[rn2(names.length)];
 }
@@ -1769,7 +1772,7 @@ async function _obstructed_stub(x, y, quietly) {
 export function picking_lock(x, y) {
     const g = game;
     const u = g.u || {};
-    if (g.occupation === 'picklock') {
+    if (g.occupation === picklock) {
         x.value = (u.ux + u.dx) | 0;
         y.value = (u.uy + u.dy) | 0;
         return true;
@@ -1785,7 +1788,7 @@ export function picking_lock(x, y) {
  * &levl[x][y] pointer-identity ≡ coordinate match (the tile at x,y is unique). */
 export function picking_at(x, y) {
     const g = game;
-    if (g.occupation !== 'picklock')
+    if (g.occupation !== picklock)
         return 0;
     const xlk = g.xlock || {};
     if (!xlk.door)

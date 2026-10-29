@@ -44,7 +44,8 @@
 import { PORT_ID } from './platform_identity.js';
 import { game } from './gstate.js';
 import { menu_heading_text } from './tty_menu.js'; // wintty.c:2688
-import { tty_menu_overlay, tty_base_window_prompt, tty_base_window_messages } from './display.js';
+import { tty_menu_overlay, tty_base_window_prompt, tty_base_window_messages, tty_getlin_prompt } from './display.js';
+import { pmatchi } from './strutil.js';
 import { str2role, str2race, str2gend, str2align,
          validrace, validgend, validalign, randrace, randgend, randalign } from './roles.js';
 
@@ -666,7 +667,7 @@ function buildExtras(state, menuKind) {
             // "    constrainer forces value"
             out.push({ content: `${forced.constrainer} forces ${forced.value}`, padLeft: 4 });
         } else {
-            const already = state[k.key] !== ROLE_NONE;
+            const already = state[k.key] >= 0; // role.c:1936 f >= 0 (ROLE_RANDOM is -2)
             const verb = already ? 'Pick another ' : 'Pick ';
             out.push({ content: `${k.sel} - ${verb}${k.label} first`, padLeft: 0 });
         }
@@ -693,37 +694,37 @@ function forcedRole(state) {
     return null;
 }
 function forcedRace(state) {
-    if (state.role !== ROLE_NONE) {
+    if (state.role >= 0) {
         const mask = ROLES[state.role].allow & ROLE_RACEMASK;
         if (mask === MH_HUMAN) return { constrainer: 'role', value: 'human' };
         // C ref: role.c:1859 — the filter has narrowed the role's races to
         // exactly the already-chosen one.
         const f = state.race;
-        if (f !== ROLE_NONE && (mask & ~rfilter.mask) === RACES[f].selfmask)
+        if (f >= 0 && (mask & ~rfilter.mask) === RACES[f].selfmask)
             return { constrainer: 'filter', value: 'race' };
     }
     return null;
 }
 function forcedGender(state) {
-    if (state.role !== ROLE_NONE) {
+    if (state.role >= 0) {
         const mask = ROLES[state.role].allow & ROLE_GENDMASK;
         if (mask === ROLE_MALE)   return { constrainer: 'role', value: 'male' };
         if (mask === ROLE_FEMALE) return { constrainer: 'role', value: 'female' };
         // C ref: role.c:1881.
         const f = state.gender;
-        if (f !== ROLE_NONE && (mask & ~rfilter.mask) === GENDERS[f].allow)
+        if (f >= 0 && (mask & ~rfilter.mask) === GENDERS[f].allow)
             return { constrainer: 'filter', value: 'gender' };
     }
     return null;
 }
 function forcedAlign(state) {
-    if (state.role !== ROLE_NONE) {
+    if (state.role >= 0) {
         const mask = ROLES[state.role].allow & ROLE_ALIGNMASK;
         if (mask === AM_LAWFUL)  return { constrainer: 'role', value: 'lawful'  };
         if (mask === AM_NEUTRAL) return { constrainer: 'role', value: 'neutral' };
         if (mask === AM_CHAOTIC) return { constrainer: 'role', value: 'chaotic' };
     }
-    if (state.race !== ROLE_NONE) {
+    if (state.race >= 0) {
         const mask = RACES[state.race].allow & ROLE_ALIGNMASK;
         if (mask === AM_LAWFUL)  return { constrainer: 'race', value: 'lawful'  };
         if (mask === AM_NEUTRAL) return { constrainer: 'race', value: 'neutral' };
@@ -732,7 +733,7 @@ function forcedAlign(state) {
     // C ref: role.c:1916-1922 — no role/race constrainer, but the filter has
     // left exactly the already-chosen alignment standing.
     const f = state.align;
-    if (f !== ROLE_NONE && (ROLE_ALIGNMASK & ~rfilter.mask) === ALIGNS[f].allow)
+    if (f >= 0 && (ROLE_ALIGNMASK & ~rfilter.mask) === ALIGNS[f].allow)
         return { constrainer: 'filter', value: 'alignment' };
     return null;
 }
@@ -2110,13 +2111,17 @@ export async function playChargen(ctx) {
 
     // Render the menu for `kind` after the plsel_startmenu rigid checks.
     // C ref: role.c:2805 plsel_startmenu -> :2814 rigid_role_checks.
-    function menuFrame(kind) {
+    function buildMenu(kind) {
+        if (kind === RS_ROLE)        return buildRoleMenu(st);
+        else if (kind === RS_RACE)   return buildRaceMenu(st);
+        else if (kind === RS_GENDER) return buildGenderMenu(st);
+        else                         return buildAlignMenu(st);
+    }
+    function menuFrame(kind, randomMark = '*') {
         rigid_role_checks_live(st, rn2);
-        let menu;
-        if (kind === RS_ROLE)        menu = buildRoleMenu(st);
-        else if (kind === RS_RACE)   menu = buildRaceMenu(st);
-        else if (kind === RS_GENDER) menu = buildGenderMenu(st);
-        else                         menu = buildAlignMenu(st);
+        const menu = buildMenu(kind);
+        for (const line of menu.lines)
+            if (line.content === '* * Random') line.content = `* ${randomMark} Random`;
         // role.c:2820-2834: any menu uses the full description when all
         // four facets are specified, even while replacing an invalid one.
         if (plname && st.role >= 0 && st.race >= 0 && st.gender >= 0 && st.align >= 0)
@@ -2124,16 +2129,68 @@ export async function playChargen(ctx) {
         return renderMenu(menu.title, menu.lines, menu.fitsIn24, menuBackground);
     }
 
+    // C ref: wintty.c:1700-1730 MENU_SEARCH + getline.c — tty_getlin over
+    // the live page; only rows the prompt reaches change.
+    async function searchGetlin(frame) {
+        const prompt = tty_getlin_prompt('Search for:');
+        let buf = '';
+        for (;;) {
+            const rows = frame.screen.split('\n');
+            const fr = prompt.render(rows);
+            const k = await read(fr.screen, fr.cursor);
+            if (k === K_ESC) {
+                if (buf.length > 0) { prompt.reset(); buf = ''; continue; }
+                return '\x1b';
+            }
+            if (k === K_CR || k === K_LF) return buf;
+            if (k === 127 || k === 8) {
+                if (buf.length > 0) { prompt.erase(1); buf = buf.slice(0, -1); }
+                continue;
+            }
+            if (k === 21) { prompt.erase(buf.length); buf = ''; continue; }
+            if (k >= 32 && k < 127 && buf.length < 80) {
+                buf += String.fromCharCode(k);
+                prompt.append(String.fromCharCode(k));
+            }
+        }
+    }
+
     // Read one selection from the `kind` menu.  Returns one of
     //   {sel:index} | {switchTo:kind} | {random:true} | {quit:true} | {filter:true}
     async function menuPick(kind) {
+        let row0Blank = false, randomMark = '*', count = 0;
         for (;;) {
             await topline.flush();
-            const f = menuFrame(kind);
+            const f = menuFrame(kind, randomMark);
+            if (row0Blank) f.screen = '\n' + f.screen.split('\n').slice(1).join('\n');
             const key = await read(f.screen, f.cursor);
-            const parsed = isMenuDefaultKey(key) ? { action: 'random' }
+            // C wintty.c:1564-1614: invalid keys preserve a count; ESC stops it.
+            if (key >= 48 && key <= 57) { count = count * 10 + key - 48; continue; }
+            if (key === K_ESC && count) { count = 0; continue; }
+            // C wintty.c:1652,1681: unselect works for PICK_ONE too.
+            if (key === 45 || key === 92) { randomMark = '-'; count = 0; continue; }
+            let parsed = isMenuDefaultKey(key) ? { action: 'random' }
                 : parseMenuKey(kind, String.fromCharCode(key), st);
-            if (!parsed) continue;                                 // no such entry: menu redraws
+            if (!parsed && key === 0x3a) {                         // wintty.c:1700 MENU_SEARCH
+                const answer = await searchGetlin(f);
+                row0Blank = true;          // getline.c:213 clear_nhwindow; page not repainted
+                if (!answer || answer === '\x1b') { count = 0; continue; }
+                // wintty.c:1713-1728 — the first matching entry is toggled and
+                // the PICK_ONE menu finishes.  Toggling the preselected Random
+                // off leaves n == 0, which role.c:2425 also reads as random;
+                // otherwise role.c:2422 skips a still-selected Random.
+                const searchbuf = `*${answer}*`;
+                for (const line of buildMenu(kind).lines) {
+                    const m = /^(\S) [-*+] (.*)$/.exec(line.content);
+                    if (!m || !pmatchi(searchbuf, `${m[1]} - ${m[2]}`)) continue;
+                    parsed = parseMenuKey(kind, m[1], st);
+                    break;
+                }
+            }
+            if (!parsed) {
+                if ('^|><.-@,\\~:'.includes(String.fromCharCode(key))) count = 0;
+                continue;
+            }
             f.dismiss();
             if (parsed.action === 'quit')   return { quit: true };
             if (parsed.action === 'random') return { random: true };
@@ -2160,8 +2217,46 @@ export async function playChargen(ctx) {
         // wintty.c:2693 — lmax = min(52, ttyDisplay->rows - 1); npages rounds up.
         const LMAX = Math.min(52, 24 - 1);
         const npages = Math.ceil(all.length / LMAX);
-        let page = 0, needDraw = true, cancelled = false;
+        let page = 0, needDraw = true, cancelled = false, row0Blank = false;
+        // C ref: wintty.c:1700-1730 MENU_SEARCH + getline.c — tty_getlin over
+        // the live page; only rows the prompt reaches change.
+        async function searchGetlin(frame) {
+            const prompt = tty_getlin_prompt('Search for:');
+            let buf = '';
+            for (;;) {
+                const rows = frame.screen.split('\n');
+                const fr = prompt.render(rows);
+                const k = await read(fr.screen, fr.cursor);
+                if (k === K_ESC) {
+                    if (buf.length > 0) { prompt.reset(); buf = ''; continue; }
+                    return '\x1b';
+                }
+                if (k === K_CR || k === K_LF) return buf;
+                if (k === 127 || k === 8) {
+                    if (buf.length > 0) { prompt.erase(1); buf = buf.slice(0, -1); }
+                    continue;
+                }
+                if (k === 21) { prompt.erase(buf.length); buf = ''; continue; }
+                if (k >= 32 && k < 127 && buf.length < 80) {
+                    buf += String.fromCharCode(k);
+                    prompt.append(String.fromCharCode(k));
+                }
+            }
+        }
+        let counting = false, count = 0, resetCount = true;
+        // wintty.c:1111 toggle_menu_curr + set_item_state's '+'/'#' mark
+        const toggleCurr = (it, inView) => {
+            if (it.selected) {
+                if (counting && count > 0) it.count = count;
+                else { it.selected = false; it.count = -1; }
+            } else if (counting && count > 0) {
+                it.count = count; it.selected = true;
+            } else if (!counting) it.selected = true;
+            else return;
+            if (inView) it.mark = it.selected ? (it.count === -1 ? '+' : '#') : '-';
+        };
         for (;;) {
+            if (resetCount) { counting = false; count = 0; } else resetCount = true;
             const pageItems = all.slice(page * LMAX,
                                         Math.min(all.length, page * LMAX + LMAX));
             if (needDraw) {
@@ -2169,11 +2264,14 @@ export async function playChargen(ctx) {
                 // (wintty.c:1470); only set_item_state's incremental update
                 // uses '+' (wintty.c:1182).
                 for (const it of pageItems)
-                    if (it.selectable) it.mark = it.selected ? '*' : '-';
+                    if (it.selectable)
+                        it.mark = it.selected ? (it.count === undefined || it.count === -1 ? '*' : '#') : '-';
                 needDraw = false;
+                row0Blank = false;
             }
             const morestr = (npages > 1) ? `(${page + 1} of ${npages})` : '(end) ';
             const f = renderFilterPage(pageItems, morestr);
+            if (row0Blank) f.screen = '\n' + f.screen.split('\n').slice(1).join('\n');
             const code = await read(f.screen, f.cursor);
             const ch = String.fromCharCode(code);
             // wintty.c:1552-1557 — a key that is a selector on the CURRENT page
@@ -2181,8 +2279,28 @@ export async function playChargen(ctx) {
             // command, so 'a' picks the Archeologist rather than select-all.
             const hit = pageItems.find((it) => it.selectable && it.selector === ch);
             if (hit) {
-                hit.selected = !hit.selected;
-                hit.mark = hit.selected ? '+' : '-';
+                if (hit.count === undefined) hit.count = -1;
+                toggleCurr(hit, true);
+                continue;
+            }
+            if (ch >= '0' && ch <= '9') {   // wintty.c:1564 count digits
+                count = count * 10 + (ch.charCodeAt(0) - 48);
+                if (count !== 0) { counting = true; resetCount = false; }
+                continue;
+            }
+            if (code === K_ESC && counting) continue;   // wintty.c:1604 only stops count
+            if (ch === ':') {               // wintty.c:1700 MENU_SEARCH
+                const answer = await searchGetlin(f);
+                row0Blank = true;           // getline.c:213 clear_nhwindow; page not repainted
+                if (answer && answer !== '\x1b') {
+                    const searchbuf = `*${answer}*`;
+                    for (const it of all) {
+                        if (!it.selectable) continue;
+                        if (!pmatchi(searchbuf, `${it.selector} - ${it.text}`)) continue;
+                        if (it.count === undefined) it.count = -1;
+                        toggleCurr(it, pageItems.includes(it));
+                    }
+                }
                 continue;
             }
             if (code === K_ESC) {           // wintty.c:1604 — cancel
@@ -2238,8 +2356,9 @@ export async function playChargen(ctx) {
                 continue;
             }
             // Anything else rings the bell and changes nothing (wintty.c:1745).
-            // NB: counted selection (digits -> '#' marks, wintty.c:1563-1601)
-            // into this menu.
+            // getline.c:230-254 xwaitforspace ignores unaccepted keys before
+            // returning to process_menu_window, preserving its pending count.
+            resetCount = false;
         }
         const n = cancelled
             ? -1 : all.filter((it) => it.selectable && it.selected).length;
@@ -2437,11 +2556,22 @@ export async function playChargen(ctx) {
         // that C ignores outright, plus 30 '.' that C accepts into resp and
         // then discards because MENU_SELECT_ALL is PICK_ANY-only.
         yesMark = '*';
+        let row0Blank = false;
         for (;;) {
             await topline.flush();
             const f = confirmFrame();
+            if (row0Blank) f.screen = '\n' + f.screen.split('\n').slice(1).join('\n');
             const key = await read(f.screen, f.cursor);
-            const ch = String.fromCharCode(key);
+            let ch = String.fromCharCode(key);
+            // C wintty.c:1700-1728: search toggles the first PICK_ONE match.
+            if (ch === ':') {
+                const answer = await searchGetlin(f); row0Blank = true;
+                const match = answer && answer !== '\x1b' && buildConfirmMenu(st, plname, yesMark, renameallowed).lines
+                    .map(l => /^(\S) [-*+] (.*)$/.exec(l.content))
+                    .find(m => m && pmatchi(`*${answer}*`, `${m[1]} - ${m[2]}`));
+                if (!match) continue;
+                ch = match[1];
+            }
 
             // xwaitforspace() breaks on Return/Newline before it ever consults
             // resp, leaving morc == 0 -> case '\0' "finished" (wintty.c:1617).
@@ -2513,11 +2643,6 @@ export async function playChargen(ctx) {
                 // MENU_UNSELECT_ALL / MENU_UNSELECT_PAGE are the only two that
                 // and repaint its indicator (wintty.c:1653/1651).
                 if (ch === '-' || ch === '\\') yesMark = '-';
-                // MENU_SEARCH is NOT PORTED: C opens tty_getlin("Search for:")
-                // here and, on a match, finishes the PICK_ONE menu with that
-                // path is unreached; treating it as a no-op keeps the menu
-                // alive, which is strictly closer to C than the old quit.
-                //
                 // Everything else here — MENU_SELECT_ALL/_PAGE, INVERT_ALL/
                 // _PAGE (PICK_ANY only) and the four paging commands on a
                 // one-page menu — is a genuine no-op that redraws nothing.

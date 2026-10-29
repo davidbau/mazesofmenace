@@ -4823,8 +4823,8 @@ function resists_acid_mu(mon) {
     return (bits & MR_ACID) !== 0;
 }
 function mhim_mu(mon) {
-    const g = (mon?.female | 0) ? 'her' : 'him';
-    return g;
+    /* C do_name.c mhim(): genders[pronoun_gender(mon, PRONOUN_HALLU)].him */
+    return ['him', 'her', 'it', 'them'][pronoun_gender_nit_mu_real(mon, 2)];
 }
 /* C mon.c:3253 mondied's caller-side "is it still alive" test is
  * DEADMONSTER(mon) == mon->mhp < 1 (monst.h:214); written inline above. */

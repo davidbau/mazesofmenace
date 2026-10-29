@@ -505,6 +505,9 @@ export async function monkilled_trap(mtmp, fltxt = '', nocorpse = false) {
         // C mon.c:3141-3144: a dead mail daemon prevents further delivery.
         if (mndx === PM_MAIL_DAEMON) mv.mvflags |= G_GENOD_T;
     }
+    /* C mon.c:3138-3140 mondead(): leader identity survives polymorph. */
+    if (mtmp.m_id === g.svq.quest_status.leader_m_id)
+        g.svq.quest_status.leader_is_dead = true;
     /* Remember the death cell before detach zeroes mx/my, so the corpse glyph can
      * be repainted there after placement (C: mon_leaving_level newsym(mx,my) +
      * the placed corpse object render). */
@@ -575,10 +578,9 @@ export async function monkilled_trap(mtmp, fltxt = '', nocorpse = false) {
     } else {
         mtmp.mstate = (mtmp.mstate | 0) | MON_DETACH;
     }
-    /* C leaves mx,my stale (mon.c:2712-2715 is #if 0); this port zeroes them,
-     * so callers that repaint the death square use a saved copy. */
-    mtmp.mx = 0;
-    mtmp.my = 0;
+    /* C mon.c:2712-2715 deliberately preserves the death coordinates.
+     * mattackm() still uses them to check range for passivemm() after a
+     * defender dies curing slime in a fire trap (mhitm.c:572-576). */
 }
 
 async function dealloc_obj_trap(obj) {
@@ -772,7 +774,7 @@ export async function chest_trap(obj, bodypart, disarm) {
                 void freezeDur;
             }
             else {
-                /* C: You("momentarily stiffen.") — no RNG */
+                await You("momentarily stiffen.");
             }
         }
         else {
@@ -1843,6 +1845,9 @@ export async function sink_into_lava() {
             } else {
                 await Norep(sink_deeper);
             }
+            /* pline.c:273-274: the message's flush_screen painted the post-movemon
+             * world, so a fireassist pre-movemon frame (js/allmain.js) is stale */
+            if (game._fireSwapPending && game._fireSwapPreFrame) game._fireSwapPreFrame = null;
             u.utrap += rnd(4);
         }
     }
@@ -4350,8 +4355,9 @@ async function dofiretrap(box) {
     orig_dmg = num = d(2, 4);                                /* trap.c:4238 */
 
 
-    const box_underwater = box
-        ? (!(box.where === OBJ_INVENT_TR) && _gp_is_pool(box.ox | 0, box.oy | 0))
+    /* C trap.c:4244: carried boxes use the hero's Underwater state. */
+    const box_underwater = box && !_tr_carried(box)
+        ? _gp_is_pool(box.ox | 0, box.oy | 0)
         : _gp_Underwater();
     if (box_underwater) {
         await pline(`A cascade of steamy bubbles erupts from ${the(box ? xname(box) : _surface_ft(u.ux | 0, u.uy | 0))}!`);
@@ -4586,6 +4592,26 @@ async function trapeffect_sqky_board(trap, trflags) {
     wake_nearto(u.ux | 0, u.uy | 0, (u.ulevel | 0) * 20);
     return Trap_Effect_Finished;
 }
+/* C trap.c:1426-1471 trapeffect_sqky_board, monster branch (reached here by
+ * callers such as clone_mon's mintrap; m_move's own copy lives in monmove.js). */
+async function trapeffect_sqky_board_mon(mtmp, trap) {
+    if (_gp_m_in_air(mtmp))
+        return Trap_Effect_Finished;
+    if (canseemon(mtmp) || mtmp === game.u?.usteed) {
+        if (!_hero_Deaf()) {
+            await pline(`A board beneath ${mon_nam(mtmp)} squeaks ${_sqky_trapnote(trap)} loudly.`);
+            seetrap(trap);
+        } else if (!((mtmp.data.mflags1 | 0) & 0x00010000 /* M1_MINDLESS */)) {
+            await pline(`${Monnam(mtmp)} stops momentarily and appears to cringe.`);
+        }
+    } else {
+        const range = couldsee(mtmp.mx | 0, mtmp.my | 0) ? (BOLT_LIM + 1) : (BOLT_LIM - 3);
+        await You_hear(`${_sqky_trapnote(trap)} squeak ${
+            _lo_distu(mtmp.mx | 0, mtmp.my | 0) <= range * range ? 'nearby' : 'in the distance'}.`);
+    }
+    wake_nearto(mtmp.mx | 0, mtmp.my | 0, 40);
+    return Trap_Effect_Finished;
+}
 /* C ref: trap.c:3063-3078 trapnote(trap, FALSE) — the note name with a
  * just_an() article prefix.  just_an takes its SINGLE-LETTER branch
  * (objnam.c:2113-2115): article = "an" iff the lowercased first char is in
@@ -4742,13 +4768,11 @@ function _tr_Confusion_u() {
 function _tr_Punished() { return !!(game.u && game.u.uball); }
 const OBJ_INVENT_TR = 3; /* C obj.h OBJ_INVENT */
 function _tr_carried(o) { return !!o && (o.where | 0) === OBJ_INVENT_TR; }
-/* C dungeon.h Is_qlocate(lev) — the quest locate level.  This port has no quest
- * locate-level bookkeeping; the only caller is the Ranger wumpus quip in
- * trapeffect_pit, which additionally requires Role_if(PM_RANGER) && In_quest,
- * and every arm of that `if` is RNG-free, so a conservative FALSE cannot move a
- * leaf — it can only omit a joke line on a Ranger standing on the quest locate
- * level.  Flagged rather than faked. */
-function _tr_Is_qlocate(uz) { void uz; return false; }
+/* C dungeon.h:133 Is_qlocate(x) = Lcheck(x, &qlocate_level) = on_level(). */
+function _tr_Is_qlocate(uz) {
+    const q = game.qlocate_level;
+    return !!(q && uz && uz.dnum === q.dnum && uz.dlevel === q.dlevel);
+}
 /* C trap.c:7100 trapname(ttyp, override) — the NON-hallucinating result is
  *     defsyms[trap_to_defsym(ttyp)].explanation
  * with trap_to_defsym(t) = S_arrow_trap + t - 1 (rm.h:497; S_arrow_trap = 49,
@@ -4890,7 +4914,7 @@ async function trapeffect_pit(trap, trflags) {
     _feeltrap(trap);
     if (!sokoban && youdata && _imm_is_clinger(youdata) && !plunged) {
         if (already_known) {
-            await You(`see ${_a_your(trap.madeby_u)} `
+            await You_see(`${_a_your(trap.madeby_u)} `
                 + `${ttype === SPIKED_PIT ? 'spiked ' : ''}pit below you.`);
         } else {
             await pline(`${_A_Your(trap.madeby_u)} pit `
@@ -5464,6 +5488,8 @@ async function trapeffect_selector_mon(mtmp, trap, trflags) {
             return await trapeffect_bear_trap_mon(mtmp, trap, trflags);
         case ROCKTRAP:
             return await trapeffect_rocktrap_mon(mtmp, trap);
+        case SQKY_BOARD:
+            return await trapeffect_sqky_board_mon(mtmp, trap);
         case PIT_T:
         case SPIKED_PIT_T:
             return await trapeffect_pit_mon(mtmp, trap, trflags);

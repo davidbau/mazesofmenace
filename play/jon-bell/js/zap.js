@@ -16,7 +16,7 @@ import { OBJ_FREE, OBJ_FLOOR, OBJ_CONTAINED, OBJ_INVENT, OBJ_MINVENT, OBJ_BURIED
          NO_MINVENT, MM_NOWAIT, MM_NOCOUNTBIRTH, MM_NOTAIL, MM_ADJACENTOK,
          MM_MALE, MM_FEMALE, CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE,
          GRAVE, IS_POOL, LS_MONSTER, ONAME, has_oname, PLNMSG_OBJ_GLOWS, PLNMSG_ENVELOPED_IN_GAS, PROT_FROM_SHAPE_CHANGERS, OBJ_DELETED } from './const.js';
-import { PM_GHOST, PM_DOPPELGANGER, NUMMONS } from './pm.generated.js';
+import { PM_GHOST, PM_DOPPELGANGER, PM_CROCODILE, NUMMONS } from './pm.generated.js';
 import { HATCH_EGG } from './const.js';
 import { wearslot } from './worn.js';
 import { otrapped_of } from './const.js';
@@ -96,7 +96,7 @@ import { more_experienced as more_experienced_faithful, losexp } from './exper.j
 /* C ref: mondata.h DEADMONSTER(mon) — mhp <= 0. */
 function DEADMONSTER(mon) { return !!(mon && (mon.mhp | 0) <= 0); }
 import { nhgetch } from './input.js';
-import { exercise, get_artifact, arti_spfx, arti_cspfx, ART_NONARTIFACT, acurr, adjalign } from './attrib.js';
+import { exercise, get_artifact, arti_spfx, arti_cspfx, ART_NONARTIFACT, acurr, adjalign, C_ATTR_TO_DISP } from './attrib.js';
 /* observe_object() lives in o_init.c, i.e. js/o_init.js — import the ONE body.
  * js/zap.js already imported discover_object from here, so no new edge. */
 import { discover_object, observe_object, isWanNothingNodir } from './o_init.js';
@@ -216,7 +216,7 @@ import { TIMER_OBJECT, REVIVE_MON, ROT_CORPSE } from './const.js';
 import { spoteffects } from './landing-effects.js';
 import { is_moat, is_db_wall, find_drawbridge } from './dokick.js';
 import { shkname, stolen_value } from './dokick.js';
-import { cvt_sdoor_to_door, draft_message, set_utrap, dighole, bury_an_obj, unpunish,
+import { cvt_sdoor_to_door, draft_message, set_utrap, dighole, bury_an_obj, unpunish, o_unleash,
          destroy_drawbridge, open_drawbridge, close_drawbridge, watch_dig, zap_dig_pit } from './dig.js';
 import { in_town } from './cmd.js';
 import { rloco } from './steal.js';
@@ -245,7 +245,7 @@ import { bypass_obj } from './worn.js';
 import { LEVITATION, FLYING, NON_PM, MCORPSENM, ismnum, NO_NC_FLAGS, NC_SHOW_MSG, NC_VIA_WAND_OR_SPELL } from './const.js';
 import { PM_LONG_WORM } from './pm.generated.js';
 import { PM_RANGER, PM_ROGUE } from "./pm.generated.js";
-import { FAILEDUNTRAP, CONFUSION } from "./const.js";
+import { FAILEDUNTRAP, NOWEBMSG, CONFUSION } from "./const.js";
 import { rnl } from "./rng.js";
 import { is_blade } from "./cmd.js";
 import { trapname } from "./makemon.js";
@@ -1665,6 +1665,12 @@ export async function zapyourself(obj, ordinary) {
                 const bInvis = !!(ip.blocked | 0);
                 const invis = !!(((ip.intrinsic | 0) || (ip.extrinsic | 0)) && !bInvis);
                 const msg = !invis && !_Blind() && !bInvis;
+                // C zap.c:2831-2835: mummy wrapping absorbs the effect
+                // before the invisibility timeout is rolled or changed.
+                if (bInvis && u.uarmc?.otyp === 138 /* MUMMY_WRAPPING */) {
+                    await You_feel('rather itchy under %s.', yname(u.uarmc));
+                    break;
+                }
                 /* C's incr_itimeout changes only the timeout portion and
                  * preserves FROMOUTSIDE/FROM_RACE/FROMFORM bits. */
                 let timeout = (ip.intrinsic | 0) & TIMEOUT;
@@ -2036,8 +2042,7 @@ function findone(zx, zy, found) {
     /* C detect.c:1695-1721: hidden / unspottable monster. */
     if (mtmp && (!canspotmon(mtmp) || mtmp.mundetected || mtmp.m_ap_type)) {
         if (mtmp.m_ap_type) {
-            mtmp.m_ap_type = 0; /* seemimic: reveal a mimicking monster */
-            newsym(zx, zy);
+            seemimic(mtmp); /* detect.c:1699: also unblocks a boulder-mimic's vision */
             found.num_mons++;
         } else if (mtmp.mundetected) {
             mtmp.mundetected = 0;
@@ -5118,7 +5123,7 @@ const ZP_MAGIC_LAMP = 228, ZP_OIL_LAMP = 227, ZP_MAGIC_MARKER = 242,
       ZP_POT_OIL = 321,
       ZP_SPE_BLANK_PAPER = 407, ZP_SPE_NOVEL = 408, ZP_MAX_SPELL_STUDY = 3,
       ZP_BOULDER = 475, ZP_ROCK = 474, ZP_MINERAL = 21, ZP_CORPSE = 265,
-      ZP_EGG = 266, ZP_LEASH = 231;
+      ZP_EGG = 266, ZP_LEASH = 236, ZP_LOW_BOOTS = 163;
 const ZP_OBJ_FREE = 0, ZP_OBJ_FLOOR = 1, ZP_OBJ_INVENT = 3, ZP_OBJ_MINVENT = 4;
 /* zap.c:1687 charged_objs[] = { WAND_CLASS, WEAPON_CLASS, ARMOR_CLASS,
  * 0 } — the classes whose spe is carried across a
@@ -5303,6 +5308,10 @@ export async function poly_obj(obj, id) {
                  && (MKOBJ_OC_MAGIC[otmp.otyp | 0] | 0) !== magic_obj);
     } else {
         otmp = (await mksobj(id, false, false));
+        /* C zap.c:1731-1735: only CORPSE/STATUE/FIGURINE use corpsenm */
+        const uses_corpsenm = (t) => t === ZP_CORPSE || t === STF_STATUE || t === STF_FIGURINE;
+        if (uses_corpsenm(obj.otyp | 0) && uses_corpsenm(id))
+            set_corpsenm(otmp, obj.corpsenm);
     }
 
     otmp.quan = obj.quan;                       /* preserve quantity */
@@ -5350,6 +5359,28 @@ export async function poly_obj(obj, id) {
      * (obj.h:139), preserved only for boxes or poisonable weapons. */
     if (otrapped_of(obj) && _bhito_is_box(otmp)) otmp.otrapped = 1;
     if (otrapped_of(obj) && is_poisonable(otmp)) otmp.opoisoned = 1;
+
+    // C zap.c:1804-1815: crocodile corpses become shoes after random creation.
+    if (id === STRANGE_OBJECT && obj.otyp === ZP_CORPSE
+        && obj.corpsenm === PM_CROCODILE) {
+        otmp.otyp = ZP_LOW_BOOTS;
+        otmp.oclass = ZP_ARMOR_CLASS;
+        otmp.spe = 0;
+        otmp.oeroded = 0;
+        otmp.oerodeproof = true;
+        otmp.quan = 1;
+        otmp.cursed = false;
+    }
+
+    // C zap.c:1816-1825: transfer the leash attachment or release the pet.
+    if (obj.otyp === ZP_LEASH && obj.leashmon) {
+        if (otmp.otyp === ZP_LEASH) {
+            otmp.leashmon = obj.leashmon;
+            obj.leashmon = 0; // prevent obfree() from unleashing the pet
+        } else {
+            o_unleash(obj);
+        }
+    }
 
     /* C zap.c:1827-1829 — discard contents generated with the new object. */
     if (Has_contents(otmp))
@@ -7648,19 +7679,19 @@ async function cancel_item(obj) {
         switch (otyp) {
         case CI_RIN_GAIN_STRENGTH:
             if ((worn & W_RING) !== 0) {
-                _ci_abon()[A_STR] -= (obj.spe | 0);
+                _ci_abon()[C_ATTR_TO_DISP[A_STR]] -= (obj.spe | 0);
                 _ci_botl();
             }
             break;
         case CI_RIN_GAIN_CONSTITUTION:
             if ((worn & W_RING) !== 0) {
-                _ci_abon()[A_CON] -= (obj.spe | 0);
+                _ci_abon()[C_ATTR_TO_DISP[A_CON]] -= (obj.spe | 0);
                 _ci_botl();
             }
             break;
         case CI_RIN_ADORNMENT:
             if ((worn & W_RING) !== 0) {
-                _ci_abon()[A_CHA] -= (obj.spe | 0);
+                _ci_abon()[C_ATTR_TO_DISP[A_CHA]] -= (obj.spe | 0);
                 _ci_botl();
             }
             break;
@@ -7682,14 +7713,14 @@ async function cancel_item(obj) {
             break;
         case CI_GAUNTLETS_OF_DEXTERITY:
             if ((worn & W_ARMG) !== 0) {
-                _ci_abon()[A_DEX] -= (obj.spe | 0);
+                _ci_abon()[C_ATTR_TO_DISP[A_DEX]] -= (obj.spe | 0);
                 _ci_botl();
             }
             break;
         case CI_HELM_OF_BRILLIANCE:
             if ((worn & W_ARMH) !== 0) {
-                _ci_abon()[A_INT] -= (obj.spe | 0);
-                _ci_abon()[A_WIS] -= (obj.spe | 0);
+                _ci_abon()[C_ATTR_TO_DISP[A_INT]] -= (obj.spe | 0);
+                _ci_abon()[C_ATTR_TO_DISP[A_WIS]] -= (obj.spe | 0);
                 _ci_botl();
             }
             break;
@@ -7945,19 +7976,19 @@ export async function drain_item(obj, by_you) {
     switch (obj.otyp) {
     case RIN_GAIN_STRENGTH:
         if ((obj.owornmask & W_RING) && u_ring) {
-            game.u.abon.a[A_STR]--;
+            game.u.abon.a[C_ATTR_TO_DISP[A_STR]]--;
             game.disp.botl = 1;
         }
         break;
     case RIN_GAIN_CONSTITUTION:
         if ((obj.owornmask & W_RING) && u_ring) {
-            game.u.abon.a[A_CON]--;
+            game.u.abon.a[C_ATTR_TO_DISP[A_CON]]--;
             game.disp.botl = 1;
         }
         break;
     case RIN_ADORNMENT:
         if ((obj.owornmask & W_RING) && u_ring) {
-            game.u.abon.a[A_CHA]--;
+            game.u.abon.a[C_ATTR_TO_DISP[A_CHA]]--;
             game.disp.botl = 1;
         }
         break;
@@ -7975,14 +8006,14 @@ export async function drain_item(obj, by_you) {
         break;
     case HELM_OF_BRILLIANCE:
         if ((obj.owornmask & W_ARMH) && (obj === game.u.uarmh)) {
-            game.u.abon.a[A_INT]--;
-            game.u.abon.a[A_WIS]--;
+            game.u.abon.a[C_ATTR_TO_DISP[A_INT]]--;
+            game.u.abon.a[C_ATTR_TO_DISP[A_WIS]]--;
             game.disp.botl = 1;
         }
         break;
     case GAUNTLETS_OF_DEXTERITY:
         if ((obj.owornmask & W_ARMG) && (obj === game.u.uarmg)) {
-            game.u.abon.a[A_DEX]--;
+            game.u.abon.a[C_ATTR_TO_DISP[A_DEX]]--;
             game.disp.botl = 1;
         }
         break;
@@ -8334,7 +8365,7 @@ export async function try_disarm(ttmp, force_failure) {
     if ((u.dx | 0) && (u.dy | 0) && _ut_bad_rock(game.youmonst.data, u.ux, ttmp.ty)
         && _ut_bad_rock(game.youmonst.data, ttmp.tx, u.uy)) {
         if ((game.invent && (_ut_inv_weight() + _ut_weight_cap() > WT_TOOMUCH_DIAGONAL))
-            || ((game.youmonst.data.msize | 0) >= 4 /* MZ_LARGE: bigmonst */)) {
+            || ((game.youmonst.data.msize | 0) >= 3 /* monflag.h:181 MZ_LARGE: bigmonst */)) {
             await pline(`You are unable to reach the ${trapname(ttype, false)}!`);
             return 0;
         }

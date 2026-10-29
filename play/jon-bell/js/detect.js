@@ -18,7 +18,9 @@ import { _glyph_ident } from './cmd.js';
 import { pushRngLogEntry } from './rng.js';
 import { ENV } from './hostenv.js';
 
-const _isMonGlyph = (loc) => loc?.disp_cls === GLYPHCLS_MON;
+/* glyph_is_monster() excludes warning glyphs (a Warning digit is stored with
+ * cls MON plus disp_is_warning here). */
+const _isMonGlyph = (loc) => loc?.disp_cls === GLYPHCLS_MON && !loc.disp_is_warning;
 const _isInvisibleGlyph = (loc) => loc?.disp_cls === GLYPHCLS_INVIS;
 /* JS has no numeric gbuf glyph; this is the full rendered identity available
  * here (the shared cmd.js _glyph_ident additionally canonicalizes cmap IDs). */
@@ -86,7 +88,7 @@ export async function do_vicinity_map(sobj) {
         for (let x = loX; x <= hiX; x++) for (let y = loY; y <= hiY; y++) {
             const loc = g.level?.at(x, y);
             if (!loc) continue;
-            const oldCls = loc.disp_cls, oldIdentity = _glyph_ident(x, y);
+            const oldIsMon = _isMonGlyph(loc), oldIdentity = _glyph_ident(x, y);
             const confused = !!(u.uprops?.[CONFUSION]?.intrinsic | 0);
             show_map_spot(loc, x, y, confused);
             const obj = _topObject(g, x, y);
@@ -99,7 +101,7 @@ export async function do_vicinity_map(sobj) {
             if (mon && (mon.mx | 0) === x && (mon.my | 0) === y) {
                 if ((saved.uinwater || saved.uburied || saved.uswallow
                      || !g.level?.flags?.hero_memory) && !extended
-                    && (x !== u.ux || y !== u.uy) && oldCls !== GLYPHCLS_MON)
+                    && (x !== u.ux || y !== u.uy) && !oldIsMon)
                     map_invisible(x, y);
                 else map_monst(mon, false);
                 if (extended && _glyph_ident(x, y) !== oldIdentity && !_isInvisibleGlyph(loc)) mdetected = true;

@@ -14,6 +14,8 @@ import { merge_choice, inv_cnt, dropy } from './cmd.js';
 import { wizdeadorgone } from './cmd.js';
 import { silver_sears, set_msg_xy as set_msg_xy_uh } from './cmd.js';
 import { is_youmonst, resists_magm, can_be_strangled } from './mhitm.js';
+import { mzapwand, mplayhorn } from './muse.js';
+import { can_blow } from './mhitm.js';
 import { mhitm_adtyping_u, getmattk } from './mhitu.js';
 import { night } from './allmain.js';
 import { is_were, were_change } from './were.js';
@@ -24,7 +26,7 @@ import { PM_BAT, PM_GIANT_BAT, PM_VAMPIRE_BAT, PM_STALKER } from './pm.generated
 import { snuff_lit } from './cmd.js';
 // @ts-nocheck
 import { game, wizard, discover } from './gstate.js';
-import { rehumanize } from './polyself.js';
+import { rehumanize, uunstick } from './polyself.js';
 import { quest_info, helm_simple_name, cloak_simple_name, an, doname, mshot_xname } from './objnam.js';
 import { corpse_xname, the as the_sh, xname, cxname as cxname_sh, Tobjnam as Tobjnam_sh, makeplural, simpleonames, obj_is_pname, bare_artifactname, otense, distant_name, vtense,
          Yobjnam2 as Yobjnam2_real,
@@ -49,6 +51,7 @@ import { ignite_items as ignite_items_real } from './mhitu.js';
 import { digests_gu, enfolds_gu, noattacks_mndx } from './mhitu.js';
 import { exercise, acurr, adjalign, change_luck as change_luck_uh, get_artifact, ART_NONARTIFACT } from './attrib.js';
 import { P_SKILL } from './skills.js';
+import { P_DAGGER, P_KNIFE } from './const.js';
 import { near_capacity } from './weight.js';
 import { weight } from './weight.js';
 import { useupall } from './cmd.js';
@@ -175,7 +178,7 @@ import { ACID_RES } from './const.js';
 import { hliquid } from './mhitm.js';
 import { clone_mon_ml } from './mklev.js';
 import { sobj_at } from './mklev.js';
-import { is_pit, CORPSTAT_BURIED, OBJ_BURIED } from './const.js';
+import { is_pit, TT_PIT, CORPSTAT_BURIED, OBJ_BURIED } from './const.js';
 import { worm_seg_at, remove_worm, wormgone, cutworm, worm_move } from './worm.js';
 import { mwelded, body_part, flooreffects, _drop_doname, set_wounded_legs, is_pole,
          mhurtle, will_hurtle } from './cmd.js';
@@ -207,6 +210,7 @@ import { deadhero, pending_death_is_final, done } from './end.js';
 import { DIED, NO_KILLER_PREFIX } from './const.js';
 import { drain_pending_death_in_place } from './fastforward.js';
 /* C explode.c:1013 mon_explodes — corpse_chance()'s AT_BOOM arm calls it. */
+import { losehp } from './dokick.js';
 import { mon_explodes, _zhitm, explode as explode_uh, adtyp_to_expltype as adtyp_to_expltype_uh } from './zap.js';
 import { MON_EXPLODE } from './const.js';
 /* C permonst.mattk[NATTK] (js/makemon_mattk.json — the same pack js/makemon.js
@@ -2000,7 +2004,7 @@ export async function force_attack(mtmp, pets_too) {
     return attacked;
 }
 
-export async function do_attack(mtmpOrX, y) {
+export async function do_attack(mtmpOrX, y, kickOnly = false) {
     /* Resolve calling convention: (monster_object) vs (x, y) coords. */
     let mtmp;
     if (typeof mtmpOrX === 'number') {
@@ -2111,7 +2115,9 @@ export async function do_attack(mtmpOrX, y) {
      * that wield a weapon at game start (Valkyrie: spear, Wizard: quarterstaff).
      * C: ini_inv_use_obj() runs during initplyr() before the first command.
      * JS defers this until first attack so it also covers cmd.js dofire path. */
-    _ensure_role_weapons_uhitm(game.u);
+    /* NOT CALLED any more: ini_inv_use_obj (u_init.js) wields the starting kit
+     * for real, and this fabricator re-wielded a spear into a polymorphed
+     * hero whose drop_weapon() (polyself.c:1346) had emptied uwep. */
 
     /* C uhitm.c:515 — go.override_confirmation = FALSE (set by attack_checks) */
     (game.go ||= {}).override_confirmation = false;
@@ -2126,10 +2132,12 @@ export async function do_attack(mtmpOrX, y) {
     /* Step 1: C uhitm.c:519 `if (attack_checks(mtmp, uwep)) return TRUE;`.
      * TRUE aborts do_attack BEFORE overexertion() and exercise(), so neither
      * gethungry's rn2(20) nor exercise's rn2(19) is drawn. */
-    if (await attack_checks(mtmp, game.u?.uwep ?? null))
+    /* kickOnly: dokick.c:183 kick_monster's polyform AT_KICK loop enters
+     * here directly -- none of do_attack's preamble runs in C. */
+    if (!kickOnly && await attack_checks(mtmp, game.u?.uwep ?? null))
         return true;
 
-    if (Upolyd(game.u) && noattacks_mndx(game.u.umonnum | 0)) {
+    if (!kickOnly && Upolyd(game.u) && noattacks_mndx(game.u.umonnum | 0)) {
         await You("have no way to attack monsters physically.");
         mtmp.mstrategy = (mtmp.mstrategy | 0) & ~_AC_STRAT_WAITMASK;
         /* goto atk_done (uhitm.c:570-577): an F-fight at an unspotted monster
@@ -2148,14 +2156,14 @@ export async function do_attack(mtmpOrX, y) {
      * metabolism".  Extracted above (this file's other export, `overexertion`)
      * so apply.c's other caller (use_pole's monster-hit arm, js/cmd.js) can
      * reuse the identical sequence instead of re-deriving it. */
-    if (check_capacity_hit('You cannot fight while so heavily loaded.')
-        || await overexertion()) {
+    if (!kickOnly && (check_capacity_hit('You cannot fight while so heavily loaded.')
+        || await overexertion())) {
         /* hero passed out from overexertion; goto atk_done, return TRUE */
         return true;
     }
 
 
-    if (game.unweapon) {
+    if (!kickOnly && game.unweapon) {
         game.unweapon = false;
         if (game.flags?.verbose ?? true) {
             if (game.u?.uwep) {
@@ -2173,10 +2181,11 @@ export async function do_attack(mtmpOrX, y) {
     }
 
     /* Step 4: exercise(A_STR, TRUE) [uhitm.c:552] */
-    exercise(A_STR, true);
+    if (!kickOnly)
+        exercise(A_STR, true);
 
     /* Step 5: C uhitm.c:554 u_wipe_engr(3). */
-    if (can_reach_floor(true))
+    if (!kickOnly && can_reach_floor(true))
         wipe_engr_at(game.u?.ux | 0, game.u?.uy | 0, 3, false);
 
     /* Step 6: hitum() — find_roll_to_hit (pure arithmetic) + rnd(20) + ... */
@@ -2863,7 +2872,7 @@ export async function do_attack(mtmpOrX, y) {
                        !diedThisRow, aatypRow | 0, false);
             /* uhitm.c:5833 mhitm_knockback(&youmonst, mon, mattk, &sum[i],
              * weapon_used): TRUE breaks out of the attack loop. */
-            if (await _hero_mhitm_knockback(mtmp, weapon_used ? u.uwep : null,
+            if (!kickOnly && await _hero_mhitm_knockback(mtmp, weapon_used ? u.uwep : null,
                                             aatypRow | 0, _curAdtyp, !!mhitRow))
                 _knockedBreak = true;
         };
@@ -2938,6 +2947,15 @@ export async function do_attack(mtmpOrX, y) {
                 || { aatyp: 0, adtyp: 0, damn: 0, damd: 0 };
             const aatyp = row.aatyp | 0;
             _curAdtyp = row.adtyp | 0;
+            if (kickOnly && aatyp !== AT_KICK_H)
+                continue; /* dokick.c:201 "we only care about kicking attacks" */
+            /* C uhitm.c:5559 — a kick can't be made from inside a pit
+             * (mtrapped_in_pit(&youmonst), mhitu.c:467-476). */
+            if (aatyp === AT_KICK_H && u.utrap && (u.utraptype | 0) === TT_PIT) {
+                const _kp = t_at(u.ux, u.uy);
+                if (_kp && is_pit(_kp.ttyp))
+                    continue;
+            }
             if (!_caitiffDone && aatyp !== 0 && aatyp !== AT_BOOM && aatyp !== AT_EXPL_H
                 && aatyp !== AT_BREA_H && aatyp !== AT_SPIT_H && aatyp !== AT_GAZE_H) {
                 _caitiffDone = true; /* find_roll_to_hit's !(*attk_count)++ */
@@ -3339,13 +3357,14 @@ export async function do_attack(mtmpOrX, y) {
                     break;
                 continue;
             }
-            if (aatyp === AT_CLAW_H && (u && u.uwep)
-                && !_uh_cantwield(game.youmonst?.data) && !weapon_used) {
+            if (u.uwep && !weapon_used
+                && ((aatyp === AT_CLAW_H && !_uh_cantwield(game.youmonst?.data))
+                    || ([AT_CLAW_H, 5 /* AT_TUCH */].includes(aatyp)
+                        && game.youmonst?.data?.mlet === S_LICH))) {
                 odd_claw = !odd_claw;
-                /* uhitm.c:5548-5550 `case AT_CLAW: if (uwep &&
-                 * !cantwield(gy.youmonst.data) && !weapon_used) goto
-                 * use_weapon;` — same use_weapon body as the AT_WEAP row
-                 * above (FALLTHROUGH in C reaches the identical code). */
+                /* C uhitm.c:5548-5555: claws can use a wielded weapon;
+                 * falling through to AT_TUCH also allows liches to do so.
+                 * Both enter the same use_weapon body as AT_WEAP above. */
                 weapon_used = true;
                 const _wsClaw = _useWeaponSlot();
                 const _mhitRowClaw = await _swing(_wsClaw.weapon, false, true, false, multi_weap > 1 ? ++weaponHits : 0);
@@ -3361,15 +3380,18 @@ export async function do_attack(mtmpOrX, y) {
                 continue;
             }
             if (aatyp === AT_HUGS_H) {
-                /* C uhitm.c:5671-5753 AT_HUGS.  NAMED GAP: the
-                 * uunstick() calls are not modelled. */
+                /* C uhitm.c:5671-5757 AT_HUGS. */
                 const byhand = (u.umonnum | 0) === PM_ROPE_GOLEM;
                 let unconcerned = byhand && !can_be_strangled(mtmp);
                 let hugAttack = row;
                 const _hugHead = !((mtmp.data.mflags1 | 0) & 0x00008000 /* M1_NOHEAD */);
                 if (sticks(mtmp.data) || u.uswallow || game.gn?.notonhead
-                    || (byhand && (u.uwep || !_hugHead)))
+                    || (byhand && (u.uwep || !_hugHead))) {
+                    if (byhand && u.uwep && u.ustuck
+                        && !(sticks(u.ustuck.data) || u.uswallow))
+                        await uunstick();
                     continue; /* not 'break'; bypass passive */
+                }
                 await wakeup(mtmp, true);
                 const _hugSilver = { value: 0 };
                 const _hugSpec = special_dmgval(game.youmonst, mtmp,
@@ -3409,6 +3431,8 @@ export async function do_attack(mtmpOrX, y) {
                         _lastRowSum = await _damageum(hugAttack, _hugSpec);
                     } else if (i >= 2 && (_sumHist[i - 1] > M_ATTK_MISS)
                                && (_sumHist[i - 2] > M_ATTK_MISS)) {
+                        if (u.ustuck && u.ustuck !== mtmp)
+                            await uunstick();
                         await You('grab %s!', mon_nam(mtmp));
                         set_ustuck(mtmp);
                         if (_hugSilver.value && game.flags.verbose)
@@ -3492,7 +3516,8 @@ export async function do_attack(mtmpOrX, y) {
                           (_compat === 2) ? 'engagingly' : 'seductively');
                 _sumI = await _damageum(row, 0);
             } else if (dhit) {
-                await wakeup_attack(mtmp, true); /* C uhitm.c:5590 */
+                if (!kickOnly)
+                    await wakeup_attack(mtmp, true); /* C uhitm.c:5590 */
                 const AT_TUCH_H = 5, AT_BUTT_H = 4, AT_STNG_H = 6,
                       AT_BITE_H = 2, AT_TENT_H = 16;
                 let verb;
@@ -3523,6 +3548,10 @@ export async function do_attack(mtmpOrX, y) {
                         verb = 'attack';
                     await Your('%s %s harmlessly through %s.', verb, vtense(verb, 'pass'),
                          mon_nam(mtmp));
+                    /* dokick.c:213-216 -- the kick loop breaks here: no
+                     * passive() for a shade, no further kicks. */
+                    if (kickOnly)
+                        break;
                 } else {
                     const adtyp = row.adtyp | 0;
                     const isUnsolid = !!(mtmp.data
@@ -4001,7 +4030,13 @@ export async function corpse_chance(mtmp, magr, was_swallowed) {
     const mlet = row ? (row[0] | 0) : -1;
     const geno = row ? (row[3] | 0) : 0;
     const msize = (mndx >= 0 && mndx < MONS_MSIZE.length) ? (MONS_MSIZE[mndx] | 0) : 2;
-    void magr;
+    /* C mon.c:3189-3190: contain deaths during gulpmm()/gulpum(), even when
+     * the caller is mondied() rather than the digestion damage handler. */
+    const swallower = game.gm?.mswallower;
+    if (!magr && swallower && attacktype(swallower.data, 11 /* AT_ENGL */)) {
+        magr = swallower;
+        was_swallowed = true;
+    }
 
     /* C mon.c:3184-3190 — Vlad and the liches crumble to dust: no corpse, and
      * no RNG on the way out. */
@@ -4034,16 +4069,10 @@ export async function corpse_chance(mtmp, magr, was_swallowed) {
                  * damages the hero directly and records the spore as killer. */
                 await pline('There is an explosion in your stomach!');
                 const killer = `${s_suffix(Monnam(mtmp))} explosion`;
-                const u = game.u;
-                u.uhp = (u.uhp | 0) - (tmp_boom | 0);
-                if (!game.svk) game.svk = {};
-                if (!game.svk.killer) game.svk.killer = {};
-                game.svk.killer.name = killer;
-                game.svk.killer.format = KILLED_BY_AN;
-                if ((u.uhp | 0) < 1)
-                    deadhero(0);
-                else if ((u.uhp | 0) > (u.uhpmax | 0))
-                    u.uhpmax = u.uhp;
+                const hp = game.u?.uprops?.[HALF_PHDAM];
+                const dmg = (hp && ((hp.intrinsic | 0) || (hp.extrinsic | 0)))
+                    ? Math.trunc((tmp_boom + 1) / 2) : tmp_boom;
+                await losehp(dmg, killer, KILLED_BY_AN); /* mon.c:3213 */
                 return false;
             }
             await You_hear('an explosion.');
@@ -4172,9 +4201,15 @@ export async function xkilled(mtmp, xkflags) {
     }
     game.vamp_rise_msg = false; /* mon.c:3558 */
     (game.gd ||= {}).disintegested = nocorpse; // C mon.c:3544: vampire rise wording.
-    await lifesaved_monster(mtmp);
-    /* C mon.c:3098-3100 mondead(): vampire in bat/fog/wolf form rises instead */
-    if ((mtmp.mhp | 0) <= 0 && is_vampshifter_uh(mtmp) && await vamprises(mtmp)) { /* mhp restored */ }
+    /* C mon.c:3546-3549: petrification enters monstone BEFORE mondead's
+     * lifesaving/vamprises path.  vamp_stone may restore the original form. */
+    const _xk_stoned = !!game.stoned;
+    if (_xk_stoned) {
+        await monstone(mtmp);
+    } else {
+        await lifesaved_monster(mtmp);
+        if ((mtmp.mhp | 0) <= 0 && is_vampshifter_uh(mtmp) && await vamprises(mtmp)) { /* mhp restored */ }
+    }
     game.gd.disintegested = false; // C mon.c:3550, including the life-saved path.
     if ((mtmp.mhp | 0) > 0) {
         game.stoned = false; // C mon.c:3557: lifesaving cancels pending petrification.
@@ -4192,9 +4227,8 @@ export async function xkilled(mtmp, xkflags) {
      * monstone() ends in mondead(), which does the mvitals died++ itself. */
     /* C mon.c:3103-3104 mondead(): a dying steam vortex leaves a harmless cloud,
      * before the chameleon/were restore and m_detach. */
-    if ((mtmp.mnum | 0) === 110 /* PM_STEAM_VORTEX */)
+    if (!_xk_stoned && (mtmp.mnum | 0) === 110 /* PM_STEAM_VORTEX */)
         create_gas_cloud(mtmp.mx, mtmp.my, rn2(10) + 5, 0);
-    const _xk_stoned = !!game.stoned;
     /* C mon.c:3106-3110 mondead(): "dead vault guard is actually kept at
      * coordinate <0,0> until his temporary corridor to/from the vault has
      * been removed":  if (mtmp->isgd && !grddead(mtmp)) return;
@@ -4228,10 +4262,14 @@ export async function xkilled(mtmp, xkflags) {
         // C mon.c:3141-3144: a dead mail daemon prevents further delivery.
         if (_died_mndx === PM_MAIL_DAEMON) mv.mvflags |= G_GENOD;
     }
+    /* C mon.c:3138-3140 mondead(): leader identity survives polymorph. */
+    if (!_xk_stoned && !_xk_gdkept
+        && mtmp.m_id === game.svq.quest_status.leader_m_id)
+        game.svq.quest_status.leader_is_dead = true;
     /* C mon.c:3144-3162 mondead(): a dead Kop may come back (rnd(5), then
      * makemon).  Runs after died++ and before m_detach, i.e. BEFORE the
      * treasure drop's rn2(6) below. */
-    if (!_xk_gdkept) await kop_revival(mtmp);
+    if (!_xk_stoned && !_xk_gdkept) await kop_revival(mtmp);
     if (!_xk_stoned && !_xk_gdkept) record_death_achievement(_died_mndx);
 
     if (typeof process !== 'undefined' && ENV?.FF_DEATH_TRACE === '1') {
@@ -4241,7 +4279,6 @@ export async function xkilled(mtmp, xkflags) {
             `waslit=${cell?.waslit ? 1 : 0},minvent=${mtmp.minvent ? 1 : 0}]`);
     }
     if (_xk_stoned) {
-        await monstone(mtmp);
         game.stoned = false;
     } else if (!_xk_gdkept) {
     if (glyph_is_invisible_at(dx, dy))
@@ -4320,7 +4357,9 @@ export async function xkilled(mtmp, xkflags) {
                  * to restart the timer after overriding the random species. */
                 game.flags.zombify = (!game.thrownobj && !game.stoned && !game.u.uwep
                     && zombie_maker(game.youmonst) && zombie_form(mtmp.data) !== -1);
-                const cadaver = await make_corpse(mtmp, dx, dy, burycorpse ? CORPSTAT_BURIED : 0);
+                /* C make_corpse() reads mtmp->mx,my itself: a vault guard parked at
+                 * <0,0> by grddead() gets a randomly placed (rloco) corpse. */
+                const cadaver = await make_corpse(mtmp, mtmp.mx | 0, mtmp.my | 0, burycorpse ? CORPSTAT_BURIED : 0);
                 game.flags.zombify = false;
                 if (burycorpse && cadaver && cansee(dx, dy) && !mtmp.minvis
                     && cadaver.where === OBJ_BURIED && !nomsg)
@@ -5875,8 +5914,10 @@ export async function mon_wield_item(mon) {
                     pline(`Since ${s_suffix(mon_nam(mon))} weapon${(mw_tmp.quan | 0) !== 1 ? 's' : ''} ${welded_buf},`);
                     pline(`${mon_nam(mon)} cannot wield that ${xname(obj)}.`);
                 } else {
-                    pline(`${Monnam(mon)} tries to wield ${doname_sh(obj)}.`);
-                    pline(`${Yname2_sh(mw_tmp, mon)} ${welded_buf}!`);
+                    pline_mon(mon, `${Monnam(mon)} tries to wield ${await doname(obj)}.`);
+                    // C weapon.c:877: Yname2 -> yname -> shk_your uses
+                    // y_monnam for monster ownership (including "your" pets).
+                    pline(`${Yname2(mw_tmp)} ${welded_buf}!`);
                 }
                 mw_tmp.bknown = 1;
             }
@@ -5886,10 +5927,8 @@ export async function mon_wield_item(mon) {
         mon.mw = obj; /* wield obj */
         setmnotwielded(mon, mw_tmp);
         mon.weapon_check = SH_NEED_WEAPON;
-        obj.owornmask = SR_W_WEP;
         if (canseemon(mon)) {
-            set_msg_xy_uh(mon.mx, mon.my); /* C weapon.c:892 pline_mon */
-            const _wieldLine = `${Monnam(mon)} wields ${doname_sh(obj)}${exclaim ? '!' : '.'}`;
+            const _wieldLine = `${Monnam(mon)} wields ${await doname(obj)}${exclaim ? '!' : '.'}`;
             /* C weapon.c:905-918 — a cursed weapon welds as it is picked up.
              * Set W_WEP below before testing mwelded(), then retain the
              * second pline on the same topline as the wield announcement. */
@@ -5899,18 +5938,22 @@ export async function mon_wield_item(mon) {
              * (and flushed pending vision), so the dwarf can read "It". */
             const _tetherLine = () => ((_arw && _arw.tethered)
                 ? `${Monnam(mon)} secures the tether on ${the_sh(xname(obj))}.` : null);
-            if (mwelded(obj)) {
+            // C weapon.c:904-906: only the welded test sees W_WEP here.
+            obj.owornmask = (obj.owornmask | 0) | SR_W_WEP;
+            const newly_welded = mwelded(obj);
+            obj.owornmask &= ~SR_W_WEP;
+            if (newly_welded) {
                 let mon_hand = mbodypart(mon, HAND);
                 if (sh_oc_bimanual(obj.otyp)) mon_hand = makeplural(mon_hand);
-                pline(_wieldLine);
-                { const _t = _tetherLine(); if (_t) pline(_t); }
+                pline_mon(mon, _wieldLine);
+                { const _t = _tetherLine(); if (_t) pline_mon(mon, _t); }
                 pline(`${Tobjnam_sh(obj, 'weld')} ${(obj.quan | 0) !== 1 ? 'themselves' : 'itself'} to ${s_suffix(mon_nam(mon))} ${mon_hand}!`);
                 /* C weapon.c:917 — the welded weapon's curse becomes known. */
                 obj.bknown = 1;
                 obj.bknown = 1; /* weapon.c:915 */
             } else {
-                pline(_wieldLine);
-                { const _t = _tetherLine(); if (_t) pline(_t); }
+                pline_mon(mon, _wieldLine);
+                { const _t = _tetherLine(); if (_t) pline_mon(mon, _t); }
             }
         }
         /* C weapon.c:918-928 — a lit artifact (Sunsword) starts shining in the
@@ -5923,6 +5966,7 @@ export async function mon_wield_item(mon) {
             else if (cansee(mon.mx | 0, mon.my | 0))
                 pline(`Light begins shining ${(dist2(mon.mx | 0, mon.my | 0, game.u.ux, game.u.uy) <= 5 * 5) ? 'nearby' : 'in the distance'}.`);
         }
+        obj.owornmask = SR_W_WEP; /* C weapon.c:929, after naming and light. */
         return 1;
     }
     mon.weapon_check = SH_NEED_WEAPON;
@@ -5933,18 +5977,6 @@ export async function mon_wield_item(mon) {
 function mhis_sh(mon) {
     /* weapon.c:869 mhis(mon) == genders[pronoun_gender(mon, PRONOUN_HALLU)].his */
     return mhis_mon(mon);
-}
-function Yname2_sh(obj, carrier) {
-    /* objnam.c:2377 Yname2 = highc(yname(obj)); yname's shk_your() (shk.c:5862)
-     * takes mon_owns() (shk.c:5902) for an OBJ_MINVENT object: the prefix is
-     * s_suffix(y_monnam(obj->ocarry)) -- "the ogre's club", not "the club". */
-    let s;
-    if ((obj.where | 0) === 4 || carrier) {
-        s = `${s_suffix(mon_nam(obj.ocarry || carrier))} ${cxname_sh(obj)}`;
-    } else {
-        s = yname(obj);
-    }
-    return s ? s[0].toUpperCase() + s.slice(1) : s;
 }
 function doname_sh(obj) {
     return _drop_doname(obj);
@@ -7206,6 +7238,40 @@ async function munslime(mon, by_you) {
         /* C muse.c:3064-3066, 3168-3200, 3231-3241, 3254-3256: oil cure.
          * C rolls damage but does not subtract it from HP in this arm. */
         for (let obj = mon.minvent; obj; obj = obj.nobj) {
+            if ((obj.otyp === 430 /* WAN_FIRE */
+                 || (obj.otyp === 251 /* FIRE_HORN */ && can_blow(mon)))
+                && (obj.spe | 0) > 0) {
+                /* C muse.c:3246-3256 cures_sliming; muse_unslime wand/horn arm 3226-3234 */
+                const vis = canseemon(mon);
+                if (vis)
+                    pline_mon(mon, '%s starts turning %s.', Monnam(mon),
+                              green_mon(mon) ? 'into ooze' : hcolor('green'));
+                mon_adjust_speed(mon, -4, null);
+                if (obj.otyp === 251)
+                    await mplayhorn(mon, obj, true);
+                else
+                    await mzapwand(mon, obj, true);
+                const dmg = await _zhitm(mon, by_you ? 1 : -1, 2);
+                if (dmg) {
+                    if (DEADMONSTER(mon)) {
+                        if (by_you) {
+                            if (vis)
+                                pline_mon(mon, '%s is %s by the fire!', Monnam(mon),
+                                          nonlivingMon(mon.data.pmidx) ? 'destroyed' : 'killed');
+                            await xkilled(mon, 1 | 4 /* XKILL_NOMSG | XKILL_NOCONDUCT */);
+                        } else await monkilled(mon, 'fire', 2 /* AD_FIRE */);
+                    } else if (vis)
+                        pline_mon(mon, '%s is burned%s', Monnam(mon), exclam(dmg));
+                }
+                if (vis) {
+                    if (!DEADMONSTER(mon))
+                        pline_mon(mon, '%s slime is burned away!', s_suffix(Monnam(mon)));
+                    discover_object(obj.otyp, true, true, true);
+                }
+                mon.movement = (mon.movement | 0) - 12 /* NORMAL_SPEED */;
+                mon.mlstmv = game.moves;
+                return true;
+            }
             if (obj.otyp === 339 /* SCR_FIRE */
                 && !((mptr.mflags1 | 0) & 0x00001000 /* M1_NOEYES */) && mon.mcansee
                 && !((mptr.mflags1 | 0) & _UH_M1_NOHANDS)) {
@@ -8151,20 +8217,33 @@ function dynamic_multi_reason(mon, verb, by_gaze) {
     game.multireasonbuf = `${mon.m_id >>> 0}:${game.multi_reason}`;
 }
 
-/* stubs for mhitm_ad_ston unported helpers */
+/* C muse.c:3001-3031: animals cannot open tins; a welded weapon limits
+ * the tools available, otherwise any carried opener/dagger/knife works. */
+function mcould_eat_tin_uh(mon) {
+    if (sr_is_animal(mon.data)) return false;
+    const mwep = sr_MON_WEP(mon), welded = mwep && mwelded(mwep);
+    for (let obj = mon.minvent; obj; obj = obj.nobj) {
+        if (welded && obj !== mwep) continue;
+        if (obj.otyp === 239 /* TIN_OPENER */
+            || (obj.oclass === WEAPON_CLASS
+                && [P_DAGGER, P_KNIFE].includes(sr_oc_skill(obj.otyp)))) return true;
+    }
+    return false;
+}
 export async function munstone(mdef, by_you) {
-    /* C muse.c:2884-2899: a monster carrying a lizard or acidic corpse can
-     * eat it to interrupt petrification. */
+    /* C muse.c:2884-2903,2983-2998: lizard or acidic meat cures stoning,
+     * including tinned meat when the monster can open the tin. */
     if (resists_ston_real(mdef) || mdef.meating || helpless(mdef)) return false;
     mdef.mstrategy = (mdef.mstrategy | 0) & ~STRAT_WAITFORU;
     const CORPSE = 265, POT_ACID = 320, TIN = 296;
+    const tinok = mcould_eat_tin_uh(mdef);
     for (let obj = mdef?.minvent; obj; obj = obj.nobj) {
         const isAcidPotion = (obj.otyp | 0) === POT_ACID;
-        const isTinCure = (obj.otyp | 0) === TIN && (obj.corpsenm | 0) === PM_LIZARD;
-        const corpsePm = (obj.otyp | 0) === CORPSE ? permonstTemplate(obj.corpsenm | 0) : null;
+        const isTinCure = (obj.otyp | 0) === TIN;
+        const food = (obj.otyp | 0) === CORPSE || (isTinCure && tinok);
+        const corpsePm = food && (obj.corpsenm | 0) >= 0 ? permonstTemplate(obj.corpsenm | 0) : null;
         const acidic = !!(corpsePm && ((corpsePm.mflags1 >>> 0) & 0x08000000));
-        if (!isAcidPotion && !isTinCure
-            && ((obj.otyp | 0) !== CORPSE || ((obj.corpsenm | 0) !== PM_LIZARD && !acidic)))
+        if (!isAcidPotion && !(food && corpsePm && (obj.corpsenm === PM_LIZARD || acidic)))
             continue;
         /* C muse.c:2911-2979 mon_consume_unstone: nutrition sets meating
          * before the speed message; eating also uses the next movement turn. */
@@ -8543,7 +8622,7 @@ async function mhitm_ad_phys(magr, mattk, mdef, mhm) {
                  * uhitm and mhitu cases. */
                 mhitm_really_poison(magr, mattk, mdef, mhm);
             }
-        } else if (magr.mndx === PM_PURPLE_WORM && mdef.mndx === PM_SHRIEKER) {
+        } else if (pa.pmidx === PM_PURPLE_WORM && pd.pmidx === PM_SHRIEKER) {
             /* hack to enhance mm_aggression(); we don't want purple
                worm's bite attack to kill a shrieker because then it
                won't swallow the corpse; but if the target survives,

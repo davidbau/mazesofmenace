@@ -16,6 +16,8 @@ import { Is_juiblex_level as Is_juiblex_level_real } from './const.js';
 import { rn2, rnd, rn1, rnl } from './rng.js';
 import { pline, newsym, You_hear, flush_pending_messages, canseemon, tmp_at, DISP_FLASH, DISP_END, obj_to_glyph, impossible_sync } from './display.js';
 import { impossible } from './pline.js';
+import { Norep } from './display.js';
+import { PASSES_WALLS, HALLUC_RES } from './const.js';
 function strchr(str, ch) {
     if (str == null) return false;
     const want = typeof ch === 'number' ? ch : String(ch);
@@ -86,6 +88,7 @@ import { enexto_out } from './teleport.js';
 // rather than re-implemented so there is no second body to drift.
 import { obfree, is_unpaid, in_rooms, shop_keeper, add_damage, pay_for_damage, oid_price_adjustment, costly_spot as shk_costly_spot, Shknam as shk_Shknam, hot_pursuit as shk_hot_pursuit, stolen_value, subfrombill, contained_gold, donate_gold, addtobill as shk_addtobill, delete_contents as shk_delete_contents, add_to_billobjs } from './shk.js';
 import { make_happy_shk, make_angry_shk } from './shk.js';
+import { costly_gold } from "./shk.js";
 import { shkcatch } from './shk.js';
 import { is_pick } from './dig.js';
 import { stairway_at } from './mklev.js';
@@ -97,12 +100,13 @@ import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
  * js/sit.js also exports a `Tobjnam` that returns the literal "It", and a
  * file-local copy of any of these would shadow the real body the same way the
  * rndorcname stub below used to. */
-import { Tobjnam, corpse_xname, otense, CXN_PFX_THE } from './objnam.js';
+import { Tobjnam, corpse_xname, otense, CXN_PFX_THE, makeplural } from './objnam.js';
 /* objects.h FOOD() CORPSE -- the otyp corpse_xname()/cxname() switch on. */
 const CORPSE_DK = 265;
 import { dealloc_obj, add_to_minv } from './mklev.js';
 import { food_disappears } from './eat.js';
-import { t_at, deltrap } from './trap.js';
+import { t_at, deltrap, water_damage } from './trap.js';
+import { ER_NOTHING } from './const.js';
 import { can_reach_floor } from './hold_another_object.js';
 import { fracture_rock, break_statue } from './zap.js';
 import { deadhero, do_death_sequence } from './end.js';
@@ -110,7 +114,11 @@ import { set_wounded_legs, ok_to_quest, breaktest, breakmsg, breakobj, altar_wra
 import { surface, hurtle, showdamage, body_part, Yname2 } from './cmd.js';
 import { RIGHT_SIDE } from './const.js';
 import { UNCHANGING } from './const.js';
-import { rehumanize } from './polyself.js';
+import { rehumanize, polymon } from './polyself.js';
+import { poly_when_stoned } from './mhitm.js';
+import { instapetrify } from './cmd.js';
+import { STONE_RES } from './const.js';
+import { PM_COCKATRICE, PM_CHICKATRICE, PM_STONE_GOLEM, PM_SASQUATCH } from './pm.generated.js';
 import { end_running } from './look.js';
 /* ── the monster-kick arm's dependencies (see maybe_kick_monster below) ── */
 import { FUMBLING, W_ARMF, P_NONE, P_MARTIAL_ARTS, NATTK,
@@ -256,7 +264,9 @@ function martial() {
      * otyp constant not surfaced in const.js yet (WIRE_PENDING). */
     /* dokick.c:8-10 — uarmf && uarmf->otyp == KICKING_BOOTS */
     const boots = u.uarmf ?? null;
-    return martial_bonus || !!(boots && (boots.otyp | 0) === _KM_KICKING_BOOTS);
+    /* dokick.c:7 is_bigfoot(x) ((x) == &mons[PM_SASQUATCH]) */
+    const bigfoot = ((g.youmonst?.mnum ?? u.umonnum ?? -1) | 0) === PM_SASQUATCH;
+    return martial_bonus || bigfoot || !!(boots && (boots.otyp | 0) === _KM_KICKING_BOOTS);
 }
 /* C ref: dokick.c:863-878 kick_dumb(x, y) — no-leverage kick at empty space.
  * RNG: rn2(3) — maybe kick at empty space vs. strain a muscle.
@@ -639,8 +649,9 @@ export async function kick_nondoor(x, y, avrg_attrib) {
         /* C: if (uarmf && rn2(3)) — uarmf = footwear */
         const uarmf = u.uarmf ?? null;
         if (uarmf && rn2(3)) {
-            /* water_damage(uarmf, "metal boots", TRUE) — WIRE_PENDING */
-            /* if ER_NOTHING: Your("boots get wet.") */
+            // C dokick.c:1091-1092: water damage, or just wet boots.
+            if (await water_damage(uarmf, "metal boots", true) === ER_NOTHING)
+                await pline("Your boots get wet.");
         }
         exercise(A_DEX, true);
         return ECMD_TIME;
@@ -1203,7 +1214,7 @@ async function kick_monster(mon, x, y) {
          * loop used by ordinary attacks.  Reuse its canonical dispatcher so
          * every form-specific attack, damage, and passive effect stays in one
          * implementation. */
-        await do_attack(mon);
+        await do_attack(mon, undefined, true);
         return;
     }
 
@@ -1480,12 +1491,16 @@ async function really_kick_object(x, y, kickedobj) {
 
     const trap = t_at(x, y);
     if (trap) {
-        if ((is_pit(trap.ttyp | 0) && !false)
+        // C dokick.c:521; youprop.h:284-286: wall passing bypasses pits, not webs.
+        const passesWalls = u.uprops?.[PASSES_WALLS];
+        if ((is_pit(trap.ttyp | 0) && !(passesWalls?.intrinsic || passesWalls?.extrinsic))
             || (trap.ttyp | 0) === WEB) {
             if (!trap.tseen)
                 await find_trap(trap);
-            const halluc = !!(u.uprops?.[HALLUC]?.intrinsic | 0) || !!(u.uprops?.[HALLUC]?.extrinsic | 0);
-            void pline(`You can't kick something that's in a ${
+            const hallucRes = u.uprops?.[HALLUC_RES];
+            const halluc = u.uprops?.[HALLUC]?.intrinsic
+                && !(hallucRes?.intrinsic || hallucRes?.extrinsic);
+            await pline(`You can't kick something that's in a ${
                 halluc ? 'tizzy' : (trap.ttyp | 0) === WEB ? 'web' : 'pit'}!`);
             return 1;
         }
@@ -1500,9 +1515,19 @@ async function really_kick_object(x, y, kickedobj) {
         return 1;
     }
 
+    // C dokick.c:542-556; mondata.h:200 touch_petrifies.
+    const stoneRes = u.uprops?.[STONE_RES];
+    if (!u.uarmf && kickedobj.otyp === CORPSE_DK
+        && (kickedobj.corpsenm === PM_COCKATRICE || kickedobj.corpsenm === PM_CHICKATRICE)
+        && !(stoneRes?.intrinsic || stoneRes?.extrinsic)) {
+        await pline(`You kick ${corpse_xname(kickedobj, null, CXN_PFX_THE)} with your bare ${makeplural(body_part(FOOT))}.`);
+        if (!(poly_when_stoned(g.youmonst.data) && await polymon(PM_STONE_GOLEM))) {
+            await instapetrify(`kicking ${killer_xname(kickedobj)} barefoot`);
+        }
+    }
 
     const isgold = (kickedobj.oclass | 0) === _KO_COIN_CLASS;
-    let k_owt = weight(kickedobj);
+    let k_owt = kickedobj.owt | 0;
     if ((kickedobj.quan | 0) > 1 && !isgold) {
         const save_quan = kickedobj.quan;
         kickedobj.quan = 1;
@@ -1539,7 +1564,7 @@ async function really_kick_object(x, y, kickedobj) {
     const shkp = await find_objowner(kickedobj, x, y);
     const costly = !!(shkp && (costly_spot(x, y) || (costly_adjacent(shkp, x, y) && kickedobj.unpaid)));
 
-    void pline(`You kick ${!isgold ? (await singular(kickedobj, doname)) : (await doname(kickedobj))}.`);
+    await Norep(`You kick ${!isgold ? (await singular(kickedobj, doname)) : (await doname(kickedobj))}.`);
 
     const hereLoc = g.level.at(x, y);
     if (IS_OBSTRUCTED(hereLoc.typ | 0) || closed_door(x, y)) {
@@ -1575,8 +1600,8 @@ async function really_kick_object(x, y, kickedobj) {
                           : `${The((await distant_name(kickedobj, xname)))} ${otense(kickedobj, 'come')} loose.`);
         obj_extract_self(kickedobj);
         newsym(x, y);
-        if (costly && !(costly_spot(u.ux | 0, u.uy | 0)
-                        && in_rooms(u.ux | 0, u.uy | 0, SHOPBASE)[0] === in_rooms(x, y, SHOPBASE)[0])) {
+        if (costly && (!costly_spot(u.ux | 0, u.uy | 0)
+                        || !strchr(u.urooms, in_rooms(x, y, SHOPBASE)[0]))) {
             if (!kickedobj.no_charge)
                 await shk_addtobill(kickedobj, false, false, false);
             else
@@ -1729,6 +1754,11 @@ async function really_kick_object(x, y, kickedobj) {
         }
         /* C zap.c:4087 tmp_at(x, y) follows the stop tests above. */
         tmp_at(bx, by);
+        /* C zap.c:4090-4094: kicked objects fall in pools; physical objects
+         * fall onto a sink. */
+        if (is_pool(bx, by) || (bloc.typ | 0) === LAVAPOOL || (bloc.typ | 0) === LAVAWALL
+            || IS_SINK(bloc.typ | 0))
+            break;
     }
     /* C zap.c:4127 / 4007 / 4052 — every exit path closes the flight. */
     tmp_at(DISP_END, 0);
@@ -1760,13 +1790,15 @@ async function really_kick_object(x, y, kickedobj) {
     let costlyNow = costly;
     if (costlyNow && (!costly_spot(bx, by)
                       || in_rooms(x, y, SHOPBASE)[0] !== bhitroom)) {
-        if (!isgold)
+        if (isgold)
+            await costly_gold(x, y, kickedobj.quan, false);
+        else
             await stolen_value(kickedobj, x, y, !!shkp.mpeaceful, false);
         costlyNow = false;
     }
     if (await flooreffects(kickedobj, bx, by, 'fall'))
         return 1;
-    if (costlyNow && !isgold) {
+    if (costlyNow) {
         if (kickedobj.unpaid)
             await subfrombill(kickedobj, shkp);
         let gtg = 0;
@@ -1906,9 +1938,9 @@ export async function dokick_resolve() {
     }
     unmap_invisible(x, y);
     /* C: pools/lava splash (XOR u.uinwater) */
-    if ((is_pool(x, y) || (maploc && maploc.typ === LAVAWALL))
-        && !(u.uinwater)) {
-        void pline(`You splash some ${is_pool(x, y) ? "water" : "lava"} around.`);
+    if (((is_pool(x, y) || (maploc && maploc.typ === LAVAWALL)) ? 1 : 0)
+        ^ (u.uinwater ? 1 : 0)) {
+        await pline(`You splash some ${is_pool(x, y) ? "water" : "lava"} around.`);
         return ECMD_TIME;
     }
     const objHere = obj_at(x, y);
@@ -1919,10 +1951,9 @@ export async function dokick_resolve() {
         if (!Levitation_dk(u) || Is_airlevel(u.uz) || hasBoulder) {
             const kickobjnam = { value: '' };
             if (await kick_object(x, y, kickobjnam)) {
-                if (Is_airlevel(u.uz)) {
-                    /* hurtle(-u.dx, -u.dy, 1, TRUE) -- WIRE_PENDING, same
-                     * hurtle gap as kick_dumb/kick_ouch above. */
-                }
+                // C dokick.c:1457-1458: recoil from kicking a light object.
+                if (Is_airlevel(u.uz))
+                    await hurtle(-(u.dx | 0), -(u.dy | 0), 1, true);
                 return ECMD_TIME;
             }
             await kick_ouch(x, y, kickobjnam.value);
@@ -3077,6 +3108,8 @@ function _Deaf_dk() {
     const u = game.u;
     if (!u) return false;
     const dp = u.uprops && u.uprops[DEAF];
-    return !!dp && !!((dp.intrinsic | 0) || (dp.extrinsic | 0)) && !(dp.blocked | 0);
+    /* HDeaf is the flat u.HDeaf slot in this port (allmain.js nh_timeout_deaf) */
+    return !!(u.HDeaf | 0) || !!u.uroleplay?.deaf
+        || (!!dp && !!((dp.intrinsic | 0) || (dp.extrinsic | 0)) && !(dp.blocked | 0));
 }
 export { ghitm };

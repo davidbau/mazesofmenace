@@ -261,11 +261,14 @@ function flees_light(mtmp) {
     /* couldsee stub: assume visible if mcansee is set; L15 refines */
     return !!(mtmp.mcansee);
 }
+/* C youprop.h:195-198: all Invis components alias u.uprops[INVIS].
+ * attrcurse's u.HInvis snapshot is not a live alias; consulting it after
+ * the property times out would restore expired invisibility. */
 function _Invis_mv() {
     const u = game.u;
     if (!u) return false;
     const p = u.uprops?.[INVIS_PROP];
-    const HInvis = (p?.intrinsic | 0) || (u.HInvis | 0);
+    const HInvis = p?.intrinsic | 0;
     const EInvis = p?.extrinsic | 0;
     const BInvis = p?.blocked | 0;
     return !!((HInvis || EInvis) && !BInvis);
@@ -293,7 +296,7 @@ async function monflee_mv(mtmp, fleetime, first, fleemsg) {
             } else if (flees_light(mtmp)) {
                 const u = game.u || {};
                 const p = u.uprops ? u.uprops[DEAF] : null;
-                const deaf = !!((p && ((p.intrinsic | 0) || (p.extrinsic | 0))) || (u.uroleplay && u.uroleplay.deaf));
+                const deaf = !!((u.HDeaf | 0) || (u.EDeaf | 0) || (p && ((p.intrinsic | 0) || (p.extrinsic | 0))) || (u.uroleplay && u.uroleplay.deaf)); /* youprop.h:125; HDeaf is the flat u.HDeaf in this port */
                 if (Unaware()) {
                     set_msg_xy(mtmp.mx, mtmp.my); /* C monmove.c:498 pline_mon */
                     await pline(`${Monnam_dm(mtmp)} is frightened.`);

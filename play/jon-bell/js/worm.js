@@ -68,9 +68,16 @@ const _seg_occ = new Map();          /* (x<<8|y) -> the worm whose segment is he
 const _seg_key = (x, y) => (((x | 0) << 8) | (y & 0xff));
 /* C rm.h:533 place_worm_seg(m, x, y) — `svl.level.monsters[x][y] = m`. */
 function place_worm_seg(worm, x, y) { _seg_occ.set(_seg_key(x, y), worm); }
-/* C rm.h:534 remove_monster(x, y) — `svl.level.monsters[x][y] = 0`.  Only ever
- * called here for a square this file put a segment on. */
-function remove_monster(x, y) { _seg_occ.delete(_seg_key(x, y)); }
+/* C rm.h:534 clears the grid, including the hidden segment at the head.
+ * Head occupancy is represented by fmon here; preserve mx/my while removing
+ * it from map lookups, just as mon_leaving_level does. Placement clears the
+ * marker. Removing a body segment must leave the head on the map. */
+function remove_monster(x, y) {
+    const mon = m_at(x, y);
+    if (mon && mon.mx === x && mon.my === y)
+        mon._mapRemoved = true;
+    _seg_occ.delete(_seg_key(x, y));
+}
 /* The grid READ, for js/uhitm.js m_at().  C has no separate entry point: its
  * m_at() is the one grid lookup and a segment square answers with the worm. */
 export function worm_seg_at(x, y) { return _seg_occ.get(_seg_key(x, y)) || null; }
@@ -579,9 +586,9 @@ export function place_wsegs(worm, oldworm) {
  * "need to check curr->wx for genocided while migrating_mon".
  *
  * The loop runs to the END of the chain, head segment included; C's
- * remove_monster() there clears the grid cell holding the worm itself.  Here
- * that cell is in the fmon chain rather than in _seg_occ, so the delete is a
- * no-op and the newsym() is the whole of its effect — which is C's effect too.
+ * remove_monster() there clears the grid cell holding the worm itself. Here
+ * the head's _mapRemoved marker prevents newsym() from finding it on fmon
+ * and repainting a stale head before the caller places the worm again.
  * RNG-free. */
 export function remove_worm(worm) {
     let curr = wtails[worm.wormno | 0];

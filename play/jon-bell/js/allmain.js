@@ -947,7 +947,7 @@ export async function stop_occupation(options) {
         {
             const _oc = g._occ_committed_topl;
             const _pm = g._pending_message;
-            if (_oc && !_oc.postMeal && _pm && !_pm.startsWith(_oc.text)) {
+            if (_oc && !g._topl_win_stop && !_oc.postMeal && _pm && !_pm.startsWith(_oc.text)) {
                 g._pending_message = _topl_merge_result(_oc.text, _pm,
                                                         _topl_joins_snapshot(_oc.text));
                 g._occ_committed_topl = null;
@@ -1720,6 +1720,9 @@ async function eat_occupation_turn() {
     let r;
     try { r = await eatfood(); }
     finally { g._occBeforeInput = null; }
+    /* eat.c:1224 display_nhwindow(WIN_MAP, TRUE) more()'d the standing topline,
+     * so the held committed line is no longer on it. */
+    if (g._eatMimicAcked) { g._eatMimicAcked = false; prior = null; }
     g._occPreEatLive = null;
     if (g._occPreEatUsed) {
         g._occPreEatUsed = false;
@@ -1882,6 +1885,15 @@ async function eat_occupation_turn() {
             g._topl_win_stop = true;
             g._topl_win_stop_buf = _committed || '';
         }
+        /* wintty.c:2277-2283: ATR_URGENT clears an existing WIN_STOP and
+         * wipes the message window before update_topl samples skip.  These
+         * deferred occupation plines must retain the same urgent attribute. */
+        const partUrgent = (g._topl_urgent_marks || []).includes(part);
+        if (partUrgent && g._topl_win_stop) {
+            g._topl_win_stop = false;
+            g._topl_win_stop_buf = null;
+            _committed = '';
+        }
         if (g._topl_win_stop) {
             const hidden = String(g._topl_win_stop_buf || _committed || '');
             g._topl_win_stop_buf = (hidden.length + 2 + part.length < 71)
@@ -1972,6 +1984,10 @@ async function eat_occupation_turn() {
                     (_fromPreEat && g._occCurBotl && g._occCurBotl.uhs != null)
                         ? (g._occCurBotl.uhs | 0) : _displayedUhs(part),
                     !_fromPreEat && !g.occupation);
+                /* more() runs inside this incoming pline's update_topl.
+                 * WIN_NOSTOP remains set until it returns (wintty.c:2300),
+                 * so ESC cannot set WIN_STOP for an urgent owner. */
+                if (partUrgent) g._topl_win_stop_armed = false;
                 _ownerAfterEsc = morc === 27 && !!g._topl_win_stop_armed;
             }
             _committed = part;
@@ -1983,6 +1999,7 @@ async function eat_occupation_turn() {
             }
         }
     }
+    if (g._eatMimicAcked) { g._eatMimicAcked = false; prior = null; }
     if (g._eatMimicForceMore) {
         /* eat.c:1224 display_nhwindow(WIN_MAP, TRUE): more() over the last pline. */
         g._eatMimicForceMore = false;
@@ -3297,6 +3314,25 @@ async function moveloop_core_faithful() {
         await flush_screen(1);
         return;
     }
+    // moveloop_core iteration, so NO key is ever read between a study's turns.
+    // A study begun by the COUNTED-REPEAT dispatch (allmain.c:530
+    // `rhack(gc.cmd_key)` — the multi>0 arm, whose JS twin is the repeat
+    // dispatch at this function's tail) re-enters moveloop_core with
+    // go.occupation already set; falling through to rhack(0) read a key
+    // instead, and nhgetch (js/input.js) erased the standing study topline
+    // "You begin to memorize the runes."  learn()'s completion line then
+    // REPLACED it instead of update_topl's join arm concatenating and paging
+    // (win/tty/topl.c:257-274: 32 + 2 + 41 >= CO-8 → more() over the standing
+    // line), which also leaked the recorded xwaitforspace keys to rhack as
+    // commands (fy10-postmov-01475 step 225: 19 keys eaten by one --More--).
+    // The head world block above already ran the study's first per-turn block
+    // (C allmain.c:478-481; that is what _learnBegunEarlier records), so run
+    // the same tail driver the plain-read path uses and RETURN, exactly like
+    // the eat/dig continuations above.
+    if (g.occupation === learn && (g.multi | 0) >= 0) {
+        await _learn_occupation_driver();
+        return;
+    }
     // C ref: allmain.c:513 — `u.umoved = FALSE;`, immediately after the
     // occupation block returns and before the gm.multi / rhack tail.  Note the
     // occupation early-return above (C allmain.c:557) happens BEFORE this line,
@@ -3613,7 +3649,11 @@ async function moveloop_core_faithful() {
     // of-death book schedules an 80-turn delay, but a wandering monster reaches an
     // adjacent square at turn 15 → monster_nearby() fires → stop_occupation()
     // ("You stop studying.").  The number of turns falls out of the world state,
-    if (g.occupation === learn && (g.multi | 0) >= 0) {
+    // Declared as a (hoisted) function so the PRE-rhack continuation beside the
+    // eat/dig ones above can run the SAME driver when a counted repeat
+    // (allmain.c:530 rhack(gc.cmd_key), the multi>0 arm at the tail below)
+    // started the study — see that continuation for the C cite.
+    async function _learn_occupation_driver() {
         let learnGuard = 0;
         // The study's begin message ("You begin to memorize the runes.") is on
         // _pending_message (preserved above).  Each study turn's movemon/dosounds
@@ -3744,6 +3784,10 @@ async function moveloop_core_faithful() {
         g.context = g.context || {};
         g.context.move = 0;
     }
+    // (rhack above just dispatched 'r' → doread → study_book) still drives the
+    // study from here.
+    if (g.occupation === learn && (g.multi | 0) >= 0)
+        await _learn_occupation_driver();
     // ===================== go.occupation DRIVER — OPENTIN (faithful) ==============
     // C ref: allmain.c:485-509 — rhack just dispatched 'e' → doeat → start_tin
     // (eat.c:1723), which plined "It is not so easy to open this tin." and set
@@ -4451,8 +4495,8 @@ async function moveloop_core_faithful() {
     //
     if (g.occupation === timed_occupation && (g.multi | 0) >= 0) {
         let occGuard = 0;
-        while (g.occupation === timed_occupation && (g.multi | 0) >= 0
-               && occGuard++ < 4096) {
+        while (g.occupation === timed_occupation && (g.multi | 0) >= 0) {
+            occGuard++;
             if (typeof process !== 'undefined' && ENV && ENV.FF_MLTRACE === '1') {
                 pushRngLogEntry(
                     `^ml_occ[phase=pre guard=${occGuard | 0} moves=${g.moves | 0}`

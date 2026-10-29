@@ -21,7 +21,7 @@ import { displayLookWindow } from './look-window.js';
 import { fix_ghostly_obj } from './bones.js';
 import {
     pline, _topl_stash_result, newsym, newsym_force, Norep, flush_screen, obj_to_glyph,
-    force_more, topl_park_cursor, topl_force_break_after, You_see,
+    force_more, topl_park_cursor, topl_force_break_after, capture_flushed_cells, You_see,
     _topline_more_pending, _more_never_dismissed, flush_pending_messages,
 } from './display.js';
 import { pline_with_more, money_cnt, build_window_screen, tty_window_offx, menu_search_case } from './com_pager.js';
@@ -39,6 +39,7 @@ import { corpse_xname, killer_xname, CXN_SINGULAR, CXN_ARTICLE } from './objnam.
 import { Blind } from './vision.js';
 import { get_obj_location } from './light.js';
 import { ARMOR_DATA } from './armor_data.js';
+import { MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
 import { splitobj } from './makemon.js';
 import { which_armor } from './makemon.js';
 import { rnd, rn2 } from './rng.js';
@@ -220,7 +221,10 @@ export async function fatal_corpse_mistake(obj, remotely) {
     if (u_safe_from_fatal_corpse(obj, 0x0f) || remotely) return false;
     const data = game.youmonst?.data;
     if (data && poly_when_stoned(data) && await polymon(PM_STONE_GOLEM)) {
-        topl_force_break_after(game._pending_message);
+        // C pickup.c:291: display_nhwindow(WIN_MESSAGE, FALSE) calls more()
+        // without flushing the map/status changes made after polymon's pline.
+        topl_force_break_after(game._pending_message, false, null,
+            capture_flushed_cells(), game._lastPaintedBotl);
         await flush_screen(1);
         return false;
     }
@@ -495,6 +499,20 @@ async function doloot_core() {
             if (!(await able_to_loot(cc.x, cc.y, true)))
                 return ECMD_OK;
             let anyfound = false;
+            if (Blind() && !game.u.uarmg) {
+                /* C pickup.c:2223-2234 — blind and bare-handed, #loot at a
+                 * cockatrice corpse's square is fatal before any menu. */
+                const { will_feel_cockatrice } = await import('./cmd.js');
+                const { feel_cockatrice } = await import('./eat.js');
+                for (let nobj = g.level?.levelObjects?.[cc.x]?.[cc.y]; nobj;
+                     nobj = nobj.nexthere) {
+                    if ((nobj.otyp | 0) !== 265 /* CORPSE */) continue;
+                    if (will_feel_cockatrice(nobj, false)) {
+                        await feel_cockatrice(nobj, false);
+                        return ECMD_TIME;
+                    }
+                }
+            }
             if (numConts > 1) {
                 /* C pickup.c:2227-2264 — present a PICK_ANY menu when more
                  * than one container occupies the square.  The menu window
@@ -1236,6 +1254,15 @@ function _pu_loot_subclass(obj) {
         if (k === undefined || k < 0 || k >= 7) k = 7;
         return _PU_LOOT_ARMCAT[k];
     }
+    if ((obj.oclass | 0) === 2 /* WEAPON_CLASS */) {
+        /* C invent.c:199-211: ammo 1, launcher 2, missile 3, stackable 4,
+         * other 5, polearm 6 (is_pole: P_POLEARMS 16 / P_LANCE 19 / Snickersnee 19) */
+        const k = MKOBJ_OC_SKILL[obj.otyp | 0] | 0;
+        return (k < 0) ? ((k >= -22 && k <= -20) ? 1 : 3)
+            : ((k >= 20 && k <= 22) ? 2
+               : (k === 17 || k === 1 || k === 2) ? 4
+                  : !(k === 16 || k === 19 || (obj.oartifact | 0) === 19) ? 5 : 6);
+    }
     if ((obj.oclass | 0) === 6 /* TOOL_CLASS */) {
         /* C invent.c:215-240 */
         const t = obj.otyp | 0;
@@ -1690,7 +1717,7 @@ export async function pickup_object(obj, count, telekinesis) {
         /* C pickup.c:1820-1822 — gear worn by the monster engulfing the
          * hero cannot be removed.  This refusal consumes no turn or RNG. */
         if (g.u?.uswallow) {
-            await pline(`You can't pick ${(await doname(obj))} up.`);
+            await pline("You can't pick %s up.", await _cmd_mod.ysimple_name(obj));
             return 0;
         }
     }

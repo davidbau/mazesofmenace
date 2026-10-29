@@ -41,8 +41,6 @@ import { aligns } from './roles.js';
 import { see_monsters, Sting_effects, retouch_object_hero, retouch_equipment } from './display.js';
 import { topl_park_cursor } from './display.js';
 import { flush_screen, _topline_more_pending, _topl_stash_result, restore_command_topline } from './display.js';
-import { _topl_merge_result, _topl_joins_snapshot, _topl_record_join } from './display.js';
-import { msgtype_suppressed } from './display.js'; /* C pline.c:246-262 vpline MSGTYPE check */
 import { nhgetch } from './input.js';
 import { nomul, unmul, stop_occupation } from './allmain.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js';
@@ -2592,8 +2590,6 @@ export async function accessory_or_armor_on(obj, amuletEffectsOnly = false) {
             if (!(await retouch_object_hero(obj, false))) return ECMD_TIME;
             await remove_worn_item(obj, false);
             await setworn(obj, W_AMUL_C);
-            find_ac();
-            if (g.disp) g.disp.botl = 1;
         }
         /* The AMULET_OF_ESP / LIFE_SAVING / VERSUS_POISON / REFLECTION /
          * FAKE_AMULET_OF_YENDOR cases of C's switch are a bare break (:972-977),
@@ -2853,24 +2849,18 @@ async function on_msg(otmp) {
          * before the wear command's world turn.  Preserve the surviving final
          * topline through rhack's command-result handoff. */
         await pline(line);
-        if (g._pending_message)
-            g._resultMessage = g._pending_message;
+        /* C do_wear.c:81-84 / tty/topl.c:257-274 has one topline.
+         * Move it to the result channel: a queued puton continuation also
+         * stashes the live line, so leaving a copy there prints it twice. */
+        _topl_stash_result();
         return;
     }
     if ((otmp.owornmask | 0) & W_AMUL_C) {
         const invlet = String.fromCharCode(otmp.invlet | 0);
         const line = `${invlet} - ${(await doname(otmp))}.`;
-        if (!msgtype_suppressed(line)) {
-            if (g.iflags) g.iflags.last_msg = 0;
-            g._prevmsg = line;
-        }
-        const committed = g._pending_message || '';
-        const merged = committed
-            ? _topl_merge_result(committed, line, _topl_joins_snapshot(committed))
-            : line;
-        g._resultMessage = g._resultMessage
-            ? _topl_merge_result(g._resultMessage, merged)
-            : merged;
+        /* C do_wear.c:80-85 -> prinv -> pline; move the live line with its boundaries and flush frames. */
+        await pline(line);
+        _topl_stash_result();
         return;
     }
     if (!(game.flags && game.flags.verbose))
@@ -3897,8 +3887,6 @@ export async function Amulet_on(obj) {
     const g = game, u = g.u || (g.u = {});
     await remove_worn_item(obj, false);
     await setworn(obj, W_AMUL_C);
-    find_ac();
-    if (g.disp) g.disp.botl = 1;
     /* C do_wear.c:1046-1054 — restful sleep changes the sleepy timeout only
      * when the new randomized nap is shorter than the existing one. */
     if ((obj.otyp | 0) === AMULET_OF_RESTFUL_SLEEP_DW) {

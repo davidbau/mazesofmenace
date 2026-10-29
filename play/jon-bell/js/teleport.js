@@ -17,7 +17,7 @@ import { yn_function } from './end.js';
 import { ROWNO, COLNO, ZAP_POS, ACCESSIBLE, D_CLOSED, D_LOCKED, DOOR, isok, u_at, TELEDS_TELEPORT, RLOC_MSG, TEMPLE, engulfing_u, STRAT_APPEARMSG, NO_TRAP_FLAGS, BOLT_LIM, IS_ALTAR, IS_STWALL, W_NONPASSWALL, MON_FLOOR, POOL, MOAT, WATER, DRAWBRIDGE_UP, DB_UNDER, DB_MOAT, DB_LAVA, LAVAPOOL, LAVAWALL, MM_IGNOREWATER, MM_IGNORELAVA, GP_CHECKSCARY, GP_ALLOW_U, GP_AVOID_MONPOS, LR_MONGEN, LR_TELE, LR_UPTELE, LR_DOWNTELE, FIRE_RES, NO_MM_FLAGS, IS_WATERWALL, In_endgame, Is_astralevel, Is_juiblex_level, MON_DETACH, MON_OBLITERATE, MON_ENDGAME_MIGR } from './const.js';
 import { game } from './gstate.js';
 import { You_feel } from './display.js';
-import { newsym, see_monsters, shieldeff, docrt } from './display.js';
+import { newsym, see_monsters, shieldeff, docrt, force_more_from_cls, force_more_pages } from './display.js';
 import { vision_recalc } from './vision.js';
 import { nomul } from './allmain.js';
 import { pline, canspotmon, sensemon, canseemon, _topl_joins_snapshot, _topl_merge_result } from './display.js';
@@ -314,7 +314,9 @@ export function teleok(x, y, trapok) {
         const uarmf = game.u?.uarmf;
         if (!(Levitation_hero() || Flying_hero()
             || (FireResistance_hero() && Wwalking_hero()
-                && uarmf && uarmf.oerodeproof)))
+                && uarmf && uarmf.oerodeproof)
+            || (Upolyd_hero() && game.youmonst?.data
+                && likes_lava_local(game.youmonst.data))))   /* C 153-154 */
             return false;
     } else if (!(passes_walls(mdat) && may_passwall(x, y))
                && !(amorphous(mdat) && closed_door_local(x, y))) {
@@ -459,7 +461,27 @@ export async function teleds(nux, nuy, teleds_flags) {
      * (drown()/lava_effects()); true means she changed location, so the rest
      * of spoteffects is skipped. */
     if (!game.in_steed_dismounting && !game.iflags?.in_lava_effects) {
-        if (await pooleffects(true))
+        /* hack.c:3327-3340 — spoteffects()'s inspoteffects recursion guard and
+         * statics (shared with js/landing-effects.js): a hero poly'd to an iron
+         * golem teleported into water is rehumanized by drown()'s losehp(), and
+         * polyman()'s nested spoteffects(TRUE) must return at once. */
+        const st = game._spoteffectsState ||= {
+            depth: 0, x: 0, y: 0, terrain: 0, trap: null, trapType: 0,
+        };
+        const typ = game.level?.locations?.[u.ux]?.[u.uy]?.typ ?? 0;
+        if (st.depth && u.ux === st.x && u.uy === st.y && st.terrain === typ)
+            return;
+        ++st.depth;
+        st.terrain = typ;
+        st.x = u.ux;
+        st.y = u.uy;
+        let relocated;
+        try {
+            relocated = await pooleffects(true);
+        } finally {
+            --st.depth;
+        }
+        if (relocated)
             return;
     }
     await check_special_room(false);
@@ -1176,6 +1198,33 @@ async function rloc_to_core(mtmp, x, y, rlocflags) {
              * and redraws the stomach before the teleport message. */
             await u_on_newpos(mtmp.mx | 0, mtmp.my | 0);
             await check_special_room(false);
+            /* docrt() -> swallowed(1) -> cls() (display.c:2064) first pages the
+               standing topline via display_nhwindow(WIN_MESSAGE); this port's
+               cls() discards it, so page it here as unstuck() does (mhitu.js). */
+            {
+                const _line = _topl_merge_result(game._resultMessage || '',
+                    game._pending_message || '',
+                    _topl_joins_snapshot(game._resultMessage || ''));
+                if (_line) {
+                    game._resultMessage = '';
+                    const _vfr = game.vision_full_recalc;
+                    game.vision_full_recalc = 0;
+                    /* more() does not run bot(): the status row is the last one painted
+                       (moves++ at allmain.c:244 precedes movebubbles at :375). */
+                    /* C display.c:2196: cls() pages before bot()/timebot(); more()
+                       keeps the last-painted status row (moves++ at allmain.c:244
+                       precedes movebubbles at :375). */
+                    const _heldBotl = game._botlPaintHeld;
+                    game._botlPaintHeld = true;
+                    // C display.c:2196: cls() pages before bot()/timebot().
+                    try { await force_more_from_cls(_line); } finally { game._botlPaintHeld = _heldBotl; }
+                    game.vision_full_recalc = _vfr;
+                    if (game._topl_win_stop_armed) {
+                        game._topl_win_stop_armed = false;
+                        game._topl_win_stop = true;
+                    }
+                }
+            }
             await docrt();
         } else if (dist2(mtmp.mx | 0, mtmp.my | 0, u.ux | 0, u.uy | 0) <= 2) {
             /* C teleport.c:1695 `!m_next2u(mtmp)`; you.h:553
@@ -2122,9 +2171,9 @@ export async function vamprises(mtmp) {
         const trapped = ((lev.doormask | 0) & D_TRAPPED_VR) !== 0;
         const seeit = cansee_vr(x0, y0);
         if (!seeit)
-            await You_hear_vr(trapped ? 'an explosion' : 'a door being smashed');
+            await You_hear_vr('%s.', trapped ? 'an explosion' : 'a door being smashed');
         else if (!canspotmon(mtmp))
-            await You_see_vr(trapped ? 'a door exploding' : 'a door being smashed');
+            await You_see_vr('%s.', trapped ? 'a door exploding' : 'a door being smashed');
         else if (!unaware)
             await pline(trapped ? 'The door is smashed and it explodes!' : 'The door is smashed.');
         lev.doormask = D_NODOOR_VR;

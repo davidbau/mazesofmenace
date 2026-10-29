@@ -552,7 +552,7 @@ export async function drain_pending_death_in_place() {
         /* The turn accumulated plines are still on _pending_message; C had
          * already paged them at each width boundary as they arrived
          * (win/tty/topl.c update_topl), so page them before the death line. */
-        await flush_screen(1);
+        if (!game._topl_win_stop) await flush_screen(1); /* WIN_STOP: update_topl skips, no more() (topl.c:249) */
         await do_death_sequence({ inPlace: true });
 }
 

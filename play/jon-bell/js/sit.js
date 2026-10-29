@@ -533,13 +533,16 @@ const _ATTRCURSE_PROPS = [[FIRE_RES, 'HFire_resistance'], [TELEPORT, 'HTeleporta
 /* HFoo aliases u.uprops[FOO].intrinsic (youprop.h:26-46).  Refresh the
  * scalars from that slot: OR-ing an old mirror back in restores intrinsics
  * removed elsewhere, such as role abilities lost by adjabil (attrib.c:1055). */
-export async function attrcurse() {
-    const u = game.u || {};
-    const r = await _attrcurse_body(u);
+function _attrcurse_sync(u) {
     for (const [prop, name] of _ATTRCURSE_PROPS) {
         const p = u.uprops?.[prop];
         if (p && u[name] != null) p.intrinsic = (p.intrinsic | 0) & ~(INTRINSIC & ~(u[name] | 0));
     }
+}
+export async function attrcurse() {
+    const u = game.u || {};
+    const r = await _attrcurse_body(u);
+    _attrcurse_sync(u);
     return r;
 }
 async function _attrcurse_body(u) {
@@ -575,6 +578,7 @@ async function _attrcurse_body(u) {
     case 4:
         if ((u.HTelepat | 0) & INTRINSIC) {
             u.HTelepat = (u.HTelepat | 0) & ~INTRINSIC;
+            _attrcurse_sync(u); /* HTelepat aliases the prop; Blind_telepat must see the removal */
             if (_hero_resists(BLINDED) && !_hero_resists(TELEPAT_PROP))
                 see_monsters(); /* Can't sense mons anymore! */
             await Your("senses fail!");
@@ -601,6 +605,7 @@ async function _attrcurse_body(u) {
     case 7:
         if ((u.HSee_invisible | 0) & INTRINSIC) {
             u.HSee_invisible = (u.HSee_invisible | 0) & ~INTRINSIC;
+            _attrcurse_sync(u); /* HSee_invisible aliases the prop; See_invisible must see the removal */
             if (!_hero_resists(SEE_INVIS_PROP)) {
                 set_mimic_blocking();
                 see_monsters();

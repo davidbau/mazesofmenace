@@ -5,7 +5,7 @@
 import { growl as growl_mhitm, yelp as yelp_mhitm, y_monnam as y_monnam_shk, pronoun_gender, a_monnam } from './mhitm.js';
 import { game } from './gstate.js';
 import { locomotion, x_monnam as x_monnam_shk } from './mhitm.js';
-import { ARTICLE_THE as ARTICLE_THE_SHK, ANY_SHOP } from './const.js';
+import { ARTICLE_THE as ARTICLE_THE_SHK, ANY_SHOP, Upolyd } from './const.js';
 import { search_special } from './mkroom.js';
 import { makeplural } from './objnam.js';
 import { W_SWAPWEP, W_QUIVER, DISPLACED, EYE } from './const.js';
@@ -17,7 +17,7 @@ import { stop_occupation } from './allmain.js';
 import { picking_at } from './lock.js';
 import { dochug, m_canseeu } from './dochug.js';
 import { newobj } from './game.js';
-import { pline, You_hear, Norep, topl_park_cursor, force_more, force_more_lone_frame } from './display.js';
+import { pline, You_hear, Norep, topl_park_cursor, force_more } from './display.js';
 /* C pline.c You/Your — use the shared async formatters.  Sale settlement
  * awaits these message boundaries; older unrelated callers retain their
  * existing contracts until their own closure is migrated. */
@@ -27,7 +27,7 @@ import { highc, shtype_name, inside_shop, makemon, angry_guards, next_ident, mks
 import { is_demon, poly_gender } from './makemon.js';
 import { is_pick } from './dig.js';
 import { ECMD_OK, ECMD_TIME, ESHK, SHARED, SHARED_PLUS, NO_ROOM, COLNO, ROWNO, IS_DOOR, IS_ROOM, IS_WALL, SHOPBASE, CANDLESHOP, D_BROKEN, D_CLOSED, BILLSZ, Has_contents, isok, u_at, ROOMOFFSET, RLOC_MSG, DEAF, INVIS, PASSES_WALLS, QBUFSZ, LL_ACHIEVE, G_GONE, MM_NOMSG, CONFLICT, REPAIR_DELAY, BOLT_LIM, ZAP_POS, D_LOCKED, LANDMINE, BEAR_TRAP, PIT, SPIKED_PIT, HOLE, ACH_SHOP, M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, DETECT_MONSTERS } from './const.js';
-import { PM_KNIGHT, PM_SAMURAI, PM_TOURIST, PM_VALKYRIE, PM_SHOPKEEPER, PM_ROGUE, PM_KEYSTONE_KOP, PM_KOP_SERGEANT, PM_KOP_LIEUTENANT, PM_KOP_KAPTAIN } from './pm.generated.js';
+import { PM_GRID_BUG, PM_KNIGHT, PM_SAMURAI, PM_TOURIST, PM_VALKYRIE, PM_SHOPKEEPER, PM_ROGUE, PM_KEYSTONE_KOP, PM_KOP_SERGEANT, PM_KOP_LIEUTENANT, PM_KOP_KAPTAIN } from './pm.generated.js';
 import { goodpos } from './trap.js';
 import { t_at, deltrap } from './trap.js';
 import { block_point } from './vision.js';
@@ -1256,7 +1256,7 @@ export async function dopay() {
         } else {
             await pline(Sprintf('%s nods%s at you for shopping in %s %s%s',
                                 Shknam(shkp), !eshkp.surcharge ? ' appreciatively' : '',
-                                'his', shopname, !eshkp.surcharge ? '!' : '.'));
+                                noit_mhis(shkp), shopname, !eshkp.surcharge ? '!' : '.'));
         }
     }
 
@@ -1301,6 +1301,7 @@ function oc_name_known(otyp) { return !!(game._oc_name_known || {})[otyp | 0]; }
 /* C obj.h:75-83 obj->where values, for the two make_itemized_bill /
  * update_bill tests. */
 const OBJ_CONTAINED_SHK = 2, OBJ_ONBILL_SHK = 7;
+const OBJ_BURIED_SHK = 6;
 /* C obj.h:75-76 — the two contained_cost() also tests. */
 const OBJ_FREE_SHK = 0, OBJ_FLOOR_SHK = 1;
 
@@ -2368,9 +2369,11 @@ export async function shk_move(shkp) {
 
     /* C shk.c:4896 — distu(omx,omy) = dist2(omx,omy,u.ux,u.uy). */
     const udist = dist2(omx, omy, u.ux | 0, u.uy | 0);
-    /* C shk.c:4896-4934 — close-to-hero handling (PM_GRID_BUG nuance omitted:
-     * shopkeepers are never grid bugs). */
-    if (udist < 3) {
+    /* C shk.c:4896-4934 — close-to-hero handling; a polymorphed (grid bug)
+     * shopkeeper can't reach a diagonal hero. */
+    const shk_mndx = shkp.mnum ?? shkp.mndx ?? shkp.data?.pmidx;
+    if (udist < 3 && ((shk_mndx | 0) !== PM_GRID_BUG
+                      || omx === (u.ux | 0) || omy === (u.uy | 0))) {
         /* C shk.c:4898: ANGRY(shkp) = !mpeaceful; Conflict handling. */
         const angry = !(shkp.mpeaceful | 0);
         const cp = u.uprops?.[CONFLICT];
@@ -2456,8 +2459,15 @@ export async function shk_move(shkp) {
             if (uondoor) {
                 const PICK_AXE = 259, DWARVISH_MATTOCK = 71;
                 badinv = !!(carrying(PICK_AXE) || carrying(DWARVISH_MATTOCK));
-                /* Fast + sobj_at(...) refinement omitted (no Fast tracking);
-                 * conservative — only the carried-pick case applies. */
+                /* C shk.c:4968-4970: || (Fast && (sobj_at(PICK_AXE, u.ux, u.uy)
+                 * || sobj_at(DWARVISH_MATTOCK, u.ux, u.uy))); Fast is
+                 * HFast || EFast (youprop.h:376), uprops[64] as at line 3220. */
+                if (!badinv) {
+                    const fastp = u.uprops?.[64];
+                    badinv = !!((fastp?.intrinsic || fastp?.extrinsic)
+                                && (sobj_at(PICK_AXE, u.ux, u.uy)
+                                    || sobj_at(DWARVISH_MATTOCK, u.ux, u.uy)));
+                }
                 if (satdoor && badinv)
                     return 0;
                 avoid = !badinv;
@@ -3783,21 +3793,27 @@ export async function shkgone(mtmp) {
         game.u.ushops = us.slice(0, p) + us.slice(p + 1); /* drop shoproom from u.ushops */
     }
 }
+/* C shk.c:400-434 setpaid — clear owned unpaid markers, dispose of bill objects, and zero the account. */
 async function setpaid(shkp) {
     const g = game;
     await clear_unpaid_chain(shkp, g.invent);
+    await clear_unpaid_chain(shkp, g.fobj);
+    await clear_unpaid_chain(shkp, g.level?.buriedobjlist);
+    if (g.thrownobj) await clear_unpaid_obj(shkp, g.thrownobj);
+    if (g.kickedobj) await clear_unpaid_obj(shkp, g.kickedobj);
     for (let mtmp = g.fmon; mtmp; mtmp = mtmp.nmon)
         if (mtmp.minvent)
             await clear_unpaid_chain(shkp, mtmp.minvent);
     for (let mtmp = g.migrating_mons; mtmp; mtmp = mtmp.nmon)
         if (mtmp.minvent)
             await clear_unpaid_chain(shkp, mtmp.minvent);
-    if (g.thrownobj) await clear_unpaid_chain(shkp, { nobj: null, ...g.thrownobj });
-    if (g.kickedobj) await clear_unpaid_chain(shkp, { nobj: null, ...g.kickedobj });
-    await clear_unpaid_floor(shkp);
-    clear_no_charge(shkp, null);
+    clear_no_charge(shkp, g.fobj);
     clear_no_charge(shkp, g.level?.buriedobjlist);
-    g.billobjs = null;
+    while (g.billobjs) {
+        const obj = g.billobjs;
+        obj_extract_self(obj);
+        await dealloc_obj(obj);
+    }
     if (shkp) {
         const e = ESHK(shkp);
         e.billct = 0;
@@ -3807,13 +3823,15 @@ async function setpaid(shkp) {
     }
 }
 /* C shk.c:1070-1091 clear_unpaid / clear_unpaid_obj — recursive over containers. */
+async function clear_unpaid_obj(shkp, otmp) {
+    if (Has_contents(otmp))
+        await clear_unpaid_chain(shkp, otmp.cobj);
+    if (await onbill(otmp, shkp, true))
+        otmp.unpaid = 0;
+}
 async function clear_unpaid_chain(shkp, chain) {
-    for (let otmp = chain; otmp; otmp = otmp.nobj) {
-        if (Has_contents(otmp))
-            await clear_unpaid_chain(shkp, otmp.cobj);
-        if (otmp.unpaid && (!shkp || (await onbill(otmp, shkp, true))))
-            otmp.unpaid = 0;
-    }
+    for (let otmp = chain; otmp; otmp = otmp.nobj)
+        await clear_unpaid_obj(shkp, otmp);
 }
 async function clear_unpaid_floor(shkp) {
     const objs = (game.level?.levelObjects ?? game.level?.objects);
@@ -3823,7 +3841,7 @@ async function clear_unpaid_floor(shkp) {
         if (!col) continue;
         for (let y = 0; y < ROWNO; y++)
             for (let o = col[y]; o; o = o.nexthere)
-                await clear_unpaid_chain(shkp, { ...o, nobj: null });
+                await clear_unpaid_obj(shkp, o);
     }
 }
 /* C shk.c:2679-2718 set_repo_loc(shkp) — where finish_paybill() will deposit
@@ -4047,9 +4065,19 @@ export async function make_angry_shk(shkp, _ox, _oy) {
     await pline("%s %s!", Shknam(shkp), shkp.mpeaceful ? "gets angry" : "is furious");
     hot_pursuit(shkp);
 }
+/* C shk.c:329-373; OBJ_CONTAINED | OBJ_BURIED is 6, not CONTAINED_TOO. */
+function clear_no_charge_obj(shkp, obj) {
+    if (!obj.no_charge) return;
+    const loc = shkp && [OBJ_FLOOR_SHK, OBJ_CONTAINED_SHK, OBJ_BURIED_SHK].includes(obj.where)
+        && _get_obj_location_shk(obj, OBJ_CONTAINED_SHK | OBJ_BURIED_SHK);
+    const rno = loc && isok(loc.x, loc.y) ? game.level.at(loc.x, loc.y).roomno : NO_ROOM;
+    const room = rno >= ROOMOFFSET ? game.level.rooms[rno - ROOMOFFSET] : null;
+    if (!room || room.rtype < SHOPBASE || !room.resident || room.resident === shkp)
+        obj.no_charge = 0;
+}
 function clear_no_charge(_shkp, chain) {
     for (let otmp = chain; otmp; otmp = otmp.nobj) {
-        otmp.no_charge = 0;
+        clear_no_charge_obj(_shkp, otmp);
         if (otmp.cobj)
             clear_no_charge(_shkp, otmp.cobj);
     }
@@ -4060,7 +4088,7 @@ function clear_no_charge(_shkp, chain) {
             if (!col) continue;
             for (let y = 0; y < ROWNO; y++) {
                 for (let o = col[y]; o; o = o.nexthere) {
-                    o.no_charge = 0;
+                    clear_no_charge_obj(_shkp, o);
                     if (o.cobj)
                         clear_no_charge(_shkp, o.cobj);
                 }
@@ -4363,33 +4391,10 @@ function Sprintf(fmt, ...args) {
     let ai = 0;
     return String(fmt).replace(/%s|%ld|%d/g, () => String(args[ai++]));
 }
-/* C ref: query.c y_n() — the shopkeeper's restitution prompt must consume the
- * recorded answer instead of silently defaulting to 'n'.  dopay_damage() is
- * already async, so preserving this input boundary does not require a new
- * turn model. */
+/* C hack.h:1329: y_n uses the shared yn_function reader, including its
+ * custompline vision recalculation (topl.c:420; pline.c:266-274). */
 async function y_n(question) {
-    const g = game;
-    const prompt = `${question} [yn] (n)`;
-    /* C topl.c:397-398 tty_yn_function: more() precedes the prompt's
-     * custompline -> flush_screen, so the --More-- shows the terminal as last
-     * flushed (mnexto's newsym is still unflushed). */
-    if (g._pending_message)
-        await force_more_lone_frame(g._pending_message);
-    for (;;) {
-        g._pending_message = prompt;
-        await flush_screen(1);
-        if (g.nhDisplay)
-            topl_park_cursor(g.nhDisplay, prompt + ' ');
-        const key = await nhgetch();
-        const c = String.fromCharCode(typeof key === 'number'
-            ? key : (key?.charCodeAt(0) | 0));
-        g._topl_sticky = prompt;
-        if (c === '\x1b' || c === '\r' || c === '\n' || c === ' ')
-            return 'n';
-        const lc = c.toLowerCase();
-        if (lc === 'y' || lc === 'n')
-            return lc;
-    }
+    return await yn_function_shk(question, 'yn', 'n', true);
 }
 function SET_BOTL() {
     if (game.disp) game.disp.botl = 1;
@@ -5038,7 +5043,9 @@ function append_honorific(buf) {
     const mf2 = _youmonst_mflags2_shk();
     if (_youmonst_mlet_shk() === S_VAMPIRE_SHK)
         out += female ? ' dark lady' : ' dark lord';
-    else if ((mf2 & M2_ELF_SHK) !== 0 || _Race_if_elf_shk())
+    // C shk.c:3614 / youprop.h:22: maybe_polyd chooses form or base race.
+    // C shk.c:3614: maybe_polyd tests the current form or the original race.
+    else if (Upolyd(game.u) ? (mf2 & M2_ELF_SHK) !== 0 : _Race_if_elf_shk())
         out += female ? ' hiril' : ' hir';
     else
         out += !(mf2 & M2_HUMAN_SHK) ? ' creature'
@@ -5075,7 +5082,7 @@ async function bill_box_content(obj, ininv, dummy, shkp) {
 function picked_container(obj) { return picked_container_real(obj); }
 /* C shk.c costly_gold — consume credit, then add any remainder to debit
  * and loan. Each accounting message completes before the following one. */
-async function costly_gold(x, y, amount, silent) {
+export async function costly_gold(x, y, amount, silent) {
     if (!costly_spot(x, y)) return;
     const rooms = in_rooms(x, y, SHOPBASE);
     const shkp = shop_keeper(rooms.length ? rooms[0] : 0);

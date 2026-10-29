@@ -40,7 +40,7 @@ import { game, wizard, discover } from './gstate.js';
 import { obj_split_timers, age_is_relative, stop_timer, begin_burn } from './timeout.js';
 import { artifact_light, obj_split_light_source as obj_split_light_source_real } from './light.js';
 import { depth as depth_of_level, deepest_lev_reached } from './hacklib.js';
-import { W_ARMOR, W_ACCESSORY, TRAPNUM, NO_TRAP, FLYING, LEVITATION, BLINDED, FAINTED, P_DAGGER, P_KNIFE } from './const.js';
+import { W_ARMOR, W_ACCESSORY, TRAPNUM, NO_TRAP, FLYING, LEVITATION, BLINDED, P_DAGGER, P_KNIFE } from './const.js';
 import { BILLSZ, ROT_CORPSE, AGGRAVATE_MONSTER } from './const.js';
 import { DEFSYM_EXPLANATION } from './defsym_data.js';
 import { rank_of } from './rank_data.js';
@@ -92,7 +92,7 @@ import { mongets } from './m_initweap.js';
 import { builds_up } from './dungeon.js';
 import { ESHK } from './const.js';
 import { oid_price_adjustment, inhishop, shop_keeper, onbill } from './shk.js';
-import { inhistemple } from './priest.js';
+import { inhistemple, in_your_sanctuary } from './priest.js';
 import { rank_of as rank_of_mnum, force_more, force_more_pages, pline, debugcore, urgent_pline as urgent_pline_disp, newsym, canspotmon, canseemon, map_invisible, sensemon, cls, docrt, show_glyph, show_monster_glyph_at, display_self } from './display.js';
 /* create_critters (makemon.c:1556) reaches these two; both are cyclic imports
  * (teleport.js and wizcmds.js each import this file) but every binding used is
@@ -5955,13 +5955,8 @@ export function which_armor(mon, flag) {
     }
 }
 
-/* Ported helpers not yet available in makemon.js — local stubs */
-function in_your_sanctuary(mtmp, x, y) {
-    /* C priest.c: in_your_sanctuary — checks if monster is in hero's sanctuary.
-     * True if the monster is on a sanctuary spot (temple altar) and the hero
-     * is also protected by that sanctuary (coaligned or peaceful). */
-    return false; /* TODO: full port */
-}
+/* in_your_sanctuary: file-local `return false` stub removed; the real body
+ * (priest.c:~330) is imported from js/priest.js. */
 /* can_blow was a file-local throw-stub here, shadowing the real port at
  * js/mhitm.js:1755 (C mondata.c:566-576), already imported by monmove.js and
  * music.js from that module. Imported above instead of re-derived. */
@@ -6113,11 +6108,6 @@ function monflee_flees_light(mon) {
     return !!mon.mcansee && !!couldsee(mon.mx | 0, mon.my | 0);
 }
 
-function monflee_unaware() {
-    const u = game.u || {};
-    return (game.multi | 0) < 0 && ((u.uhs | 0) === FAINTED);
-}
-
 export async function monflee(mtmp, fleetime, first, fleemsg) {
     if (!mtmp)
         return;
@@ -6152,25 +6142,26 @@ export async function monflee(mtmp, fleetime, first, fleemsg) {
             const mmove = mtmp.data ? (mtmp.data.mmove | 0) : 0;
             if (!mtmp.mcanmove || !mmove) {
                 /* C monmove.c:494-495 */
-                pline_mon(mtmp, `${Adjmonnam(mtmp, 'immobile')} seems to flinch.`);
+                await pline_mon(mtmp, `${Adjmonnam(mtmp, 'immobile')} seems to flinch.`);
             } else if (monflee_flees_light(mtmp)) {
-                /* C monmove.c:496-516 — a conscious, non-Deaf hero gets a
-                 * 1-in-10 shouted warning; all other cases describe the
-                 * painful light.  The rn2(10) was previously omitted. */
-                const deaf = mquaffmsg_Deaf();
-                if (monflee_unaware() || deaf || rn2(10)) {
+                /* C monmove.c:496-514: only Unaware skips rn2(10).
+                 * Deaf is tested after the draw, including after a drum. */
+                if (Unaware()) {
+                    await pline_mon(mtmp, `${Monnam(mtmp)} is frightened.`);
+                } else if (rn2(10) || mquaffmsg_Deaf()) {
                     const uwep = game.u?.uwep;
                     const uarm = game.u?.uarm;
                     const source = uwep && artifact_light(uwep)
                         ? bare_artifactname(uwep)
                         : uarm && artifact_light(uarm)
                             ? yname(uarm) : '[its imagination?]';
-                    pline_mon(mtmp, `${Monnam(mtmp)} flees from the painful light of ${source}.`);
+                    await pline_mon(mtmp, `${Monnam(mtmp)} flees from the painful light of ${source}.`);
                 } else {
                     await verbalize('Bright light!'); /* C monmove.c:514 */
                 }
             } else {
-                pline_mon(mtmp, `${Monnam(mtmp)} turns to flee.`);
+                /* C monmove.c:517-518 — ordinary flight message. */
+                await pline_mon(mtmp, `${Monnam(mtmp)} turns to flee.`);
             }
         }
 
@@ -6605,30 +6596,33 @@ const _AMULET_OF_REFLECTION = 208;
 export function ureflects(fmt, str) {
     const u = game.u;
     const EReflecting = (u.uprops[REFLECTING].extrinsic | 0);
+    // C muse.c:2840 checks pointers; an empty string still requests a message
+    // and identification (notably mcast_lightning's empty prefix).
+    const showMessage = fmt != null && str != null;
     if (EReflecting & W_ARMS) {
-        if (fmt && str) {
+        if (showMessage) {
             pline(fmt, str, "shield");
             makeknown(_SHIELD_OF_REFLECTION);
         }
         return true;
     } else if (EReflecting & W_WEP) {
-        if (fmt && str)
+        if (showMessage)
             pline(fmt, str, "weapon");
         return true;
     } else if (EReflecting & W_AMUL) {
-        if (fmt && str) {
+        if (showMessage) {
             pline(fmt, str, "medallion");
             makeknown(_AMULET_OF_REFLECTION);
         }
         return true;
     } else if (EReflecting & W_ARM) {
-        if (fmt && str)
+        if (showMessage)
             pline(fmt, str, u.uskin ? "luster" : "armor");
         return true;
     /* C ref: youmonst.data == &mons[PM_SILVER_DRAGON], i.e. u.umonnum.  Was
      * game.youmonst.mndx, which the live path never writes (see poly_gender). */
     } else if (((game.u && game.u.umonnum) | 0) === PM_SILVER_DRAGON) {
-        if (fmt && str)
+        if (showMessage)
             pline(fmt, str, "scales");
         return true;
     }

@@ -602,9 +602,9 @@ export async function recharge(obj, curse_bless) {
 // Other doread branches (scrolls, T-shirt, credit card, blank, level filter,
 // ─────────────────────────────────────────────────────────────────────────────
 import { flush_screen, docrt, cls, under_water, under_ground, newsym, terrain_glyph, occupation_force_more, force_more, use_last_flush_snapshot, map_trap, map_engraving, map_object, unmap_object, show_glyph_cell, objpile_attr, update_lastseentyp, GLYPHCLS_TRAP, GLYPHCLS_OBJ, GLYPHCLS_CMAP, GLYPHCLS_ENGR } from './display.js';
-import { t_at } from './trap.js';
+import { t_at, buried_ball_to_freedom } from './trap.js';
 import { get_obj_location } from './light.js';
-import { BURIED_TOO, CONTAINED_TOO } from './const.js';
+import { BURIED_TOO, CONTAINED_TOO, TT_BURIEDBALL, LEG } from './const.js';
 import { oc_merge as oc_merge_rd } from './oc_merge.generated.js';
 import { NUMMONS } from './pm.generated.js';
 import { engr_at } from './mklev.js';
@@ -1824,7 +1824,8 @@ function _uprop_on(idx) {
  * this file's older `_Blind()` spelling is assigned by NOTHING in js/ and is
  * therefore permanently undefined, so it is deliberately NOT consulted here. */
 function _Blind() {
-    return _uprop_on(BLINDED);
+    /* C youprop.h:103: (HBlinded || EBlinded) && !BBlinded (artifact lenses) */
+    return _uprop_on(BLINDED) && !((game.u?.uprops?.[BLINDED]?.blocked | 0) !== 0);
 }
 /* C youprop.h: Invisible = Invis && !See_invisible. */
 function _Invisible() {
@@ -2727,8 +2728,11 @@ async function seffect_remove_curse(sobj) {
     }
     if (_Punished() && !confused)
         await unpunish_rd();                            /* C read.c:1600 */
-    /* C read.c:1602-1605 — buried-ball trap release.  u.utraptype TT_BURIEDBALL
-     * is not modelled on this path; no RNG. */
+    /* C read.c:1600-1603: release the buried ball even when confused/cursed. */
+    if (g.u.utrap && g.u.utraptype === TT_BURIEDBALL) {
+        await buried_ball_to_freedom();
+        await pline_The('clasp on your %s vanishes.', food_body_part(LEG));
+    }
     /* C read.c:1607 update_inventory() — display only, no RNG. */
     update_inventory();
 }

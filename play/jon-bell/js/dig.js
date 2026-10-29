@@ -15,8 +15,8 @@ import { rn2, rn1, rnd, rnl } from './rng.js';
 import { PM_DWARF as PM_DWARF_ } from './pm.generated.js';
 import { game } from './gstate.js';
 import { dbon, dmgval } from './uhitm.js';
-import { body_part, align_str, desecrate_altar } from './cmd.js';
-import { Amask2align, AM_MASK } from './const.js';
+import { body_part, align_str, desecrate_altar, altarmask_at } from './cmd.js';
+import { Amask2align, AM_MASK, AM_SANCTUM } from './const.js';
 import { FOOT, FORCETRAP } from './const.js';
 import { reset_utrap } from './trap.js';
 import { yname } from './do_wear.js';
@@ -74,7 +74,7 @@ import { remove_worn_item } from './steal.js';
 import { stop_occupation } from './allmain.js';
 import { update_inventory } from './mhitm.js';
 import { hideunder } from './mklev.js';
-import { add_damage, pay_for_damage, shopdig } from './shk.js';
+import { add_damage, pay_for_damage, shopdig, make_angry_shk } from './shk.js';
 import { weight } from './weight.js';
 /* dighole()/digactualhole()/fillholetyp()/liquid_flow() — the zap_dig()
  * u.dz!=0 branch (dig.c:1584-1610) and the general-purpose dig-a-hole
@@ -434,12 +434,19 @@ async function db_do_entity(etmp) {
             relocates = !db_e_jumps(etmp);
         }
     }
-    /* C dbridge.c:647-651: relocation target is the other square of the pair. */
-    const pr = _drawbridge_pair(oldx, oldy);
-    let newx = oldx, newy = oldy;
-    if (pr) {
-        if (pr.bx !== oldx || pr.by !== oldy) { newx = pr.bx; newy = pr.by; }
-        else { newx = pr.wx; newy = pr.wy; }
+    /* C dbridge.c:644-648 ignores find_drawbridge's return value.  After
+     * destruction it can fail, but get_wall_for_db still uses the square's
+     * current mask (including a cleared mask, whose direction is NORTH). */
+    const nx = { value: oldx }, ny = { value: oldy };
+    find_drawbridge(nx, ny);
+    let newx = nx.value, newy = ny.value;
+    if (newx === oldx && newy === oldy) {
+        switch ((game.level.at(newx, newy).drawbridgemask | 0) & DB_DIR) {
+        case DB_NORTH: newy--; break;
+        case DB_SOUTH: newy++; break;
+        case DB_EAST: newx++; break;
+        case DB_WEST: newx--; break;
+        }
     }
     if (relocates && db_e_at(newx, newy)) {
         const other = db_e_at(newx, newy);
@@ -930,7 +937,9 @@ export function dig_check_(madeby, x, y) {
         return (stway && stway.isladder) ? DIGCHECK_FAIL_ONLADDER : DIGCHECK_FAIL_ONSTAIRS;
     } else if (IS_THRONE(typ) && madeby !== BY_OBJECT_) {
         return DIGCHECK_FAIL_THRONE;
-    } else if (IS_ALTAR(typ) && (madeby !== BY_OBJECT_)) {
+    } else if (IS_ALTAR(typ)
+               && (madeby !== BY_OBJECT_
+                   || (altarmask_at(x, y) & AM_SANCTUM) !== 0)) {
         return DIGCHECK_FAIL_ALTAR;
     } else if (Is_airlevel(game.u?.uz)) {
         return DIGCHECK_FAIL_AIRLEVEL;
@@ -1399,9 +1408,9 @@ export async function digactualhole_(x, y, madeby, ttyp, skipFurniture = false) 
                     } else {
                         tolevel = get_level(depth(u.uz) + 1);
                     }
-                    /* C: if (mtmp->isshk) make_angry_shk(mtmp, 0, 0);
-                     * make_angry_shk has no js/ body yet (see
-                     * js/teleport.js make_angry_shk_local). */
+                    /* C dig.c:821-822: anger the shopkeeper before migration. */
+                    if (mtmp.isshk)
+                        await make_angry_shk(mtmp, 0, 0);
                     await migrate_to_level(mtmp,
                         (tolevel.dlevel | 0)
                             + (game.dungeons?.[tolevel.dnum | 0]?.ledger_start | 0),
@@ -2317,7 +2326,7 @@ export function dig_dirsyms(obj) {
     return out;
 }
 
-// C ref: dig.c:168-193 dig_typ(struct obj *otmp, coordxy x, coordxy y)
+// C ref: dig.c:168-192 dig_typ(struct obj *otmp, coordxy x, coordxy y)
 export function dig_typ(otmp, x, y) {
     let ltyp;
 
@@ -2328,7 +2337,7 @@ export function dig_typ(otmp, x, y) {
     ltyp = loc ? loc.typ : 0;
     if (is_axe(otmp))
         return closed_door(x, y) ? DIGTYP_DOOR
-               : ltyp === TREE ? DIGTYP_TREE /* axe vs tree */
+               : IS_TREE(ltyp) ? DIGTYP_TREE /* axe vs tree */
                  : DIGTYP_UNDIGGABLE;
     /*assert(is_pick(otmp));*/
     return (sobj_at(STATUE, x, y) && pick_can_reach(otmp, x, y))
@@ -2336,7 +2345,7 @@ export function dig_typ(otmp, x, y) {
            : (sobj_at(BOULDER, x, y) && pick_can_reach(otmp, x, y))
              ? DIGTYP_BOULDER
              : closed_door(x, y) ? DIGTYP_DOOR
-               : ltyp === TREE ? DIGTYP_UNDIGGABLE /* pick vs tree */
+               : IS_TREE(ltyp) ? DIGTYP_UNDIGGABLE /* pick vs tree */
                  : (IS_OBSTRUCTED(ltyp)
                     && (!game.level.flags.arboreal || IS_WALL(ltyp)))
                    ? DIGTYP_ROCK

@@ -7,6 +7,7 @@
 import { monsym_explain } from './makemon.js';
 import { DEFSYM_EXPLANATION } from './defsym_data.js';
 import { an } from './objnam.js';
+import { def_warnsyms } from './const.js';
 
 const MAXPCHARS = 105, SYM_OFF_O = 105, SYM_OFF_M = 123;
 const MONSYMS = '?abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@ \'&;:~]';
@@ -55,6 +56,14 @@ function enabled(mode, name) {
     if (name === 'objects') return (mode & 0x04) !== 0; // TER_OBJ
     return true; // pager.c's cmap scan is intentionally unconditional
 }
+// C pager.c:1199-1214 add_cmap_descr(): waterbody names suppress articles
+// only for these prefixes or an adjective followed by " ice" (so "a pond").
+function waterbodyNoArticle(description) {
+    return ['water', 'ice', 'pool', 'moat', 'lava', 'swamp', 'molten',
+        'shallow', 'limitless', 'wall of lava', 'wall of water', 'frozen']
+        .some(prefix => description.startsWith(prefix))
+        || description.slice(description.indexOf(' ')).toLowerCase() === ' ice';
+}
 
 /**
  * Collect C pager's class-level possibilities for one already-painted symbol.
@@ -66,7 +75,7 @@ function enabled(mode, name) {
  */
 export function collectScreenDescriptionClasses(options = {}) {
     // C compares ttychar before terminal handling strips high bits/control bytes.
-    const selected = normalizeSymbol(options.symbol ?? options.ch, !!options.dec);
+    let selected = normalizeSymbol(options.symbol ?? options.ch, !!options.dec);
     const showsyms = Array.isArray(options.showsyms) ? options.showsyms : null;
     const classes = [];
     let assembled = '';
@@ -111,6 +120,8 @@ export function collectScreenDescriptionClasses(options = {}) {
         }
     }
 
+    // C pager.c:1574-1575 jumps back here without clearing prior matches.
+    for (;;) {
     if (enabled(options.terrainmode, 'monsters')) {
         for (let i = 1; i < MONSYMS.length; i++) {
             if (i === 35) continue; // S_invisible is dealt with by glyph, never class matching
@@ -158,7 +169,14 @@ export function collectScreenDescriptionClasses(options = {}) {
             // pager.c rotates water/lava/lava-wall through this scan so its
             // phrase order stays useful when their symbols collide.
             const alt = i === 40 ? 48 : i === 41 ? 40 : i === 48 ? 41 : i;
-            const description = options.waterbodyNames?.[alt]?.[0] ?? DEFSYM_EXPLANATION[alt];
+            let description = options.waterbodyNames?.[alt]?.[0] ?? DEFSYM_EXPLANATION[alt];
+            /* C pager.c:1148-1158 add_cmap_descr(), glyph == NO_GLYPH (typed
+             * symbol): "water" becomes "pool of water" / "wall of water" /
+             * "limitless water" (the transformations waterbody_name makes). */
+            if (!looked && description === 'water' && !options.waterbodyNames)
+                description = alt === 38 ? 'pool of water'
+                    : alt === 48 ? (options.waterLevel ? 'limitless water' : 'wall of water')
+                    : description;
             if (!description || !matches(alt, PCHARS[alt])) continue;
             if (isNothing && alt === 20) continue;
             const isTrap = alt >= 49 && alt <= 73 && alt !== 71;
@@ -181,15 +199,32 @@ export function collectScreenDescriptionClasses(options = {}) {
                 && options.glyphKind !== 'trap') continue;
             // C pager.c:1230: omit drawbridges after three prior matches.
             if (matchCount >= 3 && alt >= 42 && alt <= 45) continue;
-            const plain = !!options.waterbodyNames?.[alt] || description === 'stone' || description === 'air' || description === 'land';
+            const plain = options.waterbodyNames?.[alt] ? waterbodyNoArticle(description)
+                : description === 'stone' || description === 'air' || description === 'land';
             const definite = description.includes(' of a room');
             const special = alt === 33 || (alt >= 49 && alt <= 73) || alt === 21 || alt === 24 || alt === 34;
             add(description, { needs: special, plain, definite });
             // S_pool and S_moat share a display symbol.  C appends moat as a
             // second possibility without increasing `found`.
-            if (alt === 38 && matches(38, PCHARS[38]))
-                add(options.waterbodyNames?.[38]?.[1] ?? 'moat', { needs: true, count: false, plain: !!options.waterbodyNames?.[38] });
+            if (alt === 38 && matches(38, PCHARS[38])) {
+                const moat = options.waterbodyNames?.[38]?.[1] ?? 'moat';
+                add(moat, { needs: true, count: false,
+                    plain: !!options.waterbodyNames?.[38] && waterbodyNoArticle(moat) });
+            }
         }
+    }
+    // C pager.c:1512-1528 scans warning symbols even for an object glyph.
+    for (let i = 1; i < def_warnsyms.length; i++) {
+        if (selected.dec || selected.ch !== def_warnsyms[i].ch) continue;
+        add(def_warnsyms[i].desc, { plain: true });
+        if (looked && options.boulderAt)
+            classes[classes.length - 1] += ' co-located with a boulder';
+        break;
+    }
+    const heroOverride = normalizeSymbol(options.heroOverride);
+    if (!options.heroOverride || selected.ch !== heroOverride.ch
+        || selected.dec !== heroOverride.dec) break;
+    selected = normalizeSymbol(options.heroSymbol ?? '@');
     }
     const collapsed = matchCount > 4;
     return { classes: collapsed ? ['can be many things'] : classes, needsLook, matchCount, collapsed, firstmatch };

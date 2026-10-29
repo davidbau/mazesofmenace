@@ -2022,7 +2022,7 @@ async function losehp_systemshock(dmg) {
 }
 
 // C polyself.c:1941 — release a monster the hero was holding.
-async function uunstick() {
+export async function uunstick() {
     const mtmp = game.u.ustuck;
     if (!mtmp) {
         await impossible('uunstick: no ustuck?');

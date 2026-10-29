@@ -33,7 +33,7 @@ import { rn2, d, rnd } from './rng.js';
 import { quest_info, readobjnam, hands_obj, getObjDescr, xname_scroll, xname_spellbook, xname_amulet, xname_armor, xname_weapon, xname_oname_tail, xname, artiname, the, The, aobjnam, Tobjnam, doname as doname_real } from './objnam.js';
 import { discover_object, observe_object } from './o_init.js';
 import { near_capacity, stagger_verb, encumber_msg_sync, weight } from './weight.js';
-import { exercise } from './attrib.js';
+import { exercise, ARTILIST_MTYPE } from './attrib.js';
 import { losehp } from './dokick.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 import { hates_silver, name_to_mon, name_to_monclass, permonstTemplate, monPmname, set_malign, mkclass, rndmonst, splitobj } from './makemon.js';
@@ -173,6 +173,16 @@ const _ARTI_GIFT_ROLE = { 1: 4, 3: 11, 4: 1, 8: 12, 12: 6, 19: 9 };
 export { _ARTI_GIFT_ROLE as ARTI_GIFT_ROLE };
 const _ARTI_ALIGN_VALUE = [1, 0, -1];
 
+/* C artifact.c:87-105 hack_artifacts: role gifts and the quest artifact use
+ * the hero's initial alignment for every toucher, including monsters. */
+export function artifact_alignment(arti) {
+    const al = ARTI_PROPS[arti]?.al;
+    if ((al !== A_NONE && _ARTI_GIFT_ROLE[arti] === (game.flags?.initrole ?? -1))
+        || arti === (quest_info(0) | 0))
+        return _ARTI_ALIGN_VALUE[game.flags?.initalign ?? 0] ?? al;
+    return al;
+}
+
 export const ARTI_PROPS = [
     /*  0 STRANGE_OBJECT */ { spfx: 0,                                          al: A_NONE,    role: false, race: false },
     /*  1 Excalibur     */ { spfx: SPFX_RESTR | SPFX_INTEL,                     al: A_LAWFUL,  role: true,  race: false },
@@ -263,21 +273,22 @@ function _ta_xname(otmp) {
     return xname(otmp); /* GEM_CLASS etc. (objnam.c:624) */
 }
 
-/* C ref: artifact.c:992-1005 bane_applies(oart, &youmonst) → spec_applies
- * (SPFX_DFLAG2, yours): the hero's own race selfmask matches when !Upolyd
- * (artifact.c:1042-1045).  Orcrist/Sting carry M2_ORC (= MH_ORC); Grimtooth is
- * M2_ELF, so an unpolymorphed orcish/elven hero (respectively) is badalign and draws rn2(4) in
- * touch_artifact.  The other DFLAG2 banes (demon/were/giant/undead) match no
- * hero race. */
+/* C artifact.c:992-1005,1026-1030: DFLAG2 banes test the current monster's
+ * mflags2 as well as the unpolymorphed hero's race and lycanthropy. */
 export function bane_applies_hero(arti) {
     const u = game.u || {};
-    /* spec_applies SPFX_DFLAG2 (artifact.c:1042-1045): !Upolyd &&
+    const formMatch = ((ARTI_PROPS[arti]?.spfx | 0) & SPFX_DFLAG2) !== 0
+        && ((game.youmonst?.data?.mflags2 | 0) & (ARTILIST_MTYPE[arti] | 0)) !== 0;
+    /* spec_applies SPFX_DFLAG2 (artifact.c:1029): !Upolyd &&
      * (gu.urace.selfmask & weap->mtype).  Grimtooth's mtype is M2_ELF
      * (artilist.h:123), so an unpolymorphed elven hero is badalign too. */
     const race = (game.flags?.initrace ?? -1) | 0; /* 0 human 1 elf 2 dwarf 3 gnome 4 orc */
     const matches = (arti === 5 && race === 1)
                     || ((arti === 6 || arti === 7) && race === 4);
-    return matches && !((u.mtimedone | 0) > 0);
+    /* spec_applies DFLAG2 (artifact.c:1026-1030): ... || ((weap->mtype &
+     * M2_WERE) && ismnum(u.ulycn)) — Werebane (13) against a lycanthrope hero. */
+    const were = arti === 13 && ((u.ulycn ?? -1) | 0) >= LOW_PM;
+    return formMatch || (matches && !Upolyd(u)) || were;
 }
 
 export async function touch_artifact_youmonst(otmp) {
@@ -309,14 +320,7 @@ export async function touch_artifact_youmonst(otmp) {
      * role (artifact.c:92-95) and the hero's quest artifact (:103) have their
      * alignment rewritten to the hero's initial alignment, so a Valkyrie
      * wishing for Mjollnir is never badalign and no rn2(4) is drawn. */
-    let al = p.al;
-    if (al !== A_NONE) {
-        const initrole = (g.flags?.initrole ?? -1) | 0;
-        if (_ARTI_GIFT_ROLE[arti] === initrole || arti === (quest_info(0) | 0)) {
-            const ia = (g.flags?.initalign ?? 0) | 0;
-            al = _ARTI_ALIGN_VALUE[ia] ?? al;
-        }
-    }
+    const al = artifact_alignment(arti);
     let badalign = (p.spfx & SPFX_RESTR) !== 0
                    && al !== A_NONE
                    && (al !== ualignType || ualignRecord < 0);
@@ -356,8 +360,11 @@ export async function touch_artifact_youmonst(otmp) {
         /* tty update_topl (topl.c:262-277): the blast line cannot join a standing
          * topline when n0 + strlen(toplines) + 3 >= CO - 8, so that standing line
          * is more()d here, before artifact.c:953's d() and the losehp. */
+        let blastEnteredTopl = false;
         if (g._rt_blast_page_standing && g._pending_message
             && String(g._pending_message).length + 2 + g._touch_artifact_blast_msg.length >= 71) {
+            // topl.c:257 samples skip before :274 more() can set WIN_STOP.
+            blastEnteredTopl = !g._topl_win_stop && !g._topl_win_stop_armed;
             const _pm = String(g._pending_message);
             g._pending_message = null;
             /* pline.c:273-274: vpline flush_screen(1) runs bot() before update_topl. */
@@ -374,7 +381,8 @@ export async function touch_artifact_youmonst(otmp) {
         if (g._touch_artifact_blast_msg.length >= 80) {
             const _bm = g._touch_artifact_blast_msg;
             g._touch_artifact_blast_msg = null;
-            await force_more(_bm);
+            // redotoplin's wrapped more() keeps this vpline's own flush.
+            await force_more(_bm, undefined, blastEnteredTopl, false, g._deferredPline?.frame);
             /* This more() was raised inside the blast's OWN update_topl, so an ESC
              * (WIN_STOP) is live for every later message of this command
              * (the evade/prinv plines below). */
@@ -677,6 +685,8 @@ export async function wiz_kill() {
                 }
                 break;
             }
+        } else if (g.u.uswallow) {
+            mtmp = (((cc.x | 0) - g.u.ux) ** 2 + ((cc.y | 0) - g.u.uy) ** 2 <= 2) ? g.u.ustuck : null; // next2u
         } else {
             mtmp = m_at(cc.x | 0, cc.y | 0);
         }
@@ -872,6 +882,11 @@ function _wish_mergable(into, obj) {
     if ((obj.oclass | 0) === COIN_CLASS_WZ) return true;
     if ((obj.cursed | 0) !== (into.cursed | 0)) return false;
     if ((obj.blessed | 0) !== (into.blessed | 0)) return false;
+    /* C invent.c:4398-4401 how_lost checks, then :4410 globs always merge
+     * once past them (the checks below do not apply to globs). */
+    if ((obj.how_lost | 0) === 4 || (into.how_lost | 0) === 4) return false; /* LOST_EXPLODING */
+    if ((into.how_lost | 0) !== 0 && (obj.how_lost | 0) !== (into.how_lost | 0)) return false;
+    if (obj.globby) return true;
     if ((obj.spe | 0) !== (into.spe | 0)) return false;
     /* C invent.c:4416-4418 — obroken/otrapped/lamplit must match; opoisoned
      * is a union alias of otrapped, so a poisoned wish never joins a plain stack. */
@@ -927,6 +942,10 @@ function _wish_mergable(into, obj) {
      * spe > 0 keeps its two o_id-parity flavors apart. */
     if (ot === 364 /* SCR_MAIL */ && (obj.spe | 0) > 0
         && ((obj.o_id | 0) % 2) !== ((into.o_id | 0) % 2)) return false;
+    /* C invent.c:4450 — candles merge only when their ages are within the same
+     * 25-turn bucket (TALLOW_CANDLE 224, WAX_CANDLE 225). */
+    if ((ot === 224 || ot === 225)
+        && Math.trunc((obj.age | 0) / 25) !== Math.trunc((into.age | 0) / 25)) return false;
     /* C invent.c:4496 — known mismatch blocks only when Blind or Hallucinating */
     if ((obj.known | 0) !== (into.known | 0) && (_wish_Blind() || _wish_Hallu()))
         return false;
@@ -2408,7 +2427,12 @@ function _print_queue_lines(base) {
     const lines = ['timeout  id   kind   call'];
     for (let curr = base; curr; curr = curr.next) {
         const o = curr.arg?.a_obj;
-        const ptr = '0x' + (o ? 0x55d0c0de0000 + ((o.o_id | 0) << 6) : 0).toString(16).padStart(16, '0');
+        // C timeout.c:2028 reads the anything union as a_void even when
+        // zap.c:5107-5109 stored packed coordinates in a_long.  fmt_ptr's
+        // %p (alloc.c:102) prints those bits without leading zero padding.
+        const ptr = curr.arg?.a_long != null
+            ? '0x' + BigInt.asUintN(64, BigInt(curr.arg.a_long)).toString(16)
+            : '0x' + (o ? 0x55d0c0de0000 + ((o.o_id | 0) << 6) : 0).toString(16).padStart(16, '0');
         lines.push(' ' + String(curr.timeout).padStart(4) + '   ' + String(curr.tid).padStart(4)
                    + '  ' + (_TIMER_KINDS[curr.kind] ?? 'unknown').padEnd(6) + ' '
                    + _TIMER_FUNC_NAMES[curr.func_index] + '(' + ptr + ')');

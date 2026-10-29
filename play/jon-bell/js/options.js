@@ -811,11 +811,16 @@ export function parseNethackrc(rc) {
                 const symMatch = entry.match(/^\s*(S_(?:pool|boulder|vodoor|hodoor|room|corr|litcorr|stone|vwall|hwall|tlcorn|trcorn|blcorn|brcorn|crwall|tuwall|tdwall|tlwall|trwall))\s*:\s*(.)/i);
                 if (symMatch)
                     (result.symbolOverrides ||= {})['S_' + symMatch[1].slice(2).toLowerCase()] = symMatch[2];
+                /* symbols.c:239: trap cmap overrides (S_arrow_trap..S_trapped_chest),
+                 * consumed by display.js trap_table_entry. */
+                const trapMatch = entry.match(/^\s*(S_(?:arrow_trap|dart_trap|falling_rock_trap|squeaky_board|bear_trap|land_mine|rolling_boulder_trap|sleeping_gas_trap|rust_trap|fire_trap|pit|spiked_pit|hole|trap_door|teleportation_trap|level_teleporter|magic_portal|web|statue_trap|magic_trap|anti_magic_trap|polymorph_trap|vibrating_square|trapped_door|trapped_chest))\s*[:=]\s*(?:'([^'])'|([^'\s]))\s*$/i);
+                if (trapMatch)
+                    (result.symbolOverrides ||= {})['S_' + trapMatch[1].slice(2).toLowerCase()] = trapMatch[2] ?? trapMatch[3];
                 // C symbols.c:820-844: other-symbol overrides use sym_val too.
                 const otherMatch = entry.match(/^\s*(S_(?:nothing|unexplored|pet_override|hero_override))\s*[:=]\s*(.*?)\s*$/i);
                 if (otherMatch)
                     (result.symbolOverrides ||= {})['S_' + otherMatch[1].slice(2).toLowerCase()] = otherMatch[2];
-                const terrMatch = entry.match(/^\s*(S_(?:room|corr|litcorr|ndoor|vodoor|hodoor|vcdoor|hcdoor|fountain))\s*:\s*(?:'([^'])'|([^'\s]))\s*$/i);
+                const terrMatch = entry.match(/^\s*(S_(?:room|corr|litcorr|ndoor|vodoor|hodoor|vcdoor|hcdoor|fountain|water|lava|lavawall|ice|tree))\s*:\s*(?:'([^'])'|([^'\s]))\s*$/i);
                 if (terrMatch)
                     (result.symbolOverrides ||= {})['S_' + terrMatch[1].slice(2).toLowerCase()] = terrMatch[2] ?? terrMatch[3];
             }
@@ -1346,6 +1351,10 @@ export function parseNethackrc(rc) {
                     else
                         config_error_add(`Unknown msg_window parameter '${val}'`);
                 }
+                else if (key === 'msghistory') {
+                    if (negated ? !val : !!val)
+                        result.iflags.msg_history = negated ? 0 : (parseInt(val, 10) || 0);
+                }
                 /* C options.c:3627-3656 optfn_runmode().  str_start_is()
                  * accepts abbreviations; invalid or empty values leave the
                  * initialized default unchanged after C reports an error. */
@@ -1813,11 +1822,21 @@ function _ffruit() {
     return g.ffruit;
 }
 
+/* C options.c:7329,8194-8249: startup fruitadd also rewrites the user's
+ * name and clears made_fruit.  init_objects (allmain.c:783) has not run yet,
+ * so svb.bases[FOOD_CLASS] is zero and the food-name scan has no iterations. */
 export function init_fruit_chain() {
     const g = game;
+    g.pl_fruit = _fruit_name_rewrite(g.pl_fruit || 'slime mold', true);
+    (g.flags ||= {}).made_fruit = false;
     /* C options.c:8276-8282 — newfruit(), fid = ++highest_fruit_id (0 -> 1),
      * `f->nextf = gf.ffruit; gf.ffruit = f;` on an empty chain. */
-    g.ffruit = { fid: 1, fname: g.pl_fruit || 'slime mold', nextf: null };
+    /* The single rewrite above is C's one makesingular() pass; a second pass
+     * would singularize a pronoun-like name twice ("Theirs" -> "Their" -> "Its"). */
+    /* The C options.c:8194-8239 rewrite already ran once above; C runs it
+     * once per fruitadd, and a second makesingular is not idempotent
+     * ("their" -> "its" -> "it"). */
+    g.ffruit = { fid: 1, fname: g.pl_fruit, nextf: null };
     /* C options.c:8285 — `if (user_specified) svc.context.current_fruit = f->fid;`
      * and initoptions_finish's call IS the user_specified one (str is literally
      * svp.pl_fruit, which is what C's `str == svp.pl_fruit` test compares). */
@@ -1848,7 +1867,7 @@ function fruit_from_name(fname) {
  * ported below.  What is not is the `ismnum(name_to_mon(...))` arm's dependence
  * on name_to_mon's rank-title fallback for "tin of <foo>"; name_to_mon itself
  * is used exactly as C uses it. */
-function _fruit_name_rewrite(nameIn) {
+function _fruit_name_rewrite(nameIn, initial = false) {
     /* C options.c:8194 — nmcpy(svp.pl_fruit, makesingular(str), PL_FSIZ). */
     let plf = makesingular(String(nameIn));
     /* C options.c:8199-8203 — globs may carry a size prefix that has to be
@@ -1861,7 +1880,7 @@ function _fruit_name_rewrite(nameIn) {
      *  objects[i].oc_class == FOOD_CLASS; i++)`, comparing OBJ_NAME. */
     let found = false;
     const NUM_OBJECTS = MKOBJ_OC_CLASS.length;
-    for (let i = MKOBJ_SVB_BASES[FOOD_CLASS] | 0;
+    for (let i = initial ? NUM_OBJECTS : MKOBJ_SVB_BASES[FOOD_CLASS] | 0;
          i < NUM_OBJECTS && (MKOBJ_OC_CLASS[i] | 0) === FOOD_CLASS; i++) {
         /* initoptions_finish (options.c:7341) renames SLIME_MOLD to "fruit";
          * the collision scan needs OBJ_NAME's runtime name. */

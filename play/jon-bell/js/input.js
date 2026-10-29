@@ -123,6 +123,8 @@ export async function nhgetch() {
         }
     }
     game._topl_history_recall = null;
+    /* Direct prompt writers also replace any EMPTY-window residue. */
+    if (game._pending_message) game._topl_empty_sticky = null;
     if (game._pending_message)
         game._preMsgCleared = true;
     game._pending_message = '';
@@ -143,9 +145,16 @@ export async function nhgetch() {
     game._topl_win_stop_buf = null;
     game._arrival_more_suppress = false;
     game._topl_urgent_next = false;
-    /* Paint-time topline persistence (see js/display.js _topl_sticky) lives
-     * exactly as long as _pending_message would have: one key. */
-    game._topl_sticky = null;
+    /* wintty.c:1879-1882 can mark WIN_MESSAGE EMPTY without erasing its
+     * physical text. parse()'s clear_nhwindow then leaves that text standing
+     * (wintty.c:1048), even across silent commands. Other sticky lines keep
+     * their usual one-key lifetime. Match the saved text so an explicit
+     * clear or a different prompt cannot inherit this persistence. */
+    if (!game._topl_empty_sticky
+        || game._topl_sticky !== game._topl_empty_sticky) {
+        game._topl_sticky = null;
+        game._topl_empty_sticky = null;
+    }
     /* The command-result snapshot marker (js/display.js _topl_snapshot_result)
      * describes THIS command's copy of the live topline; it cannot outlive the
      * key read that ends the command. */

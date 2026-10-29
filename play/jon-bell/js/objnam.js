@@ -1736,7 +1736,8 @@ function _strsubst_from(buf, from, orig, repl) {
 function _c_atoi(s) {
     /* C atoi(): optional leading whitespace, optional sign, then digits. */
     const m = /^[ \t\n\v\f\r]*([+-]?[0-9]+)/.exec(s);
-    return m ? parseInt(m[1], 10) : 0;
+    /* C: atoi() is (int)strtol(); the 64-bit long wraps to 32-bit int. */
+    return m ? (Number(BigInt.asIntN(32, BigInt(m[1])))) : 0;
 }
 function _c_digit(ch) { return ch >= '0' && ch <= '9'; }
 
@@ -2675,15 +2676,17 @@ async function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cn
         }
     }
     /* Apply BUC from wish string (overrides mksobj_init result) */
-    if (blessed) {
-        otmp.blessed = true;
-        otmp.cursed = false;
-    } else if (iscursed) {
+    /* C objnam.c:5251-5261: uncursed/blessed wishes depend on Luck. */
+    const luck = (game.u?.uluck | 0) + (game.u?.moreluck | 0);
+    if (iscursed) {
         otmp.cursed = true;
         otmp.blessed = false;
     } else if (uncursed) {
         otmp.blessed = false;
-        otmp.cursed = false;
+        otmp.cursed = (luck < 0 && !wizard());
+    } else if (blessed) {
+        otmp.blessed = (luck >= 0 || wizard());
+        otmp.cursed = (luck < 0 && !wizard());
     } else if (spesgn < 0) {
         /* C objnam.c:5266-5267: a negatively-enchanted wish with no BUC word is
          * cursed. */
@@ -3635,7 +3638,12 @@ export function otense(otmp, verb) {
      * if the result of xname(otmp) would be plural.  Don't bother
      * recomputing xname(otmp) at this time.
      */
-    if (otmp.quan === 1)
+    /* C obj.h:421 is_plural(): quan != 1, or the discovered Eyes of the
+     * Overworld (artilist ordinal 26; undiscovered_artifact is artifact.c:1131) */
+    const plural = (otmp.quan | 0) !== 1
+        || ((otmp.oartifact | 0) === 26
+            && (game.artidisco || []).includes(26));
+    if (!plural)
         return vtense(null, verb);
 
     return verb;

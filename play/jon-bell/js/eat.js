@@ -89,7 +89,7 @@ const AT_MAGC_AT = 255, AD_STUN_AT = 12, AD_DISE_AT = 33, AD_HALU_AT = 36;
 const PM_HUMAN_WERERAT = 261, PM_HUMAN_WEREJACKAL = 262, PM_HUMAN_WEREWOLF = 263;
 /* C monflag.h:136 M2_GIANT — is_giant(ptr). */
 const M2_GIANT = 0x00002000;
-import { exercise, losestr, acurr, getAbase, C_ATTR_TO_DISP, change_luck,
+import { exercise, losestr, acurr, getAbase, getAmax, C_ATTR_TO_DISP, change_luck,
          adjattrib, attrmax, gainstr, setuhpmax, adjalign } from './attrib.js';
 import { attrcurse } from './sit.js';
 /* ── The tin-opening occupation's callees (C eat.c:1381-1796).  Each is the
@@ -110,7 +110,7 @@ import { polymon, rehumanize, still_chewing, polyself } from './polyself.js';
 import { toggle_displacement } from './do_wear.js';
 import { fingers_or_gloves } from './do_wear.js';
 import { b_trapped } from './lock.js';
-import { NO_PART, FIXED_ABIL, NOSE } from './const.js';
+import { NO_PART, FIXED_ABIL, NOSE, HAND } from './const.js';
 import { self_invis_message, make_hallucinated, make_glib, make_vomiting, make_sick, vomit, make_slimed } from './potion.js';
 /* C cmd.c:206 set_occupation(fn, txt, xtime) — js/cmd.js holds the one body;
  * js/lock.js already imports it the same way (cmd.js -> eat.js is an existing
@@ -1598,14 +1598,14 @@ export async function eat_brains(magr, mdef, visflag, dmg_p) {
             if (dmg_p) dmg_p.value += xtra_dmg;
         } else {
             await morehungry(-rnd(30));
-            if (!u.acurr) u.acurr = {};
-            if (!u.acurr.a) u.acurr.a = [12, 10, 15, 18, 9, 9];
-            if (!u.aexe) u.aexe = {};
-            if (!u.aexe.a) u.aexe.a = [12, 10, 15, 18, 9, 9];
-            if ((u.acurr.a[A_INT] | 0) < (u.aexe.a[A_INT] | 0)) {
-                u.acurr.a[A_INT] = (u.acurr.a[A_INT] | 0) + rnd(4);
-                if ((u.acurr.a[A_INT] | 0) > (u.aexe.a[A_INT] | 0))
-                    u.acurr.a[A_INT] = u.aexe.a[A_INT];
+            /* C eat.c:679-684: recover base Int up to its current maximum.
+             * Both attribute arrays use display order in this port. */
+            const abase = getAbase(u), amax = getAmax(u);
+            const di_int = C_ATTR_TO_DISP[A_INT];
+            if (abase[di_int] < amax[di_int]) {
+                abase[di_int] += rnd(4);
+                if (abase[di_int] > amax[di_int])
+                    abase[di_int] = amax[di_int];
                 _SET_BOTL();
             }
             exercise(A_WIS, true);
@@ -4510,6 +4510,7 @@ export async function cpostfx(pm) {
              * blank page would eat the key that ends the 20-turn pretend. */
             if (game._eatMimicForceMore)
                 await force_more(game._pending_message || undefined);
+            game._eatMimicAcked = true;
             curs_on_u();
             /* display_nhwindow(WIN_MAP, TRUE) (eat.c:1224) more()s the topline.  Inside the
              * eating occupation the earlier committed fprefx line and done_eating's
@@ -4908,6 +4909,10 @@ export async function floorfood(verb, corpsecheck) {
             if (c === 'y') {
                 return gold;
             } else if (c === 'q') {
+                /* same stale-prompt handling as the sibling 'q' returns */
+                const prompt = qbuf + " [ynq] (n)";
+                if (topl_park_cursor(null, prompt + ' ')[1] === 0)
+                    g._resultMessage = g._ynStaleTopline = prompt;
                 return null;
             }
             ++g.getobj_else;
@@ -5000,7 +5005,7 @@ export async function feel_cockatrice(obj, force) {
     /* C invent.c:4348-4361: "the <cockatrice> corpse" via corpse_xname */
     const name = corpse_xname(obj, null, 4 /* CXN_PFX_THE */);
     if (game.youmonst?.data && poly_when_stoned_eat(game.youmonst.data))
-        await pline(`You touched ${name} with your bare hands.`);
+        await pline(`You touched ${name} with your bare ${makeplural(body_part(HAND))}.`);
     else
         await pline(`Touching ${name} is a fatal mistake...`);
     await instapetrify_eat(`touching ${killer_xname(obj)} bare-handed`);

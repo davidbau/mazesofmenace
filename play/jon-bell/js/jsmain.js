@@ -12,7 +12,7 @@ import { FF_FAITHFUL } from './fastforward.js';
 import { parseNethackrc, init_fruit_chain } from './options.js';
 import { reset_commands, update_rest_on_space } from './cmd_binds.js';
 import { set_configfile_for_session } from './cfgfiles.js';
-import { gs, H_DEC, H_IBM, H_UNK, PRIMARYSET, INFRAVISION, ESCAPED, RUN_LEAP } from './const.js';
+import { gs, H_DEC, H_IBM, H_UNK, PRIMARYSET, INFRAVISION, RUN_LEAP } from './const.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import { roleOptionToIndex, raceOptionToIndex, genderOptionToIndex, alignOptionToIndex, genlPlayerSetupRandomPicksForY, sessionNeedsRandomPlayerPicks, extractChargenPreInitRng, replayChargenPreInitRng, detectInteractiveChargenFromSession, } from './roles.js';
 import { GameDisplay } from './game_display.js';
@@ -470,11 +470,6 @@ export class NethackGame {
             const slice = fullLog.slice(nhGame._lastRngIdx);
             nhGame._lastRngIdx = fullLog.length;
             const disp = game?.nhDisplay;
-            const escapedTeardown = game._endHow === ESCAPED
-                && game.program_state?.gameover
-                && game.flags?.debug
-                && keyIdx >= nhGame._moves.length
-                && String(game._screen_output || '').startsWith('Goodbye');
             const wizardScoreNoticePending = game._wizardScoreNoticePending != null;
             /* topten.c:165-170 — with iflags.toptenwin the notice is putstr
              * into gt.toptenwin and paged by display_nhwindow (topten.c:911),
@@ -483,7 +478,7 @@ export class NethackGame {
                 && !game.iflags?.toptenwin
                 && (wizardScoreNoticePending
                     || String(game._screen_output || '').startsWith('\nSince you were in wizard mode,'));
-            if (escapedTeardown || wizardScoreNotice) {
+            if (wizardScoreNotice) {
                 nhGame._screens.push('\nSince you were in wizard mode, the score list will not be checked.');
                 /* A death teardown leaves C's cursor on row 2; an escaped
                  * wizard teardown leaves it on row 4 after the quit prompts. */

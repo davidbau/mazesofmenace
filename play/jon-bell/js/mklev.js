@@ -32,7 +32,7 @@ import { unstuck as unstuck_mk, mon_leaving_level as mon_leaving_level_mk, m_unl
 // Uses the real game PRNG (not a separate layout PRNG) for bit-exact parity.
 import { game, wizard } from './gstate.js';
 import { def_oc_syms_chars } from './drawing.js';
-import { BUFSZ, FODDERSHOP } from './const.js';
+import { BUFSZ, FODDERSHOP, M_AP_F_DKNOWN } from './const.js';
 import { PM_PURPLE_WORM as PM_PURPLE_WORM_MK, PM_MAIL_DAEMON } from './pm.generated.js';
 import { PM_PIRANHA, PM_ELECTRIC_EEL, PM_GREMLIN as PM_GREMLIN_ML, PM_IRON_GOLEM as PM_IRON_GOLEM_ML } from './pm.generated.js';
 import { PM_GRAY_OOZE as PM_GRAY_OOZE_MK } from './pm.generated.js';
@@ -190,7 +190,7 @@ import { on_level } from './dungeon.js';
  * under an alias only because this file also declared a file-local
  * `function obj_resists(otmp, a, b) { return false; }` stub that shadowed it
  * for meatobj(); that stub is gone, so the plain name is the real body now. */
-import { obj_resists, quickmimic as quickmimic_mk, monstone, mon_to_stone } from './dogmove.js';
+import { obj_resists, quickmimic as quickmimic_mk, monstone, mon_to_stone, finish_meating as finish_meating_mk } from './dogmove.js';
 export { in_rooms };
 import { attacktype, x_monnam, noname_monnam, poly_when_stoned, noit_mon_nam } from './mhitm.js';
 /* ── newcham()'s equipment half, C mon.c:5484-5518.  Every import below is a
@@ -240,7 +240,7 @@ import { in_your_sanctuary, p_coaligned, priestini, mon_aligntyp } from './pries
 /* touch_artifact()'s hero branch and the artilist[] spfx/alignment/role columns
  * both already live in js/wizcmds.js; the monster branch below reads them there
  * rather than carrying a second copy. */
-import { ARTI_PROPS, touch_artifact_youmonst, getlin as getlin_wf } from './wizcmds.js';
+import { ARTI_PROPS, artifact_alignment, touch_artifact_youmonst, getlin as getlin_wf } from './wizcmds.js';
 import { name_to_mon as name_to_mon_wf, name_to_monclass as name_to_monclass_wf } from './makemon.js';
 import { healup, dryup as dryup_ml } from './potion.js';
 import { Upolyd } from './const.js';
@@ -4805,9 +4805,21 @@ export async function makemon(mdat, x, y, mmflags) {
                  * gem/spellbook mimic is remembered as the generic glyph, whose
                  * display.c:564-576 zeroobj index is STRANGE_OBJECT, hence
                  * "A strange object appears close by." rather than "A gem". */
-                const rg = game.level?.at(mon.mx | 0, mon.my | 0)?.remembered_glyph;
-                const glyphotyp = (rg && rg.cls === 'obj' && Number.isInteger(rg.otyp))
-                    ? (rg.otyp | 0) : (mon.mappearance | 0);
+                /* pager.c:201-202 — levl[x][y].glyph only when hero_memory, else
+                 * glyph_at(): the displayed glyph, i.e. the mimic's own object. */
+                const rloc = game.level?.at(mon.mx | 0, mon.my | 0);
+                const rg = game.level?.flags?.hero_memory
+                    ? rloc?.remembered_glyph
+                    : (rloc && rloc.disp_cls === 'obj' && rloc.disp_obj_otyp != null
+                        ? { cls: 'obj', otyp: rloc.disp_obj_otyp,
+                            corpsenm: rloc.disp_obj_corpsenm }
+                        : undefined);
+                if (!(rg && rg.cls === 'obj' && Number.isInteger(rg.otyp))) {
+                    /* pager.c:213-214 — M_AP_OBJECT but the remembered glyph is
+                     * not an object: mhidden_description yields `something`. */
+                    what = upstart('something');
+                } else {
+                const glyphotyp = rg.otyp | 0;
                 const fake = await mksobj(glyphotyp, false, false);
                 if ((fake.oclass | 0) === 12 /* COIN_CLASS */)
                     fake.quan = 2;
@@ -4816,8 +4828,19 @@ export async function makemon(mdat, x, y, mmflags) {
                 fake.oy = mon.my | 0;
                 const odx = (mon.mx | 0) - ((game.u?.ux ?? 0) | 0);
                 const ody = (mon.my | 0) - ((game.u?.uy ?? 0) | 0);
-                if (odx * odx + ody * ody <= 2) /* pager.c:1043 next2u */
+                if (odx * odx + ody * ody <= 2 /* pager.c:361-369 next2u */
+                    && !_Blind_mk() && !_Hallucination_mk()
+                    && !game.iflags?.terrainmode)
                     observe_object_mk(fake);
+                /* C pager.c:370-374: object_from_map observes an already
+                 * dknown fake too (amulets start dknown via unknow_object),
+                 * and remembers that knowledge on the matching mimic.  This
+                 * runs only while naming its appearance, not while drawing it. */
+                if (glyphotyp === (mon.mappearance | 0)
+                    && (fake.dknown || ((mon.m_ap_type | 0) & M_AP_F_DKNOWN))) {
+                    mon.m_ap_type |= M_AP_F_DKNOWN;
+                    observe_object_mk(fake);
+                }
                 /* pager.c:229-231 — a STRANGE_OBJECT fake is named by
                  * obj_descr[STRANGE_OBJECT].oc_name, never simpleonames()
                  * (xname would give "glorkum ..."). */
@@ -4826,6 +4849,7 @@ export async function makemon(mdat, x, y, mmflags) {
                 if ((fake.quan | 0) === 1)
                     nm = an_mk(nm);
                 what = upstart(nm);
+                }
             }
             if (what && !(canseemon(mon) && (apType === M_AP_NOTHING || apType === M_AP_MONSTER))
                 && !sensemon(mon)) {
@@ -12427,6 +12451,7 @@ export function touch_artifact_mon(otmp, mtmp) {
     const ptr = mtmp.data;
     /* C artifact.c:920 — all quest artifacts are self-willed. */
     const self_willed = (oart.spfx & SPFX_INTEL_MK) !== 0;
+    const al = artifact_alignment(arti);
 
     let badclass, badalign;
     /* C mondata.h is_covetous(ptr): ptr->mflags3 & M3_COVETOUS (0x001f);
@@ -12437,8 +12462,8 @@ export function touch_artifact_mon(otmp, mtmp) {
         /* C artifact.c:930-933 */
         badclass = self_willed && oart.role && arti !== ART_EXCALIBUR_MK;
         badalign = (oart.spfx & SPFX_RESTR_MK) !== 0
-                   && oart.al !== A_NONE_MK
-                   && (oart.al !== mon_aligntyp(mtmp));
+                   && al !== A_NONE_MK
+                   && (al !== mon_aligntyp(mtmp));
     } else {
         /* C artifact.c:934-937 — an M3_WANTSxxx monster or a fake player. */
         badclass = badalign = false;
@@ -12483,7 +12508,7 @@ function bane_applies_mk(arti, mtmp) {
         return ((ptr.mflags2 | 0) & mtype) !== 0;
     if (spfx & SPFX_DALIGN_MK) {
         const ma = ptr.maligntyp | 0;
-        return (ma === A_NONE_MK) || (Math.sign(ma) !== oart.al);
+        return (ma === A_NONE_MK) || (Math.sign(ma) !== artifact_alignment(arti));
     }
     return false;
 }
@@ -15899,6 +15924,14 @@ export async function newcham(mtmp, mdat, ncflags) {
 
     const newdata = permonstTemplate(newmndx);
     mgender_from_permonst(mtmp, newdata);
+    /* C mon.c:5346-5354 — endgame mplayers start out as "Foo the Bar"; drop the
+     * rank when polymorphed. */
+    if (In_endgame(game.u.uz) && is_mplayer_nc(olddata)
+        && mtmp.mextra?.mgivenname) {
+        const p = mtmp.mextra.mgivenname.indexOf(" the ");
+        if (p >= 0)
+            mtmp.mextra.mgivenname = mtmp.mextra.mgivenname.slice(0, p);
+    }
 
     /* C mon.c:5356-5361 — throw a long worm's tail away and put the head back.
      * Reached when decide_to_shapeshift() turns a shapeshifter that had taken

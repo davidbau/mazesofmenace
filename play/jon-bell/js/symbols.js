@@ -769,3 +769,8 @@ export function symset_cell(sym) {
 }
 export const SYM_OFFSETS = { O: SYMF_OFF_O, M: SYMF_OFF_M, W: SYMF_OFF_W, X: SYMF_OFF_X };
 export function defsym_char(idx) { return DEFSYMS_SYM[idx]; }
+
+/* C symbols.c loadsyms[]: the canonical name for a display symbol. */
+export function symbol_name(idx) {
+    return LOADSYMS.find(sp => sp.range !== SYM_CONTROL && sp.idx === idx)?.name;
+}

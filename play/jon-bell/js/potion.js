@@ -1988,8 +1988,6 @@ export async function dodrink() {
             g.context.move = 0;
             return ECMD_CANCEL;
         }
-        /* C invent.c:2020 (getobj): disp.botl = TRUE once a letter is chosen. */
-        if (g.disp) g.disp.botl = 1;
         /* Try to find item by invlet in game.invent if available. */
         if (g.invent) {
             otmp = null;
@@ -1999,6 +1997,15 @@ export async function dodrink() {
                     break;
                 }
             }
+            // C invent.c:2006-2013: reject excluded coins before disp.botl
+            // and the generic silly_thing check.
+            if (otmp && (otmp.oclass | 0) === COIN_CLASS) {
+                await You('cannot drink gold.');
+                g.context.move = 0;
+                return ECMD_CANCEL;
+            }
+            /* C invent.c:2049: selection passed the gold/count checks. */
+            if (g.disp) g.disp.botl = 1;
             if (otmp)
                 break;
             await bot(); /* pline's flush_screen paints the botl set above */
@@ -2075,7 +2082,6 @@ export async function dodrink() {
                 }
             }
             await useup(otmp);
-            g.disp.botl = 1;
         }
         else if (otmp.otyp === POT_OIL) {
             await peffect_oil(otmp);
@@ -2087,7 +2093,6 @@ export async function dodrink() {
                 more_experienced(0, 10);
             }
             await useup(otmp);
-            g.disp.botl = 1;
         }
         else if (otmp.otyp === POT_PARALYSIS) {
             const bcsign = (otmp.blessed ? 1 : 0) - (otmp.cursed ? 1 : 0);
@@ -2388,7 +2393,6 @@ export async function dodrink() {
                 }
             }
             await useup(otmp);
-            g.disp.botl = 1;
         }
         else if (otmp.otyp === POT_BLINDNESS) {
             /* C potion.c:1075-1080 via peffects(), then dopotion's ordinary
@@ -2410,7 +2414,6 @@ export async function dodrink() {
                 }
             }
             await useup(otmp);
-            g.disp.botl = 1;
         }
         else if (otmp.otyp === POT_LEVITATION) {
             g._potion_nothing = 0;
@@ -3629,7 +3632,7 @@ async function potion_dip(obj, potion) {
         return ECMD_OK;
     }
     if (obj && obj.hands) {
-        await pline("You can't fit your hands into the mouth of the bottle!");
+        await pline(`You can't fit your ${body_part(HAND)} into the mouth of the bottle!`);
         return ECMD_OK;
     }
 
@@ -4435,6 +4438,9 @@ export async function potionhit(mon, obj, how) {
         /* C potion.c:1683-1704 — the hero-target per-otyp arms. */
         switch (obj.otyp | 0) {
         case POT_OIL:
+            /* C potion.c:1684-1685: burning oil explodes before vapours. */
+            if (obj.lamplit)
+                await explode_oil(obj, u.ux, u.uy);
             break;
         case POT_POLYMORPH:
             You_feel(`a little ${_hallucination() ? 'normal' : 'strange'}.`);
@@ -4571,8 +4577,7 @@ export async function potionhit(mon, obj, how) {
             if (mon_hates_blessings(mon) /* undead or demon */
                 || is_were_pot(pdata) || is_vampshifter_pot(mon)) {
                 if (obj.blessed) {
-                    if (canseemon(mon))
-                        pline(`${Monnam(mon)} ${is_silent_pot(pdata) ? 'writhes' : 'shrieks'} in pain!`);
+                    pline(`${Monnam(mon)} ${is_silent_pot(pdata) ? 'writhes' : 'shrieks'} in pain!`);
                     if (!is_silent_pot(pdata))
                         wake_nearto(tx, ty, (pdata.mlevel | 0) * 10);
                     mon.mhp = (mon.mhp | 0) - d(2, 6);

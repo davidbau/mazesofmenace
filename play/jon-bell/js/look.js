@@ -1,5 +1,5 @@
 import { displayLookWindow } from './look-window.js';
-import { ECMD_OK, ECMD_TIME } from './const.js';
+import { ECMD_OK, ECMD_TIME, HAND } from './const.js';
 import { trapname } from './makemon.js';
 // @ts-nocheck
 // look.js — `:` (dolook) and look_here implementation.
@@ -56,7 +56,7 @@ import { pushRngLogEntry } from './rng.js';
 import { Blind } from './vision.js';
 import { can_reach_floor } from './hold_another_object.js';
 import { is_ice } from './engrave.js';
-import { doname, doname_with_price, corpse_xname, an, vtense, CXN_ARTICLE, CXN_PFX_THE } from './objnam.js';
+import { doname, doname_with_price, corpse_xname, an, vtense, makeplural, CXN_ARTICLE, CXN_PFX_THE } from './objnam.js';
 import { ENV } from './hostenv.js';
 /* mbodypart: C polyself.c:1956 — needed only by look_here's u.uswallow arm
  * ("Contents of <mon's> stomach").  js/cmd.js already imports FROM this file
@@ -65,7 +65,7 @@ import { ENV } from './hostenv.js';
  * mhitm.js; mbodypart is a hoisted function declaration, so the cycle cannot
  * leave it in TDZ at call time (look_here only runs after both modules have
  * finished evaluating). */
-import { force_decor, mbodypart, set_msg_xy, instapetrify, display_minventory,
+import { force_decor, mbodypart, body_part, set_msg_xy, instapetrify, display_minventory,
          dfeature_at as _cmd_dfeature_at, pooleffects_is_flyer } from './cmd.js';
 
 const _DIRTRACE = (typeof process !== 'undefined' && ENV
@@ -337,7 +337,7 @@ async function _feel_cockatrice_lk(otmp, force_touch) {
     if (!_will_feel_cockatrice_lk(otmp, force_touch)) return;
     const name = corpse_xname(otmp, null, CXN_PFX_THE);
     if (poly_when_stoned(game.youmonst?.data))
-        await pline(`You touched ${name} with your bare hands.`);
+        await pline(`You touched ${name} with your bare ${makeplural(body_part(HAND))}.`);
     else
         await pline(`Touching ${name} is a fatal mistake...`);
     await instapetrify(`touching ${name} bare-handed`);

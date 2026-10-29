@@ -103,7 +103,7 @@ import { mhitm_ad_blnd as mhitm_ad_blnd_gz } from './uhitm.js';
 import { seemimic, resists_magm as resists_magm_dm, defended as defended_dm } from './mhitm.js';
 import { slimeproof, erosion_matters } from './mklev.js';
 import { PM_GREEN_SLIME } from './pm.generated.js';
-import { mfndpos, make_corpse, zombie_form, On_stairs, is_rustprone } from './mklev.js';
+import { mfndpos, make_corpse, zombie_form, On_stairs, is_rustprone, clone_mon_ml as clone_mon } from './mklev.js';
 import { isok, is_pit, ARTICLE_A, ARTICLE_NONE, MON_DETACH, CORPSTAT_NONE, G_GONE, CONFLICT as CONFLICT_DM, engulfing_u as engulfing_u_const, MAGIC_PORTAL } from './const.js';
 import { thiefdead } from './steal.js';
 import { otrapped_of } from './const.js';   /* obj.h:139 #define opoisoned otrapped */
@@ -2478,7 +2478,10 @@ export function m_harmless_trap(mtmp, ttmp) {
             if (resistsFire) return true;
             break;
         case T_PIT: case T_SPIKEDPIT: case T_HOLE: case T_TRAPDOOR:
-            /* is_clinger — default no */ break;
+            /* C trap.c:1155-1156: ceiling clingers ignore pits and holes
+             * outside Sokoban (M1_CLING, monflag.h:89). */
+            if ((mf1 & 0x00000010) && !In_sokoban(game.u?.uz)) return true;
+            break;
         case T_TELEP: case T_LEVTELEP: case T_MAGICPORTAL: case T_POLY:
             break;
         case T_WEB:
@@ -3082,10 +3085,10 @@ export async function mattackm(magr, mdef) {
                 if ((mdef.data && (mdef.mnum === PM_BLACK_PUDDING
                                    || mdef.mnum === PM_BROWN_PUDDING))
                     && mwep && mwep.otyp !== undefined
-                    && (objects_material_dm(mwep.otyp) === 15 /* IRON */
-                        || objects_material_dm(mwep.otyp) === 16 /* METAL */)
+                    && (objects_material_dm(mwep.otyp) === 11 /* IRON */
+                        || objects_material_dm(mwep.otyp) === 12 /* METAL */)
                     && mdef.mhp > 1 && !mdef.mcan) {
-                    let mclone = clone_mon(mdef, 0, 0);
+                    let mclone = await clone_mon(mdef, 0, 0);
                     if (mclone) {
                         if (game.v?.vis && canspotmon(mdef))
                             /* C mhitm.c:461 pline("%s divides as %s hits it!",
@@ -3506,6 +3509,9 @@ export async function mondied_dm(mdef, mondead_only = false) {
             if (mndx_dead === PM_MAIL_DAEMON) mv.mvflags |= G_GENOD;
         }
     }
+    /* C mon.c:3138-3140 mondead(): leader identity survives polymorph. */
+    if (mdef.m_id === game.svq.quest_status.leader_m_id)
+        game.svq.quest_status.leader_is_dead = true;
     /* C mon.c:3147-3165 mondead(): dead Kops may return, before m_detach
      * and mondied()'s corpse_chance roll. */
     await kop_revival(mdef);
@@ -3689,6 +3695,13 @@ async function mdamagem_dm(magr, mdef, mattk, mwep, dieroll) {
 
     mdef.mhp -= mhm.damage;
     if (mdef.mhp < 1) {
+        /* C mhitm.c:1073-1078: gulpmm() left magr on mdef's square; put mdef
+         * back on the grid and take magr off it, so mondead's newsym blanks
+         * the square until gulpmm() re-places magr. */
+        if (m_at(mdef.mx, mdef.my) === magr) {
+            delete mdef._mapRemoved;
+            magr._mapRemoved = true;
+        }
         /* C mhitm.c:1081-1090 — mkcorpstat_norevive / zombify setup for the
          * corpse the kill leaves (mkcorpstat/start_corpse_timeout read them). */
         game.gm = game.gm || {};
@@ -3732,7 +3745,6 @@ async function mdamagem_dm(magr, mdef, mattk, mwep, dieroll) {
 function a_monnam(mdef) {
     return x_monnam(mdef, ARTICLE_A, null, 0, true);
 }
-function clone_mon(mdef, _a, _b) { return split_mon_rt(mdef, null); }
 /* C mhitm.c:970-1010 explmm(magr, mdef, mattk) — AT_EXPL monster-vs-monster. */
 async function explmm(magr, mdef, mattk) {
     let result;
@@ -3906,6 +3918,7 @@ async function gulpmm(magr, mdef, mattk) {
             nx = ax; ny = ay;
         }
         if (m_at(nx, ny) !== magr) {
+            delete magr._mapRemoved;
             magr.mx = nx; magr.my = ny;
             newsym(nx, ny);
         }

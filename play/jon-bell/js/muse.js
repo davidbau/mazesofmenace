@@ -23,7 +23,8 @@ import { Monnam } from './mcastu.js';
 import { find_mac } from './trap.js';
 import { _zp_unturn_you, unturn_dead, cancel_monst, resist, miss, dobuzz, bhito, lightdamage, BlindedTimeout, make_blinded } from './zap.js';
 import { Blind } from './vision.js';
-import { resists_blnd, wakeup } from './mhitm.js';
+import { resists_blnd, wakeup, mon_nam_too } from './mhitm.js';
+import { makeplural } from './objnam.js';
 import { verbalize } from './cmd.js';
 import { The, vtense, an, xname_wand, simple_typename, xname } from './objnam.js';
 import { doname, singular, simpleonames } from './objnam.js';
@@ -158,9 +159,22 @@ async function precheck(mon, obj) {
     return 0;
 }
 
+/* C ref: do_name.c:1220-1248 monverbself() */
+function _monverbself(mtmp, verb, othertext) {
+    const selfbuf = mon_nam_too(mtmp, mtmp);
+    const verbs = vtense(selfbuf, verb);
+    let monnamtext = Monnam(mtmp);
+    if (verbs === verb) {
+        monnamtext = makeplural(monnamtext);
+        if (monnamtext.toLowerCase() === 'they')
+            monnamtext = monnamtext[0] === 'T' ? 'Them' : 'them';
+    }
+    return `${monnamtext} ${verbs}${othertext ? ' ' + othertext : ''} ${selfbuf}`;
+}
+
 /* C ref: muse.c:167-192 mzapwand(mtmp, otmp, self) — announce the zap, spend a
  * charge, and (when seen) interrupt the hero's occupation. */
-async function mzapwand(mtmp, otmp, self) {
+export async function mzapwand(mtmp, otmp, self) {
     if ((otmp.spe | 0) < 1) {
         /* C: impossible("Mon zapping wand with %d charges?") then return —
          * the charge is NOT spent. */
@@ -175,13 +189,7 @@ async function mzapwand(mtmp, otmp, self) {
         await You_hear(`a ${near ? "nearby" : "distant"} zap.`);
         unknow_object(otmp); /* hero loses info when unseen obj is used */
     } else if (self) {
-        /* KNOWN GAP — muse.c:182-184, the self-zap message
-         * `pline("%s with %s!", monverbself(mtmp, Monnam(mtmp), "zap",
-         * (char *) 0), doname(otmp))`.  Missing dependency: monverbself
-         * (do_name.c).  Not reachable from this module — use_offensive is the
-         * only caller and always passes self=FALSE (muse.c:1882); the self=TRUE
-         * callers live in use_defensive/use_misc (js/makemon.js).  RNG-free
-         * either way; the charge below is still spent, as in C. */
+        pline(`${_monverbself(mtmp, 'zap', null)} with ${await doname(otmp)}!`);
     } else {
         set_msg_xy(mtmp.mx, mtmp.my); /* pline_mon (pline.c:138-146) */
         pline(`${Monnam(mtmp)} zaps ${an(xname(otmp))}!`);
@@ -192,7 +200,7 @@ async function mzapwand(mtmp, otmp, self) {
 
 /* C ref: muse.c:195-233 mplayhorn(mtmp, otmp, self) — announce the horn,
  * spend a charge.  The self arm is unreachable from use_offensive. */
-async function mplayhorn(mtmp, otmp, self) {
+export async function mplayhorn(mtmp, otmp, self) {
     if (!canseemon(mtmp)) {
         const range = couldsee(mtmp.mx | 0, mtmp.my | 0)
                       ? (BOLT_LIM + 1) : (BOLT_LIM - 3);
@@ -200,7 +208,14 @@ async function mplayhorn(mtmp, otmp, self) {
                            game.u.ux | 0, game.u.uy | 0) <= range * range;
         await You_hear(`a horn being played ${near ? "nearby" : "in the distance"}.`);
         unknow_object(otmp); /* hero loses info when unseen obj is used */
-    } else if (!self) {
+    } else if (self) {
+        observe_object(otmp);
+        let objnamp = xname(otmp);
+        if (objnamp.length >= 128) /* QBUFSZ */
+            objnamp = simpleonames(otmp);
+        pline(`${_monverbself(mtmp, 'play', `a ${objnamp} directed at`)}!`);
+        makeknown(otmp.otyp | 0);
+    } else {
         observe_object(otmp);
         let objnamp = xname(otmp);
         if (objnamp.length >= 128) /* QBUFSZ */

@@ -869,7 +869,7 @@ function stimer() {
     if (!game.svt)
         game.svt = {};
     if (game.svt.timer_id === undefined)
-        game.svt.timer_id = 0;
+        game.svt.timer_id = 1; // C decl.c:976: init_svt.timer_id starts at 1UL.
     return game.svt;
 }
 /* C svm.moves.  js/allmain.js keeps the turn counter on game.moves; game.svm

@@ -241,6 +241,7 @@ export async function u_init_misc() {
      * exper.js exports rather than separate Init variants. */
     const hp = newhp();
     u.uhp = u.uhpmax = u.uhppeak = hp;
+    u.mh = u.mhmax = 0; /* C zero-initialises struct you; unpolymorphed mh/mhmax read 0 (botl) */
     const pw = newpw();
     u.uen = u.uenmax = u.uenpeak = pw;
     u.uspellprot = 0;
@@ -1263,6 +1264,9 @@ function ini_inv_adjust_obj(trop, obj) {
 
 // C u_init.c:1301 — shared addinv returns the survivor after an actual merge.
 export async function ini_inv(trobj) {
+    /* A real ini_inv ran: uhitm.js's chargen-less weapon bootstrap must not
+     * fabricate starting gear for a hero who later emptied the inventory. */
+    game.u._weaponsInitUhitm = true;
     if (game.u.uroleplay.pauper) return;
     const gn = game.gn;
     let got_sp1 = false, index = 0;

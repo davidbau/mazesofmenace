@@ -707,6 +707,7 @@ export async function do_death_sequence(opts) {
     }
     let _winStopHere = !!(g._topl_win_stop || g._topl_win_stop_armed);
     let _suppressDeathPage = false;
+    let _escStopAfterDeathLine = false;
     /* end.c:1082: the prejoined "But wait..." is the fresh topline the medallion
      * plines join; paging it here (it is all `remainder` holds) is not C. */
     if (remainder && !_winStopHere && !pd.remainderIsFresh && !_prejoinedButWait) {
@@ -773,6 +774,17 @@ export async function do_death_sequence(opts) {
                 || (pd.alreadySaidYouDie && /You die\.\.\.$/.test(remainder)))) {
             _winStopHere = true;
             _suppressDeathPage = true;
+        } else if (_remainderMorc === 27 && !pd.alreadySaidYouDie && !pd.noDeathLine
+                   && remainder.length + 2 + 'You die...'.length >= TOPL_LIMIT_END) {
+            /* topl.c:257 sampled skip FALSE before this death message's own
+             * more() set WIN_STOP (:232-235), so :300 still draws "You die...".
+             * For a long killing-blow line notdied stays 1 (:262-265) and
+             * following messages are suppressed.  Leave the armed bit for
+             * pline() to paint that owner before making WIN_STOP live. */
+            g._topl_win_stop_buf = remainder;
+            _winStopHere = true;
+            _suppressDeathPage = true;
+            _escStopAfterDeathLine = true;
         }
     }
     /* hack.c:4287 losehp() uses urgent_pline before done().  Recreate that
@@ -891,6 +903,15 @@ export async function do_death_sequence(opts) {
         // shopkeeper's line on a frame of its own and shifted the tombstone.
         if (!pd.alreadySaidYouDie && !pd.noDeathLine)
             await pline('You die...');
+        /* topl.c:232-235: the ESC on the remainder page (raised by this very
+         * update_topl) set WIN_STOP after :257 sampled skip FALSE, so the line
+         * above was drawn; the bit stays live (notdied == 1, :262-265 never
+         * reached the strncmp) and really_done's first tty_yn_function
+         * (:389-393) raises no more() for it. */
+        if (_escStopAfterDeathLine) {
+            g._topl_win_stop = true;
+            g._topl_win_stop_buf = 'You die...';
+        }
         _done_force_hp_zero();
         // C end.c:1128 done() -> really_done(how).  This used to stop here and
         // hand-render ONE frame — a hardcoded
@@ -921,6 +942,10 @@ export async function do_death_sequence(opts) {
             pline_flush_point();
             const _wsBuf = (g._topl_win_stop_buf != null)
                 ? String(g._topl_win_stop_buf) : String(g._pending_message || '');
+            /* topl.c:289 files the buffer once.  WIN_STOP paging already
+             * tracks its live buffer as the last history entry. */
+            if (_wsBuf && g._msg_history?.at(-1) !== _wsBuf)
+                putmsghistory(_wsBuf);
             if (_wsBuf.length + 2 + 'You die...'.length < TOPL_LIMIT_END) {
                 g._topl_win_stop = false;
                 g._topl_win_stop_armed = false;
@@ -932,9 +957,16 @@ export async function do_death_sequence(opts) {
                 /* notdied stays 1: buffered, not drawn, WIN_STOP survives into
                  * tty_yn_function, which therefore raises no more(). */
                 g._topl_win_stop_buf = 'You die...';
+                putmsghistory('You die...');
             }
         } else {
-            await force_more('You die...');
+            /* end.c:195 You("die...") flushes the map before putmesg
+             * (pline.c:266-276). An earlier movemon page cannot own this
+             * fresh death line, even when both occur within the same turn. */
+            if (g.vision_full_recalc) vision_recalc(0);
+            pline_flush_point();
+            await force_more('You die...', 0, false, false,
+                             capture_painted_frame_with_status());
         }
     }
     _done_force_hp_zero();
@@ -1517,9 +1549,11 @@ async function disclose(how, taken) {
         const [ask, defquery] = should_query_disclose_option('i');
         c = ask ? await yn_function(qbuf, 'ynq', defquery, true) : defquery;
         if (c === 'y') {
-            g.iflags.force_invmenu = false;
+            g.iflags.force_invmenu = false; const _toplUnderMenu = g._topl_sticky; /* docorner leaves row 0 left of offx standing */
             await display_inventory(null, true);
             const _discloseInv = g._pickinv_window;
+            if (_toplUnderMenu && !g._pending_message)
+                g._topl_sticky = _toplUnderMenu.slice(0, Math.max(0, (_discloseInv?.WIN_COL ?? 1) - 1)).replace(/\s+$/, "") || null;
             /* C dismisses the inventory NHW_MENU with docorner() before
              * container_contents() opens its NHW_TEXT window.  The corner
              * erase leaves only the prefix of each status row painted. */
@@ -1905,8 +1939,11 @@ async function really_done(how) {
          * more() over whatever the topline now holds: "You die..." plus, on a
          * shop death, paybill's line.  This is the page that used to be raised
          * by do_death_sequence BEFORE really_done ran, which is one paybill too
-         * early. */
-        if (have_windows && g._pending_message)
+         * early.  wintty.h:75-76 gives WIN_CANCELLED and WIN_STOP the same
+         * bit, so tty_display_nhwindow's `if (cw->flags & WIN_CANCELLED)
+         * return;` (wintty.c:1865) skips this page while an ESC'd --More--
+         * has WIN_STOP live. */
+        if (have_windows && g._pending_message && !g._topl_win_stop)
             // tty_display_nhwindow pages the last physical map without flushing
             // newsym changes from paybill's removal of nonlocal shopkeepers.
             await force_more_lone_frame(g._pending_message);
@@ -1948,8 +1985,11 @@ async function really_done(how) {
             const mnum = !Upolyd(u) ? (g.urace?.mnum | 0) : (u.umonnum | 0);
             /* C allmain.c:853 seeds mvitals[i].mvflags from mons[i].geno's
              * G_NOCORPSE bit; js/mklev.js:1318 reads it the same way. */
-            const _mvflags = ((MONS_ROWS_END[mnum]?.[3] | 0) & G_NOCORPSE_END)
-                | ((g.mvitals?.[mnum]?.mvflags | 0) & G_NOCORPSE_END);
+            /* C end.c:1307 tests mvitals[u.umonnum] (the role monster when
+             * not polymorphed), not the race monster that mnum names. */
+            const _um = u.umonnum | 0;
+            const _mvflags = ((MONS_ROWS_END[_um]?.[3] | 0) & G_NOCORPSE_END)
+                | ((g.mvitals?.[_um]?.mvflags | 0) & G_NOCORPSE_END);
             if (bones_ok && ((u.ugrave_arise ?? NON_PM) === NON_PM) && !_mvflags) {
                 const was_already_grave = IS_GRAVE(g.level?.at(u.ux | 0, u.uy | 0)?.typ | 0);
                 const plname = String(g.plname ?? g.u?.plname ?? '');

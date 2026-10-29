@@ -194,7 +194,7 @@ export function lookup_novel(lookname, idx) {
  * book `oid`, tracking the unused ones in svc.context.novel.  The rn2(range)
  * draws of the >MAXPASSAGES arm and the final rn2(count) are RNG-visible. */
 function choose_passage(passagecnt, oid) {
-    const MAXPASSAGES = 20;
+    const MAXPASSAGES = 30; // C context.h:116, SIZE(context.novel.pasg)
     const ctx = game.context || (game.context = {});
     const nv = ctx.novel || (ctx.novel = { id: 0, count: 0, pasg: new Array(MAXPASSAGES).fill(0) });
     if (passagecnt < 1)

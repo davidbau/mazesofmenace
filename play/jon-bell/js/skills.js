@@ -29,7 +29,7 @@ import { nhgetch } from './input.js';
 import { yn_function } from './end.js';
 import { OC_NAME } from './oc_name_data.js';
 import { is_ammo } from './cmd.js';
-import { build_window_screen } from './com_pager.js';
+import { build_window_screen, menu_search_case, menu_search_docorner } from './com_pager.js';
 import { menu_heading_text } from './tty_menu.js';
 import { PM_PONY } from './pm.generated.js';
 import { ROLE_PM_MNUM } from './roles.js';
@@ -567,6 +567,27 @@ async function enhance_menu(items, prompt, pickOne) {
         }
         if (ch === '\n' || ch === '\r') /* finished, nothing selected */
             return 0;
+        if (ch === ':' && pickOne) {
+            /* C wintty.c:1700-1730: search all selectable entries in mlist
+             * order, including pages other than the one currently displayed. */
+            const rows = g._screen_output.split('\n');
+            let picked = 0;
+            const finished = await menu_search_case('ONE',
+                all.flatMap((it, i) => it.a_int
+                    ? [{ str: `${accel[i]} - ${it.text}`, a_int: it.a_int }] : []),
+                () => rows, (it) => { picked = it.a_int; });
+            if (finished) return picked;
+            /* getline.c:213 clears WIN_MESSAGE; process_menu_window leaves
+             * the erased title blank until a page change repaints the menu. */
+            rows[0] = '';
+            g._screen_output = menu_search_docorner(rows).join('\n');
+            const disp = g.nhDisplay;
+            if (disp) {
+                disp.cursorCol = (overlayCol || 1) + cur.morestr.length;
+                disp.cursorRow = cur.page.length;
+            }
+            continue;
+        }
         if (pickOne) {
             const idx = cur.page.findIndex((it, i) => accel[cur.start + i] === ch && it.a_int);
             if (idx >= 0)
