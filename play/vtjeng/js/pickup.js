@@ -230,7 +230,6 @@ import { get_obj_location, obj_is_burning } from './light.js';
 import { snuff_lit } from './apply_splash_lit.js';
 import { bagotricks, set_malign } from './makemon.js';
 import { makemon_runtime } from './makemon_create.js';
-import { eaten_stat } from './eat.js';
 import { courtmon } from './mkroom.js';
 import { remove_worn_item } from './steal.js';
 import { hornoplenty } from './mkobj_hornoplenty.js';
@@ -452,12 +451,16 @@ export function preflight_describe_decor_at(x, y, state = game) {
     return describeDecorPlan(x, y, state).result;
 }
 
-// Check startup decor before reset_justpicked(). pickup(1) itself preflights
-// its selected objects before committing them, including an object generated
-// on the starting square. An engraving under the hero needs no admission:
-// pickup.c:702-709's no-object arm ends in read_engr_at().
+// Temporary startup admission for the portion of pickup(1) selected by this
+// boundary. It runs before reset_justpicked(), so an excluded object or
+// terrain leaves inventory and decor memory unchanged. An engraving under the
+// hero needs none: pickup.c:702-709's no-object arm ends in read_engr_at(),
+// and pickup() below ports that arm whole.
 export function preflight_initial_pickup(state = game) {
     const { u } = state;
+    if (state.level?.objects?.[u.ux]?.[u.uy]) {
+        throw new UnsupportedPickupError('initial floor object');
+    }
     if (state.flags?.mention_decor)
         preflight_describe_decor_at(u.ux, u.uy, state);
 }
@@ -1008,9 +1011,7 @@ function preflightPickupObjects(selected, state) {
         && actionable.length === 1
         && object.where === OBJ_FLOOR
         && object.quan > 1
-        // C carry_count weighs the requested quantity even when it is one
-        // item from a larger floor stack.
-        && selectedObject.count >= 1
+        && selectedObject.count > 1
         && object.oclass !== COIN_CLASS
         && object.otyp !== LOADSTONE
         && !(object.otyp === BOULDER
@@ -3266,7 +3267,7 @@ async function in_container(obj, state) {
     });
     if (addition && typeof addition.then === 'function') await addition;
     state.gc.current_container.owt = weight(
-        state.gc.current_container, { state, hooks: { eatenStat: eaten_stat } });
+        state.gc.current_container, { state });
 
     // Gold needs this, and freeinv() may cause the encumbrance to disappear
     // from the status, so always update immediately (C: 2710).

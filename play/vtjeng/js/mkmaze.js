@@ -1461,14 +1461,7 @@ export function create_maze(corrwid, wallthick, rmDeadends, frame, state) {
 // discarded return in C, so a failed placement does not alter the remaining
 // random-call sequence.
 export function populate_maze(frame, state = game) {
-    const env = objectGenerationEnv({
-        state,
-        random: { d, rn1, rn2, rnd, rne },
-        hooks: {
-            mazexy: coordinate => mazexy(coordinate, frame, state),
-            makeMonster: makemon,
-        },
-    });
+    const env = objectGenerationEnv({ state, random: { rn1, rn2, rnd, rne } });
     let count = rn1(8, 11);
     for (; count; --count) {
         const point = mazexy(null, frame, state);
