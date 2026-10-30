@@ -12,6 +12,17 @@
 
 const NEWS_ITEMS = [
     {
+        date: '2026-10-30',
+        dateText: 'October 30, 2026',
+        href: '/reading-readability/',
+        html: `<strong>Reading Readability:</strong>
+        the aim of the contest is a readable port, but classic measures
+        like function length and cyclomatic complexity miss what that
+        means. A functional test, with a small language model answering
+        hard NetHack questions from each port&rsquo;s code, scores the
+        contestants.`,
+    },
+    {
         date: '2026-10-25',
         dateText: 'October 25, 2026',
         href: '/seeing-snakes/',

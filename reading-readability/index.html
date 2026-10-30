@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="How readable are the contestants' NetHack ports? Classic code metrics miss it; a small language model reading the code to answer hard questions does not.">
+<meta name="theme-color" content="#f3e9cf">
+<title>Reading Readability — Mazes of Menace</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&display=swap" rel="stylesheet">
+<style>
+:root {
+    --parchment:        #f9f7f1;
+    --parchment-dark:   #f0ece3;
+    --parchment-edge:   #d0c8b8;
+    --ink:              #2b2114;
+    --ink-soft:         #555;
+    --ink-faint:        #888;
+    --accent:           #6b2c2c;
+    --accent-dark:      #4a2020;
+    --rule:             #d0c8b8;
+    --font-serif:       'EB Garamond', 'Adobe Garamond Pro', Garamond, Georgia, serif;
+    --font-mono:        'DejaVu Sans Mono', 'Consolas', monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { background: var(--parchment); }
+
+body {
+    color: var(--ink);
+    font-family: var(--font-serif);
+    font-size: 19px;
+    line-height: 1.62;
+    background: var(--parchment);
+    min-height: 100vh;
+    padding: 0;
+}
+
+main {
+    max-width: 42em;
+    margin: 0 auto;
+    padding: 4em 1.5em 6em;
+    position: relative;
+}
+
+/* Top nav */
+.topnav {
+    max-width: 42em;
+    margin: 0 auto;
+    padding: 1.4em 1.5em 0;
+    font-size: 0.92em;
+    color: var(--ink-faint);
+    font-style: italic;
+}
+.topnav a {
+    color: var(--accent);
+    text-decoration: none;
+}
+.topnav a:hover { text-decoration: underline; }
+
+/* Header */
+header.post-header {
+    text-align: center;
+    margin-bottom: 2.6em;
+    padding-bottom: 1.6em;
+    border-bottom: 1px solid var(--rule);
+    position: relative;
+}
+header.post-header::after {
+    content: "";
+    display: block;
+    width: 40px;
+    height: 18px;
+    margin: 0.9em auto -1.7em;
+    background: var(--parchment);
+    /* fleuron-ish ornament: three dots */
+    background-image:
+        radial-gradient(circle at 8px 9px, var(--accent) 2px, transparent 2.5px),
+        radial-gradient(circle at 20px 9px, var(--accent) 2.5px, transparent 3px),
+        radial-gradient(circle at 32px 9px, var(--accent) 2px, transparent 2.5px);
+}
+header.post-header h1 {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 2.4em;
+    line-height: 1.15;
+    color: var(--accent-dark);
+    letter-spacing: 0.005em;
+    margin-bottom: 0.45em;
+}
+header.post-header .byline {
+    font-style: italic;
+    color: var(--ink-soft);
+    font-size: 1.02em;
+}
+header.post-header .byline a { color: var(--ink-soft); }
+header.post-header .byline a:hover { color: var(--accent); }
+
+/* Body text */
+article p {
+    margin-bottom: 1.05em;
+    text-align: left;
+    hyphens: auto;
+}
+article p.lead {
+    font-size: 1.08em;
+    color: var(--ink-soft);
+    font-style: italic;
+}
+
+/* Headings */
+article h2 {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 1.55em;
+    color: var(--accent-dark);
+    margin: 2.2em 0 0.55em;
+    padding-bottom: 0.18em;
+    border-bottom: 1px solid var(--rule);
+    letter-spacing: 0.01em;
+}
+article h2 small {
+    font-style: italic;
+    font-weight: 400;
+    color: var(--ink-faint);
+    font-size: 0.7em;
+    margin-left: 0.4em;
+}
+
+/* Links */
+article a {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px dotted rgba(107,44,44,0.45);
+    transition: border-color 0.15s, background 0.15s;
+}
+article a:hover {
+    border-bottom-color: var(--accent);
+    background: rgba(107,44,44,0.06);
+}
+
+/* Emphasis */
+article strong { color: var(--ink); font-weight: 600; }
+article em { font-style: italic; }
+
+/* Blockquote */
+article blockquote {
+    margin: 1.4em 0;
+    padding: 0.8em 1.2em 0.8em 1.4em;
+    border-left: 3px solid var(--accent);
+    background: var(--parchment-dark);
+    color: var(--ink-soft);
+    font-style: italic;
+    font-size: 0.96em;
+}
+article blockquote p { margin-bottom: 0.6em; }
+article blockquote p:last-child { margin-bottom: 0; }
+article blockquote code { font-style: normal; }
+
+/* Inline + block code */
+article code {
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    color: var(--accent-dark);
+    background: var(--parchment-dark);
+    padding: 0.05em 0.35em;
+    border-radius: 2px;
+}
+article pre {
+    font-family: var(--font-mono);
+    font-size: 0.72em;
+    line-height: 1.45;
+    color: var(--ink);
+    background: var(--parchment-dark);
+    border: 1px solid var(--parchment-edge);
+    border-radius: 2px;
+    padding: 1em 1.2em;
+    margin: 1.5em 0 1.7em;
+    overflow-x: auto;
+}
+article pre code {
+    background: transparent;
+    padding: 0;
+    font-size: inherit;
+    color: inherit;
+}
+article pre b { font-weight: 600; }
+
+/* Lists */
+article ul, article ol {
+    margin: 0.6em 0 1.2em 1.4em;
+    padding-left: 0.4em;
+}
+article li { margin-bottom: 0.35em; }
+article ul li::marker { color: var(--accent); }
+
+/* Figures */
+article figure {
+    margin: 1.6em 0 1.8em;
+    text-align: center;
+}
+article figure img {
+    max-width: 100%;
+    height: auto;
+    border: 1px solid var(--parchment-edge);
+    box-shadow:
+        0 1px 0 rgba(255,255,255,0.5) inset,
+        0 6px 18px rgba(80, 50, 10, 0.18);
+    background: #fff;
+    border-radius: 2px;
+}
+article figure figcaption {
+    margin-top: 0.7em;
+    font-size: 0.92em;
+    font-style: italic;
+    color: var(--ink-faint);
+}
+
+/* Footer */
+footer.post-footer {
+    margin-top: 4em;
+    padding-top: 1.5em;
+    border-top: 1px solid var(--rule);
+    text-align: center;
+    font-style: italic;
+    color: var(--ink-faint);
+    font-size: 0.95em;
+}
+footer.post-footer a {
+    color: var(--accent);
+    text-decoration: none;
+}
+footer.post-footer a:hover { text-decoration: underline; }
+
+@media (max-width: 600px) {
+    body { font-size: 17px; }
+    header.post-header h1 { font-size: 1.9em; }
+    header.post-header-small h1 { font-size: 1.5em; }
+    main { padding: 2em 1em 4em; }
+}
+
+/* Smaller header for blog-post-scale articles (this one) */
+header.post-header-small {
+    margin-bottom: 1.8em;
+    padding-bottom: 1.0em;
+}
+header.post-header-small h1 {
+    font-size: 1.7em;
+    margin-bottom: 0.3em;
+}
+header.post-header-small::after {
+    margin: 0.6em auto -1.2em;
+}
+
+article h3 { font-family: var(--font-serif); font-weight: 600; font-size: 1.2em; color: var(--accent-dark); margin: 1.8em 0 0.4em; }
+.tablewrap { overflow-x: auto; margin: 1.4em 0 1.6em; }
+article table { border-collapse: collapse; font-size: 0.82em; line-height: 1.35; margin: 0 auto; }
+article th, article td { padding: 0.35em 0.7em; border-bottom: 1px solid var(--rule); text-align: right; white-space: nowrap; }
+article th:first-child, article td:first-child { text-align: left; }
+article th { color: var(--accent-dark); font-weight: 600; border-bottom: 2px solid var(--parchment-edge); white-space: normal; }
+article ul.options { list-style: none; margin: 0.4em 0 1em 1em; }
+article ul.options li { margin-bottom: 0.15em; }
+</style>
+</head>
+<body>
+<nav class="topnav">
+    <a href="/">← Mazes of Menace</a>
+</nav>
+<main>
+<header class="post-header post-header-small">
+    <h1>Reading Readability</h1>
+    <div class="byline">By <a href="https://davidbau.com/">David Bau</a> · October 30, 2026</div>
+</header>
+<article>
+<p class="lead">The aim of the Teleport contest is not just a correct port, but a <em>readable</em> port. But what does it mean for code to be readable? As we get ready for the last month, I'd like to examine some readability measures of the contestants.</p>
+<p>Readability has been a classic focus of software engineers for years, and people have proposed a number of automatic ways to measure it: lines of code per function, cyclomatic complexity, the length of identifier names, the ratio of comments to code, even cross-entropy with respect to a language model. But do any of these approaches really capture the notion that we are after? Let's take a look at these measures across the current contestants. (In this table, comments are removed from the code before measuring, except in the comment column.)</p>
+<h2>The classic measures</h2>
+<div class="tablewrap"><table>
+<thead><tr><th>Codebase</th><th>Lines per function</th><th>Cyclomatic complexity</th><th>Identifier length</th><th>Comments (share of source)</th><th>LM cross-entropy (bits/char)</th><th>My readability score</th></tr></thead>
+<tbody>
+<tr><td>C</td><td>31</td><td>12.0</td><td>5.9</td><td>27%</td><td>0.73</td><td>79.5</td></tr>
+<tr><td>vtjeng</td><td>17</td><td>7.2</td><td>5.9</td><td>19%</td><td>0.71</td><td>73.3</td></tr>
+<tr><td>richie3366</td><td>18</td><td>8.1</td><td>5.5</td><td>30%</td><td>0.73</td><td>73.0</td></tr>
+<tr><td>daoa0601</td><td>14</td><td>7.4</td><td>6.6</td><td>7%</td><td>0.73</td><td>72.0</td></tr>
+<tr><td>jon-bell</td><td>15</td><td>7.5</td><td>5.3</td><td>31%</td><td>0.87</td><td>67.3</td></tr>
+<tr><td>rohitgandikota</td><td>15</td><td>6.8</td><td>5.4</td><td>19%</td><td>0.87</td><td>66.8</td></tr>
+<tr><td>lockwo</td><td>12</td><td>6.3</td><td>6.5</td><td>33%</td><td>0.84</td><td>63.5</td></tr>
+<tr><td>NoahBPeterson</td><td>34</td><td>9.2</td><td>8.0</td><td>15%</td><td>0.73</td><td>62.9</td></tr>
+<tr><td>serteal</td><td>165</td><td>28.4</td><td>7.6</td><td>0%</td><td>0.44</td><td>18.0</td></tr>
+</tbody></table></div>
+<p>Scores in the last column come from the functional test described below.</p>
+<p>As you can see, none of these columns lines up with the last one, except in picking out serteal, whose functions average 165 lines with a complexity of 28. Elsewhere they seem to miss the mark. The original C, which has very readable code, has longer functions than all but serteal and NoahBPeterson, and more branching than all but serteal. Identifier length shows no pattern at all: serteal's identifiers are on average longer than C's while being much less readable. The comment share ranges from 7% to 30% among codebases that are similarly readable. And the language model finds serteal's code the most predictable of all, at 0.44 bits per character against 0.71 to 0.87 for everyone else, despite the fact (or maybe because of the fact) it is largely made of long runs of repetitive numerical manipulations. Predictable is not the same as readable.</p>
+<h2>One function, three ways</h2>
+<p>Let's look at a specific example. Here is how one function is implemented in the original C, in richie3366's port, and in serteal's. The function is <code>onscary</code>, which decides whether a monster is frightened by a square: a scroll of scare monster, an engraved Elbereth, or an altar for vampires. First, the C:</p>
+<pre><code>boolean
+onscary(coordxy x, coordxy y, struct monst *mtmp)
+{
+    struct engr *ep;
+    boolean auditory_scare = (x == 0 &amp;&amp; y == 0),
+            magical_scare = !auditory_scare;
+
+    if (mtmp-&gt;iswiz || is_lminion(mtmp) || mtmp-&gt;data == &amp;mons[PM_ANGEL]
+        || is_rider(mtmp-&gt;data))
+        return FALSE;
+
+    if (magical_scare
+        &amp;&amp; (mtmp-&gt;data-&gt;mlet == S_HUMAN || unique_corpstat(mtmp-&gt;data)))
+        return FALSE;
+
+    if ((mtmp-&gt;isshk &amp;&amp; inhishop(mtmp))
+        || (mtmp-&gt;ispriest &amp;&amp; inhistemple(mtmp)))
+        return FALSE;
+
+    if (auditory_scare)
+        return TRUE;
+
+    if (IS_ALTAR(levl[x][y].typ)
+        &amp;&amp; (mtmp-&gt;data-&gt;mlet == S_VAMPIRE || is_vampshifter(mtmp)))
+        return TRUE;
+
+    if (sobj_at(SCR_SCARE_MONSTER, x, y))
+        return TRUE;
+
+    return ((ep = sengr_at("Elbereth", x, y, TRUE)) != 0
+            &amp;&amp; (u_at(x, y)
+                || (Displaced &amp;&amp; mtmp-&gt;mux == x &amp;&amp; mtmp-&gt;muy == y)
+                || (ep-&gt;guardobjects &amp;&amp; vobj_at(x, y)))
+            &amp;&amp; !(mtmp-&gt;isshk || mtmp-&gt;isgd || !mtmp-&gt;mcansee
+                 || mtmp-&gt;mpeaceful
+                 || mtmp-&gt;data == &amp;mons[PM_MINOTAUR]
+                 || Inhell || In_endgame(&amp;u.uz)));
+}</code></pre>
+<p>richie3366's version is a close translation into JavaScript, with the same names and the same structure:</p>
+<pre><code>export function onscary(x, y, mtmp) {
+    const auditory_scare = (x === 0 &amp;&amp; y === 0);
+    const magical_scare = !auditory_scare;
+    const ptr = mtmp?.data;
+    if (mtmp?.iswiz || is_lminion(mtmp)
+        || (ptr?.mndx ?? mtmp?.mnum) === PM_ANGEL || is_rider(ptr)) {
+        return false;
+    }
+    if (magical_scare &amp;&amp; (ptr?.mlet === 'S_HUMAN' || unique_corpstat(ptr))) {
+        return false;
+    }
+    if ((mtmp?.isshk &amp;&amp; inhishop(mtmp))
+        || (mtmp?.ispriest &amp;&amp; inhistemple(mtmp))) {
+        return false;
+    }
+    if (auditory_scare) return true;
+    const loc = game.level?.at(x, y);
+    if (loc &amp;&amp; IS_ALTAR(loc.typ)
+        &amp;&amp; (ptr?.mlet === 'S_VAMPIRE' || is_vampshifter(mtmp))) {
+        return true;
+    }
+    if (sobj_at(SCR_SCARE_MONSTER, x, y)) return true;
+    const ep = sengr_at('Elbereth', x, y, true);
+    return !!(ep
+        &amp;&amp; (u_at(x, y)
+            || (Displaced() &amp;&amp; mtmp?.mux === x &amp;&amp; mtmp?.muy === y)
+            || (ep.guardobjects &amp;&amp; objects_at(x, y)))
+        &amp;&amp; !(mtmp?.isshk || mtmp?.isgd || !mtmp?.mcansee
+            || mtmp?.mpeaceful
+            || (ptr?.mndx ?? mtmp?.mnum) === PM_MINOTAUR
+            || Inhell() || In_endgame(game.u?.uz)));
+}</code></pre>
+<p>serteal's version is compiled output: the C went through WebAssembly and back to JavaScript (the build uses <code>wasm2js</code>). Here are the first and a middle part of its 133 lines:</p>
+<pre><code>function onscary($0, $1, $2) {
+  var $3 = 0,
+    $4 = 0,
+    $5 = 0,
+    $6 = 0;
+  folding_inner0: {
+    $4 = HEAP32[($2 + 76) &gt;&gt; 2];
+    if ($4 &amp; 65536) {
+      break folding_inner0;
+    }
+    $3 = HEAP32[($2 + 4) &gt;&gt; 2];
+    block1: {
+      if (HEAPU8[($3 + 65) | 0] &amp; 16) {
+        $5 = (HEAP32[(HEAP32[($2 + 128) &gt;&gt; 2] + 8) &gt;&gt; 2] + 4) | 0;
+        block: {
+          if ($4 &amp; 32768) {
+            break block;
+          }
+          $5 = (HEAP32[(HEAP32[($2 + 128) &gt;&gt; 2] + 16) &gt;&gt; 2] + 4) | 0;
+          if ($4 &amp; 8192) {
+            break block;
+          }
+          $5 = ($3 + 21) | 0;
+        }
+        if (HEAP8[$5 | 0] &gt; 0) {
+          break block1;
+        }
+
+      ...
+
+      if ($3) {
+        while (1) {
+          if (HEAPU16[($3 + 20) &gt;&gt; 1] == 326) {
+            return 1;
+          }
+          $3 = HEAP32[($3 + 4) &gt;&gt; 2];
+          if ($3) {
+            continue;
+          }
+          break;
+        }
+      }
+      $6 = 0;
+
+      ...</code></pre>
+<p>And here are the classic measures for the three:</p>
+<div class="tablewrap"><table>
+<thead><tr><th></th><th>Lines</th><th>Cyclomatic complexity</th><th>Local names</th></tr></thead>
+<tbody>
+<tr><td>C</td><td>30</td><td>31</td><td><code>auditory_scare</code>, <code>ep</code>, <code>mtmp</code></td></tr>
+<tr><td>richie3366</td><td>32</td><td>33</td><td><code>auditory_scare</code>, <code>ep</code>, <code>ptr</code>, <code>loc</code></td></tr>
+<tr><td>serteal</td><td>133</td><td>28</td><td><code>$0</code> to <code>$6</code></td></tr>
+</tbody></table></div>
+<p>The three have almost the same cyclomatic complexity, because they have the same logic: a faithful port has the branches of the C however it is written, and the compiler kept nearly all of them.</p>
+<p>The line count is high for serteal, but that is not why it is hard to read. The real problem with serteal is that all the names are gone. In the C and in richie3366's port you can understand code like <code>sengr_at("Elbereth", ...)</code> and <code>sobj_at(SCR_SCARE_MONSTER, ...)</code>. But in serteal's code there are comparisons like <code>== 326</code>, which is the scare-monster scroll's object number, and, further down, <code>== 2865336</code>, which is the address of the minotaur's entry in the table of monsters. Here it is using short local variable names like <code>$6</code>, but this doesn't catch the problem systematically: across the whole port serteal's identifiers average 7.6 characters, longer than C's 5.9.</p>
+<p>None of these classic measures capture the readability problem. What we really care about is not whether names are short or long, but whether the code is meaningful. We care that someone can actually read the code.</p>
+<h2>A functional test</h2>
+<p>So for a better measure of readability, I am using a functional test, with an LLM agent as the reader. Here is how it works.</p>
+<p>First, I gathered 500 hard questions about NetHack 5.0, the kind that are hard to guess without looking at the code. I picked them out of a pool of about five thousand questions spread over hundreds of topics: what a scroll of scare monster does to a Cyclops, how far a hero falls when digging down, how many moves on horseback a Knight needs before advancing in riding. Every question is either five-way multiple choice or a number. You can see ten examples at the bottom of this post.</p>
+<p>I filtered the questions down by throwing away all the easy ones. In particular, LLMs know a lot about NetHack without reading any code, so I threw out every question that Claude Haiku could answer by guessing, without looking at any code at all (more than one right in four blind tries).</p>
+<p>To measure the readability of a codebase, I then ask Haiku to answer the 500 hard NetHack questions using no other resource other than the code. It can list, search and read files, but it cannot run anything. Importantly, it has no access to the internet. It gets half a penny of inference budget per question. I give it a couple of cracks at each question and score the fraction it gets right.</p>
+<p>If the code is easy to navigate, with names that say what they do and logic that sits where you would look for it, a small model with a small budget is usually able to quickly answer most questions. But if the code is a maze, Haiku runs out of time before it can figure it out.</p>
+<p>I score every codebase twice: once with the comments stripped out of the source, and once with them left in. The first number is about the code itself. The second is about the code as it is written, comments and all. The results table below is based on a snapshot of each contestant's code from the judge's scoring run that started at 00:17 UTC on October 30 (jon-bell squashed their history, so I read their current code). The last column is each contestant's screen parity from the leaderboard at that run: the percentage of screens that match the original game.</p>
+<h3>Related work</h3>
+<p>The gold standard for code readability is human evaluation: give code to some programmers, ask them questions, and count the right answers. <a href="https://www.semanticscholar.org/paper/Automatically-Assessing-Code-Understandability-Scalabrino-Bavota/ae6496ec4c6d34fec0c044187cc07c91c923f848">Scalabrino and colleagues</a> did this, and found that the kinds of metrics in the table above predict it poorly; a <a href="https://dl.acm.org/doi/10.1145/3196398.3196441">reanalysis</a> found some signal when the metrics are combined. Our automated LLM-as-judge procedure uses the same idea with Haiku in the human's seat. For a few dollars, an LLM agent lets us run a simulated readability test with thousands of trials over hundreds of thousands of lines of code, a scale orders of magnitude beyond what is practical with humans.</p>
+<p>A few other recent papers use models for readability. <a href="https://arxiv.org/abs/2510.16579v1">CoReEval</a> asks language models to rate the readability of snippets and compares their ratings with people's. But unlike that approach, instead of asking the model to judge the code directly, I am asking the agent to perform a question-answering task. Studies of <a href="https://dl.acm.org/doi/pdf/10.1145/3691620.3695072">poor-readability code</a> and of <a href="https://www.emergentmind.com/papers/2510.03178">identifier names</a> show that models do worse when code is harder to read, so agent performance seems like a good stand-in for readability.</p>
+<p>One of the reasons this test is interesting and new is that it is about readability of a large-scale codebase, not just little snippets. There are several repository-level question-answering benchmarks such as <a href="https://arxiv.org/pdf/2509.14635">SWE-QA</a> that rate agents based on their ability to answer questions about whole codebases, but here we are doing the reverse. We flip that idea on its head by holding the reader fixed so we can vary and measure the codebase.</p>
+<h2>The results</h2>
+<p>Maybe unsurprisingly, the original C scores highest in readability, although it is not perfectly transparent when Haiku is on a budget. Here are the scores for all the top ports:</p>
+<div class="tablewrap"><table>
+<thead><tr><th>Codebase</th><th>Comments removed</th><th>Comments kept</th><th>Screen parity</th></tr></thead>
+<tbody>
+<tr><td>C (original NetHack 5.0)</td><td>79.5</td><td>81.2</td><td>-</td></tr>
+<tr><td>vtjeng</td><td>73.3</td><td>76.3</td><td>89.7</td></tr>
+<tr><td>richie3366</td><td>73.0</td><td>72.8</td><td>98.6</td></tr>
+<tr><td>daoa0601</td><td>72.0</td><td>73.4</td><td>98.5</td></tr>
+<tr><td>jon-bell</td><td>67.3</td><td>70.5</td><td>98.0</td></tr>
+<tr><td>rohitgandikota</td><td>66.8</td><td>68.5</td><td>95.8</td></tr>
+<tr><td>lockwo</td><td>63.5</td><td>68.7</td><td>94.4</td></tr>
+<tr><td>NoahBPeterson</td><td>62.9</td><td>68.8</td><td>99.5</td></tr>
+<tr><td>serteal</td><td>18.0</td><td>18.8</td><td>93.3</td></tr>
+</tbody></table></div>
+<p>Scores are the percentage of the 500 questions answered correctly.</p>
+<p>In the table above, we have measured the readability of the code itself, with the comments removed, and also of the full source, comments included. For most of the ports, comments are an aid to readability, raising the score by a couple of points (and by about five or six for lockwo and NoahBPeterson). But interestingly, richie3366 comes out slightly less readable when the comments are included. I am not sure why! The drop is tiny, well inside the noise of the measurement.</p>
+<p>In at least one case, I can guess why comments might make it harder for Haiku to answer. Take question 1 at the bottom of this post, about digging down. Haiku has an easier time with richie3366's code without comments than with them (3 of 4 tries right without comments, 1 of 4 with). The reason seems to be that when the code has comments and is longer, Haiku reads the comments and spends less of its budget reading actual code lines, consuming valuable moments that, on richie3366's codebase, are better spent reading the code itself.  In both cases, Haiku finds and reads the right functions, but without comments, Haiku reads more of the code and notices some details in the logic that override some of the calculations that are seen early in the code. The extra verbosity of the commented code seems to make it a little harder for Haiku to follow in this case.</p>
+<p>There is some randomness in these measurements, so gaps smaller than about four points should be treated as possible noise.</p>
+<p>Perhaps not surprisingly, a classic transpiled solution like serteal makes it hard to answer questions about the code, since the code is dominated by lookup tables and mostly unreadable functions. When Haiku is trying to figure out how the game works, it needs to confront tables of numbers in serteal's code, and it gets little insight from them. At 18% it is little better than guessing.</p>
+<p>The transpilation approach used by NoahBPeterson keeps readable function names and legible structure, so it scores respectably. It does not score as strongly as richie3366 or vtjeng. But its comments do help its readability a lot: with them, it gains about six points.</p>
+<p>In principle, it should be possible to write JavaScript that is even more readable than the original hand-written C, with better names, less macro indirection and the logic in one place. But nobody has done that (yet). The C is still the high-water mark, and the best ports sit six or seven points under it.</p>
+<h2>The questions</h2>
+<p>I am keeping 500 questions secret, to prevent contestant agents from overfitting to the test. But to give you a concrete sense of what is being tested, here is a sample of ten other representative questions, with answers. After each answer are the scores of each codebase on that specific question, written as two numbers: the percentage of Haiku's tries that came out right with the comments removed (nc) and with the comments left in (c). Haiku made four tries each, so a score moves in steps of 25. For example, "C 50nc/100c" on the first question below means that on the C source Haiku got it right on two of four tries without comments and on all four with them.</p>
+<p><strong>1. A non-flying, non-levitating hero digs down with a pick-axe on an ordinary diggable level until they make a hole and fall through. How far do they drop?</strong></p>
+<ul class="options"><li>A. A random number of levels, down to the dungeon's bottom</li><li>B. Always two levels</li><li>C. Usually one level, sometimes more, like a trap door</li><li>D. Exactly one level</li><li>E. Exactly one level, but only if they have reached the next level before</li></ul>
+<p>Answer: <strong>D</strong>. Scores: C 50nc/100c, richie3366 75nc/25c, vtjeng 100nc/100c, daoa0601 100nc/75c, jon-bell 50nc/75c, rohitgandikota 100nc/75c, lockwo 100nc/100c, NoahBPeterson 75nc/100c, serteal 0nc/25c. (In <code>digactualhole()</code> in dig.c, a hole the hero digs sends them to <code>u.uz.dlevel + 1</code> through <code>goto_level()</code>. It never consults the hole trap's random destination, so unlike a trap door, which can drop you several levels, digging down always lands you exactly one level below.)</p>
+<p><strong>2. Hostile monsters normally refuse to step onto a square holding a scroll of scare monster. Which of these will step onto one anyway?</strong></p>
+<ul class="options"><li>A. The Cyclops (the Healer quest nemesis)</li><li>B. A hostile dwarf</li><li>C. A vampire lord</li><li>D. A minotaur</li><li>E. A blinded soldier ant</li></ul>
+<p>Answer: <strong>A</strong>. Scores: C 100nc/50c, richie3366 50nc/25c, vtjeng 75nc/50c, daoa0601 75nc/50c, jon-bell 100nc/100c, rohitgandikota 0nc/50c, lockwo 25nc/0c, NoahBPeterson 50nc/50c, serteal 0nc/0c. (In <code>onscary()</code> in monmove.c, a scroll of scare monster or an Elbereth scares only if the monster is not <code>S_HUMAN</code> and not unique (<code>G_UNIQ</code>), and the check for those comes before the scroll check. The Cyclops is unique, so it ignores the scroll. The minotaur and a blinded monster are exempt only from Elbereth, and a vampire lord is not exempt at all.)</p>
+<p><strong>3. A hero uses a tinning kit on Medusa's corpse and dies still carrying the tin, and a bones file is saved. What is that tin on the bones level?</strong></p>
+<ul class="options"><li>A. A tin of doppelganger meat</li><li>B. A tin of human meat</li><li>C. A tin of Medusa meat, still able to stone whoever eats it</li><li>D. An empty tin</li><li>E. A tin of spinach</li></ul>
+<p>Answer: <strong>D</strong>. Scores: C 100nc/100c, richie3366 100nc/100c, vtjeng 0nc/0c, daoa0601 100nc/75c, jon-bell 0nc/0c, rohitgandikota 100nc/100c, lockwo 100nc/75c, NoahBPeterson 75nc/75c, serteal 25nc/25c. (<code>resetobjs()</code> in bones.c cleans up a dead hero's possessions when a bones file is saved. A tin made from a unique monster's meat (<code>unique_corpstat()</code>, which Medusa passes) gets <code>corpsenm = NON_PM</code>, which makes it an empty tin. This keeps a bones level from handing out Medusa-meat tins.)</p>
+<p><strong>4. A polymorphed hero walks onto an unseen trap door. In which of these forms do they actually fall through it?</strong></p>
+<ul class="options"><li>A. Ettin</li><li>B. Storm giant</li><li>C. Mastodon</li><li>D. Titan</li><li>E. Hill giant</li></ul>
+<p>Answer: <strong>C</strong>. Scores: C 100nc/75c, richie3366 0nc/25c, vtjeng 50nc/50c, daoa0601 25nc/75c, jon-bell 25nc/25c, rohitgandikota 100nc/100c, lockwo 25nc/50c, NoahBPeterson 50nc/75c, serteal 0nc/25c. (<code>fall_through()</code> in trap.c says that a hero polymorphed into something of size <code>MZ_HUGE</code> or bigger "doesn't fit through" the trap door. The ettin, hill giant, storm giant and titan are all <code>MZ_HUGE</code> in monsters.h, but the mastodon is only <code>MZ_LARGE</code>, so it is the one that falls.)</p>
+<p><strong>5. You play a charged frost horn at a monster that resists fire but not cold, and the blast hits it. Leaving out any extra damage from its items being destroyed, what is the most hit points the blast can take from it?</strong></p>
+<p>Answer: <strong>99</strong>. Scores: C 100nc/50c, richie3366 75nc/50c, vtjeng 100nc/100c, daoa0601 75nc/100c, jon-bell 75nc/25c, rohitgandikota 50nc/75c, lockwo 50nc/75c, NoahBPeterson 100nc/75c, serteal 25nc/0c. (A frost horn played at a monster fires a cold ray (<code>do_improvisation()</code> in music.c) with <code>rn1(6, 6)</code> dice, so at most 11. In <code>zhitm()</code> in zap.c a cold ray does <code>d(nd, 6)</code> damage, plus <code>d(nd, 3)</code> more if the target resists fire, so the most it can do is 11 &times; 6 + 11 &times; 3 = 99.)</p>
+<p><strong>6. You melee a floating eye that has been blinded (it cannot see) while you can see it. What happens?</strong></p>
+<ul class="options"><li>A. You are paralyzed only if you lack free action, as usual</li><li>B. It cannot defend itself, but you lose alignment for attacking a helpless monster</li><li>C. Its gaze still paralyzes you 2 times in 3</li><li>D. It cannot defend itself, and you are completely safe with no penalty</li><li>E. It cannot defend itself; you are safe, but there is a 1 in 500 chance you lose 1 Luck</li></ul>
+<p>Answer: <strong>E</strong>. Scores: C 75nc/100c, richie3366 75nc/100c, vtjeng 50nc/100c, daoa0601 100nc/100c, jon-bell 50nc/50c, rohitgandikota 75nc/75c, lockwo 100nc/100c, NoahBPeterson 50nc/75c, serteal 50nc/50c. (In <code>passive()</code> in uhitm.c, a blinded floating eye cannot paralyze you, because its gaze needs it to see. The code prints "cannot defend itself" and, with probability 1 in 500 (<code>!rn2(500)</code>), also costs you a point of Luck via <code>change_luck(-1)</code>. There is no alignment penalty.)</p>
+<p><strong>7. Your quest leader has turned hostile toward you. You throw your quest artifact at the leader, who is not paralyzed. What happens?</strong></p>
+<ul class="options"><li>A. The leader catches it, which makes the leader peaceful again</li><li>B. It flies back to your hand</li><li>C. The leader catches it and hands or tosses it back, completing the quest</li><li>D. The leader catches it and keeps it</li><li>E. It hits the leader like an ordinary missile and falls to the floor</li></ul>
+<p>Answer: <strong>D</strong>. Scores: C 75nc/100c, richie3366 50nc/50c, vtjeng 100nc/0c, daoa0601 100nc/100c, jon-bell 100nc/25c, rohitgandikota 100nc/100c, lockwo 25nc/50c, NoahBPeterson 100nc/100c, serteal 50nc/50c. (In <code>thitmonst()</code> in dothrow.c, a quest leader catches the artifact you throw. A leader who is peaceful hands or tosses it back and calls <code>finish_quest()</code>, completing the quest. A hostile leader instead calls <code>mpickobj()</code> and keeps it, so you lose the artifact and the quest stays open.)</p>
+<p><strong>8. Apart from energy regeneration, which extra property increases the amount of Pw you regain on each energy recovery tick?</strong></p>
+<ul class="options"><li>A. Wearing a robe</li><li>B. Being a Wizard</li><li>C. Wielding a quarterstaff</li><li>D. Wearing an amulet of magical breathing</li><li>E. Regeneration</li></ul>
+<p>Answer: <strong>D</strong>. Scores: C 100nc/100c, richie3366 100nc/100c, vtjeng 100nc/100c, daoa0601 100nc/100c, jon-bell 100nc/100c, rohitgandikota 0nc/0c, lockwo 100nc/100c, NoahBPeterson 75nc/100c, serteal 0nc/0c. (<code>regen_pw()</code> in allmain.c adds <code>rn1(upper, 1)</code> energy on each recovery tick, where <code>upper</code> is (Wis + Int) / 15 + 1, and <code>upper</code> is raised by 2 if you have extrinsic magical breathing, which an amulet of magical breathing gives. Being a Wizard only makes the ticks come more often, not bigger.)</p>
+<p><strong>9. A lawful Knight has alignment record 20. He stands on an engraved Elbereth and hits an adjacent hostile jackal in melee. The jackal is currently fleeing because the engraving scared it. The jackal survives. What is his alignment record afterwards?</strong></p>
+<p>Answer: <strong>14</strong>. Scores: C 50nc/0c, richie3366 0nc/25c, vtjeng 0nc/0c, daoa0601 0nc/0c, jon-bell 0nc/0c, rohitgandikota 25nc/25c, lockwo 0nc/25c, NoahBPeterson 0nc/0c, serteal 0nc/0c. (Two things hit his alignment. <code>setmangry()</code> in mon.c takes 5 points when you attack from an Elbereth square (the code comment says you are "requesting peace and then violating your own request"), and <code>check_caitiff()</code> in uhitm.c takes 1 more because a Knight is hitting a fleeing monster. 20 &minus; 5 &minus; 1 = 14.)</p>
+<p><strong>10. A Knight starts the game at Basic riding skill and has no riding practice yet. Counting only riding practice, how many squares must the Knight move while mounted before riding skill can be advanced to Skilled?</strong></p>
+<p>Answer: <strong>6000</strong>. Scores: C 25nc/25c, richie3366 25nc/25c, vtjeng 75nc/100c, daoa0601 0nc/75c, jon-bell 25nc/50c, rohitgandikota 25nc/0c, lockwo 75nc/75c, NoahBPeterson 0nc/0c, serteal 0nc/0c. (<code>skill_init()</code> in weapon.c starts a Basic skill with <code>practice_needed_to_advance(1)</code> = 20 points of practice. Advancing to Skilled needs <code>practice_needed_to_advance(2)</code> = 2 &times; 2 &times; 20 = 80, so 60 more. <code>exercise_steed()</code> in steed.c gives one point per 100 moves while mounted, so that takes 6,000 moves.)</p>
+<h2>What next</h2>
+<p>I will rerun this analysis as we get to the end of November, on whatever the contestants' code looks like then. I'll be very interested to see whether contestants raise their readability scores by the end of Phase 1!</p>
+<p>Happy agentic coding.</p>
+</article>
+
+<footer class="post-footer">
+    <a href="/">Mazes of Menace</a> · <a href="/leaderboard/">Leaderboard</a> · <a href="https://github.com/davidbau/teleport-contest">teleport-contest</a>
+</footer>
+
+</main>
+
+</body>
+</html>
