@@ -760,7 +760,17 @@ function dosetSimpleSearchList() {
 
 export async function doset_simple() {
     const g = game;
+    option_state().give_opt_msg = false; // C options.c:8722; restored at exit.
     g.flags = g.flags || {};
+    option_state().give_opt_msg = false; /* C options.c:8722 */
+    /* C options.c:8644-8648 doset_simple_menu() clears every pending
+     * opt_* request after building the menu, before the first pick, so the
+     * startup symset's opt_need_redraw does not reach the first
+     * reset_needed_visuals() (check_gold_symbol would flip invis_goldsym). */
+    (g.go ||= {});
+    g.go.opt_need_redraw = g.go.opt_need_glyph_reset = false;
+    g.go.opt_reset_customcolors = g.go.opt_reset_customsymbols = false;
+    g.go.opt_update_basic_palette = false;
     let pageIdx = 0;
     /* C ref: getline.c:213 — the MENU_SEARCH getlin's closing
      * clear_nhwindow(WIN_MESSAGE) blanks screen row 0 and the page is not
@@ -770,13 +780,24 @@ export async function doset_simple() {
     /* C wintty.c:1334-1399,1565-1612 counting/count/reset_count: digits build
      * a count and ESC while counting only stops the count. */
     let counting = false, count = 0, reset_count = true;
+    /* C options.c:8644-8648 doset_simple_menu() clears the pending-redraw flags
+     * before select_menu(), so what startup parsing left set (a config symset)
+     * is not acted on by the first reset_needed_visuals() (options.c:8727). */
+    g.go ||= {};
+    g.go.opt_need_redraw = g.go.opt_need_glyph_reset = g.go.opt_reset_customcolors
+        = g.go.opt_reset_customsymbols = g.go.opt_update_basic_palette = false;
     while (true) {
         if (reset_count) { counting = false; count = 0; }
         else reset_count = true;
+        await reset_needed_visuals(); // C options.c:8727,9006: paint status between picks.
+        await drainTopline();
         // renderPage sets game._screen_output to the menu frame; the nhgetch
         // NOT flush_screen here — flush_screen's _buildScreenOutput would rebuild
         // _screen_output from the map and clobber the menu (the dohelp /
         // dodiscovered full-screen-menu pattern: set _screen_output, then nhgetch).
+        /* C wintty.c:1921-1922: a redraw's monster notices are acknowledged
+         * before select_menu displays the Options window again. */
+        await drainTopline();
         renderPage(pageIdx, titleErased);
         const key = await nhgetch();
         const ch = String.fromCharCode(key);
@@ -833,6 +854,9 @@ export async function doset_simple() {
              * erase_menu_or_text (:978) docrt()s the map, clearing physical
              * paint that a control-byte symbol cannot overwrite. */
             await docrt();
+            g._status_blanked = entry.kind !== 'bool'; // windows.c:1861: submenu disables bot().
+            await drainTopline(); // wintty.c:1921: page notices before the next menu.
+            g._status_blanked = false;
             titleErased = false;   /* a pick ends select_menu; the next one repaints */
             if (entry.kind === 'bool') {
                 const { obj, fld } = simpleBox(entry);
@@ -890,6 +914,9 @@ export async function doset_simple() {
                 pageIdx = 0;
                 continue;
             }
+            /* C wintty.c:1921-1922: the handler's window also pages notices
+             * produced by dismissing the Options menu. */
+            await drainTopline();
             if (entry.kind === 'sub') {
                 if (entry.name === 'number_pad') await numberPadSubmenu();
                 else await pickupTypesSubmenu();
@@ -1022,7 +1049,7 @@ async function drainTopline() {
      * menu. With no message, no flush_screen()/bot() repaints the status
      * rows cleared by the preceding menu's docrt(). */
     if (game._pending_message) {
-        await flush_screen(1);
+        if (!game._statusBlankAfterDocrt) await flush_screen(1); // windows.c:1861: bot disabled during menu opening.
         if (game._pending_message) await force_more(game._pending_message);
     }
     game._pending_message = '';
@@ -1479,17 +1506,34 @@ export async function status_hilite_menu(preserveStatus = false) {
         game._status_blanked = false;
         let beh = await status_hilite_menu_choose_behavior(fld, flushed);
         // C botl.c:4225-4243,4285-4301: always rule, with color/attribute retries.
-        while (beh === 105) {
+        while (beh === 105 || beh === 102) { // botl.c:4088-4102: up/down picker and retry.
             const name = INITBLSTATS[fld][0];
-            const color = await query_color(`Choose a color to always hilite ${name}:`, 8, flushed);
+            let rel = beh === 105 ? 'always' : 'changed';
+            if (beh === 102 && INITBLSTATS[fld][1] !== 'S') {
+                const change = new TtyMenu({ overlay: true, statusClipCol: flushed ? undefined : 0 });
+                if (name !== 'time') change.add_menu(1, 0, ATR_NONE, 'Value goes down', false, false);
+                change.add_menu(2, 0, ATR_NONE, 'Value changes', false, false);
+                change.add_menu(3, 0, ATR_NONE, 'Value goes up', false, false);
+                change.end_menu(`Select field ${name} value:`);
+                const result = await change.select_menu(PICK_ONE);
+                if (result.count <= 0) { beh = await status_hilite_menu_choose_behavior(fld, flushed); continue; }
+                rel = ['down', 'changed', 'up'][result.picks[0] - 1];
+            }
+            const when = { down: 'decreases', changed: 'changes', up: 'increases' }[rel];
+            let color, attr;
+            do { // C botl.c:4240-4243: cancelled attributes retry only color.
+                color = await query_color(beh === 105 ? `Choose a color to always hilite ${name}:`
+                    : `Choose a color for when ${name} ${when}:`, 8, flushed);
+                if (color < 0) break;
+                attr = await query_attr_one(beh === 105 ? `Choose attribute to always hilite ${name}:`
+                    : `Choose attribute for when ${name} ${when}:`, 0, flushed);
+            } while (attr < 0);
             if (color < 0) {
-                beh = await status_hilite_menu_choose_behavior(fld, flushed);
+                if (beh === 105) beh = await status_hilite_menu_choose_behavior(fld, flushed);
                 continue;
             }
-            const attr = await query_attr_one(`Choose attribute to always hilite ${name}:`, 0, flushed);
-            if (attr < 0) continue;
             const attrs = attr === 1 ? 'normal' : HL_ATTRBITS.filter(b => attr & b[1]).map(b => b[2]).join('+');
-            const rule = `${name}/always/${clr2colorname(color).replace(/ /g, '-')}&${attrs}`;
+            const rule = `${name}/${rel}/${clr2colorname(color).replace(/ /g, '-')}&${attrs}`;
             (game.status_field_hilites ||= []).push(rule);
             await pline('Added hilite %s', rule);
             reset_status_hilites();
@@ -1499,6 +1543,37 @@ export async function status_hilite_menu(preserveStatus = false) {
         if (beh === 104 && INITBLSTATS[fld][0] === 'title') {
             beh = await status_hilite_add_title_textmatch(fld, flushed)
                 ? await status_hilite_menu_fld_current(fld, INITBLSTATS[fld][0]) : 0;
+        }
+        /* C botl.c:3943-4010 choose_value for BL_TH_VAL_ABSOLUTE/PERCENTAGE: the
+         * getlin prompt and its rejection arms; an accepted number (color/attr
+         * and rule creation) is not ported. */
+        for (let retry = 0; beh === 100 || beh === 101;) {
+            if (retry++ > 5) { await pline("That's enough tries."); break; }
+            const percent = beh === 100;
+            const inbuf = mungspaces(await getlin(`Enter ${percent ? 'percentage ' : ''}value for ${INITBLSTATS[fld][0]} threshold:`));
+            if (inbuf === '' || inbuf[0] === '\x1b') {
+                beh = await status_hilite_menu_choose_behavior(fld, true);
+                retry = 0;
+                continue;
+            }
+            let k = 0;
+            if ('<>='.includes(inbuf[0])) k += (inbuf[0] !== '=' && inbuf[1] === '=') ? 2 : 1;
+            if (inbuf[k] === '-' || inbuf[k] === '+') k++;
+            let gotnum = false;
+            while (/[0-9]/.test(inbuf[k] ?? '')) { k++; gotnum = true; }
+            if (inbuf[k] === '%') {
+                if (!percent) {
+                    await pline('Not expecting a percentage.');
+                    beh = await status_hilite_menu_choose_behavior(fld, true);
+                    retry = 0;
+                    continue;
+                }
+            } else if (k < inbuf.length) {
+                await pline('"%s" is not a recognized number.', inbuf.slice(k));
+                continue;
+            }
+            if (!gotnum) { await pline('Is that an invisible number?'); continue; }
+            break;
         }
         if (beh > 0) throw new Error('not yet ported: status_hilite_menu_add value entry');
         preserveStatus = true;
@@ -1974,7 +2049,7 @@ export async function handler_autounlock(preserveStatus = false) {
         game.flags.autounlock = oldflags;
     }
     const chngd = game.flags.autounlock !== oldflags;
-    if (chngd || game.flags.verbose)
+    if ((chngd || game.flags.verbose) && option_state().give_opt_msg)
         await pline(`'autounlock' ${chngd ? 'changed to' : 'is still'} '${autounlockStr()}'.`);
 }
 

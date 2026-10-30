@@ -8,6 +8,7 @@ import { resist, zapyourself, ubuzz, flash_str } from './zap.js';
 import { onscary, monflee } from './makemon.js';
 import { can_blow, x_monnam, sleep_monst, slept_monst, Amonnam } from './mhitm.js';
 import { Monnam } from './mcastu.js';
+import { a_monnam } from './mhitm.js';
 import { impossible } from './steed.js';
 import { discover_object } from './o_init.js';
 import { yn_function } from './end.js';
@@ -76,8 +77,6 @@ const ROWNO = 21, COLNO = 80;
 /* hack.h:1330  #define ynq(query) yn_function(query, ynqchars, 'q', TRUE)
  * decl.c ynqchars[] = "ynq". */
 const ynqchars = 'ynq';
-/* hack.h ARTICLE_A, for a_monnam(). */
-const ARTICLE_A = 1;
 /* pm.h PM_GUARD — the vault guard awaken_soldiers() exempts. */
 const PM_GUARD = 272;
 
@@ -98,8 +97,6 @@ function is_mercenary(ptr) { return (((ptr?.mflags2) | 0) & M2_MERC) !== 0; }
 function unique_corpstat(ptr) { return (((ptr?.geno) | 0) & G_UNIQ) !== 0; }
 /* hack.h:1530 #define makeknown(x) discover_object((x), TRUE, TRUE, TRUE) */
 function makeknown(otyp) { discover_object(otyp | 0, true, true, true); }
-/* objnam.c a_monnam(mtmp) — x_monnam(mtmp, ARTICLE_A, NULL, 0, TRUE). */
-function a_monnam(mtmp) { return x_monnam(mtmp, ARTICLE_A, null, 0, true); }
 /* hack.h ROLL_FROM(array) — array[rn2(SIZE(array))]. */
 function ROLL_FROM(arr) { return arr[rn2(arr.length)]; }
 

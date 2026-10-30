@@ -6,6 +6,7 @@
 // This is the single shared, C-faithful implementation; the old per-file
 import { game } from './gstate.js';
 import { acurr } from './attrib.js';
+import { acurrstr } from './dokick.js';
 import { UNENCUMBERED, OVERLOADED, LEVITATION, FLYING, LOW_PM, Upolyd, WOUNDED_LEGS, LEFT_SIDE, RIGHT_SIDE, Is_airlevel, W_ARMF } from './const.js';
 import { OC_WEIGHT, OTYP_LARGE_BOX, OTYP_BAG_OF_TRICKS, OTYP_BAG_OF_HOLDING, OTYP_STATUE, OTYP_BOULDER } from './oc_weight.generated.js';
 import corpseData from './eat_corpse_data.json' with { type: 'json' };
@@ -113,14 +114,6 @@ export function weight(obj) {
     }
     const quan = obj.quan | 0;
     return wt ? (wt * quan) : ((quan + 1) >> 1);
-}
-
-/* C attrib.c:1251 acurrstr() — condense ACURR(A_STR) (3..125) into 3..25. */
-function acurrstr(u) {
-    const str = acurr(u, A_STR) | 0;
-    if (str <= 18 /* STR18(0) */) return Math.max(str, 3);
-    if (str <= 121 /* STR19(21) */) return 19 + Math.trunc(str / 50);
-    return Math.min(str, 125) - 100;
 }
 
 export function weight_cap() {

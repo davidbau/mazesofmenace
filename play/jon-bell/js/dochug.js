@@ -378,7 +378,7 @@ export async function dochug(mtmp) {
     }
     /* C monmove.c:802-831 — Demonic Blackmail! */
     if (nearby && ((permonstTemplate(mtmp.mndx ?? mtmp.mnum ?? 0)?.msound | 0) === 33 /* MS_BRIBE */)
-        && (mtmp.mpeaceful | 0) && !(mtmp.mtame | 0) && !engulfing_u(game.u)) {
+        && (mtmp.mpeaceful | 0) && !(mtmp.mtame | 0) && !game.u.uswallow) {
         if (mtmp.mux !== game.u.ux || mtmp.muy !== game.u.uy) {
             await pline(`${cansee(mtmp.mux, mtmp.muy) ? Monnam_dm(mtmp) : 'It'} whispers at thin air.`);
             const uPtr = ((game.u.umonnum | 0) > 0 && game.u.mtimedone) ? permonstTemplate(game.u.umonnum) : null;
@@ -593,6 +593,8 @@ export async function dochug(mtmp) {
                 // falls through
             case MMOVE_NOTHING:
             case MMOVE_DONE:
+                if (mtmp.isgd && (DEADMONSTER_dc(mtmp) || !mtmp.mx))
+                    return 1; /* C monmove.c:925-927: the guard vanished. */
                 /* C monmove.c:961-964, inside this same switch arm:
                  *     /_ During hallucination, monster appearance should
                  *        still change - even if it doesn't move. _/

@@ -3,6 +3,7 @@
 // C ref: steed.c
 
 import { game } from './gstate.js';
+import { YMonnam } from './mhitm.js';
 import { pline } from './display.js';
 import { MONS_NAMES, use_skill, m_at as monster_at } from './uhitm.js';
 import { isok, MON_FLOOR, W_SADDLE, P_RIDING, DISMOUNT_FELL,
@@ -57,25 +58,7 @@ export async function maybewakesteed(steed) {
     finish_meating(steed);
 }
 
-// C do_name.c:y_monnam — "your <mon>" or "the <mon>" with given name exception
-function y_monnam(mtmp) {
-    if (!mtmp) return 'the ?';
-    const givenname = mtmp?.mextra?.mgivenname || mtmp?.mgivenname || '';
-    const mndx = (mtmp.mndx ?? mtmp.mnum ?? -1) | 0;
-    const species = (mndx >= 0 && mndx < MONS_NAMES.length) ? MONS_NAMES[mndx] : '';
 
-    // C: prefix = mtmp->mtame ? ARTICLE_YOUR : ARTICLE_THE
-    const prefix = (mtmp.mtame | 0) ? 'your ' : 'the ';
-    // C: suppress_saddle if given name or is u.usteed
-    // For simplicity, just use the species name for now
-    return prefix + (species || '?');
-}
-
-// C do_name.c:YMonnam — y_monnam with first letter capitalized
-function YMonnam(mtmp) {
-    const s = y_monnam(mtmp);
-    return s.charAt(0).toUpperCase() + s.slice(1);
-}
 
 // C steed.c:878-895 stucksteed(checkfeeding)
 // Decide whether hero's steed is able to move

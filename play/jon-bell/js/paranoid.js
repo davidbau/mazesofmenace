@@ -3,7 +3,7 @@
 // share it without routing input through cmd.js/end.js cycles.
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, force_more, force_more_lone_frame, topl_park_cursor, bot,
+import { flush_screen, pline_flush_point, force_more, force_more_lone_frame, topl_park_cursor, bot,
          _topline_more_pending, restore_occupation_topline, putmsghistory,
          yn_function_menu, restore_command_topline } from './display.js';
 import { vision_recalc } from './vision.js';
@@ -130,7 +130,12 @@ async function read_yn(prompt, acceptQ) {
     /* Only a prompt wider than the row takes the hard-wrap layout; a short
      * one keeps the ordinary topline/status path. */
     const wraps = topl_park_cursor(null, `${shown} `)[1] > 0;
-    if (wraps) g._topl_prompt_echo = true;
+    /* Same order as end.js _yn_prompt's long-question arm: custompline's
+     * vpline flush_screen(1) (pline.c:274) precedes the wrapped text paint,
+     * and yn_function sets no gb.bot_disabled (windows.c:1898 is getlin's),
+     * so a pending botl/botlx — e.g. one a pick menu's select_menu dismissal
+     * left (wintty.c:979 erase_menu_or_text -> docrt()) — paints there. */
+    if (wraps) { pline_flush_point(); g._topl_prompt_echo = true; }
     try {
     /* C topl.c:420-425 custompline -> vpline (pline.c:266-272): a pending
      * vision_full_recalc is consumed before the prompt's flush_screen. */

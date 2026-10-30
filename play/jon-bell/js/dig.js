@@ -1,4 +1,4 @@
-import { delallobj, cmd_from_dir, flooreffects } from './cmd.js';
+import { delallobj, cmd_from_dir, flooreffects, revive_nasty, obj_to_any } from './cmd.js';
 // C ref: nethack-c/src/dig.c — the apply-a-pick-axe / dig occupation subsystem.
 //
 //   use_pick_axe2()  — the down-dig (u.dz > 0) branch: "You start digging
@@ -14,6 +14,7 @@ import { delallobj, cmd_from_dir, flooreffects } from './cmd.js';
 import { rn2, rn1, rnd, rnl } from './rng.js';
 import { PM_DWARF as PM_DWARF_ } from './pm.generated.js';
 import { game } from './gstate.js';
+import { Can_dig_down as Can_dig_down_real } from './mklev.js';
 import { dbon, dmgval } from './uhitm.js';
 import { body_part, align_str, desecrate_altar, altarmask_at } from './cmd.js';
 import { Amask2align, AM_MASK, AM_SANCTUM } from './const.js';
@@ -99,15 +100,15 @@ import { wake_nearby } from './mklev.js';
 import { fire_damage, confdir, surface as surface_cmd, ceiling as ceiling_cmd, altar_wrath } from './cmd.js';
 import { angry_priest } from './priest.js';
 import { losehp } from './dokick.js';
-import { t_at, deltrap, delfloortrap, unearth_objs, maketrap, mintrap,
+import { t_at, deltrap, delfloortrap, unearth_objs, maketrap, mintrap, cnv_trap_obj,
          buried_ball_to_punishment } from './trap.js';
 import { On_stairs, On_ladder, stairway_at, In_hell } from './mklev.js';
 import { Monnam } from './mcastu.js';
 import { is_pool_or_lava } from './look.js';
 import { water_damage_chain, pooleffects, switch_terrain, boulder_hits_pool } from './cmd.js';
 import { is_drawbridge_wall, find_drawbridge, delobj, impact_drop, is_db_wall } from './dokick.js';
-import { hliquid, mon_has_amulet } from './mhitm.js';
-import { distmin, s_suffix } from './hacklib.js';
+import { hliquid } from './mhitm.js';
+import { s_suffix } from './hacklib.js';
 import { pickup } from './pickup.js';
 import { spot_stop_timers, spot_time_left } from './timeout.js';
 import { obj_ice_effects } from './mklev.js';
@@ -132,7 +133,7 @@ import { DROWNING, BURNING, NO_KILLER_PREFIX, WWALKING, SWIMMING, MAGICAL_BREATH
          OBJ_AT } from './const.js';
 import { PM_FIRE_ELEMENTAL, PM_SALAMANDER } from './pm.generated.js';
 import { pooleffects_drown, pooleffects_lava_effects } from './cmd.js';
-import { enexto_out, teleds, teleport_pet } from './teleport.js';
+import { enexto_out, next_to_u, teleds, teleport_pet } from './teleport.js';
 import { get_level, pooleffects_grounded } from './cmd.js';
 import { migrate_to_level } from './dog.js';
 import { count_wsegs } from './worm.js';
@@ -548,17 +549,15 @@ export async function open_drawbridge(x, y) {
     await db_do_entity(db_occupants[0]);          /* Do set_entity after first */
     db_occupants[1] = db_set_entity(p.wx, p.wy); /* do_entity for worm tail */
     await db_do_entity(db_occupants[1]);
-    /* C dbridge.c:868 revive_nasty(): only Rider corpses act; not ported. */
+    await revive_nasty(p.bx, p.by, null); /* C dbridge.c:868 */
     await delallobj(p.bx, p.by); // C dbridge.c:869
     const bt = t_at(p.bx, p.by), wt = t_at(p.wx, p.wy);
     if (bt) deltrap(bt); if (wt && wt !== bt) deltrap(wt);
     del_engr_at(p.bx, p.by); del_engr_at(p.wx, p.wy);
     newsym(p.bx, p.by); newsym(p.wx, p.wy);
     unblock_point(p.wx, p.wy); /* C dbridge.c:875 vision */
-    if (game.u?.uz && game.stronghold_level
-        && game.u.uz.dnum === game.stronghold_level.dnum
-        && game.u.uz.dlevel === game.stronghold_level.dlevel)
-        game.u.uevent = { ...(game.u.uevent || {}), uopened_dbridge: true };
+    if (Is_stronghold(game.u.uz))
+        (game.u.uevent ||= {}).uopened_dbridge = true;
     db_nokiller(); /* C dbridge.c:876 */
     return true;
 }
@@ -588,9 +587,10 @@ export async function close_drawbridge(x, y) {
     await db_do_entity(db_occupants[0]);          /* Do set_entity after first */
     db_occupants[1] = db_set_entity(p.wx, p.wy); /* do_entity for worm tail */
     await db_do_entity(db_occupants[1]);
-    if (OBJ_AT(p.bx, p.by) && !Deaf_dg())
+    if (OBJ_AT(p.bx, p.by) && !Deaf_real())
         await You_hear('smashing and crushing.');
-    /* C dbridge.c:820-821 revive_nasty(): only Rider corpses act; not ported. */
+    await revive_nasty(p.bx, p.by, null); /* C dbridge.c:820-821 */
+    await revive_nasty(p.wx, p.wy, null);
     await delallobj(p.bx, p.by); // C dbridge.c:822-823
     await delallobj(p.wx, p.wy);
     const bt = t_at(p.bx, p.by), wt = t_at(p.wx, p.wy);
@@ -787,35 +787,8 @@ function undestroyable_trap_(ttyp) {
     return ttyp === 17 /* MAGIC_PORTAL */ || ttyp === 23 /* VIBRATING_SQUARE */;
 }
 
-// C ref: dungeon.c:1648-1653 Can_dig_down(d_level*).  Ported locally per the
-// established per-file convention (js/mklev.js's own copy cites the same
-// reason: js/cmd.js's Invocation_lev reads a game.invocation_level nothing
-// in js/ ever writes).
 function Can_dig_down_(lev) {
-    if (game.level?.flags?.hardfloor)
-        return false;
-    if (Is_botlevel(lev))
-        return false;
-    const dun = game.dungeons?.[lev?.dnum];
-    const invocation = In_hell(lev) && !!dun && (lev.dlevel | 0) === (dun.num_dunlevs | 0) - 1;
-    return !invocation;
-}
-
-// C ref: apply.c:918-928 next_to_u() — FALSE if any leashed monster is not
-// adjacent, or the steed carries the Amulet.  No RNG.  Duplicated locally
-// (js/teleport.js:870 carries the same body, unexported, out of this file's
-// edit scope).
-function next_to_u_() {
-    for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
-        if (mtmp.mhp <= 0 || (mtmp.mstate | 0))
-            continue;
-        if (mtmp.mleashed
-            && distmin(mtmp.mx | 0, mtmp.my | 0, game.u.ux | 0, game.u.uy | 0) > 1)
-            return false;
-    }
-    if (game.u.usteed && mon_has_amulet(game.u.usteed))
-        return false;
-    return true;
+    return Can_dig_down_real(lev);
 }
 
 // C ref: include/youprop.h:239-240 — #define Levitation ((HLevitation ||
@@ -1352,7 +1325,8 @@ export async function digactualhole_(x, y, madeby, ttyp, skipFurniture = false) 
             await switch_terrain();
             if (Levitation_() || Flying_()) wont_fall = true;
 
-            if (!u.ustuck && !wont_fall && !next_to_u_()) {
+            // C dig.c:762 / apply.c:888-926: first pull leashed pets next to us.
+            if (!u.ustuck && !wont_fall && !(await next_to_u())) {
                 await pline('You are jerked back by your pet!');
                 wont_fall = true;
             }
@@ -1512,7 +1486,7 @@ async function dighole(pit_only, by_magic, cc) {
             wake_nearby_(false);
             await delfloortrap(ttmp);
         }
-        await delobj(boulder_here); /* throws: js/dokick.js:2274, not yet ported */
+        await delobj(boulder_here);
     } else if (IS_GRAVE(old_typ)) {
         // C dig.c:959-962: digactualhole(PIT) first, then dig_up_grave(cc), retval = TRUE
         await digactualhole_(dig_x, dig_y, BY_YOU_, PIT);
@@ -1546,20 +1520,10 @@ async function dighole(pit_only, by_magic, cc) {
             retval = true;
         } else {
             if (by_magic && ttmp && (ttmp.ttyp === LANDMINE || ttmp.ttyp === BEAR_TRAP)) {
-                /* C dig.c:1009-1010/trap.c:5321 cnv_trap_obj: magical
-                 * digging converts a settable trap into its corresponding
-                 * one-item tool, buries that tool, then removes the trap.
-                 * mksobj_at supplies mksobj()+place_object(); bury_an_obj
-                 * performs the same extraction, burial, and timer handling
-                 * as C's bury_an_obj called by cnv_trap_obj. */
+                /* C dig.c:1009-1010, trap.c:5341-5372: conversion also
+                 * releases trapped occupants before the hole is created. */
                 const trap_obj = (ttmp.ttyp === LANDMINE) ? 243 : 244;
-                const converted = await mksobj_at(trap_obj, dig_x, dig_y, true, false);
-                if (converted) {
-                    converted.quan = 1;
-                    await bury_an_obj(converted, null);
-                }
-                newsym(dig_x, dig_y);
-                deltrap(ttmp);
+                await cnv_trap_obj(trap_obj, 1, ttmp, true);
             }
             if (nohole || pit_only
                 || digCheckResult === DIGCHECK_PASSED_DESTROY_TRAP
@@ -2488,12 +2452,6 @@ export function o_unleash(otmp) {
 /* obfree — the real body lives in js/dokick.js (C shk.c:1188).  It used to be
  * a throwing stub here, which was harmless only while nothing in this file
  * deleted an object; rot_organic() does. */
-function pline_The(msg) { pline('The ' + msg); }
-
-// C ref: hack.c:97-103 obj_to_any(obj) — trivial `anything` union wrapper
-// (gt.tmp_anything.a_obj = obj); no RNG, no globals beyond the shared
-// scratch union. Reproduced directly rather than stubbed (calls_macro_or_libc).
-function obj_to_any(o) { return { a_obj: o }; }
 
 // C ref: timeout.c:2246 start_timer — the object-timer queue.  This used to be
 // a LOCAL NO-OP on the stated grounds that "the object-timer subsystem itself
@@ -2510,7 +2468,7 @@ export async function bury_an_obj(otmp, dealloced) {
     if (otmp === uball) {
         await unpunish();
         set_utrap(rn1(50, 20), TT_BURIEDBALL);
-        pline_The('iron ball gets buried!');
+        await pline_The('iron ball gets buried!');
     }
     /* after unpunish(), or might get deallocated chain */
     const otmp2 = otmp.nexthere;
@@ -2711,9 +2669,9 @@ function _dig_hallucination() {
 export async function mb_trapped(mtmp, canseeit) {
     if (game.flags?.verbose) {
         if (canseeit && !_dig_unaware())
-            pline_mon(mtmp, "KABOOM!!  You see a door explode.");
+            await pline_mon(mtmp, "KABOOM!!  You see a door explode.");
         else if (!_dig_deaf())
-            You_hear(`a ${(mdistu_dig(mtmp) > 7 * 7) ? 'distant' : 'nearby'} explosion.`);
+            await You_hear(`a ${(mdistu_dig(mtmp) > 7 * 7) ? 'distant' : 'nearby'} explosion.`);
     }
     wake_nearto(mtmp.mx, mtmp.my, 7 * 7);
     mtmp.mstun = 1;
@@ -2740,11 +2698,7 @@ function _dig_unaware() { return !!Unaware_real(); }
 function _dig_deaf() { return !!Deaf_real(); } /* youprop.h Deaf: HDeaf timeout (faint sets it, eat.c:3421) */
 /* C ref: pline.c:387-400 You_feel(line) — "You feel <line>", or "You dream
  * that you feel <line>" when Unaware (asleep/unconscious). */
-function You_feel(line) { pline((Unaware_real() ? "You dream that you feel " : "You feel ") + line); }
-/* C ref: pline.c:435-452 pline_mon(mtmp, ...) — a monster-attributed pline; the
- * SetVoice/Deaf routing is display-only, so this is plain pline as in
- * js/makemon.js:4296 and js/mcastu.js:237. */
-function pline_mon(_mtmp, msg) { pline(msg); }
+import { pline_The, You_feel, pline_mon } from './display.js';
 
 const _TREEFRUITS = [277 /* APPLE */, 278 /* ORANGE */, 279 /* PEAR */,
                      281 /* BANANA */, 276 /* EUCALYPTUS_LEAF */];

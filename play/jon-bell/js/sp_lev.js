@@ -9,15 +9,17 @@
 // RNG parity is the #1 correctness signal (Cardinal Rule 2).  Every rn2/rnd
 // call in this file must match C's sp_lev.c in order and argument.
 import { game } from './gstate.js';
+import { Can_dig_down as Can_dig_down_real } from './mklev.js';
 import { rn2, rnd, rn1, pushRngLogEntry } from './rng.js';
 import { FILL_NORMAL, MELT_ICE_AWAY, GRAVE } from './const.js';
 import { dig_corridor, mineralize, make_grave, obj_timer_checks } from './mklev.js';
+import { add_to_container } from './mklev.js';
 import { ALTAR, DOOR, SDOOR, D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED, D_SECRET, W_RANDOM, W_NORTH, W_SOUTH, W_EAST, W_WEST, W_ANY, IS_OBSTRUCTED, isok, IS_WALL, IS_DOOR, STONE, MAX_TYPE, INVALID_TYPE, MATCH_WALL, IS_STWALL, IS_ROOM, CROSSWALL, HWALL, VWALL, COLNO, ROWNO, W_NONDIGGABLE, W_NONPASSWALL, ROOM, MOAT, TLCORNER, TRCORNER, BLCORNER, BRCORNER, TUWALL, TDWALL, TLWALL, TRWALL, DBWALL, AIR, CLOUD, FOUNTAIN, THRONE, SINK, POOL, WATER, TREE, IRONBARS, IS_DRAWBRIDGE, DB_DIR, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP, VIBRATING_SQUARE, NO_TRAP, CORR, ICE, ICED_POOL, ICED_MOAT, SCORR, LAVAPOOL, LAVAWALL, OROOM, THEMEROOM, COURT, SWAMP, VAULT, BEEHIVE, MORGUE, BARRACKS, ZOO, DELPHI, TEMPLE, ANTHOLE, COCKNEST, LEPREHALL, SHOPBASE, ARMORSHOP, SCROLLSHOP, POTIONSHOP, WEAPONSHOP, FOODSHOP, RINGSHOP, WANDSHOP, TOOLSHOP, BOOKSHOP, FODDERSHOP, CANDLESHOP, STAIRS, LADDER, MKTRAP_MAZEFLAG, MKTRAP_NOSPIDERONWEB, MKTRAP_SEEN, MKTRAP_NOVICTIM, SP_COORD_IS_RANDOM, OBJ_CONTAINED, OBJ_MINVENT, NON_PM, NEUTRAL, MALE, FEMALE, In_mines, AM_NONE, AM_CHAOTIC, AM_NEUTRAL, AM_LAWFUL, AM_MASK, AM_SPLEV_CO, AM_SPLEV_NONCO, AM_SPLEV_RANDOM, A_NONE, A_LAWFUL, A_ORIGINAL, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPMASK, PROT_FROM_SHAPE_CHANGERS, WET, HOT, SOLID, DEFAULT_INVENT, CUSTOM_INVENT, NO_INVENT, STRAT_WAITFORU, MM_NOTAIL, MM_NOGRP, MM_ADJACENTOK, MM_IGNOREWATER, MM_NOCOUNTBIRTH, MM_NOMSG, NO_MM_FLAGS, G_EXTINCT, G_GONE, LOW_PM, TUTORIAL, QUEST, DUNGEON_ALIGN_BY_DNUM, M_AP_MONSTER, DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, CORPSTAT_NONE, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_FEMALE, ROOMOFFSET, AM_SHRINE, AM_SANCTUM, Is_waterlevel, Is_airlevel, Is_stronghold, In_quest, LR_DOWNSTAIR, LR_UPSTAIR, LR_PORTAL, LR_BRANCH, LR_TELE, LR_UPTELE, LR_DOWNTELE, LR_MONGEN, GP_CHECKSCARY, IS_LAVA, IS_POOL, OBJ_FREE, LA_UP, LA_DOWN, MAX_NESTED_ROOMS, MAXNROFROOMS, IS_FURNITURE, F_LOOTED, F_WARNED, S_LPUDDING, S_LDWASHER, S_LRING, T_LOOTED, TREE_LOOTED, TREE_SWARM, SET_LIT_NOCHANGE, IS_TREE, is_pit, is_hole, TRAPNUM, Is_botlevel, In_endgame, EPRI, ESHK, ONAME_LEVEL_DEF, RLOC_ERR, RLOC_NOMSG, P_SPEAR, Amask2align, SVALL, } from './const.js';
 import { oinit } from './o_init.js';
 import { level_finalize_topology, fill_special_room, clear_level_structures, find_branch_room, OC_MERGE, newcham, add_door, makeroguerooms, themeroom_lspo_map_redo_maploc_rng, u_on_newpos, set_wall_state, mdrop_obj_md } from './mklev.js';
 import { flip_worm_segs_vertical, flip_worm_segs_horizontal, worm_seg_swap, wormgone } from './worm.js';
 import { In_hell, Can_fall_thru, mapfrag_get, mktrap, mksobj_at, mkobj_at, mksobj, makemon, somexy, somex, somey, mk_tt_object, mkcorpstat, resists_ston, del_engr_at, engr_at, make_engr_at, set_corpsenm, sobj_at, wallification, count_level_features, makecorridors, mkstairs, stairway_add, build_room, add_room, topologize, level_difficulty, get_level_extends, fix_wall_spines, occupied, mpickobj } from './mklev.js';
-import { set_levltyp_lit, create_maze, baalz_fixup, setup_waterlevel, stolen_booty } from './mkmaze.js';
+import { set_levltyp_lit, create_maze, baalz_fixup, setup_waterlevel, stolen_booty, okay } from './mkmaze.js';
 import { vision_reset, block_point, recalc_block_point } from './vision.js';
 import { litstate_rnd, mkmap, flood_fill_rm } from './mkmap.js';
 import { priestini, mk_roamer } from './priest.js';
@@ -625,7 +627,8 @@ export function create_door(dd, broom) {
     }
     loc.typ = dd.secret ? SDOOR : DOOR;
     // sp_lev.c:1806 — set doormask
-    loc.doormask = dd.mask;
+    /* struct rm.flags is a 5-bit Bitfield (rm.h:163): D_SECRET (0x20) does not fit and is truncated away. */
+    loc.doormask = dd.mask & 0x1f;
     // C does NOT call add_door here; add_doors_to_room() is called later by
     // the level-build post-pass.  However, the mklev.ts splev_create_door_rng
     // stub did call add_door() inline to keep doorct in sync — we replicate
@@ -1331,6 +1334,8 @@ function sp_level_coder_init() {
         lf.rndmongen = true;
         lf.deathdrops = true;
     }
+    // C sp_lev.c:6373: each new coder starts with full-level coordinates.
+    reset_xystart_size();
     return {
         lvl_is_joined: false, croom: null, premapped: 0,
         solidify: false, check_inaccessibles: false, allow_flips: 3,
@@ -3391,15 +3396,27 @@ function bless(otmp) {
         return;
     otmp.cursed = false;
     otmp.blessed = true;
+    if (otmp.otyp === 219 /* BAG_OF_HOLDING */)
+        otmp.owt = weight(otmp);
 }
-function unbless(otmp) { otmp.blessed = false; }
+function unbless(otmp) {
+    otmp.blessed = false;
+    if (otmp.otyp === 219 /* BAG_OF_HOLDING */)
+        otmp.owt = weight(otmp);
+}
 function curse(otmp) {
     if (otmp.oclass === COIN_CLASS)
         return;
     otmp.blessed = false;
     otmp.cursed = true;
+    if (otmp.otyp === 219 /* BAG_OF_HOLDING */)
+        otmp.owt = weight(otmp);
 }
-function uncurse(otmp) { otmp.cursed = false; }
+function uncurse(otmp) {
+    otmp.cursed = false;
+    if (otmp.otyp === 219 /* BAG_OF_HOLDING */)
+        otmp.owt = weight(otmp);
+}
 function blessorcurse(otmp, chance) {
     if (otmp.blessed || otmp.cursed)
         return;
@@ -3411,27 +3428,14 @@ function blessorcurse(otmp, chance) {
     }
 }
 
-function add_to_container(container, obj) {
-    obj.where = OBJ_CONTAINED;
-    obj.ocontainer = container;
-    obj.nobj = container.cobj;
-    container.cobj = obj;
-    return obj;
-}
-
-/* ─── add_to_minv — C ref: mkobj.c:2652-2667. Same scope cut as
- * add_to_container above: merged() check omitted. A des.monster
- * custom-inventory item starts life alone (CUSTOM_INVENT overwrites
- * DEFAULT_INVENT before any closure items are added), so no pre-existing
- * stack can ever be present to merge with in this call path. */
-function add_to_minv(mon, obj) {
-    obj.where = OBJ_MINVENT;
-    obj.ocarry = mon;
-    obj.nobj = mon.minvent ?? null;
-    mon.minvent = obj;
-    return obj;
-}
-
+/* mpickobj — C ref: nethack-c/src/steal.c:616.  The real, whole-function port
+ * now lives in js/mklev.js (imported above) and this file's ONE call site
+ * (create_object's invent_carrying_monster branch, sp_lev.c:2317-2322) uses it.
+ * The scoped local that used to sit here was a WRONG TWIN: besides omitting the
+ * merge scan it also skipped C's !mtame branch, whose unknow_object() call DOES
+ * fire during level generation (the hero cannot see the monster yet, so
+ * canseemon() is false) — it was silently leaving des.monster inventory items
+ * identified when C leaves them unknown. */
 
 export async function spo_end_moninvent() {
     if (invent_carrying_monster)
@@ -3665,7 +3669,7 @@ async function create_object(o, croom) {
             const cobj = container_obj[container_idx - 1];
             remove_object(otmp);
             if (cobj) {
-                otmp = add_to_container(cobj, otmp);
+                otmp = await add_to_container(cobj, otmp);
                 cobj.owt = weight(cobj);
             } else {
                 /* C treats a missing parent as a failed nested object: unlink
@@ -3721,7 +3725,7 @@ async function create_object(o, croom) {
                 obj.nobj = null;
                 obj.ocarry = null;
                 obj.where = OBJ_FREE;
-                add_to_container(otmp, obj);
+                await add_to_container(otmp, obj);
             }
             otmp.owt = weight(otmp);
             _medusa_mongone(was, false);
@@ -6131,10 +6135,7 @@ async function fixup_special() {
         case LR_UPTELE:
         case LR_DOWNTELE:
             // C ref: mkmaze.c:610-627 — save the region outlines for
-            // goto_level() to consume later. Real, cheap, no RNG; nothing
-            // reads game.updest/game.dndest yet (js/cmd.js goto_level still
-            // uses the "all zeros -> whole level" simplification) but
-            // that's an existing, separately-tracked gap, not introduced
+            // u_on_rndspot() in mklev.js consumes these arrival regions.
             if (r.rtype === LR_TELE || r.rtype === LR_UPTELE) {
                 game.updest = game.updest || {};
                 game.updest.lx = r.inarea.x1;
@@ -6703,7 +6704,8 @@ function l_create_stairway(args, using_ladder) {
                 loc.ladder = LA_DOWN;
         }
     } else {
-        mkstairs(x, y, up, game.gc.coder.croom);
+        // C sp_lev.c:4209-4210: only explicit coordinates force ROOM terrain.
+        mkstairs(x, y, up, game.gc.coder.croom, !(scoord & SP_COORD_IS_RANDOM));
     }
     return 0;
 }
@@ -7675,20 +7677,6 @@ function mz_move(coord, dir) {
     }
 }
 
-/** C ref: mkmaze.c:296-305 okay(x, y, dir). VERIFIED: C passes x,y BY VALUE
- *  (coordxy, not pointers) — okay's two mz_move calls mutate its OWN local
- *  copy only, never the caller's x,y. The JS {x,y} object built here is
- *  exactly that local copy. */
-function okay(x, y, dir) {
-    const c = { x, y };
-    mz_move(c, dir);
-    mz_move(c, dir);
-    const { x_maze_max, y_maze_max } = splev_maze_extent();
-    if (c.x < 3 || c.y < 3 || c.x > x_maze_max || c.y > y_maze_max)
-        return false;
-    return (game.level.at(c.x, c.y)?.typ ?? 0) === STONE;
-}
-
 /** C ref: mkmaze.c:1279-1309 walkfrom(x, y, typ) — recursive backtracking
  *  maze-carver. Ported as a genuinely recursive function per Cardinal Rule 1
  *  (a MICRO iterative variant exists in C but is NOT what this non-MICRO
@@ -7754,19 +7742,8 @@ function maze1xy(m, humidity) {
     m.y = y;
 }
 
-/** C ref: dungeon.c:1650-1655 Can_dig_down(lev). Local because js/cmd.js's
- *  Invocation_lev reads a `game.invocation_level` that nothing in js/ ever
- *  writes (so it is unconditionally false); this one uses C's actual
- *  definition, dungeon.c:2016-2021 — In_hell && dlevel == num_dunlevs - 1. */
 function Can_dig_down(lev) {
-    if (game.level?.flags?.hardfloor)
-        return false;
-    if (Is_botlevel(lev))
-        return false;
-    const dun = game.dungeons?.[lev?.dnum];
-    const invocation = In_hell(lev) && !!dun
-                       && lev.dlevel === (dun.num_dunlevs | 0) - 1;
-    return !invocation;
+    return Can_dig_down_real(lev);
 }
 
 /** C ref: sp_lev.c:1155-1188 rndtrap() — random trap for a special level,

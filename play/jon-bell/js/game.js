@@ -103,6 +103,12 @@ Object.defineProperty(rmProto, 'disturbed', {
     set(v) { this.horizontal = v; },
     enumerable: true,
 });
+// C rm.h:224 aliases arboreal_sdoor to candig, including writes during discovery.
+Object.defineProperty(rmProto, 'arboreal_sdoor', {
+    get() { return this.candig; },
+    set(v) { this.candig = v; },
+    enumerable: true,
+});
 // A single map cell. Mirrors C's struct rm.
 export function makeLocation() {
     const loc = Object.create(rmProto);

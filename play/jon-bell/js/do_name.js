@@ -8,6 +8,8 @@ import { BOGUSMON_LINES, BOGUSMON_OFFSETS, BOGUSMON_SIZE, MD_PAD_BOGONS } from '
 import { ENV } from './hostenv.js';
 import { game } from './gstate.js';
 import { The } from './objnam.js';
+import { Upolyd } from './const.js';
+import { is_youmonst } from './mhitm.js';
 
 /* C monflag.h enum mgender { MALE, FEMALE, NEUTRAL, NUM_MGENDERS } */
 const MALE = 0, FEMALE = 1;
@@ -30,8 +32,16 @@ export function safe_oname(obj) {
     return "";
 }
 
-function Mgender(mtmp) {
-    return mtmp.female ? FEMALE : MALE;
+/* Mgender — C ref: nethack-c/src/do_name.c:1289-1300
+ *   int Mgender(struct monst *mtmp) {
+ *       int mgender = MALE;
+ *       if (mtmp == &gy.youmonst) { if (Upolyd ? u.mfemale : flags.female) mgender = FEMALE; }
+ *       else if (mtmp->female) mgender = FEMALE;
+ *       return mgender;
+ *   }
+ */
+export function Mgender(mtmp) {
+    return (is_youmonst(mtmp) ? (Upolyd(game.u) ? game.u.mfemale : game.flags.female) : mtmp.female) ? FEMALE : MALE;
 }
 
 export function mon_pmname(mon) {

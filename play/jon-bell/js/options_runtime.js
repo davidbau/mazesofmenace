@@ -6,7 +6,7 @@
 import { game } from './gstate.js';
 import { OPTION_DEFINITIONS } from './options_data.js';
 import { ECMD_OK, ECMD_FAIL, PRIMARYSET, STONE, WC_PERM_INVENT } from './const.js';
-import { pline, bot, docrt, reglyph_darkroom, check_gold_symbol, force_more, status_reassess, use_last_flush_snapshot } from './display.js';
+import { pline, bot, docrt, reglyph_darkroom, reset_glyphmap, check_gold_symbol, force_more, status_reassess, use_last_flush_snapshot } from './display.js';
 import { vision_recalc } from './vision.js';
 import { update_rest_on_space } from './cmd_binds.js';
 import { classifyTerrain as classify_terrain } from './terrain-status.js';
@@ -356,11 +356,10 @@ function reset_customsymbols() {
 
 export async function reset_needed_visuals() {
     const go = game.go;
-    /* C: reset_glyphmap(gm_optionchange) rebuilds the glyph->symbol table; this
-     * port maps glyphs on demand (js/symbols.js reset_glyphmap is likewise a no-op). */
+    /* C options.c: reset_glyphmap(gm_optionchange) before the redraw. */
     if (go.opt_reset_customcolors || go.opt_update_basic_palette || go.opt_reset_customsymbols || go.opt_need_redraw) {
         if (go.opt_update_basic_palette) { missing('change_palette'); go.opt_update_basic_palette = false; }
-        if (go.opt_need_glyph_reset) game._gm_use_color = game._gm_corner = undefined; /* reset_glyphmap() */
+        if (go.opt_need_glyph_reset) reset_glyphmap(3); /* gm_optionchange */
         if (go.opt_reset_customcolors) reset_customcolors();
         if (go.opt_reset_customsymbols) reset_customsymbols();
         if (go.opt_need_redraw) { check_gold_symbol(); reglyph_darkroom(); }

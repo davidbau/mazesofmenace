@@ -42,6 +42,7 @@ import {
     PLNMSG_ONE_ITEM_HERE, DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, HEADSTONE,
 } from './const.js';
 import { t_at } from './trap.js';
+import { is_drawbridge_wall } from './dokick.js';
 import { dist2 } from './hacklib.js';
 import { s_suffix } from './hacklib.js';
 import { is_safemon, m_at } from './uhitm.js';
@@ -150,6 +151,9 @@ export function _dfeature_at(x, y) {
     // DOOR variations
     if (_is_door(typ)) {
         const mask = lev.doormask | 0;
+        /* C invent.c:4059-4062 — override door description for open drawbridge */
+        if (is_drawbridge_wall(x, y) >= 0)
+            return { text: 'open drawbridge portcullis', article: 1 };
         if (mask === D_NODOOR) return { text: 'doorway', article: 1 };
         if (mask & D_ISOPEN)   return { text: 'open door', article: 1 };
         if (mask & D_BROKEN)   return { text: 'broken door', article: 1 };

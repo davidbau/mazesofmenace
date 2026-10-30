@@ -33,7 +33,7 @@ import { build_window_screen, menu_search_case, menu_search_docorner } from './c
 import { menu_heading_text } from './tty_menu.js';
 import { PM_PONY } from './pm.generated.js';
 import { ROLE_PM_MNUM } from './roles.js';
-import { weapon_type, can_advance, slots_required } from './uhitm.js';
+import { weapon_type, can_advance, slots_required, skill_name, skill_level_name } from './uhitm.js';
 import {
     P_NONE, P_DAGGER, P_KNIFE, P_AXE, P_PICK_AXE, P_SHORT_SWORD, P_BROAD_SWORD,
     P_LONG_SWORD, P_TWO_HANDED_SWORD, P_SABER, P_CLUB, P_MACE, P_MORNING_STAR,
@@ -126,22 +126,8 @@ export function P_NAME(type) {
         return BAREHANDS_OR_MARTIAL[martial_bonus() ? 1 : 0];
     return ODD_SKILL_NAMES[-idx];
 }
-/* C ref: weapon.c:1125 skill_name(). */
-export function skill_name(skill) { return P_NAME(skill); }
-
-/* C ref: weapon.c:1092 skill_level_name(). */
-export function skill_level_name(skill) {
-    switch (P_SKILL(skill)) {
-    case P_UNSKILLED:    return 'Unskilled';
-    case P_BASIC:        return 'Basic';
-    case P_SKILLED:      return 'Skilled';
-    case P_EXPERT:       return 'Expert';
-    /* these are for unarmed combat/martial arts only */
-    case P_MASTER:       return 'Master';
-    case P_GRAND_MASTER: return 'Grand Master';
-    default:             return 'Unknown';
-    }
-}
+/* C weapon.c:1092,1125 — share the skill namers with combat callers. */
+export { skill_name, skill_level_name };
 
 /* C ref: weapon.c:1170 could_advance(). */
 function could_advance(skill) {
@@ -439,7 +425,15 @@ function add_skills_to_menu(selectable, speedy) {
                 prefix = '    ';
             const sklnam = skill_level_name(i);
             let text;
-            if (wizardMode()) {
+            const tabsep = !!game.iflags?.menu_tab_sep;
+            if (wizardMode() && tabsep) {
+                /* " %s%s\t%s\t%5d(%4d)" */
+                text = ` ${prefix}${P_NAME(i)}\t${sklnam}\t`
+                     + `${rpad(P_ADVANCE(i), 5)}(${rpad(practice_needed_to_advance(P_SKILL(i)), 4)})`;
+            } else if (tabsep && !wizardMode()) {
+                /* " %s%s\t[%s]" */
+                text = ` ${prefix}${P_NAME(i)}\t[${sklnam}]`;
+            } else if (wizardMode()) {
                 /* " %s%-*s %-12s %5d(%4d)" */
                 text = ` ${prefix}${pad(P_NAME(i), longest)} ${pad(sklnam, 12)} `
                      + `${rpad(P_ADVANCE(i), 5)}(${rpad(practice_needed_to_advance(P_SKILL(i)), 4)})`;
@@ -522,7 +516,7 @@ async function enhance_menu(items, prompt, pickOne) {
         if (overlayCol) {
             const wl = page.map((it, i) => {
                 const a = accel[start + i];
-                const body = a ? `${a} - ${it.text}` : it.text;
+                const body = (a ? `${a} - ${it.text}` : it.text).replace(/\t/g, ' ');
                 return it.heading ? menu_heading_text(body) : body;
             });
             wl.push('(end)');
@@ -536,7 +530,7 @@ async function enhance_menu(items, prompt, pickOne) {
         for (let i = 0; i < page.length; i++) {
             const it = page[i];
             const a = accel[start + i];
-            const body = a ? `${a} - ${it.text}` : it.text;
+            const body = (a ? `${a} - ${it.text}` : it.text).replace(/\t/g, ' ');
             /* Headings are drawn with iflags.menu_headings (wintty.c:2688). */
             rows[i] = ' ' + (it.heading ? menu_heading_text(body) : body);
         }

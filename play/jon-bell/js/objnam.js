@@ -1939,7 +1939,7 @@ export function the(str) {
     if (!str || str.length === 0) {
         /* C: impossible("Alphabet soup: 'the(%s)'.", str ? "\"\"" : "<null>");
          * then falls through to the "the []" return. */
-        impossible("Alphabet soup: 'the(%s)'.", str ? '""' : "<null>");
+        impossible_sync("Alphabet soup: 'the(%s)'.", str == null ? "<null>" : '""');
         return "the []";
     }
     // C: if (!strncmpi(str, "the ", 4)) → already has "the " prefix
@@ -2717,7 +2717,7 @@ async function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cn
         if (dx.eroded2 && (_is_corrodeable(otmp) || _is_rottable(otmp)))
             otmp.oeroded2 = dx.eroded2 | 0;
         if (erodeproof && (_is_damageable(otmp) || (otmp.otyp | 0) === CRYSKNIFE_OTYP))
-            otmp.oerodeproof = (wizard() || ((game.u?.uluck | 0) >= 0)) ? 1 : 0;
+            otmp.oerodeproof = (luck >= 0 || wizard()) ? 1 : 0;
     }
 
     /* C objnam.c:5290-5296 — set otmp->recharged.
@@ -2741,7 +2741,7 @@ async function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cn
     /* C objnam.c:5299-5306 — set poisoned (the readobjnam wish path never applied it). */
     if (dx.ispoisoned) {
         if (is_poisonable(otmp))
-            otmp.opoisoned = ((game.u?.uluck | 0) >= 0) ? 1 : 0;
+            otmp.opoisoned = (luck >= 0) ? 1 : 0;
         else if ((otmp.oclass | 0) === FOOD_CLASS)
             otmp.age = 1;
     }
@@ -3390,7 +3390,11 @@ const HAWAIIAN_MOTIFS_XN = [
     'hula dancer', 'sailboat', 'ukulele',
 ];
 export function an(str) {
-    return just_an({}, str) + str;
+    if (!str) {
+        impossible_sync("Alphabet soup: 'an(%s)'.", str == null ? '<null>' : '""');
+        return 'an []';
+    }
+    return (just_an({}, str) + str).slice(0, 255);
 }
 
 // ── An (C objnam.c:2156-2163) ────────────────────────────────────────────────
@@ -3435,7 +3439,7 @@ export function makeplural(oldstr) {
     }
 
     if (!oldstr || !oldstr[0]) {
-        impossible("plural of null?");
+        impossible_sync("plural of null?");
         return "s";
     }
 
@@ -4305,7 +4309,7 @@ export function is_poisonable(otmp) {
 /* C artifact.c:2837 permapoisoned(obj) — currently only Grimtooth
  * (artilist order: NONARTIFACT, EXCALIBUR, STORMBRINGER, MJOLLNIR, CLEAVER,
  * GRIMTOOTH => 5). */
-function permapoisoned(obj) {
+export function permapoisoned(obj) {
     return !!obj && (obj.oartifact | 0) === 5;
 }
 
@@ -4701,7 +4705,11 @@ export async function distant_name(obj, func) {
     const r = ((game.u?.xray_range | 0) > 2) ? (game.u.xray_range | 0) : 2;
     const neardist = (r * r) * 2 - r;
 
+    /* C:384-386 — zero o_id during final disclosure so xname() omits the
+     * T-shirt / candy-wrapper / Hawaiian-motif text.  `program_state.gameover`
+     * controls this suppression; restore the original ID below. */
     const save_oid = obj.o_id;
+    if (game.program_state?.gameover) obj.o_id = 0;
 
     let str;
     let ox = 0, oy = 0;
@@ -5004,7 +5012,7 @@ async function doname_base(obj, doname_flags) {
     }
 
     /* C:1355-1371 — box/trap/lock words, then greased. */
-    if (Is_box_otyp(otyp) && (obj.otrapped | 0) && (obj.tknown | 0) && dknown)
+    if (Is_box_otyp(otyp) && (obj.otrapped | 0) && (obj.tknown | 0) && obj.dknown)
         prefix += 'trapped ';
     if (lknown && Is_box_otyp(otyp)) {
         if (obj.obroken | 0) prefix += 'broken ';

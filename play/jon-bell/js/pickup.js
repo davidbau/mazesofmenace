@@ -47,7 +47,7 @@ import { losehp } from './dokick.js';
 import { yn_function } from './end.js';
 import {
     ECMD_OK, ECMD_TIME, is_pit, is_hole, u_at, TT_PIT, isok, AUTOUNLOCK_FORCE, CQ_CANNED,
-    OBJ_CONTAINED, OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT,
+    OBJ_CONTAINED, OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT, engulfing_u,
     LOST_NONE, LOST_THROWN, LOST_DROPPED, LOST_STOLEN, LOST_EXPLODING,
     STONE, MENU_TRADITIONAL, MENU_FULL,
     AUTOSELECT_SINGLE, INVORDER_SORT, FEEL_COCKATRICE, BY_NEXTHERE,
@@ -100,7 +100,7 @@ import {
     dfeature_at as _cmd_dfeature_at,
     waterbody_name as _cmd_waterbody_name,
     pooleffects_back_on_ground as _cmd_back_on_ground,
-    body_part,
+    body_part, ceiling,
     count_unpaid,
     bhp_Maybe_Half_Phys,
     cmdq_add_ec,
@@ -324,6 +324,9 @@ async function do_loot_cont(cobjRef, cindex, ccount) {
 
     if (cobj.olocked) {
         let res = ECMD_OK;
+        /* C pickup.c:2110-2126 — resolve the autounlock tool; call pick_lock
+         * when a tool is available or trap checking is enabled.  Its queries
+         * handle paging the locked message, as tty_yn_function does in C. */
         const autounlock = g.flags?.autounlock ?? AUTOUNLOCK_APPLY_KEY;
         const ox = cobj.ox | 0, oy = cobj.oy | 0;
         if (autounlock) g.u.dz = 0; /* C pickup.c:2110 — pick_lock cares. */
@@ -331,17 +334,14 @@ async function do_loot_cont(cobjRef, cindex, ccount) {
         if ((autounlock & AUTOUNLOCK_APPLY_KEY) !== 0)
             unlocktool = autokey(true);
         const willPrompt = unlocktool != null || (autounlock & 1); /* pickup.c:2123 AUTOUNLOCK_UNTRAP */
-        const _resuming = willPrompt && game.xlock && game.xlock.usedtime && (unlocktool?.otyp|0) === game.xlock.picktyp;
         /* C pickup.c:2100-2103 — locked message; lknown picks "is locked" vs
-         * "Hmmm, ... turns out to be locked."  Page it (cross-pline --More--)
-         * only when a follow-up unlock prompt will arrive to force the page. */
+         * "Hmmm, ... turns out to be locked."  The subsequent yn prompt owns
+         * more(): a known trap skips the check prompt (lock.c:474), letting
+         * untrap_box's message join this line before "Disarm it?" pages it. */
         const lockedMsg = cobj.lknown
             ? `${_The(_box_xname(cobj))} is locked.`
             : `Hmmm, ${_the(_box_xname(cobj))} turns out to be locked.`;
-        if (willPrompt && !_resuming)
-            await pline_with_more(lockedMsg);
-        else
-            await pline(lockedMsg);
+        await pline(lockedMsg);
         cobj.lknown = 1;
 
         if (autounlock && willPrompt) {
@@ -590,7 +590,9 @@ async function doloot_core() {
             if (underfoot && container_at(cc.x, cc.y, false))
                 continue lootcont; /* C: goto lootcont */
             if ((u.dz | 0) < 0) {
-                await pline("You don't find anything to loot on the ceiling.");
+                /* C pickup.c:2301-2304: ceiling() also handles special rooms
+                 * and planes, using the selected square. */
+                await pline(`You don't find anything to loot on the ${ceiling(cc.x, cc.y)}.`);
                 return ECMD_TIME;
             }
             const mtmp = m_at(cc.x, cc.y);
@@ -606,7 +608,7 @@ async function doloot_core() {
              * direction is impaired" (Confusion || Stunned). */
             for (const p of [13, 14]) { /* STUNNED, CONFUSION */
                 const pr = u.uprops?.[p];
-                if (pr && (((pr.intrinsic | 0) !== 0) || ((pr.extrinsic | 0) !== 0)))
+                if (pr && (pr.intrinsic | 0) !== 0)
                     timepassed = 1;
             }
 
@@ -1309,6 +1311,12 @@ function _pu_loot_classify(obj) {
     return (k >= 0) ? (1 + k) : (1 + _PU_INV_ORDER.length + 1);
 }
 function _pu_sortloot(eligible) {
+    /* invent.c:628: `if (mode && n > 1)` — pickup.c:1079-1083 builds mode from
+     * flags.sortloot/sortpack; USE_INVLET is never set here.  Mode 0
+     * (sortloot:none + !sortpack) keeps chain order. */
+    const sl = game.flags?.sortloot ?? 'l';
+    if (!(sl === 'f' || sl === 'l' || game.flags?.sortpack))
+        return eligible.slice();
     const arr = eligible.map((obj, indx) => ({ obj, indx, orderclass: 0 }));
     if (arr.length > 1) {
         for (const sli of arr) {
@@ -1699,10 +1707,8 @@ export async function pickup_prinv(obj, count, verb) {
 export async function pickup_object(obj, count, telekinesis) {
     const g = game;
     if ((obj.quan | 0) < count) {
-        /* C: impossible(...); return 0; — a real invariant violation, not a
-         * defensive check worth silently swallowing. */
-        throw new Error(`pickup_object: count ${count} > quan ${obj.quan}?`
-            + ' (impossible) — pickup.c:1811');
+        await impossible('pickup_object: count %ld > quan %ld?', count, obj.quan);
+        return 0;
     }
 
     await _cmdModule(); /* resolve once; inv_cnt_local/merge_choice_local/
@@ -1716,7 +1722,7 @@ export async function pickup_object(obj, count, telekinesis) {
     if ((obj.where | 0) === OBJ_MINVENT && (obj.owornmask | 0) !== 0) {
         /* C pickup.c:1820-1822 — gear worn by the monster engulfing the
          * hero cannot be removed.  This refusal consumes no turn or RNG. */
-        if (g.u?.uswallow) {
+        if (engulfing_u(obj.ocarry)) {
             await pline("You can't pick %s up.", await _cmd_mod.ysimple_name(obj));
             return 0;
         }
@@ -1735,7 +1741,7 @@ export async function pickup_object(obj, count, telekinesis) {
     if ((obj.otyp | 0) === _SCR_SCARE_MONSTER_OTYP) {
         /* C pickup.c:1830-1856.  Capacity is computed before changing the
          * scroll's blessed/spe state; an unliftable stack remains untouched. */
-        const fitted = await carry_count(obj, null, count || (obj.quan | 0), telekinesis);
+        const fitted = await carry_count(obj, null, count || (obj.quan | 0), false);
         count = fitted.count | 0;
         if (count < 1)
             return -1;

@@ -2,7 +2,7 @@
 // js/monmove.js — Monster movement support: distfleeck + set_apparxy + m_move.
 // C ref: nethack-c/src/monmove.c
 // @ts-nocheck — js sibling imports.
-import { HALLUC, HALLUC_RES } from "./const.js";
+import { HALLUC, HALLUC_RES, PROT_FROM_SHAPE_CHANGERS } from "./const.js";
 import { stop_occupation } from './allmain.js';
 import { rn2, rnd, rn1, d, pushRngLogEntry } from './rng.js';
 import { game } from './gstate.js';
@@ -27,7 +27,7 @@ import { OBJ_FLOOR, OBJ_DELETED, is_pit, IS_STWALL, IS_TREE, Is_rogue_level, NEE
          NC_SHOW_MSG, ARM, HEAD, ROOM, CORR, GPCOORDS_NONE, GPCOORDS_COMFULL,
          /* maybe_spin_web (monmove.c:1267) */ IS_OBSTRUCTED, STAIRS, LADDER, IRONBARS, WEB, In_sokoban } from './const.js';
 import { newsym, canspotmon, pline, canseemon,
-         topl_force_break_now, capture_flushed_cells, flush_pending_messages, _topline_more_pending, _more_never_dismissed, Norep, You_hear, You_see, sensemon, Unaware, swallowed } from './display.js';
+         topl_force_break_now, capture_flushed_cells, flush_pending_messages, _topline_more_pending, _more_never_dismissed, Norep, You_hear, You_see, sensemon, Unaware, swallowed, Deaf } from './display.js';
 import { cansee, vision_recalc, recalc_block_point, clear_path, couldsee } from './vision.js';
 import { curr_mon_load, max_mon_load, can_carry, could_reach_item, dmgtype,
          obj_extract_floor, distant_obj_name, Monnam_dm, finish_meating as finish_meating_real,
@@ -39,7 +39,7 @@ import { can_touch_safely, mfndpos, sobj_at, hideunder, maybe_unhide_at, mpickob
          meatcorpse as meatcorpse_real, newcham, u_on_newpos,
          extract_from_minvent, m_consume_obj, Is_special, mongone,
          resists_ston, obj_extract_self } from './mklev.js';
-import { accessible, closed_door, may_dig } from './look.js';
+import { accessible, closed_door, may_dig, is_pool as is_pool_mv2 } from './look.js';
 import { m_at, mon_nam, autoreturn_weapon } from './uhitm.js';
 import { gettrack } from './track.js';
 import { artifact_light } from './light.js';
@@ -63,7 +63,7 @@ import { fracture_rock } from './zap.js';
 const MZ_LARGE_MV = 3;
 /* C objects[].oc_material — read by mon_would_take_item's is_unicorn and
  * likes_gems arms (monmove.c:1033, :1042). */
-import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
+import { MKOBJ_OC_MATERIAL, MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
 /* C objects[otyp].oc_weight — m_consume_obj (mon.c:1399) heals a non-pet by the
  * RAW column, not by weight(obj) (which multiplies by quan).  Pure data module,
  * no imports of its own. */
@@ -112,9 +112,7 @@ async function msg_mon_movement(mtmp, omx, omy) {
 
 /* C monmove.c:105-130 — deaf heroes see gestures instead of hearing speech. */
 export async function mon_yells(mon, shout) {
-    const p = game.u?.uprops?.[DEAF];
-    const deaf = !!(p?.intrinsic || p?.extrinsic || game.u?.uroleplay?.deaf);
-    if (deaf) {
+    if (Deaf()) {
         if (canspotmon(mon)) {
             const limbless = ((mon.data.mflags1 | 0) & 0x6000) === 0x6000;
             const name = Amonnam(mon);
@@ -219,8 +217,11 @@ const M1_SEE_INVIS = 0x01000000;
 /* C ref: monflag.h:90-91 — M1_TUNNEL/M1_NEEDPICK (tunnels()/needspick() macros) */
 const M1_TUNNEL_MDW = 0x00000020;
 const M1_NEEDPICK_MDW = 0x00000040;
-/* C ref: objects.h — AXE otyp (dig.js's is_axe uses the same value, unexported) */
-const AXE_MDW = 12;
+/* C obj.h:217-219 — both axes, with the weapon/tool class guard. */
+function is_axe_mdw(obj) {
+    return (obj.oclass === WEAPON_CLASS_MV || obj.oclass === TOOL_CLASS_MV)
+        && MKOBJ_OC_SKILL[obj.otyp] === 3; /* P_AXE */
+}
 /* C ref: hack.h — PM_GRID_BUG index (NODIAG); hack.h:1419 NODIAG(monnum)=((monnum)==PM_GRID_BUG) */
 const PM_GRID_BUG = 116; /* from pm.generated.js PM_GRID_BUG = 116 */
 /* C ref: pm.generated.js */
@@ -1253,7 +1254,13 @@ function searches_for_item_mv(mon, obj) {
             /* C: mcould_eat_tin(mon) && !resists_ston(mon)
              *    && cures_stoning(mon, obj, TRUE).  mcould_eat_tin scans the
              * monster's minvent for a TIN_OPENER or a P_DAGGER/P_KNIFE weapon,
-             * which needs objects[].oc_skill; not carried here. */
+             * using objects[].oc_skill (C muse.c:3001-3031). */
+            const cn = obj.corpsenm ?? -1, w = mon.mw, welded = w && mwelded(w);
+            for (let o = mon.minvent; o; o = o.nobj) {
+                if ((!welded || o === w) && (o.otyp === 239 /* TIN_OPENER */
+                    || (o.oclass === WEAPON_CLASS_MV && [1 /* P_DAGGER */, 2 /* P_KNIFE */].includes(MKOBJ_OC_SKILL[o.otyp]))))
+                    return !resists_ston(mon) && cn !== -1 && (cn === PM_LIZARD_MV || acidic_mv(cn));
+            }
             return false;
         }
         if (typ === EGG_MV && (obj.corpsenm | 0) >= LOW_PM_MV
@@ -1532,9 +1539,7 @@ export async function m_move_aggress(mtmp, x, y) {
 }
 
 
-/* C trap.c:1402-1470 via monmove.c:1535 — apply SQKY_BOARD to a moved
- * monster.  Both tame and hostile postmov paths call this shared leaf; C's
- * postmov invokes mintrap uniformly for pets and non-pets. */
+/* Legacy inline board implementation; movement now uses trap.js:mintrap. */
 async function _handle_sqky_board_mon(mtmp, trap, nix, niy) {
     const _mf1_sq = (mtmp.data.mflags1 | 0);
     const _in_air_sq = (_mf1_sq & M1_FLY_MV) !== 0;
@@ -1626,10 +1631,8 @@ async function _handle_sqky_board_mon(mtmp, trap, nix, niy) {
 
 /* C monmove.c:1508-1520: special movers run the same post-move traps. */
 async function postmov_special_trap(mtmp) {
-    const x = mtmp.mx, y = mtmp.my, trap = t_at(x, y);
-    const result = trap?.ttyp === SQKY_BOARD_MV
-        ? (await _handle_sqky_board_mon(mtmp, trap, x, y), 0)
-        : await mintrap(mtmp, 0);
+    const x = mtmp.mx, y = mtmp.my;
+    const result = await mintrap(mtmp, 0);
     if (result === TRAP_KILLED_MON_MV || result === TRAP_MOVED_MON_MV) {
         if (mtmp.mx) newsym(mtmp.mx, mtmp.my);
         else if (result === TRAP_KILLED_MON_MV && x > 0) newsym(x, y);
@@ -1945,7 +1948,7 @@ export async function m_move(mtmp, after) {
                     return MMOVE_DIED_MV;
                 }
             } else if (_trap && _trap.ttyp === SQKY_BOARD_MV) {
-                await _handle_sqky_board_mon(mtmp, _trap, mtmp.mx | 0, mtmp.my | 0);
+                await mintrap(mtmp, 0);
             }
             if (mtmp.mstate | 0)
                 return MMOVE_DONE_MV; /* C postmov:1515, mon_offmap after mintrap. */
@@ -2069,7 +2072,7 @@ export async function m_move(mtmp, after) {
                     return MMOVE_DIED_MV;
                 }
             } else if (_ptr) {
-                await _handle_sqky_board_mon(mtmp, _ptr, mtmp.mx | 0, mtmp.my | 0);
+                await mintrap(mtmp, 0);
             }
             if (mtmp.mstate | 0)
                 return MMOVE_DONE_MV; /* C postmov:1515. */
@@ -2131,7 +2134,7 @@ export async function m_move(mtmp, after) {
                     return MMOVE_DIED_MV;
                 }
             } else if (_tt) {
-                await _handle_sqky_board_mon(mtmp, _tt, mtmp.mx | 0, mtmp.my | 0);
+                await mintrap(mtmp, 0);
             }
         }
         newsym(mtmp.mx | 0, mtmp.my | 0);
@@ -2212,7 +2215,7 @@ export async function m_move(mtmp, after) {
             || ((game.youmonst?.m_ap_type | 0) === 2
                 && (game.youmonst.mappearance | 0) === GOLD_PIECE_MV
                 && !(_mf2_greedy & M2_GREEDY_MV))
-            || (mtmp.mpeaceful | 0) /* || ... && !mtmp->isshk */
+            || ((mtmp.mpeaceful | 0) && !(mtmp.isshk | 0)) /* C: allow shks to follow */
             || ((mndx_mv === PM_STALKER_MV
                  || mlet_mv === S_BAT_MV || mlet_mv === S_LIGHT_MV) && !rn2(3))
            ) {
@@ -2567,10 +2570,9 @@ export async function m_move(mtmp, after) {
         newsym(omx, omy);
 
         /* C postmov → mintrap: check for trap at new position.
-         * C ref: monmove.c:1535 trapret = mintrap(mtmp, NO_TRAP_FLAGS).
-         * SQKY_BOARD keeps its existing in-line squeak-message handling (the
-         * trapeffect_sqky_board leaf is not yet ported); all other trap types
-         * are routed through the ported mintrap so their RNG (e.g. MAGIC_TRAP
+         * C ref: monmove.c:1509 trapret = mintrap(mtmp, NO_TRAP_FLAGS).
+         * All trap types use mintrap, including its squeaky-board leaf and
+         * m_in_air guard (trap.c:1441). This also preserves trap RNG (MAGIC_TRAP
          * rn2(21), and the rn2(40) escape check for already-trapped monsters)
          * fires in C order. */
         {
@@ -2590,7 +2592,7 @@ export async function m_move(mtmp, after) {
                     return MMOVE_DIED_MV;
                 }
             } else if (_trap && _trap.ttyp === SQKY_BOARD_MV) {
-                await _handle_sqky_board_mon(mtmp, _trap, nix, niy);
+                await mintrap(mtmp, 0);
             }
             if (mtmp.mstate | 0)
                 return MMOVE_DONE_MV; /* C postmov:1515. */
@@ -3382,8 +3384,10 @@ function is_vampshifter(mon) {
 }
 
 export function can_fog(mtmp) {
+    /* C monmove.c:2368; youprop.h:355-360: intrinsic or extrinsic protection. */
     if (!((game.mvitals?.[PM_FOG_CLOUD]?.mvflags | 0) & G_GENOD_MV) && is_vampshifter(mtmp)
-        && !false && !stuff_prevents_passage(mtmp))
+        && !(game.u?.uprops?.[PROT_FROM_SHAPE_CHANGERS]?.intrinsic
+             || game.u?.uprops?.[PROT_FROM_SHAPE_CHANGERS]?.extrinsic) && !stuff_prevents_passage(mtmp))
         return true;
     return false;
 }
@@ -3439,6 +3443,11 @@ export function m_avoid_kicked_loc(mtmp, nx, ny) {
     /* isok: x >= 1 && x <= COLNO_MV-1 && y >= 0 && y <= ROWNO_MV-1 */
     const klok = kx >= 1 && kx <= (COLNO_MV - 1) && ky >= 0 && ky <= (ROWNO_MV - 1);
 
+    /* C: (mtmp->mpeaceful || mtmp->mtame) && mtmp->mcansee &&
+     *     !mtmp->mconf && !mtmp->mstun && !Conflict &&
+     *     isok(gk.kickedloc.x, gk.kickedloc.y) &&
+     *     nx == gk.kickedloc.x && ny == gk.kickedloc.y && next2u(nx, ny)
+     * next2u(nx, ny) = distu(nx, ny) <= 2 */
     const u = game.u;
     if (!u) return false;
     const dx = (nx | 0) - (u.ux | 0);
@@ -3544,16 +3553,7 @@ function cursed_object_at_mv(x, y) {
     return false;
 }
 
-// C ref: rm.h is_pool(x,y) — POOL..DRAWBRIDGE_UP inclusive (rm.h enum), same
-// range mfndpos_nontame already tests inline (monmove.js:443) and js/mklev.js
-// is_pool_mv/js/dokick.js is_pool use; not exported from any of those three,
-// so a fourth local copy here for undesirable_disp's use.
-function is_pool_mv2(x, y) {
-    const loc = game.level?.locations?.[x]?.[y];
-    if (!loc) return false;
-    const t = loc.typ | 0;
-    return t >= POOL_TYP_MV && t <= 19; /* POOL, MOAT, WATER, DRAWBRIDGE_UP */
-}
+// C monmove.c:2304 uses dbridge.c:46 is_pool, including the bridge underlay.
 
 // undesirable_disp — C ref: monmove.c:2301-2336 (window 2292-2336 incl.
 // banner comment). should_displace's only non-trivial dependency (keystone
@@ -3661,10 +3661,10 @@ export async function m_digweapon_check(mtmp, nix, niy) {
             && (may_dig(nix, niy) || closed_door(nix, niy))) {
             const typ = game.level?.locations?.[nix]?.[niy]?.typ;
             if (closed_door(nix, niy)) {
-                if (!mw_tmp || !is_pick(mw_tmp) || !((mw_tmp.otyp | 0) === AXE_MDW))
+                if (!mw_tmp || !is_pick(mw_tmp) || !is_axe_mdw(mw_tmp))
                     mtmp.weapon_check = NEED_PICK_OR_AXE;
             } else if (IS_TREE(typ)) {
-                if (!mw_tmp || !((mw_tmp.otyp | 0) === AXE_MDW))
+                if (!mw_tmp || !is_axe_mdw(mw_tmp))
                     mtmp.weapon_check = NEED_AXE;
             } else if (IS_STWALL(typ)) {
                 if (!mw_tmp || !is_pick(mw_tmp))

@@ -41,6 +41,7 @@
 //   - "race forces chaotic" / "role forces lawful" style lines have 4 spaces
 //     of left-padding; they're emitted as \x1b[(indent+4)C + content.
 
+import { an as an_objnam } from './objnam.js';
 import { PORT_ID } from './platform_identity.js';
 import { game } from './gstate.js';
 import { menu_heading_text } from './tty_menu.js'; // wintty.c:2688
@@ -382,8 +383,7 @@ function isVowel(c) {
         || c === 'A' || c === 'E' || c === 'I' || c === 'O' || c === 'U';
 }
 function an(word) {
-    if (!word) return word;
-    return (isVowel(word[0]) ? 'an ' : 'a ') + word;
+    return an_objnam(word);
 }
 
 // roleLabel: role name with optional female substitute, gender-aware
@@ -2053,8 +2053,8 @@ export async function playChargen(ctx) {
                 if (ct.length) ct = ct.slice(0, -1);
                 continue;
             }
-            // sizeof svp.plname - 1 == PL_NSIZ - 1 == 32.
-            if (ct.length < 32) ct += asknameFilter(String.fromCharCode(key), ct.length);
+            // C wintty.c:729: sizeof svp.plname - 1 == PL_NSIZ - 1 == 31.
+            if (ct.length < 31) ct += asknameFilter(String.fromCharCode(key), ct.length);
         }
     }
 
@@ -2118,7 +2118,6 @@ export async function playChargen(ctx) {
         else                         return buildAlignMenu(st);
     }
     function menuFrame(kind, randomMark = '*') {
-        rigid_role_checks_live(st, rn2);
         const menu = buildMenu(kind);
         for (const line of menu.lines)
             if (line.content === '* * Random') line.content = `* ${randomMark} Random`;
@@ -2158,7 +2157,14 @@ export async function playChargen(ctx) {
     // Read one selection from the `kind` menu.  Returns one of
     //   {sel:index} | {switchTo:kind} | {random:true} | {quit:true} | {filter:true}
     async function menuPick(kind) {
+        // C role.c:2814 checks once in plsel_startmenu(), before select_menu;
+        // reading another key in the same menu must not force more facets.
+        rigid_role_checks_live(st, rn2);
         let row0Blank = false, randomMark = '*', count = 0;
+        // plsel_startmenu runs rigid_role_checks once per menu (role.c:2814),
+        // not on each repaint after an ignored key.
+        // plsel_startmenu runs rigid_role_checks once per menu; invalid keys
+        // are consumed inside tty's select_menu without re-entering it.
         for (;;) {
             await topline.flush();
             const f = menuFrame(kind, randomMark);

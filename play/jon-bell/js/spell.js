@@ -33,7 +33,7 @@ import { CORR, DOOR, ROOM, NO_SPELL, UNKNOWN_SPELL, CONFUSION, STUNNED, TIMEOUT,
  * is out of this fix's scope. */
 import { acurr as acurr_real, poison_strdmg } from './attrib.js';
 import { POISON_RES, KILLED_BY_AN, ANTIMAGIC, FACE } from './const.js';
-import { nomul } from './allmain.js';
+import { nomul, stop_occupation } from './allmain.js';
 import { iter_mons, On_stairs, makemon } from './mklev.js';
 import { set_malign, permonstTemplate } from './makemon.js';
 import { mkundead } from './cmd.js';
@@ -57,7 +57,7 @@ import { tele } from './teleport.js';
 import { make_blinded } from './zap.js';
 /* make_confused's C home is potion.c:88 — js/mhitu.js's copy was an exported
  * empty body.  Import the real one directly. */
-import { make_confused, make_stunned } from './potion.js';
+import { make_confused, make_stunned, eyecount } from './potion.js';
 import { freehand } from './engrave.js';
 import { can_chant } from './makemon.js';
 import { CLR_WHITE } from './terminal.js';
@@ -435,8 +435,7 @@ function percent_success(spellSlot) {
     if (initrole === ROLE_CLERIC && otyp === 372 /* SPE_LIGHT */) {
         skill_type = P_CLERIC_SPELL;
     }
-    const spellev = (idx >= 0 && idx < SPBOOK_OC_LEVEL.length)
-        ? SPBOOK_OC_LEVEL[idx] : 1;
+    const spellev = spellBook.sp_lev; // C spell.c:2240,2251: spellev(spell)
 
     // paladin_bonus: Knight casting clerical spell has no metal armor penalty
     const paladin_bonus = (initrole === ROLE_KNIGHT && skill_type === P_CLERIC_SPELL);
@@ -833,6 +832,26 @@ function _spbook_oc(otyp, table) {
     return table[idx];
 }
 
+/* C ref: spell.c:537-553 — study_book()'s fresh-study arm assigns
+ * svc.context.spbook.delay from the book's level BEFORE the already-known
+ * refresh prompt (spell.c:561-573), so answering 'n' there leaves the delay
+ * overwritten while spbook.book still names an earlier interrupted book. */
+export function study_book_set_delay(booktype) {
+    const g = game;
+    g.context = g.context || {};
+    const sp = g.context.spbook = g.context.spbook || { book: null, o_id: 0, delay: 0 };
+    const oc_level = _spbook_oc(booktype, SPBOOK_OC_LEVEL);
+    const oc_delay = _spbook_oc(booktype, SPBOOK_OC_DELAY);
+    switch (oc_level) {
+        case 1: case 2: sp.delay = -oc_delay; break;
+        case 3: case 4: sp.delay = -(oc_level - 1) * oc_delay; break;
+        case 5: case 6: sp.delay = -oc_level * oc_delay; break;
+        case 7:         sp.delay = -8 * oc_delay; break;
+        default:        return false;
+    }
+    return true;
+}
+
 /* C ref: spell.c:22
  *     #define incrnknow(spell, x) (svs.spl_book[spell].sp_know = KEEN + (x))
  * The second argument is an ADDEND, not the book's otyp: learn() passes 1
@@ -1178,7 +1197,10 @@ export async function study_book_dull(spellbook) {
     if (sp && sp.delay && spellbook === sp.book)
         dullbook -= rnd(lvl);
     if (dullbook <= 0) return false;
-    await pline(`This book is so dull that you can't keep your ${makeplural(body_part(EYE))} open.`);
+    let eyes = body_part(EYE);
+    if (eyecount(game.youmonst.data) > 1)
+        eyes = makeplural(eyes);
+    await pline(`This book is so dull that you can't keep your ${eyes} open.`);
     dullbook += rnd(2 * lvl);
     await fall_asleep(-dullbook, true);
     return true;
@@ -1977,13 +1999,15 @@ export async function spelleffects(spell_otyp, atme, force) {
 
     /* C ref: spell.c:1411-1413 — skill = spell_skilltype(otyp) is
      * objects[otyp].oc_skill (weapon.c); role_skill = P_SKILL(skill). */
-    const skill = MKOBJ_OC_SKILL[otyp] | 0;
+    const skill = spell_skilltype(otyp); // C spell.c:1412; includes Priest light
     const role_skill = spell_skill(skill);
     let physical_damage = false;
 
     switch (otyp) {
     case SPE_FIREBALL:
     case SPE_CONE_OF_COLD:
+        /* C ref: spell.c:1421-1456 — at P_SKILLED+ these become positional
+         * (throwspell() picks a target square, then rnd(8)+1 explosions). */
         if (role_skill >= P_SKILLED) {
             if (await throwspell()) {                       /* spell.c:1422 */
                 const cc = { x: u.dx, y: u.dy };            /* spell.c:1423-1424 */
@@ -2396,13 +2420,10 @@ export function spell_idx(otyp) {
  * C ref: spell.c:342-351 book_cursed()
  * @param {object} book - spellbook object with cursed/bknown fields
  */
-export function book_cursed(book) {
+export async function book_cursed(book) {
     const g = game;
 
     // C ref: spell.c:345-350
-    // The learn() function is not yet ported; when it is, g.occupation will be
-    // set to the learn function reference. Until then, the condition is always false
-    // because g.occupation will never equal an unported function stub.
     // if (book->cursed && gm.multi >= 0
     //     && go.occupation == learn && svc.context.spbook.book == book)
 
@@ -2419,18 +2440,13 @@ export function book_cursed(book) {
 
     // C ref: spell.c:347 pline("%s shut!", Tobjnam(book, "slam"));
     const objname = Tobjnam_real(book, 'slam');
-    pline(`${objname} shut!`);
+    await pline(`${objname} shut!`);
 
     // C ref: spell.c:348 set_bknown(book, 1);
     set_bknown_real(book, 1);
 
-    // C ref: spell.c:349 stop_occupation().  book_cursed() is synchronous in
-    // C and is called from mkobj.c:curse(), so perform the studying-specific
-    // state transition here rather than awaiting allmain.stop_occupation(),
-    // whose meal-finalization path is intentionally asynchronous in JS.
-    g.occupation = null;
-    if (g.disp) g.disp.botl = 1;
-    nomul(0);
+    // C spell.c:349; allmain.c:687-695 also prints "You stop studying."
+    await stop_occupation();
 }
 
 // ────────────────────────────────────────────────────────────────────────────

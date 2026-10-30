@@ -29,12 +29,13 @@ import { clear_path, circle_ptr, vision_recalc, Blind, cansee } from './vision.j
 import { place_object, remove_object } from './mklev.js';
 import { flush_screen, canseemon, canspotmon, map_invisible, pline, impossible_sync } from './display.js';
 import { Yname2 } from './cmd.js';
+import { obj_to_any as pointer_to_any } from './cmd.js';
 import { xname, otense, simpleonames } from './objnam.js';
 import { impossible } from './pline.js';
 /* end_burn — obj_merge_light_sources's src != dest arm (light.c:812).  This is
  * the reverse edge of the js/timeout.js -> js/light.js import; see the note on
  * obj_merge_light_sources below. */
-import { end_burn } from './timeout.js';
+import { end_burn, obj_is_local } from './timeout.js';
 
 // C ref: light.c:41-43 — light_source flags.
 const LSF_SHOW = 0x1;           /* display the light source */
@@ -47,23 +48,6 @@ let light_base = null;
 // C ref: light.c:373 `#define mon_is_local(mon) ((mon)->mx > 0)`
 // (mon->mx == 0 implies migrating).
 function mon_is_local(mon) { return (mon?.mx | 0) > 0; }
-
-// C ref: light.c:340-358 obj_is_local(obj) — an object is local to the level
-// unless it is in the hero's inventory or being carried by a monster that is
-// itself not local.  Kept for the LS_OBJECT save partition below.
-function obj_is_local(obj) {
-    switch (obj?.where | 0) {
-    case OBJ_FLOOR:
-    case OBJ_BURIED:
-        return true;
-    case OBJ_CONTAINED:
-        return obj_is_local(obj.ocontainer);
-    case OBJ_MINVENT:
-        return mon_is_local(obj.ocarry);
-    default:
-        return false;
-    }
-}
 
 export function get_obj_location(obj, xp, yp, locflags = 0) {
     /* Some restored inventory objects do not carry C's OBJ_INVENT `where`
@@ -124,8 +108,8 @@ export function get_mon_location(mon, xp, yp, locflags = 0) {
  * UNION, so a_monst and a_obj are the same pointer.  del_light_source()'s
  * `curr->id.a_obj == id->a_obj` comparison relies on exactly that, which is
  * why both fields are filled here rather than one. */
-export function monst_to_any(mtmp) { return { a_monst: mtmp, a_obj: mtmp }; }
-export function obj_to_any(obj) { return { a_obj: obj, a_monst: obj }; }
+export function monst_to_any(mtmp) { return pointer_to_any(mtmp); }
+export function obj_to_any(obj) { return pointer_to_any(obj); }
 
 /* C ref: light.c:61-66 new_light_source(x, y, range, type, id) */
 export function new_light_source(x, y, range, type, id) {

@@ -1,3 +1,4 @@
+import { Mgender } from './do_name.js';
 // vault.js — port of nethack-c/src/vault.c (vault and guard logic).
 //
 // Cardinal Rule 1: the C source is the truth. This module is a faithful,
@@ -6,6 +7,7 @@
 
 import { pline, newsym, canspotmon, map_invisible, map_location, You_hear, You_see, mon_visible } from './display.js'; /* was an undeclared global: every pline() call in this file threw ReferenceError when reached */
 import { game } from './gstate.js';
+import { money_cnt } from './com_pager.js';
 import { m_canseeu } from './dochug.js';
 import { unset_seenv, Deaf } from './display.js';
 import {
@@ -66,7 +68,6 @@ function is_silent(_guard) {
     return ((game.youmonst?.data?.msound | 0) === MS_SILENT);
 }
 /* C do_name.c:1302-1308 pmname(pm, mgender) and monst.h Mgender(mon). */
-function Mgender(mtmp) { return mtmp.female ? FEMALE : MALE; }
 function pmname(pm, mgender) {
     let g = mgender;
     if (g < MALE || g >= NUM_MGENDERS || !pm?.pmnames?.[g])
@@ -158,15 +159,6 @@ export function vault_gd_watching(activity) {
 }
 
 const COIN_CLASS = 12;
-
-function money_cnt(chain) {
-    let total = 0;
-    for (let obj = chain; obj; obj = obj.nobj) {
-        if ((obj.oclass | 0) === COIN_CLASS)
-            total += obj.quan | 0;
-    }
-    return total;
-}
 
 /* vault.c:1256
  *   amount of gold in carried containers

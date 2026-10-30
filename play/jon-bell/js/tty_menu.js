@@ -213,7 +213,6 @@ export class TtyMenu {
     _setItemState(lineIdx, curr) {
         const ch = curr.selected ? (curr.count === -1 ? '+' : '#') : '-';
         const l = this._lines[lineIdx];
-        /* keep any leading escape untouched: selectable lines never carry one */
         /* a row the MENU_SEARCH getlin blanked is still painted at column 3
          * (tty_curs + putchar on an otherwise empty row) */
         /* C wintty.c:1186-1193: the indicator is drawn with the item's own
@@ -223,7 +222,11 @@ export class TtyMenu {
             : mc.color < 8 ? 30 + mc.color : 90 + mc.color - 8].filter(Boolean)
             : curr.attr === ATR_INVERSE ? [7] : curr.sgr || [];
         const cell = sgr.length ? `\x1b[${sgr.join(';')}m${ch}${ESC_RESET}` : ch;
-        this._lines[lineIdx] = l.padEnd(3).slice(0, 3) + cell + l.slice(4);
+        /* C overwrites one terminal cell, not one byte. A previous update
+         * may have wrapped this marker in SGR; replace that whole cell so
+         * toggling a styled item again preserves the following text. */
+        const tail = l.slice(3).replace(/^(?:\x1b\[[0-9;]*m)*.(?:\x1b\[0m)?/, '');
+        this._lines[lineIdx] = l.padEnd(3).slice(0, 3) + cell + tail;
     }
 
     /* Publish the current frame and park the cursor where dmore() leaves it. */
@@ -296,9 +299,8 @@ export class TtyMenu {
              * default_menu_cmds) rings the bell and is re-read INSIDE the wait,
              * so the while loop never turns over and a live count survives it
              * ("n90s" then ESC only stops the count; the second ESC cancels).
-             * Group accelerators are not modelled, so only PICK_NONE menus
-             * (which build none) are filtered. */
-            if (how === PICK_NONE && key !== 10 && key !== 13 && key !== 27 && key !== 0
+             * Group accelerators are not modelled (no menu here builds any). */
+            if (key !== 10 && key !== 13 && key !== 27 && key !== 0
                 && morc !== ' ' && !(morc >= '0' && morc <= '9')
                 && '<>^|,\\~.-@:'.indexOf(morc) < 0
                 && !this.mlist.slice(from, to).some((c) => c.aInt && c.selector === morc)) {
@@ -446,6 +448,15 @@ export class TtyMenu {
         /* wintty.c:3684 docorner(offx, ...) repaints map cells from offx on, in the
          * rows the dismissed window covered, with the live use_color. */
         if (this.overlay) {
+            /* wintty.c:982,3684-3688: docorner erases row 0 from offx-1,
+             * leaving only the prefix of an EMPTY message window's residue.
+             * Its logical EMPTY state survives dismissal and further input. */
+            if (game._topl_empty_sticky
+                && game._topl_sticky === game._topl_empty_sticky) {
+                game._topl_sticky = game._topl_sticky.slice(0,
+                    Math.max(0, this.contentCol - 2)).trimEnd();
+                game._topl_empty_sticky = game._topl_sticky;
+            }
             const prev = game._gm_corner;
             game._gm_corner = { col: Math.min(this.contentCol, prev?.col ?? Infinity),
                                 rows: Math.max(this._lines.length, prev?.rows ?? 0) };

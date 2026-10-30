@@ -100,7 +100,7 @@ const MM_NONAME = 0x00000040;  /* js/const.js:2147 */
  * new export, because cmd.c importing bones.c would close a cycle. */
 export function ledger_no(uz) {
     const dgn = game.dungeons?.[uz?.dnum | 0];
-    return (uz?.dlevel | 0) + (dgn?.ledger_start | 0);
+    return (((uz?.dlevel | 0) + (dgn?.ledger_start | 0)) << 16) >> 16;
 }
 
 function dgn_boneid(dnum) {

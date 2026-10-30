@@ -309,10 +309,9 @@ async function out_container(box, obj) {
         const blast = game._touch_artifact_blast_msg;
         game._touch_artifact_blast_msg = null;
         if (blast) await force_more(blast);
-        if (!touched) {
-            await pline('%s your grasp!', Tobjnam(obj, 'evade'));
-            return 0;
-        }
+        /* touch_artifact (artifact.c:966) already printed the "evades your
+         * grasp!" line; C's out_container (pickup.c:2721) adds nothing. */
+        if (!touched) return 0;
     }
     if (await fatal_corpse_mistake(obj, false)) return -1;
     const cnt = { v: obj.quan };
@@ -417,10 +416,19 @@ async function in_or_out_menu(promptText, box, outokay, inokay, alreadyused, mor
     const BYKEY = new Map(items.map((it) => [it.disp.charCodeAt(0), it.canon]));
     const cancelDefault = qDefault ? 'q' : 'n';
     let chosen = cancelDefault;
+    let pendingCount = 0n;
     while (true) {
         g._screen_output = screenOutput;
         set_cursor(endCursorCol, endRow);
         const k = await nhgetch();
+        // C wintty.c:1566-1616: ESC first cancels a pending count.
+        if (k >= 48 && k <= 57) {
+            pendingCount = pendingCount * 10n + BigInt(k - 48);
+            if (pendingCount > 0x7fffffffffffffffn) pendingCount = 0n;
+            continue;
+        }
+        if (k === 27 && pendingCount) { pendingCount = 0n; continue; }
+        pendingCount = 0n;
         if (k === 27 /* ESC */) { chosen = 'q'; break; }
         /* C wintty.c:1654-1657, 1679-1692 MENU_UNSELECT_PAGE / _ALL ('\\', '-')
          * work in PICK_ONE too: the pre-marked entry is deselected and
@@ -438,8 +446,8 @@ async function in_or_out_menu(promptText, box, outokay, inokay, alreadyused, mor
         /* pickup.c:3476: n == 0 -> (more_containers ? 'n' : 'q'). */
         const commit = anySelected ? cancelDefault : (more_containers ? 'n' : 'q');
         if (k === 32 /* SPACE */) { chosen = commit; break; }
-        /* RETURN/ENTER selects the default (the SELECTED entry: 'q' or 'n'). */
-        if (k === 10 || k === 13) { chosen = commit; break; }
+        /* NUL/RETURN/ENTER commits the default (the SELECTED entry: 'q' or 'n'). */
+        if (k === 0 || k === 10 || k === 13) { chosen = commit; break; }
         if (BYKEY.has(k)) { chosen = BYKEY.get(k); break; }
         /* C tty: any other non-accelerator key is ignored; menu stays up. */
     }
@@ -574,7 +582,7 @@ function _loot_classify(obj) {
      * by default, optlist.h opt_out/On), else def_srt_order (invent.c:155-159),
      * which moves the classes most likely to be picked up to the front. */
     const classorder = (game.flags?.sortpack === false) ? _LOOT_DEF_SRT_ORDER
-                                                        : _QC_INV_ORDER;
+                                                        : (game.flags?.inv_order || _QC_INV_ORDER);
     const k = classorder.indexOf(obj.oclass | 0);
     return (k >= 0) ? (1 + k) : (1 + classorder.length + 1);
 }
@@ -1115,7 +1123,7 @@ async function _query_category(contents, action, withJustPicked) {
     /* C count_categories(olist, qflags) — distinct oclasses in the list, in
      * flags.inv_order order (the `pack` walk at pickup.c:1348-1372). */
     const present = [];
-    for (const oc of _QC_INV_ORDER)
+    for (const oc of (game.flags?.inv_order || _QC_INV_ORDER))
         if (contents.some(o => (o.oclass | 0) === oc)) present.push(oc);
     for (const o of contents) {
         const oc = o.oclass | 0;
@@ -1347,7 +1355,7 @@ async function _menu_loot_items(chainHead, contents, action, useInvlet) {
     const entries = [];  /* { text, item? } in display order */
     const items = [];
     let first = true;
-    for (const oc of _QC_INV_ORDER) {
+    for (const oc of (game.flags?.inv_order || _QC_INV_ORDER)) {
         let printed_type_name = false;
         for (const o of sorted) {
             if ((o.oclass | 0) !== oc) continue;

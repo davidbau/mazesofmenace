@@ -8,7 +8,7 @@ import { game } from './gstate.js';
 import { costly_alteration } from './cmd.js';
 import { costly_spot, shop_keeper, stolen_value, obfree, currency } from './shk.js';
 import { obj_extract_self, start_corpse_timeout } from './mklev.js';
-import { delobj } from './dokick.js';
+import { delobj, acurrstr as effective_strength } from './dokick.js';
 import { stackobj } from './sp_lev.js';
 import { COST_BRKLCK } from './const.js';
 import { bhp_is_lava as is_lava, verbalize } from './cmd.js';
@@ -80,7 +80,7 @@ const SPE_POLYMORPH_OTYP_LK = 399;
  * the mons[] index 343 (js/pm.generated.js:345), the same reader js/dokick.js
  * maybe_wail() and js/cmd.js msnoise use: `game.urole.mnum === PM_WIZARD`. */
 const PM_WIZARD_LK = 343;
-import { simple_typename, xname_flags, xname, singular, cxname, doname, ansimpleoname, The, An } from './objnam.js';
+import { simple_typename, xname_flags, xname, singular, cxname, doname, ansimpleoname, The, An, is_quest_artifact } from './objnam.js';
 import { safe_qbuf } from './shk.js';
 import { weapon_type, WEAPON_WLDAM, m_at, mon_nam } from './uhitm.js';
 import { place_object } from './mklev.js';
@@ -147,17 +147,7 @@ function _rawRnd(x) {
  * For Str <= 18 (normal human): result = max(str, 3) = str.
  * For higher Str values: follows 18/xx encoding; mirrors C exactly. */
 function acurrstr() {
-    const u = game.u || {};
-    /* acurr(u, A_STR) returns the effective Str in C's encoding (3..125) */
-    const str = acurr(u, A_STR); /* A_STR=0 */
-    let result;
-    if (str <= 18) /* STR18(0) = 18 */
-        result = Math.max(str, 3);
-    else if (str <= 121) /* STR19(21) = 121 */
-        result = 19 + Math.trunc(str / 50);
-    else
-        result = Math.min(str, 125) - 100;
-    return result;
+    return effective_strength(game.u);
 }
 
 export async function doopen_indir(x, y) {
@@ -763,11 +753,7 @@ export async function doclose() {
 /* C ref: attrib.c:1251 acurrstr() — STR encoding map. Duplicated from
  * doopen_indir; identical behavior. */
 function _acurrstr() {
-    const u = game.u || {};
-    const str = acurr(u, A_STR);
-    if (str <= 18) return Math.max(str, 3);
-    if (str <= 121) return 19 + Math.trunc(str / 50);
-    return Math.min(str, 125) - 100;
+    return effective_strength(game.u);
 }
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -1374,17 +1360,31 @@ function is_pick_force(o) {
     return weapon_type(o) === P_PICK_AXE_SK;
 }
 
+/* C ref: lock.c:288 autokey(boolean opening) — pick a tool for autounlock.
+ *   Other roles' quest artifacts are fallback tools only (lock.c:298-343).
+ *   Among ordinary/own-role keys, prefer a magic key (lock.c:318). */
 export function autokey(opening) {
     let key = null, pick = null, card = null;
+    let akey = null, apick = null, acard = null;
     for (let o = game.invent; o; o = o.nobj) {
-        switch (o.otyp | 0) {
-            case SKELETON_KEY_OTYP: if (!key) key = o; break;
+        if ((o.oartifact | 0) >= 21 /* ART_ORB_OF_DETECTION, obj.h:271 */ && !is_quest_artifact(o)) {
+            switch (o.otyp | 0) {
+                case SKELETON_KEY_OTYP: if (!akey) akey = o; break;
+                case LOCK_PICK_OTYP: if (!apick) apick = o; break;
+                case CREDIT_CARD_OTYP: if (!acard) acard = o; break;
+                default: break;
+            }
+        } else switch (o.otyp | 0) {
+            case SKELETON_KEY_OTYP: if (!key || is_magic_key_hero(o)) key = o; break;
             case LOCK_PICK_OTYP: if (!pick) pick = o; break;
             case CREDIT_CARD_OTYP: if (!card) card = o; break;
             default: break;
         }
     }
-    if (!opening) card = null;
+    if (!opening) card = acard = null;
+    if (!key && !pick && !card) key = akey;
+    if (!pick && !card) pick = apick;
+    if (!card) card = acard;
     return key ? key : (pick ? pick : (card ? card : null));
 }
 

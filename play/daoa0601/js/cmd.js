@@ -1,5 +1,5 @@
 import { selectContextMenu } from './context_menu.js';
-import { CLICK_1, CLICK_2 } from './const.js';
+import { CLICK_1, CLICK_2, xdir, ydir } from './const.js';
 import { queueCommandResponses } from './input.js';
 import { setHeroGrip } from './hero_grip.js';
 import { heroCouldMoveOntoBoulder, pushBouldersAt } from './boulder_push.js';
@@ -30,6 +30,7 @@ import { wizIntrinsic } from './wizard_intrinsics.js';
 import { wizTimeoutQueue } from './timeout_queue.js';
 import { wizFuzzer, wizPanic } from './wizard_debug_commands.js';
 import { wizSmell } from './wizard_smell.js';
+import { wizRumorCheck } from './wizard_rumor_check.js';
 import { wizBury } from './wizard_bury.js';
 import { wizMigrateMonsters } from './wizard_migration.js';
 import { wizFlipLevel } from './wizard_flip_level.js';
@@ -107,7 +108,8 @@ import { descendFromLevitation, floatingAbove } from './levitation_commands.js';
 import { beginCommandResult, clearCannedCommands, commandResultCancelled, commandResultFailed, commandResultSpentTime, endVoluntaryMultiTurn, resetCommandVariables, nomul, setMulti } from './command_state.js';
 import { finishHeroHelplessness } from './allmain.js';
 import { grantIntrinsicProperty, propertyIsActive } from './properties.js';
-import { pickupAtHero, pickupObjectClass, pickupClassOrder, } from './pickup.js';
+import { pickupAtHero } from './pickup.js';
+import { inventorySortMode, objectClassHeading, sortObjects } from './object_sort.js';
 import { gotoLevel } from './level_change.js';
 import { levelTeleport } from './level_teleport.js';
 import { confirmHeroStep } from './hero_step_confirmation.js';
@@ -152,7 +154,7 @@ import { nameIndividualObject } from './individual_naming.js';
 import { nameChosenMonster } from './monster_naming_command.js';
 import { nameFloorObject } from './floor_naming.js';
 import { chooseNamingCategory } from './naming_categories.js';
-import { displayLiquidName, displayMessageWindow, newsym, feel_newsym, flushPendingTopline, flush_screen, pline, plineWithContinuation, moreUntilDismissed, docrt, setTopline, putMessageHistory, rememberToplines, bot, terrain_glyph, glyphAt, canSeeMonster, canSpotMonster, canSenseMonster, canSpotHeroSelf, monsterVisible, unblindTelepathyRange, monsterHasWarningProjection, show_glyph_cell, swallowed, transientMonsterGlyph, randomDisplayMonsterName, randomDisplayMonsterSubject, see_monsters, see_objects, see_traps, map_invisible, unmap_invisible, map_object, unmapObject, } from './display.js';
+import { displayLiquidName, displayMessageWindow, newsym, feel_newsym, flushPendingTopline, flush_screen, pline, plineWithContinuation, moreUntilDismissed, docrt, setTopline, putMessageHistory, rememberToplines, bot, terrain_glyph, glyphAt, canSeeMonster, canSpotMonster, canSenseMonster, canSpotHeroSelf, monsterVisible, unblindTelepathyRange, pline_dir, set_msg_xy, monsterHasWarningProjection, show_glyph_cell, swallowed, transientMonsterGlyph, randomDisplayMonsterName, randomDisplayMonsterSubject, see_monsters, see_objects, see_traps, map_invisible, unmap_invisible, map_object, unmapObject, } from './display.js';
 import { cansee, couldsee, vision_note_blocker_change, vision_recalc, vision_reset } from './vision.js';
 import { doprevMessage, keyText, messageWindowMode } from './prevmsg.js';
 import { transformMagicLampToOilLamp } from './light.js';
@@ -545,6 +547,13 @@ const TRAVEL_DIRECTIONS = [
     [-1, 0], [0, -1], [1, 0], [0, 1],
     [-1, -1], [1, -1], [1, 1], [-1, 1],
 ];
+// C hacklib.c xytodir() via cmd.c: returns -1 (DIR_ERR) when the offsets
+// match no direction, e.g. a zero offset; set_msg_dir then keeps the
+// previous message location, matching dirtocoord().
+function xyToDirection(dx, dy) {
+    const direction = xdir.findIndex((x, index) => x === dx && ydir[index] === dy);
+    return direction < 8 ? direction : -1;
+}
 function closedTravelDoor(x, y, g) {
     const location = g.level?.at(x, y);
     return location?.typ === DOOR && !!(location.doormask & (D_CLOSED | D_LOCKED));
@@ -762,8 +771,11 @@ async function travelLookaroundStops(g = game) {
             if (monster && M_AP_TYPE(monster) !== M_AP_FURNITURE
                 && M_AP_TYPE(monster) !== M_AP_OBJECT
                 && monsterVisible(monster, g) && !safeMonster) {
-                if (g.flags.mention_walls)
+                if (g.flags.mention_walls) {
+                    // C lookaround() reports the blocking monster via pline_xy().
+                    set_msg_xy(x, y);
                     await plineWithContinuation(`${monsterName(monster, { state: g, article: 'a', capitalized: true })} blocks your path.`);
+                }
                 return true;
             }
             const location = level.at(x, y);
@@ -851,8 +863,11 @@ export async function lookaroundRun(state = game._runState, g = game) {
             const visibleHostile = visibleMonster && !safeMonster;
             if (visibleMonster && (infront
                 || (run !== 1 && visibleHostile))) {
-                if (g.flags.mention_walls)
+                if (g.flags.mention_walls) {
+                    // C lookaround() reports the blocking monster via pline_xy().
+                    set_msg_xy(x, y);
                     await plineWithContinuation(`${monsterName(monster, { state: g, article: 'a', capitalized: true })} blocks your path.`);
+                }
                 return false;
             }
             const loc = g.level.at(x, y);
@@ -882,8 +897,11 @@ export async function lookaroundRun(state = game._runState, g = game) {
                     if (x !== u.ux && y !== u.uy)
                         continue;
                     if (run !== 1) {
-                        if (g.flags.mention_walls)
+                        if (g.flags.mention_walls) {
+                            // C lookaround() marks the door square via set_msg_xy().
+                            set_msg_xy(x, y);
                             await plineWithContinuation('You stop in front of the door.');
+                        }
                         return false;
                     }
                     corridorLike = true;
@@ -3883,6 +3901,7 @@ const EXTENDED_COMMAND_HANDLERS = new Map([
     ['wizgenesis', wizGenesis],
     ['wizdetect', wizDetect],
     ['wizsmell', () => wizSmell()],
+    ['wizrumorcheck', wizRumorCheck],
     ['wizbury', wizBury],
     ['wiztelekinesis', wizTelekinesis],
     ['migratemons', wizMigrateMonsters],
@@ -4950,7 +4969,24 @@ async function wizIdentify() {
         game.context.move = 0;
         return;
     }
-    const unidentified = game.inventory.filter(objectNeedsFullIdentification);
+    if (game.flags.fixinv === false)
+        reassignInventoryLetters();
+    // display_pickinv() sorts the whole inventory before omitting fully
+    // identified objects. Wizard naming also applies during the sort, so
+    // alphabetization uses the names the menu reveals without discovering them.
+    const override = game.iflags.override_ID;
+    game.iflags.override_ID = true;
+    let ordered;
+    try {
+        ordered = sortObjects(game.inventory, { mode: inventorySortMode() });
+    }
+    finally {
+        if (override === undefined)
+            delete game.iflags.override_ID;
+        else
+            game.iflags.override_ID = override;
+    }
+    const unidentified = ordered.filter(objectNeedsFullIdentification);
     if (!unidentified.length) {
         await showTextMenuOverlay([
             'Debug Identify',
@@ -4959,24 +4995,6 @@ async function wizIdentify() {
         game._pending_message = '';
         game.context.move = 0;
         return;
-    }
-    const sections = [];
-    for (const heading of pickupClassOrder()) {
-        const objects = unidentified
-            .filter(item => pickupObjectClass(item) === heading)
-            .sort((a, b) => inventoryCommandLetter(a).localeCompare(inventoryCommandLetter(b)));
-        if (!objects.length)
-            continue;
-        const items = [];
-        for (const item of objects) {
-            observeObjectForNaming(item);
-            items.push({
-                key: inventoryCommandLetter(item),
-                text: await wizardIdentifyDescription(item, inventoryPrimaryHandDetail(item)),
-                value: item,
-            });
-        }
-        sections.push({ heading, items });
     }
     const allKey = game.commandBindings.keyForCommand('wizidentify') || 9;
     const window = tty_create_nhwindow(NHW_MENU);
@@ -4993,13 +5011,17 @@ async function wizIdentify() {
             text: `select ${unidentified.length === 1
                 ? 'it' : 'any or all of them'} to permanently identify${unidentified.length === 1 ? '' : ` (${visibleCommandKey(allKey)} for all)`}`,
         });
-        for (const section of sections) {
-            addMenuHeading(window, section.heading);
-            for (const item of section.items)
-                tty_add_menu(window, {
-                    identifier: item.value, selector: item.key,
-                    group: OBJECT_CLASS_SYMBOLS[item.value.oclass] ?? '', text: item.text,
-                });
+        let previousClass = null;
+        for (const item of unidentified) {
+            if (game.flags.sortpack !== false && item.oclass !== previousClass)
+                addMenuHeading(window, objectClassHeading(item.oclass));
+            previousClass = item.oclass;
+            observeObjectForNaming(item);
+            tty_add_menu(window, {
+                identifier: item, selector: inventoryCommandLetter(item),
+                group: OBJECT_CLASS_SYMBOLS[item.oclass] ?? '',
+                text: await wizardIdentifyDescription(item, inventoryPrimaryHandDetail(item)),
+            });
         }
         tty_end_menu(window);
         const result = await tty_select_menu(window, PICK_ANY);
@@ -8079,13 +8101,17 @@ async function domoveCore(dx, dy) {
             await pline('The Sokoban walls resist your ability.');
         }
         else if (game.flags?.mention_walls) {
-            const obstruction = loc?.typ === STONE
-                ? 'solid stone'
-                : loc?.typ === TREE ? 'a tree'
-                    : loc && IS_WALL(loc.typ) ? 'a wall' : '';
-            const message = obstruction ? `It's ${obstruction}.` : '';
-            if (message)
-                await pline(message);
+            // C test_move() names the obstruction from back_to_glyph(), so
+            // an undetected secret door reads as a wall, a secret corridor
+            // and an unseen square as solid stone, and arboreal stone as a
+            // tree; pline_dir() marks the message's direction.
+            let obstruction = '';
+            if (loc) {
+                const name = terrain_glyph(loc, newx, newy).terrainName;
+                obstruction = name === 'stone' ? 'solid stone' : withIndefiniteArticle(name);
+            }
+            if (obstruction)
+                await pline_dir(xyToDirection(dx, dy), `It's ${obstruction}.`);
         }
         return rejectHeroMove();
     }
@@ -8110,7 +8136,8 @@ async function domoveCore(dx, dy) {
         && !game.blind && !hallucinating
         && !heroCouldMoveOntoBoulder(newx, newy)) {
         if (game.flags?.mention_walls)
-            await pline('A boulder blocks your path.');
+            // C test_move() reports the boulder through pline_dir().
+            await pline_dir(xyToDirection(dx, dy), 'A boulder blocks your path.');
         return rejectHeroMove();
     }
     if (boulder) {

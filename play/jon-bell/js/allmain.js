@@ -7,6 +7,7 @@ import { nhlib_com_pager_rng } from './nhlib.js';
 //
 // Real mklev.js handles level generation for screen parity.
 import { game } from './gstate.js';
+import monsPack from './makemon_mons.json' with { type: 'json' };
 import { bc_sanity_check } from './ball.js';
 import { m_everyturn_effect } from './monmove.js';
 import { rehumanize, polymon } from './polyself.js';
@@ -28,7 +29,7 @@ import { l_nhcore_call, NHCORE_START_NEW_GAME, NHCORE_MOVELOOP_TURN,
 import { clear_bypasses, sink_into_lava } from './trap.js';
 import { notice_all_mons, pooleffects, rhack, check_special_room, domove, prayer_done, deferred_goto, schedule_goto, heal_legs, timed_occupation, cmdq_clear, cmdq_peek, wipeoff, body_part, surface, confdir, hurtle, instapetrify, runmode_delay_output, take_off_occ, dolookaround_cmd } from './cmd.js';
 import { lookaround, end_running, is_pool, is_pool_or_lava } from './look.js';
-import { docrt, cls, bot, timebot, status_eval_next_unhilite, time_botl_moves_incremented, time_botl_run_ended, flush_screen, tty_repaint, pline, urgent_pline, Norep, _topl_joins_committed, _topl_record_join, occupation_painted_tick, occupation_freeze_snapshot, occupation_painted_reset, occupation_force_more, _movemon_page_frames_reset, run_page_frame_tick, run_page_frame_reset, capture_painted_frame, capture_pre_movemon_botl, force_more, _topl_merge_result, _topl_joins_snapshot } from './display.js';
+import { reset_glyphmap, docrt, cls, bot, timebot, status_eval_next_unhilite, time_botl_moves_incremented, time_botl_run_ended, flush_screen, tty_repaint, pline, urgent_pline, Norep, _topl_joins_committed, _topl_record_join, occupation_painted_tick, occupation_freeze_snapshot, occupation_painted_reset, occupation_force_more, _movemon_page_frames_reset, run_page_frame_tick, run_page_frame_reset, capture_painted_frame, capture_pre_movemon_botl, force_more, _topl_merge_result, _topl_joins_snapshot } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { fastforward_pre_mklev, fastforward_post_mklev, fastforward_step, fastforward_fill_mineralize, fmon_dochug_dispatch, NORMAL_SPEED, FF_FAITHFUL, ff_movemon_phase, ff_head_phase, ff_head_phase_pre, ff_head_phase_post, vomiting_dialogue_ff, sickness_dialogue_ff, choke_dialogue_ff } from './fastforward.js';
 import { makedog, dismount_steed } from './dog.js';
@@ -340,6 +341,7 @@ export async function newgame() {
     await fastforward_pre_mklev(g.flags?.initrole ?? -1, g.flags?.initrace ?? -1);
     // C allmain.c: newgame creates the persistent core Lua state.
     await l_nhcore_init();
+    reset_glyphmap(1); // C allmain.c:797 gm_newgame
     // fastforward_pre_mklev has initialized the canonical dungeon table,
     // including ledger_start and dunlev_ureached. Do not copy or reset it here.
     g.u = g.u || {};
@@ -2429,7 +2431,7 @@ async function nh_timeout_deaf() {
     if ((u.HDeaf | 0) !== 0)
         return;
     u.HDeaf = 1;                /* C set_itimeout(&HDeaf, 1L) */
-    make_deaf(0, true);
+    await make_deaf(0, true);
     g.disp = g.disp || {};
     g.disp.botl = 1;
     if (!Deaf_am())
@@ -2461,23 +2463,10 @@ function Deaf_am() {
  *     }
  * Unaware is youprop.h:399 (gm.multi < 0 && (unconscious() || is_fainted())) —
  * the real ported bodies, not the `multi < 0` approximation this file carried.
- * set_itimeout on the plain u.HDeaf counter is an assignment; there are no
- * FROMOUTSIDE-style flag bits on this slot in this port.
- * pline() has no await in its body, so the unawaited call commits the message
- * in full — the same shape js/zap.js's make_blinded relies on. */
+ * Share potion.c's setter so both HDeaf representations and timeout flags
+ * stay synchronized, including when the recovery message pages. */
 function make_deaf(xtime, talk) {
-    const u = game.u || (game.u = {});
-    const old = u.HDeaf | 0;
-    if (((game.multi | 0) < 0) && (unconscious() || is_fainted()))
-        talk = false;
-    u.HDeaf = xtime | 0;
-    if (((xtime | 0) !== 0) !== (old !== 0)) {
-        game.disp = game.disp || {};
-        game.disp.botl = 1;
-        if (talk)
-            pline((old && !Deaf_am()) ? 'You can hear again.'
-                                      : 'You are unable to hear anything.');
-    }
+    return make_deaf_prop(xtime, talk);
 }
 
 /* C mbodypart() part index (hack.h BP_* enum): FOOT.  js/cmd.js body_part()
@@ -2723,19 +2712,19 @@ export function monster_nearby() {
              * polymorphed monster's current form can differ from mndx. */
             const mndx = (mtmp.data?.pmidx ?? mtmp.mndx ?? mtmp.mnum ?? -1) | 0;
             // C: skip mimicked furniture/objects (M_AP_FURNITURE/OBJECT).
-            const apType = mtmp.m_ap_type | 0;
+            const apType = (mtmp.m_ap_type | 0) & 0x7; // M_AP_TYPE
             if (apType === 1 /* M_AP_FURNITURE */ || apType === 2 /* M_AP_OBJECT */)
                 continue;
             // C: hostile-and-can-attack (or hallucinating).  noattacks_mndx is
             // the mndx-keyed form of noattacks(mtmp->data).
             if (!(hallu || (!mtmp.mpeaceful && !noattacks_mndx(mndx))))
                 continue;
-            // C: not a still-hidden hider (is_hider && mundetected).  Hiders are
-            if (mtmp.mundetected && mtmp._is_hider)
+            // C hack.c:4121: is_hider tests the current form's M1_HIDE bit.
+            if (mtmp.mundetected
+                && ((mtmp.data?.mflags1 ?? monsPack.mons[mndx]?.[6] ?? 0) & 0x100))
                 continue;
             // C: not helpless (asleep/frozen).  Our roster tracks mcanmove.
-            if (mtmp.mcanmove === false || (mtmp.mfrozen | 0) > 0
-                || (mtmp.msleeping | 0))
+            if (!mtmp.mcanmove || mtmp.msleeping)
                 continue;
             // C hack.c:4123: !onscary(u.ux, u.uy, mtmp) — a monster scared by
             // the hero's square (Elbereth, scare monster) does not interrupt.
@@ -3178,10 +3167,12 @@ async function moveloop_core_faithful() {
     if (typeof process !== 'undefined' && ENV?.FF_DISPLAY_TRACE === '1') {
         pushRngLogEntry(`^vision_boundary[phase=before_redraw moves=${g.moves | 0} mv=${g.context?.mv ? 1 : 0} blind=${Blind() ? 1 : 0} full=${g.vision_full_recalc ? 1 : 0}]`);
     }
-    if (g._ff_input_tail_done)
+    if (g._ff_input_tail_done && !incomingMove)
         g._ff_input_tail_done = false;
-    else if (!g._pendingDeath)
+    else if (!g._pendingDeath) {
+        g._ff_input_tail_done = false;
         faithful_input_redraw();
+    }
     if (typeof process !== 'undefined' && ENV?.FF_DISPLAY_TRACE === '1') {
         pushRngLogEntry(`^vision_boundary[phase=after_redraw moves=${g.moves | 0} mv=${g.context?.mv ? 1 : 0} blind=${Blind() ? 1 : 0} full=${g.vision_full_recalc ? 1 : 0}]`);
     }
@@ -4419,6 +4410,7 @@ async function moveloop_core_faithful() {
         // pages it with a --More-- (C step 3: "A little goes a long way.--More--").
         // Guard `!g._occ_committed_topl` so this start block fires only on the rhack
         // that set the occupation, not on continuation re-entries.
+        let _startOwnerLine = null;
         if (g._resultMessage) {
             /* The begin plines (eatcorpse's flavor line, cprefx's "You cannibal!")
              * each ran their own update_topl; one that overflows the CO-1-8
@@ -4438,16 +4430,30 @@ async function moveloop_core_faithful() {
                 const frame = g._eatPreEffectFrame;
                 let committed = segs[0];
                 let committedEnd = committed.length;
+                let ownerAfterEsc = false;
                 for (const seg of segs.slice(1)) {
                     if (_topl_joins_committed(committed, seg)) {
                         committed = committed + '  ' + seg;
+                        ownerAfterEsc = false;
                     } else {
-                        await occupation_force_more(committed, frame?.cells || null,
+                        const morc = await occupation_force_more(committed, frame?.cells || null,
                                                     g.moves | 0, null, false,
                                                     { full: text, end: committedEnd });
                         committed = seg;
+                        ownerAfterEsc = morc === 27 && !!g._topl_win_stop_armed;
                     }
                     committedEnd += 2 + seg.length;
+                }
+                /* topl.c:232-235/:257-300: the pline whose update_topl raised an
+                 * ESC'd more() is still drawn (skip was sampled before more())
+                 * and is the owner that turns WIN_STOP live, so the turn's later
+                 * plines (make_stunned's "steadier", stop_occupation's "You
+                 * stop eating") are suppressed instead of paging it. */
+                if (ownerAfterEsc) {
+                    g._topl_win_stop_armed = false;
+                    g._topl_win_stop = true;
+                    g._topl_win_stop_buf = committed;
+                    _startOwnerLine = committed;
                 }
                 text = committed;
             }
@@ -4458,7 +4464,7 @@ async function moveloop_core_faithful() {
         // _occ_committed_topl now (it is the committed topline shown until the first
         // eating turn pages it).  Leaving it in _pending_message would let the
         // incomingMove merge re-fold it into _resultMessage next turn (double-count).
-        g._pending_message = '';
+        g._pending_message = _startOwnerLine || '';
         g.context = g.context || {};
         g.context.move = 1;
     }

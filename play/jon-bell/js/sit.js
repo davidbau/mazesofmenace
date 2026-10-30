@@ -480,7 +480,7 @@ function SET_BOTL() {
  * bodies in js/display.js (newsym display.c:925, newsym_force is newsym plus
  * the forced-redraw bookkeeping display.c:2325-ish). */
 /* C pline.c:386 You_feel(line) — preserve the throne-effect feedback. */
-function You_feel(msg) { return pline('You feel ' + msg); }
+import { You_feel, pline_The } from './display.js';
 /* stub: Your — side-effect only */
 /* Your: LOCAL EMPTY STUB DELETED — see import above. */
 /* see_monsters: LOCAL EMPTY STUB DELETED — re-pointed to js/display.js's real
@@ -554,7 +554,7 @@ async function _attrcurse_body(u) {
     case 1:
         if ((u.HFire_resistance | 0) & INTRINSIC) {
             u.HFire_resistance = (u.HFire_resistance | 0) & ~INTRINSIC;
-            You_feel("warmer.");
+            await You_feel("warmer.");
             ret = FIRE_RES;
             break;
         }
@@ -562,7 +562,7 @@ async function _attrcurse_body(u) {
     case 2:
         if ((u.HTeleportation | 0) & INTRINSIC) {
             u.HTeleportation = (u.HTeleportation | 0) & ~INTRINSIC;
-            You_feel("less jumpy.");
+            await You_feel("less jumpy.");
             ret = TELEPORT;
             break;
         }
@@ -570,7 +570,7 @@ async function _attrcurse_body(u) {
     case 3:
         if ((u.HPoison_resistance | 0) & INTRINSIC) {
             u.HPoison_resistance = (u.HPoison_resistance | 0) & ~INTRINSIC;
-            You_feel("a little sick!");
+            await You_feel("a little sick!");
             ret = POISON_RES;
             break;
         }
@@ -589,7 +589,7 @@ async function _attrcurse_body(u) {
     case 5:
         if ((u.HCold_resistance | 0) & INTRINSIC) {
             u.HCold_resistance = (u.HCold_resistance | 0) & ~INTRINSIC;
-            You_feel("cooler.");
+            await You_feel("cooler.");
             ret = COLD_RES;
             break;
         }
@@ -597,7 +597,7 @@ async function _attrcurse_body(u) {
     case 6:
         if ((u.HInvis | 0) & INTRINSIC) {
             u.HInvis = (u.HInvis | 0) & ~INTRINSIC;
-            You_feel("paranoid.");
+            await You_feel("paranoid.");
             ret = INVIS;
             break;
         }
@@ -623,7 +623,7 @@ async function _attrcurse_body(u) {
     case 8:
         if ((u.uprops?.[FAST]?.intrinsic | 0) & INTRINSIC) {
             u.uprops[FAST].intrinsic = (u.uprops[FAST].intrinsic | 0) & ~INTRINSIC;
-            You_feel("slower.");
+            await You_feel("slower.");
             ret = FAST;
             break;
         }
@@ -631,7 +631,7 @@ async function _attrcurse_body(u) {
     case 9:
         if ((u.HStealth | 0) & INTRINSIC) {
             u.HStealth = (u.HStealth | 0) & ~INTRINSIC;
-            You_feel("clumsy.");
+            await You_feel("clumsy.");
             ret = STEALTH;
             break;
         }
@@ -640,7 +640,7 @@ async function _attrcurse_body(u) {
         /* intrinsic protection is just disabled, not set back to 0 */
         if ((u.HProtection | 0) & INTRINSIC) {
             u.HProtection = (u.HProtection | 0) & ~INTRINSIC;
-            You_feel("vulnerable.");
+            await You_feel("vulnerable.");
             ret = PROTECTION;
             break;
         }
@@ -648,7 +648,7 @@ async function _attrcurse_body(u) {
     case 11:
         if ((u.HAggravate_monster | 0) & INTRINSIC) {
             u.HAggravate_monster = (u.HAggravate_monster | 0) & ~INTRINSIC;
-            You_feel("less attractive.");
+            await You_feel("less attractive.");
             ret = AGGRAVATE_MONSTER;
             break;
         }
@@ -806,12 +806,6 @@ export async function msummon(mon) {
 /* polyself: LOCAL EMPTY STUB DELETED — see import above. */
 /* make_glib: re-exported from js/potion.js (its C home) — see the import note. */
 export { make_glib };
-function pline_The(fmt, ...args) {
-    let msg = String(fmt ?? '');
-    for (const arg of args)
-        msg = msg.replace(/%s|%d/, String(arg));
-    return pline(`The ${msg}`);
-}
 /* ---------------------------------------------------------------------------
  * special_throne_effect — Vlad's Tower throne effects (effects 1-13).
  * C ref: nethack-c-v5/upstream/src/sit.c:238 special_throne_effect(int effect)

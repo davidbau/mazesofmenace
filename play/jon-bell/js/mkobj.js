@@ -14,7 +14,8 @@ import { game } from './gstate.js';
 /* C mkobj.c curse()/unbless() side-effect arms, each imported from the file that
  * already holds its one real body: */
 import { confers_luck } from './attrib.js';   /* artifact.c:524 */
-import { set_moreluck, drop_uswapwep } from './cmd.js'; /* attrib.c / wield.c */
+import { set_moreluck, drop_uswapwep, obj_to_any } from './cmd.js'; /* attrib.c / wield.c */
+import { stop_timer } from './timeout.js';
 import { arti_light_radius, maybe_adjust_light } from './light.js';
 import { bimanual, reset_remarm } from './do_wear.js'; /* mondata.h:69 / do_wear.c */
 import { book_cursed } from './spell.js';     /* spell.c:2093 */
@@ -22,7 +23,7 @@ import { cansee, Blind } from './vision.js';
 import { pline, You_see, You_hear } from './display.js';
 import { Your } from './do_wear.js';
 import { makeplural, obj_typename, oname } from './objnam.js';
-import { HALLUC, OBJ_FLOOR, OBJ_INVENT, MON_DETACH, ONAME_SKIP_INVUPD } from './const.js';
+import { HALLUC, HALLUC_RES, OBJ_FLOOR, OBJ_INVENT, MON_DETACH, ONAME_SKIP_INVUPD } from './const.js';
 
 // C mkobj.c:113: both gameplay callers overwrite the allocated monst before
 // reading it (copy_oextra/save_mtraits). No monster ID or RNG is allocated.
@@ -356,23 +357,21 @@ export async function unbless(otmp) {
  *     else if (otmp->otyp == FIGURINE && otmp->timed)
  *         (void) stop_timer(FIG_TRANSFORM, obj_to_any(otmp));
  *
- * The lamplit bracket is omitted for reason (a) above.  The FIGURINE arm is
- * the exact mirror of curse()'s figurine arm and is omitted for the same
- * reason recorded there — this port has no FIG_TRANSFORM timer to stop, so
- * there is nothing for stop_timer to cancel.  Both are RNG-free. */
-export function uncurse(otmp) {
+ * C mkobj.c:1824-1837 also updates artifact light and stops figurine timers. */
+export async function uncurse(otmp) {
     if (!otmp)
         return;
-    /* C:1822-1823 — lamplit old_light, omitted (a). */
+    const old_light = otmp.lamplit ? arti_light_radius(otmp) : 0;
     otmp.cursed = 0;
     if (_bc_carried(otmp) && confers_luck(otmp))
         set_moreluck();
     else if ((otmp.otyp | 0) === _BC_BAG_OF_HOLDING)
         otmp.owt = weight(otmp);
     else if ((otmp.otyp | 0) === _BC_FIGURINE && otmp.timed) {
-        /* C:1830-1831 stop_timer(FIG_TRANSFORM, ...) — omitted, see above. */
+        stop_timer(6 /* FIG_TRANSFORM */, obj_to_any(otmp));
     }
-    /* C:1834-1835 — if (otmp->lamplit) maybe_adjust_light(otmp, old_light); */
+    if (otmp.lamplit)
+        await maybe_adjust_light(otmp, old_light);
 }
 
 /* C mkobj.c:1781-1817 curse(struct obj *otmp). */
@@ -405,7 +404,7 @@ export async function curse(otmp) {
     } else if ((otmp.oclass | 0) === _BC_SPBOOK_CLASS) {
         /* if book hero is reading becomes cursed, interrupt */
         if (!already_cursed)
-            book_cursed(otmp);
+            await book_cursed(otmp);
     }
     if (otmp.lamplit)
         await maybe_adjust_light(otmp, old_light);
@@ -420,7 +419,8 @@ export async function pudding_merge_message(otmp, otmp2) {
     const onfloor = (otmp.where | 0) === OBJ_FLOOR || (otmp2.where | 0) === OBJ_FLOOR;
     const inpack = (otmp.where | 0) === OBJ_INVENT || (otmp2.where | 0) === OBJ_INVENT;
     const hp = u.uprops && u.uprops[HALLUC];
-    const hallu = !!(hp && ((hp.intrinsic | 0) || (hp.extrinsic | 0)));
+    const res = u.uprops?.[HALLUC_RES];
+    const hallu = !!(hp?.intrinsic && !(res?.intrinsic || res?.extrinsic));
 
     if ((!Blind() && visible) || inpack) {
         if (hallu) {

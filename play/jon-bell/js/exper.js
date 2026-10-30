@@ -29,10 +29,10 @@ import { rehumanize as rehumanize_real } from './polyself.js';
  * can invoke losexp(). */
 import { done as done_real } from './end.js';
 
+/* C mondata.c:201 — share the form, lycanthropy, and equipment checks. */
+import { resists_drli as resists_drli_real } from './mhitm.js';
 function resists_drli(mon) {
-    const p = game.u?.uprops?.[DRAIN_RES];
-    return !!(p && ((p.intrinsic | 0) || (p.extrinsic | 0)))
-        || ((game.u?.ulycn ?? -1) | 0) >= 0;
+    return resists_drli_real(mon);
 }
 const sa2_xpleveldown = 0; /* SoundAchievement constant */
 /* C ref: role.c:697 aligns[].value indexed by flags.initalign:
@@ -203,6 +203,7 @@ export function newhp() {
     } else {
         /* C: char lim = 5 - u.uhpmax / 300; lim = max(lim, 1); */
         let lim = 5 - Math.trunc((u.uhpmax | 0) / 300);
+        lim = (lim << 24) >> 24; /* C attrib.c:1135: assignment to char */
         if (lim < 1) lim = 1;
         if (hp > lim) hp = lim;
     }

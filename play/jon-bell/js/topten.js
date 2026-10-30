@@ -12,7 +12,7 @@ import { vfsReadFile, vfsWriteFile } from './storage.js';
 import { set_corpsenm } from './mklev.js';
 import { christen_monst } from './mhitm.js';
 export { oname } from './objnam.js';
-import { oname, just_an } from "./objnam.js";
+import { oname, an as an_objnam } from "./objnam.js";
 import { display_text_window } from './com_pager.js';
 
 /**
@@ -259,12 +259,8 @@ function an(word) {
      * The empty/NULL input yields the literal "an []", not the input.  This is
      * what makes formatkiller produce "dissolved in an []" for an empty
      * svk.killer.name. */
-    if (!word) {
-        impossible("Alphabet soup: 'an(%s)'.", word == null ? "<null>" : "\"\"");
-        return "an []";
-    }
     /* just_an() carries the long-u exceptions (unicorn, useful, ...) */
-    return just_an({}, word) + word;
+    return an_objnam(word);
 }
 
 /**

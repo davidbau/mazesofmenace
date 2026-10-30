@@ -1,3 +1,4 @@
+import { Mgender } from './do_name.js';
 // js/mcastu.js — port of nethack-c/src/mcastu.c (scaffold: functions are added here
 
 import { game } from './gstate.js';
@@ -356,7 +357,7 @@ import { helpless } from './mhitm.js';
 export { mdamageu };
 export async function burn_away_slime() {
     const p = game.u?.uprops?.[SLIMED];
-    if ((p?.intrinsic | 0) || (p?.extrinsic | 0))
+    if (p?.intrinsic | 0)
         await make_slimed(0, 'The slime that covers you is burned away!');
 }
 export function has_aggravatables(mon) {
@@ -389,7 +390,8 @@ export function mon_has_special(mtmp) {
     const SPE_BOOK_OF_THE_DEAD = 409; /* objects.h SPELL() BOOK_OF_THE_DEAD; was 264 = TRIPE_RATION */
     for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj)
         if (otmp.otyp === AMULET_OF_YENDOR
-            || otmp.oartifact
+            || (otmp.oartifact | 0) >= 21 /* any_quest_artifact, obj.h:271 ART_ORB_OF_DETECTION */
+            || otmp.oartifact >= 21 /* obj.h:271 any_quest_artifact: ART_ORB_OF_DETECTION */
             || otmp.otyp === BELL_OF_OPENING
             || otmp.otyp === CANDELABRUM_OF_INVOCATION
             || otmp.otyp === SPE_BOOK_OF_THE_DEAD)
@@ -1533,9 +1535,6 @@ export function cuss(mtmp) {
 // ── local helpers for death_inflicted_by (not exported from their modules) ──
 const M2_PNAME = 0x00080000;
 
-function Mgender(mtmp) {
-    return mtmp.female ? FEMALE : MALE;
-}
 
 function type_is_pname(ptr) {
     return (ptr.mflags2 & M2_PNAME) !== 0;

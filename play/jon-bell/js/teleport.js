@@ -3,6 +3,8 @@
 // @ts-nocheck — js sibling imports.
 import { rn2, rnd, pushRngLogEntry } from './rng.js';
 import { discover_object } from './o_init.js';
+import { onscary } from './makemon.js';
+import { db_under_typ } from './dokick.js';
 /* C ref: dungeon.c on_level/In_tutorial — domagicportal's landed-from-another-
  * portal check and its tutorial-exit arm. */
 import { on_level, In_tutorial } from './dungeon.js';
@@ -17,6 +19,7 @@ import { yn_function } from './end.js';
 import { ROWNO, COLNO, ZAP_POS, ACCESSIBLE, D_CLOSED, D_LOCKED, DOOR, isok, u_at, TELEDS_TELEPORT, RLOC_MSG, TEMPLE, engulfing_u, STRAT_APPEARMSG, NO_TRAP_FLAGS, BOLT_LIM, IS_ALTAR, IS_STWALL, W_NONPASSWALL, MON_FLOOR, POOL, MOAT, WATER, DRAWBRIDGE_UP, DB_UNDER, DB_MOAT, DB_LAVA, LAVAPOOL, LAVAWALL, MM_IGNOREWATER, MM_IGNORELAVA, GP_CHECKSCARY, GP_ALLOW_U, GP_AVOID_MONPOS, LR_MONGEN, LR_TELE, LR_UPTELE, LR_DOWNTELE, FIRE_RES, NO_MM_FLAGS, IS_WATERWALL, In_endgame, Is_astralevel, Is_juiblex_level, MON_DETACH, MON_OBLITERATE, MON_ENDGAME_MIGR } from './const.js';
 import { game } from './gstate.js';
 import { You_feel } from './display.js';
+import { registerStaticReset } from './statics.js';
 import { newsym, see_monsters, shieldeff, docrt, force_more_from_cls, force_more_pages } from './display.js';
 import { vision_recalc } from './vision.js';
 import { nomul } from './allmain.js';
@@ -274,7 +277,12 @@ export function enexto_core(xx, yy, fakemon, entflags) {
 /* C ref: hack.h MON_AT — any monster (not youmonst) at (x,y)? */
 function MON_AT(x, y) {
     for (let m = game.fmon; m; m = m.nmon) {
-        if ((m.mhp | 0) < 1) continue; /* DEADMONSTER — C m_at/MON_AT reads the grid, which m_detach cleared */
+        /* DEADMONSTER — C m_at/MON_AT reads the grid, which m_detach cleared…
+         * EXCEPT during the death sequence itself (mondead's mhp=0 → m_detach):
+         * C's svl.level.monsters still holds the dying monster there, so
+         * goodpos()/makemon() placement must reject its square (kop_revival).
+         * `_dyingInGrid` (js/mklev.js mondead) marks exactly that window. */
+        if ((m.mhp | 0) < 1 && !m._dyingInGrid) continue;
         if (m === game.u?.usteed) continue; /* mount_steed remove_monster()s the steed: not in the grid */
         if (m.mx === x && m.my === y)
             return m;
@@ -596,7 +604,7 @@ function Stunned(u) {
     return !!(p && p.intrinsic);
 }
 
-function On_W_tower_level(uz) {
+export function On_W_tower_level(uz) {
     if (!uz)
         return false;
     const g = game;
@@ -751,7 +759,7 @@ export async function next_to_u() {
             while (otmp && !((otmp.otyp | 0) === LEASH && (otmp.leashmon | 0) === (mtmp.m_id | 0)))
                 otmp = otmp.nobj;
             if (!otmp) {
-                impossible('leashed-unleashed mon?');
+                await rloc_impossible('leashed-unleashed mon?');
                 return false;
             }
             if (otmp.cursed)
@@ -958,15 +966,18 @@ export function enexto_out(xx, yy, mdat) {
  * another non-tame monster, then a pet), and finally migrates the incoming
  * monster to the preceding plane.  This is deliberately stateful and keeps
  * the one C RNG draw used to throttle the "besieged" message. */
+/* C mon.c:3880 `static long msgmv`: process-lifetime, NOT saved with the game. */
+let msgmv = 0;
+registerStaticReset('teleport.js: elemental_clog msgmv (mon.c:3880)', () => { msgmv = 0; });
 export async function elemental_clog(mon) {
     const u = game.u || {};
     if (!In_endgame(u.uz))
         return;
-    const last = game._elementalClogMessageMove | 0;
+    const last = msgmv;
     if (!last || ((game.moves | 0) - last) > 200) {
         if (!last || rn2(2))
             await You_feel('besieged.');
-        game._elementalClogMessageMove = game.moves | 0;
+        msgmv = game.moves | 0;
     }
 
     let foreign = null, home = null, weakest = null, other = null, pet = null;
@@ -1617,7 +1628,7 @@ function goodpos_full(x, y, mtmp, gpflags) {
         if (passes_walls(mdat) && may_passwall(x, y)) return true;
         if (amorphous(mdat) && closed_door_local(x, y)) return true;
         if (checkscary) {
-            const scary = mtmp.m_id ? onscary_local(x, y, mtmp) : goodpos_onscary(x, y, mdat);
+            const scary = mtmp.m_id ? onscary(x, y, mtmp) : goodpos_onscary(x, y, mdat);
             if (scary) return false;
         }
     }
@@ -1650,7 +1661,8 @@ function closed_door_local(x, y) {
 function accessible_local(x, y) {
     const lev = game.level?.at(x, y);
     if (!lev) return false;
-    return !!(ACCESSIBLE(lev.typ) && !closed_door_local(x, y));
+    const surface = lev.typ === DRAWBRIDGE_UP ? db_under_typ(lev.drawbridgemask | 0) : lev.typ;
+    return !!(ACCESSIBLE(surface) && !closed_door_local(x, y));
 }
 function is_exclusion_zone_local(type, x, y) {
     for (const ez of (game.exclusion_zones || [])) {
@@ -2015,6 +2027,7 @@ export async function rloc(mtmp, rlocflags) {
                 && (game.u.uy | 0) >= (d.nly | 0) && (game.u.uy | 0) <= (d.nhy | 0);
         })();
         let stway;
+        if (On_W_tower_level(game.u?.uz) && !game.dndest?.nlx) await rloc_impossible("No boundary for Wizard's Tower?");
         if (!inWizTower) {
             stway = findForWiz(false, true);
         } else if (!findForWiz(true, false)) {

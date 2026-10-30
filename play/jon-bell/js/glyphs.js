@@ -8,13 +8,14 @@ import { rgbstr_to_int32 as rgbstr_to_int32_real } from './coloratt.js';
 
 /* C ref: display.h MAX_GLYPH — total glyph count; glyphs.c keeps
  * glyph_map glyphmap[MAX_GLYPH] with per-glyph custom color overrides. */
-const MAX_GLYPH = 3301;
+const MAX_GLYPH = 9624; // C display.h: MAX_GLYPH (383 monsters, 481 objects).
 /* glyphs.c customization type enum: custom_symbols is 1. */
 const custom_symbols = 1;
 
-const glyphmap = Array.from({ length: MAX_GLYPH }, () => ({
+export const glyphmap = Array.from({ length: MAX_GLYPH }, () => ({
     customcolor: 0,
     color256idx: 0,
+    tileidx: 0,
 }));
 
 /* C ref: glyphs.c clear_all_glyphmap_colors()

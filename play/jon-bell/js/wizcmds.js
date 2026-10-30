@@ -46,7 +46,7 @@ import { put_saddle_on_mon } from './steed.js';
 import { is_pool } from './look.js';
 import { light_sources_list } from './light.js';
 import { region_stats_snapshot, any_visible_region } from './region.js';
-import { property_by_index } from './timeout.js';
+import { property_by_index, obj_stop_timers } from './timeout.js';
 import { cant_revive } from './read.js';
 import { PM_LONG_WORM_TAIL, PM_LONG_WORM, PM_STALKER, PM_DEATH, PM_FAMINE, PM_PESTILENCE } from './pm.generated.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
@@ -254,25 +254,6 @@ function _ta_Hate_silver() {
     return !!hates_silver(data);
 }
 
-/* Bare xname() body (no article, no count) for the touch_artifact blast
- * message.  C artifact.c:951 formats s_suffix(the(xname(obj))), not doname(),
- * so this keeps its own per-oclass xname_* routing. */
-function _ta_xname(otmp) {
-    const oclass = otmp.oclass | 0;
-    if (oclass === 2 /* WEAPON */ || oclass === 6 /* TOOL */ || oclass === 17 /* VENOM */)
-        return xname_weapon(otmp);
-    if (oclass === 3 /* ARMOR */)  return _wish_xname_named_tail(otmp, xname_armor(otmp));
-    if (oclass === 5 /* AMULET */) return _wish_xname_named_tail(otmp, xname_amulet(otmp));
-    if (oclass === 9 /* SCROLL */) return _wish_xname_named_tail(otmp, xname_scroll(otmp));
-    if (oclass === 10 /* SPBOOK */) return _wish_xname_named_tail(otmp, xname_spellbook(otmp));
-    const descr = getObjDescr(otmp.otyp | 0);
-    const noun = _WISH_CLASS_NOUN[oclass];
-    if (noun && descr != null)
-        return _wish_xname_named_tail(otmp, `${descr} ${noun}`);
-    if (noun) return _wish_xname_named_tail(otmp, noun);
-    return xname(otmp); /* GEM_CLASS etc. (objnam.c:624) */
-}
-
 /* C artifact.c:992-1005,1026-1030: DFLAG2 banes test the current monster's
  * mflags2 as well as the unpolymorphed hero's race and lycanthropy. */
 export function bane_applies_hero(arti) {
@@ -350,9 +331,10 @@ export async function touch_artifact_youmonst(otmp) {
         /* C artifact.c:949-950: if (!yours) return 0; — hero falls through. */
 
         /* C artifact.c:951 You("are blasted by %s power!",
-         *                     s_suffix(the(xname(obj)))) */
+         *                     s_suffix(the(xname(obj)))); xname includes the
+         * objnam.c:663-664 proper-name shortcut for identified artifacts. */
         g._touch_artifact_blast_msg =
-            `You are blasted by ${_ta_s_suffix(the(_ta_xname(otmp)))} power!`;
+            `You are blasted by ${_ta_s_suffix(the(xname(otmp)))} power!`;
         /* artifact.c:951 vpline flushes before :953/:958 roll/apply damage. */
         prepare_deferred_pline(g._touch_artifact_blast_msg);
         if (g._statusBlankAfterDocrt && g.disp?.botlx) await bot();
@@ -670,7 +652,8 @@ export async function wiz_kill() {
         // C wizcmds.c:267-287: choosing the hero offers mount death or suicide.
         if (cc.x === g.u.ux && cc.y === g.u.uy) {
             if (g.u.usteed) {
-                const c = await yn_function(`Kill ${mon_nam(g.u.usteed).slice(0, 110)}?`, 'ynq', 'n');
+                // C wizcmds.c:271 calls ynq (hack.h:1330): default 'q', queue replies.
+                const c = await yn_function(`Kill ${mon_nam(g.u.usteed).slice(0, 110)}?`, 'ynq', 'q', true);
                 if (c === 'q') break;
                 if (c === 'y') mtmp = g.u.usteed;
             }
@@ -887,6 +870,9 @@ function _wish_mergable(into, obj) {
     if ((obj.how_lost | 0) === 4 || (into.how_lost | 0) === 4) return false; /* LOST_EXPLODING */
     if ((into.how_lost | 0) !== 0 && (obj.how_lost | 0) !== (into.how_lost | 0)) return false;
     if (obj.globby) return true;
+    /* C invent.c:4416-4417: billed and owned stacks remain separate. */
+    if ((obj.unpaid | 0) !== (into.unpaid | 0)
+        || (obj.no_charge | 0) !== (into.no_charge | 0)) return false;
     if ((obj.spe | 0) !== (into.spe | 0)) return false;
     /* C invent.c:4416-4418 — obroken/otrapped/lamplit must match; opoisoned
      * is a union alias of otrapped, so a poisoned wish never joins a plain stack. */
@@ -1195,8 +1181,16 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
              * stack's name before the merged stack is displayed. */
             if (!has_oname(o) && has_oname(otmp))
                 await oname(o, ONAME(otmp), ONAME_SKIP_INVUPD);
+            /* C invent.c:852-854 merged(): the folded-in object's timers are
+             * stopped ("follows lights"); otherwise a corpse timer keeps
+             * pointing at a freed object and save_timers_level panics. */
+            if (otmp.timed)
+                obj_stop_timers(otmp);
             discovered = _wish_merged_reconcile(o, otmp);
             }
+            /* C invent.c:851-854 merged(): stop the absorbed stack's timers. */
+            if (otmp.timed && !otmp.globby)
+                obj_stop_timers(otmp);
             if (discovered) {
                 /* C invent.c:941: prinv's following message joins this pline
                  * when topl.c:262-264's width check leaves room for --More--. */

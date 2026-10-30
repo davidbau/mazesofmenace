@@ -3,6 +3,7 @@
 // Ported functions from nethack-c/src/symbols.c.
 
 import { game } from './gstate.js';
+import { reset_glyphmap } from './display.js';
 import { lowc, mungspaces } from './mklev.js';
 import { gs, SYM_CONTROL, SYM_PCHAR, SYM_OC, SYM_MON, SYM_OTH, H_UTF8 } from './const.js';
 import { escapes } from './cmd_config.js';
@@ -257,20 +258,15 @@ export function assign_graphics(whichset) {
         break;
     }
 
-    reset_glyphmap(gm_symchange);
-
     game.go = go;
     game.gp = gp;
     game.gr = gr;
     game.gs = gs;
     game.gc = gc;
+    reset_glyphmap(gm_symchange);
 }
 
-const gm_symchange = 0;
-
-function reset_glyphmap(reason) {
-    // not yet ported: reset_glyphmap
-}
+const gm_symchange = 4; // C display.h: glyphmap_change_triggers
 
 function init_primary_symbols() { /* not yet ported: init_primary_symbols */ }
 function init_showsyms() { /* not yet ported: init_showsyms */ }

@@ -1,3 +1,4 @@
+import { Mgender } from './do_name.js';
 // @ts-nocheck
 // were.js — Lycanthrope transformation and were-creature functions.
 // C ref: were.c
@@ -228,7 +229,6 @@ export function were_beastie(pm) {
 }
 
 /* C monst.h Mgender(mon) — (mon)->female ? FEMALE : MALE (do_name.h 1 / 0). */
-function Mgender(mtmp) { return mtmp.female ? 1 : 0; }
 /* C youprop.h Hallucination — (HHallucination || EHallucination) && !Halluc_resistance;
  * read off the numerically-keyed uprops the rest of this port uses. */
 function Hallucination() {

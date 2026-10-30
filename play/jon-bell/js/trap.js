@@ -1,3 +1,5 @@
+import { noit_Monnam } from './mhitm.js';
+import { Mgender } from './do_name.js';
 import { montraits, blank_novel, fracture_rock } from './zap.js';
 import { delete_contents, make_angry_shk, currency } from './shk.js';
 import { inside_shop, wake_nearby } from './mklev.js';
@@ -28,6 +30,7 @@ import { discover_object } from './o_init.js';
 // correct RNG calls in C-source order.
 import { game } from './gstate.js';
 import { You_see, You_feel } from './display.js';
+import { pline_mon } from './display.js';
 import { PM_STALKER, PM_BLACK_LIGHT } from './pm.generated.js';
 import { PM_MAIL_DAEMON } from './pm.generated.js';
 import { impossible as trap_impossible } from './pline.js';
@@ -48,12 +51,12 @@ import { sobj_at, in_rooms, obj_ice_effects, is_flammable, dealloc_obj, mk_trap_
          mpickobj, remove_object, makemon } from './mklev.js';
 import { add_damage, sellobj, shopdig } from './shk.js';
 import { shkgone } from './shk.js';
-import { mksobj as mksobj_ice } from './mklev.js';
-import { tamedog, unstuck, wary_dog } from './dog.js';
+import { mksobj as mksobj_ice, next_ident } from './mklev.js';
+import { tamedog, unstuck, wary_dog, m_unleash } from './dog.js';
 import { seffects } from './read.js';
 import { seemimic, YMonnam } from './mhitm.js';
 import { rndmonnam } from './do_name.js';
-import { setnotworn } from './worn.js';
+import { setnotworn, racial_exception } from './worn.js';
 /* read.c:3018 punish() — reused when digging or struggling uncovers the
  * punishment ball.  This is a runtime cycle (read.js already imports trap.js)
  * and the reused-ball path performs its state changes synchronously before the
@@ -108,9 +111,8 @@ import { fall_asleep, spot_stop_timers, stop_timer, begin_burn, end_burn } from 
 import { artifact_light, arti_light_radius, del_light_source, monst_to_any } from './light.js';
 import { LS_MONSTER } from './const.js';
 import { emits_light } from './makemon.js';
-/* C hack.h obj_to_any(obj) — the `anything` union wrapper; local copy, same
- * per-file convention as js/dig.js:619 and js/mklev.js:886. */
-function obj_to_any(o) { return { a_obj: o, a_long: null }; }
+/* C hack.c:97-103: use the shared pointer-union conversion. */
+import { obj_to_any } from './cmd.js';
 import { set_levltyp } from './mkmaze.js';
 import { mon_nam, m_at, dmgval, corpse_chance } from './uhitm.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_OPROP, MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
@@ -165,7 +167,7 @@ import { PM_OWLBEAR, PM_BUGBEAR, PM_TITANOTHERE, PM_BALUCHITHERIUM, PM_PURPLE_WO
 import { PM_ARCHEOLOGIST, PM_DOPPELGANGER, PM_FLESH_GOLEM, PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER, PM_GRAY_DRAGON } from './pm.generated.js';
 import { M_AP_TYPE, ismnum, NO_NC_FLAGS, NO_MINVENT, MM_NOWAIT, MM_NOTAIL, MM_NOMSG, MM_MALE, MM_FEMALE, MM_NOCOUNTBIRTH, MM_ADJACENTOK, OBJ_INVENT, ARTICLE_A, CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, CORPSTAT_HISTORIC, A_LAWFUL } from './const.js';
 import { cant_revive } from './read.js';
-import { permonstTemplate, set_malign, set_mon_data } from './makemon.js';
+import { permonstTemplate, set_malign, set_mon_data, m_in_air } from './makemon.js';
 import { obj_resists, inventory_resistance_check, poly_obj } from './zap.js';
 import { costly_alteration, obj_extract_self_general as obj_extract_self } from './cmd.js';
 /* C invent.c:1438-1460 delobj_core(obj, FALSE) — the single real body, which
@@ -199,7 +201,7 @@ import { block_door } from './shk.js';
  * rather than twinned, per the WRONG TWIN note on this file's other helpers. */
 import { bad_rock, cant_squeeze_thru, body_part, ceiling, Yname2,
          observe_object, xytodir, mbodypart, level_tele } from './cmd.js';
-import { losehp, down_gate, ship_object, delobj, stolen_value, scatter, is_drawbridge_wall, find_drawbridge, impact_drop } from './dokick.js';
+import { losehp, down_gate, ship_object, delobj, stolen_value, scatter, is_drawbridge_wall, find_drawbridge, impact_drop, db_under_typ } from './dokick.js';
 /* m_useupall's real body — C mthrowu.c:1154 is `extract_from_minvent(...)` +
  * `obfree(...)`, and the extract half had been omitted here. */
 import { check_gear_next_turn } from './makemon.js';
@@ -471,12 +473,19 @@ export async function monkilled_trap(mtmp, fltxt = '', nocorpse = false) {
     if (g.iflags) g.iflags.sad_feeling = false;
     (g.gd ||= {}).disintegested = !!nocorpse; /* C mon.c:3398, before mondead */
     mtmp.mhp = 0;
+    /* Same pre-detach window as js/mklev.js mondead(): C's grid keeps this
+     * monster until m_detach's mon_leaving_level() remove_monster(), so the
+     * fmon-walking m_at/MON_AT family must answer "occupied" for its square
+     * (kop_revival()'s makemon() → enexto_core() → goodpos() below).  Cleared
+     * on every exit past this point; the lifesaved/vamprises returns restore
+     * mhp>0, which the guards already treat as in-grid. */
+    mtmp._dyingInGrid = true;
     await lifesaved_monster(mtmp);
-    if ((mtmp.mhp | 0) > 0) return;
+    if ((mtmp.mhp | 0) > 0) { mtmp._dyingInGrid = false; return; }
     /* C mon.c:3096-3098 mondead: a vampire in bat/fog/wolf form reverts to
      * vampire instead of dying. */
     if ([226, 227, 228].includes(mtmp.cham | 0) && await vamprises_mk(mtmp))
-        return;
+        { mtmp._dyingInGrid = false; return; }
     if (beSad)
         await pline('You have a sad feeling for a moment, then it passes.');
     /* C mon.c:3103-3104 mondead: a dying steam vortex leaves a harmless cloud. */
@@ -536,6 +545,9 @@ export async function monkilled_trap(mtmp, fltxt = '', nocorpse = false) {
      * rng, so its position decides which picks C makes.  mtmp.mhp is already 0,
      * so m_at() skips the dead monster and the repaint shows the bare square,
      * as remove_monster() does in C. */
+    /* C mon.c:2741-2742 m_detach(): a leashed monster is unleashed first. */
+    if (mtmp.mleashed)
+        m_unleash(mtmp, false);
     /* C mon.c:2744-2745 m_detach(): `if (mx > 0 && emits_light(mptr))
      * del_light_source(LS_MONSTER, ...)` -- sets vision_full_recalc, so a
      * killed fire elemental stops lighting its surroundings. */
@@ -543,6 +555,7 @@ export async function monkilled_trap(mtmp, fltxt = '', nocorpse = false) {
         del_light_source(LS_MONSTER, monst_to_any(mtmp));
     if (_dx > 0)
         newsym(_dx, _dy);
+    mtmp._dyingInGrid = false; /* mon_leaving_level vacated C's grid */
     if (mtmp.iswiz) wizdeadorgone(); /* C mon.c:2761-2762, before relobj */
     await quest_monster_died(mtmp);
     /* C mon.c:2708 mon_leaving_level(): a killed long worm's body leaves the grid. */
@@ -795,9 +808,7 @@ export async function chest_trap(obj, bodypart, disarm) {
              * unspecified varargs evaluation order of `pline` is not
              * observable here (the(xname(obj)) draws nothing). */
             /* C trap.c:6474-6486 */
-            const blind = u.uprops && u.uprops[BLINDED]
-                ? ((u.uprops[BLINDED].intrinsic | 0) || (u.uprops[BLINDED].extrinsic | 0))
-                : 0;
+            const blind = Blind(); /* C trap.c:6475 includes blocked blindness. */
             let gascolor;
             if (blind) {
                 /* ROLL_FROM(blindgas) → rn2(6) */
@@ -966,7 +977,7 @@ function is_pool_or_lava_local(x, y) {
     const loc = lev_flags(x, y);
     const dbmask = loc ? (loc.drawbridgemask | 0) : 0;
     if (t === 16 /* POOL */ || t === 17 /* MOAT */ || t === 18 /* WATER */
-        || (t === DRAWBRIDGE_UP && (dbmask & 28 /* DB_UNDER */) === 0 /* DB_MOAT */))
+        || (t === DRAWBRIDGE_UP && !Is_juiblex_level(game.u?.uz) && (dbmask & 28 /* DB_UNDER */) === 0 /* DB_MOAT */))
         return true;
     return is_lava_local(x, y);
 }
@@ -1006,9 +1017,7 @@ function coordptr_set(p, v) {
     if (p !== null && typeof p === 'object') p.value = v;
 }
 function _gp_is_youmonst(mon) {
-    if (!mon) return false;
-    if (mon === game.youmonst) return true;
-    return (mon.m_id | 0) === 1;
+    return is_youmonst(mon);
 }
 function _gp_same_mon(a, b) {
     if (!a || !b) return false;
@@ -1055,12 +1064,7 @@ function _gp_closed_door(x, y) {
 }
 /* C ref: dbridge.c:115-128 db_under_typ(mask). */
 function _gp_db_under_typ(mask) {
-    switch ((mask & DB_UNDER) | 0) {
-    case DB_ICE:  return ICE;
-    case DB_LAVA: return LAVAPOOL;
-    case DB_MOAT: return MOAT;
-    default:      return STONE;
-    }
+    return db_under_typ(mask);
 }
 /* C ref: rm.h:133-136 SURFACE_AT(x,y). */
 function _gp_surface_at(x, y) {
@@ -1104,14 +1108,9 @@ function _gp_likes_lava(mdat) {
     return pm === PM_FIRE_ELEMENTAL || pm === PM_SALAMANDER;
 }
 /* C ref: mon.c:2118 m_in_air(mtmp) = is_flyer || is_floater
- * || (is_clinger && has_ceiling(&u.uz) && mtmp->mundetected).  Uses this
- * file's existing _imm_* permonst predicates (same mflags1 bits). */
+ * || (is_clinger && has_ceiling(&u.uz) && mtmp->mundetected). */
 function _gp_m_in_air(mtmp) {
-    const pm = mtmp?.data;
-    if (!pm) return false;
-    return _imm_is_flyer(pm) || _imm_is_floater(pm)
-        || (_imm_is_clinger(pm) && _imm_has_ceiling(game.u?.uz)
-            && !!mtmp.mundetected);
+    return m_in_air(mtmp);
 }
 /* C ref: dungeon.h Is_waterlevel(&u.uz) — the Plane of Water. */
 function _gp_Is_waterlevel() {
@@ -1151,7 +1150,8 @@ function _gp_is_rider(mdat) {
 }
 function _gp_sengr_at(s, x, y, strict) {
     const ep = engr_at(x, y);
-    if (ep && (ep.engr_type | 0) !== HEADSTONE) {
+    if (ep && (ep.engr_type | 0) !== HEADSTONE
+        && (ep.engr_time | 0) <= (game.moves | 0)) {
         const txt = String(ep.text ?? '');
         if (strict ? txt.toLowerCase() === String(s).toLowerCase()
                    : txt.toLowerCase().includes(String(s).toLowerCase()))
@@ -1805,6 +1805,12 @@ function uprop_active(propnum) {
     if (!p) return false;
     return !!(((p.intrinsic | 0) || (p.extrinsic | 0)) && !(p.blocked | 0));
 }
+/* youprop.h Flying's steed term: (u.usteed && is_flyer(u.usteed->data)) && !BFlying */
+function _steed_flies() {
+    const u = game.u;
+    return !!(u?.usteed && _imm_is_flyer(u.usteed.data)
+              && !((u.uprops?.[FLYING]?.blocked | 0)));
+}
 /* C ref: trap.c:1046 reset_utrap(msg). */
 /* C ref: trap.c:6990-7030 sink_into_lava — called once per turn from
  * allmain.c:425 while the hero is stuck (TT_LAVA).  Each turn the hero sinks
@@ -1915,7 +1921,7 @@ function check_in_air(mtmp, trflags) {
     if ((tf & _HURTLING_T) !== 0)
         return true;
     if (mtmp === true) {
-        return uprop_active(LEVITATION) || (uprop_active(FLYING) && !plunged);
+        return uprop_active(LEVITATION) || ((uprop_active(FLYING) || _steed_flies()) && !plunged);
     }
     const pm = mtmp?.data;
     if (!pm) return false;
@@ -1967,6 +1973,8 @@ function undestroyable_trap(ttyp) {
 }
 /* C ref: mondata.c:1617 mon_knows_traps — has mtmp seen this trap type? */
 export function mon_knows_traps(mtmp, ttyp) {
+    if (ttyp === -1) return !!mtmp.mtrapseen; /* C mondata.c:1619 ALL_TRAPS */
+    if (ttyp === 0) return !mtmp.mtrapseen; /* NO_TRAP */
     return ((mtmp.mtrapseen | 0) & (1 << (ttyp - 1))) !== 0;
 }
 /* C ref: mondata.c:1628 mon_learns_traps */
@@ -2220,11 +2228,11 @@ function _mdw_oc_delay(otyp) {
     const row = ARMOR_DATA[otyp | 0];
     return row ? (row.delay | 0) : 0;
 }
+/* C worn.c:1112-1124 racial_exception(mon, obj) — hobbits may wear elven
+ * armor; no "unacceptable" exceptions exist in 5.0.  raceptr(mon) is
+ * evaluated in the shared port, including the hero's current race. */
 function _mdw_racial_exception(mon, obj) {
-    if ((mon.data?.pmidx | 0) === _MDW_PM_HOBBIT
-        && _MDW_ELVEN_ARMOR_OTYPS.has(obj.otyp | 0))
-        return 1;
-    return 0;
+    return racial_exception(mon, obj);
 }
 /* C worn.c:1099-1110 extra_pref(mon, obj) — "currently only does speed
  * boots". */
@@ -2240,12 +2248,8 @@ function _mdw_See_invisible() {
     const u = game.u || {};
     return !!(u.uprops?.[SEE_INVIS]?.intrinsic || u.uprops?.[SEE_INVIS]?.extrinsic);
 }
-/* C mkobj.c:2003 curse(obj).  js/mklev.js has one but does not export it, and
- * this is the whole body. */
-function _mdw_curse(obj) {
-    obj.blessed = 0;
-    obj.cursed = 1;
-}
+/* C mkobj.c:1782-1819 curse — use the complete shared body. */
+import { curse as _mdw_curse } from './mkobj.js';
 /* C light.c:915-931 arti_light_description(obj) */
 function _mdw_arti_light_description(obj) {
     switch (arti_light_radius(obj)) {
@@ -2428,7 +2432,7 @@ async function m_dowear_type(mon, flag, creation, racialexception) {
     mon.misc_worn_check = (mon.misc_worn_check | 0) | flag;
     best.owornmask = (best.owornmask | 0) | flag;
     if (autocurse)
-        _mdw_curse(best);
+        await _mdw_curse(best);
     /* C worn.c:974-991 */
     if (artifact_light(best) && !(best.lamplit | 0)) {
         begin_burn(best, false);
@@ -2510,7 +2514,7 @@ function closed_door_lo(x, y) {
 const HALF_PHYSICAL_DAMAGE = 56; /* C prop.h HALF_PHDAM */
 function Maybe_Half_Phys_lo(dmg) {
     const p = game.u?.uprops?.[HALF_PHYSICAL_DAMAGE];
-    const half = !!p && !!((p.intrinsic | 0) || (p.extrinsic | 0)) && !(p.blocked | 0);
+    const half = !!p && !!((p.intrinsic | 0) || (p.extrinsic | 0));
     return half ? (((dmg | 0) + 1) >> 1) : (dmg | 0);
 }
 /* C mondata.h throws_rocks(ptr) = ((ptr)->mflags2 & M2_ROCKTHROW) != 0.
@@ -3397,7 +3401,7 @@ async function trapeffect_rust_trap(trap, trflags) {
  * over the HALF_PHDAM uprop (const.js:2353) — the same formula js/cmd.js:4336
  * uses.  Only reachable as an IRON GOLEM hero. */
 function _rt_Maybe_Half_Phys(dmg) {
-    return uprop_active(HALF_PHDAM) ? Math.trunc((dmg + 1) / 2) : dmg;
+    return Maybe_Half_Phys_lo(dmg);
 }
 /* C trap.c:1636,1701 calls splash_lit() (apply.c:1518); use the shared
  * light-dousing implementation in cmd.js. */
@@ -3450,18 +3454,9 @@ export function split_mon_rt(mon, mtmp) {
     return clone;
 }
 
-/* C mkobj.c:509 next_ident(); kept local to avoid opening mklev<->trap's
- * existing runtime cycle. */
+/* C mkobj.c:509 next_ident(): share unsigned wrap and RNG ordering. */
 function _split_next_ident() {
-    if (!game.context)
-        game.context = {};
-    if (game.context.ident == null)
-        game.context.ident = 2;
-    const id = game.context.ident;
-    game.context.ident += rnd(2);
-    if (!game.context.ident)
-        game.context.ident = rnd(2) + 1;
-    return id;
+    return next_ident();
 }
 
 async function trapeffect_rust_trap_mon(mtmp, trap, trflags) {
@@ -3480,14 +3475,14 @@ async function trapeffect_rust_trap_mon(mtmp, trap, trflags) {
     switch (rn2(5)) {                                   /* C trap.c:1663 */
     case 0:
         if (in_sight)
-            void pline(`${A_gush_of_water_hits} ${mon_nam(mtmp)}`
+            await pline_mon(mtmp, `${A_gush_of_water_hits} ${mon_nam(mtmp)}`
                        + ` on the ${mbodypart(mtmp, HEAD)}!`);   /* C :1665-1668 */
         target = which_armor(mtmp, W_ARMH);
         (await water_damage(target, helm_simple_name(target), true));
         break;
     case 1: {
         if (in_sight)
-            void pline(`${A_gush_of_water_hits} ${mon_nam(mtmp)}'s`
+            await pline_mon(mtmp, `${A_gush_of_water_hits} ${mon_nam(mtmp)}'s`
                        + ` left ${mbodypart(mtmp, ARM)}!`);      /* C :1674-1677 */
         target = which_armor(mtmp, W_ARMS);
         if ((await water_damage(target, "shield", true)) !== ER_NOTHING)
@@ -3502,7 +3497,7 @@ async function trapeffect_rust_trap_mon(mtmp, trap, trflags) {
     }
     case 2:
         if (in_sight)
-            void pline(`${A_gush_of_water_hits} ${mon_nam(mtmp)}'s`
+            await pline_mon(mtmp, `${A_gush_of_water_hits} ${mon_nam(mtmp)}'s`
                        + ` right ${mbodypart(mtmp, ARM)}!`);     /* C :1684-1687 */
         (await water_damage(_rt_MON_WEP(mtmp), null, true));
         /* goto mglovecheck */
@@ -3530,7 +3525,7 @@ async function trapeffect_rust_trap_mon(mtmp, trap, trflags) {
      * `((ptr) == &mons[PM_IRON_GOLEM])`. */
     if (mptr && (mptr.pmidx | 0) === PM_IRON_GOLEM) {
         if (in_sight)
-            void pline(`${Monnam_t(mtmp)} `
+            await pline_mon(mtmp, `${Monnam_t(mtmp)} `
                        + `${!_rt_mlifesaver(mtmp) ? 'falls' : 'starts to fall'} to pieces!`);
         /* C: monkilled(mtmp, (const char *) 0, AD_RUST).  A NULL fltxt means C
          * prints NO "<Monnam> is killed!" line — the pline above is the whole
@@ -3609,7 +3604,7 @@ async function trapeffect_slp_gas_trap_mon(mtmp, trap) {
         /* C monst.h:251 helpless(mon): msleeping || !mcanmove — nothing else. */
         && !(mtmp.msleeping || !mtmp.mcanmove)) {
         if (await sleep_monst(mtmp, rnd(25), -1) && in_sight) {
-            pline(`${Monnam_t(mtmp)} suddenly falls asleep!`);
+            await pline_mon(mtmp, `${Monnam_t(mtmp)} suddenly falls asleep!`);
             /* C: seetrap(trap) — carries newsym(tx,ty), not just the flag. */
             seetrap(trap);
         }
@@ -3645,6 +3640,7 @@ async function trapeffect_arrow_trap(trap, trflags) {
     if (game.u.usteed && !rn2(2) && await steedintrap(trap, otmp))
         return Trap_Effect_Finished;
     const hit = await thitu(8, Maybe_Half_Phys_lo(dmg), otmp, 'arrow');
+    if (hit) await dealloc_obj_trap(otmp); /* C trap.c:1215 obfree */
     if (!hit) await hero_missile_lands(otmp);
     return Trap_Effect_Finished;
 }
@@ -3654,7 +3650,7 @@ async function trapeffect_dart_trap(trap, trflags) {
         /* C trap.c:1262 — the spent dart trap announces its silent click
          * before disappearing.  This is a real pline, so it must consume the
          * recorded dismissal/message frame even though it uses no RNG. */
-        await pline('You hear a soft click.');
+        await You_hear('a soft click.');
         deltrap(trap);
         newsym(game.u.ux | 0, game.u.uy | 0);
         return Trap_Is_Gone;
@@ -3677,7 +3673,7 @@ async function trapeffect_dart_trap(trap, trflags) {
             await poisoned('dart', A_CON, 'little dart',
                 (game.u.umortality > oldumort) ? 0 : 10, true);
         }
-        otmp.where = OBJ_DELETED_T; /* obfree(otmp) — missile consumed on a hit */
+        await dealloc_obj_trap(otmp); /* C trap.c:1285 obfree */
     } else {
         await hero_missile_lands(otmp);
     }
@@ -3994,7 +3990,8 @@ export async function thitu(tlev, dam, otmp, name) {
         _monstunseesu_stub(0x0080);
     }
     if (u && u.uhp !== undefined) {
-        await losehp((dam | 0), _thitu_killer_name(otmp, name), KILLED_BY_THITU);
+        await losehp((dam | 0), _thitu_killer_name(otmp, name),
+                     name && !/^(the |an? )/i.test(name) ? KILLED_BY_AN : KILLED_BY_THITU);
     }
     /* C mthrowu.c:153 `exercise(A_STR, FALSE)` follows only when done() returns.
      * losehp now awaits do_death_sequence: a terminal death reaches really_done()
@@ -4016,6 +4013,7 @@ const KILLED_BY_THITU = 1; /* C hack.h KILLED_BY */
 /* C mthrowu.c:90-95: knm = killer_xname(obj) when thitu names the object itself
  * (type identified: "orcish dagger", not "crude dagger"); a caller-supplied name is knm. */
 function _thitu_killer_name(otmp, name) {
+    if (name) return name;
     if (!otmp)
         return name || '';
     return _thitu_killer_xname(otmp);
@@ -4224,7 +4222,7 @@ async function trapeffect_dart_trap_mon(mtmp, trap) {
     trap.once = 1;
     const otmp = await t_missile(OTYP_DART, trap);
     if (!rn2(6)) otmp.opoisoned = 1; /* C trap.c:1309 */
-    if (canseemon(mtmp)) seetrap(trap);
+    if (canseemon(mtmp) || mtmp === game.u?.usteed) seetrap(trap);
     const trapkilled = await thitm(7, mtmp, otmp, 0, false);
     return trapkilled ? Trap_Killed_Mon
         : ((mtmp.mtrapped | 0) ? Trap_Caught_Mon : Trap_Effect_Finished);
@@ -4369,7 +4367,7 @@ async function dofiretrap(box) {
     }
     await pline(`A ${TOWER_OF_FLAME_FT} ${box ? 'bursts' : 'erupts'} from ${the(box ? xname(box) : _surface_ft(u.ux | 0, u.uy | 0))}!`);
     if (_gp_Fire_resistance()) {
-        /* C trap.c:4261 shieldeff(u.ux, u.uy) — display-only. */
+        shieldeff(u.ux, u.uy); /* C trap.c:4261 */
         _monstseesu_stub(M_SEEN_FIRE_FT);
         num = rn2(2);
     } else if (_gp_Upolyd()) {
@@ -4426,8 +4424,7 @@ async function dofiretrap(box) {
         await You('are uninjured.');
     else
         await losehp(num, TOWER_OF_FLAME_FT, KILLED_BY_AN);        /* trap.c:4303 */
-    /* C trap.c:4304 burn_away_slime() — RNG-free; no-op, matching the
-     * established convention (js/uhitm.js:5245, js/mhitu.js:458). */
+    await _burn_away_slime_sil(); /* C trap.c:4304 */
     if ((await burnarmor(game.youmonst)) || rn2(3)) {
         await destroy_items(true, AD_FIRE_FT, orig_dmg);
         await ignite_items(game.invent || null);
@@ -4468,7 +4465,7 @@ async function mon_missile_trap_gone(mtmp, trap, msg) {
     const in_sight = canseemon(mtmp) || (mtmp === game.u?.usteed);
     const see_it = cansee(mtmp.mx | 0, mtmp.my | 0);
     if (in_sight && see_it)
-        await pline(msg);
+        await pline_mon(mtmp, msg);
     deltrap(trap);
     newsym(mtmp.mx | 0, mtmp.my | 0);
     return Trap_Is_Gone;
@@ -4482,7 +4479,7 @@ async function trapeffect_rocktrap_mon(mtmp, trap) {
     const otmp = await t_missile(OTYP_ROCK, trap);
     /* C: `if (in_sight) seetrap(trap);` — see trapeffect_dart_trap_mon above;
      * seetrap carries a newsym(trap->tx, trap->ty), a bare tseen write does not. */
-    if (canseemon(mtmp)) seetrap(trap);
+    if (canseemon(mtmp) || mtmp === game.u?.usteed) seetrap(trap);
     const trapkilled = await thitm(0, mtmp, otmp, d(2, 6), false);
     return trapkilled ? Trap_Killed_Mon
         : ((mtmp.mtrapped | 0) ? Trap_Caught_Mon : Trap_Effect_Finished);
@@ -4498,7 +4495,7 @@ async function missile_trap_mon(mtmp, trap, otyp, tlev) {
     trap.once = 1;
     const otmp = await t_missile(otyp, trap);
     /* C: `if (in_sight) seetrap(trap);` — see trapeffect_dart_trap_mon above. */
-    if (canseemon(mtmp)) seetrap(trap);
+    if (canseemon(mtmp) || mtmp === game.u?.usteed) seetrap(trap);
     const trapkilled = await thitm(tlev, mtmp, otmp, 0, false);
     return trapkilled ? Trap_Killed_Mon
         : ((mtmp.mtrapped | 0) ? Trap_Caught_Mon : Trap_Effect_Finished);
@@ -4686,7 +4683,7 @@ async function trapeffect_bear_trap_mon(mtmp, trap, trflags) {
         && !_imm_is_whirly(mptr) && !_imm_unsolid(mptr)) {
         mtmp.mtrapped = 1;
         if (in_sight) {
-            pline(`${_monnam_safe(mtmp)} is caught in ${trap.madeby_u ? "your" : "a"} bear trap!`);
+            await pline_mon(mtmp, `${_monnam_safe(mtmp)} is caught in ${trap.madeby_u ? "your" : "a"} bear trap!`);
             seetrap(trap);
         } else {
             if ((mptr.pmidx | 0) === PM_OWLBEAR
@@ -4697,7 +4694,7 @@ async function trapeffect_bear_trap_mon(mtmp, trap, trflags) {
         }
     } else if (forcetrap) {
         if (in_sight) {
-            pline(`${_monnam_safe(mtmp)} evades ${trap.madeby_u ? "your" : "a"} bear trap!`);
+            await pline_mon(mtmp, `${_monnam_safe(mtmp)} evades ${trap.madeby_u ? "your" : "a"} bear trap!`);
             seetrap(trap);
         }
     }
@@ -4920,7 +4917,7 @@ async function trapeffect_pit(trap, trflags) {
             await pline(`${_A_Your(trap.madeby_u)} pit `
                         + `${ttype === SPIKED_PIT ? 'full of spikes ' : ''}`
                         + `opens up under you!`);
-            You("don't fall in!");
+            await You("don't fall in!");
         }
         return Trap_Effect_Finished;
     }
@@ -5124,10 +5121,12 @@ async function trapeffect_pit_mon(mtmp, trap, trflags = 0) {
     if ((mf1 & M1_WALLWALK_T) === 0) {
         mtmp.mtrapped = 1;
     }
-    const _pit_in_sight = canseemon(mtmp);
+    const _pit_in_sight = canseemon(mtmp) || mtmp === game.u?.usteed;
     if (_pit_in_sight) {
         set_msg_xy_trap(mtmp.mx, mtmp.my); /* pline_mon trap.c:1992 */
-        void pline(`${Monnam_t(mtmp)} ${fallverb} into ${_a_your(trap.madeby_u)} pit!`);
+        await pline(`${Monnam_t(mtmp)} ${fallverb} into ${_a_your(trap.madeby_u)} pit!`);
+        if (mndx === PM_PIT_VIPER || mndx === PM_PIT_FIEND)
+            await pline("How pitiful.  Isn't that the pits?");
         /* C trap.c:2019 `seetrap(trap);` — after the pline, and it newsyms. */
         seetrap(trap);
     }
@@ -5948,16 +5947,6 @@ function y_monnam(mtmp) {
     return "your " + name;
 }
 
-function noit_Monnam(mtmp) {
-    if (!mtmp) return "it";
-    const gn = _mgivenname(mtmp);
-    if (gn) return gn;
-    const s = mon_nam(mtmp); /* "the kitten" or "it" */
-    if (s === "it") return "it";
-    /* strip "the " */
-    const name = s.startsWith("the ") ? s.slice(4) : s;
-    return name;
-}
 
 export async function openfallingtrap(mon, trapdoor_only, noticed) {
     /* boolean ishero = (mon == &gy.youmonst), result; */
@@ -6252,7 +6241,7 @@ export async function selftouch(arg) {
         && selftouch_petrifies(game.u.uwep.corpsenm | 0)
         && !selftouch_Stone_resistance()) {
         const corpse_pmname = obj_pmname(game.u.uwep);
-        void pline(`${arg} touch the ${corpse_pmname} corpse.`);
+        await pline(`${arg} touch the ${corpse_pmname} corpse.`);
         const kbuf = `${an(corpse_pmname)} corpse`;
         await instapetrify(kbuf);
         /* life-saved; unwield the corpse if we can't handle it */
@@ -6266,7 +6255,7 @@ export async function selftouch(arg) {
         && selftouch_petrifies(game.u.uswapwep.corpsenm | 0)
         && !selftouch_Stone_resistance()) {
         const corpse_pmname = obj_pmname(game.u.uswapwep);
-        void pline(`${arg} touch the ${corpse_pmname} corpse.`);
+        await pline(`${arg} touch the ${corpse_pmname} corpse.`);
         const kbuf = `${an(corpse_pmname)} corpse`;
         await instapetrify(kbuf);
         /* life-saved; unwield the corpse */
@@ -7251,7 +7240,8 @@ export async function immune_to_trap(mon, ttype) {
         if (_imm_is_floater(pm) || _imm_is_flyer(pm)
             || (_imm_is_clinger(pm) && _imm_has_ceiling(game?.u?.uz)))
             return TRAP_CLEARLY_IMMUNE;
-        else if (is_you && (uprop_active(LEVITATION) || uprop_active(FLYING)))
+        else if (is_you && (uprop_active(LEVITATION) || uprop_active(FLYING)
+                            || _steed_flies()))
             return TRAP_CLEARLY_IMMUNE;
         return TRAP_NOT_IMMUNE;
     case SLP_GAS_TRAP:
@@ -7880,6 +7870,7 @@ export async function mon_break_armor(mon, polyspot) {
        stub SHADOWED it and swallowed every call in the enclosing function. */
     function You_hear(str) { return _trap_You_hear(str); }
     function pline_mon(mon, fmt, ...args) {
+        set_msg_xy_trap(mon.mx, mon.my);
         let msg = fmt;
         for (const arg of args) msg = msg.replace(/%[sdli]/, String(arg));
         pline(msg);
@@ -7905,7 +7896,6 @@ export async function mon_break_armor(mon, polyspot) {
         }
         return null;
     }
-    function Mgender(m) { return m?.female ? 1 : 0; }
     function pmname(data, gender) { return monPmname(data?.pmidx | 0, gender); }
     async function instapetrify_local(arg) { return await instapetrify_real(arg); }
 
@@ -8061,9 +8051,9 @@ export async function mon_break_armor(mon, polyspot) {
             buf = "falling off " + an(pmname(game.u.usteed.data, Mgender(game.u.usteed)));
             await instapetrify_local(buf);
         }
-        dismount_steed(DISMOUNT_FELL);
+        await dismount_steed(DISMOUNT_FELL);
     }
-    return 2;
+    return;
 }
 
 /* C: trap.c drain_en() — lose n points of magical energy (spell failure,

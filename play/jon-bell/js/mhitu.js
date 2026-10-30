@@ -1,9 +1,11 @@
+import { Mgender } from './do_name.js';
 import { u_carried_gloves, set_msg_xy as set_msg_xy_mu, reset_occupations } from './cmd.js';
 import { registerStaticReset } from './statics.js';
 import { yyyymmdd } from './allmain.js';
 import { attacktype_fordmg } from './makemon.js';
 import { drain_item } from './zap.js';
 import { stagger } from './mhitm.js';
+import { tele_restrict } from './teleport.js';
 let mon_currwep = null;
 import { spoteffects } from './landing-effects.js';
 // @ts-nocheck
@@ -264,7 +266,7 @@ import { touch_of_death as touch_of_death_mc } from './mcastu.js';
 /* C makemon.c:35 — getmattk()'s home-elemental damage doubling. */
 import { is_home_elemental } from './makemon.js';
 import { extract_from_minvent_dm } from './dogmove.js';
-import { down_gate, ship_object, add_to_minv } from './dokick.js';
+import { down_gate, ship_object, add_to_minv, delobj as delobj_mu } from './dokick.js';
 import { place_object, remove_object, set_ustuck as set_ustuck_mu } from './mklev.js';
 import { mondied_dm } from './dogmove.js';
 import { passive_obj, attk_protection as attk_protection_mu } from './mhitm.js';
@@ -280,6 +282,7 @@ import { couldsee as couldsee_mu } from './vision.js';
 import { dist2, s_suffix } from './hacklib.js';
 import { acurr } from './attrib.js';
 import { calc_capacity, weight as weight_mu } from './weight.js';
+import { obj_is_burning } from './light.js';
 import { is_flammable as is_flammable_mu } from './mklev.js';
 import { bhp_is_lava as bhp_is_lava_mu } from './cmd.js';
 import { rnl } from './rng.js';
@@ -519,7 +522,6 @@ function pmname(mdat, mgender) {
     if (!mdat || !Number.isInteger(mdat.pmidx)) return "monster";
     return monPmname(mdat.pmidx | 0, mgender | 0);
 }
-function Mgender(mon) { return mon?.female ? 1 : 0; }
 function Hallucination(gs) {
     /* C youprop.h:307 Hallucination ((HHallucination || EHallucination)
        && !Halluc_resistance); js/ has no HALLUC_RES writer either, but the
@@ -541,12 +543,15 @@ function Blind(gs) {
 function Fire_resistance(gs) { const p = gs.u?.uprops?.[FIRE_RES_MU]; return !!p && !!((p.intrinsic | 0) || (p.extrinsic | 0)); }
 function Stone_resistance(gs) { const p = gs.u?.uprops?.[STONE_RES_MU]; return !!p && !!((p.intrinsic | 0) || (p.extrinsic | 0)); }
 /* C uhitm.c:3924 do_stone_u — hero stoning transition and killer attribution. */
-async function do_stone_u(magr) {
+export async function do_stone_u(magr) {
     const u = game.u || {};
     const props = u.uprops || {};
     const stoned = props[18] || props.STONED;
     const stoneRes = props[8] || props.STONE_RES;
     if ((stoned?.intrinsic | 0) || (stoneRes?.intrinsic | 0) || (stoneRes?.extrinsic | 0))
+        return false;
+    /* C uhitm.c:3926-3928: a golem-polyd hero turns into a stone golem instead */
+    if (poly_when_stoned(youmonst_data(game)) && await polymon(PM_STONE_GOLEM))
         return false;
     const data = magr?.data || {};
     let kformat = KILLED_BY_AN_MU;
@@ -1381,7 +1386,7 @@ function _kb_attacktype(mndx, atyp) {
     if (!Array.isArray(mattks)) return false;
     for (const a of mattks) {
         if (!a) continue;
-        if ((a.aatyp | 0) === atyp && (a.aatyp | 0) !== 0)
+        if ((a.aatyp | 0) === atyp)
             return true;
     }
     return false;
@@ -1392,7 +1397,7 @@ function _kb_dmgtype(mndx, dtyp) {
     if (!Array.isArray(mattks)) return false;
     for (const a of mattks) {
         if (!a) continue;
-        if ((a.aatyp | 0) !== 0 && (a.adtyp | 0) === dtyp)
+        if ((a.adtyp | 0) === dtyp)
             return true;
     }
     return false;
@@ -1736,7 +1741,7 @@ async function mhitm_knockback_u(mtmp, mattk, hitflags) {
      * (draws rn2 when the hero is displaced/invisible). */
     set_apparxy_kb(mtmp);
     /* C uhitm.c:5398 — if (!Stunned && !rn2(4)) make_stunned(knockdistance+1). */
-    const Stunned = (HStun(game) & 0xffffff) !== 0;
+    const Stunned = HStun(game) !== 0; /* youprop.h:81 Stunned == HStun, FROMFORM bit included */
     if (!Stunned) {
         if (!rn2(4)) {
             /* potion.c:120-128: "You stagger..." flushes (bot() paints the
@@ -1813,13 +1818,7 @@ function Adornment_mu() { return game.u?.uprops?.[ADORNED_MU]?.extrinsic | 0; }
 /* C hack.h Deaf.  This file's existing Deaf(gs) takes the game state. */
 function Deaf_mu() { return Deaf(game); }
 function tele_restrict_mu(magr) {
-    if (noteleport_level_mu(magr)) {
-        if (canseemon_mu(magr))
-            pline("A mysterious force prevents %s from teleporting!",
-                  mon_nam_uh(magr));
-        return true;
-    }
-    return false;
+    return tele_restrict(magr);
 }
 /* C objnam.c doname(obj). */
 async function doname_mu(obj) {
@@ -2537,7 +2536,7 @@ async function steal(mtmp, objnambuf) {
         ++named;
     await urgent_pline_disp(`${named ? 'She' : Monnambuf} stole ${(await doname_mu(otmp))}.`);
     encumber_msg_mu();
-    otmp.how_lost = 2 /* LOST_STOLEN */;
+    otmp.how_lost = 3 /* LOST_STOLEN (obj.h:484) */;
     await mpickobj_mu(mtmp, otmp);
     /* C steal.c:591 — `return (gm.multi < 0) ? 0 : 1;` a hero left helpless
      * (savelife's multi = -1 after a declined death) gets no flee/rloc. */
@@ -3213,6 +3212,8 @@ async function mhitm_ad_wrap_u(mtmp, mattk, mhm) {
                 && !_Amphibious_wrap() && !_Breathless_wrap()) {
                 const typ = game.level?.locations?.[mtmp.mx]?.[mtmp.my]?.typ | 0;
                 const moat = typ !== POOL_WRAP && !is_waterwall_mu(mtmp.mx, mtmp.my)
+                    && !(game.medusa_level && game.medusa_level.dnum === u.uz?.dnum
+                         && game.medusa_level.dlevel === u.uz?.dlevel)
                     && !Is_waterlevel_mu(game.u?.uz);
                 urgent_pline(`${Monnam(mtmp)} drowns you...`);
                 const svk = game.svk || (game.svk = {});
@@ -4037,7 +4038,7 @@ export async function breamm(mtmp, mattk, mtarg) {
         if (!(mtmp.mspec_used | 0) && rn2(3)) {
             if (BZ_VALID_ADTYP_MU(typ)) {
                 if (canseemon_mu(mtmp))
-                    pline(`${je_Monnam(mtmp)} breathes ${breathwep_name_mu(typ)}!`);
+                    await pline(`${je_Monnam(mtmp)} breathes ${breathwep_name_mu(typ)}!`);
                 const gb = (game.gb ||= {});
                 const gt = game.gt || {};
                 gb.buzzer = mtmp;
@@ -4518,8 +4519,11 @@ export async function drop_throw(obj, ohit, x, y) {
     }
 
     if (broken) {
-        /* C mkobj.c delobj -> delobj_core(obj, FALSE) -> obj_resists(obj,0,0). */
-        obj_resists_mu(obj, 0, 0);
+        /* C mthrowu.c:178 delobj(obj) -> delobj_core: obj_resists(obj,0,0), then
+         * obj_extract_self + obfree, which stops the egg's hatch timer. */
+        /* C mthrowu.c:178 delobj(obj) -> delobj_core: obj_resists rn2(100), then
+         * obj_extract_self + obfree (which stops the egg's hatch timer). */
+        await delobj_mu(obj);
     } else {
         if (down_gate(x, y) !== -1)
             broken = !!(await ship_object(obj, x, y, false));
@@ -4796,15 +4800,16 @@ function stone_missile_mu(o) {
     const m = MKOBJ_OC_MATERIAL[o.otyp | 0] | 0;
     return (m === GEMSTONE || m === MINERAL) && (o.oclass | 0) !== RING_CLASS;
 }
-/* obj.h:264 is_poisonable(otmp) — a WEAPON_CLASS object whose oc_skill is in
- * [-P_SHURIKEN, -P_BOW], i.e. a launchable missile.  skills.h:43-47 P_BOW 20,
- * P_SHURIKEN 24.  permapoisoned() covers only the Sceptre of Might's arrows and
- * is not ported. */
+/* obj.h:264-268 is_poisonable(otmp): multigen weapons or permapoisoned
+ * artifacts (artifact.c:2837-2839, Grimtooth). */
 function is_poisonable_mu(otmp) {
+    if (_permapoisoned_mu(otmp)) return true;
     const WEAPON_CLASS = 2, NEG_P_SHURIKEN = -24, NEG_P_BOW = -20;
-    if ((otmp.oclass | 0) !== WEAPON_CLASS) return false;
-    const sk = MKOBJ_OC_SKILL[otmp.otyp | 0] | 0;
-    return sk >= NEG_P_SHURIKEN && sk <= NEG_P_BOW;
+    if ((otmp.oclass | 0) === WEAPON_CLASS) {
+        const sk = MKOBJ_OC_SKILL[otmp.otyp | 0] | 0;
+        if (sk >= NEG_P_SHURIKEN && sk <= NEG_P_BOW) return true;
+    }
+    return _permapoisoned_mu(otmp); /* obj.h:268 || permapoisoned(otmp) */
 }
 /* monst.h:277 resists_poison(mon) = Resists_Elem(mon, POISON_RES), i.e.
  * mon_resistancebits(mon) & MR_POISON (js/mhitm.js:3246 builds the same OR). */
@@ -4956,7 +4961,11 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
             if ((singleobj.otyp | 0) === BLINDING_VENOM_MU
                 || (singleobj.otyp | 0) === CREAM_PIE_M_THROW_MU
                 || (singleobj.otyp | 0) === EGG_M_THROW_MU) {
-                hitu = await thitu_mu(8, 0, singleobj, null);
+                if ((singleobj.otyp | 0) === EGG_M_THROW_MU && !touch_petrifies_mk(singleobj.corpsenm)) {
+                    await impossible_breath('monster throwing egg type %d', singleobj.corpsenm);
+                    hitu = 0;
+                } else
+                    hitu = await thitu_mu(8, 0, singleobj, null);
             } else {
                 /* C mthrowu.c:752-770 default: */
                 let dam = dmgval(singleobj, _hero_monst_mu());
@@ -5163,7 +5172,7 @@ async function return_from_mtoss(magr, otmp, tethered_weapon) {
             /* C:885-889 */
             if (!_mtoss_do_not_annoy
                 || ((game.moves | 0) - _mtoss_do_not_annoy) > 500) {
-                pline(`${Tobjnam(otmp, 'return')} to `
+                await pline(`${Tobjnam(otmp, 'return')} to `
                       + `${s_suffix(mon_nam_uh(magr))} `
                       + `${mbodypart_mu(magr, HAND_MU)}!`);
                 _mtoss_do_not_annoy = game.moves | 0;
@@ -5183,19 +5192,19 @@ async function return_from_mtoss(magr, otmp, tethered_weapon) {
                 if (canseemon_mu(magr)) {
                     /* C:905-908, with mlevitating hardcoded FALSE ("msg
                      * future-proofing only", C:900). */
-                    pline(`${Tobjnam(otmp, 'return')} back to `
+                    await pline(`${Tobjnam(otmp, 'return')} back to `
                           + `${mon_nam_uh(magr)}, landing at ${mhis(magr)} `
                           + `${makeplural(mbodypart_mu(magr, FOOT_MU))}.`);
                 } else if (!Deaf_mu()) {
-                    You_hear_mu(`Something land near ${mon_nam_uh(magr)}.`);
+                    await You_hear(`Something land near ${mon_nam_uh(magr)}.`);
                 }
             } else {
                 dmg += rnd(3);
                 if (canseemon_mu(magr)) {
-                    pline(`${Tobjnam(otmp, 'fly')} back toward `
-                          + `${mon_nam_uh(magr)}, hitting ${mhis(magr)} arm!`);
+                    await pline(`${Tobjnam(otmp, 'fly')} back toward `
+                          + `${mon_nam_uh(magr)}, hitting ${mhis(magr)} ${mbodypart_mu(_hero_monst_mu(), 0 /* ARM */)}!`);
                 } else if (!Deaf_mu()) {
-                    You_hear_mu(`something hit ${mon_nam_uh(magr)} with a thud!`);
+                    await You_hear(`something hit ${mon_nam_uh(magr)} with a thud!`);
                 }
                 hits_thrower = true;
             }
@@ -5205,21 +5214,18 @@ async function return_from_mtoss(magr, otmp, tethered_weapon) {
         /* C:926-932 — it didn't make it back. */
         if (tethered_weapon)
             tmp_at(DISP_END, 0);
-        You_hear_mu('a loud snap!');
+        await You_hear('a loud snap!');
         notcaught = true;
     }
     if (otmp) {
         if (hits_thrower) {
-            /* C:935-936 artifact_hit is a GAP (no artifact aklys in C's
-             * arwep[] reach). */
+            if (otmp.oartifact)
+                dmg = (await artifact_hit(null, magr, otmp, dmg, 0)).dmg;
             magr.mhp = (magr.mhp | 0) - dmg;
             if ((magr.mhp | 0) <= 0) {
                 /* C:939 monkilled(magr, canspotmon(magr) ? "" : NULL, AD_PHYS)
-                 * — a NULL fltxt suppresses the message; js/trap.js's shared
-                 * monkilled body always prints when the square is seen, so the
-                 * unseen case is routed with the message it would print
-                 * anyway.  RNG-free either way. */
-                await monkilled_mu(magr, '');
+                 * NULL suppresses the death message for an unseen thrower. */
+                await monkilled_mu(magr, canspotmon_disp(magr) ? '' : null);
             }
         }
         if (notcaught) {
@@ -5241,7 +5247,7 @@ async function return_from_mtoss(magr, otmp, tethered_weapon) {
                     await pline((weight_mu(otmp) > 9) ? 'Splash!' : 'Plop!');
                 }
             }
-            /* C:959-960 obj_sheds_light: GAP, RNG-free. */
+            if (obj_is_burning(otmp)) game.vision_full_recalc = 1;
         }
     }
     /* C:963-964 */
@@ -5373,7 +5379,7 @@ function calc_mattacku_vars(mtmp) {
      * Zap effects read game.bhitpos; both names represent C's gb.bhitpos. */
     game.bhitpos = (game.gb ||= {}).bhitpos = { x: u.ux | 0, y: u.uy | 0 };
     (game.gn ||= {}).notonhead = false;
-    return { ranged, range2, foundyou };
+    return { ranged, range2, foundyou, youseeit: canseemon_mu(mtmp) };
 }
 
 /* C mondata.h — mflags2 bit tests.  M2_WERE 0x00000004, M2_DEMON 0x00000100
@@ -6017,7 +6023,9 @@ function is_art_mk(otmp, art) {
 export function getmattk(magr, udefend, mdef, indx, prev_result) {
     const mndx = (magr.mndx ?? magr.mnum ?? -1) | 0;
     const raw = mon_mattk_raw(mndx);
-    const attk = mon_mattk(mndx, indx);
+    const attk = mon_mattk(mndx, indx)
+        || (!(game.sysopt?.seduce ?? true) && raw?.[0]?.[1] === AD_SSEX
+            ? { aatyp: AT_NONE_, adtyp: AD_PHYS_, damn: 0, damd: 0 } : null);
     if (!attk) return null;
     /* C:317 `struct obj *weap = (magr == &youmonst) ? uwep : MON_WEP(magr);` */
     const magr_is_hero = (magr === game.youmonst);
@@ -6029,6 +6037,17 @@ export function getmattk(magr, udefend, mdef, indx, prev_result) {
     const raw_adtyp = (k) => ((raw && raw[k]) ? (raw[k][1] | 0) : 0);
     const raw_aatyp = (k) => ((raw && raw[k]) ? (raw[k][0] | 0) : 0);
 
+    /* C mhitu.c:320-334; monsters.h:2925-2927 c_sa_no, including NO_ATTKs. */
+    if (!(game.sysopt?.seduce ?? true)) {
+        if (raw_adtyp(0) === AD_SSEX) {
+            const a = [[AT_CLAW_, AD_PHYS_, 1, 3], [AT_CLAW_, AD_PHYS_, 1, 3], [AT_BITE_, AD_DRLI_MU, 2, 6]][indx] || [AT_NONE_, AD_PHYS_, 0, 0];
+            Object.assign(attk, { aatyp: a[0], adtyp: a[1], damn: a[2], damd: a[3] });
+            substituted = true;
+        } else if (attk.adtyp === AD_SSEX) {
+            attk.adtyp = AD_DRLI_MU;
+            substituted = true;
+        }
+    }
 
     if (indx > 0 && (prev_result?.[indx - 1] | 0) > M_ATTK_MISS
         && (attk.adtyp === AD_DISE_MK || attk.adtyp === AD_PEST_MK
@@ -6239,7 +6258,7 @@ export async function mattacku(mtmp) {
     const mndx = (mtmp.mndx ?? mtmp.mnum ?? -1) | 0;
     if (ENV.FF_MATTACK_TRACE === '1')
         pushRngLogEntry(`^mattacku_enter[id=${mtmp.m_id|0} pm=${mndx} pos=${mtmp.mx|0},${mtmp.my|0} target=${mtmp.mux|0},${mtmp.muy|0} pass=${game._ffMlPass|0} swallow=${game.u?.uswallow ? 1 : 0}]`);
-    let { ranged, range2, foundyou } = calc_mattacku_vars(mtmp);
+    let { ranged, range2, foundyou, youseeit } = calc_mattacku_vars(mtmp);
     if (!ranged)
         nomul(0);
     if (DEADMONSTER(mtmp))
@@ -6420,7 +6439,7 @@ export async function mattacku(mtmp) {
     if ((mtmp.cham ?? NON_PM_MU) === NON_PM_MU && !(mtmp.mcan | 0) && !range2
         && (is_demon_mu(mtmp.data) || is_were_mu(mtmp.data))) {
         const already_fleeing = (mtmp.mflee | 0) !== 0;
-        await summonmu_mu(mtmp, canseemon_mu(mtmp));
+        await summonmu_mu(mtmp, youseeit);
         if ((mtmp.mflee | 0) && !already_fleeing)
             return 0;
     }
@@ -6429,7 +6448,7 @@ export async function mattacku(mtmp) {
         if (mtmp === u.ustuck) {
             await pline(`${Monnam(mtmp)} loosens its grip slightly.`);
         } else if (!range2) {
-            if (canseemon_mu(mtmp) || sensemon_mu(mtmp))
+            if (youseeit || sensemon_mu(mtmp))
                 await pline(`${Monnam(mtmp)} starts to attack you, but pulls back.`);
             else
                 await pline('You feel something move nearby.');
@@ -6469,7 +6488,7 @@ export async function mattacku(mtmp) {
         if (DEADMONSTER(mtmp))
             return 1;
         if (i > 0) {
-            ({ range2, foundyou } = calc_mattacku_vars(mtmp));
+            ({ range2, foundyou, youseeit } = calc_mattacku_vars(mtmp));
             if (firstfoundyou && !foundyou)
                 continue;
         }
@@ -6647,7 +6666,7 @@ export async function mattacku(mtmp) {
                     /* C mhitu.c:864-871 — the "lunges forward and recoils"
                      * / You_hear arm for an engulfer that swung at the hero's
                      * displaced image. */
-                    if (canseemon_mu(mtmp))
+                    if (youseeit)
                         pline(`${Monnam(mtmp)} lunges forward and recoils!`);
                     else
                         pline(`You hear a ${is_whirly_gu(mndx, mtmp.data)

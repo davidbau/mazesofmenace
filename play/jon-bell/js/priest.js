@@ -2,6 +2,7 @@
 // Ported from nethack-c/src/priest.c
 
 import { game } from './gstate.js';
+import { on_level as on_level_real } from './dungeon.js';
 import { EPRI, EMIN, TEMPLE, NOTONL, ALLOW_M, ALLOW_ROCK, IS_ROOM, ROOMOFFSET,
          ARTICLE_NONE, ARTICLE_THE, ARTICLE_A, ARTICLE_YOUR,
          A_NONE, A_LAWFUL, A_CHAOTIC, A_NEUTRAL, Is_astralevel,
@@ -787,6 +788,6 @@ export function rndmonnam(code) {
 export function bogon_is_pname(code) { return dn_bogon_is_pname(code); }
 /* C ref: dungeon.c:1050-1054 on_level(a, b) — same dungeon AND same depth. */
 export function on_level(a, b) {
-    return !!(a && b && a.dnum === b.dnum && a.dlevel === b.dlevel);
+    return on_level_real(a, b);
 }
 export { mongone } from './mklev.js';

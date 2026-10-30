@@ -26,7 +26,7 @@ import { canspotmon, canseemon as canseemon_real } from './display.js';
 import { highc, shtype_name, inside_shop, makemon, angry_guards, next_ident, mksobj, del_engr_at, mpickobj, mongone as mongone_real } from './mklev.js';
 import { is_demon, poly_gender } from './makemon.js';
 import { is_pick } from './dig.js';
-import { ECMD_OK, ECMD_TIME, ESHK, SHARED, SHARED_PLUS, NO_ROOM, COLNO, ROWNO, IS_DOOR, IS_ROOM, IS_WALL, SHOPBASE, CANDLESHOP, D_BROKEN, D_CLOSED, BILLSZ, Has_contents, isok, u_at, ROOMOFFSET, RLOC_MSG, DEAF, INVIS, PASSES_WALLS, QBUFSZ, LL_ACHIEVE, G_GONE, MM_NOMSG, CONFLICT, REPAIR_DELAY, BOLT_LIM, ZAP_POS, D_LOCKED, LANDMINE, BEAR_TRAP, PIT, SPIKED_PIT, HOLE, ACH_SHOP, M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, DETECT_MONSTERS } from './const.js';
+import { ECMD_OK, ECMD_CANCEL, ECMD_TIME, ESHK, SHARED, SHARED_PLUS, NO_ROOM, COLNO, ROWNO, IS_DOOR, IS_ROOM, IS_WALL, SHOPBASE, CANDLESHOP, D_BROKEN, D_CLOSED, BILLSZ, Has_contents, isok, u_at, ROOMOFFSET, RLOC_MSG, DEAF, INVIS, PASSES_WALLS, QBUFSZ, LL_ACHIEVE, G_GONE, MM_NOMSG, CONFLICT, REPAIR_DELAY, BOLT_LIM, ZAP_POS, D_LOCKED, LANDMINE, BEAR_TRAP, PIT, SPIKED_PIT, HOLE, ACH_SHOP, M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, DETECT_MONSTERS } from './const.js';
 import { PM_GRID_BUG, PM_KNIGHT, PM_SAMURAI, PM_TOURIST, PM_VALKYRIE, PM_SHOPKEEPER, PM_ROGUE, PM_KEYSTONE_KOP, PM_KOP_SERGEANT, PM_KOP_LIEUTENANT, PM_KOP_KAPTAIN } from './pm.generated.js';
 import { goodpos } from './trap.js';
 import { t_at, deltrap } from './trap.js';
@@ -51,7 +51,7 @@ import { Monnam as Monnam_chat } from './mcastu.js';
 import { online2, place_object, remove_object, add_to_container, newomid } from './mklev.js';
 import { cansee } from './vision.js';
 import { holetime } from './dig.js';
-import { carrying, count_unpaid, currency as currency_real,
+import { carrying, count_unpaid, currency as currency_real, um_dist,
          mbodypart as mbodypart_real, body_part as body_part_real,
          merge_choice, inv_cnt, dropy, getpos, record_achievement, check_special_room, obj_no_longer_held } from './cmd.js';
 import { xprname as xprname_cmd, dbase_display_window as dbase_display_window_cmd } from './cmd.js';
@@ -63,7 +63,7 @@ import { resist_conflict } from './mhitm.js';
 import { move_special } from './priest.js';
 import { rn2 as rn2_shk, rnd as rnd_shk } from './rng.js';
 import { depth as depth_shk } from './hacklib.js';
-import { builds_up } from './dungeon.js';
+import { builds_up, on_level as on_level_real } from './dungeon.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import monArmedPack from './makemon_mons_armed.json' with { type: 'json' };
@@ -1035,7 +1035,7 @@ export async function dopay() {
         if (m_next2u(m)) {
             /* next to an irate shopkeeper? prioritize that */
             if (nxtm && ANGRY(nxtm)) {
-                /* C: continue — keep the angry nxtm */
+                continue; /* C shk.c:1767 also skips visibility/residency. */
             } else {
                 nexttosk++;
                 nxtm = m;
@@ -1079,7 +1079,7 @@ export async function dopay() {
             await pline('Pay whom?');
             const cc = { x: g.u.ux | 0, y: g.u.uy | 0 };
             if ((await getpos(cc, true, 'the creature you want to pay')) < 0)
-                return ECMD_OK;
+                return ECMD_CANCEL;
             const cx = cc.x | 0, cy = cc.y | 0;
             if (cx < 0) {
                 await pline('Try again...');
@@ -1138,18 +1138,17 @@ export async function dopay() {
             /* C:1900-1918 — pay the robbery debt even when the shopkeeper is
              * no longer resident on the current level. */
             if (umoney > ltmp)
-                await pline(`You give ${shkname(shkp)} the ${ltmp} gold piece${ltmp === 1 ? '' : 's'} asked for.`);
+                await pline(`You give ${shkname(shkp)} the ${ltmp} gold piece${ltmp === 1 ? '' : 's'} ${noit_mhe(shkp)} asked for.`);
             else
                 await pline(`You give ${shkname(shkp)} all your${stashed_gold ? ' openly kept' : ''} gold.`);
             await pay(Math.min(umoney, ltmp), shkp);
             if (stashed_gold && umoney <= ltmp)
                 await pline('But you have hidden gold!');
-            if (umoney < ltmp / 2 || (umoney < ltmp && stashed_gold)) {
-                await pline(`${shkname(shkp)} doesn't look satisfied.`);
+            if (umoney < Math.trunc(ltmp / 2) || (umoney < ltmp && stashed_gold)) {
+                await pline(`Unfortunately, ${noit_mhe(shkp)} doesn't look satisfied.`);
             } else {
-                shkp.mpeaceful = 1;
-                eshkp.following = 0;
-                eshkp.robbed = 0;
+                /* C shk.c:1893: reconcile alignment, return home, dismiss kops. */
+                await make_happy_shk(shkp, false);
             }
         }
         return ECMD_TIME;
@@ -1182,7 +1181,7 @@ export async function dopay() {
             /* C shk.c:1932-1936 */
             await pline(`You try to appease ${canspotmon(shkp) ? x_monnam_shk(shkp, ARTICLE_THE_SHK, 'angry', 0, false) : shkname(shkp)} by giving ${noit_mhim(shkp)} 1000 gold pieces.`);
             await pay(1000, shkp);
-            if (String(eshkp.customer || '') !== String(g.plname || g.u?.plname || '') || rn2_shk(3)) {
+            if (String(eshkp.customer || '').slice(0, 32) !== String(g.plname || g.u?.plname || '').slice(0, 32) || rn2_shk(3)) {
                 await make_happy_shk(shkp, false);
             } else {
                 await pline(`But ${shkname(shkp)} is as angry as ever.`);
@@ -1192,6 +1191,8 @@ export async function dopay() {
     }
     if (shkp !== resident) {
         /* C:1944-1949 impossible("dopay: not to shopkeeper?") then setpaid. */
+        await lifecycle_impossible('dopay: not to shopkeeper?');
+        if (resident) await setpaid(resident);
         return ECMD_OK;
     }
     if (eshkp.debit | 0) {
@@ -1765,8 +1766,8 @@ export function contained_cost(obj, shkp, price, usell, unpaid_only) {
         y = loc.y | 0;
     }
     const eshkp = ESHK(shkp);
-    const freespot = (on_floor && x === (eshkp?.shk?.x | 0)
-                      && y === (eshkp?.shk?.y | 0));
+    const freespot = (on_floor && x === ((eshkp?.shk_x ?? eshkp?.shk?.x) | 0)
+                      && y === ((eshkp?.shk_y ?? eshkp?.shk?.y) | 0));
 
     /* price of contained objects; "top" container handled by caller */
     for (let otmp = obj.cobj; otmp; otmp = otmp.nobj) {
@@ -2924,9 +2925,10 @@ export async function u_entered_shop(enterstring) {
     const rmno = enterstring.charCodeAt(0);
     const shkp = shop_keeper(rmno);
     if (!shkp) {
+        /* C shk.c:766 compares offsets in hack.c:3498's one static buffer. */
         if (!empty_shops.includes(enterstring[0])
-            && (in_rooms(u.ux | 0, u.uy | 0, SHOPBASE).join()
-                !== in_rooms(u.ux0 | 0, u.uy0 | 0, SHOPBASE).join()))
+            && (in_rooms(u.ux | 0, u.uy | 0, SHOPBASE).length
+                !== in_rooms(u.ux0 | 0, u.uy0 | 0, SHOPBASE).length))
             await deserted_shop(enterstring);
         empty_shops = typeof u.ushops === 'string' ? u.ushops : '';
         u.ushops = '';
@@ -3590,7 +3592,7 @@ export async function inherits(shkp, numsk, croaked, silently) {
     if (numsk > 1) {
         if (cansee(shkp.mx, shkp.my) && croaked && !silently) {
             takes = '';
-            if (has_head_shk(shkp.data) && !rn2_shk(2))
+            if (has_head_shk(shkp.data || permonstTemplate(_mnum_of_shk(shkp))) && !rn2_shk(2))
                 /* C shk.c:2601-2602 mbodypart(shkp, HEAD) — this call site
                  * previously passed the string literal 'head' rather than the
                  * numeric HEAD=8 bodypart_types enum value, which the throw-
@@ -3886,7 +3888,8 @@ export function costly_adjacent(shkp, x, y) {
         || (x === ((eshkp.shk_x ?? eshkp.shk?.x) | 0)
             && y === ((eshkp.shk_y ?? eshkp.shk?.y) | 0));
 }
-function has_head_shk(_data) { return true; }
+/* C mondata.h:55 has_head(ptr), including polymorphed shopkeepers. */
+function has_head_shk(data) { return ((data.mflags1 | 0) & 0x00008000) === 0; }
 /* C monst.h NOTANGRY(mon) = ((mon)->mpeaceful) — the file's own ANGRY() below
  * is its negation; both are spelled out so inherits() reads as C does. */
 function NOTANGRY_SHK(mon) { return !!mon.mpeaceful; }
@@ -3899,8 +3902,7 @@ export function mongone(mtmp) {
     return mongone_real(mtmp);
 }
 export function on_level(l1, l2) {
-    return !!l1 && !!l2
-        && (l1.dnum | 0) === (l2.dnum | 0) && (l1.dlevel | 0) === (l2.dlevel | 0);
+    return on_level_real(l1, l2);
 }
 /* C ref: shk.c:687-725 rob_shop — settle available credit, then mark the
  * remaining bill as an actual robbery and put the shopkeeper into pursuit.
@@ -4099,8 +4101,7 @@ function clear_no_charge(_shkp, chain) {
 function clear_no_charge_pets(_shkp) {
     for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
         if (!mtmp.mtame) continue;
-        for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj)
-            otmp.no_charge = 0;
+        if (mtmp.minvent) clear_no_charge(_shkp, mtmp.minvent);
     }
 }
 
@@ -4150,10 +4151,6 @@ function yelp(shkp) { return yelp_mhitm(shkp); }
  *   #define um_dist(x,y,n) (abs(u.ux - (x)) > (n) || abs(u.uy - (y)) > (n))
  * This is NOT distu()/dist2(); the earlier `dist2(...) <= 1` spellings in this
  * file inverted the sense as well as changing the metric. */
-function um_dist(x, y, n) {
-    const u = game.u || {};
-    return Math.abs((u.ux | 0) - x) > n || Math.abs((u.uy | 0) - y) > n;
-}
 
 
 async function home_shk(shkp, killkops) {
@@ -4175,7 +4172,13 @@ async function home_shk(shkp, killkops) {
  * js/dokick.js also has a `currency` but it is a throwing stub, not a
  * candidate. */
 export function currency(amount) { return currency_real(amount); }
-function unleash_all() { }
+/* C apply.c:746-756: release both ends before dropping the hero's inventory. */
+function unleash_all() {
+    for (let obj = game.invent; obj; obj = obj.nobj)
+        if (obj.otyp === 236 /* LEASH */) obj.leashmon = 0;
+    for (let mon = game.fmon; mon; mon = mon.nmon)
+        mon.mleashed = 0;
+}
 
 // C mondata.h likes_gold/likes_gems/likes_objs/likes_magic — bit tests against
 // mons[mndx].mflags2 (row[7] of js/makemon_mons.json), plus is_armed() for
@@ -4233,13 +4236,14 @@ async function give_to_nearby_mon(otmp, x, y) {
 }
 
 // C bones.c:276-277 uses do.c:893 obj_no_longer_held, including billing.
+import { artifact_light as artifact_light_real } from './light.js';
 function artifact_light_fp(obj) {
-    return !!(obj && (obj.otyp === 102 /* GOLD_DRAGON_SCALE_MAIL */ || obj.otyp === 112 /* GOLD_DRAGON_SCALES */));
+    return artifact_light_real(obj);
 }
 function obj_is_burning_fp(obj) {
     return !!(obj && obj.lamplit);
 }
-function end_burn_fp(_obj, _timer_attached) { }
+import { end_burn as end_burn_fp } from './timeout.js';
 
 // C bones.c goodfruit(id) — mutates the untracked global fruit-name list.
 function goodfruit_fp(_id) { }
@@ -4994,17 +4998,14 @@ async function add_one_tobill(obj, dummy, shkp) {
         unbilled = true;
     } else if ((eshkp.billct | 0) === BILLSZ) {
         /* shk's bill is completely full */
-        void pline("You got that for free!");
+        await pline("You got that for free!");
         unbilled = true;
     }
     /* if not on any list (probably from bill_dummy_object() which creates
        a new OBJ_FREE object), don't leave unmanaged object hanging around */
     if (unbilled) {
-        /* C dealloc_obj()s the object when obj->where == OBJ_FREE.  This
-         * port's live caller (pickup_object) hands the same object to addinv
-         * immediately afterwards, and bill_dummy_object() — C's only producer
-         * of an OBJ_FREE object on this path — is not ported, so there is
-         * nothing here to deallocate. */
+        if ((obj.where | 0) === OBJ_FREE_SHK)
+            await dealloc_obj(obj);
         return;
     }
 
@@ -5257,7 +5258,9 @@ function cost_per_charge(shkp, obj, altusage) {
         tmp = Math.trunc(tmp / 2);
     } else if (t === 220 || t === 252) { // BAG_OF_TRICKS/HORN_OF_PLENTY
         if (!altusage) tmp = Math.trunc(tmp / 5);
-    } else if (t === 231 || t === 227 || t === 226 || (t >= 247 && t <= 251) || cls === 11) {
+    } else if (t === 231 || t === 227 || t === 226
+               // C shk.c:5664-5665: MAGIC_FLUTE through DRUM_OF_EARTHQUAKE.
+               || (t >= 248 && t <= 258) || cls === 11) {
         if ((obj.spe | 0) > 1) tmp = Math.trunc(tmp / 4);
     } else if (cls === 10) {
         tmp -= Math.trunc(tmp / 5);

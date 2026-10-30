@@ -63,7 +63,7 @@ import { sliparm, permonstTemplate, summon_furies, trapname } from './makemon.js
 import { canletgo } from './makemon.js';
 import { weapon_descr, touch_petrifies as corpse_touch_petrifies, mon_nam, m_at } from './uhitm.js';
 import { setuwep, setuswapwep, setuqwep, empty_handed, cmdq_pop, cmdq_peek, dropx, cmdq_clear, instapetrify as corpse_instapetrify,
-         carrying_stoning_corpse, Yname2 } from './cmd.js';
+         carrying_stoning_corpse, Yname2, equip_ok as equip_ok_cmd } from './cmd.js';
 import { otense, makesingular, corpse_xname as petrify_corpse_xname, killer_xname as petrify_killer_xname, simpleonames as petrify_simpleonames } from './objnam.js';
 import { HAND, FINGER, RIGHT_HANDED, LEFT_HANDED, CQ_CANNED, CXN_ARTICLE as PETRIFY_ARTICLE } from './const.js';
 import { W_WEAPONS, W_WEP, W_SWAPWEP, W_QUIVER, W_RINGL, W_RINGR, W_TOOL,
@@ -445,8 +445,18 @@ export function find_ac() {
             g.disp.botl = 1;
     }
 }
+/* C ref: do_wear.c:567-573 hard_helmet() — hard helms provide better protection
+ * against falling rocks. Returns TRUE if obj is a metallic or crackable helmet.
+ * C source:
+ *   boolean hard_helmet(struct obj *obj)
+ *   {
+ *       if (!obj || !is_helmet(obj))
+ *           return FALSE;
+ *       return (is_metallic(obj) || is_crackable(obj)) ? TRUE : FALSE;
+ *   }
+ * C's is_helmet predicate checks the armor category as well as its class. */
 export function hard_helmet(obj) {
-    if (!obj || (obj.oclass | 0) !== ARMOR_CLASS)
+    if (!obj || !is_helmet(obj))
         return false;
     return isMetallic(obj) || isCrackable(obj);
 }
@@ -539,13 +549,7 @@ function suit_simple_name(row) {
  * never feeds armoroff()'s nomovemsg, but keep the discovery-state branch
  * faithful for the other callers. */
 function cloak_simple_name(row, obj) {
-    if (row) {
-        if (row.name === 'robe') return 'robe';
-        if (row.name === 'mummy wrapping') return 'wrapping';
-        if (row.name === 'alchemy smock')
-            return ((game._oc_name_known && game._oc_name_known[obj?.otyp]) && obj?.dknown) ? 'smock' : 'apron';
-    }
-    return 'cloak';
+    return cloak_simple_name_obj(obj);
 }
 /* C ref: objnam.c:5510 helm_simple_name(helmet) — !hard_helmet ? "hat" : "helm".
  * hard_helmet (do_wear.c:568) = is_helmet && (is_metallic || is_crackable). */
@@ -558,21 +562,12 @@ function helm_simple_name(row) {
  * the hero can currently see contains "gauntlets" (actual name once the type is
  * known, description otherwise); needs dknown. */
 function gloves_simple_name(row, obj) {
-    if (row && obj?.dknown) {
-        const visible = (game._oc_name_known && game._oc_name_known[obj?.otyp]) ? row.name : row.descr;
-        if (visible && visible.includes('gauntlets')) return 'gauntlets';
-    }
-    return 'gloves';
+    return gloves_simple_name_obj(obj);
 }
 /* C ref: objnam.c:5548 boots_simple_name(boots) — "shoes" when the description
  * contains "shoes", or the actual name does and the type is known. */
 function boots_simple_name(row, obj) {
-    if (row && obj?.dknown) {
-        if (row.descr && row.descr.includes('shoes')) return 'shoes';
-        if ((game._oc_name_known && game._oc_name_known[obj?.otyp]) && row.name && row.name.includes('shoes'))
-            return 'shoes';
-    }
-    return 'boots';
+    return boots_simple_name_obj(obj);
 }
 /* C ref: objnam.c:5567 shield_simple_name(shield) */
 function shield_simple_name(row, obj) {
@@ -870,7 +865,7 @@ export async function Boots_off() {
         /* C do_wear.c:274-280 — after setworn clears the boots, reveal the
          * speed boots and report slowing only when no speed source remains. */
         const HFast = rec ? (rec.intrinsic | 0) : 0;
-        if (!oldprop && !(HFast & PROP_TIMEOUT) && !cancelled) {
+        if (!_dw_Very_fast() && !cancelled) {
             makeknown_otyp(otyp);
             await pline(`You feel yourself slow down${HFast ? ' a bit' : ''}.`);
         }
@@ -1805,7 +1800,7 @@ function _count_worn_stuff_dw(accessorizing) {
  * the `_CMD` suffix here marks this as the third, cmd.js-shaped, numbering).
  * do_wear.c is this callback's true home (cmd.c has no equip_ok of its own);
  * cmd.js's private copy predates this file's own getobj integration and is
- * left as-is (out of this file's ownership).
+ * now the shared implementation (C do_wear.c:3404-3441).
  *
  * do_wear.c:1728 removing^is_worn / do_wear.c:1734 class filter /
  * do_wear.c:1744 accessory^(oclass!=ARMOR) / do_wear.c:1748 canwearobj /
@@ -1818,35 +1813,7 @@ const GETOBJ_EXCLUDE_INACCESS_CMD = -1;
  * dependency on that file. */
 const GETOBJ_NOFLAGS_CMD = 0;
 async function equip_ok(obj, removing, accessory) {
-    if (!obj) return GETOBJ_EXCLUDE_CMD;                     /* do_wear.c:1756 */
-    const oclass = obj.oclass | 0;
-    /* do_wear.c:1728 — ignore for putting on if already worn, removing if not. */
-    const is_worn = ((obj.owornmask | 0) & (W_ARMOR_C | W_ACCESSORY_MASK)) !== 0;
-    if (removing !== is_worn) return GETOBJ_EXCLUDE_INACCESS_CMD;
-    /* do_wear.c:1734-1739 — exclude most classes outright, except the few
-     * non-class wearables (meat ring, blindfold, towel, lenses). */
-    if (oclass !== ARMOR_CLASS && oclass !== RING_CLASS && oclass !== AMULET_CLASS) {
-        const otyp = obj.otyp | 0;
-        if (otyp !== MEAT_RING && otyp !== BLINDFOLD_OTYP_DW
-            && otyp !== TOWEL_OTYP_DW && otyp !== LENSES_OTYP_DW)
-            return GETOBJ_EXCLUDE_CMD;
-    }
-    /* do_wear.c:1744 — armor with 'P'/'R' or accessory with 'W'/'T'. */
-    if (accessory !== (oclass !== ARMOR_CLASS)) return GETOBJ_DOWNPLAY_CMD;
-    /* do_wear.c:1748-1750 — armor we can't wear (e.g. from polyform).
-     * noisy=FALSE: canwearobj emits no message and draws no RNG here. */
-    if (oclass === ARMOR_CLASS && !removing) {
-        const dummymask = { mask: 0 };
-        if (!(await canwearobj(obj, dummymask, false)))
-            return GETOBJ_DOWNPLAY_CMD;
-    }
-    // C do_wear.c:3435 — item actions select covered equipment so the common
-    // removal body can explain the obstruction instead of excluding the item.
-    if (removing && !game.gi.item_action_in_progress) {
-        if (await inaccessible_equipment(obj, null, oclass === RING_CLASS))
-            return GETOBJ_EXCLUDE_INACCESS_CMD;
-    }
-    return GETOBJ_SUGGEST_CMD;                                /* do_wear.c:1763 */
+    return equip_ok_cmd(obj, removing, accessory);
 }
 /* C ref: do_wear.c:3446 wear_ok — getobj callback for 'W'. */
 async function wear_ok(obj) { return equip_ok(obj, false, false); }
@@ -3515,7 +3482,7 @@ async function eyewear_on_msg(otmp) {
     const name = xname(otmp);
     const how = ((otmp.otyp | 0) === TOWEL_OTYP_DW)
         ? ` around your ${body_part(HEAD_DW)}` : '';
-    await pline(`You are now wearing ${an(name)}${how}.`);
+    await pline(`You are now wearing ${obj_is_pname(otmp) ? the(name) : an(name)}${how}.`);
 }
 
 async function eyewear_off_msg(otmp) {
@@ -4441,15 +4408,9 @@ export function yname(obj) {
     return prefix + name;
 }
 export { xname };
+/* C shk.c:5862 shk_your — adapt the one-argument API to the shared port. */
 export function shk_your(obj) {
-    const carried = !!obj && ((obj.where | 0) === 3
-        || obj === game.invent
-        || (() => {
-            for (let o = game.invent; o; o = o.nobj)
-                if (o === obj) return true;
-            return false;
-        })());
-    return carried ? 'your ' : 'the ';
+    return ownership_prefix('', obj);
 }
 /* C do_wear.c:60-65 — describe the fingers, or the worn gloves when requested. */
 export function fingers_or_gloves(check_gloves) {

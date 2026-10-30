@@ -349,7 +349,7 @@ function welcome_back_message() {
     const Upolyd = (u.umonnum | 0) !== (u.umonster | 0);
     const currentgend = Upolyd ? !!u.mfemale : !!flags.female;
     const alignbase = u.ualignbase || [];
-    const adrift = (u.ualign?.type ?? 0) !== (alignbase[1] ?? (u.ualign?.type ?? 0));
+    const adrift = (u.ualign?.type ?? 0) !== (alignbase[0] ?? (u.ualign?.type ?? 0));  /* A_CURRENT == 0 (you.h:458) */
     const align_str = (t) => (t === 0 ? 'neutral' : t > 0 ? 'lawful' : 'chaotic');
     /* C role.c:2120 Hello() — the role-specific greeting.  Same table as the
      * new-game copy in js/allmain.js. */
@@ -362,7 +362,7 @@ function welcome_back_message() {
     let buf = '';
     /* C allmain.c:893-899 */
     if ((alignbase[0] ?? null) !== (alignbase[1] ?? null) || adrift)
-        buf += ` ${adrift ? 'adrift ' : ''}${align_str(adrift ? (u.ualign?.type ?? 0) : (alignbase[1] ?? 0))}`;
+        buf += ` ${adrift ? 'adrift ' : ''}${align_str(adrift ? (u.ualign?.type ?? 0) : (alignbase[0] ?? 0))}`;
     /* C allmain.c:901-905 — roles with a distinct female name (Caveman/
      * Cavewoman, Priest/Priestess) never take the adjective. */
     const roleHasFemaleNameC = (initrole === 2 || initrole === 6);

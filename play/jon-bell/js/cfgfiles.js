@@ -29,6 +29,7 @@ function set_configfile_name(fname) {
 
 const RECORDED_REGEN_ROOTS = new Map([
     ['3f5d9ad1352792dc', '/tmp/r/s6a24'],
+    ['155bac67bc72f1f8', '/tmp/r/nt23'],
 ]);
 
 export function set_configfile_for_session(seed, datetime, nethackrc, moves) {

@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { ledger_no as ledger_no_real } from './bones.js';
 // dog.c — Starting pet and pet AI helpers.
 // C ref: nethack-c/src/dog.c
 // @ts-nocheck — js sibling imports.
@@ -184,14 +185,24 @@ export function initedog(mtmp, everything) {
             dropdist: 10000,
             apport: acha, /* acurr already clamps to ≥3; C has no additional clamp here */
             whistletime: 0,
-            hungrytime: moves + 1000, /* C: svm.moves + 1000L */
+            hungrytime: 0, /* C: set below via minhungry */
             ogoal: { x: -1, y: -1 }, /* C: force error if used before set */
             abuse: 0,
             revivals: 0,
             mhpmax_penalty: 0,
             killed_by_u: 0,
         };
+    } else if (mtmp.mextra?.edog && ((mtmp.mextra.edog.apport | 0) <= 0)) {
+        /* C dog.c:69-71 — else { if (edogp->apport <= 0) edogp->apport = 1; }
+         * Retain the extension when re-taming, but ensure positive training
+         * (also applies to an untamed figurine monster). */
+        mtmp.mextra.edog.apport = 1;
     }
+    /* C dog.c:73-76 — hungrytime might already be higher when taming magic
+     * affects an already tame monster */
+    const _minhungry = ((game.moves ?? 0) | 0) + 1000;
+    if (mtmp.mextra?.edog && (mtmp.mextra.edog.hungrytime | 0) < _minhungry)
+        mtmp.mextra.edog.hungrytime = _minhungry;
     /* C dog.c:77-87: log the first pet acquired after startup, then count it.
      * C you.h:316 uhis() uses flags.female, including while polymorphed. */
     const u = game.u || (game.u = {});
@@ -1285,7 +1296,7 @@ export async function mdrop_special_objs(mtmp) {
  * js/cmd.js:5626 each keep the same one-liner file-locally; this is the third
  * copy of the C macro, not a stand-in. */
 function ledger_no(lev) {
-    return ((lev?.dlevel | 0) + (game.dungeons?.[lev?.dnum | 0]?.ledger_start | 0));
+    return ledger_no_real(lev);
 }
 async function panic(_msg) {
     await flush_pending_messages();
@@ -1515,10 +1526,11 @@ export function newedog(mtmp) {
     if (!mtmp.mextra)
         mtmp.mextra = newmextra();
     if (!EDOG(mtmp)) {
-        mtmp.mextra.edog = {};
-        for (const k of Object.keys(mtmp.mextra.edog))
-            delete mtmp.mextra.edog[k];
-        mtmp.mextra.edog.parentmid = mtmp.m_id;
+        mtmp.mextra.edog = {
+            parentmid: mtmp.m_id, droptime: 0, dropdist: 0, apport: 0,
+            whistletime: 0, hungrytime: 0, ogoal: { x: 0, y: 0 },
+            abuse: 0, revivals: 0, mhpmax_penalty: 0, killed_by_u: 0,
+        };
     }
 }
 export function sticks(ptr) {
@@ -1559,7 +1571,12 @@ export async function unstuck(mtmp, skipDocrt = false) {
                 game._resultMessage = null;
                 game._resultMessageJoins = null;
             }
-            if (game._pending_message) {
+            if (game._pending_message && game._topl_win_stop) {
+                /* topl.c:150 more() is a no-op under a live WIN_STOP, but docrt()'s
+                 * cls() still empties the message window (wintty.c:1048-1055), so the
+                 * line left by the ESC'd page is wiped, not re-shown. */
+                game._pending_message = null;
+            } else if (game._pending_message) {
                 const morc = await force_more_from_cls(String(game._pending_message));
                 /* topl.c more():232-235 — this page is raised by cls(), not by an
                  * owner message's update_topl, so ESC's WIN_STOP is live at once

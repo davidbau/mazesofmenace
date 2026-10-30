@@ -770,8 +770,7 @@ export async function do_death_sequence(opts) {
          * follows must hold the new paint, not that page's rows. */
         if (_earlyBot) rebuild_screen_output();
         if (_remainderMorc === 27
-            && (/materialize/.test(remainder)
-                || (pd.alreadySaidYouDie && /You die\.\.\.$/.test(remainder)))) {
+            && (pd.alreadySaidYouDie && /You die\.\.\.$/.test(remainder))) {
             _winStopHere = true;
             _suppressDeathPage = true;
         } else if (_remainderMorc === 27 && !pd.alreadySaidYouDie && !pd.noDeathLine
@@ -951,6 +950,9 @@ export async function do_death_sequence(opts) {
                 g._topl_win_stop_armed = false;
                 g._topl_win_stop_buf = null;
                 g._pending_message = 'You die...';
+                /* topl.c:297 replaced gt.toplines; the eating driver's saved
+                 * copy of the old line must not resurface at the Die? prompt. */
+                g._occ_committed_topl = null;
                 /* That flush is the terminal the Die? prompt's more() shows. */
                 deathPromptFrame = capture_painted_frame_with_status();
             } else {
@@ -1191,6 +1193,13 @@ async function _yn_prompt(query, choices, defchoice, opts = {}) {
          * before flush_screen (litroom's vision_recalc(2) blanked the map). */
         if (g.vision_full_recalc) vision_recalc(0);
         await flush_screen(1);
+    } else if (qbuf.length > 79 && !opts.retainFrame) {
+        /* C pline.c:273-274 — custompline's vpline runs flush_screen(1) (hence
+         * bot()) before it hard-wraps the long question; the wrapped paint
+         * below must not be the first one to see a pending botl (getobj's
+         * invent.c:2049 SET_BOTL after a shop drop's freeinv). */
+        if (g.vision_full_recalc) vision_recalc(0);
+        pline_flush_point();
     }
     const savedEcho = g._topl_prompt_echo;
     const savedWritten = g._topl_prompt_written;
@@ -1547,6 +1556,15 @@ async function disclose(how, taken) {
             ? `Do you want to see what you had when you ${(how === QUIT) ? 'quit' : 'died'}?`
             : 'Do you want your possessions identified?';
         const [ask, defquery] = should_query_disclose_option('i');
+        /* C topl.c:420 custompline -> vpline -> flush_screen(1) (pline.c:274):
+         * the prompt's own flush paints the HP-zero done() requested at
+         * end.c:1075.  A death with no later pline (eat.c:715 brainlessness)
+         * otherwise leaves the frozen pre-death HP up. */
+        if (ask && g.u && (g.u.uhp | 0) === 0 && (g._botlHeldEat || g._botlFrozenDeath)) {
+            g._botlFrozenDeath = false;
+            g._botlHeldEat = false;
+            await bot();
+        }
         c = ask ? await yn_function(qbuf, 'ynq', defquery, true) : defquery;
         if (c === 'y') {
             g.iflags.force_invmenu = false; const _toplUnderMenu = g._topl_sticky; /* docorner leaves row 0 left of offx standing */
@@ -1947,6 +1965,11 @@ async function really_done(how) {
             // tty_display_nhwindow pages the last physical map without flushing
             // newsym changes from paybill's removal of nonlocal shopkeepers.
             await force_more_lone_frame(g._pending_message);
+        /* end.c:1247 -> wintty.c:1880-1882: an already-seen prompt makes
+         * WIN_MESSAGE EMPTY without erasing its physical text. Subsequent
+         * menu input must retain that residue until something paints over it. */
+        if (have_windows && !g._topl_win_stop)
+            g._topl_empty_sticky = g._topl_sticky;
         if (how !== PANICKED) {
             for (let obj = g.invent, nextobj = null; obj; obj = nextobj) {
                 nextobj = obj.nobj;

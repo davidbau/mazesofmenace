@@ -44,7 +44,7 @@ import { setworn } from './worn.js';
 import { racial_exception } from './worn.js';
 import { uwepgone as _uwepgone, uswapwepgone as _uswapwepgone } from './steal.js';
 import { weapon_descr, MONS_NAMES } from './uhitm.js';
-import { the, cloak_simple_name, helm_simple_name, cxname, vtense, makeplural, simple_typename, simpleonames, ansimpleoname, otense } from './objnam.js';
+import { an as an_objnam, the, cloak_simple_name, helm_simple_name, cxname, vtense, makeplural, simple_typename, simpleonames, ansimpleoname, otense } from './objnam.js';
 import { observe_object, discover_object } from './o_init.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_SKILL, MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js';
 import {
@@ -59,7 +59,7 @@ import {
     ECMD_OK, ECMD_TIME, ECMD_CANCEL, Is_airlevel, Is_waterlevel, In_endgame, KILLED_BY_AN,
     KILLED_BY, DIED, GENOCIDED, STONING, POLYMORPH, NECK,
     HALLUC, CONFUSION, FREE_ACTION,
-    I_SPECIAL, G_GENOD,
+    I_SPECIAL, G_GENOD, ismnum,
     UNCHANGING as UNCHANGING_PS,
     MAGICAL_BREATHING,
     IS_FOUNTAIN,
@@ -205,12 +205,9 @@ function selfmask() {
 }
 function your_race(ptr) { return (ptr.mflags2 & selfmask()) !== 0; }
 
-// C do_name.c an(s) — "a"/"an" article.  Minimal port (vowel start).
+// C objnam.c:2145: share the article exceptions and bounds with an().
 function an(s) {
-    if (!s) return s;
-    const c = s[0].toLowerCase();
-    const vowel = (c === 'a' || c === 'e' || c === 'i' || c === 'o' || c === 'u');
-    return (vowel ? 'an ' : 'a ') + s;
+    return an_objnam(s);
 }
 
 // C polyself.c:1077 uasmon_maxStr() — the max-Str for the new form.
@@ -479,7 +476,7 @@ export async function polymon(mntmp) {
 
     /* C polyself.c:777-783 — if stuck mimicking gold, stop immediately; if
      * becoming a non-mimic, stop mimicking anything (as in polyman()). */
-    if ((g.multi | 0) < 0 && (g.youmonst?.m_ap_type | 0) === M_AP_OBJECT_local
+    if ((g.multi | 0) < 0 && ((g.youmonst?.m_ap_type | 0) & 7) === M_AP_OBJECT_local
         && g.youmonst.data?.mlet !== S_MIMIC)
         await unmul("");
     if (ptr.mlet !== S_MIMIC) {
@@ -1588,7 +1585,7 @@ async function polyself_body(psflags, st) {
     const armor = u.uarm || null;
     const armorOtyp = armor?.otyp | 0;
     const draconian = armorOtyp >= 101 && armorOtyp <= 120;
-    const iswere = ((u.ulycn ?? NON_PM) | 0) >= LOW_PM;
+    const iswere = ismnum(u.ulycn ?? NON_PM);
     // C is_vampire() tests the current monster letter; is_vampshifter() tests
     // the true form kept in cham.  Vampire polymorph is a special path and
     const currentData = g.youmonst?.data || permonstTemplate(u.umonnum | 0);
@@ -1634,6 +1631,7 @@ async function polyself_body(psflags, st) {
 
     st.old_light = emits_light(g.youmonst?.data); /* C polyself.c:497 */
     let mntmp = -1; /* NON_PM */
+    let gvariant = NEUTRAL; /* C polyself.c:472,535,684 */
     // C's controlled-poly wizard-revert jumps directly to made_change after
     // rehumanize(); keep this separate from the normal target dispatch so we
     // don't consume the later random-form/sex-change rolls.
@@ -1708,14 +1706,14 @@ async function polyself_body(psflags, st) {
                 mntmp = PM_FOG_CLOUD;
             else
                 mntmp = PM_VAMPIRE_BAT;
-            if (g.youmonst?.cham >= LOW_PM
+            if (ismnum(g.youmonst?.cham)
                 && !_is_vampire(currentData) && !rn2(2))
                 mntmp = g.youmonst.cham | 0;
         }
         // C polyself.c:682-687 — do_vampyr also confirms #monster shifts
         // when polymorph control is active; form reversion disables control.
         if (controllable_poly) {
-            const query = `Become ${an(monPmname(mntmp, NEUTRAL))}?`;
+            const query = `Become ${an(monPmname(mntmp, gvariant))}?`;
             const answer = await yn_function(query, 'yn', 'n', true);
             if (answer !== 'y') {
                 // C tty/topl.c:545-550 leaves this single-row prompt visible
@@ -1767,7 +1765,8 @@ async function polyself_body(psflags, st) {
             // C polyself.c:529-533 — explicit random request.
             if (buf === '*' || buf === 'random') { tryct = 0; continue; }
             // C polyself.c:534-535 — class=0; mntmp = name_to_mon(buf, &gvariant).
-            const nm = name_to_mon(buf, NEUTRAL);
+            const nm = name_to_mon(buf, gvariant);
+            if (nm && typeof nm === 'object') gvariant = nm.gender;
             mntmp = (nm && typeof nm === 'object') ? (nm.mntmp | 0) : (nm | 0);
             /* C polyself.c:536-545: an unrecognised species name is also
              * accepted as a monster class ("dragon", "demon", or a class
@@ -1904,12 +1903,18 @@ async function polyself_body(psflags, st) {
                     mntmp = PM_WOLF;
                 else if (!rn2(4)) mntmp = PM_FOG_CLOUD;
                 else mntmp = PM_VAMPIRE_BAT;
-                if (g.youmonst?.cham >= LOW_PM && !_is_vampire(currentData) && !rn2(2))
+                if (ismnum(g.youmonst?.cham) && !_is_vampire(currentData) && !rn2(2))
                     mntmp = g.youmonst.cham | 0;
             }
             if (controllable_poly) {
-                const answer = await yn_function(`Become ${an(monPmname(mntmp, g.flags?.female ? FEMALE : MALE))}?`, 'yn', 'n');
-                if (answer !== 'y') { st.old_light = null; return; }
+                const query = `Become ${an(monPmname(mntmp, gvariant))}?`;
+                const answer = await yn_function(query, 'yn', 'n', true);
+                if (answer !== 'y') {
+                    if (!g.gi?.in_doagain)
+                        g._topl_sticky = `${query} [yn] (n)`;
+                    st.old_light = null;
+                    return;
+                }
             }
             await polymon(mntmp);
             return;
@@ -1938,7 +1943,7 @@ async function polyself_body(psflags, st) {
                     mntmp = PM_WOLF;
                 else if (!rn2(4)) mntmp = PM_FOG_CLOUD;
                 else mntmp = PM_VAMPIRE_BAT;
-                if (g.youmonst?.cham >= LOW_PM && !_is_vampire(currentData) && !rn2(2))
+                if (ismnum(g.youmonst?.cham) && !_is_vampire(currentData) && !rn2(2))
                     mntmp = g.youmonst.cham | 0;
             }
         }
@@ -2401,6 +2406,10 @@ export async function dogaze() {
                 if (mtmp.data.pmidx === PM_MEDUSA && !mtmp.mcan) {
                     await pline('Gazing at the awake %s is not a very good idea.', l_monnam(mtmp));
                     await urgent_pline('You turn to stone...');
+                    if (!g.svk)
+                        g.svk = {};
+                    if (!g.svk.killer)
+                        g.svk.killer = { id: 0, format: 0, name: '', next: null };
                     g.svk.killer.format = KILLED_BY;
                     g.svk.killer.name = "deliberately meeting Medusa's gaze";
                     await done(STONING);
@@ -2433,7 +2442,7 @@ export async function dohide() {
     // Local helpers
     const _Flying = () => {
         const p = u.uprops?.[FLYING];
-        const base = !!((p?.intrinsic | 0) || (p?.extrinsic | 0)) || !!(u.usteed);
+        const base = !!((p?.intrinsic | 0) || (p?.extrinsic | 0) || (u.usteed?.data?.mflags1 & M1_FLY));
         return base && !(p?.blocked | 0);
     };
     /* C mondata.h:22 is_clinger(ptr) — mflags1 & M1_CLING.  Was hardcoded FALSE
@@ -2473,7 +2482,7 @@ export async function dohide() {
             reason = "holding that creature";
         }
         You_cant("hide while you're %s.", reason);
-        if (u.uundetected || (ismimic && (g.youmonst.m_ap_type | 0) !== M_AP_NOTHING_local)) {
+        if (u.uundetected || (ismimic && ((g.youmonst.m_ap_type | 0) & 7) !== M_AP_NOTHING_local)) {
             u.uundetected = 0;
             g.youmonst.m_ap_type = M_AP_NOTHING_local;
             newsym(u.ux, u.uy);
@@ -2550,7 +2559,7 @@ export async function dohide() {
         return ECMD_OK_local;
     }
 
-    if (u.uundetected || (ismimic && (g.youmonst.m_ap_type | 0) !== M_AP_NOTHING_local)) {
+    if (u.uundetected || (ismimic && ((g.youmonst.m_ap_type | 0) & 7) !== M_AP_NOTHING_local)) {
         youhiding(false, 1); /* "you are already hiding" */
         return ECMD_OK_local;
     }
@@ -2591,7 +2600,7 @@ function youhiding(via_enlghtmt, msgflag) {
     const g = game;
     const u = g.u;
     let buf = 'hiding';
-    const apType = (g.youmonst?.m_ap_type | 0);
+    const apType = (g.youmonst?.m_ap_type | 0) & 7;
     if (apType !== M_AP_NOTHING_local) {
         buf = 'mimicking';
         if (apType === M_AP_OBJECT_local)

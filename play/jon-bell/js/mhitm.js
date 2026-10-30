@@ -63,6 +63,7 @@ PM_GHOST, PM_WIZARD_OF_YENDOR, PM_SHOPKEEPER, PM_ARCHEOLOGIST, PM_WIZARD, } from
 import { cansee, couldsee, clear_path, is_lightblocker_mappear, does_block, unblock_point } from './vision.js';
 import { linedup } from './trap.js';
 import { hmon_egg_petrify, touch_petrifies, mon_nam, exclam, artifact_hit, hmon_hitmon_do_hit, hmon_hitmon_poison, hmon_hitmon_splitmon, hmon_hitmon_msg_hit, hmon_hitmon_msg_silver, hmon_hitmon_msg_lightobj, hmon_hitmon_dmg_recalc, hmon_hitmon_special } from './uhitm.js';
+import { first_weapon_hit, hmon_hitmon_knockback } from './uhitm.js';
 /* C mon.c:3470 killed() is a one-line wrapper over xkilled(), which lives in
  * js/uhitm.js.  mhitm.js already imports from uhitm.js (mon_nam, dmgval_weapon,
  * ...), so this rides the existing edge rather than adding a new one. */
@@ -81,7 +82,7 @@ import { abuse_dog, sticks, unstuck } from './dog.js';
  * exports a throw-stub and js/shk.js a "hand" constant).  cmd.js already
  * imports from this file, so this is a cycle — safe because mbodypart is a
  * hoisted function declaration and is only called at runtime. */
-import { mbodypart, a_gname_at, Breathless, body_part, is_pole } from './cmd.js';
+import { mbodypart, a_gname_at, Breathless, body_part, is_pole, dry_a_towel, growl_sound, set_msg_xy } from './cmd.js';
 import { newsym as _wakeup_newsym } from './display.js';
 import { MKOBJ_OC_CLASS } from './mkobj_data.js';
 import { getObjDescr, just_an, The, vtense, xname, cxname, mshot_xname, Yobjnam2, makeplural } from './objnam.js';
@@ -1163,7 +1164,15 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                 }
                 else {
                     void pline("You are hit by magic missiles appearing from thin air!");
+                    // C uhitm.c:5988 / mhitu.c:1925: done() runs before
+                    // monstunseesu or the second passive block's rn2(3).
+                    const deathBeforeMissiles = game._pendingDeath || null;
                     await mdamageu(mon, tmp);
+                    if (game._pendingDeath && game._pendingDeath !== deathBeforeMissiles) {
+                        await drain_pending_death_in_place();
+                        if (pending_death_is_final())
+                            return (malive | mhit);
+                    }
                     monstunseesu(M_SEEN_MAGR);
                 }
             }
@@ -2202,7 +2211,7 @@ export function raceptr(mtmp) {
     const u = game.u;
     if (is_you && !Upolyd(u)) {
         /* C: return &mons[gu.urace.mnum] */
-        const urace_mnum = (u && u.urace && (u.urace.mnum | 0)) || 0;
+        const urace_mnum = game.urace.mnum;
         return permonstTemplate(urace_mnum);
     }
     /* C: return mtmp->data */
@@ -2363,28 +2372,7 @@ export async function killed(mtmp) {
     await xkilled_mh(mtmp, XKILL_GIVEMSG_MH);
 }
 
-function growl_sound(ptr) {
-    /* C monflag.h:11-59 ms_sounds — values transcribed from the 5.0 enum, not
-     * assumed contiguous (MS_HISS is 9, MS_GROAN is 44). */
-    const MS_SILENT = 0, MS_BARK = 1, MS_MEW = 2, MS_ROAR = 3, MS_BELLOW = 4,
-          MS_GROWL = 5, MS_SQEEK = 6, MS_SQAWK = 7, MS_HISS = 9, MS_BUZZ = 10,
-          MS_NEIGH = 12, MS_MOO = 13, MS_WAIL = 14, MS_GROAN = 44;
-    switch (ptr.msound | 0) {
-    case MS_MEW: case MS_HISS: return 'hiss';
-    case MS_BARK: case MS_GROWL: return 'growl';
-    case MS_ROAR: return 'roar';
-    case MS_BELLOW: return 'bellow';
-    case MS_BUZZ: return 'buzz';
-    case MS_SQEEK: return 'squeal';
-    case MS_SQAWK: return 'screech';
-    case MS_NEIGH: return 'neigh';
-    case MS_WAIL: return 'wail';
-    case MS_GROAN: return 'groan';
-    case MS_MOO: return 'low';
-    case MS_SILENT: return 'commotion';
-    default: return 'scream';
-    }
-}
+/* C sounds.c:351-394: use cmd.js's shared growl_sound(mtmp) verb table. */
 /* C sounds.c:397-423: growl is void; peacefuls_respond reads last_msg
  * afterwards (mon.c:4243), which wake_nearto's messages can also change. */
 export function growl(mtmp) {
@@ -2399,7 +2387,7 @@ export function growl(mtmp) {
      * and it is an rn2(35) on the CORE stream, not just a different word. */
     const growl_verb = xm_Hallucination()
         ? H_SOUNDS_MM[rn2(H_SOUNDS_MM.length)]
-        : growl_sound(data);
+        : growl_sound(mtmp);
     if (growl_verb) {
         /* C sounds.c:414 — if (canseemon(mtmp) || !Deaf) */
         if (canseemon(mtmp) || !Deaf()) {
@@ -2653,6 +2641,8 @@ export async function hmon_hitmon(mon, obj, thrown, dieroll) {
     if (hmd.dmg < 1) {
         const mon_is_shade = (mon.data && (mon.data.pmidx | 0) === PM_SHADE);
         hmd.dmg = (hmd.get_dmg_bonus && !mon_is_shade) ? 1 : 0;
+        if (mon_is_shade && !hmd.hittxt && thrown !== HMON_THROWN && thrown !== HMON_KICKED)
+            hmd.hittxt = shade_miss(game.youmonst, mon, obj, false, true);
     }
 
     await hmon_hitmon_special(hmd, mon, obj);
@@ -2667,7 +2657,11 @@ export async function hmon_hitmon(mon, obj, thrown, dieroll) {
     }
 
     if (!hmd.already_killed) {
-        /* first_weapon_hit requires thrown==MELEE/APPLIED — skipped for THROWN */
+        if (obj && (obj === uwep || (obj === u.uswapwep && u.twoweap))
+            && (obj.oclass === _OCLASS_WEAPON || is_weptool(obj))
+            && (thrown === HMON_MELEE || thrown === HMON_APPLIED)
+            && !hmd.jousting && hmd.dmg > 0 && (u.uconduct?.weaphit | 0) <= 1)
+            first_weapon_hit(obj);
         mon.mhp -= hmd.dmg;
     }
     if ((mon.mhp | 0) > (mon.mhpmax | 0))
@@ -2680,6 +2674,7 @@ export async function hmon_hitmon(mon, obj, thrown, dieroll) {
     await _hmon_hitmon_pet(hmd, mon);
     await hmon_hitmon_splitmon(hmd, mon, obj);
     await hmon_hitmon_msg_hit(hmd, mon, obj);
+    if (hmd.dryit) await dry_a_towel(obj, -1, true);
     if (hmd.silvermsg) await hmon_hitmon_msg_silver(hmd, mon);
     if (hmd.lightobj) await hmon_hitmon_msg_lightobj(hmd, mon);
     if (hmd.unpoisonmsg) hmd.saved_oname = cxname(obj);
@@ -2724,7 +2719,8 @@ export async function hmon_hitmon(mon, obj, thrown, dieroll) {
     if (hmd.unpoisonmsg) await pline(`Your ${hmd.saved_oname} ${vtense(hmd.saved_oname, 'are')} no longer poisoned.`);
     if (!hmd.destroyed && !hmd.offmap) {
         await wakeup_attack(mon, true);
-        void maybe_knockback;
+        if (maybe_knockback && await hmon_hitmon_knockback(mon) && mon.mhp < 1)
+            hmd.destroyed = true;
     }
     return hmd.destroyed ? false : true;
 }
@@ -3110,9 +3106,9 @@ function steed_vs_stealth() {
     const bLevit = (u.uprops[LEVITATION].blocked | 0);
 
     /* Flying macro: (HFlying || EFlying || is_flyer) && !BFlying */
-    const Flying = ((hFlying || eFlying) || (u.usteed && is_flyer(u.usteed.data))) && !(bFlying & I_SPECIAL);
+    const Flying = ((hFlying || eFlying) || (u.usteed && is_flyer(u.usteed.data))) && !bFlying;
     /* Levitation macro: (HLevitation || ELevitation) && !BLevitation */
-    const Levitation = (hLevit || eLevit) && !(bLevit & I_SPECIAL);
+    const Levitation = (hLevit || eLevit) && !bLevit;
 
     if (u.usteed && !Flying && !Levitation) {
         /* BStealth |= FROMOUTSIDE */
@@ -3685,10 +3681,8 @@ export function resists_blnd(mon) {
                   || (mon.msleeping | 0)))
         return true;
     /* yellow light, Archon; !dust vortex, !cobra, !raven */
-    const mndx = (ptr && ptr.pmidx !== undefined) ? (ptr.pmidx | 0) : -1;
-    if (mndx >= 0
-        && (dmgtype_fromattack(ptr, AD_BLND, AT_EXPL)
-            || dmgtype_fromattack(ptr, AD_BLND, AT_GAZE)))
+    if (dmgtype_fromattack(ptr, AD_BLND, AT_EXPL)
+        || dmgtype_fromattack(ptr, AD_BLND, AT_GAZE))
         return true;
     /* Sunsword */
     if (resists_blnd_by_arti(mon))
@@ -3966,8 +3960,7 @@ export async function sleep_monst(mon, amt, how) {
 export async function slept_monst(mon) {
     if (helpless(mon) && mon === game.u?.ustuck
         && !sticks(game.youmonst.data) && !game.u.uswallow) {
-        /* C pline_mon() attributes the message to the monster's coordinates;
-         * this terminal has no equivalent message-coordinate channel. */
+        set_msg_xy(mon.mx, mon.my); /* C mhitm.c:1257 pline_mon() */
         await pline(`${s_suffix(Monnam_mm(mon))} grip relaxes.`);
         await unstuck(mon);
     }
@@ -4344,8 +4337,8 @@ export function name_to_monplus(in_str, remainder_p, gender_name_var) {
     // Handle "vortices"
     let vortIdx = strstri(str, "vortices");
     if (vortIdx !== -1) {
-        str = str.substring(0, vortIdx + 4) + "ex" + str.substring(vortIdx + 4 + 4);
-        // vortices = 8 chars, vort = 4 chars, "ex" replaces "ices" (4 chars)
+        // C mondata.c:934: Strcpy(s + 4, "ex") also truncates the suffix.
+        str = str.substring(0, vortIdx + 4) + "ex";
     } else if (slen > 3 && strcmpi(str.substring(slen - 3), "ies") === 0
                && (slen < 7 || strcmpi(str.substring(slen - 7), "zombies") !== 0)) {
         str = str.substring(0, slen - 3) + "y";
@@ -4511,7 +4504,5 @@ export function name_to_monplus(in_str, remainder_p, gender_name_var) {
  * this module.  Neither had a live caller until check_caitiff got one. */
 import { adjalign as _adjalign_attrib } from './attrib.js';
 import { ENV } from './hostenv.js';
-export function You(line, ...args) {
-    pline('You ' + (args.length ? String(line).replace(/%s/g, () => String(args.shift())) : String(line)));
-}
+import { You } from './display.js'; export { You };
 export function adjalign(n) { return _adjalign_attrib(n); }

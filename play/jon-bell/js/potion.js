@@ -2,6 +2,7 @@
 // potion.js — Potion subsystem + fountain interactions.
 // C ref: nethack-c/src/potion.c, nethack-c/src/fountain.c
 import { game, wizard, discover } from './gstate.js';
+import { a_monnam } from './mhitm.js';
 import { make_blinded, resist, explode, explode_oil, potionhit_polymorph, poly_obj, obj_unpolyable, ubreatheu, melt_ice_zap } from './zap.js';
 import { spoteffects } from './landing-effects.js';
 import { nothing_happens, nothing_seems_to_happen } from './const.js';
@@ -18,7 +19,7 @@ import { PM_HEALER, PM_ROCK_MOLE, PM_WOODCHUCK, PM_PONY, PM_HORSE, PM_WARHORSE, 
 import { PM_FIRE_VORTEX, PM_FLAMING_SPHERE, PM_FIRE_ELEMENTAL, PM_SALAMANDER } from './pm.generated.js';
 import { COLD_RES } from './const.js';
 import monPmnamesPack from './makemon_pmnames.json' with { type: 'json' };
-import { note_lone_pline_frame, pline, flush_screen, newsym, force_more, force_more_lone_frame, await_topl_more_dismiss, canspotmon, canseemon, map_invisible, getobj_never_mind, bot, You_see, You_hear } from './display.js';
+import { note_lone_pline_frame, pline, flush_screen, pline_flush_point, newsym, force_more, force_more_lone_frame, await_topl_more_dismiss, canspotmon, canseemon, map_invisible, getobj_never_mind, bot, You_see, You_hear } from './display.js';
 import { unmap_object, glyph_is_invisible_at, tmp_at } from './display.js';
 import { DISP_ALWAYS, DISP_END } from './const.js';
 import { aggravate, monstseesu as monstseesu_real, burn_away_slime } from './mcastu.js';
@@ -61,7 +62,7 @@ import { EYE, FINGER, HAND, LEG, ARM, STOMACH, FACE, FOOT } from './const.js';
 import { unconscious } from './pickup.js';
 import { is_fainted } from './eat.js';
 import { stagger, hliquid, hcolor, monstunseesu, x_monnam, update_inventory,
-         Resists_Elem, mon_hates_blessings, wakeup_attack, sleep_monst, killed } from './mhitm.js';
+         Resists_Elem, mon_hates_blessings, wakeup_attack, sleep_monst, killed, is_youmonst, defended } from './mhitm.js';
 import { float_vs_flight } from './mhitm.js';
 import { monkilled_trap } from './trap.js';
 import { ERODE_CORRODE, ER_NOTHING, ER_GREASED, EF_GREASE, P_NONE, P_BOW, P_CROSSBOW, P_SHURIKEN,
@@ -91,7 +92,8 @@ import { rider_cant_reach } from './steed.js';
 import { P_SKILL } from './skills.js';
 import { P_RIDING, P_BASIC } from './const.js';
 import { obj_extract_self } from './mklev.js';
-import { freeinv, useupall } from './cmd.js';
+import { freeinv, useupall, set_moreluck as _set_moreluck } from './cmd.js';
+import { confers_luck as _confers_luck } from './attrib.js';
 import { setnotworn } from './worn.js';
 import { _pickup_burden_level } from './wizcmds.js';
 import { Tobjnam, Yobjnam2, aobjnam } from './objnam.js';
@@ -107,8 +109,6 @@ import { PM_SEWER_RAT, PM_WATER_ELEMENTAL, PM_LICHEN, PM_GREEN_SLIME,
 import { paralyze_monst, slept_monst } from './dogmove.js';
 import { polyself, set_uasmon } from './polyself.js';
 import { create_gas_cloud, gas_cloud_at } from './region.js';
-/* C do_name.c a_monnam(mtmp) => x_monnam(mtmp, ARTICLE_A, NULL, 0, TRUE). */
-function a_monnam(mtmp) { return x_monnam(mtmp, ARTICLE_A, null, 0, true); }
 import { getobj_redo_menu, in_town, compactify, doname_body, getpos, getObjFromGetobj,
          costly_alteration } from './cmd.js';
 import { cansee, couldsee } from './vision.js';
@@ -397,8 +397,7 @@ async function y_n(question) {
     const wraps = topl_park_cursor(null, prompt + ' ')[1] > 0;
     const paintPrompt = async () => {
         const savedEcho = game._topl_prompt_echo;
-        // C topl.c:394,420: TOPLINE_SPECIAL_PROMPT hard-wraps without more().
-        if (wraps) game._topl_prompt_echo = true;
+        if (wraps) { pline_flush_point(); game._topl_prompt_echo = true; }
         try {
             game._pending_message = prompt;
             await flush_screen(1);
@@ -902,8 +901,17 @@ async function _display_nhwindow_message() {
             if (disp) { disp.cursorCol = full.length; disp.cursorRow = 0; }
         };
         await _show();
-        await await_topl_more_dismiss(_show);
+        const morc = await await_topl_more_dismiss(_show);
         game._pending_message = '';
+        /* topl.c more():232-235 — display_nhwindow raises this page itself, not
+         * an owner pline's update_topl, so ESC's WIN_STOP is live at once for
+         * every following message. */
+        /* topl.c more():232-235 — ESC sets WIN_STOP, so every later pline of
+         * this turn is swallowed until the next tty_nhgetch clears it. */
+        if (morc === 27 && game._topl_win_stop_armed) {
+            game._topl_win_stop_armed = false;
+            game._topl_win_stop = true;
+        }
     }
 }
 async function dowatersnakes() {
@@ -1145,7 +1153,7 @@ export async function dipfountain(obj) {
             if (obj && !_is_hands && obj.cursed) {
                 if (!_potion_Blind())
                     await pline('The %s glows for a moment.', hliquid('water'));
-                uncurse(obj);
+                await uncurse(obj);
             }
             else {
                 await pline('A feeling of loss comes over you.');
@@ -2335,7 +2343,7 @@ export async function dodrink() {
                 u.ulevelmax -= 1;
                 await pluslvl(false);
             }
-            make_hallucinated(0, true, 0);
+            await make_hallucinated(0, true, 0);
             exercise(0 /* A_STR */, true);
             exercise(A_CON, true);
             /* blessed potion heals wounded legs even when riding */
@@ -2788,7 +2796,7 @@ function haseyes(mondata) {
  * file-local THROWING stub of the same name, which shadowed it at every call
  * site here while the file simultaneously imported the real one as
  * `body_part_pot`.  One binding now: the import above. */
-function eyecount(mondata) {
+export function eyecount(mondata) {
     if (!haseyes(mondata))
         return 0;
     const pmidx = mondata?.pmidx | 0;
@@ -2924,12 +2932,12 @@ function _potion_Deaf() {
     return !!((dp?.intrinsic | 0) || (dp?.extrinsic | 0) || (game.u?.HDeaf | 0)
               || (game.u?.uroleplay?.deaf ? 1 : 0));
 }
-/* C youprop.h:69  Sick_resistance (HSick_resistance || ESick_resistance || ...).
- * The C macro's tail is a polymorph-form test; Upolyd is modelled here through
- * the same u.uprops[SICK_RES] row every other JS reader uses. */
+/* C youprop.h:69: green dragons also resist via their own scales, without
+ * setting the SICK_RES property (mondata.c:91 defended). */
 function _potion_Sick_resistance() {
     const sp = game.u?.uprops?.[SICK_RES];
-    return !!((sp?.intrinsic | 0) || (sp?.extrinsic | 0));
+    return !!((sp?.intrinsic | 0) || (sp?.extrinsic | 0))
+        || defended(game.youmonst, AD_DISE_POT);
 }
 
 /* C potion.c:442-455  make_deaf(long xtime, boolean talk) */
@@ -3321,10 +3329,13 @@ const UNICORN_HORN = 261;
 const AMETHYST = 455;
 
 /* C objnam.c bcsign helpers via direct field writes (bless/curse/uncurse). */
-function _bless(o) { if (o) { o.cursed = false; o.blessed = true; o.bknown = !!o.bknown; } }
-function _curse(o) { if (o) { o.blessed = false; o.cursed = true; } }
-function _uncurse(o) { if (o) { o.cursed = false; } }
-function _unbless(o) { if (o) { o.blessed = false; } }
+/* C mkobj.c:1749-1835 bless/curse/unbless/uncurse end in
+ * `if (carried(otmp) && confers_luck(otmp)) set_moreluck();`. */
+function _luck_tail(o) { if ((o.where | 0) === OBJ_INVENT && _confers_luck(o)) _set_moreluck(); }
+function _bless(o) { if (o) { o.cursed = false; o.blessed = true; o.bknown = !!o.bknown; _luck_tail(o); } }
+function _curse(o) { if (o) { o.blessed = false; o.cursed = true; _luck_tail(o); } }
+function _uncurse(o) { if (o) { o.cursed = false; _luck_tail(o); } }
+function _unbless(o) { if (o) { o.blessed = false; _luck_tail(o); } }
 
 function _bumpObjsDeleted() {
     const store = game.__bridge__ || (game.__bridge__ = {});
@@ -4007,8 +4018,9 @@ function _is_weptool(o) {
     return (o.oclass | 0) === TOOL_CLASS_OC && _oc_skill_dip(o) !== P_NONE;
 }
 /* C artifact.c:2837 permapoisoned(obj) — currently only Grimtooth. */
+import { permapoisoned as permapoisoned_real } from './objnam.js';
 function _permapoisoned(obj) {
-    return !!obj && (obj.oartifact | 0) === ART_GRIMTOOTH;
+    return permapoisoned_real(obj);
 }
 /* C obj.h:264 is_poisonable(otmp) —
  *   ((oclass == WEAPON_CLASS && oc_skill >= -P_SHURIKEN && oc_skill <= -P_BOW)
@@ -4377,8 +4389,8 @@ export async function dodip() {
 export async function potionhit(mon, obj, how) {
     const g = game;
     const u = g.u;
-    /* C potion.c:1606 `boolean isyou = (mon == &gy.youmonst)`. */
-    const isyou = !mon || (mon.m_id | 0) === 1 || mon === g.youmonst;
+    /* C potion.c:1628 `boolean isyou = (mon == &gy.youmonst)`. */
+    const isyou = is_youmonst(mon);
     /* C potion.c:1605 — bottlename() is called for BOTH targets and is the
      * function's first draw. */
     const botlnam = bottlename();
@@ -4444,8 +4456,9 @@ export async function potionhit(mon, obj, how) {
             break;
         case POT_POLYMORPH:
             You_feel(`a little ${_hallucination() ? 'normal' : 'strange'}.`);
+            // C potion.c:1692 finishes polyself before potionbreathe/trycall.
             if (!_unchanging() && !_prop_active(ANTIMAGIC))
-                polyself(POLY_NOFLAGS);
+                await polyself(POLY_NOFLAGS);
             break;
         case POT_ACID:
             if (!_prop_active(ACID_RES)) {
@@ -5664,7 +5677,7 @@ async function peffect_gain_level(otmp) {
                     return;
                 }
             }
-            await pline('You rise up, through the ' + _ceiling_potion(u.ux, u.uy) + '!');
+            await pline('You rise up, through the ' + ceiling(u.ux, u.uy) + '!');
             await goto_level(newlevel, false, false, false);
         } else {
             await pline('You have an uneasy feeling.');
@@ -5677,9 +5690,8 @@ async function peffect_gain_level(otmp) {
     if (otmp.blessed)
         u.uexp = rndexp(true, u.ulevel | 0, u.uexp);
 }
-function _ceiling_potion(_x, _y) { return 'ceiling'; }
-function peffect_healing(otmp) {
-    pline('You feel better.');
+async function peffect_healing(otmp) {
+    await pline('You feel better.');
     healup(8 + d(4 + 2 * ((otmp.blessed ? 1 : 0) - (otmp.cursed ? 1 : 0)), 4), !otmp.cursed ? 1 : 0,
            !!otmp.blessed, !otmp.cursed);
     exercise(A_CON, true);

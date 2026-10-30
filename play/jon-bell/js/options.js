@@ -722,9 +722,9 @@ export function parseNethackrc(rc) {
     const alignmentState = { saved: null, duplicate: false };
     const facetStates = { role: {}, race: {}, gender: {} };
     const compoundSeen = new Set();
-    const compoundDuplicate = name => {
+    const compoundDuplicate = (name, alias = '') => {
         if (compoundSeen.has(name))
-            config_error_add('compound option specified multiple times: %s', name);
+            config_error_add('compound option specified multiple times: %s%s', name, alias ? ` (via alias: ${alias})` : '');
         compoundSeen.add(name);
     };
     const result = {
@@ -820,7 +820,7 @@ export function parseNethackrc(rc) {
                 const otherMatch = entry.match(/^\s*(S_(?:nothing|unexplored|pet_override|hero_override))\s*[:=]\s*(.*?)\s*$/i);
                 if (otherMatch)
                     (result.symbolOverrides ||= {})['S_' + otherMatch[1].slice(2).toLowerCase()] = otherMatch[2];
-                const terrMatch = entry.match(/^\s*(S_(?:room|corr|litcorr|ndoor|vodoor|hodoor|vcdoor|hcdoor|fountain|water|lava|lavawall|ice|tree))\s*:\s*(?:'([^'])'|([^'\s]))\s*$/i);
+                const terrMatch = entry.match(/^\s*(S_(?:room|corr|litcorr|ndoor|vodoor|hodoor|vcdoor|hcdoor|fountain|altar|water|lava|lavawall|ice|tree))\s*:\s*(?:'([^'])'|([^'\s]))\s*$/i);
                 if (terrMatch)
                     (result.symbolOverrides ||= {})['S_' + terrMatch[1].slice(2).toLowerCase()] = terrMatch[2] ?? terrMatch[3];
             }
@@ -835,7 +835,7 @@ export function parseNethackrc(rc) {
             if (rule) {
                 try {
                     (result.msgtypes ||= []).unshift({ type: rule.type, regex: new RegExp(rule.pattern) });
-                } catch (e) { /* bad pattern: C reports and skips */ }
+                } catch (e) { config_error_add('MSGTYPE regex error: %s', config_regex_error(e)); }
             }
             continue;
         }
@@ -900,6 +900,10 @@ export function parseNethackrc(rc) {
             const menusep = menuopts.search(/[:=]/);
             const menuname = (menusep < 0 ? menuopts : menuopts.slice(0, menusep)).trim().toLowerCase();
             const menuval = menusep < 0 ? '' : menuopts.slice(menusep + 1);
+            // C options.c:620-623,6782-6806; optlist.h: these compounds disallow duplicates.
+            const compound = option_state().allopt.find(r => ['symset', 'pettype', 'runmode', 'pickup_types', 'menustyle', 'sortloot', 'msg_window'].includes(r.name)
+                && ((menuname.length >= r.minmatch && r.name.startsWith(menuname)) || menuname === r.alias));
+            if (compound) compoundDuplicate(compound.name, menuname === compound.alias ? compound.alias : '');
             // C options.c:2559 optfn_name -> string_for_opt(:6665): a
             // missing value reports an error and leaves plname unchanged.
             if (menuname === 'name' && !menunegated && !menuval) {
@@ -1113,6 +1117,10 @@ export function parseNethackrc(rc) {
                 if (bool_dup_seen.has(boolRow[0]))
                     config_error_add(`boolean option specified multiple times: ${boolRow[0]}`);
                 bool_dup_seen.add(boolRow[0]);
+                if (boolRow[0] === 'timed_delay') {
+                    if (menunegated) config_error_add('The timed_delay option may not both have a value and be negated.');
+                    continue;
+                }
                 /* C options.c:5315-5320 optfn_boolean(): no IDLECHECKPOINT
                  * build, so this plines before any window exists (raw_print,
                  * in file order with the config errors). */
@@ -1435,10 +1443,10 @@ export function parseNethackrc(rc) {
                 else if (key === 'petattr') {
                     const PETATTRS = { none: 0, normal: 0, bold: 1, dim: 2, italic: 3,
                                        underline: 4, uline: 4, blink: 5, inverse: 7, reverse: 7 };
-                    const lv = (val || '').toLowerCase();
+                    const lv = (val || '').toLowerCase().replace(/[ _-]/g, ''); // C coloratt.c:374-382 fuzzymatch
                     const itmp = negated ? 0
-                        : Object.keys(PETATTRS).find((n) => n.startsWith(lv) && lv) !== undefined
-                            ? PETATTRS[Object.keys(PETATTRS).find((n) => n.startsWith(lv))] : -1;
+                        : Object.hasOwn(PETATTRS, lv) ? PETATTRS[lv] : -1;
+                    if (itmp === -1) config_error_add("Unknown %s parameter '%s'", key, stripped);
                     if (itmp !== -1) {
                         result.iflags.wc2_petattr = itmp;
                         result.iflags.wc_hilite_pet = itmp !== 0;
@@ -1525,6 +1533,15 @@ export function parseNethackrc(rc) {
 /* C options.c:9299. Share the existing RC parser with the in-game editor;
  * state is the pending RC result during startup, and the live game otherwise.
  * The regexp backend is the same one used by pickup.js. */
+// C options.c:7889-7900 / sys/share/posixregex.c: regex_error_desc (regerror).
+function config_regex_error(e) {
+    const m = String(e.message);
+    return /Nothing to repeat|Invalid quantifier/.test(m) ? 'Invalid preceding regular expression'
+        : /Unterminated group|Unmatched \)/.test(m) ? 'Unmatched ( or \\('
+        : /Unterminated character class/.test(m) ? 'Unmatched [, [^, [:, [., or [='
+        : /Range out of order/.test(m) ? 'Invalid range end'
+        : /numbers out of order/.test(m) ? 'Invalid content of \\{\\}' : 'Invalid regular expression';
+}
 function add_autopickup_exception(mapping, state = game) {
     const m = parse_autopickup_exception(mapping);
     if (m) {
@@ -1532,7 +1549,7 @@ function add_autopickup_exception(mapping, state = game) {
             new RegExp(m.pattern);
             (state.apelist ||= []).unshift(m);
             return 1;
-        } catch (e) { /* regex error: C reports and skips */ }
+        } catch (e) { config_error_add('regex error in AUTOPICKUP_EXCEPTION: %s', config_regex_error(e)); }
     }
     return 0;
 }

@@ -14,7 +14,7 @@ import { game } from './gstate.js';
 import { rn1, rn2, rnd } from './rng.js';
 import { goodpos } from './trap.js';
 import { is_pool } from './look.js';
-import { CLOUD, IS_FOUNTAIN, IS_AIR, ACCESSIBLE } from './const.js';
+import { CLOUD, IS_FOUNTAIN, IS_AIR, ACCESSIBLE, isok } from './const.js';
 import { db_under_typ } from './dokick.js';
 import { impossible } from './pline.js';
 import { permonstTemplate, is_demon } from './makemon.js';
@@ -40,7 +40,7 @@ import { exercise } from './attrib.js';
 import { more_experienced } from './exper.js';
 import { object_tough } from './o_init.js';
 import { splitobj } from './makemon.js';
-import { obj_extract_self } from './mklev.js';
+import { obj_extract_self, move_engr_at } from './mklev.js';
 import { hold_another_object } from './hold_another_object.js';
 import { prinv } from './cmd.js';
 import { update_inventory } from './inventory_refresh.js';
@@ -75,6 +75,7 @@ const GETOBJ_SUGGEST = 2;
 function _hasProp(u, prop) {
     const p = u.uprops && u.uprops[prop];
     if (!p) return false;
+    if (prop === CONFUSION || prop === STUNNED) return !!p.intrinsic;
     return !!((p.intrinsic | 0) || (p.extrinsic | 0)) && !(p.blocked | 0);
 }
 /* const.js: STUNNED=13, CONFUSION=14, BLINDED=15, HALLUC=23 */
@@ -94,6 +95,7 @@ function body_part_hand() { return 'hand'; }
 
 function surface(x, y) { return surface_real(x, y); }
 export function is_ice(x, y) {
+    if (!isok(x, y)) return false;
     const loc = game.level?.at?.(x, y);
     if (!loc) return false; /* C: !isok(x, y) -> FALSE */
     const typ = loc.typ | 0;
@@ -254,8 +256,8 @@ function wandNameKnown(o) {
 }
 
 /* C engrave.c:1663-1677 rloc_engr — the store is keyed by (x,y), so "move" is
- * delete-at-old + recreate-at-new (mirrors js/zap.js _zap_rloc_engr). */
-function rloc_engr(ep, x, y) {
+ * move the existing record so all text pointers and flags survive. */
+export function rloc_engr(ep, x = ep.engr_x, y = ep.engr_y) {
     let tx, ty, tryct = 200;
     do {
         if (--tryct < 0)
@@ -263,8 +265,7 @@ function rloc_engr(ep, x, y) {
         tx = rn1(80 - 3, 2);
         ty = rn2(21);
     } while (engr_at(tx, ty) || !goodpos(tx, ty, null, 0));
-    del_engr_at(x, y);
-    make_engr_at(tx, ty, ep.text, ep.pristine, 0, ep.engr_type);
+    move_engr_at(x, y, tx, ty, ep);
     newsym(tx, ty);
     return engr_at(tx, ty);
 }
@@ -479,6 +480,8 @@ async function doengrave_sfx_item(de) {
         }
     } else if (oc === 17 /* VENOM_CLASS */) {
         await pline("Writing a poison pen letter?");
+    } else if (oc === 1 /* ILLOBJ_CLASS */) {
+        await impossible("You're engraving with an illegal object!");
     }
     return true;
 }

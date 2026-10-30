@@ -34,7 +34,7 @@ export function assign_rnd_level(dest, src, range) {
 }
 
 export function on_level(lev1, lev2) {
-    return (lev1.dnum === lev2.dnum && lev1.dlevel === lev2.dlevel);
+    return !!(lev1 && lev2 && lev1.dnum === lev2.dnum && lev1.dlevel === lev2.dlevel);
 }
 
 /* C ref: dungeon.c:1477-1493 builds_up(lev) — TRUE iff `lev` sits in a branch
@@ -111,14 +111,14 @@ export function Is_branchlev(lev) {
 /* C ref: dungeon.c:1878-1888 dname_to_dnum(s) — the index of the dungeon whose
  * dname is `s`.  C panics when the name is unknown; a missing name here is a
  * data defect in the generated dungeon table, not a game state, so this
- * returns -1 and dungeon_branch() below reports it rather than inventing a
+ * fails rather than returning a dungeon number or inventing a
  * branch. */
 export function dname_to_dnum(s) {
     const dgns = game._dungeons_full || game.dungeons || [];
-    for (let i = 0; i < dgns.length; i++)
+    for (let i = 0; i < (game._n_dgns ?? dgns.length); i++)
         if (dgns[i] && dgns[i].dname === s)
             return i;
-    return -1;
+    throw new Error(`Couldn't resolve dungeon number for name "${s}".`);
 }
 
 /* C ref: dungeon.c:1890-1905 dungeon_branch(s) — the branch record whose end2
@@ -128,13 +128,11 @@ export function dname_to_dnum(s) {
  * builds_up() above uses. */
 export function dungeon_branch(s) {
     const dnum = dname_to_dnum(s);
-    if (dnum < 0)
-        return null;
     for (const br of (game._dungeon_branches || game.branches || []))
         if (br && br.end2 && (br.end2.dnum | 0) === dnum)
             return br;
     /* C: panic("dgn_entrance: can't find entrance to %s", s) */
-    return null;
+    throw new Error(`dgn_entrance: can't find entrance to ${s}`);
 }
 
 /* C ref: dungeon.c:1896-1903 at_dgn_entrance(s) —
@@ -144,7 +142,7 @@ export function dungeon_branch(s) {
  * goto_level()'s main-dungeon arm (do.c:1917) is the caller that matters. */
 export function at_dgn_entrance(s) {
     const br = dungeon_branch(s);
-    return !!(br && on_level(game.u ? game.u.uz : null, br.end1));
+    return !!(br && !br.end1_floating && on_level(game.u ? game.u.uz : null, br.end1));
 }
 
 /* C ref: dungeon.c:1323-1327 dunlev(lev) — the level number within *this*

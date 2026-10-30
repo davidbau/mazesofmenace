@@ -20,7 +20,7 @@ import { NO_COLOR, CLR_WHITE } from './terminal.js';
 import { pmatchi } from './strutil.js';
 import { menu_heading_text } from './tty_menu.js'; /* C strutil.c:151 — MENU_SEARCH's matcher */
 // putmsghistory: feed the quest synopsis into the ^P message-history ring.
-import { putmsghistory, tty_getlin_prompt, _strengthStr, force_more, force_more_pages, await_more_dismiss, docorner_blank_utf8_captures,
+import { putmsghistory, tty_getlin_prompt, _strengthStr, force_more, force_more_pages, await_more_dismiss, docorner_blank_utf8_captures, unflushed_forced_cell,
          await_topl_more_dismiss, pline_flush_point,
          botl_pmname, botl_upstart_words, botl_mon_mlevel, botl_title, botl_status1_tail, botl_frozen_status_line,
          gold_status_char, dec_mode, generic_symset, rogue_graphics, rogue_hero_showrace_cell, rogue_ibm_color, botl_status_suffix, fit_status_line_width, status_row_finish, _statusRows3, _threeStatusLines, docrt_flags, flush_screen, use_last_flush_snapshot, hitpointbar_status1, _hilite_status_wrap, _status_sgr, _status_row1_map_overlay, _status_row1_whole_with_tail } from './display.js';
@@ -153,6 +153,9 @@ function render_map_row_clipped(y, clipX) {
      * (blank after a cls) -- the same rule as js/display.js _snapCellAt. */
     const cellAt = (x) => {
         const loc = game.level.at(x, y);
+        const held = unflushed_forced_cell(x, y);
+        if (held) return { disp_ch: held.ch, disp_color: held.color,
+                           disp_decgfx: held.dec, disp_attr: held.attr };
         if (loc?.disp_capture_cell) {
             const p = loc.disp_capture_cell;
             return { disp_ch: p.ch, disp_color: p.color,
@@ -245,6 +248,22 @@ function render_map_row_clipped(y, clipX) {
                 output += ' '.repeat(Math.max(0, run));
             x += run - 1;
             continue;
+        }
+        /* Same as js/display.js render_map_row: the recorded screen collapses a
+         * run of five or more ATR_INVERSE blanks into \e[7m\e[<n>C\e[0m, which
+         * the decoder leaves unpainted. */
+        if (ch === ' ' && inverse) {
+            let irun = 1;
+            while (x + irun <= lastCol && (cellAt(x + irun)?.disp_ch ?? ' ') === ' '
+                   && ((cellAt(x + irun)?.disp_attr | 0) & 1))
+                irun++;
+            if (irun > 4) {
+                if (activeDec) { output += '\x0f'; activeDec = false; }
+                output += `\x1b[7m\x1b[${irun}C\x1b[0m`;
+                activeInverse = false; activeColor = ANSI_DEFAULT;
+                x += irun - 1;
+                continue;
+            }
         }
         if (!inverse && activeInverse) {
             output += '\x1b[0m';
@@ -650,7 +669,7 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipAr
                 output += '\n';
                 continue;
             }
-            if (inWindow && winLine) {
+            if (inWindow) {
                 // The tty menu window overlays this row: the status line still
                 // renders to the LEFT of the window column, then the menu text
                 // (e.g. "(end)") overwrites everything from WIN_COL onward.
@@ -671,6 +690,8 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipAr
                 // the window edge.  The margin is skipped with a cursor-forward
                 // rather than written as a space, because cl_end() ERASES the
                 // cell and an erased cell is not a painted cell.
+                /* wintty.c:1794-1801 process_text_window(): cl_end() also
+                 * erases the status under an empty window line. */
                 const indent = (winLine.match(/^ +/) || [''])[0].length;
                 const col = WIN_COL + indent;
                 const text = winLine.trim();
@@ -724,7 +745,7 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipAr
                 output += rowStatus(23);
                 continue;
             }
-            if (inWindow && winLine) {
+            if (inWindow) {
                 const indent = (winLine.match(/^ +/) || [''])[0].length;
                 const col = WIN_COL + indent;
                 const text = winLine.trim();
@@ -910,7 +931,7 @@ function _statusLine1Raw() {
 export function money_cnt(otmp) {
     for (; otmp; otmp = otmp.nobj) {
         if ((otmp.oclass | 0) === 12 /* COIN_CLASS */)
-            return otmp.quan | 0;
+            return otmp.quan;
     }
     return 0;
 }

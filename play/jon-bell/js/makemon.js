@@ -1,8 +1,12 @@
+import { Mgender } from './do_name.js';
+import { ledger_no as ledger_no_real } from './bones.js';
+import { On_W_tower_level as On_W_tower_level_real } from './teleport.js';
+import { pooleffects_is_lava as is_lava_real } from './cmd.js';
 import { expels_gu } from './mhitu.js';
 import { stop_occupation } from './allmain.js';
-import { mbhit_wand } from './muse.js';
+import { mbhit_wand, mzapwand as mzapwand_shared } from './muse.js';
 import { copy_oextra, free_omid, get_mtraits } from './mkobj.js';
-import { linedup, blocking_terrain } from './trap.js';
+import { linedup, blocking_terrain, t_at } from './trap.js';
 import { newobj } from './game.js';
 import { M_AP_TYPMASK, M_AP_NOTHING, M_AP_MONSTER, M_AP_FURNITURE, M_AP_OBJECT, Is_knox_level,
          STAIRS, LADDER, W_NONDIGGABLE, W_ARMH, TELEP_TRAP,
@@ -149,7 +153,7 @@ const PLNMSG_enum_MM = PLNMSG_MON_TAKES_OFF_ITEM + 1;
 import { title_to_mon } from './mhitm.js';  /* C botl.c:366 — name_to_monplus's rank-title fallback */
 /* C mondata.c:1191 pronoun_gender() — mhe()'s body below. */
 import { pronoun_gender as pronoun_gender_mm } from './mhitm.js';
-import { mongone, healmon, bcsign, newcham } from './mklev.js';
+import { mongone, healmon, bcsign, newcham, get_iter_mons as get_iter_mons_real } from './mklev.js';
 import { mon_has_special } from './mcastu.js';
 import { unblock_point } from './vision.js';
 import { dunlev } from './dungeon.js';
@@ -1063,7 +1067,7 @@ function canSaddleMndx(_mtmp, mndx) {
     return true;
 }
 export function can_saddle(mtmp) {
-    return canSaddleMndx(mtmp, monsndx(mtmp));
+    return canSaddleMndx(mtmp, mtmp.data?.pmidx ?? monsndx(mtmp));
 }
 /**
  * C makemon.c:1448–1453 — after m_initinv / m_dowear when allow_minvent:
@@ -1384,9 +1388,9 @@ export async function mkmonmoney(mtmp, amount) {
         const gold = await mksobj(GOLD_PIECE_OTYP, false, false);
         gold.quan = amount;
         gold.owt = weight(gold);
-        gold.where = OBJ_MINVENT;
-        gold.ocarry = mtmp;
-        _minv_link(mtmp, gold);
+        /* C makemon.c:586 add_to_minv(mtmp, gold): merges into an existing
+         * gold stack (mk_mplayer's m_initinv gold, then rn2(1000) more). */
+        await add_to_minv(mtmp, gold);
     }
 }
 const SCR_TELEPORTATION_OTYP = 333;
@@ -1593,13 +1597,12 @@ export function name_to_mon(in_str, gender_name_var) {
     else if (str.slice(0, 3) === 'an ') str = str.slice(3);
     else if (str.slice(0, 4) === 'the ') str = str.slice(4);
 
-    /* C mondata.c:930-941 — a few irregular plurals ("vortices", "-ies", "-ves").
-     * (The alt_spl table would run here in C; not ported — see header.) */
+    /* C mondata.c:930-941 — irregular plurals precede the ALT_SPL scan. */
     let slen = str.length;
     const term = str;
     const vi = str.toLowerCase().indexOf('vortices');
     if (vi >= 0) {
-        str = str.slice(0, vi + 4) + 'ex' + str.slice(vi + 8);
+        str = str.slice(0, vi + 4) + 'ex';
     } else if (slen > 3 && eqCI(term.slice(-3), 'ies')
                && (slen < 7 || !eqCI(term.slice(-7), 'zombies'))) {
         str = str.slice(0, -3) + 'y';
@@ -1866,7 +1869,7 @@ export function noattacks(ptr) {
  * (and adtyp, or AD_ANY wildcard); returns {aatyp,adtyp,damn,damd} or null.
  * mattk ≡ monMattk(ptr.pmidx); C returns &ptr->mattk[i] → its fields. */
 export function attacktype_fordmg(ptr, atyp, dtyp) {
-    const a = monMattk(ptr.pmidx | 0);
+    const a = ptr.mattk ?? monMattk(ptr.pmidx | 0);
     if (!a)
         return null;
     for (let i = 0; i < NATTK; i++) {
@@ -1878,7 +1881,7 @@ export function attacktype_fordmg(ptr, atyp, dtyp) {
 /** C mondata.c dmgtype_fromattack(ptr, dtyp, atyp) — first attack matching adtyp
  * (and aatyp, or AT_ANY wildcard); returns {aatyp,adtyp,damn,damd} or null. */
 export function dmgtype_fromattack(ptr, dtyp, atyp) {
-    const a = monMattk(ptr.pmidx | 0);
+    const a = ptr.mattk ?? monMattk(ptr.pmidx | 0);
     if (!a)
         return null;
     for (let i = 0; i < NATTK; i++) {
@@ -2922,7 +2925,7 @@ export async function mkMplayer(ptr, x, y, special, cbs) {
             }
             /* mkmonmoney(mtmp, rn2(1000)) */
             if (cbs?.mkmonmoney)
-                cbs.mkmonmoney(mtmp, rn2(1000));
+                await cbs.mkmonmoney(mtmp, rn2(1000));
             /* quan = rn2(10); while (quan--) mpickobj(mkobj(RANDOM_CLASS, FALSE)) */
             quan = rn2(10);
             while (quan--) {
@@ -3574,12 +3577,7 @@ function m_sees_sleepy_soldier(mtmp) {
 }
 
 function is_lava(x, y) {
-    if (!isok(x, y)) return false;
-    const lev = game.level?.at(x, y);
-    if (!lev) return false;
-    const typ = lev.typ;
-    return typ === LAVAPOOL || typ === LAVAWALL
-        || (typ === DRAWBRIDGE_UP && ((lev.drawbridgemask | 0) & DB_UNDER) === DB_LAVA);
+    return is_lava_real(x, y);
 }
 
 function is_Vlad(mtmp) {
@@ -3929,19 +3927,6 @@ function SchroedingersBox(o) { return o.otyp === LARGE_BOX_OTYP && o.spe === 1; 
 function Is_mbag(o) { return o.otyp === BAG_OF_HOLDING_OTYP || o.otyp === BAG_OF_TRICKS_OTYP; }
 /* C obj.h:334 Has_contents(o) = ((o)->cobj != (struct obj *) 0) */
 function Has_contents(o) { return o.cobj != null; }
-/* C trap.c t_at(x,y) — walk the level's trap list for one at (x,y). Mirrors
- * js/trap.js's t_at (not imported: trap.js does not import makemon.js, but
- * this keeps find_misc self-contained the same way the other muse.c
- * macro-wrapper helpers above are). */
-function t_at(x, y) {
-    if (!game.level || !game.level.traps)
-        return null;
-    for (const trap of game.level.traps) {
-        if (trap.tx === x && trap.ty === y)
-            return trap;
-    }
-    return null;
-}
 function sobj_at(otyp, x, y) {
     let otmp = game.level && game.level.levelObjects && game.level.levelObjects[x]
         ? (game.level.levelObjects[x][y] ?? null) : null;
@@ -4295,7 +4280,9 @@ export async function mreadmsg(mtmp, otmp) {
         }
         await mquaffmsg_You_hear(
             `${x_monnam(mtmp, ARTICLE_A_MM, null, mflags, false)} ${blindbuf}.`);
-        (game.iflags ||= {}).last_msg = PLNMSG_UNKNOWN_MM;
+        /* last_msg is cleared only by an actual pline: You_hear() returns
+         * silently under !flags.acoustics/Deaf (pline.c:441), leaving
+         * muse.c:887's PLNMSG_enum marker intact so :911 skips trycall(). */
         if (tpindicator)
             flash_mon(mtmp); /* C muse.c:284-285; consumes display RNG. */
     }
@@ -4311,38 +4298,7 @@ const ARTICLE_A_MM = 2, SUPPRESS_IT_MM = 0x01, SUPPRESS_INVISIBLE_MM = 0x02,
 async function mzapwand(mtmp, otmp, self) {
     if (!otmp)
         return;
-    if ((otmp.spe | 0) < 1) {
-        /* C: impossible("Mon zapping wand with %d charges?") then return —
-         * the charge is NOT spent. */
-        return;
-    }
-    if (!canseemon(mtmp)) {
-        /* C muse.c:174-181.  range is BOLT_LIM+1 when the square is in line of
-         * sight and BOLT_LIM-3 otherwise; mdistu(mtmp) is
-         * dist2(mtmp->mx, mtmp->my, u.ux, u.uy). */
-        const range = couldsee(mtmp.mx | 0, mtmp.my | 0)
-                      ? (BOLT_LIM_MM + 1) : (BOLT_LIM_MM - 3);
-        const near = dist2(mtmp.mx | 0, mtmp.my | 0,
-                           game.u.ux | 0, game.u.uy | 0) <= range * range;
-        await mquaffmsg_You_hear(`a ${near ? 'nearby' : 'distant'} zap.`);
-        unknow_object(otmp); /* muse.c:181 */
-    } else if (self) {
-        /* C muse.c:182-184 — monverbself (do_name.c:1221-1248) inlined. */
-        const selfbuf = mon_nam_too(mtmp, mtmp);
-        const verbs = vtense(selfbuf, 'zap');
-        let monnamtext = Monnam(mtmp);
-        if (verbs === 'zap') {
-            monnamtext = makeplural(monnamtext);
-            if (monnamtext.toLowerCase() === 'they')
-                monnamtext = monnamtext[0] === 'T' ? 'Them' : 'them';
-        }
-        pline(`${monnamtext} ${verbs} ${selfbuf} with ${await doname(otmp)}!`);
-    } else {
-        pline(`${Monnam(mtmp)} zaps ${an(xname(otmp))}!`);
-        /* C muse.c:187: also cancels running/travel when no occupation is active. */
-        await stop_occupation();
-    }
-    otmp.spe = (otmp.spe | 0) - 1;
+    return mzapwand_shared(mtmp, otmp, self);
 }
 /* C ref: worn.c:465-477 mon_set_minvis(mon, cursed_potion). `on` here is
  * the C `cursed_potion` argument (callers pass whether the drunk potion
@@ -4477,11 +4433,8 @@ function mdistu(mon) { return dist2(mon.mx, mon.my, game.u.ux, game.u.uy); }
 /* C mkobj.c:2731-2738 container_weight(object) — recompute an object's owt,
  * recursing through its own container chain if it is itself contained.
  * RNG-free. */
-export function container_weight(object) {
-    object.owt = weight(object);
-    if ((object.where | 0) === OBJ_CONTAINED)
-        container_weight(object.ocontainer);
-}
+import { container_weight } from './mklev.js';
+export { container_weight };
 
 /* C pickup.c:2781-2799 removed_from_icebox().  Frozen object ages are stored
  * relative to the turn at which they entered the ice box.  On removal they
@@ -4657,8 +4610,7 @@ function get_level(tolevel, tolev) {
  * 0 and would have done the same to every use_defensive() stairway arm below.
  * Same arithmetic js/bones.js:90 already uses. */
 function ledger_no(lev) {
-    const dgn = game.dungeons?.[lev?.dnum | 0];
-    return (lev?.dlevel | 0) + (dgn?.ledger_start | 0);
+    return ledger_no_real(lev);
 }
 /* C ref: rm.h:526-534 `#define remove_monster(x, y) svl.level.monsters[x][y]
  * = (struct monst *) 0` — clear the monster-presence GRID cell at <x,y>.
@@ -4834,10 +4786,7 @@ function dunlevs_in_dungeon(lev) {
  * js/dungeon_rng.js:643-650 publishes game.wiz1_level/wiz2_level/wiz3_level
  * from the sp_levchn; js/dog.js:856 already reads the same three. */
 function On_W_tower_level(lev) {
-    const same = (a, b) => !!(a && b && (a.dnum | 0) === (b.dnum | 0)
-                              && (a.dlevel | 0) === (b.dlevel | 0));
-    return same(lev, game.wiz1_level) || same(lev, game.wiz2_level)
-           || same(lev, game.wiz3_level);
+    return On_W_tower_level_real(lev);
 }
 
 /* C ref: mkobj.c:1767-1780 unbless(otmp).  Called from use_defensive at
@@ -4859,7 +4808,7 @@ function mhim(mtmp) {
 
 /* C ref: muse.c:2872 mcureblindness(mon, verbos) — "cure mon's blindness
  * (use_defensive, dog_eat, meatobj)".  RNG-free. */
-function mcureblindness(mon, verbos) {
+export function mcureblindness(mon, verbos) {
     if (!mon.mcansee) {
         mon.mcansee = 1;
         mon.mblinded = 0;
@@ -5993,15 +5942,7 @@ function m_blocks_teleporting(mtmp) {
  * fmon cells carry mnum (the permonst index); materialize mtmp.data via
  * permonstTemplate(mnum) — the C mtmp->data pointer into mons[mndx]. */
 function get_iter_mons(bfunc) {
-    for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
-        if (mtmp.mhp < 1)               /* DEADMONSTER */
-            continue;
-        if (mtmp.data === undefined)
-            mtmp.data = permonstTemplate(mtmp.mnum);
-        if (bfunc(mtmp))
-            return mtmp;
-    }
-    return null;
+    return get_iter_mons_real(bfunc);
 }
 
 /** C teleport.c noteleport_level — is teleporting prevented on this level for this monster? */
@@ -6426,7 +6367,6 @@ export function nonliving(ptr) {
     return is_undead || (ptr.pmidx | 0) === PM_MANES || weirdnonliving;
 }
 /* C monst.h Mgender(mon) — (mon)->female ? FEMALE : MALE */
-function Mgender(mtmp) { return mtmp.female ? FEMALE : MALE; }
 /* C you.h:322 mhe(mtmp) = genders[pronoun_gender(mtmp, PRONOUN_HALLU)].he,
  * with genders[] = {"he","she","it","they"} (role.c:688-693) and
  * pronoun_gender at mondata.c:1191-1207.  The comment that stood here called

@@ -1067,6 +1067,7 @@ export function start_timer(when, kind, func_index, arg) {
     if (dup) {
         /* C impossible("Attempted to start duplicate %s, aborted.") — a warning
          * that returns FALSE and leaves the existing timer alone. */
+        impossible_sync('Attempted to start duplicate %s timer, aborted.', timeout_funcs[func_index].name);
         return false;
     }
 
@@ -1211,7 +1212,7 @@ function mon_is_local(mon) {
 }
 
 /* C ref: timeout.c:2582-2601 obj_is_local(struct obj *obj). */
-function obj_is_local(obj) {
+export function obj_is_local(obj) {
     switch (obj.where | 0) {
     case OBJ_INVENT:
     case OBJ_MIGRATING:
@@ -1224,10 +1225,7 @@ function obj_is_local(obj) {
     case OBJ_MINVENT:
         return mon_is_local(obj.ocarry);
     }
-    /* C panics here.  A timer on an OBJ_FREE/OBJ_DELETED object is a leak this
-     * port must not paper over, but it must not lose the whole replay either:
-     * treat it as local so it departs with the level it was last seen on. */
-    return true;
+    throw new Error('obj_is_local');
 }
 
 /* C ref: timeout.c:2603-2617 timer_is_local(timer_element *). */
@@ -1300,12 +1298,11 @@ export function spot_time_left(x, y, func_index) {
     return (expires > 0) ? expires - curmoves() : 0;
 }
 
-/* C ref: hack.h obj_to_any(obj) — the `anything` union wrapper.  Local copy
- * per this tree's per-file convention (js/dig.js:619, js/mklev.js:886).
+/* C hack.c:97-103: use the shared pointer-union conversion.
  * `a_long` is spelled out so the chain-walk comparisons above can test both
  * arms of the union without an undefined-vs-undefined false match between an
  * object timer and a level timer. */
-function obj_to_any(o) { return { a_obj: o, a_long: null }; }
+import { obj_to_any } from './cmd.js';
 
 // C ref: timeout.c:2698-2714 restore_timers(NHFILE *nhfp, int range, long adjust)
 export function restore_timers(nhfp, range, adjust) {

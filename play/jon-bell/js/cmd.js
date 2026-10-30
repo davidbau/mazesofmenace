@@ -1,7 +1,7 @@
 export { _interesting_to_discover, _disco_typename, _disco_append_price_quote, _sortloot_classify, disco_fmt_uniq, OCLASS_NAME, INV_ORDER, align_str };
 import { finish_quest } from './quest.js';
 import { map_menu_cmd } from './cmd_config.js';
-import { DEFAULT_MENU_CMDS } from './display.js';
+import { DEFAULT_MENU_CMDS, glyph_matches_monster_at } from './display.js';
 import { delobj as delobj_invent } from './dokick.js';
 import { unpunish as unpunish_invent } from './dig.js';
 import { noveltitle, read_tribute, bogusmon } from './do_name.js';
@@ -61,7 +61,8 @@ import { visible_region_at, poisoncloud_at, reg_damg, regions_list, region_hero_
 import { wizcustom_glyphids, region_glyph, glyph_is_gascloud, glyph_cmap_at, rebuild_screen_output, You_feel } from './display.js';
 import { rogue_graphics, ibm_mode } from './display.js';
 import { pager_water_classes } from './display.js';
-import { use_last_flush_snapshot, cls as display_cls, map_background, reglyph_darkroom, trap_glyph_char, trap_glyph_entry, newsym, newsym_force, flush_screen, pline, nh_sprintf, mon_visible, sensemon, docrt, canspotmon, canseemon, level_transition_capture_old_paint, level_transition_arrival_more, canspotself, _topl_record_join, force_more, topl_force_break_now, await_more_dismiss, await_topl_more_dismiss, await_menu_key, see_nearby_objects, terrain_glyph, _topl_visualLen, map_trap, map_engraving, _topl_merge_result, _topl_joins_snapshot, _topl_snapshot_result, _topl_stash_result, _topl_more_pages, _topline_more_pending, capture_painted_frame_with_status, capture_painted_frame, map_object, map_invisible, feel_location, unmap_object, feel_newsym, unmap_invisible, under_water, under_ground, GLYPHCLS_INVIS, GLYPHCLS_SWALLOW, GLYPHCLS_OBJ, GLYPHCLS_MON, livelog_printf, update_lastseentyp, show_glyph_cell, GLYPHCLS_CMAP, GLYPHCLS_TRAP, GLYPHCLS_ENGR, GLYPHCLS_UNEXPLORED, display_self, glyph_is_this_trap, glyph_is_invisible_at, glyph_is_warning_at, last_flush_forced_cursor, topl_park_cursor, You_hear, You_see, getobj_never_mind, putmsghistory, warning_of as warning_of_real, pager_boulder_symbol, pager_showsyms, pager_glyph_prefix, pager_cmap_description } from './display.js';
+import { reset_glyphmap, use_last_flush_snapshot, cls as display_cls, map_background, reglyph_darkroom, trap_glyph_char, trap_glyph_entry, newsym, newsym_force, flush_screen, pline, nh_sprintf, mon_visible, sensemon, docrt, canspotmon, canseemon, level_transition_capture_old_paint, level_transition_arrival_more, canspotself, _topl_record_join, force_more, topl_force_break_now, await_more_dismiss, await_topl_more_dismiss, await_menu_key, see_nearby_objects, terrain_glyph, _topl_visualLen, map_trap, map_engraving, _topl_merge_result, _topl_joins_snapshot, _topl_snapshot_result, _topl_stash_result, _topl_more_pages, _topline_more_pending, capture_painted_frame_with_status, capture_painted_frame, map_object, map_invisible, feel_location, unmap_object, feel_newsym, unmap_invisible, under_water, under_ground, GLYPHCLS_INVIS, GLYPHCLS_SWALLOW, GLYPHCLS_OBJ, GLYPHCLS_MON, livelog_printf, update_lastseentyp, show_glyph_cell, GLYPHCLS_CMAP, GLYPHCLS_TRAP, GLYPHCLS_ENGR, GLYPHCLS_UNEXPLORED, display_self, glyph_is_this_trap, glyph_is_invisible_at, glyph_is_warning_at, last_flush_forced_cursor, topl_park_cursor, You_hear, You_see, getobj_never_mind, putmsghistory, warning_of as warning_of_real, pager_boulder_symbol, pager_showsyms, pager_glyph_prefix, pager_cmap_description } from './display.js';
+import { GLYPHCLS_WARNING } from './display.js';
 // WRITE-ONLY route-attribution telemetry (inert unless NH_ROUTE_TELEMETRY=1 —
 import { routeTag } from './route_telemetry.js';
 import { noattacks_mndx, magic_negation, mhis_mon, expels_gu, hits_bars_mu } from './mhitu.js';
@@ -110,7 +111,7 @@ import { exercise, adjalign, acurr, adjattrib, C_ATTR_TO_DISP, attrmax, getAbase
  * js/attrib.js next to the spfx column that was already there. */
 import { get_artifact, ART_NONARTIFACT, spec_ability, spec_m2, arti_spfx, arti_cspfx, arti_defn_adtyp, arti_cary_adtyp, arti_inv_prop } from './attrib.js';
 import { ARTILIST, artiname, exist_artifact, actualoname, quest_info, Ysimple_name2 } from './objnam.js';
-import { ARTI_PROPS, ARTI_GIFT_ROLE } from './wizcmds.js';
+import { ARTI_PROPS, ARTI_GIFT_ROLE, artifact_alignment } from './wizcmds.js';
 import { wiz_smell } from './wizcmds.js';
 import { losexp, pluslvl } from './exper.js';
 import { build_window_screen, build_text_window_screen, tty_text_window_utf8_line, money_cnt, tty_window_offx,
@@ -157,7 +158,7 @@ import { usmellmon } from './mklev.js';
 import { docast, dovspell, dowizcast, known_spell, force_learn_spell, num_spells, isqrt,
          spelleffects as spelleffects_real, book_disappears, spell_skilltype } from './spell.js';
 import { doread, study_book, do_mapping, identify_pack, litroom, punish, magic_map_background, trap_detect, charge_ok, recharge } from './read.js';
-import { doengrave, freehand } from './engrave.js';
+import { doengrave, freehand, cant_reach_floor } from './engrave.js';
 import { CMDQ_INT, CMDQ_DIR, CMDQ_USER_INPUT } from './const.js';
 import { pickup as pickup_c, doloot, loot_mon, able_to_loot, uescaped_shaft, uteetering_at_seen_pit, unconscious, container_at, reset_justpicked, add_valid_menu_class, lift_object, pickup_object, fatal_corpse_mistake, rider_corpse_revival } from './pickup.js';
 import { SchroedingersBox, observe_quantum_cat, mbag_explodes, do_boh_explosion, mbag_item_gone, container_gone } from './pickup_container.js';
@@ -170,8 +171,9 @@ import { bot, check_gold_symbol } from './display.js';
 import { tty_repaint } from './display.js';
 import { ECMD_TIME, ECMD_OK, ECMD_CANCEL, ECMD_FAIL, WT_TOOMUCH_DIAGONAL, DIR_W, DIR_NW, DIR_N, DIR_NE, DIR_E, DIR_SE, DIR_S, DIR_SW, DIR_UP, DIR_DOWN, SLT_ENCUMBER, MOD_ENCUMBER, OVERLOADED, TT_PIT, SPIKED_PIT, TT_BEARTRAP, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL, LADDER, CXN_ARTICLE, CXN_NOCORPSE } from './const.js';
 import { In_endgame, Is_stronghold, Is_knox_level, Is_botlevel, In_sokoban, IS_POOL, DB_MOAT, Is_firelevel as Is_firelevel_cmd } from './const.js';
-import { dunlev, builds_up, endgamelevelname, at_dgn_entrance, describe_level_buf, In_tutorial } from './dungeon.js';
+import { dunlev, builds_up, endgamelevelname, at_dgn_entrance, describe_level_buf, In_tutorial, on_level as on_level_real } from './dungeon.js';
 import { goto_hell, assign_rnd_level } from './dungeon.js';
+import { dungeon_branch as dungeon_branch_real } from './dungeon.js';
 import { In_W_tower_wz } from './dochug.js';
 import { remdun_mapseen, mapseen_notreachable, recalc_mapseen_reachability } from './dungeon.js';
 /* throne_sit_effect's C home is sit.c:38.  Real, full port (172 body lines:
@@ -230,9 +232,10 @@ import { P_BOW as _SL_P_BOW, P_CROSSBOW as _SL_P_CROSSBOW, P_SPEAR as _SL_P_SPEA
  * import so the next reader does not mistake the partial for the live body. */
 import { lookaround, end_running, avoid_moving_on_trap, avoid_moving_on_liquid, is_pool_or_lava, closed_door, may_dig, accessible,
          _dfeature_at as look_dfeature_at } from './look.js';
-import { floorfood, feel_cockatrice, corpse_floor_xname, doeat, getobj, morehungry, is_fainted, reset_faint, init_uhunger, start_tin, opentin, use_tin_opener, set_tin_variety, food_disappears, is_edible } from './eat.js';
+import { floorfood, feel_cockatrice, corpse_floor_xname, doeat, getobj, morehungry, is_fainted, reset_faint, init_uhunger, start_tin, opentin, use_tin_opener, set_tin_variety, food_disappears, is_edible, tinnable } from './eat.js';
 import { Align2amask } from "./const.js";
 import { eaten_stat } from "./food_props.js";
+import { tin_ok as eat_tin_ok } from './eat.js';
 import { curse as curse_obj, uncurse as uncurse_obj, unbless, copy_oextra, free_omid, unknwn_contnr_contents, is_treefruit, get_mtraits } from './mkobj.js';
 import { oc_nutrition } from './food_props.js';
 import { bones_include_name } from './bones.js';
@@ -343,7 +346,7 @@ import { is_crackable as is_crackable_bo } from './mklev.js';
 import { set_malign, hates_silver } from './makemon.js';
 import { monflee, mhe, mondied, m_in_air } from './makemon.js';
 import { EPRI, ACH_TMPL, MM_NOMSG, NO_MINVENT, STRAT_APPEARMSG } from './const.js';
-import { PM_GHOST, PM_WRAITH } from './pm.generated.js';
+import { PM_BAT, PM_GHOST, PM_WRAITH } from './pm.generated.js';
 import { PM_MEDUSA, PM_HOMUNCULUS, PM_IMP } from './pm.generated.js';
 import { dead_species } from './mklev.js';
 import { FAST as _FW_FAST, FROMFORM as _FW_FROMFORM,
@@ -372,7 +375,7 @@ import { shk_chat, dopay, growl, sellobj_state, block_entry, block_door, u_enter
 import { m_unleash, keepdogs, update_mlstmv, losedogs, mon_catchup_elapsed_time, mon_arrive, discard_migrations } from './dog.js';
 import { mon_has_amulet } from './mhitm.js';
 import { make_familiar } from './dog.js';
-import { curr_mon_load, dmgtype, dogfood, extract_from_minvent_dm, possibly_unwield, monstone } from './dogmove.js';
+import { curr_mon_load, dmgtype, dogfood, extract_from_minvent_dm, possibly_unwield, monstone, pet_ranged_attk } from './dogmove.js';
 import { paralyze_monst } from './dogmove.js';
 /* travel subsystem (hack.c findtravelpath / test_move) — see the TRAVEL
  * SUBSYSTEM block below. */
@@ -664,7 +667,7 @@ function blocksMove(x, y) {
 // rogue level all doors are doorless but diagonal access is disallowed, so they
 // are treated as if a door were present (return FALSE).  A door with any of
 // D_ISOPEN/D_CLOSED/D_LOCKED set is a real (non-doorless) door → FALSE.
-function doorless_door(x, y) {
+export function doorless_door(x, y) {
     const lev = game.level?.at(x, y);
     if (!lev || !IS_DOOR(lev.typ))
         return false;
@@ -1347,6 +1350,7 @@ async function domonability_tail(uptr) {
     const pmidx = uptr ? (uptr.pmidx | 0) : NON_PM;
     if (pmidx === PM_MIND_FLAYER || pmidx === PM_MASTER_MIND_FLAYER)
         return await domindblast();
+    /* C cmd.c:916-943 — the remaining monster and steed abilities. */
     if (pmidx === PM_GREMLIN) {
         const gloc = g.level?.at(u.ux | 0, u.uy | 0);
         if (gloc && IS_FOUNTAIN(gloc.typ | 0)) {
@@ -1381,6 +1385,11 @@ async function domonability_tail(uptr) {
     if (pmidx === PM_VAMPIRE || pmidx === PM_VAMPIRE_LORD
         || pmidx === PM_VLAD_THE_IMPALER || _is_vampshifter(g.youmonst))
         return await dopoly();
+    /* C cmd.c:940-942 — commanding a breathing steed always takes a turn. */
+    if (u.usteed && attacktype(u.usteed.data, _MON_AT_BREA)) {
+        await pet_ranged_attk(u.usteed, true);
+        return ECMD_TIME;
+    }
     if ((u.umonnum | 0) !== (u.umonster | 0))
         await pline('Any special ability you may have is purely reflexive.');
     else
@@ -1559,7 +1568,8 @@ async function rename_disco() {
     const g = game;
     const lines = [menu_heading_text('Pick an object type to name'), ''];
     const picks = {};
-    let ct = 0, mn = 0, nsel = 0;
+    const pickItems = [];
+    let ct = 0, mn = 0;
     const letters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
     const disco = g._disco || {};
     for (const oclass of INV_ORDER) {
@@ -1577,9 +1587,9 @@ async function rename_disco() {
                 lines.push(menu_heading_text(OCLASS_NAME[oclass])); /* C:1162 */
                 prev_class = oclass;
             }
-            const letter = letters[nsel++];
-            picks[letter] = { otyp: dis, oclass };
-            lines.push(`${letter} - ${_disco_append_price_quote(_disco_typename(dis), dis)}`);
+            /* letter assigned after paging (tty_end_menu restarts at 'a' per page) */
+            pickItems.push({ row: lines.length, otyp: dis, oclass });
+            lines.push(`\0 - ${_disco_append_price_quote(_disco_typename(dis), dis)}`);
         }
     }
     if (ct === 0) {
@@ -1599,12 +1609,19 @@ async function rename_disco() {
     const SCREEN_ROWS = 24, PAGE_CONTENT = SCREEN_ROWS - 1;
     const fullScreen = lines.length + 1 >= SCREEN_ROWS || 78 - maxLen <= 1;
     const pageCount = fullScreen ? Math.ceil(lines.length / PAGE_CONTENT) : 1;
+    /* wintty.c tty_end_menu: auto selectors a-z,A-Z restart on every page */
+    const perPage = {};
+    for (const it of pickItems) {
+        const pg = fullScreen ? Math.floor(it.row / PAGE_CONTENT) : 0;
+        const letter = letters[perPage[pg] = (perPage[pg] || 0) + 1, perPage[pg] - 1];
+        picks[pg + ':' + letter] = { otyp: it.otyp, oclass: it.oclass };
+        lines[it.row] = letter + lines[it.row].slice(1);
+    }
     let pageIdx = 0;
     const WIN_COL = fullScreen ? 0 : Math.min(41, 80 - maxLen - 2);
-    const pageSel = () => Object.keys(picks).filter((l) => {
-        const row = lines.findIndex((ln) => ln.startsWith(`${l} - `));
-        return !fullScreen || Math.floor(row / PAGE_CONTENT) === pageIdx;
-    }).join('');
+    const pageSel = () => Object.keys(picks)
+        .filter((key) => Number(key.split(':')[0]) === (fullScreen ? pageIdx : 0))
+        .map((key) => key.split(':')[1]).join('');
     const show = async () => {
         if (fullScreen) {
             const pageLines = lines.slice(pageIdx * PAGE_CONTENT, (pageIdx + 1) * PAGE_CONTENT);
@@ -1642,7 +1659,7 @@ async function rename_disco() {
         if (g.disp) g.disp.botlx = 1;
         g._status1WholeNext = true;
     }
-    const pick = picks[String.fromCharCode(k)];
+    const pick = picks[(fullScreen ? pageIdx : 0) + ':' + String.fromCharCode(k)];
     if (!pick) return;                              /* C:1188 STRANGE_OBJECT */
     const odummy = {                                /* C:1192-1200 */
         otyp: pick.otyp, oclass: pick.oclass, quan: 1,
@@ -2038,7 +2055,7 @@ export async function dotalk() {
         const otmp2 = vobj_at(tx, ty);
         if (otmp2 && (otmp2.otyp | 0) === STATUE) {
             if (!Blind) {
-                const Hallucination = _uprop_active('HALLUC');
+                const Hallucination = _cmd_Hallucination();
                 // rndmonnam(null) for hallucination, else "statue"
                 let name;
                 if (Hallucination) {
@@ -2057,7 +2074,7 @@ export async function dotalk() {
             if (Blind && !IS_WALL(loc.lastseentyp | 0)) {
                 ; // silent — blind and lastseentyp isn't a wall
             } else {
-                const Hallucination = _uprop_active('HALLUC');
+                const Hallucination = _cmd_Hallucination();
                 if (!Hallucination) {
                     await pline("It's like talking to a wall.");
                 } else {
@@ -2713,7 +2730,14 @@ export async function dothrow() {
             // C invent.c:1924-1926 retains ilet after a rejected count.
             itemRaw = itemKey;
         } else {
-            itemRaw = await nhgetch(); /* item key — e.g. 'd' for arrows */
+            /* C topl.c:425-427,534-539: suppress the unanswered prompt, then
+             * remember prompt + key2txt(answer), including '?' and '*'. */
+            const savedSuppress = g._topl_suppress_history;
+            g._topl_suppress_history = true;
+            try { itemRaw = await nhgetch(); }
+            finally { g._topl_suppress_history = savedSuppress; }
+            putmsghistory(throwQbuf + ' ' + key2txt((typeof itemRaw === 'number'
+                ? itemRaw : (itemRaw?.charCodeAt(0) ?? 0)) & 0xff), false);
         }
         g._topl_sticky = throwQbuf;
         itemKey = typeof itemRaw === 'number' ? itemRaw : (itemRaw?.charCodeAt(0) ?? 0);
@@ -2942,14 +2966,13 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, st = null) {
      * relies on it), not only the up/down and swallowed arms. */
     if (_landedObj && !_coinWholeThrow) {
         g.thrownobj = _landedObj;
-        /* throw_gold() (dothrow.c:2656) never reaches throwit(), so coins keep LOST_NONE. */
-        if ((_landedObj.oclass | 0) !== 12) _landedObj.how_lost = LOST_THROWN;
+        /* C dothrow.c:1562: includes quivered coins; whole-stack gold skips throwit. */
+        _landedObj.how_lost = LOST_THROWN;
         /* C dothrow.c:1564 — set for every throw, not only up/down. */
         g.iflags.returning_missile = throw_auto_return(_landedObj, _throwWepMask) ? _landedObj : null;
     }
     if (!u.uswallow && u.dz && _landedObj) {
         g.thrownobj = _landedObj;
-        if ((_landedObj.oclass | 0) !== 12) _landedObj.how_lost = LOST_THROWN;
         const returning = throw_auto_return(_landedObj, _throwWepMask);
         g.iflags.returning_missile = returning ? _landedObj : null;
         if (u.dz < 0 && returning && !_throwImpaired) {
@@ -2965,7 +2988,6 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, st = null) {
         }
         g.iflags.returning_missile = null;
         g.thrownobj = null;
-        await encumber_msg();
         if (_wholeObjectLeft) thrownObj = null;
         return { thrownObj, throwResultMsg, early: true };
     }
@@ -3097,6 +3119,12 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, st = null) {
                 || ((_ol?.typ | 0) === 23 && !!(_ol?.doormask & 0x0c));
         })()));
     if (u.uswallow && u.ustuck) {
+        if (_tethered_weapon)
+            tmp_at(DISP_TETHER, obj_to_glyph(_landedObj));
+        if (_landedObj === u.uball) {
+            u.uball.ox = u.uchain.ox = u.ux;
+            u.uball.oy = u.uchain.oy = u.uy;
+        }
         /* C dothrow.c:1569-1577 — a swallowed throw does not follow the
          * requested direction through the map.  It targets the engulfer
          * directly, making thitmonst()'s engulfing_u() test a guaranteed
@@ -3196,7 +3224,7 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, st = null) {
                 break;
             }
             if (_m && (shade_miss(game.youmonst, _m, thrownObj, true, true)
-                       || ((_m.m_ap_type | 0) === M_AP_OBJECT
+                       || (M_AP_TYPE(_m) === M_AP_OBJECT
                            && !(_glyph_at(_nx, _ny)?.cls === GLYPHCLS_MON)
                            && !glyph_is_warning_at(_nx, _ny)
                            && !glyph_is_invisible_at(_nx, _ny))))
@@ -3286,10 +3314,11 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, st = null) {
     /* C dothrow.c:1678-1680 — after bhit() (so u.ux/u.uy are correct) the
      * hero recoils: action, reaction. */
     /* throw_gold() (dothrow.c:2656) never reaches throwit()'s recoil. */
-    if (!_coinWholeThrow && !_boomerangHandled && (Is_airlevel(u.uz) || _Levitation()))
+    if (!_coinWholeThrow && !_boomerangHandled && !u.uswallow && (Is_airlevel(u.uz) || _Levitation()))
         await hurtle(-_throwDx, -_throwDy, _urange, true);
 
     let _objGone = _boomerangGone || _barsGone;
+    if (_barsGone && _tethered_weapon) tmp_at(DISP_END, 0);
     if (_hitMon && _landedObj) {
         /* C zap.c:3874-3877: bhit leaves gb.bhitpos at the impact square.
          * passive_obj's erode_obj uses that position for visibility
@@ -3412,7 +3441,9 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, st = null) {
                         dmg = (await artifact_hit(null, null, _landedObj, dmg, 0)).dmg;
                     await losehp(flooreffects_Maybe_Half_Phys(dmg), killer_xname(_landedObj), KILLED_BY);
                 }
-                if (!(await ship_object(_landedObj, u.ux, u.uy, false)))
+                if (u.uswallow) {
+                    if (_landedObj !== u.uball) await mpickobj(u.ustuck, _landedObj);
+                } else if (!(await ship_object(_landedObj, u.ux, u.uy, false)))
                     await dropy(_landedObj);
                 _mjolnirDone = true;
             }
@@ -3420,6 +3451,10 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, st = null) {
             /* C dothrow.c:1748 — a failed tethered return ends the tether. */
             if (_tethered_weapon) tmp_at(DISP_END, 0);
             await pline('%s to return!', _objnam_Tobjnam(_landedObj, 'fail'));
+            if (u.uswallow) {
+                if (_landedObj !== u.uball) await mpickobj(u.ustuck, _landedObj);
+                _mjolnirDone = true;
+            }
         }
         if (_mjolnirDone) {
             g.iflags.returning_missile = null;
@@ -4630,6 +4665,10 @@ export async function inventory_menu_legacy(opts) {
         if (!opts?.filter || opts.filter(o)) items.push(o);
     if (items.length === 0 && opts?.queryObjlist)
         return { selectedObj: null, WIN_COL: 0, winRows: 0 };
+    /* C wintty.c:1936-1937 tty_display_nhwindow(NHW_MENU) overlay branch —
+     * tty_clear_nhwindow(WIN_MESSAGE) wipes the answered yn prompt (topl.c:553
+     * leaves toplin NON_EMPTY) before the menu's title is drawn. */
+    if (opts?.queryObjlist) g._topl_sticky = null;
     if (items.length === 0) {
         await pline('Not carrying anything.');
         return { selectedObj: null, WIN_COL: 0 };
@@ -4640,7 +4679,8 @@ export async function inventory_menu_legacy(opts) {
      *   COIN(12), AMULET(5), WEAPON(2), ARMOR(3), FOOD(7), SCROLL(9),
      *   SPBOOK(10), POTION(8), RING(4), WAND(11), TOOL(6), GEM(13),
      *   ROCK(14), BALL(15), CHAIN(16).
-     * Within a class, items keep invent-chain order (SORTLOOT default). */
+     * Within a class, display_pickinv uses inventory-letter order unless
+     * sortloot=full requests description order (invent.c:3176). */
     const CLASS_ORDER = (g.flags?.inv_order || INV_ORDER).concat(17); // invent.c:3071,3334
     const CLASS_HEADER = {
         2: 'Weapons',
@@ -4724,6 +4764,11 @@ export async function inventory_menu_legacy(opts) {
         /* invent.c:3176 — display_pickinv sorts SORTLOOT_LOOT for sortloot=full. */
         if (!opts?.queryObjlist && !opts?.invChainOrder && g.flags?.sortloot === 'f')
             group = _sortloot_within_class(group, oclass);
+        else if (!opts?.queryObjlist && !opts?.invChainOrder)
+            /* C invent.c:391-400,471-476: SORTLOOT_INVLET puts '#' after 'Z',
+             * independently of the object's position in the invent chain. */
+            group.sort((a, b) => invletter_value(a.invlet | 0)
+                - invletter_value(b.invlet | 0));
         if (opts?.queryObjlist) {
             // pickup.c query_objlist: USE_INVLET selects inventory-letter order,
             // with loot ordering for full, or loot without USE_INVLET.
@@ -4868,7 +4913,8 @@ async function _run_pickinv_menu(windowLines, lineItems, selectables, opts) {
         // tty_display_nhwindow's H2344_BROKEN branch caps offx at half
         // the terminal width; the first printed column is offx + 1.
         WIN_COL = Math.min(41, 80 - maxLen - 2);
-        screenOutput = build_window_screen(windowLines, WIN_COL, uac);
+        screenOutput = build_window_screen(windowLines, WIN_COL, uac, opts?.statusClipCol,
+            undefined, false, 0, (opts?.statusClipMaxRow ?? 0) >= 23, opts?.statusClipMaxRow ?? 23);
         endRow = windowLines.length - 1;
         endCursorCol = WIN_COL + 5 + 1; /* WIN_COL + len("(end)") + 1 */
     }
@@ -5555,8 +5601,32 @@ async function _display_pickinv_window(lets, want_reply) {
     }
     if (g.flags.sortloot !== 'i' && g.flags.sortpack !== false && !_Blind_cmd()
         && g.invent && g.invent.nobj) {
-        for (let o = g.invent; o; o = o.nobj)
-            observe_object(o);
+        /* The sort's comparator classifies (observe_object) each object the
+         * first time it is compared (invent.c:433-438), so the discovery
+         * order follows libc qsort's comparison order: glibc msort splits
+         * n into n/2 and n-n/2, sorting the first half then the second, then
+         * merges.  Walk that order with the class-order key. */
+        const arr = [];
+        for (let o = g.invent; o; o = o.nobj) arr.push(o);
+        const order = g.flags.inv_order || INV_ORDER;
+        const done = new Set();
+        const cmp = (a, b) => {
+            for (const o of [a, b]) if (!done.has(o)) { done.add(o); observe_object(o); }
+            const k = (o) => { const i = order.indexOf(o.oclass | 0); return i < 0 ? 99 : i; };
+            return k(a) - k(b);
+        };
+        const msort = (v) => {
+            if (v.length <= 1) return v;
+            const n1 = v.length >> 1;
+            const l = msort(v.slice(0, n1)), r = msort(v.slice(n1));
+            const out = [];
+            while (l.length && r.length) out.push(cmp(l[0], r[0]) <= 0 ? l.shift() : r.shift());
+            return out.concat(l, r);
+        };
+        msort(arr);
+        const pack = [];
+        for (let o = g.invent; o; o = o.nobj) pack.push(o);
+        _observe_in_qsort_order(pack);
     }
     const result = g.flags.sortloot === 'i'
         ? await dispinv_inuse_menu(lets, INUSE_HEADERS[4], want_reply)
@@ -5928,7 +5998,7 @@ async function wiz_identify() {
      * whose otyp trap.c:4832 just reset it) before the filter looks. */
     if (g.flags.sortloot !== 'i' && (g.flags.sortpack !== false || g.flags.sortloot === 'f')
         && !_Blind_cmd() && items.length > 1) {
-        for (const o of items) observe_object(o);
+        _observe_in_qsort_order(items);
     }
     const unid = items.filter((o) => not_fully_identified(o));
     if (unid.length) {
@@ -5951,7 +6021,8 @@ async function wiz_identify() {
          * — only unidentified items are listed, but the class walk is the same
          * flags.inv_order one every other menu in this file uses. */
         const flatWiz = g.flags?.sortpack === false;
-        const wizClasses = flatWiz ? [-1] : PICKINV_CLASS_ORDER;
+        /* C invent.c:3071,3334-3339: configured pack order, then venom. */
+        const wizClasses = flatWiz ? [-1] : (g.flags?.inv_order || INV_ORDER).concat(17);
         for (const oclass of wizClasses) {
             let group = flatWiz
                 ? unid.slice().sort((x, y) =>
@@ -5988,7 +6059,7 @@ async function wiz_identify() {
                 const o = lineObj[i];
                 if (!o) return { str: stripSgr(ln), selectable: false, inverse: i > 0 };
                 return { str: ln.replace(/^. - /, ''), selectable: true,
-                         selector: ln[0], payload: o };
+                         selector: ln[0], groupacc: o === WIZID_ALL ? '\t' : '', payload: o };
             });
             const picked = await tty_menu_pick_any(plist, '', { noPrompt: true });
             if (picked && picked.length) {
@@ -6320,6 +6391,13 @@ async function tty_menu_pick_any(mlist, prompt, opts = {}) {
         };
         if (hit) {
             toggle_menu_curr(hit);
+            continue;
+        }
+        /* C wintty.c:1739-1747: group accelerators invert matching entries
+         * across the entire menu, including entries on other pages. */
+        const group = lines.filter(it => it.selectable && it.groupacc && it.groupacc === ch);
+        if (group.length) {
+            for (const it of group) toggle_menu_curr(it);
             continue;
         }
         if (ch >= '0' && ch <= '9') {
@@ -7125,7 +7203,8 @@ export async function itemactions(otmp, priorWinCol, priorWinRows) {
             _pbuf = !u.uamul ? 'Put this amulet on' : '[already wearing an amulet]';
         } else if (oclass === OCLASS_RING || otyp === _IA_MEAT_RING_OTYP) {
             _pbuf = (!u.uleft || !u.uright)
-                ? 'Put this ring on' : '[both ring fingers in use]';
+                ? 'Put this ring on'
+                : `[both ring ${makeplural_objnam(body_part(FINGER))} in use]`;
         } else if (otyp === _IA_BLINDFOLD_OTYP || otyp === _IA_TOWEL_OTYP
                    || otyp === _IA_LENSES_OTYP) {
             if (u.ublindf)
@@ -7850,15 +7929,19 @@ async function dotypeinv() {
             : 'P - Items you just picked up'));
     }
     windowLines.push('(end)');
-    const maxLen = windowLines.reduce((max, ln) => {
-        const vis = ln.replace(/\x1b\[[0-9;]*m/g, '');
-        return Math.max(max, vis.length);
-    }, 0);
-    const WIN_COL = 80 - maxLen - 2;
+    /* C wintty.c:2728-2734 tty_end_menu: reserve the two margin cells,
+     * truncating each stored entry before computing the window geometry.
+     * SGR is JS's rendering metadata, not part of C's curr->str. */
+    for (let i = 0; i < windowLines.length; i++) {
+        let col = 0;
+        windowLines[i] = windowLines[i].replace(/\x1b\[[0-9;]*m|[\s\S]/g,
+            ch => ch.startsWith('\x1b') || col++ < 78 ? ch : '');
+    }
+    const WIN_COL = tty_window_offx(windowLines, 'end');
     const uac = u.uac ?? 0;
     /* C wintty.c:1927 — `!iflags.menu_overlay` drops the NHW_MENU to offx 0 and
      * clears the whole screen: one-space margin, "(end) " footer. */
-    const tiFullScreen = game.iflags?.menu_overlay === false
+    const tiFullScreen = WIN_COL === 1 || game.iflags?.menu_overlay === false
         || game.iflags?.menu_overlay === 0;
     const tiBuild = (lines) => tiFullScreen
         ? lines.map((ln) => (ln === '' ? '' : ' ' + ln)).join('\n')
@@ -7925,7 +8008,18 @@ async function dotypeinv() {
         : String.fromCharCode(typeinvKey);
     if (!directCategory && tradChoice === null) {
         g._pending_message = '';
-        await flush_screen(1);
+        /* C windows.c:1859-1863 holds bot_disabled through select_menu's
+         * dismissal; wintty.c:971-978 redraws a full-screen menu via docrt.
+         * Its cleared status rows stay blank until the next enabled bot(). */
+        const savedBotDisabled = g._bot_disabled;
+        g._bot_disabled = true;
+        try {
+            if (tiFullScreen) {
+                await docrt();
+                g._statusBlankAfterDocrt = true;
+            }
+            await flush_screen(1);
+        } finally { g._bot_disabled = savedBotDisabled; }
     }
     // invent.c dotypeinv: query_category's selected identifier feeds
     // this_type_only, then query_objlist(PICK_ONE) and itemactions.
@@ -8223,10 +8317,7 @@ function flooreffects_is_lava(x, y) {
 }
 // C ref: rm.h is_pool(x,y).
 function flooreffects_is_pool(x, y) {
-    const loc = _levlAt(x, y);
-    if (!loc) return false;
-    const t = loc.typ | 0;
-    return t === POOL || t === MOAT || t === WATER || t === DRAWBRIDGE_UP;
+    return is_pool(x, y);
 }
 // C ref: timeout.c spot_time_left(coordxy,coordxy,short) — not yet ported.
 function spot_checks_spot_time_left(x, y, func_index) { return spot_time_left(x, y, func_index); }
@@ -9051,16 +9142,7 @@ async function drop(obj) {
     if (!u.uswallow) {
         const _dl = _levlAt(u.ux | 0, u.uy | 0);
         if (!(_dl && IS_ALTAR(_dl.typ)) && g.flags && g.flags.verbose)
-            /* objnam.c:1646-1650 — doname_base appends "(unpaid, N zorkmids)"
-             * for a shop object still on the bill; the _drop_doname subset
-             * has no shop arm (see its KNOWN GAPS), so route those through
-             * the real doname(). */
-            /* A greased or partly eaten object (objnam.c:1370, 1510) is also
-             * routed to the real doname(): the _drop_doname subset's corpse
-             * shortcut returns before either word is added. */
-            await pline(`You drop ${(shk_is_unpaid(obj) || obj.greased || obj.oeaten
-                || (wizard() && game.iflags?.wizweight)) /* objnam.c:1697 */
-                ? await doname(obj) : _drop_doname(obj)}.`);
+            await pline(`You drop ${await doname(obj)}.`);
         /* A counted drop (`3d`) repeats through rhack(save_cm) without parse()'s
          * flush_screen(1), so the next iteration's getobj yn_function raises
          * this message's more() (topl.c:390-392) over the map as this pline's
@@ -9768,8 +9850,9 @@ async function doddrop() {
     if (!g.invent) {
         g.context.move = 0;
         await pline("You have nothing to drop.");
-        return;
+        return g.context.move ? ECMD_TIME : ECMD_OK;
     }
+    add_valid_menu_class(0); // C do.c:932, before either menu style.
     let retry = 0;
     const ggo = { olets: [], bucs: '', unpaidOnly: false, finished: false };
     if (g.invent && (g.flags?.menu_style | 0) === 0 && g.flags?.menu_style !== undefined) {
@@ -9783,7 +9866,7 @@ async function doddrop() {
              * time (ECMD_TIME is 1). */
             g.context.move = (result & ECMD_TIME) ? 1 : 0;
             if (result) reset_occupations();
-            return;
+            return result;
         }
     }
     if (retry || (g.invent && (g.flags?.menu_style | 0) === MENU_COMBINATION)) {
@@ -9794,18 +9877,18 @@ async function doddrop() {
         if (ggo.finished) {
             g.context.move = (i > 0) ? 1 : 0;
             if (i) reset_occupations();
-            return;
+            return g.context.move ? ECMD_TIME : ECMD_OK;
         }
         const allCategories = (i === -2);
         const filter = (o) => {
             if (allCategories) return true;
-            /* allow_category (pickup.c:523): no filters -> nothing matches */
-            if (!ggo.olets.length && !ggo.bucs && !ggo.unpaidOnly) return false;
+            /* C pickup.c:526-528: empty filters match only with ParanoidAutoAll. */
+            if (!ggo.olets.length && !ggo.bucs && !ggo.unpaidOnly && !(g.flags?.paranoia_bits & PARANOID_AUTOALL)) return false;
             if ((o.oclass | 0) === COIN_CLASS_C && ggo.olets.length)
                 return ggo.olets.includes(COIN_CLASS_C);
             if ((g.flags?.initrole | 0) === 6 && !o.bknown) set_bknown(o, 1);
             if (ggo.olets.length && !ggo.olets.includes(o.oclass | 0)) return false;
-            if (ggo.unpaidOnly && !o.unpaid) return false;
+            if (ggo.unpaidOnly && !ckunpaid(o)) return false;
             if (ggo.bucs) {
                 if (ggo.bucs.includes('P') && !o.pickup_prev) return false;
                 const bc = ggo.bucs.replace('P', '');
@@ -9823,7 +9906,7 @@ async function doddrop() {
         };
         let any = false;
         for (let o = g.invent; o; o = o.nobj) if (filter(o)) { any = true; break; }
-        if (!any) { g.context.move = 0; return; }
+        if (!any) { g.context.move = 0; return ECMD_OK; }
         const { selectedEntries = [] } = await inventory_menu_legacy({
             title: 'What would you like to drop?',
             queryObjlist: true,
@@ -9831,7 +9914,7 @@ async function doddrop() {
             filter,
         });
         await ddropSelectedEntries(selectedEntries);
-        return;
+        return g.context.move ? ECMD_TIME : ECMD_OK;
     }
     /* C do.c:991-1032 menu_drop(): only MENU_FULL asks query_category and only
      * MENU_COMBINATION runs ggetobj; MENU_PARTIAL (menustyle:partial) skips
@@ -9844,7 +9927,7 @@ async function doddrop() {
             filter: () => true,
         });
         await ddropSelectedEntries(selectedEntries);
-        return;
+        return g.context.move ? ECMD_TIME : ECMD_OK;
     }
     /* C ref: do.c:928 — "have nothing to drop" if gi.invent is empty. */
     /* Determine carried object classes + BUC counts.  Prefer the live invent
@@ -9875,7 +9958,7 @@ async function doddrop() {
             /* C ref: do.c:928 — no invent → "have nothing to drop." */
             g.context.move = 0;
             await pline("You have nothing to drop.");
-            return;
+            return g.context.move ? ECMD_TIME : ECMD_OK;
         }
         const present = new Set(kit.classes);
         carried = dropOrder.filter((oc) => present.has(oc));
@@ -9885,7 +9968,7 @@ async function doddrop() {
         /* C ref: do.c:928 — gi.invent empty. */
         g.context.move = 0;
         await pline("You have nothing to drop.");
-        return;
+        return g.context.move ? ECMD_TIME : ECMD_OK;
     }
     /* ccount = count_categories(): number of distinct carried oclasses. */
     const ccount = carried.length;
@@ -10132,6 +10215,7 @@ async function doddrop() {
                 .map((ch) => classRows.get(ch)));
         const selectedBuc = new Set([...ddropSelected].filter((ch) => 'BCUX'.includes(ch)));
         const pickedSelected = ddropSelected.has('P');
+        const unpaidSelected = ddropSelected.has('u');
         const matches = (obj) => {
             if (dropEverything || allSelected) return true;
             /* C pickup.c:523-527 — a selected coin class is accepted before
@@ -10142,6 +10226,7 @@ async function doddrop() {
                 set_bknown(obj, 1); /* Role_if(PM_CLERIC), pickup.c:535-536 */
             if (pickedSelected && !obj.pickup_prev) return false;
             if (selectedClasses.size && !selectedClasses.has(obj.oclass | 0)) return false;
+            if (unpaidSelected && !ckunpaid(obj)) return false; // C pickup.c:562-565
             if (selectedBuc.size) {
                 let bucMatch;
                 if ((obj.oclass | 0) === COIN_CLASS_C)
@@ -10156,7 +10241,7 @@ async function doddrop() {
                     bucMatch = selectedBuc.has('U');
                 if (!bucMatch) return false;
             }
-            return selectedClasses.size > 0 || selectedBuc.size > 0 || pickedSelected;
+            return selectedClasses.size > 0 || selectedBuc.size > 0 || pickedSelected || unpaidSelected;
         };
         let nDropped = 0;
         if (u.ushops && u.ushops.length)
@@ -10203,7 +10288,7 @@ async function doddrop() {
                 sellobj_state(SELL_NORMAL);
             g.context.move = dropped ? 1 : 0;
             if (dropped) reset_occupations();
-            return;
+            return g.context.move ? ECMD_TIME : ECMD_OK;
         }
     }
     /* C do.c:1069-1074 — after category filters commit, menu_drop opens a
@@ -10224,6 +10309,7 @@ async function doddrop() {
                 .map((ch) => classRows.get(ch)));
         const selectedBuc = new Set([...ddropSelected].filter((ch) => 'BCUX'.includes(ch)));
         const pickedSelected = ddropSelected.has('P');
+        const unpaidSelected = ddropSelected.has('u');
         const filter = (obj) => {
             if (allSelected) return true;
             if ((obj.oclass | 0) === COIN_CLASS_C && selectedClasses.size)
@@ -10232,6 +10318,7 @@ async function doddrop() {
                 set_bknown(obj, 1); /* Role_if(PM_CLERIC), pickup.c:535-536 */
             if (pickedSelected && !obj.pickup_prev) return false;
             if (selectedClasses.size && !selectedClasses.has(obj.oclass | 0)) return false;
+            if (unpaidSelected && !ckunpaid(obj)) return false; // C pickup.c:562-565
             if (selectedBuc.size) {
                 let bucMatch;
                 if ((obj.oclass | 0) === COIN_CLASS_C)
@@ -10246,22 +10333,25 @@ async function doddrop() {
                     bucMatch = selectedBuc.has('U');
                 if (!bucMatch) return false;
             }
-            return selectedClasses.size > 0 || selectedBuc.size > 0 || pickedSelected;
+            return selectedClasses.size > 0 || selectedBuc.size > 0 || pickedSelected || unpaidSelected;
         };
         const { selectedEntries = [] } = await inventory_menu_legacy({
             title: 'What would you like to drop?',
             queryObjlist: true,
             pickAny: true,
             filter,
+            statusClipCol: !ddFullScreen && windowLines.length >= (_threeStatusLines() ? 21 : 22) ? WIN_COL - 2 : undefined,
+            statusClipMaxRow: windowLines.length,
         });
         await ddropSelectedEntries(selectedEntries);
-        return;
+        return g.context.move ? ECMD_TIME : ECMD_OK;
     }
     if (!autoDropped && !autoPick && !ddropNoRelevant)
         g._pending_message = '';
     await flush_screen(1);
     if (!autoDropped)
         g.context.move = 0;  /* cancelled menu — no turn, no RNG */
+    return g.context.move ? ECMD_TIME : ECMD_OK;
 }
 
 const TAKEOFF_ORDER = [W_TOOL_TO, W_WEP_TO, W_ARMS_TO, W_ARMG_TO, W_RINGL_TO,
@@ -11633,6 +11723,9 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // was wrong.  The screen half is step 195's map cells.
     vision_recalc(2);
     if (!(newdungeon && In_endgame(newlevel)) && !leavingTutorial) update_mlstmv(); // C do.c:1640-1642
+    else for (let dnum = 0; dnum < g.dungeons.length; ++dnum)
+        if (leavingTutorial ? dnum === g.tutorial_dnum : dnum !== g.astral_level.dnum)
+            delete g._luathemes_loaded?.[dnum];
     // C do.c:1670-1673 — "record this level transition as a potential seen
     // branch unless using some non-standard means of transportation (level
     // teleport)":  if ((at_stairs || falling || portal) && dnum changes.
@@ -11789,7 +11882,8 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
                 for (const k of ['disp_ch', 'disp_color', 'disp_glyph_color', 'disp_decgfx',
                                  'disp_glyph_ch', 'disp_glyph_decgfx',
                                  'disp_attr', 'disp_cls', 'disp_cmap', 'disp_is_warning',
-                                 'disp_mon_pm', 'disp_mon_kind', 'disp_obj_corpsenm', 'disp_obj_otyp',
+                                 'disp_mon_pm', 'disp_mon_kind', 'disp_mon_female',
+                                 'disp_obj_corpsenm', 'disp_obj_otyp',
                                  'disp_trap_type'])
                     n[k] = o[k];
                 /* The carried paint is the OLD level's: whether its S_stone
@@ -12217,6 +12311,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         }
     }
     g.context = g.context || {};
+    reset_glyphmap(2); // C do.c:1838 gm_levelchange
     /* C do.c:1839 notice_mon_off(): docrt's temporary loss of vision must
      * not reset mspotted for monsters accompanying the hero. */
     g.a11y ??= {};
@@ -12480,15 +12575,15 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             }
         }
     }
-    /* C do.c:1970-1973 — livelog_printf(LL_DEBUG, "entered %s", dloc) for
-     * every newly built level.  This feeds #chronicle without affecting the
-     * visible arrival path or RNG. */
-    if (isNew)
-        livelog_printf(LL_DEBUG, 'entered %s', describe_level_buf(2, u.uz));
     // C ref: do.c:1935 — temperature_change_msg(prev_temperature).  Sits
     // between the quest_portal block above and the `if (new)` Tourist block
     // below; RNG-free, message only.
     await temperature_change_msg(prev_temperature);
+    // C do.c:1943-1962: quest and non-Astral endgame entries are major events.
+    if (isNew) {
+        const major = (In_endgame(u.uz) && !on_level(u.uz, g.astral_level)) || In_quest(u.uz);
+        livelog_printf(major ? LL_ACHIEVE : LL_DEBUG, 'entered %s', describe_level_buf(2, u.uz));
+    }
     // C ref: do.c:1952-1965 — `if (new) { ... if (Role_if(PM_TOURIST)) {
     // more_experienced(level_difficulty(), 0); newexplevel(); } }`.  A Tourist
     // earns experience for every level reached for the FIRST time; newexplevel()
@@ -12794,7 +12889,7 @@ export function get_level(newlev) {
                     break;
                 }
             }
-            if (!found) break; // C would panic; we just stop
+            if (!found) throw new Error("get_level: can't find parent dungeon");
         }
     }
     // C dungeon.c:1834 — levnum = levnum - depth_start + 1
@@ -12811,8 +12906,7 @@ export function get_level(newlev) {
 //
 // C ref: dungeon.c:1431 depth() = dungeons[dnum].depth_start + dlevel - 1.
 function _pd_depth(dlev, dungeonsFull) {
-    const dg = dungeonsFull[dlev.dnum] || { depth_start: 1 };
-    return (dg.depth_start + dlev.dlevel - 1) | 0;
+    return depth(dlev);
 }
 // C ref: dungeon.c:2249 br_string(type).  Branch type → display string.
 function _pd_br_string(type) {
@@ -13420,8 +13514,7 @@ async function print_dungeon_text() {
  * on_level() shape for any other named d_level.  js/dungeon_rng.js:680
  * publishes game.qstart_level. */
 function _pd_on_level(a, b) {
-    return !!a && !!b && (a.dnum | 0) === (b.dnum | 0)
-        && (a.dlevel | 0) === (b.dlevel | 0);
+    return on_level_real(a, b);
 }
 /* C ref: dungeon.c:2175 unplaced_floater(dptr) — TRUE only for the Fort Ludios
  * dungeon while its branch entrance still floats.  The bymenu twin above takes
@@ -13440,14 +13533,7 @@ function _pd_unplaced_floater_txt(dnum, branches, end1_dnum) {
  * dungeon_branch(s) (dungeon.c:1878) finds the branch whose end2 dungeon is
  * named s; C panics when there is none, which cannot happen for "The Quest". */
 function _pd_at_dgn_entrance(dname, branches, dungeonsFull, end1_dnum) {
-    const uz = game?.u?.uz;
-    if (!uz) return false;
-    for (const br of (branches || [])) {
-        if (((dungeonsFull[br.end2.dnum] || {}).dname || '') === dname)
-            return end1_dnum(br) === (uz.dnum | 0)
-                && (br.end1.dlevel | 0) === (uz.dlevel | 0);
-    }
-    return false;
+    return at_dgn_entrance(dname);
 }
 
 /* C ref: wizcmds.c:1934 wiz_custom() — #wizcustom. */
@@ -13583,12 +13669,12 @@ export async function level_tele() {
             let viaMenu = false;
             if (g.iflags.menu_requested) {
                 g.iflags.menu_requested = false;
-                viaMenu = true;
+                viaMenu = wizard();
             }
             trycnt++;
             // C teleport.c:1212 — getlin(qbuf, buf)
             const prompt = (trycnt >= 2)
-                ? (qbuf + (/* wizard */ true ? ' [type a number, name, or ? for a menu]' : ' [type a number or name]'))
+                ? (qbuf + (wizard() ? ' [type a number, name, or ? for a menu]' : ' [type a number or name]'))
                 : qbuf;
             if (viaMenu) buf = '?';
             else buf = await getlin(prompt);
@@ -13622,7 +13708,7 @@ export async function level_tele() {
             // C teleport.c:1221 — if (wizard && !strcmp(buf, "?")) → levTport_menu.
             // print_dungeon(TRUE, &destlev, &destdnum); if !newlev return.
             // Else newlevel = {destdnum, destlev}; force_dest = TRUE; fall through.
-            if (buf === '?') {
+            if (wizard() && buf === '?') {
                 const sel = await print_dungeon_menu();
                 /* the full-screen overview menu left rows 22-23 blank (tty menu
                  * overdraw); a typed number leaves the status painted */
@@ -14615,7 +14701,9 @@ function reveal_terrain_getglyph(x, y, which_subset, swallowed = false) {
         glyph.attr = loc.disp_attr | 0;
     let was_mon = false;
     /* C detect.c:2213-2218 — drop monsters (and the hero) back to memory. */
-    if (!keep_mons && glyph && glyph.cls === GLYPHCLS_MON) {
+    if (glyph && ((!keep_mons && (glyph.cls === GLYPHCLS_MON
+                                 || glyph.cls === GLYPHCLS_WARNING))
+                  || glyph.cls === GLYPHCLS_SWALLOW)) {
         glyph = levl_glyph;
         was_mon = true;
     }
@@ -14625,7 +14713,7 @@ function reveal_terrain_getglyph(x, y, which_subset, swallowed = false) {
     /* C display.h:218-222 covers_traps(x,y) == covers_objects(x,y) ==
      * ((is_pool(x,y) && !Underwater) || typ == LAVAPOOL || typ == LAVAWALL). */
     const _covers = ((loc.typ === POOL || loc.typ === MOAT || loc.typ === WATER
-                      || loc.typ === DRAWBRIDGE_UP) && !game.u?.uinwater)
+                      || (loc.typ === DRAWBRIDGE_UP && is_pool(x, y))) && !game.u?.uinwater)
                  || loc.typ === LAVAPOOL || loc.typ === LAVAWALL;
     if (glyph && ((!keep_objs && glyph.cls === GLYPHCLS_OBJ)
                   || glyph.cls === GLYPHCLS_INVIS)
@@ -14666,7 +14754,7 @@ function reveal_terrain_getglyph(x, y, which_subset, swallowed = false) {
         } else if ((loc.lastseentyp | 0) === (loc.typ | 0)) {
             const tg = terrain_glyph(loc, x, y);
             glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec,
-                      cls: GLYPHCLS_CMAP };
+                      cls: GLYPHCLS_CMAP, cmap: tg.cmap };
         } else {
             /* C detect.c:2252-2278 — rebuild the cell from svl.lastseentyp
              * (a remembered 'I' over a corridor the hero only felt, say, has
@@ -14685,7 +14773,7 @@ function reveal_terrain_getglyph(x, y, which_subset, swallowed = false) {
                 Object.assign(loc, saved);
             }
             glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec,
-                      cls: GLYPHCLS_CMAP };
+                      cls: GLYPHCLS_CMAP, cmap: tg.cmap };
         }
     }
     } /* !full */
@@ -14970,8 +15058,11 @@ async function doextlist(restoreExtPrompt = false) {
                 continue;
             }
             if (ch === '<') { if (page > 0) page--; continue; }
+            /* wintty.c:1348-1380,1522: selectors are valid only for the
+             * current page, but group accelerators are collected over the
+             * whole item list. */
             const picked = pages[page].find(r => r.selector === ch)
-                || pages[page].find(r => r.groupacc === ch);
+                || records.find(r => r.groupacc === ch);
             if (!picked) continue;
             ch = picked.selector;
             if (ch === 'a') { menumode = 1 - menumode; redisplay = true; }
@@ -16323,12 +16414,8 @@ function _japanese_item_name(otyp) {
  * worn-status suffix; that decoration is doname()'s job (_doinv_format_item
  * below, which calls this for its name half).  Split out unchanged so
  * pager.c:1826's singular(invobj, xname) can reuse it — see singular_xname(). */
-/* C ref: objnam.c cxname(obj) = xname_flags(obj, CXN_NORMAL) — the object's
- * type name with NO article, BUC word, enchantment or erosion adjective.
- * That is exactly what _inv_xname builds, and it is the default `ostr` for
- * erode_obj's messages ("Your orcish helm rusts!"), so export it under C's
- * name rather than leaving js/trap.js with a placeholder that returns "item". */
-export function cxname(obj) { return _inv_xname(obj); }
+/* C objnam.c:1921-1928 — cxname includes the monster species for corpses. */
+export function cxname(obj) { return _ia_cxname(obj); }
 function _inv_xname(obj) {
     {
         const p = game.u?.uprops?.[BLINDED];
@@ -16932,7 +17019,7 @@ const GETOBJ_EXCLUDE_INACCESS = -1;
 const GETOBJ_EXCLUDE_NONINVENT = -2, GETOBJ_EXCLUDE_SELECTABLE = -3;
 const _AMULET_CLASS = 5;
 const _MEAT_RING_OTYP = 270, _BLINDFOLD_OTYP = 233, _TOWEL_OTYP = 234;
-async function equip_ok(obj, removing, accessory) {
+export async function equip_ok(obj, removing, accessory) {
     if (!obj) return GETOBJ_EXCLUDE;
     const W_ARMOR_MASK = W_ARM_C | W_ARMC_C | W_ARMH_C | W_ARMS_C | W_ARMG_C | W_ARMF_C | W_ARMU_C;
     const W_ACCESSORY_MASK = 0x000F0000; /* W_AMUL|W_RINGL|W_RINGR|W_TOOL */
@@ -16956,6 +17043,8 @@ async function equip_ok(obj, removing, accessory) {
         if (!(await canwearobj(obj, dummymask, false)))
             return GETOBJ_DOWNPLAY;
     }
+    if (removing && !game.gi.item_action_in_progress && await inaccessible_equipment(obj, null, oclass === OCLASS_RING))
+        return GETOBJ_EXCLUDE_INACCESS; // C do_wear.c:3435-3439
     return GETOBJ_SUGGEST;
 }
 /* C ref: invent.c:1962-1999 getobj(), the `redo_menu` arm.  Answering the
@@ -17032,8 +17121,33 @@ async function getobj_pickinv_menu(allowedLets, countRef = null, xtraChoice = nu
     }
     if (g.flags?.sortloot !== 'i' && g.flags?.sortpack !== false && !_Blind_cmd()
         && g.invent && g.invent.nobj) {
-        for (let o = g.invent; o; o = o.nobj)
-            observe_object(o);
+        const pack = [];
+        for (let o = g.invent; o; o = o.nobj) pack.push(o);
+        if (g.flags.sortloot === 'f') {
+            _observe_in_qsort_order(pack);
+        } else {
+            // C invent.c:433-438,472-477,633: PACK|INVLET classification observes
+            // as display_pickinv does above; pivot order changes discovery order.
+            const order = g.flags.inv_order || INV_ORDER, seen = new Set();
+            const rank = o => {
+                const oc = o.oclass | 0, i = order.indexOf(oc);
+                return i >= 0 ? i : order.length + (oc !== 17 /* VENOM_CLASS */ ? 1 : 0);
+            };
+            const cmp = (a, b) => {
+                for (const o of [a, b]) if (!seen.has(o)) { seen.add(o); observe_object(o); }
+                return rank(a) - rank(b)
+                    || invletter_value(a.invlet | 0) - invletter_value(b.invlet | 0);
+            };
+            const msort = v => {
+                if (v.length < 2) return v;
+                const mid = v.length >> 1;
+                const left = msort(v.slice(0, mid)), right = msort(v.slice(mid)), out = [];
+                while (left.length && right.length)
+                    out.push(cmp(left[0], right[0]) <= 0 ? left.shift() : right.shift());
+                return out.concat(left, right);
+            };
+            msort(pack);
+        }
     }
     const items = [];
     for (let o = g.invent; o; o = o.nobj) {
@@ -17120,7 +17234,7 @@ async function getobj_pickinv_menu(allowedLets, countRef = null, xtraChoice = nu
             lineItems.push(obj);
         }
     }
-    else for (const oclass of PICKINV_CLASS_ORDER) {
+    else for (const oclass of (g.flags?.inv_order || PICKINV_CLASS_ORDER).concat(17)) { /* invent.c:3071,3334 */
         let group = items.filter(it => !it._xtra && (it.oclass | 0) === oclass);
         if (group.length === 0) continue;
         /* C invent.c:3176 sortflags = (flags.sortloot == 'f') ? SORTLOOT_LOOT
@@ -17211,9 +17325,16 @@ async function getobj_pickinv_menu(allowedLets, countRef = null, xtraChoice = nu
         endCursorCol = WIN_COL + 5 + 1; /* WIN_COL + len("(end)") + 1 */
         // C wintty.c:982,3684: dismissal clears through maxrow, including
         // status cells; windows.c:1863 holds bot_disabled across select_menu.
+        /* wintty.c:3684-3687: a getobj menu dismissed earlier this turn (the
+         * apply menu before use_stone's own getobj) wiped the status rows from
+         * its offx-1; same rule as pickup_container.js's next menu. */
+        let priorWin = dismissedWindow;
+        if (!priorWin && g._getobj_menu_win && g._getobj_menu_win.moves === g.moves
+            && g._getobj_menu_win.winRows >= (_threeStatusLines() ? 21 : 22))
+            priorWin = g._getobj_menu_win;
         screenOutput = build_window_screen(windowLines, WIN_COL, uac,
-            dismissedWindow?.WIN_COL > 0 ? dismissedWindow.WIN_COL - 1 : undefined,
-            undefined, false, 0, true, dismissedWindow?.winRows ?? 23);
+            priorWin?.WIN_COL > 0 ? priorWin.WIN_COL - 1 : undefined,
+            undefined, false, 0, true, priorWin?.winRows ?? 23);
     }
     /* C ref: win/tty/getline.c:213 — a MENU_SEARCH's tty_getlin ends with
      * clear_nhwindow(WIN_MESSAGE), which blanks the WHOLE of screen row 0, the
@@ -17242,6 +17363,11 @@ async function getobj_pickinv_menu(allowedLets, countRef = null, xtraChoice = nu
             if (g.disp) g.disp.botlx = 1;
         } else {
             docorner_blank_utf8_captures(WIN_COL - 1, endRow + 2);
+            /* wintty.c:3711-3716 docorner(): a corner that reaches the status
+             * rows wrecks them, so botlx is set and bot() is called; select_menu
+             * holds bot_disabled (windows.c:1861), so the repaint stays pending
+             * and the next flush_screen discharges it. */
+            if (g.disp && endRow + 2 >= (_threeStatusLines() ? 21 : 22)) g.disp.botlx = 1;
         }
         return key;
     };
@@ -17338,7 +17464,13 @@ async function getobj_pickinv_menu(allowedLets, countRef = null, xtraChoice = nu
         }
         /* return with nothing selected → dismiss the menu. */
         if (k === 10 || k === 13) return dismissMenu(0);
-        /* any other key is ignored and the menu stays up (tty select_menu). */
+        /* any other key is ignored and the menu stays up (tty select_menu).
+         * C wintty.c:1519-1535 xwaitforspace(resp): a key outside resp is
+         * swallowed with a bell INSIDE the wait, so process_menu_window's loop
+         * never turns over and a live count survives it (reset_count stays
+         * FALSE); only default_menu_cmds reach the switch and reset it. */
+        if ('<>^|,\\~.-@:'.indexOf(String.fromCharCode(k & 0xff)) < 0)
+            resetMenuCount = false;
     }
 }
 /* C invent.c:1960-1999 — getobj()'s `redo_menu` arm, as one reusable block.
@@ -18329,10 +18461,10 @@ async function mount_steed(mtmp, force) {
         await pline(`I think ${mon_nam(mtmp)} would mind.`);
         return false;
     }
-    /* C steed.c:303 */
+    /* C steed.c:303; you.h:322 mhe uses mondata.c:1191 pronoun_gender. */
     if (mtmp.mtrapped) {
         const t = t_at(mtmp.mx | 0, mtmp.my | 0);
-        await pline(`You can't mount ${mon_nam(mtmp)} while ${_st_mhe(mtmp)}'s trapped in `
+        await pline(`You can't mount ${mon_nam(mtmp)} while ${mhe(mtmp)}'s trapped in `
                     + `${an(trapname(t ? (t.ttyp | 0) : 0, false))}.`);
         return false;
     }
@@ -18662,15 +18794,14 @@ export async function dismount_steed(reason) {
      * models that absence by skipping u.usteed, which was cleared three
      * statements ago, so the steed has to be excluded explicitly. */
     if (m_at(u.ux | 0, u.uy | 0) && m_at(u.ux | 0, u.uy | 0) !== mtmp) {
-        const alt = enexto_core(u.ux | 0, u.uy | 0, _st_fakemon(mtmp), 0);
+        let alt = enexto_out(u.ux | 0, u.uy | 0, mtmp.data);
+        if (!alt) /* C steed.c:694-698 — flyer, then any in-bounds spot. */
+            alt = enexto_out(u.ux | 0, u.uy | 0, permonstTemplate(PM_BAT))
+                || enexto_out(u.ux | 0, u.uy | 0, permonstTemplate(PM_GHOST));
         if (alt) {
             steedcc.x = alt.x;
             steedcc.y = alt.y;
         }
-        /* C's two further enexto() fallbacks ask for a flyer's and then a
-         * ghost's placement rules; enexto_core has one rule set, so a failure
-         * here leaves the steed on the hero's square rather than inventing a
-         * second predicate. */
     }
 
     if ((mtmp.mhp | 0) >= 1) {        /* C: !DEADMONSTER(mtmp) */
@@ -18727,13 +18858,17 @@ export async function dismount_steed(reason) {
                     await mintrap(mtmp, 0 /* NO_TRAP_FLAGS */);
             }
         }
-        /* C steed.c:775-779 — "Couldn't move hero... try moving the steed."
-         * (an engulfed hero has u.ustuck set).  The "no room at all" arm
-         * (killed / monkilled, steed.c:782-790) is still unported. */
+        /* C steed.c:775-790 — move the steed, or kill it if no room remains. */
         else {
-            const cc2 = enexto_core(u.ux | 0, u.uy | 0, _st_fakemon(mtmp), 0);
+            const cc2 = enexto_out(u.ux | 0, u.uy | 0, mtmp.data);
             if (cc2)
                 await rloc_to(mtmp, cc2.x, cc2.y);
+            else if (reason === DISMOUNT_BYCHOICE) {
+                await killed(mtmp);
+                adjalign(-1);
+            } else {
+                await monkilled_trap(mtmp, '', false); /* -AD_PHYS: ordinary death */
+            }
         }
     }
 
@@ -18876,10 +19011,6 @@ function is_metallic_st(obj) { return _oc_material(obj.otyp | 0) >= _MAT_IRON; }
 /* C ref: obj.h greatest_erosion(otmp) — max(oeroded, oeroded2). */
 function greatest_erosion_st(obj) {
     return Math.max(obj.oeroded | 0, obj.oeroded2 | 0);
-}
-function _st_mhe(mtmp) {
-    const g = (typeof _Mgender === 'function') ? _Mgender(mtmp) : 2;
-    return g === 0 ? 'he' : g === 1 ? 'she' : 'it';
 }
 /* C ref: objnam.c a_monnam(mtmp) = x_monnam(ARTICLE_A, ...).  mon_nam() yields
  * the definite form ("the saddled pony"); the indefinite article is what C's
@@ -19141,8 +19272,8 @@ async function use_stethoscope(obj) {
 
     /* C apply.c:343-344 — gb.bhitpos = hero; gn.notonhead = u.uswallow.
      * (Display bookkeeping; RNG-neutral.) */
-    (g.gb ||= {}).bhitpos = { x: u.ux, y: u.uy };
-    g.notonhead = u.uswallow;
+    g.bhitpos = (g.gb ||= {}).bhitpos = { x: u.ux, y: u.uy };
+    g.notonhead = (g.gn ||= {}).notonhead = u.uswallow;
 
     if (u.usteed && (u.dz | 0) > 0) {
         if (interference) {
@@ -19165,10 +19296,7 @@ async function use_stethoscope(obj) {
             return res;
         }
         if ((u.dz | 0) < 0 || !_steth_can_reach_floor(true)) {
-            const target = (u.dz | 0) < 0
-                ? ceiling(u.ux | 0, u.uy | 0)
-                : surface(u.ux | 0, u.uy | 0);
-            await pline("You can't reach the %s.", target);
+            await cant_reach_floor(u.ux, u.uy, (u.dz | 0) < 0, true, false);
             return res;
         }
         const dzResBox = { res };
@@ -19210,8 +19338,8 @@ async function use_stethoscope(obj) {
             _SUPPRESS_IT | _SUPPRESS_INVISIBLE, false);
         /* C apply.c:396-397 — gb.bhitpos is what mstatusline() reads to pick the
          * right segment of a long worm; gn.notonhead likewise. */
-        (g.gb ||= {}).bhitpos = { x: rx, y: ry };
-        g.notonhead = ((mtmp.mx | 0) !== rx || (mtmp.my | 0) !== ry);
+        g.bhitpos = (g.gb ||= {}).bhitpos = { x: rx, y: ry };
+        g.notonhead = (g.gn ||= {}).notonhead = ((mtmp.mx | 0) !== rx || (mtmp.my | 0) !== ry);
 
         if (mtmp.mundetected) {
             if (!canspotmon(mtmp))
@@ -19226,15 +19354,14 @@ async function use_stethoscope(obj) {
             const appear = mtmp.mappearance | 0;
             switch (M_AP_TYPE(mtmp)) {
             case M_AP_OBJECT:
-                /* C builds a dummy obj via init_dummyobj() only so it can ask
-                 * simple_typename(otyp) / is_boots() / is_gloves(); the otyp IS
-                 * mappearance, so ask simple_typename directly.
-                 * GAP (explicit, not silent): C's SLIME_MOLD arm swaps in
-                 * simpleonames() of a dummy carrying MCORPSENM as its spe so the
-                 * named fruit prints; that needs a real obj and has_mcorpsenm,
-                 * neither of which is reachable from here, so a mimicked slime
-                 * mold prints the generic "slime mold". */
-                what = simple_typename(appear);
+                /* C apply.c:417-424: the dummy fruit keeps the mimic's type.
+                 * set_mimic_sym stores its mcorpsenm on the live monster. */
+                const fruit = MCORPSENM(mtmp) !== NON_PM ? MCORPSENM(mtmp)
+                    : (mtmp.mcorpsenm ?? NON_PM);
+                what = appear === _OTYP_SLIME_MOLD && fruit !== NON_PM
+                    ? _ia_simpleonames({ otyp: appear, oclass: OCLASS_FOOD,
+                                        quan: 1, corpsenm: NON_PM, spe: fruit })
+                    : simple_typename(appear);
                 use_plural = _steth_appear_is_plural(appear);
                 break;
             case M_AP_MONSTER: /* C ignores Hallucination here */
@@ -20410,10 +20537,11 @@ async function do_blinding_ray(obj) {
     const g = game;
     const u = g.u;
     const ddx = u.dx | 0, ddy = u.dy | 0;
-    let mtmp = null;
+    let mtmp = null, flashDone = false;
     let x = u.ux | 0, y = u.uy | 0;
     g.gb = g.gb || {};
     g.gb.bhitpos = { x, y };
+    tmp_at(DISP_BEAM, 4084 /* cmap_to_glyph(S_flashbeam) */); /* zap.c:3862 */
     for (let range = COLNO; range-- > 0; ) {
         x += ddx; y += ddy;
         g.gb.bhitpos = { x, y };
@@ -20435,7 +20563,9 @@ async function do_blinding_ray(obj) {
                 obj.ox = u.ux; obj.oy = u.uy;
                 await flash_hits_mon(m, obj);
             } else {
+                tmp_at(DISP_END, 0); /* zap.c:3999: erase the beam trail (newsym) */
                 mtmp = m;
+                flashDone = true;
                 break;
             }
         }
@@ -20448,7 +20578,11 @@ async function do_blinding_ray(obj) {
             unmap_object(x, y);
             newsym(x, y);
         }
+        tmp_at(x, y); /* zap.c:4087 */
+        nh_delay_output();
     }
+    if (!flashDone)
+        tmp_at(DISP_END, 0); /* zap.c:4128 */
     obj.ox = u.ux; obj.oy = u.uy; /* flash_hits_mon() wants this */
     if (mtmp) {
         await flash_hits_mon(mtmp, obj);
@@ -20656,7 +20790,7 @@ async function hurtle_step(arg, x, y, via_jumping) {
             return false;
         } else if (!Is_waterlevel(u.uz) && !stopping_short) {
             const _lt = _levlAt(x, y);
-            const _moat = _lt && (((_lt.typ | 0) === MOAT)
+            const _moat = _lt && !Is_juiblex_level(u.uz) && (((_lt.typ | 0) === MOAT)
                 || ((_lt.typ | 0) === DRAWBRIDGE_UP
                     && ((_lt.drawbridgemask | 0) & DB_UNDER) === DB_MOAT_WB));
             await _Norep(`You move over ${_moat ? 'a moat' : 'a pool'}.`);
@@ -20684,7 +20818,7 @@ async function hurtle_step(arg, x, y, via_jumping) {
     if (--arg.range < 0)                                 /* dothrow.c:966-967 */
         arg.range = 0;
     if (arg.range !== 0)                                 /* dothrow.c:968-969 */
-        await runmode_delay_output();
+        nh_delay_output();
     return true;
 }
 
@@ -21298,14 +21432,7 @@ export function whimper(mtmp) {
 function breathless(mdata) {
     return !!mdata && ((mdata.mflags1 | 0) & 0x00000400) !== 0;
 }
-// pline_mon — established local convention (mhitu.js/mcastu.js/makemon.js):
-function pline_mon(_mtmp, fmt, ...args) {
-    let msg = fmt;
-    for (const arg of args) {
-        msg = msg.replace(/%[sdli]/, String(arg));
-    }
-    pline(msg);
-}
+import { pline_mon } from './display.js';
 const LEASH = 236; /* C objects.h LEASH (TOOL_CLASS) */
 const MS_SILENT = 0; /* C monflag.h ms_sounds */
 
@@ -21447,6 +21574,7 @@ function _Blind_cmd() {
  * fresh hero, which has none of these conditions set. */
 import * as _PROPIDS from './const.js';
 function _uprop_active(name) {
+    if (name === 'HALLUC') return _cmd_Hallucination(); // youprop.h:120
     const u = game.u;
     if (!u || !u.uprops) return false;
     const id = _PROPIDS[name];
@@ -21774,20 +21902,12 @@ function _ordin_local(n) {
 }
 
 /* C apply.c:2167 tinnable(struct obj *corpse) */
-function tinnable(corpse) {
-    if (corpse.oeaten) return false;
-    if (!mons_cnutrit(corpse.corpsenm | 0)) return false;
-    return true;
-}
 /* C eat.c:3560 tin_ok — the getobj callback for the object to be tinned.
  * GETOBJ_* here are js/const.js's numbering (0..5), not C's (-3..2). */
 function tin_ok(obj) {
     if (!obj)
         return (game._getobj_else | 0) ? GETOBJ_EXCLUDE_NONINVENT : GETOBJ_EXCLUDE;
-    if ((obj.oclass | 0) !== OCLASS_FOOD) return GETOBJ_EXCLUDE;
-    if ((obj.otyp | 0) !== _AP_CORPSE_OTYP || !tinnable(obj))
-        return GETOBJ_EXCLUDE_SELECTABLE;
-    return GETOBJ_SUGGEST;
+    return eat_tin_ok(obj);
 }
 async function floorfood_tin() {
     const g = game;
@@ -22178,7 +22298,7 @@ async function use_grapple(obj) {
     /* C apply.c:3751-3753 */
     await pline('Where do you want to hit?');
     const cc = { x: u.ux | 0, y: u.uy | 0 };
-    await getpos_sethilite(() => {}, (x, y) => _grapple_can_location(x, y));
+    await getpos_sethilite(display_grapple_positions, (x, y) => _grapple_can_location(x, y));
     if ((await getpos(cc, true, 'the spot to hit')) < 0)
         return res | ECMD_CANCEL;
     /* C apply.c:3760-3773 */
@@ -22211,7 +22331,7 @@ async function use_grapple(obj) {
     /* C apply.c:3815-3817 */
     if (tohit === 2 || !rn2(2)) {
         const wipecnt = rnd(2);
-        if (_can_reach_floor())
+        if (can_reach_floor(true))
             wipe_engr_at(u.ux | 0, u.uy | 0, wipecnt, false);
     }
     /* C apply.c:3820-3880 */
@@ -22298,6 +22418,16 @@ function _grapple_can_location(x, y) {
     const u = game.u;
     return isok(x, y) && cansee(x, y)
         && dist2(x, y, u.ux | 0, u.uy | 0) <= _grapple_range();
+}
+function display_grapple_positions(on_off) {
+    const u = game.u;
+    if (!on_off) return tmp_at(DISP_END, 0);
+    tmp_at(DISP_BEAM, 4092 /* cmap_to_glyph(S_goodpos), apply.c:3711 */);
+    for (let dx = -3; dx <= 3; dx++)
+        for (let dy = -3; dy <= 3; dy++) {
+            const x = dx + u.ux, y = dy + u.uy;
+            if (_grapple_can_location(x, y) && !u_at(x, y)) tmp_at(x, y);
+        }
 }
 
 /* C ref: rnd.c:298-309 shuffle_int_array(indices, count) — Fisher-Yates over
@@ -23050,6 +23180,10 @@ export async function doapply() {
             itemKey = (toolSlots || altlets) ? 63 : 42;
         } else {
             g._pending_message = qbuf;
+            /* C topl.c:421 tty_yn_function -> custompline() -> pline.c:282 files
+             * "prompt " in gp.prevmsg, so a later Norep() of the same text as the
+             * message BEFORE the prompt (makemon.c:1492) is not read as a repeat. */
+            g._prevmsg = qbuf + ' ';
             await flush_screen(1);
             set_cursor(qbuf.length + 1, 0);
             const itemRaw = await nhgetch(); /* C: getobj's yn_function nhgetch */
@@ -23310,7 +23444,8 @@ export async function doapply() {
              * LAST flush, before the pet moved.  Remember that frame. */
             const _botlDischargesPre = g._botlDischarges | 0;
             const _preWorldFrame = g._lastFlushFrame
-                ? { cells: g._lastFlushFrame.cells, moves: g._lastFlushFrame.moves } : null;
+                ? { cells: g._lastFlushFrame.cells, moves: g._lastFlushFrame.moves,
+                    epoch: g._lastFlushFrame.epoch } : null;
             /* C allmain.c:208 — the wield turn's do-loop opens with encumber_msg(),
              * so a weight/capacity change from the wield itself (Ogresmasher's
              * Con bonus lost) is reported before the monsters move. */
@@ -23460,6 +23595,10 @@ export async function doapply() {
              * see_traps, display-rng draws) runs BEFORE the canned doapply reaches
              * getdir; the --More-- frame below then already shows the new glyphs. */
             faithful_input_redraw();
+            /* The paging loop below repaints snapshots (its own flush_screen calls
+             * bump _lastFlushFrame); C's more() flushes nothing (topl.c:390-392), so
+             * the physical map is the last flush from BEFORE those page repaints. */
+            const _lastWorldFlushPrePage = g._lastFlushFrame;
             if (g._pending_message && g._topl_win_stop) {
                 /* C topl.c:390-393 tty_yn_function (getdir's prompt): toplin is
                  * NEED_MORE but WIN_STOP is live (ESC on the wield page), so no
@@ -23531,6 +23670,7 @@ export async function doapply() {
                 const _botlFlush = !!(g.disp?.botl || g.disp?.botlx)
                     || ((g._botlDischarges | 0) !== _botlDischargesPre);
                 const msgP = `${g._pending_message}--More--`;
+                const _lastWorldFlush = _lastWorldFlushPrePage;
                 const _showP = async () => {
                     g._pending_message = msgP;
                     const _prevSnap = g._paintedSnapshot;
@@ -23539,9 +23679,12 @@ export async function doapply() {
                      * the wield turn's movemon ("You hear crashing rock.") repaints the
                      * terminal AFTER the pre-world frame, and the getdir --More-- freezes
                      * the map as THAT flush left it (monsters already moved). */
-                    const _worldPf = (g._plineFlushFrames || []).findLast((f) => f.off >= 0
+                    let _worldPf = (g._plineFlushFrames || []).findLast((f) => f.off >= 0
                         && (msgP.slice(f.off + 2, f.off + 2 + f.msg.length) === f.msg
                             || msgP.endsWith(`${f.msg}--More--`)));
+                    if (_lastWorldFlush && _lastWorldFlush.epoch
+                        > (_worldPf?.flushEpoch ?? _preWorldFrame?.epoch ?? Infinity))
+                        _worldPf = _lastWorldFlush;
                     /* C allmain.c:477-480: timebot(); curs_on_u() flushes the
                      * post-turn map before the canned doapply.  A movemon
                      * pline from before that clock advance no longer holds
@@ -23676,7 +23819,7 @@ export async function doapply() {
     if (selObj && (selObj.otyp | 0) === 229 /* EXPENSIVE_CAMERA */) {
         const res = await use_camera(selObj);
         g.context.move = (res === ECMD_TIME) ? 1 : 0;
-        return g.context.move;
+        return res;
     }
     if (selObj && (selObj.otyp | 0) === 237 /* STETHOSCOPE */) {
         const res = await use_stethoscope(selObj);
@@ -23697,13 +23840,13 @@ export async function doapply() {
     if (selObj && (selObj.otyp | 0) === _BULLWHIP_OTYP) {
         const res = await use_whip(selObj);
         g.context.move = (res === ECMD_TIME) ? 1 : 0;
-        return g.context.move;
+        return res;
     }
     /* C ref: apply.c:4268-4270 — GRAPPLING_HOOK → res = use_grapple(obj). */
     if (selObj && (selObj.otyp | 0) === _AP_GRAPPLING_HOOK_OTYP) {
         const res = await use_grapple(selObj);
         g.context.move = (res === ECMD_TIME) ? 1 : 0;
-        return g.context.move;
+        return res;
     }
     /* C ref: apply.c:4279-4280 — BAG_OF_TRICKS → (void) bagotricks(obj,
      * FALSE, (int *) 0); break.  `void`; res is unchanged (still C's
@@ -23771,14 +23914,14 @@ export async function doapply() {
     if (selObj && (selObj.otyp | 0) === 235 /* SADDLE */) {
         const res = await use_saddle(selObj);
         g.context.move = (res === ECMD_TIME) ? 1 : 0;
-        return g.context.move;
+        return res;
     }
     /* C ref: apply.c:4264-4265 — LUMP_OF_ROYAL_JELLY → res = use_royal_jelly(&obj).
      * doapply's switch sets no botl for this case; see the TIN_WHISTLE arm above. */
     if (selObj && (selObj.otyp | 0) === 286 /* LUMP_OF_ROYAL_JELLY */) {
         const res = await use_royal_jelly(selObj);
         g.context.move = (res === ECMD_TIME) ? 1 : 0;
-        return g.context.move;
+        return res;
     }
     /* C ref: apply.c:4262 — CREAM_PIE → res = use_cream_pie(obj). */
     if (selObj && (selObj.otyp | 0) === _APPLY_CREAM_PIE_OTYP) {
@@ -23798,7 +23941,7 @@ export async function doapply() {
                    || (selObj.otyp | 0) === _AP_TOUCHSTONE_OTYP)) {
         const res = await use_stone(selObj);
         g.context.move = (res === ECMD_TIME) ? 1 : 0;
-        return g.context.move;
+        return res;
     }
     if (selObj && (selObj.otyp | 0) >= 214 /* LARGE_BOX */
         && (selObj.otyp | 0) <= 219 /* BAG_OF_HOLDING */) {
@@ -23806,7 +23949,7 @@ export async function doapply() {
         const cobjRef = { obj: selObj };
         const res = await use_container_impl(cobjRef, true, false);
         g.context.move = (res === ECMD_TIME) ? 1 : 0;
-        return g.context.move;
+        return res;
     }
     if (selObj && (selObj.otyp | 0) >= 247 /* WOODEN_FLUTE */
         && (selObj.otyp | 0) <= 258 /* DRUM_OF_EARTHQUAKE */
@@ -23918,13 +24061,13 @@ export async function doapply() {
     if (selObj && (selObj.otyp | 0) === LEASH_OTYP) {
         const res = await use_leash(selObj);
         g.context.move = (res === ECMD_TIME) ? 1 : 0;
-        return g.context.move;
+        return res;
     }
     /* C ref: apply.c:4296-4297 — CAN_OF_GREASE → res = use_grease(obj). */
     if (selObj && (selObj.otyp | 0) === 240 /* CAN_OF_GREASE */) {
         const res = await use_grease(selObj);
         g.context.move = (res === ECMD_TIME) ? 1 : 0;
-        return g.context.move;
+        return res;
     }
     if (selObj && (selObj.oclass | 0) === OCLASS_WAND) {
         return await _doapply_break_wand(selObj);
@@ -24459,9 +24602,10 @@ function _um_bhit_invis_beam(dx, dy) {
         x += dx; y += dy;
         if (!isok(x, y)) break;
         const mtmp = m_at(x, y);
+        if (mtmp) g.notonhead = (g.gn ||= {}).notonhead = (x !== mtmp.mx || y !== mtmp.my);
         if (mtmp && (!(mtmp.minvis | 0) || _um_perceives(mtmp.data))) {
             g.gb = g.gb || {};
-            g.gb.bhitpos = { x, y };
+            g.bhitpos = g.gb.bhitpos = { x, y };
             return mtmp;
         }
         /* C ref: zap.c:4076 — `if (!ZAP_POS(typ) || closed_door(x, y)) {
@@ -24478,7 +24622,7 @@ function _um_bhit_invis_beam(dx, dy) {
         }
     }
     g.gb = g.gb || {};
-    g.gb.bhitpos = { x, y };
+    g.bhitpos = g.gb.bhitpos = { x, y };
     return null;
 }
 async function use_mirror(obj) {
@@ -24566,12 +24710,12 @@ async function use_mirror(obj) {
         return ECMD_TIME;
     }
     const mtmp = _um_bhit_invis_beam(u.dx | 0, u.dy | 0);
-    if (!mtmp || !_um_haseyes(mtmp.data))
+    if (!mtmp || !_um_haseyes(mtmp.data) || g.gn?.notonhead)
         return ECMD_TIME;
     /* C apply.c:1101-1149 — the monster-reaction ladder; see the function
      * header comment for the two named gaps. */
     const vis = canseemon(mtmp);
-    const how_seen = vis ? _um_howmonseen(mtmp) : 0;
+    const how_seen = vis ? howmonseen(mtmp) : 0;
     const monable = !(mtmp.mcan | 0) && (!(mtmp.minvis | 0) || _um_perceives(mtmp.data));
     const mlet = mtmp.data ? (mtmp.data.mlet | 0) : -1;
     if (mtmp.msleeping) {
@@ -25206,12 +25350,9 @@ function u_wield_art(art) {
  * oartifact, so it's folded away.) */
 const OTYP_GOLD_DRAGON_SCALE_MAIL = 102, OTYP_GOLD_DRAGON_SCALES = 112;
 const ART_SUNSWORD = 20, ART_OGRESMASHER = 16;
+import { artifact_light as artifact_light_real } from './light.js';
 function artifact_light(obj) {
-    const W_ARM_MASK = 0x1;
-    if (obj && (obj.otyp === OTYP_GOLD_DRAGON_SCALE_MAIL || obj.otyp === OTYP_GOLD_DRAGON_SCALES)
-        && ((obj.owornmask | 0) & W_ARM_MASK) !== 0)
-        return true;
-    return is_art(obj, ART_SUNSWORD);
+    return artifact_light_real(obj);
 }
 /* end_burn(obj, timer_attached) is timeout.c's and is now ported in
  * js/timeout.js; it is IMPORTED at the head of this file.  The throw-stub that
@@ -25316,7 +25457,9 @@ async function _weapon_prinv_line(obj, wornMsg) {
      * C's "an athame named Magicbane".  Use the real xname; the tables remain
      * only for an otyp xname cannot resolve at all. */
     let name = ((obj.otyp | 0) === 265 /* CORPSE */
-        ? xname_oname_tail(obj, corpse_xname(obj, obj.oeaten ? 'partly eaten' : null, CXN_SINGULAR)) : xname_weapon(obj))
+        ? xname_oname_tail(obj, corpse_xname(obj, obj.oeaten ? 'partly eaten' : null, CXN_SINGULAR))
+        /* C objnam.c:663-664 `goto nameit`: a fully identified artifact IS its name */
+        : obj_is_pname(obj) ? xname_flags(obj, CXN_SINGULAR) : xname_weapon(obj))
         || WEAPON_NAME[obj.otyp] || _PRINV_OTYP_NAME[obj.otyp]
         || TOOL_OTYP_NAME_DISP[obj.otyp] || 'weapon';
     const _ballMask = obj.owornmask | 0;
@@ -25677,7 +25820,6 @@ async function _doswapweapon() {
              * more(). Leave the secondary line available for the queued
              * tool command's next message to join (topl.c:262-268). */
             await pline(_wtSwapLine + '.');
-            _topl_stash_result();
         } else if (_swapMorc === 27 && !is_pole(oldswap)
                    && _swapChainedFire()) {
             // wield.c:490-494: both the prinv and the no-secondary pline
@@ -25692,9 +25834,9 @@ async function _doswapweapon() {
                 g._fireSwapOwnerLine = g._topl_win_stop_buf;
             }
         } else if (u.uswapwep) {
-            const _swapQuan = (u.uswapwep.quan ?? 1) | 0;
-            const daggerLine = await _weapon_prinv_line(u.uswapwep,
-                `(alternate weapon${_swapQuan === 1 ? '' : 's'}; not wielded)`) + '.';
+            /* secondaryLine above is this same prinv's text; building it again
+             * would run doname() a second time (tin_details draws rn2(15)). */
+            const daggerLine = secondaryLine;
             /* C wield.c:489 prinv() -> pline -> flush_screen (pline.c:274-277):
              * when this line is too wide for the topline it pages from inside
              * its OWN redotoplin, so the --More-- freezes the map as of THIS
@@ -25723,7 +25865,10 @@ async function _doswapweapon() {
             }
         }
         /* Clear the bow+More from pending so the dagger line shows cleanly. */
-        g._pending_message = '';
+        /* wield_tool's swap: the secondary prinv stays on the topline (C
+         * update_topl leaves TOPLINE_NEED_MORE), so the queued tool command's
+         * prompt pages it (topl.c:390-392 tty_yn_function more()). */
+        if (!(g._wieldToolSwap && u.uswapwep)) g._pending_message = '';
     } else {
         /* No secondary weapon case (oldswap=null):
          * C ref: ready_weapon(NULL) wield.c:170-177 — if uwep: "You are bare-handed."
@@ -25904,10 +26049,14 @@ async function dowield() {
     }
     /* Lazy-init Ranger weapon state (mirrors ini_inv_use_obj). */
     _ensure_ranger_weapons(u);
+    /* C invent.c:1856-1857: getobj closes letter gaps under !fixinv. */
+    if (!_invlet_constant()) reassign();
     /* ── Build getobj prompt string (C ref: invent.c:1752 getobj / wield.c:369) ──
      * wield_ok(NULL) = GETOBJ_SUGGEST → buf starts with "- " (hands/unwield option).
      * C ref: invent.c:1833 case GETOBJ_SUGGEST: *bp++ = HANDS_SYM; *bp++ = ' '; */
     let buf = '- ', altlets = ''; /* wield_ok(NULL)=SUGGEST: always allow unwield */
+    /* C invent.c:1856-1857 getobj: `if (!flags.invlet_constant) reassign();` */
+    if (!_invlet_constant()) reassign();
     /* Classify each inventory item via wield_ok logic.
      * C ref: wield.c:326-338 — WEAPON_CLASS or is_weptool → GETOBJ_SUGGEST;
      *   COIN_CLASS → GETOBJ_EXCLUDE; other → GETOBJ_DOWNPLAY.
@@ -27026,7 +27175,8 @@ export async function build_enlightenment_lines(final = 0, mode = BASICENLIGHTEN
         const predicament = trap_predicament(final, wizard());
         if (u.usteed) {
             const anchored = u.utraptype === TT_BURIEDBALL;
-            const subject = `${anchored ? 'you and ' : ''}${steedname} `;
+            /* C insight.c:1092: steedname is NULL when !Riding (riding-accident death); Sprintf prints "(null)" */
+            const subject = `${anchored ? 'you and ' : ''}${steedname ?? "(null)"} `;
             lines.push(_enlght_line(upstart(subject),
                 _enl_tense(anchored ? 'are ' : 'is ', anchored ? 'were ' : 'was '),
                 predicament, ''));
@@ -28522,7 +28672,10 @@ async function _mk_artifact_by_align(alignment, max_giftvalue) {
     let n = 0, altn = 0;
     const hatemask = (game.urace?.hatemask ?? 0) | 0;
     for (let m = 1; m <= ARTILIST.length; m++) {
-        const [a_align, a_role, a_race, gift_value] = _ARTI_GIFT_INFO[m];
+        const [, a_role, a_race, gift_value] = _ARTI_GIFT_INFO[m];
+        /* C artifact.c:91-94 hack_artifacts() rewrote artilist[].alignment of
+           the hero's role gifts (and quest artifact) to the initial alignment */
+        const a_align = artifact_alignment(m);
         if (_arti_exists_bit_cmd(m))
             continue;
         if (ARTI_NOGEN.has(m))
@@ -28531,15 +28684,17 @@ async function _mk_artifact_by_align(alignment, max_giftvalue) {
             continue;
         /* we're looking for an alignment-specific item suitable for the
            hero's role+race; race_hostile = mflags2 & urace.hatemask */
+        /* C artifact.c:210-223 filters alignment/race before role preference. */
+        if (Role_if(a_role) && (a_align === alignment || a_align === A_NONE)
+            && (a_race === -1
+                || ((monsPack.mons[a_race][7] >>> 0) & hatemask) === 0)) {
+            eligible[0] = m;
+            n = 1;
+            break;
+        }
         if ((a_align === alignment || a_align === A_NONE)
             && (a_race === -1
                 || ((monsPack.mons[a_race][7] >>> 0) & hatemask) === 0)) {
-            /* when a role-specific first choice is available, use it */
-            if (Role_if(a_role)) {
-                eligible[0] = m;
-                n = 1;
-                break;
-            }
             /* check if this is skill-compatible */
             let skill_compatibility = P_SKILLED;
             const a_otyp = ARTILIST[m - 1].otyp;
@@ -28606,7 +28761,7 @@ async function _bestow_artifact(max_giftvalue) {
             if ((otmp.spe | 0) < 0)
                 otmp.spe = 0;
             if (otmp.cursed)
-                uncurse_obj(otmp);
+                await uncurse_obj(otmp);
             otmp.oerodeproof = true;
             const hallu = _uprop_active('HALLUC');
             const blind = _hero_Blind();
@@ -28668,7 +28823,7 @@ export function altarmask_at(x, y) {
         const mon = m_at(x, y);
         if (mon && M_AP_TYPE(mon) === M_AP_FURNITURE
             && mon.mappearance === S_altar)
-            res = ((mon.mcorpsenm ?? NON_PM) !== NON_PM) ? (mon.mcorpsenm | 0) : 0;
+            res = MCORPSENM(mon) !== NON_PM ? MCORPSENM(mon) : 0;
         else if (IS_ALTAR(_levlAt(x, y).typ))
             res = (_levlAt(x, y).altarmask | 0);
     }
@@ -31089,7 +31244,8 @@ export function cant_squeeze_thru(mon) {
         /* Inline curr_mon_load — use owt to avoid globby access */
         amt = 0;
         for (let obj = mon.minvent; obj; obj = obj.nobj) {
-            amt += (obj.owt | 0);
+            if (obj.otyp !== BOULDER || !flooreffects_throws_rocks(ptr))
+                amt += (obj.owt | 0); // C mon.c:1919 curr_mon_load
         }
     }
     if (amt > WT_TOOMUCH_DIAGONAL)
@@ -31223,13 +31379,11 @@ function slippery_ice_fumbling() {
      * Cold_resistance in the rn2 denominator, which is the hero's. */
     const coldRes = Resists_Elem(steed || _hero_youmonst(), COLD_RES);
     const heroColdRes = _Cold_resistance();
-    const flyer = steed
-        ? !!((data?.mflags1 | 0) & 0x01)
-        : _Flying();
+    const flyer = _Flying(); // C hack.c:2403 includes the rider's Flying.
     const floater = _st_is_floater(data);
     const clinger = _pe_is_clinger(data);
-    const whirly = (data?.mlet | 0) === 22;
-    const snowBoots = !steed && !!u.uarmf && getObjDescr(u.uarmf.otyp | 0) === "snow boots";
+    const whirly = flooreffects_is_whirly(data);
+    const snowBoots = !!u.uarmf && getObjDescr(u.uarmf.otyp | 0) === "snow boots";
     if (onIce && !snowBoots && !coldRes && !flyer && !floater && !clinger && !whirly) {
         /* hack.c:2407: Cold_resistance (hero's) only changes the denominator. */
         if (!rn2(heroColdRes ? 3 : 2)) {
@@ -32203,7 +32357,7 @@ async function _angrygods(respGod) {
 }
 
 /* === dosit support stubs === */
-function _can_reach_floor() { return true; }
+function _can_reach_floor() { return can_reach_floor(true); }
 async function _There(msg, ...args) { return await pline("There " + msg, ...args); }
 function _Levitation() {
     const p = game.u?.uprops?.[LEVITATION];
@@ -33192,7 +33346,7 @@ async function arti_invoke_cost(obj) {
             obj.age = (obj.age | 0) + d(3, 10);
             return false;
         }
-        await force_more('You feel drained...');
+        await _You_feel('drained...'); /* artifact.c:2120 */
         u.uen -= pw_cost;
         game.disp.botl = true;
     } else {
@@ -33470,7 +33624,7 @@ export async function arti_invoke(obj) {
             }
             await newsym(game.u.ux, game.u.uy);
             if (on)
-                await Your(`body takes on a ${_uprop_active('HALLUC') ? 'normal' : 'strange'} transparency...`);
+                await Your(`body takes on a ${(((game.u?.uprops?.[HALLUC]?.intrinsic | 0) && !_uprop_active('HALLUC_RES'))) ? 'normal' : 'strange'} transparency...`);
             else
                 await Your('body seems to unfade...');
             break;
@@ -34767,7 +34921,8 @@ function monster_nearby() {
     const g = game;
     const u = g.u || {};
     const ux = u.ux | 0, uy = u.uy | 0;
-    const hallu = _uprop_active('HALLUC');
+    /* C youprop.h:120 Hallucination = HHallucination && !Halluc_resistance */
+    const hallu = _uprop_active('HALLUC') && !_uprop_active('HALLUC_RES');
     for (let x = ux - 1; x <= ux + 1; x++) {
         for (let y = uy - 1; y <= uy + 1; y++) {
             /* C: !isok(x,y) || u_at(x,y) → skip.  isok: 1<=x<COLNO, 0<=y<ROWNO. */
@@ -34781,7 +34936,7 @@ function monster_nearby() {
             const apt = M_AP_TYPE(mtmp);
             if (apt === M_AP_FURNITURE || apt === M_AP_OBJECT)
                 continue;
-            const mndx = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
+            const mndx = (mtmp.data?.pmidx ?? mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
             /* C: (Hallucination || (!mpeaceful && !noattacks(mtmp->data))) */
             const aggressive = hallu
                 || (!(mtmp.mpeaceful | 0) && !noattacks_mndx(mndx));
@@ -35353,6 +35508,17 @@ async function dofire() {
     /* C ref: dofire line 557-579 — fireassist: check if uquiver ammo fits a launcher */
     const fireassist = g.iflags?.fireassist !== false; /* iflags.fireassist = On default */
     if (is_ammo(uq) && fireassist) {
+        // C dothrow.c:560-561, apply.c:3396-3419: prefer a reachable pole target.
+        if (uw && is_pole(uw)) {
+            const min = g._polearmRangeMin = 4;
+            const max = g._polearmRangeMax = _grapple_range(); // same skill ranges as calc_pole_range
+            const hitm = g.svc?.context?.polearm?.hitmon;
+            if (_up_find_poleable_mon(min, max)
+                || (hitm && !DEADMONSTER(hitm) && sensemon(hitm)
+                    && dist2(hitm.mx, hitm.my, u.ux, u.uy) >= min
+                    && dist2(hitm.mx, hitm.my, u.ux, u.uy) <= max))
+                return await use_pole(uw, true);
+        }
         if (ammo_and_launcher(uq, uw)) {
             const swapFrame = g._swapMoreFrame;
             g._swapMoreFrame = null;
@@ -35700,16 +35866,10 @@ async function _fire_throw_obj(obj, shotlimit, showPrompt, committedFrame) {
             if (_standing === g._resultMessage)
                 g._resultMessage = null;
         }
-        /* C: cw->flags &= ~(WIN_STOP | WIN_NOSTOP) — unconditional, and it runs
-         * whether or not the more() above fired. */
-        g._topl_win_stop = false;
-        g._topl_win_stop_armed = false;
-        g._topl_win_stop_buf = null;
-        /* The prompt itself ("In what direction?", flush, cursor parked one
-         * column past it) is painted by getdir() inside throw_obj — js/lock.js
-         * getdir does exactly what the four lines that stood here did.  What is
-         * left above is the part of tty_yn_function that runs BEFORE the prompt
-         * is written and that getdir does not yet carry for any caller. */
+        /* Leave WIN_STOP for getdir's shared yn_function reader: topl.c:390-394
+         * tests it before clearing it. Clearing here makes that reader page
+         * the standing message again after an ESC-dismissed overflow.
+         * That reader also paints the direction prompt inside throw_obj. */
     } else if (committedFrame) {
         if (g._movemonMsgTurn != null && g._resultMessage) {
             /* C ref: win/tty/topl.c update_topl:257-268 — the banked plines are ONE
@@ -36128,16 +36288,18 @@ function _look_here_blind_preamble(x, y, dfeature, viaPline) {
  * the join offsets are recorded and _topl_split_for_more raises the --More--
  * at the genuine message boundary.
  *
- * head is the level.objects[ux][uy] chain head; ct its length (>= 2 here).
+ * head is the raw tile chain; ct is check_here's count excluding uchain.
  * RNG-free. */
-async function _look_here_skip_objects(ct, head) {
+async function _look_here_skip_objects(ct, head, picked_some = false, skip_dfeature = false) {
     const g = game, u = g.u || {};
     const x = u.ux | 0, y = u.uy | 0;
     /* C invent.c:4109 — const char *verb = Blind ? "feel" : "see"; only used by
      * the "You %s no objects here." arms, which a non-empty pile never reaches. */
     const Blind = _u_blind();
-    const picked_some = false;
-    let skip_dfeature = false;
+    /* C invent.c:4116-4117 — picked_some / skip_dfeature come from
+     * lookhere_flags.  check_here(FALSE) passes LOOKHERE_NOFLAGS, and the
+     * LOOKHERE_SKIP_DFEATURE bit is only ever added behind flags.mention_decor
+     * (pickup.c:436-438); preserve that flag to avoid describing it twice. */
     /* C invent.c:4182 — dfeature = dfeature_at(u.ux, u.uy, fbuf2).  Uses the
      * complete look.js body, not cmd.js's throwing one (see look.js:169). */
     const _df = look_dfeature_at(x, y);
@@ -36230,7 +36392,8 @@ async function _look_here_pile(objCnt = null, pickedSome = false, skipDfeature =
     const _PILE_LIMIT = (game.flags?.pile_limit ?? 5) | 0;   /* options.c:79 PILE_LIMIT_DFLT */
     const skip_objects = (_PILE_LIMIT > 0 && objCnt >= _PILE_LIMIT);
     if (skip_objects) {
-        await _look_here_skip_objects(ct, head);
+        /* C invent.c:4116-4117,4256: preserve the caller's count and flags. */
+        await _look_here_skip_objects(objCnt, head, pickedSome, skipDfeature);
         return;
     }
     let _blindMenuSkipDf = false;
@@ -36755,6 +36918,80 @@ function _sortloot_xname(obj) {
  * flags.sortloot defaults to 'l' — options.c:7208 — and the pickup menu does
  * not pass USE_INVLET).  The orderclass term is handled by the caller's
  * inv_order grouping; SORTLOOT_INUSE and SORTLOOT_INVLET are not in this mode. */
+/* C invent.c:592 sortloot() runs qsort(sortloot_cmp), and sortloot_cmp's
+ * loot_classify() calls observe_object() (invent.c:170) the first time each
+ * object takes part in a comparison — so the ORDER types are first encountered
+ * (and so their disco[] order) is the libc qsort comparison order, not the
+ * pack order.  The organiser's libc is macOS's (FreeBSD qsort: insertion sort
+ * below 7 elements, else median-of-3 pivot partitioning).  Ranks stand in for
+ * sortloot_cmp's total order: inv_order class, then the display's in-class
+ * order. */
+function _observe_in_qsort_order(objs) {
+    const g = game;
+    const classes = (g.flags?.inv_order || INV_ORDER).concat(17);
+    const ranked = [];
+    for (const oc of classes) {
+        const grp = objs.filter(o => (o.oclass | 0) === oc);
+        ranked.push(...(g.flags?.sortloot === 'f' ? _sortloot_within_class(grp, oc)
+            : grp.slice().sort((a, b) => invletter_value(a.invlet | 0) - invletter_value(b.invlet | 0))));
+    }
+    for (const o of objs) if (!ranked.includes(o)) ranked.push(o);
+    const seen = new Set();
+    const cmp = (a, b) => {
+        for (const o of [a, b]) if (!seen.has(o)) { seen.add(o); observe_object(o); }
+        return ranked.indexOf(a) - ranked.indexOf(b);
+    };
+    const a = objs.slice();
+    const swap = (i, j) => { const t = a[i]; a[i] = a[j]; a[j] = t; };
+    const insertion = (lo, n) => {
+        for (let i = lo + 1; i < lo + n; i++)
+            for (let j = i; j > lo && cmp(a[j - 1], a[j]) > 0; j--) swap(j, j - 1);
+    };
+    const med3 = (x, y, z) => cmp(a[x], a[y]) < 0
+        ? (cmp(a[y], a[z]) < 0 ? y : (cmp(a[x], a[z]) < 0 ? z : x))
+        : (cmp(a[y], a[z]) > 0 ? y : (cmp(a[x], a[z]) < 0 ? x : z));
+    const qs = (lo, n) => {
+        for (;;) {
+            if (n < 7) { insertion(lo, n); return; }
+            let pm = lo + (n >> 1);
+            if (n > 7) {
+                let pl = lo, pn = lo + n - 1;
+                if (n > 40) {
+                    const d = n >> 3;
+                    pl = med3(pl, pl + d, pl + 2 * d);
+                    pm = med3(pm - d, pm, pm + d);
+                    pn = med3(pn - 2 * d, pn - d, pn);
+                }
+                pm = med3(pl, pm, pn);
+            }
+            swap(lo, pm);
+            let pa = lo + 1, pb = pa, pc = lo + n - 1, pd = pc, sw = false, r;
+            for (;;) {
+                while (pb <= pc && (r = cmp(a[pb], a[lo])) <= 0) {
+                    if (r === 0) { sw = true; swap(pa, pb); pa++; }
+                    pb++;
+                }
+                while (pb <= pc && (r = cmp(a[pc], a[lo])) >= 0) {
+                    if (r === 0) { sw = true; swap(pc, pd); pd--; }
+                    pc--;
+                }
+                if (pb > pc) break;
+                swap(pb, pc); sw = true; pb++; pc--;
+            }
+            if (!sw) { insertion(lo, n); return; }
+            const pe = lo + n;
+            let m = Math.min(pa - lo, pb - pa);
+            for (let i = 0; i < m; i++) swap(lo + i, pb - m + i);
+            m = Math.min(pd - pc, pe - pd - 1);
+            for (let i = 0; i < m; i++) swap(pb + i, pe - m + i);
+            if ((m = pb - pa) > 1) qs(lo, m);
+            if ((m = pd - pc) > 1) { lo = pe - m; n = m; continue; }
+            return;
+        }
+    };
+    qs(0, a.length);
+}
+
 function _c_small_qsort(arr, cmp) {
     if (arr.length >= 7)
         return arr.sort(cmp);
@@ -36842,7 +37079,7 @@ async function _pickup_menu(atTile, count = 0) {
     }
     const lettered = []; /* {letter(code), obj, selected} */
     const classOrder = []; /* classes present, in inv_order */
-    for (const oc of INV_ORDER)
+    for (const oc of (game.flags?.inv_order || INV_ORDER))
         if (atTile.some(o => (o.oclass | 0) === oc)) classOrder.push(oc);
     /* any class not in inv_order (shouldn't occur here) appended last */
     for (const o of atTile) {
@@ -37468,7 +37705,7 @@ async function _pickup_lift_list(pickOrder, _oldcap) {
                         if (await _pickup_mergable_priced(otmp, obj)) { _mergeStack = otmp; break; }
                     }
                 if (_mergeStack) {
-                    _mergeLiftedQuan = (obj.quan == null) ? 1 : (obj.quan | 0);
+                    _mergeLiftedQuan = _liftCount.v;
                     const _discovered = await _pickup_merged(_mergeStack, obj);
                     /* C ref: invent.c:937-942 —
                      *     if (discovered && otmp->where == OBJ_INVENT
@@ -37613,9 +37850,16 @@ async function _pickup_lift_list(pickOrder, _oldcap) {
                     /* C invent.c:2924 xprname -> doname: include equipment
                      * suffixes after addinv fills an empty quiver, as well
                      * as the unpaid tail supplied by doname itself. */
+                    /* C pickup.c:1875-1883, invent.c:2877-2917: loadstones
+                     * aren't split, but prinv still names the requested count.
+                     * total_of also suppresses xprname's dot under !verbose. */
+                    const _savequan = obj.quan;
+                    const total_of = _liftCount.v && _liftCount.v < _savequan;
+                    obj.quan = _liftCount.v || _savequan;
                     const cn = await doname(obj);
+                    obj.quan = _savequan;
                     if (cn && obj.invlet && (obj.oclass | 0) !== OCLASS_COIN) {
-                        const line = `${_pickup_prinv_prefix('lifting')}${_pickup_prinv_let(obj)} - ${cn}.`;
+                        const line = `${_pickup_prinv_prefix('lifting')}${_pickup_prinv_let(obj)} - ${cn}${total_of ? (game.flags?.verbose ? ` (${_savequan} in total).` : '') : '.'}`;
                         _lastPrinvLine = line;
                         // The real prinv pline flushes pending blast damage
                         // with the artifact already carried (pickup.c:1883).
@@ -41045,6 +41289,7 @@ async function _do_look_lookat(x, y) {
     /* C pager.c:663 lookat(): the self arm needs u_at(x,y) && canspotself(); an
      * invisible hero without see-invisible falls through to the glyph shown. */
     if (x === ux && y === uy && canspotself()
+        && !(g.iflags?.save_uswallow && glyph_matches_monster_at(x, y, u.ustuck))
         && (!g.iflags?.terrainmode || (g.iflags.terrainmode & TER_MON) !== 0)) {
         let selfText = await self_lookat();
         /* C pager.c:682-703 lookat(): explain sensing self only when normal
@@ -41425,7 +41670,7 @@ async function _do_look_lookat(x, y) {
                 || (dglyph.cls === GLYPHCLS_CMAP && dglyph.symbol != null
                     && [S_ndoor, S_room, S_darkroom, S_ice]
                         .some(idx => floorSymbols?.[idx] === dglyph.symbol))
-                || (ibm_mode() && dglyph.cls === GLYPHCLS_CMAP
+                || ((ibm_mode() || rogue_graphics()) && dglyph.cls === GLYPHCLS_CMAP
                     && dglyph.ch === 'z' && cell.typ === ROOM));
         if (isAmbiguousDot) {
             let firstmatch = null, dbaseEntry = null;
@@ -42236,6 +42481,10 @@ async function look_at_object(x, y, painted = _glyph_at(x, y), hidden = false, m
         } else if ((obj.oclass | 0) === OCLASS_WEAPON) {
             buf = await _fw_distant_name(obj, _fw_fmt);
             if (obj.dknown) _namedByDonameBase = true;
+        } else if ((obj.otyp | 0) === STATUE_OTYP) {
+            // C pager.c:390: objnam.c supplies quantity and proper-name articles.
+            buf = await _fw_distant_name(obj, _fw_fmt);
+            _namedByDonameBase = true;
         } else if (obj.greased || obj.bknown
                    /* objnam.c:1374-1381 doname_base " containing N items" tail */
                    || obj.cknown /* objnam.c:1302 "empty " prefix too */
@@ -42260,7 +42509,7 @@ async function look_at_object(x, y, painted = _glyph_at(x, y), hidden = false, m
              * buf null and let the distant_name(xname) fallback below name it. */
             buf = ((obj.oclass | 0) === OCLASS_GEM && !obj.dknown)
                 ? null
-                : (_statue_doname(obj) ?? _pile_doname(obj) ?? _floor_look_doname(obj));
+                : (_pile_doname(obj) ?? _floor_look_doname(obj));
         }
         if (buf == null && (obj.oclass | 0) === OCLASS_TOOL && _Is_candle(obj)) {
             buf = await _fw_distant_name(obj, _dknown0 ? _doname_with_price : _fw_doname_vague_quan);
@@ -42313,21 +42562,6 @@ async function look_at_object(x, y, painted = _glyph_at(x, y), hidden = false, m
     else if (is_pool_or_lava(x, y))
         buf += (typ === LAVAPOOL) ? ' in molten lava' : ' in water';
     return buf;
-}
-function _statue_doname(obj) {
-    if (!obj || (obj.otyp | 0) !== STATUE_OTYP) return null;
-    const omndx = obj.corpsenm | 0;
-    if (omndx < 0) return null; /* C: !ismnum(corpsenm) → plain "statue" */
-    /* C ref: do_name.c:1319-1348 obj_pmname(obj) — the statue's monster name at
-     * the gender its spe bits record (hack.h:1195-1204 CORPSTAT_GENDER). */
-    const cgend = (obj.spe | 0) & 0x03 /* CORPSTAT_GENDER */;
-    const mgend = (cgend === 2 /* CORPSTAT_MALE */) ? 0 /* MALE */
-                : (cgend === 1 /* CORPSTAT_FEMALE */) ? 1 /* FEMALE */
-                : 2 /* NEUTRAL */;
-    const statue_pmname = monPmname(omndx, mgend) || 'creature';
-    const historic = (Role_if(PM_ARCHEOLOGIST) && ((obj.spe | 0) & 0x04 /* CORPSTAT_HISTORIC */) !== 0)
-        ? 'historic ' : '';
-    return an(`${historic}statue of ${an(statue_pmname)}`);
 }
 
 /* C ref: pager.c:1977-2073 look_all(nearby, do_mons) — the '/m', '/M', '/o' and
@@ -42547,14 +42781,37 @@ export async function display_text_window(lines) {
     return _display_text_window(lines);
 }
 
-export async function dbase_display_window(lines, statusClipCol) {
+export async function dbase_display_window(srcLines, statusClipCol) {
     const g = game;
-    const maxcol = lines.reduce((mx, ln) => Math.max(mx, ln.length), 0);
+    /* wintty.c:2402-2417 tty_putstr(NHW_MENU/TEXT): a line of CO or more
+     * columns is first run through compress_str() (wintty.c:2253), maxcol
+     * records its full length, and it is then broken at the last blank
+     * before CO with the tail putstr()'d as the next line. */
+    const lines = [];
+    let maxcol = 0;
+    for (const src of srcLines) {
+        let str = String(src);
+        while (true) {
+            if (str.length >= 80 || str.includes('\n'))
+                str = keyhelp_compress_str(str);
+            maxcol = Math.max(maxcol, str.length);
+            let i = 79;
+            if (str.length >= 80)
+                while (i && str[i] !== ' ' && str[i] !== '\n') i--;
+            if (str.length < 80 || !i) { lines.push(str); break; }
+            lines.push(str.slice(0, i));
+            str = str.slice(i + 1);
+        }
+    }
     /* wintty.c:1908 (H2344_BROKEN): offx = min(min(82, cols / 2), cols - maxcol - 1),
-     * so the content column (offx + 1) never exceeds 41. */
-    const winCol = Math.min(41, 80 - maxcol - 1);
+     * so the content column (offx + 1) never exceeds 41.  A negative offx is
+     * clamped to 0 (wintty.c:1916) and the window still overlays the map unless
+     * it is too tall (wintty.c:1924); at offx 0 process_text_window prints no
+     * leading blank (wintty.c:1803), so the content starts at column 0. */
+    const offx = Math.max(0, Math.min(40, 80 - (maxcol + 1) - 1));
+    const winCol = offx ? offx + 1 : 0;
     const winRows = lines.length + 1; /* + the --More-- row */
-    if (winCol <= 0 || winRows > 24) {
+    if (winRows > 24) {
         g._pending_message = '';
         for (let start = 0; start < lines.length; start += 23) {
             const page = lines.slice(start, start + 23);
@@ -42584,14 +42841,15 @@ export async function dbase_display_window(lines, statusClipCol) {
     /* C wintty.c:1819-1829 — process_text_window's UTF8 linestart g_putch
      * loses a non-blank first byte of every text line (the trailing "--More--"
      * is dmore's, not a line). */
-    const windowLines = lines.map((ln) => tty_text_window_utf8_line(ln)).concat(['--More--']);
+    const windowLines = lines.map((ln) => tty_text_window_utf8_line(ln))
+        .concat([offx ? '--More--' : ' --More--']);
     const uac = (g.u && g.u.uac) ?? 0;
     g._pending_message = '';
     /* C ref: process_text_window's final tty_curs(window, 1, n) + dmore() */
     while (true) {
         g._screen_output = build_window_screen(windowLines, winCol, uac,
                                                statusClipCol);
-        set_cursor(winCol + '--More--'.length, winRows - 1);
+        set_cursor((offx ? winCol : 1) + '--More--'.length, winRows - 1);
         const raw = await nhgetch();
         const k = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
         /* C ref: xwaitforspace(quitchars) — '\n' always returns; otherwise only a
@@ -42602,7 +42860,13 @@ export async function dbase_display_window(lines, statusClipCol) {
     }
     /* wintty.c:982 erase_menu_or_text -> docorner(offx, maxrow + 1, 0).
      * maxrow counts the putstr lines (wintty.c:2408); windowLines already
-     * holds dmore's --More-- row, so it is maxrow + 1. */
+     * holds dmore's --More-- row, so it is maxrow + 1.  An offx 0 window is
+     * dismissed by docrt(); flush_screen(1) instead (wintty.c:971-979). */
+    if (!offx) {
+        await docrt();
+        await flush_screen(1);
+        return;
+    }
     docorner_blank_utf8_captures(winCol - 1, windowLines.length);
 }
 
@@ -43705,24 +43969,21 @@ async function domove_fight_empty(x, y, dx, dy) {
     // C hack.c:2266-2268 tests glyph_at(), not hero memory or any object
     // glyph: another object atop a statue hides it from the attack.
     //
-    // C hack.c:2270-2277's dig branch (uwep && dig_typ(uwep,x,y) ->
-    // use_pick_axe2) is not reached: dig_typ is DIGTYP_UNDIGGABLE at every
-    // would add an unexercised occupation with its own RNG rather than remove
-    // a divergence.
     const underwater = Underwater(); // C hack.c:2260,2292
+    // C hack.c:2233,2273: use the displayed glyph, including hallucinations.
+    const glyph = !off_edge ? _glyph_at(x, y) : null;
+    const monsterGlyph = glyph?.cls === GLYPHCLS_MON && !glyph_is_warning_at(x, y);
     let boulder = !off_edge && !underwater ? sobj_at(BOULDER, x, y) : null;
     if (!off_edge && !underwater) {
-        const glyph = _glyph_at(x, y);
         if ((glyph?.cls === GLYPHCLS_OBJ && glyph.otyp === STATUE_OTYP)
-            || (_cmd_Hallucination() && glyph?.cls === GLYPHCLS_MON))
+            || (_cmd_Hallucination() && monsterGlyph))
             boulder = sobj_at(STATUE_OTYP, x, y);
     }
     /* C hack.c:2270-2277 — force fight at boulder/statue or wall/door while
      * wielding a pick/axe starts digging. */
     if (!off_edge && !underwater && game.context?.forcefight && u.uwep
         && dig_typ(u.uwep, x, y) !== 0 /* DIGTYP_UNDIGGABLE */
-        && !glyph_is_invisible_at(x, y)
-        && !(loc?.remembered_glyph?.cls === GLYPHCLS_MON)) {
+        && glyph?.cls !== GLYPHCLS_INVIS && !monsterGlyph) {
         /* a command-started dig: movemon runs before the first dig() (not autodig order) */
         game._digFromApply = true;
         await use_pick_axe2(u.uwep);
@@ -43742,12 +44003,6 @@ async function domove_fight_empty(x, y, dx, dy) {
         newsym(x, y);
     }
     let buf;
-    /* C hack.c:2298-2301 names a remembered branch staircase explicitly
-     * before falling through the generic obstacle description. */
-    const stway = !off_edge && typ === STAIRS ? stairway_at(x, y) : null;
-    const isBranchStair = !!(stway && stway.tolev
-        && (stway.tolev.dnum | 0) !== ((u.uz && u.uz.dnum) | 0)
-        && stway.u_traversed);
     if (off_edge) {
         // C hack.c:2256-2260 — treat off-edge as solid rock (unknown_obstacle).
         buf = unknown_obstacle;
@@ -43756,8 +44011,6 @@ async function domove_fight_empty(x, y, dx, dy) {
         buf = _ansimpleoname(boulder);
     } else if (underwater && !is_pool(x, y)) {
         buf = Is_waterlevel(u.uz) && typ === AIR ? 'an air bubble' : 'nothing';
-    } else if (isBranchStair) {
-        buf = `the branch staircase ${stway.up ? 'up' : 'down'}`;
     } else if (solid) {
         // C hack.c:2302-2314 — name the obstacle.  The seenv/IS_STWALL/SDOOR/SCORR
         // defsyms[].explanation for every wall glyph is the short form "wall"
@@ -44010,7 +44263,7 @@ export function test_move(ux, uy, dx, dy, mode) {
     const Sokoban = _bldr_Sokoban(); /* hack.c:1215: level's active rules */
     if (sobj_at(BOULDER, x, y) && (Sokoban || !Passes_walls)) {
         if (mode !== TEST_TRAV && (g.context.run | 0) >= 2
-            && !(_Blind_cmd() || _uprop_active('HALLUC'))
+            && !(_Blind_cmd() || _cmd_Hallucination())
             && !could_move_onto_boulder(x, y, u.dx | 0, u.dy | 0))
             return false;
         if (mode === TEST_TRAV) {
@@ -44566,8 +44819,9 @@ function _bldr_glyph_is_invisible(x, y) {
 /* C display.h glyph_to_obj(glyph_at(x,y)) == BOULDER — is the square already
  * REMEMBERED as holding a boulder?  Only read on the Blind path. */
 function _bldr_remembered_as_boulder(x, y) {
-    const loc = game.level?.at(x, y);
-    const g = loc && loc.remembered_glyph;
+    /* glyph_at() reads gg.gbuf, the painted glyph; a !hero_memory level (the
+     * Plane of Water) never writes levl[x][y].glyph, so memory is not enough. */
+    const g = _glyph_at(x, y);
     return !!(g && g.cls === 'obj' && (g.otyp | 0) === BOULDER);
 }
 
@@ -45036,6 +45290,7 @@ function _bldr_noncorporeal(mtmp) {
     return !!mtmp && (mtmp.data ? (mtmp.data.mlet | 0) : -1) === S_GHOST;
 }
 
+export { _bldr_revive_nasty as revive_nasty };
 /* C hack.c:104-136 revive_nasty: visit every corpse, preserving the next
  * link before revival consumes the object, then relocate an unsafe revival. */
 async function _bldr_revive_nasty(x, y, msg) {
@@ -45169,6 +45424,9 @@ async function _domove_execute_pet_swap(mtmp, newx, newy) {
      * while evaluating the swap. Both the boulder snapshot and the pet-trap
      * test inspect the destination square. */
     const oldx = u.ux, oldy = u.uy;
+    u.ux = newx; u.uy = newy;
+    if (game.youmonst?.data) m_postmove_effect(game.youmonst);
+    u.ux = oldx; u.uy = oldy;
     /* C hack.c:2881-2887: the steed moves and practices riding before the
      * swap can be refused.  The ordinary movement tail is bypassed here. */
     if (u.usteed) {
@@ -45553,6 +45811,7 @@ async function domove_core(dx, dy) {
             u.uy0 = oy;
             u.ux = newx;
             u.uy = newy;
+            if (game.youmonst?.data) m_postmove_effect(game.youmonst);
             const noticed_it = canspotmon(mtmp) || glyph_is_invisible_at(newx, newy)
                 || glyph_is_warning_at(newx, newy);
             mtmp.mx = ox;
@@ -45574,6 +45833,7 @@ async function domove_core(dx, dy) {
             u.umoved = true;
             newsym(ox, oy);
             vision_recalc(1);
+            await invocation_message();
             await _domove_spot_tail(newx, newy);
             await runmode_delay_output();
             return;
@@ -45971,10 +46231,12 @@ async function domove_core(dx, dy) {
     }
     if (sobj_at(BOULDER, newx, newy) && (_bldr_Sokoban() || !_uprop_active('PASSES_WALLS'))) {
         if ((game.context?.run | 0) >= 2
-            && !(_bldr_Blind() || _uprop_active('HALLUC'))
+            && !(_bldr_Blind() || _cmd_Hallucination())
             && !could_move_onto_boulder(newx, newy, dx, dy)) {
-            if (game.flags?.mention_walls)
+            if (game.flags?.mention_walls) {
+                set_msg_xy(newx, newy); // C hack.c:1220 pline_dir
                 await pline('A boulder blocks your path.');
+            }
             game.context.move = 0;
             nomul(0);
             return;
@@ -46328,7 +46590,11 @@ export async function _spoteffects_pickup(redrawPending = false) {
                 await pline(`There is ${_chReg ? `a ${reg_damg(_chReg) ? 'poison gas' : 'vapor'} cloud` : ''}${(_chReg && seenTrap) ? ' and ' : ''}${seenTrap ? an(trapname(seenTrap.ttyp | 0, false)) : ''} here.`);
         }
         const _rawMulti = !!(head && head.nexthere);
-        if (ct && _rawMulti) {
+        /* C invent.c:4121,4252: skip_objects (pile_limit reached) wins over the
+         * single-object arm, even for one object (pile_limit:1). */
+        if (ct && !_rawMulti && pileLimit > 0 && ct >= pileLimit) {
+            await _look_here_skip_objects(ct, only, pickedSome, _skip_dfeature);
+        } else if (ct && _rawMulti) {
             await _look_here_pile(ct, pickedSome, _skip_dfeature);
         } else if (ct) {
             const nm = await _look_here_single_name(only);
@@ -47195,7 +47461,7 @@ export async function mergable(otmp, obj) {
     /* C 4480-4483: attached mail command must match on both or neither. */
     const objmail = obj.oextra?.omailcmd ?? null;
     const otmpmail = otmp.oextra?.omailcmd ?? null;
-    if (!objmail ? !!otmpmail : (!otmpmail || objmail !== otmpmail))
+    if (objmail === null ? otmpmail !== null : (otmpmail === null || objmail !== otmpmail))
         return false;
     /* C 4485-4493: MAIL_STRUCTURES is defined (global.h:430); wished or bones
        mail keeps its two flavors apart by o_id parity. */
@@ -47676,7 +47942,8 @@ async function use_candle(optr) {
     }
 }
 
-/* C ref: invent.c:1108-1114 addinv_core0's merge arm + invent.c:694 the
+/* Historical implementation notes, superseded by the shared addinv below.
+ * C ref: invent.c:1108-1114 addinv_core0's merge arm + invent.c:694 the
  * assigninvlet/insert tail, narrowed to what light_cocktail's two calls need
  * (apply.c:1717 `*optr = addinv(obj)` after a snuff, and the
  * hold_another_object() at apply.c:1755).  `addinv(obj)` is
@@ -47693,16 +47960,7 @@ async function use_candle(optr) {
  * SAME stack one line earlier and therefore agree on every knowledge
  * dimension, so `discovered` is false by construction. */
 async function _ap_addinv(obj) {
-    const g = game;
-    if (!obj.nomerge) {
-        for (let o = g.invent; o; o = o.nobj) {
-            if (_pickup_mergable(o, obj)) {
-                await _pickup_merged(o, obj);
-                return o;
-            }
-        }
-    }
-    return _levtele_addinv(obj);
+    return await addinv(obj);
 }
 
 /* C ref: apply.c:1702-1765 light_cocktail(struct obj **optr) — apply a potion
@@ -48505,7 +48763,15 @@ async function _ynq_cmd(query) {
      * than word-wrapping (topl.c topl_putsym) — see display.js _topl_prompt_echo. */
     const savedPromptEcho = g._topl_prompt_echo;
     const [pcx, pcy] = topl_park_cursor(null, prompt + ' ');
-    if (pcy > 0) g._topl_prompt_echo = true;
+    /* Same order as end.js _yn_prompt's long-question arm and potion.js y_n:
+     * custompline's vpline flush_screen(1) (pline.c:274) runs BEFORE the
+     * wrapped text is put on the topline, and yn_function sets no
+     * gb.bot_disabled (windows.c:1898 is getlin's), so a pending botl/botlx
+     * — e.g. one left by a pick menu's select_menu dismissal (wintty.c:979
+     * erase_menu_or_text -> docrt()) — paints here.  The sync
+     * pline_flush_point keeps the hard-wrapped text out of update_topl's
+     * --More-- paging; only the text paint enters echo mode. */
+    if (pcy > 0) { pline_flush_point(); g._topl_prompt_echo = true; }
     const savedPromptWritten = g._topl_prompt_written;
     g._topl_prompt_written = prompt + ' ';   /* topl.c:418 trailing space */
     for (;;) {
@@ -48963,7 +49229,7 @@ async function tiphat() {
         return res;
     }
 
-    const Hallu = _uprop_active('HALLUC');
+    const Hallu = _cmd_Hallucination(); // youprop.h:120: honours Halluc_resistance
     const Deaf = _hero_Deaf();
     let mtmp = null, otmp;
     let vismon = false, unseen = false, statue = false;
@@ -49367,7 +49633,7 @@ function TWOWEAPOK(obj) {
         ? !(is_launcher(obj) || is_ammo(obj) || is_missile(obj))
         : is_weptool(obj);
 }
-async function can_twoweapon() {
+export async function can_twoweapon() {
     const g = game;
     const u = g.u || {};
     let otmp;
@@ -50165,10 +50431,9 @@ function attach_fig_transform_timeout(obj) { return attach_fig_transform_timeout
 
 // C artifact.c:526-532 confers_luck(obj) — LUCKSTONE always confers luck;
 // otherwise only an artifact with the SPFX_LUCK special-ability bit does.
+import { confers_luck as confers_luck_real } from './attrib.js';
 function confers_luck(obj) {
-    const LUCKSTONE = 470;
-    const SPFX_LUCK = 0x00080000;
-    return !!(obj.otyp === LUCKSTONE || (obj.oartifact && spec_ability(obj, SPFX_LUCK)));
+    return confers_luck_real(obj);
 }
 // Stub: curse (unported helper for freeinv_core; not exported from js/mklev.js).
 export function curse(otmp) {
@@ -50185,9 +50450,7 @@ export function curse(otmp) {
  *     }
  * gt.tmp_anything is a single FILE-STATIC union that every *_to_any() shares
  * and overwrites, and the return is its address — so the caller's pointer goes
- * stale the moment any other _to_any() runs.  Reproduced exactly, in the same
- * shape as the sibling long_to_any (cmd.js:15625) and monst_to_any
- * (cmd.js:17610) ports, so all three keep aliasing ONE object as in C. */
+ * stale on the next conversion; JS callers receive a value snapshot. */
 export function obj_to_any(obj) {
     const g = game;
     if (!g.gt) g.gt = {};
@@ -50197,6 +50460,7 @@ export function obj_to_any(obj) {
     g.gt.tmp_anything = { ...g.cg.zeroany };
     // C: gt.tmp_anything.a_obj = obj;
     g.gt.tmp_anything.a_obj = obj;
+    g.gt.tmp_anything.a_monst = obj; // hack.c:89-103: pointer arms alias.
     /* JS timer elements compare the inactive union arm too; use the same
      * canonical object-wrapper shape as timeout.js/mklev.js. */
     g.gt.tmp_anything.a_long = null;
@@ -50553,6 +50817,10 @@ async function use_trap(otmp) {
             reset_trapset();
             return;
         }
+        /* topl.c:262,271 — the answered prompt left toplin NON_EMPTY, not
+         * NEED_MORE, so the next pline neither joins it nor pages it: it
+         * remember_topl()s and overwrites. */
+        game._pending_message = '';
         if (chance) {
             if (ttyp === _AP_TTYP_LANDMINE) {
                 ti.time_needed = 0;
@@ -50942,6 +51210,7 @@ async function _throwit_breakobj(obj, x, y) {
     }
     case EXPENSIVE_CAMERA_OTYP:
         await release_camera_demon(obj, x, y);
+        break;
     case EGG_OTYP:
         if (obj.spe && _ismnum_local(obj.corpsenm))
             change_luck(-Math.min(obj.quan | 0, 5));
@@ -51119,6 +51388,7 @@ export async function breakobj(obj, x, y, hero_caused, from_invent) {
     }
     case EXPENSIVE_CAMERA_OTYP:
         await release_camera_demon(obj, x, y);
+        break;
     case EGG_OTYP:
         if (hero_caused && obj.spe && _ismnum_local(obj.corpsenm))
             change_luck(-Math.min(obj.quan | 0, 5));
@@ -51217,21 +51487,7 @@ function nh_delay_output() {
 
 /* C hack.c:89 - monst_to_any(struct monst *mtmp): convert a monst pointer to an anything union
  * Returns a pointer to gt.tmp_anything with the monst value set. */
-export function monst_to_any(mtmp) {
-    const g = game;
-    // Ensure gt exists
-    if (!g.gt) g.gt = {};
-    // Ensure cg exists
-    if (!g.cg) g.cg = {};
-    // cg.zeroany is a zero-initialized anything union
-    if (!g.cg.zeroany) g.cg.zeroany = {};
-    // C: gt.tmp_anything = cg.zeroany;
-    g.gt.tmp_anything = { ...g.cg.zeroany };
-    // C: gt.tmp_anything.a_monst = mtmp;
-    g.gt.tmp_anything.a_monst = mtmp;
-    // C: return &gt.tmp_anything;
-    return g.gt.tmp_anything;
-}
+export function monst_to_any(mtmp) { return obj_to_any(mtmp); }
 
 /* C ref: hack.c:4156-4206 saving_grace(int dmg)
  * Once per game, if receiving a killing blow from above 90% HP,
@@ -51925,10 +52181,8 @@ export function mbodypart(mon, part) {
 export function body_part(part) {
     return mbodypart(_hero_youmonst(), part);
 }
-// makeplural — simple pluralization for legs_in_no_shape
 function makeplural(str) {
-    if (str === "leg") return "legs";
-    return str + "s";
+    return makeplural_objnam(str);
 }
 /* Your — C pline.c:380-388.  The real body now lives in js/do_wear.js next to
  * You(); this local one re-derived the formatting with `msg.replace(/%[sdli]/,
@@ -52361,12 +52615,17 @@ function _adj_extract_nobj_invent(obj) {
 /* C invent.c:694 assigninvlet() without addinv's side effects; used when
  * #adjust bumps an existing stack into a newly available slot. */
 function _adj_assigninvlet(obj) {
+    if ((obj.oclass | 0) === _ADJ_COIN_CLASS) { obj.invlet = 0x24; return; }
     const used = new Array(52).fill(false);
     for (let o = game.invent; o; o = o.nobj) {
+        if (o === obj) continue;
         const i = o.invlet | 0;
         if (i >= 97 && i <= 122) used[i - 97] = true;
         else if (i >= 65 && i <= 90) used[i - 65 + 26] = true;
+        if (i === (obj.invlet | 0)) obj.invlet = 0;
     }
+    const cur = obj.invlet | 0;
+    if ((cur >= 97 && cur <= 122) || (cur >= 65 && cur <= 90)) return;
     const last = (game._lastinvnr ?? 51) | 0;
     let i;
     for (i = last + 1; i !== last; i++) {
@@ -53564,6 +53823,7 @@ export function pooleffects_hliquid(s) { return hliquid(s); }
  * could never route a hero on lava to lava_effects().  This is the real body;
  * the stub is gone. */
 export function pooleffects_is_lava(x, y) {
+    if (!isok(x, y)) return false;
     const loc = game.level?.at?.(x, y);
     if (!loc) return false;
     const t = loc.typ | 0;
@@ -54626,12 +54886,8 @@ function _Is_qstart(lev) {
 /* C ref: nhlua.h / hack.h LL_ACHIEVE — the livelog class quest.c:346/:361 use.
  * Same bit the LL_majors mask at :15608 already spells out as 0x0002. */
 const LL_ACHIEVE = 0x0002;
-/* C ref: dungeon.c:1345 on_level(a, b) — same dnum AND same dlevel.  This file
- * carries no on_level import (see the inlined copy at :7816); the quest block
- * below compares u.uz against qstart_level three times, so it gets a name. */
 function on_level(a, b) {
-    return !!a && !!b && (a.dnum | 0) === (b.dnum | 0)
-        && (a.dlevel | 0) === (b.dlevel | 0);
+    return on_level_real(a, b);
 }
 async function _is_pure_wizard_prelude() {
     const g = game;
@@ -54673,20 +54929,9 @@ function not_capable() {
  * i.e. the branch whose end2 is in that dungeon.  svb.branches is
  * game._dungeon_branches (js/dungeon_rng.js builds it RNG-correctly and
  * js/dungeon.js:36 already reads it under that name).  C panics when the name
- * or the branch is missing; this returns null and lets the caller report,
- * because a panic here would abort the whole replay. */
+ * or the branch is missing; use the shared implementation. */
 function dungeon_branch(s) {
-    const g = game;
-    const dgns = g.dungeons || [];
-    let dnum = -1;
-    for (let i = 0; i < dgns.length; i++)
-        if (dgns[i] && dgns[i].dname === s) { dnum = i; break; }
-    if (dnum < 0)
-        return null;
-    for (const br of (g._dungeon_branches || g.branches || []))
-        if ((br?.end2?.dnum | 0) === dnum)
-            return br;
-    return null;
+    return dungeon_branch_real(s);
 }
 async function expulsion(seal) {
     const g = game;
@@ -55106,7 +55351,7 @@ export function inv_cnt(incl_gold) {
     let ct = 0;
 
     while (otmp) {
-        if (incl_gold || otmp.oclass !== 12 /* COIN_CLASS */)
+        if (incl_gold || otmp.invlet !== 0x24 /* GOLD_SYM */)
             ct++;
         otmp = otmp.nobj;
     }
@@ -55335,12 +55580,7 @@ function is_pool(x, y) {
 /* C ref: dbridge.c:84-96 is_ice(x,y) —
  *   ltyp == ICE || (ltyp == DRAWBRIDGE_UP && (drawbridgemask & DB_UNDER) == DB_ICE) */
 function is_ice(x, y) {
-    if (!isok(x, y)) return false;
-    const loc = game.level?.at?.(x, y);
-    if (!loc) return false;
-    const t = loc.typ | 0;
-    return t === ICE
-        || (t === DRAWBRIDGE_UP && ((loc.drawbridgemask | 0) & DB_UNDER) === DB_ICE);
+    return is_ice_real(x, y);
 }
 /* C pager.c:614-650 ice_descr().  Besides its text result this records the
  * ice-strength bucket in iflags.ice_rating for mention_decor. */
@@ -55773,11 +56013,11 @@ export async function domonnoise(mtmp) {
     else if (msound === 24 /* MS_ORC */
              && (same_race(ptr, _hero_youmonst().data)
                  || same_race(ptr, permonstTemplate(g.urace.mnum))
-                 || _uprop_active('HALLUC')))
+                 || _cmd_Hallucination()))
         msound = _MSNOISE_MS_HUMANOID;
     else if (msound === 13 /* MS_MOO */ && !mtmp.mtame)
         msound = 4; /* MS_BELLOW */
-    else if (_uprop_active('HALLUC') && mon_is_gecko(mtmp))
+    else if (_cmd_Hallucination() && mon_is_gecko(mtmp))
         msound = 39; /* MS_SELL: C sounds.c:713-714 */
     if (!canspotmon(mtmp)) // C sounds.c:720: before a speaker can teleport away.
         map_invisible(mtmp.mx, mtmp.my);
@@ -55791,7 +56031,7 @@ export async function domonnoise(mtmp) {
     /* C sounds.c:702-703 — shopkeepers keep their minds: msound = MS_SELL,
      * then sounds.c:733-735 shk_chat() unless hallucinating. */
     if (msound === 39 /* MS_SELL */) {
-        if (!_uprop_active('HALLUC') || ptr.msound === MS_SILENT || (mtmp.isshk && !rn2(2)))
+        if (!_cmd_Hallucination() || ptr.msound === MS_SILENT || (mtmp.isshk && !rn2(2)))
             await shk_chat(mtmp);
         else
             await verbalize('15 minutes could save you 15 %s.', currency(15));
@@ -55992,7 +56232,7 @@ export async function domonnoise(mtmp) {
                      * C's argument evaluation order is unspecified.  Source
                      * order is used here — the only way to reach it is #chat at
                      * a hallucinating hero's hostile giant. */
-                    void pline(`${Monnam(mtmp)} boasts about ${mhis_mon(mtmp)} gem collection.`);
+                    await pline(`${Monnam(mtmp)} boasts about ${mhis_mon(mtmp)} gem collection.`);
                     break;
                 case 1:
                     pline_msg = 'complains about a diet of mutton.';
@@ -56045,7 +56285,7 @@ export async function domonnoise(mtmp) {
                 /* C sounds.c:1058-1078 — the rn2(4) fires only when
                  * hallucinating, and only an odd result speaks the gag. */
                 let gnomeplan = 0;
-                if (_uprop_active('HALLUC') && (gnomeplan = rn2(4)) % 2) {
+                if (_cmd_Hallucination() && (gnomeplan = rn2(4)) % 2) {
                     verbl_msg = (gnomeplan === 1)
                         ? 'Phase one, collect underpants.'
                         : 'Phase three, profit!';
@@ -56188,7 +56428,7 @@ export async function domonnoise(mtmp) {
      *     if (pline_msg) pline("%s %s", Monnam(mtmp), pline_msg);
      *     else if (verbl_msg) { SetVoice(...); verbalize1(verbl_msg); } */
     if (pline_msg)
-        void pline(`${Monnam(mtmp)} ${pline_msg}`);
+        await pline(`${Monnam(mtmp)} ${pline_msg}`);
     else if (mtmp.mcan && verbl_msg_mcan)
         await verbalize('%s', verbl_msg_mcan);
     else if (verbl_msg) {
@@ -56233,10 +56473,13 @@ async function price_quote(first) {
         const o = first;
         if (!lastCost) await verbalize('%s!', upstart_quote(rows[0]));
         else {
-            const embellish = shk_embellish(o, lastCost);
+            /* C shk.c:5456: doname's tin_variety draw precedes the quote RNG. */
             const base = `${lastContents ? 'the contents of ' : ''}${(await doname(o))}`;
-            await verbalize('%s, price %ld %s%s%s', upstart_quote(base), lastCost, shk_currency(lastCost),
-                (o.quan | 0) > 1 ? ' each' : '', lastContents ? '.' : embellish);
+            /* C arg order (observed): currency(cost) is drawn before shk_embellish */
+            const cur = shk_currency(lastCost);
+            const embellish = lastContents ? '.' : shk_embellish(o, lastCost);
+            await verbalize('%s, price %ld %s%s%s', upstart_quote(base), lastCost, cur,
+                (o.quan | 0) > 1 ? ' each' : '', embellish);
         }
     }
 }

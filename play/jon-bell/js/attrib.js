@@ -286,7 +286,8 @@ export function newhp() {
         /* C attrib.c:1143-1147: after level 30, throttle hit point gains
          * from extra experience; once max reaches 1200, further increments
          * will be just 1 more. */
-        let lim = 5 - Math.trunc((u.uhpmax | 0) / 300);
+        /* C attrib.c:1135: char assignment wraps before max(lim, 1). */
+        let lim = schar(5 - Math.trunc((u.uhpmax | 0) / 300));
         lim = Math.max(lim, 1);
         if (hp > lim)
             hp = lim;

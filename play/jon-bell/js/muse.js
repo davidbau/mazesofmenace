@@ -161,9 +161,9 @@ async function precheck(mon, obj) {
 
 /* C ref: do_name.c:1220-1248 monverbself() */
 function _monverbself(mtmp, verb, othertext) {
+    let monnamtext = Monnam(mtmp);
     const selfbuf = mon_nam_too(mtmp, mtmp);
     const verbs = vtense(selfbuf, verb);
-    let monnamtext = Monnam(mtmp);
     if (verbs === verb) {
         monnamtext = makeplural(monnamtext);
         if (monnamtext.toLowerCase() === 'they')
@@ -178,6 +178,7 @@ export async function mzapwand(mtmp, otmp, self) {
     if ((otmp.spe | 0) < 1) {
         /* C: impossible("Mon zapping wand with %d charges?") then return —
          * the charge is NOT spent. */
+        await impossible('Mon zapping wand with %d charges?', otmp.spe);
         return;
     }
     if (!canseemon(mtmp)) {
@@ -189,7 +190,7 @@ export async function mzapwand(mtmp, otmp, self) {
         await You_hear(`a ${near ? "nearby" : "distant"} zap.`);
         unknow_object(otmp); /* hero loses info when unseen obj is used */
     } else if (self) {
-        pline(`${_monverbself(mtmp, 'zap', null)} with ${await doname(otmp)}!`);
+        await pline(`${_monverbself(mtmp, 'zap', null)} with ${await doname(otmp)}!`);
     } else {
         set_msg_xy(mtmp.mx, mtmp.my); /* pline_mon (pline.c:138-146) */
         pline(`${Monnam(mtmp)} zaps ${an(xname(otmp))}!`);

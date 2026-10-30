@@ -1,4 +1,5 @@
 import { disturb_grave } from './engrave.js';
+import { is_ice as is_ice_real } from './engrave.js';
 // @ts-nocheck
 import { credit_report } from './shk_credit.js';
 // dokick.js — Kicking non-door terrain handler.
@@ -10,6 +11,7 @@ import { credit_report } from './shk_credit.js';
 // RNG sites depend on terrain type and Luck/state; all inline rn2/rnd/rn1/rnl calls
 // mirror C's exact call ordering.
 import { game } from './gstate.js';
+import { on_level as on_level_real } from './dungeon.js';
 import { update_inventory } from './inventory_refresh.js';
 import { abuse_dog } from './dog.js';
 import { Is_juiblex_level as Is_juiblex_level_real } from './const.js';
@@ -124,7 +126,7 @@ import { end_running } from './look.js';
 import { FUMBLING, W_ARMF, P_NONE, P_MARTIAL_ARTS, NATTK,
          ARTICLE_A, SUPPRESS_SADDLE, M_AP_TYPE, Upolyd } from './const.js';
 import { PM_SHADE } from './pm.generated.js';
-import { canspotmon, map_invisible, unmap_invisible, glyph_is_invisible_at, glyph_is_warning_at } from './display.js';
+import { canspotmon, map_invisible, unmap_invisible, unmap_object, glyph_is_invisible_at, glyph_is_warning_at } from './display.js';
 import { attack_checks, mon_nam, special_dmgval, use_skill } from './uhitm.js';
 import { shade_miss, passive, killed, seemimic, check_caitiff, x_monnam, wakeup_attack } from './mhitm.js';
 /* rndorcname — the one real port (do_name.c:1538-1555); replaces the local
@@ -199,6 +201,7 @@ const SHOP_DOOR_COST = 400;
 
 /* C ref: dbridge.c:84-95 is_pool(x,y) — POOL/MOAT/WATER or is_moat(). */
 function is_pool(x, y) {
+    if (!isok(x, y)) return false;
     const loc = game.level?.at(x, y);
     if (!loc) return false;
     const t = loc.typ | 0;
@@ -223,15 +226,7 @@ export function is_moat(x, y) {
  * Same host module and shape as is_moat above; needed by really_kick_object's
  * slide check (dokick.c:588). */
 export function is_ice(x, y) {
-    if (!isok(x, y))
-        return false;
-    const loc = game.level.at(x, y);
-    const ltyp = loc.typ | 0;
-    if (ltyp === ICE
-        || (ltyp === DRAWBRIDGE_UP
-            && ((loc.drawbridgemask | 0) & DB_UNDER) === DB_ICE))
-        return true;
-    return false;
+    return is_ice_real(x, y);
 }
 /* C ref: mkobj.c svl.level.objects[x][y] — per-tile object chain head. */
 function obj_at(x, y) {
@@ -810,7 +805,8 @@ export async function kick_nondoor(x, y, avrg_attrib) {
             maploc.looted |= S_LPUDDING;
             return ECMD_TIME;
         }
-        else if (!(maploc.looted & S_LDWASHER) && !rn2(3)) {
+        else if (!(maploc.looted & S_LDWASHER) && !rn2(3)
+                 && !((g.mvitals?.[PM_AMOROUS_DEMON_DK]?.mvflags | 0) & G_GONE)) {
             /* C: pline("%s returns!", (Blind ? Something : "The dish washer")) — no RNG
              * C: makemon(..., MM_NOMSG | (gend==1||(gend==2&&rn2(2)) ? MM_MALE : MM_FEMALE)) */
             /* rn2(2) only fires when gend == 2 */
@@ -1752,6 +1748,12 @@ async function really_kick_object(x, y, kickedobj) {
             bx -= dxTo; by -= dyTo;
             break;
         }
+        /* C zap.c:4083-4086: 'I' present but no monster: erase it before
+         * tmp_at(). */
+        if (glyph_is_invisible_at(bx, by) && cansee(bx, by)) {
+            unmap_object(bx, by);
+            newsym(bx, by);
+        }
         /* C zap.c:4087 tmp_at(x, y) follows the stop tests above. */
         tmp_at(bx, by);
         /* C zap.c:4090-4094: kicked objects fall in pools; physical objects
@@ -2135,7 +2137,7 @@ export async function impact_drop(missile, x, y, dlev) {
 }
 
 function on_level(a, b) {
-    return a && b && a.dnum === b.dnum && a.dlevel === b.dlevel;
+    return on_level_real(a, b);
 }
 export function down_gate(x, y) {
     const g = game;

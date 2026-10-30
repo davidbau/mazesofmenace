@@ -22,7 +22,8 @@ import { OBJ_FREE, OBJ_INVENT, OBJ_DELETED, SELL_NORMAL, SELL_DONTSELL } from '.
 const BEARTRAP = 244;
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import corpseData from './eat_corpse_data.json' with { type: 'json' };
-import { FOOD_PROPS } from './food_props.js';
+import { FOOD_PROPS, eaten_stat as food_eaten_stat } from './food_props.js';
+import { touch_artifact_youmonst } from './wizcmds.js';
 import { pline, canseemon, canspotmon, nh_sprintf, newsym, You_hear, You_feel,
          Deaf as hero_Deaf, livelog_printf, retouch_equipment, flush_pending_messages,
          _topl_merge_result, _topl_joins_snapshot, _topl_stash_result,
@@ -38,8 +39,8 @@ import { SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED, STARVED, HUNGER,
  * body in this port; js/cmd.js:14406.  eat.js<->cmd.js is already a proven
  * circular import (js/potion.js<->js/cmd.js is the same shape) — safe because
  * nothing here calls it at module-evaluation time. */
-import { getObjFromGetobj, wield_tool as wield_tool_real, costly_alteration,
-         obj_extract_self_general, useup, useupf } from './cmd.js';
+import { getObjFromGetobj, wield_tool as wield_tool_real, costly_alteration, costly_spot,
+         obj_extract_self_general, useup, useupf, freeinv as freeinv_real, carrying as carrying_real } from './cmd.js';
 import { sellobj_state, safe_qbuf as safe_qbuf_real } from './shk.js';
 import { g_at } from './cmd.js';
 import { flush_screen, restore_occupation_topline, force_more, topl_park_cursor, _pline_flush_frame_record, pline_flush_point, msgtype_suppressed } from './display.js';
@@ -60,6 +61,7 @@ import { reset_utrap, selftouch, t_at as t_at_real, deltrap as deltrap_real } fr
  * js/cmd.js:9202). No cycle: js/dungeon.js does not import js/eat.js. */
 import { on_level } from './dungeon.js';
 import { can_reach_floor } from './hold_another_object.js';
+import { addinv_nomerge as addinv_nomerge_real } from './hold_another_object.js';
 import { BLINDED, CONFUSION, HALLUC, HALLUC_RES, LEVITATION, SICK, VOMITING,
          EXPL_FIERY, STONED, UNCHANGING, SICK_ALL, FROMOUTSIDE, INTRINSIC, INVIS as INVIS_PROP, SEE_INVIS as SEE_INVIS_PROP, TIMEOUT, LAST_PROP, AGGRAVATE_MONSTER,
          FAST as FAST_PROP, DEAF as DEAF_PROP, SLIMED as SLIMED_PROP, WOUNDED_LEGS as WOUNDED_LEGS_PROP,
@@ -133,7 +135,7 @@ import { OC_WEIGHT } from './oc_weight.generated.js';
 import { obj_is_pname, getObjDescr } from './objnam.js';
 import { Ring_gone, float_up } from './do_wear.js';
 import { set_mimic_blocking } from './sit.js';
-import { see_monsters, putmsghistory, curs_on_u } from './display.js';
+import { see_monsters, putmsghistory, curs_on_u, retouch_object_hero } from './display.js';
 import { rescham, revive_corpse, set_bknown } from './mklev.js';
 import { perceives } from './mcastu.js';
 import { change_sex } from './polyself.js';
@@ -599,6 +601,12 @@ export async function doeat() {
         return ECMD_OK;
     }
 
+    const touched = _eat_carried(otmp) ? await retouch_object_hero(otmp, false) // C eat.c:2871
+        : await touch_artifact_youmonst(otmp);
+    const blast = game._touch_artifact_blast_msg;
+    game._touch_artifact_blast_msg = null;
+    if (blast) await pline(blast);
+    if (!touched) return ECMD_TIME;
     if (_is_edible_metallic(otmp) && u.umonnum === PM_RUST_MONSTER
         && otmp.oerodeproof) {
         otmp.rknown = 1;
@@ -627,7 +635,7 @@ export async function doeat() {
                 /* no need to check for leash in use; it's not metallic */
                 if (otmp.owornmask)
                     await remove_worn_item(otmp, false);
-                _eat_freeinv(otmp);
+                await _eat_freeinv(otmp);
                 await dropy_real(otmp);
             }
             await stackobj(otmp);
@@ -798,10 +806,10 @@ export async function newuhs(incr) {
         switch (newhs) {
         case HUNGRY:
             if (_eat_Hallucination()) {
-                pline(_hs(!incr ? 'You now have a lesser case of the munchies.'
+                await pline(_hs(!incr ? 'You now have a lesser case of the munchies.'
                             : 'You are getting the munchies.'));
             } else {
-                pline(_hs(!incr ? 'You only feel hungry now.'
+                await pline(_hs(!incr ? 'You only feel hungry now.'
                      : ((u.uhunger | 0) < 145) ? 'You feel hungry.'
                        : 'You are beginning to feel hungry.'));
                 if (g._resultMessage && g._pending_message) {
@@ -817,16 +825,16 @@ export async function newuhs(incr) {
             break;
         case WEAK:
             if (_eat_Hallucination()) {
-                pline(_hs(!incr ? 'You still have the munchies.'
+                await pline(_hs(!incr ? 'You still have the munchies.'
                             : 'The munchies are interfering with your motor capabilities.'));
             } else if (incr && (_eat_Role_if(ROLE_WIZARD) || _eat_Race_if_elf()
                                 || _eat_Role_if(ROLE_VALKYRIE))) {
                 /* C: "%s needs food, badly!" with gu.urole.name.m for the two
                  * roles and the literal "Elf" for an elf of any other role. */
-                pline(_hs(((_eat_Role_if(ROLE_WIZARD) || _eat_Role_if(ROLE_VALKYRIE))
+                await pline(_hs(((_eat_Role_if(ROLE_WIZARD) || _eat_Role_if(ROLE_VALKYRIE))
                        ? (g.urole?.name?.m || '') : 'Elf') + ' needs food, badly!'));
             } else {
-                pline(_hs(!incr ? 'You are still weak.'
+                await pline(_hs(!incr ? 'You are still weak.'
                      : ((u.uhunger | 0) < 45) ? 'You feel weak.'
                        : 'You are beginning to feel weak.'));
             }
@@ -1522,7 +1530,9 @@ async function maybe_cannibal(pm, allowmsg) {
 /* C mon.c:3274-3359 — shared monster stoning implementation. */
 async function monstone(mtmp) { return await monstone_real(mtmp); }
 
-/* C eat.c:603-755 — eat_brains: mind flayer brain-eating attack */
+/* C eat.c:603-755 — eat_brains: mind flayer brain-eating attack.
+ * Use the live pline stream for every message: update_topl() must honor
+ * WIN_STOP after ESC dismisses an earlier combat message (topl.c:257-301). */
 export async function eat_brains(magr, mdef, visflag, dmg_p) {
     const g = game;
     const u = g.u;
@@ -1568,13 +1578,13 @@ export async function eat_brains(magr, mdef, visflag, dmg_p) {
                 await make_stoned(5, null, KILLED_BY_AN, _pmname(pd, _Mgender(mdef)));
         } else {
             if (visflag && canseemon(magr))
-                _emit_eat_pline(Monnam(magr) + " turns to stone!");
+                await pline(Monnam(magr) + " turns to stone!");
             await monstone(magr);
             if (!((magr.mhp | 0) < 1)) {
                 return M_ATTK_MISS;
             } else {
                 if (magr.mtame && !visflag)
-                    _emit_eat_pline("You have a sad thought for a moment, then it passes.");
+                    await pline("You have a sad thought for a moment, then it passes.");
                 return M_ATTK_AGR_DIED;
             }
         }
@@ -1583,10 +1593,10 @@ export async function eat_brains(magr, mdef, visflag, dmg_p) {
     if (magr_is_you) {
         await eating_conducts(pd);
         if (_mindless(pd)) {
-            _emit_eat_pline(Monnam(mdef) + " doesn't notice.");
+            await pline(Monnam(mdef) + " doesn't notice.");
             return M_ATTK_MISS;
         } else if (_is_rider(pd)) {
-            _emit_eat_pline("Ingesting that is fatal.");
+            await pline("Ingesting that is fatal.");
             if (!g.svk) g.svk = { killer: { format: 0, name: "" } };
             g.svk.killer.name = _Sprintf("unwisely ate the brain of %s", _pmname(pd, _Mgender(mdef)));
             g.svk.killer.format = NO_KILLER_PREFIX;
@@ -1624,7 +1634,7 @@ export async function eat_brains(magr, mdef, visflag, dmg_p) {
                     return result;
                 if (pending_death_is_final())
                     return result;
-                _emit_eat_pline("Unfortunately your brain is still gone.");
+                await pline("Unfortunately your brain is still gone.");
                 if (u.uprops && u.uprops[LIFESAVED]) {
                     u.uprops[LIFESAVED].extrinsic = 0;
                     u.uprops[LIFESAVED].intrinsic = 0;
@@ -1652,7 +1662,7 @@ export async function eat_brains(magr, mdef, visflag, dmg_p) {
     } else {
         if (_mindless(pd)) {
             if (visflag && canspotmon(mdef))
-                _emit_eat_pline(Monnam(mdef) + " doesn't notice.");
+                await pline(Monnam(mdef) + " doesn't notice.");
             return M_ATTK_MISS;
         } else if (_is_rider(pd)) {
             await mondied(magr);
@@ -1663,7 +1673,7 @@ export async function eat_brains(magr, mdef, visflag, dmg_p) {
             if (dmg_p) dmg_p.value += xtra_dmg;
             give_nutrit = true;
             if (dmg_p && dmg_p.value >= (mdef.mhp | 0) && visflag && canspotmon(mdef))
-                _emit_eat_pline(s_suffix(Monnam(mdef)) + " last thought fades away...");
+                await pline(s_suffix(Monnam(mdef)) + " last thought fades away...");
         }
     }
 
@@ -1876,27 +1886,8 @@ function _eat_inv_cnt(incl_gold) {
     return ct;
 }
 /* C ref: invent.c freeinv(obj) — extract_nobj(obj, &gi.invent); pickup_prev=0;
- * freeinv_core(obj); update_inventory().  freeinv_core's arms are the
- * uhave.amulet/menorah/bell/book bookkeeping, artifact intrinsics, the
- * LOADSTONE curse, luckstones and the FIGURINE timer — a comestible reaches
- * none of them.  The one arm it CAN reach is the tin-in-progress handle, so
- * that is ported; the rest stay out of a food-only call path deliberately. */
-function _eat_freeinv(obj) {
-    const g = game;
-    let prev = null;
-    for (let o = g.invent; o; prev = o, o = o.nobj) {
-        if (o === obj) {
-            if (prev) prev.nobj = o.nobj ?? null;
-            else g.invent = o.nobj ?? null;
-            break;
-        }
-    }
-    obj.nobj = null;
-    obj.where = 0; /* OBJ_FREE */
-    obj.pickup_prev = 0;
-    const tin = g.context && g.context.tin;
-    if (tin && tin.tin === obj) { tin.tin = null; tin.o_id = 0; }
-}
+ * share freeinv_core() and update_inventory(), including non-food meals. */
+function _eat_freeinv(obj) { return freeinv_real(obj); }
 /* C ref: invent.c:694 assigninvlet(otmp).  Note the `if (i == otmp->invlet)
  * otmp->invlet = 0;` inside the inuse scan: the object splitobj() cloned still
  * carries the parent stack's letter, and that clause is what forces it to take
@@ -1952,17 +1943,13 @@ function _eat_reorder_invent() {
         }
     }
 }
+/* C ref: invent.c:1169 addinv_nomerge(obj) → addinv_core0(obj, NULL, TRUE) with
+ * obj->nomerge set, so the quiver/stack merge scans are skipped and the object
+ * always lands in a slot of its own. C invent.c:1117-1125 prepends and sorts
+ * under fixinv; otherwise it appends, preserving the remaining chain order
+ * for the next reassign(). */
 function _eat_addinv_nomerge(obj) {
-    const g = game;
-    obj.no_charge = 0;
-    obj.how_lost = 0; /* LOST_NONE */
-    _eat_assigninvlet(obj);
-    obj.nobj = g.invent ?? null;
-    g.invent = obj;
-    _eat_reorder_invent();
-    obj.where = 3; /* OBJ_INVENT */
-    obj.pickup_prev = 1;
-    return obj;
+    return addinv_nomerge_real(obj);
 }
 async function touchfood(otmp) {
     if ((otmp.quan | 0) > 1) {
@@ -1978,7 +1965,7 @@ async function touchfood(otmp) {
         otmp.oeaten = _obj_nutrition(otmp);
     }
     if (_eat_carried(otmp)) {
-        _eat_freeinv(otmp);
+        await _eat_freeinv(otmp);
         if (_eat_inv_cnt(false) >= 52 /* invlet_basic */) {
             /* C eat.c:377-382 — a full pack cannot assign the bitten piece a
              * distinct inventory letter. Drop it without offering it to a
@@ -1998,7 +1985,7 @@ async function touchfood(otmp) {
                 otmp = null;
             return otmp;
         }
-        otmp = _eat_addinv_nomerge(otmp);
+        otmp = await _eat_addinv_nomerge(otmp);
     }
     return otmp;
 }
@@ -2097,6 +2084,12 @@ function _emit_eat_pline(msg) {
     /* C pline.c:246-262 vpline(): a MSGTYPE=hide match is dropped before
      * gp.prevmsg or the topline is touched. */
     if (msgtype_suppressed(msg)) return;
+    /* C topl.c:257-300: WIN_STOP updates the hidden topline without drawing.
+     * The occupation callback defers this to its message assembler, but
+     * stop_occupation -> maybe_finished_meal can also finish a meal during
+     * nh_timeout, outside that callback.  Use pline's suppression path there. */
+    if (game._topl_win_stop && !game._occBeforeInput)
+        return pline(msg);
     /* C pline.c:282: every emitted food message replaces gp.prevmsg with
      * that message, so a later Norep sees it rather than a stale warning. */
     game._prevmsg = String(msg);
@@ -2702,9 +2695,11 @@ async function done_eating(message) {
             _emit_eat_pline(game.nomovemsg);
         game.nomovemsg = null;
     } else if (message && piece) {
-        /* C eat.c:556 You("finish eating %s.", food_xname(piece,TRUE)).
+        /* C eat.c:556-560 — fire elementals finish "consuming" their food.
          * food_xname(.,TRUE) prefixes "the" for a known singleton corpse. */
-        _emit_eat_pline(`You finish eating ${_food_xname(piece, true)}.`);
+        const verb = game.youmonst?.data?.pmidx === PM_FIRE_ELEMENTAL
+            ? 'consuming' : 'eating';
+        _emit_eat_pline(`You finish ${verb} ${_food_xname(piece, true)}.`);
     }
     if (piece && (piece.corpsenm | 0) >= 0 && ((piece.otyp | 0) === CORPSE_OTYP || piece.globby))
         await cpostfx(piece.corpsenm | 0);
@@ -3083,21 +3078,7 @@ export async function doeat_food(otmp) {
     /* C eat.c:2957-2985 starts a new meal.  A one-bite meal can leave its
      * pre-effect paint unconsumed; it must not supply a later meal's frame. */
     game._eatPreEffectFrame = null;
-
-    otmp = await touchfood(otmp);
-    if (!otmp) {
-        _zero_victual();
-        game.context = game.context || {};
-        game.context.move = 1;
-        return true;
-    }
-    v.piece = otmp;
-    v.o_id = otmp.o_id | 0;
-    v.usedtime = 0;
-
-    /* C eat.c:2962-2966 records the foodless-conduct break before dispatching
-     * corpse versus ordinary food effects. */
-    let ll_conduct = 0;
+    let ll_conduct = 0; // C eat.c:2962: conduct precedes touchfood().
     if (u) {
         u.uconduct = u.uconduct || {};
         const oldFood = u.uconduct.food | 0;
@@ -3108,6 +3089,17 @@ export async function doeat_food(otmp) {
         }
         u.uconduct.food = oldFood + 1;
     }
+
+    otmp = await touchfood(otmp);
+    if (!otmp) {
+        await _do_reset_eat();
+        game.context = game.context || {};
+        game.context.move = 1;
+        return true;
+    }
+    v.piece = otmp;
+    v.o_id = otmp.o_id | 0;
+    v.usedtime = 0;
 
     if ((otmp.otyp | 0) === CORPSE_OTYP || otmp.globby) {
         const tmp = await eatcorpse(otmp);
@@ -3161,7 +3153,7 @@ export async function doeat_food(otmp) {
             _consume_oeaten(otmp, 1); /* oeaten >>= 1 */
         } else if (!already_partly_eaten) {
             if (!(await _fprefx(otmp))) {
-                _zero_victual();
+                await _do_reset_eat();
                 game.context = game.context || {};
                 game.context.move = 1;
                 return true;
@@ -3186,6 +3178,7 @@ export async function doeat_food(otmp) {
     v.canchoke = ((u && (u.uhs | 0)) === SATIATED) ? 1 : 0;
 
     if (!dont_start) await start_eating(otmp, already_partly_eaten);
+    else otmp.owt = weight(otmp); // C eat.c:3082: rotten meal not started yet.
     game.context = game.context || {};
     game.context.move = 1;
     return true;
@@ -3458,8 +3451,12 @@ const _TIN_DAGGERS = [34 /* DAGGER */, 37 /* SILVER_DAGGER */, 35 /* ELVEN_DAGGE
                       36 /* ORCISH_DAGGER */, 38 /* ATHAME */, 40 /* KNIFE */,
                       41 /* STILETTO */, 43 /* CRYSKNIFE */];
 const _TIN_AXES = [259 /* PICK_AXE */, 44 /* AXE */];
-/* C eat.c:1385-1387 — costly_tin()'s alter_type argument. */
-const COST_OPEN = 0, COST_DSTROY = 1;
+/* C eat.c:1385-1387 — costly_tin()'s alter_type argument; an index into the
+ * alteration_verbs[] table at mkobj.c:744 (hack.h:284-303: COST_DSTROY = 11,
+ * COST_OPEN = 14).  The 0/1 that used to live here were placeholders from
+ * when costly_alteration() was never called; 0 is COST_CANCEL and would make
+ * the shopkeeper say "cancel". */
+const COST_OPEN = 14, COST_DSTROY = 11;
 /* C monflag.h:141 M2_PNAME 0x00080000L — "monster name is a proper name".
  * NOTE for anyone copying this: js/do_name.js (0x40) and js/end.js (0x80) both
  * carry a DIFFERENT value for the same flag.  This one is read straight out of
@@ -3492,17 +3489,18 @@ async function use_up_tin(tin) {
     t.o_id = 0;
 }
 
-async function costly_tin(_alter_type) {
+async function costly_tin(alter_type) {
     const t = _tin_ctx();
     let tin = t.tin;
     if (!tin) return tin;
-    const unpaid = _eat_carried(tin) ? !!(tin.unpaid | 0) : false;
-    if (unpaid) {
+    const shopowned = _eat_carried(tin) ? !!(tin.unpaid | 0)
+        : (costly_spot(tin.ox | 0, tin.oy | 0) && !tin.no_charge);
+    if (shopowned) {
         if ((tin.quan | 0) > 1) {
             tin = t.tin = (await splitobj(tin, 1));
             t.o_id = tin.o_id | 0;
         }
-        /* costly_alteration(tin, alter_type) — shop billing, RNG-free, unported. */
+        await costly_alteration(tin, alter_type);
     }
     return tin;
 }
@@ -3886,25 +3884,7 @@ export async function use_tin_opener(obj) {
  * If uneaten > full_amount (impossible), cap uneaten to full_amount.
  */
 export function eaten_stat(base, obj) {
-    let full_amount = _obj_nutrition(obj);
-    let uneaten_amt = (obj.oeaten | 0);
-
-    /* If uneaten_amt > full_amount (impossible condition), cap it */
-    if (uneaten_amt > full_amount) {
-        impossible("partly eaten food (%ld) more nutritious than untouched food (%ld)",
-                   uneaten_amt, full_amount);
-        uneaten_amt = full_amount;
-    }
-
-    /* Calculate: base = base * uneaten_amt / full_amount, or 0 if full_amount is 0 */
-    if (full_amount) {
-        base = Math.trunc(((base | 0) * uneaten_amt) / full_amount);
-    } else {
-        base = 0;
-    }
-
-    /* Return max(base, 1) */
-    return (base < 1) ? 1 : base;
+    return food_eaten_stat(base, obj);
 }
 
 export function is_edible(obj) {
@@ -4486,7 +4466,12 @@ export async function cpostfx(pm) {
             /* update_topl pages the earlier lines (more()) at the pline, over the map
              * as it stands BEFORE newsym() below shows the mimic shape. */
             await flush_screen(1);
-            if (u.usteed) await dismount_steed(DISMOUNT_FELL);
+            let _mimicTopl = `You can't resist the temptation to mimic ${shape}.`;
+            if (u.usteed) {
+                /* the dismount's pline (steed.c:608) replaces the topline */
+                _mimicTopl = `You fall off of ${mon_nam(u.usteed)}!`;
+                await dismount_steed(DISMOUNT_FELL);
+            }
             nomul(-(pm === PM_GIANT_MIMIC ? 50 : pm === PM_LARGE_MIMIC ? 40 : 20));
             game.multi_reason = 'pretending to be a pile of gold';
             const hallu = _eat_Hallucination();
@@ -4503,7 +4488,12 @@ export async function cpostfx(pm) {
             newsym(u.ux, u.uy);
             await flush_screen(1); /* curs_on_u() is flush_screen(1) (display.c:1726); the sync wrapper left it un-awaited */
             await flush_screen(1);
-            await force_more(`You can't resist the temptation to mimic ${shape}.`);
+            /* topl.c more(): ESC at the page sets WIN_STOP on the message window */
+            if (await force_more(_mimicTopl) === 27) {
+                game._topl_win_stop = true;
+                game._resultMessage = null; /* more() cleared the window (topl.c:243) */
+                game._resultMessageJoins = null;
+            }
             if (game._pending_message) await force_more(game._pending_message);
             /* eat.c:1224 display_nhwindow(WIN_MAP, TRUE) raises exactly ONE more(), the
              * one above; with nothing held back (no occupation fold-in) a second,
@@ -4633,6 +4623,7 @@ export function eatmupdate() {
     const g = game;
     if (!g.eatmbuf || g.nomovemsg !== g.eatmbuf)
         return;
+    if (((g.youmonst.m_ap_type | 0) & 7) !== M_AP_OBJECT) return;
 
     /* objects.h FOOD() run: ORANGE = 278 (svb.bases[FOOD_CLASS=7] = 264).
      * 15 was the ILLOBJ placeholder "generic iron ball", so neither arm of
@@ -4788,14 +4779,7 @@ export async function You(line, ...args) {
         _emit_eat_pline(msg);
     }
 }
-export function carrying(otyp) {
-    /* C: return TRUE if hero carries an object of type otyp */
-    let g = game;
-    for (let o = g.invent; o; o = o.nobj) {
-        if (o.otyp === otyp) return 1;
-    }
-    return 0;
-}
+export function carrying(otyp) { return carrying_real(otyp); }
 export async function getobj(verb, callback, flags) {
     return await getObjFromGetobj(verb, callback, flags);
 }
@@ -5010,7 +4994,7 @@ export async function feel_cockatrice(obj, force) {
         await pline(`Touching ${name} is a fatal mistake...`);
     await instapetrify_eat(`touching ${killer_xname(obj)} bare-handed`);
 }
-function tinnable(corpse) {
+export function tinnable(corpse) {
     if (corpse.oeaten | 0)
         return false;
     if (!_cnutritE(corpse.corpsenm | 0))
@@ -5079,7 +5063,7 @@ function offer_ok(obj) {
         return 1; /* GETOBJ_DOWNPLAY */
     return 2; /* GETOBJ_SUGGEST */
 }
-function tin_ok(obj) {
+export function tin_ok(obj) {
     if (!obj) return (game.getobj_else | 0) ? -2 : 0;
     if ((obj.oclass | 0) !== FOOD_CLASS)
         return 0;

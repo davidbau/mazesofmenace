@@ -1,3 +1,4 @@
+import { is_ice as is_ice_real } from './engrave.js';
 // mkmaze.js — set_levltyp / set_levltyp_lit
 // Ported from nethack-c/src/mkmaze.c:77-140
 
@@ -104,12 +105,7 @@ function IS_SINK(typ) {
 // C tests (drawbridgemask & DB_UNDER) == DB_ICE, i.e. the whole 3-bit
 // "underneath" field equals DB_ICE — not a bit test against DB_ICE alone.
 function is_ice(x, y) {
-    if (!game || !game.level) return false;
-    const loc = game.level.at(x, y);
-    if (!loc) return false;
-    if (loc.typ === ICE) return true;
-    if (loc.typ === DRAWBRIDGE_UP && (loc.drawbridgemask & DB_UNDER) === DB_ICE) return true;
-    return false;
+    return is_ice_real(x, y);
 }
 
 export function set_levltyp(x, y, newtyp) {
@@ -453,7 +449,7 @@ function maze_inbounds(x, y) {
 
 /* C ref: mkmaze.c:296-305.  Note C's bound test is `>` against the maze max,
  * not `>=` as maze_inbounds uses — port the asymmetry. */
-function okay(x, y, dir) {
+export function okay(x, y, dir) {
     const g = game;
     const c = { x, y };
     mz_move(c, dir);
