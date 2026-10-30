@@ -202,7 +202,9 @@ export function set_levltyp_lit(x, y, typ, lit, state = game, random = rn2) {
             else if (lit === SET_LIT_RANDOM)
                 lit = random(2);
 
-            state.level.at(x, y).lit = Boolean(lit);
+            // C rm.lit is an unsigned one-bit field. The supported Lua
+            // boolean-string reader can supply option indices 2 and 3.
+            state.level.at(x, y).lit = Boolean(lit & 1);
         }
     }
     return ret;
@@ -1461,7 +1463,14 @@ export function create_maze(corrwid, wallthick, rmDeadends, frame, state) {
 // discarded return in C, so a failed placement does not alter the remaining
 // random-call sequence.
 export function populate_maze(frame, state = game) {
-    const env = objectGenerationEnv({ state, random: { rn1, rn2, rnd, rne } });
+    const env = objectGenerationEnv({
+        state,
+        random: { d, rn1, rn2, rnd, rne },
+        hooks: {
+            mazexy: coordinate => mazexy(coordinate, frame, state),
+            makeMonster: makemon,
+        },
+    });
     let count = rn1(8, 11);
     for (; count; --count) {
         const point = mazexy(null, frame, state);

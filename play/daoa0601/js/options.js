@@ -14,9 +14,11 @@ import { PosixRegex } from './posix_regex.js';
 import { rn2 } from './rng.js';
 import { isTextOption, setTextOption, textOptionValue, cInteger, parsePickupTypes, optionError, featureAlertVersion, parseBoulderSymbolValue } from './option_values.js';
 import { compoundMenuValue, editCompoundMenu } from './option_editors.js';
-import { countStatusHilites, statusHiliteMenu } from './status_hilites.js';
+import { clearStatusHilites, countStatusHilites, statusHiliteMenu } from './status_hilites.js';
+import { parseStatusHl1, replayStatusHiliteOperations } from './status_hilite_parse.js';
 import { countBindKeys, handlerRebindKeys } from './rebind_keys.js';
 import { CommandBindings } from './command_bindings.js';
+import { reassignInventoryLetters } from './inventory_prompt.js';
 import { changePreferredFruit, normalizePreferredFruitName } from './fruit.js';
 import { bot, checkGoldSymbol, clearMessageWindow, currentBoulderSymbol, displayMessageWindow, docrt, flush_screen, plineWithContinuation, reassessStatusFields, reglyph_darkroom, reglyphBoulderSymbols, reglyphSymbolSet } from './display.js';
 import { vision_recalc } from './vision.js';
@@ -897,9 +899,9 @@ function handleConfigStatement(statement, parsed, result, addError, addRawError)
     switch (statement) {
         // Accepted by the C table without effect in this port: path prefixes
         // are ignored on this platform, WIZKIT names a file this runtime cannot
-        // supply, and HILITE_STATUS and SYMBOLS/ROGUESYMBOLS validation need the
-        // status-hilite grammar and the symbol-name tables, which are missing —
-        // their bad-value diagnostics remain unported.
+        // supply, and SYMBOLS/ROGUESYMBOLS validation needs the symbol-name
+        // tables, which are missing — their bad-value diagnostics remain
+        // unported.
         case 'HACKDIR':
         case 'LEVELDIR':
         case 'LEVELS':
@@ -910,7 +912,6 @@ function handleConfigStatement(statement, parsed, result, addError, addRawError)
         case 'LOCKDIR':
         case 'CONFIGDIR':
         case 'TROUBLEDIR':
-        case 'HILITE_STATUS':
         case 'ROGUESYMBOLS':
         case 'SYMBOLS':
         case 'WIZKIT':
@@ -919,6 +920,12 @@ function handleConfigStatement(statement, parsed, result, addError, addRawError)
         case 'QT_FONTSIZE':
         case 'QT_COMPACT':
             break;
+        case 'HILITE_STATUS': {
+            const operations = [];
+            parseStatusHl1(parsed.valueText, addError, true, operations);
+            replayStatusHiliteOperations(operations, result.iflags);
+            break;
+        }
         case 'MENUCOLOR': {
             const rule = parseMenuColoring(parsed.valueText, addError);
             if (rule) {
@@ -1325,6 +1332,18 @@ function parseConfiguration(rc, result, report, fromFile) {
                     addError(`Missing parameter for '${stripped}'`);
                 const limit = negated ? 0 : raw ? cInteger(raw) : 5;
                 result.flags.pile_limit = limit < 0 ? 5 : limit;
+                continue;
+            }
+            if (canonical === 'hilite_status') {
+                if (!optionValue)
+                    addError('Value is mandatory for hilite_status');
+                else if (negated)
+                    clearStatusHilites(result.iflags);
+                else {
+                    const operations = [];
+                    parseStatusHl1(optionValue, addError, true, operations);
+                    replayStatusHiliteOperations(operations, result.iflags);
+                }
                 continue;
             }
             if (canonical === 'statushilites') {
@@ -1860,8 +1879,6 @@ function parseConfiguration(rc, result, report, fromFile) {
                 }
                 else if (canonical === 'splash_screen')
                     result.iflags.wc_splash_screen = value;
-                else if (canonical === 'wizmgender' || canonical === 'wizweight')
-                    result.iflags[canonical] = value;
                 else if (canonical === 'montelecontrol')
                     result.monTelecontrol = value;
                 else if (canonical === 'monpolycontrol')
@@ -2258,6 +2275,17 @@ const REQUEST_MENU_BOOLEAN_OPTIONS = [
     ['whatis_menu', 'getloc_usemenu', false],
     ['whatis_moveskip', 'getloc_moveskip', false],
 ];
+// optlist.h: these booleans are selectable only in the full wizard menu.
+// The debug_* entries also reject config-file settings and fuzzer input.
+const WIZARD_MENU_BOOLEAN_OPTIONS = [
+    ['debug_hunger', 'debug_hunger', false],
+    ['debug_mongen', 'debug_mongen', false],
+    ['debug_overwrite_stairs', 'debug_overwrite_stairs', false],
+    ['sanity_check', 'sanity_check', false],
+    ['travel_debug', 'trav_debug', false],
+    ['wizmgender', 'wizmgender', false],
+    ['wizweight', 'wizweight', false],
+];
 // C options.c:option_help(), next_opt(); descriptions from include/optlist.h.
 export async function option_help() {
     const lines = [
@@ -2372,7 +2400,8 @@ const OPTION_HELP_COMPOUNDS = [
     ["cond_", "prefix for cond_ options"],
     ["font", "prefix for font options"],
 ];
-const requestBooleanByName = new Map(REQUEST_MENU_BOOLEAN_OPTIONS.map(option => [option[0].toLowerCase(), option]));
+const requestBooleanByName = new Map([...REQUEST_MENU_BOOLEAN_OPTIONS, ...WIZARD_MENU_BOOLEAN_OPTIONS]
+    .map(option => [option[0].toLowerCase(), option]));
 function requestBooleanValue(name) {
     const option = requestBooleanByName.get(name.toLowerCase());
     if (!option)
@@ -2384,6 +2413,8 @@ function requestBooleanValue(name) {
         return game._monPolycontrol ?? fallback;
     if (property === 'bgcolors' || property === 'sounds' || property === 'altmeta' || property === 'toptenwin' || property === 'menu_tab_sep'
         || property === 'wc_eight_bit_input' || property === 'autodescribe'
+        || property === 'debug_hunger' || property === 'debug_mongen' || property === 'debug_overwrite_stairs'
+        || property === 'sanity_check' || property === 'trav_debug' || property === 'wizmgender' || property === 'wizweight'
         || property === 'getloc_usemenu' || property === 'getloc_moveskip')
         return game.iflags[property] ?? fallback;
     return game.flags[property] ?? fallback;
@@ -2396,6 +2427,8 @@ function setConfigurationBoolean(settings, option, value) {
         settings.monPolycontrol = value;
     else if (property === 'bgcolors' || property === 'sounds' || property === 'altmeta' || property === 'toptenwin' || property === 'menu_tab_sep'
         || property === 'wc_eight_bit_input' || property === 'autodescribe'
+        || property === 'debug_hunger' || property === 'debug_mongen' || property === 'debug_overwrite_stairs'
+        || property === 'sanity_check' || property === 'trav_debug' || property === 'wizmgender' || property === 'wizweight'
         || property === 'getloc_usemenu' || property === 'getloc_moveskip')
         settings.iflags[property] = value;
     else
@@ -2411,6 +2444,8 @@ function setRequestBoolean(option, value) {
         game._monPolycontrol = value;
     else if (property === 'bgcolors' || property === 'sounds' || property === 'altmeta' || property === 'toptenwin' || property === 'menu_tab_sep'
         || property === 'wc_eight_bit_input' || property === 'autodescribe'
+        || property === 'debug_hunger' || property === 'debug_mongen' || property === 'debug_overwrite_stairs'
+        || property === 'sanity_check' || property === 'trav_debug' || property === 'wizmgender' || property === 'wizweight'
         || property === 'getloc_usemenu' || property === 'getloc_moveskip')
         game.iflags[property] = value;
     else
@@ -2493,7 +2528,7 @@ function isDefaultSymsetName(name) {
 }
 // options.c:optfn_symset() get_val: the loaded set's name, ", active" while
 // the primary set is current, and the handling the set declared.
-function symsetMenuValue() {
+export function symsetMenuValue() {
     const name = game.symset;
     if (!name)
         return 'default';
@@ -2563,6 +2598,9 @@ function requestMenuSections() {
                 boolean('customcolors'),
                 boolean('customsymbols'),
                 boolean('dark_room'),
+                ...(game.flags.debug && !game.iflags.debug_fuzzer ? [
+                    boolean('debug_hunger'), boolean('debug_mongen'), boolean('debug_overwrite_stairs'),
+                ] : []),
                 boolean('dropped_nopick'),
                 boolean('eight_bit_tty'),
                 boolean('extmenu'),
@@ -2599,6 +2637,7 @@ function requestMenuSections() {
                 boolean('rest_on_space'),
                 boolean('safe_pet'),
                 boolean('safe_wait'),
+                ...(game.flags.debug ? [boolean('sanity_check')] : []),
                 boolean('showdamage'),
                 boolean('showexp'),
                 boolean('showrace'),
@@ -2615,11 +2654,13 @@ function requestMenuSections() {
                 boolean('tombstone'),
                 boolean('toptenwin'),
                 boolean('travel'),
+                ...(game.flags.debug ? [boolean('travel_debug')] : []),
                 boolean('use_inverse'),
                 boolean('verbose'),
                 boolean('weaponstatus'),
                 boolean('whatis_menu'),
                 boolean('whatis_moveskip'),
+                ...(game.flags.debug ? [boolean('wizmgender'), boolean('wizweight')] : []),
                 label(''),
             ] },
         { heading: 'Compounds (selecting will prompt for new value):', items: [
@@ -2987,6 +3028,8 @@ const NO_VISUAL_CHANGE = { redraw: false, customReset: false };
 // changes need bot(); map-affecting changes defer the full docrt until all
 // selected options and their compound handlers have finished.
 function applyBooleanVisualChange(name) {
+    if (name === 'wizweight' && game.flags.fixinv === false)
+        reassignInventoryLetters();
     if (name === 'terrainstatus')
         classifyStatusTerrain(game);
     if (['showexp', 'time', 'showvers', 'weaponstatus', 'armorstatus', 'terrainstatus', 'hitpointbar'].includes(name))
@@ -3005,7 +3048,7 @@ function applyBooleanVisualChange(name) {
     // reset; reset_needed_visuals() serves those with docrt() alone and runs
     // check_gold_symbol()/reglyph_darkroom() only for opt_need_redraw.
     return {
-        redraw: ['color', 'hilite_pet', 'hilite_pile', 'hitpointbar', 'showrace', 'use_inverse']
+        redraw: ['color', 'hilite_pet', 'hilite_pile', 'hitpointbar', 'showrace', 'use_inverse', 'wizmgender']
             .includes(name),
         customReset: name === 'customcolors' || name === 'customsymbols',
     };

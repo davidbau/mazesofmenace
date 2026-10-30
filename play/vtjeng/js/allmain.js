@@ -75,7 +75,8 @@ import { reset_mvitals } from './monsters.js';
 import { depth, init_dungeons, on_level } from './dungeon.js';
 import { movebubbles, fumaroles } from './mkmaze.js';
 import { init_artifacts, mkot_trap_warn } from './artifacts.js';
-import { role_init, welcomeIdentity, welcomeMessage } from './role_init.js';
+import { role_init, welcomeHallucinationMessage, welcomeIdentity,
+    welcomeMessage } from './role_init.js';
 import { livelog_printf } from './pline.js';
 import { u_init_misc } from './u_init.js';
 import {
@@ -311,7 +312,9 @@ export async function newgame() {
     g.urealtime.realtime = 0;
     g.urealtime.start_timing = getnow(g);
 
-    // C ref: allmain.c welcome(TRUE) -> pline().
+    // C ref: allmain.c welcome(TRUE) prints the hallucination prelude first.
+    const hallucinationWelcome = welcomeHallucinationMessage(g);
+    if (hallucinationWelcome) await ttyPline(hallucinationWelcome, g);
     await ttyPline(welcomeMessage(g), g);
     // C ref: allmain.c welcome(TRUE) also records the first major event.
     // The event uses the same identity text as the just-emitted welcome and
@@ -937,6 +940,15 @@ export async function finishElapsedTurn(
         // with the clone -- but newsym() paints the live map whatever state it
         // is handed, so the clone must draw nothing.
         newsym: planning ? () => {} : newsym,
+        // timeout.c hatch_egg() can create a monster during an occupation.
+        // makemon.c's dochugw() then interrupts that occupation. Use the
+        // timeout's own state and message seam so a dry run changes only its
+        // planning clone and the live pass writes the actual interruption.
+        hooks: {
+            stopOccupation: (_monster, hookEnv) => stop_occupation(
+                hookEnv.state, hookEnv,
+            ),
+        },
     });
     // C's fatal timeout never reaches the remaining upkeep. JS's end-game
     // owner returns so the recorder can retain its final capture.

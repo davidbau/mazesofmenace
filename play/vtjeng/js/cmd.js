@@ -250,6 +250,7 @@ import {
     strstri,
     strsubst,
     truncateByteString,
+    appendLongDigit,
     upstart,
     visctrl,
 } from './hacklib.js';
@@ -400,7 +401,7 @@ import {
     selection_new,
     set_selection_floodfillchk,
 } from './themerooms.js';
-import { collectLookaroundMessages, messageAt } from './startup_a11y.js';
+import { collectLookaroundMessages, heroIsBlind, messageAt } from './startup_a11y.js';
 import { cansee, vision_reset } from './vision.js';
 import { m_at } from './monst.js';
 import { linedup } from './mthrowu.js';
@@ -852,14 +853,15 @@ export async function yn_function(query, resp, def, addcmdq, state = game) {
         cmdq_clear(CQ_CANNED, state);
         res = ESC;
         fromQueue = true;
-    } else {
+    }
+    if (!fromQueue && res === undefined) {
+        // A queued CMDQ_USER_INPUT asks for a fresh answer through the same
+        // menu-capable path as an ordinary prompt, after its marker is popped.
         const menuResult = await yn_function_menu(query, resp, def, state);
         res = menuResult === null
             ? await tty_yn_function(query, resp, def, state)
             : menuResult;
     }
-    if (!fromQueue && res === undefined)
-        res = await tty_yn_function(query, resp, def, state);
     if (addcmdq && !fromQueue) cmdq_add_key(CQ_REPEAT, res, state);
     // "in case we're called via getdir() which sets input_state".
     state.program_state.input_state = 'other';
@@ -1560,9 +1562,8 @@ export async function get_adjacent_loc(prompt, emsg, x, y, cc, state = game) {
 // C ref: cmd.c getdir() (3958-4098). Returns 1 when u.dx/u.dy/u.dz name a
 // direction and 0 otherwise, exactly as C does.
 //
-// Two inputs stop here. The simulated-mouse key needs getpos(); '^R' needs
-// docrt_flags() and the retry loop above got_dirsym; and confdir() stops for
-// an impaired hero. help_dir() is ported and displays the direction-key window
+// The simulated-mouse key needs getpos(); confdir() stops for an impaired
+// hero. help_dir() is ported and displays the direction-key window
 // when cmdassist is set (the default). A requested help page retries the
 // direction prompt as cmd.c does at its retry label.
 export async function getdir(s, state = game) {
@@ -1610,10 +1611,14 @@ export async function getdir(s, state = game) {
         }
         needsPrompt = true;
 
-        if (redraw_cmd(dirsym, state)) {
-            throw new UnsupportedDirectionBoundaryError(
-                "'^R' repaints the screen and reissues the direction prompt",
-            );
+        if (fromPrompt && redraw_cmd(dirsym, state)) {
+            // cmd.c:4013-4015: refresh the current glyph buffer, then retry
+            // the prompt without adding the redraw key to CQ_REPEAT. A queued
+            // direction jumps past this check to got_dirsym in C.
+            // Planning clones have no terminal; the live replay owns the
+            // source redraw, while both paths retry the same input prompt.
+            if (state === game) await docrt({ refreshOnly: true });
+            continue;
         }
         if (fromPrompt && !state.in_doagain)
             cmdq_add_key(CQ_REPEAT, dirsym, state);
@@ -1715,7 +1720,10 @@ export async function get_count(
     state.program_state ??= {};
     const savedInputState = state.program_state.input_state;
     let key = inkey;
-    let count = 0;
+    // C uses a signed long here. Keep the decimal input exact through the
+    // LONG_MAX check and TTY echo; callers still receive Numbers for ordinary
+    // counts that JavaScript can represent exactly.
+    let count = 0n;
     let committedCount = 0;
     let first = inkey ? inkey - 0x30 : 0;
     let backspaced = false;
@@ -1726,14 +1734,10 @@ export async function get_count(
     const escape = commandBindings(state).specialKeys.escape ?? ESC;
 
     const storeCount = (value) => {
-        committedCount = value;
-        if (countOut && typeof countOut === 'object') countOut.value = value;
+        committedCount = value <= BigInt(Number.MAX_SAFE_INTEGER)
+            ? Number(value) : value;
+        if (countOut && typeof countOut === 'object') countOut.value = committedCount;
     };
-    const appendLongDigit = (value, digitValue) => {
-        const appended = value * 10 + digitValue;
-        return appended > Number.MAX_SAFE_INTEGER ? -1 : appended;
-    };
-
     for (;;) {
         if (inkey) {
             key = inkey;
@@ -1746,13 +1750,14 @@ export async function get_count(
         if (isDigit(key)) {
             const dgt = key - 0x30;
             count = appendLongDigit(count, dgt);
-            if (count < 0) count = 0;
-            else if (maxcount > 0 && count > maxcount) count = maxcount;
+            if (count < 0n) count = 0n;
+            else if (maxcount > 0 && count > BigInt(maxcount))
+                count = BigInt(maxcount);
             showzero = key === 0x30;
         } else if (key === BACKSPACE || key === DELETE) {
             if (!count && !echoalways) break;
             showzero = false;
-            count = Math.trunc(count / 10);
+            count /= 10n;
             backspaced = true;
         } else if (key === escape) {
             break;
@@ -1761,7 +1766,7 @@ export async function get_count(
             break;
         }
 
-        if (count > 9 || backspaced || echoalways) {
+        if (count > 9n || backspaced || echoalways) {
             clearTtyMessageWindow(state);
             let countMessage;
             if (backspaced && !count && !showzero) {
@@ -1909,7 +1914,7 @@ export function end_of_input(state = game) {
 export const ADMITTED_COMMANDS = Object.freeze([
     'wait', 'look', 'inventory', 'showspells', 'known', 'attributes', 'search',
     'prevmsg', 'versionshort',
-    'call', 'name',
+    'call', 'name', 'turn',
     'eat', 'engrave', 'apply', 'rub', 'open', 'close', 'down', 'up', 'drop', 'droptype', 'pickup', 'pay',
     'takeoff', 'takeoffall', 'remove', 'wear',
     'puton', 'quaff', 'read', 'zap', 'cast', 'reqmenu', 'fight', 'rush', 'run', 'repeat',
@@ -2318,18 +2323,22 @@ export async function do_repeat(state = game) {
     return result;
 }
 
-// C ref: cmd.c extcmd_via_menu() (752-889). The menu has one row per
-// accelerator at the matched prefix depth; selecting one more character
-// narrows the same command list until one exact extended command remains.
+// C ref: cmd.c extcmd_via_menu() (752-889). Group names by accelerator
+// for long choice lists, preserve descriptions for short lists, and wrap
+// long groups. Selecting a character narrows the same command list.
 export async function extcmd_via_menu(state = game) {
     let prefix = '';
     let matchLevel = 0;
+    // C keeps the largest description width across successive prefix menus.
+    let biggest = 0;
     for (;;) {
         const choices = extcmdlist.filter((entry) => {
             if (entry.flags & (CMD_NOT_AVAILABLE | INTERNALCMD)) return false;
             if (!(entry.flags & AUTOCOMPLETE)) return false;
             if (!state.wizard && (entry.flags & WIZMODECMD)) return false;
-            return entry.ef_txt.startsWith(prefix);
+            if (!entry.ef_txt.startsWith(prefix)) return false;
+            biggest = Math.max(biggest, entry.ef_desc.length);
+            return true;
         });
         if (choices.length === 0) return -1;
         if (choices.length > MAX_EXT_CMD) {
@@ -2339,18 +2348,46 @@ export async function extcmd_via_menu(state = game) {
         }
         if (choices.length === 1) return extcmdlist.indexOf(choices[0]);
 
-        const groups = new Map();
+        const onePerLine = choices.length < ROWNO - 3;
+        const items = [];
+        let previousAccelerator = null;
+        let previousName = '';
+        let prompt = '';
+        let count = 0;
+        let wasTooLong = false;
+        const flush = () => {
+            if (count) items.push({
+                selector: previousAccelerator,
+                value: previousAccelerator,
+                label: prompt.padEnd(biggest + 15),
+            });
+            count = 0;
+        };
         for (const entry of choices) {
             const accelerator = entry.ef_txt[matchLevel];
             if (!accelerator) continue;
-            if (!groups.has(accelerator)) groups.set(accelerator, []);
-            groups.get(accelerator).push(entry);
+            const newAccelerator = accelerator !== previousAccelerator;
+            if (newAccelerator || onePerLine) wasTooLong = false;
+            const wrapped = count >= 2
+                && prompt.length + 4 + entry.ef_txt.length
+                    >= Math.min(QBUFSZ, COLNO - 6);
+            if (newAccelerator || onePerLine || wrapped) {
+                flush();
+                if (wrapped && !newAccelerator && !onePerLine)
+                    wasTooLong = true;
+            }
+            previousAccelerator = accelerator;
+            if (!count || onePerLine) {
+                prompt = `${wasTooLong ? 'or ' : ''}${entry.ef_txt} [${entry.ef_desc}]`;
+            } else if (count === 1) {
+                prompt = `${wasTooLong ? 'or ' : ''}${previousName} or ${entry.ef_txt}`;
+            } else {
+                prompt += ` or ${entry.ef_txt}`;
+            }
+            previousName = entry.ef_txt;
+            count++;
         }
-        const items = [...groups].map(([accelerator, rows]) => ({
-            selector: accelerator,
-            value: accelerator,
-            label: rows.map((row) => `${row.ef_txt} [${row.ef_desc}]`).join(' or '),
-        }));
+        flush();
         const selected = await select_menu(state, {
             items,
             how: PICK_ONE,
@@ -5678,6 +5715,8 @@ export async function rhack(key, state = game, selectedPrefixEntry = null) {
             // rhack() reset gm.multi after one display instead of asking
             // moveloop_core() to repeat this no-time command.
             && command !== 'inventory'
+            // C sighted dolook returns ECMD_OK and clears its count after one look.
+            && !(command === 'look' && !heroIsBlind(state))
             && !Object.hasOwn(MOVEMENT_INTENTS, command)
             // These commands clear a count with their no-time result.
             && command !== 'wizsmell' && command !== 'wizkill'
@@ -5763,6 +5802,16 @@ export async function rhack(key, state = game, selectedPrefixEntry = null) {
         // ECMD reset/time tail as a directly selected extended command.
         if (queuedExtcmdEntry?.ef_funct === 'dosacrifice') {
             const res = await dosacrifice(state);
+            if (res & (ECMD_CANCEL | ECMD_FAIL)) resetCommandVars(state);
+            else if ((res & (ECMD_OK | ECMD_TIME)) === ECMD_OK)
+                resetCommandVars(state, state.multi < 0);
+            if (res & ECMD_TIME) commandTookTime(state);
+            return;
+        }
+        // C ref: cmd.c do_repeat() requeues the selected #pray row; rhack()
+        // invokes its function pointer just as doextcmd() does.
+        if (queuedExtcmdEntry?.ef_funct === 'dopray') {
+            const res = await dopray(state);
             if (res & (ECMD_CANCEL | ECMD_FAIL)) resetCommandVars(state);
             else if ((res & (ECMD_OK | ECMD_TIME)) === ECMD_OK)
                 resetCommandVars(state, state.multi < 0);
@@ -6443,6 +6492,16 @@ export async function rhack(key, state = game, selectedPrefixEntry = null) {
             // and GENERALCMD and no movement flag.
             await dotogglepickup(state);
             resetCommandVars(state, state.multi < 0);
+            return;
+        }
+        if (command === 'turn') {
+            // C cmd.c rhack() dispatches a directly bound extcmd row through
+            // its handler, with the same ECMD result accounting as #turn.
+            const res = await doturn(state);
+            if (res & (ECMD_CANCEL | ECMD_FAIL)) resetCommandVars(state);
+            else if ((res & (ECMD_OK | ECMD_TIME)) === ECMD_OK)
+                resetCommandVars(state, state.multi < 0);
+            if (res & ECMD_TIME) commandTookTime(state);
             return;
         }
         if (command === 'wizwish') {

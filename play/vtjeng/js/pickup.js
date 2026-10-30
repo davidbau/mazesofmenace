@@ -345,6 +345,10 @@ export async function encumber_msg(
 
     if (text) {
         await message(text, state);
+    }
+    // C dirties status for every capacity change, including the silent 5->4
+    // decrease which has no entry in DECREASED_BURDEN_MESSAGES.
+    if (oldCapacity !== newCapacity) {
         state.disp ??= {};
         state.disp.botl = true;
     }
@@ -753,18 +757,9 @@ export async function query_objlist(
                     ? curr.invlet
                     : (first && curr.oclass === COIN_CLASS ? '$' : undefined),
                 groupSelector,
-                // C uses doname_with_price(). Outside a shop (or for coins
-                // and punishment objects), get_cost_of_shop_item returns 0
-                // with nochrg=-1, so the ordinary name/remembered quote is
-                // identical. Keep the existing priced-name callee boundary
-                // for live shop stock, including its unsupported variants.
-                label: state.u.ushops?.[0] && curr.oclass !== COIN_CLASS
-                    && curr !== state.uball && curr !== state.uchain
-                    && curr.where === OBJ_FLOOR
-                    && in_rooms(curr.ox, curr.oy, SHOPBASE, state)[0]
-                        === state.u.ushops[0]
-                    ? doname_with_price(curr, state, { currencyName: currency })
-                    : donameFresh(curr, state),
+                // C always uses this naming mode, even without a shop quote.
+                // It also controls joining wizard weight into parentheses.
+                label: doname_with_price(curr, state, { currencyName: currency }),
                 value: curr,
                 glyphInfo,
             });
@@ -1012,7 +1007,9 @@ function preflightPickupObjects(selected, state) {
         && actionable.length === 1
         && object.where === OBJ_FLOOR
         && object.quan > 1
-        && selectedObject.count > 1
+        // C carry_count weighs the requested quantity even when it is one
+        // item from a larger floor stack.
+        && selectedObject.count >= 1
         && object.oclass !== COIN_CLASS
         && object.otyp !== LOADSTONE
         && !(object.otyp === BOULDER
@@ -1020,13 +1017,21 @@ function preflightPickupObjects(selected, state) {
         && !object.oartifact
         && object.otyp !== CORPSE
         && object.otyp !== SCR_SCARE_MONSTER;
+    // Gold has its own carry_count rounding and may admit fewer coins than
+    // requested. A single ordinary floor coin row must reach that live
+    // decision before any addinv projection is built.
+    const sourceCoinLift = exceedsCarryCapacity
+        && selected.length === 1
+        && actionable.length === 1
+        && object.where === OBJ_FLOOR
+        && object.oclass === COIN_CLASS;
     // pickup.c:750-798 has no aggregate-capacity rejection for a selected
     // list. It calls pickup_object() once per row, in menu order, so each
     // lift_object()/carry_count() decision sees the inventory left by the
     // preceding row. If the aggregate reaches the maximum capacity, don't
     // build addinv plans from that aggregate projection; defer every row to
-    // the live source-ordered path. Keep the special object and gold paths
-    // behind their existing preflight handling.
+    // the live source-ordered path. Special objects and gold retain their
+    // separate admission handling rather than entering this multi-row gate.
     const sourceMultiSelectionCapacityBoundary = exceedsCarryCapacity
         && selected.length > 1
         && actionable.length === selected.length
@@ -1039,7 +1044,7 @@ function preflightPickupObjects(selected, state) {
             && !obj.oartifact
             && obj.otyp !== CORPSE
             && obj.otyp !== SCR_SCARE_MONSTER);
-    if (exceedsCarryCapacity && !sourceZeroLift && !sourcePartialStackLift
+    if (exceedsCarryCapacity && !sourceZeroLift && !sourcePartialStackLift && !sourceCoinLift
         && !sourceMultiSelectionCapacityBoundary) {
         throw new UnsupportedPickupError(
             'pickup() requiring a partial or failed lift',
@@ -1056,7 +1061,7 @@ function preflightPickupObjects(selected, state) {
     // before pick_obj() reaches addinv(). Leave the addinv plan empty here so
     // the accepted answer can build it at that source position; a declined
     // lift must not reach inventory planning at all.
-    const deferAddinvForBurdenPrompt = sourcePartialStackLift
+    const deferAddinvForBurdenPrompt = sourcePartialStackLift || sourceCoinLift
         || sourceMultiSelectionCapacityBoundary
         || (!sourceZeroLift
             && calc_capacity(addedWeight, state) > promptLimit);
@@ -2766,16 +2771,16 @@ async function query_classes(action, objs, here, state) {
     if (bucx.jcnt) iletArr.push('P');
 
     const ilets = iletArr.join('');
+    let m_seen = false;
 
     // C: 194-260. Prompt loop — entered when iletct > 1.
     if (iletArr.length > 1) {
-    for (;;) {
+    askAgain: for (;;) {
         let oclasses = '';
         result.one_by_one = false;
         result.allflag = false;
         let not_everything = false;
         let filtered = false;
-        let m_seen = false;
 
         const qbuf =
             `What kinds of thing do you want to ${action}? [${ilets}]`;
@@ -2793,11 +2798,11 @@ async function query_classes(action, objs, here, state) {
                 // pickup.c marks contents as known after displaying them.
                 if (objs?.where === OBJ_CONTAINED)
                     objs.ocontainer.cknown = true;
-                continue;
+                continue askAgain;
             } else if (sym === 'i') {
                 // C discards display_inventory()'s key and resumes ask_again.
                 await display_inventory(null, true, state);
-                continue;
+                continue askAgain;
             } else if (sym === 'm') {
                 m_seen = true;
             } else if ('uBUCXP'.includes(sym)) {
@@ -2823,18 +2828,18 @@ async function query_classes(action, objs, here, state) {
             }
         }
 
+        result.selection = oclasses;
         if (m_seen) {
-            result.menu_on_request = -2;
+            result.menu_on_request = ((result.allflag || !oclasses.length) && !filtered)
+                ? -2 : -3;
             return result;
-        } else if (result.one_by_one || result.allflag || oclasses.length
-            || filtered) {
-            result.selection = oclasses;
-            result.ok = !not_everything || oclasses.length;
-            return result;
-        } else {
-            // No valid input -- re-prompt (goto ask_again in C).
-            continue;
         }
+        if (!oclasses.length && (!result.allflag || not_everything)) {
+            result.one_by_one = true;
+            result.allflag = false;
+        }
+        result.ok = true;
+        return result;
     }
     }
     // C: 261. Return TRUE when selection is set (single class or prompt).
