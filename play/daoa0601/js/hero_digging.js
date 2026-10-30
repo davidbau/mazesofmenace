@@ -37,7 +37,7 @@ import { heroIsBlind } from './senses.js';
 import { breakStatue, fractureRock } from './rock_breakage.js';
 import { heroStrengthDamageBonus, rollPhysicalWeaponDamageAgainstHero, } from './weapon_damage.js';
 import { isAxe, isPick, willWeld } from './weapon_type.js';
-import { vision_note_blocker_change } from './vision.js';
+import { unblock_point, vision_note_blocker_change } from './vision.js';
 // Peer dig modules; see docs/porting-status.md handoff for the split.
 import { digCheck, digCheckFailMessage, digHole } from './digging_terrain.js';
 import { addShopDamage, payForShopDamage, shopDig, } from './shop_damage.js';
@@ -190,12 +190,12 @@ function maybeHalfPhysical(damage, state) {
     return state.u.halfPhysicalDamage
         ? Math.ceil(damage / 2) : damage;
 }
-function feelNewsym(x, y, state) {
+async function feelNewsym(x, y, state) {
     // C display.c feel_newsym(): blind heroes feel the changed location.
     if (heroIsBlind(state))
-        feel_location(x, y);
+        await feel_location(x, y);
     else
-        newsym(x, y);
+        await newsym(x, y);
 }
 export async function placeTreeFruit(x, y, state = game, random = rn2) {
     // C mkobj.c rnd_treefruit_at(): mksobj_at(ROLL_FROM(treefruits), ...).
@@ -239,7 +239,7 @@ async function mkcavepos(x, y, dist, waslit, rockit, state) {
     else if (location.typ === ROOM) {
         return;
     }
-    vision_note_blocker_change(x, y);
+    unblock_point(x, y);
     location.seenv = 0;
     location.doormask = 0;
     if (dist < 3)
@@ -251,7 +251,7 @@ async function mkcavepos(x, y, dist, waslit, rockit, state) {
     if (visibilityRow)
         visibilityRow[x] = dist < 3 ? (IN_SIGHT | COULD_SEE) : COULD_SEE;
     location.typ = rockit ? STONE : ROOM;
-    feelNewsym(x, y, state);
+    await feelNewsym(x, y, state);
 }
 // C dig.c mkcavearea(): the Earth plane's collapsing/created cave.
 async function mkcavearea(rockit, state) {
@@ -291,7 +291,7 @@ async function mkcavearea(rockit, state) {
         heroLocation.typ = ROOM;
         if (waslit)
             heroLocation.waslit = true;
-        newsym(hero.ux, hero.uy);
+        await newsym(hero.ux, hero.uy);
     }
     state.vision_full_recalc = 1;
 }
@@ -594,7 +594,7 @@ export async function continueHeroDigging(state = game) {
         }
         if (!cleanedUp) {
             vision_note_blocker_change(dpx, dpy);
-            feelNewsym(dpx, dpy, state);
+            await feelNewsym(dpx, dpy, state);
             if (digtxt && !digging.quiet)
                 await pline(digtxt);
             if (dmgtxt)
@@ -610,7 +610,7 @@ export async function continueHeroDigging(state = game) {
                 if (await triggerBoobyTrap('door', { state }))
                     return false;
                 vision_note_blocker_change(dpx, dpy);
-                newsym(dpx, dpy);
+                await newsym(dpx, dpy);
             }
         }
         digging.lastdigtime = state.moves ?? 0;

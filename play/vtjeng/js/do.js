@@ -260,7 +260,7 @@ import {
 } from './invent.js';
 import { maybe_reset_pick } from './lock.js';
 import { mklev } from './mklev.js';
-import { makemon } from './makemon_create.js';
+import { makemon_runtime } from './makemon_create.js';
 import { fumaroles, movebubbles } from './mkmaze.js';
 import {
     healmon, kill_genocided_monsters, m_in_air, m_into_limbo, mnexto, mondied, newcham, pm_to_cham, set_ustuck,
@@ -3220,7 +3220,7 @@ export async function goto_level(
             // C resurrect() returns no value and is already the canonical
             // caller for this arm.
             await resurrect(state, {
-                makemon,
+                makemon: makemon_runtime,
                 redraw: newsym,
                 monArrive: (monster) => mon_arrive(monster, 'Wiz_arrive', {
                     state,
@@ -3341,7 +3341,7 @@ export async function goto_level(
 // C ref: do.c u_collide_m() (1410-1445). The hero has arrived on a square a
 // monster already holds -- one that came down with her, or one mklev() put on
 // the up staircase -- and one of the two has to move.
-async function u_collide_m(mtmp, state = game) {
+export async function u_collide_m(mtmp, state = game) {
     if (!mtmp || mtmp === state.u.usteed
         || mtmp !== m_at(state.u.ux, state.u.uy, state)) {
         // C's impossible() returns without moving anybody.

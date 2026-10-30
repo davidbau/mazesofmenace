@@ -143,6 +143,7 @@ import {
     dodrop, doddrop,
     dowipe,
     doup,
+    u_collide_m,
     UnsupportedDropError,
     UnsupportedLevelChangeError,
 } from './do.js';
@@ -2692,8 +2693,8 @@ export async function makemap_prepost(pre, wiztower = false, state = game) {
     );
     await losedogs({ state });
     await kill_genocided_monsters(state);
-    if (m_at(state.u.ux, state.u.uy, state))
-        note_unported('do.c u_collide_m');
+    const arrivalOccupant = m_at(state.u.ux, state.u.uy, state);
+    if (arrivalOccupant) await u_collide_m(arrivalOccupant, state);
     initrack(state);
     if (Punished(state)) {
         unplacebc(state);
@@ -2795,7 +2796,7 @@ async function dotravel_target(state = game) {
         await ttyPline('You are already here.', state);
         state.iflags.travelcc.x = 0;
         state.iflags.travelcc.y = 0;
-        state.iflags.getloc_travelmode = false;
+        // C returns before clearing travel mode on this current-square path.
         return ECMD_OK;
     }
 
@@ -5921,6 +5922,8 @@ export async function rhack(key, state = game, selectedPrefixEntry = null) {
             // returns from the command the player named. ECMD_TIME skips
             // reset_cmd_vars() and puts context.move back to TRUE; ECMD_OK,
             // ECMD_CANCEL and ECMD_FAIL all reset.
+            // C clears CQ_REPEAT before doextcmd dispatch, including #repeat.
+            cmdq_clear(CQ_REPEAT, state);
             let selectedEntry = null;
             const res = await failClosedCommand(
                 key, state,

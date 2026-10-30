@@ -1220,7 +1220,9 @@ async function finishElapsedTurnAfterHunger(state, random, { planning = false } 
         random,
         message: turnMessage,
         makemon_runtime,
-        stopOccupation: () => stop_occupation(state),
+        stopOccupation: (hookEnv = { state }) => stop_occupation(
+            hookEnv.state, { ...hookEnv, message: turnMessage },
+        ),
         unmul: (msg) => unmul(msg, state),
     });
     if (state.u.uhave?.amulet)
@@ -1265,7 +1267,7 @@ async function finishElapsedTurnAfterLevelEffects(state, { planning = false } = 
             await runUnmulAtTurnBoundary(state);
             /* if unmul caused a level change, take it now */
             if (state.u.utotype)
-                elapsedTurnBoundary('a level change deferred by unmul()');
+                await runDeferredGotoAtTurnBoundary(state);
             return { afterUnmul: true };
         }
     }

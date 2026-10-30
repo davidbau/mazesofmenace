@@ -179,7 +179,7 @@ export async function floatHeroDown(hmask = 0, emask = 0, state = game, previous
                 // handles the pile unlink/relink, maybe_unhide_at, and
                 // both newsym calls
                 await moveObject(chain, ball.ox, ball.oy, state);
-                newsym(hero.ux0, hero.uy0);
+                await newsym(hero.ux0, hero.uy0);
                 state.vision_full_recalc = 1; // in case the hero moved
             }
         }
@@ -191,7 +191,7 @@ export async function floatHeroDown(hmask = 0, emask = 0, state = game, previous
                 await plineWithContinuation(`You aren't able to maintain your hold on ${holdingMonsterName(hero.ustuck, state)}.`);
             }
             else {
-                await plineWithContinuation(`Startled, ${holdingMonsterSubject(hero.ustuck, state)} can no longer hold you!`);
+                await plineWithContinuation(`Startled, ${holdingMonsterName(hero.ustuck, state)} can no longer hold you!`);
             }
             setHeroGrip(null, state);
         }

@@ -22,7 +22,7 @@ import { revealMonsterAppearance } from './monster_appearance.js';
 import { monsterName } from './monster_name.js';
 import { removeMonsterFromGame } from './monster_departure.js';
 import { corpseName as corpseObjectName, objectCombatName, ownedObjectName } from './objnam.js';
-import { costlySpot, objectOwnershipPrefix } from './shk.js';
+import { costlySpot, objectOwnershipPrefix, restoreShopkeeperResidency } from './shk.js';
 import { stolenValue } from './shop_loss.js';
 import { restoreMonsterTraits } from './monster_traits.js';
 import { changeMonsterForm, restoreMonsterShape } from './monster_polymorph.js';
@@ -269,8 +269,9 @@ async function createRevivedMonster(corpse, location, state) {
         discardSavedBody(corpse);
     if (useSavedTraits) {
         restoreMonsterTraits(monster, savedTraits);
+        restoreShopkeeperResidency(monster, state);
         markQuestLeaderAlive(monster, state);
-        newsym(monster.mx, monster.my);
+        await newsym(monster.mx, monster.my);
         await restoreMonsterShape(monster, state);
         if (monster.mtame && !monster.isminion)
             await makePetWary(monster, { wasDead: true, state });
@@ -286,9 +287,9 @@ async function createRevivedMonster(corpse, location, state) {
     }
     if (monster.mundetected) {
         monster.mundetected = 0;
-        newsym(monster.mx, monster.my);
+        await newsym(monster.mx, monster.my);
     }
-    revealMonsterAppearance(monster);
+    await revealMonsterAppearance(monster);
     return { monster, twitchMessage: null };
 }
 async function retryRevival(corpse, state, currentTurn) {
@@ -321,7 +322,7 @@ async function displaceRevivalBlocker(corpse, state, currentTurn) {
         return;
     const wasVisible = canSeeMonster(occupant);
     const name = monsterName(occupant, { capitalized: true, state });
-    if (!(await randomMonsterRelocation(occupant, { state, flags: RLOC_NOMSG })))
+    if (!await randomMonsterRelocation(occupant, { state, flags: RLOC_NOMSG }))
         return;
     const nowVisible = canSeeMonster(occupant);
     if (wasVisible && !nowVisible) {

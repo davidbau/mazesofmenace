@@ -53,7 +53,7 @@ import {
 import { def_char_to_monclass, def_char_to_objclass } from './drawing.js';
 import { MAXMCLASSES } from './symbols.js';
 import { add_to_container, obj_extract_self, obfree, sobj_at } from './invent.js';
-import { UnsupportedMonsterCreationError, makemon, dmonsfree } from './makemon_create.js';
+import { UnsupportedMonsterCreationError, makemon, dmonsfree, set_mimic_sym } from './makemon_create.js';
 import { mkclass, rndmonnum } from './makemon.js';
 import { mineralize } from './mineralize.js';
 import { make_grave } from './grave.js';
@@ -227,7 +227,11 @@ import {
     PM_GIANT_ZOMBIE,
     PM_ETTIN_ZOMBIE,
     PM_VAMPIRE_LEADER,
+    PM_SMALL_MIMIC,
+    PM_LARGE_MIMIC,
+    PM_GIANT_MIMIC,
     S_HUMAN,
+    S_MIMIC,
     S_LICH,
     S_MUMMY,
     S_VAMPIRE,
@@ -513,7 +517,7 @@ function clear_level_structures() {
     lf.has_town = false;
     lf.wizard_bones = false;
     lf.corrmaze = false;
-    lf.temperature = 0;
+    lf.temperature = In_hell(g.u.uz, g) ? 1 : 0;
     lf.rndmongen = true;
     lf.deathdrops = true;
     lf.noautosearch = false;
@@ -1444,18 +1448,24 @@ export function mkinvk_check_wall(x, y, state = game) {
 // records the coder's icedpools choice only while a special level is being
 // initialized. The cloud arm clears engravings after the terrain write.
 function sel_set_ter(x, y, typ, lit, state, frame, random = rn2) {
+    const previous = state.level.at(x, y);
+    const wallFlags = previous && IS_WALL(previous.typ) ? previous.wall_info : null;
     if (!set_levltyp_lit(x, y, typ, lit, state, random)) return false;
     const location = state.level.at(x, y);
-    if (typ === SDOOR || IS_DOOR(typ)) {
-        if (typ === SDOOR) location.doormask = D_CLOSED;
+    const actualType = location.typ;
+    if (actualType === SDOOR || IS_DOOR(actualType)) {
+        // C retains the shared wall flags as the new ordinary door mask.
+        if (actualType === DOOR && wallFlags !== null)
+            location.doormask = wallFlags;
+        if (actualType === SDOOR) location.doormask = D_CLOSED;
         const left = x > 0 ? state.level.at(x - 1, y) : null;
         if (left && (IS_WALL(left.typ) || left.horizontal))
             location.horizontal = true;
-    } else if (typ === HWALL || typ === IRONBARS) {
+    } else if (actualType === HWALL || actualType === IRONBARS) {
         location.horizontal = true;
-    } else if (frame?.splev_init_present && typ === ICE) {
+    } else if (frame?.splev_init_present && actualType === ICE) {
         location.icedpool = frame.icedpools ? ICED_POOL : ICED_MOAT;
-    } else if (typ === CLOUD) {
+    } else if (actualType === CLOUD) {
         del_engr_at(x, y, state);
     }
     return true;
@@ -1789,6 +1799,7 @@ function lvlfill_solid(filling, lit, frame, state) {
             loc.flags = 0;
             loc.wall_info = 0;
             loc.doormask = 0;
+            loc.icedpool = 0;
             loc.horizontal = false;
             loc.roomno = 0;
             loc.edge = false;
@@ -3606,12 +3617,13 @@ function l_selection_check(value, frame) {
         throw new Error('Selection error');
     if (value.absolute)
         return value;
+    const origin = value.origin ?? frame;
     const sel = new ThemeroomSelection(null, true);
     const b = value.bounds();
     for (let x = b.lx; x <= b.hx; ++x)
         for (let y = b.ly; y <= b.hy; ++y)
             if (value.get(x, y))
-                sel.set(frame.xstart + x, frame.ystart + y, true);
+                sel.set(origin.xstart + x, origin.ystart + y, true);
     return sel;
 }
 
@@ -5522,10 +5534,9 @@ function walkfrom(x, y, typ, state, bounds) {
         // mz_move step 1: advance to intermediate cell and set it.
         x += dx[dir];
         y += dy[dir];
-        if (!IS_DOOR(state.level.at(x, y).typ)) {
-            state.level.at(x, y).typ = typ;
-            state.level.at(x, y).flags = 0;
-        }
+        // C guards only the starting/destination square. The intervening
+        // square is overwritten even if it was a door, without flag resets.
+        state.level.at(x, y).typ = typ;
         // mz_move step 2: advance to destination cell.
         x += dx[dir];
         y += dy[dir];
@@ -7228,8 +7239,12 @@ function dosdoor(x, y, aroom, type) {
         if (Is_rogue_level(game.u?.uz))
             loc.flags = D_NODOOR;
         if (loc.flags & D_TRAPPED) {
-            if (level_difficulty() >= 9 && !rn2(5)) {
+            if (level_difficulty() >= 9 && !rn2(5)
+                && !([PM_SMALL_MIMIC, PM_LARGE_MIMIC, PM_GIANT_MIMIC]
+                    .every(pm => game.mvitals[pm].mvflags & G_GONE))) {
                 loc.flags = D_NODOOR;
+                const mimic = makemon(mkclass(S_MIMIC, 0), x, y, NO_MM_FLAGS);
+                if (mimic) set_mimic_sym(mimic, { state: game });
             }
         }
     } else {

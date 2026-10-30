@@ -214,7 +214,7 @@ import {
     healmon, m_in_air, mnearto, mongone, newcham,
 } from './mon.js';
 import { mattackm, mdisplacem } from './mhitm.js';
-import { ranged_attk_available } from './mhitu.js';
+import { m_next2u, ranged_attk_available } from './mhitu.js';
 import {
     heroDeaf,
     heroUnaware,
@@ -1088,7 +1088,7 @@ export function m_can_break_boulder(monster) {
 // Riders skip the incantation; others spend mspec_used and print a message.
 // fracture_rock() is owned by zap.c; this source caller preserves the shared
 // rock conversion and map updates after monster-only messaging and billing.
-async function m_break_boulder(mtmp, x, y, env = {}) {
+export async function m_break_boulder(mtmp, x, y, env = {}) {
     const state = env.state ?? game;
     const random = env.random ?? { rn1 };
     const message = env.message ?? ttyPline;
@@ -2418,6 +2418,8 @@ export async function wield_pre_move_weapon(monster, range, rawEnv = {}) {
 export async function dochug(monster, rawEnv = {}) {
     const state = rawEnv.state ?? game;
     const random = rawEnv.random ?? { rn2, rnd };
+    // C captures mdat before movement; a trap may polymorph this monster.
+    const preMoveSpecies = monster.data;
     const preflight = requireDochugOperation(rawEnv, 'preflight');
     const usePreMoveItems = requireDochugOperation(rawEnv, 'usePreMoveItems');
     const moveMonster = requireDochugOperation(rawEnv, 'moveMonster');
@@ -2730,15 +2732,19 @@ export async function dochug(monster, rawEnv = {}) {
         }
         if (status === MMOVE_DIED) return 1;
         if (status === MMOVE_MOVED) {
-            // C also releases a confused grabber and disturbs buried zombies
-            // for a grounded mover; neither is reachable here.
+            // C ref: monmove.c:934-936. A confused holder can wander beyond
+            // adjacency; release it immediately, before helpless/ranged gates.
+            // unstuck() receives this caller's RNG and state, which preserves
+            // cooldown draws in live play and mutates only the planning clone.
+            if (monster === state.u.ustuck && !m_next2u(monster, state))
+                await unstuck(monster, state, env);
             /* Maybe it stepped on a trap and fell asleep... */
             if (helpless(monster)) return 0;
             /* Monsters can move and then shoot on same turn;
                our hero can't.  Is that fair? */
             const shootsAfterMoving = !range.nearby
                 && (ranged_attk_available(monster, env)
-                    || attacktype(monster.data, AT_WEAP)
+                    || attacktype(preMoveSpecies, AT_WEAP)
                     || find_offensive(monster, env));
             if (!shootsAfterMoving) {
                 // monmove.c:953-954 returns mattacku() when this mover still
