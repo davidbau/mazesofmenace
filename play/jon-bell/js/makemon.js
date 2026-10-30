@@ -1,6 +1,9 @@
+import { pline_The, urgent_pline } from './display.js';
+import { pline_mon as pline_mon_real } from './display.js';
 import { Mgender } from './do_name.js';
 import { ledger_no as ledger_no_real } from './bones.js';
 import { On_W_tower_level as On_W_tower_level_real } from './teleport.js';
+import { has_ceiling as has_ceiling_real } from './throw_vertical.js';
 import { pooleffects_is_lava as is_lava_real } from './cmd.js';
 import { expels_gu } from './mhitu.js';
 import { stop_occupation } from './allmain.js';
@@ -87,11 +90,12 @@ import { MKOBJ_OC_PROB } from './mkobj_data.js';
 import { DEAF, MM_NOMSG } from './const.js';
 import { verbalize, set_msg_xy as set_msg_xy_mm } from './cmd.js';
 import { a_monnam } from './mhitm.js';
+import { is_youmonst, attacktype as attacktype_real } from './mhitm.js';
 import { rndmonnam } from './do_name.js';
 import { paralyze_monst } from './dogmove.js';
 import { observe_object, discover_object } from './o_init.js';
 import { g_at, surface, ceiling as ceiling_real, docall } from './cmd.js';
-import { sp_levchn_lookup, mksobj, next_ident, set_corpsenm, add_to_container, engr_at, set_bknown, makemon, Can_dig_down, start_corpse_timeout, start_glob_timeout } from './mklev.js';
+import { sp_levchn_lookup, mksobj, next_ident, set_corpsenm, add_to_container, engr_at, set_bknown, makemon, Can_dig_down, start_corpse_timeout, start_glob_timeout, stairway_at } from './mklev.js';
 import { mongets } from './m_initweap.js';
 import { builds_up } from './dungeon.js';
 import { ESHK } from './const.js';
@@ -113,7 +117,7 @@ import { an, the, makeplural, makesingular, vtense, singular, doname, distant_na
  * imports several exports FROM this file); resolves fine because both sides
  * bind a hoisted function declaration, the same pattern already used for the
  * teleport.js / wizcmds.js cycle above. */
-import { can_carry, mondied_dm, dog_nutrition } from './dogmove.js';
+import { can_carry, mondied_dm, dog_nutrition, dmgtype as dmgtype_real } from './dogmove.js';
 import { def_char_to_monclass } from './drawing.js';
 import { weight } from './weight.js';
 import { Monnam } from './mcastu.js';
@@ -153,7 +157,7 @@ const PLNMSG_enum_MM = PLNMSG_MON_TAKES_OFF_ITEM + 1;
 import { title_to_mon } from './mhitm.js';  /* C botl.c:366 — name_to_monplus's rank-title fallback */
 /* C mondata.c:1191 pronoun_gender() — mhe()'s body below. */
 import { pronoun_gender as pronoun_gender_mm } from './mhitm.js';
-import { mongone, healmon, bcsign, newcham, get_iter_mons as get_iter_mons_real } from './mklev.js';
+import { mongone, healmon, bcsign, newcham, get_iter_mons as get_iter_mons_real, monnear as monnear_real } from './mklev.js';
 import { mon_has_special } from './mcastu.js';
 import { unblock_point } from './vision.js';
 import { dunlev } from './dungeon.js';
@@ -1219,15 +1223,7 @@ function wrongElemType(row, mndx) {
     const mlet = row[0];
     const mf1 = row[6]; /* mflags1 at row[6] (row[5] is mr1 resistance bitfield) */
     if (mlet === S_ELEMENTAL) {
-        if (mndx === PM_AIR_ELEMENTAL)
-            return !Is_airlevel(uz);
-        if (mndx === PM_FIRE_ELEMENTAL)
-            return !Is_firelevel(uz);
-        if (mndx === PM_EARTH_ELEMENTAL)
-            return !Is_earthlevel(uz);
-        if (mndx === PM_WATER_ELEMENTAL)
-            return !Is_waterlevel(uz);
-        return true;
+        return !isHomeElementalMndx(mndx); /* C makemon.c:59 */
     }
     if (Is_earthlevel(uz)) {
         /* no restrictions */
@@ -1946,7 +1942,7 @@ function isClingerMndx(mndx) {
 /** C dungeon.c:1684 has_ceiling(lev) — TRUE everywhere except endgame
  * non-earth levels (which have no ceiling to cling to / float against). */
 function has_ceiling(lev) {
-    return !(In_endgame(lev) && !Is_earthlevel(lev));
+    return has_ceiling_real(lev);
 }
 export function m_in_air(mtmp) {
     const pmidx = mtmp?.data?.pmidx;
@@ -3286,15 +3282,11 @@ function m_seenres(mtmp, mask) {
 }
 /* monnear: monster near target coordinates (diagonal/orthogonal */ 
 export function monnear(mtmp, x, y) {
-    const dx = Math.abs(mtmp.mx - x), dy = Math.abs(mtmp.my - y);
-    /* C mon.c:2461: dist2 == 2 && NODIAG(mon) -> not near */
-    if (dx === 1 && dy === 1 && ((mtmp.data?.pmidx ?? mtmp.mnum ?? mtmp.mndx) | 0) === 116)
-        return false;
-    return dx <= 1 && dy <= 1;
+    return monnear_real(mtmp, x, y); /* C mon.c:2476, shared NODIAG test. */
 }
 /* dmgtype: check if monster has a given damage type in any attack */
 function dmgtype(ptr, dtyp) {
-    return dmgtype_fromattack(ptr, dtyp, AT_ANY) !== null;
+    return dmgtype_real(ptr, dtyp);
 }
 /* C include/mondata.h:215
  *   #define hates_light(ptr) ((ptr) == &mons[PM_GREMLIN])
@@ -4097,11 +4089,11 @@ async function precheck(mtmp, otmp) {
             const mon = await makemon(permonstTemplate(PM_GHOST_MM), cc.x | 0, cc.y | 0, MM_NOMSG);
             if (!mon) {
                 if (vis)
-                    pline(empty);
+                    await pline(empty);
             } else {
                 if (vis) {
-                    pline(`As ${mon_nam(mtmp)} opens the bottle, an enormous ${Hallucination_mm() ? rndmonnam() : 'ghost'} emerges!`);
-                    pline(`${Monnam(mtmp)} is frightened to death, and unable to move.`);
+                    await pline(`As ${mon_nam(mtmp)} opens the bottle, an enormous ${Hallucination_mm() ? rndmonnam() : 'ghost'} emerges!`);
+                    await pline(`${Monnam(mtmp)} is frightened to death, and unable to move.`);
                 }
                 paralyze_monst(mtmp, 3);
             }
@@ -4117,11 +4109,11 @@ async function precheck(mtmp, otmp) {
             const mon = await makemon(permonstTemplate(PM_DJINNI_MM), cc.x | 0, cc.y | 0, MM_NOMSG);
             if (!mon) {
                 if (vis)
-                    pline(empty);
+                    await pline(empty);
             } else {
                 if (vis)
-                    pline_mon(mon, `In a cloud of smoke, ${a_monnam(mon)} emerges!`);
-                pline(`${vis ? Monnam(mon) : 'Something'} speaks.`);
+                    await pline_mon(mon, `In a cloud of smoke, ${a_monnam(mon)} emerges!`);
+                await pline(`${vis ? Monnam(mon) : 'Something'} speaks.`);
                 if (rn2(2)) {
                     await verbalize('You freed me!');
                     mon.mpeaceful = 1;
@@ -4129,7 +4121,7 @@ async function precheck(mtmp, otmp) {
                 } else {
                     await verbalize('It is about time.');
                     if (vis)
-                        pline(`${Monnam(mon)} vanishes.`);
+                        await pline(`${Monnam(mon)} vanishes.`);
                     await mongone(mon);
                 }
             }
@@ -4142,7 +4134,7 @@ async function precheck(mtmp, otmp) {
          * d(spe+2,6), is used up, and may kill the zapper. */
         const dam = d((otmp.spe | 0) + 2, 6);
         if (vis) {
-            pline_mon(mtmp, `${Monnam(mtmp)} zaps ${an(xname(otmp))}, which suddenly explodes!`);
+            await pline_mon(mtmp, `${Monnam(mtmp)} zaps ${an(xname(otmp))}, which suddenly explodes!`);
         } else {
             const range = couldsee(mtmp.mx, mtmp.my) ? (BOLT_LIM_MM + 1) : (BOLT_LIM_MM - 3);
             await You_hear(`a zap and an explosion ${mdistu(mtmp) <= range * range ? 'nearby' : 'in the distance'}.`);
@@ -4161,6 +4153,7 @@ async function precheck(mtmp, otmp) {
     return 0;
 }
 const POTION_CLASS_MM = 8, WAND_CLASS_MM = 11, WAND_BACKFIRE_CHANCE_MM = 100;
+export { precheck }; /* C muse.c:58-160: shared by all monster item uses. */
 const PM_GHOST_MM = 287, PM_DJINNI_MM = 315;
 /* ---------------------------------------------------------------------------
  * mquaffmsg(mtmp, otmp) — C ref: nethack-c/src/muse.c:292-302 (staticfn).
@@ -4212,7 +4205,7 @@ async function mquaffmsg(mtmp, otmp) {
     if (canseemon(mtmp)) {
         /* C muse.c:295-297 */
         observe_object(otmp);
-        pline_mon(mtmp, `${Monnam(mtmp)} drinks ${await mquaffmsg_singular_doname(otmp)}!`);
+        await pline_mon(mtmp, `${Monnam(mtmp)} drinks ${await mquaffmsg_singular_doname(otmp)}!`);
     } else if (!mquaffmsg_Deaf()) {
         /* C muse.c:298-301 — Soundeffect() is audio only. */
         await mquaffmsg_You_hear('a chugging sound.');
@@ -4701,7 +4694,6 @@ function is_plural(obj) { return (obj?.quan | 0) !== 1; }
  * mklev.js itself (the C mon.c:5292-5306 Rider/birth-limit fall-through),
  * which is provably a no-op for every pre-existing caller: none of them ever
  * entered that branch, so its contents were previously dead code. */
-function pline_The(msg) { pline(msg); }
 /* C trap.h:98-101 — enum trap_effect { Trap_Effect_Finished = 0,
  * Trap_Caught_Mon = 1, Trap_Killed_Mon = 2 }.  js/trap.js:163 spells the same
  * constant module-privately; this is the value, not a body, so there is no
@@ -4761,7 +4753,6 @@ export function trapname(ttyp, override) {
     }
     return DEFSYM_EXPLANATION[_TRAPNAME_S_ARROW_TRAP + (ttyp | 0) - 1] ?? 'trap';
 }
-function urgent_pline(msg) { return urgent_pline_disp(msg); }
 
 const fakename = ["someone", "something"];
 const HEAVY_IRON_BALL = 477;
@@ -4799,11 +4790,9 @@ function unbless_potion(otmp) {
     otmp.blessed = 0;
 }
 
-/* C ref: you.h:323 mhim(mtmp) = genders[pronoun_gender(mtmp, PRONOUN_HALLU)].him.
- * pronoun_gender/genders[] is a distinct unported subsystem (see mhe() at the
- * bottom of this file); js/mhitu.js:3414 already spells the same fallback. */
+/* C you.h:323, role.c genders[]: PRONOUN_HALLU also draws rn2(4). */
 function mhim(mtmp) {
-    return (mtmp?.female | 0) ? "her" : "him";
+    return ["him", "her", "it", "them"][pronoun_gender_mm(mtmp, 2)];
 }
 
 /* C ref: muse.c:2872 mcureblindness(mon, verbos) — "cure mon's blindness
@@ -4813,7 +4802,7 @@ export function mcureblindness(mon, verbos) {
         mon.mcansee = 1;
         mon.mblinded = 0;
         if (verbos && haseyes(mon.data))
-            pline_mon(mon, `${Monnam(mon)} can see again.`);
+            return pline_mon(mon, `${Monnam(mon)} can see again.`);
     }
 }
 
@@ -4898,18 +4887,18 @@ export async function use_defensive(mtmp) {
         /* unlike most defensive cases, unicorn horn object is optional */
         if (vismon) {
             if (otmp)
-                pline_mon(mtmp, `${Monnam(mtmp)} uses a unicorn horn!`);
+                await pline_mon(mtmp, `${Monnam(mtmp)} uses a unicorn horn!`);
             else
-                pline_The(`The tip of ${mon_nam(mtmp)}'s horn glows!`);
+                await pline_The(`tip of ${mon_nam(mtmp)}'s horn glows!`);
         }
         if (!mtmp.mcansee) {
-            mcureblindness(mtmp, vismon);
+            await mcureblindness(mtmp, vismon);
         } else if (mtmp.mconf || mtmp.mstun) {
             mtmp.mconf = mtmp.mstun = 0;
             if (vismon)
-                pline_mon(mtmp, `${Monnam(mtmp)} seems steadier now.`);
+                await pline_mon(mtmp, `${Monnam(mtmp)} seems steadier now.`);
         } else {
-            impossible("No need for unicorn horn?");
+            await impossible("No need for unicorn horn?");
         }
         return 2;
     case MUSE_BUGLE:
@@ -4918,7 +4907,7 @@ export async function use_defensive(mtmp) {
         if (!otmp)
             throw new Error("use_defensive: no bugle");
         if (vismon) {
-            pline_mon(mtmp, `${Monnam(mtmp)} plays ${await doname(otmp)}!`);
+            await pline_mon(mtmp, `${Monnam(mtmp)} plays ${await doname(otmp)}!`);
         } else if (!mquaffmsg_Deaf()) {
             await mquaffmsg_You_hear('a bugle playing reveille!');
         }
@@ -4986,10 +4975,10 @@ export async function use_defensive(mtmp) {
             const nlev = random_teleport_level();
             if (mon_has_amulet(mtmp) || In_endgame(game.u.uz)) {
                 if (vismon)
-                    pline_mon(mtmp, `${Monnam(mtmp)} seems very disoriented for a moment.`);
+                    await pline_mon(mtmp, `${Monnam(mtmp)} seems very disoriented for a moment.`);
             } else if (nlev === depth_of_level(game.u.uz)) {
                 if (vismon)
-                    pline_mon(mtmp, `${Monnam(mtmp)} shudders for a moment.`);
+                    await pline_mon(mtmp, `${Monnam(mtmp)} shudders for a moment.`);
             } else {
                 const flev = {};
                 get_level(flev, nlev);
@@ -5047,7 +5036,7 @@ export async function use_defensive(mtmp) {
             || IS_DRAWBRIDGE(dg_typ)
             || (is_drawbridge_wall(mtmp.mx | 0, mtmp.my | 0) >= 0)
             || stairway_at(mtmp.mx | 0, mtmp.my | 0)) {
-            pline_The("The digging ray is ineffective.");
+            await pline_The("digging ray is ineffective.");
             return 2;
         }
         /* C muse.c:932-951 — the no-dig-down arm: try a PIT instead.
@@ -5059,13 +5048,13 @@ export async function use_defensive(mtmp) {
             if (t_at(mtmp.mx | 0, mtmp.my | 0)
                 || !(t = await maketrap(mtmp.mx | 0, mtmp.my | 0, PIT))) {
                 if (vismon)
-                    pline_The(`The ${surface(mtmp.mx | 0, mtmp.my | 0)} here is too hard to dig in.`);
+                    await pline_The(`${surface(mtmp.mx | 0, mtmp.my | 0)} here is too hard to dig in.`);
                 return 2;
             }
             /* pit creation succeeded */
             if (vis) {
                 seetrap(t);
-                pline_mon(mtmp, `${Monnam(mtmp)} has made a pit in the ${surface(mtmp.mx | 0, mtmp.my | 0)}.`);
+                await pline_mon(mtmp, `${Monnam(mtmp)} has made a pit in the ${surface(mtmp.mx | 0, mtmp.my | 0)}.`);
             }
             await fill_pit(mtmp.mx | 0, mtmp.my | 0);
             recalc_block_point(mtmp.mx | 0, mtmp.my | 0);
@@ -5084,11 +5073,11 @@ export async function use_defensive(mtmp) {
         recalc_block_point(mtmp.mx | 0, mtmp.my | 0);
         seetrap(t);
         if (vis) {
-            pline_mon(mtmp, `${Monnam(mtmp)} has made a hole in the ${surface(mtmp.mx | 0, mtmp.my | 0)}.`);
-            pline_mon(mtmp, `${Monnam(mtmp)} ${isFlyerMndx((mtmp.data?.pmidx ?? mtmp.data?.mnum) | 0) ? "dives" : "falls"} through...`);
+            await pline_mon(mtmp, `${Monnam(mtmp)} has made a hole in the ${surface(mtmp.mx | 0, mtmp.my | 0)}.`);
+            await pline_mon(mtmp, `${Monnam(mtmp)} ${isFlyerMndx((mtmp.data?.pmidx ?? mtmp.data?.mnum) | 0) ? "dives" : "falls"} through...`);
         } else if (!mquaffmsg_Deaf()) {
             /* C muse.c:966-968 — Soundeffect() is a no-op in this tty port. */
-            You_hear(`something crash through the ${surface(mtmp.mx | 0, mtmp.my | 0)}.`);
+            await You_hear(`something crash through the ${surface(mtmp.mx | 0, mtmp.my | 0)}.`);
         }
         await fill_pit(mtmp.mx | 0, mtmp.my | 0);
         /* "we made sure that there is a level for mtmp to go to" */
@@ -5183,7 +5172,7 @@ export async function use_defensive(mtmp) {
         await m_flee(mtmp);
         t = t_at(game.trapx, game.trapy);
         if (vis) {
-            pline_mon(mtmp, `${Monnam(mtmp)} ${vtense(fakename[0], locomotion(mtmp.data, "jump"))} into a ${trapname(t.ttyp, false)}!`);
+            await pline_mon(mtmp, `${Monnam(mtmp)} ${vtense(fakename[0], locomotion(mtmp.data, "jump"))} into a ${trapname(t.ttyp, false)}!`);
         }
         /* if trap was in a concealed niche, it's no longer concealed */
         reveal_trap(t, vis);
@@ -5209,12 +5198,12 @@ export async function use_defensive(mtmp) {
         if (Inhell() && mon_has_amulet(mtmp) && !rn2(4)
             && (dunlev(game.u.uz) < dunlevs_in_dungeon(game.u.uz) - 3)) {
             if (vismon)
-                pline(`As ${mon_nam(mtmp)} climbs the stairs, a mysterious force momentarily surrounds ${mhim(mtmp)}...`);
+                await pline(`As ${mon_nam(mtmp)} climbs the stairs, a mysterious force momentarily surrounds ${mhim(mtmp)}...`);
             /* simpler than for the player; this will usually be the Wizard */
             await migrate_to_level(mtmp, ledger_no(game.u.uz) + 1, MIGR_RANDOM, null);
         } else {
             if (vismon)
-                pline_mon(mtmp, `${Monnam(mtmp)} escapes upstairs!`);
+                await pline_mon(mtmp, `${Monnam(mtmp)} escapes upstairs!`);
             await migrate_to_level(mtmp, ledger_no(stway.tolev), MIGR_STAIRS_DOWN, null);
         }
         return 2;
@@ -5224,7 +5213,7 @@ export async function use_defensive(mtmp) {
         if (!stway)
             return 0;
         if (vismon)
-            pline_mon(mtmp, `${Monnam(mtmp)} escapes downstairs!`);
+            await pline_mon(mtmp, `${Monnam(mtmp)} escapes downstairs!`);
         await migrate_to_level(mtmp, ledger_no(stway.tolev), MIGR_STAIRS_UP, null);
         return 2;
     case MUSE_UP_LADDER:
@@ -5233,7 +5222,7 @@ export async function use_defensive(mtmp) {
         if (!stway)
             return 0;
         if (vismon)
-            pline_mon(mtmp, `${Monnam(mtmp)} escapes up the ladder!`);
+            await pline_mon(mtmp, `${Monnam(mtmp)} escapes up the ladder!`);
         await migrate_to_level(mtmp, ledger_no(stway.tolev), MIGR_LADDER_DOWN, null);
         return 2;
     case MUSE_DN_LADDER:
@@ -5242,7 +5231,7 @@ export async function use_defensive(mtmp) {
         if (!stway)
             return 0;
         if (vismon)
-            pline_mon(mtmp, `${Monnam(mtmp)} escapes down the ladder!`);
+            await pline_mon(mtmp, `${Monnam(mtmp)} escapes down the ladder!`);
         await migrate_to_level(mtmp, ledger_no(stway.tolev), MIGR_LADDER_UP, null);
         return 2;
     case MUSE_SSTAIRS:
@@ -5254,7 +5243,7 @@ export async function use_defensive(mtmp) {
             return await mon_escape(mtmp, vismon);
         }
         if (vismon)
-            pline_mon(mtmp, `${Monnam(mtmp)} escapes ${stway.up ? "up" : "down"}stairs!`);
+            await pline_mon(mtmp, `${Monnam(mtmp)} escapes ${stway.up ? "up" : "down"}stairs!`);
         /* going from the Valley to Castle (Stronghold) has no sstairs to
            target, but having gs.sstairs.<sx,sy> == <0,0> will work the same as
            specifying MIGR_RANDOM when mon_arrive() eventually places the
@@ -5265,7 +5254,7 @@ export async function use_defensive(mtmp) {
         await m_flee(mtmp);
         t = t_at(game.trapx, game.trapy);
         if (vis) {
-            pline_mon(mtmp, `${Monnam(mtmp)} ${vtense(fakename[0], locomotion(mtmp.data, "jump"))} onto a ${trapname(t.ttyp, false)}!`);
+            await pline_mon(mtmp, `${Monnam(mtmp)} ${vtense(fakename[0], locomotion(mtmp.data, "jump"))} onto a ${trapname(t.ttyp, false)}!`);
         }
         /* if trap was in a concealed niche, it's no longer concealed */
         reveal_trap(t, vis);
@@ -5282,43 +5271,43 @@ export async function use_defensive(mtmp) {
         return 2;
     case MUSE_POT_HEALING:
         if (!otmp)
-            throw new Error("use_defensive: no potion of healing");
+            throw new Error("use_defensive: no potioh of healing");
         await mquaffmsg(mtmp, otmp);
         i = d(6 + 2 * bcsign(otmp), 4);
         healmon(mtmp, i, 1);
         if (!otmp.cursed && !mtmp.mcansee)
-            mcureblindness(mtmp, vismon);
+            await mcureblindness(mtmp, vismon);
         if (vismon)
-            pline_mon(mtmp, `${Monnam(mtmp)} looks better.`);
+            await pline_mon(mtmp, `${Monnam(mtmp)} looks better.`);
         if (oseen)
             makeknown(POT_HEALING);
         await m_useup(mtmp, otmp);
         return 2;
     case MUSE_POT_EXTRA_HEALING:
         if (!otmp)
-            throw new Error("use_defensive: no potion of extra healing");
+            throw new Error("use_defensive: no potioh of extra healing");
         await mquaffmsg(mtmp, otmp);
         i = d(6 + 2 * bcsign(otmp), 8);
         healmon(mtmp, i, otmp.blessed ? 5 : 2);
         if (!mtmp.mcansee)
-            mcureblindness(mtmp, vismon);
+            await mcureblindness(mtmp, vismon);
         if (vismon)
-            pline_mon(mtmp, `${Monnam(mtmp)} looks much better.`);
+            await pline_mon(mtmp, `${Monnam(mtmp)} looks much better.`);
         if (oseen)
             makeknown(POT_EXTRA_HEALING);
         await m_useup(mtmp, otmp);
         return 2;
     case MUSE_POT_FULL_HEALING_DEF:
         if (!otmp)
-            throw new Error("use_defensive: no potion of full healing");
+            throw new Error("use_defensive: no potioh of full healing");
         await mquaffmsg(mtmp, otmp);
         if ((otmp.otyp | 0) === POT_SICKNESS)
             unbless_potion(otmp); /* Pestilence */
         healmon(mtmp, mtmp.mhpmax, otmp.blessed ? 8 : 4);
         if (!mtmp.mcansee && (otmp.otyp | 0) !== POT_SICKNESS)
-            mcureblindness(mtmp, vismon);
+            await mcureblindness(mtmp, vismon);
         if (vismon)
-            pline_mon(mtmp, `${Monnam(mtmp)} looks completely healed.`);
+            await pline_mon(mtmp, `${Monnam(mtmp)} looks completely healed.`);
         if (oseen)
             makeknown(otmp.otyp);
         await m_useup(mtmp, otmp);
@@ -5332,7 +5321,7 @@ export async function use_defensive(mtmp) {
             const save_quan = otmp.quan;
             otmp.quan = 1;
             const name = await distant_name(otmp, doname);
-            pline_mon(mtmp, `${Monnam(mtmp)} ${otmp.otyp === TIN ? 'opens and eats the contents of' : 'eats'} ${name}.`);
+            await pline_mon(mtmp, `${Monnam(mtmp)} ${otmp.otyp === TIN ? 'opens and eats the contents of' : 'eats'} ${name}.`);
             otmp.quan = save_quan;
         } else if (!mquaffmsg_Deaf()) {
             await You_hear('chewing.');
@@ -5342,7 +5331,7 @@ export async function use_defensive(mtmp) {
             mtmp.mconf = mtmp.mstun = 0;
             const pm = mtmp.data?.pmidx;
             if (vismon && ![PM_BAT, PM_GIANT_BAT, PM_VAMPIRE_BAT, PM_STALKER].includes(pm))
-                pline_mon(mtmp, `${Monnam(mtmp)} seems steadier now.`);
+                await pline_mon(mtmp, `${Monnam(mtmp)} seems steadier now.`);
         }
         if (mtmp.mtame && !mtmp.isminion && nutrit > 0) {
             const edog = mtmp.mextra.edog;
@@ -5356,7 +5345,7 @@ export async function use_defensive(mtmp) {
     case 0:
         return 0; /* i.e. an exploded wand */
     default:
-        impossible(`${Monnam(mtmp)} wanted to perform action ${game.has_defense}?`);
+        await impossible(`${Monnam(mtmp)} wanted to perform action ${game.has_defense}?`);
         break;
     }
     return 0;
@@ -5632,7 +5621,7 @@ const LOADSTONE_OTYP = 471, LEASH_OTYP = 236;
  *   boolean attacktype(struct permonst *ptr, int atyp)
  *   { return attacktype_fordmg(ptr, atyp, AD_ANY) ? TRUE : FALSE; } */
 export function attacktype(ptr, atyp) {
-    return attacktype_fordmg(ptr, atyp, AD_ANY) ? true : false;
+    return attacktype_real(ptr, atyp);
 }
 export function hero_behind_chokepoint(mtmp) {
     const N_DIRS_MM = 8; /* C hack.h:655 N_DIRS = N_DIRS_Z - 2 */
@@ -5883,7 +5872,7 @@ function _onscary_vobj_at(x, y) {
  *                if (obj->owornmask & flag) return obj;
  *            return (struct obj *) 0; } } */
 export function which_armor(mon, flag) {
-    if (mon === game.youmonst) {
+    if (is_youmonst(mon)) {
         switch (flag) {
         case W_ARM:  return game.u.uarm;
         case W_ARMC: return game.u.uarmc;
@@ -5982,14 +5971,9 @@ export function mon_knows_traps(mtmp, ttyp) {
  *       return tmp;
  *   }
  * gs.stairs is game.stairs, the {sx,sy,up,isladder,u_traversed,tolev,next}
- * linked list built by js/mklev.js stairway_add (same node shape js/cmd.js's
- * private stairway_at already walks).  Returns the node or null. */
-export function stairway_at(x, y) {
-    let tmp = game.stairs;
-    while (tmp && !(tmp.sx === x && tmp.sy === y))
-        tmp = tmp.next;
-    return tmp ?? null;
-}
+ * linked list built by js/mklev.js stairway_add. All callers share its
+ * stairway_at implementation. Returns the node or null. */
+export { stairway_at };
 /* hard_helmet and resists_blnd were file-local throw-stubs here, shadowing
  * the real ports at js/do_wear.js:396 (C do_wear.c:567-573, already imported
  * by objnam.js and trap.js) and js/mhitm.js:3674 (C mondata.c:247-272,
@@ -6408,17 +6392,10 @@ function monsndx_mm(ptr) {
     if (!ptr) return -1 /* NON_PM */;
     return (ptr.pmidx != null ? ptr.pmidx : ptr.mndx != null ? ptr.mndx : -1) | 0;
 }
-/* C do_name.c pline_mon(mon, fmt, ...) — same "ignore mon, format+pline" shape
- * already used by js/mhitu.js's local pline_mon. Fire-and-forget (async
- * pline): grow_up must stay synchronous to match its `struct permonst *`
- * return contract. */
+/* C pline_mon(mon, fmt, ...) — callers await the message before changing form. */
 /* C pline.c:138-146: set_msg_xy to the hero (0,0) or the monster's square;
  * vpline's accessiblemsg prefix reads it. */
-function pline_mon(mtmp, msg) {
-    if (mtmp === game.youmonst) set_msg_xy_mm(0, 0);
-    else if (mtmp) set_msg_xy_mm(mtmp.mx, mtmp.my);
-    return pline(msg);
-}
+function pline_mon(mtmp, msg, ...args) { return pline_mon_real(mtmp, msg, ...args); }
 
 /**
  * C makemon.c:2049 grow_up(mtmp, victim) — a monster levels up (killed a
@@ -6479,11 +6456,11 @@ export async function grow_up(mtmp, victim) {
     mtmp.m_lev = (mtmp.m_lev | 0) + 1;
     if (mtmp.m_lev >= (MONS[newtype][1] | 0) && newtype !== oldtype) {
         ptr = permonstTemplate(newtype);
-        const fem = is_male(ptr) ? 0 : is_female(ptr) ? 1 : mtmp.female;
+        const fem = is_male(ptr) ? 0 : is_female(ptr) ? 1 : (mtmp.female ? 1 : 0);
 
         if (mvitalsGenod(newtype)) {
             if (canspotmon(mtmp))
-                pline(`As ${mon_nam(mtmp)} grows up into `
+                await pline(`As ${mon_nam(mtmp)} grows up into `
                     + `${an(monPmname(ptr.pmidx, Mgender(mtmp)))}, ${mhe(mtmp)} `
                     + `${nonliving(ptr) ? "expires" : "dies"}!`);
             set_mon_data(mtmp, ptr);
@@ -6493,7 +6470,7 @@ export async function grow_up(mtmp, victim) {
             const prefix = (mtmp.female && !fem) ? "male "
                 : (fem && !mtmp.female) ? "female " : "";
             const buf = prefix + monPmname(ptr.pmidx, fem);
-            pline_mon(mtmp, `${YMonnam(mtmp)} `
+            await pline_mon(mtmp, `${YMonnam(mtmp)} `
                 + `${(fem !== (mtmp.female ? 1 : 0)) ? "changes into"
                     : humanoid(ptr) ? "becomes" : "grows up into"} `
                 + `${an(buf)}.`);

@@ -356,7 +356,7 @@ export function adjattrib(ndx, incr, msgflg) {
             /* C attrib.c:166: decr = rn2(ATTRMIN(ndx) - ABASE(ndx) + 1) */
             const decr = rn2(RACE_ATTRMIN - abase[di] + 1);
             abase[di] = RACE_ATTRMIN;
-            amax[di] = (amax[di] | 0) - decr;
+            amax[di] = schar((amax[di] | 0) - decr);
             if (amax[di] < RACE_ATTRMIN)
                 amax[di] = RACE_ATTRMIN;
         }
@@ -409,7 +409,12 @@ export async function gainstr(otmp, incr, givemsg) {
             num = 1;
     }
     adjattrib(A_STR, otmp?.cursed ? -num : num, givemsg ? -1 : 1);
-    await flush_pending_messages();
+    /* C attrib.c:215 returns straight after adjattrib(): no flush_screen().
+     * Only let an in-flight MSGTYP_STOP pline finish; a screen flush here would
+     * run bot() and consume the SET_BOTL encumber_msg() (pickup.c:1999) leaves
+     * for the caller's next pline (eat.c:1684-1693 spinach tin: the use_up_tin
+     * weight drop must be what that pline's bot() paints). */
+    if (game._blockingPline) await game._blockingPline;
 }
 /* C attrib.c:489 void exercise(int i, boolean inc_or_dec)
  *

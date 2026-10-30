@@ -395,6 +395,11 @@ async function in_or_out_menu(promptText, box, outokay, inokay, alreadyused, mor
         statusClip = Math.max(0, prior.WIN_COL - 2);
     /* The wiped corner stays wiped under the menus that follow (nothing
      * repaints status until the next bot()), e.g. the category menu. */
+    /* A ':' look-inside re-enters this menu after the contents window; that
+     * window repainted no status, so the earlier wipe is still in place. */
+    const prevCarry = g._carryStatusClip;
+    if (statusClip === undefined && prevCarry && prevCarry.moves === g.moves)
+        statusClip = prevCarry.clip;
     g._carryStatusClip = statusClip !== undefined
         ? { clip: statusClip, moves: g.moves } : null;
     /* C wintty.c:1925-1928 — `!iflags.menu_overlay` drops the menu to offx 0 and
@@ -452,7 +457,13 @@ async function in_or_out_menu(promptText, box, outokay, inokay, alreadyused, mor
         /* C tty: any other non-accelerator key is ignored; menu stays up. */
     }
     g._pending_message = '';
-    await flush_screen(1);
+    /* No flush_screen() here: in_or_out_menu (pickup.c:3430-3476) returns straight
+     * to the caller, and gbuf cells changed since the last flush (hallucinatory
+     * see_monsters redraw) stay unprinted under the next window. */
+    /* The status rows this menu's predecessor wiped stay wiped (nothing runs
+     * bot() under select_menu's bot_disabled), so the getobj menu opened next
+     * (stash) clips them from the same offx. */
+    if (statusClip !== undefined) g._getobj_menu_win = { ...prior, WIN_COL: prior.WIN_COL - 1 }; /* getobj clips at WIN_COL - 1; this menu clipped at WIN_COL - 2 */
     return chosen;
 }
 
@@ -912,7 +923,8 @@ async function _tty_pick_any_menu_run(renderLines, items, winColFooter, prior = 
         if (clipPrior) g._pickinv_window = { ...(savedPW || {}), WIN_COL: prior.col };
         try {
             g._screen_output = build_window_screen(lines, WIN_COL, uac,
-                                                   tall ? 0 : clipPrior ? -1 : undefined);
+                                                   tall ? 0 : clipPrior ? -1
+                                                   : (carry && carry.moves === g.moves ? carry.clip : undefined));
         } finally {
             if (clipPrior) g._pickinv_window = savedPW;
         }
@@ -1091,6 +1103,7 @@ function _no_category_sel() {
  * which C emits from JUSTPICKED for either direction but which only a put-in
  * list can populate (pickup_prev is set on things the hero just picked up). */
 async function _query_category(contents, action, withJustPicked) {
+    const keptPrior = _priorPickMenu;
     _priorPickMenu = null;
 
     const _ir = (game.flags && game.flags.initrole != null) ? (game.flags.initrole | 0) : -1;
@@ -1133,9 +1146,11 @@ async function _query_category(contents, action, withJustPicked) {
 
     /* C pickup.c:1288 — a single category with at most one BUCX entry and no
      * unpaid/usedup rows needs no menu; the class is returned directly. */
-    if (ccount === 1 && !doUnpaid && num_buc_types <= 1)
+    if (ccount === 1 && !doUnpaid && num_buc_types <= 1) {
+        _priorPickMenu = keptPrior; /* no window dismissed: the put-in menu is still the last */
         return { menuShown: false, autopick: false, lootEverything: false,
                  allCategories: false, classes: new Set(present) };
+    }
 
     const show_a = ccount > 1;   /* ALL_TYPES is always in the take-out flags */
     const bits = game.flags?.paranoia_bits | 0;
@@ -1192,7 +1207,7 @@ async function _query_category(contents, action, withJustPicked) {
     }
 
     const render = () => {
-        const out = [`\x1b[7m${action} what type of objects?\x1b[0m`, ''];
+        const out = [menu_heading_text(`${action} what type of objects?`), ''];
         const itemByLine = [null, null];
         /* C:1387-1391 — ONE blank separator before the whole BUCX cluster,
          * not one per row. */
@@ -1401,11 +1416,11 @@ async function _menu_loot_items(chainHead, contents, action, useInvlet) {
         }
 
     const renderLines = () => {
-        const out = [`\x1b[7m${action} what?\x1b[0m`, ''];
+        const out = [menu_heading_text(`${action} what?`), ''];
         const itemByLine = [null, null];
         for (const e of entries) {
             if (e.heading !== undefined) {
-                out.push(`\x1b[7m${e.heading}\x1b[0m`);
+                out.push(menu_heading_text(e.heading));
                 itemByLine.push(null);
             } else {
                 out.push(`${e.item.sel} ${e.item.selected
@@ -1422,6 +1437,7 @@ async function _menu_loot_items(chainHead, contents, action, useInvlet) {
     const prior = _priorPickMenu;
     _priorPickMenu = null;
     const cancelled = await _tty_pick_any_menu(renderLines, items, 'end', prior);
+    _priorPickMenu = cancelled ? null : _lastPickGeom;
     if (cancelled) return [];
     return items.filter((it) => it.selected)
         .map((it) => ({ obj: it.obj, count: it.count }));
@@ -1700,7 +1716,12 @@ export async function use_container_impl(cobjRef, held, more_containers) {
             /* C pickup.c:3119-3123 — gaining info costs a turn, then the
              * contents window (which is what sets cknown). */
             if (!obj.cknown) used = ECMD_TIME;
-            await container_contents(obj, false, false, true);
+            /* The in_or_out_menu just dismissed left its docorner() wipe in
+             * place; process_text_window repaints no status (see the
+             * _carryStatusClip note in the menu builder above). */
+            const carry = g._carryStatusClip;
+            await container_contents(obj, false, false, true,
+                                     carry && carry.moves === g.moves ? carry.clip : undefined);
             continue;
         }
         break;

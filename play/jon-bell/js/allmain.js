@@ -29,7 +29,7 @@ import { l_nhcore_call, NHCORE_START_NEW_GAME, NHCORE_MOVELOOP_TURN,
 import { clear_bypasses, sink_into_lava } from './trap.js';
 import { notice_all_mons, pooleffects, rhack, check_special_room, domove, prayer_done, deferred_goto, schedule_goto, heal_legs, timed_occupation, cmdq_clear, cmdq_peek, wipeoff, body_part, surface, confdir, hurtle, instapetrify, runmode_delay_output, take_off_occ, dolookaround_cmd } from './cmd.js';
 import { lookaround, end_running, is_pool, is_pool_or_lava } from './look.js';
-import { reset_glyphmap, docrt, cls, bot, timebot, status_eval_next_unhilite, time_botl_moves_incremented, time_botl_run_ended, flush_screen, tty_repaint, pline, urgent_pline, Norep, _topl_joins_committed, _topl_record_join, occupation_painted_tick, occupation_freeze_snapshot, occupation_painted_reset, occupation_force_more, _movemon_page_frames_reset, run_page_frame_tick, run_page_frame_reset, capture_painted_frame, capture_pre_movemon_botl, force_more, _topl_merge_result, _topl_joins_snapshot } from './display.js';
+import { reset_glyphmap, docrt, bot, timebot, status_eval_next_unhilite, time_botl_moves_incremented, time_botl_run_ended, flush_screen, tty_repaint, pline, urgent_pline, Norep, _topl_joins_committed, _topl_record_join, occupation_painted_tick, occupation_freeze_snapshot, occupation_painted_reset, occupation_force_more, _movemon_page_frames_reset, run_page_frame_tick, run_page_frame_reset, capture_painted_frame, capture_pre_movemon_botl, force_more, _topl_merge_result, _topl_joins_snapshot } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { fastforward_pre_mklev, fastforward_post_mklev, fastforward_step, fastforward_fill_mineralize, fmon_dochug_dispatch, NORMAL_SPEED, FF_FAITHFUL, ff_movemon_phase, ff_head_phase, ff_head_phase_pre, ff_head_phase_post, vomiting_dialogue_ff, sickness_dialogue_ff, choke_dialogue_ff } from './fastforward.js';
 import { makedog, dismount_steed } from './dog.js';
@@ -62,7 +62,7 @@ import { PM_ARCHEOLOGIST } from './pm.generated.js';
 import { stoned_dialogue, slime_dialogue, eatfood, Hear_again, maybe_finished_meal, reset_eat, is_fainted, opentin, Finish_digestion } from './eat.js';
 import { do_vicinity_map } from './detect.js';
 import { learn } from './spell.js';
-import { engrave } from './engrave.js';
+import { engrave, engraving_sanity_check } from './engrave.js';
 import { m_at } from './uhitm.js';
 import { noattacks_mndx, stealarm_mu } from './mhitu.js';
 import { unstolenarm } from './steal.js';
@@ -346,16 +346,10 @@ export async function newgame() {
     // including ledger_start and dunlev_ureached. Do not copy or reset it here.
     g.u = g.u || {};
     g.u.uz = { dnum: 0, dlevel: 1 };
-    // C u_init.c:954 memset(&u,0,...) zeroes u.uz0 ({0,0}); moveloop_preamble
-    // (allmain.c:97) then sets u.uz0.dlevel = u.uz.dlevel before the first
-    // turn. Without it on_level(&u.uz,&u.uz0) (teleport.c:1460, domagicportal)
-    // reads an undefined u.uz0 and throws, parking the segment at the first
-    g.u.uz0 = { dnum: 0, dlevel: g.u.uz.dlevel };
-    // C ref: u_init.c:979-984 sets u.uz0.dnum=0 and u.uz0.dlevel=0, then
-    // allmain.c:97 `u.uz0.dlevel = u.uz.dlevel` before the first move.  Without
-    // this, u.uz0 is undefined and on_level(&u.uz, &u.uz0) (teleport.c:1460,
-    // domagicportal) throws on the first magic-portal step of a fresh game.
-    g.u.uz0 = { dnum: 0, dlevel: 1 };
+    /* C u_init.c:979-984: keep uz0 zero through newgame's u_on_upstairs().
+     * dungeon.c:1587-1593 then recognizes the initial level arrival and
+     * invalidates terrain_typ for spoteffects' switch_terrain() checks. */
+    g.u.uz0 = { dnum: 0, dlevel: 0 };
     g.flags = g.flags || {};
     // Branch: Mines entrance on level 1 (for seed 8000)
     g.branches = [
@@ -477,7 +471,15 @@ export async function newgame() {
     vision_reset();
     vision_recalc(0);
     await check_special_room(false); /* allmain.c:810 */
-    await cls();
+    /* allmain.c:817: docrt() owns the initial glyph-buffer clear. */
+    /* docrt() -> cls() -> display_nhwindow(WIN_MESSAGE) (display.c:2196):
+     * a topline raised during mklev (wizard-mode monpolycontrol's "That's
+     * enough tries!") pages with --More-- before the screen is first drawn. */
+    if (g._pending_message) {
+        /* no bot() has run yet: the status rows are still physically blank */
+        g._statusBlankAfterDocrt = true;
+        await force_more_pages(g._pending_message);
+    }
     await docrt();
     await flush_screen(1);
     await bot();
@@ -672,7 +674,12 @@ export async function newgame() {
         // C tty pages a message with --More-- iff ANOTHER blocking message/window
         // follows before the next nhgetch.  So every message except the LAST is
         // paged; the last is paged too iff the tutorial prompt will flush it.
-        const startupMsgs = [welcomeMsg, ...preambleMsgs];
+        /* C order: newgame() welcome + notice_all_mons (allmain.c:842-847) run
+         * BEFORE moveloop_preamble's moon/Friday plines, so with a spotted
+         * monster the preamble plines follow the "You see ..." line. */
+        const noticeBeforePreamble = FF_FAITHFUL && !chargenIncomplete && !tutorialWillRun
+            && preambleMsgs.length > 0 && !(g._ff_preamble_rng_deferred && (g.a11y?.glyph_updates || g.flags?.mention_map || g.u?.uroleplay?.reroll));
+        const startupMsgs = noticeBeforePreamble ? [welcomeMsg] : [welcomeMsg, ...preambleMsgs];
         // allmain.c:831 — flags.legacy guards exactly one thing, the
         // com_pager("legacy") entry story, which runs inside newgame() BEFORE
         // welcome(TRUE) (allmain.c:842).  The welcome pline and the
@@ -762,8 +769,14 @@ export async function newgame() {
          * the starting pet is announced ("You see your kitten.") right after
          * the welcome line.  The moveloop_preamble messages follow it in C. */
         g._notice_mon_ready = true; /* allmain.c:844 notice_mon_on() */
-        if (!chargenIncomplete)
-            notice_all_mons(true);
+        if (!chargenIncomplete) {
+            if (noticeBeforePreamble) {
+                if (g.flags?.spot_monsters) (g.a11y ||= {}).mon_notices = true;
+                await notice_all_mons(true);
+                for (const m of preambleMsgs) await pline(m);
+            } else
+                notice_all_mons(true);
+        }
     }
     /* C ref: allmain.c:844-846 newgame() — if (a11y.glyph_updates) dolookaround();
      * then moveloop_preamble's rndencode = rnd(9000) / seer_turn = rnd(30)
@@ -833,6 +846,8 @@ export async function newgame() {
      * auto-picked up something" (pickup(1) above). */
     if (!chargenIncomplete)
         encumber_msg_sync();
+    /* C allmain.c:97: only the movement preamble makes uz0 current. */
+    g.u.uz0.dlevel = g.u.uz.dlevel;
     /* C allmain.c:106: moveloop_preamble finishes before maybe_do_tutorial. */
     if (!chargenIncomplete) g.program_state.in_moveloop = 1;
     // C ref: allmain.c:591-592 — if (!resuming) maybe_do_tutorial()
@@ -1444,8 +1459,11 @@ async function faithful_moveloop_turn() {
                 await timeout_terrain_property(DISPLACED);
                 nh_timeout_silent_properties(PROPS.STEALTH, PROPS.AGGRAVATE_MONSTER, PROPS.CONFLICT, PROPS.JUMPING, PROPS.TELEPORT, PROPS.TELEPORT_CONTROL);
                 // C timeout.c:794: LEVITATION (48) precedes FAST (64).
-                if ((g.u?.uprops?.[LEVITATION]?.intrinsic | 0) & TIMEOUT)
-                    await nh_timeout_levitation();
+                if ((g.u?.uprops?.[LEVITATION]?.intrinsic | 0) & TIMEOUT) {
+                    const _wasMBL = g._inMovemonBlock;
+                    g._inMovemonBlock = true;
+                    try { await nh_timeout_levitation(); } finally { g._inMovemonBlock = _wasMBL; }
+                }
                 // C timeout.c:805-811 FLYING (49): timed Flying is #wizintrinsic-only;
                 // the generic loop counts it down and expiry lands the hero.
                 {
@@ -1586,8 +1604,12 @@ async function faithful_moveloop_turn() {
      * pool/moat, levitation timing out).  sink_into_lava is unported. */
     if (g.u && g.u.utrap && g.u.utraptype === 4 /* TT_LAVA */)
         await sink_into_lava();
-    else if (!((g.u && g.u.umoved) | 0))
-        await pooleffects(false);
+    else if (!((g.u && g.u.umoved) | 0)) {
+        /* pooleffects' plines (allmain.c:428) run while an eat occupation's
+         * fprefx line is still gt.toplines: they page/join behind it. */
+        g._encumber_pline = true;
+        try { await pooleffects(false); } finally { g._encumber_pline = false; }
+    }
     /* C allmain.c:430-434 — vision while buried or underwater is updated here */
     if (g.u && g.u.uinwater)
         under_water(0);
@@ -1926,7 +1948,7 @@ async function eat_occupation_turn() {
             // meal is ongoing (occupation still set), else live u.uhs (committed at meal end).
             if (_committed) {
                 const _eb = (g._earlyBotl && g._earlyBotl.cells && g._earlyBotl.turn === thisTurnMoves - 1) ? g._earlyBotl : null;
-                const _pf = (_fromPreEat || (_preEatSeen <= _preEatConsumed
+                let _pf = (_fromPreEat || (_preEatSeen <= _preEatConsumed
                                              && g._movemonPageFrames?.[_preEatPage]))
                     ? ((_fromPreEat && !_ebCorpseUsed && _eb?.corpse && (_ebCorpseUsed = true) && _eb)
                         /* The corpse-flavor line is still on C's topline, so the first
@@ -1939,6 +1961,14 @@ async function eat_occupation_turn() {
                          * pet not yet moved. */
                         || (g._plineFlushFrames || []).findLast((f) => f.cells && f.msg === part))
                     : null;
+                /* C pline.c:273-276, topl.c:274: the incoming pline's flush
+                 * owns this page, including a later overflow in the same turn.
+                 * The movemon page log can still include the occupation prefix. */
+                if (_fromPreEat) {
+                    const exact = (g._plineFlushFrames || []).findLast(
+                        (f) => f.off === _committed.length && f.msg === part);
+                    if (exact) _pf = exact;
+                }
                 /* An interrupt line ("You stop eating X.", allmain.c:505 ->
                  * stop_occupation) is plined AFTER this turn's movemon, so its
                  * more() pages over this turn's tick frame (pet moved, status
@@ -2516,8 +2546,14 @@ async function slip_or_trip() {
          * cockatrice/chickatrice corpse petrifies immediately. */
         if (!u.uarmf && (otmp.otyp | 0) === CORPSE_AM
             && ((otmp.corpsenm | 0) === PM_COCKATRICE
-                || (otmp.corpsenm | 0) === PM_CHICKATRICE))
-            await instapetrify(`tripping over ${an(monPmname(otmp.corpsenm, PROPS.NEUTRAL))} corpse`);
+                || (otmp.corpsenm | 0) === PM_CHICKATRICE)
+            && !((u.uprops?.[STONE_RES]?.intrinsic | 0)
+                 || (u.uprops?.[STONE_RES]?.extrinsic | 0))) {
+            // C sets the name even when instapetrify turns a golem to stone.
+            const killer = (g.svk ||= {}).killer ||= { id: 0, format: 0, name: '', next: null };
+            killer.name = `tripping over ${an(monPmname(otmp.corpsenm, PROPS.NEUTRAL))} corpse`;
+            await instapetrify(killer.name);
+        }
         return;
     }
     const HFumbling = (u.uprops?.[FUMBLING]?.intrinsic | 0);
@@ -2830,6 +2866,20 @@ function _status_paint_flushed() {
     tty_repaint(1);
     if (game._fireSwapPending && game._fireSwapPreFrame)
         game._fireSwapPreFrame = null;
+}
+
+/* tty_yn_function leaves the answered prompt as dead topline text: a later pline
+ * overwrites it rather than joining it (topl.c:257-266).  The delayed-turn
+ * (multi < 0) loops run a world block with no head-block hold, so hold the stale
+ * prompt aside across the turn and restore it only if nothing was printed. */
+async function _faithful_turn_over_stale_yn() {
+    const g = game;
+    const stale = (g._resultMessage && g._resultMessage === g._ynStaleTopline)
+        ? g._resultMessage : null;
+    if (stale) g._resultMessage = '';
+    await faithful_moveloop_turn();
+    if (stale && !g._resultMessage && !g._pending_message)
+        g._resultMessage = stale;
 }
 
 // moveloop_core — FAITHFUL variant (FF_FAITHFUL=1).  Mirrors the calibrated
@@ -4683,7 +4733,7 @@ async function moveloop_core_faithful() {
         // u_calc_moveamt/dosounds/gethungry/exerchk; ++gm.multi+unmul; svm.moves++
         // inside HEAD; seer; turn_end).  The hero takes no action (immobile).  The
         // Fast-banked double-move is handled INSIDE faithful_moveloop_turn
-        await faithful_moveloop_turn();
+        await _faithful_turn_over_stale_yn();
         // C ref: allmain.c:453 find_ac() — the once-per-player-input block sits
         // AFTER the "actual time passed" world block in the SAME moveloop_core
         // call (allmain.c:435 `} /* actual time passed */` ... :453 find_ac()), so
@@ -5240,6 +5290,7 @@ async function moveloop_core_impl() {
         } else {
             g.program_state.in_sanity_check++;
             await bc_sanity_check();
+            await engraving_sanity_check(); // C wizcmds.c:1470 (after trap_sanity_check)
             g.program_state.in_sanity_check--;
         }
     }

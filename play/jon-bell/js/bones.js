@@ -55,11 +55,13 @@ import { In_hell, OC_USES_KNOWN } from './mklev.js';
 import { PM_ORACLE, PM_MEDUSA, PM_VLAD_THE_IMPALER } from './pm.generated.js';
 import { pline, invalidate_map_row } from './display.js';
 import { the, xname, oname } from './objnam.js';
-import { LEAVESTATUE, CORPSTAT_NONE, NO_MINVENT, INTRINSIC } from './const.js';
+import { LEAVESTATUE, CORPSTAT_NONE, NO_MINVENT, INTRINSIC, ismnum, MON_FLOOR } from './const.js';
 import { roles, races } from './roles.js';
 import { dismount_steed } from './cmd.js';
 import { update_mlstmv } from './dog.js';
 import { DISMOUNT_BONES } from './const.js';
+import { clear_bypasses } from './trap.js';
+import { hhmmss, yyyymmdd } from './allmain.js';
 
 /* C bones.c:513-538,818-829 — identify the deceased hero's remnant. */
 function save_ebones(mtmp) {
@@ -243,7 +245,7 @@ function resetobjs(ochain, restore) {
  * OTHER caller — bones.c:257's own comment names both).  C's definition site is
  * bones.c:258; importing rather than re-deriving keeps one body, per the
  * two-real-bodies rule. */
-import { drop_upon_death, fix_shop_damage } from './shk.js';
+import { drop_upon_death, fix_shop_damage, unleash_all } from './shk.js';
 
 async function fixuporacle(oracle) {
     if (!Is_oracle_level(game.u.uz))
@@ -279,6 +281,7 @@ async function remove_mon_from_bones(mtmp, mongone) {
     const ptr = mtmp.data || {};
     if (mtmp.iswiz
         || ptr.pmidx === PM_MEDUSA || ptr.pmidx === PM_VLAD_THE_IMPALER
+        || mtmp.cham === PM_VLAD_THE_IMPALER /* C monst.h:222 is_Vlad */
         || ptr.msound === MS_NEMESIS
         || ptr.msound === MS_LEADER
         || (ptr.pmidx === PM_ORACLE && !await fixuporacle(mtmp)))
@@ -289,6 +292,7 @@ export async function savebones(how, when, corpse) {
     const g = game;
     const u = g.u || (g.u = {});
 
+    clear_bypasses(); /* C bones.c:415 — even when bones already exist */
     if (open_bonesfile(u.uz)) {
         let replace = false;
         if (wizard()) {
@@ -305,6 +309,7 @@ export async function savebones(how, when, corpse) {
             return;                     /* C: compress_bonesfile(); return; */
     }
 
+    unleash_all(); /* C bones.c:435 */
     if (g.u?.uball) {
         const { unpunish } = await import('./dig.js');
         await unpunish();
@@ -315,16 +320,23 @@ export async function savebones(how, when, corpse) {
     /* C bones.c:445-446 iter_mons(remove_mon_from_bones); dmonsfree(); */
     {
         const { mongone } = await import('./mklev.js');
-        for (let mtmp = g.fmon; mtmp; mtmp = mtmp.nmon)
-            await remove_mon_from_bones(mtmp, mongone);
+        const { dmonsfree } = await import('./mkmaze.js');
+        for (let mtmp = g.fmon, next; mtmp; mtmp = next) {
+            next = mtmp.nmon;
+            if (mtmp.mhp > 0 && (mtmp.mstate | 0) === MON_FLOOR)
+                await remove_mon_from_bones(mtmp, mongone);
+        }
+        dmonsfree();
     }
 
     forget_engravings(); // C bones.c:449 — new hero has not discovered these.
 
+    /* C bones.c:451-452,619 — fruit marking still needs savefruitchn and
+     * restore.c:500 ghostfruit support; game.ffruit already exists. */
 
     set_ghostly_objlist(g.invent);
 
-    if ((u.ugrave_arise | 0) >= 0) {
+    if (ismnum(u.ugrave_arise)) {
         const { makemon } = await import('./mklev.js');
         g.in_mklev = true; /* use <u.ux,u.uy> as-is */
         let mtmp = await makemon(u.ugrave_arise | 0, u.ux | 0, u.uy | 0, NO_MINVENT);
@@ -362,8 +374,11 @@ export async function savebones(how, when, corpse) {
         const { mkcorpstat } = await import('./mklev.js');
         let statue = await mkcorpstat(476 /* STATUE */, null, u.umonnum,
                                     u.ux | 0, u.uy | 0, CORPSTAT_NONE);
-        statue = await oname(statue, String(g.plname ?? u.plname ?? ''), 0);
+        if (statue)
+            statue = await oname(statue, String(g.plname ?? u.plname ?? ''), 0);
         await drop_upon_death(null, statue, u.ux | 0, u.uy | 0);
+        if (!statue)
+            return; /* C bones.c:486-487 */
     } else {
     /* C bones.c:490-503: drop everything, then raise a ghost. */
     await drop_upon_death(null, null, u.ux | 0, u.uy | 0);
@@ -454,6 +469,7 @@ export async function savebones(how, when, corpse) {
             who: `${plname}-${_fc3(g.urole?.filecode)}-${_fc3(g.urace?.filecode)}`
                  + `-${gender}-${alignFc}`,
             how: formatkiller('', 256 /* sizeof newbones->how */, how, true),
+            when: String(yyyymmdd(when)) + String(hhmmss(when)).padStart(6, '0'),
             frpx: u.ux0 | 0,
             frpy: u.uy0 | 0,
             bonesknown: false,

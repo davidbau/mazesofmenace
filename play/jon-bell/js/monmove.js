@@ -38,7 +38,7 @@ import { can_touch_safely, mfndpos, sobj_at, hideunder, maybe_unhide_at, mpickob
  healmon as healmon_real, meatobj as meatobj_real,
          meatcorpse as meatcorpse_real, newcham, u_on_newpos,
          extract_from_minvent, m_consume_obj, Is_special, mongone,
-         resists_ston, obj_extract_self } from './mklev.js';
+         resists_ston, obj_extract_self, monnear as monnear_real } from './mklev.js';
 import { accessible, closed_door, may_dig, is_pool as is_pool_mv2 } from './look.js';
 import { m_at, mon_nam, autoreturn_weapon } from './uhitm.js';
 import { gettrack } from './track.js';
@@ -233,14 +233,7 @@ const onscary_stub = onscary;
 /* C ref: mon.c:2462-2469 monnear — is the (x,y) square adjacent to monster?
  * dist2(mon->mx, mon->my, x, y) < 3 (diagonal OK except PM_GRID_BUG). */
 function monnear(mon, x, y) {
-    const d2 = dist2(mon.mx | 0, mon.my | 0, x | 0, y | 0);
-    /* Replay monster records commonly carry mndx/data.pmidx rather than the
-     * legacy mnum field.  C's NODIAG test is against the species index, so
-     * preserve the grid bug's diagonal restriction across all shapes. */
-    const mndx = mon.mnum ?? mon.mndx ?? mon.data?.pmidx;
-    if (d2 === 2 && (mndx | 0) === PM_GRID_BUG)
-        return 0;
-    return d2 < 3 ? 1 : 0;
+    return monnear_real(mon, x, y); /* C mon.c:2476, shared NODIAG test. */
 }
 /* C ref: monmove.c:451-457 flees_light macro — gremlin fleeing artifact light.
  * artifact_light() is the canonical light-property lookup; no RNG consumed. */
@@ -473,7 +466,7 @@ function _m_can_break_boulder_mv(mtmp, mndx) {
         return true;
     if (mtmp.mspec_used | 0)
         return false;
-    return !!(mtmp.isshk || mtmp.ispriest);
+    return !!(mtmp.isshk || mtmp.ispriest || (mtmp.data ?? permonstTemplate(mndx)).msound === MS_LEADER_MCBB);
 }
 export function _allow_rock_mv(mtmp) {
     const mndx = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
@@ -592,7 +585,8 @@ export function mon_allowflags(mtmp) {
     if (((mf2 & M2_UNDEAD_MAF) && mlet !== S_GHOST_MAF) || is_vampshifter(mtmp))
         allowflags |= NOGARLIC_MAF;
 
-    return allowflags;
+    /* C mfndpos.h:27-29: NOGARLIC is positive 0x80000000 in a long. */
+    return allowflags >>> 0;
 }
 
 /* C monmove.c:581-651 mind_blast — a mind flayer unleashes a mind blast. */
@@ -672,12 +666,9 @@ function _conflict_mv() {
     const p = game.u?.uprops?.[CONFLICT_MAF];
     return !!(p && (p.intrinsic || p.extrinsic));
 }
-/* C: unsolid(gy.youmonst.data) || verysmall(gy.youmonst.data) — only consulted
- * when the monster IS u.ustuck, which our port never sets; a polymorphed hero's
- * mons row would be needed to answer it, so the honest answer here is "no",
- * which is what an unpolymorphed human hero answers in C too. */
+/* C mon.c:2111: a held monster can pass bars when the hero fits too. */
 function _u_squeezable_mv() {
-    return false;
+    return !!(game.youmonst.data.mflags1 & M1_UNSOLID_MV) || game.youmonst.data.msize < MZ_SMALL_MV;
 }
 /* C: noteleport_level(mtmp) — js/makemon.js's port reads mon.data (the
  * materialized permonst), which live monst objects do not carry, so hand it the

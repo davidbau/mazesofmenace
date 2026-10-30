@@ -2,6 +2,7 @@
 // shk.js — Shopkeeper AI and commerce.
 // C ref: nethack-c/src/shk.c
 
+import { verbalize } from './display.js';
 import { growl as growl_mhitm, yelp as yelp_mhitm, y_monnam as y_monnam_shk, pronoun_gender, a_monnam } from './mhitm.js';
 import { game } from './gstate.js';
 import { locomotion, x_monnam as x_monnam_shk } from './mhitm.js';
@@ -17,7 +18,7 @@ import { stop_occupation } from './allmain.js';
 import { picking_at } from './lock.js';
 import { dochug, m_canseeu } from './dochug.js';
 import { newobj } from './game.js';
-import { pline, You_hear, Norep, topl_park_cursor, force_more } from './display.js';
+import { pline, You_hear, Norep, topl_park_cursor, force_more, impossible_sync } from './display.js';
 /* C pline.c You/Your — use the shared async formatters.  Sale settlement
  * awaits these message boundaries; older unrelated callers retain their
  * existing contracts until their own closure is migrated. */
@@ -27,7 +28,8 @@ import { highc, shtype_name, inside_shop, makemon, angry_guards, next_ident, mks
 import { is_demon, poly_gender } from './makemon.js';
 import { is_pick } from './dig.js';
 import { ECMD_OK, ECMD_CANCEL, ECMD_TIME, ESHK, SHARED, SHARED_PLUS, NO_ROOM, COLNO, ROWNO, IS_DOOR, IS_ROOM, IS_WALL, SHOPBASE, CANDLESHOP, D_BROKEN, D_CLOSED, BILLSZ, Has_contents, isok, u_at, ROOMOFFSET, RLOC_MSG, DEAF, INVIS, PASSES_WALLS, QBUFSZ, LL_ACHIEVE, G_GONE, MM_NOMSG, CONFLICT, REPAIR_DELAY, BOLT_LIM, ZAP_POS, D_LOCKED, LANDMINE, BEAR_TRAP, PIT, SPIKED_PIT, HOLE, ACH_SHOP, M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, DETECT_MONSTERS } from './const.js';
-import { PM_GRID_BUG, PM_KNIGHT, PM_SAMURAI, PM_TOURIST, PM_VALKYRIE, PM_SHOPKEEPER, PM_ROGUE, PM_KEYSTONE_KOP, PM_KOP_SERGEANT, PM_KOP_LIEUTENANT, PM_KOP_KAPTAIN } from './pm.generated.js';
+import { PM_GRID_BUG, PM_KNIGHT, PM_SAMURAI, PM_TOURIST, PM_VALKYRIE, PM_SHOPKEEPER, PM_MAIL_DAEMON, PM_ROGUE, PM_KEYSTONE_KOP, PM_KOP_SERGEANT, PM_KOP_LIEUTENANT, PM_KOP_KAPTAIN } from './pm.generated.js';
+import { has_mgivenname, MGIVENNAME } from './const.js';
 import { goodpos } from './trap.js';
 import { t_at, deltrap } from './trap.js';
 import { block_point } from './vision.js';
@@ -35,6 +37,7 @@ import { newsym, map_invisible } from './display.js';
 import { weight } from './weight.js';
 import { OC_WEIGHT } from './oc_weight.generated.js';
 import { trapname } from './makemon.js';
+import { menu_heading_text } from './tty_menu.js'; // wintty.c:2688
 /* C ref: hack.c:4478 money_cnt — the single ported implementation lives in
  * js/com_pager.js; re-used here rather than the `return 0` stub this file
  * used to carry, which made every affordability test read as "hero is broke". */
@@ -143,7 +146,7 @@ const and_its_contents = " and its contents";
  * shopkeeper.  withbill=FALSE returns any shkp; withbill=TRUE only
  * those with outstanding bill.  Also calls rile_shk on ANGRY ones.
  */
-function next_shkp(shkp, withbill) {
+export function next_shkp(shkp, withbill) {
     for (let m = shkp; m; m = m.nmon) {
         if (m.mhp <= 0) continue; // DEADMONSTER
         if (m.isshk && (!withbill || ((ESHK(m)?.billct | 0) !== 0))) {
@@ -356,7 +359,7 @@ async function money2u(mon, amount) {
     let change = mongold;
     if (change.quan > amount) change = (await splitobj(change, amount));
     obj_extract_self(change);
-    if (!merge_choice(game.invent, change) && inv_cnt(false) >= 52) {
+    if (!(await merge_choice(game.invent, change)) && inv_cnt(false) >= 52) {
         await You_real('have no room for the gold!');
         await dropy(change);
     } else {
@@ -619,11 +622,11 @@ async function menu_pick_pay_items(ibillct, ibill) {
     }
 
     const renderLines = () => {
-        const out = ['\x1b[7mPay for which items?\x1b[0m', ''];
+        const out = [menu_heading_text('Pay for which items?'), ''];
         for (let i = 0; i < entries.length; i++) {
             const h = headings.get(i);
             if (h !== undefined)
-                out.push(`\x1b[7m${h}\x1b[0m`);
+                out.push(menu_heading_text(h));
             const e = entries[i];
             out.push(`${e.selector} ${e.mark} ${e.text}`);
         }
@@ -2032,11 +2035,9 @@ export function append_price_quote(buf, eos, otyp,
  * and qprefix (`safe_qbuf(qbuf, qbuf, ...)`), and since JS strings are
  * immutable the qbuf===qprefix branch and the qprefix-copy branch compute the
  * identical result, so they collapse to one branch here. The three
- * impossible() sanity checks (C:5646-5653) fire only when a prefix/suffix
- * argument is itself longer than QBUFSZ, which neither of this file's two
- * callers can produce (their prefixes are Sprintf'd shk-name plus a short
- * literal); impossible() in this file is a documented no-op (see above), so
- * they are reproduced as no-op calls for fidelity rather than dropped.
+ * impossible() sanity checks (C:5646-5653) report an oversized prefix,
+ * prefix plus suffix, or prefix plus filler plus suffix. Await the shared
+ * diagnostic before truncating the prompt, as C does.
  * short_oname is the real objnam.js port, imported above as short_oname_shk.
  * RNG-free throughout. */
 export async function safe_qbuf(qbuf, qprefix, qsuffix, obj, fn1, fn2, thatthose) {
@@ -2046,11 +2047,11 @@ export async function safe_qbuf(qbuf, qprefix, qsuffix, obj, fn1, fn2, thatthose
     const len_lastR = thatthose.length;
 
     if (len_qpfx > lenlimit)
-        impossible("safe_qbuf: prefix too long (%u characters).", len_qpfx);
+        await lifecycle_impossible("safe_qbuf: prefix too long (%u characters).", len_qpfx);
     else if (len_qpfx + len_qsfx > lenlimit)
-        impossible("safe_qbuf: suffix too long (%u + %u characters).", len_qpfx, len_qsfx);
+        await lifecycle_impossible("safe_qbuf: suffix too long (%u + %u characters).", len_qpfx, len_qsfx);
     else if (len_qpfx + len_lastR + len_qsfx > lenlimit)
-        impossible("safe_qbuf: filler too long (%u + %u + %u characters).",
+        await lifecycle_impossible("safe_qbuf: filler too long (%u + %u + %u characters).",
                    len_qpfx, len_lastR, len_qsfx);
 
     let buf = qprefix ? String(qprefix).slice(0, lenlimit) : '';
@@ -2701,6 +2702,7 @@ export async function shopdig(fall) {
         return;
     }
     if (lang === 2 && !_shk_Deaf() && !muteshk(shkp)) {
+        SetVoice(shkp, 0, 80, 0);
         const female = !!(game.flags?.female | 0);
         if ((u.utraptype | 0) === 2 /* TT_PIT, const.js:2269 */)
             await verbalize("Be careful, %s, or you might fall through the floor.",
@@ -2913,7 +2915,8 @@ export function Hello(mtmp) {
     case PM_TOURIST:
         return 'Aloha'; /* Hawaiian */
     case PM_VALKYRIE:
-        return 'Velkommen'; /* Norse */
+        // C role.c:2135: MAIL_STRUCTURES is defined in include/global.h:430.
+        return (mtmp && (mtmp.mnum | 0) === PM_MAIL_DAEMON) ? 'Hallo' : 'Velkommen'; /* Norse */
     default:
         return 'Hello';
     }
@@ -3354,7 +3357,11 @@ export function shop_keeper(rmno) {
                     rile_shk(shkp);
             }
         } else {
-            /* C: impossible("shop resident not shopkeeper") then return Null. */
+            /* C shk.c:1065-1075: diagnose the invalid resident before returning. */
+            impossible_sync('%s? (rmno=%d, rtype=%d, mnum=%d, "%s")',
+                shkp.isshk ? 'shopkeeper career change' : 'shop resident not shopkeeper',
+                rmno, game.level.rooms[rmno - ROOMOFFSET].rtype, shkp.mnum,
+                has_mgivenname(shkp) ? MGIVENNAME(shkp) : 'anonymous');
             return null;
         }
     }
@@ -4008,9 +4015,6 @@ export async function remote_burglary(x, y) {
 /* C ref: pline.c verbalize(fmt,...) — a quoted spoken line on the topline.
  * C's vpline is reached through verbalize's own '"%s"' wrapper, so the
  * rendered text is the message in double quotes. */
-function verbalize(fmt, ...args) {
-    return pline('"' + Sprintf(fmt, ...args) + '"');
-}
 function SetVoice(_shkp, _a, _b, _c) { }
 /* C ref: shknam.c:855-897 shkname(mtmp) — the real general port lives in
  * js/dokick.js (shkname_real, imported above; documented KNOWN GAP: its
@@ -4048,10 +4052,9 @@ export function hot_pursuit(shkp) {
 
     rile_shk(shkp);
     const eshkp = ESHK(shkp);
-    const plname = game.plname || game.u?.plname;
+    const plname = game.plname ?? game.u?.plname ?? '';
     if (eshkp) {
-        if (plname)
-            eshkp.customer = String(plname).substring(0, 32); /* PL_NSIZ */
+        eshkp.customer = String(plname).substring(0, 32); /* PL_NSIZ */
         eshkp.following = 1;
     }
     clear_no_charge(null, null);
@@ -4173,7 +4176,7 @@ async function home_shk(shkp, killkops) {
  * candidate. */
 export function currency(amount) { return currency_real(amount); }
 /* C apply.c:746-756: release both ends before dropping the hero's inventory. */
-function unleash_all() {
+export function unleash_all() {
     for (let obj = game.invent; obj; obj = obj.nobj)
         if (obj.otyp === 236 /* LEASH */) obj.leashmon = 0;
     for (let mon = game.fmon; mon; mon = mon.nmon)
@@ -5191,13 +5194,13 @@ export async function addtobill(obj, ininv, dummy, silent) {
             obj.quan = 1; /* fool xname() into giving singular */
             SetVoice(shkp, 0, 80, 0);
             const nm = xname_shk(obj);
-            obj.quan = save_quan;
             await pline(`${buf} ${ltmp} ${currency(ltmp)} `
                         + `${((save_quan | 0) > 1) ? 'per'
                              : (contentscount && !obj.unpaid)
                                ? 'for the contents of this' : 'for this'} `
                         + `${nm}`
                         + `${(contentscount && obj.unpaid) ? and_its_contents : ''}."`);
+            obj.quan = save_quan;
         }
     } else if (!silent) {
         if (ltmp) {

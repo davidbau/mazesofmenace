@@ -214,10 +214,13 @@ export function inv_weight_raw() {
             /* C hack.c:4322 — wt += (quan + 50) / 100 (integer division). */
             wt += Math.trunc(((otmp.quan | 0) + 50) / 100);
         } else if ((otmp.otyp | 0) !== OTYP_BOULDER || !throwsRocks) {
-            /* C hack.c:4323-4324 — wt += otmp->owt, where owt == weight(otmp).
-             * The reconstructed inventory carries a placeholder owt; recompute
-             * the real weight() from objects[].oc_weight. */
-            wt += weight(otmp);
+            /* C hack.c:4360 sums cached owt.  Food's nutrition can change
+             * before its weight: eat.c:1970 reduces rotten-corpse oeaten,
+             * then bite()'s lesshungry() can page before recalc_wt() at :3157.
+             * Keep that cached food weight until the eating code updates it.
+             * Other reconstructed objects still need their weight derived. */
+            wt += (otmp.oclass | 0) === FOOD_CLASS && otmp.owt != null
+                ? (otmp.owt | 0) : weight(otmp);
         }
     }
     return wt;

@@ -53,11 +53,11 @@ import { pline } from './display.js';
 import { observe_object } from './o_init.js';
 import { obfree } from './shk.js';
 import { globby_bill_fixup } from './shk.js';
+import { picked_container } from './dokick.js';
 import {
     mergable, prinv, reorder_invent, dropx, dropy, freeinv, hero_breaks,
     hitfloor, obj_extract_self_general,
-    inv_cnt, setuqwep, setuwep,
-    setuswapwep,
+    inv_cnt, setuqwep,
     carry_obj_effects, addinv_core1, addinv_core2, throwing_weapon,
 } from './cmd.js';
 import { near_capacity, encumber_msg_sync, weight } from './weight.js';
@@ -85,7 +85,8 @@ import { oname, obj_typename } from './objnam.js';
  * js/mhitu.js's own Blind_mu use. */
 import { Blind } from './vision.js';
 import { MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
-import { setnotworn } from './worn.js';
+import { setnotworn, setworn } from './worn.js';
+import { impossible } from './pline.js';
 import { touch_artifact_youmonst, _pickup_burden_level } from './wizcmds.js';
 import { place_object, remove_object, dealloc_obj, start_glob_timeout } from './mklev.js';
 import { update_inventory } from './inventory_refresh.js';
@@ -239,19 +240,17 @@ function assigninvlet(otmp) {
  * C invent.c:814 merged(&otmp, &obj) — fold `obj` into the carried stack
  * `otmp`.  Returns TRUE when the merge happened.
  *
- * Scoped, and the scope is named rather than hidden: the globby (pudding
- * absorb), oname-transfer and worn-slot-fixup arms are NOT ported, and each is
- * a named throw below rather than a silent skip, because each one changes the
- * OBJECT GRAPH and a wrong answer there survives into later turns (and, on a
- * level with bones, into the bones file — see js/oc_merge.generated.js's own
- * note about an unmerged arrow stack costing a `rnd(2) @ next_ident`).
+ * Name transfer, glob absorption and worn-slot fixup follow C invent.c.
  * mergable() itself is the shared export from js/cmd.js, which reads the real
  * per-otyp oc_merge column, so this never merges a pair C would refuse.
  * RNG-free.
  * ------------------------------------------------------------------------ */
 export async function merged(potmp, pobj, nomsg = false) {
     const otmp = potmp.o, obj = pobj.o;
-    if (!(await mergable(otmp, obj)))
+    // obj_meld's nomsg path is obj_absorb (mkobj.c:3702), without merged's
+    // name, knowledge, worn-slot, or bypass transfer.  In particular, the
+    // absorption below must see the original bknown/rknown disagreement.
+    if (!nomsg && !(await mergable(otmp, obj)))
         return false;
     if (nomsg && obj.globby) await globby_bill_fixup(otmp, obj); // mkobj.c:3714, before extraction
 
@@ -259,14 +258,14 @@ export async function merged(potmp, pobj, nomsg = false) {
      * integer division on longs; Math.trunc matches (both operands are
      * non-negative here, but trunc is the rule this project uses). */
     if (!obj.lamplit && !obj.globby) {
-        const q = (otmp.quan | 0) + (obj.quan | 0);
+        const q = (otmp.quan ?? 0) + (obj.quan ?? 0);
         if (q)
-            otmp.age = Math.trunc((((otmp.age | 0) * (otmp.quan | 0))
-                + ((obj.age | 0) * (obj.quan | 0))) / q);
+            otmp.age = Math.trunc((((otmp.age ?? 0) * (otmp.quan ?? 0))
+                + ((obj.age ?? 0) * (obj.quan ?? 0))) / q);
     }
 
     if (!otmp.globby)
-        otmp.quan = (otmp.quan | 0) + (obj.quan | 0);
+        otmp.quan = (otmp.quan ?? 0) + (obj.quan ?? 0);
     /* C:838-842 — the gold special case, then the non-pudding weight recompute. */
     if ((otmp.oclass | 0) === COIN_CLASS) {
         otmp.owt = weight(otmp);
@@ -274,7 +273,7 @@ export async function merged(potmp, pobj, nomsg = false) {
     } else if (!otmp.globby) { /* C's `else if (!Is_pudding(otmp))` */
         otmp.owt = weight(otmp);
     }
-    if (!has_oname(otmp) && has_oname(obj))
+    if (!nomsg && !has_oname(otmp) && has_oname(obj))
         /* C oname(..., ONAME_SKIP_INVUPD) allocates the survivor's oextra and
          * copies the discarded stack's name without refreshing inventory.
          * The latter matters because merged() is still midway through its
@@ -282,16 +281,16 @@ export async function merged(potmp, pobj, nomsg = false) {
         await oname(otmp, ONAME(obj), 0x0200 /* ONAME_SKIP_INVUPD */);
 
     /* C invent.c:845: extraction is unconditional, including OBJ_FREE. */
-    obj_extract_self_general(obj);
+    if (!nomsg) obj_extract_self_general(obj);
 
     /* C:847-848 */
-    if (obj.pickup_prev && (otmp.where | 0) === OBJ_INVENT)
+    if (!nomsg && obj.pickup_prev && (otmp.where | 0) === OBJ_INVENT)
         otmp.pickup_prev = 1;
 
     /* C:851-854 — extinguish the absorbed light source and stop any remaining
      * object timers after the merge.  The helpers also maintain the live light
      * source/timer registries and the timed count. */
-    if (obj.lamplit)
+    if (!nomsg && obj.lamplit)
         obj_merge_light_sources(obj, otmp);
     /* obj_meld (nomsg) reaches obj_absorb without merged(), so a glob's
      * SHRINK_GLOB timer is still live for obj_absorb's stop_timer averaging
@@ -302,16 +301,16 @@ export async function merged(potmp, pobj, nomsg = false) {
      * dimension that differs becomes known on the combined stack, and (with
      * the two exceptions C spells out) that counts as a DISCOVERY. */
     let discovered = false;
-    if ((obj.known | 0) !== (otmp.known | 0)) {
+    if (!nomsg && (obj.known | 0) !== (otmp.known | 0)) {
         otmp.known = 1;
         discovered = true;
     }
-    if ((obj.rknown | 0) !== (otmp.rknown | 0)) {
+    if (!nomsg && (obj.rknown | 0) !== (otmp.rknown | 0)) {
         otmp.rknown = 1;
         if (otmp.oerodeproof)
             discovered = true;
     }
-    if ((obj.bknown | 0) !== (otmp.bknown | 0)) {
+    if (!nomsg && (obj.bknown | 0) !== (otmp.bknown | 0)) {
         otmp.bknown = 1;
         if (!_Role_if_cleric())
             discovered = true;
@@ -320,7 +319,7 @@ export async function merged(potmp, pobj, nomsg = false) {
     /* C:878-901 — the #adjust worn-slot fixup.  A returned stack can merge
      * with a wielded/quivered stack; the surviving stack keeps the preferred
      * weapon slot and the discarded node is fully unworn. */
-    if (obj.owornmask && (otmp.where | 0) === OBJ_INVENT) {
+    if (!nomsg && obj.owornmask && (otmp.where | 0) === OBJ_INVENT) {
         const W_WEP = 0x00000100, W_QUIVER = 0x00000200,
               W_SWAPWEP = 0x00000400;
         const wmask = (otmp.owornmask | 0) | (obj.owornmask | 0);
@@ -328,17 +327,18 @@ export async function merged(potmp, pobj, nomsg = false) {
         if (wmask & W_WEP) chosen = W_WEP;
         else if (wmask & W_SWAPWEP) chosen = W_SWAPWEP;
         else if (wmask & W_QUIVER) chosen = W_QUIVER;
-        else chosen = otmp.owornmask | 0;
+        else {
+            await impossible('merging strangely worn items (%lx)', wmask);
+            chosen = otmp.owornmask | 0;
+        }
         if ((otmp.owornmask | 0) & ~chosen)
             setnotworn(otmp);
-        if (chosen === W_WEP) await setuwep(otmp);
-        else if (chosen === W_SWAPWEP) await setuswapwep(otmp);
-        else if (chosen === W_QUIVER) await setuqwep(otmp);
+        await setworn(otmp, chosen);
         setnotworn(obj);
     }
 
     /* C:922-923 */
-    if (obj.bypass)
+    if (!nomsg && obj.bypass)
         otmp.bypass = 1;
 
     /* C:928-931 / mkobj.c:3702 — pudding globs absorb rather than add
@@ -376,6 +376,7 @@ export async function merged(potmp, pobj, nomsg = false) {
         const tm2 = stop_timer(SHRINK_GLOB, { a_obj: obj, a_long: null });
         const tm = Math.trunc(((tm1 || 25) + (tm2 || 25) + 1) / 2);
         start_glob_timeout(otmp, tm); /* mkobj.c:3742 */
+        obj_extract_self_general(obj); /* mkobj.c:3745, after absorption */
         await dealloc_obj(obj); pobj.o = null; potmp.o = otmp; return true; /* mkobj.c:3746-3749 */
     }
 
@@ -426,20 +427,6 @@ export function is_missile(obj) {
 /* C obj.h Has_contents(o) — a container with something in it. */
 function Has_contents(obj) { return !!obj.cobj; }
 
-/* C shk.c:3084-3100 picked_container().  When a container itself is being
- * added to inventory, shop billing has already handled the outer object; this
- * recursive walk clears no_charge from non-gold contents, including nested
- * containers.  Gold is intentionally skipped by the C loop. */
-function picked_container(obj) {
-    for (let otmp = obj?.cobj; otmp; otmp = otmp.nobj) {
-        if ((otmp.oclass | 0) === COIN_CLASS)
-            continue;
-        otmp.no_charge = 0;
-        if (Has_contents(otmp))
-            picked_container(otmp);
-    }
-}
-
 /* ---------------------------------------------------------------------------
  * C invent.c:1056 addinv_core0(obj, other_obj, update_perm_invent).
  *
@@ -448,11 +435,12 @@ function picked_container(obj) {
 export async function addinv_core0(obj, other_obj, update_perm_invent) {
     const g = game;
     const u = g.u || {};
+    const saved_otyp = obj.otyp | 0;
 
     /* C:1064-1065 panic("addinv: obj not free") — a real invariant, not a
      * defensive check: everything below assumes the object is unlinked. */
     if ((obj.where | 0) !== OBJ_FREE)
-        throw new Error(`addinv_core0: obj not free (where=${obj.where | 0})`);
+        throw new Error('addinv: obj not free');
     /* C:1066-1067 */
     if ((obj.how_lost | 0) === LOST_EXPLODING)
         return null;
@@ -496,6 +484,7 @@ export async function addinv_core0(obj, other_obj, update_perm_invent) {
             if (await merged(pq, po)) {
                 u.uquiver = pq.o;
                 obj = pq.o;
+                if (!obj) throw new Error(`addinv: null obj after quiver merge otyp=${saved_otyp}`); /* invent.c:1104 */
                 added = true;
             }
         }
@@ -507,6 +496,7 @@ export async function addinv_core0(obj, other_obj, update_perm_invent) {
             const pt = { o: otmp }, po = { o: obj };
             if (await merged(pt, po)) {
                 obj = pt.o;
+                if (!obj) throw new Error(`addinv: null obj after merge otyp=${saved_otyp}`); /* invent.c:1112 */
                 added = true;
                 break;
             }
@@ -531,15 +521,8 @@ export async function addinv_core0(obj, other_obj, update_perm_invent) {
             }
             obj.where = OBJ_INVENT;
 
-            /* C:1128-1140 — fill an empty quiver if obj was thrown BY THE HERO.
-             * `how_lost` is set to LOST_THROWN only in dothrow.c:1563, so an
-             * object a MONSTER threw arrives here with LOST_NONE and this arm
-             * cannot fire for u_catch_thrown_obj, which is the only live
-             * caller.  Its remaining conjuncts need throwing_weapon()'s oc_dir
-             * column (obj.h:249) and the ART_MJOLLNIR artilist index, neither
-             * of which has a generated JS table — so it is NAMED rather than
-             * approximated.  Reaching it requires flags.pickup_thrown AND a
-             * hero-thrown object arriving through hold_another_object. */
+            /* C invent.c:1128-1140 — autoquiver hero-thrown weapons or ammo,
+             * excluding Mjollnir and aklys, which must be wielded to return. */
             if (obj_was_thrown && (g.flags?.pickup_thrown ?? true) /* optlist.h:579 initval On */ && !u.uquiver
                 && (obj.oartifact | 0) !== 3 /* ART_MJOLLNIR */
                 && (obj.otyp | 0) !== 80 /* AKLYS */

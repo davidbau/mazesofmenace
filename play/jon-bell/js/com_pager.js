@@ -490,6 +490,20 @@ export async function display_text_window(lines) {
         try { await flush_screen(1); } finally { game._docrtMapAfterBot = false; }
     }
 }
+/* True when the physical frame still holds a getlin prompt that topl_putsym
+ * hard-wrapped onto row 1 (text over the map's top row, not the map itself). */
+export function prompt_spilled_onto_row1() {
+    const rows = typeof game._screen_output === 'string'
+        ? game._screen_output.split('\n') : null;
+    /* topl_putsym wraps only at column CO-1, so row 0 must be full (display.js _topl_hardwrap breaks past 78 visual cols). */
+    /* A --More-- that more() wrapped onto row 1 (topl.c:218-220) is not a
+     * spill: its dismissal runs docorner(1, cury + 1, 0) (topl.c:237-238),
+     * whose row_refresh repaints the map row. */
+    return !!(rows && rows[0] && rows[1]
+        && rows[0].replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').length >= 78
+        && rows[1].replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').trim() !== '--More--'
+        && rows[1] !== render_map_row_clipped(0, COLNO - 1).str);
+}
 export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipArg, pwOverride,
                                     fullScreen = false, mapClipExtra = 0, clipRow23 = false, clipMaxRow = 23) {
     let statusClipCol = statusClipArg;
@@ -707,7 +721,13 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipAr
                 const leftStatus = statusClipCol != null
                     ? Math.min(statusClipCol, marginCol)
                     : marginCol;
-                let clipped = _overlay_status_line(rowStatus(screenRow), leftStatus, '');
+                /* wintty.c:3814: with statuslines:3 map y=20 prints onto status row 1,
+                 * so the cells left of the window show what the terminal holds
+                 * there (map glyphs where they wiped the title), not the title. */
+                let clipped = _overlay_status_line(
+                    rows3 && screenRow === 21 && !game._status1Whole
+                        ? _status_row1_map_overlay(rowStatus(21)) : rowStatus(screenRow),
+                    leftStatus, '');
                 let run = Math.max(1, col - leftStatus);
                 const base0 = run;
                 for (let tail; (tail = /( +|\x1b\[(\d+)C)$/.exec(clipped));) {
@@ -721,7 +741,12 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipAr
                 // keep only the leftmost statusClipCol visible columns (clip,
                 // pad nothing — _overlay_status_line with empty text and the
                 // clip width gives exactly the truncated-left status line).
-                output += _overlay_status_line(rowStatus(screenRow), statusClipCol, '');
+                /* wintty.c:3684-3687: clipping preserves the physical prefix,
+                 * including map cells that already erased status row 1. */
+                output += _overlay_status_line(
+                    rows3 && screenRow === 21
+                        ? _status_row1_map_overlay(rowStatus(21)) : rowStatus(screenRow),
+                    statusClipCol, '');
             }
             else if (rows3 && screenRow === 21) {
                 /* wintty.c:3814: map y=20 still prints onto status row 1 (see
@@ -776,7 +801,15 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipAr
             continue;
         }
         // Within window: always clip map to WIN_COL-1 (C erases window region).
-        const { str: mapStr, endCol: mapEnd } = render_map_row_clipped(gameY, CLIP_X);
+        let { str: mapStr, endCol: mapEnd } = render_map_row_clipped(gameY, CLIP_X);
+        /* topl.c topl_putsym wrapped a long getlin prompt onto row 1 over the
+         * map; dismissing it (clear_nhwindow, cl_end per spilled row) leaves the
+         * row blank, and a window opened at offx > 0 does not repaint the map
+         * left of it (wintty.c process_text_window). */
+        if (screenRow === 1 && prompt_spilled_onto_row1()) {
+            mapStr = '';
+            mapEnd = 0;
+        }
         const text = winLine ? winLine.trim() : '';
         const indent = winLine ? (winLine.match(/^ +/) || [''])[0].length : 0;
         const targetCol = WIN_COL + indent;
@@ -1010,7 +1043,9 @@ function _statusLine2Raw(uacOverride, pwOverride) {
          * " Burdened" on the inventory pages. */
         /* Slimed likewise: timeout.c:654's countdown clears it without SET_BOTL, so the
          * window leaves the painted Slime on the line until the next bot(). */
-        s += botl_status_suffix(u.uhs | 0, g._botlPaintedCap, undefined, undefined, undefined,
+        /* Hunger likewise: eat.c:3396-3402 newuhs() mid-meal stores u.uhs without
+         * SET_BOTL, so the window leaves the last bot() paint's hunger visible. */
+        s += botl_status_suffix((g._botlPaintedUhs != null ? g._botlPaintedUhs : u.uhs) | 0, g._botlPaintedCap, undefined, undefined, undefined,
                                 undefined, undefined, undefined, undefined, undefined,
                                 g._botlPaintedSlimed != null ? !!g._botlPaintedSlimed : undefined);
         return status_row_finish(s);
@@ -1077,7 +1112,13 @@ export async function topl_more_page(msg, uacAtCapture) {
     if (_threeStatusLines()) {
         /* wintty.c:4289-4298: three status rows at 21/22/23; map row 21 gone */
         const st3 = _statusRows3();
-        output = output.replace(/[^\n]*\n$/, '') + _status_sgr(st3[0]) + '\n' + _status_sgr(st3[1]) + '\n' + _status_sgr(st3[2]);
+        /* display.c:2236-2256: the preceding flush can leave map writes over
+         * row 1. more() keeps that physical row, including erased blanks.
+         * Restore's welcome also flushes status first (restore.c:948,
+         * pline.c:273-274); only map cells actually drawn can erase it. */
+        const row1 = game._status1Whole ? _status_row1_whole_with_tail(st3[0])
+            : _status_row1_map_overlay(st3[0]);
+        output = output.replace(/[^\n]*\n$/, '') + row1 + '\n' + _status_sgr(st3[1]) + '\n' + _status_sgr(st3[2]);
     } else {
         output += _statusLine1() + '\n';
         // Row 23: status line 2 (with uac = actual post-find_ac value)
@@ -1158,6 +1199,17 @@ export async function com_pager_legacy(pauper = false, preInitAc = 0, preInitPw 
     if (roleIdx < 0)
         return;
     routeTag('com_pager_legacy', null); /* telemetry only; inert when env unset */
+    /* C wintty.c:1921 tty_display_nhwindow(NHW_TEXT): a topline left
+     * TOPLINE_NEED_MORE is page-acked (more()) before the window opens. */
+    if (g._pending_message) {
+        /* no bot() has run yet at newgame(): the status rows are still blank */
+        const blankStatus = !g._status_blanked;
+        if (blankStatus) g._status_blanked = true;
+        const releaseFlush = g._paintedSnapshot ? () => {} : use_last_flush_snapshot();
+        await force_more_pages(g._pending_message, true, true);
+        releaseFlush();
+        if (blankStatus) g._status_blanked = false;
+    }
     // C ref: questpgr.c convert_arg 'd' uses u.ualignbase[A_ORIGINAL] (index 1)
     const alignType = (u.ualignbase?.[1]) ?? (u.ualign?.type ?? 0);
     const female = !!(g.flags?.female);
@@ -1176,6 +1228,13 @@ export async function com_pager_legacy(pauper = false, preInitAc = 0, preInitPw 
     const fullScreen = windowLines.length >= 24
         || g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0;
     const WIN_COL = fullScreen ? 1 : tty_window_offx(windowLines, footerKind);
+    /* C wintty.c:1936 tty_display_nhwindow(NHW_TEXT) with offx != 10:
+     * tty_clear_nhwindow(WIN_MESSAGE) erases a non-empty topline.  A wizard-mode
+     * "Get bones? [yn] (n)" answered at mklev leaves TOPLINE_NON_EMPTY, so it
+     * must not survive left of the window.  (read_wizkit's raw_printf row does
+     * not touch toplin, hence the _blank_below_window exemption.) */
+    if (!fullScreen && !g._blank_below_window)
+        g._topl_sticky = null;
     // preInitAc mirrors C's u.uac=0 (from memset) at the time bot() rendered step 0.
     let screenOutput = fullScreen
         ? windowLines.map((ln, i) => (i === windowLines.length - 1 ? ' ' : '')
@@ -1429,6 +1488,12 @@ export async function menu_search_getlin(frameRows) {
     /* C ref: getline.c:63 custompline() -> vpline() pline.c:282 strncpy(gp.prevmsg)
      * runs for the prompt too, so a later Norep() of an older message reprints. */
     g._prevmsg = query + ' ';
+    /* C getline.c:63 custompline -> redotoplin: home(); putsyms(query); cl_end()
+     * physically overwrites row 0, so any topline residue (e.g. a "Die? [yn]"
+     * prompt left standing under the menu) is gone for good. */
+    g._topl_sticky = null;
+    g._topl_empty_sticky = null;
+    g._menu_search_row0_erased = true;
     /* C ref: getline.c:50,106-137 — ^P recall state: `doprev` and the text the
      * recalled message left on the topline (null when the prompt is showing). */
     let doprev = false, recall = null, prevIdx = 0;

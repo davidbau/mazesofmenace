@@ -11,6 +11,7 @@
 // autodig/autopickup boolean toggles, and the pickup_types submenu.  The menu
 // content (labels + ordering) is fixed (it is the static set_in_game projection
 // of allopt[]); only the [value] fields are state-dependent.  Rendered
+import { load_primary_symset_from_file, assign_graphics } from './symbols.js';
 import { game } from './gstate.js';
 import { dlb_file_lines, OPTMENUHELP } from './dispfile.js';
 import { ECMD_OK, gs, PARANOID_BONES, Is_rogue_level } from './const.js';
@@ -38,7 +39,7 @@ import { choose_disco_sort } from './o_init.js';
 import { ROLE_RANKS, role_index_by_name } from './rank_data.js';
 /* C ref: wintty.c process_menu_window's overlay composition — the shared
  * map-under-window renderer every other overlay in this port uses. */
-import { build_window_screen, menu_search_case } from './com_pager.js';
+import { build_window_screen, menu_search_case, menu_search_docorner } from './com_pager.js';
 import { DOSET_BOOLS, DOSET_COMPOUNDS, DOSET_OTHERS, LONGEST_OPTION_NAME,
          term_for_boolean, count_bind_keys } from './doset_data.js';
 /* C ref: options.c:8060 oc_to_str — see js/drawing.js for why it lives there. */
@@ -485,14 +486,31 @@ async function numberPadSubmenu() {
         '(end)',
     ];
     let idx = -1;
+    let repaint = true;
     while (idx < 0) {
-        game._screen_output = build_window_screen(rows, 24, undefined, 0);
-        set_cursor(30, 8);
-        game._pending_message = '';
+        if (repaint) {
+            game._screen_output = build_window_screen(rows, 24, undefined, 0);
+            set_cursor(30, 8);
+            game._pending_message = '';
+        }
+        repaint = true;
         const key = await nhgetch();
         if (key === 27 || key === 10 || key === 13 || key === 32)
             return;
         const ch = String.fromCharCode(key);
+        if (ch === ':') {
+            /* C wintty.c:1700-1730 MENU_SEARCH on a PICK_ONE menu */
+            const frame = game._screen_output.split('\n');
+            const entries = rows.slice(2, 8).map((t, i) => ({ str: t, i }));
+            let hit = -1;
+            const finished = await menu_search_case('ONE', entries,
+                () => frame, (e) => { hit = e.i; });
+            if (finished) { idx = hit; break; }
+            frame[0] = '';
+            game._screen_output = menu_search_docorner(frame).join('\n');
+            repaint = false;
+            continue;
+        }
         idx = 'abcdef'.indexOf(ch);
         if (idx < 0) idx = '012345'.indexOf(ch);
     }
@@ -1452,7 +1470,8 @@ async function status_hilite_menu_fld_current(fld, name) {
         current.add_menu(i + 1, 0, ATR_NONE, l.str, false, false));
     current.add_menu_str('');
     current.add_menu(-1, 'X', ATR_NONE, 'Remove selected hilites', false, false);
-    current.add_menu(-2, 'Z', ATR_NONE, 'Add new hilites', false, false);
+    if (name !== 'score') // C botl.c:4407-4421: no SCORE_ON_BOTL.
+        current.add_menu(-2, 'Z', ATR_NONE, 'Add new hilites', false, false);
     current.end_menu(`Current ${name} hilites:`);
     const selected = await current.select_menu(PICK_ANY);
     /* botl.c:4430-4455: 'Z' (-2) creates new hilites via status_hilite_menu_add */
@@ -1465,8 +1484,7 @@ async function status_hilite_menu_fld_current(fld, name) {
 /* C botl.c:4498 status_hilite_menu.  Picking a field with no rules reaches
  * status_hilite_menu_add() at its choose_behavior step (botl.c:3922-3931);
  * a cancelled behavior menu returns FALSE and the field menu is redone.
- * Defining a rule, and status_hilite_menu_fld's menu for a field that has
- * rules (botl.c:4369), are not ported. */
+ * Existing rules first open status_hilite_menu_fld's menu (botl.c:4357). */
 export async function status_hilite_menu(preserveStatus = false) {
     for (;;) {
         const lines = status_hilite_linestr_gather();
@@ -1492,8 +1510,7 @@ export async function status_hilite_menu(preserveStatus = false) {
             await status_hilites_viewall(lines);
             continue;
         }
-        if (lines.some(l => l.fld === fld))
-            throw new Error('not yet ported: status_hilite_menu_fld rules menu');
+        let adding = lines.some(l => l.fld === fld);
         /* the 24-row menu window covered the status rows and its dismissal
          * does not repaint them: the pending "You see your kitten." --More--
          * (and the submenu after it) stand over blank status rows */
@@ -1504,7 +1521,9 @@ export async function status_hilite_menu(preserveStatus = false) {
         const flushed = !!game._pending_message;
         await drainTopline();
         game._status_blanked = false;
-        let beh = await status_hilite_menu_choose_behavior(fld, flushed);
+        let beh = adding
+            ? await status_hilite_menu_fld_current(fld, INITBLSTATS[fld][0])
+            : await status_hilite_menu_choose_behavior(fld, flushed);
         // C botl.c:4225-4243,4285-4301: always rule, with color/attribute retries.
         while (beh === 105 || beh === 102) { // botl.c:4088-4102: up/down picker and retry.
             const name = INITBLSTATS[fld][0];
@@ -1538,7 +1557,10 @@ export async function status_hilite_menu(preserveStatus = false) {
             await pline('Added hilite %s', rule);
             reset_status_hilites();
             await drainTopline();
-            beh = await status_hilite_menu_fld_current(fld, name);
+            // C botl.c:4445-4447: Z repeats additions until one is cancelled.
+            beh = adding ? await status_hilite_menu_choose_behavior(fld, true)
+                : await status_hilite_menu_fld_current(fld, name);
+            adding = true;
         }
         if (beh === 104 && INITBLSTATS[fld][0] === 'title') {
             beh = await status_hilite_add_title_textmatch(fld, flushed)
@@ -2023,6 +2045,13 @@ export async function handler_symset(preserveStatus = false, rogueflag = false) 
     } else if (chosen === -1) {
         cur.name = null;
         cur.handling = 0;
+    }
+    /* C symbols.c:1065-1098 do_symset: reload the chosen primary table,
+     * including defaults, then make it the active showsyms table. */
+    if (!rogueflag && chosen >= -1) {
+        load_primary_symset_from_file(cur.name);
+        game._symsetDarkroomPending = true;
+        if (!Is_rogue_level(game.u?.uz)) assign_graphics(0);
     }
     return true;
 }

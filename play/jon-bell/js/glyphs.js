@@ -78,6 +78,7 @@ export function glyph_to_cmap(glyph) {
     const GLYPH_CMAP_C_OFF = 4083;
     const GLYPH_SWALLOW_OFF = 4093;
     const GLYPH_EXPLODE_OFF = 7157;
+    const GLYPH_WARNING_OFF = GLYPH_EXPLODE_OFF + 7 * 9;
     const MAXPCHARS = 105;
 
     const S_stone = 0;
@@ -114,7 +115,7 @@ export function glyph_to_cmap(glyph) {
         return (glyph - GLYPH_CMAP_C_OFF) + S_digbeam;
     else if (glyph >= GLYPH_SWALLOW_OFF && glyph < GLYPH_EXPLODE_OFF)
         return ((glyph - GLYPH_SWALLOW_OFF) & 0x7) + S_sw_tl;
-    else if (glyph >= GLYPH_EXPLODE_OFF)
+    else if (glyph >= GLYPH_EXPLODE_OFF && glyph < GLYPH_WARNING_OFF)
         return ((glyph - GLYPH_EXPLODE_OFF) % 9) + S_expl_tl;
     else
         return MAXPCHARS;
@@ -207,6 +208,7 @@ const zero_find = {
 
 /* C: static struct glyphid_cache_t *glyphid_cache; */
 let glyphid_cache = null;
+let glyphid_cache_lsize = 0, glyphid_cache_size = 0;
 /* C: static struct find_struct glyphcache_find, to_custom_symbol_find; */
 let glyphcache_find;
 let to_custom_symbol_find;
@@ -214,7 +216,18 @@ const nonzero_black = 0x1000000; /* CLR_BLACK | NH_BASIC_COLOR */
 
 /* ── unported helpers (stubs) ──────────────────────────────────── */
 
-function init_glyph_cache() { /* stub — not yet ported */ }
+/* C glyphs.c:333-351: a zeroed double-hash table, at least 2*MAX_GLYPH. */
+function init_glyph_cache() {
+    glyphid_cache_lsize = 0;
+    glyphid_cache_size = 1;
+    while (glyphid_cache_size < 2 * MAX_GLYPH) {
+        ++glyphid_cache_lsize;
+        glyphid_cache_size *= 2;
+    }
+    glyphid_cache = Array.from({ length: glyphid_cache_size }, () => ({
+        glyphnum: 0, id: null,
+    }));
+}
 /* C glyphs.c:354 — release the cache and clear the active search cursor. */
 export function free_glyphid_cache() {
     glyphid_cache = null;
@@ -248,10 +261,8 @@ export function fill_glyphid_cache() {
 /* ── glyphid_cache_status ─────────────────────────────────────── */
 /* C ref: nethack-c/src/glyphs.c */
 
-let _gs_calls = 0;
 export function glyphid_cache_status() {
-    const idx = _gs_calls++;
-    return (idx !== 0 && idx !== 27);
+    return glyphid_cache !== null;
 }
 
 /* ── match_glyph ──────────────────────────────────────────────── */
@@ -444,18 +455,43 @@ function glyph_find_core(id, findwhat) {
 }
 function rgbstr_to_int32(s) { return rgbstr_to_int32_real(s); }
 
-/* C ref: nethack-c-v5/upstream/src/glyphs.c:87-135.  The recorded build has
- * ENHANCED_SYMBOLS undefined (no unicode arm: S_ss4:U+2744 draws no nag), so
- * only the color arm exists.  With no symset name the custom entry is dropped
- * and config_error_add() complains once (static colornag). */
-let colornag = 0;
+/* C glyphs.c:484-528 and utf8map.c:148-210: update or append a glyph entry. */
+function add_custom_glyph_entry(name, glyphidx, which_set, custtype, value) {
+    gs.sym_customizations ||= Array.from({ length: NUM_GRAPHICS + 1 }, () =>
+        Array.from({ length: custom_count }, zero_symset_customization));
+    const gdc = gs.sym_customizations[which_set][custtype];
+    if (!gdc.details)
+        Object.assign(gdc, { customization_name: name, custtype, details: null, details_end: null });
+    const field = custtype === custom_nhcolor ? 'ccolor' : 'urep';
+    if (gdc.custtype === custtype && gdc.customization_name === name)
+        for (let d = gdc.details; d; d = d.next)
+            if (d.content[field].glyphidx === glyphidx) {
+                Object.assign(d.content[field], value);
+                return;
+            }
+    const detail = { content: { [field]: { glyphidx, ...value } }, next: null };
+    if (!gdc.details) gdc.details = detail;
+    else gdc.details_end.next = detail;
+    gdc.details_end = detail;
+    ++gdc.count;
+}
+/* C glyphs.c:53-105; ENHANCED_SYMBOLS is enabled in v5 config.h:368. */
+let colornag = 0, glyphnag = 0;
 function to_custom_symset_entry_callback(glyph, findwhat) {
     const idx = gs.symset_which_set | 0;
     if (findwhat.extraval) findwhat.extraval.value = glyph;
+    const match = /^[Uu]\+([0-9a-fA-F]{1,7})/.exec(findwhat.unicode_val || '');
+    const uval = match ? parseInt(match[1], 16) : 0;
+    if (uval && uval < 0x110000 && !(uval >= 0xd800 && uval < 0xe000)) {
+        const name = gs.symset?.[idx]?.name;
+        if (name) add_custom_glyph_entry(name, glyph, idx, custom_ureps,
+            { u: { utf32ch: uval, utf8str: String.fromCodePoint(uval) } });
+        else if (!glyphnag++) config_error_add('Unimplemented customization feature, ignoring for now');
+    }
     if (findwhat.color) {
         const sym = Array.isArray(gs.symset) ? gs.symset[idx] : null;
         if (sym && sym.name) {
-            /* add_custom_nhcolor_entry: not ported */
+            add_custom_glyph_entry(sym.name, glyph, idx, custom_nhcolor, { nhcolor: findwhat.color });
         } else if (!colornag++) {
             config_error_add('Unimplemented customization feature,'
                              + ' ignoring for now');

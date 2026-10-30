@@ -442,6 +442,10 @@ export class TtyMenu {
              * rewrites status row 1, so they do not wipe it (cmd.js
              * _dismissMenu's same ordering). */
             status_r1_menu_docrt();
+            /* same row-1 ordering as cmd.js _dismissMenu: the botlx bot()
+             * rewrites status row 1 over docrt's map row 20 cells */
+            game._r1botAfterMap = game.level;
+            game._r1textOver = true;
             game._statusBlankAfterDocrt = true;
             if (game.disp) game.disp.botlx = 1;
         }

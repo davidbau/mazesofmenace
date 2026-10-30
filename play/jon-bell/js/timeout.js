@@ -464,6 +464,9 @@ async function burn_object(arg, timeout) {
         }
         if (obj && obj.age) begin_burn(obj, true);
         break;
+    default:
+        await impossible('burn_object: unexpected obj %s', xname(obj));
+        break;
     }
     if (need_newsym) newsym(x.value, y.value);
     if (need_invupdate) update_inventory();
@@ -1048,6 +1051,12 @@ export async function run_timers() {
     }
 }
 
+/* C timeout.c:1995-2014: names used in timer panic diagnostics. */
+function kind_name(kind) {
+    if (kind === TIMER_NONE) impossible_sync('no timer type');
+    return ['none', 'level', 'global', 'object', 'monster'][kind] ?? 'unknown';
+}
+
 /* C ref: timeout.c:2246-2292 start_timer(long when, short kind, short
  * func_index, anything *arg).  Returns TRUE on success.  C panics on a bad
  * kind/func_index and impossible()s (returning FALSE, timer not started) on a
@@ -1057,7 +1066,7 @@ export function start_timer(when, kind, func_index, arg) {
 
     if (kind <= TIMER_NONE || kind >= NUM_TIMER_KINDS
         || func_index < 0 || func_index >= NUM_TIME_FUNCS)
-        throw new Error(`start_timer (kind ${kind}: ${func_index})`);
+        throw new Error(`start_timer (${kind_name(kind)}: ${func_index})`);
 
     /* fail if <arg> already has a <func_index> timer running */
     for (dup = gtimer().timer_base; dup; dup = dup.next)

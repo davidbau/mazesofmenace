@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { There as There_real, pline_The } from './display.js';
 // polyself.c — hero polymorph (poly_self / polyself / polymon / newman / set_uasmon).
 // C ref: nethack-c/src/polyself.c
 // @ts-nocheck — sibling imports from hand-maintained js/*.js.
@@ -18,7 +19,6 @@
 import { rn2, rnd, rn1, rnl, d } from './rng.js';
 import { game } from './gstate.js';
 import { PM_COCKATRICE, PM_CHICKATRICE, PM_STONE_GOLEM, PM_FLAMING_SPHERE, PM_FIRE_VORTEX, PM_GREEN_SLIME } from './pm.generated.js';
-function pline_The(msg, ...args) { return pline('The ' + msg, ...args); }
 function touch_petrifies(pd) { const i = pd?.pmidx | 0; return i === PM_COCKATRICE || i === PM_CHICKATRICE; }
 import { pline, urgent_pline, newsym, see_monsters, flush_screen, _topl_stash_result, _topl_merge_result, _topl_joins_snapshot, canspotmon, canseemon, Unaware } from './display.js';
 import { impossible } from './pline.js';
@@ -33,7 +33,7 @@ import { newhp, newpw } from './exper.js';
 import {
     find_ac, donning, encumber_msg, takeoff_slot_noac, Armor_gone, Boots_off, Blindf_off, Cloak_off, Gloves_off, Helmet_off, worn_invent_obj, cancel_don,
 } from './do_wear.js';
-import { dropx, useup, welded, could_twoweap, untwoweapon, surface, ceiling, waterbody_name, yname, You_cant, youhiding as youhiding_enlightenment, instapetrify as instapetrify_real } from './cmd.js';
+import { dropx, useup, welded, could_twoweap, untwoweapon, surface, ceiling, waterbody_name, yname, You_cant, youhiding_enlightenment, instapetrify as instapetrify_real } from './cmd.js';
 import { losehp, acurrstr } from './dokick.js';
 import { end_burn, learn_egg_type } from './timeout.js';
 import { make_sick, make_stoned, make_slimed, make_glib } from './potion.js';
@@ -188,9 +188,7 @@ function is_giant(ptr) { return (ptr.mflags2 & M2_GIANT) !== 0; }
 /* C mondata.h:95 is_undead(ptr) — mflags2 & M2_UNDEAD, NOT mflags1. */
 function is_undead(ptr) { return (ptr.mflags2 & M2_UNDEAD) !== 0; }
 function is_golem(ptr) { return ptr.mlet === S_GOLEM; }
-// makemon.c is_home_elemental: an elemental whose form matches the dungeon's home
-// home check reduces to FALSE off the home plane.  We mirror that conservative
-// FALSE (the rn() arithmetic below would be wrong only on the elemental planes,
+// C polyself.c:869 passes &mons[mntmp] to the shared makemon.c:33 helper.
 function is_home_elemental(pmidx) {
     return is_home_elemental_real({ pmidx: pmidx | 0 });
 }
@@ -550,7 +548,8 @@ export async function polymon(mntmp) {
         if (((sr?.intrinsic | 0) || (sr?.extrinsic | 0)) && (st?.intrinsic | 0))
             await make_stoned(0, 'You no longer seem to be petrifying.', 0, null);
         const vr = u.uprops?.[SICK_RES], vk = u.uprops?.[SICK];
-        if (((vr?.intrinsic | 0) || (vr?.extrinsic | 0)) && (vk?.intrinsic | 0)) {
+        if (((vr?.intrinsic | 0) || (vr?.extrinsic | 0)
+             || defended(g.youmonst, 33 /* AD_DISE */)) && (vk?.intrinsic | 0)) {
             await make_sick(0, null, false, 3 /* SICK_ALL */);
             await pline('You no longer feel sick.');
         }
@@ -694,8 +693,7 @@ export async function polymon(mntmp) {
     const canSlip = newAmorphous || newWhirly || newUnsolid;
     const passesWalls = !!(u.uprops?.[PASSES_WALLS]
         && ((u.uprops[PASSES_WALLS].intrinsic | 0)
-            || (u.uprops[PASSES_WALLS].extrinsic | 0))
-        && !(u.uprops[PASSES_WALLS].blocked | 0));
+            || (u.uprops[PASSES_WALLS].extrinsic | 0)));
     if (u.utrap && (u.utraptype | 0) === TT_INFLOOR && passesWalls) {
         await pline('The rock seems to no longer trap you.');
         await reset_utrap(true);
@@ -804,7 +802,6 @@ async function dropp(obj) {
     for (let otmp = g.invent; otmp; otmp = otmp.nobj) {
         if (otmp === obj || (obj && otmp.o_id === obj.o_id)) {
             await dropx(obj);
-            await encumber_msg();
             break;
         }
     }
@@ -981,18 +978,18 @@ async function drop_weapon(alone) {
                 const otmp2 = u.uswapwep;
                 await _uswapwepgone();
                 if (otmp2 && otmp2.in_use) updateinv = false;
-                else if (candropswapwep && otmp2) { await dropx(otmp2); await encumber_msg(); }
+                else if (candropswapwep && otmp2) await dropx(otmp2);
             }
             const otmp = u.uwep;
             await _uwepgone();
             if (otmp.in_use) updateinv = false;
-            else if (candropwep) { await dropx(otmp); await encumber_msg(); }
+            else if (candropwep) await dropx(otmp);
 
             if (updateinv) update_inventory();
         } else if (!could_twoweap(g.youmonst.data)) {
             /* C polyself.c:1358-1359 — keep the weapons, but end dual wielding
              * when the new form lacks multiple weapon attacks. */
-            untwoweapon();
+            await untwoweapon();
         }
     }
 }
@@ -1137,14 +1134,7 @@ function golemhp(type) {
 
 // C hack.c:4515 rounddiv(long x, int y) — signed round-to-nearest division.
 function rounddiv(x, y) {
-    let divsgn = 1;
-    if (y === 0) throw new Error('rounddiv: division by zero');
-    if (y < 0) { divsgn = -divsgn; y = -y; }
-    if (x < 0) { divsgn = -divsgn; x = -x; }
-    let r = Math.trunc(x / y);
-    const m = x % y;
-    if (2 * m >= y) r++;
-    return divsgn * r;
+    return cmdNS.rounddiv(x, y);
 }
 
 // C polyself.c:272 change_sex() — flip hero gender (RNG-free).  Called from
@@ -1751,7 +1741,7 @@ async function polyself_body(psflags, st) {
         /* C getline.c:53-67 pages the standing topline before the prompt's
          * custompline flush.  getlin() preserves that last physical map and
          * status; flushing here would paint pending monster moves too early. */
-        do {
+        pick_form: do {
             mntmp = NON_PM;
             // C polyself.c:519 — getlin("Become what kind of monster? [type the name]").
             // RNG-free: the reads consume keystrokes only.
@@ -1776,6 +1766,7 @@ async function polyself_body(psflags, st) {
              * the ordinary diagnostic and consumes another prompt rather than
              * aborting the command. */
             let monclass = 0;
+            by_class: for (;;) { /* C polyself.c:538 goto target; re-run all guards. */
             if (mntmp < LOW_PM) {
                 const mbox = { value: NON_PM };
                 monclass = name_to_monclass(buf, mbox) | 0;
@@ -1786,14 +1777,14 @@ async function polyself_body(psflags, st) {
                 if (mntmp < LOW_PM) {
                     if (monclass) await You_cant('polymorph into any of those.');
                     else await pline('I\'ve never heard of such monsters.');
-                    continue;
+                    continue pick_form;
                 }
             }
             let cptr = permonstTemplate(mntmp);
             // C polyself.c:547-563 — placeholder-form remap, but ONLY for a
             // placeholder that is NOT your_race and NOT PM_HUMAN (those fall through
             // "human" (PM_HUMAN) as a revert, which skips this block.
-            if (is_placeholder(mntmp) && !your_race(cptr) && mntmp !== PM_HUMAN) {
+            if (!monclass && is_placeholder(mntmp) && !your_race(cptr) && mntmp !== PM_HUMAN) {
                 /* C has a suitable replacement for the three race
                  * placeholders.  The remaining placeholder forms have no
                  * replacement; leave the target untouched so the normal
@@ -1825,7 +1816,7 @@ async function polyself_body(psflags, st) {
                 // C polyself.c:570-582 — wizard reverting to own role while poly'd.
                 await rehumanize();
                 directRevert = true;
-                break;
+                break pick_form;
             } else if (iswere
                        && (were_beastie(mntmp) === (u.ulycn | 0)
                            || _counter_were_ps(mntmp) === (u.ulycn | 0)
@@ -1834,7 +1825,7 @@ async function polyself_body(psflags, st) {
                  * Defer the actual target adjustment until after the prompt,
                  * matching do_shift's shared path below. */
                 wereShift = true;
-                break;
+                break pick_form;
             } else if (!polyok(cptr)
                        && !(mntmp === PM_HUMAN
                             || (your_race(cptr) && (cptr.geno & G_UNIQ) === 0)
@@ -1843,15 +1834,13 @@ async function polyself_body(psflags, st) {
                 // non-polymorphable monster.  Retry that class in-place (the
                 // same answer is not requested from the player again).
                 if (monclass) {
-                    while (rn2(3) || --tryct > 0) {
-                        mntmp = mkclass_poly_nc(monclass);
-                        cptr = permonstTemplate(mntmp);
-                        if (polyok(cptr) || is_placeholder(mntmp)) break;
+                    if (rn2(3) || --tryct > 0) {
+                        mntmp = NON_PM;
+                        continue by_class; /* C goto by_class: revalidate the new pick. */
                     }
-                    if (polyok(cptr)) break;
                     // C increments before the diagnostic so the enclosing
                     // --tryct reaches zero and emits thats_enough_tries.
-                    if (tryct <= 0) tryct++;
+                    ++tryct;
                 }
                 // C polyself.c:608-612 — the_unique_pm gets "the", non-pname gets an().
                 let pm_name = monPmname(mntmp, g.flags?.female ? FEMALE : MALE);
@@ -1861,7 +1850,9 @@ async function polyself_body(psflags, st) {
                 await You_cant(`polymorph into ${pm_name}.`);
             } else {
                 // C polyself.c:614 — else break; (a valid, polyok form was named).
-                break;
+                break pick_form;
+            }
+            break;
             }
         } while (--tryct > 0);
 
@@ -2462,8 +2453,7 @@ export async function dohide() {
     };
     const stoneProp = u.uprops?.[STONE_RES];
     const Stone_resistance = !!stoneProp
-        && !!((stoneProp.intrinsic | 0) || (stoneProp.extrinsic | 0))
-        && !(stoneProp.blocked | 0);
+        && !!((stoneProp.intrinsic | 0) || (stoneProp.extrinsic | 0));
 
     const ismimic = pd.mlet === S_MIMIC;
     const on_ceiling = is_clinger_fn(pd) || _Flying();
@@ -2481,7 +2471,7 @@ export async function dohide() {
         } else {
             reason = "holding that creature";
         }
-        You_cant("hide while you're %s.", reason);
+        await You_cant("hide while you're %s.", reason);
         if (u.uundetected || (ismimic && ((g.youmonst.m_ap_type | 0) & 7) !== M_AP_NOTHING_local)) {
             u.uundetected = 0;
             g.youmonst.m_ap_type = M_AP_NOTHING_local;
@@ -2497,9 +2487,9 @@ export async function dohide() {
          * both guard on it and fall through); locations live on g.level. */
         const levtyp = g.level?.locations?.[u.ux]?.[u.uy]?.typ | 0;
         if (IS_FOUNTAIN(levtyp)) {
-            pline_The("fountain is not deep enough to hide in.");
+            await pline_The("fountain is not deep enough to hide in.");
         } else {
-            There("is no %s to hide in here.", hliquid("water"));
+            await There("is no %s to hide in here.", hliquid("water"));
         }
         u.uundetected = 0;
         return ECMD_OK_local;
@@ -2514,7 +2504,7 @@ export async function dohide() {
         const otop = g.level?.levelObjects?.[u.ux]?.[u.uy] ?? null;
 
         if (!otop) {
-            There("is nothing to hide under here.");
+            await There("is nothing to hide under here.");
             u.uundetected = 0;
             return ECMD_OK_local;
         }
@@ -2535,7 +2525,7 @@ export async function dohide() {
                 corpse_name = an(corpse_name);
             /* no need to check poly_when_stoned(); no hide-underers can
                turn into stone golems instead of becoming petrified */
-            pline("Hiding under %s%s is a fatal mistake...",
+            await pline("Hiding under %s%s is a fatal mistake...",
                   corpse_name, plur(ct));
             const kbuf = "hiding under " + corpse_name + plur(ct);
             await instapetrify(kbuf);
@@ -2547,20 +2537,20 @@ export async function dohide() {
 
     /* Planes of Air and Water */
     if (on_ceiling && !has_ceiling_fn(u.uz)) {
-        There("is nowhere to hide above you.");
+        await There("is nowhere to hide above you.");
         u.uundetected = 0;
         return ECMD_OK_local;
     }
 
     if ((is_hider_fn(pd) && !_Flying())
         && (Is_airlevel(u.uz) || Is_waterlevel(u.uz))) {
-        There("is nowhere to hide beneath you.");
+        await There("is nowhere to hide beneath you.");
         u.uundetected = 0;
         return ECMD_OK_local;
     }
 
     if (u.uundetected || (ismimic && ((g.youmonst.m_ap_type | 0) & 7) !== M_AP_NOTHING_local)) {
-        youhiding(false, 1); /* "you are already hiding" */
+        await youhiding(false, 1); /* "you are already hiding" */
         return ECMD_OK_local;
     }
 
@@ -2572,14 +2562,14 @@ export async function dohide() {
         u.uundetected = 1;
     }
     newsym(u.ux, u.uy);
-    youhiding(false, 0); /* "you are now hiding" */
+    await youhiding(false, 0); /* "you are now hiding" */
     return ECMD_TIME_local;
 }
 
 // ── stubs for unported dohide helpers ──
 function There(msg, ...args) {
     /* C pline.c:429 prefixes the formatted message with "There ". */
-    return pline('There ' + msg, ...args);
+    return There_real(msg, ...args);
 }
 async function instapetrify(kbuf) { return instapetrify_real(kbuf); }
 // ── C insight.c:2027 youhiding(via_enlghtmt, msgflag) — the dohide() topline. ──
@@ -2596,7 +2586,7 @@ async function instapetrify(kbuf) { return instapetrify_real(kbuf); }
 //   else You("are %s %s.", msgflag ? "already" : "now", buf);
 //
 // mappearance == STRANGE_OBJECT: "You are now mimicking a strange object."
-function youhiding(via_enlghtmt, msgflag) {
+export function youhiding(via_enlghtmt, msgflag) {
     const g = game;
     const u = g.u;
     let buf = 'hiding';
@@ -2619,10 +2609,11 @@ function youhiding(via_enlghtmt, msgflag) {
             const otmp = g.level?.levelObjects?.[u.ux]?.[u.uy] ?? null;
             if (otmp)
                 buf += ' underneath ' + ansimpleoname(otmp);
-        } else if (data && (((data.mflags1 | 0) & M1_CLING) !== 0
+        } else if ((data && ((data.mflags1 | 0) & M1_CLING) !== 0)
                             || (((u.uprops?.[FLYING]?.intrinsic | 0)
-                                 || (u.uprops?.[FLYING]?.extrinsic | 0))
-                                && !(u.uprops?.[FLYING]?.blocked | 0)))) {
+                                 || (u.uprops?.[FLYING]?.extrinsic | 0)
+                                 || (u.usteed?.data?.mflags1 & M1_FLY))
+                                && !(u.uprops?.[FLYING]?.blocked | 0))) {
             /* Flying forms hide on the ceiling even when they do not cling. */
             buf += ' on the ' + ceiling(u.ux, u.uy);
         } else if (u.utrap && (u.utraptype | 0) === TT_PIT) {
@@ -2637,13 +2628,11 @@ function youhiding(via_enlghtmt, msgflag) {
         }
     }
     if (via_enlghtmt) {
-        youhiding_enlightenment(true, msgflag);
+        youhiding_enlightenment(buf, msgflag);
         return;
     }
-    /* js/display.js pline() commits the topline synchronously.  dohide() is
-     * async only because its fatal corpse arm must await instapetrify(); the
-     * ordinary hide message still lands before the command returns. */
-    pline(`You are ${msgflag ? 'already' : 'now'} ${buf}.`);
+    /* C insight.c:2075: finish the blocking message before dohide returns. */
+    return pline(`You are ${msgflag ? 'already' : 'now'} ${buf}.`);
 }
 function plur(x) { return (x === 1) ? "" : "s"; }
 

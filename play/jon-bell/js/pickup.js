@@ -20,7 +20,7 @@ import { impossible } from './pline.js';
 import { displayLookWindow } from './look-window.js';
 import { fix_ghostly_obj } from './bones.js';
 import {
-    pline, _topl_stash_result, newsym, newsym_force, Norep, flush_screen, obj_to_glyph,
+    pline, _topl_stash_result, newsym, newsym_force, Norep, flush_screen, obj_to_glyph, menu_item_marker,
     force_more, topl_park_cursor, topl_force_break_after, capture_flushed_cells, You_see,
     _topline_more_pending, _more_never_dismissed, flush_pending_messages,
 } from './display.js';
@@ -903,7 +903,7 @@ async function describe_decor() {
     } else if (!_Underwater()) {
         if (IS_POOL(prevDecor) || IS_LAVA(prevDecor) || prevDecor === ICE) {
             if ((g.iflags.last_msg | 0) !== PLNMSG_BACK_ON_GROUND)
-                _cmd_back_on_ground(false);
+                await _cmd_back_on_ground(false);
         }
     }
     g.iflags.prev_decor = g.flags?.mention_decor ? ltyp : STONE;
@@ -1137,7 +1137,9 @@ async function _select_menu(items, how, paint = null) {
                 if (it.heading && it.heading !== lastHeading)
                     all.push(menu_heading_text(it.heading));
                 lastHeading = it.heading;
-                all.push(`${it.sel} ${it.selected ? (it.count > 0 ? '#' : '+') : '-'} ${it.text}`);
+                const showGlyph = it.glyph && game.iflags?.use_menu_glyphs
+                    && !((game.iflags.menuobjsyms | 0) & 4);
+                all.push(`${it.sel} ${menu_item_marker(it, page, showGlyph)} ${it.text}`);
             }
             all.push('(end)');
             const tall = all.length > 24;
@@ -1307,8 +1309,13 @@ function _pu_strcmpi(a, b) {
 }
 function _pu_loot_classify(obj) {
     if (!Blind()) observe_object(obj); /* invent.c:170-171 */
-    const k = _PU_INV_ORDER.indexOf(obj.oclass | 0);
-    return (k >= 0) ? (1 + k) : (1 + _PU_INV_ORDER.length + 1);
+    /* C invent.c:155-159,174-180: honor packorder under sortpack;
+     * otherwise use loot_classify's pickup-oriented default class order. */
+    const classorder = game.flags?.sortpack === false
+        ? [12, 5, 4, 11, 8, 9, 10, 13, 7, 6, 2, 3, 14, 15, 16]
+        : (game.flags?.inv_order || _PU_INV_ORDER);
+    const k = classorder.indexOf(obj.oclass | 0);
+    return (k >= 0) ? (1 + k) : (1 + classorder.length + 1);
 }
 function _pu_sortloot(eligible) {
     /* invent.c:628: `if (mode && n > 1)` — pickup.c:1079-1083 builds mode from
@@ -1391,9 +1398,12 @@ async function query_objlist(qstr, objchain, qflags, how, allow) {
             await look_here(0, LOOKHERE_NOFLAGS);
             return [];
         }
-        obj_to_glyph(it.obj);
+        it.glyph = obj_to_glyph(it.obj);
         it.text = await doname_with_price(it.obj);
         it.heading = (qflags & INVORDER_SORT) ? (_QO_CLASS_NAME[it.obj.oclass | 0] ?? 'Items') : null;
+        if (it.heading && how !== 0 && game.iflags?.menu_head_objsym)
+            it.heading += ' '.repeat(Math.max(0, 7 - it.heading.length))
+                + `  ('${_OC_SYM[it.obj.oclass | 0]}')`;
     }
     const cancelled = await _select_menu(items, how, { title: qstr });
     if (cancelled) return [];
@@ -1546,7 +1556,7 @@ export async function lift_object(obj, container, cnt, telekinesis) {
         || ((obj.otyp | 0) === _BOULDER_OTYP && throwsRocks)) {
         if (inv_cnt_local(false) < _invlet_basic
             || !_cmd_mod.carrying(obj.otyp | 0)
-            || merge_choice_local(g.invent, obj))
+            || await merge_choice_local(g.invent, obj))
             return 1;
         await pline(`You are carrying too much stuff to pick up ${(obj.quan | 0) === 1 ? 'another' : 'more'} ${xname(obj)}.`);
         return -1;
@@ -1560,7 +1570,7 @@ export async function lift_object(obj, container, cnt, telekinesis) {
         result = -1;
     } else if ((obj.oclass | 0) !== _COIN_CLASS
                && inv_cnt_local(false) >= _invlet_basic
-               && !merge_choice_local(g.invent, obj)) {
+               && !(await merge_choice_local(g.invent, obj))) {
         let goldLater = false;
         for (let it = ((obj.where | 0) === OBJ_FLOOR ? obj.nexthere : obj.nobj);
              it; it = ((obj.where | 0) === OBJ_FLOOR ? it.nexthere : it.nobj)) {
@@ -1769,11 +1779,11 @@ export async function pickup_object(obj, count, telekinesis) {
 
     const picked = await pick_obj(obj);
     if (g.u?.uwep && g.u.uwep === picked)
-        g.mrg_to_wielded = true;
+        (g.gm || (g.gm = {})).mrg_to_wielded = true; // C pickup.c:1882
     await pickup_prinv(picked, cnt.v, 'lifting');
     if (picked.ghostly)
         await fix_ghostly_obj(picked); // C pickup.c:1884-1885
-    g.mrg_to_wielded = false;
+    if (g.gm) g.gm.mrg_to_wielded = false; // C pickup.c:1886
     return 1;
 }
 
@@ -1943,6 +1953,8 @@ export async function query_classes(action, objs, here, menu_on_demand) {
                 } else if (sym === 'i') {
                     const { display_inventory } = await _cmdModule();
                     await display_inventory(null, true);
+                    /* the next pline's flush_screen()->bot() repaints status (pline.c:274) */
+                    game._status_blanked = false;
                     again = true;
                     break;
                 } else if (sym === 'm') m_seen = true;

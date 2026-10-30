@@ -31,7 +31,7 @@ import {
 import { MKOBJ_OC_MAGIC } from './mkobj_erosion_meta.js';
 import { fillholetyp_, liquid_flow_, set_utrap, cvt_sdoor_to_door, close_drawbridge, open_drawbridge } from './dig.js';
 import { maketrap, t_at, reset_utrap, selftouch } from './trap.js';
-import { sobj_at, obj_extract_self, in_rooms } from './mklev.js';
+import { sobj_at, obj_extract_self, in_rooms, mselftouch_nc } from './mklev.js';
 import { add_damage } from './shk.js';
 import { flooreffects } from './cmd.js';
 import { rnl } from './rng.js';
@@ -41,7 +41,7 @@ import { You_hear, You_see } from './display.js';
 import { unblock_point, recalc_block_point } from './vision.js';
 import { is_pit, has_mgivenname, ROOM, SHOPBASE, XKILL_NOMSG,
          ARTICLE_THE, SUPPRESS_SADDLE, NO_KILLER_PREFIX, TT_PIT, TT_BURIEDBALL,
-         LEVITATION, FLYING, FUMBLING, HALF_PHDAM } from './const.js';
+         LEVITATION, FLYING, FUMBLING, HALF_PHDAM, Upolyd } from './const.js';
 import { PM_ARCHEOLOGIST } from './pm.generated.js';
 import { wakeup_attack, seemimic } from './mhitm.js';
 import { m_at } from './uhitm.js';
@@ -296,10 +296,12 @@ async function charm_monsters(distance) {
 const BOULDER_OTYP = 475;
 const M1_FLY_ = 0x00000001, M1_CLING_ = 0x00000010;
 const M1_AMPHIBIOUS_ = 0x00000004;
-const M1_NOLIMBS_ = 0x00000200 | 0x00000400, M1_SLITHY_ = 0x00000800;
+const M1_NOLIMBS_ = 0x00006000, M1_SLITHY_ = 0x00080000; /* monflag.h:99,104 */
 function prop_on_(key) {
     const p = game.u?.uprops?.[key];
-    return !!(p && ((p.intrinsic | 0) || (p.extrinsic | 0)) && !(p.blocked | 0));
+    const active = (p?.intrinsic | 0) || (p?.extrinsic | 0)
+        || (key === FLYING && is_flyer_(game.u?.usteed?.data));
+    return !!active && (!([LEVITATION, FLYING].includes(key)) || !(p?.blocked | 0));
 }
 function is_flyer_(ptr) { return (((ptr?.mflags1 | 0) >>> 0) & M1_FLY_) !== 0; }
 function is_clinger_(ptr) { return (((ptr?.mflags1 | 0) >>> 0) & M1_CLING_) !== 0; }
@@ -355,8 +357,7 @@ async function do_pit(x, y, tu_pit) {
                     await You_hear('a scream!');
                 }
             }
-            /* mselftouch(mtmp, "Falling, ", TRUE): only draws for a monster
-             * wielding a cockatrice corpse; no js/ export exists. */
+            await mselftouch_nc(mtmp, 'Falling, ', true); /* music.c:274 */
             if (!DEADMONSTER(mtmp)) {
                 mtmp.mhp -= rnd(m_already_trapped ? 4 : 6);
                 if (DEADMONSTER(mtmp)) {
@@ -402,10 +403,12 @@ async function do_pit(x, y, tu_pit) {
                 'hurt in a chasm', NO_KILLER_PREFIX);
             if (keepfooting)
                 exercise(A_DEX, true);
-            else
-                await selftouch(((u.mtimedone | 0) && ((((yd?.mflags1 | 0) >>> 0) & M1_SLITHY_)
-                                  || (((yd?.mflags1 | 0) >>> 0) & M1_NOLIMBS_) === M1_NOLIMBS_))
+            else {
+                const data = youdata_(); /* losehp may have rehumanized the hero */
+                await selftouch((Upolyd(u) && (((data?.mflags1 | 0) & M1_SLITHY_)
+                                  || ((data?.mflags1 | 0) & M1_NOLIMBS_) === M1_NOLIMBS_))
                     ? 'Shaken, you' : 'Falling down, you');
+            }
         }
     } else {
         newsym(x, y);

@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { pline_mon as pline_mon_real } from './display.js';
 import { ledger_no as ledger_no_real } from './bones.js';
 // dog.c — Starting pet and pet AI helpers.
 // C ref: nethack-c/src/dog.c
@@ -101,8 +102,7 @@ import { P_SKILL } from './skills.js';                  /* C attrib.c-adjacent s
  * message-origin coordinates and accessibility, matching
  * the same body js/mklev.js:14496 carries. */
 function pline_mon(mtmp, fmt, ...args) {
-    set_msg_xy(mtmp === game.youmonst ? 0 : mtmp.mx, mtmp === game.youmonst ? 0 : mtmp.my);
-    return pline(fmt, ...args);
+    return pline_mon_real(mtmp, fmt, ...args);
 }
 /* C youprop.h:116-120 — Hallucination is (HHallucination && !Halluc_resistance),
  * where HHallucination is u.uprops[HALLUC].intrinsic (INTRINSIC only; there is

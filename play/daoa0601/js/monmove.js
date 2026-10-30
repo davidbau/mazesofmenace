@@ -4,6 +4,7 @@ import { objectMaterial } from './object_material.js';
 import { moveMonsterNextToHero } from './teleport.js';
 import { monsterFireDescription } from './monster_fire_description.js';
 import { bot } from './display.js';
+import { noticeMonster } from './monster_notices.js';
 import { launchRollingBoulder } from './rolling_boulder.js';
 import { recorderLocalHour } from './calendar.js';
 import { impossible, panic } from './diagnostics.js';
@@ -692,11 +693,13 @@ export async function finishDeferredMonsterMiscItem(action, state = requireIniti
             await plineWithContinuation(`${subject} deliberately ${verb} onto a ${misc.trap.tseen ? trapName(misc.trap.ttyp, { state }) : 'hidden trap'}!`);
         }
         const oldx = monster.mx, oldy = monster.my;
-        await placeMonsterOnMap(monster, misc.trap.tx, misc.trap.ty);
+        // use_misc() removes even a monster already standing on the trap.
+        removeMonsterFromMapAt(oldx, oldy, state);
         newsym(oldx, oldy);
+        await placeMonsterOnMap(monster, misc.trap.tx, misc.trap.ty, state);
+        maybeUnhideAt(monster.mx, monster.my, state);
         if (monster.wormno)
             advanceMonsterWormBody(monster, { state });
-        maybeUnhideAt(monster.mx, monster.my, state);
         newsym(monster.mx, monster.my);
         await changeMonsterForm(monster, null, state, { showMessage: true });
         misc.effectApplied = true;
@@ -6409,9 +6412,16 @@ async function completeMovedMonsterAction(monster, movement, state, random, roll
         await finishDochugAfterMovement(monster, movement, state, random, rollOne, rollDice, calls, dochugContext);
         return movement;
     }
+    // C postmov() notices the monster before a door shift, trap, or floor
+    // effect can change its form or kill it. Resumed traps re-enter here.
+    if (!movement.postMoveNoticed) {
+        // Cache canseeit before the notice's message can flush vision.
+        movement.postMoveWasVisible = cansee(monster.mx, monster.my);
+        movement.postMoveNoticed = true;
+        await noticeMonster(monster, state);
+    }
     if (movement.postMoveStatus === MMOVE_MOVED) {
         if (!trapAlreadyHandled) {
-            movement.postMoveWasVisible = cansee(monster.mx, monster.my);
             const capabilities = requireMovementCapabilities(movement);
             const shift = await shiftMonsterForDoor(monster, state, {
                 previousPosition: { x: movement.oldx, y: movement.oldy },

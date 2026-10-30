@@ -15,7 +15,7 @@ import { same_race, defended } from './mhitm.js';
 import { monstone as monstone_real } from './dogmove.js';
 import { game, wizard, discover } from './gstate.js';
 import { paranoid_query } from './paranoid.js';
-import { PARANOID_EATING, PARANOID_DIE } from './const.js';
+import { BUFSZ, PARANOID_EATING, PARANOID_DIE } from './const.js';
 import { obj_stop_timers, fall_asleep } from './timeout.js';
 import { OBJ_FREE, OBJ_INVENT, OBJ_DELETED, SELL_NORMAL, SELL_DONTSELL } from './const.js';
 /* objects.h BEARTRAP (tool object ordinal). */
@@ -24,7 +24,7 @@ import monsPack from './makemon_mons.json' with { type: 'json' };
 import corpseData from './eat_corpse_data.json' with { type: 'json' };
 import { FOOD_PROPS, eaten_stat as food_eaten_stat } from './food_props.js';
 import { touch_artifact_youmonst } from './wizcmds.js';
-import { pline, canseemon, canspotmon, nh_sprintf, newsym, You_hear, You_feel,
+import { pline, canseemon, canspotmon, nh_sprintf, newsym, You_hear, You_feel, You as You_real, You_cant, msgtype_is_stop,
          Deaf as hero_Deaf, livelog_printf, retouch_equipment, flush_pending_messages,
          _topl_merge_result, _topl_joins_snapshot, _topl_stash_result,
          _topl_record_join, capture_painted_frame_with_status, bot, urgent_pline,
@@ -42,7 +42,7 @@ import { SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED, STARVED, HUNGER,
 import { getObjFromGetobj, wield_tool as wield_tool_real, costly_alteration, costly_spot,
          obj_extract_self_general, useup, useupf, freeinv as freeinv_real, carrying as carrying_real } from './cmd.js';
 import { sellobj_state, safe_qbuf as safe_qbuf_real } from './shk.js';
-import { g_at } from './cmd.js';
+import { g_at, will_feel_cockatrice as will_feel_cockatrice_real } from './cmd.js';
 import { flush_screen, restore_occupation_topline, force_more, topl_park_cursor, _pline_flush_frame_record, pline_flush_point, msgtype_suppressed } from './display.js';
 import { more_experienced, newexplevel } from './uhitm.js';
 import { pluslvl } from './exper.js';
@@ -112,7 +112,7 @@ import { polymon, rehumanize, still_chewing, polyself } from './polyself.js';
 import { toggle_displacement } from './do_wear.js';
 import { fingers_or_gloves } from './do_wear.js';
 import { b_trapped } from './lock.js';
-import { NO_PART, FIXED_ABIL, NOSE, HAND } from './const.js';
+import { NO_PART, FIXED_ABIL, NOSE, HAND, LIGHT_HEADED } from './const.js';
 import { self_invis_message, make_hallucinated, make_glib, make_vomiting, make_sick, vomit, make_slimed } from './potion.js';
 /* C cmd.c:206 set_occupation(fn, txt, xtime) — js/cmd.js holds the one body;
  * js/lock.js already imports it the same way (cmd.js -> eat.js is an existing
@@ -1512,8 +1512,13 @@ async function maybe_cannibal(pm, allowmsg) {
              * pending is still on the topline for this more() to acknowledge. */
             /* flush_screen paged every earlier split; only the standing
              * remainder still owes this pline's more() (topl.c:268-275). */
-            await force_more(game._pending_message || _pend);
-            game._pending_message = null;
+            /* An ESC during that paging left WIN_STOP live (topl.c:232-235):
+             * the cannibal line below is suppressed (:257) and the drawn
+             * owner stays on the topline, so no more() is owed here. */
+            if (!(game._topl_win_stop || game._topl_win_stop_armed)) {
+                await force_more(game._pending_message || _pend);
+                game._pending_message = null;
+            }
         }
         /* An ESC-dismissed page above leaves WIN_STOP armed: this message
          * owns that page and is drawn, and the live pline() path is what
@@ -2233,9 +2238,11 @@ async function rottenfood(obj) {
     await pline(`Blecch!  ${_is_rottable(obj) ? 'Rotten' : 'Awful'} ${_foodword(obj)}!`);
     if (!rn2(4)) { /* C eat.c:1817 */
         /* C eat.c:1818-1821 */
+        /* C eat.c:1821 body_part(LIGHT_HEADED): polymorphed forms differ
+         * (e.g. spider "spun out"), so use the real body_part. */
         await pline(_eat_Hallucination()
             ? 'You feel rather trippy.'
-            : 'You feel rather light headed.');
+            : `You feel rather ${body_part(LIGHT_HEADED)}.`);
         await make_confused_shared(_eat_HConfusion() + d(2, 4), false); /* C eat.c:1822 */
     } else if (!rn2(4) && !_eat_Blind()) { /* C eat.c:1823 */
         await pline('Everything suddenly goes dark.'); /* C eat.c:1824 */
@@ -4663,11 +4670,20 @@ export function eatmupdate() {
 
 export async function You(line, ...args) {
     const msg = 'You ' + (args.length > 0 ? nh_sprintf(line, args) : String(line));
+    /* C pline.c:162-190,212-225: consume the message origin before MSGTYPE
+     * handling, and truncate the complete message.  The deferred food-message
+     * channel below cannot perform these vpline operations; use the shared
+     * You() for them, including clearing an unused/invalid pending origin. */
+    if (game.a11y?.msg_loc?.x || game.a11y?.msg_loc?.y || msg.length > BUFSZ - 1)
+        return You_real(line, ...args);
+    // C pline.c:283-284: block in vpline before returning to the caller.
+    if (msgtype_is_stop(msg))
+        return You_real(line, ...args);
     /* pline.c:246-262 vpline(): MSGTYPE=hide / norep drop the message first. */
     if (msgtype_suppressed(msg))
         return;
+    try {
     const _prevmsgAtEntry = game._prevmsg;
-    game._prevmsg = msg;
     if (game.vision_full_recalc && !game._topl_win_stop && !game._topl_win_stop_armed)
         vision_recalc(0);
     /* topl.c:257 update_topl: while WIN_STOP is live (an ESC-dismissed --More--
@@ -4694,6 +4710,9 @@ export async function You(line, ...args) {
     if (game._pending_message) {
         const prev = game._pending_message;
         if (_topl_joins_committed(prev, msg)) {
+            /* C pline.c:273-277: flush before putmesg even when update_topl
+             * joins this message without raising a --More-- prompt. */
+            pline_flush_point();
             game._pending_message = prev + '  ' + msg;
             _topl_record_join(prev, game._pending_message);
         } else {
@@ -4777,6 +4796,12 @@ export async function You(line, ...args) {
         if (game._resultMessage)
             _pline_flush_frame_record(game._resultMessage.length, msg);
         _emit_eat_pline(msg);
+    }
+    } finally {
+        // C pline.c:280-282: update these after putmesg and its MSGTYPE check.
+        // Keep this synchronous on paths where the caller does not await You.
+        if (game.iflags) game.iflags.last_msg = 0;
+        game._prevmsg = msg;
     }
 }
 export function carrying(otyp) { return carrying_real(otyp); }
@@ -4964,7 +4989,6 @@ export async function floorfood(verb, corpsecheck) {
 }
 
 /* C ref: pline.c You_cant(const char *line, ...) — "You can't %s!". */
-async function You_cant(msg) { await pline(`You can't ${msg}`); }
 /* C ref: hack.c:4370 check_capacity(str) —
  *     if (near_capacity() >= EXT_ENCUMBER) {
  *         if (str) pline(str); else You_cant("do that while carrying so much stuff.");
@@ -5017,15 +5041,7 @@ function obj_extract_self(obj) {
     return obj_extract_self_general(obj);
 }
 function will_feel_cockatrice(obj, force) {
-    /* C invent.c:4333 — blind (or forced touch), bare-handed, stone-vulnerable
-       contact with a cockatrice corpse. */
-    const u = game.u;
-    const hasGloves = !!u?.uarmg;
-    const isCorpse = !!obj && (obj.otyp | 0) === CORPSE_OTYP;
-    const corpsenm = obj ? (obj.corpsenm | 0) : -1;
-    const touchPetrifies = corpsenm === PM_COCKATRICE || corpsenm === PM_CHICKATRICE;
-    return (_eat_Blind() || !!force) && !hasGloves && !_Stone_resistance()
-        && isCorpse && touchPetrifies;
+    return will_feel_cockatrice_real(obj, force);
 }
 /* C ref: eat.c:3517 eat_ok(obj) — getobj's callback for the 'eat' command.
  *

@@ -654,6 +654,11 @@ export async function do_death_sequence(opts) {
         return false;
     g._pendingDeath = null;
     g._deathMoves = (pd.moves != null) ? (pd.moves | 0) : null;
+    // C end.c:1039-1046,1110-1114: disconnected deaths skip the tty path.
+    if (g.program_state.done_hup) {
+        await done(pd.how);
+        return true;
+    }
     if (g.u && (pd.how | 0) < PANICKED)
         g.u.umortality = (g.u.umortality | 0) + 1;
     // The width-driven pages of this turn's combat/zap messages have already been
@@ -791,6 +796,15 @@ export async function do_death_sequence(opts) {
      * WIN_STOP live, urgency clears the suppressed buffer instead.  The new
      * fitting line remains live for lifesaving or shop text to join. */
     if (pd.urgentDeathLine) {
+        if (g.u && (g.u.uhp | 0) !== -1 && g._status_blanked) {
+            g._status_blanked = false;
+            if (g.disp) g.disp.botlx = 1;
+            await bot();
+            /* delay_flushing is still on until docrt (do.c:1841): later flushes,
+             * savelife's included, leave this paint on the terminal. */
+            if (g._physBlankToDocrt)
+                g._botlPaintHeld = true;
+        }
         await urgent_pline('You die...');
         pd.alreadySaidYouDie = true;
         _winStopHere = false;
@@ -980,7 +994,7 @@ export async function do_death_sequence(opts) {
             /* topl.c:390-392 pages the last flushed map before the prompt.
              * losehp's urgent death pline (hack.c:4287) can have repainted it
              * since the ambient movemon snapshot, e.g. after regaining sight. */
-            if (deathPromptFrame) await force_more(g._pending_message);
+            if (deathPromptFrame) await force_more(g._pending_message, 0, false, false, deathPromptFrame);
             else await force_more_lone_frame(g._pending_message);
         } finally {
             if (deathPromptFrame) g._paintedSnapshot = savedPaint;
@@ -1398,7 +1412,7 @@ export async function done(how) {
      * leak into this one's "after %ld moves" line; only the deferred sequence
      * below (which re-sets it) may supply one. */
     g._deathMoves = null;
-    if (how >= DIED && how <= TURNED_SLIME && how !== QUIT) {
+    if (how >= DIED && how <= TURNED_SLIME && !g.program_state.done_hup) {
         /* done() appends "But wait..." (end.c:1082) to the live topline
          * before the pending message pages, when life saving applies. */
         if (!g._pendingDeath)
@@ -1422,9 +1436,10 @@ export async function done(how) {
      * is the end-game victory path.  Their callers were previously rejected
      * here even though the common teardown below already handles the
      * PANICKED/ESCAPED flags and killer formatting. */
-    if (how !== PANICKED && how !== TRICKED && how !== QUIT
+    if (!(g.program_state.done_hup && how >= DIED && how <= TURNED_SLIME)
+        && how !== PANICKED && how !== TRICKED && how !== QUIT
         && how !== ESCAPED && how !== ASCENDED && how !== GENOCIDED)
-        throw new Error('not yet ported: done(how) for this death mode');
+        throw new Error('invalid game end type: ' + how);
     if (g.program_state.panicking || g.program_state.done_hup || (how === QUIT && done_stopprint())) {
         /* C: disp.botl = disp.botlx = disp.time_botl = FALSE — no final status
            update.  Anything else would repaint the status row over a screen C
@@ -1496,6 +1511,9 @@ export async function done(how) {
             adjattrib(A_CON, -1, 1);
             await savelife(how, true);
             if (how !== GENOCIDED) {
+                // C end.c:1098-1099, also reachable during a hangup.
+                livelog_printf(LL_LIFESAVE, 'averted death (%s)',
+                               formatkiller('', BUFSZ, how, false));
                 if (g.svk?.killer) {
                     g.svk.killer.name = '';
                     g.svk.killer.format = KILLED_BY_AN;
@@ -1505,7 +1523,8 @@ export async function done(how) {
             /* C keeps going after a life-saving amulet during genocide. */
             await pline('Unfortunately you are still genocided...');
         }
-        if ((wizard() || discover()) && how <= GENOCIDED) {
+        if ((wizard() || discover()) && how <= GENOCIDED
+            && !(g.program_state.done_hup && g.done_seq++ === g.hero_seq)) {
             g._botlReleaseAtDieQuery = true;
             const die = await paranoid_query(!!((g.flags?.paranoia_bits | 0) & PARANOID_DIE), 'Die?');
             g._botlReleaseAtDieQuery = false;
@@ -1526,7 +1545,7 @@ export async function done(how) {
     await really_done(how);
 }
 
-function _end_disclose() {
+function _end_disclose() { // Option-string accessor, not C's disclose(how, taken).
     const s = game.flags?.end_disclose;
     return (s === 'none' || (typeof s === 'string' && s.length === 6)) ? s : END_DISCLOSE_DEFAULT;
 }
@@ -1568,9 +1587,10 @@ async function disclose(how, taken) {
         c = ask ? await yn_function(qbuf, 'ynq', defquery, true) : defquery;
         if (c === 'y') {
             g.iflags.force_invmenu = false; const _toplUnderMenu = g._topl_sticky; /* docorner leaves row 0 left of offx standing */
+            g._menu_search_row0_erased = false;
             await display_inventory(null, true);
             const _discloseInv = g._pickinv_window;
-            if (_toplUnderMenu && !g._pending_message)
+            if (_toplUnderMenu && !g._pending_message && !g._menu_search_row0_erased)
                 g._topl_sticky = _toplUnderMenu.slice(0, Math.max(0, (_discloseInv?.WIN_COL ?? 1) - 1)).replace(/\s+$/, "") || null;
             /* C dismisses the inventory NHW_MENU with docorner() before
              * container_contents() opens its NHW_TEXT window.  The corner
@@ -2066,7 +2086,9 @@ async function really_done(how) {
                 : 'Your body rises from the dead';
             await pline(`${_ariseText} as ${an(_ariseName)}...`);
         }
+        let _prePending = null;
         if (bones_ok) {
+            _prePending = g._pending_message;
             const _wizard_bones = wizard();
             const _save_bones = !_wizard_bones
                 || await paranoid_query(!!((g.flags?.paranoia_bits | 0) & PARANOID_BONES),
@@ -2081,6 +2103,10 @@ async function really_done(how) {
          * bones processing left displayed and unacknowledged. */
         if (have_windows && g._resultMessage && !g._pending_message)
             await force_more_lone_frame(g._resultMessage);
+        else if (have_windows && g._pending_message && g._pending_message !== _prePending)
+            /* end.c:1380 display_nhwindow(WIN_MESSAGE, TRUE) pages a line savebones
+               plined (dismount_steed's "You seem less noisy now.") */
+            await force_more_lone_frame(g._pending_message);
         // C end.c:1375-1388 destroys the game windows before creating endwin.
         // tty_destroy_nhwindow(WIN_MESSAGE) clears this flag; the final text
         // window must not redraw those windows when it is dismissed.

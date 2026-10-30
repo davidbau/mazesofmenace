@@ -113,7 +113,8 @@ export function collectScreenDescriptionClasses(options = {}) {
     // pager.c's is_swallow_sym() runs before monster/object class scans and
     // intentionally permits further collisions (for example, '/' is also a
     // wand).  The surrounding game state is not needed for this symbol test.
-    for (let i = 88; i <= 95; i++) {
+    // pager.c:1296 `if (!looked) ; /* skip special handling */` precedes it.
+    for (let i = 88; options.looked !== false && i <= 95; i++) {
         if (matches(i, PCHARS[i])) {
             add('the interior of a monster', { plain: true, needs: true });
             break;
@@ -155,7 +156,7 @@ export function collectScreenDescriptionClasses(options = {}) {
 
     const otherOff = 190;
     if (options.glyphKind === 'invisible' || (selected.ch === 'I' && !selected.dec))
-        add(options.blind ? 'unseen creature' : 'remembered, unseen, creature');
+        add((options.usealt || options.blind) ? 'unseen creature' : 'remembered, unseen, creature');
     // pager.c:1419-1431: the symbol arms need `looked`; a typed one has no glyph.
     const looked = options.looked !== false;
     const isNothing = options.glyphKind === 'nothing' || (looked && matches(otherOff, ' '));

@@ -11,6 +11,7 @@ import { FULL_MOON, HALLUC, HALLUC_RES, PROT_FROM_SHAPE_CHANGERS,
     POLYMORPH_CONTROL, STUNNED, UNCHANGING, PARANOID_WERECHANGE, DEAF, NEUTRAL } from './const.js';
 import { rn1, rnd } from './rng.js';
 import { pline, newsym, You_hear, You_feel } from './display.js';
+import { impossible } from './pline.js';
 import { set_uasmon, rehumanize } from './polyself.js';
 import { unconscious } from './pickup.js';
 import { is_fainted } from './eat.js';
@@ -148,8 +149,7 @@ export async function new_were(mon) {
 
     const pm = counter_were(monsndx(mon.data));
     if (pm < 0 /* LOW_PM */) {
-        /* C:63-66 impossible("unknown lycanthrope %s."); this port has no
-         * impossible() channel here, and C returns without transforming. */
+        await impossible('unknown lycanthrope %s.', monPmname(monsndx(mon.data), NEUTRAL));
         return;
     }
     const newdata = permonstTemplate(pm);
@@ -158,7 +158,7 @@ export async function new_were(mon) {
     if (canseemon(mon) && !Hallucination()) {
         const nm = is_human(newdata) ? 'human'
             : String(monPmname(pm, Mgender(mon)) || '').slice(4);
-        pline(`${Monnam(mon)} changes into a ${nm}.`);
+        await pline(`${Monnam(mon)} changes into a ${nm}.`);
     }
 
     set_mon_data(mon, newdata);
@@ -174,11 +174,8 @@ export async function new_were(mon) {
     await mon_break_armor(mon, false);
     await possibly_unwield(mon, false);
 
-    /* C:87-92 — "vision capability isn't changing so we don't call
-     * set_apparxy(); peaceful check is redundant".  svc.context.mon_moving has
-     * no writer in this port; game._inMovemonBlock is the live signal for the
-     * same predicate. */
-    if (game._inMovemonBlock && !mon.mpeaceful
+    /* C were.c:134-137 — flee a scary square during monster movement. */
+    if (game.context?.mon_moving && !mon.mpeaceful
         && onscary(mon.mux, mon.muy, mon)
         && monnear(mon, mon.mux, mon.muy))
         await monflee(mon, rn1(9, 2), true, true); /* 2..10 turns */

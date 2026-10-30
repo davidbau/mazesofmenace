@@ -148,16 +148,17 @@ export function newhp() {
          *   hp = role.hpadv.infix + race.hpadv.infix;
          *   if (role.hpadv.inrnd > 0) hp += rnd(role.hpadv.inrnd);
          *   if (race.hpadv.inrnd > 0) hp += rnd(race.hpadv.inrnd);
-         *   (no Con adjustment for initial hit points)
-         * The svm.moves==0 alignment block (attrib.c:1097-1101) is mirrored by
-         * u_init_misc() in u_init.js, which sets u.ualign.{type,record} /
-         * u.ualignbase[] directly; that block consumes NO RNG, so its location
-         * does not affect sequence parity. */
+         *   (no Con adjustment for initial hit points) */
         hp = ((rh ? rh.infix : 0) | 0) + ((rr ? rr.infix : 0) | 0);
         if (rh && rh.inrnd > 0)
             hp += rnd(rh.inrnd);
         if (rr && rr.inrnd > 0)
             hp += rnd(rr.inrnd);
+        if ((g.moves | 0) === 0) {
+            u.ualign ||= { type: 0, record: 0, abuse: 0 };
+            u.ualign.type = ALIGN_VALUE[g.flags?.initalign ?? 0] ?? 0;
+            u.ualign.record = ROLE_INITRECORD[initrole] ?? 0;
+        }
         /* C attrib.c:1133-1147: shared tail (hp<=0 → 1, uhpinc cap). */
         if (hp <= 0) hp = 1;
         if ((u.ulevel | 0) < MAXULEV) {

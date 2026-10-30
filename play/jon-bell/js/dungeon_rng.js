@@ -353,6 +353,7 @@ function ingestDungeonLua(du, dix, pd, wizardLike, svn, unconn, nums, ents, dept
      * svd.dungeons[] assembly below can copy both out (dungeon.c:1062-1064). */
     pd._protofile[dix] = du.protofile ?? '';
     pd._lvlfill[dix] = du.lvlfill ?? '';
+    pd._themerms[dix] = du.themerooms ?? '';
     let numLv = du.range ? rn1(du.range, du.base) : du.base;
     if (numLv > MAXLEVEL)
         numLv = MAXLEVEL;
@@ -436,6 +437,7 @@ export function consumeDungeonInitRng() {
         _protofile: [],
         /** @type {string[]} C: svd.dungeons[i].fill_lvl (dungeon.lua `lvlfill`) */
         _lvlfill: [],
+        _themerms: [],
     };
     const wizardLike = dungeonWizardLike();
     const svn = { val: DUNGEON_LUA_TABLE.length };
@@ -545,6 +547,7 @@ export function consumeDungeonInitRng() {
              * `[0]` truthiness test ports as a plain JS truthiness test. */
             proto: pd._protofile[i] || '',
             fill_lvl: pd._lvlfill[i] || '',
+            themerms: pd._themerms[i] || '',
         });
         ledgerStart += nums[i] | 0;
     }

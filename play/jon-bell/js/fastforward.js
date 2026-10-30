@@ -808,21 +808,7 @@ function noisy_shop(sroom) {
         wake_nearto(mtmp.mx | 0, mtmp.my | 0, 11 * 11);
 }
 
-/* C ref: invent.c:1612 g_at(x, y) — first COIN_CLASS object on the tile's
- * nexthere chain.  js/cmd.js exports the same function, but cmd.js already
- * imports THIS module, and a cmd.js import here would close that cycle for a
- * helper used on one branch; kept local for the same reason js/mklev.js:1520
- * and js/vault.js's BOULDER/GOLD_PIECE/MON_WEP are local. */
-const COIN_CLASS = 12; /* objclass.h */
-function g_at(x, y) {
-    let obj = game.level?.levelObjects?.[x | 0]?.[y | 0] ?? null;
-    while (obj) {
-        if ((obj.oclass | 0) === COIN_CLASS)
-            return obj;
-        obj = obj.nexthere ?? null;
-    }
-    return null;
-}
+import { g_at } from './cmd.js'; // C invent.c:1613: share the first-coin traversal.
 
 /* get_iter_mons (mklev.js) for predicates that pline: C's pline blocks inside
  * the callback (a MSGTYPE=stop page holds the program), so the walk awaits. */

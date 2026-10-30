@@ -156,10 +156,10 @@ function indexOkRolenum(rolenum) {
 function indexOkRace(racenum) {
     return racenum >= 0 && racenum < NUM_RACES;
 }
-export function ok_role(rolenum, racenum, gendnum, alignnum) {
+export function ok_role(rolenum, racenum, gendnum, alignnum, rfilter = gr.rfilter) {
     let allow;
     if (indexOkRolenum(rolenum)) {
-        if (gr.rfilter.roles[rolenum])
+        if (rfilter.roles[rolenum])
             return false;
         allow = ROLE_ALLOWS[rolenum];
         if (indexOkRace(racenum) && !(allow & raceSpecs[racenum].allow & ROLE_RACEMASK))
@@ -174,7 +174,7 @@ export function ok_role(rolenum, racenum, gendnum, alignnum) {
     }
     let i;
     for (i = 0; i < NUM_ROLES; i++) {
-        if (gr.rfilter.roles[i])
+        if (rfilter.roles[i])
             continue;
         allow = ROLE_ALLOWS[i];
         if (indexOkRace(racenum)
@@ -254,11 +254,11 @@ export function ok_gend(rolenum, racenum, gendnum, _alignnum) {
     }
     return false;
 }
-export function ok_align(rolenum, racenum, _gendnum, alignnum) {
+export function ok_align(rolenum, racenum, _gendnum, alignnum, rfilter = gr.rfilter) {
     _gendnum;
     let allow;
     if (alignnum >= 0 && alignnum < ROLE_ALIGNS) {
-        if (gr.rfilter.mask & ALIGN_TAB[alignnum].allow)
+        if (rfilter.mask & ALIGN_TAB[alignnum].allow)
             return false;
         allow = ALIGN_TAB[alignnum].allow;
         if (indexOkRolenum(rolenum)
@@ -270,7 +270,7 @@ export function ok_align(rolenum, racenum, _gendnum, alignnum) {
         return true;
     }
     for (let i = 0; i < ROLE_ALIGNS; i++) {
-        if (gr.rfilter.mask & ALIGN_TAB[i].allow)
+        if (rfilter.mask & ALIGN_TAB[i].allow)
             continue;
         allow = ALIGN_TAB[i].allow;
         if (indexOkRolenum(rolenum)
@@ -623,8 +623,9 @@ export function role_init() {
         game.u.lgod = gods[0];
         game.u.ngod = gods[1];
         game.u.cgod = gods[2];
+        qstat.godgend = gods[flags.initalign].startsWith('_') ? 1 : 0;
     }
-    // role.c:2085 quest_status.godgend and role.c:2088-2089
+    // role.c:2088-2089
     // Role_if(PM_CLERIC) -> objects[SPE_LIGHT].oc_skill = P_CLERIC_SPELL:
 }
 export function resolveRandomChargenInit(g) {
@@ -1109,18 +1110,18 @@ export function str2race(str) {
  * its gender code because of it.)  races[i].selfmask is a direct
  * correspondence.
  */
-export function setrolefilter(bufp) {
+export function setrolefilter(bufp, rfilter = gr.rfilter) {
     let i;
     let reslt = true;
 
     if ((i = str2role(bufp)) !== ROLE_NONE && i !== ROLE_RANDOM)
-        gr.rfilter.roles[i] = true;
+        rfilter.roles[i] = true;
     else if ((i = str2race(bufp)) !== ROLE_NONE && i !== ROLE_RANDOM)
-        gr.rfilter.mask |= races[i].selfmask;
+        rfilter.mask |= races[i].selfmask;
     else if ((i = str2gend(bufp)) !== ROLE_NONE && i !== ROLE_RANDOM)
-        gr.rfilter.mask |= GENDER_TAB[i].allow;
+        rfilter.mask |= GENDER_TAB[i].allow;
     else if ((i = str2align(bufp)) !== ROLE_NONE && i !== ROLE_RANDOM)
-        gr.rfilter.mask |= ALIGN_TAB[i].allow;
+        rfilter.mask |= ALIGN_TAB[i].allow;
     else
         reslt = false;
     return reslt;

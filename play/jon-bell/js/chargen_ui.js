@@ -47,7 +47,8 @@ import { game } from './gstate.js';
 import { menu_heading_text } from './tty_menu.js'; // wintty.c:2688
 import { tty_menu_overlay, tty_base_window_prompt, tty_base_window_messages, tty_getlin_prompt } from './display.js';
 import { pmatchi } from './strutil.js';
-import { str2role, str2race, str2gend, str2align,
+import { str2role, str2race, str2gend, str2align, setrolefilter as setrolefilter_shared,
+         ok_role as ok_role_shared, ok_align as ok_align_shared,
          validrace, validgend, validalign, randrace, randgend, randalign } from './roles.js';
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -188,22 +189,9 @@ function clearrolefilter(which) {
 function resetRfilter() { clearrolefilter(RSF_filter); }
 resetRfilter();
 
-// C ref: role.c:1284 setrolefilter().  The menu hands back the item's
-// a_string, which reset_role_filtering() sourced from roles[i].name.m /
-// races[i].noun / genders[i].adj / aligns[i].adj; C then runs it back through
-// str2role/str2race/str2gend/str2align in that order.  Those four namespaces
-// are disjoint over exactly these strings, so an exact-name match per table
-// reproduces C's dispatch.
+// C role.c:1284: use the shared parser with this chargen run's filter state.
 function setrolefilter(bufp) {
-    for (let i = 0; i < ROLES.length; i++)
-        if (ROLES[i].m === bufp) { rfilter.roles[i] = true; return true; }
-    for (let i = 0; i < RACES.length; i++)
-        if (RACES[i].noun === bufp) { rfilter.mask |= RACES[i].selfmask; return true; }
-    for (let i = 0; i < GENDERS.length; i++)
-        if (GENDERS[i].adj === bufp) { rfilter.mask |= GENDERS[i].allow; return true; }
-    for (let i = 0; i < ALIGNS.length; i++)
-        if (ALIGNS[i].adj === bufp) { rfilter.mask |= ALIGNS[i].allow; return true; }
-    return false;
+    return setrolefilter_shared(bufp, rfilter);
 }
 
 // C ref: role.c:1303 gotrolefilter().
@@ -220,29 +208,7 @@ function gotrolefilter() {
 // ──────────────────────────────────────────────────────────────────────────
 
 function ok_role(rolenum, racenum, gendnum, alignnum) {
-    if (rolenum >= 0 && rolenum < ROLES.length) {
-        if (rfilter.roles[rolenum]) return false;
-        const allow = ROLES[rolenum].allow;
-        if (racenum >= 0 && racenum < RACES.length
-            && !(allow & RACES[racenum].allow & ROLE_RACEMASK)) return false;
-        if (gendnum >= 0 && gendnum < GENDERS.length
-            && !(allow & GENDERS[gendnum].allow & ROLE_GENDMASK)) return false;
-        if (alignnum >= 0 && alignnum < ALIGNS.length
-            && !(allow & ALIGNS[alignnum].allow & ROLE_ALIGNMASK)) return false;
-        return true;
-    }
-    for (let i = 0; i < ROLES.length; i++) {
-        if (rfilter.roles[i]) continue;
-        const allow = ROLES[i].allow;
-        if (racenum >= 0 && racenum < RACES.length
-            && !(allow & RACES[racenum].allow & ROLE_RACEMASK)) continue;
-        if (gendnum >= 0 && gendnum < GENDERS.length
-            && !(allow & GENDERS[gendnum].allow & ROLE_GENDMASK)) continue;
-        if (alignnum >= 0 && alignnum < ALIGNS.length
-            && !(allow & ALIGNS[alignnum].allow & ROLE_ALIGNMASK)) continue;
-        return true;
-    }
-    return false;
+    return ok_role_shared(rolenum, racenum, gendnum, alignnum, rfilter);
 }
 
 function ok_race(rolenum, racenum, gendnum, alignnum) {
@@ -294,25 +260,8 @@ function ok_gend(rolenum, racenum, gendnum, _alignnum) {
 }
 
 function ok_align(rolenum, racenum, _gendnum, alignnum) {
-    if (alignnum >= 0 && alignnum < ALIGNS.length) {
-        if (rfilter.mask & ALIGNS[alignnum].allow) return false;
-        const allow = ALIGNS[alignnum].allow;
-        if (rolenum >= 0 && rolenum < ROLES.length
-            && !(allow & ROLES[rolenum].allow & ROLE_ALIGNMASK)) return false;
-        if (racenum >= 0 && racenum < RACES.length
-            && !(allow & RACES[racenum].allow & ROLE_ALIGNMASK)) return false;
-        return true;
-    }
-    for (let i = 0; i < ALIGNS.length; i++) {
-        if (rfilter.mask & ALIGNS[i].allow) continue;
-        const allow = ALIGNS[i].allow;
-        if (rolenum >= 0 && rolenum < ROLES.length
-            && !(allow & ROLES[rolenum].allow & ROLE_ALIGNMASK)) continue;
-        if (racenum >= 0 && racenum < RACES.length
-            && !(allow & RACES[racenum].allow & ROLE_ALIGNMASK)) continue;
-        return true;
-    }
-    return false;
+    // C role.c:1172: share the compatibility checks with this UI's filter.
+    return ok_align_shared(rolenum, racenum, _gendnum, alignnum, rfilter);
 }
 
 // pick_*: rigid (only one option → return it AND consume rn2(1) for parity)

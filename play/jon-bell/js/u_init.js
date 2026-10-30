@@ -206,6 +206,9 @@ export async function u_init_misc() {
     // slot. Reset before adjabil, including on a failed-restore restart.
     u.uexp = 0n;
     u.urexp = 0n;
+    // C u_init.c:954 memset also zeroes the embedded struct u_have.
+    // Paupers skip inventory initialization, so it must exist before addinv.
+    u.uhave = { amulet: 0, bell: 0, book: 0, menorah: 0, questart: 0 };
     u.uprops = Array.from({length: LAST_PROP + 1},
         () => ({intrinsic: 0, extrinsic: 0, blocked: 0}));
     /* C ref u_init.c:983: u.uz.dlevel = 1.  C memset(&u,0,sizeof(u)) at

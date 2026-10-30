@@ -1,6 +1,7 @@
 import { is_unpaid, unpaid_cost, get_cost_of_shop_item, record_price_quote, append_price_quote, currency, obfree, delete_contents } from './shk.js';
 import { alter_cost, shk_your } from './shk.js'; // C do_name.c:410
 import { lookup_novel, mon_pmname } from './do_name.js';
+import { obj_pmname as obj_pmname_real } from './mhitm.js';
 import { paniclog } from './files.js';
 import { impossible as naming_impossible } from './pline.js';
 import { apron_text, tshirt_text, candy_wrapper_text } from './read.js';
@@ -18,7 +19,7 @@ import { COST_CONTENTS, BURN_OBJECT, ZOMBIFY_MON, TIMER_OBJECT, otrapped_of, GLI
 //   1. rnd_otyp_by_namedesc: rn2(maxprob) when name match needed
 //   2. mksobj: rnd(2) @ next_ident, then class-specific init RNG
 //   3. makewish end: rn2(100) for u.ublesscnt (zap.c:6414)
-import { pline, livelog_printf, impossible_sync } from './display.js'; /* was an undeclared global: every pline() call in this file threw ReferenceError when reached */
+import { pline, livelog_printf, impossible_sync, glow_color, glow_verb } from './display.js'; /* was an undeclared global: every pline() call in this file threw ReferenceError when reached */
 import { weight } from './weight.js';
 import { yn_function } from './end.js';
 import { WT_IRON_BALL_INCR, LL_CONDUCT, LL_ARTIFACT } from './const.js';
@@ -30,7 +31,7 @@ import { mksobj, mkobj, place_object, eos, lowc, highc, letter, mungspaces, digi
          /* C mkobj.c:1274 set_corpsenm — the CORPSE arm of readobjnam's corpsenm
           * block (objnam.c:5216-5222).  It re-runs start_corpse_timeout, so it
           * DRAWS; see the leaf note in _finalize_wish. */
-         set_corpsenm, can_be_hatched, Can_fall_thru, zombie_form } from './mklev.js';
+         set_corpsenm, can_be_hatched, Can_fall_thru, zombie_form, rnd_class } from './mklev.js';
 import { PM_LONG_WORM, PM_LONG_WORM_TAIL, PM_GRAY_OOZE, PM_BLACK_PUDDING,
          PM_GRAY_DRAGON, PM_YELLOW_DRAGON,
          PM_STUDENT, PM_CHIEFTAIN, PM_NEANDERTHAL, PM_ATTENDANT, PM_PAGE,
@@ -117,7 +118,8 @@ import { BOGUSMON_LINES } from './bogusmon_data.js';
 import { mons_cnutrit, obj_nutrition } from './food_props.js';
 import { counter_were } from './were.js';
 import { artifact_light, arti_light_description } from './light.js';
-import { convert_arg as quest_convert_arg } from './questpgr.js';
+import { convert_arg as quest_convert_arg, convert_line as quest_convert_line, qt_pager as quest_qt_pager,
+         com_pager as quest_com_pager, deliver_by_pline } from './questpgr.js';
 
 /* C ref: nethack-c/src/pline.c:587-637 impossible(const char *s, ...) — it
  * logs to the message window / paniclog and RETURNS; it never aborts.  Callers
@@ -393,20 +395,6 @@ const O_RANGES = [
 
 // ── rnd_class (objnam.c:5401) ─────────────────────────────────────────────────
 // C: x = rnd(sum); for (i=first; i<=last; i++) if ((x -= oc_prob[i]) <= 0) return i;
-function rnd_class(first, last) {
-    let sum = 0;
-    for (let i = first; i <= last; i++)
-        sum += MKOBJ_OC_PROB[i] | 0;
-    if (!sum)
-        return rn1_local(last - first + 1, first);
-    let x = rnd(sum);
-    for (let i = first; i <= last; i++) {
-        x -= MKOBJ_OC_PROB[i] | 0;
-        if (x <= 0)
-            return i;
-    }
-    return first;
-}
 /* rn1 helper (not exported from rng.js) — same as C rn1(x,y)=rn2(x)+y */
 function rn1_local(x, y) { return rn2(x) + y; }
 
@@ -687,7 +675,7 @@ export async function oname(obj, name, oflgs) {
     if (obj.oartifact | 0) {
         /* C do_name.c:402-404: can't dual-wield with an artifact secondary. */
         if (obj === game.u.uswapwep)
-            untwoweapon();
+            await untwoweapon();
         /* activate warning if you've just named your weapon "Sting" */
         if (obj === game.u.uwep)
             set_artifact_intrinsic(obj, true, W_WEP_D); // C do_name.c:406-407
@@ -1132,11 +1120,15 @@ export function xname_potion(obj) {
      * pluralized form for quan != 1, which is xname_flags()'s post-switch step. */
     const c = _xn_ctx(obj, CXN_NORMAL, false);
     const buf = _xname_arm(obj, c);
-    return c.pluralize ? makeplural(buf) : buf;
+    /* C objnam.c:998-1006: append the personal name after pluralizing. */
+    return xname_oname_tail(obj, c.pluralize ? makeplural(buf) : buf);
 }
 export function doname_potion(obj) {
     const g = game;
-    const bp = xname_potion(obj);
+    let bp = xname_potion(obj);
+    /* objnam.c:1488-1490 — POTION_CLASS: lit potion of oil. */
+    if (obj.otyp === 321 /* POT_OIL */ && obj.lamplit)
+        bp += ' (lit)';
     const known = !!obj.known;
     const bknown = !!obj.bknown;
     /* prefix: quantity (quan != 1) or the "a "/"an " article (objnam.c:1282-1299). */
@@ -1168,6 +1160,9 @@ export function doname_potion(obj) {
         const rest = prefix.slice(2);
         prefix = just_an({}, rest.length ? rest : bp) + rest;
     }
+    /* objnam.c:1696-1702 — wizweight tail follows every other suffix. */
+    if (wizard() && g.iflags?.wizweight)
+        return prefix + bp + ` (${obj.owt >>> 0} aum)`;
     return prefix + bp;
 }
 
@@ -1736,8 +1731,11 @@ function _strsubst_from(buf, from, orig, repl) {
 function _c_atoi(s) {
     /* C atoi(): optional leading whitespace, optional sign, then digits. */
     const m = /^[ \t\n\v\f\r]*([+-]?[0-9]+)/.exec(s);
-    /* C: atoi() is (int)strtol(); the 64-bit long wraps to 32-bit int. */
-    return m ? (Number(BigInt.asIntN(32, BigInt(m[1])))) : 0;
+    if (!m) return 0;
+    const n = BigInt(m[1]);
+    /* C atoi(): strtol saturates at LONG_MIN/MAX before conversion to int. */
+    return Number(BigInt.asIntN(32, n > 9223372036854775807n ? 9223372036854775807n
+        : n < -9223372036854775808n ? -9223372036854775808n : n));
 }
 function _c_digit(ch) { return ch >= '0' && ch <= '9'; }
 
@@ -1785,7 +1783,7 @@ function readobjnam_parse_charges(bp, spe, spesgn, islit = 0) {
      */
     if (spe < 0) {
         spesgn = -1;                  /* cheaters get what they deserve */
-        spe = Math.abs(spe);
+        spe = Math.abs(spe) | 0;      /* C int: abs(INT_MIN) retains INT_MIN. */
     }
     /* cap on obj->spe is independent of (and less than) SCHAR_LIM */
     if (spe > SPE_LIM)
@@ -2603,7 +2601,7 @@ async function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cn
         default:
             /* C objnam.c:5184 — only the default arm uses parsed d.spe.
              * With no numeric request, d.spe is the initializer's value. */
-            if (spesgn !== 0) otmp.spe = spesgn * spe;
+            if (spesgn !== 0) otmp.spe = (spesgn * spe << 24) >> 24; // C schar.
             break;
         }
     }
@@ -3705,18 +3703,14 @@ export function Tobjnam(otmp, verb) {
 
 // ── yobjnam (C objnam.c:2260-2274) ─────────────────────────────────────────
 export function yobjnam(obj, verb) {
-    // ensure fields that xname_* may access are present on the replayed object
-    obj.oname = undefined;
     /* odiluted/opoisoned are C unions aliased onto oeroded/otrapped (game.js
      * objProto accessors), so an unconditional write clobbers live erosion:
      * a +1 enchant on an eroded cloak lost its erosion and AC read 1 too low. */
-    if (obj.odiluted === undefined) obj.odiluted = undefined;
-    if (obj.opoisoned === undefined) obj.opoisoned = undefined;
 
     let s = aobjnam(obj, verb);
     if (!carried(obj) || !obj_is_pname(obj)
         || obj.oartifact >= 21 /* ART_ORB_OF_DETECTION */) {
-        s = shk_your('', obj) + s;
+        s = (shk_your('', obj) + s).slice(0, 255);
     }
     return s;
 }
@@ -3810,18 +3804,12 @@ function strchr(str, c) {
 
 // ── qt_pager (C questpgr.c:630-634) ────────────────────────────────────────
 export function qt_pager(msgid) {
-    if (!com_pager_core(game.urole.filecode, msgid, false, null))
-        com_pager_core("common", msgid, true, null);
+    return quest_qt_pager(msgid);
 }
 
 // ── com_pager (C questpgr.c:636-639) ────────────────────────────────────────
 export function com_pager(msgid) {
-    com_pager_core("common", msgid, true, null);
-}
-
-// ── com_pager_core stub ─────────────────────────────────────────────────────
-function com_pager_core(section, msgid, showerror, rawtext) {
-    return true;
+    return quest_com_pager(msgid);
 }
 
 // ── maybereleaseobuf (C objnam.c:166-199) ────────────────────────────────────
@@ -4136,20 +4124,7 @@ export function corpse_xname(otmp, adjective, cxn_flags) {
 }
 
 function obj_pmname(otmp) {
-    let mndx = otmp.corpsenm;
-    if (mndx === -1) return "thing"; /* NON_PM */
-    /* C do_name.c:1321-1359 — corpse/statue names use the gender bits
-     * stored on the object, rather than always selecting the neutral form. */
-    if ((otmp.otyp === 265 || otmp.otyp === 476 || otmp.otyp === 241)
-        && ismnum(mndx)) {
-        const cgend = (otmp.spe | 0) & CORPSTAT_GENDER;
-        const mgend = cgend === CORPSTAT_MALE ? MALE
-            : cgend === CORPSTAT_FEMALE ? FEMALE : NEUTRAL;
-        /* C's random-gender aligned cleric corpse uses the role cleric row. */
-        if (mndx === 275 && cgend === CORPSTAT_RANDOM) mndx = 337;
-        return monPmname(mndx, mgend);
-    }
-    return monPmname(mndx, NEUTRAL);
+    return obj_pmname_real(otmp); // C do_name.c:1321-1360
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -5184,7 +5159,7 @@ async function doname_base(obj, doname_flags) {
             const wcnt = game.warn_obj_cnt | 0;
             if (!_Blind() && wcnt && obj === u.uwep
                 && ((u.uprops?.[WARN_OF_MON_D]?.extrinsic | 0) & W_WEP_D) !== 0)
-                bp = `${bp.slice(0, -1)}, ${wcnt > 12 ? 'gleam' : wcnt > 4 ? 'glimmer' : 'flicker'}ing ${(obj.oartifact | 0) === 5 ? 'red' : 'light blue'})`;
+                bp = `${bp.slice(0, -1)}, ${glow_verb(wcnt, true)} ${glow_color(obj.oartifact | 0)})`;
             else if (!_Blind() && obj.lamplit && artifact_light(obj))
                 bp = `${bp.slice(0, -1)}, ${arti_light_description(obj)} lit)`;
         }
@@ -5671,21 +5646,7 @@ export async function deliver_splev_message() {
 // pline() is called unconditionally, including for an empty converted line
 // (C's vpline() early-out tests the FORMAT "%s", which is never empty, then
 // substitutes the argument).  No dat/ level message contains a blank line, so
-const _BUFSZ = 256; /* global.h:391 */
-async function deliver_by_pline(str) {
-    const { pline } = await import('./display.js');
-    const s = String(str);
-    const msgend = s.length;
-    let msgp = 0;
-    while (msgp < msgend) {
-        /* copynchars(in_line, msgp, sizeof in_line - 1) */
-        const nl = s.indexOf('\n', msgp);
-        const stop = Math.min(nl < 0 ? msgend : nl, msgp + (_BUFSZ - 1));
-        const in_line = s.slice(msgp, stop);
-        msgp += in_line.length + 1;
-        await pline(await convert_line(in_line));
-    }
-}
+// Shared with quest text through the questpgr.js import above.
 
 // ── convert_arg (C questpgr.c:196-325) ──────────────────────────────────────
 // C uses the same argument expansion for des.message() and quest text.
@@ -5699,49 +5660,10 @@ async function convert_arg(c) {
 // Faithful port of C's loop, including the `--c` "undo switch increment" arms
 // (an unrecognised modifier byte is re-read as ordinary text on the next
 // iteration) and the '%'-at-end-of-string fallthrough that emits a literal '%'.
-// The pronoun arms (%.h/%.H/%.i/%.I/%.j/%.J → qtext_pronoun) are reported
-// rather than guessed; no level message uses them.
+// Pronouns use the same quest-status genders and artifact plurality as quest text.
 async function convert_line(in_line) {
     const s = String(in_line);
-    let out = '';
-    for (let i = 0; i < s.length; i++) {
-        const ch = s[i];
-        if (ch === '\r' || ch === '\n')
-            return out;                          /* C: *(++cc) = 0; return; */
-        if (ch !== '%' || i + 1 >= s.length) {
-            out += ch;                           /* C: default: *cc++ = *c; */
-            continue;
-        }
-        let buf = await convert_arg(s[++i]);      /* convert_arg(*(++c)) */
-        i++;                                      /* switch (*(++c)) */
-        const mod = i < s.length ? s[i] : '';     /* '\0' → C's default arm */
-        switch (mod) {
-        case 'A': out += _cvt_highc(an(buf)); continue;   /* An(cvt_buf) */
-        case 'a': out += an(buf); continue;               /* an(cvt_buf) */
-        case 'C': buf = _cvt_highc(buf); break;
-        case 'h': case 'H': case 'i': case 'I': case 'j': case 'J':
-            /* C: if (strchr("dlno", lowc(*(c-1)))) qtext_pronoun(...) else --c */
-            if ('dlno'.includes(lowc(s[i - 1])))
-                impossible(`convert_line: qtext_pronoun %${mod} not ported`);
-            else
-                i--;
-            break;
-        case 'P': /* C: cvt_buf[0] = highc(cvt_buf[0]); FALLTHRU to 'p' */
-            buf = makeplural(_cvt_highc(buf)); break;
-        case 'p': buf = makeplural(buf); break;
-        case 'S': /* C: cvt_buf[0] = highc(cvt_buf[0]); FALLTHRU to 's' */
-            buf = s_suffix(_cvt_highc(buf)); break;
-        case 's': buf = s_suffix(buf); break;
-        case 't': /* strip a leading "the " (strncmpi — case-insensitive) */
-            if (buf.slice(0, 4).toLowerCase() === 'the ') { out += buf.slice(4); continue; }
-            break;
-        default:
-            i--;                                  /* C: --c; undo switch increment */
-            break;
-        }
-        out += buf;                               /* Strcat(cc, gc.cvt_buf) */
-    }
-    return out;
+    return quest_convert_line(s);
 }
 /* C: cvt_buf[0] = highc(cvt_buf[0]) — first character only. */
 function _cvt_highc(sv) { return sv ? highc(sv[0]) + sv.slice(1) : sv; }

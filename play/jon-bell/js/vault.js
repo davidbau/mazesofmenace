@@ -1,3 +1,4 @@
+import { verbalize } from './display.js';
 import { Mgender } from './do_name.js';
 // vault.js — port of nethack-c/src/vault.c (vault and guard logic).
 //
@@ -69,10 +70,7 @@ function is_silent(_guard) {
 }
 /* C do_name.c:1302-1308 pmname(pm, mgender) and monst.h Mgender(mon). */
 function pmname(pm, mgender) {
-    let g = mgender;
-    if (g < MALE || g >= NUM_MGENDERS || !pm?.pmnames?.[g])
-        g = NEUTRAL;
-    return pm.pmnames[g];
+    return monPmname(pm.pmidx, mgender);
 }
 /* C hacklib.c strcmpi/strncmpi — case-insensitive compares.  Same bodies as
  * js/objnam.js:2249/2262, which does not export them. */
@@ -268,9 +266,6 @@ function assign_level(dst, src) {
  * so a deaf hero still SEES a verbalize.  js/cmd.js:36497 carries the identical
  * body but does not export it, and importing cmd.js from here would add an edge
  * from the vault subsystem to the 38k-line command file. */
-function verbalize(line) {
-    return pline('"' + line + '"');
-}
 
 /* C ref: sounds.c SetVoice(mon, ...) — selects the voice/pitch for the sound
  * driver.  This port has no sound output at all, and the macro emits no screen

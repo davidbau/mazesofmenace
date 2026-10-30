@@ -683,6 +683,9 @@ function parse_sym_line_real(line, which_set, st) {
         default:
             break;
         }
+    } else if (st.start && which_set === 1 && st.symbols) {
+        // C symbols.c:629-635: the selected Rogue set overrides its defaults.
+        st.symbols[symp.idx] = sym_val_real(val);
     } else if (st.start && which_set === 0) {
         if (set.handling !== H_UTF8) {
             game.gp.primary_syms[symp.idx] = sym_val_real(val);
@@ -710,14 +713,20 @@ function gs_symset(which_set) {
  * entry and keeps the default symbols). */
 export function load_primary_symset_from_file(name) {
     const text = dat_content('symbols');
-    if (!text || !name)
+    if (name && !text)
         return false;
     const set = gs_symset(0);
     /* symbols.c:330-345 clear_symsetentry(PRIMARYSET, TRUE) */
     set.handling = 0; set.nocolor = 0; set.primary = 0; set.rogue = 0;
-    set.name = name;
+    set.name = name || null;
     ensure_sym_arrays();
     init_primary_syms_real();
+    /* C symbols.c:1067-1071: selecting Default Symbols still resets the
+     * primary table, without a subsequent read_sym_file(). */
+    if (!name) {
+        game._symsetLoaded = null;
+        return true;
+    }
     const st = { start: false, end: false };
     for (const raw of text.split('\n')) {
         const line = raw.replace(/\r$/, '');
@@ -744,6 +753,24 @@ export function primary_showsym(idx) {
     const go = game.go, gp = game.gp;
     const ov = go?.ov_primary_syms?.[idx];
     return ov ? ov : (gp?.primary_syms?.[idx] ?? 0);
+}
+
+/* C symbols.c:224-226,629-635: retain the full Rogue symbol bytes for
+ * pager comparisons, independently of what tty can paint. Missing entries
+ * use init_rogue_symbols' defaults in the description class scanner. */
+export function rogue_showsyms() {
+    const name = gs_symset(1).name;
+    if (!game._roguePagerSymbols || game._roguePagerSymbols.name !== name) {
+        const symbols = [];
+        const st = { start: false, end: false, symbols };
+        if (name)
+            for (const line of (dat_content('symbols') || '').split('\n'))
+                if (!/^\s*(#|$)/.test(line)) parse_sym_line_real(line, 1, st);
+        game._roguePagerSymbols = { name, symbols };
+    }
+    const overrides = game.go?.ov_rogue_syms;
+    return Array.from({ length: SYMF_MAX }, (_, i) =>
+        overrides?.[i] || game._roguePagerSymbols.symbols[i]);
 }
 
 export function primary_unicode_symbol(idx) {

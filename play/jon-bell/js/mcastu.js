@@ -1,12 +1,14 @@
+import { pline_The, verbalize } from './display.js';
+import { pline_mon as pline_mon_real } from './display.js';
 import { Mgender } from './do_name.js';
 // js/mcastu.js — port of nethack-c/src/mcastu.c (scaffold: functions are added here
 
 import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
-import { nhlib_load_toplevel_rng } from './nhlib.js';
+import { com_pager as quest_com_pager } from './questpgr.js';
 import { pline, canseemon, canspotmon, Unaware, map_invisible, Norep, newsym, shieldeff } from './display.js';
 import { You } from './eat.js';
-import { mon_nam } from './uhitm.js';
+import { mon_nam, Monnam as Monnam_real } from './uhitm.js';
 import { nomul } from './allmain.js';
 import { is_waterwall } from './dokick.js';
 /* mcast_lightning's leaves.  destroy_items and flashburn are exported from
@@ -17,7 +19,7 @@ import { ureflects, lined_up } from './makemon.js';
 import { couldsee, cansee } from './vision.js';
 import { M_ATTK_MISS, M_ATTK_HIT, u_at, A_LAWFUL, EMIN, ismnum, MALE, FEMALE, NEUTRAL, NUM_MGENDERS, STRAT_WAITFORU, STRAT_APPEARMSG, SLIMED, MM_NOWAIT, HEADSTONE } from './const.js';
 import { an } from './objnam.js';
-import { the_unique_pm, permonstTemplate, mon_set_minvis } from './makemon.js';
+import { the_unique_pm, permonstTemplate, mon_set_minvis, monPmname } from './makemon.js';
 import { mon_aligntyp } from './priest.js';
 import { wake_nearto } from './mklev.js';
 /* C mon.c:4596 healmon() — m_cure_self()'s heal. */
@@ -190,8 +192,7 @@ function mon_data_mc(mtmp) {
     return mtmp.data || permonstTemplate((mtmp.mnum ?? mtmp.mndx ?? 0) | 0);
 }
 // questpgr.c com_pager / com_pager_core — Lua quest-text lookup subsystem.
-// FULL port is out of scope (nhl_init, quest.lua msg_fallbacks, %-arg
-// convert_line, by_window delivery). But cuss() calls com_pager("angel_cuss")
+// Full delivery is shared with questpgr.js; cuss() calls com_pager("angel_cuss")
 // and com_pager("demon_cuss"), whose entries are plain string ARRAYS, and for
 // an array-form entry com_pager_core consumes exactly ONE game rn2 to pick the
 // line (questpgr.c:566 `nelems = rn2(nelems) + 1`).  Before that draw,
@@ -201,9 +202,9 @@ function mon_data_mc(mtmp) {
 // tables are copied verbatim from nethack-c/dat/quest.lua so nelems is exact,
 // and delivery is by pline. The two conversions used by angel_cuss (%D/%p)
 // are expanded below; these are the exact questpgr.c convert_arg cases
-// (lawful deity and player name). Any other msgid follows C's nonfatal
+// (lawful deity and player name). A missing msgid follows C's nonfatal
 // impossible() path and does not terminate the replay.
-const QUEST_CUSS_TEXT = {
+export const QUEST_CUSS_TEXT = {
     angel_cuss: [
         "\"Repent, and thou shalt be saved!\"",
         "\"Thou shalt pay for thine insolence!\"",
@@ -251,35 +252,14 @@ const QUEST_CUSS_TEXT = {
     ],
 };
 function com_pager(msgid) {
-    const table = QUEST_CUSS_TEXT[msgid];
-    if (!table) {
-        impossible('com_pager: questtext[common][' + msgid + '] not ported');
-        return false;
-    }
+    /* C questpgr.c:458-461,486: skip before loading Lua or drawing RNG. */
     /* C questpgr.c:487 `L = nhl_init(&sbi)`: nhlib.lua's top-level
      * shuffle(align), before the questtext lookup and its array roll. */
-    nhlib_load_toplevel_rng();
     /* com_pager_core: pick a line — questpgr.c:566 nelems = rn2(nelems) + 1. */
-    const nelems = rn2(table.length) + 1;
     /* questpgr.c:236-302 convert_arg(): %D is always A_LAWFUL, while %p is
        svp.plname.  Keep replacement positional and non-recursive, as C's
        convert_line does, so a player/deity name containing '%' is preserved. */
-    const u = game.u || {};
-    let lawful = u.lgod ?? game.urole?.lgod ?? 'someone';
-    lawful = String(lawful);
-    if (lawful[0] === '_') lawful = lawful.slice(1);
-    const player = String(game.plname ?? game.u?.plname ?? u.plname ?? '');
-    const raw = table[nelems - 1];
-    let line = '';
-    for (let i = 0; i < raw.length; i++) {
-        if (raw[i] === '%' && i + 1 < raw.length) {
-            if (raw[i + 1] === 'D') { line += lawful; i++; continue; }
-            if (raw[i + 1] === 'p') { line += player; i++; continue; }
-        }
-        line += raw[i];
-    }
-    pline(line);
-    return true;
+    return quest_com_pager(msgid);
 }
 export async function mon_spell_hits_spot(_mtmp, adtyp, _x, _y) {
     if (adtyp === AD_MAGM || adtyp === AD_ACID) {
@@ -339,7 +319,7 @@ function m_canseeu_mc(mtmp) {
     if (!u)
         return false;
     const Invis_ = Invis();
-    const ptr = permonstTemplate((mtmp.mnum ?? mtmp.mndx ?? 0) | 0);
+    const ptr = mtmp.data || permonstTemplate((mtmp.mnum ?? mtmp.mndx ?? 0) | 0);
     const perceives = !!(((ptr && ptr.mflags1) || 0) & M1_SEE_INVIS_MC);
     return (!Invis_ || perceives) && !u.uinwater
         && !!couldsee(mtmp.mx | 0, mtmp.my | 0);
@@ -1013,15 +993,11 @@ function impossible(_msg, ..._args) { }
 // pline_mon / pline_The — C ref: pline.c:138-146. set_msg_xy() to the hero
 // (0,0) or the monster's square; vpline's accessiblemsg prefix reads it.
 function pline_mon(mtmp, msg, ...args) {
-    if (mtmp === game.youmonst) set_msg_xy(0, 0);
-    else if (mtmp) set_msg_xy(mtmp.mx, mtmp.my);
-    return pline(msg, ...args);
+    return pline_mon_real(mtmp, msg, ...args);
 }
-function pline_The(msg) { pline('The ' + msg); }
 
 export function Monnam(mtmp) {
-    const s = mon_nam(mtmp);
-    return s.charAt(0).toUpperCase() + s.slice(1);
+    return Monnam_real(mtmp);
 }
 
 // C ref: mondata.c cvt_adtyp_to_mseenres().
@@ -1470,9 +1446,6 @@ const random_malediction = [
 // transient PLINE_VERBALIZE flag around a plain pline call; no RNG, no
 // persistent state (matches the established impossible()/pline_mon() inline
 // convention above rather than a throwing stub).
-function verbalize(line) {
-    pline(`"${line}"`);
-}
 
 // mondata.h:142 is_minion(ptr) — (ptr->mflags2 & M2_MINION) != 0.
 const M2_MINION = 0x00001000;
@@ -1547,10 +1520,7 @@ function type_is_pname(ptr) {
  * `pm` here is a permonstTemplate()-shaped object carrying `.pmnames`
  * (js/makemon.js permonstTemplate / monPmname). */
 function pmname(pm, mgender) {
-    let g = mgender;
-    if (g < MALE || g >= NUM_MGENDERS || !pm.pmnames[g])
-        g = NEUTRAL;
-    return pm.pmnames[g];
+    return monPmname(pm.pmidx, mgender);
 }
 
 function Sprintf(fmt, ...args) {

@@ -5,6 +5,7 @@ import { setHeroGrip } from './hero_grip.js';
 import { heroCouldMoveOntoBoulder, pushBouldersAt } from './boulder_push.js';
 import { useMagicMarker } from './write.js';
 import { formatFeltMessage, formatSeenMessage, publishHeardMessage } from './hero_speech.js';
+import { noticeAllMonsters, withMonsterNoticesBlocked } from './monster_notices.js';
 import { ingSuffix } from './hacklib.js';
 import { heroLocomotion } from './hero_locomotion.js';
 import { autokey, autoUnlockFlags, continuePicking, pickLock } from './lock_pick.js';
@@ -4139,16 +4140,20 @@ async function wizMap() {
     }
     const savedConfusion = game.u?.confusionTurns ?? 0;
     const savedHallucination = game.u?.hallucinationTurns ?? 0;
-    game.u.confusionTurns = 0;
-    game.u.hallucinationTurns = 0;
     try {
-        for (const trap of requireGameLevel().traps) {
-            trap.tseen = true;
-            map_trap(trap, true);
-        }
-        for (const engraving of requireGameLevel().engravings ?? [])
-            map_engraving(engraving, true);
-        await mapMagicLevel({ confused: false });
+        // C wiz_map() blocks notices before clearing the senses and
+        // mapping traps, and re-enables them after do_mapping() returns.
+        await withMonsterNoticesBlocked(game, async () => {
+            game.u.confusionTurns = 0;
+            game.u.hallucinationTurns = 0;
+            for (const trap of requireGameLevel().traps) {
+                trap.tseen = true;
+                map_trap(trap, true);
+            }
+            for (const engraving of requireGameLevel().engravings ?? [])
+                map_engraving(engraving, true);
+            await mapMagicLevel({ confused: false });
+        });
     }
     finally {
         game.u.confusionTurns = savedConfusion;
@@ -4717,7 +4722,20 @@ function overviewLevelIsInteresting(dnum, dlevel) {
     if (In_endgame(game.u.uz))
         return In_endgame(location);
     return !!annotation || !!record?.branch || !!overviewFeatureLine(record?.features)
+        || !!record?.finalRestingPlaces?.some(entry => entry.bonesknown || game.flags.debug)
         || dlevel === game.dungeons[dnum]?.dunlev_ureached;
+}
+// C dungeon.c:print_mapseen(): the current hero precedes ancestors, and only
+// the last entry ends in a period. Final disclosure reveals every ancestor.
+function overviewRestingPlaceLines(record, final, currentDeath = null) {
+    const entries = (record?.finalRestingPlaces ?? [])
+        .filter(entry => final || game.flags.debug || entry.bonesknown)
+        .map(entry => `${entry.who}, ${entry.how}`);
+    if (currentDeath !== null)
+        entries.unshift(`you, ${overviewYouCause(currentDeath)}`);
+    if (!entries.length)
+        return [];
+    return ['      Final resting place for', ...entries.map((entry, index) => `         ${entry}${index === entries.length - 1 ? '.' : ','}`)];
 }
 function overviewCountPhrase(count, noun) {
     if (count === 1)
@@ -4875,10 +4893,7 @@ function overviewDisclosureLevel(dnum, dlevel, ending, hereVerb, cause) {
         lines.push(branchLine);
     // died_here: the current hero's own resting place is disclosed before
     // bones are created, so it never reveals whether bones are produced.
-    if (!ending && current) {
-        lines.push('      Final resting place for');
-        lines.push(`         you, ${overviewYouCause(cause)}.`);
-    }
+    lines.push(...overviewRestingPlaceLines(record, true, !ending && current ? cause : null));
     return lines;
 }
 // C ref: dungeon.c dooverview()/show_overview().  This is dungeon-history
@@ -4930,6 +4945,8 @@ async function doDungeonOverview() {
                 const branchLine = overviewBranchLine(record?.branch ?? null);
                 if (branchLine)
                     addLine(branchLine);
+                for (const line of overviewRestingPlaceLines(record, false))
+                    addLine(line);
             }
         }
         tty_end_menu(window);
@@ -5811,7 +5828,7 @@ async function putOnAccessoryObject(object) {
         // replaced by the NUL default; a live question keeps asking until
         // 'r', 'l', or a quit key answers it, and only that final answer
         // is recorded into CQ_REPEAT for the next do-again.
-        const { answer } = await yn_function(`Which ${monsterIsHumanoid(heroSpecies(game)) ? 'ring-' : ''}${heroFingerName(game)}, Right or Left?`, 'rl', '', true);
+        const { answer } = await yn_function(`Which ${monsterIsHumanoid(heroSpecies(game)) ? 'ring-' : ''}${heroFingerName(game)}, Right or Left?`, 'rl', '', true, { menuable: true });
         if (answer !== 'r' && answer !== 'l') {
             game.context.move = 0;
             return;
@@ -7577,6 +7594,9 @@ async function finishHeroMovement({ oldx, oldy, loc, ballChainMove = null, }) {
     if (u.umoved) {
         newsym(oldx, oldy);
         vision_recalc(1);
+        // C vision_recalc() ends with notice_all_mons(), before the
+        // invocation message.
+        await noticeAllMonsters(game);
         await announceInvocationSquare();
     }
     if (ballChainMove)

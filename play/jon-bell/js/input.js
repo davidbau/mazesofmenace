@@ -127,6 +127,10 @@ export async function nhgetch() {
     if (game._pending_message) game._topl_empty_sticky = null;
     if (game._pending_message)
         game._preMsgCleared = true;
+    /* tty_nhgetch clears the topline: a display_nhwindow(WIN_MESSAGE) break registered
+     * for the line just acknowledged must not force a page on a later identical text. */
+    if (game._pending_message && game._topl_force_breaks && !game._inMovemonMore)
+        game._topl_force_breaks = null;
     game._pending_message = '';
     game._topl_unacknowledged = false;
     if (!game._inMovemonMore)

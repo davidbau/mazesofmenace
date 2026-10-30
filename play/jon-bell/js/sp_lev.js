@@ -9,18 +9,18 @@
 // RNG parity is the #1 correctness signal (Cardinal Rule 2).  Every rn2/rnd
 // call in this file must match C's sp_lev.c in order and argument.
 import { game } from './gstate.js';
-import { Can_dig_down as Can_dig_down_real } from './mklev.js';
+import { Can_dig_down as Can_dig_down_real, okdoor } from './mklev.js';
 import { rn2, rnd, rn1, pushRngLogEntry } from './rng.js';
 import { FILL_NORMAL, MELT_ICE_AWAY, GRAVE } from './const.js';
-import { dig_corridor, mineralize, make_grave, obj_timer_checks } from './mklev.js';
-import { add_to_container } from './mklev.js';
+import { dig_corridor, mineralize, make_grave, remove_object as remove_object_real } from './mklev.js';
+import { add_to_container, mkgold } from './mklev.js';
 import { ALTAR, DOOR, SDOOR, D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED, D_SECRET, W_RANDOM, W_NORTH, W_SOUTH, W_EAST, W_WEST, W_ANY, IS_OBSTRUCTED, isok, IS_WALL, IS_DOOR, STONE, MAX_TYPE, INVALID_TYPE, MATCH_WALL, IS_STWALL, IS_ROOM, CROSSWALL, HWALL, VWALL, COLNO, ROWNO, W_NONDIGGABLE, W_NONPASSWALL, ROOM, MOAT, TLCORNER, TRCORNER, BLCORNER, BRCORNER, TUWALL, TDWALL, TLWALL, TRWALL, DBWALL, AIR, CLOUD, FOUNTAIN, THRONE, SINK, POOL, WATER, TREE, IRONBARS, IS_DRAWBRIDGE, DB_DIR, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP, VIBRATING_SQUARE, NO_TRAP, CORR, ICE, ICED_POOL, ICED_MOAT, SCORR, LAVAPOOL, LAVAWALL, OROOM, THEMEROOM, COURT, SWAMP, VAULT, BEEHIVE, MORGUE, BARRACKS, ZOO, DELPHI, TEMPLE, ANTHOLE, COCKNEST, LEPREHALL, SHOPBASE, ARMORSHOP, SCROLLSHOP, POTIONSHOP, WEAPONSHOP, FOODSHOP, RINGSHOP, WANDSHOP, TOOLSHOP, BOOKSHOP, FODDERSHOP, CANDLESHOP, STAIRS, LADDER, MKTRAP_MAZEFLAG, MKTRAP_NOSPIDERONWEB, MKTRAP_SEEN, MKTRAP_NOVICTIM, SP_COORD_IS_RANDOM, OBJ_CONTAINED, OBJ_MINVENT, NON_PM, NEUTRAL, MALE, FEMALE, In_mines, AM_NONE, AM_CHAOTIC, AM_NEUTRAL, AM_LAWFUL, AM_MASK, AM_SPLEV_CO, AM_SPLEV_NONCO, AM_SPLEV_RANDOM, A_NONE, A_LAWFUL, A_ORIGINAL, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPMASK, PROT_FROM_SHAPE_CHANGERS, WET, HOT, SOLID, DEFAULT_INVENT, CUSTOM_INVENT, NO_INVENT, STRAT_WAITFORU, MM_NOTAIL, MM_NOGRP, MM_ADJACENTOK, MM_IGNOREWATER, MM_NOCOUNTBIRTH, MM_NOMSG, NO_MM_FLAGS, G_EXTINCT, G_GONE, LOW_PM, TUTORIAL, QUEST, DUNGEON_ALIGN_BY_DNUM, M_AP_MONSTER, DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, CORPSTAT_NONE, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_FEMALE, ROOMOFFSET, AM_SHRINE, AM_SANCTUM, Is_waterlevel, Is_airlevel, Is_stronghold, In_quest, LR_DOWNSTAIR, LR_UPSTAIR, LR_PORTAL, LR_BRANCH, LR_TELE, LR_UPTELE, LR_DOWNTELE, LR_MONGEN, GP_CHECKSCARY, IS_LAVA, IS_POOL, OBJ_FREE, LA_UP, LA_DOWN, MAX_NESTED_ROOMS, MAXNROFROOMS, IS_FURNITURE, F_LOOTED, F_WARNED, S_LPUDDING, S_LDWASHER, S_LRING, T_LOOTED, TREE_LOOTED, TREE_SWARM, SET_LIT_NOCHANGE, IS_TREE, is_pit, is_hole, TRAPNUM, Is_botlevel, In_endgame, EPRI, ESHK, ONAME_LEVEL_DEF, RLOC_ERR, RLOC_NOMSG, P_SPEAR, Amask2align, SVALL, } from './const.js';
 import { oinit } from './o_init.js';
 import { level_finalize_topology, fill_special_room, clear_level_structures, find_branch_room, OC_MERGE, newcham, add_door, makeroguerooms, themeroom_lspo_map_redo_maploc_rng, u_on_newpos, set_wall_state, mdrop_obj_md } from './mklev.js';
 import { flip_worm_segs_vertical, flip_worm_segs_horizontal, worm_seg_swap, wormgone } from './worm.js';
 import { In_hell, Can_fall_thru, mapfrag_get, mktrap, mksobj_at, mkobj_at, mksobj, makemon, somexy, somex, somey, mk_tt_object, mkcorpstat, resists_ston, del_engr_at, engr_at, make_engr_at, set_corpsenm, sobj_at, wallification, count_level_features, makecorridors, mkstairs, stairway_add, build_room, add_room, topologize, level_difficulty, get_level_extends, fix_wall_spines, occupied, mpickobj } from './mklev.js';
-import { set_levltyp_lit, create_maze, baalz_fixup, setup_waterlevel, stolen_booty, okay } from './mkmaze.js';
-import { vision_reset, block_point, recalc_block_point } from './vision.js';
+import { set_levltyp_lit, create_maze, baalz_fixup, setup_waterlevel, stolen_booty, walkfrom as maze_walkfrom } from './mkmaze.js';
+import { vision_reset, block_point } from './vision.js';
 import { litstate_rnd, mkmap, flood_fill_rm } from './mkmap.js';
 import { priestini, mk_roamer } from './priest.js';
 import { oname, artifact_exists } from './objnam.js';
@@ -34,6 +34,7 @@ import { OC_NAME } from './oc_name_data.js';
 import { DEFSYM_EXPLANATION } from './defsym_data.js';
 import { MKOBJ_OC_CLASS } from './mkobj_data.js';
 import { weight } from './weight.js';
+import { bless as bless_obj, unbless as unbless_obj, curse as curse_obj, uncurse as uncurse_obj } from './mkobj.js';
 import { name_to_mon, set_mon_data, set_malign, rndmonnum, can_saddle, mkclass, mkMplayer, rndOffensiveItem, rndDefensiveItem, rndMiscItem, propagate, permonstTemplate, check_gear_next_turn, emits_light } from './makemon.js';
 import { del_light_source, monst_to_any } from './light.js';
 import { LS_MONSTER } from './const.js';
@@ -43,8 +44,7 @@ import { t_at, deltrap, maketrap, goodpos, update_mon_extrinsics, m_dowear } fro
 /* C keeps pick_vibrasquare_location in mkmaze.c; create_trap's VIBRATING_SQUARE
  * arm (sp_lev.c:1819) is its only caller outside makemaz. */
 import { pick_vibrasquare_location } from './mkmaze.js';
-import { g_at, mergable } from './cmd.js';
-import { depth } from './hacklib.js';
+import { mergable } from './cmd.js';
 import { on_level } from './dungeon.js';
 import { m_at, monmightthrowwep } from './uhitm.js';
 import { christen_monst, poly_when_stoned } from './mhitm.js';
@@ -397,31 +397,7 @@ async function splev_initlev(linit) {
     }
 }
 
-// ---------------------------------------------------------------------------
-// TODO(sp_lev): okdoor — check if (x,y) is a valid wall position for a door
-// C ref: nethack-c/src/mklev.c okdoor()
-// Not yet exported from mklev.ts.  Stubbed here; replace with a real import
-// when mklev.ts exports it.
-// ---------------------------------------------------------------------------
-function okdoor(x, y) {
-    // TODO(sp_lev): okdoor — import from mklev once exported
-    // Faithful stub: defer to the level map's wall/accessible check.
-    // This matches the logic in mklev.ts:5075 (private okdoor).
-    const map = game.level;
-    if (!map)
-        return false;
-    const loc = map.at(x, y);
-    if (!loc)
-        return false;
-    // C okdoor: must be HWALL or VWALL, not already adjacent to a door.
-    // bydoor check omitted (it is a guard on the door-already-there case;
-    // omitting it may allow duplicate doors but does not change RNG).
-    // IS_OBSTRUCTED check on neighbours mirrors the C logic.
-    return ((isok(x - 1, y) && !IS_OBSTRUCTED((map.at(x - 1, y) || {}).typ ?? 0))
-        || (isok(x + 1, y) && !IS_OBSTRUCTED((map.at(x + 1, y) || {}).typ ?? 0))
-        || (isok(x, y - 1) && !IS_OBSTRUCTED((map.at(x, y - 1) || {}).typ ?? 0))
-        || (isok(x, y + 1) && !IS_OBSTRUCTED((map.at(x, y + 1) || {}).typ ?? 0)));
-}
+// C mklev.c:1779-1791 — share the wall, clearance, and bydoor checks.
 // ---------------------------------------------------------------------------
 // add_door — C ref: nethack-c-v5/upstream/src/mklev.c:585-623.
 //
@@ -492,7 +468,6 @@ export function rnddoor() {
 //  5. set_levltyp(x, y, secret ? SDOOR : DOOR)
 //     levl[x][y].doormask = mask
 //
-// Deps stubbed: okdoor (TODO), add_door (TODO), impossible (console.warn).
 // ---------------------------------------------------------------------------
 export function create_door(dd, broom) {
     pushRngLogEntry('>create_door');
@@ -3391,40 +3366,27 @@ function oc_merge(otyp) {
     return !!OC_MERGE[otyp];
 }
 
+/* C mkobj.c:1745-1837: share the inventory, timer, and light side effects. */
 function bless(otmp) {
-    if (otmp.oclass === COIN_CLASS)
-        return;
-    otmp.cursed = false;
-    otmp.blessed = true;
-    if (otmp.otyp === 219 /* BAG_OF_HOLDING */)
-        otmp.owt = weight(otmp);
+    return bless_obj(otmp);
 }
 function unbless(otmp) {
-    otmp.blessed = false;
-    if (otmp.otyp === 219 /* BAG_OF_HOLDING */)
-        otmp.owt = weight(otmp);
+    return unbless_obj(otmp);
 }
 function curse(otmp) {
-    if (otmp.oclass === COIN_CLASS)
-        return;
-    otmp.blessed = false;
-    otmp.cursed = true;
-    if (otmp.otyp === 219 /* BAG_OF_HOLDING */)
-        otmp.owt = weight(otmp);
+    return curse_obj(otmp);
 }
 function uncurse(otmp) {
-    otmp.cursed = false;
-    if (otmp.otyp === 219 /* BAG_OF_HOLDING */)
-        otmp.owt = weight(otmp);
+    return uncurse_obj(otmp);
 }
 function blessorcurse(otmp, chance) {
     if (otmp.blessed || otmp.cursed)
         return;
     if (!rn2(chance)) {
         if (!rn2(2))
-            curse(otmp);
+            return curse(otmp);
         else
-            bless(otmp);
+            return bless(otmp);
     }
 }
 
@@ -3444,34 +3406,7 @@ export async function spo_end_moninvent() {
 }
 
 export function remove_object(otmp) {
-    const xi = otmp.ox | 0, yi = otmp.oy | 0;
-    if (otmp.where !== 1)
-        throw new Error(`remove_object: obj where=${otmp.where}, not on floor`);
-    const lvlObjs = game.level?.levelObjects;
-    if (lvlObjs?.[xi]) {
-        const h = lvlObjs[xi][yi];
-        if (h === otmp) {
-            lvlObjs[xi][yi] = otmp.nexthere ?? null;
-        } else {
-            for (let o = h; o; o = o.nexthere) {
-                if (o.nexthere === otmp) { o.nexthere = otmp.nexthere; break; }
-            }
-        }
-    }
-    if (game.fobj === otmp) {
-        game.fobj = otmp.nobj ?? null;
-    } else {
-        for (let o = game.fobj; o; o = o.nobj) {
-            if (o.nobj === otmp) { o.nobj = otmp.nobj; break; }
-        }
-    }
-    otmp.nexthere = null;
-    otmp.where = OBJ_FREE;
-    otmp.nobj = null;
-    if (otmp.otyp === 475 /* BOULDER */)
-        recalc_block_point(xi, yi);
-    if (otmp.timed)
-        obj_timer_checks(otmp, xi, yi, 0);
+    return remove_object_real(otmp);
 }
 
 export async function stackobj(obj) {
@@ -3591,12 +3526,12 @@ async function create_object(o, croom) {
         otmp.spe = o.spe;
 
     switch (o.curse_state) {
-        case 1: bless(otmp); break;
-        case 2: unbless(otmp); uncurse(otmp); break;
-        case 3: curse(otmp); break;
-        case 4: uncurse(otmp); break;
-        case 5: blessorcurse(otmp, 1); break;
-        case 6: unbless(otmp); break;
+        case 1: await bless(otmp); break;
+        case 2: await unbless(otmp); await uncurse(otmp); break;
+        case 3: await curse(otmp); break;
+        case 4: await uncurse(otmp); break;
+        case 5: await blessorcurse(otmp, 1); break;
+        case 6: await unbless(otmp); break;
         default: break;
     }
 
@@ -7090,26 +7025,6 @@ export function lspo_region(...args) {
 // — argc==1 table form, explicit coord, amount always > 0 (zero mkgold-internal
 // RNG expected; lspo_gold itself draws none either since amount is never < 0).
 
-const GOLD_PIECE = 438; /* objects.h GOLD_PIECE — module-local per project
-                            convention (mklev.js/eat.js duplicate the same). */
-
-/** C ref: mkobj.c:2003-2021 mkgold(amount, x, y) — never returns null. */
-async function mkgold(amount, x, y) {
-    let gold = g_at(x, y);
-    if (amount <= 0) {
-        const mul = rnd(Math.trunc(30 / Math.max(12 - depth(game.u.uz), 2)));
-        amount = 1 + rnd(level_difficulty() + 2) * mul;
-    }
-    if (gold) {
-        gold.quan += amount;
-    } else {
-        gold = (await mksobj_at(GOLD_PIECE, x, y, true, false));
-        gold.quan = amount;
-    }
-    gold.owt = weight(gold);
-    return gold;
-}
-
 /** C ref: sp_lev.c:4487-4529 lspo_gold.
  *  All four of C's argc arms, transcribed.  The previous single-`args`
  *  signature took only the argc==1 table form and threw "Wrong parameters"
@@ -7686,31 +7601,8 @@ function mz_move(coord, dir) {
  *  recursive call already fully explored (and can no longer re-explore) the
  *  cells it touched. */
 function walkfrom(x, y, typ) {
-    if (!typ)
-        typ = game.level?.flags?.corrmaze ? CORR : ROOM;
-
-    const loc0 = game.level.at(x, y);
-    if (loc0 && !IS_DOOR(loc0.typ)) {
-        loc0.typ = typ;
-        loc0.flags = 0;
-    }
-
-    const coord = { x, y };
-    while (true) {
-        const dirs = [];
-        for (let a = 0; a < 4; a++)
-            if (okay(coord.x, coord.y, a))
-                dirs.push(a);
-        if (dirs.length === 0)
-            return;
-        const dir = dirs[rn2(dirs.length)];
-        mz_move(coord, dir);
-        const loc1 = game.level.at(coord.x, coord.y);
-        if (loc1)
-            loc1.typ = typ;
-        mz_move(coord, dir);
-        walkfrom(coord.x, coord.y, typ);
-    }
+    // Share C's maze walk with create_maze(), including its RNG order.
+    return maze_walkfrom(x, y, typ);
 }
 
 /* objclass.h RANDOM_CLASS / GEM_CLASS — module-local per this file's existing

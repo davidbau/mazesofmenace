@@ -33,6 +33,7 @@ import { erode_obj, mon_learns_traps, m_carrying } from './trap.js';
 import { bimanual as bimanual_mm } from './do_wear.js';
 import { dist2, s_suffix } from './hacklib.js';
 import { attacktype_fordmg, permonstTemplate, hates_silver, dmgtype_fromattack, sliparm, monPmname, monflee, newmextra, which_armor, ureflects, freemcorpsenm } from './makemon.js';
+import { monnear as monnear_real } from './makemon.js';
 import { has_oname, ONAME, Upolyd, BOLT_LIM, ECMD_OK, ECMD_TIME, Is_astralevel, In_endgame, ismnum, MALE, FEMALE, NEUTRAL, CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, CORPSTAT_RANDOM,
 /* x_monnam article / suppression flags — C ref: nethack-c/include/hack.h:1015-1028 */
 ARTICLE_NONE, ARTICLE_THE, ARTICLE_A, ARTICLE_YOUR,
@@ -63,7 +64,7 @@ PM_GHOST, PM_WIZARD_OF_YENDOR, PM_SHOPKEEPER, PM_ARCHEOLOGIST, PM_WIZARD, } from
 import { cansee, couldsee, clear_path, is_lightblocker_mappear, does_block, unblock_point } from './vision.js';
 import { linedup } from './trap.js';
 import { hmon_egg_petrify, touch_petrifies, mon_nam, exclam, artifact_hit, hmon_hitmon_do_hit, hmon_hitmon_poison, hmon_hitmon_splitmon, hmon_hitmon_msg_hit, hmon_hitmon_msg_silver, hmon_hitmon_msg_lightobj, hmon_hitmon_dmg_recalc, hmon_hitmon_special } from './uhitm.js';
-import { first_weapon_hit, hmon_hitmon_knockback } from './uhitm.js';
+import { first_weapon_hit, hmon_hitmon_knockback, Monnam as Monnam_real } from './uhitm.js';
 /* C mon.c:3470 killed() is a one-line wrapper over xkilled(), which lives in
  * js/uhitm.js.  mhitm.js already imports from uhitm.js (mon_nam, dmgval_weapon,
  * ...), so this rides the existing edge rather than adding a new one. */
@@ -71,6 +72,7 @@ import { xkilled as xkilled_mh, XKILL_GIVEMSG as XKILL_GIVEMSG_MH, XKILL_NOMSG a
 import { dmgval as dmgval_weapon, weapon_dam_bonus, use_skill, weapon_type, dbon } from './uhitm.js';
 import { MKOBJ_OC_SKILL, MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 import { setmangry, wake_msg, wake_nearto, healmon, angry_guards, split_mon_ml as split_mon } from './mklev.js';
+import { obfree } from './shk.js';
 /* make_stunned — js/potion.js:5813 (C ref: potion.c:106-127) is the one real
  * body; re-export it so js/mcastu.js's `make_stunned as make_stunned_mc`
  * import (mcast_stun_you, its OWN monster-cast-stuns-hero path) also stops
@@ -97,9 +99,9 @@ import { priestname, rndmonnam, bogon_is_pname, temple_occupied, has_shrine } fr
 /* x_monnam's shopkeeper branch — C ref: do_name.c:919-936. */
 import { shkname, free_oname as free_oname_real, hot_pursuit } from './dokick.js';
 import { nomul } from './allmain.js';
-import { monstseesu, shieldeff, buzz } from './mcastu.js';
+import { monstseesu, monstunseesu, shieldeff, buzz } from './mcastu.js';
 import { resist, drain_item, hit } from './zap.js';
-import { finish_meating } from './dogmove.js';
+import { finish_meating, dmgtype as dmgtype_real } from './dogmove.js';
 import { FAINTED } from './const.js';
 import { PM_SAMURAI as PM_SAMURAI_HM, PM_ELF as PM_ELF_HM } from './pm.generated.js';
 /* C end.c:185-300 done_in_by — use the canonical death attribution path.
@@ -233,37 +235,9 @@ export function attk_protection(aatyp) {
 import { mdamageu } from './mhitu.js';
 import { drain_pending_death_in_place } from './fastforward.js';
 import { pending_death_is_final } from './end.js';
-/* m_canseeu — C ref: nethack-c/include/vision.h:45-52 (macro):
- *   (!Invis || perceives(m->data)) && !Underwater && couldsee(m->mx, m->my)
- * Invis = (HInvis || EInvis) && !BInvis (youprop.h:198)
- * perceives(ptr) = ptr->mflags1 & M1_SEE_INVIS (mondata.h:81)
- * Underwater = u.uinwater (youprop.h:279) */
-function m_canseeu(mtmp) {
-    const u = game.u;
-    const ip = u.uprops?.[INVIS];
-    const Invis = !!(ip && (ip.intrinsic || ip.extrinsic) && !(ip.blocked | 0));
-    const ptr = permonstTemplate(mtmp.mnum | 0);
-    const perceives = !!((ptr.mflags1 || 0) & 0x01000000 /* M1_SEE_INVIS */);
-    return (!Invis || perceives) && !u.uinwater && couldsee(mtmp.mx, mtmp.my);
-}
-/* monstunseesu — C ref: nethack-c/src/mondata.c:1571-1583
- * Monsters in line of sight forget hero resistance to M_SEEN_foo. */
-export function monstunseesu(seenres) {
-    if (seenres === M_SEEN_NOTHING || game.u.uswallow)
-        return;
-    for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
-        if ((mtmp.mhp | 0) < 1) continue; /* DEADMONSTER */
-        if (!m_canseeu(mtmp)) continue;
-        mtmp.seen_resistance &= ~seenres; /* m_clearseenres */
-    }
-}
-/* monstseesu — MODULE-LOCAL STUB DELETED.  The real body (js/mcastu.js:315,
- * C ref: mondata.c:1557-1568) is imported at the top of this file; it is the
- * mirror of this file's own already-ported monstunseesu just above (same
- * m_canseeu() guard, same fmon walk) and was verified byte-for-byte against
- * mondata.c before wiring.  The stub dropped all five call sites below
- * (AD_ACID/AD_MAGR/AD_COLD/AD_FIRE/AD_ELEC), so no monster in this file's
- * passive() ever learned it had seen the hero resist a damage type. */
+/* C mondata.c:1558-1583: learning and forgetting share mcastu's observer
+ * filtering, including the monster's current data for see-invisible. */
+export { monstunseesu };
 /* shieldeff — MODULE-LOCAL STUB DELETED.  The magic-shield shimmer
  * (C ref: display.c:1109-1122) is DISPLAY-ONLY and RNG-free: it paints
  * SHIELD_COUNT glyph frames then restores the original with newsym(), so it
@@ -403,10 +377,7 @@ export function poly_when_stoned(ptr) {
               && !(mv & G_GENOD));
 }
 function monnear(mon, x, y) {
-    /* C monmove.c — adjacent or same square. */
-    const dx = Math.abs((mon.mx | 0) - (x | 0));
-    const dy = Math.abs((mon.my | 0) - (y | 0));
-    return dx <= 1 && dy <= 1;
+    return monnear_real(mon, x, y); /* C mon.c:2476: NODIAG grid bugs. */
 }
 /* xname/cxname — C objnam.c:574 / :1920.  Both were private best-effort copies
  * here (xname returned "" outright; cxname returned the shuffled appearance
@@ -745,7 +716,7 @@ export function l_monnam(mtmp) {
 
 /* Monnam — C ref: nethack-c/src/do_name.c:1073-1080 */
 function Monnam(mtmp) {
-    return xm_highc_first(mon_nam(mtmp));
+    return Monnam_real(mtmp);
 }
 
 /* noit_Monnam — C ref: nethack-c/src/do_name.c:1082-1089 */
@@ -989,6 +960,8 @@ export async function passive_obj(mon, obj, mattk) {
  * ---------------------------------------------------------------------------
  */
 export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destroyed) {
+    // C uhitm.c:5893-6117: pline blocks before subsequent damage and RNG.
+    // Await each message so MSGTYPE=stop preserves those input boundaries.
     const ptr = mon.data;
     const mattks = ptr && ptr.mattk;
     /* C: ptr == &mons[PM_X] maps to JS: mndx === PM_X (mndx on the monst) */
@@ -1045,10 +1018,10 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                 const blind = _hero_blind();
                 const verbose = !!(game.flags && game.flags.verbose !== false);
                 if (blind || !verbose) {
-                    void pline("You are splashed!");
+                    await pline("You are splashed!");
                 }
                 else {
-                    void pline(`You are splashed by ${s_suffix(mon_nam(mon))} ${hliquid("acid")}!`);
+                    await pline(`You are splashed by ${s_suffix(mon_nam(mon))} ${hliquid("acid")}!`);
                 }
                 const acid_res = _hero_resists(ACID_RES);
                 if (!acid_res) {
@@ -1160,10 +1133,10 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                 if (antimagic) {
                     shieldeff(ux, uy);
                     monstseesu(M_SEEN_MAGR);
-                    void pline("A hail of magic missiles narrowly misses you!");
+                    await pline("A hail of magic missiles narrowly misses you!");
                 }
                 else {
-                    void pline("You are hit by magic missiles appearing from thin air!");
+                    await pline("You are hit by magic missiles appearing from thin air!");
                     // C uhitm.c:5988 / mhitu.c:1925: done() runs before
                     // monstunseesu or the second passive block's rn2(3).
                     const deathBeforeMissiles = game._pendingDeath || null;
@@ -1216,19 +1189,19 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                             ;
                         }
                         else {
-                            const hallu = _hero_prop_active(HALLUC); /* Hallucination */
+                            const hallu = xm_Hallucination(); /* youprop.h:120: timeout && !resistance */
                             if (hallu && rn2(4)) {
                                 /* C uhitm.c:6031 — hallucination message evasion */
-                                void pline(`${Monnam(mon)} looks ${!rn2(2) ? "" : "rather "}${!rn2(2) ? "numb" : "stupefied"}.`);
+                                await pline(`${Monnam(mon)} looks ${!rn2(2) ? "" : "rather "}${!rn2(2) ? "numb" : "stupefied"}.`);
                             }
                             else {
                                 /* youprop.h:383 — Free_action is the EXTRINSIC slot only. */
                                 const free_act = !!(game.u?.uprops?.[FREE_ACTION]?.extrinsic | 0); /* Free_action */
                                 if (free_act) {
-                                    void pline(`You momentarily stiffen under ${s_suffix(mon_nam(mon))} gaze!`);
+                                    await pline(`You momentarily stiffen under ${s_suffix(mon_nam(mon))} gaze!`);
                                 }
                                 else {
-                                    void pline(`You are frozen by ${s_suffix(mon_nam(mon))} gaze!`);
+                                    await pline(`You are frozen by ${s_suffix(mon_nam(mon))} gaze!`);
                                     /* C uhitm.c:6043: nomul((ACURR(A_WIS) > 12 || rn2(4)) ? -tmp : -127) */
                                     const awis = (u ? acurr(u, A_WIS) : 0) | 0; /* C: ACURR(A_WIS) */
                                     nomul((awis > 12 || rn2(4)) ? -tmp : -127);
@@ -1240,7 +1213,7 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                     }
                     else {
                         /* C uhitm.c:6050: mon->mcansee == 0, monster is blind */
-                        void pline(`${Adjmonnam(mon, "blind")} cannot defend itself.`);
+                        await pline(`${Adjmonnam(mon, "blind")} cannot defend itself.`);
                         /* C uhitm.c:6052: if (!rn2(500)) change_luck(-1) */
                         if (!rn2(500))
                             change_luck(-1);
@@ -1251,10 +1224,10 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                     /* youprop.h:383 — Free_action is the EXTRINSIC slot only. */
                     const free_act = !!(game.u?.uprops?.[FREE_ACTION]?.extrinsic | 0);
                     if (free_act) {
-                        void pline("You momentarily stiffen.");
+                        await pline("You momentarily stiffen.");
                     }
                     else {
-                        void pline(`You are frozen by ${mon_nam(mon)}!`);
+                        await pline(`You are frozen by ${mon_nam(mon)}!`);
                         game.nomovemsg = 'You can move again.'; /* uhitm.c:6058 You_can_move_again */
                         nomul(-tmp);
                         dynamic_multi_reason(mon, "frozen", false);
@@ -1268,13 +1241,13 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                     const cold_res = _hero_resists(COLD_RES);
                     if (cold_res) {
                         shieldeff(ux, uy);
-                        void pline("You feel a mild chill.");
+                        await pline("You feel a mild chill.");
                         monstseesu(M_SEEN_COLD);
                         ugolemeffects(AD_COLD, tmp);
                         break;
                     }
                     monstunseesu(M_SEEN_COLD);
-                    void pline("You are suddenly very cold!");
+                    await pline("You are suddenly very cold!");
                     // C uhitm.c:6077 / mhitu.c:1925: resolve death before
                     // healing or splitting; lifesaving or refusing death lets C return.
                     const deathBeforeCold = game._pendingDeath || null;
@@ -1293,7 +1266,7 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
             case AD_STUN:
                 /* C uhitm.c:6086: if (!Stunned) make_stunned((long)tmp, TRUE) */
                 {
-                    const stunned = _hero_prop_active(STUNNED);
+                    const stunned = (u?.uprops?.[STUNNED]?.intrinsic | 0); /* youprop.h:81 */
                     if (!stunned)
                         make_stunned(tmp, true);
                 }
@@ -1304,14 +1277,22 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                     const fire_res = _hero_resists(FIRE_RES);
                     if (fire_res) {
                         shieldeff(ux, uy);
-                        void pline("You feel mildly warm.");
+                        await pline("You feel mildly warm.");
                         monstseesu(M_SEEN_FIRE);
                         ugolemeffects(AD_FIRE, tmp);
                         break;
                     }
                     monstunseesu(M_SEEN_FIRE);
-                    void pline("You are suddenly very hot!");
+                    await pline("You are suddenly very hot!");
+                    // C uhitm.c:6100 / mhitu.c:1925: done() runs before
+                    // passive returns to the hero's attack or kick.
+                    const deathBeforeFire = game._pendingDeath || null;
                     await mdamageu(mon, tmp);
+                    if (game._pendingDeath && game._pendingDeath !== deathBeforeFire) {
+                        await drain_pending_death_in_place();
+                        if (pending_death_is_final())
+                            return (malive | mhit);
+                    }
                 }
                 break;
             case AD_ELEC:
@@ -1320,14 +1301,22 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                     const shock_res = _hero_resists(SHOCK_RES);
                     if (shock_res) {
                         shieldeff(ux, uy);
-                        void pline("You feel a mild tingle.");
+                        await pline("You feel a mild tingle.");
                         monstseesu(M_SEEN_ELEC);
                         ugolemeffects(AD_ELEC, tmp);
                         break;
                     }
                     monstunseesu(M_SEEN_ELEC);
-                    void pline("You are jolted with electricity!");
+                    await pline("You are jolted with electricity!");
+                    // C uhitm.c:6113 / mhitu.c:1925: resolve lethal damage
+                    // at the same call site as the other passive attacks.
+                    const deathBeforeElectricity = game._pendingDeath || null;
                     await mdamageu(mon, tmp);
+                    if (game._pendingDeath && game._pendingDeath !== deathBeforeElectricity) {
+                        await drain_pending_death_in_place();
+                        if (pending_death_is_final())
+                            return (malive | mhit);
+                    }
                 }
                 break;
             default:
@@ -2446,8 +2435,7 @@ export function yelp(mtmp) {
 }
 /* C do_name.c:1367 Monnam — upstart(mon_nam(mon)); mon_nam is imported above. */
 function Monnam_mm(mon) {
-    const s = mon_nam(mon);
-    return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+    return Monnam(mon);
 }
 
 /* C mon.c seemimic: release appearance metadata and unblock revealed mimics
@@ -2829,7 +2817,7 @@ async function _hmon_hitmon_misc_obj(hmd, mon, obj) {
             : (cnt > 1) ? 'some' : 'an';
         await pline(`You hit ${mon_nam(mon)} with ${eggp} egg${cnt === 1 ? '' : 's'}.`);
         await pline('Splat!');
-        game.thrownobj = null; /* useup_eggs: obfree */
+        await obfree(obj, null); /* useup_eggs: obfree (dealloc_obj stops the hatch timer) */
         exercise(A_WIS, false);
         return;
     }
@@ -3253,8 +3241,7 @@ export function mons_see_trap(ttmp) {
     }
 }
 
-const AT_ANY = -1; /* monattk.h */
-function dmgtype(mon_data, ad_type) { return dmgtype_fromattack(mon_data, ad_type, AT_ANY) ? true : false; }
+function dmgtype(mon_data, ad_type) { return dmgtype_real(mon_data, ad_type); }
 const AD_ANY = -1; /* monattk.h */
 /* C mondata.c:53 attacktype */
 export function attacktype(ptr, atyp) { return attacktype_fordmg(ptr, atyp, AD_ANY) ? true : false; }

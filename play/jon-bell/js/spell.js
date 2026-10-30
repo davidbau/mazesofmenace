@@ -24,13 +24,6 @@ import { build_window_screen, tty_window_offx, menu_search_getlin } from './com_
 import { pmatchi } from './strutil.js';
 import { CORR, DOOR, ROOM, NO_SPELL, UNKNOWN_SPELL, CONFUSION, STUNNED, TIMEOUT, BLINDED, CLAIRVOYANT, SICK, SLIMED, HEAD,
     ECMD_OK, ECMD_TIME, ECMD_FAIL, CMDQ_KEY, CQ_REPEAT } from './const.js';
-/* study_book's too_hard block (spell.c:575-620) and cursed_book (spell.c:113).
- * acurr is aliased because this file already carries a same-named local helper
- * whose miss path returns a hard-coded 10; js/attrib.js's is the real
- * attrib.c:1191 body (abase + abon + atemp with C's per-attribute clamps), and
- * read_ability is a threshold comparison where a defaulted 10 would silently
- * change the outcome.  Retiring the local shadow touches its other callers and
- * is out of this fix's scope. */
 import { acurr as acurr_real, poison_strdmg } from './attrib.js';
 import { POISON_RES, KILLED_BY_AN, ANTIMAGIC, FACE } from './const.js';
 import { nomul, stop_occupation } from './allmain.js';
@@ -548,26 +541,6 @@ function percent_success(spellSlot) {
     if (chance < 0)   chance = 0;
 
     return chance;
-}
-
-// ── Helper: ACURR (current attribute value) ──────────────────────────────────
-// C ref: nethack-c/src/attrib.c ACURR macro
-//
-// game.u.acurr.a is stored in DISPLAY order [St,Dx,Co,In,Wi,Ch] (indices 0-5).
-// C constants: A_STR=0, A_INT=1, A_WIS=2, A_DEX=3, A_CON=4, A_CHA=5.
-// Display permutation (from mapstate_game_bridge.js:210-215):
-//   display[0]=St, display[1]=Dx, display[2]=Co, display[3]=In, display[4]=Wi, display[5]=Ch
-// So to map C attr index → JS display index:
-//   A_STR(0) → 0, A_INT(1) → 3, A_WIS(2) → 4, A_DEX(3) → 1, A_CON(4) → 2, A_CHA(5) → 5
-const C_ATTR_TO_DISP = [0, 3, 4, 1, 2, 5]; // A_STR→0, A_INT→3, A_WIS→4, A_DEX→1, A_CON→2, A_CHA→5
-
-function acurr(stat) {
-    const u = game.u || {};
-    const dispIdx = C_ATTR_TO_DISP[stat] ?? stat;
-    if (u.acurr && Array.isArray(u.acurr.a) && u.acurr.a[dispIdx] !== undefined) {
-        return u.acurr.a[dispIdx] | 0;
-    }
-    return 10; // safe default
 }
 
 // ── Helpers for armor checks ─────────────────────────────────────────────────

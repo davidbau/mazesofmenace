@@ -125,7 +125,7 @@ function new_light_core(x, y, range, type, id) {
     }
     const ls = {
         next: light_base,
-        x: x, y: y, range: range, type: type, id: id, flags: 0,
+        x: x, y: y, range: range, type: type, id: { ...id }, flags: 0,
     };
     light_base = ls;
     game.vision_full_recalc = 1; /* make the source show up */
@@ -172,7 +172,7 @@ export function obj_split_light_source(src, dest) {
     for (let ls = light_base; ls; ls = ls.next) {
         if (ls.type !== LS_OBJECT || ls.id?.a_obj !== src)
             continue;
-        const copy = { ...ls, id: obj_to_any(dest), next: light_base };
+        const copy = { ...ls, id: { ...ls.id, a_obj: dest, a_monst: dest }, next: light_base };
         if (Is_candle(src)) {
             ls.range = candle_light_range(src);
             copy.range = candle_light_range(dest);

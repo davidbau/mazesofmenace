@@ -21,17 +21,19 @@ import { pline } from './display.js'; /* was an undeclared global: every pline()
 import { game } from './gstate.js';
 import { s_suffix as _s_suffix } from './hacklib.js';
 import { permonstTemplate, monPmname } from './makemon.js';
-import { NEUTRAL, MIN_QUEST_LEVEL } from './const.js';
+import { NEUTRAL, MIN_QUEST_LEVEL, BUFSZ } from './const.js';
 /* C ref: obj.h OBJ_* chain ids + Has_contents(); questpgr.c:66-70
  * is_quest_artifact() lives in js/objnam.js (js/cmd.js's same-named export is a
  * throwing stub — the file-local-stub-shadows-real-port shape). */
 import { OBJ_INVENT, OBJ_FLOOR, OBJ_MINVENT, OBJ_MIGRATING, OBJ_BURIED, Has_contents } from './const.js';
-import { is_quest_artifact, makesingular, makeplural as _makeplural } from './objnam.js';
+import { is_quest_artifact, makesingular, makeplural as _makeplural,
+         an as _an, An as _An } from './objnam.js';
 import { rank_of } from './rank_data.js';
 import { putmsghistory } from './display.js';
 import { roles as ROLES } from './roles.js';
 import { nhlib_load_toplevel_rng } from './nhlib.js';
 import { rn2 } from './rng.js';
+import { QUEST_CUSS_TEXT } from './mcastu.js';
 
 /* C monflag.h M2_PNAME — "the " is omitted for a proper-name monster. */
 const M2_PNAME = 0x00080000;
@@ -186,6 +188,9 @@ function intermed() {
 
 const QUESTTEXT = {
     common: {
+        // Defer table access until after the mcastu/questpgr import cycle.
+        get angel_cuss() { return { lines: QUEST_CUSS_TEXT.angel_cuss }; },
+        get demon_cuss() { return { lines: QUEST_CUSS_TEXT.demon_cuss }; },
         /* dat/quest.lua:182-188 */
         quest_portal: {
             output: 'pline',
@@ -3867,7 +3872,7 @@ function _impossible(msg) {
  * line.  Ports the arms reachable from the entries above: the bare arg (default
  * `--c` undo), plus An/an, capitalize, pluralize, possessive and "the "-strip.
  * Pronoun modifiers are handled by the qtext_pronoun arm below. */
-function convert_line(in_line) {
+export function convert_line(in_line) {
     let out = '';
     for (let i = 0; i < in_line.length; i++) {
         const ch = in_line[i];
@@ -3875,6 +3880,8 @@ function convert_line(in_line) {
             return out;                     /* C: terminate the line here */
         if (ch !== '%' || i + 1 >= in_line.length) {
             out += ch;
+            if (out.length > BUFSZ - 1)
+                throw new Error('panic: convert_line: overflow');
             continue;
         }
         /* convert_arg(*(++c)) then switch (*(++c)) */
@@ -3884,9 +3891,9 @@ function convert_line(in_line) {
         case 'A': i++; out += _An(buf); continue;
         case 'a': i++; out += _an(buf); continue;
         case 'C': i++; buf = _highc(buf); break;
-        case 'P': i++; buf = _highc(_makeplural(buf)); break;
+        case 'P': i++; buf = _makeplural(_highc(buf)); break;
         case 'p': i++; buf = _makeplural(buf); break;
-        case 'S': i++; buf = _highc(_s_suffix(buf)); break;
+        case 'S': i++; buf = _s_suffix(_highc(buf)); break;
         case 's': i++; buf = _s_suffix(buf); break;
         case 't': i++;
             if (buf.slice(0, 4).toLowerCase() === 'the ') { out += buf.slice(4); continue; }
@@ -3901,51 +3908,67 @@ function convert_line(in_line) {
                     const forms = plural ? { h: 'they', i: 'them', j: 'their' }
                         : { h: 'it', i: 'it', j: 'its' };
                     const pronoun = forms[mod.toLowerCase()];
-                    out += mod === mod.toLowerCase() ? pronoun : _highc(pronoun);
+                    buf = mod === mod.toLowerCase() ? pronoun : _highc(pronoun);
                     i++;
-                    continue;
+                    break;
                 }
                 i++;
                 /* %l and %n name the role's leader and nemesis. */
-                const female = (who === 'l' && _leader_female())
-                    || (who === 'n' && _nemesis_female());
-                const forms = female
+                // C questpgr.c:220-226 uses the genders saved by role_init().
+                const q = game.svq.quest_status;
+                const gender = { d: q.godgend, l: q.ldrgend, n: q.nemgend }[in_line[i - 1]] ?? 2;
+                const forms = gender === 2
+                    ? { h: 'it', H: 'It', i: 'it', I: 'It', j: 'its', J: 'Its' }
+                    : gender === 1
                     ? { h: 'she', H: 'She', i: 'her', I: 'Her', j: 'her', J: 'Her' }
                     : { h: 'he', H: 'He', i: 'him', I: 'Him', j: 'his', J: 'His' };
-                out += forms[mod] ?? buf;
-                continue;
+                buf = forms[mod] ?? buf;
+                break;
             }
             break;
         default:
             break;                          /* C: --c, i.e. don't consume mod */
         }
         out += buf;
+        // C questpgr.c:415-416; An/an and stripped "the " continue above it.
+        if (out.length > BUFSZ - 1)
+            throw new Error('panic: convert_line: overflow');
     }
     return out;
 }
 
 function _highc(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
-function _an(s) { return (s && 'aeiouAEIOU'.includes(s[0])) ? `an ${s}` : `a ${s}`; }
-function _An(s) { return _highc(_an(s)); }
 
 /* C questpgr.c:436 deliver_by_window(msg, how) — one nhwindow, one putstr per
  * converted line, display_nhwindow(datawin, TRUE). */
 async function deliver_by_window(text, how) {
     const { display_text_window } = await import('./cmd.js');
-    const lines = String(text).split('\n').map(convert_line);
-    /* NHW_MENU delivery (output == "menu") is not ported — no entry in
-     * QUESTTEXT uses it; report rather than paint the wrong window shape. */
-    if (how === 'menu')
-        _impossible('deliver_by_window: NHW_MENU delivery not ported');
-    await display_text_window(lines);
+    const s = String(text), lines = [];
+    // C copynchars(): cap each input at BUFSZ-1, then skip one byte.
+    for (let p = 0; p < s.length;) {
+        const nl = s.indexOf('\n', p);
+        const line = s.slice(p, Math.min(nl < 0 ? s.length : nl, p + 255));
+        p += line.length + 1;
+        lines.push(convert_line(line));
+    }
+    /* C questpgr.c:443: preserve the requested window type. */
+    if (how === 'menu') {
+        const { displayLookWindow } = await import('./look-window.js');
+        await displayLookWindow(lines);
+    } else {
+        await display_text_window(lines);
+    }
 }
 
 /* C questpgr.c:427 deliver_by_pline(msg) — one pline per converted line. */
-async function deliver_by_pline(text) {
-    const { pline } = await import('./display.js');
-    for (const line of String(text).split('\n')) {
+export async function deliver_by_pline(text) {
+    const s = String(text);
+    for (let p = 0; p < s.length;) {
+        const nl = s.indexOf('\n', p);
+        const line = s.slice(p, Math.min(nl < 0 ? s.length : nl, p + 255));
+        p += line.length + 1;
         const out = convert_line(line);
-        if (out) await pline(out);
+        await pline(out);
     }
 }
 
@@ -3975,17 +3998,24 @@ async function com_pager_core(section, msgid, showerror, rawtext) {
      * no such msgid (C reads the table only after nhl_init succeeds), and
      * qt_pager()'s role-then-"common" retry therefore pays them TWICE. */
     nhlib_load_toplevel_rng();
+    if (!QUESTTEXT[section]) {
+        if (showerror) _impossible(`com_pager: questtext[${section}] in quest.lua is not a lua table`);
+        return false;
+    }
+    let fallback_msgid;
     let entry = QUESTTEXT[section]?.[msgid];
     if (!entry) {
         /* C questpgr.c:518-531 tryagain — questtext[msg_fallbacks][msgid]
          * (dat/quest.lua:31-33: goal_alt -> goal_next) names a replacement
          * msgid looked up in the SAME section. */
-        const fallback_msgid = msg_fallbacks[msgid];
+        fallback_msgid = msg_fallbacks[msgid];
         if (fallback_msgid)
             entry = QUESTTEXT[section]?.[fallback_msgid];
         if (!entry) {
             if (showerror)
-                _impossible(`com_pager: questtext[${section}][${msgid}] not ported`);
+                _impossible(fallback_msgid
+                    ? `com_pager: questtext[${section}][${msgid}] and [][${fallback_msgid}] in quest.lua are not lua tables`
+                    : `com_pager: questtext[${section}][${msgid}] in quest.lua is not a lua table`);
             return false;
         }
     }
@@ -3993,13 +4023,13 @@ async function com_pager_core(section, msgid, showerror, rawtext) {
     let output = { pline: 1, window: 2, text: 2, menu: 3 }[entry.output] ?? 0;
     let text = entry.text;
     if (rawtext) { rawtext.text = text; return true; } // C questpgr.c:546-550
-    if (!text) {
+    if (text == null) {
         /* C questpgr.c:557-570 — array-form entry: nelems < 2 is an error,
          * else text = elems[rn2(nelems) + 1]. */
         const nelems = entry.lines ? entry.lines.length : 0;
         if (nelems < 2) {
             if (showerror)
-                _impossible(`com_pager: questtext[${section}][${msgid}] is not an array of strings`);
+                _impossible(`com_pager: questtext[${section}][${fallback_msgid || msgid}] in quest.lua is not an array of strings`);
             return false;
         }
         text = entry.lines[rn2(nelems)];
@@ -4010,7 +4040,7 @@ async function com_pager_core(section, msgid, showerror, rawtext) {
     if (output === 0 && (text.includes('\n') || text.length >= 255)) {
         output = 2;
         if (!synopsis)
-            synopsis = `[${text.replace(/\n/g, ' ')}]`;
+            synopsis = `[${text.slice(0, 253).replace(/\n/g, ' ')}]`;
     }
     if (output === 0 || output === 1)
         await deliver_by_pline(text);

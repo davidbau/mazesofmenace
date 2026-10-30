@@ -6,7 +6,7 @@ import { depth as depth_of_level } from './hacklib.js';
 import { IS_WALL, IS_DOOR, IS_ROOM, IS_OBSTRUCTED, isok, SDOOR, NO_ROOM, SHARED,
          COLNO, ROWNO, TREE, LAVAPOOL, ICE, ICED_POOL, ICED_MOAT,
          MAXNROFROOMS, ROOMOFFSET, OROOM } from './const.js';
-import { impossible } from './steed.js';
+import { impossible } from './pline.js';
 /* mkmap.c's join_map() reaches into the mklev.c room machinery (add_room,
  * somexy) and sp_lev.c's wallify_map.  js/mklev.js already imports
  * litstate_rnd from this file, so this is a module cycle — it resolves
@@ -386,7 +386,7 @@ async function join_map(bg_typ, fg_typ) {
         if (!somexy(croom, sm) || !somexy(croom2, em)) {
             /* ack! -- the level is going to be busted */
             /* arbitrarily pick centers of both rooms and hope for the best */
-            impossible("No start/end room loc in join_map.");
+            await impossible("No start/end room loc in join_map.");
             sm.x = croom.lx + Math.trunc((croom.hx - croom.lx) / 2);
             sm.y = croom.ly + Math.trunc((croom.hy - croom.ly) / 2);
             em.x = croom2.lx + Math.trunc((croom2.hx - croom2.lx) / 2);

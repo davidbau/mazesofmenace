@@ -36,6 +36,7 @@ function _hero_mflags1_dw() {
 const M1_HUMANOID_DW = 0x00020000;
 function _humanoid_dw() { return (_hero_mflags1_dw() & M1_HUMANOID_DW) !== 0; }
 import { pline, urgent_pline, livelog_printf } from './display.js';
+import { You as You_real, Your as Your_real } from './display.js';
 import { LL_ALIGNMENT } from './const.js';
 import { aligns } from './roles.js';
 import { see_monsters, Sting_effects, retouch_object_hero, retouch_equipment } from './display.js';
@@ -142,7 +143,7 @@ import { cloak_simple_name as cloak_simple_name_obj,
          shield_simple_name as shield_simple_name_obj,
          vtense } from './objnam.js';
 import { getObjName } from './o_init.js';
-import { ARMOR_DATA, armorIsMetallic, armorIsCrackable } from './armor_data.js';
+import { ARMOR_DATA } from './armor_data.js';
 import { LEVITATION as LEVITATION_PROP, GLIB as GLIB_PROP, Upolyd, I_SPECIAL,
          HOLE, TRAPDOOR, STATUE_TRAP, TT_PIT, TT_BEARTRAP, TT_WEB, TT_BURIEDBALL, TT_LAVA, TT_INFLOOR, WEB, PIT, IS_ROOM, Is_airlevel, Is_waterlevel, In_endgame, Is_earthlevel } from './const.js';
 /* C prop.h:63 UNCHANGING — youprop.h:372 Unchanging = (HUnchanging || EUnchanging). */
@@ -521,28 +522,9 @@ function armorMeta(obj) {
 }
 
 
-/* C ref: obj.h:347-350 Is_dragon_scales / Is_dragon_mail — contiguous otyp
- * runs.  Resolved by C oc_name rather than by re-typing the otyp bounds. */
-function isDragonMailRow(row) {
-    return !!row?.name && /^\w+ dragon scale mail$/.test(row.name);
-}
-function isDragonScalesRow(row) {
-    return !!row?.name && /^\w+ dragon scales$/.test(row.name);
-}
-/* C ref: objnam.c:5468 suit_simple_name(suit) */
-function suit_simple_name(row) {
-    if (row) {
-        if (isDragonMailRow(row)) return 'dragon mail';
-        if (isDragonScalesRow(row)) return 'dragon scales';
-        const suitnm = row.name;
-        if (suitnm) {
-            /* strlen > 5 && the last 5 chars are " mail"; likewise " jacket". */
-            if (suitnm.length > 5 && suitnm.endsWith(' mail')) return 'mail';
-            if (suitnm.length > 7 && suitnm.endsWith(' jacket')) return 'jacket';
-        }
-    }
-    /* objnam.c:5484 — "suit" is lame but "armor" is ambiguous. */
-    return 'suit';
+/* C ref: objnam.c:5471 suit_simple_name(suit) */
+function suit_simple_name(obj) {
+    return suit_simple_name_obj(obj);
 }
 /* C ref: objnam.c:5489 cloak_simple_name(cloak).  ALCHEMY_SMOCK's smock/apron
  * split depends on oc_name_known && dknown; every cloak has oc_delay 0 so this
@@ -553,10 +535,8 @@ function cloak_simple_name(row, obj) {
 }
 /* C ref: objnam.c:5510 helm_simple_name(helmet) — !hard_helmet ? "hat" : "helm".
  * hard_helmet (do_wear.c:568) = is_helmet && (is_metallic || is_crackable). */
-function helm_simple_name(row) {
-    const hard = !!row && row.armcat === ARM_HELM
-        && (armorIsMetallic(row) || armorIsCrackable(row));
-    return hard ? 'helm' : 'hat';
+function helm_simple_name(obj) {
+    return helm_simple_name_obj(obj);
 }
 /* C ref: objnam.c:5529 gloves_simple_name(gloves) — "gauntlets" when the name
  * the hero can currently see contains "gauntlets" (actual name once the type is
@@ -571,9 +551,7 @@ function boots_simple_name(row, obj) {
 }
 /* C ref: objnam.c:5567 shield_simple_name(shield) */
 function shield_simple_name(row, obj) {
-    if (row && row.name === 'shield of reflection')
-        return obj?.dknown ? 'silver shield' : 'smooth shield';
-    return 'shield';
+    return shield_simple_name_obj(obj);
 }
 /* C ref: objnam.c:5597 shirt_simple_name(shirt) — use the canonical object
  * naming body already imported above instead of keeping a duplicate shadow. */
@@ -592,16 +570,16 @@ function shirt_simple_name(shirt) {
 export function armor_simple_name_dw(obj) {
     const row = armorRow(obj);
     switch (armorMeta(obj).armcat) {
-    case ARM_SUIT:   return suit_simple_name(row);
+    case ARM_SUIT:   return suit_simple_name(obj);
     case ARM_CLOAK:  return cloak_simple_name(row, obj);
-    case ARM_HELM:   return helm_simple_name(row);
+    case ARM_HELM:   return helm_simple_name(obj);
     case ARM_GLOVES: return gloves_simple_name(row, obj);
     case ARM_BOOTS:  return boots_simple_name(row, obj);
     case ARM_SHIELD: return shield_simple_name(row, obj);
     case ARM_SHIRT:  return shirt_simple_name(obj);
     /* C's default is simpleonames() + impossible(); an unknown armcat cannot
      * arise here because armorMeta() falls back to ARM_SUIT. */
-    default:         return suit_simple_name(row);
+    default:         return suit_simple_name(obj);
     }
 }
 /* C ref: objects[obj->otyp].oc_armcat — the armor category read by
@@ -2280,13 +2258,13 @@ export async function canwearobj(otmp, maskbox, noisy) {
     if (is_helmet(otmp)) {                              /* do_wear.c:2071 */
         if (u.uarmh) {
             if (noisy)
-                await already_wearing(an(helm_simple_name(armorRow(u.uarmh))));
+                await already_wearing(an(helm_simple_name(u.uarmh)));
             err++;
         } else if (Upolyd(u) && num_horns(ydata) > 0 && !is_flimsy(otmp)) {
             /* do_wear.c:2076 — has_horns(ptr) is mondata.h:56 num_horns > 0.
              * (flimsy exception matches polyself handling) */
             if (noisy)
-                await pline(`The ${helm_simple_name(armorRow(otmp))} won't fit over your horn${plur_dw(num_horns(ydata))}.`);
+                await pline(`The ${helm_simple_name(otmp)} won't fit over your horn${plur_dw(num_horns(ydata))}.`);
             err++;
         } else
             maskbox.mask = W_ARMH;
@@ -2447,11 +2425,10 @@ export async function accessory_or_armor_on(obj, amuletEffectsOnly = false) {
         }
         /* do_wear.c:2355-2356 */
         if (!(await retouch_object_hero(obj, false))) return ECMD_TIME;
-        /* C do_wear.c:2375 — save underwater state before setworn/Boots_on.
+        /* C do_wear.c:2375 — save underwater state before every armor don.
          * Boots_on needs this to discover water-walking boots after the
          * property changes the hero's position. */
-        if ((obj.otyp | 0) === WATER_WALKING_BOOTS_OTYP_DW)
-            g.wasinwater = u.uinwater ? 1 : 0;
+        g.wasinwater = u.uinwater ? 1 : 0;
         return await armoron(obj);
     }
     if (ring) {
@@ -2483,6 +2460,8 @@ export async function accessory_or_armor_on(obj, amuletEffectsOnly = false) {
             /* tty_yn_function renders "<q> [rl]" with cursor one past the prompt. */
             const promptText = `${qbuf} [rl]`;
             g._pending_message = promptText;
+            /* C topl.c:421 custompline() files the prompt in gp.prevmsg (pline.c:282). */
+            g._prevmsg = promptText + ' ';
             await flush_screen(1);
             {
                 const disp = g.nhDisplay;
@@ -3536,8 +3515,12 @@ export async function Blindf_off(otmp) {
     // C clears the worn property before off_msg, but the physical status
     // remains blind until toggle_blindness requests its redraw. Preserve that
     // status in the message's flush snapshot, including involuntary removal.
+    // A pending SET_BOTL (e.g. toggle_blindness from poly_obj's earlier
+    // removal) makes the message's flush_screen bot() repaint the now
+    // not-blind status (pline.c:275, display.c:2236), so nothing is stale.
     const savedFrameBlind = g._blindfoldOffFrameBlind;
-    g._blindfoldOffFrameBlind = was_blind;
+    if (!(g.disp?.botl || g.disp?.botlx))
+        g._blindfoldOffFrameBlind = was_blind;
     try {
         if (!nooffmsg) await eyewear_off_msg(otmp);
     } finally {
@@ -4370,11 +4353,11 @@ export function cancel_don() {
 
 
 export async function You(line, ...args) {
-    return pline('You ' + _plineVFmt(line, args));
+    return You_real(line, ...args);
 }
 
 export async function Your(line, ...args) {
-    return pline('Your ' + _plineVFmt(line, args));
+    return Your_real(line, ...args);
 }
 
 /* yname — C objnam.c:2568-2582.

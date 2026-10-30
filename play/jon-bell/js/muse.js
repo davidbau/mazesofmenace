@@ -21,7 +21,7 @@ import { cansee, couldsee } from './vision.js';
 import { m_at, mon_nam, exclam } from './uhitm.js';
 import { Monnam } from './mcastu.js';
 import { find_mac } from './trap.js';
-import { _zp_unturn_you, unturn_dead, cancel_monst, resist, miss, dobuzz, bhito, lightdamage, BlindedTimeout, make_blinded } from './zap.js';
+import { _zp_unturn_you, unturn_dead, cancel_monst, resist, hit as zap_hit_message, miss, dobuzz, bhito, lightdamage, BlindedTimeout, make_blinded } from './zap.js';
 import { Blind } from './vision.js';
 import { resists_blnd, wakeup, mon_nam_too } from './mhitm.js';
 import { makeplural } from './objnam.js';
@@ -43,7 +43,7 @@ import { doorlock } from './lock.js';
 import { unknow_object } from './mklev.js';
 import { in_rooms, add_damage } from './shk.js';
 import { tele, tele_restrict, rloc } from './teleport.js';
-import { mreadmsg } from './makemon.js';
+import { mreadmsg, precheck as precheck_shared } from './makemon.js';
 import { m_useup, monkilled_trap } from './trap.js';
 import { drop_boulder_on_monster, drop_boulder_on_player } from './read.js';
 import { ceiling, set_msg_xy } from './cmd.js';
@@ -111,52 +111,21 @@ function makeknown(otyp) { discover_object(otyp, true, true, true); }
 /* C ref: zap.c:3550-3563 hit(str, mtmp, force) — the "The wand hits <mon>!"
  * message.  No JS module carried this yet (js/zap.js has miss() only). */
 function hit(str, mtmp, force) {
-    const bp = game.bhitpos || { x: 0, y: 0 };
-    const verbosely = (is_youmonst(mtmp)
-                       || (game.flags?.verbose
-                           && (cansee(bp.x, bp.y) || canspotmon(mtmp))));
-    pline(`${The(str)} ${vtense(str, "hit")} ${verbosely ? mon_nam(mtmp) : "it"}${force}`);
+    return zap_hit_message(str, mtmp, force);
 }
 
-/* C ref: muse.c:1093-1163 precheck(mon, obj) — pre-use hazards.  For a wand
+/* C ref: muse.c:58-160 precheck(mon, obj) — pre-use hazards.  For a wand
  * the only one is the cursed-wand backfire; the POTION_CLASS arms (milky /
- * smoky potion occupants) are not ported and are guarded by the caller, which
+ * smoky potion occupants) live in the shared port, guarded by the caller, which
  * only reaches precheck for oclass != POTION_CLASS. */
 async function precheck(mon, obj) {
     if (!obj)
         return 0;
-    if (obj.oclass === POTION_CLASS) {
-        /* KNOWN GAP — muse.c:1101-1140, the milky/smoky potion-occupant arms
-         * (they makemon a ghost/djinni and draw rn2(POTION_OCCUPANT_CHANCE)).
-         * Unreachable from here: use_offensive's only call site guards on
-         * `otmp.oclass !== POTION_CLASS`, exactly as C does at muse.c:1841.
-         * Returns C's "nothing happened" value rather than throwing. */
-        return 0;
-    }
     /* C muse.c:1147 — `obj->cursed && !rn2(WAND_BACKFIRE_CHANCE)`: the rn2 is
      * only drawn for a CURSED wand, so an uncursed one costs nothing.  The
      * draw is kept because C makes it unconditionally for a cursed wand. */
-    if (obj.oclass === WAND_CLASS && obj.cursed && !rn2(WAND_BACKFIRE_CHANCE)) {
-        // C v5 muse.c:131-160: consume the wand before applying blast damage.
-        const dam = d(obj.spe + 2, 6);
-        if (cansee(mon.mx, mon.my)) {
-            set_msg_xy(mon.mx, mon.my); /* muse.c:136: pline_mon */
-            await pline(`${Monnam(mon)} zaps ${an(xname(obj))}, which suddenly explodes!`);
-        } else {
-            const range = couldsee(mon.mx, mon.my) ? BOLT_LIM + 1 : BOLT_LIM - 3;
-            const near = dist2(mon.mx, mon.my, game.u.ux, game.u.uy) <= range * range;
-            await You_hear(`a zap and an explosion ${near ? 'nearby' : 'in the distance'}.`);
-        }
-        await m_useup(mon, obj);
-        mon.mhp -= dam;
-        if (DEADMONSTER(mon)) {
-            await monkilled_trap(mon, ''); // AD_RBRE uses the ordinary corpse path.
-            return 1;
-        }
-        game.has_defense = game.has_offense = game.has_misc = 0;
-        return 0;
-    }
-    return 0;
+    // C v5 muse.c:131-160: consume the wand before applying blast damage.
+    return precheck_shared(mon, obj);
 }
 
 /* C ref: do_name.c:1220-1248 monverbself() */
@@ -193,7 +162,7 @@ export async function mzapwand(mtmp, otmp, self) {
         await pline(`${_monverbself(mtmp, 'zap', null)} with ${await doname(otmp)}!`);
     } else {
         set_msg_xy(mtmp.mx, mtmp.my); /* pline_mon (pline.c:138-146) */
-        pline(`${Monnam(mtmp)} zaps ${an(xname(otmp))}!`);
+        await pline(`${Monnam(mtmp)} zaps ${an(xname(otmp))}!`);
         await stop_occupation();
     }
     otmp.spe = (otmp.spe | 0) - 1;

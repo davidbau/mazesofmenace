@@ -23,7 +23,7 @@
 import { game } from './gstate.js';
 import { impossible } from './pline.js';
 import { skill_based_spellbook_id } from './spell.js';
-import { pline, flush_screen, docrt, force_more, docorner_blank_utf8_captures } from './display.js';
+import { pline, flush_screen, docrt, force_more, docorner_blank_utf8_captures, status_r1_menu_docrt } from './display.js';
 import { topl_park_cursor } from './display.js';
 import { nhgetch } from './input.js';
 import { yn_function } from './end.js';
@@ -674,7 +674,18 @@ export async function enhance_weapon_skill() {
              * stay on the physical screen. */
             docorner_blank_utf8_captures(enhance_overlay.col - 1, enhance_overlay.rows + 1);
             await flush_screen(1);
-        } else await docrt();
+        } else {
+            /* windows.c:1861 select_menu runs with bot_disabled, and
+             * tty_select_menu's tty_dismiss_nhwindow -> erase_menu_or_text
+             * (wintty.c:978-979) does docrt(); flush_screen(1): the map, row
+             * y=20 included, prints while bot() returns early (botl.c:255).
+             * The next bot() then rewrites status row 1 over it -- the same
+             * ordering tty_menu.js and cmd.js _dismissMenu record. */
+            await docrt();
+            status_r1_menu_docrt();
+            game._r1botAfterMap = game.level;
+            game._r1textOver = true;
+        }
         n = picked ? 1 : 0;
         if (n > 0) {
             pendingMore = await skill_advance(picked - 1); /* get item selected */

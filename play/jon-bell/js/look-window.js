@@ -99,8 +99,11 @@ export async function displayLookWindow(lines) {
         if (key === 32 || key === 10 || key === 13 || key === 27) break;
     }
     /* C wintty.c:982,3684-3687: dismissing the corner window clears
-     * offx..79 through maxrow before row_refresh redraws the glyph buffer. */
-    docorner_blank_utf8_captures(col - 1, windowLines.length + 1);
+     * offx..79 through maxrow before row_refresh redraws the glyph buffer.
+     * maxrow counts the putstr'd lines (wintty.c:2408-2409), and dmore's
+     * --More-- sits on row maxrow itself, so docorner(offx, maxrow + 1)
+     * stops at the --More-- row: `lines`, not windowLines, is maxrow. */
+    docorner_blank_utf8_captures(col - 1, lines.length + 1);
     g._pending_message = '';
     // tty_dismiss_nhwindow repaints the map; row zero left of the window stays.
     if (underWindow) g._topl_sticky = underWindow;

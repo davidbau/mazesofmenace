@@ -5,6 +5,8 @@
 // (lock.c:957-1052). The drawbridge predicates used by the shared branches
 // are implemented locally below to keep lock.js independent of dokick.js.
 import { game } from './gstate.js';
+import { stop_occupation as stop_lock_occupation } from './allmain.js';
+import { PROT_FROM_SHAPE_CHANGERS } from './const.js';
 import { costly_alteration } from './cmd.js';
 import { costly_spot, shop_keeper, stolen_value, obfree, currency } from './shk.js';
 import { obj_extract_self, start_corpse_timeout } from './mklev.js';
@@ -207,7 +209,7 @@ export async function doopen_indir(x, y) {
         return ECMD_OK;
     }
 
-    if (_stumble_on_door_mimic_stub(cx, cy))
+    if (await _stumble_on_door_mimic_stub(cx, cy))
         return ECMD_TIME;
     if (_confusion_stub() || _stunned_stub())
         res = ECMD_TIME;
@@ -292,11 +294,17 @@ export async function doopen_indir(x, y) {
             const unlocktool = (au & AUTOUNLOCK_APPLY_KEY) ? autokey(true) : null;
             if (unlocktool) {
                 res = (await pick_lock(unlocktool, cx, cy, null)) ? ECMD_TIME : ECMD_OK;
-            } else if ((au & AUTOUNLOCK_KICK) && !g.u.usteed
-                       && (await yn_function('Kick it?', 'ynq', 'q', true)) === 'y') {
-                cmdq_add_ec(CQ_CANNED, 'dokick');
-                cmdq_add_dir(CQ_CANNED, Math.sign(cx - g.u.ux), Math.sign(cy - g.u.uy), 0);
-                res = ECMD_OK;
+            } else if ((au & AUTOUNLOCK_KICK) && !g.u.usteed) {
+                const ans = await yn_function('Kick it?', 'ynq', 'q', true);
+                if (ans === 'y') {
+                    cmdq_add_ec(CQ_CANNED, 'dokick');
+                    cmdq_add_dir(CQ_CANNED, Math.sign(cx - g.u.ux), Math.sign(cy - g.u.uy), 0);
+                    res = ECMD_OK;
+                } else if (ans === 'q' && !g._pending_message && !g._resultMessage) {
+                    /* C topl.c:536-548 leaves the answered prompt painted when
+                     * nothing else is printed afterwards. */
+                    g._resultMessage = g._ynStaleTopline = 'Kick it? [ynq] (q)';
+                }
             }
         }
         return res;
@@ -658,8 +666,7 @@ export async function doclose() {
     if (!isok(x, y)) {
         noDoor = true;
     } else {
-        /* C lock.c:988 — stumble_on_door_mimic(x,y): mimic stub returns false */
-        if (_stumble_on_door_mimic_stub(x, y)) {
+        if (await _stumble_on_door_mimic_stub(x, y)) {
             g.context = g.context || {};
             g.context.move = 1; /* ECMD_TIME */
             return;
@@ -937,11 +944,7 @@ export function maybe_reset_pick(container) {
 }
 
 function stop_occupation() {
-    const g = game;
-    if (g.occupation) {
-        g.occupation = null;
-    }
-    g.occtxt = null;
+    return stop_lock_occupation();
 }
 
 export async function picklock() {
@@ -1424,7 +1427,7 @@ export async function pick_lock(pick, rx, ry, container) {
     /* C lock.c:408-411 — an engulfed hero cannot reach any lock; this runs
      * BEFORE the direction prompt at lock.c:424, so no getdir() happens. */
     if (_nohands_lk()) {
-        await pline(`You can't hold ${doname(pick)} -- you have no hands!`);
+        await pline(`You can't hold ${await doname(pick)} -- you have no hands!`);
         return PICKLOCK_DID_NOTHING;
     } else if (u.uswallow) {
         await pline(`You can't ${picktyp === CREDIT_CARD_OTYP ? '' : 'lock or '}unlock ${mon_nam(u.ustuck)}.`);
@@ -1694,7 +1697,11 @@ function _Passes_walls_lk() {
     return !!((p.intrinsic | 0) || (p.extrinsic | 0));
 }
 
-function _stumble_on_door_mimic_stub(_x, _y) { return false; }
+async function _stumble_on_door_mimic_stub(x, y) {
+    const mtmp = m_at(x, y);
+    if (!mtmp || !is_door_mappear(mtmp) || _hero_prop_on_lk(PROT_FROM_SHAPE_CHANGERS)) return false;
+    await stumble_onto_mimic(mtmp); return true;
+}
 /* C youprop.h Confusion / Stunned: (HProp || EProp).  These were hardcoded
  * `false`, so doclose (lock.c:992-993) never forced ECMD_TIME for an impaired
  * hero and a confused "You see no door there." cost no turn. */
@@ -1702,8 +1709,8 @@ function _hero_prop_on_lk(prop) {
     const p = game.u?.uprops?.[prop];
     return !!(p && ((p.intrinsic | 0) || (p.extrinsic | 0)));
 }
-function _confusion_stub() { return _hero_prop_on_lk(CONFUSION); }
-function _stunned_stub() { return _hero_prop_on_lk(STUNNED); }
+function _confusion_stub() { return !!game.u?.uprops?.[CONFUSION]?.intrinsic; }
+function _stunned_stub() { return !!game.u?.uprops?.[STUNNED]?.intrinsic; }
 function _blind_stub() { return Blind(); }
 /* C ref: dbridge.c:136-162 is_drawbridge_wall().  Keep this local rather
  * than importing dokick.js: dokick.js imports breakchestlock from lock.js,
@@ -1870,11 +1877,12 @@ export async function doorlock(otmp, x, y) {
             const seeit = cansee(x, y);
             newsym(x, y);
             if (game.flags?.verbose) {
-                if (sawit || seeit)
+                if ((sawit || seeit) && !Unaware())
                     await pline("The door crashes open!");
                 else if (!_lock_Deaf())
-                    await pline("You hear a crashing sound.");
+                    await You_hear('a crashing sound.');
             }
+            if (game.vision_full_recalc) vision_recalc(0); // C lock.c:1248-1249
             loudness = 20;
         } else {
             /* C lock.c:1152 — an open/broken/absent door is unaffected. */
@@ -1891,8 +1899,8 @@ export async function doorlock(otmp, x, y) {
             const vis = cansee(x, y);
             if (vis) {
                 await pline(`${dustcloud} springs up in the older, more primitive doorway.`);
-            } else if (!_lock_Deaf()) {
-                await pline('You hear a swoosh.');
+            } else {
+                await You_hear('a swoosh.');
             }
             if (await _obstructed_stub(x, y, mysterywand)) {
                 if (vis)
@@ -1960,8 +1968,10 @@ export async function doorlock(otmp, x, y) {
         if (in_rooms(x, y, SHOPBASE).length)
             add_damage(x, y, 0);
     }
-    /* C lock.c:1164-1168 — `res && picking_at(x,y)` interrupts a lock-picking
-     * occupation.  Unreachable while res is false on the only ported arm. */
+    if (res && picking_at(x, y)) { // C lock.c:1269-1273
+        await stop_occupation();
+        reset_pick();
+    }
     return res;
 }
 

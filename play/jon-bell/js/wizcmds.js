@@ -254,12 +254,26 @@ function _ta_Hate_silver() {
     return !!hates_silver(data);
 }
 
-/* C artifact.c:992-1005,1026-1030: DFLAG2 banes test the current monster's
- * mflags2 as well as the unpolymorphed hero's race and lycanthropy. */
+/* C artifact.c:992-1005,1020-1034: banes test the current form; DFLAG2
+ * also tests the unpolymorphed hero's race and lycanthropy. */
 export function bane_applies_hero(arti) {
     const u = game.u || {};
-    const formMatch = ((ARTI_PROPS[arti]?.spfx | 0) & SPFX_DFLAG2) !== 0
-        && ((game.youmonst?.data?.mflags2 | 0) & (ARTILIST_MTYPE[arti] | 0)) !== 0;
+    /* C artifact.c:998-1001,1020-1034: mask to DBONUS, then test the
+     * current form before the DFLAG2 race/lycanthropy alternatives. */
+    const spfx = (ARTI_PROPS[arti]?.spfx | 0) & SPFX_DBONUS;
+    if (!spfx) return false;
+    const ptr = game.youmonst?.data || {};
+    const mtype = ARTILIST_MTYPE[arti] | 0;
+    if (spfx & 0x00100000 /* SPFX_DMONS */)
+        return (ptr.pmidx | 0) === mtype;
+    if (spfx & SPFX_DCLAS)
+        return (ptr.mlet | 0) === mtype;
+    if (spfx & SPFX_DFLAG1)
+        return ((ptr.mflags1 | 0) & mtype) !== 0;
+    if (!(spfx & SPFX_DFLAG2))
+        return !!(spfx & SPFX_DALIGN)
+            && (u.ualign?.type | 0) !== artifact_alignment(arti);
+    const formMatch = ((ptr.mflags2 | 0) & mtype) !== 0;
     /* spec_applies SPFX_DFLAG2 (artifact.c:1029): !Upolyd &&
      * (gu.urace.selfmask & weap->mtype).  Grimtooth's mtype is M2_ELF
      * (artilist.h:123), so an unpolymorphed elven hero is badalign too. */
@@ -308,15 +322,6 @@ export async function touch_artifact_youmonst(otmp) {
     /* C artifact.c:941-942 */
     if (!badalign)
         badalign = bane_applies_hero(arti);
-
-    /* C artifact.c:941-942: if (!badalign) badalign = bane_applies(oart, mon).
-     * bane_applies requires (spfx & SPFX_DBONUS) and spec_applies(hero).  For
-     * the hero, SPFX_DFLAG2 banes only apply when the hero's own M2 flags (or
-     * race selfmask / lycanthropy) match the bane's mtype, which is never the
-     * case for these wishable banes against a non-matching hero; SPFX_DCLAS
-     * matches the hero's monster letter, also never matching a @-class hero;
-     * SPFX_DALIGN (Sceptre) is self_willed so its first clause governs.  No
-     * hero-applicable bane reaches here, so bane_applies is FALSE. */
 
     /* C artifact.c:944-945 — see the header block for the short-circuit map. */
     let blasted = false;
@@ -452,6 +457,14 @@ export async function getlin(prompt) {
         const d = g.nhDisplay;
         if (d) topl_park_cursor(d, prompt + ' ' + buf);
     };
+    if (g._topl_unacknowledged && g._resultMessage && !g._pending_message
+        && !g._topl_win_stop && !g._topl_win_stop_armed) {
+        const held = String(g._resultMessage);
+        g._resultMessage = '';
+        const release = use_last_flush_snapshot();
+        try { await force_more(held); } finally { release(); }
+        g._topl_unacknowledged = false; /* more() leaves TOPLINE_EMPTY */
+    }
     if (g._pending_message) {
         /* Two different more()s, in C's order.  flush_screen() raises the
          * WIDTH-driven ones update_topl() would have raised as each message
@@ -512,6 +525,10 @@ export async function getlin(prompt) {
      * history; only the final "query answer" line is stored (see below). */
     const _saved_suppress = g._topl_suppress_history;
     g._topl_suppress_history = true;
+    /* C windows.c:1898-1900 getlin() holds gb.bot_disabled over the window
+     * port's getlin, so bot() paints nothing while the query is up. */
+    const _saved_bot_disabled = g._bot_disabled;
+    g._bot_disabled = true;
     try {
     /* C getline.c:67 -> pline.c:266-272: the initial custompline refreshes
      * dirty vision before flushing the prompt; subsequent echoes do not. */
@@ -591,6 +608,7 @@ export async function getlin(prompt) {
     return buf;
     } finally {
         g._topl_suppress_history = _saved_suppress;
+        g._bot_disabled = _saved_bot_disabled;
         /* C getline.c:319 — the read loop is over; the topline stops being a
          * TOPLINE_SPECIAL_PROMPT.  Restored rather than cleared, because
          * js/cmd.js's '#' prompt calls getlin-shaped code with the flag
@@ -1070,6 +1088,7 @@ function _wish_obj_to_let(obj) {
         obj.invlet = 0x23; /* NOINVSYM */
         reassign();
     }
+    return obj.invlet;
 }
 
 function _wish_drop_spec(obj) {
@@ -1349,6 +1368,10 @@ function _wish_prinv_flush_record(head, prinvLine) {
     game._wishBotlOwedAtPrinv = !!(game.disp && (game.disp.botl || game.disp.botlx)); /* flush_screen: botl || botlx (display.c:2286) */
     const pend = game._pending_message ? String(game._pending_message) : '';
     const before = (pend ? pend.length + 2 : 0) + (head ? String(head).length + 2 : 0);
+    /* C pline.c:266-272 vpline(): prinv's pline recalculates vision before its
+     * flush_screen, so a wished lit candle/lamp (begin_burn set
+     * vision_full_recalc) lights its surroundings in the --More-- frame. */
+    if (game.vision_full_recalc) vision_recalc(0);
     if (!before)
         return;
     pline_flush_point();
@@ -2366,6 +2389,9 @@ export async function makemap_prepost(pre, wiztower) {
         flush_screen(1);
         await (await import('./objnam.js')).deliver_splev_message();
         await (await import('./cmd.js')).check_special_room(false);
+        /* cmd.c:1062-1064 #ifdef INSURANCE save_currentstate() -> savelev(WRITING)
+         * -> save_engravings(): resets engr_txt[actual_text] to the buffer start. */
+        (await import('./mklev.js')).engr_reset_text_pointers();
     }
 }
 
@@ -2426,7 +2452,7 @@ function _print_queue_lines(base) {
         // %p (alloc.c:102) prints those bits without leading zero padding.
         const ptr = curr.arg?.a_long != null
             ? '0x' + BigInt.asUintN(64, BigInt(curr.arg.a_long)).toString(16)
-            : '0x' + (o ? 0x55d0c0de0000 + ((o.o_id | 0) << 6) : 0).toString(16).padStart(16, '0');
+            : '0x' + (o ? 0x55d0c0de0000 + ((o.o_id | 0) << 6) : 0).toString(16).padStart(12, '0');
         lines.push(' ' + String(curr.timeout).padStart(4) + '   ' + String(curr.tid).padStart(4)
                    + '  ' + (_TIMER_KINDS[curr.kind] ?? 'unknown').padEnd(6) + ' '
                    + _TIMER_FUNC_NAMES[curr.func_index] + '(' + ptr + ')');
@@ -2523,7 +2549,7 @@ export async function wiz_light_sources() {
                         : (id.a_monst === g.youmonst) ? 'you' : '<m>')
                     : '???';
             const o = id.a_obj ?? id.a_monst;
-            const ptr = '0x' + (o ? 0x55d0c0de0000 + (((o.o_id ?? o.m_id) | 0) << 6) : 0).toString(16).padStart(16, '0');
+            const ptr = '0x' + (o ? 0x55d0c0de0000 + (((o.o_id ?? o.m_id) | 0) << 6) : 0).toString(16).padStart(12, '0');
             lines.push(`  ${pad2(ls.x)},${pad2(ls.y)}   ${pad2(ls.range)}   0x${(ls.flags | 0).toString(16).padStart(4, '0')}  ${who}  ${ptr}`);
         }
     } else {

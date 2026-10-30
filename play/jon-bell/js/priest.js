@@ -27,11 +27,11 @@ import { mongets } from './m_initweap.js';
 import { newsym } from './display.js';
 import { couldsee } from './vision.js';
 import { m_at } from './uhitm.js';
-import { mon_pmname, rndmonnam_ex as dn_rndmonnam_ex,
+import { mon_pmname, rndmonnam as dn_rndmonnam,
          bogon_is_pname as dn_bogon_is_pname } from './do_name.js';
 import { just_an } from './objnam.js';
-import { halu_gname } from './cmd.js';
-import { in_rooms } from './shk.js';
+import { halu_gname, check_special_room } from './cmd.js';
+import { in_rooms, inhishop } from './shk.js';
 
 function _hero_invis_priest(u) {
     if (!u) return false;
@@ -54,8 +54,9 @@ export function newepri(mtmp) {
     if (!mtmp.mextra)
         mtmp.mextra = newmextra();
     if (!EPRI(mtmp)) {
-        mtmp.mextra.epri = {};
-        mtmp.mextra.epri.parentmid = mtmp.m_id;
+        mtmp.mextra.epri = { parentmid: mtmp.m_id >>> 0, shralign: 0, shroom: 0,
+            shrpos: { x: 0, y: 0 }, shrlevel: { dnum: 0, dlevel: 0 }, cheapskate_count: 0,
+            intone_time: 0, enter_time: 0, hostile_time: 0, peaceful_time: 0 };
     }
 }
 
@@ -365,9 +366,9 @@ export async function priestini(lvl, sroom, sx, sy, sanctum) {
         let otmp;
         if (rn2(2) && (otmp = which_armor(priest, W_ARMC)) != null) {
             if (p_coaligned(priest))
-                uncurse(otmp);
+                await uncurse(otmp);
             else
-                curse(otmp);
+                await curse(otmp);
         }
     }
 }
@@ -376,8 +377,7 @@ export async function priestini(lvl, sroom, sx, sy, sanctum) {
  * this call site can reach: the priest's cloak is never a coin, never lamplit,
  * never carried by the hero, and never a bag of holding, so every conditional
  * tail (arti_light_radius / set_moreluck / weight / uwep weld) is unreachable. */
-function uncurse(otmp) { otmp.cursed = 0; }
-function curse(otmp) { otmp.blessed = 0; otmp.cursed = 1; }
+import { uncurse, curse } from './mkobj.js';
 
 /* C ref: hack.c:3497-3559 in_rooms(x, y, typewanted).  The file-local throwing
  * stub that used to sit here SHADOWED a real port: js/shk.js already carries the
@@ -408,19 +408,7 @@ export async function move_special(mtmp, in_his_shop, appr, uondoor, avoid,
     const cnt = poss.length;
 
     const u = game.u;
-    const Invis = _hero_invis_priest(u);
-    const perceives_data = !!((mtmp.data.mflags1 || 0) & 0x01000000 /* M1_SEE_INVIS */);
-    const monseeu = !!(mtmp.mcansee | 0) && (!Invis || perceives_data);
-    const mux = (mtmp.mux !== undefined ? mtmp.mux : (u?.ux ?? 0)) | 0;
-    const muy = (mtmp.muy !== undefined ? mtmp.muy : (u?.uy ?? 0)) | 0;
-    /* per-candidate NOTONL bit (mon.c:2327-2330), folded into a local info[]. */
-    const info = new Array(cnt);
-    for (let i = 0; i < cnt; i++) {
-        let inf = poss[i].info | 0;
-        if (monseeu && online2(poss[i].x, poss[i].y, mux, muy))
-            inf |= NOTONL;
-        info[i] = inf;
-    }
+    const info = mfp.info; // C priest.c:66: mfndpos supplies NOTONL.
 
     if ((mtmp.isshk | 0) && avoid && uondoor) {
         let any = false;
@@ -483,7 +471,7 @@ export async function move_special(mtmp, in_his_shop, appr, uondoor, avoid,
         } else if (ninfo & ALLOW_M) {
             /* C priest.c:108-118: m_move_aggress(mtmp,nix,niy). */
             const status = await m_move_aggress(mtmp, nix, niy);
-            return status === -2 ? -2 : 1;
+            return status === 2 ? -2 : 1;
         }
 
         /* C priest.c:120-121: if (MON_AT(nix,niy) || u_at(nix,niy)) return 0; */
@@ -495,6 +483,11 @@ export async function move_special(mtmp, in_his_shop, appr, uondoor, avoid,
         mtmp.mx = nix;
         mtmp.my = niy;
         newsym(nix, niy);
+        if (mtmp.isshk && !in_his_shop && inhishop(mtmp))
+            await check_special_room(false);
+        /* C priest.c:125-126: isshk && !in_his_shop && inhishop(mtmp) →
+         * check_special_room(FALSE).  inhishop re-check + room re-entry effect
+         * performed above once the shopkeeper has moved. */
         return 1;
     }
     return 0;
@@ -780,10 +773,7 @@ const SPBOOK_no_NOVEL = -10;
 const AMULET_OF_YENDOR = 213;
 
 export function rndmonnam(code) {
-    const r = dn_rndmonnam_ex();
-    if (code && typeof code === 'object')
-        code.code = r.code;
-    return r.name;
+    return dn_rndmonnam(code);
 }
 export function bogon_is_pname(code) { return dn_bogon_is_pname(code); }
 /* C ref: dungeon.c:1050-1054 on_level(a, b) — same dungeon AND same depth. */

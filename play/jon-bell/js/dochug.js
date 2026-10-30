@@ -274,6 +274,7 @@ export async function dochug(mtmp) {
         pushRngLogEntry(`^dh_enter[id=${mtmp?.m_id ?? 0} mndx=${mtmp?.mndx ?? mtmp?.mnum ?? -1} xy=${mtmp?.mx ?? 0},${mtmp?.my ?? 0} can=${mtmp?.mcanmove ?? 0} sleep=${mtmp?.msleeping ?? 0} strat=${mtmp?.mstrategy ?? 0}]`);
     if (!mtmp)
         return 0;
+    const initialData = mtmp.data; /* C monmove.c:702: mdat survives polymorph during m_move. */
     /* C monmove.c:726 — STRAT_ARRIVE branch (calls m_arrival, may return). */
     if (mtmp.mstrategy & STRAT_ARRIVE) {
         const res = m_arrival(mtmp);
@@ -615,7 +616,7 @@ export async function dochug(mtmp) {
                     await unstuck(mtmp);
                 /* C monmove.c:967-968: a grounded monster's footsteps can
                  * accelerate nearby buried-zombie timers. */
-                if (pooleffects_grounded(mtmp.data || permonstTemplate(mndx)))
+                if (pooleffects_grounded(initialData))
                     disturb_buried_zombies(mtmp.mx | 0, mtmp.my | 0);
                 /* C monmove.c:966-967 helpless(mon) = msleeping || !mcanmove —
                  * "maybe it stepped on a trap and fell asleep". */

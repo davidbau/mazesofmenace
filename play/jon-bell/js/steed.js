@@ -10,6 +10,7 @@ import { isok, MON_FLOOR, W_SADDLE, P_RIDING, DISMOUNT_FELL,
          ARTICLE_YOUR, SUPPRESS_SADDLE, NON_PM } from './const.js';
 import { PM_LONG_WORM, PM_LONG_WORM_TAIL } from './pm.generated.js';
 import { can_saddle, monPmname } from './makemon.js';
+import { which_armor as which_armor_worn } from './makemon.js';
 import { mksobj, mpickobj } from './mklev.js';
 import { fully_identify_obj, can_ride, dismount_steed,
          steed_vs_stealth } from './cmd.js';
@@ -169,10 +170,7 @@ function panic(msg) { impossible(msg); }
 
 /* local: which_armor — C worn.c:998 — walk minvent for owornmask & flag */
 function which_armor(mon, flag) {
-    for (let o = mon.minvent; o; o = o.nobj) {
-        if (((o.owornmask | 0) & flag) !== 0) return o;
-    }
-    return null;
+    return which_armor_worn(mon, flag);
 }
 
 /* mpickobj — C ref: nethack-c/src/steal.c:616.  The real port now lives in

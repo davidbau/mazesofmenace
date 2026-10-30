@@ -44,14 +44,14 @@ import { TT_PIT, STONE, SCORR, CORR, DOOR, D_NODOOR, IS_WALL, IS_OBSTRUCTED, IS_
 import { wake_nearto } from './mklev.js';
 import { mon_learns_traps } from './trap.js';
 import { mondied } from './makemon.js';
-import { place_object, obj_extract_self, sobj_at, add_to_buried, in_rooms, mksobj_at, mk_tt_object, minliquid, remove_object, del_engr_at, makemon, obj_timer_checks as obj_timer_checks_real } from './mklev.js';
+import { place_object, obj_extract_self, sobj_at, add_to_buried, in_rooms, mksobj_at, mk_tt_object, minliquid, remove_object, del_engr_at, wipe_engr_at, makemon, obj_timer_checks as obj_timer_checks_real } from './mklev.js';
 import { obj_resists } from './dogmove.js';
 import { is_ice, cant_reach_floor } from './engrave.js';
 import { uteetering_at_seen_pit, uescaped_shaft } from './pickup.js';
 import { yobjnam, Yobjnam2, an, An, simpleonames } from './objnam.js';
 import { IS_STWALL } from './const.js';
 import { trapname } from './makemon.js';
-import { is_pool, may_dig } from './look.js';
+import { is_pool, may_dig, closed_door as closed_door_real } from './look.js';
 import { dotrap } from './trap.js';
 import { FORCEBUNGLE } from './const.js';
 /* in_town (hack.c:3562) — this file used to carry its own `return false` stub,
@@ -636,7 +636,7 @@ async function dig_up_grave_(x, y) {
         const corpse = await mk_tt_object(CORPSE, x, y);
         if (corpse) corpse.age = (corpse.age | 0) - (TAINT_AGE + 1);
     } else if (outcome === 2) {
-        if (!Blind()) await pline(`${_dig_hallucination() ? 'Dude! The living dead' : "The grave's owner is very upset"}!`);
+        if (!Blind()) await pline(`${_dig_hallucination() ? 'Dude!  The living dead' : "The grave's owner is very upset"}!`);
         await makemon(mkclass(S_ZOMBIE_DIG, 0), x, y, MM_NOMSG);
     } else if (outcome === 3) {
         if (!Blind()) await pline(`${_dig_hallucination() ? 'I want my mummy' : "You've disturbed a tomb"}!`);
@@ -839,8 +839,10 @@ function is_moat_(x, y) {
     if (!isok(x, y)) return false;
     const lev = game.level?.at(x, y);
     if (!lev) return false;
-    return (lev.typ | 0) === MOAT
-        && !Is_juiblex_level(game.u?.uz);
+    if (Is_juiblex_level(game.u?.uz)) return false;
+    const t = lev.typ | 0;
+    return t === MOAT
+        || (t === DRAWBRIDGE_UP && ((lev.drawbridgemask | 0) & DB_UNDER) === DB_MOAT);
 }
 function is_pool_(x, y) {
     if (!isok(x, y)) return false;
@@ -2084,9 +2086,10 @@ export async function use_pick_axe2(obj) {
         return 1;
     }
     if (!ispick && (!trap || (trap.ttyp !== LANDMINE && trap.ttyp !== BEAR_TRAP))) {
-        /* C dig.c:1331-1337 — u_wipe_engr(3) is private to js/dokick.js and
-         * not exported; its erosion is not reproduced here. */
+        /* C dig.c:1333-1335; engrave.c:264-268 u_wipe_engr(3). */
         await pline('%s merely scratches the %s.', Yobjnam2(obj), surface_(u.ux | 0, u.uy | 0));
+        if (can_reach_floor_dg(true))
+            wipe_engr_at(u.ux | 0, u.uy | 0, 3, false);
         g.context = g.context || {};
         g.context.move = 1;
         return 1;
@@ -2190,9 +2193,7 @@ function is_axe(obj) {
 
 // C ref: closed_door(x,y): IS_DOOR(levl[x][y].typ) && (doormask & (D_LOCKED | D_CLOSED))
 function closed_door(x, y) {
-    const loc = game.level && game.level.at ? game.level.at(x, y) : null;
-    if (!loc) return false;
-    return IS_DOOR(loc.typ) && (loc.doormask & (D_LOCKED | D_CLOSED)) !== 0;
+    return closed_door_real(x, y);
 }
 
 // C dig.c enum dig_types: DIGTYP_UNDIGGABLE=0, DIGTYP_ROCK=1, DIGTYP_STATUE=2,

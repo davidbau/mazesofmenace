@@ -3,6 +3,7 @@ import { is_ice as is_ice_real } from './engrave.js';
 // Ported from nethack-c/src/mkmaze.c:77-140
 
 import { game } from './gstate.js';
+import { get_level } from './cmd.js';
 import { unplacebc_and_covet_placebc, lift_covet_and_placebc } from './ball.js';
 import { rn2, rnd, pushRngLogEntry } from './rng.js';
 import {
@@ -1344,49 +1345,16 @@ function _sb_ledger_no(lev) {
 }
 
 /* C dungeon.c:1796-1840 get_level(newlevel, levnum) — map a DEPTH to a
- * {dnum,dlevel}.  Written out in full (rather than assuming the mines) so the
+ * {dnum,dlevel}.  Shared with cmd.js (rather than assuming the mines) so the
  * three arms are visible, including C's own quirk in the second one: when
  * levnum runs past the end of the dungeon C assigns `num_dunlevs` — a DLEVEL —
  * to what was a DEPTH.  Port the bug (Cardinal Rule 1).
  *
  * The branch-up loop cannot fire for migrate_orc()'s callers, whose levnum is
  * clamped to [cur_depth, max_depth] inside the CURRENT dungeon, but it is
- * ported anyway; js/cmd.js:8632 keeps the same walk over the branch list. */
+ * ported by the shared get_level() implementation in js/cmd.js. */
 function _sb_get_level(levnum) {
-    const g = game;
-    const uz = g.u?.uz;
-    let dgn = uz?.dnum | 0;
-    const dungeons = g.dungeons || [];
-
-    if (levnum <= 0) {
-        /* C: can only currently happen in endgame */
-        return { dnum: dgn, dlevel: uz?.dlevel | 0 };
-    }
-    const dg = dungeons[dgn] || { depth_start: 1, num_dunlevs: 30 };
-    if (levnum > ((dg.depth_start | 0) + (dg.num_dunlevs | 0) - 1)) {
-        /* C: beyond end of dungeon, jump to last level */
-        return { dnum: dgn, dlevel: dg.num_dunlevs | 0 };
-    }
-    if (levnum < (dg.depth_start | 0)) {
-        /* C: branch up the tree until we reach a dungeon containing levnum.
-         * end2 is always the "child" and is unique. */
-        const branches = g._dungeon_branches || g.branches || [];
-        while (levnum < ((dungeons[dgn]?.depth_start | 0))) {
-            let parent = -1;
-            for (const br of branches) {
-                if ((br.end2?.dnum ?? -1) === dgn) {
-                    parent = br.end1.dnum | 0;
-                    break;
-                }
-            }
-            if (parent < 0)
-                throw new Error("get_level: can't find parent dungeon"); /* C panics */
-            dgn = parent;
-        }
-    }
-    /* C: we're within the same dungeon; calculate the level */
-    const finalDg = dungeons[dgn] || { depth_start: 1 };
-    return { dnum: dgn, dlevel: levnum - (finalDg.depth_start | 0) + 1 };
+    return get_level(levnum);
 }
 
 /* migrate_orc — C ref: mkmaze.c:716-745.  Send the orc off to a level further

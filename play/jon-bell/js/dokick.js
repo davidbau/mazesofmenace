@@ -64,12 +64,12 @@ import { PM_KILLER_BEE, PM_BLACK_PUDDING, PM_ARCHEOLOGIST, PM_SAMURAI, PM_WIZARD
  * pm.generated.js (a 3.7-vs-5.0 role-swap name, see js/mhitu.js's own
  * PM_AMOROUS_DEMON_MU local const for the identical reason) so it is a local
  * constant here too, matching mnum 290 used consistently elsewhere in js/. */
-import { hcolor, You, noit_mon_nam } from './mhitm.js';
+import { hcolor, hliquid, You, noit_mon_nam } from './mhitm.js';
 const PM_AMOROUS_DEMON_DK = 290;
 import { m_at, do_attack, overexertion } from './uhitm.js';
 import { MONS_CWT, wipe_engr_at, maybe_unhide_at, place_object, makemon, mkgold, wake_nearto } from './mklev.js';
 import { stackobj } from './sp_lev.js';
-import { newmextra, poly_gender } from './makemon.js';
+import { poly_gender } from './makemon.js';
 import { book_disappears as spell_book_disappears } from './spell.js';
 /* C mkobj.c:458-503 splitobj(obj, num) — the one body lives in js/makemon.js
  * (this repo's mkobj.c splitobj/nextoid host); scatter()'s object-stack
@@ -121,14 +121,14 @@ import { poly_when_stoned } from './mhitm.js';
 import { instapetrify } from './cmd.js';
 import { STONE_RES } from './const.js';
 import { PM_COCKATRICE, PM_CHICKATRICE, PM_STONE_GOLEM, PM_SASQUATCH } from './pm.generated.js';
-import { end_running } from './look.js';
+import { end_running, is_pool as is_pool_real } from './look.js';
 /* ── the monster-kick arm's dependencies (see maybe_kick_monster below) ── */
 import { FUMBLING, W_ARMF, P_NONE, P_MARTIAL_ARTS, NATTK,
          ARTICLE_A, SUPPRESS_SADDLE, M_AP_TYPE, Upolyd } from './const.js';
 import { PM_SHADE } from './pm.generated.js';
-import { canspotmon, map_invisible, unmap_invisible, unmap_object, glyph_is_invisible_at, glyph_is_warning_at } from './display.js';
+import { canspotmon, map_invisible, unmap_invisible, unmap_object, glyph_is_invisible_at, glyph_is_warning_at, save_glyph_cell, restore_glyph_cell } from './display.js';
 import { attack_checks, mon_nam, special_dmgval, use_skill } from './uhitm.js';
-import { shade_miss, passive, killed, seemimic, check_caitiff, x_monnam, wakeup_attack } from './mhitm.js';
+import { shade_miss, passive, killed, seemimic, check_caitiff, x_monnam, wakeup_attack, christen_monst as christen_monst_real } from './mhitm.js';
 /* rndorcname — the one real port (do_name.c:1538-1555); replaces the local
  * no-RNG stub that used to shadow it.  See the note above christen_orc(). */
 import { rndorcname } from './mhitm.js';
@@ -201,11 +201,7 @@ const SHOP_DOOR_COST = 400;
 
 /* C ref: dbridge.c:84-95 is_pool(x,y) — POOL/MOAT/WATER or is_moat(). */
 function is_pool(x, y) {
-    if (!isok(x, y)) return false;
-    const loc = game.level?.at(x, y);
-    if (!loc) return false;
-    const t = loc.typ | 0;
-    return t === POOL || t === MOAT || t === WATER || is_moat(x, y);
+    return is_pool_real(x, y);
 }
 function Is_juiblex_level(uz) { return Is_juiblex_level_real(uz); }
 /* C ref: dbridge.c:99-114 is_moat(x,y) — MOAT or DRAWBRIDGE_UP over DB_MOAT,
@@ -1413,7 +1409,7 @@ async function ghitm(mtmp, gold) {
         } else if (mtmp.ispriest) {
             await verbalize(mtmp.mpeaceful ? 'Thank you for your contribution.' : 'Thanks, scum!');
         } else if (mtmp.isgd) {
-            const umoney = money_cnt(u.invent);
+            const umoney = money_cnt(g.invent);
             await verbalize(umoney ? 'Drop the rest and follow me.'
                 : hidden_gold(true) ? 'You still have hidden gold.  Drop it now.'
                 : mtmp.mpeaceful ? "I'll take care of that; please move along."
@@ -1421,14 +1417,14 @@ async function ghitm(mtmp, gold) {
         } else if (mercenary) {
             const was_angry = !mtmp.mpeaceful;
             let goldreqd = 0;
-            const mn = (mtmp.data?.mnum ?? mtmp.mnum);
+            const mn = (mtmp.data?.pmidx ?? mtmp.data?.mnum ?? mtmp.mndx ?? mtmp.mnum);
             if (mn === PM_SOLDIER) goldreqd = 100;
             else if (mn === PM_SERGEANT) goldreqd = 250;
             else if (mn === PM_LIEUTENANT) goldreqd = 500;
             else if (mn === PM_CAPTAIN) goldreqd = 750;
 
             if (goldreqd && rn2(3)) {
-                const umoney = money_cnt(u.invent);
+                const umoney = money_cnt(g.invent);
                 goldreqd += Math.trunc((umoney + (u.ulevel | 0) * rn2(5)) / (acurr(u, 5) | 0));
                 if (value > goldreqd)
                     mtmp.mpeaceful = 1;
@@ -1439,7 +1435,7 @@ async function ghitm(mtmp, gold) {
             } else if (was_angry) {
                 await verbalize('That should do.  Now beat it!');
             } else {
-                await verbalize(`Thanks for the tip, ${u.female || g.flags?.female ? 'lady' : 'buddy'}.`);
+                await verbalize(`Thanks for the tip, ${g.flags?.female ? 'lady' : 'buddy'}.`);
             }
         }
         return true;
@@ -1507,7 +1503,7 @@ async function really_kick_object(x, y, kickedobj) {
     }
 
     if (_km_fumbling() && !rn2(3)) {
-        void pline('Your clumsy kick missed.');
+        await pline('Your clumsy kick missed.');
         return 1;
     }
 
@@ -1767,6 +1763,9 @@ async function really_kick_object(x, y, kickedobj) {
     g.gb = g.gb || {};
     g.gb.bhitpos = { x: bx, y: by };
 
+    // C dokick.c:739-740: bhit may destroy the object and clear kickedobj.
+    kickedobj = g.kickedobj;
+    if (!kickedobj) return 1;
     if (mon) {
         if (mon.isshk && (kickedobj.where | 0) === 4 /* OBJ_MINVENT */
             && kickedobj.ocarry === mon)
@@ -1874,14 +1873,16 @@ export async function dokick_resolve() {
             return ECMD_OK;
         }
     }
-    const isokTarget = (x >= 0 && x < 80 && y >= 0 && y < 21);
+    const isokTarget = isok(x, y);
     const mtmp = isokTarget ? m_at(x, y) : null;
     /* C dokick.c:1370-1378 -- "might not kick monster if it is hidden and
      * becomes revealed, if it is peaceful and player declines to attack, or if
      * the hero passes out due to encumbrance with low hp; svc.context.move will
      * be 1 unless player declines to kick peaceful monster". */
     let oldInvis = false;
+    let oldGlyph = null;
     if (mtmp) {
+        oldGlyph = save_glyph_cell(x, y);
         oldInvis = glyph_is_invisible_at(x, y);
         if (!await maybe_kick_monster(mtmp, x, y))
             return (g.context.move ? ECMD_TIME : ECMD_OK);
@@ -1909,14 +1910,10 @@ export async function dokick_resolve() {
         if ((mtmp.mhp | 0) < 1) {
             /* C dokick.c:1411-1417 -- if we mapped an invisible monster and
              * immediately killed it, we don't want to forget what we thought
-             * was there before the kick.  C compares glyph_at() before and
-             * after and calls show_glyph(x, y, oldglyph); js/ has no
-             * glyph_at()/show_glyph(x,y,glyph) pair, and the channel the marker
-             * actually lives in is loc.remembered_glyph, so the same question
-             * is "did THIS kick plant the 'I'?" and the same undo is
-             * unmap_invisible(), which restores the remembered square. */
+             * was there before the kick.  Restore only the saved display
+             * glyph, leaving hero memory as C's show_glyph() does. */
             if (!oldInvis && glyph_is_invisible_at(x, y))
-                unmap_invisible(x, y);
+                restore_glyph_cell(x, y, oldGlyph);
         } else if (!canspotmon(mtmp)
                    /* check <x,y>; monster that evades kick by jumping
                       to an unseen square doesn't leave an I behind */
@@ -1942,15 +1939,17 @@ export async function dokick_resolve() {
     /* C: pools/lava splash (XOR u.uinwater) */
     if (((is_pool(x, y) || (maploc && maploc.typ === LAVAWALL)) ? 1 : 0)
         ^ (u.uinwater ? 1 : 0)) {
-        await pline(`You splash some ${is_pool(x, y) ? "water" : "lava"} around.`);
+        await pline(`You splash some ${hliquid(is_pool(x, y) ? "water" : "lava")} around.`);
         return ECMD_TIME;
     }
+    /* C dokick.c:1452-1463 — OBJ_AT(x,y) && (!Levitation || Is_airlevel
+     * || Is_waterlevel || sobj_at(BOULDER,x,y)). */
     const objHere = obj_at(x, y);
     if (objHere) {
         let hasBoulder = false;
         for (let o = objHere; o; o = o.nexthere)
             if ((o.otyp | 0) === _KO_BOULDER_OTYP) { hasBoulder = true; break; }
-        if (!Levitation_dk(u) || Is_airlevel(u.uz) || hasBoulder) {
+        if (!Levitation_dk(u) || Is_airlevel(u.uz) || Is_waterlevel(u.uz) || hasBoulder) {
             const kickobjnam = { value: '' };
             if (await kick_object(x, y, kickobjnam)) {
                 // C dokick.c:1457-1458: recoil from kicking a light object.
@@ -2339,30 +2338,14 @@ export { obj_extract_self } from './mklev.js';
 export { add_to_minv } from './mklev.js';
 function upstart(s) { if (s && s.length > 0) { const c = s.charCodeAt(0); return ((c >= 97 && c <= 122) ? String.fromCharCode(c - 32) : s.charAt(0)) + s.slice(1); } return s; }
 /* christen_monst — C ref: nethack-c/src/do_name.c:30-46 new_mgivenname
- * (inlined) + nethack-c/src/do_name.c:132-153 christen_monst. Local copy
- * (this file's existing pattern for rndorcname/upstart above — stubs kept
- * local rather than shared across files), NOT a duplicate of the flat
+ * + nethack-c/src/do_name.c:132-153 christen_monst. The shared port
+ * handles allocation, unlike the flat
  * `mtmp.mname` write this replaces: 3.7 renamed mname to
  * mextra->mgivenname, and C's new_mgivenname allocates mextra/MGIVENNAME
  * unconditionally when lth>0 — that allocation, not the string content,
  * is what flips has_mgivenname/mextra_present. */
 function christen_monst(mtmp, name) {
-    const PL_PSIZ = 63;
-    let lth = (name && name.length > 0) ? (name.length + 1) : 0;
-    if (lth > PL_PSIZ) {
-        lth = PL_PSIZ;
-        name = name.substring(0, PL_PSIZ - 1);
-    }
-    if (lth) {
-        /* new_mgivenname: allocate mextra if necessary */
-        if (!mtmp.mextra)
-            mtmp.mextra = newmextra();
-        mtmp.mextra.mgivenname = name; /* C: Strcpy(MGIVENNAME(mtmp), name) */
-    } else if (has_mgivenname(mtmp) && mtmp.mextra) {
-        mtmp.mextra.mgivenname = null;
-    }
-    if (mtmp.mleashed) update_inventory(); /* C do_name.c:148-149 */
-    return mtmp;
+    return christen_monst_real(mtmp, name);
 }
 
 export function christen_orc(mtmp, gang, other) {

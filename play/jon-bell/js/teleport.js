@@ -12,7 +12,7 @@ import { on_level, In_tutorial } from './dungeon.js';
 import { make_stunned } from './potion.js';
 /* C ref: do.c:2076 schedule_goto — domagicportal defers the actual level
  * change to the end of the turn, same as level_tele (js/cmd.js:11421). */
-import { schedule_goto, invocation_message, number_leashed } from './cmd.js';
+import { schedule_goto, invocation_message, number_leashed, may_passwall } from './cmd.js';
 import { update_inventory } from './inventory_refresh.js';
 const LEASH = 236; /* objects.h LEASH, as js/cmd.js LEASH_OTYP */
 import { yn_function } from './end.js';
@@ -23,10 +23,12 @@ import { registerStaticReset } from './statics.js';
 import { newsym, see_monsters, shieldeff, docrt, force_more_from_cls, force_more_pages } from './display.js';
 import { vision_recalc } from './vision.js';
 import { nomul } from './allmain.js';
-import { pline, canspotmon, sensemon, canseemon, _topl_joins_snapshot, _topl_merge_result } from './display.js';
+import { Warning, pline, canspotmon, sensemon, canseemon, _topl_joins_snapshot, _topl_merge_result } from './display.js';
 import { Monnam } from './mcastu.js';
 import { Amonnam } from './mhitm.js';
 import { You } from './eat.js';
+import { spot_time_left } from './timeout.js';
+import { is_ice } from './engrave.js';
 import { set_ustuck, in_rooms, maybe_unhide_at, sobj_at, somexyspace, u_on_newpos, mongone, engr_at } from './mklev.js';
 /* C ref: mkroom.c:764-780 search_special(VAULT) — vault_tele's room lookup. */
 import { search_special } from './mkroom.js';
@@ -38,7 +40,7 @@ import { settrack } from './track.js';
 /* C ref: hack.h MON_AT/m_at — tele_trap's fixed-destination arm. */
 import { m_at } from './uhitm.js';
 /* C ref: mkroom.h VAULT, youprop.h ANTIMAGIC slot. */
-import { VAULT, ANTIMAGIC } from './const.js';
+import { VAULT, ANTIMAGIC, MELT_ICE_AWAY, MAX_TYPE } from './const.js';
 import { m_into_limbo, unstuck, mon_leaving_level, m_unleash } from './dog.js';
 import { mdrop_special_objs } from './steal.js';
 import { yelp } from './mhitm.js';
@@ -83,7 +85,7 @@ function carried(o) {
 }
 import { couldsee } from './vision.js';
 import { set_apparxy, mon_track_clear, dochugw } from './monmove.js';
-import { find_objowner, costly_spot, inhishop, onshopbill, make_angry_shk } from './shk.js';
+import { find_objowner, costly_spot, inhishop, onshopbill, make_angry_shk, stolen_value } from './shk.js';
 import { dist2, distmin, depth } from './hacklib.js';
 import { within_bounded_area } from './rect.js';
 import { in_out_region, update_player_regions, update_monster_region as update_monster_region_real } from './region.js';
@@ -277,6 +279,9 @@ export function enexto_core(xx, yy, fakemon, entflags) {
 /* C ref: hack.h MON_AT — any monster (not youmonst) at (x,y)? */
 function MON_AT(x, y) {
     for (let m = game.fmon; m; m = m.nmon) {
+        /* C rm.h:515-534 m_at reads the grid cleared by remove_monster(),
+         * even while mon_leaving_level() preserves fmon and mx/my. */
+        if (m._mapRemoved) continue;
         /* DEADMONSTER — C m_at/MON_AT reads the grid, which m_detach cleared…
          * EXCEPT during the death sequence itself (mondead's mhp=0 → m_detach):
          * C's svl.level.monsters still holds the dying monster there, so
@@ -483,6 +488,12 @@ export async function teleds(nux, nuy, teleds_flags) {
         st.terrain = typ;
         st.x = u.ux;
         st.y = u.uy;
+        /* hack.c:3344-3346 — spoteffects()'s own switch_terrain() trigger:
+         * terrain differs from the square just left, or terrain_typ was
+         * invalidated (u_on_newpos; it stays MAX_TYPE while !terrainstatus). */
+        if (typ !== (game.level?.locations?.[u.ux0]?.[u.uy0]?.typ ?? 0)
+            || game.iflags?.terrain_typ === MAX_TYPE)
+            await switch_terrain();
         let relocated;
         try {
             relocated = await pooleffects(true);
@@ -532,6 +543,14 @@ export async function teleds(nux, nuy, teleds_flags) {
         if (!_pit) await _spoteffects_pickup();
         if (_trap) await dotrap(_trap, 0);
         if (_pit) await _spoteffects_pickup();
+        /* hack.c:3402-3414 — Warning alerts you to ice danger */
+        if (Warning() && is_ice(u.ux, u.uy)) {
+            const _left = spot_time_left(u.ux, u.uy, MELT_ICE_AWAY);
+            if (_left && _left < 15)
+                await pline(['The ice seems very soft and slushy.',
+                    'You feel the ice shift beneath you!',
+                    'The ice, is gonna BREAK!'][_left < 5 ? 2 : _left < 10 ? 1 : 0]);
+        }
     }
     // C teleport.c:569: the invocation clue follows arrival spoteffects.
     await invocation_message();
@@ -1297,7 +1316,7 @@ async function rloc_to_core(mtmp, x, y, rlocflags) {
             if (otmp.no_charge)
                 otmp.no_charge = 0;
             else if (shkp && (await onshopbill_local(otmp, shkp, true)))
-                stolen_value_local(otmp, oldx, oldy, peaceful, false);
+                await stolen_value(otmp, oldx, oldy, peaceful, false);
         }
     }
 
@@ -1365,10 +1384,6 @@ const BLINDED_TP = 15;
 /* C ref: shk.c onshopbill/stolen_value — shop goods carried by a relocated
  * monster are checked against the owner's bill. */
 async function onshopbill_local(obj, shkp, silent) { return await onshopbill(obj, shkp, silent); }
-function stolen_value_local(_obj, _x, _y, _peaceful, _silent) {
-    void _obj; void _x; void _y; void _peaceful; void _silent;
-    return 0;
-}
 
 /* C ref: mondata.h DEADMONSTER(mon) macro — ((mon)->mhp <= 0). */
 function DEADMONSTER(mon) {
@@ -1469,12 +1484,6 @@ function is_lava_local(x, y) {
     return lev.typ === DRAWBRIDGE_UP
         && ((lev.drawbridgemask | 0) & DB_UNDER) === DB_LAVA;
 }
-/* C ref: hack.c:914-919 may_passwall(x,y). */
-function may_passwall(x, y) {
-    const lev = game.level?.at(x, y);
-    if (!lev) return false;
-    return !(IS_STWALL(lev.typ) && ((lev.wall_info | 0) & W_NONPASSWALL) !== 0);
-}
 /* C ref: mondata.h likes_lava(ptr) = ptr==&mons[PM_FIRE_ELEMENTAL] ||
  * ptr==&mons[PM_SALAMANDER]; pointer identity ported as pmidx equality
  * (this file's args are reconstructed structs, not C pointers — the same
@@ -1490,17 +1499,27 @@ function likes_lava_local(mdat) {
  * used below instead of `===`), but ported for C-fidelity rather than
  * skipped, using the same u.uprops[idx] mechanism this codebase already
  * uses for hero intrinsics (js/display.js sensemon). */
-function uprop_on(idx) {
+/* C youprop.h:240-275: only Levitation and Flying test blocked; the
+ * Flying and Swimming macros also include the steed's abilities. */
+function uprop_on(idx, checkblocked = false) {
     const p = game.u?.uprops?.[idx];
     if (!p) return false;
-    return !!(((p.intrinsic | 0) || (p.extrinsic | 0)) && !(p.blocked | 0));
+    return !!(((p.intrinsic | 0) || (p.extrinsic | 0))
+              && (!checkblocked || !(p.blocked | 0)));
 }
 const LEVITATION_IDX = 48, FLYING_IDX = 49, WWALKING_IDX = 50, SWIMMING_IDX = 51,
       MAGICAL_BREATHING_IDX = 52;
-function Levitation_hero() { return uprop_on(LEVITATION_IDX); }
-function Flying_hero() { return uprop_on(FLYING_IDX); }
+function Levitation_hero() { return uprop_on(LEVITATION_IDX, true); }
+function Flying_hero() {
+    const steed = game.u?.usteed;
+    return !!((uprop_on(FLYING_IDX) || (steed && ((steed.data.mflags1 | 0) & 1 /* M1_FLY */)))
+              && !(game.u?.uprops?.[FLYING_IDX]?.blocked | 0));
+}
 function Wwalking_hero() { return uprop_on(WWALKING_IDX) && !Is_waterlevel_local(); }
-function Swimming_hero() { return uprop_on(SWIMMING_IDX); }
+function Swimming_hero() {
+    return !!(uprop_on(SWIMMING_IDX)
+              || (game.u?.usteed && is_swimmer(game.u.usteed.data)));
+}
 function Amphibious_hero() {
     return uprop_on(MAGICAL_BREATHING_IDX)
         || (!!game.youmonst?.data && ((game.youmonst.data.mflags1 | 0) & M1_AMPHIBIOUS) !== 0);

@@ -1,5 +1,6 @@
 import { formatFeltMessage, publishHeardMessage } from './hero_speech.js';
 import { dungeonBuildsUp, initOverviewRecord } from './dungeon.js';
+import { noticeAllMonsters, withMonsterNoticesBlocked } from './monster_notices.js';
 import { recorderLocalDate, recorderLocalEpochSeconds } from './calendar.js';
 import { slipOrTrip } from './fumbling.js';
 import { heroLegName } from './body_parts.js';
@@ -348,6 +349,8 @@ async function applyCalendarMessages() {
 // shuffle, presents the saved map, and applies real-world calendar effects.
 export async function restoregamePreamble() {
     const game = requireInitializedGame();
+    // restgamestate() defers sensed monster overlays until moveloop starts.
+    game._deferSeeMonsters = true;
     delete game._pendingHeroShapeChange;
     // C restgamestate() runs role_init() before anything else the preamble
     // does; restoreGame() has already spent its quest gender rolls and then
@@ -565,7 +568,13 @@ async function moveloopPreamble() {
 // pickup messages may suspend before this boundary makes command input live.
 async function finishMoveloopPreamble() {
     const game = requireInitializedGame();
+    // moveloop_preamble() sets botlx after assigning the gold encoding.
+    game.context.botl = true;
     await reportHeroEncumbrance();
+    if (game._deferSeeMonsters) {
+        game._deferSeeMonsters = false;
+        await see_monsters();
+    }
     game.u.uz0 ||= { ...game.u.uz };
     game.u.uz0.dlevel = game.u.uz.dlevel;
     game.context.move = 0;
@@ -982,8 +991,11 @@ async function beginInitialTurnMaintenance() {
     game.were_changes = 0;
     for await (const event of monsterDistressEvents(game.level?.monsters || [], game, rn2, game.moves, plineWithContinuation)) {
         if (event.kind === 'stationary-liquid') {
-            if (game.vision_full_recalc)
+            if (game.vision_full_recalc) {
                 vision_recalc(0);
+                // C vision_recalc() ends with notice_all_mons().
+                await noticeAllMonsters(game);
+            }
             await resolveMonsterLiquid(event.monster, game, {
                 announce: plineWithContinuation,
                 monsterMoving: false,
@@ -3068,6 +3080,9 @@ async function presentMonsterAttackEffects(action, game, { random = rn2, rollDic
 // Trap, door, tunneling, and hiding feedback belongs to postmov(), before
 // returning to either dochug() or the hero's out-of-sequence movement caller.
 async function presentMonsterPostMove(action, game) {
+    // dog_move() finishes mattacku() before m_move() enters postmov().
+    if (action.movement.deferredAfterPetAttack)
+        return false;
     let movement = action.movement;
     // C postmov() repaints the old square before mintrap(), but delays
     // the destination newsym() until the trap's message has returned.
@@ -3324,6 +3339,11 @@ async function presentMonsterAction(action, game, actorWasOpticallySeen) {
     const attackEffects = await presentMonsterAttackEffects(action, game);
     if (attackEffects.heroDied)
         return 'stop';
+    if (action.movement.deferredAfterPetAttack) {
+        await resumeDeferredPetAttack(action, game);
+        if (await presentMonsterPostMove(action, game))
+            return 'stop';
+    }
     movement = action.movement;
     // monmove.c:dochug() performs the vile-monster emotional attack only
     // after the complete standard attack set. Item use returns earlier,
@@ -3353,12 +3373,6 @@ async function presentMonsterAction(action, game, actorWasOpticallySeen) {
     if (movement?.deferredCuss) {
         movement.deferredCuss = false;
         await presentMonsterCuss(action);
-    }
-    if (movement?.deferredAfterPetAttack) {
-        if (game.program_state?.gameover)
-            return 'stop';
-        await resumeDeferredPetAttack(action, game);
-        await presentMonsterHiding(action);
     }
     await presentMonsterPickups(action, game);
     movement = action.movement;
@@ -3499,8 +3513,11 @@ async function executeMonsterTurns() {
             somebodyCanMove = true;
         // C mon.c:movemon_singlemon() settles deferred visibility before the
         // actor's liquid checks, equipment changes, and movement decisions.
-        if (game.vision_full_recalc)
+        if (game.vision_full_recalc) {
             vision_recalc(0);
+            // C vision_recalc() ends with notice_all_mons().
+            await noticeAllMonsters(game);
+        }
         if (game.context.bypasses)
             clearBypasses(game);
         const actorWasOpticallySeen = canSeeMonster(actor);
@@ -3574,6 +3591,15 @@ async function moveMonsters() {
 }
 // C ref: allmain.c newgame()
 export async function newgame() {
+    await withMonsterNoticesBlocked(game, () => initializeNewGame());
+    // C allmain.c:844-848 enables notices only after welcome(). The
+    // mention_map option runs dolookaround() instead, which is unported.
+    if (!game.flags.mention_map)
+        await noticeAllMonsters(game);
+    if (game.flags?.explore)
+        await plineWithContinuation('You are in non-scoring explore/discovery mode.');
+}
+async function initializeNewGame() {
     delete game._pendingHeroShapeChange;
     const g = game;
     const handednessRoll = await initializeSourceStartup();
@@ -3605,6 +3631,8 @@ export async function newgame() {
     // Real mklev generates the level with correct room positions
     // Structural phase consumes RNG for rooms/corridors/doors/stairs
     await mklev();
+    if (g.program_state.gameover)
+        return;
     // C mklev() begins with init_mapseen(): the starting level joins the
     // overview history (dungeon.c:1582) before the hero takes a turn.
     initOverviewRecord(g.u.uz ?? { dnum: 0, dlevel: 1 }, g);
@@ -3645,8 +3673,6 @@ export async function newgame() {
     // welcome() can wrap and wait before moveloop_preamble(). unixmain's
     // discovery-mode notice follows it, also before calendar effects.
     await welcome(true);
-    if (g.flags?.explore)
-        await plineWithContinuation('You are in non-scoring explore/discovery mode.');
 }
 let playStep = null;
 export function bindPlayStep(step) {
@@ -3780,6 +3806,7 @@ export async function runMoveloopCore() {
         if (g.vision_full_recalc) {
             vision_recalc(0);
             g.vision_full_recalc = 0;
+            await noticeAllMonsters(g);
         }
     }
     // C runs bot() or timebot() here and then curs_on_u(), whose

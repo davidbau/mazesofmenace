@@ -1,18 +1,19 @@
 // js/food_props.js — the objects[] FOOD_CLASS static columns, plus the two
-// pure nutrition helpers that read them.
+// nutrition helpers that read them.
 //
 // C ref: include/objects.h FOOD(name, prob, delay, wt, unk, material, nutrition,
 // ...) — the per-otyp { oc_delay, oc_nutrition } pair for every FOOD_CLASS otyp
 // fields, so every caller must read them from this table exactly as C reads
 // objects[otyp].
 //
-// This is a LEAF module: it imports nothing but the corpse-stat JSON, so both
-// js/eat.js (the hero's own eating) and js/dogmove.js (dog_nutrition) can pull
-// from it without closing an import cycle.  Keeping one copy is deliberate — a
-// second transcription of this table in a second file is how the two sides
-// silently drift apart.
+// Both js/eat.js (the hero's own eating) and js/dogmove.js (dog_nutrition) use
+// these shared helpers. Diagnostics use display only when a helper is called,
+// so the import cycle needs no display state during module initialization.
+// Keeping one copy avoids the silent drift caused by transcribing the table
+// separately in each file.
 
 import corpseData from './eat_corpse_data.json' with { type: 'json' };
+import { impossible_sync as impossible } from './display.js';
 
 /* Corpse nutrition (cnutrit), pack-aligned with makemon_mons.json / dogmove.js
  * MONS_CWT.  Generated from include/monsters.h SIZ() keyed by PM index. */
@@ -90,14 +91,17 @@ export function obj_nutrition(otmp) {
 
 /* C eat.c:3788 eaten_stat(int base, struct obj *obj) — scale `base` by the
  * object's partially-eaten fraction.  obj_nutrition() is read FIRST because C
- * comments that it may modify obj->oeaten.  impossible() is a no-op in JS, so
- * the over-nutritious branch just clamps, exactly as C does after reporting. */
+ * comments that it may modify obj->oeaten. Report inconsistent nutrition
+ * before clamping, as C does. */
 export function eaten_stat(base, obj) {
     const full_amount = obj_nutrition(obj) | 0;
     let uneaten_amt = (obj.oeaten | 0);
 
-    if (uneaten_amt > full_amount)
+    if (uneaten_amt > full_amount) {
+        impossible('partly eaten food (%ld) more nutritious than untouched food (%ld)',
+                   uneaten_amt, full_amount);
         uneaten_amt = full_amount;
+    }
 
     base = full_amount
         ? Math.trunc(((base | 0) * uneaten_amt) / full_amount)

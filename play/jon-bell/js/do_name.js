@@ -120,8 +120,11 @@ function _rndmonnam_rejected(mndx) {
 }
 /* The C-signature form: callers that do not want the bogon code just take the
  * name.  (C's rndmonnam(NULL) is the majority of its 15 call sites.) */
-export function rndmonnam() {
-    return rndmonnam_ex().name;
+export function rndmonnam(code) {
+    const out = rndmonnam_ex();
+    if (code && typeof code === 'object')
+        code.code = out.code; // C do_name.c:1396-1408, optional char * output
+    return out.name;
 }
 
 /* C do_name.c:1414-1420 bogon_is_pname(code) — "check bogusmon prefix to

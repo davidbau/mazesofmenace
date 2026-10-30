@@ -2,6 +2,7 @@
 // potion.js — Potion subsystem + fountain interactions.
 // C ref: nethack-c/src/potion.c, nethack-c/src/fountain.c
 import { game, wizard, discover } from './gstate.js';
+import { You as You_real, Your as Your_real, You_feel as You_feel_real } from './display.js';
 import { a_monnam } from './mhitm.js';
 import { make_blinded, resist, explode, explode_oil, potionhit_polymorph, poly_obj, obj_unpolyable, ubreatheu, melt_ice_zap } from './zap.js';
 import { spoteffects } from './landing-effects.js';
@@ -46,8 +47,7 @@ import { nomul } from './allmain.js';
 import { fall_asleep } from './timeout.js';
 import { mkgold, bcsign, makemon, mkobj, mkobj_at, mksobj_at, rnd_class, healmon, wake_nearto, mksobj, dealloc_obj } from './mklev.js';
 import { obj_resists } from './zap.js';
-import { arti_light_radius, maybe_adjust_light } from './light.js';
-import { curse, uncurse } from './mkobj.js';
+import { bless, unbless, curse, uncurse } from './mkobj.js';
 import { livelog_printf } from './display.js';
 import { LL_ARTIFACT } from './const.js';
 import { heal_legs, unfixable_trouble_count, doup, body_part as body_part_cmd, ceiling, altar_wrath } from './cmd.js';
@@ -92,8 +92,7 @@ import { rider_cant_reach } from './steed.js';
 import { P_SKILL } from './skills.js';
 import { P_RIDING, P_BASIC } from './const.js';
 import { obj_extract_self } from './mklev.js';
-import { freeinv, useupall, set_moreluck as _set_moreluck } from './cmd.js';
-import { confers_luck as _confers_luck } from './attrib.js';
+import { freeinv, useupall } from './cmd.js';
 import { setnotworn } from './worn.js';
 import { _pickup_burden_level } from './wizcmds.js';
 import { Tobjnam, Yobjnam2, aobjnam } from './objnam.js';
@@ -107,7 +106,7 @@ import { PM_SEWER_RAT, PM_WATER_ELEMENTAL, PM_LICHEN, PM_GREEN_SLIME,
          PM_GREMLIN, PM_IRON_GOLEM, PM_PESTILENCE,
          PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER } from './pm.generated.js';
 import { paralyze_monst, slept_monst } from './dogmove.js';
-import { polyself, set_uasmon } from './polyself.js';
+import { polyself } from './polyself.js';
 import { create_gas_cloud, gas_cloud_at } from './region.js';
 import { getobj_redo_menu, in_town, compactify, doname_body, getpos, getObjFromGetobj,
          costly_alteration } from './cmd.js';
@@ -143,7 +142,7 @@ import { mintrap } from './trap.js';
  * by NAME against js/makemon_pmnames.json[68] === 'water nymph'. */
 import { PM_WATER_NYMPH, PM_WATER_DEMON, PM_WATER_MOCCASIN } from './pm.generated.js';
 import { monflee } from './makemon.js';
-import { new_were } from './were.js';
+import { new_were, set_ulycn } from './were.js';
 import { you_were as you_were_real, you_unwere as you_unwere_real } from './were.js';
 /* C fountain.c:44 — dowatersnakes()'s hallucinatory plural is
  * makeplural(rndmonnam(NULL)); both live outside this file. */
@@ -1245,12 +1244,6 @@ export async function dipfountain(obj) {
  * export at js/mhitm.js:2049 (is_vampshifter(mon) || hates_blessings(mon.data),
  * RNG-free).  Both this file's peffect_water AND potionhit()'s monster-target
  * POT_WATER arm (potion.c:1832) need it; it is now imported for real above. */
-function set_ulycn(pm) {
-    /* C were.c:235-239 — update the lycanthropy species and refresh the
-     * active permonst/intrinsic state. */
-    game.u.ulycn = pm | 0;
-    set_uasmon();
-}
 /* C ref: potion.c:718-769 peffect_water — full port. */
 async function peffect_water(otmp) {
     const g = game;
@@ -1650,13 +1643,14 @@ async function _mongrantswish(mon) {
     tmp_at(DISP_ALWAYS, glyph);
     tmp_at(mx, my);
     await makewish();
-    /* C's prinv pline inside makewish flush_screen()s while the demon's
-     * DISP_ALWAYS glyph is still up; the wish line rides _resultMessage here,
-     * so do that flush now rather than after tmp_at(DISP_END) restores the map. */
+    /* Drain makewish's deferred update_topl pages while DISP_ALWAYS is up.
+     * This is not another C flush: encumber_msg flags status AFTER its pline
+     * (pickup.c:1999), and tmp_at(DISP_END) only queues newsym (display.c:1242).
+     * Leave that repaint pending until the next actual flush, after useup(). */
     if (!game._pending_message && game._resultMessage) {
         game._pending_message = game._resultMessage;
         game._resultMessage = null;
-        await flush_screen(1);
+        await flush_screen(1, false);
         note_lone_pline_frame(game._pending_message);
     }
     tmp_at(DISP_END, 0);
@@ -2815,23 +2809,13 @@ function vtense(subj, verb) {
     return vtense_objnam(subj, verb);
 }
 async function Your(msg, ...args) {
-    let s = msg;
-    let ai = 0;
-    s = s.replace(/%s/g, () => args[ai++] || '');
-    return pline('Your ' + s);
+    return Your_real(msg, ...args);
 }
 async function You(msg, ...args) {
-    let s = msg;
-    let ai = 0;
-    s = s.replace(/%s/g, () => args[ai++] || '');
-    return pline('You ' + s);
+    return You_real(msg, ...args);
 }
 async function You_feel(msg, ...args) {
-    let s = msg;
-    let ai = 0;
-    s = s.replace(/%s/g, () => args[ai++] || '');
-    /* C pline.c:387-397 You_feel: "You dream that you feel " when Unaware */
-    return pline((_Unaware() ? 'You dream that you feel ' : 'You feel ') + s);
+    return You_feel_real(msg, ...args);
 }
 function Your1(msg) {
     return pline('Your ' + msg);
@@ -3243,12 +3227,6 @@ function split_mon(monst, ptr) {
     // C potion.c:2873-2914: shared hero cloneu and monster clone_mon paths.
     return split_mon_ml(monst, ptr);
 }
-function you_unwere(flag) {
-    void you_unwere_real(flag);
-}
-function you_were() {
-    void you_were_real(false);
-}
 /* C ref: mondata.c:1552-1568 monstseesu(seenres) — every monster that can see
  * the hero records that the hero RESISTED this damage type, so it stops
  * choosing that attack.  RNG-free; the mirror of js/mhitm.js's exported
@@ -3328,14 +3306,8 @@ export function healup(nhp, nxtra, curesick, cureblind) {
 const UNICORN_HORN = 261;
 const AMETHYST = 455;
 
-/* C objnam.c bcsign helpers via direct field writes (bless/curse/uncurse). */
-/* C mkobj.c:1749-1835 bless/curse/unbless/uncurse end in
- * `if (carried(otmp) && confers_luck(otmp)) set_moreluck();`. */
-function _luck_tail(o) { if ((o.where | 0) === OBJ_INVENT && _confers_luck(o)) _set_moreluck(); }
-function _bless(o) { if (o) { o.cursed = false; o.blessed = true; o.bknown = !!o.bknown; _luck_tail(o); } }
-function _curse(o) { if (o) { o.blessed = false; o.cursed = true; _luck_tail(o); } }
-function _uncurse(o) { if (o) { o.cursed = false; _luck_tail(o); } }
-function _unbless(o) { if (o) { o.blessed = false; _luck_tail(o); } }
+/* C mkobj.c:1745-1838: share timer, weight, equipment, luck and light updates. */
+const _bless = bless, _curse = curse, _uncurse = uncurse, _unbless = unbless;
 
 function _bumpObjsDeleted() {
     const store = game.__bridge__ || (game.__bridge__ = {});
@@ -3578,10 +3550,7 @@ async function _H2Opotion_dip(potion, targobj, useeit, objphrase) {
             else if (costchange !== COST_none)
                 await costly_alteration(targobj, costchange);
         }
-        // C mkobj.c:1749-1835: BUC changes also adjust an active object's light.
-        const old_light = targobj.lamplit ? arti_light_radius(targobj) : 0;
-        func(targobj);
-        if (targobj.lamplit) await maybe_adjust_light(targobj, old_light);
+        await func(targobj);
         res = true;
     }
     return res;
@@ -3593,8 +3562,8 @@ export async function impact_arti_light(obj, worsen, seeit) {
     if ((worsen ? obj.cursed : obj.blessed) || obj_resists(obj, 25, 75))
         return;
     const otmp = await mksobj(POT_WATER, true, false);
-    if (worsen) _curse(otmp);
-    else _bless(otmp);
+    if (worsen) await _curse(otmp);
+    else await _bless(otmp);
     await _H2Opotion_dip(otmp, obj, seeit, seeit ? Yobjnam2(obj, 'glow') : '');
     await dealloc_obj(otmp);
 }

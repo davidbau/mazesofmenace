@@ -13,8 +13,8 @@ import { check_unpaid_usage } from './shk.js';
 import { game } from './gstate.js';
 import { rn1, rn2, rnd } from './rng.js';
 import { goodpos } from './trap.js';
-import { is_pool } from './look.js';
-import { CLOUD, IS_FOUNTAIN, IS_AIR, ACCESSIBLE, isok } from './const.js';
+import { is_pool, is_pool_or_lava } from './look.js';
+import { Is_airlevel, Is_waterlevel, CLOUD, IS_FOUNTAIN, IS_AIR, ACCESSIBLE, isok } from './const.js';
 import { db_under_typ } from './dokick.js';
 import { impossible } from './pline.js';
 import { permonstTemplate, is_demon } from './makemon.js';
@@ -941,6 +941,28 @@ export async function engrave() {
     return 0;
 }
 
+/* C engrave.c:1520-1546 */
+export async function engraving_sanity_check() {
+    const eps = engravings_list();
+    if (eps.length && (Is_airlevel(game.u.uz) || Is_waterlevel(game.u.uz))) {
+        await impossible('engraving sanity: on plane of air/water');
+        return;
+    }
+    for (const ep of eps) {
+        const x = ep.engr_x, y = ep.engr_y;
+        if (!isok(x, y)) {
+            await impossible('engraving sanity: !isok <%i,%i>', x, y);
+            continue;
+        }
+        const lev = game.level.at(x, y);
+        const levtyp = lev.typ === DRAWBRIDGE_UP
+            ? db_under_typ(lev.drawbridgemask) : lev.typ;
+        if (is_pool_or_lava(x, y) || IS_AIR(levtyp) || !ACCESSIBLE(levtyp))
+            await impossible('engraving sanity: illegal surface (%d: "%s")',
+                             levtyp, surface(x, y));
+    }
+}
+
 /* C engrave.c:1497,1508 — bones text cleanup and discovery reset. */
 export function sanitize_engravings() {
     for (const ep of engravings_list()) ep.text = sanitize_name(ep.text);
@@ -1016,34 +1038,7 @@ function sfiEngr(_nhfp, _ep, _tag) {
      * stream exists. */
 }
 
-/* C ref: engrave.c:1585 rest_engravings(NHFILE *nhfp) — rebuild the
- * save/restore engr list from the save file. */
-export function rest_engravings(nhfp) {
-    head_engr = null;
-    for (;;) {
-        const lth = sfiUnsigned(nhfp, 'engraving-engr_alloc');
-        if (lth === 0) return;
-        const ep = newengr(lth);
-        sfiEngr(nhfp, ep, 'engraving');
-        const szeach = ep.engr_szeach;
-        ep.nxt_engr = head_engr;
-        head_engr = ep;
-        /* C: ep->engr_txt[i] = engr_text_space(ep) [+ szeach ...] — pointer
-         * arithmetic into the struct's packed text buffer. JS has no raw
-         * buffer, so each text slot is read independently, in the same
-         * actual/remembered/pristine order, each szeach bytes long. */
-        ep.engr_txt[ENGR_ACTUAL_TEXT] = sfiChar(nhfp, 'engraving-actual_text', szeach);
-        ep.engr_txt[ENGR_REMEMBERED_TEXT] = sfiChar(nhfp, 'engraving-remembered_text', szeach);
-        ep.engr_txt[ENGR_PRISTINE_TEXT] = sfiChar(nhfp, 'engraving-pristine_text', szeach);
-
-        while (ep.engr_txt[ENGR_ACTUAL_TEXT][0] === ' ')
-            ep.engr_txt[ENGR_ACTUAL_TEXT] = ep.engr_txt[ENGR_ACTUAL_TEXT].slice(1);
-        while (ep.engr_txt[ENGR_REMEMBERED_TEXT][0] === ' ')
-            ep.engr_txt[ENGR_REMEMBERED_TEXT] = ep.engr_txt[ENGR_REMEMBERED_TEXT].slice(1);
-
-        /* mark as finished for bones levels -- no problem for normal levels
-         * as the player must have finished engraving to be able to move
-         * again */
-        ep.engr_time = (game.moves) | 0;
-    }
-}
+/* C engrave.c:1585-1615: restore into the same engraving store as engr_at().
+ * The runtime save representation is mklev's Map snapshot; share its restore
+ * rather than treating the unwired NHFILE reader as an empty engraving list. */
+export { rest_engravings } from './mklev.js';

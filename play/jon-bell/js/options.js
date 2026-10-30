@@ -576,6 +576,8 @@ function set_boulder_symbol(target, opts, op, negated, report) {
         return false;
     }
     (target.symbolOverrides ||= {}).S_boulder = sym;
+    /* options.c:1213-1214 sets ov_rogue_syms too */
+    target.symbolOverrides.S_boulder_rogue = sym;
     return true;
 }
 
@@ -802,7 +804,8 @@ export function parseNethackrc(rc) {
                 /* symbols.c parsesymbols(): a G_ glyph reference goes through
                  * glyphrep_to_custom_map_entries() (glyphs.c:111) */
                 if (/^\s*G_/.test(entry))
-                    glyphrep_to_custom_map_entries(entry.trim(), { value: 0 });
+                    // C symbols.c:821-833 passes symname after terminating it at ':' or '='.
+                    glyphrep_to_custom_map_entries(entry.split(/[:=]/, 1)[0].trim(), { value: 0 });
                 /* C symbols.c:811-844: every S_<name>:<val> pair, monster
                  * classes included, lands in ov_primary_syms. */
                 const pairMatch = entry.match(/^\s*(S_[^:=\s]+)\s*[:=]\s*(.*?)\s*$/i);

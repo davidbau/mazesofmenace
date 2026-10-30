@@ -1306,7 +1306,6 @@ function m_next2u(mtmp) {
 export async function amulet() {
     const u = game.u || {};
     const gf = game;
-    const svc = game.svc || {};
 
     /* Check if the amulet is worn or wielded */
     let amu = u.uamul;
@@ -1331,7 +1330,13 @@ export async function amulet() {
         }
     }
 
-    if (!svc.context || !svc.context.no_of_wizards)
+    /* C wizard.c:89 — `if (!svc.context.no_of_wizards) return;`.  In js/ the
+     * C svc.context.no_of_wizards counter lives on game.context (makemon +1,
+     * wizdeadorgone -1); game.svc.context is a different mirror object
+     * (current_fruit, made_amulet, ...) that never carries it, so reading it
+     * here returned early every turn and the wizard-wake rn2(40) (wizard.c:95)
+     * was never drawn once a sleeping Wizard reached the hero's level. */
+    if (!gf.context || !gf.context.no_of_wizards)
         return;
     /* find Wizard, and wake him if necessary */
     for (let mtmp = gf.fmon; mtmp; mtmp = mtmp.nmon) {

@@ -30,26 +30,17 @@ import { mksobj, mpickobj, mongone } from './mklev.js';
 import { select_hwep } from './uhitm.js';
 import { mongets } from './m_initweap.js';
 import { m_dowear } from './trap.js';
+import { bless } from './mkobj.js';
 
 const SILVER_SABER = 51;              /* objects.h WEAPON("silver saber") */
 const AMULET_OF_REFLECTION = 208;
 const SHIELD_OF_REFLECTION = 158;
 const W_ARMS = 0x00000008;
-const COIN_CLASS = 11;
 
 /* C macro Conflict (youprop.h:218) := HConflict || EConflict. */
 function Conflict() {
     const p = game.u?.uprops?.[CONFLICT];
     return !!(p && ((p.intrinsic | 0) || (p.extrinsic | 0)));
-}
-
-/* C mkobj.c bless(): COIN_CLASS skipped; carried() side branches (confers_luck,
- * bag of holding weight) cannot apply to a freshly made unplaced weapon. */
-function bless(otmp) {
-    if (otmp.oclass === COIN_CLASS)
-        return;
-    otmp.cursed = false;
-    otmp.blessed = true;
 }
 
 /* C ref: minion.c:473-500 — guardian angel has been affected by conflict so is
@@ -118,7 +109,7 @@ export async function gain_guardian_angel() {
                 if (await mpickobj(mtmp, otmp))
                     throw new Error('merged weapon?');
             }
-            bless(otmp);
+            await bless(otmp);
             if ((otmp.spe | 0) < 4)
                 otmp.spe = (otmp.spe | 0) + rnd(4);
             otmp = which_armor(mtmp, W_ARMS);

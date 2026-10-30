@@ -1,7 +1,7 @@
 import { trycall } from './cmd.js';
 import { dropy } from './cmd.js'; // C read.c:3040-3042; do.c:800-843.
 import { map_menu_cmd } from './cmd_config.js';
-import { ggetobj, _restrict_name, costly_alteration, fully_identify_obj as fully_identify_obj_cmd, _sortloot_within_class, key2txt } from './cmd.js';
+import { ggetobj, _restrict_name, costly_alteration, fully_identify_obj as fully_identify_obj_cmd, prinv, _sortloot_within_class, key2txt } from './cmd.js';
 import { ONAME, has_oname, COST_UNCHRG, COST_DEGRD, COST_DECHNT, COST_UNCURS } from './const.js';
 // @ts-nocheck
 import { rn2, rnd, rn1, rnl, d } from './rng.js';
@@ -833,6 +833,11 @@ async function topline_more_loop(msg) {
     const g = game;
     const full = msg + '--More--';
     g._pending_message = full;
+    /* C topl.c more() via tty_display_nhwindow does no flush_screen/bot(): the
+     * map and status stay as of the last real flush (a scroll read from the
+     * wielded slot has been useup'd, but its Empty-hnd botl is still pending). */
+    const releaseFlush = use_last_flush_snapshot();
+    try {
     await flush_screen(1);
     /* Cursor just past end of "--More--" (col = msg.length + 8). */
     set_cursor(full.length, 0);
@@ -846,6 +851,7 @@ async function topline_more_loop(msg) {
         await flush_screen(1);
         set_cursor(full.length, 0);
     }
+    } finally { releaseFlush(); }
 }
 
 async function study_book_already_known(spellName) {
@@ -1005,12 +1011,10 @@ async function _clear_botl() {
         await bot_read();
 }
 export async function doread() {
-    /* A rejected g-prefix can precede an extended #read command.  C's
-     * ECMD_FAIL cleanup clears the movement prefix before the read prompt. */
-    if (game.context?.run) {
-        game.context.run = 0;
-        if (game.gd) game.gd.domove_attempting = 0;
-    }
+    /* C read.c:330 doread() never touches context.run: a run left at 8 by
+     * findtravelpath's arrival (hack.c:1409) survives an ECMD_TIME read
+     * (rhack resets only on ECMD_OK/CANCEL/FAIL), so the read's turn passes
+     * with moveloop's time_botl suppressed (allmain.c:262). */
     const g = game;
 
     g._gk_known = false;
@@ -1973,24 +1977,7 @@ function _oc_name_known(otyp) {
 /* C ref: invent.c useup() / useupall() — consume one scroll from inventory.
  * A stack quan>1 is decremented; a singleton is unlinked from gi.invent. */
 export function useup(obj) {
-    if (obj.quan != null && (obj.quan | 0) > 1) {
-        /* C invent.c:1324 useup(): clear in_use on the quan>1 decrement path. */
-        obj.in_use = false;
-        obj.quan = (obj.quan | 0) - 1;
-        return;
-    }
-    let prev = null;
-    for (let o = game.invent; o; prev = o, o = o.nobj) {
-        if (o === obj) {
-            if (prev) prev.nobj = o.nobj; else game.invent = o.nobj;
-            obj.nobj = null;
-            const store = game.__bridge__ || (game.__bridge__ = {});
-            const key = 'objs_deleted.count';
-            const cur = store[key] !== undefined ? Number(store[key]) : 0;
-            store[key] = String(cur + 1);
-            return;
-        }
-    }
+    return useup_cmd(obj);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -2318,7 +2305,7 @@ async function seffect_enchant_armor(sobjp) {
                     + `${(Blind || same_color) ? '' : hcolor(scursed ? NH_BLACK : NH_SILVER)}`
                     + ` for a while, then ${otense(nm, 'evaporate')}.`);
         await remove_worn_item(otmp, false);
-        useup(otmp);
+        await useup(otmp);
         return;
     }
     if (s < -100)
@@ -2462,11 +2449,11 @@ async function chwepon(otmp, amount) {
                 uwep.bknown = _Hallucination() ? 0 : 1; /* ok to bypass set_bknown() */
             } else {
                 /* cursed tin opener is wielded in right hand */
-                buf = `Your right ${body_part('hand')} tingles.`;
+                buf = `Your right ${body_part_fr(HAND_FR)} tingles.`;
             }
             _uncurse(uwep);
         } else {
-            buf = `Your ${makeplural(body_part('hand'))} `
+            buf = `Your ${makeplural(body_part_fr(HAND_FR))} `
                 + `${(amount >= 0) ? 'twitch' : 'itch'}.`;
         }
         await _strange_feeling(otmp, buf); /* pline()+docall()+useup() */
@@ -3728,7 +3715,7 @@ async function seffect_fire(holder) {
         } else {
             monstunseesu_fr(M_SEEN_FIRE_FR);
             await pline(`The scroll catches fire and you burn your ${makeplural(body_part_fr(HAND_FR))}.`);
-            await losehp_fr(1, 'scroll of fire', 1 /* KILLED_BY_AN */);
+            await losehp_fr(1, 'scroll of fire', KILLED_BY_AN);
         }
         return;
     }
@@ -4250,7 +4237,7 @@ async function seffect_confuse_monster(sobj) {
      * spelling nothing in js/ assigns — see _Confusion() above. */
     const confused = (_Confusion() != 0);
     const altfeedback = (_Blind() || _Invisible());
-    const hands = makeplural(body_part("hand"));
+    const hands = makeplural(body_part_fr(HAND_FR));
 
     const youdata = g.youmonst.data;
     const S_HUMAN_LIT = 53; /* defsym.h S_HUMAN; mons[].mlet is the numeric class */
@@ -4268,7 +4255,7 @@ async function seffect_confuse_monster(sobj) {
         } else {
             await pline("A %s%s surrounds your %s.",
                   altfeedback ? "" : hcolor(NH_RED),
-                  altfeedback ? "faint buzz" : " glow", body_part("head"));
+                  altfeedback ? "faint buzz" : " glow", body_part_fr(HEAD_FR));
             await make_confused(0, true);
         }
     } else {
@@ -4488,7 +4475,6 @@ export function drain_weapon_skill(n) {
         pline(`You forget ${level >= 2 ? 'some of ' : ''}your training in ${P_NAME(skill)}.`);
     }
 }
-function body_part(part) { return part; }
 /* C do_name.c:2432 hcolor(colorstr): identity unless hallucinating, in which
  * case mhitm.js hcolor draws from rn2_on_display_rng.  The table maps this
  * file's numeric NH_* tokens to the C c_color_names strings (decl.c:16-19). */
@@ -4579,11 +4565,7 @@ async function identify(otmp) {
 }
 
 async function _prinv_identify(obj) {
-    const letter = obj.invlet ? String.fromCharCode(obj.invlet | 0) : '?';
-    /* C invent.c:2875 prinv() -> xprname() -> doname(): the real namer, run on
-     * the now-fully-identified object (BUC, enchantment, known type name). */
-    const name = await doname_with_price(obj);
-    await pline(`${letter} - ${name}.`);
+    await prinv(null, obj, 0);
 }
 
 export async function identify_pack(id_limit, learning_id) {
@@ -4663,6 +4645,15 @@ async function menu_identify(id_limit) {
  * The menu consumes navigation keystrokes (letter toggles, page keys) but no RNG;
  * RNG is fired only later by identify() per pick. */
 async function _identify_objlist_menu(promptText) {
+    /* tty_display_nhwindow(NHW_MENU) does no flush_screen/bot(): the status
+     * rows under the menu stay as of the last real flush while the just-read
+     * scroll's useup (setnotworn) has only set the pending botl flag. */
+    const releaseFlush = use_last_flush_snapshot();
+    try {
+        return await _identify_objlist_menu_body(promptText);
+    } finally { releaseFlush(); }
+}
+async function _identify_objlist_menu_body(promptText) {
     const g = game;
     if (g._pending_message) {
         const full = String(g._pending_message);
@@ -4966,7 +4957,7 @@ async function seffect_magic_mapping(sobj) {
 
 export function magic_map_background(loc, x, y, show = false) {
     if (!loc) return;
-    const tg = terrain_glyph(loc, x, y);
+    const tg = terrain_glyph(loc, x, y, true);
     /* C display.c:251-253 retains the terrain glyph identity; preserve its
      * MG_BW_LAVA/ICE/SINK metadata (2890-2915) when mapping it into memory. */
     let rg = { ch: tg.ch, color: tg.color, decgfx: tg.dec, cmap: tg.cmap, wallSymbol: tg.wallSymbol,
@@ -4999,22 +4990,28 @@ export function magic_map_background(loc, x, y, show = false) {
             rg.color = CLR_BLACK;
             rg.cmap = 20;
         }
-        /* CORR S_litcorr → S_corr is already the plain corridor glyph here. */
+        if (loc.typ === CORR && rg.cmap === 23) {
+            const dark = terrain_glyph(loc, x, y);
+            rg = { ch: dark.ch, color: dark.color, decgfx: dark.dec, cmap: dark.cmap };
+        }
     }
     /* C display.c:250-252 only replaces unexplored/cmap memory. Objects and
      * invisible-monster markers survive magic mapping. Trap and engraving
      * glyphs are in C's cmap range; legacy terrain memory has no cls. */
     const rememberedClass = loc.remembered_glyph?.cls;
     if (game.level?.flags?.hero_memory
-        && (rememberedClass == null || rememberedClass === GLYPHCLS_CMAP
+        && (rememberedClass == null || rememberedClass === 'unexplored' || rememberedClass === GLYPHCLS_CMAP
             || rememberedClass === GLYPHCLS_TRAP || rememberedClass === GLYPHCLS_ENGR))
         loc.remembered_glyph = { ...rg, cls: GLYPHCLS_CMAP };
-    /* C display.c:253-254 — `if (show) show_glyph(x, y, glyph);` */
+    /* C display.c:253-254 — `if (show) show_glyph(x, y, glyph);`  The glyph
+     * keeps its cmap identity in gbuf: a blank S_air cell on the Plane of Water
+     * must still read as cmap S_air to glyph_at() (pager.c lookat "air"). */
     if (show)
         show_glyph_cell(x, y, rg.ch, rg.color, !!rg.decgfx,
                         /* MG_BW_ICE/LAVA/SINK -> ATR_INVERSE (display.c:2894-2916, wintty.c:3930-3936) */
                         (rg.bwspec && game.iflags?.use_color === false
-                         && game.iflags?.wc_inverse !== false) ? 1 : 0, GLYPHCLS_CMAP);
+                         && game.iflags?.wc_inverse !== false) ? 1 : 0, GLYPHCLS_CMAP,
+                        false, null, null, null, rg.cmap ?? null);
     update_lastseentyp(x, y);
 }
 

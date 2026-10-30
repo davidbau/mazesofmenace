@@ -5,7 +5,8 @@
 // C ref: nethack-c/src/mklev.c:1055-1132 (fill_supply_chest body)
 //        nethack-c/src/mkobj.c:2680-2699  (add_to_container)
 import { rn2 } from './rng.js';
-import { mksobj, mkobj, add_to_container, newoextra, newomid, copy_mextra, attach_fig_transform_timeout, dead_species } from './mklev.js';
+import { mksobj, mkobj, add_to_container, dealloc_obj, newoextra, newomid, copy_mextra, attach_fig_transform_timeout, dead_species } from './mklev.js';
+import { impossible } from './pline.js';
 const OBJ_CONTAINED = 2; // C: obj.h OBJ_CONTAINED
 import { permonstTemplate } from './makemon.js';
 import { forget_temple_entry } from './priest.js';
@@ -23,7 +24,7 @@ import { cansee, Blind } from './vision.js';
 import { pline, You_see, You_hear } from './display.js';
 import { Your } from './do_wear.js';
 import { makeplural, obj_typename, oname } from './objnam.js';
-import { HALLUC, HALLUC_RES, OBJ_FLOOR, OBJ_INVENT, MON_DETACH, ONAME_SKIP_INVUPD } from './const.js';
+import { HALLUC, HALLUC_RES, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT, MON_DETACH, ONAME_SKIP_INVUPD } from './const.js';
 
 // C mkobj.c:113: both gameplay callers overwrite the allocated monst before
 // reading it (copy_oextra/save_mtraits). No monster ID or RNG is allocated.
@@ -267,15 +268,17 @@ export async function fill_supply_chest(supply_chest, dlevel) {
         // C mklev.c:1073-1076
         if (otyp === POT_HEALING && rn2(2)) {
             otmp.quan = 2;
-            otmp.owt = otmp.owt || 1; // mirrors: otmp->owt = weight(otmp)
+            otmp.owt = weight(otmp); // C mklev.c:1067: quantity changed above.
         }
         cursed = !!(otmp && otmp.cursed);
         // C mklev.c:1078  add_to_container(supply_chest, otmp);
         if (otmp)
             await add_to_container(supply_chest, otmp); /* invent.c add_to_container: merged() scan */
         // C mklev.c:1080-1084
-        if (++tryct >= 50)
-            break; // impossible() guard
+        if (++tryct === 50) {
+            await impossible("couldn't generate supply chest item");
+            break;
+        }
     } while (cursed || !rn2(5));
     // C mklev.c:1094-1129 — maybe add one extra random item biased toward
     // low-level spellbooks; avoid tools (chests don't fit in other chests).
@@ -297,11 +300,12 @@ export async function fill_supply_chest(supply_chest, dlevel) {
                 // C mklev.c:1119-1125:
                 //   if objects[otmp->otyp].oc_level <= objects[otmp2->otyp].oc_level
                 //       dealloc_obj(otmp2); else { dealloc_obj(otmp); otmp = otmp2; }
-                // (dealloc_obj is a no-op stub in JS; we just drop the reference)
-                if (otmp2 && spbook_oc_level(otmp2.otyp) < spbook_oc_level(otmp.otyp)) {
-                    otmp = otmp2; // prefer lower-level book (C: dealloc the higher one)
+                if (spbook_oc_level(otmp.otyp) <= spbook_oc_level(otmp2.otyp)) {
+                    await dealloc_obj(otmp2);
+                } else {
+                    await dealloc_obj(otmp);
+                    otmp = otmp2;
                 }
-                // else: discard otmp2 (C: dealloc_obj(otmp2)) — JS GC handles it
             }
         }
         // C mklev.c:1128  add_to_container(supply_chest, otmp);
@@ -323,15 +327,27 @@ const _BC_SPBOOK_CLASS = 10;    /* objclass.h SPBOOK_CLASS (js/mklev.js:269) */
 const _BC_BAG_OF_HOLDING = 219; /* objects.h  (js/mklev.js:319) */
 const _BC_FIGURINE = 241;       /* objects.h  (js/mklev.js:182) */
 
-/* C obj.h:373 carried(obj) = (obj->where == OBJ_INVENT).  This port does not
- * carry obj->where on every object, so match the way js/objnam.js:3002 and
- * js/ball.js:305 already answer it: walk gi.invent. */
+/* C obj.h:332: ownership is determined by where, not chain membership. */
 function _bc_carried(obj) {
-    for (let o = game.invent; o; o = o.nobj)
-        if (o === obj)
-            return true;
-    return false;
+    return obj.where === OBJ_INVENT;
 }
+/* C mkobj.c:1745-1764 bless(), including inventory, timer, and light updates. */
+export async function bless(otmp) {
+    if ((otmp.oclass | 0) === _BC_COIN_CLASS)
+        return;
+    const old_light = otmp.lamplit ? arti_light_radius(otmp) : 0;
+    otmp.cursed = 0;
+    otmp.blessed = 1;
+    if (_bc_carried(otmp) && confers_luck(otmp))
+        set_moreluck();
+    else if ((otmp.otyp | 0) === _BC_BAG_OF_HOLDING)
+        otmp.owt = weight(otmp);
+    else if ((otmp.otyp | 0) === _BC_FIGURINE && otmp.timed)
+        stop_timer(6 /* FIG_TRANSFORM */, obj_to_any(otmp));
+    if (otmp.lamplit)
+        await maybe_adjust_light(otmp, old_light);
+}
+
 /* C mkobj.c:1766-1780 unbless(struct obj *otmp). */
 export async function unbless(otmp) {
     if (!otmp)
@@ -399,7 +415,7 @@ export async function curse(otmp) {
          * carried (by hero or monster) gets a transform timer. */
         if ((otmp.corpsenm | 0) >= 0 && otmp.corpsenm != null
             && !dead_species(otmp.corpsenm | 0, true)
-            && (_bc_carried(otmp) || otmp.ocarry))
+            && (_bc_carried(otmp) || otmp.where === OBJ_MINVENT))
             attach_fig_transform_timeout(otmp);
     } else if ((otmp.oclass | 0) === _BC_SPBOOK_CLASS) {
         /* if book hero is reading becomes cursed, interrupt */

@@ -16,6 +16,7 @@ import { peaceMinded, set_malign } from './makemon.js';
 //                         note above restore_saved_game() below.
 
 import { game } from './gstate.js';
+import { align_str } from './cmd.js';
 import { rnd } from './rng.js';
 import { rest_engravings, restore_cham, hide_monst, hideunder, _gm_migrating } from './mklev.js';
 import { restore_luadata, l_nhcore_call, NHCORE_RESTORE_OLD_GAME } from './nhlua.js';
@@ -40,6 +41,17 @@ function hides_under(ptr) {
     return (((ptr?.mflags1) | 0) & M1_CONCEAL) !== 0;
 }
 
+function find_lev_obj_clear_no_charge(level) {
+    const objs = level?.levelObjects;
+    if (!objs) return;
+    for (const col of objs) {
+        if (!col) continue;
+        for (let y = 0; y < col.length; y++)
+            for (let o = col[y]; o; o = o.nexthere)
+                if (o.no_charge) o.no_charge = 0;
+    }
+}
+
 export async function getlev(lev) {
     const g = game;
     const u = g.u || (g.u = {});
@@ -55,6 +67,7 @@ export async function getlev(lev) {
      * rest_track.  All of it is the departing level's own containers, which
      * clear_level_structures() replaced rather than mutated. */
     g.level = snap.level;
+    find_lev_obj_clear_no_charge(g.level);
     {
         let prev = null, cur = snap.stairs;
         while (cur) {
@@ -270,6 +283,7 @@ export async function dorecover(save) {
     // C first reads the current level before restoring the saved globals.
     await bubbles_copy_snapshot(save.state.__bubbles, save.state.level);
     await restgamestate(save.state);
+    find_lev_obj_clear_no_charge(g.level);
     // Inactive level records are read/written in ledger order; C then rereads
     // the original current level. Bubble initial movement belongs to each read.
     const current = (g.dungeons?.[g.u.uz.dnum]?.ledger_start | 0) + g.u.uz.dlevel;
@@ -287,6 +301,7 @@ export async function dorecover(save) {
             if (reg.ttl >= 0) reg.ttl = Math.max(0, reg.ttl - aged);
         }
         snap.omoves = g.moves | 0;
+        find_lev_obj_clear_no_charge(snap.level);
         if (!snap.bubbles) continue;
         snap.bubbles = await bubbles_copy_snapshot(snap.bubbles, snap.level);
     }
@@ -350,7 +365,6 @@ function welcome_back_message() {
     const currentgend = Upolyd ? !!u.mfemale : !!flags.female;
     const alignbase = u.ualignbase || [];
     const adrift = (u.ualign?.type ?? 0) !== (alignbase[0] ?? (u.ualign?.type ?? 0));  /* A_CURRENT == 0 (you.h:458) */
-    const align_str = (t) => (t === 0 ? 'neutral' : t > 0 ? 'lawful' : 'chaotic');
     /* C role.c:2120 Hello() — the role-specific greeting.  Same table as the
      * new-game copy in js/allmain.js. */
     const initrole = (flags.initrole ?? -1) | 0;
@@ -477,5 +491,7 @@ export async function restore_preamble() {
     g.context.move = 0;
     g.disp = g.disp || {};
     g.disp.botlx = 1;
+    /* allmain.c:85 SET_BOTLX: the first moveloop bot() is BL_RESET, rewriting row 1 whole over map y=20 */
+    g._status1WholeNext = true;
     g.program_state.in_moveloop = 1;
 }

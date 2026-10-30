@@ -38,6 +38,7 @@ import { mkobj, mksobj, rnd_class, OC_MERGE, m_respond, hideunder, dealloc_oextr
 import { MKOBJ_OC_MAGIC, MKOBJ_OC_MATERIAL, MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js';
 import { OC_CHARGED } from './oc_cost_data.js';
 import { useupall } from './cmd.js';
+import { _delobj_useupf } from './cmd.js';
 import { PM_FLESH_GOLEM, PM_IRON_GOLEM, PM_STONE_GOLEM, PM_CLAY_GOLEM, PM_WOOD_GOLEM,
          PM_LEATHER_GOLEM, PM_ROPE_GOLEM, PM_SKELETON, PM_GOLD_GOLEM, PM_GLASS_GOLEM,
          PM_PAPER_GOLEM, PM_STRAW_GOLEM } from './pm.generated.js';
@@ -68,7 +69,7 @@ import { BURIED_TOO, CONTAINED_TOO, TRAPPED_CHEST, TRAPPED_DOOR, Has_contents } 
 import { foundone } from './detect.js';
 import { flash_glyph_at, mon_to_glyph, trap_to_glyph, cmap_glyph } from './display.js';
 import { NO_COLOR } from './terminal.js';
-import { pline, Norep, flush_screen, newsym, feel_newsym, canspotmon, canseemon, _topl_joins_snapshot, _topline_more_pending, _defer_until_more_dismissed, tmp_at, zapdir_to_glyph, map_invisible, unmap_invisible, DISP_BEAM, DISP_CHANGE, DISP_END, DISP_FLASH, newsym_force, _topl_merge_result, shieldeff as shieldeff_real, explode_shield_effect, Deaf as _live_deaf_reading } from './display.js';
+import { pline, pline_mon, Norep, flush_screen, newsym, feel_newsym, canspotmon, canseemon, _topl_joins_snapshot, _topline_more_pending, _defer_until_more_dismissed, tmp_at, zapdir_to_glyph, map_invisible, unmap_invisible, DISP_BEAM, DISP_CHANGE, DISP_END, DISP_FLASH, newsym_force, _topl_merge_result, shieldeff as shieldeff_real, explode_shield_effect, Deaf as _live_deaf_reading } from './display.js';
 import { topl_park_cursor, _topl_stash_result, flush_pending_messages, _more_never_dismissed } from './display.js';
 import { bot, see_monsters, Sting_effects, force_more, GLYPHCLS_INVIS, Unaware } from './display.js';
 import { deadhero, pending_death_is_final, do_death_sequence } from './end.js';
@@ -92,7 +93,7 @@ import { cansee, Blind } from './vision.js';
 import { is_ice, rloc_engr } from './engrave.js';
 import { create_gas_cloud } from './region.js';
 import { closed_door, may_dig, is_pool } from './look.js';
-import { m_at, mon_nam, xkilled, XKILL_GIVEMSG, XKILL_NOCORPSE, more_experienced, dmgval, u_slow_down, newexplevel, attacks } from './uhitm.js';
+import { m_at, mon_nam, xkilled, XKILL_GIVEMSG, XKILL_NOCORPSE, more_experienced, dmgval, u_slow_down, newexplevel, attacks, exclam } from './uhitm.js';
 import { m_is_steadfast, disguised_as_mon, disguised_as_non_mon, that_is_a_mimic } from './uhitm.js';
 import { more_experienced as more_experienced_faithful, losexp } from './exper.js';
 /* C ref: mondata.h DEADMONSTER(mon) — mhp <= 0. */
@@ -127,7 +128,7 @@ import { erosion_matters, is_flammable, is_rustprone, is_crackable, is_corrodeab
 /* C objnam.c:347 distant_name — use the canonical object naming body. */
 async function distant_name(otmp, func) { return await distant_name_real(otmp, func); }
 import { polyself, polymon, rehumanize as rehumanize_real } from './polyself.js';
-import { healup, potionbreathe, make_slimed, make_stoned, self_invis_message, do_enlightenment_effect as do_enlightenment_effect_real, make_stunned, dryup } from './potion.js';
+import { healup, potionbreathe, make_slimed, make_stoned, self_invis_message, do_enlightenment_effect as do_enlightenment_effect_real, make_stunned, dryup, set_itimeout } from './potion.js';
 import { is_youmonst } from './mhitm.js';
 import { poly_when_stoned } from './mhitm.js';
 import { instapetrify } from './cmd.js';
@@ -556,11 +557,12 @@ export function incr_HBlinded(incr) {
  * HBlinded.  itimeout clamps to [0, TIMEOUT]; set_itimeout clears the timeout
  * bits and ORs the clamped value back in, preserving FROMOUTSIDE/FROMFORM. */
 function _set_HBlinded(val) {
-    let v = val | 0;
-    if (v >= _TIMEOUT_MASK) v = _TIMEOUT_MASK;
-    else if (v < 1) v = 0;
     const p = _blind_prop();
-    p.intrinsic = ((p.intrinsic | 0) & ~_TIMEOUT_MASK) | v;
+    /* C potion.c:56-79 clamps the long before storing timeout bits.  A
+     * signed 32-bit coercion first would turn a large duration negative. */
+    const which = { value: p.intrinsic | 0 };
+    set_itimeout(which, val);
+    p.intrinsic = which.value;
 }
 function toggle_blindness() {
     const up = game.u?.uprops;
@@ -731,6 +733,7 @@ export async function flashburn(duration, via_lightning) {
         return true;                                    /* zap.c:3062 */
     }
     if (!via_lightning && _u_resists_blnd_by_arti()) {
+        shieldeff_real(game.u.ux, game.u.uy); /* C zap.c:3077 */
         return true;                                    /* zap.c:3072 */
     }
     return false;                                       /* zap.c:3074 */
@@ -792,7 +795,10 @@ const DESTROY_STRINGS = [
     ['turns to dust and vanishes', '', ''],
     ['breaks apart and explodes', '', 'exploding wand'],
 ];
-export async function destroy_items(mon_is_hero, dmgtyp, dmg_in) {
+export async function destroy_items(mon, dmgtyp, dmg_in) {
+    // C zap.c:5982: choose the carrier's inventory; retain legacy hero callers.
+    if (mon !== true && !is_youmonst(mon))
+        return await destroy_items_mon(mon, dmgtyp, dmg_in);
     /* C zap.c:5990-6001: limit = dmg_in / DMG_DESTROY_SCALE + possible increment */
     let limit = Math.trunc(dmg_in / DMG_DESTROY_SCALE);
     if ((dmg_in % DMG_DESTROY_SCALE) > rn2(DMG_DESTROY_SCALE)) {
@@ -1517,7 +1523,9 @@ export async function zapyourself(obj, ordinary) {
             if (_cm_Antimagic()) {
                 /* C zap.c:2713-2716: shieldeff (display only), "Boing!",
                  * monstseesu(M_SEEN_MAGR) (RNG-free); no damage, no exercise. */
+                shieldeff_real(game.u.ux, game.u.uy);
                 await pline('Boing!');
+                monstseesu(M_SEEN_MAGR);
             }
             else {
                 if (ordinary) {
@@ -1529,6 +1537,7 @@ export async function zapyourself(obj, ordinary) {
                 }
                 /* zap.c:2725 exercise(A_STR, FALSE); monstunseesu RNG-free */
                 exercise(A_STR, false);
+                monstunseesu(M_SEEN_MAGR);
             }
             break;
         case WAN_LIGHTNING:
@@ -1602,11 +1611,14 @@ export async function zapyourself(obj, ordinary) {
             if (_uhas(COLD_RES)) {
                 /* C's resistance arm still destroys vulnerable inventory, but
                  * deals no HP damage and records the seen resistance. */
+                shieldeff_real(game.u.ux, game.u.uy);
                 await pline((Unaware() ? 'You dream that you feel ' : 'You feel ') + 'a little chill.'); /* You_feel */
+                monstseesu(M_SEEN_COLD);
                 ugolemeffects(AD_COLD, orig_dmg);
             } else {
                 await pline('You imitate a popsicle!');
                 damage = orig_dmg;
+                monstunseesu(M_SEEN_COLD);
             }
             await destroy_items(true, AD_COLD, orig_dmg);
             break;
@@ -1617,12 +1629,15 @@ export async function zapyourself(obj, ordinary) {
                 /* C: shieldeff(u.ux, u.uy) — the sparkle animation, display
                  * only and RNG-free; this module's standing shieldeff no-op
                  * convention (shieldeff_mon above) applies. */
+                shieldeff_real(game.u.ux, game.u.uy);
                 await pline('The missiles bounce!');
+                monstseesu(M_SEEN_MAGR);
                 /* C: monstseesu(M_SEEN_MAGR) — sets a memory bit on every
                  * monster that can see the hero.  No RNG, nothing rendered. */
             } else {
                 damage = d(4, 6);
                 await pline("Idiot!  You've shot yourself!");
+                monstunseesu(M_SEEN_MAGR);
                 /* C: monstunseesu(M_SEEN_MAGR) — RNG-free. */
             }
             break;
@@ -1996,15 +2011,8 @@ function findone(zx, zy, found) {
         /* C detect.c:1663-1670: magic_map_background, then foundone. */
         lev.typ = CORR;
         unblock_point(zx, zy);
-        /* C display.c:233-260: out-of-sight CORR stays lit only if waslit.
-         * Select that glyph without changing the live visibility bitmap. */
-        if (game.level?.flags?.hero_memory
-            && (!lev.remembered_glyph || lev.remembered_glyph.cls === GLYPHCLS_CMAP)) {
-            const glyph = terrain_glyph(lev, zx, zy, !!lev.waslit);
-            lev.remembered_glyph = { ch: glyph.ch, color: glyph.color,
-                                    decgfx: glyph.dec, cls: GLYPHCLS_CMAP };
-        }
-        update_lastseentyp(zx, zy);
+        /* C detect.c:1664: retain magic mapping's glyph identity and memory rules. */
+        magic_map_background(lev, zx, zy);
         /* C detect.c:1610-1624: the discovered cmap has all faces seen;
          * newsym gets temporary visibility, then the incoming bitmap returns. */
         lev.seenv = SVALL;
@@ -3329,8 +3337,7 @@ function _obj_at_zap(x, y) {
 }
 const WEB_ZAP = 18;
 const OTYP_ARROW = 18, OTYP_DART = 24; /* objects.h */
-/* C youprop.h Deaf — the same flags.deaf reader js/mhitu.js:717 uses. */
-function Deaf_zap() { return !!(game.flags && game.flags.deaf); }
+function Deaf_zap() { return _live_deaf_reading(); }
 /* C mondata.h is_swimmer(ptr) = ptr->mflags1 & M1_SWIM. */
 function _is_swimmer_zap(mon) {
     const M1_SWIM = 0x00000002; /* monflag.h:86 */
@@ -3360,11 +3367,8 @@ function _resist_is_mplayer(mon) {
 export async function shieldeff_mon(mon) {
     const x = mon.mx | 0, y = mon.my | 0;
     shieldeff_real(x, y);
-    if (cansee(x, y)) {
-        game.a11y = game.a11y || {};
-        game.a11y.msg_loc = { x, y };
-        await pline(`${Monnam(mon)} resists!`);
-    }
+    if (cansee(x, y))
+        await pline_mon(mon, `${Monnam(mon)} resists!`);
 }
 /* C ref: mon.c:3364-3384 monkilled(mdef, fltxt, how) — a monster killed by
  * something other than the hero's own blow.  For how == AD_RBRE (the
@@ -3468,14 +3472,14 @@ export async function destroy_items_mon(mon, dmgtyp, dmg_in) {
         const i = (elig_stacks < limit) ? elig_stacks : rn2(elig_stacks);
         elig_stacks++;
         if (i < 0 || i >= limit) continue;
-        items_to_destroy[i] = obj;
+        items_to_destroy[i] = { obj, oid: obj.o_id, where: obj.where };
     }
     if (elig_stacks > limit) elig_stacks = limit;
     const n = Math.min(elig_stacks, limit);
     let dmg_out = 0;
     for (let i = 0; i < n; i++) {
-        const obj = items_to_destroy[i];
-        if (!obj) continue;
+        const { obj, oid, where } = items_to_destroy[i];
+        if (!obj || obj.o_id !== oid || obj.where !== where) continue;
         dmg_out += (await maybe_destroy_item_mon(mon, obj, dmgtyp));
     }
     for (let o = mon && mon.minvent; o; o = o.nobj) o.bypass = 0;
@@ -3506,6 +3510,8 @@ async function maybe_destroy_item_mon(carrier, obj, dmgtyp) {
                    && Resists_Elem(carrier, FIRE_RES)) ? 1 : 0;
         if (otyp === SPE_BOOK_OF_THE_DEAD) {
             skip = 1;
+            if (vis)
+                await pline(`${The(await distant_name(obj, xname))} glows a strange ${hcolor("dark red")}, but remains intact.`);
         } else if (oclass === POTION_CLASS) {
             dindx = (otyp !== POT_OIL) ? 1 : 2;
             dmg = rnd(6);
@@ -3523,9 +3529,9 @@ async function maybe_destroy_item_mon(carrier, obj, dmgtyp) {
         if (oclass === RING_CLASS) {
             /* C zap.c:5855-5867.  The worn-ring-under-non-metallic-gloves
              * protection (zap.c:5856) is a hero equipment-slot test
-             * (uarmg); carrier is never the hero here, so only the
-             * item-intrinsic RIN_SHOCK_RESIST skip applies. */
-            if (otyp === RIN_SHOCK_RESIST) {
+             * (uarmg); C still tests those gloves for
+             * a monster's worn ring. */
+            if (((obj.owornmask & W_RING) && game.u.uarmg && !_is_metallic(game.u.uarmg)) || otyp === RIN_SHOCK_RESIST) {
                 skip = 1;
             } else if ((otyp >= RIN_BASE && otyp <= RIN_LAST_CHARGED) && rn2(3)) {
                 chargeit = true;
@@ -3565,7 +3571,7 @@ async function maybe_destroy_item_mon(carrier, obj, dmgtyp) {
             : ((cnt < quan) ? 'Some of '
                 : (quan === 2) ? 'Both of ' : 'All of ');
         const nm = (cnt === 1 && quan === 1) ? _Yname2(obj) : yname(obj);
-        void pline(`${mult}${nm} ${DESTROY_STRINGS[dindx][cnt > 1 ? 1 : 0]}!`);
+        await pline(`${mult}${nm} ${DESTROY_STRINGS[dindx][cnt > 1 ? 1 : 0]}!`);
     }
     /* C zap.c:5912-5926 — potionbreathe/owornmask/gc_current_wand are all
      * u_carry-only; none apply to a monster's item. */
@@ -5167,31 +5173,10 @@ function obj_shudders(obj) {
  * obfree() -> dealloc_obj() teardown of timers, lights, and contents. */
 async function _zp_delobj(obj) {
     const g = game;
-    if (!obj) return;
-    if (obj_resists(obj, 0, 0)) {
-        obj.in_use = 0;
-        return;
-    }
-    const update_map = ((obj.where | 0) === ZP_OBJ_FLOOR);
-    const ox = obj.ox | 0, oy = obj.oy | 0;
-    _zp_extract_floor(obj);
-    obj.where = ZP_OBJ_FREE;
-    /* C mkobj.c:2765-2767 dealloc_obj(): free up any timers attached to the
-     * object, else save_timers' obj_is_local() later meets an OBJ_FREE object. */
-    if (obj.timed)
-        obj_stop_timers(obj);
-    if (update_map)
-    if (update_map) {
-        maybe_unhide_at(ox, oy);
-        newsym(ox, oy);
-    }
-    await obfree(obj, null);
+    await _delobj_useupf(obj);
     // C invent.c:1458 -> mkobj.c:2765-2767: deleted objects lose their timers.
-    /* C mkobj.c:2748 dealloc_obj: obj_stop_timers() for a timed object, so a
-     * freed corpse's ROT_CORPSE timer does not outlive it. */
-    if (obj.timed)
-        obj_stop_timers(obj);
     {
+        if ((obj.where | 0) !== 9 /* OBJ_DELETED */) return;
         const store = g.__bridge__ || (g.__bridge__ = {});
         const key = 'objs_deleted.count';
         const cur = store[key] !== undefined ? Number(store[key]) : 0;
@@ -5315,10 +5300,12 @@ export async function poly_obj(obj, id) {
     const obj_location = obj.where | 0;
     let otmp = null;
 
+    if (obj.otyp === ZP_BOULDER)
+        sokoban_guilt();
     if (id === STRANGE_OBJECT) {  /* preserve symbol */
         let try_limit = 3;
         let magic_obj = MKOBJ_OC_MAGIC[obj.otyp | 0] | 0;
-        if (obj.degraded_horn) magic_obj = 0;
+        if (obj.otyp === 261 /* UNICORN_HORN */ && obj.degraded_horn) magic_obj = 0;
         /* Try up to 3 times to make the magic-or-not status of the new item
            the same as the old item. */
         do {
@@ -5338,6 +5325,11 @@ export async function poly_obj(obj, id) {
     otmp.no_charge = obj.no_charge;             /* shopkeeper's disinterest */
     if (obj_location === ZP_OBJ_INVENT)
         otmp.invlet = obj.invlet;
+    // C zap.c:1746-1754: MAIL_STRUCTURES is enabled in global.h.
+    if (obj.otyp === 364 /* SCR_MAIL */) {
+        otmp.otyp = 364;
+        otmp.spe = 1;
+    }
 
     // C zap.c:1756-1779: eggs laid by the hero remain hero-laid eggs.
     if (obj.otyp === ZP_EGG && obj.spe) {
@@ -5461,7 +5453,9 @@ export async function poly_obj(obj, id) {
 
     otmp.owt = weight(otmp);                /* update the weight */
 
-    const ox = obj.ox | 0, oy = obj.oy | 0;
+    const xp = {}, yp = {};
+    get_obj_location(obj, xp, yp, BURIED_TOO | CONTAINED_TOO);
+    const ox = xp.value | 0, oy = yp.value | 0;
     const old_wornmask = obj.owornmask & ~(W_ART | W_ARTI);
     _zp_replace_object(obj, otmp);
     if (obj_location === ZP_OBJ_INVENT) {
@@ -5488,8 +5482,15 @@ export async function poly_obj(obj, id) {
         }
     } else if (obj_location === ZP_OBJ_FLOOR) {
         /* boulder block/unblock — vision bookkeeping, RNG-free. */
-        if ((obj.otyp | 0) === ZP_BOULDER && (otmp.otyp | 0) !== ZP_BOULDER)
-            unblock_point(ox, oy);
+        if ((obj.otyp | 0) === ZP_BOULDER && (otmp.otyp | 0) !== ZP_BOULDER) {
+            if (!does_block(ox, oy))
+                unblock_point(ox, oy);
+        } else if ((obj.otyp | 0) !== ZP_BOULDER && (otmp.otyp | 0) === ZP_BOULDER) {
+            if (is_pool(ox, oy) || _is_lava_zap(ox, oy))
+                await fracture_rock(otmp);
+            if (does_block(ox, oy))
+                block_point(ox, oy);
+        }
     }
     /* C zap.c:1966-1987: note: if otmp is gone, billing for it was handled by
      * useup(). */
@@ -6773,7 +6774,7 @@ async function _bhit_zapped_wand(ddx, ddy, range, obj) {
 
 /* C zap.c:1657: (const char *)((force < 0) ? "?" : (force <= 4) ? "." : "!") */
 function _wand_exclam(force) {
-    return (force < 0) ? '?' : ((force <= 4) ? '.' : '!');
+    return exclam(force);
 }
 /* C you.h:240 #define Role_if(X) (gu.urole.mnum == (X)) — local copy, same
  * pattern already used standalone in js/cmd.js, js/potion.js, js/uhitm.js
@@ -7388,29 +7389,6 @@ function _zap_Maybe_Half_Phys(dmg) {
     return on ? Math.trunc((dmg + 1) / 2) : dmg;
 }
 const _ZAP_HALF_PHDAM = 56;   /* const.js:2353 HALF_PHDAM */
-/* C invent.c useupall(obj) = freeinv(obj) + obfree(obj).  js/cmd.js's useupall
- * handles backfire; the legacy helper below is used for a wand turning to dust. */
-function _backfire_useupall(obj) {
-    const g = game;
-    let prev = null;
-    for (let o = g.invent; o; prev = o, o = o.nobj) {
-        if (o === obj) {
-            if (prev) prev.nobj = o.nobj; else g.invent = o.nobj;
-            o.nobj = null;
-            o.where = 0;               /* OBJ_FREE */
-            const store = g.__bridge__ || (g.__bridge__ = {});
-            const key = 'objs_deleted.count';
-            const cur = store[key] !== undefined ? Number(store[key]) : 0;
-            store[key] = String(cur + 1);
-            break;
-        }
-    }
-    if (g.u) {
-        if (g.u.uwep === obj) g.u.uwep = null;
-        if (g.u.uswapwep === obj) g.u.uswapwep = null;
-        if (g.u.uquiver === obj) g.u.uquiver = null;
-    }
-}
 /* C mondata.h:52 nohands(ptr) = ((ptr)->mflags1 & M1_NOHANDS) != 0.
  * monflag.h:98 M1_NOHANDS = 0x00002000.  Reads the hero's CURRENT form, so a
  * polymorph is covered; same shape as js/lock.js:1610-1626 _nohands_lk(), which
@@ -7531,14 +7509,25 @@ export async function dozap() {
      * it is a screen/inventory-state fix, not an RNG one. */
     if (obj && (obj.spe | 0) < 0) {
         await pline(`${Tobjnam(obj, 'turn')} to dust.`);
-        _backfire_useupall(obj); /* useupall(obj) -- freeinv() unlink, no RNG */
+        await useupall(obj); // C invent.c:1312: worn cleanup, freeinv, obfree.
+        // Count actual deletions; obfree retains unpaid objects for billing.
+        if (obj.where === OBJ_DELETED) {
+            const store = g.__bridge__ || (g.__bridge__ = {});
+            const key = 'objs_deleted.count';
+            const cur = store[key] !== undefined ? Number(store[key]) : 0;
+            store[key] = String(cur + 1);
+        }
     } else {
         update_inventory();
     }
     if (FF_FAITHFUL) {
         g.context.move = 1; /* zapping consumes a turn (set before paging) */
         if (g._pending_message) {
-            await flush_screen(1);
+            /* C zap.c:2677-2682 returns after update_inventory(), with no map
+             * flush. Drain deferred update_topl pages only: a later cls() must
+             * still show the map flushed by the last pline (pline.c:274),
+             * before mondead() removed a system-shocked monster. */
+            await flush_screen(1, false);
             if ((g.multi | 0) >= 0 && g._pending_message) {
                 const rem = g._pending_message;
                 const remJoins = _topl_joins_snapshot(rem);
@@ -7968,7 +7957,7 @@ export async function drain_item(obj, by_you) {
 
     // Charge for the cost of the object
     if (by_you)
-        await costly_alteration(obj, 2); // COST_DRAIN = 2
+        await costly_alteration(obj, 1); // COST_DRAIN (hack.h:285)
 
     // Drain the object and any implied effects
     obj.spe--;
@@ -8309,8 +8298,8 @@ function untrap_prob(ttmp) {
             if (pm !== 94 && pm !== 96) chance = 7; /* !webmaker */
         }
     }
-    if (unpr(CONFUSION) || unpr(HALLUC)) chance++;
-    if (unpr(BLINDED)) chance++;
+    if (unpr(CONFUSION) || _Halluc()) chance++;
+    if (Blind()) chance++;
     if (unpr(STUNNED)) chance += 2;
     if (unpr(FUMBLING)) chance *= 2;
     if (ttmp.madeby_u) chance--;
