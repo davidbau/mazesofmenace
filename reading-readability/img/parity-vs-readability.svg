@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 340" font-family="Georgia, serif">
+<style>
+.t { font-size: 15px; font-weight: 600; fill: #3a2c1a }
+.a { font-size: 11px; fill: #6b5a43 }
+.l { font-size: 12px; fill: #3a2c1a }
+.g { stroke: #cdbf9f; stroke-width: 0.7 }
+.shade { fill: #b0452a; fill-opacity: 0.09; stroke: none }
+.step { fill: none; stroke: #b0452a; stroke-width: 2 }
+.cref { stroke: #6b5a43; stroke-width: 1; stroke-dasharray: 4 3 }
+.on { fill: #b0452a; stroke: #3a2c1a; stroke-width: 1 }
+.off { fill: #f6efdc; stroke: #6b5a43; stroke-width: 1.5 }
+.arrow { fill: none; stroke: #6b5a43; stroke-width: 1.5 }
+</style>
+<text x="46" y="20" class="t">Comments removed</text>
+<line x1="46.0" x2="386.0" y1="288.0" y2="288.0" class="g"/><text x="40.0" y="292.0" class="a" text-anchor="end">60</text>
+<line x1="46.0" x2="386.0" y1="235.08333333333331" y2="235.08333333333331" class="g"/><text x="40.0" y="239.08333333333331" class="a" text-anchor="end">65</text>
+<line x1="46.0" x2="386.0" y1="182.16666666666669" y2="182.16666666666669" class="g"/><text x="40.0" y="186.16666666666669" class="a" text-anchor="end">70</text>
+<line x1="46.0" x2="386.0" y1="129.25" y2="129.25" class="g"/><text x="40.0" y="133.25" class="a" text-anchor="end">75</text>
+<line x1="46.0" x2="386.0" y1="76.33333333333333" y2="76.33333333333333" class="g"/><text x="40.0" y="80.33333333333333" class="a" text-anchor="end">80</text>
+<text x="46.0" y="304" class="a" text-anchor="middle">88</text>
+<text x="96.00000000000003" y="304" class="a" text-anchor="middle">90</text>
+<text x="146.00000000000006" y="304" class="a" text-anchor="middle">92</text>
+<text x="196.00000000000006" y="304" class="a" text-anchor="middle">94</text>
+<text x="246.00000000000009" y="304" class="a" text-anchor="middle">96</text>
+<text x="296.0000000000001" y="304" class="a" text-anchor="middle">98</text>
+<text x="346.0000000000001" y="304" class="a" text-anchor="middle">100</text>
+<text x="216.0" y="326" class="a" text-anchor="middle">screen parity (%)</text>
+<text transform="translate(12,161.0) rotate(-90)" class="a" text-anchor="middle">readability (%)</text>
+<path d="M46.0,147.2416666666667 H87.75000000000006 V149.88750000000005 H310.24999999999994 V257.3083333333334 H333.7500000000003 V288.0 H46.0 Z" class="shade"/>
+<path d="M46.0,147.2416666666667 H87.75000000000006 V149.88750000000005 H310.24999999999994 V257.3083333333334 H333.7500000000003 V288.0" class="step"/>
+<line x1="46.0" x2="386.0" y1="82.15416666666664" y2="82.15416666666664" class="cref"/>
+<text x="50.0" y="77.15416666666664" class="l">C 79.5</text>
+<circle cx="333.7500000000003" cy="257.3083333333334" r="4.5" class="on"/>
+<text x="339.7500000000003" y="275.3083333333334" class="l" text-anchor="end">NoahBPeterson</text>
+<circle cx="309.5000000000003" cy="160.47083333333336" r="4.5" class="off"/>
+<text x="301.5000000000003" y="164.47083333333336" class="l" text-anchor="end">daoa0601</text>
+<circle cx="294.75000000000017" cy="211.27083333333331" r="4.5" class="off"/>
+<text x="302.75000000000017" y="215.27083333333331" class="l" text-anchor="start">jon-bell</text>
+<circle cx="206.5000000000001" cy="250.95833333333331" r="4.5" class="off"/>
+<text x="198.5000000000001" y="254.95833333333331" class="l" text-anchor="end">lockwo</text>
+<circle cx="310.24999999999994" cy="149.88750000000005" r="4.5" class="on"/>
+<text x="318.24999999999994" y="143.88750000000005" class="l" text-anchor="start">richie3366</text>
+<circle cx="241.00000000000003" cy="215.50416666666672" r="4.5" class="off"/>
+<text x="233.00000000000003" y="219.50416666666672" class="l" text-anchor="end">rohitgandikota</text>
+<path d="M178.00000000000009,274 V286 m-4,-5 l4,5 l4,-5" class="arrow"/><text x="178.00000000000009" y="270" class="l" text-anchor="middle">serteal 18.0</text>
+<circle cx="87.75000000000006" cy="147.2416666666667" r="4.5" class="on"/>
+<text x="95.75000000000006" y="151.2416666666667" class="l" text-anchor="start">vtjeng</text>
+<text x="446" y="20" class="t">Comments kept</text>
+<line x1="446.0" x2="786.0" y1="288.0" y2="288.0" class="g"/><text x="440.0" y="292.0" class="a" text-anchor="end">60</text>
+<line x1="446.0" x2="786.0" y1="235.08333333333331" y2="235.08333333333331" class="g"/><text x="440.0" y="239.08333333333331" class="a" text-anchor="end">65</text>
+<line x1="446.0" x2="786.0" y1="182.16666666666669" y2="182.16666666666669" class="g"/><text x="440.0" y="186.16666666666669" class="a" text-anchor="end">70</text>
+<line x1="446.0" x2="786.0" y1="129.25" y2="129.25" class="g"/><text x="440.0" y="133.25" class="a" text-anchor="end">75</text>
+<line x1="446.0" x2="786.0" y1="76.33333333333333" y2="76.33333333333333" class="g"/><text x="440.0" y="80.33333333333333" class="a" text-anchor="end">80</text>
+<text x="446.0" y="304" class="a" text-anchor="middle">88</text>
+<text x="496.0" y="304" class="a" text-anchor="middle">90</text>
+<text x="546.0" y="304" class="a" text-anchor="middle">92</text>
+<text x="596.0" y="304" class="a" text-anchor="middle">94</text>
+<text x="646.0000000000001" y="304" class="a" text-anchor="middle">96</text>
+<text x="696.0000000000001" y="304" class="a" text-anchor="middle">98</text>
+<text x="746.0000000000001" y="304" class="a" text-anchor="middle">100</text>
+<text x="616.0" y="326" class="a" text-anchor="middle">screen parity (%)</text>
+<text transform="translate(412,161.0) rotate(-90)" class="a" text-anchor="middle">readability (%)</text>
+<path d="M446.0,116.02083333333334 H487.75000000000006 V146.18333333333328 H709.5000000000002 V153.0625 H710.25 V195.39583333333331 H733.7500000000002 V288.0 H446.0 Z" class="shade"/>
+<path d="M446.0,116.02083333333334 H487.75000000000006 V146.18333333333328 H709.5000000000002 V153.0625 H710.25 V195.39583333333331 H733.7500000000002 V288.0" class="step"/>
+<line x1="446.0" x2="786.0" y1="64.16249999999994" y2="64.16249999999994" class="cref"/>
+<text x="450.0" y="59.16249999999994" class="l">C 81.2</text>
+<circle cx="733.7500000000002" cy="195.39583333333331" r="4.5" class="on"/>
+<text x="739.7500000000002" y="213.39583333333331" class="l" text-anchor="end">NoahBPeterson</text>
+<circle cx="709.5000000000002" cy="146.18333333333328" r="4.5" class="on"/>
+<text x="701.5000000000002" y="144.18333333333328" class="l" text-anchor="end">daoa0601</text>
+<circle cx="694.7500000000002" cy="176.34583333333336" r="4.5" class="off"/>
+<text x="686.7500000000002" y="180.34583333333336" class="l" text-anchor="end">jon-bell</text>
+<circle cx="606.5000000000001" cy="195.92499999999995" r="4.5" class="off"/>
+<text x="598.5000000000001" y="199.92499999999995" class="l" text-anchor="end">lockwo</text>
+<circle cx="710.25" cy="153.0625" r="4.5" class="on"/>
+<text x="718.25" y="165.0625" class="l" text-anchor="start">richie3366</text>
+<circle cx="641.0" cy="197.51250000000005" r="4.5" class="off"/>
+<text x="633.0" y="215.51250000000005" class="l" text-anchor="end">rohitgandikota</text>
+<path d="M578.0000000000001,274 V286 m-4,-5 l4,5 l4,-5" class="arrow"/><text x="578.0000000000001" y="270" class="l" text-anchor="middle">serteal 18.8</text>
+<circle cx="487.75000000000006" cy="116.02083333333334" r="4.5" class="on"/>
+<text x="495.75000000000006" y="120.02083333333334" class="l" text-anchor="start">vtjeng</text>
+</svg>

@@ -12,8 +12,8 @@
 
 const NEWS_ITEMS = [
     {
-        date: '2026-10-30',
-        dateText: 'October 30, 2026',
+        date: '2026-10-31',
+        dateText: 'October 31, 2026',
         href: '/reading-readability/',
         html: `<strong>Reading Readability:</strong>
         the aim of the contest is a readable port, but classic measures
