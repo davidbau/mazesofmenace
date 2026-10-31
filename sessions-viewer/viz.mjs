@@ -481,6 +481,101 @@ function classifyScreenDiffs() {
     }
 }
 
+// Find the first flat step index where canon and js diverge. Returns
+// { stepIdx, kind } or null if no divergence exists (which means the
+// contestant has a fully-matching session — the goal). PRNG mismatches
+// are reported first because they cause every subsequent screen diff;
+// the screen/cursor diffs fire only on the rare cases where PRNG
+// matches but the rendering still differs.
+function findFirstDivergence() {
+    if (!CURRENT) return null;
+    let idx = 0;
+    for (const seg of CURRENT.segments) {
+        for (const st of seg.steps) {
+            const ap = filterPrng(st.canonRng), bp = filterPrng(st.jsRng);
+            const m = Math.max(ap.length, bp.length);
+            for (let i = 0; i < m; i++) {
+                const ka = ap[i] ? callKey(ap[i]) : null;
+                const kb = bp[i] ? callKey(bp[i]) : null;
+                if (ka !== kb) return { stepIdx: idx, kind: 'prng' };
+            }
+            const d = st._diff;
+            if (d?.char)   return { stepIdx: idx, kind: 'screen-char' };
+            if (d?.attr)   return { stepIdx: idx, kind: 'screen-attr' };
+            if (d?.cursor) return { stepIdx: idx, kind: 'cursor' };
+            idx++;
+        }
+    }
+    return null;
+}
+
+// Build a trimmed session.json containing the first `cutoff` flat steps.
+// The schema is unchanged so the judge and the viewer can replay it.
+// Each segment's `steps` and `moves` are truncated in lockstep (assumes
+// 1 move = 1 step in the recorded session format).
+function sliceSession(cutoff) {
+    if (!CURRENT) return null;
+    const orig = CURRENT.sessionData;
+    const outSegments = [];
+    let remaining = Math.max(1, cutoff);
+    for (const seg of orig.segments) {
+        if (remaining <= 0) break;
+        const stepsCount = (seg.steps || []).length;
+        const take = Math.min(stepsCount, remaining);
+        const newSeg = Object.assign({}, seg, {
+            steps: (seg.steps || []).slice(0, take),
+            moves: (seg.moves || []).slice(0, Math.min((seg.moves || []).length, take)),
+        });
+        outSegments.push(newSeg);
+        remaining -= take;
+    }
+    return Object.assign({}, orig, { segments: outSegments });
+}
+
+function exportSlice() {
+    if (!CURRENT) return;
+    const cur = parseInt($('#step-readout').dataset.step || '0', 10);
+    const cutoff = cur + 5;
+    const sliced = sliceSession(cutoff);
+    if (!sliced) return;
+    const blob = new Blob([JSON.stringify(sliced, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const baseName = (CURRENT.name || 'session').replace(/\.json$/, '');
+    a.download = `${baseName}-slice-${cutoff}.json`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
+}
+
+function jumpToFirstDivergence() {
+    const found = findFirstDivergence();
+    const pill = $('#bisect-readout');
+    if (!found) {
+        if (pill) {
+            pill.textContent = 'no divergence';
+            pill.dataset.kind = 'none';
+        }
+        return;
+    }
+    if (pill) {
+        pill.textContent = `first divergence: step ${found.stepIdx + 1} (${found.kind})`;
+        pill.dataset.kind = found.kind;
+    }
+    render(found.stepIdx);
+}
+
+let _bisectInstalled = false;
+function wireBisectControls() {
+    if (_bisectInstalled) return;
+    _bisectInstalled = true;
+    const jumpBtn = $('#bisect-jump');
+    const exportBtn = $('#bisect-export');
+    if (jumpBtn) jumpBtn.addEventListener('click', () => { jumpToFirstDivergence(); jumpBtn.blur(); });
+    if (exportBtn) exportBtn.addEventListener('click', () => { exportSlice(); exportBtn.blur(); });
+}
+
 function buildStatusSummary(name) {
     let prngMatch = 0, prngTotal = 0;
     let screenMatch = 0, screenTotal = 0;
@@ -543,6 +638,7 @@ function initUI() {
     installKeyboardNav();
     wireTimelineClicks();
     wireViewModeButtons();
+    wireBisectControls();
     // Honor #view=NAME from the URL (default 'js').
     const hash = readHash();
     if (hash.view && VIEW_MODES.includes(hash.view)) {
@@ -971,6 +1067,7 @@ function installKeyboardNav() {
         const stride = ev.shiftKey ? 10 : 1;
         if (ev.key === 'ArrowLeft')  cur = Math.max(0, cur - stride);
         else if (ev.key === 'ArrowRight') cur = Math.min(total - 1, cur + stride);
+        else if (ev.key === 'd' || ev.key === 'D') { ev.preventDefault(); jumpToFirstDivergence(); return; }
         else return;
         ev.preventDefault();
         render(cur);
