@@ -143,8 +143,7 @@ import {
     carrying, currency, display_inventory, money_cnt, obfree, sortloot, stackobj, update_inventory,
     useup,
 } from './invent.js';
-import { bless, isContainer, mksobj, place_object, remove_object }
-    from './obj.js';
+import { bless, isContainer, mksobj, place_object } from './obj.js';
 import { discover_object } from './o_init.js';
 import {
     AMULET_OF_LIFE_SAVING,
@@ -210,8 +209,6 @@ import { shkname, shkname_is_pname } from './shknam.js';
 import { accessible } from './monmove.js';
 import { note_unported } from './unported.js';
 import { keepdogs } from './dog.js';
-import { setwornEnv } from './do_wear.js';
-import { setnotworn } from './worn.js';
 import { make_sick, set_itimeout } from './potion.js';
 import { rn2 } from './rng.js';
 import { d } from './rng.js';
@@ -688,7 +685,6 @@ export async function done2(state = game) {
 // debug-fuzzer branch and the HANGUPHANDLING query guard reads/increments it;
 // keep the same state owner so a hangup cannot accidentally ask for input.
 //
-// useup() needs the worn-slot hooks when the life-saving amulet is consumed.
 // The optional caller hooks let a live window supply its own inventory
 // refresh; a no-op keeps this end-of-game mutation valid in the recorder TTY,
 // whose permanent inventory window is not active.
@@ -697,9 +693,6 @@ function lifeSavingInventoryEnv(state, source = {}) {
     const hooks = {
         ...sourceHooks,
         updateInventory: sourceHooks.updateInventory ?? (() => {}),
-        setNotWorn: sourceHooks.setNotWorn ?? ((obj, env) => (
-            setnotworn(obj, setwornEnv(env.state))
-        )),
     };
     return { ...source, state, hooks };
 }
@@ -1036,12 +1029,7 @@ export async function done_object_cleanup(state) {
     const placeFreeTransitObject = (obj, groups) => {
         if (!obj || obj.where !== OBJ_FREE) return;
         place_object(obj, ox, oy, { state });
-        stackobj(obj, {
-            state,
-            // stackobj() may merge an existing floor object. C's
-            // obj_extract_self() can remove that floor member here.
-            hooks: { extractExternalObject: remove_object },
-        });
+        stackobj(obj, { state });
         for (const [container, field] of groups) {
             if (container?.[field] === obj) container[field] = null;
         }

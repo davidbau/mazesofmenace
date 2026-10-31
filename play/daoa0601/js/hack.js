@@ -82,6 +82,7 @@ import { checkSlipperyIce } from './fumbling.js';
 import { drawbridgeUnderlyingType } from './drawbridge_terrain.js';
 import { arriveTravel, captureRunmodeDelay, stopRun } from './runmode.js';
 import { wakeMonstersNearWithMessages } from './monster_wake.js';
+import { monsterMayDigLocation } from './mon.js';
 import { currentAttribute, exerciseAttribute } from './attrib.js';
 import { roomForRoomno, roomsAt } from './room.js';
 import { finishDestinationSpotEffects } from './location_effects.js';
@@ -92,8 +93,10 @@ import { diggingTarget } from './hero_digging.js';
 import { objectTypeKnown, tendedShop } from './shk.js';
 import { maybeSmudgeEngravings } from './engrave.js';
 import { announceInvocationSquare } from './invocation.js';
-// Door opening and teleport input remain in cmd.ts until their owners move.
-import { askTeleportDestination, doopen, xyToDirection } from './cmd.js';
+// Door opening and teleport input live with their C owners.
+import { xyToDirection } from './cmd.js';
+import { doopen } from './lock.js';
+import { askTeleportDestination } from './teleport.js';
 // C hack.c:escape_from_sticky_mon(). True means this attempt was spent
 // struggling; release clears the grip directly, without unstuck's cooldown.
 export async function escapeFromStickyMonster(x, y) {
@@ -240,6 +243,23 @@ export function heroBadRock(state, x, y) {
     const canPass = !!(flags & M1_WALLWALK)
         && !(IS_STWALL(location.typ) && (location.wall_info & W_NONPASSWALL));
     return cannotTunnel && !canPass;
+}
+// C hack.c:bad_rock() for a monster actor. The orthogonal cells around a
+// diagonal move use the species' intrinsic tunnelling/passwall abilities,
+// not the allow flags which were computed for the destination itself.
+export function badRockForMonster(monster, state, x, y) {
+    const loc = state?.level?.at?.(x, y);
+    if (!loc)
+        return true;
+    const pile = state?.level?.objects?.[x]?.[y] || [];
+    if (state?.level?.flags?.sokoban_rules && pile.some((object) => object.otyp === BOULDER))
+        return true;
+    if (!IS_OBSTRUCTED(loc.typ))
+        return false;
+    const flags = MONSTER_FLAGS1[monster?.mnum] ?? 0;
+    const mayTunnel = !!(flags & M1_TUNNEL) && !(flags & M1_NEEDPICK) && monsterMayDigLocation(loc);
+    const mayPassWall = !!(flags & M1_WALLWALK) && !(IS_STWALL(loc.typ) && (loc.wall_info ?? 0) & W_NONPASSWALL);
+    return !mayTunnel && !mayPassWall;
 }
 export function heroTightDiagonalReason(state = game) {
     const u = state.u;
@@ -1827,7 +1847,7 @@ async function fightEmptyDestination(x, y) {
                 game.u.dz = 0;
                 await applyPickAxeDirection(weapon, {
                     state: game,
-                    attackMonster: monster => attackHostileMonster(monster, monster.mx, monster.my),
+                    attackMonster: (monster, struckAt) => attackHostileMonster(monster, struckAt.x, struckAt.y),
                     payShopkeeper: dopay,
                 });
                 return true;
@@ -2466,7 +2486,7 @@ async function domoveCore(dx, dy) {
             u.dz = 0;
             const result = await applyPickAxeDirection(weapon, {
                 state: game,
-                attackMonster: (target) => attackHostileMonster(target, target.mx, target.my),
+                attackMonster: (target, struckAt) => attackHostileMonster(target, struckAt.x, struckAt.y),
                 payShopkeeper: dopay,
             });
             if (result.died)

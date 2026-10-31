@@ -30,20 +30,17 @@ import {
     ACH_MINE,
     ACH_SOKO,
     A_DEX,
-    AIR,
     ALTAR,
     AM_NONE,
     Align2amask,
     BOTH_SIDES,
     BLINDED,
-    CLOUD,
     COLNO,
     DEAF,
     CORR,
     DIR_DOWN,
     DIR_UP,
     DISMOUNT_FELL,
-    DOOR,
     DRAWBRIDGE_UP,
     DB_FLOOR,
     DB_UNDER,
@@ -64,7 +61,6 @@ import {
     HAND,
     HALF_PHDAM,
     IS_ALTAR,
-    IS_STWALL,
     IS_WATERWALL,
     IS_SINK,
     Is_airlevel,
@@ -293,7 +289,7 @@ import {
 } from './monsters.js';
 import {
     free_omid, free_omonst, is_pick, isCandle, obj_meld, obj_nexto_xy, objectType, place_object,
-    pudding_merge_message, remove_object, set_bknown, set_corpsenm, splitobj, weight,
+    pudding_merge_message, set_bknown, set_corpsenm, splitobj, weight,
 } from './obj.js';
 import { oinit } from './o_init.js';
 import {
@@ -405,7 +401,7 @@ import { note_unported } from './unported.js';
 import { create_mplayers } from './mplayer.js';
 import { block_point, cansee, recalc_block_point, vision_recalc, vision_reset } from './vision.js';
 import { setuwep, welded, weldmsg } from './wield.js';
-import { bimanual, bypass_objlist, nxt_unbypassed_obj, setnotworn, setuqwep, setuswapwep } from './worn.js';
+import { bimanual, bypass_objlist, nxt_unbypassed_obj, setuqwep, setuswapwep } from './worn.js';
 import { resurrect } from './wizard.js';
 import {
     assign_graphics, S_altar, S_fountain, S_grave, S_room, S_sink, S_throne,
@@ -429,18 +425,9 @@ export class UnsupportedLevelChangeError extends Error {
 // C ref: do.c revive_corpse() (2111-2250). revive() deletes the corpse on
 // success, so its location, carrier, container, and name are saved first.
 export async function revive_corpse(corpse, state = game, rawEnv = {}) {
-    const wornHooks = setwornEnv(state).hooks;
     const env = {
         ...rawEnv, state,
-        hooks: {
-            // zap.c:revive -> invent.c:useup/obfree removes a wielded corpse
-            // through the existing worn.c owner before deallocating it.
-            setNotWorn: (obj, hookEnv) => setnotworn(obj, {
-                ...hookEnv,
-                hooks: { ...wornHooks, ...hookEnv.hooks },
-            }),
-            ...rawEnv.hooks,
-        },
+        hooks: { ...rawEnv.hooks },
     };
     const message = env.message ?? ttyPline;
     const where = corpse.where;
@@ -1587,11 +1574,9 @@ function requiredDropHook(env, name) {
     return hook;
 }
 
-// The three operations the dropz() tail needs. C calls newsym() and
-// encumber_msg() from inside dropz() itself, at do.c:840 and :842, and reaches
-// remove_object() through stackobj() -> merged() -> obj_extract_self() when
-// the landing object absorbs a pile member. All three are injected because
-// display.c, pickup.c and mkobj.c own them.
+// The two operations the dropz() tail needs. C calls newsym() and
+// encumber_msg() from inside dropz() itself, at do.c:840 and :842. Both are
+// injected because display.c and pickup.c own them.
 export function dropCommandEnv(state, env = {}) {
     const dropState = env.state ?? state;
     return {
@@ -1600,7 +1585,6 @@ export function dropCommandEnv(state, env = {}) {
         hooks: {
             ...setwornEnv(dropState).hooks,
             encumberMessage: encumber_msg,
-            extractExternalObject: remove_object,
             newsym,
             ...env.hooks,
         },
@@ -1979,11 +1963,6 @@ export function preflight_dropx(obj, env = {}) {
         throw new UnsupportedDropError('an unpaid object');
 
     const { ux: x, uy: y } = u;
-    const location = state.level?.at(x, y);
-    if (!location)
-        throw new UnsupportedDropError('non-ordinary terrain');
-    // A down gate is handled by dropx() before the ordinary floor tail.
-    const stway = stairway_at(x, y, state);
     // shk.c:sellobj() owns its shop checks after floor placement, including
     // the costly-spot test this preflight used to reject.
     // The remaining square effects are reached from dropz()'s flooreffects().
@@ -2012,18 +1991,12 @@ export function preflight_dropx(obj, env = {}) {
     if ((pool || lava) && !ordinaryLiquid && !submergedWaterBoulder)
         throw new UnsupportedDropError('liquid terrain');
     // do.c:flooreffects leaves a boulder intact on dry terrain without a
-    // pit or hole. The trap and liquid guards above bound this floor path.
-    // Doorways, thrones and stairways add no flooreffects() branch when
-    // shipping leaves the object on this level. Neither do stone and walls:
-    // a wall-passing hero can drop there through drop() or hold_another_object().
-    if (location.typ !== ROOM && location.typ !== CORR
-        && location.typ !== DOOR && location.typ !== SINK
-        && location.typ !== THRONE && location.typ !== FOUNTAIN
-        && !IS_ALTAR(location.typ) && !IS_STWALL(location.typ) && !stway
-        && location.typ !== AIR && location.typ !== CLOUD
-        && !ordinaryLiquid && !submergedWaterBoulder) {
-        throw new UnsupportedDropError('non-ordinary terrain');
-    }
+    // pit or hole, and has no arm for the dry square type itself: room,
+    // corridor, doorway, stairs, furniture, grave, ice, tree, iron bars,
+    // stone and walls (a wall-passing hero can drop there through drop() or
+    // hold_another_object()) all fall through to mkobj.c place_object(),
+    // whose obj_timer_checks() re-times a timed object landing on ice. The
+    // trap and liquid guards above bound this floor path.
     // do.c:dropx/dropz/flooreffects adds no effect for an engraving on dry
     // floor. Keep its text intact and let the ordinary placement/redraw run.
     // A visible region affects the canonical redraw, not floor placement.
@@ -2080,11 +2053,6 @@ export function preflight_dropx(obj, env = {}) {
     preflight_update_inventory(normalized);
     requiredDropHook(normalized, 'newsym');
     requiredDropHook(normalized, 'encumberMessage');
-    // stackobj() reaches obj_extract_self() for the pile member it absorbs,
-    // and that member is on the floor. Required unconditionally rather than
-    // only for a non-empty pile, so that admitting the drop does not depend on
-    // what another object happens to be lying there.
-    requiredDropHook(normalized, 'extractExternalObject');
     return {
         consumed: false,
         initialWhere: obj.where,
@@ -2247,7 +2215,13 @@ async function dropzAdmitted(obj, normalized, withImpact = false) {
     }
     stackobj(obj, normalized);
     if (heroIsBlind(normalized.state) && Levitation(normalized.state)) {
-        map_object(obj, 0, normalized.state);
+        // display.c map_object() refuses any state but the module-global
+        // game, because its draw half paints that game whatever state it is
+        // handed. The once-per-turn planning clone therefore binds this
+        // operation to a no-op beside newsym below (js/allmain.js
+        // finishElapsedTurn()); every live caller takes map_object() itself,
+        // so only a dry run needs to supply the hook.
+        (normalized.hooks.mapObject ?? map_object)(obj, 0, normalized.state);
     }
     requiredDropHook(normalized, 'newsym')(
         normalized.state.u.ux,

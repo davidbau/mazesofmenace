@@ -42,9 +42,10 @@ import { consumeInventoryItem } from './invent.js';
 import { useUpInventoryStack } from './hero_inventory.js';
 import { igniteItems } from './light.js';
 import { buryFloorObjectsAt } from './buried_object.js';
-import { fix_wall_spines, maketrap } from './mklev.js';
+import { maketrap } from './mklev.js';
+import { fix_wall_spines } from './mkmaze.js';
 import { monsterResistanceBits } from './monster_resistance.js';
-import { finishImmediateMonsterTrap, triggerImmediateMonsterTrap } from './monmove.js';
+import { finishImmediateMonsterTrap, triggerImmediateMonsterTrap } from './trap.js';
 import { makePlural, withIndefiniteArticle } from './object_grammar.js';
 import { MONSTER_FLAGS1 } from './monster_data.js';
 import { DWARVISH_CLOAK, GLOB_OF_GREEN_SLIME, OBJECT_CHARGED, OBJECT_NAMES, OBJECT_PROPERTY, POT_OIL, POT_WATER, RIN_SHOCK_RESISTANCE, SCR_FIRE, SPE_BOOK_OF_THE_DEAD, SPE_FIREBALL, WAN_LIGHTNING, WAN_STRIKING, } from './object_data.js';
@@ -58,7 +59,7 @@ import { dryFountainAt } from './fountain.js';
 import { dissolveBars } from './projectile_bars.js';
 import { resetHeroTrap } from './terrain_movement.js';
 import { stopHeroOccupation } from './occupation.js';
-import { rn2, rnd } from './rng.js';
+import { rn1, rn2, rnd } from './rng.js';
 import { promptDirection } from './tty_prompts.js';
 import { cansee, couldsee, vision_note_blocker_change } from './vision.js';
 import { exceedsActionCapacity, objectWeight } from './weight.js';
@@ -337,7 +338,7 @@ async function freezeLiquidAt(x, y, state, publish) {
                 await resetHeroTrap(true, state);
             }
             else {
-                setHeroTrap(rnd(50) + 19, TT_INFLOOR, state);
+                setHeroTrap(rn1(50, 20), TT_INFLOOR, state);
                 await publish('You are firmly stuck in the cooling rock.');
             }
         }

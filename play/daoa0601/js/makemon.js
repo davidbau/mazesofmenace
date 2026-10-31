@@ -44,9 +44,10 @@ import { questMonsterAlignment, questMonsterFlags2, questMonsterFlags3, questMon
 import { inTown, roomForIndex } from './room.js';
 import { maybeGiveDomesticSaddle } from './steed.js';
 import { goodPosition } from './teleport_rules.js';
-import { vision_note_blocker_change } from './vision.js';
+import { block_point, visionCellBlocksLight } from './vision.js';
 import { objectWeight } from './weight.js';
-import { findMonsterNearPosition, findMonsterNearPositionCore, getShopItem, makemonNear, } from './mklev.js';
+import { findMonsterNearPosition, findMonsterNearPositionCore, makemonNear, } from './mklev.js';
+import { getShopItem } from './shknam.js';
 import { questMonsterType } from './quest_pager.js';
 // Object/class constants (normally from objects.js, not in contest template)
 const RANDOM_CLASS = 0;
@@ -480,8 +481,10 @@ function receivesClericEquipment(mndx) {
         && (MONSTER_SOUND[mndx] === 41 || questMonsterRepresentsRole(mndx, 'priest'));
 }
 function levelMonsterAt(x, y, ignore = null) {
+    // C MON_AT(x, y) is purely positional: a dying monster keeps its square
+    // until m_detach, so mhp does not filter occupancy here.
     return game.level?.monsters?.find(monster => monsterHasMapPosition(monster, game) && monster !== ignore
-        && (monster?.mhp ?? 1) > 0 && monsterOccupiesPosition(monster, x, y));
+        && monsterOccupiesPosition(monster, x, y));
 }
 // C ref: makemon.c makemon_rnd_goodpos().  The random phase owns a complete
 // x/y pair for every rejected candidate.  Level generation skips the
@@ -575,7 +578,11 @@ export async function setMimicAppearance(monster) {
     }
     else if (monster.mcorpsenm != null)
         monster.mcorpsenm = -1;
-    vision_note_blocker_change(monster.mx, monster.my);
+    // C makemon.c:set_mimic_sym() ends by joining the blocker table only
+    // when the disguise actually obstructs light.  It never digs the cell
+    // back out here, so a non-blocking mimic must not request a recalc.
+    if (visionCellBlocksLight(requireGameLevel(), monster.mx, monster.my))
+        block_point(monster.mx, monster.my);
 }
 async function chooseMimicAppearance(x, y) {
     const level = requireGameLevel();
