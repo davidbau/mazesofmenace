@@ -2,14 +2,15 @@
 // C refs: polyself.c dospit(), dothrow.c throwit()/thitmonst()/toss_up(),
 // and uhitm.c hmon() venom cases.
 import { IS_SOFT, LOST_THROWN } from './const.js';
-import { newsym, plineWithContinuation } from './display.js';
+import { newsym } from './display.js';
+import { plineWithContinuation } from './pline.js';
 import { game } from './gstate.js';
 import { cansee } from './vision.js';
 import { hitMonsterWithThrownEggPieOrVenom, } from './hero_thrown_egg_pie_venom.js';
 import { hurtleHero } from './hero_hurtle.js';
 import { finishHeroMonsterKillOutcome } from './hero_monster_death.js';
 import { placeCreatedObject, stack_object } from './floor_object.js';
-import { mksobj } from './mklev.js';
+import { mksobj } from './mkobj.js';
 import { MONSTER_ATTACKS } from './monster_data.js';
 import { AD_ACID, AD_BLND, AD_DRST, AT_SPIT, } from './monster_attack_types.js';
 import { breakFloorObject, breakObjectAtLocation, objectBreaksOnImpact, } from './object_breakage.js';

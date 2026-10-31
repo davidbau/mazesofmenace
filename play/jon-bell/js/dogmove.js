@@ -899,7 +899,7 @@ async function dog_starve(mtmp) {
     if ((mtmp.mleashed | 0) && mtmp !== game.u?.usteed)
         await pline('Your leash goes slack.');
     else if (cansee(mtmp.mx | 0, mtmp.my | 0))
-        await pline(`${Monnam_dm(mtmp)} starves.`);
+        await pline_mon(mtmp, `${Monnam_dm(mtmp)} starves.`);
     else
         await You_feel('%s for a moment.', dm_hallucinating() ? 'bummed' : 'sad');
     await mondied_dm(mtmp);
@@ -935,7 +935,7 @@ async function dog_hunger(mtmp, edog) {
             return true;
         }
         if (cansee(mtmp.mx | 0, mtmp.my | 0))
-            void pline(`${Monnam_dm(mtmp)} is confused from hunger.`);
+            await pline_mon(mtmp, `${Monnam_dm(mtmp)} is confused from hunger.`);
         else if (couldsee_vision(mtmp.mx | 0, mtmp.my | 0))
             await beg(mtmp);
         else
@@ -1088,11 +1088,12 @@ async function relobj_dm(mtmp) {
         otmp.ox = omx; otmp.oy = omy;
         const objName = await distant_obj_name(otmp);
         /* C steal.c:mdrop_obj — extract_from_minvent then place_object. */
-        extract_from_minvent_dm(mtmp, otmp);
+        await extract_from_minvent_tp(mtmp, otmp, false, true);
         /* C steal.c:839 — verbose && cansee → pline "<Monnam> drops <obj>." */
         if (cansee(omx, omy) && game.flags?.verbose !== false)
             { set_msg_xy_dm(mtmp.mx, mtmp.my); await pline(`${Monnam_dm(mtmp)} drops ${objName}.`); } /* pline_mon, steal.c:836 */
         if (!await flooreffects_dm(otmp, omx, omy, 'fall')) {
+            await obj_no_longer_held(otmp);
             place_object(otmp, omx, omy);
             await stackobj_dm(otmp);
         }

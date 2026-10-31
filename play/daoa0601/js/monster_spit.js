@@ -3,11 +3,12 @@
 import { BOLT_LIM, M_ATTK_HIT, M_ATTK_MISS } from './const.js';
 import { endVoluntaryMultiTurn } from './command_state.js';
 import { impossible } from './diagnostics.js';
-import { canSeeMonster, canSpotMonster, plineWithContinuation } from './display.js';
+import { canSeeMonster, canSpotMonster } from './display.js';
+import { plineWithContinuation } from './pline.js';
 import { requireLiveGame } from './gstate.js';
 import { dist2, distmin } from './hacklib.js';
 import { formatHeardMessage } from './hero_speech.js';
-import { mksobj } from './mklev.js';
+import { mksobj } from './mkobj.js';
 import { AD_ACID, AD_BLND, AD_DRST } from './monster_attack_types.js';
 import { monsterName, possessiveName } from './monster_name.js';
 import { monsterLinedUpWithHero, monsterLinedUpWithMonster } from './monster_ranged_alignment.js';

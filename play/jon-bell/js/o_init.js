@@ -31,13 +31,13 @@ import { OC_DESCR } from './oc_descr_data.js';
  * hoisted function declarations and neither is called from a module body, so the
  * live bindings resolve at call time.  Same shape as the objnam<->eat cycle
  * documented at js/objnam.js:38. */
-import { Japanese_item_name } from './objnam.js';
+import { Japanese_item_name, getObjDescr } from './objnam.js';
 /* prop.h HALLUC / HALLUC_RES — the two slots youprop.h:116-120's
  * Hallucination macro reads.  See _observe_hallucinating() below. */
 import { HALLUC, HALLUC_RES } from './const.js';
 import { TtyMenu, PICK_ONE, ATR_NONE, menu_heading_attr_text } from './tty_menu.js';
 import { display_text_window } from './com_pager.js';
-import { pline, flush_screen, raw_print_wait } from './display.js';
+import { pline, flush_screen, raw_print_wait, impossible_sync } from './display.js';
 import { impossible } from './pline.js';
 import { config_error_add } from './cmd_binds.js';
 import { OC_USES_KNOWN } from './mklev.js';
@@ -55,6 +55,16 @@ import { _interesting_to_discover, _disco_typename, _disco_append_price_quote,
  * observe_object() below, which is how C states it (both o_init.c:447 and
  * o_init.c:460 test the same manifest constant). */
 export const FIRST_OBJECT = 18;
+
+// C o_init.c:352-365: compare only a non-null unidentified description.
+export function objdescr_is(obj, descr) {
+    if (!obj) {
+        impossible_sync('objdescr_is: null obj');
+        return false;
+    }
+    const objdescr = getObjDescr(obj.otyp | 0);
+    return objdescr != null && objdescr === descr;
+}
 /* C ref: you.h:240 Role_if(PM_SAMURAI); role index 9, as js/objnam.js:150 uses
  * it.  initrole-first, because urole is not populated during u_init. */
 const _ROLE_IDX_SAMURAI = 9;

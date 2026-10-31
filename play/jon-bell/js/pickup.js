@@ -1738,8 +1738,15 @@ export async function pickup_object(obj, count, telekinesis) {
             return 0;
         }
     }
-    if (obj.oartifact && !await touch_artifact_youmonst(obj))
-        return 0;
+    if (obj.oartifact) {
+        const touched = await touch_artifact_youmonst(obj);
+        // C artifact.c:951 leaves the blast on the topline before pickup's
+        // later messages (pickup.c:1826,1883); publish the deferred You().
+        const blast = g._touch_artifact_blast_msg;
+        g._touch_artifact_blast_msg = null;
+        if (blast) await pline(blast);
+        if (!touched) return 0;
+    }
     if ((obj.otyp | 0) === _CORPSE_OTYP) {
         /* C pickup.c:1824-1829.  Remote acquisition is safe from the
          * bare-handed petrification check; direct pickup of a cockatrice or

@@ -1,7 +1,8 @@
 // C pickup.c:doloot_core(), do_loot_cont(), mon_beside(), and loot_mon().
 import { GRAVE, isok } from './const.js';
 import { game, requireGameLevel } from './gstate.js';
-import { flush_screen, plineWithContinuation as pline } from './display.js';
+import { flush_screen } from './display.js';
+import { plineWithContinuation as pline } from './pline.js';
 import { heroHasNoHands, heroHasNoLimbs } from './polyself.js';
 import { ceilingName } from './terrain_name.js';
 import { exceedsActionCapacity } from './weight.js';
@@ -122,7 +123,7 @@ async function lootFloorContainers(x, y, unlock) {
     let resetJustPicked = true;
     for (const [index, container] of selected.entries()) {
         if (container.olocked) {
-            await unlock(container);
+            await unlock(container, selected.length);
             spentTime ||= !!game.context.move;
             continue;
         }

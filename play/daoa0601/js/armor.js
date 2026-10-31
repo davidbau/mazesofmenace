@@ -10,7 +10,8 @@ import { game, requireLiveGame } from './gstate.js';
 import { corpseName, killerObjectName, observeObjectForNaming, ownedObjectName, objectNameIsPlural, simpleObjectName, objectName } from './objnam.js';
 import { heroHandName } from './body_parts.js';
 import { makePlural } from './object_grammar.js';
-import { displayColorName, newsym, plineWithContinuation, see_monsters } from './display.js';
+import { displayColorName, newsym, see_monsters } from './display.js';
+import { plineWithContinuation } from './pline.js';
 import { consumeInventoryItem, inventoryItemDescription } from './invent.js';
 import { objectResistsDestruction } from './object_state.js';
 import { erodeObject, erosionMatters, objectIsVulnerableToErosion } from './object_erosion.js';
@@ -26,7 +27,7 @@ import { removeWornHeroItem } from './hero_equipment.js';
 import { cancelSlotTakeoff, takeoffSlotObject } from './takeoff_state.js';
 import { learnObjectType } from './object_knowledge.js';
 import { floatHeroDown, floatHeroUp } from './terrain_movement.js';
-import { applyHeroLocationEffects } from './cmd.js';
+import { applyHeroLocationEffects } from './hack.js';
 import { artifactEmitsLight, heroHasArtifactDefense } from './artifacts.js';
 import { setWornArtifactProperties } from './artifact_properties.js';
 import { heroResistsLifeDrain } from './monster_resistance.js';
@@ -1052,7 +1053,6 @@ export async function armorOffMessage(object, state = game) {
 export function cancelDonning(state = game) {
     state._afterMove = null;
     state._helplessDoneMessage = null;
-    state._queuedHelplessRecoveryMessage = null;
     setMulti(0, state);
     const progress = state.context.takeoff;
     if (progress) {

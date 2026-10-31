@@ -563,7 +563,7 @@ function match_sym_real(buf) {
 }
 
 /* options.c:9385 sym_val() — the first byte of the unescaped value */
-function sym_val_real(strval) {
+export function sym_val_real(strval) {
     let buf = '';
     if (!strval[0] || !strval[1]) {
         if (strval[0] && !/\s/.test(strval[0]))

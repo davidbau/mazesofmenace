@@ -2,14 +2,14 @@
 import { GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_NONINVENT, GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_SUGGEST, HOMEMADE_TIN } from './const.js';
 import { isRider } from './corpse_species.js';
 import { reviveCorpseImmediately } from './corpse_revival.js';
-import { plineWithContinuation as pline } from './display.js';
+import { plineWithContinuation as pline } from './pline.js';
 import { useUpFloorObject } from './floor_consumption.js';
 import { heroCanReachFloor } from './floor_reach.js';
 import { game, requirePlayingGame } from './gstate.js';
 import { holdAnotherObject } from './hero_hold_object.js';
 import { consumeInventoryItem, inventoryItemDescription } from './invent.js';
 import { chooseInventoryObject } from './inventory_prompt.js';
-import { mksobj } from './mklev.js';
+import { mksobj } from './mkobj.js';
 import { MONSTER_FLAGS1, MONSTER_NUTRITION } from './monster_data.js';
 import { consumeObjectCharge } from './object_charge.js';
 import { CORPSE, TIN } from './object_data.js';

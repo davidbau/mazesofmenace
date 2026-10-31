@@ -3,6 +3,7 @@ import { is_ice as is_ice_real } from './engrave.js';
 // Ported from nethack-c/src/mkmaze.c:77-140
 
 import { game } from './gstate.js';
+import { ledger_no } from './bones.js';
 import { get_level } from './cmd.js';
 import { unplacebc_and_covet_placebc, lift_covet_and_placebc } from './ball.js';
 import { rn2, rnd, pushRngLogEntry } from './rng.js';
@@ -1352,7 +1353,7 @@ function _sb_dunlevs_in_dungeon(lev) {
     return (game.dungeons?.[lev?.dnum | 0]?.num_dunlevs | 0);
 }
 function _sb_ledger_no(lev) {
-    return ((lev?.dlevel | 0) + (game.dungeons?.[lev?.dnum | 0]?.ledger_start | 0));
+    return ledger_no(lev);
 }
 
 /* C dungeon.c:1796-1840 get_level(newlevel, levnum) — map a DEPTH to a

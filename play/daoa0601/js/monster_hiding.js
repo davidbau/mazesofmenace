@@ -2,10 +2,11 @@
 // maybe_unhide_at(), and monmove.c can_hide_under_obj().
 import { formatSeenMessage } from './hero_speech.js';
 import { COULD_SEE, IN_SIGHT, MGIVENNAME, M_AP_TYPE, PLNMSG_HIDE_UNDER, ROOM, is_pit, } from './const.js';
-import { canSeeMonster, canSenseMonster, newsym, plineWithContinuation } from './display.js';
+import { canSeeMonster, canSenseMonster, newsym } from './display.js';
+import { plineWithContinuation } from './pline.js';
 import { game, requireGameLevel, requireLiveGame } from './gstate.js';
 import { heroSpecies } from './hero_species.js';
-import { setMimicAppearance } from './mklev.js';
+import { setMimicAppearance } from './makemon.js';
 import { MONSTER_FLAGS1, MONSTER_MOVE, MONSTER_SYMBOL } from './monster_data.js';
 import { monsterHasMapPosition } from './monster_location.js';
 import { monsterName } from './monster_name.js';

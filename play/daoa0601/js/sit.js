@@ -3,7 +3,8 @@
 import { objectMaterial } from './object_material.js';
 import { A_STR, A_WIS, ALTAR, DRAWBRIDGE_DOWN, FOUNTAIN, GRAVE, Is_waterlevel, is_hole, is_pit, LADDER, SINK, SPIKED_PIT, STAIRS, THRONE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, } from './const.js';
 import { exerciseAttribute } from './attrib.js';
-import { displayLiquidName, plineWithContinuation as pline } from './display.js';
+import { displayLiquidName } from './display.js';
+import { plineWithContinuation as pline } from './pline.js';
 import { heroFootName } from './body_parts.js';
 import { game, requireInitializedGame } from './gstate.js';
 import { spendHeroNutrition } from './hunger.js';
@@ -13,7 +14,7 @@ import { stack_object } from './floor_object.js';
 import { dropObjectAtHero } from './object_drop.js';
 import { useUpFloorObject } from './floor_consumption.js';
 import { heroIsDeaf, heroIsHallucinating } from './senses.js';
-import { mksobj, set_corpsenm, } from './mklev.js';
+import { mksobj, set_corpsenm } from './mkobj.js';
 import { MONSTER_FLAGS1, MONSTER_SYMBOL, } from './monster_data.js';
 import { CHEST, CORPSE, CREAM_PIE, EGG, LARGE_BOX, OBJECT_NUTRITION, TOWEL, WATER_WALKING_BOOTS, } from './object_data.js';
 import { observeObject } from './object_knowledge.js';

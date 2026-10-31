@@ -3,12 +3,13 @@ import { requirePlayingGame } from './gstate.js';
 // Undead turning for actual monsters, objects, inventories, and the hero.
 // C zap.c:bhitm(), bhito(), unturn_dead(), and unturn_you().
 import { G_GENOD, PLNMSG_OBJ_GLOWS } from './const.js';
-import { canSeeMonster, plineWithContinuation as pline, } from './display.js';
+import { canSeeMonster } from './display.js';
+import { plineWithContinuation as pline } from './pline.js';
 import { reportHeroEncumbrance } from './encumbrance.js';
 import { reviveCorpseByMagic } from './corpse_revival.js';
 import { makeStunned } from './hero_mental_status.js';
 import { game } from './gstate.js';
-import { restartEggHatchTimer } from './mklev.js';
+import { restartEggHatchTimer } from './egg.js';
 import { makeMonsterFlee } from './monster_flee.js';
 import { monsterIsUndead, monsterIsVampireShifter, monsterIsNonliving, monsterTypeName, monsterYoungerForm, } from './monster_data.js';
 import { namelessMonsterName, monsterName } from './monster_name.js';

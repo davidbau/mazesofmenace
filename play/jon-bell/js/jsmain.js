@@ -16,7 +16,7 @@ import { gs, H_DEC, H_IBM, H_UNK, PRIMARYSET, INFRAVISION, RUN_LEAP } from './co
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import { roleOptionToIndex, raceOptionToIndex, genderOptionToIndex, alignOptionToIndex, genlPlayerSetupRandomPicksForY, sessionNeedsRandomPlayerPicks, extractChargenPreInitRng, replayChargenPreInitRng, detectInteractiveChargenFromSession, } from './roles.js';
 import { GameDisplay } from './game_display.js';
-import { reglyph_darkroom } from './display.js';
+import { reglyph_darkroom, tty_restore_menu } from './display.js';
 import { generateChargenFrames, chargenShallAnswer, playChargen } from './chargen_ui.js';
 import { rn2 } from './rng.js';
 import { nhgetch } from './input.js';
@@ -288,6 +288,15 @@ export class NethackGame {
          * Without it gv.viz_array is unset when a startup bones load reaches
          * hide_monst() (restore.c:1218 -> mon.c hide_monst viz_array[y][x]). */
         vision_init();
+        // C wintty.c:658: askname offers saved games before reading a name.
+        const selected = this._playChargen && !this._rcName.split('-')[0] && !g.flags.debug
+            && g.iflags.wc2_selectsaved !== false ? await tty_restore_menu() : null;
+        if (selected?.quit) {
+            exit_nhwindows('Until next time then...');
+            await g._preNhgetchHook?.();
+            await nh_terminate(0);
+        }
+        if (selected?.plname) g.plname = selected.plname;
         // ── attempt_restore (v5 cross-segment save channel) ───────────────
         // C ref: sys/unix/unixmain.c:220 `attempt_restore:` — after
         // initoptions()/plnamesuffix()/vision_init() and BEFORE
@@ -305,7 +314,7 @@ export class NethackGame {
             // its first '-' (role.c:1699-1700) and turned commas into spaces
             // (role.c:1720) before attempt_restore names the save file; the
             // suffix tokens themselves stay for playChargen's own pass.
-            const rcName = (this._rcName || g.flags.debug) ? g.plname : '';
+            const rcName = (this._rcName || g.flags.debug || selected?.plname) ? g.plname : '';
             const save = restore_saved_game(rcName.split('-')[0].replace(/,/g, ' '));
             if (save) {
                 await dorecover(save);
@@ -345,6 +354,7 @@ export class NethackGame {
                 flags: g.flags,
                 plname: startName,
                 needAskname: !startName,
+                baseWindow: selected?.background,
                 rn2,
                 // before the key is delivered; nhgetch() fires the same
                 // _screens[] at the indices the recorded steps[] expect.
@@ -861,6 +871,9 @@ export async function runSegment(input, prevGame = null) {
             && String(e?.message || '').startsWith('nh_terminate: '))
             return nhGame;
         quiet(e);
+        // C unixmain.c:289-320 completes player_selection() and newgame()
+        // before entering moveloop(). Exhausted startup input leaves those
+        return nhGame;
     }
     // C ref: allmain.c:59 moveloop() — `for (;;) { moveloop_core(); }`.  One
     // moveloop_core() call is ONE command, not the whole game: C keeps calling

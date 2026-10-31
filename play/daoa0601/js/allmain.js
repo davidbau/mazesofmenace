@@ -29,7 +29,7 @@ import { game, requireGameLevel, requireInitializedGame, requireGameDisplay, req
 import { isRoom } from './map_types.js';
 import { clearBypasses } from './object_bypass.js';
 import { clearSplitObjects } from './object_stack.js';
-import { A_CURRENT, A_ORIGINAL, ESCAPED, In_endgame, In_hell, Is_astralevel, MON_FLOOR, PICK_ONE, PLNMSG_MON_TAKES_OFF_ITEM } from './const.js';
+import { A_CURRENT, A_ORIGINAL, ESCAPED, In_endgame, In_hell, MON_FLOOR, PICK_ONE, PLNMSG_MON_TAKES_OFF_ITEM } from './const.js';
 import { mapVicinity } from './magic_mapping.js';
 import { showInventoryWindow } from './windows.js';
 import { clearCannedCommands, endVoluntaryMultiTurn, heroHasInvoluntaryDelay, nomul, currentMulti, pendingArmorAction, setMulti } from './command_state.js';
@@ -95,16 +95,19 @@ import { reassessMonsterArmor } from './monworn.js';
 import { currentLuaLifecycle } from './lua/lifecycle.js';
 import { readEngravingAt, wipeHeroEngraving } from './engrave.js';
 import { d, rn2, rnd } from './rng.js';
-import { mklev, l_nhcore_init, makemonAt, summonNastyMonsters, u_on_upstairs, } from './mklev.js';
+import { mklev, l_nhcore_init, u_on_upstairs, } from './mklev.js';
+import { makemonAt } from './makemon.js';
 import { summonMonsterInsects } from './monster_spell_insects.js';
-import { applyHeroLiquidEffects, askTeleportDestination, continueCountedCommand, continueRun, finishArmorRemoval, getLine, promptYesNo, rhack, } from './cmd.js';
+import { applyHeroLiquidEffects, continueRun } from './hack.js';
+import { askTeleportDestination, continueCountedCommand, getLine, promptYesNo, rhack } from './cmd.js';
+import { finishArmorRemoval } from './do_wear.js';
 import { clearRepeatCommand } from './command_repeat.js';
 import { checkHeroLeashes } from './leash_apply.js';
 import { finishDestinationSpotEffects } from './location_effects.js';
 import { performQuestExpulsion } from './quest.js';
-import { amuletTurn, monsterCarriesAmulet, resurrectWizard } from './wizard.js';
+import { amuletTurn, intervene, monsterCarriesAmulet } from './wizard.js';
 import { finishHeroLiquidMonsterDeath, finishHeroMonsterKill, } from './hero_monster_death.js';
-import { aggravateMonsters, angerMonster } from './monster_anger.js';
+import { angerMonster } from './monster_anger.js';
 import { grantAmuletWish } from './wish.js';
 import { checkAttributeExercise, currentAttribute, exerciseAttribute, exerciseWisdom, loseHeroStrength } from './attrib.js';
 import { reportHeroEncumbrance } from './encumbrance.js';
@@ -113,7 +116,9 @@ import { stopRun } from './runmode.js';
 import { resolveMonsterGaze } from './monster_gaze.js';
 import { resolveMonsterMagicRay } from './monster_magic_ray.js';
 import { resolveMonsterSelfExplosion } from './monster_self_explosion.js';
-import { canSpotMonster, clearMessageWindow, displayColorName, displayMessageWindow, docrt, redrawMap, bot, flush_screen, flushPendingTopline, updateStatusLines, statusEvalNextUnhilite, pline, rememberToplines, appendSuppressedTopline, resetToplineClip, plineWithContinuation, newsym, map_invisible, randomDisplayMonsterName, see_monsters, see_objects, see_traps, show_glyph_cell, swallowed, under_ground, under_water, canSeeMonster, monsterVisible, shieldeff, } from './display.js';
+import { canSpotMonster, docrt, redrawMap, bot, flush_screen, updateStatusLines, statusEvalNextUnhilite, newsym, map_invisible, randomDisplayMonsterName, see_monsters, see_objects, see_traps, show_glyph_cell, swallowed, under_ground, under_water, canSeeMonster, monsterVisible, shieldeff, } from './display.js';
+import { clearMessageWindow, displayMessageWindow, flushPendingTopline, rememberToplines, appendSuppressedTopline, resetToplineClip, } from './tty_topline.js';
+import { pline, plineWithContinuation } from './pline.js';
 import { cansee, couldsee, vision_note_blocker_change, vision_recalc, vision_reset_new_level, hasLightSources, } from './vision.js';
 import { nhgetch } from './input.js';
 import { NO_COLOR, CLR_BRIGHT_BLUE } from './terminal.js';
@@ -165,7 +170,7 @@ import { dist2, dungeonDepth } from './hacklib.js';
 import { MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_LEVEL, MONSTER_MOVE, MONSTER_NAME, MONSTER_SOUND, MONSTER_SYMBOL, monsterIsNonliving, monsterTypeName, } from './monster_data.js';
 import { finishHeroDeath, } from './end.js';
 import { runLevelRegions } from './regions.js';
-import { maintainVaultResidence, continueVaultGuardArrival, moveVaultGuard, } from './vault.js';
+import { invault, moveVaultGuard } from './vault.js';
 import { observeObject, recordObjectEncounter, recordObjectKnowledge, learnObjectType, } from './object_knowledge.js';
 import { automaticSearch, revealWarnedMonsters } from './detect.js';
 import { activateStatueTrapAt } from './statue_trap.js';
@@ -183,7 +188,6 @@ import { resolveMonsterContactEffect } from './monster_contact_effects.js';
 import { setSlipperyHands } from './towel.js';
 import { heroHasSlipperyHands, slipFromSlipperyHands } from './slippery_hands.js';
 import { restartMonsterShapechanging } from './monster_polymorph.js';
-import { msummon } from './minion.js';
 import { captureRunmodeDelay, isTeleportRunmode } from './runmode.js';
 function observeMonsterUsedObject(object) {
     if (!object)
@@ -646,22 +650,32 @@ async function finishInitialTurnMaintenanceAfterIntervention(sourceTurn) {
         await moveElementalBubbles();
     else if (game.level?.flags?.fumaroles)
         await fumaroles(game);
-    // C allmain.c increments negative `multi` only after the complete global
-    // turn (monster allocation, timeouts, sounds, hunger, and engraving wear).
-    // Keep the counter here rather than in the command which caused the
-    // helplessness so fast heroes and multi-round movement rations retain the
-    // same boundary.
+    // C allmain.c:379-388, still inside the once-per-turn block: an immobile
+    // hero's delay output runs before the counter moves, so the animation
+    // frames still see the helpless condition in the status line.  Reaching
+    // zero calls unmul() and, when that scheduled travel, deferred_goto().
     if (currentMulti(game) < 0) {
-        game._helplessRunmodeDelayPending = sourceTurn;
+        // Dressing retains its physical topline through each negative-multi
+        // frame; its armor effects still wait for unmul's recovery message.
+        const delayedAction = pendingArmorAction(game);
+        if (delayedAction) {
+            if (game._pending_message) {
+                delete delayedAction._runmodeRetainedTopline;
+            }
+            else if (!delayedAction._runmodeRetainedTopline) {
+                delayedAction._runmodeRetainedTopline
+                    = game.nhDisplay?.grid?.[0]?.map(cell => ({ ...cell }));
+            }
+        }
+        await captureRunmodeDelay(game, true, sourceTurn, {
+            preservePhysicalTopline: true,
+            retainedTopline: delayedAction?._runmodeRetainedTopline ?? null,
+        });
         setMulti(currentMulti(game) + 1, game);
-        if (game._helplessTurns === 0) {
-            const doneMessage = game._helplessDoneMessage
-                ?? 'You can move again.';
-            // Live actor schedulers finish this synchronous phase inside an
-            // async moveloop owner.  Queue recovery there so an occupied
-            // topline can page before unmul's message replaces it, as tty
-            // pline() does in C.
-            game._queuedHelplessRecoveryMessage = doneMessage;
+        if (currentMulti(game) === 0) {
+            await finishHeroHelplessness();
+            // if unmul() caused a level change, take it now
+            await finishScheduledLevelChange();
         }
     }
 }
@@ -675,45 +689,13 @@ async function finishInitialTurnMaintenanceRng(sourceTurn) {
     if (!rn2(40 + currentAttribute(A_DEX) * 3))
         wipeHeroEngraving(rnd(3));
     // allmain.c's demigod intervention clock advances after engraving wear
-    // and before environmental level motion. Each announcement waits only
-    // when pline() needs input, before curses or the next intervention roll.
+    // and before environmental level motion. Complete any paged intervention
+    // before restarting the countdown, as the synchronous C call does.
     if (game.u?.uevent?.udemigod && !game.u?.invulnerable) {
         if (game.u.udg_cnt !== undefined && game.u.udg_cnt > 0)
             game.u.udg_cnt--;
         if ((game.u.udg_cnt ?? 0) === 0) {
-            const intervention = Is_astralevel(game.u.uz) ? rnd(4) : rn2(6);
-            if (intervention <= 1) {
-                await plineWithContinuation(formatFeltMessage('vaguely nervous.'));
-                delete game._unresolvedDemigodIntervention;
-            }
-            else if (intervention === 2) {
-                if (!heroIsBlind(game))
-                    await plineWithContinuation(`You notice a ${displayColorName('black', game)} glow surrounding you.`);
-                game._pendingDemigodIntervention = {
-                    kind: intervention, sourceTurn,
-                };
-                return;
-            }
-            else if (intervention === 5) {
-                game._pendingDemigodIntervention = {
-                    kind: intervention, sourceTurn,
-                };
-                return;
-            }
-            else if (intervention === 4) {
-                game._pendingDemigodIntervention = {
-                    kind: intervention, sourceTurn,
-                };
-                return;
-            }
-            else if (intervention === 3) {
-                const affected = aggravateMonsters(game, rn2);
-                game._lastDemigodAggravation = affected.map(monster => monster.m_id);
-                delete game._unresolvedDemigodIntervention;
-            }
-            else {
-                game._unresolvedDemigodIntervention = intervention;
-            }
+            await intervene();
             game.u.udg_cnt = 50 + rn2(200);
         }
     }
@@ -798,12 +780,12 @@ async function finishInitialTurnMaintenanceAfterAmbient({ sourceTurn, moveAmount
     // the resulting C turn number is the existing JS value, not value + 1.
     await periodicTurnExercise(sourceTurn);
     await checkAttributeExercise(sourceTurn);
-    if (await maintainVaultResidence(game)) {
-        // C invault() finishes its dialogue before this turn decrements
-        // negative multi. A busy hero's armor removal can finish below,
-        // paging the guard's departure before the recovery message.
-        await continueVaultGuardArrival(game);
-    }
+    // C allmain.c:357 — invault() runs here in the once-per-turn block,
+    // after exerchk() and before the Amulet check.  Its interrogation
+    // completes before the turn decrements negative multi, so a busy
+    // hero's armor removal can finish below, paging the guard's
+    // departure before the recovery message.
+    await invault(game);
     await finishInitialTurnMaintenanceRng(sourceTurn);
     return { kind: 'complete', moveAmount };
 }
@@ -1463,7 +1445,6 @@ async function advanceWorldTurn() {
     if (initialPhase.kind === 'hero-died')
         return;
     let phase = initialPhase;
-    const completedTurn = game.moves;
     while (phase.kind === 'timeout-message') {
         if (phase.timeoutKind === 'stun') {
             await makeStunned(0);
@@ -1501,47 +1482,6 @@ async function advanceWorldTurn() {
             await exerciseAttribute(A_WIS, true);
         phase = await finishInitialTurnMaintenanceAfterAutomaticSearch(phase);
     }
-    if (game._pendingDemigodIntervention) {
-        const intervention = game._pendingDemigodIntervention;
-        game._pendingDemigodIntervention = null;
-        if (intervention.kind === 2) {
-            const heroAttack = { deferredCurseItems: true };
-            await resolveDeferredHeroCurseItems(heroAttack);
-            delete game._unresolvedDemigodIntervention;
-        }
-        else if (intervention.kind === 5) {
-            await resurrectWizard();
-            delete game._unresolvedDemigodIntervention;
-        }
-        else if (intervention.kind === 4) {
-            let effect = await summonNastyMonsters(null);
-            if (effect.deferredDemonSummon)
-                effect = await msummon();
-            game._lastDemigodNasty = (effect.created || []).map(monster => monster.m_id);
-            delete game._unresolvedDemigodIntervention;
-        }
-        game.u.udg_cnt = 50 + rn2(200);
-        await finishInitialTurnMaintenanceAfterIntervention(intervention.sourceTurn);
-    }
-    const helplessDelayTurn = game._helplessRunmodeDelayPending;
-    delete game._helplessRunmodeDelayPending;
-    // Dressing retains its physical topline through each negative-multi
-    // frame; its armor effects still wait for unmul's recovery message.
-    const delayedAction = pendingArmorAction(game);
-    if (delayedAction) {
-        if (game._pending_message) {
-            delete delayedAction._runmodeRetainedTopline;
-        }
-        else if (!delayedAction._runmodeRetainedTopline) {
-            delayedAction._runmodeRetainedTopline
-                = game.nhDisplay?.grid?.[0]?.map(cell => ({ ...cell }));
-        }
-    }
-    await captureRunmodeDelay(game, Number.isInteger(helplessDelayTurn), helplessDelayTurn ?? completedTurn, {
-        preservePhysicalTopline: true,
-        retainedTopline: delayedAction?._runmodeRetainedTopline ?? null,
-    });
-    await drainQueuedHelplessRecoveryMessage();
 }
 // C allmain.c:moveloop_core() calls unmul() at the end of the world turn
 // which finishes negative multi, even if burden still prevents hero movement.
@@ -1596,21 +1536,11 @@ async function settleHeroLiquidAfterAction() {
         return null;
     return applyHeroLiquidEffects(plineWithContinuation, { entry: 'turn' });
 }
-async function drainQueuedHelplessRecoveryMessage() {
-    const game = requireInitializedGame();
-    if (game._queuedHelplessRecoveryMessage == null)
-        return;
-    const message = game._queuedHelplessRecoveryMessage;
-    await finishHeroHelplessness(message);
-    // allmain.c takes travel caused by unmul() before find_ac() and the Seer update.
-    await finishScheduledLevelChange();
-}
 // Native hack.c:unmul(). The after-handler is cleared before invocation so
 // recovery can start another delay without inheriting the old completion.
 export async function finishHeroHelplessness(messageOverride, state = game, publish = plineWithContinuation) {
     state.context.botl = true;
     setMulti(0, state);
-    state._queuedHelplessRecoveryMessage = null;
     const message = messageOverride ?? state._helplessDoneMessage ?? 'You can move again.';
     if (message) {
         await publish(message);
@@ -3747,9 +3677,6 @@ export async function runMoveloopCore() {
     // teleport can finish several arrival pagers before returning here; the
     // wish then begins without consuming a new hero action.
     await grantAmuletWish();
-    if (g._vaultGuardArrivalPending) {
-        await continueVaultGuardArrival(g);
-    }
     // C allmain.c:find_ac() is a once-per-player-input operation after all
     // monster/global time caused by the command.  The vault-guard
     // arrival (C invault(), inside the once-per-turn block) still precedes

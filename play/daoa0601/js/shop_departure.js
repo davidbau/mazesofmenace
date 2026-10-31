@@ -4,14 +4,14 @@ import { currency } from './currency.js';
 // wizard.c choose_stairs(). Billing and pursuit use the existing shop owners.
 import { adjustHeroAlignment } from './alignment.js';
 import { G_GONE, MM_NOMSG, SHOPBASE, isok } from './const.js';
-import { plineWithContinuation } from './display.js';
+import { plineWithContinuation } from './pline.js';
 import { roomsAt } from './room.js';
 import { dungeonBuildsUp } from './dungeon.js';
 import { LL_ACHIEVE, recordGameLogEvent } from './gamelog.js';
 import { game, requireLiveGame } from './gstate.js';
 import { requireShopGame } from './shop_types.js';
 import { depth } from './hacklib.js';
-import { makemonAt } from './mklev.js';
+import { makemonAt } from './makemon.js';
 import { angerWatchGuards } from './monster_anger.js';
 import { MONSTER_NAME } from './monster_data.js';
 import { possessiveName, shopkeeperName } from './monster_name.js';

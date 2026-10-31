@@ -1,7 +1,9 @@
 // C refs: getpos.c:getpos(), drawing.c:defsyms[], symbols.c:gs.showsyms[],
 // display.c:tmp_at() for the valid-location marking overlay.
 import { COLNO, DOOR, GFILTER_NONE, GFILTER_VIEW, HI_ZAP, Invocation_lev, LOOK_ONCE, LOOK_QUICK, LOOK_TRADITIONAL, LOOK_VERBOSE, NHW_MENU, PICK_ONE, ROWNO, VIBRATING_SQUARE, WEB, TER_DETECT, TER_MAP, TER_MON, TER_OBJ, } from './const.js';
-import { clearMessageWindow, flush_screen, glyphAt, lastDirtyMapCursor, newsym_force, pline, plineWithContinuation, resetToplineClip, showUnrememberedTopline, terrain_glyph, } from './display.js';
+import { clearMessageWindow, resetToplineClip, showUnrememberedTopline } from './tty_topline.js';
+import { flush_screen, glyphAt, lastDirtyMapCursor, newsym_force, terrain_glyph } from './display.js';
+import { pline, plineWithContinuation } from './pline.js';
 import { game } from './gstate.js';
 import { readcharPoskey, takeCommandPosition } from './input.js';
 import { currentLuaLifecycle } from './lua/lifecycle.js';
@@ -13,7 +15,8 @@ import { MAP_SYMBOLS } from './map_symbols.js';
 import { cansee } from './vision.js';
 import { coordinateDescription } from './pager_lists.js';
 import { screenDescription } from './pager_description.js';
-import { farlookLocationDescription, isValidTravelTarget } from './cmd.js';
+import { farlookLocationDescription } from './cmd.js';
+import { isValidTravelTarget } from './hack.js';
 import { tty_add_menu, tty_create_nhwindow, tty_destroy_nhwindow, tty_end_menu, tty_select_menu, tty_start_menu, } from './tty_menu.js';
 import { rememberCommandKey, takeRepeatCommand } from './command_repeat.js';
 import { visibleCommandKey } from './command_keys.js';

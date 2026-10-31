@@ -1,4 +1,4 @@
-import { pline_The, urgent_pline } from './display.js';
+import { pline_The, urgent_pline, impossible_sync } from './display.js';
 import { pline_mon as pline_mon_real } from './display.js';
 import { Mgender } from './do_name.js';
 import { ledger_no as ledger_no_real } from './bones.js';
@@ -5870,7 +5870,7 @@ export function which_armor(mon, flag) {
         case W_ARMF: return game.u.uarmf;
         case W_ARMU: return game.u.uarmu;
         default:
-            impossible("bad flag in which_armor");
+            impossible_sync("bad flag in which_armor");
             return 0;
         }
     } else {

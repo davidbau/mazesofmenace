@@ -4644,7 +4644,7 @@ function _xname_arm(obj, c) {
     } /* gem */
     default:
         buf = `glorkum ${obj.oclass | 0} ${typ} ${obj.spe | 0}`;
-        impossible('xname_flags: %s', buf);
+        impossible_sync('xname_flags: %s', buf);
         break;
     } /* switch */
     return buf;
@@ -5109,7 +5109,7 @@ async function doname_base(obj, doname_flags) {
             const cxarg = ((quan !== 1) ? 0 : CXN_ARTICLE) | CXN_NOCORPSE;
             prefix = `${corpse_xname(obj, prefix, cxarg)} `;
         } else if (otyp === EGG) {
-            if (omndx !== NON_PM && omndx >= 0
+            if (ismnum(omndx)
                 && (known || _mvitals_knows_egg(omndx))) {
                 prefix += `${monPmname(omndx, NEUTRAL)} `;
                 if ((obj.spe | 0) === 1) bp += ' (laid by you)';

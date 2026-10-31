@@ -539,13 +539,12 @@ export function role_init() {
     }
     const RACE = flags.initrace;
 
-    // role.c:2009-2015 — gender resolution consumes no RNG. flags.pantheon
-    // is always -1 (new game) in this replay's chargen-only scope (mirrors
-    // resolveRandomChargenInit's documented precedent above), so the
-    // female-flip check always runs.
+    // role.c:2009-2015 — only new games validate the current gender.
+    // Restores retain flags.female, including a sex change during play.
     // C's flags.female is a zero-init bitfield: unset reads FALSE (male).
     flags.female = flags.female ? 1 : 0;
-    if (!validgend(ROLE, RACE, flags.female)) {
+    if ((flags.pantheon == null || flags.pantheon === -1)
+        && !validgend(ROLE, RACE, flags.female)) {
         flags.female = flags.female ? 0 : 1;
     }
     if (!validgend(ROLE, RACE, flags.initgend)) {

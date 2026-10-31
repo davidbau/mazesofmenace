@@ -49,7 +49,7 @@ import { discover_object, observe_object } from './o_init.js';
 import { exercise, change_luck, acurr, C_ATTR_TO_DISP, adjalign } from './attrib.js';
 import { STR19, PROTECTION, INTRINSIC, Is_astralevel, A_CURRENT, A_ORIGINAL } from './const.js';
 import { PM_ARCHEOLOGIST, PM_HOBBIT, PM_MARILITH, PM_WINGED_GARGOYLE, PM_INCUBUS } from './pm.generated.js';
-import { float_vs_flight, breakarm, num_horns, obj_pmname, y_monnam, can_be_strangled, x_monnam } from './mhitm.js';
+import { float_vs_flight, breakarm, num_horns, obj_pmname, y_monnam, can_be_strangled, x_monnam, is_youmonst } from './mhitm.js';
 import { ARTICLE_YOUR, SUPPRESS_SADDLE, SUPPRESS_HALLUCINATION } from './const.js';
 import { s_suffix } from './hacklib.js';
 import { hcolor, hliquid } from './mhitm.js';
@@ -60,7 +60,7 @@ import { HALLUC, HALLUC_RES } from './const.js';
 /* C mondata.c:632 sliparm(ptr) — the real one, exported by js/makemon.js:462.
  * canwearobj's cantweararm(ptr) is breakarm(ptr) || sliparm(ptr) (mondata.h:133);
  * both halves are imported rather than re-derived here. */
-import { sliparm, permonstTemplate, summon_furies, trapname } from './makemon.js';
+import { sliparm, permonstTemplate, summon_furies, trapname, which_armor } from './makemon.js';
 import { canletgo } from './makemon.js';
 import { weapon_descr, touch_petrifies as corpse_touch_petrifies, mon_nam, m_at } from './uhitm.js';
 import { setuwep, setuswapwep, setuqwep, empty_handed, cmdq_pop, cmdq_peek, dropx, cmdq_clear, instapetrify as corpse_instapetrify,
@@ -253,7 +253,7 @@ import { W_TOOL as W_TOOL_C, HEAD as HEAD_DW, FACE as FACE_DW } from './const.js
  * so conferring EBlinded below is what makes it fire.  vision.js imports only
  * gstate/const/display, so this closes no cycle. */
 import { vision_recalc } from './vision.js';
-import { dmgtype } from './dogmove.js';
+import { dmgtype_fromattack } from './makemon.js';
 /* objects.h:648 CLOAK_OF_DISPLACEMENT — same otyp used by ARMOR_DELAY_CAT_BY_OTYP. */
 const CLOAK_OF_DISPLACEMENT_OTYP = 149;
 /* C ref: o_init.c makeknown(x) == discover_object(x, TRUE, TRUE, TRUE).  The
@@ -3089,12 +3089,12 @@ export async function float_down(hmask, emask) {
             await encumber_msg(); /* carrying capacity might have changed */
             return 1;
         }
-    } else {
-        float_vs_flight();
     }
     /* C trap.c:4066-4071 — still engulfed: no landing, no trap, no pickup. */
     if (u.uswallow) {
-        await pline(`You float down, but you are still ${dmgtype(u.ustuck.data, 11 /* AD_DGST */) ? 'swallowed' : 'engulfed'}.`);
+        // C mondata.h:71-72: digests() requires an AT_ENGL/AD_DGST attack.
+        const digests = dmgtype_fromattack(u.ustuck.data, 26 /* AD_DGST */, 11 /* AT_ENGL */);
+        await pline(`You float down, but you are still ${digests ? 'swallowed' : 'engulfed'}.`);
         await encumber_msg();
         return 1;
     }
@@ -4077,29 +4077,11 @@ export function count_worn_armor() {
 export function some_armor(victim) {
     const g = game;
     const u = g.u;
-    const is_you = (victim === g.youmonst)
-        || (g.youmonst && victim.m_id === g.youmonst.m_id);
+    const is_you = is_youmonst(victim);
 
+    // C worn.c:1006-1035: search only the victim's worn equipment.
     function which_armor_mon(mon, mask) {
-        for (let obj = mon.minvent; obj; obj = obj.nobj) {
-            if ((obj.owornmask | 0) & mask)
-                return obj;
-        }
-        /* Fallback: global fobj chain (level.objlist).  Drop the where==3
-           constraint — the reconstructed where may differ from the C value. */
-        for (let obj = g.fobj; obj; obj = obj.nobj) {
-            if (((obj.owornmask | 0) & mask)
-                && (obj.ox | 0) === (mon.mx | 0)
-                && (obj.oy | 0) === (mon.my | 0))
-                return obj;
-        }
-        /* Fallback: player inventory (when victim is the hero but
-           g.youmonst was not reconstructed). */
-        for (let obj = g.invent; obj; obj = obj.nobj) {
-            if ((obj.owornmask | 0) & mask)
-                return obj;
-        }
-        return null;
+        return which_armor(mon, mask);
     }
 
     let otmph = is_you ? u.uarmc : which_armor_mon(victim, W_ARMC);

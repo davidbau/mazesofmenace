@@ -5,11 +5,11 @@ import { rn1, rn2, rn2Display } from './rng.js';
 import { nativeRoleAt, roles } from './roles.js';
 import { heroIsHallucinating } from './senses.js';
 import { A_NONE, G_GONE, Is_astralevel, MM_ADJACENTOK, MM_NOWAIT } from './const.js';
-import { plineWithContinuation } from './display.js';
+import { plineWithContinuation } from './pline.js';
 import { LL_ALIGNMENT, recordGameLogEvent } from './gamelog.js';
 import { retouchEquipment } from './hero_retouch.js';
 import { makeConfused } from './hero_mental_status.js';
-import { makemonAt } from './mklev.js';
+import { makemonAt } from './makemon.js';
 import { adjustErinys, MONSTER_NAME } from './monster_data.js';
 import { HELM_OF_OPPOSITE_ALIGNMENT } from './object_data.js';
 export function deityName(alignment, state = game) {

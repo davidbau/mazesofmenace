@@ -1,10 +1,12 @@
 // C dog.c:pick_familiar_pm() and make_familiar().
 import { G_EXTINCT, MM_EDOG, MM_FEMALE, MM_IGNOREWATER, MM_MALE, MM_NOMSG, NEED_HTH_WEAPON, NO_MINVENT, } from './const.js';
-import { newsym, plineWithContinuation } from './display.js';
+import { newsym } from './display.js';
+import { plineWithContinuation } from './pline.js';
 import { initializePet } from './dog.js';
 import { game, requireLiveGame } from './gstate.js';
 import { isPoolAt } from './terrain_properties.js';
-import { makemonAt, makemonNear, rndmonstAdj } from './mklev.js';
+import { makemonNear } from './mklev.js';
+import { makemonAt, rndmonstAdj } from './makemon.js';
 import { resolveMonsterLiquid } from './mon.js';
 import { setMonsterMalign } from './monster_alignment.js';
 import { finishLiquidDeathForCurrentMover } from './hero_monster_death.js';

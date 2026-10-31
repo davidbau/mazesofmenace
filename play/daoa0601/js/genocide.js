@@ -2,7 +2,7 @@
 import { formatFeltMessage } from './hero_speech.js';
 import { adjustHeroAlignment } from './alignment.js';
 import { G_EXTINCT, G_GENOD, G_NOCORPSE, MM_NOMSG, NO_MINVENT, POLY_REVERT, Upolyd } from './const.js';
-import { plineWithContinuation } from './display.js';
+import { plineWithContinuation } from './pline.js';
 import { listGenocided, finishHeroDeath as finishNativeHeroDeath } from './end.js';
 import { LL_CONDUCT, LL_GENOCIDE, recordGameLogEvent } from './gamelog.js';
 import { game, requireInitializedGame } from './gstate.js';
@@ -10,7 +10,8 @@ import { feelingAfterSelfGenocide, genocideDeathOptions, rememberPolymorphGenoci
 import { heroSpecies } from './hero_species.js';
 import { killGenocidedMonsters } from './mon.js';
 import { MONSTER_CLASS_SYMBOLS, nameToMonster, nameToMonsterClass } from './mondata.js';
-import { makemonNear, rndmonstAdj } from './mklev.js';
+import { makemonNear } from './mklev.js';
+import { rndmonstAdj } from './makemon.js';
 import { questMonsterSound } from './role_monsters.js';
 import { MONSTER_FLAGS2, MONSTER_GENO, MONSTER_NAME, MONSTER_SYMBOL, monsterIsHuman, monsterIsVampire, monsterTypeName, requireMonsterData, } from './monster_data.js';
 import { removeMonsterFromGame } from './monster_departure.js';

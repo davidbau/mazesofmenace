@@ -1,5 +1,6 @@
 import { forget_engravings, sanitize_engravings } from './engrave.js';
-import { obj_attach_mid } from './mkobj.js';
+import { obj_attach_mid, curse as curse_obj } from './mkobj.js';
+import { weight } from './weight.js';
 // bones.c — the bones subsystem: savebones() writes the level a hero died on,
 // getbones() reads it back into the NEXT game on the same level.
 //
@@ -98,12 +99,14 @@ const PM_GHOST = 287;          /* pm.h — same constant js/mklev.js:207 holds *
 const MM_NONAME = 0x00000040;  /* js/const.js:2147 */
 
 /* C dungeon.c ledger_no(&u.uz) — the absolute cross-branch level index, the
- * same key js/save.js savelev() and js/restore.js getlev() use.  cmd.c has a
- * file-local copy (ledger_no_cmd); this is the same arithmetic rather than a
- * new export, because cmd.c importing bones.c would close a cycle. */
+ * same key js/save.js savelev() and js/restore.js getlev() use.  All
+ * callers share this port of dungeon.c:1376-1379, including the xint16 cast. */
 export function ledger_no(uz) {
     const dgn = game.dungeons?.[uz?.dnum | 0];
-    return (((uz?.dlevel | 0) + (dgn?.ledger_start | 0)) << 16) >> 16;
+    const jingle = game.context?.jingle || ''; // C's dungeons[-1].ledger_start aliases context.jingle for wished portals.
+    const start = (uz?.dnum | 0) === -1
+        ? (jingle.charCodeAt(0) || 0) | ((jingle.charCodeAt(1) || 0) << 8) : dgn?.ledger_start | 0;
+    return (((uz?.dlevel | 0) + start) << 16) >> 16;
 }
 
 function dgn_boneid(dnum) {
@@ -210,10 +213,10 @@ function set_ghostly_objlist(ochain) {
  * restore.c's restobjchn/restmonchn, not here.
  *
  * Remaining gaps include in_use deallocation and the EGG/SCR_MAIL/TIN arms. */
-function resetobjs(ochain, restore) {
+async function resetobjs(ochain, restore) {
     for (let otmp = ochain; otmp; otmp = otmp?.nobj) {
         if (otmp.cobj)
-            resetobjs(otmp.cobj, restore);
+            await resetobjs(otmp.cobj, restore);
         if (restore) {
             // C bones.c:68-78: reject duplicates and this hero's quest artifact.
             if (otmp.oartifact) {
@@ -238,8 +241,6 @@ function resetobjs(ochain, restore) {
         otmp.tknown = 0;
         otmp.invlet = 0;
         otmp.no_charge = 0;
-        if (otmp.otyp === 285 /* SLIME_MOLD */)
-            goodfruit(otmp.spe);
         /* C bones.c:115-129 — strip user-supplied names; statues, novels,
          * artifacts and named corpses of special (unique) monsters keep theirs. */
         if (has_oname(otmp)
@@ -248,6 +249,34 @@ function resetobjs(ochain, restore) {
                  || (otmp.otyp === 265 /* CORPSE */
                      && (otmp.corpsenm | 0) >= 330 /* SPECIAL_PM */)))
             free_oname(otmp);
+        /* C bones.c:131-190 — the save-side fixups by object type; the
+         * invocation relics stop being the real thing in the next game. */
+        if (otmp.otyp === 285 /* SLIME_MOLD */) {
+            goodfruit(otmp.spe);
+        } else if (otmp.otyp === 266 /* EGG */) {
+            otmp.spe = 0; /* not "laid by you" in next game */
+        } else if (otmp.otyp === 213 /* AMULET_OF_YENDOR */) {
+            otmp.otyp = 212; /* FAKE_AMULET_OF_YENDOR */
+            await curse_obj(otmp);
+        } else if (otmp.otyp === 262 /* CANDELABRUM_OF_INVOCATION */) {
+            if (otmp.lamplit) {
+                const { end_burn } = await import('./timeout.js');
+                end_burn(otmp, true);
+            }
+            otmp.otyp = 225; /* WAX_CANDLE */
+            otmp.age = 50; /* assume used */
+            if (otmp.spe > 0)
+                otmp.quan = otmp.spe;
+            otmp.spe = 0;
+            otmp.owt = weight(otmp);
+            await curse_obj(otmp);
+        } else if (otmp.otyp === 263 /* BELL_OF_OPENING */) {
+            otmp.otyp = 255; /* BELL */
+            await curse_obj(otmp);
+        } else if (otmp.otyp === 409 /* SPE_BOOK_OF_THE_DEAD */) {
+            otmp.otyp = 407; /* SPE_BLANK_PAPER */
+            await curse_obj(otmp);
+        }
     }
 }
 
@@ -417,7 +446,7 @@ export async function savebones(how, when, corpse) {
      * relationship to the DEAD hero. */
     for (let m = g.fmon; m; m = m.nmon) {
         set_ghostly_objlist(m.minvent);
-        resetobjs(m.minvent, false);
+        await resetobjs(m.minvent, false);
         m.mlstmv = 0;
         if (m.mtame) {
             m.mtame = 0;
@@ -433,9 +462,9 @@ export async function savebones(how, when, corpse) {
         t.tseen = unhideable_trap(t.ttyp | 0) ? 1 : 0;
     }
     set_ghostly_objlist(g.fobj);
-    resetobjs(g.fobj, false);
+    await resetobjs(g.fobj, false);
     set_ghostly_objlist(g.level?.buriedobjlist);
-    resetobjs(g.level?.buriedobjlist, false);
+    await resetobjs(g.level?.buriedobjlist, false);
 
     /* C bones.c:558-560 — "Hero is no longer on the map." */
     u.ux0 = u.ux;
@@ -603,10 +632,10 @@ async function getbones_load(f) {
         if (m.mhpmax === DEFUNCT_MONSTER)
             await mongone(m);
         else
-            resetobjs(m.minvent, true);
+            await resetobjs(m.minvent, true);
     }
-    resetobjs(g.fobj, true);
-    resetobjs(g.level?.buriedobjlist, true);
+    await resetobjs(g.fobj, true);
+    await resetobjs(g.level?.buriedobjlist, true);
     await fix_shop_damage();
 
     /* C bones.c:729-731 */

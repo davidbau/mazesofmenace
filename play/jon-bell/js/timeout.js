@@ -10,7 +10,7 @@ import { RANGE_GLOBAL, NHF_BONESFILE, TIMER_LEVEL, TIMER_OBJECT, TIMER_NONE,
 import { rot_organic, rot_corpse } from './dig.js';
 import { game } from './gstate.js';
 import { eatfood } from './eat.js';
-import { COLNO, ROWNO, CLOUD, RLOC_NOMSG } from './const.js';
+import { COLNO, ROWNO, CLOUD, RLOC_NOMSG, MELT_ICE_AWAY, DRAWBRIDGE_DOWN, DB_ICE, DB_UNDER } from './const.js';
 import { rn2, rn1, d } from './rng.js';
 import { pline, You_hear, You_feel, urgent_pline } from './display.js';
 import { impossible } from './pline.js';
@@ -29,7 +29,7 @@ import { figurine_location_checks, useup, useupall, obj_extract_self_general, ve
 import { obfree, is_ice } from './dokick.js';
 import { m_at, setmnotwielded } from './uhitm.js';
 import { is_pool } from './look.js';
-import { s_suffix, dist2 } from './hacklib.js';
+import { s_suffix, dist2, isok } from './hacklib.js';
 import { cry_sound } from './sounds.js';
 import { Blind } from './vision.js';
 import { Norep } from './display.js';
@@ -1048,6 +1048,52 @@ export async function run_timers() {
             curr.arg.a_obj.timed = (curr.arg.a_obj.timed | 0) - 1;
         await timeout_funcs[curr.func_index].f(curr.arg, curr.timeout);
         /* C memsets and frees curr here; JS drops the reference instead */
+    }
+}
+
+/* C ref: timeout.c:2128-2211 timer_sanity_check(void) — wizard-mode sanity
+ * check of the timer queue.  The TIMER_OBJECT arm's location checks need
+ * get_obj_location(); only its untimed-object check is ported here. */
+export async function timer_sanity_check() {
+    for (let curr = gtimer().timer_base; curr; curr = curr.next) {
+        const t_id = curr.tid;
+        switch (curr.kind) {
+        case TIMER_OBJECT: {
+            const obj = curr.arg.a_obj;
+            if (!obj.timed)
+                await impossible('timer sanity: untimed obj %s, timer %lu',
+                                 'obj', t_id);
+            break;
+        }
+        case TIMER_MONSTER:
+            await impossible('timer sanity: unexpected monster timer %lu', t_id);
+            break;
+        case TIMER_LEVEL: {
+            const lwhere = curr.arg.a_long;
+            const x = (lwhere >> 16) & 0xFFFF;
+            const y = lwhere & 0xFFFF;
+            if (isok(x, y)) {
+                const loc = game.level.at(x, y);
+                if (curr.func_index === MELT_ICE_AWAY && !is_ice(x, y)
+                    && !(loc.typ === DRAWBRIDGE_DOWN
+                         && ((loc.drawbridgemask | 0) & DB_UNDER) === DB_ICE))
+                    await impossible(
+                        'timer sanity: melt timer %lu on non-ice %d <%d,%d>',
+                        t_id, loc.typ, x, y);
+            } else {
+                await impossible('timer sanity: spot timer %lu at <%d,%d>',
+                                 t_id, x, y);
+            }
+            break;
+        }
+        case TIMER_GLOBAL:
+            await impossible('timer sanity: unexpected global timer %lu', t_id);
+            break;
+        default:
+            await impossible('timer sanity: unknown timer %lu, type: %d',
+                             t_id, curr.kind);
+            break;
+        }
     }
 }
 

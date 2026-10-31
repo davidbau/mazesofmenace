@@ -2,7 +2,9 @@
 // C refs: pickup.c use_container(), in_container(), out_container().
 import { makePlural } from './object_grammar.js';
 import { containerContents } from './container_contents.js';
-import { bot, consumeHallucinatedMenuObjectGlyph, displayMessageWindow, flush_screen, pline, plineWithContinuation } from './display.js';
+import { bot, consumeHallucinatedMenuObjectGlyph, flush_screen } from './display.js';
+import { displayMessageWindow } from './tty_topline.js';
+import { pline, plineWithContinuation } from './pline.js';
 import { touchArtifactByHero } from './artifact_touch.js';
 import { loseHeroHp } from './hero_damage.js';
 import { triggerChestTrap } from './chest_trap.js';
@@ -25,7 +27,7 @@ import { useUpFloorObject } from './floor_consumption.js';
 import { scatterFloorObjects } from './scatter.js';
 import { finishEnvironmentalMonsterDeath } from './monster_death.js';
 import { finishHeroMonsterKill, finishHeroMonsterKillOutcome } from './hero_monster_death.js';
-import { startCorpseTimeout } from './mklev.js';
+import { startCorpseTimeout } from './mkobj.js';
 import { MONSTER_NAME, MONSTER_SIZE } from './monster_data.js';
 import { deleteObject } from './object_delete.js';
 import { AMULET_OF_YENDOR, BAG_OF_HOLDING, BELL_OF_OPENING, BOULDER, BAG_OF_TRICKS, BRASS_LANTERN, CANDELABRUM_OF_INVOCATION, CHEST, CORPSE, GOLD_PIECE, ICE_BOX, LARGE_BOX, LEASH, LOADSTONE, OBJECT_BIMANUAL, OIL_LAMP, OILSKIN_SACK, POT_OIL, SACK, SPE_BOOK_OF_THE_DEAD, STATUE, TALLOW_CANDLE, WAN_CANCELLATION, WAX_CANDLE, } from './object_data.js';
@@ -565,11 +567,29 @@ export async function takeFromContainer(container, object, state = game, count =
     container.cknown = true;
     updateContainerWeights(container);
     observeObjectForNaming(carried, { state });
-    const added = { ...carried, quan: addedCount, quantity: addedCount };
-    const merged = addedCount < quantity(carried);
-    const total = merged ? state.flags.verbose === false ? ''
-        : ` (${quantity(carried)} in total).` : '.';
-    const description = `${carried.invlet || '$'} - ${await objectDescription(added, inventoryPrimaryHandDetail(carried))}${total}`;
+    // C prinv()/xprname() formats the surviving stack itself, with only the
+    // removed quantity substituted: the stack keeps its identity, so
+    // doname()'s twoweapon primary still names the hand rather than
+    // degrading a partial stack to "(wielded)".
+    const total = quantity(carried);
+    const merged = addedCount > 0 && addedCount < total;
+    const savedQuantity = carried.quantity;
+    carried.quan = addedCount || total;
+    carried.quantity = carried.quan;
+    let named;
+    try {
+        named = await objectDescription(carried, inventoryPrimaryHandDetail(carried));
+    }
+    finally {
+        carried.quan = total;
+        if (savedQuantity === undefined)
+            delete carried.quantity;
+        else
+            carried.quantity = savedQuantity;
+    }
+    const suffix = merged ? state.flags.verbose === false ? ''
+        : ` (${total} in total).` : '.';
+    const description = `${carried.invlet || '$'} - ${named}${suffix}`;
     return {
         moved: true,
         message: pickupInventoryMessage(description, 'removing', state),

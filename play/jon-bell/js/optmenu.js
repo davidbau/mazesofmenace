@@ -25,6 +25,7 @@ import { mungspaces, strsubst } from './mklev.js';
 import { optfn_fruit_set, optfn_statushilites_set, count_status_hilites, optfn_hilite_status_set, handler_autopickup_exception, handle_add_list_remove, compound_option_value, status_fieldname, optfn_boulder_set, DISCLOSURE_OPTIONS, END_DISCLOSE_DEFAULT, parse_pickup_types, PARANOIA_OPTS, PARANOID_CONFIRMATION_DEFAULT_BITS, BURDENTYPE } from './options.js';
 import { reset_needed_visuals, option_state, string_for_opt } from './options_runtime.js';
 import { vision_recalc } from './vision.js';
+import { classifyTerrain } from './terrain-status.js';
 import { optfn_suppress_alert_set } from './feature_alert.js';
 import { number_pad_value, parseautocomplete } from './cmd_config.js';
 import { reset_commands, update_rest_on_space, cmdbind_get, bind_key, cmd_from_func, visctrl } from './cmd_binds.js';
@@ -868,7 +869,16 @@ export async function doset_simple() {
              * before options.c:8666 dispatches its selected handler.
              * erase_menu_or_text (:978) docrt()s the map, clearing physical
              * paint that a control-byte symbol cannot overwrite. */
-            await docrt();
+            /* C wintty.c:978-979 flushes docrt's glyphs on dismissal;
+             * windows.c:1861 keeps bot() disabled until select_menu returns. */
+            const oldBotDisabled = g._bot_disabled;
+            g._bot_disabled = true;
+            try {
+                await docrt();
+                await flush_screen(1);
+            } finally {
+                g._bot_disabled = oldBotDisabled;
+            }
             g._status_blanked = entry.kind !== 'bool'; // windows.c:1861: submenu disables bot().
             await drainTopline(); // wintty.c:1921: page notices before the next menu.
             g._status_blanked = false;
@@ -885,7 +895,11 @@ export async function doset_simple() {
                 /* C options.c:5344-5349,5386-5390 optfn_boolean: showscore/showvers/showexp/time/hitpointbar call
                  * status_initialize(REASSESS_ONLY), which sets gu.update_all; botl.c:1575-1577
                  * then zeroes every field's time and chg, dropping the up/down temp hilites. */
-                if (['showscore', 'showvers', 'showexp', 'time', 'hitpointbar'].includes(entry.name)) {
+                /* C options.c:5331-5350: extra status fields also reassess;
+                 * terrainstatus first refreshes the cached terrain type. */
+                if (entry.name === 'terrainstatus') classifyTerrain();
+                if (['showscore', 'showvers', 'showexp', 'time', 'hitpointbar',
+                     'terrainstatus', 'weaponstatus', 'armorstatus'].includes(entry.name)) {
                     delete g._blTemp;
                     status_reassess();
                 }
@@ -946,14 +960,20 @@ export async function doset_simple() {
                  * and falls through to the menu redraw. */
                 if (abuf !== '\x1b') {
                     const result = await entry.set(abuf);
+                    /* cfgfiles.c:1560 config_erradd plines the error before
+                     * options.c:8958 preference_update recreates status. */
+                    /* cfgfiles.c:1557-1564: config_error_add plines and waits
+                     * before parseoptions returns to preference_update. */
+                    if (result) {
+                        await pline(result);
+                        await force_more(result);
+                    }
                     /* options.c:8956-8958 preference_update -> wintty.c:603 */
                     if (entry.name === 'statuslines') {
                         new_status_window();
                         newclipping();
                     }
-                    if (result)
-                        await force_more(result);
-                    else if (entry.name === 'statuslines') {
+                    if (!result && entry.name === 'statuslines') {
                         /* options.c:4095 opt_need_redraw, then doset_simple()'s
                          * reset_needed_visuals() (options.c:8997) */
                         g.go ||= {};
@@ -2357,7 +2377,10 @@ export async function doset() {
                     }
                     if (ent.row.name === 'rest_on_space') update_rest_on_space();
                     /* same status_initialize(REASSESS_ONLY) -> update_all reset as doset_simple */
-                    if (['showscore', 'showvers', 'showexp', 'time', 'hitpointbar'].includes(ent.row.name)) {
+                    /* C options.c:5331-5350, as in the simple menu above. */
+                    if (ent.row.name === 'terrainstatus') classifyTerrain();
+                    if (['showscore', 'showvers', 'showexp', 'time', 'hitpointbar',
+                         'terrainstatus', 'weaponstatus', 'armorstatus'].includes(ent.row.name)) {
                         delete g._blTemp;
                         status_reassess();
                     }

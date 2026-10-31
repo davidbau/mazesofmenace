@@ -493,7 +493,7 @@ export async function display_text_window(lines) {
     // text visible instead of erasing it and redrawing the destroyed map.
     // With live windows, erase_menu_or_text still redraws vision/monsters.
     if (g.iflags.window_inited) {
-        await docrt();
+        await docrt(false, g._screen_output);
         /* erase_menu_or_text (wintty.c:975-976): docrt(); flush_screen(1) with bot()
          * enabled — the pending BL_RESET status rewrite precedes the map print. */
         game._docrtMapAfterBot = true;
@@ -1151,6 +1151,11 @@ export async function topl_more_page(msg, uacAtCapture) {
         const row1 = game._status1Whole ? _status_row1_whole_with_tail(st3[0])
             : _status_row1_map_overlay(st3[0]);
         output = output.replace(/[^\n]*\n$/, '') + row1 + '\n' + _status_sgr(st3[1]) + '\n' + _status_sgr(st3[2]);
+    } else if (g._status_blanked || g._statusBlankAfterDocrt === true) {
+        /* restore.c:932 docrt() -> cls() blanked the status rows, and the
+         * welcome pline's flush could not repaint them: botl.c:259 declines
+         * while u.uhp == -1 (a self-genocided polymorphed hero). */
+        output += '\n';
     } else {
         output += _statusLine1() + '\n';
         // Row 23: status line 2 (with uac = actual post-find_ac value)

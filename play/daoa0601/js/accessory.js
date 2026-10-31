@@ -18,7 +18,8 @@ import { isWeldedPrimary, releaseWeaponSlots } from './weapon_slots.js';
 import { cancelSlotTakeoff } from './takeoff_state.js';
 import { heroFormFlags, heroHasNoLimbs, heroIsUnchanging } from './polyself.js';
 import { changeHeroSex, heroIsBreathless, heroPolyGender } from './hero_species.js';
-import { displayLiquidName, newsym, plineWithContinuation, see_monsters } from './display.js';
+import { displayLiquidName, newsym, see_monsters } from './display.js';
+import { plineWithContinuation } from './pline.js';
 import { consumeInventoryItem } from './invent.js';
 import { objectWearMessage } from './object_wear_message.js';
 import { tryCallObjectType } from './object_call.js';
@@ -33,7 +34,7 @@ import { heroCanSwim } from './hack.js';
 import { isLavaAt, isPoolAt, levelIsWaterLevel } from './terrain_properties.js';
 import { monsterName } from './monster_name.js';
 import { floatHeroDown, floatHeroUp } from './terrain_movement.js';
-import { applyHeroLiquidEffects, applyHeroLocationEffects } from './cmd.js';
+import { applyHeroLiquidEffects, applyHeroLocationEffects } from './hack.js';
 import { restartMonsterShapechanging, restoreNaturalMonsterShapes } from './monster_polymorph.js';
 import { clearHeroStrangulation, heroIsStrangled, startAmuletStrangulation, } from './hero_strangulation.js';
 const ACCESSORY_SLOTS = [

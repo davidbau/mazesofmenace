@@ -12,7 +12,7 @@ import { Norep, Deaf as Deaf_live, rumor_file_open, init_rumors, rumor_rnd_line 
 import { You_feel } from './display.js';
 import { nonliving as lifesave_nonliving } from './makemon.js';
 import { m_useup as lifesave_m_useup } from './trap.js';
-import { discover_object as lifesave_discover_object, isWanNothingNodir } from './o_init.js';
+import { discover_object as lifesave_discover_object, isWanNothingNodir, objdescr_is as objdescr_is_real } from './o_init.js';
 import { s_suffix as lifesave_s_suffix } from './hacklib.js';
 import { wary_dog, dismount_steed as dismount_steed_mk, sticks, tamedog as tamedog_mk, m_into_limbo, newedog } from './dog.js';
 import { MM_EDOG, MM_ESHK } from './const.js';
@@ -893,6 +893,9 @@ export async function u_on_rndspot(upflag) {
             const d = game.dndest || {};
             await place_lregion(d.nlx || 0, d.nly || 0, d.nhx || 0, d.nhy || 0,
                           0, 0, 0, 0, LR_DOWNTELE, null);
+            /* C dungeon.c:1636-1637: every arrival region, including the
+             * tower's exclusion region, must restore flight/levitation. */
+            await switch_terrain();
             return;
         }
     }
@@ -5000,6 +5003,10 @@ export async function mongone(mdef) {
     mdef.mhp = 0;
     if (mdef.isgd && !await grddead(mdef))
         return;
+    /* C mon.c:3267-3282: mhp is 0 but the grid still holds mdef until
+     * m_detach -> mon_leaving_level, so a vision flush from the inventory
+     * teardown (setmnotwielded's "stops shining" pline) still draws it. */
+    mdef._zeroHpOnGrid = true;
     /* C mon.c:3276 unstuck(mdef): reachable from class genocide, where the
      * victim may be u.ustuck (rnd(2) mspec_used for a holder/engulfer). */
     await unstuck_mk(mdef);
@@ -5063,6 +5070,7 @@ export async function mongone(mdef) {
     if ((mdef.mx | 0) > 0 && emits_light(mdef.data))
         del_light_source(LS_MONSTER, monst_to_any(mdef));
     mdef.mhp = 1;
+    mdef._zeroHpOnGrid = false;
     await mon_leaving_level_mk(mdef);
     mdef.mhp = 0;
     if (mdef.iswiz) wizdeadorgone(); /* C mon.c:2761-2762, m_detach */
@@ -7568,8 +7576,7 @@ let itermonsiz = 0; // size in 'monst *' pointers
  * setSpecFlags applies create_monster's post-makemon spec writes
  * (sp_lev.c:2124 `mtmp->female = m->female`, sp_lev.c:2132-2133
  * `if (m->asleep > BOOL_RANDOM) mtmp->msleeping = m->asleep`) to the monster
- * makemon just created.  The nhlib fills await makemon before invoking this
- * hook, so the fmon head still identifies that completed creation.
+ * makemon just returned; a generated group can put another monster at fmon.
  * Both fills that use this pass `asleep = true`, so msleeping is unconditional.
  *
  * @param {object} croom the mkroom being filled
@@ -7580,8 +7587,7 @@ function themeroom_monster_fill_hooks(croom) {
         inducedAlign: induced_align,
         somexy,
         makemon,
-        setSpecFlags: (female) => {
-            const mtmp = game.fmon;
+        setSpecFlags: (female, mtmp) => {
             if (!mtmp)
                 return;
             mtmp.female = female ? 1 : 0;
@@ -7599,7 +7605,7 @@ function themeroom_monster_fill_hooks(croom) {
          *   || enexto_core(cc,xx,yy,mdat,NO_MM_FLAGS)
          * so a scary-square rejection costs a SECOND ring shuffle. */
         enexto: (mx, my, mndx) => {
-            const fakemon = { data: permonstTemplate(mndx), mnum: mndx, m_id: 0,
+            const fakemon = mndx == null ? null : { data: permonstTemplate(mndx), mnum: mndx, m_id: 0,
                 wormno: 0, mx: 0, my: 0, minvent: null };
             return enexto_core(mx, my, fakemon, GP_CHECKSCARY)
                 || enexto_core(mx, my, fakemon, 0 /* NO_MM_FLAGS */);
@@ -9028,12 +9034,12 @@ async function themeroom_water_surrounded_vault_contents_rng(mapPos) {
     /* sp_amask == AM_SPLEV_RANDOM and the id is not a PM_ARCHEOLOGIST..PM_WIZARD
      * player-monster, so create_monster:1985 takes plain makemon(pm, x, y,
      * mm_flags=0).  The coord is explicit, so get_location_coord draws nothing. */
-    await makemon(nastyId, mapPos.x + 2, mapPos.y + 2, 0);
+    const mtmp = await makemon((game.mvitals?.[nastyId]?.mvflags & G_GONE) ? null : nastyId, mapPos.x + 2, mapPos.y + 2, 0);
     /* C sp_lev.c:2124 `mtmp->female = m->female` — makemon has already rolled a
      * random gender (makemon.c:1279); create_monster overwrites it with the one
      * find_montype drew.  The spec sets no asleep/waiting, so nothing else. */
-    if (game.fmon)
-        game.fmon.female = (nastyGend === 1 /* FEMALE */) ? 1 : 0;
+    if (mtmp)
+        mtmp.female = (nastyGend === 1 /* FEMALE */) ? 1 : 0;
     /* themerms.lua:813 des.exclusion({type="teleport", region={2,2,3,3}}) —
      * lspo_exclusion (sp_lev.c:5505-5539): RNG-free, but is_exclusion_zone
      * (mkmaze.c:317) makes put_lregion_here reject these squares for a
@@ -14612,10 +14618,7 @@ async function pline_mon(mtmp, fmt, ...args) {
  * description.  getObjDescr owns the shuffled description table; null objects
  * and objects without an appearance simply cannot match. */
 function objdescr_is(otmp, str) {
-    if (!otmp)
-        return false;
-    const descr = getObjDescr(otmp.otyp | 0);
-    return descr != null && descr === str;
+    return objdescr_is_real(otmp, str);
 }
 
 /* pline() is NOT redefined here.  C ref: pline.c:113 pline() — one function,
@@ -14780,8 +14783,8 @@ export async function lifesaved_monster(mon) {
     mon.mcanmove = 1;
     mon.mfrozen = 0;
     if (mon.mtame && !mon.isminion) {
-        mon._lifesaving = true; /* still on C's monster grid while mhp == 0 */
-        try { await wary_dog(mon, !survives); } finally { mon._lifesaving = false; }
+        mon._zeroHpOnGrid = true; /* still on C's monster grid while mhp == 0 */
+        try { await wary_dog(mon, !survives); } finally { mon._zeroHpOnGrid = false; }
     }
     mon.mhpmax = Math.max(mon.mhpmax | 0, (mon.m_lev | 0) + 1, 10);
     mon.mhp = mon.mhpmax;

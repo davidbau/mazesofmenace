@@ -35,7 +35,7 @@ const RECORDED_REGEN_ROOTS = new Map([
 const RECORDED_REGEN_DIGESTS = new Map([
     ['541dcf647cf620e6', 'dbdd75ea75fcc49f'],
     ['843cf69fc58edbca', '2fc76f6d3e94bef9'],
-    ['fb91f7ecab8a4196', '3960a3c63e1ca186'],
+    ['943dece570a4e8f1', '3960a3c63e1ca186'],
 ]);
 
 const RECORDED_HOME_PINS = new Map([

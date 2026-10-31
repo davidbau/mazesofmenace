@@ -630,13 +630,16 @@ async function menu_pick_pay_items(ibillct, ibill) {
             const e = entries[i];
             out.push(`${e.selector} ${e.mark} ${e.text}`);
         }
-        out.push('(end)');
         return out;
     };
-    const WIN_COL = tty_window_offx(renderLines(), 'end');
     const uac = g.u?.uac ?? 0;
-    const endRow = renderLines().length - 1;
+    const SCREEN_ROWS = 24, PAGE_CONTENT = SCREEN_ROWS - 1;
+    const FULL_SCREEN = renderLines().length + 1 >= SCREEN_ROWS
+        || g.iflags?.menu_overlay === false;
+    const pageCount = Math.max(1, Math.ceil(renderLines().length / PAGE_CONTENT));
+    const WIN_COL = FULL_SCREEN ? 1 : tty_window_offx([...renderLines(), '(end)'], 'end');
     const BY_SEL = new Map(entries.map(e => [e.selector.charCodeAt(0), e]));
+    let page = 0;
 
     let cancelled = false;
     /* C ref: win/tty/getline.c:213 — a MENU_SEARCH's tty_getlin ends with
@@ -645,9 +648,20 @@ async function menu_pick_pay_items(ibillct, ibill) {
      * page change, so within one select_menu() call it stays blank. */
     let titleErased = false;
     const frameRows = () => {
-        const lines = renderLines();
-        if (titleErased) lines[0] = '';
-        return build_window_screen(lines, WIN_COL, uac).split('\n');
+        /* C wintty.c:1425-1545: lmax content rows then the footer at row
+         * page_lines; full-screen (offx 0) rows sit one space past col 0. */
+        const pageLines = renderLines().slice(page * PAGE_CONTENT,
+                                               (page + 1) * PAGE_CONTENT);
+        const footer = pageCount > 1 ? `(${page + 1} of ${pageCount})` : '(end)';
+        if (titleErased) pageLines[0] = '';
+        const footerRow = pageLines.length;
+        if (!FULL_SCREEN)
+            return { footer, footerRow, rows: build_window_screen(
+                [...pageLines, footer], WIN_COL, uac).split('\n') };
+        const rows = new Array(SCREEN_ROWS).fill('');
+        pageLines.forEach((ln, i) => { rows[i] = ` ${ln}`; });
+        rows[footerRow] = ` ${footer}`;
+        return { rows, footer, footerRow };
     };
     /* C wintty.c:1553-1612: invalid xwaitforspace keys preserve the count;
      * ESC cancels a pending count before it can cancel the menu.
@@ -655,8 +669,12 @@ async function menu_pick_pay_items(ibillct, ibill) {
      * only the selection and its indicator need to retain that distinction. */
     let count = 0n;
     for (;;) {
-        g._screen_output = frameRows().join('\n');
-        set_cursor_shk(WIN_COL + '(end)'.length + 1, endRow);
+        const { rows, footer, footerRow } = frameRows();
+        g._screen_output = rows.join('\n');
+        /* C wintty.c:1543-1545: the footer sits at column offx + 1 and the
+         * cursor strlen(morestr) further right — "(end) " keeps its trailing
+         * space (:2747), "(N of M)" has none (:1538). */
+        set_cursor_shk(WIN_COL + footer.length + (pageCount > 1 ? 0 : 1), footerRow);
         const k = await nhgetch();
         if (!BY_SEL.has(k) && k >= 48 && k <= 57) {
             count = count * 10n + BigInt(k - 48);
@@ -704,7 +722,7 @@ async function menu_pick_pay_items(ibillct, ibill) {
             await menu_search_case(
                 'ANY',
                 entries.map((en) => ({ str: `${en.selector} - ${en.text}`, en })),
-                frameRows,
+                () => frameRows().rows,
                 (curr) => {
                     curr.en.selected = counted || !curr.en.selected;
                     curr.en.mark = curr.en.selected ? (counted ? '#' : '+') : '-';
@@ -921,8 +939,21 @@ async function pay_billed_items(shkp, ibillct, ibill, stashed_gold, paidBox) {
             } else {
                 const iprompt = await yn_function_shk('Itemized billing?',
                                                       'ynq m', 'q', true);
+                if (iprompt === 'q') {
+                    /* C shk.c:2102-2103 returns without clearing the question;
+                     * tty_yn_function (topl.c:533-550) leaves its single row
+                     * painted. Preserve that physical text across nhgetch's
+                     * logical message clear until the next command read. */
+                    game._topl_sticky = 'Itemized billing? [ynq m] (q)';
+                /* C topl.c:536-548 — the answered prompt stays painted until
+                 * the next clear_nhwindow(WIN_MESSAGE); for 'm' the pay menu
+                 * clears it on open (wintty.c:1936-1940). */
+                const shown = 'Itemized billing? [ynq m] (q)';
+                if (iprompt !== 'm' && topl_park_cursor(null, shown + ' ')[1] === 0)
+                    game._topl_sticky = shown;
                 if (iprompt === 'q')
                     return true;
+                }
                 itemize = (iprompt === 'y');
                 via_menu = (iprompt === 'm');
             }

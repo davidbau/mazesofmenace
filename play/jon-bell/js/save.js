@@ -151,9 +151,17 @@ export function savefile_name(plname) {
 
 export const NOT_SAVED = [
     'program_state', 'iflags', 'keybindings', 'sysopt', 'disp', 'env',
+    // C save.c:265-333 omits vision.c's process-local sight buffers; keep
+    // vision_init()'s empty view until restore.c:927 rebuilds visibility.
+    'viz_array', '_viz_rmin', '_viz_rmax', 'active_buf',
     'Cmd', '_command_binding_statics', 'nhcb_counts', 'nhcore_call_available', 'mvl_change',
     // C save.c:246-333 omits artifact.c's process-local warning count.
     'mkot_trap_warn_count',
+    // C decl.c:807 initializes this to 0; save.c:265-333 does not save it.
+    'warn_obj_cnt',
+    // C save.c:246-333 omits the process-local warning counts
+    // (decl.c:807 initializes warn_obj_cnt to zero in each new process).
+    'mkot_trap_warn_count', 'warn_obj_cnt',
     'n_menu_mapped', 'mapped_menu_cmds', 'mapped_menu_op', '_config_errors',
     // save.c:265-328 omits menu patterns; cfgfiles.c:1164 reloads them from rc.
     'menu_colorings', 'color_colorings', 'save_colorings',
@@ -164,10 +172,20 @@ export const NOT_SAVED = [
     // mhitm.c's noise throttle, so a restored process hears fights afresh.
     'far_noise', 'noisetime',
     'nhDisplay', '_rawterm', '_screen_output', '_preNhgetchHook',
+    // C save.c:265-333 omits blstats; botl.c:1694,1759-1795 initializes
+    // field values, colors and temporary highlight timers in each process.
+    '_blTemp', '_statusFieldColors',
     'mockStorage', 'currentSeed', 'tutorial_set_in_config',
     '_pending_message', '_prevmsg', '_resultMessage', '_resultMessageJoins',
+    // C save.c:265-333 omits the physical tty frame held by more()
+    // (topl.c:205-248); restore.c:944 rebuilds the new process's display.
+    '_paintedSnapshot', '_inMovemonMore',
     '_topl_sticky', '_topl_win_stop', '_topl_win_stop_armed', '_topl_win_stop_buf',
     '_topl_urgent_marks', '_topl_urgent_next',
+    // C wintty.h:104 ttyDisplay->dismiss_more is tty process state (wintty.c:544
+    // zeroes it at init); save.c never writes it.
+    '_ttyDismissMore',
+    '_ttyDismissMore', // C wintty.c:544: window state starts at zero in each process.
     '_runPageFrames', '_botlPaintedCap',
     /* go.occupation / gt.timed_occ_fn / go.occtxt: code pointers, which
      * savegamestate() never writes (a counted `20s` armed when `S` is typed
@@ -176,6 +194,11 @@ export const NOT_SAVED = [
     /* The PRNG contexts (C rnd.c's CORE/DISP isaac64 states) are not in the
      * save file; the restoring process keeps the ones initRng() just seeded. */
     'coreCtx', 'dispCtx',
+    // C rect.c:19-21: room-placement rectangles are process-local statics;
+    // savegamestate() does not serialize the allocator.
+    'nhrect', 'n_rects', 'rect_cnt',
+    // C decl.h:849: gs.smeq is outside the saved instance globals.
+    'smeq',
 ];
 
 /* C ref: save.c:246 savegamestate() — everything between the current level and

@@ -3,6 +3,8 @@
 // RNG paths here use the game's Lua/core PRNG (rng.c lua context parity: core ISAAC).
 // @ts-nocheck — sibling import from hand-maintained js/rng.js.
 import { rn2, rnz } from './rng.js';
+import { game } from './gstate.js';
+import { G_GONE } from './const.js';
 import { DRY, NO_LOC_WARN } from './sp_lev_loc.js';
 /**
  * Callback registry for mksobj from mklev.js.
@@ -233,16 +235,18 @@ export async function nhlib_fill_cloud_room_rng(numPoints, roomWidth, roomHeight
             h.inducedAlign(80);
         else
             rn2(3);
+        const pm = (game.mvitals?.[PM_FOG_CLOUD]?.mvflags & G_GONE) ? null : PM_FOG_CLOUD; // sp_lev.c:1952-1953
         /* 3. get_location_coord(random) → somexy → somex + somey. */
         const c = { x: 0, y: 0 };
-        if (croom && h.somexy) {
+        if (pm == null && h.getLocationCoord) h.getLocationCoord(c, DRY);
+        else if (croom && h.somexy) {
             h.somexy(croom, c);
         } else {
             c.x = rn2(roomWidth);
             c.y = rn2(roomHeight);
         }
         if (h.monAt && h.monAt(c.x, c.y)) {
-            const cc = h.enexto ? h.enexto(c.x, c.y, PM_FOG_CLOUD) : null;
+            const cc = h.enexto ? h.enexto(c.x, c.y, pm) : null;
             if (cc) {
                 c.x = cc.x;
                 c.y = cc.y;
@@ -255,9 +259,9 @@ export async function nhlib_fill_cloud_room_rng(numPoints, roomWidth, roomHeight
             continue;
         /* 4-5. makemon then the spec flags. */
         if (h.makemon) {
-            await h.makemon(PM_FOG_CLOUD, c.x, c.y, 0);
-            if (h.setSpecFlags)
-                h.setSpecFlags(mgend);
+            const mtmp = await h.makemon(pm, c.x, c.y, 0);
+            if (mtmp && h.setSpecFlags)
+                h.setSpecFlags(mgend, mtmp);
         }
     }
 }
@@ -319,15 +323,17 @@ export async function nhlib_fill_garden_rng(numPoints, roomWidth, roomHeight, ho
             h.inducedAlign(80);
         else
             rn2(3);
+        const pm = (game.mvitals?.[PM_WOOD_NYMPH]?.mvflags & G_GONE) ? null : PM_WOOD_NYMPH;
         /* 3. get_location_coord(random) → somexy → somex + somey. */
         const c = { x: 0, y: 0 };
-        somexyInto(c);
+        if (pm == null && h.getLocationCoord) h.getLocationCoord(c, DRY);
+        else somexyInto(c);
         /* 3a-3b. C sp_lev.c:1976-1981 — the MON_AT/enexto relocation and the
          * inside_room abandon; see nhlib_fill_cloud_room_rng for why these are
          * load-bearing rather than cosmetic. */
         let placed = true;
         if (h.monAt && h.monAt(c.x, c.y)) {
-            const cc = h.enexto ? h.enexto(c.x, c.y, PM_WOOD_NYMPH) : null;
+            const cc = h.enexto ? h.enexto(c.x, c.y, pm) : null;
             if (cc) {
                 c.x = cc.x;
                 c.y = cc.y;
@@ -337,9 +343,9 @@ export async function nhlib_fill_garden_rng(numPoints, roomWidth, roomHeight, ho
             placed = false;
         /* 4-5. makemon then the spec flags (female = FEMALE, asleep). */
         if (placed && h.makemon) {
-            await h.makemon(PM_WOOD_NYMPH, c.x, c.y, 0);
-            if (h.setSpecFlags)
-                h.setSpecFlags(FEMALE);
+            const mtmp = await h.makemon(pm, c.x, c.y, 0);
+            if (mtmp && h.setSpecFlags)
+                h.setSpecFlags(FEMALE, mtmp);
         }
         /* C ref: themerms.lua garden line 124 — if (percent(30)) */
         if (rn2(100) < 30) {

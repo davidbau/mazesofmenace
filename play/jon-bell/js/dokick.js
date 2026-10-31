@@ -184,7 +184,7 @@ import { MAY_HITMON, MAY_HITYOU, MAY_HIT, MAY_DESTROY, MAY_FRACTURE, VIS_EFFECTS
 /* C const.js u_at(x,y) — the hero-at-square predicate. */
 import { u_at, HALF_PHDAM } from './const.js';
 /* C mon.c hideunder(mtmp) — the one body lives in js/mklev.js. */
-import { inside_shop, hideunder, shkname_halluc_pick } from './mklev.js';
+import { inside_shop, hideunder, shkname_halluc_pick, letter } from './mklev.js';
 /* C allmain.c nomul(nval) / stop_occupation() — the one bodies. */
 import { nomul, stop_occupation } from './allmain.js';
 export { ok_to_quest };
@@ -1736,7 +1736,9 @@ async function really_kick_object(x, y, kickedobj) {
         /* C zap.c:4049-4054 bhit(): a kicked object that reaches stairs / a
          * hole / a trapdoor is shipped down by ship_object(); bhit ends there
          * with the object migrating (kick_object returns at :753). */
-        if (!isgold && await ship_object(kickedobj, bx, by, costly_spot(bx, by)))
+        // C zap.c:4049-4054: gold also ships unless objects stopped it above.
+        // C also ships gold when the preceding object-pile test did not stop it.
+        if (await ship_object(kickedobj, bx, by, costly_spot(bx, by)))
             break;
         /* C zap.c:4076-4080 bhit(): a wall/stone or closed door stops the
          * object and bhitpos backs up one square. */
@@ -2534,8 +2536,8 @@ export function shkname(mtmp) {
         if (pick)
             shknm = pick;
     }
-    /* C: if (!letter(*shknm)) ++shknm; — hacklib.c letter() is alpha only. */
-    return /^[A-Za-z]/.test(shknm) ? shknm : shknm.slice(1);
+    /* C shknam.c:892-893; hacklib.c:69 letter() also includes '@'. */
+    return letter(shknm.charAt(0)) ? shknm : shknm.slice(1);
 }
 /* C shk.c:3753-3877: share the full billing and message implementation,
  * including breakobj()'s non-silent charge (dothrow.c:2559). */

@@ -391,7 +391,8 @@ async function in_or_out_menu(promptText, box, outokay, inokay, alreadyused, mor
     const prior = g._getobj_menu_win;
     g._getobj_menu_win = null;
     let statusClip;
-    if (prior && prior.moves === g.moves
+    /* wintty.c:971-982: offx 0 uses docrt(), not docorner's status clip. */
+    if (prior && prior.WIN_COL > 0 && prior.moves === g.moves
         && prior.winRows >= (_threeStatusLines() ? 21 : 22))
         statusClip = Math.max(0, prior.WIN_COL - 2);
     /* The wiped corner stays wiped under the menus that follow (nothing
@@ -427,6 +428,10 @@ async function in_or_out_menu(promptText, box, outokay, inokay, alreadyused, mor
         g._screen_output = screenOutput;
         set_cursor(endCursorCol, endRow);
         const k = await nhgetch();
+        // C getline.c:230-257: rejected input preserves an unfinished count.
+        if (!BYKEY.has(k)
+            && !(' 0123456789\x00\x1b\n\r' + DEFAULT_MENU_CMDS).includes(String.fromCharCode(k)))
+            continue;
         // C wintty.c:1566-1616: ESC first cancels a pending count.
         if (k >= 48 && k <= 57) {
             pendingCount = pendingCount * 10n + BigInt(k - 48);
@@ -781,7 +786,11 @@ async function _container_contents_one(box, identified, all_containers, reportem
             if (esc) break;
         }
         g._pending_message = '';
-        await flush_screen(1);
+        /* The corner wiped by the prior menu stays wiped: tty_destroy_nhwindow
+         * paints no status, so the pending botlx must not reach bot() here. */
+        const savedBotDisabled = g._bot_disabled;
+        if (statusClipCol !== undefined || g._carryStatusClip) g._bot_disabled = true;
+        try { await flush_screen(1); } finally { g._bot_disabled = savedBotDisabled; }
         if (underWindow && !fullScreen) g._topl_sticky = underWindow;
         /* C:1658-1660 — `if (all_containers) container_contents(box->cobj,
          * identified, TRUE, reportempty);` — recurse into nested boxes. */
@@ -839,6 +848,11 @@ async function _tty_pick_any_menu(renderLines, items, winColFooter, prior = null
             game._statusBlankAfterDocrt = true;
         } else if (_lastPickGeom.col > 0) {
             docorner_blank_utf8_captures(_lastPickGeom.col - 1, _lastPickGeom.rows + 1);
+            /* wintty.c:3715-3719 docorner(): a corner reaching the status rows
+             * "wrecked the bottom line" and sets disp.botlx; bot() is a no-op
+             * under select_menu()'s bot_disabled, so botlx stays pending. */
+            if (_lastPickGeom.rows + 1 >= (_threeStatusLines() ? 21 : 22) && game.disp)
+                game.disp.botlx = 1;
         }
         game._pending_message = '';
         await flush_screen(1);
@@ -1394,9 +1408,17 @@ async function _menu_loot_items(chainHead, contents, action, useInvlet) {
     }
     /* C wintty.c:2715-2726 tty_end_menu — assign 'a'..'z' then 'A'..'Z' to
      * every selectable row that did NOT come with a selector of its own. */
+    /* menu_ch restarts at 'a' on every page ((n % lmax) == 0, lmax = rows - 1
+     * = 23), n counting the prepended prompt and blank rows and the class
+     * headings. */
     let menu_ch = 97 /* 'a' */;
-    for (const it of items) {
-        if (it.sel) continue;
+    let n = 2;
+    for (const e of entries) {
+        if (n % 23 === 0)
+            menu_ch = 97;
+        n++;
+        const it = e.item;
+        if (!it || it.sel) continue;
         it.sel = String.fromCharCode(menu_ch);
         menu_ch = (menu_ch === 122 /* 'z' */) ? 65 /* 'A' */ : menu_ch + 1;
     }

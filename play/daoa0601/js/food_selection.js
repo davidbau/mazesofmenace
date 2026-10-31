@@ -1,6 +1,6 @@
 // C eat.c:is_edible(), eat_ok(), and floorfood() for the eat command.
 import { BEAR_TRAP, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_NONINVENT, GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_SUGGEST, IRONBARS, TT_BEARTRAP, W_NONDIGGABLE, } from './const.js';
-import { plineWithContinuation as pline } from './display.js';
+import { plineWithContinuation as pline } from './pline.js';
 import { veganCorpse } from './food_traits.js';
 import { heroCanReachFloor } from './floor_reach.js';
 import { game, requireLiveGame, requirePlayingGame } from './gstate.js';
@@ -10,7 +10,7 @@ import { heroIsStrangled } from './hero_strangulation.js';
 import { clearHeroTrap } from './hero_traps.js';
 import { inventoryItemDescription } from './invent.js';
 import { chooseInventoryObject } from './inventory_prompt.js';
-import { mksobj } from './mklev.js';
+import { mksobj } from './mkobj.js';
 import { MONSTER_FLAGS1, MONSTER_NAME, requireMonsterData } from './monster_data.js';
 import { BEARTRAP, CORPSE, EGG, GOLD_PIECE, OBJECT_PROPERTY, OBJECT_UNIQUE, TALLOW_CANDLE, WAN_FIRE, WAX_CANDLE, } from './object_data.js';
 import { objectMaterial } from './object_material.js';

@@ -33,6 +33,7 @@ import { W_ARTI, W_WEAPONS, W_SWAPWEP, W_QUIVER } from './const.js';
 // C ref: nethack-c/src/zap.c
 // @ts-nocheck — sibling imports from hand-maintained js/*.js.
 import { rn2, rnd, rn1, d, pushRngLogEntry } from './rng.js';
+import { is_magical_trap, MAGIC_PORTAL, VIBRATING_SQUARE } from './const.js';
 import { spell_skilltype } from './spell.js';
 import { P_SKILL } from './skills.js';
 import { P_ISRESTRICTED, P_UNSKILLED, P_BASIC, P_SKILLED, P_EXPERT } from './const.js';
@@ -4573,7 +4574,9 @@ export async function _zhitm(mon, type, nd) {
     if (sho_shieldeff)
         shieldeff_real(mon.mx | 0, mon.my | 0);
 
-    /* C zap.c:4380 — Knight quest-artifact double (not on this path). */
+    /* C zap.c:4387-4388: double a Knight's spell damage before resistance. */
+    if (is_hero_spell(type) && _wand_Role_if(PM_KNIGHT) && game.u.uhave?.questart)
+        tmp *= 2;
     /* C zap.c:4382-4384 — resist saving throw (only for type >= 0, tmp > 0).
      * resist(mon, type < ZT_SPELL(0) ? WAND_CLASS : '\0', 0, NOTELL). */
     if (tmp > 0 && type >= 0) {
@@ -4602,7 +4605,7 @@ async function _buzz_hit_monster(mon, type, nd, fltyp, sayhit) {
     if (Math.abs(type) === 20 + ZT_DEATH
         && [PM_DEATH, PM_PESTILENCE, PM_FAMINE].includes(mon.data?.pmidx | 0)) {
         if (canseemon(mon)) {
-            await pline(`The ${flash_str(fltyp, false)} hits ${mon_nam(mon)}.`);
+            await hit(flash_str(fltyp, false), mon, ".");
             await pline(`${Monnam(mon)} disintegrates.`);
             const hero = game.youmonst?.data || {};
             const oneEye = !(hero.mflags1 & M1_NOEYES_ZAP)
@@ -4619,7 +4622,7 @@ async function _buzz_hit_monster(mon, type, nd, fltyp, sayhit) {
      * already performed Death's HP/max-HP increase. */
     if ((mon.data?.pmidx | 0) === PM_DEATH && damgtype === ZT_DEATH) {
         if (canseemon(mon)) {
-            await pline(`The ${flash_str(fltyp, false)} hits ${mon_nam(mon)}.`);
+            await hit(flash_str(fltyp, false), mon, ".");
             await pline(`${Monnam(mon)} absorbs the deadly ${Math.abs(type) === 20 + ZT_DEATH ? 'blast' : 'ray'}!`);
             await pline('It seems even stronger than before.');
         }
@@ -6229,6 +6232,28 @@ function _hides_under_zp(ptr) {
     return !!ptr && ((ptr.mflags1 | 0) & M1_CONCEAL_ZP) !== 0;
 }
 
+/* C zap.c:3594-3622; the result carries zap_map's learn_it flag. */
+async function maybe_explode_trap(ttmp, obj) {
+    if (!ttmp || !obj || (obj.otyp !== WAN_CANCELLATION && obj.otyp !== SPE_CANCELLATION))
+        return false;
+    const x = ttmp.tx, y = ttmp.ty;
+    if (ttmp.ttyp === MAGIC_PORTAL || ttmp.ttyp === VIBRATING_SQUARE) {
+        shieldeff_real(x, y);
+        if (cansee(x, y)) {
+            ttmp.tseen = 1;
+            newsym(x, y);
+            return true;
+        }
+    } else if (is_magical_trap(ttmp.ttyp)) {
+        const seeit = cansee(x, y);
+        await explode(x, y, -WAN_CANCELLATION, 20 + d(3, 6), TRAP_EXPLODE, EXPL_MAGICAL);
+        deltrap(ttmp);
+        newsym(x, y);
+        return seeit;
+    }
+    return false;
+}
+
 async function _zap_map_engraving(x, y, obj) {
     const e = engr_at(x, y);
     if (!e || e.engr_type === HEADSTONE)
@@ -6578,7 +6603,9 @@ async function zap_updown(obj) {
          * map_zapped is declared FALSE and never set (its one assignment is
          * commented out, "not needed due to early return"), so this call is
          * unconditional. */
+        const learn_it = await maybe_explode_trap(t_at(x, y), obj); // C zap_map:3642
         await _zap_map_engraving(x, y, obj);
+        if (learn_it) learnwand(obj); // C zap_map:3797-3798
     } else if (u.dz < 0) {
         /* zapping upward: game flavor, hits whatever the hero is hiding
          * under (zap.c:3383-3395). */
@@ -6660,11 +6687,12 @@ async function _bhit_zapped_wand(ddx, ddy, range, obj) {
         x = g.bhitpos.x + ddx; y = g.bhitpos.y + ddy;
         g.bhitpos.x = x; g.bhitpos.y = y;
         if (!isok(x, y)) { g.bhitpos.x = x - ddx; g.bhitpos.y = y - ddy; break; }
+        const trap_learn_it = await maybe_explode_trap(t_at(x, y), obj); // C zap_map:3642
         await _zap_map_probing(x, y, obj);
         // C zap.c:3685-3717: zap_map's lateral drawbridge block.
         {
             const ltyp = _buzz_typ(x, y);
-            let learn_it = false; /* C zap.c:3633; learnwand at :3798 */
+            let learn_it = trap_learn_it; /* C zap.c:3633; learnwand at :3798 */
             const dbx = { value: x }, dby = { value: y };
             if (find_drawbridge(dbx, dby)) {
                 switch (obj.otyp | 0) {
@@ -8513,7 +8541,9 @@ export async function untrap_floor_trap(ttmp, x, y, the_trap = `the ${trapname(t
         return 1;
     }
     const mtmp = m_at(x, y);
-    if (mtmp && ((mtmp.m_ap_type | 0) === M_AP_FURNITURE || (mtmp.m_ap_type | 0) === M_AP_OBJECT)) {
+    // C trap.c:5960-5963: M_AP_TYPE masks off flags such as M_AP_F_DKNOWN.
+    // C trap.c:5959-5962 masks flags such as M_AP_F_DKNOWN (monst.h:73).
+    if (mtmp && (M_AP_TYPE(mtmp) === M_AP_FURNITURE || M_AP_TYPE(mtmp) === M_AP_OBJECT)) {
         await _ut_stumble_onto_mimic(mtmp);
         return 1;
     }

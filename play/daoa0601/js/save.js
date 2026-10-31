@@ -3,7 +3,9 @@
 import { resetErinys } from './monster_data.js';
 import { game } from './gstate.js';
 import { PanicTermination } from './panic_termination.js';
-import { clearMessageWindow, displayMessageWindow, docrt, pline, plineWithContinuation, rawPrint, reglyphSymbolSet, rememberToplines } from './display.js';
+import { clearMessageWindow, displayMessageWindow, rememberToplines } from './tty_topline.js';
+import { docrt, reglyphSymbolSet } from './display.js';
+import { pline, plineWithContinuation, rawPrint } from './pline.js';
 import { doneObjectCleanup } from './object_cleanup.js';
 import { restoreSavedLightSources } from './light.js';
 import { promptChoice, promptYesNo } from './query.js';
@@ -26,7 +28,7 @@ import { GRAPPLING_HOOK, PICK_AXE } from './object_data.js';
 import { forgetTempleEntry } from './priest.js';
 import { restoreElementalBubbles } from './elemental.js';
 import { restoreLevelRegions } from './regions.js';
-import { oinit } from './mklev.js';
+import { oinit } from './o_init.js';
 import { restoreScheduledLevelChange } from './level_change.js';
 import { recorderRestoredTime } from './calendar.js';
 import { restoreSavedTimers } from './object_timers.js';
@@ -330,7 +332,6 @@ export async function restoreGame(name, storage = game.storage) {
         clearCannedCommands();
         game._afterMove = null;
         game._armorTheft = null;
-        delete game._helplessRunmodeDelayPending;
         game.context.move = 0;
         // Saved flags govern future resets; the current Space binding still
         // belongs to this process until an option change reconciles it.
@@ -403,13 +404,11 @@ function resetRestoredInstanceState() {
     delete game._prayerAlignment;
     delete game._prayerTrouble;
     delete game._prayerOutcome;
-    delete game._queuedHelplessRecoveryMessage;
     delete game._bonesSaved;
     delete game._characterPickerUsed;
     delete game._initialPwBonus;
     delete game._lastDemigodAggravation;
     delete game._lastDemigodNasty;
-    delete game._unresolvedDemigodIntervention;
     delete game._preserveLeadingStyledBlanks;
     delete game._restoredBones;
     delete game._specialLevelPrototype;

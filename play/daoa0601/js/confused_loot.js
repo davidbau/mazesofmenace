@@ -2,7 +2,7 @@
 // give away a random fraction of one carried gold stack.
 import { THRONE, T_LOOTED } from './const.js';
 import { game, requireGameLevel } from './gstate.js';
-import { plineWithContinuation as pline } from './display.js';
+import { plineWithContinuation as pline } from './pline.js';
 import { CHEST, GOLD_PIECE, SPE_WIZARD_LOCK } from './object_data.js';
 import { objectQuantity, splitObjectStack } from './object_stack.js';
 import { removeHeroEquipment } from './hero_equipment.js';
@@ -11,7 +11,8 @@ import { dropInventoryObjectAtHero } from './hero_drop.js';
 import { addObjectToContainer } from './object_container.js';
 import { addObjectToMonsterInventory } from './monster_inventory.js';
 import { changeBoxLockByMagic } from './box_magic.js';
-import { courtMonsterType, makemonAt } from './mklev.js';
+import { courtMonsterType } from './mklev.js';
+import { makemonAt } from './makemon.js';
 import { inventoryItemDescription, inventoryPrimaryHandDetail } from './invent.js';
 import { observeObjectForNaming } from './objnam.js';
 import { objectWeight } from './weight.js';

@@ -2,7 +2,8 @@
 // C refs: mon.c:select_newcham_form(), pickvampshape(), and newcham().
 import { bypassObject } from './object_bypass.js';
 import { BOLT_LIM, DOOR, D_CLOSED, D_LOCKED, GPCOORDS_MAP, GPCOORDS_NONE, In_endgame, Is_rogue_level, MGIVENNAME, STRAT_WAITFORU, W_ARM, M_AP_MONSTER, M_AP_NOTHING, M_AP_TYPE, MON_FLOOR, NON_PM, thats_enough_tries, ismnum, } from './const.js';
-import { canSeeMonster, canSpotMonster, newsym, plineWithContinuation, swallowed } from './display.js';
+import { canSeeMonster, canSpotMonster, newsym, swallowed } from './display.js';
+import { plineWithContinuation } from './pline.js';
 import { dragonFormForArmor } from './armor.js';
 import { game, requireLiveGame } from './gstate.js';
 import { placeMonsterOnMap } from './monster_location.js';
@@ -29,7 +30,7 @@ import { monsterIsScaredAt } from './monster_fear.js';
 import { makeMonsterFlee } from './monster_flee.js';
 import { revealMonsterAppearance } from './monster_appearance.js';
 import { finishMonsterEating } from './monster_eating.js';
-import { setMimicAppearance } from './mklev.js';
+import { setMimicAppearance } from './makemon.js';
 import { smellUnseenMonster } from './monster_smell.js';
 import { isHumanWereMonster, isWereMonster, transformWereMonster } from './were.js';
 import { finishEnvironmentalMonsterDeath } from './monster_death.js';

@@ -1,8 +1,9 @@
 // C makemon.c:bagotricks(), shared by applying and tipping.
 import { M_AP_MONSTER, M_AP_TYPE } from './const.js';
-import { canSeeMonster, canSenseMonster, plineWithContinuation as pline } from './display.js';
+import { canSeeMonster, canSenseMonster } from './display.js';
+import { plineWithContinuation as pline } from './pline.js';
 import { game } from './gstate.js';
-import { makemonAt } from './mklev.js';
+import { makemonAt } from './makemon.js';
 import { consumeObjectCharge } from './object_charge.js';
 import { BAG_OF_TRICKS } from './object_data.js';
 import { learnObjectType } from './object_knowledge.js';

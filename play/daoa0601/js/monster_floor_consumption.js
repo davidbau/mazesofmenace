@@ -3,14 +3,15 @@
 import { monsterCanTouchArtifact } from './artifacts.js';
 import { reviveCorpseImmediately } from './corpse_revival.js';
 import { isRider } from './corpse_species.js';
-import { canSeeMonster, newsym, plineWithContinuation } from './display.js';
+import { canSeeMonster, newsym } from './display.js';
+import { plineWithContinuation } from './pline.js';
 import { placeCreatedObject } from './floor_object.js';
 import { veganCorpse } from './food_traits.js';
 import { requireGameLevel, requireLiveGame } from './gstate.js';
 import { formatHeardMessage } from './hero_speech.js';
 import { inventoryItemDescription } from './invent.js';
 import { isLevelPrize } from './level_prize.js';
-import { mksobj } from './mklev.js';
+import { mksobj } from './mkobj.js';
 import { consumeMonsterObject } from './monster_consumption.js';
 import { MONSTER_FLAGS1, MONSTER_NAME } from './monster_data.js';
 import { addObjectToMonsterInventory } from './monster_inventory.js';

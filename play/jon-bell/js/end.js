@@ -31,7 +31,7 @@ import { clong, nowrap_add } from './integer.js';
 import { savebones, no_bones_level, ledger_no } from './bones.js';
 import { launch_in_progress, force_launch_placement } from './trap.js';
 import { force_more, force_more_lone_frame, pline, urgent_pline, flush_screen, bot, _topl_joins_committed,
-         _topline_more_pending, capture_painted_frame_with_status, yn_function_menu } from './display.js';
+         _topline_more_pending, capture_painted_frame_with_status, capture_flushed_cells, yn_function_menu } from './display.js';
 import { topl_park_cursor, canspotmon, _threeStatusLines } from './display.js';
 import { rebuild_screen_output, putmsghistory, Unaware, livelog_printf, pline_flush_point } from './display.js';
 import { LL_LIFESAVE, LL_DUMP, BUFSZ } from './const.js';
@@ -825,9 +825,11 @@ export async function do_death_sequence(opts) {
         done_death_context(pd.how);
     }
     /* C end.c:1043-1075: bot() paints before HP is forced to zero.
-     * tty_yn_function's more() uses that paint before its prompt flush. */
+     * tty_yn_function's more() precedes its prompt flush (topl.c:390-402).
+     * bot() updates only status: vision_recalc/newsym changes since the last
+     * flush_screen remain buffered, so preserve the terminal's flushed map. */
     let deathPromptFrame = (pd.stoningDeathLine || pd.remainderIsFresh || _earlyBot)
-        ? capture_painted_frame_with_status() : null;
+        ? { ...capture_painted_frame_with_status(), cells: capture_flushed_cells() } : null;
     /* C youprop.h:387 `#define Lifesaved u.uprops[LIFESAVED].extrinsic` reads
      * ONLY the extrinsic half (set when an amulet of life saving is worn).
      * `.intrinsic` is a plain long that carries no gameplay meaning for this

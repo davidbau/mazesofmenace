@@ -85,7 +85,7 @@ import { mon_has_amulet } from './sit.js';
 import { healmon, mpickobj, m_respond } from './mklev.js';
 const DEADMONSTER_dc = (m) => (m.mhp | 0) <= 0;
 import { obj_extract_floor, distant_obj_name, Monnam_dm } from './dogmove.js';
-import { pline } from './display.js';
+import { pline, Deaf as Deaf_live_dc } from './display.js';
 import { demon_talk } from './minion.js';
 import { is_demon, set_malign } from './makemon.js';
 import { tele_restrict } from './teleport.js';
@@ -250,7 +250,7 @@ async function watch_on_duty(mtmp) {
                  * attempt.  D_WARNED lives on the door's looted flags. */
                 if ((loc.looted | 0) & D_WARNED) {
                     await mon_yells(mtmp, "Halt, thief!  You're under arrest!");
-                    await angry_guards(false);
+                    await angry_guards(!!Deaf_live_dc());
                 } else {
                     await mon_yells(mtmp, 'Hey, stop picking that lock!');
                     loc.looted = (loc.looted | 0) | D_WARNED;

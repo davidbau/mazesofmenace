@@ -1,12 +1,13 @@
 import { exerciseAttribute } from './attrib.js';
 import { A_STR, BOLT_LIM } from './const.js';
-import { displayColorName, plineWithContinuation as pline } from './display.js';
+import { displayColorName } from './display.js';
+import { plineWithContinuation as pline } from './pline.js';
 import { game, requirePlayingGame } from './gstate.js';
 import { loseHeroHp } from './hero_damage.js';
 import { holdAnotherObject } from './hero_hold_object.js';
 import { freeInventoryObject, useUpInventoryStack } from './hero_inventory.js';
 import { consumeInventoryItem, inventoryItemDescription } from './invent.js';
-import { mkobj } from './mklev.js';
+import { mkobj } from './mkobj.js';
 import { wakeMonstersNearWithMessages } from './monster_wake.js';
 import { tryCallObjectType } from './object_call.js';
 import { deleteObject } from './object_delete.js';

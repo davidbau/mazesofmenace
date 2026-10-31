@@ -1,11 +1,11 @@
 // Monster responses and relocation caused by immediate magic.
 // C refs: mon.c m_respond() and teleport.c u_teleport_mon().
 import { RLOC_MSG } from './const.js';
-import { plineWithContinuation as pline } from './display.js';
+import { plineWithContinuation as pline } from './pline.js';
 import { level_difficulty } from './dungeon.js';
 import { game, requirePlayingGame } from './gstate.js';
 import { releaseHeroFromMonster } from './hero_expulsion.js';
-import { makemonAt } from './mklev.js';
+import { makemonAt } from './makemon.js';
 import { aggravateMonsters } from './monster_anger.js';
 import { MONSTER_DIFFICULTY, MONSTER_FLAGS1, MONSTER_NAME, MONSTER_SOUND, monsterIsRider, } from './monster_data.js';
 import { respondMedusa } from './monster_gaze.js';

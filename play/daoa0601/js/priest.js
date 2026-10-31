@@ -11,7 +11,8 @@ import { nomul } from './command_state.js';
 import { recordAchievement } from './achievements.js';
 import { setMonsterMalign } from './monster_alignment.js';
 import { angerMonster, wakeMonster } from './monster_anger.js';
-import { canSeeMonster, canSpotMonster, plineWithContinuation } from './display.js';
+import { canSeeMonster, canSpotMonster } from './display.js';
+import { plineWithContinuation } from './pline.js';
 import { exerciseAttribute } from './attrib.js';
 import { castMonsterSpellRay } from './breath_ray.js';
 import { AT_MAGC, AD_ELEC } from './monster_attack_types.js';
@@ -23,7 +24,7 @@ import { MONSTER_FLAGS2 } from './monster_data.js';
 import { removeMonsterFromGame } from './monster_departure.js';
 import { monsterName } from './monster_name.js';
 import { heroIsHallucinating } from './senses.js';
-import { makemonAt } from './mklev.js';
+import { makemonAt } from './makemon.js';
 const M2_MINION = 0x00001000;
 const PM_DEATH = 311, PM_PESTILENCE = 312, PM_FAMINE = 313;
 function sameLevel(left, right) {

@@ -24,7 +24,7 @@ import monsPack from './makemon_mons.json' with { type: 'json' };
 import corpseData from './eat_corpse_data.json' with { type: 'json' };
 import { FOOD_PROPS, eaten_stat as food_eaten_stat } from './food_props.js';
 import { touch_artifact_youmonst } from './wizcmds.js';
-import { pline, canseemon, canspotmon, nh_sprintf, newsym, You_hear, You_feel, You as You_real, You_cant, msgtype_is_stop,
+import { pline, canseemon, canspotmon, nh_sprintf, newsym, You_hear, You_feel, Unaware, You_with_output, You_cant,
          Deaf as hero_Deaf, livelog_printf, retouch_equipment, flush_pending_messages,
          _topl_merge_result, _topl_joins_snapshot, _topl_stash_result,
          _topl_record_join, capture_painted_frame_with_status, bot, urgent_pline,
@@ -4298,7 +4298,7 @@ function eye_of_newt_buzz() {
             u.uen = u.uenmax;
         }
         if (old_uen !== (u.uen | 0)) {
-            _emit_eat_pline('You feel a mild buzz.');
+            _emit_eat_pline((Unaware() ? 'You dream that you feel ' : 'You feel ') + 'a mild buzz.'); /* You_feel, pline.c:387 */
             if (game.disp) game.disp.botl = true; /* C eat.c:1120 */
         }
     }
@@ -4673,19 +4673,10 @@ export function eatmupdate() {
 }
 
 export async function You(line, ...args) {
-    const msg = 'You ' + (args.length > 0 ? nh_sprintf(line, args) : String(line));
-    /* C pline.c:162-190,212-225: consume the message origin before MSGTYPE
-     * handling, and truncate the complete message.  The deferred food-message
-     * channel below cannot perform these vpline operations; use the shared
-     * You() for them, including clearing an unused/invalid pending origin. */
-    if (game.a11y?.msg_loc?.x || game.a11y?.msg_loc?.y || msg.length > BUFSZ - 1)
-        return You_real(line, ...args);
-    // C pline.c:283-284: block in vpline before returning to the caller.
-    if (msgtype_is_stop(msg))
-        return You_real(line, ...args);
-    /* pline.c:246-262 vpline(): MSGTYPE=hide / norep drop the message first. */
-    if (msgtype_suppressed(msg))
-        return;
+    return You_with_output(_put_eat_message, line, ...args);
+}
+// C pline.c:276 putmesg: retain the occupation's existing output channel.
+async function _put_eat_message(msg) {
     try {
     const _prevmsgAtEntry = game._prevmsg;
     if (game.vision_full_recalc && !game._topl_win_stop && !game._topl_win_stop_armed)

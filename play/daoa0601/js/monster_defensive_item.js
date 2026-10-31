@@ -1,6 +1,7 @@
 // C muse.c:find_defensive(), m_use_healing(), and use_defensive().
 import { BEAR_TRAP, CORR, HOLE, In_endgame, In_sokoban, IS_DRAWBRIDGE, IS_FURNITURE, LADDER, MIGR_LADDER_DOWN, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MON_OFFMAP, MIGR_STAIRS_DOWN, MIGR_STAIRS_UP, PIT, RLOC_MSG, SCORR, STAIRS, TELEP_TRAP, WEB, W_NONDIGGABLE, PLNMSG_enum, PLNMSG_UNKNOWN, is_hole, is_pit, isok, } from './const.js';
-import { canSeeMonster, canSpotMonster, newsym, plineWithContinuation } from './display.js';
+import { canSeeMonster, canSpotMonster, newsym } from './display.js';
+import { plineWithContinuation } from './pline.js';
 import { levelAtDepth, levelIsWizardTower } from './dungeon.js';
 import { dist2, depth, ledgerNo } from './hacklib.js';
 import { formatHeardMessage, publishHeardMessage } from './hero_speech.js';
@@ -32,7 +33,8 @@ import { awakenSoldiers } from './music.js';
 import { monsterHasStoneResistance } from './monster_resistance.js';
 import { monsterCanOpenTin, consumeMonsterStoningCure } from './monster_stoning_cure.js';
 import { resolveMonsterImmediateWand } from './monster_wand_ray.js';
-import { canDigDown, canFallThrough, makemonAt, maketrap } from './mklev.js';
+import { canDigDown, canFallThrough, maketrap } from './mklev.js';
+import { makemonAt } from './makemon.js';
 import { AMULET_OF_YENDOR, BOULDER, BUGLE, CORPSE, POT_EXTRA_HEALING, POT_FULL_HEALING, POT_HEALING, POT_SICKNESS, SCR_CREATE_MONSTER, SCR_TELEPORTATION, TIN, UNICORN_HORN, WAN_CREATE_MONSTER, WAN_DIGGING, WAN_TELEPORTATION, WAN_UNDEAD_TURNING, } from './object_data.js';
 import { learnObjectType } from './object_knowledge.js';
 import { observeObjectForNaming } from './objnam.js';

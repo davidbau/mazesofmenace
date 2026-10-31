@@ -4,6 +4,7 @@
 import {FIRST_AMULET, LAST_AMULET, FIRST_REAL_GEM, LAST_REAL_GEM,
     UNIQUE_OBJECT_TYPES} from './objclass_ranges.js';
 import { resetStatics } from './statics.js';
+import { MAXNROFROOMS } from './const.js';
 export let game = {};
 // C ref: include/flag.h:30-33
 //     #define wizard  flags.debug
@@ -57,6 +58,8 @@ export function resetGame() {
     resetStatics();
     for (const k of Object.keys(game))
         delete game[k];
+    // C decl.c:682,1103: gs.smeq starts zeroed in each new process.
+    game.smeq = new Array(MAXNROFROOMS + 1).fill(0);
     // Static objects[].oc_unique column copied by C objects_globals_init.
     game._oc_unique = Object.fromEntries(UNIQUE_OBJECT_TYPES.map(typ => [typ, true]));
     // C svn.n_dgns and svd.dungeons: no active topology before init_dungeons.
@@ -199,6 +202,7 @@ export function resetGame() {
     // ^I path at wizcmds.c:53-62. Its reader objnam.c:337 (obj_is_pname) threw
     game.iflags = {
         window_inited: false,
+        terrain_typ: 0,            /* decl.c:1172 ZERO(iflags); STONE */
         override_ID: 0,            /* flag.h:271 */
         suppress_price: 0,         /* flag.h; temporary object-name formatting */
     };

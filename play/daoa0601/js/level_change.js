@@ -19,7 +19,9 @@ import { restoreLevelLightSources } from './light.js';
 import { loseHeroHp } from './hero_damage.js';
 import { finishLivingGame } from './end.js';
 import { currentLuaLifecycle } from './lua/lifecycle.js';
-import { flushPendingTopline, flush_screen, pline, plineWithContinuation, docrt, bot, newsym, checkGoldSymbol, reglyphSymbolSet, } from './display.js';
+import { flushPendingTopline } from './tty_topline.js';
+import { flush_screen, docrt, bot, newsym, checkGoldSymbol, reglyphSymbolSet } from './display.js';
+import { pline, plineWithContinuation } from './pline.js';
 import { vision_recalc, vision_reset, vision_reset_new_level } from './vision.js';
 import { blockMonsterNotices, noticeAllMonsters, unblockMonsterNotices } from './monster_notices.js';
 import { d, rnd, rn1, rn2 } from './rng.js';
@@ -33,7 +35,8 @@ import { restoreMonsterCover, hideMonsterOnRestore } from './monster_hiding.js';
 import { restoreMonsterShape } from './monster_polymorph.js';
 import { restoreMonsterWormHeads } from './monster_worm.js';
 import { restoreLevelRegions, updateHeroRegions } from './regions.js';
-import { mklev, oinit, place_lregion, u_on_downstairs, u_on_sstairs, u_on_upstairs } from './mklev.js';
+import { mklev, place_lregion, u_on_downstairs, u_on_sstairs, u_on_upstairs } from './mklev.js';
+import { oinit } from './o_init.js';
 import { dungeonBuildsUp, initOverviewRecord, level_difficulty, markOverviewUnreachable, recordMappedOverviewState, recordOverviewBranch, specialPrototypeAt, insideWizardTower, levelIsWizardTower, wizardTowerLevelAt } from './dungeon.js';
 import { findNearbyMonsterPosition } from './teleport_rules.js';
 import { moveMonsterNextToHero, randomMonsterRelocation, teleportHeroSafely, bringLeashedFollowers } from './teleport.js';
@@ -57,7 +60,7 @@ import { fixShopDamage } from './shop_damage.js';
 import { displayPreparedQuestArrival, prepareQuestArrival, prepareMainQuestPortalCall, onQuestStart, okToQuest, } from './quest.js';
 import { fumaroles } from './monmove.js';
 import { moveElementalBubbles, restoreElementalBubbles } from './elemental.js';
-import { CORR, ROOM, DISMOUNT_FELL, LR_UPTELE, LR_DOWNTELE, RLOC_NOMSG, MAGIC_PORTAL, In_endgame, In_quest, Is_airlevel, Is_waterlevel, Is_astralevel, ACH_ENDG, ACH_ASTR, Is_rogue_level, Is_knox_level, UTOTYPE_DEFERRED, UTOTYPE_ATSTAIRS, UTOTYPE_FALLING, UTOTYPE_PORTAL, UTOTYPE_RMPORTAL, TT_BURIEDBALL, } from './const.js';
+import { CORR, ROOM, DISMOUNT_FELL, LR_UPTELE, LR_DOWNTELE, RLOC_NOMSG, MAGIC_PORTAL, In_endgame, In_quest, In_hell, Is_valley, Is_airlevel, Is_waterlevel, Is_astralevel, ACH_ENDG, ACH_ASTR, Is_rogue_level, Is_knox_level, UTOTYPE_DEFERRED, UTOTYPE_ATSTAIRS, UTOTYPE_FALLING, UTOTYPE_PORTAL, UTOTYPE_RMPORTAL, TT_BURIEDBALL, } from './const.js';
 import { buriedBallToPunishment } from './buried_object.js';
 import { resurrectWizard } from './wizard.js';
 import { forgetTempleEntry } from './priest.js';
@@ -380,6 +383,13 @@ export async function gotoLevel(targetDepth, { arrival = 'random', ladder = fals
         await plineWithContinuation('You arrive at the Valley of the Dead...');
         await plineWithContinuation('The odor of burnt flesh and decay pervades the air.');
         await publishHeardMessage('groans and moans everywhere.', plineWithContinuation, game);
+    }
+    // do.c:1874-1876: reaching Gehennom by any route that bypassed the
+    // Valley's stairway down counts as entering it.  Landing on the Valley
+    // itself leaves the event unset, so its gate can still ask.
+    if (In_hell(newDepth) && !Is_valley(newDepth)) {
+        const events = game.u.uevent ?? (game.u.uevent = {});
+        events.gehennom_entered = 1;
     }
     if (bonesArrival) {
         // familiar_level_msg() (do.c:1878): bones_include_name() matches

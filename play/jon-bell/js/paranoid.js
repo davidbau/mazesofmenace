@@ -37,6 +37,9 @@ async function read_getlin(prompt) {
      * prompt freezes the map as of now (a hero just polymorphed into an eyeless
      * green slime no longer shows infravision-only monsters at "Die?"). */
     if (g.vision_full_recalc) vision_recalc(0);
+    /* pline.c:282: custompline files the "%s " prompt in gp.prevmsg, so a later
+     * identical Norep() is not suppressed. */
+    g._prevmsg = `${prompt} `;
     const paint = async () => {
         g._pending_message = buf ? `${prompt} ${buf}` : prompt;
         g._topl_prompt_written = `${prompt} ${buf}`;

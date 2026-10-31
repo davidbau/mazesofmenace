@@ -47,7 +47,7 @@ import { pline, canspotmon, newsym, sensemon, _topline_more_pending, flush_pendi
  * call sites silently resolving to the stub.  The stub is now retired and every
  * site uses the real body. */
          canseemon, livelog_printf, unmap_object, glyph_is_invisible_at,
-         map_invisible, You_hear, glyph_is_warning_at, Unaware, shieldeff, see_monsters, GLYPHCLS_OBJ, tp_sensemon } from './display.js';
+         map_invisible, You_hear, glyph_is_warning_at, Unaware, shieldeff, see_monsters, GLYPHCLS_OBJ, GLYPHCLS_INVIS, tp_sensemon } from './display.js';
 import { gethungry, eat_brains, eating_conducts, newuhs } from './eat.js';
 /* C attrib.c:316-408 poisoned() — canonical implementation lives in the
  * hero-defender path in mhitu.js and is safe to call synchronously here. */
@@ -147,7 +147,7 @@ import { getObjName } from './o_init.js';
  * (it exposes the has_mgivenname presence bit directly), so that walk throws. */
 import { mon_hates_blessings, mon_hates_silver, shade_miss, mon_nam_too, x_monnam,
          xm_has_mgivenname as has_mgivenname } from './mhitm.js';
-import { some_mon_nam, l_monnam } from './mhitm.js';
+import { some_mon_nam, l_monnam, a_monnam } from './mhitm.js';
 import { Resists_Elem, sleep_monst, resists_blnd, can_blnd } from './mhitm.js';
 import { y_monnam, helpless, locomotion } from './mhitm.js';
 import { place_monster } from './steed.js';
@@ -1815,8 +1815,7 @@ export async function stumble_onto_mimic(mtmp) {
 
 /* C do_name.c:1152-1156 a_monnam(mtmp). */
 function _ac_a_monnam(mtmp) {
-    return x_monnam(mtmp, ARTICLE_A, null,
-                    has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0, false);
+    return a_monnam(mtmp);
 }
 /* C youprop.h See_invisible — no js/ writer; reads FALSE, the same answer the
  * port gave before this function existed. */
@@ -2159,7 +2158,7 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
         /* goto atk_done (uhitm.c:570-577): an F-fight at an unspotted monster
          * still leaves the 'I' marker. */
         if (game.context?.forcefight && (mtmp.mhp | 0) > 0 && !canspotmon(mtmp)
-            && !glyph_is_invisible_at((game.u.ux | 0) + (game.u.dx | 0), (game.u.uy | 0) + (game.u.dy | 0))
+            && game.level.at((game.u.ux | 0) + (game.u.dx | 0), (game.u.uy | 0) + (game.u.dy | 0))?.remembered_glyph?.cls !== GLYPHCLS_INVIS
             && !((game.u.uswallow | 0) && game.u.ustuck === mtmp))
             map_invisible((game.u.ux | 0) + (game.u.dx | 0), (game.u.uy | 0) + (game.u.dy | 0));
         return true;
@@ -2178,7 +2177,7 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
          * atk_done (uhitm.c:572-577): an F-fight at an unspotted monster
          * still leaves the 'I' marker. */
         if (game.context?.forcefight && (mtmp.mhp | 0) > 0 && !canspotmon(mtmp)
-            && !glyph_is_invisible_at((game.u.ux | 0) + (game.u.dx | 0), (game.u.uy | 0) + (game.u.dy | 0))
+            && game.level.at((game.u.ux | 0) + (game.u.dx | 0), (game.u.uy | 0) + (game.u.dy | 0))?.remembered_glyph?.cls !== GLYPHCLS_INVIS
             && !((game.u.uswallow | 0) && game.u.ustuck === mtmp))
             map_invisible((game.u.ux | 0) + (game.u.dx | 0), (game.u.uy | 0) + (game.u.dy | 0));
         return true;
@@ -3727,8 +3726,11 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
         await drain_pending_death_in_place();
         if (pending_death_is_final()) return true;
     }
+    /* C uhitm.c:578 tests levl[].glyph (hero memory), not glyph_at().
+     * under_water() can blank the painted 'I' while memory still holds it;
+     * do not paint it again in that case.  The early atk_done paths do likewise. */
     if (game.context?.forcefight && (mtmp.mhp | 0) > 0 && !canspotmon(mtmp)
-        && !glyph_is_invisible_at((game.u.ux | 0) + (game.u.dx | 0), (game.u.uy | 0) + (game.u.dy | 0))
+        && game.level.at((game.u.ux | 0) + (game.u.dx | 0), (game.u.uy | 0) + (game.u.dy | 0))?.remembered_glyph?.cls !== GLYPHCLS_INVIS
         && !((game.u.uswallow | 0) && game.u.ustuck === mtmp))
         map_invisible((game.u.ux | 0) + (game.u.dx | 0), (game.u.uy | 0) + (game.u.dy | 0));
 
@@ -3955,8 +3957,7 @@ async function relobj_xkilled(mtmp) {
          * obj_extract_self then owornmask = 0.  update_mon_extrinsics is
          * skipped for a DEADMONSTER, which mtmp already is (mhp was zeroed
          * above), so the do_extrinsics arm is unreachable here. */
-        extract_from_minvent_dm(mtmp, otmp);
-        otmp.owornmask = 0;
+        await extract_from_minvent(mtmp, otmp, false, true);
         /* C steal.c:826-833: don't charge for an owned saddle on a dead steed
          * (provided the hero is within the same shop at the time). */
         if (_unwornmask && mtmp.mtame && (_unwornmask & W_SADDLE) !== 0
@@ -6859,7 +6860,7 @@ export async function mhitm_ad_heal(magr, mattk, mdef, mhm) {
         /* mhitu */
         /* a cancelled nurse is just an ordinary monster,
          * nurses don't heal those that cause petrification */
-        if (magr.mcan || (Upolyd(game.u) && (mdef.mndx === PM_COCKATRICE || mdef.mndx === PM_CHICKATRICE))) {
+        if (magr.mcan || (Upolyd(game.u) && touch_petrifies(pd))) {
             await hitmsg(magr, mattk);
             return;
         }

@@ -3,7 +3,8 @@ import { requirePlayingGame } from './gstate.js';
 // C ref: zap.c bhitm(). Direction and range belong to the caller.
 import { M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, W_SADDLE } from './const.js';
 import { adjustHeroAlignment } from './alignment.js';
-import { canSeeMonster, canSpotMonster, map_invisible, newsym, plineWithContinuation as pline, shieldeff, } from './display.js';
+import { canSeeMonster, canSpotMonster, map_invisible, newsym, shieldeff } from './display.js';
+import { plineWithContinuation as pline } from './pline.js';
 import { abusePet } from './dog.js';
 import { addExperience, checkExperienceLevel } from './exper.js';
 import { flashHitsMonster } from './flash.js';
@@ -30,7 +31,7 @@ import { removeObjectFromMonsterInventory } from './monster_inventory.js';
 import { respondToImmediateMagic, teleportMonsterByHero } from './monster_magic_response.js';
 import { monsterName, possessiveName } from './monster_name.js';
 import { changeMonsterForm } from './monster_polymorph.js';
-import { setMimicAppearance } from './mklev.js';
+import { setMimicAppearance } from './makemon.js';
 import { polymorphMonsterFromMagic } from './monster_polymorph_attack.js';
 import { monsterHasDrainResistance, monsterResistsEffect } from './monster_resistance.js';
 import { monsterResistsSleep, putMonsterToSleep } from './monster_sleep.js';

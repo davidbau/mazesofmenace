@@ -4,7 +4,7 @@
 
 import { game } from './gstate.js';
 import { YMonnam } from './mhitm.js';
-import { pline } from './display.js';
+import { pline, impossible_sync } from './display.js';
 import { MONS_NAMES, use_skill, m_at as monster_at } from './uhitm.js';
 import { isok, MON_FLOOR, W_SADDLE, P_RIDING, DISMOUNT_FELL,
          ARTICLE_YOUR, SUPPRESS_SADDLE, NON_PM } from './const.js';
@@ -139,15 +139,9 @@ function DEADMONSTER(mon) {
     return mon.mhp < 1;
 }
 
-/* stubs for unported helpers */
-/* C ref: nethack-c/src/pline.c:587-637 impossible(const char *s, ...) — it
- * paniclog()s the formatted message and pline()s it (plus "Program in
- * disorder!"), then RETURNS.  It never aborts; every caller falls through to
- * its own fallback value and C relies on that.  The message/paniclog side is
- * not modeled (established no-op convention: js/display.js, js/mcastu.js,
- * js/shk.js, js/potion.js); the control-flow contract — log and return — is
- * what callers depend on. */
-export function impossible(_msg, ..._args) { }
+/* C pline.c:584-633: queue diagnostics in order and return to the caller's
+ * fallback. Async callers flush any resulting message pages before proceeding. */
+export function impossible(msg, ...args) { impossible_sync(msg, ...args); }
 /* C do_name.c:1254-1287; permonst templates represent mons[] entries,
  * without the native addresses used by C's corrupt-pointer diagnostics. */
 export function minimal_monnam(mon, ckloc) {

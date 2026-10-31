@@ -14,7 +14,7 @@ import { rehumanize, polymon } from './polyself.js';
 import { you_unwere, is_were } from './were.js';
 import { UNCHANGING, STRANGLED, DIED, KILLED_BY, STONED, SLIMED, STONING, TURNED_SLIME, NO_KILLER_PREFIX, ARTICLE_THE, SUPPRESS_SADDLE, SICK, SICK_ALL, KILLED_BY_AN, SICK_NONVOMITABLE, A_CON, POISONING } from './const.js';
 import { done as done_end, find_delayed_killer, dealloc_killer } from './end.js';
-import { nh_timeout_spell_protection, nh_timeout_gallop, nh_timeout_sickness_killer, nh_timeout_silent_properties, run_timers, fall_asleep, slimed_to_death, done_timeout } from './timeout.js';
+import { nh_timeout_spell_protection, nh_timeout_gallop, nh_timeout_sickness_killer, nh_timeout_silent_properties, run_timers, timer_sanity_check, fall_asleep, slimed_to_death, done_timeout } from './timeout.js';
 import { deferred_decor } from './pickup.js';
 import { useup } from './cmd.js';
 import { decrement_property_timeout, timeout_terrain_property,
@@ -32,7 +32,7 @@ import { lookaround, end_running, is_pool, is_pool_or_lava } from './look.js';
 import { reset_glyphmap, docrt, bot, timebot, status_eval_next_unhilite, time_botl_moves_incremented, time_botl_run_ended, flush_screen, tty_repaint, pline, urgent_pline, Norep, _topl_joins_committed, _topl_record_join, occupation_painted_tick, occupation_freeze_snapshot, occupation_painted_reset, occupation_force_more, _movemon_page_frames_reset, run_page_frame_tick, run_page_frame_reset, capture_painted_frame, capture_pre_movemon_botl, force_more, _topl_merge_result, _topl_joins_snapshot } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { fastforward_pre_mklev, fastforward_post_mklev, fastforward_step, fastforward_fill_mineralize, fmon_dochug_dispatch, NORMAL_SPEED, FF_FAITHFUL, ff_movemon_phase, ff_head_phase, ff_head_phase_pre, ff_head_phase_post, vomiting_dialogue_ff, sickness_dialogue_ff, choke_dialogue_ff } from './fastforward.js';
-import { makedog, dismount_steed } from './dog.js';
+import { makedog, dismount_steed, panic } from './dog.js';
 import { mnexto } from './teleport.js';
 import { RLOC_NOMSG } from './const.js';
 import { x_monnam } from './mhitm.js';
@@ -4058,6 +4058,10 @@ async function moveloop_core_faithful() {
                 await stop_occupation();
                 reset_eat();
             }
+            // C allmain.c:509 — runmode_delay_output() before the occupation
+            // branch's `return`: a stale context.run (travel's final step) with
+            // RUN_LEAP sets time_botl whenever moves % 7 == 0.
+            await runmode_delay_output();
         }
         // C ref: allmain.c:209 — the occupation has cleared with context.move
         // still 1, so the next moveloop_core runs ONE more world block before
@@ -4416,7 +4420,8 @@ async function moveloop_core_faithful() {
     if (g.occupation === take_off_occ && (g.multi | 0) >= 0) {
         let takeoffGuard = 0;
         let toInterrupted = false;
-        while (g.occupation === take_off_occ && takeoffGuard++ < 4096) {
+        while (g.occupation === take_off_occ && (g.multi | 0) >= 0
+               && takeoffGuard++ < 4096) {
             // doddoremarm returns ECMD_OK (context.move 0): C's first invocation
             // runs the callback with NO world block (do_wear.c:3053).
             if (takeoffGuard > 1 || (g.context && g.context.move))
@@ -4437,7 +4442,9 @@ async function moveloop_core_faithful() {
             g.context.move = 1; // allmain.c:483
             await flush_screen(1);
             const r = await take_off_occ();
-            g.context.move = 1; // callback's ECMD_* return is discarded
+            // C allmain.c:483-509 does not overwrite context.move after the
+            // callback. savelife() can leave move=0, multi=-1 (end.c:728-730);
+            // the no-time input tail must recompute AC before recovery's unmul.
             if (r === 0)
                 g.occupation = null;
             // allmain.c:504-507 — unconditional, not only when the callback continues.
@@ -4452,7 +4459,7 @@ async function moveloop_core_faithful() {
         }
         // C re-enters moveloop_core once more with context.move still 1 before
         // rhack reads a key (the wipeoff/learn shape).
-        if (!toInterrupted) {
+        if (!toInterrupted && (g.multi | 0) >= 0) {
             await faithful_moveloop_turn();
             if (g.vision_full_recalc) {
                 vision_recalc(0);
@@ -5301,6 +5308,7 @@ export async function moveloop_core() {
     try {
         return await moveloop_core_impl();
     } catch (e) {
+        if (e?.nhPanic) return await panic(e.message);
         if (game?.program_state?.exiting
             && String(e?.message || '').startsWith('nh_terminate: ')) {
             /* The save/quit route (save.c:64 exit_nhwindows -> nh_terminate)
@@ -5343,6 +5351,7 @@ async function moveloop_core_impl() {
             g.iflags.sanity_no_check = false;
         } else {
             g.program_state.in_sanity_check++;
+            await timer_sanity_check(); // C wizcmds.c:1473
             await bc_sanity_check();
             await engraving_sanity_check(); // C wizcmds.c:1470 (after trap_sanity_check)
             g.program_state.in_sanity_check--;

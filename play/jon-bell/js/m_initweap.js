@@ -13,6 +13,7 @@ import { oname } from './objnam.js';
 import { hard_helmet } from './do_wear.js';
 import { curse } from './mkobj.js';
 import { mpickobj } from './mklev.js';
+import { weight } from './weight.js';
 import { MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
 import { PM_ABBOT, PM_ACOLYTE, PM_APPRENTICE, PM_ATTENDANT, PM_BALROG, PM_CAPTAIN, PM_CHIEFTAIN, PM_DISPATER, PM_DWARF, PM_ETTIN, PM_ELVENKING, PM_FOREST_CENTAUR, PM_GUIDE, PM_HIGH_PRIEST, PM_HOBBIT, PM_HORNED_DEVIL, PM_HUNTER, PM_LIEUTENANT, PM_NEANDERTHAL, PM_NINJA, PM_ORCUS, PM_OGRE_KING, PM_OGRE_LORD, PM_PAGE, PM_PRIEST, PM_ROSHI, PM_SALAMANDER, PM_SERGEANT, PM_SOLDIER, PM_STUDENT, PM_THUG, PM_WATCHMAN, PM_WATCH_CAPTAIN, PM_WARRIOR, PM_YEENOGHU, PM_GOBLIN, PM_MORDOR_ORC, PM_URUK_HAI, PM_ORC_SHAMAN, PM_ORC_CAPTAIN, } from './pm.generated.js';
 /** @typedef {[number, number, number, number, number, number, number, number, number]} MonRow */
@@ -459,6 +460,7 @@ async function mInitthrow(mtmp, otyp, oquan, mksobjFn) {
     const otmp = await mksobjFn(otyp, true, false);
     if (otmp) {
         otmp.quan = rn1(oquan, 3) | 0;
+        otmp.owt = weight(otmp); /* C makemon.c:154: quantity changed. */
         /* C makemon.c:155-156 */
         if (otyp === ORCISH_ARROW)
             otmp.opoisoned = 1;

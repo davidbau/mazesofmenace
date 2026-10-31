@@ -16,6 +16,7 @@ import { peaceMinded, set_malign, olfaction } from './makemon.js';
 //                         note above restore_saved_game() below.
 
 import { game } from './gstate.js';
+import { init_rect } from './rect.js';
 import { align_str, setuwep } from './cmd.js';
 import { rnd } from './rng.js';
 import { rest_engravings, restore_cham, hide_monst, hideunder, _gm_migrating, In_hell } from './mklev.js';
@@ -25,12 +26,13 @@ import { restore_timers_level, run_timers } from './timeout.js';
 import { mon_catchup_elapsed_time } from './dog.js';
 import { stored_level, saved_state_for, savefile_name, NOT_SAVED } from './save.js';
 import { vfsReadFile, vfsDeleteFile } from './storage.js';
-import { docrt, cls, bot, see_monsters, pline } from './display.js';
+import { docrt, cls, bot, see_monsters, pline, _topline_more_pending, flush_screen, clear_glyph_buffer, reglyph_darkroom } from './display.js';
 import { vision_reset, vision_recalc } from './vision.js';
 import { restore_light_sources } from './light.js';
 import { place_wsegs, worm_seg_clear_level } from './worm.js';
 import { change_luck } from './attrib.js';
 import { HALLUC, HALLUC_RES, COLNO } from './const.js';
+import { PM_MONK } from './pm.generated.js';
 import { ugenocided, udeadinside, set_uasmon } from './polyself.js';
 import { phase_of_the_moon, friday_13th, getnow, time_from_yyyymmddhhmmss } from './allmain.js';
 
@@ -52,6 +54,21 @@ function find_lev_obj_clear_no_charge(level) {
     }
 }
 
+/* C restore.c:167-178 restdamage(): each record read is PREPENDED to
+ * svl.level.damagelist while savedamage() wrote the list head -> tail, so
+ * every level read reverses the pending shop-repair chain (which damage a
+ * shopkeeper repairs first, via find_damage()). */
+function restdamage_reverse(level) {
+    let prev = null, cur = level?.damagelist || null;
+    while (cur) {
+        const nxt = cur.next;
+        cur.next = prev;
+        prev = cur;
+        cur = nxt;
+    }
+    if (level) level.damagelist = prev;
+}
+
 export async function getlev(lev) {
     const g = game;
     const u = g.u || (g.u = {});
@@ -67,6 +84,7 @@ export async function getlev(lev) {
      * rest_track.  All of it is the departing level's own containers, which
      * clear_level_structures() replaced rather than mutated. */
     g.level = snap.level;
+    restdamage_reverse(g.level);
     find_lev_obj_clear_no_charge(g.level);
     {
         let prev = null, cur = snap.stairs;
@@ -231,6 +249,19 @@ async function restgamestate(state) {
             continue;
         game[k] = state[k];
     }
+    // C save.c:265-333 omits cmd.c's process-local command queues/binding;
+    // decl.c:239,250 initializes them empty in the restoring process.
+    game.gc.command_queue = [null, null];
+    game.gc.cmd_bind = null;
+    // C save.c:265-333 omits gc.coder (decl.c:283). A new process
+    // must initialize its builder, including the level temperature, afresh
+    // on the next des call (sp_lev.c:6345-6373).
+    game.gc.coder = null;
+    // C decl.c:193-194 initializes these per process; save.c:265-333 omits
+    // query_category's hint counters, so restoring offers each hint afresh.
+    game.ga ||= {};
+    game.ga.A_first_hint = 0;
+    game.ga.A_second_hint = 0;
     /* C save.c:265-333 does not save youmonst.  The restoring process starts
      * with decl.c's zeroed struct; restore.c:604,629 rebuild cham and data.
      * Clear in place so restored light-source references retain its identity. */
@@ -251,6 +282,20 @@ async function restgamestate(state) {
      * NEW game), so assigninvlet() (invent.c:721) scans from 'a' again instead of
      * continuing after the old process's last letter. */
     game._lastinvnr = 51;
+    /* C decl.c:347 gf.followmsg is a process-local global (shk.c:4914 nag
+     * timer) that save.c does not write; the restoring process starts at 0. */
+    game.followmsg = 0;
+    /* C restore.c:684: disable see_monsters() before re-wielding, so
+     * setuwep()'s artifact-intrinsic see_monsters() (Sting_effects) waits for
+     * moveloop_preamble (allmain.c:92-95). */
+    /* C restore.c:684: defer before restoring worn-item effects, including
+     * setuwep()'s artifact warning refresh. Moveloop re-enables the refresh. */
+    game.defer_see_monsters = 1;
+    // C restore.c:686-689 rebuilds worn gear through setworn(); worn.c:138
+    // recomputes this process-local flag. Our saved slots already restore
+    // the gear pointers and properties, but iflags itself is not saved.
+    game.iflags.tux_penalty = !!(game.u.uarm && game.urole.mnum === PM_MONK
+                                && game.urole.spelarmr);
     /* C restore.c:691-699: reclassify the restored weapon even if the saved
      * unweapon was cleared by an earlier fight.  Clear the slot first to
      * bypass setuwep()'s same-object return, just as C does. */
@@ -303,6 +348,16 @@ export async function dorecover(save) {
     // C first reads the current level before restoring the saved globals.
     await bubbles_copy_snapshot(save.state.__bubbles, save.state.level);
     await restgamestate(save.state);
+    /* C unixmain.c:259 pline("Restoring save file...") is remembered (topl.c remember_topl)
+     * even though clear_nhwindow(WIN_MESSAGE) discards it from the screen: ^P still lists it. */
+    (g._msg_history ||= []).push('Restoring save file...');
+    /* C's new process has an empty gbuf; saved levl glyphs are memory only. */
+    clear_glyph_buffer();
+    // C restore.c:831 restlevelfile() -> savelev() (save.c:561) clears
+    // level structures, including init_rect() (mklev.c:916). The final
+    // getlev() reloads the map but leaves this fresh allocator in place.
+    init_rect();
+    restdamage_reverse(g.level);
     find_lev_obj_clear_no_charge(g.level);
     // C restore.c:811,898 reads the original saved current level twice;
     // each rest_stairs (:955-984) prepends records in save_stairs order.
@@ -334,6 +389,7 @@ export async function dorecover(save) {
             if (reg.ttl >= 0) reg.ttl = Math.max(0, reg.ttl - aged);
         }
         snap.omoves = g.moves | 0;
+        restdamage_reverse(snap.level);
         find_lev_obj_clear_no_charge(snap.level);
         if (!snap.bubbles) continue;
         snap.bubbles = await bubbles_copy_snapshot(snap.bubbles, snap.level);
@@ -356,6 +412,8 @@ export async function dorecover(save) {
      * is loaded but before docrt().  The saved viz arrays travel with the
      * level (they describe the same level the hero is standing on), so this is
      * a recompute over restored data, not a rebuild from nothing. */
+    // C restore.c:926: normalize remembered dark-room glyphs before repainting.
+    reglyph_darkroom();
     vision_reset();
     g.vision_full_recalc = 1;
     await run_timers();
@@ -363,21 +421,20 @@ export async function dorecover(save) {
     g.program_state.beyond_savefile_load = 1;
     /* C restore.c:932 docrt() — repaint the whole screen from the restored
      * level's remembered glyphs, monsters and hero. */
-    /* C restore.c:684 defer_see_monsters is TRUE through docrt() (see_monsters
-     * is a no-op there); docrt's own vision_recalc(0) is the only pass. */
-    g.defer_see_monsters = 1;
     await docrt();
+    /* C restore.c:932-933: finish docrt's notice pages before clearing them. */
+    if (_topline_more_pending())
+        await flush_screen(1, false);
     bot();
     /* C restore.c:933 clear_nhwindow(WIN_MESSAGE) — see the note above. */
     g._pending_message = '';
-    /* C restore.c:936 welcome(FALSE) / :938 check_special_room(FALSE).  The
+    /* C restore.c:948 welcome(FALSE) / :949 check_special_room(FALSE).  The
      * welcome pline is deliberately NOT emitted here: it is the head of the
      * startup message queue that moveloop_preamble's moon/Friday-13th plines
      * feed into, and whether it pages with --More-- depends on whether one of
      * those follows it.  restore_preamble() below owns the whole queue, the
      * same way js/allmain.js#newgame owns it for a new game. */
-    const { check_special_room } = await import('./cmd.js');
-    await check_special_room(false);
+    /* Both calls run in restore_preamble(), in C's order. */
 }
 
 /*
@@ -478,6 +535,19 @@ export async function restore_preamble() {
         if (annotation)
             msgs.push(`You remember this level as ${annotation}.`);
     }
+    /* C restore.c:948-949: room-entry/boundary messages follow welcome(),
+     * before unixmain.c's keep-save question.  Publish the welcome first so
+     * the room check cannot have its pending message overwritten by it. */
+    while (msgs.length)
+        await pline(msgs.shift());
+    const { check_special_room } = await import('./cmd.js');
+    await check_special_room(false);
+    const { _topline_more_pending, flush_screen } = await import('./display.js');
+    if (_topline_more_pending())
+        await flush_screen(1, false);
+    if (g._pending_message)
+        msgs.push(g._pending_message);
+    g._pending_message = '';
     let keptPrompt = '';
     /* C unixmain.c:264-274 — after a successful dorecover(), wizard and
      * explore-mode restores ask whether to keep the save file; this precedes
@@ -535,6 +605,11 @@ export async function restore_preamble() {
      * Keep only its physical text; it is not an unacknowledged pline. */
     if (keptPrompt && !msgs.length)
         g._topl_sticky = keptPrompt;
+    /* C allmain.c:85: request BL_RESET before read_engr_at(), whose plines
+     * flush the status before paging the engraving (pline.c:273-276). */
+    g.disp = g.disp || {};
+    g.disp.botlx = 1;
+    g._status1WholeNext = true;
     /* C allmain.c:86-89 calls read_engr_at directly.  Its ordinary plines
      * share the pending topline: update_topl (topl.c:260-275) joins messages
      * that fit and pages only when the next message needs a new line. */
@@ -542,13 +617,19 @@ export async function restore_preamble() {
         const { read_engr_at } = await import('./look.js');
         await read_engr_at(g.u.ux, g.u.uy);
     }
-    /* C allmain.c:86-89, the `if (resuming)` arm — read_engr_at is above;
-     * fix_shop_damage() has no shop-damage model to repair (message-only).
-     * C allmain.c:91-96 encumber_msg(); then the deferred see_monsters() runs
+    /* C allmain.c:88: repair old shop damage silently before monster moves. */
+    const { fix_shop_damage } = await import('./shk.js');
+    await fix_shop_damage();
+    /* C allmain.c:91-96 encumber_msg(); then the deferred see_monsters() runs
      * AFTER the welcome and moon/Friday-13th plines and their --More-- frames. */
     /* C allmain.c:91: encumber_msg() "in case they auto-picked up something".
      * go.oldcap is a global (not in the savefile), so it starts at 0. */
     g.u._oldcap = 0;
+    /* C allmain.c:85 `disp.botlx = TRUE` precedes encumber_msg() (:91), so the
+     * encumber pline's flush paints status row 1 whole under the standing --More--. */
+    g.disp = g.disp || {};
+    g.disp.botlx = 1;
+    g._status1WholeNext = true;
     await encumber_msg();
     if (g.defer_see_monsters) {
         g.defer_see_monsters = 0;
@@ -558,9 +639,5 @@ export async function restore_preamble() {
     g.u.uz0 = { ...(g.u.uz || {}) };
     g.context = g.context || {};
     g.context.move = 0;
-    g.disp = g.disp || {};
-    g.disp.botlx = 1;
-    /* allmain.c:85 SET_BOTLX: the first moveloop bot() is BL_RESET, rewriting row 1 whole over map y=20 */
-    g._status1WholeNext = true;
     g.program_state.in_moveloop = 1;
 }

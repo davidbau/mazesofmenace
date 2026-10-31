@@ -25,6 +25,7 @@ import { parsebindings, parseautocomplete, optfn_number_pad_set, escapes, check_
 import { config_error_add } from './cmd_binds.js';
 import { str2role, str2race, str2gend, str2align, setrolefilter, gr as roleGlobals } from './roles.js';
 import { glyphrep_to_custom_map_entries } from './glyphs.js';
+import { sym_val_real } from './symbols.js';
 import { config_line_error, config_statement, choose_random_part, config_error_nextline, is_config_section, parse_autopickup_exception, parse_msgtype } from './cfgfiles.js';
 import { add_menu_coloring, match_str2clr, attr2attrname } from './coloratt.js';
 import { TtyMenu, PICK_NONE, PICK_ONE, PICK_ANY, ATR_NONE } from './tty_menu.js';
@@ -826,6 +827,17 @@ export function parseNethackrc(rc) {
                 const terrMatch = entry.match(/^\s*(S_(?:room|corr|litcorr|ndoor|vodoor|hodoor|vcdoor|hcdoor|fountain|altar|water|lava|lavawall|ice|tree))\s*:\s*(?:'([^'])'|([^'\s]))\s*$/i);
                 if (terrMatch)
                     (result.symbolOverrides ||= {})['S_' + terrMatch[1].slice(2).toLowerCase()] = terrMatch[2] ?? terrMatch[3];
+                /* C symbols.c:839/options.c:9385: direct display consumers
+                 * need the same decoded byte as ov_primary_syms, including
+                 * quoted escapes (a bare backslash-number is decimal). */
+                const overrideName = pairMatch && 'S_' + pairMatch[1].slice(2).toLowerCase();
+                if (overrideName && result.symbolOverrides?.[overrideName] !== undefined) {
+                    const value = sym_val_real(pairMatch[2]);
+                    if (value)
+                        result.symbolOverrides[overrideName] = String.fromCharCode(value);
+                    else
+                        delete result.symbolOverrides[overrideName];
+                }
             }
             continue;
         }
@@ -968,6 +980,31 @@ export function parseNethackrc(rc) {
                 compoundDuplicate('disclose');
                 result.flags.end_disclose = parse_end_disclose(menuval, menunegated,
                     result.flags.end_disclose || END_DISCLOSE_DEFAULT);
+                continue;
+            }
+            /* C options.c:1906-1950 optfn_IBMgraphics: the legacy switch
+             * selects both IBMgraphics and RogueIBM, preserving named sets
+             * and reporting failure if either was already selected. */
+            if (menuname.length >= 3 && 'ibmgraphics'.startsWith(menuname)) {
+                compoundDuplicate('IBMgraphics');
+                if (!menunegated) {
+                    let badflag = false, symName = 'IBMgraphics';
+                    for (let i = 0; i < 2; ++i) {
+                        if (gs.symset?.[i]?.name) {
+                            badflag = true;
+                        } else {
+                            if (i === 1) symName = 'RogueIBM';
+                            const set = (gs.symset[i] ||= {});
+                            set.name = symName;
+                            set.handling = 1; // dat/symbols: Handling: IBM
+                            // C symbols.c:214: RogueIBM keeps the no-color default.
+                            set.nocolor = i === 1 ? 1 : 0;
+                            if (i === 0) result.symset = symName;
+                        }
+                    }
+                    if (badflag)
+                        config_error_add('Failure to load symbol set %s.', symName);
+                }
                 continue;
             }
             // C options.c:1393: the legacy switch loads the existing symbol set.

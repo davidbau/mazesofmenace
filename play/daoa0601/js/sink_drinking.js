@@ -1,7 +1,8 @@
 // C fountain.c:drinksink(). Admission and action time belong to quaffing.
 import { currentAttribute, exerciseWisdom } from './attrib.js';
 import { A_CON, G_GONE, MM_NOMSG, M_SEEN_FIRE, POLY_NOFLAGS, S_LRING, } from './const.js';
-import { canSpotMonster, displayColorName, displayLiquidName, newsym, plineWithContinuation as pline, } from './display.js';
+import { canSpotMonster, displayColorName, displayLiquidName, newsym } from './display.js';
+import { plineWithContinuation as pline } from './pline.js';
 import { addExperience, checkExperienceLevel } from './exper.js';
 import { placeCreatedObject } from './floor_object.js';
 import { game, requireLiveGame, requirePlayingGame } from './gstate.js';
@@ -10,7 +11,8 @@ import { vomitHero } from './hero_illness.js';
 import { publishHeardMessage } from './hero_speech.js';
 import { spendHeroNutrition } from './hunger.js';
 import { floatingAbove } from './levitation_commands.js';
-import { makemonNear, mkobj } from './mklev.js';
+import { makemonNear } from './mklev.js';
+import { mkobj } from './mkobj.js';
 import { MONSTER_NAME } from './monster_data.js';
 import { monsterName } from './monster_name.js';
 import { monstersForgetHeroResistance, monstersObserveHeroResistance } from './monster_perception.js';

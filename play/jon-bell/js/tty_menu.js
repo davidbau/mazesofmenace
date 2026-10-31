@@ -84,8 +84,9 @@ function set_cursor(col, row) {
  * morestr / maxrow), which this class stands in for.
  */
 export class TtyMenu {
-    constructor({ overlay = false, statusClipCol } = {}) {
+    constructor({ overlay = false, statusClipCol, baseWindow = false } = {}) {
         this.overlay = overlay;
+        this.baseWindow = baseWindow;
         this.statusClipCol = statusClipCol;
         /* C: cw->mlist, but kept in correct order rather than reversed. */
         this.mlist = [];
@@ -241,6 +242,8 @@ export class TtyMenu {
     }
 
     _screenRows() {
+        if (this.baseWindow) return this._lines.map(line => this.overlay
+            ? ' '.repeat(this.contentCol) + line.slice(1) : line);
         if (!this.overlay) return this._lines.slice(0, LI);
         return build_window_screen(this._lines.map(line => line.slice(1)), this.contentCol,
             undefined, this.statusClipCol).split('\n');
@@ -293,6 +296,11 @@ export class TtyMenu {
             const key = await nhgetch();
             const morc = String.fromCharCode(key);
             const from = this.plist[curr_page], to = this.plist[curr_page + 1];
+            const group = how === PICK_ONE && !this.mlist.slice(from, to).some(c => c.aInt && c.selector === morc) && this.mlist.find(c => c.groupSelector === morc);
+            if (group) {
+                group.selected = !group.selected;
+                finished = true; continue;
+            }
 
             /* C ref: wintty.c:1519-1535,1553 + getline.c:230-257 xwaitforspace(resp)
              * -- a key outside resp (item selectors, ' ', digits, ESC, \n, \r,
@@ -435,7 +443,7 @@ export class TtyMenu {
             }
         }
 
-        if (!this.overlay) {
+        if (!this.overlay && !this.baseWindow) {
             const { docrt, flush_screen, status_r1_menu_docrt } = await import('./display.js');
             /* windows.c:1859-1863: select_menu() holds gb.bot_disabled over
              * the whole tty_select_menu, docrt() included, so a pline raised
@@ -466,7 +474,7 @@ export class TtyMenu {
         }
         /* wintty.c:3684 docorner(offx, ...) repaints map cells from offx on, in the
          * rows the dismissed window covered, with the live use_color. */
-        if (this.overlay) {
+        if (this.overlay && !this.baseWindow) {
             /* wintty.c:982,3684-3688: docorner erases row 0 from offx-1,
              * leaving only the prefix of an EMPTY message window's residue.
              * Its logical EMPTY state survives dismissal and further input. */

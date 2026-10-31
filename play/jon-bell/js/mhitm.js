@@ -90,6 +90,7 @@ import { abuse_dog, sticks, unstuck } from './dog.js';
  * hoisted function declaration and is only called at runtime. */
 import { mbodypart, a_gname_at, Breathless, body_part, is_pole, dry_a_towel, growl_sound, set_msg_xy } from './cmd.js';
 import { newsym as _wakeup_newsym } from './display.js';
+import { objdescr_is as objdescr_is_real } from './o_init.js';
 import { MKOBJ_OC_CLASS } from './mkobj_data.js';
 import { getObjDescr, just_an, The, vtense, xname, cxname, mshot_xname, Yobjnam2, makeplural } from './objnam.js';
 import { newoextra, lcase } from './mklev.js';
@@ -1741,7 +1742,8 @@ export function hcolor(colorpref) {
     const Halluc_resistance = HHalluc_resistance || EHalluc_resistance;
     const Hallucination = HHallucination && !Halluc_resistance;
 
-    if (Hallucination || !colorpref) {
+    // C do_name.c:1463 tests the pointer; an empty string is still non-null.
+    if (Hallucination || colorpref == null) {
         return hcolors[rn2_on_display_rng(hcolors.length)];
     }
     return colorpref;
@@ -2506,7 +2508,7 @@ export async function wakeup(mtmp, via_attack, defer_priest = false) {
         await setmangry(mtmp, true);
         if (was_peaceful) {
             if (mtmp.ispriest && !defer_priest)
-                ghod_hitsu(mtmp);
+                await ghod_hitsu(mtmp); // C mon.c:4358: finish retaliation before returning.
             if (mtmp.isshk && !(game.u && game.u.ushops && game.u.ushops[0]))
                 hot_pursuit(mtmp);
         }
@@ -4152,7 +4154,7 @@ function mon_perma_blind(mdef) {
 }
 
 function objdescr_is(obj, desc) {
-    return !!obj && getObjDescr(obj.otyp | 0) === desc;
+    return objdescr_is_real(obj, desc);
 }
 
 /* C do_name.c:1320-1360 obj_pmname(obj) — mons[].pmname for a corpse/statue/

@@ -6,6 +6,7 @@ import { HALLUC, HALLUC_RES, PROT_FROM_SHAPE_CHANGERS } from "./const.js";
 import { stop_occupation } from './allmain.js';
 import { rn2, rnd, rn1, d, pushRngLogEntry } from './rng.js';
 import { game } from './gstate.js';
+import { place_monster } from './steed.js';
 import { PM_LEPRECHAUN, PM_VROCK, PM_KILLER_BEE, PM_QUEEN_BEE, PM_ROGUE } from './pm.generated.js';
 import { bare_artifactname, makeplural, an, xname, vtense } from './objnam.js';
 import { yname } from './do_wear.js';
@@ -494,7 +495,7 @@ const AD_RUST_BARS_MV = 24, AD_CORR_BARS_MV = 42; /* attack.h AD_RUST/AD_CORR */
 const S_VORTEX_BARS_MV = 22; /* mondata.h mlet S_VORTEX (is_whirly) */
 
 export function _passes_bars_mv(mtmp) {
-    const mndx = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
+    const mndx = (mtmp.data?.pmidx ?? mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
     const mrow = (mndx >= 0 && mndx < _MONS_MV.length) ? _MONS_MV[mndx] : null;
     const mlet = mrow ? (mrow[0] | 0) : -1;
     const mf1 = mrow ? (mrow[6] >>> 0) : 0;
@@ -518,7 +519,7 @@ export function _passes_bars_mv(mtmp) {
 }
 
 export function mon_allowflags(mtmp) {
-    const mndx = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
+    const mndx = (mtmp.data?.pmidx ?? mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
     const mrow = (mndx >= 0 && mndx < _MONS_MV.length) ? _MONS_MV[mndx] : null;
     const mlet = mrow ? (mrow[0] | 0) : -1;
     const mf1 = mrow ? (mrow[6] >>> 0) : 0;
@@ -2474,9 +2475,11 @@ export async function m_move(mtmp, after) {
          * inside create_gas_cloud (region.c:1303) per cloud. */
         m_postmove_effect(mtmp);
 
-        /* C monmove.c:2073-2086: actual move — update position */
-        mtmp.mx = nix;
-        mtmp.my = niy;
+        /* C monmove.c:2051-2052 / steed.c:913-921: placement can refuse a
+         * ridden steed.  Preserve its coordinates and finish impossible's
+         * messages before continuing the move. */
+        place_monster(mtmp, nix, niy);
+        if (_topline_more_pending()) await flush_pending_messages();
         await msg_mon_movement(mtmp, omx, omy);
         /* C monmove.c:2057-2058: for a long worm, insert a new segment to
          * reconnect the head with the tail (rnd(5)/rn1 growth draws). */

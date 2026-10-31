@@ -2,12 +2,12 @@
 // C refs: apply.c use_royal_jelly(), eat.c fpostfx().
 import { gainHeroStrength, } from './attrib.js';
 import { POISONING } from './const.js';
-import { pline, plineWithContinuation } from './display.js';
+import { pline, plineWithContinuation } from './pline.js';
 import { finishHeroDeath } from './end.js';
 import { game, requirePlayingGame, requireLiveGame } from './gstate.js';
 import { freeInventoryObject } from './hero_inventory.js';
 import { healHeroLegs } from './hero_legs.js';
-import { restartEggHatchTimer } from './mklev.js';
+import { restartEggHatchTimer } from './egg.js';
 import { EGG, LUMP_OF_ROYAL_JELLY } from './object_data.js';
 import { deleteObject } from './object_delete.js';
 import { OBJECT_TIMER_KIND, objectTimers, stopObjectTimer, } from './object_timers.js';

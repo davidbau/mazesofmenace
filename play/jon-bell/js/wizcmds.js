@@ -347,10 +347,17 @@ export async function touch_artifact_youmonst(otmp) {
 
         /* tty update_topl (topl.c:262-277): the blast line cannot join a standing
          * topline when n0 + strlen(toplines) + 3 >= CO - 8, so that standing line
-         * is more()d here, before artifact.c:953's d() and the losehp. */
+         * is more()d here, before artifact.c:953's d() and the losehp.
+         * gt.toplines is only the LAST page of the accumulated buffer: the
+         * earlier pages were more()d when their successor failed to join
+         * (rm148: "You hear a sizzling splash.  You are hit by molten lava."
+         * paged, then "You return to human form!" + the blast joins). */
         let blastEnteredTopl = false;
+        const _standPages = g._pending_message
+            ? _topl_more_pages(String(g._pending_message), _topl_joins_snapshot(String(g._pending_message)))
+            : [''];
         if (g._rt_blast_page_standing && g._pending_message
-            && String(g._pending_message).length + 2 + g._touch_artifact_blast_msg.length >= 71) {
+            && _standPages[_standPages.length - 1].length + 2 + g._touch_artifact_blast_msg.length >= 71) {
             // topl.c:257 samples skip before :274 more() can set WIN_STOP.
             blastEnteredTopl = !g._topl_win_stop && !g._topl_win_stop_armed;
             const _pm = String(g._pending_message);
@@ -1092,11 +1099,13 @@ function _wish_Blind() {
            && !(bp.blocked | 0);
 }
 
-/* C youprop.h Hallucination := (HHallucination || EHallucination); HALLUC is
- * property 23 (const.js). */
+/* C youprop.h:120 Hallucination := (HHallucination && !Halluc_resistance);
+ * HALLUC is property 23, HALLUC_RES 24 (const.js). */
 function _wish_Hallu() {
     const hp = game.u?.uprops?.[23];
-    return !!hp && !!((hp.intrinsic | 0) || (hp.extrinsic | 0));
+    const rp = game.u?.uprops?.[24];
+    return !!hp && !!(hp.intrinsic | 0)
+           && !(rp && ((rp.intrinsic | 0) || (rp.extrinsic | 0)));
 }
 
 /* C youprop.h:135 Fumbling := (HFumbling || EFumbling).  Unlike Blind, the
@@ -2379,7 +2388,7 @@ export async function makemap_prepost(pre, wiztower) {
          * a pending topline (e.g. makemon's "A shopkeeper suddenly appears close
          * by!" from fill_special_room) is paged with --More-- before the clear. */
         if (g._pending_message)
-            await disp.force_more(String(g._pending_message));
+            await disp.force_more_from_cls(String(g._pending_message));
         g._levelgenPaintFreeze = null; /* cls() wipes the physical screen */
         await disp.cls();
         const mk = await import('./mklev.js');
@@ -2424,6 +2433,12 @@ export async function makemap_prepost(pre, wiztower) {
          * including those just set by the room-entry greeting above.
          * Checkpoint defaults to On (optlist.h:225-227). */
         if (g.flags.ins_chkpt ?? true) {
+            /* savelev(WRITING) first purges dead monsters (save.c:487-488) —
+             * e.g. a statue trap's mk_trap_statue() leftover from the level
+             * just loaded — so a no-time level teleport right after cannot
+             * trip dmonsfree's pending-count impossible(). */
+            if ((g.iflags.purge_monsters | 0))
+                await dmonsfree();
             for (let mon = g.fmon; mon; mon = mon.nmon)
                 if (mon.ispriest) forget_temple_entry(mon);
         }
@@ -2438,9 +2453,22 @@ export async function makemap_prepost(pre, wiztower) {
 export async function wiz_makemap() {
     if (wizard()) {
         const wasW = (await import('./dochug.js')).In_W_tower_wz(game.u.ux | 0, game.u.uy | 0, game.u.uz);
-        await makemap_prepost(true, wasW);
-        await (await import('./mklev.js')).mklev();
-        await makemap_prepost(false, wasW);
+        /* C's physical screen keeps the OLD map until makemap_prepost(FALSE)'s
+         * cls(): a pline raised while the old level is torn down (e.g. "The
+         * long sword named Sunsword ... stops shining.") is paged over it.
+         * Keep that paint until cls(), but stage intervening show_glyph updates:
+         * C pline.c:266-276 recalculates vision and flushes gbuf before putmesg;
+         * display.c:2220 suppresses those flushes only during mklev/save/restore. */
+        const frame = (await import('./display.js')).capture_painted_frame();
+        if (frame) frame.liveGbuf = true;
+        game._levelgenPaintFreeze = frame;
+        try {
+            await makemap_prepost(true, wasW);
+            await (await import('./mklev.js')).mklev();
+            await makemap_prepost(false, wasW);
+        } finally {
+            game._levelgenPaintFreeze = null;
+        }
     } else {
         await pline('Unavailable command \'wizmakemap\'.');
     }

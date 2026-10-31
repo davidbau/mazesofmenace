@@ -8,7 +8,8 @@ import { BOTH_SIDES, RLOC_ERR, RLOC_NOMSG, D_CLOSED, D_LOCKED, DISMOUNT_BONES, D
 import { game, requireLiveGame, requirePlayingGame } from './gstate.js';
 import { levitationAtWill, refreshMovementProperties } from './properties.js';
 import { floatHeroDown } from './terrain_movement.js';
-import { canSpotMonster, displayLiquidName, newsym, pline, plineWithContinuation } from './display.js';
+import { canSpotMonster, displayLiquidName, newsym } from './display.js';
+import { pline, plineWithContinuation } from './pline.js';
 import { finishMonsterKilled } from './monster_death.js';
 import { AD_PHYS } from './monster_attack_types.js';
 import { finishHeroMonsterKill } from './hero_monster_death.js';
@@ -16,7 +17,7 @@ import { MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_NAME, MONSTER_SIZE, MONSTER_SYM
 import { addObjectToMonsterInventory } from './monster_inventory.js';
 import { releaseMonsterLeash, releaseMonsterLeashWithFeedback, } from './monster_leash.js';
 import { BOULDER, SADDLE, OBJECT_DESCRIPTIONS } from './object_data.js';
-import { mksobj } from './mklev.js';
+import { mksobj } from './mkobj.js';
 import { fullyIdentifyObject } from './invent.js';
 import { applyMonsterEquipmentProperties } from './monster_equipment.js';
 import { objectMaterial } from './object_material.js';
@@ -49,7 +50,8 @@ import { nearCapacity, SLT_ENCUMBER } from './weight.js';
 import { heroIsBlind, heroIsHallucinating } from './senses.js';
 import { monsterIsHelpless } from './monster_sleep.js';
 import { blocksDiagonalDoor, heroBadRock, heroCanPassWallAt, heroTightDiagonalReason, } from './hack.js';
-import { applyHeroLocationEffects, heroCouldMoveOntoBoulder } from './cmd.js';
+import { applyHeroLocationEffects } from './hack.js';
+import { heroCouldMoveOntoBoulder } from './boulder_push.js';
 import { finishDestinationSpotEffects } from './location_effects.js';
 import { adjustHeroAlignment } from './alignment.js';
 import { commandResultCancelled } from './command_state.js';

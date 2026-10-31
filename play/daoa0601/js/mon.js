@@ -6,7 +6,8 @@ import { isLavaAt, isPoolAt, levelIsWaterLevel, monsterFliesOrFloats, monsterInA
 import { makeMonsterFlee } from './monster_flee.js';
 import { RLOC_MSG, RLOC_NOMSG, FOUNTAIN, G_GENOD, MSLOW, STRAT_WAITFORU, WATER } from './const.js';
 import { dryFountainAt } from './fountain.js';
-import { canSeeMonster, displayLiquidName, newsym, plineWithContinuation, } from './display.js';
+import { canSeeMonster, displayLiquidName, newsym } from './display.js';
+import { plineWithContinuation } from './pline.js';
 import { splitMonster } from './monster_clone.js';
 import { MONSTER_FLAGS1, MONSTER_NAME, MONSTER_SYMBOL, monsterYoungerForm, } from './monster_data.js';
 import { changeMonsterForm } from './monster_polymorph.js';
@@ -342,5 +343,19 @@ export async function resolveMonsterLiquid(monster, state = game, { announce = a
             return { heroDied: true };
     }
     return null;
+}
+const UNDEAD_CORPSE_TYPES = new Map([
+    [239, 59], [187, 59], // kobold zombie/mummy -> kobold
+    [242, 44], [190, 44], // dwarf zombie/mummy -> dwarf
+    [240, 165], [188, 165], // gnome zombie/mummy -> gnome
+    [241, 72], [189, 72], // orc zombie/mummy -> orc
+    [243, 264], [191, 264], // elf zombie/mummy -> elf
+    [226, 260], [227, 260], [244, 260], [192, 260],
+    [247, 169], [194, 169], // giant zombie/mummy -> giant
+    [245, 174], [193, 174], // ettin zombie/mummy -> ettin
+]);
+// C mon.c:undead_to_corpse().
+export function undeadToCorpse(mndx) {
+    return UNDEAD_CORPSE_TYPES.get(mndx) ?? mndx;
 }
 //# sourceMappingURL=mon.js.map

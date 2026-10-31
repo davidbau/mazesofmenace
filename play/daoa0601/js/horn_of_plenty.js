@@ -1,6 +1,6 @@
 // C mkobj.c:hornoplenty(), for doapply's one-charge use.
 import { ICE, IRONBARS, Is_airlevel, Is_waterlevel, MAX_OIL_IN_FLASK } from './const.js';
-import { plineWithContinuation as pline } from './display.js';
+import { plineWithContinuation as pline } from './pline.js';
 import { game, requirePlayingGame } from './gstate.js';
 import { holdAnotherObject } from './hero_hold_object.js';
 import { addObjectToContainer } from './object_container.js';
@@ -11,7 +11,8 @@ import { ALTAR } from './const.js';
 import { inventoryItemDescription } from './invent.js';
 import { reportHeroEncumbrance } from './encumbrance.js';
 import { surfaceName } from './terrain_name.js';
-import { mkobj, rndClass } from './mklev.js';
+import { mkobj } from './mkobj.js';
+import { rndClass } from './objnam.js';
 import { consumeObjectCharge } from './object_charge.js';
 import { FOOD_RATION, HORN_OF_PLENTY, LUMP_OF_ROYAL_JELLY, OBJECT_MAGIC, POT_BOOZE, POT_OIL, POT_SICKNESS, POT_WATER } from './object_data.js';
 import { makePlural } from './object_grammar.js';

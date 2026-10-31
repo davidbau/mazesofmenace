@@ -1,6 +1,7 @@
 // C cmd.c:there_cmd_menu(), its entry builders, and act_on_act().
 import { ALTAR, BOLT_LIM, CLICK_1, CLICK_2, D_CLOSED, D_ISOPEN, D_LOCKED, DOOR, FOUNTAIN, NHW_MENU, PICK_ONE, SCORR, SINK, THRONE, Upolyd, VIBRATING_SQUARE, } from './const.js';
-import { canSpotMonster, clearMessageWindow, glyphAt } from './display.js';
+import { canSpotMonster, glyphAt } from './display.js';
+import { clearMessageWindow } from './tty_topline.js';
 import { floorObjectDescription } from './floor_object_display.js';
 import { heroCanReachFloor } from './floor_reach.js';
 import { game, requireGameLevel, requirePlayingGame } from './gstate.js';
@@ -14,7 +15,7 @@ import { observeObjectForNaming } from './objnam.js';
 import { monsterSaddle } from './steed.js';
 import { couldsee } from './vision.js';
 import { blockingTerrain } from './monster_ranged_alignment.js';
-import { heroTestMove } from './cmd.js';
+import { heroTestMove } from './hack.js';
 import { tty_add_menu, tty_create_nhwindow, tty_destroy_nhwindow, tty_end_menu, tty_select_menu, tty_start_menu, } from './tty_menu.js';
 const FOOD_CLASS = 7;
 // C cmd.c:there_cmd_menu_common().

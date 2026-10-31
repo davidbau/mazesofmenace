@@ -1,6 +1,7 @@
 import { trycall } from './cmd.js';
 import { dropy } from './cmd.js'; // C read.c:3040-3042; do.c:800-843.
 import { map_menu_cmd } from './cmd_config.js';
+import { compactify } from './cmd.js';
 import { ggetobj, _restrict_name, costly_alteration, fully_identify_obj as fully_identify_obj_cmd, prinv, _sortloot_within_class, key2txt } from './cmd.js';
 import { ONAME, has_oname, COST_UNCHRG, COST_DEGRD, COST_DECHNT, COST_UNCURS } from './const.js';
 // @ts-nocheck
@@ -800,24 +801,7 @@ function spellet(i) {
 
 function _compact_letter_ranges(letters) {
     if (!letters || letters.length <= 5) return letters;
-    let out = '';
-    let i = 0;
-    const n = letters.length;
-    while (i < n) {
-        let j = i;
-        /* extend the run of consecutive letters (code points differ by 1). */
-        while (j + 1 < n
-            && letters.charCodeAt(j + 1) === letters.charCodeAt(j) + 1)
-            j++;
-        const runLen = j - i + 1;
-        if (runLen >= 3) {
-            out += letters[i] + '-' + letters[j];
-        } else {
-            out += letters.slice(i, j + 1);
-        }
-        i = j + 1;
-    }
-    return out;
+    return compactify(letters);
 }
 
 /* C ref: tty set_cursor — write cursor position via game.nhDisplay. */
@@ -2740,9 +2724,10 @@ async function seffect_teleportation(sobj) {
     }
 }
 
-/* C ref: do_name.c:2432 hcolor("amber") — NH_AMBER (decl.c:16-19). */
+/* C wield.c:931, do_name.c:1461-1466: hallucination still draws a color
+ * before strange_feeling() replaces the tin opener's aura message. */
 function hcolor_amber() {
-    return 'amber';
+    return hcolor_real('amber');
 }
 
 /* ── C ref: read.c:1294-1321 disintegrate_cursed_armor(void) ──────────────────
@@ -4524,7 +4509,7 @@ async function seffect_identify(holder, otyp) {
         if (sblessed || (!scursed && !rn2(5))) { /* read.c:2086 */
             cval = rn2(5);
             /* C read.c:2089: if (cval == 1 && sblessed && Luck > 0) ++cval; */
-            const luck = (g.u && (g.u.uluck | 0)) || 0;
+            const luck = (g.u.uluck | 0) + (g.u.moreluck | 0); // C you.h:464 Luck
             if (cval === 1 && sblessed && luck > 0) ++cval;
         }
         await identify_pack(cval, !already_known);

@@ -2,6 +2,7 @@
 // potion.js — Potion subsystem + fountain interactions.
 // C ref: nethack-c/src/potion.c, nethack-c/src/fountain.c
 import { game, wizard, discover } from './gstate.js';
+import { ledger_no } from './bones.js';
 import { You as You_real, Your as Your_real, You_feel as You_feel_real } from './display.js';
 import { a_monnam } from './mhitm.js';
 import { make_blinded, resist, explode, explode_oil, potionhit_polymorph, poly_obj, obj_unpolyable, ubreatheu, melt_ice_zap } from './zap.js';
@@ -20,7 +21,7 @@ import { PM_HEALER, PM_ROCK_MOLE, PM_WOODCHUCK, PM_PONY, PM_HORSE, PM_WARHORSE, 
 import { PM_FIRE_VORTEX, PM_FLAMING_SPHERE, PM_FIRE_ELEMENTAL, PM_SALAMANDER } from './pm.generated.js';
 import { COLD_RES } from './const.js';
 import monPmnamesPack from './makemon_pmnames.json' with { type: 'json' };
-import { note_lone_pline_frame, pline, flush_screen, pline_flush_point, newsym, force_more, force_more_lone_frame, await_topl_more_dismiss, canspotmon, canseemon, map_invisible, getobj_never_mind, bot, You_see, You_hear } from './display.js';
+import { note_lone_pline_frame, pline, flush_screen, pline_flush_point, newsym, force_more, force_more_pages, force_more_lone_frame, canspotmon, canseemon, map_invisible, getobj_never_mind, bot, You_see, You_hear } from './display.js';
 import { unmap_object, glyph_is_invisible_at, tmp_at } from './display.js';
 import { DISP_ALWAYS, DISP_END } from './const.js';
 import { aggravate, monstseesu as monstseesu_real, burn_away_slime } from './mcastu.js';
@@ -37,7 +38,7 @@ import { set_mimic_blocking } from './sit.js';
 import { delayed_killer, find_delayed_killer, dealloc_killer } from './end.js';
 /* potion.c:417 eatmupdate() — the mimic-an-orange message fixup. */
 import { eatmupdate } from './eat.js';
-import { near_capacity, stagger_verb, weight } from './weight.js';
+import { near_capacity, stagger_verb, weight, encumber_msg } from './weight.js';
 import { nhgetch } from './input.js';
 /* C ref: invent.c:2093 silly_thing(word, otmp) — shared with the 'W'/'P'
  * getobj path rather than re-derived. */
@@ -80,7 +81,7 @@ import { MKOBJ_OC_SKILL, MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 /* objclass.h RING_CLASS (used by drinksink's ring-discovery arm). */
 const RING_CLASS = 4;
 
-import { getObjName, discover_object, observe_object } from './o_init.js';
+import { getObjName, discover_object, observe_object, objdescr_is as objdescr_is_real } from './o_init.js';
 import { bottlename } from './lock.js';
 import { surface as surface_cmd, body_part, trycall as trycall_cmd, trycall_noprompt, reorder_invent } from './cmd.js';
 import { attacktype_fordmg, splitobj, mhe } from './makemon.js';
@@ -371,6 +372,9 @@ async function _adjattrib(ndx, incr, msgflg) {
         await pline(`You feel ${very}${attrstr}!`);
         await flush_screen(1);
     }
+    /* C attrib.c:196-197: changed strength or constitution can change load. */
+    if (game.program_state?.in_moveloop && (ndx === A_STR || ndx === A_CON))
+        await encumber_msg();
     return true;
 }
 /* ---------------------------------------------------------------------------
@@ -901,28 +905,29 @@ export async function drinkfountain() {
  * ---------------------------------------------------------------------------
  */
 async function _display_nhwindow_message() {
+    /* C topl.c:262-274 pages overflowing plines before display_nhwindow
+     * acknowledges the final topline (wintty.c:1873-1879). Drain those joins
+     * before appending the explicit --More--, which has no pline boundary. */
+    await flush_screen(1);
+    /* wintty.c:1865: WIN_CANCELLED (WIN_STOP) skips the window display. */
+    if (game._topl_win_stop || game._topl_win_stop_armed) {
+        game._topl_win_stop_armed = false;
+        game._topl_win_stop = true;
+        return;
+    }
     /* If there's a pending message, append --More-- and wait for dismiss. */
     const msg = game._pending_message || '';
     if (msg) {
-        const full = msg + '--More--';
-        /* C ref: getline.c:230-257 xwaitforspace("\033 ") — more() breaks ONLY on
-         * space / CR / LF / ESC; every other key rings the bell and re-loops with
-         * the --More-- still up.  This was a bare nhgetch(). */
-        const _show = async () => {
-            game._pending_message = full;
-            await flush_screen(1);
-            const disp = game.nhDisplay;
-            if (disp) { disp.cursorCol = full.length; disp.cursorRow = 0; }
-        };
-        await _show();
-        const morc = await await_topl_more_dismiss(_show);
+        /* C topl.c:262-274 pages overflowing plines before wintty.c:1873-1879
+         * acknowledges the final message. Preserve those page boundaries. */
+        await force_more_pages(msg);
         game._pending_message = '';
         /* topl.c more():232-235 — display_nhwindow raises this page itself, not
          * an owner pline's update_topl, so ESC's WIN_STOP is live at once for
          * every following message. */
         /* topl.c more():232-235 — ESC sets WIN_STOP, so every later pline of
          * this turn is swallowed until the next tty_nhgetch clears it. */
-        if (morc === 27 && game._topl_win_stop_armed) {
+        if (game._topl_win_stop_armed) {
             game._topl_win_stop_armed = false;
             game._topl_win_stop = true;
         }
@@ -1615,7 +1620,7 @@ function _mborn(mndx) {
 /* C objnam.c OBJ_DESCR(objects[obj->otyp]) comparison — the SHUFFLED
  * appearance, not the type name.  getObjDescr() takes an otyp. */
 function objdescr_is(obj, desc) {
-    return !!obj && getObjDescr(obj.otyp | 0) === desc;
+    return objdescr_is_real(obj, desc);
 }
 /* C potion.c:2811 verbalize(...) — pline the quoted speech.  Same one-line
  * stand-in js/vault.js:278 and js/mklev.js:17353 already carry; there is no
@@ -5620,9 +5625,7 @@ async function peffect_blindness(otmp) {
 /* C dungeon.c ledger_no(lev) — the level's index in the whole-dungeon ledger.
  * Local port: svd.dungeons[dnum].ledger_start + dlevel. */
 function _ledger_no_potion(lev) {
-    const g = game;
-    const d = g.dungeons ? g.dungeons[lev?.dnum | 0] : null;
-    return ((d ? (d.ledger_start | 0) : 0) + (lev?.dlevel | 0)) | 0;
+    return ledger_no(lev);
 }
 /* C dungeon.c:1674-1687 Can_rise_up(x, y, lev). */
 function _can_rise_up_potion(x, y, lev) {

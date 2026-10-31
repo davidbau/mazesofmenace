@@ -8,6 +8,7 @@ import { db_under_typ } from './dokick.js';
 /* C ref: dungeon.c on_level/In_tutorial — domagicportal's landed-from-another-
  * portal check and its tutorial-exit arm. */
 import { on_level, In_tutorial } from './dungeon.js';
+import { ledger_no } from './bones.js';
 /* C ref: potion.c:106 make_stunned — domagicportal's dizzy-on-arrival stun. */
 import { make_stunned } from './potion.js';
 /* C ref: do.c:2076 schedule_goto — domagicportal defers the actual level
@@ -18,7 +19,7 @@ const LEASH = 236; /* objects.h LEASH, as js/cmd.js LEASH_OTYP */
 import { yn_function } from './end.js';
 import { ROWNO, COLNO, ZAP_POS, ACCESSIBLE, D_CLOSED, D_LOCKED, DOOR, isok, u_at, TELEDS_TELEPORT, RLOC_MSG, TEMPLE, engulfing_u, STRAT_APPEARMSG, NO_TRAP_FLAGS, BOLT_LIM, IS_ALTAR, IS_STWALL, W_NONPASSWALL, MON_FLOOR, POOL, MOAT, WATER, DRAWBRIDGE_UP, DB_UNDER, DB_MOAT, DB_LAVA, LAVAPOOL, LAVAWALL, MM_IGNOREWATER, MM_IGNORELAVA, GP_CHECKSCARY, GP_ALLOW_U, GP_AVOID_MONPOS, LR_MONGEN, LR_TELE, LR_UPTELE, LR_DOWNTELE, FIRE_RES, NO_MM_FLAGS, IS_WATERWALL, In_endgame, Is_astralevel, Is_juiblex_level, MON_DETACH, MON_OBLITERATE, MON_ENDGAME_MIGR } from './const.js';
 import { game } from './gstate.js';
-import { You_feel } from './display.js';
+import { You_feel, pline_mon } from './display.js';
 import { registerStaticReset } from './statics.js';
 import { newsym, see_monsters, shieldeff, docrt, force_more_from_cls, force_more_pages } from './display.js';
 import { vision_recalc } from './vision.js';
@@ -44,7 +45,7 @@ import { VAULT, ANTIMAGIC, MELT_ICE_AWAY, MAX_TYPE } from './const.js';
 import { m_into_limbo, unstuck, mon_leaving_level, m_unleash } from './dog.js';
 import { mdrop_special_objs } from './steal.js';
 import { yelp } from './mhitm.js';
-import { impossible } from './steed.js';
+import { impossible, place_monster } from './steed.js';
 import { impossible as rloc_impossible } from './pline.js';
 import { set_mon_data } from './makemon.js';
 import { GP_ALLOW_XY } from './const.js';
@@ -1357,9 +1358,7 @@ function remove_monster_local(x, y) {
     const mtmp = MON_AT(x, y);
     if (!mtmp)
         return;
-    mtmp.mstate = (mtmp.mstate | 0) | MON_DETACH;
-    mtmp.mx = 0;
-    mtmp.my = 0;
+    mtmp._mapRemoved = true;
 }
 
 /* C ref: region.c:597-610 update_monster_region — adds/removes the monster
@@ -1409,23 +1408,7 @@ function DEADMONSTER(mon) {
 }
 
 function place_monster_local(mon, x, y) {
-    if (!isok(x, y) && (x !== 0 || y !== 0 || !mon.isgd)) {
-        /* impossible(...) no-op (describe_level's buf feeds only that
-         * message); x=y=0 fallback kept for state fidelity. */
-        x = 0; y = 0;
-    }
-    if ((mon === game.u.usteed && !game.in_steed_dismounting)
-        || (DEADMONSTER(mon) && !(mon.isgd && x === 0 && y === 0))) {
-        /* impossible(...) no-op; C returns WITHOUT setting mon->mx/my —
-         * port the bug: a dead/steed monster silently fails to move. */
-        return;
-    }
-    /* othermon-occupied case: impossible() no-op only, no control-flow
-       effect — falls through to the placement below either way. */
-    mon.mx = x;
-    mon.my = y;
-    delete mon._mapRemoved;
-    mon.mstate = MON_FLOOR;
+    return place_monster(mon, x, y);
 }
 
 /* local copy: control_teleport (from js/eat.js, not exported) */
@@ -1852,7 +1835,7 @@ export async function mlevel_tele_trap(mtmp, trap, force_it, in_sight) {
                 }
             } else if (Is_botlevel(u?.uz)) {
                 if (in_sight && trap.tseen)
-                    pline(`${Monnam(mtmp)} avoids the ${(tt === HOLE_MTT) ? 'hole' : 'trap'}.`);
+                    await pline_mon(mtmp, `${Monnam(mtmp)} avoids the ${(tt === HOLE_MTT) ? 'hole' : 'trap'}.`);
                 return TRAP_EFFECT_FINISHED_MTT;
             } else {
                 tolevel = { dnum: trap.dst?.dnum | 0, dlevel: trap.dst?.dlevel | 0 };
@@ -1863,7 +1846,7 @@ export async function mlevel_tele_trap(mtmp, trap, force_it, in_sight) {
                 && (mon_has_amulet(mtmp) || is_home_elemental(mtmp.data)
                     || rn2(7))) {
                 if (in_sight && (mtmp.data?.mlet | 0) !== S_ELEMENTAL_MTT) {
-                    pline(`${Monnam(mtmp)} seems to shimmer for a moment.`);
+                    await pline_mon(mtmp, `${Monnam(mtmp)} seems to shimmer for a moment.`);
                     seetrap(trap);
                 }
                 return TRAP_EFFECT_FINISHED_MTT;
@@ -1879,7 +1862,7 @@ export async function mlevel_tele_trap(mtmp, trap, force_it, in_sight) {
             if (mon_has_amulet(mtmp) || In_endgame(u.uz)
                 || (tt === NO_TRAP_MTT && onscary_local(0, 0, mtmp))) {
                 if (in_sight)
-                    pline(`${Monnam(mtmp)} seems very disoriented for a moment.`);
+                    await pline_mon(mtmp, `${Monnam(mtmp)} seems very disoriented for a moment.`);
                 return TRAP_EFFECT_FINISHED_MTT;
             }
             if (tt === NO_TRAP_MTT) {
@@ -1890,18 +1873,18 @@ export async function mlevel_tele_trap(mtmp, trap, force_it, in_sight) {
                 const nlev = random_teleport_level();
                 if (nlev === (depth(u.uz) | 0)) {
                     if (in_sight)
-                        pline(`${Monnam(mtmp)} shudders for a moment.`);
+                        await pline_mon(mtmp, `${Monnam(mtmp)} shudders for a moment.`);
                     return TRAP_EFFECT_FINISHED_MTT;
                 }
                 tolevel = get_level(nlev);
             }
         } else {
-            /* C: impossible("mlevel_tele_trap: unexpected trap type (%d)") */
+            await rloc_impossible("mlevel_tele_trap: unexpected trap type (%d)", tt);
             return TRAP_EFFECT_FINISHED_MTT;
         }
 
         if (in_sight) {
-            pline(`Suddenly, ${mon_nam(mtmp)} ${(tt === HOLE_MTT) ? 'falls into a hole'
+            await pline_mon(mtmp, `Suddenly, ${mon_nam(mtmp)} ${(tt === HOLE_MTT) ? 'falls into a hole'
                 : (tt === TRAPDOOR_MTT) ? 'falls through a trap door'
                 : 'disappears out of sight'}.`);
             if (trap)
@@ -1924,18 +1907,7 @@ const MIGR_RANDOM_MTT = 0, MIGR_PORTAL_MTT = 8; /* dungeon.h */
 const S_ELEMENTAL_MTT = 31; /* defsym.h MONSYM(31, 'E', ELEMENTAL, S_ELEMENTAL) */
 /* C dungeon.c:1376 ledger_no(lev), including its xint16 result. */
 function ledger_no_tp(lev) {
-    const dnum = lev?.dnum | 0;
-    let start = game.dungeons?.[dnum]?.ledger_start | 0;
-    /* C dungeon.c:1376-1378 also indexes dungeons[-1] for a wished portal
-     * (trap.c:498).  Preserve that bug: in the reference layout, dungeon is
-     * 92 bytes and ledger_start is at offset 84, so this reads svd - 8,
-     * svc.context.jingle (decl.h:1122, context.h:185).  The xint16 return
-     * retains its first two bytes, including the string's terminating NUL. */
-    if (dnum === -1) {
-        const jingle = game.context?.jingle || '';
-        start = (jingle.charCodeAt(0) || 0) | ((jingle.charCodeAt(1) || 0) << 8);
-    }
-    return ((lev?.dlevel | 0) + start) << 16 >> 16;
+    return ledger_no(lev);
 }
 
 /* C ref: teleport.c:1936-1947 mvault_tele(mtmp) — the monster half of

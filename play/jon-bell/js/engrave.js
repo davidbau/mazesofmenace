@@ -221,26 +221,6 @@ function doengrave_ctx_verb(de) {
     }
 }
 
-/* compactify — invent.c:1885.  Collapse a run of consecutive invlets a..g into
- * "a-g" for the getobj prompt.  (cmd.js has its own copy; replicate the minimal
- * behaviour here to keep engrave.js self-contained.) */
-function compactify(lets) {
-    let out = '';
-    let i = 0;
-    while (i < lets.length) {
-        let j = i;
-        while (j + 1 < lets.length
-               && lets.charCodeAt(j + 1) === lets.charCodeAt(j) + 1)
-            j++;
-        if (j - i >= 2) {
-            out += lets[i] + '-' + lets[j];
-        } else {
-            for (let k = i; k <= j; k++) out += lets[k];
-        }
-        i = j + 1;
-    }
-    return out;
-}
 
 
 const GRAVE_TYP = 31; /* const.js GRAVE */

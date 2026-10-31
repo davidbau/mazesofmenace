@@ -1970,7 +1970,8 @@ export async function playChargen(ctx) {
 
     plname = plnamesuffix(plname, st);
     while (!plname) {
-        asknameText = await doAskname((typed) => ({
+        asknameText = await doAskname((typed) => ctx.baseWindow
+            ? tty_base_window_prompt(ctx.baseWindow, 2, ASKNAME_TEXT + ' ' + typed, [13 + typed.length, 2, 1]) : ({
             screen: buildCopyrightAskname(typed),
             cursor: cursorForAskname(typed),
         }));
@@ -1996,7 +1997,8 @@ export async function playChargen(ctx) {
         // C ref: role.c:2257 — the do/while re-prompts until [yna]; 'q'/ESC bails.
         for (;;) {
             const prompt = buildPickPrompt(st);
-            const key = await read(buildShallIPickFrame(asknameText, prompt), [prompt.length + 1, PROMPT_ROW, 1]);
+            const key = await read(ctx.baseWindow ? tty_base_window_prompt(ctx.baseWindow, 0, prompt, []).screen
+                : buildShallIPickFrame(asknameText, prompt), [prompt.length + 1, PROMPT_ROW, 1]);
             let a = String.fromCharCode(key).toLowerCase();
             if (key === K_ESC || a === 'q') return quit();
             if (a === ' ' || a === '\n' || a === '\r') a = 'y';
@@ -2006,8 +2008,8 @@ export async function playChargen(ctx) {
     }
 
     // C tty menus retain the base window until their rectangles erase it.
-    const menuBackground = ctx.menuBackground || Array(13).fill('');
-    if (!ctx.forcePick4u) {
+    const menuBackground = ctx.menuBackground || ctx.baseWindow || Array(13).fill('');
+    if (!ctx.forcePick4u && !ctx.baseWindow) {
         [COPYRIGHT_BANNER_A, COPYRIGHT_BANNER_B, COPYRIGHT_BANNER_C, COPYRIGHT_BANNER_D]
             .forEach((line, i) => { menuBackground[4 + i] = ' '.repeat(i ? BANNER_INDENT : 0) + line; });
         if (asknameText !== null) menuBackground[12] = ASKNAME_TEXT + ' ' + asknameText;
@@ -2415,7 +2417,7 @@ export async function playChargen(ctx) {
     // copyright banner and askname line; the 'n' (manual-menu) one paints
     // over the base-window residue left by the dismissed selection menus.
     let getconfirmation = picksomething && pick4u !== 'a' && !ctx.flags?.randomall;
-    const overlayBanner = (pick4u === 'y');
+    const overlayBanner = (pick4u === 'y' && !ctx.baseWindow);
     // The rename re-prompt draws "Who are you? <name>" at row 10 (askname's
     // BASE_WINDOW cursor after the confirm window was dismissed).  The confirm
     // window only spans rows 0..8, so that line is still on screen underneath

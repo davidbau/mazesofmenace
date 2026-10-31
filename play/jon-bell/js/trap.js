@@ -117,7 +117,7 @@ import { emits_light } from './makemon.js';
 /* C hack.c:97-103: use the shared pointer-union conversion. */
 import { obj_to_any } from './cmd.js';
 import { set_levltyp } from './mkmaze.js';
-import { mon_nam, m_at, dmgval, corpse_chance } from './uhitm.js';
+import { mon_nam, m_at, dmgval, corpse_chance, monkilled } from './uhitm.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_OPROP, MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
 import { makeplural as _makeplural_vs, cloak_simple_name, helm_simple_name, gloves_simple_name, suit_simple_name, an, the, obj_is_pname, doname, mshot_xname, vtense, xname, distant_name, simpleonames, otense, Yobjnam2, cxname, aobjnam } from './objnam.js';
 import { chooseTrapnote } from './mklev_choose_trapnote.js';
@@ -2451,7 +2451,7 @@ function _lo_prop_on(p) {
     const r = game.u?.uprops?.[p];
     return !!r && !!((r.intrinsic | 0) || (r.extrinsic | 0)) && !(r.blocked | 0);
 }
-function _lo_hallucinating() { return _lo_prop_on(HALLUC); }
+function _lo_hallucinating() { return _lo_prop_on(HALLUC) && !_lo_prop_on(HALLUC_RES_DMT); } /* youprop.h:120 */
 /* C youprop.h:125 Deaf = HDeaf || EDeaf || u.uroleplay.deaf */
 function _lo_deaf() {
     const u = game.u || {};
@@ -3188,12 +3188,12 @@ async function trapeffect_poly_trap_u(trap, trflags) {
             await prinv(null, u.uarmf, 0);
     } else if (_tr_antimagic_u() || uprop(63 /* UNCHANGING */)) {
         (await import('./display.js')).shieldeff(u.ux, u.uy);
-        await pline('You feel momentarily different.');
+        await You_feel('momentarily different.');
     } else {
         await steedintrap(trap, null);
         deltrap(trap);
         newsym(u.ux, u.uy);
-        await pline('You feel a change coming over you.');
+        await You_feel('a change coming over you.');
         const { polyself } = await import('./polyself.js');
         await polyself(0);
     }
@@ -3490,11 +3490,10 @@ async function trapeffect_rust_trap_mon(mtmp, trap, trflags) {
         if (in_sight)
             await pline_mon(mtmp, `${Monnam_t(mtmp)} `
                        + `${!_rt_mlifesaver(mtmp) ? 'falls' : 'starts to fall'} to pieces!`);
-        /* C: monkilled(mtmp, (const char *) 0, AD_RUST).  A NULL fltxt means C
-         * prints NO "<Monnam> is killed!" line — the pline above is the whole
-         * message — and AD_RUST is not one of the disintegrating hows, so the
-         * corpse roll is the ordinary one monkilled_trap already models. */
-        await monkilled_trap(mtmp, null);
+        /* C trap.c:1716 -> mon.c:3410-3417: retain AD_RUST so monkilled
+         * also delivers a dead pet's "May ... rust in peace." after mondied.
+         * NULL suppresses the ordinary death line, not this pet message. */
+        await monkilled(mtmp, null, 24 /* AD_RUST */);
         if ((mtmp.mhp | 0) < 1)              /* C monst.h:214 DEADMONSTER */
             trapkilled = true;
     } else if (mptr && (mptr.pmidx | 0) === PM_GREMLIN && rn2(3)) {
@@ -4203,9 +4202,11 @@ async function trapeffect_fire_trap_mon(mtmp, trap) {
     const orig_dmg = d(2, 4);                       /* C trap.c:1744 */
 
     if (in_sight)
-        void pline(`A tower of flame erupts from the ${_surface_ft(mtmp.mx | 0, mtmp.my | 0)} under ${mon_nam(mtmp)}!`);
-    else if (see_it) /* evidently `mtmp' is invisible */
-        void pline(`You see a tower of flame erupt from the ${_surface_ft(mtmp.mx | 0, mtmp.my | 0)}!`);
+        await pline_mon(mtmp, `A tower of flame erupts from the ${_surface_ft(mtmp.mx | 0, mtmp.my | 0)} under ${mon_nam(mtmp)}!`);
+    else if (see_it) { /* C trap.c:1750-1754: evidently `mtmp' is invisible. */
+        set_msg_xy_trap(mtmp.mx, mtmp.my);
+        await You_see(`a tower of flame erupt from the ${_surface_ft(mtmp.mx | 0, mtmp.my | 0)}!`);
+    }
 
     if (Resists_Elem(mtmp, FIRE_RES)) {
         if (in_sight) {
