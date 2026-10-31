@@ -579,7 +579,7 @@ async function _attrcurse_body(u) {
         if ((u.HTelepat | 0) & INTRINSIC) {
             u.HTelepat = (u.HTelepat | 0) & ~INTRINSIC;
             _attrcurse_sync(u); /* HTelepat aliases the prop; Blind_telepat must see the removal */
-            if (_hero_resists(BLINDED) && !_hero_resists(TELEPAT_PROP))
+            if (Blind() && !_hero_resists(TELEPAT_PROP))
                 see_monsters(); /* Can't sense mons anymore! */
             await Your("senses fail!");
             ret = TELEPAT;
@@ -612,7 +612,8 @@ async function _attrcurse_body(u) {
                 /* might not be able to see self anymore */
                 newsym(u.ux, u.uy);
             }
-            if (_hero_resists(HALLUC))
+            /* C youprop.h:120: only the timeout hallucinates, and resistance suppresses it. */
+            if ((u.uprops?.[HALLUC]?.intrinsic | 0) && !_hero_resists(HALLUC_RES))
                 await You("tawt you taw a puttie tat!");
             else
                 await You("thought you saw something!");
@@ -779,8 +780,7 @@ export async function msummon(mon) {
             /* C:159-167 — an angel's alignment should match the summoner */
             if (dtype === PM_ANGEL) {
                 m.isminion = 1;
-                if (!m.mextra) m.mextra = newmextra();
-                if (!m.mextra.emin) m.mextra.emin = { min_align: 0, renegade: 0, parentmid: m.m_id };
+                newemin(m);
                 m.mextra.emin.min_align = atyp;
                 m.mextra.emin.renegade = ((atyp !== game.u.ualign.type) ^ !m.mpeaceful) ? 1 : 0;
             }
@@ -1354,15 +1354,14 @@ export async function amulet() {
 
 /* ---------------------------------------------------------------------------
  * newemin — allocate and init emin (minion extended data)
- * C ref: nethack-c/src/minion.c:17
+ * C ref: nethack-c-v5/upstream/src/minion.c:17-26
  * ---------------------------------------------------------------------------
  */
 export function newemin(mtmp) {
     if (!mtmp.mextra)
         mtmp.mextra = newmextra();
     if (!EMIN(mtmp)) {
-        mtmp.mextra.emin = {};
-        mtmp.mextra.emin.parentmid = mtmp.m_id;
+        mtmp.mextra.emin = { min_align: 0, renegade: 0, parentmid: mtmp.m_id };
     }
 }
 

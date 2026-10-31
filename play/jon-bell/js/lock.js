@@ -629,21 +629,21 @@ export async function doclose() {
         await pline("You can't close anything -- you have no hands!");
         g.context = g.context || {};
         g.context.move = 0; /* ECMD_OK */
-        return;
+        return ECMD_OK;
     }
     /* C lock.c:970 — u.utrap && u.utraptype == TT_PIT */
     if (u.utrap && u.utraptype === TT_PIT) {
         await pline("You can't reach over the edge of the pit.");
         g.context = g.context || {};
         g.context.move = 0; /* ECMD_OK */
-        return;
+        return ECMD_OK;
     }
     /* C lock.c:975 — getdir(NULL); 0 → ECMD_CANCEL.  No turn consumed. */
     const got = await getdir(null);
     if (!got) {
         g.context = g.context || {};
         g.context.move = 0; /* ECMD_CANCEL */
-        return;
+        return ECMD_CANCEL;
     }
     const x = ((u.ux | 0) + (u.dx | 0)) | 0;
     const y = ((u.uy | 0) + (u.dy | 0)) | 0;
@@ -653,7 +653,7 @@ export async function doclose() {
         await pline('You are in the way!');
         g.context = g.context || {};
         g.context.move = 1; /* ECMD_TIME */
-        return;
+        return ECMD_TIME;
     }
     /* C lock.c:985 — !isok(x,y) → goto nodoor.  Use a noDoor flag to avoid
      * mid-function goto: the nodoor label is inside the (portcullis || !IS_DOOR)
@@ -669,7 +669,7 @@ export async function doclose() {
         if (await _stumble_on_door_mimic_stub(x, y)) {
             g.context = g.context || {};
             g.context.move = 1; /* ECMD_TIME */
-            return;
+            return ECMD_TIME;
         }
         /* C lock.c:993 — Confusion || Stunned forces a turn regardless */
         if (_confusion_stub() || _stunned_stub()) {
@@ -708,7 +708,7 @@ export async function doclose() {
         }
         g.context = g.context || {};
         g.context.move = (res === ECMD_TIME) ? 1 : 0;
-        return;
+        return res;
     }
     /* C lock.c:1021-1031 — door doormask state machine */
     const mask = door.doormask | 0;
@@ -716,21 +716,21 @@ export async function doclose() {
         await pline('This doorway has no door.');
         g.context = g.context || {};
         g.context.move = (res === ECMD_TIME) ? 1 : 0;
-        return;
+        return res;
     } else if (await _obstructed_stub(x, y, false)) {
         g.context = g.context || {};
         g.context.move = (res === ECMD_TIME) ? 1 : 0;
-        return;
+        return res;
     } else if (mask === D_BROKEN) {
         await pline('This door is broken.');
         g.context = g.context || {};
         g.context.move = (res === ECMD_TIME) ? 1 : 0;
-        return;
+        return res;
     } else if (mask & (D_CLOSED | D_LOCKED)) {
         await pline('This door is already closed.');
         g.context = g.context || {};
         g.context.move = (res === ECMD_TIME) ? 1 : 0;
-        return;
+        return res;
     }
     /* C lock.c:1034 — D_ISOPEN: attempt to close. */
     if (mask === D_ISOPEN) {
@@ -739,7 +739,7 @@ export async function doclose() {
             await pline("You're too small to push the door closed.");
             g.context = g.context || {};
             g.context.move = (res === ECMD_TIME) ? 1 : 0;
-            return;
+            return res;
         }
         /* C lock.c:1039 — usteed || rn2(25) < (ACURRSTR + ACURR(A_DEX) + ACURR(A_CON))/3 */
         const threshold = Math.trunc((_acurrstr() + acurr(u, A_DEX) + acurr(u, A_CON)) / 3);
@@ -755,6 +755,7 @@ export async function doclose() {
     }
     g.context = g.context || {};
     g.context.move = 1; /* C lock.c:1051 — return ECMD_TIME */
+    return ECMD_TIME;
 }
 
 /* C ref: attrib.c:1251 acurrstr() — STR encoding map. Duplicated from

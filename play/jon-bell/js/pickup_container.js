@@ -48,9 +48,10 @@ import { menu_heading_text } from './tty_menu.js';
 import { menucolor_row } from './coloratt.js';
 import { nhgetch } from './input.js';
 import { weight } from './weight.js';
-import { doname, doname_with_price, simpleonames, cxname, cxname_singular, getObjDescr, Tobjnam, xname, the, The, otense, oname } from './objnam.js';
+import { doname, doname_with_price, simpleonames, cxname, getObjDescr, Tobjnam, xname, the, The, otense, oname } from './objnam.js';
 /* C ref: pickup.c in_container's freeinv/add_to_container/weight trio. */
 import { freeinv, welded, weldmsg, setuwep, setuswapwep, setuqwep, snuff_lit,
+         loot_xname as _loot_xname,
          useup, useupf, obj_here, obj_extract_self_general,
          getObjFromGetobj, body_part, u_handsy, yname, count_unpaid } from './cmd.js';
 import { add_to_container, set_bknown, makemon, set_corpsenm, OC_USES_KNOWN } from './mklev.js';
@@ -463,7 +464,7 @@ async function in_or_out_menu(promptText, box, outokay, inokay, alreadyused, mor
     /* The status rows this menu's predecessor wiped stay wiped (nothing runs
      * bot() under select_menu's bot_disabled), so the getobj menu opened next
      * (stash) clips them from the same offx. */
-    if (statusClip !== undefined) g._getobj_menu_win = { ...prior, WIN_COL: prior.WIN_COL - 1 }; /* getobj clips at WIN_COL - 1; this menu clipped at WIN_COL - 2 */
+    if (statusClip !== undefined) g._getobj_menu_win = prior;
     return chosen;
 }
 
@@ -572,14 +573,6 @@ function _loot_disco(obj) {
     const discovered = !!(game._oc_name_known && game._oc_name_known[otyp]);
     if (discovered || !getObjDescr(otyp)) return 4;
     return 2;
-}
-/* C ref: invent.c:309-380 loot_xname(obj) — cxname_singular() with the
- * prefixes that would perturb alphabetical order suppressed (potion dilution,
- * water's holy/unholy, towel wetness, glob size, a user-assigned name).  None
- * of those five can fire for the objects this port sorts today; the base call
- * is what orders "jackal corpse" before "kobold corpse". */
-function _loot_xname(obj) {
-    return String(cxname_singular(obj) || '');
 }
 /* C invent.c:155-159 def_srt_order: COIN AMULET RING WAND POTION SCROLL
  * SPBOOK GEM FOOD TOOL WEAPON ARMOR ROCK BALL CHAIN. */
@@ -743,8 +736,9 @@ async function _container_contents_one(box, identified, all_containers, reportem
         lines.push('--More--');
         /* C wintty.c:1925-1928 — `!iflags.menu_overlay` drops the window to
          * offx 0 and term_clear_screen()s (map and status included). */
-        /* wintty.c:1924 maxrow >= rows: a 23-line window plus --More-- fills the screen. */
-        const fullScreen = lines.length >= 24 || g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0;
+        /* C wintty.c:1924: maxrow counts putstr rows, excluding dmore's footer.
+         * A 23-row contents window still overlays, with --More-- on row 23. */
+        const fullScreen = lines.length - 1 >= 24 || g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0;
         const WIN_COL = fullScreen ? 1 : tty_window_offx(lines, 'more');
         const uac = g.u?.uac ?? 0;
         const moreRow = lines.length - 1;
@@ -824,7 +818,9 @@ function _invert_test(mode, skipinvert, is_selected) {
 }
 /* Geometry of the pick-any menu most recently dismissed by query_category, so
  * the take-out/put-in menu opened right after it can reproduce the
- * tty_dismiss_nhwindow docorner() erase of status line 1 (wintty.c:3684). */
+ * tty_dismiss_nhwindow docorner() erase of status line 1 (wintty.c:3684).
+ * A subsequent bot() paint supersedes that erase, even within the same turn
+ * (botl.c:259-268,1670-1672); retain the paint sequence with the geometry. */
 let _priorPickMenu = null;
 let _lastPickGeom = null;
 /* tty_dismiss_nhwindow -> erase_menu_or_text -> docorner(cw->offx, cw->maxrow + 1)
@@ -915,19 +911,18 @@ async function _tty_pick_any_menu_run(renderLines, items, winColFooter, prior = 
         g._screen_output = build_window_screen(lines, WIN_COL, uac,
                                                tall ? 0
                                                : (carry && carry.moves === g.moves ? carry.clip : undefined));
-        /* A dismissed 22+-row menu's docorner() cleared row 22 from its offx;
-         * row 23 survives.  Reuse build_window_screen's -1 arm, which keeps
-         * game._pickinv_window.WIN_COL - 2 columns of the title. */
-        const clipPrior = !tall && prior && prior.rows >= 22 && lines.length < 22;
-        const savedPW = g._pickinv_window;
-        if (clipPrior) g._pickinv_window = { ...(savedPW || {}), WIN_COL: prior.col };
-        try {
-            g._screen_output = build_window_screen(lines, WIN_COL, uac,
-                                                   tall ? 0 : clipPrior ? -1
-                                                   : (carry && carry.moves === g.moves ? carry.clip : undefined));
-        } finally {
-            if (clipPrior) g._pickinv_window = savedPW;
-        }
+        /* docorner() clears through maxrow, including the row below the footer
+         * (wintty.c:982,3684-3687). With three status lines that can be row 21;
+         * lower status rows survive. An offx==0
+         * menu instead took erase_menu_or_text's docrt() arm (wintty.c:971-979):
+         * cls() blanked both rows and bot() is disabled (windows.c:1861). */
+        const clipPrior = !tall && prior && prior.col > 1
+            && prior.rows >= (_threeStatusLines() ? 21 : 22);
+        g._screen_output = build_window_screen(lines, WIN_COL, uac,
+                                               tall ? 0 : clipPrior ? prior.col - 2
+                                               : (carry && carry.moves === g.moves ? carry.clip : undefined),
+                                               undefined, false, 0, true,
+                                               clipPrior ? prior.rows : 23);
         _lastPickGeom = { rows: tall ? 24 : lines.length, col: WIN_COL };
         set_cursor(tall
             ? WIN_COL + String(lines[footerRow] || '').length
@@ -1103,7 +1098,8 @@ function _no_category_sel() {
  * which C emits from JUSTPICKED for either direction but which only a put-in
  * list can populate (pickup_prev is set on things the hero just picked up). */
 async function _query_category(contents, action, withJustPicked) {
-    const keptPrior = _priorPickMenu;
+    const keptPrior = _priorPickMenu && _priorPickMenu.moves === game.moves
+        && _priorPickMenu.paintSeq === (game._botlPaintSeq | 0) ? _priorPickMenu : null;
     _priorPickMenu = null;
 
     const _ir = (game.flags && game.flags.initrole != null) ? (game.flags.initrole | 0) : -1;
@@ -1236,7 +1232,8 @@ async function _query_category(contents, action, withJustPicked) {
     };
 
     const cancelled = await _tty_pick_any_menu(render, items, 'end');
-    _priorPickMenu = cancelled ? null : _lastPickGeom;
+    _priorPickMenu = cancelled ? null : { ..._lastPickGeom, moves: game.moves,
+                                         paintSeq: game._botlPaintSeq | 0 };
     if (cancelled)
         return { menuShown: true, autopick: false, lootEverything: false,
                  allCategories: false, classes: new Set() };
@@ -1434,10 +1431,12 @@ async function _menu_loot_items(chainHead, contents, action, useInvlet) {
         return out;
     };
 
-    const prior = _priorPickMenu;
+    const prior = _priorPickMenu && _priorPickMenu.moves === game.moves
+        && _priorPickMenu.paintSeq === (game._botlPaintSeq | 0) ? _priorPickMenu : null;
     _priorPickMenu = null;
     const cancelled = await _tty_pick_any_menu(renderLines, items, 'end', prior);
-    _priorPickMenu = cancelled ? null : _lastPickGeom;
+    _priorPickMenu = cancelled ? null : { ..._lastPickGeom, moves: game.moves,
+                                         paintSeq: game._botlPaintSeq | 0 };
     if (cancelled) return [];
     return items.filter((it) => it.selected)
         .map((it) => ({ obj: it.obj, count: it.count }));
@@ -1621,12 +1620,14 @@ export async function use_container_impl(cobjRef, held, more_containers) {
         if (held) update_inventory();
     }
     if (obj.olocked) {
-        await pline(`The ${_box_xname(obj)} is locked.${held ? '  You must put it down to unlock.' : ''}`);
+        // C pickup.c:2997-2999: keep the object's name and message boundary.
+        await pline('%s locked.', Tobjnam(obj, 'are'));
+        if (held) await pline('You must put it down to unlock.');
         return ECMD_OK;
     }
     if (obj.otrapped) {
         if (held)
-            await pline(`You open the ${_box_xname(obj)}...`);
+            await pline('You open %s...', the(xname(obj)));
         await chest_trap(obj, HAND, false);
         /* C pickup.c:2994-3000 — every trap attempt consumes a turn; the
          * freeze branch already installed a longer negative multi count. */

@@ -1,5 +1,5 @@
-import { pline_mon as pline_mon_real } from './display.js';
-import { shkgone, unpaid_cost, currency } from './shk.js';
+import { pline_mon as pline_mon_real, You_feel } from './display.js';
+import { shkgone, unpaid_cost, currency, obfree } from './shk.js';
 import { is_mines_prize, is_soko_prize } from './cmd.js';
 import { mpickobj } from './mklev.js';
 import { a_monnam, noname_monnam, mon_nam_too, slept_monst as slept_monst_real } from './mhitm.js';
@@ -73,7 +73,7 @@ import { PM_GHOUL, PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER, PM_STEAM_VO
 import { zombie_maker, dmgtype_fromattack, grow_up, nonliving, onscary, monPmname, splitobj, nextoid, which_armor, permonstTemplate, set_mon_data, emits_light } from './makemon.js';
 import { del_light_source, monst_to_any, obj_merge_light_sources, obj_split_light_source } from './light.js';
 import { LS_MONSTER } from './const.js';
-import { pline, newsym, _topline_more_pending, _more_never_dismissed, _more_pages_exceed_input, flush_pending_messages, mon_visible, canseemon, canspotmon, map_invisible, glyph_is_invisible_at, unmap_object, You_hear, Deaf, sensemon, impossible_sync, Unaware } from './display.js';
+import { pline, newsym, _topline_more_pending, _more_never_dismissed, _more_pages_exceed_input, flush_pending_messages, mon_visible, canseemon, canspotmon, map_invisible, glyph_is_invisible_at, GLYPHCLS_INVIS, unmap_object, You_hear, Deaf, sensemon, impossible_sync, Unaware } from './display.js';
 import { Japanese_item_name, xname_scroll, xname_armor, doname_potion, xname, doname, distant_name, in_distant_name, is_quest_artifact } from './objnam.js';
 /* C o_init.c:441-452 observe_object(obj) — the ONE side effect a formatting
  * call has, and the reason distant_name() exists at all.  Imported here
@@ -901,7 +901,7 @@ async function dog_starve(mtmp) {
     else if (cansee(mtmp.mx | 0, mtmp.my | 0))
         await pline(`${Monnam_dm(mtmp)} starves.`);
     else
-        await pline(`You feel ${dm_hallucinating() ? 'bummed' : 'sad'} for a moment.`);
+        await You_feel('%s for a moment.', dm_hallucinating() ? 'bummed' : 'sad');
     await mondied_dm(mtmp);
 }
 
@@ -939,7 +939,7 @@ async function dog_hunger(mtmp, edog) {
         else if (couldsee_vision(mtmp.mx | 0, mtmp.my | 0))
             await beg(mtmp);
         else
-            void pline(`You feel worried about ${y_monnam_qm(mtmp)}.`);
+            await You_feel('worried about %s.', y_monnam_qm(mtmp));
         /* C dogmove.c:389 — hunger confusion interrupts any occupation after
          * the pet's message has been emitted. */
         await stop_occupation_dm();
@@ -1094,7 +1094,7 @@ async function relobj_dm(mtmp) {
             { set_msg_xy_dm(mtmp.mx, mtmp.my); await pline(`${Monnam_dm(mtmp)} drops ${objName}.`); } /* pline_mon, steal.c:836 */
         if (!await flooreffects_dm(otmp, omx, omy, 'fall')) {
             place_object(otmp, omx, omy);
-            stackobj_dm(otmp);
+            await stackobj_dm(otmp);
         }
     }
     // C dog_invent passes minvis as relobj's show flag.
@@ -1120,7 +1120,7 @@ async function relobj_dead_dm(mtmp) {
         if (!await flooreffects_dm(otmp, omx, omy, "fall")) {
             await obj_no_longer_held(otmp); /* C mkobj.c:2330 via place_object */
             place_object(otmp, omx, omy);
-            stackobj_dm(otmp);
+            await stackobj_dm(otmp);
         }
     }
     /* C steal.c:895-896 — show && cansee(omx, omy) → newsym(omx, omy).
@@ -1134,7 +1134,7 @@ async function relobj_dead_dm(mtmp) {
         newsym(omx, omy);
 }
 
-export function stackobj_dm(obj) {
+export async function stackobj_dm(obj) {
     if (!obj) return;
     const xi = obj.ox | 0;
     const yi = obj.oy | 0;
@@ -1142,7 +1142,7 @@ export function stackobj_dm(obj) {
     for (let otmp = head; otmp; otmp = otmp.nexthere) {
         /* C merged(&obj, &otmp) -> mergable(otmp=*potmp=obj, obj=*pobj=otmp). */
         if (otmp !== obj && mergable_dm(obj, otmp)) {
-            merged_dm(obj, otmp);
+            await merged_dm(obj, otmp);
             break;
         }
     }
@@ -1223,7 +1223,7 @@ function _oc_merge_dm(obj) {
     return !!OC_MERGE[obj.otyp | 0];
 }
 
-function merged_dm(otmp, obj) {
+async function merged_dm(otmp, obj) {
     if (!obj.lamplit && !obj.globby
         && (otmp.quan | 0) + (obj.quan | 0) > 0
         && (otmp.age != null || obj.age != null)) {
@@ -1274,7 +1274,10 @@ function merged_dm(otmp, obj) {
         obj_merge_light_sources(obj, otmp); /* invent.c:850 */
     if (obj.timed)
         obj_stop_timers(obj); /* follows lights */
-    obj.where = OBJ_DELETED;
+    obj.where = OBJ_FREE;
+    /* C invent.c:944 -> shk.c:1249-1264: merge billing and retain the
+     * higher o_id-based price adjustment before freeing the absorbed stack. */
+    await obfree(obj, otmp);
 }
 
 /* extract_from_minvent — unlink obj from mon->minvent (RNG-free). */
@@ -2769,7 +2772,7 @@ async function passivemm(magr, mdef, mhitb, mdead, mwep) {
                          * under hallucination Monnam draws rn2_on_display_rng
                          * (rndmonnam), whether or not anyone sees it. */
                         const _gaze_fmt = `${s_suffix(Monnam_dm(mdef)).replace(/%/g, '%%')} gaze is reflected by %s %s.`;
-                        if (mon_reflects_dm(magr, canseemon(magr) ? _gaze_fmt : null)) {
+                        if (await mon_reflects_dm(magr, canseemon(magr) ? _gaze_fmt : null)) {
                             if (game._blockingPline) await game._blockingPline;
                             return mdead | mhit;
                         }
@@ -3483,6 +3486,7 @@ export async function mondied_dm(mdef, mondead_only = false) {
                 }
                 record_death_achievement(mndx_dead);
                 mdef.mstate = (mdef.mstate | 0) | MON_DETACH;
+                game.iflags.purge_monsters = (game.iflags.purge_monsters | 0) + 1; /* C mon.c:2796 m_detach */
                 if (mdef.m_id === game.stealmid) thiefdead(); // C mon.c:2782-2783
                 if (mdef.isshk) await shkgone(mdef); // C mon.c:2784-2785
             }
@@ -3544,7 +3548,8 @@ export async function mondied_dm(mdef, mondead_only = false) {
      * and mondied()'s corpse_chance roll. */
     await kop_revival(mdef);
     record_death_achievement((mdef.mndx ?? mdef.mnum ?? -1) | 0);
-    if (glyph_is_invisible_at(deadMx, deadMy)) unmap_object(deadMx, deadMy);
+    /* levl[][].glyph is hero memory; glyph_is_invisible_at() reads the painted cell, which under_water() blanks. */
+    if (game.level?.at(deadMx, deadMy)?.remembered_glyph?.cls === GLYPHCLS_INVIS) unmap_object(deadMx, deadMy);
 
     /* C mon.c:2741-2749 m_detach: retire the old form's mobile light before
      * mon_leaving_level.  Otherwise a freed monster keeps vision dirty and
@@ -3559,6 +3564,7 @@ export async function mondied_dm(mdef, mondead_only = false) {
      * out in C itself — "too many places assume that the stale monst->mx,my
      * values are still valid"). Off-map status is carried by mstate alone. */
     mdef.mstate = (mdef.mstate | 0) | MON_DETACH;
+    game.iflags.purge_monsters = (game.iflags.purge_monsters | 0) + 1; /* C mon.c:2796 m_detach */
     /* C mon.c:2709-2710 mon_leaving_level(): a long worm takes its whole tail
      * off the map (remove_worm, newsym per segment) before the head newsym. */
     if (mdef.wormno)
@@ -3851,13 +3857,13 @@ async function gazemm(magr, mdef, mattk) {
             pline('but nothing happens.');
         return M_ATTK_MISS;
     }
-    if (magr.mnum === PM_MEDUSA && mon_reflects_dm(mdef, null)) {
+    if (magr.mnum === PM_MEDUSA && await mon_reflects_dm(mdef, null)) {
         if (canseemon(mdef))
-            mon_reflects_dm(mdef, 'The gaze is reflected away by %s %s.');
+            await mon_reflects_dm(mdef, 'The gaze is reflected away by %s %s.');
         if (mdef.mcansee) {
-            if (mon_reflects_dm(magr, null)) {
+            if (await mon_reflects_dm(magr, null)) {
                 if (canseemon(magr))
-                    mon_reflects_dm(magr, 'The gaze is reflected away by %s %s.');
+                    await mon_reflects_dm(magr, 'The gaze is reflected away by %s %s.');
                 return M_ATTK_MISS;
             }
             if (mdef.minvis && !perceives_dm(magr.data)) {
@@ -3883,20 +3889,7 @@ async function gazemm(magr, mdef, mattk) {
     return await mdamagem_dm(magr, mdef, mattk, null, 0);
 }
 function getmattk(magr, mdef, i, res, alt_attk) {
-    const row = mon_mattk_raw((magr.mndx ?? magr.mnum ?? 0) | 0);
-    if (row && i < row.length) {
-        /* C mhitm.c:313 getmattk() IS mhitu.c:310 getmattk(): the lich
-         * cold-touch -> physical substitution (mhitu.c:413-433, 1d10 -> 1d6
-         * against a cold-resistant defender) and the other alt-attack arms. */
-        const a = getmattk_mhitu(magr, false, mdef, i, res);
-        if (a) return { aatyp: a.aatyp | 0, adtyp: a.adtyp | 0, damn: a.damn | 0, damd: a.damd | 0 };
-    }
-    const dm = magr.data?.mattk;
-    if (dm && dm[i]) {
-        const d = dm[i];
-        return { aatyp: d.aatyp | 0, adtyp: d.adtyp | 0, damn: d.damn | 0, damd: d.damd | 0 };
-    }
-    return { aatyp: AT_NONE, adtyp: 0, damn: 0, damd: 0 };
+    return getmattk_mhitu(magr, false, mdef, i, res);
 }
 /* C mhitm.c:849-967 gulpmm(magr, mdef, mattk).  The monster grid is not
  * modelled (m_at walks fmon), so remove_monster/place_monster reduce to the
@@ -3961,7 +3954,9 @@ async function gulpmm(magr, mdef, mattk) {
     } else {
         if (cansee(dx, dy))
             await pline(Monnam_dm(mdef) + ' is ' + (dmgtype_fromattack(magr.data, AD_DGST, AT_ENGL) ? 'regurgitated' : dmgtype_fromattack(magr.data, AD_WRAP, AT_ENGL) ? 'released' : 'expelled') + '!');
-        magr.mx = ax; magr.my = ay;
+        /* C mhitm.c:960: re-place the aggressor, including after lifesaving
+         * temporarily removed it from the monster grid in mdamagem(). */
+        place_monster(magr, ax, ay);
         delete mdef._mapRemoved;
         mdef.mx = dx; mdef.my = dy;
         newsym(ax, ay);
@@ -4119,7 +4114,7 @@ export async function possibly_unwield(magr, flag) {
         cur.nobj = null;
         cur.where = OBJ_FREE;
         place_object(cur, magr.mx | 0, magr.my | 0);
-        stackobj_dm(cur);
+        await stackobj_dm(cur);
         return;
     }
     /* A weapon-capable monster keeps the object but asks mon_wield_item to
@@ -4351,7 +4346,7 @@ export async function dog_move(mtmp, after) {
                     if ((mndx_def === _PM_FLOATING_EYE && rn2(10)
                          && (mtmp.mcansee | 0) && _haseyes && (mtmp2.mcansee | 0)
                          && (!(mtmp2.minvis | 0) || perceives_dm(_pdat))
-                         && !mon_reflects_dm(mtmp, null))
+                         && !await mon_reflects_dm(mtmp, null))
                         || (mndx_def === 8 && rn2(10)) /* PM_GELATINOUS_CUBE */
                         || (touch_petrifies_dm({ mnum: mndx_def })
                             && !resists_ston_dm(mtmp))) {
@@ -4917,7 +4912,7 @@ export async function monstone(mtmp) {
     } else {
         statue = (await mksobj_at(ROCK_OTYP, x, y, true, false));
     }
-    stackobj_dm(statue);
+    await stackobj_dm(statue);
     /* C mon.c:3340-3345 — "mondead() already does this, but we must do it
      * before the newsym": unmap an 'I' glyph, then redraw the square (the
      * hallucinated statue draws display-RNG here, before mondead's own). */

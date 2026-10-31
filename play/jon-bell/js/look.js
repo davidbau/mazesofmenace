@@ -67,7 +67,7 @@ import { ENV } from './hostenv.js';
  * leave it in TDZ at call time (look_here only runs after both modules have
  * finished evaluating). */
 import { force_decor, mbodypart, body_part, set_msg_xy, instapetrify, display_minventory,
-         dfeature_at as _cmd_dfeature_at, pooleffects_is_flyer } from './cmd.js';
+         dfeature_at as _cmd_dfeature_at, pooleffects_is_flyer, surface } from './cmd.js';
 
 const _DIRTRACE = (typeof process !== 'undefined' && ENV
     && ENV.FF_DIRTRACE === '1');
@@ -215,32 +215,11 @@ function _Underwater() {
 /* trap.c:7100 trapname(ttyp, override) is js/makemon.js trapname(); look_here
  * calls it with FALSE so a hallucinating hero draws the DISPLAY stream. */
 
-/* C ref: dungeon.c:1750-1786 surface(x, y) — the narrative terrain word used
- * by read_engr_at's "on the <eloc>" and look_here's Blind "lying here on the
- * <surf>".  The u.uswallow branch (dungeon.c:1756-1760) is NOT transcribed:
- * every call site in this file already runs on the non-swallowed path (the
- * uswallow arm of look_here returns before either caller is reached), so
- * porting it here would be an untested, unreachable guess. */
+/* C dungeon.c:1750-1786: use the shared surface port, including the swallowed
+ * hero's maw/husk.  Restore calls read_engr_at directly (allmain.c:87),
+ * bypassing look_here's swallowed-hero guard. */
 function _surface_lk(x, y) {
-    const lev = game.level && game.level.at ? game.level.at(x, y) : null;
-    if (!lev) return 'ground';
-    const levtyp = _surface_at(lev);
-    if (IS_AIR(levtyp))
-        return Is_waterlevel(game.u?.uz) ? 'air bubble'
-             : (levtyp === CLOUD ? 'cloud' : 'air');
-    if (is_pool(x, y))
-        return (_Underwater() && !Is_waterlevel(game.u?.uz)) ? 'bottom' : hliquid('water');
-    if (is_ice(x, y)) return 'ice';
-    if (_is_lava_local(x, y)) return hliquid('lava');
-    if (lev.typ === DRAWBRIDGE_DOWN) return 'bridge';
-    if (IS_ALTAR(levtyp)) return 'altar';
-    if (IS_GRAVE(levtyp)) return 'headstone';
-    if (IS_FOUNTAIN(levtyp)) return 'fountain';
-    if (stairway_at(x, y) !== null) return 'stairs'; /* On_stairs() */
-    if (IS_WALL(levtyp) || levtyp === SDOOR) return 'wall';
-    if (IS_DOOR(levtyp)) return 'doorway';
-    if (IS_ROOM(levtyp) && !Is_earthlevel(game.u?.uz)) return 'floor';
-    return 'ground';
+    return surface(x, y);
 }
 
 /* C ref: engrave.c:318-407 read_engr_at(x, y).  Real body: locates the live
@@ -421,7 +400,7 @@ export async function look_here(obj_cnt = 0, lookhere_flags = LOOKHERE_NOFLAGS) 
         } else if (_surface_at(g.level?.at ? g.level.at(x, y) : {}) === ICE) {
             /* C invent.c:4190-4198. */
             if (!g.flags?.mention_decor || (g.iflags?.prev_decor | 0) === ICE)
-                force_decor(false);
+                await force_decor(false);
             await pline('You try to feel what is on it.');
             skip_dfeature = true;
         } else {

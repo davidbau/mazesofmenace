@@ -715,7 +715,11 @@ export async function do_death_sequence(opts) {
     let _escStopAfterDeathLine = false;
     /* end.c:1082: the prejoined "But wait..." is the fresh topline the medallion
      * plines join; paging it here (it is all `remainder` holds) is not C. */
-    if (remainder && !_winStopHere && !pd.remainderIsFresh && !_prejoinedButWait) {
+    /* C end.c:1104-1124: when done() adds no death pline, leave the
+     * existing topline live for lifesaving, the Die? query, or
+     * really_done() (can_make_bones/paybill precede its page, :1201-1249). */
+    if (remainder && !pd.noDeathLine && !_winStopHere
+        && !pd.remainderIsFresh && !_prejoinedButWait) {
         /* The page that carries the killing blow may be dismissed with ESC
          * immediately before done() continues.  In C that ESC arms WIN_STOP
          * for the very next "You die..." update; force_more() returns the
@@ -1378,7 +1382,7 @@ export async function done2() {
  * core?", by a 'q' answer to any disclose() prompt, and by hangup. */
 function done_stopprint() { return (game.program_state.stopprint | 0) > 0; }
 
-export async function done(how) {
+export async function done(how, deathSequence = do_death_sequence) {
     const g = game;
     if (how === TRICKED) {
         (g.svk ||= {}).killer ||= { id: 0, name: '', format: KILLED_BY_AN, next: null };
@@ -1428,7 +1432,7 @@ export async function done(how) {
          * command-read boundary.  Preserve savelife()'s canonical multi=-1 so
          * the containing turn's HEAD performs the forced recovery turn and
          * emits nomovemsg before control returns to ordinary input. */
-        return await do_death_sequence({ inPlace: true });
+        return await deathSequence({ inPlace: true });
     }
     /* C end.c accepts every enum game_end_type.  These terminal modes bypass
      * the ordinary death interaction and share really_done(): PANICKED is the
@@ -1588,9 +1592,15 @@ async function disclose(how, taken) {
         if (c === 'y') {
             g.iflags.force_invmenu = false; const _toplUnderMenu = g._topl_sticky; /* docorner leaves row 0 left of offx standing */
             g._menu_search_row0_erased = false;
+            const pendingBefore = !!g._pending_message;
             await display_inventory(null, true);
             const _discloseInv = g._pickinv_window;
-            if (_toplUnderMenu && !g._pending_message && !g._menu_search_row0_erased)
+            /* A pending pline was on the physical topline, so its --More--
+             * acknowledgement (xwaitforspace, topl.c more()) erased the older
+             * prompt; nothing stands left of the menu. */
+            if (_toplUnderMenu && pendingBefore)
+                g._topl_sticky = null;
+            else if (_toplUnderMenu && !g._pending_message && !g._menu_search_row0_erased)
                 g._topl_sticky = _toplUnderMenu.slice(0, Math.max(0, (_discloseInv?.WIN_COL ?? 1) - 1)).replace(/\s+$/, "") || null;
             /* C dismisses the inventory NHW_MENU with docorner() before
              * container_contents() opens its NHW_TEXT window.  The corner
@@ -1906,31 +1916,6 @@ async function really_done(how) {
     /* C end.c:1178-1179 — always show ascension last. */
     if (how === ASCENDED)
         record_achievement(ACH_UWIN);
-    for (let obj = !g.program_state.panicking && g.invent, next; obj; obj = next) {
-        next = obj.nobj;
-        if (obj.in_use) await useup(obj);
-    }
-    {
-        const u = g.u || {};
-        let ox = (u.ux | 0) + (u.dx | 0), oy = (u.uy | 0) + (u.dy | 0);
-        if (!isok(ox, oy) || !accessible(ox, oy)) {
-            ox = u.ux | 0;
-            oy = u.uy | 0;
-        }
-        for (const key of ['thrownobj', 'kickedobj']) {
-            const obj = g[key];
-            if (obj && (obj.where | 0) === OBJ_FREE) {
-                place_object(obj, ox, oy);
-                await stackobj(obj);
-                g[key] = null;
-                if (g.gt && g.gt[key]) g.gt[key] = null;
-                if (g.gk && g.gk[key]) g.gk[key] = null;
-            }
-        }
-    }
-    // C end.c:890-894: recover attached objects left in limbo at death.
-    if (!g.program_state.panicking && g.u?.uchain?.where === OBJ_FREE)
-        await lift_covet_and_placebc(-1); // hack.h override_restriction
     /* C end.c:1185-1191: a fatal result on the first move gets one final
      * joke before bones/disclosure processing.  pline owns the paging against
      * the preceding death line; the next blocking disclosure input observes
@@ -2080,11 +2065,15 @@ async function really_done(how) {
         }
         const _arise = g.u?.ugrave_arise | 0;
         if (_arise >= 0 && _arise < MONS_ROWS_END.length && !done_stopprint()) {
-            const _ariseName = monPmname(_arise, g.flags?.female ? FEMALE : MALE);
+            const female = Upolyd(g.u) ? g.u.mfemale : g.flags.female; // C Ugender
+            const _ariseName = monPmname(_arise, female ? FEMALE : MALE);
             const _ariseText = _arise === 208
                 ? 'Your revenant persists'
                 : 'Your body rises from the dead';
             await pline(`${_ariseText} as ${an(_ariseName)}...`);
+            // C end.c:1360: acknowledge the resurrection before bones processing.
+            if (g._pending_message && !g._topl_win_stop)
+                await force_more_lone_frame(g._pending_message);
         }
         let _prePending = null;
         if (bones_ok) {

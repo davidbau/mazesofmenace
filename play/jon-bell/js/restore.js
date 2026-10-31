@@ -4,7 +4,7 @@ import { bubbles_rest_snapshot, bubbles_copy_snapshot } from './mkmaze.js';
 import { lights_rest_snapshot } from './light.js';
 import { worms_rest_snapshot } from './worm.js';
 import { role_init } from './roles.js';
-import { peaceMinded, set_malign } from './makemon.js';
+import { peaceMinded, set_malign, olfaction } from './makemon.js';
 // restore.js — C ref: nethack-c/src/restore.c
 //
 // TWO halves of restore.c live here, at two different scopes:
@@ -16,9 +16,9 @@ import { peaceMinded, set_malign } from './makemon.js';
 //                         note above restore_saved_game() below.
 
 import { game } from './gstate.js';
-import { align_str } from './cmd.js';
+import { align_str, setuwep } from './cmd.js';
 import { rnd } from './rng.js';
-import { rest_engravings, restore_cham, hide_monst, hideunder, _gm_migrating } from './mklev.js';
+import { rest_engravings, restore_cham, hide_monst, hideunder, _gm_migrating, In_hell } from './mklev.js';
 import { restore_luadata, l_nhcore_call, NHCORE_RESTORE_OLD_GAME } from './nhlua.js';
 import { regions_rest_snapshot } from './region.js';
 import { restore_timers_level, run_timers } from './timeout.js';
@@ -30,9 +30,9 @@ import { vision_reset, vision_recalc } from './vision.js';
 import { restore_light_sources } from './light.js';
 import { place_wsegs, worm_seg_clear_level } from './worm.js';
 import { change_luck } from './attrib.js';
-import { HALLUC, HALLUC_RES } from './const.js';
-import { ugenocided, udeadinside } from './polyself.js';
-import { phase_of_the_moon, friday_13th, getnow } from './allmain.js';
+import { HALLUC, HALLUC_RES, COLNO } from './const.js';
+import { ugenocided, udeadinside, set_uasmon } from './polyself.js';
+import { phase_of_the_moon, friday_13th, getnow, time_from_yyyymmddhhmmss } from './allmain.js';
 
 /* C ref: mondata.h:90 hides_under(ptr) — ((ptr)->mflags1 & M1_CONCEAL). */
 const M1_CONCEAL = 0x00000080; /* C monflag.h:101 */
@@ -215,17 +215,35 @@ export function restore_saved_game(plname) {
  * first in early_init()/main(), and the restore overwrites what it owns.
  */
 async function restgamestate(state) {
+    // C restore.c:570,589-591: startup debug mode overrides saved playmode.
+    const startupDebug = !!game.flags?.debug;
     // C restore.c:596 initializes role-dependent data after restoring flags.
     // Saved quest state replaces the temporary gender selections afterwards.
     game.flags = { ...state.flags };
+    if (startupDebug) {
+        game.flags.debug = true;
+        game.flags.explore = false;
+        (game.iflags ||= {}).deferred_X = false;
+    }
     role_init();
     for (const k of Object.keys(state)) {
-        if (['__engravings', '__regions', '__worms', '__lights', '__objectRuntime', '__bubbles', '__luadata'].includes(k) || NOT_SAVED.includes(k))
+        if (['flags', '__engravings', '__regions', '__worms', '__lights', '__objectRuntime', '__bubbles', '__luadata', '__ubirthday'].includes(k) || NOT_SAVED.includes(k))
             continue;
         game[k] = state[k];
     }
+    /* C save.c:265-333 does not save youmonst.  The restoring process starts
+     * with decl.c's zeroed struct; restore.c:604,629 rebuild cham and data.
+     * Clear in place so restored light-source references retain its identity. */
+    game.youmonst ||= {};
+    for (const k of Object.keys(game.youmonst))
+        delete game.youmonst[k];
+    game.youmonst.cham = game.u.mcham;
+    // C restore.c:615-617: parsing the saved local date can change the epoch.
+    if (state.__ubirthday !== undefined)
+        game.u.ubirthday = time_from_yyyymmddhhmmss(state.__ubirthday);
     // C restore.c:625 — time while the game was saved is not playing time.
     (game.urealtime ||= { realtime: 0, finish_time: 0 }).start_timing = getnow();
+    set_uasmon(); // C restore.c:629
     // C restore.c:671 restores one migrating chain; rebind both JS spellings.
     _gm_migrating();
     /* C decl.h:536 marks `int lastinvnr` "(never saved&restored)": the restoring
@@ -233,11 +251,13 @@ async function restgamestate(state) {
      * NEW game), so assigninvlet() (invent.c:721) scans from 'a' again instead of
      * continuing after the old process's last letter. */
     game._lastinvnr = 51;
-    /* C restore.c:691-699: re-run setuwep() and, for no weapon or a pick-axe /
-     * grappling hook, force the "You begin bashing" reminder for the next fight.
-     * The saved unweapon already holds setuwep()'s value for the restored uwep. */
+    /* C restore.c:691-699: reclassify the restored weapon even if the saved
+     * unweapon was cleared by an earlier fight.  Clear the slot first to
+     * bypass setuwep()'s same-object return, just as C does. */
     {
-        const w = game.u?.uwep;
+        const w = game.u.uwep || null;
+        game.u.uwep = null;
+        await setuwep(w);
         if (!w || (w.otyp | 0) === 259 /* PICK_AXE */ || (w.otyp | 0) === 260 /* GRAPPLING_HOOK */)
             game.unweapon = true;
     }
@@ -284,6 +304,19 @@ export async function dorecover(save) {
     await bubbles_copy_snapshot(save.state.__bubbles, save.state.level);
     await restgamestate(save.state);
     find_lev_obj_clear_no_charge(g.level);
+    // C restore.c:811,898 reads the original saved current level twice;
+    // each rest_stairs (:955-984) prepends records in save_stairs order.
+    // The final chain is therefore the reverse of the saved chain.
+    {
+        let prev = null, cur = g.stairs;
+        while (cur) {
+            const next = cur.next;
+            cur.next = prev;
+            prev = cur;
+            cur = next;
+        }
+        g.stairs = prev;
+    }
     // Inactive level records are read/written in ledger order; C then rereads
     // the original current level. Bubble initial movement belongs to each read.
     const current = (g.dungeons?.[g.u.uz.dnum]?.ledger_start | 0) + g.u.uz.dlevel;
@@ -307,8 +340,16 @@ export async function dorecover(save) {
     }
     // The final current-level read rebuilds its worm occupancy as getlev does.
     // Worm chain roots survive serialization; the module's derived grid does not.
-    for (let mon = g.fmon; mon; mon = mon.nmon)
+    // C restore.c:1196-1217 — that read (REST_CURRENT_LEVEL, so the
+    // `restoring == REST_LEVELS` skip at :1201 does not apply) also re-hides
+    // hiders and runs restore_cham(); elapsed is 0 because savelev stamped the
+    // level with the saved svm.moves, so no catch-up or hide_monst rnd(10).
+    for (let mon = g.fmon; mon; mon = mon.nmon) {
         if (mon.wormno) place_wsegs(mon, null);
+        if (hides_under(mon.data) && mon.mundetected)
+            hideunder(mon);
+        await restore_cham(mon);
+    }
     await bubbles_rest_snapshot(save.state.__bubbles);
     g.program_state.something_worth_saving = 1;
     /* C restore.c:920-922 — set up the vision internals after the level data
@@ -411,6 +452,24 @@ export async function restore_preamble() {
     }
     if (!doomed)
         msgs.push(welcome_back_message());
+    /* C allmain.c:925 -> do.c:2003-2011: welcome(FALSE) also reports
+     * temperature and smoke before the annotation and keep-save prompt. */
+    if (!doomed) {
+        const temperature = g.level?.flags?.temperature | 0;
+        if (temperature) {
+            const append = (msg) => {
+                const last = msgs.length - 1;
+                /* C topl.c:265: leave room for --More-- when joining. */
+                if (last >= 0 && msgs[last].length + msg.length + 3 < COLNO - 8)
+                    msgs[last] += `  ${msg}`;
+                else
+                    msgs.push(msg);
+            };
+            append(`It is ${temperature > 0 ? 'hot' : 'cold'} here.`);
+            if (temperature > 0 && In_hell(g.u.uz))
+                append(`You ${olfaction(g.youmonst.data) ? 'smell' : 'sense'} smoke...`);
+        }
+    }
     /* C allmain.c:927 welcome(FALSE): print_level_annotation() (dungeon.c:2489)
      * follows the welcome-back line, before unixmain.c's keep-save prompt. */
     if (!doomed) {
@@ -454,12 +513,22 @@ export async function restore_preamble() {
         msgs.push('Watch out!  Bad things can happen on Friday the 13th.');
         change_luck(-1);
     }
-    const { pline_with_more } = await import('./com_pager.js');
+    const { topl_more_page } = await import('./com_pager.js');
+    const { pline_flush_point } = await import('./display.js');
+    let dismissedEsc = false;
     for (let i = 0; i < msgs.length; i++) {
-        if (i < msgs.length - 1)
-            await pline_with_more(msgs[i], g.u?.uac ?? 0);
-        else
+        if (i < msgs.length - 1) {
+            pline_flush_point();
+            dismissedEsc = await topl_more_page(msgs[i], g.u?.uac ?? 0) === 27;
+        } else
             g._pending_message = msgs[i];
+    }
+    /* C topl.c:232-235: ESC at the more() paging the previous message leaves
+     * WIN_STOP set, so the read_engr_at plines below (allmain.c:87) are
+     * suppressed by update_topl's skip test (topl.c:257). */
+    if (dismissedEsc && msgs.length) {
+        g._topl_win_stop = true;
+        g._topl_win_stop_buf = msgs[msgs.length - 1];
     }
     /* C topl.c:544 leaves an answered question TOPLINE_NON_EMPTY, so
      * update_topl():262-275 replaces it without joining or calling more().

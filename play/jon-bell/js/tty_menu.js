@@ -436,8 +436,23 @@ export class TtyMenu {
         }
 
         if (!this.overlay) {
-            const { docrt, status_r1_menu_docrt } = await import('./display.js');
-            await docrt();
+            const { docrt, flush_screen, status_r1_menu_docrt } = await import('./display.js');
+            /* windows.c:1859-1863: select_menu() holds gb.bot_disabled over
+             * the whole tty_select_menu, docrt() included, so a pline raised
+             * by docrt's redraw pages over blank status rows. */
+            const oldBotDisabled = game._bot_disabled;
+            game._bot_disabled = true;
+            /* docrt's cls() blanks the status rows; bot() is disabled. */
+            game._statusBlankAfterDocrt = true;
+            try {
+                await docrt();
+                /* wintty.c:978-979 flushes the map before select_menu() restores
+                 * bot processing (windows.c:1861-1863). Consume its pending glyphs
+                 * now, so the next bot() paints over the already printed map. */
+                await flush_screen(1);
+            } finally {
+                game._bot_disabled = oldBotDisabled;
+            }
             /* docrt's seen-stone row-20 blanks precede the botlx bot() that
              * rewrites status row 1, so they do not wipe it (cmd.js
              * _dismissMenu's same ordering). */

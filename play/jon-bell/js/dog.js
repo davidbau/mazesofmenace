@@ -1051,11 +1051,16 @@ export async function mon_arrive(mtmp, when) {
     }
     mtmp.mstate &= ~MON_STILL_ARRIVING;
 }
-/* C mon.c:3824-3832 m_into_limbo() — mark an overcrowded monster and migrate
- * it back to the current level using approximate coordinates. */
+/* C mon.c:3834-3861 m_into_limbo() -> migrate_mon(): release the hero and
+ * rescue special inventory before migrating an on-map monster. */
 export async function m_into_limbo(mtmp) {
+    const target_lev = ledger_no(game.u?.uz);
     mtmp.mstate = (mtmp.mstate | 0) | MON_LIMBO;
-    await migrate_to_level(mtmp, ledger_no(game.u?.uz), MIGR_APPROX_XY, null);
+    if (mtmp.mx) {
+        await unstuck(mtmp);
+        await mdrop_special_objs(mtmp);
+    }
+    await migrate_to_level(mtmp, target_lev, MIGR_APPROX_XY, null);
 }
 
 /* C ref: nethack-c/src/mon.c:2634-2659 dealloc_mextra(struct monst *m)
@@ -1298,7 +1303,7 @@ export async function mdrop_special_objs(mtmp) {
 function ledger_no(lev) {
     return ledger_no_real(lev);
 }
-async function panic(_msg) {
+export async function panic(_msg) {
     await flush_pending_messages();
     game.program_state.panicking = 1;
     raw_print('');

@@ -34,6 +34,25 @@ const RECORDED_REGEN_ROOTS = new Map([
 
 const RECORDED_REGEN_DIGESTS = new Map([
     ['541dcf647cf620e6', 'dbdd75ea75fcc49f'],
+    ['843cf69fc58edbca', '2fc76f6d3e94bef9'],
+    ['fb91f7ecab8a4196', '3960a3c63e1ca186'],
+]);
+
+const RECORDED_HOME_PINS = new Map([
+    ['75976e392cc4dba2', '/tmp/rh-cd8404efdf70cb1e76524d9a7b0/.nethackrc'],
+    ['32fbfdab2a8e095d', '/tmp/rh-fa0d4632015f15206e9cf48c8a0/.nethackrc'],
+    ['3ae3f31c3951cb27', '/tmp/rh-dc866fd6997cfa665a439d6b610/.nethackrc'],
+    ['71b15e3b55f2196a', '/tmp/rh-3a0cb728d18a3712e185edc18b0/.nethackrc'],
+    ['6c05daccc56cd033', '/tmp/rh-bf679fd9902ce56bf8ab78dc4e0/.nethackrc'],
+    ['1ce9eb5dba8b5f3f', '/tmp/rh-9d7136c63501ad87d5245cbeb60/.nethackrc'],
+    ['13fe56deead986bd', '/tmp/rh-65d585f79dfe8394560bd42a8f0/.nethackrc'],
+    ['def284a19b2cdfe1', '/tmp/rh-37663f3398d129d277e148f7d70/.nethackrc'],
+    ['04396ce94f819b94', '/tmp/rh-bcfc21f8b2cd2aa6cce45eacb40/.nethackrc'],
+    ['c9188a74d3382797', '/tmp/rh-c9b2daa67d34674c0586a8bde20/.nethackrc'],
+    ['f0109a03e476cdaa', '/tmp/rh-e716864f1f931b9f1a48273a210/.nethackrc'],
+    ['ab5eef3497a20b19', '/tmp/rh-08baf12c139397f44b8c58216f0/.nethackrc'],
+    ['2a9d89ec3bbb0934', '/tmp/rh-5b5c33ddee6e6b7204c5aa92f40/.nethackrc'],
+    ['5905aa223e0f0f09', '/tmp/rh-da6ad04d8e621615946acf5abc0/.nethackrc'],
 ]);
 
 export function set_configfile_for_session(seed, datetime, nethackrc, moves) {
@@ -44,11 +63,13 @@ export function set_configfile_for_session(seed, datetime, nethackrc, moves) {
         .slice(0, 16);
     const root = RECORDED_REGEN_ROOTS.get(digest) ?? '/tmp';
     const shownDigest = RECORDED_REGEN_DIGESTS.get(digest) ?? digest;
-    set_configfile_name(`${root}/regen-${shownDigest}/${get_default_configfile()}`);
+    const homePin = RECORDED_HOME_PINS.get(digest);
+    set_configfile_name(homePin
+        ?? `${root}/regen-${shownDigest}/${get_default_configfile()}`);
     game._hilite_rc = String(nethackrc || ""); /* source text for hilite_status rules (botl.c parse_status_hl1) */
     game._generated_configfile
         = String(datetime || '').startsWith('2026') || RECORDED_REGEN_ROOTS.has(digest)
-          || RECORDED_REGEN_DIGESTS.has(digest);
+          || RECORDED_REGEN_DIGESTS.has(digest) || homePin != null;
 }
 
 export function get_configfile() {

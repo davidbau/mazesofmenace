@@ -5,7 +5,7 @@
 import { u_safe_from_fatal_corpse } from './pickup.js';
 import { olfaction } from './makemon.js';
 import { usmellmon, erosion_matters, mungspaces } from './mklev.js';
-import { body_part, cmdq_pop } from './cmd.js';
+import { body_part, cmdq_pop, doprev_message } from './cmd.js';
 import { ARM, ECMD_CANCEL, UTOTYPE_NONE, Is_stronghold, Is_botlevel, CMDQ_KEY } from './const.js';
 import { getdir } from './lock.js';
 import { map_invisible, GLYPHCLS_MON, GLYPHCLS_INVIS, display_migrating_mons } from './display.js';
@@ -18,7 +18,7 @@ import { nhgetch } from './input.js';
 import { vision_recalc } from './vision.js';
 import { oc_merge } from './oc_merge.generated.js';
 import { pline, flash_mon, canspotmon, unmap_invisible, gamelog_add, livelog_printf } from './display.js';
-import { topl_park_cursor, TOPL_LIMIT, bot, _topl_more_pages, use_last_flush_snapshot } from './display.js';
+import { topl_park_cursor, TOPL_LIMIT, bot, _topl_more_pages, use_last_flush_snapshot, restore_occupation_topline, restore_command_topline } from './display.js';
 import { flush_screen, force_more, _topl_record_join, capture_painted_frame,
          _topl_merge_result, _topl_joins_snapshot } from './display.js';
 import { pline_flush_point, _pline_flush_frame_record, prepare_deferred_pline } from './display.js';
@@ -62,6 +62,7 @@ import { nonliving, mondied } from './makemon.js';
 import { ARTICLE_YOUR, ARTICLE_THE, ARTICLE_A, SUPPRESS_IT,
          SUPPRESS_HALLUCINATION, SUPPRESS_SADDLE, has_mgivenname } from './const.js';
 import { dmonsfree } from './mkmaze.js';
+import { forget_temple_entry } from './priest.js';
 import { flip_level, flip_level_rnd } from './sp_lev.js';
 import { docrt } from './display.js';
 import { yn_function, done } from './end.js';
@@ -449,6 +450,9 @@ export async function getlin(prompt) {
         await pline('%s %s', prompt, buf);
         return buf;
     }
+    /* C has one gt.toplines: an eat occupation's committed flavor line is still
+     * on it when cpostfx's polyself asks for a form (eat.c:1244-1263). */
+    restore_occupation_topline();
     const renderPrompt = () => {
         g._pending_message = buf ? (prompt + ' ' + buf) : prompt;
         g._topl_prompt_written = prompt + ' ' + buf;
@@ -465,7 +469,14 @@ export async function getlin(prompt) {
         try { await force_more(held); } finally { release(); }
         g._topl_unacknowledged = false; /* more() leaves TOPLINE_EMPTY */
     }
-    if (g._pending_message) {
+    /* A command's result parked in the result channel (look_here's two
+     * plines, joined past the more() width) is still the one shown topline
+     * when a world-turn getlin (monpolycontrol's newcham prompt) opens; C
+     * already paged it inside the command, so restore it to be more()d. */
+    if (g._resultMessage && !g._pending_message && !g._topl_unacknowledged
+        && !g._topl_win_stop && !g._topl_win_stop_armed)
+        restore_command_topline();
+    if (g._pending_message && !g._topl_win_stop && !g._topl_win_stop_armed) {
         /* Two different more()s, in C's order.  flush_screen() raises the
          * WIDTH-driven ones update_topl() would have raised as each message
          * arrived (the accumulated _pending_message is paged through
@@ -560,6 +571,13 @@ export async function getlin(prompt) {
                     if (d) topl_park_cursor(d, text);
                     continue;
                 }
+            } else {
+                // getline.c:121-137: full/reversed history includes the live
+                // query, then restores the query and the existing input buffer.
+                await doprev_message(prompt + ' ' + buf);
+                renderPrompt();
+                await flush_screen(1);
+                placeCursor();
             }
         }
         doprev = false;
@@ -573,6 +591,14 @@ export async function getlin(prompt) {
                 continue;
             }
             g._pending_message = '';
+            /* getline.c:80 rebuilt gt.toplines as "query " before this ESC read and
+             * the cancel break leaves it there, so the ring gets the bare prompt. */
+            if (!_saved_suppress) {
+                const line = prompt + ' ';
+                if (!g._msg_history) g._msg_history = [];
+                const h = g._msg_history;
+                if (h.length === 0 || h[h.length - 1] !== line) h.push(line);
+            }
             return '\x1b'; /* ESC sentinel — C sets buf[0]='\033' */
         }
         if (keyCode === 13 /* CR */ || keyCode === 10 /* LF */) {
@@ -719,7 +745,7 @@ export async function wiz_kill() {
         }
         if (g.u?.utotype) break;
     }
-    dmonsfree();
+    await dmonsfree();
     return ECMD_OK;
 }
 
@@ -1231,7 +1257,7 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
                 || (((o.otyp | 0) !== 471 || !o.cursed)
                     && near_capacity() > _dropCap)) {
                 let dropped = o;
-                if ((o.quan | 0) > _oquan)
+                if (o.quan > _oquan)
                     dropped = (await splitobj(o, _oquan));
                 await _wish_drop_overburdened(dropped, dropSpec);
                 return;
@@ -1300,9 +1326,17 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
      * wished Amulet never arms allmain.c:446's "bestowing a wish" block. */
     await addinv_core1(otmp);
     otmp.where = OBJ_INVENT_WIZ;
-    otmp.nobj = g.invent ?? null;
-    g.invent = otmp;
-    reorder_invent();
+    const fixedLetters = g.flags?.invlet_constant ?? true;
+    if (fixedLetters || !g.invent) {
+        otmp.nobj = g.invent ?? null;
+        g.invent = otmp;
+        if (fixedLetters) reorder_invent();
+    } else {
+        let prev = g.invent;
+        while (prev.nobj) prev = prev.nobj;
+        prev.nobj = otmp;
+        otmp.nobj = null;
+    }
     const _core2msgs = [];
     otmp.pickup_prev = 1;
     addinv_core2(otmp, _core2msgs);
@@ -1978,7 +2012,7 @@ async function create_particular_creation(d) {
         if (remapped && firstchoice !== PM_LONG_WORM_TAIL) {
             const buf = `Creating ${monPmname(d.which, _CP_NEUTRAL)} instead; force `
                       + `${monPmname(firstchoice, _CP_NEUTRAL)}?`;
-            const ans = await y_n_default(buf, 'n');
+            const ans = await yn_function(buf, 'yn', 'n', true);
             /* C win/tty/topl.c:545 — tty_yn_function never erases the answered
              * prompt; it stays on the terminal row until a later pline
              * overwrites it.  js nhgetch drops _pending_message on read, so hand
@@ -2290,7 +2324,7 @@ async function makemap_remove_mons() {
             mtmp = mtmp.nmon;
         }
     }
-    dmonsfree();
+    await dmonsfree();
 }
 
 /* C ref: cmd.c:986-1062 makemap_prepost(pre, wiztower). */
@@ -2304,6 +2338,10 @@ export async function makemap_prepost(pre, wiztower) {
         const idx = entries.findIndex(e => e.dnum === u.uz.dnum
             && e.dlevel === u.uz.dlevel);
         if (idx >= 0) entries.splice(idx, 1);
+        /* The removed mapseen carried msrooms[]; the replacement level starts
+         * with no rooms seen (dungeon.c init_mapseen). */
+        if (g._level_msrooms)
+            delete g._level_msrooms[`${u.uz.dnum | 0}:${u.uz.dlevel | 0}`];
         for (const [i, entry] of entries.entries())
             entry.duplicate = entries.slice(0, i).some(e => e.dnum === entry.dnum
                 && e.dlevel === entry.dlevel);
@@ -2327,11 +2365,11 @@ export async function makemap_prepost(pre, wiztower) {
         u.uswallow = u.uswldtim = 0;
         await (await import("./cmd.js")).set_uinwater(0);
         u.uundetected = 0;
-        dmonsfree();
+        await dmonsfree();
         (await import('./mklev.js')).dobjsfree();
         const dgn = g.dungeons?.[u.uz.dnum | 0];
         const ledger = (u.uz.dlevel | 0) + (dgn?.ledger_start | 0);
-        await (await import('./save.js')).savelev(ledger);
+        await (await import('./save.js')).savelev(ledger, true); /* cmd.c:1036-1037 get_freeing_nhfile -> FREEING */
         (await import('./save.js')).savelev(ledger);
     } else {
         (await import('./vision.js')).vision_reset();
@@ -2374,21 +2412,21 @@ export async function makemap_prepost(pre, wiztower) {
             b.unplacebc();
             await b.placebc();
         }
-        /* C display.c docrt_flags() -> cls() -> display_nhwindow(WIN_MESSAGE, FALSE):
-         * whatever u_on_rndspot()/losedogs() left on the topline (place_lregion's
-         * impossible() trio) is paged with a final --More-- before the repaint. */
-        await flush_screen(1);  /* pline.c:273 flush_screen() per message: pages all but the last */
-        if (g._pending_message)
-            await disp.force_more(String(g._pending_message));
-        /* Under a live WIN_STOP (ESC at an earlier --More--) that more() is a
-         * no-op and the line it leaves is wiped by cls() (display.c:2196 ->
-         * tty_clear_nhwindow(WIN_MAP)), so docrt() repaints a blank topline. */
-        if (g._topl_win_stop)
-            g._pending_message = '';
-        await disp.docrt();
+        /* C cmd.c:1059: docrt's cls() pages the standing message over the
+         * last physical paint. Do not flush losedogs' buffered glyphs first
+         * (display.c:1740-1748,2196). */
+        await disp.docrt(true);
         flush_screen(1);
         await (await import('./objnam.js')).deliver_splev_message();
         await (await import('./cmd.js')).check_special_room(false);
+        /* C cmd.c:1064 -> do.c:1383-1392 save_currentstate(): the checkpoint's
+         * savelev(WRITING) -> savemonchn resets priest entry timers (save.c:894),
+         * including those just set by the room-entry greeting above.
+         * Checkpoint defaults to On (optlist.h:225-227). */
+        if (g.flags.ins_chkpt ?? true) {
+            for (let mon = g.fmon; mon; mon = mon.nmon)
+                if (mon.ispriest) forget_temple_entry(mon);
+        }
         /* cmd.c:1062-1064 #ifdef INSURANCE save_currentstate() -> savelev(WRITING)
          * -> save_engravings(): resets engr_txt[actual_text] to the buffer start. */
         (await import('./mklev.js')).engr_reset_text_pointers();

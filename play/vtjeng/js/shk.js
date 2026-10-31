@@ -273,13 +273,14 @@ import { Hello } from './role_init.js';
 import { genders } from './roles.js';
 import { in_rooms } from './rooms.js';
 import { move_special } from './priest.js';
+import { holetime } from './dig.js';
 import { SHTYPES } from './shtypes_data.js';
 import { makeplural } from './fruit.js';
 import { m_at } from './monst.js';
 import { deltrap, trapname, t_at, unconscious } from './trap.js';
 import { closed_door } from './monmove.js';
 import { picking_at } from './lock.js';
-import { block_point } from './vision.js';
+import { block_point, m_canseeu } from './vision.js';
 import { stop_occupation } from './allmain.js';
 import { placebc, unplacebc } from './ball.js';
 import { makemon_runtime } from './makemon_create.js';
@@ -3928,9 +3929,8 @@ export async function fix_shop_damage(state = game, env = {}) {
 
 // C ref: shk.c shk_move() (4880-4993). Covers the ordinary peaceful path and
 // hands candidate selection to priest.c move_special(), which is shared by
-// both special movers. Adjacent combat awaits mattacku in C order; following
-// speech and repair still stop at
-// their source branches.
+// both special movers. Same-customer following speech runs in C order;
+// different-customer following remains a boundary.
 //
 // Return values match C: 1 = moved, 0 = didn't, -1 = let m_move do it,
 // -2 = died.
@@ -3973,8 +3973,38 @@ export async function shk_move(shkp, state, rawEnv = {}) {
                 return 0;
             })();
         }
-        if (eshkp.following)
-            throw new UnsupportedShopError('shk_move following speech');
+        if (eshkp.following) {
+            // C shk.c:4903-4931. The same-customer reminder is reachable
+            // after native polymorph and music pacification. A supported
+            // different-customer entry path remains unqualified.
+            if (truncateByteString(eshkp.customer ?? '', PL_NSIZ)
+                !== truncateByteString(state.plname ?? '', PL_NSIZ))
+                throw new UnsupportedShopError('shk_move following speech');
+            const globals = state.gf ??= {};
+            if ((state.moves ?? 0) > (globals.followmsg ?? 0) + 4) {
+                if (!heroIsDeaf(state) && !muteshk(shkp)) {
+                    set_voice(shkp, 0, 80, 0, state);
+                    await verbalize(
+                        `${Hello(state.urole, { shopkeeper: true })}, ${state.plname}!  Didn't you forget to pay?`,
+                        state, { message: env.message ?? ttyPline },
+                    );
+                } else {
+                    await (env.message ?? ttyPline)(
+                        `${Shknam(shkp, state)} holds out ${noit_mhis(shkp, { state })} upturned ${mbodypart(shkp, HAND)}.`,
+                        state, env,
+                    );
+                }
+                globals.followmsg = state.moves;
+                if (!(env.random?.rn2 ?? rn2)(9)) {
+                    await (env.message ?? ttyPline)(
+                        `${Shknam(shkp, state)} doesn't like customers who don't pay.`,
+                        state, env,
+                    );
+                    rile_shk(shkp);
+                }
+            }
+            if (udist < 2) return 0;
+        }
     }
 
     let appr = 1;
@@ -3982,7 +4012,7 @@ export async function shk_move(shkp, state, rawEnv = {}) {
     let gty = eshkp.shk?.y ?? omy;
     const satdoor = gtx === omx && gty === omy;
     const holeTime = typeof env.holeTime === 'function'
-        ? env.holeTime(shkp, state) : -1;
+        ? env.holeTime(shkp, state) : holetime(state);
 
     if (eshkp.following || (holeTime >= 0 && holeTime * holeTime <= udist)) {
         if (udist > 4 && eshkp.following && !eshkp.billct)
@@ -3990,7 +4020,8 @@ export async function shk_move(shkp, state, rawEnv = {}) {
         gtx = hero.ux;
         gty = hero.uy;
     } else if (!shkp.mpeaceful) {
-        if (shkp.mcansee && (env.canSeeHero?.(shkp) ?? true)) {
+        if (shkp.mcansee
+            && (env.canSeeHero?.(shkp, state) ?? m_canseeu(shkp, state))) {
             gtx = hero.ux;
             gty = hero.uy;
         }
@@ -3999,20 +4030,25 @@ export async function shk_move(shkp, state, rawEnv = {}) {
         const invisible = Boolean((invis?.intrinsic || invis?.extrinsic)
             && !invis.blocked);
         if (invisible || hero.usteed) {
-            appr = 0;
+            // C leaves appr at 1: the keeper still approaches its guard
+            // square, but no longer avoids the unseen or mounted hero.
+            env._shopAvoid = false;
         } else {
             const door = eshkp.shd ?? {};
             const uondoor = hero.ux === door.x && hero.uy === door.y;
-            let badinv = Boolean(
-                carrying(PICK_AXE, state)
-                || carrying(DWARVISH_MATTOCK, state),
-            );
-            const fast = hero.uprops?.[FAST];
-            if (fast?.intrinsic || fast?.extrinsic) {
-                badinv = badinv || Boolean(
-                    sobj_at(PICK_AXE, hero.ux, hero.uy, state)
-                    || sobj_at(DWARVISH_MATTOCK, hero.ux, hero.uy, state),
+            let badinv = false;
+            if (uondoor) {
+                badinv = Boolean(
+                    carrying(PICK_AXE, state)
+                    || carrying(DWARVISH_MATTOCK, state),
                 );
+                const fast = hero.uprops?.[FAST];
+                if (fast?.intrinsic || fast?.extrinsic) {
+                    badinv = badinv || Boolean(
+                        sobj_at(PICK_AXE, hero.ux, hero.uy, state)
+                        || sobj_at(DWARVISH_MATTOCK, hero.ux, hero.uy, state),
+                    );
+                }
             }
             if (satdoor && badinv) return 0;
             env._shopAvoid = uondoor

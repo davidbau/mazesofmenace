@@ -70,7 +70,7 @@ import { PM_STEAM_VORTEX } from './pm.generated.js';
 import { PM_LONG_WORM, PM_DEATH, PM_PESTILENCE, PM_FAMINE, PM_MINOTAUR } from './pm.generated.js';
 import { PM_PIT_VIPER, PM_PIT_FIEND, PM_RANGER } from './pm.generated.js';
 /* goodpos_onscary()'s Gehennom short-circuit; js/mklev.js reads the same one. */
-import { Inhell, nonlivingMon, splitobj, which_armor, can_saddle as can_saddle_real, sliparm as sliparm_real, monPmname, onscary as onscary_real, mon_knows_traps as mon_knows_traps_real } from './makemon.js';
+import { Inhell, nonlivingMon, splitobj, which_armor, can_saddle as can_saddle_real, sliparm as sliparm_real, pmname, onscary as onscary_real, mon_knows_traps as mon_knows_traps_real } from './makemon.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import monMsizePack from './makemon_msize.json' with { type: 'json' };
 import { SEE_INVIS, FROMOUTSIDE, HALLUC_RES as HALLUC_RES_DMT, LL_MINORAC,
@@ -593,6 +593,7 @@ export async function monkilled_trap(mtmp, fltxt = '', nocorpse = false) {
          * effect. */
     } else {
         mtmp.mstate = (mtmp.mstate | 0) | MON_DETACH;
+        game.iflags.purge_monsters = (game.iflags.purge_monsters | 0) + 1; /* C mon.c:2796 m_detach */
     }
     /* C mon.c:2712-2715 deliberately preserves the death coordinates.
      * mattackm() still uses them to check range for passivemm() after a
@@ -3895,6 +3896,7 @@ export async function thitu(tlev, dam, otmp, name) {
     const u = game.u;
     const uac = u.uac | 0;
     const onm = await _thitu_onm(otmp, name);
+    const knm = _thitu_killer_name(otmp, name); /* C mthrowu.c:90-98, before rnd */
     const dieroll = rnd(20);
     if (uac + (tlev | 0) <= dieroll) {
         /* MISS — C: "It misses." / "<onm> misses you." / "You are almost hit
@@ -3950,7 +3952,7 @@ export async function thitu(tlev, dam, otmp, name) {
         _monstunseesu_stub(0x0080);
     }
     if (u && u.uhp !== undefined) {
-        await losehp((dam | 0), _thitu_killer_name(otmp, name),
+        await losehp((dam | 0), knm,
                      name && !/^(the |an? )/i.test(name) ? KILLED_BY_AN : KILLED_BY_THITU);
     }
     /* C mthrowu.c:153 `exercise(A_STR, FALSE)` follows only when done() returns.
@@ -5905,7 +5907,7 @@ export async function openfallingtrap(mon, trapdoor_only, noticed) {
         noticed.value = true;
         /* dotrap is async in JS, but in this context it's called and the effect is synchronous */
         await dotrap(t, FORCETRAP);
-        result = (game.u && game.u.utrap !== 0);
+        result = (((game.u && game.u.utrap) | 0) !== 0);
     } else {
         if (mon.mtrapped)
             return false; /* already trapped */
@@ -7816,12 +7818,9 @@ export async function mon_break_armor(mon, polyspot) {
     function Dragon_scales_to_pm(obj) { return PM_GRAY_DRAGON + ((obj?.otyp | 0) - 111); }
     function Dragon_mail_to_pm(obj) { return PM_GRAY_DRAGON + ((obj?.otyp | 0) - 101); }
     function MON_WEP(m) {
-        for (let o = m.minvent; o; o = o.nobj) {
-            if (((o.owornmask | 0) & W_WEP) !== 0) return o;
-        }
-        return null;
+        /* C monst.h:210: MON_WEP(mon) is the wielded pointer, mon->mw. */
+        return m.mw;
     }
-    function pmname(data, gender) { return monPmname(data?.pmidx | 0, gender); }
     async function instapetrify_local(arg) { return await instapetrify_real(arg); }
 
     let otmp;

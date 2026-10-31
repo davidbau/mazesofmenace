@@ -16,6 +16,7 @@ import { gs, H_DEC, H_IBM, H_UNK, PRIMARYSET, INFRAVISION, RUN_LEAP } from './co
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import { roleOptionToIndex, raceOptionToIndex, genderOptionToIndex, alignOptionToIndex, genlPlayerSetupRandomPicksForY, sessionNeedsRandomPlayerPicks, extractChargenPreInitRng, replayChargenPreInitRng, detectInteractiveChargenFromSession, } from './roles.js';
 import { GameDisplay } from './game_display.js';
+import { reglyph_darkroom } from './display.js';
 import { generateChargenFrames, chargenShallAnswer, playChargen } from './chargen_ui.js';
 import { rn2 } from './rng.js';
 import { nhgetch } from './input.js';
@@ -222,6 +223,9 @@ export class NethackGame {
             g.go.opt_need_redraw = g.go.opt_need_glyph_reset = true;
             g.go.opt_symset_changed = true;
         }
+        // C options.c:7347 initoptions_finish fixes the active S_darkroom
+        // alias after reading the RC, before a bound toggle can change flags.
+        reglyph_darkroom();
         // Initialize hero struct.  C's `struct u_event` is embedded in `you`
         // and is BSS-zeroed by decl_globals_init(); keep the same explicit
         // zero state here so event reads (quest completion, invocation,
@@ -297,7 +301,12 @@ export class NethackGame {
         {
             // set_playmode has already replaced the configured name in wizard
             // mode. Look up the same effective name that dosave0 writes.
-            const save = restore_saved_game((this._rcName || g.flags.debug) ? g.plname : '');
+            // C unixmain.c:198 plnamesuffix() has already cut svp.plname at
+            // its first '-' (role.c:1699-1700) and turned commas into spaces
+            // (role.c:1720) before attempt_restore names the save file; the
+            // suffix tokens themselves stay for playChargen's own pass.
+            const rcName = (this._rcName || g.flags.debug) ? g.plname : '';
+            const save = restore_saved_game(rcName.split('-')[0].replace(/,/g, ' '));
             if (save) {
                 await dorecover(save);
                 /* C decl.h gl.luathemes is process state and is NOT in the save

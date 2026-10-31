@@ -20,10 +20,10 @@ import { NO_COLOR, CLR_WHITE } from './terminal.js';
 import { pmatchi } from './strutil.js';
 import { menu_heading_text } from './tty_menu.js'; /* C strutil.c:151 — MENU_SEARCH's matcher */
 // putmsghistory: feed the quest synopsis into the ^P message-history ring.
-import { putmsghistory, tty_getlin_prompt, _strengthStr, force_more, force_more_pages, await_more_dismiss, docorner_blank_utf8_captures, unflushed_forced_cell,
-         await_topl_more_dismiss, pline_flush_point,
+import { putmsghistory, tty_getlin_prompt, _strengthStr, force_more, force_more_pages, await_more_dismiss, docorner_blank_utf8_captures, unflushed_forced_cell, levelgen_frozen_cell,
+         await_topl_more_dismiss, pline_flush_point, docorner_status_row,
          botl_pmname, botl_upstart_words, botl_mon_mlevel, botl_title, botl_status1_tail, botl_frozen_status_line,
-         gold_status_char, dec_mode, generic_symset, rogue_graphics, rogue_hero_showrace_cell, rogue_ibm_color, botl_status_suffix, fit_status_line_width, status_row_finish, _statusRows3, _threeStatusLines, docrt_flags, flush_screen, use_last_flush_snapshot, hitpointbar_status1, _hilite_status_wrap, _status_sgr, _status_row1_map_overlay, _status_row1_whole_with_tail } from './display.js';
+         gold_status_char, dec_mode, generic_symset, rogue_graphics, rogue_hero_showrace_cell, rogue_ibm_color, botl_status_suffix, fit_status_line_width, status_row_finish, _statusRows3, _threeStatusLines, docrt_flags, docrt, flush_screen, use_last_flush_snapshot, hitpointbar_status1, _hilite_status_wrap, _status_sgr, _status_row1_map_overlay, _status_row1_whole_with_tail } from './display.js';
 // ── ANSI color helpers (inlined from display.js — not exported there) ──
 const ANSI_DEFAULT = 39;
 // C ref: color.h:10-14 — CLR_BLACK(0) renders as bright-black (90); CLR_GRAY(7)
@@ -153,7 +153,7 @@ function render_map_row_clipped(y, clipX) {
      * (blank after a cls) -- the same rule as js/display.js _snapCellAt. */
     const cellAt = (x) => {
         const loc = game.level.at(x, y);
-        const held = unflushed_forced_cell(x, y);
+        const held = unflushed_forced_cell(x, y) ?? levelgen_frozen_cell(x, y);
         if (held) return { disp_ch: held.ch, disp_color: held.color,
                            disp_decgfx: held.dec, disp_attr: held.attr };
         if (loc?.disp_capture_cell) {
@@ -349,8 +349,16 @@ export function _overlay_status_line(base, col, text) {
     // still leave the terminal in the reset state, or the menu footer written
     // after the clip (and every later blank cell) paints in reverse video.
     let sgrOpen = false;
+    let decOpen = false;
     while (i < base.length && visCol < col) {
         const ch = base[i];
+        // SO/SI select the glyph set without advancing the tty cursor.
+        if (ch === '\x0e' || ch === '\x0f') {
+            decOpen = ch === '\x0e';
+            out += ch;
+            i++;
+            continue;
+        }
         if (ch === '\x1b' && base[i + 1] === '[') {
             // Parse CSI: \x1b[ ... <final letter>
             let j = i + 2;
@@ -379,6 +387,8 @@ export function _overlay_status_line(base, col, text) {
     }
     // The clip ended inside an open SGR run: close it (term_end_attr).
     if (sgrOpen) out += '\x1b[0m';
+    // C wintty.c:1886,3724-3730 ends map glyph output before menu text.
+    if (decOpen) out += '\x0f';
     // Pad from current visible column up to `col`
     if (visCol < col) {
         const gap = col - visCol;
@@ -483,7 +493,7 @@ export async function display_text_window(lines) {
     // text visible instead of erasing it and redrawing the destroyed map.
     // With live windows, erase_menu_or_text still redraws vision/monsters.
     if (g.iflags.window_inited) {
-        docrt_flags(0);
+        await docrt();
         /* erase_menu_or_text (wintty.c:975-976): docrt(); flush_screen(1) with bot()
          * enabled — the pending BL_RESET status rewrite precedes the map print. */
         game._docrtMapAfterBot = true;
@@ -534,8 +544,8 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipAr
             [game._botlStaleUen, game._botlStaleUenmax] = _savedPw;
         }
     }
-    const rowStatus = (r) => rows3 ? _status_sgr(st3[r - 21])
-        : (r === 22 ? _statusLine1() : _statusLine2(uacStep0, pwOverride));
+    const rowStatus = (r) => docorner_status_row(r, rows3 ? _status_sgr(st3[r - 21])
+        : (r === 22 ? _statusLine1() : _statusLine2(uacStep0, pwOverride)));
     const statusStillBlank = (game._statusBlankAfterDocrt === true && statusClipCol == null)
         || (!!_prevRows && _prevRows.length >= 24
         && (rows3 ? _prevRows[21] === '' : true)
@@ -747,6 +757,25 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipAr
                     rows3 && screenRow === 21
                         ? _status_row1_map_overlay(rowStatus(21)) : rowStatus(screenRow),
                     statusClipCol, '');
+                /* wintty.c:3703-3714: docorner()'s row_refresh() then reprints the
+                 * gbuf cells of map y=20 (screen row 21 under statuslines:3)
+                 * right of the clip; only bot() paints status over them. */
+                if (rows3 && screenRow === 21 && statusClipCol > 0) {
+                    let col = 0, tail = '';
+                    for (const t of render_map_row_clipped(ROWNO - 1, COLNO - 1).str
+                             .match(/\x1b\[[0-9;]*[A-Za-z]|[\s\S]/g) || []) {
+                        const fwd = /^\x1b\[(\d*)C$/.exec(t);
+                        if (fwd) {
+                            const n = Number(fwd[1] || 1);
+                            if (col + n > statusClipCol)
+                                tail += `\x1b[${col + n - Math.max(col, statusClipCol)}C`;
+                            col += n;
+                        } else if (t.startsWith('\x1b')) tail += t;
+                        else { if (col >= statusClipCol) tail += t; col++; }
+                    }
+                    if (/\S/.test(tail.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')))
+                        output += tail;
+                }
             }
             else if (rows3 && screenRow === 21) {
                 /* wintty.c:3814: map y=20 still prints onto status row 1 (see
@@ -755,7 +784,7 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipAr
                  * wintty.c:5251-5255) every field sits over map y=20, so only
                  * the tail past the text can still show map glyphs. */
                 output += game._status1Whole
-                    ? _status_row1_whole_with_tail(st3[0])
+                    ? docorner_status_row(21, _status_row1_whole_with_tail(st3[0]))
                     : _status_row1_map_overlay(rowStatus(21));
             }
             else {
@@ -1004,6 +1033,9 @@ function _statusLine2Raw(uacOverride, pwOverride) {
      * (u.mtimedone > 0), which is you.h:422, the poly TIMER, a different field. */
     const Upolyd = (u.umonnum | 0) !== (u.umonster | 0);
     let _hp = Upolyd ? (u.mh | 0) : (u.uhp || 0);
+    /* trap.c:7005 sink_into_lava writes u.uhp with no SET_BOTL: a window drawn
+     * before the next bot() keeps the physical HP (js/trap.js _botlStaleUhp). */
+    if (!Upolyd && g._botlStaleUhp !== undefined) _hp = g._botlStaleUhp | 0;
     if (_hp < 0)
         _hp = 0;
     _hp = Math.min(_hp, 9999);

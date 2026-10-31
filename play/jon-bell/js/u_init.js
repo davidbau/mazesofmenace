@@ -1270,6 +1270,8 @@ export async function ini_inv(trobj) {
     /* A real ini_inv ran: uhitm.js's chargen-less weapon bootstrap must not
      * fabricate starting gear for a hero who later emptied the inventory. */
     game.u._weaponsInitUhitm = true;
+    // C u_init.c:1308: paupers also finish initialization without any gear.
+    game.u._weaponsInit = true;
     if (game.u.uroleplay.pauper) return;
     const gn = game.gn;
     let got_sp1 = false, index = 0;

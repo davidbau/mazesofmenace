@@ -73,6 +73,10 @@ import { dmgval as dmgval_weapon, weapon_dam_bonus, use_skill, weapon_type, dbon
 import { MKOBJ_OC_SKILL, MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 import { setmangry, wake_msg, wake_nearto, healmon, angry_guards, split_mon_ml as split_mon } from './mklev.js';
 import { obfree } from './shk.js';
+import { obj_stop_timers } from './timeout.js';
+import { weight } from './weight.js';
+import { place_object } from './mklev.js';
+import { explode } from './zap.js';
 /* make_stunned — js/potion.js:5813 (C ref: potion.c:106-127) is the one real
  * body; re-export it so js/mcastu.js's `make_stunned as make_stunned_mc`
  * import (mcast_stun_you, its OWN monster-cast-stuns-hero path) also stops
@@ -1184,7 +1188,7 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                         break;
                     }
                     if (mon.mcansee) {
-                        if (ureflects("%s gaze is reflected by your %s.", s_suffix(Monnam(mon)))) {
+                        if (await ureflects("%s gaze is reflected by your %s.", s_suffix(Monnam(mon)))) {
                             /* reflected — no further action */
                             ;
                         }
@@ -2797,14 +2801,14 @@ async function _hmon_hitmon_misc_obj(hmd, mon, obj) {
         hmd.dmg = dmgval_weapon(obj, mon);
         return;
     }
-    /* C uhitm.c:1186-1219 case EGG, petrifying arm (ordinary eggs fall to the weight arm) */
-    if ((obj.otyp | 0) === 266 /* EGG */ && await hmon_egg_petrify(hmd, mon, obj))
+    /* C uhitm.c:1186-1219 case EGG, petrifying arm. */
+    if ((obj.otyp | 0) === 266 /* EGG */ && ismnum(obj.corpsenm)
+        && touch_petrifies(permonstTemplate(obj.corpsenm))) {
+        await hmon_egg_petrify(hmd, mon, obj);
         return;
-    /* C uhitm.c:1186-1257 case EGG, ordinary egg(s), thrown: stale-egg
-     * petrify-monster and PYROLISK arms are left to the default arm below. */
-    if ((obj.otyp | 0) === 266 /* EGG */ && hmd.thrown
-        && (hmd.mdat ? !touch_petrifies(hmd.mdat) : true)
-        && (obj.corpsenm | 0) !== 11 /* PM_PYROLISK */) {
+    }
+    /* C uhitm.c:1221-1256: ordinary thrown eggs, including petrification. */
+    if ((obj.otyp | 0) === 266 /* EGG */ && hmd.thrown) {
         const cnt = obj.quan | 0;
         const cn = obj.corpsenm;
         hmd.dmg = 1; /* nominal physical damage */
@@ -2816,6 +2820,23 @@ async function _hmon_hitmon_misc_obj(hmd, mon, obj) {
             ? 'the ' + permonstTemplate(cn).pmnames[NEUTRAL]
             : (cnt > 1) ? 'some' : 'an';
         await pline(`You hit ${mon_nam(mon)} with ${eggp} egg${cnt === 1 ? '' : 's'}.`);
+        if (touch_petrifies(hmd.mdat) && game.moves - obj.age <= 400) {
+            await pline(`The egg${cnt === 1 ? " isn't" : "s aren't"} alive any more...`);
+            if (obj.timed) obj_stop_timers(obj);
+            obj.otyp = 474; /* ROCK */
+            obj.oclass = GEM_CLASS;
+            obj.oartifact = obj.spe = obj.known = obj.dknown = obj.bknown = 0;
+            obj.owt = weight(obj);
+            place_object(obj, mon.mx, mon.my);
+            return;
+        }
+        if ((cn | 0) === 11 /* PM_PYROLISK */) {
+            await obfree(obj, null);
+            await explode(mon.mx, mon.my, -11, d(3, 6), 0, 5 /* EXPL_FIERY */);
+            hmd.doreturn = true;
+            hmd.retval = mon.mhp > 0;
+            return;
+        }
         await pline('Splat!');
         await obfree(obj, null); /* useup_eggs: obfree (dealloc_obj stops the hatch timer) */
         exercise(A_WIS, false);
@@ -3079,7 +3100,7 @@ export function float_vs_flight() {
  * No RNG calls, state changes only to u.uprops[STEALTH].blocked.
  * ---------------------------------------------------------------------------
  */
-function steed_vs_stealth() {
+export function steed_vs_stealth() {
     const u = game.u;
 
     _ensure_uprop(LEVITATION);

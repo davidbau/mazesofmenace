@@ -195,7 +195,7 @@ export async function itsstuck(mtmp) {
 /* C monmove.c:2169-2180 — bars on a room edge leave a doorless doorway. */
 export async function dissolve_bars(x, y) {
     const loc = game.level.locations[x][y];
-    loc.typ = loc.edge === 1 ? DOOR_TYP_MV
+    loc.typ = (loc.edge | 0) === 1 ? DOOR_TYP_MV
         : Is_special(game.u.uz) || in_rooms(x, y, 0).length ? ROOM : CORR;
     loc.flags = 0;
     loc.doormask = 0; /* flags and doormask share the same C storage. */
@@ -3052,7 +3052,10 @@ async function meatmetal_mv(mtmp) {
                  * the CACHED weight (place_object/mksobj set owt = weight(obj)).
                  * The countdown lives at js/monmove.js:1621 (monmove.c:1769). */
                 mtmp.meating = Math.trunc((otmp.owt | 0) / 2) + 1;
-                await _m_consume_metal_obj_mv(mtmp, otmp);
+                /* C mon.c:1517 calls the full consumer: TIN is metallic food
+                 * and can polymorph, grow, heal, or petrify its eater
+                 * (mon.c:1417-1443), before the death check and pile roll. */
+                await m_consume_obj(mtmp, otmp);
                 /* C:1518-1519 DEADMONSTER(mtmp) — monst.h `(mtmp)->mhp < 1`. */
                 if ((mtmp.mhp | 0) < 1)
                     return 2;

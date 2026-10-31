@@ -1491,6 +1491,9 @@ export function monPmname(mndx, mgender) {
         g = NEUTRAL;
     return row[g];
 }
+/* C do_name.c:1303-1308: permonst-pointer wrapper for the shared gender lookup. */
+export function pmname(pm, mgender) { return monPmname(pm.pmidx, mgender); }
+
 const S_HUMAN_MLET = 53;   /* defsym.h MONSYM(53, '@', HUMAN, ...) */
 function _altspl_pm(canonicalName, mletFilter) {
     const hits = [];
@@ -2445,14 +2448,8 @@ export async function mInitinv(mtmp, mksobjFn) {
                 const cloakOtyp = rn2(7) ? ROBE_OTYP
                                 : rn2(3) ? CLOAK_OF_PROTECTION_OTYP
                                          : CLOAK_OF_MAGIC_RESISTANCE_OTYP;
-                {
-                    const c = await mksobjFn(cloakOtyp, true, false);
-                    if (c) { _minv_link(mtmp, c); }
-                }
-                {
-                    const sh = await mksobjFn(SMALL_SHIELD_OTYP, true, false);
-                    if (sh) { _minv_link(mtmp, sh); }
-                }
+                await mongets(mtmp, cloakOtyp, mksobjFn);
+                await mongets(mtmp, SMALL_SHIELD_OTYP, mksobjFn);
                 /* C makemon.c:576-586 mkmonmoney(mtmp, amount) — amount is
                  * always > 0 here (rn1(10,20) is 20..29), and mksobj is passed
                  * init=FALSE, so it draws nothing itself. */
@@ -3919,16 +3916,8 @@ function SchroedingersBox(o) { return o.otyp === LARGE_BOX_OTYP && o.spe === 1; 
 function Is_mbag(o) { return o.otyp === BAG_OF_HOLDING_OTYP || o.otyp === BAG_OF_TRICKS_OTYP; }
 /* C obj.h:334 Has_contents(o) = ((o)->cobj != (struct obj *) 0) */
 function Has_contents(o) { return o.cobj != null; }
-function sobj_at(otyp, x, y) {
-    let otmp = game.level && game.level.levelObjects && game.level.levelObjects[x]
-        ? (game.level.levelObjects[x][y] ?? null) : null;
-    while (otmp) {
-        if (otmp.otyp === otyp)
-            break;
-        otmp = otmp.nexthere ?? null;
-    }
-    return otmp;
-}
+/* C invent.c:1466 — share the per-tile nexthere lookup with level code. */
+import { sobj_at } from './mklev.js';
 function monster_at(x, y) {
     for (let m = game.fmon; m; m = m.nmon)
         if (!m._mapRemoved && (m.mhp | 0) > 0 && m.mx === x && m.my === y)
@@ -4234,6 +4223,8 @@ async function mreadmsg_singular(otmp, namer) {
     return nam;
 }
 export async function mreadmsg(mtmp, otmp) {
+    /* C pline.c:247-281: only an unsuppressed pline clears last_msg.
+     * Keep that decision in pline for the teleport scroll's trycall guard. */
     const vismon = canseemon(mtmp);
     let tpindicator = !vismon && sensemon(mtmp);
     if (!vismon && mquaffmsg_Deaf())
@@ -4242,8 +4233,7 @@ export async function mreadmsg(mtmp, otmp) {
     const onambuf = await mreadmsg_singular(otmp, vismon ? doname : ansimpleoname);
     if (vismon) {
         /* C muse.c:250-251 */
-        pline_mon(mtmp, `${Monnam(mtmp)} reads ${onambuf}!`);
-        (game.iflags ||= {}).last_msg = PLNMSG_UNKNOWN_MM;
+        await pline_mon(mtmp, `${Monnam(mtmp)} reads ${onambuf}!`);
     } else { /* !Deaf, otherwise we would already have returned above */
         const youdata = game.youmonst ? game.youmonst.data : null;
         const similar = same_race(youdata, mtmp.data);
@@ -4281,11 +4271,9 @@ export async function mreadmsg(mtmp, otmp) {
     }
     if (mtmp.mconf) {
         /* C muse.c:286-288 */
-        pline(`Being confused, ${vismon ? mon_nam(mtmp) : mhe(mtmp)} mispronounces the magic words...`);
-        (game.iflags ||= {}).last_msg = PLNMSG_UNKNOWN_MM;
+        await pline(`Being confused, ${vismon ? mon_nam(mtmp) : mhe(mtmp)} mispronounces the magic words...`);
     }
 }
-const PLNMSG_UNKNOWN_MM = 0; /* const.js PLNMSG_UNKNOWN */
 const ARTICLE_A_MM = 2, SUPPRESS_IT_MM = 0x01, SUPPRESS_INVISIBLE_MM = 0x02,
       SUPPRESS_SADDLE_MM = 0x08, AUGMENT_IT_MM = 0x40; /* const.js */
 async function mzapwand(mtmp, otmp, self) {
@@ -4831,7 +4819,7 @@ async function m_tele(mtmp, vismon, oseen, how) {
             mon_learns_traps(mtmp, TELEP_TRAP);
     } else if ((mon_has_amulet(mtmp) || On_W_tower_level(game.u.uz)) && !rn2(3)) {
         if (vismon)
-            pline_mon(mtmp, `${Monnam(mtmp)} seems disoriented for a moment.`);
+            await pline_mon(mtmp, `${Monnam(mtmp)} seems disoriented for a moment.`);
     } else {
         /* teleport monster 'mtmp' */
         if (how) {
@@ -4856,7 +4844,7 @@ async function mon_escape(mtmp, vismon) {
         || (mtmp.iswiz && (game.context?.no_of_wizards | 0) < 2))
         return 0;
     if (vismon)
-        pline_mon(mtmp, `${Monnam(mtmp)} escapes the dungeon!`);
+        await pline_mon(mtmp, `${Monnam(mtmp)} escapes the dungeon!`);
     await mongone(mtmp);
     return 2;
 }
@@ -6510,7 +6498,9 @@ const _AMULET_OF_REFLECTION = 208;
 // then the intrinsic silver-dragon-form case.
 // EReflecting = u.uprops[REFLECTING].extrinsic; gy.youmonst.data ==
 // &mons[PM_SILVER_DRAGON] -> game.youmonst.mndx === PM_SILVER_DRAGON.
-export function ureflects(fmt, str) {
+// C muse.c:2836-2866: finish message prompts before identification and
+// returning to combat; MSGTYPE=stop/more can suspend pline().
+export async function ureflects(fmt, str) {
     const u = game.u;
     const EReflecting = (u.uprops[REFLECTING].extrinsic | 0);
     // C muse.c:2840 checks pointers; an empty string still requests a message
@@ -6518,29 +6508,29 @@ export function ureflects(fmt, str) {
     const showMessage = fmt != null && str != null;
     if (EReflecting & W_ARMS) {
         if (showMessage) {
-            pline(fmt, str, "shield");
+            await pline(fmt, str, "shield");
             makeknown(_SHIELD_OF_REFLECTION);
         }
         return true;
     } else if (EReflecting & W_WEP) {
         if (showMessage)
-            pline(fmt, str, "weapon");
+            await pline(fmt, str, "weapon");
         return true;
     } else if (EReflecting & W_AMUL) {
         if (showMessage) {
-            pline(fmt, str, "medallion");
+            await pline(fmt, str, "medallion");
             makeknown(_AMULET_OF_REFLECTION);
         }
         return true;
     } else if (EReflecting & W_ARM) {
         if (showMessage)
-            pline(fmt, str, u.uskin ? "luster" : "armor");
+            await pline(fmt, str, u.uskin ? "luster" : "armor");
         return true;
     /* C ref: youmonst.data == &mons[PM_SILVER_DRAGON], i.e. u.umonnum.  Was
      * game.youmonst.mndx, which the live path never writes (see poly_gender). */
     } else if (((game.u && game.u.umonnum) | 0) === PM_SILVER_DRAGON) {
         if (showMessage)
-            pline(fmt, str, "scales");
+            await pline(fmt, str, "scales");
         return true;
     }
     return false;

@@ -1503,7 +1503,8 @@ async function dispatchMovement(binding, prefixes) {
     const moved = outcome === 'time';
     if (game.program_state.gameover)
         return;
-    if ((rushDispatch || mode) && !prefixes.walk && moved && game._domoveReachedTail)
+    // C domove_core() also delays counted walks after arrival effects.
+    if (moved && game._domoveReachedTail)
         await captureRunmodeDelay(game, !!game.context.run || game.multi > 0);
     game.context.move = moved ? 1 : 0;
     if (!moved && outcome !== 'opened-door')
@@ -2445,7 +2446,6 @@ async function kickLiveMonster(monster, x, y) {
         game.context.move = 1;
         return true;
     }
-    const target = monsterName(monster);
     const martial = heroHasMartialKick();
     const kick = await prepareKick({
         martial,
@@ -2456,7 +2456,7 @@ async function kickLiveMonster(monster, x, y) {
         game.context.move = 1;
         return true;
     }
-    await plineWithContinuation(`You kick ${target}.`);
+    await plineWithContinuation(`You kick ${monsterName(monster)}.`);
     const evaded = await tryKickEvasion(monster, {
         clumsy: kick.clumsy,
         martial,
@@ -2978,6 +2978,9 @@ export function restoreCannedCommandTail(canned) {
         contextMenuResponses(canned.selection);
     }
 }
+// C do_name.c:docallcmd().
+// C do_name.c:name_ok().
+// C do_name.c:call_ok().
 async function doname() {
     // do_name.c:docallcmd() uses a queued key as the naming category.
     // Any other queued entry selects nothing and clears the canned queue.
@@ -4000,10 +4003,12 @@ async function doinvoke() {
     await pline('Nothing happens.');
     game.context.move = 1;
 }
+// C apply.c:rub_ok().
 function rubEligibleObject(object) {
     return object?.otyp === OIL_LAMP || object?.otyp === MAGIC_LAMP
         || object?.otyp === BRASS_LANTERN || isGrayStone(object) || isRoyalJelly(object);
 }
+// C apply.c:jelly_ok().
 async function rubRoyalJelly(jelly) {
     const used = await useRoyalJelly(jelly, async () => {
         const egg = await chooseInventoryObject('rub the royal jelly on', object => object.otyp === EGG ? GETOBJ_SUGGEST : GETOBJ_EXCLUDE, { forcePrompt: true });
@@ -5676,6 +5681,7 @@ async function dowhatis() {
                 waterLevel: Is_waterlevel(game.u.uz),
                 inHell: In_hell(game.u.uz),
                 blind: heroIsBlind(game),
+                clairvoyance: !!game.u.clairvoyanceDetection,
                 // pager.c resolves the override by level, independently of
                 // the symbols currently displayed by do_symset().
                 boulderSymbol: (Is_rogue_level(game.u.uz)

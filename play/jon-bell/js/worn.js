@@ -87,7 +87,7 @@ export async function setworn(obj, mask) {
                         if ((p = w_blocks(oobj, mask)) !== 0)
                             uprop(p).blocked &= ~w_mask;
                         if (oobj.oartifact)
-                            set_artifact_intrinsic(oobj, 0, mask);
+                            await set_artifact_intrinsic(oobj, 0, mask);
                     }
                     cancel_doff(oobj, w_mask);
                 }
@@ -103,7 +103,7 @@ export async function setworn(obj, mask) {
                                 uprop(p).blocked |= w_mask;
                         }
                         if (obj.oartifact)
-                            set_artifact_intrinsic(obj, 1, mask);
+                            await set_artifact_intrinsic(obj, 1, mask);
                     }
                 }
             }

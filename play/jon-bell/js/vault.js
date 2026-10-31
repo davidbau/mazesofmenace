@@ -24,7 +24,7 @@ import {
 } from './const.js';
 import { rn2 } from './rng.js';
 import { PM_GUARD, PM_CROESUS } from './pm.generated.js';
-import { newmextra, set_malign, mhe, monPmname } from './makemon.js';
+import { newmextra, set_malign, mhe, monPmname, pmname } from './makemon.js';
 import { makemon, mungspaces, xy_set_wall_state, mongone, make_grave, place_object, remove_object, obj_extract_self, setmangry } from './mklev.js';
 import { relobj } from './steal.js';
 import { stackobj } from './sp_lev.js';
@@ -69,9 +69,6 @@ function is_silent(_guard) {
     return ((game.youmonst?.data?.msound | 0) === MS_SILENT);
 }
 /* C do_name.c:1302-1308 pmname(pm, mgender) and monst.h Mgender(mon). */
-function pmname(pm, mgender) {
-    return monPmname(pm.pmidx, mgender);
-}
 /* C hacklib.c strcmpi/strncmpi — case-insensitive compares.  Same bodies as
  * js/objnam.js:2249/2262, which does not export them. */
 function _lowc(c) { return (c >= 'A' && c <= 'Z') ? c.toLowerCase() : c; }
@@ -272,12 +269,7 @@ function assign_level(dst, src) {
  * output and consumes no RNG. */
 function SetVoice(_mon, _a, _b, _c) { /* no sound driver in this port */ }
 
-function sobj_at(otyp, x, y) {
-    for (let otmp = game.level?.levelObjects?.[x]?.[y]; otmp; otmp = otmp.nexthere)
-        if ((otmp.otyp | 0) === otyp)
-            return otmp;
-    return null;
-}
+import { sobj_at } from './mklev.js';
 
 /* C ref: vault.c:192-202 in_fcorridor(grd, x, y) —
  *     for (fci = EGD(grd)->fcbeg; fci < EGD(grd)->fcend; fci++)

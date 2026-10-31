@@ -228,7 +228,7 @@ export function status_fieldname(name) {
     return matches.length === 1 ? matches[0] : null;
 }
 /* C ref: botl.c:781-797 conditions[].text[0] and botl.c:749-770 condition_aliases[] ids */
-const COND_NAMES = ['Bare', 'Blind', 'Busy', 'Conf', 'Deaf', 'Iron', 'Fly', 'FoodPois', 'Glow',
+export const COND_NAMES = ['Bare', 'Blind', 'Busy', 'Conf', 'Deaf', 'Iron', 'Fly', 'FoodPois', 'Glow',
     'Grab', 'Hallu', 'Held', 'Icy', 'InLava', 'Lev', 'Parlyz', 'Ride', 'Zzz', 'Slime', 'Slip',
     'Stone', 'Strngl', 'Stun', 'Submrg', 'TermIll', 'Teth', 'Trap', 'Out', 'WLegs', 'UHold'];
 const COND_ALIASES = ['strangled', 'all', 'major_troubles', 'minor_troubles', 'movement', 'opt_in'];
@@ -903,6 +903,30 @@ export function parseNethackrc(rc) {
             const menusep = menuopts.search(/[:=]/);
             const menuname = (menusep < 0 ? menuopts : menuopts.slice(0, menusep)).trim().toLowerCase();
             const menuval = menusep < 0 ? '' : menuopts.slice(menusep + 1);
+            // C options.c:3471-3503 optfn_playmode; parseoptions:620-628.
+            const playmode = option_state().allopt.find(r => r.name === 'playmode');
+            if (menuname.length >= playmode.minmatch && playmode.name.startsWith(menuname)) {
+                const duplicate = compoundSeen.has('playmode');
+                compoundDuplicate('playmode');
+                if (menunegated) {
+                    config_error_add('The playmode option may not both have a value and be negated.');
+                    continue;
+                }
+                const op = menuval.trim();
+                if (duplicate || !op) continue;
+                if (/^normal/i.test(op) || /^play$/i.test(op)) {
+                    result.flags.debug = result.flags.explore = false;
+                } else if (/^(explor|discov)/i.test(op)) {
+                    result.flags.debug = false;
+                    result.flags.explore = true;
+                } else if (/^(debug|wizard)/i.test(op)) {
+                    result.flags.debug = true;
+                    result.flags.explore = false;
+                } else {
+                    config_error_add('Invalid value for "%s":%s', 'playmode', op);
+                }
+                continue;
+            }
             // C options.c:620-623,6782-6806; optlist.h: these compounds disallow duplicates.
             const compound = option_state().allopt.find(r => ['symset', 'pettype', 'runmode', 'pickup_types', 'menustyle', 'sortloot', 'msg_window'].includes(r.name)
                 && ((menuname.length >= r.minmatch && r.name.startsWith(menuname)) || menuname === r.alias));
@@ -955,6 +979,25 @@ export function parseNethackrc(rc) {
                     else {
                         result.symset = 'DECgraphics';
                         if (gs.symset?.[0]) gs.symset[0].name = result.symset;
+                    }
+                }
+                continue;
+            }
+            /* C options.c:1906 optfn_IBMgraphics (BACKWARD_COMPAT): loads "IBMGraphics"
+             * into the primary set and "RogueIBM" into the rogue set; a set that
+             * already has a name is a load failure. */
+            if (menuname.length >= 3 && 'ibmgraphics'.startsWith(menuname)) {
+                compoundDuplicate('IBMgraphics');
+                if (!menunegated) {
+                    if (result.symset || gs.symset?.[0]?.name || gs.symset?.[1]?.name)
+                        config_error_add('Failure to load symbol set %s.', 'IBMgraphics');
+                    else {
+                        result.symset = 'IBMgraphics';
+                        if (gs.symset?.[0]) gs.symset[0].name = result.symset;
+                        if (gs.symset?.[1]) {
+                            gs.symset[1].name = 'RogueIBM';
+                            gs.symset[1].handling = 1;
+                        }
                     }
                 }
                 continue;
@@ -1308,10 +1351,29 @@ export function parseNethackrc(rc) {
                 }
                 else if (key === 'fruit' && !negated && val)
                     result.fruit = val; /* optfn_fruit -> svp.pl_fruit (options.c:1745) */
-                else if (key === 'playmode' && val === 'debug')
-                    result.flags.debug = true;
-                else if (key === 'playmode' && val === 'explore')
-                    result.flags.explore = true;
+                else if (key === 'playmode') {
+                    // C options.c:3479-3504 optfn_playmode: aliases and
+                    // case-insensitive prefixes select mutually exclusive modes.
+                    const duplicate = compoundSeen.has(key);
+                    compoundDuplicate(key);
+                    if (negated) {
+                        config_error_add('The playmode option may not both have a value and be negated.');
+                        continue;
+                    }
+                    if (duplicate || !val) continue;
+                    const mode = val.toLowerCase();
+                    if (mode.startsWith('normal') || mode === 'play') {
+                        result.flags.debug = result.flags.explore = false;
+                    } else if (mode.startsWith('explor') || mode.startsWith('discov')) {
+                        result.flags.debug = false;
+                        result.flags.explore = true;
+                    } else if (mode.startsWith('debug') || mode.startsWith('wizard')) {
+                        result.flags.debug = true;
+                        result.flags.explore = false;
+                    } else {
+                        config_error_add('Invalid value for "%s":%s', key, val);
+                    }
+                }
                 else if (key === 'pettype' || key === 'pet') {
                     result.flags.pettype = val;
                     /* optfn_pettype do_set (options.c:3207-3227): first letter */

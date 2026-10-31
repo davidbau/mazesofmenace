@@ -190,10 +190,10 @@ export function ok_role(rolenum, racenum, gendnum, alignnum, rfilter = gr.rfilte
     }
     return false;
 }
-export function ok_race(rolenum, racenum, gendnum, alignnum) {
+export function ok_race(rolenum, racenum, gendnum, alignnum, rfilter = gr.rfilter) {
     let allow;
     if (indexOkRace(racenum)) {
-        if (gr.rfilter.mask & raceSpecs[racenum].selfmask)
+        if (rfilter.mask & raceSpecs[racenum].selfmask)
             return false;
         allow = raceSpecs[racenum].allow;
         if (indexOkRolenum(rolenum)
@@ -209,7 +209,7 @@ export function ok_race(rolenum, racenum, gendnum, alignnum) {
     }
     let i;
     for (i = 0; i < NUM_RACES; i++) {
-        if (gr.rfilter.mask & raceSpecs[i].selfmask)
+        if (rfilter.mask & raceSpecs[i].selfmask)
             continue;
         allow = raceSpecs[i].allow;
         if (indexOkRolenum(rolenum)
@@ -225,11 +225,11 @@ export function ok_race(rolenum, racenum, gendnum, alignnum) {
     }
     return false;
 }
-export function ok_gend(rolenum, racenum, gendnum, _alignnum) {
+export function ok_gend(rolenum, racenum, gendnum, _alignnum, rfilter = gr.rfilter) {
     _alignnum;
     let allow;
     if (gendnum >= 0 && gendnum < ROLE_GENDERS) {
-        if (gr.rfilter.mask & GENDER_TAB[gendnum].allow)
+        if (rfilter.mask & GENDER_TAB[gendnum].allow)
             return false;
         allow = GENDER_TAB[gendnum].allow;
         if (indexOkRolenum(rolenum)
@@ -241,7 +241,7 @@ export function ok_gend(rolenum, racenum, gendnum, _alignnum) {
         return true;
     }
     for (let i = 0; i < ROLE_GENDERS; i++) {
-        if (gr.rfilter.mask & GENDER_TAB[i].allow)
+        if (rfilter.mask & GENDER_TAB[i].allow)
             continue;
         allow = GENDER_TAB[i].allow;
         if (indexOkRolenum(rolenum)

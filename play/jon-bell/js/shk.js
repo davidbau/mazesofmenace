@@ -4248,8 +4248,11 @@ function obj_is_burning_fp(obj) {
 }
 import { end_burn as end_burn_fp } from './timeout.js';
 
-// C bones.c goodfruit(id) — mutates the untracked global fruit-name list.
-function goodfruit_fp(_id) { }
+// C bones.c:42-49: mark a fruit type present on the bones level.
+export function goodfruit_fp(id) {
+    for (let f = game.ffruit; f; f = f.nextf)
+        if (f.fid === -id) { f.fid = id; return; }
+}
 const SLIME_MOLD_OTYP = 285;
 
 export async function drop_upon_death(mtmp, cont, x, y) {

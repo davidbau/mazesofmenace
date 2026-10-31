@@ -149,7 +149,8 @@ export function in_your_sanctuary(mon, x, y) {
         }
 
         // Check is_rider: data == mons[PM_DEATH] || mons[PM_FAMINE] || mons[PM_PESTILENCE]
-        const mndx = mon.data_mndx | 0;
+        // C priest.c:779: is_rider(mon->data) tests the current species.
+        const mndx = data.pmidx | 0;
         if (mndx === PM_DEATH || mndx === PM_FAMINE || mndx === PM_PESTILENCE) {
             return false;
         }

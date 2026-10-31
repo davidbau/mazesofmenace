@@ -43,7 +43,7 @@ import { getObjFromGetobj, wield_tool as wield_tool_real, costly_alteration, cos
          obj_extract_self_general, useup, useupf, freeinv as freeinv_real, carrying as carrying_real } from './cmd.js';
 import { sellobj_state, safe_qbuf as safe_qbuf_real } from './shk.js';
 import { g_at, will_feel_cockatrice as will_feel_cockatrice_real } from './cmd.js';
-import { flush_screen, restore_occupation_topline, force_more, topl_park_cursor, _pline_flush_frame_record, pline_flush_point, msgtype_suppressed } from './display.js';
+import { flush_screen, restore_occupation_topline, restore_command_topline, force_more, topl_park_cursor, _pline_flush_frame_record, pline_flush_point, msgtype_suppressed } from './display.js';
 import { more_experienced, newexplevel } from './uhitm.js';
 import { pluslvl } from './exper.js';
 import { nhgetch } from './input.js';
@@ -65,7 +65,7 @@ import { addinv_nomerge as addinv_nomerge_real } from './hold_another_object.js'
 import { BLINDED, CONFUSION, HALLUC, HALLUC_RES, LEVITATION, SICK, VOMITING,
          EXPL_FIERY, STONED, UNCHANGING, SICK_ALL, FROMOUTSIDE, INTRINSIC, INVIS as INVIS_PROP, SEE_INVIS as SEE_INVIS_PROP, TIMEOUT, LAST_PROP, AGGRAVATE_MONSTER,
          FAST as FAST_PROP, DEAF as DEAF_PROP, SLIMED as SLIMED_PROP, WOUNDED_LEGS as WOUNDED_LEGS_PROP,
-         Is_airlevel, Is_waterlevel } from './const.js';
+         Is_airlevel, Is_waterlevel, FLYING, WWALKING } from './const.js';
 /* make_confused's C home is potion.c:88.  This file used to carry its own
  * `_eat_make_confused`, which wrote a flat `game.HConfusion` that only this
  * file's own reader consulted — so eating a confusing corpse set a word the
@@ -2260,7 +2260,7 @@ async function rottenfood(obj) {
             if (_pre && _now) _pre.cells = _now.cells;
         }
         if (!_eat_Blind()) /* C eat.c:1829-1830 Your1(vision_clears) */
-            await pline('Your vision clears.');
+            await pline('Your vision quickly clears.');
     } else if (!rn2(3)) { /* C eat.c:1830 */
         /* C eat.c:1831-1848 — the "world spins" knockout. */
         const duration = rnd(10); /* C eat.c:1833 */
@@ -4478,6 +4478,10 @@ export async function cpostfx(pm) {
                 /* the dismount's pline (steed.c:608) replaces the topline */
                 _mimicTopl = `You fall off of ${mon_nam(u.usteed)}!`;
                 await dismount_steed(DISMOUNT_FELL);
+                /* float_down()'s pickup(1) may have appended more to the topline
+                   (describe_decor: "A staircase up out of the dungeon.") */
+                restore_command_topline();
+                if (game._pending_message) _mimicTopl = game._pending_message;
             }
             nomul(-(pm === PM_GIANT_MIMIC ? 50 : pm === PM_LARGE_MIMIC ? 40 : 20));
             game.multi_reason = 'pretending to be a pile of gold';
@@ -4841,7 +4845,7 @@ export async function floorfood(verb, corpsecheck) {
     if ((g.iflags && g.iflags.menu_requested)
         || !can_reach_floor(true) || (feeding && u.usteed)
         || (is_pool_or_lava(u.ux, u.uy)
-            && (Wwalking || is_clinger(uptr) || (Flying && !Breathless)))) {
+            && (Wwalking() || is_clinger(uptr) || (Flying() && !Breathless())))) {
         skipfloor = true;
     }
 
@@ -4955,10 +4959,15 @@ export async function floorfood(verb, corpsecheck) {
             if (c === 'y')
                 return otmp;
             else if (c === 'q') {
-                /* topl.c:547-548 clears multi-row prompts on return. */
+                /* topl.c:547-548 clears multi-row prompts on return.  The
+                 * answered prompt was already filed in the history ring as
+                 * prompt + key2txt(q) (topl.c:537-539); the painted stale copy
+                 * must not be filed a second time. */
                 const prompt = qbuf + " [ynq] (n)";
-                if (topl_park_cursor(null, prompt + ' ')[1] === 0)
+                if (topl_park_cursor(null, prompt + ' ')[1] === 0) {
                     g._resultMessage = g._ynStaleTopline = prompt;
+                    g._topl_suppress_once = true;
+                }
                 return null;
             }
             ++g.getobj_else;
@@ -5099,8 +5108,15 @@ const COIN_CLASS = 12;
 const FOOD_CLASS = 7;
 const AMULET_CLASS = 5;
 const GETOBJ_NOFLAGS = 0;
-const Wwalking = false; /* water walking property */
-const Flying = false; /* flying property */
-const Breathless = false; /* breathless property */
+/* C youprop.h:260 Wwalking, :253 Flying, :276 Breathless (property words). */
+const _uprop_word = (i) => game.u?.uprops?.[i];
+const Wwalking = () => !!(((_uprop_word(WWALKING)?.intrinsic | 0) || (_uprop_word(WWALKING)?.extrinsic | 0))
+                          && !Is_waterlevel(game.u?.uz));
+const Flying = () => !!(((_uprop_word(FLYING)?.intrinsic | 0) || (_uprop_word(FLYING)?.extrinsic | 0)
+                         || (game.u?.usteed && ((game.u.usteed.data?.mflags1 | 0) & 1 /* M1_FLY */)))
+                        && !(_uprop_word(FLYING)?.blocked | 0));
+const Breathless = () => !!((_uprop_word(MAGICAL_BREATHING)?.intrinsic | 0)
+                            || (_uprop_word(MAGICAL_BREATHING)?.extrinsic | 0)
+                            || pooleffects_breathless(game.youmonst?.data));
 const ynqchars = "ynq";
 const hands_obj = { /* special hands object for eating iron bars */ };

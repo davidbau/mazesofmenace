@@ -3,7 +3,7 @@ import { change_luck } from './attrib.js';
 
 import { game } from './gstate.js';
 import { getnow } from './allmain.js';
-import { pline } from './display.js';
+import { pline, yyyymmddhhmmss, There } from './display.js';
 import { TRICKED, VISITED, RANGE_LEVEL, MON_DETACH } from './const.js';
 import { save_light_sources, lights_save_snapshot } from './light.js';
 import { save_engravings, clear_level_structures } from './mklev.js';
@@ -14,7 +14,7 @@ import { worms_save_snapshot } from './worm.js';
 import { object_runtime_save_snapshot } from './o_init.js';
 import { bubbles_save_snapshot, bubbles_clear_level, bubbles_copy_snapshot } from './mkmaze.js';
 import { save_timers_level } from './timeout.js';
-import { vfsWriteFile } from './storage.js';
+import { vfsWriteFile, vfsReadFile } from './storage.js';
 /* The save-file error path terminates through the shared end-game machinery;
  * keep this import aliased because save.js is also reached by bones.js. */
 import { done as done_real, done_object_cleanup } from './end.js';
@@ -29,21 +29,14 @@ function levelStore() {
 
 /* C ref: save.c:429 savelev(nhfp, lev).  `lev` is ledger_no(&u.uz) — the
  * absolute cross-branch level index, the same key getlev() reads back. */
-export async function savelev(lev) {
+export async function savelev(lev, freeing = false) {
     /* C save.c:483-488 — savelev_core purges dead monsters before it writes
-     * the level when iflags.purge_monsters is set.  mon.c:2796 increments
-     * that counter when m_detach sets MON_DETACH; use that state as the
-     * persisted equivalent rather than purging every low-HP monster at every
-     * save.  dmonsfree preserves vault guards, matching C's exception. */
-    let purge_monsters = false;
-    for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
-        if ((mtmp.mstate & MON_DETACH) !== 0) {
-            purge_monsters = true;
-            break;
-        }
-    }
-    if (purge_monsters)
-        dmonsfree();
+     * the level when iflags.purge_monsters is set (mon.c:2796's m_detach
+     * counter — every m_detach twin increments it).  Only a WRITING save
+     * purges: goto_level's cant_go_back teardown (do.c:1652) saves FREEING,
+     * where C skips the purge and the counter survives the level change. */
+    if (!freeing && (game.iflags.purge_monsters | 0) > 0)
+        await dmonsfree();
     /* C save.c:475 — `if (lev >= 0 && lev <= maxledgerno())
      *     svl.level_info[lev].flags |= VISITED;`  Marked by the SAVE, not by
      * the departure bookkeeping, so a level is VISITED exactly when a copy of
@@ -207,6 +200,8 @@ async function savegamestate() {
     // C save_luadata serializes the Lua variables, never the interpreter or
     // its closures. Preserve the other gl fields (including light roots).
     state.gl = { ...game.gl, luacore: null };
+    // C save.c:288: ubirthday is a 14-character local date, not a time_t.
+    state.__ubirthday = yyyymmddhhmmss(game.u.ubirthday);
     const { get_nh_lua_variables } = await import('./nhlua.js');
     state.__luadata = await get_nh_lua_variables() ?? '';
     /* The engraving map is module-scoped in js/mklev.js rather than hanging off
@@ -223,6 +218,12 @@ async function savegamestate() {
     return state;
 }
 
+/* C ref: save.c:72 dosave0() — "returns 1 if save successful".  The C body's
+ * work that has no JS counterpart is called out rather than silently dropped:
+ * program_state.saving/notice_mon_off() (display suppression during the write),
+ * the hangup fixups (u.uinvulnerable, iflags.save_uswallow/uinwater/uburied —
+ * none of which this port sets), and the per-level file writes (savelev() already keeps those in game.levelStore,
+ * which travels inside the snapshot). */
 export async function dosave0() {
     const g = game;
     g.program_state = g.program_state || {};
@@ -236,6 +237,18 @@ export async function dosave0() {
         g.program_state.saving = 0;
         return 0;
     }
+    /* C save.c:113-122 — an existing save file (a wizard/explore restore
+     * that answered 'y' to "keep the save file?") asks before overwriting;
+     * 'n' is `goto done` with res 0. */
+    if (g.iflags?.window_inited && vfsReadFile(path) !== null) {
+        g._pending_message = '';    /* clear_nhwindow(WIN_MESSAGE) */
+        await There('seems to be an old save file.');
+        const { y_n_default } = await import('./cmd.js');
+        if (await y_n_default('Overwrite the old file?', 'n') === 'n') {
+            g.program_state.saving = 0;
+            return 0;
+        }
+    }
     /* C save.c:141-145 — undo the date-dependent luck that moveloop_preamble
      * applied at startup, so the FILE carries Luck without it; the restoring
      * process's own preamble re-applies its date. */
@@ -244,6 +257,16 @@ export async function dosave0() {
     if (g.flags?.friday13)
         change_luck(1);
     try {
+        // C save.c:168 -> savelev_core(:483-488): purge before writing.
+        if ((g.iflags.purge_monsters | 0) > 0)
+            await dmonsfree();
+        /* C save.c:168-169,307,894: saving the current level and migrating
+         * monsters runs savemonchn(), resetting each priest's entry timers
+         * before the save is written, just as savelev() does on departure. */
+        for (const head of [g.fmon, g.migrating_mons]) {
+            for (let mon = head; mon; mon = mon.nmon)
+                if (mon.ispriest) forget_temple_entry(mon);
+        }
         /* Detach before C's inactive-level copy pass: those getlev/savelev
          * operations work on file records, not on the live current level. */
         const state = decode_save_graph(encode_save_graph(await savegamestate()));

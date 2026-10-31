@@ -27,6 +27,7 @@ import { trapName } from './trap_name.js';
 import { withIndefiniteArticle } from './object_grammar.js';
 // C ref: detect.c premap_detect().  Sokoban's Lua `premapped` flag maps the
 // finalized background, boulders, and traps before deferred room filling.
+// C detect.c:skip_premap_detect().
 export async function premap_detect() {
     for (let x = 1; x < COLNO; x++) {
         for (let y = 0; y < ROWNO; y++) {
@@ -453,11 +454,11 @@ export async function findit() {
                     || MONSTER_SYMBOL[monster.mnum] === 57)) {
                 await flashGlyphAt(x, y, transientMonsterGlyph(monster), 6);
                 monster.mundetected = 0;
+                await newsym(x, y);
                 revealedMonster = true;
             }
             if (revealedMonster)
                 found.monsters++;
-            await newsym(x, y);
             if (loc.remembered_glyph?.kind === 'invisible') {
                 found.keptUnseen++;
             }

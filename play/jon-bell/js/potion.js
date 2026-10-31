@@ -37,7 +37,7 @@ import { set_mimic_blocking } from './sit.js';
 import { delayed_killer, find_delayed_killer, dealloc_killer } from './end.js';
 /* potion.c:417 eatmupdate() — the mimic-an-orange message fixup. */
 import { eatmupdate } from './eat.js';
-import { near_capacity, stagger_verb } from './weight.js';
+import { near_capacity, stagger_verb, weight } from './weight.js';
 import { nhgetch } from './input.js';
 /* C ref: invent.c:2093 silly_thing(word, otmp) — shared with the 'W'/'P'
  * getobj path rather than re-derived. */
@@ -49,7 +49,7 @@ import { mkgold, bcsign, makemon, mkobj, mkobj_at, mksobj_at, rnd_class, healmon
 import { obj_resists } from './zap.js';
 import { bless, unbless, curse, uncurse } from './mkobj.js';
 import { livelog_printf } from './display.js';
-import { LL_ARTIFACT } from './const.js';
+import { LL_ARTIFACT, LL_CONDUCT } from './const.js';
 import { heal_legs, unfixable_trouble_count, doup, body_part as body_part_cmd, ceiling, altar_wrath } from './cmd.js';
 import { reassign } from './inventory_refresh.js';
 import { WOUNDED_LEGS } from './const.js';
@@ -305,6 +305,8 @@ function _acurr(u, i) {
  * Returns TRUE if ACURR changed.
  * NOTE: ndx is a C constant; u.acurr.a / u.amax.a are in DISPLAY order —
  * translate via _C_ATTR_TO_DISP before indexing. */
+const _plusattr_t = ['strong', 'smart', 'wise', 'agile', 'tough', 'charismatic'];
+const _minusattr_t = ['weak', 'stupid', 'foolish', 'clumsy', 'fragile', 'repulsive'];
 async function _adjattrib(ndx, incr, msgflg) {
     const u = game.u;
     if (!u || !incr)
@@ -314,6 +316,8 @@ async function _adjattrib(ndx, incr, msgflg) {
     const amax = _getAmax(u);
     const aexe = _getAexe(u);
     const oldAcurr = _acurr(u, ndx);
+    const oldAbase = abase[di] | 0;
+    const oldAmax = amax[di] | 0;
     abase[di] = (abase[di] | 0) + incr;
     if (incr > 0) {
         /* C attrib.c:140-143 — raise amax with abase, cap at race max */
@@ -342,6 +346,17 @@ async function _adjattrib(ndx, incr, msgflg) {
     }
     const newAcurr = _acurr(u, ndx);
     if (newAcurr === oldAcurr) {
+        /* C attrib.c:173-184: msgflg == 0 && flags.verbose */
+        if (msgflg == 0 && game.flags?.verbose) {
+            const _attrname = ['strength', 'intelligence', 'wisdom', 'dexterity', 'constitution', 'charisma'];
+            if ((abase[di] | 0) === oldAbase && (amax[di] | 0) === oldAmax) {
+                const abonflg = incr > 0 ? (_getAbon(u)[di] | 0) < 0 : (_getAbon(u)[di] | 0) > 0;
+                await pline(`You're ${abonflg ? 'currently' : 'already'} as ${incr > 0 ? _plusattr_t[ndx] : _minusattr_t[ndx]} as you can get.`);
+            }
+            else {
+                await pline(`Your innate ${_attrname[ndx]} has ${(incr > 0) ? 'improved' : 'declined'}.`);
+            }
+        }
         return false;
     }
     /* C attrib.c:190-197: attribute changed — reset exercise, SET_BOTL, pline */
@@ -1712,6 +1727,7 @@ function useup_potion(obj) {
          * path (the remaining stack is no longer the in-use single being drunk). */
         obj.in_use = false;
         obj.quan = (obj.quan | 0) - 1;
+        obj.owt = weight(obj);
         return;
     }
     let prev = null;
@@ -2376,10 +2392,10 @@ export async function dodrink() {
                 heal_legs(0);
                 g._potion_unkn++;
             } else {
-                speed_up(rn1(10, 100 + 60 * bcsign_val));
+                await speed_up(rn1(10, 100 + 60 * bcsign_val));
                 /* non-cursed potion grants intrinsic speed */
                 if (!otmp.cursed && !(_fastrec(u).intrinsic & INTRINSIC)) {
-                    Your("quickness feels very natural.");
+                    await Your("quickness feels very natural.");
                     _fastrec(u).intrinsic |= FROMOUTSIDE;
                 }
             }
@@ -2496,7 +2512,7 @@ export async function dodrink() {
                     }
                 }
                 await useup(otmp);
-                g.disp.botl = 1;
+                /* C potion.c:639-640: useup then return; no status repaint. */
             }
         }
         else if (otmp.otyp === POT_OBJECT_DETECTION) {
@@ -2531,7 +2547,7 @@ export async function dodrink() {
                     }
                 }
                 await useup(otmp);
-                g.disp.botl = 1;
+                /* C potion.c:639-640: useup then return; no status repaint. */
             }
         }
         else if (otmp.otyp === POT_GAIN_LEVEL) {
@@ -2907,7 +2923,7 @@ function _potion_Invisible() {
 }
 function _potion_Fast() {
     const u = game.u || {};
-    return !!((_fastrec(u).intrinsic | 0) & (TIMEOUT | INTRINSIC))
+    return !!(_fastrec(u).intrinsic | 0)
         || !!(u.uprops?.[FAST]?.extrinsic | 0);
 }
 /* C youprop.h:125  Deaf (HDeaf || EDeaf || u.uroleplay.deaf). */
@@ -3323,6 +3339,7 @@ function _useup(obj) {
          * matches C: this branch never reaches freeinv()/obfree(). */
         obj.in_use = false;
         obj.quan = (obj.quan | 0) - 1;
+        obj.owt = weight(obj);
         return;
     }
     _freeinv(obj);
@@ -3643,9 +3660,12 @@ async function potion_dip(obj, potion) {
             const save_otyp = obj.otyp;
             const u = game.u || {};
             u.uconduct = u.uconduct || {};
-            u.uconduct.polypiles = (u.uconduct.polypiles | 0) + 1;
-            /* C livelog_printf(LL_CONDUCT, ...) — external log line, no game
-             * state / RNG effect; not reproduced. */
+            const polypiles = u.uconduct.polypiles | 0;
+            u.uconduct.polypiles = polypiles + 1;
+            // C potion.c:2476-2478: record the first polymorph dip in the chronicle.
+            if (!polypiles)
+                livelog_printf(LL_CONDUCT, 'polymorphed %s first item',
+                               game.flags?.female ? 'her' : 'his');
             obj = (await poly_obj(obj, STRANGE_OBJECT));
             if (!obj) {
                 makeknown(POT_POLYMORPH);
@@ -5241,7 +5261,8 @@ async function peffect_monster_detection(otmp) {
                 /* C: MON_AT(x, y) — any monster occupying the square clears
                  * potion_unkn, which is what suppresses "You feel lonely." and
                  * makes dopotion's tail identify the potion outright. */
-                if (_gush_m_at(x, y))
+                /* the grid omits a mounted steed (mount_steed remove_monster()s it) */
+                if (_gush_m_at(x, y) && _gush_m_at(x, y) !== u.usteed)
                     g._potion_unkn = 0;
             }
         }
@@ -5577,9 +5598,9 @@ async function peffect_speed(otmp) {
         game._potion_unkn = (game._potion_unkn | 0) + 1;
         return;
     }
-    speed_up(rn1(10, 100 + 60 * bcsign(otmp)));
+    await speed_up(rn1(10, 100 + 60 * bcsign(otmp)));
     if (is_speed && !otmp.cursed && !(_fastrec(u).intrinsic & INTRINSIC)) {
-        Your('quickness feels very natural.');
+        await Your('quickness feels very natural.');
         _fastrec(u).intrinsic |= FROMOUTSIDE;
     }
 }
@@ -5906,17 +5927,18 @@ export async function peffects(otmp) {
     return -1;
 }
 
-export function speed_up(duration) {
+export async function speed_up(duration) {
     const g = game;
     const u = g.u;
     /* C potion.c:2925 — Very_fast = ((HFast & ~INTRINSIC) || EFast).
      * There is no mutable u.Very_fast field in the JS state. */
     const very_fast = !!((_fastrec(u).intrinsic & ~INTRINSIC)
         || (u.uprops?.[FAST]?.extrinsic | 0));
+    // C potion.c:2922-2929: finish the message before exercise and timeout.
     if (!very_fast)
-        pline("You are suddenly moving %sfaster.", _potion_Fast() ? "" : "much ");
+        await pline("You are suddenly moving %sfaster.", _potion_Fast() ? "" : "much ");
     else
-        pline("Your %s get new energy.", makeplural(body_part(LEG)));
+        await pline("Your %s get new energy.", makeplural(body_part(LEG)));
     exercise(3, true);
     /* C potion.c:2929  incr_itimeout(&HFast, duration) — inlined here because
      * _fastrec(u).intrinsic is a plain number, not a {value} ref.  Uses the module-scope

@@ -10,6 +10,7 @@ import { MONSTER_FLAGS2, MONSTER_NAME, MONSTER_SYMBOL, monsterTypeName, requireM
 import { monsterName } from './monster_name.js';
 import { GOLD_PIECE, ORANGE } from './object_data.js';
 import { withIndefiniteArticle } from './object_grammar.js';
+import { mimicObjectName } from './objnam.js';
 import { heroIsUnchanging } from './polyself.js';
 import { heroIsHallucinating } from './senses.js';
 import { dismountHero } from './steed.js';
@@ -46,6 +47,7 @@ export async function beginMealMimicry(turns, { state = game } = {}) {
     await flush_screen(1);
     await flushPendingTopline();
 }
+// C eat.c:eatmdone().
 export async function finishMealMimicry(state = game) {
     if (state._helplessDoneMessage === state._mimicMealMessage)
         state._helplessDoneMessage = null;
@@ -55,6 +57,7 @@ export async function finishMealMimicry(state = game) {
         await newsym(state.u.ux, state.u.uy);
     }
 }
+// C eat.c:eatmupdate().
 export async function updateMealMimicry(state = game) {
     if (!state._mimicMealMessage || state._helplessDoneMessage !== state._mimicMealMessage
         || state.u.m_ap_type !== M_AP_OBJECT)
@@ -89,7 +92,7 @@ export async function disturbMealMimicry(monster, { state = game } = {}) {
     }
     else {
         const name = monsterName(monster, { state, article: 'none', exact: true });
-        const shape = hero.mappearance === ORANGE ? 'orange' : 'pile of gold';
+        const shape = mimicObjectName(hero, state);
         await plineWithContinuation(`Wait, ${name}!  That ${shape} is really ${withIndefiniteArticle(monsterTypeName(heroSpecies(state), state.flags.female))} named ${state.plname}!`);
     }
     if ((state._helplessTurns ?? 0) > 0) {

@@ -3328,8 +3328,9 @@ export function stuck_ring(ring, otyp) {
             && (u.uamul.otyp | 0) === AMULET_OF_UNCHANGING && u.uamul.cursed)
             return u.uamul;
 
-        /* Check for welded weapon (primary hand). */
-        if (_uwep_welded_dw() && ((ring === (u.uleft ? u.uleft : u.uright)) || bimanual(u.uwep)))
+        /* C you.h:566 RING_ON_PRIMARY depends on handedness. */
+        const primaryRing = u.uhandedness === LEFT_HANDED ? u.uleft : u.uright;
+        if (_uwep_welded_dw() && ((ring === primaryRing) || bimanual(u.uwep)))
             return u.uwep;
 
         /* Check for cursed gloves. */
@@ -4360,7 +4361,7 @@ export async function Your(line, ...args) {
     return Your_real(line, ...args);
 }
 
-/* yname — C objnam.c:2568-2582.
+/* yname — C objnam.c:2359-2374.
  *   yname(obj) { s = cxname(obj);
  *                if (!carried(obj) || !obj_is_pname(obj)
  *                    || obj->oartifact >= ART_ORB_OF_DETECTION)
@@ -4375,8 +4376,7 @@ export async function Your(line, ...args) {
  * resolve to this body.
  *
  * Ownership uses the shared shk.c:5862-5873 helper, including shop bills,
- * monster inventory, and unique corpses.  KNOWN GAP: obj_is_pname/oartifact
- * gating of the possessive is not modelled here. */
+ * monster inventory, and unique corpses. */
 export function yname(obj) {
     let owned = !!obj && (obj.where | 0) === 3;
     if (obj && !owned) {
@@ -4385,10 +4385,13 @@ export function yname(obj) {
         }
     }
     const name = cxname(obj); // C objnam.c:2361: name before ownership prefix.
+    // C objnam.c:2365-2366: most carried artifacts omit the possessive.
+    if (owned && obj_is_pname(obj) && obj.oartifact < 21 /* ART_ORB_OF_DETECTION */)
+        return name;
     // Retain the inventory-chain fallback for objects without a where field.
     const prefix = owned && obj.where == null && !obj.unpaid
         ? 'your ' : ownership_prefix('', obj);
-    return prefix + name;
+    return (prefix + name).slice(0, 255);
 }
 export { xname };
 /* C shk.c:5862 shk_your — adapt the one-argument API to the shared port. */

@@ -11,7 +11,8 @@ import { UNENCUMBERED, OVERLOADED, LEVITATION, FLYING, LOW_PM, Upolyd, WOUNDED_L
 import { OC_WEIGHT, OTYP_LARGE_BOX, OTYP_BAG_OF_TRICKS, OTYP_BAG_OF_HOLDING, OTYP_STATUE, OTYP_BOULDER } from './oc_weight.generated.js';
 import corpseData from './eat_corpse_data.json' with { type: 'json' };
 import monMsizePack from './makemon_msize.json' with { type: 'json' };
-import { pline } from './display.js';
+import { pline, impossible_sync } from './display.js';
+import { simpleonames } from './objnam.js';
 import { stagger, float_vs_flight } from './mhitm.js';
 /* eaten_stat (C eat.c:3788) is js/eat.js's faithful port; eat.js imports
  * near_capacity from this file, so this is a late-bound ES-module cycle. */
@@ -68,7 +69,10 @@ export function weight(obj) {
     const otyp = obj.otyp | 0;
     let wt = (otyp >= 0 && otyp < OC_WEIGHT.length) ? (OC_WEIGHT[otyp] | 0) : 0;
 
-    if (obj.quan != null && (obj.quan | 0) < 1) {
+    /* C mkobj.c:1892,1958,1968: quan stays long through the validity test,
+     * corpse product, and coin division; only the coin quotient is cast. */
+    if (obj.quan != null && obj.quan < 1) {
+        impossible_sync('Calculating weight of %ld %s?', obj.quan, simpleonames(obj));
         return 0; /* C impossible() path */
     }
     /* C: globby → return owt as-is (glob weight managed elsewhere). */
@@ -85,25 +89,25 @@ export function weight(obj) {
         }
         let cwt = 0;
         for (let c = obj.cobj; c; c = c.nobj)
-            cwt += weight(c);
+            cwt = (cwt + weight(c)) | 0;
         if (otyp === OTYP_BAG_OF_HOLDING) {
-            cwt = obj.cursed ? (cwt * 2)
-                  : obj.blessed ? Math.trunc((cwt + 3) / 4)
-                    : Math.trunc((cwt + 1) / 2);
+            cwt = obj.cursed ? Math.imul(cwt, 2)
+                  : obj.blessed ? Math.trunc(((cwt + 3) | 0) / 4)
+                    : Math.trunc(((cwt + 1) | 0) / 2);
         }
-        return wt + cwt;
+        return (wt + cwt) | 0;
     }
     if (otyp === CORPSE && _ismnum_cwt(obj.corpsenm)) {
-        const long_wt = (obj.quan | 0) * _cwt(obj.corpsenm | 0);
+        const long_wt = obj.quan * _cwt(obj.corpsenm | 0);
         let cwt = (long_wt > LARGEST_INT) ? LARGEST_INT : long_wt;
         if (obj.oeaten | 0)
             cwt = eaten_stat(cwt, obj);
         return cwt;
     }
     if ((obj.oclass | 0) === FOOD_CLASS && (obj.oeaten | 0))
-        return eaten_stat((obj.quan | 0) * wt, obj);
+        return eaten_stat(Math.imul(obj.quan, wt), obj);
     if ((obj.oclass | 0) === COIN_CLASS) {
-        const cw = Math.trunc(((obj.quan | 0) + 50) / 100);
+        const cw = Math.trunc((obj.quan + 50) / 100) | 0;
         return Math.max(cw, 1);
     }
     if (otyp === HEAVY_IRON_BALL && (obj.owt | 0) !== 0) {
@@ -113,7 +117,7 @@ export function weight(obj) {
         return wt + (obj.spe | 0) * (OC_WEIGHT[TALLOW_CANDLE] | 0);
     }
     const quan = obj.quan | 0;
-    return wt ? (wt * quan) : ((quan + 1) >> 1);
+    return wt ? Math.imul(wt, quan) : ((quan + 1) >> 1);
 }
 
 export function weight_cap() {
@@ -211,8 +215,8 @@ export function inv_weight_raw() {
         & 0x08000000 /* M2_ROCKTHROW */);
     for (let otmp = game.invent; otmp; otmp = otmp.nobj) {
         if ((otmp.oclass | 0) === COIN_CLASS) {
-            /* C hack.c:4322 — wt += (quan + 50) / 100 (integer division). */
-            wt += Math.trunc(((otmp.quan | 0) + 50) / 100);
+            /* C hack.c:4358: divide the long quantity before casting to int. */
+            wt = (wt + Math.trunc((otmp.quan + 50) / 100)) | 0;
         } else if ((otmp.otyp | 0) !== OTYP_BOULDER || !throwsRocks) {
             /* C hack.c:4360 sums cached owt.  Food's nutrition can change
              * before its weight: eat.c:1970 reduces rotten-corpse oeaten,

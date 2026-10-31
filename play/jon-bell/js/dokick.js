@@ -1761,7 +1761,9 @@ async function really_kick_object(x, y, kickedobj) {
     /* C zap.c:4127 / 4007 / 4052 — every exit path closes the flight. */
     tmp_at(DISP_END, 0);
     g.gb = g.gb || {};
-    g.gb.bhitpos = { x: bx, y: by };
+    // C zap.c bhit(): thitmonst must use the flight's final impact square.
+    // C bhit() leaves gb.bhitpos at impact; thitmonst uses the flat alias.
+    g.bhitpos = g.gb.bhitpos = { x: bx, y: by };
 
     // C dokick.c:739-740: bhit may destroy the object and clear kickedobj.
     kickedobj = g.kickedobj;
@@ -1774,7 +1776,8 @@ async function really_kick_object(x, y, kickedobj) {
          * remember an unseen target before thitmonst can report its miss. */
         if (cansee(bx, by) && !canspotmon(mon))
             map_invisible(bx, by);
-        g.notonhead = ((bx | 0) !== (mon.mx | 0) || (by | 0) !== (mon.my | 0));
+        g.notonhead = (g.gn ||= {}).notonhead =
+            ((bx | 0) !== (mon.mx | 0) || (by | 0) !== (mon.my | 0));
         if (isgold) {
             if (await ghitm(mon, kickedobj))
                 return 1; /* gold was caught */
@@ -2377,13 +2380,22 @@ export function christen_orc(mtmp, gang, other) {
     }
     return mtmp;
 }
+/* C do_name.c:80-87: clear ONAME only when allocated; retain oextra.
+ * Support both the nested live name and new_oname's flattened name fields.
+ * An allocated empty string is still a non-NULL C name pointer. */
 export function free_oname(otmp) {
-    if (otmp.oextra)
+    const nested_name = 'oextra' in otmp
+        && otmp.oextra && otmp.oextra.oname != null;
+    const flat_name = 'oextra_present' in otmp && otmp.oextra_present
+        && otmp.oextra_oname_present;
+    if (!nested_name && !flat_name)
+        return;
+    if (nested_name)
         otmp.oextra.oname = null;
     if (Object.prototype.hasOwnProperty.call(otmp, 'oextra_oname_present'))
         otmp.oextra_oname_present = 0;
-    otmp.oname = null;
-    otmp.oxlth = 0;
+    if (Object.prototype.hasOwnProperty.call(otmp, 'oname'))
+        otmp.oname = null;
 }
 export function Shknam(shkp) { return shk_Shknam(shkp); }
 /* add_to_migration (C mkobj.c:2697-2717) and mksobj_migr_to_species

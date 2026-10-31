@@ -3,6 +3,7 @@ import { alter_cost, shk_your } from './shk.js'; // C do_name.c:410
 import { lookup_novel, mon_pmname } from './do_name.js';
 import { obj_pmname as obj_pmname_real } from './mhitm.js';
 import { paniclog } from './files.js';
+import { panic } from './dog.js';
 import { impossible as naming_impossible } from './pline.js';
 import { apron_text, tshirt_text, candy_wrapper_text } from './read.js';
 import { COST_CONTENTS, BURN_OBJECT, ZOMBIFY_MON, TIMER_OBJECT, otrapped_of, GLIB as GLIB_PROP_ON } from './const.js';
@@ -1090,12 +1091,17 @@ export function xname_weapon(obj) {
 // (The `nameit:` entry from obj_is_pname() is a separate xname_flags path and
 // is not part of this helper.)
 export function xname_oname_tail(obj, buf) {
-    if (!(has_oname(obj) && obj.dknown))
-        return buf;
-    let nm = ONAME(obj);
-    if (obj.oartifact && nm.startsWith('The '))
-        nm = lowc(nm[0]) + nm.slice(1);
-    return `${buf} named ${nm}`;
+    if (has_oname(obj) && obj.dknown) {
+        let nm = ONAME(obj);
+        if (obj.oartifact && nm.startsWith('The '))
+            nm = lowc(nm[0]) + nm.slice(1);
+        buf = `${buf} named ${nm}`;
+    }
+    /* C:1011-1012 — xname_flags' last step: `if (!strncmpi(buf, "the ", 4))
+     * buf += 4;`; a fruit named "the plum" reads "a plum" in doname. */
+    if (buf.slice(0, 4).toLowerCase() === 'the ')
+        buf = buf.slice(4);
+    return buf;
 }
 
 // ── xname for a SPELLBOOK (objnam.c:881-903) ────────────────────────────────
@@ -3349,10 +3355,11 @@ function singplur_lookup(basestr, endstring, to_plural, alt_as_is) {
 
 // ── just_an (C objnam.c:2106-2141) ────────────────────────────────────────────
 export function just_an(outbuf, str) {
-    let c0 = lowc(str[0]);
+    const c0 = lowc(str[0] ?? '\0');
     if (!str[1] || str[1] === ' ') {
         /* single letter; might be used for named fruit or a musical note */
-        return strchr("aefhilmnosx", c0) ? "an " : "a ";
+        // C objnam.c:2117: strchr also matches the terminating NUL for an empty name.
+        return (c0 === '\0' || strchr("aefhilmnosx", c0)) ? "an " : "a ";
     } else if (!strncmpi(str, "the ", 4)
                /* these probably shouldn't be handled here because doing so
                   impacts inventory when using them for named fruit */
@@ -5942,8 +5949,12 @@ async function wizterrainwish(bp, d) {
         lev.typ = wall;
         lev.flags = 0;
         set_wallprop_from_str(bp);
-        fix_wall_spines(Math.max(0, x - 1), Math.max(0, y - 1),
-                        Math.min(COLNO, x + 1), Math.min(ROWNO, y + 1));
+        const sx2 = Math.min(COLNO, x + 1), sy2 = Math.min(ROWNO, y + 1);
+        /* C mkmaze.c:fix_wall_spines sanity check: y2 == ROWNO (hero on the
+         * bottom row) or x2 == COLNO is a panic, so "A wall." never prints. */
+        if (sx2 >= COLNO || sy2 >= ROWNO)
+            await panic(`wall_extends: bad bounds (${Math.max(0, x - 1)},${Math.max(0, y - 1)}) to (${sx2},${sy2})`);
+        fix_wall_spines(Math.max(0, x - 1), Math.max(0, y - 1), sx2, sy2);
         await pline('A wall.');
     } else if (ends('secret corridor')) {
         if ((lev.typ | 0) === CORR) {
@@ -5956,7 +5967,10 @@ async function wizterrainwish(bp, d) {
         }
     } else if (ends('room') || ends('floor') || ends('ground')) {
         if (oldtyp === ROOM
-            || (IS_FURNITURE(oldtyp) && oldtyp !== LADDER && oldtyp !== STAIRS)
+            || (IS_FURNITURE(oldtyp)
+                // C rm.h:320 CAN_OVERWRITE_TERRAIN permits the debug override.
+                && (game.iflags?.debug_overwrite_stairs
+                    || (oldtyp !== LADDER && oldtyp !== STAIRS)))
             || oldtyp === ICE || is_pool_or_lava(x, y)) {
             lev.typ = ROOM;
             await pline('Room floor.');

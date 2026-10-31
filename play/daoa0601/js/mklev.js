@@ -80,7 +80,7 @@ import { MAP_SYMBOLS } from './map_symbols.js';
 import { cleanupSpecialLevelMap, removeSpecialLevelBoundaries } from './special_level_cleanup.js';
 import { A_CHA, COLNO, ROWNO, STONE, MAX_TYPE, ROOM, CORR, DOOR, STAIRS, LADDER, HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, D_NODOOR, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED, OROOM, VAULT, COURT, SWAMP, BEEHIVE, MORGUE, BARRACKS, ZOO, TEMPLE, LEPREHALL, COCKNEST, ANTHOLE, DELPHI, THEMEROOM, SHOPBASE, ROOMOFFSET, MAXNROFROOMS, SHARED, SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, ALTAR, GRAVE, THRONE, HEADSTONE, ENGRAVE, BURN, MARK, DUST, ENGR_BLOOD, DIR_N, DIR_S, DIR_E, DIR_W, DIR_180, XL_UP, XL_DOWN, XL_LEFT, XL_RIGHT, ACCESSIBLE, IS_WALL, IS_STWALL, IS_DOOR, IS_ROOM, IS_OBSTRUCTED, ZAP_POS, IS_FURNITURE, IS_POOL, IS_AIR, IS_LAVA, In_endgame, Is_earthlevel, Is_botlevel, Is_stronghold, Invocation_lev, In_hell, In_quest, In_V_tower, Is_oracle_level, Is_waterlevel, Is_firelevel, Is_airlevel, Is_astralevel, Is_knox_level, Is_rogue_level, In_sokoban, SPACE_POS, isok, W_NONDIGGABLE, W_NONPASSWALL, FILL_NONE, FILL_NORMAL, ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DBWALL, ICED_POOL, ICED_MOAT, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, DB_MOAT, DB_LAVA, DB_DIR, DB_UNDER, DB_FLOOR, SHOP_HOLE_COST, TREE, AIR, CLOUD, TRICKED, A_NONE, A_CHAOTIC, A_NEUTRAL, A_LAWFUL, AM_NONE, AM_LAWFUL, AM_SHRINE, AM_SANCTUM, Align2amask, Amask2align, LR_DOWNSTAIR, LR_UPSTAIR, LR_UPTELE, LR_DOWNTELE, LR_TELE, LR_BRANCH, LR_PORTAL, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE, MM_ANGRY, MM_ASLEEP, MM_NONAME, MM_NOGRP, MM_EMIN, MM_EPRI, MM_ESHK, MM_NOWAIT, MM_NOTAIL, MM_IGNOREWATER, MM_ADJACENTOK, MM_NOCOUNTBIRTH, MM_NOMSG, MM_MALE, MM_FEMALE, MM_MINVIS, MM_EDOG, NO_MINVENT, G_EXTINCT, G_GENOD, G_GONE, G_NOCORPSE, ROT_AGE, TROLL_REVIVE_CHANCE, HEALTHY_TIN, RANDOM_TIN, MAX_OIL_IN_FLASK, CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_NEUTER, CORPSTAT_HISTORIC, CORPSTAT_INIT, CORPSTAT_SPE_VAL, STRAT_APPEARMSG, STRAT_CLOSE, STRAT_WAITFORU, ANTI_MAGIC, TT_BURIEDBALL, TT_BEARTRAP, TT_WEB, TT_PIT, TT_LAVA, } from './const.js';
 import { getObjectClassBounds, getObjectDefinition, requireObjectData, OBJECT_BASES, OBJECT_PROB, OBJECT_SPELL_LEVEL, OBJECT_MERGE, OBJECT_WEIGHT, OBJECT_COST, OBJECT_SUBTYPE, WORM_TOOTH, UNICORN_HORN, HELM_OF_OPPOSITE_ALIGNMENT, GAUNTLETS_OF_FUMBLING, FUMBLE_BOOTS, LEVITATION_BOOTS, AMULET_OF_STRANGULATION, AMULET_OF_RESTFUL_SLEEP, AMULET_OF_CHANGE, AMULET_OF_YENDOR, FAKE_AMULET_OF_YENDOR, LARGE_BOX, CHEST, ICE_BOX, SACK, OILSKIN_SACK, BAG_OF_HOLDING, BAG_OF_TRICKS, TALLOW_CANDLE, WAX_CANDLE, BRASS_LANTERN, OIL_LAMP, MAGIC_LAMP, EXPENSIVE_CAMERA, CRYSTAL_BALL, TINNING_KIT, CAN_OF_GREASE, FIGURINE, MAGIC_MARKER, MAGIC_FLUTE, FROST_HORN, FIRE_HORN, HORN_OF_PLENTY, MAGIC_HARP, DRUM_OF_EARTHQUAKE, CORPSE, EGG, MEAT_RING, GLOB_OF_GRAY_OOZE, GLOB_OF_BLACK_PUDDING, KELP_FROND, SLIME_MOLD, MELON, LUMP_OF_ROYAL_JELLY, CREAM_PIE, CANDY_BAR, TIN, GOLD_PIECE, SPE_NOVEL, SPE_BOOK_OF_THE_DEAD, SPE_DIG, POT_SICKNESS, DILITHIUM_CRYSTAL, LUCKSTONE, LOADSTONE, TOUCHSTONE, ROCK, BOULDER, STATUE, DART, DAGGER, SPEAR, SLING, ORCISH_DAGGER, MACE, QUARTERSTAFF, BULLWHIP, FEDORA, ELVEN_ARROW, ELVEN_SPEAR, ELVEN_DAGGER, ELVEN_SHORT_SWORD, ELVEN_BROADSWORD, ELVEN_BOW, ELVEN_LEATHER_HELM, ELVEN_MITHRIL_COAT, ELVEN_CLOAK, ELVEN_SHIELD, ELVEN_BOOTS, ORCISH_ARROW, ORCISH_SHORT_SWORD, ORCISH_BOW, ORCISH_HELM, ORCISH_CHAIN_MAIL, ORCISH_CLOAK, URUK_HAI_SHIELD, ORCISH_SHIELD, SCIMITAR, AXE, PICK_AXE, DWARVISH_SPEAR, DWARVISH_SHORT_SWORD, DWARVISH_MATTOCK, DWARVISH_IRON_HELM, DWARVISH_MITHRIL_COAT, DWARVISH_CLOAK, DWARVISH_ROUNDSHIELD, IRON_SHOES, HELMET, SPLINT_MAIL, RING_MAIL, SMALL_SHIELD, ROBE, CLOAK_OF_PROTECTION, CLOAK_OF_MAGIC_RESISTANCE, LEATHER_ARMOR, LEATHER_JACKET, LEATHER_GLOVES, LEATHER_CLOAK, MIRROR, POT_OBJECT_DETECTION, RIN_INVISIBILITY, SHIELD_OF_REFLECTION, SADDLE, WAN_CANCELLATION, WAN_LIGHT, WAN_LIGHTNING, objectDirection, } from './object_data.js';
-import { MONSTER_ATTACKS, MONSTER_BODY_META, MONSTER_DIFFICULTY, MONSTER_GENO, MONSTER_ALIGNMENT, MONSTER_LEVEL, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_SYMBOL, MONSTER_SIZE, MONSTER_MOVE, MONSTER_SOUND, MONSTER_HAS_WEAPON_ATTACK, MONSTER_COLOR, MONSTER_NAME, MONSTER_RESISTS, SPECIAL_PM, monsterClassSymbol, monsterIsPlayerMonster, requireMonsterData, monsterIsAmorphous, monsterIsNoncorporeal, monsterIsWhirly, } from './monster_data.js';
+import { MONSTER_ATTACKS, MONSTER_BODY_META, MONSTER_DIFFICULTY, MONSTER_GENO, MONSTER_ALIGNMENT, MONSTER_LEVEL, MONSTER_CLASS_SYMBOLS, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_SYMBOL, MONSTER_SIZE, MONSTER_MOVE, MONSTER_SOUND, MONSTER_HAS_WEAPON_ATTACK, MONSTER_COLOR, MONSTER_NAME, MONSTER_RESISTS, SPECIAL_PM, monsterClassSymbol, monsterIsPlayerMonster, requireMonsterData, monsterIsAmorphous, monsterIsNoncorporeal, monsterIsWhirly, } from './monster_data.js';
 import { isReviver, isRider, zombieForm, } from './corpse_species.js';
 import { adjustedMonsterLevel, isHomeElemental, newMonsterHitPoints, } from './monster_hit_points.js';
 import { changeMonsterForm, initialShapechangedBirth, pickNastyShape, shapechangerGender, } from './monster_polymorph.js';
@@ -1225,13 +1225,20 @@ function finishCorpstat(otmp, mtmp, pm, flags, zombify, noRevive) {
     }
     return otmp;
 }
-const monsterGenerationOrder = Array.from({ length: SPECIAL_PM }, (_, mndx) => mndx).sort((left, right) => {
-    const leftKey = (requireMonsterData(MONSTER_SYMBOL, left) << 8)
-        | requireMonsterData(MONSTER_DIFFICULTY, left);
-    const rightKey = (requireMonsterData(MONSTER_SYMBOL, right) << 8)
-        | requireMonsterData(MONSTER_DIFFICULTY, right);
-    return leftKey - rightKey || left - right;
-});
+// C makemon.c:cmp_init_mongen_order().
+function monsterGenerationOrder() {
+    // C makemon.c:init_mongen_order() sorts once, on first use. Alignment
+    // abuse may have changed Erinys difficulty before this first selection.
+    game._monsterGenerationOrder ??= Array.from({ length: SPECIAL_PM }, (_, mndx) => mndx).sort((left, right) => {
+        const leftKey = (requireMonsterData(MONSTER_SYMBOL, left) << 8)
+            | requireMonsterData(MONSTER_DIFFICULTY, left);
+        const rightKey = (requireMonsterData(MONSTER_SYMBOL, right) << 8)
+            | requireMonsterData(MONSTER_DIFFICULTY, right);
+        return leftKey - rightKey || left - right;
+    });
+    return game._monsterGenerationOrder;
+}
+// C makemon.c:mk_gen_ok().
 export function mkclassAligned(monsterClass, spc = 0, atyp = A_NONE) {
     const G_FREQ = 0x0007;
     const G_HELL = 0x0400;
@@ -1242,7 +1249,9 @@ export function mkclassAligned(monsterClass, spc = 0, atyp = A_NONE) {
     const inHell = !!currentDungeon?.flags?.hellish;
     const maxMonsterLevel = level_difficulty() >> 1;
     const heroLevel = game.u?.ulevel || 1;
-    const classMembers = monsterGenerationOrder.filter(mndx => MONSTER_SYMBOL[mndx] === monsterClass);
+    if (monsterClass < 1 || monsterClass >= MONSTER_CLASS_SYMBOLS.length)
+        return null;
+    const classMembers = monsterGenerationOrder().filter(mndx => MONSTER_SYMBOL[mndx] === monsterClass);
     if (!classMembers.length)
         return null;
     const zeroFrequencyClass = !MONSTER_GENO.some((geno, mndx) => MONSTER_SYMBOL[mndx] === monsterClass
@@ -1317,6 +1326,8 @@ function rndmonstAlignment() {
         ? game._rndmonstAlignment.alignment
         : game.dungeons?.[game.u?.uz?.dnum ?? 0]?.flags?.alignment ?? null;
 }
+// C makemon.c:uncommon().
+// C makemon.c:temperature_shift().
 function rndmonstReservoir(minAdjustment = 0, maxAdjustment = 0) {
     const zlevel = level_difficulty();
     const heroLevel = game.u?.ulevel || 1;
@@ -1518,6 +1529,7 @@ export function initialMonsterSleepState(mndx, forceAsleep = false) {
     }
     return sleeping;
 }
+// C makemon.c:m_initgrp().
 async function initMonsterGroup(mndx, x, y, countRange, mmflags) {
     let count = Math.trunc(rnd(countRange) / ((game.u?.ulevel ?? 1) < 3 ? 4
         : (game.u?.ulevel ?? 1) < 5 ? 2 : 1));
@@ -3139,6 +3151,8 @@ async function unmakeNastySubstitute(monster) {
     await discardMonsterInventory(monster, true);
     await removeMonsterFromGame(monster);
 }
+// C trap.c:hole_destination().
+// C trap.c:choose_trapnote().
 export async function maketrap(x, y, typ) {
     // trap.c:maketrap() treats the two pseudo-types returned by rndtrap()
     // as failed constructions.  They describe trapped furniture rather than
@@ -5009,6 +5023,7 @@ export function courtMonsterType() {
         return mkclass(33, 0); // S_GNOME
     return mkclass(11, 0); // S_KOBOLD
 }
+// C mkroom.c:mk_zoo_thronemon().
 async function fillCourtRoom(room) {
     const level = requireGameLevel();
     // C mkroom.c:fill_zoo(COURT).  Maze courts use the throne already drawn
@@ -5840,6 +5855,7 @@ async function specialShrinePriest(temple, altarX, altarY, altarAlignment, { san
     }
     return priest;
 }
+// C mkroom.c:morguemon().
 export function morgueMonsterType() {
     const roll = rn2(100);
     const hitDice = rn2(level_difficulty());
@@ -7693,6 +7709,7 @@ export async function generateFakeWizardLevel(active) {
     active.file = `${active.prototype}.lua`;
     await generateSpecialAndFixup(generateLuaSpecialLevel, active);
 }
+// C dbridge.c:create_drawbridge().
 async function makeSpecialDrawbridge(x, y, direction, open) {
     const level = requireGameLevel();
     const bridge = level.at(x, y);
@@ -9103,6 +9120,7 @@ export async function fillSpecialRoom(croom) {
     else if (croom.rtype === SWAMP)
         level.flags.has_swamp = true;
 }
+// C mkroom.c:squadmon().
 function barracksMonsterType() {
     const probabilities = [
         [PM_SOLDIER, 80], [PM_SERGEANT, 15],
@@ -9933,6 +9951,7 @@ function do_room_or_subroom(croom, lowx, lowy, hix, hiy, lit, rtype, special, is
     }
 }
 // C ref: mklev.c sort_rooms()
+// C mklev.c:mkroom_cmp().
 function sort_rooms() {
     const level = requireGameLevel();
     const n = level.nroom;
@@ -11018,6 +11037,7 @@ function trapVictimObjectBreaks(object) {
 }
 // C mktrap(): the room and maze callers share type selection, collision
 // checks, web residents, and shallow-level victims.
+// C mklev.c:traptype_roguelvl().
 async function mktrap(num, options, croom, coordinate) {
     const level = requireGameLevel();
     // Explicit locations are screened before type selection. Room and maze
@@ -11132,6 +11152,7 @@ async function fillRandomRoomObjects(croom, pos) {
         }
     }
 }
+// C mklev.c:mksink().
 export async function fill_ordinary_room(croom, bonus_items) {
     const g = game;
     if (!croom || (croom.rtype !== OROOM && croom.rtype !== THEMEROOM))

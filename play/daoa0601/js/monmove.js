@@ -3,7 +3,7 @@ import { formatFeltMessage, publishHeardMessage } from './hero_speech.js';
 import { objectMaterial } from './object_material.js';
 import { moveMonsterNextToHero } from './teleport.js';
 import { monsterFireDescription } from './monster_fire_description.js';
-import { bot } from './display.js';
+import { bot, flush_screen } from './display.js';
 import { noticeMonster } from './monster_notices.js';
 import { launchRollingBoulder } from './rolling_boulder.js';
 import { recorderLocalHour } from './calendar.js';
@@ -165,7 +165,7 @@ import { applyMonsterContactPassive } from './monster_contact_passive.js';
 import { applyHeroFormPassive } from './hero_form_passive.js';
 import { tryKnockback } from './knockback.js';
 import { finishEnvironmentalMonsterDeath, finishMonsterKilled, finishMonsterLiquidDeath, } from './monster_death.js';
-import { inHeroSanctuary, priestIsInOwnTemple } from './priest.js';
+import { inHeroSanctuary, priestInOwnTemple } from './priest.js';
 import { addObjectToMonsterInventory, linkObjectToMonsterInventory, } from './monster_inventory.js';
 import { currentMonsterLoad, monsterCanCarryObject, monsterCarryAmount } from './monster_carry.js';
 export { monsterCanCarryObject } from './monster_carry.js';
@@ -885,6 +885,7 @@ function monsterAt(state, x, y, ignore = null) {
 function speciesIsUnique(mnum) {
     return !!((MONSTER_GENO[mnum] ?? 0) & 0x1000);
 }
+// C mon.c:mm_2way_aggression().
 function zombiePairIsAggressive(attacker, defender, state) {
     const heroInTower = insideWizardTower(state.u.ux, state.u.uy, state);
     if (insideWizardTower(attacker.mx, attacker.my, state) !== heroInTower ||
@@ -898,6 +899,7 @@ function zombiePairIsAggressive(attacker, defender, state) {
         return false;
     return !speciesIsUnique(attacker.mnum) && !speciesIsUnique(defender.mnum);
 }
+// C mon.c:mm_aggression().
 function monsterAggressionFlags(attacker, defender, state) {
     if (attacker.mtame && defender.mtame)
         return 0;
@@ -1390,6 +1392,7 @@ function nearbyFloorObjects(monster, state) {
     })
         .map((entry) => entry.object);
 }
+// C dogmove.c:can_reach_location().
 function petCanReachLocation(monster, mx, my, fx, fy, state) {
     if (mx === fx && my === fy)
         return true;
@@ -3568,7 +3571,8 @@ function specialMoverSeesHero(monster, state) {
         couldSeeFromHero(state, monster.mx, monster.my));
 }
 async function movePriest(monster, state, random, rollDice, rollOne, calls) {
-    if (!priestIsInOwnTemple(monster, state))
+    const roomno = roomsAt(state.level, monster.mx, monster.my, TEMPLE)[0];
+    if (roomno === undefined || !priestInOwnTemple(monster, roomno, state))
         return null;
     const epri = monster.epri || monster.mextra?.epri;
     if (!epri)
@@ -4570,6 +4574,10 @@ async function beginHeroAttackSlot(sequence, slot, state, random, rollOne, rollD
     // once, including harmless touches and unsupported special effects.
     let damage = 0;
     if (hit) {
+        // C mattacku() displays pending movement before gulpmu(), even
+        // when admission later fails silently (for example, at iron bars).
+        if (attackType === AT_ENGL && state === game)
+            await flush_screen(1);
         damage = rollDice(dice, sides);
         calls.push(`d(${dice},${sides})`);
         if (attackType !== AT_ENGL
@@ -6273,6 +6281,7 @@ async function maybeSpinMonsterWeb(monster, movement, state, random, rollDice, c
         addShopDamage(monster.mx, monster.my, 0, state);
     return { roll, probability, created: true, trap };
 }
+// C monmove.c:holds_up_web().
 function holdsUpMonsterWeb(x, y, state) {
     const location = state.level.at(x, y);
     if (x < 1 || !location || IS_OBSTRUCTED(location.typ) || location.typ === IRONBARS)
@@ -7358,6 +7367,7 @@ export async function runMonsterAction(monster, state, random = rn2, rollDice = 
 }
 // C monmove.c:dochug(), without movemon_singlemon()'s hiding and Conflict checks.
 // Direct callers such as shop entry do not spend a scheduled movement ration.
+// C monmove.c:m_arrival().
 export async function beginMonsterDochug(monster, state, random = rn2, rollDice = d, rollOne = rnd) {
     const calls = DISCARDED_CALL_LOG;
     const nextToHero = distmin(monster.mx, monster.my, state.u.ux, state.u.uy) <= 1;

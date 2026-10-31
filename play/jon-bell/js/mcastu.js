@@ -19,7 +19,7 @@ import { ureflects, lined_up } from './makemon.js';
 import { couldsee, cansee } from './vision.js';
 import { M_ATTK_MISS, M_ATTK_HIT, u_at, A_LAWFUL, EMIN, ismnum, MALE, FEMALE, NEUTRAL, NUM_MGENDERS, STRAT_WAITFORU, STRAT_APPEARMSG, SLIMED, MM_NOWAIT, HEADSTONE } from './const.js';
 import { an } from './objnam.js';
-import { the_unique_pm, permonstTemplate, mon_set_minvis, monPmname } from './makemon.js';
+import { the_unique_pm, permonstTemplate, mon_set_minvis, pmname } from './makemon.js';
 import { mon_aligntyp } from './priest.js';
 import { wake_nearto } from './mklev.js';
 /* C mon.c:4596 healmon() — m_cure_self()'s heal. */
@@ -38,7 +38,7 @@ import { nasty } from './mklev.js';
  * deferral for C's non-returning done()) and rehumanize (polyself.c). */
 import { mhe, nonliving, is_demon } from './makemon.js';
 import { minuhpmax, setuhpmax, adjuhploss, losestr } from './attrib.js';
-import { Upolyd } from './const.js';
+import { Upolyd, M_AP_TYPE } from './const.js';
 import { losehp } from './dokick.js';
 import { deadhero } from './end.js';
 /* C mcastu.c:337-340 touch_of_death: done(DIED) is SYNCHRONOUS in C — it
@@ -176,12 +176,12 @@ export async function cursetxt(mtmp, undirected) {
     }
 }
 /* C monst.h is_obj_mappear(mon, otyp) —
- *   ((mon)->m_ap_type == M_AP_OBJECT && (mon)->mappearance == (otyp))
+ *   (M_AP_TYPE(mon) == M_AP_OBJECT && (mon)->mappearance == (otyp))
  * applied to gy.youmonst (a hero mimicking an object).  js/monmove.js:1826
  * carries the same clause as a hardcoded `false` stub. */
 function is_obj_mappear_youmonst(otyp) {
     const ym = game.youmonst;
-    return !!ym && (ym.m_ap_type | 0) === M_AP_OBJECT_MC
+    return !!ym && M_AP_TYPE(ym) === M_AP_OBJECT_MC
         && (ym.mappearance | 0) === (otyp | 0);
 }
 const M_AP_OBJECT_MC = 2;        /* monst.h (js/const.js:1299) */
@@ -453,7 +453,7 @@ export async function mcast_death_touch(mtmp) {
 }
 /* C pline.c:386-399 You_feel(line) — "You feel " + line (the Unaware variant
  * prefixes "You dream that you feel "; js/dig.js:902 spells the same body). */
-function You_feel_mc(line) { pline((Unaware() ? 'You dream that you feel ' : 'You feel ') + line); } /* pline.c:387-400 */
+function You_feel_mc(line) { return pline((Unaware() ? 'You dream that you feel ' : 'You feel ') + line); } /* pline.c:387-400 */
 const KILLED_BY_MC = 1;               /* hack.h killer.format */
 // other than MCAST_HASTE_SELF ever reaches mcast_spell in the 15 records).
 export async function mcast_clone_wiz(mtmp) {
@@ -560,9 +560,9 @@ export async function mcast_weaken_you(mtmp, dmg) {
     if (Antimagic()) {
         shieldeff(u.ux, u.uy);
         monstseesu(M_SEEN_MAGR_MC);
-        You_feel_mc('momentarily weakened.');
+        await You_feel_mc('momentarily weakened.');
     } else {
-        pline('You suddenly feel weaker!');
+        await pline('You suddenly feel weaker!');
         dmg = (mtmp.m_lev | 0) - 6;
         if (dmg < 1) /* C's own comment: paranoia since only chosen when
                       * m_lev is high */
@@ -687,7 +687,7 @@ export async function mcast_lightning(mtmp, dmg) {
 
     /* C:571 Soundeffect(se_bolt_of_lightning, 80) — audio only. */
     await pline('A bolt of lightning strikes down at you from above!');
-    reflects = ureflects('It bounces off your %s%s.', '');      /* C:573 */
+    reflects = await ureflects('It bounces off your %s%s.', '');      /* C:573 */
     orig_dmg = dmg = d(8, 6);                                   /* C:574 */
     if (reflects || ShockResistance()) {                        /* C:575 */
         shieldeff(u.ux, u.uy);
@@ -1281,7 +1281,7 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
      * wrong place? */
     if (!foundyou && thinks_it_foundyou
         && !is_undirected_spell(spellnum)) {
-        pline_mon(mtmp, (canseemon(mtmp) ? Monnam(mtmp) : 'Something')
+        await pline_mon(mtmp, (canseemon(mtmp) ? Monnam(mtmp) : 'Something')
             + ' casts a spell at '
             + (is_waterwall(mtmp.mux, mtmp.muy) ? 'empty water' : 'thin air') + '!');
         return M_ATTK_MISS;
@@ -1290,7 +1290,8 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
     nomul(0);
     if (rn2(ml * 10) < (mtmp.mconf ? 100 : 20)) { /* fumbled attack */
         if (canseemon(mtmp) && !Deaf()) { /* mcastu.c:210 */
-            pline_The('air crackles around ' + mon_nam(mtmp) + '.');
+            set_msg_xy(mtmp.mx, mtmp.my);
+            await pline_The('air crackles around ' + mon_nam(mtmp) + '.');
         }
         return M_ATTK_MISS;
     }
@@ -1305,7 +1306,7 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
         } else {
             suffix = ' at you';
         }
-        pline_mon(mtmp, (canspotmon(mtmp) ? Monnam(mtmp) : 'Something')
+        await pline_mon(mtmp, (canspotmon(mtmp) ? Monnam(mtmp) : 'Something')
             + ' casts a spell' + suffix + '!');
     }
 
@@ -1332,10 +1333,10 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
     ret = M_ATTK_HIT;
     switch (mattk.adtyp) {
     case AD_FIRE:
-        pline("You're enveloped in flames.");
+        await pline("You're enveloped in flames.");
         if (FireResistance()) {
             shieldeff(game.u.ux, game.u.uy);
-            pline('But you resist the effects.');
+            await pline('But you resist the effects.');
             monstseesu(0x0002 /* M_SEEN_FIRE */);
             dmg = 0;
         } else {
@@ -1345,10 +1346,10 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
         await mon_spell_hits_spot(mtmp, AD_FIRE, game.u.ux, game.u.uy);
         break;
     case AD_COLD:
-        pline("You're covered in frost.");
+        await pline("You're covered in frost.");
         if (ColdResistance()) {
             shieldeff(game.u.ux, game.u.uy);
-            pline('But you resist the effects.');
+            await pline('But you resist the effects.');
             monstseesu(0x0004 /* M_SEEN_COLD */);
             dmg = 0;
         } else {
@@ -1360,7 +1361,7 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
         await You('are hit by a shower of missiles!');
         if (Antimagic()) {
             shieldeff(game.u.ux, game.u.uy);
-            pline_The('missiles bounce off!');
+            await pline_The('missiles bounce off!');
             monstseesu(0x0001 /* M_SEEN_MAGR */);
             dmg = 0;
         } else {
@@ -1519,9 +1520,6 @@ function type_is_pname(ptr) {
  *   return pm->pmnames[mgender];
  * `pm` here is a permonstTemplate()-shaped object carrying `.pmnames`
  * (js/makemon.js permonstTemplate / monPmname). */
-function pmname(pm, mgender) {
-    return monPmname(pm.pmidx, mgender);
-}
 
 function Sprintf(fmt, ...args) {
     let ai = 0;

@@ -499,7 +499,7 @@ export async function ff_movemon_one_pass() {
     /* C mon.c:1336-1337 — reset obj bypasses after the last monster has moved. */
     if (g.context?.bypasses || g.svc?.context?.bypasses)
         clear_bypasses();
-    dmonsfree();
+    await dmonsfree();
     if (ENV.FF_MLTRACE === '1')
         pushRngLogEntry(`^ff_movemon_pass[moves=${g.moves | 0} pass=${g._ffMlPass | 0} roster=${roster.length | 0} somebody=${somebody_can_move ? 1 : 0}]`);
     return somebody_can_move;

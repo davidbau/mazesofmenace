@@ -108,7 +108,7 @@ import { pluslvl, more_experienced, losexp } from './exper.js';
 import monMsizePack from './makemon_msize.json' with { type: 'json' };
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import monMsoundPack from './makemon_msound.json' with { type: 'json' };
-import { set_malign, levelDifficulty, which_armor, grow_up, monflee, nonlivingMon, is_demon, monhp_per_lvl, monPmname, zombie_maker } from './makemon.js';
+import { set_malign, levelDifficulty, which_armor, grow_up, monflee, nonlivingMon, is_demon, monhp_per_lvl, monPmname, pmname, zombie_maker } from './makemon.js';
 import { noteleport_level as noteleport_level_uh, emits_light, permonstTemplate, set_mon_data } from './makemon.js';
 import { ureflects as ureflects_uh } from './makemon.js';
 import { PM_FLOATING_EYE as PM_FLOATING_EYE_UH, PM_JABBERWOCK as PM_JABBERWOCK_UH } from './pm.generated.js';
@@ -181,7 +181,7 @@ import { in_rooms, tended_shop, dopay, delete_contents, costly_spot } from './sh
 import { shkgone, obfree } from "./shk.js";
 import { couldsee, cansee } from './vision.js';
 import { dist2, s_suffix } from './hacklib.js';
-import { m_carrying, mon_adjust_speed, drain_en, m_useup, m_useupall, monkilled_trap, mintrap, t_at, acid_damage } from './trap.js';
+import { m_carrying, mon_adjust_speed, drain_en, m_useup, m_useupall, monkilled_trap, mintrap, t_at, acid_damage, fill_pit } from './trap.js';
 import { ACID_RES } from './const.js';
 import { hliquid } from './mhitm.js';
 import { clone_mon_ml } from './mklev.js';
@@ -747,7 +747,9 @@ export async function artifact_hit(magr, mdef, otmp, dmg, dieroll, mdefMndx = -1
                 : (await destroy_items_mon_zap(mdef, AD_FIRE_UH, dmg));
             if (!youdefend)
                 dmg += itemdmg;
-            await ignite_items_real(youdefend ? game.invent : mdef.minvent);
+            // C artifact.c:1495 uses mdef->minvent even for youmonst;
+            // the hero's carried inventory is a separate chain (gi.invent).
+            await ignite_items_real(youdefend ? game.youmonst?.minvent : mdef.minvent);
         }
         if (youdefend)
             await burn_away_slime_real();
@@ -1699,6 +1701,12 @@ async function _mimic_object_from_map(mtmp, glyphotyp) {
     /* C pager.c:335-338 — coins pluralize, slime mold takes current_fruit. */
     if ((otmp.oclass | 0) === _AC_COIN_CLASS)
         otmp.quan = 2;
+    else if ((otmp.otyp | 0) === 285 /* SLIME_MOLD */) {
+        otmp.spe = game.svc?.context?.current_fruit | 0;
+        /* C pager.c:338-343 — the mimic's own fruit overrides current_fruit. */
+        if (mtmp.mextra && (mtmp.mextra.mcorpsenm ?? NON_PM_UH) !== NON_PM_UH)
+            otmp.spe = mtmp.mextra.mcorpsenm;
+    }
     otmp.where = 3;
     otmp.ox = mtmp.mx | 0;
     otmp.oy = mtmp.my | 0;
@@ -3881,7 +3889,7 @@ export async function newexplevel() {
  * longer finds it.  JS monsters have no per-tile placement table; the chain is
  * the only structure, so unlinking by identity is the whole job.
  * C ref: mon.c:2720-2780 m_detach (the unlink portion). */
-async function unlink_mon(mtmp) {
+async function unlink_mon(mtmp, onmap) {
     /* C mon.c:2744-2745, the head of m_detach():
      *     if (mx > 0 && emits_light(mptr))
      *         del_light_source(LS_MONSTER, monst_to_any(mtmp));
@@ -3894,6 +3902,7 @@ async function unlink_mon(mtmp) {
      * reaches 0, and nothing on this path zeroes it. */
     if ((mtmp.mx | 0) > 0 && emits_light(mtmp.data))
         del_light_source(LS_MONSTER, monst_to_any(mtmp));
+    mtmp.mtrapped = 0;
     await unstuck(mtmp);
     /* C mon.c:2708 mon_leaving_level(): `if (mon->wormno) remove_worm(mon);
      * else remove_monster(mx, my);` — a killed long worm's body leaves the grid. */
@@ -3907,8 +3916,13 @@ async function unlink_mon(mtmp) {
         const apt = (mtmp.m_ap_type | 0) & 7;
         if (apt !== 0 /* M_AP_NOTHING */ && apt !== 3 /* M_AP_MONSTER */)
             seemimic(mtmp);
+        /* C mon.c:2723-2725: vacating a pinned monster's square lets the
+         * existing boulder fill its pit, before inventory is dropped. */
+        if (onmap)
+            await fill_pit(mtmp.mx | 0, mtmp.my | 0);
     }
     mtmp.mstate = (mtmp.mstate | 0) | 0x02; /* MON_DETACH (const.js) */
+    game.iflags.purge_monsters = (game.iflags.purge_monsters | 0) + 1; /* C mon.c:2796 m_detach */
 }
 
 /* XKILL flags (mon.h). */
@@ -3953,7 +3967,7 @@ async function relobj_xkilled(mtmp) {
         if (!await flooreffects(otmp, omx, omy, 'fall')) {
             await obj_no_longer_held(otmp); /* C mkobj.c:2330 via place_object */
             place_object(otmp, omx, omy);
-            stackobj_dm(otmp);
+            await stackobj_dm(otmp);
         }
     }
     /* C steal.c:895-896 — show && cansee(omx, omy) → newsym. */
@@ -4250,7 +4264,7 @@ export async function xkilled(mtmp, xkflags) {
     if ((mtmp.mhp | 0) > 0) {
         game.stoned = false; // C mon.c:3557: lifesaving cancels pending petrification.
         mtmp._dyingInGrid = false; /* still in C's grid, but alive again: mhp>0 suffices */
-        if (!cansee(mtmp.mx, mtmp.my) && !game.vamp_rise_msg) await pline('Maybe not...');
+        if (!cansee(dx, dy) && !game.vamp_rise_msg) await pline('Maybe not...');
         return;
     }
 
@@ -4322,6 +4336,7 @@ export async function xkilled(mtmp, xkflags) {
      * a kept vault guard is parked off-map at <0,0> (mon.c:3108-3112 — it
      * actually STAYS in C's grid, but nothing queries an isok-failing square),
      * and the else arm runs the inlined m_detach (unlink_mon below). */
+    const onmap = isok(dx, dy) && m_at(dx, dy) === mtmp;
     mtmp._dyingInGrid = false;
     if (_xk_stoned) {
         game.stoned = false;
@@ -4329,7 +4344,7 @@ export async function xkilled(mtmp, xkflags) {
     if (glyph_is_invisible_at(dx, dy))
         unmap_object(dx, dy);
     if (mtmp.mleashed) m_unleash(mtmp, false); /* C mon.c:2741-2742 m_detach */
-    await unlink_mon(mtmp);
+    await unlink_mon(mtmp, onmap);
     newsym(dx, dy);
     if (mtmp.iswiz) wizdeadorgone(); /* C mon.c:2761-2762, before relobj */
     await quest_monster_died(mtmp);
@@ -6278,8 +6293,8 @@ function on_fire_local(pd, mattk) {
     return on_fire_real(pd, mattk);
 }
 
-/* C mon.c:5668-5704 golemeffects(mon, adtyp, dam) — elemental damage can
- * heal or slow flesh and iron golems.  RNG-free and synchronous on this path. */
+/* C mon.c:5680-5707 golemeffects(mon, adtyp, dam) — elemental damage can
+ * heal or slow flesh and iron golems. Return the message promise for awaiters. */
 export function golemeffects(mon, adtyp, dmg) {
     const pmidx = mon?.data ? (mon.data.pmidx | 0) : -1;
     let heal = 0, slow = false;
@@ -6293,14 +6308,14 @@ export function golemeffects(mon, adtyp, dmg) {
     if (slow && (mon.mspeed | 0) !== 1 /* MSLOW */)
         mon_adjust_speed(mon, -1, null);
     if (heal && healmon(mon, heal, 0) && cansee(mon.mx | 0, mon.my | 0))
-        pline_mon(mon, `${Monnam(mon)} seems healthier.`);
+        return pline_mon(mon, `${Monnam(mon)} seems healthier.`);
 }
 function mlifesaver(mon) {
     return mlifesaver_real(mon); /* C mon.c:2827: nonliving/vampshifter guard. */
 }
 /* C mon.c:3377-3417: the trap helper supplies the death message and
  * mondead/mondied sequence; retain how for corpse suppression and pet elegies. */
-async function monkilled(mon, msg, adtyp) {
+export async function monkilled(mon, msg, adtyp) {
     const pd = mon.data;
     const nocorpse = adtyp === 26 /* AD_DGST */ || adtyp === -242 /* -AD_RBRE */
         || (adtyp === AD_FIRE && completelyburns(pd));
@@ -9043,9 +9058,6 @@ export async function poisoned(buf, atype, pname, hpdamchance, is_weapon) {
  * Use makemon.js's canonical pmname table; the old local stubs always called
  * the attacker "it", corrupting the poison killer/name text for gendered
  * monsters without consuming or suppressing any C RNG. */
-function pmname(pd, gender) {
-    return monPmname(pd?.pmidx | 0, gender);
-}
 
 function Yobjnam2(obj, verb) {
     return Yobjnam2_real(obj, verb);

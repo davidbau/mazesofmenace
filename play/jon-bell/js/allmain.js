@@ -208,6 +208,18 @@ export function getlt() {
     return fixedDatetimeTm() ? recorder_localtime(getnow()) : null;
 }
 const RECORDER_UTC_OFFSET_SEC = -4 * 3600;
+/* C calendar.c:120-175, patch 001: mktime retains the recording moment's
+ * tm_isdst, including when restore.c:617 parses a saved winter birthday. */
+export function time_from_yyyymmddhhmmss(buf) {
+    if (typeof buf !== 'string' || buf.length !== 14)
+        return 0;
+    const number = (start, end) => parseInt(buf.slice(start, end), 10) || 0;
+    const d = new Date(0);
+    d.setUTCFullYear(number(0, 4), number(4, 6) - 1, number(6, 8));
+    d.setUTCHours(number(8, 10), number(10, 12), number(12, 14), 0);
+    const result = d.getTime() / 1000 - RECORDER_UTC_OFFSET_SEC;
+    return Number.isFinite(result) && result !== -1 ? result : 0;
+}
 export function getnow() {
     const lt = fixedDatetimeTm();
     if (!lt)
@@ -298,12 +310,9 @@ export async function report_config_errors() {
          * parked it: every step of a game that opened with a config-error
          * report records that one position. */
         g._rawCursorFrozen = [g.nhDisplay?.cursorCol ?? 0, g.nhDisplay?.cursorRow ?? 0, 1];
-        /* wait_synch() is xwaitforspace(""): only Return/Enter or ESC end the
-         * wait (hardfought-style space is not accepted); other keys are read
-         * and discarded, each one a recorded frame. */
         for (;;) {
             const c = await nhgetch();
-            if (c === 10 || c === 13 || c === 27 || c === undefined || c < 0)
+            if (c === 10 || c === 13 || c === undefined || c < 0)
                 break;
         }
     }
@@ -937,7 +946,7 @@ export function interrupt_multi(msg) {
 /* Async C boundary: maybe_finished_meal() synchronously completes eatfood in C,
  * while this port's fpostfx/useup chain awaits. Every caller must await this
  * function before continuing combat, trap, timeout, or turn output. */
-export async function stop_occupation(options) {
+export async function stop_occupation() {
     const g = game;
     if (typeof process !== 'undefined' && ENV && ENV.FF_MLTRACE === '1') {
         const _stack = new Error().stack || '';
@@ -948,12 +957,7 @@ export async function stop_occupation(options) {
         pushRngLogEntry(`^ml_stopsite[caller=${_caller}]`);
     }
     if (g.occupation) {
-        /* The study occupation's clear is deferred (js/mhitu.js stop_occupation
-         * emits the message at the attack, the driver clears afterwards).  In C
-         * that first stop_occupation() already cleared go.occupation, so a
-         * later one in the same turn (dochugw, monmove.c:235) prints nothing. */
-        const _studyAlreadyStopped = g.occtxt === 'studying' && g._studyStopMsg;
-        if (!options?.silent && !_studyAlreadyStopped && !(await maybe_finished_meal(true)))
+        if (!(await maybe_finished_meal(true)))
             await pline(`You stop ${g.occtxt}.`);
         /* The fprefx taste line ("This cram ration is bland.") plined by the
          * starting rhack is still the committed topline when the first eating
@@ -1894,7 +1898,13 @@ async function eat_occupation_turn() {
         ..._plineSegments(eatMsg, eatMsgJoins),
     ]) {
         if (!part) continue;
-        const _fromPreEat = (_preEatSeen++) < _preEatSegs.length;
+        /* Restoring the topline inside eatfood moves pre-bite messages into
+         * eatMsg via _occBeforeInput. They still precede the bite in C
+         * (allmain.c:197-198,485): use their own pline flush frames, including
+         * a sanity diagnostic flushed before this turn's moves++.
+         */
+        const _fromPreEat = (_preEatSeen++) < _preEatSegs.length
+            || _preEatSeen <= _preEatConsumed;
         _emitted = true;
         /* A prior part can have owned a more() dismissed with ESC.  C's
          * update_topl sampled skip before that more(), so the owner was drawn,
@@ -2006,10 +2016,14 @@ async function eat_occupation_turn() {
                     }
                 }
                 const _pageFrame = _pf?.cells || _ownFrame?.cells || (_interrupt && _tickFrame) || thisTurnFrame;
-                /* The movemon pline's flush_screen()/bot() ran before moves++
-                 * (allmain.c:261), so its --More-- shows that frame's T:. */
+                /* C pline.c:273-276: the map, status and clock all belong to
+                 * the incoming pline's flush. Even a message collected with
+                 * eatMsg can have been plined by movemon before moves++
+                 * (allmain.c:212-244); retain _ownFrame's clock with its map. */
+                const _pageMoves = _pf?.cells ? (_pf.moves | 0)
+                    : _ownFrame?.cells ? (_ownFrame.moves | 0) : thisTurnMoves;
                 const morc = await occupation_force_more(
-                    _committed, _pageFrame, _pf?.cells ? (_pf.moves | 0) : thisTurnMoves,
+                    _committed, _pageFrame, _pageMoves,
                     /* A pre-eat pline (encumber_msg, allmain.c:208) pages over the status its own
                      * flush_screen() painted, taken mid-meal (u.uhs not yet Satiated), not the
                      * live post-meal u.uhs. */
@@ -2447,6 +2461,13 @@ async function nh_timeout_deaf() {
             u.HDeaf = (u.HDeaf | 0) - 1;
         if ((dp.intrinsic | 0) & TIMEOUT)
             return;
+        /* C has ONE HDeaf.  eat.c:3421 incr_itimeout(&HDeaf, duration) (faint)
+         * lengthens only the flat slot, so the legacy mirror can run out
+         * first; the deafness then lasts until the flat timer does. */
+        if ((u.HDeaf | 0) & TIMEOUT) {
+            dp.intrinsic = u.HDeaf | 0;
+            return;
+        }
         const was = { value: dp.intrinsic | 0 };
         set_itimeout(was, 1);
         dp.intrinsic = was.value;
@@ -2785,8 +2806,7 @@ export function monster_nearby() {
 // Clears the occupation and prints "You stop studying." (go.occtxt = "studying").
 // nomul(0) and SET_BOTL are RNG-neutral and fold into the next bot().
 async function stop_occupation_learn() {
-    const g = game;
-    if (g.occupation) {
+    // Historical deferred-clear implementation; now share C allmain.c:684-695.
         // C allmain.c:759 — You("stop %s.", go.occtxt).  In C a single
         // stop_occupation() both prints and clears go.occupation, so exactly one
         // "You stop studying." fires per interrupt (whichever site runs first — the
@@ -2800,13 +2820,7 @@ async function stop_occupation_learn() {
         // and only perform the deferred clear.  When the interrupt was mere PROXIMITY
         // (monster_nearby with no landed attack), mhitu never ran and this site is the
         // sole emitter.  The flag is reset per study-turn at the driver loop head.
-        if (!g._studyStopMsg) {
-            await pline(`You stop ${g.occtxt || 'studying'}.`);
-            g._studyStopMsg = true;
-        }
-        g.occupation = null;
-    }
-    g.multi = 0;
+    await stop_occupation();
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -3260,6 +3274,18 @@ async function moveloop_core_faithful() {
         if (g.u.utotype) await deferred_goto();
         if (g.vision_full_recalc) vision_recalc(0);
         await nh_callback_run(NHCB_END_TURN);
+        // C allmain.c:197-198: each delayed invocation checks sanity before
+        // its world block, including urgent diagnostics after an ESC'd page.
+        if (g.iflags.sanity_check || g.iflags.debug_fuzzer) {
+            if (g.iflags.sanity_no_check) {
+                g.iflags.sanity_no_check = false;
+            } else {
+                g.program_state.in_sanity_check++;
+                await bc_sanity_check();
+                await engraving_sanity_check();
+                g.program_state.in_sanity_check--;
+            }
+        }
         // C ref: allmain.c:243-446 — one delayed turn: the faithful per-turn
         // do-while, including the ++gm.multi / unmul that terminates this loop.
         await faithful_moveloop_turn();
@@ -4507,6 +4533,10 @@ async function moveloop_core_faithful() {
                 }
                 text = committed;
             }
+            /* An ESC at a begin-pline's own more() (maybe_cannibal under eatcorpse)
+             * already made that owner line live; it stays the painted topline
+             * while WIN_STOP suppresses the rest of the turn (topl.c:257-300). */
+            if (g._topl_win_stop && !_startOwnerLine) _startOwnerLine = text;
             g._occ_committed_topl = { text };
             g._resultMessage = null;
         }
@@ -4577,6 +4607,18 @@ async function moveloop_core_faithful() {
                 g._pending_message = g._pending_message
                     ? _topl_merge_result(_rl, g._pending_message, _rj)
                     : _rl;
+            }
+            // C allmain.c:197-198: each occupation repeat re-enters the
+            // moveloop's sanity checks before spending the incoming turn.
+            if (g.iflags.sanity_check || g.iflags.debug_fuzzer) {
+                if (g.iflags.sanity_no_check) {
+                    g.iflags.sanity_no_check = false;
+                } else {
+                    g.program_state.in_sanity_check++;
+                    await bc_sanity_check();
+                    await engraving_sanity_check();
+                    g.program_state.in_sanity_check--;
+                }
             }
             // C allmain.c:202-446 — the head world block of this invocation.
             if (g.context && g.context.move)
@@ -4728,6 +4770,18 @@ async function moveloop_core_faithful() {
         g.u.umoved = false;
     }
     while ((g.multi | 0) < 0) {
+        // C allmain.c:197-198 / wizcmds.c:1459-1477: this is a fresh
+        // moveloop_core invocation even though immobility skips command input.
+        if (g.iflags.sanity_check || g.iflags.debug_fuzzer) {
+            if (g.iflags.sanity_no_check) {
+                g.iflags.sanity_no_check = false;
+            } else {
+                g.program_state.in_sanity_check++;
+                await bc_sanity_check();
+                await engraving_sanity_check();
+                g.program_state.in_sanity_check--;
+            }
+        }
         // C ref: allmain.c:243-446 — one more delayed turn: the full faithful
         // per-turn do-while (umv-=NORMAL_SPEED; movemon; HEAD with mcalcmove/makemon/
         // u_calc_moveamt/dosounds/gethungry/exerchk; ++gm.multi+unmul; svm.moves++

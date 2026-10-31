@@ -16,7 +16,7 @@ import { game } from './gstate.js';
 import { dlb_file_lines, OPTMENUHELP } from './dispfile.js';
 import { ECMD_OK, gs, PARANOID_BONES, Is_rogue_level } from './const.js';
 import { nhgetch } from './input.js';
-import { flush_screen, pline, force_more, docrt, dec_mode, status_reassess, new_status_window, newclipping, reset_status_hilites } from './display.js';
+import { flush_screen, pline, force_more, docrt, dec_mode, status_reassess, new_status_window, newclipping, reset_status_hilites, gather_condition_hilite_lines } from './display.js';
 import { update_inventory } from './inventory_refresh.js';
 /* C options.c:8944 — the generic compound-option path reads its value with
  * getlin(); mungspaces (objnam.c) normalises it before it is stored. */
@@ -486,14 +486,12 @@ async function numberPadSubmenu() {
         '(end)',
     ];
     let idx = -1;
-    let repaint = true;
+    game._screen_output = build_window_screen(rows, 24, undefined, 0);
     while (idx < 0) {
-        if (repaint) {
-            game._screen_output = build_window_screen(rows, 24, undefined, 0);
-            set_cursor(30, 8);
-            game._pending_message = '';
-        }
-        repaint = true;
+        /* C wintty.c:1549-1552: an existing page only restores the footer
+         * cursor. MENU_SEARCH's getlin erased the title; do not redraw it. */
+        set_cursor(30, 8);
+        game._pending_message = '';
         const key = await nhgetch();
         if (key === 27 || key === 10 || key === 13 || key === 32)
             return;
@@ -508,7 +506,6 @@ async function numberPadSubmenu() {
             if (finished) { idx = hit; break; }
             frame[0] = '';
             game._screen_output = menu_search_docorner(frame).join('\n');
-            repaint = false;
             continue;
         }
         idx = 'abcdef'.indexOf(ch);
@@ -1389,8 +1386,11 @@ function status_hilite_linestr_gather() {
     const lines = (game.status_field_hilites || []).flatMap(status_hilite2str_rules)
         .map((l, k) => ({ ...l, k })).sort((a, b) => a.fld - b.fld || a.k - b.k);
     const cfld = INITBLSTATS.findIndex(([n]) => n === 'condition');
-    for (const spec of new Set((game.status_condition_hilites || []).map(x => x.toLowerCase())))
-        lines.push({ fld: cfld, str: spec.replace(/ /g, '') });
+    /* C botl.c:3487-3566 re-serializes the condition rules from the bitmask
+     * array (canonical names in conditions[] order, "&normal" for a rule with
+     * no attribute) instead of echoing the config text as typed. */
+    for (const str of gather_condition_hilite_lines())
+        lines.push({ fld: cfld, str });
     return lines;
 }
 

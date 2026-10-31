@@ -79,9 +79,14 @@ export function collectScreenDescriptionClasses(options = {}) {
     const showsyms = Array.isArray(options.showsyms) ? options.showsyms : null;
     const classes = [];
     let assembled = '';
-    let needsLook = false, matchCount = 0, firstmatch = null;
+    let needsLook = false, matchCount = 0, firstmatch = null, skippedVenom = 0;
     const symbolAt = (index, fallback) => {
-        const active = showsyms?.[index];
+        /* display.c:1850-1853 reglyph_darkroom: showsyms[S_darkroom] aliases
+         * showsyms[S_room] when dark_room && use_color (DEC table has no own slot). */
+        const active = showsyms?.[index]
+            ?? (index === 20 && options.darkroomAlias ? showsyms?.[19] : null);
+        if (active == null && index === 20 && options.darkroomAlias && options.decMode && !options.rogueMode)
+            return { ch: DEC_PCHARS.get(19), dec: true };
         if (active != null) return normalizeSymbol(active);
         if (options.rogueMode) {
             if (index >= SYM_OFF_O && index < SYM_OFF_M)
@@ -150,6 +155,13 @@ export function collectScreenDescriptionClasses(options = {}) {
                 // statue glyph whose depicted monster has that same symbol.
                 ? (isBoulderSymbol ? 'boulder' : 'statue')
                 : OBJEXPLAIN[i];
+            // pager.c:1391-1394: a looked-at VENOM_CLASS match is skipped
+            // (after need_to_look is set).
+            if (options.looked !== false && i === 17) {
+                needsLook = true;
+                skippedVenom++;
+                continue;
+            }
             add(description, { needs: true });
         }
     }
@@ -222,6 +234,9 @@ export function collectScreenDescriptionClasses(options = {}) {
             classes[classes.length - 1] += ' co-located with a boulder';
         break;
     }
+    // pager.c:1530-1541: if venom was ignored and the list turned out short,
+    // put it back.
+    if (skippedVenom && matchCount < 2) add(OBJEXPLAIN[17], { needs: true });
     const heroOverride = normalizeSymbol(options.heroOverride);
     if (!options.heroOverride || selected.ch !== heroOverride.ch
         || selected.dec !== heroOverride.dec) break;

@@ -83,7 +83,7 @@ import { remove_object, obj_extract_self, upstart, engr_at, On_stairs, set_bknow
 import {
     max_capacity, calc_capacity, near_capacity, weight,
 } from './weight.js';
-import { ansimpleoname, thesimpleoname, simpleonames, an, doname, doname_with_price, makesingular, cxname_singular, getObjDescr, xname, the, otense } from './objnam.js';
+import { ansimpleoname, thesimpleoname, simpleonames, an, doname, doname_with_price, makesingular, getObjDescr, xname, the, The, otense } from './objnam.js';
 import { observe_object, discover_object } from './o_init.js';
 /* C ref: describe_decor()'s own callees (invent.c dfeature_at, dungeon.c
  * waterbody_name, trap.c back_on_ground) are all real, tested bodies that
@@ -101,7 +101,7 @@ import {
     waterbody_name as _cmd_waterbody_name,
     pooleffects_back_on_ground as _cmd_back_on_ground,
     body_part, ceiling,
-    count_unpaid,
+    count_unpaid, loot_xname,
     bhp_Maybe_Half_Phys,
     cmdq_add_ec,
 } from './cmd.js';
@@ -304,18 +304,13 @@ const ICE_BOX_OTYP = 216;
 const BAG_OF_TRICKS_OTYP = 220;
 const AUTOUNLOCK_APPLY_KEY = 2;
 
-/* C ref: objnam.c — bare box/chest name (obj_typename lacks box names in JS). */
+/* C pickup.c:2107-2109: retain xname's called and individual names. */
 function _box_xname(obj) {
-    switch (obj ? (obj.otyp | 0) : 0) {
-        case LARGE_BOX_OTYP: return 'large box';
-        case CHEST_OTYP: return 'chest';
-        case ICE_BOX_OTYP: return 'ice box';
-        default: return 'box';
-    }
+    return xname(obj);
 }
 /* C ref: objnam.c the(str) / The(str) — definite article. */
-function _the(str) { return 'the ' + str; }
-function _The(str) { return 'The ' + str; }
+function _the(str) { return the(str); }
+function _The(str) { return The(str); }
 
 async function do_loot_cont(cobjRef, cindex, ccount) {
     const g = game;
@@ -1128,7 +1123,7 @@ async function _select_menu(items, how, paint = null) {
          * full-screen window and bare selectors apply to the visible page. */
         let pageStart = 0, pageEnd = items.length, pageCount = 1;
         if (paint) {
-            const all = [titleErased ? '' : `\x1b[7m${paint.title}\x1b[0m`, ''];
+            const all = [titleErased ? '' : menu_heading_text(paint.title), ''];
             let lastHeading = null;
             for (const it of items)
             {
@@ -1156,6 +1151,10 @@ async function _select_menu(items, how, paint = null) {
             }
             const full = tall || lines.length === 24;
             const WIN_COL = full ? 1 : tty_window_offx(lines, 'end');
+            /* C wintty.c:1918-1919 tty_display_nhwindow(NHW_MENU): a standing
+             * topline is paged out with a --More-- before the menu is drawn. */
+            if (game._pending_message)
+                await force_more(game._pending_message);
             game._pending_message = '';
             game._topl_sticky = null;
             game._screen_output = build_window_screen(lines, WIN_COL, game.u?.uac ?? 0,
@@ -1295,7 +1294,8 @@ function _pu_loot_disco(obj) {
     return 2;
 }
 function _pu_loot_xname(obj) {
-    return String(cxname_singular(obj) || '');
+    // C invent.c:309-387: suppress name prefixes and rank towel/glob sizes.
+    return loot_xname(obj);
 }
 function _pu_strcmpi(a, b) {
     const x = String(a).toLowerCase(), y = String(b).toLowerCase();
@@ -1324,21 +1324,22 @@ function _pu_sortloot(eligible) {
     const sl = game.flags?.sortloot ?? 'l';
     if (!(sl === 'f' || sl === 'l' || game.flags?.sortpack))
         return eligible.slice();
+    const lootMode = (sl === 'f' || sl === 'l');
     const arr = eligible.map((obj, indx) => ({ obj, indx, orderclass: 0 }));
     if (arr.length > 1) {
         for (const sli of arr) {
             sli.orderclass = _pu_loot_classify(sli.obj);
             sli.subclass = _pu_loot_subclass(sli.obj);
             sli.disco = _pu_loot_disco(sli.obj);
-            sli.str = _pu_loot_xname(sli.obj);
+            /* invent.c:479 — name/BUCX tiers need SORTLOOT_LOOT (sortloot l/f) */
+            sli.str = lootMode ? _pu_loot_xname(sli.obj) : '';
             sli.bucx = (sli.obj.bknown
                         ? (sli.obj.blessed ? 3 : !sli.obj.cursed ? 2 : 1) : 0);
         }
         arr.sort((a, b) => (a.orderclass - b.orderclass)
             || (a.subclass - b.subclass)
             || (a.disco - b.disco)
-            || _pu_strcmpi(a.str, b.str)
-            || (b.bucx - a.bucx)
+            || (lootMode ? (_pu_strcmpi(a.str, b.str) || (b.bucx - a.bucx)) : 0)
             || (a.indx - b.indx));
     }
     return arr.map((sli) => sli.obj);

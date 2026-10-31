@@ -36,7 +36,7 @@ import { MON_BUBBLEMOVE, DEAF } from './const.js';
  * (mkmaze.c:1095-1124) call these; all are C mklev.c/mkobj.c bodies that
  * already live in js/mklev.js. */
 import { mkstairs, place_branch, mktrap, mkgold, mkobj_at, mksobj_at, In_hell, stairway_find_dir, occupied } from './mklev.js';
-import { Is_branchlev } from './dungeon.js';
+import { Is_branchlev, describe_level_buf } from './dungeon.js';
 import { MKTRAP_MAZEFLAG } from './const.js';
 import { PM_MINOTAUR } from './pm.generated.js';
 /* C objects.h object classes / otyp.  Spelled locally exactly as js/mklev.js
@@ -181,13 +181,16 @@ function check_ransacked(s) {
     g.ransacked = !!(uz && uz.dnum === g.mines_dnum && s === 'minetn-1');
 }
 
-// C ref: mon.c:2472-2495 dmonsfree() — purge dead (non-guard) monsters from
-// the fmon chain after a level's monsters may have died during creation
-// (e.g. light-source monsters). The iflags.purge_monsters count-mismatch
-// assertion is a debug sanity check with no JS-side counter to compare
-// against; not ported (no gameplay/RNG effect either way).
-export function dmonsfree() {
+// C ref: mon.c:2472-2511 dmonsfree() — purge dead (non-guard) monsters from
+// the fmon chain, then reconcile the freed count against mon.c:2796's
+// iflags.purge_monsters counter (every m_detach twin increments it).  A
+// mismatch is C's impossible("dmonsfree: %d removed doesn't match %d pending
+// on %s") — reached when a no-time level change saves the old level FREEING
+// (save.c:487 skips the purge) and the pending death surfaces at the next
+// dmonsfree (mkmaze.c:1191, after load_special).
+export async function dmonsfree() {
     const g = game;
+    let count = 0;
     let prev = null;
     let mtmp = g.fmon;
     while (mtmp) {
@@ -199,11 +202,19 @@ export function dmonsfree() {
                 g.fmon = next;
             mtmp.nmon = null;
             dealloc_monst(mtmp);
+            count++;
         } else {
             prev = mtmp;
         }
         mtmp = next;
     }
+    /* mon.c:2504-2509 — describe_level(buf, 2) keeps the "Plane of " prefix
+     * (dflgs&2), so an endgame mismatch names the full plane. */
+    if (count !== (g.iflags.purge_monsters | 0))
+        await impossible('dmonsfree: %d removed doesn\'t match %d pending on %s',
+                         count, g.iflags.purge_monsters | 0,
+                         describe_level_buf(2, g.u && g.u.uz));
+    g.iflags.purge_monsters = 0; /* mon.c:2510 */
 }
 
 export { dealloc_monst };
@@ -363,7 +374,7 @@ export async function js_makemaz(s, sp) {
         g.in_mk_themerooms = false;
         const ok = await load_special(protofile);
         if (ok) {
-            dmonsfree();
+            await dmonsfree();
             return;
         }
         /* C: impossible("Couldn't load \"%s\" - making a maze.", protofile);

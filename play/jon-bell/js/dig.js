@@ -1816,7 +1816,8 @@ export async function dig() {
         d.lastdigtime = g.moves | 0;
         d.quiet = false;
         d.level = { dnum: 0, dlevel: -1 };
-        g.vision_full_recalc = 1;
+        // C dig.c:520-545: unblock_point() owns vision invalidation; pline()
+        // may already have recalculated it before this cleanup.
         return 0;
     }
     {

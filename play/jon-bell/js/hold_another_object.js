@@ -633,7 +633,7 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
         dropIt = true;
     } else {
         /* C:1257-1294 */
-        const oquan = obj.quan | 0;
+        const oquan = obj.quan; /* C invent.c:1257: long, including merged gold. */
         let prev_encumbr = near_capacity(); /* before addinv() */
 
         const pickup_burden = _pickup_burden_level(g.flags?.pickup_burden);
@@ -651,7 +651,7 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
             /* C:1277-1279 — undo any merge which took place.
              * THIS IS THE ONLY RNG ON THE PATH: splitobj() -> next_ident()
              * draws `rnd(2) @ mkobj.c:521`. */
-            if ((obj.quan | 0) > oquan)
+            if (obj.quan > oquan)
                 obj = (await splitobj(obj, oquan));
             dropIt = true;
         } else {

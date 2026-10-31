@@ -402,16 +402,16 @@ function _add_to_minv(mtmp, obj) {
     obj.nobj = mtmp.minvent ?? null;
     mtmp.minvent = obj;
 }
-/* C monst.h is_lminion(mon): is_minion(mon->data) && mon_aligntyp(mon) ==
- * A_LAWFUL && mon->data->mlet != S_HUMAN (mon_aligntyp is priest.c:
- * a minion's own emin alignment, else sgn(maligntyp)). */
+/* C monst.h:281 is_lminion(mon): is_minion(mon->data) &&
+ * mon_aligntyp(mon) == A_LAWFUL; priest.c:280 gives EPRI precedence over EMIN. */
 function _is_lminion(mtmp) {
     const mndx = monsndx(mtmp);
     if ((monMflags2(mndx) & 0x00001000) === 0) /* M2_MINION */
         return false;
-    const algn = (mtmp.isminion && mtmp.mextra?.emin)
+    const algn = (mtmp.ispriest && mtmp.mextra?.epri) ? mtmp.mextra.epri.shralign
+        : (mtmp.isminion && mtmp.mextra?.emin)
         ? mtmp.mextra.emin.min_align : (MONS[mndx][4] | 0);
-    return algn > 0 && algn !== -128 && monMlet(mndx) !== S_HUMAN;
+    return algn > 0;
 }
 export async function mongets(mtmp, otyp, mksobjFn) {
     if (!otyp)
@@ -667,7 +667,8 @@ export async function mInitweap(mtmp, mksobjFn) {
                 if (otmpS) {
                     otmpS.oerodeproof = true;
                     otmpS.spe = 0;
-                    blessObj(otmpS);
+                    /* C makemon.c:353 — uncurse(otmp) is a comment: mksobj(,FALSE,)
+                     * items are always uncursed; the shield is NOT blessed. */
                     /* C makemon.c:358 — (void) mpickobj(mtmp, otmp) */
                     _add_to_minv(mtmp, otmpS);
                 }

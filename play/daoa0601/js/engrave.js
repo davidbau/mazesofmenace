@@ -60,6 +60,7 @@ const RUBOUTS = new Map([
     ['7', '/'],
     ['8', '3o'],
 ]);
+// C engrave.c:engr_at().
 export function engravingAt(x, y, level = game.level) {
     return level?.engravings?.find((engraving) => engraving.x === x && engraving.y === y) || null;
 }
@@ -70,6 +71,7 @@ export function hasCompletedEngraving(text, x, y, state = game) {
         (engraving.epoch ?? 0) <= (state.moves ?? 0) &&
         engraving.text.toLowerCase() === text.toLowerCase());
 }
+// C engrave.c:del_engr_at().
 export function deleteEngravingAt(x, y, level = game.level) {
     if (!level?.engravings)
         return false;
@@ -155,6 +157,7 @@ export function wipeoutText(text, count, seed = 0) {
     }
     return chars.join('').replace(/ +$/, '');
 }
+// C engrave.c:wipe_engr_at().
 export function wipeEngravingAt(x, y, count, magical = false, level = game.level) {
     if (!level?.engravings)
         return false;
@@ -228,6 +231,7 @@ export function wipeHeroEngraving(count, state = game) {
 // C's function-call argument is evaluated before wipeEngravingAt() discovers
 // nowipeout.  Lua tutorial engravings therefore still own rnd(5) when an
 // explicit movement leaves or enters one, despite degrade=false.
+// C hack.c:maybe_smudge_engr().
 export function maybeSmudgeEngravings(x1, y1, x2, y2) {
     if (!heroCanReachFloor(game, { checkPit: true }))
         return;

@@ -18,6 +18,7 @@ import { adjustWeaponSkillSlots } from './skills.js';
 import { ROLE_LEVEL_ABILITIES, RACE_LEVEL_ABILITIES } from './innate_abilities.js';
 const NORMAL_SPEED = 12;
 const LARGEST_INT = 32767;
+// C exper.c:newuexp().
 export function newExperienceThreshold(level) {
     if (level < 1)
         return 0;
@@ -60,6 +61,7 @@ export async function checkExperienceLevel({ publish = plineWithContinuation } =
     if (hero.ulevel < MAXULEV && hero.uexp >= newExperienceThreshold(hero.ulevel))
         await gainExperienceLevel({ incremental: true, publish });
 }
+// C botl.c:xlev_to_rank().
 export function experienceRankIndex(level) {
     return level <= 2 ? 0 : level <= 30 ? Math.trunc((level + 2) / 4) : 8;
 }
@@ -93,6 +95,7 @@ function levelHpIncrease(state) {
     const constitution = currentAttribute(A_CON);
     return Math.max(1, hp + constitutionHpBonus(constitution));
 }
+// C exper.c:enermod().
 function energyModifier(energy, role) {
     if (['priest', 'wizard'].includes(role))
         return 2 * energy;

@@ -92,7 +92,7 @@ import { dmgtype_fromattack } from './makemon.js';
 import { PM_FOG_CLOUD, PM_AIR_ELEMENTAL } from './pm.generated.js';
 /* C spell.c:1570 dispatches directly to dog.c:137 make_familiar(). */
 import { make_familiar } from './dog.js';
-import { TtyMenu, PICK_ONE, ATR_NONE, menu_heading_text } from './tty_menu.js';
+import { TtyMenu, PICK_NONE, PICK_ONE, ATR_NONE, menu_heading_text } from './tty_menu.js';
 import { do_vicinity_map } from './detect.js';
 import { You_feel, You_hear } from './display.js';
 import { SPINE, DISP_BEAM, DISP_END } from './const.js';
@@ -1530,6 +1530,23 @@ async function dospellmenu(prompt, splaction) {
 // rn2/rnd/d/rne/rnz call, and neither does the tty menu loop).
 async function dospellmenu_render_and_read(prompt, headingRaw, items, how) {
     const g = game;
+
+    /* C ref: wintty.c:1927 tty_display_nhwindow — a menu whose rows reach the
+     * screen height goes full-screen (offx 0), and tty_end_menu (:2649) pages
+     * it at lmax = rows - 1 lines.  The shared TtyMenu models both. */
+    if (items.length + 3 > 23 /* rows - 1 */) {
+        const menu = new TtyMenu({ overlay: false });
+        menu.add_menu_heading(headingRaw);
+        for (const it of items)
+            menu.add_menu(it.a_int, it.accel, ATR_NONE, it.raw, false, !!it.sel);
+        menu.end_menu(prompt);
+        const r = await menu.select_menu(how === 'PICK_NONE' ? PICK_NONE : PICK_ONE);
+        if (r.count <= 0)
+            return { count: 0, picked: 0 };
+        const pre = items.find((it) => it.sel);
+        const pick = r.picks.find((p) => !pre || p !== pre.a_int) ?? r.picks[0];
+        return { count: r.picks.length, picked: pick };
+    }
 
     /* Raw (printed-width) lines drive the window geometry; the display lines
      * add SGR attributes and collapse blank runs into ESC[NC.               */

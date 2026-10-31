@@ -10,6 +10,7 @@ export function heroHasRemovableSpeed(state = game) {
     return propertyTimeout('fast', state) > 0
         || hasPermanentIntrinsicProperty('fast', state);
 }
+// C potion.c:speed_up().
 export async function speedUpHero(duration, state = game) {
     requireLiveGame(state);
     const hero = state.u;
@@ -23,6 +24,7 @@ export async function speedUpHero(duration, state = game) {
     await exerciseAttribute(A_DEX, true, state);
     setPropertyTimeout('fast', propertyTimeout('fast', state) + duration, state);
 }
+// C mhitu.c:u_slow_down().
 export async function slowHero(state = game, publish = plineWithContinuation) {
     requireLiveGame(state);
     setPropertyTimeout('fast', 0, state);

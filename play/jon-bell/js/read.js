@@ -601,7 +601,7 @@ export async function recharge(obj, curse_bless) {
 // Scope: only the "spellbook already known + Refresh prompt" branch is ported;
 // Other doread branches (scrolls, T-shirt, credit card, blank, level filter,
 // ─────────────────────────────────────────────────────────────────────────────
-import { flush_screen, docrt, cls, under_water, under_ground, newsym, terrain_glyph, occupation_force_more, force_more, use_last_flush_snapshot, map_trap, map_engraving, map_object, unmap_object, show_glyph_cell, objpile_attr, update_lastseentyp, GLYPHCLS_TRAP, GLYPHCLS_OBJ, GLYPHCLS_CMAP, GLYPHCLS_ENGR } from './display.js';
+import { flush_screen, docrt, cls, under_water, under_ground, newsym, terrain_glyph, cmap_glyph, occupation_force_more, force_more, use_last_flush_snapshot, map_trap, map_engraving, map_object, unmap_object, show_glyph_cell, objpile_attr, update_lastseentyp, GLYPHCLS_TRAP, GLYPHCLS_OBJ, GLYPHCLS_CMAP, GLYPHCLS_ENGR } from './display.js';
 import { t_at, buried_ball_to_freedom } from './trap.js';
 import { get_obj_location } from './light.js';
 import { BURIED_TOO, CONTAINED_TOO, TT_BURIEDBALL, LEG } from './const.js';
@@ -703,10 +703,10 @@ import { resist } from './zap.js';
 /* C read.c:364-556's non-scroll readable ladder needs these; all are hoisted
  * `export function`s, so the js/mklev.js and js/objnam.js cycles resolve. */
 import { create_gas_cloud } from './region.js';
-import { bcsign, upwords, outrumor, BY_COOKIE, wipeout_text } from './mklev.js';
+import { bcsign, upwords, outrumor, BY_COOKIE, wipeout_text, blessorcurse as _blessorcurse } from './mklev.js';
 import { singular } from './objnam.js';
-import { You_cant, getobj_cmdq_drain } from './cmd.js';
-import { GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE_SELECTABLE } from './const.js';
+import { You_cant, getobj_cmdq_drain, cmdq_add_key } from './cmd.js';
+import { GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE_SELECTABLE, CQ_REPEAT } from './const.js';
 import {
     /* read.c:503-507's red_mons[].  Taken from pm.generated.js but VERIFIED BY
      * NAME against js/makemon_pmnames.json (see the marker arm's comment). */
@@ -948,7 +948,7 @@ export async function study_book(spellbook) {
         const tribtitle = noveltitle(box);
         spellbook.novelidx = spellbook.corpsenm = box.value;
         if (await read_tribute('books', tribtitle, 0, null, spellbook.o_id)) {
-            _bump_literate();
+            _bump_literate(tribtitle);
             _makeknown(booktype);
             const _u = g.u || (g.u = {});
             _u.uevent = _u.uevent || {};
@@ -1193,6 +1193,10 @@ export async function doread() {
      * selected object ("May have changed the amount of money"). */
     g.disp = g.disp || {};
     g.disp.botl = 1;
+    /* C invent.c:2050-2053: remember an interactive selection for do_repeat;
+     * queued selections return earlier, at invent.c:1824. */
+    if (!_q.drained && scroll && !g.gi?.in_doagain)
+        cmdq_add_key(CQ_REPEAT, keyCode);
 
 
     /* C read.c:364-375 — outrumor has its own blindness check.
@@ -2186,16 +2190,6 @@ function _bc_side_effects(otmp) {
         /* C: figurine transform timer start/stop.  No RNG. */
     }
 }
-/* C ref: mkobj.c:1841-1855 blessorcurse(otmp, chance).
- * RNG: rn2(chance), and on success rn2(2). */
-async function _blessorcurse(otmp, chance) {
-    if (otmp.blessed || otmp.cursed)
-        return;
-    if (!rn2(chance)) {
-        if (!rn2(2)) await _curse(otmp);
-        else _bless(otmp);
-    }
-}
 /* Shop billing uses the shared mkobj.c costly_alteration implementation. */
 /* C ref: potion.c:1462-1478 strange_feeling(obj, txt). */
 async function _strange_feeling(obj, txt) {
@@ -2831,7 +2825,12 @@ async function seffect_destroy_armor(sobjp) {
             if (!_oc_name_known(sobj.otyp | 0))
                 await pline(`This is ${an(_actualoname(sobj))}!`);  /* read.c:1373 */
             g._gk_known = true;
-            const atmp = await getObjFromGetobj('destroy', any_worn_armor_ok, GETOBJ_PROMPT);
+            /* C read.c:1376 / invent.c:2070-2073: excluded selections emit
+             * silly_thing and return null. Translate this callback's C enum
+             * to the shared picker's enum (EXCLUDE is -3 in C, 0 there). */
+            const atmp = await getObjFromGetobj('destroy',
+                (obj) => any_worn_armor_ok(obj) === GETOBJ_SUGGEST_RD
+                    ? GETOBJ_SUGGEST : GETOBJ_EXCLUDE, GETOBJ_PROMPT);
             /* check the return value, in case the user picked a non-valid obj */
             if (any_worn_armor_ok(atmp) === GETOBJ_SUGGEST_RD)
                 otmp = atmp;
@@ -4965,30 +4964,11 @@ export function magic_map_background(loc, x, y, show = false) {
     /* C: if (!cansee(x,y) && !lev->waslit) — dark-room / dark-corridor correction. */
     if (!cansee(x, y) && !loc.waslit) {
         const darkRoomOn = !!(game.flags?.dark_room && game.iflags?.use_color);
-        if (loc.typ === ROOM && Is_rogue_level(game.u?.uz)
-            && ((rg.ch === '.' && !rg.decgfx) || (rg.ch === '~' && rg.decgfx))) {
-            rg = { ch: ' ', color: NO_COLOR, decgfx: false };
-        } else if (loc.typ === ROOM && !(game.flags?.dark_room && game.iflags?.use_color)
-                   && ((rg.ch === '.' && !rg.decgfx && rg.color === NO_COLOR)
-                       || (rg.ch === '~' && rg.decgfx && rg.color === NO_COLOR))) {
-            /* display.c:245-247 — without dark_room+use_color the glyph is
-             * GLYPH_NOTHING (blank), not a dark dot. */
-            rg = { ch: ' ', color: NO_COLOR, decgfx: false, nothing: true };
-        } else if (loc.typ === ROOM && game.flags?.dark_room === false
-                   && ((rg.ch === '.' && !rg.decgfx) || (rg.ch === '~' && rg.decgfx))
-                   && rg.color === NO_COLOR) {
-            /* C display.c:245-247: !flags.dark_room → GLYPH_NOTHING (blank). */
-            rg = { ch: ' ', color: NO_COLOR, decgfx: false, nothing: true };
-        } else if (loc.typ === ROOM && !darkRoomOn
-                   && ((rg.ch === '.' && !rg.decgfx && rg.color === NO_COLOR)
-                       || (rg.ch === '~' && rg.decgfx && rg.color === NO_COLOR))) {
-            rg = { ch: ' ', color: NO_COLOR, decgfx: false, nothing: true };
-        } else if (loc.typ === ROOM && rg.ch === '.' && !rg.decgfx && rg.color === NO_COLOR) {
-            rg.color = CLR_BLACK;
-            rg.cmap = 20;
-        } else if (loc.typ === ROOM && rg.ch === '~' && rg.decgfx && rg.color === NO_COLOR) {
-            rg.color = CLR_BLACK;
-            rg.cmap = 20;
+        // C display.c:244-247 tests glyph identity, including IBM/custom symbols.
+        if (loc.typ === ROOM && rg.cmap === 19) {
+            rg = darkRoomOn
+                ? cmap_glyph(Is_rogue_level(game.u?.uz) ? 0 : 20)
+                : { ch: ' ', color: NO_COLOR, decgfx: false, nothing: true };
         }
         if (loc.typ === CORR && rg.cmap === 23) {
             const dark = terrain_glyph(loc, x, y);
@@ -5000,6 +4980,7 @@ export function magic_map_background(loc, x, y, show = false) {
      * glyphs are in C's cmap range; legacy terrain memory has no cls. */
     const rememberedClass = loc.remembered_glyph?.cls;
     if (game.level?.flags?.hero_memory
+        && !loc.remembered_glyph?.nothing
         && (rememberedClass == null || rememberedClass === 'unexplored' || rememberedClass === GLYPHCLS_CMAP
             || rememberedClass === GLYPHCLS_TRAP || rememberedClass === GLYPHCLS_ENGR))
         loc.remembered_glyph = { ...rg, cls: GLYPHCLS_CMAP };
@@ -5010,7 +4991,7 @@ export function magic_map_background(loc, x, y, show = false) {
         show_glyph_cell(x, y, rg.ch, rg.color, !!rg.decgfx,
                         /* MG_BW_ICE/LAVA/SINK -> ATR_INVERSE (display.c:2894-2916, wintty.c:3930-3936) */
                         (rg.bwspec && game.iflags?.use_color === false
-                         && game.iflags?.wc_inverse !== false) ? 1 : 0, GLYPHCLS_CMAP,
+                         && game.iflags?.wc_inverse !== false) ? 1 : 0, rg.nothing ? 'nothing' : GLYPHCLS_CMAP,
                         false, null, null, null, rg.cmap ?? null);
     update_lastseentyp(x, y);
 }
@@ -5098,11 +5079,9 @@ export async function do_mapping() {
         await map_redisplay_rd();
     } else {
         reconstrain_map_rd();
-        /* show_map_spot's newsym() reprinted map y=20 AFTER the last bot(): with
-         * statuslines:3 that row is physical status row 1 (wintty.c:3814), so a
-         * seen-stone cell prints a blank over it (display.c back_to_glyph S_stone
-         * vs the unexplored gbuf).  The whole-row latch would hide that. */
-        game._status1Whole = false;
+        /* C display.c:2033-2052: unchanged glyphs do not print again.
+         * flush_screen's pending row-20 glyphs retire the status coverage
+         * only when show_map_spot actually changed that row. */
     }
     /* C detect.c:1443: exercise(A_WIS, TRUE) → rn2(19) */
     exercise(2 /* A_WIS */, true);

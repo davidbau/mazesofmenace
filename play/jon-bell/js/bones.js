@@ -45,7 +45,7 @@ import { savelev } from './save.js';
 import { encode_save_graph, decode_save_graph } from './save_graph.js';
 /* js/game.js makeLocation() seeds disp_color with terminal.js's NO_COLOR. */
 import { NO_COLOR as NO_COLOR_BONES } from './terminal.js';
-import { has_oname, has_mgivenname, DEFUNCT_MONSTER, NON_PM } from './const.js';
+import { has_oname, ONAME, ONAME_BONES, has_mgivenname, DEFUNCT_MONSTER, NON_PM } from './const.js';
 import { free_oname } from './dokick.js';
 import { In_quest, Is_botlevel, Is_oracle_level, ROOMOFFSET, DELPHI } from './const.js';
 import { DUNGEON_LUA_TABLE } from './dungeon_data.js';
@@ -53,8 +53,9 @@ import { Is_branchlev } from './dungeon.js';
 import { formatkiller } from './topten.js';
 import { In_hell, OC_USES_KNOWN } from './mklev.js';
 import { PM_ORACLE, PM_MEDUSA, PM_VLAD_THE_IMPALER } from './pm.generated.js';
-import { pline, invalidate_map_row } from './display.js';
-import { the, xname, oname } from './objnam.js';
+import { pline, invalidate_map_row, impossible_sync } from './display.js';
+import { fruitadd } from './options.js';
+import { the, xname, oname, exist_artifact, is_quest_artifact, artifact_exists } from './objnam.js';
 import { LEAVESTATUE, CORPSTAT_NONE, NO_MINVENT, INTRINSIC, ismnum, MON_FLOOR } from './const.js';
 import { roles, races } from './roles.js';
 import { dismount_steed } from './cmd.js';
@@ -204,19 +205,27 @@ function set_ghostly_objlist(ochain) {
     }
 }
 
-/* C bones.c:60 resetobjs(ochain, restore) — the SAVING half (restore == FALSE).
+/* C bones.c:51 resetobjs(ochain, restore).
  * RNG-FREE on both halves; the next_ident() draws a bones load makes are in
  * restore.c's restobjchn/restmonchn, not here.
  *
- * GAPs, each a field with no live model in this port rather than a decision:
- * the in_use dealloc arm (no obj->in_use writer), the artifact/oname arms
- * (no oname chain), goodfruit (no fruit list), the EGG/SCR_MAIL/TIN arms. */
+ * Remaining gaps include in_use deallocation and the EGG/SCR_MAIL/TIN arms. */
 function resetobjs(ochain, restore) {
     for (let otmp = ochain; otmp; otmp = otmp?.nobj) {
         if (otmp.cobj)
             resetobjs(otmp.cobj, restore);
-        if (restore)
+        if (restore) {
+            // C bones.c:68-78: reject duplicates and this hero's quest artifact.
+            if (otmp.oartifact) {
+                if (exist_artifact(otmp.otyp, ONAME(otmp)) || is_quest_artifact(otmp)) {
+                    otmp.oartifact = 0;
+                    if (has_oname(otmp)) free_oname(otmp);
+                } else {
+                    artifact_exists(otmp, ONAME(otmp), true, ONAME_BONES);
+                }
+            }
             continue;
+        }
         /* C bones.c:103-105: only types with oc_uses_known lose known;
          * clearing it on coins causes a false discovery when they merge. */
         if (OC_USES_KNOWN[otmp.otyp | 0])
@@ -229,6 +238,8 @@ function resetobjs(ochain, restore) {
         otmp.tknown = 0;
         otmp.invlet = 0;
         otmp.no_charge = 0;
+        if (otmp.otyp === 285 /* SLIME_MOLD */)
+            goodfruit(otmp.spe);
         /* C bones.c:115-129 — strip user-supplied names; statues, novels,
          * artifacts and named corpses of special (unique) monsters keep theirs. */
         if (has_oname(otmp)
@@ -245,7 +256,7 @@ function resetobjs(ochain, restore) {
  * OTHER caller — bones.c:257's own comment names both).  C's definition site is
  * bones.c:258; importing rather than re-deriving keeps one body, per the
  * two-real-bodies rule. */
-import { drop_upon_death, fix_shop_damage, unleash_all } from './shk.js';
+import { drop_upon_death, fix_shop_damage, unleash_all, goodfruit_fp as goodfruit } from './shk.js';
 
 async function fixuporacle(oracle) {
     if (!Is_oracle_level(game.u.uz))
@@ -326,13 +337,13 @@ export async function savebones(how, when, corpse) {
             if (mtmp.mhp > 0 && (mtmp.mstate | 0) === MON_FLOOR)
                 await remove_mon_from_bones(mtmp, mongone);
         }
-        dmonsfree();
+        await dmonsfree();
     }
 
     forget_engravings(); // C bones.c:449 — new hero has not discovered these.
 
-    /* C bones.c:451-452,619 — fruit marking still needs savefruitchn and
-     * restore.c:500 ghostfruit support; game.ffruit already exists. */
+    for (let f = g.ffruit; f; f = f.nextf)
+        f.fid = -f.fid; // C bones.c:451-452: mark fruit types absent initially.
 
     set_ghostly_objlist(g.invent);
 
@@ -504,6 +515,9 @@ export async function savebones(how, when, corpse) {
     const snap = game.levelStore?.get(ledger);
     if (!snap)
         return;
+    snap.fruits = []; // C save.c:951 savefruitchn: omit negative fruit IDs.
+    for (let f = g.ffruit; f; f = f.nextf)
+        if (f.fid >= 0) snap.fruits.push({ fid: f.fid, fname: f.fname });
     if (PUBLISH_BONES_FILE)
         create_bonesfile(u.uz, bonesid, snap);
 }
@@ -569,11 +583,11 @@ async function getbones_load(f) {
         // C restore.c:408-415: mark extinct/genocided bones monsters for purge.
         if (!await propagate(m.cham === NON_PM ? m.mnum : m.cham, true, true))
             m.mhpmax = DEFUNCT_MONSTER;
-        renumber_objchn(m.minvent);
+        renumber_objchn(m.minvent, f.snap.fruits);
     }
-    renumber_objchn(f.snap.fobj);
-    renumber_objchn(f.snap.level?.buriedobjlist);
-    renumber_objchn(f.snap.billobjs);
+    renumber_objchn(f.snap.fobj, f.snap.fruits);
+    renumber_objchn(f.snap.level?.buriedobjlist, f.snap.fruits);
+    renumber_objchn(f.snap.billobjs, f.snap.fruits);
 
     const ledger = ledger_no(u.uz);
     (game.levelStore || (game.levelStore = new Map())).set(ledger, f.snap);
@@ -665,10 +679,15 @@ function next_ident_bones() {
 /* C restore.c:238-300 restobjchn()'s ghostly arm, applied to a chain this port
  * swapped in rather than read: one next_ident() per object, container contents
  * included (C recurses into otmp->cobj at :270 AFTER the parent's renumber). */
-function renumber_objchn(ochain) {
+function renumber_objchn(ochain, fruits) {
     for (let otmp = ochain; otmp; otmp = otmp.nobj) {
         otmp.o_id = next_ident_bones();
+        if (otmp.otyp === 285 /* SLIME_MOLD; restore.c:260,500 ghostfruit */) {
+            const fruit = fruits?.find(f => f.fid === otmp.spe);
+            if (fruit) otmp.spe = fruitadd(fruit.fname, null, false);
+            else impossible_sync('no old fruit?');
+        }
         if (otmp.cobj)
-            renumber_objchn(otmp.cobj);
+            renumber_objchn(otmp.cobj, fruits);
     }
 }

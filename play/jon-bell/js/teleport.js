@@ -48,6 +48,7 @@ import { impossible } from './steed.js';
 import { impossible as rloc_impossible } from './pline.js';
 import { set_mon_data } from './makemon.js';
 import { GP_ALLOW_XY } from './const.js';
+import { PASSES_WALLS } from './const.js';
 import { is_youmonst } from './mhitm.js';
 import { hideunder } from './mklev.js';
 import { reset_utrap } from './trap.js';
@@ -340,7 +341,7 @@ export function teleok(x, y, trapok) {
         if (!ACCESSIBLE(typ)
             || (typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED)) !== 0))
             return false;
-        if (sobj_at(BOULDER, x, y)) return false;
+        if (sobj_at(BOULDER, x, y) && !throws_rocks(mdat)) return false;
     }
     const u = game.u || {};
     if (!tele_jump_ok(u.ux | 0, u.uy | 0, x, y)) return false;
@@ -503,7 +504,10 @@ export async function teleds(nux, nuy, teleds_flags) {
         if (relocated)
             return;
     }
-    await check_special_room(false);
+    /* hack.c:3335-3336 — spoteffects() is a no-op under in_lava_effects, so
+     * the room-entry message waits for lava_effects()'s own spoteffects(). */
+    if (!game.iflags?.in_lava_effects)
+        await check_special_room(false);
     /* The command-result publication used to sit immediately after the
      * materialize pline above, i.e. BEFORE spoteffects ran.  That snapshot is
      * what DESTROYED the room-entry message once check_special_room was wired:
@@ -541,7 +545,17 @@ export async function teleds(nux, nuy, teleds_flags) {
         const _trap = t_at(u.ux | 0, u.uy | 0);
         const _pit = _trap && is_pit(_trap.ttyp | 0);
         if (!_pit) await _spoteffects_pickup();
-        if (_trap) await dotrap(_trap, 0);
+        const st = game._spoteffectsState;
+        if (_trap && (!st.trap || st.trapType !== _trap.ttyp)) {
+            st.trap = _trap;
+            st.trapType = _trap.ttyp;
+            try {
+                await dotrap(_trap, 0);
+            } finally {
+                st.trap = null;
+                st.trapType = 0;
+            }
+        }
         if (_pit) await _spoteffects_pickup();
         /* hack.c:3402-3414 — Warning alerts you to ice danger */
         if (Warning() && is_ice(u.ux, u.uy)) {
@@ -584,7 +598,11 @@ export async function safe_teleds(teleds_flags) {
     }
     /* C 745-763: shuffled candidate ring search */
     let cc_flags = CC_RING_PAIRS | CC_SKIP_MONS;
-    cc_flags |= CC_SKIP_INACCS;
+    /* C teleport.c:748 — if (!Passes_walls) cc_flags |= CC_SKIP_INACCS;
+     * (youprop.h:286 Passes_walls = HPasses_walls || EPasses_walls) */
+    const pw = game.u?.uprops?.[PASSES_WALLS];
+    if (!(pw && ((pw.intrinsic | 0) || (pw.extrinsic | 0))))
+        cc_flags |= CC_SKIP_INACCS;
     const candy = collect_coords(game.u.ux | 0, game.u.uy | 0, 0, cc_flags, null);
     let backupx = 0, backupy = 0;
     for (let tcnt = 0; tcnt < candy.coords.length; ++tcnt) {
