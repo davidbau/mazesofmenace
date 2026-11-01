@@ -78,7 +78,7 @@ import {
 import { SHTYPES } from './shtypes_data.js';
 // js/display.js imports update_lastseentyp() from this file. Both sides use
 // the other's exports only inside function bodies, so the cycle resolves.
-import { describe_level, see_nearby_objects } from './display.js';
+import { describe_level, map_location, see_nearby_objects } from './display.js';
 import { hliquid } from './do_name.js';
 import { makeplural } from './fruit.js';
 import { switch_terrain } from './hack.js';
@@ -622,10 +622,10 @@ export function find_hell(level, state = game) {
 // (1922-1940). The first asks whether the level holds the Wizard's tower, the
 // second whether a square is inside it.
 //
-// dat/dungeon.lua puts wizard1, wizard2 and wizard3 in Gehennom, so both stay
-// false everywhere this port can reach. They are ported rather than assumed
-// because do.c goto_level() reads In_W_tower() before it can know where it is
-// going, and a Gehennom arrival would otherwise pick the answer up silently.
+// The tower's boundary is the exclusion area of the level's
+// des.teleport_region(), which mkmaze.c fixup_special() stores in svd.dndest.
+// savelev() and getlev() carry dndest with the level, including a bones
+// level, so a tower level always has it in C.
 export function On_W_tower_level(level, state = game) {
     return Boolean(on_level(level, state.wiz1_level)
         || on_level(level, state.wiz2_level)
@@ -638,7 +638,9 @@ export function In_W_tower(x, y, level, state = game) {
     const dndest = state.dndest ?? {};
     if (!dndest.nlx) {
         // C's impossible("No boundary for Wizard's Tower?") reports a level
-        // that claims the tower without carrying its exclusion region.
+        // that claims the tower without carrying its exclusion region. The
+        // port reaching this means its level state lost dndest; impossible()
+        // is async and every caller here is synchronous, so fail closed.
         throw new Error("No boundary for Wizard's Tower?");
     }
     /*
@@ -1183,20 +1185,12 @@ export function u_on_newpos(
         hero.ux0 = x;
         hero.uy0 = y;
 
-        // dungeon.c:u_on_newpos() calls map_location(FALSE). Preserve its
-        // independent lastseentyp[x][y] write here; the [x][y] matrix lives
-        // with the fresh GameMap so a new level starts cleared. The current
-        // display layer does not yet map objects, seen traps, or revealed
-        // engravings, so it remains responsible for replacing this seam with
-        // map_location's remembered-glyph priority once those layers exist.
-        const level = state.level;
-        if (level) {
-            level.lastseentyp ??= Array.from(
-                { length: COLNO },
-                () => new Array(ROWNO).fill(0),
-            );
-            level.lastseentyp[x][y] = level.at(x, y)?.typ ?? STONE;
-        }
+        // sets lastseentyp[u.ux][u.uy]; needed for switch_terrain()
+        // somewhere back up the call chain. map_location() also writes the
+        // square's map memory; while hallucinating, an object there draws
+        // its random glyph from the display RNG here, before the arrival
+        // docrt() draws it again.
+        map_location(x, y, false, state);
         state.iflags ??= {};
         state.iflags.terrain_typ = MAX_TYPE;
     } else if (!heroBlind(state)
@@ -1490,7 +1484,9 @@ function tport_menu(items, entry, lchoices, lvl_p, cannotreach, state) {
     lchoices.playerlev[lchoices.idx] = depth(lvl_p, state);
     if (cannotreach) {
         // Not selectable: prepend padding in place of missing selector.
-        items.push({ text: `    ${entry}` });
+        // add_menu() still receives lchoices->menuletter with the zero
+        // identifier, and the tty menu accepts that letter as a choice.
+        items.push({ text: `    ${entry}`, selector: lchoices.menuletter });
     } else {
         items.push({
             selector: lchoices.menuletter,
@@ -1690,6 +1686,12 @@ export async function print_dungeon(state = game, { bymenu = true } = {}) {
 
     if (selected != null) {
         const idx = selected - 1;  // C: idx = selected[0].item.a_int - 1
+        // Choosing an unreachable entry's letter returns its zero identifier,
+        // so C reads lchoices.playerlev[-1], which is lev[MAXLINFO - 1] of the
+        // same uninitialized struct; tport_menu() never writes that slot.
+        // The reference build reads 0 there, and level_tele()'s
+        // `if (!newlev) return;` then leaves without a message.
+        if (idx < 0) return null;
         return {
             playerlev: lchoices.playerlev[idx],
             dlevel: lchoices.lev[idx],

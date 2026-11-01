@@ -4342,7 +4342,9 @@ export async function xkilled(mtmp, xkflags) {
     if (_xk_stoned) {
         game.stoned = false;
     } else if (!_xk_gdkept) {
-    if (glyph_is_invisible_at(dx, dy))
+    /* levl[][].glyph is hero memory; glyph_is_invisible_at() reads the painted
+     * cell, which under_water() blanks (same test as js/mklev.js mondead). */
+    if (game.level?.at(dx, dy)?.remembered_glyph?.cls === GLYPHCLS_INVIS)
         unmap_object(dx, dy);
     if (mtmp.mleashed) m_unleash(mtmp, false); /* C mon.c:2741-2742 m_detach */
     await unlink_mon(mtmp, onmap);

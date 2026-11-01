@@ -1711,12 +1711,12 @@ export async function control_mon_tele(mon, cc_p, rlocflags, via_rloc) {
         game._status_blanked = true;
         game._status_blanked_by_mtc = true;  /* released by goto_level after losedogs */
     }
-    await pline(`Teleport ${noit_mon_nam(mon)} @ <${mon.mx},${mon.my}> where?`);
-    const tcbuf = 'where to teleport ' + noit_mon_nam(mon);
-    /* mid-goto_level the status row still holds the last bot() paint (Dlvl of the
+    /* (set before the pline: its flush must not repaint the arrival Dlvl) mid-goto_level the status row still holds the last bot() paint (Dlvl of the
      * level being left): do.c:1840 docrt()/bot() has not run yet */
     if (game._levelgenPaintFreeze && !game._status_blanked && game._levelgenPaintFreeze.dlevel != null)
         game._botlUzFrozen = { dnum: game._levelgenPaintFreeze.dnum, dlevel: game._levelgenPaintFreeze.dlevel };
+    await pline(`Teleport ${noit_mon_nam(mon)} @ <${mon.mx},${mon.my}> where?`);
+    const tcbuf = 'where to teleport ' + noit_mon_nam(mon);
     const gp = await getpos(cc_p, false, tcbuf);
     if (gp >= 0 && !u_at(cc_p.x, cc_p.y)) {
         if (via_rloc ? rloc_pos_ok(cc_p.x, cc_p.y, mon)

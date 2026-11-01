@@ -18,7 +18,6 @@ import { recordMappedOverviewState } from './dungeon.js';
 import { stumbleOnDoorMimic } from './mimic.js';
 import { triggerBoobyTrap } from './booby_trap.js';
 import { roomsAt } from './room.js';
-import { addShopDamage } from './shop_damage.js';
 import { heroPassesWalls } from './hero_species.js';
 import { heroHasNoHands, heroIsVerySmall } from './polyself.js';
 import { isContainer } from './container.js';
@@ -41,11 +40,10 @@ import { objectResistsDestruction } from './object_state.js';
 import { isWeaponTool } from './object_properties.js';
 import { CORPSE, ICE_BOX } from './object_data.js';
 import { startCorpseTimeout } from './mkobj.js';
-import { applySupportedPotionVapor, randomBottleName } from './potion_hit.js';
+import { applySupportedPotionVapor, randomBottleName } from './potion.js';
 import { promptYesNoQuit } from './query.js';
 import { heroIsBlind } from './senses.js';
-import { costlySpot, currentShopResident, chargeAlteredUnpaidObject } from './shk.js';
-import { stolenValue } from './shop_loss.js';
+import { costlySpot, currentShopResident, chargeAlteredUnpaidObject, stolenValue, addShopDamage } from './shk.js';
 import { isBlade } from './weapon_type.js';
 const WEAPON_CLASS = 2;
 const TOOL_CLASS = 6;
@@ -566,5 +564,14 @@ async function openLockedDoor(x, y) {
         return false;
     }
     return Boolean(game.context.move);
+}
+// C lock.c:picking_at(): the hero's lock-picking occupation targets this
+// door square. Only the door form matches, exactly as C compares
+// gx.xlock.door == &levl[x][y].
+export function pickingAt(state, x, y) {
+    const occupation = state._occupation;
+    return !!occupation && occupation.key === 'pick-lock'
+        && !!occupation.door
+        && occupation.x === x && occupation.y === y;
 }
 //# sourceMappingURL=lock.js.map

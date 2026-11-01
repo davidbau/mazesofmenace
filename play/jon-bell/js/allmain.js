@@ -2986,7 +2986,7 @@ async function moveloop_core_faithful() {
         if (g._pickupEncMorePending) {
             const f = capture_painted_frame();
             if (f) {
-                f.botl = capture_pre_movemon_botl();
+                f.botl = g._pickupEncMorePending.botl || capture_pre_movemon_botl();
                 f.cap = g._pickupEncMorePending.oldcap | 0;
                 g._pickupEncPreFrame = f;
             }
@@ -3131,7 +3131,9 @@ async function moveloop_core_faithful() {
                     const pmUhs = (g.u && g.u.uhs != null) ? (g.u.uhs | 0) : null;
                     /* The interrupt pline's flush_screen()/bot() paints the NEW hunger (newuhs set
                      * botl) but HP as of the last flush, so only uhs is refreshed. */
-                    if (g._occCurBotl && pmUhs != null) g._occCurBotl = { ...g._occCurBotl, uhs: pmUhs };
+                    if (g._occCurBotl && pmUhs != null) g._occCurBotl = { ...g._occCurBotl, uhs: pmUhs,
+                        /* same bot(): near_capacity() after newuhs' ATEMP(A_STR) reset (eat.c:3463,3507-3508) */
+                        ...(g._botlPaintedCap != null ? { cap: g._botlPaintedCap | 0 } : {}) };
                     const _pmMorc = await occupation_force_more(pm.text, _postMealPreFrame, (g.moves | 0) - 1, pmUhs);
                     // The movemon pline becomes the committed topline / result line, read
                     // at the next rhack(0) restore like any command result.
@@ -3268,6 +3270,11 @@ async function moveloop_core_faithful() {
     //
     // owns every nomul() that rhack schedules (it leaves multi == 0 behind), so on
     let headCountdownGuard = 0;
+    /* C allmain.c:474-480 — the PREVIOUS moveloop_core call ended with its own
+     * bot()/timebot(); a delayed turn entered with multi < 0 follows that paint,
+     * so a fatal blow (botl.c:279 declines at uhp -1) keeps the new T: on the line. */
+    if ((g.multi | 0) < 0)
+        await moveloop_status_paint();
     while ((g.multi | 0) < 0) {
         // Finish the current C moveloop_core before starting the next one.
         // Negative multi skips rhack, not the end_turn tail. The iteration

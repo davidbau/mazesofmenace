@@ -8111,8 +8111,12 @@ async function themeroom_fill_rng(aroom, difficulty) {
             // bare mkobj — only the object now lands on the map instead of leaking).
             const ghostMkobjAt = async (oclass, artif, ox, oy) => {
                 const otmp = await mkobj_at(oclass, ox, oy, artif);
-                if (otmp)
+                if (otmp) {
                     otmp.blessed = false;   /* buc="not-blessed" (see below) */
+                    /* C sp_lev.c:2281-2282: des.object without eroded clears erosion */
+                    otmp.oeroded = otmp.oeroded2 = 0;
+                    otmp.oerodeproof = 0;
+                }
                 // C sp_lev.c:2422-2423: des.object stacks after applying BUC.
                 await stackobj(otmp);
                 return otmp;
@@ -8126,8 +8130,12 @@ async function themeroom_fill_rng(aroom, difficulty) {
             // applied after mksobj_init's blessorcurse has already rolled.
             const ghostMksobjAt = async (otyp, ox, oy) => {
                 const otmp = await mksobj_at(otyp, ox, oy, true, true);
-                if (otmp)
+                if (otmp) {
                     otmp.blessed = false;
+                    /* C sp_lev.c:2281-2282: des.object without eroded clears erosion */
+                    otmp.oeroded = otmp.oeroded2 = 0;
+                    otmp.oerodeproof = 0;
+                }
                 // C sp_lev.c:2422-2423: the explicit object-id path stacks too.
                 await stackobj(otmp);
                 return otmp;
@@ -14282,6 +14290,9 @@ export async function revive_corpse(otmp, do_msgs = true) {
      * track that it was revived at least once. */
     if (otmp.oeaten)
         mon.mhp = eaten_stat(mon.mhp, otmp);
+    /* C zap.c:1096-1098: monster retains its name */
+    if (otmp.oextra?.oname && !((mon.data.geno | 0) & 0x1000 /* G_UNIQ */))
+        mon = christen_monst(mon, otmp.oextra.oname);
     mon.mrevived = 1;
     /* C zap.c:1022-1023: reviving one corpse of a stack splits it off first
      * (splitobj -> next_ident). */

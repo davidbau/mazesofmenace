@@ -35,6 +35,9 @@ import { HALLUC, HALLUC_RES, COLNO } from './const.js';
 import { PM_MONK } from './pm.generated.js';
 import { ugenocided, udeadinside, set_uasmon } from './polyself.js';
 import { phase_of_the_moon, friday_13th, getnow, time_from_yyyymmddhhmmss } from './allmain.js';
+import { impossible } from './pline.js';
+import { minimal_monnam } from './steed.js';
+import { describe_level_buf } from './dungeon.js';
 
 /* C ref: mondata.h:90 hides_under(ptr) — ((ptr)->mflags1 & M1_CONCEAL). */
 const M1_CONCEAL = 0x00000080; /* C monflag.h:101 */
@@ -54,10 +57,41 @@ function find_lev_obj_clear_no_charge(level) {
     }
 }
 
+/* C restore.c:1149-1161 getlev(): each trap record read is PREPENDED to
+ * gf.ftrap (trap->ntrap = gf.ftrap; gf.ftrap = trap) while savetrapchn()
+ * (save.c:918) wrote the chain head -> tail, so every level read reverses
+ * gf.ftrap -- the order sense_trap() walks in display_trap_map(). */
+function rest_ftrap_reverse(head) {
+    let prev = null, cur = head || null;
+    while (cur) {
+        const nxt = cur.ntrap;
+        cur.ntrap = prev;
+        prev = cur;
+        cur = nxt;
+    }
+    return prev;
+}
+
 /* C restore.c:167-178 restdamage(): each record read is PREPENDED to
  * svl.level.damagelist while savedamage() wrote the list head -> tail, so
  * every level read reverses the pending shop-repair chain (which damage a
  * shopkeeper repairs first, via find_damage()). */
+/* C restore.c:1149-1160 — getlev() rebuilds gf.ftrap by PREPENDING each trap
+ * as savetrapchn (save.c:918) wrote it head -> tail, so every save/restore
+ * round trip reverses the chain (same as rest_stairs, below).  t_at() reads
+ * game.level.traps, so only ftrap walkers (display_trap_map's sense_trap
+ * order, see_traps, ...) can tell. */
+function rest_trapchn_reverse(head) {
+    let prev = null, cur = head;
+    while (cur) {
+        const nxt = cur.ntrap ?? null;
+        cur.ntrap = prev;
+        prev = cur;
+        cur = nxt;
+    }
+    return prev;
+}
+
 function restdamage_reverse(level) {
     let prev = null, cur = level?.damagelist || null;
     while (cur) {
@@ -106,7 +140,8 @@ export async function getlev(lev) {
     g.fmon = snap.fmon;
     g.fobj = snap.fobj;
     g.billobjs = snap.billobjs ?? null;
-    g.ftrap = snap.ftrap;
+    g.ftrap = snap.ftrap = rest_trapchn_reverse(snap.ftrap);
+    g.ftrap = snap.ftrap = rest_ftrap_reverse(snap.ftrap);
     g.updest = snap.updest;
     g.dndest = snap.dndest;
     g.smeq = snap.smeq;
@@ -274,7 +309,17 @@ async function restgamestate(state) {
         game.u.ubirthday = time_from_yyyymmddhhmmss(state.__ubirthday);
     // C restore.c:625 — time while the game was saved is not playing time.
     (game.urealtime ||= { realtime: 0, finish_time: 0 }).start_timing = getnow();
-    set_uasmon(); // C restore.c:629
+    /* C restore.c:627 runs set_uasmon() before restobjchn()/setworn() (686-689):
+     * no slot is worn yet, so resists_drli()'s defended() sees no dragon armor.
+     * Our state copy already carries the slots; hide them for the call. */
+    {
+        const slots = ['uarm', 'uarmc', 'uarmh', 'uarms', 'uarmg', 'uarmf', 'uarmu',
+                       'uleft', 'uright', 'uwep', 'uswapwep', 'uquiver', 'uamul', 'ublindf'];
+        const saved = slots.map((k) => game.u[k]);
+        for (const k of slots) game.u[k] = null;
+        set_uasmon();
+        slots.forEach((k, i) => { game.u[k] = saved[i]; });
+    }
     // C restore.c:671 restores one migrating chain; rebind both JS spellings.
     _gm_migrating();
     /* C decl.h:536 marks `int lastinvnr` "(never saved&restored)": the restoring
@@ -335,10 +380,27 @@ async function restgamestate(state) {
  *     check_special_room(FALSE);
  *
  * clear_nhwindow(WIN_MESSAGE) is why unixmain.c:259's earlier
- * pline("Restoring save file...") never reaches a screen and never raises a
- * --More--: it is discarded here, before welcome(FALSE) puts the first
+ * pline("Restoring save file...") never reaches a screen unless a restore
+ * pline pages it: it is discarded here, before welcome(FALSE) puts the first
  * surviving message on the topline.
  */
+/* C restore.c:811 — the FIRST getlev() runs before restgamestate(), with
+ * u.usteed_mid == 0, so its fmon loop (:1181-1194) place_monster()s the steed
+ * too and steed.c:922-928 reports any monster already on that grid slot.
+ * u.uz is still the fresh process's (describe_level). */
+async function first_getlev_place_monsters(chain) {
+    const grid = new Map();
+    for (let mtmp = chain; mtmp; mtmp = mtmp.nmon) {
+        const key = (mtmp.mx | 0) * 256 + (mtmp.my | 0);
+        const othermon = grid.get(key);
+        if (othermon)
+            await impossible('placing %s over %s at <%d,%d>, mstates:%lx %lx on %s?',
+                             minimal_monnam(mtmp, false), minimal_monnam(othermon, true),
+                             mtmp.mx, mtmp.my, othermon.mstate, mtmp.mstate, describe_level_buf(0));
+        grid.set(key, mtmp);
+    }
+}
+
 export async function dorecover(save) {
     const g = game;
     g.program_state = g.program_state || {};
@@ -346,11 +408,15 @@ export async function dorecover(save) {
      * ("affects bot() so clear before docrt()"). */
     g.program_state.restoring = 1;
     // C first reads the current level before restoring the saved globals.
+    await first_getlev_place_monsters(save.state.fmon);
+    const baseTopline = g._base_topline; /* restgamestate copies saved keys over game */
+    delete g._base_topline;
     await bubbles_copy_snapshot(save.state.__bubbles, save.state.level);
     await restgamestate(save.state);
-    /* C unixmain.c:259 pline("Restoring save file...") is remembered (topl.c remember_topl)
-     * even though clear_nhwindow(WIN_MESSAGE) discards it from the screen: ^P still lists it. */
-    (g._msg_history ||= []).push('Restoring save file...');
+    /* restore_msghistory -> topl.c:701-702: a standing TOPLINE_NEED_MORE becomes
+     * NON_EMPTY, so docrt's cls() does not page it; it is only remembered. */
+    baseTopline?.finish();
+    g._screen_output = '';
     /* C's new process has an empty gbuf; saved levl glyphs are memory only. */
     clear_glyph_buffer();
     // C restore.c:831 restlevelfile() -> savelev() (save.c:561) clears
@@ -372,6 +438,9 @@ export async function dorecover(save) {
         }
         g.stairs = prev;
     }
+    // Same for the trap chain (restore.c:1159-1160).
+    g.ftrap = rest_trapchn_reverse(g.ftrap);
+    g.ftrap = rest_ftrap_reverse(g.ftrap); /* restore.c:1149-1161 */
     // Inactive level records are read/written in ledger order; C then rereads
     // the original current level. Bubble initial movement belongs to each read.
     const current = (g.dungeons?.[g.u.uz.dnum]?.ledger_start | 0) + g.u.uz.dlevel;
@@ -389,6 +458,19 @@ export async function dorecover(save) {
             if (reg.ttl >= 0) reg.ttl = Math.max(0, reg.ttl - aged);
         }
         snap.omoves = g.moves | 0;
+        /* that getlev() also re-prepends the stairway and trap chains
+         * (restore.c:978, 1159-1160) before restlevelfile() writes them back */
+        {
+            let prev = null, cur = snap.stairs;
+            while (cur) {
+                const next = cur.next;
+                cur.next = prev;
+                prev = cur;
+                cur = next;
+            }
+            snap.stairs = prev;
+        }
+        snap.ftrap = rest_trapchn_reverse(snap.ftrap);
         restdamage_reverse(snap.level);
         find_lev_obj_clear_no_charge(snap.level);
         if (!snap.bubbles) continue;

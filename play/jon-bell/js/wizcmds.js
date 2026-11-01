@@ -19,7 +19,7 @@ import { vision_recalc } from './vision.js';
 import { oc_merge } from './oc_merge.generated.js';
 import { pline, flash_mon, canspotmon, unmap_invisible, gamelog_add, livelog_printf } from './display.js';
 import { topl_park_cursor, TOPL_LIMIT, bot, _topl_more_pages, use_last_flush_snapshot, restore_occupation_topline, restore_command_topline } from './display.js';
-import { flush_screen, force_more, _topl_record_join, capture_painted_frame,
+import { flush_screen, force_more, _topl_record_join, capture_painted_frame, capture_pre_movemon_botl,
          _topl_merge_result, _topl_joins_snapshot } from './display.js';
 import { pline_flush_point, _pline_flush_frame_record, prepare_deferred_pline } from './display.js';
 import { display_text_window } from './com_pager.js';
@@ -357,6 +357,9 @@ export async function touch_artifact_youmonst(otmp) {
             ? _topl_more_pages(String(g._pending_message), _topl_joins_snapshot(String(g._pending_message)))
             : [''];
         if (g._rt_blast_page_standing && g._pending_message
+            /* topl.c:257,274: under a live WIN_STOP (ESC at an earlier --More--, e.g.
+             * the lifesaving page) skip is TRUE, so the blast pline raises no more(). */
+            && !g._topl_win_stop
             && _standPages[_standPages.length - 1].length + 2 + g._touch_artifact_blast_msg.length >= 71) {
             // topl.c:257 samples skip before :274 more() can set WIN_STOP.
             blastEnteredTopl = !g._topl_win_stop && !g._topl_win_stop_armed;
@@ -1057,7 +1060,6 @@ async function _wish_encumber_msg(paintedCap, prinvLine) {
     if (!msg) return;
     const _botlOwed = !!(g.disp && (g.disp.botl || g.disp.botlx)) || g._wishBotlOwedAtPrinv === true;
     g._wishBotlOwedAtPrinv = false;
-    if (g.disp) g.disp.botl = true;
     const prev = g._resultMessage;
     if (prev) {
         const joined = prev + '  ' + msg;
@@ -1078,12 +1080,17 @@ async function _wish_encumber_msg(paintedCap, prinvLine) {
                 const _postCap = _goldPrinv || _botlOwed;
                 f.cap = (_postCap ? newcap : paintedCap) | 0;
                 g._pickupEncPreFrame = f;
-                g._pickupEncMorePending = { oldcap: (_postCap ? newcap : paintedCap) | 0, prinvText: prinvLine };
+                g._pickupEncMorePending = { oldcap: (_postCap ? newcap : paintedCap) | 0, prinvText: prinvLine,
+                    /* the status row as of the last bot(): taken before SET_BOTL below */
+                    botl: _postCap ? undefined : capture_pre_movemon_botl() };
             }
         }
     } else {
         g._resultMessage = msg;
     }
+    /* C pickup.c:1992: SET_BOTL() comes AFTER the pline, so the join recorded
+     * above (the pline's own flush_screen) paints the OLD status line. */
+    if (g.disp) g.disp.botl = true;
 }
 
 /* C youprop.h:103 Blind := ((HBlinded || EBlinded) && !BBlinded), i.e.

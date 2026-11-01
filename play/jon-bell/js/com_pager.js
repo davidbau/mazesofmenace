@@ -1040,10 +1040,15 @@ function _statusLine2Raw(uacOverride, pwOverride) {
     /* trap.c:7005 sink_into_lava writes u.uhp with no SET_BOTL: a window drawn
      * before the next bot() keeps the physical HP (js/trap.js _botlStaleUhp). */
     if (!Upolyd && g._botlStaleUhp !== undefined) _hp = g._botlStaleUhp | 0;
+    /* Same latch as js/display.js _statusLine2Raw: a disp.botl set with no
+     * bot() since (losehp/healup) leaves the physical HP/max of either form. */
+    const _staleHpmax = g._botlStaleHp !== undefined ? g._botlStaleHpmax | 0 : undefined;
+    if (_staleHpmax !== undefined) _hp = g._botlStaleHp | 0;
     if (_hp < 0)
         _hp = 0;
     _hp = Math.min(_hp, 9999);
-    const _hpmax = Math.min(Upolyd ? (u.mhmax | 0) : (u.uhpmax || 0), 9999);
+    const _hpmax = Math.min(_staleHpmax !== undefined ? _staleHpmax
+        : Upolyd ? (u.mhmax | 0) : (u.uhpmax || 0), 9999);
     const _leveldescField = describe_level_buf(1, u.uz).replace(/ +$/, '');
     let s = `${_leveldescField} ${gold_status_char(gold)}:${gold} HP:${_hp}(${_hpmax}) Pw:${uen}(${uenmax}) AC:${uac}`;
     /* botl.c:1705-1706 enables XP/HD only at status_initialize(); a hero

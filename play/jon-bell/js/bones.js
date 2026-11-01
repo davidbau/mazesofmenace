@@ -640,6 +640,10 @@ async function getbones_load(f) {
     const { sanitize_name } = await import('./options.js');
     const { mongone } = await import('./mklev.js');
     for (let m = g.fmon; m; m = m.nmon) {
+        /* C reads the bones file into fresh monst structs, mtrack intact; the
+         * snapshot here is the dead game's object, so drop its goto_level
+         * level tag or the arrival would zero the track (js/cmd.js). */
+        m._portTrackLevel = undefined;
         if (has_mgivenname(m))
             m.mextra.mgivenname = sanitize_name(m.mextra.mgivenname);
         if (m.mhpmax === DEFUNCT_MONSTER)

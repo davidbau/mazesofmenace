@@ -4,6 +4,7 @@
 import { game } from './gstate.js';
 import { config_error_add } from './cmd_binds.js';
 import { gs, H_UTF8 } from './const.js';
+import { glyphid_is_known } from './display.js';
 import { rgbstr_to_int32 as rgbstr_to_int32_real } from './coloratt.js';
 
 /* C ref: display.h MAX_GLYPH — total glyph count; glyphs.c keeps
@@ -446,13 +447,15 @@ function shuffle_customizations() {
 
 /* stubs for unported helpers */
 /* stub: parse_id() is unported beyond the G_unexplored/G_nothing names; any
- * other well-formed G_ id is still taken to match one glyph (0) so the
- * callback's unnamed-symset nag fires as before. */
+ * other G_ id that parse_id would name (glyphs.c:890-1118) is taken to match
+ * one glyph (0); an unknown G_ id matches nothing and returns 0. */
 function glyph_find_core(id, findwhat) {
     if (!id || !/^G_/.test(id)) return 1;
     /* C glyphs.c:1099-1103 parse_id names these two glyphs directly;
      * display.h:543-551 puts them last, before MAX_GLYPH. */
     const special = { g_unexplored: MAX_GLYPH - 2, g_nothing: MAX_GLYPH - 1 }[id.toLowerCase()];
+    if (special === undefined && !glyphid_is_known(id)) return 0;
+    findwhat.glyphid = id; /* parse_id resolves the name to a glyph number; keep the name */
     if (findwhat.callback) findwhat.callback(special ?? 0, findwhat);
     return 1;
 }
@@ -468,7 +471,8 @@ function add_custom_glyph_entry(name, glyphidx, which_set, custtype, value) {
     const field = custtype === custom_nhcolor ? 'ccolor' : 'urep';
     if (gdc.custtype === custtype && gdc.customization_name === name)
         for (let d = gdc.details; d; d = d.next)
-            if (d.content[field].glyphidx === glyphidx) {
+            if (d.content[field].glyphidx === glyphidx
+                && d.content[field].glyphid === value.glyphid) {
                 Object.assign(d.content[field], value);
                 return;
             }
@@ -494,7 +498,7 @@ function to_custom_symset_entry_callback(glyph, findwhat) {
     if (findwhat.color) {
         const sym = Array.isArray(gs.symset) ? gs.symset[idx] : null;
         if (sym && sym.name) {
-            add_custom_glyph_entry(sym.name, glyph, idx, custom_nhcolor, { nhcolor: findwhat.color });
+            add_custom_glyph_entry(sym.name, glyph, idx, custom_nhcolor, { nhcolor: findwhat.color, glyphid: findwhat.glyphid });
         } else if (!colornag++) {
             config_error_add('Unimplemented customization feature,'
                              + ' ignoring for now');

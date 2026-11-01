@@ -908,7 +908,13 @@ async function _display_nhwindow_message() {
     /* C topl.c:262-274 pages overflowing plines before display_nhwindow
      * acknowledges the final topline (wintty.c:1873-1879). Drain those joins
      * before appending the explicit --More--, which has no pline boundary. */
-    await flush_screen(1);
+    /* tty_display_nhwindow -> more() never calls bot(): a status change made
+     * since the last pline flush (fountain.c:258-262 restore ability sets
+     * disp.botl) stays unpainted on the --More-- frame. */
+    const _d = game.disp, _botl = _d?.botl, _botlx = _d?.botlx;
+    if (_d) { _d.botl = 0; _d.botlx = 0; }
+    try { await flush_screen(1); }
+    finally { if (_d) { _d.botl = _botl; _d.botlx = _botlx; } }
     /* wintty.c:1865: WIN_CANCELLED (WIN_STOP) skips the window display. */
     if (game._topl_win_stop || game._topl_win_stop_armed) {
         game._topl_win_stop_armed = false;

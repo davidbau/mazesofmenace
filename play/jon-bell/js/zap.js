@@ -1126,8 +1126,7 @@ async function maybe_destroy_item_elec(obj, dmgtyp) {
                 ? ((quan === 1) ? '' : 'One of ')
                 : ((cnt < quan) ? 'Some of '
                     : (quan === 2) ? 'Both of ' : 'All of ');
-            const nm = (oclass === RING_CLASS) ? xname_ring(obj) : xname_wand(obj);
-            const yn = (cnt === 1 && quan === 1) ? `Your ${nm}` : `your ${nm}`;
+            const yn = (cnt === 1 && quan === 1) ? _Yname2(obj) : yname(obj);
             await pline(`${mult}${yn} ${DESTROY_STRINGS[dindx][cnt > 1 ? 1 : 0]}!`);
         }
         /* C zap.c:5919-5926 (u_carry): owornmask handling — Ring_gone / setnotworn,
@@ -8257,9 +8256,8 @@ export async function lightdamage(obj, ordinary, amt) {
     const g = game;
     let dmg = amt | 0;
 
-    /* C zap.c:3029 — gy.youmonst.data == &mons[PM_GREMLIN].  js carries the
-     * permonst row index on the synthetic youmonst.data_mndx field. */
-    if (dmg && (g.youmonst && (g.youmonst.data_mndx | 0) === PM_GREMLIN)) {
+    const _ymndx = g.youmonst ? (g.youmonst.data?.pmidx ?? g.youmonst.data_mndx ?? -1) : -1;
+    if (dmg && (_ymndx | 0) === PM_GREMLIN) {
         /* C zap.c:3031-3035 — reduce high values (wand destruction). */
         dmg = rnd(dmg);
         if (dmg > 10)
@@ -8336,7 +8334,7 @@ async function move_into_trap(ttmp) {
         u.umoved = true;
         newsym(u.ux0, u.uy0);
         _ut_vision_recalc(1);
-        _ut_check_leash(u.ux0, u.uy0);
+        await _ut_check_leash(u.ux0, u.uy0);
         if (u.uball) move_bc(0, bc.value, bx.value, by.value, cx.value, cy.value);
         ttmp.tseen = 0; /* hack for check_here() */
         game.iflags = game.iflags || {};

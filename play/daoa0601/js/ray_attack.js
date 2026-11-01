@@ -2,7 +2,7 @@
 // C refs: zap.c ubuzz(), dobuzz(), zhitm(), and zhitu().
 import { monsterHasMagicResistance } from './anti_magic_trap.js';
 import { finishMonsterKilled, healMonster, wakeMonster } from './mon.js';
-import { adjustSpellDamage } from './spell_damage.js';
+import { adjustSpellDamage } from './zap.js';
 import { explode } from './explosion.js';
 import { revealMonsterAppearance } from './mon.js';
 import { heroFormSticks } from './hero_species.js';
@@ -11,7 +11,7 @@ import { monsterResistsSleep } from './mondata.js';
 import { putMonsterToSleep } from './mhitm.js';
 import { burnArmorByFire } from './trap.js';
 import { igniteItems } from './light.js';
-import { payForShopDamage } from './shop_damage.js';
+import { payForShopDamage } from './shk.js';
 import { endVoluntaryMultiTurn } from './command_state.js';
 import { stopHeroOccupation } from './occupation.js';
 import { EXPL_FIERY, M_AP_MONSTER, M_AP_NOTHING, M_AP_TYPE, M_SEEN_REFL, STRAT_WAITMASK, W_ARM, W_ARMC, W_ARMU, W_ARMS, } from './const.js';

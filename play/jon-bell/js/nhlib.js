@@ -171,8 +171,15 @@ export async function nhlib_fill_storeroom_rng(floorCellCount, roomWidth, roomHe
             // themeroom fill.
             if (h.insideRoom && !h.insideRoom(mx, my))
                 continue;
-            if (h.makemon)
-                await h.makemon(pm, mx, my, 0);
+            if (h.makemon) {
+                const mtmp = await h.makemon(pm, mx, my, 0);
+                /* C sp_lev.c:2125 `mtmp->female = m->female`: lspo_monster
+                 * (sp_lev.c:3299,3355) leaves a class-only spec at BOOL_RANDOM
+                 * -> 0, overwriting the gender makemon just rolled, so every
+                 * storeroom mimic is male (and their corpses stack). */
+                if (mtmp)
+                    mtmp.female = 0;
+            }
         }
     }
 }

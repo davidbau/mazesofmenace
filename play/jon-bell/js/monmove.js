@@ -2011,7 +2011,7 @@ export async function m_move(mtmp, after) {
      * shk_move is now ported (shk.js → move_special in priest.js); gd_move and
      * pri_move remain unported and keep the no-RNG MMOVE_NOTHING stub so they do
      * NOT fall through to the normal-movement rn2 path. */
-    if ((mtmp.isshk | 0)) {
+    if (!(mtmp.wormno | 0) && (mtmp.isshk | 0)) { /* C monmove.c:1769 goto not_special */
         const xm = await shk_move(mtmp);
         if (xm === -2) return MMOVE_DIED_MV;
         /* C monmove.c:1812-1814 case -1: mmoved = MMOVE_NOTHING; break — a following
@@ -2042,7 +2042,7 @@ export async function m_move(mtmp, after) {
             return postmov(mtmp, (xm !== 1) ? MMOVE_NOTHING_MV : MMOVE_MOVED_MV, xm === 1);
         }
     }
-    if ((mtmp.ispriest | 0)) {
+    if (!(mtmp.wormno | 0) && (mtmp.ispriest | 0)) {
         const xm = await pri_move(mtmp);
         if (xm === -2) return MMOVE_DIED_MV;
         /* C monmove.c:1812-1814 case -1: mmoved = MMOVE_NOTHING; break — continue the normal AI */
@@ -2073,7 +2073,7 @@ export async function m_move(mtmp, after) {
         return postmov(mtmp, (xm !== 1) ? MMOVE_NOTHING_MV : MMOVE_MOVED_MV);
         }
     }
-    if ((mtmp.isgd | 0)) {
+    if (!(mtmp.wormno | 0) && (mtmp.isgd | 0)) {
         const _gdomx = mtmp.mx | 0, _gdomy = mtmp.my | 0;
         const xm = await gd_move(mtmp);
         if (xm === -2) return MMOVE_DIED_MV;
@@ -2093,7 +2093,7 @@ export async function m_move(mtmp, after) {
     }
 
     /* C monmove.c:1829-1836 (MAIL_STRUCTURES): the mail daemon delivers and vanishes. */
-    if ((mtmp.mndx ?? mtmp.mnum ?? 0) === 314 /* PM_MAIL_DAEMON */) {
+    if (!(mtmp.wormno | 0) && ((mtmp.mndx ?? mtmp.mnum ?? 0) === 314 /* PM_MAIL_DAEMON */)) {
         const _ud = game.u || {};
         const _df = ((_ud.HDeaf | 0) !== 0) || ((_ud.EDeaf | 0) !== 0)
             || !!(_ud.uroleplay && _ud.uroleplay.deaf);
@@ -2106,7 +2106,7 @@ export async function m_move(mtmp, after) {
     /* C monmove.c:1864-1872: tengu teleport: if (PM_TENGU && !rn2(5) && !mcan && !tele_restrict)
      * teleport/mnexto and return MMOVE_MOVED. */
     const mndx_mv = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
-    if (mndx_mv === PM_TENGU_MV && !rn2(5) && !(mtmp.mcan | 0)
+    if (!(mtmp.wormno | 0) && mndx_mv === PM_TENGU_MV && !rn2(5) && !(mtmp.mcan | 0)
         && !tele_restrict(mtmp)) {
         if ((mtmp.mhp | 0) < 7 || (mtmp.mpeaceful | 0) || rn2(2)) {
             await rloc(mtmp, RLOC_MSG);

@@ -347,7 +347,8 @@ async function in_or_out_menu(promptText, box, outokay, inokay, alreadyused, mor
      * (inokay) 'i', (outokay) 'b', (inokay) 'r'+'s', blank, (more) 'n', 'q'. */
     const lines = [];
     /* tty_end_menu adds the prompt in iflags.menu_headings' style (wintty.c:2680-2689). */
-    lines.push(menu_heading_text(promptText));
+    /* wintty.c:2722-2726 cuts any line longer than cols - 2 = 78 characters. */
+    lines.push(menu_heading_text(promptText.slice(0, 78)));
     lines.push('');
     const LOOTCHARS = '_:oibrsnq';
     const ABC_CHARS = '_:abcdenq';
@@ -407,7 +408,10 @@ async function in_or_out_menu(promptText, box, outokay, inokay, alreadyused, mor
     /* C wintty.c:1925-1928 — `!iflags.menu_overlay` drops the menu to offx 0 and
      * term_clear_screen()s, so the map and status are gone and every row is
      * drawn from column 1. */
-    const fullScreen = g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0;
+    /* wintty.c:1908-1921 offx = max(10, cols - maxcol - 1); offx == 10 takes the
+     * same full-screen branch, as a title of 67+ columns does. */
+    const fullScreen = g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0
+        || 77 - maxLen <= 10;
     const paint = () => (fullScreen
         ? lines.map((ln) => (ln === '' ? '' : ' ' + ln)).join('\n')
         /* wintty.c:3684-3687: use this getobj window's offx and ymax.
@@ -470,6 +474,17 @@ async function in_or_out_menu(promptText, box, outokay, inokay, alreadyused, mor
      * bot() under select_menu's bot_disabled), so the getobj menu opened next
      * (stash) clips them from the same offx. */
     if (statusClip !== undefined) g._getobj_menu_win = prior;
+    /* wintty.c:978-979: a full-screen (offx 0) dismiss is docrt(); its cls()
+     * blanks the status rows until the next bot(). */
+    if (fullScreen) {
+        const savedBotDisabled = g._bot_disabled;
+        g._bot_disabled = true; /* windows.c:1861 */
+        await docrt();
+        status_r1_menu_docrt();
+        g._statusBlankAfterDocrt = true;
+        await flush_screen(1);
+        g._bot_disabled = savedBotDisabled;
+    }
     return chosen;
 }
 

@@ -688,6 +688,8 @@ export async function do_death_sequence(opts) {
         && !pd.stoningDeathLine && !pd.alreadySaidYouDie) {
         if (g.disp) g.disp.botlx = 1;
         await bot();
+        /* a status paint after the pending line's own flush: the page shows it, T: included */
+        g._statusPaintSeq = (g._statusPaintSeq | 0) + 1;
         _earlyBot = true;
     }
     /* C's direct zhitu()->done() continuation paints status, appends
@@ -1256,10 +1258,15 @@ async function _yn_prompt(query, choices, defchoice, opts = {}) {
         }
         let doprev = false;
         for (;;) {
-            g._pending_message = qbuf;
-            await flush_screen(1);
-            const d = g.nhDisplay;
-            if (d) topl_park_cursor(d, qbuf + ' ');
+            /* C topl.c:444-459 — after ^P in single mode the recalled message stays
+             * on the topline; the prompt is re-added (addtopl) only once the NEXT
+             * key arrives. */
+            if (!doprev) {
+                g._pending_message = qbuf;
+                await flush_screen(1);
+                const d = g.nhDisplay;
+                if (d) topl_park_cursor(d, qbuf + ' ');
+            }
             /* C topl.c:537-539 rewrites gt.toplines as prompt + key2txt(q), and THAT
              * is what remember_topl() files: the answered prompt, never the bare
              * question.  The answer is filed by _answered() on return. */

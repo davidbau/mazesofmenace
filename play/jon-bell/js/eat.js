@@ -743,6 +743,11 @@ export async function newuhs(incr) {
                     g._resultMessage = '';
                 }
                 await You('faint from lack of food.');
+                /* C eat.c:3420 plines while u.uhs still holds the pre-faint value;
+                 * that pline's flush_screen()/bot() (pline.c:273-274) paints it on
+                 * the --More-- raised over the meal's committed line.  Publish it
+                 * for the eat occupation's pager, as the hunger switch below does. */
+                g._newuhsMsgUhs = { uhs: (u.uhs | 0), msg: 'You faint from lack of food.' };
                 u.HDeaf = Math.max(0, (u.HDeaf | 0) + duration);
                 if (g.disp)
                     g.disp.botl = 1;
@@ -3868,8 +3873,17 @@ export async function use_tin_opener(obj) {
     if (obj !== game.u.uwep) {
         if (obj.cursed && obj.bknown) {
             let qbuf = "";
-            if ((await ynq((await safe_qbuf(qbuf, "Really wield ", "?", obj, doname, thesimpleoname, "that")))) !== 'y')
+            qbuf = await safe_qbuf(qbuf, "Really wield ", "?", obj, doname, thesimpleoname, "that");
+            if ((await ynq(qbuf)) !== 'y') {
+                /* C topl.c:536-548 leaves a one-row answered prompt painted
+                 * until the next command key's clear_nhwindow; nhgetch drops
+                 * our message channel, so retain the physical text. */
+                const shown = `${qbuf} [ynq] (q)`;
+                if (!game.iflags?.query_menu
+                    && topl_park_cursor(null, shown + ' ')[1] === 0)
+                    game._topl_sticky = shown;
                 return 0; /* ECMD_OK */
+            }
         }
         if (!await wield_tool(obj, "use"))
             return 0; /* ECMD_OK */
@@ -4198,6 +4212,11 @@ function _incr_itimeout(idx, incr) {
     p.intrinsic = ((p.intrinsic | 0) & ~TIMEOUT) | v;
 }
 
+/* C pline.c:387-400 You_feel(): "You dream that you feel" while Unaware. */
+function _givit_feel(rest) {
+    return (Unaware() ? 'You dream that you feel ' : 'You feel ') + rest;
+}
+
 function givit(type, ptr) {
     if (!should_givit(type, ptr) && !temp_givit(type, ptr))
         return;
@@ -4211,53 +4230,53 @@ function givit(type, ptr) {
         break;
     case SLEEP_RES:
         if (!_has_fromoutside(SLEEP_RES)) {
-            _emit_eat_pline('You feel wide awake.');
+            _emit_eat_pline(_givit_feel('wide awake.'));
             _give_fromoutside(SLEEP_RES);
         }
         break;
     case COLD_RES:
         if (!_has_fromoutside(COLD_RES)) {
-            _emit_eat_pline('You feel full of hot air.');
+            _emit_eat_pline(_givit_feel('full of hot air.'));
             _give_fromoutside(COLD_RES);
         }
         break;
     case DISINT_RES:
         if (!_has_fromoutside(DISINT_RES)) {
-            _emit_eat_pline(hallu ? 'You feel totally together, man.' : 'You feel very firm.');
+            _emit_eat_pline(hallu ? _givit_feel('totally together, man.') : _givit_feel('very firm.'));
             _give_fromoutside(DISINT_RES);
         }
         break;
     case SHOCK_RES:
         if (!_has_fromoutside(SHOCK_RES)) {
-            _emit_eat_pline(hallu ? 'You feel grounded in reality.'
+            _emit_eat_pline(hallu ? _givit_feel('grounded in reality.')
                 : 'Your health currently feels amplified!');
             _give_fromoutside(SHOCK_RES);
         }
         break;
     case POISON_RES:
         if (!_has_fromoutside(POISON_RES)) {
-            _emit_eat_pline(_uprop_on(POISON_RES) ? 'You feel especially healthy.'
-                : 'You feel healthy.');
+            _emit_eat_pline(_uprop_on(POISON_RES) ? _givit_feel('especially healthy.')
+                : _givit_feel('healthy.'));
             _give_fromoutside(POISON_RES);
         }
         break;
     case TELEPORT:
         if (!_has_fromoutside(TELEPORT)) {
-            _emit_eat_pline(hallu ? 'You feel diffuse.' : 'You feel very jumpy.');
+            _emit_eat_pline(hallu ? _givit_feel('diffuse.') : _givit_feel('very jumpy.'));
             _give_fromoutside(TELEPORT);
         }
         break;
     case TELEPORT_CONTROL:
         if (!_has_fromoutside(TELEPORT_CONTROL)) {
-            _emit_eat_pline(hallu ? 'You feel centered in your personal space.'
-                : 'You feel in control of yourself.');
+            _emit_eat_pline(hallu ? _givit_feel('centered in your personal space.')
+                : _givit_feel('in control of yourself.'));
             _give_fromoutside(TELEPORT_CONTROL);
         }
         break;
     case TELEPAT:
         if (!_has_fromoutside(TELEPAT)) {
-            _emit_eat_pline(hallu ? 'You feel in touch with the cosmos.'
-                : 'You feel a strange mental acuity.');
+            _emit_eat_pline(hallu ? _givit_feel('in touch with the cosmos.')
+                : _givit_feel('a strange mental acuity.'));
             _give_fromoutside(TELEPAT);
             /* If blind, make sure monsters show up. */
             if (hero_Blind()) see_monsters();
@@ -4265,14 +4284,14 @@ function givit(type, ptr) {
         break;
     case ACID_RES:
         if (!_uprop_on(ACID_RES))
-            _emit_eat_pline(hallu ? 'You feel secure from flashbacks.'
-                : 'You feel less concerned about being harmed by acid.');
+            _emit_eat_pline(hallu ? _givit_feel('secure from flashbacks.')
+                : _givit_feel('less concerned about being harmed by acid.'));
         _incr_itimeout(ACID_RES, d(3, 6));
         break;
     case STONE_RES:
         if (!_uprop_on(STONE_RES))
-            _emit_eat_pline(hallu ? 'You feel unusually limber.'
-                : 'You feel less concerned about becoming petrified.');
+            _emit_eat_pline(hallu ? _givit_feel('unusually limber.')
+                : _givit_feel('less concerned about becoming petrified.'));
         _incr_itimeout(STONE_RES, d(3, 6));
         break;
     default:

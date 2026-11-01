@@ -4939,6 +4939,19 @@ export function docorner_blank_utf8_captures(xmin, ymax) {
      * pre-docrt terminal (goto_level -> losedogs -> control_mon_tele prompt)
      * takes the gbuf cells left by vision_recalc(2)/keepdogs() there. */
     const frz = game._levelgenPaintFreeze;
+    /* A liveGbuf frame (#wizmakemap/#wizloaddes) stages in_mklev-time gbuf
+     * updates in `pending` until a flush can run; row_refresh reads gbuf
+     * itself, so the covered rows take those staged cells now (in the frame
+     * the in_mklev terminal is painted from, _levelgen_paint_frame). */
+    if (frz && frz.cells && frz.liveGbuf && frz.pending) {
+        const tgt = _levelgen_paint_frame();
+        for (const [k, c] of frz.pending) {
+            const y = Math.trunc(k / COLNO), x = k % COLNO;
+            if (y + 1 >= ymax || x < Math.max(1, xmin)) continue;
+            for (const m of new Set([frz.cells, tgt?.cells]))
+                if (m) { if (c === null) m.delete(k); else m.set(k, c); }
+        }
+    }
     if (frz && frz.cells && frz.gbufCells) {
         for (let y = 0; y < ROWNO && y + 1 < ymax; y++)
             for (let x = Math.max(1, xmin); x < COLNO; x++) {
@@ -5825,7 +5838,7 @@ function _statusLine2Parts() {
     const _postUnfaint = !game._resultMessage
         && !(game._inMovemonMore && game._paintedSnapshot)
         && (/^You faint from lack of food.(  You regain consciousness.)?$/.test(game._pending_message || '')
-            || /You faint from lack of food\..*  You regain consciousness\.$/.test(game._pending_message || ''));
+            || /You faint from lack of food\..*  You (?:regain consciousness|can move again)\.$/.test(game._pending_message || ''));
     /* unmul's wake-up pline paged --More-- (the unfaint callback's Hear_again
      * pline raised it): unfaint already clamped u.uhs to FAINTING (eat.c:3336). */
     const _wakePage = !game._resultMessage
@@ -5888,7 +5901,8 @@ function _statusLine2Parts() {
                             (_p2s && _p2s.woundedLegs !== undefined) ? !!_p2s.woundedLegs : undefined,
                             (_p2s && _p2s.strangled !== undefined) ? !!_p2s.strangled : undefined,
                             (_p2s && _p2s.busy !== undefined) ? !!_p2s.busy : undefined,
-                            (_p2s && _p2s.grabbed !== undefined) ? !!_p2s.grabbed : undefined,
+                            /* botl.c:1164-1188: a --More-- frame holds the last bot() paint (goto_level's set_ustuck(0) only SET_BOTLs) */
+                            (_p2s && _p2s.grabbed !== undefined) ? !!_p2s.grabbed : (game._botlPaintedGrab != null ? !!game._botlPaintedGrab : undefined),
                             (_p2s && _p2s.stoned !== undefined) ? !!_p2s.stoned : undefined,
                             (_p2s && _p2s.riding !== undefined) ? !!_p2s.riding : undefined);
     const _m = /^((?: (?:Satiated|Hungry|Weak|Fainting|Fainted|Starved))?(?: (?:Burdened|Stressed|Strained|Overtaxed|Overloaded))?)(.*)$/.exec(_suffix);
@@ -7042,6 +7056,27 @@ export async function tty_restore_menu() {
     const choice = selected.picks[0];
     return choice > 0 ? { plname: saves[choice - 1].plname }
         : { quit: choice !== -1, background: [COPYRIGHT_BANNER_A, '', ''] };
+}
+
+/* C unixmain.c:259-261: before dorecover()'s docrt() the topline pages over
+ * the base window, which still shows tty's copyright banner (rows 4-7) unless
+ * restore_menu() erased it.  Same channel and read hook as js/chargen_ui.js. */
+export async function tty_restore_base_topline(bannerShown) {
+    const { COPYRIGHT_BANNER_A, COPYRIGHT_BANNER_B, COPYRIGHT_BANNER_D } = await import('./const.js');
+    const { PORT_ID } = await import('./platform_identity.js');
+    const background = Array(13).fill('');
+    if (bannerShown)
+        [COPYRIGHT_BANNER_A, COPYRIGHT_BANNER_B,
+         `         Version 5.0.0 ${PORT_ID}, built May  2 2026 12:00:00.`, COPYRIGHT_BANNER_D]
+            .forEach((line, i) => { background[4 + i] = line; });
+    return tty_base_window_messages(background, async (screen, cursor) => {
+        game._screen_output = screen;
+        if (game.nhDisplay) {
+            game.nhDisplay.cursorCol = cursor[0];
+            game.nhDisplay.cursorRow = cursor[1];
+        }
+        return await nhgetch();
+    });
 }
 
 /* A getlin over a menu writes incrementally; rebuilding its single topline
@@ -8292,6 +8327,7 @@ function _capture_botl(paint = false) {
         game._botlPaintedSickType = (u.uprops?.[SICK]?.intrinsic | 0) ? (u.usick_type | 0) : 0;
         game._botlPaintedLevel = u.ulevel | 0;
         game._botlPaintedInLava = !!(u.utrap && (u.utraptype | 0) === TT_LAVA);
+        game._botlPaintedGrab = !!(u.ustuck && !u.uswallow && !(((u.umonnum | 0) !== (u.umonster | 0)) && sticks(game.youmonst?.data)) && (u.ustuck.data?.mlet | 0) === 57);
         game._botlPaintedUhs = u.uhs | 0;
         game._botlPaintedExp = u.uexp ?? 0n;
     }
@@ -11469,6 +11505,12 @@ export async function debugpline(filename, fmt, ...args) {
 }
 
 export async function pline(msg, ...args) {
+    /* Before dorecover()'s docrt() there is no map window yet: the topline
+     * pages over the base window (js/jsmain.js restore path). */
+    if (game._base_topline) {
+        game._topl_urgent_next = false;
+        return await game._base_topline.put(args.length ? nh_sprintf(msg, args) : msg);
+    }
     const deferred = args.length === 0 && game._deferredPline;
     if (!deferred || deferred.msg !== msg)
         return await _pline_body(msg, false, null, ...args);
@@ -14669,7 +14711,7 @@ export function green_mon(mon) {
  * customized glyphs, not just the symbols used on the current level.  The map
  * renderer resolves glyphs on demand rather than keeping C's glyphmap array;
  * build the same identities here for the diagnostic window. */
-export function wizcustom_glyphids(menu) {
+function glyphid_table() {
     const nm = MON_MLET.length, no = MKOBJ_OC_CLASS.length;
     /* monsdump[].nm is the enum's bareword, not the gendered monster name. */
     /* v5 monsters.h renamed these enum entries; pm.generated.js retains the
@@ -14725,7 +14767,7 @@ export function wizcustom_glyphids(menu) {
              * position of S_<class> in loadsyms, not to objects[i].oc_class. */
             const customidx = i < 17 ? SYM_OFFSETS.O + i + 1 : null;
             const u = customidx !== null ? primary_unicode_symbol(customidx) : 0;
-            add(prefix + name, symidx, MKOBJ_OC_COLOR[i], u, customidx);
+            add(prefix + name, symidx, game._objColors?.[i] ?? MKOBJ_OC_COLOR[i], u, customidx);
             if (skip || name == null) glyphs[glyphs.length - 1].id = null;
         }
     };
@@ -14761,6 +14803,19 @@ export function wizcustom_glyphids(menu) {
     statues('piletop_statue_of_male_'); statues('piletop_statue_of_female_');
     add('unexplored', SYM_OFFSETS.X + 1, NO_COLOR);
     add('nothing', SYM_OFFSETS.X, NO_COLOR);
+    return glyphs;
+}
+
+/* C glyphs.c:890-1118 parse_id: a G_ id names a glyph only if it equals
+ * (strcmpi) one of the per-glyph names it builds; otherwise it returns 0 and
+ * glyph_find_core makes no callback. */
+export function glyphid_is_known(id) {
+    const key = String(id).toLowerCase();
+    return glyphid_table().some(gm => gm.id?.toLowerCase() === key);
+}
+
+export function wizcustom_glyphids(menu) {
+    const glyphs = glyphid_table();
 
     /* symbols.c parse_sym_line -> glyphs.c glyphrep_to_custom_map_entries:
      * S_ lines match a glyph family; G_ lines override a single glyph.
@@ -14791,6 +14846,11 @@ export function wizcustom_glyphids(menu) {
             if (u && set.handling === 5) gm.u = parseInt(u[1], 16);
             if (color !== '' && color !== -1) gm.customcolor = color || 0x1000000;
         }
+    }
+    /* OPTIONS=glyph:G_name/r-g-b entries filed by glyphrep_to_custom_map_entries */
+    for (let d = gs.sym_customizations?.[PRIMARYSET]?.[3]?.details; d; d = d.next) {
+        const cc = d.content?.ccolor, gm = cc && byId.get(cc.glyphid?.toLowerCase());
+        if (gm) gm.customcolor = cc.nhcolor;
     }
     const unicode = (game._gm_customsymbols ?? game.iflags.customsymbols) !== false;
     const colors = game.iflags.customcolors !== false;

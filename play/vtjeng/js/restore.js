@@ -38,6 +38,7 @@ import {
     W_SWAPWEP,
     W_TOOL,
     W_WEP,
+    STONE,
 } from './const.js';
 import { init_artifacts, restore_artifacts } from './artifacts.js';
 import { ledger_no, level_info, set_dungeon_topology } from './dungeon.js';
@@ -164,6 +165,18 @@ const WORN_SLOTS = Object.freeze([
     { mask: W_CHAIN, field: 'uchain' },
 ]);
 
+// Restore the at() method that GameMap provides for coordinate-bounded
+// location lookup; functions are excluded from the JSON snapshot. Every
+// restored level needs it before region.c rest_regions() can reach
+// vision.c does_block() through remove_region().
+function restoreLevelAt(level) {
+    if (!level || typeof level.at === 'function') return;
+    level.at = function at(x, y) {
+        if (x < 0 || x >= COLNO || y < 0 || y >= ROWNO) return null;
+        return this.locations[x]?.[y] || null;
+    };
+}
+
 // C ref: restore.c dorecover() (789-951). Reads the saved game state from
 // VFS storage, applies it to the game object, and reconstructs computed
 // state. Returns true on success; false if no save file exists.
@@ -197,6 +210,7 @@ export async function dorestore(state = game) {
 
     // Level and dungeon state
     state.level = snapshot.level;
+    restoreLevelAt(state.level);
     // C ref: restore.c getlev():1225 rest_regions(). The game state and the
     // regions were saved on the same turn, so only regions whose time had
     // already run out are discarded.
@@ -330,15 +344,6 @@ export async function dorestore(state = game) {
 
     // ---- Reconstruct computed state ----
 
-    // Restore the at() method that GameMap provides for coordinate-bounded
-    // location lookup; functions are excluded from the JSON snapshot.
-    if (state.level && typeof state.level.at !== 'function') {
-        state.level.at = function at(x, y) {
-            if (x < 0 || x >= COLNO || y < 0 || y >= ROWNO) return null;
-            return this.locations[x]?.[y] || null;
-        };
-    }
-
     // Rebuild the special-level linked list from the saved array.
     if (state.specialLevels) {
         for (let i = 0; i < state.specialLevels.length; i++) {
@@ -420,6 +425,12 @@ export async function dorestore(state = game) {
     state.level.objlist = restobjchn(state.level.objlist, state);
     state.level.buriedobjlist = restobjchn(state.level.buriedobjlist, state);
 
+    // C ref: restore.c getlev():1226 rest_bubbles(), after the hero's
+    // level's monsters and regions, rebuilds the Plane of Water's or Air's
+    // bubbles through mkmaze.c restore_waterlevel(); the snapshot has none
+    // on any other level.
+    if (snapshot.waterlevel) restore_waterlevel(snapshot.waterlevel, state);
+
     // C ref: restore.c:684 defers monster repaint until allmain.c:92-94.
     state.gd ??= {};
     state.gd.defer_see_monsters = true;
@@ -440,6 +451,14 @@ export async function dorestore(state = game) {
 
     // C ref: dorecover():928 vision_full_recalc = 1.
     state.vision_full_recalc = 1;
+
+    // hack.c classify_terrain()'s iflags.terrain_typ is not saved, and the
+    // restore never passes the level-arrival assignment of MAX_TYPE in
+    // dungeon.c u_on_newpos(), so the restored process keeps the static zero
+    // (STONE). botl.c then leaves the terrain status blank until
+    // switch_terrain() reclassifies (js/display.js _terrainStatus()).
+    state.iflags ??= {};
+    state.iflags.terrain_typ = STONE;
 
     // C ref: dorecover():901 program_state.something_worth_saving = 1.
     state.program_state ??= {};
@@ -473,12 +492,7 @@ function rest_other_levels(levels, state) {
     if (!Array.isArray(levels)) return;
     for (const { ledger, ...saved } of levels) {
         const level = saved.level;
-        if (level && typeof level.at !== 'function') {
-            level.at = function at(x, y) {
-                if (x < 0 || x >= COLNO || y < 0 || y >= ROWNO) return null;
-                return this.locations[x]?.[y] || null;
-            };
-        }
+        restoreLevelAt(level);
         level.monlist = restmonchn(level.monlist, state);
         level.objlist = restobjchn(level.objlist, state);
         level.buriedobjlist = restobjchn(level.buriedobjlist, state);
@@ -684,14 +698,7 @@ export async function getlev(ledger, state = game) {
     state.updest = snapshot.updest ?? {};
     state.dndest = snapshot.dndest ?? {};
 
-    // Restore the at() method if the level lost it (e.g. through a
-    // previous JSON round-trip, though in-memory snapshots keep it).
-    if (state.level && typeof state.level.at !== 'function') {
-        state.level.at = function at(x, y) {
-            if (x < 0 || x >= COLNO || y < 0 || y >= ROWNO) return null;
-            return this.locations[x]?.[y] || null;
-        };
-    }
+    restoreLevelAt(state.level);
 
     // C ref: restore.c:1110 svo.omoves = svm.moves - elapsed. The elapsed time
     // is how many game turns passed since the hero left this level. The snapshot
@@ -818,7 +825,7 @@ export async function getlev(ledger, state = game) {
 //
 // restrap() disguises a mimic through makemon.c set_mimic_sym(), whose
 // M_AP_TYPE result decides whether the mimic gets its second try.
-function hide_monst(mon, state = game) {
+export function hide_monst(mon, state = game) {
     const setMimicSym = (mimic) => set_mimic_sym(mimic, {
         state,
         random: { rn1, rn2, rnd },

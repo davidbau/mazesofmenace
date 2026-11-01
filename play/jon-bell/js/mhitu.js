@@ -5597,7 +5597,9 @@ function Blinded_gu() {
 async function diseasemu_gu(mdat) {
     const u = game.u || (game.u = {});
     const sickRes = u.uprops?.[SICK_RES_MU];
-    if ((sickRes?.intrinsic | 0) || (sickRes?.extrinsic | 0)) {
+    /* C youprop.h:69 Sick_resistance: intrinsic || extrinsic || defended(&youmonst, AD_DISE) */
+    if ((sickRes?.intrinsic | 0) || (sickRes?.extrinsic | 0)
+        || defended_mu(game.youmonst, AD_DISE_MK)) {
         await pline('You feel a slight illness.');
         return false;
     }

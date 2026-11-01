@@ -17,7 +17,7 @@ import { apply_customizations, purge_all_custom_entries, clear_all_glyphmap_colo
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import { roleOptionToIndex, raceOptionToIndex, genderOptionToIndex, alignOptionToIndex, genlPlayerSetupRandomPicksForY, sessionNeedsRandomPlayerPicks, extractChargenPreInitRng, replayChargenPreInitRng, detectInteractiveChargenFromSession, } from './roles.js';
 import { GameDisplay } from './game_display.js';
-import { reglyph_darkroom, tty_restore_menu } from './display.js';
+import { reglyph_darkroom, tty_restore_menu, tty_restore_base_topline, pline } from './display.js';
 import { generateChargenFrames, chargenShallAnswer, playChargen } from './chargen_ui.js';
 import { rn2 } from './rng.js';
 import { nhgetch } from './input.js';
@@ -325,6 +325,9 @@ export class NethackGame {
             const rcName = (this._rcName || g.flags.debug || selected?.plname) ? g.plname : '';
             const save = restore_saved_game(rcName.split('-')[0].replace(/,/g, ' '));
             if (save) {
+                /* C unixmain.c:261; dorecover() releases this at restgamestate(). */
+                game._base_topline = await tty_restore_base_topline(!selected);
+                await pline('Restoring save file...');
                 await dorecover(save);
                 /* C decl.h gl.luathemes is process state and is NOT in the save
                  * file; the restoring process starts with it empty, so its first

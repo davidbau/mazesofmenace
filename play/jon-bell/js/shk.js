@@ -5279,6 +5279,9 @@ export async function unpaid_cost(unp_obj, cost_type) {
                 break;
         }
     }
+    /* onbill() gave no message if unexpected problem occurred */
+    if (!shkp || (unp_obj.unpaid && !bp))
+        await lifecycle_impossible("unpaid_cost: object wasn't on any bill.");
     return amt;
 }
 

@@ -2036,12 +2036,12 @@ function _fruit_name_rewrite(nameIn, initial = false) {
         || plf.startsWith('partly eaten ')
         || (plf.startsWith('tin of ')
             && (plf.slice(7) === 'spinach'
-                || ismnum(name_to_mon(plf.slice(7), null))))
+                || ismnum(name_to_mon(plf.slice(7), null).mntmp)))
         || plf === 'empty tin'
         || (plf === 'glob'
             || (globpfx > 0 && plf.slice(globpfx) === 'glob'))
         || ((_endsWith(plf, ' corpse') || _endsWith(plf, ' egg'))
-            && ismnum(name_to_mon(plf, null)))) {
+            && ismnum(name_to_mon(plf, null).mntmp))) {
         /* C options.c:8237-8239 — Strcpy(buf, pl_fruit); "candied " + buf. */
         plf = 'candied ' + plf;
     }

@@ -381,7 +381,14 @@ function buildShallIPickFrame(finalName, prompt = SHALL_I_PICK_PROMPT) {
 }
 
 function cursorForShallIPick() {
-    return [SHALL_I_PICK_PROMPT.length + 1, PROMPT_ROW, 1];
+    return promptCursor(SHALL_I_PICK_PROMPT.length);
+}
+
+// Cursor after a tty prompt plus its trailing space; a prompt that fills the
+// 80-column row leaves the recorded terminal's cursor wrapped onto the next row.
+function promptCursor(len) {
+    const col = len + 1;
+    return col >= 80 ? [col - 79, PROMPT_ROW + 1, 1] : [col, PROMPT_ROW, 1];
 }
 
 // C role.c:1430-1659 root_plselection_prompt + build_plselection_prompt.
@@ -2003,7 +2010,7 @@ export async function playChargen(ctx) {
         for (;;) {
             const prompt = buildPickPrompt(st);
             const key = await read(ctx.baseWindow ? tty_base_window_prompt(ctx.baseWindow, 0, prompt, []).screen
-                : (asknameRetried ? withAsknameRetryLine(buildShallIPickFrame(asknameText, prompt), ASKNAME_ROW) : buildShallIPickFrame(asknameText, prompt)), [prompt.length + 1, PROMPT_ROW, 1]);
+                : (asknameRetried ? withAsknameRetryLine(buildShallIPickFrame(asknameText, prompt), ASKNAME_ROW) : buildShallIPickFrame(asknameText, prompt)), promptCursor(prompt.length));
             let a = String.fromCharCode(key).toLowerCase();
             if (key === K_ESC || a === 'q') return quit();
             if (a === ' ' || a === '\n' || a === '\r') a = 'y';

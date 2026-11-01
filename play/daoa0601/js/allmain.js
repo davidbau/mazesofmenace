@@ -10,10 +10,9 @@ import { angerMonster, finishEnvironmentalMonsterDeath, finishMonsterHideUnder, 
 // allmain.js — Main game loop.
 // C ref: allmain.c — newgame, moveloop, moveloop_core.
 import { heroIsHallucinating, heroIsBlind, heroIsDeaf, syncBlindness } from './senses.js';
-import { learnWand } from './wand_charge.js';
+import { learnWand } from './zap.js';
 import { flashBurn, makeBlinded } from './sight_change.js';
 import { makeStunned } from './hero_mental_status.js';
-import { heroHasHalfSpellDamage } from './spell_damage.js';
 import { finishMealMimicry } from './meal_mimic.js';
 import { finishHeroDigestion } from './hero_combat_engulf.js';
 import { game, requireGameLevel, requireInitializedGame, requireGameDisplay, requireLiveGame } from './gstate.js';
@@ -30,7 +29,7 @@ import { regenerateHeroHp } from './hero_regeneration.js';
 import { overexertHeroHp } from './hero_overexertion.js';
 import { ceilingName } from './terrain_name.js';
 import { tryCallObjectType } from './object_call.js';
-import { consumeMonsterItem, resolveDeferredMonsterBreath } from './mthrowu.js';
+import { consumeMonsterItem } from './mthrowu.js';
 import { heroCanTeleport, moveMonsterNextToHero, randomMonsterRelocation, teleportHero, askTeleportDestination, } from './teleport.js';
 import { runDueTimers } from './timer_effects.js';
 import { finishInUseInventory } from './object_cleanup.js';
@@ -60,7 +59,6 @@ import { observeBucForNaming, observeObject, recordObjectEncounter, recordObject
 import { loseHeroExperience } from './exper.js';
 import { makeMonsterFlee, interruptOccupationForMonster, monsterSightingBeforeAction, completeMonsterOffensiveAction, heroEveryturnEffect, runMonsterEveryturnEffects, beginMonsterMove, beginMonsterDochug, runMonsterAction, } from './monmove.js';
 import { stopHeroOccupation } from './occupation.js';
-import { fixShopDamage } from './shop_damage.js';
 import { removeWornHeroItem } from './hero_equipment.js';
 import { isWeldedPrimary } from './weapon_slots.js';
 import { unlinkObject } from './object_location.js';
@@ -97,7 +95,7 @@ import { observeDistantObjectForNaming, observeObjectForNaming, ownedObjectName 
 import { uInitMisc, makedog, uInitInventoryAttrs, finishStartingDiscoveries } from './u_init.js';
 import { heroIsInvisible } from './hero_invisibility.js';
 import { igniteItems } from './light.js';
-import { applyRayFloorFeatures, destroyColdInventory, destroyElectricInventory, destroyFireInventory } from './zap.js';
+import { applyRayFloorFeatures, destroyColdInventory, destroyElectricInventory, destroyFireInventory, heroHasHalfSpellDamage } from './zap.js';
 import { discoverHeroReflectionSource, heroReflectionSource } from './ray.js';
 import { addObjectToMonsterInventory, finishDelayedArmorTheft } from './steal.js';
 import { aligns, nativeRoleAt } from './roles.js';
@@ -128,7 +126,7 @@ import { finishPrayerOccupation } from './pray.js';
 import { getHungry, recoverHeroFromFainting, regainHearingAfterHelplessness } from './hunger.js';
 import { monsterAlignmentType } from './priest.js';
 import { moveElementalBubbles } from './elemental.js';
-import { removeObjectAndContentsFromBill, checkSpecialRoom, currentShopResident } from './shk.js';
+import { removeObjectAndContentsFromBill, checkSpecialRoom, currentShopResident, fixShopDamage } from './shk.js';
 import { inventoryItemDescription, rerollMenu } from './invent.js';
 import { hasCarriedProperty, hasIntrinsicProperty, hasInvokedProperty, hasPermanentIntrinsicProperty, hasWornProperty, propertyIsActive, propertyTimeout, propertyIsBlocked, refreshProperty, setPropertyTimeout, } from './properties.js';
 import { heroHasSlipperyHands, slipFromSlipperyHands } from './slippery_hands.js';

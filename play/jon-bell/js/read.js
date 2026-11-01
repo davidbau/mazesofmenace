@@ -700,7 +700,7 @@ import { getlin } from './wizcmds.js';
  * read.c:1207 ("nonmagical armor is easier to enchant"). */
 import { MKOBJ_OC_MAGIC, MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
 import { getObjName } from './o_init.js';
-import { resist } from './zap.js';
+import { resist, lightdamage } from './zap.js';
 /* C read.c:364-556's non-scroll readable ladder needs these; all are hoisted
  * `export function`s, so the js/mklev.js and js/objnam.js cycles resolve. */
 import { create_gas_cloud } from './region.js';
@@ -3474,7 +3474,12 @@ function _sense_trap(trap, x, y, src_cursed) {
                    : oc_merge_rd(obj.otyp) ? rnd(2) : 1;
         obj.corpsenm = rn2(NUMMONS);
         map_object(obj, 1);
-        atHero = ox === (u.ux | 0) && oy === (u.uy | 0);
+        /* display_trap_map's glyph_at(u.ux,u.uy) test (detect.c:994-996): a
+         * hallucinated STATUE is painted by statue_to_glyph() as a random
+         * MONSTER glyph (display.h:950-953), neither trap nor object, so the
+         * hero is redisplayed with newsym().  STATUE == 476 (js/display.js). */
+        atHero = ox === (u.ux | 0) && oy === (u.uy | 0)
+                 && !(_Hallucination() && obj.otyp === 476);
     } else {
         map_trap(trap, 1);
         trap.tseen = 1;
@@ -4011,8 +4016,10 @@ async function seffect_light(sobj) {
         /* C read.c:1752 litroom(!scursed, sobj) */
         await litroom(!scursed, sobj);
         if (!scursed) {
-            /* lightdamage always returns truthy dmg for a non-gremlin hero. */
-            g._gk_known = true;
+            /* C read.c:1753 — lightdamage(sobj, TRUE, 5) draws rnd() and
+             * hurts a hero polymorphed into a gremlin. */
+            if (await lightdamage(sobj, true, 5))
+                g._gk_known = true;
         }
     } else {
         const pm = scursed ? PM_BLACK_LIGHT : PM_YELLOW_LIGHT;
@@ -4729,7 +4736,9 @@ async function _identify_objlist_menu_body(promptText) {
             for (const e of entries) {
                 if ((e.obj.oclass | 0) !== oc) continue;
                 const letter = String.fromCharCode(e.obj.invlet | 0);
-                lines.push(`${letter} ${e.selected ? (e.count > 0 ? '#' : '+') : '-'} ${e.name}`);
+                /* C wintty.c:2722-2726 tty_end_menu: "cut off any lines that are too
+                 * long" -- str is cut to cols - 2 = 78 characters. */
+                lines.push(`${letter} ${e.selected ? (e.count > 0 ? '#' : '+') : '-'} ${e.name}`.slice(0, 78));
             }
         }
         return lines;
@@ -4761,7 +4770,11 @@ async function _identify_objlist_menu_body(promptText) {
      * as selections toggle (a '+'/'-' swap cannot change a line's width), so
      * measure it from the un-erased first frame. */
     const GEOM_LINES = buildLines();
-    const FULL_SCREEN = (GEOM_LINES.length + 1) >= SCREEN_ROWS;
+    /* wintty.c:1908-1921 offx = min(40, cols - maxcol - 1), clamped to 0; a
+     * widest line of 77+ columns (maxcol = len + 2 >= 79) gives offx 0 and the
+     * menu paints on a cleared screen (wintty.c:1407). */
+    const FULL_SCREEN = (GEOM_LINES.length + 1) >= SCREEN_ROWS
+        || GEOM_LINES.some(l => l.length >= 77);
     const WIN_COL = FULL_SCREEN
         ? 1
         : tty_window_offx([...GEOM_LINES.slice(0, PAGE_CONTENT), '(end)'], 'end');
