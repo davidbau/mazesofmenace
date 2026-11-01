@@ -25,7 +25,7 @@ import { makeConfused } from './hero_mental_status.js';
 import { refreshMovementProperties, setPropertyTimeout } from './properties.js';
 import { levelTeleport } from './level_teleport.js';
 import { gotoLevel as changeLevel, scheduleLevelChange } from './level_change.js';
-import { heroLiquidEffects } from './hack.js';
+import { applyHeroLiquidEffects } from './hack.js';
 import { dungeonDepth } from './hacklib.js';
 import { clampHoleDestination } from './hole_destination.js';
 import { shopDig } from './shop_damage.js';
@@ -63,10 +63,11 @@ import { makeTrapMissile } from './trap_missile.js';
 import { rollPhysicalWeaponDamageAgainstHero } from './weapon_damage.js';
 import { endVoluntaryMultiTurn } from './command_state.js';
 import { stopHeroOccupation } from './occupation.js';
-import { wakeMonstersNearWithMessages } from './monster_wake.js';
+import { wakeMonstersNearWithMessages } from './mon.js';
 import { ceilingName } from './terrain_name.js';
 import { putHeroToSleep } from './hero_sleep.js';
-import { monsterIsBreathless, monsterIsHelpless, monsterResistsSleep, putMonsterToSleep, } from './monster_sleep.js';
+import { monsterIsBreathless, monsterIsHelpless, monsterResistsSleep } from './mondata.js';
+import { putMonsterToSleep } from './mhitm.js';
 import { feelTrap, finishImmediateMonsterTrap, finishMonsterTrapDeath, seeTrap, splashLitObject, trapTriggeredByFloor, triggerImmediateMonsterTrap, waterDamageObject, } from './trap.js';
 import { heroIsPolymorphed, returnHeroToHumanForm } from './polyself.js';
 import { finishHeroDeath } from './end.js';
@@ -436,10 +437,11 @@ async function triggerLandmine(trap, { failedUntrap = false, forceTrap = false, 
         heroCaused: true,
         finishMonsterDeath,
         finishMonsterKill: finishHeroMonsterKill,
-        resolveLiquid: () => heroLiquidEffects({
-            state: game,
-            publish: plineWithContinuation,
-        }),
+        // C trap.c:2590 blow_up_landmine() -> dig.c:838 liquid_flow() ->
+        // dig.c:875 pooleffects(FALSE): a crawl-out of the flooded hole
+        // lands through teleds()' spoteffects(TRUE) (teleport.c:568), the
+        // shared landing-effect entry applyHeroLiquidEffects() supplies.
+        resolveLiquid: () => applyHeroLiquidEffects(plineWithContinuation),
     });
     if (game.program_state.gameover)
         return;

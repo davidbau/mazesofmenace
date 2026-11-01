@@ -2,7 +2,7 @@ import { trapName } from './trap_name.js';
 // Finding and removing floor, container, and door traps.
 // C ref: trap.c dountrap(), could_untrap(), and untrap().
 import { formatFeltMessage } from './hero_speech.js';
-import { monsterHasMapPosition } from './monster_location.js';
+import { monsterHasMapPosition } from './steed.js';
 import { deleteTrap } from './trap_lifecycle.js';
 import { vision_note_blocker_change } from './vision.js';
 import { addShopDamage } from './shop_damage.js';
@@ -11,7 +11,7 @@ import { SHOPBASE } from './const.js';
 import { triggerBoobyTrap } from './booby_trap.js';
 import { adjustHeroAlignment } from './alignment.js';
 import { artifactById } from './artifacts.js';
-import { heroHasMagicKey } from './monster_key.js';
+import { heroHasMagicKey } from './artifact.js';
 import { currentAttribute, exerciseAttribute } from './attrib.js';
 import { triggerChestTrap } from './chest_trap.js';
 import { heroArmName, heroFingerName, heroHandName } from './body_parts.js';
@@ -41,7 +41,7 @@ import { objectTypeKnown } from './shk.js';
 import { isDoorMimic, isObjectOrFurnitureMimic, revealMimic } from './mimic.js';
 import { buryFloorObjectsAt } from './buried_object.js';
 import { finishEnvironmentalMonsterDeath } from './mon.js';
-import { setMonsterMalign } from './monster_alignment.js';
+import { setMonsterMalign } from './makemon.js';
 import { MONSTER_BODY_META, MONSTER_FLAGS1, MONSTER_GENO, MONSTER_MOVE, MONSTER_SYMBOL, monsterIsMindless, monsterTypeName, } from './monster_data.js';
 import { MONSTER_SIZE } from './monster_data.js';
 import { ARROW, BEARTRAP, BOULDER, CAN_OF_GREASE, DART, LAND_MINE, LARGE_BOX, CHEST, OBJECT_BIMANUAL, POT_OIL, } from './object_data.js';

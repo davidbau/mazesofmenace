@@ -1,6 +1,6 @@
 import { seeTrap } from './trap.js';
 // C dig.c:use_pick_axe()/use_pick_axe2(). Digging effort lives in hero_digging.
-import { monsterHasMapPosition } from './monster_location.js';
+import { monsterHasMapPosition } from './steed.js';
 import { heroIsHallucinating } from './senses.js';
 import { nomul } from './command_state.js';
 import { artifactById } from './artifacts.js';
@@ -19,7 +19,7 @@ import { diggingTarget, startHeroDigging } from './hero_digging.js';
 import { triggerHeroTrap } from './hero_traps.js';
 import { gotoLevel } from './level_change.js';
 import { MONSTER_FLAGS1, MONSTER_NAME, MONSTER_MOVE, monsterTypeName } from './monster_data.js';
-import { wakeMonstersNearWithMessages } from './monster_wake.js';
+import { wakeMonstersNearWithMessages } from './mon.js';
 import { BOULDER, OBJECT_NAMES, STATUE } from './object_data.js';
 import { ownedObjectAction, ownedObjectName } from './objnam.js';
 import { roomsAt, roomForRoomno } from './room.js';

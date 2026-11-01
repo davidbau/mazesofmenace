@@ -1,7 +1,7 @@
 // Applying a polearm (or the Snickersnee katana) as a distance attack.
 // C refs: apply.c use_pole(), calc_pole_range(), find_poleable_mon(),
 // get_valid_polearm_position(), snickersnee_used_dist_attk().
-import { monsterAtPosition } from './monster_location.js';
+import { monsterAtPosition } from './steed.js';
 import { COLNO, IS_FURNITURE, P_BASIC, P_SKILLED, P_TWO_WEAPON_COMBAT, ROWNO, SCORR, STONE, STATUE_TRAP, isok, } from './const.js';
 import { isAccessibleAt } from './terrain_properties.js';
 import { artifactById } from './artifacts.js';
@@ -16,7 +16,7 @@ import { hitMonsterWithAppliedWeapon } from './hero_ranged_attack.js';
 import { prepareMapPositionHighlights, selectMapPosition, shouldShowGetposTip, showGetposInstructions, showGetposTip } from './getpos.js';
 import { heroIsDeaf, heroIsHallucinating } from './senses.js';
 import { ensureHeroSkills } from './skills.js';
-import { wakeMonstersNearWithMessages } from './monster_wake.js';
+import { wakeMonstersNearWithMessages } from './mon.js';
 import { BOULDER, OBJECT_SUBTYPE, STATUE } from './object_data.js';
 import { activateStatueTrapAt } from './statue_trap.js';
 import { cansee, couldsee } from './vision.js';

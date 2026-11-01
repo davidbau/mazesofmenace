@@ -1,6 +1,6 @@
 import { requirePlayingGame } from './gstate.js';
 // C detect.c:openit()/openone(). Each opened feature keeps its normal owner.
-import { monsterHasMapPosition } from './monster_location.js';
+import { monsterHasMapPosition } from './steed.js';
 import { game, requireLiveGame } from './gstate.js';
 import { BOLT_LIM, DOOR, SDOOR, SCORR, D_CLOSED, D_LOCKED, D_TRAPPED, D_NODOOR, D_ISOPEN, STATUE_TRAP, Is_airlevel, Is_waterlevel, } from './const.js';
 import { CHEST, LARGE_BOX } from './object_data.js';
@@ -13,7 +13,7 @@ import { monsterName } from './do_name.js';
 import { expelHero } from './hero_expulsion.js';
 import { revealSecretDoor, revealSecretCorridor } from './detect.js';
 import { triggerBoobyTrap } from './booby_trap.js';
-import { wakeMonstersNearWithMessages } from './monster_wake.js';
+import { wakeMonstersNearWithMessages } from './mon.js';
 import { openHoldingTrap, openFallingTrap } from './trap_magic.js';
 import { findDrawbridgeAt, openDrawbridge } from './dbridge.js';
 export async function openit(state = game) {

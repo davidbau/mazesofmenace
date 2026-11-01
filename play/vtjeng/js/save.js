@@ -51,6 +51,7 @@ import { vfsWriteFile } from './storage.js';
 import { clearTtyMessageWindow, displayPendingTtyMessageWindow, ttyPline } from './tty_message.js';
 import { tty_raw_print } from './tty_rawprint.js';
 import { save_waterlevel } from './mkmaze.js';
+import { rest_saved_level_regions } from './region.js';
 import { save_oracles } from './rumors.js';
 import { tty_getmsghistory } from './topl.js';
 
@@ -460,6 +461,11 @@ function serializeGameState(state) {
         tune: state.tune,
         // Inventory and objects
         invent: state.invent,
+        // C ref: save.c savegamestate():306-307 saveobjchn(gm.migrating_objs)
+        // and savemonchn(gm.migrating_mons), right after the inventory and
+        // any dangling ball and chain.
+        migrating_objs: state.gm?.migrating_objs ?? null,
+        migrating_mons: state.gm?.migrating_mons ?? null,
         // Equipment state: setworn() sets these game-level pointers; the
         // restore path scans owornmask to rebuild them, but unweapon has no
         // per-object representation. head_engr is the engraving chain on
@@ -551,6 +557,7 @@ function save_other_levels(state) {
         // snapshot together, so a missing one is a port defect.
         if (!saved)
             throw new Error(`dosave0: no saved level for ledger ${ltmp}`);
+        rest_saved_level_regions(saved.level, saved.omoves, state.moves);
         levels.push({ ledger: ltmp, ...saved, omoves: state.moves });
     }
     return levels;

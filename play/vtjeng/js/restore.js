@@ -10,7 +10,7 @@
 // reconstruction (docrt, bot) and the welcome-back message follow in the
 // caller (jsmain.js).
 
-import { rest_regions } from './region.js';
+import { rest_regions, rest_saved_level_regions } from './region.js';
 import { newsym } from './display.js';
 import { cansee, does_block, unblock_point } from './vision.js';
 import { mon_catchup_elapsed_time } from './dog.js';
@@ -44,16 +44,17 @@ import { ledger_no, level_info, set_dungeon_topology } from './dungeon.js';
 import { game } from './gstate.js';
 import { l_nhcore_init } from './mklev.js';
 import { restore_waterlevel } from './mkmaze.js';
-import { hideunder, restrap, restore_cham } from './mon.js';
+import { adj_erinys, hideunder, restrap, restore_cham } from './mon.js';
 import { hides_under, is_hider } from './mondata.js';
 import { S_EEL, S_MIMIC } from './monsters.js';
 import { init_oclass_probs } from './o_init.js';
 import { defineObjAliases } from './obj.js';
 import { defineObjclassAliases, GRAPPLING_HOOK, PICK_AXE } from './objects.js';
+import { set_mimic_sym } from './makemon_create.js';
 import { restpriest } from './priest.js';
 import { setuwep } from './wield.js';
 import { getnow } from './calendar.js';
-import { rnd } from './rng.js';
+import { rn1, rn2, rnd } from './rng.js';
 import {
     parseSnapshot, SAVE_FILE_PATH, savemonchn, saveobjchn,
 } from './save.js';
@@ -244,10 +245,15 @@ export async function dorestore(state = game) {
     }
 
     // Inventory and objects
-    // C ref: restore.c restgamestate():681 gi.invent = restobjchn(nhfp, FALSE).
-    // The dangling ball-and-chain, gm.migrating_objs and gm.migrating_mons
-    // chains that follow it in C (684-696) are not in the snapshot.
+    // C ref: restore.c restgamestate():657 gi.invent = restobjchn(nhfp, FALSE).
+    // The dangling ball-and-chain that follows it in C is not in the
+    // snapshot; restgamestate():671-672 then restores the migrating chains.
     state.invent = restobjchn(snapshot.invent, state);
+    state.gm ??= {};
+    state.gm.migrating_objs = restobjchn(snapshot.migrating_objs ?? null,
+        state);
+    state.gm.migrating_mons = restmonchn(snapshot.migrating_mons ?? null,
+        state);
     if (snapshot.head_engr != null) state.head_engr = snapshot.head_engr;
 
     // C has a static artifact catalog; JS rebuilds its per-game catalog
@@ -358,6 +364,12 @@ export async function dorestore(state = game) {
     // through l_nhcore_init(), which also sets state.splev_align for any
     // future level generation in this game.
     l_nhcore_init(state);
+
+    // C ref: restgamestate():727 adj_erinys(u.ualign.abuse). The erinys
+    // catalog rewrite is not saved, so restore replays it before anything
+    // reads mons[PM_ERINYS], including makemon.c init_mongen_order(), whose
+    // difficulty sort a fresh process runs on its first mkclass().
+    adj_erinys(state.u.ualign.abuse, state);
 
     // C ref: dorecover():825 init_oclass_probs(). Recompute object-class
     // probability totals from the restored objects table.
@@ -473,6 +485,7 @@ function rest_other_levels(levels, state) {
         savemonchn(level.monlist, state);
         saveobjchn(level.objlist, state);
         saveobjchn(level.buriedobjlist, state);
+        rest_saved_level_regions(level, saved.omoves, state.moves);
         level_info(ledger, state).flags |= VISITED | LFILE_EXISTS;
         state._savedLevels[ledger] = { ...saved, omoves: state.moves };
     }
@@ -803,9 +816,13 @@ export async function getlev(ledger, state = game) {
 // calls restrap() for ceiling hiders, retries for mimics, restores vision,
 // and calls hideunder() for under-hiders.
 //
-// The restrap env needs setMimicSym for mimics; getlev supplies a stub that
-// defers mimic disguise selection to the first turn that processes the monster.
+// restrap() disguises a mimic through makemon.c set_mimic_sym(), whose
+// M_AP_TYPE result decides whether the mimic gets its second try.
 function hide_monst(mon, state = game) {
+    const setMimicSym = (mimic) => set_mimic_sym(mimic, {
+        state,
+        random: { rn1, rn2, rnd },
+    });
     const hider_under = hides_under(mon.data) || mon.data?.mlet === S_EEL;
 
     if ((is_hider(mon.data) || hider_under)
@@ -820,14 +837,14 @@ function hide_monst(mon, state = game) {
         if (is_hider(mon.data)) {
             restrap(mon, {
                 state,
-                setMimicSym: deferredSetMimicSym,
+                setMimicSym,
             });
         }
         // Retry for a mimic that missed its 1/3 chance.
         if (mon.data?.mlet === S_MIMIC && !M_AP_TYPE(mon)) {
             restrap(mon, {
                 state,
-                setMimicSym: deferredSetMimicSym,
+                setMimicSym,
             });
         }
         // Restore vision.
@@ -842,9 +859,3 @@ function hide_monst(mon, state = game) {
     }
 }
 
-// A stub for setMimicSym that defers mimic disguise selection. getlev()
-// does not need to assign disguises immediately; movemon() will handle
-// mimics on their next turn.
-function deferredSetMimicSym(_monster, _env) {
-    // No-op: the mimic will pick a disguise on its next move.
-}

@@ -54,6 +54,7 @@ import { AD_DRST, PM_FOG_CLOUD } from './monsters.js';
 import { make_blinded, set_itimeout } from './potion.js';
 import { body_part } from './polyself.js';
 import { d as roll_d, rn2, rnd } from './rng.js';
+import { ttyPline } from './tty_message.js';
 import { S_cloud, S_poisoncloud } from './symbols.js';
 import { TOWEL } from './objects.js';
 import { note_unported } from './unported.js';
@@ -1151,6 +1152,32 @@ export function rest_regions(savedMoves, state = game, rawEnv = {}) {
     for (let index = regions.length - 1; index >= 0; --index) {
         const region = regions[index];
         if (region.ttl === 0) remove_region(region, state, rawEnv);
+    }
+}
+
+// C ref: region.c rest_regions() (797-890) when save.c dosave0() and
+// restore.c dorecover() pass a level other than the hero's through
+// getlev() and savelev(). Timed regions lose the turns since the level's
+// region timestamp and expired ones are removed as remove_region() removes
+// them, last region into the vacated slot. Its redraw does nothing there:
+// newsym() is suppressed while program_state.saving or .restoring is set,
+// and dorecover() runs vision_reset() before play resumes. The caller
+// restamps the level with `moves`, as save_regions() does.
+export function rest_saved_level_regions(level, savedMoves, moves) {
+    if (!level) return;
+    rest_region_capacity(level);
+    const regions = level.regions;
+    const tmstamp = moves - savedMoves;
+    for (const region of regions) {
+        if (region.ttl >= 0)
+            region.ttl = region.ttl > tmstamp ? region.ttl - tmstamp : 0;
+    }
+    for (let index = regions.length - 1; index >= 0; --index) {
+        const region = regions[index];
+        if (region.ttl !== 0) continue;
+        regions[index] = regions.at(-1);
+        regions.pop();
+        region.ttl = -2;
     }
 }
 

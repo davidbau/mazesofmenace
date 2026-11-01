@@ -195,6 +195,7 @@ import { Is_special, on_level, u_on_newpos } from './dungeon.js';
 import {
     bad_rock,
     cant_squeeze_thru,
+    disturb_buried_zombies,
     in_town,
     losehp,
     may_dig,
@@ -259,6 +260,7 @@ import {
     can_teleport,
     dmgtype,
     flesh_petrifies,
+    grounded,
     hides_under,
     is_animal,
     is_clinger,
@@ -1675,7 +1677,7 @@ async function leppie_stash(mtmp, env = {}) {
 // with ranged attacks prefer to keep their distance.
 // Returns oldappr unchanged, -1 to retreat, or -2 to maintain a preferred
 // range (setting *pdistmin and *pdistmax via the returned object).
-function m_balks_at_approaching(oldappr, mtmp, state = game) {
+function m_balks_at_approaching(oldappr, mtmp, state = game, random = { rn2 }) {
     const mwep = mtmp.mw; /* MON_WEP() */
     const x = mtmp.mx, y = mtmp.my, ux = mtmp.mux, uy = mtmp.muy;
     const edist = dist2(x, y, ux, uy);
@@ -1705,7 +1707,7 @@ function m_balks_at_approaching(oldappr, mtmp, state = game) {
     }
 
     /* can attack from distance, and hp loss or attack not used */
-    if (ranged_attk_available(mtmp, { state })
+    if (ranged_attk_available(mtmp, { state, random })
         && (mtmp.mhp < Math.trunc((mtmp.mhpmax + 1) / 3)
             || !mtmp.mspec_used))
         return { appr: -1, distmin: 0, distmax: 0 };
@@ -2729,6 +2731,10 @@ export async function dochug(monster, rawEnv = {}) {
             // cooldown draws in live play and mutates only the planning clone.
             if (monster === state.u.ustuck && !m_next2u(monster, state))
                 await unstuck(monster, state, env);
+            // C ref: monmove.c:938-939. A walking monster's footfalls hasten
+            // every buried zombie within one square of where it now stands.
+            if (grounded(preMoveSpecies, state))
+                disturb_buried_zombies(monster.mx, monster.my, state);
             /* Maybe it stepped on a trap and fell asleep... */
             if (helpless(monster)) return 0;
             /* Monsters can move and then shoot on same turn;
@@ -4024,7 +4030,9 @@ export async function m_move(monster, rawEnv = {}) {
 
         // C ref: monmove.c:1878. Hostiles with ranged weapon or attack try to
         // stay away. The returned object carries appr and the preferred range.
-        const balks = m_balks_at_approaching(approach, monster, state);
+        const balks = m_balks_at_approaching(
+            approach, monster, state, random,
+        );
         approach = balks.appr;
         preferredrange_min = balks.distmin;
         preferredrange_max = balks.distmax;

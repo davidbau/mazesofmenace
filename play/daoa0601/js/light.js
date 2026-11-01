@@ -1,7 +1,7 @@
 // Object light and burn timers.
 // C refs: timeout.c begin_burn()/burn_object()/end_burn(), light.c.
 import { formatSeenMessage } from './hero_speech.js';
-import { monsterHasMapPosition } from './monster_location.js';
+import { monsterHasMapPosition } from './steed.js';
 import { loseHeroHp } from './hero_damage.js';
 import { AD_BLND } from './monster_attack_types.js';
 import { finishHeroMonsterKillOutcome } from './hero_monster_death.js';
@@ -19,7 +19,7 @@ import { plineWithContinuation } from './pline.js';
 import { initializePet } from './dog.js';
 import { makemonNear } from './mklev.js';
 import { mksobj } from './mkobj.js';
-import { wakeMonstersNearWithMessages } from './monster_wake.js';
+import { wakeMonstersNearWithMessages } from './mon.js';
 import { monsterDigests, monsterIsWhirly, } from './monster_data.js';
 import { BRASS_LANTERN, CANDELABRUM_OF_INVOCATION, GOLD_DRAGON_SCALE_MAIL, GOLD_DRAGON_SCALES, MAGIC_LAMP, OIL_LAMP, POT_OIL, POT_WATER, TALLOW_CANDLE, WAX_CANDLE, } from './object_data.js';
 import { OBJECT_TIMER_KIND, objectsInTimerGraph, scheduleObjectTimer, stopObjectTimer, } from './object_timers.js';
@@ -610,7 +610,9 @@ function burnOwner(object, state) {
         return owner.charAt(0).toUpperCase() + owner.slice(1);
     }
     const carrier = object.ocarry || requireGameLevel(state).monsters.find(monster => (monster.minvent || monster.inventory || []).includes(object));
-    return carrier ? possessiveName(monsterName(carrier, { capitalized: true, state })) : 'The';
+    // C shk.c:mon_owns(): s_suffix(y_monnam(obj->ocarry)), so a pet's item
+    // reads "Your saddled pony's".
+    return carrier ? possessiveName(monsterName(carrier, { article: 'your', capitalized: true, state })) : 'The';
 }
 function burnName(object, state) {
     const count = object.quan ?? object.quantity ?? 1;
