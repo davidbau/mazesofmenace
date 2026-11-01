@@ -605,6 +605,7 @@ export async function getlin(prompt) {
                 if (!g._msg_history) g._msg_history = [];
                 const h = g._msg_history;
                 if (h.length === 0 || h[h.length - 1] !== line) h.push(line);
+                g._toplEmptyAfterSuppress = false; /* gt.toplines = "query " */
             }
             return '\x1b'; /* ESC sentinel — C sets buf[0]='\033' */
         }
@@ -637,6 +638,9 @@ export async function getlin(prompt) {
         if (!g._msg_history) g._msg_history = [];
         const h = g._msg_history;
         if (h.length === 0 || h[h.length - 1] !== line) h.push(line);
+        /* getline.c:223-226 empties gt.toplines only when suppress_history;
+         * otherwise ^P's first recall (topl.c:46,106) shows "query answer". */
+        g._toplEmptyAfterSuppress = false;
     }
     return buf;
     } finally {

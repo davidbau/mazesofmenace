@@ -6,7 +6,8 @@ import { formatFeltMessage } from './hero_speech.js';
 import { heroIsBlind, heroIsHallucinating } from './senses.js';
 import { BURNING, D_BROKEN, D_CLOSED, D_LOCKED, DISMOUNT_FELL, DISMOUNT_GENERIC, DISSOLVED, DROWNING, DOOR, IS_AIR, IS_OBSTRUCTED, IS_STWALL, IS_WALL, IS_WATERWALL, Is_waterlevel, LAVAPOOL, LAVAWALL, PARANOID_SWIM, POOL, ROOM, STONE, FAINTED, M_SEEN_FIRE, TREE, TT_LAVA, Upolyd, WATER, W_NONDIGGABLE, W_NONPASSWALL, WT_TOOMUCH_DIAGONAL, TIP_SWIM, PLNMSG_BACK_ON_GROUND, DBWALL, def_warnsyms, A_CON, A_DEX, COLNO, ROWNO, SCORR, SDOOR, CORR, ICE, IRONBARS, IS_FURNITURE, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, SHOPBASE, Is_airlevel, In_sokoban, isok, ACCESSIBLE, AIR, DIGTYP_UNDIGGABLE, DRAWBRIDGE_UP, } from './const.js';
 import { heroIsPunished, placeBallAndChain, unplaceBallAndChain, beginBallAndChainMove, finishBallAndChainMove, } from './ball.js';
-import { bot, displayLiquidName, docrt, feel_newsym, newsym, under_water, updateLastSeenTerrain, feel_location, terrain_glyph, glyphAt, canSpotMonster, canSenseMonster, monsterVisible, unmap_invisible, map_object, unmapObject, } from './display.js';
+import { displayLiquidName, docrt, feel_newsym, newsym, under_water, updateLastSeenTerrain, feel_location, terrain_glyph, glyphAt, canSpotMonster, canSenseMonster, monsterVisible, unmap_invisible, map_object, unmapObject, } from './display.js';
+import { bot } from './botl.js';
 import { pline, plineWithContinuation, pline_dir, set_msg_xy } from './pline.js';
 import { heroPassesWalls, heroFormSticks, heroSpecies, heroLikesLava } from './hero_species.js';
 import { heroHasConflict } from './hero_conflict.js';
@@ -59,15 +60,15 @@ import { leaveMovementCloud, updateHeroRegions } from './regions.js';
 import { CmapSymbol, GlyphOffset, cmapToGlyph } from './glyph_numbers.js';
 import { TemporaryMapEffect } from './temporary_map_effect.js';
 import { placeHeroOnLevel } from './hero_location.js';
-import { hideHeroUnder } from './monster_hiding.js';
+import { hideHeroUnder } from './mon.js';
 import { attackHostileMonster } from './hero_melee.js';
 import { prepareAppliedWeaponAttack } from './hero_attack_preflight.js';
 import { beastChoosesHeroDisplacement, settleBeastHeroDisplacement } from './hero_beast_displacement.js';
 import { hasDoorAppearance, stumbleOntoMimic } from './mimic.js';
 import { monsterAtPosition } from './monster_location.js';
-import { makeMonsterFlee } from './monster_flee.js';
+import { makeMonsterFlee } from './monmove.js';
 import { confirmHeroStep } from './hero_step_confirmation.js';
-import { monsterPassesBars } from './monster_movement_traits.js';
+import { monsterPassesBars } from './mondata.js';
 import { continueChewingTerrain, heroCanEnterIronBars } from './iron_bars_meal.js';
 import { strikeIronBarsWithWeapon } from './projectile_bars.js';
 import { fightSeenWebWithForce } from './hero_web_fight.js';
@@ -1357,6 +1358,10 @@ export async function isValidTravelTarget(targetX, targetY, g = game) {
     if (glyphAt(targetX, targetY, g)?.glyph === cmapToGlyph(CmapSymbol.stone)
         && !g.level?.at(targetX, targetY)?.seenv)
         return false;
+    // C hack.c:1268-1269 creates gt.travelmap at findtravelpath() entry;
+    // the adjacent-target shortcut below may free it again (hack.c:1276
+    // end_running(FALSE)), leaving no selection for the rest of the call.
+    g._travelMap ??= new Set();
     if (g.context.travel1 && travelDistance(g.u.ux, g.u.uy, targetX, targetY) === 1) {
         requirePlayingGame(g);
         if (await crawlDestinationAllowed(g, targetX, targetY, rn2, plineWithContinuation)) {
@@ -1369,12 +1374,21 @@ export async function isValidTravelTarget(targetX, targetY, g = game) {
     if (direction) {
         g.u.dx = direction.dx;
         g.u.dy = direction.dy;
-        if (g._runState?.mode === 8) {
-            g._runState.visited ??= new Set();
-            g._runState.visited.add(g.u.uy * COLNO + g.u.ux);
-        }
+        // C hack.c:1416-1418 selection_setpoint(): every successful
+        // validation marks the hero's cell in gt.travelmap, even with no
+        // travel run active. The mark survives until end_running() or
+        // reset_cmd_vars() frees the selection.
+        markTravelStep(g.u.ux, g.u.uy, g);
     }
     return direction !== null;
+}
+// C hack.c findtravelpath() selection_setpoint(u.ux, u.uy, gt.travelmap, 1).
+// selvar.c:186-187: a freed (NULL) selection ignores the write, and the
+// map only comes back at the next findtravelpath() entry.
+function markTravelStep(x, y, g) {
+    if (!g._travelMap)
+        return;
+    g._travelMap.add(y * COLNO + x);
 }
 function travelDistance(x1, y1, x2, y2) {
     return Math.max(Math.abs(x1 - x2), Math.abs(y1 - y2));
@@ -1387,6 +1401,10 @@ function travelDistanceSquared(x1, y1, x2, y2) {
 // C TRAVP_GUESS limits the forward search to couldsee() squares, then scans
 // x-major. Ties require both a shorter search radius and smaller dist2().
 async function findGuessedTravelDirection(targetX, targetY, g) {
+    // C domove() runs findtravelpath(TRAVP_GUESS) as its own entry, which
+    // recreates the selection when the failed TRAVP_TRAVEL call left it
+    // freed (hack.c:1268-1269).
+    g._travelMap ??= new Set();
     const originX = g.u.ux, originY = g.u.uy;
     const { distance } = await searchTravelPath(originX, originY, targetX, targetY, 'guess', g);
     let pickX = originX, pickY = originY;
@@ -1441,6 +1459,10 @@ async function selectTravelStep(state) {
     requirePlayingGame(game);
     const { targetX, targetY } = state;
     const hero = game.u;
+    // C findtravelpath(TRAVP_TRAVEL) creates gt.travelmap at entry; the
+    // adjacent-target shortcut below may free it again (hack.c:1276), so
+    // later selection_setpoint() calls in this same invocation are no-ops.
+    game._travelMap ??= new Set();
     if (game.context.travel1
         && travelDistance(hero.ux, hero.uy, targetX, targetY) === 1
         && await crawlDestinationAllowed(game, targetX, targetY, rn2, plineWithContinuation)) {
@@ -1457,15 +1479,20 @@ async function selectTravelStep(state) {
         nomul(0);
         return { dx: 0, dy: 0 };
     }
-    const visited = state.visited ?? new Set();
+    // C hack.c:1400-1401 checks gt.travelmap, a global selection that also
+    // holds marks from earlier is_valid_travelpt() calls, against the
+    // proposed first step. The general-direction fallback records the
+    // origin without testing history; only a completed backward search
+    // checks the chosen next step.
+    const travelMap = game._travelMap ?? new Set();
     const nextX = hero.ux + direction.dx, nextY = hero.uy + direction.dy;
-    // C's general-direction fallback records the origin without testing
-    // history. Only a completed backward search checks the chosen next step.
-    const returning = direction.checkVisited && visited.has(nextY * COLNO + nextX);
+    const returning = direction.checkVisited && travelMap.has(nextY * COLNO + nextX);
     if (returning || direction.checkVisited && nextX === targetX && nextY === targetY) {
         nomul(0);
         // Keep the running checks for a final path step, unlike the
-        // adjacent first-step shortcut above.
+        // adjacent first-step shortcut above. C's trailing
+        // selection_setpoint() writes into the map nomul(0) just freed
+        // (end_running), so no mark survives a stopping step.
         game.context.run = 8;
         if (returning)
             await plineWithContinuation('You stop, unsure which way to go.');
@@ -1473,8 +1500,9 @@ async function selectTravelStep(state) {
             game._travelTarget = null;
     }
     else {
-        visited.add(hero.uy * COLNO + hero.ux);
-        state.visited = visited;
+        // C hack.c:1416 and 1486: both the backward search and the
+        // general-direction fallback mark the hero's cell.
+        markTravelStep(hero.ux, hero.uy, game);
     }
     return direction;
 }
@@ -2380,11 +2408,9 @@ async function domoveCore(dx, dy) {
     if (heroTestMove(newx, newy) && !await confirmHeroStep(newx, newy))
         return false;
     if (u.utrap) {
+        // domove()'s trapmove() + reset_utrap(TRUE) release live in the
+        // trapmove port, including the flight/levitation restore.
         const canMove = await heroCanMoveFromTrap(newx, newy);
-        // domove_core() resets trapping again after trapmove() returns;
-        // the escape message may already have flushed its status update.
-        if (!u.utrap)
-            await resetHeroTrap(true);
         if (!canMove)
             return true;
     }

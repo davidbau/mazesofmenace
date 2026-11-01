@@ -13,6 +13,7 @@ import { parseNethackrc, init_fruit_chain } from './options.js';
 import { reset_commands, update_rest_on_space } from './cmd_binds.js';
 import { set_configfile_for_session } from './cfgfiles.js';
 import { gs, H_DEC, H_IBM, H_UNK, PRIMARYSET, INFRAVISION, RUN_LEAP } from './const.js';
+import { apply_customizations, purge_all_custom_entries, clear_all_glyphmap_colors } from './glyphs.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import { roleOptionToIndex, raceOptionToIndex, genderOptionToIndex, alignOptionToIndex, genlPlayerSetupRandomPicksForY, sessionNeedsRandomPlayerPicks, extractChargenPreInitRng, replayChargenPreInitRng, detectInteractiveChargenFromSession, } from './roles.js';
 import { GameDisplay } from './game_display.js';
@@ -112,6 +113,10 @@ export class NethackGame {
         enableRngLog();
         // Parse nethackrc
         g.menu_colorings = null;
+        // A fresh C process starts with no glyph customizations (glyphs.c
+        // statics are BSS); this module state outlives one game.
+        purge_all_custom_entries();
+        clear_all_glyphmap_colors();
         const opts = parseNethackrc(this._nethackrc);
         g.msgtypes = opts.msgtypes || [];
         g.apelist = opts.apelist || null;
@@ -226,6 +231,9 @@ export class NethackGame {
         // C options.c:7347 initoptions_finish fixes the active S_darkroom
         // alias after reading the RC, before a bound toggle can change flags.
         reglyph_darkroom();
+        // C options.c:7378-7380 initoptions_finish applies the rc's glyph
+        // customizations (do_custom_symbols | do_custom_colors) to glyphmap[].
+        apply_customizations(PRIMARYSET, 3);
         // Initialize hero struct.  C's `struct u_event` is embedded in `you`
         // and is BSS-zeroed by decl_globals_init(); keep the same explicit
         // zero state here so event reads (quest completion, invocation,

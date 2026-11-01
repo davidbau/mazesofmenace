@@ -454,7 +454,11 @@ export async function display_text_window(lines) {
     const PAGE_ROWS = 23; /* ttyDisplay->rows - 1 */
     lines = tty_fit_text_lines(lines);
     if (g._pending_message) {
-        const releaseFlush = g._paintedSnapshot ? () => {} : use_last_flush_snapshot();
+        /* A flush after the snapshot's pline (tmp_at's flush_screen(0) of a
+         * missile flash, display.c:1292) is what the tty shows. */
+        const _snapStale = g._paintedSnapshot?.epoch !== undefined
+            && (g._lastFlushFrame?.epoch | 0) > g._paintedSnapshot.epoch;
+        const releaseFlush = (g._paintedSnapshot && !_snapStale) ? () => {} : use_last_flush_snapshot();
         await force_more_pages(g._pending_message, true, true);
         releaseFlush();
     } else if (g._resultMessage) {

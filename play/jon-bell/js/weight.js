@@ -218,13 +218,16 @@ export function inv_weight_raw() {
             /* C hack.c:4358: divide the long quantity before casting to int. */
             wt = (wt + Math.trunc((otmp.quan + 50) / 100)) | 0;
         } else if ((otmp.otyp | 0) !== OTYP_BOULDER || !throwsRocks) {
-            /* C hack.c:4360 sums cached owt.  Food's nutrition can change
-             * before its weight: eat.c:1970 reduces rotten-corpse oeaten,
-             * then bite()'s lesshungry() can page before recalc_wt() at :3157.
-             * Keep that cached food weight until the eating code updates it.
-             * Other reconstructed objects still need their weight derived. */
-            wt += (otmp.oclass | 0) === FOOD_CLASS && otmp.owt != null
-                ? (otmp.owt | 0) : weight(otmp);
+            /* C hack.c:4360 sums cached owt for EVERY class, not just food.
+             * Food's nutrition can change before its weight: eat.c:1970
+             * reduces rotten-corpse oeaten, then bite()'s lesshungry() can
+             * page before recalc_wt() at :3157.  And bones.c:184-186 turns a
+             * Bell of Opening (oc_weight 10) into a plain bell (oc_weight 30)
+             * WITHOUT refreshing owt — C keeps summing the stale 10 until an
+             * owt=weight() site updates it.  Objects whose owt is still the
+             * zero-template placeholder (never passed mksobj's tail) have no
+             * C counterpart cached value, so derive theirs. */
+            wt += (otmp.owt ?? 0) !== 0 ? (otmp.owt | 0) : weight(otmp);
         }
     }
     return wt;

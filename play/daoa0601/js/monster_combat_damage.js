@@ -6,7 +6,7 @@ import { isZombieMaker, zombieForm } from './corpse_species.js';
 import { canSeeMonster, canSpotMonster, newsym } from './display.js';
 import { plineWithContinuation } from './pline.js';
 import { game, requireLiveGame, requirePlayingGame } from './gstate.js';
-import { tryKnockback } from './knockback.js';
+import { tryKnockback } from './uhitm.js';
 import { AD_ACID, AD_BLND, AD_CLRC, AD_COLD, AD_CONF, AD_CORR, AD_CURS, AD_DCAY, AD_DETH, AD_DGST, AD_DISE, AD_DISN, AD_DRCO, AD_DREN, AD_DRIN, AD_DRLI, AD_DRST, AD_DRDX, AD_ELEC, AD_ENCH, AD_FAMN, AD_FIRE, AD_HALU, AD_HEAL, AD_LEGS, AD_MAGM, AD_PEST, AD_PHYS, AD_PLYS, AD_POLY, AD_RBRE, AD_RUST, AD_SAMU, AD_SEDU, AD_SGLD, AD_SITM, AD_SLEE, AD_SLIM, AD_SLOW, AD_SPC1, AD_SPC2, AD_SPEL, AD_SSEX, AD_STCK, AD_STON, AD_STUN, AD_TLPT, AD_WERE, AD_WRAP, AT_BITE, AT_CLAW, AT_TUCH, AT_WEAP, } from './monster_attack_types.js';
 import { resolveMonsterBrainAttack } from './monster_brain_attack.js';
 import { applyMonsterDigestionEffect, finishMonsterDigestion } from './monster_combat_digestion.js';
@@ -14,6 +14,7 @@ import { applyMonsterDrainEffect } from './monster_combat_drain.js';
 import { applyMonsterElementEffect } from './monster_combat_elements.js';
 import { monsterCombatAttackNegated } from './monster_combat_negation.js';
 import { applyMonsterStatusEffect } from './monster_combat_status.js';
+import { mhitmAdBlnd, mhitmAdDrli, mhitmAdEnch, mhitmAdLegs, mhitmAdStun, } from './uhitm.js';
 import { applyMonsterTheftEffect } from './monster_combat_theft.js';
 import { applyMonsterTransformEffect } from './monster_combat_transform.js';
 import { MONSTER_NAME, MONSTER_SYMBOL } from './monster_data.js';
@@ -166,21 +167,23 @@ async function applyMonsterCombatEffect(attacker, defender, context) {
         case AD_CORR:
         case AD_DCAY:
             return applyMonsterElementEffect(attacker, defender, context);
-        case AD_BLND:
         case AD_HALU:
         case AD_PLYS:
         case AD_SLEE:
         case AD_SLOW:
         case AD_CONF:
-        case AD_STUN:
-        case AD_LEGS:
         case AD_WERE:
         case AD_HEAL:
         case AD_STCK:
         case AD_WRAP:
-        case AD_ENCH:
             return applyMonsterStatusEffect(attacker, defender, context);
-        case AD_DRLI:
+        // C uhitm.c:mhitm_ad_drli/blnd/ench/stun/legs() own their mhitm
+        // branches in uhitm.ts.
+        case AD_DRLI: return mhitmAdDrli({ attacker, defender, context });
+        case AD_BLND: return mhitmAdBlnd({ attacker, defender, context });
+        case AD_ENCH: return mhitmAdEnch({ attacker, defender, context });
+        case AD_STUN: return mhitmAdStun({ attacker, defender, context });
+        case AD_LEGS: return mhitmAdLegs({ attacker, defender, context });
         case AD_DREN:
         case AD_DETH:
         case AD_PEST:

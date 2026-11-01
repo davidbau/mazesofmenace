@@ -191,6 +191,9 @@ export const NOT_SAVED = [
      * savegamestate() never writes (a counted `20s` armed when `S` is typed
      * leaves timed_occ_fn = a closure the graph encoder rejects). */
     'occupation', 'timed_occ_fn', 'occtxt',
+    /* gx.xlock (lock.c lock-picking/forcing context) is a process static that
+     * save.c never writes; a restored process starts with it zeroed. */
+    'xlock',
     /* The PRNG contexts (C rnd.c's CORE/DISP isaac64 states) are not in the
      * save file; the restoring process keeps the ones initRng() just seeded. */
     'coreCtx', 'dispCtx',
@@ -199,6 +202,9 @@ export const NOT_SAVED = [
     'nhrect', 'n_rects', 'rect_cnt',
     // C decl.h:849: gs.smeq is outside the saved instance globals.
     'smeq',
+    // C decl.h gx.xlock (lock.c lock-pick state) is outside savegamestate();
+    // the restoring process starts with it zeroed.
+    'xlock',
 ];
 
 /* C ref: save.c:246 savegamestate() — everything between the current level and
@@ -220,6 +226,11 @@ async function savegamestate() {
     // Copy its value while retaining graph identity with game.migrating_objs.
     if (game.gm)
         state.gm = { ...game.gm };
+    // C decl.c: gd.did_nothing_flag is a decl global savegamestate() never
+    // writes, so a restored process starts with it 0 (the first blocked
+    // wait/search gets the "Use 'm' prefix" suffix again, do.c:2330-2333).
+    if (game.gd)
+        state.gd = { ...game.gd, did_nothing_flag: 0 };
     // C save_luadata serializes the Lua variables, never the interpreter or
     // its closures. Preserve the other gl fields (including light roots).
     state.gl = { ...game.gl, luacore: null };

@@ -315,6 +315,9 @@ export async function report_config_errors() {
             if (c === 10 || c === 13 || c === undefined || c < 0)
                 break;
         }
+    } else if (cfgerrs && cfgerrs.length) {
+        g._rawCursorFrozen = [0, cfgerrs.length, 1];
+        g._config_errors = [];
     }
 }
 
@@ -790,7 +793,7 @@ export async function newgame() {
     /* C ref: allmain.c:844-846 newgame() — if (a11y.glyph_updates) dolookaround();
      * then moveloop_preamble's rndencode = rnd(9000) / seer_turn = rnd(30)
      * (allmain.c:72,79), which fastforward_post_mklev deferred for this case. */
-    if (g._ff_preamble_rng_deferred && (g.a11y?.glyph_updates || g.flags?.mention_map || g.u?.uroleplay?.reroll)) {
+    if (g._ff_preamble_rng_deferred) {
         if (g.a11y?.glyph_updates || g.flags?.mention_map) await dolookaround_cmd();
         g._ff_preamble_rng_deferred = false;
         rnd(9000);

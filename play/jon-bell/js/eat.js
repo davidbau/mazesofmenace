@@ -3868,7 +3868,7 @@ export async function use_tin_opener(obj) {
     if (obj !== game.u.uwep) {
         if (obj.cursed && obj.bknown) {
             let qbuf = "";
-            if (ynq((await safe_qbuf(qbuf, "Really wield ", "?", obj, doname, thesimpleoname, "that"))) !== 'y')
+            if ((await ynq((await safe_qbuf(qbuf, "Really wield ", "?", obj, doname, thesimpleoname, "that")))) !== 'y')
                 return 0; /* ECMD_OK */
         }
         if (!await wield_tool(obj, "use"))
@@ -4717,6 +4717,7 @@ async function _put_eat_message(msg) {
              * update_topl's more(), so a page it raises over the WHOLE standing
              * line shows THIS instant's map and status (unfaint's FAINTING, the
              * pet's move since the wake-up pline), not the wake-up's frame. */
+            pline_flush_point();
             _pline_flush_frame_record(prev.length, msg);
             game._moreFullCtx = { full: prev + '  ' + msg, start: 0 };
             let _morc;
@@ -4811,9 +4812,9 @@ export async function wield_tool(obj, verb) {
     /* C ref: wield.c:680 — share the canonical wield path. */
     return await wield_tool_real(obj, verb);
 }
-export function ynq(prompt) {
-    /* C: ask yes/no question; return 'y' or 'n' */
-    return 'y';
+export async function ynq(prompt) {
+    /* C hack.h: #define ynq(query) yn_function(query, ynqchars, 'q', TRUE) */
+    return await yn_function(prompt, "ynq", 'q', true);
 }
 export async function doname(obj) {
     return await doname_real(obj);

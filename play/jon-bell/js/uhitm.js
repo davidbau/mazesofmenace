@@ -8878,7 +8878,12 @@ async function hmon_hitmon_stagger(hmd, mon) {
 // C uhitm.c:1587-1600; HP and destroyed must already be updated by the caller.
 async function hmon_hitmon_pet(hmd, mon) {
     if (mon.mtame && hmd.dmg > 0) {
-        abuse_dog(mon);
+        /* C uhitm.c:1845 already applied a lethal blow, but killed() has not
+         * run: the pet is still on svl.level.monsters, so abuse_dog's
+         * newsym (dog.c:1393) sees it through m_at (rm.h). */
+        const zeroHp = (mon.mhp | 0) < 1;
+        if (zeroHp) mon._zeroHpOnGrid = true;
+        try { abuse_dog(mon); } finally { if (zeroHp) mon._zeroHpOnGrid = false; }
         if (mon.mtame && !hmd.destroyed)
             await monflee(mon, 10 * rnd(hmd.dmg), false, false);
     }

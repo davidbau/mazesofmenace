@@ -19,7 +19,7 @@ import { oinit } from './o_init.js';
 import { level_finalize_topology, fill_special_room, clear_level_structures, find_branch_room, OC_MERGE, newcham, add_door, makeroguerooms, themeroom_lspo_map_redo_maploc_rng, u_on_newpos, set_wall_state, mdrop_obj_md } from './mklev.js';
 import { flip_worm_segs_vertical, flip_worm_segs_horizontal, worm_seg_swap, wormgone } from './worm.js';
 import { In_hell, Can_fall_thru, mapfrag_get, mktrap, mksobj_at, mkobj_at, mksobj, makemon, somexy, somex, somey, mk_tt_object, mkcorpstat, resists_ston, del_engr_at, engr_at, make_engr_at, set_corpsenm, sobj_at, wallification, count_level_features, makecorridors, mkstairs, stairway_add, build_room, add_room, topologize, level_difficulty, get_level_extends, fix_wall_spines, occupied, mpickobj } from './mklev.js';
-import { set_levltyp_lit, create_maze, baalz_fixup, setup_waterlevel, stolen_booty, walkfrom as maze_walkfrom } from './mkmaze.js';
+import { set_levltyp, set_levltyp_lit, create_maze, baalz_fixup, setup_waterlevel, stolen_booty, walkfrom as maze_walkfrom } from './mkmaze.js';
 import { vision_reset, block_point } from './vision.js';
 import { litstate_rnd, mkmap, flood_fill_rm } from './mkmap.js';
 import { priestini, mk_roamer } from './priest.js';
@@ -4744,11 +4744,12 @@ async function create_altar(a, croom) {
         }
     }
 
-    /* check for existing features — set_levltyp(x, y, ALTAR) */
+    /* C sp_lev.c:2466-2467: stairs and ladders can prevent altar placement. */
+    if (!set_levltyp(x, y, ALTAR))
+        return;
     const loc = game.level?.at(x, y);
     if (!loc)
         return;
-    loc.typ = ALTAR;
 
     const amask = sp_amask_to_amask(a.sp_amask);
     loc.altarmask = amask;

@@ -921,7 +921,7 @@ function renderFilterPage(pageItems, morestr) {
 //               does not rewrite that line — it is screen residue — so this
 //               stays the first name typed even after plname changes.
 function buildIsThisOkFrame(name, infoLine, opts = {}) {
-    const { mark = '*', bannerClip = Infinity, row10 = null, renameallowed = true } = opts;
+    const { mark = '*', bannerClip = Infinity, row10 = null, renameallowed = true, retried = false } = opts;
     const row12Name = ('row12Name' in opts) ? opts.row12Name : name;
     const COLNO = 80, ROWNO = 24;
     const title = `Is this ok? [yn${renameallowed ? 'a' : ''}q]`;
@@ -974,6 +974,8 @@ function buildIsThisOkFrame(name, infoLine, opts = {}) {
     // The rename re-prompt askname() left at row 10, still visible below the
     // window (the window spans rows 0..winRows-1 only).
     if (row10) paint(10, 0, row10);
+    // askname's retry line (wintty.c:676) stays on the base window.
+    if (retried) paint(11, 0, ASKNAME_RETRY_TEXT);
     // Askname line at row 12 (still visible below the window).
     if (row12Name !== null)
         paint(12, 0, ASKNAME_TEXT + (row12Name ? ' ' + row12Name : ''));
@@ -1018,7 +1020,7 @@ function buildIsThisOkFrame(name, infoLine, opts = {}) {
 // banner (rows 4..7, now truncated at `bannerClip`) and the original
 // "Who are you? <name>" line at row 12; askname() then re-prompts at row 10,
 // where the BASE_WINDOW cursor sits.
-function buildAsknameOverBanner(typed, row12Name, bannerClip) {
+function buildAsknameOverBanner(typed, row12Name, bannerClip, retried = false) {
     const COLNO = 80, ROWNO = 24;
     const grid = [];
     for (let r = 0; r < ROWNO; r++) grid.push(new Array(COLNO).fill(' '));
@@ -1036,6 +1038,7 @@ function buildAsknameOverBanner(typed, row12Name, bannerClip) {
         for (let r = 0; r < 9; r++)
             for (let c = bannerClip; c < COLNO; c++) grid[r][c] = ' ';
     paint(10, 0, ASKNAME_TEXT + (typed ? ' ' + typed : ''));
+    if (retried) paint(11, 0, ASKNAME_RETRY_TEXT);
     paint(12, 0, ASKNAME_TEXT + (row12Name ? ' ' + row12Name : ''));
 
     const rowStrs = [];
@@ -1929,6 +1932,7 @@ export async function playChargen(ctx) {
     };
     let plname = ctx.plname || '';
     let asknameText = null;
+    let asknameRetried = false;   // the retry line stays painted on the base window
     let renameallowed = ctx.renameallowed || false;
     const result = () => ({ plname, role: st.role, race: st.race,
                             gender: st.gender, align: st.align, quit: false });
@@ -1957,6 +1961,7 @@ export async function playChargen(ctx) {
                     if (++tryct > 10) return null;   // bail("Giving up after 10 tries.")
                     continue;
                 }
+                if (tryct > 1) asknameRetried = true;
                 return ct;
             }
             if (key === K_BS || key === K_DEL) {
@@ -1998,7 +2003,7 @@ export async function playChargen(ctx) {
         for (;;) {
             const prompt = buildPickPrompt(st);
             const key = await read(ctx.baseWindow ? tty_base_window_prompt(ctx.baseWindow, 0, prompt, []).screen
-                : buildShallIPickFrame(asknameText, prompt), [prompt.length + 1, PROMPT_ROW, 1]);
+                : (asknameRetried ? withAsknameRetryLine(buildShallIPickFrame(asknameText, prompt), ASKNAME_ROW) : buildShallIPickFrame(asknameText, prompt)), [prompt.length + 1, PROMPT_ROW, 1]);
             let a = String.fromCharCode(key).toLowerCase();
             if (key === K_ESC || a === 'q') return quit();
             if (a === ' ' || a === '\n' || a === '\r') a = 'y';
@@ -2013,6 +2018,7 @@ export async function playChargen(ctx) {
         [COPYRIGHT_BANNER_A, COPYRIGHT_BANNER_B, COPYRIGHT_BANNER_C, COPYRIGHT_BANNER_D]
             .forEach((line, i) => { menuBackground[4 + i] = ' '.repeat(i ? BANNER_INDENT : 0) + line; });
         if (asknameText !== null) menuBackground[12] = ASKNAME_TEXT + ' ' + asknameText;
+        if (asknameRetried) menuBackground[11] = ASKNAME_RETRY_TEXT;
     }
     const topline = tty_base_window_messages(menuBackground, read);
     // ── makepicks ────────────────────────────────────────────────────────
@@ -2445,7 +2451,7 @@ export async function playChargen(ctx) {
         if (overlayBanner && !menuNoOverlay()) {
             const f = buildIsThisOkFrame(plname, info, {
                 mark: yesMark, bannerClip, row10: renameRow10, renameallowed,
-                row12Name: asknameResidual,
+                row12Name: asknameResidual, retried: asknameRetried,
                 mark: yesMark, bannerClip, row10: renameRow10,
                 row12Name: asknameResidual, renameallowed,
             });
@@ -2544,7 +2550,7 @@ export async function playChargen(ctx) {
                 if (fullScreen) menuBackground.fill('');
                 do {
                     renameResidual = await doAskname(typed => (overlayBanner && !fullScreen)
-                        ? buildAsknameOverBanner(typed, asknameResidual, bannerClip)
+                        ? buildAsknameOverBanner(typed, asknameResidual, bannerClip, asknameRetried)
                         : tty_base_window_prompt(menuBackground, askRow, ASKNAME_TEXT + (typed ? ' ' + typed : ''), cursorForAsknameAtRow(askRow, typed)));
                     if (renameResidual === null) return quit();
                     renameRow10 = ASKNAME_TEXT + (renameResidual ? ' ' + renameResidual : '');

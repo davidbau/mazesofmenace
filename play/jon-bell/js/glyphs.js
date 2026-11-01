@@ -445,12 +445,15 @@ function shuffle_customizations() {
 /* C ref: nethack-c/src/glyphs.c:111-182 */
 
 /* stubs for unported helpers */
-/* stub: parse_id() is unported, so a well-formed G_ id is taken to match one
- * glyph and the callback runs once for it (glyph value is unused by the
- * callback when the symset is unnamed). */
+/* stub: parse_id() is unported beyond the G_unexplored/G_nothing names; any
+ * other well-formed G_ id is still taken to match one glyph (0) so the
+ * callback's unnamed-symset nag fires as before. */
 function glyph_find_core(id, findwhat) {
     if (!id || !/^G_/.test(id)) return 1;
-    if (findwhat.callback) findwhat.callback(0, findwhat);
+    /* C glyphs.c:1099-1103 parse_id names these two glyphs directly;
+     * display.h:543-551 puts them last, before MAX_GLYPH. */
+    const special = { g_unexplored: MAX_GLYPH - 2, g_nothing: MAX_GLYPH - 1 }[id.toLowerCase()];
+    if (findwhat.callback) findwhat.callback(special ?? 0, findwhat);
     return 1;
 }
 function rgbstr_to_int32(s) { return rgbstr_to_int32_real(s); }
@@ -535,7 +538,8 @@ export function glyphrep_to_custom_map_entries(op, glyphptr) {
             let secondSlash = rest.indexOf('/');
             if (secondSlash !== -1) {
                 c_unicode = rest.substring(0, secondSlash);
-                c_colorval = rest.substring(secondSlash + 1);
+                /* C glyphs.c:131-148: the text after the LAST '/' */
+                c_colorval = rest.slice(rest.lastIndexOf('/') + 1);
             } else {
                 c_unicode = rest;
                 c_colorval = null;
@@ -546,7 +550,7 @@ export function glyphrep_to_custom_map_entries(op, glyphptr) {
                 c_colorval = rest.substring(0, secondColon);
                 c_unicode = rest.substring(secondColon + 1);
             } else {
-                c_colorval = rest;
+                c_colorval = rest.slice(rest.lastIndexOf('/') + 1);
                 c_unicode = null;
             }
         }

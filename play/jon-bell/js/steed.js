@@ -116,8 +116,12 @@ export function place_monster(mon, x, y) {
                    monnm, othnm, x, y, othermon.mstate, mon.mstate, buf);
     }
     mon.mx = x; mon.my = y;
+    /* C steed.c:930 overwrites the grid slot even after a collision diagnostic.
+     * The displaced monster stays on fmon with its coordinates and mstate,
+     * but m_at must no longer find it until it is placed again. */
+    if (othermon && othermon !== mon) othermon._mapRemoved = true;
     delete mon._mapRemoved;
-    /* svl.level.monsters[x][y] = mon — JS: monster already in fmon */
+    /* svl.level.monsters[x][y] = mon — only mon now occupies this grid slot. */
     mon.mstate = MON_FLOOR;
 }
 

@@ -23,7 +23,7 @@ import { can_reach_floor } from "./hold_another_object.js";
  * passage is found (hack.c:4068).  allmain.js does not import fastforward.js
  * back through this edge at module-init time, and nomul is a hoisted function
  * declaration called only at runtime, so this cycle resolves. */
-import { nomul, stop_occupation, interrupt_multi, night } from "./allmain.js";
+import { nomul, stop_occupation, interrupt_multi, night, phase_of_the_moon, friday_13th } from "./allmain.js";
 import { warnreveal, halu_gname, obj_here, pooleffects_breathless, body_part, check_leash, cmdq_clear, find_trap, set_msg_xy } from "./cmd.js";
 import { vtense } from "./objnam.js";
 import { rehumanize, polyself, set_uasmon } from "./polyself.js";
@@ -258,7 +258,10 @@ export async function fastforward_post_mklev(initrole = -1) {
      * can draw (next_ident via fake objects), so with mention_map the two draws
      * are deferred to allmain.js newgame(), after that look-around. */
     game.context = game.context || {};
-    if (game.a11y?.glyph_updates || game.flags?.mention_map || game.u?.uroleplay?.reroll) {
+    /* C ref: allmain.c:57-68 — moveloop_preamble's moon/Friday-13th plines run BEFORE
+     * rnd(9000)/rnd(30); a --More-- raised by one blocks ahead of both draws. */
+    const preambleMoonMsg = phase_of_the_moon() === 0 || phase_of_the_moon() === 4 || friday_13th();
+    if (game.a11y?.glyph_updates || game.flags?.mention_map || game.u?.uroleplay?.reroll || preambleMoonMsg) {
         /* reroll: newgame()'s reroll_menu loop (allmain.c:820) also runs before
          * moveloop_preamble, so the two draws follow the last reroll. */
         game._ff_preamble_rng_deferred = true;

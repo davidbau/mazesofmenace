@@ -545,7 +545,10 @@ export async function restore_preamble() {
     const { _topline_more_pending, flush_screen } = await import('./display.js');
     if (_topline_more_pending())
         await flush_screen(1, false);
-    if (g._pending_message)
+    /* C topl.c:257,268,300: ESC at a page's more() set WIN_STOP, so the plines
+     * after it (hellish_smoke_mesg, allmain.c:925) updated gt.toplines but never
+     * reached the screen; nothing stays pending to be re-paged. */
+    if (g._pending_message && !g._topl_win_stop)
         msgs.push(g._pending_message);
     g._pending_message = '';
     let keptPrompt = '';

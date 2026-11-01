@@ -1430,6 +1430,12 @@ export function parseNethackrc(rc) {
                         gs.symset[1].handling = /^Rogue(Epyx|IBM|Windows)$/.test(val) ? 1 : 0;
                     }
                 }
+                /* C options.c:1815-1838 optfn_glyph do_set: mungspaces, then
+                 * glyphrep_to_custom_map_entries files the G_ customization. */
+                else if (key === 'glyph') {
+                    if (!negated && val)
+                        glyphrep_to_custom_map_entries(val.replace(/\s+/g, ' ').trim(), { value: 0 });
+                }
                 else if (key === 'symset') {
                     result.symset = val;
                     /* C options.c optfn_symset names the set as soon as the line is

@@ -35,7 +35,7 @@ import { placeCreatedObject, placeObject, placeObjectSynchronously, remove_objec
 import { canFallThrough, splitHeroMonsterForm, } from './mklev.js';
 import { fillPitWithBoulderAt } from './pit_fill.js';
 import { searchSpecial, somexyspace } from './mkroom.js';
-import { MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_NAME, MONSTER_SIZE, MONSTER_SYMBOL, monsterTypeName, monsterIsAmorphous, monsterIsUnsolid, monsterIsWhirly, } from './monster_data.js';
+import { MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_NAME, MONSTER_SIZE, MONSTER_SYMBOL, monsterIsAmorphous, monsterIsUnsolid, monsterIsWhirly, } from './monster_data.js';
 import { ARROW, BOULDER, DART, HEAVY_IRON_BALL, OBJECT_BIMANUAL, CORPSE, OBJECT_NAMES, ROCK, SADDLE, } from './object_data.js';
 import { deleteObject } from './object_delete.js';
 import { unlinkObject } from './object_location.js';
@@ -77,7 +77,8 @@ import { woundHeroLegs } from './hero_legs.js';
 import { monsterLearnsTrap, monstersSeeTrap } from './trap_knowledge.js';
 import { trapName } from './trap_name.js';
 import { resetHeroTrap } from './terrain_movement.js';
-import { monsterName } from './monster_name.js';
+import { monsterName, possessiveName } from './monster_name.js';
+import { upstart } from './hacklib.js';
 import { withIndefiniteArticle } from './object_grammar.js';
 import { objectName, observeObjectForNaming, killerObjectName, ownedObjectName, simpleObjectNameWithArticle } from './objnam.js';
 import { askTeleportDestination } from './teleport.js';
@@ -469,17 +470,6 @@ function reduceHeroTrapDuration() {
         throw new Error('An active hero trap requires a remaining duration.');
     return --hero.utrap;
 }
-// C pline.c:upstart(), applied to the one trapmove() steed name.
-function upstart(text) {
-    return text ? text.charAt(0).toUpperCase() + text.slice(1) : text;
-}
-// C Norep() compares pline.c's previous individual message.
-async function repeatableTrapMessage(message) {
-    // Norep() suppression has no side effects: vpline() returns before
-    // touching the tty line, so any pending topline prose stays pending.
-    if (game._lastPlineMessage !== message)
-        await pline(message);
-}
 function objectAtHero(type) {
     const hero = game.u;
     return (game.level?.objects?.[hero.ux]?.[hero.uy] || [])
@@ -534,18 +524,20 @@ export async function climbOutOfPit() {
         game.vision_full_recalc = 1;
         return;
     }
+    // C trap.c:4224-4228 Norep(): climb_pit() suppresses an immediate repeat
+    // without side effects; { noRepeat: true } is pline.c's Norep flag.
     if (hero.dz || game.flags?.verbose !== false) {
         if (hero.usteed) {
-            await repeatableTrapMessage(`${monsterName(hero.usteed, {
+            await plineWithContinuation(`${monsterName(hero.usteed, {
                 article: 'your', capitalized: true, suppressSaddle: true,
-            })} is still in a pit.`);
+            })} is still in a pit.`, { noRepeat: true });
             return;
         }
         const hallucinating = heroIsHallucinating(game);
         const message = hallucinating && rn2(5) === 0
             ? "You've fallen, and you can't get up."
             : 'You are still in a pit.';
-        await repeatableTrapMessage(message);
+        await plineWithContinuation(message, { noRepeat: true });
     }
 }
 function heroWieldsSting() {
@@ -556,20 +548,24 @@ async function struggleInWeb(steedName) {
     requirePlayingGame(game);
     const hero = game.u;
     if (heroWieldsSting()) {
-        clearHeroTrap();
+        // C hack.c:trapmove() zeroes u.utrap with a bare field write and
+        // lets its caller's reset_utrap() finish the release (see
+        // heroCanMoveFromTrap), so flight is still blocked while the
+        // message prints; trap.c:reset_utrap() then reports "You can fly."
+        // from its own was-flying snapshot.
+        hero.utrap = 0;
         await pline('Sting cuts through the web!');
         return;
     }
     if (reduceHeroTrapDuration() <= 0) {
-        clearHeroTrap();
         await pline(steedName
             ? `${upstart(steedName)} breaks out of the web.`
             : 'You disentangle yourself.');
     }
     else if (game.flags?.verbose !== false) {
-        await repeatableTrapMessage(steedName
+        await plineWithContinuation(steedName
             ? `${upstart(steedName)} is stuck to the web.`
-            : 'You are stuck to the web.');
+            : 'You are stuck to the web.', { noRepeat: true });
     }
 }
 // C dig.c:buried_ball_to_freedom(). The ball stays where it was buried,
@@ -599,7 +595,7 @@ async function struggleInFloor(targetX, targetY, anchored, steedName) {
         const dy = targetY - ball.oy;
         if (dx * dx + dy * dy <= 2) {
             if (game.flags?.verbose !== false)
-                await repeatableTrapMessage("You move within the chain's reach.");
+                await plineWithContinuation("You move within the chain's reach.", { noRepeat: true });
             return true;
         }
     }
@@ -612,7 +608,7 @@ async function struggleInFloor(targetX, targetY, anchored, steedName) {
                 : (steedName
                     ? `${upstart(steedName)} is stuck in the ${surfaceName(hero.ux, hero.uy)}.`
                     : `You are stuck in the ${surfaceName(hero.ux, hero.uy)}.`);
-            await repeatableTrapMessage(message);
+            await plineWithContinuation(message, { noRepeat: true });
         }
         return false;
     }
@@ -624,13 +620,14 @@ async function struggleInFloor(targetX, targetY, anchored, steedName) {
             ? 'You finally wrench the ball free.'
             : 'You finally wriggle free.');
     }
-    if (ball)
+    // wriggle_free: only the buried-ball case resets here (silently);
+    // otherwise trapmove() leaves the bare u.utrap zeroed and the release
+    // in heroCanMoveFromTrap() follows, possibly reporting flight.
+    if (anchored)
         await buriedBallToPunishment();
-    else
-        clearHeroTrap();
     return false;
 }
-export async function heroCanMoveFromTrap(targetX, targetY) {
+async function heroTrapmove(targetX, targetY) {
     const hero = game.u;
     if (!hero?.utrap)
         return true;
@@ -652,7 +649,8 @@ export async function heroCanMoveFromTrap(targetX, targetY) {
                 hero.utrap--;
             if (hero.utrap <= 0) {
                 await plineWithContinuation(`${subject} finally ${steedName ? 'lurches' : 'wriggle'} free.`);
-                clearHeroTrap();
+                // trapmove() leaves the bare u.utrap zeroed here; the release
+                // in heroCanMoveFromTrap() follows and may report flight.
             }
             return false;
         }
@@ -667,14 +665,15 @@ export async function heroCanMoveFromTrap(targetX, targetY) {
             return false;
         case TT_LAVA: {
             if (game.flags?.verbose !== false)
-                await repeatableTrapMessage(steedName
+                await plineWithContinuation(steedName
                     ? `${upstart(steedName)} is stuck in the lava.`
-                    : 'You are stuck in the lava.');
+                    : 'You are stuck in the lava.', { noRepeat: true });
             if (!isLavaAt(targetX, targetY)) {
                 hero.utrap--;
                 if ((hero.utrap & 0xff) === 0) {
-                    // domove_core() resets the trap after this message returns.
-                    // Its pager must keep the preceding InLava status visible.
+                    // The release in heroCanMoveFromTrap() runs after this
+                    // message returns. Its pager must keep the preceding
+                    // InLava status visible.
                     hero.utrap = 0;
                     await pline(steedName
                         ? `You lead ${steedName} to the edge of the ${displayLiquidName('lava', game)}.`
@@ -693,6 +692,19 @@ export async function heroCanMoveFromTrap(targetX, targetY) {
         default:
             return false;
     }
+}
+// C hack.c:domove(): trapmove()'s only caller releases the hero through
+// reset_utrap(TRUE) the moment the bare u.utrap zeroing appears, so the
+// was-levitating/was-flying snapshots see float_vs_flight()'s blocked
+// masks and the recompute below restores flight blocked by the trap.
+export async function heroCanMoveFromTrap(targetX, targetY) {
+    const hero = game.u;
+    if (!hero?.utrap)
+        return true;
+    const moved = await heroTrapmove(targetX, targetY);
+    if (!hero.utrap)
+        await resetHeroTrap(true);
+    return moved;
 }
 async function triggerTeleportTrap(trap, finishTeleport) {
     await seeTrap(trap);
@@ -957,7 +969,8 @@ async function triggerSleepingGasTrap(trap) {
     steed.my = hero.uy;
     if (!await putMonsterToSleep(steed, rnd(25)))
         return;
-    const name = steed.name || `The ${monsterTypeName(steed.mnum, !!steed.female)}`;
+    // C trap.c:3137: Monnam(steed); the name is not in-sight gated.
+    const name = monsterName(steed, { capitalized: true });
     await plineWithContinuation(`${name} suddenly falls asleep!`);
 }
 export async function animateRollingBoulderCell(boulder, glyph, x, y, previous) {
@@ -1014,10 +1027,8 @@ async function triggerBearTrap(trap, { failedUntrap = false, forceTrap = false, 
     game.context.botl = true;
     const steed = hero.usteed;
     if (steed) {
-        const name = monsterName(steed);
-        const possessive = /^it$/i.test(name) ? `${name}s`
-            : /^you$/i.test(name) ? `${name}r`
-                : name.endsWith('s') ? `${name}'` : `${name}'s`;
+        // C trap.c:1508-1509: s_suffix(mon_nam(u.usteed)).
+        const possessive = possessiveName(monsterName(steed));
         await plineWithContinuation(`${subject} bear trap closes on ${possessive} ${monsterFootName(steed.mnum)}!`);
         // C thitm(0, steed, NULL, damage, FALSE): forced damage, no missile.
         steed.mhp -= damage;

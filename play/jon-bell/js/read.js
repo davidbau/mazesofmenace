@@ -4974,9 +4974,9 @@ export function magic_map_background(loc, x, y, show = false) {
      * must still read as cmap S_air to glyph_at() (pager.c lookat "air"). */
     if (show)
         show_glyph_cell(x, y, rg.ch, rg.color, !!rg.decgfx,
-                        /* MG_BW_ICE/LAVA/SINK -> ATR_INVERSE (display.c:2894-2916, wintty.c:3930-3936) */
-                        (rg.bwspec && game.iflags?.use_color === false
-                         && game.iflags?.wc_inverse !== false) ? 1 : 0, rg.nothing ? 'nothing' : GLYPHCLS_CMAP,
+                        /* MG_BW_ICE/LAVA/SINK (display.c:2894-2916) depends on the live symbols;
+                         * show_glyph_cell derives it from the cmap, as _glyph_attr does for memory. */
+                        0, rg.nothing ? 'nothing' : GLYPHCLS_CMAP,
                         false, null, null, null, rg.cmap ?? null);
     update_lastseentyp(x, y);
 }

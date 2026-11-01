@@ -10230,7 +10230,7 @@ async function join(a, b, nxcor) {
     const org = { x: xx + dx, y: yy + dy };
     const dest = { x: tx, y: ty };
     const npoints = { value: 0 };
-    const ftyp = CORR;
+    const ftyp = g.level.flags.arboreal ? ROOM : CORR;
     const dig_result = await dig_corridor(org, dest, npoints, nxcor, ftyp, STONE);
     if ((npoints.value > 0) && (okdoor(xx, yy) || !nxcor))
         await dodoor(xx, yy, croom);

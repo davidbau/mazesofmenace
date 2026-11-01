@@ -40,7 +40,7 @@ import { You as You_real, Your as Your_real } from './display.js';
 import { LL_ALIGNMENT } from './const.js';
 import { aligns } from './roles.js';
 import { see_monsters, Sting_effects, retouch_object_hero, retouch_equipment } from './display.js';
-import { topl_park_cursor } from './display.js';
+import { topl_park_cursor, putmsghistory } from './display.js';
 import { flush_screen, _topline_more_pending, _topl_stash_result, restore_command_topline } from './display.js';
 import { nhgetch } from './input.js';
 import { nomul, unmul, stop_occupation } from './allmain.js';
@@ -53,7 +53,7 @@ import { float_vs_flight, breakarm, num_horns, obj_pmname, y_monnam, can_be_stra
 import { ARTICLE_YOUR, SUPPRESS_SADDLE, SUPPRESS_HALLUCINATION } from './const.js';
 import { s_suffix } from './hacklib.js';
 import { hcolor, hliquid } from './mhitm.js';
-import { Breathless, region_danger } from './cmd.js';
+import { Breathless, region_danger, key2txt } from './cmd.js';
 import { curse } from './mkobj.js';
 import { update_inventory } from './inventory_refresh.js';
 import { HALLUC, HALLUC_RES } from './const.js';
@@ -2467,20 +2467,39 @@ export async function accessory_or_armor_on(obj, amuletEffectsOnly = false) {
                 const disp = g.nhDisplay;
                 if (disp) topl_park_cursor(disp, promptText + ' ');
             }
+            /* C topl.c:531-541 clean_up — Sprintf(gt.toplines, "%s%s", prompt,
+             * rtmp) with rtmp = key2txt(q) and prompt's trailing space, so the
+             * line remember_topl() files is the ANSWERED prompt ("... [rl] l"),
+             * never the bare question: the initial custompline carried
+             * SUPPRESS_HISTORY (topl.c:428), so nothing files it first. */
+            const fileAnswered = (q) => {
+                g._toplEmptyAfterSuppress = false; /* gt.toplines non-empty */
+                putmsghistory(promptText + ' ' + key2txt(q));
+            };
             for (;;) {
-                const raw = await nhgetch();
+                /* topl.c:428 SUPPRESS_HISTORY also covers the answer read:
+                 * unsuppressed, nhgetch files _pending_message as the bare
+                 * prompt, and ^P then recalls it without the answer. */
+                const savedHist = g._topl_suppress_history;
+                g._topl_suppress_history = true;
+                let raw;
+                try { raw = await nhgetch(); }
+                finally { g._topl_suppress_history = savedHist; }
                 const key = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
                 /* C tty_yn_function (topl.c:463-474) maps ESC and
                  * space/CR/LF to the NUL default.  Its cleanup leaves a
                  * single-row prompt painted (topl.c:533-548); nhgetch()
                  * cleared our live buffer, so preserve that paint. */
                 if (key === 0 || key === 27 || key === 32 || key === 13 || key === 10) {
+                    fileAnswered(0); /* q = def = '\0' -> key2txt "^@" */
                     g._topl_sticky = promptText;
                     return ECMD_OK;
                 }
                 const c = String.fromCharCode(key);
-                if (c === 'l' || c === 'L') { mask = LEFT_RING_VAL; break; }
-                if (c === 'r' || c === 'R') { mask = RIGHT_RING_VAL; break; }
+                /* rightleftchars "rl" is all-lowercase, so tty_yn_function
+                 * folds the answer with lowc() before clean_up (topl.c:436). */
+                if (c === 'l' || c === 'L') { fileAnswered(108); mask = LEFT_RING_VAL; break; }
+                if (c === 'r' || c === 'R') { fileAnswered(114); mask = RIGHT_RING_VAL; break; }
                 /* invalid key: loop and re-read (C do..while !mask). */
             }
         }

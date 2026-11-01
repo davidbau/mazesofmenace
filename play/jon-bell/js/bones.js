@@ -64,6 +64,10 @@ import { update_mlstmv } from './dog.js';
 import { DISMOUNT_BONES } from './const.js';
 import { clear_bypasses } from './trap.js';
 import { hhmmss, yyyymmdd } from './allmain.js';
+import { permonstTemplate } from './makemon.js';
+
+/* monflag.h G_UNIQ — the geno bit unique_corpstat() tests (see resetobjs). */
+const G_UNIQ = 0x1000;
 
 /* C bones.c:513-538,818-829 — identify the deceased hero's remnant. */
 function save_ebones(mtmp) {
@@ -212,7 +216,8 @@ function set_ghostly_objlist(ochain) {
  * RNG-FREE on both halves; the next_ident() draws a bones load makes are in
  * restore.c's restobjchn/restmonchn, not here.
  *
- * Remaining gaps include in_use deallocation and the EGG/SCR_MAIL/TIN arms. */
+ * Remaining gaps include in_use deallocation, how_lost, and the
+ * SCR_MAIL / CORPSE-STATUE cant_revive / mines-soko prize arms. */
 async function resetobjs(ochain, restore) {
     for (let otmp = ochain; otmp; otmp = otmp?.nobj) {
         if (otmp.cobj)
@@ -255,6 +260,14 @@ async function resetobjs(ochain, restore) {
             goodfruit(otmp.spe);
         } else if (otmp.otyp === 266 /* EGG */) {
             otmp.spe = 0; /* not "laid by you" in next game */
+        } else if (otmp.otyp === 296 /* TIN */) {
+            /* C bones.c:142-146 — "make tins of unique monster's meat be
+             * empty": a wished-for tin of unique meat (readobjnam waives
+             * G_UNIQ for wizard) loads as "an empty tin" for the next player. */
+            const mndx = otmp.corpsenm | 0;
+            if (ismnum(mndx)
+                && (permonstTemplate(mndx).geno & G_UNIQ) !== 0)
+                otmp.corpsenm = NON_PM;
         } else if (otmp.otyp === 213 /* AMULET_OF_YENDOR */) {
             otmp.otyp = 212; /* FAKE_AMULET_OF_YENDOR */
             await curse_obj(otmp);

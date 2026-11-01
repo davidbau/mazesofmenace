@@ -2,7 +2,8 @@
 // C refs: pickup.c use_container(), in_container(), out_container().
 import { makePlural } from './object_grammar.js';
 import { containerContents } from './container_contents.js';
-import { bot, consumeHallucinatedMenuObjectGlyph, flush_screen } from './display.js';
+import { bot } from './botl.js';
+import { consumeHallucinatedMenuObjectGlyph, flush_screen } from './display.js';
 import { displayMessageWindow } from './tty_topline.js';
 import { pline, plineWithContinuation } from './pline.js';
 import { touchArtifactByHero } from './artifact_touch.js';
@@ -66,10 +67,10 @@ export function isContainer(object) {
     return !!object && CONTAINER_TYPES.has(object.otyp);
 }
 const quantity = objectQuantity;
-async function objectDescription(object, primaryHandDetail = null) {
+async function objectDescription(object, primaryHandDetail = null, withPrice = false) {
     // objnam.c:doname() names one gold piece "a gold piece" and appends
     // the wield/quiver suffixes, so no local coin formatting is allowed.
-    return await inventoryItemDescription(object, { primaryHandDetail });
+    return await inventoryItemDescription(object, { primaryHandDetail, withPrice });
 }
 function className(object) {
     return objectClassHeading(object.oclass || objectClassForType(object.otyp));
@@ -246,7 +247,10 @@ async function selectionSections(objects, useInventoryLetters) {
                     : useInventoryLetters && object.invlet
                         ? object.invlet
                         : String.fromCharCode(97 + nextLetter++),
-                text: await objectDescription(object, inventoryPrimaryHandDetail(object)),
+                // pickup.c:query_objlist() names menu entries with
+                // doname_with_price(), so shop goods inside a floor
+                // container are quoted "for sale".
+                text: await objectDescription(object, inventoryPrimaryHandDetail(object), true),
                 value: object,
             });
         }

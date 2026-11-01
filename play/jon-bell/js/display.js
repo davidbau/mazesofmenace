@@ -1116,9 +1116,13 @@ export function pager_showsyms() {
         }
         /* C display.c:1850-1853 aliases S_darkroom in the active ASCII table
          * too, including a custom S_nothing when dark_room or color is off. */
+        /* Under DECgraphics S_room has no ASCII override slot (its glyph is
+         * the DEC '~'), so the alias stays unset and the class collector
+         * resolves it to DEC S_room instead of a plain '.'. */
         if (!game._symsetDarkroomPending)
             syms[20] = _darkroom_alias_blank()
-                ? (syms[SYM_OFFSETS.X] ?? ' ') : (syms[19] ?? '.');
+                ? (syms[SYM_OFFSETS.X] ?? ' ')
+                : (syms[19] ?? (dec_mode() && !rogue_graphics() ? undefined : '.'));
         return syms;
     }
     const symbols = Array.from({ length: 196 }, (_, i) => primary_showsym(i));
@@ -2027,7 +2031,15 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
     /* C display.c:2033-2052 compares glyph identity AND buffered paint.
      * An unexplored symbol override differs from nul_gbuf's literal blank
      * even when the glyph family is unchanged. Its flush follows bot(). */
-    if (y === ROWNO - 1 && (loc.disp_cls !== cls || loc.disp_ch !== ch
+    /* display.c:2031-2052: a nul_gbuf entry (customcolor 0) differs from a
+     * mapped GLYPH_UNEXPLORED that carries a glyph:G_unexplored/r-g-b
+     * customcolor (glyphs.c:531-575), so even an unexplored-to-unexplored
+     * show_glyph() after cls() is gnew and flush_screen prints the blank. */
+    const nulCustom = loc.disp_nul_gbuf && cls === GLYPHCLS_UNEXPLORED
+        && game.iflags?.customcolors !== false
+        && !!glyphmap[GLYPH_UNEXPLORED_OFF]?.customcolor;
+    loc.disp_nul_gbuf = false;
+    if (y === ROWNO - 1 && (nulCustom || loc.disp_cls !== cls || loc.disp_ch !== ch
         || loc.disp_color !== color || !!loc.disp_decgfx !== !!decgfx
         || (loc.disp_attr | 0) !== (attr | 0))
         && !utf8 && ch !== ROGUE_HERO_CH) {
@@ -2338,6 +2350,8 @@ function _bw_terrain_hilite(cmap) {
 function _glyph_attr(rg) {
     if (!rg)
         return 0;
+    if (rg.bwspec && rg.cmap != null)
+        return _bw_terrain_hilite(rg.cmap); /* display.c:2893-2916 compares the live symbols */
     if (rg.bwspec)
         return game.iflags?.use_color === false && game.iflags?.wc_inverse !== false
             ? 1 : 0; /* MG_BW_LAVA/ICE/SINK -> ATR_INVERSE (display.c:2894-2916, wintty.c:3930-3936) */
@@ -4072,6 +4086,16 @@ export async function docrt(pageTopl = false, physicalScreen = null) {
     // deliberately remembers the whole map as one glyph ('#', S_cloud) and shows
     // the seen squares from their real terrain (blank, for AIR).  Without this
     // line-of-sight wedge C leaves blank.
+    /* display.c:2236-2256: a pline during vision/monster redisplay (a vault
+     * guard parked at <0,0> makes see_monsters' newsym() impossible(),
+     * display.c:930) flushes these gnew glyphs through pline.c:273-274
+     * before post_map requests the status reset.  Mark them pending now, as
+     * docrt_flags() does, so that flush consumes the markers and the final
+     * flush's bot() stays on top of map y=20. */
+    game._docrtMapPending = true;
+    /* cls() + show_glyph left every map cell gnew (display.c:1745-1752); the
+     * next flush_screen prints them AFTER its bot() (display.c:2236-2256). */
+    game._docrtGnewPending = true;
     vision_recalc(0);
     // Step 2: C display.c:2074 `see_monsters()` — the real routine, not a bare
     // newsym walk: it also paints worm tails (see_wsegs) and ends with the
@@ -4087,10 +4111,6 @@ export async function docrt(pageTopl = false, physicalScreen = null) {
     game.disp ??= {};
     game.disp.botlx = 1;
     game._status1Whole = false; /* docrt reprinted every map row, y=20 included */
-    game._docrtMapPending = true;
-    /* cls() + show_glyph left every map cell gnew (display.c:1745-1752); the
-     * next flush_screen prints them AFTER its bot() (display.c:2236-2256). */
-    game._docrtGnewPending = true;
 }
 // ── Painted-screen snapshot (C tty physical-terminal-vs-gbuf decouple) ──
 // C ref: win/tty/topl.c more() / display.c print_glyph — NetHack's tty backend
@@ -4349,7 +4369,7 @@ function _maybe_snapshot_painted_screen() {
         ? g._earlyBotl.botl : null;
     if (!g._paintedSnapshot)
         g._paintedSnapshot = { cells: _capture_painted_cells(), moves: _painted_moves(),
-            botl: _eb || _capture_botl(), r1whole: !!g._status1Whole, ..._snap_key_stamp() };
+            botl: _eb || _capture_botl(), r1whole: !!g._status1Whole, epoch: _flush_epoch, ..._snap_key_stamp() };
     // ── Per-PAGE painted frames (a multi-page movemon window) ────────────────
     // C ref: win/tty/topl.c update_topl() — EVERY pline that does not fit the
     // remaining topline calls more() AT THAT INSTANT, so a movemon window that
@@ -4589,7 +4609,8 @@ export function use_last_flush_snapshot() {
     const prevSnap = g._paintedSnapshot;
     const prevIn = g._inMovemonMore;
     g._paintedSnapshot = { cells: frame.cells, moves: frame.moves,
-                           r1whole: frame.r1whole, botl: g._lastPaintedBotl };
+                           r1whole: frame.r1whole, botl: g._lastPaintedBotl,
+                           epoch: frame.epoch };
     g._inMovemonMore = true;
     let released = false;
     return () => {
@@ -4838,9 +4859,6 @@ function _buffered_capture_cell(loc) {
     return loc[_CAPTURE_CELL_CACHE] = { ch, color, dec, attr,
         unexplored: loc.disp_cls === GLYPHCLS_UNEXPLORED ? {} : null };
 }
-/* C getpos.c:60-62 forces newsym into gbuf, but its tip window is displayed
- * before getpos.c:854 flushes it. Keep those pending forced cells out of the
- * menu background (wintty.c:1902-1940) until a flush or row_refresh. */
 /* The terminal's frozen paint while goto_level's mklev()/losedogs span holds
  * the old flush (see _levelgen_paint_frame); null when no freeze is active. */
 export function levelgen_frozen_cell(x, y) {
@@ -4848,12 +4866,12 @@ export function levelgen_frozen_cell(x, y) {
     if (!frame || !frame.cells) return null;
     return frame.cells.get(y * COLNO + x) ?? _EMPTY_CAPTURE_CELL;
 }
+/* C tty_display_nhwindow (wintty.c:1902-1940) opens a menu without flushing
+ * gbuf. All pending glyph changes, including furniture_detect's mapping
+ * (detect.c:1105), stay off the background until a flush or row_refresh. */
 export function unflushed_forced_cell(x, y) {
     const loc = game.level?.at(x, y);
-    /* allmain.c:456-459's see_monsters() redraw under Hallucination also writes
-     * gbuf with no flush before a window raised from a queued command. */
-    const cell = (loc?.disp_forced_epoch === _flush_epoch || _hallucinating_dsp())
-        && loc.disp_flush_epoch === _flush_epoch ? loc.disp_flushed_cell : null;
+    const cell = loc?.disp_flush_epoch === _flush_epoch ? loc.disp_flushed_cell : null;
     /* g_putch's control-byte symbols leave the preceding paint in place. */
     return cell?.ch === ROGUE_HERO_CH
         ? (game._epyxPhys?.get(y * COLNO + x) ?? _EMPTY_CAPTURE_CELL) : cell;
@@ -6862,6 +6880,10 @@ function _fit_status_line_width(s, width) {
         if (_dlvlField.cur !== lm[1])
             s = _dlvlField.cur + s.slice(lm[1].length);
         if (_dlvlField.encSpace) s = _insertEncSpace(s);
+    } else if (_dlvlField?.encSpace && s.length > width) {
+        /* named-level rows ("Astral Plane") share the same BL_CAP blank: shrink_enc() set it
+         * globally (wintty.c:4860-4868), so an overflowing row keeps it before truncation. */
+        s = _insertEncSpace(s);
     }
     if (s.length <= width) return s;
     /* C wintty.c make_things_fit() advances cond_shrinklvl globally: it
@@ -7752,13 +7774,10 @@ export function _status_row1_map_overlay(status1) {
             const loc = level.at(x, y);
             if (mapAt(x)) { st.cell.set(x, 'n'); continue; }
             const dirty = flushed && repaint.xs.has(x);
-            if (loc && (dirty || (loc.seenv | 0) || loc.disp_clear_dirty)
+            if (loc && (dirty || (loc.seenv | 0))
                 && loc.disp_ch === ' ' && st.cell.get(x) !== 'b') {
                 st.cell.set(x, 'b');
                 if (!skipBlank || dirty) st.phys[x - 1] = ' ';
-                /* display.c:2120-2146: the first clear's gnew is printed once, by
-                 * the flush that follows; it must not re-wipe a later fresh row. */
-                loc.disp_clear_dirty = false;
             }
         }
         wiped = st.phys.join('') !== plain0;
@@ -8141,6 +8160,7 @@ export function _pline_flush_frame_record(off, msg) {
          * later end-of-turn bot() BL_RESET (allmain.c:474) is invisible until
          * that page is dismissed. */
         r1whole: !!g._status1Whole,
+        botlSeq: g._botlPaintSeq | 0,   /* bot() paints as of this flush */
         /* pline.c:273-276 flushes before more() blocks. With three status
          * rows, map y=20 can erase unchanged fields (display.c:2236-2255,
          * wintty.c:5018,5237-5238). Keep that physical row: rendering its old
@@ -9326,7 +9346,8 @@ function _botl_text_window_open() {
     // wintty.c:1921-1922 calls more() without flushing pending status changes.
     return game._lastPaintedBotl || _capture_botl();
 }
-export async function force_more_pages(full, retainFinalFrame = true, textWindowOpens = false) {
+export async function force_more_pages(full, retainFinalFrame = true, textWindowOpens = false,
+                                       acknowledgedPrefix = null) {
     /* wintty.c:1921,1873-1882: opening a window acknowledges the existing
      * topline without emitting it again. Under WIN_STOP the standing text
      * has already been accounted for in the hidden history buffer. */
@@ -9339,6 +9360,9 @@ export async function force_more_pages(full, retainFinalFrame = true, textWindow
      * deferred pages still own their boundaries and pre-clear frames. */
     const forcedBreaks = game._topl_force_breaks?.slice() || [];
     let consumed = 0;
+    /* The previous page's more() result, and whether that page was raised by
+     * the incoming message's own update_topl (topl.c:274). */
+    let prevMorc = 0, prevOwned = false;
     for (let i = 0; i < pages.length; ++i) {
         if (i > 0 && i + 1 < pages.length && (game._topl_win_stop || game._topl_win_stop_armed)
             && _topl_force_break_entry(pages[i], null, forcedBreaks) < 0) {
@@ -9354,6 +9378,19 @@ export async function force_more_pages(full, retainFinalFrame = true, textWindow
                 if (tailPages[0] !== um)
                     pages.splice(i, 2, prefix, ...tailPages);
             }
+        }
+        /* topl.c:300: when the display_nhwindow(WIN_MESSAGE) that raised these
+         * pages acknowledged only acknowledgedPrefix (docrt's cls() more(),
+         * display.c:2196), each later pline pages its predecessor and the
+         * last one stands on the topline, unacknowledged. */
+        /* An ESC at the prefix's more() set WIN_STOP, so those
+         * later plines skip redotoplin (topl.c:232-234,257,300): the
+         * suppression path below owns them, and nothing stands. */
+        if (acknowledgedPrefix !== null && i === pages.length - 1
+            && consumed >= acknowledgedPrefix.length + 2 && pages[i]
+            && !game._topl_win_stop) {
+            game._pending_message = pages[i];
+            return true;
         }
         const page = pages[i];
         const end = consumed + page.length;
@@ -9378,6 +9415,9 @@ export async function force_more_pages(full, retainFinalFrame = true, textWindow
             // retains the physical screen flushed by its last message.
             for (let j = frames.length - 1; j >= 0; --j) {
                 const f = frames[j];
+                /* a later flush than this pline's own (tmp_at's flush_screen,
+                 * display.c:1292) is what the terminal still shows */
+                if (f.flushEpoch < (game._paintedSnapshot?.epoch ?? 0)) continue;
                 if (f.off >= consumed - 2 && full.slice(f.off + 2) === f.msg) {
                     // The final message has no later pline forcing its page.
                     // Retain its map, but use the current physical status: an
@@ -9464,6 +9504,22 @@ export async function force_more_pages(full, retainFinalFrame = true, textWindow
         // registration lookup too (wintty.c:1873-1879 acknowledges this
         // occurrence of the standing line, not an earlier identical pline).
         game._moreFullCtx = { full, start: consumed, joins };
+        /* topl.c:257,274,300: ESC at the more() this page's first message
+         * raised from its own update_topl set WIN_STOP after that message
+         * sampled skip, so redotoplin() still draws it.  When it wraps,
+         * redotoplin's own more() (topl.c:139-140) reads a key, and
+         * tty_nhgetch clears WIN_STOP (wintty.c:4065-4066): this page and
+         * the ones after it page normally (stealamulet's 81-column
+         * worn_item_removal pline, steal.c:328, after ESC at "hits!"). */
+        if (prevMorc === 27 && prevOwned && pageShown === page
+            && (game._topl_win_stop || game._topl_win_stop_armed)
+            && _topl_wordwrap(_topl_remainder_segments(page,
+                (joins || []).filter(j => j >= consumed && j < end)
+                    .map(j => j - consumed))[0] || '', TOPL_CO - 1).length > 1) {
+            game._topl_win_stop_armed = false;
+            game._topl_win_stop = false;
+        }
+        prevMorc = 0;
         try {
             if (pageShown && (game._topl_win_stop || game._topl_win_stop_armed)) {
                 /* topl.c:262-290 still joins or replaces gt.toplines for EACH
@@ -9476,7 +9532,7 @@ export async function force_more_pages(full, retainFinalFrame = true, textWindow
                 for (const message of _topl_remainder_segments(pageShown, pageJoins))
                     await force_more(message);
             } else if (pageShown) {
-                await force_more(pageShown);
+                prevMorc = await force_more(pageShown);
             }
         } finally {
             releasePhysical();
@@ -9487,6 +9543,9 @@ export async function force_more_pages(full, retainFinalFrame = true, textWindow
         }
         const consumedBreak = _topl_force_break_entry(page, laterSegments);
         if (consumedBreak >= 0) game._topl_force_breaks.splice(consumedBreak, 1);
+        /* An explicit display_nhwindow break, or a page whose more() was its
+         * own wrap, has no incoming owner past its skip sample. */
+        prevOwned = forcedIndex < 0 && _topl_wordwrap(page, TOPL_CO - 1).length === 1;
         if (forcedIndex >= 0) forcedBreaks.splice(forcedIndex, 1);
         consumed = end + 2;
     }
@@ -9744,13 +9803,29 @@ export async function force_more(committed, dismissMore, alreadyPainted = false,
             statusBlankAfterDocrt: (_ownStatusLive || _tutFreshLive || _joinedStatusPaint
                 || (g._liveStatusMore && i === _pages.length - 1))
                 ? g._statusBlankAfterDocrt === true : _pf.statusBlankAfterDocrt };
+        if (_usePlineFrame) g._paintedSnapshot = { cells: _pf.cells, moves: _tutFreshLive ? (_painted_moves() | 0) : _pf.moves, botl: (_ownStatusLive || _tutFreshLive || (g._liveStatusMore && i === _pages.length - 1)) ? null : (_joinedStatusPaint || _pf.botl || null) };
+        /* C pline.c:273-276 flushes status before update_topl() raises more().
+         * A later deferred docrt()->cls() may have cleared it by the time we
+         * drain this page; retain the blankness of the selected flush too. */
+        if (_usePlineFrame)
+            g._paintedSnapshot.statusBlankAfterDocrt = _pf.statusBlankAfterDocrt;
         if (_usePlineFrame && !_pf.mapOnly && g._paintedSnapshot.botl === _pf.botl)
         if (_usePlineFrame) g._paintedSnapshot = { cells: _pf.cells, moves: _tutFreshLive ? (_painted_moves() | 0) : _pf.moves, botl: (_ownStatusLive || _tutFreshLive || (g._liveStatusMore && i === _pages.length - 1)) ? null : (_joinedStatusPaint || _pf.botl || null) };
         /* topl.c:205-248: more() holds the physical status at its pline
          * flush, including whether a later cls() has since cleared it. */
         if (_usePlineFrame && !_pf.mapOnly && g._paintedSnapshot.botl === _pf.botl) {
             g._paintedSnapshot.statusBlankAfterDocrt = _pf.statusBlankAfterDocrt;
-            g._paintedSnapshot.r1physical = _pf.r1physical;
+            /* The LAST page's more() comes after everything since its flush:
+             * a BL_RESET bot() there (done()'s forced botlx, end.c:1045-1046
+             * -> botl.c:1670-1672) rewrote every row-1 field over map y=20
+             * (wintty.c FORCE_RESET), so the pline-time physical row is gone
+             * even when no status value changed.  Any page more()'d by the next
+             * pline (topl.c:274) -- an earlier page, or a last page whose
+             * follower's flush frame was found (pline.c:273-274) -- blocked
+             * there, before that bot(). */
+            if (!(i === _pages.length - 1 && !_nextPlineFrame && g._status1Whole && _pf.botlSeq !== undefined
+                  && (_pf.botlSeq | 0) !== (g._botlPaintSeq | 0)))
+                g._paintedSnapshot.r1physical = _pf.r1physical;
         }
         /* A page raised by a C display_nhwindow(WIN_MESSAGE) (topl_force_break_after)
          * froze the terminal at that flush: gulpmu's "The <foo> engulfs you!"
@@ -10864,10 +10939,10 @@ export function clear_glyph_buffer() {
     /* C display.c:2110-2133: gnew compares gbuf[0][0]'s BUFFERED glyphinfo
      * (not a freshly mapped GLYPH_UNEXPLORED) with nul_gbuf's blank.  Column 0
      * is never shown, so only the first clear (zero-initialized gbuf, ttychar
-     * 0) marks cells dirty; every later cls() leaves the terminal blank until
-     * show_glyph() repaints a cell (under_water, detection). */
-    const firstClear = !game._gbuf_cleared_once;
-    game._gbuf_cleared_once = true;
+     * 0) marks cells dirty, and that is init_sound_disp_gamewindows()'s
+     * (allmain.c:757), before any level exists.  Every cls() modelled here
+     * leaves the terminal blank until show_glyph() repaints a cell
+     * (under_water, detection, a customized GLYPH_UNEXPLORED). */
     for (let y = 0; y < ROWNO; y++) {
         invalidate_map_row(y);
         for (let x = 1; x < COLNO; x++) {
@@ -10889,10 +10964,9 @@ export function clear_glyph_buffer() {
             loc.disp_cmap = null;
             loc.disp_unmapped = undefined;
             loc.disp_is_warning = false;
-            /* display.c:2120-2146: the first clear copies nul_gbuf.gnew=1
-             * even to unseen blanks. flush_screen prints these AFTER bot(),
-             * erasing status row 1 when it overlaps map row 20. */
-            loc.disp_clear_dirty = firstClear;
+            /* the buffered glyphinfo is nul_gbuf's (display.c:2137) until
+             * show_glyph() stores a mapped one; see show_glyph_cell */
+            loc.disp_nul_gbuf = true;
             loc.gnew = 1;
         }
     }
@@ -12464,7 +12538,7 @@ function _feel_cmap_glyph(cmap) {
      * distinction when #terrain reconstructs a furniture mimic's glyph. */
     return { ch: cell.ch, color: cell.color, decgfx: cell.dec,
              cls: GLYPHCLS_CMAP, cmap, bwspec: cell.bwspec,
-             attr: _glyph_attr(cell) };
+             attr: _glyph_attr({ ...cell, cmap }) };
 }
 // C detect.c:2257: terrain views use the same cmap glyph as map memory.
 export { _feel_cmap_glyph as cmap_glyph };

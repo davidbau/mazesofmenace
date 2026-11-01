@@ -26,7 +26,7 @@ import { hasBucCategory, matchesObjectCategories, queryObjectClasses } from './o
 import { yn_function } from './query.js';
 import { useUpFloorObject } from './floor_consumption.js';
 import { heroCanReachFloor, heroEscapedShaft, heroTeetersAtPit } from './floor_reach.js';
-import { hideHeroUnder } from './monster_hiding.js';
+import { hideHeroUnder } from './mon.js';
 import { remoteBurglary } from './shop_departure.js';
 import { roomsAt } from './room.js';
 import { pickupLocationProblem } from './pickup_location.js';
@@ -292,7 +292,9 @@ async function choosePickupObjects(source, objects, count, { autoSelect = true, 
         }
         sections.push({ heading, items: menuItems });
     }
-    await flush_screen(1);
+    // C query_objlist() shows the menu without flushing: pending glyph
+    // buffer updates (e.g. the moveloop boundary's hallucination redraws)
+    // stay invisible until the next real flush_screen().
     const menu = {
         title: count ? `Pick ${count} of what?` : 'Pick up what?',
         sections,

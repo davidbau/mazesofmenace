@@ -786,10 +786,12 @@ async function _container_contents_one(box, identified, all_containers, reportem
             if (esc) break;
         }
         g._pending_message = '';
-        /* The corner wiped by the prior menu stays wiped: tty_destroy_nhwindow
-         * paints no status, so the pending botlx must not reach bot() here. */
+        /* C end.c:1655-1656 display_nhwindow + destroy_nhwindow run no bot():
+         * process_text_window and docorner (wintty.c:982,3650) never call it,
+         * so a pending botl/botlx (e.g. rows left blank by a full-screen
+         * menu's docrt) must not reach bot() here either. */
         const savedBotDisabled = g._bot_disabled;
-        if (statusClipCol !== undefined || g._carryStatusClip) g._bot_disabled = true;
+        g._bot_disabled = true;
         try { await flush_screen(1); } finally { g._bot_disabled = savedBotDisabled; }
         if (underWindow && !fullScreen) g._topl_sticky = underWindow;
         /* C:1658-1660 — `if (all_containers) container_contents(box->cobj,

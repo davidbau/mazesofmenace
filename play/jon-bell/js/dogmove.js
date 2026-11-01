@@ -1,5 +1,5 @@
 import { pline_mon as pline_mon_real, You_feel } from './display.js';
-import { shkgone, unpaid_cost, currency, obfree } from './shk.js';
+import { shkgone, unpaid_cost, currency, obfree, costly_spot, in_rooms } from './shk.js';
 import { is_mines_prize, is_soko_prize } from './cmd.js';
 import { mpickobj } from './mklev.js';
 import { a_monnam, noname_monnam, mon_nam_too, slept_monst as slept_monst_real } from './mhitm.js';
@@ -63,7 +63,7 @@ import { gettrack, hastrack } from './track.js';
 import { t_at, find_mac as find_mac_mon, extract_from_minvent as extract_from_minvent_tp } from './trap.js';
 import { pushRngLogEntry } from './rng.js';
 import { obj_stop_timers, obj_split_timers, end_burn } from './timeout.js';
-import { IS_ROOM, OBJ_FREE, OBJ_DELETED, OBJ_MINVENT, OBJ_FLOOR, W_WEP, W_ARMS, W_SADDLE, IRONBARS, IS_OBSTRUCTED, IS_TREE, ERODE_NONE, ERODE_CORRODE, ERODE_RUST, ERODE_BURN, EF_GREASE, EF_VERBOSE, PASSES_WALLS } from './const.js';
+import { IS_ROOM, OBJ_FREE, OBJ_DELETED, OBJ_MINVENT, OBJ_FLOOR, W_WEP, W_ARMS, W_SADDLE, SHOPBASE, IRONBARS, IS_OBSTRUCTED, IS_TREE, ERODE_NONE, ERODE_CORRODE, ERODE_RUST, ERODE_BURN, EF_GREASE, EF_VERBOSE, PASSES_WALLS } from './const.js';
 import { place_object, set_ustuck, resists_ston, resists_poison,
          mkcorpstat, mksobj_at, OC_MERGE, mondead, add_to_container, dealloc_obj, newcham, mongone, makemon, minliquid as minliquid_real,
          mksobj as mksobj_dg, healmon as healmon_dg, wake_nearto as wake_nearto_dg, mlifesaver as mlifesaver_dg, set_corpsenm as set_corpsenm_dg } from './mklev.js';
@@ -1117,7 +1117,15 @@ async function relobj_dead_dm(mtmp) {
             observe_object_dm(otmp);
         /* C steal.c:825: extraction also unwields the weapon via mwepgone
          * (worn.c:1415-1416), extinguishing artifact light before the drop. */
+        const unwornmask = otmp.owornmask | 0;
         await extract_from_minvent_tp(mtmp, otmp, false, true);
+        /* C steal.c:826-833: don't charge for an owned saddle on a dead steed
+           (provided the hero is within the same shop at the time) */
+        if (unwornmask && mtmp.mtame && (unwornmask & W_SADDLE) !== 0
+            && !otmp.unpaid && costly_spot(omx, omy)
+            && in_rooms(game.u.ux, game.u.uy, SHOPBASE)
+                .includes(game.level?.locations?.[omx]?.[omy]?.roomno | 0))
+            otmp.no_charge = 1;
         if (!await flooreffects_dm(otmp, omx, omy, "fall")) {
             await obj_no_longer_held(otmp); /* C mkobj.c:2330 via place_object */
             place_object(otmp, omx, omy);
@@ -3760,7 +3768,7 @@ async function mdamagem_dm(magr, mdef, mattk, mwep, dieroll) {
         if (mattk.adtyp === AD_DGST) {
             /* C mhitm.c:1096-1115.  Gap: the chameleon and green-slime newcham
              * arms (mhitm.c:1099-1103) are not modelled. */
-            const pdx = (mdef.mndx ?? mdef.mnum) | 0;
+            const pdx = (pd_dm?.pmidx ?? (mdef.mndx ?? mdef.mnum)) | 0;
             if (ismnum_js(mdef.cham) && (mdef.cham | 0) >= 0) {
                 await newcham(magr, null, NC_SHOW_MSG_DG);
             } else if ((pd_dm?.pmidx | 0) === PM_GREEN_SLIME && !slimeproof(pa_dm)) {
@@ -3772,7 +3780,7 @@ async function mdamagem_dm(magr, mdef, mattk, mwep, dieroll) {
             } else if (pdx === PM_NURSE_DG) {
                 healmon_dg(magr, magr.mhpmax, 0);
             }
-            await mon_givit_dg(magr, permonstTemplate(pdx));
+            await mon_givit_dg(magr, pd_dm);
         }
         return (M_ATTK_DEF_DIED | (await grow_up(magr, mdef) ? 0 : M_ATTK_AGR_DIED));
     }

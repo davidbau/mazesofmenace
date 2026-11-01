@@ -13,7 +13,7 @@ import { monsterName, namelessMonsterName, possessiveName } from './monster_name
 import { makePetWary } from './dog.js';
 import { MONSTER_ATTACKS, monsterIsAmorphous, monsterIsNoncorporeal, monsterIsNonliving, monsterIsVampire, } from './monster_data.js';
 import { changeMonsterForm } from './monster_polymorph.js';
-import { triggerMonsterDoorTrap } from './monster_door_trap.js';
+import { triggerMonsterDoorTrap } from './monmove.js';
 import { AMULET_OF_LIFE_SAVING } from './object_data.js';
 import { recordObjectEncounter, recordObjectKnowledge, } from './object_knowledge.js';
 import { rn2, rnd } from './rng.js';
@@ -255,9 +255,10 @@ async function reviveShiftedVampire(monster, { visible, spotted, disintegrated, 
     if (door.heroDied)
         return door;
     if (state === game) {
+        // mon.c:vamprises() redraws only the death square: expels() has
+        // already moved a swallower with mnexto() and newcham() drew the
+        // risen form at its new square (mon.c:5458), so no second newsym.
         await newsym(x, y);
-        if (monster.mx !== x || monster.my !== y)
-            await newsym(monster.mx, monster.my);
     }
     return {
         ...door,

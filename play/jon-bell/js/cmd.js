@@ -977,7 +977,14 @@ async function tty_menu_pick_one_ext(entries, title, statusClipCol) {
             docorner_blank_utf8_captures(overlayCol, overlayLines.length + 1);
             return;
         }
-        await docrt();
+        /* wintty.c:978-979 erase_menu_or_text: `docrt(); flush_screen(1);`
+         * inside select_menu's gb.bot_disabled span (windows.c:1859-1863). */
+        const savedBotDisabled = g._bot_disabled;
+        g._bot_disabled = true;
+        try {
+            await docrt();
+            await flush_screen(1);
+        } finally { g._bot_disabled = savedBotDisabled; }
         /* A full-screen (multi-page) menu's erase_menu_or_text docrt
          * (wintty.c:972-974) leaves both status rows blank until botl runs. */
         if (!overlayLines) {
@@ -6852,17 +6859,25 @@ async function wiz_intrinsic() {
      * message window.  That recalculation can announce newly sensed
      * monsters (vision.c:856), and its pline flushes the darkened map.
      * docrt(true) records cls()'s page and physical frame at that point. */
+    const pendingAtCls = g._pending_message || '';
     await docrt(true);
+    /* docrt()'s own diagnostics (see_monsters -> newsym() impossible(),
+     * display.c:930-935) are plined AFTER cls()'s more(): the last of them
+     * stands on the topline instead of being paged (topl.c:300). */
+    const postCls = !!pendingAtCls
+        && String(g._pending_message).startsWith(pendingAtCls + '  ');
+    let standing = false;
     if (g._pending_message) {
         /* Page the topline over the frame C's physical terminal still holds --
          * see frozenPaint above.  Null on every arm that repainted, so those
          * pages stay byte-identical. */
         const savedSnap = g._paintedSnapshot;
         if (frozenPaint) g._paintedSnapshot = frozenPaint;
-        await force_more_pages(g._pending_message);
+        standing = !!await force_more_pages(g._pending_message, true, false,
+                                            postCls ? pendingAtCls : null);
         if (frozenPaint) g._paintedSnapshot = savedSnap || null;
     }
-    g._pending_message = '';
+    if (!standing) g._pending_message = '';
     /* C wizcmds.c:1092-1094: docrt() then return -- no flush_screen here;
      * the moveloop's own flush (after see_monsters) paints the frame. */
 }
@@ -13337,7 +13352,12 @@ async function print_dungeon_menu() {
          * the status line keeps whatever it last painted (a travel's frozen
          * T:) until the next real bot(). */
         if (overlayLines) return;
-        await docrt();
+        /* windows.c:1856-1864: select_menu() holds gb.bot_disabled across the
+         * dismissing docrt() too, so a pline raised inside it (see_monsters ->
+         * newsym impossible) flushes with bot() declining. */
+        const _docrtBotDisabled = g._bot_disabled;
+        g._bot_disabled = true;
+        try { await docrt(); } finally { g._bot_disabled = _docrtBotDisabled; }
         status_r1_menu_docrt();
         /* docrt_flags cls() sets botlx, so the first bot() rewrites every status
          * field AFTER the map's seen-stone row-20 blanks were printed. */
@@ -14948,6 +14968,8 @@ function reveal_terrain_getglyph(x, y, which_subset, swallowed = false) {
         // paints blank (!dark_room), including memory revealed under a monster.
         if (glyph.cls === GLYPHCLS_CMAP && glyph.cmap === 20)
             glyph = cmap_glyph(19); // S_darkroom -> S_room
+        else if (glyph.cls === GLYPHCLS_CMAP && glyph.cmap === 23)
+            glyph = cmap_glyph(22); // S_litcorr -> S_corr, by identity (symset-independent)
         else if (isRoomFloor && glyph.color === CLR_BLACK)
             glyph = { ...glyph, color: NO_COLOR, ...(glyph.cmap != null && { cmap: 19 }) };
         else if (glyph.ch === '#' && !glyph.decgfx && glyph.color === CLR_WHITE)
@@ -15044,6 +15066,11 @@ async function reveal_terrain(which_subset) {
                  * "unexplored" (no "area") for it while !seenv. */
                 if (gl.cls === GLYPHCLS_CMAP && gl.cmap === 0 && _loc)
                     _loc.disp_unmapped = false;
+            } else if (!full && !swallowed && _loc && _loc.disp_cls === GLYPHCLS_CMAP
+                       && _loc.disp_ch === ' ') {
+                /* C detect.c:2204 glyph_at() returns the displayed blank S_stone
+                 * glyph itself; show_glyph() (display.c:1930) sees it unchanged,
+                 * so nothing is repainted over the status row's map-row-20 overlap. */
             } else
                 show_glyph_cell(x, y, ' ', NO_COLOR, false, 0, GLYPHCLS_UNEXPLORED);
             /* detect.c:2238 paints default_glyph (cmap S_stone), not
@@ -15296,7 +15323,15 @@ export async function doprev_message(liveTopline) {
         if (!history.length) return ECMD_OK;
         if (_pmw === 'c') {
             const k = g._prevmsg_combo || 0;
-            g._prevmsg_next = Math.max(0, history.length - 1 - k);
+            /* C topl.c:44-47: the first ^P is redotoplin(gt.toplines), which is
+             * EMPTY after a SUPPRESS_HISTORY line ("Unknown command", the "# cmd"
+             * echo); the second is data[maxrow-1], the last remembered line.
+             * The recall itself clears _toplEmptyAfterSuppress, so remember it
+             * for the rest of the sequence. */
+            if (k === 0) g._prevmsg_emptyTopl = liveTopline === undefined && !!g._toplEmptyAfterSuppress;
+            const _empty = !!g._prevmsg_emptyTopl;
+            _blankFirst = _empty && k === 0;
+            g._prevmsg_next = Math.max(0, history.length - 1 - k + (_empty ? 1 : 0));
             g._prevmsg_combo = k + 1;
         } else if (g._prevmsg_history_length !== history.length || g._prevmsg_next == null) {
             g._prevmsg_next = history.length - 1;
@@ -15338,7 +15373,8 @@ export async function doprev_message(liveTopline) {
      * EXCLUDING maxrow, so it lists rows-1 ring lines (+ gt.toplines first);
      * the full arm (:68-72) walks all `rows`.  This port's history already
      * carries the live topline as its last entry. */
-    const _noLiveTopl = liveTopline === undefined && !!g._toplEmptyAfterSuppress;
+    const _noLiveTopl = liveTopline === undefined
+        && (_comboWindow ? !!g._prevmsg_emptyTopl : !!g._toplEmptyAfterSuppress);
     const _recentN = _pmw === 'r'
         ? (_noLiveTopl ? _ring - 1 : _ring)
         : _ring + (_noLiveTopl ? 0 : 1);
@@ -25677,7 +25713,11 @@ async function _weapon_prinv_line(obj, wornMsg) {
      * literal "weapon" — a wielded Magicbane rendered "a +5 weapon" instead of
      * C's "an athame named Magicbane".  Use the real xname; the tables remain
      * only for an otyp xname cannot resolve at all. */
-    let name = ((obj.otyp | 0) === 265 /* CORPSE */
+    // C objnam.c:747-771: fruit is singularized then pluralized before
+    // xname strips leading "the " (:1011); do not pluralize that result again.
+    const fruitName = (obj.otyp | 0) === _OTYP_SLIME_MOLD;
+    let name = (fruitName ? xname_flags(obj, CXN_NORMAL)
+        : (obj.otyp | 0) === 265 /* CORPSE */
         ? xname_oname_tail(obj, corpse_xname(obj, obj.oeaten ? 'partly eaten' : null, CXN_SINGULAR))
         /* C objnam.c:663-664 `goto nameit`: a fully identified artifact IS its name */
         : obj_is_pname(obj) ? xname_flags(obj, CXN_SINGULAR) : xname_weapon(obj))
@@ -25825,7 +25865,7 @@ async function _weapon_prinv_line(obj, wornMsg) {
     const worn = _doname_weight(obj, (wornMsg ? ` ${wornMsg}` : '') + unpaidSfx, false);
     const quan = (obj.quan == null) ? 1 : (obj.quan | 0);
     if (quan !== 1)
-        return `${invlet} - ${quan} ${prefixRest}${makeplural_objnam(name)}${charge}${worn}`;
+        return `${invlet} - ${quan} ${prefixRest}${fruitName ? name : makeplural_objnam(name)}${charge}${worn}`;
     if (obj_is_pname(obj) || the_unique_obj(obj)) {
         const bare = /^the /i.test(name) ? name.slice(4) : name;
         return `${invlet} - the ${prefixRest}${bare}${charge}${worn}`;
@@ -26151,6 +26191,7 @@ async function _doswapweapon() {
             if (joinedSwap.length <= 70) {
                 g._resultMessage = joinedSwap;
                 g._pending_message = '';
+                g._prevmsg = newSecLine; /* pline.c:282: last pline shown */
             } else {
                 g._pending_message = '';
                 const _bareMorc = await _topline_more(`${_standingTopl}${emptyMsg}`);
@@ -26164,6 +26205,7 @@ async function _doswapweapon() {
                  * (pline.c:274-277): the --More-- freezes the pre-movemon map/T:. */
                 _pline_flush_frame_record(-2, newSecLine);
                 g._resultMessage = newSecLine;
+                g._prevmsg = newSecLine; /* pline.c:282 */
                 /* Same owner rule as the swap arm above: the prinv after an
                  * ESC'd more() is drawn (skip sampled before more()) and turns
                  * WIN_STOP live, so the world block's plines are swallowed
@@ -37992,6 +38034,14 @@ async function _pickup_lift_list(pickOrder, _oldcap) {
                 const _coinLine = `${_pickup_prinv_prefix('lifting')}${await xprname(coinNode || obj, null, '$', !_coinTotalOf, 0, _coinCount)}`
                     /* xprname → doname of the MERGED node: quivered gold keeps W_QUIVER (objnam.c:1646) */
                     + (_coinTotalOf && game.flags?.verbose ? ` (${_coinTotal} in total).` : '');
+                /* C invent.c:961-962 addinv_core1: gold sets disp.botl, and the
+                 * prinv pline's flush_screen (pline.c:273-274, display.c:2286)
+                 * runs bot() BEFORE putmesg — repainting gold and capacity and
+                 * clearing the flags — so a --More-- that this line raises over
+                 * an earlier one (costly_gold's "Your credit is erased.") shows
+                 * the post-add status. */
+                SET_BOTL();
+                pline_flush_point();
                 _result_append_join(game, _coinLine);
                 /* C invent.c addinv_core1: gold sets disp.botl, so the prinv
                  * pline's flush_screen runs bot() with the POST-add capacity;
@@ -42239,8 +42289,11 @@ async function _do_look_lookat(x, y) {
         /* C pager.c lookat(): the glyph's own cmap index decides S_litcorr vs
          * S_corr; under a symset (IBMgraphics) neither carries a colour, so the
          * displayed cmap (defsym.h S_litcorr = 23) is the discriminator. */
-        const lit = dglyph?.cls === GLYPHCLS_CMAP
-            ? _glyph_cmap_sym(x, y, dglyph) === S_litcorr : tg.color === CLR_WHITE;
+        const painted = dglyph?.cls === GLYPHCLS_CMAP
+            ? _glyph_cmap_sym(x, y, dglyph) : -1;
+        const lit = painted === -1
+            ? tg.color === CLR_WHITE : painted === S_litcorr;
+        if (painted === -1 || _is_cmap_corr(painted)) {
         /* C pager.c:1267-1271,1472: the prefix and class scan use the
          * displayed glyph's active symbol, including loaded symbol sets. */
         if (dglyph?.symbol != null && dglyph.cls === GLYPHCLS_CMAP) {
@@ -42266,6 +42319,7 @@ async function _do_look_lookat(x, y) {
             firstmatch: lit ? 'lit corridor' : 'corridor',
             dbaseEntry: null, /* no "corridor"/"lit corridor" data.base entry */
         };
+        }
     }
     {
         let _cm = _getpos_cmap_at(x, y);
@@ -42337,6 +42391,7 @@ const _CMAP_DEFAULT_EXPLANATION = {
     25: 'staircase up', 26: 'staircase down',
     29: 'branch staircase up', 30: 'branch staircase down',
     17: 'iron bars',          /* S_bars      PCHAR(17, '#', "iron bars") */
+    18: 'tree',               /* S_tree      PCHAR(18, '#', "tree") */
     34: 'grave',              /* S_grave     PCHAR(34, '|', "grave") */
     35: 'opulent throne',     /* S_throne    PCHAR2(35, '\\', "throne", "opulent throne") */
     36: 'sink',               /* S_sink      PCHAR(36, '{', "sink") */
@@ -46911,6 +46966,10 @@ function _result_append_join(g, msg) {
     if (!g._resultMessage && g._pending_message) _topl_stash_result();
     const prev = g._resultMessage;
     if (prev) {
+        /* C pline.c:273-274: this message's own flush_screen() runs bot()
+         * for a pending botl/botlx (display.c:2236-2237) before putmesg(), so
+         * the frame recorded below holds docrt()'s repainted status rows. */
+        pline_flush_point();
         const rec = (g._resultMessageJoins && g._resultMessageJoins.src === prev)
             ? g._resultMessageJoins.joins.slice() : [];
         rec.push(prev.length); /* offset of the "  " separator within the merged line */
@@ -49236,9 +49295,9 @@ async function doherecmdmenu() {
     const items = [];   /* { act, txt } in C's add order */
 
     /* ── there_cmd_menu_self (cmd.c) ─────────────────────────────────────── */
-    if (IS_FOUNTAIN(typ) || IS_SINK(typ))
+    if ((IS_FOUNTAIN(typ) || IS_SINK(typ)) && can_reach_floor(false))
         items.push({ act: 'QUAFF', txt: `Drink from the ${IS_FOUNTAIN(typ) ? 'fountain' : 'sink'}` });
-    if (IS_FOUNTAIN(typ))
+    if (IS_FOUNTAIN(typ) && can_reach_floor(false))
         items.push({ act: 'DIP', txt: 'Dip something into the fountain' });
     if (IS_THRONE(typ))
         items.push({ act: 'SIT', txt: 'Sit on the throne' });
