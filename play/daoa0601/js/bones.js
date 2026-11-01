@@ -21,7 +21,7 @@ import { prepareBonesObjectForRestore, prepareBonesObjectForSave, } from './bone
 import { restoreBonesMonsters } from './bones_monster.js';
 import { decodeBonesPayload } from './bones_validation.js';
 import { encodeSavedGraph } from './saved_graph.js';
-import { purgeDeadMonsters } from './monster_level_departure.js';
+import { purgeDeadMonsters } from './mon.js';
 import { restoreLevelChains } from './level_restore.js';
 import { restoreLevelPetHistory } from './monster_restore.js';
 import { restoreLevelTimers } from './object_timers.js';
@@ -32,7 +32,7 @@ import { deleteTrap } from './trap_lifecycle.js';
 import { nextIdent } from './ident.js';
 import { addFruit } from './fruit.js';
 import { restoreMonsterWormHeads, validMonsterWormBodies, } from './monster_worm.js';
-import { restoreMonsterInventoryOwnership } from './monster_inventory.js';
+import { restoreMonsterInventoryOwnership } from './mkobj.js';
 import { ageStoresFuel } from './container.js';
 import { specialLevelAt } from './dungeon.js';
 import { ICE_BOX, SLIME_MOLD } from './object_data.js';

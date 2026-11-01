@@ -7,14 +7,14 @@ import { placeObject } from './floor_object.js';
 import { game } from './gstate.js';
 import { useUpInventoryStack } from './hero_inventory.js';
 import { finishHeroMonsterKillOutcome } from './hero_monster_death.js';
-import { monsterName } from './monster_name.js';
+import { monsterName } from './do_name.js';
 import { monsterTypeName } from './monster_data.js';
-import { monsterHasStoneResistance } from './monster_resistance.js';
-import { petrifyMonsterFromContact } from './monster_stoning.js';
+import { petrifyMonsterFromContact } from './trap.js';
 import { deleteObject } from './object_delete.js';
 import { EGG } from './object_data.js';
 import { rnd, rn2 } from './rng.js';
 import { touchPetrifies } from './stoning.js';
+import { monsterHasStoneResistance } from './mondata.js';
 export async function resolveHeroEggHit(monster, egg, { state = game, mode, publish, random = rn2, rollOne = rnd, finishMonsterKill = (victim, death) => finishHeroMonsterKillOutcome(victim, victim.mx, victim.my, death), }) {
     if (egg.otyp !== EGG)
         throw new RangeError('Egg contact requires an egg');

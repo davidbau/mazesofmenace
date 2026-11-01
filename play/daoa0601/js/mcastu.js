@@ -4,45 +4,46 @@
 // dochug(), curse feedback (cursetxt), and the deferred completions of
 // mcast_spell()/mcast_summon_mons() effects after their visible lines have
 // crossed the tty boundary.
-import { A_DEX, M_AP_OBJECT, M_AP_TYPE, M_SEEN_ELEC, M_SEEN_FIRE, M_SEEN_MAGR, M_SEEN_REFL, MFAST, MM_NOWAIT, MMOVE_DONE, Upolyd, } from './const.js';
-import { AD_CLRC, AD_COLD, AD_FIRE, AD_MAGM, AD_SPEL, AT_MAGC, } from './monster_attack_types.js';
-import { MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_LEVEL, monsterIsNonliving, } from './monster_data.js';
+import { A_DEX, M_AP_OBJECT, M_AP_TYPE, M_SEEN_ELEC, M_SEEN_FIRE, M_SEEN_MAGR, M_SEEN_REFL, MFAST, MM_NOWAIT, MMOVE_DONE, Upolyd, ismnum, KILLED_BY, } from './const.js';
+import { AD_CLRC, AD_COLD, AD_FIRE, AD_MAGM, AD_SPEL, AT_MAGC } from './monster_attack_types.js';
+import { MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_GENO, MONSTER_LEVEL, MONSTER_NAME, SPECIAL_PM, monsterIsNonliving, monsterTypeName, } from './monster_data.js';
 import { erodeWornArmor, heroHasFreeAction, heroIsDisplaced } from './armor.js';
-import { monstersForgetHeroResistance, monstersObserveHeroResistance, seenResistanceForDamage, } from './monster_perception.js';
-import { canSeeMonster, canSpotMonster, map_invisible, newsym, shieldeff, } from './display.js';
+import { withIndefiniteArticle, makePlural } from './object_grammar.js';
+import { canSeeMonster, canSpotMonster, map_invisible, newsym, shieldeff } from './display.js';
 import { requireInitializedGame } from './gstate.js';
 import { currentAttribute } from './attrib.js';
 import { clearHeroSliming } from './slime.js';
 import { engravingAt, wipeEngravingAt } from './engrave.js';
-import { applyRayFloorFeatures, destroyElectricInventory, destroyFireInventory, } from './zap.js';
+import { applyRayFloorFeatures, destroyElectricInventory, destroyFireInventory } from './zap.js';
 import { burnHeroArmorByFire } from './trap.js';
 import { finishHeroDeathAfterMonsterMessage } from './monster_attack_death.js';
 import { igniteItems } from './light.js';
 import { discoverHeroReflectionSource, heroReflectionSource } from './ray.js';
 import { flashBurn } from './sight_change.js';
 import { rndcurse } from './throne.js';
-import { touchHeroWithDeath } from './monster_death_touch.js';
+import { finishHeroDeath } from './end.js';
+import { returnHeroToHumanForm } from './polyself.js';
+import { loseHeroHp } from './hero_damage.js';
 import { plineWithContinuation } from './pline.js';
 import { endVoluntaryMultiTurn, heroHasInvoluntaryDelay, nomul } from './command_state.js';
 import { d, rn2, rnd } from './rng.js';
 import { formatFeltMessage } from './hero_speech.js';
 import { heroHasHalfSpellDamage } from './spell_damage.js';
-import { monsterName as canonicalMonsterName, monsterSpellDeathReason } from './monster_name.js';
-import { adjustMonsterSpeed, monsterSpeedMessage } from './monster_speed.js';
+import { adjustMonsterSpeed, monsterSpeedMessage } from './worn.js';
+import { monsterName as canonicalMonsterName } from './do_name.js';
 import { setMonsterPermanentInvisibility } from './monster_invisibility.js';
 import { makemonNear, summonNastyMonsters } from './mklev.js';
 import { summonMonsterInsects } from './monster_spell_insects.js';
-import { aggravateMonsters } from './monster_anger.js';
 import { heroIsBlinded, heroIsDeaf, heroIsHallucinating } from './senses.js';
 import { heroIsInvisible } from './hero_invisibility.js';
-import { cansee, couldsee, } from './vision.js';
-import { finishDochugAfterMovement, requireDochugContext, } from './monmove.js';
+import { cansee, couldsee } from './vision.js';
+import { finishDochugAfterMovement, requireDochugContext } from './monmove.js';
 import { recordRandom } from './monster_action_types.js';
-import { finishWizardClone, monsterSpellHasAggravatables } from './wizard.js';
+import { finishWizardClone, monsterSpellHasAggravatables, aggravateMonsters } from './wizard.js';
 import { msummon } from './minion.js';
-import { heroEyeCount, heroEyeName, heroHeadName, } from './body_parts.js';
-import { makePlural } from './object_grammar.js';
+import { heroEyeCount, heroEyeName, heroHeadName } from './body_parts.js';
 import { dist2 } from './hacklib.js';
+import { monstersForgetHeroResistance, monstersObserveHeroResistance, seenResistanceForDamage } from './mondata.js';
 const M1_SEE_INVIS = 0x01000000;
 export const MCF_INDIRECT = 0x01;
 const MCF_SIGHT = 0x02;
@@ -876,5 +877,50 @@ export function resolveDeferredHeroGeyser(action, heroAttack) {
         ? Math.trunc((originalDamage + 1) / 2) : originalDamage;
     applyHeroSpellDamage(heroAttack, appliedDamage, game);
     heroAttack.deferredGeyserSpell = false;
+}
+// C mcastu.c:touch_of_death(). Entered from uhitm.c:mhitm_ad_deth()'s hero
+// branch and mcast_death_touch(); spellcasting gates its own immunity and
+// success before calling, Death's natural touch uses the same effect.
+export async function touchHeroWithDeath(monster, state, publish, rollDice = d) {
+    const damage = 50 + rollDice(8, 6);
+    const drain = Math.trunc(damage / 2);
+    await publish(formatFeltMessage('drained...', state));
+    const killer = monsterSpellDeathReason(monster, 'the touch of death');
+    const hero = state.u;
+    if (Upolyd(hero)) {
+        hero.mh = 0;
+        return (await returnHeroToHumanForm(state, { publish })).died;
+    }
+    if (drain >= hero.uhpmax)
+        return finishHeroDeath({ killer, killerFormat: KILLED_BY, deathLineShown: true });
+    const oldHp = hero.uhp;
+    hero.uhpmax = Math.max(hero.ulevel, 3, hero.uhpmax - drain);
+    hero.uhp = Math.min(hero.uhp, hero.uhpmax);
+    state.context.botl = true;
+    const remainingDamage = Math.max(1, damage - (oldHp - hero.uhp));
+    return loseHeroHp(remainingDamage, killer, { state, publish, killerFormat: KILLED_BY });
+}
+// C mcastu.c:death_inflicted_by(). This names the real species, not a
+// perceived identity, priest title, shopkeeper name, or given name.
+const DEATH_G_UNIQ = 0x1000;
+const DEATH_M2_PNAME = 0x00080000;
+const DEATH_PM_HIGH_CLERIC = MONSTER_NAME.indexOf('high cleric');
+const DEATH_PM_WIZARD_OF_YENDOR = MONSTER_NAME.indexOf('Wizard of Yendor');
+export function monsterSpellDeathReason(monster, reason) {
+    const current = monster.mnum;
+    const base = ismnum(monster.cham) ? monster.cham : current;
+    const unique = current === DEATH_PM_WIZARD_OF_YENDOR
+        || (!((MONSTER_FLAGS2[current] ?? 0) & DEATH_M2_PNAME)
+            && !!((MONSTER_GENO[current] ?? 0) & DEATH_G_UNIQ)
+            && current !== DEATH_PM_HIGH_CLERIC && current !== SPECIAL_PM);
+    let name = monsterTypeName(base, monster.female);
+    if (!((MONSTER_FLAGS2[base] ?? 0) & DEATH_M2_PNAME) && !unique)
+        name = withIndefiniteArticle(name);
+    let killer = `${reason} inflicted by ${unique ? 'the ' : ''}${name}`;
+    if (base !== current) {
+        const form = monsterTypeName(current, monster.female);
+        killer += ` imitating ${withIndefiniteArticle(form)}`;
+    }
+    return killer;
 }
 //# sourceMappingURL=mcastu.js.map

@@ -11,8 +11,7 @@ import { heroSpecies } from './hero_species.js';
 import { gotoLevel } from './level_change.js';
 import { finishTeleportArrival } from './location_effects.js';
 import { MONSTER_FLAGS1, MONSTER_NAME, MONSTER_SYMBOL, monsterIsWhirly } from './monster_data.js';
-import { monsterName } from './monster_name.js';
-import { monsterHasColdResistance } from './monster_resistance.js';
+import { monsterName } from './do_name.js';
 import { observeObjectForNaming } from './objnam.js';
 import { CORPSE, OBJECT_DESCRIPTIONS, ROCK } from './object_data.js';
 import { objectDescription } from './object_description.js';
@@ -23,6 +22,7 @@ import { heroIsBlind, heroIsHallucinating } from './senses.js';
 import { dismountHero } from './steed.js';
 import { heroResistsStoning, resolveImmediatePetrification, touchPetrifies } from './stoning.js';
 import { isIceAt, isPoolAt } from './terrain_properties.js';
+import { monsterHasColdResistance } from './mondata.js';
 export function checkSlipperyIce() {
     const hero = game.u;
     let onIce = !propertyIsActive('levitation', game) && isIceAt(hero.ux, hero.uy);

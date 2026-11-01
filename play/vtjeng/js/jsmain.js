@@ -46,10 +46,7 @@ import { timeout_globals_init } from './timeout.js';
 import {
     ttyPlayerNameAndSuffix,
 } from './tty_startup.js';
-import {
-    enter_tutorial,
-    maybe_do_tutorial,
-} from './tutorial_startup.js';
+import { maybe_do_tutorial } from './tutorial_startup.js';
 import {
     runMoveloopPreambleAtStartupBoundary,
 } from './moveloop_preamble.js';
@@ -254,8 +251,10 @@ export class NethackGame {
         this._screens = [];
         this._cursors = [];
         this._rngSlices = [];
-        // Animation frames captured during each step.  Outer index
-        // matches _screens (one entry per input boundary); inner array
+        // Animation frames captured during each step.  Outer index is
+        // one entry per input boundary, as frozen/ps_test_runner.mjs
+        // indexes its C-side frames (_screens and _cursors skip a blank
+        // boundary; see _installCaptureHook()); inner array
         // is the frames that fired between this boundary and the
         // previous one, in emit order.  Populated by animationFrame()
         // calls; committed at each input boundary.
@@ -511,6 +510,11 @@ export class NethackGame {
         // live message-history clamp.
         activate_chosen_soundlib(g);
         tty_create_nhwindow(NHW_MESSAGE, g);
+        // C ref: allmain.c init_sound_disp_gamewindows():720-721 calls
+        // status_initialize(FALSE) right after creating WIN_MESSAGE, before
+        // the restore-or-new-game branch, so a restored game has the status
+        // banks too. gb.blinit and the banks are not in the save file.
+        status_initialize(g, false);
 
         // ── Branch: restore saved game or start new one ──
         // C ref: unixmain.c nethack_main() checks for a save file between
@@ -570,13 +574,25 @@ export class NethackGame {
                     `You're back, but you still feel ${udeadinside(g)} inside.`,
                     g,
                 );
-            else
+            else {
                 await ttyPline(welcomeBackMessage(g), g);
+                // C ref: allmain.c welcome(FALSE) 922-927: the Gehennom
+                // smoke message and the level annotation, as goto_level()
+                // gives them on arrival.
+                const { hellish_smoke_mesg } = await import('./do.js');
+                const { print_level_annotation } = await import('./dungeon.js');
+                await hellish_smoke_mesg(g);
+                await print_level_annotation(g);
+            }
 
             // C ref: restore.c:dorecover() calls check_special_room(FALSE)
             // immediately after welcome(FALSE) on a successful restore.
             const { check_special_room } = await import('./rooms.js');
             await check_special_room(false, g);
+
+            // C ref: unixmain.c:265 wd_message() after a successful
+            // dorecover(), before the keep-save question.
+            await wd_message(g);
 
             // C ref: unixmain.c:266-272. Debug/explore restores ask whether
             // to retain the save. VFS needs no chmod or compression operation.
@@ -602,10 +618,6 @@ export class NethackGame {
         }
 
         // Run game startup
-        // C ref: allmain.c newgame() creates the status window and calls
-        // status_initialize(FALSE) after player selection, only on a fresh
-        // game. Restores retain their serialized status banks.
-        status_initialize(g, false);
         await newgame();
         // C ref: sys/unix/unixmain.c nethack_main().  This boundary must
         // precede moveloop(): an existing welcome message can force More
@@ -618,8 +630,7 @@ export class NethackGame {
         await runMoveloopPreambleAtStartupBoundary(false, g, {
             hooks: TTY_WINDOW_HOOKS,
         });
-        const tutorial = await maybe_do_tutorial(g);
-        if (tutorial.action === 'enter') await enter_tutorial(tutorial, g);
+        await maybe_do_tutorial(g);
         return true;
     }
 
@@ -639,16 +650,25 @@ export class NethackGame {
             // each getScreens() string and compares it with the C session's
             // recorded screen; GameDisplay.serialize() says why this does not
             // call the frozen Terminal's serialize().
+            // The judge keeps a recorded screen and its cursor only when the
+            // screen is non-empty (frozen/ps_test_runner.mjs `if
+            // (step.screen)`), but keeps every JS screen. The recorder saves
+            // an all-blank terminal, such as the one nh_terminate() leaves
+            // after a quit, as "", so a blank boundary is left out of both
+            // streams here too; otherwise a blank that ends one segment would
+            // shift every screen of the next.
             const disp = game?.nhDisplay;
-            nhGame._screens.push(disp ? disp.serialize() : '');
+            const screen = disp ? disp.serialize() : '';
             nhGame._rngSlices.push(slice);
 
             // Recorder patch 006 reads the cursor through nomux_get_cursor(),
             // which answers with its raw-print row and column once
             // tty_raw_print() has been used -- and nothing turns that back off
             // for the rest of the segment.
-            const cursor = disp ? [...nomux_get_cursor(disp), 1] : null;
-            nhGame._cursors.push(cursor);
+            if (screen) {
+                nhGame._screens.push(screen);
+                nhGame._cursors.push(disp ? [...nomux_get_cursor(disp), 1] : null);
+            }
 
             // Commit animation frames accumulated since the previous
             // input boundary as belonging to this step.  Frames are

@@ -2,7 +2,7 @@
 // C refs: trap.c dofiretrap() and trapeffect_fire_trap().
 import { formatSeenMessage } from './hero_speech.js';
 import { requireInitializedHero } from './hero_types.js';
-import { finishMonsterKilled, finishMonsterTrapDeath } from './monster_death.js';
+import { finishMonsterKilled } from './mon.js';
 import { AD_FIRE, AD_PHYS } from './monster_attack_types.js';
 import { isIceAt, isPoolAt } from './terrain_properties.js';
 import { heroHasDrainResistance } from './armor.js';
@@ -18,16 +18,15 @@ import { dist2 } from './hacklib.js';
 import { meltIce } from './ice.js';
 import { igniteItems } from './light.js';
 import { MONSTER_LEVEL } from './monster_data.js';
-import { monsterHasFireResistance } from './monster_resistance.js';
-import { monsterName as perceivedMonsterName } from './monster_name.js';
-import { monstersForgetHeroResistance, monstersObserveHeroResistance, } from './monster_perception.js';
+import { monsterName as perceivedMonsterName } from './do_name.js';
 import { objectName } from './objnam.js';
 import { observeObject } from './object_knowledge.js';
 import { heroIsBlind } from './senses.js';
 import { d, rn2, rnd } from './rng.js';
-import { burnArmorByFire, burnHeroArmorByFire, monsterTrapVisibility, seeTrap } from './trap.js';
+import { burnArmorByFire, burnHeroArmorByFire, finishMonsterTrapDeath, monsterTrapVisibility, seeTrap } from './trap.js';
 import { surfaceName } from './terrain_name.js';
 import { burnFloorObjectsAt, destroyFireInventory, destroyFireMonsterInventory } from './zap.js';
+import { monstersForgetHeroResistance, monstersObserveHeroResistance, monsterHasFireResistance, } from './mondata.js';
 const PM_STRAW_GOLEM = 249;
 const PM_PAPER_GOLEM = 250;
 const PM_LEATHER_GOLEM = 253;

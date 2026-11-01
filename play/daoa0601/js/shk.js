@@ -12,7 +12,10 @@ import { hasShopBill, hasShopkeeperData, requireShopGame } from './shop_types.js
 import { SHOP_TYPES } from './shop_data.js';
 import { MONSTER_FLAGS2, MONSTER_GENO, MONSTER_NAME, monsterIsHuman, monsterIsVampire } from './monster_data.js';
 import { heroSpecies } from './hero_species.js';
-import { monsterName, monsterPossessive, monsterSubjectPronoun, possessiveName, shopkeeperName } from './monster_name.js';
+import { monsterName } from './do_name.js';
+import { possessiveName } from './hacklib.js';
+import { monsterPossessive, monsterSubjectPronoun } from './mondata.js';
+import { shopkeeperName } from './shknam.js';
 import { containedGold } from './gold.js';
 import { containedBuyCost, objectIsCandle, objectPricingUnits, pickedContainer, shopClaimsObject, shopGetPrice, shopkeeperIsMuted, stolenValue, } from './shop_loss.js';
 import { costlyGold, donateGold, sellHeroDroppedObject, shopOfferForObject, shopStocksObject, } from './shop_sell.js';
@@ -1515,5 +1518,21 @@ export async function moveShopkeeper(monster, state, random, rollDice, rollOne, 
         goalY,
     });
     return { ...movement, shopkeeper: true };
+}
+// C shk.c:set_residency(): a shopkeeper leaving her shop level clears
+// the room's resident pointer; arriving on it restores the pointer.
+export function setShopResidency(monster, zeroOut, state) {
+    if (!monster.isshk || !monster.eshk)
+        return;
+    if (!sameShopLevel(monster.eshk.shoplevel, state.u?.uz))
+        return;
+    const room = roomForRoomno(state.level, monster.eshk.shoproom);
+    if (room)
+        room.resident = zeroOut ? null : monster;
+}
+function sameShopLevel(first, second) {
+    return !!first && !!second
+        && first.dnum === second.dnum
+        && first.dlevel === second.dlevel;
 }
 //# sourceMappingURL=shk.js.map

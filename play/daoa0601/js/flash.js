@@ -1,4 +1,4 @@
-import { requirePlayingGame } from './gstate.js';
+import { requirePlayingGame, game, requireLiveGame } from './gstate.js';
 // Camera traversal and light striking a monster.
 // C zap.c:bhit(FLASHED_LIGHT), uhitm.c:flash_hits_mon(), light.c.
 import { COLNO, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, isok } from './const.js';
@@ -8,16 +8,13 @@ import { monsterResistsBlindingLight } from './blinding_attack.js';
 import { canSeeMonster, canSpotMonster, flush_screen, glyphAt, map_invisible, newsym, shieldeff, show_glyph_cell, unmap_invisible, } from './display.js';
 import { displayMessageWindow } from './tty_topline.js';
 import { plineWithContinuation as pline } from './pline.js';
-import { game, requireLiveGame } from './gstate.js';
 import { CmapSymbol, cmapToGlyph } from './glyph_numbers.js';
 import { lightHitsGremlin } from './light.js';
 import { MAP_SYMBOLS } from './map_symbols.js';
-import { angerMonster, wakeMonster } from './monster_anger.js';
 import { MONSTER_FLAGS1, MONSTER_NAME, MONSTER_SYMBOL, monsterTypeName } from './monster_data.js';
 import { makeMonsterFlee } from './monmove.js';
 import { monsterAtPosition } from './monster_location.js';
-import { monsterName } from './monster_name.js';
-import { seeMonsterCloseup } from './monster_observation.js';
+import { monsterName } from './do_name.js';
 import { EXPENSIVE_CAMERA, WAN_LIGHT } from './object_data.js';
 import { rayPositionIsOpen } from './ray.js';
 import { visibleRegionAt } from './regions.js';
@@ -25,6 +22,7 @@ import { d, rn2, rnd } from './rng.js';
 import { heroIsBlind } from './senses.js';
 import { cansee } from './vision.js';
 import { cleanupTransientLight, showTransientLight } from './transient_light.js';
+import { angerMonster, seeMonsterCloseup, wakeMonster } from './mon.js';
 const GREMLIN = MONSTER_NAME.indexOf('gremlin');
 const M1_NOEYES = 0x1000;
 const S_LIGHT = 25;

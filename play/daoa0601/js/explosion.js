@@ -7,24 +7,21 @@ import { canSeeMonster, canSpotMonster, flush_screen, map_invisible, newsym, ran
 import { plineWithContinuation } from './pline.js';
 import { impossible } from './diagnostics.js';
 import { finishHeroDeath } from './end.js';
-import { game, requireLiveGame } from './gstate.js';
+import { game, requireLiveGame, requirePlayingGame } from './gstate.js';
 import { burnAwayHeroSlime } from './hack.js';
 import { finishHeroMonsterKillOutcome } from './hero_monster_death.js';
 import { heroFormSticks, heroSpecies } from './hero_species.js';
 import { formatHeardMessage } from './hero_speech.js';
 import { igniteItems } from './light.js';
-import { applyMonsterGolemEffects } from './mon.js';
-import { angerAttackedMonster, wakeMonster } from './monster_anger.js';
+import { angerAttackedMonster, applyMonsterGolemEffects, finishMonsterKilled, wakeMonster } from './mon.js';
 import { revealMonsterAppearance } from './monster_appearance.js';
 import { AD_ACID, AD_COLD, AD_DGST, AD_DISE, AD_DISN, AD_DRCO, AD_DREN, AD_DRDX, AD_DRST, AD_ELEC, AD_ENCH, AD_FIRE, AD_MAGM, AD_PEST, AD_PHYS, AD_RBRE, AD_SPEL, AT_ENGL, } from './monster_attack_types.js';
-import { MONSTER_ATTACKS, MONSTER_FLAGS2, MONSTER_NAME, monsterIsNonliving, monsterIsVampireShifter, } from './monster_data.js';
-import { finishMonsterKilled } from './monster_death.js';
+import { MONSTER_ATTACKS, MONSTER_FLAGS2, MONSTER_NAME, monsterIsNonliving, monsterIsVampireShifter, monsterTypeName, } from './monster_data.js';
 import { monsterAtPosition } from './monster_location.js';
-import { monsterName, possessiveName } from './monster_name.js';
-import { monstersForgetHeroResistance, monstersObserveHeroResistance, seenResistanceForDamage, } from './monster_perception.js';
-import { monsterHasAcidResistance, monsterHasColdResistance, monsterHasDisintegrationResistance, monsterHasFireResistance, monsterHasPoisonResistance, monsterHasShockResistance, monsterResistsEffect, } from './monster_resistance.js';
+import { monsterName } from './do_name.js';
+import { possessiveName } from './hacklib.js';
 import { wakeMonstersNearWithMessages } from './monster_wake.js';
-import { OBJECT_DIR, POT_OIL, SCR_FIRE, WAN_DIGGING, WAN_MAGIC_MISSILE, WAN_SLEEP, } from './object_data.js';
+import { OBJECT_DIR, POT_OIL, SCR_FIRE, WAN_DIGGING, WAN_MAGIC_MISSILE, WAN_SLEEP } from './object_data.js';
 import { applyHeroGolemEffects, returnHeroToHumanForm } from './polyself.js';
 import { propertyIsActive } from './properties.js';
 import { rn2 } from './rng.js';
@@ -32,10 +29,10 @@ import { heroIsDeaf, heroIsHallucinating } from './senses.js';
 import { payForShopDamage } from './shop_damage.js';
 import { burnArmorByFire, burnHeroArmorByFire } from './trap.js';
 import { cansee } from './vision.js';
-import { applyRayFloorFeatures, destroyInventoryByElement, destroyMonsterInventoryByElement, } from './zap.js';
+import { applyRayFloorFeatures, destroyInventoryByElement, destroyMonsterInventoryByElement, monsterResistsEffect, } from './zap.js';
 import { rayDamageType } from './magic_types.js';
-import { requirePlayingGame } from './gstate.js';
 import { TemporaryMapEffect } from './temporary_map_effect.js';
+import { monstersForgetHeroResistance, monstersObserveHeroResistance, seenResistanceForDamage, monsterHasAcidResistance, monsterHasColdResistance, monsterHasDisintegrationResistance, monsterHasFireResistance, monsterHasPoisonResistance, monsterHasShockResistance, } from './mondata.js';
 const WAND_CLASS = 11;
 const SCROLL_CLASS = 9;
 const RAY = 3;
@@ -454,5 +451,11 @@ async function explosionStyleForDamage(damageType, state) {
         return style;
     await impossible(`adtyp_to_expltype: bad explosion type ${damageType}`, { state });
     return EXPL_FIERY;
+}
+// C explode.c:mon_explodes(). Kill credit and the map blast for a
+// monster whose death explodes.
+export function createPhysicalMonsterExplosion(sourceMonster, x, y, damage, options = {}) {
+    const killer = `${possessiveName(monsterTypeName(sourceMonster.mnum, !!sourceMonster.female))} explosion`;
+    return explode(x, y, PHYS_EXPL_TYPE, damage, MON_EXPLODE, EXPL_NOXIOUS, { ...options, killer });
 }
 //# sourceMappingURL=explosion.js.map

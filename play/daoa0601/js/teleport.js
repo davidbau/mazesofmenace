@@ -2,17 +2,17 @@
 // C ref: teleport.c teleok(), safe_teleds(), teleds(), and tele_trap().
 import { setHeroGrip } from './hero_grip.js';
 import { formatFeltMessage } from './hero_speech.js';
-import { monsterHasMapPosition, monsterAtPosition, placeMonsterOnMap, removeMonsterFromMapAt } from './monster_location.js';
+import { monsterHasMapPosition, monsterAtPosition, placeMonsterOnMap, removeMonsterFromMapAt, } from './monster_location.js';
 import { updateHeroRegions, updateMonsterRegions } from './regions.js';
 import { clearMonsterWormFromMap, placeMonsterWormTailRandomly } from './monster_worm.js';
 import { game, requireLiveGame, requireGameLevel, requirePlayingGame } from './gstate.js';
 import { impossible } from './diagnostics.js';
 import { selectMapPosition, shouldShowGetposTip, showGetposTip } from './getpos.js';
-import { pline } from './pline.js';
+import { pline, plineWithContinuation } from './pline.js';
 import { prepareTeleportAtWill } from './wizard_teleport.js';
 import { heroLocomotion } from './hero_locomotion.js';
 import { randomTeleportDepth } from './level_teleport.js';
-import { depth } from './hacklib.js';
+import { depth, distmin } from './hacklib.js';
 import { clampHoleDestination } from './hole_destination.js';
 import { levelAtDepth, insideWizardTower, levelIsWizardTower } from './dungeon.js';
 import { propertyIsActive } from './properties.js';
@@ -20,40 +20,31 @@ import { finishTeleportArrival } from './location_effects.js';
 import { announceInvocationSquare } from './invocation.js';
 import { noticeAllMonsters, withMonsterNoticesBlocked } from './monster_notices.js';
 import { canSeeMonster, canSenseMonster, canSpotMonster, docrt, newsym, see_monsters } from './display.js';
-import { plineWithContinuation } from './pline.js';
-import { vision_recalc } from './vision.js';
-import { leashAttachedToMonster, releaseMonsterLeash, } from './monster_leash.js';
+import { vision_recalc, couldsee } from './vision.js';
+import { leashAttachedToMonster, releaseMonsterLeash } from './leash_apply.js';
 import { rn2, rnd } from './rng.js';
-import { GP_CHECKSCARY, COLNO, ROWNO, LEVEL_TELEP, TELEP_TRAP, VAULT, VIBRATING_SQUARE, M_AP_NOTHING, MON_FLOOR, RLOC_MSG, RLOC_NOMSG, RLOC_NONE, RLOC_ERR, STRAT_APPEARMSG, BOLT_LIM, TT_BURIEDBALL, HOLE, In_endgame, Is_botlevel, Is_stronghold, MIGR_PORTAL, MIGR_RANDOM, Upolyd, ZAP_POS, is_hole, is_pit, isok, } from './const.js';
-import { MONSTER_FLAGS1, MONSTER_NAME, MONSTER_SYMBOL, } from './monster_data.js';
-import { AMULET_OF_YENDOR, LEASH, RIN_TELEPORTATION, RIN_TELEPORT_CONTROL, WAN_TELEPORTATION, } from './object_data.js';
+import { GP_CHECKSCARY, COLNO, ROWNO, LEVEL_TELEP, TELEP_TRAP, VAULT, VIBRATING_SQUARE, M_AP_NOTHING, MON_FLOOR, RLOC_MSG, RLOC_NOMSG, RLOC_NONE, RLOC_ERR, STRAT_APPEARMSG, BOLT_LIM, TT_BURIEDBALL, HOLE, In_endgame, Is_botlevel, Is_stronghold, MIGR_PORTAL, MIGR_RANDOM, Upolyd, ZAP_POS, is_hole, is_pit, isok, Is_astralevel, MON_ENDGAME_MIGR, MON_OBLITERATE, } from './const.js';
+import { MONSTER_FLAGS1, MONSTER_NAME, MONSTER_SYMBOL, monsterIsRider } from './monster_data.js';
+import { AMULET_OF_YENDOR, LEASH, RIN_TELEPORTATION, RIN_TELEPORT_CONTROL, WAN_TELEPORTATION } from './object_data.js';
 import { spendHeroNutrition } from './hunger.js';
 import { beginBallAndChainMove, finishBallAndChainMove, heroIsPunished, placeBallAndChain, unplaceBallAndChain, } from './ball.js';
 import { searchSpecial, somexyspace } from './mkroom.js';
-import { priestIsInOwnTemple } from './priest.js';
+import { priestIsInOwnTemple, templeRoomAt } from './priest.js';
 import { checkSpecialRoom, costlySpot, shopkeeperInOwnShop } from './shk.js';
 import { makeAngryShopkeeper } from './shop_damage.js';
 import { findObjectOwner, onBillEntry, stolenValue } from './shop_loss.js';
 import { releaseHeroFromMonster } from './hero_expulsion.js';
-import { maybeUnhideAt } from './mon.js';
-import { interruptOccupationForMonster } from './monmove.js';
-import { monsterName } from './monster_name.js';
-import { publishMonsterYelp } from './monster_anger.js';
-import { setMonsterApparentHeroPosition } from './monster_perception.js';
+import { maybeUnhideAt, migrateMonsterToLevel, removeMonsterFromGame, sendMonsterToLimbo } from './mon.js';
+import { interruptOccupationForMonster, setMonsterApparentHeroPosition } from './monmove.js';
+import { monsterName } from './do_name.js';
 import { tryMonsterTrapEscape } from './monster_trap_escape.js';
-import { couldsee } from './vision.js';
 import { findNearbyMonsterPosition, heroTeleportRestricted, goodPosition, monsterTeleportRestricted, } from './teleport_rules.js';
 import { nearCapacity, SLT_ENCUMBER } from './weight.js';
-import { distmin } from './hacklib.js';
 import { heroIsUnaware, heroIsUnconscious } from './hero_sleep.js';
 import { promptYesNo } from './query.js';
 import { heroIsBlind, setHeroBlindnessTurns } from './senses.js';
 import { buriedBallToPunishment } from './buried_object.js';
 import { placeHeroOnLevel } from './hero_location.js';
-import { migrateMonsterOffLevel, migrateMonsterToLevel, sendMonsterToLimbo } from './monster_migration.js';
-import { isHomeElemental } from './monster_hit_points.js';
-import { removeMonsterFromGame } from './monster_departure.js';
-import { Is_astralevel, MON_ENDGAME_MIGR, MON_OBLITERATE } from './const.js';
 import { clearHeroTrap, triggerLevelTeleportTrap } from './hero_traps.js';
 import { gotoLevel } from './level_change.js';
 import { deleteTrap } from './trap_lifecycle.js';
@@ -62,6 +53,9 @@ import { fillPitWithBoulderAt } from './pit_fill.js';
 import { seeTrap } from './trap.js';
 import { learnObjectType } from './object_knowledge.js';
 import { hasShopkeeperData } from './shop_types.js';
+import { publishMonsterYelp } from './ambient_sounds.js';
+import { migrateMonsterOffLevel } from './dog.js';
+import { isHomeElemental } from './makemon.js';
 function requireLevel(state) {
     if (!state.level)
         throw new Error('Teleportation requires a dungeon level.');
@@ -1081,5 +1075,35 @@ export async function teleportAtWillCommand(ignoreRestrictions) {
         ignoreRestrictions, chooseDestination: askTeleportDestination,
     });
     game.context.move = Number(result.spentTime);
+}
+// C teleport.c:u_teleport_mon(). Relocation caused by immediate magic.
+export async function teleportMonsterByHero(monster, { state = game, giveFeedback = true, } = {}) {
+    requirePlayingGame(state);
+    if ((state.level.flags.stasis_until ?? -1) >= state.moves) {
+        if (giveFeedback)
+            await pline(`A mysterious force prevents you teleporting ${monsterName(monster)}!`);
+        return false;
+    }
+    if (monster.ispriest && templeRoomAt(state, monster.mx, monster.my)) {
+        if (giveFeedback)
+            await pline(`${monsterName(monster, { capitalized: true })} resists your magic!`);
+        return false;
+    }
+    if (state.u.uswallow && state.u.ustuck === monster && monsterTeleportRestricted(monster, state)) {
+        if (giveFeedback)
+            await pline(`You are no longer inside ${monsterName(monster)}!`);
+        await releaseHeroFromMonster(monster, { state });
+        if (!await randomMonsterRelocation(monster, { state, flags: RLOC_MSG }))
+            await sendMonsterToLimbo(monster, state);
+        return true;
+    }
+    if ((monsterIsRider(monster) || ((MONSTER_FLAGS1[monster.mnum] ?? 0) & 0x04000000)) && rn2(13)) {
+        const destination = findNearbyMonsterPosition(monster.mnum, state.u.ux, state.u.uy, { state });
+        if (destination) {
+            await relocateMonsterTo(monster, destination.x, destination.y, { state });
+            return true;
+        }
+    }
+    return !!await randomMonsterRelocation(monster, { state, flags: RLOC_MSG });
 }
 //# sourceMappingURL=teleport.js.map

@@ -218,6 +218,7 @@ import { m_next2u, ranged_attk_available } from './mhitu.js';
 import {
     heroDeaf,
     heroUnaware,
+    impossible,
     youHear,
     verbalize,
 } from './pline.js';
@@ -1927,10 +1928,11 @@ async function release_hero(mon, env = {}) {
 
 // C ref: monmove.c find_pmmonst() (375-391). Find a living monster of a
 // given species index on the current level. Returns the monster or null.
+// C walks fmon, which is `state.level.monlist` here.
 // Pure lookup: no RNG, no message, no state change.
 export function find_pmmonst(pm, state = game) {
     if ((state.mvitals?.[pm]?.mvflags ?? 0) & G_GENOD) return null;
-    for (let mtmp = state.fmon; mtmp; mtmp = mtmp.nmon) {
+    for (let mtmp = state.level?.monlist ?? null; mtmp; mtmp = mtmp.nmon) {
         if (mtmp.mhp < 1) continue; /* DEADMONSTER */
         if (mtmp.data === state.mons?.[pm]) return mtmp;
     }
@@ -3574,7 +3576,25 @@ export async function postmov(
                 note_unported('display.c swallowed clone redraw');
             }
         } else {
-            redraw(monster.mx, monster.my);
+            // C display.c newsym():929-935 reports a column-0 square through
+            // impossible() and draws nothing. gd_move() returns 1 after
+            // gd_move_cleanup() parks a vault guard at <0,0>, so C reaches
+            // this report with mx == 0. The port's newsym() is synchronous
+            // and cannot await the messages, so its caller raises them here.
+            if (!isok(monster.mx, monster.my)) {
+                await impossible(
+                    `newsym: attempting screen update for <${monster.mx},${monster.my}>`,
+                    state,
+                    {
+                        ...env,
+                        message,
+                        urgentMessage: env.planning
+                            ? message : rawEnv.urgentMessage,
+                    },
+                );
+            } else {
+                redraw(monster.mx, monster.my);
+            }
         }
     }
 

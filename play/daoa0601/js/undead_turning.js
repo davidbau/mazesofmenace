@@ -12,14 +12,14 @@ import { game } from './gstate.js';
 import { restartEggHatchTimer } from './egg.js';
 import { makeMonsterFlee } from './monmove.js';
 import { monsterIsUndead, monsterIsVampireShifter, monsterIsNonliving, monsterTypeName, monsterYoungerForm, } from './monster_data.js';
-import { namelessMonsterName, monsterName } from './monster_name.js';
+import { namelessMonsterName, monsterName } from './do_name.js';
 import { ownedObjectName } from './objnam.js';
 import { withIndefiniteArticle } from './object_grammar.js';
-import { monsterResistsEffect } from './monster_resistance.js';
 import { CORPSE, EGG } from './object_data.js';
 import { rnd } from './rng.js';
 import { adjustSpellDamage } from './spell_damage.js';
 import { cansee } from './vision.js';
+import { monsterResistsEffect } from './zap.js';
 function eggCanHatch(egg, state) {
     const mnum = egg?.corpsenm;
     if (mnum === undefined || !Number.isInteger(mnum) || mnum < 0)

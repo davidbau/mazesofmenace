@@ -87,18 +87,191 @@ export function l_nhcore_call(callidx, state = game) {
     }
 }
 
-// C ref: nhlua.c tutorial() (1835-1846), called by do.c goto_level(). The
-// callback result is discarded by C; l_nhcore_call() records the unavailable
-// Lua pcall while preserving the callback availability transition on exit.
-export function tutorial(entering, state = game) {
-    l_nhcore_call(
-        entering ? NHCORE_ENTER_TUTORIAL : NHCORE_LEAVE_TUTORIAL,
-        state,
-    );
-    if (!entering && state.gl?.nhcore_call_available) {
-        state.gl.nhcore_call_available[NHCORE_ENTER_TUTORIAL] = false;
-        state.gl.nhcore_call_available[NHCORE_LEAVE_TUTORIAL] = false;
+// version.js loads this module during startup, before the inventory modules
+// it would otherwise import have initialized; the gamestate code loads them
+// when the tutorial is first entered.
+async function gamestateModules() {
+    const [invent, obj, objectGeneration, ttyMessage, uInit, worn]
+        = await Promise.all([
+            import('./invent.js'),
+            import('./obj.js'),
+            import('./object_generation.js'),
+            import('./tty_message.js'),
+            import('./u_init.js'),
+            import('./worn.js'),
+        ]);
+    return {
+        ...invent,
+        extract_nobj: obj.extract_nobj,
+        ...objectGeneration,
+        ttyPline: ttyMessage.ttyPline,
+        init_uhunger: uInit.init_uhunger,
+        ...worn,
+    };
+}
+
+// The C restore memcpy()s each saved block over the live one. Copy in place
+// so modules holding the live array keep seeing the restored values.
+function copyInto(target, source) {
+    if (!Array.isArray(target) || !Array.isArray(source)) return;
+    target.length = 0;
+    for (const entry of structuredClone(source)) target.push(entry);
+}
+
+// C ref: nhlua.c free_tutorial(). A normal exit has already emptied
+// gmst_invent; the saved hero, discoveries and counts are released.
+function free_tutorial(state) {
+    state.gmst_invent = null;
+    state.gmst_ubak = null;
+    state.gmst_disco = null;
+    state.gmst_mvitals = null;
+}
+
+function tutorialInventoryHooks({ objectGenerationHooks }) {
+    return objectGenerationHooks({
+        // A tutorial transition has no active doff operation. The old
+        // level's monster visibility state is discarded by goto_level().
+        cancelDoff() {},
+        monsterUnseesProperty() {},
+        // Permanent-inventory rendering is a window-port concern. Supplying
+        // its live hook preserves update_inventory()'s source boundary while
+        // the subsequent full redraw owns the gameplay terminal.
+        updateInventory() {},
+    });
+}
+
+function zeroSpellbook(spellbook) {
+    return spellbook.map((spell) => Object.fromEntries(
+        Object.keys(spell ?? {}).map((field) => [field, 0]),
+    ));
+}
+
+// C ref: nhlua.c nhl_gamestate(TRUE), reached from nhlib.lua
+// tutorial_leave(). The saved hero, inventory, discoveries, generation
+// counts and spellbook replace the tutorial's; the level change in progress
+// keeps the current u.uz and u.uz0.
+async function restore_gamestate(state, modules) {
+    const {
+        addinv_nomerge, extract_nobj, init_uhunger, INVLET_BASIC, setworn,
+        ttyPline, update_inventory, useupall,
+    } = modules;
+    const hooks = tutorialInventoryHooks(modules);
+    const cur_uz = { ...state.u.uz };
+    const cur_uz0 = { ...state.u.uz0 };
+
+    state.moves = state.gmst_moves;
+    await ttyPline(`Resetting time to move #${state.moves}.`, state);
+    state.gmst_moves = 0;
+
+    state.lastinvnr = INVLET_BASIC - 1;
+    while (state.invent)
+        await useupall(state.invent, { state, hooks });
+    let otmp;
+    while ((otmp = state.gmst_invent) != null) {
+        const wornmask = otmp.owornmask;
+        otmp.owornmask = 0;
+        state.gmst_invent = extract_nobj(otmp, state.gmst_invent);
+        await addinv_nomerge(otmp, { state, hooks });
+        if (wornmask) await setworn(otmp, wornmask, { state, hooks });
     }
+    // memcpy(&u, gmst_ubak, sizeof u)
+    for (const key of Object.keys(state.u)) delete state.u[key];
+    Object.assign(state.u, structuredClone(state.gmst_ubak));
+    copyInto(state.svd?.disco, state.gmst_disco);
+    copyInto(state.svm?.mvitals ?? state.mvitals, state.gmst_mvitals);
+    // Clear user-given object type names.
+    for (const type of state.objects ?? []) {
+        if (type?.oc_uname) type.oc_uname = null;
+    }
+    state.u.uz = cur_uz;
+    state.u.uz0 = cur_uz0;
+    init_uhunger(state);
+    free_tutorial(state);
+    state.gmst_stored = false;
+    copyInto(state.svs?.spl_book, state.gmst_spl_book);
+    update_inventory({ state, hooks });
+}
+
+// C ref: nhlua.c nhl_gamestate(), reached through nh.gamestate() from
+// dat/nhlib.lua tutorial_enter() and tutorial_leave(). On save, inventory
+// moves to gmst_invent in reverse order; each object's owornmask stays set
+// as the flag that re-wears it when the state is restored.
+export async function nhl_gamestate(reststate, state = game) {
+    const modules = await gamestateModules();
+    if (reststate !== Boolean(state.gmst_stored)) {
+        // C calls impossible() for a save while stored or a restore with
+        // nothing stored, then still runs update_inventory().
+        note_unported('pline.c impossible');
+        modules.update_inventory({
+            state, hooks: tutorialInventoryHooks(modules),
+        });
+        return;
+    }
+    if (reststate) {
+        await restore_gamestate(state, modules);
+        return;
+    }
+    const {
+        freeinv, INVLET_BASIC, setnotworn, update_inventory,
+    } = modules;
+    const hooks = tutorialInventoryHooks(modules);
+    state.gmst_moves = state.moves;
+    state.gmst_invent = null;
+    while (state.invent) {
+        const obj = state.invent;
+        const wornmask = obj.owornmask;
+        setnotworn(obj, { state, hooks });
+        freeinv(obj, { state, hooks });
+        obj.owornmask = wornmask;
+        obj.nobj = state.gmst_invent;
+        state.gmst_invent = obj;
+    }
+    state.lastinvnr = INVLET_BASIC - 1;
+    state.gmst_ubak = structuredClone(state.u);
+    state.gmst_disco = structuredClone(state.svd?.disco ?? []);
+    state.gmst_mvitals = structuredClone(
+        state.svm?.mvitals ?? state.mvitals ?? [],
+    );
+    const spellbook = state.svs?.spl_book ?? [];
+    state.gmst_spl_book = structuredClone(spellbook);
+    state.svs ??= {};
+    state.svs.spl_book = zeroSpellbook(spellbook);
+    state.gmst_stored = true;
+    update_inventory({ state, hooks });
+}
+
+// C ref: dat/nhlib.lua tutorial_enter(). It registers the tutorial's
+// cmd_before and end_turn callbacks, then saves state with nh.gamestate().
+async function tutorial_enter(state) {
+    state.tutorialCallbacks = {
+        cmd_before: true,
+        end_turn: true,
+    };
+    await nhl_gamestate(false, state);
+}
+
+// C ref: dat/nhlib.lua tutorial_leave(). It removes both callbacks, then
+// restores state with nh.gamestate(true).
+async function tutorial_leave(state) {
+    delete state.tutorialCallbacks;
+    await nhl_gamestate(true, state);
+}
+
+// C ref: nhlua.c tutorial() (1835-1846), called by do.c goto_level().
+// dat/nhcore.lua binds enter_tutorial and leave_tutorial to nhlib.lua
+// tutorial_enter() and tutorial_leave(), which this port runs in place of
+// the Lua calls. After leaving, neither call is available again.
+export async function tutorial(entering, state = game) {
+    state.gl ??= {};
+    const available = state.gl.nhcore_call_available
+        ??= Array(NHCORE_CALL_NAMES.length).fill(true);
+    if (entering) {
+        if (available[NHCORE_ENTER_TUTORIAL]) await tutorial_enter(state);
+        return;
+    }
+    if (available[NHCORE_LEAVE_TUTORIAL]) await tutorial_leave(state);
+    available[NHCORE_ENTER_TUTORIAL] = false;
+    available[NHCORE_LEAVE_TUTORIAL] = false;
 }
 
 // C ref: nhlua.c nhl_error(). Lua's debug API supplies currentline and

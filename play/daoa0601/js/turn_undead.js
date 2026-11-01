@@ -10,16 +10,16 @@ import { shieldeff } from './display.js';
 import { finishHeroMonsterKill } from './hero_monster_death.js';
 import { game } from './gstate.js';
 import { LL_CONDUCT, recordGameLogEvent } from './gamelog.js';
-import { monsterName } from './monster_name.js';
+import { monsterName } from './do_name.js';
 import { cansee } from './vision.js';
 import { heroCanChant } from './hero_speech.js';
 import { setMonsterMalign } from './monster_alignment.js';
-import { aggravateMonsters } from './monster_anger.js';
 import { makeMonsterFlee } from './monmove.js';
 import { MONSTER_FLAGS2, MONSTER_SYMBOL, monsterIsUndead, monsterIsVampireShifter, } from './monster_data.js';
-import { monsterResistsEffect } from './monster_resistance.js';
 import { rn2 } from './rng.js';
 import { couldsee } from './vision.js';
+import { aggravateMonsters } from './wizard.js';
+import { monsterResistsEffect } from './zap.js';
 const M2_DEMON = 0x00000100;
 const TURN_LEVEL_BY_CLASS = new Map([
     [52, 6], // zombie

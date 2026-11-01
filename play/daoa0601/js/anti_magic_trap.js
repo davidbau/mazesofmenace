@@ -2,7 +2,7 @@
 // C ref: trap.c trapeffect_anti_magic().
 import { objectMaterial } from './object_material.js';
 import { formatFeltMessage } from './hero_speech.js';
-import { finishMonsterKilled } from './monster_death.js';
+import { finishMonsterKilled } from './mon.js';
 import { heroHasHalfSpellDamage } from './spell_damage.js';
 import { artifactById, heroHasArtifactDefense, heroHasCarriedArtifactFlag } from './artifacts.js';
 import { W_ACCESSORY, W_ARMF, W_ARMOR, W_WEP } from './const.js';
@@ -19,7 +19,7 @@ import { propertyIsActive } from './properties.js';
 import { d, rn2, rnd } from './rng.js';
 import { monsterTrapVisibility, seeTrap } from './trap.js';
 import { chargeAlteredUnpaidObject } from './shk.js';
-import { monsterName } from './monster_name.js';
+import { monsterName } from './do_name.js';
 import { ownedObjectName } from './objnam.js';
 const M1_WALLWALK = 0x00000008;
 const IRON = 11;

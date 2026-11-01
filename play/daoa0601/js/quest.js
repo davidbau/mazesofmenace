@@ -17,8 +17,7 @@ import { AMULET_OF_YENDOR, FAKE_AMULET_OF_YENDOR, BELL_OF_OPENING } from './obje
 import { objectCombatName, definiteName } from './objnam.js';
 import { heroIsDeaf } from './senses.js';
 import { LL_ACHIEVE, recordGameLogEvent } from './gamelog.js';
-import { monsterName } from './monster_name.js';
-import { angerMonster, angerWatchGuards } from './monster_anger.js';
+import { monsterName } from './do_name.js';
 import { adjustHeroAlignment } from './alignment.js';
 import { endVoluntaryMultiTurn } from './command_state.js';
 import { rn2 } from './rng.js';
@@ -26,6 +25,7 @@ import { createPoisonGasCloud } from './regions.js';
 import { deleteTrap } from './trap_lifecycle.js';
 import { impossible } from './diagnostics.js';
 import { markOverviewUnreachable, sameDungeonLevel } from './dungeon.js';
+import { angerMonster, angerWatchGuards } from './mon.js';
 const MS_NEMESIS = 37;
 const MS_GUARDIAN = 38;
 const MS_LEADER = 36;

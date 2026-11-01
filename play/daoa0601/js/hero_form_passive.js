@@ -1,6 +1,6 @@
 // Retaliation from the hero's current or just-lost monster body.
 // C mhitu.c:passiveum() and assess_dmg().
-import { heroIsHallucinating } from './senses.js';
+import { heroIsHallucinating, heroIsBlind } from './senses.js';
 import { Upolyd } from './const.js';
 import { canSpotMonster, displayLiquidName, randomDisplayMonsterSubject, shieldeff } from './display.js';
 import { plineWithContinuation } from './pline.js';
@@ -12,10 +12,9 @@ import { applyMonsterGolemEffects, paralyzeMonster } from './mon.js';
 import { AD_ACID, AD_BLND, AD_CLRC, AD_COLD, AD_CONF, AD_CORR, AD_CURS, AD_DCAY, AD_DETH, AD_DGST, AD_DISE, AD_DISN, AD_DRCO, AD_DREN, AD_DRIN, AD_DRLI, AD_DRST, AD_DRDX, AD_ELEC, AD_ENCH, AD_FAMN, AD_FIRE, AD_HALU, AD_HEAL, AD_LEGS, AD_MAGM, AD_PEST, AD_PHYS, AD_PLYS, AD_POLY, AD_RBRE, AD_RUST, AD_SAMU, AD_SEDU, AD_SGLD, AD_SITM, AD_SLEE, AD_SLIM, AD_SLOW, AD_SPC1, AD_SPC2, AD_SPEL, AD_SSEX, AD_STCK, AD_STON, AD_STUN, AD_TLPT, AD_WERE, AD_WRAP, AT_BOOM, AT_NONE, AT_WEAP, } from './monster_attack_types.js';
 import { MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_LEVEL, MONSTER_NAME, requireMonsterData } from './monster_data.js';
 import { staggerVerb } from './monster_hurtle.js';
-import { passiveDamage } from './monster_passive.js';
-import { monsterHasAcidResistance, monsterHasColdResistance, monsterHasFireResistance, monsterHasShockResistance, monsterHasStoneResistance, } from './monster_resistance.js';
-import { monsterSentenceSubject } from './monster_sound.js';
-import { petrifyMonsterAttacker } from './monster_stoning.js';
+import { passiveDamage } from './uhitm.js';
+import { petrifyMonsterAttacker } from './mhitm.js';
+import { monsterSentenceSubject } from './ambient_sounds.js';
 import { monsterWieldedWeapon } from './monster_weapon.js';
 import { damageObjectWithAcid, erodeArmor } from './object_erosion.js';
 import { learnObjectType } from './object_knowledge.js';
@@ -23,8 +22,8 @@ import { drainObjectEnchantment } from './object_state.js';
 import { returnHeroToHumanForm } from './polyself.js';
 import { monsterReflectionSource } from './ray.js';
 import { d, rn2 } from './rng.js';
-import { heroIsBlind } from './senses.js';
 import { contactIsProtected } from './stoning.js';
+import { monsterHasAcidResistance, monsterHasColdResistance, monsterHasFireResistance, monsterHasShockResistance, monsterHasStoneResistance, } from './mondata.js';
 const M1_NOEYES = 0x00001000;
 const M1_SEE_INVIS = 0x01000000;
 const PM_FLOATING_EYE = MONSTER_NAME.indexOf('floating eye');

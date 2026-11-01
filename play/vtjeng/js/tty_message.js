@@ -292,6 +292,10 @@ export async function tty_message_menu(
         state.nhDisplay.toplin = TOPLINE_NEED_MORE;
         clearTtyMessageWindow(state);
     }
+    // wintty.c 2840-2843: Escape at this --More-- cancels the prompt rather
+    // than suppressing later messages, so C clears WIN_CANCELLED (the same
+    // bit as WIN_STOP) and the caller's "Never mind." is still shown.
+    state._ttyMessageStopped = false;
     const selected = typeof invletter === 'number'
         ? invletter
         : String(invletter ?? '').charCodeAt(0);
@@ -307,6 +311,11 @@ export async function tty_message_menu(
 // _pending_message: callers such as invent.c look_here() can have a stale
 // physical line with TOPLINE_NON_EMPTY and no input boundary to consume.
 export async function displayPendingTtyMessageWindow(state) {
+    // wintty.c tty_display_nhwindow() returns first when cw->flags has
+    // WIN_CANCELLED. wintty.h gives WIN_CANCELLED and WIN_STOP the same bit,
+    // so after an Escape at --More-- the message window is neither waited on
+    // nor marked empty until tty_nhgetch() clears WIN_STOP.
+    if (state._ttyMessageStopped) return;
     // C tty_display_nhwindow() clears ttyDisplay->rawprint before selecting
     // the WIN_MESSAGE arm.  This is separate from nomuxRaw.active, which the
     // recorder keeps sticky for cursor capture.

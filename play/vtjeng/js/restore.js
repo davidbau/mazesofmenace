@@ -10,14 +10,18 @@
 // reconstruction (docrt, bot) and the welcome-back message follow in the
 // caller (jsmain.js).
 
-import { rest_region_capacity } from './region.js';
+import { rest_regions } from './region.js';
+import { newsym } from './display.js';
+import { cansee, does_block, unblock_point } from './vision.js';
 import { mon_catchup_elapsed_time } from './dog.js';
 import {
     COLNO,
     COULD_SEE,
     IN_SIGHT,
+    LFILE_EXISTS,
     M_AP_TYPE,
     ROWNO,
+    VISITED,
     W_AMUL,
     W_ARM,
     W_ARMC,
@@ -36,7 +40,7 @@ import {
     W_WEP,
 } from './const.js';
 import { init_artifacts, restore_artifacts } from './artifacts.js';
-import { fixup_level_locations } from './dungeon.js';
+import { ledger_no, level_info, set_dungeon_topology } from './dungeon.js';
 import { game } from './gstate.js';
 import { l_nhcore_init } from './mklev.js';
 import { restore_waterlevel } from './mkmaze.js';
@@ -50,13 +54,17 @@ import { restpriest } from './priest.js';
 import { setuwep } from './wield.js';
 import { getnow } from './calendar.js';
 import { rnd } from './rng.js';
-import { parseSnapshot, SAVE_FILE_PATH } from './save.js';
+import {
+    parseSnapshot, SAVE_FILE_PATH, savemonchn, saveobjchn,
+} from './save.js';
 import { restore_oracles } from './rumors.js';
 import { role_init } from './role_init.js';
 import { set_residency, restshk } from './shk.js';
+import { stairway_add, stairway_at, stairway_free_all } from './stairs.js';
 import { vfsReadFile, vfsDeleteFile, vfsListFiles } from './storage.js';
 import { initrack } from './track.js';
 import { _uInitInternals } from './u_init.js';
+import { set_uasmon } from './polyself.js';
 import { select_menu } from './windows.js';
 import { TTY_STARTUP_BANNER } from './tty_startup.js';
 import { tty_putmsghistory } from './topl.js';
@@ -117,6 +125,22 @@ export async function restore_menu(_bannerwin = null, state = game) {
     return choice < 0 ? -1 : 0;
 }
 
+// C ref: restore.c rest_stairs(). Frees the current list, then adds each
+// saved stairway in the order save_stairs() wrote it, head first. Because
+// stairway_add() pushes onto the head, the restored list is in reverse order,
+// as in C. stairway_add() clears u_traversed, so the saved value is copied
+// back afterwards. The snapshot keeps tolev absolute, so C's conversion from
+// a relative dlevel has no counterpart.
+function rest_stairs(saved, state) {
+    stairway_free_all(state);
+    for (let stway = saved; stway; stway = stway.next) {
+        stairway_add(stway.sx, stway.sy, stway.up, stway.isladder,
+            stway.tolev);
+        const newst = stairway_at(stway.sx, stway.sy, state);
+        if (newst) newst.u_traversed = stway.u_traversed;
+    }
+}
+
 // The worn-slot table mirrors js/worn.js WORN_SLOTS so that restore can
 // rebuild game-level equipment pointers from each object's owornmask
 // without importing setworn() and its side effects.
@@ -164,11 +188,6 @@ export async function dorestore(state = game) {
     // this call initializes with the saved one.
     role_init(state);
     state.u = snapshot.u;
-    // iflags from the save carries option state but not display handles.
-    // Merge onto the live iflags so cbreak and window_inited survive.
-    if (snapshot.iflags) {
-        Object.assign(state.iflags, snapshot.iflags);
-    }
     state.context = snapshot.context;
     state.plname = snapshot.plname;
     state.pl_character = snapshot.pl_character;
@@ -177,11 +196,33 @@ export async function dorestore(state = game) {
 
     // Level and dungeon state
     state.level = snapshot.level;
-    rest_region_capacity(state.level);
-    state.dungeon_topology = snapshot.dungeon_topology;
+    // C ref: restore.c getlev():1225 rest_regions(). The game state and the
+    // regions were saved on the same turn, so only regions whose time had
+    // already run out are discarded.
+    rest_regions(snapshot.moves, state, restoredRegionVisuals(state));
+    // C ref: restore.c getlev():1113 rest_stairs(), which dorecover() reaches
+    // through getlev() for the hero's level.
+    rest_stairs(snapshot.stairs, state);
+    // C ref: restore.c getlev():1114-1115 reads svu.updest and svd.dndest
+    // right after the stairs.
+    state.updest = snapshot.updest ?? {};
+    state.dndest = snapshot.dndest ?? {};
+    // C ref: dungeon.c restore_dungeon():222 reads svd.dungeon_topology
+    // whole; dorecover() does not rerun fixup_level_locations(), whose x-
+    // proto renames, Fort Ludios branch insertion and dummy-level
+    // depth_start adjustment are already in the saved dungeon state.
+    set_dungeon_topology(state, snapshot.dungeon_topology);
     state.n_dgns = snapshot.n_dgns;
     state.dungeons = snapshot.dungeons;
     if (snapshot.branches) state.branches = snapshot.branches;
+    // C ref: dungeon.c restore_dungeon():240-247 reads svl.level_info for
+    // the ledgers save_dungeon() wrote, then svi.inv_pos.
+    if (Array.isArray(snapshot.level_info)) {
+        snapshot.level_info.forEach((saved, ledger) => {
+            level_info(ledger, state).flags = saved?.flags ?? 0;
+        });
+    }
+    if (snapshot.inv_pos) state.inv_pos = snapshot.inv_pos;
     if (snapshot.specialLevels) state.specialLevels = snapshot.specialLevels;
     if (snapshot.smeq) state.smeq = snapshot.smeq;
     if (snapshot.tune != null) {
@@ -207,7 +248,6 @@ export async function dorestore(state = game) {
     // The dangling ball-and-chain, gm.migrating_objs and gm.migrating_mons
     // chains that follow it in C (684-696) are not in the snapshot.
     state.invent = restobjchn(snapshot.invent, state);
-    if (snapshot.lastinvnr != null) state.lastinvnr = snapshot.lastinvnr;
     if (snapshot.head_engr != null) state.head_engr = snapshot.head_engr;
 
     // C has a static artifact catalog; JS rebuilds its per-game catalog
@@ -240,8 +280,8 @@ export async function dorestore(state = game) {
     }
 
     // Game subsystems
+    // C ref: restore.c restgamestate():708-710 reads svs.spl_book[].
     if (snapshot.spl_book != null) {
-        state.spl_book = snapshot.spl_book;
         state.svs ??= {};
         state.svs.spl_book = snapshot.spl_book;
     }
@@ -302,8 +342,11 @@ export async function dorestore(state = game) {
         state.sp_levchn = state.specialLevels[0] ?? null;
     }
 
-    // Rebuild the branch linked list.
+    // C ref: dungeon.c restore_dungeon():225-238 links each restored branch
+    // to the next one read, in saved order.
     if (state.branches) {
+        for (let i = 0; i < state.branches.length; i++)
+            state.branches[i].next = state.branches[i + 1] ?? null;
         state.svb ??= {};
         state.svb.branches = state.branches[0] ?? null;
     }
@@ -322,16 +365,35 @@ export async function dorestore(state = game) {
     state.go.oclass_prob_totals ??= [];
     init_oclass_probs(state);
 
-    // Dungeon-level aliases (stronghold_level, astral_level, etc.) are
-    // computed from the special-level chain and the dungeon table.
-    // fixup_level_locations() rebuilds them without using RNG.
-    fixup_level_locations(state, state.urole?.filecode ?? '');
-
-    // Reconstruct youmonst from the monster catalog and the hero's form.
-    _uInitInternals.setInitialUasmon(state);
+    // C ref: restore.c restgamestate():604 copies u.mcham into youmonst.cham,
+    // then 627 set_uasmon() rebuilds youmonst.data and the FROMFORM
+    // intrinsics, such as a polymorphed form's flight, from u.umonnum.
+    // program_state.restoring keeps set_uasmon() from calling
+    // float_vs_flight(), whose blockers are already in the saved state.
+    state.youmonst ??= {};
+    state.youmonst.cham = state.u.mcham;
+    state.program_state ??= {};
+    const wasRestoring = state.program_state.restoring;
+    state.program_state.restoring = 1;
+    try {
+        set_uasmon(state);
+    } finally {
+        state.program_state.restoring = wasRestoring;
+    }
 
     // max_rank_sz computes gm.mrank_sz from the role's rank table.
     _uInitInternals.max_rank_sz(state);
+
+    // C ref: restore.c dorecover():831 restlevelfile(ledger_no(&u.uz))
+    // writes the hero's level to its level file through savelev(), which
+    // marks it VISITED; create_levelfile() sets LFILE_EXISTS.
+    level_info(ledger_no(state.u.uz, state), state).flags
+        |= VISITED | LFILE_EXISTS;
+
+    // C ref: restore.c dorecover():840-877. Each other level in the save
+    // file is read with getlev() under REST_LEVELS and written to its level
+    // file by restlevelfile(), before getlev() reads the hero's level again.
+    rest_other_levels(snapshot.otherLevels, state);
 
     // C ref: restore.c getlev():1137 fmon = restmonchn(nhfp). The snapshot
     // keeps the chain in C's order, including a steed that is on the chain
@@ -379,6 +441,41 @@ export async function dorestore(state = game) {
 
     restore_msghistory(snapshot.msghistory, state);
     return true;
+}
+
+// C ref: restore.c dorecover():859-877 with getlev() (1046-1311) under
+// REST_LEVELS and restlevelfile() (755-771). getlev() rebuilds each
+// monster's species pointer and inventory through restmonchn() and the floor
+// and buried chains through restobjchn(); `program_state.restoring ==
+// REST_LEVELS` skips the elapsed-time catch-up, restore_cham() and
+// hide_monst() (1200-1201). restlevelfile() then writes the level with
+// savelev(), which marks it VISITED (save.c:493-494), gives it a file
+// (files.c create_levelfile() sets LFILE_EXISTS), stamps it with svm.moves,
+// which restgamestate() has just restored to the turn of the save, and frees
+// it: saveobjchn() and savemonchn() hand back any svc.context pointer that
+// restobjchn() pointed at one of its objects. The saved-level snapshot, kept
+// in `state._savedLevels` until goto_level() returns to it, is this port's
+// level file.
+function rest_other_levels(levels, state) {
+    state._savedLevels = {};
+    if (!Array.isArray(levels)) return;
+    for (const { ledger, ...saved } of levels) {
+        const level = saved.level;
+        if (level && typeof level.at !== 'function') {
+            level.at = function at(x, y) {
+                if (x < 0 || x >= COLNO || y < 0 || y >= ROWNO) return null;
+                return this.locations[x]?.[y] || null;
+            };
+        }
+        level.monlist = restmonchn(level.monlist, state);
+        level.objlist = restobjchn(level.objlist, state);
+        level.buriedobjlist = restobjchn(level.buriedobjlist, state);
+        savemonchn(level.monlist, state);
+        saveobjchn(level.objlist, state);
+        saveobjchn(level.buriedobjlist, state);
+        level_info(ledger, state).flags |= VISITED | LFILE_EXISTS;
+        state._savedLevels[ledger] = { ...saved, omoves: state.moves };
+    }
 }
 
 // C ref: restore.c restobj() (183-228). C reads the saved bytes into a struct
@@ -549,6 +646,17 @@ function rebuildEquipmentPointers(state) {
 // each monster (mon_catchup_elapsed_time) and gives hiders a chance to hide
 // (hide_monst, conditioned on elapsed > rnd(10)).
 
+// region.c remove_region() unblocks and redraws a visible region's squares
+// through the live vision and display state, as C does inside getlev().
+function restoredRegionVisuals(state) {
+    return {
+        doesBlock: (x, y, location) => does_block(x, y, location, state),
+        unblockPoint: (x, y) => unblock_point(x, y, state),
+        canSee: (x, y) => cansee(x, y, state),
+        newsym: (x, y) => newsym(x, y),
+    };
+}
+
 export async function getlev(ledger, state = game) {
     const snapshot = state._savedLevels?.[ledger];
     if (!snapshot) {
@@ -557,7 +665,6 @@ export async function getlev(ledger, state = game) {
 
     // Restore the level, stairs, engravings, smeq, updest, dndest.
     state.level = snapshot.level;
-    rest_region_capacity(state.level);
     state.stairs = snapshot.stairs;
     state.head_engr = snapshot.head_engr;
     if (snapshot.smeq) state.smeq = snapshot.smeq;
@@ -661,6 +768,12 @@ export async function getlev(ledger, state = game) {
             hide_monst(mtmp, state);
         }
     }
+
+    // C ref: restore.c getlev():1225 rest_regions(), after restdamage() and
+    // before rest_bubbles(). savelev() wrote the region timestamp from the
+    // same svm.moves it saved as omoves.
+    rest_regions(snapshot.omoves ?? state.moves, state,
+        restoredRegionVisuals(state));
 
     if (snapshot.waterlevel) restore_waterlevel(snapshot.waterlevel, state);
 

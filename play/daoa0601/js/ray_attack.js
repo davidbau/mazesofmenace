@@ -1,43 +1,38 @@
 // Native wand, spell, and breath rays.
 // C refs: zap.c ubuzz(), dobuzz(), zhitm(), and zhitu().
 import { monsterHasMagicResistance } from './anti_magic_trap.js';
-import { healMonster } from './mon.js';
+import { finishMonsterKilled, healMonster, wakeMonster } from './mon.js';
 import { adjustSpellDamage } from './spell_damage.js';
 import { explode } from './explosion.js';
 import { revealMonsterAppearance } from './monster_appearance.js';
 import { heroFormSticks } from './hero_species.js';
 import { releaseHeroFromMonster } from './hero_expulsion.js';
-import { finishMonsterEating } from './monster_eating.js';
 import { monsterResistsSleep, putMonsterToSleep } from './monster_sleep.js';
 import { burnArmorByFire } from './trap.js';
 import { igniteItems } from './light.js';
 import { payForShopDamage } from './shop_damage.js';
 import { endVoluntaryMultiTurn } from './command_state.js';
 import { stopHeroOccupation } from './occupation.js';
-import { monsterHasLineOfSightToHero } from './monster_perception.js';
 import { EXPL_FIERY, M_AP_MONSTER, M_AP_NOTHING, M_AP_TYPE, M_SEEN_REFL, STRAT_WAITMASK, W_ARM, W_ARMC, W_ARMU, W_ARMS, } from './const.js';
 import { artifactById } from './artifacts.js';
 import { canSeeMonster, canSenseMonster, newsym, shieldeff } from './display.js';
 import { plineWithContinuation } from './pline.js';
-import { game } from './gstate.js';
-import { cansee } from './vision.js';
+import { game, requirePlayingGame } from './gstate.js';
+import { cansee, monsterHasLineOfSightToHero } from './vision.js';
 import { rayHitMessage, rayMissMessage } from './ray_hit_message.js';
 import { finishHeroDeath } from './end.js';
-import { finishMonsterKilled } from './monster_death.js';
-import { wakeMonster } from './monster_anger.js';
-import { monsterName, possessiveName } from './monster_name.js';
+import { monsterName } from './do_name.js';
+import { possessiveName } from './hacklib.js';
 import { distantObjectName, objectName } from './objnam.js';
 import { heroArmName, heroEyeCount, heroEyeName } from './body_parts.js';
 import { makePlural } from './object_grammar.js';
-import { monstersForgetHeroResistance, monstersObserveHeroResistance } from './monster_perception.js';
 import { hitHeroWithRay } from './hero_breath.js';
 import { finishHeroMonsterKill } from './hero_monster_death.js';
 import { erodeArmor, damageObjectWithAcid } from './object_erosion.js';
 import { wornMonsterLifeSaver } from './mondeath.js';
-import { destroyObjectFromMonsterInventory } from './monster_inventory.js';
+import { destroyObjectFromMonsterInventory } from './monworn.js';
 import { MONSTER_FLAGS2, MONSTER_NAME, MONSTER_SYMBOL, monsterIsNonliving, monsterIsVampireShifter, } from './monster_data.js';
 import { monsterWieldedWeapon } from './monster_weapon.js';
-import { monsterHasAcidResistance, monsterHasColdResistance, monsterHasDisintegrationResistance, monsterHasFireResistance, monsterHasPoisonResistance, monsterHasShockResistance, monsterResistanceBits, monsterResistsEffect, } from './monster_resistance.js';
 import { AD_ACID, AD_COLD, AD_DISN, AD_DRST, AD_ELEC, AD_FIRE, AD_MAGM, AD_RBRE, AD_SLEE, } from './monster_attack_types.js';
 import { BLACK_DRAGON_SCALE_MAIL, BLACK_DRAGON_SCALES, FIRE_HORN, FROST_HORN, SPE_MAGIC_MISSILE, SPE_FINGER_OF_DEATH, WAN_MAGIC_MISSILE, WAN_LIGHTNING, } from './object_data.js';
 import { objectResistsDestruction } from './object_state.js';
@@ -47,9 +42,10 @@ import { flashBurn } from './sight_change.js';
 import { monsterResistsBlindingLight } from './blinding_attack.js';
 import { realRayName, displayRayName } from './ray_name.js';
 import { discoverHeroReflectionSource, heroReflectionSource, heroReflectsRay, monsterReflectsRay, monsterReflectionSource, rayHitsHero, rayHitsMonster, rayMonsterAt, runRay, } from './ray.js';
-import { applyRayFloorFeatures, destroyMonsterInventoryByElement, INVENTORY_DAMAGE, } from './zap.js';
+import { applyRayFloorFeatures, destroyMonsterInventoryByElement, INVENTORY_DAMAGE, monsterResistsEffect, } from './zap.js';
 import { rayDamageType } from './magic_types.js';
-import { requirePlayingGame } from './gstate.js';
+import { monstersForgetHeroResistance, monstersObserveHeroResistance, monsterHasAcidResistance, monsterHasColdResistance, monsterHasDisintegrationResistance, monsterHasFireResistance, monsterHasPoisonResistance, monsterHasShockResistance, monsterResistanceBits, } from './mondata.js';
+import { finishMonsterEating } from './dogmove.js';
 // zhitm uses this value to request disintegration from its caller.
 const MAGIC_COOKIE = 1000;
 const MR_FIRE = 0x01;
@@ -530,19 +526,39 @@ async function finishMonsterRayHit(monster, hit, { state, displayName, finishMon
         return wakeMonster(monster, { attacked: source.startsWith('hero-') });
     }
     if ((monster.mhp ?? 0) <= 0) {
-        if (hit.disintegrated && visible) {
-            await publish(wornMonsterLifeSaver(monster)
-                ? rayHitMessage(displayName(), monster, { x, y, damage: hit.damage, state })
-                : `${nameTarget()} is disintegrated!`);
-        }
-        if (hit.disintegrated)
+        if (hit.disintegrated) {
+            // zap.c evaluates disintegrate_mon()'s flash_str() argument
+            // before the call, so a hallucinating hero draws one
+            // hallucinated blast name here even when the monster is
+            // unseen or its death message never names the ray.
+            const blastName = displayName();
+            if (visible) {
+                await publish(wornMonsterLifeSaver(monster)
+                    ? rayHitMessage(blastName, monster, { x, y, damage: hit.damage, state })
+                    : `${nameTarget()} is disintegrated!`);
+            }
             await destroyDisintegratedMonsterInventory(monster, state, random);
+            if (source.startsWith('monster-')) {
+                // disintegrate_mon() finishes with monkilled(mon, NULL, ...).
+                await finishMonsterKilled(monster, state, {
+                    damageType: 'disintegration', cause: null, publish, random,
+                });
+                return { heroDied: !!state.program_state?.gameover };
+            }
+            await finishMonsterKill(monster, monster.mx, monster.my, {
+                // disintegrate_mon() always passes XKILL_NOMSG|XKILL_NOCORPSE.
+                noCorpse: true,
+                showKillMessage: false,
+                deathContext,
+            });
+            return { heroDied: !!state.program_state?.gameover };
+        }
         if (source.startsWith('monster-')) {
+            // zap.c's DEADMONSTER branch passes flash_str() to monkilled();
+            // the argument is evaluated even when the message is suppressed.
             const effect = displayName();
             await finishMonsterKilled(monster, state, {
-                damageType: hit.disintegrated ? 'disintegration' : AD_RBRE,
-                cause: hit.disintegrated ? null : effect,
-                publish, random,
+                damageType: AD_RBRE, cause: effect, publish, random,
             });
             return { heroDied: !!state.program_state?.gameover };
         }
@@ -550,7 +566,7 @@ async function finishMonsterRayHit(monster, hit, { state, displayName, finishMon
             // dobuzz() passes XKILL_NOCORPSE only for burned-up golems;
             // species without corpses still roll treasure and corpse_chance().
             noCorpse: !!hit.noCorpse,
-            showKillMessage: !hit.disintegrated,
+            showKillMessage: true,
             deathContext,
         });
         return { heroDied: !!state.program_state?.gameover };

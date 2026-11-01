@@ -1,16 +1,17 @@
 // Polymorph traps triggered by monsters.
 // C ref: trap.c:trapeffect_poly().
+import { changeMonsterForm } from './mon.js';
 import { monsterHasMagicResistance, monsterWornIronShoes } from './anti_magic_trap.js';
 import { W_ARMF } from './const.js';
 import { game } from './gstate.js';
-import { addObjectToMonsterInventory, removeObjectFromMonsterInventory } from './monster_inventory.js';
-import { applyMonsterEquipmentProperties } from './monster_equipment.js';
+import { removeObjectFromMonsterInventory } from './monworn.js';
+import { addObjectToMonsterInventory } from './steal.js';
+import { applyMonsterEquipmentProperties } from './monworn.js';
 import { poly_obj } from './object_polymorph.js';
-import { changeMonsterForm } from './monster_polymorph.js';
-import { monsterResistsEffect } from './monster_resistance.js';
 import { IRON_SHOES, KICKING_BOOTS } from './object_data.js';
 import { rn2 } from './rng.js';
 import { monsterTrapVisibility, seeTrap } from './trap.js';
+import { monsterResistsEffect } from './zap.js';
 async function transformWornIronShoes(monster, shoes, state) {
     await removeObjectFromMonsterInventory(monster, shoes, state, { silently: true });
     const linked = await addObjectToMonsterInventory(monster, shoes, state);
