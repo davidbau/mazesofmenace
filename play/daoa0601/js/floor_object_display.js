@@ -5,7 +5,7 @@ import { ICE, Is_airlevel, Is_waterlevel, PLNMSG_ONE_ITEM_HERE, is_pit } from '.
 import { dungeonFeatureAt, dungeonFeatureSentence, forceDescribeDecor } from './dungeon_feature.js';
 import { heroCanReachFloor } from './floor_reach.js';
 import { surfaceName } from './terrain_name.js';
-import { isIceAt, isLavaAt, isPoolAt } from './terrain_properties.js';
+import { isIceAt, isLavaAt, isPoolAt } from './dbridge.js';
 import { nhgetch } from './input.js';
 import { clearMessageWindow, displayMessageWindow, flushPendingTopline } from './tty_topline.js';
 import { flush_screen } from './display.js';
@@ -14,15 +14,14 @@ import { readEngravingAt } from './engrave.js';
 import { nomul } from './hack.js';
 import { showDisclosureOverlay, snapshotMenuUnderlay, restoreMenuUnderlay } from './windows.js';
 import { windowOrigin } from './tty_menu.js';
-import { objectDescription } from './object_description.js';
+import { objectDescription, withIndefiniteArticle } from './objnam.js';
+import { objectQuantity } from './mkobj.js';
 import { corpseName, observeObjectForNaming } from './objnam.js';
 import { NO_COLOR } from './terminal.js';
 import { MONSTER_NAME } from './monster_data.js';
-import { objectQuantity } from './object_stack.js';
 import { heroIsBlind } from './senses.js';
 import { visibleRegionAt } from './regions.js';
 import { trapName } from './trap.js';
-import { withIndefiniteArticle } from './object_grammar.js';
 import { feelPetrifyingCorpse, formCanBecomeStoneGolem, willFeelPetrifyingCorpse, } from './stoning.js';
 export async function readFloorEngraving(x, y) {
     const read = await readEngravingAt(x, y, plineWithContinuation);

@@ -1,15 +1,15 @@
 // Floor-object ownership and pile order.
 // C refs: mkobj.c place_object(), remove_object(), splitobj(),
 // obj_timer_checks(), and invent.c stackobj(), obj_extract_self().
-import { isIceAt } from './terrain_properties.js';
+import { isIceAt } from './dbridge.js';
 import { newsym } from './display.js';
 import { game, requireGameLevel, requireLiveGame } from './gstate.js';
 import { BOULDER, CORPSE } from './object_data.js';
 import { costlyAdjacent, costlySpot, findObjectOwner } from './shk.js';
 import { createdObjectNoLongerHeld, objectNoLongerHeld, objectNoLongerHeldSynchronously } from './do.js';
 import { block_point, vision_note_blocker_change } from './vision.js';
-import { mergable, mergeObjectStacks } from './object_merge.js';
-import { objectQuantity, splitObjectStack } from './object_stack.js';
+import { mergable, mergeObjectStacks } from './invent.js';
+import { objectQuantity, splitObjectStack } from './mkobj.js';
 import { objectTimers, scheduleObjectTimer, stopObjectTimer } from './timeout.js';
 import { OBJECT_TIMER_KIND } from './const.js';
 import { maybeUnhideAt } from './mon.js';

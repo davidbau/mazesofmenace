@@ -5,14 +5,16 @@
 // that ordinary object, and oname() then commits the named artifact.
 import { ARTIFACT_DATA } from './artifact_data.js';
 import { P_BASIC, P_SKILLED, Upolyd, W_ARM } from './const.js';
-import { dragonFormForArmor, heroHasDrainResistance } from './armor.js';
+import { dragonFormForArmor } from './polyself.js';
+import { heroHasDrainResistance } from './do_wear.js';
 import { game, requirePlayingGame } from './gstate.js';
 import { LL_ARTIFACT, recordGameLogEvent } from './gamelog.js';
 import { insideShopRoomAt } from './shk.js';
 import { mksobj } from './mkobj.js';
 import { ensureHeroSkills } from './skills.js';
 import { races } from './roles.js';
-import { objectClassForType } from './object_knowledge.js';
+import { objectClassForType, recordObjectEncounter } from './o_init.js';
+import { verbForSubject } from './objnam.js';
 import { d, rnd, rn2 } from './rng.js';
 import { GOLD_DRAGON_SCALE_MAIL, GOLD_DRAGON_SCALES, OBJECT_NAMES, OBJECT_SUBTYPE, OBJECT_UNIQUE, requireObjectData, } from './object_data.js';
 import { objectMaterial } from './o_init.js';
@@ -31,7 +33,6 @@ import { displayColorName, glyphAt } from './display.js';
 import { pline, plineWithContinuation } from './pline.js';
 import { isContainer } from './container.js';
 import { requireLiveGame } from './gstate.js';
-import { verbForSubject } from './object_grammar.js';
 import { wornObjectGrantsProperty } from './properties.js';
 import { heroIsBlind } from './senses.js';
 import { getRumor } from './mklev.js';
@@ -52,7 +53,6 @@ import { healMonster, wakeMonstersNearWithMessages } from './mon.js';
 import { applyMagicbaneHit } from './magicbane.js';
 import { MONSTER_SIZE, monsterHasHead, monsterIsAmorphous, monsterIsNoncorporeal, monsterIsNonliving, } from './monster_data.js';
 import { monsterName } from './do_name.js';
-import { recordObjectEncounter } from './object_knowledge.js';
 import { observeDistantObjectForNaming } from './objnam.js';
 import { destroyInventoryByElement, destroyMonsterInventoryByElement, INVENTORY_DAMAGE, } from './zap.js';
 import { cansee } from './vision.js';
@@ -87,7 +87,8 @@ import { castSpell, spellSkillType } from './spell.js';
 import { depth } from './hacklib.js';
 import { gotoLevel } from './level_change.js';
 import { levelTeleport } from './level_teleport.js';
-import { bringLeashedFollowers, teleportMonsterByHero } from './teleport.js';
+import { teleportMonsterByHero } from './teleport.js';
+import { bringLeashedFollowers } from './apply.js';
 import { showPagedPickOneMenu } from './windows.js';
 import { couldsee } from './vision.js';
 import { throwOrdinaryObject } from './ordinary_throw.js';
@@ -149,6 +150,8 @@ export function artifactWarningMask(object, state = game) {
         ? FLAG2_TARGETS[artifact.target.value]
         : 0;
 }
+// C artifact.c:glow_color(). The warning-glow color for Sting, Orcrist, and
+// Grimtooth, as Sting_effects names it in the start-glowing message.
 export function artifactGlowColor(object, state = game) {
     const artifact = artifactById(object.oartifact, state);
     if (!artifact)
@@ -547,6 +550,7 @@ export function artifactEmitsLight(object) {
 export function artifactStrikesShade(object) {
     return artifactById(object?.oartifact)?.name === 'Sunsword';
 }
+// C artifact.c:bane_applies(). The artifact's bane targets the carrier.
 export function artifactBaneApplies(artifact, state = game) {
     if (!artifact)
         return false;
@@ -608,17 +612,19 @@ export function rollHeroArtifactBlast(object, artifact, state = game) {
     }
     return damage;
 }
-// C artifact.c:is_magic_key()/has_magic_key(), for monster carriers.
 const PM_ROGUE = MONSTER_NAME.indexOf('rogue');
+// C artifact.c:is_magic_key(). Master Key of Thievery, keyed to rogues.
 export function isMonsterMagicKey(monster, object, state = game) {
     if (artifactById(object.oartifact, state)?.name !== 'The Master Key of Thievery')
         return false;
     return monster.mnum === PM_ROGUE ? !object.cursed : !!object.blessed;
 }
+// C artifact.c:has_magic_key(), for the hero's inventory.
 export function heroHasMagicKey(state = game) {
     return state.inventory.some(object => artifactById(object.oartifact, state)?.name === 'The Master Key of Thievery'
         && (state.urole?.key === 'rogue' ? !object.cursed : object.blessed));
 }
+// C artifact.c:has_magic_key(), for a monster's inventory.
 export function monsterHasMagicKey(monster, state = game) {
     return (monster.minvent || []).some(object => isMonsterMagicKey(monster, object, state));
 }

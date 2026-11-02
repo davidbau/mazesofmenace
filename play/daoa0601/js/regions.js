@@ -1,5 +1,5 @@
 import { formatFeltMessage, formatSeenMessage } from './hero_speech.js';
-import { isLavaAt, isPoolAt } from './terrain_properties.js';
+import { isLavaAt, isPoolAt } from './dbridge.js';
 // regions.js — Shared level-region construction.
 // C ref: region.c create_region(), make_gas_cloud(), and
 // create_gas_cloud_selection().
@@ -12,7 +12,7 @@ import { monsterAtPosition } from './steed.js';
 import { loseHeroHp } from './hero_damage.js';
 import { heroIsBreathless } from './hero_species.js';
 import { heroEyeName, heroLungName } from './body_parts.js';
-import { makePlural } from './object_grammar.js';
+import { makePlural } from './objnam.js';
 import { refreshProperty } from './properties.js';
 import { teleportHeroSafely } from './teleport.js';
 import { MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_SOUND, MONSTER_SYMBOL, monsterIsNonliving, monsterIsVampireShifter, } from './monster_data.js';

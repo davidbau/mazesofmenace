@@ -27,7 +27,7 @@ import { monsterName } from './do_name.js';
 import { possessiveName } from './hacklib.js';
 import { distantObjectName, objectName } from './objnam.js';
 import { heroArmName, heroEyeCount, heroEyeName } from './body_parts.js';
-import { makePlural } from './object_grammar.js';
+import { makePlural } from './objnam.js';
 import { hitHeroWithRay } from './hero_breath.js';
 import { finishHeroMonsterKill } from './hero_monster_death.js';
 import { wornMonsterLifeSaver } from './mondeath.js';
@@ -487,6 +487,7 @@ function rayResistance(monster, damageType, state) {
         return monsterHasAcidResistance(monster);
     return false;
 }
+// C zap.c:disintegrate_mon(). The ray destroys armor, then the monster.
 async function disintegrateMonster(monster, state) {
     if (monsterHasDisintegrationResistance(monster)) {
         return { damage: 0, resisted: true };

@@ -1,6 +1,6 @@
 // C dothrow.c:toss_up(). Ceiling contact precedes the fall onto the hero;
 // floor effects precede damage from an intact falling object.
-import { objectIsHardHelmet, simpleArmorName } from './armor.js';
+import { objectIsHardHelmet, simpleArmorName } from './do_wear.js';
 import { heroCanBeBlindedByObject } from './blinding_attack.js';
 import { heroFaceName, heroHeadName } from './body_parts.js';
 import { KILLED_BY, STONING, Upolyd, WT_TO_DMG } from './const.js';
@@ -14,9 +14,9 @@ import { heroHatesSilver, heroSpecies } from './hero_species.js';
 import { MONSTER_FLAGS1, MONSTER_NAME, monsterHatesBlessings } from './monster_data.js';
 import { breakObjectAtLocation, objectBreaksOnImpact } from './dothrow.js';
 import { BLINDING_VENOM, CORPSE, CREAM_PIE, EGG } from './object_data.js';
-import { objectDescription } from './object_description.js';
-import { dropObjectAtHero, hitFloorWithObject } from './object_drop.js';
-import { withIndefiniteArticle } from './object_grammar.js';
+import { objectDescription, withIndefiniteArticle } from './objnam.js';
+import { dropObjectAtHero } from './hero_drop.js';
+import { hitFloorWithObject } from './dothrow.js';
 import { objectMaterial } from './o_init.js';
 import { observeObjectForNaming, simpleObjectName } from './objnam.js';
 import { polymonHero } from './polyself.js';
@@ -26,7 +26,7 @@ import { heroIsBlind } from './senses.js';
 import { makeBlinded } from './sight_change.js';
 import { formCanBecomeStoneGolem, heroResistsStoning, touchPetrifies } from './stoning.js';
 import { ceilingName } from './terrain_name.js';
-import { levelHasCeiling } from './terrain_properties.js';
+import { levelHasCeiling } from './dungeon.js';
 import { rollPhysicalWeaponDamageAgainstHero } from './weapon.js';
 const POTION_CLASS = 8;
 const RING_CLASS = 4;
@@ -35,6 +35,7 @@ const GEMSTONE = 20;
 const MINERAL = 21;
 const M1_WALLWALK = 0x08;
 const M1_UNSOLID = 0x00100000;
+// C dothrow.c:toss_up(). The hero tosses an object upwards; it falls back.
 export async function tossObjectUp(object, { state = game, publish = plineWithContinuation, random = rn2, rollOne = rnd, } = {}) {
     requirePlayingGame(state);
     const hero = state.u;

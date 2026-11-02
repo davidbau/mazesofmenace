@@ -3,14 +3,15 @@
 // movemon_singlemon(), worn.c:m_dowear()/m_dowear_type().
 import { objectMaterial } from './o_init.js';
 import { publishHeardMessage } from './hero_speech.js';
-import { armorBonus, armorSimpleName, armorSlotFor, dragonFormForArmor } from './armor.js';
+import { armorBonus, armorSimpleName, armorSlotFor } from './do_wear.js';
+import { dragonFormForArmor } from './polyself.js';
 import { ownedObjectName, objectNameIsPlural, observeDistantObjectForNaming, simpleObjectName } from './objnam.js';
-import { verbForSubject } from './object_grammar.js';
+import { verbForSubject } from './objnam.js';
+import { learnObjectType } from './o_init.js';
 import { canSeeMonster, displayColorName, newsym } from './display.js';
 import { plineWithContinuation } from './pline.js';
 import { inventoryItemDescription } from './invent.js';
 import { learnWand } from './zap.js';
-import { learnObjectType } from './object_knowledge.js';
 import { artifactEmitsLight } from './artifacts.js';
 import { beginObjectBurn, endObjectBurn, equipmentLightDescription } from './light.js';
 import { cansee, vision_recalc } from './vision.js';

@@ -11,7 +11,7 @@ import { heroFootName, monsterFootName, heroHandName } from './body_parts.js';
 import { monsterName } from './do_name.js';
 import { possessiveName } from './hacklib.js';
 import { MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_SYMBOL, monsterCanEngulf, monsterIsAnimal, monsterIsSlithy, monsterTypeName, } from './monster_data.js';
-import { makePlural } from './object_grammar.js';
+import { makePlural } from './objnam.js';
 import { AD_SITM } from './monster_attack_types.js';
 import { BOULDER, CORPSE, GOLD_PIECE, LEASH, OBJECT_NAMES, AMULET_OF_YENDOR, BELL, BELL_OF_OPENING, CANDELABRUM_OF_INVOCATION, FAKE_AMULET_OF_YENDOR, SPE_BOOK_OF_THE_DEAD, } from './object_data.js';
 import { OBJECT_DELAY } from './object_data.js';
@@ -31,13 +31,13 @@ import { randomMonsterRelocation, relocateObjectRandomly } from './teleport.js';
 import { reportMonsterTeleportRestriction } from './teleport_rules.js';
 import { roomsAt } from './room.js';
 import { openHoldingTrap } from './trap.js';
-import { armorSimpleName, stopDonning } from './armor.js';
+import { armorSimpleName, stopDonning } from './do_wear.js';
 import { removeHeroEquipment } from './hero_equipment.js';
 import { detachHeroGold, heroGoldAmount } from './hero_gold.js';
 import { isWeldedPrimary } from './wield.js';
-import { isBeingTakenOff } from './takeoff_state.js';
+import { isBeingTakenOff } from './do_wear.js';
 import { monsterCanCarryObject } from './mon.js';
-import { releaseObjectLeash } from './leash_apply.js';
+import { releaseObjectLeash } from './apply.js';
 import { assertCreatedObject } from './do.js';
 import { forgetObjectKnowledge, linkCreatedObjectToMonsterInventory, linkObjectToMonsterInventory, unlinkMonsterObject, unlinkObject } from './mkobj.js';
 import { removeObjectFromMonsterInventory, updateMonsterEquipment, } from './monworn.js';
@@ -679,7 +679,7 @@ export async function releaseMonsterInventory(monster, state = game, { isPet = f
         await newsym(x, y);
     return dropped;
 }
-// C steal.c:thiefdead(), called by mon.c:m_detach() for death or removal.
+// C steal.c:thiefdead(), called from mon.c m_detach for death or removal.
 // Keep the armor-removal delay, but replace the theft and recovery message.
 export function armorThiefGone(monster, state = game) {
     const theft = state._armorTheft;

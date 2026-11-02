@@ -15,7 +15,7 @@ import { adjustSplit, doadjust, doPermanentInventory } from './invent.js';
 import { CLICK_1, CLICK_2, xdir, ydir } from './const.js';
 import { queueCommandResponses } from './input.js';
 import { setHeroGrip } from './hero_grip.js';
-import { continuePicking } from './lock_pick.js';
+import { continuePicking } from './lock.js';
 import { resetOccupations } from './occupation_reset.js';
 import { ECMD_CANCEL, ECMD_FAIL, ECMD_OK, ECMD_TIME, PARANOID_QUIT } from './const.js';
 import { STAIRS, THRONE } from './const.js';
@@ -38,7 +38,8 @@ import { GETOBJ_SUGGEST } from './const.js';
 import { monsterName } from './do_name.js';
 import { attackHostileMonster } from './hero_melee.js';
 import { monsterAtPosition } from './steed.js';
-import { observeBucForNaming } from './object_knowledge.js';
+import { observeBucForNaming, withIndefiniteArticle } from './objnam.js';
+import { objectQuantity } from './mkobj.js';
 import { descendFromLevitation } from './levitation_commands.js';
 import { endVoluntaryMultiTurn } from './hack.js';
 import { propertyIsActive } from './properties.js';
@@ -52,7 +53,7 @@ import { TRAVEL_DIRECTIONS, heroTestMove, applyHeroLiquidEffects, domove } from 
 import { DIRECTION_HANDLERS, INITIAL_COMMAND_BINDINGS, NATIVE_COMMAND_CONSTANTS, NATIVE_COMMAND_FLAGS, NATIVE_COMMANDS, NATIVE_SPECIAL_KEYS, } from './command_data.js';
 import { stopHeroOccupation } from './occupation.js';
 import { continueBulkTakeoff, takeOffAll } from './bulk_takeoff.js';
-import { resetBulkTakeoff } from './takeoff_state.js';
+import { resetBulkTakeoff } from './do_wear.js';
 import { currentLuaLifecycle } from './lua/lifecycle.js';
 import { clearCommandKeys, nhgetch, queueCommandKeys, readchar, takeCommandResponse } from './input.js';
 import { terrainCommand } from './terrain_view.js';
@@ -82,18 +83,17 @@ import { heroHasHidingAbility, useHeroHide } from './hero_hide.js';
 import { chooseSpiderAbility, heroCanSpinWeb, useHeroWeb, } from './hero_web.js';
 import { heroCanMindBlast, useHeroMindBlast, } from './hero_mind_blast.js';
 import { heroCanRemovePunishment, useHeroNymphAbility, } from './hero_nymph_ability.js';
-import { heroCanUseUnicornHorn, useUnicornHorn, } from './unicorn_horn.js';
+import { heroCanUseUnicornHorn } from './unicorn_horn.js';
+import { useUnicornHorn } from './apply.js';
 import { useHeroVampireShift } from './vampire_shift.js';
 import { doread } from './read.js';
-import { continueFoodMeal, doeat } from './eat.js';
-import { continueTinOpening } from './tin.js';
+import { continueFoodMeal, doeat, continueTinOpening } from './eat.js';
 import { doclassdisco, dodiscovered } from './o_init.js';
 import { doattributes, doconduct } from './insight.js';
 import { displayHelpFile } from './pager.js';
 import { doextversion, NATIVE_VERSION } from './extversion.js';
 import { dosearch } from './detect.js';
 import { continueWipingFace, donull, dowipe, threateningMonsterNearby, } from './do.js';
-import { objectQuantity } from './object_stack.js';
 import { dropHeroObject } from './hero_drop.js';
 import { dropMultipleObjects } from './drop_menu.js';
 import { setSecondaryWeapon } from './wield.js';
@@ -103,7 +103,7 @@ import { NO_COLOR } from './terminal.js';
 import { MONSTER_MOVE, MONSTER_NAME, monsterDigests, monsterSpeciesHidesOnCeiling } from './monster_data.js';
 import { heroFormSticks } from './hero_species.js';
 import { autopickupAtHero } from './pickup.js';
-import { isLavaAt, isPoolAt } from './terrain_properties.js';
+import { isLavaAt, isPoolAt } from './dbridge.js';
 import { dosave } from './save.js';
 import { arriveTravel, captureRunmodeDelay, startRun, startWalkRepeat, stopRun } from './runmode.js';
 import { finishHeroMonsterKill } from './hero_monster_death.js';
@@ -113,17 +113,15 @@ import { doUntrap } from './untrap.js';
 import { dosit } from './sit.js';
 import { continueEngraving, doengrave } from './engrave_command.js';
 import { climbOutOfPit, triggerHeroTrapAt } from './hero_traps.js';
-import { withIndefiniteArticle } from './object_grammar.js';
 import { ledgerNo } from './hacklib.js';
 import { nearCapacity, SLT_ENCUMBER } from './weight.js';
-import { dopray } from './pray.js';
-import { dosacrifice } from './sacrifice.js';
+import { dopray, dosacrifice } from './pray.js';
 import { finishTeleportArrival } from './location_effects.js';
 import { doborn, doquit, finishHeroDeath } from './end.js';
 import { heroIsPolymorphed, heroCanChangeVampireShape } from './polyself.js';
 import { continueTrapSetting } from './apply.js';
 import { applyPickAxeDirection } from './pick_axe.js';
-import { continueHeroDigging } from './hero_digging.js';
+import { continueHeroDigging } from './dig.js';
 import { dowear, doputon, removeWornItem } from './do_wear.js';
 import { doready, doswapweapon, dotwoweapon, dowield } from './wield.js';
 import { dofire, dothrow } from './dothrow.js';
@@ -132,7 +130,7 @@ import { objectTypeKnown, dopay, SELL_DELIBERATE, SELL_NORMAL, setSellDispositio
 import { showGetposTip, showGetposInstructions, selectMapPosition } from './getpos.js';
 import { performPetRangedAttack } from './dogmove.js';
 import { dokick } from './dokick.js';
-import { bringLeashedFollowers } from './teleport.js';
+import { bringLeashedFollowers } from './apply.js';
 import { COLNO, ROWNO, SCORR, DOOR, FOUNTAIN, SINK, D_CLOSED, D_LOCKED, PIT, SPIKED_PIT, TT_PIT, HOLE, TRAPDOOR, Is_airlevel, Is_waterlevel, Is_valley, W_ARMOR, W_ACCESSORY, isok } from './const.js';
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
@@ -2214,11 +2212,13 @@ export function commandKeyDescription(command, bindings) {
     return key ? visibleCommandKey(key) : `#${name}`;
 }
 // ── Repeat queue (C cmd.c:CQ_REPEAT, cmdq_add_ec()) ───────────────────────
-// C cmd.c:CQ_REPEAT. Commands retain their selected handler; object choices
-// retain inventory letters so repeating acts on the current inventory.
+// C cmd.c:cmdq_clear() for the repeat queue.
 export function clearRepeatCommand() {
     game._repeatCommands = [];
 }
+// C cmd.c:cmdq_add_ec() pushes the resolved command into CQ_REPEAT.
+// Commands retain their selected handler; object choices retain inventory
+// letters so repeating acts on the current inventory.
 export function rememberCommand(binding, append) {
     if (game._inDoAgain)
         return;

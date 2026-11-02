@@ -14,14 +14,13 @@ import { MONSTER_FLAGS1, MONSTER_NAME, MONSTER_SYMBOL, monsterIsWhirly } from '.
 import { monsterName } from './do_name.js';
 import { observeObjectForNaming } from './objnam.js';
 import { CORPSE, OBJECT_DESCRIPTIONS, ROCK } from './object_data.js';
-import { objectDescription } from './object_description.js';
-import { makePlural, withIndefiniteArticle } from './object_grammar.js';
+import { objectDescription, makePlural, withIndefiniteArticle } from './objnam.js';
 import { propertyIsActive } from './properties.js';
 import { rn2 } from './rng.js';
 import { heroIsBlind, heroIsHallucinating } from './senses.js';
 import { dismountHero } from './steed.js';
 import { heroResistsStoning, resolveImmediatePetrification, touchPetrifies } from './stoning.js';
-import { isIceAt, isPoolAt } from './terrain_properties.js';
+import { isIceAt, isPoolAt } from './dbridge.js';
 import { monsterHasColdResistance } from './mondata.js';
 export function checkSlipperyIce() {
     const hero = game.u;

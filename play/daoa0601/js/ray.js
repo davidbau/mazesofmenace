@@ -11,7 +11,7 @@ import { game } from './gstate.js';
 import { MONSTER_NAME } from './monster_data.js';
 import { monsterWieldedWeapon } from './weapon.js';
 import { AMULET_OF_REFLECTION, SHIELD_OF_REFLECTION, SILVER_DRAGON_SCALE_MAIL, SILVER_DRAGON_SCALES, } from './object_data.js';
-import { recordObjectKnowledge } from './object_knowledge.js';
+import { recordObjectKnowledge } from './o_init.js';
 import { rn2, rnd } from './rng.js';
 import { cansee } from './vision.js';
 import { TemporaryMapEffect } from './temporary_map_effect.js';
@@ -65,7 +65,7 @@ export function rayHitsHero(state = game, random = rn2, rollOne = rnd) {
         ? armorClass : -rollOne(-armorClass);
     return 3 - chance < effectiveArmorClass;
 }
-// C zap.c:ureflects(): finds the reflecting worn item; callers print the
+// C muse.c:ureflects(): finds the reflecting worn item; callers print the
 // "It bounces off your ..." line ureflects() used to print itself, and
 // discoverHeroReflectionSource below performs its makeknown()
 // (discover_object()) for a reflecting shield or amulet.

@@ -11,12 +11,12 @@ import { canSpotMonster, canSeeMonster, flush_screen, map_invisible, monsterVisi
 import { cansee, couldsee, monsterHasLineOfSightToHero } from './vision.js';
 import { monsterName, monsterName as canonicalMonsterName, visibleMonsterSubject } from './do_name.js';
 import { possessiveName, dist2 } from './hacklib.js';
-import { monsterObjectPronoun, monsterSubjectPronoun, monstersForgetHeroResistance, monstersObserveHeroResistance, monsterPolymorphsWhenStoned, monsterPossessive, seenResistanceForDamage, } from './mondata.js';
+import { monsterObjectPronoun, monsterSubjectPronoun, monstersForgetHeroResistance, monstersObserveHeroResistance, monsterPolymorphsWhenStoned, monsterPossessive, seenResistanceForDamage, monsterPossessive as perceivedPossessivePronoun, } from './mondata.js';
 import { MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_LEVEL, MONSTER_NAME, MONSTER_SYMBOL, monsterDigests, monsterHatesBlessings, monsterHasNoLimbs, monsterIsAnimal, monsterIsThickSkinned, monsterIsUndead, monsterIsUnsolid, monsterIsVampireShifter, monsterIsWhirly, monsterTypeName, requireMonsterData, MONSTER_RESISTS, } from './monster_data.js';
 import { AD_ACID, AD_BLND, AD_CLRC, AD_COLD, AD_CONF, AD_CORR, AD_CURS, AD_DCAY, AD_DETH, AD_DISE, AD_DGST, AD_DRIN, AD_DRLI, AD_ELEC, AD_ENCH, AD_FAMN, AD_FIRE, AD_HALU, AD_HEAL, AD_LEGS, AD_MAGM, AD_PEST, AD_PHYS, AD_PLYS, AD_POLY, AD_RUST, AD_SAMU, AD_SEDU, AD_SGLD, AD_SITM, AD_SLEE, AD_SLIM, AD_SLOW, AD_SPEL, AD_SPC2, AD_SSEX, AD_STCK, AD_STON, AD_STUN, AD_TLPT, AD_WERE, AD_WRAP, AT_BITE, AT_BREA, AT_BUTT, AT_CLAW, AT_ENGL, AT_EXPL, AT_GAZE, AT_HUGS, AT_KICK, AT_MAGC, AT_SPIT, AT_STNG, AT_TENT, AT_TUCH, AT_WEAP, } from './monster_attack_types.js';
 import { heroDetectsMonsters, heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
 import { heroIsInvisible } from './hero_invisibility.js';
-import { armorSimpleName, armorSlotFor, heroHasDrainResistance, heroIsDisplaced, stopDonning } from './armor.js';
+import { armorSimpleName, armorSlotFor, heroHasDrainResistance, heroIsDisplaced, stopDonning } from './do_wear.js';
 import { monsterWieldedWeapon, wieldMonsterWeapon } from './weapon.js';
 import { isPolearm } from './object_properties.js';
 import { weaponHitBonus, rollPhysicalWeaponDamageAgainstHero } from './weapon.js';
@@ -30,14 +30,15 @@ import { createElementalMonsterExplosion } from './explosion.js';
 import { startHeroSickness } from './hero_illness.js';
 import { makeConfused, makeHallucinated, makeStunned } from './hero_mental_status.js';
 import { wakeMonstersNearWithMessages } from './mon.js';
-import { withIndefiniteArticle } from './object_grammar.js';
+import { withIndefiniteArticle, objectDescription } from './objnam.js';
+import { learnObjectType, observeObject } from './o_init.js';
 import { stopHeroOccupation } from './occupation.js';
 import { stopRun } from './runmode.js';
 import { makeBlinded } from './sight_change.js';
 import { finishHeroDeathAfterMonsterMessage, finishMonsterAttackDeath, finishHeroDeath } from './end.js';
 import { adjustAttribute, currentAttribute, exerciseAttribute, loseHeroStrength } from './attrib.js';
 import { adjustHeroAlignment } from './alignment.js';
-import { removeHeroAccessory, wearHeroAccessory } from './accessory.js';
+import { removeHeroAccessory, wearHeroAccessory } from './do_wear.js';
 import { heroHasHalfSpellDamage, drainObjectEnchantment } from './zap.js';
 import { applyHeroGolemEffects, polymonHero, returnHeroToHumanForm } from './polyself.js';
 import { d, rn2, rnd } from './rng.js';
@@ -53,12 +54,10 @@ import { heroHasInvoluntaryDelay, setMulti } from './cmd.js';
 import { endVoluntaryMultiTurn } from './hack.js';
 import { attackMonsterWithMonster, monsterAttackStopsAggressor } from './mhitm.js';
 import { revealConcealedHeroToAttacker } from './hero_hider_reveal.js';
-import { disturbMealMimicry } from './meal_mimic.js';
 import { summonMonsterAttackHelp } from './minion.js';
 import { selectMonsterOffensiveItem } from './muse.js';
-import { isPoolAt } from './terrain_properties.js';
+import { isPoolAt } from './dbridge.js';
 import { observeObjectForNaming, objectCombatName, objectName, ownedObjectName, simpleObjectName } from './objnam.js';
-import { objectDescription } from './object_description.js';
 import { recorderIsLeapDay, recorderLocalHour } from './calendar.js';
 import { heroFormSticks, heroSpecies } from './hero_species.js';
 import { isPermanentlyPoisonedObject } from './object_properties.js';
@@ -88,18 +87,20 @@ import { detachHeroGold, heroGoldAmount, heroGoldObject } from './hero_gold.js';
 import { heroIsUnaware } from './hero_sleep.js';
 import { inventoryItemDescription } from './invent.js';
 import { linkObjectToMonsterInventory, unlinkObject } from './mkobj.js';
-import { learnObjectType, observeObject } from './object_knowledge.js';
 import { promptYesNo } from './query.js';
 import { seductionCompatibility } from './seduction_compatibility.js';
 import { randomMonsterRelocation } from './teleport.js';
 import { reportMonsterTeleportRestriction } from './teleport_rules.js';
 import { objectTypeKnown } from './shk.js';
 import { reportHeroEncumbrance } from './encumbrance.js';
-import { monsterPossessive as perceivedPossessivePronoun } from './mondata.js';
 import { AKLYS_LIM, P_AXE, P_BOW, P_CROSSBOW, P_DAGGER, P_LANCE, P_PICK_AXE, P_POLEARMS, P_SABER, P_SHORT_SWORD, P_WHIP, } from './const.js';
 import { AKLYS, AMULET_OF_GUARDING, HEAVY_IRON_BALL, IRON_CHAIN, OBJECT_BIMANUAL, OBJECT_DIR, OBJECT_PROPERTY, OBJECT_SPELL_LEVEL, OBJECT_SUBTYPE, TIN_OPENER, TOWEL, } from './object_data.js';
 import { hasIntrinsicProperty, hasInvokedProperty } from './properties.js';
 import { isMissileObject, isWeaponTool } from './object_properties.js';
+import { finishHeroHelplessness } from './allmain.js';
+import { M_AP_OBJECT } from './const.js';
+import { GOLD_PIECE } from './object_data.js';
+import { mimicObjectName } from './objnam.js';
 // Local copies of the C mondata.h flags and permonst indices the attack
 // sequence reads (mhitu.c:calc_mattacku_vars/hitmu/gulpmu use them too).
 const M1_SWIM = 0x00000002;
@@ -3130,5 +3131,32 @@ export function magicNegation(defender, state = game) {
         || (hero && ((hasIntrinsicProperty('protection', null, state) && (state.u.ublessed ?? 0) > 0)
             || (state.u.uspellprot ?? 0) > 0));
     return innateProtection ? Math.max(1, cancellation) : cancellation;
+}
+// C mhitu.c:mattacku().
+export async function disturbMealMimicry(monster, { state = game } = {}) {
+    requirePlayingGame(state);
+    const hero = state.u;
+    if (!state._mimicMealMessage || hero.m_ap_type !== M_AP_OBJECT || hero.uswallow
+        || monster.mux !== hero.ux || monster.muy !== hero.uy
+        || Math.max(Math.abs(monster.mx - hero.ux), Math.abs(monster.my - hero.uy)) > 1)
+        return false;
+    if (!canSpotMonster(monster))
+        await map_invisible(monster.mx, monster.my);
+    if (!canSeeMonster(monster)) {
+        const picksUpGold = requireMonsterData(MONSTER_FLAGS2, monster.mnum) & 0x10000000
+            && hero.mappearance === GOLD_PIECE;
+        await plineWithContinuation(`Something ${picksUpGold ? 'tries to pick you up' : 'disturbs you'}!`);
+    }
+    else {
+        const name = monsterName(monster, { state, article: 'none', exact: true });
+        const shape = mimicObjectName(hero, state);
+        await plineWithContinuation(`Wait, ${name}!  That ${shape} is really ${withIndefiniteArticle(monsterTypeName(heroSpecies(state), state.flags.female))} named ${state.plname}!`);
+    }
+    if ((state._helplessTurns ?? 0) > 0) {
+        const shape = Upolyd(hero)
+            ? withIndefiniteArticle(monsterTypeName(heroSpecies(state), state.flags.female)) : 'yourself';
+        await finishHeroHelplessness(`You appear to be ${shape} again.`, state);
+    }
+    return true;
 }
 //# sourceMappingURL=mhitu.js.map

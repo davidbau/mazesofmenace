@@ -1,6 +1,6 @@
 // C zap.c:melt_ice(). Await the complete terrain, object, and occupant effect.
 import { BEAR_TRAP, DB_ICE, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, ICE, ICED_POOL, MAGIC_PORTAL, MOAT, POOL, LANDMINE, VIBRATING_SQUARE, LEVEL_TIMER_KIND } from './const.js';
-import { unearthFloorObjectsAt } from './buried_object.js';
+import { unearthFloorObjectsAt } from './dig.js';
 import { dropBoulderIntoLiquid } from './boulder_pool.js';
 import { applyHeroLocationEffects } from './hack.js';
 import { impossible } from './diagnostics.js';
@@ -12,10 +12,10 @@ import { finishMonsterLiquidDeath, resolveMonsterLiquid } from './mon.js';
 import { finishHeroLiquidMonsterDeath } from './hero_monster_death.js';
 import { monsterAtPosition } from './steed.js';
 import { BEARTRAP, BOULDER, LAND_MINE } from './object_data.js';
-import { withIndefiniteArticle } from './object_grammar.js';
+import { withIndefiniteArticle } from './objnam.js';
 import { stopLevelTimer } from './timeout.js';
 import { objectName } from './objnam.js';
-import { isPoolAt } from './terrain_properties.js';
+import { isPoolAt } from './dbridge.js';
 import { deleteTrap, convertTrapToObject } from './trap.js';
 import { cansee, vision_recalc } from './vision.js';
 export async function meltIce(x, y, { announce = plineWithContinuation, message = 'The ice crackles and melts.', } = {}) {

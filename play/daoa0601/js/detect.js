@@ -13,7 +13,9 @@ import { displayMessageWindow, flushPendingTopline } from './tty_topline.js';
 import { pline, plineWithContinuation, set_msg_xy } from './pline.js';
 import { BOLT_LIM, COLNO, ROWNO, ROOMOFFSET, STONE, SDOOR, SCORR, DOOR, CORR, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, IN_SIGHT, M_AP_OBJECT, M_AP_TYPE, STATUE_TRAP, TER_MAP, TRAPPED_CHEST, TRAPPED_DOOR, W_NONDIGGABLE, W_NONPASSWALL, WM_MASK, Is_airlevel, Is_waterlevel, isok, IS_FURNITURE, } from './const.js';
 import { BOULDER, CHEST, LARGE_BOX, LENSES, GOLD_PIECE, OBJECT_BASES, OBJECT_MERGE, OBJECT_NAMES } from './object_data.js';
-import { OBJECT_CLASS_NAMES, OBJECT_CLASS_SYMBOLS, objectClassForType, observeObject } from './object_knowledge.js';
+import { OBJECT_CLASS_NAMES, OBJECT_CLASS_SYMBOLS } from './display.js';
+import { objectClassForType, observeObject } from './o_init.js';
+import { withIndefiniteArticle, makePlural } from './objnam.js';
 import { objectMaterial } from './o_init.js';
 import { activateStatueTrapAt } from './statue_trap.js';
 import { rnl, rn2, rnd } from './rng.js';
@@ -26,12 +28,11 @@ import { monsterName } from './do_name.js';
 import { NO_COLOR } from './terminal.js';
 import { visibleRegionAt } from './regions.js';
 import { openFallingTrap, openHoldingTrap, trapName } from './trap.js';
-import { withIndefiniteArticle } from './object_grammar.js';
 import { TER_DETECT, TER_MON, TER_OBJ, TER_TRP } from './const.js';
 import { heroFootName, heroNoseName, heroToeName } from './body_parts.js';
 import { requireLiveGame } from './gstate.js';
 import { propertyIsActive } from './properties.js';
-import { terrainCoversObjectsAt } from './terrain_properties.js';
+import { terrainCoversObjectsAt } from './display.js';
 import { selectMapPosition, showGetposInstructions, showGetposTip } from './getpos.js';
 import { C_ATR_INVERSE, terminalAttrFromCAttr } from './color_attr.js';
 import { expelHero } from './hero_expulsion.js';
@@ -39,7 +40,6 @@ import { findDrawbridgeAt, openDrawbridge } from './dbridge.js';
 import { currency } from './currency.js';
 import { MONSTER_NAME } from './monster_data.js';
 import { getObjectClassBounds } from './object_data.js';
-import { makePlural } from './object_grammar.js';
 import { getObjectLocation } from './zap.js';
 import { isQuantumBox } from './quantum_cat.js';
 import { triggerBoobyTrap } from './booby_trap.js';
@@ -1027,6 +1027,9 @@ export async function detectObjects(source, { state = game, objectClass = 0 } = 
 function effectResult(result, known, strangeFeeling = false) {
     return { result, known, strangeFeeling };
 }
+// C potion.c:strange_feeling(), message half, as detect.c's detectors call
+// it; the trycall/useup half stays with the callers' effectResult handling.
+// The owning full port is potion.ts:strangeFeeling().
 async function strangeFeeling(message, state, forceMessage = false) {
     await plineWithContinuation(state.flags.beginner && !forceMessage
         ? `You have a ${heroIsHallucinating(state) ? 'normal' : 'strange'} feeling for a moment, then it passes.`

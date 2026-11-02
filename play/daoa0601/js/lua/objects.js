@@ -1,6 +1,6 @@
 // Lua object handles and operations. C nhlobj.c.
 import { isok, CORPSTAT_FEMALE, CORPSTAT_HISTORIC, CORPSTAT_MALE, OBJECT_TIMER_KIND } from '../const.js';
-import { buryObject } from '../buried_object.js';
+import { buryObject } from '../dig.js';
 import { isContainer } from '../container.js';
 import { newsym } from '../display.js';
 import { placeObject } from '../floor_object.js';
@@ -11,7 +11,8 @@ import { cleanupObjectBurn } from '../light.js';
 import { mkobj, mksobj, addObjectToContainer, unlinkObject } from '../mkobj.js';
 import { MONSTER_NAME } from '../monster_data.js';
 import { ARROW, CORPSE, EGG, FIGURINE, STATUE, TIN, OBJECT_BIMANUAL, OBJECT_CHARGED, OBJECT_COLOR, OBJECT_COST, OBJECT_DELAY, OBJECT_DESCRIPTIONS, OBJECT_DIR, OBJECT_INITIAL_KNOWN, OBJECT_LARGE_DAMAGE, OBJECT_MAGIC, OBJECT_MATERIAL, OBJECT_MATERIAL_NAMES, OBJECT_MERGE, OBJECT_NAMES, OBJECT_NOWISH, OBJECT_NUTRITION, OBJECT_PROB, OBJECT_PROPERTY_ID, OBJECT_SMALL_DAMAGE, OBJECT_TOUGH, OBJECT_UNIQUE, OBJECT_USES_KNOWN, OBJECT_WEIGHT, } from '../object_data.js';
-import { OBJECT_CLASS_SYMBOLS, objectClassForType } from '../object_knowledge.js';
+import { OBJECT_CLASS_SYMBOLS } from '../display.js';
+import { objectClassForType } from '../o_init.js';
 import { isPoisonableObject } from '../object_properties.js';
 import { readObjectName } from '../objnam.js';
 import { addInventoryItem } from '../u_init.js';

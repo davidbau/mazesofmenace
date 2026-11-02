@@ -1,5 +1,5 @@
 // Native insight.c:ustatusline(), shared by self-probing and stethoscopes.
-import { armorSimpleName } from './armor.js';
+import { armorSimpleName } from './do_wear.js';
 import { heroFingerName, heroHasEyes, heroLegName } from './body_parts.js';
 import { M_AP_TYPE, SICK_NONVOMITABLE, SICK_VOMITABLE, Upolyd } from './const.js';
 import { game, requirePlayingGame } from './gstate.js';
@@ -10,7 +10,7 @@ import { heroIsStrangled } from './hero_strangulation.js';
 import { piousness } from './insight.js';
 import { MONSTER_LEVEL, monsterDigests } from './monster_data.js';
 import { monsterName } from './do_name.js';
-import { makePlural } from './object_grammar.js';
+import { makePlural } from './objnam.js';
 import { visibleRegionAt } from './regions.js';
 import { blindfolded, heroIsBlind } from './senses.js';
 import { heroIsPetrifying } from './stoning.js';

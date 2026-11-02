@@ -30,7 +30,7 @@ import { promptDirection } from './tty_prompts.js';
 import { commandResultCancelled } from './cmd.js';
 import { monsterAtPosition } from './steed.js';
 import { game, requireGameLevel, requireInitializedGame, requirePlayingGame, requireLiveGame } from './gstate.js';
-import { isPoolAt, isIceAt } from './terrain_properties.js';
+import { isPoolAt, isIceAt } from './dbridge.js';
 import { captureThrownObjectFlight, flyKickedObject, snuffThrownCandle } from './thrown_object.js';
 import { killerObjectName, objectNameIsPlural, observeObjectForNaming, corpseName, objectCombatName } from './objnam.js';
 import { disturbGrave } from './grave.js';
@@ -55,15 +55,15 @@ import { artifactById } from './artifacts.js';
 import { heroFootName, heroLegName } from './body_parts.js';
 import { triggerChestTrap } from './chest_trap.js';
 import { applyFloorEffects } from './floor_effects.js';
-import { splitObjectStack } from './object_stack.js';
+import { splitObjectStack } from './mkobj.js';
+import { objectDescription, makePlural } from './objnam.js';
 import { impactDisturbsZombies } from './hack.js';
 import { breakChestLock } from './lock.js';
 import { hitMonsterWithKickedObject } from './hero_ranged_attack.js';
 import { breakFloorObject } from './dothrow.js';
 import { inventoryItemDescription, delobj } from './invent.js';
-import { objectDescription } from './object_description.js';
 import { costlyAdjacent, costlySpot, addShopObjectToBill, removeObjectAndContentsFromBill, findObjectOwner, stolenValue, costlyGold, donateGold, objectIsUnpaid, pickedContainer, hotPursuitShopkeeper, deleteObject, insideShopRoomAt, makeAngryShopkeeper } from './shk.js';
-import { containedGold } from './gold.js';
+import { containedGold } from './shk.js';
 import { roomsAt } from './room.js';
 import { resolveImmediatePetrification, touchPetrifies, heroResistsStoning } from './stoning.js';
 import { activateStatueTrapAt } from './statue_trap.js';
@@ -73,9 +73,8 @@ import { objectMaterial } from './o_init.js';
 import { publishHeardMessage, formatHeardMessage } from './hero_speech.js';
 import { removeWornHeroItem } from './hero_equipment.js';
 import { isContainer } from './container.js';
-import { maybeResetPick } from './lock_context.js';
+import { maybeResetPick } from './lock.js';
 import { onQuestStart, okToQuest } from './quest.js';
-import { makePlural } from './object_grammar.js';
 import { surfaceName } from './terrain_name.js';
 import { currency } from './currency.js';
 import { shopkeeperName } from './shknam.js';
@@ -991,7 +990,7 @@ function stairwayAt(state, x, y) {
     }
     return null;
 }
-function nextLevel(state) {
+function levelBelow(state) {
     const current = state.u?.uz || { dnum: 0, dlevel: 1 };
     return { ...current, dlevel: (current.dlevel ?? 1) + 1 };
 }
@@ -1014,14 +1013,14 @@ function trapDestination(state) {
         return state.valley_level || null;
     if (inEndgame(state) || onBottomLevel(state))
         return null;
-    return nextLevel(state);
+    return levelBelow(state);
 }
 function downwardGate(state, x, y) {
     if (onQuestStart(state) && !okToQuest(state))
         return null;
     const stair = stairwayAt(state, x, y);
     if (stair && !stair.up) {
-        const destination = stair.tolev || nextLevel(state);
+        const destination = stair.tolev || levelBelow(state);
         if (stair.isladder) {
             return {
                 arrival: MIGR_LADDER_UP,

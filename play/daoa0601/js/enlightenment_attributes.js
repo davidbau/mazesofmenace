@@ -4,18 +4,20 @@ import { game } from './gstate.js';
 import { canPraySafely } from './pray.js';
 import { deityName } from './alignment.js';
 import { magicNegation } from './mhitu.js';
-import { simpleArmorName } from './armor.js';
+import { simpleArmorName } from './do_wear.js';
 import { confersLuck } from './hero_inventory.js';
 import { fromWhat, extrinsicPropertyMask, intrinsicPropertyMask, veryFast } from './attribute_provenance.js';
 import { hasPermanentIntrinsicProperty, propertyIsActive, propertyIsBlocked, propertyTimeout } from './properties.js';
 import { blindnessBlocked, blindfolded, heroIsBlind, permanentBlind } from './senses.js';
 import { heroHatesSilver, heroIsAmphibious, heroIsBreathless, heroPassesWalls } from './hero_species.js';
 import { MONSTER_FLAGS1, MONSTER_NAME, monsterTypeName } from './monster_data.js';
-import { isLavaAt, isPoolAt, levelHasCeiling } from './terrain_properties.js';
+import { isLavaAt, isPoolAt } from './dbridge.js';
+import { levelHasCeiling } from './dungeon.js';
 import { minimalObjectName } from './objnam.js';
-import { makePlural, withIndefiniteArticle } from './object_grammar.js';
+import { makePlural, withIndefiniteArticle } from './objnam.js';
 import { DWARVISH_CLOAK, LUCKSTONE, OBJECT_PROPERTY, RIN_PROTECTION, AMULET_OF_GUARDING, ROBE, TOWEL, } from './object_data.js';
-import { TIMEOUT, TT_PIT, Upolyd, W_ARMOR, W_ACCESSORY, W_WEP, W_ART } from './const.js';
+import { TT_PIT, Upolyd, W_ARMOR, W_ACCESSORY, W_WEP, W_ART } from './const.js';
+import { temporaryResistance } from './eat.js';
 export function piousness(record, { showNegative = true, suffix = '' } = {}) {
     const description = record >= 20 ? 'piously' : record > 13 ? 'devoutly'
         : record > 8 ? 'fervently' : record > 3 ? 'stridently'
@@ -68,8 +70,6 @@ export function attributeEnlightenmentLines(final = 0) {
     lines.push(...itemResistanceLines('shockResistance', 'electric shocks', final));
     if (active('poisonResistance'))
         are('poison resistant', 'poisonResistance');
-    const temporaryResistance = (property) => propertyTimeout(property) && !(intrinsicPropertyMask(property) & ~TIMEOUT)
-        && !extrinsicPropertyMask(property) && !propertyIsBlocked(property) ? 'temporarily ' : '';
     if (active('acidResistance'))
         are(`${temporaryResistance('acidResistance')}acid resistant`, 'acidResistance');
     lines.push(...itemResistanceLines('acidResistance', 'acid', final));

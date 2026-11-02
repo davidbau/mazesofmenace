@@ -1,10 +1,12 @@
 import { questMonsterSound } from './role_monsters.js';
 import { performMonsterHeroAttack, beginMonsterHeroAttack, presentMonsterAttackEffects } from './mhitu.js';
 import { inventoryItemDescription } from './invent.js';
-import { monsterFliesOrFloats, isLavaAt, isPoolAt } from './terrain_properties.js';
+import { monsterFliesOrFloats } from './mon.js';
+import { isLavaAt, isPoolAt } from './dbridge.js';
 import { monsterName, visibleMonsterSubject } from './do_name.js';
 import { observeDistantObjectForNaming } from './objnam.js';
-import { verbForSubject, withIndefiniteArticle } from './object_grammar.js';
+import { verbForSubject, withIndefiniteArticle } from './objnam.js';
+import { splitObjectStack } from './mkobj.js';
 import { monsterAvoidsKickedLocation, monsterAvoidsSokobanPushLocation, readyMonsterDiggingWeapon, speciesHasWeaponAttack, setMonsterApparentHeroPosition, } from './monmove.js';
 import { mfndpos, monAllowFlags, monsterMayDigLocation, resistConflict } from './mon.js';
 import { DISCARDED_CALL_LOG, recordRandom } from './monster_action_types.js';
@@ -20,7 +22,6 @@ import { applyPetHunger } from './pet_hunger.js';
 import { beginPetEating, finishPetEating } from './pet_eating.js';
 import { releaseMonsterInventory, addObjectToMonsterInventory } from './steal.js';
 import { monsterCanCarryObject, monsterCarryAmount } from './mon.js';
-import { splitObjectStack } from './object_stack.js';
 import { isLevelPrize } from './level_prize.js';
 import { BOULDER, OBJECT_DESCRIPTIONS, OBJECT_NAMES, SCR_MAIL, TRIPE_RATION, requireObjectData, } from './object_data.js';
 import { loseGuardianAngel } from './guardian_angel.js';
@@ -34,7 +35,7 @@ import { plineWithContinuation } from './pline.js';
 import { remove_object } from './floor_object.js';
 import { wieldMonsterWeapon } from './weapon.js';
 import { checkMonsterGearNextTurn } from './monworn.js';
-import { releaseMonsterLeash } from './leash_apply.js';
+import { releaseMonsterLeash } from './apply.js';
 import { MAP_SYMBOLS } from './map_symbols.js';
 import { displayMessageWindow } from './tty_topline.js';
 import { monsterSentenceSubject, publishMonsterNoise, publishMonsterWhimper } from './ambient_sounds.js';
@@ -111,6 +112,7 @@ function petSeesInvisible(pet) {
 function petCanSee(pet, x, y) {
     return clearPath(pet.mx, pet.my, x, y);
 }
+// C dogmove.c:find_targ(). Walks outward for a ranged-attack target.
 function findTarget(pet, dx, dy, state) {
     let x = pet.mx;
     let y = pet.my;

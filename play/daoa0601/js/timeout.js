@@ -16,7 +16,6 @@ import { makeConfused, makeHallucinated, makeStunned } from './hero_mental_statu
 import { makeDeaf } from './hero_hearing.js';
 import { advanceSpellProtection } from './spell.js';
 import { advanceDisplacementTimeout } from './hero_displacement.js';
-import { advanceCorpseResistanceTimeouts } from './corpse_intrinsics.js';
 import { requireInitializedGame, game } from './gstate.js';
 import { nomul } from './hack.js';
 import { wakeMonstersNearWithMessages, restartMonsterShapechanging } from './mon.js';
@@ -24,12 +23,12 @@ import { deferredDecor } from './dungeon_feature.js';
 import { rnd } from './rng.js';
 import { propertyIsActive, propertyIsBlocked, propertyTimeout, refreshProperty, setPropertyTimeout } from './properties.js';
 import { heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
-import { setSlipperyHands } from './towel.js';
+import { setSlipperyHands } from './potion.js';
 import { healHeroLegs } from './hero_legs.js';
 import { heroIsUnconscious, putHeroToSleep } from './hero_sleep.js';
 import { advanceHeroSickness, advanceHeroVomiting, heroIsSick, heroIsVomiting, sicknessDialogue, vomitingDialogue } from './hero_illness.js';
 import { advanceHeroSliming, heroIsSliming, slimeDialogue } from './slime.js';
-import { advanceHeroPetrification, heroIsPetrifying, petrificationDialogue } from './stoning.js';
+import { advanceHeroPetrification, heroIsPetrifying, petrificationDialogue, resolveImmediatePetrification, touchPetrifies, } from './stoning.js';
 import { advanceHeroStrangulation, strangulationDialogue } from './hero_strangulation.js';
 import { refreshHeroSeeing } from './hero_seeing.js';
 import { syncHeroInvisibility } from './hero_invisibility.js';
@@ -37,11 +36,18 @@ import { stopHeroOccupation } from './occupation.js';
 import { polymonHero } from './polyself.js';
 import { finishHeroDeath } from './end.js';
 import { MONSTER_NAME } from './monster_data.js';
-import { makePlural } from './object_grammar.js';
+import { makePlural } from './objnam.js';
 import { newsym, randomDisplayMonsterName, see_monsters } from './display.js';
 import { plineWithContinuation } from './pline.js';
 import { cleanupObjectBurn } from './light.js';
 import { OBJECT_TIMER_KIND, LEVEL_TIMER_KIND } from './const.js';
+import { heroHandName } from './body_parts.js';
+import { eatingDangerousCorpse } from './eat.js';
+import { requireLiveGame, requirePlayingGame } from './gstate.js';
+import { heroIsUnaware } from './hero_sleep.js';
+import { CORPSE } from './object_data.js';
+import { corpseName, killerObjectName } from './objnam.js';
+import { releaseWeaponSlots } from './wield.js';
 // C timeout.c decrements every intrinsic timeout in prop.h order. These
 // properties have no dedicated recovery action; their source projection still
 // needs refreshing when the timed source ends.
@@ -622,5 +628,60 @@ export function restoreSavedTimers(state = game) {
     // dorecover() reloads the current level after the global state, placing
     // its timers ahead of equal-time global timers.
     restoreLevelTimers(state);
+}
+const timedResistances = ['acidResistance', 'stoneResistance'];
+// C timeout.c:nh_timeout().
+// C timeout.c:ACID_RES/STONE_RES. Called in property order, after shock
+// resistance and before the later status timeouts.
+export async function advanceCorpseResistanceTimeouts(state = game) {
+    requireLiveGame(state);
+    requirePlayingGame(state);
+    for (const property of timedResistances) {
+        const timeout = `${property}Turns`;
+        const remaining = state.u[timeout] ?? 0;
+        if (!(remaining > 0))
+            continue;
+        state.u[timeout] = remaining - 1;
+        if (state.u[timeout] > 0)
+            continue;
+        refreshProperty(property, state);
+        if (state.u[property])
+            continue;
+        if (eatingDangerousCorpse(property, { state })) {
+            state.u[timeout] = 1;
+            refreshProperty(property, state);
+            continue;
+        }
+        if (!heroIsUnaware(state))
+            await plineWithContinuation(property === 'acidResistance'
+                ? 'You no longer feel safe from acid.'
+                : 'You no longer feel secure from petrification.');
+        if (property === 'stoneResistance') {
+            await touchWieldedCorpseAfterResistanceExpires(state);
+            if (state.program_state.gameover)
+                return;
+        }
+    }
+}
+// C timeout.c:nh_timeout().
+async function touchWieldedCorpseAfterResistanceExpires(state) {
+    if (state.uarmg || state.u.uarmg)
+        return;
+    const weapons = [state.uwep || state.u.uwep];
+    if (state.u.twoweap)
+        weapons.push(state.uswapwep || state.u.uswapwep);
+    for (const object of weapons) {
+        if (object?.otyp !== CORPSE || object.corpsenm === undefined || !touchPetrifies(object.corpsenm)
+            || state.u.stoneResistance)
+            continue;
+        await plineWithContinuation(`You are wielding ${corpseName(object, { includeArticle: true })} in your bare ${makePlural(heroHandName(state))}.`);
+        const result = await resolveImmediatePetrification({
+            state, killer: `resistance timing out while wielding ${killerObjectName(object, state)}`,
+        });
+        if (result.died)
+            return;
+        if (!state.u.stoneResistance)
+            await releaseWeaponSlots(object, state);
+    }
 }
 //# sourceMappingURL=timeout.js.map

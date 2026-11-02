@@ -1,7 +1,8 @@
 // Squeaky boards triggered by monsters.
 // C ref: trap.c:trapeffect_sqky_board().
 import { publishHeardMessage } from './hero_speech.js';
-import { BOLT_LIM, COULD_SEE, squeakyBoardNoteWithArticle } from './const.js';
+import { BOLT_LIM, COULD_SEE } from './const.js';
+import { squeakyBoardNoteWithArticle } from './trap.js';
 import { game } from './gstate.js';
 import { dist2 } from './hacklib.js';
 import { wakeMonstersNearWithMessages } from './mon.js';
@@ -9,7 +10,7 @@ import { monsterIsMindless } from './monster_data.js';
 import { monsterName } from './do_name.js';
 import { heroIsDeaf } from './senses.js';
 import { monsterTrapVisibility, seeTrap } from './trap.js';
-import { monsterInAir } from './terrain_properties.js';
+import { monsterInAir } from './mon.js';
 function canAlmostSee(state, x, y) {
     return !!((state.viz_array?.[y]?.[x] ?? 0) & COULD_SEE);
 }

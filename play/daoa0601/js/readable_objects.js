@@ -1,15 +1,15 @@
 // Ordinary-object reading. C refs: read.c doread(), erode_obj_text(),
 // tshirt_text(), apron_text(), hawaiian_design(), and candy_wrapper_text().
-import { armorSimpleName } from './armor.js';
+import { armorSimpleName } from './do_wear.js';
 import { artifactById } from './artifacts.js';
 import { plineWithContinuation as pline } from './pline.js';
 import { game, requireLiveGame, requirePlayingGame } from './gstate.js';
 import { consumeInventoryItem } from './invent.js';
 import { recordLiteracy } from './literacy.js';
-import { tryCallObjectType } from './object_call.js';
+import { tryCallObjectType } from './do.js';
+import { makePlural } from './objnam.js';
+import { candyWrapperText, garmentInscription, hawaiianDesign } from './read.js';
 import { ALCHEMY_SMOCK, CANDY_BAR, CAN_OF_GREASE, CORNUTHAUM, CREDIT_CARD, DUNCE_CAP, FORTUNE_COOKIE, HAWAIIAN_SHIRT, MAGIC_MARKER, OBJECT_NAMES, } from './object_data.js';
-import { makePlural } from './object_grammar.js';
-import { candyWrapperText, garmentInscription, hawaiianDesign } from './object_inscription.js';
 import { minimalObjectName, objectName } from './objnam.js';
 import { readCookieFortune } from './rumor.js';
 import { heroIsBlind } from './senses.js';

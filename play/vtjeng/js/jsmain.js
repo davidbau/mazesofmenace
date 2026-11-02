@@ -264,6 +264,14 @@ export class NethackGame {
         this._animFramesByStep = [];
         this._pendingAnimFrames = [];
         this._lastRngIdx = 0;
+        // rng.js keeps one RNG log per process, and start() replaces it with
+        // a fresh one, so until then the process log still holds the previous
+        // segment's calls; a segment that stops before that point has logged
+        // none.
+        this._rngLogStarted = false;
+        // runSegment() records here the error that ended the segment early,
+        // as { name, message, stack }; null when nothing crashed.
+        this.segmentError = null;
         this._themeroomSelectionCollector
             = opts.themeroomSelectionCollector ?? null;
     }
@@ -327,6 +335,7 @@ export class NethackGame {
         // C initializes the game RNG before reading the configuration file.
         initRng(this._seed);
         enableRngLog();
+        this._rngLogStarted = true;
 
         // choose_windows(DEFAULT_WINDOW_SYS) (unixmain.c:104) installs the tty
         // window procs long before init_nhwindows(), so raw_print() already
@@ -687,7 +696,7 @@ export class NethackGame {
 
     getScreens() { return this._screens; }
     getCursors() { return this._cursors; }
-    getRngLog() { return getRngLog(); }
+    getRngLog() { return this._rngLogStarted ? getRngLog() : []; }
     // Per-step PRNG slices, parallel to getScreens(). Each entry is the
     // log of PRNG calls that fired since the previous capture (i.e.
     // since the previous nhgetch). Useful for tooling like the PS
@@ -743,7 +752,7 @@ export function segmentIterationLimit(movesLength) {
 
 // ── Per-segment runner — the contest contract ──
 //
-// The judge calls this once per segment. Input is a clean replay
+// The judge calls runSegment() once per segment. Input is a clean replay
 // descriptor with up to six fields (NO recorded answers):
 //
 //   { seed: number,           // PRNG seed
@@ -769,14 +778,57 @@ export function segmentIterationLimit(movesLength) {
 // the fail-closed boundary error that ended the segment; the loop below
 // swallows it, so an observer has no other way to learn which unported path
 // the segment reached.
-export async function runSegment(
-    input,
-    { traceThemeroomSelections = false, onBoundary = null } = {},
-) {
-    const { seed, datetime, nethackrc, recorderIsDst, storage } = input;
-    const moves = input.moves || '';
+//
+// Two entry points share playSegment() and differ only in what an error that
+// is neither a boundary refusal nor input exhaustion does:
+//
+// - runSegment() is the judge's. frozen/ps_test_runner.mjs discards a
+//   segment's output, and every later segment's, when the call throws, so a
+//   crash here ends the segment the way a refusal does: the returned game
+//   keeps every screen, cursor, animation frame and RNG call captured before
+//   the crash, records the error as game.segmentError, and passes it to
+//   options.onError.  It skips finishTerminatedSegment(): that capture mirrors
+//   nh_terminate() after moveloop() returns, and a crashed segment never
+//   reached that point, so its state says nothing about what C would show
+//   there.
+// - runSegmentStrict() rethrows the error. Every local test and tool uses it,
+//   so a crash fails them instead of passing as a short replay;
+//   scripts/run-segment-imports.test.mjs fails when a file imports the
+//   judge's entry point instead.
+export async function runSegment(input, options = {}) {
+    const nhGame = createSegmentGame(input, options);
+    try {
+        await playSegment(nhGame, input, options);
+    } catch (error) {
+        nhGame.segmentError = {
+            name: error instanceof Error ? error.name : typeof error,
+            message: String(error instanceof Error ? error.message : error),
+            stack: error instanceof Error ? error.stack ?? null : null,
+        };
+        options.onError?.(error);
+        segmentErrorReporter?.(nhGame.segmentError);
+    }
+    return nhGame;
+}
 
-    const nhGame = new NethackGame({
+export async function runSegmentStrict(input, options = {}) {
+    const nhGame = createSegmentGame(input, options);
+    await playSegment(nhGame, input, options);
+    return nhGame;
+}
+
+// Local scoring runs the unmodified judge in a child process, which keeps no
+// returned game, so scripts/segment-error-preload.mjs registers here to
+// receive each game.segmentError that runSegment() records. The judge never
+// registers one.
+let segmentErrorReporter = null;
+export function setSegmentErrorReporter(reporter) {
+    segmentErrorReporter = reporter;
+}
+
+function createSegmentGame(input, { traceThemeroomSelections = false } = {}) {
+    const { seed, datetime, nethackrc, recorderIsDst, storage } = input;
+    return new NethackGame({
         seed,
         datetime,
         nethackrc,
@@ -786,6 +838,10 @@ export async function runSegment(
             ? createThemeroomSelectionCollector()
             : null,
     });
+}
+
+async function playSegment(nhGame, input, { onBoundary = null } = {}) {
+    const moves = input.moves || '';
 
     const display = new GameDisplay(null);
     display.onEmptyQueue = () => { throw new Error('Input queue empty - test may be missing keystrokes'); };
@@ -807,16 +863,16 @@ export async function runSegment(
         // nhgetch() has already captured that boundary before discovering
         // that the replay recipe has no next key.
         if (String(error?.message || '').includes('Input queue empty'))
-            return nhGame;
+            return;
         if (isUnportedBoundary(error)) {
             onBoundary?.(error);
-            return nhGame;
+            return;
         }
         throw error;
     }
     if (!started) {
         await finishTerminatedSegment(game);
-        return nhGame;
+        return;
     }
 
     // Drive the game loop until input is exhausted. The judge looks
@@ -857,8 +913,6 @@ export async function runSegment(
     // each nhgetch call, but after gameover no more keys are read. This
     // explicit call after the loop mirrors nh_terminate's capture position.
     await finishTerminatedSegment(game);
-
-    return nhGame;
 }
 
 // C ref: end.c nh_terminate() calls the patched final input-boundary capture

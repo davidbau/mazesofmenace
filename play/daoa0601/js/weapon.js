@@ -7,7 +7,7 @@ import { definiteObjectAction, objectName, objectCombatName, objectNameIsPlural,
 import { artifactById, artifactEmitsLight, monsterCanTouchArtifact } from './artifacts.js';
 import { monsterHandName } from './body_parts.js';
 import { canSeeMonster, monsterVisible, newsym } from './display.js';
-import { plineWithContinuation } from './pline.js';
+import { plineWithContinuation, plineWithContinuation as pline } from './pline.js';
 import { applyFloorEffects } from './floor_effects.js';
 import { placeObject, stack_object } from './floor_object.js';
 import { game } from './gstate.js';
@@ -20,13 +20,15 @@ import { monsterName } from './do_name.js';
 import { monsterPossessive as perceivedPossessivePronoun } from './mondata.js';
 import { monsterSentenceSubject } from './ambient_sounds.js';
 import { AKLYS, AXE, BATTLE_AXE, BOULDER, BOW, BULLWHIP, CLUB, CORPSE, CREAM_PIE, CROSSBOW, DART, DWARVISH_MATTOCK, EGG, ELVEN_BOW, LOADSTONE, OBJECT_BIMANUAL, OBJECT_NAMES, OBJECT_SUBTYPE, ORCISH_BOW, PICK_AXE, SLING, YUMI, requireObjectData, } from './object_data.js';
-import { makePlural } from './object_grammar.js';
+import { makePlural, makeSingular } from './objnam.js';
+import { objectClassForType } from './o_init.js';
 import { touchPetrifies } from './stoning.js';
 import { heroIsBlind } from './senses.js';
 import { isBimanualObject } from './object_properties.js';
 import { rn2 } from './rng.js';
 import { cansee, couldsee } from './vision.js';
-import { isPolearm } from './object_properties.js';
+import { isPolearm, isWetTowel } from './object_properties.js';
+import { possessiveName } from './hacklib.js';
 import { monsterWeaponSwingVerb } from './mhitu.js';
 import { willWeld } from './wield.js';
 import { monsterHasStoneResistance } from './mondata.js';
@@ -39,10 +41,9 @@ import { A_STR, Upolyd, WT_IRON_BALL_INCR } from './const.js';
 import { heroSpecies } from './hero_species.js';
 import { GAUNTLETS_OF_POWER, OBJECT_LARGE_DAMAGE, OBJECT_SMALL_DAMAGE, OBJECT_WEIGHT, } from './object_data.js';
 import { MONSTER_SIZE, monsterHatesBlessings, monsterHatesLight, monsterHatesSilver, monsterIsShade, monsterIsThickSkinned, monsterIsWooden, monsterSpeciesHatesSilver, } from './monster_data.js';
-import { objectClassForType } from './object_knowledge.js';
 import { objectMaterial } from './o_init.js';
 import { d, rnd } from './rng.js';
-import { isPoolAt } from './terrain_properties.js';
+import { isPoolAt } from './dbridge.js';
 import { artifactToHitBonus } from './artifacts.js';
 import { P_SPEAR } from './const.js';
 import { requireInitializedHero } from './hero_types.js';
@@ -50,7 +51,6 @@ import { MONSTER_MOVE } from './monster_data.js';
 import { OBJECT_HIT_BONUS, TRIDENT } from './object_data.js';
 import { P_FLAIL } from './const.js';
 import { FLINT, GRAPPLING_HOOK, LUCKSTONE, ROCK, STATUE, TIN, TOUCHSTONE } from './object_data.js';
-import { makeSingular } from './object_grammar.js';
 import { SKILL_NAMES } from './skills.js';
 import { isAmmunition } from './object_properties.js';
 const M2_GIANT = 0x00002000;
@@ -655,5 +655,39 @@ export function weaponDescription(object) {
     if (!description)
         throw new Error(`No weapon description for object type ${object.otyp}`);
     return makeSingular(description);
+}
+// C weapon.c:wet_a_towel().
+export async function wetTowel(object, amount, { state = game, verbose = false, publish = pline } = {}) {
+    const wetness = amount <= 0 ? object.spe - amount : amount;
+    if (wetness > object.spe && verbose && publish) {
+        const adjective = wetness < 3 ? object.spe ? 'damper' : 'damp'
+            : object.spe ? 'wetter' : 'wet';
+        await reportTowelChange(object, `gets ${adjective}.`, state, publish);
+    }
+    if (wetness !== object.spe)
+        finishTowelChange(object, wetness, state);
+}
+// C weapon.c:dry_a_towel().
+export async function dryTowel(object, amount, { state = game, verbose = false, publish = pline } = {}) {
+    const wetness = amount < 0 ? object.spe + amount : amount;
+    if (wetness < object.spe && verbose && publish)
+        await reportTowelChange(object, `dries${wetness ? '' : ' out'}.`, state, publish);
+    if (wetness !== object.spe)
+        finishTowelChange(object, wetness, state);
+}
+async function reportTowelChange(object, change, state, publish) {
+    if (object.where === 'inventory') {
+        await publish(`${ownedObjectName(object, state, { includeQuantity: true })} ${change}`);
+    }
+    else if (object.where === 'minvent' && object.ocarry && canSeeMonster(object.ocarry)) {
+        const owner = possessiveName(monsterName(object.ocarry, { state, capitalized: true }));
+        await publish(`${owner} ${objectName(object, state)} ${change}`);
+    }
+}
+// C weapon.c:finish_towel_change().
+function finishTowelChange(object, wetness, state) {
+    object.spe = Math.max(0, Math.min(7, wetness));
+    if (object === state.uwep || object === state.u.uwep)
+        state._unweapon = !isWetTowel(object);
 }
 //# sourceMappingURL=weapon.js.map

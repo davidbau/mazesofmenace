@@ -5,13 +5,12 @@ import { mkobj, mksobj, deallocateObject } from './mkobj.js';
 import { monsterAtPosition } from './steed.js';
 import { APPLE, BANANA, CORPSE, EUCALYPTUS_LEAF, GOLD_PIECE, LEASH, OBJECT_NAMES, ORANGE, PEAR, SLIME_MOLD, STATUE, } from './object_data.js';
 import { stopObjectTimers } from './timeout.js';
-import { objectDescription } from './object_description.js';
-import { makePlural, withIndefiniteArticle } from './object_grammar.js';
-import { objectClassForType, observeObject } from './object_knowledge.js';
+import { objectDescription, makePlural, withIndefiniteArticle } from './objnam.js';
+import { objectClassForType, observeObject } from './o_init.js';
 import { distantObjectName, minimalObjectName } from './objnam.js';
 import { heroIsBlind, heroIsHallucinating } from './senses.js';
 import { costlySpot } from './shk.js';
-import { isLavaAt, isPoolAt } from './terrain_properties.js';
+import { isLavaAt, isPoolAt } from './dbridge.js';
 const STRANGE_OBJECT = 0;
 export async function objectAtMapDescription(x, y, glyph, state = game, style = 'farlook') {
     return await withMapObject(x, y, glyph, async (object, temporary) => {

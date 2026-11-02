@@ -1,6 +1,6 @@
 // C do.c:boulder_hits_pool(), for both free and pushed floor boulders.
 import { heroHasArtifactDefense, heroHasCarriedArtifactFlag } from './artifacts.js';
-import { buryFloorObjectsAt } from './buried_object.js';
+import { buryFloorObjectsAt } from './dig.js';
 import { DB_FLOOR, DB_UNDER, DRAWBRIDGE_UP, Is_waterlevel, ROOM, WATER } from './const.js';
 import { impossible } from './diagnostics.js';
 import { displayLiquidName, docrt, newsym } from './display.js';
@@ -17,13 +17,14 @@ import { BOULDER } from './object_data.js';
 import { deleteObject } from './shk.js';
 import { useUpFloorObject } from './floor_consumption.js';
 import { monsterName } from './do_name.js';
-import { verbForSubject } from './object_grammar.js';
+import { verbForSubject } from './objnam.js';
 import { objectCombatName } from './objnam.js';
 import { d, rn2 } from './rng.js';
 import { heroIsBlind, heroIsDeaf } from './senses.js';
 import { switchHeroTerrain } from './terrain_movement.js';
 import { waterbodyName } from './terrain_name.js';
-import { isLavaAt, isPoolAt, monsterInAir } from './terrain_properties.js';
+import { isLavaAt, isPoolAt } from './dbridge.js';
+import { monsterInAir } from './mon.js';
 import { cansee, vision_note_blocker_change } from './vision.js';
 export async function dropBoulderIntoLiquid(boulder, x, y, state = game, { publish = plineWithContinuation, random = rn2, pushing = false, } = {}) {
     requireLiveGame(state);

@@ -19,7 +19,7 @@ import { heroSpecies, heroPolyGender, heroPassesWalls } from './hero_species.js'
 import { monsterName } from './do_name.js';
 import { possessiveName, depth, distmin, dist2, pointsOnline } from './hacklib.js';
 import { monsterPossessive, monsterSubjectPronoun, monsterIsHelpless, monsterObjectPronoun } from './mondata.js';
-import { containedGold, hiddenGold } from './gold.js';
+import { hiddenGold } from './vault.js';
 import { canSeeMonster, canSenseMonster, flush_screen, canSpotMonster, newsym, map_invisible } from './display.js';
 import { currency } from './currency.js';
 import { simpleObjectName, objectTypeName, objectName, objectCombatName, definiteName, observeObjectForNaming, simpleObjectNameWithArticle } from './objnam.js';
@@ -35,8 +35,12 @@ import { insideRoom, inTown, roomForRoomno, roomsAt, updateHeroRoomMembership, r
 import { searchSpecial } from './mkroom.js';
 import { intemple, moveSpecial, specialMoverSeesHero } from './priest.js';
 import { recordDiscoveredRoom } from './dungeon.js';
-import { BAG_OF_TRICKS, BRASS_LANTERN, CAN_OF_GREASE, CORPSE, CRYSTAL_BALL, DRUM_OF_EARTHQUAKE, EXPENSIVE_CAMERA, HORN_OF_PLENTY, LARGE_BOX, MAGIC_FLUTE, MAGIC_LAMP, MAGIC_MARKER, OBJECT_CHARGED, OBJECT_COST, OBJECT_NAMES, OBJECT_INITIAL_KNOWN, DUNCE_CAP, OIL_LAMP, POT_OIL, TINNING_KIT, WORTHLESS_PIECE_OF_WHITE_GLASS, PICK_AXE, DWARVISH_MATTOCK, OBJECT_MAGIC, MIRROR, POT_WATER, WAX_CANDLE, TALLOW_CANDLE, OBJECT_WEIGHT, TIN, EGG, CANDELABRUM_OF_INVOCATION, BOULDER, ROCK, LAND_MINE, BEARTRAP, LEASH } from './object_data.js';
-import { learnObjectType, recordObjectPriceQuote, observeObject } from './object_knowledge.js';
+import { BAG_OF_TRICKS, BRASS_LANTERN, CAN_OF_GREASE, CORPSE, CRYSTAL_BALL, DRUM_OF_EARTHQUAKE, EXPENSIVE_CAMERA, HORN_OF_PLENTY, LARGE_BOX, MAGIC_FLUTE, MAGIC_LAMP, MAGIC_MARKER, OBJECT_CHARGED, OBJECT_COST, OBJECT_NAMES, OBJECT_INITIAL_KNOWN, DUNCE_CAP, OIL_LAMP, POT_OIL, TINNING_KIT, WORTHLESS_PIECE_OF_WHITE_GLASS, PICK_AXE, DWARVISH_MATTOCK, OBJECT_MAGIC, MIRROR, POT_WATER, WAX_CANDLE, TALLOW_CANDLE, OBJECT_WEIGHT, TIN, EGG, CANDELABRUM_OF_INVOCATION, BOULDER, ROCK, LAND_MINE, BEARTRAP, LEASH, GOLD_PIECE } from './object_data.js';
+import { learnObjectType, observeObject } from './o_init.js';
+import { paymentObjectDescription, objectDescription } from './objnam.js';
+import { dropObjectAtHero } from './hero_drop.js';
+import { mergable } from './invent.js';
+import { splitObjectStack } from './mkobj.js';
 import { ACH_SHOP, ACH_TOWN, recordAchievement } from './achievements.js';
 import { nextIdent, nextObjectId } from './ident.js';
 import { getObjectLocation } from './zap.js';
@@ -44,25 +48,21 @@ import { objectsInTimerGraph, stopObjectTimers } from './timeout.js';
 import { performMonsterTurn } from './monmove.js';
 import { heroIsInvisible } from './hero_invisibility.js';
 import { beginMonsterHeroAttack } from './mhitu.js';
-import { heroIsDisplaced } from './armor.js';
+import { heroIsDisplaced } from './do_wear.js';
 import { monsterHandName, heroArmName, monsterHeadName } from './body_parts.js';
-import { diggingTimeToHole } from './hero_digging.js';
+import { diggingTimeToHole } from './dig.js';
 import { heroHasConflict } from './hero_conflict.js';
 import { adjustHeroAlignment } from './alignment.js';
 import { dropHeroInventoryForBones } from './bones_death.js';
 import { recordGameLogEvent } from './gamelog.js';
-import { releaseAllMonsterLeashes, releaseObjectLeash } from './leash_apply.js';
+import { releaseAllMonsterLeashes, releaseObjectLeash, umDist } from './apply.js';
 import { makemonAt } from './makemon.js';
 import { SPBOOK_CLASS } from './mklev.js';
-import { paymentObjectDescription, objectDescription } from './object_description.js';
 import { findNearbyMonsterPosition } from './teleport_rules.js';
 import { cansee, vision_note_blocker_change } from './vision.js';
 import { showDisclosureOverlay, showMultiSelectWindow } from './windows.js';
-import { dropObjectAtHero } from './object_drop.js';
-import { mergable } from './object_merge.js';
-import { splitObjectStack } from './object_stack.js';
 import { addInventoryItem } from './u_init.js';
-import { intrinsicPossible } from './corpse_intrinsics.js';
+import { intrinsicPossible } from './eat.js';
 import { countContents } from './invent.js';
 import { objectWeight } from './weight.js';
 import { artifactById } from './artifacts.js';
@@ -87,7 +87,7 @@ import { moveMonsterNextToHero } from './teleport.js';
 import { deleteTrap, trapName } from './trap.js';
 import { chooseStairs } from './wizard.js';
 import { isPick } from './object_properties.js';
-import { maybeResetPick } from './lock_context.js';
+import { maybeResetPick } from './lock.js';
 import { bookDisappears } from './spellbook_study.js';
 const COIN_CLASS = 12;
 const GEM_CLASS = 13;
@@ -1156,6 +1156,8 @@ export async function addShopObjectToBill(object, state = game, { ininv = true, 
     }
     return transaction;
 }
+// C invent.c:count_contents(container, TRUE, TRUE, FALSE, TRUE).
+// Count unpaid stack quantities, including contents of nested containers.
 function countUnpaidContents(container) {
     let count = 0;
     for (const content of container.contents || []) {
@@ -1524,9 +1526,6 @@ function objectsAt(state, x, y) {
 // C hack.h distu()/mdistu(): squared euclidean distance.
 function distu(state, x, y) {
     return dist2(x, y, state.u.ux, state.u.uy);
-}
-function umDist(state, x, y, n) {
-    return Math.abs(state.u.ux - x) > n || Math.abs(state.u.uy - y) > n;
 }
 // C include/you.h m_next2u(): squared distance within 2, the 8 neighbors.
 function mNext2u(monster, state) {
@@ -3039,6 +3038,7 @@ export async function chatWithShopkeeper(monster, state = game) {
     }
     await plineWithContinuation(message);
 }
+// C shk.c:block_door(). A shopkeeper blocks a diagonal shop exit.
 export function shopkeeperBlockingDoor(x, y, state = game) {
     if (state.level?.at(x, y)?.typ !== DOOR)
         return null;
@@ -3050,6 +3050,7 @@ export function shopkeeperBlockingDoor(x, y, state = game) {
         && shop.shd.x === x && shop.shd.y === y && !monsterIsHelpless(keeper)
         && (shop.debit || shop.billct || shop.robbed) ? keeper : null;
 }
+// C shk.c:block_entry(). A shopkeeper blocks a diagonal shop entry.
 export function shopkeeperBlockingEntry(x, y, state = game) {
     const door = state.level?.at(state.u.ux, state.u.uy);
     if (door?.typ !== DOOR || door.doormask !== D_BROKEN)
@@ -4760,5 +4761,54 @@ export async function warnAboutRemovedPick(object, state = game) {
         }
     }
     state._pickWarningMove = state.moves;
+}
+// C shk.c:record_price_quote() stores prices without discovering the type.
+export function recordObjectPriceQuote(otyp, price, kind = 'buy', state = game) {
+    if (!Number.isInteger(otyp) || otyp < 1 || !Number.isInteger(price) || price < 0)
+        return;
+    if (!state._objectPriceQuotes)
+        state._objectPriceQuotes = {};
+    const quote = state._objectPriceQuotes[otyp] || {};
+    const observed = quote[kind];
+    quote[kind] = observed
+        ? { min: Math.min(observed.min, price), max: Math.max(observed.max, price) }
+        : { min: price, max: price };
+    state._objectPriceQuotes[otyp] = quote;
+}
+// C shk.c:append_price_quote(). Discovery lists always include the quote;
+// ordinary object descriptions decide whether the option and knowledge allow it.
+export function priceQuoteSuffix(otyp, state = game) {
+    const quote = state._objectPriceQuotes?.[otyp];
+    if (!quote)
+        return '';
+    const parts = [];
+    for (const kind of ['buy', 'sell']) {
+        const range = quote[kind];
+        if (!range)
+            continue;
+        const { min, max } = range;
+        parts.push(min === max ? `${kind} ${min}` : `${kind} ${min}-${max}`);
+    }
+    return parts.length ? ` {${parts.join(' ')}}` : '';
+}
+// C shk.c:contained_gold(): recursively contained coins.
+function quantity(object) {
+    return object?.quan ?? object?.quantity ?? 0;
+}
+// `container` is the already-admitted enclosing object. Immediate coin
+// stacks are countable; deeper containers require their own cknown bit when
+// the caller does not have the source's preternatural even_if_unknown view.
+export function containedGold(container, evenIfUnknown = true) {
+    let total = 0;
+    for (const object of container?.contents || []) {
+        if (object.otyp === GOLD_PIECE || object.oclass === 12) {
+            total += quantity(object);
+        }
+        else if (Array.isArray(object.contents)
+            && (evenIfUnknown || object.cknown)) {
+            total += containedGold(object, evenIfUnknown);
+        }
+    }
+    return total;
 }
 //# sourceMappingURL=shk.js.map

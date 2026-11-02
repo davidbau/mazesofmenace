@@ -9,14 +9,14 @@
 // effect switch in spell_potion_effects.ts; the dothrow.c throwit() flight in
 // dothrow.ts; inaccessible_equipment()'s covering test in
 // equipment_selection.ts.
-import { armorSlotFor, heroHasFreeAction } from './armor.js';
+import { armorSlotFor, heroHasFreeAction } from './do_wear.js';
 import { adjustAttribute, attributeChangeMessage, currentAttribute, exerciseAttribute, restoreHeroBaseAttributes } from './attrib.js';
 import { heroEyeCount, heroEyeName, heroFaceName, heroFootName, heroHandName } from './body_parts.js';
 import { commandResultCancelled, commandResultFailed, setMulti } from './cmd.js';
 import { nomul } from './hack.js';
 import { A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, BOLT_LIM, COLNO, EXPL_FIERY, FOUNTAIN, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_INACCESS, GETOBJ_EXCLUDE_NONINVENT, GETOBJ_SUGGEST, G_GONE, Is_airlevel, Is_waterlevel, MM_NOMSG, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, M_SEEN_SLEEP, PLNMSG_OBJ_GLOWS, POLY_CONTROLLED, POLY_LOW_CTRL, POLY_NOFLAGS, ROWNO, SINK, STRAT_WAITFORU, TIMEOUT, Upolyd, WEAK } from './const.js';
 import { impossible } from './diagnostics.js';
-import { fingersOrGloves, washHands } from './dip_water.js';
+import { fingersOrGloves, washHands } from './fountain.js';
 import { canSeeMonster, canSpotMonster, displayColorName, displayLiquidName, map_invisible, newsym, randomDisplayMonsterName, see_monsters, shieldeff, show_glyph_cell, unmap_invisible } from './display.js';
 import { monsterName } from './do_name.js';
 import { tameMonster } from './dog.js';
@@ -24,7 +24,7 @@ import { canHeroRiseUp, levelAtDepth } from './dungeon.js';
 import { reportHeroEncumbrance } from './encumbrance.js';
 import { gainExperienceLevel, randomExperience } from './exper.js';
 import { explode } from './explosion.js';
-import { coveringEquipment, reportCoveredEquipment } from './equipment_selection.js';
+import { coveringEquipment, reportCoveredEquipment } from './do_wear.js';
 import { fireDamageObject } from './fire_damage.js';
 import { explodeLitOilPotion } from './fire_explosion.js';
 import { heroCanReachFloor } from './floor_reach.js';
@@ -51,7 +51,7 @@ import { heroFormSticks } from './hero_species.js';
 import { formatFeltMessage } from './hero_speech.js';
 import { speedUpHero } from './hero_speed.js';
 import { heroIsStrangled } from './hero_strangulation.js';
-import { updateHeroHunger } from './hunger.js';
+import { updateHeroHunger, fixHeroPetrification } from './eat.js';
 import { peekCommandResponse } from './input.js';
 import { doEnlightenmentEffect, showEnlightenment } from './insight.js';
 import { consumeInventoryItem, inventoryItemDescription } from './invent.js';
@@ -70,14 +70,13 @@ import { finishMonsterKilled, removeMonsterFromGame, removeWishGrantingMonster, 
 import { monsterHasAcidResistance, monsterHasPoisonResistance, monstersForgetHeroResistance, monstersObserveHeroResistance } from './mondata.js';
 import { AD_ACID, AD_DISE, AD_PEST } from './monster_attack_types.js';
 import { MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_LEVEL, MONSTER_MAGIC_RESISTANCE, MONSTER_NAME, MONSTER_RESISTS, MONSTER_SOUND, MONSTER_SYMBOL, monsterHatesBlessings, monsterIsHuman, monsterIsPlayerMonster } from './monster_data.js';
-import { tryCallObjectType } from './object_call.js';
+import { tryCallObjectType } from './do.js';
+import { objectDescription, makePlural, verbForSubject, withIndefiniteArticle } from './objnam.js';
+import { hitFloorWithObject } from './dothrow.js';
+import { learnObjectType, observeObject, recordObjectEncounter, recordObjectKnowledge } from './o_init.js';
+import { objectQuantity, splitObjectStack } from './mkobj.js';
 import { ALCHEMY_SMOCK, CORPSE, LENSES, MAGIC_LAMP, OBJECT_DESCRIPTIONS, OBJECT_MAGIC, OBJECT_NAMES, OIL_LAMP, POT_ACID, POT_BLINDNESS, POT_BOOZE, POT_CONFUSION, POT_ENLIGHTENMENT, POT_EXTRA_HEALING, POT_FRUIT_JUICE, POT_FULL_HEALING, POT_GAIN_ABILITY, POT_GAIN_ENERGY, POT_GAIN_LEVEL, POT_HALLUCINATION, POT_HEALING, POT_INVISIBILITY, POT_LEVITATION, POT_MONSTER_DETECTION, POT_OBJECT_DETECTION, POT_OIL, POT_PARALYSIS, POT_POLYMORPH, POT_RESTORE_ABILITY, POT_SEE_INVISIBLE, POT_SICKNESS, POT_SLEEPING, POT_SPEED, POT_WATER, SPE_DETECT_MONSTERS, SPE_DETECT_TREASURE, SPE_HASTE_SELF, SPE_INVISIBILITY, SPE_LEVITATION, SPE_RESTORE_ABILITY, TOWEL, UNICORN_HORN } from './object_data.js';
-import { objectDescription } from './object_description.js';
-import { hitFloorWithObject } from './object_drop.js';
-import { makePlural, verbForSubject, withIndefiniteArticle } from './object_grammar.js';
-import { learnObjectType, observeObject, recordObjectEncounter, recordObjectKnowledge } from './object_knowledge.js';
 import { isLauncherAmmunition, isPermanentlyPoisonedObject, isPoisonableObject, isWeaponTool } from './object_properties.js';
-import { objectQuantity, splitObjectStack } from './object_stack.js';
 import { definiteName, definiteObjectAction, objectAction, objectCombatName, objectName, objectNameIsPlural, objectQuestion, observeObjectForNaming, ownedObjectAction, ownedObjectName, simpleObjectName } from './objnam.js';
 import { plineWithContinuation, plineWithContinuation as pline } from './pline.js';
 import { poisonAttributeMessage } from './poison.js';
@@ -88,12 +87,12 @@ import { d, rn1, rn2, rnd, rnl } from './rng.js';
 import { blindfolded, blindnessBlocked, heroDetectsMonsters, heroIsBlind, heroIsBlinded, heroIsDeaf, heroIsHallucinating } from './senses.js';
 import { chargeAlteredUnpaidObject, chargeUnpaidObjectAsDebt, chargeUnpaidUsage, objectOwnershipPrefix, objectTypeKnown, updateUnpaidObjectPrice, deleteObject } from './shk.js';
 import { makeBlinded } from './sight_change.js';
-import { dipSink } from './sink_dipping.js';
+import { dipSink } from './fountain.js';
 import { burnAwayHeroSlime, heroIsFlaming, heroIsSliming } from './slime.js';
 import { monsterAtPosition, monsterSaddle } from './steed.js';
-import { fixHeroPetrification, heroIsPetrifying } from './stoning.js';
+import { heroIsPetrifying } from './stoning.js';
 import { ceilingName, surfaceName, waterbodyName } from './terrain_name.js';
-import { isPoolAt } from './terrain_properties.js';
+import { isPoolAt } from './dbridge.js';
 import { applyLowStaminaThrow, applyThrowSlip } from './throw_state.js';
 import { offerThrownFood } from './thrown_food.js';
 import { detachThrownUnit, finishHeroThrownObjectLanding, flyHeroThrownObject, heroThrowTrajectory, prepareHeroThrownTarget } from './thrown_object.js';
@@ -2376,5 +2375,14 @@ export async function finishStrangeFeeling(source, { state = game, } = {}) {
     if (source)
         await consumeInventoryItem(source, state);
     return { known: false, consumed: !!source, heroDied: !!state.program_state.gameover };
+}
+// C potion.c:make_glib().
+export function setSlipperyHands(turns, state = game) {
+    // Native make_glib() redraws when the old and requested states agree.
+    // Timeout expiry calls it after clearing the old timer.
+    if (!!state.u.glib === (turns > 0))
+        state.context.botl = true;
+    state.u.glibTurns = Math.max(0, Math.min(TIMEOUT, turns));
+    state.u.glib = state.u.glibTurns > 0;
 }
 //# sourceMappingURL=potion.js.map

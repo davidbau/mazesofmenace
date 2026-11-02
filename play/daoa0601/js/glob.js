@@ -4,21 +4,23 @@ import { reportHeroEncumbrance } from './encumbrance.js';
 import { newsym } from './display.js';
 import { plineWithContinuation } from './pline.js';
 import { isok, OBJECT_TIMER_KIND } from './const.js';
-import { isIceAt } from './terrain_properties.js';
+import { isIceAt } from './dbridge.js';
 import { unlinkObject, deallocateObject } from './mkobj.js';
 import { game, requireLiveGame } from './gstate.js';
 import { formatHeardMessage, formatSeenMessage } from './hero_speech.js';
 import { maybeUnhideAt } from './mon.js';
 import { reconcileObjectDeletionBill } from './shk.js';
 import { GLOB_OF_BLACK_PUDDING, GLOB_OF_GRAY_OOZE, } from './object_data.js';
-import { makePlural } from './object_grammar.js';
-import { absorbGlob, mergable } from './object_merge.js';
+import { makePlural } from './objnam.js';
+import { absorbGlob } from './mkobj.js';
+import { mergable } from './invent.js';
 import { objectsInTimerGraph, scheduleObjectTimer, stopObjectTimer } from './timeout.js';
 import { rn2 } from './rng.js';
 import { cansee } from './vision.js';
 import { heroIsBlind, heroIsHallucinating } from './senses.js';
 import { nearCapacity, objectWeight, } from './weight.js';
 import { ownedObjectName, objectTypeName } from './objnam.js';
+import { activelyEatingGlob } from './eat.js';
 function isGlobType(otyp) {
     return otyp >= GLOB_OF_GRAY_OOZE && otyp <= GLOB_OF_BLACK_PUDDING;
 }
@@ -209,10 +211,6 @@ async function deleteGlob(glob, state) {
     if (reconcileObjectDeletionBill(glob, null, state) === 'retained')
         return;
     deallocateObject(glob, state);
-}
-function activelyEatingGlob(glob, state) {
-    return state._occupation?.key === 'eat-food'
-        && state.context.victual?.piece === glob;
 }
 // shrink_glob() asks xname to include partly eaten food before reducing its mass.
 function shrinkingGlobName(glob, state) {

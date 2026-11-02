@@ -9,16 +9,16 @@ import { removeWornHeroItem } from './hero_equipment.js';
 import { heroIsStrangled } from './hero_strangulation.js';
 import { consumeInventoryItem } from './invent.js';
 import { chooseInventoryObject } from './inventory_prompt.js';
-import { tryCallObjectType } from './object_call.js';
-import { learnObjectType } from './object_knowledge.js';
-import { objectQuantity, splitObjectStack } from './object_stack.js';
+import { tryCallObjectType } from './do.js';
+import { learnObjectType } from './o_init.js';
+import { objectQuantity, splitObjectStack } from './mkobj.js';
 import { OBJECT_INITIAL_KNOWN } from './object_data.js';
 import { applyPotionEffect } from './potion.js';
 import { releasePotionOccupant } from './potion.js';
 import { promptYesNo } from './query.js';
 import { heroIsHallucinating } from './senses.js';
 import { drinkFountain } from './fountain.js';
-import { drinkSink } from './sink_drinking.js';
+import { drinkSink } from './fountain.js';
 // C potion.c:drink_ok().
 // C potion.c:dodrink().
 export async function quaff({ state = game } = {}) {

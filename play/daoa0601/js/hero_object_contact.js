@@ -2,7 +2,7 @@ import { changeHeroLuck } from './attrib.js';
 // C uhitm.c:hmon_hitmon_potion() and hmon_hitmon_misc_obj(). This phase
 // resolves the object's own effects; hmon owns bonuses and remaining damage.
 import { applyMonsterBlindness, heroBlindingObjectHitMessage, monsterCanBeBlindedByObject, } from './blinding_attack.js';
-import { releaseCameraDemon } from './camera.js';
+import { releaseCameraDemon } from './dothrow.js';
 import { plineWithContinuation } from './pline.js';
 import { game, requirePlayingGame } from './gstate.js';
 import { dist2 } from './hacklib.js';
@@ -19,9 +19,9 @@ import { wakeMonstersNearWithMessages } from './mon.js';
 import { objectBreaksOnImpact } from './dothrow.js';
 import { ACID_VENOM, BLINDING_VENOM, BOULDER, CLOVE_OF_GARLIC, CORPSE, CREAM_PIE, EGG, EXPENSIVE_CAMERA, HEAVY_IRON_BALL, IRON_CHAIN, MIRROR, TOWEL, } from './object_data.js';
 import { unlinkObject } from './mkobj.js';
-import { observeObject } from './object_knowledge.js';
+import { observeObject } from './o_init.js';
+import { objectQuantity, splitObjectStack } from './mkobj.js';
 import { objectMaterial } from './o_init.js';
-import { objectQuantity, splitObjectStack } from './object_stack.js';
 import { corpseName, objectName, pluralizeObjectNoun } from './objnam.js';
 import { hitMonsterWithSupportedPotion } from './potion.js';
 import { d, rnd, rn2 } from './rng.js';

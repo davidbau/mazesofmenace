@@ -3,11 +3,12 @@
 // water_damage(), and erode_obj().
 import { formatSeenMessage } from './hero_speech.js';
 import { ANTI_MAGIC, ARROW_TRAP, BEAR_TRAP, DART_TRAP, FIRE_TRAP, HOLE, LANDMINE, LEVEL_TELEP, MAGIC_PORTAL, MAGIC_TRAP, MMOVE_DIED, MMOVE_MOVED, MMOVE_NOTHING, PIT, POLY_TRAP, ROCKTRAP, ROLLING_BOULDER_TRAP, RUST_TRAP, SLP_GAS_TRAP, SQKY_BOARD, SPIKED_PIT, STATUE_TRAP, TELEP_TRAP, TRAPDOOR, VIBRATING_SQUARE, WEB, Is_waterlevel, W_ARM, W_ARMC, W_ARMF, W_ARMG, W_ARMH, W_ARMS, W_ARMU, W_SWAPWEP, W_WEP, is_pit, isok, TRAPNUM, TRAP_EXPLANATIONS, Upolyd, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB } from './const.js';
-import { armorSimpleName, heroHasWaterWalking } from './armor.js';
+import { armorSimpleName, heroHasWaterWalking } from './do_wear.js';
 import { fireDamageObject } from './fire_damage.js';
 import { delobj } from './invent.js';
-import { objectDescription as fullObjectDescription } from './object_description.js';
-import { objectNameIsPlural, definiteName, objectCombatName, objectName, observeObjectForNaming, ownedObjectAction, ownedObjectName, simpleObjectName, corpseName } from './objnam.js';
+import { objectDescription as fullObjectDescription, verbForSubject } from './objnam.js';
+import { learnObjectType, observeObject } from './o_init.js';
+import { objectNameIsPlural, definiteName, objectCombatName, objectName, observeObjectForNaming, ownedObjectAction, ownedObjectName, simpleObjectName, corpseName, withIndefiniteArticle } from './objnam.js';
 import { cansee, couldsee, vision_recalc } from './vision.js';
 import { endObjectBurn } from './light.js';
 import { game, requireGameLevel, requireInitializedGame, requirePlayingGame, requireLiveGame } from './gstate.js';
@@ -16,12 +17,13 @@ import { useUpInventoryStack } from './hero_inventory.js';
 import { MONSTER_FLAGS1, MONSTER_NAME, MONSTER_SIZE, MONSTER_SYMBOL, monsterIsHumanoid, MONSTER_ATTACKS } from './monster_data.js';
 import { heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
 import { heroIsFlying } from './polyself.js';
-import { isPoolAt, levelHasCeiling, monsterFliesOrFloats, monsterInAir } from './terrain_properties.js';
+import { isPoolAt } from './dbridge.js';
+import { levelHasCeiling } from './dungeon.js';
+import { monsterFliesOrFloats, monsterInAir } from './mon.js';
 import { objectOwnershipPrefix, chargeAlteredUnpaidObject, sellHeroDroppedObject } from './shk.js';
 import { monsterWieldedWeapon, unwieldMonsterWeapon } from './weapon.js';
 import { BAG_OF_TRICKS, BOULDER, BRASS_LANTERN, CAN_OF_GREASE, CANDELABRUM_OF_INVOCATION, CHEST, ICE_BOX, FIRE_HORN, LARGE_BOX, OBJECT_MATERIAL_NAMES, OBJECT_NAMES, OBJECT_PROPERTY, OILSKIN_SACK, MAGIC_LAMP, OIL_LAMP, POT_ACID, POT_OIL, POT_WATER, RED_DRAGON_SCALE_MAIL, RED_DRAGON_SCALES, RIN_FIRE_RESISTANCE, SCR_BLANK_PAPER, SCR_FIRE, SPE_BLANK_PAPER, SPE_BOOK_OF_THE_DEAD, SPE_FIREBALL, SPE_NOVEL, TALLOW_CANDLE, TOWEL, WAN_FIRE, WAX_CANDLE, DWARVISH_CLOAK, OBJECT_SUBTYPE, CORPSE, DART } from './object_data.js';
 import { isBimanualObject } from './object_properties.js';
-import { learnObjectType, observeObject } from './object_knowledge.js';
 import { displayColorName, displayLiquidName, canSeeMonster, canSpotMonster, map_trap, newsym } from './display.js';
 import { objectResistsDestruction, getObjectLocation, blankNovel } from './zap.js';
 import { objectMaterial } from './o_init.js';
@@ -30,8 +32,7 @@ import { stopAllObjectTimers } from './timeout.js';
 import { d, rnl, rn2, rnd, rn2Display } from './rng.js';
 import { DISCARDED_CALL_LOG, recordRandom } from './monster_action_types.js';
 import { plineWithContinuation } from './pline.js';
-import { dryTowel, wetTowel } from './towel.js';
-import { verbForSubject } from './object_grammar.js';
+import { dryTowel, wetTowel } from './weapon.js';
 import { angerMonster, finishEnvironmentalMonsterDeath, maybeUnhideAt, finishMonsterKilled, finishMonsterPetrification, monsterSubject, restoreShapechanger, turnGolemToStone, wakeMonster } from './mon.js';
 import { applyMonsterAntiMagicTrap, finishMonsterAntiMagicTrap, monsterHasMagicResistance } from './anti_magic_trap.js';
 import { beginMonsterBearTrap, finishMonsterBearTrap } from './bear_trap.js';
@@ -62,7 +63,7 @@ import { clearPitConnections } from './pit_connections.js';
 import { experienceRankIndex } from './exper.js';
 import { mksobj } from './mkobj.js';
 import { objectWeight } from './weight.js';
-import { buryObject } from './buried_object.js';
+import { buryObject } from './dig.js';
 import { placeObject, stack_object } from './floor_object.js';
 import { monsterAtPosition } from './steed.js';
 import { resetHeroTrap } from './terrain_movement.js';
@@ -2091,5 +2092,18 @@ function objectSubject(view, state, capitalized = true) {
         return `${possessiveName(owner)} ${view.name}`;
     }
     return `${capitalized ? 'The' : 'the'} ${view.name}`;
+}
+// C trap.c:trapnote(): the squeaky board's musical note, with its article
+// (an()).
+const SQUEAKY_BOARD_NOTES = [
+    'C note', 'D flat', 'D note', 'E flat',
+    'E note', 'F note', 'F sharp', 'G note',
+    'G sharp', 'A note', 'B flat', 'B note',
+];
+export function squeakyBoardNoteWithArticle(index) {
+    const note = SQUEAKY_BOARD_NOTES[index];
+    if (!note)
+        return '';
+    return withIndefiniteArticle(note);
 }
 //# sourceMappingURL=trap.js.map
