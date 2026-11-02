@@ -22,6 +22,7 @@ import { do_death_sequence } from "./end.js";
 import { MON_MIGRATING, TIMEOUT, JUMPING, FROMOUTSIDE, REGENERATION, SLEEPY, MAGICAL_BREATHING, ENERGY_REGENERATION, HALF_PHDAM, DEAF, VOMITING, STRANGLED, A_STR, SICK, SICK_NONVOMITABLE, CONFUSION, STUNNED, FAINTING, A_WIS, A_CON, A_DEX, MOD_ENCUMBER, EXT_ENCUMBER, MAXULEV, M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, VAULT, ANY_SHOP, ZOO, MORGUE, BARRACKS, NECK, HEAD, HAIR, ROOMOFFSET, HALLUC, HALLUC_RES, WM_MASK, D_NODOOR, D_CLOSED, D_LOCKED, Is_rogue_level, Is_oracle_level, Upolyd, Is_waterlevel, Is_airlevel } from "./const.js";
 import { is_pool } from "./look.js";
 import { can_reach_floor } from "./hold_another_object.js";
+import { u_wipe_engr } from "./engrave.js";
 /* nomul: C detect.c:2049/2058 calls it from dosearch0 when a hidden door or
  * passage is found (hack.c:4068).  allmain.js does not import fastforward.js
  * back through this edge at module-init time, and nomul is a hoisted function
@@ -895,13 +896,11 @@ export async function dosounds_rng() {
  * ACURR(A_DEX) = clamp(u.abon.a[DEX] + u.atemp.a[DEX] + u.acurr.a[DEX], 3, 25)
  * (attrib.c:1206 acurr()) — must go through the canonical acurr() helper,
  * not read u.acurr.a[] alone, or bonuses/temp deltas and the clamp are lost. */
-function u_wipe_engr_rng() {
+function allmain_u_wipe_engr() {
     const g = game;
     const dex = (g.u) ? (acurr(g.u, A_DEX) | 0) : 14;
     if (!rn2(40 + dex * 3)) {
-        const cnt = rnd(3);
-        if (can_reach_floor(true))
-            wipe_engr_at(g.u.ux | 0, g.u.uy | 0, cnt, false);
+        u_wipe_engr(rnd(3));
     }
 }
 export async function vomiting_dialogue_ff() {
@@ -1148,7 +1147,7 @@ async function fastforward_step_generic_turn_nodochug() {
     /* C ref: allmain.c:409 exerchk(). */
     await exerchk();
     /* C ref: allmain.c:413 u_wipe_engr condition — dynamic DEX lookup. */
-    u_wipe_engr_rng();
+    allmain_u_wipe_engr();
     /* C allmain.c:374-377: level activity also runs on generic turns. */
     if (Is_waterlevel(game.u.uz) || Is_airlevel(game.u.uz))
         await movebubbles();
@@ -1225,7 +1224,7 @@ async function fastforward_step_generic_turn() {
     age_spells();
     await exerchk();
     /* C ref: allmain.c:413 u_wipe_engr condition — dynamic DEX lookup. */
-    u_wipe_engr_rng();
+    allmain_u_wipe_engr();
     /* C allmain.c:374-377: wielding a tool can spend this whole turn. */
     if (Is_waterlevel(game.u.uz) || Is_airlevel(game.u.uz))
         await movebubbles();
@@ -1320,7 +1319,7 @@ export async function ff_head_phase_post() {
     /* C allmain.c:358-359 — `if (u.uhave.amulet) amulet();` (wizard.c:60). */
     if (game.u?.uhave?.amulet)
         await amulet();
-    u_wipe_engr_rng();
+    allmain_u_wipe_engr();
     /* C allmain.c:362-369 — invulnerability pauses Wizard harassment. */
     if (game.u.uevent.udemigod && !game.u.uinvulnerable) {
         if (game.u.udg_cnt) --game.u.udg_cnt;

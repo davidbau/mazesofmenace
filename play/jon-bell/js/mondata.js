@@ -1,12 +1,12 @@
 // mondata.js — C ref: mondata.c.
 import { acurr, arti_defn_adtyp } from './attrib.js';
 import { Breathless } from './cmd.js';
-import { ACID_RES, ANTIMAGIC, A_CHA, BLND_RES, COLD_RES, DISINT_RES, DRAIN_RES, FAINTED, FEMALE, FIRE_RES, MALE, M_SEEN_ACID, M_SEEN_COLD, M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_FIRE, M_SEEN_MAGR, M_SEEN_NOTHING, M_SEEN_POISON, M_SEEN_REFL, M_SEEN_SLEEP, NATTK, NEUTRAL, POISON_RES, REFLECTING, SHOCK_RES, SLEEP_RES, STONE_RES, STRANGLED, Upolyd, W_ACCESSORY, W_ARMC, W_ARMH, W_ARMOR, W_SWAPWEP, W_WEP } from './const.js';
+import { ACID_RES, ANTIMAGIC, A_CHA, BLND_RES, COLD_RES, DISINT_RES, DRAIN_RES, FAINTED, FEMALE, FIRE_RES, LOW_PM, MALE, M_SEEN_ACID, M_SEEN_COLD, M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_FIRE, M_SEEN_MAGR, M_SEEN_NOTHING, M_SEEN_POISON, M_SEEN_REFL, M_SEEN_SLEEP, NATTK, NEUTRAL, PRONOUN_HALLU, PRONOUN_NO_IT, W_AMUL, W_ARM, POISON_RES, REFLECTING, SHOCK_RES, SLEEP_RES, STONE_RES, STRANGLED, Upolyd, W_ACCESSORY, W_ARMC, W_ARMH, W_ARMOR, W_SWAPWEP, W_WEP } from './const.js';
 import { canspotmon, impossible_sync } from './display.js';
 import { dmgtype as dmgtype_real } from './dogmove.js';
 import { game } from './gstate.js';
 import { dist2 } from './hacklib.js';
-import { attacktype_fordmg, dmgtype_fromattack, hates_silver, monPmname, permonstTemplate, sliparm } from './makemon.js';
+import { attacktype_fordmg, dmgtype_fromattack, hates_silver, humanoid, is_demon, monPmname, permonstTemplate, sliparm } from './makemon.js';
 import { which_armor } from './worn.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import { AD_ACID, AD_COLD, AD_ELEC, AD_FIRE, AD_RUST, ARMOR_CLASS, AT_BITE, AT_BOOM, AT_BREA, AT_BUTT, AT_CLAW, AT_ENGL, AT_EXPL, AT_GAZE, AT_HUGS, AT_KICK, AT_MAGC, AT_NONE, AT_SPIT, AT_STNG, AT_TUCH, AT_WEAP, CREAM_PIE, M1_ANIMAL, M1_MINDLESS, NON_PM, PM_ALIGNED_CLERIC, PM_HIGH_CLERIC, PM_WATCHMAN, haseyes, is_undead, is_weptool, is_youmonst, mindless, xm_Blind, xm_Hallucination } from './mhitm.js';
@@ -16,11 +16,13 @@ import { is_fshk } from './shk.js';
 import { defends_when_carried } from './artifact.js';
 import { MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js';
 import { objdescr_is as objdescr_is_real } from './o_init.js';
-import { PM_AIR_ELEMENTAL, PM_BABY_GRAY_DRAGON, PM_CLAY_GOLEM, PM_DUST_VORTEX, PM_EARTH_ELEMENTAL, PM_ENERGY_VORTEX, PM_FIRE_ELEMENTAL, PM_FIRE_VORTEX, PM_FLAMING_SPHERE, PM_FOG_CLOUD, PM_GLASS_GOLEM, PM_GOLD_GOLEM, PM_ICE_VORTEX, PM_MARILITH, PM_SALAMANDER, PM_STEAM_VORTEX, PM_STONE_GOLEM, PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER, PM_WATER_ELEMENTAL, PM_WINGED_GARGOYLE } from './pm.generated.js';
+import { PM_AIR_ELEMENTAL, PM_BABY_GRAY_DRAGON, PM_CLAY_GOLEM, PM_DEATH, PM_DUST_VORTEX, PM_EARTH_ELEMENTAL, PM_ENERGY_VORTEX, PM_FIRE_ELEMENTAL, PM_FIRE_VORTEX, PM_FLAMING_SPHERE, PM_FOG_CLOUD, PM_GLASS_GOLEM, PM_GOLD_GOLEM, PM_ICE_VORTEX, PM_MARILITH, PM_SALAMANDER, PM_STEAM_VORTEX, PM_STONE_GOLEM, PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER, PM_WATER_ELEMENTAL, PM_WINGED_GARGOYLE } from './pm.generated.js';
 import { rn2, rnd } from './rng.js';
 import './trap.js';
+import { is_were } from './were.js';
 import { clear_path } from './vision.js';
 import { monstseesu as monstseesu_real } from './mcastu.js'; // relocate-fns
+import { PM_YELLOW_DRAGON } from './pm.generated.js';
 import { PM_HORSE, PM_PONY, PM_ROCK_MOLE, PM_WARHORSE, PM_WOODCHUCK } from './pm.generated.js'; // relocate-fns
 import { ALL_TRAPS, NO_TRAP } from './const.js'; // relocate-fns
 import { mon_knows_traps as mon_knows_traps_real } from './makemon.js'; // relocate-fns
@@ -323,18 +325,17 @@ export function same_race(pm1, pm2) {
     const let1 = pm1.mlet | 0;
     const let2 = pm2.mlet | 0;
 
-    /* C mondata.c:775 `if (pm1 == pm2)` compares two `struct permonst *`
-       into the mons[] table, i.e. it asks "same monster index?". JS has no
-       such table identity: js/makemon.js permonstTemplate() mints a FRESH
-       object per call (see makemon.js:3467 `mtmp.data = permonstTemplate(
-       mtmp.mnum)`), so `pm1 === pm2` is reference equality that never fires
-       and every pair falls through to the looser mlet/mflags arms below.
-       Ported as the index comparison the C pointer test actually means.
+    /* C mondata.c:775 `if (pm1 == pm2) return TRUE; exact match`.
+       In C this compares two `struct permonst *` into the mons[] table.
+       In JS, identical references match immediately; for distinct permonstTemplate()
+       objects, we compare pmidx to mirror C's mons[] pointer equality.
        Guarded on Number.isInteger rather than `|0`: a permonst-shaped object
        without pmidx cannot establish identity, and `undefined|0 === undefined|0`
        would claim every such pair is the same monster. Falling through to the
        mlet/mflags arms is what the (broken) `===` already did, so an
        unidentifiable pair keeps its old answer instead of a new wrong one. */
+    if (pm1 === pm2)
+        return true;
     const ndx1 = pm1.pmidx, ndx2 = pm2.pmidx;
     if (Number.isInteger(ndx1) && ndx1 === ndx2)
         return true; /* exact match */
@@ -529,17 +530,27 @@ function u_wield_art(art) {
  * artilist[0] is a dummy element, artilist[1] is Excalibur */
 const ART_EXCALIBUR = 1;
 
+/* monflag.h M1_* bits, defsym.h S_RODENT, and objects.h otyps (rows of
+ * js/oc_name_data.js) that this file's mondata.c ports name. */
+const M1_BREATHLESS = 0x00000400, M1_NOHEAD = 0x00008000, M1_HUMANOID = 0x00020000;
+const M2_NEUTER = 0x00040000, M2_PNAME = 0x00080000, G_UNIQ = 0x1000;
+const is_neuter = (ptr) => ((ptr?.mflags2 | 0) & M2_NEUTER) !== 0;
+const type_is_pname = (ptr) => ((ptr?.mflags2 | 0) & M2_PNAME) !== 0;
+const S_RODENT = 18;
+const GRAY_DRAGON_SCALE_MAIL = 101, GRAY_DRAGON_SCALES = 111, YELLOW_DRAGON_SCALES = 120;
+const AMULET_OF_MAGICAL_BREATHING = 209;
+
 /* C mondata.c:590-619: strangulation stops blood flow, not just breathing. */
 export function can_be_strangled(mon) {
     const flags = mon.data.mflags1 | 0;
-    if (flags & 0x00008000 /* M1_NOHEAD */) return false;
+    if (flags & M1_NOHEAD) return false; /* !has_head(mon->data) */
     const nobrainer = !!(flags & M1_MINDLESS);
     let nonbreathing;
     if (is_youmonst(mon)) {
         nonbreathing = Breathless();
     } else {
-        nonbreathing = !!(flags & 0x00000400 /* M1_BREATHLESS */)
-            || which_armor(mon, 0x00010000 /* W_AMUL */)?.otyp === 209 /* AMULET_OF_MAGICAL_BREATHING */;
+        nonbreathing = !!(flags & M1_BREATHLESS) /* breathless(mon->data) */
+            || which_armor(mon, W_AMUL)?.otyp === AMULET_OF_MAGICAL_BREATHING;
     }
     return !nobrainer || !nonbreathing;
 }
@@ -761,22 +772,20 @@ export function on_fire(mptr, mattk) {
     return what;
 }
 
-/* C ref: do_name.c pronoun_gender(struct monst *mtmp, unsigned pg_flags)
- * flags&1: suppress visibility check; flags&2: random if hallucinating.
+/* C ref: mondata.c:1191-1209 pronoun_gender(struct monst *mtmp, unsigned pg_flags)
+ * flags&PRONOUN_NO_IT: suppress visibility check; flags&PRONOUN_HALLU: random if hallucinating.
  * Macros (mondata.h): is_neuter=M2_NEUTER, humanoid=M1_HUMANOID, type_is_pname=M2_PNAME, G_UNIQ=0x1000. */
 export function pronoun_gender(mtmp, pg_flags) {
-    const override_vis = (pg_flags & 1) ? true : false;
-    const hallu_rand = (pg_flags & 2) ? true : false;
+    const override_vis = (pg_flags & PRONOUN_NO_IT) ? true : false;
+    const hallu_rand = (pg_flags & PRONOUN_HALLU) ? true : false;
     if (hallu_rand && xm_Hallucination())
         return rn2(4);
     if (!override_vis && !canspotmon(mtmp))
         return 2;
-    if (mtmp.data.mflags2 & 0x00040000) /* is_neuter (M2_NEUTER) */
+    if (is_neuter(mtmp.data))
         return 2;
-    const is_humanoid = (mtmp.data.mflags1 & 0x00020000); /* M1_HUMANOID */
-    const is_unique = (mtmp.data.geno & 0x1000);          /* G_UNIQ */
-    const is_pname = (mtmp.data.mflags2 & 0x00080000);    /* M2_PNAME */
-    return (is_humanoid || is_unique || is_pname) ? (mtmp.female | 0) : 2;
+    return (humanoid(mtmp.data) || (mtmp.data.geno & G_UNIQ)
+            || type_is_pname(mtmp.data)) ? (mtmp.female | 0) : 2;
 }
 
 /* C ref: monst.h:215 is_vampshifter(mon) — cham is one of the vampire-shifter forms.
@@ -818,31 +827,17 @@ export function mon_hates_blessings(mon) {
 }
 
 /* ---------------------------------------------------------------------------
- * raceptr — C ref: nethack-c/src/mondata.c:1358-1364
+ * raceptr — C ref: mondata.c:1359-1365
  * Returns correct pointer for non-polymorphed and polymorphed player.
  * It does not return a pointer to player role character.
  * No RNG, no state changes.
  * ---------------------------------------------------------------------------
  */
 export function raceptr(mtmp) {
-    /* C: if (mtmp == &gy.youmonst && !Upolyd).  Was `(mtmp.m_id | 0) === 0`,
-     * this file's own documented-stale is_you spelling (see can_blnd's header
-     * comment above) — correct only while game.youmonst is unpopulated, wrong
-     * once the hero polymorphs (game.youmonst.m_id becomes 1).  Unlike
-     * can_blnd, raceptr has ZERO live callers anywhere in js/ (grep-verified
-     * 2026-09; only two stale comments in js/do_wear.js and js/trap.js name
-     * it), so there is no fabricated-youmonst-placeholder caller this could
-     * silently invert behaviour for — safe to switch to the file's
-     * pointer-identity-correct is_youmonst(). */
-    const is_you = is_youmonst(mtmp);
-    const u = game.u;
-    if (is_you && !Upolyd(u)) {
-        /* C: return &mons[gu.urace.mnum] */
-        const urace_mnum = game.urace.mnum;
-        return permonstTemplate(urace_mnum);
+    if (is_youmonst(mtmp) && !Upolyd(game.u)) {
+        return permonstTemplate(game.urace.mnum);
     }
-    /* C: return mtmp->data */
-    return mtmp.data;
+    return mtmp?.data;
 }
 
 /* ---------------------------------------------------------------------------
@@ -1008,7 +1003,6 @@ export function breakarm(ptr) {
     const bigmonst = (fullPtr.msize | 0) >= MZ_LARGE;
 
     // C: humanoid(ptr) = (((ptr)->mflags1 & M1_HUMANOID) != 0L)
-    const M1_HUMANOID = 0x00020000;
     const humanoid = ((fullPtr.mflags1 | 0) & M1_HUMANOID) !== 0;
 
     const pmidx = fullPtr.pmidx | 0;
@@ -1277,12 +1271,10 @@ export function Resists_Elem(mon, propindx) {
 /* C mondata.c:200-211 resists_drli(mon). */
 export function resists_drli(mon) {
     const ptr = mon?.data || mon;
-    const M2_UNDEAD = 0x00000002, M2_DEMON = 0x00000100, M2_WERE = 0x00000004;
     const pmidx = (ptr?.pmidx ?? mon?.mndx ?? mon?.mnum ?? -1) | 0;
-    if ((ptr?.mflags2 | 0) & (M2_UNDEAD | M2_DEMON | M2_WERE)) return true;
-    if (pmidx === 311 || (mon === game.youmonst && ((game.u?.ulycn ?? -1) | 0) >= 0)
-        || mon?.cham === PM_VAMPIRE || mon?.cham === PM_VAMPIRE_LORD
-        || mon?.cham === PM_VLAD_THE_IMPALER)
+    if (is_undead(ptr) || is_demon(ptr) || is_were(ptr)) return true;
+    if ((is_youmonst(mon) && ((game.u?.ulycn ?? -1) | 0) >= LOW_PM)
+        || pmidx === PM_DEATH || (mon && is_vampshifter(mon)))
         return true;
     return defended(mon, AD_DRLI);
 }
@@ -1395,12 +1387,14 @@ export function defended(mon, adtyp) {
         return true;
 
     const mndx = (mon.data?.pmidx ?? mon.mnum ?? mon.mndx ?? -1) | 0;
-    if (mndx >= 143 && mndx <= 152)
-        o = { oclass: ARMOR_CLASS, otyp: 111 + (mndx - 143) };
+    if (mndx >= PM_GRAY_DRAGON && mndx <= PM_YELLOW_DRAGON)
+        o = { oclass: ARMOR_CLASS,
+              otyp: GRAY_DRAGON_SCALES + (mndx - PM_GRAY_DRAGON) };
     else
-        o = is_you ? (game?.u?.uarm ?? null)
-                   : which_armor(mon, 0x00000001 /* W_ARM */);
-    return !!(o && (o.otyp | 0) >= 101 && (o.otyp | 0) <= 120
+        o = is_you ? (game?.u?.uarm ?? null) : which_armor(mon, W_ARM);
+    /* objects.h Is_dragon_armor: GRAY_DRAGON_SCALE_MAIL..YELLOW_DRAGON_SCALES */
+    return !!(o && (o.otyp | 0) >= GRAY_DRAGON_SCALE_MAIL
+              && (o.otyp | 0) <= YELLOW_DRAGON_SCALES
               && defends(adtyp, o));
 }
 
@@ -1671,8 +1665,6 @@ const PM_MUMAK = 82;                     /* was 329 = salamander */
 
 const PM_ERINYS = 292;                   /* was 308 = Baalzebub */
 
-const LOW_PM = 0;
-
 const NUM_MGENDERS = 3;
 
 export function name_to_monplus(in_str, remainder_p, gender_name_var) {
@@ -1855,7 +1847,7 @@ export function name_to_monplus(in_str, remainder_p, gender_name_var) {
 /* C mondata.c:663-674 cantvomit(). */
 export function cantvomit(ptr) {
     const pmidx = ptr?.pmidx | 0;
-    if ((ptr?.mlet | 0) === 18 /* S_RODENT */
+    if ((ptr?.mlet | 0) === S_RODENT
         && pmidx !== PM_ROCK_MOLE && pmidx !== PM_WOODCHUCK)
         return true;
     return pmidx === PM_PONY || pmidx === PM_HORSE || pmidx === PM_WARHORSE;

@@ -1067,7 +1067,7 @@ export async function elemental_clog(mon) {
 }
 
 function ok_to_obliterate_tp(mon) {
-    /* C mon.c:3858-3867: preserve uniquely important or attached monsters. */
+    /* C mon.c:3863-3875: preserve uniquely important or attached monsters. */
     const pm = mon.data;
     const n = pm?.pmidx ?? pm?.mnum;
     return (n | 0) !== PM_WIZARD_OF_YENDOR

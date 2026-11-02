@@ -17,6 +17,7 @@ import { OBJECT_CLASS_NAMES, OBJECT_CLASS_SYMBOLS } from './display.js';
 import { objectClassForType, observeObject } from './o_init.js';
 import { withIndefiniteArticle, makePlural } from './objnam.js';
 import { objectMaterial } from './o_init.js';
+import { strangeFeelingMessage } from './potion.js';
 import { activateStatueTrapAt } from './statue_trap.js';
 import { rnl, rn2, rnd } from './rng.js';
 import { commandSafetyPrevention } from './do.js';
@@ -33,7 +34,7 @@ import { heroFootName, heroNoseName, heroToeName } from './body_parts.js';
 import { requireLiveGame } from './gstate.js';
 import { propertyIsActive } from './properties.js';
 import { terrainCoversObjectsAt } from './display.js';
-import { selectMapPosition, showGetposInstructions, showGetposTip } from './getpos.js';
+import { selectMapPosition, showGetposInstructions } from './getpos.js';
 import { C_ATR_INVERSE, terminalAttrFromCAttr } from './color_attr.js';
 import { expelHero } from './hero_expulsion.js';
 import { findDrawbridgeAt, openDrawbridge } from './dbridge.js';
@@ -43,6 +44,7 @@ import { getObjectClassBounds } from './object_data.js';
 import { getObjectLocation } from './zap.js';
 import { isQuantumBox } from './quantum_cat.js';
 import { triggerBoobyTrap } from './booby_trap.js';
+import { showGetposTip } from './hack.js';
 // C ref: detect.c premap_detect().  Sokoban's Lua `premapped` flag maps the
 // finalized background, boulders, and traps before deferred room filling.
 // C detect.c:skip_premap_detect().
@@ -753,7 +755,7 @@ export async function detectGold(source, { state = game } = {}) {
                 article: steed.mtame ? 'your' : 'the', suppressSaddle: true });
             message = `You feel interested in ${name}${name.endsWith('s') ? "'" : "'s"} financial situation.`;
         }
-        await strangeFeeling(message, state);
+        await strangeFeelingMessage(message, state);
         return effectResult(1, false, true);
     }
     if (!remote) {
@@ -821,7 +823,7 @@ export async function detectFood(source, { state = game } = {}) {
         }
         else if (source) {
             const starts = source.blessed && !state.u.uedibility;
-            await strangeFeeling(`Your ${heroNoseName(state)} twitches${starts ? ' then starts to tingle' : ''}.`, state, starts);
+            await strangeFeelingMessage(`Your ${heroNoseName(state)} twitches${starts ? ' then starts to tingle' : ''}.`, state, starts);
             if (starts)
                 state.u.uedibility = 1;
         }
@@ -861,7 +863,7 @@ export async function detectMonsters(source, { state = game, monsterClass = 0 } 
     const monsters = liveMonsters(state);
     if (!monsters.length) {
         if (source)
-            await strangeFeeling(heroIsHallucinating(state)
+            await strangeFeelingMessage(heroIsHallucinating(state)
                 ? 'You get the heebie jeebies.' : 'You feel threatened.', state);
         return effectResult(1, false, !!source);
     }
@@ -966,7 +968,7 @@ export async function detectObjects(source, { state = game, objectClass = 0 } = 
     if (!stale && !elsewhere) {
         if (!here) {
             if (source)
-                await strangeFeeling('You feel a lack of something.', state);
+                await strangeFeelingMessage('You feel a lack of something.', state);
             return effectResult(1, false, !!source);
         }
         await plineWithContinuation(`You sense ${what} nearby.`);
@@ -1026,14 +1028,6 @@ export async function detectObjects(source, { state = game, objectClass = 0 } = 
 }
 function effectResult(result, known, strangeFeeling = false) {
     return { result, known, strangeFeeling };
-}
-// C potion.c:strange_feeling(), message half, as detect.c's detectors call
-// it; the trycall/useup half stays with the callers' effectResult handling.
-// The owning full port is potion.ts:strangeFeeling().
-async function strangeFeeling(message, state, forceMessage = false) {
-    await plineWithContinuation(state.flags.beginner && !forceMessage
-        ? `You have a ${heroIsHallucinating(state) ? 'normal' : 'strange'} feeling for a moment, then it passes.`
-        : message);
 }
 async function grantEdibility(source, state) {
     if (!source?.blessed)

@@ -7,7 +7,7 @@ import { plineWithContinuation } from './pline.js';
 import { game, requirePlayingGame } from './gstate.js';
 import { dist2 } from './hacklib.js';
 import { resolveHeroEggHit } from './hero_egg_hit.js';
-import { heroSpecies } from './hero_species.js';
+import { heroSpecies } from './polyself.js';
 import { freeInventoryObject } from './hero_inventory.js';
 import { finishHeroMonsterKillOutcome } from './hero_monster_death.js';
 import { consumeInventoryItem } from './invent.js';
@@ -27,11 +27,11 @@ import { hitMonsterWithSupportedPotion } from './potion.js';
 import { d, rnd, rn2 } from './rng.js';
 import { carriedObjectOwner, deleteObject } from './shk.js';
 import { touchPetrifies } from './stoning.js';
-import { releaseWeaponSlots } from './wield.js';
+import { setPrimaryWeapon } from './wield.js';
 import { rollPhysicalWeaponDamage } from './weapon.js';
-import { objectWeight } from './weight.js';
 import { angerAttackedMonster, wakeAttackedMonster } from './mon.js';
 import { monsterHasAcidResistance, monsterHasStoneResistance } from './mondata.js';
+import { objectWeight } from './mkobj.js';
 const VEGGY = 3;
 const PAPER = 5;
 const POTION_CLASS = 8;
@@ -218,9 +218,11 @@ async function detachContactPotion(object, state) {
         if (!split)
             throw new Error('Potion contact could not separate one bottle');
         potion = split;
+        // C uhitm.c:hmon_hitmon_potion() unwields the last bottle through
+        // setuwep(0) before freeinv().
     }
     else
-        await releaseWeaponSlots(potion, state);
+        await setPrimaryWeapon(null, state);
     if (potion.where === 'inventory')
         await freeInventoryObject(potion, state);
     else

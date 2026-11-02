@@ -17,11 +17,12 @@ import { loseHeroExperience } from './exper.js';
 import { game, requireLiveGame, requirePlayingGame } from './gstate.js';
 import { burnAwayHeroSlime } from './hack.js';
 import { releaseHold } from './hero_expulsion.js';
-import { healHero } from './hero_healing.js';
+import { healHero } from './potion.js';
 import { zapHeroInvisible } from './hero_invisibility.js';
 import { putHeroToSleep } from './hero_sleep.js';
-import { heroHasRemovableSpeed, slowHero, speedUpHero } from './hero_speed.js';
-import { heroSpecies } from './hero_species.js';
+import { heroHasRemovableSpeed, slowHero } from './mhitu.js';
+import { speedUpHero } from './potion.js';
+import { heroSpecies } from './polyself.js';
 import { heroStatusLine } from './hero_status.js';
 import { hitObjectWithWand } from './immediate_zap.js';
 import { lightDamage, igniteItems } from './light.js';
@@ -291,6 +292,8 @@ export async function cancelHeroMagic(state = game) {
     else
         await returnHeroToHumanForm(state);
 }
+// C zap.c:boxlock_invent(): (un)lock every carried box with the zapped
+// wand's magic, then refresh the inventory display.
 async function affectCarriedBoxes(source, state) {
     for (const object of [...state.inventory]) {
         if (object.otyp === CHEST || object.otyp === LARGE_BOX)

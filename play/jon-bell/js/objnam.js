@@ -6,7 +6,7 @@ import { paniclog } from './files.js';
 import { panic } from './dog.js';
 import { impossible as naming_impossible } from './pline.js';
 import { apron_text, tshirt_text, candy_wrapper_text } from './read.js';
-import { COST_CONTENTS, BURN_OBJECT, ZOMBIFY_MON, TIMER_OBJECT, otrapped_of, GLIB as GLIB_PROP_ON } from './const.js';
+import { COST_CONTENTS, BURN_OBJECT, ZOMBIFY_MON, TIMER_OBJECT, otrapped_of, GLIB as GLIB_PROP_ON, BUFSZ, RANDOM_TIN } from './const.js';
 // @ts-nocheck
 // objnam.js — readobjnam and helpers for wish parsing.
 // C ref: nethack-c-v5/upstream/src/objnam.c
@@ -132,9 +132,13 @@ import { convert_arg as quest_convert_arg, convert_line as quest_convert_line, q
  * disclosed incompleteness as the other seven copies in js/). */
 function impossible(_msg, ..._args) { }
 
+export const PREFIX = 80; /* C objnam.c:9 #define PREFIX 80 */
+const TRUE = true;
+const FALSE = false;
+
 // C objnam.c:123-135: PREFIX bounds the reserved space before an object name.
 function strprepend(s, pref) {
-    if (pref.length > 80) {
+    if (pref.length > PREFIX) {
         impossible('PREFIX too short (for %d).', pref.length);
         return s;
     }
@@ -267,6 +271,8 @@ const EGG        = 266;
 /* objects.h:1528/1571 MARKER(FIRST_REAL_GEM, DILITHIUM_CRYSTAL) /
  * MARKER(LAST_REAL_GEM, JADE) — the range postparse3 scans by real name. */
 const LAST_REAL_GEM = 460;
+const FIRST_GLASS_GEM = 461;
+const NUM_GLASS_GEMS = 9;
 /* monflag.h:194/201 — the two geno/mvflags bits readobjnam's corpsenm block
  * tests.  js/mklev.js already carries G_NOCORPSE = 0x0010 for the same purpose. */
 const G_UNIQ_OBJNAM = 0x1000;
@@ -777,7 +783,7 @@ export function obj_typename(otyp) {
     let nn = !!(game._oc_name_known && game._oc_name_known[otyp]);
     /* C objnam.c:170 xcalled(buf, siz, pfx, sfx) — `<buf><pfx> called <un>`.
      * pfx is "" at every obj_typename call site. */
-    const _called = (s, descr = dn) => (un ? xcalled(s, 256 - (descr ? descr.length + 3 : 0), '', un) : s);
+    const _called = (s, descr = dn) => (un ? xcalled(s, BUFSZ - (descr ? descr.length + 3 : 0), '', un) : s);
     /* C objnam.c:210-213 — the Samurai's Japanese renames, which this function
      * was missing even though xname_flags' own copy (:605-609, js/objnam.js
      * _xn_ctx) has them:
@@ -800,14 +806,16 @@ export function obj_typename(otyp) {
      *                           ? "generic" : "object?";
      * MAXOCLASSES == 18 (objclass.h:141, the tail of enum objclass_classes). */
     if (actualn == null)
-        actualn = (otyp > 0 && otyp < 18) ? 'generic' : 'object?';
+        actualn = (otyp > 0 && otyp < MAXOCLASSES) ? 'generic' : 'object?';
     const oclass = (MKOBJ_OC_CLASS[otyp] | 0);
     let buf;
     switch (oclass) {
-        case 8: buf = 'potion'; break;          /* POTION_CLASS */
-        case 9: buf = 'scroll'; break;          /* SCROLL_CLASS */
-        case 11: buf = 'wand'; break;           /* WAND_CLASS */
-        case 10:                                 /* SPBOOK_CLASS */
+        case COIN_CLASS:
+            return actualn;                      /* "gold piece" */
+        case POTION_CLASS: buf = 'potion'; break;
+        case SCROLL_CLASS: buf = 'scroll'; break;
+        case WAND_CLASS: buf = 'wand'; break;
+        case SPBOOK_CLASS:
             /* C objnam.c:233-240 — novels don't take "spellbook of". */
             if (otyp === SPE_NOVEL) {
                 buf = nn ? 'novel' : 'book';
@@ -816,15 +824,16 @@ export function obj_typename(otyp) {
                 buf = 'spellbook';
             }
             break;
-        case 4: buf = 'ring'; break;            /* RING_CLASS */
-        case 5:                                  /* AMULET_CLASS */
+        case RING_CLASS: buf = 'ring'; break;
+        case AMULET_CLASS:
             /* C objnam.c:244-253 — `if (nn) Strcpy(buf, actualn); else
              * Strcpy(buf, "amulet"); if (un) xcalled(...); if (dn) " (%s)"`. */
             buf = _called(nn ? actualn : 'amulet');
             return dn ? `${buf} (${dn})` : buf;
+        case ARMOR_CLASS:
         default:
             buf = '';
-            if (oclass === 3 /* ARMOR_CLASS */) {
+            if (oclass === ARMOR_CLASS) {
                 const cat = oc_armcat({ otyp }) | 0;
                 if (cat === 3 /* ARM_GLOVES */ || cat === 4 /* ARM_BOOTS */)
                     buf = 'pair of ';
@@ -839,7 +848,7 @@ export function obj_typename(otyp) {
                 if (dn != null) buf += ` (${dn})`;
             } else {
                 buf += (dn != null ? dn : actualn);
-                if (oclass === 13 /* GEM_CLASS */)
+                if (oclass === GEM_CLASS)
                     buf += (MKOBJ_OC_MATERIAL[otyp] | 0) === MINERAL
                         ? ' stone' : ' gem';    /* objnam.c:274-276 */
                 buf = _called(buf, null);
@@ -945,8 +954,18 @@ export function xname_ring(obj) {
 // scale branch and named "set of null", and real dragon scales (111-120) and
 // shields (150-158) were never classified.  (This made a pet dropping/lifting
 // an orcish helm produce a wrong-width topline, desyncing the --More-- page
+const GRAY_DRAGON_SCALE_MAIL = 101;
+const YELLOW_DRAGON_SCALE_MAIL = 110;
 const GRAY_DRAGON_SCALES = 111;
 const YELLOW_DRAGON_SCALES = 120;
+function Is_dragon_scales(obj) {
+    const otyp = obj?.otyp | 0;
+    return otyp >= GRAY_DRAGON_SCALES && otyp <= YELLOW_DRAGON_SCALES;
+}
+function Is_dragon_mail(obj) {
+    const otyp = obj?.otyp | 0;
+    return otyp >= GRAY_DRAGON_SCALE_MAIL && otyp <= YELLOW_DRAGON_SCALE_MAIL;
+}
 const ELVEN_SHIELD_OTYP = 153;
 const ORCISH_SHIELD_OTYP = 155;
 const SHIELD_OF_REFLECTION_OTYP = 158;
@@ -1244,10 +1263,10 @@ export function rnd_otyp_by_namedesc_js(name, oclass, xtra_prob) {
     /* check_of: true when name doesn't contain " of " (objnam.c:3469) */
     const check_of = (_strstri(name, " of ") < 0);
     /* glob range + BELL_OF_OPENING: excluded from the partial-name (" of ")
-     * branch (objnam.c:3470-3471,3500-3502).  In this build globs and the
-     * "Bell of Opening" tool have no entry in getObjName (they return null), so
-     * the `zn == null` continue already excludes them; we keep the numeric
-     * guards faithful to C for the cases where a name is present. */
+     * branch (objnam.c:3470-3473,3502-3504).  _objName(i) falls back to
+     * OC_NAME[i] when getObjName(i) returns null, so zn is non-null for
+     * globs and the Bell of Opening and these numeric guards are what
+     * exclude them from partial-name matching. */
     const BELL_OF_OPENING = _otypByName("bell of opening");
     const minglob = _otypByName("glob of gray ooze");
     const maxglob = _otypByName("glob of black pudding");
@@ -1399,7 +1418,7 @@ function readobjnam_preparse(bp) {
     let trapped = 0;               /* 0 unspecified, 1 trapped, 2 untrapped */
     let locked = 0, unlocked = 0, broken = 0;
     let open_ = 0, closed = 0, doorless = 0;
-    let looted = 0, isgreased = 0, zombify = 0;
+    let looted = 0, isgreased = 0, zombify = FALSE;
     let very = 0, eroded = 0, eroded2 = 0;
     let ishistoric = 0, isdiluted = 0;
     let contents = TIN_UNDEFINED;
@@ -1467,13 +1486,13 @@ function readobjnam_preparse(bp) {
         else if (lc.startsWith('rotproof ')) { erodeproof = 1; l = 9; }
         else if (lc.startsWith('tempered ')) { erodeproof = 1; l = 9; }
         else if (lc.startsWith('crackproof ')) { erodeproof = 1; l = 11; }
-        /* C objnam.c:4076-4082 */
+        /* C objnam.c:4014-4019 */
         else if (lc.startsWith('lit ')) { islit = 1; l = 4; }
         else if (lc.startsWith('burning ')) { islit = 1; l = 8; }
         else if (lc.startsWith('unlit ')) { islit = 0; l = 6; }
         else if (lc.startsWith('extinguished ')) { islit = 0; l = 13; }
         /* "wet" and "moist" are only applicable for towels — and they DRAW
-         * (objnam.c:4086-4090).  Getting these wrong costs an RNG leaf, not
+         * (objnam.c:4022-4027).  Getting these wrong costs an RNG leaf, not
          * only a flag, so they are ported with their draws in C's order:
          * "wet " is 3 + rn2(3), "moist " is rnd(2). */
         else if (lc.startsWith('moist ') || lc.startsWith('wet ')) {
@@ -1513,7 +1532,7 @@ function readobjnam_preparse(bp) {
         else if (lc.startsWith('looted ')) { looted = 1; l = 7; }
         else if (lc.startsWith('disturbed ')) { looted = 1; l = 10; }
         else if (lc.startsWith('greased ')) { isgreased = 1; l = 8; }
-        else if (lc.startsWith('zombifying ')) { zombify = 1; l = 11; }
+        else if (lc.startsWith('zombifying ')) { zombify = TRUE; l = 11; }
         else if (lc.startsWith('very ')) { very = 1; l = 5; }
         else if (lc.startsWith('thoroughly ')) { very = 2; l = 11; }
         else if (lc.startsWith('rusty ')) { eroded = 1 + very; very = 0; l = 6; }
@@ -1586,8 +1605,9 @@ function readobjnam_preparse(bp) {
 
         off += l;
         /* the progress guard described above — never reached on an input C
-         * terminates on, because C only leaves l == 0 after a substitution that
-         * shortened the buffer. */
+         * terminates on: l == 0 occurs after a prefix advance (digit or sign
+         * arms) or a female/male/neuter substitution, so the guard only fires
+         * when neither changed the buffer. */
         if (l === 0 && buf.slice(off) === p) break;
     }
     if (save_off >= 0) off = save_off;
@@ -1965,7 +1985,7 @@ const WISH_SPELLINGS = [
 function readobjnam_init(bp) {
     const d = {
         ...readobjnam_preparse(''),
-        otmp: null, typ: 0, oclass: 0, tvariety: -2, mntmp: NON_PM,
+        otmp: null, typ: 0, oclass: 0, tvariety: RANDOM_TIN, mntmp: NON_PM,
         actualn: null, dn: null, un: null, name: undefined,
         ftype: game.svc?.context?.current_fruit | 0, fruitbuf: '',
         buffer: bp, offset: 0, globbuf: null,
@@ -2237,7 +2257,7 @@ function readobjnam_postparse2(d) {
         else if (_strncmpi0(s, 'coloured ', 9)) s = s.slice(9);
         if (strcmpi(s, 'glass') === 0) {
             // objects.h: FIRST_GLASS_GEM through LAST_GLASS_GEM (9 colors).
-            d.typ = _otypByName('worthless piece of white glass') + rn2(9);
+            d.typ = FIRST_GLASS_GEM + rn2(NUM_GLASS_GEMS);
             if (MKOBJ_OC_CLASS[d.typ] === GEM_CLASS) return 2;
             d.typ = 0;
         } else d.bp = 'worthless piece of ' + s;
@@ -2819,17 +2839,11 @@ export function helm_simple_name(helmet) {
 // classify the armor type.
 export function suit_simple_name(suit) {
     if (suit) {
-        // Is_dragon_mail — <color> dragon scale mail, otyp 101-110
-        const otyp = suit.otyp | 0;
-        if (otyp >= 101 && otyp <= 110)
+        if (Is_dragon_mail(suit))
             return "dragon mail";
-        // Is_dragon_scales — <color> dragon scales, otyp 111-120.  The prior
-        // helm / orcish helm / dwarvish iron helm — see the same correction in
-        // js/do_wear.js xname_armor), so real dragon scales fell through to the
-        // suffix checks ("gray dragon scales" ends in neither " mail" nor
-        // " jacket") and were named "suit".
-        if (otyp >= 111 && otyp <= 120)
+        if (Is_dragon_scales(suit))
             return "dragon scales";
+        const otyp = suit.otyp | 0;
 
         // suitnm = OBJ_NAME(objects[suit->otyp]).  Must use _objName (full otyp
         // coverage), NOT getObjName: getObjName's extracted table omits the
@@ -5287,7 +5301,7 @@ function _xname_flags_body(obj, cxn_flags, side_effects) {
  * `cg.zeroobj` plus the six assignments below, so every other field reads as 0
  * — which is what the object literal here spells out.
  */
-function minimal_xname(obj) {
+export function minimal_xname(obj) {
     const otyp = obj.otyp | 0;
     const g = game;
     const override_ID = !!(g.iflags && g.iflags.override_ID);

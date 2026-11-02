@@ -14,7 +14,8 @@ import { pline, plineWithContinuation } from './pline.js';
 import { displayMessageWindow, flushPendingTopline } from './tty_topline.js';
 import { deleteEngravingAt } from './engrave.js';
 import { game, requireGameLevel, requireInitializedGame, requireLiveGame, requirePlayingGame, } from './gstate.js';
-import { countLevelFeatures, deleteFloorTrap, makemonNear, splitHeroMonsterForm, } from './mklev.js';
+import { countLevelFeatures, deleteFloorTrap, makemonNear } from './mklev.js';
+import { splitHeroMonsterForm } from './potion.js';
 import { mkobj, mkgold, mksobj, blessObjectState, curseObject, uncurseObjectState, } from './mkobj.js';
 import { placeCreatedObject } from './floor_object.js';
 import { definiteName, objectCombatName, rndClass } from './objnam.js';
@@ -29,7 +30,6 @@ import { grantMonsterWish, applySupportedPotionVapor, heroPotionVaporProfile, } 
 import { BOULDER, DILITHIUM_CRYSTAL, LONG_SWORD, LUCKSTONE, OBJECT_DESCRIPTIONS, POT_ACID, POT_FRUIT_JUICE, POT_GAIN_ENERGY, POT_GAIN_LEVEL, POT_LEVITATION, POT_MONSTER_DETECTION, POT_OBJECT_DETECTION, POT_OIL, POT_POLYMORPH, POT_WATER, requireObjectData, } from './object_data.js';
 import { makePlural } from './objnam.js';
 import { promptYesNo } from './query.js';
-import { inTown } from './room.js';
 import { rnd, rn1, rn2 } from './rng.js';
 import { heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
 import { finishImmediateMonsterTrap, triggerImmediateMonsterTrap, waterDamageChain, waterDamageObject, } from './trap.js';
@@ -40,12 +40,11 @@ import { formatFeltMessage, formatHeardMessage, formatSeenMessage, publishHeardM
 import { spendHeroNutrition, updateHeroHunger, vomitHero } from './eat.js';
 import { showEnlightenment } from './insight.js';
 import { fruitName } from './fruit.js';
-import { loseHeroHp } from './hero_damage.js';
 import { poisonHeroStrengthAndHp } from './poison.js';
 import { detectMonsters } from './detect.js';
 import { grantIntrinsicProperty, propertyIsActive, setPropertyTimeout, } from './properties.js';
 import { reportHeroEncumbrance } from './encumbrance.js';
-import { heroGoldAmount, setHeroGoldAmount } from './hero_gold.js';
+import { setHeroGoldAmount } from './hero_gold.js';
 import { someGold } from './steal.js';
 import { addExperience, checkExperienceLevel } from './exper.js';
 import { consumeInventoryItem } from './invent.js';
@@ -54,13 +53,15 @@ import { objectQuantity } from './mkobj.js';
 import { observeObject } from './o_init.js';
 import { polymorphSink } from './ring_sink.js';
 import { heroIsUnchanging, polymorphHero } from './polyself.js';
-import { drinkPotion } from './quaff.js';
+import { drinkPotion } from './potion.js';
 import { createPoisonGasCloud } from './regions.js';
 import { updateUnpaidObjectPrice } from './shk.js';
 import { deleteObject } from './shk.js';
-import { setTwoWeaponCombat, setWieldedArtifactProperties } from './wield.js';
+import { setTwoWeaponCombat } from './wield.js';
+import { setWieldedArtifactProperties } from './artifacts.js';
 import { dropCursedSecondaryWeapon } from './two_weapon.js';
 import { LL_ARTIFACT, recordGameLogEvent } from './gamelog.js';
+import { inTown, loseHeroHp, heroGoldAmount } from './hack.js';
 // ---------------------------------------------------------------------------
 // Fountain drinking, dipping, drying, warnings, and water effects (fountain)
 // ---------------------------------------------------------------------------

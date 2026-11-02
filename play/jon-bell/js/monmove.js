@@ -36,7 +36,7 @@ import { cansee, vision_recalc, recalc_block_point, clear_path, couldsee } from 
 import { curr_mon_load, max_mon_load, can_carry, could_reach_item, dmgtype,
          obj_extract_floor, distant_obj_name, Monnam_dm, finish_meating as finish_meating_real,
          /* meatmetal (mon.c:1482) + delobj_core (invent.c:1446) */ obj_resists } from './dogmove.js';
-import { mksobj_at, is_rustprone, extract_from_minvent, resists_ston, obj_extract_self } from './mklev.js';
+import { mksobj_at, is_rustprone, extract_from_minvent, resists_ston, obj_extract_self, is_organic } from './mklev.js';
 import { mpickobj } from './steal.js';
 import { sobj_at } from './invent.js';
 import { u_on_newpos, Is_special } from './dungeon.js';
@@ -176,7 +176,7 @@ async function gelcube_digests(mtmp) {
     if (mtmp.meating || !mtmp.minvent) return -1;
     let otmp = mtmp.minvent;
     for (; otmp; otmp = otmp.nobj) {
-        if (MKOBJ_OC_MATERIAL[otmp.otyp] <= 8 /* WOOD */ && !otmp.oartifact
+        if (is_organic(otmp) && !otmp.oartifact
             && !is_mines_prize(otmp) && !is_soko_prize(otmp)) break;
     }
     if (!otmp) return -1;
@@ -242,7 +242,6 @@ const PM_GREMLIN = 40;
 /* C ref: pm.generated.js — for m_postmove_effect */
 const PM_HEZROU = 296;
 const PM_STEAM_VORTEX = 110;
-const onscary_stub = onscary;
 /* C ref: mon.c:2462-2469 monnear — is the (x,y) square adjacent to monster?
  * dist2(mon->mx, mon->my, x, y) < 3 (diagonal OK except PM_GRID_BUG). */
 function monnear(mon, x, y) {
@@ -333,7 +332,7 @@ export async function distfleeck(mtmp) {
     if (!u || !mtmp)
         return { inrange: 0, nearby: 0, scared: 0 };
     const bravegremlin = (rn2(5) === 0) ? 1 : 0;
-    /* C monmove.c:542-543:
+    /* C monmove.c:540-541:
      * *inrange = (dist2(mtmp->mx, mtmp->my, mtmp->mux, mtmp->muy) <= BOLT_LIM*BOLT_LIM)
      * Uses mux/muy (perceived hero position), not actual u.ux/u.uy. */
     const mx = mtmp.mx | 0;
@@ -341,9 +340,9 @@ export async function distfleeck(mtmp) {
     const mux = (mtmp.mux !== undefined ? mtmp.mux : (u.ux | 0)) | 0;
     const muy = (mtmp.muy !== undefined ? mtmp.muy : (u.uy | 0)) | 0;
     const inrange = (dist2(mx, my, mux, muy) <= (BOLT_LIM * BOLT_LIM)) ? 1 : 0;
-    /* C monmove.c:544: *nearby = *inrange && monnear(mtmp, mtmp->mux, mtmp->muy) */
+    /* C monmove.c:542: *nearby = *inrange && monnear(mtmp, mtmp->mux, mtmp->muy) */
     const nearby = (inrange && monnear(mtmp, mux, muy)) ? 1 : 0;
-    /* C monmove.c:553-558: seescaryx/seescaryy — where monster thinks Elbereth is.
+    /* C monmove.c:551-557: seescaryx/seescaryy — where monster thinks Elbereth is.
      * If mcansee=0 or (Invis && !perceives): use mux/muy; else u.ux/u.uy. */
     let seescaryx, seescaryy;
     const Invis = _Invis_mv();
@@ -356,16 +355,16 @@ export async function distfleeck(mtmp) {
         seescaryx = u.ux | 0;
         seescaryy = u.uy | 0;
     }
-    /* C monmove.c:561: sawscary = onscary(seescaryx, seescaryy, mtmp) */
-    const sawscary = onscary_stub(seescaryx, seescaryy, mtmp) ? 1 : 0;
+    /* C monmove.c:559: sawscary = onscary(seescaryx, seescaryy, mtmp) */
+    const sawscary = onscary(seescaryx, seescaryy, mtmp) ? 1 : 0;
     let fleelight = 0;
     let sanctuary = 0;
     if (nearby) {
         if (!sawscary) {
-            /* C monmove.c:564: fleelight = flees_light(mtmp) && !bravegremlin */
+            /* C monmove.c:561: fleelight = flees_light(mtmp) && !bravegremlin */
             fleelight = (flees_light(mtmp) && !bravegremlin) ? 1 : 0;
             if (!fleelight) {
-                /* C monmove.c:565-567: sanctuary = !mpeaceful && in_your_sanctuary(mtmp,0,0) */
+                /* C monmove.c:562: sanctuary = !mpeaceful && in_your_sanctuary(mtmp,0,0) */
                 sanctuary = (!mtmp.mpeaceful && typeof game.u?.urooms === 'string'
                              && in_your_sanctuary(mtmp, 0, 0)) ? 1 : 0;
             }
@@ -374,9 +373,9 @@ export async function distfleeck(mtmp) {
     let scared = 0;
     if (nearby && (sawscary || fleelight || sanctuary)) {
         scared = 1;
-        /* C monmove.c:572: monflee(mtmp, rnd(rn2(7) ? 10 : 100), TRUE, TRUE)
-         * rn2(7) and rnd() must fire even if monflee side-effects are skipped.
-         * Minimal port: consume the RNG; set mtmp.mflee=1 for state parity. */
+        /* C monmove.c:563-564: *scared = 1;
+         * monflee(mtmp, rnd(rn2(7) ? 10 : 100), TRUE, TRUE).  rn2(7) is drawn
+         * before rnd(); monflee_mv is the C monflee() and sets the flee state. */
         const flee_rn2_7 = rn2(7);
         await monflee_mv(mtmp, rnd(flee_rn2_7 ? 10 : 100), true, true);
     }
@@ -1164,6 +1163,9 @@ export function mon_would_take_item(mtmp, otmp) {
     return false;
 }
 
+/* makemon_mons.json row layout: [0] mlet, [1] mlevel, [2] difficulty. */
+const MONS_DIFFICULTY_MV = 2;
+const TIN_OPENER_MV = 239; /* objects.h TIN_OPENER */
 function searches_for_item_mv(mon, obj) {
     const typ = obj.otyp | 0;
     const mndx = (mon.mndx ?? mon.mnum ?? 0) | 0;
@@ -1173,10 +1175,10 @@ function searches_for_item_mv(mon, obj) {
 
     if ((obj.where | 0) === OBJ_FLOOR
         && (obj.ox | 0) === (mon.mx | 0) && (obj.oy | 0) === (mon.my | 0)
-        && onscary_stub(obj.ox | 0, obj.oy | 0, mon))
+        && onscary(obj.ox | 0, obj.oy | 0, mon))
         return false;
 
-    /* C muse.c:2770-2773 — animals, mindless monsters and ghosts (which must not
+    /* C muse.c:2717-2719 — animals, mindless monsters and ghosts (which must not
      * loot bones piles) never search. */
     if ((mflags1 & M1_ANIMAL_MV) || (mflags1 & M1_MINDLESS_MV)
         || mndx === PM_GHOST_MV)
@@ -1197,7 +1199,7 @@ function searches_for_item_mv(mon, obj) {
         if (typ === WAN_DIGGING_MV)
             return !(mlet === S_EYE_MV || mlet === S_LIGHT_MV); /* !is_floater */
         if (typ === WAN_POLYMORPH_MV)
-            return (mrow ? (mrow[2] | 0) : 0) < 6; /* mons[].difficulty */
+            return (mrow ? (mrow[MONS_DIFFICULTY_MV] | 0) : 0) < 6;
         if (_wand_oc_dir_is_ray_mv(typ) || typ === WAN_STRIKING_MV
             || typ === WAN_UNDEAD_TURNING_MV
             || typ === WAN_TELEPORTATION_MV || typ === WAN_CREATE_MONSTER_MV)
@@ -1261,7 +1263,7 @@ function searches_for_item_mv(mon, obj) {
              * using objects[].oc_skill (C muse.c:3001-3031). */
             const cn = obj.corpsenm ?? -1, w = mon.mw, welded = w && mwelded(w);
             for (let o = mon.minvent; o; o = o.nobj) {
-                if ((!welded || o === w) && (o.otyp === 239 /* TIN_OPENER */
+                if ((!welded || o === w) && (o.otyp === TIN_OPENER_MV
                     || (o.oclass === WEAPON_CLASS_MV && [1 /* P_DAGGER */, 2 /* P_KNIFE */].includes(MKOBJ_OC_SKILL[o.otyp]))))
                     return !resists_ston(mon) && cn !== -1 && (cn === PM_LIZARD_MV || acidic_mv(cn));
             }
@@ -1416,7 +1418,7 @@ async function m_search_items(mtmp, ggx, ggy, mmoved, appr) {
                 /* found an object closer already */
                 if (minr < distmin_mv(omx, omy, xx, yy)) continue;
                 if (!could_reach_item(mtmp, xx, yy)) continue;
-                /* C monmove.c:1363: hiders avoid hero's line of sight */
+                /* C monmove.c:1378-1380: hiders avoid hero's line of sight */
                 if (hides_under_mv(mtmp.data || mrow) && cansee(xx, yy)) continue;
                 const mtoo = m_at(xx, yy);
                 if (mtoo
@@ -1424,7 +1426,7 @@ async function m_search_items(mtmp, ggx, ggy, mmoved, appr) {
                         || ((mtoo.mappearance | 0) && !(mtoo.iswiz | 0))
                         || !((mtoo.data?.mmove) | 0)))
                     continue;
-                /* C monmove.c:1378: don't get stuck circling an Elbereth */
+                /* C monmove.c:1389-1391: don't get stuck circling an Elbereth */
                 if (onscary(xx, yy, mtmp)) continue;
                 /* trap-known guard */
                 const ttmp = t_at(xx, yy);
@@ -1520,7 +1522,7 @@ export async function m_move_aggress(mtmp, x, y) {
         mstatus = await mattackm(mtmp, mtmp2);
     }
 
-    /* C:1403 — `if ((mstatus & M_ATTK_AGR_DIED) || DEADMONSTER(mtmp))` */
+    /* C monmove.c:2100 — `if ((mstatus & M_ATTK_AGR_DIED) || DEADMONSTER(mtmp))` */
     /* C mon.h DEADMONSTER(mon) := ((mon)->mhp < 1) — js/dogmove.js:3077's
      * reading, kept identical. */
     if ((mstatus & M_ATTK_AGR_DIED_MV) || !mtmp || (mtmp.mhp | 0) < 1)
@@ -1922,6 +1924,10 @@ export async function m_move(mtmp, after) {
                 }
                 const _pre = (seenflgs & 1) ? null : capture_flushed_cells();
                 await newcham(mtmp, PM_FOG_CLOUD, (seenflgs & 1) ? NC_SHOW_MSG : 0);
+                /* wintty.c:1879-1881: vamp_shift's display_nhwindow EMPTYs an
+                 * already-seen message window without erasing it. */
+                if (!game._pending_message && !game._resultMessage && !game._topl_win_stop)
+                    game._topl_empty_sticky = game._topl_sticky;
                 topl_force_break_now(false, _pre);
                 await flush_pending_messages();
                 if (seenflgs) {
@@ -2556,6 +2562,12 @@ export async function m_move(mtmp, after) {
             if (game.flags?.time && _lff
                 && Math.max(_lff.moves | 0, game._statusPaintMoves | 0) < (game.moves | 0))
                 game._movemonStatusMoves = Math.max(_lff.moves | 0, game._statusPaintMoves | 0);
+            /* wintty.c:1879-1881: with no unseen message (toplin != NEED_MORE)
+             * display_nhwindow(WIN_MESSAGE) marks the window EMPTY without
+             * erasing it, so a getpos autodescribe line left standing survives
+             * parse()'s clear_nhwindow (wintty.c:1048) after the travel ends. */
+            if (!game._pending_message && !game._resultMessage && !game._topl_win_stop)
+                game._topl_empty_sticky = game._topl_sticky;
             try {
             /* tty more() does not flush_screen: the status row too is whatever the
              * last bot() painted, not damage dealt since (kick_ouch's losehp). */
@@ -3192,7 +3204,7 @@ export function can_hide_under_obj(obj) {
         return false;
     /* can't hide under small amount of coins unless non-coins are also
        present; we expect coins to be a single stack but don't assume that */
-    if ((o.oclass | 0) === 12 /* COIN_CLASS */) {
+    if ((o.oclass | 0) === COIN_CLASS_MV) {
         let coinquan = 0;
         do {
             coinquan += o.quan;
@@ -3201,7 +3213,7 @@ export function can_hide_under_obj(obj) {
             o = o.nexthere;
             if (!o)
                 return false; /* whole pile was less than 10 coins */
-        } while ((o.oclass | 0) === 12 /* COIN_CLASS */);
+        } while ((o.oclass | 0) === COIN_CLASS_MV);
     }
     return true; /* can hide under the object */
 }
@@ -3247,7 +3259,7 @@ export async function dochugw(mtmp, chug) {
         /* can see it now, or sense it and would normally see it */
         && canspotmon(mtmp) && couldsee(mtmp.mx | 0, mtmp.my | 0)
         /* monster isn't paralyzed or afraid (scare monster/Elbereth) */
-        && mtmp.mcanmove && !onscary_stub(u.ux | 0, u.uy | 0, mtmp)) {
+        && mtmp.mcanmove && !onscary(u.ux | 0, u.uy | 0, mtmp)) {
         await stop_occupation();
     }
 
@@ -3263,7 +3275,7 @@ export function m_postmove_effect(mtmp) {
         /* Hezrous create clouds of stench */
         create_gas_cloud(x, y, 1, 8);
     } else if ((mtmp.data.pmidx | 0) === PM_STEAM_VORTEX && !mtmp.mcan) {
-        /* Steam Vortex creates harmless vapor when not enchanted */
+        /* Steam Vortex creates harmless vapor unless cancelled (mcan) */
         create_gas_cloud(x, y, 1, 0);
     }
 }
@@ -3426,13 +3438,17 @@ export async function m_break_boulder_mv(mtmp, x, y) {
     if (!rider) {
         const deaf = !!(game.u?.uprops?.[DEAF]?.intrinsic
                      || game.u?.uprops?.[DEAF]?.extrinsic);
-        if (!deaf && mdistu(mtmp) < 16) {
+        if (!deaf && mdistu(mtmp) < 4 * 4) {
+            if (canspotmon(mtmp))
+                set_msg_xy(mtmp.mx, mtmp.my);
             await pline(`${Monnam_dm(mtmp)} mutters ${mtmp.ispriest ? 'a prayer' : 'an incantation'}.`);
         }
         mtmp.mspec_used = (mtmp.mspec_used | 0) + rn1(20, 10);
     }
-    if (cansee(x, y))
+    if (cansee(x, y)) {
+        set_msg_xy(x, y); /* C monmove.c:159 */
         await pline('The boulder falls apart.');
+    }
     /* C monmove.c:166-168: a boulder pushed off a shop's bill is billed
      * dummy-copied first; bill_dummy_object draws next_ident (rnd(2)). */
     if (boulder.unpaid)
@@ -3483,35 +3499,29 @@ export function healmon(mon, hpmax, hp) {
     return healmon_real(mon, hpmax, hp);
 }
 
-/* C ref: dogmove.c:1448-1458 finish_meating().  Share the production body
- * with dogmove/mhitm so mimic appearance cleanup and repainting stay aligned. */
-export function finish_meating(mon) {
-    return finish_meating_real(mon);
-}
-
-/* C ref: monmove.c:307-321 mon_regen — regenerate lost hit points and digest meals.
+/* C ref: monmove.c:307-320 mon_regen — regenerate lost hit points and digest meals.
  * regenerates(ptr) = (ptr->mflags1 & M1_REGEN) != 0 (from mondata.h)
  * No RNG consumed. */
 export function mon_regen(mon, digest_meal) {
-    /* C monmove.c:310: if (svm.moves % 20 == 0 || regenerates(mon->data)) */
+    /* C monmove.c:309: if (svm.moves % 20 == 0 || regenerates(mon->data)) */
     const regenerates = (mon.data.mflags1 & M1_REGEN_MON_REGEN) !== 0;
     if (((game.moves || 0) % 20) === 0 || regenerates) {
-        /* C monmove.c:311: healmon(mon, 1, 0) */
+        /* C monmove.c:310: healmon(mon, 1, 0) */
         healmon(mon, 1, 0);
     }
 
-    /* C monmove.c:312-313: if (mon->mspec_used) mon->mspec_used-- */
+    /* C monmove.c:311-312: if (mon->mspec_used) mon->mspec_used-- */
     if (mon.mspec_used) {
         mon.mspec_used--;
     }
 
-    /* C monmove.c:314-320: if (digest_meal) { if (mon->meating) { ... } } */
+    /* C monmove.c:313-319: if (digest_meal) { if (mon->meating) { ... } } */
     if (digest_meal) {
         if (mon.meating) {
             mon.meating--;
             if (mon.meating <= 0) {
-                /* C monmove.c:318: finish_meating(mon) */
-                finish_meating(mon);
+                /* C monmove.c:317: finish_meating(mon) */
+                finish_meating_real(mon); /* dogmove.c:1448 */
             }
         }
     }

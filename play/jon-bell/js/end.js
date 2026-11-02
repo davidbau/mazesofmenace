@@ -30,7 +30,7 @@ import { game, wizard, discover } from './gstate.js';
 import { clong, nowrap_add } from './integer.js';
 import { savebones, no_bones_level, ledger_no } from './bones.js';
 import { launch_in_progress, force_launch_placement } from './trap.js';
-import { force_more, force_more_lone_frame, flush_screen, _topl_joins_committed, _topline_more_pending, capture_painted_frame_with_status, capture_flushed_cells } from './display.js';
+import { force_more, force_more_lone_frame, flush_screen, _topl_joins_committed, _topline_more_pending, capture_painted_frame_with_status, capture_flushed_cells, impossible_sync } from './display.js';
 import { yn_function_menu } from './cmd.js';
 import { bot } from './botl.js';
 import { pline, urgent_pline } from './pline.js';
@@ -38,8 +38,8 @@ import { topl_park_cursor, canspotmon, _threeStatusLines } from './display.js';
 import { rebuild_screen_output, putmsghistory, Unaware, pline_flush_point } from './display.js';
 import { livelog_printf } from './pline.js';
 import { LL_LIFESAVE, LL_DUMP, BUFSZ } from './const.js';
-import { cmdq_pop, cmdq_clear, cmdq_add_key, key2txt } from './cmd.js';
-import { CQ_CANNED, CQ_REPEAT, CMDQ_KEY, CMDQ_USER_INPUT, QBUFSZ, PLNMSG_UNKNOWN } from './const.js';
+import { cmdq_pop, cmdq_clear, cmdq_add_key, cmdq_add_ec, key2txt, Role_if } from './cmd.js';
+import { CQ_CANNED, CQ_REPEAT, CMDQ_KEY, CMDQ_USER_INPUT, QBUFSZ, PLNMSG_UNKNOWN, ECMD_OK, STONED, SLIMED } from './const.js';
 import { PLNMSG_OK_DONT_DIE } from './const.js';
 import { nhgetch } from './input.js';
 import { paranoid_query } from './paranoid.js';
@@ -49,7 +49,7 @@ import { acurr, minuhpmax, setuhpmax } from './attrib.js';
 import { rn2, d } from './rng.js';
 import { A_CON, A_CURRENT, A_ORIGINAL, Upolyd, DIED, CHOKING, STARVING, DROWNING, BURNING, DISSOLVED, STONING, TURNED_SLIME, QUIT, GENOCIDED, PANICKED, TRICKED, ESCAPED, ASCENDED, LIFESAVED, KILLED_BY, NO_KILLER_PREFIX, BASICENLIGHTENMENT, MAGICENLIGHTENMENT, ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD, PARANOID_QUIT, PARANOID_DIE, PARANOID_BONES } from './const.js';
 import { KILLED_BY_AN, MALE, FEMALE, In_quest, In_endgame, Is_astralevel } from './const.js';
-import { dunlev, Is_branchlev, maxledgerno } from './dungeon.js';
+import { dunlev, Is_branchlev, maxledgerno, single_level_branch } from './dungeon.js';
 import { MAGIC_PORTAL } from './const.js';
 import { MGIVENNAME, has_mgivenname, has_ebones } from './const.js';
 import { SICK, SICK_ALL, TIMEOUT, TT_LAVA, UNCHANGING, HALLUC, HALLUC_RES } from './const.js';
@@ -62,7 +62,7 @@ import { m_monnam } from './mhitm.js';
 import { expels_gu } from './mhitu.js';
 import { unstuck, sticks, keepdogs } from './dog.js';
 import { mon_nam } from './uhitm.js';
-import { monPmname, the_unique_pm, adjLev, zombie_maker } from './makemon.js';
+import { monPmname, pmname, the_unique_pm, adjLev, zombie_maker } from './makemon.js';
 import { PM_HOUSECAT } from './pm.generated.js';
 import { exit_nhwindows, raw_print } from './rawterm.js';
 import { topten, formatkiller } from './topten.js';
@@ -76,14 +76,16 @@ import { In_tutorial } from './dungeon.js';
  * neither module needs the other at module-init time. */
 import { init_uhunger } from './eat.js';
 import { carrying } from './invent.js';
-import { make_sick } from './potion.js';
+import { make_sick, peffects, set_itimeout, POT_WATER } from './potion.js';
+import { bless } from './mkobj.js';
+import { wiz_makemap } from './wizcmds.js';
 import { reset_utrap } from './trap.js';
 import { display_text_window } from './com_pager.js';
 import { money_cnt } from './hack.js';
 /* C end.c:1306's grave block: mk_named_object(CORPSE, ...) is mkcorpstat +
  * oname (mkobj.c:2253), and make_grave is engrave.c:1686.  Both bodies already
  * existed; only this caller was missing. */
-import { mkcorpstat, make_grave, place_object, mksobj } from './mklev.js';
+import { mkcorpstat, make_grave, place_object, mksobj, STATUE } from './mklev.js';
 import { stackobj } from './sp_lev.js';
 import { accessible } from './monmove.js';
 import { isok, OBJ_FREE } from './const.js';
@@ -130,17 +132,44 @@ import { Is_container, _Upstart, _box_xname, _item_doname, _sortloot, set_cursor
 export { yn_function } from './cmd.js'; // relocate-fns
 export { _yn_prompt }; // relocate-fns
 
-// C end.c:350-384 — avoid repeating the fatal condition as helplessness.
+const BAG_OF_TRICKS = 220;
+const POT_RESTORE_ABILITY = 298;
+const override_restriction = -1;
+const WIN_MESSAGE = 1;
+
+const death_fixups = [
+    { why: STONING,  unmulti: 1, exclude: 'getting stoned',            include: null },
+    { why: STARVING, unmulti: 0, exclude: 'fainted from lack of food', include: 'fainted' },
+    { why: SICK,     unmulti: 1, exclude: 'vomiting',                  include: null },
+];
+
+// C end.c:368-384 — clear away while-helpless when the cause of death caused that helplessness.
 function fixup_death(how) {
     const g = game;
-    if (how === STONING && g.multi_reason === 'getting stoned') {
-        g.multi_reason = null;
-        g.multireasonbuf = '';
-        g.multi = 0;
-    } else if (how === STARVING
-               && g.multi_reason === 'fainted from lack of food') {
-        g.multi_reason = 'fainted';
-        g.multireasonbuf = '';
+    if (g.multi_reason) {
+        for (let i = 0; i < death_fixups.length; ++i) {
+            if (death_fixups[i].why === how
+                && death_fixups[i].exclude === g.multi_reason) {
+                if (death_fixups[i].include)
+                    g.multi_reason = death_fixups[i].include;
+                else
+                    g.multi_reason = null;
+                g.multireasonbuf = '';
+                if (death_fixups[i].unmulti)
+                    g.multi = 0;
+                break;
+            }
+        }
+    }
+}
+
+function perm_invent_toggled(negated) {
+    const g = game;
+    if (!g.iflags?.window_inited)
+        return;
+    if (negated) {
+        if (g.WIN_INVEN != null)
+            g.WIN_INVEN = null;
     }
 }
 
@@ -171,8 +200,12 @@ export async function done_object_cleanup() {
     }
     // C end.c:893: recover the chain even while bubble movement owns placement.
     if (u.uchain && u.uchain.where === OBJ_FREE)
-        await lift_covet_and_placebc(-1); // hack.h override_restriction
-    g.iflags.perm_invent = false;
+        await lift_covet_and_placebc(override_restriction); // hack.h override_restriction
+    // C end.c:898-901: disable persistent inventory window if active.
+    if (g.iflags.perm_invent) {
+        g.iflags.perm_invent = false;
+        perm_invent_toggled(true);
+    }
 }
 
 // ── C ref: end.c:1706-1756 — the DELAYED-KILLER list. ────────────────────────
@@ -230,6 +263,8 @@ export function delayed_killer(id, format, killername) {
     head.name = '';
 }
 
+function debugpline1(_fmt, _arg) {}
+
 // C end.c:1737-1756 dealloc_killer(struct kinfo *kptr) — unlink and free.
 export function dealloc_killer(kptr) {
     const head = _killer_head();
@@ -244,11 +279,10 @@ export function dealloc_killer(kptr) {
     }
 
     if (!k) {
-        /* C: impossible("dealloc_killer (#%d) not on list", kptr->id) — the
-         * port has no impossible() channel; C's impossible() prints to the
-         * topline only in wizard mode and does not alter the list either way. */
+        impossible_sync("dealloc_killer (#%d) not on list", kptr.id);
     } else {
         prev.next = k.next;
+        debugpline1('freed delayed killer #%d', kptr.id);
     }
 }
 
@@ -487,29 +521,30 @@ export async function savelife(how, inPlace, countdown = false) {
     const g = game;
     const u = g.u || (g.u = {});
     const givehp = 50 + 10 * Math.trunc(acurr(u, A_CON) / 2);
-    // C end.c:713-714 — life-drain to xp 0 bulletproofing.
+    // C end.c:711-712 — life-drain to xp 0 bulletproofing.
     if ((u.ulevel | 0) < 1)
         u.ulevel = 1;
     const uhpmin = minuhpmax(10);
     if ((u.uhpmax | 0) < uhpmin)
         setuhpmax(uhpmin, true);
-    // C end.c:718-720 — restore hit points.
+    // C end.c:716-718 — restore hit points.
     u.uhp = Math.min(u.uhpmax | 0, givehp);
     if (Upolyd(u))
         u.mh = Math.min(u.mhmax | 0, givehp);
     if ((u.uhunger | 0) < 500 || (how | 0) === CHOKING_END)
         init_uhunger();
-    /* C end.c:724-728 — only an immediately fatal sickness timeout is cured.
+    /* C end.c:722-725 — only an immediately fatal sickness timeout is cured.
      * make_sick also clears its delayed killer and usick_type. */
     if ((((u.uprops?.[SICK]?.intrinsic) | 0) & TIMEOUT) === 1)
         await make_sick(0, null, false, SICK_ALL);
-    // C end.c:729-733 — nomovemsg + can't-move-again this turn (gm.multi = -1).
+    // C end.c:726-730 — nomovemsg + can't-move-again this turn (gm.multi = -1).
     g.nomovemsg = 'You survived that attempt on your life.';
     g.context = g.context || {};
-    /* C end.c:731 sets context.move = 0, but a death flagged inside the hero's own
-     * command is drained here at the NEXT command read, whereas C's done() returns
-     * into the command and rhack's tail (cmd.c:3810-3822) recomputes move from the
-     * handler's ECMD_TIME, so the killing turn's world block still runs. */
+    /* C end.c:728 sets context.move = 0; JS deliberately sets context.move = 1 when
+     * !inPlace because a death flagged inside the hero's own command is drained here
+     * at the NEXT command read, whereas C's done() returns into the command and rhack's
+     * tail (cmd.c:3810-3822) recomputes move from the handler's ECMD_TIME, so the
+     * killing turn's world block still runs. */
     g.context.move = inPlace ? 0 : 1;
     // C sets gm.multi = -1 so the hero can't move again this turn and the nomovemsg
     // is displayed when the -1 countdown completes in the SAME turn's HEAD (after
@@ -533,9 +568,9 @@ export async function savelife(how, inPlace, countdown = false) {
      * spurious rn2(10) on every later M_ATTK_HIT. */
     if (!inPlace)
         u.usleep = 0;
-    /* C end.c:739-747 — clear the other fatal-state residue before releasing
+    /* C end.c:734-748 — clear the other fatal-state residue before releasing
      * a swallowed or held hero. */
-    g.multi_reason = ((g.urole?.mnum | 0) === (PM_TOURIST | 0))
+    g.multi_reason = Role_if(PM_TOURIST)
         ? 'being toyed with by Fate'
         : 'attempting to cheat Death';
     if ((u.utrap | 0) && (u.utraptype | 0) === TT_LAVA)
@@ -567,6 +602,67 @@ export async function savelife(how, inPlace, countdown = false) {
         await unstuck(stuck);
     }
     void how;
+}
+
+// C ref: end.c:945-1016 fuzzer_savelife(int how).
+async function fuzzer_savelife(how) {
+    const g = game;
+    const u = g.u || (g.u = {});
+    let otmp;
+
+    await savelife(how, true);
+    otmp = await mksobj(POT_RESTORE_ABILITY, false, false);
+    if (otmp) {
+        await bless(otmp);
+        await peffects(otmp);
+        await obfree(otmp, null);
+    }
+    otmp = await mksobj(POT_WATER, false, false);
+    if (otmp) {
+        await bless(otmp);
+        otmp.invlet = 'a';
+        otmp.owornmask = 0;
+        otmp.nobj = g.invent || null;
+        g.invent = otmp;
+        if (u.uamul) {
+            await bless(u.uamul);
+            u.uamul.oeroded = 0;
+            u.uamul.oeroded2 = 0;
+        }
+        if (u.ugloves) {
+            await bless(u.ugloves);
+            u.ugloves.oeroded = 0;
+            u.ugloves.oeroded2 = 0;
+        }
+        if (u.uarmh) {
+            await bless(u.uarmh);
+            u.uarmh.oeroded = 0;
+            u.uarmh.oeroded2 = 0;
+        }
+        for (let obj = g.invent; obj; obj = obj.nobj) {
+            obj.blessed = 1;
+            obj.cursed = 0;
+        }
+        await useup(otmp);
+    }
+
+    u.uprops = u.uprops || {};
+    for (const prop of [STONED, SLIMED]) {
+        const p = u.uprops[prop] || (u.uprops[prop] = { intrinsic: 0, extrinsic: 0 });
+        const box = { value: p.intrinsic | 0 };
+        set_itimeout(box, 0);
+        p.intrinsic = box.value;
+    }
+
+    if ((g.moves | 0) > 2500 && !rn2(5)) {
+        cmdq_add_ec(CQ_CANNED, wiz_makemap);
+    }
+
+    if (g.svk?.killer) {
+        g.svk.killer.name = '';
+        g.svk.killer.format = KILLED_BY_AN;
+    }
+    return true;
 }
 
 // C ref: end.c:1023 done() (wizard/discover branch) + done_in_by's "You die..." +
@@ -797,6 +893,10 @@ export async function do_death_sequence(opts) {
              * turns into FORCE_RESET: row 1 is rewritten whole over the map. */
             g._status1WholeNext = true;
             await bot();
+        }
+        if (g.iflags?.debug_fuzzer) {
+            if (await fuzzer_savelife(pd.how))
+                return true;
         }
         done_death_context(pd.how);
     }
@@ -1271,12 +1371,29 @@ async function _yn_prompt(query, choices, defchoice, opts = {}) {
     } finally {
         g._topl_prompt_echo = savedEcho;
         g._topl_prompt_written = savedWritten;
+        if (g._pending_message === qbuf) {
+            g._pending_message = '';
+            g._topl_sticky = qbuf;
+            g._topl_empty_sticky = qbuf;
+        }
     }
 }
 
 /* C do.c:2082 UTOTYPE_ATSTAIRS — schedule_goto's flag word.  js/cmd.js keeps
  * the same table module-privately; only this one value is needed here. */
 const UTOTYPE_ATSTAIRS_END = 0x01;
+
+function clear_nhwindow(win) {
+    if (win === WIN_MESSAGE) {
+        game._pending_message = '';
+        game._topl_sticky = null;
+    }
+}
+function wait_synch() {}
+function sound_exit_nhsound(why) {
+    if (typeof game.soundprocs?.sound_exit_nhsound === 'function')
+        game.soundprocs.sound_exit_nhsound(why);
+}
 
 /* C ref: end.c:90-118 done2(void) — the #quit / ^C confirmation. */
 export async function done2() {
@@ -1292,9 +1409,9 @@ export async function done2() {
     if (!quit) {
         /* C end.c:100-112 — the don't-quit arm: clear_nhwindow(WIN_MESSAGE),
          * curs_on_u(), wait_synch(), and nomul(0) when multi > 0.  RNG-free. */
-        g._pending_message = '';
-        g._topl_sticky = null;
-        await flush_screen(1); // C end.c:104 curs_on_u(), then wait_synch().
+        clear_nhwindow(WIN_MESSAGE);
+        await flush_screen(1); // C end.c:104 curs_on_u()
+        wait_synch();          // C end.c:105 wait_synch()
         if ((g.multi | 0) > 0)
             nomul(0);
         if ((g.multi | 0) === 0) {
@@ -1314,24 +1431,25 @@ export async function done2() {
                 schedule_goto({ dnum: from.dnum | 0, dlevel: from.dlevel | 0 },
                               UTOTYPE_ATSTAIRS_END, 'Resuming regular play.', null);
         }
-        return 0;                            /* ECMD_OK */
+        return ECMD_OK;
     }
     if (wizard()) {
         const c2 = await _yn_prompt('Dump core?', 'ynq', 'q');
         if (c2 === 'q')
             g.program_state.stopprint++;
-        /* C end.c:134-136 — a positive answer leaves the tty first, then calls
+        /* C end.c:134-141 — a positive answer leaves the tty first, then calls
          * NH_abort().  The runner cannot produce a native core dump, but its
          * terminal abort exception is the process-level equivalent; crucially,
          * no ordinary quit/disclosure teardown runs after the answer. */
         if (c2 === 'y') {
+            sound_exit_nhsound('done2');
             exit_nhwindows(null);
             throw new Error('NH_abort: core dump requested');
         }
     }
     /* C end.c:146 done(QUIT). */
     await done(QUIT);
-    return;
+    return ECMD_OK;
 }
 
 /* C ref: end.c gd.done_stopprint — "just avoid any more output".  A COUNTER in
@@ -1418,6 +1536,13 @@ export async function done(how, deathSequence = do_death_sequence) {
         if (g._tutorialStatusOverride)
             g._tutorialStatusOverride.freshOnLastPage = true;
         await bot();
+    }
+    /* C end.c:1053-1059 */
+    if ((g.done_seq | 0) < (g.hero_seq | 0))
+        g.done_seq = g.hero_seq;
+    if (g.iflags?.debug_fuzzer) {
+        if (await fuzzer_savelife(how))
+            return;
     }
     done_death_context(how);
 
@@ -1511,19 +1636,28 @@ function _end_disclose() { // Option-string accessor, not C's disclose(how, take
     return (s === 'none' || (typeof s === 'string' && s.length === 6)) ? s : END_DISCLOSE_DEFAULT;
 }
 
+const DISCLOSE_PROMPT_DEFAULT_YES = 'y';
+const DISCLOSE_PROMPT_DEFAULT_NO = 'n';
+const DISCLOSE_PROMPT_DEFAULT_SPECIAL = '?';
+const DISCLOSE_YES_WITHOUT_PROMPT = '+';
+const DISCLOSE_NO_WITHOUT_PROMPT = '-';
+const DISCLOSE_SPECIAL_WITHOUT_PROMPT = '#';
+
 /* C ref: end.c:476-514 should_query_disclose_option(int category, char *defquery).
  * Returns [ask, defquery]. */
 function should_query_disclose_option(category) {
     const idx = DISCLOSURE_OPTIONS.indexOf(category);
-    if (idx < 0)
+    if (idx < 0) {
+        impossible_sync("should_query_disclose_option: bad category %c", category);
         return [true, 'n'];              /* C: impossible() then return TRUE */
+    }
     const disclose = _end_disclose()[idx];
     switch (disclose) {
-    case '+': return [false, 'y'];       /* DISCLOSE_YES_WITHOUT_PROMPT */
-    case '#': return [false, 'a'];       /* DISCLOSE_SPECIAL_WITHOUT_PROMPT */
-    case '-': return [false, 'n'];       /* DISCLOSE_NO_WITHOUT_PROMPT */
-    case 'y': return [true, 'y'];        /* DISCLOSE_PROMPT_DEFAULT_YES */
-    case '?': return [true, 'a'];        /* DISCLOSE_PROMPT_DEFAULT_SPECIAL */
+    case DISCLOSE_YES_WITHOUT_PROMPT: return [false, 'y'];
+    case DISCLOSE_SPECIAL_WITHOUT_PROMPT: return [false, 'a'];
+    case DISCLOSE_NO_WITHOUT_PROMPT: return [false, 'n'];
+    case DISCLOSE_PROMPT_DEFAULT_YES: return [true, 'y'];
+    case DISCLOSE_PROMPT_DEFAULT_SPECIAL: return [true, 'a'];
     default:  return [true, 'n'];        /* DISCLOSE_PROMPT_DEFAULT_NO */
     }
 }
@@ -1712,10 +1846,6 @@ function outrip_lines(how, when) {
     return ['', ...rip, '', ''];
 }
 
-function _single_level_branch(uz) {
-    const d = game.dungeons?.[uz?.dnum | 0];
-    return ((d?.num_dunlevs | 0) === 1);
-}
 /* C role.c:2143 Goodbye() — four roles get their own farewell. */
 function _Goodbye() {
     const r = String(game.urole?.name?.m ?? '');
@@ -2023,7 +2153,7 @@ async function really_done(how) {
         const _arise = g.u?.ugrave_arise | 0;
         if (_arise >= 0 && _arise < MONS_ROWS_END.length && !done_stopprint()) {
             const female = Upolyd(g.u) ? g.u.mfemale : g.flags.female; // C Ugender
-            const _ariseName = monPmname(_arise, female ? FEMALE : MALE);
+            const _ariseName = pmname({ pmidx: _arise }, female ? FEMALE : MALE);
             const _ariseText = _arise === 208
                 ? 'Your revenant persists'
                 : 'Your body rises from the dead';
@@ -2163,7 +2293,7 @@ async function really_done(how) {
             // C end.c:1523-1527: level teleport death at heaven or the surface.
             if (u.uz.dnum === 0 && u.uz.dlevel <= 0)
                 pbuf = `You ${u.uz.dlevel < 0 ? 'passed away' : _ENDS[how]} beyond the confines of the dungeon`;
-            else if (!In_endgame(u.uz) && !_single_level_branch(u.uz))
+            else if (!In_endgame(u.uz) && !single_level_branch(u.uz))
                 pbuf += ` on dungeon level ${In_quest(u.uz) ? dunlev(u.uz) : depth(u.uz)}`;
             const urexp = clong(u.urexp);
             pbuf += ` with ${urexp} point${urexp === 1n ? '' : 's'},`;
@@ -2190,11 +2320,15 @@ async function really_done(how) {
            print the score list, and nh_terminate.  The two trailing
            raw_print("")s are `if (done_stopprint)`, so they are NOT emitted
            here. */
-        if (have_windows && !g.iflags.toptenwin)
+        if (have_windows && !g.iflags.toptenwin) {
+            sound_exit_nhsound('really_done');
             exit_nhwindows(null);
+        }
         await topten(how, g._endtime || 0);
-        if (have_windows && g.iflags.toptenwin)
+        if (have_windows && g.iflags.toptenwin) {
+            sound_exit_nhsound('really_done');
             exit_nhwindows(null);
+        }
         /* C end.c:1596-1599 appends two blank raw_print()s only when
          * done_stopprint is set, moving the cursor from row 2 to row 4. */
         if (done_stopprint()) {
@@ -2210,13 +2344,20 @@ async function really_done(how) {
     }
 }
 
-// C end.c: nh_terminate. The process adapter catches this terminal exception.
-// General freedynamicdata/dlb cleanup is not yet ported; Lua lifetime is real.
+function freedynamicdata() {}
+function dlb_cleanup() {}
+
+// C end.c:1680-1692 nh_terminate. The process adapter catches this terminal exception.
 export async function nh_terminate(status, reason = 'game over') {
     (game.program_state ||= {}).in_moveloop = 0;
     const { l_nhcore_call, l_nhcore_done, NHCORE_GAME_EXIT } = await import('./nhlua.js');
     await l_nhcore_call(NHCORE_GAME_EXIT);
-    if (!game.program_state.panicking) await l_nhcore_done();
+    // C end.c:1684-1688: don't bother to free memory if we're in panic mode.
+    if (!game.program_state.panicking) {
+        freedynamicdata();
+        dlb_cleanup();
+        await l_nhcore_done();
+    }
     game.program_state.exiting = 1;
     const error = new Error('nh_terminate: ' + reason);
     error.status = status;
@@ -2244,26 +2385,28 @@ export async function container_contents(list, identified, all_containers, repor
 async function _container_contents_one(box, identified, all_containers, reportempty,
                                        statusClipCol = undefined) {
     const g = game;
-    if (!(Is_container(box) || (box.otyp | 0) === 476 /* STATUE */))
+    const dumping = !!g.iflags?.in_dumplog;
+    if (!(Is_container(box) || (box.otyp | 0) === STATUE))
         return;
-    /* C:1606-1611 */
+    /* C end.c:1606-1611 */
     if (!box.cknown || (identified && !box.lknown)) {
         box.cknown = 1; /* we're looking at the contents now */
         if (identified)
             box.lknown = 1;
         /* update_inventory(): pure display refresh. */
     }
-    /* C:1612-1613 — BAG_OF_TRICKS is the wrong type of container. */
-    if ((box.otyp | 0) === 220 /* BAG_OF_TRICKS */)
+    /* C end.c:1612-1613 — BAG_OF_TRICKS is the wrong type of container. */
+    if ((box.otyp | 0) === BAG_OF_TRICKS)
         return;
     if (box.cobj) {
         const cat = SchroedingersBox(box);
         const lines = [];
         /* C end.c:1627 — xname preserves the statue's monster and object names. */
         lines.push(`Contents of ${the(xname(box))}:`);
-        /* C:1626-1627 — the blank line is skipped only while dumping. */
-        lines.push('');
-        /* C:1628 buf[0] = buf[1] = ' ' — every item row carries two leading
+        /* C end.c:1629-1630 — the blank line is skipped only while dumping. */
+        if (!dumping)
+            lines.push('');
+        /* C end.c:1631 buf[0] = buf[1] = ' ' — every item row carries two leading
          * spaces, which build_window_screen() renders as an indent from the
          * window column. */
         if (!cat) {
@@ -2276,7 +2419,7 @@ async function _container_contents_one(box, identified, all_containers, reportem
                     obj.known = 1;
                     obj.bknown = 1;
                     obj.rknown = 1;
-                    if (Is_container(obj) || (obj.otyp | 0) === 476 /* STATUE */) {
+                    if (Is_container(obj) || (obj.otyp | 0) === STATUE) {
                         obj.cknown = 1;
                         obj.lknown = 1;
                     }
@@ -2286,7 +2429,9 @@ async function _container_contents_one(box, identified, all_containers, reportem
         } else {
             lines.push("  Schroedinger's cat!");
         }
-        /* C:1655 display_nhwindow(tmpwin, TRUE) -> process_text_window. */
+        /* C end.c:1655-1657 — trailing blank line when dumping, then display_nhwindow. */
+        if (dumping)
+            lines.push('');
         lines.push('--More--');
         /* C wintty.c:1925-1928 — `!iflags.menu_overlay` drops the window to
          * offx 0 and term_clear_screen()s (map and status included). */

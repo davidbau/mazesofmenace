@@ -12,7 +12,7 @@ import { hitMonsterWithForce } from './force_bolt.js';
 import { impossible } from './diagnostics.js';
 import { releaseHold, releaseHeroFromMonster } from './hero_expulsion.js';
 import { finishHeroMonsterKill, finishHeroMonsterKillOutcome } from './hero_monster_death.js';
-import { heroFormSticks } from './hero_species.js';
+import { heroFormSticks } from './polyself.js';
 import { isSteadfast } from './uhitm.js';
 import { MAP_SYMBOLS } from './map_symbols.js';
 import { revealMimicIdentity } from './mimic.js';
@@ -251,6 +251,8 @@ async function dropSaddle(monster, state) {
     await removeObjectFromMonsterInventory(monster, saddle, state);
     await landFloorObject(saddle, monster.mx, monster.my, { state });
 }
+// C mon.c:mimic_hit_msg() for healing and extra healing alike: an object
+// mimic hit by either spell seems a more vivid color than before.
 async function healMonsterWithMagic(monster, spell, state) {
     const extra = spell.otyp === SPE_EXTRA_HEALING;
     const amount = d(6, extra ? 8 : 4);
@@ -333,6 +335,8 @@ async function shieldMonster(monster, state) {
     if (cansee(monster.mx, monster.my))
         await pline(`${monsterName(monster, { capitalized: true })} resists!`);
 }
+// C zap.c stone-to-flesh on a monster: mkobj.c stone_object_type() and
+// stone_furniture_type() decide which mimicked shapes revert to a mimic.
 async function fleshMonster(monster, state) {
     if (MONSTER_SYMBOL[monster.mnum] === 55) {
         const name = monsterName(monster, { capitalized: true });

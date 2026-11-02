@@ -1,4 +1,4 @@
-import { disturb_grave } from './engrave.js';
+import { disturb_grave, u_wipe_engr } from './engrave.js';
 import { is_ice as is_ice_real } from './engrave.js';
 // @ts-nocheck
 import { credit_report } from './shk_credit.js';
@@ -36,7 +36,7 @@ import { D_WARNED, MON_FLOOR, ESHK } from './const.js';
 import { PM_WATCHMAN, PM_WATCH_CAPTAIN } from './pm.generated.js';
 import { mon_yells } from './monmove.js';
 import { in_town } from './cmd.js';
-import { exercise, acurr, change_luck, adjalign as adjalign_dk } from './attrib.js';
+import { exercise, acurr, acurrstr, change_luck, adjalign as adjalign_dk } from './attrib.js';
 import { HALLUC, SHOPBASE, SDOOR, SCORR, CORR, ROOM, STAIRS, LADDER, IRONBARS, DOOR, D_NODOOR, D_ISOPEN, D_BROKEN, D_TRAPPED, D_LOCKED, IS_THRONE, IS_ALTAR, IS_FOUNTAIN, IS_GRAVE, IS_SINK, IS_TREE, IS_STWALL, IS_DOOR, ECMD_TIME, ECMD_CANCEL, ECMD_OK, POOL, MOAT, WATER, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, LAVAPOOL, LAVAWALL, DBWALL, A_STR, A_DEX, A_CON, A_WIS, A_LAWFUL, KILLED_BY, G_GONE, T_LOOTED, TREE_LOOTED, TREE_SWARM, S_LPUDDING, S_LDWASHER, LA_DOWN, MM_NOMSG, MM_MALE, MM_FEMALE, MM_ANGRY, DB_UNDER, DB_ICE, DB_LAVA, DB_MOAT, STONE, ICE, IS_WATERWALL, IS_DRAWBRIDGE, IS_WALL, W_NONDIGGABLE, isok, DB_DIR, DB_WEST, DB_EAST, DB_SOUTH, DB_NORTH, NON_PM, MIGR_NOWHERE, MIGR_RANDOM, MIGR_APPROX_XY, MIGR_EXACT_XY, MIGR_STAIRS_UP, MIGR_STAIRS_DOWN, MIGR_LADDER_UP, MIGR_LADDER_DOWN, MIGR_SSTAIRS, MIGR_PORTAL, MIGR_WITH_HERO, MIGR_NOBREAK, MIGR_NOSCATTER, MIGR_TO_SPECIES, ONAME, has_oname, has_mgivenname, In_mines, Is_stronghold, In_endgame, Is_botlevel, Has_contents, N_DIRS, xdir, ydir,
 is_hole, } from './const.js';
 /* prop.h BLINDED — the live key for the Blind macro (see _Blind_dk below). */
@@ -125,7 +125,7 @@ import { hurtle } from './dothrow.js';
 import { RIGHT_SIDE } from './const.js';
 import { UNCHANGING } from './const.js';
 import { rehumanize, polymon } from './polyself.js';
-import { poly_when_stoned } from './mondata.js';
+import { attacktype, poly_when_stoned } from './mondata.js';
 import { instapetrify } from './cmd.js';
 import { STONE_RES } from './const.js';
 import { PM_COCKATRICE, PM_CHICKATRICE, PM_STONE_GOLEM, PM_SASQUATCH } from './pm.generated.js';
@@ -244,13 +244,8 @@ function Levitation_dk(u) {
     if (!p) return false;
     return !!((p.intrinsic | 0) || (p.extrinsic | 0)) && !(p.blocked | 0);
 }
-/* C ref: attrib.c:1235 acurrstr() — ACURR(A_STR) massaged to 3..25. */
-export function acurrstr(u) {
-    const str = acurr(u, A_STR) | 0;
-    if (str <= 18) return Math.max(str, 3);
-    if (str <= 121) return 19 + Math.trunc(str / 50);
-    return Math.min(str, 125) - 100;
-}
+/* C ref: attrib.c:1245 acurrstr() — shared port in js/attrib.js. */
+export { acurrstr };
 
 function martial() {
     const g = game;
@@ -898,14 +893,9 @@ function _km_a_monnam(mtmp) {
     return x_monnam(mtmp, ARTICLE_A, null,
                     has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0, false);
 }
-/* C mondata.h attacktype(ptr, atyp) -- attacktype_fordmg(ptr, atyp, AD_ANY). */
+/* C mondata.c:53 attacktype(ptr, atyp) -- the one shared port. */
 function _km_attacktype(ptr, atyp) {
-    const a = ptr?.mattk;
-    if (!a) return false;
-    for (let i = 0; i < NATTK; i++)
-        if (((a[i]?.aatyp) | 0) === atyp)
-            return true;
-    return false;
+    return attacktype(ptr, atyp);
 }
 /* C objclass.h objects[otyp].oc_bulky -- the ARMOR() macro's `blk` column, and
  * this port carries no oc_bulky data.  It is NOT "every suit": objects.h sets
@@ -1860,11 +1850,6 @@ export async function dokick_resolve() {
         return ECMD_TIME;
     }
     return await kick_nondoor(x, y, avrg_attrib);
-}
-function u_wipe_engr(cnt) {
-    const u = game.u || {};
-    if (can_reach_floor(true))
-        wipe_engr_at(u.ux | 0, u.uy | 0, cnt, false);
 }
 /* real body: js/hold_another_object.js (engrave.c:187), incl. the check_pit
  * uteetering_at_seen_pit arm the stub dropped. */

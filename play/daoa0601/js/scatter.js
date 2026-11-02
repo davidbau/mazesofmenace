@@ -19,7 +19,7 @@ import { monsterObjectPronoun, monsterHasAcidResistance, monsterHasPoisonResista
 import { monsterAtPosition } from './steed.js';
 import { applyMonsterPassiveToObject } from './uhitm.js';
 import { wakeMonstersNearWithMessages } from './mon.js';
-import { heroSpecies } from './hero_species.js';
+import { heroSpecies } from './polyself.js';
 import { captureHeroProjectileName } from './hero_physical_messages.js';
 import { angerAttackedMonster, finishEnvironmentalMonsterDeath, hideHeroUnder, maybeUnhideAt, wakeAttackedMonster, } from './mon.js';
 import { hitHeroWithObject } from './hero_object_hit.js';
@@ -27,7 +27,6 @@ import { endVoluntaryMultiTurn } from './hack.js';
 import { stopHeroOccupation } from './occupation.js';
 import { unpunishHero } from './punishment.js';
 import { addShopObjectToBill, costlySpot } from './shk.js';
-import { roomsAt } from './room.js';
 import { MONSTER_FLAGS1, MONSTER_SIZE, MONSTER_NAME, monsterHatesSilver, monsterIsAmorphous, monsterIsNoncorporeal, monsterIsNonliving, monsterIsVampireShifter, } from './monster_data.js';
 import { findMonsterArmorClass } from './monworn.js';
 import { ACID_VENOM, BOULDER, CREAM_PIE, EGG, GOLD_PIECE, STATUE } from './object_data.js';
@@ -48,6 +47,7 @@ import { objectCombatName, objectNameIsPlural } from './objnam.js';
 import { capitalizedDefiniteName, rayHitMessage, rayMissMessage } from './ray_hit_message.js';
 import { rollPhysicalWeaponDamage, rollPhysicalWeaponDamageAgainstHero } from './weapon.js';
 import { rangedTargetHitBonus, breakFloorObject } from './dothrow.js';
+import { roomsAt } from './hack.js';
 const GLASS = 19;
 const POTION_CLASS = 8;
 const DIRECTIONS = [

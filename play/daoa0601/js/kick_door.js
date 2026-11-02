@@ -6,16 +6,16 @@ import { A_DEX, A_STR, D_BROKEN, D_ISOPEN, D_NODOOR, D_TRAPPED, D_WARNED, SHOPBA
 import { canSpotMonster, feel_location, feel_newsym } from './display.js';
 import { plineWithContinuation as pline } from './pline.js';
 import { game, requirePlayingGame } from './gstate.js';
-import { heroSpecies } from './hero_species.js';
+import { heroSpecies } from './polyself.js';
 import { heroHasMartialKick } from './kick_rules.js';
 import { MONSTER_FLAGS2 } from './monster_data.js';
 import { monsterName } from './do_name.js';
 import { rn2, rnl } from './rng.js';
-import { inTown, roomsAt } from './room.js';
 import { heroIsBlind, heroIsDeaf } from './senses.js';
 import { addShopDamage, payForShopDamage } from './shk.js';
 import { couldsee, vision_note_blocker_change } from './vision.js';
 import { angerWatchGuards, isWatch } from './mon.js';
+import { inTown, roomsAt } from './hack.js';
 export async function kickDoor(x, y, average, responses) {
     requirePlayingGame(game);
     const door = game.level.requireAt(x, y);

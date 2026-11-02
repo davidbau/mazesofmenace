@@ -33,33 +33,32 @@ import { figurinePlacementFailure } from './figurine.js';
 import { doBlindingRay } from './flash.js';
 import { useUpFloorObject } from './floor_consumption.js';
 import { heroCanReachFloor } from './floor_reach.js';
-import { prepareMapPositionHighlights, selectMapPosition, shouldShowGetposTip, showGetposInstructions, showGetposTip, } from './getpos.js';
+import { prepareMapPositionHighlights, selectMapPosition, showGetposInstructions } from './getpos.js';
 import { game, requireGameLevel, requireLiveGame, requirePlayingGame } from './gstate.js';
 import { endVoluntaryMultiTurn, heroMayDisplaceMonster, nomul, runSafepetDisplacement } from './hack.js';
 import { possessiveName } from './hacklib.js';
 import { applyCaitiffPenalty } from './hero_attack_conduct.js';
 import { prepareAppliedWeaponAttack } from './hero_attack_preflight.js';
-import { loseHeroHp } from './hero_damage.js';
 import { dropInventoryObjectAtHero } from './hero_drop.js';
 import { removeWornHeroItem } from './hero_equipment.js';
 import { releaseHold } from './hero_expulsion.js';
 import { setHeroGrip } from './hero_grip.js';
-import { makeDeaf } from './hero_hearing.js';
+import { makeDeaf } from './potion.js';
 import { holdAnotherObject } from './hero_hold_object.js';
 import { hurtleHero, hurtleJumpTo } from './hero_hurtle.js';
-import { cureHeroSickness, cureHeroVomiting, heroIsVomiting, startHeroSickness, startHeroVomiting, } from './hero_illness.js';
+import { cureHeroSickness, cureHeroVomiting, heroIsVomiting, startHeroVomiting } from './hero_illness.js';
+import { startHeroSickness } from './potion.js';
 import { freeInventoryObject, useUpInventoryStack } from './hero_inventory.js';
 import { heroIsInvisible } from './hero_invisibility.js';
 import { woundHeroLegs } from './hero_legs.js';
 import { attackHostileMonster } from './hero_melee.js';
-import { makeConfused, makeHallucinated, makeStunned } from './hero_mental_status.js';
+import { makeConfused, makeHallucinated, makeStunned } from './potion.js';
 import { finishHeroMonsterKill, finishHeroMonsterKillOutcome, finishHurtleMonsterDeath } from './hero_monster_death.js';
-import { checkHeroAttackOverexertion } from './hero_overexertion.js';
 import { hitMonsterWithAppliedWeapon } from './hero_ranged_attack.js';
 import { retouchHeroObject } from './hero_retouch.js';
 import { zapHeroWithObject } from './hero_self_zap.js';
 import { heroIsUnaware } from './hero_sleep.js';
-import { heroCanBlow, heroIsBreathless, heroPassesWalls, heroPolyGender, heroSpecies, } from './hero_species.js';
+import { heroCanBlow, heroIsBreathless, heroPassesWalls, heroPolyGender, heroSpecies } from './polyself.js';
 import { formatFeltMessage, formatHeardMessage, formatSeenMessage, publishHeardMessage } from './hero_speech.js';
 import { heroStatusLine } from './hero_status.js';
 import { freeHeroFromBuriedBall, triggerHeroTrap } from './hero_traps.js';
@@ -70,10 +69,9 @@ import { beginImmediateZap, finishImmediateZap, hitFloorPileWithWand, hitMonster
 import { monsterStatusLine } from './insight.js';
 import { consumeInventoryItem, consumeObjectCharge, delobj, inventoryCommandLetter, inventoryItemDescription, } from './invent.js';
 import { chooseInventoryObject, getobj } from './inventory_prompt.js';
-import { heroIsOnStairs, isInvocationPosition } from './invocation_position.js';
 import { gotoLevel } from './level_change.js';
 import { beginObjectBurn, endObjectBurn, lightDamage, lightRoom, transformMagicLampToOilLamp, } from './light.js';
-import { finishDestinationSpotEffects, finishTeleportArrival } from './location_effects.js';
+import { finishTeleportArrival } from './location_effects.js';
 import { pickLock } from './lock.js';
 import { makemonAt, mkclassAligned } from './makemon.js';
 import { MAP_SYMBOLS } from './map_symbols.js';
@@ -101,10 +99,10 @@ import { unpunishHero } from './punishment.js';
 import { paranoidQuery, promptChoice, promptYesNo } from './query.js';
 import { monsterReflectionSource, rayPositionIsOpen } from './ray.js';
 import { d, rn1, rn2, rnd, rnl, } from './rng.js';
-import { roomsAt } from './room.js';
 import { blindfolded, heroIsBlind, heroIsBlinded, heroIsDeaf, heroIsHallucinating, setHeroBlindnessTimeout, } from './senses.js';
 import { addShopDamage, billDummyObject, carriedObjectOwner, chargeAlteredUnpaidObject, chargeUnpaidUsage, costlySpot, deleteObject, dopay, findObjectOwner, objectOwnershipPrefix, objectTypeKnown, payForShopDamage, shopkeeperIsMuted, } from './shk.js';
-import { flashBurn, makeBlinded } from './sight_change.js';
+import { flashBurn } from './sight_change.js';
+import { makeBlinded } from './potion.js';
 import { ensureHeroSkills } from './skills.js';
 import { castSpell, knownSpell } from './spell.js';
 import { activateStatueTrapAt } from './statue_trap.js';
@@ -127,14 +125,16 @@ import { summonUndead } from './undead_summoning.js';
 import { summonVaultGuardSoon } from './vault.js';
 import { cansee, couldsee, vision_note_blocker_change } from './vision.js';
 import { dryTowel } from './weapon.js';
-import { exceedsActionCapacity, nearCapacity, objectWeight } from './weight.js';
 import { wieldTool } from './wield_tool.js';
-import { doswapweapon, releaseWeaponSlots } from './wield.js';
+import { doswapweapon } from './wield.js';
+import { setnotworn } from './worn.js';
 import { showPagedPickOneMenu, snapshotMenuUnderlay } from './windows.js';
 import { monsterCarriesAmulet } from './wizard.js';
 import { adjustMonsterSpeed } from './worn.js';
 import { useMagicMarker } from './write.js';
 import { objectResistsDestruction, zappable } from './zap.js';
+import { shouldShowGetposTip, showGetposTip, loseHeroHp, checkHeroAttackOverexertion, heroIsOnStairs, isInvocationPosition, finishDestinationSpotEffects, roomsAt, exceedsActionCapacity, nearCapacity, } from './hack.js';
+import { objectWeight } from './mkobj.js';
 const WEAPON_CLASS = 2;
 const TOOL_CLASS = 6;
 const POTION_CLASS = 8;
@@ -2672,7 +2672,7 @@ function splitOnePie(stack) {
 async function deletePie(pie) {
     // C apply.c:use_cream_pie() clears the wield slot via setnotworn(),
     // which does not arm the "begin bashing" bare-hands notice.
-    await releaseWeaponSlots(pie, game, { keepUnweapon: true });
+    await setnotworn(pie, game);
     await chargeAlteredUnpaidObject(pie, 'splatter');
     unlinkObject(pie, game);
     await delobj(pie, game);
@@ -2741,7 +2741,9 @@ async function putJellyBack(use) {
     }
 }
 async function consumeJelly(jelly) {
-    await releaseWeaponSlots(jelly);
+    // C apply.c:use_royal_jelly() clears slots through setnotworn(), which
+    // does not arm the bare-hands notice.
+    await setnotworn(jelly, game);
     jelly.owornmask = 0;
     jelly.worn = false;
     await deleteObject(jelly);

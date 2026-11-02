@@ -151,8 +151,17 @@ function region_pline_sync(msg) {
      * at a --More-- the message updates gt.toplines but is never drawn. */
     if (g._topl_win_stop) {
         const hidden = String(g._topl_win_stop_buf || g._pending_message || '');
-        g._topl_win_stop_buf = (hidden.length + 2 + msg.length < 71)
+        const joined = (hidden.length + 2 + msg.length < 71)
             ? hidden + '  ' + msg : msg;
+        /* display.js pline() WIN_STOP join arm: nhgetch() already filed the
+         * acknowledged topline, and remember_topl (topl.c:170-191) will store
+         * the whole joined gt.toplines, so extend that history entry. */
+        const h = g._msg_history;
+        if (joined !== msg && h && h.length && h[h.length - 1] === hidden)
+            h[h.length - 1] = joined;
+        else if (joined === msg)
+            (g._msg_history ||= []).push(msg);
+        g._topl_win_stop_buf = joined;
         return;
     }
     const prev = g._pending_message;

@@ -15,10 +15,9 @@ import { awardMonsterExperience, checkExperienceLevel } from './exper.js';
 import { LL_KILLEDPET, recordGameLogEvent } from './gamelog.js';
 import { MONSTER_GENO, monsterTypeName, MONSTER_FLAGS2, MONSTER_SIZE, monsterIsAlwaysHostile, monsterIsHuman, monsterIsKop, monsterIsNonliving, monsterIsPlainHuman, monsterIsPlayerMonster, monsterIsQuestGuardian, monsterIsUnicorn, } from './monster_data.js';
 import { findMonsterArmorClass } from './monworn.js';
-import { heroIsAmphibious } from './hero_species.js';
+import { heroIsAmphibious } from './polyself.js';
 import { landFloorObject } from './floor_effects.js';
 import { game, requirePlayingGame } from './gstate.js';
-import { finishDestinationSpotEffects } from './location_effects.js';
 import { mkobj } from './mkobj.js';
 import { isQuestLeader } from './quest.js';
 import { questMonsterAlignment, questMonsterSound } from './role_monsters.js';
@@ -32,6 +31,7 @@ import { priestIsCoaligned } from './priest.js';
 import { rn2 } from './rng.js';
 import { cansee } from './vision.js';
 import { angerQuestGuardiansAfterLeaderDeath, createMonsterRemains, describeStoneEngulferEscape, detachDeadMonster, finishMonsterLiquidDeath, levelAllowsMonsterDeathDrops, monsterBodyCrumbles, monsterBodyCrumblesMessage, monsterDeathSquareAllowsObjects, monsterDeathSwallower, monsterLeavesCorpse, prepareMonsterPetrification, resolveMonsterDeathExplosion, rollMonsterDeathExplosion, } from './mon.js';
+import { finishDestinationSpotEffects } from './hack.js';
 // include/mondata.h:unique_corpstat() — G_UNIQ species never leave a
 // pet-murder chronicle entry behind (mon.c:xkilled()).
 const G_UNIQ = 0x1000;

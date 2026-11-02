@@ -1,4 +1,4 @@
-import { noit_Monnam } from './mhitm.js';
+import { noit_Monnam, M1_ANIMAL } from './mhitm.js';
 import { y_monnam as y_monnam_real } from './mhitm.js';
 import { Mgender } from './do_name.js';
 import { montraits, blank_novel, fracture_rock } from './zap.js';
@@ -19,7 +19,7 @@ import { safe_teleds as _safe_teleds_sil } from './teleport.js';
 import { urgent_pline as _urgent_pline_sil } from './pline.js';
 import { del_engr_at } from './mklev.js';
 import { is_pool } from './look.js';
-import { is_ice } from './engrave.js';
+import { is_ice, sengr_at } from './engrave.js';
 /* permonst.cwt per mons[] row (js/eat_corpse_data.json) — the land-mine
  * trigger-weight roll needs it; mon.data.cwt is never sourced on a live monster. */
 import { MONS_CWT } from './mklev.js';
@@ -48,7 +48,7 @@ import { pline_mon as pline_mon_real } from './pline.js';
 import { acurr, exercise, change_luck, adjalign, adjattrib, minuhpmax, setuhpmax } from './attrib.js';
 import { losexp } from './exper.js';
 /* dofiretrap's Underwater/Drain_resistance guards (trap.c:4247, :4291). */
-import { DRAIN_RES, MON_DETACH, SHOPBASE } from './const.js';
+import { DRAIN_RES, MON_DETACH, SHOPBASE, UTOTYPE_FALLING, UTOTYPE_NONE } from './const.js';
 import { canseemon, canspotmon, newsym, map_trap, tmp_at, obj_to_glyph, glyph_is_invisible_at, unmap_object, Unaware as _trap_Unaware, feel_newsym, map_invisible, shieldeff, topl_force_break_now, flush_pending_messages } from './display.js';
 import { bot } from './botl.js';
 import { pline, Norep, You_hear, You_hear as _trap_You_hear, livelog_printf } from './pline.js';
@@ -854,13 +854,10 @@ export async function chest_trap(obj, bodypart, disarm) {
  * Walk gf.ftrap linked list and return first trap with tx==x, ty==y.
  * Returns null (C: (struct trap *)0) if none found.
  * No RNG consumed. Safe to call from any context.
- * TODO: wire into mklev/dotrap/mintrap once gstate trap list is populated.
  * ---------------------------------------------------------------------------
  */
 export function t_at(x, y) {
-    // TODO(L12+): walk game.level.traps list and return matching trap object.
-    // C: gf.ftrap linked list via trap->ntrap.
-    // Safe return value: null (no trap found).
+    // C: gf.ftrap linked list via trap->ntrap; ours is game.level.traps.
     if (!game.level || !game.level.traps)
         return null;
     for (const trap of game.level.traps) {
@@ -1047,26 +1044,13 @@ function _gp_is_waterwall(x, y) {
 function _gp_may_passwall(x, y) {
     return may_passwall(x, y);
 }
-/* C ref: monmove.c:2204-2209 closed_door(x,y). */
+/* C ref: monmove.c:2180-2184 closed_door(x,y) — the real port. */
 function _gp_closed_door(x, y) {
-    const loc = lev_flags(x, y);
-    return !!(IS_DOOR(lev_typ(x, y))
-              && ((loc ? loc.doormask | 0 : 0) & (D_LOCKED | D_CLOSED)));
+    return closed_door_mv(x, y);
 }
-/* C ref: dbridge.c:115-128 db_under_typ(mask). */
-function _gp_db_under_typ(mask) {
-    return db_under_typ(mask);
-}
-/* C ref: rm.h:133-136 SURFACE_AT(x,y). */
-function _gp_surface_at(x, y) {
-    const ltyp = lev_typ(x, y);
-    if (ltyp !== DRAWBRIDGE_UP) return ltyp;
-    const loc = lev_flags(x, y);
-    return _gp_db_under_typ(loc ? loc.drawbridgemask | 0 : 0);
-}
-/* C ref: monmove.c:2211-2218 accessible(x,y). */
+/* C ref: monmove.c:2187-2194 accessible(x,y) — the real port. */
 function _gp_accessible(x, y) {
-    return !!(ACCESSIBLE(_gp_surface_at(x, y)) && !_gp_closed_door(x, y));
+    return accessible_mv(x, y);
 }
 /* C ref: hack.c:906-912 may_dig(x,y). */
 function _gp_may_dig(x, y) {
@@ -1131,17 +1115,6 @@ function _gp_is_rider(mdat) {
     const pm = mdat?.pmidx | 0;
     return pm === PM_DEATH || pm === PM_PESTILENCE || pm === PM_FAMINE;
 }
-function _gp_sengr_at(s, x, y, strict) {
-    const ep = engr_at(x, y);
-    if (ep && (ep.engr_type | 0) !== HEADSTONE
-        && (ep.engr_time | 0) <= (game.moves | 0)) {
-        const txt = String(ep.text ?? '');
-        if (strict ? txt.toLowerCase() === String(s).toLowerCase()
-                   : txt.toLowerCase().includes(String(s).toLowerCase()))
-            return ep;
-    }
-    return null;
-}
 /* C ref: teleport.c:51-74 goodpos_onscary(x, y, mptr) — "an approximation of
  * onscary() that doesn't use any 'struct monst' fields aside from monst->data;
  * used primarily for new monster creation".  This is the arm makemon's
@@ -1165,7 +1138,7 @@ function _gp_goodpos_onscary(x, y, mptr) {
        caught by the minions check */
     if ((mptr?.pmidx | 0) === PM_MINOTAUR || !_gp_haseyes(mptr))
         return false;
-    return _gp_sengr_at("Elbereth", x, y, true) ? true : false;
+    return sengr_at("Elbereth", x, y, true) ? true : false;
 }
 /* C ref: mkmaze.c:317-331 is_exclusion_zone(type, x, y), reached from goodpos()
  * under GP_AVOID_MONPOS with type == LR_MONGEN.  js/sp_lev.js's des.exclusion
@@ -1670,24 +1643,27 @@ export function impossible_(_msg, ..._args) { }
  * web, statue_trap, magic_trap, anti_magic, poly_trap, landmine,
  * rolling_boulder_trap, magic_portal, vibrating_square).
  * RNG: each trapeffect_* function contains multiple rn2/rnd/d calls.
- * TODO: port trapeffect_selector dispatch + individual effect functions.
  * ---------------------------------------------------------------------------
  */
 export async function dotrap(trap, trflags) {
     const u = game.u;
     const ttype = trap.ttyp | 0;
     const already_seen = !!trap.tseen;
-    /* C trap.c:2999-3000 —
+    /* C trap.c:3000-3001 —
      *     forcetrap = ((trflags & FORCETRAP) != 0 || (trflags & FAILEDUNTRAP) != 0)
      * The FAILEDUNTRAP half was missing; it is the flag #untrap sets when a
      * disarm attempt sets the trap off instead. */
     let forcetrap = ((trflags & FORCETRAP) !== 0
                      || (trflags & _FAILEDUNTRAP_BT) !== 0);
     const forcebungle = (trflags & FORCEBUNGLE) !== 0;
+    /* C trap.c:3002-3005.  All three feed both the escape check below AND
+     * trapeffect_pit's damage arguments.  Note conjoined_pits/adj_nonconjoined_pit
+     * both require the hero to ALREADY be in a pit, so on a first fall both are
+     * still false. */
     const plunged = (trflags & _TOOKPLUNGE_T) !== 0;
     const conj_pit = conjoined_pits(trap, t_at(u.ux0 | 0, u.uy0 | 0), true);
     const adj_pit = adj_nonconjoined_pit(trap);
-    /* C trap.c:3006: nomul(0) */
+    /* C trap.c:3007: nomul(0) */
     nomul(0);
     /* C trap.c:3008-3011 / trap.h:125: fixed_tele_trap(trap) =
      * (ttyp == TELEP_TRAP && isok(teledest.x, teledest.y)) → FORCETRAP, so the
@@ -1714,7 +1690,7 @@ export async function dotrap(trap, trflags) {
         }
         /* C trap.c:3034-3043: already-seen escape check.  rn2(5) only fires
          * when the hero has already seen the trap and the other guards pass. */
-        /* C trap.c:3042 is
+        /* C trap.c:3038 is
          *     (!rn2(5) || (is_pit(ttype) && is_clinger(gy.youmonst.data)))
          * and the `||` short-circuits AFTER rn2(5), so adding the second
          * disjunct cannot move a leaf — it only lets a ceiling-clinger escape a
@@ -1743,7 +1719,7 @@ export async function dotrap(trap, trflags) {
     if (game.u?.usteed)
         mon_learns_traps(game.u.usteed, ttype);
     mons_see_trap(trap);
-    /* C trap.c:3058: trapeffect_selector(&youmonst, trap, trflags) — the hero
+    /* C trap.c:3059: trapeffect_selector(&youmonst, trap, trflags) — the hero
      * path keys off the isYou flag, so the mtmp argument is unused (null). */
     await trapeffect_selector(null, trap, trflags, true);
     void u;
@@ -1833,20 +1809,20 @@ export async function reset_utrap(msg) {
 }
 function floor_trigger(ttyp) {
     switch (ttyp) {
-        case 1:
-        case 2:
-        case 3: /* ARROW_TRAP, DART_TRAP, ROCKTRAP */
-        case 4:
-        case 5: /* SQKY_BOARD, BEAR_TRAP */
-        case 6:
-        case 7: /* LANDMINE, ROLLING_BOULDER_TRAP */
-        case 8:
-        case 9: /* SLP_GAS_TRAP, RUST_TRAP */
-        case 10: /* FIRE_TRAP */
-        case 11:
-        case 12: /* PIT, SPIKED_PIT */
-        case 13:
-        case 14: /* HOLE, TRAPDOOR */
+        case ARROW_TRAP:
+        case DART_TRAP:
+        case ROCKTRAP:
+        case SQKY_BOARD:
+        case BEAR_TRAP:
+        case LANDMINE:
+        case ROLLING_BOULDER_TRAP:
+        case SLP_GAS_TRAP:
+        case RUST_TRAP:
+        case FIRE_TRAP:
+        case PIT:
+        case SPIKED_PIT:
+        case HOLE:
+        case TRAPDOOR:
             return true;
         default:
             return false;
@@ -1981,9 +1957,7 @@ const BOULDER_OTYP = 475; /* objects.h — the otyp mkroll_launch already uses *
  * js/look.js exports one, but look.js imports this file; a local copy keeps the
  * edge one-directional, the same convention as obj_to_any / Blind_thitu above. */
 function closed_door_lo(x, y) {
-    const loc = game.level?.at(x, y);
-    if (!loc) return false;
-    return IS_DOOR(loc.typ | 0) && !!((loc.doormask | 0) & (D_LOCKED | D_CLOSED));
+    return closed_door_mv(x, y); /* the real port, js/monmove.js */
 }
 const HALF_PHYSICAL_DAMAGE = 56; /* C prop.h HALF_PHDAM */
 function Maybe_Half_Phys_lo(dmg) {
@@ -3409,9 +3383,7 @@ async function trapeffect_telep_trap(mtmp, trap, trflags, isYou) {
         /* C trap.c:2078-2081 —
          *     boolean in_sight = canseemon(mtmp) || (mtmp == u.usteed);
          *     mtele_trap(mtmp, trap, in_sight);
-         *     return Trap_Moved_Mon;
-         * The note that stood here said mtele_trap was "not yet ported"; it is
-         * now (above), and it DOES consume RNG. */
+         *     return Trap_Moved_Mon; */
         const in_sight = canseemon(mtmp) || (mtmp === game.u?.usteed);
         await mtele_trap(mtmp, trap, in_sight);
         return Trap_Moved_Mon;
@@ -3646,7 +3618,7 @@ async function trapeffect_fire_trap_mon(mtmp, trap) {
     }
     /* C trap.c:1795 — `||` short-circuits, so a TRUE burnarmor skips the rn2(3). */
     if ((await burnarmor(mtmp)) || rn2(3)) {
-        const xtradmg = await destroy_items_mon(mtmp, AD_FIRE_FT, orig_dmg);
+        const xtradmg = await destroy_items_mon(mtmp, AD_FIRE, orig_dmg);
         await ignite_items(mtmp.minvent || null);
         if (!((mtmp.mhp | 0) < 1)) {
             mtmp.mhp = (mtmp.mhp | 0) - xtradmg;
@@ -3670,7 +3642,9 @@ async function trapeffect_fire_trap_mon(mtmp, trap) {
         : ((mtmp.mtrapped | 0) ? Trap_Caught_Mon : Trap_Effect_Finished);
 }
 /* C monattk.h AD_FIRE — destroy_items' damage-type selector. */
-const AD_FIRE_FT = 2;
+const AD_FIRE = 2;
+/* C monattk.h AD_ACID — erode_obj's corrode-arm resistance check. */
+const AD_ACID = 8;
 /* monsters.h ordinals for the four golems trap.c:1770-1786 special-cases. */
 const PM_STRAW_GOLEM_FT = 249, PM_PAPER_GOLEM_FT = 250,
       PM_LEATHER_GOLEM_FT = 253, PM_WOOD_GOLEM_FT = 254;
@@ -3778,7 +3752,7 @@ async function dofiretrap(box) {
         await losehp(num, TOWER_OF_FLAME_FT, KILLED_BY_AN);        /* trap.c:4303 */
     await _burn_away_slime_sil(); /* C trap.c:4304 */
     if ((await burnarmor(game.youmonst)) || rn2(3)) {
-        await destroy_items(true, AD_FIRE_FT, orig_dmg);
+        await destroy_items(true, AD_FIRE, orig_dmg);
         await ignite_items(game.invent || null);
     }
     if (!box && await burn_floor_objects(u.ux | 0, u.uy | 0, see_it, true) && !see_it)
@@ -5452,8 +5426,17 @@ function is_metallivorous(mtmp) {
  * a fabricated `M1_FLOAT_T = 0x2` mflags1 bit.  C has no M1_FLOAT: 0x2 is
  * M1_SWIM, and mondata.h:20 is_floater() is `mlet == S_EYE || mlet == S_LIGHT`.
  * Callers now use _gp_m_in_air() / check_in_air() as their C site does. */
+/* ---------------------------------------------------------------------------
+ * fall_through — hero falls through a hole/trapdoor to the next level
+ * C ref: nethack-c/src/trap.c:604
+ *   void fall_through(boolean fthruflag, unsigned fflags)
+ *
+ * Called from dotrap for HOLE and TRAPDOOR traps, and from float_down.
+ * RNG: multiple rn2 calls for fall damage and landing location.
+ * ---------------------------------------------------------------------------
+ */
 export async function fall_through(fthruflag, fflags) {
-    /* C trap.c:604-726.  Keep the transition deferred, exactly as C's
+    /* C trap.c:602-696.  Keep the transition deferred, exactly as C's
      * schedule_goto does; the caller remains on the old level until the
      * moveloop consumes u.utotype. */
     const u = game.u || (game.u = {});
@@ -5504,7 +5487,7 @@ export async function fall_through(fthruflag, fflags) {
 
     let controlledFlight = false;
     if ((flying || clinging) && (flags & _TOOKPLUNGE_T) && td && trap) {
-        /* C trap.c:652-662 */
+        /* C trap.c:656-665 */
         controlledFlight = flying;
         await You(`${flying ? "swoop" : "deliberately drop"} down ${trap.ttyp === TRAPDOOR
             ? 'through the trap door' : 'into the gaping hole'}!`);
@@ -5535,7 +5518,7 @@ export async function fall_through(fthruflag, fflags) {
             await You(`${controlledFlight ? 'fly' : 'fall'} down a ${dist > 3 ? 'very ' : ''}${dist > 2 ? 'deep ' : ''}shaft!`);
     }
     const post = !td ? `The hole in the ${ceiling(u.ux | 0, u.uy | 0)} above you closes up.` : null;
-    schedule_goto(target, flying ? 0 : 0x02, null, post);
+    schedule_goto(target, !flying ? UTOTYPE_FALLING : UTOTYPE_NONE, null, post);
     return true;
 }
 const SELFTOUCH_CORPSE = 265; /* CORPSE otyp (objects.c) */
@@ -5749,7 +5732,7 @@ export async function acid_damage(obj) {
         : (obj.where | 0) === OBJ_MINVENT_TR ? obj.ocarry : null;
     const vismon = victim && !carried && canseemon(victim);
 
-    if (carried && inventory_resistance_check(8 /* AD_ACID */))
+    if (carried && inventory_resistance_check(AD_ACID))
         return;
     if (obj.greased) {
         await grease_protect(obj, null, victim);
@@ -5921,14 +5904,14 @@ export async function erode_obj(otmp, ostr, type, ef_flags) {
     let vulnerable, primary = true, grease = !!(ef_flags & EF_GREASE), cost;
     switch (type) {
     case ERODE_BURN:
-        if (uvictim && inventory_resistance_check(2)) return ER_NOTHING;
+        if (uvictim && inventory_resistance_check(AD_FIRE)) return ER_NOTHING;
         vulnerable = _is_flammable(otmp); grease = false; cost = COST_BURN; break;
     case ERODE_RUST:
         vulnerable = _is_rustprone(otmp); cost = COST_RUST; break;
     case ERODE_ROT:
         vulnerable = _is_rottable(otmp); grease = false; primary = false; cost = COST_ROT; break;
     case ERODE_CORRODE:
-        if (uvictim && inventory_resistance_check(8)) return ER_NOTHING;
+        if (uvictim && inventory_resistance_check(AD_ACID)) return ER_NOTHING;
         vulnerable = _is_corrodeable(otmp); primary = false; cost = COST_CORRODE; break;
     case ERODE_CRACK:
         vulnerable = _is_crackable(otmp); cost = COST_CRACK; break;
@@ -6201,6 +6184,8 @@ const _IMM_MAT_IRON = 11;
 /* C ref: objclass.h:200 is_rustprone(otmp) := objects[otmp->otyp].oc_material == IRON. */
 function _imm_is_rustprone(otmp) { return (MKOBJ_OC_MATERIAL[otmp.otyp | 0] | 0) === _IMM_MAT_IRON; }
 function _imm_is_floater(pm) { return pm.mlet === _IMM_S_EYE || pm.mlet === _IMM_S_LIGHT; }
+const is_floater = _imm_is_floater;
+function is_animal(ptr) { return !!((ptr?.mflags1 | 0) & M1_ANIMAL); }
 function _imm_is_flyer(pm) { return ((pm.mflags1 | 0) & M1_FLY_T) !== 0; }
 function _imm_is_clinger(pm) { return ((pm.mflags1 | 0) & _IMM_M1_CLING) !== 0; }
 function _imm_amorphous(pm) { return ((pm.mflags1 | 0) & _IMM_M1_AMORPHOUS) !== 0; }
@@ -6592,6 +6577,7 @@ import { M1_AMORPHOUS_DM, M1_FLY_DM, M1_UNSOLID_DM, MONS_MSIZE, MZ_SMALL, S_VORT
 import { defended as defended_dm, resists_magm as resists_magm_dm } from './mondata.js'; // relocate-fns
 import { crawl_destination } from './hack.js'; // relocate-fns
 import { y_monnam } from './do_name.js'; // relocate-fns
+import { closed_door as closed_door_mv, accessible as accessible_mv } from './monmove.js';
 export { _gp_uprop_he, lev_flags, lev_typ }; // relocate-fns
 export { mon_knows_traps, mon_learns_traps } from './mondata.js'; // relocate-fns
 export { blocking_terrain, linedup, m_carrying, m_has_launcher_and_ammo, m_useup, thitu } from './mthrowu.js'; // relocate-fns
@@ -6829,7 +6815,6 @@ export function uescaped_shaft(trap) {
               && u_at(trap.tx, trap.ty));
 }
 
-const W_SADDLE_FD = 0x00100000;
 
 export async function float_down(hmask, emask) {
     const g = game;
@@ -6921,7 +6906,7 @@ export async function float_down(hmask, emask) {
         await pline('You begin to tumble in place.');
     } else if (landingMessage && Is_waterlevel(u.uz) && !no_msg) {
         await pline('You feel heavier.');
-    } else if (landingMessage && !u.uinwater && !no_msg && !(emask & W_SADDLE_FD)) {
+    } else if (landingMessage && !u.uinwater && !no_msg && !(emask & W_SADDLE)) {
         const hallu = u.uprops?.[HALLUC]?.intrinsic
             && !(u.uprops[HALLUC_RES]?.intrinsic || u.uprops[HALLUC_RES]?.extrinsic);
         // C trap.c:4122-4134: Sokoban air currents knock the hero down.
@@ -6931,7 +6916,7 @@ export async function float_down(hmask, emask) {
             if (u.usteed)
                 await dismount_steed_fu(DISMOUNT_FELL);
             await selftouch('As you fall, you');
-        } else if (u.usteed && ([5, 25].includes(u.usteed.data.mlet)
+        } else if (u.usteed && (is_floater(u.usteed.data)
                                || pooleffects_is_flyer(u.usteed.data))) {
             await pline('You settle more firmly in the saddle.');
         } else if (hallu)
@@ -6943,7 +6928,7 @@ export async function float_down(hmask, emask) {
             await flush_screen(1);
     }
     /* levitation gave maximum carrying capacity; ending it may raise encumbrance.
-     * encumber_msg() is emitted after the come-down message (trap.c:4133). */
+     * encumber_msg() is emitted after the come-down message (trap.c:4153). */
     await encumber_msg();
     /* C trap.c:4147-4160 — activate a non-statue trap before pickup.  C's
      * hole/trapdoor arm additionally checks Can_fall_thru() and u.ustuck;
@@ -6959,7 +6944,7 @@ export async function float_down(hmask, emask) {
             await dotrap(trap, 0);
         }
     }
-    /* C trap.c:4162-4167 — pickup only on a normal level, outside air/water
+    /* C trap.c:4173-4177 — pickup only on a normal level, outside air/water
      * levels and swallowing; the existing helper is pickup(1). */
     if (!Is_airlevel(u.uz) && !Is_waterlevel(u.uz) && !u.uswallow
         && on_level(levelBeforeTrap, u.uz)) {
@@ -7009,7 +6994,7 @@ export async function float_up() {
     } else if (u.uinwater) {
         await spoteffects(true);
     } else if (u.uswallow) {
-        await pline((u.ustuck.data.mflags1 & 0x00040000 /* M1_ANIMAL */)
+        await pline(is_animal(u.ustuck.data)
             ? `You float away from the ${surface(u.ux, u.uy)}.`
             : `You spiral up into ${mon_nam(u.ustuck)}.`);
     } else if (u.uprops?.[HALLUC]?.intrinsic
@@ -7024,8 +7009,7 @@ export async function float_up() {
     /* C trap.c:3991-3999 */
     if (u.usteed) {
         const sd = u.usteed.data;
-        const mlet = sd ? (sd.mlet | 0) : -1;
-        if (mlet !== 5 && mlet !== 25 && !pooleffects_is_flyer(sd)) {
+        if (!(sd && is_floater(sd)) && !pooleffects_is_flyer(sd)) {
             const lev = u.uprops[LEVITATION_PROP];
             const H = lev.intrinsic | 0, E = lev.extrinsic | 0;
             const lev_at_will = (((H & I_SPECIAL) !== 0 || (E & W_ARTI) !== 0)
@@ -7034,7 +7018,7 @@ export async function float_up() {
                 await pline(`${Monnam_fu(u.usteed)} magically floats up!`);
             } else {
                 await pline(`You cannot stay on ${mon_nam(u.usteed)}.`);
-                await dismount_steed_fu(0 /* DISMOUNT_GENERIC */);
+                await dismount_steed_fu(DISMOUNT_GENERIC);
             }
         }
     }

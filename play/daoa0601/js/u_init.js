@@ -6,10 +6,9 @@ import { createHeroState } from './hero_types.js';
 import { useStartingItem } from './starting_equipment.js';
 import { isGrayStone, isLauncherAmmunition, isThrowingWeapon } from './object_properties.js';
 import { artifactById } from './artifacts.js';
-import { initializeHeroRoomMembership } from './room.js';
 import { prepareInventoryAddition, finishInventoryAddition, recordHeroPrizeAcquisition, useUpInventoryStack, } from './hero_inventory.js';
 import { japaneseItemName, wishedObjectPresentation } from './objnam.js';
-import { setHeroSpecies } from './hero_species.js';
+import { setHeroSpecies } from './polyself.js';
 import { seeMonsterCloseup } from './mon.js';
 import { setMonsterGivenName } from './do_name.js';
 import { impossible } from './diagnostics.js';
@@ -29,7 +28,6 @@ import { makePlural } from './objnam.js';
 import { ensureHeroSkills, roleAllowsSpellbook } from './skills.js';
 import { hiddenGold } from './vault.js';
 import { addHeroGoldObject, setHeroGoldAmount } from './hero_gold.js';
-import { invWeight, objectWeight } from './weight.js';
 import { syncBlindness, syncDeafness } from './senses.js';
 import { attachCursedFigurineTimer } from './figurine_timer.js';
 import { assertCreatedObject } from './do.js';
@@ -38,6 +36,8 @@ import { grantIntrinsicProperty } from './properties.js';
 import { ROLE_LEVEL_ABILITIES, RACE_LEVEL_ABILITIES } from './innate_abilities.js';
 import { setPrimaryWeapon, setQuiverObject, setSecondaryWeapon } from './wield.js';
 import { newMonsterHitPoints } from './makemon.js';
+import { invWeight } from './hack.js';
+import { objectWeight } from './mkobj.js';
 const ATTRIBUTE_INDICES = [0, 1, 2, 3, 4, 5];
 const WEAPON_CLASS = 2;
 const ARMOR_CLASS = 3;
@@ -444,6 +444,18 @@ export function initializeHeroSpecies(state = game) {
     hero.ulycn = -1;
     hero.mh = hero.mhmax = hero.mtimedone = 0;
     setHeroSpecies(hero.umonster, state);
+}
+// C u_init.c/u_init_misc() and hack.c:move_update().
+export function initializeHeroRoomMembership(state) {
+    const hero = state.u;
+    hero.urooms = [];
+    hero.urooms0 = [];
+    hero.uentered = [];
+    hero.ushops = [];
+    hero.ushops0 = [];
+    hero.ushops_entered = [];
+    hero.ushops_left = [];
+    state._emptyShops = [];
 }
 // The caller supplies the handedness roll from pre-level initialization.
 export function uInitMisc(handednessRoll) {
@@ -1018,6 +1030,8 @@ export async function addInventoryItem(raw, presentation = null, observe = true)
 export async function addInventoryItemBefore(raw, next) {
     return await addInventoryItemCore(raw, null, true, next);
 }
+// C invent.c:addinv_core0(): merge with a carried stack, or take a letter
+// and slot into the fixed-letter order; reinsertion keeps its predecessor.
 async function addInventoryItemCore(raw, presentation, observe, next) {
     const wasThrown = raw.how_lost === LOST_THROWN;
     let item = prepareInventoryItem(raw, presentation, observe);

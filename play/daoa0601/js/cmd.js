@@ -24,7 +24,7 @@ import { wizBury } from './dig.js';
 import { wizTimeoutQueue } from './timeout_queue.js';
 import { wizardTeleportCommand } from './teleport.js';
 import { continueSpellbookStudy } from './spellbook_study.js';
-import { quaff } from './quaff.js';
+import { quaff } from './potion.js';
 import { clearMessageWindow } from './tty_topline.js';
 // cmd.js — Command parsing and dispatch.
 // C ref: cmd.c:rhack(); movement execution belongs to hack.ts.
@@ -72,20 +72,21 @@ import { dozap, } from './zap.js';
 import { bucAdjectiveForName, ddoinv, dolook } from './invent.js';
 import { docast, dovspell, dowizcast } from './spell.js';
 import { heroBreathAttack } from './hero_breath.js';
-import { useHeroBreath } from './hero_breath_command.js';
+import { useHeroBreath } from './polyself.js';
 import { monsterBreathAttack } from './dogmove.js';
-import { heroSpitAttack, useHeroSpit } from './hero_spit.js';
-import { heroGazeAttack, useHeroGaze } from './hero_gaze.js';
+import { heroSpitAttack, useHeroSpit } from './polyself.js';
+import { heroGazeAttack, useHeroGaze } from './polyself.js';
 import { heroCanSplitLikeGremlin, useHeroGremlinSplit, } from './hero_gremlin.js';
 import { heroCanShriek, useHeroShriek } from './hero_shriek.js';
-import { heroCanSummonWerePack, useHeroWereSummon, } from './were.js';
+import { heroCanSummonWerePack } from './were.js';
+import { useHeroWereSummon } from './polyself.js';
 import { heroHasHidingAbility, useHeroHide } from './hero_hide.js';
-import { chooseSpiderAbility, heroCanSpinWeb, useHeroWeb, } from './hero_web.js';
-import { heroCanMindBlast, useHeroMindBlast, } from './hero_mind_blast.js';
-import { heroCanRemovePunishment, useHeroNymphAbility, } from './hero_nymph_ability.js';
+import { chooseSpiderAbility, heroCanSpinWeb, useHeroWeb } from './polyself.js';
+import { heroCanMindBlast, useHeroMindBlast } from './polyself.js';
+import { heroCanRemovePunishment, useHeroNymphAbility } from './polyself.js';
 import { heroCanUseUnicornHorn } from './unicorn_horn.js';
 import { useUnicornHorn } from './apply.js';
-import { useHeroVampireShift } from './vampire_shift.js';
+import { useHeroVampireShift } from './polyself.js';
 import { doread } from './read.js';
 import { continueFoodMeal, doeat, continueTinOpening } from './eat.js';
 import { doclassdisco, dodiscovered } from './o_init.js';
@@ -93,7 +94,7 @@ import { doattributes, doconduct } from './insight.js';
 import { displayHelpFile } from './pager.js';
 import { doextversion, NATIVE_VERSION } from './extversion.js';
 import { dosearch } from './detect.js';
-import { continueWipingFace, donull, dowipe, threateningMonsterNearby, } from './do.js';
+import { continueWipingFace, donull, dowipe } from './do.js';
 import { dropHeroObject } from './hero_drop.js';
 import { dropMultipleObjects } from './drop_menu.js';
 import { setSecondaryWeapon } from './wield.js';
@@ -101,11 +102,10 @@ import { isPick } from './object_properties.js';
 import { LOCK_PICK, CREDIT_CARD, SADDLE, POT_OIL, SKELETON_KEY } from './object_data.js';
 import { NO_COLOR } from './terminal.js';
 import { MONSTER_MOVE, MONSTER_NAME, monsterDigests, monsterSpeciesHidesOnCeiling } from './monster_data.js';
-import { heroFormSticks } from './hero_species.js';
+import { heroFormSticks } from './polyself.js';
 import { autopickupAtHero } from './pickup.js';
 import { isLavaAt, isPoolAt } from './dbridge.js';
 import { dosave } from './save.js';
-import { arriveTravel, captureRunmodeDelay, startRun, startWalkRepeat, stopRun } from './runmode.js';
 import { finishHeroMonsterKill } from './hero_monster_death.js';
 import { doride, stuckSteed } from './steed.js';
 import { continueForceLock, doforce } from './lock.js';
@@ -114,7 +114,6 @@ import { dosit } from './sit.js';
 import { continueEngraving, doengrave } from './engrave_command.js';
 import { climbOutOfPit, triggerHeroTrapAt } from './hero_traps.js';
 import { ledgerNo } from './hacklib.js';
-import { nearCapacity, SLT_ENCUMBER } from './weight.js';
 import { dopray, dosacrifice } from './pray.js';
 import { finishTeleportArrival } from './location_effects.js';
 import { doborn, doquit, finishHeroDeath } from './end.js';
@@ -127,11 +126,12 @@ import { doready, doswapweapon, dotwoweapon, dowield } from './wield.js';
 import { dofire, dothrow } from './dothrow.js';
 import { doenhance, } from './skills.js';
 import { objectTypeKnown, dopay, SELL_DELIBERATE, SELL_NORMAL, setSellDisposition } from './shk.js';
-import { showGetposTip, showGetposInstructions, selectMapPosition } from './getpos.js';
+import { showGetposInstructions, selectMapPosition } from './getpos.js';
 import { performPetRangedAttack } from './dogmove.js';
 import { dokick } from './dokick.js';
 import { bringLeashedFollowers } from './apply.js';
 import { COLNO, ROWNO, SCORR, DOOR, FOUNTAIN, SINK, D_CLOSED, D_LOCKED, PIT, SPIKED_PIT, TT_PIT, HOLE, TRAPDOOR, Is_airlevel, Is_waterlevel, Is_valley, W_ARMOR, W_ACCESSORY, isok } from './const.js';
+import { threateningMonsterNearby, arriveTravel, captureRunmodeDelay, stopRun, nearCapacity, SLT_ENCUMBER, showGetposTip, } from './hack.js';
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
 function isMovementKey(ch) {
@@ -273,6 +273,11 @@ function prepareTimedCommand(binding) {
     if (text && !game._occupation && game.multi) {
         game._occupation = { key: 'command', text, binding };
     }
+}
+// C cmd.c:set_occupation(). Installs the resumable occupation and its
+// progress text; xtime is modelled by the occupation's own key.
+export function setOccupation(occupation, g = game) {
+    g._occupation = occupation;
 }
 async function redrawCommand() {
     await docrt();
@@ -2031,6 +2036,30 @@ export function commandResultFailed(state = game) {
 // spends its turn.
 export function commandResultSpentTime(state = game) {
     state._commandResult = (state._commandResult ?? ECMD_OK) | ECMD_TIME;
+}
+// C refs: cmd.c set_move_cmd(run=1) and hack.c lookaround().
+export function startRun(dx, dy, g = game, mode = 1) {
+    g._runState = {
+        dx, dy,
+        mode,
+    };
+    g.lastStrTurn = 0;
+    // C's DOMOVE_RUSH dispatch grants the movement ration whenever the
+    // repeat begins, regardless of the surviving context.run value.
+    if (!g.multi)
+        g.multi = Math.max(COLNO, ROWNO);
+    g.context.run = mode;
+    g.context.mv = true;
+    return g._runState;
+}
+// C rhack()'s DOMOVE_WALK dispatch (cmd.c:3785-3788): a counted direction
+// only marks the repeat active.  context.run keeps whatever value an
+// earlier rush or travel left behind, as does the last corridor turn.
+// No movement ration is granted.
+export function startWalkRepeat(dx, dy, g = game) {
+    g._runState = { dx, dy, mode: 0 };
+    g.context.mv = true;
+    return g._runState;
 }
 // C cmd.c:reset_cmd_vars(). Full command_count belongs to the next parse.
 // Unlike end_running(), reset_cmd_vars() zeroes context.run directly: no

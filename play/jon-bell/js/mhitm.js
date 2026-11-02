@@ -118,7 +118,7 @@ import { nomul } from './allmain.js';
 import { monstseesu, monstunseesu, shieldeff, buzz } from './mcastu.js';
 import { resist, drain_item, hit } from './zap.js';
 import { finish_meating, dmgtype as dmgtype_real } from './dogmove.js';
-import { FAINTED } from './const.js';
+import { FAINTED, M_AP_NOTHING } from './const.js';
 import { PM_SAMURAI as PM_SAMURAI_HM, PM_ELF as PM_ELF_HM } from './pm.generated.js';
 /* C end.c:185-300 done_in_by — use the canonical death attribution path.
  * mhitm's local no-op used to discard the stoning killer, leaving the
@@ -878,7 +878,8 @@ export async function passive_obj(mon, obj, mattk) {
             /* C uhitm.c:6159: if (!rn2(6) && !mon->mcan && mon->data != &mons[PM_STEAM_VORTEX]) */
             if (!rn2(6) && !mon.mcan && mobjMndx !== PM_STEAM_VORTEX) {
                 /* C uhitm.c:6161: erode_obj(obj, NULL, ERODE_BURN, EF_NONE) — no EF_VERBOSE,
-                 * so the not-affected / Somehow messages stay silent here */
+                 * so "not affected" stays silent; "Somehow, ... not affected" still
+                 * prints for a visible oerodeproof item (trap.c erode_obj). */
                 await erode_obj(obj, null, ERODE_BURN, EF_NONE);
             }
             break;
@@ -1447,7 +1448,7 @@ export function shade_miss(magr, mdef, obj, thrown, verbose) {
     const youdef = is_youmonst(mdef);
 
     /* we're using dmgval() for zero/not-zero, not for actual damage amount */
-    /* C uhitm.c:2028 calls the one dmgval() (weapon.c:216).  It is the SAME
+    /* C uhitm.c:2027 calls the one dmgval() (weapon.c:216).  It is the SAME
      * function the hero's own melee path uses, and it CONSUMES RNG
      * (rnd(oc_wsdam)/rnd(oc_wldam) plus the per-otyp bonus dice) even when
      * the caller only wants zero/not-zero — so it must be the real body, not
@@ -1468,12 +1469,12 @@ export function shade_miss(magr, mdef, obj, thrown, verbose) {
          * printf varargs — the extra arguments were being dropped and the
          * literal "%s %s %s%s%s." was reaching the topline. */
         if (!thrown) {
-            /* C uhitm.c:2042-2043: pline("%s %s %s%s%s.", whose, what,
+            /* C uhitm.c:2039-2040: pline("%s %s %s%s%s.", whose, what,
              *   vtense(what, "pass"), harmlessly_thru, target); */
             const whose = youagr ? "Your" : s_suffix(Monnam(magr));
             pline(`${whose} ${what} ${vtense(what, "pass")}${harmlessly_thru}${target}.`);
         } else {
-            /* C uhitm.c:2045-2046: pline("%s %s%s%s.", The(what),
+            /* C uhitm.c:2042-2043: pline("%s %s%s%s.", The(what),
              *   vtense(what, "pass"), harmlessly_thru, target);
              * note: The(), not pline_The() */
             pline(`${The(what)} ${vtense(what, "pass")}${harmlessly_thru}${target}.`);
@@ -1607,7 +1608,7 @@ export function seemimic(mtmp) {
     const wasBlocker = is_lightblocker_mappear(mtmp);
     if (mtmp.mextra && mtmp.mextra.mcorpsenm !== NON_PM)
         freemcorpsenm(mtmp);
-    mtmp.m_ap_type = 0; /* M_AP_NOTHING */
+    mtmp.m_ap_type = M_AP_NOTHING;
     mtmp.mappearance = 0;
     if (wasBlocker && !does_block(mtmp.mx, mtmp.my))
         unblock_point(mtmp.mx, mtmp.my);
@@ -1619,14 +1620,14 @@ export function seemimic(mtmp) {
 export function pre_mm_attack(magr, mdef) {
     let showit = false;
     const vis = !!game.v?.vis;
-    if ((mdef.m_ap_type | 0) & 0x7) {
+    if ((mdef.m_ap_type | 0) & M_AP_TYPMASK) { /* C M_AP_TYPE(mdef) */
         seemimic(mdef);
         showit ||= vis;
     } else if (mdef.mundetected) {
         mdef.mundetected = 0;
         showit ||= vis;
     }
-    if ((magr.m_ap_type | 0) & 0x7) {
+    if ((magr.m_ap_type | 0) & M_AP_TYPMASK) { /* C M_AP_TYPE(magr) */
         seemimic(magr);
         showit ||= vis;
     } else if (magr.mundetected) {
@@ -1645,7 +1646,7 @@ export async function wakeup(mtmp, via_attack, defer_priest = false) {
     const was_sleeping = mtmp.msleeping;
     wake_msg(mtmp, via_attack);
     mtmp.msleeping = 0;
-    const M_AP_NOTHING = 0, M_AP_MONSTER = 3;
+    const M_AP_MONSTER = 3;
     const apType = (mtmp.m_ap_type | 0) & 0x7 /* M_AP_TYPMASK */;
     if (apType !== M_AP_NOTHING) {
         if (apType !== M_AP_MONSTER)
@@ -2168,7 +2169,7 @@ function shade_aware(obj) {
         || otyp === SHADE_AWARE_CLOVE_OF_GARLIC /* causes shades to flee */
         || (MKOBJ_OC_MATERIAL[otyp] | 0) === SHADE_AWARE_SILVER_MATERIAL)
         return true;
-    /* C uhitm.c:2012: return FALSE; */
+    /* C uhitm.c:2010: return FALSE; */
     return false;
 }
 
@@ -2658,7 +2659,7 @@ const BUFSZ = 256;
  *
  * adjalign is js/attrib.js:451's complete body; the stub here shadowed it for
  * this module.  Neither had a live caller until check_caitiff got one. */
-import { adjalign as _adjalign_attrib } from './attrib.js';
+import { adjalign } from './attrib.js';
 import { ENV } from './hostenv.js';
 import { You } from './pline.js'; export { You };
 import { Resists_Elem, can_blnd, defended, mon_hates_blessings, mon_hates_silver, poly_when_stoned, pronoun_gender } from './mondata.js'; // relocate-fns
@@ -2672,4 +2673,4 @@ export { growl } from './sounds.js'; // relocate-fns
 export { Monnam_mm }; // relocate-fns
 export { Resists_Elem, attacktype, big_to_little, breakarm, can_be_strangled, can_blnd, can_blow, can_track, cvt_prop_to_mseenres, defended, get_atkdam_type, levl_follower, little_to_big, locomotion, max_passive_dmg, mon_hates_blessings, mon_hates_silver, mons_see_trap, name_to_monplus, num_horns, on_fire, passes_bars, poly_when_stoned, pronoun_gender, raceptr, resist_conflict, resists_blnd, resists_drli, resists_magm, same_race, stagger } from './mondata.js'; // relocate-fns
 export { AD_ACID, AD_COLD, AD_ELEC, AD_FIRE, AD_RUST, ARMOR_CLASS, AT_BITE, AT_BOOM, AT_BREA, AT_BUTT, AT_CLAW, AT_ENGL, AT_EXPL, AT_GAZE, AT_HUGS, AT_KICK, AT_MAGC, AT_NONE, AT_SPIT, AT_STNG, AT_TUCH, AT_WEAP, CREAM_PIE, M1_ANIMAL, M1_MINDLESS, NON_PM, PM_ALIGNED_CLERIC, PM_HIGH_CLERIC, PM_WATCHMAN, haseyes, is_undead, mindless, xm_Blind, xm_Hallucination }; // relocate-fns
-export function adjalign(n) { return _adjalign_attrib(n); }
+export { adjalign };

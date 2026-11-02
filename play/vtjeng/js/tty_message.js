@@ -8,6 +8,7 @@ import {
     MSGTYP_NOREP,
     MSGTYP_NORMAL,
     MSGTYP_NOSHOW,
+    NO_CURS_ON_U,
     OVERRIDE_MSGTYPE,
     PICK_NONE,
     PICK_ONE,
@@ -32,6 +33,7 @@ import { msgtype_type } from './options.js';
 import { sound_speak } from './sounds.js';
 import {
     fitsOnTtyTopline,
+    more,
     remember_topl,
     show_topl,
     update_topl,
@@ -173,14 +175,15 @@ export async function xwaitforspace(
 
 // C ref: win/tty/wintty.c tty_clear_nhwindow(WIN_MESSAGE).  Command parsing
 // clears the physical top line after the final key has been read while
-// retaining gt.toplines for message history.
+// retaining gt.toplines for message history. With TOPLINE_EMPTY it does
+// nothing, so a line that tty_display_nhwindow(WIN_MESSAGE, FALSE) retired
+// without erasing (as monmove.c vamp_shift() does) stays on the screen.
 export function clearTtyMessageWindow(state = game) {
     const display = state.nhDisplay;
     if (!display) return;
-    if (display.toplin !== TOPLINE_EMPTY || state._pending_message) {
-        display.clearRow(0);
-        display.setCursor(0, 0);
-    }
+    if (display.toplin === TOPLINE_EMPTY) return;
+    display.clearRow(0);
+    display.setCursor(0, 0);
     state._pending_message = '';
     delete state._ttyMixedFirstCell;
     display.toplin = TOPLINE_EMPTY;
@@ -278,29 +281,33 @@ export async function tty_message_menu(
     if (how !== PICK_ONE)
         throw new Error(`unsupported tty_message_menu mode ${how}`);
 
-    await ttyPline(mesg, state);
-    const response = await dismissPendingTtyMessage(state, {
-        dismissMore: typeof invletter === 'number'
-            ? invletter
-            : String(invletter ?? '').charCodeAt(0),
-        returnResponse: true,
-    });
-    if (state.nhDisplay) {
-        // wintty.c restores NEED_MORE before tty_clear_nhwindow(), because
-        // more() has already reset the top-line state to EMPTY.
-        state.nhDisplay.toplin = TOPLINE_NEED_MORE;
-        clearTtyMessageWindow(state);
-    }
-    // wintty.c 2840-2843: Escape at this --More-- cancels the prompt rather
-    // than suppressing later messages, so C clears WIN_CANCELLED (the same
-    // bit as WIN_STOP) and the caller's "Never mind." is still shown.
-    state._ttyMessageStopped = false;
+    const display = state.nhDisplay;
+    if (!display)
+        throw new Error('tty_message_menu requires an initialized display');
     const selected = typeof invletter === 'number'
         ? invletter
         : String(invletter ?? '').charCodeAt(0);
-    return response && (response === selected || response === 27)
-        ? response
-        : 0;
+    // wintty.c 2828-2832. The letter also dismisses a --More-- that a
+    // message too long for one line raises inside tty_putstr(); that more()
+    // records its key in morc and leaves the top line TOPLINE_EMPTY.
+    display.dismiss_more = selected;
+    display.morc = 0;
+    await ttyPline(mesg, state);
+    // wintty.c 2834-2839: a message that fit on one line gets its --More--
+    // here; more() resets the state to EMPTY, so NEED_MORE is restored
+    // before tty_clear_nhwindow().
+    if (display.toplin === TOPLINE_NEED_MORE) {
+        await more(state);
+        display.toplin = TOPLINE_NEED_MORE;
+        clearTtyMessageWindow(state);
+    }
+    // wintty.c 2840-2844: Escape at this --More-- cancels the prompt rather
+    // than suppressing later messages, so C clears WIN_CANCELLED (the same
+    // bit as WIN_STOP) and the caller's "Never mind." is still shown.
+    state._ttyMessageStopped = false;
+    display.dismiss_more = 0;
+    const morc = display.morc;
+    return morc === selected || morc === 27 ? morc : 0;
 }
 
 // C ref: wintty.c tty_display_nhwindow(WIN_MESSAGE, TRUE/FALSE). Only a
@@ -392,7 +399,8 @@ async function ttyPlineCore(
     // C ref: pline.c vpline(). Once the hero is on the map, every message
     // flushes pending map and bottom-line changes before update_topl() can
     // wrap into a blocking More prompt.
-    if (state === game && state.u?.ux) await flush_screen(1);
+    if (state === game && state.u?.ux)
+        await flush_screen((pflags & NO_CURS_ON_U) ? 0 : 1);
     // C wintty.c handles ATR_URGENT after vpline() has flushed the map but
     // before tty_putstr() invokes update_topl(): its clear_nhwindow(WIN_MESSAGE)
     // removes the stale physical line and clears WIN_STOP. Do the same at
@@ -501,9 +509,12 @@ export class UnsupportedCustomPlineFlagsError extends Error {
     }
 }
 
-// C ref: pline.c custompline().
+// C ref: pline.c custompline(). Its callers pass SUPPRESS_HISTORY
+// (cmd.c), OVERRIDE_MSGTYPE, or getpos.c auto_describe()'s
+// SUPPRESS_HISTORY | OVERRIDE_MSGTYPE | NO_CURS_ON_U.
+const CUSTOMPLINE_FLAGS = SUPPRESS_HISTORY | OVERRIDE_MSGTYPE | NO_CURS_ON_U;
 export async function ttyCustomPline(message, pflags, state = game) {
-    if (![SUPPRESS_HISTORY, OVERRIDE_MSGTYPE].includes(pflags))
+    if (!pflags || (pflags & ~CUSTOMPLINE_FLAGS))
         throw new UnsupportedCustomPlineFlagsError(pflags);
     return ttyPlineCore(message, state, pflags);
 }

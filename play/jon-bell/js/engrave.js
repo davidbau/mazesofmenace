@@ -14,11 +14,11 @@ import { game } from './gstate.js';
 import { rn1, rn2, rnd } from './rng.js';
 import { goodpos } from './trap.js';
 import { is_pool, is_pool_or_lava } from './look.js';
-import { Is_airlevel, Is_waterlevel, CLOUD, IS_FOUNTAIN, IS_AIR, ACCESSIBLE, isok } from './const.js';
+import { Is_airlevel, Is_waterlevel, CLOUD, IS_FOUNTAIN, IS_AIR, ACCESSIBLE, isok, COLNO, ROWNO, NO_MM_FLAGS } from './const.js';
 import { db_under_typ } from './dbridge.js';
 import { impossible } from './pline.js';
 import { permonstTemplate, is_demon } from './makemon.js';
-import { PM_GHOUL } from './pm.generated.js';
+import { PM_GHOUL, PM_AIR_ELEMENTAL } from './pm.generated.js';
 import { wand_explode } from './read.js';
 import { sanitize_name } from './bones.js';
 import { mon_nam } from './uhitm.js';
@@ -49,8 +49,8 @@ import { obj_extract_self, move_engr_at } from './mklev.js';
 import { hold_another_object } from './invent.js';
 import { prinv } from './cmd.js';
 import { update_inventory } from './inventory_refresh.js';
-import { can_reach_floor as can_reach_floor_real } from './hold_another_object.js';
-import { make_engr_at, del_engr_at, engr_at, random_engraving, engravings_list, makemon } from './mklev.js';
+import { can_reach_floor } from './hold_another_object.js';
+import { make_engr_at, del_engr_at, engr_at, wipe_engr_at, random_engraving, engravings_list, makemon } from './mklev.js';
 import { xcrypt } from './hacklib.js';
 import { DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, HEADSTONE, A_WIS,
          ECMD_OK, ECMD_CANCEL, ECMD_FAIL, ECMD_TIME, ICE, IS_ALTAR, BUFSZ,
@@ -58,19 +58,57 @@ import { DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, HEADSTONE, A_WIS,
 import { surface } from './dungeon.js'; // relocate-fns
 
 /* ── object class numbers (objclass.h OBJCLASS enum) ─────────────────────────── */
+const ILLOBJ_CLASS = 1;
 const WEAPON_CLASS = 2;
 const ARMOR_CLASS = 3;
 const RING_CLASS = 4;
 const TOOL_CLASS = 6;
+const FOOD_CLASS = 7, SCROLL_CLASS = 9, SPBOOK_CLASS = 10;
 const WAND_CLASS = 11;
 const GEM_CLASS = 13;
-/* include/defsym.h OBJCLASS() rows — the classes doengrave_sfx_item switches on. */
-const FOOD_CLASS = 7, SCROLL_CLASS = 9, SPBOOK_CLASS = 10,
-      ROCK_CLASS = 14, BALL_CLASS = 15;
+const ROCK_CLASS = 14, BALL_CLASS = 15;
+const VENOM_CLASS = 17;
 
 const MAGIC_MARKER = 242; /* objects[] otyp (read.js / mklev.js) */
 const TOWEL = 234; /* objects.h TOOL() TOWEL; was 125 = BANDED_MAIL */
+const ATHAME = 38;
 const ART_FIRE_BRAND = 10; /* artilist.h artifact enum, also used by cmd.js */
+const WAND_BACKFIRE_CHANCE = 100;
+
+// Wand type constants (objects.h)
+const WAN_LIGHT = 410;
+const WAN_SECRET_DOOR_DETECTION = 411;
+const WAN_ENLIGHTENMENT = 412;
+const WAN_CREATE_MONSTER = 413;
+const WAN_WISHING = 414;
+const WAN_STASIS = 415;
+const WAN_NOTHING = 416;
+const WAN_STRIKING = 417;
+const WAN_MAKE_INVISIBLE = 418;
+const WAN_SLOW_MONSTER = 419;
+const WAN_SPEED_MONSTER = 420;
+const WAN_UNDEAD_TURNING = 421;
+const WAN_POLYMORPH = 422;
+const WAN_CANCELLATION = 423;
+const WAN_TELEPORTATION = 424;
+const WAN_OPENING = 425;
+const WAN_LOCKING = 426;
+const WAN_PROBING = 427;
+const WAN_DIGGING = 428;
+const WAN_MAGIC_MISSILE = 429;
+const WAN_FIRE = 430;
+const WAN_COLD = 431;
+const WAN_SLEEP = 432;
+const WAN_DEATH = 433;
+const WAN_LIGHTNING = 434;
+
+const S_VAMPIRE = 48;
+const S_VORTEX = 22;
+const M1_ANIMAL = 0x00040000;
+
+function is_vampire(ptr) { return !!ptr && (ptr.mlet | 0) === S_VAMPIRE; }
+function is_whirly(ptr) { return !!ptr && ((ptr.mlet | 0) === S_VORTEX || (ptr.pmidx | 0) === PM_AIR_ELEMENTAL); }
+function is_animal(ptr) { return !!ptr && ((ptr.mflags1 | 0) & M1_ANIMAL) !== 0; }
 
 const HANDS_SYM = '-'; /* const.js HANDS_SYM — getobj's bare-hands option */
 
@@ -118,8 +156,6 @@ export function freehand() {
         || (!bimanual(uwep) && (!uarms || !uarms.cursed));
 }
 
-function can_reach_floor(check_pit) { return can_reach_floor_real(check_pit); }
-
 /* C engrave.c:218 — caller has already established that the hero cannot reach. */
 export async function cant_reach_floor(x, y, up, check_pit, wand_engraving) {
     await pline("%s can't reach the %s.",
@@ -129,6 +165,25 @@ export async function cant_reach_floor(x, y, up, check_pit, wand_engraving) {
                 up ? ceiling(x, y)
                     : (check_pit && can_reach_floor(false)) ? 'bottom of the pit'
                                                           : surface_real(x, y));
+}
+
+/* C engrave.c:250-261 sengr_at(s, x, y, strict) — check for named engraving at (x,y) */
+export function sengr_at(s, x, y, strict) {
+    const ep = engr_at(x, y);
+    if (ep && (ep.engr_type | 0) !== HEADSTONE
+        && (ep.engr_time | 0) <= ((game.moves ?? game.u?.moves ?? 0) | 0)) {
+        const txt = String(ep.text ?? '');
+        if (strict ? txt.toLowerCase() === String(s).toLowerCase()
+                   : txt.toLowerCase().includes(String(s).toLowerCase()))
+            return ep;
+    }
+    return null;
+}
+
+/* C engrave.c:264-268 u_wipe_engr(cnt) */
+export function u_wipe_engr(cnt) {
+    if (can_reach_floor(true))
+        wipe_engr_at(game.u?.ux | 0, game.u?.uy | 0, cnt, false);
 }
 
 /* stylus_ok — getobj callback (engrave.c:483).  Suggests weapons, wands, gems,
@@ -248,8 +303,8 @@ export function rloc_engr(ep, x = ep.engr_x, y = ep.engr_y) {
     do {
         if (--tryct < 0)
             return null;
-        tx = rn1(80 - 3, 2);
-        ty = rn2(21);
+        tx = rn1(COLNO - 3, 2);
+        ty = rn2(ROWNO);
     } while (engr_at(tx, ty) || !goodpos(tx, ty, null, 0));
     move_engr_at(x, y, tx, ty, ep);
     newsym(tx, ty);
@@ -260,19 +315,24 @@ async function doengrave_sfx_item_WAN(de) {
     const u = game.u || {};
     const blind = uBlind(u);
     switch (de.otmp.otyp) {
-    case 410: case 411: case 415: case 413: case 414: case 412:
+    case WAN_LIGHT:
+    case WAN_SECRET_DOOR_DETECTION:
+    case WAN_STASIS:
+    case WAN_CREATE_MONSTER:
+    case WAN_WISHING:
+    case WAN_ENLIGHTENMENT:
         await zapnodir(de.otmp);
         break;
-    case 417:
+    case WAN_STRIKING:
         de.post_engr_text = 'The wand unsuccessfully fights your attempt to write!';
         break;
-    case 424: /* WAN_TELEPORTATION (engrave.c:675-682) */
+    case WAN_TELEPORTATION: /* (engrave.c:675-682) */
         if (de.oep && de.oep.engr_type !== HEADSTONE) {
             if (!blind) await pline(`The engraving on the ${surface(u.ux, u.uy)} vanishes!`);
             de.teleengr = true;
         }
         break;
-    case 422: /* WAN_POLYMORPH (engrave.c:618-634) */
+    case WAN_POLYMORPH: /* (engrave.c:618-634) */
         if (de.oep) {
             if (!blind) {
                 de.type = 0; /* random */
@@ -286,30 +346,32 @@ async function doengrave_sfx_item_WAN(de) {
             de.dengr = true;
         }
         break;
-    case 419:
+    case WAN_SLOW_MONSTER:
         if (!blind) de.post_engr_text = `The bugs on the ${surface(u.ux, u.uy)} slow down!`;
         break;
-    case 420:
+    case WAN_SPEED_MONSTER:
         if (!blind) de.post_engr_text = `The bugs on the ${surface(u.ux, u.uy)} speed up!`;
         break;
-    case 429:
+    case WAN_MAGIC_MISSILE:
         de.ptext = true;
         if (!blind) de.post_engr_text = `The ${surface(u.ux, u.uy)} is riddled by bullet holes!`;
         break;
-    case 432: case 433:
+    case WAN_SLEEP:
+    case WAN_DEATH:
         if (!blind) de.post_engr_text = `The bugs on the ${surface(u.ux, u.uy)} stop moving!`;
         break;
-    case 431:
+    case WAN_COLD:
         if (!blind) de.post_engr_text = 'A few ice cubes drop from the wand.';
         if (!de.oep || de.oep.engr_type !== BURN) break;
         /* FALLTHRU */
-    case 423: case 418:
+    case WAN_CANCELLATION:
+    case WAN_MAKE_INVISIBLE:
         if (de.oep && de.oep.engr_type !== HEADSTONE) {
             if (!blind) await pline(`The engraving on the ${surface(u.ux, u.uy)} vanishes!`);
             de.dengr = true;
         }
         break;
-    case 428: /* WAN_DIGGING */
+    case WAN_DIGGING:
         de.ptext = true;
         de.type = ENGRAVE;
         if (!wandNameKnown(de.otmp)) {
@@ -326,7 +388,7 @@ async function doengrave_sfx_item_WAN(de) {
                 ? 'Splinters fly up from the bridge.'
                 : 'Gravel flies up from the floor.';
         break;
-    case 430: /* WAN_FIRE */
+    case WAN_FIRE:
         de.ptext = true;
         de.type = BURN;
         if (!wandNameKnown(de.otmp)) {
@@ -336,7 +398,7 @@ async function doengrave_sfx_item_WAN(de) {
         }
         de.post_engr_text = blind ? 'You feel the wand heat up.' : 'Flames fly from the wand.';
         break;
-    case 434: /* WAN_LIGHTNING */
+    case WAN_LIGHTNING:
         de.ptext = true;
         de.type = BURN;
         if (!wandNameKnown(de.otmp)) {
@@ -371,13 +433,11 @@ function doengrave_ctx_init(de) {
     });
     if (de.oep) de.oetype = de.oep.engr_type;
     const ptr = game.youmonst?.data || permonstTemplate(u.umonnum);
-    if (ptr && (is_demon(ptr) || ptr.mlet === 48 /* S_VAMPIRE */))
+    if (ptr && (is_demon(ptr) || is_vampire(ptr)))
         de.type = ENGR_BLOOD;
     const swallower = u.ustuck?.data;
     de.jello = !!(u.uswallow && swallower
-        && !(swallower.mflags1 & 0x00040000 /* M1_ANIMAL */)
-        && swallower.mlet !== 22 /* S_VORTEX */
-        && swallower.pmidx !== 154 /* PM_AIR_ELEMENTAL */);
+        && !(is_animal(swallower) || is_whirly(swallower)));
 }
 
 /* C engrave.c:741 — implement effects, before asking for text. */
@@ -393,17 +453,17 @@ async function doengrave_sfx_item(de) {
         if (zappable(de.otmp)) {
             /* C engrave.c:793-798 — bill the charge before backfire. */
             check_unpaid_usage(de.otmp, false);
-            if (de.otmp.cursed && !rn2(100)) { /* WAND_BACKFIRE_CHANCE */
+            if (de.otmp.cursed && !rn2(WAND_BACKFIRE_CHANCE)) {
                 await wand_explode(de.otmp, 0);
                 de.ret = ECMD_TIME;
                 return false;
             }
             de.zapwand = true;
-            if (!can_reach_floor_real(true)) de.ptext = false;
+            if (!can_reach_floor(true)) de.ptext = false;
             await doengrave_sfx_item_WAN(de);
         } else {
             de.ptext = false;
-            if (can_reach_floor_real(true)) {
+            if (can_reach_floor(true)) {
                 if ((de.otmp.spe | 0) < 0) de.zapwand = true;
                 else await pline('The wand is too worn out to engrave.');
             }
@@ -464,9 +524,9 @@ async function doengrave_sfx_item(de) {
             else
                 de.type = ENGRAVE;
         }
-    } else if (oc === 17 /* VENOM_CLASS */) {
+    } else if (oc === VENOM_CLASS) {
         await pline("Writing a poison pen letter?");
-    } else if (oc === 1 /* ILLOBJ_CLASS */) {
+    } else if (oc === ILLOBJ_CLASS) {
         await impossible("You're engraving with an illegal object!");
     }
     return true;
@@ -515,7 +575,7 @@ export async function doengrave() {
     }
 
     let initial_msg_given = false;
-    if (!can_reach_floor_real(true)) {
+    if (!can_reach_floor(true)) {
         if ((de.otmp.oclass | 0) !== WAND_CLASS) {
             await cant_reach_floor(u.ux, u.uy, false, true, false);
             return doengr_exit(de);
@@ -593,7 +653,7 @@ export async function doengrave() {
     }
     if (!de.ptext) {
         if (de.otmp && (de.otmp.oclass | 0) === WAND_CLASS
-            && !can_reach_floor_real(true))
+            && !can_reach_floor(true))
             await cant_reach_floor(u.ux, u.uy, false, true, true);
         de.ret = ECMD_TIME;
         return doengr_exit(de);
@@ -799,7 +859,7 @@ export async function engrave() {
     }
     eng.actionct++;
     const dulling = (eng.type === ENGRAVE || eng.type === HEADSTONE) && stylus
-        && stylus.oclass === WEAPON_CLASS && (stylus.otyp !== 38 /* ATHAME */ || stylus.cursed);
+        && stylus.oclass === WEAPON_CLASS && (stylus.otyp !== ATHAME || stylus.cursed);
     // C engrave.c:1321-1325: rings and gems carve one character per action.
     if ((eng.type === ENGRAVE || eng.type === HEADSTONE) && stylus
         && (dulling || stylus.oclass === RING_CLASS || stylus.oclass === GEM_CLASS))
@@ -949,7 +1009,8 @@ export async function engraving_sanity_check() {
     }
 }
 
-/* C engrave.c:1497,1508 — bones text cleanup and discovery reset. */
+/* C engrave.c:1503 sanitize_engravings() — ep.text corresponds to ep->engr_txt[actual_text].
+ * C engrave.c:1508 forget_engravings() — discovery reset. */
 export function sanitize_engravings() {
     for (const ep of engravings_list()) ep.text = sanitize_name(ep.text);
 }
@@ -958,7 +1019,7 @@ export function forget_engravings() {
     for (const ep of engravings_list()) ep.erevealed = ep.eread = 0;
 }
 
-/* C engrave.c:1706 — engraving and kicking share this grave disturbance. */
+/* C engrave.c:1706-1721 — engraving and kicking share this grave disturbance. */
 export async function disturb_grave(x, y) {
     const loc = game.level.at(x, y);
     if (loc.typ !== GRAVE_TYP) {
@@ -970,7 +1031,7 @@ export async function disturb_grave(x, y) {
     }
     await pline('You disturb the undead!');
     loc.disturbed = 1;
-    await makemon(permonstTemplate(PM_GHOUL), x, y, 0);
+    await makemon(permonstTemplate(PM_GHOUL), x, y, NO_MM_FLAGS);
     exercise(A_WIS, false);
 }
 

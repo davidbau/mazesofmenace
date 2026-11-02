@@ -34,7 +34,7 @@ import { highc } from './hacklib.js';
 import { angry_guards, mongone as mongone_real } from './mon.js';
 import { is_demon, poly_gender } from './makemon.js';
 import { is_pick } from './dig.js';
-import { ECMD_OK, ECMD_CANCEL, ECMD_TIME, ESHK, SHARED, SHARED_PLUS, NO_ROOM, COLNO, ROWNO, IS_DOOR, IS_ROOM, IS_WALL, SHOPBASE, CANDLESHOP, D_BROKEN, D_CLOSED, BILLSZ, Has_contents, isok, u_at, ROOMOFFSET, RLOC_MSG, DEAF, INVIS, PASSES_WALLS, QBUFSZ, LL_ACHIEVE, G_GONE, MM_NOMSG, CONFLICT, REPAIR_DELAY, BOLT_LIM, ZAP_POS, D_LOCKED, LANDMINE, BEAR_TRAP, PIT, SPIKED_PIT, HOLE, ACH_SHOP, M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, DETECT_MONSTERS } from './const.js';
+import { ECMD_OK, ECMD_CANCEL, ECMD_TIME, ESHK, SHARED, SHARED_PLUS, NO_ROOM, COLNO, ROWNO, IS_DOOR, IS_ROOM, IS_WALL, SHOPBASE, CANDLESHOP, D_BROKEN, D_CLOSED, BILLSZ, Has_contents, isok, u_at, ROOMOFFSET, RLOC_MSG, DEAF, INVIS, PASSES_WALLS, QBUFSZ, BUFSZ, LL_ACHIEVE, G_GONE, MM_NOMSG, CONFLICT, REPAIR_DELAY, BOLT_LIM, ZAP_POS, D_LOCKED, LANDMINE, BEAR_TRAP, PIT, SPIKED_PIT, HOLE, ACH_SHOP, M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, DETECT_MONSTERS } from './const.js';
 import { PM_GRID_BUG, PM_KNIGHT, PM_SAMURAI, PM_TOURIST, PM_VALKYRIE, PM_SHOPKEEPER, PM_MAIL_DAEMON, PM_ROGUE, PM_KEYSTONE_KOP, PM_KOP_SERGEANT, PM_KOP_LIEUTENANT, PM_KOP_KAPTAIN } from './pm.generated.js';
 import { has_mgivenname, MGIVENNAME } from './const.js';
 import { goodpos } from './trap.js';
@@ -80,10 +80,10 @@ import monArmedPack from './makemon_mons_armed.json' with { type: 'json' };
 import monMsoundPack from './makemon_msound.json' with { type: 'json' };
 import { OC_COST, OC_CHARGED } from './oc_cost_data.js';
 import { OC_NAME } from './oc_name_data.js';
-import { xname_flags as xname_flags_shk, CXN_NORMAL as CXN_NORMAL_SHK, the as the_shk, The as The_shk, thesimpleoname as thesimpleoname_real, simpleonames as simpleonames_real, short_oname as short_oname_shk } from './objnam.js';
+import { xname_flags as xname_flags_shk, CXN_NORMAL as CXN_NORMAL_SHK, the as the_shk, The as The_shk, thesimpleoname as thesimpleoname_real, simpleonames, simpleonames as simpleonames_real, short_oname as short_oname_shk, PREFIX } from './objnam.js';
 import { arti_cost } from './artifact.js';
 /* C attrib.c acurr(i) — ACURR(A_CHA) in get_cost(). */
-import { acurr, adjalign as adjalign_real } from './attrib.js';
+import { acurr, adjalign, adjalign as adjalign_real } from './attrib.js';
 import { exercise } from './attrib.js';
 /* ── dopay()'s itemized-billing dependencies (C shk.c:1743-2300) ──────────
  * Every name below is the SHARED ported body, not a re-derivation; the
@@ -400,7 +400,7 @@ async function paydoname(obj) {
             }
             if (!obj.cknown) {
                 if (obj.unpaid) {
-                    if (name.length + and_its_contents.length < 256 - 80)
+                    if (name.length + and_its_contents.length < BUFSZ - PREFIX)
                         name += and_its_contents;
                 } else name = 'the contents of ' + name;
             }
@@ -619,8 +619,11 @@ async function menu_pick_pay_items(ibillct, ibill) {
     };
     const uac = g.u?.uac ?? 0;
     const SCREEN_ROWS = 24, PAGE_CONTENT = SCREEN_ROWS - 1;
+    /* wintty.c:1908-1921 offx = min(40, cols - maxcol - 1) clamps to 0 for a
+     * widest line of 77+ columns (maxcol = len + 2 >= 79): full-screen too. */
     const FULL_SCREEN = renderLines().length + 1 >= SCREEN_ROWS
-        || g.iflags?.menu_overlay === false;
+        || g.iflags?.menu_overlay === false
+        || renderLines().some(l => l.length >= 77);
     const pageCount = Math.max(1, Math.ceil(renderLines().length / PAGE_CONTENT));
     const WIN_COL = FULL_SCREEN ? 1 : tty_window_offx([...renderLines(), '(end)'], 'end');
     const BY_SEL = new Map(entries.map(e => [e.selector.charCodeAt(0), e]));
@@ -644,7 +647,7 @@ async function menu_pick_pay_items(ibillct, ibill) {
             return { footer, footerRow, rows: build_window_screen(
                 [...pageLines, footer], WIN_COL, uac).split('\n') };
         const rows = new Array(SCREEN_ROWS).fill('');
-        pageLines.forEach((ln, i) => { rows[i] = ` ${ln}`; });
+        pageLines.forEach((ln, i) => { rows[i] = ` ${ln}`.slice(0, 79); });
         rows[footerRow] = ` ${footer}`;
         return { rows, footer, footerRow };
     };
@@ -2172,8 +2175,8 @@ export function thesimpleoname(obj) { return thesimpleoname_real(obj); }
  * identical real call rather than the eat.js `return "thing"` partial). */
 export function xname(obj) { return xname_flags_shk(obj, CXN_NORMAL_SHK); }
 /* C objnam.c:2424-2442 simpleonames(obj) — the real general port lives in
- * js/objnam.js and is imported above as simpleonames_real. */
-export function simpleonames(obj) { return simpleonames_real(obj); }
+ * js/objnam.js and is imported above. */
+export { simpleonames };
 function impossible(_fmt, ..._args) { /* no-op — see note above */ }
 
 /* CORPSE_SHK (objects.h CORPSE = 265) is declared once below (contained_cost
@@ -4162,7 +4165,7 @@ export async function finish_paybill() {
     }
     await drop_upon_death(0, 0, ox, oy);
 }
-function adjalign(n) { return adjalign_real(n); }
+/* C attrib.c:1298 adjalign(n) — imported directly from js/attrib.js. */
 /* C you.h:330-331; mondata.c:1191-1207.  PRONOUN_NO_IT | PRONOUN_HALLU
  * preserves species gender without a visibility fallback, randomizing only
  * while hallucinating.  role.c:688-693 supplies the possessive pronouns. */

@@ -25,7 +25,7 @@ import monsPack from './makemon_mons.json' with { type: 'json' };
 import corpseData from './eat_corpse_data.json' with { type: 'json' };
 import { FOOD_PROPS, eaten_stat as food_eaten_stat, obj_nutrition } from './food_props.js';
 import { is_rottable } from './mklev.js';
-import { inv_cnt } from './cmd.js';
+import { inv_cnt, reorder_invent } from './cmd.js';
 import { set_itimeout } from './potion.js';
 import { pline_The } from './pline.js';
 import { touch_artifact_youmonst } from './wizcmds.js';
@@ -36,7 +36,7 @@ import { stop_occupation } from './allmain.js';
 import { is_pool_or_lava } from './look.js';
 import { end_running } from './hack.js';
 import { PM_ELF as PM_ELF_EAT } from './pm.generated.js';
-import { BY_COOKIE, mksobj as mksobj_real, slimeproof, polyfood, pline_mon_unported as pline_mon_eat } from './mklev.js';
+import { BY_COOKIE, mksobj, obj_extract_self, slimeproof, polyfood, pline_mon_unported as pline_mon_eat } from './mklev.js';
 import { getrumor, outrumor } from './rumors.js';
 import { eos } from './hacklib.js';
 import { discover_object } from './o_init.js';
@@ -47,7 +47,7 @@ import { SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED, STARVED, HUNGER,
  * nothing here calls it at module-evaluation time. */
 import { getObjFromGetobj, costly_alteration, costly_spot, obj_extract_self_general, useup, useupf, freeinv as freeinv_real, carrying as carrying_real } from './cmd.js';
 import { wield_tool as wield_tool_real } from './wield.js';
-import { sellobj_state, safe_qbuf as safe_qbuf_real } from './shk.js';
+import { sellobj_state, safe_qbuf, safe_qbuf as safe_qbuf_real } from './shk.js';
 import { g_at, will_feel_cockatrice as will_feel_cockatrice_real } from './cmd.js';
 import { flush_screen, restore_occupation_topline, restore_command_topline, force_more, topl_park_cursor, _pline_flush_frame_record, pline_flush_point, msgtype_suppressed } from './display.js';
 import { more_experienced, newexplevel } from './uhitm.js';
@@ -60,7 +60,7 @@ import { yn_function } from './cmd.js';
  * same safety argument as the js/end.js edge above). Not async: it does not
  * await its own float_up()/You() calls, matching this file's un-awaited
  * call site. */
-import { reset_utrap, selftouch, t_at as t_at_real, deltrap as deltrap_real } from './trap.js';
+import { reset_utrap, selftouch, t_at, deltrap as deltrap_real } from './trap.js';
 /* C hack.h on_level(l1,l2) macro — real body in js/dungeon.js. Both operands
  * used at eat.js's one call site (context.digging.level, u.uz) carry the
  * same {dnum, dlevel} shape this expects (js/dig.js:115, js/allmain.js:332,
@@ -1435,8 +1435,11 @@ async function maybe_cannibal(pm, allowmsg) {
          * corpse's "Ecch" line, 37 + 36 + 3 = 76).  Page it now and keep
          * the cannibal line alone, as the "unaffected" arm does. */
         const _pend = game._pending_message;
+        /* Only the last --More-- page still stands on the topline; earlier
+         * joins that overflowed were already paged (topl.c:257-268). */
+        const _pendTail = _pend ? _topl_more_pages(_pend, _topl_joins_snapshot(_pend)).at(-1) : '';
         if (_pend && !game._resultMessage
-            && _pend.length + _cmsg.length + 3 >= 72) {
+            && _pendTail.length + _cmsg.length + 3 >= 72) {
             await flush_screen(1);
             /* flush_screen paged the earlier messages; only what it left
              * pending is still on the topline for this more() to acknowledge. */
@@ -1844,29 +1847,9 @@ function _eat_assigninvlet(otmp) {
     otmp.invlet = inuse[i] ? 0x23 /* NOINVSYM */ : (i < 26 ? (97 + i) : (65 + i - 26));
     g._lastinvnr = i;
 }
-/* C ref: invent.c:735 #define inv_rank(o) ((o)->invlet ^ 040) */
-function _eat_inv_rank(obj) { return (obj.invlet | 0) ^ 0o40; }
-/* C ref: invent.c reorder_invent() — bubble gi.invent into inv_rank order. */
+/* C ref: invent.c reorder_invent() — forwards to the shared port in js/cmd.js. */
 function _eat_reorder_invent() {
-    const g = game;
-    let need = true;
-    while (need) {
-        need = false;
-        let prev = null;
-        for (let otmp = g.invent; otmp;) {
-            const next = otmp.nobj;
-            if (next && _eat_inv_rank(next) < _eat_inv_rank(otmp)) {
-                need = true;
-                if (prev) prev.nobj = next; else g.invent = next;
-                otmp.nobj = next.nobj;
-                next.nobj = otmp;
-                prev = next;
-            } else {
-                prev = otmp;
-                otmp = next;
-            }
-        }
-    }
+    return reorder_invent();
 }
 /* C ref: invent.c:1169 addinv_nomerge(obj) → addinv_core0(obj, NULL, TRUE) with
  * obj->nomerge set, so the quiver/stack merge scans are skipped and the object
@@ -4716,10 +4699,7 @@ async function _put_eat_message(msg) {
         game._prevmsg = msg;
     }
 }
-export async function safe_qbuf(qbuf, prefix, suffix, obj, fn1, fn2, that) {
-    // C objnam.c:5623-5698: use the shared length-bounded prompt formatter.
-    return await safe_qbuf_real(qbuf, prefix, suffix, obj, fn1, fn2, that);
-}
+export { safe_qbuf };
 export async function wield_tool(obj, verb) {
     /* C ref: wield.c:680 — share the canonical wield path. */
     return await wield_tool_real(obj, verb);
@@ -4908,15 +4888,7 @@ const M1_CLING_E = 0x00000010;
 function is_clinger(uptr) {
     return (((uptr && uptr.mflags1) >>> 0) & M1_CLING_E) !== 0;
 }
-function t_at(x, y) { return t_at_real(x, y); }
 function deltrap(ttmp) { return deltrap_real(ttmp); }
-/* C ref: mkobj.c:1179 mksobj — use the canonical constructor.  This local
- * shadow used to return only {otyp}, dropping class, weight, timers, and the
- * zero-initialized object fields needed by the bear-trap path below. */
-async function mksobj(otyp, init, artif) { return await mksobj_real(otyp, init, artif); }
-function obj_extract_self(obj) {
-    return obj_extract_self_general(obj);
-}
 /* C ref: eat.c:3517 eat_ok(obj) — getobj's callback for the 'eat' command.
  *
  *     if (!obj) return getobj_else ? GETOBJ_EXCLUDE_NONINVENT : GETOBJ_EXCLUDE;

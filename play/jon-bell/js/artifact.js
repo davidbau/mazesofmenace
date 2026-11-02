@@ -663,6 +663,22 @@ export async function doinvoke() {
         } else
         await force_more(_blastMsg);
     }
+    if (!_blastMsg && touched && (obj.oartifact | 0)
+        && (ARTI_INV_PROP[obj.oartifact | 0] | 0) === ARTI_CREATE_PORTAL
+        && !((obj.age | 0) > (game.moves | 0))
+        && (game.dungeons || []).filter((dg, i) => dg.dunlev_ureached
+            && i !== game.tutorial_dnum).length > 1
+        && game._botlStaleHp === undefined) {
+        /* An 80+ column blast line was already paged by tty update_topl inside
+         * touch_artifact (js/wizcmds.js), so no line is held here.  losehp's
+         * disp.botl is still unflushed when artifact.c:1894 select_menu opens
+         * (bot_disabled, windows.c:1859): the menu frame keeps the pre-damage HP. */
+        const _poly = (game.u.umonnum | 0) !== (game.u.umonster | 0);
+        if (_poly ? (game.u.mh | 0) !== (_mhBefore | 0) : (game.u.uhp | 0) !== (_uhpBefore | 0)) {
+            game._botlStaleHp = _poly ? _mhBefore | 0 : _uhpBefore | 0;
+            game._botlStaleHpmax = _poly ? game.u.mhmax | 0 : game.u.uhpmax | 0;
+        }
+    }
     if (!touched) {
         if (obj.owornmask) await _remove_worn_item_thrown(obj, false); /* artifact.c:2558 */
         return ECMD_TIME;

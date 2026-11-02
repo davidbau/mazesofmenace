@@ -9,7 +9,7 @@ import { plineWithContinuation, plineWithContinuation as pline } from './pline.j
 import { game, requireLiveGame, requirePlayingGame, requireInitializedGame } from './gstate.js';
 import { commandResultCancelled } from './cmd.js';
 import { nomul } from './hack.js';
-import { heroPolyGender, heroSpecies } from './hero_species.js';
+import { heroPolyGender, heroSpecies } from './polyself.js';
 import { MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_LEVEL, MONSTER_NAME, MONSTER_SOUND, MONSTER_SYMBOL, monsterIsAnimal, monsterIsHumanoid, monsterIsPlayerMonster, monsterIsUndead, monsterIsVampireShifter, monsterTypeName, } from './monster_data.js';
 import { propertyIsActive } from './properties.js';
 import { verbForSubject, withIndefiniteArticle } from './objnam.js';
@@ -24,19 +24,16 @@ import { publishHeardMessage } from './hero_speech.js';
 import { searchSpecial } from './mkroom.js';
 import { wakeMonstersNearWithMessages } from './mon.js';
 import { priestIsInOwnTemple } from './priest.js';
-import { roomForRoomno } from './room.js';
 import { findVaultGuard } from './vault.js';
 import { rn2, rnd } from './rng.js';
 import { recorderLocalHour } from './calendar.js';
 import { currency } from './currency.js';
 import { roles } from './roles.js';
-import { stopRun } from './runmode.js';
 import { chatWithQuestCharacter } from './quest.js';
 import { questMonsterSound } from './role_monsters.js';
 import { consultOracle } from './rumor.js';
 import { demandDemonBribe } from './demon_talk.js';
 import { DEATH_QUOTES } from './death_quotes.js';
-import { heroGoldAmount } from './hero_gold.js';
 import { monsterAlignmentType } from './priest.js';
 import { resolveHeroSeduction } from './mhitu.js';
 import { novelTitle } from './novel_titles.js';
@@ -47,11 +44,14 @@ import { aggravateMonsters, publishMonsterCuss } from './wizard.js';
 import { AT_TUCH, AD_SSEX } from './monster_attack_types.js';
 import { shopkeeperInOwnShop, quoteShopGoods, chatWithShopkeeper } from './shk.js';
 import { cansee } from './vision.js';
+import { roomForRoomno, stopRun, heroGoldAmount } from './hack.js';
 const M1_FLY = 0x00000001;
 const M2_LORD_OR_PRINCE = 0x00000c00;
 const M2_MERC = 0x00000200;
 const S_ANT = 1;
 const MS_ANIMAL = 17;
+// C sounds.c:dosounds(): periodic ambient noise. The shop branch's
+// wake_nearto() over an 11-square radius is C shk.c:noisy_shop() inlined.
 export async function dosounds(state = requireInitializedGame()) {
     if (heroIsDeaf(state) || state.flags.acoustics === false
         || state.u.uswallow || state.u.uinwater || state.u.underwater || state.underwater)
@@ -916,6 +916,7 @@ function vampireReply(monster, state) {
     const target = Upolyd(state.u) ? monsterTypeName(heroSpecies(state), !!state.flags.female) : race;
     return `I vill come after ${withIndefiniteArticle(target)} without regret!`;
 }
+// Death's reply; invent.c:u_have_novel() is the tribute-novel lookup.
 function deathReply(state) {
     const book = state.context.deathNotice ? undefined : state.inventory.find(object => object.otyp === SPE_NOVEL);
     if (book) {

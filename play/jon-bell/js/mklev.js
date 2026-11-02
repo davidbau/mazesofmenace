@@ -46,7 +46,7 @@ import { PM_PIRANHA, PM_ELECTRIC_EEL, PM_GREMLIN as PM_GREMLIN_ML, PM_IRON_GOLEM
 import { PM_GRAY_OOZE as PM_GRAY_OOZE_MK } from './pm.generated.js';
 import { PM_YELLOW_DRAGON as PM_YELLOW_DRAGON_MC, PM_WHITE_UNICORN as PM_WHITE_UNICORN_MC, PM_BLACK_UNICORN as PM_BLACK_UNICORN_MC } from './pm.generated.js';
 import { nexttodoor } from './mkroom.js';
-import { OBJ_MINVENT } from './const.js';
+import { OBJ_MINVENT, OBJ_LUAFREE } from './const.js';
 import { fill_supply_chest, save_mtraits, free_omid, bless as bless_obj, curse as curse_obj } from './mkobj.js';
 import { cant_revive } from './read.js';
 import { init_fruit_chain } from './options.js';
@@ -157,7 +157,7 @@ import { LOW_PM, COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, LADDER, IS_AIR, 
 AM_SHRINE,
 /* selection_do_grow() direction mask — themerms.lua make_garden_walls' `data.sel:grow()`
  * defaults to "all" (nhlsel.c:631-640 growdirs2i[0] = W_ANY). */
-W_ANY, W_ARM, } from './const.js';
+W_ANY, W_ARM, MAX_SUBROOMS, LA_UP, LA_DOWN, DRAWBRIDGE_DOWN, } from './const.js';
 import { themerooms_contents_twin_businesses } from './sp_lev.js';
 import { is_pool_or_lava } from './look.js';
 import { closed_door } from './monmove.js';
@@ -168,7 +168,7 @@ import { m_carrying, linedup } from './mthrowu.js';
 import { mon_adjust_speed, m_dowear, extract_from_minvent as extract_from_minvent_md, update_mon_extrinsics as update_mon_extrinsics_md } from './worn.js';
 /* prop.h-adjacent: trap.c's ALL_TRAPS sentinel for mon_learns_traps (const.js:2270). */
 import { ALL_TRAPS } from './const.js';
-import { rloco as steal_rloco, thiefdead } from './steal.js';
+import { rloco, thiefdead } from './steal.js';
 import { cansee, couldsee, block_point, vision_recalc, Blind as Blind_pickup } from './vision.js';
 import { canseemon, canspotmon, newsym, sensemon, unmap_object, glyph_is_invisible_at, GLYPHCLS_INVIS, see_nearby_objects, map_location, swallowed } from './display.js';
 import { pline, You_hear, You_see } from './pline.js';
@@ -362,7 +362,7 @@ const PM_LICHEN = 158;
 const PM_BLACK_LIGHT = 119; /* C pm.generated.js — S_LIGHT class */
 const PM_STALKER = 153; /* C pm.generated.js — S_ELEMENTAL class */
 const PM_GHOST = 287;
-const PM_DEATH_R = 311;
+const PM_DEATH = 311, PM_DEATH_R = PM_DEATH;
 const PM_PESTILENCE = 312;
 const PM_ANGEL = 123; /* pm.generated.js PM_ANGEL */
 const PM_ALIGNED_CLERIC = 275; /* = pm.generated.js PM_PRIEST (NetHack "aligned cleric") */
@@ -451,6 +451,7 @@ const WOODEN_HARP = 253;
 const MAGIC_HARP = 254;
 const DRUM_OF_EARTHQUAKE = 258;
 const BELL_OF_OPENING = 263;
+const STRANGE_OBJECT = 0;
 const STRANGE_OBJECT_MK = 0;
 const TWO_HANDED_SWORD_MK = 55;
 const POT_SICKNESS_MK = 318;
@@ -786,6 +787,8 @@ async function mkbox_cnts(box) {
             for (tprob = rnd(100); (tprob -= iprobs[idx].iprob) > 0; idx++)
                 continue;
             otmp = (await mkobj(iprobs[idx].iclass, false));
+            if (!otmp)
+                continue;
             if (otmp.oclass === COIN_CLASS) {
                 otmp.quan = rnd(level_difficulty() + 2) * rnd(75);
                 otmp.owt = weight(otmp);
@@ -844,9 +847,14 @@ export function is_corrodeable(otmp) {
     const m = obj_oc_material(otmp.otyp);
     return m === COPPER || m === IRON;
 }
+/* C obj.h:382-383 — #define Is_candle(otmp) (otmp->otyp == TALLOW_CANDLE || otmp->otyp == WAX_CANDLE) */
+function Is_candle(otmp) {
+    const otyp = otmp.otyp | 0;
+    return otyp === TALLOW_CANDLE || otyp === WAX_CANDLE;
+}
 export function is_flammable(otmp) {
     const otyp = otmp.otyp | 0;
-    if (otyp === TALLOW_CANDLE || otyp === WAX_CANDLE)
+    if (Is_candle(otmp))
         return false;
     if (obj_oc_oprop(otyp) === FIRE_RES || otyp === WAN_FIRE)
         return false;
@@ -903,7 +911,7 @@ function mkobj_erosions(otmp) {
 }
 /** C mkobj.c rider_revival_time */
 export function rider_revival_time(body, retry) {
-    const minturn = retry ? 3 : (((body.corpsenm | 0) === PM_DEATH_R) ? 6 : 12);
+    const minturn = retry ? 3 : (((body.corpsenm | 0) === PM_DEATH) ? 6 : 12);
     let when = minturn;
     for (; when < 67; when++)
         if (!rn2(3))
@@ -920,7 +928,7 @@ function special_corpse(pmIdx) {
 }
 export function is_rider_pm(pmIdx) {
     const n = pmIdx | 0;
-    return n === PM_DEATH_R || n === PM_PESTILENCE || n === PM_FAMINE;
+    return n === PM_DEATH || n === PM_PESTILENCE || n === PM_FAMINE;
 }
 /**
  * C mkobj.c start_corpse_timeout — rotting jitter uses rnz (see mkobj.c:1414).
@@ -1010,7 +1018,7 @@ export function set_corpsenm(obj, id) {
             break;
         case FIGURINE:
             if (obj.corpsenm !== NON_PM && !dead_species_egg(obj.corpsenm | 0)
-                && ((obj.where | 0) === OBJ_INVENT || (obj.where | 0) === 4 /* OBJ_MINVENT */))
+                && ((obj.where | 0) === OBJ_INVENT || (obj.where | 0) === OBJ_MINVENT))
                 attach_fig_transform_timeout(obj);
             obj.owt = weight(obj);
             break;
@@ -1252,6 +1260,13 @@ async function mksobj_init(otmp, otyp, artif) {
             else {
                 for (let tryct = 200; tryct > 0; --tryct) {
                     const mndx = undead_to_corpse(rndmonnum());
+                    /* C mkobj.c:932-933:
+                     *     if (mons[mndx].cnutrit
+                     *         && !(svm.mvitals[mndx].mvflags & G_NOCORPSE))
+                     * Both conjuncts are required: 33 of the 383 monsters have
+                     * cnutrit == 0, and those that are not G_NOCORPSE (wraith,
+                     * barrow wight, Nazgul, non-G_NOCORPSE golems) must be
+                     * rejected so C's retry loop draws another rndmonnum(). */
                     if (mons_cnutrit(mndx)
                         && (mvitals_mvflags(mndx) & G_NOCORPSE) === 0) {
                         otmp.corpsenm = mndx;
@@ -1512,7 +1527,7 @@ async function mksobj_init(otmp, otyp, artif) {
 // C ref: objnam.c rnd_class (5401–5417)
 export function rnd_class(first, last) {
     // C objnam.c:5407-5418: singleton and reversed ranges consume no RNG.
-    if (last <= first) return first === last ? first : 0; // STRANGE_OBJECT
+    if (last <= first) return first === last ? first : STRANGE_OBJECT;
     let sum = 0;
     for (let i = first; i <= last; i++)
         sum += MKOBJ_OC_PROB[i] | 0;
@@ -1524,7 +1539,7 @@ export function rnd_class(first, last) {
         if (x <= 0)
             return i;
     }
-    return 0; // STRANGE_OBJECT (C objnam.c:5418)
+    return STRANGE_OBJECT; // C objnam.c:5418
 }
 export function _gm_migrating() {
     const g = game;
@@ -1691,7 +1706,7 @@ export async function mkgold(amount, x, y) {
     if (goldTrace)
         pushRngLogEntry(`^mkgold_existing[xy=${x | 0},${y | 0} yes=${gold ? 1 : 0}]`);
     if (gold) {
-        // C mkobj.c:2013-2015 — merge into existing pile (no new mksobj/next_ident)
+        // C mkobj.c:2012-2014 — merge into existing pile (no new mksobj/next_ident)
         gold.quan += amount;
         // does not emit obroken/usecount/recharged — those ride the narrower
         // OBJ_CHAIN_FIELD_ORDER / STRUCT_FIELDS lists in
@@ -1707,7 +1722,7 @@ export async function mkgold(amount, x, y) {
         if (gold.recharged === undefined) gold.recharged = 0;
     }
     else {
-        // C mkobj.c:2016-2017 — mksobj_at(GOLD_PIECE, x, y, TRUE, FALSE) then set quan
+        // C mkobj.c:2015-2016 — mksobj_at(GOLD_PIECE, x, y, TRUE, FALSE) then set quan
         gold = (await mksobj_at(GOLD_PIECE, x, y, true, false));
         gold.quan = amount;
     }
@@ -1951,18 +1966,18 @@ function newegd(mtmp) {
 
 
 export async function mk_tt_object(objtype, x, y) {
-    /* C mkobj.c:2237: player statues never contain books */
+    /* C mkobj.c:2234: player statues never contain books */
     const initialize_it = (objtype !== STATUE);
-    /* C mkobj.c:2238 */
+    /* C mkobj.c:2236 */
     const otmp = await mksobj_at(objtype, x, y, initialize_it, false);
 
-    /* C mkobj.c:2242 — tt_oname() draws its rnd(10) and returns NULL for the
+    /* C mkobj.c:2240 — tt_oname() draws its rnd(10) and returns NULL for the
      * empty scoreboard, so the body always runs; the call is NOT skippable. */
     if (!(await tt_oname(otmp))) {
-        /* C mkobj.c:2243 */
+        /* C mkobj.c:2241 */
         const pm = rn1(PM_WIZARD - PM_ARCHEOLOGIST + 1, PM_ARCHEOLOGIST);
 
-        /* C mkobj.c:2246 — update weight for either, force timer sanity for
+        /* C mkobj.c:2243-2244 — update weight for either, force timer sanity for
          * corpses.  C cannot reach here with a NULL otmp (mksobj_at "never
          * returns Null"); the guard is a JS-side crash shield only and costs
          * no RNG, since tt_oname(NULL) also returns early without drawing. */
@@ -2050,26 +2065,26 @@ function place_object(otmp, x, y) {
         return;
     const xi = x | 0;
     const yi = y | 0;
-    // C mkobj.c:2330 — otmp2 = svl.level.objects[x][y]
+    // C mkobj.c:2328 — otmp2 = svl.level.objects[x][y]
     let otmp2 = (game.level?.levelObjects?.[xi]?.[yi]) ?? null;
-    // C mkobj.c:2340-2350 — insert into per-tile nexthere chain.
+    // C mkobj.c:2338-2349 — insert into per-tile nexthere chain.
     // Non-boulder objects go under boulders so that display shows boulder on top
     // without needing to traverse the pile chain.
     if (otmp2 && otmp2.otyp === BOULDER && otmp.otyp !== BOULDER) {
-        // C mkobj.c:2343-2344 — advance past all consecutive leading boulders
+        // C mkobj.c:2341-2342 — advance past all consecutive leading boulders
         while (otmp2.nexthere && otmp2.nexthere.otyp === BOULDER)
             otmp2 = otmp2.nexthere;
-        // C mkobj.c:2345-2346 — insert otmp after the last consecutive boulder
+        // C mkobj.c:2343-2344 — insert otmp after the last consecutive boulder
         otmp.nexthere = otmp2.nexthere;
         otmp2.nexthere = otmp;
     }
     else {
-        // C mkobj.c:2349-2350 — put on top of current pile (normal case)
+        // C mkobj.c:2347-2348 — put on top of current pile (normal case)
         otmp.nexthere = otmp2;
         if (game.level?.levelObjects?.[xi])
             game.level.levelObjects[xi][yi] = otmp;
     }
-    // C mkobj.c:2353-2356 — set position and ownership marker
+    // C mkobj.c:2352-2354 — set position and ownership marker
     otmp.ox = xi;
     otmp.oy = yi;
     otmp.where = OBJ_FLOOR;
@@ -2077,7 +2092,7 @@ function place_object(otmp, x, y) {
     game.fobj = otmp;
     if ((otmp.otyp | 0) === BOULDER && (!otmp2 || (otmp2.otyp | 0) !== BOULDER))
         block_point(xi, yi);
-    // C mkobj.c:2366-2367: placing a timed corpse on ice changes its decay rate.
+    // C mkobj.c:2364-2365: placing a timed corpse on ice changes its decay rate.
     if (otmp.timed)
         obj_timer_checks(otmp, xi, yi, 0);
 }
@@ -2134,7 +2149,7 @@ export async function dealloc_obj(obj) {
     if (obj.where === OBJ_DELETED) {
         await lifecycle_impossible('dealloc_obj: obj already deleted (type=%d)', obj.otyp);
         return;
-    } else if (obj.where !== OBJ_FREE && obj.where !== OBJ_LUAFREE_OES) {
+    } else if (obj.where !== OBJ_FREE && obj.where !== OBJ_LUAFREE) {
         throw new Error(`panic: dealloc_obj: obj not free (type=${obj.otyp}, where=${obj.where})`);
     }
     if (obj.nobj)
@@ -2163,7 +2178,7 @@ export async function dealloc_obj(obj) {
     if (split && (obj.o_id === split.parent_oid || obj.o_id === split.child_oid))
         split.parent_oid = split.child_oid = 0;
     if (obj.lua_ref_cnt) {
-        obj.where = OBJ_LUAFREE_OES;
+        obj.where = OBJ_LUAFREE;
         return;
     }
     if (!game.program_state.freeingdata) {
@@ -2317,7 +2332,7 @@ function Is_container_otyp(otyp) {
 export async function add_to_container(container, obj) {
     if (obj.where !== OBJ_FREE)
         throw new Error(`panic: add_to_container: obj where=${obj.where}, not free`);
-    if (container.where !== OBJ_INVENT && container.where !== 4 /* OBJ_MINVENT */)
+    if (container.where !== OBJ_INVENT && container.where !== OBJ_MINVENT)
         await obj_no_longer_held(obj);
     for (let otmp = container.cobj; otmp; otmp = otmp.nobj) {
         const target = { o: otmp }, source = { o: obj };
@@ -2336,10 +2351,10 @@ export async function mkcorpstat(objtyp, mtmp, pm, x, y, flags) {
     if (objtyp !== CORPSE && objtyp !== STATUE)
         await lifecycle_impossible("making corpstat type %d", objtyp);
     let otmp;
-    /* C mkobj.c:2080-2085 — x==0&&y==0 means random placement (rloco); otherwise mksobj_at */
+    /* C mkobj.c:2079-2084 — x==0&&y==0 means random placement (rloco); otherwise mksobj_at */
     if (x === 0 && y === 0) {
         otmp = (await mksobj(objtyp, init, false));
-        await steal_rloco(otmp);
+        await rloco(otmp);
     }
     else {
         otmp = (await mksobj_at(objtyp, x, y, init, false));
@@ -3670,9 +3685,10 @@ function wipe_engr_at(x, y, cnt, magical) {
     }
     if (!doWipe)
         return;
-    // C: if (ep->engr_type != DUST && ep->engr_type != ENGR_BLOOD) cnt = rn2(...) ? 0 : 1
+    // C engrave.c:279-282: if (ep->engr_type != DUST && ep->engr_type != ENGR_BLOOD) cnt = rn2(...) ? 0 : 1
     if (ep.engr_type !== DUST && ep.engr_type !== ENGR_BLOOD) {
         cnt = rn2(1 + Math.trunc(50 / (cnt + 1))) ? 0 : 1;
+        // debugpline1("actually eroding %d characters", cnt);
     }
     const newText = wipeout_text(ep.text, cnt, 0);
     // C: trim leading spaces, delete engraving if empty
@@ -3745,7 +3761,7 @@ export const BY_ORACLE = 0, BY_COOKIE = 1, BY_PAPER = 2, BY_OTHER = 9;
 // C ref: rumors.c get_rnd_text(ENGRAVEFILE, ...) — pick a random engraving text.
 // Consumes rn2(ENGRAVE_CHUNK_SIZE). Returns the selected engraving text.
 function get_rnd_text_engrave() {
-    return get_rnd_line_from_section(ENGRAVE_LINES, ENGRAVE_OFFSETS, ENGRAVE_CHUNK_SIZE, rn2, 60);
+    return get_rnd_line_from_section(ENGRAVE_LINES, ENGRAVE_OFFSETS, ENGRAVE_CHUNK_SIZE, rn2, MD_PAD_RUMORS);
 }
 // C ref: engrave.c rubouts[] — partial rubout table for character degradation.
 const rubouts = [
@@ -3818,7 +3834,7 @@ export function wipeout_text(engr, cnt, seed, rngFn = rn2) {
             seed >>>= 0;
             nxt = seed % lth;
             seed = Math.imul(seed, 31) >>> 0;
-            seed %= 255; // BUFSZ-1 = 255 (C BUFSZ=256)
+            seed %= (BUFSZ - 1); // C engrave.c:141 seed %= (BUFSZ - 1)
             use_rubout = seed & 3;
         }
         if (chars[nxt] === ' ')
@@ -3837,7 +3853,7 @@ export function wipeout_text(engr, cnt, seed, rngFn = rn2) {
                      * again; it does not consume the global RNG tape. */
                     if (seed) {
                         seed = Math.imul(seed, 31) >>> 0;
-                        seed %= 255;
+                        seed %= (BUFSZ - 1); // C engrave.c:166 seed %= (BUFSZ - 1)
                     }
                     const j = seed ? seed % ln : rngFn(ln);
                     chars[nxt] = wipeto[j];
@@ -3940,8 +3956,17 @@ export function engr_reset_text_pointers() {
         }
     }
 }
-export function save_engravings() {
+// C engrave.c:1550-1582 save_engravings(nhfp)
+function Sfo_unsigned(nhfp, val, name) { /* savefile libc stub */ }
+function update_file(nhfp) { return !!(nhfp && (nhfp.mode & 3)); }
+
+export function save_engravings(nhfp) {
     engr_reset_text_pointers();
+    if (nhfp && update_file(nhfp)) {
+        // C engrave.c:1575-1577 — write end-of-list terminator
+        const no_more_engr = 0;
+        Sfo_unsigned(nhfp, no_more_engr, "engraving-engr_alloc");
+    }
     return new Map(_engr_map);
 }
 export function rest_engravings(saved) {
@@ -4022,24 +4047,24 @@ export async function mklev() {
 export function clear_level_structures() {
     const g = game;
     g.fmon = null;
-    /* C mklev.c:876 clears the whole svl.level struct, INCLUDING the
-     * `monsters[x][y]` grid that MON_AT()/m_at() read.  This port has no grid;
+    /* C mklev.c:861-868 clears the `svl.level.monsters[x][y]` grid that
+     * MON_AT()/m_at() read with an explicit per-cell loop.  This port has no grid;
      * the one part of it that is now tracked — the worm-segment squares, see
      * THE MAP-GRID GAP in js/worm.js — is module-global, so it is cleared here
-     * where C's memset covers it.  (wheads[]/wtails[] themselves are C
+     * where C's per-cell loop covers it.  (wheads[]/wtails[] themselves are C
      * per-level state saved and restored with the level; this port keeps them
      * module-global and never resets them, which is a separate pre-existing
      * gap — clearing them here would strand live worms on a revisit.) */
     worm_seg_clear_level();
-    /* C mklev.c:876's memset of svl.level also drops the bubble list; this
-     * port keeps it module-global in js/mkmaze.js, so drop it here too. */
+    /* This port keeps the water-level bubble list module-global in js/mkmaze.js
+     * (no counterpart in C's clear_level_structures()), so drop it here too. */
     bubbles_clear_level();
-    g.fobj = null; // C mklev.c:877 — svl.level.objlist = NULL (mirrors fobj = svl.level.objlist in rm.h:476)
+    g.fobj = null; // C mklev.c:869 — svl.level.objlist = NULL (mirrors fobj = svl.level.objlist in rm.h:476)
     g.level = new GameMap();
     g.level.nroom = 0;
     g.level.rooms = [];
     g.made_branch = false;
-    // C mklev.c:850-935 leaves gs.smeq intact; room creation initializes
+    // C mklev.c:850-926 leaves gs.smeq intact; room creation initializes
     // individual entries, and later Lua loads can reuse the previous values.
     g.smeq ??= new Array(MAXNROFROOMS + 1).fill(0);
     g.level.doorindex = 0;
@@ -4079,7 +4104,7 @@ export function clear_level_structures() {
     lf.stormy = false;
     lf.stasis_until = 0;
     init_rect();
-    /* C mklev.c:928 — clear_regions(), inside clear_level_structures().
+    /* C mklev.c:920 — clear_regions(), inside clear_level_structures().
      * Without it a gas cloud created on one level survives the level
      * change and keeps visible_region_at() true on the new level, which
      * would silently SUPPRESS create_gas_cloud's rn1(3,4) at monmove.c:682.
@@ -4108,7 +4133,7 @@ export function clear_level_structures() {
      * rnd(5); read_engr_at likewise reports a nonexistent engraving.  Clearing
      * the map consumes no RNG itself. */
     _engr_map.clear();
-    /* C mklev.c:931-934, the LAST statement of clear_level_structures():
+    /* C mklev.c:923-926, the LAST statement of clear_level_structures():
      *     if (gl.lev_message) {
      *         free(gl.lev_message);
      *         gl.lev_message = (char *) 0;
@@ -4117,7 +4142,7 @@ export function clear_level_structures() {
      * js/objnam.js:3620 filed against deliver_splev_message(), which is the
      * only reader.  A des.message() written for a level that is then never
      * arrived at leaked into the NEXT generated level's arrival topline.
-     * Field-for-field against mklev.c:875-935 the rest of the list is now
+     * Field-for-field against mklev.c:875-926 the rest of the list is now
      * complete: objlist / buriedobjlist / monlist / damagelist / bonesinfo /
      * nsubroom / subrooms are all members of the GameMap that `g.level = new
      * GameMap()` at the head of this function replaces wholesale, so they are
@@ -4455,6 +4480,43 @@ async function makelevel_postprocess() {
         if (g.gc) g.gc.coder = null;
     }
 }
+// C ref: themerms.lua:874-875, 982-1007 pre_themerooms_generate() / post_themerooms_generate()
+let _debug_rm_idx = null;
+let _debug_fill_idx = null;
+function _lookup_themeroom_by_name(str, isfill) {
+    if (!str)
+        return null;
+    const tbl = isfill ? THEMEROOM_FILL_META : THEMEROOM_META;
+    const idx = tbl.findIndex(v => v.name === str);
+    return idx >= 0 ? idx : null;
+}
+function _nh_debug_themerm(isfill) {
+    if (!wizard())
+        return null;
+    const key = isfill ? 'THEMERMFILL' : 'THEMERM';
+    const val = game.env?.[key] ?? ENV?.[key];
+    return (val && val.length > 0) ? val : null;
+}
+async function pre_themerooms_generate() {
+    const debug_themerm = _nh_debug_themerm(false);
+    const debug_fill = _nh_debug_themerm(true);
+    let xtrainfo = '';
+    _debug_rm_idx = _lookup_themeroom_by_name(debug_themerm, false);
+    _debug_fill_idx = _lookup_themeroom_by_name(debug_fill, true);
+    if (debug_themerm !== null && _debug_rm_idx === null) {
+        if (_lookup_themeroom_by_name(debug_themerm, true) !== null)
+            xtrainfo = '; it is a fill type';
+        await pline(`Warning: themeroom '${debug_themerm}' not found in themerooms${xtrainfo}`);
+    }
+    if (debug_fill !== null && _debug_fill_idx === null) {
+        if (_lookup_themeroom_by_name(debug_fill, false) !== null)
+            xtrainfo = '; it is a room type';
+        await pline(`Warning: themeroom fill '${debug_fill}' not found in themeroom_fills${xtrainfo}`);
+    }
+}
+async function post_themerooms_generate() {
+    /* C ref: themerms.lua:1006-1007 post_themerooms_generate() — empty Lua hook */
+}
 // C ref: mklev.c makerooms()
 async function makerooms() {
     const g = game;
@@ -4462,8 +4524,14 @@ async function makerooms() {
     /* themerms.lua is_eligible: nh.level_difficulty() (dungeon.c:2027), not depth. */
     const difficulty = level_difficulty();
     let themeroom_tries = 0;
-    if (g._luathemes_loaded?.[g.u?.uz?.dnum ?? 0])
+    // C mklev.c:392-399 — lua_getglobal(themes, "pre_themerooms_generate") + nhl_pcall_handle("makerooms-1")
+    if (g._luathemes_loaded?.[g.u?.uz?.dnum ?? 0]) {
         create_des_coder();
+        g.iflags.in_lua = g.in_mk_themerooms = true;
+        g.themeroom_failed = false;
+        await pre_themerooms_generate();
+        g.iflags.in_lua = g.in_mk_themerooms = false;
+    }
     while (g.level.nroom < (MAXNROFROOMS - 1) && rnd_rect()) {
         if (g.level.nroom >= Math.trunc(MAXNROFROOMS / 6) && rn2(2) && !tried_vault) {
             tried_vault = true;
@@ -4479,15 +4547,29 @@ async function makerooms() {
             if (!g._luathemes_loaded?.[g.u?.uz?.dnum ?? 0]) {
                 if (!create_room(-1, -1, -1, -1, -1, -1, OROOM, -1))
                     break;
-            } else if (!(await themerooms_generate(difficulty))) {
-                if (themeroom_tries++ > 10
-                    || g.level.nroom >= Math.trunc(MAXNROFROOMS / 6))
-                    break;
+            } else {
+                // C mklev.c:412-421 — lua_getglobal(themes, "themerooms_generate") + nhl_pcall_handle("makerooms-2")
+                g.iflags.in_lua = g.in_mk_themerooms = true;
+                g.themeroom_failed = false;
+                const ok = await themerooms_generate(difficulty);
+                g.iflags.in_lua = g.in_mk_themerooms = false;
+                if (!ok) {
+                    g.themeroom_failed = true;
+                    if (themeroom_tries++ > 10
+                        || g.level.nroom >= Math.trunc(MAXNROFROOMS / 6))
+                        break;
+                }
             }
         }
     }
-    if (g._luathemes_loaded?.[g.u?.uz?.dnum ?? 0])
+    // C mklev.c:428-435 — lua_getglobal(themes, "post_themerooms_generate") + nhl_pcall_handle("makerooms-3")
+    if (g._luathemes_loaded?.[g.u?.uz?.dnum ?? 0]) {
         reset_xystart_size();
+        g.iflags.in_lua = g.in_mk_themerooms = true;
+        g.themeroom_failed = false;
+        await post_themerooms_generate();
+        g.iflags.in_lua = g.in_mk_themerooms = false;
+    }
 }
 // C ref: themerms.lua themeroom_fills — fill pool for themed rooms.
 // Order must match themerms.lua exactly; reservoir sampling depends on it.
@@ -5195,14 +5277,27 @@ async function themeroom_fill_spider_nest(croom, difficulty) {
 async function themeroom_fill_rng(aroom, difficulty) {
     const rm = { lit: !!aroom.rlit };
     let pick = null;
-    let total_frequency = 0;
-    for (const fill of THEMEROOM_FILL_META) {
-        if (!is_fill_eligible(fill, rm, difficulty))
-            continue;
-        const this_frequency = fill.frequency || 1;
-        total_frequency += this_frequency;
-        if (this_frequency > 0 && rn2(total_frequency) < this_frequency) {
-            pick = fill;
+    if (_debug_fill_idx !== null) {
+        if (is_fill_eligible(THEMEROOM_FILL_META[_debug_fill_idx], rm, difficulty)) {
+            pick = THEMEROOM_FILL_META[_debug_fill_idx];
+        } else {
+            await pline(`Warning: fill '${THEMEROOM_FILL_META[_debug_fill_idx].name}' is not eligible in room that generated it`);
+            return;
+        }
+    } else {
+        let total_frequency = 0;
+        for (const fill of THEMEROOM_FILL_META) {
+            if (!is_fill_eligible(fill, rm, difficulty))
+                continue;
+            const this_frequency = fill.frequency || 1;
+            total_frequency += this_frequency;
+            if (this_frequency > 0 && rn2(total_frequency) < this_frequency) {
+                pick = fill;
+            }
+        }
+        if (!pick) {
+            await lifecycle_impossible('no eligible themed room fills?');
+            return;
         }
     }
     // Execute fill content RNG for fills that call somex/somey to place items.
@@ -6451,19 +6546,35 @@ async function themerooms_generate(difficulty) {
     const prevLua = game.in_mk_themerooms;
     game.in_mk_themerooms = true;
     let pick = null;
-    let total_frequency = 0;
-    for (const meta of THEMEROOM_META) {
-        if (!is_themeroom_eligible(meta, difficulty))
-            continue;
-        const this_frequency = meta.frequency || 1;
-        total_frequency += this_frequency;
-        if (this_frequency > 0 && rn2(total_frequency) < this_frequency) {
-            pick = meta;
+    if (_debug_rm_idx !== null) {
+        let actualrm = _lookup_themeroom_by_name('default', false);
+        if (nhlib_percent(50)) {
+            if (is_themeroom_eligible(THEMEROOM_META[_debug_rm_idx], difficulty)) {
+                actualrm = _debug_rm_idx;
+            } else {
+                await pline(`Warning: themeroom '${THEMEROOM_META[_debug_rm_idx].name}' is ineligible`);
+            }
         }
-    }
-    if (!pick) {
-        game.in_mk_themerooms = prevLua;
-        return false;
+        pick = THEMEROOM_META[actualrm];
+    } else if (_debug_fill_idx !== null) {
+        const actualrm = _lookup_themeroom_by_name(nhlib_percent(50) ? 'Default room with themed fill' : 'default', false);
+        pick = THEMEROOM_META[actualrm];
+    } else {
+        let total_frequency = 0;
+        for (const meta of THEMEROOM_META) {
+            if (!is_themeroom_eligible(meta, difficulty))
+                continue;
+            const this_frequency = meta.frequency || 1;
+            total_frequency += this_frequency;
+            if (this_frequency > 0 && rn2(total_frequency) < this_frequency) {
+                pick = meta;
+            }
+        }
+        if (!pick) {
+            await lifecycle_impossible('no eligible themed rooms?');
+            game.in_mk_themerooms = prevLua;
+            return false;
+        }
     }
     // Map-first themed rooms (des.map only): C sp_lev.c lspo_map redo_maploc + overlay check.
     const mapLua = THEMEROOM_MAP_LUA[ /** @type {keyof typeof THEMEROOM_MAP_LUA} */(pick.name)];
@@ -7026,6 +7137,10 @@ function create_subroom(proom, x, y, w, h, rtype, rlit) {
 }
 // C ref: mklev.c add_subroom() — register a subroom under a parent room
 export function add_subroom(proom, lowx, lowy, hix, hiy, lit, rtype, special) {
+    if ((game.level._nsubroom | 0) >= MAXNROFROOMS)
+        throw new Error('level has too many subrooms');
+    if ((proom.nsubrooms | 0) >= MAX_SUBROOMS)
+        throw new Error('room has too many subrooms');
     // C: croom = &gs.subrooms[gn.nsubroom] — fill pre-allocated slot
     const croom = (game.level._subrooms && game.level._subrooms[game.level._nsubroom])
         || {};
@@ -7048,10 +7163,16 @@ export function add_subroom(proom, lowx, lowy, hix, hiy, lit, rtype, special) {
     game.level.rooms[croom.roomnoidx] = croom;
     proom.sbrooms[proom.nsubrooms++] = croom;
     game.level._nsubroom++;
+    if (game.level._nsubroom <= MAXNROFROOMS) {
+        game.level._subrooms[game.level._nsubroom] = { hx: -1 };
+        game.level.rooms[MAXNROFROOMS + 1 + game.level._nsubroom] = game.level._subrooms[game.level._nsubroom];
+    }
 }
 // C ref: mklev.c add_room()
 export function add_room(lowx, lowy, hix, hiy, lit, rtype, special) {
     const g = game;
+    if ((g.level.nroom | 0) >= MAXNROFROOMS)
+        throw new Error('level has too many rooms');
     const croom = {
         lx: lowx, ly: lowy, hx: hix, hy: hiy,
         rtype, rlit: lit ? 1 : 0,
@@ -7069,7 +7190,7 @@ export function add_room(lowx, lowy, hix, hiy, lit, rtype, special) {
     }
 }
 // C ref: mklev.c do_room_or_subroom()
-function do_room_or_subroom(croom, lowx, lowy, hix, hiy, lit, _rtype, special, is_room) {
+function do_room_or_subroom(croom, lowx, lowy, hix, hiy, lit, rtype, special, is_room) {
     const map = game.level;
     if (!lowx)
         lowx++;
@@ -7093,7 +7214,7 @@ function do_room_or_subroom(croom, lowx, lowy, hix, hiy, lit, _rtype, special, i
     croom.hx = hix;
     croom.ly = lowy;
     croom.hy = hiy;
-    croom.rtype = _rtype;
+    croom.rtype = rtype;
     croom.doorct = 0;
     croom.fdoor = game.level.doorindex;
     croom.irregular = false;
@@ -7716,7 +7837,7 @@ function roomRndcoordCells(croom, roomIdxHint) {
 // Stairs
 // ============================================================
 function generate_stairs_room_good(croom, phase) {
-    /* C mklev.c:2198-2211 */
+    /* C mklev.c:2200-2215 */
     return !!(croom && (croom.needjoining || (phase < 0))
         && ((!has_dnstairs(croom) && !has_upstairs(croom)) || phase < 1)
         && (croom.rtype === OROOM
@@ -7738,25 +7859,105 @@ function generate_stairs_find_room() {
     }
     return g.level.rooms[rn2(g.level.nroom)];
 }
+// C ref: display.c:2287-2427 glyph_to_cmap(back_to_glyph(x, y))
+function _mkstairs_cmap_idx(ptr) {
+    if (!ptr)
+        return 0; // S_stone
+    switch (ptr.typ) {
+        case SCORR:
+        case STONE:
+            return game.level?.flags?.arboreal ? 18 : 0; // S_tree : S_stone
+        case ROOM:
+            return 19; // S_room
+        case CORR:
+            return (ptr.waslit || game.flags?.lit_corridor) ? 23 : 22; // S_litcorr : S_corr
+        case SDOOR:
+            if (ptr.arboreal_sdoor || ptr.candig)
+                return 18; // S_tree
+            /* FALLTHRU */
+        case HWALL:
+        case VWALL:
+        case TLCORNER:
+        case TRCORNER:
+        case BLCORNER:
+        case BRCORNER:
+        case CROSSWALL:
+        case TUWALL:
+        case TDWALL:
+        case TLWALL:
+        case TRWALL:
+            return ptr.seenv ? 1 : 0; // wall_angle(ptr) ("wall") : S_stone ("stone")
+        case DOOR:
+            if (ptr.doormask) {
+                if (ptr.doormask & D_BROKEN)
+                    return 12; // S_ndoor
+                if (ptr.doormask & D_ISOPEN)
+                    return ptr.horizontal ? 14 : 13; // S_hodoor : S_vodoor
+                return ptr.horizontal ? 16 : 15; // S_hcdoor : S_vcdoor
+            }
+            return 12; // S_ndoor
+        case IRONBARS: return 17; // S_bars
+        case TREE: return 18; // S_tree
+        case POOL:
+        case MOAT: return 38; // S_pool
+        case STAIRS:
+            return (ptr.ladder & LA_DOWN) ? 26 : 25; // S_dnstair : S_upstair
+        case LADDER:
+            return (ptr.ladder & LA_DOWN) ? 28 : 27; // S_dnladder : S_upladder
+        case FOUNTAIN: return 37; // S_fountain
+        case SINK: return 36; // S_sink
+        case ALTAR: return 33; // S_altar
+        case GRAVE: return 34; // S_grave
+        case THRONE: return 35; // S_throne
+        case LAVAPOOL: return 40; // S_lava
+        case LAVAWALL: return 41; // S_lavawall
+        case ICE: return 39; // S_ice
+        case AIR: return 46; // S_air
+        case CLOUD: return 47; // S_cloud
+        case WATER: return 48; // S_water
+        case DBWALL: return ptr.horizontal ? 45 : 44; // S_hcdbridge : S_vcdbridge
+        case DRAWBRIDGE_UP:
+            switch (ptr.drawbridgemask & DB_UNDER) {
+                case DB_MOAT: return 38; // S_pool
+                case DB_LAVA: return 40; // S_lava
+                case DB_ICE: return 39; // S_ice
+                case DB_FLOOR: return 19; // S_room
+                default: return 19;
+            }
+        case DRAWBRIDGE_DOWN: return ptr.horizontal ? 43 : 42; // S_hodbridge : S_vodbridge
+        default: return 19; // S_room
+    }
+}
 export function mkstairs(x, y, up, croom, force = false) {
     const g = game;
+    if (!x || !isok(x, y)) {
+        impossible_sync("mkstairs:  bogus stair attempt at <%d,%d>", x, y);
+        return;
+    }
     const loc = g.level.at(x, y);
     if (force && loc)
         loc.typ = ROOM;
+    const ltyp = loc ? loc.typ : STONE; /* somexyspace() allows ice */
+    if (ltyp !== ROOM && ltyp !== CORR && ltyp !== ICE) {
+        const sidx = _mkstairs_cmap_idx(loc);
+        impossible_sync("mkstairs:  placing stairs %s on %s at <%d,%d>",
+            up ? "up" : "down", DEFSYM_EXPLANATION[sidx] ?? "stone", x, y);
+    }
     const _uz = g.u?.uz;
     const _dlev = (_uz?.dlevel ?? 1) | 0;
     const _dunlevs = (g.dungeons?.[(_uz?.dnum ?? 0) | 0]?.num_dunlevs | 0);
     if (_dlev === (up ? 1 : _dunlevs))
         return;
-    if (loc) {
-        loc.typ = STAIRS;
-        loc.ladder = up ? 1 : 2;
-    }
     const dest = {
         dnum: g.u?.uz?.dnum ?? 0,
         dlevel: (g.u?.uz?.dlevel ?? 1) + (up ? -1 : 1),
     };
     stairway_add(x, y, !!up, false, dest);
+    set_levltyp(x, y, STAIRS);
+    if (loc) {
+        loc.typ = STAIRS;
+        loc.ladder = up ? LA_UP : LA_DOWN;
+    }
     if (up)
         g.level.upstair = { x, y };
     else
@@ -7861,12 +8062,14 @@ async function makeniche(trap_type) {
                     actualTrap = ROCKTRAP;
                 const ttmp = await maketrap(xx, yy + dy, actualTrap);
                 // C: if (ttmp) { if (trap_type != ROCKTRAP) ttmp->once=1; trap_engravings check }
-                if (actualTrap !== ROCKTRAP)
-                    ttmp.once = true;
-                const engrText = trap_engravings[actualTrap];
-                if (engrText) {
-                    make_engr_at(xx, yy - dy, engrText, null, 0, DUST);
-                    wipe_engr_at(xx, yy - dy, 5, false);
+                if (ttmp) {
+                    if (actualTrap !== ROCKTRAP)
+                        ttmp.once = true;
+                    const engrText = trap_engravings[actualTrap];
+                    if (engrText) {
+                        make_engr_at(xx, yy - dy, engrText, null, 0, DUST);
+                        wipe_engr_at(xx, yy - dy, 5, false);
+                    }
                 }
             }
             await dosdoor(xx, yy, aroom, SDOOR);
@@ -7881,9 +8084,10 @@ async function makeniche(trap_type) {
                 if (!rn2(5) && loc && IS_WALL(loc.typ)) {
                     loc.typ = IRONBARS;
                     if (rn2(3)) {
-                        // C: mkcorpstat(CORPSE, NULL, mkclass(S_HUMAN, 0), xx, yy+dy, TRUE)
+                        // C mklev.c:786-788: mkcorpstat(CORPSE, NULL, mkclass(S_HUMAN, 0), xx, yy+dy, TRUE)
+                        const TRUE = 1;
                         const pm = mkclassAligned(S_HUMAN, 0, A_NONE);
-                        await mkcorpstat(CORPSE, null, pm, xx, yy + dy, 1);
+                        await mkcorpstat(CORPSE, null, pm, xx, yy + dy, TRUE);
                     }
                 }
                 if (!g.level.flags.noteleport) {
@@ -8332,12 +8536,14 @@ function mkaltar(croom) {
     const pos = { x: 0, y: 0 };
     if (!find_okay_roompos(croom, pos))
         return;
+    if (!set_levltyp(pos.x, pos.y, ALTAR))
+        return;
     const loc = game.level?.at(pos.x, pos.y);
     if (!loc)
         return;
-    loc.typ = ALTAR;
     const al = rn2(A_LAWFUL + 2) - 1;
-    loc.flags = Align2amask(al);
+    // C rm.h:214 #define altarmask flags (aliased on rmProto in js/game.js:79)
+    loc.altarmask = Align2amask(al);
 }
 async function mkgrave_room(croom) {
     /* C mklev.c:2358-2361 — dobell's initializer draws rn2(10) BEFORE the
@@ -8450,10 +8656,12 @@ export async function mkinvokearea() {
 // C mklev.c:2503-2597 — preserve the ring order, including monster effects.
 async function mkinvpos(x, y, dist) {
     const g = game;
+    const x_maze_min = 2;
+    const y_maze_min = 2;
     const xmax = g.gx?.x_maze_max ?? ((COLNO - 1) & ~1);
     const ymax = g.gy?.y_maze_max ?? ((ROWNO - 1) & ~1);
-    if (!within_bounded_area(x, y, 2, 2, xmax, ymax)) {
-        if (dist < 5) {
+    if (!within_bounded_area(x, y, x_maze_min, y_maze_min, xmax, ymax)) {
+        if (dist < (7 - 2)) {
             const msg = `mkinvpos: <${x},${y}> (${dist}) off map edge!`;
             if (!isok(x, y)) throw new Error(msg);
             await lifecycle_impossible(msg);
@@ -8570,7 +8778,7 @@ async function fill_ordinary_room(croom, bonus_items) {
         if (!rn2(x))
             await mkgrave_room(croom);
         if (!rn2(20) && somexyspace(croom, pos))
-            await mkcorpstat(STATUE, null, null, pos.x, pos.y, 8);
+            await mkcorpstat(STATUE, null, null, pos.x, pos.y, CORPSTAT_INIT);
         if (bonus_items && somexyspace(croom, pos)) {
             const branchp = is_branchlev();
             const oracle_dlevel = g.oracle_level?.dlevel ?? 5;
@@ -9008,10 +9216,10 @@ export function newoextra() {
 }
 
 export function newomid(otmp) {
-    otmp.oextra ||= newoextra();
+    otmp.oextra ||= newoextra(); /* C mkobj.c:145-146: if (!otmp->oextra) otmp->oextra = newoextra() */
     otmp.oextra.omid = 0;
     if (!otmp.oextra_present)
-        otmp.oextra_present = 1;  /* oextra = newoextra() */
+        otmp.oextra_present = 1;
     otmp.oextra_omid = 0;
 }
 
@@ -9145,7 +9353,7 @@ export function obj_timer_checks(otmp, x, y, force) {
 export function obj_extract_self(obj) {
     switch (obj.where) {
     case OBJ_FREE:
-    case OBJ_LUAFREE_OES:
+    case OBJ_LUAFREE:
     case OBJ_DELETED:
         break;
     case OBJ_FLOOR:
@@ -9202,9 +9410,6 @@ export function container_weight(container) {
     if (container.where === OBJ_CONTAINED)
         container_weight(container.ocontainer);
 }
-/* C obj.h:83 OBJ_LUAFREE == 8 (js/const.js:1122); not in this file's const.js
- * import list, and spelled locally the same way OBJ_MINVENT_MD is at :15911. */
-const OBJ_LUAFREE_OES = 8;
 
 /* C mkobj.c:2834 dealloc_obj_real — JavaScript GC owns the final release. */
 function dealloc_obj_real(otmp) {

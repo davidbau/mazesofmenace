@@ -37,7 +37,6 @@ import { isEdibleFood } from './food_selection.js';
 import { eggHasMonsterSpecies } from './egg_impact.js';
 import { heroIsBlind, heroIsHallucinating } from './senses.js';
 import { useUpInventoryStack, freeInventoryObject } from './hero_inventory.js';
-import { objectWeight } from './weight.js';
 import { lookHere } from './floor_object_display.js';
 import { heroCanReachFloor } from './floor_reach.js';
 import { surfaceName } from './terrain_name.js';
@@ -58,6 +57,7 @@ import { stopObjectTimers } from './timeout.js';
 import { maybeUnhideAt } from './mon.js';
 import { rn2 } from './rng.js';
 import { objectResistsDestruction } from './zap.js';
+import { objectWeight } from './mkobj.js';
 const COIN_CLASS = 12;
 const SCROLL_CLASS = 9;
 const SPBOOK_CLASS = 10;
@@ -295,6 +295,8 @@ async function identifyAndDescribe(object) {
 }
 // C invent.c:identify_pack()/menu_identify(). Each selection is identified
 // and described before another menu opens, so resumed input sees the result.
+// C invent.c:count_unidentified() is the candidate count and the
+// already-identified shortcut.
 export async function identifyPack(idLimit, learningIdentify = false) {
     let candidates = (game.inventory || []).filter(objectNeedsFullIdentification);
     if (!candidates.length) {
@@ -814,6 +816,8 @@ export function identifyObjectForDisclosure(item, identifyTinContents = false) {
     if (item.oclass === 13 && canonicalName)
         item.name = canonicalName;
 }
+// C invent.c:display_pickinv(): the getobj inventory menu, including the
+// "Not carrying anything" shortcut and the hands entry when allowed.
 export async function selectInventoryObject({ letters, includeGold = true, title = null, extraChoice = null, pickMode = PICK_ONE, headingAttr, menuOptions = [], } = {}) {
     const filtered = !!letters;
     const candidates = letters ? game.inventory.filter(item => item.invlet && letters.includes(item.invlet))
@@ -823,6 +827,8 @@ export async function selectInventoryObject({ letters, includeGold = true, title
         await pline('Not carrying anything.');
         return { key: 0, count: null };
     }
+    // C invent.c:reassign() refreshes rotating letters; the wizard-mode
+    // override_ID display runs identify_pack()/count_unidentified() first.
     if (game.flags.fixinv === false)
         reassignInventoryLetters();
     const wizardIdentification = game.flags.debug && game.iflags.override_ID;
@@ -985,6 +991,8 @@ async function readInventorySplitCount() {
     }
 }
 // C ref: invent.c:doorganize()/doorganize_core().
+// C invent.c:adjust_ok()/adjust_gold_ok(): the getobj filters that make
+// every lettered object selectable (gold only after confirmation).
 export async function doadjust(selected = null, splitting = null) {
     const inventory = (game.inventory || [])
         .filter((object) => typeof object.invlet === 'string' && object.invlet.length > 0)
@@ -1549,7 +1557,7 @@ function comparisonNeedsMessage(survivor, incoming, state) {
         && comparisonDiscovers(survivor, incoming, state);
 }
 // C merged() prelude, completed before either kind of display can yield.
-function prepareStackMerge(survivor, incoming, state) {
+async function prepareStackMerge(survivor, incoming, state) {
     const discovered = comparisonDiscovers(survivor, incoming, state);
     if (!survivor.globby) {
         const firstQuantity = survivor.quan ?? survivor.quantity ?? 1;
@@ -1588,7 +1596,7 @@ function prepareStackMerge(survivor, incoming, state) {
         survivor.rknown = true;
     if (!!survivor.bknown !== !!incoming.bknown)
         survivor.bknown = true;
-    mergeHeroWeaponSlots(survivor, incoming, state);
+    await mergeHeroWeaponSlots(survivor, incoming, state);
     if (incoming.bypass)
         survivor.bypass = true;
     return discovered;
@@ -1603,7 +1611,7 @@ export async function mergeCreatedObjectStacks(survivor, incoming, state = game)
         return null;
     if (incoming.globby || comparisonNeedsMessage(survivor, incoming, state))
         throw new Error('stack merge with display effects must be awaited');
-    prepareStackMerge(survivor, incoming, state);
+    await prepareStackMerge(survivor, incoming, state);
     await deleteObject(incoming, state, { mergeInto: survivor });
     return survivor;
 }
@@ -1611,7 +1619,7 @@ export async function mergeObjectStacks(survivor, incoming, state = game) {
     requireLiveGame(state);
     if (!survivor || !incoming || !mergable(survivor, incoming, state))
         return null;
-    const discovered = prepareStackMerge(survivor, incoming, state);
+    const discovered = await prepareStackMerge(survivor, incoming, state);
     if (incoming.globby) {
         await announceGlobMerge(survivor, incoming, state);
         return await absorbGlob(survivor, incoming, state);

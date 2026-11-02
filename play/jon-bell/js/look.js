@@ -59,8 +59,6 @@ import { poly_when_stoned } from './mondata.js';
 import { visible_region_at, reg_damg } from './region.js';
 import { pushRngLogEntry } from './rng.js';
 import { Blind } from './vision.js';
-import { can_reach_floor } from './hold_another_object.js';
-import { is_ice } from './engrave.js';
 import { doname, doname_with_price, corpse_xname, an, vtense, makeplural, CXN_ARTICLE, CXN_PFX_THE } from './objnam.js';
 import { ENV } from './hostenv.js';
 /* mbodypart: C polyself.c:1956 — needed only by look_here's u.uswallow arm
@@ -71,8 +69,8 @@ import { ENV } from './hostenv.js';
  * leave it in TDZ at call time (look_here only runs after both modules have
  * finished evaluating). */
 import { force_decor, mbodypart, body_part, set_msg_xy, instapetrify, display_minventory,
-         dfeature_at as _cmd_dfeature_at, pooleffects_is_flyer, surface } from './cmd.js';
-export { _surface_at, _surface_lk }; // relocate-fns
+         dfeature_at as _cmd_dfeature_at, pooleffects_is_flyer, surface, read_engr_at } from './cmd.js';
+export { _surface_at, _surface_lk, read_engr_at }; // relocate-fns
 export { end_running } from './hack.js'; // relocate-fns
 export { _is_lava_local, _is_pool_local }; // relocate-fns
 
@@ -218,81 +216,8 @@ function _surface_lk(x, y) {
     return surface(x, y);
 }
 
-/* C ref: engrave.c:318-407 read_engr_at(x, y).  Real body: locates the live
- * engraving (js/mklev.js's `_engr_map`, the store js/engrave.js itself
- * writes through and reads via `engr_at` — see the note this replaced,
- * still true), builds the "sensing" line per engr_type, then the reveal
- * line, capped at BUFSZ - sizeof "You feel the words: \"\"." (engrave.c:375). */
-export async function read_engr_at(x, y) {
-    const ep = engr_at(x, y);
-    /* C engrave.c:321 — eloc = surface(x, y) is computed before the engraving
-     * test; under hallucination over a pool it draws hliquid's rn2(41) on the
-     * DISPLAY stream even when nothing is engraved here. */
-    const eloc = _surface_lk(x, y);
-    if (!ep || !ep.text) return;
-    const blind = Blind();
-    let sensed = false;
-    switch (ep.engr_type) {
-    case DUST:
-        if (!blind) {
-            sensed = true;
-            await pline(`Something is written here in the ${lev_is_ice_lk(x, y) ? 'frost' : 'dust'}.`);
-        }
-        break;
-    case ENGRAVE:
-    case HEADSTONE:
-        if (!blind || can_reach_floor(true)) {
-            sensed = true;
-            await pline(`Something is engraved here on the ${eloc}.`);
-        }
-        break;
-    case BURN:
-        if (!blind || can_reach_floor(true)) {
-            sensed = true;
-            await pline(`Some text has been ${lev_is_ice_lk(x, y) ? 'melted' : 'burned'} into the ${eloc} here.`);
-        }
-        break;
-    case MARK:
-        if (!blind) {
-            sensed = true;
-            await pline(`There's some graffiti on the ${eloc} here.`);
-        }
-        break;
-    case ENGR_BLOOD:
-        if (!blind) {
-            sensed = true;
-            await You_see('a message scrawled in blood here.');
-        }
-        break;
-    default:
-        await impossible('Something is written in a very strange way.');
-        sensed = true;
-        break;
-    }
-    if (!sensed) return;
-    /* C engrave.c:373-407 — the reveal line and its trailing punctuation. */
-    const et = ep.text.slice(0, 232), elen = et.length; // C engrave.c:375-385
-    const off = ep.off | 0;
-    let endpunct = '.';
-    if (elen >= 2) {
-        const pristineChar = (ep.pristine || '').charAt(off + elen - 1);
-        const actualChar = ep.text.charAt(elen - 1);
-        if (pristineChar === actualChar && '.!?'.includes(actualChar))
-            endpunct = '';
-    }
-    await pline(`You ${blind ? 'feel the words' : 'read'}: "${et}"${endpunct}`);
-    /* C engrave.c:398 — a successful read copies actual_text into
-     * remembered_text.  /e and /E later report this remembered copy, which
-     * matters after movement has smudged an Elbereth engraving. */
-    ep.remembered = ep.text;
-    ep.eread = 1;
-    ep.erevealed = 1;
-    if ((game.context?.run | 0) > 0) nomul(0);
-}
-/* Local is_ice(x,y) helper for read_engr_at (engrave.c is_ice). */
-function lev_is_ice_lk(x, y) {
-    return is_ice(x, y);
-}
+/* C ref: engrave.c:318-407 read_engr_at(x, y).
+ * Canonical definition is exported from js/cmd.js and re-exported above. */
 
 
 

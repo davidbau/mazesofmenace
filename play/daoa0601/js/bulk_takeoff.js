@@ -1,4 +1,6 @@
 // C do_wear.c:doddoremarm(), select_off(), take_off(), do_takeoff().
+// C invent.c:carrying_stoning_corpse(): taking off gloves while carrying a
+// petrifying corpse asks for confirmation, inlined in select_off().
 import { removeHeroAccessory } from './do_wear.js';
 import { armorOffMessage, armorSimpleName, removeHeroArmor } from './do_wear.js';
 import { heroFingerName, heroFootName, heroHandName } from './body_parts.js';
@@ -9,7 +11,7 @@ import { game } from './gstate.js';
 import { BATTLE_AXE, CORPSE, LENSES, OBJECT_DELAY, OBJECT_NAMES, OBJECT_SUBTYPE, } from './object_data.js';
 import { monsterIsHumanoid } from './monster_data.js';
 import { isBimanualObject } from './object_properties.js';
-import { heroSpecies } from './hero_species.js';
+import { heroSpecies } from './polyself.js';
 import { makePlural } from './objnam.js';
 import { objectMonsterName, objectName } from './objnam.js';
 import { heroHasNoLimbs } from './polyself.js';
@@ -144,6 +146,8 @@ async function offMessage(object, state) {
     if (message)
         await pline(message);
 }
+// C do_wear.c:select_off(); invent.c:carrying_stoning_corpse() is the
+// petrifying-corpse check that guards taking gloves off.
 export async function canSelectOff(object, slot) {
     const weapon = takeoffSlotObject('uwep');
     const gloves = takeoffSlotObject('uarmg');
@@ -177,8 +181,7 @@ export async function canSelectOff(object, slot) {
             await pline(`${object.unpaid ? 'The' : 'Your'} ${armorSimpleName(object)} are too slippery to take off.`);
             return false;
         }
-        const corpse = game.inventory.find(candidate => candidate.otyp === CORPSE && touchPetrifies(candidate.corpsenm));
-        if (corpse && !await paranoidQuery(true, `Take off your ${armorSimpleName(object)} despite carrying a dead ${objectMonsterName(corpse)}?`))
+        if (await betterNotTakeThatOff(object))
             return false;
     }
     if (slot === 'uarmf' && game.u.utrap) {
@@ -205,6 +208,24 @@ export async function canSelectOff(object, slot) {
     if (slot === 'uquiver' || slot === 'uswapwep' && !game.u.twoweap)
         return true;
     return !await unremovableCurse(object, slot, game);
+}
+// C do_wear.c:better_not_take_that_off().  Gloves are the only barrier
+// between the hero and a carried stoning corpse, so taking them off asks
+// for confirmation; refusing leaves the gloves on.
+async function betterNotTakeThatOff(object, state = game) {
+    // C invent.c:carrying_stoning_corpse(): the first inventory corpse that
+    // petrifies on touch.
+    const corpse = state.inventory.find(candidate => candidate.otyp === CORPSE && touchPetrifies(candidate.corpsenm));
+    if (!corpse)
+        return false;
+    // C pickup.c:u_safe_from_fatal_corpse(corpse, st_corpse | st_petrifies):
+    // both tests already hold of carrying_stoning_corpse(), so this corpse
+    // is never safe to touch bare-handed.  Stone resistance is deliberately
+    // not factored in: losing it later, without the gloves on, could prove
+    // dangerous.
+    if (corpse.otyp !== CORPSE || !touchPetrifies(corpse.corpsenm))
+        return false;
+    return !await paranoidQuery(true, `Take off your ${armorSimpleName(object)} despite carrying a dead ${objectMonsterName(corpse)}?`);
 }
 function weaponNoun(object) {
     const skill = object ? OBJECT_SUBTYPE[object.otyp] : undefined;

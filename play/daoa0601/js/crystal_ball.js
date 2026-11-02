@@ -11,10 +11,9 @@ import { plineWithContinuation as pline } from './pline.js';
 import { game, requireGameLevel } from './gstate.js';
 import { cmapToGlyph, CmapSymbol } from './glyph_numbers.js';
 import { depth } from './hacklib.js';
-import { loseHeroHp } from './hero_damage.js';
 import { useUpInventoryStack } from './hero_inventory.js';
-import { makeConfused, makeHallucinated } from './hero_mental_status.js';
-import { heroPolyGender } from './hero_species.js';
+import { makeConfused, makeHallucinated } from './potion.js';
+import { heroPolyGender } from './polyself.js';
 import { browseDetectionMap, detectMonsters, detectObjects, redisplayDetectionMap, unconstrainMap, } from './detect.js';
 import { MAP_SYMBOLS } from './map_symbols.js';
 import { MONSTER_CLASS_SYMBOLS } from './mondata.js';
@@ -27,9 +26,10 @@ import { consumeObjectCharge } from './invent.js';
 import { CRYSTAL_BALL } from './object_data.js';
 import { rn2, rnd } from './rng.js';
 import { heroIsBlind, heroIsHallucinating } from './senses.js';
-import { makeBlinded } from './sight_change.js';
+import { makeBlinded } from './potion.js';
 import { detectTraps } from './detect.js';
 import { ynSingleKey } from './tty_prompts.js';
+import { loseHeroHp } from './hack.js';
 const ROCK_CLASS = 14;
 export async function useCrystalBall(object) {
     if (heroIsBlind()) {

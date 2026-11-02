@@ -19,7 +19,7 @@ import { christen_monst, Amonnam } from './mhitm.js';
 import { attach_egg_hatch_timeout, obj_stop_timers } from './timeout.js';
 import { OBJ_FREE, OBJ_FLOOR, OBJ_CONTAINED, OBJ_INVENT, OBJ_MINVENT, OBJ_BURIED, NOBJ_STATES,
          NO_MINVENT, MM_NOWAIT, MM_NOCOUNTBIRTH, MM_NOTAIL, MM_ADJACENTOK,
-         MM_MALE, MM_FEMALE, CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE,
+         MM_MALE, MM_FEMALE, CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, CORPSTAT_HISTORIC,
          GRAVE, IS_POOL, LS_MONSTER, ONAME, has_oname, PLNMSG_OBJ_GLOWS, PLNMSG_ENVELOPED_IN_GAS, PROT_FROM_SHAPE_CHANGERS, OBJ_DELETED } from './const.js';
 import { PM_GHOST, PM_DOPPELGANGER, PM_CROCODILE, NUMMONS } from './pm.generated.js';
 import { HATCH_EGG } from './const.js';
@@ -123,7 +123,7 @@ import { exercise, get_artifact, arti_spfx, arti_cspfx, ART_NONARTIFACT, acurr, 
  * js/zap.js already imported discover_object from here, so no new edge. */
 import { discover_object, observe_object, isWanNothingNodir } from './o_init.js';
 import { FF_FAITHFUL, drain_pending_death_in_place } from './fastforward.js';
-import { obj_typename, an, An, makeplural, The, vtense, cloak_simple_name, suit_simple_name, helm_simple_name, gloves_simple_name, boots_simple_name, shield_simple_name, shirt_simple_name as shirt_simple_name_real, xname_ring, xname_wand, Tobjnam, simpleonames, distant_name as distant_name_real, aobjnam, Yobjnam2, otense, killer_xname, is_quest_artifact } from './objnam.js';
+import { obj_typename, an, An, makeplural, The, vtense, cloak_simple_name, suit_simple_name, helm_simple_name, gloves_simple_name, boots_simple_name, shield_simple_name, shirt_simple_name, xname_ring, xname_wand, Tobjnam, simpleonames, distant_name as distant_name_real, aobjnam, Yobjnam2, otense, killer_xname, is_quest_artifact } from './objnam.js';
 import { nomul } from './allmain.js';
 import { set_bc } from './ball.js';
 import { xname, yname, silly_thing_dw, hard_helmet } from './do_wear.js';
@@ -460,11 +460,14 @@ const RIN_PROTECTION = RIN_BASE + 5;          /* 178 == RIN_LAST_CHARGED */
  * do_wear.js:95-96 and objnam.js:91 independently carry the same two values. */
 const HELM_OF_BRILLIANCE = 96;
 const GAUNTLETS_OF_DEXTERITY = 162;
-const RIN_SHOCK_RESIST = 191; /* C objects.h — RIN_SHOCK_RESISTANCE is the 19th ring
+const RIN_SHOCK_RESISTANCE = 191; /* C objects.h — RIN_SHOCK_RESISTANCE is the 19th ring
                                * (ADORNMENT=173 .. SHOCK_RESISTANCE at index 18 = 191).
                                * Was 198 (which is actually RIN_INVISIBILITY); that bug
                                * made an invisibility ring non-destroyable under AD_ELEC,
                                * undercounting destroy_items' elig_stacks by one. */
+const RIN_SHOCK_RESIST = RIN_SHOCK_RESISTANCE;
+const POT_WATER = 322;
+const SCR_MAIL = 364;
 // ── destroy_items constants ────────────────────────────────────────────────────
 // C ref: nethack-c/src/zap.c lines 5950,5952.
 const DMG_DESTROY_SCALE = 5;
@@ -747,7 +750,7 @@ function _u_resists_blnd_by_arti() {
  * call site for it and the only one outside zap.c. */
 export async function flashburn(duration, via_lightning) {
     if (!(await _u_resists_blnd())) {
-        await pline('You are blinded by the flash!');   /* zap.c:3058 */
+        await pline('You are blinded by the flash!');   /* zap.c:3063 */
         /* C pline() -> update_topl() more() BLOCKS when this line overflows the
          * live topline; make_blinded and the caller's learnwand() (exercise
          * rn2(19), zap.c:3003-3007) run only after the --More-- is dismissed.
@@ -757,16 +760,16 @@ export async function flashburn(duration, via_lightning) {
         /* C runs make_blinded right after the pline returns (zap.c:3059-3061);
          * the page frame of the message above is frozen at its own flush, so
          * it still shows the pre-blind status. */
-        make_blinded(duration, false);                  /* zap.c:3059 */
-        if (!_Blind())                                  /* zap.c:3060-3061 */
+        make_blinded(duration, false);                  /* zap.c:3064 */
+        if (!_Blind())                                  /* zap.c:3065-3066 */
             await pline('Your vision quickly clears.');
-        return true;                                    /* zap.c:3062 */
+        return true;                                    /* zap.c:3067 */
     }
     if (!via_lightning && _u_resists_blnd_by_arti()) {
-        shieldeff_real(game.u.ux, game.u.uy); /* C zap.c:3077 */
-        return true;                                    /* zap.c:3072 */
+        shieldeff_real(game.u.ux, game.u.uy); /* C zap.c:3076 */
+        return true;                                    /* zap.c:3077 */
     }
-    return false;                                       /* zap.c:3074 */
+    return false;                                       /* zap.c:3079 */
 }
 async function recharge_ring(obj) {
     /* C read.c:807: int s = is_blessed ? rnd(3) : is_cursed ? -rnd(2) : 1 */
@@ -880,17 +883,16 @@ export async function destroy_items(mon, dmgtyp, dmg_in) {
         // C stores TRUE/FALSE; blessed/cursed are numeric bitfields in JS.
         const deferred = !!(((obj.owornmask | 0) !== 0
                           && (oprop === LEVITATION || oprop === FLYING))
-            || ((obj.otyp | 0) === 322 /* POT_WATER */ && ismnum(game.u.ulycn | 0)
+            || ((obj.otyp | 0) === POT_WATER && ismnum(game.u.ulycn | 0)
                 && (Upolyd(game.u) ? obj.blessed : obj.cursed)));
         items_to_destroy[i] = { otmp: obj, oid: obj.o_id, deferred };
     }
     /* C zap.c:6069-6071: clamp elig_stacks to limit for the destruction loops. */
     if (elig_stacks > limit)
         elig_stacks = limit;
-    /* C zap.c:6072-6085: two-pass (defer 0/1) destruction.  Deferral applies only
-     * to worn levitation/flying items and were-trigger potions — none for the
-     * AD_COLD/AD_FIRE potion path here, so a single pass over the selected stacks
-     * is C-faithful (deferred==FALSE for every selected item). */
+    /* C zap.c:6079-6092: two-pass (defer 0/1) destruction loop is kept as in C.
+     * Deferral applies to worn levitation/flying items and were-trigger potions
+     * of water (deferred==FALSE is normal for other potions/items). */
     const n = Math.min(elig_stacks, limit);
     /* C zap.c:6072-6086: defer 0 then 1; skip an item no longer in inventory. */
     /* C zap.c:6079: dmg_out += maybe_destroy_item(mon, obj, dmgtyp); ...
@@ -936,7 +938,7 @@ function _destroyable(obj, adtyp) {
         if (oclass === POTION_CLASS && otyp !== POT_OIL) return true;
     } else if (adtyp === AD_ELEC) {
         if (oclass !== RING_CLASS && oclass !== WAND_CLASS) return false;
-        if (otyp !== RIN_SHOCK_RESIST && otyp !== WAN_LIGHTNING) return true;
+        if (otyp !== RIN_SHOCK_RESISTANCE && otyp !== WAN_LIGHTNING) return true;
     }
     return false;
 }
@@ -2354,6 +2356,11 @@ export async function ubreatheu(mattk) {
 export async function ubuzz(type, nd) {
     const u = game.u;
     await dobuzz(type, nd, u.ux | 0, u.uy | 0, u.dx | 0, u.dy | 0, true, false, false);
+}
+
+/* C zap.c:4765 buzz — monster ray from (sx,sy) in (dx,dy). */
+export async function buzz(type, nd, sx, sy, dx, dy) {
+    await dobuzz(type, nd, sx, sy, dx, dy, true, false, false);
 }
 
 /* C muse.c:2795-2814 mon_reflects(mon, str) — does this monster reflect a
@@ -4235,8 +4242,11 @@ function _zp_replace_object(obj, otmp) {
     obj.where = ZP_OBJ_FREE;
 }
 
-/* C zap.c:1650 do_osshock(struct obj *obj) — the "shudders" destruction. */
+/* C zap.c:1640-1655 do_osshock(struct obj *obj) — the "shudders" destruction. */
 async function do_osshock(obj) {
+    /* C zap.c:1641-1644: MAIL_STRUCTURES */
+    if ((obj.otyp | 0) === SCR_MAIL)
+        return;
     const g = game;
     g._obj_zapped = true;
     if ((g._poly_zapped | 0) < 0) {
@@ -4656,7 +4666,7 @@ export async function break_statue(obj) {
     /* C zap.c:5598-5603: a historic statue shames an Archeologist; spe is
        cleared before fracture_rock so the rocks merge with other rocks. */
     if (!(game.context && game.context.mon_moving) && _wand_Role_if(PM_ARCHEOLOGIST)
-        && ((obj.spe | 0) & 4 /* CORPSTAT_HISTORIC */)) {
+        && ((obj.spe | 0) & CORPSTAT_HISTORIC) !== 0) {
         await pline('You feel guilty about damaging such a historic statue.');
         await adjalign(-1);
     }
@@ -5063,6 +5073,11 @@ async function polyuse(objhdr, mat, minwt) {
     }
 }
 
+/* C objclass.h enum obj_material_types */
+const FLESH = 4, PAPER = 5, CLOTH = 6, LEATHER = 7, WOOD = 8, BONE = 9;
+const IRON = 11, METAL = 12, COPPER = 13, SILVER = 14, GOLD = 15, PLATINUM = 16, MITHRIL = 17;
+const GLASS = 19, GEMSTONE = 20, MINERAL = 21;
+
 async function create_polymon(obj, okind) {
     const g = game;
     if (g.context && g.context.bypasses) {
@@ -5075,50 +5090,50 @@ async function create_polymon(obj, okind) {
 
     let pm_index, material;
     switch (okind) {
-    case 11: /* IRON */
-    case 12: /* METAL */
-    case 17: /* MITHRIL */
+    case IRON:
+    case METAL:
+    case MITHRIL:
         pm_index = PM_IRON_GOLEM;
         material = 'metal ';
         break;
-    case 13: /* COPPER */
-    case 14: /* SILVER */
-    case 16: /* PLATINUM */
-    case 20: /* GEMSTONE */
-    case 21: /* MINERAL */
+    case COPPER:
+    case SILVER:
+    case PLATINUM:
+    case GEMSTONE:
+    case MINERAL:
         pm_index = rn2(2) ? PM_STONE_GOLEM : PM_CLAY_GOLEM;
         material = 'lithic ';
         break;
     case 0:
-    case 4: /* FLESH */
+    case FLESH:
         pm_index = PM_FLESH_GOLEM;
         material = 'organic ';
         break;
-    case 8: /* WOOD */
+    case WOOD:
         pm_index = PM_WOOD_GOLEM;
         material = 'wood ';
         break;
-    case 7: /* LEATHER */
+    case LEATHER:
         pm_index = PM_LEATHER_GOLEM;
         material = 'leather ';
         break;
-    case 6: /* CLOTH */
+    case CLOTH:
         pm_index = PM_ROPE_GOLEM;
         material = 'cloth ';
         break;
-    case 9: /* BONE */
+    case BONE:
         pm_index = PM_SKELETON;
         material = 'bony ';
         break;
-    case 15: /* GOLD */
+    case GOLD:
         pm_index = PM_GOLD_GOLEM;
         material = 'gold ';
         break;
-    case 19: /* GLASS */
+    case GLASS:
         pm_index = PM_GLASS_GOLEM;
         material = 'glassy ';
         break;
-    case 5: /* PAPER */
+    case PAPER:
         pm_index = PM_PAPER_GOLEM;
         material = 'paper ';
         break;
@@ -5165,7 +5180,7 @@ export async function bhitpile(obj, fhito, tx, ty, zz) {
     if (!cell || !cell[ty])
         return 0;
     let hitanything = 0;
-    /* C zap.c:2434: hiding under the top item while zapping up/down */
+    /* C zap.c:2443: hiding under the top item while zapping up/down */
     const hidingunder = (zz | 0) !== 0 && !!g.u?.uundetected
         && _hides_under_zp(g.youmonst?.data);
     let first = true;
@@ -5200,7 +5215,7 @@ export async function bhitpile(obj, fhito, tx, ty, zz) {
     }
 
     if ((g._poly_zapped | 0) >= 0) {
-        /* C zap.c:2044: create_polymon(svl.level.objects[tx][ty], gp.poly_zapped).
+        /* C zap.c:2484-2485: create_polymon(svl.level.objects[tx][ty], gp.poly_zapped).
          * NOTE the pile is re-read fresh from the map here, not the `obj`
          * variable this loop was iterating over — do_osshock/bhito's poly_obj
          * may already have unlinked/replaced items, so this must walk the
@@ -5210,7 +5225,7 @@ export async function bhitpile(obj, fhito, tx, ty, zz) {
         await create_polymon(pileHead, g._poly_zapped | 0);
         g._poly_zapped = -1;
     }
-    /* C zap.c:2467-2475: when boulders are present they're expected to be on
+    /* C zap.c:2487-2498: when boulders are present they're expected to be on
      * top; if some were changed into non-boulders while ones beneath resisted,
      * re-stack the pile.  maybe_unhide_at is display bookkeeping, RNG-free. */
     {
@@ -6449,6 +6464,21 @@ export async function dozap() {
         g.context.move = 0;             /* C ECMD_OK */
         return ECMD_OK;
     }
+    /* C zap.c:2638: obj = getobj("zap", zap_ok, GETOBJ_NOFLAGS).
+     *
+     * C getobj prompt loop:
+     *   invent.c:1911-1914  suggested==0 && !forceprompt && !allownone:
+     *       You("don't have anything %sto %s.", ...) and RETURN — C never
+     *       prompts and never reads a key.
+     *   invent.c:2057-2062  !otmp: You("don't have that object.") and CONTINUE
+     *       — the tty more()s the message (one recorded dismiss key) and the
+     *       for(;;) re-prompts (a second key).
+     *
+     * js/cmd.js getObjFromGetobj IS C's getobj — the whole invent.c:1752 body,
+     * with the classifier callback C passes: hands/self, altlets + forceprompt,
+     * inaccess, sortloot-by-invlet, compactify, the no-candidates early-out,
+     * quitchars, the '?'/'*' menu, the "don't have that object" loop and
+     * silly_thing.  Calling it is both shorter and strictly more faithful. */
     let obj = await getObjFromGetobj('zap', zap_ok, GETOBJ_NOFLAGS);
     /* C zap.c:2634-2635: if (!obj) return ECMD_CANCEL; */
     if (!obj) {
@@ -6482,6 +6512,9 @@ export async function dozap() {
     }
     let dx = 0, dy = 0, dz = 0, nodir_given = false;
     if (charged && need_dir) {
+        /* C zap.c:2653 — `} else if (need_dir && !getdir((char *) 0)) {`.
+         * Uses the real getdir: handles invalid direction warnings, movecmd
+         * run/rush spellings, '<'/'>', and confdir(FALSE) tail. */
         nodir_given = !(await getdir(null));
         dx = g.u.dx | 0; dy = g.u.dy | 0; dz = g.u.dz | 0;
     }
@@ -6797,7 +6830,7 @@ async function cancel_item(obj) {
         }
     }
 
-    /* C zap.c:1347-1356: Riders retain their revival timer.  C passes the
+    /* C zap.c:1348-1357: Riders retain their revival timer.  C passes the
      * absolute peek_timer timeout to start_timer as a delay; preserve that. */
     if (obj.otyp === CORPSE && obj.timed
         && !_zp_is_rider(permonstTemplate(obj.corpsenm))) {
@@ -6923,6 +6956,13 @@ function drain_defends_when_carried(adtyp, _obj) {
     return adtyp === AD_DRLI ? false : false;
 }
 
+const ART_EXCALIBUR = 1;
+const ART_STORMBRINGER = 2;
+const ART_STAFF_OF_AESCULAPIUS = 24;
+const BLACK_DRAGON_SCALE_MAIL = 107;
+const BLACK_DRAGON_SCALES = 117;
+const COST_DRAIN = 1;
+
 /* C ref: artifact.c defends(int adtyp, struct obj *otmp) — TRUE when otmp is
  * an artifact whose defn.adtyp == adtyp, or dragon armour of the colour that
  * resists adtyp (for AD_DRLI: BLACK_DRAGON_SCALES, after mail is folded onto
@@ -6936,21 +6976,20 @@ function drain_defends(adtyp, obj) {
      * ordinal (the same numbering consumed by js/attrib.js's artifact data). */
     if (adtyp === AD_DRLI) {
         const art = obj?.oartifact | 0;
-        if (!art && (obj.otyp === 107 || obj.otyp === 117))
+        if (!art && (obj.otyp === BLACK_DRAGON_SCALE_MAIL || obj.otyp === BLACK_DRAGON_SCALES))
             return true;
-        return art === 1 || art === 2 || art === 24;
+        return art === ART_EXCALIBUR || art === ART_STORMBRINGER || art === ART_STAFF_OF_AESCULAPIUS;
     }
     return false;
 }
 
 /* C ref: obj.h OBJ_INVENT — carried(obj) is (obj->where == OBJ_INVENT). */
 function drain_carried(o) {
-    return (o.where | 0) === 3;
+    return (o.where | 0) === OBJ_INVENT;
 }
 
 export async function drain_item(obj, by_you) {
-    /* C zap.c:1399-1401: the cmd.js implementation includes the shop billing
-     * arms (bill_dummy_object and stolen_value), before the charge is lost. */
+    /* C zap.c:1398 costly_alteration(obj, COST_DRAIN) — shop billing logic lives in costly_alteration_real in js/cmd.js. */
     async function costly_alteration(_o, _alter_type) {
         return await costly_alteration_real(_o, _alter_type);
     }
@@ -6972,7 +7011,7 @@ export async function drain_item(obj, by_you) {
 
     // Charge for the cost of the object
     if (by_you)
-        await costly_alteration(obj, 1); // COST_DRAIN (hack.h:285)
+        await costly_alteration(obj, COST_DRAIN); // COST_DRAIN (hack.h:285)
 
     // Drain the object and any implied effects
     obj.spe--;
@@ -7165,7 +7204,6 @@ export function item_what(dmgtyp) {
 }
 
 /* ── Stubs for unported helpers called by item_what ──────────────────────── */
-function shirt_simple_name(obj) { return shirt_simple_name_real(obj); }
 /* simpleonames: C objnam.c:2428-2442, fully ported and exported by
  * js/objnam.js and imported at this file's header.  A file-local THROWING
  * body of the same name stood here and shadowed it at item_what()'s three
@@ -7661,8 +7699,8 @@ export function get_mon_location(mon, xp, yp, locflags = 0) {
     return false;
 }
 
-/* exclam(dmg) — C ref: zap.c:3542 exclam().
+/* exclam(force) — C ref: zap.c:3547 exclam(int force).
  * Negative force uses "?"; otherwise use "." through 4 and "!" above it. */
-export function exclam(dmg) {
-    return (dmg < 0) ? '?' : (dmg <= 4) ? '.' : '!';
+export function exclam(force) {
+    return (force < 0) ? '?' : (force <= 4) ? '.' : '!';
 }

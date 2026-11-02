@@ -1,6 +1,6 @@
 // invent.js — C ref: invent.c.
 import { addinv_core1, addinv_core2, carry_obj_effects, freeinv, inv_cnt, mergable, obj_extract_self_general, prinv, reorder_invent } from './cmd.js';
-import { FUMBLING, ONAME, SHRINK_GLOB, Upolyd, has_oname } from './const.js';
+import { FUMBLING, ONAME, ONAME_SKIP_INVUPD, SHRINK_GLOB, Upolyd, W_QUIVER, W_SWAPWEP, W_WEP, has_oname } from './const.js';
 import { dropx, dropy } from './do.js';
 import { picked_container } from './dokick.js';
 import { hitfloor, throwing_weapon } from './dothrow.js';
@@ -141,7 +141,7 @@ export async function merged(potmp, pobj, nomsg = false) {
         return false;
     if (nomsg && obj.globby) await globby_bill_fixup(otmp, obj); // mkobj.c:3714, before extraction
 
-    /* C:831-833 — approximate age, weighted by quantity.  C's arithmetic is
+    /* C:831-833 — weighted-average age, weighted by quantity.  C's arithmetic is
      * integer division on longs; Math.trunc matches (both operands are
      * non-negative here, but trunc is the rule this project uses). */
     if (!obj.lamplit && !obj.globby) {
@@ -165,9 +165,10 @@ export async function merged(potmp, pobj, nomsg = false) {
          * copies the discarded stack's name without refreshing inventory.
          * The latter matters because merged() is still midway through its
          * bookkeeping and C's update_inventory happens in addinv's caller. */
-        await oname(otmp, ONAME(obj), 0x0200 /* ONAME_SKIP_INVUPD */);
+        await oname(otmp, ONAME(obj), ONAME_SKIP_INVUPD);
 
-    /* C invent.c:845: extraction is unconditional, including OBJ_FREE. */
+    /* C invent.c:845: extraction runs for the merged() path (!nomsg), including
+     * OBJ_FREE (skipped in obj_meld's nomsg path). */
     if (!nomsg) obj_extract_self_general(obj);
 
     /* C:847-848 */
@@ -207,8 +208,6 @@ export async function merged(potmp, pobj, nomsg = false) {
      * with a wielded/quivered stack; the surviving stack keeps the preferred
      * weapon slot and the discarded node is fully unworn. */
     if (!nomsg && obj.owornmask && (otmp.where | 0) === OBJ_INVENT) {
-        const W_WEP = 0x00000100, W_QUIVER = 0x00000200,
-              W_SWAPWEP = 0x00000400;
         const wmask = (otmp.owornmask | 0) | (obj.owornmask | 0);
         let chosen;
         if (wmask & W_WEP) chosen = W_WEP;
@@ -631,6 +630,8 @@ export async function identify_pack(id_limit, learning_id) {
  * selection"); this sentinel keeps the two apart across the JS return value. */
 const NO_ELIGIBLE_ITEMS = Symbol('query_objlist n == -1');
 
+function wait_synch() {}
+
 /* C ref: invent.c:2659 menu_identify(id_limit) — pop the "What would you like to
  * identify first?" PICK_ANY menu over the not_fully_identified inventory, take up
  * to id_limit picks, and identify each (firing its discover_object exercise +
@@ -638,7 +639,7 @@ const NO_ELIGIBLE_ITEMS = Symbol('query_objlist n == -1');
 async function menu_identify(id_limit) {
     const g = game;
     let first = true;
-    /* C invent.c:2664 `int ... tryct = 5;` — the re-prompt budget. */
+    /* C invent.c:2663 `int n, i, first = 1, tryct = 5;` — the re-prompt budget. */
     let tryct = 5;
     while (id_limit > 0) {
         const prompt = `What would you like to identify ${first ? 'first' : 'next'}?`;
@@ -661,8 +662,10 @@ async function menu_identify(id_limit) {
         if (n > id_limit) n = id_limit;
         for (let i = 0; i < n; i++, id_limit--)
             await identify(picks[i]);
-        /* C: if (id_limit) wait_synch(); — display sync, no RNG. */
-        /* C invent.c:2686 — `first = 0` sits INSIDE the n > 0 arm, so a
+        /* C invent.c:2680-2681: if (id_limit) wait_synch(); — display sync, no RNG. */
+        if (id_limit)
+            wait_synch();
+        /* C invent.c:2682 — `first = 0` sits INSIDE the n > 0 arm, so a
          * no-selection round re-asks "identify first?", not "next?". */
         first = false;
     }
@@ -1216,10 +1219,10 @@ export function sobj_at(otyp, x, y) {
 /* C invent.c:1479-1489 — find the next object of a given type in one of the
  * two object chains.  The traversal advances before testing, matching C's
  * `obj` starting point and preserving its null behavior. */
-export function nxtobj(otmp, otyp, restrict_) {
+export function nxtobj(otmp, otyp, by_nexthere) {
     let next = otmp;
     do {
-        next = restrict_ ? next?.nexthere : next?.nobj;
+        next = by_nexthere ? next?.nexthere : next?.nobj;
         if (!next)
             break;
     } while ((next.otyp | 0) !== (otyp | 0));

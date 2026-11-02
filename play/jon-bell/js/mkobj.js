@@ -28,12 +28,12 @@ import { pline, You_see, You_hear } from './pline.js';
 import { Your } from './do_wear.js';
 import { makeplural, obj_typename, oname } from './objnam.js';
 import { HALLUC, HALLUC_RES, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT, MON_DETACH, ONAME_SKIP_INVUPD } from './const.js';
-import { mksobj_at, obj_timer_checks as obj_timer_checks_real } from './mklev.js'; // relocate-fns
+import { mksobj_at, obj_timer_checks } from './mklev.js'; // relocate-fns
 import { Yname2 } from './cmd.js'; // relocate-fns
 import { PLNMSG_OBJ_GLOWS } from './const.js'; // relocate-fns
 import { obj_adjust_light_radius } from './light.js'; // relocate-fns
 import { otense } from './objnam.js'; // relocate-fns
-import { get_obj_location } from './zap.js'; // relocate-fns
+import { get_obj_location, POT_OIL } from './zap.js'; // relocate-fns
 import { stop_occupation } from './allmain.js'; // relocate-fns
 import { obj_extract_self_general, useupall } from './cmd.js'; // relocate-fns
 import { OBJ_MIGRATING } from './const.js'; // relocate-fns
@@ -121,9 +121,9 @@ export function is_treefruit(obj) {
     return [277, 278, 279, 281, 276].includes(obj.otyp);
 }
 
+const MAX_OIL_IN_FLASK = 400; // C obj.h:384
 // C mkobj.c:2024-2048. Oil age is remaining fuel; other ages are birth turns.
 export function fixup_oil(potion, source) {
-    const POT_OIL = 321, MAX_OIL_IN_FLASK = 400;
     if (potion.otyp === POT_OIL) {
         potion.age = source?.otyp === POT_OIL ? source.age : MAX_OIL_IN_FLASK;
     } else if (source?.otyp === POT_OIL) {
@@ -443,7 +443,10 @@ export async function curse(otmp) {
         await maybe_adjust_light(otmp, old_light);
 }
 
-/* C mkobj.c:3843-3870 pudding_merge_message(): give a message if hero
+const se_faint_sloshing = 0; /* sounds.h enum */
+function Soundeffect(se, vol) { /* C sndprocs.h:272 no-op without USER_SOUNDS */ }
+
+/* C mkobj.c:3816-3849 pudding_merge_message(): give a message if hero
  * notices two globs merging. */
 export async function pudding_merge_message(otmp, otmp2) {
     const u = game.u || {};
@@ -470,16 +473,12 @@ export async function pudding_merge_message(otmp, otmp2) {
                         inpack ? ' inside your pack' : '');
         }
     } else {
+        Soundeffect(se_faint_sloshing, 25);
         await You_hear('a faint sloshing sound.');
     }
 }
 
-// C ref: timeout.c obj_timer_checks(otmp, x, y, force) — the object-timer
-// records show fobj.count only), so this untracked side effect is a no-op,
-// mirroring js/uhitm.js's end_burn no-op precedent.
-export function obj_timer_checks(otmp, x, y, force) {
-    return obj_timer_checks_real(otmp, x, y, force);
-}
+export { obj_timer_checks };
 
 const _TREEFRUITS = [277 /* APPLE */, 278 /* ORANGE */, 279 /* PEAR */,
                      281 /* BANANA */, 276 /* EUCALYPTUS_LEAF */];

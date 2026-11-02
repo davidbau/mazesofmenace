@@ -47,6 +47,22 @@ const _coversObjects = (loc, u, x, y) => {
 };
 const _topObject = (g, x, y) => g.level?.levelObjects?.[x]?.[y] || null;
 
+const FOUND_FLASH_COUNT = 6; /* C detect.c:19 */
+const OTRAP_NONE = 0;        /* C detect.c:899 */
+const OTRAP_HERE = 1;        /* C detect.c:900 */
+const OTRAP_THERE = 2;       /* C detect.c:901 */
+const LARGE_BOX = 214;       /* onames.h */
+const CHEST = 215;           /* onames.h */
+const Is_box = (o) => o && (((o.otyp | 0) === LARGE_BOX) || ((o.otyp | 0) === CHEST));
+const S_vcdoor = 15;         /* defsym.h */
+const S_hcdoor = 16;         /* defsym.h */
+const S_corr = 22;           /* defsym.h */
+const S_EEL = 57;            /* monsym.h */
+const M1_HIDE = 0x100;       /* mondata.h */
+const M1_CONCEAL = 0x80;     /* mondata.h */
+const is_hider = (ptr) => (((ptr?.mflags1 | 0) & M1_HIDE) !== 0);
+const hides_under = (ptr) => (((ptr?.mflags1 | 0) & M1_CONCEAL) !== 0);
+
 function _unconstrainMap(u) {
     const saved = { uinwater: u.uinwater | 0, uburied: u.uburied | 0,
                     uswallow: u.uswallow | 0 };
@@ -209,29 +225,39 @@ export function map_monst(mtmp, showtail) {
  * draws core RNG when sense_trap hallucinates an object. Discovery flashes
  * use FOUND_FLASH_COUNT=6; monster glyphs draw from the display RNG. */
 /* C detect.c:906-953 detect_obj_traps(), findone() call only (ft set,
- * show_them, how 0), including sense_trap's Hallucination arm. */
-function detect_obj_traps(objlist, ft) {
+ * show_them, how 0), including sense_trap's Hallucination arm.
+ * Returns result bits: OTRAP_NONE, OTRAP_HERE, OTRAP_THERE. */
+function detect_obj_traps(objlist, ft, show_them = true, how = 0) {
+    let result = OTRAP_NONE;
     const trapglyph = trap_to_glyph({ ttyp: TRAPPED_CHEST });
     for (let otmp = objlist; otmp; otmp = otmp.nobj) {
         const xp = { value: 0 }, yp = { value: 0 };
-        const box = (otmp.otyp === 214 /* LARGE_BOX */ || otmp.otyp === 215 /* CHEST */);
+        const box = Is_box(otmp);
         if ((box && otmp.otrapped) || Has_contents(otmp)) {
             if (!get_obj_location(otmp, xp, yp, BURIED_TOO | CONTAINED_TOO)
                 || !isok(xp.value, yp.value)
-                || xp.value !== ft.x || yp.value !== ft.y)
+                || (ft && (xp.value !== ft.x || yp.value !== ft.y)))
                 continue;
         }
         if (box && otmp.otrapped) {
             otmp.tknown = 1;
             observe_object(otmp);
-            flash_glyph_at(xp.value, yp.value, trapglyph, 6);
-            sense_trap({ tx: xp.value, ty: yp.value, ttyp: TRAPPED_CHEST, tseen: 1 }, xp.value, yp.value, 0);
-            foundone(xp.value, yp.value, GLYPHCLS_TRAP);
-            ft.num_traps++;
+            result |= u_at(xp.value, yp.value) ? OTRAP_HERE : OTRAP_THERE;
+            if (ft) {
+                flash_glyph_at(xp.value, yp.value, trapglyph, FOUND_FLASH_COUNT);
+            }
+            if (show_them) {
+                sense_trap({ tx: xp.value, ty: yp.value, ttyp: TRAPPED_CHEST, tseen: 1 }, xp.value, yp.value, how);
+            }
+            if (ft) {
+                foundone(xp.value, yp.value, GLYPHCLS_TRAP);
+                ft.num_traps++;
+            }
         }
         if (Has_contents(otmp))
-            detect_obj_traps(otmp.cobj, ft);
+            result |= detect_obj_traps(otmp.cobj, ft, show_them, how);
     }
+    return result;
 }
 
 function findone(zx, zy, found) {
@@ -245,7 +271,7 @@ function findone(zx, zy, found) {
         mtmp = null;
 
     if (lev.typ === SDOOR) {
-        flash_glyph_at(zx, zy, cmap_glyph(lev.horizontal ? 16 : 15), 6);
+        flash_glyph_at(zx, zy, cmap_glyph(lev.horizontal ? S_hcdoor : S_vcdoor), FOUND_FLASH_COUNT);
         /* C detect.c:1657-1662: cvt_sdoor_to_door → typ=DOOR; reveal. */
         cvt_sdoor_to_door(lev);
         recalc_block_point(zx, zy);
@@ -265,7 +291,7 @@ function findone(zx, zy, found) {
         }
         found.num_sdoors++;
     } else if (lev.typ === SCORR) {
-        flash_glyph_at(zx, zy, cmap_glyph(22 /* S_corr */), 6);
+        flash_glyph_at(zx, zy, cmap_glyph(S_corr), FOUND_FLASH_COUNT);
         /* C detect.c:1663-1670: magic_map_background, then foundone. */
         lev.typ = CORR;
         unblock_point(zx, zy);
@@ -287,7 +313,7 @@ function findone(zx, zy, found) {
 
     /* C detect.c:1672-1679: an unseen, non-statue trap is revealed. */
     if (ttmp && !ttmp.tseen && (ttmp.ttyp | 0) !== STATUE_TRAP) {
-        flash_glyph_at(zx, zy, trap_to_glyph(ttmp), 6);
+        flash_glyph_at(zx, zy, trap_to_glyph(ttmp), FOUND_FLASH_COUNT);
         ttmp.tseen = 1;
         sense_trap(ttmp, zx, zy, 0);
         foundone(zx, zy, GLYPHCLS_TRAP);
@@ -297,7 +323,7 @@ function findone(zx, zy, found) {
     if (lev.typ === DOOR
         && (lev.doormask & (D_CLOSED | D_LOCKED))
         && (lev.doormask & D_TRAPPED)) {
-        flash_glyph_at(zx, zy, trap_to_glyph({ ttyp: TRAPPED_DOOR }), 6);
+        flash_glyph_at(zx, zy, trap_to_glyph({ ttyp: TRAPPED_DOOR }), FOUND_FLASH_COUNT);
         sense_trap({ tx: zx, ty: zy, ttyp: TRAPPED_DOOR, tseen: 1 }, zx, zy, 0);
         foundone(zx, zy, GLYPHCLS_TRAP);
         found.num_traps++;
@@ -312,13 +338,12 @@ function findone(zx, zy, found) {
     /* C detect.c:1695-1721: hidden / unspottable monster. */
     if (mtmp && (!canspotmon(mtmp) || mtmp.mundetected || mtmp.m_ap_type)) {
         if (mtmp.m_ap_type) {
-            flash_glyph_at(zx, zy, mon_to_glyph(mtmp), 6);
+            flash_glyph_at(zx, zy, mon_to_glyph(mtmp), FOUND_FLASH_COUNT);
             seemimic(mtmp); /* detect.c:1699: also unblocks a boulder-mimic's vision */
             found.num_mons++;
         } else if (mtmp.mundetected
-                   && (((mtmp.data?.mflags1 | 0) & (0x100 /* M1_HIDE */ | 0x80 /* M1_CONCEAL */))
-                       || mtmp.data?.mlet === 57 /* S_EEL */)) {
-            flash_glyph_at(zx, zy, mon_to_glyph(mtmp), 6);
+                   && (is_hider(mtmp.data) || hides_under(mtmp.data) || mtmp.data?.mlet === S_EEL)) {
+            flash_glyph_at(zx, zy, mon_to_glyph(mtmp), FOUND_FLASH_COUNT);
             mtmp.mundetected = 0;
             newsym(zx, zy);
             found.num_mons++;
@@ -326,7 +351,7 @@ function findone(zx, zy, found) {
         /* C5 detect.c:1712-1720 tests the remembered glyph, not the screen. */
         if (lev.remembered_glyph?.cls !== GLYPHCLS_INVIS) {
             if (!canspotmon(mtmp)) {
-                flash_glyph_at(zx, zy, { ch: 'I', color: NO_COLOR, cls: GLYPHCLS_INVIS }, 6);
+                flash_glyph_at(zx, zy, { ch: 'I', color: NO_COLOR, cls: GLYPHCLS_INVIS }, FOUND_FLASH_COUNT);
                 map_invisible(zx, zy);
                 found.num_invis++;
             }
@@ -334,7 +359,7 @@ function findone(zx, zy, found) {
             found.num_kept_invis++;
         }
     } else if (unmap_invisible(zx, zy)) {
-        flash_glyph_at(zx, zy, { ch: 'I', color: NO_COLOR, cls: GLYPHCLS_INVIS }, 6);
+        flash_glyph_at(zx, zy, { ch: 'I', color: NO_COLOR, cls: GLYPHCLS_INVIS }, FOUND_FLASH_COUNT);
         found.num_cleared_invis++;
     }
 }
@@ -396,8 +421,8 @@ export async function findit() {
         num += found.num_mons;
     }
     if (buf) {
-        /* C detect.c:1872: You("reveal %s!", buf). */
-        pushRngLogEntry('>pline @ findit(detect.c:1872)');
+        /* C detect.c:1865: You("reveal %s!", buf). */
+        pushRngLogEntry('>pline @ findit(detect.c:1865)');
         await pline(`You reveal ${buf}!`);
     }
 
@@ -418,9 +443,9 @@ export async function findit() {
         num += found.num_cleared_invis;
     }
 
-    /* C detect.c:1890: if (!num) You("don't find anything."). */
+    /* C detect.c:1888: if (!num) You("don't find anything."). */
     if (!num) {
-        pushRngLogEntry('>findit @ js/zap.js (detect.c:1889)');
+        pushRngLogEntry('>findit @ js/detect.js (detect.c:1888)');
         await pline("You don't find anything.");
     }
     return num;

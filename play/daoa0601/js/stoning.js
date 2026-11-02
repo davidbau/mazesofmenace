@@ -1,7 +1,8 @@
 // Hero petrification from contact, corpses, and eggs.
 // C refs: mondata.c touch_petrifies()/poly_when_stoned(),
 // pickup.c fatal_corpse_mistake(), trap.c instapetrify(),
-// potion.c make_stoned(), and timeout.c stoned_dialogue().
+// timeout.c stoned_dialogue(); potion.c make_stoned() lives in potion.ts
+// (setHeroPetrificationTimeout).
 import { heroIsHallucinating } from './senses.js';
 import { endVoluntaryMultiTurn, nomul } from './hack.js';
 import { exerciseAttribute } from './attrib.js';
@@ -29,7 +30,7 @@ import { clearHeroSliming } from './slime.js';
 import { stopHeroOccupation } from './occupation.js';
 import { formatHeardMessage } from './hero_speech.js';
 import { openingTinMaySaveHero } from './eat.js';
-import { releaseWeaponSlots } from './wield.js';
+import { uswapwepgone, uwepgone } from './wield.js';
 import { heroIsBlind, heroIsDeaf } from './senses.js';
 import { rn2 } from './rng.js';
 const PM_CHICKATRICE = 9;
@@ -119,32 +120,6 @@ export function heroResistsStoning(state = game) {
 }
 export function heroIsPetrifying(state = game) {
     return !!state.u?.stoned || (state.u?.stonedTurns ?? 0) > 0;
-}
-// C potion.c:make_stoned(). Admission belongs to the attack or command;
-// replacing an active timeout must retain its original delayed killer.
-export async function setHeroPetrificationTimeout(turns, { state = game, message = null, killer = null, killerFormat = KILLED_BY_AN, publish = plineWithContinuation, } = {}) {
-    requireLiveGame(state);
-    if (!Number.isFinite(turns))
-        throw new RangeError('Petrification timeout must be finite.');
-    const requested = Math.trunc(turns);
-    const hero = state.u;
-    const old = hero.stonedTurns ?? 0;
-    hero.stonedTurns = Math.max(0, Math.min(TIMEOUT, requested));
-    hero.stoned = hero.stonedTurns > 0;
-    if ((requested !== 0) !== (old !== 0)) {
-        state.context.botl = true;
-        if (message !== null)
-            await publish(message);
-    }
-    // Native killer bookkeeping follows the transition message's input pause.
-    if (!hero.stonedTurns) {
-        delete hero.stoneKiller;
-        delete hero.stoneKillerFormat;
-    }
-    else if (!old) {
-        hero.stoneKiller = killer ?? '';
-        hero.stoneKillerFormat = killerFormat;
-    }
 }
 export function startHeroPetrification({ state = game, turns = 5, killer = '', killerFormat = KILLED_BY_AN, } = {}) {
     const hero = state.u;
@@ -303,8 +278,13 @@ export async function selfTouchPetrifyingWeapons({ messageStart = 'No longer pet
         });
         if (result.died)
             return { touched: true, died: true };
-        if (!(state.uarmg || state.u?.uarmg) && !heroResistsStoning(state))
-            await releaseWeaponSlots(weapon, state);
+        if (!(state.uarmg || state.u?.uarmg) && !heroResistsStoning(state)) {
+            // C trap.c:selftouch() unwields through the gone() family.
+            if (slot === 0)
+                await uwepgone(state);
+            else
+                await uswapwepgone(state);
+        }
     }
     return { touched, died: false };
 }

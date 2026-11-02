@@ -1,6 +1,7 @@
 // Hero eating and nutrition. Ports from eat.c.
 import { heroCannotVomit, sameMonsterRace } from './mondata.js';
-import { setHeroPetrificationTimeout, eatPetrifyingEgg, fleshPetrifies, formCanBecomeStoneGolem, heroIsPetrifying, heroResistsStoning, heroWouldPetrifyFromFlesh, selfTouchPetrifyingWeapons, } from './stoning.js';
+import { setHeroPetrificationTimeout } from './potion.js';
+import { eatPetrifyingEgg, fleshPetrifies, formCanBecomeStoneGolem, heroIsPetrifying, heroResistsStoning, heroWouldPetrifyFromFlesh, selfTouchPetrifyingWeapons } from './stoning.js';
 import { removeHeroAccessory } from './do_wear.js';
 import { adjustHeroAlignment } from './alignment.js';
 import { finishHeroHelplessness } from './allmain.js';
@@ -11,7 +12,7 @@ import { extrinsicPropertyMask, intrinsicPropertyMask } from './attribute_proven
 import { heroFingerName, heroLightHeadedFeeling, heroNoseName, heroStomachName } from './body_parts.js';
 import { triggerBoobyTrap } from './booby_trap.js';
 import { bot } from './botl.js';
-import { commandResultCancelled, commandResultSpentTime, currentMulti, setMulti } from './cmd.js';
+import { commandResultCancelled, commandResultSpentTime, currentMulti, setMulti, setOccupation } from './cmd.js';
 import { ALTAR, A_CHA, A_CON, A_DEX, A_INT, A_LAWFUL, A_STR, A_WIS, CHOKING, DIED, DISMOUNT_FELL, EXPL_FIERY, FAINTED, FAINTING, GD_EATGOLD, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, HEALTHY_TIN, HOMEMADE_TIN, HUNGRY, Is_airlevel, Is_waterlevel, KILLED_BY, LUCKMIN, MON_FLOOR, M_AP_NOTHING, M_AP_OBJECT, M_ATTK_AGR_DIED, M_ATTK_HIT, M_ATTK_MISS, NOT_HUNGRY, PARANOID_EATING, POISONING, RANDOM_TIN, ROTTEN_TIN, SATIATED, SICK_VOMITABLE, SPINACH_TIN, STARVED, STARVING, STONING, TIMEOUT, Upolyd, WEAK, W_AMUL, W_ARMOR, W_RING, W_SADDLE, W_TOOL, } from './const.js';
 import { reviveCorpseImmediately } from './corpse_revival.js';
 import { impossible } from './diagnostics.js';
@@ -35,24 +36,24 @@ import { nomul } from './hack.js';
 import { possessiveName } from './hacklib.js';
 import { heroAcidBreathAttack, hitHeroWithRay } from './hero_breath.js';
 import { hasNonArtifactConflict } from './hero_conflict.js';
-import { loseHeroHp } from './hero_damage.js';
 import { gainCorpseDisplacement } from './hero_displacement.js';
 import { dropInventoryObjectAtHero, dropObjectAtHero } from './hero_drop.js';
 import { removeWornHeroItem } from './hero_equipment.js';
-import { makeDeaf } from './hero_hearing.js';
-import { cureHeroSicknessWithMessages, cureHeroVomiting, heroIsSick, startHeroSickness, startHeroVomiting, } from './hero_illness.js';
+import { makeDeaf } from './potion.js';
+import { cureHeroSicknessWithMessages, cureHeroVomiting, heroIsSick, startHeroVomiting } from './hero_illness.js';
+import { startHeroSickness } from './potion.js';
 import { freeInventoryObject, useUpInventoryStack } from './hero_inventory.js';
-import { heroIsInvisible, invisibilityIsBlocked, showInvisibilityMessage, syncHeroInvisibility, } from './hero_invisibility.js';
-import { makeConfused, makeHallucinated, makeStunned } from './hero_mental_status.js';
+import { heroIsInvisible, invisibilityIsBlocked, syncHeroInvisibility } from './hero_invisibility.js';
+import { showInvisibilityMessage } from './potion.js';
+import { makeConfused, makeHallucinated, makeStunned } from './potion.js';
 import { retouchEquipment, retouchHeroObject } from './hero_retouch.js';
 import { refreshHeroSeeing } from './hero_seeing.js';
 import { heroIsUnaware, putHeroToSleep } from './hero_sleep.js';
-import { changeHeroSex, heroIsBreathless, heroSpecies } from './hero_species.js';
+import { changeHeroSex, heroIsBreathless, heroSpecies } from './polyself.js';
 import { formatFeltMessage, publishHeardMessage } from './hero_speech.js';
 import { meltIce } from './ice.js';
 import { consumeInventoryItem, inventoryItemDescription } from './invent.js';
 import { chooseInventoryObject } from './inventory_prompt.js';
-import { chewIronBars } from './iron_bars_meal.js';
 import { releaseObjectLeash } from './apply.js';
 import { recordLiteracy } from './literacy.js';
 import { objectQuantity, splitObjectStack } from './mkobj.js';
@@ -70,14 +71,13 @@ import { heroHasNoHands, heroIsPolymorphed, heroIsUnchanging, heroIsVerySmall, h
 import { altarWrath } from './pray.js';
 import { captureLevitationState, grantIntrinsicProperty, hasCarriedProperty, hasIntrinsicProperty, hasInvokedProperty, hasPermanentIntrinsicProperty, hasTimedProperty, hasWornProperty, propertyIsActive, propertyIsBlocked, propertyTimeout, refreshProperty, removePermanentIntrinsicProperty, setPropertyTimeout, } from './properties.js';
 import { unpunishHero } from './punishment.js';
-import { drinkPotion } from './quaff.js';
+import { drinkPotion } from './potion.js';
 import { paranoidQuery, promptYesNo, promptYesNoQuit } from './query.js';
 import { d, rn1, rn2, rnd } from './rng.js';
 import { readCookieFortune } from './rumor.js';
-import { stopRun } from './runmode.js';
 import { heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
 import { SELL_DONTSELL, SELL_NORMAL, chargeAlteredUnpaidObject, costlySpot, setSellDisposition, } from './shk.js';
-import { makeBlinded } from './sight_change.js';
+import { makeBlinded } from './potion.js';
 import { PM_GREEN_SLIME, heroCanBeSlimed, heroIsSlimeproof, startHeroSliming } from './slime.js';
 import { dismountHero } from './steed.js';
 import { floatHeroUp } from './terrain_movement.js';
@@ -87,12 +87,12 @@ import { attrcurse } from './throne.js';
 import { setSlipperyHands } from './potion.js';
 import { flushPendingTopline } from './tty_topline.js';
 import { addInventoryItem } from './u_init.js';
-import { findVaultGuard } from './vault.js';
-import { monsterHasLineOfSightToHero } from './vision.js';
-import { exceedsActionCapacity, nearCapacity, objectWeight } from './weight.js';
+import { vaultGdWatching } from './vault.js';
 import { catchLycanthropyFromCorpse, purifyHeroLycanthropy, wereBeastForSpecies } from './were.js';
-import { isWeldedPrimary, releaseWeaponSlots } from './wield.js';
+import { isWeldedPrimary, uqwepgone, uswapwepgone, uwepgone } from './wield.js';
 import { wieldTool } from './wield_tool.js';
+import { loseHeroHp, chewIronBars, stopRun, exceedsActionCapacity, nearCapacity, } from './hack.js';
+import { objectWeight } from './mkobj.js';
 const M2_ELF = 0x00000010, M2_DWARF = 0x00000020, M2_ORC = 0x00000080;
 const M1_METALLIVORE = 0x80000000;
 const M1_CARNIVORE = 0x20000000;
@@ -1887,7 +1887,8 @@ function extrinsicProperty(property, state) {
 }
 // C eat.c:eatspecial().
 async function finishNonFoodMeal(object, meal, state) {
-    state._occupation = { key: 'eat-food', text: 'eating non-food' };
+    // C lesshungry() wants an occupation to handle choke messages correctly.
+    setOccupation({ key: 'eat-food', text: 'eating non-food' }, state);
     await gainHeroNutrition(meal.nmod, { state });
     state._occupation = null;
     state.context.victual = null;
@@ -1895,12 +1896,7 @@ async function finishNonFoodMeal(object, meal, state) {
         return;
     if (object.oclass === COIN_CLASS) {
         await consumeFoodObject(object, { all: true, state });
-        const guard = await findVaultGuard(state);
-        if (guard?.mx && guard.mcansee && monsterHasLineOfSightToHero(guard, state)) {
-            if (!guard._egd)
-                throw new Error('A vault guard has no guard state');
-            guard._egd.witness = GD_EATGOLD;
-        }
+        await vaultGdWatching(GD_EATGOLD, state);
         return;
     }
     if (objectMaterial(object, state) === PAPER) {
@@ -1925,8 +1921,13 @@ async function finishNonFoodMeal(object, meal, state) {
         await pline('Yabba-dabba delicious!');
         await exerciseAttribute(A_CON, true, state);
     }
-    if (objectQuantity(object) === 1)
-        await releaseWeaponSlots(object, state);
+    // C eatspecial() unwields one-by-one only while a single item is left.
+    if (object === (state.uwep || state.u?.uwep) && objectQuantity(object) === 1)
+        await uwepgone(state);
+    if (object === (state.uquiver || state.u?.uquiver) && objectQuantity(object) === 1)
+        await uqwepgone(state);
+    if (object === (state.uswapwep || state.u?.uswapwep) && objectQuantity(object) === 1)
+        await uswapwepgone(state);
     const chain = object === state.uchain;
     if (object === state.uball || chain)
         await unpunishHero(state);

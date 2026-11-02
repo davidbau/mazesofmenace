@@ -3070,7 +3070,7 @@ async function food_detect(sobj) {
             } else {
                 await You('sense %s.', what);
             }
-            exercise(2 /* A_WIS */, true);
+            exercise(A_WIS, true);
 
             await browse_map_rd(ter_typ, 'food');
 
@@ -3270,7 +3270,7 @@ async function gold_detect(sobj) {
             ter_typ |= TER_MON;
         }
         await You_feel('very greedy, and sense gold!');
-        exercise(2 /* A_WIS */, true);
+        exercise(A_WIS, true);
 
         await browse_map_rd(ter_typ, 'gold');
 
@@ -3346,10 +3346,15 @@ function _sense_trap(trap, x, y, src_cursed) {
          * hero is redisplayed with newsym().  STATUE == 476 (js/display.js). */
         atHero = ox === (u.ux | 0) && oy === (u.uy | 0)
                  && !(_Hallucination() && obj.otyp === 476);
-    } else {
+    } else if (trap) {
         map_trap(trap, 1);
         trap.tseen = 1;
         atHero = trap.tx === (u.ux | 0) && trap.ty === (u.uy | 0);
+    } else {
+        /* C detect.c:886-895: trap == NULL when !Hallucination && !src_cursed */
+        const dummytrap = { tx: x, ty: y, ttyp: 5 /* BEAR_TRAP */ };
+        map_trap(dummytrap, 1);
+        atHero = x === (u.ux | 0) && y === (u.uy | 0);
     }
     if (atHero) game._sensed_at_hero = true;
 }
@@ -4442,7 +4447,7 @@ export function magic_map_background(loc, x, y, show = false) {
 export function show_map_spot(loc, x, y, cnf) {
     if (!loc) return;
     if (cnf && rn2(7)) return; /* C detect.c:1381 — not taken (cnf=0) */
-    loc.seenv = SVALL; /* C detect.c:1385 */
+    loc.seenv = SVALL; /* C detect.c:1383 */
     if (loc.typ === SCORR) { /* C detect.c:1388-1391 */
         loc.typ = CORR;
         unblock_point(x, y); /* C detect.c:1390 */
@@ -4523,7 +4528,7 @@ export async function do_mapping() {
          * only when show_map_spot actually changed that row. */
     }
     /* C detect.c:1443: exercise(A_WIS, TRUE) → rn2(19) */
-    exercise(2 /* A_WIS */, true);
+    exercise(A_WIS, true);
 }
 
 

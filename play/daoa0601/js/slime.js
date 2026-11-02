@@ -1,12 +1,13 @@
 // Hero transformation into green slime.
-// C refs: potion.c make_slimed(), timeout.c slime_dialogue() and
-// slimed_to_death(), uhitm.c mhitm_ad_slim().
+// C refs: timeout.c slime_dialogue() and slimed_to_death(),
+// uhitm.c mhitm_ad_slim(); potion.c make_slimed() lives in potion.ts
+// (setHeroSlimingTimeout).
 import { heroIsBlind, heroIsHallucinating } from './senses.js';
 import { endVoluntaryMultiTurn } from './hack.js';
 import { exerciseAttribute } from './attrib.js';
 import { A_DEX, GENOCIDED, G_GENOD, M_AP_MONSTER, PLNMSG_OK_DONT_DIE, TIMEOUT, TURNED_SLIME, } from './const.js';
 import { game, requireLiveGame } from './gstate.js';
-import { heroSpecies } from './hero_species.js';
+import { heroSpecies } from './polyself.js';
 import { displayColorName, randomDisplayMonsterName } from './display.js';
 import { plineWithContinuation } from './pline.js';
 import { MONSTER_SYMBOL } from './monster_data.js';
@@ -54,26 +55,6 @@ export function heroCanBeSlimed(state = game) {
 }
 export function heroIsSliming(state = game) {
     return (state.u?.slimedTurns ?? 0) > 0 || !!state.u?.slimed;
-}
-// C potion.c:make_slimed(). This directly sets the timeout; the caller
-// separately decides whether a body admits infection and records its killer.
-export async function setHeroSlimingTimeout(turns, { state = game, message = null, publish = plineWithContinuation, } = {}) {
-    requireLiveGame(state);
-    if (!Number.isFinite(turns))
-        throw new RangeError('Sliming timeout must be finite.');
-    const requested = Math.trunc(turns);
-    const hero = state.u;
-    const old = hero.slimedTurns ?? 0;
-    hero.slimedTurns = Math.max(0, Math.min(TIMEOUT, requested));
-    hero.slimed = hero.slimedTurns > 0;
-    if ((requested !== 0) !== (old !== 0)) {
-        state.context.botl = true;
-        if (message !== null)
-            await publish(message);
-    }
-    // The fake late-countdown appearance and cause survive the cure message.
-    if (!hero.slimedTurns)
-        clearHeroSliming(state);
 }
 export function startHeroSliming({ state = game, turns = 10, killer = '', } = {}) {
     const hero = state.u;

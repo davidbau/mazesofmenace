@@ -42,7 +42,7 @@ import { splitobj } from './makemon.js';
 import { which_armor } from './worn.js';
 import { rnd, rn2 } from './rng.js';
 import { losehp } from './hack.js';
-import { yn_function } from './cmd.js';
+import { yn_function, read_engr_at } from './cmd.js';
 import {
     ECMD_OK, ECMD_TIME, is_pit, is_hole, u_at, TT_PIT, isok, AUTOUNLOCK_FORCE, CQ_CANNED,
     OBJ_CONTAINED, OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT, engulfing_u,
@@ -896,87 +896,8 @@ async function describe_decor() {
     return res;
 }
 
-async function read_engr_at(x, y) {
-    const ep = engr_at(x, y);
-    /* C engrave.c:321 — eloc = surface(x, y) is evaluated before the engraving
-     * test (hliquid draws on the DISPLAY stream when hallucinating over a pool). */
-    const eloc = _surface_word(x, y);
-    if (!ep || !ep.text || !ep.text[0])
-        return;
-    const isBlind = Blind();
-    const isIce = is_ice(x, y);
-    let sensed = false;
-    switch (ep.engr_type) {
-    case DUST:
-        if (!isBlind) {
-            sensed = true;
-            await pline(`Something is written here in the ${isIce ? 'frost' : 'dust'}.`);
-        }
-        break;
-    case ENGRAVE:
-    case HEADSTONE:
-        if (!isBlind || can_reach_floor(true)) {
-            sensed = true;
-            await pline(`Something is engraved here on the ${eloc}.`);
-        }
-        break;
-    case BURN:
-        if (!isBlind || can_reach_floor(true)) {
-            sensed = true;
-            await pline(`Some text has been ${isIce ? 'melted' : 'burned'} into the ${eloc} here.`);
-        }
-        break;
-    case MARK:
-        if (!isBlind) {
-            sensed = true;
-            await pline(`There's some graffiti on the ${eloc} here.`);
-        }
-        break;
-    case ENGR_BLOOD:
-        if (!isBlind) {
-            sensed = true;
-            await You_see('a message scrawled in blood here.');
-        }
-        break;
-    default:
-        /* engr_type is written only by make_engr_at() call sites in
-         * this tree and every one passes a DUST/ENGRAVE/BURN/MARK/
-         * ENGR_BLOOD/HEADSTONE constant, so this default is dead on the
-         * whole port today; ported anyway, matching Cardinal Rule 1. */
-        await impossible('Something is written in a very strange way.');
-        sensed = true;
-        break;
-    }
-    if (!sensed)
-        return;
-    /* C ref: engrave.c:373-397 — the reveal pline and its trailing
-     * punctuation.  `off` is the actual-text pointer's offset into the
-     * original buffer (js/mklev.js's make_engr_at/wipe_engr_at maintain it);
-     * the pristine copy is looked up at that SAME offset, not re-based. */
-    const et = ep.text.slice(0, 232); // C engrave.c:375-385
-    const elen = et.length;
-    const off = ep.off | 0;
-    const pristine = (ep.pristine != null) ? ep.pristine : et;
-    const last = et[elen - 1];
-    let endpunct = '';
-    if (elen < 2
-        || !(pristine[off + elen - 1] === last
-             && (last === '.' || last === '!' || last === '?')))
-        endpunct = '.';
-    await pline(`You ${isBlind ? 'feel the words' : 'read'}: "${et}"${endpunct}`);
-    if (_topline_more_pending() && _more_never_dismissed())
-        await flush_pending_messages();
-    /* C engrave.c:398 — a successful read snapshots the current (possibly
-     * wiped) actual text.  /e and /E later display this remembered copy. */
-    ep.remembered = ep.text;
-    ep.eread = 1;
-    ep.erevealed = 1;
-    /* C: if (svc.context.run > 0) nomul(0); — reading an engraving stops a
-     * run, exactly like stepping onto an object pile does at pickup.c:451
-     * (this file's own check_here(), a few lines below). */
-    if ((game.context?.run | 0) > 0)
-        nomul(0);
-}
+/* C ref: engrave.c:318-406 read_engr_at(x, y).
+ * Canonical definition is imported from js/cmd.js. */
 
 /* C ref: pickup.c:430-455 check_here(picked_some).  describe_decor(),
  * look_here() and read_engr_at() are now all real (see above and

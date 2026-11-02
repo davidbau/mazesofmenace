@@ -3,7 +3,7 @@
 // mthrowu.c m_throw()/ohitmon().
 import { W_ARMH } from './const.js';
 import { heroHasArtifactDefense, monsterHasArtifactDefense } from './artifacts.js';
-import { heroSpecies } from './hero_species.js';
+import { heroSpecies } from './polyself.js';
 import { heroIsUnaware } from './hero_sleep.js';
 import { AD_BLND, AT_BOOM, AT_BREA, AT_CLAW, AT_ENGL, AT_EXPL, AT_GAZE, AT_MAGC, AT_NONE, AT_SPIT, AT_STNG, AT_TUCH, AT_WEAP, } from './monster_attack_types.js';
 import { game } from './gstate.js';
@@ -14,7 +14,7 @@ import { makePlural, verbForSubject } from './objnam.js';
 import { objectName, pluralizeObjectNoun } from './objnam.js';
 import { rnd } from './rng.js';
 import { blindfolded, heroIsBlind } from './senses.js';
-import { makeBlinded } from './sight_change.js';
+import { makeBlinded } from './potion.js';
 import { plineWithContinuation } from './pline.js';
 import { monsterName } from './do_name.js';
 const M1_NOEYES = 0x00001000;

@@ -1,7 +1,7 @@
 // weapon.js — C ref: weapon.c.
 import { is_ammo } from './cmd.js';
 import { build_window_screen, menu_search_case, menu_search_docorner } from './com_pager.js';
-import { ECMD_OK, P_ATTACK_SPELL, P_BARE_HANDED_COMBAT, P_BASIC, P_CLERIC_SPELL, P_DIVINATION_SPELL, P_ENCHANTMENT_SPELL, P_ESCAPE_SPELL, P_EXPERT, P_FIRST_H_TO_H, P_FIRST_SPELL, P_FIRST_WEAPON, P_HEALING_SPELL, P_ISRESTRICTED, P_LAST_H_TO_H, P_LAST_SPELL, P_LAST_WEAPON, P_MATTER_SPELL, P_NONE, P_NUM_SKILLS, P_RIDING, P_SKILL_LIMIT, P_UNSKILLED } from './const.js';
+import { ECMD_OK, OBJ_INVENT, OBJ_MINVENT, P_ATTACK_SPELL, P_BARE_HANDED_COMBAT, P_BASIC, P_CLERIC_SPELL, P_DIVINATION_SPELL, P_ENCHANTMENT_SPELL, P_ESCAPE_SPELL, P_EXPERT, P_FIRST_H_TO_H, P_FIRST_SPELL, P_FIRST_WEAPON, P_HEALING_SPELL, P_ISRESTRICTED, P_LAST_H_TO_H, P_LAST_SPELL, P_LAST_WEAPON, P_MATTER_SPELL, P_NONE, P_NUM_SKILLS, P_RIDING, P_SKILL_LIMIT, P_UNSKILLED } from './const.js';
 import { docorner_blank_utf8_captures, docrt, flush_screen, force_more, status_r1_menu_docrt } from './display.js';
 import { yn_function } from './cmd.js';
 import { game } from './gstate.js';
@@ -22,7 +22,6 @@ import { s_suffix } from './mhitm.js'; // relocate-fns
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js'; // relocate-fns
 import { Yobjnam2, vtense } from './objnam.js'; // relocate-fns
 import { mon_nam } from './uhitm.js'; // relocate-fns
-import { abon as uhitm_abon } from './uhitm.js'; // relocate-fns
 import { set_msg_xy as set_msg_xy_dm } from './cmd.js'; // relocate-fns
 import { OBJ_FREE } from './const.js'; // relocate-fns
 import { newsym } from './display.js'; // relocate-fns
@@ -34,6 +33,16 @@ import { setmnotwielded } from './uhitm.js'; // relocate-fns
 import { cansee } from './vision.js'; // relocate-fns
 import { mwelded as mwelded_dm } from './wield.js'; // relocate-fns
 import { rn2 } from './rng.js'; // relocate-fns
+import { flooreffects } from './do.js';
+import { bypass_obj } from './worn.js';
+
+const NO_WEAPON_WANTED$ = 0;
+const STRANGE_OBJECT = 0; /* onames.h:1 */
+const SILVER = 14; /* objclass.h:27 */
+const plur = (n) => (n | 0) === 1 ? '' : 's';
+const add_menu_str = (items, str) => items.push({ text: str, heading: false, a_int: 0 });
+const carried = (obj) => (obj?.where | 0) === OBJ_INVENT;
+const mcarried = (obj) => (obj?.where | 0) === OBJ_MINVENT;
 
 function P_MAX_SKILL(t) { return skillrow(t).max_skill | 0; }
 
@@ -412,7 +421,7 @@ export async function enhance_weapon_skill() {
 
     let pendingMore = null;
     do {
-        /* C ref: weapon.c:1352 create_nhwindow/start_menu -> the tty's
+        /* C ref: weapon.c:1357 create_nhwindow/start_menu -> the tty's
          * tty_display_nhwindow, which flushes an unacknowledged topline first
          * (`if (ttyDisplay->toplin == TOPLINE_NEED_MORE) tty_display_nhwindow(
          * WIN_MESSAGE, TRUE)`).  That is where the "--More--" after each
@@ -437,19 +446,19 @@ export async function enhance_weapon_skill() {
         }
 
         const items = [];
-        /* start with a legend if any entries will be annotated with "*"/"#" */
+        /* C weapon.c:1363-1377: start with a legend if any entries will be annotated with "*"/"#" */
         if (eventually_advance > 0 || maxxed_cnt > 0) {
             if (eventually_advance > 0) {
                 const MAXULEV = 30;
-                items.push({ text: `(Skill${eventually_advance === 1 ? '' : 's'} flagged by "*" may be enhanced `
+                add_menu_str(items, `(Skill${plur(eventually_advance)} flagged by "*" may be enhanced `
                     + `${(u.ulevel | 0) < MAXULEV ? "when you're more experienced"
-                                                  : 'if skill slots become available'}.)`,
-                    heading: false, a_int: 0 });
+                                                  : 'if skill slots become available'}.)`);
             }
-            if (maxxed_cnt > 0)
-                items.push({ text: `(Skill${maxxed_cnt === 1 ? '' : 's'} flagged by "#" cannot be enhanced any further.)`,
-                    heading: false, a_int: 0 });
-            items.push({ text: '', heading: false, a_int: 0 });
+            /* C weapon.c:1371-1376: if (maxxed_cnt > 0) */
+            if (maxxed_cnt > 0) {
+                add_menu_str(items, `(Skill${plur(maxxed_cnt)} flagged by "#" cannot be enhanced any further.)`);
+            }
+            add_menu_str(items, '');
         }
 
         items.push(...add_skills_to_menu(
@@ -461,7 +470,7 @@ export async function enhance_weapon_skill() {
             prompt += `  (${slots} slot${slots === 1 ? '' : 's'} available)`;
         }
         const picked = await enhance_menu(items, prompt, to_advance > 0);
-        /* C ref: weapon.c:1391 destroy_nhwindow(win).  The #enhance menu is a
+        /* C ref: weapon.c:1390 destroy_nhwindow(win).  The #enhance menu is a
          * full-screen (offx == 0) tty window, so tearing it down repaints the
          * map — C's term_clear_screen()/docrt() pair. */
         if (enhance_overlay) {
@@ -504,12 +513,12 @@ export async function enhance_weapon_skill() {
 /* C weapon.c:435-468: feedback for silver rings in polymorphed attacks. */
 export async function silver_sears(magr, mdef, silverhit) {
     const { uleft, uright } = game.u;
-    const ltyp = uleft && (silverhit & W_RINGL_TO) ? uleft.otyp : 0;
-    const rtyp = uright && (silverhit & W_RINGR_TO) ? uright.otyp : 0;
+    const ltyp = uleft && (silverhit & W_RINGL_TO) ? uleft.otyp : STRANGE_OBJECT;
+    const rtyp = uright && (silverhit & W_RINGR_TO) ? uright.otyp : STRANGE_OBJECT;
     const l_dknown = !!(uleft && uleft.dknown);
     const r_dknown = !!(uright && uright.dknown);
-    const l_ag = MKOBJ_OC_MATERIAL[ltyp] === 14 /* SILVER */ && l_dknown;
-    const r_ag = MKOBJ_OC_MATERIAL[rtyp] === 14 /* SILVER */ && r_dknown;
+    const l_ag = MKOBJ_OC_MATERIAL[ltyp] === SILVER && l_dknown;
+    const r_ag = MKOBJ_OC_MATERIAL[rtyp] === SILVER && r_dknown;
     if (silverhit & (W_RINGL_TO | W_RINGR_TO)) {
         const both = (ltyp === rtyp && l_dknown === r_dknown) || (l_ag && r_ag);
         const rings = both ? 'rings' : 'ring';
@@ -527,7 +536,7 @@ function finish_towel_change(obj, newspe) {
     const u = game.u || {};
     if (obj === u.uwep)
         game.unweapon = !is_wet_towel(obj);
-    if ((obj.where | 0) === 3 /* OBJ_INVENT */)
+    if (carried(obj))
         update_inventory();
 }
 
@@ -538,9 +547,9 @@ export async function dry_a_towel(obj, amt, verbose) {
     if (newspe < (obj.spe | 0)) {
         if (verbose) {
             // C weapon.c:1078-1084: hero feedback or visible monster feedback.
-            if ((obj.where | 0) === 3 /* OBJ_INVENT */)
+            if (carried(obj))
                 await pline(`${Yobjnam2(obj, null)} dries${!newspe ? ' out' : ''}.`);
-            else if ((obj.where | 0) === THIT_OBJ_MINVENT && canseemon(obj.ocarry))
+            else if (mcarried(obj) && canseemon(obj.ocarry))
                 await pline(`${s_suffix(Monnam(obj.ocarry))} ${xname(obj)} dries${!newspe ? ' out' : ''}.`);
         }
     }
@@ -552,11 +561,9 @@ export async function dry_a_towel(obj, amt, verbose) {
 // one port lives in js/uhitm.js; it carries the Upolyd arm (weapon.c:955-956,
 // adj_lev(&mons[u.umonnum]) - 3) that this file's former private copy omitted,
 // so a polymorphed hero's dig effort used the natural-form Str/Dex ladder.
-export function abon() {
-    return uhitm_abon();
-}
+export { abon } from './uhitm.js';
 
-export async function possibly_unwield(magr, flag) {
+export async function possibly_unwield(magr, polyspot) {
     const obj = magr?.mw;
     if (!obj)
         return;
@@ -575,7 +582,7 @@ export async function possibly_unwield(magr, flag) {
      * weapon-selection pass. */
     if (!attacktype(magr.data, AT_WEAP)) {
         setmnotwielded(magr, obj);
-        magr.weapon_check = 0; /* NO_WEAPON_WANTED */
+        magr.weapon_check = NO_WEAPON_WANTED$;
         if (cansee(magr.mx | 0, magr.my | 0)) {
             { set_msg_xy_dm(magr.mx, magr.my); } pline(`${Monnam(magr)} drops ${(await distant_name(obj, doname))}.`);
             newsym(magr.mx | 0, magr.my | 0);
@@ -584,14 +591,19 @@ export async function possibly_unwield(magr, flag) {
         else magr.minvent = cur.nobj;
         cur.nobj = null;
         cur.where = OBJ_FREE;
-        place_object(cur, magr.mx | 0, magr.my | 0);
-        await stackobj_dm(cur);
+        // C weapon.c:771-776: might be dropping object into water or lava
+        if (!await flooreffects(cur, magr.mx | 0, magr.my | 0, "drop")) {
+            if (polyspot)
+                bypass_obj(cur);
+            place_object(cur, magr.mx | 0, magr.my | 0);
+            await stackobj_dm(cur);
+        }
         return;
     }
     /* A weapon-capable monster keeps the object but asks mon_wield_item to
      * reconsider it after a polymorph or robbery -- unless it already learned
      * its weapon is welded (C weapon.c:792-793). */
-    if (!(mwelded_dm(obj) && (magr.weapon_check | 0) === 0 /* NO_WEAPON_WANTED */))
+    if (!(mwelded_dm(obj) && (magr.weapon_check | 0) === NO_WEAPON_WANTED$))
         magr.weapon_check = NEED_WEAPON$;
 }
 
@@ -613,7 +625,7 @@ export function drain_weapon_skill(n) {
         u.skills_advanced = advanced - 1;
 
         const row = u.weapon_skills?.[skill];
-        if (!row || (row.skill | 0) <= 1)
+        if (!row || (row.skill | 0) <= P_UNSKILLED)
             throw new Error(`panic: drain_weapon_skill (${skill})`);
         row.skill = (row.skill | 0) - 1;
         u.weapon_slots = (u.weapon_slots | 0) + slots_required(skill);
@@ -625,6 +637,6 @@ export function drain_weapon_skill(n) {
     }
     for (const skill of [...drained].sort((a, b) => a - b)) {
         const level = u.weapon_skills?.[skill]?.skill | 0;
-        pline(`You forget ${level >= 2 ? 'some of ' : ''}your training in ${P_NAME(skill)}.`);
+        pline(`You forget ${level >= P_BASIC ? 'some of ' : ''}your training in ${P_NAME(skill)}.`);
     }
 }

@@ -19,7 +19,6 @@ import { wakeMonstersNearWithMessages, finishMonsterKilled, resolveMonsterLiquid
 import { delobj } from './invent.js';
 import { unpunishHero } from './punishment.js';
 import { heroIsDeaf, heroIsHallucinating } from './senses.js';
-import { reviveNastyAt } from './revive_nasty.js';
 import { cansee, vision_note_blocker_change, vision_recalc } from './vision.js';
 import { monsterAtPosition, placeMonsterOnMap } from './steed.js';
 import { heroIsUnaware } from './hero_sleep.js';
@@ -28,9 +27,8 @@ import { finishHeroMonsterKill, finishLiquidDeathForCurrentMover } from './hero_
 import { heroLiquidEffects } from './hack.js';
 import { MONSTER_FLAGS1, MONSTER_MOVE, MONSTER_NAME, MONSTER_SYMBOL } from './monster_data.js';
 import { AD_DGST, AD_PHYS } from './monster_attack_types.js';
-import { heroIsAmphibious, heroIsBreathless, heroSpecies } from './hero_species.js';
+import { heroIsAmphibious, heroIsBreathless, heroSpecies } from './polyself.js';
 import { heroHasWaterWalking } from './do_wear.js';
-import { finishDestinationSpotEffects } from './location_effects.js';
 import { verbForSubject } from './objnam.js';
 import { rnd } from './rng.js';
 import { updateMonsterRegions } from './regions.js';
@@ -38,6 +36,7 @@ import { moveHeroByTeleport } from './teleport.js';
 import { findNearbyMonsterPosition } from './teleport_rules.js';
 import { monsterName } from './do_name.js';
 import { monsterSubjectPronoun } from './mondata.js';
+import { reviveNastyAt, finishDestinationSpotEffects } from './hack.js';
 // C dbridge.c terrain predicates.
 // C ref: dbridge.c is_pool().
 export function isPoolAt(x, y, state = game) {
@@ -162,6 +161,8 @@ export function findDrawbridgeAt(x, y, state = game) {
     const bridgeLocation = state.level.at(bridge.x, bridge.y);
     return bridgeLocation ? { x: bridge.x, y: bridge.y, location: bridgeLocation } : null;
 }
+// The closing drawbridge destroys the pile at a square; C invent.c
+// delallobj() is this whole-pile deletion.
 async function destroyObjectsAt(x, y, state) {
     for (const object of [...state.level?.objects[x]?.[y] ?? []]) {
         if (object.where === 'gone')

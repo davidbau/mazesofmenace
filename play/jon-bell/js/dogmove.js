@@ -5,7 +5,7 @@ import { is_mines_prize, is_soko_prize } from './cmd.js';
 import { mpickobj } from './steal.js';
 import { a_monnam, noname_monnam, mon_nam_too, slept_monst as slept_monst_real } from './mhitm.js';
 import { noit_mon_nam } from './mhitm.js';
-import { PM_PAPER_GOLEM, PM_STRAW_GOLEM } from './pm.generated.js';
+import { PM_PAPER_GOLEM, PM_STRAW_GOLEM, PM_KILLER_BEE, PM_LONG_WORM } from './pm.generated.js';
 import { surface, costly_alteration, u_locomotion } from './cmd.js';
 import { domonnoise } from './sounds.js';
 import { COST_DEGRD, COST_CONTENTS } from './const.js';
@@ -39,7 +39,7 @@ import { mon_explodes as mon_explodes_dm } from './explode.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 import { unstuck as unstuck_dm, sticks, dismount_steed as dismount_steed_qm } from './dog.js';
 import { m_unleash } from './apply.js';
-import { topl_force_break_after as topl_force_break_after_qm, GLYPHCLS_OBJ as GLYPHCLS_OBJ_DM, Deaf as Deaf_dm, flush_screen } from './display.js';
+import { topl_force_break_after as topl_force_break_after_qm, GLYPHCLS_OBJ as GLYPHCLS_OBJ_DM, Deaf as Deaf_dm, flush_screen, nh_sprintf } from './display.js';
 import { snuff_lit } from './cmd.js';
 import { whimper as whimper_dm } from './sounds.js';
 import { mwelded as mwelded_dm } from './wield.js';
@@ -51,13 +51,13 @@ import { an as an_qm, makeplural as makeplural_dm, oname as oname_dm, vtense, si
 import { OC_DESCR as OC_DESCR_QM } from './oc_descr_data.js';
 import { OC_NAME as OC_NAME_QM } from './oc_name_data.js';
 import { DEFSYM_EXPLANATION as DEFSYM_EXPL_QM } from './defsym_data.js';
-import { monPmname as monPmname_qm, check_gear_next_turn as check_gear_next_turn_dm } from './makemon.js';
+import { check_gear_next_turn as check_gear_next_turn_dm } from './makemon.js';
 import { NON_PM, In_sokoban, In_sokoban as In_sokoban_dm } from './const.js';
 import { PLNMSG_HIDE_UNDER as PLNMSG_HIDE_UNDER_C } from './const.js';
 import { HALLUC, HALLUC_RES } from './const.js';
 import { PROT_FROM_SHAPE_CHANGERS as PROT_SHAPE_QM, DISMOUNT_POLY } from './const.js';
 import { mon_mattk_raw, getmattk, could_seduce, mattacku, mswings_verb,
-         breamm as breamm_mu, spitmm as spitmm_mu, mhis_mon as mhis_mon_mu } from './mhitu.js';
+         breamm as breamm_mu, spitmm, mhis_mon as mhis_mon_mu } from './mhitu.js';
 import { monshoot } from './mhitu.js';
 import { m_lined_up } from './mthrowu.js';
 import { select_rwep, m_is_steadfast } from './uhitm.js';
@@ -65,6 +65,8 @@ import { ammo_and_launcher as ammo_and_launcher_dm } from './hold_another_object
 import { nomul as nomul_dm } from './allmain.js';
 import { x_monnam, You, hliquid, noit_Monnam, some_mon_nam } from './mhitm.js';
 import { game, wizard } from './gstate.js';
+/* C do_name.c Mgender()/pmname(): the real bodies, not file-local copies. */
+import { Mgender as Mgender_dm, pmname as pmname_dm } from './do_name.js';
 import { place_monster } from './steed.js';
 import { pre_mm_attack as pre_mm_attack_real } from './mhitm.js';
 import { dist2, s_suffix } from './hacklib.js';
@@ -89,7 +91,8 @@ import { del_light_source, obj_merge_light_sources, obj_split_light_source } fro
 import { monst_to_any } from './hack.js';
 import { LS_MONSTER } from './const.js';
 import { newsym, _topline_more_pending, _more_never_dismissed, _more_pages_exceed_input, flush_pending_messages, mon_visible, canseemon, canspotmon, map_invisible, glyph_is_invisible_at, GLYPHCLS_INVIS, unmap_object, Deaf, sensemon, impossible_sync, Unaware } from './display.js';
-import { pline, You_hear } from './pline.js';
+import { pline, pline_xy, Your, You_hear } from './pline.js';
+import { W_ARMG, ACID_RES, COLD_RES, FIRE_RES, SHOCK_RES, STRAT_WAITMASK } from './const.js';
 import { Japanese_item_name, xname_scroll, xname_armor, doname_potion, xname, doname, distant_name, in_distant_name, is_quest_artifact } from './objnam.js';
 /* C o_init.c:441-452 observe_object(obj) — the ONE side effect a formatting
  * call has, and the reason distant_name() exists at all.  Imported here
@@ -176,10 +179,6 @@ function _saddled_prefix_dm(mtmp) {
  * C ref: mon.c mon_nam() → do_name.c x_monnam().
  * When !canspotmon(mdef), C do_it=TRUE → returns "it". Mirror here.
  * C ref: do_name.c:863 x_monnam: do_it = !canspotmon(mtmp) && article==THE. */
-/* C monst.h Mgender(mon) — (mon)->female ? FEMALE : MALE.  (The youmonst arm
- * of do_name.c:1289 cannot be reached here: these namers take a struct monst
- * off fmon.) */
-function Mgender_dm(mtmp) { return mtmp.female ? 1 /* FEMALE */ : 0 /* MALE */; }
 /* C const.js spellings, local to keep this file's import list unchanged. */
 const ARTICLE_THE_DM = 1;      /* hack.h ARTICLE_THE */
 const SUPPRESS_SADDLE_DM = 0x08;
@@ -352,6 +351,8 @@ const CANDELABRUM_OTYP = 261;
 const M2_STRONG    = 0x04000000;
 const M2_ROCKTHROW = 0x08000000;
 const M1_NOTAKE    = 0x00000800;
+const M1_TUNNEL    = 0x00000020; /* monflag.h:90 */
+const M1_NEEDPICK  = 0x00000040; /* monflag.h:91 */
 const M1_NOHANDS   = 0x00002000;
 const M1_MINDLESS  = 0x00010000;
 const M1_ANIMAL    = 0x00040000;
@@ -361,6 +362,8 @@ const UNICORN_HORN_OTYP     = 261;
 const SKELETON_KEY_OTYP     = 221;
 const LOCK_PICK_OTYP        = 222;
 const CREDIT_CARD_OTYP      = 223;
+const GOLD_PIECE_OTYP       = 438; /* objects.h COIN_CLASS GOLD_PIECE */
+const SCR_MAIL_OTYP         = 364; /* objects.h SCROLL_CLASS SCR_MAIL */
 function is_pick_otyp(otyp) {
     return (otyp | 0) === PICK_AXE_OTYP || (otyp | 0) === DWARVISH_MATTOCK_OTYP;
 }
@@ -709,11 +712,12 @@ function _same_race(m1, m2) {
 
 /* C monst.h ismnum(x): LOW_PM (0) <= x < NUMMONS. _MONS.length == NUMMONS. */
 function ismnum_js(x) { return (x | 0) >= 0 && (x | 0) < _MONS.length; }
+const ROT_ICE_ADJUSTMENT = 2;
 function peek_at_iced_corpse_age_js(otmp, moves) {
     let retval = otmp.age | 0;
     if ((otmp.otyp | 0) === CORPSE_OTYP && otmp.on_ice) {
         const age = moves - (otmp.age | 0);
-        retval += Math.trunc(age * (2 - 1) / 2); /* ROT_ICE_ADJUSTMENT=2 */
+        retval += Math.trunc(age * (ROT_ICE_ADJUSTMENT - 1) / ROT_ICE_ADJUSTMENT);
     }
     return retval;
 }
@@ -758,7 +762,7 @@ export function dogfood(mtmp, obj) {
                 && !resists_ston(mtmp))
                 return POISON;
         }
-        if (otyp === LUMP_OF_ROYAL_JELLY_OTYP && mndx === 1 /* PM_KILLER_BEE */)
+        if (otyp === LUMP_OF_ROYAL_JELLY_OTYP && mndx === PM_KILLER_BEE)
             return find_pmmonst(5 /* PM_QUEEN_BEE */) ? TABU : DOGFOOD;
         /* C dog.c:1033-1034 — neither carni nor herbi: APPORT (or UNDEF if cursed) */
         if (!carni && !herbi)
@@ -961,7 +965,7 @@ async function dog_hunger(mtmp, edog) {
             await beg(mtmp);
         else
             await You_feel('worried about %s.', y_monnam_qm(mtmp));
-        /* C dogmove.c:389 — hunger confusion interrupts any occupation after
+        /* C dogmove.c:386 — hunger confusion interrupts any occupation after
          * the pet's message has been emitted. */
         await stop_occupation_dm();
         return false;
@@ -1022,7 +1026,7 @@ export function droppables(mon) {
     const isAnimalOrMindless = !!(mflags1 & (M1_ANIMAL | M1_MINDLESS));
 
     /* dummy keeper sentinel: a non-null marker meaning "already have one". */
-    const DUMMY = { otyp: 0 /* GOLD_PIECE */, oartifact: 1, _dummy: true };
+    const DUMMY = { otyp: GOLD_PIECE_OTYP, oartifact: 1, _dummy: true };
     let pickaxe = null, unihorn = null, key = null;
     const wep = MON_WEP_dm(mon);
 
@@ -1032,8 +1036,8 @@ export function droppables(mon) {
     } else {
         /* C dogmove.c:50-58: don't hang on to a pick-axe if can't use one or
          * don't need one; don't hang on to a key if can't open doors. */
-        const tunnels = (mflags1 & 0x00000020) !== 0;   /* M1_TUNNEL */
-        const needspick = (mflags1 & 0x00000040) !== 0; /* M1_NEEDPICK */
+        const tunnels = (mflags1 & M1_TUNNEL) !== 0;
+        const needspick = (mflags1 & M1_NEEDPICK) !== 0;
         if (!tunnels || !needspick)
             pickaxe = DUMMY;
         const msize = (mndx >= 0 && mndx < MONS_MSIZE.length) ? (MONS_MSIZE[mndx] | 0) : MZ_SMALL;
@@ -1545,7 +1549,7 @@ export async function dog_eat(mtmp, obj, x, y, devour) {
     }
 
     // C dogmove.c:255-259: bee growth bypasses ordinary eating and apport.
-    if (mtmp.data.pmidx === 1 && obj.otyp === LUMP_OF_ROYAL_JELLY_OTYP) {
+    if (mtmp.data.pmidx === PM_KILLER_BEE && obj.otyp === LUMP_OF_ROYAL_JELLY_OTYP) {
         const res = await bee_eat_jelly(mtmp, obj);
         if (res >= 0) return res + 1;
     }
@@ -1565,7 +1569,7 @@ export async function dog_eat(mtmp, obj, x, y, devour) {
         /* C dogmove.c:286-290: a tunneler "digs in" instead of naming the meal. */
         const _mndx = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
         const _tunnels = _mndx >= 0 && _mndx < _MONS.length
-            && ((_MONS[_mndx][6] | 0) & 0x00000020) !== 0; /* tunnels(): M1_TUNNEL */
+            && ((_MONS[_mndx][6] | 0) & M1_TUNNEL) !== 0; /* tunnels() */
         if (_tunnels)
             pline_mon(mtmp, `${noit_Monnam(mtmp)} digs in.`);
         else
@@ -1622,15 +1626,9 @@ export async function dog_eat(mtmp, obj, x, y, devour) {
 }
 
 async function dog_invent(mtmp, edog, udist) {
-    /* C dogmove.c:410 — helpless(mtmp) || mtmp->meating → return 0 early.
-     * helpless(mon) is monst.h:251 "(mon)->msleeping || !(mon)->mcanmove";
-     * the previous check here tested mflee/mfleetim (a fleeing approximation
-     * that is not what helpless() tests at all) and so never fired for a
-     * sleeping or mcanmove-false pet. Both fields are real, tracked state
-     * (see helpless_dm() elsewhere in this file, paralyze_monst, etc.). */
-    if (mtmp.msleeping || !mtmp.mcanmove)
-        return 0;
-    if ((mtmp.meating | 0) > 0)
+    /* C dogmove.c:406-407: if (helpless(mtmp) || mtmp->meating) return 0;
+     * helpless(mon) is monst.h:251 "(mon)->msleeping || !(mon)->mcanmove". */
+    if (helpless_dm(mtmp) || mtmp.meating)
         return 0;
 
     const omx = mtmp.mx | 0;
@@ -1666,7 +1664,7 @@ async function dog_invent(mtmp, edog, udist) {
 
     /* C dogmove.c:430-432 — #ifdef MAIL_STRUCTURES (defined, global.h:430):
      * && obj->otyp != SCR_MAIL */
-    if ((floorObj.otyp | 0) === 364 /* SCR_MAIL */)
+    if ((floorObj.otyp | 0) === SCR_MAIL_OTYP)
         return 0;
 
     /* C: !(is_mines_prize || is_soko_prize) — skip special items */
@@ -1699,8 +1697,8 @@ async function dog_invent(mtmp, edog, udist) {
                     const otmpname = await distant_obj_name(otmp);
                     if (game.flags?.verbose !== false) {
                         /* C pline_xy(omx, omy, ...) = set_msg_xy + vpline (pline.c:150-157) */
-                        set_msg_xy_dm(omx, omy);
-                        void pline(`${Monnam_dm(mtmp)} picks up ${otmpname}.`);
+                        void pline_xy(omx, omy, '%s picks up %s.',
+                                      Monnam_dm(mtmp), otmpname);
                         if (_topline_more_pending() && _more_never_dismissed())
                             await flush_pending_messages();
                     }
@@ -1811,7 +1809,7 @@ function dog_goal(mtmp, edog, after, udist, whappr) {
             if (cursed_object_at(nx, ny)
                 && !((edog.mhpmax_penalty | 0) && otyp < MANFOOD))
                 continue;
-            /* C dogmove.c:567-571: reach checks.
+            /* C dogmove.c:540-541: reach checks.
              * could_reach_item: checks for pool/lava/boulder.
              * can_reach_location: recursive pathfinding check.
              * C short-circuits: !could_reach_item || !can_reach_location */
@@ -1827,7 +1825,7 @@ function dog_goal(mtmp, edog, after, udist, whappr) {
                     gg.gtyp = otyp;
                 }
             } else if (gg.gtyp === UNDEF && in_masters_sight && !dog_has_minvent) {
-                /* C dogmove.c:585-601:
+                /* C dogmove.c:550-559:
                  * else if (gg.gtyp == UNDEF && in_masters_sight && !dog_has_minvent
                  *          && (!levl[omx][omy].lit || levl[u.ux][u.uy].lit)
                  *          && (otyp == MANFOOD || m_cansee(mtmp, nx, ny))) {
@@ -1869,7 +1867,7 @@ function dog_goal(mtmp, edog, after, udist, whappr) {
             return -2;
         appr = (udist >= 9) ? 1 : (mtmp.mflee ? -1 : 0);
         if (udist > 1) {
-            /* C dogmove.c:621: if (!IS_ROOM(levl[u.ux][u.uy].typ) || !rn2(4) || whappr
+            /* C dogmove.c:575: if (!IS_ROOM(levl[u.ux][u.uy].typ) || !rn2(4) || whappr
              *                       || (dog_has_minvent && rn2(edog->apport)))
              *     appr = 1;
              * IS_ROOM(typ) = (typ >= ROOM).  C short-circuits: when !IS_ROOM is true
@@ -1885,22 +1883,22 @@ function dog_goal(mtmp, edog, after, udist, whappr) {
                 appr = 1;
             }
         }
-        /* C dogmove.c:628-650: if (appr == 0) check stairs/invent/portal */
+        /* C dogmove.c:582-604: if (appr == 0) check stairs/invent/portal */
         if (appr === 0) {
-            /* C dogmove.c:628 / stairs.c:148 — On_stairs() is stairway_at() != NULL,
+            /* C dogmove.c:583 / stairs.c:148 — On_stairs() is stairway_at() != NULL,
              * the stairway LIST, not the terrain type: a sink dug onto a stairway
              * square leaves the stairway node, so the pet still follows. */
             if (On_stairs(u?.ux | 0, u?.uy | 0)) {
                 appr = 1;
             } else {
-                // C dogmove.c:628 — scan the one live inventory in its actual order.
+                // C dogmove.c:586-590 — scan the one live inventory in its actual order.
                 for (let obj = game.invent; obj; obj = obj.nobj) {
                     if (dogfood(mtmp, obj) === DOGFOOD) {
                         appr = 1;
                         break;
                     }
                 }
-                /* C dogmove.c:640-649 — a nearby magic portal is treated like
+                /* C dogmove.c:596-601 — a nearby magic portal is treated like
                  * dog food, so the pet approaches the hero more eagerly.  C
                  * assumes at most one portal and stops at the first portal,
                  * even when it is too far away; preserve that traversal order
@@ -1924,7 +1922,7 @@ function dog_goal(mtmp, edog, after, udist, whappr) {
     if (mtmp.mconf | 0)
         appr = 0;
 
-    /* C dogmove.c:656-690 — FARAWAY block.
+    /* C dogmove.c:610-644 — FARAWAY block.
      * #define FARAWAY (COLNO + 2)  // position outside the screen
      * If the goal landed on the hero but the pet can't see the hero, the pet
      * has lost the hero: follow the hero's footstep track (gettrack), reuse the
@@ -2068,7 +2066,7 @@ function can_reach_location(mtmp, mx, my, fx, fy) {
     const _cm_ndx = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
     const _cm_f1 = (_cm_ndx >= 0 && _cm_ndx < _MONS.length) ? (_MONS[_cm_ndx][6] | 0) : 0;
     const _cm_passwall = (_cm_f1 & M1_WALLWALK_DM) !== 0;
-    const _cm_tunnels = (_cm_f1 & 0x00000020) !== 0; /* tunnels(): M1_TUNNEL */
+    const _cm_tunnels = (_cm_f1 & M1_TUNNEL) !== 0; /* tunnels() */
     for (let i = mx - 1; i <= mx + 1; i++) {
         for (let j = my - 1; j <= my + 1; j++) {
             /* C: if (!isok(i,j)) continue */
@@ -2086,7 +2084,7 @@ function can_reach_location(mtmp, mx, my, fx, fy) {
                 const dm = loc.doormask ?? 0;
                 if (dm & (D_CLOSED | D_LOCKED)) continue;
             }
-            /* C: if (!could_reach_item(mon, i, j)) continue — dogmove.c:1468 */
+            /* C: if (!could_reach_item(mon, i, j)) continue — dogmove.c:1407 */
             if (!could_reach_item(mtmp, i, j)) continue;
             /* C: if (can_reach_location(mon, i, j, fx, fy)) return TRUE */
             if (can_reach_location(mtmp, i, j, fx, fy)) return true;
@@ -2180,7 +2178,7 @@ function find_friends(mtmp, mtarg, maxdist) {
         const pal = m_at(curx, cury);
         if (pal) {
             if (pal.mtame | 0) {
-                /* C dogmove.c:779-781 — invisible tame friends are visible
+                /* C dogmove.c:724 — invisible tame friends are visible
                  * only to a pet whose species can see invisibility. */
                 const _pdata = mtmp.data ?? { mflags1: _MONS[(mtmp.mndx ?? mtmp.mnum ?? -1) | 0]?.[6] ?? 0 };
                 if (!(pal.minvis | 0) || perceives_dm(_pdata))
@@ -2198,7 +2196,7 @@ function find_friends(mtmp, mtarg, maxdist) {
     return 0;
 }
 /* -----------------------------------------------------------------------
- * score_targ — C ref: dogmove.c:785-883
+ * score_targ — C ref: dogmove.c:738-835
  * Scores a potential ranged attack target.
  *
  * C control flow with early returns:
@@ -2233,16 +2231,16 @@ function score_targ(mtmp, mtarg) {
     let score = 0;
     if (!(mtmp.mconf | 0) || !rn2(3) || is_qstart_dm(game.u?.uz)) {
         /* C: multiple early returns (score -= 3000 or -5000) before rnd(5).
-         * Order follows C dogmove.c:748-806 exactly; the pseudo-youmonst target
+         * Order follows C dogmove.c:748-790 exactly; the pseudo-youmonst target
          * skips the msound / priest-alignment arms (gy.youmonst is never a quest
          * leader and its isminion/ispriest are FALSE, so faith2 is FALSE). */
         if (mtarg !== game.u) {
-            /* C dogmove.c:775-778 — never target quest friendlies. */
+            /* C dogmove.c:766-769 — never target quest friendlies. */
             const tmndx = (mtarg?.mndx ?? mtarg?.mnum ?? -1) | 0;
             const tsound = (tmndx >= 0 && tmndx < _MSOUND.length) ? (_MSOUND[tmndx] | 0) : 0;
             if (tsound === MS_LEADER_DM || tsound === MS_GUARDIAN_DM)
                 return -5000;
-            /* C dogmove.c:753-777 — protect coaligned priests/minions. */
+            /* C dogmove.c:750-774 — protect coaligned priests/minions. */
             const faith1 = mtmp.isminion || mtmp.ispriest;
             const faith2 = mtarg.isminion || mtarg.ispriest;
             const align1 = mtmp.isminion ? mtmp.mextra.emin.min_align : mtmp.mextra?.epri?.shralign;
@@ -2250,17 +2248,17 @@ function score_targ(mtmp, mtarg) {
             if (faith1 && faith2 && align1 === align2 && mtarg.mpeaceful)
                 return -5000;
         }
-        /* Adjacent target: score -= 3000, return (C dogmove.c:785-788) */
+        /* Adjacent target: score -= 3000, return (C dogmove.c:775-779) */
         if (mtarg && distmin(mtmp.mx, mtmp.my, mtarg.mx ?? 0, mtarg.my ?? 0) <= 1) {
             score -= 3000;
             return score;
         }
-        /* Tame target or the hero: score -= 3000, return (C dogmove.c:790-795) */
+        /* Tame target or the hero: score -= 3000, return (C dogmove.c:780-785) */
         if (mtarg === game.u || (mtarg && (mtarg.mtame | 0))) {
             score -= 3000;
             return score;
         }
-        /* C dogmove.c:797-800 — is master/pet behind the monster?  Missing
+        /* C dogmove.c:786-790 — is master/pet behind the monster?  Missing
          * entirely until now, so every such target drew an rnd(5) C skips. */
         if (find_friends(mtmp, mtarg, 15)) {
             score -= 3000;
@@ -2292,16 +2290,16 @@ function score_targ(mtmp, mtarg) {
             score -= (targetLevel - petLevel) * 20;
         score += targetLevel * 2 + Math.trunc((mtarg.mhp | 0) / 3);
     }
-    /* C dogmove.c:878: score += rnd(5) — fires for all NON-early-return paths */
+    /* C dogmove.c:830: score += rnd(5) — fires for all NON-early-return paths */
     score += rnd(5);
-    /* C dogmove.c:880: if (mconf && !rn2(3)) score -= 1000 */
+    /* C dogmove.c:832: if (mconf && !rn2(3)) score -= 1000 */
     if ((mtmp.mconf | 0) && !rn2(3))
         score -= 1000;
     return score;
 }
 
 /* -----------------------------------------------------------------------
- * find_targ — C ref: dogmove.c:697-738
+ * find_targ — C ref: dogmove.c:650-691
  * Find first monster in direction (dx,dy) from pet, within maxdist.
  * No RNG. Returns a monster object or null.
  * ----------------------------------------------------------------------- */
@@ -2437,7 +2435,7 @@ export async function pet_ranged_attk(mtmp, forced) {
             // C still calls mattackm for a melee-only pet's distant target.
             // Before rejecting out-of-range attacks it wakes the defender.
             if (mtarg === game.u) {
-                /* C dogmove.c:922-931: a pet whose best target is the hero
+                /* C dogmove.c:910-919: a pet whose best target is the hero
                  * (confused pet) calls mattacku(); whatever it returns short of
                  * death the pet counts as having attacked and loses its move. */
                 if (await mattacku(mtmp))
@@ -2449,7 +2447,7 @@ export async function pet_ranged_attk(mtmp, forced) {
                 (game.gn ||= {}).notonhead = false;
                 const mstatus = await mattackm(mtmp, mtarg);
                 if (mstatus & M_ATTK_AGR_DIED) return MMOVE_DIED;
-                /* C dogmove.c:955-975 — the targeted nasty may strike back */
+                /* C dogmove.c:929-950 — the targeted nasty may strike back */
                 if ((mstatus & M_ATTK_HIT) && !(mstatus & M_ATTK_DEF_DIED)
                     && rn2(4)) {
                     if (mtarg.mcansee && haseyes_dm(mtarg.data)) {
@@ -2484,6 +2482,12 @@ const T_ARROW=1, T_DART=2, T_ROCK=3, T_SQKY=4, T_BEAR=5, T_LANDMINE=6,
       T_HOLE=13, T_TRAPDOOR=14, T_TELEP=15, T_LEVTELEP=16, T_MAGICPORTAL=17,
       T_WEB=18, T_STATUE=19, T_MAGIC=20, T_ANTIMAGIC=21, T_POLY=22, T_VIBSQ=23;
 const M1_FLY_DM = 0x00000001, M1_AMORPHOUS_DM = 0x00000004, M1_UNSOLID_DM = 0x00100000;
+const M1_NOEYES_DM = 0x00001000;      /* C monflag.h M1_NOEYES */
+const SILVER_DM = 14;                 /* C objclass.h:27 SILVER */
+const S_TROLL_DM = 46;                /* C defsym.h:347 S_TROLL */
+const ART_TROLLSBANE_DM = 17;         /* C artilist.h enum order */
+const ART_SNICKERSNEE_DM = 19;        /* C artilist.h enum order */
+const Trap_Killed_Mon_DM = 2;         /* C trap.h:101 Trap_Killed_Mon */
 
 
 
@@ -2697,7 +2701,7 @@ async function passivemm(magr, mdef, mhitb, mdead, mwep) {
             if (canseemon(magr)) {
                 await pline(`${magr_name} is splashed by ${s_suffix(mon_nam_dm(mdef))} ${hliquid('acid')}!`);
             }
-            if (Resists_Elem(magr, 7 /* ACID_RES */)) {
+            if (Resists_Elem(magr, ACID_RES)) {
                 if (canseemon(magr))
                     await pline(`${Monnam_dm(magr)} is not affected.`);
                 tmp = 0;
@@ -2739,7 +2743,7 @@ async function passivemm(magr, mdef, mhitb, mdead, mwep) {
                      * -> gaze reflected (return) or magr is frozen (return).
                      */
                     const _madat = magr.data || {};
-                    const _haseyes_m = !((_madat.mflags1 | 0) & 0x00001000);
+                    const _haseyes_m = !((_madat.mflags1 | 0) & M1_NOEYES_DM);
                     if ((magr.mcansee | 0) && _haseyes_m && (mdef.mcansee | 0)
                         && (perceives_dm(_madat) || !(mdef.minvis | 0))) {
                         /* C mhitm.c:1376-1378: buf = s_suffix(Monnam(mdef)) is
@@ -2774,7 +2778,7 @@ async function passivemm(magr, mdef, mhitb, mdead, mwep) {
                 tmp = 0;
                 break;
             case _AD_COLD: /* C mhitm.c:1414-1427 */
-                if (Resists_Elem(magr, 2 /* COLD_RES */)) {
+                if (Resists_Elem(magr, COLD_RES)) {
                     if (canseemon(magr)) {
                         await pline_mon(magr, '%s is mildly chilly.', Monnam_dm(magr));
                         golemeffects_pm(magr, _AD_COLD, tmp);
@@ -2789,7 +2793,7 @@ async function passivemm(magr, mdef, mhitb, mdead, mwep) {
                     await split_mon_ml(mdef, magr);
                 break;
             case _AD_FIRE: /* C mhitm.c:1436-1446 */
-                if (Resists_Elem(magr, 1 /* FIRE_RES */)) {
+                if (Resists_Elem(magr, FIRE_RES)) {
                     if (canseemon(magr)) {
                         await pline_mon(magr, '%s is mildly warmed.', Monnam_dm(magr));
                         golemeffects_pm(magr, _AD_FIRE, tmp);
@@ -2801,7 +2805,7 @@ async function passivemm(magr, mdef, mhitb, mdead, mwep) {
                     await pline_mon(magr, '%s is suddenly very hot!', Monnam_dm(magr));
                 break;
             case _AD_ELEC: /* C mhitm.c:1447-1458 */
-                if (Resists_Elem(magr, 5 /* SHOCK_RES */)) {
+                if (Resists_Elem(magr, SHOCK_RES)) {
                     if (canseemon(magr)) {
                         await pline_mon(magr, '%s is mildly tingled.', Monnam_dm(magr));
                         golemeffects_pm(magr, _AD_ELEC, tmp);
@@ -3157,7 +3161,7 @@ export async function mattackm(magr, mdef) {
             if (!monnear_dm(magr, mdef.mx, mdef.my)) {
                 let mmtmp = (mattk.aatyp === AT_BREA)
                     ? await breamm_mu(magr, mattk, mdef)
-                    : await spitmm_mu(magr, mattk, mdef);
+                    : await spitmm(magr, mattk, mdef);
                 strike = (mmtmp === M_ATTK_MISS) ? 0 : 1;
                 if (strike)
                     res[i] |= M_ATTK_HIT;
@@ -3243,7 +3247,7 @@ function m_at_dm(x, y) { return m_at(x, y); }
 
 function unsolid_dm(data) {
     if (!data) return false;
-    return (data.mflags1 & 0x00100000) ? true : false;
+    return (data.mflags1 & M1_UNSOLID_DM) ? true : false;
 }
 
 function touch_petrifies_dm(data) {
@@ -3284,53 +3288,63 @@ function sgn_dm(n) { return n > 0 ? 1 : (n < 0 ? -1 : 0); }
  * unmodeled predicates in this file (e.g. touch_petrifies_dm). */
 function sticks_dm(ptr) { return sticks(ptr); }
 
-/* C uhitm.c:5248-5421 mhitm_knockback — mon-vs-mon subset only (magr/mdef are
- * never the hero in this dogmove.js call path, so the u_agr/u_def branches
- * never apply). The two RNG draws (knockdistance, chance) are ALWAYS
- * consumed first, exactly as C does before any of the disqualifying checks. */
+/* C uhitm.c:5248-5421 mhitm_knockback — hero-attacker (u_agr) and mon-vs-mon
+ * arms (the hero-defender arm u_def is mhitu_knockback in js/mhitu.js).
+ * The two RNG draws (knockdistance, chance) are ALWAYS consumed first,
+ * exactly as C does before any of the disqualifying checks. */
+const ART_OGRESMASHER = 16; /* artilist.h */
+const LEATHER = 7;          /* objclass.h:20 */
+/* obj.h is_flimsy(): oc_material <= LEATHER or RUBBER_HOSE (otyp 78) */
+const is_flimsy = (otmp) => (MKOBJ_OC_MATERIAL[otmp.otyp | 0] | 0) <= LEATHER
+    || (otmp.otyp | 0) === 78 /* RUBBER_HOSE */;
 export async function mhitm_knockback(magr, mdef, mattk, mhm, weapon_used) {
     const knockdistance = rn2(3) ? 1 : 2;
     let chance = 6;
-    /* C uhitm.c:5256-5263: wep = weapon_used ? MON_WEP(magr) : 0;
+    const u_agr = (magr === game.youmonst);
+    const u = game.u || {};
+    /* C uhitm.c:5260-5268: wep = weapon_used ? (u_agr ? uwep : MON_WEP(magr)) : 0;
      * Ogresmasher (artifact index 16) knocks back 1/2 of the time. */
-    const wep = weapon_used ? MON_WEP_dm(magr) : null;
-    if (wep && (wep.oartifact | 0) === 16)
+    const wep = weapon_used ? (u_agr ? (u.uwep || null) : MON_WEP_dm(magr)) : null;
+    if (wep && (wep.oartifact | 0) === ART_OGRESMASHER)
         chance = 2;
     if (rn2(chance))
         return false;
 
-    if (!(((mattk.adtyp | 0) === 0 /* AD_PHYS */)
+    if (!(((mattk.adtyp | 0) === AD_PHYS)
           && ((mattk.aatyp | 0) === AT_CLAW || (mattk.aatyp | 0) === AT_KICK
               || (mattk.aatyp | 0) === AT_BUTT || (mattk.aatyp | 0) === AT_WEAP)))
         return false;
 
-    if (attacktype(magr.data, AT_ENGL) || attacktype(magr.data, AT_HUGS)
-        || sticks_dm(magr.data))
+    const agrdata = magr?.data || {};
+    if (attacktype(agrdata, AT_ENGL) || attacktype(agrdata, AT_HUGS)
+        || sticks_dm(agrdata))
         return false;
 
     const defx = mdef.mx | 0, defy = mdef.my | 0;
-    const dx = sgn_dm(defx - (magr.mx | 0));
-    const dy = sgn_dm(defy - (magr.my | 0));
+    const dx = sgn_dm(defx - (u_agr ? (u.ux | 0) : (magr.mx | 0)));
+    const dy = sgn_dm(defy - (u_agr ? (u.uy | 0) : (magr.my | 0)));
     if (!isok(defx + dx, defy + dy))
         return false;
-    /* C uhitm.c:5303-5306: can't move most targets into or out of a doorway
-     * diagonally. */
+    /* C uhitm.c:5302-5306: can't move most targets into or out of a doorway
+     * diagonally (uses magr->mx/my even for hero). */
     {
         const { doorless_door } = await import('./cmd.js');
         const dl = game.level?.at(defx, defy);
-        if (dl && (dl.typ | 0) === DOOR_TYP && ((defx - (magr.mx | 0)) && (defy - (magr.my | 0)))
+        if (dl && (dl.typ | 0) === DOOR_TYP && ((defx - (magr?.mx | 0)) && (defy - (magr?.my | 0)))
             && !doorless_door(defx, defy))
             return false;
     }
 
-    if (DEADMONSTER_dm(magr) || DEADMONSTER_dm(mdef))
+    if ((!u_agr && DEADMONSTER_dm(magr)) || DEADMONSTER_dm(mdef))
         return false;
-    /* C uhitm.c:5324 if (magr->data->msize <= mdef->data->msize + 1) return FALSE.
-     * `?.` guards a replay-reconstructed monst with no materialized ->data;
-     * absent data reads as msize 0 on both sides, so the test fails closed
-     * exactly as an equal-size pair would.  RNG-free either way (both draws
-     * already happened above). */
-    if (!(((magr.data?.msize | 0) > (mdef.data?.msize | 0) + 1)))
+    /* C uhitm.c:5325 if (!(magr->data->msize > (mdef->data->msize + 1))) return FALSE. */
+    const agrMsize = (agrdata.msize != null)
+        ? (agrdata.msize | 0)
+        : (u_agr ? (MONS_MSIZE[(u.umonnum ?? magr?.mnum ?? -1) | 0] | 0) : 0);
+    const defMsize = (mdef.data?.msize != null)
+        ? (mdef.data.msize | 0)
+        : (u_agr ? (MONS_MSIZE[(mdef.mnum ?? mdef.mndx ?? -1) | 0] | 0) : 0);
+    if (!(agrMsize > defMsize + 1))
         return false;
     /* C uhitm.c:5329-5331: no knockback with a flimsy or non-blunt weapon.
      * is_flimsy: oc_material <= LEATHER or RUBBER_HOSE; is_blunt_weapon: WHACK
@@ -3339,49 +3353,62 @@ export async function mhitm_knockback(magr, mdef, mattk, mhm, weapon_used) {
     if (wep) {
         const wo = wep.otyp | 0;
         const blunt = (wo >= 69 && wo <= 81 && wo !== 72) || wo === 259 || wo === 260;
-        if ((MKOBJ_OC_MATERIAL[wo] | 0) <= 7 /* LEATHER */ || wo === 78 /* RUBBER_HOSE */ || !blunt)
+        if (is_flimsy(wep) || !blunt)
             return false;
     }
-    if (unsolid_dm(magr.data))
+    if (unsolid_dm(agrdata))
+        return false;
+    /* C uhitm.c:5338: if ((u_agr || u_def) && !(*hitflags & M_ATTK_HIT)) return FALSE; */
+    if (u_agr && !((mhm?.hitflags | 0) & M_ATTK_HIT))
         return false;
     if (m_is_steadfast(mdef)) { /* C uhitm.c:5342-5353 */
-        if (game.u.usteed && mdef === game.u.usteed)
-            await You("and %s don't budge.", y_monnam_qm(game.u.usteed));
+        if (u.usteed && mdef === u.usteed)
+            await You("and %s don't budge.", y_monnam_qm(u.usteed));
         else if (canseemon(mdef))
             await pline("%s doesn't budge.", Monnam_dm(mdef));
         return false;
     }
 
-    /* C uhitm.c:5361-5376.  These formatting draws happen while pline is
+    /* C uhitm.c:5356-5378.  These formatting draws happen while pline is
      * displaying the knockback message.  In particular, pline may suspend
      * the turn at --More--; the mhurtle and stun tail must therefore remain
      * after the awaited message (C resumes it on the next input). */
-    if (canseemon(mdef)) {
-        /* uhitm.c:5352-5354: "backward" when will_hurtle() says the target moves */
+    if (canseemon(mdef) || u_agr) {
+        /* uhitm.c:5356-5358: "backward" when will_hurtle() says the target moves */
         const { will_hurtle } = await import('./cmd.js');
         const knockedhow = will_hurtle(mdef, defx + dx, defy + dy)
             ? 'backward' : 'back';
-        /* C uhitm.c:5365 mdefbuf = y_monnam(mdef): a tame defender reads
-         * "your kitten", not "the kitten". */
-        await pline(`${Monnam_dm(magr)} knocks ${y_monnam_qm(mdef)} ${knockedhow} with a ${
-            rn2(2) ? 'forceful' : 'powerful'} ${rn2(2) ? 'blow' : 'strike'}!`);
+        if (canseemon(mdef)) {
+            /* C uhitm.c:5363 mdefbuf = y_monnam(mdef): a tame defender reads
+             * "your kitten", not "the kitten". */
+            const magrbuf = u_agr ? 'You' : Monnam_dm(magr);
+            const verb = u_agr ? 'knock' : 'knocks';
+            await pline(`${magrbuf} ${verb} ${y_monnam_qm(mdef)} ${knockedhow} with a ${
+                rn2(2) ? 'forceful' : 'powerful'} ${rn2(2) ? 'blow' : 'strike'}!`);
+        } else {
+            await You_feel(`${some_mon_nam(mdef)} be knocked ${knockedhow}!`);
+        }
     }
 
-    /* C uhitm.c:5386: move the defender before recording the hit/stun tail.
+    if (u.ustuck && u_agr)
+        await unstuck_dm(u.ustuck);
+
+    /* C uhitm.c:5400: move the defender before recording the hit/stun tail.
      * cmd.js owns the shared dothrow.c mhurtle implementation; dynamic import
      * avoids the cmd -> dogmove module cycle while preserving this async point. */
     const { mhurtle } = await import('./cmd.js');
     await mhurtle(mdef, dx, dy, knockdistance);
 
-    mhm.hitflags |= M_ATTK_HIT;
+    if (!u_agr)
+        mhm.hitflags |= M_ATTK_HIT;
     if (DEADMONSTER_dm(mdef)) {
         mhm.hitflags |= M_ATTK_DEF_DIED;
     } else if (!rn2(4)) {
         mdef.mstun = 1;
-        if (mdef === game.u.usteed) /* C uhitm.c:5412-5413 */
+        if (mdef === u.usteed) /* C uhitm.c:5410-5411 */
             set_apparxy_dm(magr);
     }
-    if (DEADMONSTER_dm(magr))
+    if (!u_agr && DEADMONSTER_dm(magr))
         mhm.hitflags |= M_ATTK_AGR_DIED;
     return true;
 }
@@ -3673,7 +3700,7 @@ async function mdamagem_dm(magr, mdef, mattk, mwep, dieroll) {
 
         /* wielded weapon gives same protection as gloves here */
         if (mwep)
-            wornitems |= 0x10 /* W_ARMG */;
+            wornitems |= W_ARMG;
 
         if (protector === 0
             || (protector !== ~0 && (wornitems & protector) !== protector)) {
@@ -3682,12 +3709,12 @@ async function mdamagem_dm(magr, mdef, mattk, mwep, dieroll) {
                 return M_ATTK_HIT; /* no damage during the polymorph */
             }
             if (game.v?.vis && canspotmon(magr))
-                pline_mon(magr, `${Monnam_dm(magr)} turns to stone!`);
+                await pline_mon(magr, `${Monnam_dm(magr)} turns to stone!`);
             await monstone(magr);
             if (!DEADMONSTER_dm(magr))
                 return M_ATTK_HIT; /* lifesaved */
             else if (magr.mtame && !game.v?.vis)
-                You("have a peculiarly sad feeling for a moment, then it passes.");
+                await You("have a peculiarly sad feeling for a moment, then it passes.");
             return M_ATTK_AGR_DIED;
         }
     }
@@ -3721,8 +3748,8 @@ async function mdamagem_dm(magr, mdef, mattk, mwep, dieroll) {
         game.gm = game.gm || {};
         game.flags = game.flags || {};
         if (mattk.aatyp === AT_WEAP || mattk.aatyp === AT_CLAW)
-            game.gm.mkcorpstat_norevive = !!(mwep && (mwep.oartifact | 0) === 17 /* ART_TROLLSBANE */
-                && (permonstTemplate(mdef.mndx ?? mdef.mnum).mlet | 0) === 46 /* S_TROLL */);
+            game.gm.mkcorpstat_norevive = !!(mwep && (mwep.oartifact | 0) === ART_TROLLSBANE_DM
+                && (permonstTemplate(mdef.mndx ?? mdef.mnum).mlet | 0) === S_TROLL_DM);
         game.flags.zombify = !!(!mwep && zombie_maker(magr)
             && (mattk.aatyp === AT_TUCH || mattk.aatyp === AT_CLAW || mattk.aatyp === AT_BITE)
             && zombie_form(permonstTemplate(mdef.mndx ?? mdef.mnum)) !== NON_PM);
@@ -3734,8 +3761,8 @@ async function mdamagem_dm(magr, mdef, mattk, mwep, dieroll) {
         if (mhm.hitflags === M_ATTK_AGR_DIED)
             return (M_ATTK_DEF_DIED | M_ATTK_AGR_DIED);
         if (mattk.adtyp === AD_DGST) {
-            /* C mhitm.c:1096-1115.  Gap: the chameleon and green-slime newcham
-             * arms (mhitm.c:1099-1103) are not modelled. */
+            /* C mhitm.c:1096-1115, including the chameleon and green-slime
+             * newcham arms (mhitm.c:1099-1103). */
             const pdx = (pd_dm?.pmidx ?? (mdef.mndx ?? mdef.mnum)) | 0;
             if (ismnum_js(mdef.cham) && (mdef.cham | 0) >= 0) {
                 await newcham(magr, null, NC_SHOW_MSG_DG);
@@ -3919,7 +3946,7 @@ async function gulpmm(magr, mdef, mattk) {
         }
         if ((await minliquid_real(magr))
             || (t_at(nx, ny)
-                && (await mintrap_dm(magr, NO_TRAP_FLAGS$)) === 2 /* Trap_Killed_Mon */))
+                && (await mintrap_dm(magr, NO_TRAP_FLAGS$)) === Trap_Killed_Mon_DM))
             status |= M_ATTK_AGR_DIED;
     } else if (status & M_ATTK_AGR_DIED) {
         delete mdef._mapRemoved;
@@ -3958,7 +3985,7 @@ async function noises_dm(magr, mattk) {
     const farq = dist2(magr.mx | 0, magr.my | 0, u.ux | 0, u.uy | 0) > 15;
     const moves = game.moves | 0;
     const noisetime = game.noisetime | 0;
-    /* C mhitm.c:30 `if (!Deaf && (farq != gf.far_noise || ...))` — the Deaf
+    /* C mhitm.c:31 `if (!Deaf && (farq != gf.far_noise || ...))` — the Deaf
      * test is part of the SAME condition as the noisetime bookkeeping, so a
      * deaf hero updates neither gf.far_noise nor gn.noisetime.  The comment
      * that used to sit here read "Deaf unported = false", which both printed a
@@ -3966,7 +3993,7 @@ async function noises_dm(magr, mattk) {
     if (!Deaf() && (farq !== !!game.far_noise || (moves - noisetime) > 10)) {
         game.far_noise = farq;
         game.noisetime = moves;
-        /* C mhitm.c:33 You_hear("%s%s.", ...) — one call, two conversions. */
+        /* C mhitm.c:34 You_hear("%s%s.", ...) — one call, two conversions. */
         await You_hear("%s%s.",
                  ((mattk?.aatyp | 0) === AT_EXPL) ? "an explosion" : "some noises",
                  farq ? " in the distance" : "");
@@ -3979,7 +4006,7 @@ async function hitmm(magr, mdef, mattk, mwep, dieroll) {
     /* C mhitm.c:659 compat = !magr->mcan ? could_seduce(magr, mdef, mattk) : 0.
      * (shade_miss's !compat guard is the KNOWN GAP above and is RNG-free.) */
     const compat = !(magr.mcan | 0) ? could_seduce(magr, mdef, mattk) : 0;
-    /* C mhitm.c:663: if (gv.vis) pline("%s %s.", buf, mon_nam_too(mdef, magr));
+    /* C mhitm.c:663,704: if (gv.vis) pline("%s %s.", buf, mon_nam_too(mdef, magr));
      * mon_nam_too ≈ mon_nam for a non-self attack.  buf is "<Monnam> <verb>"
      * per the mattk->aatyp switch (mhitm.c:674-701). */
     /* C mhitm.c:660-661: shade_miss() calls dmgval() (RNG) for zero/not-zero */
@@ -4000,7 +4027,7 @@ async function hitmm(magr, mdef, mattk, mwep, dieroll) {
         const weaponhit = ((mattk.aatyp | 0) === AT_WEAP
                            || ((mattk.aatyp | 0) === AT_CLAW && mwep));
         const silverhit = weaponhit && mwep
-            && ((MKOBJ_OC_MATERIAL[mwep.otyp | 0] | 0) === 14 /* SILVER */);
+            && ((MKOBJ_OC_MATERIAL[mwep.otyp | 0] | 0) === SILVER_DM);
         if (mon_hates_silver(mdef) && silverhit) {
             let mdef_name = mon_nam_too(mdef, magr);
             const dndx = (mdef.mndx ?? mdef.mnum ?? 0) | 0;
@@ -4048,16 +4075,10 @@ function mswingsm(magr, mdef, mwep) {
         && !(u.uprops[BLINDED_DM].blocked | 0);
     if (!(game.flags?.verbose ?? true) || blinded || !mon_visible(magr))
         return;
-    const bash = is_pole_dm(mwep) && (mwep?.oartifact | 0) !== 19 /* ART_SNICKERSNEE */
+    const bash = is_pole_dm(mwep) && (mwep?.oartifact | 0) !== ART_SNICKERSNEE_DM
         && dist2(magr.mx | 0, magr.my | 0, mdef.mx | 0, mdef.my | 0) <= 2;
     const pronoun = mhis_dm(magr);
     pline(`${Monnam(magr)} ${mswings_verb(mwep, bash)} ${mwep.quan > 1 ? 'one of ' : ''}${pronoun} ${xname(mwep)} at ${mon_nam(mdef)}.`);
-}
-/* C mthrowu.c:1016-1076 spitmm().  mhitu.js carries the canonical body and
- * supports both hero and monster targets; this wrapper preserves the
- * monster-vs-monster call signature used by mattackm. */
-function spitmm(magr, mattk, mdef) {
-    return spitmm_mu(magr, mattk, mdef);
 }
 /* C ref: mthrowu.c:969-1012 thrwmm() — monster throws item at another monster */
 async function thrwmm(mtmp, mtarg) {
@@ -4652,7 +4673,7 @@ function mnum_leashable_qm(mnum) {
     if (!d) return false;
     const f1 = d.mflags1 >>> 0;
     const nolimbs = (f1 & 0x6000) === 0x6000, has_head = !(f1 & 0x8000);
-    return !!(mnum >= 0 && d.pmnames?.[2] !== 'long worm' && !(f1 & 0x100000)
+    return !!(mnum >= 0 && mnum !== PM_LONG_WORM && !(f1 & M1_UNSOLID_DM)
               && (!nolimbs || has_head));
 }
 
@@ -4696,20 +4717,26 @@ export async function quickmimic(mtmp) {
         const what = (apt === 1) ? DEFSYM_EXPL_QM[app]
             : (apt === 2 && OC_DESCR_QM[app]) ? OC_DESCR_QM[app]
             : (apt === 2 && OC_NAME_QM[app]) ? OC_NAME_QM[app]
-            : (apt === 3) ? monPmname_qm(app, Mgender_dm(mtmp))
+            : (apt === 3) ? pmname_dm(permonstTemplate(app), Mgender_dm(mtmp))
             : 'something';
 
         newsym(x, y);
         if (was_leashed && (apt !== 3 || !mnum_leashable_qm(app))) {
-            await pline('Your leash goes slack.');
+            await Your('leash goes slack.');
             m_unleash(mtmp, false);
         }
-        let msg;
-        if (gl() !== prev_glyph)
-            msg = `You ${seeloc ? 'see' : 'sense that'} ${what !== 'something' ? an_qm(what) : what} ${seeloc ? 'appear' : 'has appeared'} where ${buf} was!`;
-        else
-            msg = `You sense that ${buf} feels rather ${what}-ish.`;
-        await pline(msg);
+        let fmt, args;
+        if (gl() !== prev_glyph) {
+            fmt = '%s %s %s where %s was!';
+            args = [seeloc ? 'see' : 'sense that',
+                    (what !== 'something') ? an_qm(what) : what,
+                    seeloc ? 'appear' : 'has appeared', buf];
+        } else {
+            fmt = 'sense that %s feels rather %s-ish.';
+            args = [buf, what];
+        }
+        await You(fmt, ...args);
+        const msg = 'You ' + nh_sprintf(fmt, args);
         /* display_nhwindow(WIN_MAP, TRUE) */
         topl_force_break_after_qm(msg);
     }
@@ -4912,8 +4939,8 @@ export async function mdisplacem(magr, mdef, quietly) {
     ty = mdef.my;
     fx = magr.mx;
     fy = magr.my;
-    /* NOTE: m_at sanity check elided — in replay, game.fmon may not
-       be set up with same object identities as the passed arguments. */
+    if (m_at(fx, fy) !== magr || m_at(tx, ty) !== mdef)
+        return M_ATTK_MISS;
 
     /* The 1 in 7 failure below matches the chance in do_attack()
      * for pet displacement. */
@@ -4932,7 +4959,7 @@ export async function mdisplacem(magr, mdef, quietly) {
         seemimic(mdef);
     /* wake up the displaced defender */
     mdef.msleeping = 0;
-    mdef.mstrategy = (mdef.mstrategy & ~0x30000000 /* STRAT_WAITMASK */) >>> 0;
+    mdef.mstrategy = (mdef.mstrategy & ~STRAT_WAITMASK) >>> 0;
     finish_meating(mdef);
 
     /* Set up the visibility of action. */
@@ -4940,23 +4967,23 @@ export async function mdisplacem(magr, mdef, quietly) {
     game.v.vis = (canspotmon(magr) && canspotmon(mdef)) ? 1 : 0;
 
     if (touch_petrifies_dm(pd) && !resists_ston_dm(magr)) {
-        if (!which_armor(magr, 0x10 /* W_ARMG */)) {
+        if (!which_armor(magr, W_ARMG)) {
             if (poly_when_stoned(pa)) {
                 await mon_to_stone(magr);
                 return M_ATTK_HIT; /* no damage during the polymorph */
             }
             if (!quietly && canspotmon(magr)) {
                 if (game.v.vis) {
-                    pline("%s tries to move %s out of %s way.", Monnam(magr),
+                    await pline("%s tries to move %s out of %s way.", Monnam(magr),
                           mon_nam(mdef), is_rider_dm(pa) ? "the" : mhis_dm(magr));
                 }
-                pline_mon(magr, "%s turns to stone!", Monnam(magr));
+                await pline_mon(magr, "%s turns to stone!", Monnam(magr));
             }
             await monstone(magr);
             if (!DEADMONSTER_dm(magr))
                 return M_ATTK_HIT; /* lifesaved */
             else if (magr.mtame && !game.v.vis)
-                You("have a peculiarly sad feeling for a moment, then it passes.");
+                await You("have a peculiarly sad feeling for a moment, then it passes.");
             return M_ATTK_AGR_DIED;
         }
     }
@@ -4966,7 +4993,7 @@ export async function mdisplacem(magr, mdef, quietly) {
         remove_worm(mdef);
     else
         remove_monster(tx, ty);
-    place_monster(magr, tx, ty); /* C mhitm.c:259-260; steed.c:898-933 */
+    place_monster(magr, tx, ty); /* put down at target spot */
     place_monster(mdef, fx, fy);
     if (mdef.wormno) /* now put down tail */
         place_worm_tail_randomly(mdef, fx, fy);
@@ -4975,7 +5002,7 @@ export async function mdisplacem(magr, mdef, quietly) {
     update_monster_region(mdef);
 
     if (game.v.vis && !quietly)
-        pline("%s moves %s out of %s way!", Monnam(magr), mon_nam(mdef),
+        await pline("%s moves %s out of %s way!", Monnam(magr), mon_nam(mdef),
               is_rider_dm(pa) ? "the" : mhis_dm(magr));
     newsym(fx, fy);  /* see it       */
     newsym(tx, ty);  /*   all happen */

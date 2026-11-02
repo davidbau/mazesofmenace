@@ -24,12 +24,10 @@ import { game, requireLiveGame, requirePlayingGame } from './gstate.js';
 import { monsterHasFireResistance, monsterHasShockResistance, monsterHasSeductionAttack, monsterResistanceBits } from './mondata.js';
 import { closeDrawbridge, destroyDrawbridge, findDrawbridgeAt, openDrawbridge } from './dbridge.js';
 import { drawbridgeUnderlyingType } from './dbridge.js';
-import { roomsAt } from './room.js';
 import { setHeroTrap, triggerHeroTrap } from './hero_traps.js';
 import { monsterName } from './do_name.js';
 import { possessiveName } from './hacklib.js';
 import { destroyObjectFromMonsterInventory, checkMonsterGearNextTurn } from './monworn.js';
-import { loseHeroHp } from './hero_damage.js';
 import { commandResultCancelled } from './cmd.js';
 import { removeHeroAccessory, wearHeroAccessory } from './do_wear.js';
 import { removeHeroEquipment, removeWornHeroItem } from './hero_equipment.js';
@@ -59,7 +57,6 @@ import { stopHeroOccupation } from './occupation.js';
 import { d, rn1, rn2, rnd } from './rng.js';
 import { promptDirection } from './tty_prompts.js';
 import { cansee, couldsee, vision_note_blocker_change } from './vision.js';
-import { exceedsActionCapacity, objectWeight } from './weight.js';
 import { chargeUnpaidUsage, addShopDamage, payForShopDamage, objectTypeKnown, chargeAlteredUnpaidObject, addShopObjectToBill, costlySpot, stolenValue, hotPursuitShopkeeper, makeAngryShopkeeper, deleteObjectContents, shopkeeperInOwnShop, containedBuyCost } from './shk.js';
 import { hasWornProperty } from './properties.js';
 import { closedRayDoor } from './ray.js';
@@ -107,6 +104,8 @@ import { vegetarianCorpse } from './food_traits.js';
 import { updateInventoryPresentation } from './u_init.js';
 import { changeBoxLockByMagic } from './box_magic.js';
 import { shopkeeperName } from './shknam.js';
+import { roomsAt, loseHeroHp, exceedsActionCapacity } from './hack.js';
+import { objectWeight } from './mkobj.js';
 const RING_CLASS = 4;
 const POTION_CLASS = 8;
 const SCROLL_CLASS = 9;
@@ -216,6 +215,8 @@ async function finishWandUse(wand) {
     await useUpInventoryStack(wand);
 }
 // C zap.c:dozap(). Selection/charges surround the shared effect transaction.
+// C zap.c:zap_ok(): the getobj filter suggesting wands and excluding the
+// rest is inlined in the chooseInventoryObject() call below.
 export async function dozap() {
     requirePlayingGame(game);
     if (heroHasNoHands(game)) {
@@ -1022,7 +1023,12 @@ export async function applyRayFloorFeatures(kind, x, y, state = game, { rayNoun 
             // delfloortrap() releases a trapped hero through
             // reset_utrap(TRUE), which may report flight.
             await deleteFloorTrap(web, state);
-            await newsym(x, y);
+            // C zap.c:5170-5171: an unseen square is not refreshed after
+            // the web burns; the burst message and newsym() share the
+            // see_it gate, so a sensed monster there keeps its drawn
+            // appearance (no fresh hallucinated glyph from the display RNG).
+            if (visible)
+                await newsym(x, y);
         }
     }
     if (kind === RAY_FIRE && isIceAt(x, y, state)) {
@@ -1175,6 +1181,10 @@ function destroyable(object, damageType) {
     }
     return false;
 }
+// C zap.c:u_adtyp_resistance_obj(): worn or wielded resistance gives 99%
+// inventory protection, a dwarvish cloak 90% against heat and cold.
+// C zap.c:adtyp_to_prop() is the damage-type-to-property map, and
+// zap.c:inventory_resistance_check() is the rn2(100) roll at the caller.
 function protectionChance(state, damageType) {
     const hero = state.u;
     const properties = {
@@ -1262,6 +1272,8 @@ function destroyedItemKiller(object, damageType, count) {
         killer = object.oclass === SPBOOK_CLASS ? 'burning book' : 'burning scroll';
     return count === 1 ? killer : makePlural(killer);
 }
+// C zap.c:maybe_destroy_item(): one stack of a carrier's inventory meets
+// elemental damage; the hero branch loses the HP here, monsters return it.
 async function destroyChosenItem(object, damageType, { state, publish, random, rollOne, die, }) {
     const unharmed = { damage: 0, heroDied: false };
     const protection = protectionChance(state, damageType);
@@ -2425,7 +2437,7 @@ async function replaceWornItem(old, replacement, mask, state) {
         await setQuiverObject(replacement, state);
     }
     else if (oldArmorSlot && oldArmorSlot === armorSlotFor(replacement.otyp)) {
-        wearHeroArmor(replacement, state);
+        await wearHeroArmor(replacement, state);
         await applyArmorOnEffects(replacement, state);
         return state[oldArmorSlot] ?? null;
     }

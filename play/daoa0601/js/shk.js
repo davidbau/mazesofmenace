@@ -5,8 +5,6 @@
 // entry policy below. Lua/mklev owns room construction and initial stock
 // (shknam.ts); this module owns the live relationship among room, resident,
 // customer, and hero.
-import { heroLocomotion } from './hero_locomotion.js';
-import { recorderLocalHour } from './calendar.js';
 import { impossible } from './diagnostics.js';
 import { objectMaterial } from './o_init.js';
 import { game, requireGameLevel, requireLiveGame, requirePlayingGame } from './gstate.js';
@@ -15,7 +13,7 @@ import { pline, plineWithContinuation, verbalize } from './pline.js';
 import { hasShopBill, hasShopkeeperData, requireShopGame } from './shop_types.js';
 import { SHOP_TYPES, saleable, shopkeeperName, shopStocksObject } from './shknam.js';
 import { MONSTER_FLAGS2, MONSTER_GENO, MONSTER_NAME, monsterIsHuman, monsterIsVampire, monsterHasHead, MONSTER_SOUND, MONSTER_LEVEL, MONSTER_NUTRITION, monsterHasNoLimbs, MONSTER_FLAGS1, MONSTER_SYMBOL } from './monster_data.js';
-import { heroSpecies, heroPolyGender, heroPassesWalls } from './hero_species.js';
+import { heroSpecies, heroPolyGender, heroPassesWalls } from './polyself.js';
 import { monsterName } from './do_name.js';
 import { possessiveName, depth, distmin, dist2, pointsOnline, upstart } from './hacklib.js';
 import { monsterPossessive, monsterSubjectPronoun, monsterIsHelpless, monsterObjectPronoun } from './mondata.js';
@@ -25,23 +23,20 @@ import { currency } from './currency.js';
 import { simpleObjectName, objectTypeName, objectName, objectCombatName, definiteName, observeObjectForNaming, simpleObjectNameWithArticle } from './objnam.js';
 import { rn2, rnd } from './rng.js';
 import { recordRandom } from './monster_action_types.js';
-import { heroGoldAmount, monsterGoldAmount, heroGoldObject, detachHeroGold } from './hero_gold.js';
+import { heroGoldObject, detachHeroGold } from './hero_gold.js';
 import { currentAttribute, exerciseAttribute } from './attrib.js';
 import { heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
 import { propertyIsActive } from './properties.js';
-import { publishMonsterWake, angerWatchGuards, removeMonsterFromGame, mnearto, resistConflict } from './mon.js';
-import { A_CHA, A_WIS, ANTHOLE, BARRACKS, BEEHIVE, COCKNEST, COURT, DELPHI, In_mines, LEPREHALL, M_AP_NOTHING, M_AP_MONSTER, M_AP_TYPE, MMOVE_NOTHING, MORGUE, OROOM, PL_NSIZ, ROOMOFFSET, SHOPBASE, SWAMP, TEMPLE, THRONE, Upolyd, MGIVENNAME, ZOO, LL_ACHIEVE, G_GONE, isok, MM_NOMSG, LOW_PM, DOOR, D_BROKEN, HUNGRY, QBUFSZ, MENU_FULL, MENU_TRADITIONAL, MIGR_APPROX_XY, IS_DOOR, SVALL, SDOOR, IS_STWALL, IS_TREE, IS_ROOM, BOLT_LIM, RLOC_NOMSG, RLOC_MSG, D_CLOSED, D_LOCKED, ZAP_POS, LANDMINE, BEAR_TRAP, HOLE, PIT, SPIKED_PIT, IS_WALL, TT_PIT, W_SWAPWEP, W_QUIVER } from './const.js';
-import { insideRoom, inTown, roomForRoomno, roomsAt, updateHeroRoomMembership, roomForIndex } from './room.js';
-import { searchSpecial } from './mkroom.js';
-import { intemple, moveSpecial, specialMoverSeesHero } from './priest.js';
-import { recordDiscoveredRoom } from './dungeon.js';
+import { angerWatchGuards, removeMonsterFromGame, mnearto, resistConflict } from './mon.js';
+import { A_CHA, A_WIS, M_AP_NOTHING, M_AP_MONSTER, M_AP_TYPE, MMOVE_NOTHING, PL_NSIZ, ROOMOFFSET, SHOPBASE, Upolyd, MGIVENNAME, LL_ACHIEVE, G_GONE, isok, MM_NOMSG, LOW_PM, DOOR, D_BROKEN, HUNGRY, QBUFSZ, MENU_FULL, MENU_TRADITIONAL, MIGR_APPROX_XY, IS_DOOR, SVALL, SDOOR, IS_STWALL, IS_TREE, IS_ROOM, BOLT_LIM, RLOC_NOMSG, RLOC_MSG, D_CLOSED, ZAP_POS, LANDMINE, BEAR_TRAP, HOLE, PIT, SPIKED_PIT, IS_WALL, TT_PIT, W_SWAPWEP, W_QUIVER } from './const.js';
+import { moveSpecial, specialMoverSeesHero } from './priest.js';
 import { BAG_OF_TRICKS, BRASS_LANTERN, CAN_OF_GREASE, CORPSE, CRYSTAL_BALL, DRUM_OF_EARTHQUAKE, EXPENSIVE_CAMERA, HORN_OF_PLENTY, LARGE_BOX, MAGIC_FLUTE, MAGIC_LAMP, MAGIC_MARKER, OBJECT_CHARGED, OBJECT_COST, OBJECT_NAMES, OBJECT_INITIAL_KNOWN, DUNCE_CAP, OIL_LAMP, POT_OIL, TINNING_KIT, WORTHLESS_PIECE_OF_WHITE_GLASS, PICK_AXE, DWARVISH_MATTOCK, OBJECT_MAGIC, MIRROR, POT_WATER, WAX_CANDLE, TALLOW_CANDLE, OBJECT_WEIGHT, TIN, EGG, CANDELABRUM_OF_INVOCATION, BOULDER, ROCK, LAND_MINE, BEARTRAP, LEASH, GOLD_PIECE } from './object_data.js';
 import { learnObjectType, observeObject } from './o_init.js';
 import { paymentObjectDescription, objectDescription } from './objnam.js';
 import { dropObjectAtHero } from './hero_drop.js';
 import { mergable } from './invent.js';
 import { splitObjectStack } from './mkobj.js';
-import { ACH_SHOP, ACH_TOWN, recordAchievement } from './achievements.js';
+import { ACH_SHOP, recordAchievement } from './achievements.js';
 import { nextIdent, nextObjectId } from './ident.js';
 import { getObjectLocation } from './zap.js';
 import { objectsInTimerGraph, stopObjectTimers } from './timeout.js';
@@ -64,11 +59,10 @@ import { showDisclosureOverlay, showMultiSelectWindow } from './windows.js';
 import { addInventoryItem } from './u_init.js';
 import { intrinsicPossible } from './eat.js';
 import { countContents } from './invent.js';
-import { objectWeight } from './weight.js';
 import { artifactById } from './artifacts.js';
 import { bot } from './botl.js';
 import { commandResultCancelled, setMulti } from './cmd.js';
-import { showGetposTip, showGetposInstructions, selectMapPosition } from './getpos.js';
+import { showGetposInstructions, selectMapPosition } from './getpos.js';
 import { promptYesNo, promptChoice, promptYesNoAllQuit } from './query.js';
 import { publishMonsterYelp, publishMonsterGrowl } from './ambient_sounds.js';
 import { heroIsPunished, unplaceBallAndChain, placeBallAndChain } from './ball.js';
@@ -89,6 +83,9 @@ import { chooseStairs } from './wizard.js';
 import { isPick } from './object_properties.js';
 import { maybeResetPick } from './lock.js';
 import { bookDisappears } from './spellbook_study.js';
+import { checkSpecialRoom, heroGoldAmount, monsterGoldAmount, inTown, roomForRoomno, roomsAt, roomForIndex, showGetposTip } from './hack.js';
+import { insideRoom } from './mkroom.js';
+import { objectWeight } from './mkobj.js';
 const COIN_CLASS = 12;
 const GEM_CLASS = 13;
 const GLASS = 19;
@@ -1268,7 +1265,7 @@ export async function afterShopkeeperMove(keeper, state = game) {
     if (!state.program_state?.gameover)
         await checkSpecialRoom();
 }
-async function enterShop({ room, roomno }) {
+export async function enterShop({ room, roomno }) {
     requireShopGame(game);
     const shopkeeper = shopResident(roomno, game);
     if (!shopkeeper || !shopkeeperInOwnShop(shopkeeper, game)) {
@@ -1370,142 +1367,6 @@ async function blockShopEntry(shopkeeper) {
     }
     requirePlayingGame(game);
     await performMonsterTurn(shopkeeper, game);
-}
-// C hack.c:check_special_room(). newLevel is the old-level exit, not arrival.
-export async function checkSpecialRoom({ newLevel = false } = {}) {
-    updateHeroRoomMembership(game, newLevel);
-    requireShopGame(game);
-    if (game.u.ushops0.length)
-        await leaveHeroShop(game.u.ushops_left, { newLevel });
-    if (game.level.flags.has_town && In_mines(game.u.uz)
-        && inTown(game.level, game.u.ux, game.u.uy))
-        recordAchievement(game, ACH_TOWN);
-    if (!game.u.uentered.length && !game.u.ushops_entered.length)
-        return null;
-    let result = null;
-    if (game.u.ushops_entered.length) {
-        const roomno = game.u.ushops_entered[0];
-        if (roomno === undefined)
-            throw new Error('Entered shop has no room number');
-        const room = roomForRoomno(game.level, roomno);
-        if (!room)
-            throw new Error(`Entered shop ${roomno} has no room`);
-        result = await enterShop({ room, roomno });
-    }
-    for (const roomno of game.u.uentered) {
-        const room = roomForRoomno(game.level, roomno);
-        if (!room)
-            throw new Error(`Entered room ${roomno} does not exist`);
-        const type = room.rtype;
-        const message = specialRoomEntryMessage(room, roomno);
-        if (message) {
-            await plineWithContinuation(message);
-            recordDiscoveredRoom(roomno - ROOMOFFSET);
-            room.rtype = OROOM;
-            result = room;
-        }
-        else if (type === DELPHI) {
-            const oracle = [...game.level.monsters].reverse().find(monster => !monster.dead && monster.mhp > 0
-                && monster.mnum === MONSTER_NAME.indexOf('Oracle')
-                && roomsAt(game.level, monster.mx, monster.my).includes(roomno));
-            if (oracle) {
-                const name = game.plname;
-                await plineWithContinuation(oracle.mpeaceful
-                    ? `"${shopGreeting(oracle)}, ${name}, welcome to Delphi!"`
-                    : `"You're in Delphi, ${name}."`);
-                recordDiscoveredRoom(roomno - ROOMOFFSET);
-            }
-            room.rtype = OROOM;
-            result = room;
-        }
-        else if (type === TEMPLE) {
-            result = await intemple(roomno);
-            recordDiscoveredRoom(roomno - ROOMOFFSET);
-        }
-        else if (type >= SHOPBASE) {
-            recordDiscoveredRoom(roomno - ROOMOFFSET);
-        }
-        if (room.rtype !== OROOM || type === OROOM)
-            continue;
-        if (!searchSpecial(type)) {
-            switch (type) {
-                case COURT:
-                    game.level.flags.has_court = false;
-                    break;
-                case SWAMP:
-                    game.level.flags.has_swamp = false;
-                    break;
-                case MORGUE:
-                    game.level.flags.has_morgue = false;
-                    break;
-                case ZOO:
-                    game.level.flags.has_zoo = false;
-                    break;
-                case BARRACKS:
-                    game.level.flags.has_barracks = false;
-                    break;
-                case BEEHIVE:
-                    game.level.flags.has_beehive = false;
-                    break;
-            }
-        }
-        if ([COURT, SWAMP, MORGUE, ZOO].includes(type)) {
-            for (const monster of [...game.level.monsters].reverse()) {
-                // Native compares the stored room number to its room index here.
-                if (monster.dead || monster.mhp <= 0
-                    || game.level.at(monster.mx, monster.my)?.roomno !== roomno - ROOMOFFSET)
-                    continue;
-                if (!propertyIsActive('stealth', game) && !rn2(3)) {
-                    await publishMonsterWake(monster);
-                    monster.msleeping = 0;
-                }
-            }
-        }
-    }
-    return result;
-}
-function specialRoomEntryMessage(room, roomno) {
-    switch (room.rtype) {
-        case ZOO: return "Welcome to David's treasure zoo!";
-        case SWAMP: return heroIsBlind(game) ? 'It feels rather humid down here.' : 'It looks rather muddy down here.';
-        case COURT: {
-            const throne = furniturePresent(room, THRONE);
-            return `You enter an opulent${throne ? ' throne' : ''} room!`;
-        }
-        case LEPREHALL: return 'You enter a leprechaun hall!';
-        case MORGUE: {
-            if (recorderLocalHour(game.datetime) === 0) {
-                const verb = heroLocomotion('Run');
-                return `${verb} away!  ${verb} away!`;
-            }
-            return 'You have an uncanny feeling...';
-        }
-        case BEEHIVE: return 'You enter a giant beehive!';
-        case COCKNEST: return 'You enter a disgusting nest!';
-        case ANTHOLE: return 'You enter an anthole!';
-        case BARRACKS: {
-            const soldiers = ['soldier', 'sergeant', 'lieutenant', 'captain'].map(name => MONSTER_NAME.indexOf(name));
-            const occupied = game.level?.monsters.some(monster => !monster.dead && monster.mhp > 0
-                && soldiers.includes(monster.mnum)
-                && roomsAt(game.level, monster.mx, monster.my).includes(roomno));
-            return occupied ? 'You enter a military barracks!' : 'You enter an abandoned barracks.';
-        }
-        default: return null;
-    }
-}
-// C hack.c:furniture_present() scans the interior bounds, then checks the
-// actual shape. Rectangular courts include furniture in their subrooms.
-function furniturePresent(room, furniture) {
-    const level = game.level;
-    if (!level)
-        return false;
-    for (let y = room.ly; y <= room.hy; y++) {
-        for (let x = room.lx; x <= room.hx; x++) {
-            if (level.at(x, y)?.typ === furniture && insideRoom(level, room, x, y))
-                return true;
-        }
-    }
-    return false;
 }
 const MS_HUMANOID = 25;
 const M1_NOLIMBS = 0x00006000;
@@ -1622,6 +1483,8 @@ function clearNoChargeObject(keeper, object, state) {
 }
 // C shk.c setpaid(): either you paid or left the shop or the shopkeeper
 // died.  All pending transactions are settled.
+// C shk.c:clear_unpaid() walks each object list and clears the unpaid bit
+// per object; the loops below inline it with clearUnpaidObject().
 export function setPaidShopkeeper(keeper, state = game) {
     requireLiveGame(state);
     for (const object of state.inventory || [])
@@ -1770,7 +1633,9 @@ export async function makeShopkeeperHappy(monster, { state = game, silentKops = 
     }
     await makeShoppersHappy({ state, silentKops });
 }
-// C shk.c:make_happy_shoppers()/kops_gone(), mon.c:pacify_guards().
+// C shk.c:make_happy_shoppers()/kops_gone(), mon.c:pacify_guards(); its
+// iter_mons callback mon.c:pacify_guard() is the watch loop below, and the
+// angry-keeper test is mon.c:angry_shk_exists() inlined.
 export async function makeShoppersHappy({ state = game, silentKops = false } = {}) {
     requireShopGame(state);
     if (state.level.monsters.some(monster => monster.isshk && !monster.dead
@@ -1794,6 +1659,8 @@ export async function makeShoppersHappy({ state = game, silentKops = false } = {
     }
 }
 // C shk.c hot_pursuit(): the shared anger transaction for unpaid debts.
+// C shk.c:clear_no_charge_pets(): the pet-inventory pass of the same
+// networking sweep is inlined below.
 export function hotPursuitShopkeeper(monster, state = game) {
     if (!monster?.isshk)
         return;
@@ -2703,6 +2570,8 @@ export async function reportShopFinances() {
 function shopDebt(keeper) {
     return addUpBill(keeper) + (keeper.eshk.debit ?? 0);
 }
+// C shk.c:paybill(): after dying or quitting, shopkeepers on the level
+// inherit the hero's possessions, prioritized by residency and debt.
 export async function settleShopkeepersOnExit(outcome, { silent = false, publish = plineWithContinuation, random = rn2 } = {}) {
     if (outcome === 'escaped')
         return false;
@@ -2779,6 +2648,8 @@ function* exitShopkeepers() {
         yield keeper;
     }
 }
+// C shk.c:inherits(): one shopkeeper looks at the dead hero's corpse and
+// takes the inventory, the owed gold, or nothing at all.
 async function inheritHeroInventory(keeper, count, options) {
     const { croaked, silent, publish, random } = options;
     const shop = keeper.eshk;
@@ -2838,6 +2709,8 @@ async function inheritHeroInventory(keeper, count, options) {
     }
     return completeShopSettlement(keeper, taken);
 }
+// C shk.c:rouse_shk() wakes the keeper, then home_shk() returns it to the
+// shop if it has wandered.
 async function returnShopkeeperHome(keeper) {
     requireShopGame(game);
     if (monsterIsHelpless(keeper)) {
@@ -2848,6 +2721,8 @@ async function returnShopkeeperHome(keeper) {
     if (!shopkeeperInOwnShop(keeper))
         await homeShopkeeper(keeper, game);
 }
+// C shk.c:set_repo_loc(): where the repossessed inventory will be dropped
+// after disclosure; the first shopkeeper to claim it wins.
 function completeShopSettlement(keeper, taken) {
     setPaidShopkeeper(keeper);
     if (taken && !game._shopRepossession?.shopkeeper) {
@@ -2876,6 +2751,8 @@ function shopkeeperIsLocal(keeper) {
     const heroLevel = game.u.uz;
     return !!heroLevel && level.dnum === heroLevel.dnum && level.dlevel === heroLevel.dlevel;
 }
+// C shk.c:shk_names_obj(): the shopkeeper names what was bought or sold,
+// partly identifying ordinary merchandise in the process.
 export async function nameShopTransaction(keeper, object, describe, { publish, state }) {
     let wasUnknown = !object.dknown;
     observeObject(object, state);
@@ -2894,9 +2771,12 @@ export async function nameShopTransaction(keeper, object, describe, { publish, s
         await publish(`You ${describe(name)}`);
     }
 }
+// C shk.c:shop_object(): chatting while standing on shop goods has the
+// keeper quote their prices instead of other conversation.
 export async function quoteShopGoods() {
     if (heroIsBlind() || heroIsDeaf())
         return false;
+    // C in_rooms()/shop_keeper() inlined: costlySpot() holds the resident.
     const spot = costlySpot(game.u.ux, game.u.uy);
     if (!spot || !spot.resident.mpeaceful || shopkeeperIsMuted(spot.resident))
         return false;
@@ -3445,6 +3325,8 @@ export async function minimumShopPurchase(resident, state = game) {
 }
 // Contents share one entry for their outermost container. Used portions stay
 // separate, so they can be paid before buying the remaining contained goods.
+// C shk.c:make_itemized_bill(): the alternate bill hiding container
+// contents behind one entry, split by used-up portion.
 // C shk.c:sortbill_cmp().
 // C shk.c:bp_to_obj().
 export async function itemizedShopBill(resident, state = game) {
@@ -3489,6 +3371,8 @@ export async function itemizedShopBill(resident, state = game) {
     return bill.sort((left, right) => Number(right.kind === 'used') - Number(left.kind === 'used')
         || right.price - left.price || left.billIndex - right.billIndex);
 }
+// C shk.c:buy_container(): pay for a container and its contents together;
+// partly used stacks are rejected before the group price is checked.
 export async function buyShopBillItem(resident, item, state = game, { itemize = false } = {}) {
     if (!hasShopBill(resident))
         return 'stop';
@@ -3523,6 +3407,7 @@ export async function buyShopBillItem(resident, item, state = game, { itemize = 
     }
     const purchases = container ? containedPurchases(resident, item.object, state) : [item.object];
     for (const object of purchases) {
+        // C shk.c:bp_to_obj(): the bill entry's object, by o_id.
         const entry = resident.eshk.bill.find(candidate => candidate.bo_id === object.o_id);
         if (entry && item.kind !== 'used' && object.quan < entry.bquan) {
             await rejectPartlyUsedPurchase(resident, object, entry, state);
@@ -3768,6 +3653,8 @@ function removeBillEntry(resident, entry) {
 // C refs: shk.c:dopay(), rouse_shk(), menu_pick_pay_items(), pay(), and update_bill().
 // An empty bill takes a turn when the keeper can respond. A payment menu
 // takes no time until a debt or billed item is paid.
+// C shk.c:pay_billed_items(): the gold/credit checks and the per-item
+// purchase loop over the itemized bill are inlined in this command.
 export async function dopay() {
     setMulti(0);
     const stashedGold = hiddenGold(game, true) > 0;

@@ -1,9 +1,9 @@
 // mon.js — C ref: mon.c.
 import { adjalign } from './attrib.js';
-import { coord_desc, disturb_buried_zombies, fire_damage_chain, flooreffects_obj_meld, flooreffects_obj_nexto_xy, flooreffects_pudding_merge_message, is_mines_prize as is_mines_prize_real, is_soko_prize as is_soko_prize_real, may_passwall, obj_to_any, set_msg_xy, surface, um_dist, water_damage_chain as water_damage_chain_ml, wizdeadorgone } from './cmd.js';
+import { SetVoice, coord_desc, disturb_buried_zombies, fire_damage_chain, flooreffects_obj_meld, flooreffects_obj_nexto_xy, flooreffects_pudding_merge_message, is_mines_prize as is_mines_prize_real, is_soko_prize as is_soko_prize_real, may_passwall, obj_to_any, set_msg_xy, surface, um_dist, water_damage_chain as water_damage_chain_ml, wizdeadorgone } from './cmd.js';
 import { mwelded } from './wield.js';
 import { flooreffects } from './do.js';
-import { ALLOW_ALL, ALLOW_BARS, ALLOW_DIG, ALLOW_M, ALLOW_MDISP, ALLOW_ROCK, ALLOW_SANCT, ALLOW_SSM, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_WALL, ARTICLE_A, ARTICLE_NONE, ARTICLE_THE, ARTICLE_YOUR, BOLT_LIM, BUSTDOOR, COLNO, CORPSTAT_BURIED, CORPSTAT_FEMALE, CORPSTAT_INIT, CORPSTAT_MALE, CORPSTAT_NONE, CORPSTAT_SPE_VAL, DB_LAVA, DB_MOAT, DB_UNDER, DISMOUNT_GENERIC, DISPLACED, DRAWBRIDGE_UP, D_BROKEN, D_CLOSED, D_LOCKED, EXPL_FIERY, FIRE_RES, FLYING, FOUNTAIN, HATCH_EGG, HEADSTONE, INVIS, IRONBARS, IS_DOOR, IS_OBSTRUCTED, IS_TREE, IS_WATERWALL, In_endgame, Is_earthlevel, Is_juiblex_level, Is_rogue_level, Is_stronghold, Is_waterlevel, LAVAPOOL, LAVAWALL, LEVITATION, LOW_PM, LS_MONSTER, MAGICAL_BREATHING, HALLUC as MK_HALLUC, INVIS as MK_INVIS, TELEPAT as MK_TELEPAT, MOAT, MON_DETACH, MON_ENDGAME_FREE, MON_FLOOR, M_POISONGAS_BAD, M_POISONGAS_MINOR, M_POISONGAS_OK, NC_SHOW_MSG, NC_VIA_WAND_OR_SPELL, NEED_WEAPON, NOGARLIC, NOTONL, NO_WEAPON_WANTED, OPENDOOR, PLNMSG_GROWL, PLNMSG_HIDE_UNDER, POISON_RES, POOL, RLOC_NOMSG, ROOM, ROWNO, SHOPBASE, STONE, STONE_RES, STRAT_CLOSE, STRAT_WAITFORU, SUPPRESS_SADDLE, TAINT_AGE, TELEP_TRAP, TEMPLE, TRAPNUM, UNLOCKDOOR, Upolyd, WATER, W_AMUL, W_ARM, W_ARMG, W_ARMS, W_NONDIGGABLE, XKILL_NOMSG, engulfing_u, is_pit, ismnum, isok, u_at } from './const.js';
+import { ALLOW_ALL, ALLOW_BARS, ALLOW_DIG, ALLOW_M, ALLOW_MDISP, ALLOW_ROCK, ALLOW_SANCT, ALLOW_SSM, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_WALL, ARTICLE_A, ARTICLE_NONE, ARTICLE_THE, ARTICLE_YOUR, BOLT_LIM, BUSTDOOR, COLNO, CORPSTAT_BURIED, CORPSTAT_FEMALE, CORPSTAT_INIT, CORPSTAT_MALE, CORPSTAT_NONE, CORPSTAT_SPE_VAL, DB_LAVA, DB_MOAT, DB_UNDER, DISMOUNT_GENERIC, DISPLACED, DRAWBRIDGE_UP, D_BROKEN, D_CLOSED, D_LOCKED, EXPL_FIERY, FIRE_RES, FLYING, FOUNTAIN, HATCH_EGG, HEADSTONE, INVIS, IRONBARS, IS_DOOR, IS_OBSTRUCTED, IS_TREE, IS_WATERWALL, In_endgame, Is_earthlevel, Is_juiblex_level, Is_rogue_level, Is_stronghold, Is_waterlevel, LAVAPOOL, LAVAWALL, LEVITATION, LOW_PM, LS_MONSTER, MAGICAL_BREATHING, M_AP_MONSTER, M_AP_NOTHING, M_AP_TYPMASK, HALLUC as MK_HALLUC, INVIS as MK_INVIS, TELEPAT as MK_TELEPAT, MOAT, MON_DETACH, MON_ENDGAME_FREE, MON_FLOOR, M_POISONGAS_BAD, M_POISONGAS_MINOR, M_POISONGAS_OK, NC_SHOW_MSG, NC_VIA_WAND_OR_SPELL, NEED_WEAPON, NOGARLIC, NOTONL, NO_WEAPON_WANTED, OPENDOOR, PLNMSG_GROWL, PLNMSG_HIDE_UNDER, POISON_RES, POOL, RLOC_NOMSG, ROOM, ROWNO, SHOPBASE, STONE, STONE_RES, STRAT_CLOSE, STRAT_WAITFORU, SUPPRESS_SADDLE, TAINT_AGE, TELEP_TRAP, TEMPLE, TRAPNUM, UNLOCKDOOR, Upolyd, WATER, W_AMUL, W_ARM, W_ARMG, W_ARMS, W_NONDIGGABLE, XKILL_NOMSG, engulfing_u, is_pit, ismnum, isok, u_at } from './const.js';
 import { bury_an_obj, is_pick } from './dig.js';
 import { unpunish } from './read.js';
 import { Deaf as Deaf_live, GLYPHCLS_INVIS, canseemon, canspotmon, newsym, sensemon, swallowed, unmap_object } from './display.js';
@@ -37,6 +37,7 @@ import { AMULET_OF_STRANGULATION, BELL_OF_OPENING, BOULDER, CORPSE, EGG, GLOB_OF
 import { mpickobj } from './steal.js';
 import { pick_nasty } from './wizard.js';
 import { nxtobj, sobj_at } from './invent.js';
+import { sengr_at } from './engrave.js';
 import { neweshk } from './shknam.js';
 import { level_difficulty } from './dungeon.js';
 import { mungspaces, online2, upstart } from './hacklib.js';
@@ -47,7 +48,7 @@ import { discover_object as lifesave_discover_object, objdescr_is as objdescr_is
 import { The as The_rc, ansimpleoname, distant_name as distant_name_nc, doname as doname_nc, is_quest_artifact, makeplural, oname, quest_info, vtense, xname } from './objnam.js';
 import { OC_WEIGHT } from './oc_weight.generated.js';
 import { impossible as lifecycle_impossible } from './pline.js';
-import { PM_AIR_ELEMENTAL, PM_ASMODEUS, PM_BABY_PURPLE_WORM, PM_BALROG, PM_BARBARIAN, PM_BLACK_UNICORN, PM_BLACK_UNICORN as PM_BLACK_UNICORN_MC, PM_CAVEMAN, PM_CHICKATRICE, PM_COCKATRICE, PM_DISPATER, PM_FIRE_ELEMENTAL, PM_FLOATING_EYE, PM_GELATINOUS_CUBE, PM_GRAY_DRAGON, PM_GRAY_OOZE as PM_GRAY_OOZE_MK, PM_GRAY_UNICORN, PM_GREEN_SLIME, PM_GREMLIN as PM_GREMLIN_ML, PM_GRID_BUG, PM_HEZROU, PM_HORNED_DEVIL, PM_HUMAN_WEREJACKAL, PM_HUMAN_WERERAT, PM_HUMAN_WEREWOLF, PM_IRON_GOLEM as PM_IRON_GOLEM_ML, PM_JELLYFISH, PM_LONG_WORM, PM_MAIL_DAEMON, PM_MANES, PM_MINOTAUR, PM_NEANDERTHAL, PM_NURSE, PM_ORC, PM_ORCUS, PM_OWLBEAR, PM_PONY, PM_PURPLE_WORM as PM_PURPLE_WORM_MK, PM_PYROLISK, PM_ROTHE, PM_SALAMANDER, PM_SHRIEKER, PM_STEAM_VORTEX, PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VIOLET_FUNGUS, PM_VLAD_THE_IMPALER, PM_VROCK, PM_WATCHMAN, PM_WATCH_CAPTAIN, PM_WEREJACKAL, PM_WERERAT, PM_WEREWOLF, PM_WHITE_UNICORN, PM_WHITE_UNICORN as PM_WHITE_UNICORN_MC, PM_YEENOGHU, PM_YELLOW_DRAGON as PM_YELLOW_DRAGON_MC } from './pm.generated.js';
+import { PM_AIR_ELEMENTAL, PM_ASMODEUS, PM_BABY_PURPLE_WORM, PM_BALROG, PM_BARBARIAN, PM_BLACK_UNICORN, PM_BLACK_UNICORN as PM_BLACK_UNICORN_MC, PM_CAVEMAN, PM_CHICKATRICE, PM_COCKATRICE, PM_DISPATER, PM_DWARF, PM_ELF, PM_FIRE_ELEMENTAL, PM_FLOATING_EYE, PM_GELATINOUS_CUBE, PM_GIANT, PM_GNOME, PM_GRAY_DRAGON, PM_GRAY_OOZE as PM_GRAY_OOZE_MK, PM_GRAY_UNICORN, PM_GREEN_SLIME, PM_GREMLIN as PM_GREMLIN_ML, PM_GRID_BUG, PM_HEZROU, PM_HORNED_DEVIL, PM_HUMAN_WEREJACKAL, PM_HUMAN_WERERAT, PM_HUMAN_WEREWOLF, PM_IRON_GOLEM as PM_IRON_GOLEM_ML, PM_JELLYFISH, PM_KOBOLD, PM_LONG_WORM, PM_MAIL_DAEMON, PM_MANES, PM_MINOTAUR, PM_NEANDERTHAL, PM_NURSE, PM_ORC, PM_ORCUS, PM_OWLBEAR, PM_PONY, PM_PURPLE_WORM as PM_PURPLE_WORM_MK, PM_PYROLISK, PM_ROTHE, PM_SALAMANDER, PM_SHRIEKER, PM_STEAM_VORTEX, PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VIOLET_FUNGUS, PM_VLAD_THE_IMPALER, PM_VROCK, PM_WATCHMAN, PM_WATCH_CAPTAIN, PM_WEREJACKAL, PM_WERERAT, PM_WEREWOLF, PM_WHITE_UNICORN, PM_WHITE_UNICORN as PM_WHITE_UNICORN_MC, PM_YEENOGHU, PM_YELLOW_DRAGON as PM_YELLOW_DRAGON_MC } from './pm.generated.js';
 import { healup } from './potion.js';
 import { dryup as dryup_ml } from './fountain.js';
 import { in_your_sanctuary, newepri, p_coaligned } from './priest.js';
@@ -143,27 +144,29 @@ export function monnear(mon, x, y) {
     return distance < 3;
 }
 
-/** C mon.c undead_to_corpse — index values from pm.generated.js JS PM order */
+/* C ref: mon.c:415-460 undead_to_corpse — convert the monster index of an
+ * undead to its living counterpart.  PM_VAMPIRE_LORD is pm.generated.js's
+ * (3.7) spelling of v5's PM_VAMPIRE_LEADER; PM_VAMPIRE_MAGE is #if 0 in C. */
 export function undead_to_corpse(mndx) {
     switch (mndx | 0) {
-        case 239:
-        case 187: return 59; /* kobold z/m -> kobold */
-        case 242:
-        case 190: return 44; /* dwarf z/m -> dwarf */
-        case 240:
-        case 188: return 165; /* gnome z/m -> gnome */
-        case 241:
-        case 189: return 72; /* orc z/m -> orc */
-        case 243:
-        case 191: return 264; /* elf z/m -> elf */
-        case 226:
-        case 227:
-        case 244:
-        case 192: return PM_HUMAN; /* vamp/vamp-lord, hum z/m */
-        case 247:
-        case 194: return 169; /* giant z/m -> giant */
-        case 245:
-        case 193: return 174; /* ettin z/m -> ettin */
+        case PM_KOBOLD_ZOMBIE:
+        case PM_KOBOLD_MUMMY: return PM_KOBOLD;
+        case PM_DWARF_ZOMBIE:
+        case PM_DWARF_MUMMY: return PM_DWARF;
+        case PM_GNOME_ZOMBIE:
+        case PM_GNOME_MUMMY: return PM_GNOME;
+        case PM_ORC_ZOMBIE:
+        case PM_ORC_MUMMY: return PM_ORC;
+        case PM_ELF_ZOMBIE:
+        case PM_ELF_MUMMY: return PM_ELF;
+        case PM_VAMPIRE:
+        case PM_VAMPIRE_LORD:
+        case PM_HUMAN_ZOMBIE:
+        case PM_HUMAN_MUMMY: return PM_HUMAN;
+        case PM_GIANT_ZOMBIE:
+        case PM_GIANT_MUMMY: return PM_GIANT;
+        case PM_ETTIN_ZOMBIE:
+        case PM_ETTIN_MUMMY: return PM_ETTIN;
         default: return mndx | 0;
     }
 }
@@ -1901,8 +1904,10 @@ function plur(n) {
 const RIN_SLOW_DIGESTION = 193;
 
 export function set_ustuck(mtmp) {
-    /* C SET_BOTL(): the status line must be redrawn whenever the stuck
-     * monster changes, including when clearing an existing attachment. */
+    /* C mon.c:3423-3427 iflags.sanity_check/debug_fuzzer m_next2u() check
+     * only reports through impossible(); not ported (impossible-only).
+     * C mon.c:3429 disp.botl = TRUE: the status line must be redrawn whenever
+     * the stuck monster changes, including when clearing an attachment. */
     if (game.disp)
         game.disp.botl = 1;
     game.u.ustuck = mtmp;
@@ -2289,6 +2294,8 @@ function pick_animal() {
         }
         _animal_list_nc = list;
     }
+    if (!_animal_list_nc) /* C mon.c:4861 assert(ga.animal_list != 0) */
+        throw new Error('assertion failed: ga.animal_list != 0');
     let res = _animal_list_nc[rn2(_animal_list_nc.length)];
     /* rogue level should use monsters represented by uppercase letters only,
        but since chameleons aren't generated there we don't retry a lot */
@@ -2401,7 +2408,7 @@ async function select_newcham_form(mon) {
         mndx = pickvampshape(mon);
         break;
     case NON_PM: { /* ordinary — dragon-scale-driven form, no RNG */
-        /* C mon.c:5196-5204.  Was an empty branch: every EXISTING caller of
+        /* C mon.c:5197-5206.  Was an empty branch: every EXISTING caller of
          * this function arrives with mon.cham already set to a real
          * shapechanger index (PM_SANDESTIN/DOPPELGANGER/CHAMELEON/vampire
          * family), so `mon.cham === NON_PM` was unreachable here until
@@ -3855,12 +3862,12 @@ export async function normal_shape(mon) {
             mon.mcan = 1;
         newsym(mon.mx | 0, mon.my | 0);
     }
-    if (is_were(mon?.data) && !mons_is_human(mon.mnum | 0))
+    if (is_were(mon?.data) && (mon.data.mlet | 0) !== S_HUMAN)
         await new_were(mon);
-    const apType = (mon.m_ap_type | 0) & 7;
-    if (apType !== 0) {
+    const apType = (mon.m_ap_type | 0) & M_AP_TYPMASK;
+    if (apType !== M_AP_NOTHING) {
         if (!mon.meating) {
-            if (apType !== 3)
+            if (apType !== M_AP_MONSTER)
                 mon.msleeping = 1;
             seemimic(mon);
         } else {
@@ -4065,6 +4072,7 @@ async function peacefuls_respond(mtmp) {
 
         if (((mdata?.mflags1 | 0) & M1_HUMANOID_SM) || mon.isshk || mon.ispriest) {
             if (is_watch_sm(mdata)) {
+                SetVoice(mon, 0, 80, 0);
                 await pline("\"Halt!  You're under arrest!\"");
                 await angry_guards(!!Deaf);
             } else {
@@ -4148,7 +4156,7 @@ async function qst_guardians_respond() {
         }
     }
     if (got_mad && !_Hallucination_mk()) {
-        /* C questpgr.c pmname(q_guardian, NEUTRAL) — makemon_pmnames.json rows
+        /* C mon.c:4152 q_guardian->pmnames[NEUTRAL] — makemon_pmnames.json rows
          * are [male, female, neutral] in C's pmnames[] order; NEUTRAL is the
          * last entry and is the only one C uses here. */
         const nrow = MONS_PMNAMES_ROWS[q_guardian] || [];
@@ -4169,20 +4177,10 @@ export async function setmangry(mtmp, via_attack) {
     const STRAT_WAITMASK = STRAT_CLOSE | STRAT_WAITFORU;
     const Blind = _Blind_mk();
 
-    // sengr_at: check for Elbereth engraving at (x,y)
-    // C engrave.c:251 sengr_at(s, x, y, strict): not a headstone, already finished
-    function sengr_at(text, x, y, strict) {
-        const ep = _engr_map.get(`${x},${y}`);
-        if (!ep || (ep.engr_type | 0) === HEADSTONE || (ep.engr_time | 0) > (g.moves | 0))
-            return false;
-        const t = String(ep.text ?? '');
-        return strict ? t.toLowerCase() === text.toLowerCase() : t.toLowerCase().includes(text.toLowerCase());
-    }
-
-    // humanoid: check M1_HUMANOID flag
-    const M1_HUMANOID = 0x00020000;
+    // humanoid: C mondata.h humanoid(ptr) = mflags1 & M1_HUMANOID (the
+    // file's monflag.h constant M1_HUMANOID_SM, shared with peacefuls_respond)
     function humanoid(ptr) {
-        return ((ptr.mflags1 | 0) & M1_HUMANOID) !== 0;
+        return ((ptr.mflags1 | 0) & M1_HUMANOID_SM) !== 0;
     }
 
     if (via_attack && sengr_at("Elbereth", u.ux, u.uy, true)

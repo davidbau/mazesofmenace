@@ -395,9 +395,10 @@ export async function monster_detect(otmp, mclass) {
         if ((mtmp.mhp | 0) < 1 || (mtmp.isgd && !mtmp.mx))
             continue;
         /* C detect.c:833-836: '~' detects long worms as well as their tails. */
+        const S_WORM_TAIL = 59; /* defsym.h */
         if (!mclass || (mtmp.data && mtmp.data.mlet === mclass)
             || ((mtmp.mnum ?? mtmp.mndx ?? mtmp.data?.pmidx) === PM_LONG_WORM
-                && mclass === 59 /* S_WORM_TAIL, defsym.h */))
+                && mclass === S_WORM_TAIL))
             map_monst(mtmp, true);
         /* C detect.c:838-842 — a CURSED detector wakes the helpless. */
         if (otmp && otmp.cursed && (mtmp.msleeping || mtmp.mfrozen
@@ -4316,10 +4317,14 @@ const GOLD_PIECE_OTYP_DET = 438;
 async function object_detect(detector, oclass) {
     const g = game;
     const u = g.u;
+    if (oclass < 0 || oclass >= 18 /* MAXOCLASSES */) {
+        /* C detect.c:619 reports an impossible class and resets class to 0
+         * (after impossible()) and continues into normal detection. */
+        oclass = 0;
+    }
     if (oclass) {
-        /* C detect.c:619 reports an impossible class and returns without
-         * mapping; keep that nonfatal behavior for future classed callers. */
-        return 1;
+        const { _cb_object_detect_class } = await import('./cmd.js');
+        return _cb_object_detect_class(oclass);
     }
     const is_cursed = !!(detector && detector.cursed);
     const do_dknown = !!(detector

@@ -12,7 +12,6 @@ import { consumeHallucinatedMenuObjectGlyph, flush_screen } from './display.js';
 import { displayMessageWindow } from './tty_topline.js';
 import { pline, plineWithContinuation } from './pline.js';
 import { touchArtifactByHero } from './artifacts.js';
-import { loseHeroHp } from './hero_damage.js';
 import { triggerChestTrap } from './chest_trap.js';
 import { nomul } from './hack.js';
 import { game } from './gstate.js';
@@ -42,13 +41,14 @@ import { paranoidYesNoQuit, promptChoice, tty_yn_function } from './query.js';
 import { bypassObjectList, clearBypasses, nextUnbypassedObject } from './worn.js';
 import { touchPetrifyingCorpse } from './stoning.js';
 import { addPickedInventoryObject, pickupInventoryMessage } from './pickup.js';
-import { objectWeight } from './weight.js';
 import { heroHandName } from './body_parts.js';
 import { heroIsBlind } from './senses.js';
 import { addShopObjectToBill, currentShopResident, costlySpot, stolenValue, sellHeroDroppedObject, setSellDisposition, warnAboutRemovedPick, SELL_DELIBERATE, SELL_DONTSELL, SELL_NORMAL, deleteObject, } from './shk.js';
 import { currency } from './currency.js';
 import { restoreMenuUnderlay, showChoiceWindow, showDisclosureOverlay, showMultiSelectWindow, showTextWindow, } from './windows.js';
 import { GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_SUGGEST, MENU_COMBINATION, MENU_FULL, MENU_PARTIAL, MENU_TRADITIONAL, MENU_ITEMFLAGS_SKIPINVERT, PARANOID_AUTOALL, PARANOID_CONFIRM, W_ACCESSORY, W_ARMOR, SORTLOOT_INVLET, OBJECT_TIMER_KIND } from './const.js';
+import { loseHeroHp } from './hack.js';
+import { objectWeight } from './mkobj.js';
 export const CONTAINER_TYPES = new Set([
     LARGE_BOX, CHEST, ICE_BOX, SACK, BAG_OF_HOLDING, OILSKIN_SACK, BAG_OF_TRICKS,
 ]);
@@ -146,6 +146,8 @@ async function categoryChoices(objects) {
                 value: { matches: object => bucCategory(object) === category, filter: 'buc' },
             });
     }
+    // C pickup.c:count_justpicked()/find_justpicked(): the marked stacks
+    // of the previous pickup.
     const justPicked = objects.filter(object => object.pickup_prev);
     const onePicked = justPicked.length === 1 ? justPicked[0] : null;
     if (onePicked) {
@@ -364,6 +366,8 @@ export async function loseMagicBagItem(object, held, state = game, silent = fals
     await deleteObject(object, state);
     return loss;
 }
+// C pickup.c:boh_loss(): a cursed bag of holding sometimes tosses a
+// carried item; pickup.c:is_boh_item_gone() is the 1-in-13 roll.
 async function loseCursedBagContents(container, state) {
     if (container.otyp !== BAG_OF_HOLDING || !container.cursed
         || !container.contents?.length)
@@ -682,6 +686,8 @@ async function lootTraditionally(container, putIn, resetPicked) {
         clearBypasses();
     }
 }
+// C pickup.c:menu_loot() with put_in=FALSE: category menu, then object
+// menu, then one transfer per selected stack.
 async function takeSelectedObjects(container, resetPicked, retry = null) {
     game._pickupEncumbrance = 0;
     if (!container.contents?.length)
@@ -718,6 +724,8 @@ async function takeSelectedObjects(container, resetPicked, retry = null) {
     return { results, spentTime: categories.autoSelect
             ? results.some(result => result.moved) : selected.length > 0 };
 }
+// C pickup.c:menu_loot() with put_in=TRUE (and the stash-one path, whose
+// getobj filter is pickup.c:stash_ok() inlined below).
 async function putSelectedObjects(container, stashOne = false, retry = null) {
     const menuStyle = game.flags.menu_style ?? MENU_FULL;
     if (!stashOne && menuStyle === MENU_TRADITIONAL && !retry)
@@ -786,6 +794,8 @@ function actionKeys() {
         ? { takeOut: 'a', putIn: 'b', both: 'c', reverse: 'd', stash: 'e' }
         : { takeOut: 'o', putIn: 'i', both: 'b', reverse: 'r', stash: 's' };
 }
+// C pickup.c:in_or_out_menu(): the "Do what with <container>?" menu with
+// look/out/in/both/reversed/stash/next/quit choices.
 async function chooseAction(container, usedTime, moreContainers) {
     const keys = actionKeys();
     const hasContents = !!container.contents?.length;
@@ -844,6 +854,8 @@ export async function useContainer(container, { held = false, moreContainers = f
         setSellDisposition(SELL_NORMAL);
     }
 }
+// C pickup.c:loot_mon()/loot_cont() driver; the '?' help text is
+// pickup.c:explain_container_prompt() inlined below.
 async function useContainerActions(container, { held = false, moreContainers = false, underlay = null, resetJustPicked = false, } = {}) {
     if (heroHasNoHands(game)) {
         await pline('You have no hands!');

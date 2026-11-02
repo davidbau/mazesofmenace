@@ -23,7 +23,7 @@ export function reassign() {
         }
     }
     for (obj = game.invent, i = 0; obj; obj = obj.nobj, i++)
-        obj.invlet = (i < 26) ? (0x61 + i) : (i < 52) ? (0x41 + i - 26) : NOINVSYM;
+        obj.invlet = (i < 26) ? ('a'.charCodeAt(0) + i) : (i < 52) ? ('A'.charCodeAt(0) + i - 26) : NOINVSYM;
     if (goldobj) {
         goldobj.invlet = GOLD_SYM;
         goldobj.nobj = game.invent;

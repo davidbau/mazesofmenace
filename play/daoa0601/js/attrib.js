@@ -4,7 +4,6 @@ import { formatFeltMessage } from './hero_speech.js';
 import { game, requirePlayingGame } from './gstate.js';
 import { artifactById } from './artifacts.js';
 import { plineWithContinuation } from './pline.js';
-import { loseHeroHp } from './hero_damage.js';
 import { reportHeroEncumbrance } from './encumbrance.js';
 import { MONSTER_NAME, MONSTER_SYMBOL } from './monster_data.js';
 import { rn2, rnd } from './rng.js';
@@ -12,6 +11,7 @@ import { propertyIsActive } from './properties.js';
 import { formMaximumStrength } from './polyself.js';
 import { DUNCE_CAP, GAUNTLETS_OF_POWER } from './object_data.js';
 import { A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, LUCKMAX, LUCKMIN, Upolyd, } from './const.js';
+import { loseHeroHp } from './hack.js';
 const ATTRIBUTE_INDICES = [0, 1, 2, 3, 4, 5];
 const STR25 = 125;
 const MAX_EXERCISE = 50;
@@ -315,26 +315,7 @@ const EXERCISE_EXPLANATIONS = {
     [A_DEX]: ['working on your reflexes', 'working on reflexes lately'],
     [A_CON]: ['leading a healthy life-style', 'watching your health'],
 };
-// C potion.c:peffect_restore_ability(). This restores the base directly,
-// bypassing fixed abilities while preserving temporary penalties and exercise.
-export function restoreHeroBaseAttributes({ all = false, state = game } = {}) {
-    requirePlayingGame(state);
-    const hero = state.u;
-    const start = rn2(A_MAX);
-    for (let offset = 0; offset < A_MAX; offset++) {
-        const attribute = (start + offset) % A_MAX;
-        requireAttributeIndex(attribute);
-        if (hero.acurr.a[attribute] >= hero.amax.a[attribute])
-            continue;
-        hero.acurr.a[attribute] = hero.amax.a[attribute];
-        state.context.botl = true;
-        if (hero._exercise && hero._exercise[attribute] < 0)
-            hero._exercise[attribute] = 0;
-        if (!all)
-            break;
-    }
-}
-function requireAttributeIndex(attribute) {
+export function requireAttributeIndex(attribute) {
     if (!Number.isInteger(attribute) || attribute < A_STR || attribute > A_CHA)
         throw new RangeError(`Unknown hero attribute ${attribute}`);
 }

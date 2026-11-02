@@ -36,14 +36,13 @@ import { eatHeroBrain, eatMonsterBrain, spendHeroNutrition } from './eat.js';
 import { game, requireInitializedGame, requireLiveGame, requirePlayingGame } from './gstate.js';
 import { cureHeroSickness, heroIsSick } from './hero_illness.js';
 import { woundHeroLegs } from './hero_legs.js';
-import { makeConfused, makeStunned } from './hero_mental_status.js';
-import { heroFormSticks, heroHatesSilver, heroSpecies } from './hero_species.js';
+import { makeConfused, makeStunned } from './potion.js';
+import { heroFormSticks, heroHatesSilver, heroSpecies } from './polyself.js';
 import { finishHeroMonsterKillOutcome } from './hero_monster_death.js';
 import { formatFeltMessage, publishHeardMessage } from './hero_speech.js';
 import { heroIsUnconscious, putHeroToSleep } from './hero_sleep.js';
-import { heroHasRemovableSpeed, slowHero } from './hero_speed.js';
+import { heroHasRemovableSpeed, slowHero } from './mhitu.js';
 import { retouchEquipment } from './hero_retouch.js';
-import { damageHeroFromMonster } from './hero_damage.js';
 import { igniteItems } from './light.js';
 import { applyMonsterGolemEffects, changeMonsterForm, finishMonsterKilled, grantMonsterCorpseIntrinsic, grantMonsterIntrinsic, healMonster, paralyzeMonster, removeMonsterFromGame, resolveMonsterCorpseChance, finishMonsterPetrification, monsterSubject, turnGolemToStone, } from './mon.js';
 import { wornMonsterLifeSaver } from './mondeath.js';
@@ -84,7 +83,7 @@ import { poisonHero } from './poison.js';
 import { drainHeroWeaponSkills } from './skills.js';
 import { loseHeroSpellMemory } from './spell.js';
 import { heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
-import { makeBlinded } from './sight_change.js';
+import { makeBlinded } from './potion.js';
 import { burnAwayHeroSlime } from './slime.js';
 import { contactIsProtected, formCanBecomeStoneGolem, touchPetrifies } from './stoning.js';
 import { setHeroGrip } from './hero_grip.js';
@@ -113,6 +112,7 @@ import { artifactDamageBonus, artifactEmitsLight, artifactStrikesShade } from '.
 import { P_AXE, W_ARMG, WT_IRON_BALL_INCR } from './const.js';
 import { CREAM_PIE, GAUNTLETS_OF_POWER, HEAVY_IRON_BALL, OBJECT_LARGE_DAMAGE, OBJECT_SMALL_DAMAGE, OBJECT_SUBTYPE, OBJECT_WEIGHT, } from './object_data.js';
 import { monsterHatesBlessings, monsterHatesLight, monsterHatesSilver, monsterIsWooden, monsterSpeciesHatesSilver, } from './monster_data.js';
+import { damageHeroFromMonster } from './mhitu.js';
 // C obj.h/permonst: completelyburns() — bodies that fire destroys outright.
 function completelyBurns(monster) {
     const species = MONSTER_NAME[monster.mnum];

@@ -39,17 +39,17 @@ import { breaks } from './dothrow.js';
 import { find_drawbridge } from './dbridge.js';
 import { destroy_drawbridge } from './dig.js';
 import { nomul, stop_occupation } from './allmain.js';
-import { monstunseesu, seemimic as seemimic_real } from './mhitm.js';
+import { monstunseesu, seemimic } from './mhitm.js';
 import { resists_magm } from './mondata.js';
 import { monstseesu as monstseesu_real } from './mcastu.js';
 import { discover_object } from './o_init.js';
-import { BOLT_LIM, M_AP_NOTHING, ANTIMAGIC, HALF_SPDAM, isok, IS_DOOR, SDOOR, DRAWBRIDGE_UP, D_LOCKED, D_CLOSED, D_BROKEN, SHOPBASE, POOL, OBJ_FLOOR, KILLED_BY_AN, TELL, TEMPLE, RLOC_MSG, NOTELL } from './const.js';
+import { QBUFSZ, BZ_OFS_AD, BOLT_LIM, M_AP_NOTHING, ANTIMAGIC, HALF_SPDAM, isok, IS_DOOR, SDOOR, DRAWBRIDGE_UP, D_LOCKED, D_CLOSED, D_BROKEN, SHOPBASE, POOL, OBJ_FLOOR, KILLED_BY_AN, TELL, TEMPLE, RLOC_MSG, NOTELL } from './const.js';
 import { doorlock } from './lock.js';
 import { unknow_object } from './mklev.js';
 import { add_damage } from './shk.js';
 import { in_rooms } from './hack.js';
 import { tele, tele_restrict, rloc } from './teleport.js';
-import { mreadmsg, precheck as precheck_shared } from './makemon.js';
+import { mreadmsg, precheck } from './makemon.js';
 import { monkilled_trap } from './trap.js';
 import { m_useup } from './mthrowu.js';
 import { drop_boulder_on_monster, drop_boulder_on_player } from './read.js';
@@ -62,6 +62,7 @@ import { ureflects as ureflects_mm } from './makemon.js'; // relocate-fns
 import { _mon_reflects_zap as mon_reflects_real } from './zap.js'; // relocate-fns
 import { MON_MCOLOR, _display_hallucinating } from './display.js'; // relocate-fns
 import { CLR_BRIGHT_GREEN, CLR_GREEN } from './terminal.js'; // relocate-fns
+import { PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER } from './pm.generated.js';
 
 /* C ref: muse.c:1272-1290 — the offensive MUSE_* values, verbatim.  Declared
  * again here (rather than imported) because js/makemon.js keeps its copies
@@ -73,7 +74,7 @@ const MUSE_WAN_DEATH = 1, MUSE_WAN_SLEEP = 2, MUSE_WAN_FIRE = 3,
       MUSE_WAN_COLD = 4, MUSE_WAN_LIGHTNING = 5, MUSE_WAN_MAGIC_MISSILE = 6;
 const MUSE_FROST_HORN = 12, MUSE_FIRE_HORN = 13;
 const FROST_HORN = 250;
-const AD_MAGM = 1, AD_FIRE = 2, AD_COLD = 3;
+const AD_FIRE = 2, AD_COLD = 3;
 const MUSE_POT_PARALYSIS = 9;
 const MUSE_POT_BLINDNESS = 10;
 const MUSE_POT_CONFUSION = 11;
@@ -88,6 +89,7 @@ const WAN_STRIKING = 417;
 const WAN_TELEPORTATION = 424;
 const WAN_UNDEAD_TURNING = 421;
 const WAN_MAGIC_MISSILE = 429;
+const WAN_OPENING = 425, WAN_LOCKING = 426; /* objects.h; js/zap.js:340-341 */
 /* objclass.h oclass numbers: POTION_CLASS 8, WAND_CLASS 11 (objects.h:96
  * marks the wand GENERIC entry "[11]"; 10 is SPBOOK_CLASS). */
 const POTION_CLASS = 8;
@@ -100,6 +102,9 @@ const WAND_BACKFIRE_CHANCE = 100;
 /* C ref: monst.h:77 M_SEEN_MAGR — the "hero resists magic missile / AD_MAGM"
  * bit of mtmp->seen_resistance. */
 const M_SEEN_MAGR = 0x0001;
+
+/* C ref: monflag.h M2_UNDEAD. */
+const M2_UNDEAD = 0x00000002;
 
 /* C ref: youprop.h — hero properties this file tests. */
 function propOn(id) {
@@ -125,19 +130,10 @@ function hit(str, mtmp, force) {
     return zap_hit_message(str, mtmp, force);
 }
 
-/* C ref: muse.c:58-160 precheck(mon, obj) — pre-use hazards.  For a wand
- * the only one is the cursed-wand backfire; the POTION_CLASS arms (milky /
- * smoky potion occupants) live in the shared port, guarded by the caller, which
- * only reaches precheck for oclass != POTION_CLASS. */
-async function precheck(mon, obj) {
-    if (!obj)
-        return 0;
-    /* C muse.c:1147 — `obj->cursed && !rn2(WAND_BACKFIRE_CHANCE)`: the rn2 is
-     * only drawn for a CURSED wand, so an uncursed one costs nothing.  The
-     * draw is kept because C makes it unconditionally for a cursed wand. */
-    // C v5 muse.c:131-160: consume the wand before applying blast damage.
-    return precheck_shared(mon, obj);
-}
+/* C ref: muse.c:58-160 precheck(mon, obj) — pre-use hazards.  ONE port,
+ * js/makemon.js precheck (imported above): the POTION_CLASS occupant arms and
+ * the muse.c:131-132 cursed-wand backfire `obj->cursed &&
+ * !rn2(WAND_BACKFIRE_CHANCE)` (the rn2 is only drawn for a CURSED wand). */
 
 /* C ref: do_name.c:1220-1248 monverbself() */
 function _monverbself(mtmp, verb, othertext) {
@@ -192,14 +188,14 @@ export async function mplayhorn(mtmp, otmp, self) {
     } else if (self) {
         observe_object(otmp);
         let objnamp = xname(otmp);
-        if (objnamp.length >= 128) /* QBUFSZ */
+        if (objnamp.length >= QBUFSZ)
             objnamp = simpleonames(otmp);
         pline(`${_monverbself(mtmp, 'play', `a ${objnamp} directed at`)}!`);
         makeknown(otmp.otyp | 0);
     } else {
         observe_object(otmp);
         let objnamp = xname(otmp);
-        if (objnamp.length >= 128) /* QBUFSZ */
+        if (objnamp.length >= QBUFSZ)
             objnamp = simpleonames(otmp);
         pline(`${Monnam(mtmp)} plays ${an(objnamp)} directed at you!`);
         makeknown(otmp.otyp | 0);
@@ -232,7 +228,8 @@ async function mbhitm(mtmp, otmp) {
         if (hits_you) {
             if (Antimagic()) {
                 monstseesu(M_SEEN_MAGR);
-                shieldeff(u.ux | 0, u.uy | 0); /* C muse.c:1613 */
+                shieldeff(u.ux | 0, u.uy | 0); /* C muse.c:1614 */
+                Soundeffect(se_boing, 40);
                 pline("Boing!");
                 learnit = true;
             } else if (rnd(20) < 10 + (u.uac | 0)
@@ -253,7 +250,8 @@ async function mbhitm(mtmp, otmp) {
             await stop_occupation();
             nomul(0);
         } else if (resists_magm(mtmp)) {
-            shieldeff(mtmp.mx | 0, mtmp.my | 0); /* C muse.c:1630 */
+            shieldeff(mtmp.mx | 0, mtmp.my | 0); /* C muse.c:1633 */
+            Soundeffect(se_boing, 40);
             pline("Boing!");
             learnit = true;
         } else if (rnd(20) < 10 + find_mac(mtmp)) {
@@ -300,8 +298,7 @@ async function mbhitm(mtmp, otmp) {
 
             if (await unturn_dead(mtmp)) /* affects mtmp's invent, not mtmp */
                 wake = true;
-            if (((mtmp.data.mflags2 | 0) & 0x2 /* M2_UNDEAD */)
-                || [226, 227, 228].includes(mtmp.cham | 0)) {
+            if (is_undead(mtmp.data) || is_vampshifter(mtmp)) {
                 wake = reveal_invis = true;
                 /* context.bypasses=True: if resist() happens to be fatal,
                    make_corpse() will set obj->bypass on the new corpse */
@@ -385,9 +382,12 @@ async function mbhit(mon, range, fhitm, fhito, obj) {
             && find_drawbridge(dbx, dby)) {
             await destroy_drawbridge(dbx.value, dby.value);
         } else if (IS_DOOR(ltyp) || ltyp === SDOOR) {
-            /* C muse.c:1783-1800 — monsters never zap opening/locking magic, so
-             * WAN_STRIKING is the only case that does anything here. */
-            if (otyp === WAN_STRIKING) {
+            /* C muse.c:1786-1800 — "monsters don't use opening or locking
+             * magic at present, but keep these as placeholders". */
+            switch (otyp) {
+            case WAN_OPENING:
+            case WAN_LOCKING:
+            case WAN_STRIKING:
                 if (await doorlock(obj, game.bhitpos.x, game.bhitpos.y)) {
                     if (game.zap_oseen)
                         makeknown(otyp);
@@ -397,6 +397,7 @@ async function mbhit(mon, range, fhitm, fhito, obj) {
                         && in_rooms(game.bhitpos.x, game.bhitpos.y, SHOPBASE).length)
                         add_damage(game.bhitpos.x, game.bhitpos.y, 0);
                 }
+                break;
             }
         }
         if (!ZAP_POS(ltyp)
@@ -444,12 +445,11 @@ export async function use_offensive(mtmp) {
         game.gc_current_wand = otmp;
         (game.gb ||= {}).buzzer = mtmp;
         {
-            const ofs = Math.abs((otmp.otyp | 0) - WAN_MAGIC_MISSILE) % 10;
             const nd = ((otmp.otyp | 0) === WAN_MAGIC_MISSILE) ? 2 : 6;
             const forceMiss = !mtmp.mwandexp;
             /* C muse.c:1815-1818,1834-1849: both buzz() and
              * buzz_force_miss() pass sayhit=TRUE, saymiss=FALSE. */
-            await dobuzz(-30 - ofs, nd, mtmp.mx | 0, mtmp.my | 0,
+            await dobuzz(BZ_M_WAND(BZ_OFS_WAN(otmp.otyp | 0)), nd, mtmp.mx | 0, mtmp.my | 0,
                          sgn((mtmp.mux | 0) - (mtmp.mx | 0)),
                          sgn((mtmp.muy | 0) - (mtmp.my | 0)), true, false, forceMiss);
         }
@@ -467,9 +467,8 @@ export async function use_offensive(mtmp) {
         (game.gb ||= {}).buzzer = mtmp;
         game.gc_current_wand = otmp; /* needed by zhitu() (muse.c:1874) */
         {
-            const ofs = Math.abs(((otmp.otyp | 0) === FROST_HORN ? AD_COLD : AD_FIRE) - AD_MAGM) % 10;
             const nd = rn1(6, 6);
-            await dobuzz(-30 - ofs, nd, mtmp.mx | 0, mtmp.my | 0,
+            await dobuzz(BZ_M_WAND(BZ_OFS_AD((otmp.otyp | 0) === FROST_HORN ? AD_COLD : AD_FIRE)), nd, mtmp.mx | 0, mtmp.my | 0,
                          sgn((mtmp.mux | 0) - (mtmp.mx | 0)),
                          sgn((mtmp.muy | 0) - (mtmp.my | 0)), true, false, !mtmp.mwandexp);
         }
@@ -588,13 +587,23 @@ function sgn(n) { return n > 0 ? 1 : n < 0 ? -1 : 0; }
 
 function ZAP_POS(typ) { return (typ | 0) >= POOL; }
 
-/* C ref: mon.c:4397-4416 seemimic(mtmp) — a mimic that acts drops its
- * disguise.  RNG-free.  No shared port exists in js/, so it is implemented
- * here; the light-blocking arm needs does_block()/unblock_point(), which are
- * a KNOWN GAP (vision only, RNG-free). */
-function seemimic(mtmp) {
-    return seemimic_real(mtmp);
+/* C ref: hack.h:1477 BZ_OFS_WAN(otyp), hack.h:1490 BZ_M_WAND(bztyp) — the
+ * monster-wand buzz type, -39..-30.  BZ_OFS_AD is js/const.js's. */
+function BZ_OFS_WAN(otyp) { return Math.abs(otyp - WAN_MAGIC_MISSILE) % 10; }
+function BZ_M_WAND(bztyp) { return -30 - bztyp; }
+
+/* C ref: mondata.h:95 is_undead(ptr); monst.h:217 is_vampshifter(mon). */
+function is_undead(ptr) { return ((ptr.mflags2 | 0) & M2_UNDEAD) !== 0; }
+function is_vampshifter(mon) {
+    return mon.cham === PM_VAMPIRE || mon.cham === PM_VAMPIRE_LORD
+           || mon.cham === PM_VLAD_THE_IMPALER;
 }
+
+/* C ref: sndprocs.h Soundeffect(seid, vol) — audio only; a no-op in the tty
+ * build (no USER_SOUNDS), no state, no RNG.  se_boing is its enum tag. */
+const se_boing = 'se_boing';
+function Soundeffect(seid, vol) { /* sndprocs.h:272 no-op without USER_SOUNDS */ }
+
 
 /* C ref: mondata.c:1552-1568 monstseesu(seenres) — every monster that can see
  * the hero records that the hero RESISTED this damage type, so it stops
@@ -604,9 +613,9 @@ function monstseesu(seenres) {
     return monstseesu_real(seenres);
 }
 
-export function mon_reflects(mon, msg) { return mon_reflects_real(mon, msg); }
-
-export function ureflects(fmt, arg1) { return ureflects_mm(fmt, arg1); }
+/* C muse.c:2797 mon_reflects / muse.c:2836 ureflects — ONE body each
+ * (js/zap.js _mon_reflects_zap, js/makemon.js ureflects), re-exported. */
+export { mon_reflects_real as mon_reflects, ureflects_mm as ureflects };
 
 /* C muse.c:3269 green_mon(): mons[].mcolor is CLR_GREEN or CLR_BRIGHT_GREEN.
  * permonst templates carry no mcolor, so read the MON_MCOLOR table by mndx. */

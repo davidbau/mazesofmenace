@@ -25,7 +25,7 @@ import { In_hell } from './dungeon.js';
 import { restore_cham, hide_monst, hideunder } from './mon.js';
 import { restore_luadata, l_nhcore_call, NHCORE_RESTORE_OLD_GAME } from './nhlua.js';
 import { regions_rest_snapshot } from './region.js';
-import { restore_timers_level, run_timers } from './timeout.js';
+import { restore_timer_order, restore_timers_level, run_timers } from './timeout.js';
 import { mon_catchup_elapsed_time } from './dog.js';
 import { stored_level, saved_state_for, savefile_name, NOT_SAVED } from './save.js';
 import { vfsReadFile, vfsDeleteFile } from './storage.js';
@@ -407,6 +407,7 @@ export async function dorecover(save) {
     delete g._base_topline;
     await bubbles_copy_snapshot(save.state.__bubbles, save.state.level);
     await restgamestate(save.state);
+    restore_timer_order(); /* C restore.c:811,813,898 insert_timer order */
     /* restore_msghistory -> topl.c:701-702: a standing TOPLINE_NEED_MORE becomes
      * NON_EMPTY, so docrt's cls() does not page it; it is only remembered. */
     baseTopline?.finish();
@@ -465,6 +466,7 @@ export async function dorecover(save) {
             snap.stairs = prev;
         }
         snap.ftrap = rest_trapchn_reverse(snap.ftrap);
+        if (snap.timers) restore_timer_order(snap.timers);
         restdamage_reverse(snap.level);
         find_lev_obj_clear_no_charge(snap.level);
         if (!snap.bubbles) continue;

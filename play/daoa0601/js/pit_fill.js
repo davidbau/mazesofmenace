@@ -6,9 +6,8 @@ import { plineWithContinuation } from './pline.js';
 import { applyFloorEffects } from './floor_effects.js';
 import { useUpFloorObject } from './floor_consumption.js';
 import { game, requireGameLevel, requireLiveGame } from './gstate.js';
-import { loseHeroHp } from './hero_damage.js';
 import { hitMonsterWithSettlingBoulder } from './hero_ranged_attack.js';
-import { heroSpecies } from './hero_species.js';
+import { heroSpecies } from './polyself.js';
 import { formatHeardMessage } from './hero_speech.js';
 import { deleteFloorTrap } from './mklev.js';
 import { MONSTER_FLAGS1, MONSTER_FLAGS2, monsterIsNonliving, monsterIsVampireShifter } from './monster_data.js';
@@ -22,6 +21,7 @@ import { heroIsBlind } from './senses.js';
 import { resetHeroTrap } from './terrain_movement.js';
 import { cansee } from './vision.js';
 import { rollPhysicalWeaponDamage } from './weapon.js';
+import { loseHeroHp } from './hack.js';
 const M1_WALLWALK = 0x08;
 const M2_ROCKTHROW = 0x08000000;
 export async function fillPitWithBoulderAt(x, y, state = game, { publish = plineWithContinuation, } = {}) {

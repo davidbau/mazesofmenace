@@ -2,8 +2,8 @@
 // C ref: sit.c throne_sit_effect(), special_throne_effect(), attrcurse(),
 // and rndcurse().
 import { formatFeltMessage } from './hero_speech.js';
-import { makeConfused } from './hero_mental_status.js';
-import { makeBlinded } from './sight_change.js';
+import { makeConfused } from './potion.js';
+import { makeBlinded } from './potion.js';
 import { heroIsBlind, heroIsHallucinating } from './senses.js';
 import { heroHasHalfSpellDamage } from './zap.js';
 import { A_CON, A_MAX, A_STR, ROOM, } from './const.js';
@@ -21,7 +21,6 @@ import { game, requireInitializedGame } from './gstate.js';
 import { dropCursedSecondaryWeapon } from './two_weapon.js';
 import { heroEyeCount, heroEyeName, heroHeadName } from './body_parts.js';
 import { makePlural, verbForSubject } from './objnam.js';
-import { loseHeroHp } from './hero_damage.js';
 import { cureHeroSickness } from './hero_illness.js';
 import { adjustObjectLightAfterBlessing, objectLightRadius } from './light.js';
 import { healHeroLegs } from './hero_legs.js';
@@ -47,6 +46,7 @@ import { setSlipperyHands } from './potion.js';
 import { cansee } from './vision.js';
 import { makeWish } from './wish.js';
 import { aggravateMonsters } from './wizard.js';
+import { loseHeroHp } from './hack.js';
 const COIN_CLASS = 12;
 const M2_PRINCE = 0x00000800;
 const S_VAMPIRE = 48;

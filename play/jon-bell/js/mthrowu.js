@@ -9,7 +9,7 @@ import { dealloc_obj } from './mklev.js';
 import { sobj_at } from './invent.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
 import { killer_xname as _thitu_killer_xname, an, doname, mshot_xname, obj_is_pname, the, vtense } from './objnam.js';
-import { pline } from './pline.js';
+import { pline, pline_The } from './pline.js';
 import { potionhit as potionhit_thitu } from './potion.js';
 import { rn2, rnd } from './rng.js';
 import { BOLT_LIM, BOULDER, Blind_thitu, _gp_closed_door, _gp_is_waterwall, _lo_hero_monst, _monstseesu_stub, _monstunseesu_stub, _thitu_stone_missile, _tr_passes_rocks, sgn, upstart_local } from './trap.js';
@@ -89,24 +89,33 @@ export function m_has_launcher_and_ammo(mtmp) {
     return false;
 }
 
-/* C ref: mthrowu.c:75 thitu — the hero is hit by something (a trap missile here).
+const ACID_VENOM = 480; /* C objects.h ACID_VENOM */
+const M_SEEN_ACID = 0x0080; /* C hack.h M_SEEN_ACID */
+const POTION_CLASS = 8; /* C objclass.h POTION_CLASS */
+const POTHIT_OTHER_THROW = 3; /* C obj.h POTHIT_OTHER_THROW */
+const SILVER = 14; /* C objclass.h SILVER */
+const monstseesu = _monstseesu_stub;
+const monstunseesu = _monstunseesu_stub;
+
+/* C ref: mthrowu.c:75-155 thitu — hero is hit by something other than a monster
+ * (though it could be a missile thrown or shot by a monster).
  *   if (u.uac + tlev <= (dieroll = rnd(20))) { ...miss plines...; return 0; }
- *   else { ...hit plines...; losehp(dam,...); exercise(A_STR, FALSE); return 1; }
- * Only the dart/arrow trap-missile call sites are exercised: non-acid, non-stone,
- * non-potion, non-silver → the plain hit tail (losehp + exercise A_STR).
- * RNG: rnd(20) always; exercise(A_STR,FALSE) → rn2(2) only on a hit. */
+ *   else { ...hit plines...; post-hit arms (acid, stone, potion, silver, losehp, exercise A_STR); return 1; }
+ * RNG: rnd(20) always; exercise(A_CON/A_STR, FALSE) → rn2(2) on the corresponding hit arms. */
 export async function thitu(tlev, dam, otmp, name) {
     const u = game.u;
     const uac = u.uac | 0;
+    const named = !!name;
     const onm = await _thitu_onm(otmp, name);
-    const knm = _thitu_killer_name(otmp, name); /* C mthrowu.c:90-98, before rnd */
+    const knm = _thitu_killer_name(otmp, name); /* C mthrowu.c:90-100, before rnd */
+    const is_acid = !!otmp && (otmp.otyp | 0) === ACID_VENOM; /* C mthrowu.c:104 */
     const dieroll = rnd(20);
     if (uac + (tlev | 0) <= dieroll) {
         /* MISS — C: "It misses." / "<onm> misses you." / "You are almost hit
          * by <onm>." depending on Blind/verbose and the 2-point margin.  Verbose
          * default with sight: the <2 margin → almost-hit, else <onm> misses you.
          * No RNG on any miss branch. */
-        /* C mthrowu.c:106 ++gm.mesg_given — m_throw's end-of-path "<The
+        /* C mthrowu.c:107 ++gm.mesg_given — m_throw's end-of-path "<The
          * missile> misses." arm reads this to avoid a duplicate message. */
         const gm = game.gm || (game.gm = {});
         gm.mesg_given = (gm.mesg_given | 0) + 1;
@@ -119,46 +128,49 @@ export async function thitu(tlev, dam, otmp, name) {
         }
         return 0;
     }
-    /* HIT — C mthrowu.c:117-120: Blind || !verbose → the anonymous form. */
+    /* HIT — C mthrowu.c:118-121: Blind || !verbose → the anonymous form. */
     if (Blind_thitu() || !(game.flags?.verbose ?? true))
         await pline(`You are hit${exclam_local(dam)}`);
     else
         await pline(`You are hit by ${onm}${exclam_local(dam)}`);
-    /* C mthrowu.c:121-151 — the post-hit arms, in C order. */
-    const is_acid = !!otmp && (otmp.otyp | 0) === 480; /* ACID_VENOM */
+    /* C mthrowu.c:123-152 — the post-hit arms, in C order. */
     const _up = (i) => { const p = u.uprops && u.uprops[i];
         return !!p && !!((p.intrinsic | 0) || (p.extrinsic | 0)); };
     if (is_acid && _up(ACID_RES)) {
         await pline("It doesn't seem to hurt you.");
-        _monstseesu_stub(0x0080); /* M_SEEN_ACID */
+        monstseesu(M_SEEN_ACID);
         return 1;
     } else if (otmp && _thitu_stone_missile(otmp)
                && _tr_passes_rocks(_lo_hero_monst().data)) {
-        /* `named` approximates "hitting from above" */
-        await pline(`It ${name ? 'passes harmlessly through' : "doesn't harm"} you.`);
+        /* C mthrowu.c:128-133: C uses `named` (name != 0) to select
+         * "passes harmlessly through" vs "doesn't harm". */
+        await pline(`It ${named ? 'passes harmlessly through' : "doesn't harm"} you.`);
         return 1;
-    } else if (otmp && (otmp.oclass | 0) === 8) { /* POTION_CLASS */
-        await potionhit_thitu(game.youmonst, otmp, 3 /* POTHIT_OTHER_THROW */);
+    } else if (otmp && (otmp.oclass | 0) === POTION_CLASS) {
+        await potionhit_thitu(game.youmonst, otmp, POTHIT_OTHER_THROW);
         return 1;
     }
-    if (otmp && (MKOBJ_OC_MATERIAL[otmp.otyp | 0] | 0) === 14 /* SILVER */) {
+    if (otmp && (MKOBJ_OC_MATERIAL[otmp.otyp | 0] | 0) === SILVER) {
         const hs = ((u.ulycn ?? -1) | 0) >= 0
             || (game.youmonst && game.youmonst.data
                 && !!hates_silver_thitu(game.youmonst.data));
         if (hs) {
-            await pline('The silver sears your flesh!');
+            await pline_The('silver sears your flesh!');
             exercise(A_CON, false);
         }
     }
     if (is_acid) {
         await pline('It burns!');
-        _monstunseesu_stub(0x0080);
+        monstunseesu(M_SEEN_ACID);
     }
+    /* C mthrowu.c:150 `losehp(dam, knm, kprefix);` — the WHOLE call, not an
+     * inline `u.uhp -= dam`.  knm/kprefix are C's: killer_xname(obj) already
+     * applies the article for a quan==1 object (KILLED_BY). */
     if (u && u.uhp !== undefined) {
         await losehp((dam | 0), knm,
                      name && !/^(the |an? )/i.test(name) ? KILLED_BY_AN : KILLED_BY_THITU);
     }
-    /* C mthrowu.c:153 `exercise(A_STR, FALSE)` follows only when done() returns.
+    /* C mthrowu.c:151 `exercise(A_STR, FALSE);` follows only when done() returns.
      * losehp now awaits do_death_sequence: a terminal death reaches really_done()
      * and throws the replay's termination sentinel, while lifesaving or a declined
      * wizard/explore death returns here just as C's done() does.  Consequently no

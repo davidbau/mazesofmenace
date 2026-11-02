@@ -10,7 +10,7 @@ import { confersLuck } from './hero_inventory.js';
 import { fromWhat, extrinsicPropertyMask, intrinsicPropertyMask, veryFast } from './attribute_provenance.js';
 import { hasPermanentIntrinsicProperty, propertyIsActive, propertyIsBlocked, propertyTimeout } from './properties.js';
 import { blindnessBlocked, blindfolded, heroIsBlind, permanentBlind } from './senses.js';
-import { heroHatesSilver, heroIsAmphibious, heroIsBreathless, heroPassesWalls } from './hero_species.js';
+import { heroHatesSilver, heroIsAmphibious, heroIsBreathless, heroPassesWalls } from './polyself.js';
 import { MONSTER_FLAGS1, MONSTER_NAME, monsterTypeName } from './monster_data.js';
 import { isLavaAt, isPoolAt } from './dbridge.js';
 import { levelHasCeiling } from './dungeon.js';
@@ -321,7 +321,10 @@ function itemResistanceLines(property, damage, final) {
     const cause = game.flags.debug ? itemResistanceCause(property) : '';
     return [`  Your items ${final ? 'were' : 'are'}${partial ? ' somewhat' : ''} protected from ${damage}${cause}.`];
 }
+// C zap.c:item_what(): wizard-mode source of the item-protection line,
+// naming the worn piece whose extrinsic protects the inventory.
 function itemResistanceCause(property) {
+    // C zap.c:adtyp_to_prop() already applied: callers pass the property.
     const sources = game.u._propertySources?.[property]?.worn ?? [];
     for (const slot of ['uarmc', 'uarm', 'uarmu', 'uarmh', 'uarmg', 'uarmf', 'uarms']) {
         const object = game[slot];

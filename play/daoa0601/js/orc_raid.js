@@ -13,9 +13,9 @@ import { addObjectToMonsterInventory } from './steal.js';
 import { setMonsterMalign } from './makemon.js';
 import { CORPSE, EGG, GOLD_PIECE, LEATHER_GLOVES, LEMBAS_WAFER, LONG_SWORD, OBJECT_NAMES, OBJECT_PROB, ROCK, SKELETON_KEY, SLIME_MOLD, TALLOW_CANDLE, TIN, TRIPE_RATION, WAX_CANDLE, } from './object_data.js';
 import { rn2, rnd } from './rng.js';
-import { objectWeight } from './weight.js';
 import { randomTypeByDescription } from './objnam.js';
 import { migrateMonsterOffLevel } from './dog.js';
+import { objectWeight } from './mkobj.js';
 const C_RATION = OBJECT_NAMES.indexOf('C-ration');
 const K_RATION = OBJECT_NAMES.indexOf('K-ration');
 const GAUNTLETS_OF_DEXTERITY = OBJECT_NAMES.indexOf('gauntlets of dexterity');
@@ -91,6 +91,8 @@ function nameOrc(monster, gang, suffix = '') {
     setMonsterGivenName(monster, gang === null ? name + suffix : `${name} of ${upstart(gang)}`);
 }
 // C mkmaze.c:migr_booty_item().
+// C mkobj.c:mksobj_migr_to_species(): the object enters migration flagged
+// for orc-infested target species.
 async function createStolenItem(type, gang, state) {
     const object = await mksobj(type, true, false);
     object.where = 'migrating';

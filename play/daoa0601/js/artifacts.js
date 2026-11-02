@@ -22,7 +22,7 @@ import { questMonsterAlignment } from './role_monsters.js';
 import { MONSTER_FLAGS2, MONSTER_MAGIC_RESISTANCE, MONSTER_NAME, MONSTER_SYMBOL, monsterIsCovetous, monsterIsPlayerMonster, } from './monster_data.js';
 import { monsterWieldedWeapon } from './weapon.js';
 import { monsterAlignmentType } from './priest.js';
-import { heroHatesSilver, heroSpecies } from './hero_species.js';
+import { heroHatesSilver, heroSpecies } from './polyself.js';
 import { roles } from './roles.js';
 import { monsterHasColdResistance, monsterHasDrainResistance, monsterHasFireResistance, monsterHasShockResistance } from './mondata.js';
 import { see_monsters } from './display.js';
@@ -40,7 +40,6 @@ import { objectName, objectNameIsPlural } from './objnam.js';
 import { exerciseAttribute } from './attrib.js';
 import { A_WIS, KILLED_BY } from './const.js';
 import { finishHeroDeath } from './end.js';
-import { loseHeroHp } from './hero_damage.js';
 import { definiteName, objectCombatName } from './objnam.js';
 import { heroIsHallucinating } from './senses.js';
 import { canSeeMonster } from './display.js';
@@ -76,12 +75,12 @@ import { applyHeroLocationEffects } from './hack.js';
 import { rnz } from './rng.js';
 import { heroIsBlinded, permanentBlind } from './senses.js';
 import { clearHeroSliming, heroIsSliming } from './slime.js';
-import { objectWeight } from './weight.js';
 import { chooseObjectToCharge, rechargeObject } from './recharge.js';
 import { doBlindingRay } from './flash.js';
 import { lightDamage, lightRoom } from './light.js';
 import { MONSTER_SOUND } from './monster_data.js';
-import { flashBurn, makeBlinded } from './sight_change.js';
+import { flashBurn } from './sight_change.js';
+import { makeBlinded, makeHallucinated } from './potion.js';
 import { promptDirection } from './tty_prompts.js';
 import { castSpell, spellSkillType } from './spell.js';
 import { depth } from './hacklib.js';
@@ -96,6 +95,8 @@ import { resolveSwallowedEggPieOrVenomThrow } from './swallowed_throw.js';
 import { finishHeroMonsterKillOutcome } from './hero_monster_death.js';
 import { holdAnotherObject } from './hero_hold_object.js';
 import { migrateMonsterToLevel } from './mon.js';
+import { loseHeroHp } from './hack.js';
+import { objectWeight } from './mkobj.js';
 const M2_UNDEAD = 0x00000002;
 const M2_WERE = 0x00000004;
 const M2_ELF = 0x00000010;
@@ -690,6 +691,19 @@ export function setWornArtifactProperties(object, slot, active, state = game) {
         state.u.xray_range = active ? 3 : -1;
         state.vision_full_recalc = 1;
     }
+}
+// C artifact.c:set_artifact_intrinsic() for the wielded slot: the conferred
+// properties plus the talkative wielded-only SPFX (hallucination, warning).
+export async function setWieldedArtifactProperties(object, active, state) {
+    const artifact = artifactById(object.oartifact, state);
+    setWornArtifactProperties(object, 'uwep', active, state);
+    if (artifact?.flags.includes('SPFX_HALRES')) {
+        await makeHallucinated(Number(!active), {
+            state, talk: !state.program_state?.restoring,
+            resistanceSource: { object, slot: 'uwep' },
+        });
+    }
+    await setArtifactWarningWielded(object, active, state);
 }
 // C artifact.c:set_artifact_intrinsic(), Sting_effects(), glow_verb().
 function glowStrength(count) {

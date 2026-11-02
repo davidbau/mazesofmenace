@@ -21,7 +21,6 @@ import { attributeEnlightenmentLines, contractEnlightenment, combatIncrement, mo
 export { piousness } from './enlightenment_attributes.js';
 import { backgroundEnlightenmentLines, basicsEnlightenmentLines, characteristicEnlightenmentLines, enlightenmentRoleName, } from './enlightenment_background.js';
 export { goldInsightLines } from './enlightenment_background.js';
-import { invWeight, nearCapacity } from './weight.js';
 import { ACH_HELL, ACH_MINE, ACH_RNK1, ACH_RNK8, ACH_TOWN, achievementEntries, } from './achievements.js';
 import { SHIELD_OF_REFLECTION } from './object_data.js';
 import { canAdvanceHeroSkill, ensureHeroSkills, skillName, SKILL_LEVEL_NAMES, weaponSkillType, } from './skills.js';
@@ -31,10 +30,10 @@ import { emptyHandedDescription } from './wield.js';
 import { monsterName } from './do_name.js';
 import { possessiveName } from './hacklib.js';
 import { monsterDigests } from './monster_data.js';
-import { feelingAfterSelfGenocide, heroHasBeenGenocided } from './hero_genocide.js';
+import { feelingAfterSelfGenocide, heroHasBeenGenocided } from './polyself.js';
 import { heroHidingStatus } from './hero_hide.js';
 import { heroIsSick } from './hero_illness.js';
-import { heroFormSticks } from './hero_species.js';
+import { heroFormSticks } from './polyself.js';
 import { monsterSaddle } from './steed.js';
 import { simpleObjectName, simpleObjectNameWithArticle } from './objnam.js';
 import { heroLegName, monsterLegName } from './body_parts.js';
@@ -49,6 +48,7 @@ import { findMonsterArmorClass } from './monworn.js';
 import { visibleRegionAt } from './regions.js';
 import { monsterHiddenConditions } from './pager.js';
 import { blindfolded, heroIsBlind, heroIsDeaf, permanentBlind, } from './senses.js';
+import { invWeight, nearCapacity } from './hack.js';
 function plural(n, singular, pluralForm = `${singular}s`) {
     return n === 1 ? singular : pluralForm;
 }

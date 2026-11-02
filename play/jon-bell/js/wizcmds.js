@@ -13,7 +13,7 @@ import { getdir } from './lock.js';
 import { map_invisible, GLYPHCLS_MON, GLYPHCLS_INVIS, display_migrating_mons } from './display.js';
 import { game, wizard } from './gstate.js';
 import { reassign } from './inventory_refresh.js';
-import { COLNO } from './const.js';
+import { COLNO, NATTK } from './const.js';
 const IN_SIGHT_BIT = 0x2; /* vision.h IN_SIGHT */
 import { s_suffix as _ta_s_suffix } from './hacklib.js';
 import { nhgetch } from './input.js';
@@ -63,7 +63,7 @@ import monsPack from './makemon_mons.json' with { type: 'json' };
  * TRUE)); it lives in js/cmd.js, which already imports this file — the cycle is
  * the tree's norm (20+ modules import from cmd.js) and both sides are hoisted
  * function declarations, so the binding resolves at call time. */
-import { get_level, y_n_default, addinv_core2, reorder_invent, inv_cnt, freeinv, getpos, addinv_core1, carry_obj_effects } from './cmd.js';
+import { get_level, y_n_default, addinv_core2, reorder_invent, inv_cnt, freeinv, getpos, addinv_core1, carry_obj_effects, obj_to_let } from './cmd.js';
 import { setuqwep } from './wield.js';
 import { hitfloor, hurtle, mhurtle } from './dothrow.js';
 import { dropx, dropy } from './do.js';
@@ -928,14 +928,9 @@ function _wish_Fumbling() {
 }
 
 /* C invent.c:2861 obj_to_let(), called by prinv()'s xprname (invent.c:2888):
- * with !fixinv the object's letter is blanked and reassign() (invent.c:4855)
- * re-letters the whole pack in chain order, resetting gl.lastinvnr. */
+ * forwards to the shared port in js/cmd.js. */
 function _wish_obj_to_let(obj) {
-    if (!(game.flags?.invlet_constant ?? true)) {
-        obj.invlet = 0x23; /* NOINVSYM */
-        reassign();
-    }
-    return obj.invlet;
+    return obj_to_let(obj).charCodeAt(0);
 }
 
 function _wish_drop_spec(obj) {
@@ -2051,7 +2046,7 @@ export async function wiz_rumor_check() {
 /* C mondata.c:501 mstrength_ranged_attk() */
 function mstrength_ranged_attk(mattk) {
     const atk_mask = (1 << 12 /* AT_BREA */) | (1 << 10 /* AT_SPIT */) | (1 << 15 /* AT_GAZE */);
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < NATTK; i++) {
         const j = mattk[i].aatyp;
         if (j >= 254 /* AT_WEAP */ || (j < 32 && (atk_mask & (1 << j)) !== 0))
             return true;
@@ -2073,7 +2068,7 @@ function mstrength(mndx) {
     n += (ac < 4) ? 1 : 0;
     n += (ac < 0) ? 1 : 0;
     n += (mmove >= 18) ? 1 : 0;
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < NATTK; i++) {
         const tmp2 = mattk[i].aatyp;
         n += (tmp2 > 0) ? 1 : 0;
         n += (tmp2 === 255 /* AT_MAGC */) ? 1 : 0;
@@ -2084,7 +2079,7 @@ function mstrength(mndx) {
                 : (tmp3 === 6 /* AD_ELEC */) ? 5 : 0;
         }
     }
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < NATTK; i++) {
         const tmp2 = mattk[i].adtyp;
         if (tmp2 === 15 || tmp2 === 18 || tmp2 === 7 || tmp2 === 30
             || tmp2 === 31 || tmp2 === 29) /* DRLI STON DRST DRDX DRCO WERE */

@@ -9,7 +9,7 @@ import './exper_pure.js';
 import { PM_WIZARD } from './pm.generated.js';
 import { flush_screen } from './display.js';
 import { pline, livelog_printf } from './pline.js';
-import { adjabil, minuhpmax, setuhpmax, acurr } from './attrib.js';
+import { adjabil, minuhpmax, setuhpmax, acurr, newhp } from './attrib.js';
 import { Goodbye } from './roles.js';
 import { monhp_per_lvl } from './makemon.js';
 import { KILLED_BY, DIED, LL_MINORAC, Upolyd, DRAIN_RES } from './const.js';
@@ -135,83 +135,8 @@ function enermod(en) {
         return en;
     }
 }
-export function newhp() {
-    const g = game;
-    const u = g.u || {};
-    const initrole = (g.flags?.initrole ?? -1) | 0;
-    const initrace = (g.flags?.initrace ?? -1) | 0;
-    let hp, conplus;
-    const rh = (initrole >= 0 && initrole < ROLE_HPADV.length) ? ROLE_HPADV[initrole] : null;
-    const rr = (initrace >= 0 && initrace < RACE_HPADV.length) ? RACE_HPADV[initrace] : null;
-    const xlev = (initrole >= 0 && initrole < ROLE_XLEV.length) ? ROLE_XLEV[initrole] : 14;
-    const MAXULEV = 30;
-    if ((u.ulevel | 0) === 0) {
-        /* C attrib.c:1090-1102: Initialize hit points.
-         *   hp = role.hpadv.infix + race.hpadv.infix;
-         *   if (role.hpadv.inrnd > 0) hp += rnd(role.hpadv.inrnd);
-         *   if (race.hpadv.inrnd > 0) hp += rnd(race.hpadv.inrnd);
-         *   (no Con adjustment for initial hit points) */
-        hp = ((rh ? rh.infix : 0) | 0) + ((rr ? rr.infix : 0) | 0);
-        if (rh && rh.inrnd > 0)
-            hp += rnd(rh.inrnd);
-        if (rr && rr.inrnd > 0)
-            hp += rnd(rr.inrnd);
-        if ((g.moves | 0) === 0) {
-            u.ualign ||= { type: 0, record: 0, abuse: 0 };
-            u.ualign.type = ALIGN_VALUE[g.flags?.initalign ?? 0] ?? 0;
-            u.ualign.record = ROLE_INITRECORD[initrole] ?? 0;
-        }
-        /* C attrib.c:1133-1147: shared tail (hp<=0 → 1, uhpinc cap). */
-        if (hp <= 0) hp = 1;
-        if ((u.ulevel | 0) < MAXULEV) {
-            if (!u.uhpinc) u.uhpinc = new Array(MAXULEV).fill(0);
-            u.uhpinc[u.ulevel | 0] = hp;
-        }
-        return hp;
-    }
-    if ((u.ulevel | 0) < xlev) {
-        /* C attrib.c:1104-1109: lower range */
-        hp = ((rh ? rh.lofix : 0) | 0) + ((rr ? rr.lofix : 0) | 0);
-        if (rh && rh.lornd > 0)
-            hp += rnd(rh.lornd);
-        if (rr && rr.lornd > 0)
-            hp += rnd(rr.lornd);
-    } else {
-        /* C attrib.c:1110-1116: higher range */
-        hp = ((rh ? rh.hifix : 0) | 0) + ((rr ? rr.hifix : 0) | 0);
-        if (rh && rh.hirnd > 0)
-            hp += rnd(rh.hirnd);
-        if (rr && rr.hirnd > 0)
-            hp += rnd(rr.hirnd);
-    }
-    /* C attrib.c:1117-1130: Con bonus.
-     * JS u.acurr.a is in display order [Str,Dex,Con,Int,Wis,Cha].
-     * C constant A_CON=4 maps to display index 2 (DISPLAY_TO_C[2]=4). */
-    /* ACURR(A_CON), not the raw base: wielding Ogresmasher pins Con at 25
-     * (attrib.c:1225-1227). */
-    const con = acurr(u, 4);
-    if (con <= 3)       conplus = -2;
-    else if (con <= 6)  conplus = -1;
-    else if (con <= 14) conplus = 0;
-    else if (con <= 16) conplus = 1;
-    else if (con === 17) conplus = 2;
-    else if (con === 18) conplus = 3;
-    else                conplus = 4;
-    hp += conplus;
-    if (hp <= 0) hp = 1;
-    /* C attrib.c:1135-1145: cap at MAXULEV; throttle after level 30 */
-    if ((u.ulevel | 0) < MAXULEV) {
-        if (!u.uhpinc) u.uhpinc = new Array(MAXULEV).fill(0);
-        u.uhpinc[u.ulevel | 0] = hp;
-    } else {
-        /* C: char lim = 5 - u.uhpmax / 300; lim = max(lim, 1); */
-        let lim = 5 - Math.trunc((u.uhpmax | 0) / 300);
-        lim = (lim << 24) >> 24; /* C attrib.c:1135: assignment to char */
-        if (lim < 1) lim = 1;
-        if (hp > lim) hp = lim;
-    }
-    return hp;
-}
+/* C ref: attrib.c:1080 newhp(void) — shared port in js/attrib.js. */
+export { newhp };
 /* C ref: exper.c newpw(void) — mirrors C 1:1 including the u.ulevel==0 init
  * path (exper.c:49-54) AND the level-up path (exper.c:55-65).
  * Called with u.ulevel==0 during hero initialization (u_init.c:997) and with

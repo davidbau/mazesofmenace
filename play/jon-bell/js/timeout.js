@@ -1319,6 +1319,34 @@ export function restore_timers_level(saved, adjust = 0) {
     }
 }
 
+/* C ref: restore.c:811,898 getlev -> restore_timers(RANGE_LEVEL) and
+ * restore.c:813 restgamestate -> restore_timers(RANGE_GLOBAL).  Each saved
+ * timer (written in chain order by maybe_write_timer, timeout.c:2632) is read
+ * back through insert_timer(), whose `>=` puts it BEFORE an equal timeout, so
+ * same-turn timers come back reversed.  The current level's locals are freed
+ * by restlevelfile() (:831) and re-read last (:898), after the globals.
+ * `saved` given: an inactive level's array (getlev :876 + savelev rewrite). */
+export function restore_timer_order(saved) {
+    const gt = gtimer();
+    const glob = [], loc = [];
+    if (saved) {
+        const keep = gt.timer_base;
+        gt.timer_base = null;
+        restore_timers_level(saved);
+        saved.length = 0;
+        for (let c = gt.timer_base; c; c = c.next)
+            saved.push(c);
+        for (const c of saved) c.next = null;
+        gt.timer_base = keep;
+        return;
+    }
+    for (let c = gt.timer_base; c; c = c.next)
+        (timer_is_local(c) ? loc : glob).push(c);
+    gt.timer_base = null;
+    restore_timers_level(glob);
+    restore_timers_level(loc);
+}
+
 /* C ref: timeout.c:2437-2450 spot_time_expires(coordxy, coordxy, short). */
 export function spot_time_expires(x, y, func_index) {
     const where = ((x << 16) | y);

@@ -2,6 +2,8 @@
 // container looting (doloot()), and tipping (dotip()).
 import { commandResultCancelled, setMulti } from './cmd.js';
 import { endVoluntaryMultiTurn, nomul } from './hack.js';
+import { monsterStagger } from './mondata.js';
+import { heroSpecies } from './polyself.js';
 import { game, requireGameLevel } from './gstate.js';
 import { isLavaAt, isPoolAt } from './dbridge.js';
 import { definiteName, objectCombatName, objectNameIsPlural, objectQuestion, observeObjectForNaming, ownedSimpleObjectName, simpleObjectName, simpleObjectNameWithArticle, } from './objnam.js';
@@ -35,7 +37,6 @@ import { useUpFloorObject } from './floor_consumption.js';
 import { floorReachProblem, heroCanReachFloor, heroEscapedShaft, heroTeetersAtPit, } from './floor_reach.js';
 import { hideHeroUnder } from './mon.js';
 import { addShopObjectToBill, billedPickupQuote, chargeUnpaidUsage, costlySpot, objectTypeKnown, removeObjectAndContentsFromBill, remoteBurglary, setSellDisposition, SELL_NORMAL, } from './shk.js';
-import { roomsAt } from './room.js';
 import { pickupLocationProblem } from './pickup_location.js';
 import { finishGhostlyPickup } from './bones_object.js';
 import { clearJustPicked, markJustPicked } from './just_picked.js';
@@ -48,7 +49,6 @@ import { triggerChestTrap } from './chest_trap.js';
 import { useBagOfTricks } from './bag_of_tricks.js';
 import { useHornOfPlenty } from './horn_of_plenty.js';
 import { surfaceName } from './terrain_name.js';
-import { exceedsActionCapacity, nearCapacity, objectWeight, pickupLoadPrefix } from './weight.js';
 import { reportHeroEncumbrance } from './encumbrance.js';
 import { chooseInventoryObject } from './inventory_prompt.js';
 import { inventoryItemDescription, consumeObjectCharge } from './invent.js';
@@ -59,7 +59,6 @@ import { monsterName } from './do_name.js';
 import { removeObjectFromMonsterInventory } from './monworn.js';
 import { holdAnotherObject } from './hero_hold_object.js';
 import { propertyIsActive } from './properties.js';
-import { loseHeroHp } from './hero_damage.js';
 import { rn2, rnd } from './rng.js';
 import { reverseLoot } from './confused_loot.js';
 import { heroCannotTake, heroFormHidesUnderObjects, heroHasNoHands, heroHasNoLimbs, } from './polyself.js';
@@ -76,6 +75,8 @@ import { heroIsBlind } from './senses.js';
 import { heroIsUnaware } from './hero_sleep.js';
 import { lookInsideSwallower } from './swallowed_inventory.js';
 import { dolook } from './invent.js';
+import { roomsAt, exceedsActionCapacity, nearCapacity, loseHeroHp, } from './hack.js';
+import { objectWeight } from './mkobj.js';
 export function pickupClassOrder() {
     return [...inventoryClassOrder(), 17, 0].map(objectClassHeading);
 }
@@ -142,6 +143,8 @@ async function reassessHeroCover(source) {
     if (!source.monster && !game.program_state.gameover && heroFormHidesUnderObjects(game))
         await hideHeroUnder(game);
 }
+// C pickup.c:pickup(); its autopick() pass over the square's objects runs
+// before the pickup menu.
 export async function autopickupAtHero() {
     if (heroIsUnaware(game)) {
         game._prevDecorType = STONE;
@@ -279,6 +282,8 @@ async function pickUpTraditionally(source, count) {
         await newsym_force(source.x, source.y);
     return { attempted };
 }
+// C pickup.c:query_objlist() for the pickup menu; its n_or_more() filter
+// (count >= reference) is the quantity filter below.
 async function choosePickupObjects(source, objects, count, { autoSelect = true, feelCockatrice = !count, groupByClass = game.flags.sortpack !== false } = {}) {
     const eligible = count
         ? objects.filter(object => objectQuantity(object) >= count) : objects;
@@ -560,6 +565,8 @@ async function prepareScareScrollPickup(object, requested, telekinesis) {
     await useUpFloorObject(scroll, scroll.quan);
     return { decision: 'consumed' };
 }
+// C pickup.c:rider_corpse_revival(): touching (or telekinetically grabbing)
+// a Rider corpse revives it and dents wisdom.
 async function reviveRiderCorpse(corpse, remotely) {
     if (!isRider(corpse.corpsenm))
         return false;
@@ -659,6 +666,8 @@ export async function ableToLoot(x, y, looting) {
     }
     return true;
 }
+// C pickup.c:doloot_core()'s dispatch: container_at() tests the square for
+// lootable containers, and u_handsy() is the no-hands refusal above.
 export async function lootCommand(input) {
     game.context.move = 0;
     if (exceedsActionCapacity(game)) {
@@ -694,6 +703,7 @@ export async function lootCommand(input) {
     if (!target)
         return;
     const underfoot = target.x === x && target.y === y;
+    // C pickup.c:container_at(): any container at the spot admits looting.
     const containers = (requireGameLevel().objects[target.x]?.[target.y] ?? []).some(isContainer);
     if (underfoot && containers) {
         await lootFloorContainers(x, y, input.unlockContainer);
@@ -851,9 +861,13 @@ async function containerDescription(object) {
 // C pickup.c:dotip(). Floor containers first (menu when there are several,
 // choose_tip_container_menu() below), then the carried-object prompt, then
 // the spillage cases in tipOrdinaryObject().
+// C pickup.c:tip_ok(): containers and a known horn of plenty are
+// suggested; gold excluded; anything else merely selectable. The floor
+// count is container_at(x, y, TRUE).
 export async function tipCommand() {
     game.context.move = 0;
     const { ux: x, uy: y } = game.u;
+    // C pickup.c:container_at(x, y, TRUE): the count decides the tip menu.
     const containers = (requireGameLevel().objects[x]?.[y] ?? []).filter(isContainer);
     const considerFloor = !game.iflags.menu_requested
         || game.flags.menu_style === MENU_TRADITIONAL && containers.length > 1;
@@ -907,6 +921,8 @@ export async function tipCommand() {
             }
         }
     }
+    // C pickup.c:tip_ok(): containers and a known horn of plenty are
+    // suggested; gold excluded; anything else merely selectable.
     const object = await chooseInventoryObject('tip', object => {
         if (object.oclass === 12)
             return GETOBJ_EXCLUDE;
@@ -960,12 +976,15 @@ async function tipOrdinaryObject(object) {
 }
 // C pickup.c:tipcontainer_gettarget(). The destination menu; tip to floor
 // needs no hands, container-to-container needs a free one.
+// C pickup.c:u_handsy() is the hands test for the container choice.
 async function tipDestination(source) {
     const items = [{
             key: '-', text: 'on the floor', value: null, itemFlags: MENU_ITEMFLAGS_SELECTED,
         }, { selectable: false, text: '' }];
     const targets = game.inventory.filter(object => object !== source && isContainer(object)
         && !(object.otyp === BAG_OF_TRICKS && object.dknown && objectTypeKnown(object)));
+    // C pickup.c:u_handsy(): no hands at all, or no free one, blocks a
+    // container-to-container tip.
     const hands = targets.length === 0 || (!heroHasNoHands(game) && heroHasFreeHand(game));
     if (!hands)
         await plineWithContinuation(heroHasNoHands(game) ? 'You have no hands!'
@@ -1136,6 +1155,8 @@ async function tipContainer(source) {
         await reportHeroEncumbrance();
 }
 // C pickup.c:query_classes().
+// C pickup.c:count_categories() is the distinct-class count; invent.c
+// count_buc() (with the priest's free identification) is the statuses set.
 export async function queryObjectClasses(action, objects) {
     const classes = [...new Set(objects.map(object => object.oclass))];
     if (!classes.length)
@@ -1265,5 +1286,40 @@ async function lookAtObjects(objects) {
 }
 function hasUnpaidContents(object) {
     return !!object.unpaid || !!object.contents?.some(hasUnpaidContents);
+}
+// C pickup.c:encumber_msg(). The strained verb follows the hero's body.
+export function encumbranceMessage(previous, current, state) {
+    const stagger = monsterStagger(heroSpecies(state), 'stagger');
+    if (previous < current) {
+        return [
+            '',
+            'Your movements are slowed slightly because of your load.',
+            'You rebalance your load.  Movement is difficult.',
+            `You ${stagger} under your heavy load.  Movement is very hard.`,
+            'You can barely move a handspan with this load!',
+            "You can't even move a handspan with this load!",
+        ][current] || '';
+    }
+    if (previous > current) {
+        return [
+            'Your movements are now unencumbered.',
+            'Your movements are only slowed slightly by your load.',
+            'You rebalance your load.  Movement is still difficult.',
+            `You ${stagger} under your load.  Movement is still very hard.`,
+            '',
+            '',
+        ][current] || '';
+    }
+    return '';
+}
+export function pickupLoadPrefix(level) {
+    return [
+        '',
+        'You have a little trouble',
+        'You have trouble',
+        'You have much trouble',
+        'You have extreme difficulty',
+        'You have extreme difficulty',
+    ][level] || '';
 }
 //# sourceMappingURL=pickup.js.map

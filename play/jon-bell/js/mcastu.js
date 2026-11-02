@@ -44,6 +44,7 @@ import { nasty } from './wizard.js';
 import { mhe, nonliving, is_demon } from './makemon.js';
 import { minuhpmax, setuhpmax, adjuhploss, losestr } from './attrib.js';
 import { Upolyd, M_AP_TYPE } from './const.js';
+import { M_SEEN_ACID, M_SEEN_COLD, M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_FIRE, M_SEEN_MAGR, M_SEEN_NOTHING, M_SEEN_POISON, M_SEEN_SLEEP } from './const.js';
 import { losehp } from './hack.js';
 import { deadhero } from './end.js';
 /* C mcastu.c:337-340 touch_of_death: done(DIED) is SYNCHRONOUS in C — it
@@ -662,7 +663,7 @@ import { You_hear } from './pline.js';
 import { makeplural, makesingular, vtense } from './objnam.js';
 import { bogusmon } from './do_name.js';
 import { make_confused } from './potion.js';
-import { dobuzz, zap_over_floor } from './zap.js';
+import { dobuzz, zap_over_floor, buzz } from './zap.js';
 import { make_blinded, flash_str } from './zap.js';
 import { unconscious } from './trap.js';
 import { is_fainted } from './eat.js';
@@ -947,15 +948,16 @@ export function Monnam(mtmp) {
 // C ref: mondata.c cvt_adtyp_to_mseenres().
 export function cvt_adtyp_to_mseenres(adtyp) {
     switch (adtyp) {
-    case AD_MAGM: return 0x0001;
-    case AD_FIRE: return 0x0002;
-    case AD_COLD: return 0x0004;
-    case AD_SLEE: return 0x0008;
-    case AD_DISN: return 0x0010;
-    case AD_ELEC: return 0x0020;
-    case AD_DRST: return 0x0040;
-    case AD_ACID: return 0x0080;
-    default: return 0x0000;
+    case AD_MAGM: return M_SEEN_MAGR;
+    case AD_FIRE: return M_SEEN_FIRE;
+    case AD_COLD: return M_SEEN_COLD;
+    case AD_SLEE: return M_SEEN_SLEEP;
+    case AD_DISN: return M_SEEN_DISINT;
+    case AD_ELEC: return M_SEEN_ELEC;
+    case AD_DRST: return M_SEEN_POISON;
+    case AD_ACID: return M_SEEN_ACID;
+    /* M_SEEN_REFL has no corresponding AD_foo type */
+    default: return M_SEEN_NOTHING;
     }
 }
 // C ref: monst.h m_seenres() = (mon->seen_resistance & mask) != 0.
@@ -1334,13 +1336,8 @@ function BZ_OFS_AD(adtyp) { return adtyp - 1; }
 /* C hack.h:1486 BZ_M_SPELL(bztyp) = (-10 - (bztyp)): monster spells are NEGATIVE. */
 function BZ_M_SPELL(ofs) { return -10 - ofs; }
 
-// ── unported helper ──
-export async function buzz(type, dmg, x, y, dx, dy) {
-    /* C buzz() is the monster-spell spelling of the same ray engine used by
-     * dobuzz(); retain the monster origin/direction and serialize its async
-     * display/effect work before the caller continues. */
-    await dobuzz(type, dmg, x, y, dx, dy, true, false, false);
-}
+// C zap.c:4765 buzz — canonical port in js/zap.js
+export { buzz };
 
 // C ref: mcastu.c buzzmu.
 export async function buzzmu(mtmp, mattk) {

@@ -18,11 +18,10 @@ import { save_timers_level } from './timeout.js';
 import { vfsWriteFile, vfsReadFile } from './storage.js';
 /* The save-file error path terminates through the shared end-game machinery;
  * keep this import aliased because save.js is also reached by bones.js. */
-import { done as done_real, done_object_cleanup } from './end.js';
+import { done, done_object_cleanup } from './end.js';
 import { encode_save_graph, decode_save_graph } from './save_graph.js';
 
-function pline1(line) { pline(line); }
-function done(how) { return done_real(how); }
+async function pline1(line) { await pline(line); }
 
 function levelStore() {
     return (game.levelStore || (game.levelStore = new Map()));
@@ -128,12 +127,12 @@ export function stored_level(lev) {
 /*
  * tricked_fileremoved — C ref: save.c:328-341
  */
-export function tricked_fileremoved(nhfp, whynot) {
+export async function tricked_fileremoved(nhfp, whynot) {
     if (!nhfp) {
-        pline1(whynot);
-        pline("Probably someone removed it.");
+        await pline1(whynot);
+        await pline("Probably someone removed it.");
         game.svk.killer.name = whynot;
-        done(TRICKED);
+        await done(TRICKED);
         return true;
     }
     return false;

@@ -8,7 +8,7 @@ import { has_ceiling as has_ceiling_real } from './dungeon.js';
 import { pooleffects_is_lava as is_lava_real } from './cmd.js';
 import { expels_gu } from './mhitu.js';
 import { stop_occupation } from './allmain.js';
-import { mbhit_wand, mzapwand as mzapwand_shared } from './muse.js';
+import { mbhit_wand, mzapwand } from './muse.js';
 import { copy_oextra, free_omid, get_mtraits } from './mkobj.js';
 import { t_at } from './trap.js';
 import { linedup, blocking_terrain } from './mthrowu.js';
@@ -70,18 +70,27 @@ function _hero_uprop_on(idx) {
     return !!p && !!((p.intrinsic | 0) || (p.extrinsic | 0)) && !((p.blocked | 0));
 }
 function _slithy(ptr) { return !!(((ptr?.mflags1 | 0) & 0x00080000)); }
+const TIN_OPENER_MM = 239, WEAPON_CLASS_MM = 1; /* objects.h, objclass.h */
+/* C ref: muse.c:3000-3027 mcould_eat_tin(mon) — the tin opener or dagger
+ * need not be wielded; a welded weapon hides the rest of the inventory. */
 function mcould_eat_tin(mon) {
-    for (let obj = mon?.minvent; obj; obj = obj.nobj) {
-        if ((obj.otyp | 0) === 239 /* TIN_OPENER */)
+    /* monkeys who manage to steal tins can't open and eat them */
+    if (isAnimal(monsndx(mon)))
+        return false;
+    const mwep = MON_WEP(mon);
+    const welded_wep = mwep && mwelded(mwep);
+    for (let obj = mon.minvent; obj; obj = obj.nobj) {
+        if (welded_wep && obj !== mwep)
+            continue;
+        const skill = MKOBJ_OC_SKILL[obj.otyp | 0] | 0;
+        if ((obj.otyp | 0) === TIN_OPENER_MM
+            || ((obj.oclass | 0) === WEAPON_CLASS_MM
+                && (skill === P_DAGGER || skill === P_KNIFE)))
             return true;
-        if ((obj.owornmask | 0) & W_WEP) {
-            const skill = MKOBJ_OC_SKILL[obj.otyp | 0] | 0;
-            if (skill === P_DAGGER || skill === P_KNIFE)
-                return true;
-        }
     }
     return false;
 }
+import { mwelded } from './wield.js';
 import { PM_GIANT_EEL, PM_LONG_WORM, PM_ACID_BLOB, PM_CROCODILE } from './pm.generated.js';
 import { PM_SILVER_DRAGON, PM_GRAY_DRAGON, PM_STRAW_GOLEM, PM_IRON_GOLEM, PM_DEATH, PM_PESTILENCE, PM_FAMINE, PM_MINOTAUR, PM_KI_RIN, PM_COCKATRICE, PM_CHICKATRICE, PM_GREMLIN, PM_VROCK, PM_ANGEL } from './pm.generated.js';
 /* m_initinv's is_mercenary() arm (C makemon.c:606-632 switch (monsndx(ptr))). */
@@ -4259,11 +4268,7 @@ export async function mreadmsg(mtmp, otmp) {
 }
 const ARTICLE_A_MM = 2, SUPPRESS_IT_MM = 0x01, SUPPRESS_INVISIBLE_MM = 0x02,
       SUPPRESS_SADDLE_MM = 0x08, AUGMENT_IT_MM = 0x40; /* const.js */
-async function mzapwand(mtmp, otmp, self) {
-    if (!otmp)
-        return;
-    return mzapwand_shared(mtmp, otmp, self);
-}
+/* ONE port: js/muse.js mzapwand (imported above) serves every caller here. */
 
 function muse_newcham_mon(mtmp) {
     const m_armr = which_armor(mtmp, W_ARM);
@@ -5626,7 +5631,7 @@ export function m_use_undead_turning(mtmp, obj) {
      * from the monster to a point 3 steps beyond the hero. */
     let carried = false;
     for (let o = game.invent; o; o = o.nobj)
-        if ((o.otyp | 0) === 265 /* CORPSE */) { carried = true; break; }
+        if ((o.otyp | 0) === CORPSE) { carried = true; break; }
     if (carried || _linedup_corpse(ax, ay, mtmp.mx | 0, mtmp.my | 0)) {
         game.offensive = obj;
         game.has_offense = MUSE_WAN_UNDEAD_TURNING;

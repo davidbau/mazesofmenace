@@ -141,12 +141,12 @@ import { obj_typename, getObjDescr, armor_simple_name, xname_armor, xname_amulet
  * copies are imported under an explicit `_obj` suffix rather than by silently
  * winning or losing a name race. */
 import { cloak_simple_name as cloak_simple_name_obj,
-         suit_simple_name as suit_simple_name_obj,
-         shirt_simple_name as shirt_simple_name_obj,
+         suit_simple_name, suit_simple_name as suit_simple_name_obj,
+         shirt_simple_name, shirt_simple_name as shirt_simple_name_obj,
          helm_simple_name as helm_simple_name_obj,
          gloves_simple_name as gloves_simple_name_obj,
          boots_simple_name as boots_simple_name_obj,
-         shield_simple_name as shield_simple_name_obj,
+         shield_simple_name, shield_simple_name as shield_simple_name_obj,
          vtense } from './objnam.js';
 import { getObjName } from './o_init.js';
 import { ARMOR_DATA } from './armor_data.js';
@@ -533,10 +533,6 @@ function armorMeta(obj) {
 }
 
 
-/* C ref: objnam.c:5471 suit_simple_name(suit) */
-function suit_simple_name(obj) {
-    return suit_simple_name_obj(obj);
-}
 /* C ref: objnam.c:5489 cloak_simple_name(cloak).  ALCHEMY_SMOCK's smock/apron
  * split depends on oc_name_known && dknown; every cloak has oc_delay 0 so this
  * never feeds armoroff()'s nomovemsg, but keep the discovery-state branch
@@ -560,15 +556,6 @@ function gloves_simple_name(row, obj) {
 function boots_simple_name(row, obj) {
     return boots_simple_name_obj(obj);
 }
-/* C ref: objnam.c:5567 shield_simple_name(shield) */
-function shield_simple_name(row, obj) {
-    return shield_simple_name_obj(obj);
-}
-/* C ref: objnam.c:5597 shirt_simple_name(shirt) — use the canonical object
- * naming body already imported above instead of keeping a duplicate shadow. */
-function shirt_simple_name(shirt) {
-    return shirt_simple_name_obj(shirt);
-}
 /* C ref: objnam.c:5435 armor_simple_name(armor) — the category dispatcher over
  * the family above.  It had no combined form here at all, only the seven
  * per-category helpers, so js/mhitu.js's steal() ARMOR_CLASS arm (C
@@ -586,7 +573,7 @@ export function armor_simple_name_dw(obj) {
     case ARM_HELM:   return helm_simple_name(obj);
     case ARM_GLOVES: return gloves_simple_name(row, obj);
     case ARM_BOOTS:  return boots_simple_name(row, obj);
-    case ARM_SHIELD: return shield_simple_name(row, obj);
+    case ARM_SHIELD: return shield_simple_name(obj);
     case ARM_SHIRT:  return shirt_simple_name(obj);
     /* C's default is simpleonames() + impossible(); an unknown armcat cannot
      * arise here because armorMeta() falls back to ARM_SUIT. */
@@ -3465,6 +3452,7 @@ function learnring(ring, observed) {
 }
 
 /* C attrib.c:1268 — effective attribute limits, including equipment overrides. */
+const ART_OGRESMASHER = 16, DUNCE_CAP = DUNCE_CAP_OTYP;
 function extremeattr_dw(which) {
     const g = game;
     const u = g.u || {};
@@ -3473,11 +3461,11 @@ function extremeattr_dw(which) {
         hilimit = STR19(25);
         if (u.uarmg && (u.uarmg.otyp | 0) === GAUNTLETS_OF_POWER_OTYP_DW)
             lolimit = hilimit;
-    } else if (which === A_CON && u.uwep?.oartifact === 16) { // Ogresmasher
+    } else if (which === A_CON && u.uwep?.oartifact === ART_OGRESMASHER) {
         lolimit = hilimit;
     }
-    if ((which === A_INT || which === A_WIS) && (u.uarmh?.otyp | 0) === 94)
-        hilimit = lolimit = 6; // dunce cap
+    if ((which === A_INT || which === A_WIS) && (u.uarmh?.otyp | 0) === DUNCE_CAP)
+        hilimit = lolimit = 6;
     const curval = acurr(u, which);
     return curval === lolimit || curval === hilimit;
 }

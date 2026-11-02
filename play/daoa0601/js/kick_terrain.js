@@ -8,7 +8,7 @@ import { plineWithContinuation as pline } from './pline.js';
 import { placeCreatedObject } from './floor_object.js';
 import { game, requirePlayingGame } from './gstate.js';
 import { dungeonDepth } from './hacklib.js';
-import { heroPolyGender, heroSpecies } from './hero_species.js';
+import { heroPolyGender, heroSpecies } from './polyself.js';
 import { scheduleLevelChange } from './level_change.js';
 import { canFallThrough, findMonsterNearPosition } from './mklev.js';
 import { makemonAt } from './makemon.js';
@@ -29,7 +29,7 @@ import { bringLeashedFollowers } from './apply.js';
 import { impactDrop } from './dokick.js';
 import { waterDamageObject } from './trap.js';
 import { vision_note_blocker_change } from './vision.js';
-import { objectWeight } from './weight.js';
+import { objectWeight } from './mkobj.js';
 export async function kickNonDoorTerrain(x, y, average, responses) {
     requirePlayingGame(game);
     const location = game.level.requireAt(x, y);

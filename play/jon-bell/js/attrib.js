@@ -31,7 +31,6 @@ import monPmnamesPackAt from './makemon_pmnames.json' with { type: 'json' };
 import { ENV } from './hostenv.js';
 import { sgn } from './hacklib.js'; // relocate-fns
 import { adj_erinys } from './mon.js'; // relocate-fns
-import { acurrstr as effective_strength } from './dokick.js'; // relocate-fns
 import { poisoned_u as poisoned_real } from './mhitu.js'; // relocate-fns
 export { adj_erinys } from './mon.js'; // relocate-fns
 /* C attrib.h:
@@ -98,31 +97,39 @@ function getAtemp(u) {
         u.atemp.a = [0, 0, 0, 0, 0, 0];
     return u.atemp.a;
 }
+/* C attrib.c:1200-1241 acurr(chridx) — compute effective current attribute value.
+ * NOTE: i is a C constant (A_STR=0..A_CHA=5); u.acurr.a / u.abon.a /
+ * u.atemp.a are in DISPLAY order — translate via C_ATTR_TO_DISP. */
+const GAUNTLETS_OF_POWER = 161;
+const S_NYMPH = 14;
+const PM_AMOROUS_DEMON = 290;
+const ART_OGRESMASHER = 16;
+const DUNCE_CAP = 94;
+const TRUE = 1;
 export function acurr(u, i) {
     const di = C_ATTR_TO_DISP[i] ?? i; /* C constant → display index */
     const abase = getAbase(u);
     const abon = getAbon(u);
     const atemp = getAtemp(u);
     const tmp = (abon[di] | 0) + (atemp[di] | 0) + (abase[di] | 0);
-    /* C attrib.c:1206: per-attribute special cases; A_STR uses encoded 3..125. */
+    /* C attrib.c:1209: per-attribute special cases; A_STR uses encoded 3..125. */
     if (i === A_STR) {
-        /* gauntlets of power (otyp 161) force STR19(25)=125; also cap at 125. */
-        if (tmp >= STR19(25) || (u.uarmg && u.uarmg.otyp === 161))
+        /* C attrib.c:1214: gauntlets of power force STR19(25)=125; also cap at 125. */
+        if (tmp >= STR19(25) || (u.uarmg && u.uarmg.otyp === GAUNTLETS_OF_POWER))
             return STR19(25);
         return Math.max(tmp, 3);
     }
-    /* C attrib.c:1228-1231: a worn dunce cap pins Int/Wis at 6. */
     /* C attrib.c:1222-1224: nymphs and the amorous demon (incubus/succubus)
      * form count as Cha 18 when the base is lower. */
     if (i === A_CHA && tmp < 18
-        && ((game.youmonst?.data?.mlet | 0) === 14 /* S_NYMPH */
-            || (u.umonnum | 0) === 290 /* PM_AMOROUS_DEMON */))
+        && ((game.youmonst?.data?.mlet | 0) === S_NYMPH
+            || (u.umonnum | 0) === PM_AMOROUS_DEMON))
         return 18;
-    /* C attrib.c:1226-1227: wielding Ogresmasher (artifact index 16) pins
-     * Con at 25. */
-    if (i === A_CON && u.uwep && (u.uwep.oartifact | 0) === 16)
+    /* C attrib.c:1226-1227: wielding Ogresmasher pins Con at 25. */
+    if (i === A_CON && u.uwep && (u.uwep.oartifact | 0) === ART_OGRESMASHER)
         return 25;
-    if ((i === A_INT || i === A_WIS) && u.uarmh && (u.uarmh.otyp | 0) === 94)
+    /* C attrib.c:1228-1232: a worn dunce cap pins Int/Wis at 6. */
+    if ((i === A_INT || i === A_WIS) && u.uarmh && (u.uarmh.otyp | 0) === DUNCE_CAP)
         return 6;
     if (tmp >= 25)
         return 25;
@@ -225,29 +232,30 @@ const ROLE_INITRECORD = [
     0, // 12 Wiz
 ];
 const NEWHP_MAXULEV = 30; /* C global.h MAXULEV */
-/* C attrib.c:1085 newhp(void) — role/race hit-point advancement, called at
+/* C attrib.c:1080 newhp(void) — role/race hit-point advancement, called at
  * hero init (u.ulevel==0) and on every level gain (u.ulevel>0). Role/race
  * data is looked up by flags.initrole/initrace, mirroring the gu.urole /
  * gu.urace struct reads (this codebase keeps role/race advancement tables
  * as static arrays indexed by the init role/race, not live struct fields). */
 export function newhp() {
     const g = game;
-    const u = g.u;
+    const u = g.u || {};
     const initrole = (g.flags?.initrole ?? -1) | 0;
     const initrace = (g.flags?.initrace ?? -1) | 0;
     const rh = (initrole >= 0 && initrole < ROLE_HPADV.length) ? ROLE_HPADV[initrole] : null;
     const rr = (initrace >= 0 && initrace < RACE_HPADV.length) ? RACE_HPADV[initrace] : null;
     let hp, conplus;
     if ((u.ulevel | 0) === 0) {
-        /* C attrib.c:1090-1101: Initialize hit points. */
+        /* C attrib.c:1085-1096: Initialize hit points. */
         hp = ((rh ? rh.infix : 0) | 0) + ((rr ? rr.infix : 0) | 0);
         if (rh && rh.inrnd > 0)
             hp += rnd(rh.inrnd);
         if (rr && rr.inrnd > 0)
             hp += rnd(rr.inrnd);
         if ((g.moves | 0) === 0) {
-            /* C attrib.c:1097-1100: Initialize alignment stuff. */
+            /* C attrib.c:1091-1095: Initialize alignment stuff. */
             const ia = (g.flags?.initalign ?? 0) | 0;
+            u.ualign ||= { type: 0, record: 0, abuse: 0 };
             u.ualign.type = aligns[ia] ? aligns[ia].value : 0;
             u.ualign.record = (initrole >= 0 && initrole < ROLE_INITRECORD.length) ? ROLE_INITRECORD[initrole] : 0;
         }
@@ -280,13 +288,13 @@ export function newhp() {
     if (hp <= 0)
         hp = 1;
     if ((u.ulevel | 0) < NEWHP_MAXULEV) {
-        /* C attrib.c:1140-1141: remember increment; future level drain could
+        /* C attrib.c:1131: remember increment; future level drain could
          * take it away again. */
         if (!u.uhpinc)
             u.uhpinc = new Array(NEWHP_MAXULEV).fill(0);
         u.uhpinc[u.ulevel | 0] = hp;
     } else {
-        /* C attrib.c:1143-1147: after level 30, throttle hit point gains
+        /* C attrib.c:1133-1139: after level 30, throttle hit point gains
          * from extra experience; once max reaches 1200, further increments
          * will be just 1 more. */
         /* C attrib.c:1135: char assignment wraps before max(lim, 1). */
@@ -308,7 +316,6 @@ export function newhp() {
 const plusattr = ["strong", "smart", "wise", "agile", "tough", "charismatic"];
 const minusattr = ["weak", "stupid", "foolish", "clumsy", "fragile", "repulsive"];
 const attrname = ["strength", "intelligence", "wisdom", "dexterity", "constitution", "charisma"];
-const DUNCE_CAP = 94;
 /* u.acurr.a[] / u.amax.a[] are `schar` (nethack-c/include/attrib.h:39
  * `struct attribs { schar a[A_MAX]; }`), so any C assignment into them
  * truncates the int-valued right-hand side to a signed char. */
@@ -388,9 +395,6 @@ export function adjattrib(ndx, incr, msgflg) {
     if (msgflg <= 0)
         pline(`${Unaware() ? "You dream that you feel " : "You feel "}${(incr > 1 || incr < -1) ? "very " : ""}${attrstr}!`); /* You_feel, pline.c:387 */
 
-    /* C attrib.c:190 — "Any successful change also resets abuse / exercise
-     * level": AEXE(ndx) = 0. */
-    getAexe(game.u)[ndx] = 0;
     if ((game.program_state?.in_moveloop | 0) && (ndx === A_STR || ndx === A_CON))
         encumber_msg();
     return true;
@@ -700,7 +704,7 @@ export function adjuhploss(loss, olduhp) {
     }
     return Math.max(loss | 0, 1);
 }
-/* C attrib.c:1162 setuhpmax(newmax, even_when_polyd) — update uhpmax or mhmax.
+/* C attrib.c:1157 setuhpmax(newmax, even_when_polyd) — update uhpmax or mhmax.
  * Sets max HP (or monster HP when polymorphed) and clamps current HP. */
 export function setuhpmax(newmax, even_when_polyd) {
     const u = game.u;
@@ -714,21 +718,21 @@ export function setuhpmax(newmax, even_when_polyd) {
             u.uhpmax = newmax;
             if (u.uhpmax > u.uhppeak)
                 u.uhppeak = u.uhpmax;
-            game.disp.botl = 1; /* SET_BOTL */
+            game.disp.botl = TRUE; /* SET_BOTL */
         }
         if (u.uhp > u.uhpmax) {
             u.uhp = u.uhpmax;
-            game.disp.botl = 1; /* SET_BOTL */
+            game.disp.botl = TRUE; /* SET_BOTL */
         }
     } else {
         /* Polymorphed path */
         if (newmax !== u.mhmax) {
             u.mhmax = newmax;
-            game.disp.botl = 1; /* SET_BOTL */
+            game.disp.botl = TRUE; /* SET_BOTL */
         }
         if (u.mh > u.mhmax) {
             u.mh = u.mhmax;
-            game.disp.botl = 1; /* SET_BOTL */
+            game.disp.botl = TRUE; /* SET_BOTL */
         }
     }
 }
@@ -1153,13 +1157,13 @@ export async function adjabil(oldlevel, newlevel) {
         const p = _uprop(u, prop);
         const prevabil = p.intrinsic | 0;
         if (oldlevel < ulevel && newlevel >= ulevel) {
-            /* C attrib.c:1052: level-1 abilities also get FROMOUTSIDE so they
+            /* C attrib.c:1046-1047: level-1 abilities also get FROMOUTSIDE so they
              * can never be lost via level loss. */
             if (ulevel === 1)
                 p.intrinsic = (p.intrinsic | 0) | (mask | FROMOUTSIDE);
             else
                 p.intrinsic = (p.intrinsic | 0) | mask;
-            /* C attrib.c:1056: pline only if not already intrinsic from another src */
+            /* C attrib.c:1050: pline only if not already intrinsic from another src */
             if (!((p.intrinsic | 0) & INTRINSIC & ~mask)) {
                 if (gainstr && gainstr.length)
                     await pline(`${Unaware() ? 'You dream that you feel ' : 'You feel '}${gainstr}!`); /* You_feel, attrib.c:1052 */
@@ -1173,7 +1177,7 @@ export async function adjabil(oldlevel, newlevel) {
                     await pline(`${Unaware() ? 'You dream that you feel ' : 'You feel '}less ${gainstr}!`); /* You_feel, attrib.c:1060 */
             }
         }
-        /* C attrib.c:1067-1068 — postadjabil() refreshes monster glyphs when
+        /* C attrib.c:1063-1064 — postadjabil() refreshes monster glyphs when
          * WARNING or SEE_INVISIBLE changes.  This is display bookkeeping, but
          * it is reachable on role/race level transitions and must happen only
          * when the intrinsic actually changed. */
@@ -1181,7 +1185,7 @@ export async function adjabil(oldlevel, newlevel) {
             postadjabil(prop);
         i++;
     }
-    /* C attrib.c:1068-1073 — initialization grants intrinsics, not skill slots. */
+    /* C attrib.c:1068-1073: weapon skill slots are adjusted on level change when oldlevel > 0. */
     if (oldlevel > 0) {
         if (newlevel > oldlevel)
             await add_weapon_skill(newlevel - oldlevel);
@@ -1225,18 +1229,16 @@ export async function poisontell(typ, exclaim) {
     await pline(poiseff_prefix[typ] + msg_txt + (exclaim ? '!' : '.'));
 }
 
-/* C ref: attrib.c:1251 acurrstr() — effective Str for door-opening check.
- * For Str <= 18 (normal human): result = max(str, 3) = str.
- * For higher Str values: follows 18/xx encoding; mirrors C exactly. */
-export function acurrstr() {
-    return effective_strength(game.u);
+/* C ref: attrib.c:1245-1262 acurrstr() — condense clumsy ACURR(A_STR) value
+ * into value that fits into formulas (3..25). */
+export function acurrstr(u = game.u) {
+    const str = acurr(u, A_STR) | 0;
+    if (str <= STR18(0)) return Math.max(str, 3);
+    if (str <= STR19(21)) return 19 + Math.trunc(str / 50);
+    return Math.min(str, 125) - 100;
 }
 
-/* mpoisons_subj — real body imported from js/mhitu.js (C ref: mhitu.c:143-158);
- * this file's local copy was a stub returning the constant "poisons you" for
- * every call, e.g. corrupting "%s was poisoned!" (uhitm.c:3132) and the
- * artifact-weapon poison-attack topline (uhitm.c:3109) with a fixed string
- * regardless of AT_WEAP/AT_TUCH/AT_GAZE/AT_BITE or weapon poisoning. */
-export async function poisoned(buf, atype, pname, hpdamchance, is_weapon) {
-    return await poisoned_real(buf, atype, pname, hpdamchance, is_weapon);
+/* C attrib.c:317-408 poisoned(reason, typ, pkiller, fatal, thrown_weapon) */
+export async function poisoned(reason, typ, pkiller, fatal, thrown_weapon) {
+    return await poisoned_real(reason, typ, pkiller, fatal, thrown_weapon);
 }
