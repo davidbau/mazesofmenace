@@ -23,10 +23,11 @@
 import { game } from './gstate.js';
 import { impossible } from './pline.js';
 import { skill_based_spellbook_id } from './spell.js';
-import { pline, flush_screen, docrt, force_more, docorner_blank_utf8_captures, status_r1_menu_docrt } from './display.js';
+import { flush_screen, docrt, force_more, docorner_blank_utf8_captures, status_r1_menu_docrt } from './display.js';
+import { pline } from './pline.js';
 import { topl_park_cursor } from './display.js';
 import { nhgetch } from './input.js';
-import { yn_function } from './end.js';
+import { yn_function } from './cmd.js';
 import { OC_NAME } from './oc_name_data.js';
 import { is_ammo } from './cmd.js';
 import { build_window_screen, menu_search_case, menu_search_docorner } from './com_pager.js';
@@ -47,6 +48,8 @@ import {
     P_ISRESTRICTED, P_UNSKILLED, P_BASIC, P_SKILLED, P_EXPERT, P_MASTER,
     P_GRAND_MASTER, ECMD_OK,
 } from './const.js';
+export { skill_init } from './weapon.js'; // relocate-fns
+export { ROLE_CLERIC, ROLE_HEALER, ROLE_MONK, ROLE_WIZARD, SKILLS_FOR_ROLE, skillrow }; // relocate-fns
 
 /* ── role indices (flags.initrole, role.c order) ────────────────────────────
  * Same numbering js/u_init.js and js/dog.js use; NOT the PM_* mons[] indices. */
@@ -111,11 +114,6 @@ function skillrow(type) {
     return r;
 }
 export function P_SKILL(t) { return skillrow(t).skill | 0; }
-function P_MAX_SKILL(t) { return skillrow(t).max_skill | 0; }
-function P_ADVANCE(t) { return skillrow(t).advance | 0; }
-function P_RESTRICTED(t) { return P_SKILL(t) === P_ISRESTRICTED; }
-/* C ref: skills.h practice_needed_to_advance(level) — ((level) * (level) * 20) */
-function practice_needed_to_advance(level) { return level * level * 20; }
 
 /* C ref: weapon.c:64-68 P_NAME(type). */
 export function P_NAME(type) {
@@ -129,48 +127,8 @@ export function P_NAME(type) {
 /* C weapon.c:1092,1125 — share the skill namers with combat callers. */
 export { skill_name, skill_level_name };
 
-/* C ref: weapon.c:1170 could_advance(). */
-function could_advance(skill) {
-    if (P_RESTRICTED(skill)
-        || P_SKILL(skill) >= P_MAX_SKILL(skill)
-        || (game.u.skills_advanced | 0) >= P_SKILL_LIMIT)
-        return false;
-    return P_ADVANCE(skill) >= practice_needed_to_advance(P_SKILL(skill));
-}
-/* C ref: weapon.c:1186 peaked_skill(). */
-function peaked_skill(skill) {
-    if (P_RESTRICTED(skill))
-        return false;
-    return P_SKILL(skill) >= P_MAX_SKILL(skill)
-        && P_ADVANCE(skill) >= practice_needed_to_advance(P_SKILL(skill));
-}
 
-/* C ref: weapon.c:1198 skill_advance().  Caller has already checked
- * can_advance(); this is the state change plus its message. */
-async function skill_advance(skill) {
-    const u = game.u;
-    u.weapon_slots = (u.weapon_slots | 0) - slots_required(skill);
-    skillrow(skill).skill = P_SKILL(skill) + 1;
-    u.skill_record = u.skill_record || [];
-    u.skill_record[(u.skills_advanced | 0)] = skill;
-    u.skills_advanced = (u.skills_advanced | 0) + 1;
-    /* subtly change the advance message to indicate no more advancement */
-    const msg = `You are now ${P_SKILL(skill) >= P_MAX_SKILL(skill) ? 'most' : 'more'} skilled in ${P_NAME(skill)}.`;
-    await pline(msg);
-    if (skill >= P_FIRST_SPELL && skill <= P_LAST_SPELL)
-        skill_based_spellbook_id();
-    return msg;
-}
 
-/* C ref: weapon.c:1425 unrestrict_weapon_skill(). */
-export function unrestrict_weapon_skill(skill) {
-    if (skill < P_NUM_SKILLS && P_RESTRICTED(skill)) {
-        const r = skillrow(skill);
-        r.skill = P_UNSKILLED;
-        r.max_skill = P_BASIC;
-        r.advance = 0;
-    }
-}
 
 /* ── u_init.c:257-560 Skill_* — the per-role {skill, skmax} tables ────────── */
 const Skill_A = [[P_DAGGER, P_BASIC], [P_KNIFE, P_BASIC], [P_PICK_AXE, P_EXPERT],
@@ -286,420 +244,13 @@ const Skill_W = [[P_DAGGER, P_EXPERT], [P_KNIFE, P_SKILLED], [P_AXE, P_SKILLED],
 const SKILLS_FOR_ROLE = [Skill_A, Skill_B, Skill_C, Skill_H, Skill_K, Skill_Mon,
     Skill_P, Skill_R, Skill_Ran, Skill_S, Skill_T, Skill_V, Skill_W];
 
-// C u_init.c:1040 — select by the live role's monster identity.
-export function skills_for_role() {
-    const role = ROLE_PM_MNUM.indexOf(game.urole.mnum);
-    if (role < 0) throw new Error('panic: No skills found for role');
-    return SKILLS_FOR_ROLE[role];
-}
 
-/* C ref: role.c roles[].spelspec, resolved through spell_skilltype() =
- * objects[booktype].oc_skill (spell.c:2044).  Indexed by flags.initrole:
- *   Arc magic mapping->divination   Bar haste self->escape
- *   Cav dig->matter                 Hea cure sickness->healing
- *   Kni turn undead->clerical       Mon restore ability->healing
- *   Pri remove curse->clerical      Rog detect treasure->divination
- *   Ran invisibility->escape        Sam clairvoyance->divination
- *   Tou charm monster->enchantment  Val cone of cold->attack
- *   Wiz magic missile->attack                                             */
-const ROLE_SPELSPEC_SKILL = [
-    P_DIVINATION_SPELL, P_ESCAPE_SPELL, P_MATTER_SPELL, P_HEALING_SPELL,
-    P_CLERIC_SPELL, P_HEALING_SPELL, P_CLERIC_SPELL, P_DIVINATION_SPELL,
-    P_ESCAPE_SPELL, P_DIVINATION_SPELL, P_ENCHANTMENT_SPELL, P_ATTACK_SPELL,
-    P_ATTACK_SPELL,
-];
 
-/* C ref: weapon.c:1738 skill_init(class_skill).  Called from u_init(), after
- * ini_inv() has built gi.invent (C u_init.c:1404). */
-export async function skill_init(initrole) {
-    const u = game.u;
-    const ir = initrole | 0;
 
-    /* initialize skill array; by default, everything is restricted */
-    u.weapon_skills = [];
-    for (let skill = 0; skill < P_NUM_SKILLS; skill++)
-        u.weapon_skills[skill] = { skill: P_ISRESTRICTED, max_skill: P_ISRESTRICTED, advance: 0 };
 
-    /* Set skill for all weapons in inventory to be basic */
-    for (let obj = game.invent; obj; obj = obj.nobj) {
-        /* don't give skill just because of carried ammo, wait until we see
-           the relevant launcher */
-        if (is_ammo(obj))
-            continue;
-        const skill = weapon_type(obj);
-        if (skill !== P_NONE)
-            skillrow(skill).skill = P_BASIC;
-    }
 
-    /* set skills for magic */
-    if (ir === ROLE_HEALER || ir === ROLE_MONK) {
-        skillrow(P_HEALING_SPELL).skill = P_BASIC;
-    } else if (ir === ROLE_CLERIC) {
-        skillrow(P_CLERIC_SPELL).skill = P_BASIC;
-    } else if (ir === ROLE_WIZARD) {
-        skillrow(P_ATTACK_SPELL).skill = P_BASIC;
-        skillrow(P_ENCHANTMENT_SPELL).skill = P_BASIC;
-    }
 
-    /* walk through array to set skill maximums */
-    const table = SKILLS_FOR_ROLE[ir];
-    if (!table)
-        return;
-    for (const [skill, skmax] of table) {
-        skillrow(skill).max_skill = skmax;
-        if (P_SKILL(skill) === P_ISRESTRICTED) /* skill pre-set */
-            skillrow(skill).skill = P_UNSKILLED;
-    }
 
-    /* High potential fighters already know how to use their hands. */
-    if (P_MAX_SKILL(P_BARE_HANDED_COMBAT) > P_EXPERT)
-        skillrow(P_BARE_HANDED_COMBAT).skill = P_BASIC;
 
-    /* Roles that start with a horse know how to ride it. */
-    if (game.urole.petnum === PM_PONY)
-        skillrow(P_RIDING).skill = P_BASIC;
 
-    /* Make sure we haven't missed setting the max on a skill & set advance */
-    for (let skill = 0; skill < P_NUM_SKILLS; skill++) {
-        if (!P_RESTRICTED(skill)) {
-            if (P_MAX_SKILL(skill) < P_SKILL(skill)) {
-                await impossible("skill_init: curr > max: %s", P_NAME(skill));
-                skillrow(skill).max_skill = P_SKILL(skill);
-            }
-            skillrow(skill).advance = practice_needed_to_advance(P_SKILL(skill) - 1);
-        }
-    }
 
-    /* each role has a special spell; allow at least basic for its type */
-    unrestrict_weapon_skill(ROLE_SPELSPEC_SKILL[ir]);
-    if (!u.uroleplay?.pauper)
-        skill_based_spellbook_id();
-}
-
-/* C ref: weapon.c:1226-1231 skill_ranges[]. */
-const SKILL_RANGES = [
-    { first: P_FIRST_H_TO_H, last: P_LAST_H_TO_H, name: 'Fighting Skills' },
-    { first: P_FIRST_WEAPON, last: P_LAST_WEAPON, name: 'Weapon Skills' },
-    { first: P_FIRST_SPELL, last: P_LAST_SPELL, name: 'Spellcasting Skills' },
-];
-
-const pad = (s, n) => (String(s) + ' '.repeat(Math.max(0, n - String(s).length)));
-const rpad = (n, w) => String(n).padStart(w);
-
-/* C ref: weapon.c:1230 add_skills_to_menu(win, selectable, speedy).  Returns
- * the menu items in C's add_menu order: { text, heading, a_int }.  a_int 0 is
- * a non-selectable row (heading or unadvanceable skill). */
-function add_skills_to_menu(selectable, speedy) {
-    const out = [];
-    /* Find the longest skill name. */
-    let longest = 0;
-    for (let i = 0; i < P_NUM_SKILLS; i++) {
-        if (P_RESTRICTED(i))
-            continue;
-        const len = P_NAME(i).length;
-        if (len > longest)
-            longest = len;
-    }
-    for (const range of SKILL_RANGES) {
-        for (let i = range.first; i <= range.last; i++) {
-            /* Print headings for skill types (BEFORE the restricted skip, so a
-               fully-restricted range still gets its heading). */
-            if (i === range.first)
-                out.push({ text: range.name, heading: true, a_int: 0 });
-            if (P_RESTRICTED(i))
-                continue;
-            /*
-             * The 12 is the longest skill level name.
-             * The "    " is room for a selection letter and dash, "a - ".
-             */
-            let prefix;
-            if (!selectable)
-                prefix = '';
-            else if (can_advance(i, speedy))
-                prefix = ''; /* will be preceded by menu choice */
-            else if (could_advance(i))
-                prefix = '  * ';
-            else if (peaked_skill(i))
-                prefix = '  # ';
-            else
-                prefix = '    ';
-            const sklnam = skill_level_name(i);
-            let text;
-            const tabsep = !!game.iflags?.menu_tab_sep;
-            if (wizardMode() && tabsep) {
-                /* " %s%s\t%s\t%5d(%4d)" */
-                text = ` ${prefix}${P_NAME(i)}\t${sklnam}\t`
-                     + `${rpad(P_ADVANCE(i), 5)}(${rpad(practice_needed_to_advance(P_SKILL(i)), 4)})`;
-            } else if (tabsep && !wizardMode()) {
-                /* " %s%s\t[%s]" */
-                text = ` ${prefix}${P_NAME(i)}\t[${sklnam}]`;
-            } else if (wizardMode()) {
-                /* " %s%-*s %-12s %5d(%4d)" */
-                text = ` ${prefix}${pad(P_NAME(i), longest)} ${pad(sklnam, 12)} `
-                     + `${rpad(P_ADVANCE(i), 5)}(${rpad(practice_needed_to_advance(P_SKILL(i)), 4)})`;
-            } else {
-                /* " %s %-*s [%s]" */
-                text = ` ${prefix} ${pad(P_NAME(i), longest)} [${sklnam}]`;
-            }
-            out.push({ text, heading: false,
-                       a_int: (selectable && can_advance(i, speedy)) ? i + 1 : 0 });
-        }
-    }
-    return out;
-}
-
-function wizardMode() { return !!(game.flags && game.flags.debug); }
-
-/* C ref: hack.h y_n(query) => yn_function(query, ynchars, 'n', TRUE); tty
- * rejects keys outside "yn"/ESC/space/Enter with a bell and keeps reading. */
-async function y_n(question) {
-    return yn_function(question, 'yn', 'n', true);
-}
-
-const SCREEN_ROWS = 24;
-
-/* C ref: win/tty/wintty.c tty_end_menu + process_menu_window, for a menu whose
- * widest line drives offx down to 10 and therefore to 0 (full-screen mode).
- * The #enhance menu is always full-screen: its wizard-mode rows are ~48
- * columns and its non-wizard rows ~40, and `len = strlen(str) + 2` against
- * `offx = max(10, cols - maxcol - 1)` lands at or below 10 in both shapes, so
- * `if (cw->offx == 10 ...) { cw->offx = 0; term_clear_screen(); }` fires.
- *
- * Page geometry: lmax = min(52, rows - 1) = 23 items per page; the morestr row
- * follows the last item of the page.  Every printed row is `putchar(' ')`
- * followed by the item string, i.e. a one-column left margin. */
-/* Geometry of the overlay window enhance_menu last left up (null: full-screen). */
-let enhance_overlay = null;
-async function enhance_menu(items, prompt, pickOne) {
-    const g = game;
-    enhance_overlay = null;
-    /* C ref: tty_end_menu — "Put the prompt at the beginning of the menu":
-     * add_menu("") then add_menu(prompt), both PREPENDED after the list has
-     * been reversed, so the prompt row comes first and the blank row second. */
-    const all = [{ text: prompt, heading: true, a_int: 0 },
-                 { text: '', heading: false, a_int: 0 }, ...items];
-    const LMAX = Math.min(52, SCREEN_ROWS - 1);
-    const npages = Math.max(1, Math.ceil(all.length / LMAX));
-    /* C ref: tty_end_menu's accelerator pass — menu_ch resets to 'a' at every
-     * page boundary and only advances on items with a non-zero identifier. */
-    const accel = new Array(all.length).fill('');
-    let menu_ch = 'a'.charCodeAt(0);
-    for (let n = 0; n < all.length; n++) {
-        if ((n % LMAX) === 0)
-            menu_ch = 'a'.charCodeAt(0);
-        if (all[n].a_int) {
-            accel[n] = String.fromCharCode(menu_ch);
-            menu_ch = (menu_ch === 'z'.charCodeAt(0)) ? 'A'.charCodeAt(0) : menu_ch + 1;
-        }
-    }
-    let pageIdx = 0;
-    /* C ref: wintty.c:1927 — a single-page menu with maxrow < rows overlays the
-     * map at offx = min(40, cols - maxcol - 1) (H2344_BROKEN arm), maxcol being
-     * the longest stored str + 2 (tty_end_menu, trailing blanks counted); only
-     * offx == 10 / maxrow >= rows goes full-screen.  Same placement as
-     * cmd.js tty_menu_pick_one_ext. */
-    let overlayCol = 0, overlayRows = 0;
-    if (npages === 1 && all.length + 1 < SCREEN_ROWS) {
-        let maxlen = 5;
-        for (let n = 0; n < all.length; n++) {
-            const body = accel[n] ? `${accel[n]} - ${all[n].text}` : all[n].text;
-            maxlen = Math.max(maxlen, body.length);
-        }
-        const col = Math.min(41, 78 - maxlen);
-        if (col > 1)
-            overlayCol = col;
-    }
-    const renderPage = async () => {
-        const start = pageIdx * LMAX;
-        const page = all.slice(start, start + LMAX);
-        const morestr = (npages > 1) ? `(${pageIdx + 1} of ${npages})` : '(end) ';
-        if (overlayCol) {
-            const wl = page.map((it, i) => {
-                const a = accel[start + i];
-                const body = (a ? `${a} - ${it.text}` : it.text).replace(/\t/g, ' ');
-                return it.heading ? menu_heading_text(body) : body;
-            });
-            wl.push('(end)');
-            overlayRows = wl.length;
-            g._screen_output = build_window_screen(wl, overlayCol, g.u?.uac ?? 0);
-            const disp = g.nhDisplay;
-            if (disp) { disp.cursorCol = overlayCol + '(end) '.length; disp.cursorRow = page.length; }
-            return { start, page, morestr };
-        }
-        const rows = new Array(SCREEN_ROWS).fill('');
-        for (let i = 0; i < page.length; i++) {
-            const it = page[i];
-            const a = accel[start + i];
-            const body = (a ? `${a} - ${it.text}` : it.text).replace(/\t/g, ' ');
-            /* Headings are drawn with iflags.menu_headings (wintty.c:2688). */
-            rows[i] = ' ' + (it.heading ? menu_heading_text(body) : body);
-        }
-        rows[page.length] = ` ${morestr}`;
-        g._screen_output = rows.join('\n');
-        const disp = g.nhDisplay;
-        if (disp) { disp.cursorCol = 1 + morestr.length; disp.cursorRow = page.length; }
-        return { start, page, morestr };
-    };
-    let cur = await renderPage();
-    if (overlayCol) enhance_overlay = { col: overlayCol, rows: overlayRows };
-    for (;;) {
-        const key = await nhgetch();
-        const ch = String.fromCharCode(key);
-        if (key === 27) /* ESC — cancel */
-            return 0;
-        if (key === 32 /* ' ' */ || ch === '>') {
-            if (pageIdx < npages - 1) { pageIdx++; cur = await renderPage(); continue; }
-            if (key === 32) return 0; /* ' ' finishes on the last page */
-            continue;
-        }
-        if (ch === '<' || ch === '^' || ch === '|') {
-            const target = (ch === '<') ? pageIdx - 1 : (ch === '^') ? 0 : npages - 1;
-            if (target !== pageIdx && target >= 0 && target < npages) {
-                pageIdx = target; cur = await renderPage();
-            }
-            continue;
-        }
-        if (ch === '\n' || ch === '\r') /* finished, nothing selected */
-            return 0;
-        if (ch === ':' && pickOne) {
-            /* C wintty.c:1700-1730: search all selectable entries in mlist
-             * order, including pages other than the one currently displayed. */
-            const rows = g._screen_output.split('\n');
-            let picked = 0;
-            const finished = await menu_search_case('ONE',
-                all.flatMap((it, i) => it.a_int
-                    ? [{ str: `${accel[i]} - ${it.text}`, a_int: it.a_int }] : []),
-                () => rows, (it) => { picked = it.a_int; });
-            if (finished) return picked;
-            /* getline.c:213 clears WIN_MESSAGE; process_menu_window leaves
-             * the erased title blank until a page change repaints the menu. */
-            rows[0] = '';
-            g._screen_output = menu_search_docorner(rows).join('\n');
-            const disp = g.nhDisplay;
-            if (disp) {
-                disp.cursorCol = (overlayCol || 1) + cur.morestr.length;
-                disp.cursorRow = cur.page.length;
-            }
-            continue;
-        }
-        if (pickOne) {
-            const idx = cur.page.findIndex((it, i) => accel[cur.start + i] === ch && it.a_int);
-            if (idx >= 0)
-                return cur.page[idx].a_int;
-        }
-        /* Unrecognised key: bell, no redraw, read again. */
-    }
-}
-
-/* C ref: weapon.c:1329 enhance_weapon_skill() — the `#enhance' command. */
-export async function enhance_weapon_skill() {
-    const g = game;
-    const u = g.u;
-    let speedy = false;
-    let n = 0;
-
-    /* C ref: weapon.c:1338 `svc.context.tips |= (1 << TIP_ENHANCE)` — "player
-     * knows about #enhance, don't show tip anymore".  This port models
-     * context.tips as a PER-TIP BOOLEAN ARRAY rather than C's bitmask (see
-     * js/cmd.js handle_tip, which indexes it), so set the TIP_ENHANCE slot in
-     * that representation; writing C's bitmask here turns the array into a
-     * number and handle_tip then throws on its next index write. */
-    const TIP_ENHANCE = 0; /* context.h:15 */
-    g.context = g.context || {};
-    if (!g.context.tips)
-        g.context.tips = [];
-    g.context.tips[TIP_ENHANCE] = true;
-
-    if (wizardMode() && (await y_n('Advance skills without practice?')) === 'y')
-        speedy = true;
-
-    let pendingMore = null;
-    do {
-        /* C ref: weapon.c:1352 create_nhwindow/start_menu -> the tty's
-         * tty_display_nhwindow, which flushes an unacknowledged topline first
-         * (`if (ttyDisplay->toplin == TOPLINE_NEED_MORE) tty_display_nhwindow(
-         * WIN_MESSAGE, TRUE)`).  That is where the "--More--" after each
-         * advance message comes from: it belongs to the NEXT menu's display,
-         * not to skill_advance, so a loop that ends instead of redisplaying
-         * leaves the message unpaged. */
-        if (pendingMore !== null) {
-            await force_more(pendingMore);
-            pendingMore = null;
-        }
-        /* count advanceable skills */
-        let to_advance = 0, eventually_advance = 0, maxxed_cnt = 0;
-        for (let i = 0; i < P_NUM_SKILLS; i++) {
-            if (P_RESTRICTED(i))
-                continue;
-            if (can_advance(i, speedy))
-                to_advance++;
-            else if (could_advance(i))
-                eventually_advance++;
-            else if (peaked_skill(i))
-                maxxed_cnt++;
-        }
-
-        const items = [];
-        /* start with a legend if any entries will be annotated with "*"/"#" */
-        if (eventually_advance > 0 || maxxed_cnt > 0) {
-            if (eventually_advance > 0) {
-                const MAXULEV = 30;
-                items.push({ text: `(Skill${eventually_advance === 1 ? '' : 's'} flagged by "*" may be enhanced `
-                    + `${(u.ulevel | 0) < MAXULEV ? "when you're more experienced"
-                                                  : 'if skill slots become available'}.)`,
-                    heading: false, a_int: 0 });
-            }
-            if (maxxed_cnt > 0)
-                items.push({ text: `(Skill${maxxed_cnt === 1 ? '' : 's'} flagged by "#" cannot be enhanced any further.)`,
-                    heading: false, a_int: 0 });
-            items.push({ text: '', heading: false, a_int: 0 });
-        }
-
-        items.push(...add_skills_to_menu(
-            to_advance + eventually_advance + maxxed_cnt > 0, speedy));
-
-        let prompt = (to_advance > 0) ? 'Pick a skill to advance:' : 'Current skills:';
-        if (wizardMode() && !speedy) {
-            const slots = u.weapon_slots | 0;
-            prompt += `  (${slots} slot${slots === 1 ? '' : 's'} available)`;
-        }
-        const picked = await enhance_menu(items, prompt, to_advance > 0);
-        /* C ref: weapon.c:1391 destroy_nhwindow(win).  The #enhance menu is a
-         * full-screen (offx == 0) tty window, so tearing it down repaints the
-         * map — C's term_clear_screen()/docrt() pair. */
-        if (enhance_overlay) {
-            /* An overlay (offx > 0) window is dismissed by docorner(), not
-             * docrt(): wintty.c:982,3684 clears and repaints only from offx
-             * on, so cells left of it (warning glyphs, never remembered)
-             * stay on the physical screen. */
-            docorner_blank_utf8_captures(enhance_overlay.col - 1, enhance_overlay.rows + 1);
-            await flush_screen(1);
-        } else {
-            /* windows.c:1861 select_menu runs with bot_disabled, and
-             * tty_select_menu's tty_dismiss_nhwindow -> erase_menu_or_text
-             * (wintty.c:978-979) does docrt(); flush_screen(1): the map, row
-             * y=20 included, prints while bot() returns early (botl.c:255).
-             * The next bot() then rewrites status row 1 over it -- the same
-             * ordering tty_menu.js and cmd.js _dismissMenu record. */
-            await docrt();
-            status_r1_menu_docrt();
-            game._r1botAfterMap = game.level;
-            game._r1textOver = true;
-        }
-        n = picked ? 1 : 0;
-        if (n > 0) {
-            pendingMore = await skill_advance(picked - 1); /* get item selected */
-            /* check for more skills able to advance; if so, then... */
-            n = 0;
-            for (let i = 0; i < P_NUM_SKILLS; i++) {
-                if (can_advance(i, speedy)) {
-                    if (!speedy)
-                        await pline('You feel you could be more dangerous!');
-                    n++;
-                    break;
-                }
-            }
-        }
-    } while (speedy && n > 0);
-    return ECMD_OK;
-}

@@ -19,32 +19,30 @@ import { game } from './gstate.js';
 import { impossible } from './pline.js';
 import { displayLookWindow } from './look-window.js';
 import { fix_ghostly_obj } from './bones.js';
-import {
-    pline, _topl_stash_result, newsym, newsym_force, Norep, flush_screen, obj_to_glyph, menu_item_marker,
-    force_more, topl_park_cursor, topl_force_break_after, capture_flushed_cells, You_see,
-    _topline_more_pending, _more_never_dismissed, flush_pending_messages,
-} from './display.js';
-import { pline_with_more, money_cnt, build_window_screen, tty_window_offx, menu_search_case } from './com_pager.js';
+import { _topl_stash_result, newsym, newsym_force, flush_screen, obj_to_glyph, menu_item_marker, force_more, topl_park_cursor, topl_force_break_after, capture_flushed_cells, _topline_more_pending, _more_never_dismissed, flush_pending_messages } from './display.js';
+import { pline, Norep, You_see } from './pline.js';
+import { pline_with_more, build_window_screen, tty_window_offx, menu_search_case } from './com_pager.js';
+import { money_cnt } from './hack.js';
 import { menu_heading_text } from './tty_menu.js';
 import { autokey, pick_lock, getdir, u_have_forceable_weapon } from './lock.js';
 import { boxlock } from './lock.js';
 import { nomul } from './allmain.js';
 import { nhgetch } from './input.js';
 import { touch_artifact_youmonst, _pickup_burden_level } from './wizcmds.js';
-import { poly_when_stoned } from './mhitm.js';
+import { poly_when_stoned } from './mondata.js';
 import { polymon } from './polyself.js';
 import { exercise } from './attrib.js';
 import { PM_STONE_GOLEM } from './pm.generated.js';
 import { corpse_xname, killer_xname, CXN_SINGULAR, CXN_ARTICLE } from './objnam.js';
 import { Blind } from './vision.js';
-import { get_obj_location } from './light.js';
+import { get_obj_location } from './zap.js';
 import { ARMOR_DATA } from './armor_data.js';
 import { MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
 import { splitobj } from './makemon.js';
-import { which_armor } from './makemon.js';
+import { which_armor } from './worn.js';
 import { rnd, rn2 } from './rng.js';
-import { losehp } from './dokick.js';
-import { yn_function } from './end.js';
+import { losehp } from './hack.js';
+import { yn_function } from './cmd.js';
 import {
     ECMD_OK, ECMD_TIME, is_pit, is_hole, u_at, TT_PIT, isok, AUTOUNLOCK_FORCE, CQ_CANNED,
     OBJ_CONTAINED, OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT, engulfing_u,
@@ -70,19 +68,22 @@ import { m_at, mon_nam } from './uhitm.js';
 import { hliquid, x_monnam } from './mhitm.js';
 /* pickup()'s own guard cascade (pickup.c:690-735) — real, already-ported
  * bodies from their owning files, imported read-only. */
-import { is_pool, look_here } from './look.js';
-import { t_at, extract_from_minvent } from './trap.js';
-import { can_reach_floor, addinv_core0, hold_another_object } from './hold_another_object.js';
+import { is_pool } from './look.js';
+import { look_here } from './invent.js';
+import { t_at } from './trap.js';
+import { extract_from_minvent } from './worn.js';
+import { can_reach_floor } from './hold_another_object.js';
+import { addinv_core0, hold_another_object } from './invent.js';
 import { freehand, cant_reach_floor, is_ice } from './engrave.js';
 import { rider_cant_reach } from './steed.js';
 import { P_SKILL } from './skills.js';
-import {
-    safe_qbuf as safe_qbuf_shk, costly_spot, in_rooms, addtobill, shop_keeper, inhishop, remote_burglary, shk_your,
-} from './shk.js';
-import { remove_object, obj_extract_self, upstart, engr_at, On_stairs, set_bknown, is_rider_pm, revive_corpse } from './mklev.js';
-import {
-    max_capacity, calc_capacity, near_capacity, weight,
-} from './weight.js';
+import { safe_qbuf as safe_qbuf_shk, costly_spot, addtobill, shop_keeper, inhishop, remote_burglary, shk_your } from './shk.js';
+import { in_rooms } from './hack.js';
+import { remove_object, obj_extract_self, engr_at, set_bknown, is_rider_pm, revive_corpse } from './mklev.js';
+import { On_stairs } from './stairs.js';
+import { upstart } from './hacklib.js';
+import { weight } from './weight.js';
+import { max_capacity, calc_capacity, near_capacity } from './hack.js';
 import { ansimpleoname, thesimpleoname, simpleonames, an, doname, doname_with_price, makesingular, getObjDescr, xname, the, The, otense } from './objnam.js';
 import { observe_object, discover_object } from './o_init.js';
 /* C ref: describe_decor()'s own callees (invent.c dfeature_at, dungeon.c
@@ -105,8 +106,18 @@ import {
     bhp_Maybe_Half_Phys,
     cmdq_add_ec,
 } from './cmd.js';
-import { getlin } from './wizcmds.js';
+import { getlin } from './windows.js';
 import { def_oc_syms_chars, def_char_to_objclass } from './drawing.js';
+import { uescaped_shaft, unconscious, uteetering_at_seen_pit } from './trap.js'; // relocate-fns
+import { encumber_msg as encumber_msg_real } from './weight.js'; // relocate-fns
+import { CORPSE } from './makemon.js'; // relocate-fns
+import { start_corpse_timeout, start_glob_timeout } from './mklev.js'; // relocate-fns
+import { get_mtraits } from './mkobj.js'; // relocate-fns
+import { PM_ICE_TROLL } from './pm.generated.js'; // relocate-fns
+import { age_is_relative } from './timeout.js'; // relocate-fns
+import { get_adjacent_loc } from './cmd.js'; // relocate-fns
+import { tally_BUCX } from './invent.js'; // relocate-fns
+export { _COIN_CLASS, _is_cleric }; // relocate-fns
 
 /* Container types: Is_container checks otyp >= LARGE_BOX && otyp <= BAG_OF_TRICKS.
  * From nethack-c/include/obj.h:
@@ -644,26 +655,6 @@ function mon_beside(x, y) {
     return false;
 }
 
-/* C ref: cmd.c:3931 get_adjacent_loc(prompt, emsg, x, y, cc) — getdir, then
- * resolve <x,y> + <u.dx,u.dy>.  Returns 0 on a cancelled/invalid direction,
- * having plined C's Never_mind ("Never mind."). */
-async function get_adjacent_loc(prompt, emsg, x, y, cc) {
-    const u = game.u;
-    if (!await getdir(prompt)) {
-        await pline('Never mind.');
-        return 0;
-    }
-    const new_x = x + (u.dx | 0), new_y = y + (u.dy | 0);
-    if (cc && isok(new_x, new_y)) {
-        cc.x = new_x;
-        cc.y = new_y;
-    } else {
-        if (emsg)
-            await pline(emsg);
-        return 0;
-    }
-    return 1;
-}
 
 /* C ref: pickup.c:2431 loot_mon(mtmp, passed_info, prev_loot) — 3.3.1's
  * "remove the saddle from your steed" and 3.4.0's loot-the-swallower.  C's two
@@ -1836,25 +1827,6 @@ export function allow_category(obj) {
     return true;
 }
 
-/* C ref: invent.c:3580 tally_BUCX() */
-function tally_BUCX(list, by_nexthere) {
-    const t = { b: 0, u: 0, c: 0, x: 0, o: 0, j: 0 };
-    const goldX = !!game.flags?.goldX;
-    for (; list; list = by_nexthere ? list.nexthere : list.nobj) {
-        if (_is_cleric())
-            list.bknown = ((list.oclass | 0) !== _COIN_CLASS) ? 1 : 0;
-        if (list.pickup_prev) t.j++;
-        if ((list.oclass | 0) === _COIN_CLASS) {
-            if (goldX) t.x++; else t.u++;
-            continue;
-        }
-        if (!list.bknown) t.x++;
-        else if (list.blessed) t.b++;
-        else if (list.cursed) t.c++;
-        else t.u++;
-    }
-    return t;
-}
 
 /* C ref: pickup.c:97-117 collect_obj_classes() */
 function collect_obj_classes(otmp, here) {
@@ -2228,46 +2200,32 @@ export async function pickup(what) {
     return (n_tried > 0) ? 1 : 0;
 }
 
-/* C ref: trap.c:6756-6767 boolean unconscious(void).
- *     if (gm.multi >= 0) return FALSE;
- *     return (u.usleep
- *             || (gn.nomovemsg && (!strncmp(gn.nomovemsg, "You awake", 9)
- *                 || !strncmp(gn.nomovemsg, "You regain con", 14)
- *                 || !strncmp(gn.nomovemsg, "You are consci", 14))));
- * gm.multi is game.multi and gn.nomovemsg is game.nomovemsg in this port
- * (js/allmain.js nomul()/unmul()).  C draws no RNG here.
- *
- * This is the body js/uhitm.js:46 imports and js/uhitm.js:2988 CALLS (the
- * AD_TELE hit's verbose "Your position suddenly seems %suncertain!"); until
- * now it was `throw new Error('not yet ported: unconscious')` on that live
- * path.  js/teleport.js:388 and js/eat.js:265 carry module-private copies of
- * this same C function with the same logic; they are outside this file's
- * ownership and are reported, not touched. */
-export function unconscious() {
-    const g = game;
-    if ((g.multi | 0) >= 0)
-        return false;
-    if (g.u && g.u.usleep)
-        return true;
-    const nmm = g.nomovemsg;
-    return !!(nmm && (nmm.startsWith('You awake')
-                      || nmm.startsWith('You regain con')
-                      || nmm.startsWith('You are consci')));
+
+
+
+/* near_capacity() — C hack.c:4349; real STR/CON+inventory-weight impl now
+ * imported from weight.js (shared faithful impl). */
+/* encumber_msg() stub — C hack.c:4382.
+ * Prints an encumbrance message to the player.
+ * Not yet ported; called only when STR is restored from negative. */
+export async function encumber_msg() {
+    return encumber_msg_real();
 }
 
-export function uteetering_at_seen_pit(trap) {
-    const u = game.u;
-    return !!(trap && is_pit(trap.ttyp | 0) && trap.tseen
-              && u_at(trap.tx, trap.ty)
-              && !(u.utrap && (u.utraptype | 0) === TT_PIT));
-}
-
-/* C ref: trap.c:6640-6646 boolean uescaped_shaft(struct trap *trap).
- *     return (trap && is_hole(trap->ttyp) && trap->tseen
- *             && u_at(trap->tx, trap->ty));
- * "TRUE if you didn't fall through a hole or didn't release a trap door."
- * No RNG.  Same live call site as uteetering_at_seen_pit (js/cmd.js:3129). */
-export function uescaped_shaft(trap) {
-    return !!(trap && is_hole(trap.ttyp | 0) && trap.tseen
-              && u_at(trap.tx, trap.ty));
+/* C pickup.c:2781-2799 removed_from_icebox().  Frozen object ages are stored
+ * relative to the turn at which they entered the ice box.  On removal they
+ * become absolute again and their ordinary lifecycle timer resumes. */
+export function removed_from_icebox(obj) {
+    if (!age_is_relative(obj)) {
+        obj.age = (game.moves | 0) - (obj.age | 0);
+        if ((obj.otyp | 0) === CORPSE) {
+            const traits = get_mtraits(obj, false);
+            const iceTroll = traits ? traits.data.pmidx === PM_ICE_TROLL
+                : (obj.corpsenm | 0) === PM_ICE_TROLL;
+            obj.norevive = iceTroll ? 0 : 1;
+            start_corpse_timeout(obj);
+        } else if (obj.globby) {
+            start_glob_timeout(obj, 0);
+        }
+    }
 }

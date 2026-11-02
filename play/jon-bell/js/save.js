@@ -2,12 +2,13 @@ import { change_luck } from './attrib.js';
 // save.js — C ref: nethack-c/src/save.c
 
 import { game } from './gstate.js';
-import { getnow } from './allmain.js';
-import { pline, yyyymmddhhmmss, There } from './display.js';
+import { getnow } from './calendar.js';
+import { yyyymmddhhmmss } from './calendar.js';
+import { pline, There } from './pline.js';
 import { TRICKED, VISITED, RANGE_LEVEL, MON_DETACH } from './const.js';
 import { save_light_sources, lights_save_snapshot } from './light.js';
 import { save_engravings, clear_level_structures } from './mklev.js';
-import { dmonsfree } from './mkmaze.js';
+import { dmonsfree } from './mon.js';
 import { forget_temple_entry } from './priest.js';
 import { regions_save_snapshot } from './region.js';
 import { worms_save_snapshot } from './worm.js';
@@ -174,7 +175,11 @@ export const NOT_SAVED = [
     'nhDisplay', '_rawterm', '_screen_output', '_preNhgetchHook',
     // C save.c:265-333 omits blstats; botl.c:1694,1759-1795 initializes
     // field values, colors and temporary highlight timers in each process.
-    '_blTemp', '_statusFieldColors',
+    '_blTemp', '_statusFieldColors', '_statusHilitesReset',
+    // botl.c:2784 status_hilite_add_threshold keeps rules in
+    // blstats[].thresholds, which save.c never writes: a restored process has
+    // only its config's hilite_status rules, not ones added from 'O'.
+    'status_field_hilites', 'status_condition_hilites',
     'mockStorage', 'currentSeed', 'tutorial_set_in_config',
     '_pending_message', '_prevmsg', '_resultMessage', '_resultMessageJoins',
     // C save.c:265-333 omits the physical tty frame held by more()

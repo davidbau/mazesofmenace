@@ -1,4 +1,4 @@
-import { spoteffects } from './landing-effects.js';
+import { spoteffects } from './hack.js';
 import { gulp_blnd_check } from './mhitu.js';
 import { is_pool, is_pool_or_lava } from './look.js';
 import { SWIMMING, WWALKING } from './const.js';
@@ -10,7 +10,8 @@ import { pooleffects_drown, pooleffects_lava_effects, pooleffects_is_lava,
 import { game } from './gstate.js';
 import { shk_your as ownership_prefix } from './shk.js';
 import { setworn, setnotworn } from './worn.js';
-import { set_bc, movobj } from './ball.js';
+import { set_bc } from './ball.js';
+import { movobj } from './hack.js';
 import { OBJ_INVENT, is_pit, is_hole } from './const.js';
 import { impossible as equipment_impossible } from './pline.js';
 import { begin_burn, end_burn } from './timeout.js';
@@ -35,8 +36,8 @@ function _hero_mflags1_dw() {
  * monflag.h:102 M1_HUMANOID = 0x00020000L ("has humanoid head/arms/torso"). */
 const M1_HUMANOID_DW = 0x00020000;
 function _humanoid_dw() { return (_hero_mflags1_dw() & M1_HUMANOID_DW) !== 0; }
-import { pline, urgent_pline, livelog_printf } from './display.js';
-import { You as You_real, Your as Your_real } from './display.js';
+import { pline, urgent_pline, livelog_printf } from './pline.js';
+import { You as You_real, Your as Your_real } from './pline.js';
 import { LL_ALIGNMENT } from './const.js';
 import { aligns } from './roles.js';
 import { see_monsters, Sting_effects, retouch_object_hero, retouch_equipment } from './display.js';
@@ -49,7 +50,8 @@ import { discover_object, observe_object } from './o_init.js';
 import { exercise, change_luck, acurr, C_ATTR_TO_DISP, adjalign } from './attrib.js';
 import { STR19, PROTECTION, INTRINSIC, Is_astralevel, A_CURRENT, A_ORIGINAL } from './const.js';
 import { PM_ARCHEOLOGIST, PM_HOBBIT, PM_MARILITH, PM_WINGED_GARGOYLE, PM_INCUBUS } from './pm.generated.js';
-import { float_vs_flight, breakarm, num_horns, obj_pmname, y_monnam, can_be_strangled, x_monnam, is_youmonst } from './mhitm.js';
+import { float_vs_flight, obj_pmname, y_monnam, x_monnam, is_youmonst } from './mhitm.js';
+import { breakarm, num_horns, can_be_strangled } from './mondata.js';
 import { ARTICLE_YOUR, SUPPRESS_SADDLE, SUPPRESS_HALLUCINATION } from './const.js';
 import { s_suffix } from './hacklib.js';
 import { hcolor, hliquid } from './mhitm.js';
@@ -60,11 +62,13 @@ import { HALLUC, HALLUC_RES } from './const.js';
 /* C mondata.c:632 sliparm(ptr) — the real one, exported by js/makemon.js:462.
  * canwearobj's cantweararm(ptr) is breakarm(ptr) || sliparm(ptr) (mondata.h:133);
  * both halves are imported rather than re-derived here. */
-import { sliparm, permonstTemplate, summon_furies, trapname, which_armor } from './makemon.js';
+import { sliparm, permonstTemplate, summon_furies, trapname } from './makemon.js';
+import { which_armor } from './worn.js';
 import { canletgo } from './makemon.js';
 import { weapon_descr, touch_petrifies as corpse_touch_petrifies, mon_nam, m_at } from './uhitm.js';
-import { setuwep, setuswapwep, setuqwep, empty_handed, cmdq_pop, cmdq_peek, dropx, cmdq_clear, instapetrify as corpse_instapetrify,
-         carrying_stoning_corpse, Yname2, equip_ok as equip_ok_cmd } from './cmd.js';
+import { cmdq_pop, cmdq_peek, cmdq_clear, instapetrify as corpse_instapetrify, carrying_stoning_corpse, Yname2, equip_ok as equip_ok_cmd } from './cmd.js';
+import { setuwep, setuswapwep, setuqwep, empty_handed } from './wield.js';
+import { dropx } from './do.js';
 import { otense, makesingular, corpse_xname as petrify_corpse_xname, killer_xname as petrify_killer_xname, simpleonames as petrify_simpleonames } from './objnam.js';
 import { HAND, FINGER, RIGHT_HANDED, LEFT_HANDED, CQ_CANNED, CXN_ARTICLE as PETRIFY_ARTICLE } from './const.js';
 import { W_WEAPONS, W_WEP, W_SWAPWEP, W_QUIVER, W_RINGL, W_RINGR, W_TOOL,
@@ -72,9 +76,10 @@ import { W_WEAPONS, W_WEP, W_SWAPWEP, W_QUIVER, W_RINGL, W_RINGR, W_TOOL,
 const PETRIFY_CORPSE = 265; /* objects.h CORPSE */
 /* C mkobj.c:1865 set_bknown() — the project's real one (js/mklev.js:11078).
  * mklev.js does not import this file, so there is no cycle. */
-import { set_bknown, set_ustuck, rescham, restartcham } from './mklev.js';
+import { set_bknown } from './mklev.js';
+import { set_ustuck, rescham, restartcham } from './mon.js';
 import { sticks } from './dog.js';
-import { Can_fall_thru } from './mklev.js';
+import { Can_fall_thru } from './dungeon.js';
 import { on_level } from './dungeon.js';
 import { self_invis_message, make_confused, make_hallucinated } from './potion.js';
 import { set_mimic_blocking } from './sit.js';
@@ -95,7 +100,7 @@ import { remove_worn_item } from './steal.js';
 /* C do_wear.c:3247 selftouch("You") — losing gloves means the wielded weapon
  * gets touched bare-handed.  js/trap.js:3260 is the single body. */
 import { selftouch } from './trap.js';
-import { losehp } from './dokick.js';
+import { losehp } from './hack.js';
 import { KILLED_BY, DISMOUNT_FELL } from './const.js';
 import { u_safe_from_fatal_corpse } from './pickup.js';
 /* C zap.c:1457 obj_resists() — maybe_destroy_armor's 90%-for-artifacts save.
@@ -110,8 +115,8 @@ import { ERODE_NONE, ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE,
  * that stub is gone, so these calls reach the real implementations rather than a
  * seventeenth copy.  See _uwep_welded_dw() below for the one C guard cmd.js's
  * `welded` omits. */
-import { welded, body_part, _plineVFmt, _spoteffects_pickup as _spoteffects_pickup_fd, surface, useup, getObjFromGetobj, learn_unseen_invent } from './cmd.js';
-const W_SADDLE_FD = 0x00100000;
+import { body_part, _plineVFmt, _spoteffects_pickup as _spoteffects_pickup_fd, surface, useup, getObjFromGetobj, learn_unseen_invent } from './cmd.js';
+import { welded } from './wield.js';
 /* C's go.oldcap is ONE global (decl.h:741, BSS-zero at game start) and C has ONE
  * encumber_msg() (pickup.c:1978).  This file used to carry a SECOND body of it
  * whose only difference was the initial go.oldcap: it defaulted an unset
@@ -119,7 +124,8 @@ const W_SADDLE_FD = 0x00100000;
  * so the very first encumbrance crossing of a game printed nothing.  Re-export
  * js/weight.js's body (which keeps C's zero baseline) so both halves of the
  * port share one global, exactly as C does. */
-import { near_capacity, encumber_msg } from './weight.js';
+import { encumber_msg } from './weight.js';
+import { near_capacity } from './hack.js';
 export { encumber_msg };
 import { make_glib, make_slimed } from './potion.js';
 import { SLIMED } from './const.js';
@@ -152,7 +158,8 @@ import { UNCHANGING as UNCHANGING_PROP } from './const.js';
  * itself calls the same global function; not duplicating it here). */
 import { poly_gender } from './makemon.js';
 import { livelog_newform, set_uasmon } from './polyself.js';
-import { trycall, dismount_steed as dismount_steed_fu } from './cmd.js';
+import { dismount_steed as dismount_steed_fu } from './cmd.js';
+import { trycall } from './do.js';
 import { W_ARTI } from './const.js';
 import { Monnam as Monnam_fu } from './mcastu.js';
 /* C objects.h — AMULET_OF_RESTFUL_SLEEP is otyp 204 (same numbering
@@ -254,6 +261,10 @@ import { W_TOOL as W_TOOL_C, HEAD as HEAD_DW, FACE as FACE_DW } from './const.js
  * gstate/const/display, so this closes no cycle. */
 import { vision_recalc } from './vision.js';
 import { dmgtype_fromattack } from './makemon.js';
+import { float_down, float_up } from './trap.js'; // relocate-fns
+export { recalc_telepat_range } from './worn.js'; // relocate-fns
+export { float_up } from './trap.js'; // relocate-fns
+export { BP_LEG_DW, FLYING_PROP, Flying, Levitation, PROP_TIMEOUT, STEALTH_PROP, ensure_uprop, uprop_levitation_record }; // relocate-fns
 /* objects.h:648 CLOAK_OF_DISPLACEMENT — same otyp used by ARMOR_DELAY_CAT_BY_OTYP. */
 const CLOAK_OF_DISPLACEMENT_OTYP = 149;
 /* C ref: o_init.c makeknown(x) == discover_object(x, TRUE, TRUE, TRUE).  The
@@ -1902,41 +1913,6 @@ const AMULET_CLASS = 5;
 /* C ref: objects.h — MEAT_RING otyp (worn like a ring). At post_init it is never
  * worn; defensive only. */
 const MEAT_RING = 270;
-/* C ref: do_wear.c:887 — donning side of accessory_or_armor_on for the ARMOR
- * branch (do_wear.c:2359-2407).  Setworn the piece, pick the *_on afternmv by
- * slot, then schedule the donning delay nomul(-oc_delay) — or, if delay==0,
- * fire the *_on callback immediately via unmul("") (do_wear.c:2402).
- *
- *   gw.wasinwater = u.uinwater;       (WWALKING; not modeled — no-op)
- *   setworn(obj, mask);               (slot now occupied)
- *   ga.afternmv = <*_on by slot>;
- *   delay = -objects[obj->otyp].oc_delay;
- *   if (delay) { nomul(delay); gm.multi_reason = "dressing up";
- *                gn.nomovemsg = "You finish your dressing maneuver."; }
- *   else       { unmul(""); on_msg(obj); }
- *
- * RNG-free (Armor_on et al. have 0 RNG call-sites — cref-extract). */
-const WORN_SLOTS_TP = ['uarm', 'uarmc', 'uarmh', 'uarms', 'uarmg', 'uarmf',
-                       'uarmu', 'uleft', 'uright', 'uwep', 'uswapwep',
-                       'uquiver', 'uamul', 'ublindf', 'uball', 'uchain'];
-const TELEPAT_PROP = 30;        /* C prop.h:50 TELEPAT */
-const W_ART_TP = 0x00001000;    /* C prop.h:114 W_ART — carried artifact */
-const BOLT_LIM_TP = 8;          /* C hack.h:49 BOLT_LIM */
-export function recalc_telepat_range() {
-    const u = game.u;
-    if (!u)
-        return;
-    let nobjs = 0;
-    for (const slot of WORN_SLOTS_TP) {
-        const oobj = u[slot];
-        if (oobj && (MKOBJ_OC_OPROP[oobj.otyp | 0] | 0) === TELEPAT_PROP)
-            nobjs++;
-    }
-    /* C worn.c:62-63 — count all artifacts with SPFX_ESP as one. */
-    if (((u.uprops && u.uprops[TELEPAT_PROP] && u.uprops[TELEPAT_PROP].extrinsic) | 0) & W_ART_TP)
-        nobjs++;
-    u.unblind_telepat_range = nobjs ? (BOLT_LIM_TP * BOLT_LIM_TP) * nobjs : -1;
-}
 export async function armoron(otmp) {
     const g = game;
     g.u = g.u || {};
@@ -3073,152 +3049,6 @@ export async function Amulet_off() {
     if (mkn) makeknown_otyp(amul.otyp);
 }
 
-export async function float_down(hmask, emask) {
-    const g = game;
-    const u = g.u;
-    const p = uprop_levitation_record();
-    // C trap.c:4032-4033: clear requested sources before checking others.
-    p.intrinsic = (p.intrinsic | 0) & ~hmask;
-    p.extrinsic = (p.extrinsic | 0) & ~emask;
-    if (Levitation())
-        return 0; /* maybe another ring/potion/boots still levitating */
-    // C trap.c:4036-4053: a blocked source never lifted the hero off the
-    if (p.blocked | 0) {
-        const trapped = (p.blocked | 0) === I_SPECIAL;
-        float_vs_flight();
-        if (trapped && u.utrap) {
-            const kind = (u.utraptype | 0) === TT_BEARTRAP ? "trap's jaws"
-                : (u.utraptype | 0) === TT_WEB ? 'web'
-                : (u.utraptype | 0) === TT_BURIEDBALL ? 'chain'
-                : (u.utraptype | 0) === TT_LAVA ? 'lava' : 'ground';
-            await pline(`You are no longer trying to float up from the ${kind}.`);
-        }
-        await encumber_msg();
-        return 0;
-    }
-    /* SET_BOTL */
-    if (g.disp) g.disp.botl = 1;
-    /* botl event tag (parity with C's flush_screen → bot during the more()). */
-    nomul(0); /* stop running or resting (hack.c) */
-    /* C trap.c:4059-4066 — controlled flight no longer overridden by levitation. */
-    if (ensure_uprop(FLYING_PROP).blocked | 0) {
-        float_vs_flight();
-        if (Flying()) {
-            await pline('You have stopped levitating and are now flying.');
-            await encumber_msg(); /* carrying capacity might have changed */
-            return 1;
-        }
-    }
-    /* C trap.c:4066-4071 — still engulfed: no landing, no trap, no pickup. */
-    if (u.uswallow) {
-        // C mondata.h:71-72: digests() requires an AT_ENGL/AD_DGST attack.
-        const digests = dmgtype_fromattack(u.ustuck.data, 26 /* AD_DGST */, 11 /* AT_ENGL */);
-        await pline(`You float down, but you are still ${digests ? 'swallowed' : 'engulfed'}.`);
-        await encumber_msg();
-        return 1;
-    }
-    // C trap.c:4074-4084: the grounded ball can pull the hero down to it.
-    let trap = null;
-    const ball = u.uball;
-    if (ball && ball.where !== OBJ_INVENT && !m_at(ball.ox, ball.oy)
-        && (is_pool(ball.ox, ball.oy)
-            || ((trap = t_at(ball.ox, ball.oy)) && (is_pit(trap.ttyp) || is_hole(trap.ttyp))))) {
-        u.ux0 = u.ux;
-        u.uy0 = u.uy;
-        u.ux = ball.ox;
-        u.uy = ball.oy;
-        movobj(u.uchain, ball.ox, ball.oy);
-        newsym(u.ux0, u.uy0);
-        g.vision_full_recalc = 1;
-    }
-    /* C trap.c:4086-4095 — a stuck-to hero (not swallowed) is released. */
-    if (!Flying() && !u.uswallow && u.ustuck) {
-        const ym = game.youmonst;
-        if (sticks(ym && ym.data ? ym.data : null))
-            await pline(`You aren't able to maintain your hold on ${mon_nam(u.ustuck)}.`);
-        else
-            await pline(`Startled, ${mon_nam(u.ustuck)} can no longer hold you!`);
-        set_ustuck(null);
-    }
-    /* C trap.c:4096-4111 — landing in liquid precedes landing feedback,
-     * including dismounts whose steed died and left the hero over water. */
-    let no_msg = false;
-    if (!Flying() && !u.uswallow) { /* C's swallowed branch returns above this. */
-        const walk = ensure_uprop(WWALKING), swim = ensure_uprop(SWIMMING);
-        const wwalking = (walk.intrinsic || walk.extrinsic) && !Is_waterlevel(u.uz);
-        const swimming = swim.intrinsic || swim.extrinsic
-            || (u.usteed && pooleffects_is_swimmer(u.usteed.data));
-        if (is_pool(u.ux, u.uy) && !wwalking && !swimming && !u.uinwater)
-            no_msg = await pooleffects_drown();
-        if (pooleffects_is_lava(u.ux, u.uy) && !g.iflags?.in_lava_effects) {
-            await pooleffects_lava_effects();
-            no_msg = true;
-        }
-    }
-    const landingMessage = !trap; // C skips feedback if the ball selected a trap.
-    trap ||= t_at(u.ux | 0, u.uy | 0);
-    // C trap.c:4114-4117: these plane messages precede the W_SADDLE test,
-    // so dismounting still gives feedback and flushes before monsters move.
-    if (landingMessage && Is_airlevel(u.uz)) {
-        await pline('You begin to tumble in place.');
-    } else if (landingMessage && Is_waterlevel(u.uz) && !no_msg) {
-        await pline('You feel heavier.');
-    } else if (landingMessage && !u.uinwater && !no_msg && !(emask & W_SADDLE_FD)) {
-        const hallu = u.uprops?.[HALLUC]?.intrinsic
-            && !(u.uprops[HALLUC_RES]?.intrinsic || u.uprops[HALLUC_RES]?.extrinsic);
-        // C trap.c:4122-4134: Sokoban air currents knock the hero down.
-        if ((g.level?.flags?.sokoban_rules ?? g.sokoban) && trap) {
-            await pline(hallu ? "Bummer!  You've crashed." : 'You fall over.');
-            await losehp(rnd(2), 'dangerous winds', KILLED_BY);
-            if (u.usteed)
-                await dismount_steed_fu(DISMOUNT_FELL);
-            await selftouch('As you fall, you');
-        } else if (u.usteed && ([5, 25].includes(u.usteed.data.mlet)
-                               || pooleffects_is_flyer(u.usteed.data))) {
-            await pline('You settle more firmly in the saddle.');
-        } else if (hallu)
-            await pline(`Bummer!  You've ${is_pool(u.ux, u.uy) ? 'splashed down' : 'hit the ground'}.`);
-        else
-            await pline(`You float gently to the ${surface(u.ux, u.uy)}.`);
-        // C update_topl may block here before landing triggers another effect.
-        if (_topline_more_pending())
-            await flush_screen(1);
-    }
-    /* levitation gave maximum carrying capacity; ending it may raise encumbrance.
-     * encumber_msg() is emitted after the come-down message (trap.c:4133). */
-    await encumber_msg();
-    /* C trap.c:4147-4160 — activate a non-statue trap before pickup.  C's
-     * hole/trapdoor arm additionally checks Can_fall_thru() and u.ustuck;
-     * leave those transitions to their dedicated path rather than inventing
-     * a fall-through predicate here. */
-    const levelBeforeTrap = { dnum: u.uz?.dnum, dlevel: u.uz?.dlevel };
-    if (trap) {
-        const ttype = trap.ttyp | 0;
-        const holeLike = ttype === HOLE || ttype === TRAPDOOR;
-        const canTrigger = !holeLike
-            || (Can_fall_thru(u.uz) && !u.ustuck);
-        if (ttype !== STATUE_TRAP && canTrigger && !u.utrap) {
-            await dotrap(trap, 0);
-        }
-    }
-    /* C trap.c:4162-4167 — pickup only on a normal level, outside air/water
-     * levels and swallowing; the existing helper is pickup(1). */
-    if (!Is_airlevel(u.uz) && !Is_waterlevel(u.uz) && !u.uswallow
-        && on_level(levelBeforeTrap, u.uz)) {
-        /* The pickup's look_here text goes to the command-result channel; move the
-         * live "You float gently..." line there first so it keeps C's single-
-         * topline order (float message, then "You see here ..."). */
-        _topl_stash_result();
-        await _spoteffects_pickup_fd();
-        // C trap.c:4173-4177, tty/topl.c:274: pickup's plines block here.
-        // In particular, freeinv must not continue dropping the bones gear
-        // while the landing's look_here messages still await acknowledgement.
-        restore_command_topline();
-        if (_topline_more_pending()) await flush_screen(1);
-        _topl_stash_result();
-    }
-    return 1;
-}
 
 // C do_wear.c:1874 — the shared #remove entry.
 export async function doremring() {
@@ -3665,72 +3495,6 @@ function adjust_attrib_dw(obj, which, val) {
     if (g.disp) g.disp.botl = 1;
 }
 
-/* C trap.c:3937 float_up(): ascent feedback, then flight and encumbrance. */
-export async function float_up() {
-    const u = game.u;
-    ensure_uprop(LEVITATION_PROP);
-    ensure_uprop(FLYING_PROP);
-    ensure_uprop(STEALTH_PROP);
-    /* SET_BOTL */
-    if (game.disp) game.disp.botl = 1;
-    if (u.utrap) {
-        /* C trap.c:3937-3945 — a pit is cleared before the message, then the
-         * vision flag and boulder-fill tail run.  reset_utrap(FALSE) is the
-         * existing trap.js helper and does not recurse into float_up(). */
-        if ((u.utraptype | 0) === TT_PIT) {
-            await reset_utrap(false);
-            await pline(`You float up, out of the ${trapname(PIT, false)}!`);
-            game.vision_full_recalc = 1;
-            await fill_pit(u.ux | 0, u.uy | 0);
-        } else if (u.utraptype === TT_LAVA || u.utraptype === TT_INFLOOR) {
-            await pline(`Your body pulls upward, but your ${makeplural(body_part(BP_LEG_DW))} are still stuck.`);
-        } else if (u.utraptype === TT_BURIEDBALL) {
-            const cc = { x: u.ux, y: u.uy };
-            buried_ball(cc);
-            await pline(`You feel lighter, but your ${body_part(BP_LEG_DW)} is still chained to the ${IS_ROOM(game.level.at(cc.x, cc.y).typ) ? 'floor' : 'ground'}.`);
-        } else if (u.utraptype === WEB) { // C compares WEB, not TT_WEB.
-            await pline(`You float up slightly, but you are still stuck in the ${trapname(WEB, false)}.`);
-        } else {
-            await pline(`You float up slightly, but your ${body_part(BP_LEG_DW)} is still stuck.`);
-        }
-    } else if (u.uinwater) {
-        await spoteffects(true);
-    } else if (u.uswallow) {
-        await pline((u.ustuck.data.mflags1 & 0x00040000 /* M1_ANIMAL */)
-            ? `You float away from the ${surface(u.ux, u.uy)}.`
-            : `You spiral up into ${mon_nam(u.ustuck)}.`);
-    } else if (u.uprops?.[HALLUC]?.intrinsic
-               && !(u.uprops[HALLUC_RES]?.intrinsic || u.uprops[HALLUC_RES]?.extrinsic)) {
-        /* C trap.c:3984-3985 */
-        await pline("Up, up, and awaaaay!  You're walking on air!");
-    } else if (Is_airlevel(u.uz)) {
-        await pline('You gain control over your movements.');
-    } else {
-        await pline('You start to float in the air!');
-    }
-    /* C trap.c:3991-3999 */
-    if (u.usteed) {
-        const sd = u.usteed.data;
-        const mlet = sd ? (sd.mlet | 0) : -1;
-        if (mlet !== 5 && mlet !== 25 && !pooleffects_is_flyer(sd)) {
-            const lev = u.uprops[LEVITATION_PROP];
-            const H = lev.intrinsic | 0, E = lev.extrinsic | 0;
-            const lev_at_will = (((H & I_SPECIAL) !== 0 || (E & W_ARTI) !== 0)
-                && (H & ~(I_SPECIAL | PROP_TIMEOUT)) === 0 && (E & ~W_ARTI) === 0);
-            if (lev_at_will) {
-                await pline(`${Monnam_fu(u.usteed)} magically floats up!`);
-            } else {
-                await pline(`You cannot stay on ${mon_nam(u.usteed)}.`);
-                await dismount_steed_fu(0 /* DISMOUNT_GENERIC */);
-            }
-        }
-    }
-    if (Flying()) await pline('You are no longer able to control your flight.');
-    float_vs_flight();
-    /* levitation gives maximum carrying capacity, so encumbrance state may
-     * drop — encumber_msg() emits the load-change line. */
-    await encumber_msg();
-}
 
 export async function Ring_on(obj) {
     const u = game.u;

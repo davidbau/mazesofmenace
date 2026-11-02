@@ -3,7 +3,7 @@
 // doengrave_sfx_item(), doengrave_sfx_item_WAN(), doengrave_ctx_verb(),
 // engrave(), rloc_engr(), disturb_grave(), blengr(); hacklib.c xcrypt();
 // invent.c getobj()'s "write with" flow.
-import { commandResultCancelled, commandResultFailed, setMulti } from './command_state.js';
+import { commandResultCancelled, commandResultFailed, setMulti } from './cmd.js';
 import { plineWithContinuation as pline } from './pline.js';
 import { newsym } from './display.js';
 import { clearCommandKeys, takeCommandKey } from './input.js';
@@ -21,8 +21,9 @@ import { rn2, rnd } from './rng.js';
 import { heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
 import { makeBlinded } from './sight_change.js';
 import { heroResistsBlindingLight } from './blinding_attack.js';
-import { heroHasFreeHand, isBlade, isWetTowel } from './weapon_type.js';
-import { isWeldedPrimary } from './weapon_slots.js';
+import { heroHasFreeHand } from './engrave.js';
+import { isBlade, isWetTowel } from './object_properties.js';
+import { isWeldedPrimary } from './wield.js';
 import { heroFingerTipName, heroHandName } from './body_parts.js';
 import { heroSpecies } from './hero_species.js';
 import { MONSTER_FLAGS2, MONSTER_SYMBOL, monsterHasNoHands, monsterIsAnimal, monsterIsVerySmall, monsterIsWhirly, } from './monster_data.js';
@@ -42,7 +43,7 @@ import { goodPosition } from './teleport_rules.js';
 import { altarWrath } from './pray.js';
 import { randomEngraving } from './mklev.js';
 import { monsterName } from './do_name.js';
-import { unlinkObject } from './object_location.js';
+import { unlinkObject } from './mkobj.js';
 import { splitObjectStack } from './object_stack.js';
 import { useUpInventoryStack } from './hero_inventory.js';
 import { impossible } from './diagnostics.js';

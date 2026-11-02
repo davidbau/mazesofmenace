@@ -1,4 +1,4 @@
-import { verbalize } from './display.js';
+import { verbalize } from './pline.js';
 import { Mgender } from './do_name.js';
 // vault.js — port of nethack-c/src/vault.c (vault and guard logic).
 //
@@ -6,9 +6,10 @@ import { Mgender } from './do_name.js';
 // structure-preserving port; functions mirror their C originals line-for-line
 // where practical.
 
-import { pline, newsym, canspotmon, map_invisible, map_location, You_hear, You_see, mon_visible } from './display.js'; /* was an undeclared global: every pline() call in this file threw ReferenceError when reached */
+import { newsym, canspotmon, map_invisible, map_location, mon_visible } from './display.js';
+import { pline, You_hear, You_see } from './pline.js'; /* was an undeclared global: every pline() call in this file threw ReferenceError when reached */
 import { game } from './gstate.js';
-import { money_cnt } from './com_pager.js';
+import { money_cnt } from './hack.js';
 import { m_canseeu } from './dochug.js';
 import { unset_seenv, Deaf } from './display.js';
 import {
@@ -24,15 +25,19 @@ import {
 } from './const.js';
 import { rn2 } from './rng.js';
 import { PM_GUARD, PM_CROESUS } from './pm.generated.js';
-import { newmextra, set_malign, mhe, monPmname, pmname } from './makemon.js';
-import { makemon, mungspaces, xy_set_wall_state, mongone, make_grave, place_object, remove_object, obj_extract_self, setmangry } from './mklev.js';
+import { newmextra, set_malign, mhe, monPmname } from './makemon.js';
+import { pmname } from './do_name.js';
+import { makemon, make_grave, place_object, remove_object, obj_extract_self } from './mklev.js';
+import { xy_set_wall_state } from './display.js';
+import { mungspaces } from './hacklib.js';
+import { mongone, setmangry } from './mon.js';
 import { relobj } from './steal.js';
 import { stackobj } from './sp_lev.js';
 import { on_level } from './dungeon.js';
 import { contained_gold, currency } from './shk.js';
 import { an, makeplural, simpleonames, mimic_obj_name } from './objnam.js';
-import { upstart } from './mklev.js';
-import { in_rooms } from './shk.js';
+import { upstart } from './hacklib.js';
+import { in_rooms } from './hack.js';
 import { g_at, um_dist, set_msg_xy } from './cmd.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 import { freeinv as freeinv_real } from './cmd.js';
@@ -50,9 +55,11 @@ import { reset_faint } from './eat.js';
 import { unblock_point, block_point, recalc_block_point, cansee, couldsee, Blind } from './vision.js';
 import { spot_stop_timers } from './timeout.js';
 import { stop_occupation, nomul, unmul } from './allmain.js';
-import { getlin } from './wizcmds.js';
+import { getlin } from './windows.js';
 import { adjalign } from './attrib.js';
-import { noit_Monnam, Some_Monnam, x_monnam, yelp, pronoun_gender } from './mhitm.js';
+import { noit_Monnam, Some_Monnam, x_monnam } from './mhitm.js';
+import { yelp } from './sounds.js';
+import { pronoun_gender } from './mondata.js';
 import { fracture_rock } from './zap.js';
 
 /* C youprop.h:110,125: Strangled reads only intrinsic STRANGLED (19);
@@ -98,10 +105,6 @@ function strncmpi(s1, s2, n) {
 function impossible(_msg) { /* paniclog only; no screen output in this port */ }
 /* C ref: monst.h:250 — #define DEADMONSTER(mon) ((mon)->mhp < 1) */
 function DEADMONSTER(mon) { return (mon.mhp | 0) < 1; }
-/* C ref: mondata.h sticks(ptr) — the hero's form can hold a monster.  Read only
- * as the second half of `u.ustuck && !sticks(...)`, and u.ustuck is null for
- * every turn of the guard escort. */
-function sticks(ptr) { return sticks_real(ptr); }
 
 const BOULDER = 475;
 const GOLD_PIECE = 438;
@@ -246,14 +249,6 @@ export async function grddead(grd) {
     return dispose;
 }
 
-/* C ref: dungeon.c:1197 assign_level(dest, src) —
- *     dest->dnum = src->dnum; dest->dlevel = src->dlevel;
- * There is no exported one in js/; every module that needs it spells the two
- * assignments out.  Kept file-local for the same reason. */
-function assign_level(dst, src) {
-    dst.dnum = src.dnum;
-    dst.dlevel = src.dlevel;
-}
 
 /* C ref: pline.c:449 verbalize(const char *line, ...) —
  *     Strcpy(tmp, "\""); Strcat(tmp, line); Strcat(tmp, "\"");
@@ -269,7 +264,7 @@ function assign_level(dst, src) {
  * output and consumes no RNG. */
 function SetVoice(_mon, _a, _b, _c) { /* no sound driver in this port */ }
 
-import { sobj_at } from './mklev.js';
+import { sobj_at } from './invent.js';
 
 /* C ref: vault.c:192-202 in_fcorridor(grd, x, y) —
  *     for (fci = EGD(grd)->fcbeg; fci < EGD(grd)->fcend; fci++)
@@ -699,6 +694,8 @@ export function findgd() {
     return null;
 }
 import { Your } from './do_wear.js';
+import { sticks } from './mondata.js'; // relocate-fns
+import { assign_level } from './dungeon.js'; // relocate-fns
 export { Your };
 export { currency } from './cmd.js';
 export function freeinv(obj) { return freeinv_real(obj); }
@@ -1459,4 +1456,15 @@ export async function gd_move(grd) {
     }
     await restfakecorr(grd);
     return 1;
+}
+
+/* C vault.c:237 vault_summon_gd().  A cursed whistle does not create the
+ * guard immediately; it arms the next vault-guard arrival timer when the hero
+ * is in a vault and no guard is already active. */
+export function vault_summon_gd() {
+    const u = game.u || {};
+    if (!vault_occupied(u.urooms))
+        return;
+    if (findgd()) return;
+    u.uinvault = 29; /* VAULT_GUARD_TIME - 1 */
 }

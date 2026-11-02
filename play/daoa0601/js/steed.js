@@ -1,4 +1,4 @@
-import { trapName } from './trap_name.js';
+import { trapName } from './trap.js';
 import { reportHeroEncumbrance } from './encumbrance.js';
 import { heroLocomotion } from './hero_locomotion.js';
 // steed.js — Saddling, mounting, riding, and dismounting.
@@ -21,14 +21,15 @@ import { BOULDER, SADDLE, OBJECT_DESCRIPTIONS } from './object_data.js';
 import { mksobj } from './mkobj.js';
 import { fullyIdentifyObject } from './invent.js';
 import { applyMonsterEquipmentProperties } from './monworn.js';
-import { objectMaterial } from './object_material.js';
+import { objectMaterial } from './o_init.js';
 import { makePlural, withIndefiniteArticle } from './object_grammar.js';
 import { monsterName, monsterReflexiveAction } from './do_name.js';
 import { monsterSubjectPronoun, monsterPassesBars } from './mondata.js';
 import { shopkeeperName } from './shknam.js';
 import { currentAttribute, exerciseAttribute } from './attrib.js';
 import { heroHandName, heroLegName } from './body_parts.js';
-import { heroHasFreeHand, isPolearm } from './weapon_type.js';
+import { heroHasFreeHand } from './engrave.js';
+import { isPolearm } from './object_properties.js';
 import { heroPassesWalls, heroSpecies } from './hero_species.js';
 import { wormCrossesBetween } from './worm.js';
 import { shopkeeperBlockingDoor, shopkeeperBlockingEntry } from './shk.js';
@@ -51,7 +52,7 @@ import { blocksDiagonalDoor, heroBadRock, heroCanPassWallAt, heroTightDiagonalRe
 import { heroCouldMoveOntoBoulder } from './boulder_push.js';
 import { finishDestinationSpotEffects } from './location_effects.js';
 import { adjustHeroAlignment } from './alignment.js';
-import { commandResultCancelled } from './command_state.js';
+import { commandResultCancelled } from './cmd.js';
 import { finishImmediateMonsterTrap, triggerImmediateMonsterTrap } from './trap.js';
 import { levelHasCeiling, isAccessibleAt, isLavaAt, isPoolAt, isWaterwallAt } from './terrain_properties.js';
 import { surfaceName } from './terrain_name.js';

@@ -11,7 +11,6 @@ import { finishHeroDeath } from './end.js';
 import { loseHeroHp } from './hero_damage.js';
 import { monsterSpellDeathReason } from './mcastu.js';
 import { game, requirePlayingGame } from './gstate.js';
-import { erodeArmor, damageObjectWithAcid } from './object_erosion.js';
 import { putHeroToSleep } from './hero_sleep.js';
 import { igniteItems } from './light.js';
 import { MONSTER_ATTACKS, MONSTER_FLAGS2, monsterIsNonliving, } from './monster_data.js';
@@ -21,7 +20,7 @@ import { applyHeroGolemEffects, heroMonsterForm } from './polyself.js';
 import { poisonHero } from './poison.js';
 import { d, rn2, rnd } from './rng.js';
 import { clearHeroSliming } from './slime.js';
-import { burnHeroArmorByFire } from './trap.js';
+import { burnHeroArmorByFire, erodeArmor, damageObjectWithAcid } from './trap.js';
 import { destroyColdInventory, destroyElectricInventory, destroyFireInventory, } from './zap.js';
 import { monsterHasLineOfSightToHero } from './vision.js';
 import { seenResistanceForDamage, monstersForgetHeroResistance, monstersObserveHeroResistance, } from './mondata.js';
@@ -35,6 +34,8 @@ export function heroBreathAttack(state = game, damageType = null) {
 export function heroAcidBreathAttack(state = game) {
     return heroBreathAttack(state, AD_ACID);
 }
+// C zap.c:zhitu(): the per-element ray switch for the hero; the damage
+// tail is applyRayDamage() with losehp().
 export async function hitHeroWithRay({ state = game, attack = heroBreathAttack(state), publish = plineWithContinuation, random = rn2, rollDice = d, rollOne = rnd, die = finishHeroDeath, source = 'hero-breath', sourceMonster = null, name = null, nativeType = null, sourceObject = null, } = {}) {
     if (!attack)
         return { hit: false, damage: 0, heroDied: false };

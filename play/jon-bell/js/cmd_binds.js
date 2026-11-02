@@ -5,6 +5,8 @@
 // aliases; these bindings do not substitute for execution of those functions.
 import { game } from './gstate.js';
 import { EXTCMDLIST } from './cmd_extcmd_data.js';
+import { config_error_add } from './cfgfiles.js'; // relocate-fns
+export { config_error_handler }; // relocate-fns
 
 const C = c => (typeof c === 'string' ? c.charCodeAt(0) : c) & 0x1f;
 const M = c => (typeof c === 'string' ? c.charCodeAt(0) : c) | 0x80;
@@ -85,11 +87,6 @@ function binding_statics() {
 let config_error_handler = null;
 export function set_binding_config_error_handler(handler) {
     config_error_handler = handler;
-}
-export function config_error_add(...args) {
-    if (!config_error_handler)
-        throw new Error('configuration-error reporting is not initialized');
-    config_error_handler(...args);
 }
 
 // C cmd.c:2109 cmdbind_get(uchar key).

@@ -8,28 +8,33 @@ import { rn1, rnd, d } from './rng.js';
 import { mon_has_amulet } from './sit.js';
 import { is_dprince, is_demon, set_malign, Inhell } from './makemon.js';
 import { tele_restrict, rloc } from './teleport.js';
-import { money_cnt } from './com_pager.js';
+import { money_cnt } from './hack.js';
 import { is_fainted, reset_faint } from './eat.js';
 import { nomul, unmul, stop_occupation } from './allmain.js';
 import { money2mon, currency } from './shk.js';
-import { getlin } from './wizcmds.js';
+import { getlin } from './windows.js';
 import { acurr } from './attrib.js';
 import { A_CHA, RLOC_MSG } from './const.js';
-import { canseemon, livelog_printf } from './display.js';
+import { canseemon } from './display.js';
+import { livelog_printf } from './pline.js';
 import { mon_nam } from './uhitm.js';
 import { x_monnam, Amonnam } from './mhitm.js';
-import { pline, newsym, canspotmon, Deaf, You_feel } from './display.js';
+import { newsym, canspotmon, Deaf } from './display.js';
+import { pline, You_feel } from './pline.js';
 import { Blind } from './vision.js';
 import { Monnam } from './mcastu.js';
 import { Hear_again } from './eat.js';
 import { verbalize } from './cmd.js';
 import { mk_roamer } from './priest.js';
 import { enexto_out } from './teleport.js';
-import { permonstTemplate, which_armor } from './makemon.js';
-import { mksobj, mpickobj, mongone } from './mklev.js';
+import { permonstTemplate } from './makemon.js';
+import { which_armor } from './worn.js';
+import { mksobj } from './mklev.js';
+import { mpickobj } from './steal.js';
+import { mongone } from './mon.js';
 import { select_hwep } from './uhitm.js';
 import { mongets } from './m_initweap.js';
-import { m_dowear } from './trap.js';
+import { m_dowear } from './worn.js';
 import { bless } from './mkobj.js';
 
 const SILVER_SABER = 51;              /* objects.h WEAPON("silver saber") */
@@ -227,4 +232,21 @@ export async function bribe(mtmp, prompt) {
     await money2mon(mtmp, offer);
     if (game.disp) game.disp.botl = 1;
     return offer;
+}
+
+/* C ref: nethack-c-v5/upstream/src/minion.c:27-34 free_emin — release a
+ * monster's minion extension and clear isminion. Not exported in C
+ * (top-level, non-static, but this port has no other caller yet); kept
+ * private here since make_familiar is its only user. makemon()'s
+ * angel/cleric minion branch (js/mklev.js:5622-5637) stores the emin data
+ * flatly on the monster object rather than under mextra (unlike the
+ * MM_EMIN-flag branch a few lines above it, which does use mextra.emin via
+ * newemin()) — clear both representations so a later isminion/EMIN() reader
+ * sees it gone regardless of which branch produced this monster. */
+export function free_emin(mtmp) {
+    if (mtmp.mextra && mtmp.mextra.emin)
+        mtmp.mextra.emin = null;
+    if (mtmp.emin)
+        mtmp.emin = null;
+    mtmp.isminion = 0;
 }

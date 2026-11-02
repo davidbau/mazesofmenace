@@ -5,24 +5,27 @@ import { Mgender } from './do_name.js';
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
-import { night, monster_nearby } from './allmain.js';
+import { monster_nearby } from './allmain.js';
+import { night } from './calendar.js';
 import { canseemon } from './display.js';
 import { FULL_MOON, HALLUC, HALLUC_RES, PROT_FROM_SHAPE_CHANGERS,
     POLYMORPH_CONTROL, STUNNED, UNCHANGING, PARANOID_WERECHANGE, DEAF, NEUTRAL } from './const.js';
 import { rn1, rnd } from './rng.js';
-import { pline, newsym, You_hear, You_feel } from './display.js';
+import { newsym } from './display.js';
+import { pline, You_hear, You_feel } from './pline.js';
 import { impossible } from './pline.js';
 import { set_uasmon, rehumanize } from './polyself.js';
-import { unconscious } from './pickup.js';
+import { unconscious } from './trap.js';
 import { is_fainted } from './eat.js';
 import { paranoid_query } from './paranoid.js';
 import { an } from './objnam.js';
 import { set_mon_data, permonstTemplate, monPmname, monflee, onscary, monnear } from './makemon.js';
 import { polymon } from './polyself.js';
-import { healmon, wake_nearto as wake_nearto_mklev, makemon } from './mklev.js';
+import { makemon } from './mklev.js';
+import { healmon, wake_nearto as wake_nearto_mklev } from './mon.js';
 import { Monnam } from './mcastu.js';
-import { mon_break_armor } from './trap.js';
-import { possibly_unwield } from './dogmove.js';
+import { mon_break_armor } from './worn.js';
+import { possibly_unwield } from './weapon.js';
 import { tamedog } from './dog.js';
 import {
     PM_WEREWOLF, PM_WEREJACKAL, PM_WERERAT,

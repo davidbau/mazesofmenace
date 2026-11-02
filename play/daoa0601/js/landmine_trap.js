@@ -2,7 +2,7 @@
 // C ref: trap.c:trapeffect_landmine().
 import { AD_PHYS } from './monster_attack_types.js';
 import { WT_ELF } from './const.js';
-import { setMulti } from './command_state.js';
+import { setMulti } from './cmd.js';
 import { newsym } from './display.js';
 import { plineWithContinuation } from './pline.js';
 import { game } from './gstate.js';
@@ -15,7 +15,7 @@ import { monsterWearsIronShoes } from './monworn.js';
 import { rn2, rnd } from './rng.js';
 import { beginMonsterPitTrap, finishMonsterPitTrap, finishMonsterTrapDeath, monsterTrapVisibility, seeTrap, } from './trap.js';
 import { monsterInAir } from './terrain_properties.js';
-import { monsterLearnsTrap, monstersSeeTrap } from './trap_knowledge.js';
+import { monsterLearnsTrap, monstersSeeTrap } from './mondata.js';
 import { monsterName as canonicalMonsterName } from './do_name.js';
 async function finishMineDeath(monster, event, state, options) {
     const death = await finishMonsterTrapDeath(monster, state, {

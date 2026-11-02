@@ -17,16 +17,21 @@ import { peaceMinded, set_malign, olfaction } from './makemon.js';
 
 import { game } from './gstate.js';
 import { init_rect } from './rect.js';
-import { align_str, setuwep } from './cmd.js';
+import { align_str } from './cmd.js';
+import { setuwep } from './wield.js';
 import { rnd } from './rng.js';
-import { rest_engravings, restore_cham, hide_monst, hideunder, _gm_migrating, In_hell } from './mklev.js';
+import { rest_engravings, _gm_migrating } from './mklev.js';
+import { In_hell } from './dungeon.js';
+import { restore_cham, hide_monst, hideunder } from './mon.js';
 import { restore_luadata, l_nhcore_call, NHCORE_RESTORE_OLD_GAME } from './nhlua.js';
 import { regions_rest_snapshot } from './region.js';
 import { restore_timers_level, run_timers } from './timeout.js';
 import { mon_catchup_elapsed_time } from './dog.js';
 import { stored_level, saved_state_for, savefile_name, NOT_SAVED } from './save.js';
 import { vfsReadFile, vfsDeleteFile } from './storage.js';
-import { docrt, cls, bot, see_monsters, pline, _topline_more_pending, flush_screen, clear_glyph_buffer, reglyph_darkroom } from './display.js';
+import { docrt, cls, see_monsters, _topline_more_pending, flush_screen, clear_glyph_buffer, reglyph_darkroom } from './display.js';
+import { bot } from './botl.js';
+import { pline } from './pline.js';
 import { vision_reset, vision_recalc } from './vision.js';
 import { restore_light_sources } from './light.js';
 import { place_wsegs, worm_seg_clear_level } from './worm.js';
@@ -34,9 +39,9 @@ import { change_luck } from './attrib.js';
 import { HALLUC, HALLUC_RES, COLNO } from './const.js';
 import { PM_MONK } from './pm.generated.js';
 import { ugenocided, udeadinside, set_uasmon } from './polyself.js';
-import { phase_of_the_moon, friday_13th, getnow, time_from_yyyymmddhhmmss } from './allmain.js';
+import { phase_of_the_moon, friday_13th, getnow, time_from_yyyymmddhhmmss } from './calendar.js';
 import { impossible } from './pline.js';
-import { minimal_monnam } from './steed.js';
+import { minimal_monnam } from './do_name.js';
 import { describe_level_buf } from './dungeon.js';
 
 /* C ref: mondata.h:90 hides_under(ptr) — ((ptr)->mflags1 & M1_CONCEAL). */
@@ -244,17 +249,6 @@ export async function getlev(lev) {
 const FULL_MOON_PHASE = 4;
 const NEW_MOON_PHASE = 0;
 
-export function restore_saved_game(plname) {
-    if (!plname)
-        return null;
-    const body = vfsReadFile(savefile_name(plname));
-    if (body === null)
-        return null;
-    const state = saved_state_for(body);
-    if (!state)
-        return null;
-    return { body, state };
-}
 
 /*
  * C ref: restore.c:349 restgamestate() — read the non-level-based game state
@@ -482,6 +476,25 @@ export async function dorecover(save) {
     // `restoring == REST_LEVELS` skip at :1201 does not apply) also re-hides
     // hiders and runs restore_cham(); elapsed is 0 because savelev stamped the
     // level with the saved svm.moves, so no catch-up or hide_monst rnd(10).
+    // C restore.c:1177-1194 — that read also clears svl.level.monsters and
+    // place_monster()s every fmon entry except the steed ("kept on fmon list
+    // but off the map").  This port's grid is fmon minus _mapRemoved, so a
+    // monster displaced from its slot before the save (steed.c:930 overwrite)
+    // is back on the map after it; a later one on the same square wins.
+    const grid = new Map();
+    for (let mon = g.fmon; mon; mon = mon.nmon) {
+        if (mon === g.u?.usteed) continue;
+        const key = (mon.mx | 0) * 256 + (mon.my | 0);
+        const othermon = grid.get(key);
+        if (othermon) {
+            await impossible('placing %s over %s at <%d,%d>, mstates:%lx %lx on %s?',
+                             minimal_monnam(mon, false), minimal_monnam(othermon, true),
+                             mon.mx, mon.my, othermon.mstate, mon.mstate, describe_level_buf(0));
+            othermon._mapRemoved = true;
+        }
+        delete mon._mapRemoved;
+        grid.set(key, mon);
+    }
     for (let mon = g.fmon; mon; mon = mon.nmon) {
         if (mon.wormno) place_wsegs(mon, null);
         if (hides_under(mon.data) && mon.mundetected)

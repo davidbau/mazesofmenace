@@ -4,11 +4,12 @@ import { game } from './gstate.js';
 import { TIMEOUT, FIRE_RES, WWALKING, WARN_OF_MON, MAGICAL_BREATHING,
     PASSES_WALLS, POISON_RES, NON_PM, NEUTRAL, ACID_RES, STONE_RES, DISPLACED,
     Upolyd, Is_waterlevel } from './const.js';
-import { pline, _topl_stash_result } from './display.js';
+import { _topl_stash_result } from './display.js';
+import { pline } from './pline.js';
 import { makeplural } from './objnam.js';
 import { Breathless, region_danger, stuck_in_wall } from './cmd.js';
 import { eating_dangerous_corpse, is_fainted } from './eat.js';
-import { unconscious } from './pickup.js';
+import { unconscious } from './trap.js';
 import { wielding_corpse } from './do_wear.js';
 import { toggle_displacement } from './do_wear.js';
 import { commit_command_result } from './allmain.js';

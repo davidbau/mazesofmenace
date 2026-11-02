@@ -1,15 +1,17 @@
-import { pline_The, urgent_pline, impossible_sync } from './display.js';
-import { pline_mon as pline_mon_real } from './display.js';
+import { impossible_sync } from './display.js';
+import { pline_The, urgent_pline } from './pline.js';
+import { pline_mon as pline_mon_real } from './pline.js';
 import { Mgender } from './do_name.js';
 import { ledger_no as ledger_no_real } from './bones.js';
-import { On_W_tower_level as On_W_tower_level_real } from './teleport.js';
-import { has_ceiling as has_ceiling_real } from './throw_vertical.js';
+import { On_W_tower_level as On_W_tower_level_real } from './dungeon.js';
+import { has_ceiling as has_ceiling_real } from './dungeon.js';
 import { pooleffects_is_lava as is_lava_real } from './cmd.js';
 import { expels_gu } from './mhitu.js';
 import { stop_occupation } from './allmain.js';
 import { mbhit_wand, mzapwand as mzapwand_shared } from './muse.js';
 import { copy_oextra, free_omid, get_mtraits } from './mkobj.js';
-import { linedup, blocking_terrain, t_at } from './trap.js';
+import { t_at } from './trap.js';
+import { linedup, blocking_terrain } from './mthrowu.js';
 import { newobj } from './game.js';
 import { M_AP_TYPMASK, M_AP_NOTHING, M_AP_MONSTER, M_AP_FURNITURE, M_AP_OBJECT, Is_knox_level,
          STAIRS, LADDER, W_NONDIGGABLE, W_ARMH, TELEP_TRAP,
@@ -21,7 +23,8 @@ import { PM_FLAMING_SPHERE as PM_FLAMING_SPHERE_EL,
          PM_FIRE_VORTEX as PM_FIRE_VORTEX_EL,
          PM_FIRE_ELEMENTAL as PM_FIRE_ELEMENTAL_EL,
          PM_GOLD_DRAGON as PM_GOLD_DRAGON_EL } from './pm.generated.js';
-import { m_carrying, goodpos } from './trap.js';
+import { goodpos } from './trap.js';
+import { m_carrying } from './mthrowu.js';
 import { worm_move, see_wsegs as see_wsegs_real } from './worm.js';
 // @ts-nocheck
 // makemon.c — rndmonst_adj / rndmonnum_adj / mkclass / qt_montype (RNG parity).
@@ -46,14 +49,16 @@ function _makemon_blind() {
 import { game, wizard, discover } from './gstate.js';
 import { obj_split_timers, age_is_relative, stop_timer, begin_burn } from './timeout.js';
 import { artifact_light, obj_split_light_source as obj_split_light_source_real } from './light.js';
-import { depth as depth_of_level, deepest_lev_reached } from './hacklib.js';
+import { depth as depth_of_level, deepest_lev_reached } from './dungeon.js';
 import { W_ARMOR, W_ACCESSORY, TRAPNUM, NO_TRAP, FLYING, LEVITATION, BLINDED, P_DAGGER, P_KNIFE } from './const.js';
 import { BILLSZ, ROT_CORPSE, AGGRAVATE_MONSTER } from './const.js';
 import { DEFSYM_EXPLANATION } from './defsym_data.js';
 import { rank_of } from './rank_data.js';
 import { is_hole, is_pit, WEB, BEAR_TRAP } from './const.js';
 import { LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP, DB_UNDER, DB_LAVA } from './const.js';
-import { Norep, You_hear, You_feel, Unaware, flash_mon } from './display.js';
+import { Unaware } from './display.js';
+import { flash_mon } from './mon.js';
+import { Norep, You_hear, You_feel } from './pline.js';
 import { In_endgame, In_sokoban, Is_astralevel, Is_waterlevel, Is_firelevel, Is_earthlevel, Is_airlevel, Is_rogue_level, In_mines, MM_FEMALE, MM_MALE, NO_MINVENT, W_SADDLE, I_SPECIAL, COLNO, ROWNO, isok, SEE_INVIS, TELEPORT_CONTROL, STRANGLED, OBJ_MINVENT, REFLECTING, W_ARMS, W_WEP, W_AMUL, W_ARM, OBJ_FREE, OBJ_FLOOR, OBJ_LUAFREE, OBJ_INVENT, MIGR_RANDOM, NC_VIA_WAND_OR_SPELL, NC_SHOW_MSG, HAND, POLY_TRAP, Upolyd, IS_ALTAR, DISPLACED, FOOT, In_V_tower, RLOC_MSG, OBJ_CONTAINED, IS_FURNITURE, IS_DRAWBRIDGE, PIT, HOLE, FORCEBUNGLE, } from './const.js';
 import { NO_MM_FLAGS, MM_ADJACENTOK, MM_NOWAIT } from './const.js';
 import { OC_COST } from './oc_cost_data.js';
@@ -90,26 +95,34 @@ import { MKOBJ_OC_PROB } from './mkobj_data.js';
 import { DEAF, MM_NOMSG } from './const.js';
 import { verbalize, set_msg_xy as set_msg_xy_mm } from './cmd.js';
 import { a_monnam } from './mhitm.js';
-import { is_youmonst, attacktype as attacktype_real } from './mhitm.js';
+import { is_youmonst } from './mhitm.js';
+import { attacktype as attacktype_real } from './mondata.js';
 import { rndmonnam } from './do_name.js';
 import { paralyze_monst } from './dogmove.js';
 import { observe_object, discover_object } from './o_init.js';
-import { g_at, surface, ceiling as ceiling_real, docall } from './cmd.js';
-import { sp_levchn_lookup, mksobj, next_ident, set_corpsenm, add_to_container, engr_at, set_bknown, makemon, Can_dig_down, start_corpse_timeout, start_glob_timeout, stairway_at } from './mklev.js';
+import { g_at, surface, ceiling as ceiling_real } from './cmd.js';
+import { docall } from './do_name.js';
+import { sp_levchn_lookup, mksobj, next_ident, set_corpsenm, add_to_container, engr_at, set_bknown, makemon, start_corpse_timeout, start_glob_timeout } from './mklev.js';
+import { Can_dig_down } from './dungeon.js';
+import { stairway_at } from './stairs.js';
 import { mongets } from './m_initweap.js';
 import { builds_up } from './dungeon.js';
 import { ESHK } from './const.js';
 import { oid_price_adjustment, inhishop, shop_keeper, onbill } from './shk.js';
 import { inhistemple, in_your_sanctuary } from './priest.js';
-import { rank_of as rank_of_mnum, force_more, force_more_pages, pline, debugcore, urgent_pline as urgent_pline_disp, newsym, canspotmon, canseemon, map_invisible, sensemon, cls, docrt, show_glyph, show_monster_glyph_at, display_self } from './display.js';
+import { force_more, force_more_pages, newsym, canspotmon, canseemon, map_invisible, sensemon, cls, docrt, show_glyph, show_monster_glyph_at, display_self } from './display.js';
+import { debugcore } from './files.js';
+import { rank_of as rank_of_mnum } from './botl.js';
+import { pline, urgent_pline as urgent_pline_disp } from './pline.js';
 /* create_critters (makemon.c:1556) reaches these two; both are cyclic imports
  * (teleport.js and wizcmds.js each import this file) but every binding used is
  * a hoisted function declaration, so the cycle resolves. */
 import { enexto_out } from './teleport.js';
-import { create_particular } from './wizcmds.js';
-import { YMonnam, little_to_big, update_inventory, Some_Monnam, mon_hates_silver, locomotion, s_suffix, Adjmonnam, poly_when_stoned, y_monnam, can_blow, resists_blnd, helpless, noit_mon_nam, mon_nam_too } from './mhitm.js';
+import { create_particular } from './read.js';
+import { YMonnam, update_inventory, Some_Monnam, s_suffix, Adjmonnam, y_monnam, helpless, noit_mon_nam, mon_nam_too } from './mhitm.js';
+import { little_to_big, mon_hates_silver, locomotion, poly_when_stoned, can_blow, resists_blnd } from './mondata.js';
 import { mon_nam, m_at } from './uhitm.js';
-import { unconscious } from './pickup.js';
+import { unconscious } from './trap.js';
 import { an, the, makeplural, makesingular, vtense, singular, doname, distant_name, ansimpleoname, bare_artifactname } from './objnam.js';
 /* mloot_container (muse.c:2264, use_misc's MUSE_BAG arm) needs C's shared
  * can_carry(mon, obj) — the same function dog.c's pet-pickup path calls.
@@ -122,15 +135,24 @@ import { def_char_to_monclass } from './drawing.js';
 import { weight } from './weight.js';
 import { Monnam } from './mcastu.js';
 import { couldsee, cansee, recalc_block_point } from './vision.js';
-import { m_useup, monkilled_trap, seetrap, mintrap, mon_learns_traps, extract_from_minvent, maketrap, fill_pit } from './trap.js';
+import { monkilled_trap, seetrap, mintrap, maketrap, fill_pit } from './trap.js';
+import { mon_learns_traps } from './mondata.js';
+import { m_useup } from './mthrowu.js';
+import { extract_from_minvent } from './worn.js';
 import { place_monster, impossible } from './steed.js';
 import { impossible as bill_impossible } from './pline.js';
-import { maybe_unhide_at, add_to_minv, obj_extract_self, obfree, is_drawbridge_wall } from './dokick.js';
-import { welded, trycall, body_part, freeinv, mbodypart } from './cmd.js';
+import { maybe_unhide_at, add_to_minv, obj_extract_self, obfree } from './dokick.js';
+import { is_drawbridge_wall } from './dbridge.js';
+import { body_part, freeinv, mbodypart } from './cmd.js';
+import { welded } from './wield.js';
+import { trycall } from './do.js';
 import { remove_worn_item } from './steal.js';
 import { setnotworn } from './worn.js';
-import { dropy } from './cmd.js';
-import { place_object, mpickobj, upstart, Can_fall_thru, resists_ston, unknow_object } from './mklev.js';
+import { dropy } from './do.js';
+import { place_object, resists_ston, unknow_object } from './mklev.js';
+import { mpickobj } from './steal.js';
+import { Can_fall_thru } from './dungeon.js';
+import { upstart } from './hacklib.js';
 /* C obj.h:257 bimanual(otmp) — one shared body; this file already imports
  * from do_wear.js on this line, so no module edge is added. */
 import { xname, yname, hard_helmet, bimanual } from './do_wear.js';
@@ -142,23 +164,25 @@ import { migrate_to_level, sticks, unstuck } from './dog.js';
  * of its inventory scan.  Binding them is part of this change, not a
  * refactor. */
 import { Is_botlevel, MIGR_STAIRS_UP, MIGR_STAIRS_DOWN, MIGR_LADDER_UP, MIGR_LADDER_DOWN, MIGR_SSTAIRS, FORCETRAP, SCORR, CORR } from './const.js';
-import { mon_has_amulet } from './mhitm.js';
+import { mon_has_amulet } from './wizard.js';
 /* mreadmsg() (muse.c:236-284, use_defensive's MUSE_SCR_TELEPORTATION arm)
  * needs same_race (mondata.c:770) for its unseen-monster description, and
  * x_monnam (do_name.c) to build that description; both are already ported in
  * js/mhitm.js beside the other muse.c helpers this file already imports from
  * there. */
-import { same_race, x_monnam } from './mhitm.js';
+import { x_monnam } from './mhitm.js';
+import { same_race } from './mondata.js';
 /* C include/flag.h:530-543 enum plnmsg_types — this file only needs the
  * count-sentinel PLNMSG_enum ("none of the above"), computed the same way
  * js/const.js derives every other member: one past the last named entry. */
 import { PLNMSG_MON_TAKES_OFF_ITEM } from './const.js';
 const PLNMSG_enum_MM = PLNMSG_MON_TAKES_OFF_ITEM + 1;
-import { title_to_mon } from './mhitm.js';  /* C botl.c:366 — name_to_monplus's rank-title fallback */
+import { title_to_mon } from './botl.js';  /* C botl.c:366 — name_to_monplus's rank-title fallback */
 /* C mondata.c:1191 pronoun_gender() — mhe()'s body below. */
-import { pronoun_gender as pronoun_gender_mm } from './mhitm.js';
-import { mongone, healmon, bcsign, newcham, get_iter_mons as get_iter_mons_real, monnear as monnear_real } from './mklev.js';
-import { mon_has_special } from './mcastu.js';
+import { pronoun_gender as pronoun_gender_mm } from './mondata.js';
+import { bcsign } from './mklev.js';
+import { mongone, healmon, newcham, get_iter_mons as get_iter_mons_real, monnear as monnear_real } from './mon.js';
+import { mon_has_special } from './wizard.js';
 import { unblock_point } from './vision.js';
 import { dunlev } from './dungeon.js';
 /* monflee (monmove.c:461) helpers — see the port below. */
@@ -167,12 +191,13 @@ import { mon_track_clear, mon_would_take_item } from './monmove.js';
 /* C muse.c:1342-1415 hero_behind_chokepoint / mon_likes_objpile_at deps. */
 import { xytodir, dirtocoord } from './cmd.js';
 import { get_level as get_level_core, random_teleport_level } from './cmd.js';
-import { accessible, is_pool } from './look.js';
+import { is_pool } from './look.js';
+import { accessible } from './monmove.js';
 import { is_ice } from './engrave.js';
-import { money_cnt } from './com_pager.js';
+import { money_cnt } from './hack.js';
 import { on_level } from './dungeon.js';
 import { rloc, tele_restrict } from './teleport.js';
-import { mon_adjust_speed } from './trap.js';
+import { mon_adjust_speed } from './worn.js';
 /** @typedef {[number, number, number, number, number, number, number, number, number]} MonRow */
 const MONS = /** @type {MonRow[]} */ (monsPack.mons);
 const SPECIAL_PM = /** @type {number} */ (monsPack.special_pm);
@@ -1070,9 +1095,6 @@ function canSaddleMndx(_mtmp, mndx) {
         return false;
     return true;
 }
-export function can_saddle(mtmp) {
-    return canSaddleMndx(mtmp, mtmp.data?.pmidx ?? monsndx(mtmp));
-}
 /**
  * C makemon.c:1448–1453 — after m_initinv / m_dowear when allow_minvent:
  * `if (!rn2(100) && is_domestic(ptr) && can_saddle(mtmp)
@@ -1491,8 +1513,6 @@ export function monPmname(mndx, mgender) {
         g = NEUTRAL;
     return row[g];
 }
-/* C do_name.c:1303-1308: permonst-pointer wrapper for the shared gender lookup. */
-export function pmname(pm, mgender) { return monPmname(pm.pmidx, mgender); }
 
 const S_HUMAN_MLET = 53;   /* defsym.h MONSYM(53, '@', HUMAN, ...) */
 function _altspl_pm(canonicalName, mletFilter) {
@@ -2955,40 +2975,6 @@ export async function mkMplayer(ptr, x, y, special, cbs) {
     return mtmp;
 }
 
-/**
- * C mplayer.c:318-352 create_mplayers(num, special) — create `num` monster-players
- * at random free locations.  RNG per iteration: rn1(PM_WIZARD-PM_ARCHEOLOGIST+1,
- * PM_ARCHEOLOGIST), then (rn1(COLNO-4,2), rnd(ROWNO-2)) per placement try, with
- * goodpos() on a zeromonst fakemon (it may draw, e.g. rn2(13) for S_EEL forms),
- * then mk_mplayer.  Gives up silently once tryct exceeds 50.
- * NOT WIRED: final_level (do.c:2043) in js/cmd.js is the caller.
- * @param {number} num
- * @param {boolean} special
- * @param {object} cbs — mkMplayer callbacks (must include makemon)
- */
-export async function create_mplayers(num, special, cbs) {
-    /* C: fakemon = cg.zeromonst — only .data is filled in, so no m_id/wormno. */
-    const fakemon = { data: null, mnum: -1, m_id: 0, wormno: 0,
-                      mx: 0, my: 0, minvent: null };
-    while (num) {
-        let tryct = 0;
-        let x, y;
-        /* roll for character class */
-        const pm = rn1(_PM_WIZARD - _PM_ARCHEOLOGIST + 1, _PM_ARCHEOLOGIST);
-        fakemon.mnum = pm;
-        fakemon.data = permonstTemplate(pm);
-        /* roll for an available location */
-        do {
-            x = rn1(COLNO - 4, 2);
-            y = rnd(ROWNO - 2);
-        } while (!goodpos(x, y, fakemon, 0) && tryct++ <= 50);
-        /* if pos not found in 50 tries, don't bother to continue */
-        if (tryct > 50)
-            return;
-        await mkMplayer(pm, x, y, special, cbs);
-        num--;
-    }
-}
 import { mInitweap, rndOffensiveItem } from './m_initweap.js';
 export { mInitweap, rndOffensiveItem };
 
@@ -3565,9 +3551,6 @@ function m_sees_sleepy_soldier(mtmp) {
     return false;
 }
 
-function is_lava(x, y) {
-    return is_lava_real(x, y);
-}
 
 function is_Vlad(mtmp) {
     if (!mtmp) return false;
@@ -3917,7 +3900,7 @@ function Is_mbag(o) { return o.otyp === BAG_OF_HOLDING_OTYP || o.otyp === BAG_OF
 /* C obj.h:334 Has_contents(o) = ((o)->cobj != (struct obj *) 0) */
 function Has_contents(o) { return o.cobj != null; }
 /* C invent.c:1466 — share the per-tile nexthere lookup with level code. */
-import { sobj_at } from './mklev.js';
+import { sobj_at } from './invent.js';
 function monster_at(x, y) {
     for (let m = game.fmon; m; m = m.nmon)
         if (!m._mapRemoved && (m.mhp | 0) > 0 && m.mx === x && m.my === y)
@@ -4281,22 +4264,7 @@ async function mzapwand(mtmp, otmp, self) {
         return;
     return mzapwand_shared(mtmp, otmp, self);
 }
-/* C ref: worn.c:465-477 mon_set_minvis(mon, cursed_potion). `on` here is
- * the C `cursed_potion` argument (callers pass whether the drunk potion
- * was cursed, per potion.c:1790 / muse.c:2449), NOT the desired minvis
- * state directly — mon->perminvis is set from its logical negation, and
- * minvis itself is only updated when the monster isn't invis_blkd. */
-export function mon_set_minvis(mtmp, cursed_potion) {
-    mtmp.perminvis = cursed_potion ? 0 : 1;
-    if (!mtmp.invis_blkd) {
-        mtmp.minvis = mtmp.perminvis;
-        newsym(mtmp.mx, mtmp.my); /* make it disappear */
-        if (mtmp.wormno)
-            see_wsegs_rl(mtmp); /* and any tail too */
-    }
-}
 
-function see_wsegs_rl(mon) { return see_wsegs_real(mon); }
 function muse_newcham_mon(mtmp) {
     const m_armr = which_armor(mtmp, W_ARM);
     if (m_armr) {
@@ -4417,23 +4385,6 @@ function mdistu(mon) { return dist2(mon.mx, mon.my, game.u.ux, game.u.uy); }
 import { container_weight } from './mklev.js';
 export { container_weight };
 
-/* C pickup.c:2781-2799 removed_from_icebox().  Frozen object ages are stored
- * relative to the turn at which they entered the ice box.  On removal they
- * become absolute again and their ordinary lifecycle timer resumes. */
-export function removed_from_icebox(obj) {
-    if (!age_is_relative(obj)) {
-        obj.age = (game.moves | 0) - (obj.age | 0);
-        if ((obj.otyp | 0) === CORPSE) {
-            const traits = get_mtraits(obj, false);
-            const iceTroll = traits ? traits.data.pmidx === PM_ICE_TROLL
-                : (obj.corpsenm | 0) === PM_ICE_TROLL;
-            obj.norevive = iceTroll ? 0 : 1;
-            start_corpse_timeout(obj);
-        } else if (obj.globby) {
-            start_glob_timeout(obj, 0);
-        }
-    }
-}
 
 async function mloot_container(mon, container, vismon) {
     let contnr_nam = '', mpronounbuf = '';
@@ -5636,9 +5587,6 @@ export function hero_behind_chokepoint(mtmp) {
         return true;
     return false;
 }
-export function lined_up(mtmp) {
-    return m_lined_up(game.youmonst, mtmp) ? true : false;
-}
 /* C ref: muse.c:1299-1360 m_use_undead_turning(mtmp, obj) — consider zapping a
  * wand of undead turning at the corpses the hero is carrying.  C's first
  * statement after the coordinate setup is an unconditional early return for
@@ -5852,34 +5800,6 @@ function _onscary_vobj_at(x, y) {
     const col = game.level?.levelObjects?.[x];
     return col ? (col[y] ?? null) : null;
 }
-/* C worn.c:997-1029
- *   struct obj *which_armor(struct monst *mon, long flag)
- *   { if (mon == &gy.youmonst) { switch (flag) { case W_ARM: return uarm; ...
- *       default: impossible("bad flag in which_armor"); return 0; } }
- *     else { for (obj = mon->minvent; obj; obj = obj->nobj)
- *                if (obj->owornmask & flag) return obj;
- *            return (struct obj *) 0; } } */
-export function which_armor(mon, flag) {
-    if (is_youmonst(mon)) {
-        switch (flag) {
-        case W_ARM:  return game.u.uarm;
-        case W_ARMC: return game.u.uarmc;
-        case W_ARMH: return game.u.uarmh;
-        case W_ARMS: return game.u.uarms;
-        case W_ARMG: return game.u.uarmg;
-        case W_ARMF: return game.u.uarmf;
-        case W_ARMU: return game.u.uarmu;
-        default:
-            impossible_sync("bad flag in which_armor");
-            return 0;
-        }
-    } else {
-        for (let obj = mon.minvent; obj; obj = obj.nobj)
-            if (obj.owornmask & flag)
-                return obj;
-        return null;
-    }
-}
 
 /* in_your_sanctuary: file-local `return false` stub removed; the real body
  * (priest.c:~330) is imported from js/priest.js. */
@@ -5890,57 +5810,18 @@ export function which_armor(mon, flag) {
  * already defined above). M3_COVETOUS is a multi-bit mask (0x001f). */
 const M2_LORD = 0x00000400;
 const M2_PRINCE = 0x00000800;
-const M3_COVETOUS = 0x001f;
 
-/** C mondata.h is_lord — lord to its kind */
-function is_lord(ptr) { return (ptr.mflags2 & M2_LORD) !== 0; }
 /** C mondata.h is_prince — overlord to its kind */
 function is_prince(ptr) { return (ptr.mflags2 & M2_PRINCE) !== 0; }
 /** C mondata.h:138 is_ndemon — an ordinary demon (neither lord nor prince). */
 export function is_ndemon(ptr) {
     return is_demon(ptr) && (ptr.mflags2 & (M2_LORD | M2_PRINCE)) === 0;
 }
-/** C mondata.h is_dlord — demon lord: is_demon && is_lord */
-function is_dlord(ptr) { return is_demon(ptr) && is_lord(ptr); }
 /** C mondata.h is_dprince — demon prince: is_demon && is_prince */
 export function is_dprince(ptr) { return is_demon(ptr) && is_prince(ptr); }
-/** C mondata.h is_covetous — wants something (M3_COVETOUS mask) */
-function is_covetous(ptr) { return (ptr.mflags3 & M3_COVETOUS) !== 0; }
 
-/** C teleport.c m_blocks_teleporting — does this monster block others' teleport? */
-function m_blocks_teleporting(mtmp) {
-    if (is_dlord(mtmp.data) || is_dprince(mtmp.data))
-        return true;
-    return false;
-}
 
-/** C mon.c:4534 get_iter_mons — iterate fmon, return first monster for which
- * bfunc is TRUE (else null). Skips DEADMONSTER (mhp < 1). The reconstructed
- * fmon cells carry mnum (the permonst index); materialize mtmp.data via
- * permonstTemplate(mnum) — the C mtmp->data pointer into mons[mndx]. */
-function get_iter_mons(bfunc) {
-    return get_iter_mons_real(bfunc);
-}
 
-/** C teleport.c noteleport_level — is teleporting prevented on this level for this monster? */
-export function noteleport_level(mon) {
-    /* demon court in Gehennom prevent others from teleporting */
-    if (Inhell() && !(is_dlord(mon.data) || is_dprince(mon.data))) {
-        if (get_iter_mons(m_blocks_teleporting))
-            return true;
-    }
-
-    /* natural no-teleport level; covetous monsters can bypass these */
-    if (game.level.flags.noteleport && !is_covetous(mon.data))
-        return true;
-
-    /* wand of stasis prevents teleportation while the effect is active
-       (even for covetous monsters) */
-    if (game.level.flags.stasis_until >= game.moves)
-        return true;
-
-    return false;
-}
 export function mon_knows_traps(mtmp, ttyp) {
     if (ttyp === -1)        /* ALL_TRAPS */
         return !!(mtmp.mtrapseen);
@@ -6092,6 +5973,22 @@ export async function monflee(mtmp, fleetime, first, fleemsg) {
 }
 import { somegold } from './steal.js';
 import { ENV } from './hostenv.js';
+import { mon_set_minvis, which_armor } from './worn.js'; // relocate-fns
+import { lined_up } from './mthrowu.js'; // relocate-fns
+import { noteleport_level } from './teleport.js'; // relocate-fns
+import { is_lava } from './dbridge.js'; // relocate-fns
+import { removed_from_icebox } from './pickup.js'; // relocate-fns
+import { splitbill } from './shk.js'; // relocate-fns
+export { CORPSE }; // relocate-fns
+export { create_mplayers } from './mplayer.js'; // relocate-fns
+export { _PM_ARCHEOLOGIST, _PM_WIZARD }; // relocate-fns
+export { pmname } from './do_name.js'; // relocate-fns
+export { canSaddleMndx, monsndx }; // relocate-fns
+export { noteleport_level } from './teleport.js'; // relocate-fns
+export { M2_LORD }; // relocate-fns
+export { m_lined_up } from './mthrowu.js'; // relocate-fns
+export { WAN_STRIKING, throws_rocks }; // relocate-fns
+export { which_armor } from './worn.js'; // relocate-fns
 export { somegold };
 function _splitobj_panic(msg) { throw new Error(`panic: ${msg}`); }
 
@@ -6246,47 +6143,6 @@ export async function unsplitobj(obj) {
     const pparent = { o: parent }, pchild = { o: child };
     return (await merged(pparent, pchild)) ? pparent.o : null;
 }
-/* C shk.c:3623-3659 splitbill(obj, otmp) — move the split-off quantity to a
- * second bill entry while retaining the original entry for the remainder.
- * This path is synchronous and RNG-free; it is reached by splitobj() whenever
- * an unpaid stack is divided. */
-export async function splitbill(obj, otmp) {
-    const shops = game.u?.ushops || '';
-    const roomno = typeof shops === 'string' ? shops.charCodeAt(0) : shops[0];
-    const shkp = shops.length ? shop_keeper(roomno) : null;
-    if (!shkp || !inhishop(shkp)) {
-        await bill_impossible('splitbill: no resident shopkeeper??');
-        return;
-    }
-    const eshk = ESHK(shkp);
-    const bp = await onbill(obj, shkp, false);
-    if (!bp) {
-        await bill_impossible('splitbill: not on bill?');
-        return;
-    }
-
-    const childQuan = otmp.quan | 0;
-    const billedQuan = bp.bquan | 0;
-    if (billedQuan < childQuan)
-        await bill_impossible('Negative quantity on bill??');
-    if (billedQuan === childQuan)
-        await bill_impossible('Zero quantity on bill??');
-    bp.bquan = billedQuan - childQuan;
-
-    const billct = eshk.billct | 0;
-    if (billct === BILLSZ) {
-        otmp.unpaid = 0;
-        return;
-    }
-    const bill = eshk.bill_p || eshk.bill || (eshk.bill_p = []);
-    bill[billct] = {
-        bo_id: otmp.o_id,
-        bquan: childQuan,
-        useup: false,
-        price: bp.price
-    };
-    eshk.billct = billct + 1;
-}
 /* obj_split_timers — the real body lives in js/timeout.js (C timeout.c:2358),
  * imported at the top of this file.  It used to throw, which was the correct
  * behaviour while no timer existed to split; splitting a stack of timed
@@ -6295,34 +6151,6 @@ function obj_split_light_source(src, dest) { return obj_split_light_source_real(
 export { tele_restrict };
 
 
-export function m_lined_up(mtarg, mtmp) {
-    const utarget = (mtarg === game.youmonst);
-    const tx = utarget ? mtmp.mux : mtarg.mx;
-    const ty = utarget ? mtmp.muy : mtarg.my;
-    const ignore_boulders = utarget && (throws_rocks(mtmp.data)
-                                        || m_carrying(mtmp, WAN_STRIKING));
-
-    /* hero concealment usually trumps monst awareness of being lined up */
-    /* C youprop.h Upolyd = (u.umonnum != u.umonster).  The old spelling here
-     * read `game.urole.mnum`, which this port does not define — every live
-     * call to m_lined_up threw before it could reach linedup().
-     * js/const.js:2882 Upolyd(player) is the shared reader. */
-    const polymorphed = Upolyd(game.u);
-    /* C decl.c gy.youmonst is always a live struct; this port has no global
-     * hero-monst record (js/polyself.js creates a bare object on demand), so
-     * an absent one reads as m_ap_type 0 == M_AP_NOTHING, which is what a
-     * non-mimicking hero has.  C short-circuits on !Upolyd before reaching
-     * U_AP_TYPE at all, so this is only consulted when polymorphed. */
-    const U_AP_TYPE = ((game.youmonst?.m_ap_type | 0) & M_AP_TYPMASK);
-    if (utarget && polymorphed && rn2(25)
-        && (game.u.uundetected || (U_AP_TYPE !== M_AP_NOTHING
-                                   && U_AP_TYPE !== M_AP_MONSTER)))
-        return 0;
-
-    /* [no callers care about the 1 vs 2 situation any more] */
-    return linedup(tx, ty, mtmp.mx, mtmp.my,
-                   utarget ? (ignore_boulders ? 1 : 2) : 0) ? 1 : 0;
-}
 
 /* C mondata.h is_male/is_female/is_shapeshifter/humanoid/nonliving — mflags
  * bit tests on a permonst-shaped `ptr` (pmidx/mlet/mflags1/mflags2). */

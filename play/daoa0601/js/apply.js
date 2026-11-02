@@ -11,7 +11,7 @@ import { useMirror } from './mirror.js';
 import { useCamera } from './camera.js';
 import { useTowel } from './towel.js';
 import { useBell } from './apply_bell.js';
-import { speakArtifact } from './artifact_speech.js';
+import { speakArtifact } from './artifacts.js';
 import { lightCocktail, useCandelabrum, useCandle, useLamp } from './apply_light.js';
 import { useWhistle } from './whistle.js';
 import { retouchHeroObject } from './hero_retouch.js';
@@ -20,7 +20,8 @@ import { attackHostileMonster } from './hero_melee.js';
 import { prepareAppliedWeaponAttack } from './hero_attack_preflight.js';
 import { learnObjectType } from './object_knowledge.js';
 import { dopay } from './shk.js';
-import { commandResultCancelled, commandResultFailed, commandResultSpentTime, endVoluntaryMultiTurn } from './command_state.js';
+import { commandResultCancelled, commandResultFailed, commandResultSpentTime } from './cmd.js';
+import { endVoluntaryMultiTurn } from './hack.js';
 import { chooseInventoryObject } from './inventory_prompt.js';
 import { heroMayDisplaceMonster, runSafepetDisplacement } from './hack.js';
 import { artifactById } from './artifacts.js';
@@ -38,7 +39,8 @@ import { releaseDjinni } from './potion.js';
 import { jumpHero } from './jumping.js';
 import { usePickAxe } from './pick_axe.js';
 import { usePolearm } from './polearm.js';
-import { isPick, isAxe, isPolearm, heroHasFreeHand } from './weapon_type.js';
+import { isPick, isAxe, isPolearm } from './object_properties.js';
+import { heroHasFreeHand } from './engrave.js';
 import { promptDirection, readDirectionKey } from './tty_prompts.js';
 import { useGrapplingHook } from './grappling_hook.js';
 import { hurtleHero } from './hero_hurtle.js';
@@ -55,7 +57,6 @@ import { useStethoscope } from './stethoscope.js';
 import { useBagOfTricks } from './bag_of_tricks.js';
 import { useHornOfPlenty } from './horn_of_plenty.js';
 import { useTinningKit } from './tinning_kit.js';
-import { useSettableTrap } from './trap_setting.js';
 import { useSaddle, monsterAtPosition } from './steed.js';
 import { isRoyalJelly, useRoyalJelly } from './royal_jelly.js';
 import { useBullwhip } from './bullwhip.js';
@@ -66,11 +67,11 @@ import { useTinOpener } from './tin.js';
 import { useMagicMarker } from './write.js';
 import { useUnicornHorn } from './unicorn_horn.js';
 import { PLAYABLE_INSTRUMENTS, playInstrument } from './music.js';
-import { inventoryCommandLetter } from './invent.js';
+import { inventoryCommandLetter, delobj } from './invent.js';
 import { currentAttribute } from './attrib.js';
 import { heroHandName, heroHeadName } from './body_parts.js';
 import { dropBoulderIntoLiquid } from './boulder_pool.js';
-import { GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, A_STR, DIGCHECK_FAILED, DIGCHECK_FAIL_BOULDER, EXPL_FIERY, EXPL_FROSTY, EXPL_MAGICAL, HOLE, ICE, IS_DOOR, IS_WALL, NO_KILLER_PREFIX, PARANOID_BREAKWAND, PIT, ROOM, SHOPBASE, isok, xdir, ydir, } from './const.js';
+import { GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, A_STR, DIGCHECK_FAILED, DIGCHECK_FAIL_BOULDER, EXPL_FIERY, EXPL_FROSTY, EXPL_MAGICAL, HOLE, ICE, IS_DOOR, IS_WALL, NO_KILLER_PREFIX, PARANOID_BREAKWAND, PIT, ROOM, SHOPBASE, isok, xdir, ydir, LEVEL_TIMER_KIND } from './const.js';
 import { digActualHole, digCheck, liquidFlow } from './digging_terrain.js';
 import { watchDigging } from './digging_watch.js';
 import { bot } from './botl.js';
@@ -84,11 +85,10 @@ import { liquidForHole } from './hole.js';
 import { beginImmediateZap, finishImmediateZap, hitFloorPileWithWand, hitMonsterWithWand, } from './immediate_zap.js';
 import { canDigDown } from './mklev.js';
 import { makemonAt } from './makemon.js';
-import { delobj } from './object_delete.js';
 import { BOULDER, OBJECT_DESCRIPTIONS, WAN_CANCELLATION, WAN_COLD, WAN_CREATE_MONSTER, WAN_DEATH, WAN_DIGGING, WAN_ENLIGHTENMENT, WAN_FIRE, WAN_LIGHT, WAN_LIGHTNING, WAN_LOCKING, WAN_MAGIC_MISSILE, WAN_NOTHING, WAN_OPENING, WAN_POLYMORPH, WAN_PROBING, WAN_SECRET_DOOR_DETECTION, WAN_STASIS, WAN_STRIKING, WAN_TELEPORTATION, WAN_UNDEAD_TURNING, WAN_WISHING, } from './object_data.js';
 import { makePlural } from './object_grammar.js';
-import { unlinkObject } from './object_location.js';
-import { LEVEL_TIMER_KIND, stopLevelTimer } from './object_timers.js';
+import { unlinkObject } from './mkobj.js';
+import { stopLevelTimer } from './timeout.js';
 import { observeObjectForNaming, ownedObjectName } from './objnam.js';
 import { fillPitWithBoulderAt } from './pit_fill.js';
 import { paranoidQuery } from './query.js';
@@ -98,6 +98,20 @@ import { isLavaAt, isPoolAt } from './terrain_properties.js';
 import { vision_note_blocker_change } from './vision.js';
 import { exceedsActionCapacity } from './weight.js';
 import { zappable } from './zap.js';
+import { feelTrap, trapName } from './trap.js';
+import { A_DEX, AIR, BEAR_TRAP, CLOUD, D_CLOSED, D_LOCKED, DOOR, IS_FURNITURE, IS_OBSTRUCTED, Is_airlevel, Is_waterlevel, LANDMINE, P_BASIC, P_RIDING, } from './const.js';
+import { dropInventoryObjectAtHero } from './hero_drop.js';
+import { triggerHeroTrap } from './hero_traps.js';
+import { consumeInventoryItem } from './invent.js';
+import { heroIsOnStairs } from './invocation_position.js';
+import { maketrap } from './mklev.js';
+import { monsterDigests } from './monster_data.js';
+import { monsterName } from './do_name.js';
+import { propertyIsActive } from './properties.js';
+import { promptYesNo } from './query.js';
+import { rnl } from './rng.js';
+import { heroIsDeaf } from './senses.js';
+import { billDummyObject, objectOwnershipPrefix, findObjectOwner, shopkeeperIsMuted, addShopDamage, } from './shk.js';
 // C apply.c:rub_ok().
 function rubEligibleObject(object) {
     return object?.otyp === OIL_LAMP || object?.otyp === MAGIC_LAMP
@@ -731,5 +745,147 @@ async function digWithBrokenWand(wand, x, y, fillMessageShown, state) {
     }
     vision_note_blocker_change(x, y);
     return result;
+}
+// C apply.c:use_trap(), set_trap(), reset_trapset().
+// C apply.c:reset_trapset().
+export function resetTrapSetting(state = game) {
+    state._trapSetting = null;
+}
+// C apply.c:use_trap().
+export async function useSettableTrap(object) {
+    requirePlayingGame(game);
+    const hero = game.u;
+    const refusal = trapSettingRefusal();
+    if (refusal) {
+        await pline(`You can't set a trap ${refusal}!`);
+        resetTrapSetting();
+        return object;
+    }
+    const type = object.otyp === LAND_MINE ? LANDMINE : BEAR_TRAP;
+    const old = game._trapSetting;
+    if (old && old.object === object && old.level === game.level && old.x === hero.ux && old.y === hero.uy) {
+        await pline(`You resume setting ${objectOwnershipPrefix(object, game, { capitalized: false })}${trapName(type)}.`);
+        game._occupation = { key: 'set-trap', text: 'setting the trap' };
+        return null;
+    }
+    const remaining = trapPreparationTime(type, currentAttribute(A_DEX, game), currentAttribute(A_STR, game), heroIsBlind(game));
+    // C use_trap() preserves a pending bungle until reset_trapset().
+    const progress = { object, level: game.level, x: hero.ux, y: hero.uy, remaining, forceBungle: old?.forceBungle ?? false };
+    game._trapSetting = progress;
+    if (hero.usteed && (hero.weaponSkills?.[P_RIDING]?.skill ?? 0) < P_BASIC) {
+        const bungle = rnl(10) > (propertyIsActive('fumbling', game) || object.cursed ? 3 : 5);
+        await pline(`You aren't very skilled at reaching from ${monsterName(hero.usteed)}.`);
+        if (await promptYesNo(`Continue your attempt to set the ${trapName(type)}?`) !== 'y') {
+            resetTrapSetting();
+            return object;
+        }
+        if (bungle) {
+            if (type === LANDMINE) {
+                progress.remaining = 0;
+                progress.forceBungle = true;
+            }
+            else {
+                resetTrapSetting();
+                await pline(`You drop the ${trapName(type)}!`);
+                await dropInventoryObjectAtHero(object);
+                return object;
+            }
+        }
+    }
+    await pline(`You begin setting ${objectOwnershipPrefix(object, game, { capitalized: false })}${trapName(type)}.`);
+    if (object.unpaid) {
+        const keeper = findObjectOwner(object, hero.ux, hero.uy, game);
+        if (!heroIsDeaf(game) && keeper && !shopkeeperIsMuted(keeper))
+            await pline('"You set it, you buy it!"');
+        await billDummyObject(object);
+    }
+    game._occupation = { key: 'set-trap', text: 'setting the trap' };
+    return null;
+}
+// C apply.c:set_trap().
+export async function continueTrapSetting(state = game) {
+    requirePlayingGame(state);
+    const progress = state._trapSetting;
+    if (!progress || progress.object.where !== 'inventory' || !state.inventory.includes(progress.object)
+        || progress.level !== state.level || progress.x !== state.u.ux || progress.y !== state.u.uy) {
+        resetTrapSetting(state);
+        return false;
+    }
+    if (--progress.remaining > 0)
+        return true;
+    const object = progress.object;
+    const type = object.otyp === LAND_MINE ? LANDMINE : BEAR_TRAP;
+    const trap = await maketrap(state.u.ux, state.u.uy, type);
+    if (trap) {
+        trap.madeby_u = true;
+        await feelTrap(trap, state);
+        if (roomsAt(state.level, trap.tx, trap.ty, SHOPBASE).length)
+            addShopDamage(trap.tx, trap.ty, 0, state);
+        if (!progress.forceBungle)
+            await pline(`You finish arming the ${trapName(type)}.`);
+        // C evaluates this luck roll before checking force_bungle too.
+        const bungle = (object.cursed || propertyIsActive('fumbling', state)) && rnl(10) > 5;
+        if (bungle || progress.forceBungle) {
+            await triggerHeroTrap(trap, { forceBungle: progress.forceBungle, gotoLevel, finishTeleport: finishTeleportArrival });
+            if (state.program_state.gameover)
+                return false;
+        }
+    }
+    else
+        await pline('Your trap setting attempt fails.');
+    await consumeInventoryItem(object, state);
+    resetTrapSetting(state);
+    return false;
+}
+function trapPreparationTime(type, dexterity, strength, blind) {
+    let turns = 5;
+    if (dexterity > 17)
+        turns = 2;
+    else if (dexterity > 12)
+        turns = 3;
+    else if (dexterity > 7)
+        turns = 4;
+    if (blind)
+        turns *= 2;
+    if (type !== BEAR_TRAP || strength >= 18)
+        return turns;
+    if (strength > 12)
+        return turns + 1;
+    return turns + (strength > 7 ? 2 : 4);
+}
+function trapSettingRefusal() {
+    requirePlayingGame(game);
+    const hero = game.u, level = game.level;
+    const location = level.requireAt(hero.ux, hero.uy);
+    if (heroHasNoHands(game))
+        return 'without hands';
+    if (hero.stunned || (hero.stunnedTurns ?? 0) > 0)
+        return 'while stunned';
+    if (hero.uswallow)
+        return hero.ustuck && monsterDigests(hero.ustuck) ? 'while swallowed' : 'while engulfed';
+    if (hero.uinwater || game.underwater)
+        return 'underwater';
+    if (propertyIsActive('levitation', game))
+        return 'while levitating';
+    if (isPoolAt(hero.ux, hero.uy))
+        return 'in water';
+    if (isLavaAt(hero.ux, hero.uy))
+        return 'in lava';
+    if (heroIsOnStairs(game)) {
+        for (let stair = game.stairs; stair; stair = stair.next)
+            if (stair.sx === hero.ux && stair.sy === hero.uy)
+                return stair.isladder ? 'on the ladder' : 'on the stairs';
+        return 'on the stairs';
+    }
+    if (IS_FURNITURE(location.typ) || IS_OBSTRUCTED(location.typ)
+        || location.typ === DOOR && (location.doormask & (D_CLOSED | D_LOCKED))
+        || level.traps.some(trap => trap.tx === hero.ux && trap.ty === hero.uy))
+        return 'here';
+    if (Is_airlevel(hero.uz) || Is_waterlevel(hero.uz)) {
+        if (location.typ === AIR)
+            return 'in midair';
+        return location.typ === CLOUD ? 'in a cloud' : 'in this place';
+    }
+    return null;
 }
 //# sourceMappingURL=apply.js.map

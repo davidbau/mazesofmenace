@@ -12,32 +12,37 @@ import { game } from './gstate.js';
 import { eatfood } from './eat.js';
 import { COLNO, ROWNO, CLOUD, RLOC_NOMSG, MELT_ICE_AWAY, DRAWBRIDGE_DOWN, DB_ICE, DB_UNDER } from './const.js';
 import { rn2, rn1, d } from './rng.js';
-import { pline, You_hear, You_feel, urgent_pline } from './display.js';
+import { pline, You_hear, You_feel, urgent_pline } from './pline.js';
 import { impossible } from './pline.js';
 import { buzz, Monnam } from './mcastu.js';
-import { rider_revival_time, is_rider_pm, makemon, hideunder, ing_suffix, revive_corpse, zombie_form, set_corpsenm,
-         dealloc_obj, dealloc_mextra, maybe_unhide_at } from './mklev.js';
+import { rider_revival_time, is_rider_pm, makemon, revive_corpse, set_corpsenm, dealloc_obj } from './mklev.js';
+import { ing_suffix } from './hacklib.js';
+import { hideunder, zombie_form, dealloc_mextra, maybe_unhide_at } from './mon.js';
 import { permonstTemplate, container_weight, emits_light, name_to_mon } from './makemon.js';
 import { enexto_out, rloc } from './teleport.js';
 import { tamedog } from './dog.js';
 import { make_familiar } from './dog.js';
 import { cansee } from './vision.js';
-import { m_monnam, locomotion, big_to_little, little_to_big, a_monnam } from './mhitm.js';
+import { m_monnam, a_monnam } from './mhitm.js';
+import { locomotion, big_to_little, little_to_big } from './mondata.js';
 import { makeplural, an, xname, the } from './objnam.js';
-import { newsym, You_see, canseemon, Deaf, impossible_sync } from './display.js';
+import { newsym, canseemon, Deaf, impossible_sync } from './display.js';
+import { You_see } from './pline.js';
 import { figurine_location_checks, useup, useupall, obj_extract_self_general, verbalize, Yname2 } from './cmd.js';
-import { obfree, is_ice } from './dokick.js';
+import { obfree } from './dokick.js';
+import { is_ice } from './dbridge.js';
 import { m_at, setmnotwielded } from './uhitm.js';
 import { is_pool } from './look.js';
 import { s_suffix, dist2, isok } from './hacklib.js';
 import { cry_sound } from './sounds.js';
 import { Blind } from './vision.js';
-import { Norep } from './display.js';
+import { Norep } from './pline.js';
 import { hcolor } from './mhitm.js';
 import { melt_ice_zap } from './zap.js';
 import { find_ac } from './do_wear.js';
 import { remove_worn_item } from './steal.js';
-import { encumber_msg, near_capacity, weight } from './weight.js';
+import { encumber_msg, weight } from './weight.js';
+import { near_capacity } from './hack.js';
 import { Shk_Your } from './shk.js';
 import { polymon } from './polyself.js';
 import { done, dealloc_killer } from './end.js';
@@ -45,10 +50,9 @@ import { PM_GREEN_SLIME } from './pm.generated.js';
 import { LS_MONSTER, I_SPECIAL, TIMEOUT, LOW_PM, TURNED_SLIME, GENOCIDED, KILLED_BY,
          NO_KILLER_PREFIX, PLNMSG_OK_DONT_DIE } from './const.js';
 import { OC_WEIGHT } from './oc_weight.generated.js';
-import {
-    new_light_source, del_light_source, get_obj_location,
-    artifact_light, arti_light_radius, candle_light_range, monst_to_any,
-} from './light.js';
+import { new_light_source, del_light_source, artifact_light, arti_light_radius, candle_light_range } from './light.js';
+import { monst_to_any } from './hack.js';
+import { get_obj_location } from './zap.js';
 import { update_inventory } from './mhitm.js';
 import { nomul, stop_occupation } from './allmain.js';
 import { rnd } from './rng.js';
@@ -472,26 +476,6 @@ async function burn_object(arg, timeout) {
     if (need_invupdate) update_inventory();
 }
 
-/* C mkobj.c:1501 — globs lose one weight unit every ~25 turns. */
-async function shrinking_glob_gone(obj) {
-    const where = obj.where | 0;
-    if (where === OBJ_INVENT || burn_carried(obj)) {
-        if (obj.owornmask) {
-            await remove_worn_item(obj, false);
-            await stop_occupation();
-        }
-        await useupall(obj);
-        return;
-    }
-    if (where === OBJ_MIGRATING)
-        obj.owornmask = 0;
-    else if (where === OBJ_MINVENT && obj.owornmask && obj.ocarry?.mw === obj)
-        setmnotwielded(obj.ocarry, obj);
-    obj_extract_self_general(obj);
-    if (where === OBJ_FLOOR)
-        maybe_unhide_at(obj.ox | 0, obj.oy | 0);
-    await obfree(obj, null);
-}
 
 /* C mkobj.c:1501-1647 shrink_glob(). */
 async function shrink_glob_timer(arg, timeout) {
@@ -1358,6 +1342,18 @@ export function spot_time_left(x, y, func_index) {
  * arms of the union without an undefined-vs-undefined false match between an
  * object timer and a level timer. */
 import { obj_to_any } from './cmd.js';
+import { exercise } from './attrib.js'; // relocate-fns
+import { A_DEX, DEAF as DEAF_PROP, FAST as FAST_PROP, KILLED_BY_AN, M_AP_MONSTER, SLIMED as SLIMED_PROP, WOUNDED_LEGS as WOUNDED_LEGS_PROP } from './const.js'; // relocate-fns
+import { heal_legs } from './do.js'; // relocate-fns
+import { rndmonnam } from './do_name.js'; // relocate-fns
+import { PM_GREEN_SLIME_E, Popeye, _eat_Blind, _eat_Hallucination, _uprop_on, make_stoned } from './eat.js'; // relocate-fns
+import { an as an_eat } from './objnam.js'; // relocate-fns
+import { make_slimed, make_vomiting } from './potion.js'; // relocate-fns
+import { shrinking_glob_gone } from './mkobj.js'; // relocate-fns
+import { ECMD_OK } from './const.js'; // relocate-fns
+import { displayLookWindow } from './look-window.js'; // relocate-fns
+import { any_visible_region, region_stats_snapshot } from './region.js'; // relocate-fns
+export { burn_carried }; // relocate-fns
 
 // C ref: timeout.c:2698-2714 restore_timers(NHFILE *nhfp, int range, long adjust)
 export function restore_timers(nhfp, range, adjust) {
@@ -1682,4 +1678,218 @@ export async function nh_timeout_spell_protection() {
         if (!Blind())
             await Norep(`The ${hcolor('golden')} haze around you ${u.uspellprot ? 'becomes less dense' : 'disappears'}.`);
     }
+}
+
+const _STONED_TEXTS = ['You are slowing down.', 'Your limbs are stiffening.',
+    'Your limbs have turned to stone.', 'You have turned to stone.',
+    'You are a statue.'];
+
+/* C timeout.c:137 stoned_dialogue(), called from nh_timeout (timeout.c:624)
+ * before the generic property countdown.  Ends with exercise(A_DEX, FALSE). */
+export async function stoned_dialogue() {
+    const u = game.u;
+    const i = (u.uprops?.[STONED]?.intrinsic | 0) & TIMEOUT;
+    if (i > 0 && i <= _STONED_TEXTS.length) {
+        let buf = _STONED_TEXTS[_STONED_TEXTS.length - i];
+        if ((((game.youmonst?.data?.mflags1) | 0) & 0x6000) === 0x6000
+            && buf.includes('limbs'))
+            buf = buf.replace('limbs', 'extremities');
+        await urgent_pline(buf);
+        /* nh_timeout runs AFTER the HEAD svm.moves++ (allmain.c:257, timeout.c:624),
+         * so a --More-- this pline raises freezes T: at the CURRENT svm.moves, not
+         * the movemon-turn tag (moves-1) left by an earlier turn's pending line. */
+        if (game._pending_message) game._movemonMsgTurn = game.moves | 0;
+    }
+    switch (i) {
+    case 5:
+        u.uprops[FAST_PROP].intrinsic = 0; /* HFast = 0L */
+        if ((game.multi | 0) > 0) nomul(0);
+        break;
+    case 4:
+        if (!Popeye(STONED)) await stop_occupation();
+        if ((game.multi | 0) > 0) nomul(0);
+        break;
+    case 3:
+        await stop_occupation();
+        nomul(-3);
+        game.multi_reason = 'getting stoned';
+        game.nomovemsg = 'You can move again.';
+        if (_uprop_on(WOUNDED_LEGS_PROP) && !u.usteed) heal_legs(2);
+        break;
+    case 2: {
+        const hd = u.uprops?.[DEAF_PROP];
+        const t = ((hd?.intrinsic | 0) | (u.HDeaf | 0)) & TIMEOUT;
+        if (t > 0 && t < 5) { // C timeout.c:173-174: set the live HDeaf timer too.
+            if (hd) hd.intrinsic = ((hd.intrinsic | 0) & ~TIMEOUT) | 5;
+            u.HDeaf = ((u.HDeaf | 0) & ~TIMEOUT) | 5;
+        }
+        if (_uprop_on(VOMITING)) await make_vomiting(0, false);
+        if (_uprop_on(SLIMED_PROP)) await make_slimed(0, null);
+        break;
+    }
+    default:
+        break;
+    }
+    exercise(A_DEX, false);
+}
+
+const _SLIME_TEXTS = ['You are turning a little %s.', 'Your limbs are getting oozy.',
+    'Your skin begins to peel away.', 'You are turning into %s.',
+    'You have become %s.'];
+
+/* C timeout.c:389 slime_dialogue(), called from nh_timeout (timeout.c:626)
+ * after stoned_dialogue.  Ends with exercise(A_DEX, FALSE). */
+export async function slime_dialogue() {
+    const u = game.u;
+    const t = (u.uprops?.[SLIMED_PROP]?.intrinsic | 0) & TIMEOUT;
+    const i = Math.trunc(t / 2);
+    if (t === 1) {
+        game.youmonst.m_ap_type = M_AP_MONSTER;
+        game.youmonst.mappearance = PM_GREEN_SLIME_E;
+        newsym(u.ux, u.uy);
+    }
+    if ((t % 2) !== 0 && i >= 0 && i < _SLIME_TEXTS.length) {
+        let buf = _SLIME_TEXTS[_SLIME_TEXTS.length - i - 1];
+        if ((((game.youmonst?.data?.mflags1) | 0) & 0x6000) === 0x6000
+            && buf.includes('limbs'))
+            buf = buf.replace('limbs', 'extremities');
+        if (buf.includes('%s')) {
+            if (i === 4) { /* "you are turning green" */
+                if (!_eat_Blind()) await urgent_pline(buf.replace('%s', hcolor('green')));
+            } else {
+                await urgent_pline(buf.replace('%s',
+                    an_eat(_eat_Hallucination() ? rndmonnam(null) : 'green slime')));
+            }
+        } else {
+            await urgent_pline(buf);
+        }
+    }
+    switch (i) {
+    case 3:
+        u.uprops[FAST_PROP].intrinsic = 0; /* HFast = 0L */
+        if (!Popeye(SLIMED_PROP)) await stop_occupation();
+        if ((game.multi | 0) > 0) nomul(0);
+        break;
+    case 2: {
+        const hd = u.uprops?.[DEAF_PROP];
+        const dt = ((hd?.intrinsic | 0) | (u.HDeaf | 0)) & TIMEOUT;
+        if (dt > 0 && dt < 5) { // C timeout.c:433-434: avoid hearing again too soon.
+            if (hd) hd.intrinsic = ((hd.intrinsic | 0) & ~TIMEOUT) | 5;
+            u.HDeaf = ((u.HDeaf | 0) & ~TIMEOUT) | 5;
+        }
+        break;
+    }
+    case 1:
+        if (_uprop_on(STONED)) await make_stoned(0, null, KILLED_BY_AN, null);
+        break;
+    }
+    exercise(A_DEX, false);
+}
+
+export async function burn_away_slime() {
+    const p = game.u?.uprops?.[SLIMED];
+    if (p?.intrinsic | 0)
+        await make_slimed(0, 'The slime that covers you is burned away!');
+}
+
+/* C timeout.c:1204-1220 attach_fig_transform_timeout(). */
+export function attach_fig_transform_timeout(obj) {
+    stop_timer(FIG_TRANSFORM, obj_to_any(obj));
+    start_timer(rnd(9000) + 200, TIMER_OBJECT, FIG_TRANSFORM, obj_to_any(obj));
+}
+
+/* C ref: timeout.c:2011-2030 print_queue() — lines for one timer chain.
+ * fmt_ptr() prints a host address no replay can reproduce; stand-in used. */
+const _TIMER_KINDS = ['none', 'level', 'global', 'object', 'monster'];
+
+const _TIMER_FUNC_NAMES = ['rot_organic', 'rot_corpse', 'revive_mon', 'zombify_mon',
+    'burn_object', 'hatch_egg', 'fig_transform', 'shrink_glob', 'melt_ice_away'];
+
+function _print_queue_lines(base) {
+    if (!base) return [' <empty>'];
+    const lines = ['timeout  id   kind   call'];
+    for (let curr = base; curr; curr = curr.next) {
+        const o = curr.arg?.a_obj;
+        // C timeout.c:2028 reads the anything union as a_void even when
+        // zap.c:5107-5109 stored packed coordinates in a_long.  fmt_ptr's
+        // %p (alloc.c:102) prints those bits without leading zero padding.
+        const ptr = curr.arg?.a_long != null
+            ? '0x' + BigInt.asUintN(64, BigInt(curr.arg.a_long)).toString(16)
+            : '0x' + (o ? 0x55d0c0de0000 + ((o.o_id | 0) << 6) : 0).toString(16).padStart(12, '0');
+        lines.push(' ' + String(curr.timeout).padStart(4) + '   ' + String(curr.tid).padStart(4)
+                   + '  ' + (_TIMER_KINDS[curr.kind] ?? 'unknown').padEnd(6) + ' '
+                   + _TIMER_FUNC_NAMES[curr.func_index] + '(' + ptr + ')');
+    }
+    return lines;
+}
+
+/* C ref: region.c:673-710 visible_region_summary() — lines instead of putstr. */
+function _visible_region_summary_lines() {
+    const lines = [];
+    const fldsep = game.iflags?.menu_tab_sep ? '\t' : '  ';
+    for (const reg of region_stats_snapshot().regions) {
+        if (!reg.visible || reg.ttl === -2) continue;
+        if (!lines.length) lines.push('', 'Visible regions');
+        const damg = reg.arg?.a_int | 0;
+        const typbuf = damg ? `poison gas (${damg})` : 'vapor';
+        const bb = reg.bounding_box;
+        lines.push(String(reg.ttl + 1).padStart(5) + fldsep + typbuf.padEnd(16)
+                   + fldsep + `@[${bb.lx},${bb.ly}..${bb.hx},${bb.hy}]`);
+    }
+    return lines;
+}
+
+/* C ref: timeout.c:2040-2150 wiz_timeout_queue() — the #timeout command: a
+ * corner text window; no turn, no RNG. */
+export async function wiz_timeout_queue() {
+    const g = game;
+    const u = g.u;
+    const TIMEOUT = 0x00FFFFFF;
+    const COLD_RES_ID = COLD_RES;
+    const lines = [`Current time = ${g.moves | 0}.`, '', 'Active timeout queue:', ''];
+    lines.push(..._print_queue_lines(g.gt?.timer_base ?? null));
+    let count = 0, longestlen = 0, specindx = 0;
+    for (let i = 0; ; ++i) {
+        const [p, propname] = property_by_index(i);
+        if (!propname) break;
+        const intrinsic = u.uprops[p].intrinsic | 0;
+        if (intrinsic & TIMEOUT) {
+            ++count;
+            if (propname.length > longestlen) longestlen = propname.length;
+        }
+        if (specindx === 0 && p === COLD_RES_ID) specindx = i;
+    }
+    lines.push('');
+    if (!count) {
+        lines.push('No timed properties.');
+    } else {
+        lines.push('Timed properties:', '');
+        for (let i = 0; ; ++i) {
+            const [p, propname] = property_by_index(i);
+            if (!propname) break;
+            const intrinsic = u.uprops[p].intrinsic | 0;
+            if (intrinsic & TIMEOUT) {
+                if (specindx > 0 && i >= specindx) {
+                    lines.push(' -- settable via #wizintrinsic only --');
+                    specindx = 0;
+                }
+                lines.push(' ' + propname.padEnd(longestlen) + ' ' + String(intrinsic & TIMEOUT).padStart(4));
+            }
+        }
+    }
+    if (u.uswldtim) {
+        lines.push('', `Swallow countdown is ${u.uswldtim >>> 0}.`);
+    }
+    if (u.uinvault) {
+        lines.push('', `Vault counter is ${u.uinvault | 0}.`);
+    }
+    if (any_visible_region())
+        lines.push(..._visible_region_summary_lines());
+    const stasis = g.level?.flags?.stasis_until | 0;
+    if (stasis >= (g.moves | 0)) {
+        const left = stasis - (g.moves | 0);
+        lines.push('', `Level is no-teleport for ${left + 1} ${left > 0 ? 'turns' : 'more turn'}.`);
+    }
+    await displayLookWindow(lines); /* NHW_MENU corner window (timeout.c:2049) */
+    return ECMD_OK;
 }

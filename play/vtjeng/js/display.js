@@ -5211,16 +5211,48 @@ function _statusMaxHitPoints(u) {
     return (u && Upolyd(u)) ? (u.mhmax ?? 0) : (u?.uhpmax ?? 0);
 }
 
-// C ref: botl.c bot_via_windowport() line 1086 and evaluate_and_notify_windowport()
-// lines 1635-1636: when Upolyd, the status line shows HD:mlevel instead of
-// Xp:ulevel, and hides Xp/Exp.
-function _statusExperienceOrHD(u) {
-    if (u && Upolyd(u)) {
-        return `HD:${game.mons?.[u.umonnum]?.mlevel ?? 0}`;
+// C ref: wintty.c twolineorder[] and threelineorder[] place BL_XP, BL_EXP
+// and BL_HD in that order after BL_AC. tty_status_update() ignores a field
+// that status_initialize() last disabled, and render_status() draws only the
+// enabled ones, so the choice between Xp and HD follows the tty's enabled set
+// (gb.status_hilite_enabled), not the current Upolyd. polyself.c set_uasmon()
+// reassesses that set whenever the hero's form changes, but nhlua.c
+// nhl_gamestate() restores u.umonnum on leaving the tutorial without calling
+// it: a hero who polymorphed in the tutorial keeps BL_HD enabled, and the tty
+// keeps the HD value it was last sent (see _deliverStatusHD()).
+function _experienceStatusFields(u) {
+    const fields = [];
+    const enabled = (key) => _statusFieldEnabled(
+        STATUS_FIELDS.find(row => row.key === key), game);
+    if (enabled('experience-level')) {
+        fields.push(_statusField(`Xp:${u?.ulevel || 1}`,
+            _fieldOwner('experience-level')));
     }
-    return game.flags?.showexp
-        ? `Xp:${u?.ulevel || 1}/${u?.uexp || 0}`
-        : `Xp:${u?.ulevel || 1}`;
+    if (enabled('experience')) {
+        fields.push(
+            _statusField('/'),
+            _statusField(`${u?.uexp || 0}`, _fieldOwner('experience')),
+        );
+    }
+    if (enabled('hd')) {
+        // C ref: botl.c line 1086 and initblstats[] BL_HD entry " HD:%s".
+        if (fields.length) fields.push(_statusField(' '));
+        fields.push(_statusField(`HD:${_statusHDValue(u)}`,
+            _fieldOwner('hd')));
+    }
+    return fields;
+}
+
+function _statusExperienceOrHD(u) {
+    return _experienceStatusFields(u).map(({ text }) => text).join('');
+}
+
+// C ref: botl.c bot_via_windowport() line 1086 sets BL_HD to
+// mons[u.umonnum].mlevel while Upolyd. game._statusHDShown is the
+// status_vals[BL_HD] string the tty keeps; _deliverStatusHD() sets it.
+function _statusHDValue(u) {
+    return game._statusHDShown
+        ?? ((u && Upolyd(u)) ? (game.mons?.[u.umonnum]?.mlevel ?? 0) : 0);
 }
 
 // C ref: botl.c bot_via_windowport() BL_GOLD (1050-1072). Clamp the
@@ -5270,7 +5302,9 @@ function _statusLine2Configuration(capacity) {
         ? status_version(game.flags).length + 1 : 0;
     let conditionLevel = 0;
     let capacityLevel = 0;
-    let capacityPadding = '';
+    // A blank shrink_enc() left in status_vals[BL_CAP] on an earlier flush
+    // still counts toward this row (see _deliverStatusCapacity()).
+    let capacityPadding = game._statusCapacityBlank ? ' ' : '';
     let shortLevel = false;
     const build = () => {
         const capacityText = _capacityStatus(capacity, capacityLevel);
@@ -5307,6 +5341,9 @@ function _statusLine2Configuration(capacity) {
         shortLevel = true;
         status = build();
     }
+    // make_things_fit() begins the next flush with shrink_enc(0), which
+    // writes the same blank back; only tty_status_update(BL_CAP) removes it.
+    if (capacityPadding) game._statusCapacityBlank = true;
     return { capacityLevel, capacityPadding, conditionLevel, shortLevel };
 }
 
@@ -5462,10 +5499,10 @@ function _optionalStatusFieldList() {
     ]);
 }
 
-// C ref: botl.c evaluate_and_notify_windowport() lines 1635-1636. When Upolyd,
-// BL_HD is shown instead of BL_XP and BL_EXP; when not Upolyd, BL_HD is hidden.
+// C ref: botl.c evaluate_and_notify_windowport() lines 1635-1636 and
+// wintty.c render_status(): the tty shows BL_XP and BL_EXP, or BL_HD, as
+// _experienceStatusFields() describes.
 function _vitalStatusFields(u) {
-    const poly = u && Upolyd(u);
     const fields = [
         _statusField(`${_statusGoldSymbol()}:${botl_gold(money_cnt(game.invent)).value}`, _fieldOwner('gold')),
         _statusField(' '),
@@ -5477,24 +5514,8 @@ function _vitalStatusFields(u) {
         _statusField(' '),
         _statusField(`AC:${u.uac ?? 10}`, _fieldOwner('armor-class')),
         _statusField(' '),
+        ..._experienceStatusFields(u),
     ];
-    if (poly) {
-        // C ref: botl.c line 1086 and initblstats[] BL_HD entry " HD:%s".
-        fields.push(
-            _statusField(`HD:${game.mons?.[u.umonnum]?.mlevel ?? 0}`,
-                _fieldOwner('hd')),
-        );
-    } else {
-        fields.push(
-            _statusField(`Xp:${u.ulevel || 1}`, _fieldOwner('experience-level')),
-        );
-        if (game.flags?.showexp) {
-            fields.push(
-                _statusField('/'),
-                _statusField(`${u.uexp || 0}`, _fieldOwner('experience')),
-            );
-        }
-    }
     return fields;
 }
 
@@ -5794,7 +5815,12 @@ export function status_window_rows() {
     return game.iflags?.wc2_statuslines === 3 ? 3 : 2;
 }
 
-function statusLayouts({ initialTtyRefresh = false } = {}) {
+// `deliverCapacity` marks bot()'s pass, the one in which botl.c can send
+// BL_CAP to the window port (see _deliverStatusCapacity()).
+function statusLayouts({
+    deliverCapacity = false,
+    initialTtyRefresh = false,
+} = {}) {
     const count = status_window_rows();
     if (game.iflags?.status_updates === false) {
         return Array.from({ length: count }, () => ({ text: '', owners: [] }));
@@ -5804,6 +5830,7 @@ function statusLayouts({ initialTtyRefresh = false } = {}) {
     // selection must reuse this snapshot rather than recomputing live state.
     const capacity = game.u ? near_capacity(game) : 0;
     game._statusCapacitySnapshot = capacity;
+    if (deliverCapacity) _deliverStatusCapacity(capacity);
     return count === 3
         ? [
             _statusLine1Layout(false),
@@ -6149,7 +6176,8 @@ function _beginStatusHilitePass(onlyField = null) {
             game.gb.status_hilite_times[0].fill(0);
             game.gb.status_hilite_times[1].fill(0);
             for (const field of STATUS_FIELDS) {
-                if (_statusFieldEnabled(field, game))
+                // The core's skip test; see _collectStatusHilites().
+                if (_computeStatusFieldEnabled(field, game))
                     _setStatusHiliteChange(game.gb, field.fld, true);
             }
         }
@@ -6218,6 +6246,40 @@ function _deliverStatusTime() {
     if (updateAll || changed || expired) game._statusTimeShown = data.value;
 }
 
+// C ref: botl.c evaluate_and_notify_windowport() for BL_HD, and the
+// status_vals[BL_HD] string wintty.c keeps for it. The core sends BL_HD only
+// while Upolyd (line 1635), and the tty stores it only while the field is
+// enabled. When the two disagree (see _experienceStatusFields()), the tty
+// keeps the value it was last sent. While both hold, the field is sent on
+// every change and on gu.update_all, so the kept value is the current one.
+// Call this after _beginStatusHilitePass() and before laying out the rows.
+function _deliverStatusHD() {
+    const u = game.u;
+    const field = STATUS_FIELDS.find(row => row.key === 'hd');
+    if (!u || !Upolyd(u) || !_statusFieldEnabled(field, game)) return;
+    game._statusHDShown = _statusFieldData('hd').value;
+}
+
+// C ref: botl.c eval_notify_windowport_field() for BL_CAP, and the
+// status_vals[BL_CAP] string wintty.c keeps for it. For an unencumbered hero
+// the core sends a single blank, which tty_status_update() reduces to an empty
+// field. When make_things_fit() reaches shrink_enc() on a two-row status, it
+// rewrites that field as " " + encvals[lvl][0], a blank of length 1, and
+// every later make_things_fit() starts with shrink_enc(0), which writes the
+// blank again. The blank therefore stays on the row, ahead of the conditions,
+// until the core sends BL_CAP again: when the capacity changes, a temporary
+// highlight expires, or gu.update_all is set. game._statusCapacityBlank is that
+// blank; _statusLine2Configuration() sets it. Call this after
+// _beginStatusHilitePass() and before laying out the status rows.
+function _deliverStatusCapacity(capacity) {
+    const field = STATUS_FIELDS.find(row => row.key === 'carrying-capacity');
+    const data = _statusFieldData('carrying-capacity', capacity);
+    const updateAll = Boolean(game._statusHiliteUpdateAll);
+    const { changed, expired } = _statusFieldNotice(game.gb, field.fld, data,
+        updateAll);
+    if (updateAll || changed || expired) game._statusCapacityBlank = false;
+}
+
 // C ref: bot_via_windowport() plus evaluate_and_notify_windowport(). Collect
 // every enabled typed field once per bot notification; status painting only
 // consumes these delivered banks. `onlyField` is the timebot fast path.
@@ -6251,7 +6313,12 @@ function _collectStatusHilites(layouts, onlyField = null) {
             _setStatusHiliteChange(gb, fld, true);
     }
     for (const field of STATUS_FIELDS) {
-        if (field.key === 'condition' || !_statusFieldEnabled(field, game)
+        // evaluate_and_notify_windowport() skips a field by the current
+        // flags and Upolyd, not by the tty's enabled set; the two differ
+        // only as _experienceStatusFields() describes. The core banks,
+        // rules and change flags follow the core's choice even when
+        // tty_status_update() then drops the value.
+        if (field.key === 'condition' || !_computeStatusFieldEnabled(field, game)
             || (onlyField && field.key !== onlyField)) continue;
         const fld = field.fld;
         const data = _statusFieldData(field.key,
@@ -7005,7 +7072,9 @@ export async function bot({ initialTtyRefresh = false } = {}) {
         && !optionalFieldsChanged;
     _beginStatusHilitePass();
     _deliverStatusTime();
+    _deliverStatusHD();
     const layouts = statusLayouts({
+        deliverCapacity: true,
         initialTtyRefresh: retainInitialOverlap,
     });
     game._statusOptionalFieldSnapshot = optionalSnapshot;
@@ -7172,6 +7241,11 @@ const {
 } = statusConstants;
 const BL_VERS = STATUS_FIELDS.find(row => row.name === 'version').fld;
 const statusField = fld => STATUS_FIELDS.find(row => row.fld === fld);
+// C ref: botl.c initblstats[fld].  The hilite code indexes the table by a
+// statusfields value although the table lists version (BL_VERS, 26) before
+// weapon, armor and terrain (23..25), so names, types and idxmax for those
+// four come from the row at that position: initblstats[BL_VERS] is terrain's.
+const initblstat = fld => STATUS_FIELDS[fld];
 
 // C ref: botl.c s_to_anything(). LP64 strtol saturation followed by the
 // target union member's width; pointer members write the pointed-to value.
@@ -7266,7 +7340,7 @@ export function status_hilite_add_threshold(state, fld, hilite) {
 }
 export function status_hilite2str(rule) {
     if (!rule) return null;
-    const row = STATUS_FIELDS.find(f => f.key === rule.field);
+    const row = initblstat(STATUS_FIELDS.find(f => f.key === rule.field).fld);
     const rel = rule.relation;
     let behavior = '';
     if (rule.behavior === 'percentage' || rule.behavior === 'absolute') {
@@ -7356,7 +7430,7 @@ export async function status_hilite_menu_choose_field(state, helpers) {
     return picks?.length ? picks[0] - 1 : BL_FLUSH;
 }
 export async function status_hilite_menu_choose_behavior(state, fld, helpers) {
-    const row = statusField(fld);
+    const row = initblstat(fld);
     if (!row) return BL_TH_NONE;
     const items = [];
     const add = (text, value, key) => items.push(hiliteItem(text, value, key));
@@ -7383,7 +7457,7 @@ export async function status_hilite_menu_choose_updownboth(state, fld, str, ltok
         if (str != null) add(`${str} or ${fld === BL_AC ? 'worse (higher)' : 'more'}`, GE_VALUE);
         add(str != null ? `${fld === BL_AC ? 'Worse (higher)' : 'More'} than ${str}` : 'Value goes up', GT_VALUE);
     }
-    const picks = hilitePicks(await hiliteMenu(state, { items, title: `Select field ${statusField(fld).name} value:`, how: PICK_ONE }, helpers));
+    const picks = hilitePicks(await hiliteMenu(state, { items, title: `Select field ${initblstat(fld).name} value:`, how: PICK_ONE }, helpers));
     return picks?.length ? picks[0] - 10 : NO_LTEQGT;
 }
 
@@ -7396,8 +7470,8 @@ export async function status_hilite_menu_add(state, origfld, helpers) {
         if (phase === 'field') {
             fld = origfld === BL_FLUSH ? await status_hilite_menu_choose_field(state, helpers) : origfld;
             if (fld === BL_FLUSH) return false;
-            row = statusField(fld);
-            rule = { field: row.key, behavior: 'none', relation: '=', value: 0, text: '', style: {} };
+            row = initblstat(fld);
+            rule = { field: statusField(fld).key, behavior: 'none', relation: '=', value: 0, text: '', style: {} };
             colorqry = attrqry = '';
             phase = 'behavior';
         }
@@ -7589,11 +7663,11 @@ export async function status_hilite_menu_fld(state, fld, helpers) {
         status_hilite_linestr_gather(state);
         count = status_hilite_linestr_countfield(state, fld);
     }
-    const items = count ? state.gb.status_hilite_str.filter(row => row.fld === fld).map(row => hiliteItem(row.str, row.id)) : [`No current hilites for ${statusField(fld).name}`];
+    const items = count ? state.gb.status_hilite_str.filter(row => row.fld === fld).map(row => hiliteItem(row.str, row.id)) : [`No current hilites for ${initblstat(fld).name}`];
     items.push('');
     if (count) items.push(hiliteItem('Remove selected hilites', -1, 'X'));
     if (fld !== BL_SCORE) items.push(hiliteItem('Add new hilites', -2, 'Z'));
-    const picks = hilitePicks(await hiliteMenu(state, { items, title: `Current ${statusField(fld).name} hilites:`, how: PICK_ANY }, helpers));
+    const picks = hilitePicks(await hiliteMenu(state, { items, title: `Current ${initblstat(fld).name} hilites:`, how: PICK_ANY }, helpers));
     let acted = false;
     if (picks?.length) {
         if (picks.includes(-1)) for (const id of picks) if (id > 0 && status_hilite_remove(state, id)) acted = true;

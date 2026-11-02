@@ -1,11 +1,13 @@
-import { pline_mon as pline_mon_real, You_feel } from './display.js';
-import { shkgone, unpaid_cost, currency, obfree, costly_spot, in_rooms } from './shk.js';
+import { pline_mon as pline_mon_real, You_feel } from './pline.js';
+import { shkgone, unpaid_cost, currency, obfree, costly_spot } from './shk.js';
+import { in_rooms } from './hack.js';
 import { is_mines_prize, is_soko_prize } from './cmd.js';
-import { mpickobj } from './mklev.js';
+import { mpickobj } from './steal.js';
 import { a_monnam, noname_monnam, mon_nam_too, slept_monst as slept_monst_real } from './mhitm.js';
 import { noit_mon_nam } from './mhitm.js';
 import { PM_PAPER_GOLEM, PM_STRAW_GOLEM } from './pm.generated.js';
-import { surface, costly_alteration, domonnoise, u_locomotion } from './cmd.js';
+import { surface, costly_alteration, u_locomotion } from './cmd.js';
+import { domonnoise } from './sounds.js';
 import { COST_DEGRD, COST_CONTENTS } from './const.js';
 import { Amonnam, shade_miss as shade_miss_hm } from './mhitm.js';
 import { rloc_to } from './teleport.js';
@@ -14,11 +16,14 @@ import { SUPPRESS_HALLUCINATION } from './const.js';
 import { quest_monster_died } from './quest.js';
 import { PM_MAIL_DAEMON } from './pm.generated.js';
 import { G_GENOD } from './const.js';
-import { touch_artifact_mon, lifesaved_monster, kop_revival, record_death_achievement, m_consume_obj, add_to_minv as add_to_minv_real } from './mklev.js';
+import { touch_artifact_mon, kop_revival, record_death_achievement, add_to_minv as add_to_minv_real } from './mklev.js';
+import { lifesaved_monster, m_consume_obj } from './mon.js';
 import { newobj } from './game.js';
 import { beg } from './sounds.js';
-import { is_pole as is_pole_dm, flooreffects as flooreffects_dm, xytodir as xytodir_dm, dirtocoord as dirtocoord_dm } from './cmd.js';
-import { wizdeadorgone, set_msg_xy as set_msg_xy_dm, obj_no_longer_held } from './cmd.js';
+import { is_pole as is_pole_dm, xytodir as xytodir_dm, dirtocoord as dirtocoord_dm } from './cmd.js';
+import { flooreffects as flooreffects_dm } from './do.js';
+import { wizdeadorgone, set_msg_xy as set_msg_xy_dm } from './cmd.js';
+import { obj_no_longer_held } from './do.js';
 import { impossible as polystone_impossible } from './pline.js';
 import { m_in_out_region as m_in_out_region_dm, create_gas_cloud as create_gas_cloud_dm } from './region.js';
 import { set_apparxy as set_apparxy_dm, itsstuck, find_pmmonst, bee_eat_jelly } from './monmove.js';
@@ -29,14 +34,19 @@ import { set_apparxy as set_apparxy_dm, itsstuck, find_pmmonst, bee_eat_jelly } 
 // WIRE_PENDING: port-m_move-monmove-1779329519 — called from monmove.js:m_move
 import { rn1, rn2, rnd, d } from './rng.js';
 /* C zap.c:1458 obj_resists — the single body (see the re-export below). */
-import { obj_resists, drain_item, mon_explodes as mon_explodes_dm } from './zap.js';
+import { obj_resists, drain_item } from './zap.js';
+import { mon_explodes as mon_explodes_dm } from './explode.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
-import { unstuck as unstuck_dm, m_unleash, sticks, dismount_steed as dismount_steed_qm } from './dog.js';
+import { unstuck as unstuck_dm, sticks, dismount_steed as dismount_steed_qm } from './dog.js';
+import { m_unleash } from './apply.js';
 import { topl_force_break_after as topl_force_break_after_qm, GLYPHCLS_OBJ as GLYPHCLS_OBJ_DM, Deaf as Deaf_dm, flush_screen } from './display.js';
-import { whimper as whimper_dm, mwelded as mwelded_dm, snuff_lit } from './cmd.js';
+import { snuff_lit } from './cmd.js';
+import { whimper as whimper_dm } from './sounds.js';
+import { mwelded as mwelded_dm } from './wield.js';
 import { PM_FIRE_VORTEX, PM_FLAMING_SPHERE, PM_PYROLISK } from './pm.generated.js';
 import { SUPPRESS_NAME, SUPPRESS_IT, SUPPRESS_INVISIBLE, NO_NC_FLAGS } from './const.js';
-import { y_monnam as y_monnam_qm, mon_hates_silver, stagger as stagger_dm, locomotion, same_race } from './mhitm.js';
+import { y_monnam as y_monnam_qm } from './mhitm.js';
+import { mon_hates_silver, stagger as stagger_dm, locomotion, same_race } from './mondata.js';
 import { an as an_qm, makeplural as makeplural_dm, oname as oname_dm, vtense, simpleonames } from './objnam.js';
 import { OC_DESCR as OC_DESCR_QM } from './oc_descr_data.js';
 import { OC_NAME as OC_NAME_QM } from './oc_name_data.js';
@@ -46,10 +56,10 @@ import { NON_PM, In_sokoban, In_sokoban as In_sokoban_dm } from './const.js';
 import { PLNMSG_HIDE_UNDER as PLNMSG_HIDE_UNDER_C } from './const.js';
 import { HALLUC, HALLUC_RES } from './const.js';
 import { PROT_FROM_SHAPE_CHANGERS as PROT_SHAPE_QM, DISMOUNT_POLY } from './const.js';
-import { mon_mattk_raw, getmattk as getmattk_mhitu, could_seduce, mattacku, mswings_verb,
+import { mon_mattk_raw, getmattk, could_seduce, mattacku, mswings_verb,
          breamm as breamm_mu, spitmm as spitmm_mu, mhis_mon as mhis_mon_mu } from './mhitu.js';
 import { monshoot } from './mhitu.js';
-import { m_lined_up } from './makemon.js';
+import { m_lined_up } from './mthrowu.js';
 import { select_rwep, m_is_steadfast } from './uhitm.js';
 import { ammo_and_launcher as ammo_and_launcher_dm } from './hold_another_object.js';
 import { nomul as nomul_dm } from './allmain.js';
@@ -60,20 +70,26 @@ import { pre_mm_attack as pre_mm_attack_real } from './mhitm.js';
 import { dist2, s_suffix } from './hacklib.js';
 import { couldsee as couldsee_vision, clear_path, do_clear_area, cansee, recalc_block_point } from './vision.js';
 import { gettrack, hastrack } from './track.js';
-import { t_at, find_mac as find_mac_mon, extract_from_minvent as extract_from_minvent_tp } from './trap.js';
+import { t_at } from './trap.js';
+import { find_mac as find_mac_mon, extract_from_minvent as extract_from_minvent_tp } from './worn.js';
 import { pushRngLogEntry } from './rng.js';
 import { obj_stop_timers, obj_split_timers, end_burn } from './timeout.js';
 import { IS_ROOM, OBJ_FREE, OBJ_DELETED, OBJ_MINVENT, OBJ_FLOOR, W_WEP, W_ARMS, W_SADDLE, SHOPBASE, IRONBARS, IS_OBSTRUCTED, IS_TREE, ERODE_NONE, ERODE_CORRODE, ERODE_RUST, ERODE_BURN, EF_GREASE, EF_VERBOSE, PASSES_WALLS } from './const.js';
-import { place_object, set_ustuck, resists_ston, resists_poison,
-         mkcorpstat, mksobj_at, OC_MERGE, mondead, add_to_container, dealloc_obj, newcham, mongone, makemon, minliquid as minliquid_real,
-         mksobj as mksobj_dg, healmon as healmon_dg, wake_nearto as wake_nearto_dg, mlifesaver as mlifesaver_dg, set_corpsenm as set_corpsenm_dg } from './mklev.js';
-import { closed_door, accessible, is_pool, may_dig } from './look.js';
-import { erode_obj, mintrap as mintrap_real, goodpos as goodpos_real, m_useup as m_useup_dg } from './trap.js';
+import { place_object, resists_ston, resists_poison, mkcorpstat, mksobj_at, OC_MERGE, add_to_container, dealloc_obj, makemon, mksobj as mksobj_dg, set_corpsenm as set_corpsenm_dg } from './mklev.js';
+import { set_ustuck, mondead, newcham, mongone, minliquid as minliquid_real, healmon as healmon_dg, wake_nearto as wake_nearto_dg, mlifesaver as mlifesaver_dg } from './mon.js';
+import { is_pool } from './look.js';
+import { closed_door, accessible } from './monmove.js';
+import { may_dig } from './hack.js';
+import { erode_obj, mintrap as mintrap_real, goodpos as goodpos_real } from './trap.js';
+import { m_useup as m_useup_dg } from './mthrowu.js';
 import { PM_GHOUL, PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER, PM_STEAM_VORTEX, PM_AIR_ELEMENTAL, PM_BLACK_PUDDING, PM_BROWN_PUDDING, PM_SHADE, PM_DEATH, PM_PESTILENCE, PM_FAMINE, PM_CHICKATRICE, PM_COCKATRICE, PM_MEDUSA, PM_STONE_GOLEM, PM_ANGEL, PM_RUST_MONSTER, PM_GELATINOUS_CUBE, PM_ARCHON } from './pm.generated.js';
-import { zombie_maker, dmgtype_fromattack, grow_up, nonliving, onscary, monPmname, splitobj, nextoid, which_armor, permonstTemplate, set_mon_data, emits_light } from './makemon.js';
-import { del_light_source, monst_to_any, obj_merge_light_sources, obj_split_light_source } from './light.js';
+import { zombie_maker, dmgtype_fromattack, grow_up, nonliving, onscary, monPmname, splitobj, nextoid, permonstTemplate, set_mon_data, emits_light } from './makemon.js';
+import { which_armor } from './worn.js';
+import { del_light_source, obj_merge_light_sources, obj_split_light_source } from './light.js';
+import { monst_to_any } from './hack.js';
 import { LS_MONSTER } from './const.js';
-import { pline, newsym, _topline_more_pending, _more_never_dismissed, _more_pages_exceed_input, flush_pending_messages, mon_visible, canseemon, canspotmon, map_invisible, glyph_is_invisible_at, GLYPHCLS_INVIS, unmap_object, You_hear, Deaf, sensemon, impossible_sync, Unaware } from './display.js';
+import { newsym, _topline_more_pending, _more_never_dismissed, _more_pages_exceed_input, flush_pending_messages, mon_visible, canseemon, canspotmon, map_invisible, glyph_is_invisible_at, GLYPHCLS_INVIS, unmap_object, Deaf, sensemon, impossible_sync, Unaware } from './display.js';
+import { pline, You_hear } from './pline.js';
 import { Japanese_item_name, xname_scroll, xname_armor, doname_potion, xname, doname, distant_name, in_distant_name, is_quest_artifact } from './objnam.js';
 /* C o_init.c:441-452 observe_object(obj) — the ONE side effect a formatting
  * call has, and the reason distant_name() exists at all.  Imported here
@@ -101,13 +117,18 @@ import { corpse_chance as corpse_chance_uh, m_at, mhitm_adtyping, mon_wield_item
 import { Monnam, perceives as perceives_dm } from './mcastu.js';
 import { mon_givit as mon_givit_dg } from './eat.js';
 import { _mon_reflects_zap as mon_reflects_dm } from './zap.js';
-import { attacktype, max_passive_dmg, resist_conflict, poly_when_stoned, attk_protection, erode_armor } from './mhitm.js';
-import { resists_blnd as resists_blnd_gz, Adjmonnam as Adjmonnam_gz } from './mhitm.js';
+import { attk_protection, erode_armor } from './mhitm.js';
+import { attacktype, max_passive_dmg, resist_conflict, poly_when_stoned } from './mondata.js';
+import { Adjmonnam as Adjmonnam_gz } from './mhitm.js';
+import { resists_blnd as resists_blnd_gz } from './mondata.js';
 import { mhitm_ad_blnd as mhitm_ad_blnd_gz } from './uhitm.js';
-import { seemimic, resists_magm as resists_magm_dm, defended as defended_dm, Resists_Elem } from './mhitm.js';
+import { seemimic } from './mhitm.js';
+import { resists_magm as resists_magm_dm, defended as defended_dm, Resists_Elem } from './mondata.js';
 import { slimeproof, erosion_matters } from './mklev.js';
 import { PM_GREEN_SLIME } from './pm.generated.js';
-import { mfndpos, make_corpse, zombie_form, On_stairs, is_rustprone, clone_mon_ml as clone_mon, split_mon_ml } from './mklev.js';
+import { is_rustprone, clone_mon_ml as clone_mon, split_mon_ml } from './mklev.js';
+import { On_stairs } from './stairs.js';
+import { mfndpos, make_corpse, zombie_form } from './mon.js';
 import { isok, is_pit, ARTICLE_A, ARTICLE_NONE, MON_DETACH, CORPSTAT_NONE, G_GONE, CONFLICT as CONFLICT_DM, engulfing_u as engulfing_u_const, MAGIC_PORTAL } from './const.js';
 import { thiefdead } from './steal.js';
 import { otrapped_of } from './const.js';   /* obj.h:139 #define opoisoned otrapped */
@@ -2463,63 +2484,8 @@ const T_ARROW=1, T_DART=2, T_ROCK=3, T_SQKY=4, T_BEAR=5, T_LANDMINE=6,
       T_HOLE=13, T_TRAPDOOR=14, T_TELEP=15, T_LEVTELEP=16, T_MAGICPORTAL=17,
       T_WEB=18, T_STATUE=19, T_MAGIC=20, T_ANTIMAGIC=21, T_POLY=22, T_VIBSQ=23;
 const M1_FLY_DM = 0x00000001, M1_AMORPHOUS_DM = 0x00000004, M1_UNSOLID_DM = 0x00100000;
-const PM_IRON_GOLEM_DM = 259; /* monsters.h MON(... IRON_GOLEM); was 277 = PM_SOLDIER */
 
-function floor_trigger_dm(ttyp) {
-    return ttyp >= T_ARROW && ttyp <= T_TRAPDOOR; /* 1..14 */
-}
 
-export function m_harmless_trap(mtmp, ttmp) {
-    const ttyp = ttmp.ttyp | 0;
-    const mndx = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
-    const mf1 = (mndx >= 0 && mndx < _MONS.length) ? (_MONS[mndx][6] | 0) : 0;
-    const isFlyer = !!(mf1 & M1_FLY_DM);
-    const whirly = _mlet(mndx) === S_VORTEX || mndx === PM_AIR_ELEMENTAL;
-    const amorphous = !!(mf1 & M1_AMORPHOUS_DM);
-    const unsolid = !!(mf1 & M1_UNSOLID_DM);
-    const msize = (mndx >= 0 && mndx < MONS_MSIZE.length) ? (MONS_MSIZE[mndx] | 0) : MZ_SMALL;
-    const sokoban = !!(game.level?.flags?.sokoban_rules ?? game.sokoban);
-    if (!sokoban && floor_trigger_dm(ttyp) && (is_floater_dm(mtmp) || isFlyer))
-        return true;
-    switch (ttyp) {
-        case T_ARROW: case T_DART: case T_ROCK: case T_SQKY:
-        case T_LANDMINE: case T_ROLLBOULDER:
-            break;
-        case T_BEAR:
-            /* msize <= MZ_SMALL || amorphous || is_whirly || unsolid */
-            if (msize <= MZ_SMALL || amorphous || whirly || unsolid)
-                return true;
-            break;
-        case T_SLPGAS:
-            if (Resists_Elem(mtmp, 3 /* SLEEP_RES */) || defended_dm(mtmp, 4 /* AD_SLEE */)) return true;
-            break;
-        case T_RUST:
-            if (mndx !== PM_IRON_GOLEM_DM) return true;
-            break;
-        case T_FIRE:
-            if (Resists_Elem(mtmp, 1 /* FIRE_RES */) || defended_dm(mtmp, 2 /* AD_FIRE */)) return true;
-            break;
-        case T_PIT: case T_SPIKEDPIT: case T_HOLE: case T_TRAPDOOR:
-            /* C trap.c:1155-1156: ceiling clingers ignore pits and holes
-             * outside Sokoban (M1_CLING, monflag.h:89). */
-            if ((mf1 & 0x00000010) && !sokoban) return true;
-            break;
-        case T_TELEP: case T_LEVTELEP: case T_MAGICPORTAL: case T_POLY:
-            break;
-        case T_WEB:
-            /* C trap.c:1164 — webmakers are unharmed by webs. */
-            if (amorphous || whirly || unsolid || mndx === 94 || mndx === 96) return true;
-            break;
-        case T_STATUE: return true;
-        case T_MAGIC: return true;
-        case T_ANTIMAGIC: /* C trap.c:1172-1174 */
-            if (resists_magm_dm(mtmp) || defended_dm(mtmp, 1 /* AD_MAGM */)) return true;
-            break;
-        case T_VIBSQ: return true;
-        default: impossible_sync('m_harmless_trap: unknown trap %i', ttmp.ttyp); break;
-    }
-    return false;
-}
 
 /* C ref: trap.h fixed_tele_trap(t) = (t->ttyp==TELEP_TRAP && isok(teledest)). */
 function fixed_tele_trap_dm(ttmp) {
@@ -3047,7 +3013,9 @@ export async function mattackm(magr, mdef) {
                 continue;
         }
 
-        mattk = getmattk(magr, mdef, i, res, alt_attk || {});
+        /* C mhitm.c:383 getmattk(magr, mdef, i, res, &alt_attk) — the one
+         * C-faithful body in js/mhitu.js; mdef is never the hero here. */
+        mattk = getmattk(magr, false, mdef, i, res);
         if (!mattk) continue;
         if (game.s.skipdrin && mattk.aatyp === AT_TENT && mattk.adtyp === AD_DRIN)
             continue;
@@ -3897,9 +3865,6 @@ async function gazemm(magr, mdef, mattk) {
 
     return await mdamagem_dm(magr, mdef, mattk, null, 0);
 }
-function getmattk(magr, mdef, i, res, alt_attk) {
-    return getmattk_mhitu(magr, false, mdef, i, res);
-}
 /* C mhitm.c:849-967 gulpmm(magr, mdef, mattk).  The monster grid is not
  * modelled (m_at walks fmon), so remove_monster/place_monster reduce to the
  * mx/my moves they imply. */
@@ -4087,50 +4052,6 @@ function mswingsm(magr, mdef, mwep) {
         && dist2(magr.mx | 0, magr.my | 0, mdef.mx | 0, mdef.my | 0) <= 2;
     const pronoun = mhis_dm(magr);
     pline(`${Monnam(magr)} ${mswings_verb(mwep, bash)} ${mwep.quan > 1 ? 'one of ' : ''}${pronoun} ${xname(mwep)} at ${mon_nam(mdef)}.`);
-}
-export function mtrapped_in_pit(magr) {
-    if (!(magr?.mtrapped | 0))
-        return false;
-    const ttmp = t_at(magr.mx | 0, magr.my | 0);
-    return !!(ttmp && is_pit(ttmp.ttyp | 0));
-}
-export async function possibly_unwield(magr, flag) {
-    const obj = magr?.mw;
-    if (!obj)
-        return;
-    let prev = null, cur = magr.minvent;
-    while (cur && cur !== obj) {
-        prev = cur;
-        cur = cur.nobj;
-    }
-    if (!cur) {
-        magr.mw = null;
-        magr.weapon_check = NEED_WEAPON$;
-        return;
-    }
-    /* A monster that no longer has an AT_WEAP attack must drop its weapon
-     * immediately; otherwise C leaves the old weapon in place until the next
-     * weapon-selection pass. */
-    if (!attacktype(magr.data, AT_WEAP)) {
-        setmnotwielded(magr, obj);
-        magr.weapon_check = 0; /* NO_WEAPON_WANTED */
-        if (cansee(magr.mx | 0, magr.my | 0)) {
-            { set_msg_xy_dm(magr.mx, magr.my); } pline(`${Monnam(magr)} drops ${(await distant_name(obj, doname))}.`);
-            newsym(magr.mx | 0, magr.my | 0);
-        }
-        if (prev) prev.nobj = cur.nobj;
-        else magr.minvent = cur.nobj;
-        cur.nobj = null;
-        cur.where = OBJ_FREE;
-        place_object(cur, magr.mx | 0, magr.my | 0);
-        await stackobj_dm(cur);
-        return;
-    }
-    /* A weapon-capable monster keeps the object but asks mon_wield_item to
-     * reconsider it after a polymorph or robbery -- unless it already learned
-     * its weapon is welded (C weapon.c:792-793). */
-    if (!(mwelded_dm(obj) && (magr.weapon_check | 0) === 0 /* NO_WEAPON_WANTED */))
-        magr.weapon_check = NEED_WEAPON$;
 }
 /* C mthrowu.c:1016-1076 spitmm().  mhitu.js carries the canonical body and
  * supports both hero and monster targets; this wrapper preserves the
@@ -4949,6 +4870,11 @@ export async function monstone(mtmp) {
 import { update_monster_region as update_monster_region_real } from './region.js';
 import { ENV } from './hostenv.js';
 import { lose_guardian_angel } from './minion.js';
+import { m_harmless_trap } from './trap.js'; // relocate-fns
+import { mtrapped_in_pit } from './mhitu.js'; // relocate-fns
+import { possibly_unwield } from './weapon.js'; // relocate-fns
+export { AT_WEAP, NEED_WEAPON$ }; // relocate-fns
+export { M1_AMORPHOUS_DM, M1_FLY_DM, M1_UNSOLID_DM, MONS_MSIZE, MZ_SMALL, S_VORTEX, T_ANTIMAGIC, T_ARROW, T_BEAR, T_DART, T_FIRE, T_HOLE, T_LANDMINE, T_LEVTELEP, T_MAGIC, T_MAGICPORTAL, T_PIT, T_POLY, T_ROCK, T_ROLLBOULDER, T_RUST, T_SLPGAS, T_SPIKEDPIT, T_SQKY, T_STATUE, T_TELEP, T_TRAPDOOR, T_VIBSQ, T_WEB, _MONS, _mlet, is_floater_dm }; // relocate-fns
 
 function place_worm_tail_randomly(mdef, fx, fy) {
     return place_worm_tail_randomly_real(mdef, fx, fy);

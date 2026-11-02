@@ -5,6 +5,7 @@ import { game } from './gstate.js';
 import { rn2, rn1 } from './rng.js';
 import { MAXLEVEL, MAXDUNGEON } from './const.js';
 import { DUNGEON_LUA_TABLE } from './dungeon_data.js';
+export { insertBranch }; // relocate-fns
 export function dungeonWizardLike() {
     return !!(game.flags && game.flags.debug);
 }
@@ -48,19 +49,6 @@ function insertBranch(ar, bp) {
         pv = cv;
     }
     ar.push(bp);
-}
-/* C ref: dungeon.c:463-508 insert_branch(new_branch, extract_first) — keep
- * svb.branches sorted by branch_val after one branch's ends change.  Its only
- * caller outside init is mk_knox_portal() (mklev.c:2653), which rebinds the
- * floating Fort Ludios entrance to the current level and re-sorts. */
-export function insert_branch(bp, extractFirst) {
-    const ar = game._dungeon_branches || (game._dungeon_branches = []);
-    if (extractFirst) {
-        const ix = ar.indexOf(bp);
-        if (ix >= 0)
-            ar.splice(ix, 1);
-    }
-    insertBranch(ar, bp);
 }
 function findBranch(pd, name) {
     for (let b = 0; b < pd.n_brs; b++)

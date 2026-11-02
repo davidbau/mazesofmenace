@@ -16,14 +16,17 @@
 import { game } from './gstate.js';
 import { dist2 } from './hacklib.js';
 import { rn1, rn2, rnd, d } from './rng.js';
-import { pline, newsym, canspotmon, canseemon, map_invisible, You_hear, shieldeff } from './display.js';
+import { newsym, canspotmon, canseemon, map_invisible, shieldeff } from './display.js';
+import { pline, You_hear } from './pline.js';
 import { cansee, couldsee } from './vision.js';
-import { m_at, mon_nam, exclam } from './uhitm.js';
+import { m_at, mon_nam } from './uhitm.js';
+import { exclam } from './zap.js';
 import { Monnam } from './mcastu.js';
-import { find_mac } from './trap.js';
+import { find_mac } from './worn.js';
 import { _zp_unturn_you, unturn_dead, cancel_monst, resist, hit as zap_hit_message, miss, dobuzz, bhito, lightdamage, BlindedTimeout, make_blinded } from './zap.js';
 import { Blind } from './vision.js';
-import { resists_blnd, wakeup, mon_nam_too } from './mhitm.js';
+import { wakeup, mon_nam_too } from './mhitm.js';
+import { resists_blnd } from './mondata.js';
 import { makeplural } from './objnam.js';
 import { verbalize } from './cmd.js';
 import { The, vtense, an, xname_wand, simple_typename, xname } from './objnam.js';
@@ -31,26 +34,34 @@ import { doname, singular, simpleonames } from './objnam.js';
 import { distmin } from './hacklib.js';
 import { observe_object } from './o_init.js';
 import { m_throw } from './mhitu.js';
-import { losehp } from './dokick.js';
-import { breaks, find_drawbridge } from './dokick.js';
+import { losehp } from './hack.js';
+import { breaks } from './dothrow.js';
+import { find_drawbridge } from './dbridge.js';
 import { destroy_drawbridge } from './dig.js';
 import { nomul, stop_occupation } from './allmain.js';
-import { monstunseesu, seemimic as seemimic_real, resists_magm } from './mhitm.js';
+import { monstunseesu, seemimic as seemimic_real } from './mhitm.js';
+import { resists_magm } from './mondata.js';
 import { monstseesu as monstseesu_real } from './mcastu.js';
 import { discover_object } from './o_init.js';
 import { BOLT_LIM, M_AP_NOTHING, ANTIMAGIC, HALF_SPDAM, isok, IS_DOOR, SDOOR, DRAWBRIDGE_UP, D_LOCKED, D_CLOSED, D_BROKEN, SHOPBASE, POOL, OBJ_FLOOR, KILLED_BY_AN, TELL, TEMPLE, RLOC_MSG, NOTELL } from './const.js';
 import { doorlock } from './lock.js';
 import { unknow_object } from './mklev.js';
-import { in_rooms, add_damage } from './shk.js';
+import { add_damage } from './shk.js';
+import { in_rooms } from './hack.js';
 import { tele, tele_restrict, rloc } from './teleport.js';
 import { mreadmsg, precheck as precheck_shared } from './makemon.js';
-import { m_useup, monkilled_trap } from './trap.js';
+import { monkilled_trap } from './trap.js';
+import { m_useup } from './mthrowu.js';
 import { drop_boulder_on_monster, drop_boulder_on_player } from './read.js';
 import { ceiling, set_msg_xy } from './cmd.js';
-import { closed_door } from './look.js';
+import { closed_door } from './monmove.js';
 import { IS_OBSTRUCTED, IS_AIR } from './const.js';
 import { HALLUC, HALLUC_RES } from './const.js';
 import { impossible } from './pline.js';
+import { ureflects as ureflects_mm } from './makemon.js'; // relocate-fns
+import { _mon_reflects_zap as mon_reflects_real } from './zap.js'; // relocate-fns
+import { MON_MCOLOR, _display_hallucinating } from './display.js'; // relocate-fns
+import { CLR_BRIGHT_GREEN, CLR_GREEN } from './terminal.js'; // relocate-fns
 
 /* C ref: muse.c:1272-1290 — the offensive MUSE_* values, verbatim.  Declared
  * again here (rather than imported) because js/makemon.js keeps its copies
@@ -591,4 +602,17 @@ function seemimic(mtmp) {
  * monstunseesu(), which clears the same bit on the same monster set. */
 function monstseesu(seenres) {
     return monstseesu_real(seenres);
+}
+
+export function mon_reflects(mon, msg) { return mon_reflects_real(mon, msg); }
+
+export function ureflects(fmt, arg1) { return ureflects_mm(fmt, arg1); }
+
+/* C muse.c:3269 green_mon(): mons[].mcolor is CLR_GREEN or CLR_BRIGHT_GREEN.
+ * permonst templates carry no mcolor, so read the MON_MCOLOR table by mndx. */
+export function green_mon(mon) {
+    if (_display_hallucinating()) return false;
+    const mndx = (mon.mndx ?? mon.mnum ?? -1) | 0;
+    const c = (mndx >= 0 && mndx < MON_MCOLOR.length) ? MON_MCOLOR[mndx] : -1;
+    return c === CLR_GREEN || c === CLR_BRIGHT_GREEN;
 }

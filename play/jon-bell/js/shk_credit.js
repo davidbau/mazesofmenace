@@ -1,6 +1,6 @@
 import { game } from './gstate.js';
 import { ESHK } from './const.js';
-import { pline } from './display.js';
+import { pline } from './pline.js';
 import { currency } from './cmd.js';
 
 /* C shk.c:628 credit_report: snapshot credit, debit and loan around an

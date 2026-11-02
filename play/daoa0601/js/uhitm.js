@@ -21,12 +21,13 @@
 // message, then hurtles the defender.
 import { armorSimpleName, heroHasDrainResistance, heroHasFreeAction } from './armor.js';
 import { artifactById, monsterHasArtifactDefense } from './artifacts.js';
-import { applyArtifactHit } from './artifact_hit.js';
+import { applyArtifactHit } from './artifacts.js';
 import { adjustAttribute, attributeChangeMessage, changeHeroLuck, currentAttribute, exerciseAttribute, } from './attrib.js';
 import { heroCanBeBlindedByContact, monsterResistsBlindingLight } from './blinding_attack.js';
 import { heroLegName } from './body_parts.js';
 import { A_CON, A_DEX, A_INT, A_STR, A_WIS, DISMOUNT_KNOCKED, DISMOUNT_POLY, DOOR, DROWNING, FAINTED, G_NOCORPSE, Is_airlevel, Is_waterlevel, isok, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE, M_ATTK_DEF_DIED, M_ATTK_HIT, M_ATTK_MISS, M_SEEN_ACID, M_SEEN_COLD, M_SEEN_ELEC, M_SEEN_FIRE, M_SEEN_MAGR, M_SEEN_SLEEP, MGIVENNAME, MM_IGNORELAVA, MM_IGNOREWATER, MSLOW, NON_PM, POOL, RLOC_MSG, RLOC_NOMSG, STRAT_WAITFORU, STONING, Upolyd, WATER, W_AMUL, W_ARMH, W_SADDLE, } from './const.js';
-import { heroHasInvoluntaryDelay, nomul } from './command_state.js';
+import { heroHasInvoluntaryDelay } from './cmd.js';
+import { nomul } from './hack.js';
 import { canSeeMonster, canSenseMonster, canSpotMonster, displayLiquidName, map_invisible, shieldeff, } from './display.js';
 import { selectHeroDisenchantmentTarget } from './do_wear.js';
 import { finishHeroDeath, finishMonsterAttackDeath } from './end.js';
@@ -46,14 +47,12 @@ import { damageHeroFromMonster } from './hero_damage.js';
 import { igniteItems } from './light.js';
 import { applyMonsterGolemEffects, changeMonsterForm, finishMonsterKilled, grantMonsterCorpseIntrinsic, grantMonsterIntrinsic, healMonster, paralyzeMonster, removeMonsterFromGame, resolveMonsterCorpseChance, finishMonsterPetrification, monsterSubject, turnGolemToStone, } from './mon.js';
 import { wornMonsterLifeSaver } from './mondeath.js';
-import { magicNegation, specialAttackNegated } from './magic_negation.js';
-import { monsterSelfTouch } from './trap.js';
+import { monsterSelfTouch, erodeArmor, erodeAttackingWeapon, erodeObject, damageObjectWithAcid } from './trap.js';
 import { monsterHasMagicResistance } from './anti_magic_trap.js';
 import { adjustMonsterSpeed, monsterSpeedMessage } from './worn.js';
 import { splitMonster } from './potion.js';
 import { showMonsterArtifactFallbackHit, drainMonsterEnergy } from './mhitm.js';
-import { erodeArmor, erodeAttackingWeapon, erodeObject, damageObjectWithAcid } from './object_erosion.js';
-import { linkObjectToMonsterInventory, unlinkMonsterObject, mksobj, set_corpsenm } from './mkobj.js';
+import { linkObjectToMonsterInventory, unlinkMonsterObject, mksobj, set_corpsenm, deallocateObject } from './mkobj.js';
 import { destroyObjectFromMonsterInventory, removeObjectFromMonsterInventory } from './monworn.js';
 import { makeMonsterFlee, setMonsterApparentHeroPosition } from './monmove.js';
 import { AD_ACID, AD_CONF, AD_COLD, AD_CORR, AD_CURS, AD_DCAY, AD_DETH, AD_DISE, AD_DRCO, AD_DRDX, AD_DRIN, AD_DREN, AD_DRLI, AD_DRST, AD_ELEC, AD_ENCH, AD_FAMN, AD_FIRE, AD_HALU, AD_HEAL, AD_LEGS, AD_MAGM, AD_PHYS, AD_PEST, AD_PLYS, AD_POLY, AD_RBRE, AD_RUST, AD_SAMU, AD_SEDU, AD_SGLD, AD_SLEE, AD_SLIM, AD_SLOW, AD_SSEX, AD_STCK, AD_STON, AD_STUN, AD_TLPT, AD_WERE, AD_WRAP, AT_BITE, AT_BOOM, AT_BREA, AT_BUTT, AT_CLAW, AT_ENGL, AT_EXPL, AT_GAZE, AT_HUGS, AT_KICK, AT_MAGC, AT_NONE, AT_SPIT, AT_STNG, AT_TENT, AT_TUCH, AT_WEAP, } from './monster_attack_types.js';
@@ -68,19 +67,17 @@ import { putMonsterToSleep } from './mhitm.js';
 import { tryMonsterUnslime, useMonsterStoningCure } from './muse.js';
 import { stealHeroQuestObject, stealHeroGold, stealFromHero } from './steal.js';
 import { sessionIsNight } from './ambient_sounds.js';
-import { infectHeroWithMonsterDisease, heroSlipsFree, heroSlipsFromWrapping, poisonAttackNoun, resolveHeroSeduction, } from './mhitu.js';
+import { infectHeroWithMonsterDisease, heroSlipsFree, heroSlipsFromWrapping, magicNegation, poisonAttackNoun, resolveHeroSeduction, } from './mhitu.js';
 import { wakeMonstersNearWithMessages } from './mon.js';
 import { monsterWieldedWeapon, updateMonsterWeaponAfterPolymorph } from './weapon.js';
 import { hurtleMonster, staggerVerb, willMonsterHurtle } from './dothrow.js';
 import { releaseHeroFromMonster } from './hero_expulsion.js';
 import { petFoodNutrition } from './pet_eating.js';
 import { AMULET_OF_LIFE_SAVING, CORPSE, DUNCE_CAP, IRON_SHOES, LOADSTONE, OBJECT_DESCRIPTIONS, OBJECT_NAMES, } from './object_data.js';
-import { deallocateObject } from './object_delete.js';
 import { cloneHeroMonsterForm } from './mklev.js';
-import { objectMaterial } from './object_material.js';
+import { objectMaterial } from './o_init.js';
 import { observeObjectForNaming, objectCombatName, ownedObjectAction } from './objnam.js';
 import { inventoryItemDescription } from './invent.js';
-import { drainObjectEnchantment } from './object_state.js';
 import { hasWornProperty, propertyIsActive } from './properties.js';
 import { applyHeroGolemEffects, heroHasProtectionFromShapeChangers, heroIsUnchanging, heroMonsterForm, polymonHero, polymorphHero, returnHeroToHumanForm, } from './polyself.js';
 import { heroReflectionSource, heroReflectsRay } from './ray.js';
@@ -95,10 +92,10 @@ import { setHeroGrip } from './hero_grip.js';
 import { attrcurse } from './throne.js';
 import { spendHeroNutrition } from './hunger.js';
 import { stopHeroOccupation } from './occupation.js';
-import { destroyColdInventory, destroyElectricInventory, destroyFireInventory, destroyMonsterInventoryByElement, monsterResistsEffect, } from './zap.js';
+import { destroyColdInventory, destroyElectricInventory, destroyFireInventory, destroyMonsterInventoryByElement, monsterResistsEffect, drainObjectEnchantment } from './zap.js';
 import { applyHeroWereChange, revertHeroWereForm, setHeroLycanthropy, isHumanWereMonster, isWereMonster, wereChange, } from './were.js';
 import { touchHeroWithDeath } from './mcastu.js';
-import { monsterWeaponStrengthBonus, rollPhysicalWeaponDamage } from './weapon_damage.js';
+import { rollPhysicalWeaponDamage } from './weapon.js';
 import { isBluntWeapon, isFlimsyObject, isPermanentlyPoisonedObject, isWeaponTool } from './object_properties.js';
 import { d, rn2, rnd } from './rng.js';
 import { dismountHero } from './steed.js';
@@ -112,6 +109,11 @@ import { isPoolAt, levelIsWaterLevel } from './terrain_properties.js';
 import { verbForSubject, withIndefiniteArticle } from './object_grammar.js';
 import { objectCanTouchShade } from './hero_object_contact.js';
 import { capitalizedDefiniteName } from './ray_hit_message.js';
+import { artifactDamageBonus, artifactEmitsLight, artifactStrikesShade } from './artifacts.js';
+import { P_AXE, W_ARMG, WT_IRON_BALL_INCR } from './const.js';
+import { CREAM_PIE, GAUNTLETS_OF_POWER, HEAVY_IRON_BALL, OBJECT_LARGE_DAMAGE, OBJECT_SMALL_DAMAGE, OBJECT_SUBTYPE, OBJECT_WEIGHT, } from './object_data.js';
+import { monsterHatesBlessings, monsterHatesLight, monsterHatesSilver, monsterIsWooden, monsterSpeciesHatesSilver, } from './monster_data.js';
+import { objectClassForType } from './object_knowledge.js';
 // C obj.h/permonst: completelyburns() — bodies that fire destroys outright.
 function completelyBurns(monster) {
     const species = MONSTER_NAME[monster.mnum];
@@ -1519,6 +1521,8 @@ export async function poisonHeroFromMonster(monster, attackType, { attribute = A
         killer: monsterTypeName(monster.mnum, !!monster.female),
     });
 }
+// C uhitm.c:mhitm_really_poison(): the visible-attacker poison message, the
+// resistant-defender notice, and the deadly 6+rn2(10) damage live here.
 export async function poisonMonsterFromAttack(attacker, defender, attackType, damage, { visible, state = game, random = rn2, publish = plineWithContinuation, }) {
     const attackerSpotted = canSpotMonster(attacker);
     const defenderSpotted = canSpotMonster(defender);
@@ -2768,5 +2772,17 @@ export async function petrifyMonsterDefender(monster, { publish = plineWithConti
         await publish(`${monsterSubject(monster)} turns to stone!`);
     const result = await finishMonsterPetrification(monster, { ...options, publish });
     return { ...result, stopped: true, damage: 0 };
+}
+// C uhitm.c:mhitm_ad_phys(). Carrying these gloves is not enough.
+export function monsterWeaponStrengthBonus(monster, random = rn2) {
+    const gloves = (monster.minvent || []).find(object => (object.owornmask ?? 0) & W_ARMG);
+    return gloves?.otyp === GAUNTLETS_OF_POWER ? 3 + random(4) : 0;
+}
+// C uhitm.c:mhitm_mgc_atk_negated(): a cancelled attacker never lands its
+// special attack; otherwise magic_negation() on the defender decides.
+export function specialAttackNegated(attacker, defender, { state = game, random = rn2, } = {}) {
+    if (attacker !== state.u && attacker.mcan)
+        return true;
+    return random(10) < 3 * magicNegation(defender, state);
 }
 //# sourceMappingURL=uhitm.js.map

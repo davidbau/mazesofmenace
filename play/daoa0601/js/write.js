@@ -2,7 +2,7 @@
 // new_book_description(). Inventory, billing, and holding keep their owners.
 import { exerciseWisdom } from './attrib.js';
 import { heroFingerName } from './body_parts.js';
-import { commandResultCancelled } from './command_state.js';
+import { commandResultCancelled } from './cmd.js';
 import { GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, MAXULEV } from './const.js';
 import { impossible } from './diagnostics.js';
 import { plineWithContinuation as pline } from './pline.js';
@@ -15,7 +15,6 @@ import { chooseInventoryObject } from './inventory_prompt.js';
 import { recordLiteracy } from './literacy.js';
 import { mksobj } from './mkobj.js';
 import { getObjectClassBounds, OBJECT_DESCRIPTIONS, OBJECT_NAMES, OBJECT_SPELL_LEVEL, SCR_BLANK_PAPER, SPE_BLANK_PAPER, SPE_BOOK_OF_THE_DEAD, SPE_NOVEL, } from './object_data.js';
-import { deleteObject } from './object_delete.js';
 import { makePlural } from './object_grammar.js';
 import { learnObjectType, observeObject } from './object_knowledge.js';
 import { objectCombatName, objectNameIsPlural, simpleObjectName } from './objnam.js';
@@ -23,7 +22,7 @@ import { heroHasNoHands } from './polyself.js';
 import { getLine } from './query.js';
 import { rn1, rn2, rnl } from './rng.js';
 import { heroIsBlind, heroIsHallucinating } from './senses.js';
-import { carriedObjectOwner, chargeUnpaidUsage, objectTypeKnown } from './shk.js';
+import { carriedObjectOwner, chargeUnpaidUsage, objectTypeKnown, deleteObject } from './shk.js';
 import { knownSpell } from './spell.js';
 const SCROLL_CLASS = 9, SPBOOK_CLASS = 10;
 const SCR_MAIL = OBJECT_NAMES.indexOf('mail');

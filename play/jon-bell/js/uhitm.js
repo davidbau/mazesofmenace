@@ -1,35 +1,44 @@
-import { Your, pline_The, verbalize } from './display.js';
+import { Your, pline_The, verbalize } from './pline.js';
 import { Mgender } from './do_name.js';
-import { pline_mon as pline_mon_uh } from './display.js';
+import { pline_mon as pline_mon_uh } from './pline.js';
 import { quest_monster_died } from './quest.js';
-import { find_mac as find_mac_worn } from './trap.js';
-import { artifact_exists } from './objnam.js';
+import { find_mac as find_mac_worn } from './worn.js';
+import { artifact_exists } from './artifact.js';
 import { safe_oname } from './do_name.js';
 import { create_gas_cloud } from './region.js';
 import { xdir, ydir, G_GENOD } from './const.js';
 import { vamprises } from './teleport.js';
 import { tele_restrict as tele_restrict_real } from './teleport.js';
-import { spoteffects } from './landing-effects.js';
-import { unmap_invisible, start_engulf, end_engulf, Deaf, There } from './display.js';
-import { glyph_cmap_at, green_mon } from './display.js';
-import { lifesaved_monster, wipe_engr_at, mlifesaver as mlifesaver_real, set_corpsenm } from './mklev.js';
-import { add_to_minv, pm_to_cham, record_death_achievement } from './mklev.js';
-import { addinv } from './hold_another_object.js';
-import { merge_choice, inv_cnt, dropy } from './cmd.js';
-import { wizdeadorgone, obj_no_longer_held } from './cmd.js';
-import { silver_sears, set_msg_xy as set_msg_xy_uh } from './cmd.js';
-import { is_youmonst, resists_magm, can_be_strangled } from './mhitm.js';
+import { spoteffects } from './hack.js';
+import { unmap_invisible, Deaf } from './display.js';
+import { There } from './pline.js';
+import { glyph_cmap_at } from './display.js';
+import { green_mon } from './muse.js';
+import { wipe_engr_at, set_corpsenm } from './mklev.js';
+import { lifesaved_monster, mlifesaver as mlifesaver_real } from './mon.js';
+import { add_to_minv, record_death_achievement } from './mklev.js';
+import { pm_to_cham } from './mon.js';
+import { addinv } from './invent.js';
+import { merge_choice, inv_cnt } from './cmd.js';
+import { dropy } from './do.js';
+import { wizdeadorgone } from './cmd.js';
+import { obj_no_longer_held } from './do.js';
+import { set_msg_xy as set_msg_xy_uh } from './cmd.js';
+import { silver_sears } from './weapon.js';
+import { is_youmonst } from './mhitm.js';
+import { resists_magm, can_be_strangled } from './mondata.js';
 import { mzapwand, mplayhorn } from './muse.js';
-import { can_blow } from './mhitm.js';
+import { can_blow } from './mondata.js';
 import { mhitm_adtyping_u, getmattk } from './mhitu.js';
 import { do_stone_u } from './mhitu.js';
-import { night } from './allmain.js';
+import { night } from './calendar.js';
 import { is_were, were_change } from './were.js';
 import { Is_airlevel, Is_waterlevel } from './const.js';
 import { PM_GREMLIN, PM_CLAY_GOLEM, PM_GHOUL, PM_SAMURAI, PM_MAIL_DAEMON } from './pm.generated.js';
 import { PM_MEDUSA } from './pm.generated.js';
 import { PM_BAT, PM_GIANT_BAT, PM_VAMPIRE_BAT, PM_STALKER } from './pm.generated.js';
 import { snuff_lit } from './cmd.js';
+import { is_art } from './artifact.js'; /* obj.h:439 is_art */
 // @ts-nocheck
 import { game, wizard, discover } from './gstate.js';
 import { rehumanize, uunstick } from './polyself.js';
@@ -40,14 +49,8 @@ import { corpse_xname, the as the_sh, xname, cxname as cxname_sh, Tobjnam as Tob
          makesingular as makesingular_real } from './objnam.js';
 import { rn2, rnd, d, rn1, pushRngLogEntry } from './rng.js';
 import { m_move, set_apparxy } from './monmove.js';
-import { pline, canspotmon, newsym, sensemon, _topline_more_pending, flush_pending_messages,
-/* canseemon is the real _canseemon macro from js/display.js (display.h:117-120).
- * A file-local stub returning false for every monster used to shadow it here;
- * only three sites were migrated to a `canseemon_real` alias, leaving thirteen
- * call sites silently resolving to the stub.  The stub is now retired and every
- * site uses the real body. */
-         canseemon, livelog_printf, unmap_object, glyph_is_invisible_at,
-         map_invisible, You_hear, glyph_is_warning_at, Unaware, shieldeff, see_monsters, GLYPHCLS_OBJ, GLYPHCLS_INVIS, tp_sensemon } from './display.js';
+import { canspotmon, newsym, sensemon, _topline_more_pending, flush_pending_messages, canseemon, unmap_object, glyph_is_invisible_at, map_invisible, glyph_is_warning_at, Unaware, shieldeff, see_monsters, GLYPHCLS_OBJ, GLYPHCLS_INVIS, tp_sensemon } from './display.js';
+import { pline, livelog_printf, You_hear } from './pline.js';
 import { gethungry, eat_brains, eating_conducts, newuhs } from './eat.js';
 /* C attrib.c:316-408 poisoned() — canonical implementation lives in the
  * hero-defender path in mhitu.js and is safe to call synchronously here. */
@@ -58,7 +61,7 @@ import { digests_gu, enfolds_gu, noattacks_mndx } from './mhitu.js';
 import { exercise, acurr, adjalign, change_luck as change_luck_uh, get_artifact, ART_NONARTIFACT } from './attrib.js';
 import { P_SKILL } from './skills.js';
 import { P_DAGGER, P_KNIFE } from './const.js';
-import { near_capacity } from './weight.js';
+import { near_capacity } from './hack.js';
 import { weight } from './weight.js';
 import { useupall } from './cmd.js';
 import { obj_stop_timers } from './timeout.js';
@@ -98,40 +101,48 @@ function _hero_hates_silver_uh() {
 /* handle_tip lives in js/cmd.js (it owns game.context.tips and the tip texts);
  * cmd.js imports this file, so this is a late-bound ES-module cycle — the same
  * shape js/monmove.js relies on for shk_move / pri_move. */
-import { handle_tip, mbodypart as mbodypart_real, dry_a_towel } from './cmd.js';
-import { can_twoweapon, untwoweapon } from './cmd.js';
+import { handle_tip, mbodypart as mbodypart_real } from './cmd.js';
+import { dry_a_towel } from './weapon.js';
+import { can_twoweapon, untwoweapon } from './wield.js';
 import { artifact_alignment } from './wizcmds.js';
 import { paranoid_query } from './paranoid.js';
-import { newuexp } from './exper_pure.js';
+import { newuexp } from './exper.js';
 import { clong } from './integer.js';
 import { pluslvl, more_experienced, losexp } from './exper.js';
 import monMsizePack from './makemon_msize.json' with { type: 'json' };
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import monMsoundPack from './makemon_msound.json' with { type: 'json' };
-import { set_malign, levelDifficulty, which_armor, grow_up, monflee, nonlivingMon, is_demon, monhp_per_lvl, monPmname, pmname, zombie_maker } from './makemon.js';
-import { noteleport_level as noteleport_level_uh, emits_light, permonstTemplate, set_mon_data } from './makemon.js';
+import { set_malign, levelDifficulty, grow_up, monflee, nonlivingMon, is_demon, monhp_per_lvl, monPmname, zombie_maker } from './makemon.js';
+import { pmname } from './do_name.js';
+import { which_armor } from './worn.js';
+import { emits_light, permonstTemplate, set_mon_data } from './makemon.js';
+import { noteleport_level as noteleport_level_uh } from './teleport.js';
 import { ureflects as ureflects_uh } from './makemon.js';
 import { PM_FLOATING_EYE as PM_FLOATING_EYE_UH, PM_JABBERWOCK as PM_JABBERWOCK_UH } from './pm.generated.js';
 import { observe_object, discover_object } from './o_init.js';
 import { ansimpleoname } from './objnam.js';
 import { DEFSYM_EXPLANATION } from './defsym_data.js';
 /* C mon.c:2744's m_detach light-source teardown (light.c:98, hack.c:97). */
-import { del_light_source, monst_to_any, artifact_light, arti_light_description } from './light.js';
+import { del_light_source, artifact_light, arti_light_description } from './light.js';
+import { monst_to_any } from './hack.js';
 import { end_burn, begin_burn, fall_asleep as fall_asleep_real } from './timeout.js';
 import { can_reach_floor } from './hold_another_object.js';
-import { hold_another_object } from './hold_another_object.js';
-import { extract_from_minvent, mpickobj, obj_extract_self, mselftouch_nc } from './mklev.js';
+import { hold_another_object } from './invent.js';
+import { extract_from_minvent, obj_extract_self, mselftouch_nc } from './mklev.js';
+import { mpickobj } from './steal.js';
 import { findgold, gender, mhe, mreadmsg } from './makemon.js';
-import { trycall } from './cmd.js';
+import { trycall } from './do.js';
 import { bcsign } from './mklev.js';
-import { possibly_unwield, dog_nutrition } from './dogmove.js';
+import { dog_nutrition } from './dogmove.js';
+import { possibly_unwield } from './weapon.js';
 import { dismount_steed, instapetrify } from './cmd.js';
 import { DISMOUNT_GENERIC, DISMOUNT_POLY, M_ATTK_AGR_DONE, CXN_ARTICLE, LL_ARTIFACT, LL_KILLEDPET, MGIVENNAME } from './const.js';
-import { monstseesu, monstunseesu, touch_of_death,
-         burn_away_slime as burn_away_slime_real } from './mcastu.js';
+import { monstseesu, monstunseesu, touch_of_death } from './mcastu.js';
+import { burn_away_slime as burn_away_slime_real } from './timeout.js';
 import { LS_MONSTER, Is_rogue_level, TELEPAT as TELEPAT_PROP } from './const.js';
 import monXpPack from './exper_monxp.json' with { type: 'json' };
-import { make_corpse, mkobj, mksobj, mksobj_at, place_object, can_touch_safely, set_ustuck, mongone, mondead, kop_revival, mkcorpstat, add_to_container, dealloc_obj, newcham, makemon, healmon, touch_artifact as touch_artifact_real, resists_ston as resists_ston_real, slimeproof, wake_nearto, zombie_form } from './mklev.js';
+import { mkobj, mksobj, mksobj_at, place_object, kop_revival, mkcorpstat, add_to_container, dealloc_obj, makemon, touch_artifact as touch_artifact_real, resists_ston as resists_ston_real, slimeproof } from './mklev.js';
+import { make_corpse, can_touch_safely, set_ustuck, mongone, mondead, newcham, healmon, wake_nearto, zombie_form } from './mon.js';
 /* ndemon: C uhitm.c:4133 demonpet()'s "ndemon(u.ualign.type)" — a random
  * class-S_DEMON monster of the given alignment (or NON_PM). */
 import { ndemon } from './sit.js';
@@ -145,26 +156,29 @@ import { getObjName } from './o_init.js';
 /* xm_has_mgivenname rather than js/const.js's has_mgivenname: the latter walks
  * `mtmp.mextra`, and the replay's strict struct-monst proxy has no `mextra` key
  * (it exposes the has_mgivenname presence bit directly), so that walk throws. */
-import { mon_hates_blessings, mon_hates_silver, shade_miss, mon_nam_too, x_monnam,
-         xm_has_mgivenname as has_mgivenname } from './mhitm.js';
+import { shade_miss, mon_nam_too, x_monnam, xm_has_mgivenname as has_mgivenname } from './mhitm.js';
+import { mon_hates_blessings, mon_hates_silver } from './mondata.js';
 import { some_mon_nam, l_monnam, a_monnam } from './mhitm.js';
-import { Resists_Elem, sleep_monst, resists_blnd, can_blnd } from './mhitm.js';
-import { y_monnam, helpless, locomotion } from './mhitm.js';
+import { sleep_monst } from './mhitm.js';
+import { Resists_Elem, resists_blnd, can_blnd } from './mondata.js';
+import { y_monnam, helpless } from './mhitm.js';
+import { locomotion } from './mondata.js';
 import { place_monster } from './steed.js';
 import { FIRE_TRAP } from './const.js';
 /* C uhitm.c:331 check_caitiff / mon.c:4331 wakeup — both live in js/mhitm.js,
  * which this file already imports from (see above). */
-import { check_caitiff, wakeup, wakeup_attack, seemimic, ghod_hitsu } from './mhitm.js';
+import { check_caitiff, wakeup, wakeup_attack, seemimic } from './mhitm.js';
+import { ghod_hitsu } from './priest.js';
 import { Adjmonnam as Adjmonnam_uh } from './mhitm.js';
-import { defended as defended_real } from './mhitm.js';
+import { defended as defended_real } from './mondata.js';
 import { passive as passive_uh } from './mhitm.js';
-import { attacktype } from './mhitm.js';
+import { attacktype } from './mondata.js';
 import { attacktype_fordmg as attacktype_fordmg_uh } from './makemon.js';
 /* hcolor(colorpref) — do_name.c:1461-1466. Needed by artifact_hit's SPFX_DRLI
  * arm (Stormbringer's "The black blade draws the life..." message uses
  * hcolor(NH_BLACK)); real body already lives in js/mhitm.js. */
 import { hcolor } from './mhitm.js';
-import { on_fire as on_fire_real } from './mhitm.js';
+import { on_fire as on_fire_real } from './mondata.js';
 import { erode_armor } from './mhitm.js';
 /* a_monnam / x_monnam's ARTICLE_A form and the M_AP_* enum both come from
  * const.js, which is byte-identical to the C header values (monst.h:52-55). */
@@ -172,31 +186,38 @@ import { M_AP_F_DKNOWN, ARTICLE_A, EXACT_NAME, M_AP_FURNITURE, M_AP_OBJECT, M_AP
          PROT_FROM_SHAPE_CHANGERS } from './const.js';
 /* end_running: hack.c's run/travel terminator (hack.c:1360), imported the same
  * way js/cmd.js does. */
-import { end_running, is_pool as is_pool_uh, accessible } from './look.js';
+import { is_pool as is_pool_uh } from './look.js';
+import { accessible } from './monmove.js';
+import { end_running } from './hack.js';
 /* do_attack's shop arm (C uhitm.c:481-495).  js/shk.js already imports m_at from
  * this file, so this is a late-bound ES-module cycle like the cmd.js one above;
  * all three are hoisted function declarations, so the cycle cannot leave them
  * in TDZ at call time. */
-import { in_rooms, tended_shop, dopay, delete_contents, costly_spot } from './shk.js';
+import { tended_shop, dopay, delete_contents, costly_spot } from './shk.js';
+import { in_rooms } from './hack.js';
 import { shkgone, obfree } from "./shk.js";
 import { couldsee, cansee } from './vision.js';
 import { dist2, s_suffix } from './hacklib.js';
-import { m_carrying, mon_adjust_speed, drain_en, m_useup, m_useupall, monkilled_trap, mintrap, t_at, acid_damage, fill_pit } from './trap.js';
+import { drain_en, monkilled_trap, mintrap, t_at, acid_damage, fill_pit } from './trap.js';
+import { m_carrying, m_useup, m_useupall } from './mthrowu.js';
+import { mon_adjust_speed } from './worn.js';
 import { ACID_RES } from './const.js';
 import { hliquid } from './mhitm.js';
 import { clone_mon_ml } from './mklev.js';
-import { sobj_at } from './mklev.js';
+import { sobj_at } from './invent.js';
 import { is_pit, TT_PIT, CORPSTAT_BURIED, OBJ_BURIED } from './const.js';
 import { worm_seg_at, remove_worm, wormgone, cutworm, worm_move } from './worm.js';
-import { mwelded, body_part, flooreffects, _drop_doname, set_wounded_legs, is_pole,
-         mhurtle, will_hurtle } from './cmd.js';
+import { body_part, _drop_doname, is_pole } from './cmd.js';
+import { mwelded } from './wield.js';
+import { mhurtle, will_hurtle } from './dothrow.js';
+import { flooreffects, set_wounded_legs } from './do.js';
 /* C wield.c:543 yname(obj) -- "your <xname>" / "the <xname>"; the one body
  * lives in js/do_wear.js.  do_attack's gu.unweapon line needs it. */
 import { yname, You, is_shield, bimanual, is_flimsy, some_armor } from './do_wear.js';
 import { monstone, mon_to_stone, vamp_stone, obj_resists, dmgtype, slept_monst, engulf_target } from './dogmove.js';
 import { destroy_items as destroy_items_zap,
          destroy_items_mon as destroy_items_mon_zap } from './zap.js';
-import { poly_when_stoned } from './mhitm.js';
+import { poly_when_stoned } from './mondata.js';
 import { PM_BALROG, PM_COCKATRICE, PM_CHICKATRICE, PM_BARBED_DEVIL, PM_SHADE, PM_ROPE_GOLEM, PM_PAPER_GOLEM, PM_STRAW_GOLEM, PM_PURPLE_WORM, PM_SHRIEKER, PM_BLACK_PUDDING, PM_BROWN_PUDDING, PM_FLESH_GOLEM, PM_IRON_GOLEM, PM_ARCHON, PM_STONE_GOLEM, PM_WATER_ELEMENTAL,
          PM_VLAD_THE_IMPALER, PM_LIZARD, PM_ARCHEOLOGIST, PM_WIZARD, PM_HUMAN,
          PM_DEATH, PM_FAMINE, PM_PESTILENCE, PM_VAMPIRE, PM_VAMPIRE_LORD, PM_WOOD_GOLEM, PM_LEATHER_GOLEM } from './pm.generated.js';
@@ -205,21 +226,27 @@ import { hitmsg, hitmsg_je, u_slip_free, make_blinded, mpoisons_subj, magic_nega
 import { drain_item, resist, shieldeff_mon, cancel_monst, probe_monster, hit as hit_projectile } from './zap.js';
 import { make_stunned, make_confused, potionhit } from './potion.js';
 import { splitobj } from './makemon.js';
-import { setuwep, freeinv, set_twoweap, Yname2, drop_uswapwep } from './cmd.js';
-import { uwepgone, thiefdead } from './steal.js';
+import { freeinv, Yname2 } from './cmd.js';
+import { setuwep, set_twoweap, drop_uswapwep } from './wield.js';
+import { thiefdead } from './steal.js';
+import { uwepgone } from './wield.js';
 import { rnl } from './rng.js';
 import { FUMBLING as FUMBLING_UH, P_LANCE } from './const.js';
 import { mstatusline, check_capacity as check_capacity_hit } from './cmd.js';
-import { ysimple_name as ysimple_name_hit, release_camera_demon as release_camera_demon_hit, useup } from './cmd.js';
-import { breaktest } from './cmd.js';
-import { upstart, angry_guards, setmangry } from './mklev.js';
-import { noit_Monnam, noit_mon_nam, stagger } from './mhitm.js';
+import { ysimple_name as ysimple_name_hit, useup } from './cmd.js';
+import { release_camera_demon as release_camera_demon_hit } from './dothrow.js';
+import { breaktest } from './dothrow.js';
+import { upstart } from './hacklib.js';
+import { angry_guards, setmangry } from './mon.js';
+import { noit_Monnam, noit_mon_nam } from './mhitm.js';
+import { stagger } from './mondata.js';
 import { deadhero, pending_death_is_final, done } from './end.js';
 import { DIED, NO_KILLER_PREFIX } from './const.js';
 import { drain_pending_death_in_place } from './fastforward.js';
 /* C explode.c:1013 mon_explodes — corpse_chance()'s AT_BOOM arm calls it. */
-import { losehp } from './dokick.js';
-import { mon_explodes, _zhitm, explode as explode_uh, adtyp_to_expltype as adtyp_to_expltype_uh } from './zap.js';
+import { losehp } from './hack.js';
+import { _zhitm } from './zap.js';
+import { mon_explodes, explode as explode_uh, adtyp_to_expltype as adtyp_to_expltype_uh } from './explode.js';
 import { MON_EXPLODE } from './const.js';
 /* C permonst.mattk[NATTK] (js/makemon_mattk.json — the same pack js/makemon.js
  * and js/mhitu.js read); corpse_chance scans it for the AT_BOOM attack. */
@@ -228,14 +255,15 @@ const MONS_MATTK = /** @type {{aatyp:number,adtyp:number,damn:number,damd:number
 const NATTK_UH = 6;          /* C monattk.h:9 NATTK */
 const AT_BOOM = 14;          /* C monattk.h:24 — explodes when killed */
 import { tele, rloc, RLOC_NOMSG, u_teleport_mon as u_teleport_mon_real } from './teleport.js';
-import { sticks, abuse_dog, tamedog, unstuck, initedog, m_unleash } from './dog.js';
+import { sticks, abuse_dog, tamedog, unstuck, initedog } from './dog.js';
+import { m_unleash } from './apply.js';
 import { christen_monst } from './mhitm.js';
 import { paralyze_monst, rustm, extract_from_minvent_dm, stackobj_dm, mondied_dm } from './dogmove.js';
 import { stackobj } from './sp_lev.js';
 import { nomul } from './allmain.js';
 import { MONS_CWT } from './mklev.js'; /* C mons[].cwt, uhitm.c:5078 */
 import { mons_cnutrit } from './food_props.js'; /* C mons[].cnutrit, uhitm.c:5082 */
-import { unconscious } from './pickup.js';
+import { unconscious } from './trap.js';
 import { impossible } from './steed.js';
 import { impossible as skill_impossible } from './pline.js';
 /* healup(nhp, nxtra, curesick, cureblind) — potion.c real body, RNG-free.
@@ -400,11 +428,6 @@ export function Monnam(mtmp) {
     let first = bp.charCodeAt(0);
     if (0x61 <= first && first <= 0x7a) first &= ~0x20;
     return String.fromCharCode(first) + bp.slice(1);
-}
-/* exclam(dmg) — C ref: zap.c:3542 exclam().
- * Negative force uses "?"; otherwise use "." through 4 and "!" above it. */
-export function exclam(dmg) {
-    return (dmg < 0) ? '?' : (dmg <= 4) ? '.' : '!';
 }
 /* Per-otyp weapon damage dice for small (wsdam) and large (wldam) targets.
  * Generated from nethack-c/include/objects.h WEAPON()/PROJECTILE() macros.
@@ -818,7 +841,7 @@ export async function artifact_hit(magr, mdef, otmp, dmg, dieroll, mdefMndx = -1
         const notonhead = !!(game.gn && game.gn.notonhead);
         const uhp = () => (Upolyd(game.u) ? game.u.mh : game.u.uhp) | 0;
         let wepdesc;
-        if (sr_is_art(otmp, 30) && (dieroll | 0) === 1) {
+        if (is_art(otmp, 30) && (dieroll | 0) === 1) {
             wepdesc = 'The razor-sharp blade';
             if (youattack && engulfing_u(mdef)) {
                 await pline(`You slice ${mon_nam(mdef)} wide open!`);
@@ -849,7 +872,7 @@ export async function artifact_hit(magr, mdef, otmp, dmg, dieroll, mdefMndx = -1
             await pline(`${wepdesc} cuts you in half!`);
             observe_object(otmp);
             return { dmg, special: true };
-        } else if (sr_is_art(otmp, 18)
+        } else if (is_art(otmp, 18)
                    && ((dieroll | 0) === 1
                        || (mdefMndx | 0) === PM_JABBERWOCK_UH)) {
             const behead_msg = ['%s beheads %s!', '%s decapitates %s!'];
@@ -912,7 +935,7 @@ export async function artifact_hit(magr, mdef, otmp, dmg, dieroll, mdefMndx = -1
                 /* call distant_name() for possible side-effects even if the
                  * result won't be printed, exactly as C's comment says. */
                 const otmpname = await distant_name(otmp, xname);
-                if (sr_is_art(otmp, _AC_ART_STORMBRINGER))
+                if (is_art(otmp, _AC_ART_STORMBRINGER))
                     await pline_The('%s blade draws the %s from %s!',
                                hcolor(NH_BLACK_UH), life, mon_nam(mdef));
                 else
@@ -942,11 +965,11 @@ export async function artifact_hit(magr, mdef, otmp, dmg, dieroll, mdefMndx = -1
 
             if (_uh_Blind()) {
                 await pline('You feel an %s drain your %s!',
-                            sr_is_art(otmp, _AC_ART_STORMBRINGER)
+                            is_art(otmp, _AC_ART_STORMBRINGER)
                                 ? 'unholy blade' : 'object', life);
             } else {
                 const otmpname = await distant_name(otmp, xname);
-                if (sr_is_art(otmp, _AC_ART_STORMBRINGER))
+                if (is_art(otmp, _AC_ART_STORMBRINGER))
                     await pline_The('%s blade drains your %s!',
                                     hcolor(NH_BLACK_UH), life);
                 else
@@ -1419,24 +1442,6 @@ function _ensure_role_weapons_uhitm(u) {
     }
     /* All other roles: weapon slots left as-is. */
 }
-export function is_safemon(mtmp) {
-    if (!mtmp)
-        return false;
-    const safe_dog = (game.flags?.safe_dog !== false);
-    if (!safe_dog)
-        return false;
-    if (!mtmp.mpeaceful)
-        return false;
-    /* canspotmon — real implementation from display.js (display.h:129) */
-    if (!canspotmon(mtmp))
-        return false;
-    const u = game.u;
-    if ((u?.uprops?.[CONFUSION]?.intrinsic | 0)
-        || (u?.uprops?.[STUNNED]?.intrinsic | 0)
-        || _xk_hallu())
-        return false;
-    return true;
-}
 /* C ref: uhitm.c:449 do_attack — handle hero moving into a monster cell.
  *
  * W22.4 CALLING-CONVENTION COMPAT: cmd.js W21.3 wire (commit b677362)
@@ -1486,7 +1491,7 @@ function _uh_is_missile(otmp) {
  * !is_art(obj, ART_SNICKERSNEE)`.  do_attack's melee call always has
  * hmd->thrown == HMON_MELEE (0), so `!hmd->thrown` is always true here. */
 function _uh_is_pole_ranged(otmp) {
-    return !(game.u && game.u.usteed) && is_pole(otmp) && !sr_is_art(otmp, 19 /* ART_SNICKERSNEE, artilist.h */);
+    return !(game.u && game.u.usteed) && is_pole(otmp) && !is_art(otmp, 19 /* ART_SNICKERSNEE, artilist.h */);
 }
 async function _uh_hmon_hitmon_weapon_ranged(obj, mon) {
     const isShade = (mon?.data?.pmidx | 0) === PM_SHADE;
@@ -5635,10 +5640,6 @@ function sr_likes_gems(data)   { return ((data.mflags2 | 0) & SR_M2_JEWELS) !== 
 function sr_touch_petrifies(corpsenm) {
     return corpsenm === PM_COCKATRICE || corpsenm === PM_CHICKATRICE;
 }
-/* is_art(otmp, art): artifact.h — otmp is that specific artifact. */
-function sr_is_art(otmp, art) {
-    return !!otmp && (otmp.oartifact | 0) === art;
-}
 function sr_MON_WEP(mtmp) {
     for (let o = mtmp.minvent; o; o = o.nobj)
         if (((o.owornmask | 0) & SR_W_WEP) !== 0)
@@ -5689,7 +5690,7 @@ export async function select_rwep(mtmp) {
     const mweponly = mwelded(mwep) && (mtmp.weapon_check | 0) === SR_NO_WEAPON_WANTED;
     if (dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) <= 13
         && couldsee(mtmp.mx, mtmp.my)) {
-        if (sr_is_art(mwep, SR_ART_SNICKERSNEE)) {
+        if (is_art(mwep, SR_ART_SNICKERSNEE)) {
             SR_propellor = mwep;
             return mwep;
         }
@@ -9010,7 +9011,17 @@ const LEATHER_MAT = 7;
 function thick_skinned(pd) {
     return (((pd && pd.mflags1) >>> 0) & M1_THICK_HIDE) !== 0;
 }
-import { permapoisoned as permapoisoned_real } from './objnam.js';
+import { permapoisoned as permapoisoned_real } from './artifact.js';
+import { INVIS } from './const.js'; // relocate-fns
+import { DISP_ALWAYS, DISP_END, GLYPHCLS_MON, MON_MCOLOR, MON_MLET, _hallucinating_dsp, _uprop, _wizmgender_attr, map_location, monster_symbol, random_monster, tmp_at } from './display.js'; // relocate-fns
+import { hmon as hmon_real } from './mhitm.js'; // relocate-fns
+import { exclam } from './zap.js'; // relocate-fns
+import { is_safemon } from './display.js'; // relocate-fns
+import { poisoned } from './attrib.js'; // relocate-fns
+export { poisoned } from './attrib.js'; // relocate-fns
+export { is_safemon } from './display.js'; // relocate-fns
+export { _xk_hallu }; // relocate-fns
+export { exclam } from './zap.js'; // relocate-fns
 function permapoisoned(otmp) {
     /* C artifact.c:2837: Grimtooth is permanently poisoned. */
     return permapoisoned_real(otmp);
@@ -9053,14 +9064,6 @@ async function mhitm_really_poison(magr, mattk, mdef, mhm) {
         if (mhm.damage >= mdef.mhp && game.v?.vis && canspotmon(mdef))
             await pline_The('poison was deadly...');
     }
-}
-/* mpoisons_subj — real body imported from js/mhitu.js (C ref: mhitu.c:143-158);
- * this file's local copy was a stub returning the constant "poisons you" for
- * every call, e.g. corrupting "%s was poisoned!" (uhitm.c:3132) and the
- * artifact-weapon poison-attack topline (uhitm.c:3109) with a fixed string
- * regardless of AT_WEAP/AT_TUCH/AT_GAZE/AT_BITE or weapon poisoning. */
-export async function poisoned(buf, atype, pname, hpdamchance, is_weapon) {
-    return await poisoned_real(buf, atype, pname, hpdamchance, is_weapon);
 }
 /* C do_name.c:1303 pmname(pm, mgender) and monst.h Mgender(mon).
  * Use makemon.js's canonical pmname table; the old local stubs always called
@@ -9119,4 +9122,55 @@ export async function hmon_egg_petrify(hmd, mon, obj) {
     hmd.doreturn = true;
     hmd.retval = (mon.mhp | 0) > 0;
     return true;
+}
+
+/* C uhitm.c:4931-4943 start_engulf(mdef) — the DISPLAY half only; the
+ * "You engulf/swallow <mdef>!" message is printed by the caller in the C order.
+ *     if (!Invisible) {
+ *         map_location(u.ux, u.uy, TRUE);
+ *         tmp_at(DISP_ALWAYS, mon_to_glyph(&gy.youmonst, rn2_on_display_rng));
+ *         tmp_at(mdef->mx, mdef->my);
+ *     }
+ * The hero's own square is re-mapped (it stops showing the hero while
+ * engulfing) and the hero's glyph is flashed on the target's square until
+ * end_engulf().  Unlike hero_glyph, mon_to_glyph applies what_mon(), so the
+ * temporary monster is randomized while hallucinating. */
+export function start_engulf(mdef) {
+    const u = game.u || {};
+    const invisP = _uprop(INVIS);
+    const Invis = !!((invisP.i || invisP.e) && !invisP.b);
+    const siP = _uprop(SEE_INVIS);
+    const Invisible = Invis && !(siP.i || siP.e);
+    if (!Invisible) {
+        map_location(u.ux, u.uy, true);
+        /* C display.h:554-556: use what_mon()'s result as well as its draw. */
+        const mndx = _hallucinating_dsp() ? random_monster() : (u.umonnum | 0);
+        tmp_at(DISP_ALWAYS, {
+            ch: monster_symbol(MON_MLET[mndx]), color: MON_MCOLOR[mndx],
+            cls: GLYPHCLS_MON, attr: _wizmgender_attr(game.youmonst?.female),
+        });
+        tmp_at(mdef.mx, mdef.my);
+    }
+}
+
+/* C uhitm.c:4947-4956 end_engulf(void): clear the engulf flash and repaint the
+ * hero's square.  Called from gulpum() after xkilled() on the digest arm and
+ * unconditionally before the damage on the non-digest arms. */
+export function end_engulf() {
+    const u = game.u || {};
+    const invisP = _uprop(INVIS);
+    const Invis = !!((invisP.i || invisP.e) && !invisP.b);
+    const siP = _uprop(SEE_INVIS);
+    const Invisible = Invis && !(siP.i || siP.e);
+    if (!Invisible) {
+        tmp_at(DISP_END, 0);
+        newsym(u.ux, u.uy);
+    }
+}
+
+// Unported callees (charter: stub, do not port). Neither is ever reached by
+// draws any RNG, so that branch never fires).
+/* hmon: canonical asynchronous combat implementation. */
+export async function hmon(mon, obj, thrown, dieroll) {
+    return hmon_real(mon, obj, thrown, dieroll);
 }

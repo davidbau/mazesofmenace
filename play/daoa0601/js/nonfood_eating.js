@@ -1,6 +1,6 @@
 // Native eat.c:doeat() admission, doeat_nonfood(), and eatspecial().
 import { artifactById, artifactByName } from './artifacts.js';
-import { touchArtifactByHero } from './artifact_touch.js';
+import { touchArtifactByHero } from './artifacts.js';
 import { exerciseAttribute } from './attrib.js';
 import { A_CON, A_WIS, GD_EATGOLD, SATIATED, W_AMUL, W_ARMOR, W_RING, W_SADDLE, W_TOOL } from './const.js';
 import { plineWithContinuation as pline } from './pline.js';
@@ -20,7 +20,7 @@ import { chewIronBars } from './iron_bars_meal.js';
 import { releaseObjectLeash } from './leash_apply.js';
 import { MONSTER_NAME } from './monster_data.js';
 import { FLINT, LEASH, OBJECT_NAMES, OBJECT_NUTRITION, RIN_SLOW_DIGESTION, SCR_SCARE_MONSTER, TRIDENT, requireObjectData, } from './object_data.js';
-import { objectMaterial } from './object_material.js';
+import { objectMaterial } from './o_init.js';
 import { withIndefiniteArticle } from './object_grammar.js';
 import { objectQuantity, splitObjectStack } from './object_stack.js';
 import { tryCallObjectType } from './object_call.js';
@@ -34,7 +34,7 @@ import { rn2, rnd } from './rng.js';
 import { heroIsHallucinating } from './senses.js';
 import { surfaceName } from './terrain_name.js';
 import { findVaultGuard } from './vault_guard.js';
-import { isWeldedPrimary, releaseWeaponSlots } from './weapon_slots.js';
+import { isWeldedPrimary, releaseWeaponSlots } from './wield.js';
 import { exceedsActionCapacity, objectWeight } from './weight.js';
 import { monsterHasLineOfSightToHero } from './vision.js';
 const FOOD_CLASS = 7, RING_CLASS = 4, AMULET_CLASS = 5, POTION_CLASS = 8;

@@ -1,19 +1,20 @@
 // Container use and object transfer.
 // C refs: pickup.c use_container(), in_container(), out_container().
 import { makePlural } from './object_grammar.js';
-import { containerContents } from './container_contents.js';
+import { containerContents } from './end.js';
 import { bot } from './botl.js';
 import { consumeHallucinatedMenuObjectGlyph, flush_screen } from './display.js';
 import { displayMessageWindow } from './tty_topline.js';
 import { pline, plineWithContinuation } from './pline.js';
-import { touchArtifactByHero } from './artifact_touch.js';
+import { touchArtifactByHero } from './artifacts.js';
 import { loseHeroHp } from './hero_damage.js';
 import { triggerChestTrap } from './chest_trap.js';
-import { nomul } from './command_state.js';
+import { nomul } from './hack.js';
 import { game } from './gstate.js';
 import { startGlobTimeout } from './glob.js';
 import { finishInventoryRemoval, useUpInventoryStack } from './hero_inventory.js';
-import { setPrimaryWeapon, setSecondaryWeapon, setQuiverObject } from './weapon_slots.js';
+import { setPrimaryWeapon, setSecondaryWeapon, setQuiverObject, willWeld } from './wield.js';
+import { heroHasFreeHand } from './engrave.js';
 import { inventoryItemDescription, inventoryPrimaryHandDetail } from './invent.js';
 import { objectDescription as describeObject } from './object_description.js';
 import { getobj } from './inventory_prompt.js';
@@ -23,35 +24,31 @@ import { OBJECT_CLASS_SYMBOLS, objectClassForType } from './object_knowledge.js'
 import { clearJustPicked } from './just_picked.js';
 import { liftObject } from './lift_object.js';
 import { objectShedsLight, snuffLitObject } from './light.js';
-import { addObjectToContainer } from './object_container.js';
 import { useUpFloorObject } from './floor_consumption.js';
 import { scatterFloorObjects } from './scatter.js';
 import { finishEnvironmentalMonsterDeath } from './mon.js';
 import { finishHeroMonsterKill, finishHeroMonsterKillOutcome } from './hero_monster_death.js';
-import { startCorpseTimeout } from './mkobj.js';
+import { startCorpseTimeout, unlinkObject, addObjectToContainer } from './mkobj.js';
 import { MONSTER_NAME, MONSTER_SIZE } from './monster_data.js';
-import { deleteObject } from './object_delete.js';
-import { AMULET_OF_YENDOR, BAG_OF_HOLDING, BELL_OF_OPENING, BOULDER, BAG_OF_TRICKS, BRASS_LANTERN, CANDELABRUM_OF_INVOCATION, CHEST, CORPSE, GOLD_PIECE, ICE_BOX, LARGE_BOX, LEASH, LOADSTONE, OBJECT_BIMANUAL, OIL_LAMP, OILSKIN_SACK, POT_OIL, SACK, SPE_BOOK_OF_THE_DEAD, STATUE, TALLOW_CANDLE, WAN_CANCELLATION, WAX_CANDLE, } from './object_data.js';
-import { unlinkObject } from './object_location.js';
+import { AMULET_OF_YENDOR, BAG_OF_HOLDING, BELL_OF_OPENING, BOULDER, BAG_OF_TRICKS, BRASS_LANTERN, CANDELABRUM_OF_INVOCATION, CHEST, CORPSE, GOLD_PIECE, ICE_BOX, LARGE_BOX, LEASH, LOADSTONE, OIL_LAMP, OILSKIN_SACK, POT_OIL, SACK, SPE_BOOK_OF_THE_DEAD, STATUE, TALLOW_CANDLE, WAN_CANCELLATION, WAX_CANDLE, } from './object_data.js';
+import { isBimanualObject } from './object_properties.js';
 import { objectQuantity, rejoinObjectStack, splitObjectStack, } from './object_stack.js';
-import { OBJECT_TIMER_KIND, stopObjectTimer, } from './object_timers.js';
+import { stopObjectTimer } from './timeout.js';
 import { heroHasNoHands } from './polyself.js';
 import { isQuantumBox, observeQuantumCat } from './quantum_cat.js';
 import { d, rn2 } from './rng.js';
 import { paranoidYesNoQuit, promptChoice, tty_yn_function } from './query.js';
 import { matchesObjectCategories, queryObjectClasses } from './object_class_query.js';
-import { bypassObjectList, clearBypasses, nextUnbypassedObject } from './object_bypass.js';
+import { bypassObjectList, clearBypasses, nextUnbypassedObject } from './worn.js';
 import { touchPetrifyingCorpse } from './stoning.js';
 import { addPickedInventoryObject, pickupInventoryMessage } from './pickup.js';
 import { objectWeight } from './weight.js';
-import { heroHasFreeHand, willWeld } from './weapon_type.js';
 import { heroHandName } from './body_parts.js';
 import { heroIsBlind } from './senses.js';
-import { addShopObjectToBill, currentShopResident, costlySpot, stolenValue, sellHeroDroppedObject, setSellDisposition, SELL_DELIBERATE, SELL_DONTSELL, SELL_NORMAL } from './shk.js';
+import { addShopObjectToBill, currentShopResident, costlySpot, stolenValue, sellHeroDroppedObject, setSellDisposition, warnAboutRemovedPick, SELL_DELIBERATE, SELL_DONTSELL, SELL_NORMAL, deleteObject, } from './shk.js';
 import { currency } from './currency.js';
-import { warnAboutRemovedPick } from './container_shop.js';
 import { restoreMenuUnderlay, showChoiceWindow, showDisclosureOverlay, showMultiSelectWindow, showTextWindow, } from './windows.js';
-import { GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_SUGGEST, MENU_COMBINATION, MENU_FULL, MENU_PARTIAL, MENU_TRADITIONAL, MENU_ITEMFLAGS_SKIPINVERT, PARANOID_AUTOALL, PARANOID_CONFIRM, W_ACCESSORY, W_ARMOR, SORTLOOT_INVLET, } from './const.js';
+import { GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_SUGGEST, MENU_COMBINATION, MENU_FULL, MENU_PARTIAL, MENU_TRADITIONAL, MENU_ITEMFLAGS_SKIPINVERT, PARANOID_AUTOALL, PARANOID_CONFIRM, W_ACCESSORY, W_ARMOR, SORTLOOT_INVLET, OBJECT_TIMER_KIND } from './const.js';
 export const CONTAINER_TYPES = new Set([
     LARGE_BOX, CHEST, ICE_BOX, SACK, BAG_OF_HOLDING, OILSKIN_SACK, BAG_OF_TRICKS,
 ]);
@@ -448,7 +445,7 @@ function rejectedPutMessage(container, object, state) {
         object.bknown = true;
         observeObjectForNaming(object, { state });
         const hand = heroHandName(state);
-        return `${ownedObjectAction(object, 'are', state)} welded to your ${OBJECT_BIMANUAL[object.otyp] ? makePlural(hand) : hand}!`;
+        return `${ownedObjectAction(object, 'are', state)} welded to your ${isBimanualObject(object) ? makePlural(hand) : hand}!`;
     }
     return null;
 }

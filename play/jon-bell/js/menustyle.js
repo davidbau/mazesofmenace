@@ -1,7 +1,7 @@
 // C options.c:menutype and optfn_menustyle(do_set). Shared by the parser,
 // value display and interactive handler; menu_style is the actual flags field.
 import { MENU_TRADITIONAL, MENU_COMBINATION, MENU_FULL, MENU_PARTIAL } from './const.js';
-import { config_error_add } from './cmd_binds.js';
+import { config_error_add } from './cfgfiles.js';
 
 export const menutype = [
     ['traditional', '[prompt for object class(es), then', ' ask y/n for each item in those classes]'],

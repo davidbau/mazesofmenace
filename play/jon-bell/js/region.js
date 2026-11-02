@@ -8,20 +8,23 @@ import { Monnam, monstseesu, monstunseesu } from './mcastu.js';
 import { You, Your } from './do_wear.js';
 import { makeplural } from './objnam.js';
 import { body_part, region_danger } from './cmd.js';
-import { losehp } from './dokick.js';
+import { losehp } from './hack.js';
 import { killed } from './mhitm.js';
 import { monkilled_trap } from './trap.js';
 import { make_blinded, BlindedTimeout } from './zap.js';
 import { set_itimeout } from './potion.js';
 import { safe_teleds } from './teleport.js';
 import { EYE, LUNG, POISON_RES, KILLED_BY_AN, M_SEEN_POISON, M_POISONGAS_OK } from './const.js';
-import { wake_nearto, resists_poison, setmangry } from './mklev.js';
+import { resists_poison } from './mklev.js';
+import { wake_nearto, setmangry } from './mon.js';
 import { isok } from './hacklib.js';
 import { m_at } from './uhitm.js';
 import { cansee, Blind, block_point, unblock_point, does_block, vision_recalc } from './vision.js';
-import { newsym, Unaware, You_feel, impossible_sync, pline, pline_flush_point, _pline_flush_frame_record, _topl_record_join, _topl_merge_result, _topl_joins_snapshot } from './display.js';
-import { m_poisongas_ok } from './mklev.js';
+import { newsym, Unaware, impossible_sync, pline_flush_point, _pline_flush_frame_record, _topl_record_join, _topl_merge_result, _topl_joins_snapshot } from './display.js';
+import { You_feel, pline } from './pline.js';
+import { m_poisongas_ok } from './mon.js';
 import { is_pool_or_lava } from './look.js';
+import { region_glyph, show_glyph_cell } from './display.js'; // relocate-fns
 
 // C ref: decl.h — svn.n_regions (int), gr.regions (NhRegion **), gm.max_regions (int).
 let svn = { n_regions: 0 };
@@ -1235,4 +1238,10 @@ export async function region_safety() {
     }
     if (BlindedTimeout() === 1)
         make_blinded(0, true);
+}
+
+export function show_region(reg, x, y) {
+    const glyph = region_glyph(reg);
+    show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.decgfx, 0,
+                    glyph.cls, false, null, null, null, glyph.cmap);
 }

@@ -2,9 +2,9 @@
 // Used by the shared landing coordinator in landing-effects.js.
 import { game } from './gstate.js';
 import { rn1, rnd } from './rng.js';
-import { pline } from './display.js';
+import { pline } from './pline.js';
 import { exercise, acurr } from './attrib.js';
-import { losehp } from './dokick.js';
+import { losehp } from './hack.js';
 import { do_death_sequence } from './end.js';
 import { selftouch } from './trap.js';
 import { float_vs_flight, is_weptool } from './mhitm.js';

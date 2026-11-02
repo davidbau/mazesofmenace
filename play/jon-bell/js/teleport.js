@@ -4,7 +4,7 @@
 import { rn2, rnd, pushRngLogEntry } from './rng.js';
 import { discover_object } from './o_init.js';
 import { onscary } from './makemon.js';
-import { db_under_typ } from './dokick.js';
+import { db_under_typ } from './dbridge.js';
 /* C ref: dungeon.c on_level/In_tutorial — domagicportal's landed-from-another-
  * portal check and its tutorial-exit arm. */
 import { on_level, In_tutorial } from './dungeon.js';
@@ -13,24 +13,30 @@ import { ledger_no } from './bones.js';
 import { make_stunned } from './potion.js';
 /* C ref: do.c:2076 schedule_goto — domagicportal defers the actual level
  * change to the end of the turn, same as level_tele (js/cmd.js:11421). */
-import { schedule_goto, invocation_message, number_leashed, may_passwall } from './cmd.js';
+import { invocation_message, number_leashed, may_passwall } from './cmd.js';
+import { schedule_goto } from './do.js';
 import { update_inventory } from './inventory_refresh.js';
 const LEASH = 236; /* objects.h LEASH, as js/cmd.js LEASH_OTYP */
-import { yn_function } from './end.js';
+import { yn_function } from './cmd.js';
 import { ROWNO, COLNO, ZAP_POS, ACCESSIBLE, D_CLOSED, D_LOCKED, DOOR, isok, u_at, TELEDS_TELEPORT, RLOC_MSG, TEMPLE, engulfing_u, STRAT_APPEARMSG, NO_TRAP_FLAGS, BOLT_LIM, IS_ALTAR, IS_STWALL, W_NONPASSWALL, MON_FLOOR, POOL, MOAT, WATER, DRAWBRIDGE_UP, DB_UNDER, DB_MOAT, DB_LAVA, LAVAPOOL, LAVAWALL, MM_IGNOREWATER, MM_IGNORELAVA, GP_CHECKSCARY, GP_ALLOW_U, GP_AVOID_MONPOS, LR_MONGEN, LR_TELE, LR_UPTELE, LR_DOWNTELE, FIRE_RES, NO_MM_FLAGS, IS_WATERWALL, In_endgame, Is_astralevel, Is_juiblex_level, MON_DETACH, MON_OBLITERATE, MON_ENDGAME_MIGR } from './const.js';
 import { game } from './gstate.js';
-import { You_feel, pline_mon } from './display.js';
+import { You_feel, pline_mon } from './pline.js';
 import { registerStaticReset } from './statics.js';
 import { newsym, see_monsters, shieldeff, docrt, force_more_from_cls, force_more_pages } from './display.js';
 import { vision_recalc } from './vision.js';
 import { nomul } from './allmain.js';
-import { Warning, pline, canspotmon, sensemon, canseemon, _topl_joins_snapshot, _topl_merge_result } from './display.js';
+import { Warning, canspotmon, sensemon, canseemon, _topl_joins_snapshot, _topl_merge_result } from './display.js';
+import { pline } from './pline.js';
 import { Monnam } from './mcastu.js';
 import { Amonnam } from './mhitm.js';
 import { You } from './eat.js';
 import { spot_time_left } from './timeout.js';
 import { is_ice } from './engrave.js';
-import { set_ustuck, in_rooms, maybe_unhide_at, sobj_at, somexyspace, u_on_newpos, mongone, engr_at } from './mklev.js';
+import { in_rooms, engr_at } from './mklev.js';
+import { sobj_at } from './invent.js';
+import { u_on_newpos } from './dungeon.js';
+import { somexyspace } from './mkroom.js';
+import { set_ustuck, maybe_unhide_at, mongone } from './mon.js';
 /* C ref: mkroom.c:764-780 search_special(VAULT) — vault_tele's room lookup. */
 import { search_special } from './mkroom.js';
 import { vault_occupied, findgd, uleftvault } from './vault.js';
@@ -42,16 +48,17 @@ import { settrack } from './track.js';
 import { m_at } from './uhitm.js';
 /* C ref: mkroom.h VAULT, youprop.h ANTIMAGIC slot. */
 import { VAULT, ANTIMAGIC, MELT_ICE_AWAY, MAX_TYPE } from './const.js';
-import { m_into_limbo, unstuck, mon_leaving_level, m_unleash } from './dog.js';
+import { m_into_limbo, unstuck, mon_leaving_level } from './dog.js';
+import { m_unleash } from './apply.js';
 import { mdrop_special_objs } from './steal.js';
-import { yelp } from './mhitm.js';
+import { yelp } from './sounds.js';
 import { impossible, place_monster } from './steed.js';
 import { impossible as rloc_impossible } from './pline.js';
 import { set_mon_data } from './makemon.js';
 import { GP_ALLOW_XY } from './const.js';
 import { PASSES_WALLS } from './const.js';
 import { is_youmonst } from './mhitm.js';
-import { hideunder } from './mklev.js';
+import { hideunder } from './mon.js';
 import { reset_utrap } from './trap.js';
 import { switch_terrain } from './cmd.js';
 /* C mon.c:4056 mnearto -> goodpos(newx, newy, mtmp, 0) — the FULL goodpos
@@ -59,14 +66,14 @@ import { switch_terrain } from './cmd.js';
  * enexto_core uses for its candidate filter. */
 import { goodpos as goodpos_tp } from './trap.js';
 import { mon_nam } from './uhitm.js';
-import { noteleport_level, m_in_air, permonstTemplate, Inhell } from './makemon.js';
+import { m_in_air, permonstTemplate, Inhell } from './makemon.js';
 import { mon_aligntyp, inhistemple as inhistemple_real } from './priest.js';
 import { worm_seg_at, remove_worm as remove_worm_real, place_worm_tail_randomly as place_worm_tail_randomly_real } from './worm.js';
 import { dotrap, t_at, mintrap, fill_pit, seetrap, clamp_hole_destination,
          buried_ball_to_punishment } from './trap.js';
 /* ── imports for mlevel_tele_trap / teleport_pet (below) ── */
 import { migrate_to_level } from './dog.js';        /* C dog.c:886 */
-import { mon_has_amulet } from './mhitm.js';        /* C mon.c mon_has_amulet */
+import { mon_has_amulet } from './wizard.js';        /* C mon.c mon_has_amulet */
 import { is_home_elemental } from './makemon.js';   /* C mondata.h */
 import { is_xport } from './const.js';              /* C trap.h is_xport() */
 /* mlevel_tele_trap's is_hole arm (teleport.c:2019-2031). */
@@ -74,7 +81,7 @@ import { Is_stronghold, Is_botlevel } from './const.js';
 /* C ref: teleport.c:461-528 — teleds()'s ball & chain block.  Every helper it
  * needs was already ported; only the block that calls them was missing. */
 import { drag_ball, move_bc, placebc, unplacebc } from './ball.js';
-import { near_capacity } from './weight.js';
+import { near_capacity, spoteffects_mon_underfoot } from './hack.js';
 /* C ref: hack.c:3375 spoteffects -> pickup(1).  cmd.js <-> teleport.js is
  * already a cycle (cmd.js imports teleds from here); `export async function`
  * declarations hoist, so the binding is live by the time teleds runs. */
@@ -88,7 +95,8 @@ function carried(o) {
 import { couldsee } from './vision.js';
 import { set_apparxy, mon_track_clear, dochugw } from './monmove.js';
 import { find_objowner, costly_spot, inhishop, onshopbill, make_angry_shk, stolen_value } from './shk.js';
-import { dist2, distmin, depth } from './hacklib.js';
+import { dist2, distmin } from './hacklib.js';
+import { depth } from './dungeon.js';
 import { within_bounded_area } from './rect.js';
 import { in_out_region, update_player_regions, update_monster_region as update_monster_region_real } from './region.js';
 import { PM_ANGEL, PM_FIRE_ELEMENTAL, PM_SALAMANDER, PM_FLOATING_EYE, PM_MINOTAUR, PM_WIZARD_OF_YENDOR } from './pm.generated.js';
@@ -104,17 +112,21 @@ import { learnscroll } from './read.js';
 /* C potion.c:260 make_blinded — canonical transient-blindness transition. */
 import { make_blinded } from './zap.js';
 import { ENV } from './hostenv.js';
-import { closed_door as closed_door_vr } from './look.js';
+import { closed_door as closed_door_vr } from './monmove.js';
 import { cansee as cansee_vr, recalc_block_point as recalc_block_point_vr } from './vision.js';
-import { You_hear as You_hear_vr, You_see as You_see_vr } from './display.js';
+import { You_hear as You_hear_vr, You_see as You_see_vr } from './pline.js';
 import { mb_trapped as mb_trapped_vr } from './dig.js';
 import { D_TRAPPED as D_TRAPPED_VR, D_NODOOR as D_NODOOR_VR } from './const.js';
-import { newcham as newcham_vr, upstart as upstart_vr } from './mklev.js';
+import { upstart as upstart_vr } from './hacklib.js';
+import { newcham as newcham_vr } from './mon.js';
 import { expels_gu as expels_gu_vr } from './mhitu.js';
 import { x_monnam as x_monnam_vr } from './mhitm.js';
 import { nonliving as nonliving_vr } from './makemon.js';
 import { Unaware as Unaware_vr } from './display.js';
 import { ismnum as ismnum_vr, G_GENOD as G_GENOD_VR, NON_PM as NON_PM_VR, ARTICLE_THE as ARTICLE_THE_VR, ARTICLE_A as ARTICLE_A_VR, SUPPRESS_INVISIBLE as SUPPRESS_INVISIBLE_VR, AUGMENT_IT as AUGMENT_IT_VR, SUPPRESS_NAME as SUPPRESS_NAME_VR, SUPPRESS_IT as SUPPRESS_IT_VR } from './const.js';
+import { M2_LORD, is_demon, is_dprince } from './makemon.js'; // relocate-fns
+import { get_iter_mons as get_iter_mons_real } from './mon.js'; // relocate-fns
+import { On_W_tower_level } from './dungeon.js'; // relocate-fns
 /* C ref: include/hack.h flag bits for collect_coords() */
 export const CC_NO_FLAGS = 0x00;
 export const CC_INCL_CENTER = 0x01;
@@ -567,6 +579,12 @@ export async function teleds(nux, nuy, teleds_flags) {
                     'The ice, is gonna BREAK!'][_left < 5 ? 2 : _left < 10 ? 1 : 0]);
         }
     }
+    /* hack.c:3416-3454 — OUTSIDE the in_steed_dismounting guard: a knocked
+     * dismount (steed.c:687-699) can enexto the steed onto the very square
+     * teleds puts the hero on, and C's spoteffects then mnexto()s it ("jumps
+     * near you from the ceiling"). */
+    if (!game.iflags?.in_lava_effects)
+        await spoteffects_mon_underfoot();
     // C teleport.c:569: the invocation clue follows arrival spoteffects.
     await invocation_message();
     if (is_teleport && game._resultMessage && game._pending_message) {
@@ -642,17 +660,6 @@ function Stunned(u) {
     return !!(p && p.intrinsic);
 }
 
-export function On_W_tower_level(uz) {
-    if (!uz)
-        return false;
-    const g = game;
-    for (const lv of [g.wiz1_level, g.wiz2_level, g.wiz3_level]) {
-        /* C ref: dungeon.c on_level — same dnum AND same dlevel. */
-        if (lv && (lv.dnum | 0) === (uz.dnum | 0) && (lv.dlevel | 0) === (uz.dlevel | 0))
-            return true;
-    }
-    return false;
-}
 
 /* C ref: trap.c:6756-6767 unconscious() —
  *     if (gm.multi >= 0) return FALSE;
@@ -2211,4 +2218,70 @@ export async function vamprises(mtmp) {
     }
     newsym(x0, y0);
     return true;
+}
+
+const M3_COVETOUS = 0x001f;
+
+/** C mondata.h is_lord — lord to its kind */
+function is_lord(ptr) { return (ptr.mflags2 & M2_LORD) !== 0; }
+
+/** C mondata.h is_dlord — demon lord: is_demon && is_lord */
+function is_dlord(ptr) { return is_demon(ptr) && is_lord(ptr); }
+
+/** C mondata.h is_covetous — wants something (M3_COVETOUS mask) */
+function is_covetous(ptr) { return (ptr.mflags3 & M3_COVETOUS) !== 0; }
+
+/** C teleport.c m_blocks_teleporting — does this monster block others' teleport? */
+function m_blocks_teleporting(mtmp) {
+    if (is_dlord(mtmp.data) || is_dprince(mtmp.data))
+        return true;
+    return false;
+}
+
+/** C mon.c:4534 get_iter_mons — iterate fmon, return first monster for which
+ * bfunc is TRUE (else null). Skips DEADMONSTER (mhp < 1). The reconstructed
+ * fmon cells carry mnum (the permonst index); materialize mtmp.data via
+ * permonstTemplate(mnum) — the C mtmp->data pointer into mons[mndx]. */
+function get_iter_mons(bfunc) {
+    return get_iter_mons_real(bfunc);
+}
+
+/** C teleport.c noteleport_level — is teleporting prevented on this level for this monster? */
+export function noteleport_level(mon) {
+    /* demon court in Gehennom prevent others from teleporting */
+    if (Inhell() && !(is_dlord(mon.data) || is_dprince(mon.data))) {
+        if (get_iter_mons(m_blocks_teleporting))
+            return true;
+    }
+
+    /* natural no-teleport level; covetous monsters can bypass these */
+    if (game.level.flags.noteleport && !is_covetous(mon.data))
+        return true;
+
+    /* wand of stasis prevents teleportation while the effect is active
+       (even for covetous monsters) */
+    if (game.level.flags.stasis_until >= game.moves)
+        return true;
+
+    return false;
+}
+
+/* C teleport.c:814-838.  Reservoir selection consumes one rn2(count) for
+ * each live on-map tame monster, before the adjacent placement rolls. */
+export async function tele_to_rnd_pet() {
+    const u = game.u || {};
+    if (noteleport_level(game.youmonst)) return;
+    let pet = null, count = 0;
+    for (let mon = game.fmon; mon; mon = mon.nmon) {
+        if ((mon.mhp | 0) <= 0 || !mon.mtame || (mon.mstate | 0) !== MON_FLOOR)
+            continue;
+        ++count;
+        if (rn2(count) === 0) pet = mon;
+    }
+    if (!pet || dist2(pet.mx | 0, pet.my | 0, u.ux | 0, u.uy | 0) <= 2)
+        return;
+    const x = (pet.mx | 0) + rn2(3) - 1;
+    const y = (pet.my | 0) + rn2(3) - 1;
+    if (isok(x, y) && teleok(x, y, false))
+        await teleds(x, y, TELEDS_TELEPORT);
 }

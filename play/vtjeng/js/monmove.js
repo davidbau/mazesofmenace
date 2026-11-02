@@ -135,7 +135,6 @@ import {
     P_PICK_AXE,
     ROCKTRAP,
     ROLLING_BOULDER_TRAP,
-    ROOMOFFSET,
     ROOM,
     ROWNO,
     RLOC_MSG,
@@ -430,7 +429,7 @@ import { create_gas_cloud, m_in_out_region, visible_region_at } from './region.j
 import { d, rn1, rn2, rnd, rne, rnl, rnz } from './rng.js';
 import { in_rooms } from './rooms.js';
 import { see_wsegs, worm_move, worm_nomove, wormhitu } from './worm.js';
-import { add_damage, after_shk_move, inhishop, shk_move } from './shk.js';
+import { add_damage, after_shk_move, costly_spot, inhishop, shk_move } from './shk.js';
 import { findgold, mdrop_obj, mpickobj } from './steal.js';
 import { stairway_at, stairway_find_dir } from './stairs.js';
 import { collectMonsterMovementMessage, messageAt } from './startup_a11y.js';
@@ -2551,6 +2550,9 @@ export async function dochug(monster, rawEnv = {}) {
     // every monster; a Medusa gaze can kill it, so test death before recovery.
     await m_respond(monster, env);
     if (monster.mhp < 1) return 1;
+    // A Medusa gaze can also end the game. C's done() does not return, so
+    // the monster's turn ends here, as mattacku()'s callers end it below.
+    if (state.program_state?.gameover) return 1;
 
     // C ref: monmove.c:758-760. Only fleeing monsters might regain courage.
     if (monster.mflee && !monster.mfleetim
@@ -2855,20 +2857,6 @@ function inHisShop(shopkeeper, state) {
         ).includes(eshk.shoproom));
 }
 
-function costlySpot(x, y, state) {
-    if (!state.level?.flags?.has_shop) return false;
-    const room = in_rooms(x, y, SHOPBASE, state)[0];
-    const shopkeeper = room >= ROOMOFFSET
-        ? state.level.rooms?.[room - ROOMOFFSET]?.resident
-        : null;
-    const location = state.level.at(x, y);
-    const eshk = shopkeeper?.mextra?.eshk;
-    return Boolean(shopkeeper && inHisShop(shopkeeper, state)
-        && location?.roomno === room && !location.edge
-        && state.level.rooms?.[room - ROOMOFFSET]?.rtype >= SHOPBASE
-        && (x !== eshk.shk.x || y !== eshk.shk.y));
-}
-
 export function mon_would_take_item(monster, obj, rawEnv = {}) {
     const state = rawEnv.state ?? game;
     const species = monster.data;
@@ -3040,7 +3028,10 @@ export function m_search_items(
     const canReach = rawEnv.couldReachItem ?? could_reach_item;
     const canSee = rawEnv.canSee ?? cansee;
     const mCanSee = rawEnv.monsterCanSee ?? clear_path;
-    const isCostly = rawEnv.costlySpot ?? costlySpot;
+    // C ref: monmove.c:1405, costly_spot().  shk.c's version finds the
+    // keeper of a shop subroom too (as in Minetown), so merchandise there
+    // stays off limits from outside the shop.
+    const isCostly = rawEnv.costlySpot ?? costly_spot;
     let goalX = initialGoalX;
     let goalY = initialGoalY;
     let approach = initialApproach;
@@ -4320,7 +4311,7 @@ export async function m_move(monster, rawEnv = {}) {
 // C ref: monmove.c m_move_aggress() (2088-2120). A monster attacks another
 // monster. Returns MMOVE_DIED if the aggressor died, MMOVE_DONE otherwise.
 // The defender may also counterattack if conditions are met.
-async function m_move_aggress(mtmp, x, y, env = {}) {
+export async function m_move_aggress(mtmp, x, y, env = {}) {
     const state = env.state ?? game;
     const random = env.random ?? { rn2 };
     let mstatus = 0; /* M_ATTK_MISS */

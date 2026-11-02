@@ -1,4 +1,5 @@
-import { delallobj, cmd_from_dir, flooreffects, revive_nasty, obj_to_any } from './cmd.js';
+import { delallobj, cmd_from_dir, revive_nasty, obj_to_any } from './cmd.js';
+import { flooreffects } from './do.js';
 // C ref: nethack-c/src/dig.c — the apply-a-pick-axe / dig occupation subsystem.
 //
 //   use_pick_axe2()  — the down-dig (u.dz > 0) branch: "You start digging
@@ -14,18 +15,20 @@ import { delallobj, cmd_from_dir, flooreffects, revive_nasty, obj_to_any } from 
 import { rn2, rn1, rnd, rnl } from './rng.js';
 import { PM_DWARF as PM_DWARF_ } from './pm.generated.js';
 import { game } from './gstate.js';
-import { Can_dig_down as Can_dig_down_real } from './mklev.js';
+import { Can_dig_down as Can_dig_down_real } from './dungeon.js';
 import { dbon, dmgval } from './uhitm.js';
-import { body_part, align_str, desecrate_altar, altarmask_at } from './cmd.js';
+import { body_part, align_str } from './cmd.js';
+import { desecrate_altar, altarmask_at } from './pray.js';
 import { Amask2align, AM_MASK, AM_SANCTUM } from './const.js';
 import { FOOT, FORCETRAP } from './const.js';
 import { reset_utrap } from './trap.js';
 import { yname } from './do_wear.js';
 import { OC_NAME } from './oc_name_data.js';
 import { end_burn, start_timer } from './timeout.js';
-import { tmp_at, DISP_BEAM, DISP_END, pline, feel_newsym, canseemon, newsym, You_hear, You_see, Unaware as Unaware_real, Deaf as Deaf_real, mkcavearea } from './display.js';
+import { tmp_at, DISP_BEAM, DISP_END, feel_newsym, canseemon, newsym, Unaware as Unaware_real, Deaf as Deaf_real } from './display.js';
+import { pline, You_hear, You_see } from './pline.js';
 import { unblock_point, does_block, Blind, vision_recalc } from './vision.js';
-import { scatter } from './dokick.js';
+import { scatter } from './explode.js';
 import { MAY_HIT, Is_stronghold, MM_NOMSG } from './const.js';
 import { b_trapped } from './lock.js';
 import { NO_PART } from './const.js';
@@ -41,25 +44,29 @@ import { TT_PIT, STONE, SCORR, CORR, DOOR, D_NODOOR, IS_WALL, IS_OBSTRUCTED, IS_
 /* mdig_tunnel leaf callees, imported from their C homes: wake_nearto (mklev.c
  * via js/mklev.js), mon_learns_traps (trap.c), mondied (mon.c via
  * js/makemon.js — still a throwing stub, reached only on a lethal door blast). */
-import { wake_nearto } from './mklev.js';
-import { mon_learns_traps } from './trap.js';
+import { wake_nearto } from './mon.js';
+import { mon_learns_traps } from './mondata.js';
 import { mondied } from './makemon.js';
-import { place_object, obj_extract_self, sobj_at, add_to_buried, in_rooms, mksobj_at, mk_tt_object, minliquid, remove_object, del_engr_at, wipe_engr_at, makemon, obj_timer_checks as obj_timer_checks_real } from './mklev.js';
+import { place_object, obj_extract_self, add_to_buried, in_rooms, mksobj_at, mk_tt_object, remove_object, del_engr_at, wipe_engr_at, makemon, obj_timer_checks as obj_timer_checks_real } from './mklev.js';
+import { sobj_at } from './invent.js';
+import { minliquid } from './mon.js';
 import { obj_resists } from './dogmove.js';
 import { is_ice, cant_reach_floor } from './engrave.js';
-import { uteetering_at_seen_pit, uescaped_shaft } from './pickup.js';
+import { uteetering_at_seen_pit, uescaped_shaft } from './trap.js';
 import { yobjnam, Yobjnam2, an, An, simpleonames } from './objnam.js';
 import { IS_STWALL } from './const.js';
 import { trapname } from './makemon.js';
-import { is_pool, may_dig, closed_door as closed_door_real } from './look.js';
+import { is_pool } from './look.js';
+import { closed_door as closed_door_real } from './monmove.js';
+import { may_dig } from './hack.js';
 import { dotrap } from './trap.js';
 import { FORCEBUNGLE } from './const.js';
 /* in_town (hack.c:3562) — this file used to carry its own `return false` stub,
  * which shadowed the real ported body at js/cmd.js.  Same import that
  * js/mklev.js:1 already makes; the cmd.js <-> dig.js cycle resolves through the
  * hoisted function declaration, exactly as mklev.js's does. */
-import { in_town, xytodir, useup, goto_level, _spoteffects_pickup,
-         fire_damage_chain } from './cmd.js';
+import { in_town, xytodir, useup, _spoteffects_pickup, fire_damage_chain } from './cmd.js';
+import { goto_level } from './do.js';
 /* bimanual — C obj.h:257.  Needed by pick_can_reach() below (dig.c:141). */
 import { bimanual } from './do_wear.js';
 import { can_reach_floor as can_reach_floor_dg } from './hold_another_object.js';
@@ -74,7 +81,7 @@ import { corpse_xname, otense } from './objnam.js';
 import { remove_worn_item } from './steal.js';
 import { stop_occupation } from './allmain.js';
 import { update_inventory } from './mhitm.js';
-import { hideunder } from './mklev.js';
+import { hideunder } from './mon.js';
 import { add_damage, pay_for_damage, shopdig, make_angry_shk } from './shk.js';
 import { weight } from './weight.js';
 /* dighole()/digactualhole()/fillholetyp()/liquid_flow() — the zap_dig()
@@ -96,28 +103,34 @@ import { is_pit, is_hole, is_magical_trap, Is_airlevel, Is_waterlevel, Is_botlev
 import { d } from './rng.js';
 import { IRONBARS, IS_WATERWALL, KILLED_BY, HALF_PHDAM, WEB } from './const.js';
 import { nomul } from './allmain.js';
-import { wake_nearby } from './mklev.js';
-import { fire_damage, confdir, surface as surface_cmd, ceiling as ceiling_cmd, altar_wrath } from './cmd.js';
+import { wake_nearby } from './mon.js';
+import { fire_damage, confdir, surface as surface_cmd, ceiling as ceiling_cmd } from './cmd.js';
+import { altar_wrath } from './pray.js';
 import { angry_priest } from './priest.js';
-import { losehp } from './dokick.js';
+import { losehp } from './hack.js';
 import { t_at, deltrap, delfloortrap, unearth_objs, maketrap, mintrap, cnv_trap_obj,
          buried_ball_to_punishment } from './trap.js';
-import { On_stairs, On_ladder, stairway_at, In_hell } from './mklev.js';
+import { In_hell } from './dungeon.js';
+import { On_stairs, On_ladder, stairway_at } from './stairs.js';
 import { Monnam } from './mcastu.js';
 import { is_pool_or_lava } from './look.js';
-import { water_damage_chain, pooleffects, switch_terrain, boulder_hits_pool } from './cmd.js';
-import { is_drawbridge_wall, find_drawbridge, delobj, impact_drop, is_db_wall } from './dokick.js';
+import { water_damage_chain, pooleffects, switch_terrain } from './cmd.js';
+import { boulder_hits_pool } from './do.js';
+import { impact_drop } from './dokick.js';
+import { delobj } from './invent.js';
+import { is_drawbridge_wall, find_drawbridge, is_db_wall } from './dbridge.js';
 import { hliquid } from './mhitm.js';
 import { s_suffix } from './hacklib.js';
 import { pickup } from './pickup.js';
 import { spot_stop_timers, spot_time_left } from './timeout.js';
 import { obj_ice_effects } from './mklev.js';
-import { explode, fracture_rock, break_statue } from './zap.js';
+import { fracture_rock, break_statue } from './zap.js';
+import { explode } from './explode.js';
 /* get_iter_mons/angry_guards (mon.c, real bodies live in js/mklev.js) and
  * m_canseeu (vision.h, js/dochug.js) -- needed by watch_dig() below
  * (dig.c:1372-1409). PM_WATCHMAN/PM_WATCH_CAPTAIN for its is_watch(ptr) test
  * (mondata.h:159). */
-import { get_iter_mons, angry_guards } from './mklev.js';
+import { get_iter_mons, angry_guards } from './mon.js';
 /* C dbridge.c destroy_drawbridge occupant handling (e_died / e_missed). */
 import { xkilled, mon_nam } from './uhitm.js';
 import { canspotmon } from './display.js';
@@ -126,7 +139,7 @@ import { nonliving, mhe } from './makemon.js';
 import { vtense } from './objnam.js';
 import { helpless } from './mhitm.js';
 import { done } from './end.js';
-import { spoteffects } from './landing-effects.js';
+import { spoteffects } from './hack.js';
 import { XKILL_GIVEMSG, XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT, CRUSHING, KILLED_BY_AN, PASSES_WALLS } from './const.js';
 /* C dbridge.c do_entity()/close_drawbridge() occupant handling. */
 import { DROWNING, BURNING, NO_KILLER_PREFIX, WWALKING, SWIMMING, MAGICAL_BREATHING, CONFUSION, STUNNED, FUMBLING,
@@ -137,7 +150,7 @@ import { enexto_out, next_to_u, teleds, teleport_pet } from './teleport.js';
 import { get_level, pooleffects_grounded } from './cmd.js';
 import { migrate_to_level } from './dog.js';
 import { count_wsegs } from './worm.js';
-import { depth } from './hacklib.js';
+import { depth } from './dungeon.js';
 import { place_monster } from './steed.js';
 import { update_monster_region } from './region.js';
 import { block_point } from './vision.js';
@@ -147,8 +160,9 @@ import { cansee } from './vision.js';
 import { PM_WATCHMAN, PM_WATCH_CAPTAIN, PM_ARCHEOLOGIST, PM_SAMURAI } from './pm.generated.js';
 import { mkclass } from './makemon.js';
 /* C fountain.c furniture handlers: these bodies are shared with potion.js. */
-import { dogushforth, dryup, breaksink } from './potion.js';
-import { dropx, welded, set_wounded_legs } from './cmd.js';
+import { dogushforth, dryup, breaksink } from './fountain.js';
+import { welded } from './wield.js';
+import { dropx, set_wounded_legs } from './do.js';
 import { RIGHT_SIDE } from './const.js';
 import { the, xname } from './objnam.js';
 import { PM_EARTH_ELEMENTAL, PM_XORN } from './pm.generated.js';
@@ -662,13 +676,6 @@ export function is_pick(obj) {
     return t === PICK_AXE || t === DWARVISH_MATTOCK;
 }
 
-// C ref: weapon.c:950 abon(void) — strength & dexterity attack bonus.  The
-// one port lives in js/uhitm.js; it carries the Upolyd arm (weapon.c:955-956,
-// adj_lev(&mons[u.umonnum]) - 3) that this file's former private copy omitted,
-// so a polymorphed hero's dig effort used the natural-form Str/Dex ladder.
-export function abon() {
-    return uhitm_abon();
-}
 
 // C ref: invent.c greatest_erosion(obj) — max(oeroded, oeroded2).  A fresh
 // starting pick-axe is un-eroded → 0.
@@ -689,39 +696,7 @@ function diggingCtx() {
     return g.context.digging;
 }
 
-// C hack.h SET_BOTL() macro — marks the status line dirty for repaint.
-// SET_BOTL is defined but not exported from cmd.js; local copy for dig.js.
-function set_utrap_SET_BOTL() {
-    if (game.disp) game.disp.botl = 1;
-}
 
-// C ref: trap.c:1031 set_utrap(tim, typ) — SET_BOTL + assign u.utrap/utraptype.
-// float_vs_flight() may block Lev and/or Fly.
-export function set_utrap(tim, typ) {
-    const u = game.u || (game.u = {});
-
-    /* if we get here through reset_utrap(), the caller of that might
-       have already set u.utrap to 0 so this check won't be sufficient
-       in that situation; caller will need to set context.botl itself */
-    if (!u.utrap ^ !tim)
-        set_utrap_SET_BOTL();
-
-    u.utrap = tim;
-    u.utraptype = tim ? typ : 0 /* TT_NONE */;
-
-    /* float_vs_flight() (js/mhitm.js) dereferences u.uprops[LEVITATION],
-     * [FLYING] and [STEALTH] unconditionally, mirroring C's dense,
-     * zero-initialized uprops[] array. The JS uprops map is sparse (see
-     * attrib.js _uprop / do_wear.js's identical convention), so ensure
-     * those slots exist with the same zero defaults an untouched C prop
-     * has before delegating — same representation, not new game state. */
-    if (!u.uprops) u.uprops = {};
-    if (!u.uprops[LEVITATION]) u.uprops[LEVITATION] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
-    if (!u.uprops[FLYING]) u.uprops[FLYING] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
-    if (!u.uprops[STEALTH]) u.uprops[STEALTH] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
-
-    float_vs_flight(); /* maybe block Lev and/or Fly */
-}
 
 // set_utrap(rn1(4,2)) (dig.c:739).  maketrap is stubbed in JS (trap.c:457 returns
 // null); we record a PIT trap directly on the level list so t_at sees it and set
@@ -1397,22 +1372,6 @@ export async function digactualhole_(x, y, madeby, ttyp, skipFurniture = false) 
     }
 }
 
-// C ref: apply.c:3895-3905 maybe_dunk_boulders(x,y) — while x,y has lava or
-// water, dunk any boulder sitting there into it.  RNG-free (obj_extract_self
-// and boulder_hits_pool draw nothing of their own for the plain-splash case).
-// Defined in apply.c, not dig.c, but exported from here: it is the last of
-// the do_break_wand WAN_DIGGING arm's (apply.c:4034-4056, js/cmd.js) callees
-// this file was missing, alongside dig_check_/fillholetyp_/liquid_flow_/
-// digactualhole_ above (fill_pit and recalc_block_point, the arm's other two
-// callees, already have js/ homes: js/trap.js and js/vision.js respectively).
-// Exporting adds no new caller in THIS file, so this file's own behaviour and
-export async function maybe_dunk_boulders(x, y) {
-    let otmp;
-    while (is_pool_or_lava(x, y) && (otmp = sobj_at(BOULDER, x, y))) {
-        obj_extract_self(otmp);
-        await boulder_hits_pool(otmp, x, y, false);
-    }
-}
 
 // C ref: hack.c:4522-4542 spot_checks(x,y,old_typ) — always called at the end
 // of dighole().  Only fires for old_typ DRAWBRIDGE_UP/ICE (ice-melt timer
@@ -2350,12 +2309,6 @@ function is_organic(otmp) {
     return (MKOBJ_OC_MATERIAL[otmp.otyp | 0] | 0) <= WOOD;
 }
 
-// C ref: timeout.c obj_timer_checks(otmp, x, y, force) — the object-timer
-// records show fobj.count only), so this untracked side effect is a no-op,
-// mirroring js/uhitm.js's end_burn no-op precedent.
-function obj_timer_checks(otmp, x, y, force) {
-    return obj_timer_checks_real(otmp, x, y, force);
-}
 
 // C ref: mkobj.c:2511 remove_object(otmp) — extract_nexthere + extract_nobj
 // (js/mklev.js's exported remove_object pulls in its own obj_timer_checks
@@ -2414,41 +2367,6 @@ function removeObjectFloor(otmp) {
 // convention for debug/log helpers (js/mcastu.js's impossible()).
 function debugpline1(_fmt, _arg) { }
 
-// otmp === uball/uchain or otyp === LEASH) — stubbed per charter rather than
-// ported.
-export async function unpunish() {
-    // C read.c:3066-3077.  delobj(chain) runs delobj_core's obj_resists(0,0)
-    // (invent.c:1446) — one rn2(100) — before the extract.
-    const { uball, uchain } = findBallChain();
-    if (!uball && !uchain)
-        return false;
-    const u = game.u;
-    if (uchain) {
-        uchain.owornmask = (uchain.owornmask | 0) & ~W_CHAIN;
-        u.uchain = null;                       /* setworn(0, W_CHAIN) */
-        await delobj(uchain);
-    }
-    if (uball) {
-        uball.owornmask = (uball.owornmask | 0) & ~W_BALL;
-        u.uball = null;                        /* setworn(0, W_BALL) */
-    }
-    return true;
-}
-/* C apply.c:711-724 — an about-to-be-destroyed leash releases its monster. */
-export function o_unleash(otmp) {
-    if (!otmp) return;
-    const leashmon = otmp.leashmon | 0;
-    if (leashmon) {
-        for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
-            if ((mtmp.m_id | 0) === leashmon) {
-                mtmp.mleashed = 0;
-                break;
-            }
-        }
-    }
-    otmp.leashmon = 0;
-    update_inventory();
-}
 // end_burn (timeout.c:1801) is IMPORTED from js/timeout.js now — the throw-stub
 // that stood here shadowed the real body for bury_an_obj's lamplit arm below.
 /* obfree — the real body lives in js/dokick.js (C shk.c:1188).  It used to be
@@ -2605,23 +2523,6 @@ export async function rot_corpse(arg, timeout) {
 // (see the KNOWN GAP note on mdig_tunnel below).  Ported here so the
 // monmove.c:1644 call site can be added.
 
-/* C ref: detect.c:1589-1604 cvt_sdoor_to_door(lev) — a secret door becomes a
- * real door.  RNG-free. */
-export function cvt_sdoor_to_door(lev) {
-    let newmask = (lev.doormask | 0) & ~WM_MASK;
-
-    if (Is_rogue_level(game.u?.uz)) {
-        /* rogue didn't have doors, only doorways */
-        newmask = D_NODOOR;
-    } else {
-        /* newly exposed door is closed */
-        if (!(newmask & D_LOCKED))
-            newmask |= D_CLOSED;
-    }
-    lev.typ = DOOR;
-    lev.doormask = newmask;
-    lev.arboreal_sdoor = 0; /* clears 'candig' */
-}
 
 export function draft_message(unexpected) {
     if (unexpected) {
@@ -2700,13 +2601,24 @@ function _dig_unaware() { return !!Unaware_real(); }
 function _dig_deaf() { return !!Deaf_real(); } /* youprop.h Deaf: HDeaf timeout (faint sets it, eat.c:3421) */
 /* C ref: pline.c:387-400 You_feel(line) — "You feel <line>", or "You dream
  * that you feel <line>" when Unaware (asleep/unconscious). */
-import { pline_The, You_feel, pline_mon } from './display.js';
+import { pline_The, You_feel, pline_mon } from './pline.js';
+import { COULD_SEE, IN_SIGHT, RLOC_NOMSG } from './const.js'; // relocate-fns
+import { _m_at, flush_screen, force_more, nh_delay_output } from './display.js'; // relocate-fns
+import { impossible as rumor_impossible } from './pline.js'; // relocate-fns
+import { rloc } from './teleport.js'; // relocate-fns
+import { o_unleash } from './apply.js'; // relocate-fns
+import { obj_timer_checks, rnd_treefruit_at } from './mkobj.js'; // relocate-fns
+import { abon } from './weapon.js'; // relocate-fns
+import { set_utrap } from './trap.js'; // relocate-fns
+import { unpunish } from './read.js'; // relocate-fns
+import { cvt_sdoor_to_door } from './detect.js'; // relocate-fns
+import { COLNO } from './const.js'; // relocate-fns
+import { bury_objs } from './zap.js'; // relocate-fns
+export { unpunish } from './read.js'; // relocate-fns
+export { findBallChain }; // relocate-fns
+export { set_utrap } from './trap.js'; // relocate-fns
+export { BOULDER }; // relocate-fns
 
-const _TREEFRUITS = [277 /* APPLE */, 278 /* ORANGE */, 279 /* PEAR */,
-                     281 /* BANANA */, 276 /* EUCALYPTUS_LEAF */];
-export async function rnd_treefruit_at(x, y) {
-    return await mksobj_at(_TREEFRUITS[rn2(_TREEFRUITS.length)], x, y, true, false);
-}
 
 function Soundeffect(se, vol) { /* no-op */ }
 /* C ref: pline.c:435-452 You_hear — imported from js/display.js.  The note that
@@ -2807,4 +2719,113 @@ export async function mdig_tunnel(mtmp) {
         unblock_point(mtmp.mx, mtmp.my); /* vision */
 
     return false;
+}
+
+// C dig.c:28-137: animate the Earth plane's expanding or collapsing cave.
+function rm_waslit() {
+    const { ux, uy } = game.u;
+    const here = game.level.at(ux, uy);
+    if (here.typ === ROOM && here.waslit)
+        return true;
+    for (let x = ux - 2; x < ux + 3; ++x)
+        for (let y = uy - 1; y < uy + 2; ++y)
+            if (isok(x, y) && game.level.at(x, y).waslit)
+                return true;
+    return false;
+}
+
+async function mkcavepos(x, y, dist, waslit, rockit) {
+    if (!isok(x, y))
+        return;
+    const lev = game.level.at(x, y);
+    if (rockit) {
+        if (IS_OBSTRUCTED(lev.typ) || t_at(x, y))
+            return;
+        const mon = _m_at(x, y);
+        if (mon && !(mon.data.mflags1 & 0x00000008 /* M1_WALLWALK */))
+            await rloc(mon, RLOC_NOMSG);
+    } else if (lev.typ === ROOM) {
+        return;
+    }
+    unblock_point(x, y);
+    lev.seenv = 0;
+    lev.doormask = 0;
+    if (dist < 3)
+        lev.lit = !rockit;
+    if (waslit)
+        lev.waslit = !rockit;
+    lev.horizontal = false;
+    game.viz_array[y][x] = dist < 3 ? (IN_SIGHT | COULD_SEE) : COULD_SEE;
+    lev.typ = rockit ? STONE : ROOM;
+    if (dist >= 3)
+        await rumor_impossible('mkcavepos called with dist %d', dist);
+    feel_newsym(x, y);
+}
+
+export async function mkcavearea(rockit) {
+    const { ux, uy } = game.u;
+    let xmin = ux, xmax = ux, ymin = uy, ymax = uy;
+    const waslit = rm_waslit();
+    if (rockit)
+        await pline('Crash!  The ceiling collapses around you!');
+    else
+        await pline('A mysterious force %s cave around you!',
+            game.level.at(ux, uy).typ === CORR ? 'creates a' : 'extends the');
+    if (game._pending_message)
+        await force_more(game._pending_message); // WIN_MESSAGE, TRUE
+
+    for (let dist = 1; dist <= 2; ++dist) {
+        --xmin;
+        ++xmax;
+        if (dist < 2) {
+            --ymin;
+            ++ymax;
+            for (let i = xmin + 1; i < xmax; ++i) {
+                await mkcavepos(i, ymin, dist, waslit, rockit);
+                await mkcavepos(i, ymax, dist, waslit, rockit);
+            }
+        }
+        for (let i = ymin; i <= ymax; ++i) {
+            await mkcavepos(xmin, i, dist, waslit, rockit);
+            await mkcavepos(xmax, i, dist, waslit, rockit);
+        }
+        await flush_screen(1);
+        nh_delay_output();
+    }
+    const here = game.level.at(ux, uy);
+    if (!rockit && here.typ === CORR) {
+        here.typ = ROOM;
+        if (waslit)
+            here.waslit = true;
+        newsym(ux, uy);
+    }
+    game.vision_full_recalc = 1;
+}
+
+/* C ref: dig.c:2287-2318 wiz_debug_cmd_bury() — the #wizbury command: bury
+ * everything at the hero's location and around. */
+export async function wiz_debug_cmd_bury() {
+    const u = game.u;
+    const lo = game.level.levelObjects;
+    const count = (x, y) => {
+        let n = 0;
+        for (let o = lo?.[x]?.[y] || null; o; o = o.nexthere) ++n;
+        return n;
+    };
+    let before = 0, after = 0;
+    for (let x = u.ux - 1; x <= u.ux + 1; x++)
+        for (let y = u.uy - 1; y <= u.uy + 1; y++) {
+            if (x < 1 || x > COLNO - 1 || y < 0 || y > 20) continue; /* isok */
+            before += count(x, y);
+            await bury_objs(x, y);
+            after += count(x, y);
+        }
+    const diff = before - after;
+    if (before === 0)
+        await pline("No objects here or adjacent to bury.");
+    else if (diff === 0)
+        await pline("No objects buried.");
+    else
+        await pline("%d object%s buried.", diff, diff === 1 ? "" : "s");
+    return 0; /* ECMD_OK */
 }

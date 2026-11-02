@@ -30,10 +30,13 @@ import { game, wizard, discover } from './gstate.js';
 import { clong, nowrap_add } from './integer.js';
 import { savebones, no_bones_level, ledger_no } from './bones.js';
 import { launch_in_progress, force_launch_placement } from './trap.js';
-import { force_more, force_more_lone_frame, pline, urgent_pline, flush_screen, bot, _topl_joins_committed,
-         _topline_more_pending, capture_painted_frame_with_status, capture_flushed_cells, yn_function_menu } from './display.js';
+import { force_more, force_more_lone_frame, flush_screen, _topl_joins_committed, _topline_more_pending, capture_painted_frame_with_status, capture_flushed_cells } from './display.js';
+import { yn_function_menu } from './cmd.js';
+import { bot } from './botl.js';
+import { pline, urgent_pline } from './pline.js';
 import { topl_park_cursor, canspotmon, _threeStatusLines } from './display.js';
-import { rebuild_screen_output, putmsghistory, Unaware, livelog_printf, pline_flush_point } from './display.js';
+import { rebuild_screen_output, putmsghistory, Unaware, pline_flush_point } from './display.js';
+import { livelog_printf } from './pline.js';
 import { LL_LIFESAVE, LL_DUMP, BUFSZ } from './const.js';
 import { cmdq_pop, cmdq_clear, cmdq_add_key, key2txt } from './cmd.js';
 import { CQ_CANNED, CQ_REPEAT, CMDQ_KEY, CMDQ_USER_INPUT, QBUFSZ, PLNMSG_UNKNOWN } from './const.js';
@@ -63,27 +66,30 @@ import { monPmname, the_unique_pm, adjLev, zombie_maker } from './makemon.js';
 import { PM_HOUSECAT } from './pm.generated.js';
 import { exit_nhwindows, raw_print } from './rawterm.js';
 import { topten, formatkiller } from './topten.js';
-import { yyyymmdd, getnow, nomul, night, midnight } from './allmain.js';
+import { nomul } from './allmain.js';
+import { yyyymmdd, getnow, night, midnight } from './calendar.js';
 import { paniclog } from './files.js';
-import { depth, deepest_lev_reached } from './hacklib.js';
+import { depth, deepest_lev_reached } from './dungeon.js';
 import { In_tutorial } from './dungeon.js';
 /* C eat.c:126 init_uhunger() — savelife's starving/choking reset (end.c:721).
  * Runtime-only edge: eat.js does import end.js, but only for the death path, so
  * neither module needs the other at module-init time. */
 import { init_uhunger } from './eat.js';
-import { carrying } from './eat.js';
+import { carrying } from './invent.js';
 import { make_sick } from './potion.js';
 import { reset_utrap } from './trap.js';
-import { display_text_window, money_cnt } from './com_pager.js';
+import { display_text_window } from './com_pager.js';
+import { money_cnt } from './hack.js';
 /* C end.c:1306's grave block: mk_named_object(CORPSE, ...) is mkcorpstat +
  * oname (mkobj.c:2253), and make_grave is engrave.c:1686.  Both bodies already
  * existed; only this caller was missing. */
 import { mkcorpstat, make_grave, place_object, mksobj } from './mklev.js';
 import { stackobj } from './sp_lev.js';
-import { accessible } from './look.js';
+import { accessible } from './monmove.js';
 import { isok, OBJ_FREE } from './const.js';
 import { lift_covet_and_placebc } from './ball.js';
-import { oname, an, arti_cost, artiname, the_unique_obj, xname } from './objnam.js';
+import { oname, an, the_unique_obj, xname } from './objnam.js';
+import { arti_cost, artiname } from './artifact.js';
 import { OC_NAME } from './oc_name_data.js';
 import { OC_COST } from './oc_cost_data.js';
 import { MKOBJ_OC_CLASS } from './mkobj_data.js';
@@ -100,19 +106,29 @@ import { hidden_gold, paygd } from './vault.js';
 import { clearpriests } from './priest.js';
 import { DISCLOSURE_OPTIONS, END_DISCLOSE_DEFAULT } from './options.js';
 import { enlightenment, list_vanquished, list_genocided, show_conduct, count_achievements, show_overview, display_inventory } from './cmd.js';
-import { container_contents, SchroedingersBox, observe_quantum_cat } from './pickup_container.js';
+import { SchroedingersBox, observe_quantum_cat } from './pickup_container.js';
 import { set_cknown_lknown } from './cmd.js';
 import { discover_object } from './o_init.js';
 /* objects.h AMULET_OF_LIFE_SAVING — otyp 202 (js/oc_name_data.js OC_NAME[202];
  * js/makemon.js:1315 and js/monmove.js:953 carry the same literal). */
 const AMULET_OF_LIFE_SAVING_END = 202;
 import { adjattrib } from './attrib.js';
-import { useup, endmultishot } from './cmd.js';
+import { useup } from './cmd.js';
+import { endmultishot } from './dothrow.js';
 /* C do.c:2076 schedule_goto — done2's abandon_tutorial arm records the deferred
  * return to u.ucamefrom; allmain's moveloop executes it via deferred_goto(). */
-import { schedule_goto, record_achievement } from './cmd.js';
+import { record_achievement } from './cmd.js';
+import { schedule_goto } from './do.js';
 import { ACH_UWIN, ACH_BLND, ACH_NUDE } from './const.js';
 import { Blind, vision_recalc } from './vision.js';
+import { can_make_bones } from './bones.js'; // relocate-fns
+import { yn_function } from './cmd.js'; // relocate-fns
+import { build_window_screen, tty_window_offx } from './com_pager.js'; // relocate-fns
+import { flush_pending_messages, topl_force_break_now } from './display.js'; // relocate-fns
+import { the } from './objnam.js'; // relocate-fns
+import { Is_container, _Upstart, _box_xname, _item_doname, _sortloot, set_cursor } from './pickup_container.js'; // relocate-fns
+export { yn_function } from './cmd.js'; // relocate-fns
+export { _yn_prompt }; // relocate-fns
 
 // C end.c:350-384 — avoid repeating the fatal condition as helplessness.
 function fixup_death(how) {
@@ -236,48 +252,6 @@ export function dealloc_killer(kptr) {
     }
 }
 
-// C ref: the `u.uhp < 1 -> done_in_by(mtmp, DIED)` / `losehp -> done(DIED)` test
-// at the damage sites.  Flag the pending death exactly once (C forces uhp to 0 in
-// done(); the interactive prompt then decides survive/really-die).  RNG-FREE.
-function can_make_bones() {
-    const g = game;
-    const u = g.u || {};
-    if (g.flags && g.flags.bones === false)
-        return false;
-    /* C bones.c:361-362 */
-    if (ledger_no(u.uz) <= 0 || ledger_no(u.uz) > maxledgerno())
-        return false;
-    if (no_bones_level(u.uz))
-        return false;
-    /* History of the guards now centralized in no_bones_level():
-       C bones.c:29 no_bones_level -> Is_botlevel(lev):
-       lev->dlevel == dunlevs_in_dungeon(lev), i.e. the dungeon's num_dunlevs. */
-    if (u.uswallow)
-        return false; /* C bones.c:366-368 */
-    /* C bones.c:369-374 — no bones on a non-branch level holding a magic
-     * portal (the Wizard's Tower levels carry one); returns before the
-     * depth rn2 below, so no draw is made. */
-    if (!Is_branchlev(u.uz)) {
-        const traps = g.level?.traps;
-        if (traps) {
-            for (const t of traps)
-                if (t && t.ttyp === MAGIC_PORTAL)
-                    return false;
-        } else {
-            for (let t = g.ftrap; t; t = t.ntrap)
-                if (t.ttyp === MAGIC_PORTAL)
-                    return false;
-        }
-    }
-    const udepth = depth(u.uz);
-    if (udepth <= 0)
-        return false;
-    if (!rn2(1 + (udepth >> 2)) && !wizard())
-        return false;
-    if (discover())
-        return false;
-    return true;
-}
 
 /* C cmd.c:3783-3788: a WALK/RUSH command returns from rhack right after
  * domove(), skipping the ECMD_TIME tail (cmd.c:3817), so savelife()'s
@@ -1113,32 +1087,6 @@ export async function do_death_sequence(opts) {
  * module's surface. */
 const TOPL_LIMIT_END = 71;
 
-/* C cmd.c:yn_function — the fourth argument controls the command queue,
- * not tty response filtering. Callers which record answers pass it explicitly.
- * The tty reader below owns rendering and the NULL-response character arm. */
-export async function yn_function(query, choices, defchoice, addcmdq = false, opts = {}) {
-    (game.iflags ||= {}).last_msg = PLNMSG_UNKNOWN;
-    if (query.length >= QBUFSZ)
-        query = query.slice(0, QBUFSZ - 1 - 3) + '...';
-    const cq = (addcmdq && cmdq_pop()) || { typ: CMDQ_USER_INPUT, key: 0 };
-    let res = '\x1b';
-    if (cq.typ !== CMDQ_USER_INPUT) {
-        if (cq.typ === CMDQ_KEY) res = String.fromCharCode(cq.key & 255);
-        else cmdq_clear(CQ_CANNED);
-        addcmdq = false;
-    } else {
-        res = await yn_function_menu(query, choices, defchoice);
-        if (res === null) res = await _yn_prompt(query, choices, defchoice, opts);
-    }
-    if (addcmdq) cmdq_add_key(CQ_REPEAT, typeof res === 'number' ? res : res.charCodeAt(0));
-    // C revalidates queued replies against the current context's response set.
-    // Its paniclog/impossible diagnostics and fuzzer
-    // remain separate dependencies; this is the normal tty/queue route.
-    if (choices && res && res !== '\0' && !choices.includes(res))
-        res = defchoice || '\x1b';
-    (game.program_state ||= {}).input_state = 0; // otherInp
-    return res;
-}
 /* C topl.c:439,484 tty_yn_function reads through readchar(), and cmd.c:5249-5258
  * folds "ESC c" into M-c (c|0x80; ESC ESC stays ESC) when altmeta is on and
  * input_state != otherInp (getdir sets getdirInp), so one logical key can span
@@ -2273,4 +2221,142 @@ export async function nh_terminate(status, reason = 'game over') {
     const error = new Error('nh_terminate: ' + reason);
     error.status = status;
     throw error;
+}
+
+function _the(str) { return 'the ' + str; }
+
+export async function container_contents(list, identified, all_containers, reportempty,
+                                        statusClipCol = undefined) {
+    /* C:1604/1668 — `for (box = list; box; box = box->nobj) { ... if
+     * (!all_containers) break; }`.  This was written as a single-box function
+     * because its only caller (use_container) passes the box itself with
+     * all_containers FALSE, which is the one-iteration case.  end.c:639's
+     * disclosure call passes gi.invent with all_containers TRUE and needs the
+     * real walk. */
+    for (let box = list; box; box = box.nobj) {
+        await _container_contents_one(box, identified, all_containers, reportempty,
+                                      statusClipCol);
+        if (!all_containers)
+            break;
+    }
+}
+
+async function _container_contents_one(box, identified, all_containers, reportempty,
+                                       statusClipCol = undefined) {
+    const g = game;
+    if (!(Is_container(box) || (box.otyp | 0) === 476 /* STATUE */))
+        return;
+    /* C:1606-1611 */
+    if (!box.cknown || (identified && !box.lknown)) {
+        box.cknown = 1; /* we're looking at the contents now */
+        if (identified)
+            box.lknown = 1;
+        /* update_inventory(): pure display refresh. */
+    }
+    /* C:1612-1613 — BAG_OF_TRICKS is the wrong type of container. */
+    if ((box.otyp | 0) === 220 /* BAG_OF_TRICKS */)
+        return;
+    if (box.cobj) {
+        const cat = SchroedingersBox(box);
+        const lines = [];
+        /* C end.c:1627 — xname preserves the statue's monster and object names. */
+        lines.push(`Contents of ${the(xname(box))}:`);
+        /* C:1626-1627 — the blank line is skipped only while dumping. */
+        lines.push('');
+        /* C:1628 buf[0] = buf[1] = ' ' — every item row carries two leading
+         * spaces, which build_window_screen() renders as an indent from the
+         * window column. */
+        if (!cat) {
+            for (const obj of _sortloot(box.cobj)) {
+                if (identified) {
+                    /* C end.c:1640-1646 — identified listings discover and
+                     * fully identify each contained object. */
+                    discover_object(obj.otyp | 0, true, true, false);
+                    obj.dknown = 1;
+                    obj.known = 1;
+                    obj.bknown = 1;
+                    obj.rknown = 1;
+                    if (Is_container(obj) || (obj.otyp | 0) === 476 /* STATUE */) {
+                        obj.cknown = 1;
+                        obj.lknown = 1;
+                    }
+                }
+                lines.push('  ' + (await _item_doname(obj)));
+            }
+        } else {
+            lines.push("  Schroedinger's cat!");
+        }
+        /* C:1655 display_nhwindow(tmpwin, TRUE) -> process_text_window. */
+        lines.push('--More--');
+        /* C wintty.c:1925-1928 — `!iflags.menu_overlay` drops the window to
+         * offx 0 and term_clear_screen()s (map and status included). */
+        /* C wintty.c:1924: maxrow counts putstr rows, excluding dmore's footer.
+         * A 23-row contents window still overlays, with --More-- on row 23. */
+        const fullScreen = lines.length - 1 >= 24 || g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0;
+        const WIN_COL = fullScreen ? 1 : tty_window_offx(lines, 'more');
+        const uac = g.u?.uac ?? 0;
+        const moreRow = lines.length - 1;
+        const moreCursorCol = WIN_COL + '--More--'.length;
+        /* The disclosure inventory menu is dismissed immediately before this
+         * text window.  tty_dismiss_nhwindow()'s docorner clears the right
+         * part of both status rows, and process_text_window does not repaint
+         * those rows.  Carry the previous menu's surviving prefix into this
+         * frame (end.c disclose() passes it); ordinary container lookups have
+         * no predecessor clip and retain the normal full status. */
+        /* C wintty.c:1777-1790 process_text_window — an offx-0 window pages
+         * every ttyDisplay->rows - 1 lines: --More-- on the last row, screen
+         * cleared, next page from row 0; ESC cancels the rest. */
+        /* Row 0 left of the window stays physically on the terminal
+         * (wintty.c:1983-2020 docorner), so carry it to the next window. */
+        const underWindow = (g._topl_win_stop ? '' : g._pending_message) || g._topl_sticky || '';
+        const body = lines.slice(0, -1);
+        const pages = [];
+        if (fullScreen) {
+            for (let o = 0; o < Math.max(1, body.length); o += 23)
+                pages.push(body.slice(o, o + 23));
+        } else pages.push(null);
+        for (const page of pages) {
+            let pageOutput, pageMoreRow = moreRow, pageMoreCol = moreCursorCol;
+            if (page) {
+                const rows = page.map(ln => String(ln).replace(/\s+$/, ''));
+                pageMoreRow = rows.length;
+                rows.push(' --More--');
+                pageOutput = rows.join('\n');
+            } else pageOutput = build_window_screen(lines, WIN_COL, uac, statusClipCol);
+            let esc = false;
+            for (;;) {
+                g._screen_output = pageOutput;
+                set_cursor(pageMoreCol, pageMoreRow);
+                const raw = await nhgetch();
+                const k = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
+                /* C dmore(cw, quitchars) -> xwaitforspace(" \r\n\033"). */
+                if (k === 32 || k === 10 || k === 13 || k === 27) { esc = k === 27; break; }
+            }
+            if (esc) break;
+        }
+        g._pending_message = '';
+        /* C end.c:1655-1656 display_nhwindow + destroy_nhwindow run no bot():
+         * process_text_window and docorner (wintty.c:982,3650) never call it,
+         * so a pending botl/botlx (e.g. rows left blank by a full-screen
+         * menu's docrt) must not reach bot() here either. */
+        const savedBotDisabled = g._bot_disabled;
+        g._bot_disabled = true;
+        try { await flush_screen(1); } finally { g._bot_disabled = savedBotDisabled; }
+        if (underWindow && !fullScreen) g._topl_sticky = underWindow;
+        /* C:1658-1660 — `if (all_containers) container_contents(box->cobj,
+         * identified, TRUE, reportempty);` — recurse into nested boxes. */
+        if (all_containers)
+            await container_contents(box.cobj, identified, true, reportempty,
+                                     statusClipCol);
+    } else if (reportempty) {
+        /* C:1663-1664 */
+        /* C pickup.c:3139 pline1(emptymsg), built at pickup.c:3084 from
+         * Ysimple_name2(container) — "The bag is empty.", article included.
+         * The article was MISSING here, so this site said "Bag is empty." */
+        await pline(`${_Upstart(_the(_box_xname(box)))} is empty.`);
+        /* C end.c:1664: display_nhwindow(WIN_MESSAGE, FALSE) acknowledges
+         * this message before use_container can report the empty box again. */
+        topl_force_break_now();
+        await flush_pending_messages();
+    }
 }

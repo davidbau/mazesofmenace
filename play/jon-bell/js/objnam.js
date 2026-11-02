@@ -20,19 +20,19 @@ import { COST_CONTENTS, BURN_OBJECT, ZOMBIFY_MON, TIMER_OBJECT, otrapped_of, GLI
 //   1. rnd_otyp_by_namedesc: rn2(maxprob) when name match needed
 //   2. mksobj: rnd(2) @ next_ident, then class-specific init RNG
 //   3. makewish end: rn2(100) for u.ublesscnt (zap.c:6414)
-import { pline, livelog_printf, impossible_sync, glow_color, glow_verb } from './display.js'; /* was an undeclared global: every pline() call in this file threw ReferenceError when reached */
+import { impossible_sync, glow_color, glow_verb } from './display.js';
+import { pline, livelog_printf } from './pline.js'; /* was an undeclared global: every pline() call in this file threw ReferenceError when reached */
 import { weight } from './weight.js';
-import { yn_function } from './end.js';
+import { yn_function } from './cmd.js';
 import { WT_IRON_BALL_INCR, LL_CONDUCT, LL_ARTIFACT } from './const.js';
 import { rn2, rnd } from './rng.js';
 import { game, wizard, discover } from './gstate.js';
 import { clong } from './integer.js';
 import { def_char_to_objclass } from './drawing.js';
-import { mksobj, mkobj, place_object, eos, lowc, highc, letter, mungspaces, digit, OC_USES_KNOWN, ordin,
-         /* C mkobj.c:1274 set_corpsenm — the CORPSE arm of readobjnam's corpsenm
-          * block (objnam.c:5216-5222).  It re-runs start_corpse_timeout, so it
-          * DRAWS; see the leaf note in _finalize_wish. */
-         set_corpsenm, can_be_hatched, Can_fall_thru, zombie_form, rnd_class } from './mklev.js';
+import { mksobj, mkobj, place_object, OC_USES_KNOWN, set_corpsenm, rnd_class } from './mklev.js';
+import { Can_fall_thru } from './dungeon.js';
+import { eos, lowc, highc, letter, mungspaces, digit, ordin } from './hacklib.js';
+import { can_be_hatched, zombie_form } from './mon.js';
 import { PM_LONG_WORM, PM_LONG_WORM_TAIL, PM_GRAY_OOZE, PM_BLACK_PUDDING,
          PM_GRAY_DRAGON, PM_YELLOW_DRAGON,
          PM_STUDENT, PM_CHIEFTAIN, PM_NEANDERTHAL, PM_ATTENDANT, PM_PAGE,
@@ -50,10 +50,8 @@ import { hard_helmet, oc_armcat, doffing, donning } from './do_wear.js';
 import { the_unique_pm, permonstTemplate, monPmname, trapname,
          /* C mondata.c:920 name_to_mon — readobjnam's "<obj> of <monster>" arm. */
          name_to_mon } from './makemon.js';
-import { s_suffix,
-         /* C mondata.c:832 name_to_monplus — readobjnam's leading-monster-name
-          * strip ("troll corpse"), which also hands back the residual. */
-         name_to_monplus } from './mhitm.js';
+import { s_suffix } from './mhitm.js';
+import { name_to_monplus } from './mondata.js';
 /* P_BOW/P_SHURIKEN (skills.h:43,48) bound is_poisonable()'s oc_skill window
  * (obj.h:264-267); const.js is their canonical home, so import rather than
  * redeclare (js/uhitm.js:1319's local `P_BOW = 21` is skills.h's P_SLING and is
@@ -74,8 +72,11 @@ import { impossible_, maketrap, t_at, deltrap, reset_utrap } from './trap.js';
 import { feel_newsym, docrt } from './display.js';
 import { fire_damage_chain, water_damage_chain, pooleffects, switch_terrain, set_uinwater,
          waterbody_name, ice_descr } from './cmd.js';
-import { set_artifact_intrinsic, untwoweapon } from './cmd.js';
-import { make_grave, del_engr_at, fix_wall_spines, count_level_features, inside_shop } from './mklev.js';
+import { untwoweapon } from './wield.js';
+import { set_artifact_intrinsic } from './artifact.js';
+import { make_grave, del_engr_at, count_level_features } from './mklev.js';
+import { inside_shop } from './shk.js';
+import { fix_wall_spines } from './mkmaze.js';
 import { recalc_block_point } from './vision.js';
 import { is_pool, is_pool_or_lava } from './look.js';
 import { is_ice } from './engrave.js';
@@ -452,21 +453,7 @@ export const ARTILIST = [
     /* 33 */ { name: "The Eye of the Aethiopica",            otyp: 201, cost: 4000n }, /* AMULET_OF_ESP */
 ];
 
-// C artifact.c:artiname and arti_cost, shared by scoring and shop pricing.
-export function artiname(artinum) {
-    if (artinum <= 0 || artinum > ARTILIST.length)
-        return '';
-    return ARTILIST[artinum - 1].name;
-}
 
-export function arti_cost(otmp) {
-    if (!otmp.oartifact)
-        return BigInt(OC_COST[otmp.otyp]);
-    else if (ARTILIST[otmp.oartifact - 1].cost)
-        return ARTILIST[otmp.oartifact - 1].cost;
-    else
-        return 100n * BigInt(OC_COST[otmp.otyp]);
-}
 
 /* The two artilist[] columns mk_artifact() needs that ARTILIST above does not
  * carry, kept here so the three tables cannot drift apart.  Both are keyed by
@@ -493,26 +480,6 @@ export const ARTI_GEN_SPE = {
     18: 1, /* Vorpal Blade */
 };
 
-/* C hacklib.c:849 fuzzymatch — compare two strings for equality, ignoring the
- * presence of the specified characters (here " -") and case. */
-export function fuzzymatch(s1, s2, ignore_chars, caseblind) {
-    let i = 0, j = 0;
-    let c1, c2;
-    do {
-        do { c1 = (i < s1.length) ? s1[i++] : ''; }
-        while (c1 !== '' && ignore_chars.indexOf(c1) >= 0);
-        do { c2 = (j < s2.length) ? s2[j++] : ''; }
-        while (c2 !== '' && ignore_chars.indexOf(c2) >= 0);
-        if (!c1 || !c2)
-            break; /* end of either string reached */
-        if (caseblind) {
-            c1 = c1.toLowerCase();
-            c2 = c2.toLowerCase();
-        }
-    } while (c1 === c2);
-    /* match occurs only when the end of both strings has been reached */
-    return (!c1 && !c2);
-}
 
 /* C hacklib.c:781 strncmpi (case-insensitive, n chars), used here only for the
  * "the " prefix check.  Returns true when the first n chars match case-blind. */
@@ -520,28 +487,6 @@ function _startsWithThe(name) {
     return name.length >= 4 && name.slice(0, 4).toLowerCase() === "the ";
 }
 
-// ── artifact_name (nethack-c/src/artifact.c:328-353) ─────────────────────────
-// Returns the full (display) name of an artifact named `name` if one exists,
-// plus its base object type via the returned record's `otyp`.  Returns null if
-// no match.  `fuzzy` allows extra/omitted spaces or dashes (fuzzymatch " -").
-// C strips a leading "the " from both the player string and each artifact name
-// before comparing.
-export function artifact_name(name, fuzzy) {
-    if (_startsWithThe(name))
-        name = name.slice(4);
-    for (let m = 0; m < ARTILIST.length; m++) {
-        const a = ARTILIST[m];
-        let aname = a.name;
-        if (_startsWithThe(aname))
-            aname = aname.slice(4);
-        const matched = !fuzzy
-            ? (name.toLowerCase() === aname.toLowerCase())
-            : fuzzymatch(name, aname, " -", true);
-        if (matched)
-            return { name: a.name, otyp: a.otyp, arti: m + 1 };
-    }
-    return null;
-}
 
 // ── artifact existence tracking (nethack-c/src/artifact.c artiexist[]) ───────
 // C keeps a per-artifact arti_info table `artiexist[1 + NROFARTIFACTS]`; the
@@ -554,9 +499,6 @@ function _artiexist() {
     return game._artiexist;
 }
 
-/* C objects.h RIN_INCREASE_DAMAGE — the one artifact base type whose spe is
- * reset by artifact_exists() (js/do_wear.js:2258 has the same constant). */
-const RIN_INCREASE_DAMAGE_OTYP = 177;
 
 /* An entry of game._artiexist is either the legacy `true` (written by the wish
  * path above, which predates the per-origin bits) or a full arti_info record
@@ -566,14 +508,6 @@ function _arti_exists_bit(m) {
     return !!e && (e === true || !!e.exists);
 }
 
-// C artifact.c:461-471 nartifact_exist — count artifacts whose .exists bit is set.
-export function nartifact_exist() {
-    const ae = _artiexist();
-    let a = 0;
-    for (const k in ae)
-        if (_arti_exists_bit(k)) ++a;
-    return a;
-}
 
 /* C artifact.c:426-459 artifact_origin(arti, aflags) — record HOW the artifact
  * came into being.  RNG-free; pure bookkeeping on artiexist[].  The `ct != 1`
@@ -603,45 +537,7 @@ export function _artifact_origin(arti, aflags) {
         impossible_(`invalid artifact origin: ${aflags.toString(8)}`);
 }
 
-/* C artifact.c:340-352 exist_artifact(int otyp, const char *name) — has the
- * artifact with this EXACT name and base type already been created?  Note C
- * uses strcmp, not the fuzzy/"the "-stripping match artifact_name() uses. */
-export function exist_artifact(otyp, name) {
-    if (otyp && name) {
-        for (let m = 0; m < ARTILIST.length; m++)
-            if (ARTILIST[m].otyp === otyp && ARTILIST[m].name === name)
-                return _arti_exists_bit(m + 1);
-    }
-    return false;
-}
 
-/* C artifact.c:355-390 artifact_exists(otmp, name, mod, flgs) — an artifact has
- * just been created (mod=TRUE) or is being un-created (mod=FALSE).  RNG-free. */
-export function artifact_exists(otmp, name, mod, flgs) {
-    if (otmp && name) {
-        for (let m = 0; m < ARTILIST.length; m++) {
-            const a = ARTILIST[m];
-            if (a.otyp === otmp.otyp && a.name === name) {
-                const idx = m + 1;
-                otmp.oartifact = mod ? idx : 0;
-                otmp.age = 0;
-                if (otmp.otyp === RIN_INCREASE_DAMAGE_OTYP)
-                    otmp.spe = 0;
-                if (mod) { /* means being created rather than un-created */
-                    /* one--and only one--of these should always be set */
-                    if ((flgs & (ONAME_VIA_NAMING | ONAME_WISH | ONAME_GIFT
-                                 | ONAME_VIA_DIP | ONAME_LEVEL_DEF
-                                 | ONAME_BONES | ONAME_RANDOM)) === 0)
-                        flgs |= ONAME_RANDOM; /* the default origin */
-                    _artifact_origin(otmp, flgs);
-                } else { /* uncreate */
-                    _artiexist()[idx] = false; /* zero_artiexist */
-                }
-                break;
-            }
-        }
-    }
-}
 
 /* C do_name.c:79-133 oname(obj, name, oflgs) — assign a custom name to an
  * object, promoting it to an artifact when the name matches artilist[].
@@ -3138,17 +3034,6 @@ function strcmpi(s1, s2) {
     return 0;
 }
 
-// ── Helper: case-insensitive n-char comparison (C strncmpi) ──────────────────
-function strncmpi(s1, s2, n) {
-    for (let i = 0; i < n; i++) {
-        if (!s2[i]) return (s1[i] !== undefined) ? 1 : 0;
-        if (!s1[i]) return -1;
-        const c1 = lowc(s1[i]);
-        const c2 = lowc(s2[i]);
-        if (c1 !== c2) return (c1 > c2) ? 1 : -1;
-    }
-    return 0;
-}
 
 // ── Helper: BSTRCMPI macro (C objnam.c:66) ───────────────────────────────────
 // C: #define BSTRCMPI(base,ptr,str) ((ptr) < (base) || strcmpi((ptr),(str)))
@@ -3251,18 +3136,6 @@ function badman(basestr, to_plural) {
     return false;
 }
 
-// ── Helper: chrcasecpy / strcasecpy (C hacklib.c) ────────────────────────────
-// chrcasecpy: return src char with the case of dst char (when both alphabetic).
-function chrcasecpy(oc, ic) {
-    // C: if oc is uppercase letter and ic lowercase -> highc(ic);
-    //    if oc is lowercase letter and ic uppercase -> lowc(ic); else ic.
-    const ocl = letter(oc), icl = letter(ic);
-    if (ocl && icl) {
-        if (highc(oc) === oc) return highc(ic); // dst upper -> upper
-        if (lowc(oc) === oc) return lowc(ic);   // dst lower -> lower
-    }
-    return ic;
-}
 // strcasecpy_at: faithful JS analogue of Strcasecpy(base + idx, src) — overwrite
 // from position idx, case-matching the existing chars (and propagating the last
 // existing char's case once base is exhausted). Returns the resulting string.
@@ -4288,12 +4161,6 @@ export function is_poisonable(otmp) {
     return permapoisoned(otmp);
 }
 
-/* C artifact.c:2837 permapoisoned(obj) — currently only Grimtooth
- * (artilist order: NONARTIFACT, EXCALIBUR, STORMBRINGER, MJOLLNIR, CLEAVER,
- * GRIMTOOTH => 5). */
-export function permapoisoned(obj) {
-    return !!obj && (obj.oartifact | 0) === 5;
-}
 
 /* C obj.h:256 is_wet_towel(o) — ((o)->otyp == TOWEL && (o)->spe > 0) */
 function is_wet_towel(o) {
@@ -4929,6 +4796,18 @@ async function doname_base(obj, doname_flags) {
     let ispoisoned = false;
 
     let bp = xname(obj);
+    /* C:1247-1252 — bp sits in obuf at bpoff = bp - gx.xnamep; bp_end is
+     * gx.xnamep + BUFSZ - 1.  Concat is strncat(eos - delta, text,
+     * spaceleft + delta), which appends at eos; ConcatF is Snprintf(eos -
+     * delta, spaceleft + delta, ...), whose size counts the NUL, and whose
+     * nh_snprintf overflow arm writes str[size - 1] (str[-1] when size 0). */
+    let bpoff = _xname_bpoff;
+    const bpspaceleft = () => 255 - bpoff - bp.length;
+    const Concat = (delta, text) => { bp += text.slice(0, bpspaceleft() + delta); };
+    const ConcatF = (delta, text) => {
+        const size = bpspaceleft() + delta, dest = bp.slice(0, bp.length - delta);
+        bp = (size <= 0) ? dest.slice(0, -1) : dest + text.slice(0, size - 1);
+    };
 
     let known, dknown, cknown, bknown, lknown;
     if (g.iflags && g.iflags.override_ID) {
@@ -4940,7 +4819,8 @@ async function doname_base(obj, doname_flags) {
 
     /* C:1266-1272 — "poisoned arrow" (xname) vs "poisoned +0 arrow" (doname). */
     if (bp.startsWith('poisoned ') && otrapped_of(obj)) {
-        bp = bp.slice(9);
+        bp = bp.slice(9); /* doesn't affect bp_eos or bpspaceleft */
+        bpoff += 9;
         ispoisoned = true;
     }
 
@@ -4958,7 +4838,7 @@ async function doname_base(obj, doname_flags) {
         /* C:1288-1291 — corpse_xname() supplies the article. */
     } else if (force_the || obj_is_pname(obj) || the_unique_obj(obj)) {
         if (/^the /i.test(bp))
-            bp = bp.slice(4);
+            bp = bp.slice(4), bpoff += 4;
         prefix = 'the ';
     } else if (!fake_arti) {
         prefix = 'a ';
@@ -5003,12 +4883,12 @@ async function doname_base(obj, doname_flags) {
     }
     if (obj.greased)
         prefix += 'greased ';
-    if (cknown && has_contents) {
+    if (cknown && has_contents && bpspaceleft() > 0) {
         /* count_contents(obj, FALSE, FALSE, TRUE, FALSE) — separate stacks. */
         let itemcount = 0;
         for (let c = obj.cobj; c; c = c.nobj)
             itemcount++;
-        bp += ` containing ${itemcount} item${itemcount === 1 ? '' : 's'}`;
+        ConcatF(0, ` containing ${itemcount} item${itemcount === 1 ? '' : 's'}`);
     }
 
     /* C:1373-1554 — the per-class switch, on is_weptool ? WEAPON_CLASS : oclass. */
@@ -5025,24 +4905,24 @@ async function doname_base(obj, doname_flags) {
     let doRing = false;
     switch (sw) {
     case AMULET_CLASS:
-        if (mask & W_AMUL_D) bp += ' (being worn)';
+        if (mask & W_AMUL_D) Concat(0, ' (being worn)');
         break;
     case ARMOR_CLASS:
         if (mask & W_ARM_ALL) {
             /* C objnam.c:1387-1396 — check doffing() before donning() because
              * donning() returns true for both cases. */
-            bp += obj === g.u?.uskin ? ' (embedded in your skin)' : doffing(obj) ? ' (being doffed)'
+            Concat(0, obj === g.u?.uskin ? ' (embedded in your skin)' : doffing(obj) ? ' (being doffed)'
                 : donning(obj) ? ' (being donned)'
-                : ' (being worn)';
+                : ' (being worn)');
             /* C objnam.c:1397-1406 — Concat(bp, 1, "; slippery)") is
              * strncat at the real end of the string, so the ')' is NOT
              * replaced: C yields "(being worn); slippery)".  Ported as-is. */
             if (bp.endsWith(')') && obj === game.u?.uarmg
                 && ((game.u.uprops?.[GLIB_PROP_ON]?.intrinsic) | 0) !== 0)
-                bp += '; slippery)';
+                Concat(1, '; slippery)');
             /* C objnam.c:1408-1413 — ConcatF1 replaces the final paren. */
             if (bp.endsWith(')') && !_Blind() && obj.lamplit && artifact_light(obj))
-                bp = `${bp.slice(0, -1)}, ${arti_light_description(obj)} lit)`;
+                ConcatF(1, `, ${arti_light_description(obj)} lit)`);
         }
         /* FALLTHROUGH — C:1420 */
     case WEAPON_CLASS:
@@ -5052,7 +4932,7 @@ async function doname_base(obj, doname_flags) {
         break;
     case TOOL_CLASS:
         if (mask & (W_TOOL_D | W_SADDLE_D)) { /* blindfold */
-            bp += ' (being worn)';
+            Concat(0, ' (being worn)');
             break;
         }
         if (otyp === LEASH && (obj.leashmon | 0) !== 0) {
@@ -5062,7 +4942,7 @@ async function doname_base(obj, doname_flags) {
             for (let m = game.fmon; m; m = m.nmon)
                 if ((m.m_id | 0) === (obj.leashmon | 0)) { mlsh = m; break; }
             if (mlsh && (mlsh.mhp | 0) >= 1) {
-                bp += ` (attached to ${noit_mon_nam(mlsh)})`;
+                ConcatF(0, ` (attached to ${noit_mon_nam(mlsh)})`);
             } else {
                 if (mlsh) await naming_impossible('leashed %s #%u is dead', mon_pmname(mlsh), obj.leashmon >>> 0);
                 else await naming_impossible('leashed monster #%u not found', obj.leashmon >>> 0);
@@ -5071,8 +4951,8 @@ async function doname_base(obj, doname_flags) {
             break;
         }
         if (otyp === CANDELABRUM) {
-            bp += ` (${obj.spe | 0} of 7 candle${_plur(obj.spe | 0)}`
-                + `${!obj.lamplit ? ' attached' : ', lit'})`;
+            ConcatF(0, ` (${obj.spe | 0} of 7 candle${_plur(obj.spe | 0)}`
+                + `${!obj.lamplit ? ' attached' : ', lit'})`);
             break;
         } else if (otyp === OIL_LAMP || otyp === MAGIC_LAMP
                    || otyp === BRASS_LANTERN || _Is_candle(otyp)) {
@@ -5087,7 +4967,7 @@ async function doname_base(obj, doname_flags) {
                         - ((game.moves ?? 0) | 0);
                 if (turns_left < full_burn_time) prefix += 'partly used ';
             }
-            if (obj.lamplit) bp += ' (lit)';
+            if (obj.lamplit) Concat(0, ' (lit)');
             break;
         }
         // C objnam.c: charged tools share the wand charge suffix.
@@ -5095,10 +4975,10 @@ async function doname_base(obj, doname_flags) {
         /* FALLTHROUGH: charges */
     case WAND_CLASS:
         if (known)
-            bp += ` (${obj.recharged | 0}:${obj.spe | 0})`;
+            ConcatF(0, ` (${obj.recharged | 0}:${obj.spe | 0})`);
         break;
     case POTION_CLASS:
-        if (otyp === POT_OIL && obj.lamplit) bp += ' (lit)';
+        if (otyp === POT_OIL && obj.lamplit) Concat(0, ' (lit)');
         break;
     case RING_CLASS:
         doRing = true;
@@ -5112,7 +4992,7 @@ async function doname_base(obj, doname_flags) {
             if (ismnum(omndx)
                 && (known || _mvitals_knows_egg(omndx))) {
                 prefix += `${monPmname(omndx, NEUTRAL)} `;
-                if ((obj.spe | 0) === 1) bp += ' (laid by you)';
+                if ((obj.spe | 0) === 1) Concat(0, ' (laid by you)');
             }
         } else if (otyp === MEAT_RING) {
             doRing = true;
@@ -5122,21 +5002,21 @@ async function doname_base(obj, doname_flags) {
     case CHAIN_CLASS:
         prefix += add_erosion_words(obj);
         if (mask & (W_BALL_D | W_CHAIN_D))
-            bp += ` (${(mask & W_BALL_D) ? 'chained' : 'attached'} to you)`;
+            ConcatF(0, ` (${(mask & W_BALL_D) ? 'chained' : 'attached'} to you)`);
         break;
     }
     if (doRing) { /* C:1494-1504 — the `ring:` label */
-        if (mask & W_RINGR_D) bp += ' (on right ';
-        if (mask & W_RINGL_D) bp += ' (on left ';
-        if (mask & (W_RINGL_D | W_RINGR_D)) bp += `${body_part(HAND_D)})`;
+        if (mask & W_RINGR_D) Concat(0, ' (on right ');
+        if (mask & W_RINGL_D) Concat(0, ' (on left ');
+        if (mask & (W_RINGL_D | W_RINGR_D)) ConcatF(0, `${body_part(HAND_D)})`);
         if (known && _oc_charged(obj)) prefix += _plusd(obj.spe | 0);
     }
     /* C:1549-1559 — the wizmgender statue/corpse/figurine suffix. */
     if ((otyp === STATUE || otyp === CORPSE || otyp === FIGURINE)
         && g.flags?.debug && g.iflags?.wizmgender) {
         const cgend = (obj.spe | 0) & CORPSTAT_GENDER;
-        bp += ` (${cgend === CORPSTAT_RANDOM ? 'unspecified gender'
-            : cgend === CORPSTAT_MALE ? 'male' : cgend === CORPSTAT_FEMALE ? 'female' : 'neuter'})`;
+        ConcatF(0, ` (${cgend === CORPSTAT_RANDOM ? 'unspecified gender'
+            : cgend === CORPSTAT_MALE ? 'male' : cgend === CORPSTAT_FEMALE ? 'female' : 'neuter'})`);
     }
 
     /* C:1560-1611 — the wielded-weapon suffix. */
@@ -5149,34 +5029,36 @@ async function doname_base(obj, doname_flags) {
                  ? (_is_ammo_dn(obj) || _is_missile_dn(obj))
                  : !_is_weptool(obj)))
             && !twoweap_primary) {
-            bp += ' (wielded)';
+            Concat(0, ' (wielded)');
         } else {
             let hand_s = body_part(HAND_D);
             if (_bimanual(obj))
                 hand_s = makeplural(hand_s);
             else
                 hand_s = `${_URIGHTY() ? 'right' : 'left'} ${hand_s}`;
-            bp += ` (${tethered ? 'tethered to'
+            ConcatF(0, ` (${tethered ? 'tethered to'
                        : twoweap_primary ? 'wielded in'
-                       : 'weapon in'} ${hand_s})`;
+                       : 'weapon in'} ${hand_s})`);
             /* C objnam.c:1597-1610 — Sting's glow arm (glow_verb(cnt, TRUE),
              * glow_color, artifact.c:2427-2462) is tried first; else a lit
              * light-emitting artifact weapon overwrites the closing paren with
              * ", <adverb> lit)".  Colours as display.js Sting_effects. */
             const wcnt = game.warn_obj_cnt | 0;
-            if (!_Blind() && wcnt && obj === u.uwep
+            if (_Blind() || !(bpspaceleft() > 0 && bp.endsWith(')'))) {
+                /* C:1597 — the right paren may have been truncated away */
+            } else if (wcnt && obj === u.uwep
                 && ((u.uprops?.[WARN_OF_MON_D]?.extrinsic | 0) & W_WEP_D) !== 0)
-                bp = `${bp.slice(0, -1)}, ${glow_verb(wcnt, true)} ${glow_color(obj.oartifact | 0)})`;
-            else if (!_Blind() && obj.lamplit && artifact_light(obj))
-                bp = `${bp.slice(0, -1)}, ${arti_light_description(obj)} lit)`;
+                ConcatF(1, `, ${glow_verb(wcnt, true)} ${glow_color(obj.oartifact | 0)})`);
+            else if (obj.lamplit && artifact_light(obj))
+                ConcatF(1, `, ${arti_light_description(obj)} lit)`);
         }
     }
     if (mask & W_SWAPWEP_D) {
         if (u.twoweap)
-            bp += ` (wielded in ${_URIGHTY() ? 'left' : 'right'} `
-                + `${body_part(HAND_D)})`;
+            ConcatF(0, ` (wielded in ${_URIGHTY() ? 'left' : 'right'} `
+                + `${body_part(HAND_D)})`);
         else
-            bp += ` (alternate weapon${_plur(quan)}; not wielded)`;
+            ConcatF(0, ` (alternate weapon${_plur(quan)}; not wielded)`);
     }
     if (mask & W_QUIVER_D) {
         let Qtyp;
@@ -5192,8 +5074,8 @@ async function doname_base(obj, doname_flags) {
         default:
             Qtyp = 3; break;
         }
-        bp += ` (${Qtyp === 1 ? 'in quiver'
-                  : Qtyp === 2 ? 'in quiver pouch' : 'at the ready'})`;
+        ConcatF(0, ` (${Qtyp === 1 ? 'in quiver'
+                  : Qtyp === 2 ? 'in quiver pouch' : 'at the ready'})`);
     }
     // C objnam.c:1648-1683: shop suffixes also record per-unit quotes.
     if (!g.iflags?.suppress_price && !g.program_state?.restoring) {
@@ -5204,15 +5086,15 @@ async function doname_base(obj, doname_flags) {
             });
         if (is_unpaid(obj)) {
             const price = await unpaid_cost(obj, COST_CONTENTS);
-            bp += ` (${obj.unpaid ? 'unpaid' : 'contents'}, ${price} ${currency(price)})`;
+            ConcatF(0, ` (${obj.unpaid ? 'unpaid' : 'contents'}, ${price} ${currency(price)})`);
             record_price_quote(otyp, Math.trunc(price / quan), true);
         } else if ((doname_flags | 0) & DONAME_WITH_PRICE) {
             const nochrg = { value: 0 };
             const price = get_cost_of_shop_item(obj, nochrg);
             if (price > 0) {
-                bp += ` (${nochrg.value ? 'contents' : 'for sale'}, ${price} ${currency(price)})`;
+                ConcatF(0, ` (${nochrg.value ? 'contents' : 'for sale'}, ${price} ${currency(price)})`);
             } else if (nochrg.value > 0) {
-                bp += ' (no charge)';
+                Concat(0, ' (no charge)');
             } else if (g.iflags?.pricequotes && !g._oc_name_known?.[otyp]) {
                 bp = quote();
             }
@@ -5232,9 +5114,9 @@ async function doname_base(obj, doname_flags) {
     // C objnam.c:1695-1702: wizard-requested weight follows all other suffixes.
     if (wizard() && g.iflags?.wizweight) {
         if ((doname_flags & DONAME_WITH_PRICE) && bp.endsWith(')'))
-            bp = `${bp.slice(0, -1)}, ${obj.owt >>> 0} aum)`;
+            ConcatF(1, `, ${obj.owt >>> 0} aum)`);
         else
-            bp += ` (${obj.owt >>> 0} aum)`;
+            ConcatF(0, ` (${obj.owt >>> 0} aum)`);
     }
     // C objnam.c:1706-1749: final bounds and one-time diagnostics per process.
     bp = strprepend(bp, prefix);
@@ -5286,6 +5168,10 @@ import { W_ARM as W_ARM_D, W_ARMC as W_ARMC_D, W_ARMH as W_ARMH_D,
          W_AMUL as W_AMUL_D, W_TOOL as W_TOOL_D, W_SADDLE as W_SADDLE_D,
          W_WEP as W_WEP_D, W_SWAPWEP as W_SWAPWEP_D, W_QUIVER as W_QUIVER_D,
          W_BALL as W_BALL_D, W_CHAIN as W_CHAIN_D, WARN_OF_MON as WARN_OF_MON_D } from './const.js';
+import { artifact_exists, artifact_name, artiname, exist_artifact, nartifact_exist, permapoisoned } from './artifact.js'; // relocate-fns
+import { chrcasecpy, fuzzymatch, strncmpi } from './hacklib.js'; // relocate-fns
+export { artiname } from './artifact.js'; // relocate-fns
+export { _arti_exists_bit, _artiexist, _startsWithThe }; // relocate-fns
 const HAND_D = 6; /* body_part.h HAND */
 
 /* xname_flags()'s body with C's `gd.distantname` guard (objnam.c:627) hoisted
@@ -5296,6 +5182,7 @@ const HAND_D = 6; /* body_part.h HAND */
  * ALWAYS takes distant_name()'s ++gd.distantname arm there.  Formatting a bare
  * copy of an object must not observe_object() the real type into the discovery
  * list; that is exactly what minimal_xname's own comment at :1060 says. */
+let _xname_bpoff = 80;
 function _xname_flags_body(obj, cxn_flags, side_effects) {
     const c = _xn_ctx(obj, cxn_flags, side_effects);
 
@@ -5376,8 +5263,9 @@ function _xname_flags_body(obj, cxn_flags, side_effects) {
     const full = buf.length === 175;
 
     /* C:1011-1012 — `if (!strncmpi(buf, "the ", 4)) buf += 4;` */
+    _xname_bpoff = 80; /* buf - gx.xnamep: PREFIX, +4 past a dropped "the " */
     if (buf.length >= 4 && buf.slice(0, 4).toLowerCase() === 'the ')
-        buf = buf.slice(4);
+        buf = buf.slice(4), _xname_bpoff += 4;
     if (full && (game._xname_full = (game._xname_full || 0) + 1) === 1) {
         paniclog('xname', 'buf[]=' + buf);
         paniclog('xname', 'used up entire obuf[PREFIX..BUFSX-1]');

@@ -2,7 +2,7 @@
 // artifact-touch, encumbrance, and floor owners as ordinary hero actions.
 import { game, requireLiveGame } from './gstate.js';
 import { artifactById } from './artifacts.js';
-import { touchArtifactByHero } from './artifact_touch.js';
+import { touchArtifactByHero } from './artifacts.js';
 import { plineWithContinuation } from './pline.js';
 import { placeObject } from './floor_object.js';
 import { freeInventoryObject } from './hero_inventory.js';
@@ -11,13 +11,13 @@ import { dropObjectAtHero, hitFloorWithObject } from './object_drop.js';
 import { heroCanReachFloor } from './floor_reach.js';
 import { inventoryItemDescription } from './invent.js';
 import { reassignInventoryLetters } from './inventory_prompt.js';
-import { unlinkObject } from './object_location.js';
+import { unlinkObject } from './mkobj.js';
 import { observeObject } from './object_knowledge.js';
 import { observeObjectForNaming } from './objnam.js';
 import { objectQuantity, splitObjectStack } from './object_stack.js';
 import { isMissileObject } from './object_properties.js';
-import { ammunitionMatchesLauncher } from './weapon_type.js';
-import { setQuiverObject } from './weapon_slots.js';
+import { ammunitionMatchesLauncher } from './object_properties.js';
+import { setQuiverObject } from './wield.js';
 import { propertyIsActive } from './properties.js';
 import { heroIsBlind } from './senses.js';
 import { heroIsPolymorphed } from './polyself.js';

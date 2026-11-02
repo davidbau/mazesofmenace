@@ -5,14 +5,19 @@
 // breamu(), blocking_terrain(), linedup() and m_lined_up().
 import { currentAttribute } from './attrib.js';
 import { artifactToHitBonus } from './artifacts.js';
-import { applyArtifactHit } from './artifact_hit.js';
+import { applyArtifactHit } from './artifacts.js';
 import { heroArmName, monsterFootName, monsterHandName } from './body_parts.js';
 import { applyMonsterBlindness, monsterCanBeBlindedByObject, prepareHeroThrownBlindness, finishHeroThrownBlindness, } from './blinding_attack.js';
 import { breatheFromMonster, breathWeaponName } from './breath_ray.js';
-import { endVoluntaryMultiTurn } from './command_state.js';
-import { isPolearm, returningWeaponRangeSquared, willWeld, ammunitionMatchesLauncher, heroHasFreeHand, isAmmunition, monsterWeaponSwingVerb, } from './weapon_type.js';
+import { endVoluntaryMultiTurn } from './hack.js';
+import { isPolearm, ammunitionMatchesLauncher, isAmmunition } from './object_properties.js';
+import { returningWeaponRangeSquared, rollPhysicalWeaponDamage, rollPhysicalWeaponDamageAgainstHero, } from './weapon.js';
+import { willWeld } from './wield.js';
+import { heroHasFreeHand } from './engrave.js';
+import { monsterWeaponSwingVerb } from './mhitu.js';
+import { rangedTargetHitBonus } from './dothrow.js';
 import { couldsee, cansee, clearPath } from './vision.js';
-import { clearDescriptionKnowledge, linkObjectToMonsterInventory, unlinkMonsterObject, mksobj } from './mkobj.js';
+import { clearDescriptionKnowledge, linkObjectToMonsterInventory, unlinkMonsterObject, mksobj, unlinkObject } from './mkobj.js';
 import { destroyObjectFromMonsterInventory, findMonsterArmorClass } from './monworn.js';
 import { objectWeight, calcCapacity } from './weight.js';
 import { A_DEX, A_STR, BOLT_LIM, COULD_SEE, D_CLOSED, D_LOCKED, IRONBARS, IS_DOOR, IS_OBSTRUCTED, IS_WATERWALL, LAVAWALL, M_AP_MONSTER, M_AP_NOTHING, M_AP_TYPE, M_ATTK_HIT, M_ATTK_MISS, MGIVENNAME, M_SEEN_REFL, NEED_RANGED_WEAPON, NEED_WEAPON, NON_PM, P_BOW, P_DAGGER, P_DART, P_SHURIKEN, P_SLING, P_SPEAR, SINK, SLT_ENCUMBER, Upolyd, W_WEP, isok, } from './const.js';
@@ -38,20 +43,20 @@ import { finishHeroDeathAfterMonsterMessage } from './end.js';
 import { recordRandom } from './monster_action_types.js';
 import { petrifyMonsterFromContact } from './trap.js';
 import { MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_NAME, MONSTER_SIZE, monsterHatesSilver, monsterIsAmorphous, monsterIsNoncorporeal, monsterIsNonliving, monsterIsPlayerMonster, monsterIsUnicorn, monsterIsVampireShifter, } from './monster_data.js';
-import { unlinkObject } from './object_location.js';
 import { monsterName } from './do_name.js';
 import { monsterAtPosition } from './steed.js';
 import { monsterObjectPronoun, monsterPossessive, seenResistanceForDamage, monsterHasAcidResistance, monsterHasPoisonResistance, monsterHasStoneResistance, } from './mondata.js';
 import { wakeMonstersNearWithMessages } from './mon.js';
 import { monsterSentenceSubject } from './ambient_sounds.js';
 import { monsterWieldedWeapon, selectMonsterRangedWeapon, unwieldMonsterWeapon, wieldMonsterWeapon, } from './weapon.js';
-import { delobj, deleteObject } from './object_delete.js';
+import { delobj } from './invent.js';
+import { deleteObject } from './shk.js';
 import { ACID_VENOM, BLINDING_VENOM, BOULDER, CREAM_PIE, EGG, ELVEN_ARROW, ELVEN_BOW, OBJECT_NAMES, OBJECT_PROPERTY, OBJECT_SUBTYPE, TALLOW_CANDLE, WAN_FIRE, WAN_STRIKING, WAX_CANDLE, } from './object_data.js';
 import { dropObjectAtHero } from './object_drop.js';
 import { makePlural, withIndefiniteArticle, verbForSubject } from './object_grammar.js';
 import { learnObjectType, observeObject } from './object_knowledge.js';
-import { objectMaterial } from './object_material.js';
-import { shipObject } from './object_migration.js';
+import { objectMaterial } from './o_init.js';
+import { shipObject } from './dokick.js';
 import { isPoisonableObject } from './object_properties.js';
 import { splitObjectStack } from './object_stack.js';
 import { definiteName, definiteObjectAction, objectCombatName, objectHasPersonalName, killerObjectName, observeObjectForNaming, simpleObjectName, } from './objnam.js';
@@ -61,7 +66,7 @@ import { poisonHero } from './poison.js';
 import { hitMonsterWithSupportedPotion } from './potion.js';
 import { shouldMulchMissile } from './projectile.js';
 import { projectileHitsIronBars } from './projectile_bars.js';
-import { rayDamageType } from './magic_types.js';
+import { rayDamageType } from './zap.js';
 import { displayRayName } from './ray_name.js';
 import { castNativeRay } from './ray_attack.js';
 import { capitalizedDefiniteName, rayHitMessage, rayMissMessage } from './ray_hit_message.js';
@@ -70,9 +75,7 @@ import { heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
 import { hitByPetrifyingEgg, touchPetrifies } from './stoning.js';
 import { isLavaAt, isPoolAt } from './terrain_properties.js';
 import { snuffThrownCandle } from './thrown_object.js';
-import { rollPhysicalWeaponDamage, rollPhysicalWeaponDamageAgainstHero } from './weapon_damage.js';
-import { rangedTargetHitBonus } from './weapon_accuracy.js';
-import { plineWithContinuation } from './pline.js';
+import { plineWithContinuation, set_msg_xy } from './pline.js';
 import { requirePerceivedHero } from './monmove.js';
 import { angerAttackedMonster, finishEnvironmentalMonsterDeath, finishMonsterKilled } from './mon.js';
 function isFiniteNumber(value) {
@@ -274,6 +277,9 @@ async function launchVolley(source, weapon, target, state, { random = rn2, rollO
         const targetName = target ? monsterName(target, {
             state, augmentIt: true, suppressSaddle: !!MGIVENNAME(target),
         }) : '';
+        // C monshoot() anchors the volley line at the shooter's square via
+        // set_msg_xy() so vpline()'s accessiblemsg prefix names it.
+        set_msg_xy(source.mx, source.my);
         await publish(`${monsterName(source, { state, capitalized: true })} ${launched ? 'shoots' : 'throws'} ${appearance}${target ? ` at ${targetName}` : ''}!`);
     }
     const shots = [];

@@ -12,7 +12,8 @@
 import { armorSlotFor, heroHasFreeAction } from './armor.js';
 import { adjustAttribute, attributeChangeMessage, currentAttribute, exerciseAttribute, restoreHeroBaseAttributes } from './attrib.js';
 import { heroEyeCount, heroEyeName, heroFaceName, heroFootName, heroHandName } from './body_parts.js';
-import { commandResultCancelled, commandResultFailed, nomul, setMulti } from './command_state.js';
+import { commandResultCancelled, commandResultFailed, setMulti } from './cmd.js';
+import { nomul } from './hack.js';
 import { A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, BOLT_LIM, COLNO, EXPL_FIERY, FOUNTAIN, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_INACCESS, GETOBJ_EXCLUDE_NONINVENT, GETOBJ_SUGGEST, G_GONE, Is_airlevel, Is_waterlevel, MM_NOMSG, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, M_SEEN_SLEEP, PLNMSG_OBJ_GLOWS, POLY_CONTROLLED, POLY_LOW_CTRL, POLY_NOFLAGS, ROWNO, SINK, STRAT_WAITFORU, TIMEOUT, Upolyd, WEAK } from './const.js';
 import { impossible } from './diagnostics.js';
 import { fingersOrGloves, washHands } from './dip_water.js';
@@ -60,28 +61,23 @@ import { floatingAbove } from './levitation_commands.js';
 import { applyLevitationPotion } from './levitation_potion.js';
 import { pickupBurden } from './lift_object.js';
 import { adjustObjectLightAfterBlessing, objectLightRadius } from './light.js';
-import { detectMonsters, detectObjects } from './magic_detection.js';
+import { detectMonsters, detectObjects } from './detect.js';
 import { cloneMonster, setMonsterMalign } from './makemon.js';
 import { putMonsterToSleep } from './mhitm.js';
 import { makemonNear } from './mklev.js';
-import { mkobj } from './mkobj.js';
+import { mkobj, blessObjectState, curseObject, curseObjectState, unblessObjectState, uncurseObjectState, unlinkObject } from './mkobj.js';
 import { finishMonsterKilled, removeMonsterFromGame, removeWishGrantingMonster, revealMonsterAppearance, wakeMonstersNearWithMessages } from './mon.js';
 import { monsterHasAcidResistance, monsterHasPoisonResistance, monstersForgetHeroResistance, monstersObserveHeroResistance } from './mondata.js';
 import { AD_ACID, AD_DISE, AD_PEST } from './monster_attack_types.js';
 import { MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_LEVEL, MONSTER_MAGIC_RESISTANCE, MONSTER_NAME, MONSTER_RESISTS, MONSTER_SOUND, MONSTER_SYMBOL, monsterHatesBlessings, monsterIsHuman, monsterIsPlayerMonster } from './monster_data.js';
 import { tryCallObjectType } from './object_call.js';
 import { ALCHEMY_SMOCK, CORPSE, LENSES, MAGIC_LAMP, OBJECT_DESCRIPTIONS, OBJECT_MAGIC, OBJECT_NAMES, OIL_LAMP, POT_ACID, POT_BLINDNESS, POT_BOOZE, POT_CONFUSION, POT_ENLIGHTENMENT, POT_EXTRA_HEALING, POT_FRUIT_JUICE, POT_FULL_HEALING, POT_GAIN_ABILITY, POT_GAIN_ENERGY, POT_GAIN_LEVEL, POT_HALLUCINATION, POT_HEALING, POT_INVISIBILITY, POT_LEVITATION, POT_MONSTER_DETECTION, POT_OBJECT_DETECTION, POT_OIL, POT_PARALYSIS, POT_POLYMORPH, POT_RESTORE_ABILITY, POT_SEE_INVISIBLE, POT_SICKNESS, POT_SLEEPING, POT_SPEED, POT_WATER, SPE_DETECT_MONSTERS, SPE_DETECT_TREASURE, SPE_HASTE_SELF, SPE_INVISIBILITY, SPE_LEVITATION, SPE_RESTORE_ABILITY, TOWEL, UNICORN_HORN } from './object_data.js';
-import { deleteObject } from './object_delete.js';
 import { objectDescription } from './object_description.js';
 import { hitFloorWithObject } from './object_drop.js';
-import { erodeObject, objectIsVulnerableToErosion } from './object_erosion.js';
 import { makePlural, verbForSubject, withIndefiniteArticle } from './object_grammar.js';
 import { learnObjectType, observeObject, recordObjectEncounter, recordObjectKnowledge } from './object_knowledge.js';
-import { unlinkObject } from './object_location.js';
-import { obj_unpolyable, poly_obj } from './object_polymorph.js';
 import { isLauncherAmmunition, isPermanentlyPoisonedObject, isPoisonableObject, isWeaponTool } from './object_properties.js';
 import { objectQuantity, splitObjectStack } from './object_stack.js';
-import { blessObjectState, curseObject, curseObjectState, unblessObjectState, uncurseObjectState } from './object_state.js';
 import { definiteName, definiteObjectAction, objectAction, objectCombatName, objectName, objectNameIsPlural, objectQuestion, observeObjectForNaming, ownedObjectAction, ownedObjectName, simpleObjectName } from './objnam.js';
 import { plineWithContinuation, plineWithContinuation as pline } from './pline.js';
 import { poisonAttributeMessage } from './poison.js';
@@ -90,7 +86,7 @@ import { grantIntrinsicProperty, hasIntrinsicProperty, hasPermanentIntrinsicProp
 import { promptYesNo } from './query.js';
 import { d, rn1, rn2, rnd, rnl } from './rng.js';
 import { blindfolded, blindnessBlocked, heroDetectsMonsters, heroIsBlind, heroIsBlinded, heroIsDeaf, heroIsHallucinating } from './senses.js';
-import { chargeAlteredUnpaidObject, chargeUnpaidObjectAsDebt, chargeUnpaidUsage, objectOwnershipPrefix, objectTypeKnown, updateUnpaidObjectPrice } from './shk.js';
+import { chargeAlteredUnpaidObject, chargeUnpaidObjectAsDebt, chargeUnpaidUsage, objectOwnershipPrefix, objectTypeKnown, updateUnpaidObjectPrice, deleteObject } from './shk.js';
 import { makeBlinded } from './sight_change.js';
 import { dipSink } from './sink_dipping.js';
 import { burnAwayHeroSlime, heroIsFlaming, heroIsSliming } from './slime.js';
@@ -102,7 +98,7 @@ import { applyLowStaminaThrow, applyThrowSlip } from './throw_state.js';
 import { offerThrownFood } from './thrown_food.js';
 import { detachThrownUnit, finishHeroThrownObjectLanding, flyHeroThrownObject, heroThrowTrajectory, prepareHeroThrownTarget } from './thrown_object.js';
 import { tossObjectUp } from './toss_up.js';
-import { waterDamageObject } from './trap.js';
+import { waterDamageObject, erodeObject, objectIsVulnerableToErosion } from './trap.js';
 import { flushPendingTopline } from './tty_topline.js';
 import { dropCursedSecondaryWeapon } from './two_weapon.js';
 import { cansee } from './vision.js';
@@ -112,7 +108,7 @@ import { makeWish } from './wish.js';
 import { aggravateMonsters } from './wizard.js';
 import { redrawMonsterWormSegments } from './worm.js';
 import { adjustMonsterSpeed, monsterSpeedMessage, setMonsterPermanentInvisibility } from './worn.js';
-import { polymorphMonsterFromMagic } from './zap.js';
+import { polymorphMonsterFromMagic, obj_unpolyable, poly_obj } from './zap.js';
 // ---- ghost_from_bottle() and the dopotion() occupant check (C potion.c:481, 617-644) ----
 const PM_GHOST = MONSTER_NAME.indexOf('ghost');
 const PM_DJINNI = MONSTER_NAME.indexOf('djinni');
@@ -1983,6 +1979,8 @@ async function poof(potion) {
         await tryCallObjectType(potion);
     await consumeInventoryItem(potion);
 }
+// C potion.c:dip_potion_explosion(): a cursed/acid/burning-oil mixture, or
+// a 1-in-10 (1-in-30 over an alchemy smock) roll, explodes.
 async function mixtureExplodes(object, damage) {
     if (!(object.cursed || object.otyp === POT_ACID || object.otyp === POT_OIL && object.lamplit
         || !rn2(game.uarmc?.otyp === ALCHEMY_SMOCK ? 30 : 10)))

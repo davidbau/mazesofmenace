@@ -7,7 +7,8 @@
 // (munstone/mon_consume_unstone/cures_stoning/mcould_eat_tin/munslime/
 // muse_unslime/cures_sliming).
 import { game, requireInitializedGame, requireLiveGame, requirePlayingGame } from './gstate.js';
-import { setMulti, endVoluntaryMultiTurn, heroHasInvoluntaryDelay } from './command_state.js';
+import { heroHasInvoluntaryDelay, setMulti } from './cmd.js';
+import { endVoluntaryMultiTurn } from './hack.js';
 import { BEAR_TRAP, BOLT_LIM, CORR, D_BROKEN, D_CLOSED, D_LOCKED, DOOR, DRAWBRIDGE_UP, EXPL_FIERY, FIRE_TRAP, G_GONE, HOLE, In_endgame, In_sokoban, IS_AIR, IS_DOOR, IS_DRAWBRIDGE, IS_FURNITURE, IS_OBSTRUCTED, is_hole, is_pit, ismnum, isok, LADDER, MFAST, MIGR_LADDER_DOWN, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_DOWN, MIGR_STAIRS_UP, MM_NOMSG, MON_OFFMAP, M_SEEN_ACID, M_SEEN_COLD, M_SEEN_ELEC, M_SEEN_FIRE, M_SEEN_MAGR, M_SEEN_REFL, M_SEEN_SLEEP, NORMAL_SPEED, P_DAGGER, P_KNIFE, PIT, PLNMSG_enum, PLNMSG_UNKNOWN, POLY_TRAP, QBUFSZ, RLOC_MSG, SCORR, SDOOR, SHOPBASE, STAIRS, STRAT_WAITFORU, TELEP_TRAP, TEMPLE, WAND_BACKFIRE_CHANCE, W_ARM, W_ARMF, W_ARMG, W_ARMH, W_WEP, WEB, W_NONDIGGABLE, ZAP_POS, } from './const.js';
 import { heroHasArtifactDefense } from './artifacts.js';
 import { monsterHasMagicResistance } from './anti_magic_trap.js';
@@ -16,7 +17,8 @@ import { fillPitWithBoulderAt } from './pit_fill.js';
 import { CLR_BRIGHT_GREEN, CLR_GREEN } from './terminal.js';
 import { MONSTER_ATTACKS, MONSTER_COLOR, MONSTER_DIFFICULTY, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_GENO, MONSTER_HAS_WEAPON_ATTACK, MONSTER_LEVEL, MONSTER_MOVE, MONSTER_NAME, MONSTER_SIZE, MONSTER_SYMBOL, monsterHasNoHands, monsterHatesLight, monsterHatesSilver, monsterIsAmorphous, monsterIsAnimal, monsterIsBat, monsterIsKop, monsterIsMindless, monsterIsNoncorporeal, monsterIsNonliving, monsterIsSlimeproof, monsterIsUndead, monsterIsUnicorn, monsterIsUnsolid, monsterIsVampireShifter, speciesEatsCorpses, } from './monster_data.js';
 import { AD_FIRE, AD_HEAL, AD_RBRE, AT_BREA, AT_EXPL, AT_GAZE } from './monster_attack_types.js';
-import { AMULET_OF_GUARDING, AMULET_OF_LIFE_SAVING, AMULET_OF_REFLECTION, AMULET_OF_YENDOR, BAG_OF_HOLDING, BAG_OF_TRICKS, BOULDER, BUGLE, BULLWHIP, CORPSE, EGG, EXPENSIVE_CAMERA, FIRE_HORN, FROST_HORN, GLOB_OF_GREEN_SLIME, HEAVY_IRON_BALL, ICE_BOX, LARGE_BOX, OBJECT_BIMANUAL, OBJECT_DESCRIPTIONS, OBJECT_DIR, OBJECT_SUBTYPE, PICK_AXE, POT_ACID, POT_BLINDNESS, POT_CONFUSION, POT_EXTRA_HEALING, POT_FULL_HEALING, POT_GAIN_LEVEL, POT_HEALING, POT_INVISIBILITY, POT_OIL, POT_PARALYSIS, POT_POLYMORPH, POT_SICKNESS, POT_SLEEPING, POT_SPEED, SCR_CREATE_MONSTER, SCR_EARTH, SCR_FIRE, SCR_TELEPORTATION, TIN, TIN_OPENER, UNICORN_HORN, WAN_COLD, WAN_CREATE_MONSTER, WAN_DEATH, WAN_DIGGING, WAN_FIRE, WAN_LIGHTNING, WAN_MAGIC_MISSILE, WAN_MAKE_INVISIBLE, WAN_POLYMORPH, WAN_SLEEP, WAN_SPEED_MONSTER, WAN_STRIKING, WAN_TELEPORTATION, WAN_UNDEAD_TURNING, } from './object_data.js';
+import { isBimanualObject } from './object_properties.js';
+import { AMULET_OF_GUARDING, AMULET_OF_LIFE_SAVING, AMULET_OF_REFLECTION, AMULET_OF_YENDOR, BAG_OF_HOLDING, BAG_OF_TRICKS, BOULDER, BUGLE, BULLWHIP, CORPSE, EGG, EXPENSIVE_CAMERA, FIRE_HORN, FROST_HORN, GLOB_OF_GREEN_SLIME, HEAVY_IRON_BALL, ICE_BOX, LARGE_BOX, OBJECT_DESCRIPTIONS, OBJECT_DIR, OBJECT_SUBTYPE, PICK_AXE, POT_ACID, POT_BLINDNESS, POT_CONFUSION, POT_EXTRA_HEALING, POT_FULL_HEALING, POT_GAIN_LEVEL, POT_HEALING, POT_INVISIBILITY, POT_OIL, POT_PARALYSIS, POT_POLYMORPH, POT_SICKNESS, POT_SLEEPING, POT_SPEED, SCR_CREATE_MONSTER, SCR_EARTH, SCR_FIRE, SCR_TELEPORTATION, TIN, TIN_OPENER, UNICORN_HORN, WAN_COLD, WAN_CREATE_MONSTER, WAN_DEATH, WAN_DIGGING, WAN_FIRE, WAN_LIGHTNING, WAN_MAGIC_MISSILE, WAN_MAKE_INVISIBLE, WAN_POLYMORPH, WAN_SLEEP, WAN_SPEED_MONSTER, WAN_STRIKING, WAN_TELEPORTATION, WAN_UNDEAD_TURNING, } from './object_data.js';
 import { objectIsHardHelmet, dragonFormForArmor } from './armor.js';
 import { findNearbyMonsterPosition, monsterTeleportRestricted, reportMonsterTeleportRestriction, } from './teleport_rules.js';
 import { monsterName, monsterReflexiveAction } from './do_name.js';
@@ -28,7 +30,7 @@ import { canSeeMonster, canSenseMonster, canSpotMonster, cls, displayColorName, 
 import { plineWithContinuation } from './pline.js';
 import { d, rn2, rnd } from './rng.js';
 import { recordRandom } from './monster_action_types.js';
-import { objectMaterial } from './object_material.js';
+import { objectMaterial } from './o_init.js';
 import { heroCanSeeInvisible } from './mcastu.js';
 import { monsterAt, monsterAtPosition, monsterHasMapPosition, placeMonsterOnMap, removeMonsterFromMapAt, } from './steed.js';
 import { monsterIsScaredAt, makeMonsterFlee, monsterWantsFloorObject } from './monmove.js';
@@ -42,22 +44,21 @@ import { adjustMonsterSpeed, monsterSpeedMessage } from './worn.js';
 import { makemonAt, rndmonstAdj, growMonster } from './makemon.js';
 import { learnObjectType, observeObject } from './object_knowledge.js';
 import { setMonsterPermanentInvisibility } from './worn.js';
-import { trapName } from './trap_name.js';
+import { trapName } from './trap.js';
+import { monsterKnowsTrap, monsterLearnsTrap } from './mondata.js';
 import { makePlural, verbForSubject, withIndefiniteArticle } from './object_grammar.js';
 import { canHeroRiseUp, levelAtDepth, levelIsWizardTower, sameDungeonLevel } from './dungeon.js';
 import { heroHandName } from './body_parts.js';
 import { placeObjectSynchronously, sweepFloorPile } from './floor_object.js';
 import { removeWornHeroItem } from './hero_equipment.js';
-import { forgetObjectKnowledge } from './mkobj.js';
+import { forgetObjectKnowledge, unlinkObject, addObjectToContainer } from './mkobj.js';
 import { destroyObjectFromMonsterInventory } from './monworn.js';
 import { addObjectToMonsterInventory } from './steal.js';
 import { dropObjectAtHero } from './object_drop.js';
 import { definiteName, distantObjectName, minimalObjectName, objectCombatName, objectName, objectNameIsPlural, observeDistantObjectForNaming, observeObjectForNaming, pluralizeObjectNoun, } from './objnam.js';
 import { ceilingName, surfaceName } from './terrain_name.js';
-import { isWeldedPrimary } from './weapon_slots.js';
+import { isWeldedPrimary, willWeld } from './wield.js';
 import { monsterCanCarryObject } from './mon.js';
-import { addObjectToContainer } from './object_container.js';
-import { unlinkObject } from './object_location.js';
 import { objectWeight } from './weight.js';
 import { heroResistsBlindingLight } from './blinding_attack.js';
 import { dropBoulderOnHero, dropBoulderOnMonster } from './falling_boulder.js';
@@ -82,13 +83,11 @@ import { askTeleportDestination, heroControlsTeleport, randomMonsterRelocation, 
 import { turnCarriedObjects, turnHeroWithUndeadMagic } from './undead_turning.js';
 import { randomTeleportDepth } from './level_teleport.js';
 import { tryCallObjectType } from './object_call.js';
-import { deleteObject } from './object_delete.js';
 import { splitObjectStack } from './object_stack.js';
 import { awakenSoldiers } from './music.js';
 import { canDigDown, canFallThrough, maketrap } from './mklev.js';
-import { shopkeeperInOwnShop, addShopDamage } from './shk.js';
+import { shopkeeperInOwnShop, addShopDamage, deleteObject } from './shk.js';
 import { isAccessibleAt, isIceAt, isLavaAt, isPoolAt } from './terrain_properties.js';
-import { monsterKnowsTrap, monsterLearnsTrap } from './trap_knowledge.js';
 import { monsterCarriesSpecialObject } from './wizard.js';
 import { inHeroSanctuary } from './priest.js';
 import { heroSpecies } from './hero_species.js';
@@ -99,7 +98,6 @@ import { finishHeroMonsterKillOutcome } from './hero_monster_death.js';
 import { explode } from './explosion.js';
 import { setMonsterMalign } from './makemon.js';
 import { monsterWieldedWeapon } from './weapon.js';
-import { willWeld } from './weapon_type.js';
 import { extendPetHungerDeadline, petFoodNutrition } from './pet_eating.js';
 import { impossible } from './diagnostics.js';
 import { displayMessageWindow } from './tty_topline.js';
@@ -1800,7 +1798,7 @@ export async function useMonsterBullwhip(monster, target, destination, state) {
     const whip = seen ? 'The bullwhip' : 'A whip';
     const weapon = definiteName(objectCombatName(target, { state, includeCorpseSpecies: false }), state);
     const hand = heroHandName(state);
-    const hands = OBJECT_BIMANUAL[target.otyp] ? makePlural(hand) : hand;
+    const hands = isBimanualObject(target) ? makePlural(hand) : hand;
     if (seen)
         await plineWithContinuation(`${monsterName(monster, { state, capitalized: true })} flicks a bullwhip towards your ${hands}!`);
     if (target.otyp === HEAVY_IRON_BALL) {
@@ -2178,7 +2176,7 @@ export async function consumeMonsterStoningCure(monster, cure, { byHero = false,
     monster.mlstmv = state.moves ?? 0;
     return { consumed: true, cure, died: false };
 }
-// C muse.c:munslime().
+// C muse.c:munslime() and muse_unslime(): select the cure, then apply it.
 export async function tryMonsterUnslime(monster, { state = game, byHero = false, publish = plineWithContinuation, random = rn2, rollDice = d, rollOne = rnd, } = {}) {
     requirePlayingGame(state);
     if (monsterIsSlimeproof(monster) || monster.meating || monsterIsHelpless(monster))
@@ -2191,7 +2189,8 @@ export async function tryMonsterUnslime(monster, { state = game, byHero = false,
     let visible = canSeeMonster(monster);
     if (visible) {
         const subject = monsterName(monster, { state, capitalized: true });
-        // C muse.c:green_mon(): judge green by the display color.
+        // C muse.c:green_mon() judges green by the display color;
+        // hcolor(NH_GREEN) names the color, hallucination included.
         const green = !heroIsHallucinating(state)
             && [CLR_GREEN, CLR_BRIGHT_GREEN].includes(MONSTER_COLOR[monster.mnum] ?? -1);
         await publish(`${subject} starts turning ${green ? 'into ooze' : displayColorName('green', state)}.`);

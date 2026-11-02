@@ -18,10 +18,14 @@ import { newemin } from './sit.js';
 import { rn2, rn1 } from './rng.js';
 import { dist2 } from './hacklib.js';
 import { _allow_rock_mv, _can_open_mv, _passes_bars_mv, m_break_boulder_mv, m_move_aggress, mon_allowflags } from './monmove.js';
-import { online2, mfndpos, monnear, makemon, mpickobj, mkobj, mksobj, mongone, setmangry } from './mklev.js';
+import { makemon, mkobj, mksobj } from './mklev.js';
+import { mpickobj } from './steal.js';
+import { online2 } from './hacklib.js';
+import { mfndpos, monnear, mongone, setmangry } from './mon.js';
 import { pm_good_location } from './sp_lev.js';
-import { set_malign, which_armor } from './makemon.js';
-import { mon_learns_traps } from './trap.js';
+import { set_malign } from './makemon.js';
+import { which_armor } from './worn.js';
+import { mon_learns_traps } from './mondata.js';
 import { rloc } from './teleport.js';
 import { mongets } from './m_initweap.js';
 import { newsym } from './display.js';
@@ -30,8 +34,10 @@ import { m_at } from './uhitm.js';
 import { mon_pmname, rndmonnam as dn_rndmonnam,
          bogon_is_pname as dn_bogon_is_pname } from './do_name.js';
 import { just_an } from './objnam.js';
-import { halu_gname, check_special_room } from './cmd.js';
-import { in_rooms, inhishop } from './shk.js';
+import { check_special_room } from './cmd.js';
+import { halu_gname } from './pray.js';
+import { inhishop } from './shk.js';
+import { in_rooms } from './hack.js';
 
 function _hero_invis_priest(u) {
     if (!u) return false;
@@ -44,7 +50,8 @@ function _hero_invis_priest(u) {
 import { Your } from './do_wear.js';
 import { mon_nam } from './uhitm.js';
 import { mattacku } from './mhitu.js';
-import { resist_conflict, wakeup } from './mhitm.js';
+import { wakeup } from './mhitm.js';
+import { resist_conflict } from './mondata.js';
 
 /**
  * newepri — allocate and init epri (priest extended data)
@@ -379,6 +386,13 @@ export async function priestini(lvl, sroom, sx, sy, sanctum) {
  * never carried by the hero, and never a bag of holding, so every conditional
  * tail (arti_light_radius / set_moreluck / weight / uwep weld) is unreachable. */
 import { uncurse, curse } from './mkobj.js';
+import { exercise } from './attrib.js'; // relocate-fns
+import { A_WIS, IS_DOOR } from './const.js'; // relocate-fns
+import { s_suffix } from './hacklib.js'; // relocate-fns
+import { buzz } from './mcastu.js'; // relocate-fns
+import { linedup } from './mthrowu.js'; // relocate-fns
+import { pline } from './pline.js'; // relocate-fns
+import { a_gname_at } from './pray.js'; // relocate-fns
 
 /* C ref: hack.c:3497-3559 in_rooms(x, y, typewanted).  The file-local throwing
  * stub that used to sit here SHADOWED a real port: js/shk.js already carries the
@@ -782,3 +796,47 @@ export function on_level(a, b) {
     return on_level_real(a, b);
 }
 export { mongone } from './mklev.js';
+
+/* C priest.c:796 — the shrine's retaliation when its priest is attacked. */
+export async function ghod_hitsu(priest) {
+    const u = game.u;
+    const roomno = temple_occupied(u?.urooms || '');
+    if (!roomno || !has_shrine(priest)) return;
+    const shrine = priest?.mextra?.epri?.shrpos;
+    const troom = game.level?.rooms?.[(roomno | 0) - ROOMOFFSET];
+    if (!shrine || !troom) return;
+    const ax = shrine.x | 0, ay = shrine.y | 0;
+    let x = ax, y = ay;
+    if ((x === (u.ux | 0) && y === (u.uy | 0))
+        || !linedup(u.ux | 0, u.uy | 0, x, y, 1)) {
+        const here = game.level?.at?.(u.ux | 0, u.uy | 0);
+        if (here && IS_DOOR(here.typ | 0)) {
+            if ((u.ux | 0) === ((troom.lx | 0) - 1)) { x = troom.hx; y = u.uy; }
+            else if ((u.ux | 0) === ((troom.hx | 0) + 1)) { x = troom.lx; y = u.uy; }
+            else if ((u.uy | 0) === ((troom.ly | 0) - 1)) { x = u.ux; y = troom.hy; }
+            else if ((u.uy | 0) === ((troom.hy | 0) + 1)) { x = u.ux; y = troom.ly; }
+        } else {
+            switch (rn2(4)) {
+            case 0: x = u.ux; y = troom.ly; break;
+            case 1: x = u.ux; y = troom.hy; break;
+            case 2: x = troom.lx; y = u.uy; break;
+            default: x = troom.hx; y = u.uy; break;
+            }
+        }
+        if (!linedup(u.ux | 0, u.uy | 0, x, y, 1)) return;
+    }
+    const god = a_gname_at(ax, ay);
+    switch (rn2(3)) {
+    case 0: await pline(`${god} roars in anger:  "Thou shalt suffer!"`); break;
+    case 1: await pline(`${s_suffix(god)} voice booms:  "How darest thou harm my servant!"`); break;
+    default: await pline(`${god} roars:  "Thou dost profane my shrine!"`); break;
+    }
+    const oldWand = game.gc_current_wand;
+    const oldBuzzer = game.gb?.buzzer;
+    game.gc_current_wand = 0;
+    if (game.gb) game.gb.buzzer = 0;
+    await buzz(-15 /* BZ_M_SPELL(BZ_OFS_AD(AD_ELEC)) */, 6, x, y, Math.sign(game.gt?.tbx || 0), Math.sign(game.gt?.tby || 0));
+    if (game.gb) game.gb.buzzer = oldBuzzer;
+    game.gc_current_wand = oldWand;
+    exercise(A_WIS, false);
+}

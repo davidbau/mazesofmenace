@@ -1,7 +1,7 @@
 // Drawbridge location and movement.
 // C ref: dbridge.c find_drawbridge(), open_drawbridge(), close_drawbridge().
 import { formatSeenMessage, publishHeardMessage } from './hero_speech.js';
-import { deleteTrap } from './trap_lifecycle.js';
+import { deleteTrap } from './trap.js';
 import { DBWALL, DB_DIR, DB_EAST, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, D_NODOOR, ICE, ICED_MOAT, IS_DRAWBRIDGE, IS_WALL, Is_stronghold, LAVAPOOL, MOAT, ROOM, W_NONDIGGABLE, isok, } from './const.js';
 import { impossible } from './diagnostics.js';
 import { displayLiquidName, newsym } from './display.js';
@@ -13,7 +13,7 @@ import { game, requireGameLevel } from './gstate.js';
 import { remove_object } from './floor_object.js';
 import { BOULDER } from './object_data.js';
 import { wakeMonstersNearWithMessages } from './mon.js';
-import { delobj } from './object_delete.js';
+import { delobj } from './invent.js';
 import { unpunishHero } from './punishment.js';
 import { heroIsDeaf } from './senses.js';
 import { reviveNastyAt } from './revive_nasty.js';

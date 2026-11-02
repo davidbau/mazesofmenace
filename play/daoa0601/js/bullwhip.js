@@ -9,7 +9,7 @@ import { canSenseMonster, canSpotMonster, map_invisible, newsym } from './displa
 import { pline, plineWithContinuation } from './pline.js';
 import { stumbleOntoMimic } from './mimic.js';
 import { placeObject, remove_object, stack_object } from './floor_object.js';
-import { objectNoLongerHeld } from './object_release.js';
+import { objectNoLongerHeld } from './do.js';
 import { pickupFloorObject } from './pickup.js';
 import { game } from './gstate.js';
 import { loseHeroHp } from './hero_damage.js';
@@ -20,8 +20,9 @@ import { heroSpecies } from './hero_species.js';
 import { finishDestinationSpotEffects } from './location_effects.js';
 import { unlinkMonsterObject } from './mkobj.js';
 import { unwieldMonsterWeapon, monsterWieldedWeapon } from './weapon.js';
-import { BOULDER, CORPSE, OBJECT_BIMANUAL } from './object_data.js';
+import { BOULDER, CORPSE } from './object_data.js';
 import { makePlural, withIndefiniteArticle } from './object_grammar.js';
+import { isBimanualObject } from './object_properties.js';
 import { monsterName as describeMonsterName } from './do_name.js';
 import { possessiveName } from './hacklib.js';
 import { monsterPossessive } from './mondata.js';
@@ -33,7 +34,7 @@ import { isLavaAt, isPoolOrLavaAt } from './terrain_properties.js';
 import { moveHeroByTeleport } from './teleport.js';
 import { resetHeroTrap } from './terrain_movement.js';
 import { vision_recalc, vision_reset } from './vision.js';
-import { heroStrengthDamageBonus } from './weapon_damage.js';
+import { heroStrengthDamageBonus } from './weapon.js';
 import { dropInventoryObjectAtHero } from './hero_drop.js';
 import { holdAnotherObject } from './hero_hold_object.js';
 import { propertyIsActive } from './properties.js';
@@ -55,7 +56,8 @@ function quantityOf(object) {
 // C apply.c:3099/3253/3025: mon_nam(mtmp) for the pit anchor, the flick
 // message, and a mistaken steed whip; formatMonsterName() is its port.
 function isTwoHanded(object) {
-    return !!(object?.bimanual || OBJECT_BIMANUAL[object?.otyp]);
+    // C apply.c:3161 uses bimanual(otmp) on the monster's wielded weapon.
+    return isBimanualObject(object);
 }
 function heroIsFumbling(state) {
     return propertyIsActive('fumbling', state);

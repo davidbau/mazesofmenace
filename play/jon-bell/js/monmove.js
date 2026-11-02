@@ -11,36 +11,40 @@ import { PM_LEPRECHAUN, PM_VROCK, PM_KILLER_BEE, PM_QUEEN_BEE, PM_ROGUE } from '
 import { bare_artifactname, makeplural, an, xname, vtense } from './objnam.js';
 import { yname } from './do_wear.js';
 import { acurr } from './attrib.js';
-import { money_cnt } from './com_pager.js';
+import { money_cnt } from './hack.js';
 import { dist2, isok } from './hacklib.js';
 import { dog_move, mattackm, dogfood, mdisplacem } from './dogmove.js';
 import { dochug } from './dochug.js';
 import { gd_move } from './vault.js';
-import { findgold, noattacks, attacktype, noteleport_level, tele_restrict, permonstTemplate, splitobj, check_gear_next_turn, find_defensive, use_defensive, onscary, grow_up, monflee_release_hero } from './makemon.js';
+import { findgold, noattacks, attacktype, tele_restrict, permonstTemplate, splitobj, check_gear_next_turn, find_defensive, use_defensive, onscary, grow_up, monflee_release_hero } from './makemon.js';
+import { noteleport_level } from './teleport.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import monMsizePack from './makemon_msize.json' with { type: 'json' };
 /* obj.h's is_cloak/is_gloves/is_shirt read objects[otyp].oc_armcat, which this
  * port keeps in js/armor_data.js as ARMOR_DATA[otyp].armcat. */
 import { ARMOR_DATA } from './armor_data.js';
-import { t_at, mintrap, mon_knows_traps, mon_learns_traps, m_carrying, seetrap, m_has_launcher_and_ammo, linedup, count_traps, maketrap } from './trap.js';
+import { t_at, mintrap, seetrap, count_traps, maketrap } from './trap.js';
+import { mon_knows_traps, mon_learns_traps } from './mondata.js';
+import { m_carrying, m_has_launcher_and_ammo, linedup } from './mthrowu.js';
 import { OBJ_FLOOR, OBJ_DELETED, is_pit, IS_STWALL, IS_TREE, Is_rogue_level, NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE,
          Upolyd, M_AP_TYPMASK, M_AP_NOTHING, M_AP_MONSTER, CONFLICT as CONFLICT_MAF, INVIS as INVIS_PROP, DISPLACED as DISPLACED_PROP, DEAF, A_STR,
          NC_SHOW_MSG, ARM, HEAD, ROOM, CORR, GPCOORDS_NONE, GPCOORDS_COMFULL,
          /* maybe_spin_web (monmove.c:1267) */ IS_OBSTRUCTED, STAIRS, LADDER, IRONBARS, WEB, In_sokoban } from './const.js';
-import { newsym, canspotmon, pline, canseemon,
-         topl_force_break_now, capture_flushed_cells, flush_pending_messages, _topline_more_pending, _more_never_dismissed, Norep, You_hear, You_see, sensemon, Unaware, swallowed, Deaf } from './display.js';
+import { newsym, canspotmon, canseemon, topl_force_break_now, capture_flushed_cells, flush_pending_messages, _topline_more_pending, _more_never_dismissed, sensemon, Unaware, swallowed, Deaf } from './display.js';
+import { pline, Norep, You_hear, You_see } from './pline.js';
 import { cansee, vision_recalc, recalc_block_point, clear_path, couldsee } from './vision.js';
 import { curr_mon_load, max_mon_load, can_carry, could_reach_item, dmgtype,
          obj_extract_floor, distant_obj_name, Monnam_dm, finish_meating as finish_meating_real,
          /* meatmetal (mon.c:1482) + delobj_core (invent.c:1446) */ obj_resists } from './dogmove.js';
-import { can_touch_safely, mfndpos, sobj_at, hideunder, maybe_unhide_at, mpickobj, stairway_at, stairway_find_dir, upstart, wake_nearto,
-         /* meatmetal (mon.c:1521) */ mksobj_at,
-         /* meatmetal (mon.c:1473) */ is_rustprone,
- healmon as healmon_real, meatobj as meatobj_real,
-         meatcorpse as meatcorpse_real, newcham, u_on_newpos,
-         extract_from_minvent, m_consume_obj, Is_special, mongone,
-         resists_ston, obj_extract_self, monnear as monnear_real } from './mklev.js';
-import { accessible, closed_door, may_dig, is_pool as is_pool_mv2 } from './look.js';
+import { mksobj_at, is_rustprone, extract_from_minvent, resists_ston, obj_extract_self } from './mklev.js';
+import { mpickobj } from './steal.js';
+import { sobj_at } from './invent.js';
+import { u_on_newpos, Is_special } from './dungeon.js';
+import { stairway_at, stairway_find_dir } from './stairs.js';
+import { upstart } from './hacklib.js';
+import { can_touch_safely, mfndpos, hideunder, maybe_unhide_at, wake_nearto, healmon as healmon_real, meatobj as meatobj_real, meatcorpse as meatcorpse_real, newcham, m_consume_obj, mongone, monnear as monnear_real } from './mon.js';
+import { is_pool as is_pool_mv2 } from './look.js';
+import { may_dig } from './hack.js';
 import { m_at, mon_nam, autoreturn_weapon } from './uhitm.js';
 import { gettrack } from './track.js';
 import { artifact_light } from './light.js';
@@ -49,15 +53,20 @@ import { artifact_light } from './light.js';
  * cycle is fine, they are hoisted function declarations). */
 import { rloc, mnexto } from './teleport.js';
 import { RLOC_MSG, has_edog, SHOPBASE } from './const.js';
-import { can_track, resist_conflict, can_blow, y_monnam, YMonnam, Adjmonnam, wakeup, locomotion, Amonnam } from './mhitm.js';
-import { losehp, acurrstr, delobj } from './dokick.js';
+import { y_monnam, YMonnam, Adjmonnam, wakeup, Amonnam } from './mhitm.js';
+import { can_track, resist_conflict, can_blow, locomotion } from './mondata.js';
+import { acurrstr } from './dokick.js';
+import { delobj } from './invent.js';
+import { losehp } from './hack.js';
 import { monkilled_trap } from './trap.js';
 import { TELEPAT as TELEPAT_MV, HALF_SPDAM as HALF_SPDAM_MV, KILLED_BY_AN as KILLED_BY_AN_MV } from './const.js';
 import { see_wsegs, worm_nomove, worm_move } from './worm.js';
 import { ranged_attk_available, mhis_mon } from './mhitu.js';
 import { mon_wield_item, sticks } from './dog.js';
-import { mwelded, is_pole, is_mines_prize, is_soko_prize, bill_dummy_object, mbodypart, verbalize, switch_terrain, coord_desc, notice_mon, set_msg_xy } from './cmd.js';
-import { is_pick, mdig_tunnel, mb_trapped, unpunish } from './dig.js';
+import { is_pole, is_mines_prize, is_soko_prize, bill_dummy_object, mbodypart, verbalize, switch_terrain, coord_desc, notice_mon, set_msg_xy } from './cmd.js';
+import { mwelded } from './wield.js';
+import { is_pick, mdig_tunnel, mb_trapped } from './dig.js';
+import { unpunish } from './read.js';
 import { fracture_rock } from './zap.js';
 /* C monflag.h:37 — MZ_LARGE is the first monster size subject to the
  * diagonal tight-squeeze rejection in mfndpos(). */
@@ -74,7 +83,8 @@ import { OC_WEIGHT } from './oc_weight.generated.js';
  * move_special in priest.js).  This forms a call-time cycle monmove→shk→
  * priest→monmove; ES module live bindings resolve it because shk_move is only
  * referenced inside m_move's body (never at module-init time). */
-import { shk_move, in_rooms, inhishop, add_damage, after_shk_move, costly_spot } from './shk.js';
+import { shk_move, inhishop, add_damage, after_shk_move, costly_spot } from './shk.js';
+import { in_rooms } from './hack.js';
 /* pri_move — same late-bound cycle as shk_move above (priest.js imports
  * _allow_rock_mv from this file); it is only ever called at runtime. */
 import { pri_move, in_your_sanctuary } from './priest.js';
@@ -82,6 +92,8 @@ import { pri_move, in_your_sanctuary } from './priest.js';
  * region.c functions called from monmove.c:682-683, :702-704 and :2063. */
 import { create_gas_cloud, visible_region_at, m_in_out_region } from './region.js';
 import { ENV } from './hostenv.js';
+import { ACCESSIBLE, D_CLOSED, D_LOCKED, IS_DOOR } from './const.js'; // relocate-fns
+import { _surface_at } from './look.js'; // relocate-fns
 /* C pline.c:126-149,175-190: these messages carry a map location even
  * when the monster cannot be seen. The display pline does not add this prefix. */
 async function monmove_message(mon, text) {
@@ -3680,4 +3692,26 @@ export function monhaskey(mon, for_unlocking) {
     if (for_unlocking && m_carrying(mon, CREDIT_CARD))
         return true;
     return !!(m_carrying(mon, SKELETON_KEY) || m_carrying(mon, LOCK_PICK));
+}
+
+// C ref: monmove.c:2204-2209 closed_door()
+// boolean closed_door(coordxy x, coordxy y) {
+//   return IS_DOOR(levl[x][y].typ) && (levl[x][y].doormask & (D_LOCKED | D_CLOSED));
+// }
+export function closed_door(x, y) {
+    const lev = game.level?.at(x, y);
+    if (!lev) return false;
+    return IS_DOOR(lev.typ) && !!(lev.doormask & (D_LOCKED | D_CLOSED));
+}
+
+// C ref: monmove.c:2212-2219 accessible(coordxy x, coordxy y)
+//   int levtyp = SURFACE_AT(x, y);
+//   return (boolean) (ACCESSIBLE(levtyp) && !closed_door(x, y));
+// RNG: none. Reads levl[x][y].typ (and drawbridgemask via SURFACE_AT) plus
+// doormask via closed_door — all from the level_tiles-reconstructed game.level.
+export function accessible(x, y) {
+    const lev = game.level?.at(x, y);
+    if (!lev) return false;
+    const levtyp = _surface_at(lev);
+    return !!(ACCESSIBLE(levtyp) && !closed_door(x, y));
 }

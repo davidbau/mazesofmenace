@@ -16,7 +16,7 @@ import { heroDetectsMonsters, heroIsBlind, heroIsHallucinating } from './senses.
 import { drawbridgeUnderlyingType } from './drawbridge_terrain.js';
 import { isIceAt, isPoolAt, isPoolOrLavaAt, terrainCoversObjectsAt } from './terrain_properties.js';
 import { heroWarnsOfMonster } from './hero_species.js';
-import { artifactWarningFeedback } from './artifact_warning.js';
+import { artifactWarningFeedback } from './artifacts.js';
 import { cansee, couldsee, set_seenv, vision_recalc } from './vision.js';
 import { describeMapLocation } from './lookaround.js';
 import { glyphToCmapSymbol } from './getpos.js';
@@ -40,6 +40,7 @@ const HALLUCINATED_LIQUIDS = [
     'grey goo', 'pink slime', 'cosmic latte', 'bone oil', 'custard', 'lard',
     'vinegar', 'creosote',
 ];
+// C do_name.c:hliquid(): the hallucinated liquid name.
 export function displayLiquidName(fallback, state = game) {
     if ((!heroIsHallucinating(state) || state.program_state.gameover) && fallback)
         return fallback;

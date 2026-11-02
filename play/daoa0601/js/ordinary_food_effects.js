@@ -2,7 +2,7 @@
 // C refs: eat.c fprefx(), fpostfx(), rottenfood(), and garlic_breath().
 import { formatFeltMessage, publishHeardMessage } from './hero_speech.js';
 import { heroLightHeadedFeeling, heroStomachName } from './body_parts.js';
-import { nomul } from './command_state.js';
+import { nomul } from './hack.js';
 import { EXPL_FIERY, Is_airlevel, Is_waterlevel, MON_FLOOR, TIMEOUT } from './const.js';
 import { plineWithContinuation as pline } from './pline.js';
 import { eggIsStale, isPyroliskEgg } from './egg_impact.js';
@@ -23,7 +23,7 @@ import { AD_BLND, AT_ENGL } from './monster_attack_types.js';
 import { MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_SYMBOL, monsterIsUndead, requireMonsterData, } from './monster_data.js';
 import { makeMonsterFlee } from './monmove.js';
 import { APPLE, CARROT, CLOVE_OF_GARLIC, CRAM_RATION, EGG, EUCALYPTUS_LEAF, FOOD_RATION, FORTUNE_COOKIE, LEMBAS_WAFER, LUMP_OF_ROYAL_JELLY, OBJECT_NAMES, PEAR, SLIME_MOLD, SPRIG_OF_WOLFSBANE, TRIPE_RATION, } from './object_data.js';
-import { objectMaterial } from './object_material.js';
+import { objectMaterial } from './o_init.js';
 import { foodObjectName } from './objnam.js';
 import { heroIsPolymorphed } from './polyself.js';
 import { propertyIsActive } from './properties.js';

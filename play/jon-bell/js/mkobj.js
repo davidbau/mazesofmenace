@@ -5,7 +5,9 @@
 // C ref: nethack-c/src/mklev.c:1055-1132 (fill_supply_chest body)
 //        nethack-c/src/mkobj.c:2680-2699  (add_to_container)
 import { rn2 } from './rng.js';
-import { mksobj, mkobj, add_to_container, dealloc_obj, newoextra, newomid, copy_mextra, attach_fig_transform_timeout, dead_species } from './mklev.js';
+import { mksobj, mkobj, add_to_container, dealloc_obj, newoextra, newomid } from './mklev.js';
+import { attach_fig_transform_timeout } from './timeout.js';
+import { copy_mextra, dead_species } from './mon.js';
 import { impossible } from './pline.js';
 const OBJ_CONTAINED = 2; // C: obj.h OBJ_CONTAINED
 import { permonstTemplate } from './makemon.js';
@@ -15,16 +17,31 @@ import { game } from './gstate.js';
 /* C mkobj.c curse()/unbless() side-effect arms, each imported from the file that
  * already holds its one real body: */
 import { confers_luck } from './attrib.js';   /* artifact.c:524 */
-import { set_moreluck, drop_uswapwep, obj_to_any } from './cmd.js'; /* attrib.c / wield.c */
+import { set_moreluck, obj_to_any } from './cmd.js';
+import { drop_uswapwep } from './wield.js'; /* attrib.c / wield.c */
 import { stop_timer } from './timeout.js';
-import { arti_light_radius, maybe_adjust_light } from './light.js';
+import { arti_light_radius } from './light.js';
 import { bimanual, reset_remarm } from './do_wear.js'; /* mondata.h:69 / do_wear.c */
 import { book_cursed } from './spell.js';     /* spell.c:2093 */
 import { cansee, Blind } from './vision.js';
-import { pline, You_see, You_hear } from './display.js';
+import { pline, You_see, You_hear } from './pline.js';
 import { Your } from './do_wear.js';
 import { makeplural, obj_typename, oname } from './objnam.js';
 import { HALLUC, HALLUC_RES, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT, MON_DETACH, ONAME_SKIP_INVUPD } from './const.js';
+import { mksobj_at, obj_timer_checks as obj_timer_checks_real } from './mklev.js'; // relocate-fns
+import { Yname2 } from './cmd.js'; // relocate-fns
+import { PLNMSG_OBJ_GLOWS } from './const.js'; // relocate-fns
+import { obj_adjust_light_radius } from './light.js'; // relocate-fns
+import { otense } from './objnam.js'; // relocate-fns
+import { get_obj_location } from './zap.js'; // relocate-fns
+import { stop_occupation } from './allmain.js'; // relocate-fns
+import { obj_extract_self_general, useupall } from './cmd.js'; // relocate-fns
+import { OBJ_MIGRATING } from './const.js'; // relocate-fns
+import { obfree } from './dokick.js'; // relocate-fns
+import { maybe_unhide_at } from './mon.js'; // relocate-fns
+import { remove_worn_item } from './steal.js'; // relocate-fns
+import { burn_carried } from './timeout.js'; // relocate-fns
+import { setmnotwielded } from './uhitm.js'; // relocate-fns
 
 // C mkobj.c:113: both gameplay callers overwrite the allocated monst before
 // reading it (copy_oextra/save_mtraits). No monster ID or RNG is allocated.
@@ -455,4 +472,60 @@ export async function pudding_merge_message(otmp, otmp2) {
     } else {
         await You_hear('a faint sloshing sound.');
     }
+}
+
+// C ref: timeout.c obj_timer_checks(otmp, x, y, force) — the object-timer
+// records show fobj.count only), so this untracked side effect is a no-op,
+// mirroring js/uhitm.js's end_burn no-op precedent.
+export function obj_timer_checks(otmp, x, y, force) {
+    return obj_timer_checks_real(otmp, x, y, force);
+}
+
+const _TREEFRUITS = [277 /* APPLE */, 278 /* ORANGE */, 279 /* PEAR */,
+                     281 /* BANANA */, 276 /* EUCALYPTUS_LEAF */];
+
+export async function rnd_treefruit_at(x, y) {
+    return await mksobj_at(_TREEFRUITS[rn2(_TREEFRUITS.length)], x, y, true, false);
+}
+
+/* C mkobj.c:1704-1738, used by polyself.c:1967 when scales become armor.
+ * Keep the radius change and its message together at the light-source owner. */
+export async function maybe_adjust_light(obj, old_range) {
+    const new_range = arti_light_radius(obj), delta = new_range - old_range;
+    if (delta) {
+        await obj_adjust_light_radius(obj, new_range);
+        const ox = { value: 0 }, oy = { value: 0 };
+        if (!Blind() && get_obj_location(obj, ox, oy, 0)) {
+            let buf = '';
+            if (game.iflags.last_msg === PLNMSG_OBJ_GLOWS)
+                buf = obj.quan === 1 ? 'It' : 'They';
+            else if (obj.where === OBJ_INVENT || cansee(ox.value, oy.value))
+                buf = Yname2(obj);
+            if (buf)
+                await pline('%s %s %s%s.', buf, otense(obj, 'shine'),
+                    Math.abs(delta) > 1 ? 'much ' : '',
+                    delta > 0 ? 'brighter' : 'less brightly');
+        }
+    }
+}
+
+/* C mkobj.c:1501 — globs lose one weight unit every ~25 turns. */
+export async function shrinking_glob_gone(obj) {
+    const where = obj.where | 0;
+    if (where === OBJ_INVENT || burn_carried(obj)) {
+        if (obj.owornmask) {
+            await remove_worn_item(obj, false);
+            await stop_occupation();
+        }
+        await useupall(obj);
+        return;
+    }
+    if (where === OBJ_MIGRATING)
+        obj.owornmask = 0;
+    else if (where === OBJ_MINVENT && obj.owornmask && obj.ocarry?.mw === obj)
+        setmnotwielded(obj.ocarry, obj);
+    obj_extract_self_general(obj);
+    if (where === OBJ_FLOOR)
+        maybe_unhide_at(obj.ox | 0, obj.oy | 0);
+    await obfree(obj, null);
 }

@@ -34,13 +34,16 @@ import { game } from './gstate.js';
 import { gs, PRIMARYSET } from './const.js';
 import { aligns, genders } from './roles.js';
 /* C ref: options.c:8060 oc_to_str — see js/drawing.js for why it lives there. */
-import { oc_to_str, def_oc_syms_chars } from './drawing.js';
+import { def_oc_syms_chars } from './drawing.js';
+import { oc_to_str } from './options.js';
 import { menutype } from './menustyle.js';
 import { feature_notice_version } from './feature_alert.js';
-import { count_status_hilites, BURDENTYPE } from './options.js';
+import { BURDENTYPE } from './options.js';
+import { count_status_hilites } from './botl.js';
 import { EXTCMDLIST } from './cmd_extcmd_data.js';
 import { clr2colorname, attr2attrname } from './coloratt.js';
 import { _threeStatusLines } from './display.js';
+import { count_bind_keys } from './cmd.js'; // relocate-fns
 
 /* C ref: src/symbols.c:376 known_handling[] */
 const KNOWN_HANDLING = ['UNKNOWN', 'IBM', 'DEC', 'CURS', 'MAC', 'UTF8'];
@@ -308,19 +311,6 @@ export const DOSET_COMPOUNDS = [
     { name: "whatis_filter", sel: true, hasHandler: true, val: () => ["none", "view", "area"][game.iflags?.getloc_filter | 0] || "none" },
 ];
 
-/* C cmd.c:2208 count_bind_keys() — extended commands bound to a non-default
- * key, plus commands that should have a key but have none. */
-export function count_bind_keys() {
-    const keys = new Uint8Array(256);
-    let nbinds = 0;
-    for (let bind = game.Cmd?.cmdbinds; bind; bind = bind.next) {
-        keys[bind.key] = 1;
-        if (bind.userbind && bind.cmd && bind.cmd.key !== bind.key) nbinds++;
-    }
-    for (const ec of EXTCMDLIST)
-        if (ec.key && !keys[ec.key]) nbinds++;
-    return nbinds;
-}
 
 export const DOSET_OTHERS = [
     /* C: options.c optfn_o_autocomplete get_val -> count_autocompletions() */

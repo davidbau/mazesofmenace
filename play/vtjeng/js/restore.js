@@ -14,6 +14,7 @@ import { rest_regions, rest_saved_level_regions } from './region.js';
 import { newsym } from './display.js';
 import { cansee, does_block, unblock_point } from './vision.js';
 import { mon_catchup_elapsed_time } from './dog.js';
+import { restore_timers } from './timeout.js';
 import {
     COLNO,
     COULD_SEE,
@@ -39,9 +40,12 @@ import {
     W_TOOL,
     W_WEP,
     STONE,
+    ROGUESET,
 } from './const.js';
 import { init_artifacts, restore_artifacts } from './artifacts.js';
-import { ledger_no, level_info, set_dungeon_topology } from './dungeon.js';
+import {
+    ledger_no, level_info, load_exclusions, on_level, set_dungeon_topology,
+} from './dungeon.js';
 import { game } from './gstate.js';
 import { l_nhcore_init } from './mklev.js';
 import { restore_waterlevel } from './mkmaze.js';
@@ -60,6 +64,7 @@ import {
     parseSnapshot, SAVE_FILE_PATH, savemonchn, saveobjchn,
 } from './save.js';
 import { restore_oracles } from './rumors.js';
+import { assign_graphics } from './symbols.js';
 import { role_init } from './role_init.js';
 import { set_residency, restshk } from './shk.js';
 import { stairway_add, stairway_at, stairway_free_all } from './stairs.js';
@@ -398,6 +403,13 @@ export async function dorestore(state = game) {
         state.program_state.restoring = wasRestoring;
     }
 
+    // C ref: restore.c dorecover():905-906. The current symbol set is not
+    // saved; startup options selected the primary set, so a game saved on
+    // the Rogue level switches to its symbols here, as goto_level() does on
+    // arrival.
+    if (on_level(state.u.uz, state.rogue_level))
+        assign_graphics(ROGUESET, state);
+
     // max_rank_sz computes gm.mrank_sz from the role's rank table.
     _uInitInternals.max_rank_sz(state);
 
@@ -430,6 +442,8 @@ export async function dorestore(state = game) {
     // bubbles through mkmaze.c restore_waterlevel(); the snapshot has none
     // on any other level.
     if (snapshot.waterlevel) restore_waterlevel(snapshot.waterlevel, state);
+    // C ref: restore.c getlev():1227 load_exclusions(), after rest_bubbles().
+    load_exclusions(snapshot.exclusion_zones, state);
 
     // C ref: restore.c:684 defers monster repaint until allmain.c:92-94.
     state.gd ??= {};
@@ -710,18 +724,7 @@ export async function getlev(ledger, state = game) {
     // savelev() captured the level-local timers and lights before save_timers()
     // and save_light_sources() unlinked them. Re-link them into the global
     // chains now.
-    if (snapshot.timers?.length) {
-        // Prepend the saved level-local timers to the current timer chain.
-        const timerHead = snapshot.timers[0];
-        let timerTail = timerHead;
-        for (let i = 1; i < snapshot.timers.length; i++) {
-            timerTail.next = snapshot.timers[i];
-            timerTail = snapshot.timers[i];
-        }
-        state.gt ??= {};
-        timerTail.next = state.gt.timer_base ?? null;
-        state.gt.timer_base = timerHead;
-    }
+    if (snapshot.timers?.length) restore_timers(snapshot.timers, state);
 
     if (snapshot.lights?.length) {
         // Prepend the saved level-local lights to the current light chain.
@@ -796,6 +799,8 @@ export async function getlev(ledger, state = game) {
         restoredRegionVisuals(state));
 
     if (snapshot.waterlevel) restore_waterlevel(snapshot.waterlevel, state);
+    // C ref: restore.c getlev():1227 load_exclusions(), after rest_bubbles().
+    load_exclusions(snapshot.exclusion_zones, state);
 
     // C restore.c rest_track() restores the track ring after the elapsed-time
     // catch-up. A missing ring is the equivalent of a freshly initialized

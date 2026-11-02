@@ -5,13 +5,18 @@ import { rest_region_capacity } from './region.js';
 import {
     COLNO,
     DEFUNCT_MONSTER,
+    DELPHI,
     EBONES,
     HOLE,
     LEAVESTATUE,
+    Is_oracle_level,
     LOST_NONE,
     MAGIC_PORTAL,
+    MAXNROFROOMS,
     MM_NONAME,
     NON_PM,
+    NO_MINVENT,
+    ROOMOFFSET,
     ROWNO,
     RIGHT_HANDED,
     W_WEP,
@@ -21,6 +26,11 @@ import {
 } from './const.js';
 import { isok } from './cmd_isok.js';
 import { christen_monst } from './do_name.js';
+import { mk_named_object } from './corpstat.js';
+import { objectGenerationEnv } from './object_generation.js';
+import { eaten_stat } from './eat.js';
+import { newsym } from './display.js';
+import { m_dowear } from './worn.js';
 import {
     In_hell,
     Is_botlevel,
@@ -30,7 +40,10 @@ import {
     depth,
     dunlevs_in_dungeon,
     ledger_no,
+    load_exclusions,
+    mapseen_room,
     maxledgerno,
+    save_exclusions,
 } from './dungeon.js';
 import { formatkiller } from './topten.js';
 import { fruit_from_indx } from './fruit.js';
@@ -42,14 +55,18 @@ import {
     add_to_container,
 } from './invent.js';
 import { y_n } from './cmd.js';
-import { dmonsfree, makemon } from './makemon_create.js';
+import { dmonsfree, makemon, mongets } from './makemon_create.js';
 import {
+    give_u_to_m_resistances,
     is_unicorn,
     is_undead,
     likes_gold, likes_gems, likes_objs, likes_magic, monsndx,
 } from './mondata.js';
 import { m_at } from './monst.js';
-import { mongone, restore_cham } from './mon.js';
+import {
+    is_Vlad, iter_mons_async, m_carrying, mongone, restore_cham,
+} from './mon.js';
+import { enexto, rloc_to } from './teleport.js';
 import { restpriest } from './priest.js';
 import { restshk, set_residency } from './shk.js';
 import { GLYPH_UNEXPLORED_OFF } from './glyph_offsets.js';
@@ -76,6 +93,7 @@ import {
     BOOMERANG,
     CORPSE,
     EGG,
+    MUMMY_WRAPPING,
     AMULET_OF_YENDOR,
     FAKE_AMULET_OF_YENDOR,
     SLIME_MOLD,
@@ -87,7 +105,10 @@ import {
     MS_LEADER,
     MS_NEMESIS,
     PM_GHOST,
+    PM_MEDUSA,
+    PM_ORACLE,
     SPECIAL_PM,
+    S_MUMMY,
 } from './monsters.js';
 import { peace_minded, propagate, set_malign } from './makemon.js';
 import { rn2 } from './rng.js';
@@ -322,6 +343,14 @@ function give_to_nearby_mon(otmp, x, y, state) {
     }
 }
 
+// Object hooks for the possessions savebones() moves. mkobj.c
+// add_to_container() calls obj_no_longer_held() again for a container outside
+// any inventory, such as the hero's statue, and a partly eaten food item in
+// its contents needs eat.c eaten_stat() for the statue's weight.
+function bonesObjectEnv(state) {
+    return objectGenerationEnv({ state, hooks: { eatenStat: eaten_stat } });
+}
+
 // C ref: bones.c drop_upon_death() (259-303). Drops all hero inventory,
 // usually cursing items. If mtmp is non-null, items go to that monster.
 // If cont is non-null, items go into that container. Otherwise items are
@@ -351,26 +380,62 @@ export async function drop_upon_death(mtmp, cont, x, y, state) {
         if (mtmp) {
             add_to_minv(mtmp, otmp);
         } else if (cont) {
-            await add_to_container(cont, otmp);
+            await add_to_container(cont, otmp, bonesObjectEnv(state));
         } else if (!rn2(8)) {
             give_to_nearby_mon(otmp, x, y, state);
         } else {
             place_object(otmp, x, y);
         }
     }
-    if (cont) cont.owt = weight(cont);
+    if (cont) cont.owt = weight(cont, bonesObjectEnv(state));
 }
 
-// C ref: bones.c remove_mon_from_bones() (389-399). Removes certain special
-// monsters (wizard, Medusa, quest leaders/nemeses, Vlad, Oracle on wrong
-// level) before saving bones.
-function remove_mon_from_bones(mtmp, mongone_fn) {
-    const mptr = mtmp.data;
-    if (mtmp.iswiz || mptr?.msound === MS_NEMESIS
-        || mptr?.msound === MS_LEADER) {
-        mongone_fn(mtmp);
+// C ref: bones.c fixuporacle() (305-352). Answers false when the Oracle is
+// off her own level and should be removed; otherwise she is made peaceful and,
+// if she has left her chamber, moved back and the chamber's type restored.
+function fixuporacle(oracle, state) {
+    if (!Is_oracle_level(state.u.uz))
+        return false;
+
+    oracle.mpeaceful = 1;
+    const roomAt = (x, y) => state.level.at(x, y).roomno - ROOMOFFSET;
+    let o_ridx = roomAt(oracle.mx, oracle.my);
+    if (o_ridx >= 0 && mapseen_room(o_ridx, state)?.rtype === DELPHI)
+        return true;
+
+    // C scans every slot of svr.rooms[], which holds the subrooms after the
+    // MAXNROFROOMS + 1 top-level slots.
+    const nslots = (MAXNROFROOMS + 1) * 2;
+    let ridx;
+    for (ridx = 0; ridx < nslots; ++ridx)
+        if (mapseen_room(ridx, state)?.orig_rtype === DELPHI)
+            break;
+
+    if (o_ridx !== ridx && ridx < nslots) {
+        const room = mapseen_room(ridx, state);
+        const cx = Math.trunc((room.lx + room.hx) / 2);
+        const cy = Math.trunc((room.ly + room.hy) / 2);
+        const cc = enexto(cx, cy, oracle.data, { state });
+        if (cc) {
+            rloc_to(oracle, cc.x, cc.y, { state });
+            o_ridx = roomAt(oracle.mx, oracle.my);
+        }
     }
-    // Oracle fixup and other special monsters are simplified for now.
+    if (ridx === o_ridx)
+        mapseen_room(ridx, state).rtype = DELPHI;
+    return true;
+}
+
+// C ref: bones.c remove_mon_from_bones() (387-399). Sends unique and
+// role-specific monsters away before the level is saved as bones; mongone()
+// drops the Amulet, invocation tools and the hero's quest artifact first.
+async function remove_mon_from_bones(mtmp, state) {
+    const mptr = mtmp.data;
+    if (mtmp.iswiz || mptr === state.mons[PM_MEDUSA]
+        || mptr.msound === MS_NEMESIS || mptr.msound === MS_LEADER
+        || is_Vlad(mtmp)
+        || (mptr === state.mons[PM_ORACLE] && !fixuporacle(mtmp, state)))
+        await mongone(mtmp, { state });
 }
 
 // C ref: bones.c newebones() (818-829). Creates an ebones structure on a
@@ -433,34 +498,8 @@ export async function savebones(how, when, corpse, state) {
     // C: if (u.usteed) dismount_steed(DISMOUNT_BONES);
     // The port has no mount state in the exercised path; skip.
 
-    // C: iter_mons(remove_mon_from_bones) + dmonsfree()
-    // Remove special monsters and discard dead/gone ones.
-    for (let mtmp = state.level?.monlist; mtmp; mtmp = mtmp.nmon) {
-        if (mtmp.mhp <= 0) continue; // DEADMONSTER
-        remove_mon_from_bones(mtmp, (m) => {
-            // Simplified mongone: mark as dead for dmonsfree.
-            m.mhp = 0;
-        });
-    }
-    // dmonsfree: remove dead monsters from the chain.
-    if (state.level) {
-        let prev = null;
-        let curr = state.level.monlist;
-        while (curr) {
-            const next = curr.nmon;
-            if (curr.mhp <= 0) {
-                if (prev) prev.nmon = next;
-                else state.level.monlist = next;
-                // Clear from monsters grid
-                if (state.level.monsters?.[curr.mx]?.[curr.my] === curr) {
-                    state.level.monsters[curr.mx][curr.my] = null;
-                }
-            } else {
-                prev = curr;
-            }
-            curr = next;
-        }
-    }
+    await iter_mons_async((mtmp) => remove_mon_from_bones(mtmp, state), state);
+    dmonsfree(state);
 
     // C: forget_engravings() -- clear erevealed/eread on all engravings.
     for (let ep = state.head_engr; ep; ep = ep.nxt_engr) {
@@ -479,15 +518,34 @@ export async function savebones(how, when, corpse, state) {
     // hero becomes, or drop inventory for a ghost.
     let mtmp = null;
     if (ismnum(state.u.ugrave_arise)) {
-        // Hero rises as a specific monster -- not exercised in this session.
-        // Simplified: fall through to the ghost path.
-        await drop_upon_death(null, null, state.u.ux, state.u.uy, state);
-        state.u.ugrave_arise = NON_PM;
-        return;
+        // bones.c:458-479. The monster the hero becomes is made on the
+        // hero's square without inventory and receives the possessions.
+        state.in_mklev = true;
+        mtmp = makemon(state.mons[state.u.ugrave_arise], state.u.ux,
+            state.u.uy, NO_MINVENT);
+        state.in_mklev = false;
+        if (!mtmp) { /* arise-type might have been genocided */
+            await drop_upon_death(null, null, state.u.ux, state.u.uy, state);
+            state.u.ugrave_arise = NON_PM;
+            return;
+        }
+        give_u_to_m_resistances(mtmp, state);
+        mtmp = christen_monst(mtmp, state.plname);
+        newsym(state.u.ux, state.u.uy);
+        await drop_upon_death(mtmp, null, state.u.ux, state.u.uy, state);
+        if (mtmp.data.mlet === S_MUMMY
+            && !m_carrying(mtmp, MUMMY_WRAPPING, state))
+            mongets(mtmp, MUMMY_WRAPPING, bonesObjectEnv(state));
+        m_dowear(mtmp, true, { state });
     } else if (state.u.ugrave_arise === LEAVESTATUE) {
-        // Hero becomes a statue -- not exercised.
-        await drop_upon_death(null, null, state.u.ux, state.u.uy, state);
-        return;
+        // bones.c:480-489. The possessions are embedded in a statue of the
+        // hero's current form.
+        const otmp = mk_named_object(STATUE, state.mons[state.u.umonnum],
+            state.u.ux, state.u.uy, state.plname,
+            bonesObjectEnv(state));
+        await drop_upon_death(null, otmp, state.u.ux, state.u.uy, state);
+        if (!otmp) return; /* couldn't make statue */
+        mtmp = null;
     } else {
         // u.ugrave_arise < LEAVESTATUE: drop everything, create a ghost.
         await drop_upon_death(null, null, state.u.ux, state.u.uy, state);
@@ -760,6 +818,8 @@ function serializeBonesLevel(state) {
         lastseentyp: level.lastseentyp,
         bonesinfo: level.bonesinfo,
         regions: level.regions,
+        // C ref: save.c:552 save_exclusions(); a bones file is a savelev().
+        exclusion_zones: save_exclusions(state),
         traps,
         track,
         monsters,
@@ -1009,6 +1069,9 @@ function restoreBonesLevel(bonesData, state) {
     // boundary in dndest, which dungeon.c In_W_tower() requires.
     state.updest = bonesData.updest ? { ...bonesData.updest } : {};
     state.dndest = bonesData.dndest ? { ...bonesData.dndest } : {};
+    // C ref: restore.c getlev():1227 load_exclusions() reads the bones
+    // level's zones onto the list the departing level's savelev() emptied.
+    load_exclusions(bonesData.exclusion_zones, state);
 
     // Rebuild floor objects: place in the per-location .objects chains, the
     // per-location grid (level.objects), and the flat objlist chain.

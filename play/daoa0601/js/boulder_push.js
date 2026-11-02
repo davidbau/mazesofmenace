@@ -2,7 +2,7 @@
 import { exerciseAttribute } from './attrib.js';
 import { dropBoulderIntoLiquid } from './boulder_pool.js';
 import { buryFloorObjectsAt } from './buried_object.js';
-import { endVoluntaryMultiTurn } from './command_state.js';
+import { endVoluntaryMultiTurn } from './hack.js';
 import { A_STR, DOOR, D_BROKEN, D_CLOSED, D_LOCKED, D_NODOOR, HOLE, IN_SIGHT, IRONBARS, IS_OBSTRUCTED, Is_airlevel, Is_rogue_level, LANDMINE, LEVEL_TELEP, MIGR_RANDOM, P_BASIC, P_RIDING, ROLLING_BOULDER_TRAP, SHOPBASE, STONE, TELEP_TRAP, TRAPDOOR, WT_SQUEEZABLE_INV, W_NONDIGGABLE, is_pit, isok, } from './const.js';
 import { canSpotMonster, feel_location, glyphAt, map_invisible, map_object, newsym, unmap_invisible, } from './display.js';
 import { plineWithContinuation } from './pline.js';
@@ -21,8 +21,8 @@ import { MONSTER_FLAGS2, monsterIsNoncorporeal } from './monster_data.js';
 import { monsterName } from './do_name.js';
 import { monsterAtPosition } from './steed.js';
 import { BOULDER } from './object_data.js';
-import { disturbBuriedZombies } from './object_impact.js';
-import { relocateObjectRandomly } from './object_teleport.js';
+import { disturbBuriedZombies } from './hack.js';
+import { relocateObjectRandomly } from './teleport.js';
 import { objectCombatName, objectNameIsPlural } from './objnam.js';
 import { autopickupAllows } from './pickup.js';
 import { fillPitWithBoulderAt } from './pit_fill.js';
@@ -36,7 +36,7 @@ import { addShopObjectToBill, billForObject, costlySpot, removeObjectAndContents
 import { reviveNastyAt } from './revive_nasty.js';
 import { surfaceName } from './terrain_name.js';
 import { feelTrap, seeTrap } from './trap.js';
-import { deleteTrap } from './trap_lifecycle.js';
+import { deleteTrap } from './trap.js';
 import { cansee } from './vision.js';
 import { invWeight } from './weight.js';
 const M2_ROCKTHROW = 0x08000000;

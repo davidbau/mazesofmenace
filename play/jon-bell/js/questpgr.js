@@ -17,7 +17,7 @@
 // "text" field).  Every entry ported here is a table with a "text" field, so
 // this whole path is RNG-free — the same property js/mcastu.js:147 relies on
 // for its (separate, array-form) cuss() com_pager.
-import { pline } from './display.js'; /* was an undeclared global: every pline() call in this file threw ReferenceError when reached */
+import { pline } from './pline.js'; /* was an undeclared global: every pline() call in this file threw ReferenceError when reached */
 import { game } from './gstate.js';
 import { s_suffix as _s_suffix } from './hacklib.js';
 import { permonstTemplate, monPmname } from './makemon.js';
@@ -4118,4 +4118,21 @@ export async function qt_pager(msgid) {
     const filecode = _roleFilecode();
     if (!filecode || !(await com_pager_core(filecode, msgid, false)))
         await com_pager_core('common', msgid, true);
+}
+
+// C questpgr.c:147-194 uses the HERO'S quest text even for a different
+// role's nemesis. Reading raw text still initializes Lua and consumes RNG.
+export async function stinky_nemesis() {
+    const raw = await quest_nemesis_death_text();
+    if (!raw)
+        return false;
+    // C hacklib.c:strNsubst copies its BUFSZ buffer back only if it replaced
+    // a newline before the 255-character output limit.
+    const prefix = raw.slice(0, 255);
+    const text = (prefix.includes('\n') ? prefix.replace(/\n/g, ' ') : raw).toLowerCase();
+    let pos = text.indexOf('noxious');
+    if (pos < 0) pos = text.indexOf('poisonous');
+    if (pos < 0) pos = text.indexOf('toxic');
+    return pos >= 0 && (text.indexOf(' gas', pos) >= 0
+                       || text.indexOf(' fumes', pos) >= 0);
 }

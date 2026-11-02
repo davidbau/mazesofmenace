@@ -10,7 +10,8 @@ import { PROT_FROM_SHAPE_CHANGERS } from './const.js';
 import { costly_alteration } from './cmd.js';
 import { costly_spot, shop_keeper, stolen_value, obfree, currency } from './shk.js';
 import { obj_extract_self, start_corpse_timeout } from './mklev.js';
-import { delobj, acurrstr as effective_strength } from './dokick.js';
+import { acurrstr as effective_strength } from './dokick.js';
+import { delobj } from './invent.js';
 import { stackobj } from './sp_lev.js';
 import { COST_BRKLCK } from './const.js';
 import { bhp_is_lava as is_lava, verbalize } from './cmd.js';
@@ -24,35 +25,40 @@ import { can_reach_floor } from './hold_another_object.js';
 import { cant_reach_floor } from './engrave.js';
 const WAND_CLASS = 11; /* objclass.h WAND_CLASS */
 import { Is_rogue_level, M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, AUTOUNLOCK_KICK } from './const.js';
-import { canspotmon, map_invisible, update_mapseen_for } from './display.js';
+import { canspotmon, map_invisible } from './display.js';
+import { update_mapseen_for } from './dungeon.js';
 import { s_suffix } from './hacklib.js';
 import { Some_Monnam } from './mhitm.js';
 import { set_occupation, confdir, movecmd, cmdq_pop, cmdq_clear, cmdq_add_key, redraw_cmd, dxdy_moveok, xytodir, readchar,
     show_direction_keys, dowhatdoes_core, useup, getpos } from './cmd.js';
 import { visctrl } from './cmd_binds.js';
-import { CQ_REPEAT, CQ_CANNED, CMDQ_DIR, CMDQ_KEY, NHKF_GETDIR_HELP, NHKF_GETDIR_SELF, NHKF_GETDIR_SELF2,
+import { CQ_REPEAT, CQ_CANNED, CMDQ_DIR, CMDQ_KEY, CMDQ_USER_INPUT, NHKF_GETDIR_HELP, NHKF_GETDIR_SELF, NHKF_GETDIR_SELF2,
          NHKF_GETDIR_MOUSE, NHKF_GETPOS_PICK, NHKF_GETPOS_PICK_Q, NHKF_GETPOS_PICK_O, NHKF_GETPOS_PICK_V,
          CLICK_1, CLICK_2 } from './const.js';
 import { impossible } from './pline.js';
-import { pline, force_more, newsym, feel_newsym, flush_screen, docrt_flags, _darken_room_floor, show_glyph_cell, canseemon, You_hear, Unaware } from './display.js';
+import { force_more, newsym, feel_newsym, flush_screen, docrt_flags, _darken_room_floor, show_glyph_cell, canseemon, Unaware } from './display.js';
+import { pline, You_hear } from './pline.js';
 import { mb_trapped } from './dig.js';
 import { capture_pre_movemon_botl, _topl_joins_snapshot, commit_force_messages } from './display.js';
-import { topl_park_cursor, putmsghistory, feel_location, flush_pending_messages, _topl_stash_result } from './display.js';
+import { topl_park_cursor, pline_flush_point, putmsghistory, feel_location, flush_pending_messages, _topl_stash_result } from './display.js';
 import { block_point, recalc_block_point, vision_recalc, unblock_point } from './vision.js';
 import { nhgetch } from './input.js';
-import { yn_function } from './end.js';
+import { yn_function } from './cmd.js';
 import { display_text_window } from './com_pager.js';
 import { pushRngLogEntry } from './rng.js';
 import { isaac64_next_uint64 } from './isaac64.js';
 import { acurr, exercise } from './attrib.js';
 import { rn2, rnl, rnd } from './rng.js';
-import { losehp } from './dokick.js';
-import { level_difficulty, wake_nearby } from './mklev.js';
+import { losehp } from './hack.js';
+import { level_difficulty } from './dungeon.js';
+import { wake_nearby } from './mon.js';
 import { isok } from './hacklib.js';
-import { wake_nearto } from './mklev.js';
-import { in_rooms, add_damage } from './shk.js';
+import { wake_nearto } from './mon.js';
+import { add_damage } from './shk.js';
+import { in_rooms } from './hack.js';
 import { cansee, Blind } from './vision.js';
-import { closed_door, is_door_mappear } from './look.js';
+import { is_door_mappear } from './look.js';
+import { closed_door } from './monmove.js';
 import { maybe_absorb_item } from './steal.js';
 import { stumble_onto_mimic } from './uhitm.js';
 import { TT_PIT } from './const.js';
@@ -82,7 +88,7 @@ const SPE_POLYMORPH_OTYP_LK = 399;
  * the mons[] index 343 (js/pm.generated.js:345), the same reader js/dokick.js
  * maybe_wail() and js/cmd.js msnoise use: `game.urole.mnum === PM_WIZARD`. */
 const PM_WIZARD_LK = 343;
-import { simple_typename, xname_flags, xname, singular, cxname, doname, ansimpleoname, The, An, is_quest_artifact } from './objnam.js';
+import { simple_typename, xname_flags, xname, the, singular, cxname, doname, ansimpleoname, The, An, is_quest_artifact } from './objnam.js';
 import { safe_qbuf } from './shk.js';
 import { weapon_type, WEAPON_WLDAM, m_at, mon_nam } from './uhitm.js';
 import { place_object } from './mklev.js';
@@ -98,6 +104,9 @@ import { SHOPBASE, SDOOR, DOOR, D_CLOSED, D_ISOPEN, D_TRAPPED, D_NODOOR, D_BROKE
  * via makemon.js) to keep lock.js off the makemon import cycle. */
 import monsPackLk from './makemon_mons.json' with { type: 'json' };
 import monMsizePackLk from './makemon_msize.json' with { type: 'json' };
+import { acurrstr } from './attrib.js'; // relocate-fns
+import { bottlename } from './potion.js'; // relocate-fns
+export { bottlename } from './potion.js'; // relocate-fns
 const _MONS_LK = /** @type {number[][]} */ (monsPackLk.mons);
 const _MONS_MSIZE_LK = /** @type {number[]} */ (monMsizePackLk.msize);
 /* C monflag.h:180 MZ_HUMAN = 2 — the default when no form is resolvable
@@ -145,12 +154,6 @@ function _rawRnd(x) {
 }
 
 
-/* C ref: attrib.c:1251 acurrstr() — effective Str for door-opening check.
- * For Str <= 18 (normal human): result = max(str, 3) = str.
- * For higher Str values: follows 18/xx encoding; mirrors C exactly. */
-function acurrstr() {
-    return effective_strength(game.u);
-}
 
 export async function doopen_indir(x, y) {
     const g = game;
@@ -827,6 +830,15 @@ function _yname(pick) { return yname(pick); }
  * y_n helper in potion.js but with the [ynq] response set and 'q' default. */
 async function _ynq(query) {
     const g = game;
+    /* C cmd.c:5496-5508 — ynq() passes addcmdq=TRUE: a queued CMDQ_KEY (e.g.
+     * #therecmdmenu's "Lock it?" 'y', cmd.c:4707) answers without the tty
+     * prompt; any other queued entry clears CQ_CANNED and answers ESC. */
+    const cq = cmdq_pop();
+    if (cq && cq.typ !== CMDQ_USER_INPUT) {
+        if (cq.typ !== CMDQ_KEY) { cmdq_clear(CQ_CANNED); return 'q'; }
+        const r = String.fromCharCode(cq.key & 255);
+        return 'ynq'.includes(r) ? r : 'q';
+    }
     const prompt = query + ' [ynq] (q)';
     // C topl.c:389-392: the prior command's topline also precedes queued queries.
     await flush_pending_messages();
@@ -837,7 +849,17 @@ async function _ynq(query) {
      * parked on the topline. */
     for (;;) {
         g._pending_message = prompt;
-        await flush_screen(1);
+        /* C topl.c:394 tty_yn_function sets TOPLINE_SPECIAL_PROMPT before
+         * custompline, so a prompt wider than the row hard-wraps onto row 1
+         * with no --More-- (redotoplin, topl.c:139); same as getobj's prompt. */
+        const savedEcho = g._topl_prompt_echo, savedWritten = g._topl_prompt_written;
+        if (topl_park_cursor(null, prompt + ' ')[1] > 0) {
+            pline_flush_point();
+            g._topl_prompt_echo = true;
+        }
+        g._topl_prompt_written = prompt + ' ';
+        try { await flush_screen(1); }
+        finally { g._topl_prompt_echo = savedEcho; g._topl_prompt_written = savedWritten; }
         const disp = g.nhDisplay;
         if (disp) topl_park_cursor(disp, prompt + ' ');
         /* C topl.c:537-539 files prompt + key2txt(q) in the history, not the bare
@@ -1153,7 +1175,7 @@ export async function breakchestlock(box, destroyit) {
     const shkp = u.ushops?.length && costly_spot(u.ux, u.uy) ? shop_keeper(u.ushops[0]) : null;
     const costly = !!shkp, peaceful_shk = costly && !!shkp.mpeaceful;
     let loss = 0;
-    _forceEmit(`In fact, you've totally destroyed ${_the(box_xname(box))}.`);
+    _forceEmit(`In fact, you've totally destroyed ${the(xname(box))}.`);
     /* C lock.c:184 — put the contents on the ground at the hero's feet. */
     let otmp;
     while ((otmp = box.cobj) != null) {
@@ -1247,24 +1269,6 @@ async function chest_shatter_msg(otmp) {
     _forceEmit(`${An(thing)} ${disposition}!`);
 }
 
-/* C ref: potion.c:1478-1493 — hallucination uses a separate 24-entry table,
- * while ordinary play uses the seven stable bottle names. */
-const _bottlenames = ['bottle', 'phial', 'flagon', 'carafe', 'flask', 'jar', 'vial'];
-const _hbottlenames = [
-    'jug', 'pitcher', 'barrel', 'tin', 'bag', 'box', 'glass', 'beaker',
-    'tumbler', 'vase', 'flowerpot', 'pan', 'thingy', 'mug', 'teacup',
-    'teapot', 'keg', 'bucket', 'thermos', 'amphora', 'wineskin', 'parcel',
-    'bowl', 'ampoule'
-];
-export function bottlename() {
-    /* youprop.h:116-120 — Hallucination is (HHallucination && !Halluc_resistance):
-     * intrinsic-only, with HALLUC_RES intrinsic or extrinsic. */
-    const hr = game.u?.uprops?.[HALLUC_RES];
-    const hallu = !!(game.u?.uprops?.[HALLUC]?.intrinsic | 0)
-        && !((hr?.intrinsic | 0) || (hr?.extrinsic | 0));
-    const names = hallu ? _hbottlenames : _bottlenames;
-    return names[rn2(names.length)];
-}
 
 /* C ref: lock.c:677 doforce(void) — the #force extended command. */
 export async function doforce() {

@@ -1,16 +1,15 @@
-import { trapName } from './trap_name.js';
+import { trapName, deleteTrap, convertTrapToObject } from './trap.js';
 // Finding and removing floor, container, and door traps.
 // C ref: trap.c dountrap(), could_untrap(), and untrap().
 import { formatFeltMessage } from './hero_speech.js';
 import { monsterHasMapPosition } from './steed.js';
-import { deleteTrap } from './trap_lifecycle.js';
 import { vision_note_blocker_change } from './vision.js';
 import { roomsAt } from './room.js';
 import { SHOPBASE } from './const.js';
 import { triggerBoobyTrap } from './booby_trap.js';
 import { adjustHeroAlignment } from './alignment.js';
 import { artifactById } from './artifacts.js';
-import { heroHasMagicKey } from './artifact.js';
+import { heroHasMagicKey } from './artifacts.js';
 import { currentAttribute, exerciseAttribute } from './attrib.js';
 import { triggerChestTrap } from './chest_trap.js';
 import { heroArmName, heroFingerName, heroHandName } from './body_parts.js';
@@ -23,29 +22,28 @@ import { abusePet } from './dog.js';
 import { addExperience, checkExperienceLevel, } from './exper.js';
 import { heroCanReachFloor } from './floor_reach.js';
 import { game } from './gstate.js';
-import { convertTrapToObject } from './trap_object.js';
 import { blocksDiagonalDoor, blocksMove, heroBadRock } from './hack.js';
 import { beginBallAndChainMove, finishBallAndChainMove } from './ball.js';
 import { placeHeroOnLevel } from './hero_location.js';
 import { checkHeroLeashes } from './leash_apply.js';
 import { finishDestinationSpotEffects } from './location_effects.js';
 import { vision_recalc } from './vision.js';
-import { consumeObjectCharge } from './object_charge.js';
+import { consumeObjectCharge } from './invent.js';
 import { heroCanSpinWeb } from './hero_web.js';
 import { triggerHeroTrap } from './hero_traps.js';
 import { maketrap } from './mklev.js';
 import { dismountHero } from './steed.js';
 import { chooseInventoryObject } from './inventory_prompt.js';
-import { objectTypeKnown, addShopDamage } from './shk.js';
+import { objectTypeKnown, addShopDamage, deleteObject } from './shk.js';
 import { isDoorMimic, isObjectOrFurnitureMimic, revealMimic } from './mimic.js';
 import { buryFloorObjectsAt } from './buried_object.js';
 import { finishEnvironmentalMonsterDeath } from './mon.js';
 import { setMonsterMalign } from './makemon.js';
 import { MONSTER_BODY_META, MONSTER_FLAGS1, MONSTER_GENO, MONSTER_MOVE, MONSTER_SYMBOL, monsterIsMindless, monsterTypeName, } from './monster_data.js';
 import { MONSTER_SIZE } from './monster_data.js';
-import { ARROW, BEARTRAP, BOULDER, CAN_OF_GREASE, DART, LAND_MINE, LARGE_BOX, CHEST, OBJECT_BIMANUAL, POT_OIL, } from './object_data.js';
-import { deleteObject } from './object_delete.js';
+import { ARROW, BEARTRAP, BOULDER, CAN_OF_GREASE, DART, LAND_MINE, LARGE_BOX, CHEST, POT_OIL, } from './object_data.js';
 import { recordObjectKnowledge } from './object_knowledge.js';
+import { isBimanualObject } from './object_properties.js';
 import { heroHasNoHands, } from './polyself.js';
 import { heroFormSticks, heroSpecies } from './hero_species.js';
 import { promptYesNoQuit } from './query.js';
@@ -54,8 +52,8 @@ import { heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
 import { resolveImmediatePetrification, touchPetrifies, } from './stoning.js';
 import { promptDirection } from './tty_prompts.js';
 import { EXT_ENCUMBER, HVY_ENCUMBER, calcCapacity, inventoryWeight, nearCapacity, objectWeight, } from './weight.js';
-import { isBlade } from './weapon_type.js';
-import { isWeldedPrimary } from './weapon_slots.js';
+import { isBlade } from './object_properties.js';
+import { isWeldedPrimary } from './wield.js';
 import { cansee } from './vision.js';
 import { observeObjectForNaming, definiteName, objectCombatName, objectQuestion, simpleObjectName, simpleObjectNameWithArticle, } from './objnam.js';
 import { objectDescription } from './object_description.js';
@@ -101,7 +99,7 @@ function possessiveTrap(trap) {
 }
 function weldedTwoHandedWeapon(state) {
     const weapon = state.uwep || state.u?.uwep;
-    return isWeldedPrimary(weapon, state) && !!weapon && !!OBJECT_BIMANUAL[weapon.otyp];
+    return isWeldedPrimary(weapon, state) && isBimanualObject(weapon);
 }
 export function untrapAbilityProblem(state = game, { checkFloor = false } = {}) {
     if (nearCapacity(state) >= HVY_ENCUMBER)

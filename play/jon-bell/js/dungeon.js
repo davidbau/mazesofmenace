@@ -2,10 +2,30 @@
 
 import { game } from './gstate.js';
 import { In_quest, In_endgame, Is_knox_level, VISITED } from './const.js';
-import { depth } from './hacklib.js';
-import { strsubst } from './mklev.js';
+import './hacklib.js';
+import { strsubst } from './hacklib.js';
 import { rnd } from './rng.js';
-import { goto_level } from './cmd.js';
+import { goto_level } from './do.js';
+import { ledger_no as ledger_no_real } from './bones.js'; // relocate-fns
+import { _earth_sense, switch_terrain } from './cmd.js'; // relocate-fns
+import { COLNO, Is_botlevel, Is_stronghold, LR_DOWNTELE, LR_UPTELE, ROWNO, isok } from './const.js'; // relocate-fns
+import { map_location, see_nearby_objects } from './display.js'; // relocate-fns
+import { levelDifficulty } from './makemon.js'; // relocate-fns
+import { _Blind_mk, _Hallucination_mk, _shtypes, sp_levchn_lookup } from './mklev.js';
+import { place_lregion } from './mkmaze.js'; // relocate-fns
+import './mkmaze.js'; // relocate-fns
+import { impossible as lifecycle_impossible } from './pline.js'; // relocate-fns
+import { invalidateTerrainStatus } from './terrain-status.js'; // relocate-fns
+import { recalc_mapseen_rooms } from './cmd.js'; // relocate-fns
+import { DRAWBRIDGE_UP, M_AP_FURNITURE, M_AP_TYPMASK } from './const.js'; // relocate-fns
+import { db_under_typ } from './dbridge.js'; // relocate-fns
+import { _m_at, canseemon } from './display.js';
+import { cmap_to_type } from './mkroom.js'; // relocate-fns
+import { insertBranch } from './dungeon_rng.js'; // relocate-fns
+import { surface as surface_real } from './cmd.js'; // relocate-fns
+import { Is_earthlevel } from './const.js'; // relocate-fns
+export { describe_level } from './botl.js'; // relocate-fns
+export { describe_level_impl }; // relocate-fns
 
 let sve = { exclusion_zones: null };
 
@@ -229,12 +249,6 @@ export function endgamelevelname(indx) {
     return outbuf;
 }
 
-export function describe_level(buf, dflgs, uz) {
-    const r = describe_level_impl(dflgs, uz);
-    if (buf && typeof buf === 'object')
-        buf.s = r.buf;
-    return r.ret;
-}
 
 /* The same call for the ported JS callers, which want C's `buf` rather than its
  * int return (js/display.js's status line, js/steed.js's impossible() text). */
@@ -351,4 +365,476 @@ export function load_exclusions(nhfp) {
         ez.next = sve.exclusion_zones;
         sve.exclusion_zones = ez;
     }
+}
+
+export function In_hell(uz) {
+    const lev = uz ?? game.u?.uz;
+    if (!lev)
+        return false;
+    const flags = game.dungeons?.[lev.dnum]?.flags;
+    if (!flags)
+        return false;
+    if (Array.isArray(flags))
+        return flags.includes('hellish');
+    if (typeof flags !== 'object')
+        return false;
+    return !!(flags.hellish);
+}
+
+// ── Hero placement (C ref: dungeon.c:1568-1601 u_on_newpos) ──
+export async function u_on_newpos(x, y) {
+    if (!isok(x, y)) {
+        if (x < 0 || y < 0 || x >= COLNO || y >= ROWNO) throw new Error(`panic: u_on_newpos: trying to place hero off map <${x},${y}>`);
+        await lifecycle_impossible('u_on_newpos: trying to place hero off map <%d,%d>', x, y);
+    }
+    game.u.ux = x;
+    game.u.uy = y;
+    game.u.uundetected = 0;
+    /* C dungeon.c:1588 — on a level transition, remember the arrival square
+     * in ux0/uy0 before rebuilding nearby visibility. */
+    const uz = game.u.uz, uz0 = game.u.uz0;
+    if (uz && uz0
+        && ((uz.dnum | 0) !== (uz0.dnum | 0)
+            || (uz.dlevel | 0) !== (uz0.dlevel | 0))) {
+        game.u.ux0 = x;
+        game.u.uy0 = y;
+        /* C dungeon.c:1590-1593 — refresh lastseentyp at the arrival square
+         * before spoteffects() and force switch_terrain() once. */
+        map_location(x, y, false);
+        invalidateTerrainStatus();
+    }
+    /* C dungeon.c:1576-1578 — "ridden steed always shares hero's location":
+     *     if (u.usteed)
+     *         u.usteed->mx = u.ux, u.usteed->my = u.uy;
+     * This is the invariant C's mon_sanity_check asserts (mon.c:273-277): the
+     * steed stays on the fmon chain but off the level's monster grid, with its
+     * <mx,my> tracking the hero.  Without it a rider who changed level or was
+     * teleported left the steed standing on the old square. */
+    if (game.u.usteed) {
+        game.u.usteed.mx = x;
+        game.u.usteed.my = y;
+    }
+    if (!(uz && uz0 && (uz.dnum !== uz0.dnum || uz.dlevel !== uz0.dlevel)) && !_Blind_mk()
+        && !_Hallucination_mk()
+        && !(game.u.uswallow | 0))
+        see_nearby_objects();
+    await _earth_sense();
+}
+
+// C ref: dungeon.c u_on_rndspot — place hero at a random location within
+// the level's stored arrival region (game.updest/game.dndest, populated
+// by fixup_special from a des.teleport_region/des.levregion call — see
+// js/sp_lev.js's lspo_teleport_region and fixup_special).
+export async function u_on_rndspot(upflag) {
+    const up = (upflag & 1);
+    if (upflag & 2) {
+        /* C dungeon.c:1603-1610 — when leaving the Wizard's Tower, keep the
+         * hero inside its exclusion rectangle if the destination is another
+         * tower level.  Both directions use dndest's exclusion region. */
+        const uz = game.u?.uz;
+        const tower = [game.wiz1_level, game.wiz2_level, game.wiz3_level]
+            .some(lv => lv && (lv.dnum | 0) === (uz?.dnum | 0)
+                        && (lv.dlevel | 0) === (uz?.dlevel | 0));
+        if (tower) {
+            const d = game.dndest || {};
+            await place_lregion(d.nlx || 0, d.nly || 0, d.nhx || 0, d.nhy || 0,
+                          0, 0, 0, 0, LR_DOWNTELE, null);
+            /* C dungeon.c:1636-1637: every arrival region, including the
+             * tower's exclusion region, must restore flight/levitation. */
+            await switch_terrain();
+            return;
+        }
+    }
+    const d = up ? (game.updest || {}) : (game.dndest || {});
+    await place_lregion(d.lx || 0, d.ly || 0, d.hx || 0, d.hy || 0,
+                  d.nlx || 0, d.nly || 0, d.nhx || 0, d.nhy || 0,
+                  up ? LR_UPTELE : LR_DOWNTELE, null);
+    /* C dungeon.c:1636-1637 — "might have just left solid rock and unblocked
+     * levitation": switch_terrain() runs unconditionally after the placement.
+     * A level-teleport arrival that lands on a free square with a blocked
+     * BLevitation clears it and float_up()s ("You start to float in the air!"). */
+    await switch_terrain();
+}
+
+// C dungeon.c level_difficulty() — use makemon helper (depth / amulet / endgame / builds_up)
+export function level_difficulty() {
+    return levelDifficulty() | 0;
+}
+
+export function single_level_branch(lev) {
+    const uz = lev ?? game.u?.uz;
+    if (!uz)
+        return false;
+    return Is_knox_level(uz);
+}
+
+/* C shknam.c:439 shop_string(rtype) — actually dungeon.c:3441, the "short shop
+ * description" #overview's print_mapseen annotates a level's shop with.  It
+ * lives here because it is the only reader of shtypes[].annotation (mkroom.h:29,
+ * "simpler name for #overview; Null if same"), the column this table was
+ * missing entirely.  SHOPBASE == 14 (mkroom.h:66). */
+export function shop_string(rtype) {
+    const shoptype = (rtype | 0) - 14 /* SHOPBASE */;
+    if (shoptype < 0)
+        return 'untended shop';
+    const row = _shtypes[shoptype];
+    if (row && row.annotation)
+        return row.annotation;
+    if (row && row.name)
+        return row.name;
+    return 'shop?';   /* C's catchall */
+}
+
+/* C dungeon.c ledger_no(lev) — `svd.dungeons[lev->dnum].ledger_start +
+ * lev->dlevel`, the absolute level index across branches.  Was `return 0`
+ * ("no dungeon tracking in JS") — but js/allmain.js:231 has built
+ * game.dungeons[].ledger_start for a long time, and js/cmd.js:5523 already
+ * carries this exact body under the name ledger_no_cmd.  The stub is load
+ * bearing: nameshk() adds ledger_no(&u.uz) into the shopkeeper's name index, so
+ * every shop below Dlvl 1 was named as if it were on Dlvl 0. */
+export function ledger_no(uz) {
+    return ledger_no_real(uz);
+}
+
+// C ref: dungeon.c:1447-1457 Is_special() — walk the special-level
+// chain (svs.sp_levchn), matched by (dnum,dlevel). game._sp_levchn is
+// built by dungeon_rng.js at dungeon-init time and is ALREADY correct
+// is the SINGLE firewall point that keeps every non-tut-1/tut-2 special
+// level behaving exactly as today (Is_special returns null, as if this
+// NOT allowlisted, and deliberately so.  Each blocked proto throws a DIFFERENT
+// unported-callee during its .lua load, so admitting one crashes
+// ITS OWN callee lands — they are independent ports, not one.  Their questtext
+// firsttime entries are already ported below.
+//
+// drives the real load_special() against every dat/*-strt.lua WITHOUT touching
+// this set and reports each blocker by name; add a proto only after the probe
+// reports it `ok`, and only ONE AT A TIME (level generation is global — a wrong
+//
+// It resolves the C-side checkpoint coordinates (d3l1_002, ...) through the
+// role-renamed level chain, so it reports where C actually stood — not where the
+// under-reports exactly the protos that most need gating.
+// — none of the three visits a *-strt level.  Admitting only Cav-strt and running
+//
+//   Wiz-strt           : lspo_region irregular region (same callee as Cav-strt)
+//                        (was "mkmap (mines)"; mkmap landed in 7cbb4f54 and the
+//                         blocker moved forward to the next unported opcode)
+//   Mon-strt           : lspo_object STATUE/EGG/TIN/FIGURINE special-casing
+//
+// mk_mplayer dispatch (the four "knight" guards are PM_KNIGHT=335, inside the
+// player-monster range [PM_ARCHEOLOGIST=331, PM_WIZARD=343], so C routes them
+// through mplayer.c:117 mk_mplayer) and create_object's put_saddle_on_mon (the
+// warhorse `inventory` closure). Both are now wired in js/sp_lev.js.
+//
+//
+//    teleport.  Admitting Pri-strt therefore moves nothing measurable ... ADMIT
+//
+// but step 141, and the single remaining blocker was do_wear.c:820's "You speed
+// signal.  It is worth re-reading how the arithmetic MOVED under the fix:
+//   - admitted with the rn2(3) @ u_calc_moveamt still missing:  167 -> 162  (-5)
+//   - admitted after that leaf is restored:                     167 -> 168  (+1)
+// Same one-word diff, opposite verdict.  A proto loaded on a shifted RNG stream
+// generates a DIFFERENT level and scores like a bug; admission is only ever
+// measurable once the prefix into it is bit-exact.  Do not re-park a proto on a
+// callees worth porting next are lvlfill_maze_grid (7: castle, asmodeus, orcus,
+// wizard2, wizard3, fakewiz1, fakewiz2), lspo_region irregular/flood_fill_rm
+// (6: Cav-strt, Wiz-strt, valley, Pri-loca, Wiz-loca, Cav-loca), create_object
+// RANDOM_CLASS (4: Bar-loca, Mon-loca, Ran-loca, Val-loca), then create_altar
+// priestini (2), lspo_map table-form (2), find_level LR_PORTAL by name (2).
+// dat/<proto>.lua), so they need the variant-selection path, not just an opcode.
+// step 189 the hero level-teleports to Dlvl 5, C's trace goes
+// getbones(bones.c:645) -> the nhlib.lua `shuffle(align)` of a FRESH lua state
+// -> build_room(sp_lev.c:2811), i.e. makemaz(slev->proto) on a special level,
+// blocked, Is_special returned null there, JS fell through to regular themed-room
+// generation, and every one of the 1,621 remaining steps rendered the wrong level.
+// ┌───────────────────────────────────────────────────────────────────────────
+// │ SUPERSEDED — castle IS in LOADER_READY (see the const below) and its
+// │ -47 (below) -> -3 -> 0, with the -47 and -3 blocks each concluding that the
+// │ cost belonged to castle's own generation.  It never did.
+// │
+// │ THE COROLLARY, because it explains all three wrong readings and generalises
+// │ past castle: A PROTO'S PARKED ADMISSION COST IS NOT EVIDENCE ABOUT THE
+// │ PROTO until the leaf stream PAST THE END OF ITS OWN GENERATION has been
+// │ diffed.  A special level is the only thing that populates the arrival
+// │ regions (des.teleport_region -> svu.updest / svd.dndest), so a defect in
+// │ the ARRIVAL path is invisible until that level is admitted — and then it is
+// │ charged to the level.  Re-park a proto only after diffing past its
+// │ build_room tail into goto_level/place_lregion; a cost that survives THAT is
+// │ a property of the level.
+// └───────────────────────────────────────────────────────────────────────────
+// the first entry whose blocker chain is fully cleared and which STILL must not
+//   answers the level-teleport menu with "j" ("j -   castle: 25 (tune EEBGG)")
+//   and C's trace goes getbones(bones.c:645) -> the nhlib.lua shuffle(align) of
+//   a FRESH lua state, i.e. makemaz(slev->proto) on a special level.  With
+//   castle blocked, Is_special returns null there and JS draws rn2(5) @
+//   js/mklev.js:4513 — regular themed-room generation on the wrong level.  That
+//   first screen divergence.
+//   The blocker chain (lvlfill_maze_grid -> lspo_mazewalk's fill_empty_maze
+//   tail (maze1xy + rndtrap) -> js/trap.js's three exported throwing stubs that
+//   shadowed already-ported set_levltyp/recalc_block_point/spot_stop_timers)
+//   from BLOCKED to `ok` (173 des.* opcodes, load_special completes).
+//   the real castle is STRUCTURALLY right and moves the RNG axis a long way
+//   (prefixMatch 8708 -> 12975 after the l_selection_setpoint fix below), but
+//   its generation is still not leaf-exact, so the frames it now renders are
+//   wrong where the old random level happened to coincide.  Cardinal Rule 4
+//   NEXT BLOCKER, for whoever picks this up: the probe now reports
+//   "not yet ported: mkroll_launch", and with castle admitted the first RNG
+//   divergence is leaf 12975 — C rn2(3) @ induced_align(dungeon.c:2012) vs
+// C trace until that is fixed.
+//   call a method on a non-table value".  Those are the CONDITIONAL arms of
+//   bigrm-2.lua:50 (`selection = darkness:grow()`) and bigrm-5.lua:33-34
+//   (`selection.match("."):percentage(2):grow()`); the unconditional arms load
+//   fine, which is why lua-level-load-probe and loader-chain both report
+//   bigrm-2/-5 CHAIN-CLEARS and see none of this.  Port those two and the -27
+//   should come back as a gain.
+//   only appeared once the two render bugs ahead of this commit landed (the
+//   golem class char and the stale 3.7 wand probabilities): with bigrm admitted
+//   built leaf-exactly and still missed on 4 cells.  That is the general shape
+//   and the reason the earlier -11 was not evidence against the level:
+//   ADMITTING A SPECIAL LEVEL PAYS NOTHING UNTIL EVERY GLYPH ON IT IS RIGHT,
+//   just after RNG ones.
+//     baseline                                    4051
+//     + the two render fixes, bigrm NOT admitted   4051   (+0 — invisible
+//                                                          without the level)
+//     + bigrm admitted                             4095   (+44)
+// stable property of castle's own generation, not a stale coincidence, and it
+// stays out.
+//   [REFUTED — this sentence is the wrong conclusion this file exists to warn
+//   about.  The -47 was the ARRIVAL path (lspo_drawbridge's raw map coords,
+//   goto_level never reading svd.dndest, place_lregion missing
+//   put_lregion_here), not castle's generation, and it went -47 -> -3 -> 0 as
+//   evidence that the cost is intrinsic; it is only evidence that nothing in
+//   the chain the level exercises had landed yet.  See the banner at the head
+//   of these blocks.]
+// Do NOT re-measure castle again without first closing the RNG
+// the induced_align port (js/sp_lev.js, ae1cb942) which moved it to 12999 —
+// next blocker `rn2(5) @ m_initinv(makemon.c:644)` vs JS rn2(50), the soldier
+// body-armor rounds (makemon.c:637-646) on the castle's garrison.
+// Contrast FILL_READY's minefill below, whose parked -60 DID go stale (to 0).
+//
+// generation chain: m_initinv's mercenary arm, the minotaur's 5.0 rn2(8), the
+// long worm's tail, the des-coder leak, find_branch_room, the
+// fill_special_room loop on the special-level arm, and squadmon's ROLL_FROM.
+// THE COST HAS ALMOST ENTIRELY GONE, BUT IT IS STILL NEGATIVE:
+//   castle NOT admitted   4168
+// i.e. -47 -> -3.  So the old "stable property of castle's own generation"
+// verdict was wrong — the cost was the unported chain, not the level — but
+// castle STILL does not pay for itself and stays out under the measure-then-
+// is `rn2(10) @ place_lregion(mkmaze.c:396)` at leaf 22802 of 120639
+// the level and moved on to mineralize_kelp while C is still placing lregions.
+// Close that and re-measure — this is now a near-miss, not a parked negative.
+//
+// -3 was never castle's own generation — that had already been leaf-exact for a
+// while; it was three defects in the ARRIVAL, all outside sp_lev, that only a
+// level declaring a teleport_region could expose:
+//   1. lspo_drawbridge never called get_location_coord, so castle.lua:81's
+//      map-relative (05,08) aimed at absolute (05,08) — off the map, STONE, and
+//      create_drawbridge's IS_WALL guard silently declined.  The MOAT square C
+//      turns into DRAWBRIDGE_UP stayed water and mineralize() drew one extra
+//      water_has_kelp rn2(30).  (Leaf 22802.)
+//   2. goto_level inlined `place_lregion(0,0,0,0,...)` for the level-teleport
+//      arm instead of calling u_on_rndspot, on the premise that svu.updest /
+//      svd.dndest "are always zero"; fixup_special had been filling them in
+//      from des.teleport_region all along.  C searched a 10x21 strip, JS the
+//      whole 79x21 map.  (Leaf 22803.)  C's do.c:1689-1691 zeroing of the two
+//      regions before mklev() was also missing, so a special level's arrival
+//      region would have leaked onto the next ordinary level.
+//   3. place_lregion had no put_lregion_here: bad_location does not look at
+//      monsters, and C re-rolls when a candidate square holds one.  C's third
+//      candidate (5,5) held a maze monster; JS took it.  (Leaf 22808.)
+// With all three closed the castle's whole generation AND arrival are leaf-exact
+//   baseline (no fixes, castle out)       4807
+//   three fixes in, castle admitted       4812   (castle itself: EXACTLY 0)
+// still gains 2 — and castle's own admission is now cost-NEUTRAL rather than
+// negative.  It is admitted on structural faithfulness (TOOLING_PHILOSOPHY #8)
+// rooms-and-corridors level where C renders the stronghold, and its first RNG
+// divergence stays pinned at leaf 8708 of 120639 (7% in) instead of 22810.
+// cost as a property OF THE LEVEL.  It never was.  It was the arrival path that
+// only a level declaring a teleport_region exercises.
+//
+// minend-1/-2/-3, soko2-1/-2, soko3-1/-2, soko4-1/-2, tower2, tower3, medusa-1,
+// juiblex and baalz — the block above's "minetn/minend ... are multi-variant, so
+// they need the variant-selection path, not just an opcode" is stale: minetn is
+// admitted and multi-variant, so that path exists and minend loads through it.
+// Only tower1 (js/lua/interp.js:1399), wizard3 and fakewiz1 (both
+// js/sp_lev.js:6008) are still BLOCKED, and `rogue` has no dat/rogue.lua at all.
+// LOADER_READY now, and the probe's BLOCKED verdict on wizard3/fakewiz1 was an
+// artifact of the probe env having no sp_levchn — see the wizard3 note above
+// LOADER_READY below.
+//
+//     minend OUT   6835 / 11405, 27 passing
+//                                               coverage 801 -> 799)
+// miss and JS renders a rooms-and-corridors level where C renders Mine's End, so
+// admitting minend is structurally right — and it buys nothing today because
+// (C `rn2(5) @distfleeck(monmove.c:538)` vs JS `rnd(12) @js/dig.js:878`
+// mdig_tunnel, i.e. JS tunnels a mines monster C does not), so the level is
+// built off a stream that is already wrong.  Close THAT first, then re-admit:
+// this is the castle shape exactly (a proto's parked cost measures the unported
+// chain around it, not the level), and per that banner the -2 should be
+//
+// IN, and the paragraph above was HALF right.  The leaf-43164 monmove root was
+// closed (m_digweapon_check had a complete port and no call site; commit
+// parked cost did not decay.  What made it pay was a SECOND link four leaves
+// further down the same level-generation chain: js/m_initweap.js built the
+// dwarvish mithril-coat with otyp 129 ("orcish chain mail", IRON) instead of
+// 126 (MITHRIL), so every armed dwarf drew four mkobj_erosions leaves C never
+// 6836 -> 6862.
+// So do not carry forward "a parked negative decays".  Carry forward: a proto's
+// parked cost measures THE UNPORTED CHAIN AROUND IT, the number tells you
+// nothing about WHICH link is still missing, and re-measuring after closing one
+// link is not evidence about the next.  Follow the RNG prefix (rng-prefix-match
+// prefixMatch, which is monotone) rather than the admission's score delta.
+//
+// were tried and REVERTED.  Baseline for every row is the tree at a9544f8f,
+//     + medusa                      6869   (-25: the SAME two deltas)
+// AND THAT IS THE POINT: read those three rows together.  medusa alone
+// reproduces the four-proto loss exactly, which invites the conclusion that the
+// other three are free — and they are not, they cost 12 on their own.  ADMISSION
+// COSTS DO NOT COMPOSE AND DO NOT SUBTRACT.  These protos all generate levels
+// into the same dungeon state, so two admissions can hide each other's loss.
+// Never infer one proto's cost by differencing two multi-proto runs; score the
+// exact set you intend to ship.  (This is the same trap as the falsified
+// "independent roots compose on merge" note, seen from the other side.)
+// None of the four is admitted today.  When re-trying, do ONE proto per
+// tower1 monster-inventory divergence (C next_ident @mkobj.c:521 at leaf 52757)
+// is closed — every one of these levels is currently built off a stream that is
+const LOADER_READY = new Set(['tut-1', 'tut-2', 'Arc-strt', 'Hea-strt', 'Tou-strt', 'Tou-loca', 'Tou-goal', 'Sam-strt', 'Bar-strt', 'Val-strt', 'Kni-strt', 'Kni-goal', 'Pri-strt', 'Pri-loca', 'Pri-goal', 'Bar-loca', 'knox', 'fire', 'air', 'oracle', 'valley', 'bigrm', 'castle', 'sanctum', 'asmodeus', 'juiblex', 'baalz', 'fakewiz1', 'fakewiz2', 'wizard1', 'wizard3', 'wizard2', 'orcus', 'minetn', 'minend', 'soko1', 'soko2', 'soko3', 'soko4', 'tower1', 'tower2', 'tower3', 'medusa', 'Wiz-strt', 'Wiz-loca', 'Arc-loca', 'Arc-goal', 'Bar-goal', 'Wiz-goal', 'Cav-goal', 'Cav-loca', 'Cav-strt', 'Hea-goal', 'Hea-loca', 'Kni-loca', 'Mon-goal', 'Mon-loca', 'Mon-strt', 'Ran-goal', 'Ran-loca', 'Ran-strt', 'Rog-goal', 'Rog-loca', 'Rog-strt', 'Sam-goal', 'Sam-loca', 'Val-loca', 'Val-goal', 'astral', 'earth', 'water']);
+
+export function Is_special(uz) {
+    const sl = sp_levchn_lookup(uz);
+    return (sl && LOADER_READY.has(sl.proto)) ? sl : null;
+}
+
+/* C dungeon.c:1648-1653 — Can_dig_down(lev).  Invocation_lev(lev) is
+ * dungeon.c:2016-2021, In_hell && dlevel == num_dunlevs - 1; js/sp_lev.js:6605
+ * forwards here instead of using js/cmd.js's
+ * Invocation_lev reading a game.invocation_level nothing ever writes. */
+export function Can_dig_down(lev) {
+    if (game.level?.flags?.hardfloor)
+        return false;
+    if (Is_botlevel(lev))
+        return false;
+    return !Invocation_lev(lev);
+}
+
+/* C dungeon.c:1661-1665 — "Like Can_dig_down, but also allows falling through
+ * on the stronghold level.  Normally, the bottom level of a dungeon resists
+ * both digging and falling." */
+export function Can_fall_thru(lev) {
+    return Can_dig_down(lev) || Is_stronghold(lev);
+}
+
+/* C dungeon.c:2943-2946 — refresh the whole level's overview knowledge
+ * before returning the remembered terrain at the requested square.  The
+ * refresh also records level annotations while the hero can still see. */
+export function update_mapseen_for(x, y) {
+    recalc_mapseen_rooms();
+    return game.level?.at(x, y)?.lastseentyp | 0;
+}
+
+export function update_lastseentyp(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return;
+    let ltyp = loc.typ | 0;
+    if (ltyp === DRAWBRIDGE_UP)
+        ltyp = db_under_typ(loc.drawbridgemask | 0);
+    const mtmp = _m_at(x, y);
+    if (mtmp && ((mtmp.m_ap_type | 0) & M_AP_TYPMASK) === M_AP_FURNITURE
+        && canseemon(mtmp)) {
+        ltyp = cmap_to_type(mtmp.mappearance | 0);
+    }
+    loc.lastseentyp = ltyp;
+}
+
+export function depth(uz) {
+    const dnum = uz?.dnum ?? 0;
+    const dlevel = uz?.dlevel ?? 1;
+    const dungeon = game?.dungeons?.[dnum];
+    if (!dungeon)
+        return dlevel;
+    // C returns schar, including its signed-byte conversion.
+    return ((dungeon.depth_start + dlevel - 1) << 24) >> 24;
+}
+
+/* C dungeon.c:1339 deepest_lev_reached. init_dungeon initializes the reach
+ * record; goto_level updates it, including the minimum for upward branches.
+ * Saved-level existence and the current location are not reach records. */
+export function deepest_lev_reached(noquest) {
+    const tmp = { dnum: 0, dlevel: 0 };
+    let ret = 0;
+    for (let i = 0; i < game._n_dgns; i++) {
+        if (noquest && i === game.quest_dnum)
+            continue;
+        tmp.dlevel = game.dungeons[i].dunlev_ureached;
+        if (tmp.dlevel === 0)
+            continue;
+        tmp.dnum = i;
+        if (depth(tmp) > ret)
+            ret = depth(tmp);
+    }
+    return ret;
+}
+
+/* C ref: dungeon.c:463-508 insert_branch(new_branch, extract_first) — keep
+ * svb.branches sorted by branch_val after one branch's ends change.  Its only
+ * caller outside init is mk_knox_portal() (mklev.c:2653), which rebinds the
+ * floating Fort Ludios entrance to the current level and re-sorts. */
+export function insert_branch(bp, extractFirst) {
+    const ar = game._dungeon_branches || (game._dungeon_branches = []);
+    if (extractFirst) {
+        const ix = ar.indexOf(bp);
+        if (ix >= 0)
+            ar.splice(ix, 1);
+    }
+    insertBranch(ar, bp);
+}
+
+export function surface(x, y) { return surface_real(x, y); }
+
+/* C ref: dungeon.c:2016-2021 Invocation_lev(d_level *) — In_hell && dlevel ==
+ * dunlevs_in_dungeon - 1.  Ported locally for the same reason js/mklev.js's
+ * Can_dig_down and js/sp_lev.js:6605 port it locally: js/cmd.js's copy reads a
+ * `game.invocation_level` that nothing in js/ ever writes. */
+export function Invocation_lev(lev) {
+    if (!lev)
+        return false;
+    const dun = game.dungeons?.[lev.dnum | 0];
+    return In_hell(lev) && !!dun && (lev.dlevel | 0) === (dun.num_dunlevs | 0) - 1;
+}
+
+/* losexp: LOCAL EMPTY STUB DELETED — see import above. */
+/* schedule_goto: LOCAL EMPTY STUB DELETED — see import above. */
+/* C dungeon.c:1943 — valley_level is initialized by dungeon generation and
+ * mirrored on game for level-teleport callers. */
+export function find_hell(lvl) {
+    const v = game.valley_level || { dnum: 1, dlevel: 1 };
+    if (lvl) {
+        lvl.dnum = v.dnum | 0;
+        lvl.dlevel = v.dlevel | 0;
+    }
+    return lvl;
+}
+
+export function On_W_tower_level(uz) {
+    if (!uz)
+        return false;
+    const g = game;
+    for (const lv of [g.wiz1_level, g.wiz2_level, g.wiz3_level]) {
+        /* C ref: dungeon.c on_level — same dnum AND same dlevel. */
+        if (lv && (lv.dnum | 0) === (uz.dnum | 0) && (lv.dlevel | 0) === (uz.dlevel | 0))
+            return true;
+    }
+    return false;
+}
+
+export function has_ceiling(lev) {
+    return !(In_endgame(lev) && !Is_earthlevel(lev));
+}
+
+/* C ref: dungeon.c:1197 assign_level(dest, src) —
+ *     dest->dnum = src->dnum; dest->dlevel = src->dlevel;
+ * There is no exported one in js/; every module that needs it spells the two
+ * assignments out.  Kept file-local for the same reason. */
+export function assign_level(dst, src) {
+    dst.dnum = src.dnum;
+    dst.dlevel = src.dlevel;
 }

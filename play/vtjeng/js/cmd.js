@@ -1253,7 +1253,8 @@ function keylist_putcmds(lines, docount, inclFlags, exclFlags, keysUsed,
 }
 
 // C ref: cmd.c dokeylist() (2859-3013). This slice admits the recorder's
-// default non-number-pad, no-rest-on-space, non-debug binding set. The data
+// default no-rest-on-space, non-debug binding set, with number_pad on or
+// off; number_pad selects the running-help text and the count key. The data
 // flow remains source-shaped so the complete 256-byte traversal and category
 // ordering stay visible beside extcmdlist_data.js.
 export function keyBindingLines(state = game) {
@@ -1294,13 +1295,20 @@ export function keyBindingLines(state = game) {
     lines.push({ text: '' });
     lines.push({ text: 'Directional keys:' });
     show_direction_keys(lines, '.', false, state);
-    lines.push({ text: '' });
+    let runPrefix;
+    if (!model.numPad) {
+        lines.push({ text: '' });
+        lines.push({
+            text: 'Ctrl+<direction> will run in specified direction until something very',
+        });
+        lines.push({ text: '        interesting is seen.' });
+        runPrefix = 'Shift';
+    } else {
+        lines.push({ text: '' });
+        runPrefix = 'Meta';
+    }
     lines.push({
-        text: 'Ctrl+<direction> will run in specified direction until something very',
-    });
-    lines.push({ text: '        interesting is seen.' });
-    lines.push({
-        text: 'Shift+<direction> will run in specified direction until you encounter',
+        text: `${runPrefix}+<direction> will run in specified direction until you encounter`,
     });
     lines.push({ text: '        an obstacle.' });
 
@@ -1980,6 +1988,15 @@ export function cmdq_add_key(q, key, state = game) {
 export function cmdq_key_char(node) {
     return typeof node.key === 'number'
         ? String.fromCharCode(node.key) : node.key;
+}
+
+// The same key as the C char code, for a reader that compares it with key
+// codes. rhack() is one: an item action whose command refuses before reading
+// its queued inventory letter leaves that letter for the next rhack() call,
+// which runs it as a command key.
+export function cmdq_key_code(node) {
+    return typeof node.key === 'string'
+        ? node.key.charCodeAt(0) : node.key;
 }
 
 // C ref: cmd.c cmdq_add_dir() (294-315). The direction fields are kept as
@@ -5438,7 +5455,7 @@ export async function rhack(key, state = game, selectedPrefixEntry = null) {
                 cmdqCommand = queued.ec_entry.ef_txt
                     ?? queued.ec_entry.ef_funct;
             } else {
-                key = queued.typ === CMDQ_KEY ? queued.key : 0;
+                key = queued.typ === CMDQ_KEY ? cmdq_key_code(queued) : 0;
             }
         } else if (firstTime) {
             const pending = state.context.pendingCommand;
@@ -5516,7 +5533,7 @@ export async function rhack(key, state = game, selectedPrefixEntry = null) {
                 } else {
                     queuedExtcmdEntry = null;
                     key = queuedAfterPrefix.typ === CMDQ_KEY
-                        ? queuedAfterPrefix.key : 0;
+                        ? cmdq_key_code(queuedAfterPrefix) : 0;
                 }
             } else {
                 queuedExtcmdEntry = null;

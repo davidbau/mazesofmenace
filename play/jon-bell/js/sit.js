@@ -46,10 +46,12 @@ function _hero_resists(prop) {
  * was an empty body, so neither throne arm could confuse the hero. */
 import { make_confused, make_glib, make_sick } from './potion.js';
 import { mkclass, mkclassAligned, newmextra, name_to_mon, name_to_monclass, permonstTemplate, is_ndemon, monPmname } from './makemon.js';
-import { pline, canseemon, canspotmon, map_background, newsym, newsym_force, see_monsters, force_more, livelog_printf, Deaf, urgent_pline } from './display.js';
+import { canseemon, canspotmon, map_background, newsym, newsym_force, see_monsters, force_more, Deaf } from './display.js';
+import { pline, livelog_printf, urgent_pline } from './pline.js';
 import { LL_CONDUCT, LL_GENOCIDE, UNCHANGING, POLY_REVERT } from './const.js';
 import { PM_VAMPIRE, PM_VAMPIRE_LORD as PM_VAMPIRE_LEADER, PM_VLAD_THE_IMPALER } from './pm.generated.js';
-import { identify_pack, do_mapping } from './read.js';
+import { do_mapping } from './read.js';
+import { identify_pack } from './invent.js';
 /* rndcurse()'s leaves, each from the file that holds its one real body.  The
  * aliases exist because this file already carries same-named LOCAL stubs
  * (`function You(_msg) {}` at :581 and `export function Tobjnam()` returning the
@@ -64,22 +66,27 @@ import { curse, unbless } from './mkobj.js';
 import { spec_ability, adjattrib, change_luck, exercise } from './attrib.js';
 import { hcolor, Amonnam } from './mhitm.js';
 import { update_inventory } from './mhitm.js';
-import { which_armor } from './makemon.js';
-import { shieldeff as shieldeff_rc, aggravate, Monnam } from './mcastu.js';
+import { which_armor } from './worn.js';
+import { shieldeff as shieldeff_rc, Monnam } from './mcastu.js';
+import { aggravate } from './wizard.js';
 import { show_transient_light, transient_light_cleanup } from './light.js';
 /* tele's C home is teleport.c:840. */
 import { tele } from './teleport.js';
 /* makewish's C home is wizcmds.c:38; the throne sources are sit.c:110/251. */
 import { makewish } from './wizcmds.js';
-import { getlin } from './wizcmds.js';
+import { getlin } from './windows.js';
 import { rndmonst } from './makemon.js';
 import { adjalign as adjalign_sit } from './attrib.js';
 import { verbalize, list_genocided } from './cmd.js';
 import { DEAF } from './const.js';
 /* makemon's C home is makemon.c:1338; the real port lives in js/mklev.js
  * (NOT js/makemon.js — that file only has makemonDomesticSaddle). */
-import { makemon, courtmon as courtmon_real, kill_genocided_monsters, upstart, mongone } from './mklev.js';
-import { heal_legs as heal_legs_real, y_n_default } from './cmd.js';
+import { makemon } from './mklev.js';
+import { courtmon as courtmon_real } from './mkroom.js';
+import { upstart } from './hacklib.js';
+import { kill_genocided_monsters, mongone } from './mon.js';
+import { y_n_default } from './cmd.js';
+import { heal_legs as heal_legs_real } from './do.js';
 /* polyself's C home is polyself.c:1306. */
 import { polyself } from './polyself.js';
 /* seffects's C home is read.c:2166. */
@@ -98,13 +105,14 @@ import { W_SADDLE } from './const.js';
 import { make_blinded } from './zap.js';
 /* losehp's C home is hack.c:4219.  js/potion.js used to carry a throwing
  * local stub for it too, since fixed to import this same body. */
-import { losehp, delobj } from './dokick.js';
+import { delobj } from './invent.js';
+import { losehp } from './hack.js';
 /* exper.c:212 losexp() — use the canonical experience-drain implementation
  * for the throne's permanent-drain arm. */
 import { losexp as losexp_real } from './exper.js';
 /* schedule_goto's C home is do.c:2076.  js/cmd.js owns file js/cmd.js but its
  * export is fine to import (only editing js/cmd.js is off limits here). */
-import { schedule_goto } from './cmd.js';
+import { schedule_goto } from './do.js';
 import { remove_worn_item } from './steal.js';
 import { done, delayed_killer } from './end.js';
 import { GENOCIDED, POLYMORPH } from './const.js';
@@ -480,7 +488,8 @@ function SET_BOTL() {
  * bodies in js/display.js (newsym display.c:925, newsym_force is newsym plus
  * the forced-redraw bookkeeping display.c:2325-ish). */
 /* C pline.c:386 You_feel(line) — preserve the throne-effect feedback. */
-import { You_feel, pline_The } from './display.js';
+import { You_feel, pline_The } from './pline.js';
+import { find_hell } from './dungeon.js'; // relocate-fns
 /* stub: Your — side-effect only */
 /* Your: LOCAL EMPTY STUB DELETED — see import above. */
 /* see_monsters: LOCAL EMPTY STUB DELETED — re-pointed to js/display.js's real
@@ -658,18 +667,6 @@ async function _attrcurse_body(u) {
         break;
     }
     return ret;
-}
-/* losexp: LOCAL EMPTY STUB DELETED — see import above. */
-/* schedule_goto: LOCAL EMPTY STUB DELETED — see import above. */
-/* C dungeon.c:1943 — valley_level is initialized by dungeon generation and
- * mirrored on game for level-teleport callers. */
-function find_hell(lvl) {
-    const v = game.valley_level || { dnum: 1, dlevel: 1 };
-    if (lvl) {
-        lvl.dnum = v.dnum | 0;
-        lvl.dlevel = v.dlevel | 0;
-    }
-    return lvl;
 }
 /* C minion.c:391-439.  These selectors deliberately retain their retry loops:
  * mkclass_aligned and the gone/alignment checks each consume RNG in C. */

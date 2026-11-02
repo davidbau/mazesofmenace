@@ -69,7 +69,7 @@ import {
 import { init_objects } from './o_init.js';
 import { maybe_shuffle_customizations } from './glyphs.js';
 import { UnsupportedObjectOperationError } from './obj.js';
-import { polyself } from './polyself.js';
+import { polyself, set_uasmon } from './polyself.js';
 import { you_were } from './were.js';
 import { UnsupportedMonsterPickupOperationError } from './steal.js';
 import { objectGenerationHooks } from './object_generation.js';
@@ -541,9 +541,14 @@ export async function finishHeroTimeEffects(state = game, env = {}) {
     if (state.iflags?.hilite_delta)
         status_eval_next_unhilite(state);
     await applyClairvoyancePlan(plan, state, env);
-    if (!state.u.utrap || state.u.utraptype !== TT_LAVA) {
-        if (!state.u.umoved) await pooleffects(false, state);
+    // A fast hero sinks once per action, so possibly more than once a turn.
+    if (state.u.utrap && state.u.utraptype === TT_LAVA) {
+        const { sink_into_lava } = await import('./trap.js');
+        await sink_into_lava(state);
     }
+    // When the hero escapes from lava, he cannot just stay there.
+    else if (!state.u.umoved)
+        await pooleffects(false, state);
 }
 
 export class UnsupportedTurnBoundaryError extends Error {
@@ -1169,6 +1174,10 @@ async function finishElapsedTurnAfterSearch(state, random, { planning = false } 
             ...searchEnv,
         });
     }
+    // C ref: allmain.c:347-350. A were change this turn (were.c new_were()
+    // and were_change(), counted from mcalcdistress()) updates the hero's
+    // innate intrinsics, mainly Drain_resistance.
+    if (state.gw.were_changes) set_uasmon(state);
     // C ref: allmain.c:351 mkot_trap_warn(). Sense traps near the hero when
     // wielding the Master Key of Thievery without gloves.
     await mkot_trap_warn(state);
@@ -1844,9 +1853,17 @@ export async function moveloop_core() {
         && !hallucination?.blocked
         && !propertyActive(g, HALLUC_RES),
     );
+    const blind = Boolean(g.u.uprops?.[BLINDED]?.intrinsic
+        || g.u.uprops?.[BLINDED]?.extrinsic)
+        && !g.u.uprops?.[BLINDED]?.blocked;
     // Keep the existing non-hallucinatory vision/region ordering. Hallucination
     // below follows C's sensing layers before spending pending vision work.
-    if (!hallucinating && g.vision_full_recalc) {
+    // C ref: allmain.c moveloop_core() (454-472). Both recalculations sit
+    // inside `if (!svc.context.mv || Blind)`, so a running hero who can see
+    // keeps stale vision until the recalculation after domove(). lookaround()
+    // reads that stale seenv: on the Plane of Water, movebubbles() resets the
+    // bubbles' old cells to unseen water, so a rush can plunge into them.
+    if (!hallucinating && (!g.context?.mv || blind) && g.vision_full_recalc) {
         vision_recalc(0);
         g.vision_full_recalc = 0;
     }
@@ -1859,9 +1876,6 @@ export async function moveloop_core() {
     // layers and redraws the swallowed stomach. The latter bypasses newsym(),
     // so the swallowed guard alone is not enough: omitting this branch leaves
     // the stale pre-hallucination DEC/Unicode stomach on the terminal.
-    const blind = Boolean(g.u.uprops?.[BLINDED]?.intrinsic
-        || g.u.uprops?.[BLINDED]?.extrinsic)
-        && !g.u.uprops?.[BLINDED]?.blocked;
     if (!g.context?.mv || blind) {
         if (hallucinating) {
             await see_monsters(g);

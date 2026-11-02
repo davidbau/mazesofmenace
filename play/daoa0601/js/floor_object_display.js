@@ -11,7 +11,7 @@ import { clearMessageWindow, displayMessageWindow, flushPendingTopline } from '.
 import { flush_screen } from './display.js';
 import { pline, plineWithContinuation } from './pline.js';
 import { readEngravingAt } from './engrave.js';
-import { nomul } from './command_state.js';
+import { nomul } from './hack.js';
 import { showDisclosureOverlay, snapshotMenuUnderlay, restoreMenuUnderlay } from './windows.js';
 import { windowOrigin } from './tty_menu.js';
 import { objectDescription } from './object_description.js';
@@ -21,7 +21,7 @@ import { MONSTER_NAME } from './monster_data.js';
 import { objectQuantity } from './object_stack.js';
 import { heroIsBlind } from './senses.js';
 import { visibleRegionAt } from './regions.js';
-import { trapName } from './trap_name.js';
+import { trapName } from './trap.js';
 import { withIndefiniteArticle } from './object_grammar.js';
 import { feelPetrifyingCorpse, formCanBecomeStoneGolem, willFeelPetrifyingCorpse, } from './stoning.js';
 export async function readFloorEngraving(x, y) {

@@ -2,14 +2,14 @@
 // C refs: trap.c animate_statue() and activate_statue_trap().
 import { formatFeltMessage } from './hero_speech.js';
 import { heroIsHallucinating, heroIsBlind } from './senses.js';
-import { deleteTrap } from './trap_lifecycle.js';
+import { deleteTrap } from './trap.js';
 import { setMonsterGivenName, monsterName } from './do_name.js';
 import { adjustHeroAlignment } from './alignment.js';
 import { CORPSTAT_HISTORIC, MM_ADJACENTOK, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, NO_MINVENT, STATUE_TRAP, } from './const.js';
 import { canSpotMonster, feel_newsym, map_invisible, newsym, randomDisplayMonsterName } from './display.js';
 import { plineWithContinuation as pline } from './pline.js';
 import { makePetWary } from './dog.js';
-import { delobj } from './object_delete.js';
+import { delobj } from './invent.js';
 import { removeWornHeroItem } from './hero_equipment.js';
 import { costlySpot, objectOwnershipPrefix, restoreShopkeeperResidency, stolenValue } from './shk.js';
 import { game, requireGameLevel } from './gstate.js';

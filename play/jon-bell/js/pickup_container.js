@@ -39,7 +39,9 @@ import { game } from './gstate.js';
 import { update_inventory } from './inventory_refresh.js';
 import { chest_trap } from './trap.js';
 import { nomul } from './allmain.js';
-import { obj_to_glyph, pline, urgent_pline, Norep, flush_screen, bot, force_more, canspotmon, docorner_blank_utf8_captures, livelog_printf, docrt, status_r1_menu_docrt, DEFAULT_MENU_CMDS, _threeStatusLines } from './display.js';
+import { obj_to_glyph, flush_screen, force_more, canspotmon, docorner_blank_utf8_captures, docrt, status_r1_menu_docrt, DEFAULT_MENU_CMDS, _threeStatusLines } from './display.js';
+import { bot } from './botl.js';
+import { pline, urgent_pline, Norep, livelog_printf } from './pline.js';
 import { impossible } from './pline.js';
 import { topl_force_break_now, flush_pending_messages } from './display.js';
 import { build_window_screen, tty_window_offx, menu_search_getlin, display_text_window } from './com_pager.js';
@@ -50,18 +52,18 @@ import { nhgetch } from './input.js';
 import { weight } from './weight.js';
 import { doname, doname_with_price, simpleonames, cxname, getObjDescr, Tobjnam, xname, the, The, otense, oname } from './objnam.js';
 /* C ref: pickup.c in_container's freeinv/add_to_container/weight trio. */
-import { freeinv, welded, weldmsg, setuwep, setuswapwep, setuqwep, snuff_lit,
-         loot_xname as _loot_xname,
-         useup, useupf, obj_here, obj_extract_self_general,
-         getObjFromGetobj, body_part, u_handsy, yname, count_unpaid } from './cmd.js';
+import { freeinv, snuff_lit, loot_xname as _loot_xname, useup, useupf, obj_here, obj_extract_self_general, getObjFromGetobj, body_part, u_handsy, yname, count_unpaid } from './cmd.js';
+import { welded, weldmsg, setuwep, setuswapwep, setuqwep } from './wield.js';
 import { add_to_container, set_bknown, makemon, set_corpsenm, OC_USES_KNOWN } from './mklev.js';
-import { obj_is_burning, get_obj_location } from './light.js';
-import { addinv } from './hold_another_object.js';
+import { obj_is_burning } from './light.js';
+import { get_obj_location } from './zap.js';
+import { addinv } from './invent.js';
 import { pickup_prinv, fatal_corpse_mistake, lift_object } from './pickup.js';
-import { splitobj, unsplitobj, permonstTemplate, removed_from_icebox, set_malign } from './makemon.js';
+import { splitobj, unsplitobj, permonstTemplate, set_malign } from './makemon.js';
+import { removed_from_icebox } from './pickup.js';
 import { age_is_relative, stop_timer } from './timeout.js';
 import { ROT_CORPSE, REVIVE_MON, SHRINK_GLOB, MENU_PARTIAL, MENU_FULL } from './const.js';
-import { yn_function } from './end.js';
+import { yn_function } from './cmd.js';
 import { PM_ICE_TROLL, PM_HOUSECAT } from './pm.generated.js';
 import { christen_monst } from './mhitm.js';
 import { mon_nam, newexplevel } from './uhitm.js';
@@ -75,11 +77,15 @@ const ICE_BOX_OTYP = 216; /* objects.h ICE_BOX (js/pickup.js:153) */
 import { observe_object, discover_object } from './o_init.js';
 import { sellobj_state, sellobj, costly_spot, shk_your, addtobill, pick_pick,
          currency, shop_keeper, stolen_value, safe_qbuf } from './shk.js';
-import { obfree, scatter, losehp } from './dokick.js';
+import { obfree } from './dokick.js';
+import { scatter } from './explode.js';
+import { losehp } from './hack.js';
 import { rn2, d } from './rng.js';
 import { MENU_TRADITIONAL } from './const.js';
 import { query_classes, add_valid_menu_class, allow_category } from './pickup.js';
 import { askchain } from './cmd.js';
+import { container_contents } from './end.js'; // relocate-fns
+export { Is_container, _Upstart, _box_xname, _item_doname, _sortloot, set_cursor }; // relocate-fns
 
 
 function set_cursor(col, row) {
@@ -251,7 +257,6 @@ async function boh_loss(container, held) {
 function _box_xname(obj) {
     return simpleonames(obj);
 }
-function _the(str) { return 'the ' + str; }
 /* C ref: obj.h:332 carried(o) := ((o)->where == OBJ_INVENT).  Same resolution
  * js/do_wear.js:4023 yname() settled on: this port does not maintain obj.where
  * on every inventory path, so walk the gi.invent chain, which it does maintain. */
@@ -692,140 +697,6 @@ function _strcmpi(a, b) {
     return x.length - y.length;
 }
 
-export async function container_contents(list, identified, all_containers, reportempty,
-                                        statusClipCol = undefined) {
-    /* C:1604/1668 — `for (box = list; box; box = box->nobj) { ... if
-     * (!all_containers) break; }`.  This was written as a single-box function
-     * because its only caller (use_container) passes the box itself with
-     * all_containers FALSE, which is the one-iteration case.  end.c:639's
-     * disclosure call passes gi.invent with all_containers TRUE and needs the
-     * real walk. */
-    for (let box = list; box; box = box.nobj) {
-        await _container_contents_one(box, identified, all_containers, reportempty,
-                                      statusClipCol);
-        if (!all_containers)
-            break;
-    }
-}
-async function _container_contents_one(box, identified, all_containers, reportempty,
-                                       statusClipCol = undefined) {
-    const g = game;
-    if (!(Is_container(box) || (box.otyp | 0) === 476 /* STATUE */))
-        return;
-    /* C:1606-1611 */
-    if (!box.cknown || (identified && !box.lknown)) {
-        box.cknown = 1; /* we're looking at the contents now */
-        if (identified)
-            box.lknown = 1;
-        /* update_inventory(): pure display refresh. */
-    }
-    /* C:1612-1613 — BAG_OF_TRICKS is the wrong type of container. */
-    if ((box.otyp | 0) === 220 /* BAG_OF_TRICKS */)
-        return;
-    if (box.cobj) {
-        const cat = SchroedingersBox(box);
-        const lines = [];
-        /* C end.c:1627 — xname preserves the statue's monster and object names. */
-        lines.push(`Contents of ${the(xname(box))}:`);
-        /* C:1626-1627 — the blank line is skipped only while dumping. */
-        lines.push('');
-        /* C:1628 buf[0] = buf[1] = ' ' — every item row carries two leading
-         * spaces, which build_window_screen() renders as an indent from the
-         * window column. */
-        if (!cat) {
-            for (const obj of _sortloot(box.cobj)) {
-                if (identified) {
-                    /* C end.c:1640-1646 — identified listings discover and
-                     * fully identify each contained object. */
-                    discover_object(obj.otyp | 0, true, true, false);
-                    obj.dknown = 1;
-                    obj.known = 1;
-                    obj.bknown = 1;
-                    obj.rknown = 1;
-                    if (Is_container(obj) || (obj.otyp | 0) === 476 /* STATUE */) {
-                        obj.cknown = 1;
-                        obj.lknown = 1;
-                    }
-                }
-                lines.push('  ' + (await _item_doname(obj)));
-            }
-        } else {
-            lines.push("  Schroedinger's cat!");
-        }
-        /* C:1655 display_nhwindow(tmpwin, TRUE) -> process_text_window. */
-        lines.push('--More--');
-        /* C wintty.c:1925-1928 — `!iflags.menu_overlay` drops the window to
-         * offx 0 and term_clear_screen()s (map and status included). */
-        /* C wintty.c:1924: maxrow counts putstr rows, excluding dmore's footer.
-         * A 23-row contents window still overlays, with --More-- on row 23. */
-        const fullScreen = lines.length - 1 >= 24 || g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0;
-        const WIN_COL = fullScreen ? 1 : tty_window_offx(lines, 'more');
-        const uac = g.u?.uac ?? 0;
-        const moreRow = lines.length - 1;
-        const moreCursorCol = WIN_COL + '--More--'.length;
-        /* The disclosure inventory menu is dismissed immediately before this
-         * text window.  tty_dismiss_nhwindow()'s docorner clears the right
-         * part of both status rows, and process_text_window does not repaint
-         * those rows.  Carry the previous menu's surviving prefix into this
-         * frame (end.c disclose() passes it); ordinary container lookups have
-         * no predecessor clip and retain the normal full status. */
-        /* C wintty.c:1777-1790 process_text_window — an offx-0 window pages
-         * every ttyDisplay->rows - 1 lines: --More-- on the last row, screen
-         * cleared, next page from row 0; ESC cancels the rest. */
-        /* Row 0 left of the window stays physically on the terminal
-         * (wintty.c:1983-2020 docorner), so carry it to the next window. */
-        const underWindow = (g._topl_win_stop ? '' : g._pending_message) || g._topl_sticky || '';
-        const body = lines.slice(0, -1);
-        const pages = [];
-        if (fullScreen) {
-            for (let o = 0; o < Math.max(1, body.length); o += 23)
-                pages.push(body.slice(o, o + 23));
-        } else pages.push(null);
-        for (const page of pages) {
-            let pageOutput, pageMoreRow = moreRow, pageMoreCol = moreCursorCol;
-            if (page) {
-                const rows = page.map(ln => String(ln).replace(/\s+$/, ''));
-                pageMoreRow = rows.length;
-                rows.push(' --More--');
-                pageOutput = rows.join('\n');
-            } else pageOutput = build_window_screen(lines, WIN_COL, uac, statusClipCol);
-            let esc = false;
-            for (;;) {
-                g._screen_output = pageOutput;
-                set_cursor(pageMoreCol, pageMoreRow);
-                const raw = await nhgetch();
-                const k = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
-                /* C dmore(cw, quitchars) -> xwaitforspace(" \r\n\033"). */
-                if (k === 32 || k === 10 || k === 13 || k === 27) { esc = k === 27; break; }
-            }
-            if (esc) break;
-        }
-        g._pending_message = '';
-        /* C end.c:1655-1656 display_nhwindow + destroy_nhwindow run no bot():
-         * process_text_window and docorner (wintty.c:982,3650) never call it,
-         * so a pending botl/botlx (e.g. rows left blank by a full-screen
-         * menu's docrt) must not reach bot() here either. */
-        const savedBotDisabled = g._bot_disabled;
-        g._bot_disabled = true;
-        try { await flush_screen(1); } finally { g._bot_disabled = savedBotDisabled; }
-        if (underWindow && !fullScreen) g._topl_sticky = underWindow;
-        /* C:1658-1660 — `if (all_containers) container_contents(box->cobj,
-         * identified, TRUE, reportempty);` — recurse into nested boxes. */
-        if (all_containers)
-            await container_contents(box.cobj, identified, true, reportempty,
-                                     statusClipCol);
-    } else if (reportempty) {
-        /* C:1663-1664 */
-        /* C pickup.c:3139 pline1(emptymsg), built at pickup.c:3084 from
-         * Ysimple_name2(container) — "The bag is empty.", article included.
-         * The article was MISSING here, so this site said "Bag is empty." */
-        await pline(`${_Upstart(_the(_box_xname(box)))} is empty.`);
-        /* C end.c:1664: display_nhwindow(WIN_MESSAGE, FALSE) acknowledges
-         * this message before use_container can report the empty box again. */
-        topl_force_break_now();
-        await flush_pending_messages();
-    }
-}
 
 /* C ref: objnam.c upstart() over thesimpleoname() — "The large box is empty."
  * thesimpleoname prefixes "the"; upstart capitalises the first letter. */

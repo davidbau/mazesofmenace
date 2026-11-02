@@ -27,7 +27,8 @@ import {
 } from './const.js';
 import { clear_path, circle_ptr, vision_recalc, Blind, cansee } from './vision.js';
 import { place_object, remove_object } from './mklev.js';
-import { flush_screen, canseemon, canspotmon, map_invisible, pline, impossible_sync } from './display.js';
+import { flush_screen, canseemon, canspotmon, map_invisible, impossible_sync } from './display.js';
+import { pline } from './pline.js';
 import { Yname2 } from './cmd.js';
 import { obj_to_any as pointer_to_any } from './cmd.js';
 import { xname, otense, simpleonames } from './objnam.js';
@@ -36,6 +37,11 @@ import { impossible } from './pline.js';
  * the reverse edge of the js/timeout.js -> js/light.js import; see the note on
  * obj_merge_light_sources below. */
 import { end_burn, obj_is_local } from './timeout.js';
+import { get_mon_location, get_obj_location } from './zap.js'; // relocate-fns
+import { obj_to_any } from './hack.js'; // relocate-fns
+import { ECMD_OK } from './const.js'; // relocate-fns
+import { displayLookWindow } from './look-window.js'; // relocate-fns
+export { monst_to_any } from './hack.js'; // relocate-fns
 
 // C ref: light.c:41-43 — light_source flags.
 const LSF_SHOW = 0x1;           /* display the light source */
@@ -49,67 +55,8 @@ let light_base = null;
 // (mon->mx == 0 implies migrating).
 function mon_is_local(mon) { return (mon?.mx | 0) > 0; }
 
-export function get_obj_location(obj, xp, yp, locflags = 0) {
-    /* Some restored inventory objects do not carry C's OBJ_INVENT `where`
-     * stamp yet, but they are still linked from gi.invent.  C's
-     * get_obj_location() sees those as inventory items; recognize the live
-     * chain so carried light sources can arm their radius immediately. */
-    for (let inv = game.invent; inv; inv = inv.nobj) {
-        if (inv === obj) {
-            xp.value = game.u.ux | 0; yp.value = game.u.uy | 0;
-            return true;
-        }
-    }
-    switch (obj?.where | 0) {
-    case OBJ_INVENT:
-        xp.value = game.u.ux | 0; yp.value = game.u.uy | 0;
-        return true;
-    case OBJ_FLOOR:
-        xp.value = obj.ox | 0; yp.value = obj.oy | 0;
-        return true;
-    case OBJ_MINVENT:
-        if (obj.ocarry?.mx) {
-            xp.value = obj.ocarry.mx | 0; yp.value = obj.ocarry.my | 0;
-            return true;
-        }
-        break; /* !mx => migrating monster */
-    case OBJ_BURIED:
-        if (locflags & BURIED_TOO) {
-            xp.value = obj.ox | 0; yp.value = obj.oy | 0;
-            return true;
-        }
-        break;
-    case OBJ_CONTAINED:
-        if (locflags & CONTAINED_TOO)
-            return get_obj_location(obj.ocontainer, xp, yp, locflags);
-        break;
-    }
-    xp.value = yp.value = 0;
-    return false;
-}
 
-export function get_mon_location(mon, xp, yp, locflags = 0) {
-    const u = game.u;
-    if ((game.youmonst && mon === game.youmonst)
-        || (u?.usteed && mon === u.usteed)) {
-        xp.value = u.ux | 0; yp.value = u.uy | 0;
-        return true;
-    }
-    if ((mon?.mx | 0) > 0 && (!mon.mburied || locflags)) {
-        xp.value = mon.mx | 0; yp.value = mon.my | 0;
-        return true;
-    }
-    /* migrating or buried */
-    xp.value = yp.value = 0;
-    return false;
-}
 
-/* C ref: hack.c:97-108 monst_to_any(mon) / obj_to_any(obj) — `anything` is a
- * UNION, so a_monst and a_obj are the same pointer.  del_light_source()'s
- * `curr->id.a_obj == id->a_obj` comparison relies on exactly that, which is
- * why both fields are filled here rather than one. */
-export function monst_to_any(mtmp) { return pointer_to_any(mtmp); }
-export function obj_to_any(obj) { return pointer_to_any(obj); }
 
 /* C ref: light.c:61-66 new_light_source(x, y, range, type, id) */
 export function new_light_source(x, y, range, type, id) {
@@ -474,26 +421,6 @@ export async function obj_adjust_light_radius(obj, new_radius) {
     await impossible("obj_adjust_light_radius: can't find %s", xname(obj));
 }
 
-/* C mkobj.c:1704-1738, used by polyself.c:1967 when scales become armor.
- * Keep the radius change and its message together at the light-source owner. */
-export async function maybe_adjust_light(obj, old_range) {
-    const new_range = arti_light_radius(obj), delta = new_range - old_range;
-    if (delta) {
-        await obj_adjust_light_radius(obj, new_range);
-        const ox = { value: 0 }, oy = { value: 0 };
-        if (!Blind() && get_obj_location(obj, ox, oy, 0)) {
-            let buf = '';
-            if (game.iflags.last_msg === PLNMSG_OBJ_GLOWS)
-                buf = obj.quan === 1 ? 'It' : 'They';
-            else if (obj.where === OBJ_INVENT || cansee(ox.value, oy.value))
-                buf = Yname2(obj);
-            if (buf)
-                await pline('%s %s %s%s.', buf, otense(obj, 'shine'),
-                    Math.abs(delta) > 1 ? 'much ' : '',
-                    delta > 0 ? 'brighter' : 'less brightly');
-        }
-    }
-}
 
 /* C ref: light.c:880-911 arti_light_radius(struct obj *obj) — a light-emitting
  * artifact's range depends on its curse/bless state. */
@@ -659,4 +586,32 @@ function discard_flashes() {
         if (ls.type === LS_OBJECT && !ls.id.a_obj)
             delete_ls(ls);
     }
+}
+
+/* C ref: light.c:934-975 wiz_light_sources() — the #lightsources command: a
+ * corner text window; no turn, no RNG.  fmt_ptr() stand-in as in #timeout. */
+export async function wiz_light_sources() {
+    const g = game;
+    const pad2 = (n) => String(n).padStart(2);
+    const lines = [`Mobile light sources: hero @ (${pad2(g.u.ux)},${pad2(g.u.uy)})`, ''];
+    const sources = light_sources_list();
+    if (sources.length) {
+        lines.push('location range flags  type    id',
+                   '-------- ----- ------ ----  -------');
+        for (const ls of sources) {
+            const id = ls.id || {};
+            const who = ls.type === LS_OBJECT ? 'obj'
+                : ls.type === LS_MONSTER
+                    ? ((id.a_monst?.mx | 0) > 0 ? 'mon'
+                        : (id.a_monst === g.youmonst) ? 'you' : '<m>')
+                    : '???';
+            const o = id.a_obj ?? id.a_monst;
+            const ptr = '0x' + (o ? 0x55d0c0de0000 + (((o.o_id ?? o.m_id) | 0) << 6) : 0).toString(16).padStart(12, '0');
+            lines.push(`  ${pad2(ls.x)},${pad2(ls.y)}   ${pad2(ls.range)}   0x${(ls.flags | 0).toString(16).padStart(4, '0')}  ${who}  ${ptr}`);
+        }
+    } else {
+        lines.push('<none>');
+    }
+    await displayLookWindow(lines);
+    return ECMD_OK;
 }

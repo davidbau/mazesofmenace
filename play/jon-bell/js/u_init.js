@@ -11,10 +11,12 @@ import { PM_ARCHEOLOGIST, PM_BARBARIAN, PM_CAVEMAN, PM_HEALER, PM_KNIGHT, PM_MON
     PM_CLERIC, PM_ROGUE, PM_RANGER, PM_SAMURAI, PM_TOURIST, PM_VALKYRIE, PM_WIZARD,
     PM_HUMAN, PM_ELF, PM_DWARF, PM_GNOME, PM_ORC } from './pm.generated.js';
 import { setworn } from './worn.js';
-import { setuwep, setuswapwep, setuqwep, set_twoweap, useupall, is_ammo } from './cmd.js';
+import { useupall, is_ammo } from './cmd.js';
+import { setuwep, setuswapwep, setuqwep, set_twoweap } from './wield.js';
 import { initialspell, num_spells, spell_skilltype } from './spell.js';
 import { OC_DESCR } from './oc_descr_data.js';
-import { skill_init, skills_for_role } from './skills.js';
+import './skills.js';
+import { skill_init } from './weapon.js';
 import { newhp, newpw } from './exper.js';
 /* C u_init.c:992-993 set_uasmon() / u_init.c:999 adjabil(0,1) — the hero's
  * starting form and level-1 innate intrinsics.  Both are runtime-only edges
@@ -22,8 +24,9 @@ import { newhp, newpw } from './exper.js';
  * init), so these cycles resolve. */
 import { set_uasmon } from './polyself.js';
 import { adjabil, adjattrib } from './attrib.js';
-import { addinv } from './hold_another_object.js';
-import { weight, inv_weight } from './weight.js';
+import { addinv } from './invent.js';
+import { weight } from './weight.js';
+import { inv_weight } from './hack.js';
 import { hidden_gold } from './vault.js';
 import { Japanese_item_name } from './objnam.js';
 import { OC_CHARGED } from './oc_cost_data.js';
@@ -38,6 +41,8 @@ import { MKOBJ_OC_SKILL, MKOBJ_OC_MAGIC } from './mkobj_erosion_meta.js';
 import { OC_USES_KNOWN, dealloc_obj, mksobj, mkobj } from './mklev.js';
 import { MKOBJ_OC_CLASS, MKOBJ_SVB_BASES } from './mkobj_data.js';
 import { NON_PM, A_CHAOTIC, A_CON, JUMPING, BLINDED, FROMOUTSIDE, LAST_PROP } from './const.js';
+import { ROLE_PM_MNUM } from './roles.js'; // relocate-fns
+import { SKILLS_FOR_ROLE } from './skills.js'; // relocate-fns
 const STATUE = 476; // objects.h
 // C role indices (role.c order): 0=Archeologist 1=Barbarian 2=Caveman 3=Healer
 // 4=Knight 5=Monk 6=Priest 7=Rogue 8=Ranger 9=Samurai 10=Tourist 11=Valkyrie 12=Wizard
@@ -1483,3 +1488,10 @@ void (ARROW, YA, CROSSBOW_BOLT, ELVEN_SPEAR, ORCISH_SPEAR, DWARVISH_SPEAR,
     SPE_POLYMORPH, SPE_POLYMORPH_SPE, WAN_NOTHING, WAN_POLYMORPH,
     RIN_LEVITATION, RIN_HUNGER, RIN_AGGRAVATE_MONSTER, RIN_POISON_RESISTANCE,
     RIN_POLYMORPH, RIN_POLYMORPH_CONTROL, STRANGE_OBJECT);
+
+// C u_init.c:1040 — select by the live role's monster identity.
+export function skills_for_role() {
+    const role = ROLE_PM_MNUM.indexOf(game.urole.mnum);
+    if (role < 0) throw new Error('panic: No skills found for role');
+    return SKILLS_FOR_ROLE[role];
+}

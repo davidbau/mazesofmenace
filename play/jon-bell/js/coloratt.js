@@ -11,6 +11,7 @@ import {
 import {
     ATR_DIM, ATR_ITALIC, ATR_ULINE, ATR_BLINK, SIZE
 } from './const.js';
+import { add_menu, select_menu } from './windows.js'; // relocate-fns
 
 // Data structures from coloratt.c
 // static const struct color_names colornames[] = { ... } (lines 12-40)
@@ -117,16 +118,7 @@ export function free_menu_coloring() {
 // Replay stubs — provide default implementations for windowing functions
 function create_nhwindow(type) { return 0; }
 function start_menu(win, behave) {}
-function add_menu(win, glyph, any, a, b, c, d, e, f) {}
 function end_menu(win, prompt) {}
-function select_menu(win, how, picksRef) {
-    // Return values that simulate the user picking "blink" (ATR_BLINK=5)
-    // with preselected "none" (ATR_NONE=0)
-    if (picksRef && picksRef.val !== undefined) {
-        picksRef.val = [{ item: { a_int: 1 } }, { item: { a_int: 6 } }];
-    }
-    return 2;
-}
 function destroy_nhwindow(win) {}
 function free(ptr) {}
 function strncmpi(s1, s2, n) { return 0; }

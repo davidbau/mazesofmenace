@@ -20,10 +20,12 @@ import { find_offensive, find_defensive, find_misc, use_misc, use_defensive, mon
 import { Upolyd, engulfing_u, CONFLICT, INVIS as INVIS_DH, NEED_WEAPON, NEED_HTH_WEAPON } from './const.js';
 import { mon_wield_item, select_rwep } from './uhitm.js';
 import { is_pick, watch_dig } from './dig.js';
-import { wipe_engr_at, wake_msg, angry_guards, mdrop_obj_md } from './mklev.js';
+import { wipe_engr_at, mdrop_obj_md } from './mklev.js';
+import { wake_msg, angry_guards } from './mon.js';
 import { STEALTH as STEALTH_DH, AGGRAVATE_MONSTER as AGGRAVATE_MONSTER_DH } from './const.js';
 import { PM_ETTIN as PM_ETTIN_DH, PM_JABBERWOCK as PM_JABBERWOCK_DH } from './pm.generated.js';
-import { castmu, cuss } from './mcastu.js';
+import { castmu } from './mcastu.js';
+import { cuss } from './wizard.js';
 import { pending_death_is_final } from './end.js';
 import { drain_pending_death_in_place } from './fastforward.js';
 import { couldsee, cansee } from './vision.js';
@@ -49,12 +51,13 @@ function mon_offmap_dh(mtmp) {
     return !mtmp || (mtmp.mstate | 0) !== 0;
 }
 import { permonstTemplate, monnear } from './makemon.js';
-import { resist_conflict } from './mhitm.js';
+import { resist_conflict } from './mondata.js';
 /* C monmove.c:744-750 flee-teleport + monmove.c:1153 leppie_stash. */
-import { noteleport_level, findgold } from './makemon.js';
+import { findgold } from './makemon.js';
+import { noteleport_level } from './teleport.js';
 import { rloc } from './teleport.js';
 import { RLOC_MSG, SHOPBASE, ROOM } from './const.js';
-import { in_rooms } from './shk.js';
+import { in_rooms } from './hack.js';
 import { t_at } from './trap.js';
 import { PM_LEPRECHAUN as PM_LEPRECHAUN_DH } from './pm.generated.js';
 /* watch_on_duty (monmove.c:176) — the Minetown Watch. */
@@ -82,10 +85,12 @@ import { within_bounded_area } from './rect.js';
 import { dist2 } from './hacklib.js';
 import { unstuck } from './dog.js';
 import { mon_has_amulet } from './sit.js';
-import { healmon, mpickobj, m_respond } from './mklev.js';
+import { mpickobj } from './steal.js';
+import { healmon, m_respond } from './mon.js';
 const DEADMONSTER_dc = (m) => (m.mhp | 0) <= 0;
 import { obj_extract_floor, distant_obj_name, Monnam_dm } from './dogmove.js';
-import { pline, Deaf as Deaf_live_dc } from './display.js';
+import { Deaf as Deaf_live_dc } from './display.js';
+import { pline } from './pline.js';
 import { demon_talk } from './minion.js';
 import { is_demon, set_malign } from './makemon.js';
 import { tele_restrict } from './teleport.js';

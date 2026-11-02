@@ -53,25 +53,28 @@ import { update_inventory } from './inventory_refresh.js';
 import { OBJ_DELETED } from './const.js';
 import { setworn, setnotworn } from './worn.js';
 export { setworn } from './worn.js';
-import { newsym, pline } from './display.js';
+import { newsym } from './display.js';
+import { pline } from './pline.js';
 import { Blind, cansee } from './vision.js';
 import { canspotmon, canseemon } from './display.js';
 import { Monnam } from './mcastu.js';
 import { Some_Monnam } from './mhitm.js';
 import { is_fainted } from './eat.js';
-import { unpunish } from './dig.js';
-import { unconscious } from './pickup.js';
+import { unpunish } from './read.js';
+import { unconscious } from './trap.js';
 import { findgold } from './makemon.js';
 import { droppables } from './dogmove.js';
-import { extract_from_minvent } from './trap.js';
+import { extract_from_minvent } from './worn.js';
 import { obfree } from './dokick.js';
 import { simpleonames, Tobjnam, armor_simple_name, makeplural, otense, is_quest_artifact as is_quest_artifact_real } from './objnam.js';
 import { end_burn } from './timeout.js';
 import { goodpos } from './trap.js';
-import { obj_extract_self, remove_object, place_object, mdrop_obj_md, revive_corpse, mpickobj, touch_artifact_mon } from './mklev.js';
-import { flooreffects, freeinv, body_part } from './cmd.js';
+import { obj_extract_self, remove_object, place_object, mdrop_obj_md, revive_corpse, touch_artifact_mon } from './mklev.js';
+import { freeinv, body_part } from './cmd.js';
+import { flooreffects } from './do.js';
 import { encumber_msg } from './weight.js';
-import { find_objowner, costly_spot, costly_adjacent, in_rooms, inhishop, subfrombill, shop_keeper, addtobill as shk_addtobill, stolen_value } from './shk.js';
+import { find_objowner, costly_spot, costly_adjacent, inhishop, subfrombill, shop_keeper, addtobill as shk_addtobill, stolen_value } from './shk.js';
+import { in_rooms } from './hack.js';
 import { within_bounded_area } from './rect.js';
 import { PM_DEATH, PM_FAMINE, PM_PESTILENCE } from './pm.generated.js';
 /* C zap.c:1458 obj_resists — the body WITH C's Rider-corpse clause
@@ -87,6 +90,16 @@ import { PM_DEATH, PM_FAMINE, PM_PESTILENCE } from './pm.generated.js';
  * only module-level statement is a numeric const (RLOCO_CORPSE) and nothing
  * here or there calls across the cycle during module evaluation. */
 import { obj_resists } from './zap.js';
+import { uqwepgone, uswapwepgone, uwepgone } from './wield.js'; // relocate-fns
+import { carry_obj_effects, count_unpaid } from './cmd.js'; // relocate-fns
+import { engulfing_u } from './const.js'; // relocate-fns
+import { mon_pmname } from './do_name.js'; // relocate-fns
+import { snuff_light_source } from './light.js'; // relocate-fns
+import { Has_contents, MPICKOBJ_AT_ENGL, add_to_minv, obj_sheds_light_mp, unknow_object } from './mklev.js'; // relocate-fns
+import { attacktype } from './mondata.js'; // relocate-fns
+import { impossible as lifecycle_impossible } from './pline.js'; // relocate-fns
+import { Blind as Blind_pickup } from './vision.js'; // relocate-fns
+import { skinback } from './polyself.js'; // relocate-fns
 const ROCK_CLASS = 14; // C objclass.h: boulders and statues
 
 /**
@@ -304,49 +317,9 @@ export async function maybe_absorb_item(mon, obj, ochance, achance) {
  * skinback(TRUE). */
 function impossible(_msg, ..._args) { }
 
-function skinback(val) {
-    const u = game.u || {};
-    const skin = u.uskin;
-    if (!skin)
-        return;
-    if (!val)
-        pline('Your skin returns to its original form.');
-    /* C polyself.c:1942-1953: restore the embedded armor as uarm and clear
-     * the temporary I_SPECIAL marker used while polymorphed. */
-    u.uarm = skin;
-    u.uskin = null;
-    skin.owornmask = (skin.owornmask | 0) & ~I_SPECIAL;
-}
 
-/* C wield.c:uwepgone — stop artifact light before clearing the slot. */
-export async function uwepgone() {
-    if (game.u.uwep) {
-        if (artifact_light(game.u.uwep) && game.u.uwep.lamplit) {
-            end_burn(game.u.uwep, false);
-            if (!Blind())
-                await pline("%s shining.", Tobjnam(game.u.uwep, "stop"));
-        }
-        await setworn(null, W_WEP);
-        game.unweapon = true;
-        update_inventory();
-    }
-}
 
-/* C wield.c:uswapwepgone — C refreshes again after setworn returns. */
-export async function uswapwepgone() {
-    if (game.u.uswapwep) {
-        await setworn(null, W_SWAPWEP);
-        update_inventory();
-    }
-}
 
-/* C wield.c:uqwepgone */
-export async function uqwepgone() {
-    if (game.u.uquiver) {
-        await setworn(null, W_QUIVER);
-        update_inventory();
-    }
-}
 
 
 function debugpline1(msg, ...args) {
@@ -585,4 +558,73 @@ function is_quest_artifact(obj) { return is_quest_artifact_real(obj); }
 
 function flags() {
     return { verbose: false };
+}
+
+const MPICKOBJ_LOST_NONE = 0, MPICKOBJ_LOST_THROWN = 1;
+
+const MPICKOBJ_LOST_DROPPED = 2, MPICKOBJ_LOST_STOLEN = 3;
+
+export async function mpickobj(mtmp, otmp) {
+    let freed_otmp;
+    let snuff_otmp = false;
+
+    /* C 622-632 */
+    if (!otmp) {
+        await lifecycle_impossible('monster (%s) taking or picking up nothing?',
+                                   mon_pmname(mtmp));
+        return 1;
+    } else if (otmp === game.u?.uball || otmp === game.u?.uchain) {
+        await lifecycle_impossible('monster (%s) taking or picking up attached %s (%s)?',
+                                   mon_pmname(mtmp),
+                                   otmp === game.u.uchain ? 'chain' : 'ball', simpleonames(otmp));
+        return 0;
+    }
+
+    /* C 636-641: if a monster acquires a thrown or kicked object, the throwing
+       or kicking code shouldn't continue to track and place it */
+    if (otmp === game.thrownobj)
+        game.thrownobj = 0;
+    else if (otmp === game.kickedobj)
+        game.kickedobj = 0;
+
+    if (otmp.unpaid || (Has_contents(otmp) && count_unpaid(otmp.cobj))) {
+        await subfrombill(otmp, (await find_objowner(otmp, otmp.ox, otmp.oy)));
+    }
+
+    /* C 647-656: don't want a hidden light source inside the monster */
+    if (obj_sheds_light_mp(otmp) && attacktype(mtmp.data, MPICKOBJ_AT_ENGL)) {
+        /* this is probably a burning object that you dropped or threw */
+        if (engulfing_u(mtmp) && !Blind_pickup())
+            await pline(`${Tobjnam(otmp, 'go')} out.`);
+        snuff_otmp = true;
+    }
+
+    otmp.no_charge = 0;
+
+    /* C 660-678: some object handling is only done if mtmp isn't a pet */
+    if (!mtmp.mtame) {
+        /* if monst is unseen, some info the hero knows about this object
+           becomes lost */
+        if (!canseemon(mtmp) && mtmp !== game.u?.ustuck)
+            unknow_object(otmp);
+        /* if otmp has flags set for how it left hero's inventory, change them */
+        if (otmp.how_lost === MPICKOBJ_LOST_THROWN)
+            otmp.how_lost = MPICKOBJ_LOST_STOLEN;
+        else if (otmp.how_lost === MPICKOBJ_LOST_DROPPED)
+            otmp.how_lost = MPICKOBJ_LOST_NONE;
+    }
+
+    /* C 679-680: must do carrying effects on the object prior to add_to_minv */
+    carry_obj_effects(otmp);
+
+    /* C 681-683: add_to_minv() might free otmp [if merged with something
+       else], so we have to call it after doing the object checks */
+    freed_otmp = (await add_to_minv(mtmp, otmp));
+
+    /* C 684-686: and we had to defer this until the object is in mtmp's
+       inventory */
+    if (snuff_otmp)
+        snuff_light_source(mtmp.mx, mtmp.my);
+
+    return freed_otmp;
 }

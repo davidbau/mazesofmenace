@@ -9,7 +9,9 @@ import { game, requireLiveGame, requireGameLevel, requirePlayingGame } from './g
 import { impossible } from './diagnostics.js';
 import { selectMapPosition, shouldShowGetposTip, showGetposTip } from './getpos.js';
 import { pline, plineWithContinuation } from './pline.js';
-import { prepareTeleportAtWill } from './wizard_teleport.js';
+import { currentAttribute, exerciseWisdom } from './attrib.js';
+import { castSpell, createMemorizedSpell, knownSpell } from './spell.js';
+import { tty_add_menu, tty_create_nhwindow, tty_destroy_nhwindow, tty_end_menu, tty_select_menu, tty_start_menu } from './tty_menu.js';
 import { heroLocomotion } from './hero_locomotion.js';
 import { randomTeleportDepth } from './level_teleport.js';
 import { depth, dist2, distmin } from './hacklib.js';
@@ -23,36 +25,42 @@ import { canSeeMonster, canSenseMonster, canSpotMonster, docrt, newsym, see_mons
 import { vision_recalc, couldsee } from './vision.js';
 import { leashAttachedToMonster, releaseMonsterLeash } from './leash_apply.js';
 import { rn2, rnd } from './rng.js';
-import { GP_CHECKSCARY, COLNO, ROWNO, LEVEL_TELEP, TELEP_TRAP, VAULT, VIBRATING_SQUARE, M_AP_NOTHING, MON_FLOOR, RLOC_MSG, RLOC_NOMSG, RLOC_NONE, RLOC_ERR, STRAT_APPEARMSG, BOLT_LIM, TT_BURIEDBALL, HOLE, In_endgame, Is_botlevel, Is_stronghold, MIGR_PORTAL, MIGR_RANDOM, Upolyd, ZAP_POS, is_hole, is_pit, isok, Is_astralevel, MON_ENDGAME_MIGR, MON_OBLITERATE, } from './const.js';
+import { GP_CHECKSCARY, COLNO, ROWNO, LEVEL_TELEP, TELEP_TRAP, VAULT, VIBRATING_SQUARE, M_AP_NOTHING, MON_FLOOR, RLOC_MSG, RLOC_NOMSG, RLOC_NONE, RLOC_ERR, STRAT_APPEARMSG, BOLT_LIM, TT_BURIEDBALL, HOLE, In_endgame, Is_botlevel, Is_stronghold, MIGR_PORTAL, MIGR_RANDOM, Upolyd, ZAP_POS, is_hole, is_pit, isok, Is_astralevel, MON_ENDGAME_MIGR, MON_OBLITERATE, A_STR, MENU_ITEMFLAGS_SELECTED, NHW_MENU, PICK_ONE, SHOPBASE } from './const.js';
 import { MONSTER_FLAGS1, MONSTER_NAME, MONSTER_SYMBOL, monsterIsRider } from './monster_data.js';
-import { AMULET_OF_YENDOR, LEASH, RIN_TELEPORTATION, RIN_TELEPORT_CONTROL, WAN_TELEPORTATION } from './object_data.js';
+import { AMULET_OF_YENDOR, LEASH, OBJECT_SPELL_LEVEL, RIN_TELEPORTATION, RIN_TELEPORT_CONTROL, SPE_TELEPORT_AWAY, WAN_TELEPORTATION, CORPSE } from './object_data.js';
 import { spendHeroNutrition } from './hunger.js';
-import { beginBallAndChainMove, finishBallAndChainMove, heroIsPunished, placeBallAndChain, unplaceBallAndChain, } from './ball.js';
+import { beginBallAndChainMove, finishBallAndChainMove, heroIsPunished, placeBallAndChain, unplaceBallAndChain } from './ball.js';
 import { searchSpecial, somexyspace } from './mkroom.js';
 import { priestIsInOwnTemple, templeRoomAt } from './priest.js';
-import { checkSpecialRoom, costlySpot, shopkeeperInOwnShop, findObjectOwner, onBillEntry, stolenValue, makeAngryShopkeeper } from './shk.js';
+import { checkSpecialRoom, costlySpot, shopkeeperInOwnShop, findObjectOwner, onBillEntry, stolenValue, makeAngryShopkeeper, addShopObjectToBill, costlyAdjacent, removeObjectAndContentsFromBill } from './shk.js';
 import { releaseHeroFromMonster } from './hero_expulsion.js';
 import { maybeUnhideAt, migrateMonsterToLevel, removeMonsterFromGame, sendMonsterToLimbo } from './mon.js';
 import { interruptOccupationForMonster, setMonsterApparentHeroPosition } from './monmove.js';
 import { monsterName } from './do_name.js';
-import { findNearbyMonsterPosition, heroTeleportRestricted, goodPosition, monsterTeleportRestricted, } from './teleport_rules.js';
-import { nearCapacity, SLT_ENCUMBER } from './weight.js';
+import { findNearbyMonsterPosition, heroTeleportRestricted, goodPosition, monsterTeleportRestricted } from './teleport_rules.js';
+import { exceedsActionCapacity, nearCapacity, SLT_ENCUMBER } from './weight.js';
 import { heroIsUnaware, heroIsUnconscious } from './hero_sleep.js';
 import { promptYesNo } from './query.js';
 import { heroIsBlind, setHeroBlindnessTurns } from './senses.js';
 import { buriedBallToPunishment } from './buried_object.js';
 import { placeHeroOnLevel } from './hero_location.js';
 import { clearHeroTrap, triggerLevelTeleportTrap } from './hero_traps.js';
-import { gotoLevel } from './level_change.js';
-import { deleteTrap } from './trap_lifecycle.js';
-import { endVoluntaryMultiTurn } from './command_state.js';
+import { gotoLevel, scheduleLevelChange } from './level_change.js';
+import { makeStunned } from './hero_mental_status.js';
+import { deleteTrap, seeTrap, tryMonsterTrapEscape } from './trap.js';
+import { endVoluntaryMultiTurn } from './hack.js';
 import { fillPitWithBoulderAt } from './pit_fill.js';
-import { seeTrap, tryMonsterTrapEscape } from './trap.js';
 import { learnObjectType } from './object_knowledge.js';
 import { hasShopkeeperData } from './shop_types.js';
 import { publishMonsterYelp } from './ambient_sounds.js';
 import { migrateMonsterOffLevel } from './dog.js';
 import { isHomeElemental } from './makemon.js';
+import { reviveCorpseImmediately } from './corpse_revival.js';
+import { isRider } from './corpse_species.js';
+import { applyFloorEffects } from './floor_effects.js';
+import { placeObject } from './floor_object.js';
+import { unlinkObject } from './mkobj.js';
+import { roomsAt } from './room.js';
 function requireLevel(state) {
     if (!state.level)
         throw new Error('Teleportation requires a dungeon level.');
@@ -274,6 +282,51 @@ export async function teleportHeroSafely() {
 }
 function heroIsStunned(state) {
     return !!(state?.u?.stunned || (state?.u?.stunnedTurns ?? 0) > 0);
+}
+// A spell completes dotele() itself. Direct intrinsic teleport continues in
+// the caller after energy is spent. The caller owns the command's turn result.
+export async function prepareTeleportAtWill(state = game, publish = plineWithContinuation) {
+    requirePlayingGame(state);
+    const hero = state.u;
+    const teleportation = heroHasTeleportation(state);
+    const requiredLevel = state.urole.key === 'wizard' ? 8 : 12;
+    let cast = false;
+    if (!teleportation || hero.ulevel < requiredLevel && !heroFormCanTeleport(state)) {
+        const known = knownSpell(SPE_TELEPORT_AWAY, state);
+        cast = (known === 'fresh' || known === 'stale')
+            && !(hero.confused || (hero.confusionTurns ?? 0) > 0);
+        if (!cast) {
+            await publish(!teleportation
+                ? known === 'unknown' ? "You don't know that spell." : "You can't cast that spell."
+                : 'You are not able to teleport at will.');
+            return { proceed: false, spentTime: false };
+        }
+    }
+    const level = OBJECT_SPELL_LEVEL[SPE_TELEPORT_AWAY];
+    if (level === undefined)
+        throw new Error('Teleport-away has no spell level');
+    const energy = 5 * level;
+    const failure = hero.uhunger <= 10 ? 'are too weak from hunger'
+        : currentAttribute(A_STR, state) < 4 ? 'lack the strength'
+            : energy > hero.uen ? 'lack the energy' : null;
+    if (failure) {
+        await publish(`You ${failure} ${cast ? 'for a teleport spell' : 'to teleport'}.`);
+        return { proceed: false, spentTime: false };
+    }
+    if (exceedsActionCapacity(state)) {
+        await publish('Your concentration falters from carrying so much.');
+        return { proceed: false, spentTime: true };
+    }
+    if (cast) {
+        exerciseWisdom(true, state);
+        const enclosingMove = state.context.move;
+        const result = await castSpell(SPE_TELEPORT_AWAY, { atSelf: true, state });
+        state.context.move = enclosingMove;
+        return { proceed: false, spentTime: result.spentTime };
+    }
+    hero.uen -= energy;
+    state.context.botl = true;
+    return { proceed: true };
 }
 export async function teleportHeroAtWill({ state = game, random = rn2, rollOne = rnd, chooseDestination = null, finishArrival = finishTeleportArrival, publish = plineWithContinuation, ignoreRestrictions = false, } = {}) {
     requirePlayingGame(state);
@@ -1073,6 +1126,101 @@ export async function teleportAtWillCommand(ignoreRestrictions) {
     });
     game.context.move = Number(result.spentTime);
 }
+// C teleport.c:dotelecmd(): wizard mode's ^T menu around dotele().
+export async function wizardTeleportCommand(teleport) {
+    requirePlayingGame(game);
+    const mode = game.iflags.menu_requested ? await chooseTeleportMode() : 'w';
+    if (!mode) {
+        game.context.move = 0;
+        return;
+    }
+    if (mode === 'w') {
+        await teleport(true);
+        return;
+    }
+    await withTeleportMode(mode, () => teleport(false));
+}
+async function chooseTeleportMode() {
+    const window = tty_create_nhwindow(NHW_MENU);
+    try {
+        await tty_start_menu(window);
+        tty_add_menu(window, { identifier: 'n', selector: 'n', text: 'normal ^T on demand; no spell, obey restrictions' });
+        tty_add_menu(window, { identifier: 's', selector: 's', text: 'via spellcast; no intrinsic teleport' });
+        tty_add_menu(window, { identifier: 't', selector: 't', text: 'try ^T without having it; no spell' });
+        tty_add_menu(window, {
+            identifier: 'w', selector: 'w', text: 'debug mode; ignore restrictions',
+            itemflags: MENU_ITEMFLAGS_SELECTED,
+        });
+        tty_end_menu(window, 'Which way do you want to teleport?');
+        const result = await tty_select_menu(window, PICK_ONE);
+        if (result.cancelled)
+            return null;
+        return result.selections.find(selection => selection.identifier !== 'w')?.identifier ?? 'w';
+    }
+    finally {
+        await tty_destroy_nhwindow(window);
+    }
+}
+// C teleport.c:dotelecmd() tmode switch, with spell.c:tport_spell() inlined.
+async function withTeleportMode(mode, action) {
+    const hero = game.u;
+    const teleporting = hero.teleporting;
+    const teleportation = hero.teleportation;
+    const turns = hero.teleportingTurns;
+    const savedPropertySources = hero._propertySources;
+    const sources = hero._propertySources ??= {};
+    const savedSources = sources.teleportation;
+    // I_SPECIAL confers an intrinsic for 'n'; 's' and 't' suppress both
+    // intrinsic and extrinsic sources, including those from polymorph.
+    sources.teleportation = {
+        intrinsic: mode === 'n' ? { ...savedSources?.intrinsic, potion: true } : {},
+        worn: mode === 'n' ? savedSources?.worn ?? [] : [],
+        invoked: mode === 'n' ? savedSources?.invoked ?? null : null,
+        carried: mode === 'n' ? savedSources?.carried ?? [] : [],
+    };
+    hero.teleportation = hero.teleporting = mode === 'n';
+    if (mode !== 'n')
+        hero.teleportingTurns = 0;
+    const spells = game.spells;
+    const index = spells.findIndex(spell => spell.otyp === SPE_TELEPORT_AWAY);
+    // Native NO_SPELL hides the rest of the spell list too. Retain those
+    // entries so their identities and letters survive restoration.
+    const hidden = index >= 0 && mode !== 's' ? spells.splice(index) : [];
+    let added = false;
+    try {
+        if (index < 0 && spells.length >= 52) {
+            await impossible('tport_spell: spellbook full');
+        }
+        else if (index < 0 && mode === 's') {
+            spells.push(createMemorizedSpell(SPE_TELEPORT_AWAY, 20000, game));
+            added = true;
+        }
+        await action();
+    }
+    finally {
+        if (added)
+            spells.pop();
+        spells.push(...hidden);
+        if (teleporting === undefined)
+            delete hero.teleporting;
+        else
+            hero.teleporting = teleporting;
+        if (teleportation === undefined)
+            delete hero.teleportation;
+        else
+            hero.teleportation = teleportation;
+        if (turns === undefined)
+            delete hero.teleportingTurns;
+        else
+            hero.teleportingTurns = turns;
+        if (savedSources === undefined)
+            delete sources.teleportation;
+        else
+            sources.teleportation = savedSources;
+        if (!savedPropertySources && Object.keys(sources).length === 0)
+            delete hero._propertySources;
+    }
+}
 // C teleport.c:u_teleport_mon(). Relocation caused by immediate magic.
 export async function teleportMonsterByHero(monster, { state = game, giveFeedback = true, } = {}) {
     requirePlayingGame(state);
@@ -1102,5 +1250,127 @@ export async function teleportMonsterByHero(monster, { state = game, giveFeedbac
         }
     }
     return !!await randomMonsterRelocation(monster, { state, flags: RLOC_MSG });
+}
+// Magic portals under the hero.
+// C ref: teleport.c domagicportal().
+function dungeonName(level) {
+    return level ? game.dungeons[level.dnum]?.dname ?? '' : '';
+}
+function isTutorialLevel(level) {
+    return dungeonName(level) === 'The Tutorial';
+}
+async function addPortalStun() {
+    const hero = game.u;
+    const alreadyStunned = !!(hero.stunned
+        || (hero.stunnedTurns ?? 0) > 0);
+    await makeStunned((hero.stunnedTurns ?? 0) + 3, { talk: false });
+    return alreadyStunned ? 'You feel dizzier.' : 'You feel slightly dizzy.';
+}
+export async function activateMagicPortal(trap, gotoLevel) {
+    requirePlayingGame(game);
+    // C teleport.c:domagicportal() (1450-1451): a buried ball surfaces
+    // before the leashed-follower check, so it comes back up even when the
+    // portal attempt then shudders.
+    if (game.u.utrap && game.u.utraptype === TT_BURIEDBALL)
+        await buriedBallToPunishment(game);
+    if (!await bringLeashedFollowers()) {
+        await plineWithContinuation('You shudder for a moment.');
+        return;
+    }
+    const { uz, uz0 } = game.u;
+    if (uz0 && (uz.dnum !== uz0.dnum || uz.dlevel !== uz0.dlevel))
+        return;
+    await plineWithContinuation('You activated a magic portal!');
+    if (In_endgame(game.u?.uz) && !game.u?.uhave?.amulet) {
+        await plineWithContinuation(formatFeltMessage('dizzy for a moment, but nothing happens...'));
+        return;
+    }
+    if (!trap.dst)
+        throw new Error('Magic portal has no destination.');
+    const leavingTutorial = isTutorialLevel(game.u?.uz)
+        && !isTutorialLevel(trap.dst);
+    // C schedule_goto(): every entry, including a knockback hurtle, defers
+    // the real level change. domove() still needs the departure level to
+    // wear its engravings.
+    // deferred_goto() prints dizziness after that movement tail finishes.
+    const preMessage = leavingTutorial ? 'Resuming regular play.' : await addPortalStun();
+    scheduleLevelChange([trap.dst, {
+            arrival: leavingTutorial ? 'stairs' : 'portal',
+        }], gotoLevel ?? undefined, preMessage);
+    game.context.move = 1;
+}
+// Random object relocation, including floor effects and shop ownership.
+// C teleport.c:rloco() and goodpos(..., NULL, 0).
+export async function relocateObjectRandomly(object, { state = game, publish = plineWithContinuation, random = rn2, } = {}) {
+    requireLiveGame(state);
+    if (object.otyp === CORPSE && isRider(object.corpsenm)) {
+        const revival = await reviveCorpseImmediately(object, state);
+        if (!revival)
+            throw new Error('Corpse revival returned no result for a Rider corpse');
+        for (const message of revival.messages)
+            await publish(message);
+        if (revival.monster)
+            return false;
+    }
+    unlinkObject(object, state);
+    const oldx = object.ox, oldy = object.oy;
+    const region = requireGameLevel(state).downTeleportRegion;
+    const { x, y } = relocationPosition(oldx, oldy, region, state, random);
+    const result = await applyFloorEffects(object, x, y, { state, publish, random });
+    if (result.finished) {
+        if (oldx !== 0 || oldy !== 0)
+            await newsym(oldx, oldy);
+        return false;
+    }
+    if (oldx !== 0 || oldy !== 0) {
+        await settleRelocatedObject(object, oldx, oldy, x, y, state, publish);
+        await newsym(oldx, oldy);
+    }
+    await placeObject(object, x, y, state);
+    await newsym(x, y);
+    return true;
+}
+function relocationPosition(oldx, oldy, region, state, random) {
+    const fallRegion = oldx === 0 && region?.lx ? region : null;
+    for (let attempt = 0;; attempt++) {
+        const x = random(COLNO - 3) + 2;
+        const y = random(ROWNO);
+        // Native uses the final candidate after exhausting its position search.
+        if (attempt === 3999)
+            return { x, y };
+        if (!goodPosition(x, y, null, { state, random }))
+            continue;
+        if (fallRegion && (!inside(fallRegion, x, y)
+            || (fallRegion.exclude?.lx && inside(fallRegion.exclude, x, y))))
+            continue;
+        if (region?.exclude?.lx
+            && insideWizardTower(x, y, state)
+                !== insideWizardTower(oldx, oldy, state))
+            continue;
+        return { x, y };
+    }
+}
+async function settleRelocatedObject(object, oldx, oldy, x, y, state, publish) {
+    const level = requireGameLevel(state);
+    const owner = findObjectOwner(object, oldx, oldy, state);
+    if (!owner || !(costlySpot(oldx, oldy, state)
+        || (object.unpaid && costlyAdjacent(owner, oldx, oldy, state))))
+        return;
+    const heroRoom = roomsAt(level, state.u.ux, state.u.uy, SHOPBASE)[0];
+    const oldRoom = roomsAt(level, oldx, oldy)[0];
+    const heroInShop = heroRoom
+        && roomsAt(level, owner.mx, owner.my).includes(heroRoom);
+    const sameShop = oldRoom && roomsAt(level, x, y).includes(oldRoom);
+    if (heroInShop && sameShop && costlySpot(x, y, state)) {
+        if (object.unpaid)
+            removeObjectAndContentsFromBill(object, state, { resident: owner });
+    }
+    else if (heroInShop && sameShop && costlyAdjacent(owner, x, y, state)) {
+        if (!object.unpaid)
+            await addShopObjectToBill(object, state, { ininv: false, publish });
+    }
+    else {
+        await stolenValue(object, oldx, oldy, false, { silent: false, state, publish });
+    }
 }
 //# sourceMappingURL=teleport.js.map

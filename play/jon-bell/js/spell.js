@@ -13,7 +13,8 @@ import { P_NONE, P_MASTER, P_GRAND_MASTER, MAX_SPELL_STUDY } from './const.js';
 import { P_SKILL } from './skills.js';
 import { roles } from './roles.js';
 import { nhgetch } from './input.js';
-import { cast_chain_lightning, pline, shieldeff, flush_screen, newsym, show_glyph_cell, topl_force_break_now } from './display.js';
+import { cast_chain_lightning, shieldeff, flush_screen, newsym, show_glyph_cell, topl_force_break_now } from './display.js';
+import { pline } from './pline.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { d } from './rng.js';
 import { mkinvokearea } from './mklev.js';
@@ -27,25 +28,29 @@ import { CORR, DOOR, ROOM, NO_SPELL, UNKNOWN_SPELL, CONFUSION, STUNNED, TIMEOUT,
 import { acurr as acurr_real, poison_strdmg } from './attrib.js';
 import { POISON_RES, KILLED_BY_AN, ANTIMAGIC, FACE } from './const.js';
 import { nomul, stop_occupation } from './allmain.js';
-import { iter_mons, On_stairs, makemon } from './mklev.js';
+import { makemon } from './mklev.js';
+import { On_stairs } from './stairs.js';
+import { iter_mons } from './mon.js';
 import { set_malign, permonstTemplate } from './makemon.js';
-import { mkundead } from './cmd.js';
+import { mkundead } from './mkroom.js';
 import { PM_MASTER_LICH, PM_NALFESHNEE } from './pm.generated.js';
 import { NO_MINVENT } from './const.js';
 import { tamedog } from './dog.js';
 import { monflee } from './makemon.js';
-import { invocation_pos, trycall, useup, jump, body_part, cmdq_pop, cmdq_add_key, getpos, walk_path, getpos_sethilite } from './cmd.js';
-import { explode } from './zap.js';
+import { invocation_pos, useup, jump, body_part, cmdq_pop, cmdq_add_key, getpos, getpos_sethilite } from './cmd.js';
+import { walk_path } from './dothrow.js';
+import { trycall } from './do.js';
+import { explode } from './explode.js';
 import { m_at } from './uhitm.js';
 import { cansee } from './vision.js';
 import { canspotmon } from './display.js';
 import { distmin } from './hacklib.js';
 import { isok, Is_waterlevel, ZAP_POS, IS_DOOR, D_ISOPEN, EXPL_FIERY, EXPL_FROSTY } from './const.js';
-import { yn_function } from './end.js';
+import { yn_function } from './cmd.js';
 import { MENU_TRADITIONAL } from './const.js';
 import { check_capacity } from './cmd.js';
 import { morehungry } from './eat.js';
-import { aggravate } from './mcastu.js';
+import { aggravate } from './wizard.js';
 import { tele } from './teleport.js';
 import { make_blinded } from './zap.js';
 /* make_confused's C home is potion.c:88 — js/mhitu.js's copy was an exported
@@ -77,7 +82,7 @@ import { zapyourself, weffects } from './zap.js';
 import { seffects } from './read.js';
 import { peffects, healup, make_slimed } from './potion.js';
 import { obfree, check_unpaid_usage } from './shk.js';
-import { losehp } from './dokick.js';
+import { losehp } from './hack.js';
 import { update_inventory } from './mhitm.js';
 import { getdir } from './lock.js';
 import { NO_KILLER_PREFIX, CLOUD, IS_TREE, IS_STWALL } from './const.js';
@@ -94,9 +99,14 @@ import { PM_FOG_CLOUD, PM_AIR_ELEMENTAL } from './pm.generated.js';
 import { make_familiar } from './dog.js';
 import { TtyMenu, PICK_NONE, PICK_ONE, ATR_NONE, menu_heading_text } from './tty_menu.js';
 import { do_vicinity_map } from './detect.js';
-import { You_feel, You_hear } from './display.js';
+import { You_feel, You_hear } from './pline.js';
 import { SPINE, DISP_BEAM, DISP_END } from './const.js';
 import { tmp_at, docorner_blank_utf8_captures } from './display.js';
+import { msgtype_suppressed } from './display.js'; // relocate-fns
+import { _Confusion, _bump_literate, _makeknown, set_cursor, topline_more_loop } from './read.js'; // relocate-fns
+import { rnl } from './rng.js'; // relocate-fns
+import { more_experienced } from './uhitm.js'; // relocate-fns
+import { isqrt } from './hacklib.js'; // relocate-fns
 
 // ── Object-type constants ────────────────────────────────────────────────────
 const SPBOOK_FIRST_OTYP = 366; // SPE_DIG = FIRST_SPELL
@@ -355,11 +365,6 @@ function otypIs(obj, num, tag) {
     return t === num || t === tag;
 }
 
-// ── isqrt ────────────────────────────────────────────────────────────────────
-export function isqrt(val) {
-    if (val <= 0) return 0;
-    return Math.trunc(Math.sqrt(val));
-}
 
 // ── spell_skill ───────────────────────────────────────────────────────────────
 /**
@@ -2540,4 +2545,184 @@ export async function cast_protection() {
     u.uspmtime = spell_skill(spell_skilltype(SPE_PROTECTION)) === P_EXPERT ? 20 : 10;
     if (!u.usptime) u.usptime = u.uspmtime;
     find_ac();
+}
+
+async function study_book_already_known(spellName) {
+    const g = game;
+    const msg = `You know "${spellName}" quite well already.`;
+    /* C spell.c:566 You() runs vpline's last_msg/prevmsg writes
+     * (pline.c:281-282) before the following query pages this message. */
+    if (!msgtype_suppressed(msg)) {
+        if (g.iflags) g.iflags.last_msg = 0;
+        g._prevmsg = msg;
+    }
+    /* C ref: pline + tty more() chain — pline sets the topline; the subsequent
+     * y_n in C calls topl.c more() to clear the line.  Mirror that loop. */
+    await topline_more_loop(msg);
+    const ynPrompt = 'Refresh your memory anyway? [yn] (n)';
+    /* C topl.c:420 custompline(OVERRIDE_MSGTYPE | SUPPRESS_HISTORY)
+     * publishes the prompt with a trailing space, updating prevmsg too.
+     * Without this, a later Norep can suppress an older, unrelated message. */
+    if (g.iflags) g.iflags.last_msg = 0;
+    g._prevmsg = ynPrompt + ' ';
+    let refresh = false;
+    while (true) {
+        g._pending_message = ynPrompt;
+        await flush_screen(1);
+        set_cursor(ynPrompt.length + 1, 0); /* C TTY: cursor past prompt + trailing space */
+        const key = await nhgetch();
+        const c = String.fromCharCode(key);
+        if (c === '\x1b') break;                          /* ESC → default 'n' */
+        if (c === '\r' || c === '\n' || c === ' ') break; /* activator → default 'n' */
+        const lc = c.toLowerCase();
+        if (lc === 'y' || lc === 'n') {                   /* valid yn answer */
+            refresh = (lc === 'y');                       /* spell.c:571 only 'n' returns 0 */
+            break;
+        }
+        /* invalid key: tty_yn_function loops and re-reads; prompt persists */
+    }
+    if (refresh) return true;   /* spell.c:571-573: 'y' falls through to the study below */
+    g._pending_message = ynPrompt;
+    return false;
+}
+
+/* C ref: spell.c:468 study_book(spellbook) — study a specific spellbook
+ * object.  Truncated port: covers only the "already know it quite well"
+ * branch (spell.c:561-573), which is the path exercised when the hero studies
+ * a starting-kit spellbook for a spell they begin the game knowing at full
+ * retention (sp_know = 20000 > KEEN/10).
+ *
+ * Looks up the spell slot whose sp_id matches the book's otyp (C spell.c:561
+ * `spellid(i) == booktype`); if that slot's sp_know > KEEN/10 (2000), emits
+ * "You know \"<name>\" quite well already." then the y_n refresh prompt.
+ *
+ * Returns false (study_book's y_n-'n' branch → ECMD_OK, no turn).  C ref:
+ * read.c:608 `if (scroll->oclass == SPBOOK_CLASS) return study_book(scroll)`.
+ *
+ * Used by itemactions() IA_READ_OBJ (iactions.c:222 cmdq_add_ec(doread)) for a
+ * spellbook selected from the inventory item-action menu. */
+const _SPBOOK_FIRST_OTYP = 366;
+
+const _SPBOOK_NAMES = [
+    'dig','magic missile','fireball','cone of cold','sleep',
+    'finger of death','light','detect monsters','healing','knock',
+    'force bolt','confuse monster','cure blindness','drain life',
+    'slow monster','wizard lock','create monster','detect food',
+    'cause fear','clairvoyance','cure sickness','charm monster',
+    'haste self','detect unseen','levitation','extra healing',
+    'restore ability','invisibility','detect treasure','remove curse',
+    'magic mapping','identify','turn undead','polymorph',
+    'teleport away','create familiar','cancellation','protection',
+    'jumping','stone to flesh','chain lightning','blank paper',
+];
+
+export async function study_book(spellbook) {
+    const g = game;
+    const spl_book = g.spl_book || [];
+    const booktype = (typeof spellbook?.otyp === 'number') ? (spellbook.otyp | 0) : -1;
+    /* C ref: spell.c:474-493 — dull-book sleep check, BEFORE the already-known test. */
+    if (await study_book_dull(spellbook)) {
+        g.context = g.context || {};
+        g.context.move = 1;
+        return true;
+    }
+    /* C ref: spell.c:506-510 — SPE_BLANK_PAPER: message, makeknown, return 1.
+     * (The resume-after-interrupt test at 496-500 excludes blank paper, so
+     * this arm is always reached.) */
+    if (booktype === 407 /* SPE_BLANK_PAPER */) {
+        await pline('This spellbook is all blank.');
+        _makeknown(booktype);
+        g.context = g.context || {};
+        g.context.move = 1;
+        return true;
+    }
+    /* C ref: spell.c:512-536 — 3.6 tribute: reading a novel. */
+    if (booktype === 408 /* SPE_NOVEL */) {
+        const { noveltitle, read_tribute } = await import('./do_name.js');
+        const box = { value: (spellbook.novelidx ?? spellbook.corpsenm ?? -1) | 0 };
+        const tribtitle = noveltitle(box);
+        spellbook.novelidx = spellbook.corpsenm = box.value;
+        if (await read_tribute('books', tribtitle, 0, null, spellbook.o_id)) {
+            _bump_literate(tribtitle);
+            _makeknown(booktype);
+            const _u = g.u || (g.u = {});
+            _u.uevent = _u.uevent || {};
+            if (!_u.uevent.read_tribute) {
+                const { record_achievement } = await import('./cmd.js');
+                record_achievement(20 /* ACH_NOVL */);
+                more_experienced(20, 0);
+                const { newexplevel } = await import('./uhitm.js');
+                await newexplevel();
+                _u.uevent.read_tribute = 1;
+            }
+        }
+        g.context = g.context || {};
+        g.context.move = 1;
+        return true;
+    }
+    /* C ref: spell.c:561 — find spell slot matching this book's otyp. */
+    let sb = null;
+    for (const s of spl_book) {
+        if ((s.sp_id | 0) === booktype) { sb = s; break; }
+    }
+    /* C ref: spell.c:496-503 — the already-known test (561-573) lives in the
+     * ELSE of the resume-after-interrupt branch, so a resumed study skips it. */
+    const _sp = g.context?.spbook;
+    const _confused = !!(g.u?.uprops?.[CONFUSION]?.intrinsic);
+    const _resuming = !!(_sp && _sp.delay && !_confused && spellbook === _sp.book
+                         && booktype !== 407 /* SPE_BLANK_PAPER */);
+    if (!_resuming && sb && (sb.sp_know | 0) > 2000 /* KEEN/10 */) {
+        const idx = booktype - _SPBOOK_FIRST_OTYP;
+        const name = (idx >= 0 && idx < _SPBOOK_NAMES.length)
+            ? _SPBOOK_NAMES[idx] : 'a spell';
+        if (!(await study_book_already_known(name))) {
+            /* C spell.c:537-553 ran before the prompt: the 'n' return keeps
+             * the new book's delay (a resumed study then uses it). */
+            study_book_set_delay(booktype);
+            g.context = g.context || {};
+            g.context.move = 0; /* y_n-'n' → study_book returns 0 → ECMD_OK */
+            return false;
+        }
+    }
+    const moved = await study_book_learn(spellbook);
+    g.context = g.context || {};
+    g.context.move = moved ? 1 : 0;
+    return !!moved;
+}
+
+/* C ref: spell.c:1763 losespells(void) — forget a random selection of known
+ * spells (memory retention -> 0) after amnesia.  `n` is the number of known
+ * spells (spellid(n) == NO_SPELL terminates C's scan; this port's g.spl_book
+ * holds exactly the known entries, so its length is n directly). */
+export function losespells() {
+    const g = game;
+    g.context = g.context || {};
+    /* C spell.c:1766-1767 — discard any in-progress study context. */
+    g.context.spbook = g.context.spbook || { book: null, o_id: 0, delay: 0 };
+    g.context.spbook.book = null;
+    g.context.spbook.o_id = 0;
+    const spl = g.spl_book || [];
+    /* C spell.c:1769-1771 — n counts up to the first NO_SPELL slot; spl_book
+     * may be padded with empty (sp_id 0) rows, so length is not n. */
+    let n = 0;
+    while (n < MAXSPELL && n < spl.length && spl[n] && (spl[n].sp_id | 0) !== 0 /* NO_SPELL */)
+        n++;
+    /* C has no n == 0 early-out: rn2(0 + 1) still draws (spell.c:1778). */
+    let nzap = rn2(n + 1);
+    if (_Confusion() !== 0) {
+        const i2 = rn2(n + 1);
+        if (i2 > nzap)
+            nzap = i2;
+    }
+    /* C spell.c:1782-1783 — good Luck might ameliorate spell loss. */
+    if (nzap > 1 && !rnl(7))
+        nzap = rnd(nzap);
+    /* C spell.c:1809-1826 — pick exactly nzap of the n spells uniformly. */
+    for (let i = 0; nzap > 0; i++) {
+        if (rn2(n - i) < nzap) {
+            spl[i].sp_know = 0;
+            exercise(2 /* A_WIS */, false);
+            nzap--;
+        }
+    }
 }

@@ -24,10 +24,12 @@ import {
     SPACE_POS, VIBRATING_SQUARE, MAX_BMASK,
 } from './const.js';
 import { load_special } from './sp_lev.js';
-import { obj_ice_effects, count_level_features, wallification } from './mklev.js';
-import { place_object, remove_object, u_on_newpos } from './mklev.js';
+import { obj_ice_effects, count_level_features } from './mklev.js';
+import { place_object, remove_object } from './mklev.js';
+import { u_on_newpos } from './dungeon.js';
 import { stackobj } from './sp_lev.js';
-import { newsym, dec_mode, pline } from './display.js';
+import { newsym, dec_mode } from './display.js';
+import { pline } from './pline.js';
 import { impossible } from './pline.js';
 import { t_at } from './trap.js';
 import { remove_worm } from './worm.js';
@@ -36,7 +38,9 @@ import { MON_BUBBLEMOVE, DEAF } from './const.js';
 /* The makemaz maze fallback (mkmaze.c:1197-1222) and populate_maze
  * (mkmaze.c:1095-1124) call these; all are C mklev.c/mkobj.c bodies that
  * already live in js/mklev.js. */
-import { mkstairs, place_branch, mktrap, mkgold, mkobj_at, mksobj_at, In_hell, stairway_find_dir, occupied } from './mklev.js';
+import { mkstairs, place_branch, mktrap, mkgold, mkobj_at, mksobj_at, occupied } from './mklev.js';
+import { In_hell } from './dungeon.js';
+import { stairway_find_dir } from './stairs.js';
 import { Is_branchlev, describe_level_buf } from './dungeon.js';
 import { MKTRAP_MAZEFLAG } from './const.js';
 import { PM_MINOTAUR } from './pm.generated.js';
@@ -56,14 +60,15 @@ import { dealloc_monst } from './dog.js';
 import { rn1 } from './rng.js';
 import { Is_firelevel } from './const.js';
 import { create_gas_cloud, clear_heros_fault } from './region.js';
-import { Norep } from './display.js';
+import { Norep } from './pline.js';
 import { Is_waterlevel, Is_airlevel, WATER, CLOUD, MAGIC_PORTAL } from './const.js';
 import { block_point, unblock_point, recalc_block_point, vision_recalc } from './vision.js';
 import { CLR_GRAY, CLR_CYAN, CLR_BRIGHT_BLUE } from './terminal.js';
 /* stolen_booty() and its statics (C mkmaze.c:712-889) — see the block at the
  * end of this file.  Every one of these is the file's ONE real port; nothing
  * here is a local stand-in. */
-import { makemon, mksobj, mkobj, dealloc_obj, upstart, mksobj_migr_to_species } from './mklev.js';
+import { makemon, mksobj, mkobj, dealloc_obj, mksobj_migr_to_species } from './mklev.js';
+import { upstart } from './hacklib.js';
 import { add_to_minv, christen_orc } from './dokick.js';
 import { rndorcname, christen_monst } from './mhitm.js';
 import { set_malign } from './makemon.js';
@@ -71,11 +76,19 @@ import { weight } from './weight.js';
 import { migrate_to_level } from './dog.js';
 import { shiny_obj } from './objnam.js';
 import { fruitadd } from './options.js';
-import { depth } from './hacklib.js';
+import { depth } from './dungeon.js';
 import { MKOBJ_OC_CLASS, MKOBJ_OC_PROB } from './mkobj_data.js';
 import { PM_ORC, PM_ORC_SHAMAN, PM_ORC_CAPTAIN } from './pm.generated.js';
 import { MM_NONAME, MIGR_RANDOM, MIGR_LEFTOVERS, has_mgivenname } from './const.js';
 import { ENV } from './hostenv.js';
+import { CROSSWALL, DBWALL, IS_STWALL, IS_WALL, Is_earthlevel, LR_DOWNTELE, LR_TELE, LR_UPTELE, VWALL, W_NONPASSWALL } from './const.js'; // relocate-fns
+import { m_into_limbo } from './dog.js'; // relocate-fns
+import { impossible as lifecycle_impossible } from './pline.js'; // relocate-fns
+import { deltrap } from './trap.js'; // relocate-fns
+import { is_pool, pooleffects_Swimming } from './cmd.js'; // relocate-fns
+import { dmonsfree } from './mon.js'; // relocate-fns
+import { Invocation_lev } from './dungeon.js'; // relocate-fns
+export { dmonsfree } from './mon.js'; // relocate-fns
 
 // CAN_OVERWRITE_TERRAIN — rm.h:339-340
 // #define CAN_OVERWRITE_TERRAIN(ttyp) \
@@ -182,41 +195,6 @@ function check_ransacked(s) {
     g.ransacked = !!(uz && uz.dnum === g.mines_dnum && s === 'minetn-1');
 }
 
-// C ref: mon.c:2472-2511 dmonsfree() — purge dead (non-guard) monsters from
-// the fmon chain, then reconcile the freed count against mon.c:2796's
-// iflags.purge_monsters counter (every m_detach twin increments it).  A
-// mismatch is C's impossible("dmonsfree: %d removed doesn't match %d pending
-// on %s") — reached when a no-time level change saves the old level FREEING
-// (save.c:487 skips the purge) and the pending death surfaces at the next
-// dmonsfree (mkmaze.c:1191, after load_special).
-export async function dmonsfree() {
-    const g = game;
-    let count = 0;
-    let prev = null;
-    let mtmp = g.fmon;
-    while (mtmp) {
-        const next = mtmp.nmon;
-        if (mtmp.mhp < 1 && !mtmp.isgd) {
-            if (prev)
-                prev.nmon = next;
-            else
-                g.fmon = next;
-            mtmp.nmon = null;
-            dealloc_monst(mtmp);
-            count++;
-        } else {
-            prev = mtmp;
-        }
-        mtmp = next;
-    }
-    /* mon.c:2504-2509 — describe_level(buf, 2) keeps the "Plane of " prefix
-     * (dflgs&2), so an endgame mismatch names the full plane. */
-    if (count !== (g.iflags.purge_monsters | 0))
-        await impossible('dmonsfree: %d removed doesn\'t match %d pending on %s',
-                         count, g.iflags.purge_monsters | 0,
-                         describe_level_buf(2, g.u && g.u.uz));
-    g.iflags.purge_monsters = 0; /* mon.c:2510 */
-}
 
 export { dealloc_monst };
 
@@ -267,16 +245,6 @@ export function mazexy(cc) {
     throw new Error("mazexy: can't find a place!");
 }
 
-/* C ref: dungeon.c:2016-2021 Invocation_lev(d_level *) — In_hell && dlevel ==
- * dunlevs_in_dungeon - 1.  Ported locally for the same reason js/mklev.js's
- * Can_dig_down and js/sp_lev.js:6605 port it locally: js/cmd.js's copy reads a
- * `game.invocation_level` that nothing in js/ ever writes. */
-export function Invocation_lev(lev) {
-    if (!lev)
-        return false;
-    const dun = game.dungeons?.[lev.dnum | 0];
-    return In_hell(lev) && !!dun && (lev.dlevel | 0) === (dun.num_dunlevs | 0) - 1;
-}
 
 export function pick_vibrasquare_location() {
     const g = game;
@@ -1534,4 +1502,352 @@ export async function stolen_booty() {
         }
     }
     g.ransacked = 0;
+}
+
+// C ref: mkmaze.c bad_location — mirrors C exactly.
+// Returns TRUE when the location is unsuitable for hero/portal placement.
+// C: occupied(x,y) || within_bounded_area(nlx/nly/nhx/nhy) ||
+//    !(CORR&&maze || ROOM || AIR)
+// occupied() = t_at || IS_FURNITURE || is_lava || is_pool || invocation_pos
+function bad_location(x, y, nlx, nly, nhx, nhy) {
+    const loc = game.level?.at(x, y);
+    if (!loc)
+        return true;
+    // C: occupied(x, y) — trap, furniture, lava, pool
+    if (occupied(x, y))
+        return true;
+    // Excluded region (within_bounded_area)
+    if (x >= nlx && x <= nhx && y >= nly && y <= nhy)
+        return true;
+    // Must be ROOM, (CORR in maze), or AIR
+    if (loc.typ !== ROOM && loc.typ !== AIR
+        && !(loc.typ === CORR && game.level?.flags?.is_maze_lev))
+        return true;
+    return false;
+}
+
+/* C ref: mkmaze.c:317-331 is_exclusion_zone.  Duplicated here rather than
+ * imported from js/sp_lev.js (where the same function is module-local) for the
+ * same reason sp_lev.js duplicates bad_location from this file: neither copy is
+ * exported and widening either file's surface for ten lines is not worth the
+ * extra import edge.  LR_DOWNTELE/LR_UPTELE also match a generic LR_TELE zone;
+ * everything else needs an exact zonetype match. */
+function lregion_is_exclusion_zone(type, x, y) {
+    for (const ez of (game.exclusion_zones || [])) {
+        const typeMatches =
+            (type === LR_DOWNTELE && (ez.zonetype === LR_DOWNTELE || ez.zonetype === LR_TELE))
+            || (type === LR_UPTELE && (ez.zonetype === LR_UPTELE || ez.zonetype === LR_TELE))
+            || type === ez.zonetype;
+        if (typeMatches
+            && x >= ez.lx && x <= ez.hx && y >= ez.ly && y <= ez.hy)
+            return true;
+    }
+    return false;
+}
+
+async function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
+    const lregionTrace = typeof process !== 'undefined'
+        && ENV?.FF_LREGION_TRACE === '1';
+    if (lregionTrace)
+        pushRngLogEntry(`^lregion_try[x=${x | 0},${y | 0} bounds=${lxSafe(nlx)},${lxSafe(nly)},${lxSafe(nhx)},${lxSafe(nhy)} oneshot=${oneshot ? 1 : 0}]`);
+    if (bad_location(x, y, nlx, nly, nhx, nhy)
+        || lregion_is_exclusion_zone(rtype, x, y)) {
+        if (!oneshot) {
+            return false; /* caller should try again */
+        } else {
+            /* C: must make do with the only location possible; avoid failure
+               due to a misplaced trap.  undestroyable_trap() is MAGIC_PORTAL
+               and VIBRATING_SQUARE only (trap.h). */
+            const t = t_at(x, y);
+            if (t && t.ttyp !== MAGIC_PORTAL && t.ttyp !== VIBRATING_SQUARE) {
+                const mtrap = m_at(x, y);
+                if (mtrap && mtrap.mtrapped)
+                    mtrap.mtrapped = 0;
+                deltrap(t);
+            }
+            if (bad_location(x, y, nlx, nly, nhx, nhy)
+                || lregion_is_exclusion_zone(rtype, x, y))
+                return false;
+        }
+    }
+    /* "something" means the player in this case */
+    const mtmp = m_at(x, y);
+    if (mtmp) {
+        if (lregionTrace)
+            pushRngLogEntry(`^lregion_occupied[x=${x | 0},${y | 0} id=${mtmp.m_id | 0} mndx=${mtmp?.mndx ?? mtmp?.data?.pmidx ?? -1} oneshot=${oneshot ? 1 : 0}]`);
+        /* move the monster if no choice, or just try again */
+        if (oneshot) {
+            /* C mkmaze.c:450-451: migrate the monster if relocation fails. */
+            if (!await rloc(mtmp, RLOC_NOMSG))
+                await m_into_limbo(mtmp);
+        } else {
+            return false;
+        }
+    }
+    await u_on_newpos(x, y);
+    return true;
+}
+
+/* Keep telemetry formatting local so the probe cannot coerce undefined bounds
+ * into an accidental gameplay read or throw while level-transition recovery is
+ * still constructing its destination region. */
+function lxSafe(v) { return Number.isFinite(v) ? (v | 0) : 0; }
+
+// C ref: mkmaze.c:355-408 place_lregion — place hero (LR_UPTELE/LR_DOWNTELE)
+export async function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
+    if (!lx) {
+        /* C mkmaze.c:366-373 also short-circuits `rtype == LR_BRANCH &&
+           svn.nroom` to place_branch() here; unreachable from this copy, whose
+           only caller (u_on_rndspot) always passes an LR_*TELE rtype. */
+        lx = 1;
+        hx = COLNO - 1;
+        ly = 0;
+        hy = ROWNO - 1;
+    }
+    if (lx < 1)
+        lx = 1;
+    if (hx > COLNO - 1)
+        hx = COLNO - 1;
+    if (ly < 0)
+        ly = 0;
+    if (hy > ROWNO - 1)
+        hy = ROWNO - 1;
+    // Probabilistic search
+    const oneshot = (lx === hx && ly === hy);
+    for (let trycnt = 0; trycnt < 200; trycnt++) {
+        const x = rn1((hx - lx) + 1, lx);
+        const y = rn1((hy - ly) + 1, ly);
+        if (await put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev))
+            return;
+    }
+    // Deterministic fallback
+    for (let x = lx; x <= hx; x++)
+        for (let y = ly; y <= hy; y++)
+            if (await put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, true, lev))
+                return;
+    // C mkmaze.c:409
+    await lifecycle_impossible("Couldn't place lregion type %d!", rtype);
+}
+
+// ============================================================
+// Wallification
+// ============================================================
+function isSolidTile(x, y) {
+    if (!isok(x, y))
+        return true;
+    return IS_STWALL(game.level?.at(x, y)?.typ ?? STONE);
+}
+
+function isWallOrStone(x, y) {
+    if (!isok(x, y))
+        return 1;
+    const typ = game.level?.at(x, y)?.typ ?? STONE;
+    return (typ === STONE || isWallTile(x, y)) ? 1 : 0;
+}
+
+function isWallTile(x, y) {
+    if (!isok(x, y))
+        return 0;
+    const typ = game.level?.at(x, y)?.typ ?? STONE;
+    return (IS_WALL(typ) || IS_DOOR(typ) || typ === LAVAWALL
+        || typ === WATER || typ === SDOOR || typ === IRONBARS) ? 1 : 0;
+}
+
+function extend_spine(locale, wall_there, dx, dy) {
+    const nx = 1 + dx, ny = 1 + dy;
+    if (!wall_there)
+        return 0;
+    if (dx) {
+        if (locale[1][0] && locale[1][2] && locale[nx][0] && locale[nx][2])
+            return 0;
+        return 1;
+    }
+    if (locale[0][1] && locale[2][1] && locale[0][ny] && locale[2][ny])
+        return 0;
+    return 1;
+}
+
+function wall_cleanup(x1, y1, x2, y2) {
+    // C mkmaze.c:204-205: reject invalid bounds before visiting the map.
+    if (x1 < 0 || x2 >= COLNO || x1 > x2 || y1 < 0 || y2 >= ROWNO || y1 > y2)
+        throw new Error(`wall_cleanup: bad bounds (${x1},${y1}) to (${x2},${y2})`);
+    const map = game.level;
+    if (!map)
+        return;
+    /* C mkmaze.c:100-104 — the baalz insect's legs are walls inside solid
+     * rock; the interior of gb.bughack.inarea is protected from the
+     * surrounded-by-rock cull that would otherwise delete them. */
+    const bh = bughack();
+    for (let x = x1; x <= x2; x++)
+        for (let y = y1; y <= y2; y++) {
+            if (within_bounded_area(x, y, bh.inarea.x1, bh.inarea.y1,
+                                    bh.inarea.x2, bh.inarea.y2))
+                continue;
+            const loc = map.at(x, y);
+            const typ = loc?.typ ?? STONE;
+            if (!(IS_WALL(typ) && typ !== DBWALL))
+                continue;
+            if (isSolidTile(x - 1, y - 1) && isSolidTile(x - 1, y) && isSolidTile(x - 1, y + 1)
+                && isSolidTile(x, y - 1) && isSolidTile(x, y + 1)
+                && isSolidTile(x + 1, y - 1) && isSolidTile(x + 1, y) && isSolidTile(x + 1, y + 1)) {
+                loc.typ = STONE;
+            }
+        }
+}
+
+export function fix_wall_spines(x1, y1, x2, y2) {
+    const spineArray = [VWALL, HWALL, HWALL, HWALL,
+        VWALL, TRCORNER, TLCORNER, TDWALL,
+        VWALL, BRCORNER, BLCORNER, TUWALL,
+        VWALL, TLWALL, TRWALL, CROSSWALL];
+    const map = game.level;
+    if (!map)
+        return;
+    /* C mkmaze.c:151-158 — inside gb.bughack.inarea the neighbour test is
+     * iswall(), not iswall_or_stone(), so the baalz insect's legs do not grow
+     * spines into the surrounding rock. */
+    const bh = bughack();
+    for (let x = x1; x <= x2; x++)
+        for (let y = y1; y <= y2; y++) {
+            const loc = map.at(x, y);
+            const typ = loc?.typ ?? STONE;
+            if (!(IS_WALL(typ) && typ !== DBWALL))
+                continue;
+            const loc_f = within_bounded_area(x, y, bh.inarea.x1, bh.inarea.y1,
+                                              bh.inarea.x2, bh.inarea.y2)
+                ? isWallTile : isWallOrStone;
+            const locale = [
+                [loc_f(x - 1, y - 1), loc_f(x - 1, y), loc_f(x - 1, y + 1)],
+                [loc_f(x, y - 1), 0, loc_f(x, y + 1)],
+                [loc_f(x + 1, y - 1), loc_f(x + 1, y), loc_f(x + 1, y + 1)],
+            ];
+            const bits = (extend_spine(locale, isWallTile(x, y - 1), 0, -1) << 3)
+                | (extend_spine(locale, isWallTile(x, y + 1), 0, 1) << 2)
+                | (extend_spine(locale, isWallTile(x + 1, y), 1, 0) << 1)
+                | extend_spine(locale, isWallTile(x - 1, y), -1, 0);
+            if (bits)
+                loc.typ = spineArray[bits];
+        }
+}
+
+export function wallification(x1, y1, x2, y2) {
+    wall_cleanup(x1, y1, x2, y2);
+    fix_wall_spines(x1, y1, x2, y2);
+}
+
+// ============================================================
+// Level finalize topology
+// ============================================================
+export function get_level_extends() {
+    const map = game.level;
+    let xmin = 0, xmax = COLNO - 1, ymin = 0, ymax = ROWNO - 1;
+    let found = false, nonwall = false;
+    for (xmin = 0; !found && xmin <= COLNO - 1; xmin++) {
+        for (let y = 0; y <= ROWNO - 1; y++) {
+            const typ = map.at(xmin, y)?.typ ?? STONE;
+            if (typ !== STONE) {
+                found = true;
+                if (!IS_WALL(typ))
+                    nonwall = true;
+            }
+        }
+    }
+    xmin -= (nonwall || !game.level?.flags?.is_maze_lev) ? 2 : 1;
+    if (xmin < 0) /* C mkmaze.c:1376 */
+        xmin = 0;
+    found = false;
+    nonwall = false;
+    for (xmax = COLNO - 1; !found && xmax >= 0; xmax--) {
+        for (let y = 0; y <= ROWNO - 1; y++) {
+            const typ = map.at(xmax, y)?.typ ?? STONE;
+            if (typ !== STONE) {
+                found = true;
+                if (!IS_WALL(typ))
+                    nonwall = true;
+            }
+        }
+    }
+    xmax += (nonwall || !game.level?.flags?.is_maze_lev) ? 2 : 1;
+    if (xmax >= COLNO) /* C mkmaze.c:1392 — without it a level whose last column is 79 gets xmax 80 and bound_digging never marks column 79 non-diggable */
+        xmax = COLNO - 1;
+    found = false;
+    nonwall = false;
+    for (ymin = 0; !found && ymin <= ROWNO - 1; ymin++) {
+        for (let x = xmin; x <= xmax; x++) {
+            const typ = map.at(x, ymin)?.typ ?? STONE;
+            if (typ !== STONE) {
+                found = true;
+                if (!IS_WALL(typ))
+                    nonwall = true;
+            }
+        }
+    }
+    ymin -= (nonwall || !game.level?.flags?.is_maze_lev) ? 2 : 1;
+    found = false;
+    nonwall = false;
+    for (ymax = ROWNO - 1; !found && ymax >= 0; ymax--) {
+        for (let x = xmin; x <= xmax; x++) {
+            const typ = map.at(x, ymax)?.typ ?? STONE;
+            if (typ !== STONE) {
+                found = true;
+                if (!IS_WALL(typ))
+                    nonwall = true;
+            }
+        }
+    }
+    ymax += (nonwall || !game.level?.flags?.is_maze_lev) ? 2 : 1;
+    return { xmin, xmax, ymin, ymax };
+}
+
+export function bound_digging() {
+    /* C mkmaze.c:1446-1447: everything is diggable on the Plane of Earth. */
+    /* C mkmaze.c:1446-1447 — everything is diggable on the Plane of Earth. */
+    if (Is_earthlevel(game.u?.uz))
+        return;
+    const map = game.level;
+    const { xmin, xmax, ymin, ymax } = get_level_extends();
+    for (let x = 0; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = map.at(x, y);
+            if (!loc)
+                continue;
+            if (IS_STWALL(loc.typ) && (y <= ymin || y >= ymax || x <= xmin || x >= xmax)) {
+                /* C mkmaze.c:1455-1458 — boundary walls are non-diggable;
+                 * one tile beyond the level extent is also non-passwall. */
+                loc.wall_info |= W_NONDIGGABLE;
+                if (y < ymin || y > ymax || x < xmin || x > xmax)
+                    loc.wall_info |= W_NONPASSWALL;
+            }
+        }
+}
+
+/* C mkmaze.c:1689 water_friction(): when moving in water, possibly (1 in 3)
+ * alter the intended destination.  Reads and writes u.dx/u.dy. */
+export async function water_friction() {
+    const u = game.u;
+    let x, y, dx, dy;
+    let eff = false;
+    if (pooleffects_Swimming() && rn2(4))
+        return; /* natural swimmers have advantage */
+    if (u.dx && !rn2(!u.dy ? 3 : 6)) {
+        x = u.ux;
+        do {
+            dy = rn2(3) - 1;
+            y = u.uy + dy;
+        } while (dy && (!isok(x, y) || !is_pool(x, y)));
+        u.dx = 0;
+        u.dy = dy;
+        eff = true;
+    } else if (u.dy && !rn2(!u.dx ? 3 : 5)) {
+        y = u.uy;
+        do {
+            dx = rn2(3) - 1;
+            x = u.ux + dx;
+        } while (dx && (!isok(x, y) || !is_pool(x, y)));
+        u.dy = 0;
+        u.dx = dx;
+        eff = true;
+    }
+    if (eff)
+        await pline("Water turbulence affects your movements.");
 }

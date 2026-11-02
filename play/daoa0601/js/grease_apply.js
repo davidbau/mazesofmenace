@@ -1,13 +1,13 @@
 // C apply.c:use_grease(), grease_ok(); do_wear.c:inaccessible_equipment().
 import { armorSimpleName } from './armor.js';
-import { commandResultCancelled } from './command_state.js';
+import { commandResultCancelled } from './cmd.js';
 import { heroFingerName } from './body_parts.js';
 import { GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_INACCESS, GETOBJ_SUGGEST } from './const.js';
 import { plineWithContinuation as pline } from './pline.js';
 import { game } from './gstate.js';
 import { dropInventoryObjectAtHero } from './hero_drop.js';
 import { getobj } from './inventory_prompt.js';
-import { consumeObjectCharge } from './object_charge.js';
+import { consumeObjectCharge } from './invent.js';
 import { CORPSE } from './object_data.js';
 import { makePlural } from './object_grammar.js';
 import { definiteObjectAction, objectName, observeObjectForNaming, ownedObjectName } from './objnam.js';

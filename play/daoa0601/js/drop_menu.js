@@ -6,7 +6,7 @@ import { plineWithContinuation as pline } from './pline.js';
 import { game } from './gstate.js';
 import { dropHeroObject } from './hero_drop.js';
 import { selectInventoryObject } from './invent.js';
-import { bypassObjectList, clearBypasses, nextUnbypassedObject } from './object_bypass.js';
+import { bypassObjectList, clearBypasses, nextUnbypassedObject } from './worn.js';
 import { LOADSTONE } from './object_data.js';
 import { objectDescription } from './object_description.js';
 import { OBJECT_CLASS_SYMBOLS } from './object_knowledge.js';
@@ -15,7 +15,7 @@ import { objectQuestion, observeObjectForNaming, simpleObjectNameWithArticle } f
 import { objectQuantity, rejoinObjectStack, splitObjectStack } from './object_stack.js';
 import { getLine, tty_yn_function } from './query.js';
 import { SELL_DELIBERATE, SELL_NORMAL, setSellDisposition } from './shk.js';
-import { isWeldedPrimary } from './weapon_slots.js';
+import { isWeldedPrimary } from './wield.js';
 import { showMultiSelectWindow } from './windows.js';
 export async function dropMultipleObjects() {
     if (!game.inventory.length) {

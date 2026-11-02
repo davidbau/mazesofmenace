@@ -20,20 +20,26 @@
 
 import { game } from './gstate.js';
 import { dist2, distmin } from './hacklib.js';
-import { near_capacity } from './weight.js';
+import { near_capacity } from './hack.js';
 import { nomul } from './allmain.js';
-import { newsym, map_object, pline, Unaware } from './display.js';
+import { newsym, map_object, Unaware } from './display.js';
+import { pline } from './pline.js';
 import { Blind } from './vision.js';
-import { omon_adj, welded, setuwep, setuswapwep,
-         setuqwep, freeinv, body_part, set_wounded_legs } from './cmd.js';
-import { find_mac, t_at, deltrap, reset_utrap, fill_pit } from './trap.js';
-import { spoteffects } from './landing-effects.js';
-import { remove_object, obj_extract_self, maybe_unhide_at, place_object } from './mklev.js';
-import { flooreffects, Yname2 } from './cmd.js';
+import { freeinv, body_part } from './cmd.js';
+import { welded, setuwep, setuswapwep, setuqwep } from './wield.js';
+import { omon_adj } from './dothrow.js';
+import { set_wounded_legs } from './do.js';
+import { t_at, deltrap, reset_utrap, fill_pit } from './trap.js';
+import { find_mac } from './worn.js';
+import { spoteffects } from './hack.js';
+import { remove_object, obj_extract_self, place_object } from './mklev.js';
+import { maybe_unhide_at } from './mon.js';
+import { Yname2 } from './cmd.js';
+import { flooreffects } from './do.js';
 import { rn1, rn2, rnd } from './rng.js';
 import { You, Your, hard_helmet, encumber_msg } from './do_wear.js';
 import { xname } from './do_wear.js';
-import { losehp } from './dokick.js';
+import { losehp } from './hack.js';
 import { hmon as hmon_real, hliquid } from './mhitm.js';
 import { m_at as monster_at } from './uhitm.js';
 import { impossible } from './steed.js';
@@ -53,6 +59,8 @@ import {
     TT_INFLOOR, TT_BURIEDBALL, TT_PIT, TT_WEB, TT_LAVA, TT_BEARTRAP,
     LEFT_SIDE, RIGHT_SIDE,
 } from './const.js';
+import { hmon } from './uhitm.js'; // relocate-fns
+import { movobj } from './hack.js'; // relocate-fns
 
 /* C hack.h Maybe_Half_Phys(dmg), kept local to this object subsystem. */
 function ball_Maybe_Half_Phys(dmg) {
@@ -61,12 +69,6 @@ function ball_Maybe_Half_Phys(dmg) {
         ? Math.trunc((dmg + 1) / 2) : dmg;
 }
 
-// Unported callees (charter: stub, do not port). Neither is ever reached by
-// draws any RNG, so that branch never fires).
-/* hmon: canonical asynchronous combat implementation. */
-async function hmon(mon, obj, thrown, dieroll) {
-    return hmon_real(mon, obj, thrown, dieroll);
-}
 /* miss: LOCAL throwing stub DELETED — use zap.js's canonical body below. */
 // C pline.c:387-400 You_feel(line) — preserve the feedback when dragging a
 // punished ball through a pool/hole while levitating.
@@ -148,14 +150,6 @@ function bc_set_glyph_at(x, y, g) {
     loc.remembered_glyph = g ? { ...g } : null;
 }
 
-// movobj(obj, ox, oy) — hack.c:824-833.
-export function movobj(obj, ox, oy) {
-    remove_object(obj);
-    maybe_unhide_at(obj.ox | 0, obj.oy | 0);
-    newsym(obj.ox | 0, obj.oy | 0);
-    place_object(obj, ox, oy);
-    newsym(ox, oy);
-}
 
 /*
  *  move_bc's Blind branch — ball.c:449-509, shared by the exported move_bc()

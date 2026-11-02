@@ -2616,7 +2616,6 @@ export const decgraphics = [
 // are scalars here (last-write-wins) rather than arrays. Functional but imprecise.
 export const gs = { showsyms: null, symset: [{ name: null, handling: 0, nocolor: 0 }, { name: null, handling: 0, nocolor: 0 }] };
 export const gp = { primary_syms: null, pl_race: null, plinemsg_types: null };
-const gr = { rogue_syms: null };
 
 registerStaticReset('const.js: gs.symset[] (decl.c g_init_s)', () => {
     for (const entry of gs.symset) {
@@ -2631,29 +2630,11 @@ registerStaticReset('const.js: gs.symset[] (decl.c g_init_s)', () => {
 // that used defsyms (from symbols.js), creating a const→symbols→monsters→const
 // cycle. Removed to keep the constant DAG acyclic.
 
-// Autotranslated from symbols.c:306
-export function update_primary_symset(symp, val) {
-  gp.primary_syms = val;
-}
 
-// Autotranslated from symbols.c:312
-export function update_rogue_symset(symp, val) {
-  gr.rogue_syms = val;
-}
 
 // symset_is_compatible — moved to drawing.js
 
-// Autotranslated from symbols.c:656
-const known_handling = ["UNKNOWN", "IBM", "DEC", "UTF8", null];
 
-export function set_symhandling(handling, which_set) {
-  let i = 0;
-  gs.symset[which_set].handling = H_UNK;
-  while (known_handling[i]) {
-    if (known_handling[i].toLowerCase() === handling.toLowerCase()) { gs.symset[which_set].handling = i; return; }
-    i++;
-  }
-}
 
 // free_symsets, savedsym_free, savedsym_add, savedsym_strbuf, parsesymbols
 // — moved to drawing.js (depend on symbols.js / hacklib.js)

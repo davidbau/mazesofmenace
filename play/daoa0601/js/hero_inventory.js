@@ -3,8 +3,7 @@
 import { isQuestArtifact, touchQuestArtifact } from './quest.js';
 import { artifactById } from './artifacts.js';
 import { recordAchievement } from './achievements.js';
-import { deactivateArtifactProperty } from './artifact_invoke.js';
-import { setCarriedArtifactProperties } from './artifact_properties.js';
+import { deactivateArtifactProperty, setCarriedArtifactProperties } from './artifacts.js';
 import { plineWithContinuation } from './pline.js';
 import { game, requireLiveGame } from './gstate.js';
 import { impossible, panic } from './diagnostics.js';
@@ -13,16 +12,16 @@ import { levelPrizeKind } from './level_prize.js';
 import { learnObjectType } from './object_knowledge.js';
 import { observeObjectForNaming, ownedObjectName } from './objnam.js';
 import { heroIsBlind } from './senses.js';
-import { objectTypeKnown } from './shk.js';
+import { objectTypeKnown, deleteObject } from './shk.js';
 import { removeHeroEquipment } from './hero_equipment.js';
-import { deleteObject } from './object_delete.js';
 import { heroHandName } from './body_parts.js';
 import { makePlural } from './object_grammar.js';
-import { ACH_AMUL, ACH_BELL, ACH_BOOK, ACH_CNDL, ACH_MINE_PRIZE, ACH_SOKO_PRIZE, W_ACCESSORY, W_ARMOR, W_SADDLE } from './const.js';
-import { AMULET_OF_YENDOR, BELL_OF_OPENING, CANDELABRUM_OF_INVOCATION, FIGURINE, LEASH, LOADSTONE, LUCKSTONE, OBJECT_BIMANUAL, SCR_BLANK_PAPER, SPE_BOOK_OF_THE_DEAD, } from './object_data.js';
-import { curseObjectState } from './object_state.js';
-import { OBJECT_TIMER_KIND, stopObjectTimer } from './object_timers.js';
-import { isWeldedPrimary } from './weapon_slots.js';
+import { ACH_AMUL, ACH_BELL, ACH_BOOK, ACH_CNDL, ACH_MINE_PRIZE, ACH_SOKO_PRIZE, W_ACCESSORY, W_ARMOR, W_SADDLE, OBJECT_TIMER_KIND } from './const.js';
+import { AMULET_OF_YENDOR, BELL_OF_OPENING, CANDELABRUM_OF_INVOCATION, FIGURINE, LEASH, LOADSTONE, LUCKSTONE, SCR_BLANK_PAPER, SPE_BOOK_OF_THE_DEAD, } from './object_data.js';
+import { isBimanualObject } from './object_properties.js';
+import { curseObjectState } from './mkobj.js';
+import { stopObjectTimer } from './timeout.js';
+import { isWeldedPrimary } from './wield.js';
 const SCROLL_CLASS = 9;
 const COIN_CLASS = 12;
 const CARRIED_FLAGS = new Map([
@@ -47,7 +46,7 @@ export async function canLetGo(object, verb = '', state = game) {
         object.bknown = true;
         if (verb) {
             let hand = heroHandName(state);
-            if (OBJECT_BIMANUAL[object.otyp])
+            if (isBimanualObject(object))
                 hand = makePlural(hand);
             await plineWithContinuation(`You cannot ${verb} something welded to your ${hand}.`, { noRepeat: true });
         }

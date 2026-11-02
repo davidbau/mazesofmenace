@@ -14,11 +14,11 @@ import { revealMonsterAppearance } from './mon.js';
 import { monsterAtPosition } from './steed.js';
 import { finishImmediateMonsterTrap, triggerImmediateMonsterTrap } from './trap.js';
 import { BOULDER } from './object_data.js';
-import { deleteObject } from './object_delete.js';
+import { deleteObject } from './shk.js';
 import { fractureRock } from './rock_breakage.js';
 import { resetHeroTrap } from './terrain_movement.js';
 import { isPoolAt } from './terrain_properties.js';
-import { deleteTrap } from './trap_lifecycle.js';
+import { deleteTrap } from './trap.js';
 import { vision_note_blocker_change } from './vision.js';
 function invocationRings(x, y) {
     const rings = [[{ x, y }]];

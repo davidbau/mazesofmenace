@@ -1,7 +1,6 @@
 // Check hero contact with an object, including equipment after a body or alignment change.
 // C artifact.c:retouch_object(), untouchable(), retouch_equipment().
-import { artifactInvokeIsActive, deactivateArtifactProperty, } from './artifact_invoke.js';
-import { touchArtifactByHero } from './artifact_touch.js';
+import { artifactInvokeIsActive, deactivateArtifactProperty, touchArtifactByHero, } from './artifacts.js';
 import { artifactBaneApplies, artifactById } from './artifacts.js';
 import { exerciseAttribute } from './attrib.js';
 import { A_CON, DISMOUNT_THROWN, IS_ALTAR, W_BALL, W_QUIVER, W_SWAPWEP } from './const.js';
@@ -14,8 +13,8 @@ import { removeWornHeroItem } from './hero_equipment.js';
 import { heroHatesSilver } from './hero_species.js';
 import { heroIsOnStairs, isInvocationPosition } from './invocation_position.js';
 import { BELL_OF_OPENING, LEASH } from './object_data.js';
-import { objectMaterial } from './object_material.js';
-import { uncurseObjectState } from './object_state.js';
+import { objectMaterial } from './o_init.js';
+import { uncurseObjectState } from './mkobj.js';
 import { rnd } from './rng.js';
 import { selfTouchPetrifyingWeapons } from './stoning.js';
 import { dismountHero, monsterSaddle } from './steed.js';
@@ -24,7 +23,7 @@ import { freeInventoryObject } from './hero_inventory.js';
 import { hitFloorWithObject } from './object_drop.js';
 import { definiteName, killerObjectName, objectCombatName, objectNameIsPlural, ownedObjectName } from './objnam.js';
 import { propertyIsActive } from './properties.js';
-import { bypassObject, clearBypasses, nextUnbypassedObject } from './object_bypass.js';
+import { bypassObject, clearBypasses, nextUnbypassedObject } from './worn.js';
 import { surfaceName } from './terrain_name.js';
 const TOOL_CLASS = 6;
 const SILVER = 14;

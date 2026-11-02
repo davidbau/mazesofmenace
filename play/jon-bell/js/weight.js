@@ -11,29 +11,23 @@ import { UNENCUMBERED, OVERLOADED, LEVITATION, FLYING, LOW_PM, Upolyd, WOUNDED_L
 import { OC_WEIGHT, OTYP_LARGE_BOX, OTYP_BAG_OF_TRICKS, OTYP_BAG_OF_HOLDING, OTYP_STATUE, OTYP_BOULDER } from './oc_weight.generated.js';
 import corpseData from './eat_corpse_data.json' with { type: 'json' };
 import monMsizePack from './makemon_msize.json' with { type: 'json' };
-import { pline, impossible_sync } from './display.js';
+import { impossible_sync } from './display.js';
+import { pline } from './pline.js';
 import { simpleonames } from './objnam.js';
-import { stagger, float_vs_flight } from './mhitm.js';
+import { float_vs_flight } from './mhitm.js';
+import { stagger } from './mondata.js';
 /* eaten_stat (C eat.c:3788) is js/eat.js's faithful port; eat.js imports
  * near_capacity from this file, so this is a late-bound ES-module cycle. */
 import { eaten_stat } from './eat.js';
+import { near_capacity } from './hack.js'; // relocate-fns
+export { calc_capacity, inv_weight, max_capacity, near_capacity, weight_cap } from './hack.js'; // relocate-fns
+export { _cwt }; // relocate-fns
 
 /* C attrib.h: A_STR=0, A_CON=4 */
 const A_STR = 0;
-const A_CON = 4;
 
-/* C include/weight.h */
-const WT_WEIGHTCAP_STRCON = 25; /* str+con multiplied by this */
-const WT_WEIGHTCAP_SPARE = 50;
-const WT_WOUNDEDLEG_REDUCT = 100;
-const MAX_CARR_CAP = 1000;
 const LARGEST_INT = 32767; /* C global.h:135 */
-const WT_HUMAN = 1450; /* C weight.h — weight of human body; Upolyd cap rescale */
 
-/* C monflag.h sizes / mlets / mflags2 used by the Upolyd capacity rescale. */
-const MZ_HUMAN = 2; /* == MZ_MEDIUM */
-const S_NYMPH = 14;
-const M2_STRONG = 0x04000000;
 /* permonst.cwt (corpse weight) keyed by PM index — js/eat_corpse_data.json
  * (the same source eat.js reads).  C weight_cap() reads youmonst.data->cwt. */
 const MONS_CWT = /** @type {number[]} */ (corpseData.cwt || []);
@@ -120,90 +114,6 @@ export function weight(obj) {
     return wt ? Math.imul(wt, quan) : ((quan + 1) >> 1);
 }
 
-export function weight_cap() {
-    const u = game.u;
-    if (!u) return 1;
-
-    const levPropW = (u.uprops && u.uprops[LEVITATION]) ? u.uprops[LEVITATION] : null;
-    const save_ELev = levPropW ? (levPropW.extrinsic | 0) : 0;
-    if (game.afternmv === 'Boots_on' && levPropW && (save_ELev & W_ARMF)) {
-        levPropW.extrinsic = save_ELev & ~W_ARMF;
-        float_vs_flight();
-    }
-
-    let carrcap = (WT_WEIGHTCAP_STRCON * (acurrstr(u) + (acurr(u, A_CON) | 0)))
-                  + WT_WEIGHTCAP_SPARE;
-
-    /* Upolyd branch (hack.c:4277-4287) — consistent with can_carry() in mon.c.
-     *   if (youmonst.data->mlet == S_NYMPH)            carrcap = MAX_CARR_CAP;
-     *   else if (!youmonst.data->cwt)                  carrcap *= msize / MZ_HUMAN;
-     *   else if (!strongmonst || (strongmonst && cwt > WT_HUMAN))
-     *                                                  carrcap *= cwt / WT_HUMAN; */
-    if (Upolyd(u)) {
-        const yd = game.youmonst && game.youmonst.data;
-        if (yd) {
-            const cwt = _cwt(yd.pmidx | 0);
-            const strong = ((yd.mflags2 | 0) & M2_STRONG) !== 0;
-            if ((yd.mlet | 0) === S_NYMPH) {
-                carrcap = MAX_CARR_CAP;
-            } else if (!cwt) {
-                carrcap = Math.trunc((carrcap * (yd.msize | 0)) / MZ_HUMAN);
-            } else if (!strong || (strong && cwt > WT_HUMAN)) {
-                carrcap = Math.trunc((carrcap * cwt) / WT_HUMAN);
-            }
-        }
-    }
-
-    /* Levitation || Is_airlevel || strong-steed (hack.c:4289).
-     * C youprop.h:240: Levitation = ((HLevitation || ELevitation) && !BLevitation).
-     * Read the conferred property (e.g. ring of levitation just worn → ELevitation
-     * set by setworn); this gives the hero MAX carrying capacity, dropping the
-     * encumbrance state.  weight_cap also masks BLevitation&I_SPECIAL (hack.c:4273)
-     * — the I_SPECIAL bit is cleared for the capacity check. */
-    const I_SPECIAL_BIT = 0x20000000;
-    const levProp = (u.uprops && u.uprops[LEVITATION]) ? u.uprops[LEVITATION] : null;
-    const HLevitation = levProp ? (levProp.intrinsic | 0) : 0;
-    const ELevitation = levProp ? (levProp.extrinsic | 0) : 0;
-    const BLevitation = levProp ? ((levProp.blocked | 0) & ~I_SPECIAL_BIT) : 0;
-    const Levitation = (HLevitation || ELevitation) && !BLevitation;
-    const Is_airlevel_wc = Is_airlevel(game.u?.uz);
-    /* C hack.c:4326 `u.usteed && strongmonst(u.usteed->data)` */
-    const _steedData = u.usteed ? (u.usteed.data || null) : null;
-    const strongSteed = !!(_steedData && ((_steedData.mflags2 | 0) & M2_STRONG));
-    if (Levitation || Is_airlevel_wc || strongSteed) {
-        carrcap = MAX_CARR_CAP;
-    } else {
-        if (carrcap > MAX_CARR_CAP)
-            carrcap = MAX_CARR_CAP;
-        // C hack.c:4330 / youprop.h:253: flight includes a flying steed.
-        const flight = u.uprops?.[FLYING];
-        const Flying = !!((flight?.intrinsic | 0) || (flight?.extrinsic | 0)
-            || ((u.usteed?.data?.mflags1 | 0) & 0x00000001 /* M1_FLY */))
-            && !(flight?.blocked | 0);
-        if (!Flying) {
-            /* hack.c:4293-4296 — EWounded_legs & LEFT_SIDE / RIGHT_SIDE. */
-            const wprop = u.uprops ? u.uprops[WOUNDED_LEGS] : null;
-            const eWoundedLegs = wprop ? (wprop.extrinsic | 0) : 0;
-            if (eWoundedLegs & LEFT_SIDE) carrcap -= WT_WOUNDEDLEG_REDUCT;
-            if (eWoundedLegs & RIGHT_SIDE) carrcap -= WT_WOUNDEDLEG_REDUCT;
-        }
-    }
-
-    /* hack.c:4338-4343 — BLevitation was masked above; C restores the saved
-     * value and calls float_vs_flight(), which RECOMPUTES the I_SPECIAL block
-     * from the current u.utrap.  So a weight_cap() call (bot() via
-     * near_capacity) after trapmove() zeroed u.utrap but before reset_utrap()
-     * drops the block, and reset_utrap(TRUE) then sees was_Lev true and prints
-     * no float_up message. */
-    /* C hack.c:4338-4343 — undo the boot-delay mask and re-block Flying. */
-    if (levPropW && (levPropW.extrinsic | 0) !== save_ELev) {
-        levPropW.extrinsic = save_ELev;
-        float_vs_flight();
-    }
-    if (levProp && ((levProp.blocked | 0) & I_SPECIAL_BIT)) float_vs_flight();
-
-    return Math.max(carrcap, 1); /* never return 0 */
-}
 
 /* C hack.c:4315 inv_weight() — total carried object weight (no wc subtraction).
  * For COIN_CLASS uses (quan+50)/100; else otmp->owt (the cached object weight).
@@ -233,33 +143,9 @@ export function inv_weight_raw() {
     return wt;
 }
 
-/* C hack.c:4315 inv_weight() — returns (sum_owt - weight_cap). */
-export function inv_weight() {
-    return inv_weight_raw() - weight_cap();
-}
 
-/* C hack.c:4336 calc_capacity(xtra_wt). */
-export function calc_capacity(xtra_wt) {
-    const wc = weight_cap();        /* C: gw.wc set inside inv_weight() */
-    const wt = (inv_weight_raw() - wc) + (xtra_wt | 0);
-    if (wt <= 0)
-        return UNENCUMBERED;
-    if (wc <= 1)
-        return OVERLOADED;
-    const cap = Math.trunc((wt * 2) / wc) + 1;
-    return Math.min(cap, OVERLOADED);
-}
 
-/* C hack.c:4348 near_capacity() = calc_capacity(0). */
-export function near_capacity() {
-    return calc_capacity(0);
-}
 
-/* C hack.c:4354 max_capacity() = inv_weight() - 2*weight_cap(). */
-export function max_capacity() {
-    const wc = weight_cap();
-    return (inv_weight_raw() - wc) - (2 * wc);
-}
 
 export async function encumber_msg() {
     return encumber_msg_sync();

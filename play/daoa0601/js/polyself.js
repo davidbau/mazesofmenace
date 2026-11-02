@@ -3,12 +3,15 @@
 import { setHeroGrip } from './hero_grip.js';
 import { formatFeltMessage } from './hero_speech.js';
 import { monsterEmitsLight } from './vision.js';
-import { weaponDescription } from './weapon_description.js';
+import { weaponDescription } from './weapon.js';
+import { isWeldedPrimary, losePrimaryWeapon, setSecondaryWeapon } from './wield.js';
 import { P_SHORT_SWORD, P_SABER } from './const.js';
 import { verbForSubject, makePlural } from './object_grammar.js';
 import { OBJECT_SUBTYPE } from './object_data.js';
 import { heroIsUnaware } from './hero_sleep.js';
-import { endVoluntaryMultiTurn, heroHasInvoluntaryDelay, pendingArmorAction } from './command_state.js';
+import { heroHasInvoluntaryDelay } from './cmd.js';
+import { pendingArmorAction } from './do_wear.js';
+import { endVoluntaryMultiTurn } from './hack.js';
 import { finishHeroHelplessness } from './allmain.js';
 import { genocideDeathOptions, heroHasBeenGenocided, takePolymorphGenocide } from './hero_genocide.js';
 import { setMimicBlocking } from './hero_seeing.js';
@@ -32,7 +35,7 @@ import { AD_ELEC, AD_FIRE, AT_BREA, AT_GAZE, AT_SPIT } from './monster_attack_ty
 import { AMULET_OF_UNCHANGING, ELVEN_MITHRIL_COAT, LEASH, LENSES, LOADSTONE, GRAY_DRAGON_SCALE_MAIL, GRAY_DRAGON_SCALES, OBJECT_NAMES, RIN_POLYMORPH_CONTROL, RIN_PROTECTION_FROM_SHAPE_CHANGERS, } from './object_data.js';
 import { canSpotMonster, newsym, see_monsters } from './display.js';
 import { pline, plineWithContinuation } from './pline.js';
-import { deleteObject } from './object_delete.js';
+import { deleteObject } from './shk.js';
 import { cancelDonning, dragonFormForArmor, findArmorClass, removeHeroArmor, simpleArmorName } from './armor.js';
 import { isFlimsyObject } from './object_properties.js';
 import { adjustObjectLightAfterBlessing as adjustObjectLight, endObjectBurn, objectLightRadius, } from './light.js';
@@ -51,7 +54,6 @@ import { changeHeroSex, heroFormSticks, heroHasNoHead, heroPolyGender, setHeroSp
 import { retouchEquipment } from './hero_retouch.js';
 import { removeHeroEquipment, removeWornHeroItem } from './hero_equipment.js';
 import { loseHeroHp } from './hero_damage.js';
-import { isWeldedPrimary, losePrimaryWeapon, setSecondaryWeapon } from './weapon_slots.js';
 import { dropInventoryObjectAtHero } from './hero_drop.js';
 import { heroCanUseTwoWeapons, stopTwoWeaponCombat } from './two_weapon.js';
 import { isBeingTakenOff } from './takeoff_state.js';

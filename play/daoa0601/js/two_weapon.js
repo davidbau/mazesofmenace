@@ -10,12 +10,11 @@ import { heroSpecies } from './hero_species.js';
 import { dropInventoryObjectAtHero } from './hero_drop.js';
 import { AT_WEAP } from './monster_attack_types.js';
 import { MONSTER_ATTACKS, requireMonsterData } from './monster_data.js';
-import { OBJECT_BIMANUAL } from './object_data.js';
+import { isBimanualObject } from './object_properties.js';
 import { makePlural, verbForSubject } from './object_grammar.js';
 import { objectHasPersonalName, objectName, objectNameIsPlural, ownedObjectAction, ownedObjectName, } from './objnam.js';
 import { rnd } from './rng.js';
-import { setTwoWeaponCombat } from './weapon_slots.js';
-import { isTwoWeaponObject } from './weapon_type.js';
+import { setTwoWeaponCombat, isTwoWeaponObject } from './wield.js';
 // C mondata.h could_twoweap() examines only the first three attacks.
 export function heroCanUseTwoWeapons(state = game) {
     return requireMonsterData(MONSTER_ATTACKS, heroSpecies(state)).slice(0, 3)
@@ -76,8 +75,8 @@ export async function canBeginTwoWeaponCombat(state) {
         await plineWithContinuation(`${weaponName(object, state)} ${plural ? "aren't" : "isn't a"} suitable ${slot} weapon${object.quan === 1 ? '' : 's'}.`);
         return false;
     }
-    if (OBJECT_BIMANUAL[primary.otyp] || OBJECT_BIMANUAL[secondary.otyp]) {
-        const object = OBJECT_BIMANUAL[primary.otyp] ? primary : secondary;
+    if (isBimanualObject(primary) || isBimanualObject(secondary)) {
+        const object = isBimanualObject(primary) ? primary : secondary;
         await plineWithContinuation(`${weaponName(object, state)} isn't one-handed.`);
         return false;
     }

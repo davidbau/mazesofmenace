@@ -15,40 +15,47 @@ import { rn1, rn2, rnd } from './rng.js';
 import { goodpos } from './trap.js';
 import { is_pool, is_pool_or_lava } from './look.js';
 import { Is_airlevel, Is_waterlevel, CLOUD, IS_FOUNTAIN, IS_AIR, ACCESSIBLE, isok } from './const.js';
-import { db_under_typ } from './dokick.js';
+import { db_under_typ } from './dbridge.js';
 import { impossible } from './pline.js';
 import { permonstTemplate, is_demon } from './makemon.js';
 import { PM_GHOUL } from './pm.generated.js';
 import { wand_explode } from './read.js';
-import { sanitize_name } from './options.js';
+import { sanitize_name } from './bones.js';
 import { mon_nam } from './uhitm.js';
 import { nhgetch } from './input.js';
-import { pline, flush_screen, newsym } from './display.js';
-import { topl_park_cursor, livelog_printf } from './display.js';
+import { flush_screen, newsym } from './display.js';
+import { pline } from './pline.js';
+import { topl_park_cursor } from './display.js';
+import { livelog_printf } from './pline.js';
 import { LL_CONDUCT } from './const.js';
-import { getlin } from './wizcmds.js';
+import { getlin } from './windows.js';
 import { zappable, zapnodir, learnwand, make_blinded } from './zap.js';
-import { resists_blnd } from './mhitm.js';
-import { yn_function } from './end.js';
-import { getObjFromGetobj, welded, body_part, surface as surface_real, ceiling,
-         Yname2, yname, dry_a_towel, is_blade, is_art, pooleffects_is_lava as is_lava } from './cmd.js';
+import { resists_blnd } from './mondata.js';
+import { yn_function } from './cmd.js';
+import { getObjFromGetobj, body_part, surface as surface_real, ceiling, Yname2, yname, is_blade, pooleffects_is_lava as is_lava } from './cmd.js';
+import { dry_a_towel } from './weapon.js';
+import { welded } from './wield.js';
+import { is_art } from './artifact.js';
 import { bimanual, is_boots } from './do_wear.js';
 import { Yobjnam2, doname, xname, Tobjnam, otense } from './objnam.js';
-import { useup, altar_wrath, check_capacity } from './cmd.js';
+import { useup, check_capacity } from './cmd.js';
+import { altar_wrath } from './pray.js';
 import { GETOBJ_PROMPT, HAND, FINGERTIP } from './const.js';
 import { exercise } from './attrib.js';
 import { more_experienced } from './exper.js';
 import { object_tough } from './o_init.js';
 import { splitobj } from './makemon.js';
 import { obj_extract_self, move_engr_at } from './mklev.js';
-import { hold_another_object } from './hold_another_object.js';
+import { hold_another_object } from './invent.js';
 import { prinv } from './cmd.js';
 import { update_inventory } from './inventory_refresh.js';
 import { can_reach_floor as can_reach_floor_real } from './hold_another_object.js';
-import { make_engr_at, del_engr_at, engr_at, random_engraving, engravings_list, makemon, xcrypt } from './mklev.js';
+import { make_engr_at, del_engr_at, engr_at, random_engraving, engravings_list, makemon } from './mklev.js';
+import { xcrypt } from './hacklib.js';
 import { DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, HEADSTONE, A_WIS,
          ECMD_OK, ECMD_CANCEL, ECMD_FAIL, ECMD_TIME, ICE, IS_ALTAR, BUFSZ,
          DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DEAF, DB_ICE, DB_UNDER, BLINDED, CONFUSION, STUNNED, HALLUC, HALLUC_RES } from './const.js';
+import { surface } from './dungeon.js'; // relocate-fns
 
 /* ── object class numbers (objclass.h OBJCLASS enum) ─────────────────────────── */
 const WEAPON_CLASS = 2;
@@ -93,7 +100,6 @@ function uHallu(u) {
 function body_part_fingertip() { return body_part(FINGERTIP); }
 function body_part_hand() { return 'hand'; }
 
-function surface(x, y) { return surface_real(x, y); }
 export function is_ice(x, y) {
     if (!isok(x, y)) return false;
     const loc = game.level?.at?.(x, y);

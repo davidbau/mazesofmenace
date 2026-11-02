@@ -11,13 +11,15 @@ import { SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED, MOD_ENCUMBER, HV
     /* exerper() status-check properties — C attrib.c:570-583 */
     CLAIRVOYANT, REGENERATION, SICK, VOMITING, CONFUSION, HALLUC, HALLUC_RES,
     FUMBLING, WOUNDED_LEGS, STUNNED, TIMEOUT, KILLED_BY, FIXED_ABIL } from './const.js';
-import { pline, Unaware, see_monsters, flush_pending_messages } from './display.js';
+import { Unaware, see_monsters, flush_pending_messages } from './display.js';
+import { pline } from './pline.js';
 import { impossible } from './pline.js';
-import { near_capacity, encumber_msg, encumber_msg_sync } from './weight.js';
+import { encumber_msg, encumber_msg_sync } from './weight.js';
+import { near_capacity } from './hack.js';
 import { aligns } from './roles.js';
 import { uasmon_maxStr } from './polyself.js';
 import { permonstTemplate } from './makemon.js';
-import { losehp } from './dokick.js';
+import { losehp } from './hack.js';
 import { add_weapon_skill, lose_weapon_skill } from './uhitm.js';
 /* The shared mons[] / mattk[] tables, imported the same way js/dochug.js,
  * js/m_initweap.js, js/do_wear.js and js/fastforward.js already import them —
@@ -27,6 +29,11 @@ import monsPackAt from './makemon_mons.json' with { type: 'json' };
 import monMattkPackAt from './makemon_mattk.json' with { type: 'json' };
 import monPmnamesPackAt from './makemon_pmnames.json' with { type: 'json' };
 import { ENV } from './hostenv.js';
+import { sgn } from './hacklib.js'; // relocate-fns
+import { adj_erinys } from './mon.js'; // relocate-fns
+import { acurrstr as effective_strength } from './dokick.js'; // relocate-fns
+import { poisoned_u as poisoned_real } from './mhitu.js'; // relocate-fns
+export { adj_erinys } from './mon.js'; // relocate-fns
 /* C attrib.h:
  *   A_STR=0, A_INT=1, A_WIS=2, A_DEX=3, A_CON=4, A_CHA=5, A_MAX=6
  */
@@ -47,10 +54,6 @@ const A_MAX = 6;
 export const C_ATTR_TO_DISP = [0, 3, 4, 1, 2, 5];
 /* C attrib.c:486 */
 const AVAL = 50;
-/* C hacklib.c:714 — sgn(n): -1, 0, or 1 */
-function sgn(n) {
-    return (n < 0) ? -1 : (n !== 0 ? 1 : 0);
-}
 /* C hack.c:4349 near_capacity() — now the real STR/CON+inventory-weight
  * computation, imported from weight.js (shared faithful impl). */
 /* C attrib.h AEXE(x) = u.aexe.a[x] — exercise accumulator accessor.
@@ -461,71 +464,6 @@ function ALIGNLIM() {
     return 10 + Math.floor((game.moves | 0) / 200);
 }
 
-const M1_FLY = 0x00000001;         /* monflag.h:85 */
-const M1_AMPHIBIOUS = 0x00000200;  /* monflag.h:94 */
-const M1_REGEN = 0x00800000;       /* monflag.h:108 */
-const M1_SEE_INVIS = 0x01000000;   /* monflag.h:109 */
-const M1_TPORT = 0x02000000;       /* monflag.h:110 */
-const M1_TPORT_CNTRL = 0x04000000; /* monflag.h:111 */
-const AT_WEAP_ERI = 254;           /* monattk.h:28 */
-const AT_MAGC_ERI = 255;           /* monattk.h:29 */
-const AD_DRST_ERI = 7;             /* monattk.h:49 */
-const AD_SPEL_ERI = 241;           /* monattk.h:88 */
-let _pmErinys = -2;
-function pmErinys() {
-    if (_pmErinys === -2) {
-        _pmErinys = -1;
-        const rows = monPmnamesPackAt.pmnames;
-        for (let i = 0; i < rows.length; i++) {
-            const r = rows[i];
-            if (r && (r[2] === 'erinys' || r[1] === 'erinys' || r[0] === 'erinys')) {
-                _pmErinys = i;
-                break;
-            }
-        }
-    }
-    return _pmErinys;
-}
-export function adj_erinys(abuse) {
-    const mndx = pmErinys();
-    if (mndx < 0)
-        return;                         /* no such row — nothing C could mutate */
-    const pm = monsPackAt.mons[mndx];
-    const mattk = monMattkPackAt.mattk[mndx];
-    const ab = abuse >>> 0;
-
-    if (ab > 5)
-        pm[6] = (pm[6] >>> 0) | M1_SEE_INVIS;          /* mon.c:5926-5928 */
-    if (ab > 10)
-        pm[6] = (pm[6] >>> 0) | M1_AMPHIBIOUS;         /* mon.c:5929-5931 */
-    if (ab > 15)
-        pm[6] = (pm[6] >>> 0) | M1_FLY;                /* mon.c:5932-5934 */
-    if (ab > 20)
-        mattk[0].damn = 3;              /* more powerful attack — mon.c:5935-5938 */
-    if (ab > 25)
-        pm[6] = (pm[6] >>> 0) | M1_REGEN;              /* mon.c:5939-5941 */
-    if (ab > 30)
-        pm[6] = (pm[6] >>> 0) | M1_TPORT_CNTRL;        /* mon.c:5942-5944 */
-    if (ab > 35) {                      /* second attack — mon.c:5945-5951 */
-        mattk[1].aatyp = AT_WEAP_ERI;
-        mattk[1].adtyp = AD_DRST_ERI;
-        mattk[1].damn = 3;
-        mattk[1].damd = 4;
-    }
-    if (ab > 40)
-        pm[6] = (pm[6] >>> 0) | M1_TPORT;              /* mon.c:5952-5954 */
-    if (ab > 50) {                      /* third (spellcasting) attack — :5955-5961 */
-        mattk[2].aatyp = AT_MAGC_ERI;
-        mattk[2].adtyp = AD_SPEL_ERI;
-        mattk[2].damn = 3;
-        mattk[2].damd = 4;
-    }
-    /* also adjust level and difficulty — mon.c:5963-5964, UNCONDITIONAL.
-     * MONS row layout (js/makemon.js:1319 permonstTemplate): [1]=mlevel,
-     * [2]=difficulty. */
-    pm[1] = Math.min(7 + ab, 50);
-    pm[2] = Math.min(10 + Math.trunc(ab / 3), 25);
-}
 
 /* C attrib.c:1304 adjalign(int n) — the centralized alignment-record update.
  *   - n < 0: record only drops (it is set to record+n only when that lowers
@@ -1285,4 +1223,20 @@ export async function poisontell(typ, exclaim) {
         msg_txt = "sick inside";
 
     await pline(poiseff_prefix[typ] + msg_txt + (exclaim ? '!' : '.'));
+}
+
+/* C ref: attrib.c:1251 acurrstr() — effective Str for door-opening check.
+ * For Str <= 18 (normal human): result = max(str, 3) = str.
+ * For higher Str values: follows 18/xx encoding; mirrors C exactly. */
+export function acurrstr() {
+    return effective_strength(game.u);
+}
+
+/* mpoisons_subj — real body imported from js/mhitu.js (C ref: mhitu.c:143-158);
+ * this file's local copy was a stub returning the constant "poisons you" for
+ * every call, e.g. corrupting "%s was poisoned!" (uhitm.c:3132) and the
+ * artifact-weapon poison-attack topline (uhitm.c:3109) with a fixed string
+ * regardless of AT_WEAP/AT_TUCH/AT_GAZE/AT_BITE or weapon poisoning. */
+export async function poisoned(buf, atype, pname, hpdamchance, is_weapon) {
+    return await poisoned_real(buf, atype, pname, hpdamchance, is_weapon);
 }

@@ -52,18 +52,21 @@ import { In_quest, Is_botlevel, Is_oracle_level, ROOMOFFSET, DELPHI } from './co
 import { DUNGEON_LUA_TABLE } from './dungeon_data.js';
 import { Is_branchlev } from './dungeon.js';
 import { formatkiller } from './topten.js';
-import { In_hell, OC_USES_KNOWN } from './mklev.js';
+import { OC_USES_KNOWN } from './mklev.js';
+import { In_hell } from './dungeon.js';
 import { PM_ORACLE, PM_MEDUSA, PM_VLAD_THE_IMPALER } from './pm.generated.js';
-import { pline, invalidate_map_row, impossible_sync } from './display.js';
+import { invalidate_map_row, impossible_sync } from './display.js';
+import { pline } from './pline.js';
 import { fruitadd } from './options.js';
-import { the, xname, oname, exist_artifact, is_quest_artifact, artifact_exists } from './objnam.js';
+import { the, xname, oname, is_quest_artifact } from './objnam.js';
+import { exist_artifact, artifact_exists } from './artifact.js';
 import { LEAVESTATUE, CORPSTAT_NONE, NO_MINVENT, INTRINSIC, ismnum, MON_FLOOR } from './const.js';
 import { roles, races } from './roles.js';
 import { dismount_steed } from './cmd.js';
 import { update_mlstmv } from './dog.js';
 import { DISMOUNT_BONES } from './const.js';
-import { clear_bypasses } from './trap.js';
-import { hhmmss, yyyymmdd } from './allmain.js';
+import { clear_bypasses } from './worn.js';
+import { hhmmss, yyyymmdd } from './calendar.js';
 import { permonstTemplate } from './makemon.js';
 
 /* monflag.h G_UNIQ — the geno bit unique_corpstat() tests (see resetobjs). */
@@ -83,19 +86,6 @@ function save_ebones(mtmp) {
     });
 }
 
-/* ── the bones "file" ────────────────────────────────────────────────────────
- * C ref: files.c set_bonesfile_name() / open_bonesfile() / create_bonesfile() /
- * delete_bonesfile().  C's name is "bonD0.3"-ish, derived from the dungeon
- * branch and level; the only property this port needs is that the write and the
- * read agree, and that the key is per-LEVEL (a hero who dies on Dlvl 3 leaves
- * bones only on Dlvl 3).
- *
- * The BODY in the VFS is a stub, exactly as js/save.js:322 writes "NHSAVE 1\n…":
- * the encoded level stays in `bonesStore` below, keyed by the id in the stub.
- * Each read decodes a detached graph, so gameplay cannot alter a retained
- * bones file. */
-const bonesStore = new Map();
-let bonesSerial = 0;
 
 const PUBLISH_BONES_FILE = true;
 
@@ -165,44 +155,8 @@ function bones_filename(uz) {
     return `bon${dgn_boneid(uz?.dnum | 0)}${q}.${sp !== null ? sp : (uz?.dlevel | 0)}`;
 }
 
-/* C files.c:1319 open_bonesfile(lev, &bonesid) — returns NULL when no bones
- * file exists for this level.  Here: the stub body plus the resolved snapshot,
- * or null. */
-function open_bonesfile(uz) {
-    const body = vfsReadFile(bones_filename(uz));
-    if (typeof body !== 'string')
-        return null;
-    const lines = body.split('\n');
-    if (lines[0] !== 'NHBONES 1')
-        return null;
-    const snap = bonesStore.get(lines[2]);
-    if (!snap)
-        return null;
-    /* C bones.c:707 getlev() reads fresh allocations from the file on every
-     * load.  In particular, declining "Unlink bones?" must leave the file
-     * unchanged by renumbering, stair reversal, and subsequent gameplay. */
-    return { bonesid: lines[1], key: lines[2], snap: decode_save_graph(snap) };
-}
 
-/* C files.c:1359 create_bonesfile() + :1400 commit_bonesfile(). */
-function create_bonesfile(uz, bonesid, snap) {
-    const key = `b${++bonesSerial}`;
-    /* C bones.c:621 savelev() writes bytes, not aliases into the live level. */
-    bonesStore.set(key, encode_save_graph(snap));
-    if (!vfsWriteFile(bones_filename(uz), `NHBONES 1\n${bonesid}\n${key}\n`)) {
-        bonesStore.delete(key);
-        return false;
-    }
-    return true;
-}
 
-/* C files.c:1420 delete_bonesfile(). */
-function delete_bonesfile(uz) {
-    const f = open_bonesfile(uz);
-    if (f)
-        bonesStore.delete(f.key);
-    return vfsDeleteFile(bones_filename(uz));
-}
 
 /* C bones.c:784 set_ghostly_objlist — mark this chain for fix_ghostly_obj.
  * C does not recurse into container contents. */
@@ -298,7 +252,24 @@ async function resetobjs(ochain, restore) {
  * OTHER caller — bones.c:257's own comment names both).  C's definition site is
  * bones.c:258; importing rather than re-deriving keeps one body, per the
  * two-real-bodies rule. */
-import { drop_upon_death, fix_shop_damage, unleash_all, goodfruit_fp as goodfruit } from './shk.js';
+import { fix_shop_damage, goodfruit_fp as goodfruit } from './shk.js';
+import { unleash_all } from './apply.js';
+import { create_bonesfile, delete_bonesfile, open_bonesfile } from './files.js'; // relocate-fns
+import { freeinv } from './cmd.js'; // relocate-fns
+import { isok, u_at } from './const.js'; // relocate-fns
+import { obj_no_longer_held } from './do.js'; // relocate-fns
+import { can_carry } from './dogmove.js'; // relocate-fns
+import { artifact_light as artifact_light_real } from './light.js'; // relocate-fns
+import monArmedPack from './makemon_mons_armed.json' with { type: 'json' }; // relocate-fns
+import { add_to_container, place_object } from './mklev.js'; // relocate-fns
+import { rn2 as rn2_shk } from './rng.js'; // relocate-fns
+import { COIN_CLASS, goodfruit_fp, monMflags2_fp } from './shk.js'; // relocate-fns
+import { end_burn as end_burn_fp } from './timeout.js'; // relocate-fns
+import { m_at } from './uhitm.js'; // relocate-fns
+import { MAGIC_PORTAL } from './const.js'; // relocate-fns
+import { depth, maxledgerno } from './dungeon.js'; // relocate-fns
+import { discover } from './gstate.js'; // relocate-fns
+export { bones_filename }; // relocate-fns
 
 async function fixuporacle(oracle) {
     if (!Is_oracle_level(game.u.uz))
@@ -736,4 +707,180 @@ function renumber_objchn(ochain, fruits) {
         if (otmp.cobj)
             renumber_objchn(otmp.cobj, fruits);
     }
+}
+
+const MON_HAS_WEAP_ATK = monArmedPack.has_weap_atk;
+
+const M2_GREEDY = 0x10000000;
+
+const M2_JEWELS = 0x20000000;
+
+const M2_COLLECT = 0x40000000;
+
+const M2_MAGIC = 0x80000000;
+
+function is_armed_fp(mndx) {
+    return mndx >= 0 && mndx < MON_HAS_WEAP_ATK.length && MON_HAS_WEAP_ATK[mndx] !== 0;
+}
+
+function likes_gold_fp(mndx) { return (monMflags2_fp(mndx) & M2_GREEDY) !== 0; }
+
+function likes_gems_fp(mndx) { return (monMflags2_fp(mndx) & M2_JEWELS) !== 0; }
+
+function likes_objs_fp(mndx) { return (monMflags2_fp(mndx) & M2_COLLECT) !== 0 || is_armed_fp(mndx); }
+
+function likes_magic_fp(mndx) { return (monMflags2_fp(mndx) & M2_MAGIC) !== 0; }
+
+// C mon.c add_to_minv — untracked by this task's diff fields (monster
+// inventory chains aren't part of finish_paybill's state_diff_fields), so
+async function add_to_minv_fp(mtmp, otmp) {
+    const { add_to_minv } = await import('./mklev.js'); // C mkobj.c:2648
+    return add_to_minv(mtmp, otmp);
+}
+
+async function give_to_nearby_mon(otmp, x, y) {
+    let selected = null;
+    let nmon = 0;
+    for (let xx = x - 1; xx <= x + 1; xx++) {
+        for (let yy = y - 1; yy <= y + 1; yy++) {
+            if (!isok(xx, yy))
+                continue;
+            if (u_at(xx, yy))
+                continue;
+            const mtmp = m_at(xx, yy);
+            if (!mtmp)
+                continue;
+            const mndx = (mtmp.mnum ?? mtmp.mndx) | 0;
+            if (!(likes_gold_fp(mndx) || likes_gems_fp(mndx) || likes_objs_fp(mndx) || likes_magic_fp(mndx)))
+                continue;
+            nmon++;
+            if (!rn2_shk(nmon))
+                selected = mtmp;
+        }
+    }
+    if (selected && can_carry(selected, otmp))
+        await add_to_minv_fp(selected, otmp);
+    else
+        place_object(otmp, x, y);
+}
+
+function artifact_light_fp(obj) {
+    return artifact_light_real(obj);
+}
+
+function obj_is_burning_fp(obj) {
+    return !!(obj && obj.lamplit);
+}
+
+const SLIME_MOLD_OTYP = 285;
+
+export async function drop_upon_death(mtmp, cont, x, y) {
+    const g = game;
+    let otmp;
+    while ((otmp = g.invent) != null) {
+        await freeinv(otmp); // C bones.c:273: extract from OBJ_INVENT.
+
+        if (!mtmp || is_undead(mtmp.data))
+            await obj_no_longer_held(otmp);
+
+        if ((cont || artifact_light_fp(otmp)) && obj_is_burning_fp(otmp))
+            end_burn_fp(otmp, true);
+        otmp.owornmask = 0;
+
+        if (otmp.otyp === SLIME_MOLD_OTYP)
+            goodfruit_fp(otmp.spe);
+
+        if (rn2_shk(5))
+            curse_fp(otmp);
+
+        if (mtmp)
+            await add_to_minv_fp(mtmp, otmp);
+        else if (cont)
+            await add_to_container(cont, otmp);
+        else if (!rn2_shk(8))
+            await give_to_nearby_mon(otmp, x, y);
+        else
+            place_object(otmp, x, y);
+    }
+    if (cont)
+        cont.owt = weight(cont); // C bones.c:302: include the statue's contents.
+}
+
+// C mkobj.c curse(otmp) — clear blessed, set cursed; coins are never cursed
+// (mkobj.c:1787 `if (otmp->oclass == COIN_CLASS) return;`).
+function curse_fp(otmp) {
+    if (!otmp || (otmp.oclass | 0) === COIN_CLASS) return;
+    otmp.blessed = 0;
+    otmp.cursed = 1;
+}
+
+// C nethack-c/include/mondata.h:95
+//   #define is_undead(ptr) (((ptr)->mflags2 & M2_UNDEAD) != 0L)
+// M2_UNDEAD == 0x00000002L (nethack-c/include/monflag.h:124).
+// Was `return false`, which is wrong for every undead monster; the caller
+// (bones.c:279 drop_upon_death, mirrored at shk.js:1467) is short-circuited by
+// `!mtmp ||`, so ptr is always non-null when this is reached.
+const M2_UNDEAD = 0x00000002; /* monflag.h:124 */
+
+function is_undead(data) { return ((data.mflags2 | 0) & M2_UNDEAD) !== 0; }
+
+// C ref: the `u.uhp < 1 -> done_in_by(mtmp, DIED)` / `losehp -> done(DIED)` test
+// at the damage sites.  Flag the pending death exactly once (C forces uhp to 0 in
+// done(); the interactive prompt then decides survive/really-die).  RNG-FREE.
+export function can_make_bones() {
+    const g = game;
+    const u = g.u || {};
+    if (g.flags && g.flags.bones === false)
+        return false;
+    /* C bones.c:361-362 */
+    if (ledger_no(u.uz) <= 0 || ledger_no(u.uz) > maxledgerno())
+        return false;
+    if (no_bones_level(u.uz))
+        return false;
+    /* History of the guards now centralized in no_bones_level():
+       C bones.c:29 no_bones_level -> Is_botlevel(lev):
+       lev->dlevel == dunlevs_in_dungeon(lev), i.e. the dungeon's num_dunlevs. */
+    if (u.uswallow)
+        return false; /* C bones.c:366-368 */
+    /* C bones.c:369-374 — no bones on a non-branch level holding a magic
+     * portal (the Wizard's Tower levels carry one); returns before the
+     * depth rn2 below, so no draw is made. */
+    if (!Is_branchlev(u.uz)) {
+        const traps = g.level?.traps;
+        if (traps) {
+            for (const t of traps)
+                if (t && t.ttyp === MAGIC_PORTAL)
+                    return false;
+        } else {
+            for (let t = g.ftrap; t; t = t.ntrap)
+                if (t.ttyp === MAGIC_PORTAL)
+                    return false;
+        }
+    }
+    const udepth = depth(u.uz);
+    if (udepth <= 0)
+        return false;
+    if (!rn2(1 + (udepth >> 2)) && !wizard())
+        return false;
+    if (discover())
+        return false;
+    return true;
+}
+
+/* C bones.c:198 sanitize_name(namebuf) — strip control characters, and
+ * replace high-bit bytes unless the tty's eight_bit_tty option allows them.
+ * Startup callers pass the option value accumulated at that rc-file line. */
+export function sanitize_name(namebuf, strip_8th_bit = !game.iflags?.wc_eight_bit_input) {
+    let out = '';
+    for (let i = 0; i < namebuf.length; i++) {
+        const ch = namebuf.charCodeAt(i) & 0xff;
+        const c = ch & 0o177;
+        if (c < 0x20 /* ' ' */ || c === 0o177)
+            out += '.';
+        else if (c !== ch && strip_8th_bit)
+            out += '_';
+        else
+            out += String.fromCharCode(ch);
+    }
+    return out;
 }

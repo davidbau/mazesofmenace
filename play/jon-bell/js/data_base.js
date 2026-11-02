@@ -45,26 +45,10 @@ import { makesingular, fruit_from_name } from './objnam.js';
 // two entry points share one body exactly as C's do; re-exported here because
 // checkfile() is the only caller in this file's neighbourhood.
 import { pmatch } from './strutil.js';
+import { tabexpand } from './hacklib.js'; // relocate-fns
+export { checkfile_keys, dbase_scan }; // relocate-fns
 export { pmatch };
 
-// C ref: hacklib.c:491-520 tabexpand() — expand tabs to the next 8-column tab
-// stop, in place.  The attributions at the end of data.base quotes are indented
-// with a second tab, which is what makes this reachable from checkfile.
-export function tabexpand(sbuf) {
-    if (!sbuf) return sbuf;
-    let out = '', idx = 0;
-    for (const ch of sbuf) {
-        if (ch === '\t') {
-            do {
-                out += ' ';
-            } while (++idx % 8);
-        } else {
-            out += ch;
-            ++idx;
-        }
-    }
-    return out;
-}
 
 // ── data.base parse (the makedefs -d index + text sections) ──
 
@@ -284,18 +268,6 @@ function resolve_checkfile_entries({ dbase_str, alt }) {
     return { entries, noInfo: false };
 }
 
-export function ia_checkfile(inp) {
-    const keys = checkfile_keys(inp);
-    if (!keys) return false;
-    const { dbase_str, alt } = keys;
-    for (let pass = (alt === dbase_str) ? 0 : 1; pass >= 0; --pass) {
-        const key = pass === 1 ? alt : dbase_str;
-        if (pass === 1 && !alt) continue;
-        if (dbase_scan(key) >= 0)
-            return true;                 /* pager.c:1076-1078 */
-    }
-    return false;
-}
 
 /* checkfile()'s key derivation, shared by the two modes above.  Returns null
  * where C bails out early (pager.c:944 empty name).

@@ -6,12 +6,15 @@ import { rn2, rnd, d, rn1, rnl, pushRngLogEntry } from "./rng.js";
 import { dochug, m_canseeu } from "./dochug.js";
 import monsPack from "./makemon_mons.json" with { type: "json" };
 import { gethungry, morehungry, Popeye } from "./eat.js";
-import { make_confused, make_stunned, vomit, cantvomit } from "./potion.js";
+import { make_confused, make_stunned, vomit } from "./potion.js";
+import { cantvomit } from './mondata.js';
 import { age_spells } from "./spell.js";
 import { exerchk, exercise, acurr, spec_ability } from "./attrib.js";
 import { overexert_hp } from "./uhitm.js";
-import { clear_bypasses, t_at, registerTrapMksobj, m_dowear, activate_statue_trap } from "./trap.js";
-import { Warning, mkot_trap_warn, newsym, feel_location, feel_newsym, pline, urgent_pline, flush_screen, _topl_merge_result, _topl_joins_snapshot, _topline_more_pending, _more_never_dismissed, _more_pages_exceed_input, flush_pending_messages, You_hear } from "./display.js";
+import { t_at, registerTrapMksobj, activate_statue_trap } from "./trap.js";
+import { clear_bypasses, m_dowear } from './worn.js';
+import { Warning, mkot_trap_warn, newsym, feel_location, feel_newsym, flush_screen, _topl_merge_result, _topl_joins_snapshot, _topline_more_pending, _more_never_dismissed, _more_pages_exceed_input, flush_pending_messages } from "./display.js";
+import { pline, urgent_pline, You_hear } from './pline.js';
 /* Runtime-only edge, same rule as the allmain/monmove/mklev imports below:
  * end.js does not import this module, so the cycle is one-directional and
  * do_death_sequence is only ever REFERENCED at call time. */
@@ -23,8 +26,10 @@ import { can_reach_floor } from "./hold_another_object.js";
  * passage is found (hack.c:4068).  allmain.js does not import fastforward.js
  * back through this edge at module-init time, and nomul is a hoisted function
  * declaration called only at runtime, so this cycle resolves. */
-import { nomul, stop_occupation, interrupt_multi, night, phase_of_the_moon, friday_13th } from "./allmain.js";
-import { warnreveal, halu_gname, obj_here, pooleffects_breathless, body_part, check_leash, cmdq_clear, find_trap, set_msg_xy } from "./cmd.js";
+import { nomul, stop_occupation, interrupt_multi } from "./allmain.js";
+import { night, phase_of_the_moon, friday_13th } from './calendar.js';
+import { warnreveal, obj_here, pooleffects_breathless, body_part, check_leash, cmdq_clear, find_trap, set_msg_xy } from "./cmd.js";
+import { halu_gname } from './pray.js';
 import { vtense } from "./objnam.js";
 import { rehumanize, polyself, set_uasmon } from "./polyself.js";
 import { you_were } from "./were.js";
@@ -40,12 +45,13 @@ import { EPRI, Is_astralevel } from "./const.js";
 import { m_everyturn_effect, dochugw } from "./monmove.js";
 /* C ref: mon.c:1285 — movemon_singlemon's hider re-hide roll. Same
  * runtime-only-reference cycle rule as the imports above. */
-import { restrap, mcalcdistress, hideunder as hideunder_ff } from "./mklev.js";
+import { restrap, mcalcdistress, hideunder as hideunder_ff } from './mon.js';
 /* C ref: mon.c:2487 dmonsfree() — end-of-movemon purge of dead-but-linked
  * (MON_DETACH / mhp<1, non-guard) monsters from fmon.  mkmaze.js does not
  * import fastforward.js, so this static edge introduces no cycle (same rule
  * as the mklev/monmove imports above). */
-import { dmonsfree, movebubbles, fumaroles } from "./mkmaze.js";
+import { movebubbles, fumaroles } from "./mkmaze.js";
+import { dmonsfree } from './mon.js';
 import { vision_recalc, Blind } from "./vision.js";
 import { any_light_source } from "./light.js";
 /* C prop.h:44 I_SPECIAL — mon.c:1269 borrows the bit in misc_worn_check as the
@@ -75,10 +81,12 @@ import { NUM_ROLES, resolveRandomChargenInit, role_init, ROLE_GODS } from "./rol
 import { consumeUInitMiscHeroInitRng } from "./exper.js";
 import { randomize_gem_colors, init_objects, shuffle_all } from "./o_init.js";
 import { u_init_inventory_attrs } from "./u_init.js";
-import { wipe_engr_at, upstart } from "./mklev.js";
+import { wipe_engr_at } from "./mklev.js";
+import { upstart } from './hacklib.js';
 import { mhe } from "./makemon.js";
 import { hcolor } from "./mhitm.js";
-import { mksobj, mkobj, makemon, place_object, make_corpse, wake_nearto, minliquid } from "./mklev.js";
+import { mksobj, mkobj, makemon, place_object } from "./mklev.js";
+import { make_corpse, wake_nearto, minliquid } from './mon.js';
 /* dosounds()'s shop branch (sounds.c:313-329) needs tended_shop/inhishop, which
  * live in js/shk.js.  shk.js does not import this module, so the edge is safe;
  * the indirect shk.js -> cmd.js -> fastforward.js cycle resolves the same way
@@ -96,20 +104,12 @@ function _conflict_ff() {
 }
 import { cansee as cansee_ff, recalc_block_point, unblock_point } from "./vision.js";
 import { BOLT_LIM as BOLT_LIM_FF, CONFLICT as CONFLICT_FF } from "./const.js";
-import { near_capacity } from "./weight.js";
+import { near_capacity } from './hack.js';
 import { settrack } from "./track.js";
-import { depth as dungeon_depth, dist2 as dist2_ff } from "./hacklib.js";
+import { dist2 as dist2_ff } from "./hacklib.js";
+import { depth as dungeon_depth } from './dungeon.js';
 import { intervene } from './cmd.js';
 
-async function maybe_generate_rnd_mon() {
-    const u = game.u;
-    const sl = game.stronghold_level;
-    const modulus = u?.uevent?.udemigod ? 25
-        : (sl && dungeon_depth(u?.uz) > dungeon_depth(sl)) ? 50
-            : 70;
-    if (!rn2(modulus))
-        await makemon(null, 0, 0, 0);
-}
 import { nhlib_com_pager_rng } from "./nhlib.js";
 import { ENV } from './hostenv.js';
 import { do_storms } from './timeout.js';
@@ -297,48 +297,6 @@ export async function fastforward_post_mklev(initrole = -1) {
 }
 const MONS = /** @type {number[][]} */ (monsPack.mons);
 export const NORMAL_SPEED = 12; /* C permonst.h:80 */
-const MSLOW = 1; /* C monst.h:205 */
-const MFAST = 2; /* C monst.h:206 */
-/* C ref: mon.c:1108-1150 mcalcmove(mon, m_moving).
- * Computes the movement allotment for one monster and, ONLY when m_moving is
- * true, fires exactly one rn2(NORMAL_SPEED) for the random rounding —
- * unconditionally within that arm, even when mmove is already a multiple of
- * NORMAL_SPEED (mmove_adj == 0). Every real caller in this file passes
- * m_moving=TRUE (the fmon reallocation loop and u_calc_moveamt's steed arm,
- * both allmain.c call sites); the parameter and its default are kept to match
- * C's actual two-argument signature (worm_move's `mcalcmove(worm, FALSE)`,
- * worm.c:222, is the one caller that passes FALSE and skips the rounding arm
- * entirely — see js/worm.js, which still carries its own copy pending
- * consolidation onto this export).
- * mmove (move speed) is column 9 of makemon_mons.json (LVL(lvl, mov, ...)).
- * mspeed MSLOW/MFAST adjustments mirror C; usteed gallop branch (rn2(2)) is
- * guarded — fmon monsters are never u.usteed, so it never fires here. */
-export function mcalcmove(mon, m_moving = true) {
-    const mndx = (mon.data?.pmidx ?? mon.mndx ?? mon.mnum ?? 0) | 0;
-    let mmove = (mndx >= 0 && mndx < MONS.length) ? ((MONS[mndx][9] ?? 0) | 0) : 0;
-    const mspeed = (mon.mspeed | 0);
-    if (mspeed === MSLOW) {
-        if (mmove < NORMAL_SPEED)
-            mmove = Math.trunc((2 * mmove + 1) / 3);
-        else
-            mmove = 4 + Math.trunc(mmove / 3);
-    } else if (mspeed === MFAST) {
-        mmove = Math.trunc((4 * mmove + 2) / 3);
-    }
-    if (mon === game.u?.usteed && (game.u?.ugallop | 0) && (game.context?.mv | 0)) {
-        mmove = Math.trunc(((rn2(2) ? 4 : 5) * mmove) / 3);
-    }
-    /* C mon.c:1137-1148 — only when m_moving: random rounding to a
-     * NORMAL_SPEED multiple. When m_moving is false (worm_move's call), C
-     * skips this whole block and draws nothing here. */
-    if (m_moving) {
-        const mmove_adj = mmove % NORMAL_SPEED;
-        mmove -= mmove_adj;
-        if (rn2(NORMAL_SPEED) < mmove_adj)
-            mmove += NORMAL_SPEED;
-    }
-    return mmove;
-}
 
 async function fmon_mcalcmove() {
     /* C allmain.c:227-228 — `gw.were_changes = 0L; mcalcdistress();` immediately
@@ -575,60 +533,7 @@ export async function fmon_dochug_dispatch() {
         game._ffMlPass = guard;
     } while (somebody_can_move);
 }
-const FAST_PROP = 64; /* C prop.h FAST = 64 */
-const INTRINSIC_BITS = 0x07000000; /* FROMOUTSIDE|FROMRACE|FROMEXPER */
 const UNENCUMBERED = 0; /* C botl.h — encumbrance level 0 */
-function u_calc_moveamt(wtcap = UNENCUMBERED) {
-    const g = game;
-    const u = g.u;
-    if (!u) return;
-    const _riding = !!(u.usteed && (u.umoved | 0));
-    const umnum = u.umonnum;
-    /* A replay path that never reached u_init (u.umonnum unset) keeps the old
-     * NORMAL_SPEED reading rather than indexing mons[0]. */
-    let moveamt;
-    if (_riding) {
-        /* C allmain.c:120-121 — "your speed doesn't augment steed's speed":
-         * the whole youmonst/Fast block below is SKIPPED, so a Fast rider draws
-         * no rn2(3) either. */
-        moveamt = mcalcmove(u.usteed, true);
-    } else {
-    moveamt = (umnum == null)
-        ? NORMAL_SPEED
-        : (((umnum | 0) >= 0 && (umnum | 0) < MONS.length)
-            ? ((MONS[umnum | 0][9] ?? 0) | 0)
-            : NORMAL_SPEED);
-    /* C ref: allmain.c:129-137 — Very_fast or Fast triggers rn2(3) */
-    const hFast = (u.uprops && u.uprops[FAST_PROP]) ? (u.uprops[FAST_PROP].intrinsic | 0) : 0;
-    const eFast = (u.uprops && u.uprops[FAST_PROP]) ? (u.uprops[FAST_PROP].extrinsic | 0) : 0;
-    /* Very_fast = (HFast & ~INTRINSIC) || EFast: speed potion/boots = timeout bits */
-    const Very_fast = !!(hFast & ~INTRINSIC_BITS) || !!eFast;
-    /* Fast = HFast || EFast: any fast source */
-    const Fast = !!hFast || !!eFast;
-    if (Very_fast) {
-        /* C allmain.c:131: gain a free action on 2/3 of turns (rn2(3) != 0) */
-        if (rn2(3) !== 0) moveamt += NORMAL_SPEED;
-    } else if (Fast) {
-        /* C allmain.c:135: gain a free action on 1/3 of turns (rn2(3) == 0) */
-        if (rn2(3) === 0) moveamt += NORMAL_SPEED;
-    }
-    }
-    /* C allmain.c:140-157 — encumbrance scaling of moveamt.
-     * Stage 1/2 pass wtcap=UNENCUMBERED (0) → no scaling (identity).
-     * Stage 3 ports near_capacity; deferred per plan. */
-    switch (wtcap) {
-        case 0: /* UNENCUMBERED */ break;
-        case 1: /* SLT_ENCUMBER */ moveamt -= Math.trunc(moveamt / 4); break;
-        case 2: /* MOD_ENCUMBER */ moveamt -= Math.trunc(moveamt / 2); break;
-        case 3: /* HVY_ENCUMBER */ moveamt -= Math.trunc((moveamt * 3) / 4); break;
-        case 4: /* EXT_ENCUMBER */ moveamt -= Math.trunc((moveamt * 7) / 8); break;
-        default: break;
-    }
-    /* C allmain.c:159-161 — bank moveamt into u.umovement */
-    u.umovement = ((u.umovement || 0) + moveamt) | 0;
-    if (u.umovement < 0) u.umovement = 0;
-    g._umv_bonus = (moveamt >= 2 * NORMAL_SPEED);
-}
 /* C ref: attrib.c:23-105 innate ability tables + youprop.h:177
  *   Searching = (HSearching || ESearching).
  * HSearching is granted from experience (FROMEXPER) once u.ulevel reaches
@@ -799,19 +704,15 @@ function _ushops_has(roomch) {
     return (us | 0) === want;
 }
 
-/* C ref: shk.c:1125-1133 noisy_shop(sroom)
- *   struct monst *mtmp = sroom->resident;
- *   if (mtmp && inhishop(mtmp)) wake_nearto(mtmp->mx, mtmp->my, 11 * 11);
- * wake_nearto_core (mon.c:4374) consumes no RNG; js/mklev.js's wake_nearto is
- * still a no-op stub, so this is RNG- and state-neutral today and activates
- * automatically when that stub lands. */
-function noisy_shop(sroom) {
-    const mtmp = sroom?.resident;
-    if (mtmp && inhishop(mtmp))
-        wake_nearto(mtmp.mx | 0, mtmp.my | 0, 11 * 11);
-}
 
 import { g_at } from './cmd.js'; // C invent.c:1613: share the first-coin traversal.
+import { beehive_mon_sound, mon_in_room, morgue_mon_sound, oracle_sound, temple_priest_sound, throne_mon_sound, zoo_mon_sound } from './sounds.js'; // relocate-fns
+import { maybe_generate_rnd_mon, regen_hp, regen_pw, u_calc_moveamt } from './allmain.js'; // relocate-fns
+import { mcalcmove } from './mon.js'; // relocate-fns
+import { noisy_shop } from './shk.js'; // relocate-fns
+export { mcalcmove } from './mon.js'; // relocate-fns
+export { MONS, S_EEL_FF, UNENCUMBERED, _uasmon_mlet }; // relocate-fns
+export { Hallucination }; // relocate-fns
 
 /* get_iter_mons (mklev.js) for predicates that pline: C's pline blocks inside
  * the callback (a MSGTYPE=stop page holds the program), so the walk awaits. */
@@ -825,170 +726,11 @@ async function get_iter_mons_aw(bfunc) {
     }
     return null;
 }
-/* C sounds.c:19-26 mon_in_room(mon, rmtyp) —
- *     int rno = levl[mon->mx][mon->my].roomno;
- *     if (rno >= ROOMOFFSET)
- *         return svr.rooms[rno - ROOMOFFSET].rtype == rmtyp;
- *     return FALSE;
- * RNG-free. */
-function mon_in_room(mon, rmtyp) {
-    const loc = game.level?.at?.(mon.mx | 0, mon.my | 0);
-    const rno = (loc?.roomno) | 0;
-    if (rno >= ROOMOFFSET) {
-        const croom = (game.level?.rooms ?? [])[rno - ROOMOFFSET];
-        return !!croom && (croom.rtype | 0) === (rmtyp | 0);
-    }
-    return false;
-}
-/* C sounds.c:29-57 throne_mon_sound(mtmp) — the get_iter_mons predicate behind
- * dosounds' has_court branch; one rn2(3) for the first qualifying monster. */
-async function throne_mon_sound(mtmp) {
-    const f1 = (mtmp.data?.mflags1 | 0), f2 = (mtmp.data?.mflags2 | 0);
-    if (((mtmp.msleeping | 0) || (f2 & 0x00000400) /* is_lord */
-         || (f2 & 0x00000800) /* is_prince */)
-        && !(f1 & 0x00040000) /* is_animal */
-        && mon_in_room(mtmp, 2 /* COURT; const.js */)) {
-        const throne_msg = [
-            "the tones of courtly conversation.",
-            "a sceptre pounded in judgment.",
-            "Someone shouts \"Off with %s head!\"",
-            "Queen Beruthiel's cats!",
-        ];
-        const which = rn2(3) + (Hallucination() ? 1 : 0);
-        if (which !== 2)
-            await You_hear(throne_msg[which]);
-        else
-            await pline(throne_msg[2].replace('%s', game.flags?.female ? 'her' : 'his'));
-        return true;
-    }
-    return false;
-}
-/* C sounds.c:68-91 beehive_mon_sound(). */
-async function beehive_mon_sound(mtmp) {
-    const data = mtmp.data;
-    if ((data?.mlet | 0) !== 1 /* S_ANT */
-        || !((data?.mflags1 | 0) & 0x00000001) /* M1_FLY */
-        || !mon_in_room(mtmp, 5 /* BEEHIVE; const.js */))
-        return false;
-    const selection = rn2(2) + (Hallucination() ? 1 : 0);
-    await You_hear(selection === 0 ? 'a low buzzing.'
-        : selection === 1 ? 'an angry drone.'
-            : `bees in your ${game.u?.uarmh ? '' : '(nonexistent) '}bonnet!`);
-    return true;
-}
-/* C mondata.h:66 is_animal(ptr) — `(ptr->mflags1 & M1_ANIMAL) != 0`.
- * Declared locally (monflag.h:103) the same way js/makemon.js:1341 and
- * js/trap.js:1953 declare it; it is not exported from anywhere. */
-const M1_ANIMAL_FF = 0x00040000;
-/* C sounds.c:113-127 zoo_mon_sound(mtmp) — the get_iter_mons predicate behind
- * dosounds' has_zoo branch.  It draws rn2(2) for EVERY qualifying monster it is
- * handed, and get_iter_mons stops at the first one that returns TRUE, so the
- * draw fires at most once per dosounds call.
- *     if ((mtmp->msleeping || is_animal(mtmp->data))
- *         && mon_in_room(mtmp, ZOO)) {
- *         int hallu = Hallucination ? 1 : 0, selection = rn2(2) + hallu;
- *         You_hear1(zoo_msg[selection]);
- *         return TRUE;
- *     }
- *     return FALSE;
- * The rn2(2) is INSIDE the guard, so a non-qualifying monster draws nothing. */
-async function zoo_mon_sound(mtmp) {
-    if (((mtmp.msleeping | 0)
-         || (((mtmp.data?.mflags1 | 0) & M1_ANIMAL_FF) !== 0))
-        && mon_in_room(mtmp, ZOO)) {
-        const hallu = Hallucination() ? 1 : 0;
-        const selection = rn2(2) + hallu;
-        const zoo_msg = [
-            "a sound reminiscent of an elephant stepping on a peanut.",
-            "a sound reminiscent of a seal barking.", "Doctor Dolittle!",
-        ];
-        await You_hear(zoo_msg[selection]);
-        return true;
-    }
-    return false;
-}
 
-/* C sounds.c:83-107 morgue_mon_sound().  Keep this predicate local to the
- * ambient-sound replay module: the source helper is static and the needed
- * monster flags are already present on the reconstructed permonst records. */
-const M2_UNDEAD_FF = 0x00000002;
-const PM_VAMPIRE_FF = 226;
-const PM_VAMPIRE_LORD_FF = 227;
-const PM_VLAD_THE_IMPALER_FF = 228;
-async function morgue_mon_sound(mtmp) {
-    const data = mtmp.data;
-    const undead = ((data?.mflags2 | 0) & M2_UNDEAD_FF) !== 0;
-    const vampshifter = (mtmp.cham | 0) === PM_VAMPIRE_FF
-        || (mtmp.cham | 0) === PM_VAMPIRE_LORD_FF
-        || (mtmp.cham | 0) === PM_VLAD_THE_IMPALER_FF;
-    if ((undead || vampshifter) && mon_in_room(mtmp, MORGUE)) {
-        const selection = rn2(2) + (Hallucination() ? 1 : 0);
-        const hair = body_part(HAIR);
-        if (selection === 0) {
-            await pline("You suddenly realize it is unnaturally quiet.");
-        } else if (selection === 1) {
-            await pline(`The ${hair} on the back of your ${body_part(NECK)} ${vtense(hair, "stand")} up.`);
-        } else {
-            await pline(`The ${hair} on your ${body_part(HEAD)} ${vtense(hair, "seem")} to stand up.`);
-        }
-        return true;
-    }
-    return false;
-}
 /* dungeon.h Is_sanctum(lev) = on_level(lev, &sanctum_level) */
 function _is_sanctum(uz) {
     const s = game?.sanctum_level;
     return !!uz && !!s && uz.dnum === s.dnum && uz.dlevel === s.dlevel;
-}
-async function oracle_sound(mtmp) {
-    const mndx = (mtmp.data?.pmidx ?? mtmp.mndx ?? mtmp.mnum ?? -1) | 0;
-    if (mndx !== 274)
-        return false;
-    /* and don't produce silly effects when she's clearly visible */
-    if (Hallucination() || !canseemon_ff(mtmp)) {
-        const hallu = Hallucination() ? 1 : 0;
-        const ora_msg = [
-            "a strange wind.", "convulsive ravings.", "snoring snakes.",
-            "someone say \"No more woodchucks!\"", "a loud ZOT!",
-        ];
-        await You_hear(ora_msg[rn2(3) + hallu * 2]);
-    }
-    return true;
-}
-/* C sounds.c:147-198 temple_priest_sound(mtmp) — get_iter_mons predicate. */
-async function temple_priest_sound(mtmp) {
-    if (mtmp.ispriest && inhistemple(mtmp)
-        && !helpless(mtmp)
-        && temple_occupied(game.u?.urooms || "") !== EPRI(mtmp).shroom) {
-        const temple_msg = [
-            "*someone praising %s.", "*someone beseeching %s.",
-            "#an animal carcass being offered in sacrifice.",
-            "*a strident plea for donations.",
-        ];
-        const hallu = Hallucination() ? 1 : 0;
-        let trycount = 0;
-        const ax = EPRI(mtmp).shrpos.x, ay = EPRI(mtmp).shrpos.y;
-        const speechless = ((mtmp.data?.msound | 0) <= 17); /* MS_ANIMAL */
-        const in_sight = canseemon_ff(mtmp) || cansee_ff(ax, ay);
-        let msg;
-        do {
-            msg = temple_msg[rn2(temple_msg.length - 1 + hallu)];
-            if (msg.includes('*') && speechless)
-                continue;
-            if (msg.includes('#') && in_sight)
-                continue;
-            break;
-        } while (++trycount < 50);
-        let i = 0;
-        while (!/[A-Za-z]/.test(msg[i])) ++i; /* skip control flags */
-        msg = msg.slice(i);
-        if (msg.includes('%'))
-            await You_hear(msg.replace('%s', halu_gname(EPRI(mtmp).shralign)));
-        else
-            await You_hear(msg);
-        return true;
-    }
-    return false;
 }
 
 export async function dosounds_rng() {
@@ -1515,98 +1257,11 @@ export async function ff_head_phase_pre() {
     settrack();
 }
 
-function u_can_regen(u) {
-    return _has_regeneration(u) || _restful_sleep(u);
-}
-function _has_regeneration(u) {
-    const p = u && u.uprops ? u.uprops[REGENERATION] : null;
-    return !!p && (((p.intrinsic | 0) | (p.extrinsic | 0)) !== 0);
-}
-function _has_prop(u, prop) {
-    const p = u && u.uprops ? u.uprops[prop] : null;
-    return !!p && (((p.intrinsic | 0) | (p.extrinsic | 0)) !== 0);
-}
-function _restful_sleep(u) {
-    const p = u && u.uprops ? u.uprops[SLEEPY] : null;
-    return !!u?.usleep && !!p
-        && (((p.intrinsic | 0) | (p.extrinsic | 0)) !== 0);
-}
 
-async function regen_hp(wtcap) {
-    const u = game.u;
-    if (!u)
-        return;
-    /* encumbrance_ok = (wtcap < MOD_ENCUMBER || !u.umoved) — C allmain.c:700. */
-    const encumbrance_ok = ((wtcap | 0) < MOD_ENCUMBER) || !(u.umoved | 0);
-    let heal = 0;
-    /* C allmain.c:697 — boolean reached_full = FALSE. */
-    let reached_full = false;
-    if (Upolyd(u)) {
-        /* C allmain.c:702-722 — the polymorphed hero heals u.mh, not u.uhp. */
-        const mh = (u.mh | 0), mhmax = (u.mhmax | 0);
-        if (mh < 1) {
-            /* C allmain.c:703-704 "shouldn't happen..." → rehumanize(). */
-            await rehumanize();
-        } else if (_uasmon_mlet(u) === S_EEL_FF
-                   && !_ff_is_pool(u.ux | 0, u.uy | 0) && !Is_waterlevel(u.uz)
-                   && !_hero_breathless(u)) {
-            /* C allmain.c:707-713 — an eel out of water LOSES hp, and this is
-             * the ONLY Upolyd arm that draws RNG:
-             *   if (u.mh > 1 && !Regeneration && rn2(u.mh) > rn2(8)
-             *       && (!Half_physical_damage || !(svm.moves % 2L))) heal = -1;
-             */
-            const halfPhys = _has_prop(u, HALF_PHDAM);
-            if (mh > 1 && !_has_regeneration(u) && rn2(mh) > rn2(8)
-                && (!halfPhys || !((game.moves | 0) % 2)))
-                heal = -1;
-        } else if (mh < mhmax) {
-            /* C allmain.c:714-717 — RNG-free regen: one hp every 20 moves. */
-            if (u_can_regen(u)
-                || (encumbrance_ok && ((game.moves | 0) % 20) === 0))
-                heal = 1;
-        }
-        if (heal) {
-            (game.disp ||= {}).botl = 1;
-            u.mh = mh + heal;
-            /* C allmain.c:717 — reached_full = (u.mh == u.mhmax). */
-            reached_full = ((u.mh | 0) === mhmax);
-        }
-    } else {
-        /* C allmain.c:729 — !Upolyd branch. */
-        const uhp = (u.uhp | 0), uhpmax = (u.uhpmax | 0);
-        if (uhp < uhpmax && (encumbrance_ok || u_can_regen(u))) {
-            /* C allmain.c:730 — heal = (u.ulevel + ACURR(A_CON)) > rn2(100). */
-            heal = ((u.ulevel | 0) + (acurr(u, A_CON) | 0)) > rn2(100) ? 1 : 0;
-            if (u_can_regen(u))
-                heal += 1;
-            if (_restful_sleep(u))
-                heal += 1;
-            if (heal) {
-                (game.disp ||= {}).botl = 1;
-                u.uhp = uhp + heal;
-                /* display.js's rehumanize pre-reversion HP takeback undoes exactly
-                 * this turn's heal, so it needs to know one happened. */
-                game._uhpRegenMoves = game.moves | 0;
-                if ((u.uhp | 0) > uhpmax)
-                    u.uhp = uhpmax;
-                /* C allmain.c:738 — "stop voluntary multi-turn activity if now
-                 * fully healed": reached_full = (u.uhp == u.uhpmax). */
-                reached_full = ((u.uhp | 0) === uhpmax);
-            }
-        }
-    }
-    if (reached_full)
-        interrupt_multi("You are in full health.");
-}
 
 /* C monst.h S_EEL — the eel monster class letter; only regen_hp's out-of-water
  * arm needs it here. */
 const S_EEL_FF = 57;
-/* C youprop.h Breathless = magical breathing or the current form's flag. */
-function _hero_breathless(u) {
-    return _has_prop(u, MAGICAL_BREATHING)
-        || pooleffects_breathless(game.youmonst?.data);
-}
 /* C mondata.h — gy.youmonst.data->mlet for the polymorphed hero.  set_uasmon()
  * points youmonst.data at mons[u.umonnum]; column 0 of makemon_mons.json is
  * mlet (see js/makemon.js:1205 column map). */
@@ -1615,44 +1270,7 @@ function _uasmon_mlet(u) {
     const row = (mndx >= 0 && mndx < MONS.length) ? MONS[mndx] : null;
     return row ? (row[0] | 0) : -1;
 }
-/* C dbridge.c is_pool() — includes moat-under-drawbridge semantics, unlike a
- * raw tile-type check. */
-function _ff_is_pool(x, y) {
-    return is_pool(x, y);
-}
 
-function regen_pw(wtcap) {
-    const u = game.u;
-    if (!u)
-        return;
-    const uen = (u.uen | 0), uenmax = (u.uenmax | 0);
-    if (uen >= uenmax)
-        return;
-    /* C allmain.c:674-677 — period depends on ulevel and Wizard role.
-     * role.mnum: PM_WIZARD index — Healer is not Wizard, so factor=4. */
-    /* PM_WIZARD is 343 in mons[], not the role ordinal 14. */
-    const isWizard = (game.urole && (game.urole.mnum | 0) === 343);
-    const ulevel = (u.ulevel | 0);
-    const period = ((MAXULEV + 8 - ulevel) * (isWizard ? 3 : 4)) / 6 | 0;
-    const moves = (game.moves | 0);
-    /* C Energy_regeneration = HEnergy_regeneration || EEnergy_regeneration. */
-    if (((wtcap | 0) < MOD_ENCUMBER && period !== 0 && (moves % period) === 0)
-        || _has_prop(u, ENERGY_REGENERATION)) {
-        /* C allmain.c:678 — upper = (ACURR(A_WIS)+ACURR(A_INT))/15 + 1. */
-        let upper = ((acurr(u, A_WIS) | 0) + (acurr(u, 1 /*A_INT*/) | 0)) / 15 | 0;
-        upper += 1;
-        /* C allmain.c:620 — EMagical_breathing is the extrinsic half only. */
-        if ((u.uprops?.[MAGICAL_BREATHING]?.extrinsic | 0) !== 0)
-            upper += 2;
-        u.uen = uen + rn1(upper, 1);
-        if ((u.uen | 0) > uenmax)
-            u.uen = uenmax;
-        /* C allmain.c:615 — disp.botl = TRUE (Pw changed; bot() repaints T: too). */
-        (game.disp ||= {}).botl = 1;
-        if ((u.uen | 0) === uenmax)
-            interrupt_multi("You feel full of energy.");
-    }
-}
 
 export async function ff_head_phase_post() {
     {

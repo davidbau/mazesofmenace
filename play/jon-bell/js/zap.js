@@ -1,12 +1,15 @@
 import { fixup_oil, get_mtraits, free_omid } from './mkobj.js';
-import { dead_species, restore_cham, neweshk, mongone, add_to_minv, sp_levchn_lookup, can_be_hatched, set_corpsenm } from './mklev.js';
+import { add_to_minv, sp_levchn_lookup, set_corpsenm } from './mklev.js';
+import { neweshk } from './shknam.js';
+import { dead_species, restore_cham, mongone, can_be_hatched } from './mon.js';
 import { monhp_per_lvl, dmgtype_fromattack, container_weight, emits_light, monflee, mcureblindness } from './makemon.js';
 import { dealloc_monst, dealloc_mextra, relmon, wary_dog, tamedog } from './dog.js';
 import { place_monster } from './steed.js';
 import { mdrop_obj_md } from './mklev.js';
 import { W_SADDLE } from './const.js';
 import { place_wsegs } from './worm.js';
-import { new_light_source, del_light_source, monst_to_any } from './light.js';
+import { new_light_source, del_light_source } from './light.js';
+import { monst_to_any } from './hack.js';
 import { inhishop, stolen_value as revive_stolen_value, delete_contents } from './shk.js';
 import { cant_finish_meal, eaten_stat } from './eat.js';
 import { cant_revive } from './read.js';
@@ -23,10 +26,11 @@ import { HATCH_EGG } from './const.js';
 import { wearslot } from './worn.js';
 import { otrapped_of } from './const.js';
 import { is_poisonable } from './objnam.js';
-import { freeinv_core, addinv_core1, addinv_core2, setuwep, setuswapwep, setuqwep, set_twoweap } from './cmd.js';
+import { freeinv_core, addinv_core1, addinv_core2 } from './cmd.js';
+import { setuwep, setuswapwep, setuqwep, set_twoweap } from './wield.js';
 import { bimanual, set_wear } from './do_wear.js';
 import { remove_worn_item } from './steal.js';
-import { wearmask_to_obj } from './trap.js';
+import { wearmask_to_obj } from './worn.js';
 import { W_ARTI, W_WEAPONS, W_SWAPWEP, W_QUIVER } from './const.js';
 // @ts-nocheck
 // zap.c — zapyourself, dozap, obj_resists and helpers.
@@ -37,7 +41,10 @@ import { is_magical_trap, MAGIC_PORTAL, VIBRATING_SQUARE } from './const.js';
 import { spell_skilltype } from './spell.js';
 import { P_SKILL } from './skills.js';
 import { P_ISRESTRICTED, P_UNSKILLED, P_BASIC, P_SKILLED, P_EXPERT } from './const.js';
-import { mkobj, mksobj, rnd_class, OC_MERGE, m_respond, hideunder, dealloc_oextra, OC_USES_KNOWN, engr_at, del_engr_at, make_engr_at, wipe_engr_at, lowc, healmon, random_engraving, makemon, MONS_CWT, normal_shape, sobj_at, minliquid, mlifesaver } from './mklev.js';
+import { mkobj, mksobj, rnd_class, OC_MERGE, dealloc_oextra, OC_USES_KNOWN, engr_at, del_engr_at, make_engr_at, wipe_engr_at, random_engraving, makemon, MONS_CWT } from './mklev.js';
+import { sobj_at } from './invent.js';
+import { lowc } from './hacklib.js';
+import { m_respond, hideunder, healmon, normal_shape, minliquid, mlifesaver } from './mon.js';
 import { MKOBJ_OC_MAGIC, MKOBJ_OC_MATERIAL, MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js';
 import { OC_CHARGED } from './oc_cost_data.js';
 import { useupall } from './cmd.js';
@@ -45,12 +52,13 @@ import { _delobj_useupf } from './cmd.js';
 import { PM_FLESH_GOLEM, PM_IRON_GOLEM, PM_STONE_GOLEM, PM_CLAY_GOLEM, PM_WOOD_GOLEM,
          PM_LEATHER_GOLEM, PM_ROPE_GOLEM, PM_SKELETON, PM_GOLD_GOLEM, PM_GLASS_GOLEM,
          PM_PAPER_GOLEM, PM_STRAW_GOLEM } from './pm.generated.js';
-import { splitobj, ureflects, create_critters, which_armor, permonstTemplate } from './makemon.js';
+import { splitobj, ureflects, create_critters, permonstTemplate } from './makemon.js';
+import { which_armor } from './worn.js';
 import { is_demon, nonliving, check_gear_next_turn } from './makemon.js';
-import { resists_magm, Resists_Elem, defended, sleep_monst, slept_monst, seemimic,
-         erode_armor } from './mhitm.js';
+import { sleep_monst, slept_monst, seemimic, erode_armor } from './mhitm.js';
+import { resists_magm, Resists_Elem, defended } from './mondata.js';
 import { x_monnam } from './mhitm.js';
-import { resists_blnd as resists_blnd_real, resists_drli as resists_drli_mon, resists_blnd_by_arti } from './mhitm.js';
+import { resists_blnd as resists_blnd_real, resists_drli as resists_drli_mon, resists_blnd_by_arti } from './mondata.js';
 import { impossible } from './pline.js';
 import { INFRAVISION, WARN_OF_MON } from './const.js';
 import { BLINDED, HALLUC, HALLUC_RES, WAND_BACKFIRE_CHANCE, MSLOW, ANIMATE_SPELL, LIFESAVED } from './const.js';
@@ -64,22 +72,25 @@ import { POOL, MOAT, DRAWBRIDGE_DOWN, IS_FOUNTAIN, Is_waterlevel, Is_airlevel } 
 import { PIT, FIRE_RES, COLD_RES, SHOCK_RES, SLEEP_RES, ACID_RES, DISINT_RES, POISON_RES, W_ARMOR, W_ACCESSORY, W_WEP, W_ART, W_RING, W_ARMG, W_ARMC, W_ARM, W_ARMU, W_ARMH, W_ARMF, W_ARMS, W_AMUL, W_TOOL, W_RINGL, W_RINGR, SDOOR, SCORR, DOOR, CORR, ROOM, D_CLOSED, D_LOCKED, D_TRAPPED, D_NODOOR, BOLT_LIM, STATUE_TRAP, SVALL, COULD_SEE, IN_SIGHT, STONE, ZAP_POS, IS_WALL, IS_OBSTRUCTED, IS_TREE, IS_ROOM, isok, W_NONDIGGABLE, Is_earthlevel, u_at, TRAPDOOR, HOLE, NO_TRAP_FLAGS } from './const.js';
 import { xdir, ydir, N_DIRS, FUMBLING, IS_SINK, TT_PIT } from './const.js';
 import { game, wizard } from './gstate.js';
-import { merged } from './hold_another_object.js';
+import { merged } from './invent.js';
 import { TtyMenu, PICK_ONE, ATR_NONE } from './tty_menu.js';
-import { get_obj_location } from './light.js';
-import { terrain_glyph, update_lastseentyp, update_mapseen_for, GLYPHCLS_CMAP, GLYPHCLS_TRAP } from './display.js';
+import './light.js';
+import { terrain_glyph, GLYPHCLS_CMAP, GLYPHCLS_TRAP } from './display.js';
+import { update_lastseentyp, update_mapseen_for } from './dungeon.js';
 import { BURIED_TOO, CONTAINED_TOO, TRAPPED_CHEST, TRAPPED_DOOR, Has_contents } from './const.js';
 import { foundone } from './detect.js';
 import { flash_glyph_at, mon_to_glyph, trap_to_glyph, cmap_glyph } from './display.js';
 import { glyph_is_invisible_at, unmap_object } from './display.js';
 import { NO_COLOR } from './terminal.js';
-import { pline, pline_mon, Norep, flush_screen, newsym, feel_newsym, canspotmon, canseemon, _topl_joins_snapshot, _topline_more_pending, _defer_until_more_dismissed, tmp_at, zapdir_to_glyph, map_invisible, unmap_invisible, DISP_BEAM, DISP_CHANGE, DISP_END, DISP_FLASH, newsym_force, _topl_merge_result, shieldeff as shieldeff_real, explode_shield_effect, Deaf as _live_deaf_reading } from './display.js';
+import { flush_screen, newsym, feel_newsym, canspotmon, canseemon, _topl_joins_snapshot, _topline_more_pending, _defer_until_more_dismissed, tmp_at, zapdir_to_glyph, map_invisible, unmap_invisible, DISP_BEAM, DISP_CHANGE, DISP_END, DISP_FLASH, newsym_force, _topl_merge_result, shieldeff as shieldeff_real, explode_shield_effect, Deaf as _live_deaf_reading } from './display.js';
+import { pline, pline_mon, Norep } from './pline.js';
 import { topl_park_cursor, _topl_stash_result, flush_pending_messages, _more_never_dismissed } from './display.js';
-import { bot, see_monsters, Sting_effects, force_more, GLYPHCLS_INVIS, Unaware } from './display.js';
+import { see_monsters, Sting_effects, force_more, GLYPHCLS_INVIS, Unaware } from './display.js';
+import { bot } from './botl.js';
 import { deadhero, pending_death_is_final, do_death_sequence } from './end.js';
 /* unconscious()/is_fainted() — the two halves of youprop.h:399 Unaware, used by
  * resists_blnd's hero arm (mondata.c:253).  Real ported bodies, not stubs. */
-import { unconscious } from './pickup.js';
+import { unconscious } from './trap.js';
 /* C zap.c cancel_item()/cancel_monst() dependencies.  unbless/uncurse live in
  * js/mkobj.js, C's own home for them (see that file's header on why the port
  * has one shared body rather than a sixth hand-written copy); find_ac is
@@ -92,12 +103,16 @@ import { NOTELL, ANTIMAGIC, UNCHANGING, SLIMED, INVIS, DRAIN_RES, STONED } from 
 import { FAST, TIMEOUT, INTRINSIC, LEG, STUNNED, SEE_INVIS, TELEPAT, DETECT_MONSTERS, TELEPORT_CONTROL } from './const.js';
 import { is_fainted } from './eat.js';
 import { do_clear_area, unblock_point, recalc_block_point, vision_recalc, does_block, block_point } from './vision.js';
-import { t_at, burnarmor, monkilled_trap, extract_from_minvent as disint_extract, fill_pit, delfloortrap, closeholdingtrap, openholdingtrap, openfallingtrap, find_mac, m_useup, sokoban_guilt, goodpos, mon_adjust_speed, thitu, animate_statue, activate_statue_trap, dotrap, maketrap, mintrap, erode_obj, grease_protect, trap_ice_effects, unearth_objs } from './trap.js';
+import { t_at, burnarmor, monkilled_trap, fill_pit, delfloortrap, closeholdingtrap, openholdingtrap, openfallingtrap, sokoban_guilt, goodpos, animate_statue, activate_statue_trap, dotrap, maketrap, mintrap, erode_obj, grease_protect, trap_ice_effects, unearth_objs } from './trap.js';
+import { m_useup, thitu } from './mthrowu.js';
+import { extract_from_minvent as disint_extract, find_mac, mon_adjust_speed } from './worn.js';
 import { cansee, Blind } from './vision.js';
 import { is_ice, rloc_engr } from './engrave.js';
 import { create_gas_cloud } from './region.js';
-import { closed_door, may_dig, is_pool } from './look.js';
-import { m_at, mon_nam, xkilled, monkilled as _resist_monkilled, XKILL_GIVEMSG, XKILL_NOCORPSE, more_experienced, dmgval, u_slow_down, newexplevel, attacks, exclam } from './uhitm.js';
+import { is_pool } from './look.js';
+import { closed_door } from './monmove.js';
+import { may_dig } from './hack.js';
+import { m_at, mon_nam, xkilled, monkilled as _resist_monkilled, XKILL_GIVEMSG, XKILL_NOCORPSE, more_experienced, dmgval, u_slow_down, newexplevel, attacks } from './uhitm.js';
 import { m_is_steadfast, disguised_as_mon, disguised_as_non_mon, that_is_a_mimic, golemeffects } from './uhitm.js';
 import { more_experienced as more_experienced_faithful, losexp } from './exper.js';
 /* C ref: mondata.h DEADMONSTER(mon) — mhp <= 0. */
@@ -112,12 +127,18 @@ import { obj_typename, an, An, makeplural, The, vtense, cloak_simple_name, suit_
 import { nomul } from './allmain.js';
 import { set_bc } from './ball.js';
 import { xname, yname, silly_thing_dw, hard_helmet } from './do_wear.js';
-import { useup as _destroy_useup, useupf, compactify, getobj_redo_menu, check_capacity, learn_unseen_invent, confdir, getObjFromGetobj, hero_breaks, boulder_hits_pool, obj_extract_self_general, costly_alteration as costly_alteration_real } from './cmd.js';
+import { useup as _destroy_useup, useupf, compactify, getobj_redo_menu, check_capacity, learn_unseen_invent, confdir, getObjFromGetobj, obj_extract_self_general, costly_alteration as costly_alteration_real } from './cmd.js';
+import { hero_breaks } from './dothrow.js';
+import { boulder_hits_pool } from './do.js';
 import { setnotworn, setworn } from './worn.js';
 import { Ring_gone as _ring_gone, Ring_off, Ring_on } from './do_wear.js';
-import { xytodir, throwit_mon_hit, endmultishot, set_msg_xy } from './cmd.js';
+import { xytodir, set_msg_xy } from './cmd.js';
+import { throwit_mon_hit, endmultishot } from './dothrow.js';
 import { ceiling, body_part, force_decor } from './cmd.js';
-import { breaks, delobj, hot_pursuit, Shknam, losehp, obfree } from './dokick.js';
+import { hot_pursuit, Shknam, obfree } from './dokick.js';
+import { breaks } from './dothrow.js';
+import { delobj } from './invent.js';
+import { losehp } from './hack.js';
 import { weight } from './weight.js';
 import { ignite_items, mon_mattk_raw, poisoned_u, expels_gu } from './mhitu.js';
 import { stackobj } from './sp_lev.js';
@@ -125,16 +146,19 @@ import { HEAD, EYE, FACE, FOOT, IS_FURNITURE, STOMACH } from './const.js';
 import { mbodypart } from './cmd.js';
 import { surface } from './cmd.js';
 import { on_level } from './dungeon.js';
-import { ok_to_quest, is_drawbridge_wall, db_under_typ } from './dokick.js';
-import { mksobj_at, stairway_at } from './mklev.js';
+import { ok_to_quest } from './dokick.js';
+import { is_drawbridge_wall, db_under_typ } from './dbridge.js';
+import { mksobj_at } from './mklev.js';
+import { stairway_at } from './stairs.js';
 import { erosion_matters, is_flammable, is_rustprone, is_crackable, is_corrodeable, is_rottable, is_damageable } from './mklev.js';
 
 /* C objnam.c:347 distant_name — use the canonical object naming body. */
 async function distant_name(otmp, func) { return await distant_name_real(otmp, func); }
 import { polyself, polymon, rehumanize as rehumanize_real } from './polyself.js';
-import { healup, potionbreathe, make_slimed, make_stoned, self_invis_message, do_enlightenment_effect as do_enlightenment_effect_real, make_stunned, dryup, set_itimeout } from './potion.js';
+import { speed_up, healup, potionbreathe, make_slimed, make_stoned, self_invis_message, do_enlightenment_effect as do_enlightenment_effect_real, make_stunned, set_itimeout } from './potion.js';
+import { dryup } from './fountain.js';
 import { is_youmonst } from './mhitm.js';
-import { poly_when_stoned } from './mhitm.js';
+import { poly_when_stoned } from './mondata.js';
 import { instapetrify } from './cmd.js';
 import { mon_pmname } from './do_name.js';
 import { HAND } from './const.js';
@@ -148,15 +172,6 @@ import { makewish } from './wizcmds.js';
  * zapnodir()'s WAN_LIGHT / SPE_LIGHT arm (see the note at the former stub). */
 import { litroom, magic_map_background, sense_trap, show_map_spot } from './read.js';
 import { PM_GREMLIN, PM_SILVER_DRAGON, PM_CHROMATIC_DRAGON, PM_HEALER, PM_KNIGHT, PM_MONK, PM_CYCLOPS, PM_FLOATING_EYE } from './pm.generated.js';
-/* pm.generated.js's generator dropped this one as a "duplicate" of PM_PRIEST
- * (275, the temple NPC) — the role player-character monster ("priest,
- * priestess, cleric", monsters.h) sits at index 337, between PM_MONK (336)
- * and PM_RANGER (338), which is what C's `you.h` PM_CLERIC macro names.
- * Verified by counting monsters.h's MON() role block in file order.
- * (PM_WIZARD (343) is NOT re-imported here — it already exists as a local
- * const below, in the same value, for is_mplayer's PM_ARCHEOLOGIST..
- * PM_WIZARD bound; reuse it rather than collide with a second binding.) */
-const PM_CLERIC_ZAP = 337;
 // ── Attribute indices (attrib.h:16-22 A_STR..A_CHA) ──────────────────────────
 // These used to be three local `const`s (A_STR/A_WIS/A_CON only), so
 // drain_item's A_INT / A_DEX / A_CHA arms read unbound identifiers and raised
@@ -176,27 +191,28 @@ import { DEAF, INVULNERABLE, PLNMSG_CAUGHT_IN_EXPLOSION, PLNMSG_TOWER_OF_FLAME,
          DIED, Upolyd, engulfing_u, M_AP_TYPE, M_SEEN_MAGR, M_SEEN_FIRE,
          M_SEEN_COLD, M_SEEN_SLEEP, M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_REFL, LOST_EXPLODING,
          HALF_SPDAM } from './const.js';
-import { upstart } from './mklev.js';
+import { upstart } from './hacklib.js';
 import { noname_monnam } from './mhitm.js';
 import { ARTICLE_THE } from './const.js';
 import { cxname_singular } from './objnam.js';
 import { bare_artifactname, ansimpleoname } from './objnam.js';
-import { Monnam, monstseesu, monstunseesu, cvt_adtyp_to_mseenres,
-         death_inflicted_by, burn_away_slime } from './mcastu.js';
+import { Monnam, monstseesu, monstunseesu, cvt_adtyp_to_mseenres, death_inflicted_by } from './mcastu.js';
+import { burn_away_slime } from './timeout.js';
 import { s_suffix, ugolemeffects } from './mhitm.js';
 import { rndmonnam } from './priest.js';
 import { end_burn, fall_asleep } from './timeout.js';
-import { monPmname, nonlivingMon, mon_set_minvis } from './makemon.js';
-import { setmangry, wake_nearto } from './mklev.js';
+import { monPmname, nonlivingMon } from './makemon.js';
+import { mon_set_minvis } from './worn.js';
+import { setmangry, wake_nearto } from './mon.js';
 /* C explode.c:1048-1051 — mon_explodes kills the exploder BEFORE explode() so
  * it "won't appear to be caught in its own explosion".  This was a throw on the
  * premise that mondead() was unported; js/mklev.js:15066 has it. */
-import { mondead as mondead_zap } from './mklev.js';
+import { mondead as mondead_zap } from './mon.js';
 import { pay_for_damage, make_angry_shk } from './shk.js';
 import { shk_your as shk_your_uy, Shk_Your as Shk_Your_uy } from './shk.js';
 import { corpse_xname as corpse_xname_uy } from './objnam.js';
 import { cxname_singular as cxname_singular_bh } from './objnam.js';
-import { livelog_printf } from './display.js';
+import { livelog_printf } from './pline.js';
 import { LL_CONDUCT } from './const.js';
 import { encumber_msg } from './weight.js';
 import { dist2 } from './hacklib.js';
@@ -207,24 +223,31 @@ import { LAVAPOOL, LAVAWALL, IRONBARS, DRAWBRIDGE_UP, ICE, VWALL, HWALL,
          Is_rogue_level, ERODE_CORRODE, EF_GREASE, EF_VERBOSE,
          M_SEEN_ACID } from './const.js';
 import { hliquid, hcolor } from './mhitm.js';
-import { You_hear, You_feel } from './display.js';
-import { docrt, urgent_pline } from './display.js';
+import { You_hear, You_feel } from './pline.js';
+import { docrt } from './display.js';
+import { urgent_pline } from './pline.js';
 import { knowninvisible } from './display.js';
 import { couldsee } from './vision.js';
-import { in_rooms, add_damage, shop_keeper, costly_spot, currency, billable, contained_cost } from './shk.js';
+import { add_damage, shop_keeper, costly_spot, currency, billable, contained_cost } from './shk.js';
+import { in_rooms } from './hack.js';
 import { picking_at, reset_pick, getdir, boxlock, doorlock } from './lock.js';
 import { stop_occupation } from './allmain.js';
-import { fix_wall_spines, obj_ice_effects, maybe_unhide_at } from './mklev.js';
-import { set_ustuck } from './mklev.js';
-import { On_stairs } from './mklev.js';
+import { obj_ice_effects } from './mklev.js';
+import { fix_wall_spines } from './mkmaze.js';
+import { maybe_unhide_at } from './mon.js';
+import { set_ustuck } from './mon.js';
+import { On_stairs } from './stairs.js';
 import { unstuck } from './dog.js';
 import { spot_time_left, spot_stop_timers, start_timer, stop_timer, peek_timer } from './timeout.js';
 import { TIMER_OBJECT, REVIVE_MON, ROT_CORPSE } from './const.js';
-import { spoteffects } from './landing-effects.js';
-import { is_moat, is_db_wall, find_drawbridge } from './dokick.js';
+import { spoteffects } from './hack.js';
+import { is_moat, is_db_wall, find_drawbridge } from './dbridge.js';
 import { shkname, stolen_value } from './dokick.js';
-import { cvt_sdoor_to_door, draft_message, set_utrap, dighole, bury_an_obj, unpunish, o_unleash,
-         destroy_drawbridge, open_drawbridge, close_drawbridge, watch_dig, zap_dig_pit } from './dig.js';
+import { draft_message, dighole, bury_an_obj, destroy_drawbridge, open_drawbridge, close_drawbridge, watch_dig, zap_dig_pit } from './dig.js';
+import { cvt_sdoor_to_door } from './detect.js';
+import { unpunish } from './read.js';
+import { set_utrap } from './trap.js';
+import { o_unleash } from './apply.js';
 import { in_town } from './cmd.js';
 import { rloco } from './steal.js';
 import { reset_utrap } from './trap.js';
@@ -233,11 +256,13 @@ import { long_to_any, obj_to_any, mstatusline, display_minventory, ustatusline }
 import { display_cinventory, display_binventory, set_cknown_lknown } from './cmd.js';
 import { SchroedingersBox } from './pickup_container.js';
 import { the } from './objnam.js';
-import { Invocation_lev } from "./mkmaze.js";
-import { noit_Monnam, resists_drli } from './mhitm.js';
+import { Invocation_lev } from './dungeon.js';
+import { noit_Monnam } from './mhitm.js';
+import { resists_drli } from './mondata.js';
 import { wakeup, wakeup_attack, update_inventory } from './mhitm.js';
 import { sticks, abuse_dog } from './dog.js';
-import { mhurtle, flash_hits_mon } from './cmd.js';
+import { flash_hits_mon } from './cmd.js';
+import { mhurtle } from './dothrow.js';
 import { XKILL_NOMSG, XKILL_NOCONDUCT } from './uhitm.js';
 /* C zap.c:341-347 bhitm's WAN_TELEPORTATION/SPE_TELEPORT_AWAY case needs
  * u_teleport_mon (teleport.c:2261-2292) — a real, fully-ported exported body
@@ -247,7 +272,8 @@ import { u_teleport_mon, tele } from './teleport.js';
 /* C zap.c:263-333 bhitm's WAN_POLYMORPH/SPE_POLYMORPH/POT_POLYMORPH case needs
  * newcham (mon.c:5277, the real body — js/mklev.js:16429) and bypass_obj
  * (worn.c:1110, js/worn.js) — both real, fully-ported exported bodies. */
-import { newcham, vegetarian } from './mklev.js';
+import { vegetarian } from './mklev.js';
+import { newcham } from './mon.js';
 import { bypass_obj } from './worn.js';
 import { LEVITATION, FLYING, NON_PM, MCORPSENM, ismnum, NO_NC_FLAGS, NC_SHOW_MSG, NC_VIA_WAND_OR_SPELL } from './const.js';
 import { PM_LONG_WORM } from './pm.generated.js';
@@ -259,12 +285,12 @@ import { trapname } from "./makemon.js";
 import { can_reach_floor } from "./hold_another_object.js";
 import { cnv_trap_obj, deltrap, into_vs_onto } from "./trap.js";
 import { drag_ball, move_bc } from './ball.js';
-import { u_on_newpos } from './mklev.js';
+import { u_on_newpos } from './dungeon.js';
 import { HVY_ENCUMBER } from './const.js';
 import { test_move as _ut_test_move, check_leash as _ut_check_leash, bad_rock as _ut_bad_rock, dismount_steed } from './cmd.js';
 import { vision_recalc as _ut_vision_recalc } from './vision.js';
 import { exercise as _ut_exercise } from './attrib.js';
-import { inv_weight as _ut_inv_weight, weight_cap as _ut_weight_cap, calc_capacity as _ut_calc_capacity } from './weight.js';
+import { inv_weight as _ut_inv_weight, weight_cap as _ut_weight_cap, calc_capacity as _ut_calc_capacity } from './hack.js';
 import { helpless as _ut_helpless, killed } from './mhitm.js';
 import { set_malign as _ut_set_malign } from './makemon.js';
 import { rider_cant_reach as _ut_rider_cant_reach } from './steed.js';
@@ -1946,232 +1972,8 @@ export async function zapyourself(obj, ordinary) {
         learnwand(obj);
     return damage;
 }
-/* ---------------------------------------------------------------------------
- * findone — find/reveal every "something" at one location (detect.c:1640).
- * C ref: nethack-c/src/detect.c:1640-1727 findone(zx, zy, whatfound).
- *
- * This is the do_clear_area() callback used by findit().  It reveals and counts
- * secret doors (SDOOR→DOOR), secret corridors (SCORR→CORR), unseen traps,
- * trapped closed doors, and hidden / not-currently-spottable monsters.  It
- * draws core RNG when sense_trap hallucinates an object. Discovery flashes
- * use FOUND_FLASH_COUNT=6; monster glyphs draw from the display RNG. */
-/* C detect.c:906-953 detect_obj_traps(), findone() call only (ft set,
- * show_them, how 0), including sense_trap's Hallucination arm. */
-function detect_obj_traps(objlist, ft) {
-    const trapglyph = trap_to_glyph({ ttyp: TRAPPED_CHEST });
-    for (let otmp = objlist; otmp; otmp = otmp.nobj) {
-        const xp = { value: 0 }, yp = { value: 0 };
-        const box = (otmp.otyp === 214 /* LARGE_BOX */ || otmp.otyp === 215 /* CHEST */);
-        if ((box && otmp.otrapped) || Has_contents(otmp)) {
-            if (!get_obj_location(otmp, xp, yp, BURIED_TOO | CONTAINED_TOO)
-                || !isok(xp.value, yp.value)
-                || xp.value !== ft.x || yp.value !== ft.y)
-                continue;
-        }
-        if (box && otmp.otrapped) {
-            otmp.tknown = 1;
-            observe_object(otmp);
-            flash_glyph_at(xp.value, yp.value, trapglyph, 6);
-            sense_trap({ tx: xp.value, ty: yp.value, ttyp: TRAPPED_CHEST, tseen: 1 }, xp.value, yp.value, 0);
-            foundone(xp.value, yp.value, GLYPHCLS_TRAP);
-            ft.num_traps++;
-        }
-        if (Has_contents(otmp))
-            detect_obj_traps(otmp.cobj, ft);
-    }
-}
 
-function findone(zx, zy, found) {
-    found.x = zx; found.y = zy; /* ft_cc, detect.c:1648 */
-    const lev = game.level?.at(zx, zy);
-    if (!lev) return;
-    let mtmp = m_at(zx, zy);
-    const ttmp = t_at(zx, zy);
-    /* C detect.c:1648: drop dead monsters / dormant guards. */
-    if (mtmp && (DEADMONSTER(mtmp) || (mtmp.isgd && !mtmp.mx)))
-        mtmp = null;
 
-    if (lev.typ === SDOOR) {
-        flash_glyph_at(zx, zy, cmap_glyph(lev.horizontal ? 16 : 15), 6);
-        /* C detect.c:1657-1662: cvt_sdoor_to_door → typ=DOOR; reveal. */
-        cvt_sdoor_to_door(lev);
-        recalc_block_point(zx, zy);
-        /* C detect.c:1663-1666: magic_map_background(zx, zy, 0) — the door glyph
-         * becomes the remembered glyph, so an unseen door is painted. */
-        magic_map_background(lev, zx, zy);
-        /* C detect.c:1610-1624 foundone(): cmap glyph => seenv = SVALL, newsym
-         * with temporary visibility, then the incoming bitmap returns. */
-        lev.seenv = SVALL;
-        const row = game.viz_array?.[zy];
-        const saved = row?.[zx];
-        if (row && !Blind()) row[zx] = COULD_SEE | IN_SIGHT;
-        try {
-            newsym(zx, zy);
-        } finally {
-            if (row) row[zx] = saved;
-        }
-        found.num_sdoors++;
-    } else if (lev.typ === SCORR) {
-        flash_glyph_at(zx, zy, cmap_glyph(22 /* S_corr */), 6);
-        /* C detect.c:1663-1670: magic_map_background, then foundone. */
-        lev.typ = CORR;
-        unblock_point(zx, zy);
-        /* C detect.c:1664: retain magic mapping's glyph identity and memory rules. */
-        magic_map_background(lev, zx, zy);
-        /* C detect.c:1610-1624: the discovered cmap has all faces seen;
-         * newsym gets temporary visibility, then the incoming bitmap returns. */
-        lev.seenv = SVALL;
-        const row = game.viz_array?.[zy];
-        const saved = row?.[zx];
-        if (row && !Blind()) row[zx] = COULD_SEE | IN_SIGHT;
-        try {
-            newsym(zx, zy);
-        } finally {
-            if (row) row[zx] = saved;
-        }
-        found.num_scorrs++;
-    }
-
-    /* C detect.c:1672-1679: an unseen, non-statue trap is revealed. */
-    if (ttmp && !ttmp.tseen && (ttmp.ttyp | 0) !== STATUE_TRAP) {
-        flash_glyph_at(zx, zy, trap_to_glyph(ttmp), 6);
-        ttmp.tseen = 1;
-        sense_trap(ttmp, zx, zy, 0);
-        foundone(zx, zy, GLYPHCLS_TRAP);
-        found.num_traps++;
-    }
-    /* C detect.c:1680-1687: a trapped CLOSED/LOCKED door counts as a trap. */
-    if (lev.typ === DOOR
-        && (lev.doormask & (D_CLOSED | D_LOCKED))
-        && (lev.doormask & D_TRAPPED)) {
-        flash_glyph_at(zx, zy, trap_to_glyph({ ttyp: TRAPPED_DOOR }), 6);
-        sense_trap({ tx: zx, ty: zy, ttyp: TRAPPED_DOOR, tseen: 1 }, zx, zy, 0);
-        foundone(zx, zy, GLYPHCLS_TRAP);
-        found.num_traps++;
-    }
-
-    /* C detect.c:1687-1693: trapped chests. */
-    detect_obj_traps(game.level?.buriedobjlist, found);
-    detect_obj_traps(game.fobj, found);
-    if (mtmp) detect_obj_traps(mtmp.minvent, found);
-    if (u_at(zx, zy)) detect_obj_traps(game.invent, found);
-
-    /* C detect.c:1695-1721: hidden / unspottable monster. */
-    if (mtmp && (!canspotmon(mtmp) || mtmp.mundetected || mtmp.m_ap_type)) {
-        if (mtmp.m_ap_type) {
-            flash_glyph_at(zx, zy, mon_to_glyph(mtmp), 6);
-            seemimic(mtmp); /* detect.c:1699: also unblocks a boulder-mimic's vision */
-            found.num_mons++;
-        } else if (mtmp.mundetected
-                   && (((mtmp.data?.mflags1 | 0) & (0x100 /* M1_HIDE */ | 0x80 /* M1_CONCEAL */))
-                       || mtmp.data?.mlet === 57 /* S_EEL */)) {
-            flash_glyph_at(zx, zy, mon_to_glyph(mtmp), 6);
-            mtmp.mundetected = 0;
-            newsym(zx, zy);
-            found.num_mons++;
-        }
-        /* C5 detect.c:1712-1720 tests the remembered glyph, not the screen. */
-        if (lev.remembered_glyph?.cls !== GLYPHCLS_INVIS) {
-            if (!canspotmon(mtmp)) {
-                flash_glyph_at(zx, zy, { ch: 'I', color: NO_COLOR, cls: GLYPHCLS_INVIS }, 6);
-                map_invisible(zx, zy);
-                found.num_invis++;
-            }
-        } else {
-            found.num_kept_invis++;
-        }
-    } else if (unmap_invisible(zx, zy)) {
-        flash_glyph_at(zx, zy, { ch: 'I', color: NO_COLOR, cls: GLYPHCLS_INVIS }, 6);
-        found.num_cleared_invis++;
-    }
-}
-
-/* ---------------------------------------------------------------------------
- * findit — reveal secret doors/corridors/traps/hidden monsters around the hero.
- * C ref: nethack-c/src/detect.c:1793-1893 findit(void)
- *
- * findit() consumes RNG for hallucinated traps through do_clear_area(findone)'s
- * map scan within BOLT_LIM that counts and reveals secret features, then plines
- * the result.  Returns the number of things found.  The exact reveal text is
- * built from the do_clear_area counts exactly as C does — never scraped.
- * ---------------------------------------------------------------------------
- */
-export async function findit() {
-    const g = game;
-    if (g.u?.uswallow) return 0;
-
-    const found = {
-        num_sdoors: 0, num_scorrs: 0, num_traps: 0,
-        num_mons: 0, num_invis: 0, num_cleared_invis: 0, num_kept_invis: 0,
-    };
-    /* C detect.c:1816: do_clear_area(u.ux, u.uy, BOLT_LIM, findone, &found). */
-    do_clear_area(g.u.ux | 0, g.u.uy | 0, BOLT_LIM,
-                  findone, found, true);
-
-    /* C detect.c:1819-1822: k = count of distinct categories present (0..4). */
-    const k = (found.num_sdoors ? 1 : 0) + (found.num_scorrs ? 1 : 0)
-            + (found.num_traps ? 1 : 0) + (found.num_mons ? 1 : 0);
-
-    let num = 0;
-    let buf = '';
-    /* C detect.c:1824-1833: secret doors. */
-    if (found.num_sdoors) {
-        buf += (found.num_sdoors > 1)
-            ? `${found.num_sdoors} secret doors` : 'a secret door';
-        num += found.num_sdoors;
-    }
-    /* C detect.c:1835-1844: secret corridors. */
-    if (found.num_scorrs) {
-        if (buf) buf += (k === 2) ? ' and ' : ', ';
-        buf += (found.num_scorrs > 1)
-            ? `${found.num_scorrs} secret corridors` : 'a secret corridor';
-        num += found.num_scorrs;
-    }
-    /* C detect.c:1845-1855: traps. */
-    if (found.num_traps) {
-        if (buf) buf += (k === 3 && !found.num_mons) ? ', and '
-                      : (k === 2) ? ' and ' : ', ';
-        buf += (found.num_traps > 1)
-            ? `${found.num_traps} traps` : 'a trap';
-        num += found.num_traps;
-    }
-    /* C detect.c:1862-1871: hidden monsters. */
-    if (found.num_mons) {
-        if (buf) buf += (k > 2) ? ', and ' : ' and ';
-        buf += (found.num_mons > 1)
-            ? `${found.num_mons} hidden monsters` : 'a hidden monster';
-        num += found.num_mons;
-    }
-    if (buf) {
-        /* C detect.c:1872: You("reveal %s!", buf). */
-        pushRngLogEntry('>pline @ findit(detect.c:1872)');
-        await pline(`You reveal ${buf}!`);
-    }
-
-    /* C5 detect.c:1867-1885: kept markers qualify wording, not the return. */
-    if (found.num_invis) {
-        const unseen = found.num_invis > 1
-            ? `${found.num_invis}${found.num_kept_invis ? ' other' : ''} unseen monsters`
-            : `${found.num_kept_invis ? 'another' : 'an'} unseen monster`;
-        await pline(`You detect ${unseen}!`);
-        num += found.num_invis;
-    }
-    if (found.num_cleared_invis) {
-        if (!num) {
-            /* C pline.c:387-400 You_feel uses the actual Unaware predicate. */
-            const feel = Unaware() ? 'You dream that you feel ' : 'You feel ';
-            await pline(`${feel}${found.num_kept_invis ? 'somewhat ' : ''}less paranoid.`);
-        }
-        num += found.num_cleared_invis;
-    }
-
-    /* C detect.c:1890: if (!num) You("don't find anything."). */
-    if (!num) {
-        pushRngLogEntry('>findit @ js/zap.js (detect.c:1889)');
-        await pline("You don't find anything.");
-    }
-    return num;
-}
 export async function zapnodir(obj) {
     const g = game;
     const otyp = obj ? (obj.otyp | 0) : 0;
@@ -2265,31 +2067,6 @@ const FLASH_TYPES = [
     'blast of disintegration', 'blast of lightning', 'blast of poison gas',
     'blast of acid', '', '',
 ];
-/* C mthrowu.c:31-48 hallublasts[] — hallucinatory blast flavour text, drawn
- * by rnd_hallublast() (mthrowu.c:51-55) via rn2(SIZE(hallublasts)). */
-const HALLUBLASTS = [
-    'asteroids', 'beads', 'bubbles', 'butterflies', 'champagne', 'chaos',
-    'coins', 'cotton candy', 'crumbs', 'dark matter', 'darkness', 'data',
-    'dust specks', 'emoticons', 'emotions', 'entropy', 'flowers', 'foam',
-    'fog', 'gamma rays', 'gelatin', 'gemstones', 'ghosts', 'glass shards',
-    'glitter', 'good vibes', 'gravel', 'gravity', 'gravy', 'grawlixes',
-    'holy light', 'hornets', 'hot air', 'hyphens', 'hypnosis', 'infrared',
-    'insects', 'jargon', 'laser beams', 'leaves', 'lightening', 'logic gates',
-    'magma', 'marbles', 'mathematics', 'megabytes', 'metal shavings',
-    'metapatterns', 'meteors', 'mist', 'mud', 'music', 'nanites', 'needles',
-    'noise', 'nostalgia', 'oil', 'paint', 'photons', 'pixels', 'plasma',
-    'polarity', 'powder', 'powerups', 'prismatic light', 'pure logic',
-    'purple', 'radio waves', 'rainbows', 'rock music', 'rocket fuel', 'rope',
-    'sadness', 'salt', 'sand', 'scrolls', 'sludge', 'smileys', 'snowflakes',
-    'sparkles', 'specularity', 'spores', 'stars', 'steam', 'tetrahedrons',
-    'text', 'the past', 'tornadoes', 'toxic waste', 'ultraviolet light',
-    'viruses', 'water', 'waveforms', 'wind', 'X-rays', 'zorkmids',
-];
-/* C mthrowu.c:51-55 rnd_hallublast(void): return ROLL_FROM(hallublasts) =
- * hallublasts[rn2(SIZE(hallublasts))]. */
-export function rnd_hallublast() {
-    return HALLUBLASTS[rn2(HALLUBLASTS.length)];
-}
 /* C zap.c:6420-6442 flash_str(typ, nohallu): typ = zaptype(typ); while
  * hallucinating (and not suppressed by nohallu) always returns
  * "blast of <rnd_hallublast()>" instead of the real flash_types[] name. */
@@ -2554,6 +2331,13 @@ function _uhas(prop) {
 /* C trap.c:4618-4655 acid_damage().  zap.c reaches this with a carried weapon;
  * retain C's inventory-resistance, scroll-erasure, and canonical erosion arms. */
 import { acid_damage as acid_damage_zap } from './trap.js';
+import { explode } from './explode.js'; // relocate-fns
+import { findit } from './detect.js'; // relocate-fns
+import { rnd_hallublast } from './mthrowu.js'; // relocate-fns
+export { rnd_hallublast } from './mthrowu.js'; // relocate-fns
+export { findit } from './detect.js'; // relocate-fns
+export { explode } from './explode.js'; // relocate-fns
+export { AD_ACID, AD_COLD, AD_DISN, AD_DRST, AD_ELEC, AD_FIRE, AD_MAGM, AD_RBRE, DEADMONSTER, NO_KILLER_PREFIX_ZAP, PHYS_EXPL_TYPE, PM_WIZARD, POT_OIL, RAY, SCROLL_CLASS, SCR_FIRE, WAND_CLASS, WAN_DIGGING, WAN_MAGIC_MISSILE, WAN_SLEEP, _Halluc, _ZAP_HALF_PHDAM, _cm_Antimagic, _completely_burns, _expl_deaf, _expl_digests, _expl_is_vampshifter, _expl_mon_moving, _expl_uhim, _expl_uhis, _wand_Role_if, _zp_burn_away_slime, oc_dir_of }; // relocate-fns
 
 /* C zap.c:3011 ubreatheu — poly'd hero uses its breath attack against itself
  * (getdir gave the self-direction '.'/'s', so u.dx==u.dy==u.dz==0).  The bolt
@@ -3581,42 +3365,13 @@ async function maybe_destroy_item_mon(carrier, obj, dmgtyp) {
 
 
 
-/* C monattk.h:42-78 — the damage types this file names. */
-const AD_PHYS = 0;
 const AD_MAGM = 1;
 const AD_DRST = 7;
-const AD_SPC2 = 10;
-const AD_DREN = 16;
-const AD_DRDX = 30;
-const AD_DRCO = 31;
-const AD_DISE = 33;
-const AD_PEST = 38;
-const AD_SPEL = 241;
-const AD_ENCH = 41;
 /* C hack.h:1471 PHYS_EXPL_TYPE — "currently only gas spores". */
 const PHYS_EXPL_TYPE = -1;
-/* C defsym.h:239-247 PCHAR2 rows S_expl_tl..S_expl_br. */
-const S_expl_tl = 96, S_expl_tc = 97, S_expl_tr = 98;
-const S_expl_ml = 99, S_expl_mc = 100, S_expl_mr = 101;
-const S_expl_bl = 102, S_expl_bc = 103, S_expl_br = 104;
-/* C explode.c:10-14 — "Arrays are column first, while the screen is row first". */
-const _explosion_cmap = [
-    [S_expl_tl, S_expl_ml, S_expl_bl],
-    [S_expl_tc, S_expl_mc, S_expl_bc],
-    [S_expl_tr, S_expl_mr, S_expl_br],
-];
-/* C explode.c:17-22 enum explode_action. */
-const EXPL_NO_ACTION = 0, EXPL_MON = 1, EXPL_HERO = 2, EXPL_SKIP = 4;
-/* C display.h:527 GLYPH_EXPLODE_DARK_OFF — js/glyphs.js:74 carries the same
- * 7157 as the base of the explosion glyph block. */
-const GLYPH_EXPLODE_DARK_OFF = 7157;
 
 function _expl_deaf() {
     return _live_deaf_reading();
-}
-/* C youprop.h:73 Invulnerable — u.uprops[INVULNERABLE].intrinsic. */
-function _expl_invulnerable() {
-    return !!(game.u?.uprops?.[INVULNERABLE]?.intrinsic | 0);
 }
 /* C decl.h svc.context.mon_moving — TRUE while movemon() is running.  Same
  * spelling js/cmd.js:4003 reads. */
@@ -3624,32 +3379,7 @@ function _expl_mon_moving() {
     return !!(game.context && game.context.mon_moving);
 }
 
-/* C display.h:586-592 explosion_to_glyph(expltyp, idx).  The ternary chain
- * selects GLYPH_EXPLODE_<TYPE>_OFF; display.h:527-534 makes those enum values
- * consecutive multiples of MAXEXPCHARS from the DARK base in EXPL_* order, and
- * every type the chain does not name falls through to EXPL_FIERY. */
-function explosion_to_glyph(expltyp, idx) {
-    const t = (expltyp >= EXPL_DARK && expltyp <= EXPL_FROSTY) ? expltyp : EXPL_FIERY;
-    return (idx - S_expl_tl) + GLYPH_EXPLODE_DARK_OFF + MAXEXPCHARS * t;
-}
 
-/* C explode.c:26-113 explosionmask(m, adtyp, olet) — does this target need a
- * shield-effect flash?  AD_PHYS is the FIRST case on both the hero side and the
- * monster side and it leaves the result at EXPL_NONE, which is why a gas spore
- * blast has no shield animation and why hero and monster both take FULL damage
- * (the EXPL_HERO / EXPL_MON bits are exactly what divert to the items-only and
- * golemeffects arms further down).  The other arms read hero properties and
- * monster mresists; unreachable from mon_explodes' gas-spore call. */
-/* C youprop.h:26-51 the hero-side *_resistance macros explosionmask's hero
- * switch reads DIRECTLY — u.uprops[propidx].intrinsic || .extrinsic, with NO
- * further artifact/worn-item scan (unlike Resists_Elem, which the MONSTER
- * side of this same switch calls and which DOES walk wielded/worn items).
- * Porting the hero arm with Resists_Elem(youmonst, ...) would be a DIFFERENT,
- * broader check than C's — a real behavioural divergence, not a shortcut. */
-function _expl_hero_resist(propidx) {
-    const p = game.u?.uprops?.[propidx];
-    return !!((p?.intrinsic | 0) || (p?.extrinsic | 0));
-}
 /* C monst.h:217-219 is_vampshifter(mon) — mon->cham is one of the three
  * vampire-form indices.  PM_VAMPIRE_LEADER is 5.0's name for the monster
  * js/pm.generated.js still exports as PM_VAMPIRE_LORD (3.7 spelling, same
@@ -3661,108 +3391,8 @@ function _expl_is_vampshifter(mon) {
     return cham === PM_VAMPIRE_ZAP || cham === PM_VAMPIRE_LEADER_ZAP
         || cham === PM_VLAD_ZAP;
 }
-/* C explode.c:26-113 explosionmask(m, adtyp, olet) — does this target need a
- * shield-effect flash?  Two parallel switches (hero vs monster) on the same
- * adtyp values; the hero arm reads the plain *_resistance macros (uprops
- * only), the monster arm calls the full resists_*(m) family (uprops +
- * mon_resistancebits + wielded-artifact + worn/carried items).  NO RNG on
- * either side. */
-async function explosionmask(m, adtyp, olet) {
-    const is_you = is_youmonst(m);
-    if (is_you) {
-        switch (adtyp) {
-        case AD_PHYS:
-            return EXPL_NO_ACTION; /* C explode.c:33-36 */
-        case AD_MAGM:
-            return _cm_Antimagic() ? EXPL_HERO : EXPL_NO_ACTION;
-        case AD_FIRE:
-            return _expl_hero_resist(FIRE_RES) ? EXPL_HERO : EXPL_NO_ACTION;
-        case AD_COLD:
-            return _expl_hero_resist(COLD_RES) ? EXPL_HERO : EXPL_NO_ACTION;
-        case AD_DISN: {
-            const md = m ? m.data : null;
-            const hit = (olet === WAND_CLASS)
-                ? (nonliving(md) || is_demon(md))
-                : _expl_hero_resist(DISINT_RES);
-            return hit ? EXPL_HERO : EXPL_NO_ACTION;
-        }
-        case AD_ELEC:
-            return _expl_hero_resist(SHOCK_RES) ? EXPL_HERO : EXPL_NO_ACTION;
-        case AD_DRST:
-            return _expl_hero_resist(POISON_RES) ? EXPL_HERO : EXPL_NO_ACTION;
-        case AD_ACID:
-            return _expl_hero_resist(ACID_RES) ? EXPL_HERO : EXPL_NO_ACTION;
-        default:
-            await impossible('explosion type %d?', adtyp);
-            return EXPL_NO_ACTION;
-        }
-    } else {
-        switch (adtyp) {
-        case AD_PHYS:
-            return EXPL_NO_ACTION; /* C explode.c:75-76 */
-        case AD_MAGM:
-            return resists_magm(m) ? EXPL_MON : EXPL_NO_ACTION;
-        case AD_FIRE:
-            return Resists_Elem(m, FIRE_RES) ? EXPL_MON : EXPL_NO_ACTION;
-        case AD_COLD:
-            return Resists_Elem(m, COLD_RES) ? EXPL_MON : EXPL_NO_ACTION;
-        case AD_DISN: {
-            const md = m ? m.data : null;
-            const hit = (olet === WAND_CLASS)
-                ? (nonliving(md) || is_demon(md) || _expl_is_vampshifter(m))
-                : !!Resists_Elem(m, DISINT_RES);
-            return hit ? EXPL_MON : EXPL_NO_ACTION;
-        }
-        case AD_ELEC:
-            return Resists_Elem(m, SHOCK_RES) ? EXPL_MON : EXPL_NO_ACTION;
-        case AD_DRST:
-            return Resists_Elem(m, POISON_RES) ? EXPL_MON : EXPL_NO_ACTION;
-        case AD_ACID:
-            return Resists_Elem(m, ACID_RES) ? EXPL_MON : EXPL_NO_ACTION;
-        default:
-            await impossible('explosion type %d?', adtyp);
-            return EXPL_NO_ACTION;
-        }
-    }
-}
 
-/* C explode.c:986-1012 adtyp_to_expltype(adtyp) — damage type to the explosion
- * type that colours the blast glyphs. */
-export function adtyp_to_expltype(adtyp) {
-    switch (adtyp) {
-    case AD_ELEC: /* "Electricity isn't magical ... Magical is the next best" */
-    case AD_SPEL:
-    case AD_DREN:
-    case AD_ENCH:
-        return EXPL_MAGICAL;
-    case AD_FIRE:
-        return EXPL_FIERY;
-    case AD_COLD:
-        return EXPL_FROSTY;
-    case AD_DRST:
-    case AD_DRDX:
-    case AD_DRCO:
-    case AD_DISE:
-    case AD_PEST:
-    case AD_PHYS: /* gas spore */
-        return EXPL_NOXIOUS;
-    default:
-        /* C: impossible("adtyp_to_expltype: bad explosion type %d", adtyp) */
-        return EXPL_FIERY;
-    }
-}
 
-/* C monst.h:92-93 monst{,un}seesu_ad(adtyp) — record/forget that onlookers saw
- * the hero resist this damage type.  mondata.c:1522-1536 maps AD_PHYS to
- * M_SEEN_NOTHING, and mondata.c:1562/1576 return immediately on M_SEEN_NOTHING,
- * so a gas-spore blast records nothing.  RNG-free for every adtyp. */
-function _expl_monstseesu_ad(adtyp, saw_resist) {
-    const seenres = cvt_adtyp_to_mseenres(adtyp);
-    if (saw_resist)
-        monstseesu(seenres);
-    else
-        monstunseesu(seenres);
-}
 
 /* C you.h:315-316 uhim()/uhis() — the objective/possessive pronoun for the
  * hero, used only to build a killer string ("caught himself in his own
@@ -3799,608 +3429,11 @@ function _expl_digests(mon) {
     return false;
 }
 
-/* C explode.c:117-179 engulfer_explosion_msg(adtyp, olet).  Called only when
- * the current target IS u.ustuck (engulfing_u(mtmp) at the call site), so it
- * reads u.ustuck directly, matching C's use of the global. */
-async function _expl_engulfer_msg(adtyp, olet) {
-    const u = game.u || {};
-    let adj;
-    if (_expl_digests(u.ustuck)) {
-        switch (adtyp) {
-        case AD_FIRE: adj = 'heartburn'; break;
-        case AD_COLD: adj = 'chilly'; break;
-        case AD_DISN:
-            adj = (olet === WAND_CLASS) ? 'irradiated by pure energy' : 'perforated';
-            break;
-        case AD_ELEC: adj = 'shocked'; break;
-        case AD_DRST: adj = 'poisoned'; break;
-        case AD_ACID: adj = 'an upset stomach'; break;
-        default: adj = 'fried'; break;
-        }
-        await pline(`${Monnam(u.ustuck)} gets ${adj}!`);
-    } else {
-        switch (adtyp) {
-        case AD_FIRE: adj = 'toasted'; break;
-        case AD_COLD: adj = 'chilly'; break;
-        case AD_DISN:
-            adj = (olet === WAND_CLASS) ? 'overwhelmed by pure energy' : 'perforated';
-            break;
-        case AD_ELEC: adj = 'shocked'; break;
-        case AD_DRST: adj = 'intoxicated'; break;
-        case AD_ACID: adj = 'burned'; break;
-        default: adj = 'fried'; break;
-        }
-        await pline(`${Monnam(u.ustuck)} gets slightly ${adj}!`);
-    }
-}
 
-/* C explode.c:199-716 explode(x, y, type, dam, olet, expltype). */
-export async function explode(x, y, type, dam, olet, expltype) {
-    let i, j, damu = dam;
-    let starting = true;
-    let visible = false, any_shield = false;
-    let uhurt = 0; /* 0=unhurt, 1=items damaged, 2=you and items damaged */
-    let str = null;
-    let mtmp, mdef = null;
-    let adtyp;
-    const explmask = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
-    let xx, yy;
-    const expl_shopdamage = { v: false }; /* C explode.c:216 `boolean shopdamage` */
-    let generic = false, do_hallu = false;
-    let exploding_wand_typ = 0;
-    const you_exploding = (olet === MON_EXPLODE && type >= 0);
-    let didmsg = false;
-    const u = game.u || {};
 
-    /* C explode.c:224-262 — the olet dispatch. */
-    if (olet === WAND_CLASS) {
-        if (type < 0) {
-            type = -type;
-            exploding_wand_typ = type;
-            /* C explode.c:230-238 — most attack wands produce their own
-               specific explosion type; WAN_DIGGING and WAN_SLEEP are RAY
-               too but have no explosion slot of their own, so they (and
-               every non-RAY wand: light, detect, create monster, wishing,
-               stasis, ...) fall back to the generic magical explosion. */
-            if (oc_dir_of(type) === RAY && type !== WAN_DIGGING && type !== WAN_SLEEP) {
-                type -= WAN_MAGIC_MISSILE;
-                if (type < 0 || type > 9) {
-                    /* C explode.c:236-237: impossible("explode: wand has bad
-                       zap type (%d).", type); type = 0. No known wand otyp
-                       can reach this (verified: every RAY wand's otyp - 429
-                       lands in 0..9), so this is a defensive no-op mirror. */
-                    type = 0;
-                }
-            } else {
-                type = 0;
-            }
-        }
-        /* C explode.c:242-251 — the hero's own share of the blast (damu) is
-           quintered for the three "smart" caster roles, halved for the two
-           physically-hardy ones, and untouched otherwise.  `dam` itself
-           (everything else caught in the blast) is never touched. */
-        if (_wand_Role_if(PM_CLERIC_ZAP) || _wand_Role_if(PM_MONK) || _wand_Role_if(PM_WIZARD)) {
-            damu = Math.trunc(damu / 5);
-        } else if (_wand_Role_if(PM_HEALER) || _wand_Role_if(PM_KNIGHT)) {
-            damu = Math.trunc(damu / 2);
-        }
-    } else if (olet === BURNING_OIL) {
-        exploding_wand_typ = POT_OIL;
-    } else if (olet === SCROLL_CLASS) {
-        exploding_wand_typ = SCR_FIRE;
-    } else if (olet === TRAP_EXPLODE) {
-        type = 0; /* hardcoded to generic magic explosion */
-    }
-    /* C explode.c:263-267 — muse_unslime passes a negative expltype meaning
-       "hero gets credit/blame for killing THIS monster, not the others". */
-    if (expltype < 0) {
-        mdef = m_at(x, y);
-        expltype = -expltype;
-    }
-    /* C explode.c:268-270 */
-    const inside_engulfer = (!!u.uswallow && type >= 0);
-    /* C explode.c:271-284 — a grabber reaching into the blast takes double. */
-    let grabbed = false, grabbing = false;
-    const grabxy = { x: 0, y: 0 };
-    if (u.ustuck && !u.uswallow) {
-        if (Upolyd(u) && sticks(game.youmonst?.data))
-            grabbing = true;
-        else
-            grabbed = true;
-        grabxy.x = u.ustuck.mx | 0;
-        grabxy.y = u.ustuck.my | 0;
-    }
 
-    /* C explode.c:296-303 — a recursive explode() can overwrite svk.killer.name,
-       so keep a copy; do_hallu re-rolls the blamed species per target. */
-    if (olet === MON_EXPLODE && !you_exploding) {
-        str = String(game.svk?.killer?.name || '');
-        do_hallu = (_Halluc()
-                    && (str.indexOf("'s explosion") >= 0
-                        || str.indexOf("s' explosion") >= 0));
-    }
-    if (type === PHYS_EXPL_TYPE) {
-        adtyp = AD_PHYS; /* C explode.c:304-307 — currently only gas spores */
-    } else {
-        /* C explode.c:308-347 — the abs(type)%10 adstr/adtyp table.  If `str` is
-           e.g. "flaming sphere's explosion" from the MON_EXPLODE copy above we
-           still assign adtyp, but do not replace str. */
-        let adstr = null;
 
-        switch (Math.abs(type) % 10) {
-        case 0:
-            adstr = 'magical blast';
-            adtyp = AD_MAGM;
-            break;
-        case 1:
-            adstr = (olet === BURNING_OIL) ? 'burning oil'
-                    : (olet === SCROLL_CLASS) ? 'tower of flame' : 'fireball';
-            adtyp = AD_FIRE; /* fire damage, not physical damage */
-            break;
-        case 2:
-            adstr = 'ball of cold';
-            adtyp = AD_COLD;
-            break;
-        case 4:
-            adstr = (olet === WAND_CLASS) ? 'death field' : 'disintegration field';
-            adtyp = AD_DISN;
-            break;
-        case 5:
-            adstr = 'ball of lightning';
-            adtyp = AD_ELEC;
-            break;
-        case 6:
-            adstr = 'poison gas cloud';
-            adtyp = AD_DRST;
-            break;
-        case 7:
-            adstr = 'splash of acid';
-            adtyp = AD_ACID;
-            break;
-        default:
-            return;
-        }
-        if (!str)
-            str = adstr;
-    }
 
-    /* C explode.c:349-379 — the 3x3 mask pass. */
-    for (i = 0; i < 3; i++)
-        for (j = 0; j < 3; j++) {
-            xx = x + i - 1;
-            yy = y + j - 1;
-            if (!isok(xx, yy)) {
-                explmask[i][j] = EXPL_SKIP;
-                continue;
-            }
-            explmask[i][j] = EXPL_NO_ACTION;
-
-            if (u_at(xx, yy))
-                explmask[i][j] = await explosionmask(game.youmonst, adtyp, olet);
-            /* can be both you and mtmp if you're swallowed or riding */
-            mtmp = m_at(xx, yy);
-            if (!mtmp && u_at(xx, yy))
-                mtmp = u.usteed;
-            if (mtmp && DEADMONSTER(mtmp))
-                mtmp = null;
-            if (mtmp)
-                explmask[i][j] |= await explosionmask(mtmp, adtyp, olet);
-
-            if (mtmp && cansee(xx, yy) && !canspotmon(mtmp))
-                map_invisible(xx, yy);
-            else if (!mtmp)
-                unmap_invisible(xx, yy);
-            if (cansee(xx, yy))
-                visible = true;
-            if ((explmask[i][j] & (EXPL_MON | EXPL_HERO)) !== 0)
-                any_shield = true;
-        }
-
-    if (visible) {
-        /* C explode.c:381-393 — start the explosion.  The DISP_BEAM run records
-           every covered square and the DISP_END below newsym()s each one back;
-           that erase pass is what repaints the exploded monster's square before
-           the pline that follows can page. */
-        for (i = 0; i < 3; i++)
-            for (j = 0; j < 3; j++) {
-                if (explmask[i][j] === EXPL_SKIP)
-                    continue;
-                xx = x + i - 1;
-                yy = y + j - 1;
-                tmp_at(starting ? DISP_BEAM : DISP_CHANGE,
-                       explosion_to_glyph(expltype, _explosion_cmap[i][j]));
-                tmp_at(xx, yy);
-                starting = false;
-            }
-
-        if (any_shield) {
-            /* C explode.c:396-425 — the SHIELD_COUNT shield-flash loop, entered
-               only when some target RESISTED (and flags.sparkle).  The AD_PHYS
-               mask never sets a shield bit, so a gas spore cannot reach it.
-               Per resisting CELL, not at the centre, and with no cansee(). */
-            const shieldCells = [];
-            for (i = 0; i < 3; i++)
-                for (j = 0; j < 3; j++)
-                    if ((explmask[i][j] & (EXPL_MON | EXPL_HERO)) !== 0)
-                        shieldCells.push({ x: x + i - 1, y: y + j - 1,
-                            glyph: explosion_to_glyph(expltype, _explosion_cmap[i][j]) });
-            explode_shield_effect(shieldCells);
-        }
-        /* C explode.c:427-430 else: two nh_delay_output() calls — pure pacing. */
-
-        tmp_at(DISP_END, 0); /* clear the explosion */
-    } else {
-        /* C explode.c:432-442 */
-        if (olet === MON_EXPLODE || olet === TRAP_EXPLODE) {
-            str = 'explosion';
-            generic = true;
-        }
-        if (!_expl_deaf() && olet !== SCROLL_CLASS) {
-            await You_hear('a blast.');
-            didmsg = true;
-        }
-    }
-
-    if (!_expl_deaf() && !didmsg)
-        await pline('Boom!'); /* C explode.c:444-445 */
-
-    if (dam) {
-        for (i = 0; i < 3; i++) {
-            for (j = 0; j < 3; j++) {
-                let itemdmg = 0;
-
-                if (explmask[i][j] === EXPL_SKIP)
-                    continue;
-                xx = x + i - 1;
-                yy = y + j - 1;
-                if (u_at(xx, yy)) {
-                    uhurt = ((explmask[i][j] & EXPL_HERO) !== 0) ? 1 : 2;
-                    /* a poly'd hero attacking INTO its own explosion attack
-                       keeps its skin and its gear (C explode.c:461-467) */
-                    if (!_expl_mon_moving() && you_exploding)
-                        uhurt = 0;
-                } else if (inside_engulfer) {
-                    continue; /* only <u.ux,u.uy> is affected */
-                }
-
-                if (!(u.uswallow && !_expl_mon_moving()))
-                    await zap_over_floor(xx, yy, type, expl_shopdamage, false,
-                                         exploding_wand_typ);
-
-                mtmp = m_at(xx, yy);
-                if (!mtmp && u_at(xx, yy))
-                    mtmp = u.usteed;
-                if (!mtmp)
-                    continue;
-                if (do_hallu) {
-                    /* C explode.c:489-503 — a fresh rndmonnam() per target, and
-                       rndmonnam DRAWS (display rng), so this is a named stop,
-                       not a skip.  "we can't distinguish personal names like
-                       'Barney' here in order to suppress 'the' below, so avoid
-                       any which begins with a capital letter" — retry up to 20
-                       draws for a lowercase-first result. */
-                    let hallu_buf, tryct = 0;
-                    do {
-                        hallu_buf = `${s_suffix(rndmonnam())} explosion`;
-                    } while (hallu_buf[0] !== lowc(hallu_buf[0]) && ++tryct < 20);
-                    str = hallu_buf;
-                }
-                if (engulfing_u(mtmp)) {
-                    /* C explode.c:504-505 engulfer_explosion_msg */
-                    await _expl_engulfer_msg(adtyp, olet);
-                } else if (cansee(xx, yy)) {
-                    if (M_AP_TYPE(mtmp)) {
-                        /* C explode.c:506-507 seemimic(mtmp) */
-                        seemimic(mtmp);
-                    }
-                    await pline(`${Monnam(mtmp)} is caught in the ${str}!`);
-                }
-
-                itemdmg = (await destroy_items_mon(mtmp, adtyp, dam));
-                if (adtyp === AD_FIRE) {
-                    await burnarmor(mtmp);
-                    await ignite_items(mtmp.minvent);
-                }
-
-                if ((explmask[i][j] & EXPL_MON) !== 0) {
-                    /* C explode.c:512-526 — the target resisted: only item
-                       destruction damage lands, plus the golem effect. Damage
-                       from a ring/wand/potion explosion isn't itself of the
-                       "same type" as the explosion, so C ignores that for
-                       golemeffects() and mixes in the item-destruction damage
-                       directly below (imperfect and marginal per its own
-                       comment; ported as-is). */
-                    await _expl_golemeffects(mtmp, adtyp, dam);
-                    mtmp.mhp = (mtmp.mhp | 0) - itemdmg;
-                } else {
-                    /* C explode.c:527-552 — resist() called with damage 0 so the
-                       message can precede the damage and so mondied() (not
-                       killed()) can be used when the blast is not the hero's. */
-                    let mdam = dam;
-
-                    if (await resist(mtmp, olet, 0, false)) {
-                        if (cansee(xx, yy) || inside_engulfer)
-                            await pline(`${Monnam(mtmp)} resists the ${str}!`);
-                        mdam = Math.trunc((mdam + 1) / 2);
-                    }
-                    if (grabbed && mtmp === u.ustuck && dist2(x, y, u.ux | 0, u.uy | 0) <= 2)
-                        mdam *= 2;
-                    /* C explode.c:545-551 — being resistant to the OPPOSITE
-                       type of damage makes the target MORE vulnerable to the
-                       current type (when the target also resists the
-                       current type, explmask[i][j] already routed it to the
-                       golemeffects arm above and this branch is never
-                       reached, matching C's own parenthetical). RNG-free:
-                       Resists_Elem walks uprops + mon_resistancebits +
-                       artifact/worn items, no draws. */
-                    if (Resists_Elem(mtmp, COLD_RES) && adtyp === AD_FIRE)
-                        mdam *= 2;
-                    else if (Resists_Elem(mtmp, FIRE_RES) && adtyp === AD_COLD)
-                        mdam *= 2;
-                    mtmp.mhp = (mtmp.mhp | 0) - (mdam + itemdmg);
-                }
-                if (DEADMONSTER(mtmp)) {
-                    /* C explode.c:553-580 */
-                    const xkflg = (adtyp === AD_FIRE && _completely_burns(mtmp))
-                                  ? XKILL_NOCORPSE : 0;
-
-                    if (!_expl_mon_moving()) {
-                        await xkilled(mtmp, XKILL_GIVEMSG | xkflg);
-                    } else if (mdef && mtmp === mdef) {
-                        if (cansee(mtmp.mx | 0, mtmp.my | 0) || canspotmon(mtmp))
-                            await pline(`${Monnam(mtmp)} is ${xkflg ? 'burned completely' : nonlivingMon((mtmp.mndx ?? mtmp.mnum) | 0) ? 'destroyed' : 'killed'}!`);
-                        await xkilled(mtmp, XKILL_NOMSG | XKILL_NOCONDUCT | xkflg);
-                    } else {
-                        /* C: monkilled(mtmp, "", adtyp).  monkilled is unported;
-                           monkilled_trap is this tree's monster-death-without-
-                           hero-credit body, and is where resist() already routes
-                           C's monkilled(mtmp, "", AD_RBRE). */
-                        if (xkflg)
-                            adtyp = AD_RBRE; /* no corpse (explode.c:579) */
-                        await monkilled_trap(mtmp);
-                    }
-                } else if (!_expl_mon_moving()) {
-                    await setmangry(mtmp, true); /* C explode.c:581-584 */
-                }
-            }
-        }
-    }
-
-    /* C explode.c:589-679 — "Do your injury last". */
-    if (uhurt) {
-        if (game.flags?.verbose && (type < 0 || olet !== SCROLL_CLASS)) {
-            if (do_hallu) {
-                /* C explode.c:592-596 — same rndmonnam retry, but unbounded
-                   (no tryct cap) for the hero's own explosion message. */
-                let hallu_buf;
-                do {
-                    hallu_buf = `${s_suffix(rndmonnam())} explosion`;
-                } while (hallu_buf[0] !== lowc(hallu_buf[0]));
-                str = hallu_buf;
-            }
-            await pline(`You are caught in the ${str}!`);
-            if (game.iflags) game.iflags.last_msg = PLNMSG_CAUGHT_IN_EXPLOSION;
-            /* C topl.c update_topl() more() BLOCKS inside this pline when it does
-             * not fit beside the unacknowledged topline; with no dismiss key left
-             * C never reaches destroy_items() below (explode.c:617). */
-            if (_topline_more_pending() && _more_never_dismissed())
-                await flush_pending_messages();
-        }
-        /* property damage first, in case we end up leaving bones */
-        if (adtyp === AD_FIRE)
-            await _zp_burn_away_slime();
-        if (_expl_invulnerable()) {
-            damu = 0;
-            await pline('You are unharmed!');
-        } else if (adtyp === AD_PHYS || adtyp === AD_ACID) {
-            /* C hack.h Maybe_Half_Phys(dmg).  Half_physical_damage is not a
-               property this port writes; js/uhitm.js reads the same spelling. */
-            if (game.u?.uprops?.[_ZAP_HALF_PHDAM]
-                && ((game.u.uprops[_ZAP_HALF_PHDAM].intrinsic | 0)
-                    || (game.u.uprops[_ZAP_HALF_PHDAM].extrinsic | 0)))
-                damu = Math.trunc((damu + 1) / 2);
-        }
-        if (adtyp === AD_FIRE) {
-            await burnarmor(game.youmonst);
-            await ignite_items(game.invent);
-        }
-        await destroy_items(true, adtyp, dam);
-
-        ugolemeffects(adtyp, damu);
-        if (uhurt === 2) {
-            /* a poly'd hero grabbing another victim takes double damage */
-            if (grabbing && dist2(grabxy.x, grabxy.y, x, y) <= 2)
-                damu *= 2;
-            if (Upolyd(u))
-                u.mh = (u.mh | 0) - damu;
-            else
-                u.uhp = (u.uhp | 0) - damu;
-            if (game.disp) game.disp.botl = 1;
-        }
-
-        /* "You resisted the damage, lets not keep that to ourselves" */
-        _expl_monstseesu_ad(adtyp, uhurt === 1);
-
-        if ((u.uhp | 0) <= 0 || (Upolyd(u) && (u.mh | 0) <= 0)) {
-            if (Upolyd(u)) {
-                await rehumanize_real();
-            } else {
-                /* svk.killer is a static struct in C (decl.c); this port creates it lazily,
-                   and the guards below would skip every killer write when it is absent. */
-                if (!game.svk) game.svk = {};
-                if (!game.svk.killer) game.svk.killer = { id: 0, format: 0, name: '', next: null };
-                if (olet === MON_EXPLODE) {
-                    /* generic: the blast was unseen, so str=="explosion" while
-                       svk.killer.name is still "<mon>'s explosion" */
-                    if (!generic && game.svk?.killer)
-                        game.svk.killer.name = str;
-                    if (game.svk?.killer)
-                        game.svk.killer.format = KILLED_BY_AN;
-                } else if (olet === TRAP_EXPLODE) {
-                    /* C explode.c:643-646. */
-                    if (game.svk?.killer) {
-                        game.svk.killer.format = NO_KILLER_PREFIX_ZAP;
-                        game.svk.killer.name = `caught ${_expl_uhim()}self in a ${str}`;
-                    }
-                } else if (type >= 0 && olet !== SCROLL_CLASS) {
-                    /* C explode.c:647-650 — WAND_CLASS retributive strike (and
-                       any other olet reaching here with a non-negative,
-                       already-converted type) blames the hero's own device. */
-                    if (game.svk?.killer) {
-                        game.svk.killer.format = NO_KILLER_PREFIX_ZAP;
-                        game.svk.killer.name =
-                            `caught ${_expl_uhim()}self in ${_expl_uhis()} own ${str}`;
-                    }
-                } else {
-                    /* C explode.c:651-657 — BURNING_OIL, SCROLL_CLASS, or a
-                       negative `type` (a monster-thrown wand/breath) not
-                       already covered above. */
-                    const strLower = String(str).toLowerCase();
-                    if (game.svk?.killer) {
-                        game.svk.killer.format =
-                            (strLower === 'tower of flame' || strLower === 'fireball')
-                                ? KILLED_BY_AN : KILLED_BY;
-                        game.svk.killer.name = str;
-                    }
-                }
-                if (game.iflags?.last_msg === PLNMSG_CAUGHT_IN_EXPLOSION
-                    || game.iflags?.last_msg === PLNMSG_TOWER_OF_FLAME)
-                    await pline('It is fatal.');
-                else
-                    await pline(`The ${str} is fatal.`);
-                /* If the fatal line overflowed the destruction message, C is
-                 * blocked inside this pline before entering done().  Page that
-                 * older line now; the fatal line left behind is freshly drawn
-                 * and must be allowed to join done()'s lifesaving text. */
-                let _deathRemainderFresh = false;
-                if (_topline_more_pending()) {
-                    await flush_screen(1);
-                    _deathRemainderFresh = true;
-                }
-                /* C explode.c:675 `done((adtyp == AD_FIRE) ? BURNING : DIED)` —
-                 * this port had hard-coded DIED, missing the AD_FIRE arm. */
-                const _deathBeforeExpl = game._pendingDeath || null;
-                /* C explode.c:674-675 reaches done() directly after the
-                 * source-specific "It is fatal." / "The ... is fatal."
-                 * line.  It does not pass through done_in_by() or losehp(),
-                 * so there is no additional "You die..." message.  Mark that
-                 * distinction explicitly for the shared death driver; the
-                 * manufactured extra page otherwise consumes the keystrokes
-                 * C uses for the wizard-mode "Die?" query. */
-                deadhero((adtyp === AD_FIRE) ? 5 /* BURNING */ : 0 /* DIED */,
-                         { noDeathLine: true,
-                           remainderIsFresh: _deathRemainderFresh });
-                if (game._pendingDeath && game._pendingDeath !== _deathBeforeExpl)
-                    await drain_pending_death_in_place();
-                if (pending_death_is_final())
-                    return;
-            }
-        }
-        exercise(A_STR, false);
-    }
-
-    if (expl_shopdamage.v)
-        await pay_for_damage('destroy', false);
-
-    /* C explode.c:707-715 — explosions are noisy. */
-    let noise = dam * dam;
-    if (noise < 50)
-        noise = 50; /* in case random damage is very small */
-    if (inside_engulfer)
-        noise = Math.trunc((noise + 3) / 4);
-    wake_nearto(x, y, noise);
-}
-
-/* C mon.c:5678-5704 golemeffects(struct monst *mon, int damtype, int dam) —
- * "damage type X heals/slows this specific golem breed"; RNG-free. Called
- * from explode()'s resisted-monster arm (explode.c:525) and from three
- * mhitm.js sites (magr taking its own elemental damage back); this port is
- * shared with js/uhitm.js's C-faithful golemeffects implementation. */
-async function _expl_golemeffects(mon, damtype, dam) {
-    return golemeffects(mon, damtype, dam);
-}
-
-/* C explode.c:960-967 splatter_burning_oil(coordxy x, coordxy y, boolean
- * diluted_oil):
- *     int dmg = d(diluted_oil ? 3 : 4, 4);
- *     explode(x, y, ZT_SPELL_O_FIRE, dmg, BURNING_OIL, EXPL_FIERY);
- * ZT_SPELL(ZT_FIRE) = ZT_SPELL(AD_FIRE-1) = 10+(2-1) = 11 — explode.c's own
- * comment kludges the value directly rather than importing the zap.c macro,
- * so this port does the same. Exported: js/potion.js's potionhit (POT_OIL,
- * isyou arm) is the second call site alongside dothrow's break path. */
-const ZT_SPELL_O_FIRE = 11;
-export async function splatter_burning_oil(x, y, diluted_oil) {
-    const dmg = d(diluted_oil ? 3 : 4, 4);
-    await explode(x, y, ZT_SPELL_O_FIRE, dmg, BURNING_OIL, EXPL_FIERY);
-}
-
-/* C explode.c:970-979 explode_oil(struct obj *obj, coordxy x, coordxy y) —
- * "lit potion of oil is exploding; extinguish it as a light source before
- * possibly killing the hero and attempting to save bones":
- *     boolean diluted_oil = obj->odiluted;
- *     if (!obj->lamplit) impossible("exploding unlit oil");
- *     end_burn(obj, TRUE);
- *     obj->how_lost = LOST_EXPLODING;
- *     splatter_burning_oil(x, y, diluted_oil);
- * Both call sites (potionhit's isyou arm, potion.c:1684; dothrow's breakobj
- * POT_OIL arm, dothrow.c:2500-2501) already check obj->lamplit before
- * calling, so the impossible() guard is C-unreachable from js/ and is not
- * ported (matches this file's own convention for unreachable impossible()s
- * elsewhere). */
-export async function explode_oil(obj, x, y) {
-    const diluted_oil = !!obj.odiluted;
-    if (!obj.lamplit)
-        await impossible('exploding unlit oil');
-    end_burn(obj, true);
-    obj.how_lost = LOST_EXPLODING;
-    await splatter_burning_oil(x, y, diluted_oil);
-}
-
-/* C explode.c:1013-1067 mon_explodes(mon, mattk) — "a monster explodes in a way
- * that produces a real explosion (e.g. a sphere or gas spore, not a yellow
- * light or similar)".  `mattk` is one permonst mattk row: {aatyp, adtyp, damn,
- * damd}, as js/makemon_mattk.json stores it. */
-export async function mon_explodes(mon, mattk) {
-    let dmg, type;
-
-    if (mattk.damn)
-        dmg = d(mattk.damn | 0, mattk.damd | 0);        /* C explode.c:1025-1026 */
-    else if (mattk.damd)
-        dmg = d((mon.data?.mlevel | 0) + 1, mattk.damd | 0);
-    else
-        dmg = 0;
-
-    if ((mattk.adtyp | 0) === AD_PHYS) {
-        type = PHYS_EXPL_TYPE;
-    } else if ((mattk.adtyp | 0) >= AD_MAGM && (mattk.adtyp | 0) <= AD_SPC2) {
-        /* C explode.c:1036-1040 — the -1,+20,*-1 math sets it up as a 'monster
-           breath' type for the explosions. */
-        type = -(((mattk.adtyp | 0) - 1) + 20);
-    } else {
-        /* C: impossible("unknown type for mon_explode %d", adtyp); return; */
-        return;
-    }
-
-    /* C explode.c:1046-1051 — kill it now so it won't appear to be caught in its
-       own explosion.  Already dead when this arrives from an AT_BOOM attack upon
-       death, which is corpse_chance()'s caller. */
-    if (!DEADMONSTER(mon))
-        await mondead_zap(mon);
-
-    /* C explode.c:1053-1058 — killer name; explode() also prints it. */
-    if (!game.svk) game.svk = {};
-    if (!game.svk.killer)
-        game.svk.killer = { id: 0, format: 0, name: '', next: null };
-    game.svk.killer.name =
-        s_suffix(monPmname((mon.mndx ?? mon.mnum) | 0, mon.female ? FEMALE : MALE))
-        + ' explosion';
-    game.svk.killer.format = KILLED_BY_AN;
-
-    await explode(mon.mx | 0, mon.my | 0, type, dmg, MON_EXPLODE,
-                  adtyp_to_expltype(mattk.adtyp | 0));
-
-    game.svk.killer.name = ''; /* C explode.c:1066 — reset killer */
-}
 const _zhitm_disint_armor = new WeakMap();
 export async function _zhitm(mon, type, nd) {
     const damgtype = zaptype(type) % 10;
@@ -4428,7 +3461,7 @@ export async function _zhitm(mon, type, nd) {
         /* C zap.c:4261-4264 — a fire-resistant target takes NO damage and, more
          * importantly, draws NOTHING: the d(nd,6)/burnarmor/rn2(3) below are all
          * inside the non-resistant arm. */
-        if (_resists_elem_zap(mon, MR_FIRE_ZAP)) {
+        if (Resists_Elem(mon, FIRE_RES) || defended(mon, AD_FIRE)) {
             tmp = 0;
             sho_shieldeff = true;
             break;
@@ -4436,7 +3469,7 @@ export async function _zhitm(mon, type, nd) {
         tmp = d(nd, 6);
         if (spellcaster) tmp = spell_damage_bonus(tmp);
         orig_dmg = tmp;
-        if (_resists_elem_zap(mon, MR_COLD_ZAP)) tmp += 7;
+        if (Resists_Elem(mon, COLD_RES)) tmp += 7;
         if (await burnarmor(mon)) {
             if (!rn2(3)) {
                 tmp += (await destroy_items_mon(mon, AD_FIRE, orig_dmg));
@@ -4449,14 +3482,14 @@ export async function _zhitm(mon, type, nd) {
          * draws NOTHING (d(nd,6), d(nd,3) and the rn2(3) are all past the
          * guard).  Missing guard made a breath ray at an ettin zombie draw
          * d(2,6) where C went straight on to the next square. */
-        if (_resists_elem_zap(mon, MR_COLD_ZAP) || defended(mon, AD_COLD)) {
+        if (Resists_Elem(mon, COLD_RES) || defended(mon, AD_COLD)) {
             sho_shieldeff = true;
             break;
         }
         tmp = d(nd, 6);
         if (spellcaster) tmp = spell_damage_bonus(tmp);
         orig_dmg = tmp;
-        if (_resists_elem_zap(mon, MR_FIRE_ZAP)) tmp += d(nd, 3);
+        if (Resists_Elem(mon, FIRE_RES)) tmp += d(nd, 3);
         if (!rn2(3)) tmp += (await destroy_items_mon(mon, AD_COLD, orig_dmg));
         break;
     case ZT_LIGHTNING:
@@ -4464,7 +3497,7 @@ export async function _zhitm(mon, type, nd) {
         if (spellcaster) tmp = spell_damage_bonus(tmp);
         orig_dmg = tmp;
         /* C zap.c:4347-4351 */
-        if (_resists_elem_zap(mon, 0x10 /* MR_ELEC */) || defended(mon, AD_ELEC)) {
+        if (Resists_Elem(mon, SHOCK_RES) || defended(mon, AD_ELEC)) {
             sho_shieldeff = true;
             tmp = 0;
         }
@@ -4482,7 +3515,7 @@ export async function _zhitm(mon, type, nd) {
         break;
     case ZT_POISON_GAS:
         /* C zap.c:4358-4362 */
-        if (_resists_elem_zap(mon, 0x20 /* MR_POISON */) || defended(mon, AD_DRST)) {
+        if (Resists_Elem(mon, POISON_RES) || defended(mon, AD_DRST)) {
             sho_shieldeff = true;
             break;
         }
@@ -4490,7 +3523,7 @@ export async function _zhitm(mon, type, nd) {
         break;
     case ZT_ACID:
         /* C zap.c:4364-4368 */
-        if (_resists_elem_zap(mon, 0x40 /* MR_ACID */) || defended(mon, AD_ACID)) {
+        if (Resists_Elem(mon, ACID_RES) || defended(mon, AD_ACID)) {
             sho_shieldeff = true;
             break;
         }
@@ -4704,16 +3737,6 @@ export async function disintegrate_mon(mon, type, fltxt) {
     }
 }
 
-/* C monst.h:268-279 mon_resistancebits(mon) = data->mresists | mextrinsics |
- * mintrinsics; Resists_Elem(mon, X) masks it.  Bit values monflag.h:62-69 —
- * the same triple js/mhitm.js:1767 already reads. */
-const MR_FIRE_ZAP = 0x01, MR_COLD_ZAP = 0x02;
-function _resists_elem_zap(mon, mask) {
-    const bits = ((mon && mon.data) ? (mon.data.mresists | 0) : 0)
-        | ((mon && mon.mextrinsics) | 0) | ((mon && mon.mintrinsics) | 0);
-    return (bits & mask) !== 0;
-}
-
 function _completely_burns(mon) {
     const mndx = (mon.mndx ?? mon.mnum) | 0;
     return mndx === PM_PAPER_GOLEM || mndx === PM_STRAW_GOLEM;
@@ -4907,23 +3930,7 @@ function _zp_Very_fast() {
  * (zap.c:2840-2843); C's OTHER caller (potion.c:1063, peffect_speed) lives in
  * js/potion.js and is out of scope here. */
 async function _zp_speed_up(duration) {
-    if (!_zp_Very_fast()) {
-        await pline(`You are suddenly moving ${_zp_Fast() ? '' : 'much '}faster.`);
-    } else {
-        await pline(`Your ${makeplural(body_part(LEG))} get new energy.`);
-    }
-    exercise(A_DEX, true);
-    /* C potion.c:83-86 incr_itimeout(&HFast, duration) =
-     *   set_itimeout(&HFast, itimeout_incr(HFast, duration))
-     * itimeout_incr adds `duration` to the TIMEOUT-masked old value and
-     * clamps to [0, TIMEOUT]; set_itimeout then ORs it back over the
-     * TIMEOUT bits only, leaving FROMOUTSIDE/FROM_RACE/FROMEXPER untouched
-     * (the same convention js/cmd.js:5454 incr_itimeout_prop uses). */
-    const p = _zp_FastProp();
-    let v = ((p.intrinsic | 0) & TIMEOUT) + (duration | 0);
-    if (v >= TIMEOUT) v = TIMEOUT;
-    else if (v < 1) v = 0;
-    p.intrinsic = ((p.intrinsic | 0) & ~TIMEOUT) | v;
+    await speed_up(duration);
 }
 
 export async function zap_dig() {
@@ -8597,4 +7604,65 @@ export async function untrap_holdingtrap_here(ttmp) {
     }
     newsym(u.ux + (u.dx | 0), u.uy + (u.dy | 0));
     return 1;
+}
+
+export function get_obj_location(obj, xp, yp, locflags = 0) {
+    /* Some restored inventory objects do not carry C's OBJ_INVENT `where`
+     * stamp yet, but they are still linked from gi.invent.  C's
+     * get_obj_location() sees those as inventory items; recognize the live
+     * chain so carried light sources can arm their radius immediately. */
+    for (let inv = game.invent; inv; inv = inv.nobj) {
+        if (inv === obj) {
+            xp.value = game.u.ux | 0; yp.value = game.u.uy | 0;
+            return true;
+        }
+    }
+    switch (obj?.where | 0) {
+    case OBJ_INVENT:
+        xp.value = game.u.ux | 0; yp.value = game.u.uy | 0;
+        return true;
+    case OBJ_FLOOR:
+        xp.value = obj.ox | 0; yp.value = obj.oy | 0;
+        return true;
+    case OBJ_MINVENT:
+        if (obj.ocarry?.mx) {
+            xp.value = obj.ocarry.mx | 0; yp.value = obj.ocarry.my | 0;
+            return true;
+        }
+        break; /* !mx => migrating monster */
+    case OBJ_BURIED:
+        if (locflags & BURIED_TOO) {
+            xp.value = obj.ox | 0; yp.value = obj.oy | 0;
+            return true;
+        }
+        break;
+    case OBJ_CONTAINED:
+        if (locflags & CONTAINED_TOO)
+            return get_obj_location(obj.ocontainer, xp, yp, locflags);
+        break;
+    }
+    xp.value = yp.value = 0;
+    return false;
+}
+
+export function get_mon_location(mon, xp, yp, locflags = 0) {
+    const u = game.u;
+    if ((game.youmonst && mon === game.youmonst)
+        || (u?.usteed && mon === u.usteed)) {
+        xp.value = u.ux | 0; yp.value = u.uy | 0;
+        return true;
+    }
+    if ((mon?.mx | 0) > 0 && (!mon.mburied || locflags)) {
+        xp.value = mon.mx | 0; yp.value = mon.my | 0;
+        return true;
+    }
+    /* migrating or buried */
+    xp.value = yp.value = 0;
+    return false;
+}
+
+/* exclam(dmg) — C ref: zap.c:3542 exclam().
+ * Negative force uses "?"; otherwise use "." through 4 and "!" above it. */
+export function exclam(dmg) {
+    return (dmg < 0) ? '?' : (dmg <= 4) ? '.' : '!';
 }

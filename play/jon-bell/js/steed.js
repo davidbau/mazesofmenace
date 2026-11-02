@@ -4,22 +4,26 @@
 
 import { game } from './gstate.js';
 import { YMonnam } from './mhitm.js';
-import { pline, impossible_sync } from './display.js';
+import { impossible_sync } from './display.js';
+import { pline } from './pline.js';
 import { MONS_NAMES, use_skill, m_at as monster_at } from './uhitm.js';
 import { isok, MON_FLOOR, W_SADDLE, P_RIDING, DISMOUNT_FELL,
          ARTICLE_YOUR, SUPPRESS_SADDLE, NON_PM } from './const.js';
 import { PM_LONG_WORM, PM_LONG_WORM_TAIL } from './pm.generated.js';
-import { can_saddle, monPmname } from './makemon.js';
-import { which_armor as which_armor_worn } from './makemon.js';
-import { mksobj, mpickobj } from './mklev.js';
+import { monPmname } from './makemon.js';
+import { which_armor as which_armor_worn } from './worn.js';
+import { mksobj } from './mklev.js';
+import { mpickobj } from './steal.js';
 import { fully_identify_obj, can_ride, dismount_steed,
          steed_vs_stealth } from './cmd.js';
-import { update_mon_extrinsics } from './trap.js';
+import { update_mon_extrinsics } from './worn.js';
 import { describe_level_buf } from './dungeon.js';
 import { rn2 } from './rng.js';
 import { helpless, x_monnam, y_monnam as y_monnam_real } from './mhitm.js';
 import { Monnam } from './mcastu.js';
 import { finish_meating } from './dogmove.js';
+import { canSaddleMndx, monsndx } from './makemon.js'; // relocate-fns
+import { minimal_monnam } from './do_name.js'; // relocate-fns
 
 /* C steed.c:852-875 — newcham has already handled the saddle/armor. */
 export async function poly_steed(steed, oldshape) {
@@ -146,22 +150,6 @@ function DEADMONSTER(mon) {
 /* C pline.c:584-633: queue diagnostics in order and return to the caller's
  * fallback. Async callers flush any resulting message pages before proceeding. */
 export function impossible(msg, ...args) { impossible_sync(msg, ...args); }
-/* C do_name.c:1254-1287; permonst templates represent mons[] entries,
- * without the native addresses used by C's corrupt-pointer diagnostics. */
-export function minimal_monnam(mon, ckloc) {
-    if (!mon) return '[Null monster]';
-    if (!mon.data) return '[Null mon->data]';
-    const mndx = mon.data.pmidx | 0;
-    const gender = mon.female ? 1 : 0; /* monst.h:268 Mgender */
-    if (ckloc && mndx === PM_LONG_WORM && mon.mx
-        && monster_at(mon.mx, mon.my) !== mon)
-        return `${monPmname(PM_LONG_WORM_TAIL, gender)} <${mon.mx | 0},${mon.my | 0}>`;
-    const prefix = (mon.mtame | 0) ? 'tame ' : ((mon.mpeaceful | 0) ? 'peaceful ' : '');
-    let name = `${prefix}${monPmname(mndx, gender)} <${mon.mx | 0},${mon.my | 0}>`;
-    if (mon.cham != null && mon.cham !== NON_PM)
-        name += `{${monPmname(mon.cham | 0, gender)}}`;
-    return name;
-}
 
 /* C panic() logs and returns in this replay terminal; preserve control flow. */
 function panic(msg) { impossible(msg); }
@@ -222,4 +210,8 @@ export async function put_saddle_on_mon(saddle, mtmp) {
     saddle.owornmask = W_SADDLE;
     saddle.leashmon = mtmp.m_id;
     await update_mon_extrinsics(mtmp, saddle, true, false);
+}
+
+export function can_saddle(mtmp) {
+    return canSaddleMndx(mtmp, mtmp.data?.pmidx ?? monsndx(mtmp));
 }

@@ -23,13 +23,23 @@ import { FIRE_RES, COLD_RES, DISINT_RES, SHOCK_RES, POISON_RES, ACID_RES,
     STONE_RES, DRAIN_RES, SICK_RES, ANTIMAGIC, WARN_OF_MON, DETECT_MONSTERS, DISPLACED, WWALKING,
     MAGICAL_BREATHING, PASSES_WALLS } from './const.js';
 import * as PROPS from './const.js';
-import { mklev, l_nhcore_init, u_on_upstairs, engr_reset_text_pointers, restartcham, upstart } from './mklev.js';
+import { mklev, l_nhcore_init, engr_reset_text_pointers } from './mklev.js';
+import { u_on_upstairs } from './stairs.js';
+import { upstart } from './hacklib.js';
+import { restartcham } from './mon.js';
 import { l_nhcore_call, NHCORE_START_NEW_GAME, NHCORE_MOVELOOP_TURN,
     nh_callback_run, NHCB_END_TURN } from './nhlua.js';
-import { clear_bypasses, sink_into_lava } from './trap.js';
-import { notice_all_mons, pooleffects, rhack, check_special_room, domove, prayer_done, deferred_goto, schedule_goto, heal_legs, timed_occupation, cmdq_clear, cmdq_peek, wipeoff, body_part, surface, confdir, hurtle, instapetrify, runmode_delay_output, take_off_occ, dolookaround_cmd } from './cmd.js';
-import { lookaround, end_running, is_pool, is_pool_or_lava } from './look.js';
-import { reset_glyphmap, docrt, bot, timebot, status_eval_next_unhilite, time_botl_moves_incremented, time_botl_run_ended, flush_screen, tty_repaint, pline, urgent_pline, Norep, _topl_joins_committed, _topl_record_join, occupation_painted_tick, occupation_freeze_snapshot, occupation_painted_reset, occupation_force_more, _movemon_page_frames_reset, run_page_frame_tick, run_page_frame_reset, capture_painted_frame, capture_pre_movemon_botl, force_more, _topl_merge_result, _topl_joins_snapshot } from './display.js';
+import { sink_into_lava } from './trap.js';
+import { clear_bypasses } from './worn.js';
+import { notice_all_mons, pooleffects, rhack, check_special_room, domove, timed_occupation, cmdq_clear, cmdq_peek, body_part, surface, confdir, instapetrify, runmode_delay_output, take_off_occ, dolookaround_cmd } from './cmd.js';
+import { prayer_done } from './pray.js';
+import { hurtle } from './dothrow.js';
+import { deferred_goto, schedule_goto, heal_legs, wipeoff } from './do.js';
+import { is_pool, is_pool_or_lava } from './look.js';
+import { lookaround, end_running } from './hack.js';
+import { reset_glyphmap, docrt, time_botl_moves_incremented, time_botl_run_ended, flush_screen, tty_repaint, _topl_joins_committed, _topl_record_join, occupation_painted_tick, occupation_freeze_snapshot, occupation_painted_reset, occupation_force_more, _movemon_page_frames_reset, run_page_frame_tick, run_page_frame_reset, capture_painted_frame, capture_pre_movemon_botl, force_more, _topl_merge_result, _topl_joins_snapshot } from './display.js';
+import { bot, timebot, status_eval_next_unhilite } from './botl.js';
+import { pline, urgent_pline, Norep } from './pline.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { fastforward_pre_mklev, fastforward_post_mklev, fastforward_step, fastforward_fill_mineralize, fmon_dochug_dispatch, NORMAL_SPEED, FF_FAITHFUL, ff_movemon_phase, ff_head_phase, ff_head_phase_pre, ff_head_phase_post, vomiting_dialogue_ff, sickness_dialogue_ff, choke_dialogue_ff } from './fastforward.js';
 import { makedog, dismount_steed, panic } from './dog.js';
@@ -51,15 +61,17 @@ import { LL_ACHIEVE, UTOTYPE_NONE, WOUNDED_LEGS, VOMITING, SLEEPY, SLEEP_RES, TI
 import { make_confused, make_stunned, make_hallucinated, set_itimeout } from './potion.js';
 import { I_SPECIAL } from './const.js';
 import { PLNMSG_ONE_ITEM_HERE } from './const.js';
-import { float_down, glibr } from './do_wear.js';
+import { glibr } from './do_wear.js';
+import { float_down } from './trap.js';
 import { GLIB } from './const.js';
 import { make_glib, make_vomiting, make_deaf as make_deaf_prop } from './potion.js';
 import { Armor_off, Shield_off, Helmet_off, Gloves_off, Boots_off, Cloak_off, Shirt_off, Armor_on, Shield_on, Helmet_on, Gloves_on, Boots_on, Cloak_on, Shirt_on, find_ac, set_wear } from './do_wear.js';
 import { picklock, forcelock } from './lock.js';
 import { dig } from './dig.js';
-import { carrying } from './eat.js';
+import { carrying } from './invent.js';
 import { PM_ARCHEOLOGIST } from './pm.generated.js';
-import { stoned_dialogue, slime_dialogue, eatfood, Hear_again, maybe_finished_meal, reset_eat, is_fainted, opentin, Finish_digestion } from './eat.js';
+import { eatfood, Hear_again, maybe_finished_meal, reset_eat, is_fainted, opentin, Finish_digestion } from './eat.js';
+import { stoned_dialogue, slime_dialogue } from './timeout.js';
 import { do_vicinity_map } from './detect.js';
 import { learn } from './spell.js';
 import { engrave, engraving_sanity_check } from './engrave.js';
@@ -68,7 +80,7 @@ import { noattacks_mndx, stealarm_mu } from './mhitu.js';
 import { unstolenarm } from './steal.js';
 import { canspotmon, Unaware, _topl_stash_result } from './display.js';
 import { pline_flush_point, under_water, under_ground, recorder_localtime } from './display.js';
-import { spoteffects } from './landing-effects.js';
+import { spoteffects } from './hack.js';
 import { PM_COCKATRICE, PM_CHICKATRICE } from './pm.generated.js';
 
 function ffRunTrace(tag, fields = '') {
@@ -126,24 +138,36 @@ function _Unblind_telepat() {
     return !!(game.u?.uprops?.[TELEPAT]?.extrinsic | 0);
 }
 import { isok } from './hacklib.js';
-import { unconscious, reset_justpicked, pickup } from './pickup.js';
+import { reset_justpicked, pickup } from './pickup.js';
+import { unconscious } from './trap.js';
 import { change_luck, acurr, stone_luck, adjattrib, exercise } from './attrib.js';
 import { make_sick } from './potion.js';
 /* C timeout.c slip_or_trip()'s callees — imported rather than re-spelled. */
-import { inv_weight, encumber_msg_sync } from './weight.js';
+import { encumber_msg_sync } from './weight.js';
+import { inv_weight } from './hack.js';
 import { doname, makeplural, an } from './objnam.js';
 import { monPmname } from './makemon.js';
 import { Upolyd as _Upolyd } from './const.js';
 import { is_ice } from './engrave.js';
-import { wake_nearto } from './mklev.js';
-import { which_armor, onscary } from './makemon.js';
+import { wake_nearto } from './mon.js';
+import { onscary } from './makemon.js';
+import { which_armor } from './worn.js';
 import { ENV } from './hostenv.js';
 import { nhgetch } from './input.js';
 import { raw_print } from './rawterm.js';
 import { get_configfile } from './cfgfiles.js';
-import { dobjsfree, clear_splitobjs, see_nearby_monsters } from './mklev.js';
+import { dobjsfree, clear_splitobjs } from './mklev.js';
+import { see_nearby_monsters } from './mon.js';
 import { maybe_shuffle_customizations } from './glyphs.js';
 import { topl_force_break_now, force_more_pages } from './display.js';
+import { friday_13th, getnow, phase_of_the_moon } from './calendar.js'; // relocate-fns
+import { pooleffects_breathless } from './cmd.js'; // relocate-fns
+import { A_WIS, ENERGY_REGENERATION, HALF_PHDAM, MAXULEV, MOD_ENCUMBER, REGENERATION, Upolyd } from './const.js'; // relocate-fns
+import { MONS, S_EEL_FF, UNENCUMBERED, _uasmon_mlet } from './fastforward.js';
+import { mcalcmove } from './mon.js'; // relocate-fns
+import { depth as dungeon_depth } from './dungeon.js'; // relocate-fns
+import { makemon } from './mklev.js'; // relocate-fns
+export { friday_13th, getnow, hhmmss, midnight, night, phase_of_the_moon, yyyymmdd } from './calendar.js'; // relocate-fns
 
 // ── calendar.c port (subset): getnow/getlt/phase_of_the_moon/friday_13th ──
 // C ref: calendar.c.  moveloop_preamble (allmain.c:60-71) calls
@@ -155,135 +179,9 @@ import { topl_force_break_now, force_more_pages } from './display.js';
 // They do NOT round-trip through localtime(): a winter datetime reads back an
 const FULL_MOON_PHASE = 4; /* const.js FULL_MOON */
 const NEW_MOON_PHASE = 0; /* const.js NEW_MOON */
-// Parse NETHACK_FIXED_DATETIME → {tm_year (years since 1900), tm_mon (0-based),
-// tm_yday (0-based), tm_wday (0=Sun), tm_hour, tm_min, tm_sec, tm_mday}
-// or null when unset/invalid
-// (C then uses wall-clock time(), which is non-deterministic and therefore never
-function fixedDatetimeTm() {
-    const g = game;
-    const s = g?.env?.NETHACK_FIXED_DATETIME;
-    if (typeof s !== 'string' || s.length !== 14)
-        return null;
-    const year = parseInt(s.slice(0, 4), 10);
-    const mon = parseInt(s.slice(4, 6), 10); /* 1..12 */
-    const mday = parseInt(s.slice(6, 8), 10); /* 1..31 */
-    const hour = parseInt(s.slice(8, 10), 10); /* 0..23 */
-    const min = parseInt(s.slice(10, 12), 10); /* 0..59 */
-    const sec = parseInt(s.slice(12, 14), 10); /* 0..59 */
-    if (!Number.isFinite(year) || !Number.isFinite(mon) || !Number.isFinite(mday) ||
-        !Number.isFinite(hour) || !Number.isFinite(min) || !Number.isFinite(sec))
-        return null;
-    // tm_year = years since 1900 (calendar.c uses tm_year directly in goldn).
-    const tm_year = year - 1900;
-    // tm_yday: 0-based day-of-year.  Use UTC Date arithmetic for determinism.
-    const utc = Date.UTC(year, mon - 1, mday);
-    const jan1 = Date.UTC(year, 0, 1);
-    const tm_yday = Math.floor((utc - jan1) / 86400000);
-    // tm_wday: 0=Sunday.  getUTCDay() returns 0..6 with 0=Sunday.
-    const tm_wday = new Date(utc).getUTCDay();
-    // tm_mon: C's struct tm.tm_mon is 0-based (0..11); the parse yields 1..12.
-    return { tm_year, tm_mon: mon - 1, tm_yday, tm_wday, tm_mday: mday, tm_hour: hour, tm_min: min, tm_sec: sec };
-}
-// C ref: calendar.c:200 phase_of_the_moon() — 0..7 (0=new, 4=full).
-export function phase_of_the_moon() {
-    const lt = getlt();
-    if (!lt)
-        return -1; /* unknown — emit nothing (matches non-deterministic C path being unrecorded) */
-    const diy = lt.tm_yday;
-    const goldn = (lt.tm_year % 19) + 1;
-    let epact = (11 * goldn + 18) % 30;
-    if ((epact === 25 && goldn > 11) || epact === 24)
-        epact++;
-    return ((((((diy + epact) * 6) + 11) % 177) / 22) | 0) & 7;
-}
-// C ref: calendar.c:215 friday_13th() — Friday (wday 5) AND mday 13.
-export function friday_13th() {
-    const lt = getlt();
-    if (!lt)
-        return false;
-    return lt.tm_wday === 5 && lt.tm_mday === 13;
-}
-// C ref: calendar.c:46 getlt() — returns struct tm *.
-export function getlt() {
-    return fixedDatetimeTm() ? recorder_localtime(getnow()) : null;
-}
-const RECORDER_UTC_OFFSET_SEC = -4 * 3600;
-/* C calendar.c:120-175, patch 001: mktime retains the recording moment's
- * tm_isdst, including when restore.c:617 parses a saved winter birthday. */
-export function time_from_yyyymmddhhmmss(buf) {
-    if (typeof buf !== 'string' || buf.length !== 14)
-        return 0;
-    const number = (start, end) => parseInt(buf.slice(start, end), 10) || 0;
-    const d = new Date(0);
-    d.setUTCFullYear(number(0, 4), number(4, 6) - 1, number(6, 8));
-    d.setUTCHours(number(8, 10), number(10, 12), number(12, 14), 0);
-    const result = d.getTime() / 1000 - RECORDER_UTC_OFFSET_SEC;
-    return Number.isFinite(result) && result !== -1 ? result : 0;
-}
-export function getnow() {
-    const lt = fixedDatetimeTm();
-    if (!lt)
-        return 0;
-    return Math.floor(Date.UTC(lt.tm_year + 1900, lt.tm_mon, lt.tm_mday,
-                               lt.tm_hour, lt.tm_min, lt.tm_sec) / 1000)
-           - RECORDER_UTC_OFFSET_SEC;
-}
-// C ref: calendar.c:223 night() — returns 1 if hour < 6 || hour > 21, else 0.
-export function night() {
-    const lt = getlt();
-    if (!lt)
-        return 0;
-    const hour = lt.tm_hour;
-    return (hour < 6 || hour > 21) ? 1 : 0;
-}
-// C ref: calendar.c:231 midnight() — returns 1 if hour == 0, else 0.
-export function midnight() {
-    const lt = getlt();
-    if (!lt)
-        return 0;
-    return (lt.tm_hour === 0) ? 1 : 0;
-}
 
-// Helper: convert time_t (Unix timestamp in seconds) to struct tm.
-// C's localtime() converts UTC time_t to local broken-down time.
-// In JavaScript, Date uses local timezone, so Date.constructor(ts*1000).get*() gives us local time.
-function localtime(dateParam) {
-    return recorder_localtime(dateParam);
-}
 
-// C ref: calendar.c:85 hhmmss(time_t date) — returns time as hhmmss (long).
-export function hhmmss(date) {
-    let lt;
-    if (date === 0)
-        lt = getlt();
-    else
-        lt = localtime(date);
 
-    const timenum = lt.tm_hour * 10000 + lt.tm_min * 100 + lt.tm_sec;
-    return timenum;
-}
-
-// C ref: calendar.c:61 yyyymmdd(time_t date) — returns date as yyyymmdd (long).
-export function yyyymmdd(date) {
-    let lt;
-    if (date === 0)
-        lt = getlt();
-    else
-        lt = localtime(date);
-
-    // just in case somebody's localtime supplies (year % 100)
-    // rather than the expected (year - 1900)
-    let datenum;
-    if (lt.tm_year < 70)
-        datenum = lt.tm_year + 2000;
-    else
-        datenum = lt.tm_year + 1900;
-    // yyyy --> yyyymm
-    datenum = datenum * 100 + (lt.tm_mon + 1);
-    // yyyymm --> yyyymmdd
-    datenum = datenum * 100 + lt.tm_mday;
-    return datenum;
-}
 
 // C ref: cfgfiles.c config_error_done() at the end of initoptions()
 export async function report_config_errors() {
@@ -5851,3 +5749,201 @@ export async function moveloop(resuming) {
 }
 
 export { _run_commit_result as commit_command_result };
+
+export async function maybe_generate_rnd_mon() {
+    const u = game.u;
+    const sl = game.stronghold_level;
+    const modulus = u?.uevent?.udemigod ? 25
+        : (sl && dungeon_depth(u?.uz) > dungeon_depth(sl)) ? 50
+            : 70;
+    if (!rn2(modulus))
+        await makemon(null, 0, 0, 0);
+}
+
+const FAST_PROP = 64; /* C prop.h FAST = 64 */
+
+const INTRINSIC_BITS = 0x07000000; /* FROMOUTSIDE|FROMRACE|FROMEXPER */
+
+export function u_calc_moveamt(wtcap = UNENCUMBERED) {
+    const g = game;
+    const u = g.u;
+    if (!u) return;
+    const _riding = !!(u.usteed && (u.umoved | 0));
+    const umnum = u.umonnum;
+    /* A replay path that never reached u_init (u.umonnum unset) keeps the old
+     * NORMAL_SPEED reading rather than indexing mons[0]. */
+    let moveamt;
+    if (_riding) {
+        /* C allmain.c:120-121 — "your speed doesn't augment steed's speed":
+         * the whole youmonst/Fast block below is SKIPPED, so a Fast rider draws
+         * no rn2(3) either. */
+        moveamt = mcalcmove(u.usteed, true);
+    } else {
+    moveamt = (umnum == null)
+        ? NORMAL_SPEED
+        : (((umnum | 0) >= 0 && (umnum | 0) < MONS.length)
+            ? ((MONS[umnum | 0][9] ?? 0) | 0)
+            : NORMAL_SPEED);
+    /* C ref: allmain.c:129-137 — Very_fast or Fast triggers rn2(3) */
+    const hFast = (u.uprops && u.uprops[FAST_PROP]) ? (u.uprops[FAST_PROP].intrinsic | 0) : 0;
+    const eFast = (u.uprops && u.uprops[FAST_PROP]) ? (u.uprops[FAST_PROP].extrinsic | 0) : 0;
+    /* Very_fast = (HFast & ~INTRINSIC) || EFast: speed potion/boots = timeout bits */
+    const Very_fast = !!(hFast & ~INTRINSIC_BITS) || !!eFast;
+    /* Fast = HFast || EFast: any fast source */
+    const Fast = !!hFast || !!eFast;
+    if (Very_fast) {
+        /* C allmain.c:131: gain a free action on 2/3 of turns (rn2(3) != 0) */
+        if (rn2(3) !== 0) moveamt += NORMAL_SPEED;
+    } else if (Fast) {
+        /* C allmain.c:135: gain a free action on 1/3 of turns (rn2(3) == 0) */
+        if (rn2(3) === 0) moveamt += NORMAL_SPEED;
+    }
+    }
+    /* C allmain.c:140-157 — encumbrance scaling of moveamt.
+     * Stage 1/2 pass wtcap=UNENCUMBERED (0) → no scaling (identity).
+     * Stage 3 ports near_capacity; deferred per plan. */
+    switch (wtcap) {
+        case 0: /* UNENCUMBERED */ break;
+        case 1: /* SLT_ENCUMBER */ moveamt -= Math.trunc(moveamt / 4); break;
+        case 2: /* MOD_ENCUMBER */ moveamt -= Math.trunc(moveamt / 2); break;
+        case 3: /* HVY_ENCUMBER */ moveamt -= Math.trunc((moveamt * 3) / 4); break;
+        case 4: /* EXT_ENCUMBER */ moveamt -= Math.trunc((moveamt * 7) / 8); break;
+        default: break;
+    }
+    /* C allmain.c:159-161 — bank moveamt into u.umovement */
+    u.umovement = ((u.umovement || 0) + moveamt) | 0;
+    if (u.umovement < 0) u.umovement = 0;
+    g._umv_bonus = (moveamt >= 2 * NORMAL_SPEED);
+}
+
+function u_can_regen(u) {
+    return _has_regeneration(u) || _restful_sleep(u);
+}
+
+function _has_regeneration(u) {
+    const p = u && u.uprops ? u.uprops[REGENERATION] : null;
+    return !!p && (((p.intrinsic | 0) | (p.extrinsic | 0)) !== 0);
+}
+
+function _has_prop(u, prop) {
+    const p = u && u.uprops ? u.uprops[prop] : null;
+    return !!p && (((p.intrinsic | 0) | (p.extrinsic | 0)) !== 0);
+}
+
+function _restful_sleep(u) {
+    const p = u && u.uprops ? u.uprops[SLEEPY] : null;
+    return !!u?.usleep && !!p
+        && (((p.intrinsic | 0) | (p.extrinsic | 0)) !== 0);
+}
+
+export async function regen_hp(wtcap) {
+    const u = game.u;
+    if (!u)
+        return;
+    /* encumbrance_ok = (wtcap < MOD_ENCUMBER || !u.umoved) — C allmain.c:700. */
+    const encumbrance_ok = ((wtcap | 0) < MOD_ENCUMBER) || !(u.umoved | 0);
+    let heal = 0;
+    /* C allmain.c:697 — boolean reached_full = FALSE. */
+    let reached_full = false;
+    if (Upolyd(u)) {
+        /* C allmain.c:702-722 — the polymorphed hero heals u.mh, not u.uhp. */
+        const mh = (u.mh | 0), mhmax = (u.mhmax | 0);
+        if (mh < 1) {
+            /* C allmain.c:703-704 "shouldn't happen..." → rehumanize(). */
+            await rehumanize();
+        } else if (_uasmon_mlet(u) === S_EEL_FF
+                   && !_ff_is_pool(u.ux | 0, u.uy | 0) && !Is_waterlevel(u.uz)
+                   && !_hero_breathless(u)) {
+            /* C allmain.c:707-713 — an eel out of water LOSES hp, and this is
+             * the ONLY Upolyd arm that draws RNG:
+             *   if (u.mh > 1 && !Regeneration && rn2(u.mh) > rn2(8)
+             *       && (!Half_physical_damage || !(svm.moves % 2L))) heal = -1;
+             */
+            const halfPhys = _has_prop(u, HALF_PHDAM);
+            if (mh > 1 && !_has_regeneration(u) && rn2(mh) > rn2(8)
+                && (!halfPhys || !((game.moves | 0) % 2)))
+                heal = -1;
+        } else if (mh < mhmax) {
+            /* C allmain.c:714-717 — RNG-free regen: one hp every 20 moves. */
+            if (u_can_regen(u)
+                || (encumbrance_ok && ((game.moves | 0) % 20) === 0))
+                heal = 1;
+        }
+        if (heal) {
+            (game.disp ||= {}).botl = 1;
+            u.mh = mh + heal;
+            /* C allmain.c:717 — reached_full = (u.mh == u.mhmax). */
+            reached_full = ((u.mh | 0) === mhmax);
+        }
+    } else {
+        /* C allmain.c:729 — !Upolyd branch. */
+        const uhp = (u.uhp | 0), uhpmax = (u.uhpmax | 0);
+        if (uhp < uhpmax && (encumbrance_ok || u_can_regen(u))) {
+            /* C allmain.c:730 — heal = (u.ulevel + ACURR(A_CON)) > rn2(100). */
+            heal = ((u.ulevel | 0) + (acurr(u, A_CON) | 0)) > rn2(100) ? 1 : 0;
+            if (u_can_regen(u))
+                heal += 1;
+            if (_restful_sleep(u))
+                heal += 1;
+            if (heal) {
+                (game.disp ||= {}).botl = 1;
+                u.uhp = uhp + heal;
+                /* display.js's rehumanize pre-reversion HP takeback undoes exactly
+                 * this turn's heal, so it needs to know one happened. */
+                game._uhpRegenMoves = game.moves | 0;
+                if ((u.uhp | 0) > uhpmax)
+                    u.uhp = uhpmax;
+                /* C allmain.c:738 — "stop voluntary multi-turn activity if now
+                 * fully healed": reached_full = (u.uhp == u.uhpmax). */
+                reached_full = ((u.uhp | 0) === uhpmax);
+            }
+        }
+    }
+    if (reached_full)
+        interrupt_multi("You are in full health.");
+}
+
+/* C youprop.h Breathless = magical breathing or the current form's flag. */
+function _hero_breathless(u) {
+    return _has_prop(u, MAGICAL_BREATHING)
+        || pooleffects_breathless(game.youmonst?.data);
+}
+
+/* C dbridge.c is_pool() — includes moat-under-drawbridge semantics, unlike a
+ * raw tile-type check. */
+function _ff_is_pool(x, y) {
+    return is_pool(x, y);
+}
+
+export function regen_pw(wtcap) {
+    const u = game.u;
+    if (!u)
+        return;
+    const uen = (u.uen | 0), uenmax = (u.uenmax | 0);
+    if (uen >= uenmax)
+        return;
+    /* C allmain.c:674-677 — period depends on ulevel and Wizard role.
+     * role.mnum: PM_WIZARD index — Healer is not Wizard, so factor=4. */
+    /* PM_WIZARD is 343 in mons[], not the role ordinal 14. */
+    const isWizard = (game.urole && (game.urole.mnum | 0) === 343);
+    const ulevel = (u.ulevel | 0);
+    const period = ((MAXULEV + 8 - ulevel) * (isWizard ? 3 : 4)) / 6 | 0;
+    const moves = (game.moves | 0);
+    /* C Energy_regeneration = HEnergy_regeneration || EEnergy_regeneration. */
+    if (((wtcap | 0) < MOD_ENCUMBER && period !== 0 && (moves % period) === 0)
+        || _has_prop(u, ENERGY_REGENERATION)) {
+        /* C allmain.c:678 — upper = (ACURR(A_WIS)+ACURR(A_INT))/15 + 1. */
+        let upper = ((acurr(u, A_WIS) | 0) + (acurr(u, 1 /*A_INT*/) | 0)) / 15 | 0;
+        upper += 1;
+        /* C allmain.c:620 — EMagical_breathing is the extrinsic half only. */
+        if ((u.uprops?.[MAGICAL_BREATHING]?.extrinsic | 0) !== 0)
+            upper += 2;
+        u.uen = uen + rn1(upper, 1);
+        if ((u.uen | 0) > uenmax)
+            u.uen = uenmax;
+        /* C allmain.c:615 — disp.botl = TRUE (Pw changed; bot() repaints T: too). */
+        (game.disp ||= {}).botl = 1;
+        if ((u.uen | 0) === uenmax)
+            interrupt_multi("You feel full of energy.");
+    }
+}

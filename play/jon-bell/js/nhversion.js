@@ -7,7 +7,7 @@
 
 import { do_runtime_info } from './mdlib.js';
 import { PORT_ID } from './platform_identity.js';
-import { tabexpand } from './data_base.js';
+import { tabexpand } from './hacklib.js';
 import { get_lua_version, nhl_lua_ver, nhl_lua_copyright } from './nhlua.js';
 
 /* global.h COLNO */

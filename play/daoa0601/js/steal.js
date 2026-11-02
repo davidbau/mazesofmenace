@@ -13,9 +13,10 @@ import { possessiveName } from './hacklib.js';
 import { MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_SYMBOL, monsterCanEngulf, monsterIsAnimal, monsterIsSlithy, monsterTypeName, } from './monster_data.js';
 import { makePlural } from './object_grammar.js';
 import { AD_SITM } from './monster_attack_types.js';
-import { BOULDER, CORPSE, GOLD_PIECE, LEASH, OBJECT_BIMANUAL, OBJECT_NAMES, AMULET_OF_YENDOR, BELL, BELL_OF_OPENING, CANDELABRUM_OF_INVOCATION, FAKE_AMULET_OF_YENDOR, SPE_BOOK_OF_THE_DEAD, } from './object_data.js';
+import { BOULDER, CORPSE, GOLD_PIECE, LEASH, OBJECT_NAMES, AMULET_OF_YENDOR, BELL, BELL_OF_OPENING, CANDELABRUM_OF_INVOCATION, FAKE_AMULET_OF_YENDOR, SPE_BOOK_OF_THE_DEAD, } from './object_data.js';
 import { OBJECT_DELAY } from './object_data.js';
 import { definiteName, objectName, objectNameIsPlural, observeDistantObjectForNaming, observeObjectForNaming, ownedObjectName, pluralizeObjectNoun, simpleObjectName, } from './objnam.js';
+import { isBimanualObject } from './object_properties.js';
 import { inventoryItemDescription } from './invent.js';
 import { heroIsBlind } from './senses.js';
 import { impossible } from './diagnostics.js';
@@ -26,33 +27,32 @@ import { heroIsUnaware } from './hero_sleep.js';
 import { heroSpecies } from './hero_species.js';
 import { heroHasConflict } from './hero_conflict.js';
 import { dist2 } from './hacklib.js';
-import { randomMonsterRelocation } from './teleport.js';
+import { randomMonsterRelocation, relocateObjectRandomly } from './teleport.js';
 import { reportMonsterTeleportRestriction } from './teleport_rules.js';
 import { roomsAt } from './room.js';
-import { openHoldingTrap } from './trap_magic.js';
+import { openHoldingTrap } from './trap.js';
 import { armorSimpleName, stopDonning } from './armor.js';
 import { removeHeroEquipment } from './hero_equipment.js';
 import { detachHeroGold, heroGoldAmount } from './hero_gold.js';
-import { isWeldedPrimary } from './weapon_slots.js';
+import { isWeldedPrimary } from './wield.js';
 import { isBeingTakenOff } from './takeoff_state.js';
 import { monsterCanCarryObject } from './mon.js';
 import { releaseObjectLeash } from './leash_apply.js';
-import { assertCreatedObject, } from './object_release.js';
-import { forgetObjectKnowledge, linkCreatedObjectToMonsterInventory, linkObjectToMonsterInventory, unlinkMonsterObject, } from './mkobj.js';
+import { assertCreatedObject } from './do.js';
+import { forgetObjectKnowledge, linkCreatedObjectToMonsterInventory, linkObjectToMonsterInventory, unlinkMonsterObject, unlinkObject } from './mkobj.js';
 import { removeObjectFromMonsterInventory, updateMonsterEquipment, } from './monworn.js';
-import { deleteObject } from './object_delete.js';
 import { landFloorObject } from './floor_effects.js';
 import { inventoryItem } from './u_init.js';
 import { cansee } from './vision.js';
 import { petDroppableObject } from './dog.js';
 import { artifactById, artifactByName, monsterCanTouchArtifact } from './artifacts.js';
-import { objectResistsDestruction } from './object_state.js';
-import { relocateObjectRandomly } from './object_teleport.js';
+import { objectResistsDestruction } from './zap.js';
 import { freeInventoryObject, finishInventoryRemoval } from './hero_inventory.js';
-import { costlySpot, removeObjectAndContentsFromBill, currentShopResident } from './shk.js';
-import { unlinkObject } from './object_location.js';
+import { costlySpot, removeObjectAndContentsFromBill, currentShopResident, deleteObject } from './shk.js';
 import { removeWornHeroItem } from './hero_equipment.js';
-import { heroHasInvoluntaryDelay, nomul, pendingArmorAction, } from './command_state.js';
+import { heroHasInvoluntaryDelay } from './cmd.js';
+import { pendingArmorAction } from './do_wear.js';
+import { nomul } from './hack.js';
 import { stopHeroOccupation } from './occupation.js';
 import { reportHeroEncumbrance } from './encumbrance.js';
 import { touchPetrifies } from './stoning.js';
@@ -234,7 +234,7 @@ export async function stealFromHero(monster, random, calls) {
             // C welded() reveals the curse even when the other hand is free.
             weapon.bknown = true;
             const primaryRing = game.u.rightHanded === false ? game.uleft : game.uright;
-            stuck = object === primaryRing || !!OBJECT_BIMANUAL[weapon.otyp];
+            stuck = object === primaryRing || !!isBimanualObject(weapon);
         }
         if (stuck || !monsterCanCarryObject(monster, object, game, draw))
             return refuse();
@@ -574,7 +574,7 @@ export async function maybeAbsorbItem(monster, object, state = game, ordinaryCha
         }
         else {
             const hand = heroHandName(state);
-            const hands = OBJECT_BIMANUAL[object.otyp] ? makePlural(hand) : hand;
+            const hands = isBimanualObject(object) ? makePlural(hand) : hand;
             const subject = name.charAt(0).toUpperCase() + name.slice(1);
             await plineWithContinuation(`${subject} ${objectNameIsPlural(object, state) ? 'are' : 'is'} pulled from your ${hands}!`);
         }
@@ -678,5 +678,17 @@ export async function releaseMonsterInventory(monster, state = game, { isPet = f
     if (show && cansee(x, y))
         await newsym(x, y);
     return dropped;
+}
+// C steal.c:thiefdead(), called by mon.c:m_detach() for death or removal.
+// Keep the armor-removal delay, but replace the theft and recovery message.
+export function armorThiefGone(monster, state = game) {
+    const theft = state._armorTheft;
+    if (!theft || theft.thief !== monster)
+        return;
+    theft.thief = null;
+    if (state._afterMove?.kind === 'steal') {
+        state._afterMove = { kind: 'unstolen-armor' };
+        state._helplessDoneMessage = null;
+    }
 }
 //# sourceMappingURL=steal.js.map

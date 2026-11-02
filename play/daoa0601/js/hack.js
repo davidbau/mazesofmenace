@@ -4,7 +4,7 @@ import { setHeroGrip } from './hero_grip.js';
 import { finishHeroHelplessness } from './allmain.js';
 import { formatFeltMessage } from './hero_speech.js';
 import { heroIsBlind, heroIsHallucinating } from './senses.js';
-import { BURNING, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED, DISMOUNT_FELL, DISMOUNT_GENERIC, DISSOLVED, DROWNING, DOOR, IS_AIR, IS_OBSTRUCTED, IS_STWALL, IS_WALL, IS_WATERWALL, Is_earthlevel, Is_juiblex_level, Is_waterlevel, LAVAPOOL, LAVAWALL, MAX_TYPE, MOAT, PARANOID_SWIM, POOL, ROOM, STONE, FAINTED, M_SEEN_FIRE, TREE, TT_LAVA, Upolyd, WATER, W_NONDIGGABLE, W_NONPASSWALL, WT_TOOMUCH_DIAGONAL, TIP_SWIM, PLNMSG_BACK_ON_GROUND, DBWALL, def_warnsyms, A_CON, A_DEX, COLNO, ROWNO, SCORR, SDOOR, CORR, ICE, IRONBARS, IS_FURNITURE, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, MGIVENNAME, SHOPBASE, Is_airlevel, In_sokoban, isok, ACCESSIBLE, AIR, DIGTYP_UNDIGGABLE, DRAWBRIDGE_UP, } from './const.js';
+import { BURNING, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED, DISMOUNT_FELL, DISMOUNT_GENERIC, DISSOLVED, DROWNING, DOOR, IS_AIR, IS_OBSTRUCTED, IS_STWALL, IS_WALL, IS_WATERWALL, Is_earthlevel, Is_juiblex_level, Is_waterlevel, LAVAPOOL, LAVAWALL, MAX_TYPE, MOAT, PARANOID_SWIM, POOL, ROOM, STONE, FAINTED, M_SEEN_FIRE, TREE, TT_LAVA, Upolyd, WATER, W_NONDIGGABLE, W_NONPASSWALL, WT_TOOMUCH_DIAGONAL, TIP_SWIM, PLNMSG_BACK_ON_GROUND, DBWALL, def_warnsyms, A_CON, A_DEX, COLNO, ROWNO, SCORR, SDOOR, CORR, ICE, IRONBARS, IS_FURNITURE, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, MGIVENNAME, SHOPBASE, Is_airlevel, In_sokoban, isok, ACCESSIBLE, AIR, DIGTYP_UNDIGGABLE, DRAWBRIDGE_UP, OBJECT_TIMER_KIND } from './const.js';
 import { heroIsPunished, placeBallAndChain, unplaceBallAndChain, beginBallAndChainMove, finishBallAndChainMove, } from './ball.js';
 import { displayLiquidName, docrt, feel_newsym, newsym, under_water, updateLastSeenTerrain, feel_location, terrain_glyph, glyphAt, canSpotMonster, canSenseMonster, canSeeMonster, monsterVisible, unmap_invisible, map_object, unmapObject, } from './display.js';
 import { impossible } from './diagnostics.js';
@@ -12,7 +12,7 @@ import { bot } from './botl.js';
 import { pline, plineWithContinuation, pline_dir, set_msg_xy } from './pline.js';
 import { heroPassesWalls, heroFormSticks, heroSpecies, heroLikesLava } from './hero_species.js';
 import { heroHasConflict } from './hero_conflict.js';
-import { endVoluntaryMultiTurn, nomul } from './command_state.js';
+import { clearCannedCommands, currentMulti, setMulti } from './cmd.js';
 import { resetHeroTrap, setHeroInWater } from './terrain_movement.js';
 import { clearHeroTrap, setHeroTrap, heroCanMoveFromTrap } from './hero_traps.js';
 import { monsterName } from './do_name.js';
@@ -30,12 +30,12 @@ import { destroyFireInventory } from './zap.js';
 import { releaseAllMonsterLeashes } from './leash_apply.js';
 import { splitHeroMonsterForm } from './mklev.js';
 import { MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_MOVE, MONSTER_NAME, MONSTER_SIZE, MONSTER_SYMBOL, MONSTER_ATTACKS, requireMonsterData, monsterIsAmorphous, MONSTER_BODY_META, } from './monster_data.js';
-import { AMULET_OF_LIFE_SAVING, BOULDER, LOADSTONE, OBJECT_MATERIAL, PICK_AXE, DWARVISH_MATTOCK, WAN_DIGGING, STATUE, } from './object_data.js';
+import { AMULET_OF_LIFE_SAVING, BOULDER, LOADSTONE, OBJECT_MATERIAL, PICK_AXE, DWARVISH_MATTOCK, WAN_DIGGING, STATUE, CORPSE } from './object_data.js';
 import { ownedObjectAction, simpleObjectNameWithArticle } from './objnam.js';
 import { heroFormClings, heroFormFlags, heroHidesOnCeiling, heroIsFlying, heroHasProtectionFromShapeChangers, heroIsPolymorphed, returnHeroToHumanForm, } from './polyself.js';
 import { d, rn2, rnd } from './rng.js';
 import { destroyLavaInventory, markLavaInventoryForDestruction, waterDamageChain } from './trap.js';
-import { objectMaterial } from './object_material.js';
+import { objectMaterial } from './o_init.js';
 import { dismountHero, steedIsGrounded, moveSteedWithHero, ridingPreventsMovement } from './steed.js';
 import { heroCanTeleport, heroControlsTeleport, moveHeroByTeleport, safeTeleportDestination, teleportHeroAtWill, } from './teleport.js';
 import { goodPosition, heroTeleportRestricted } from './teleport_rules.js';
@@ -77,7 +77,6 @@ import { AT_EXPL } from './monster_attack_types.js';
 import { confusePromptDirection } from './tty_prompts.js';
 import { resolveHeroCombatExplosion } from './hero_combat_explosion.js';
 import { artifactById } from './artifacts.js';
-import { disturbBuriedZombies } from './object_impact.js';
 import { checkSlipperyIce } from './fumbling.js';
 import { drawbridgeUnderlyingType } from './drawbridge_terrain.js';
 import { arriveTravel, captureRunmodeDelay, stopRun } from './runmode.js';
@@ -87,7 +86,7 @@ import { currentAttribute, exerciseAttribute } from './attrib.js';
 import { roomForRoomno, roomsAt } from './room.js';
 import { finishDestinationSpotEffects } from './location_effects.js';
 import { checkHeroLeashes } from './leash_apply.js';
-import { isPick } from './weapon_type.js';
+import { isPick, isFlimsyObject } from './object_properties.js';
 import { applyPickAxeDirection } from './pick_axe.js';
 import { diggingTarget } from './hero_digging.js';
 import { objectTypeKnown, tendedShop, shopkeeperBlockingDoor, shopkeeperBlockingEntry, dopay } from './shk.js';
@@ -97,6 +96,7 @@ import { announceInvocationSquare } from './invocation.js';
 import { xyToDirection } from './cmd.js';
 import { doopen } from './lock.js';
 import { askTeleportDestination } from './teleport.js';
+import { objectTimers, stopObjectTimer, scheduleObjectTimer } from './timeout.js';
 // C hack.c:escape_from_sticky_mon(). True means this attempt was spent
 // struggling; release clears the grip directly, without unstuck's cooldown.
 export async function escapeFromStickyMonster(x, y) {
@@ -2780,6 +2780,60 @@ export async function noticeAllMonsters(state = game, publish = plineWithContinu
     spottable.sort((one, two) => (one.mx - ux) ** 2 + (one.my - uy) ** 2 - ((two.mx - ux) ** 2 + (two.my - uy) ** 2));
     for (const monster of spottable) {
         await noticeMonster(monster, state, publish);
+    }
+}
+// Runtime command counts and involuntary delays.
+// C refs: cmd.c:reset_cmd_vars(), rhack(), hack.c:nomul().
+// C hack.c:nomul(). Caller-owned reasons and recovery messages follow this
+// call even when a longer existing delay makes it return early.
+export function nomul(value, state = game) {
+    const previous = currentMulti(state);
+    if (previous < value)
+        return;
+    if (previous >= 0)
+        state.context.botl = true;
+    const hero = state.u;
+    hero.invulnerable = false; // u.uinvulnerable, not the timed property
+    hero.usleep = 0;
+    setMulti(value, state);
+    if (value === 0)
+        state._helplessReason = null;
+    stopRun(state);
+    clearCannedCommands(state);
+}
+// Keep the full command count and any occupation. A timed occupation may
+// still need its final callback after the remaining multi becomes zero.
+export function endVoluntaryMultiTurn(state = game) {
+    nomul(0, state);
+}
+// C hack.c:1785-1794.  `violent` marks a kick or throw; a plain drop needs
+// ten times the weight to be noticeable.  The coordinates are the impact
+// object's post-placement position.
+export function impactDisturbsZombies(object, violent, state = game) {
+    // if object won't make a noticeable impact, let buried zombies rest
+    if (!object || object.owt < (violent ? 10 : 100) || isFlimsyObject(object, game))
+        return;
+    disturbBuriedZombies(object.ox, object.oy, state);
+}
+// C hack.c:1796-1813.  Pure timer arithmetic: no RNG, messages, or display,
+// so this stays state-aware rather than live-game locked.
+export function disturbBuriedZombies(x, y, state = game) {
+    const moves = state.moves ?? 0;
+    for (const corpse of state.level?.buriedObjects || []) {
+        if (corpse.otyp !== CORPSE)
+            continue;
+        if (Math.abs(corpse.ox - x) > 1 || Math.abs(corpse.oy - y) > 1)
+            continue;
+        const timer = objectTimers(corpse).find(candidate => candidate.kind === OBJECT_TIMER_KIND.ZOMBIFY_MON);
+        // C peek_timer() returns the absolute deadline; only a deadline of
+        // zero (no timer) leaves the corpse alone.  Due and overdue timers
+        // still qualify and land on the one-turn floor below.
+        if (!timer || timer.deadline <= 0)
+            continue;
+        // C stop_timer() returns the remaining time, possibly negative.
+        const remaining = timer.deadline - moves;
+        stopObjectTimer(corpse, OBJECT_TIMER_KIND.ZOMBIFY_MON);
+        scheduleObjectTimer(corpse, OBJECT_TIMER_KIND.ZOMBIFY_MON, moves + Math.max(1, Math.floor((remaining * 2) / 3)), state);
     }
 }
 //# sourceMappingURL=hack.js.map

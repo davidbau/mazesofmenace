@@ -4,11 +4,13 @@
 // Armor_off()/off_msg() completion shared with allmain.c.
 import { game } from './gstate.js';
 import { pline, plineWithContinuation } from './pline.js';
-import { commandResultCancelled, nomul } from './command_state.js';
+import { commandResultCancelled } from './cmd.js';
+import { nomul } from './hack.js';
 import { finishHeroHelplessness } from './allmain.js';
 import { monsterIsHumanoid } from './monster_data.js';
-import { GRAY_DRAGON_SCALES, HELM_OF_OPPOSITE_ALIGNMENT, LENSES, MEAT_RING, OBJECT_BIMANUAL, OBJECT_DELAY, } from './object_data.js';
+import { GRAY_DRAGON_SCALES, HELM_OF_OPPOSITE_ALIGNMENT, LENSES, MEAT_RING, OBJECT_DELAY, } from './object_data.js';
 import { GETOBJ_SUGGEST, PARANOID_REMOVE, W_ACCESSORY, W_ARMOR } from './const.js';
+import { isBimanualObject } from './object_properties.js';
 import { heroFingerName, heroHandName } from './body_parts.js';
 import { recordRandom } from './monster_action_types.js';
 import { heroHasNoHead, heroSpecies } from './hero_species.js';
@@ -26,7 +28,7 @@ import { chooseInventoryObject, compactInventoryLetters } from './inventory_prom
 import { accessibleEquipment, equipmentClassification, wearingFullEquipment, } from './equipment_selection.js';
 import { canSelectOff } from './bulk_takeoff.js';
 import { resetBulkTakeoff, TAKEOFF_ORDER, takeoffSlotObject } from './takeoff_state.js';
-import { isWeldedPrimary, releaseWeaponSlots } from './weapon_slots.js';
+import { isWeldedPrimary, releaseWeaponSlots } from './wield.js';
 import { objectWearMessage } from './object_wear_message.js';
 import { yn_function } from './query.js';
 export async function doputon() {
@@ -131,9 +133,9 @@ async function putOnAccessoryObject(object) {
     const weapon = game.uwep;
     const primary = game.u.rightHanded === false ? 'uleft' : 'uright';
     const discoveredWeld = !!weapon && !weapon.bknown;
-    if (weapon && (ringSlot === primary || OBJECT_BIMANUAL[weapon.otyp])
+    if (weapon && (ringSlot === primary || isBimanualObject(weapon))
         && isWeldedPrimary(weapon)) {
-        const handName = OBJECT_BIMANUAL[weapon.otyp] ? makePlural(heroHandName(game)) : heroHandName(game);
+        const handName = isBimanualObject(weapon) ? makePlural(heroHandName(game)) : heroHandName(game);
         await pline(`You cannot free your weapon ${handName} to put on the ring.`);
         game.context.move = discoveredWeld ? 1 : 0;
         return;
@@ -384,5 +386,10 @@ export function selectHeroDisenchantmentTarget(state, random, calls) {
         state?.uamul || state?.u?.uamul,
         state?.ublindf || state?.u?.ublindf,
     ][fallback] || null);
+}
+// C donning()/doffing() inspect afternmv, not a separate armor timer.
+export function pendingArmorAction(state = game) {
+    const after = state._afterMove;
+    return after?.kind === 'wear' || after?.kind === 'remove' ? after : null;
 }
 //# sourceMappingURL=do_wear.js.map

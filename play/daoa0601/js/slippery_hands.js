@@ -1,17 +1,18 @@
 // C do_wear.c:glibr(). Each turn, slippery fingers shed uncursed rings and
 // any wielded weapon that is not welded or an aklys.
 import { canLetGo } from './hero_inventory.js';
-import { clearCannedCommands } from './command_state.js';
+import { clearCannedCommands } from './cmd.js';
 import { removeHeroAccessory } from './accessory.js';
 import { heroFingerName, heroHandName } from './body_parts.js';
 import { plineWithContinuation } from './pline.js';
 import { dropInventoryObjectAtHero } from './hero_drop.js';
-import { AKLYS, OBJECT_BIMANUAL } from './object_data.js';
+import { AKLYS } from './object_data.js';
+import { isBimanualObject } from './object_properties.js';
 import { makePlural, makeSingular } from './object_grammar.js';
 import { heroHasNoLimbs } from './polyself.js';
-import { isWeldedPrimary, setPrimaryWeapon, setSecondaryWeapon } from './weapon_slots.js';
-import { weaponDescription } from './weapon_description.js';
-import { isSword } from './weapon_type.js';
+import { isWeldedPrimary, setPrimaryWeapon, setSecondaryWeapon } from './wield.js';
+import { weaponDescription } from './weapon.js';
+import { isSword } from './object_properties.js';
 export function heroHasSlipperyHands(state) {
     return !!state.u.glib || (state.u.glibTurns ?? 0) > 0;
 }
@@ -27,7 +28,7 @@ export async function slipFromSlipperyHands(state, publish = plineWithContinuati
         if (!ring || ring.cursed)
             return false;
         return !weapon || !(isWeldedPrimary(weapon, state) && weaponHand)
-            || !OBJECT_BIMANUAL[weapon.otyp];
+            || !isBimanualObject(weapon);
     };
     const left = state.uleft ?? null;
     const right = state.uright ?? null;
@@ -78,7 +79,7 @@ export async function slipFromSlipperyHands(state, publish = plineWithContinuati
     }
     let hand = heroHandName(state);
     let which = '';
-    if (OBJECT_BIMANUAL[primary.otyp])
+    if (isBimanualObject(primary))
         hand = makePlural(hand);
     else if (wasTwoWeapon)
         which = rightHanded ? 'right ' : 'left ';

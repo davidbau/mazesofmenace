@@ -1,7 +1,7 @@
 import { formatHeardMessage, formatSeenMessage, publishHeardMessage } from './hero_speech.js';
-import { objectMaterial } from './object_material.js';
+import { objectMaterial } from './o_init.js';
 import { moveMonsterNextToHero, teleportMonsterThroughHole, teleportMonsterThroughPortal, teleportMonsterToRandomLevel, relocateMonsterTo, randomMonsterRelocation, teleportMonsterFromTrap, } from './teleport.js';
-import { noticeMonster } from './hack.js';
+import { noticeMonster, disturbBuriedZombies } from './hack.js';
 import { launchRollingBoulder } from './rolling_boulder.js';
 import { impossible, panic } from './diagnostics.js';
 // Monster movement-ration state, movement, and combat.
@@ -21,7 +21,7 @@ import { d, rn2, rnd, rnl } from './rng.js';
 import { DISCARDED_CALL_LOG, recordRandom } from './monster_action_types.js';
 import { game, requireInitializedGame, requireLiveGame, requireGameLevel } from './gstate.js';
 import { monsterSearchesForItem, selectMonsterOffensiveItem, useMonsterOffensiveItem, useMonsterBullwhip, lootMonsterContainer, prepareMonsterItemUse, presentMonsterQuaff as publishMonsterQuaff, presentMonsterWandUse, revealAggravatingMonster, finishDeferredMonsterMiscItem, monsterGainLevelRiseDestination, findMonsterDefensiveItem, useMonsterDefensiveItem, useMonsterMiscItem, } from './muse.js';
-import { monsterHasMagicKey } from './artifact.js';
+import { monsterHasMagicKey } from './artifacts.js';
 import { monsterCanTouchObject, currentMonsterLoad, maxMonsterLoad, monsterCanCarryObject } from './mon.js';
 import { isLevelPrize } from './level_prize.js';
 import { ACCFOOD, MANFOOD, dogFood } from './pet_food.js';
@@ -41,7 +41,6 @@ import { displayMessageWindow } from './tty_topline.js';
 import { makePlural, verbForSubject } from './object_grammar.js';
 import { dissolveBars } from './projectile_bars.js';
 import { removeObjectFromMonsterInventory } from './monworn.js';
-import { delobj } from './object_delete.js';
 import { vision_recalc, cansee, clearPath, couldSeeFromHero, couldsee, monsterHasLineOfSightToHero, vision_note_blocker_change, } from './vision.js';
 import { SCR_SCARE_MONSTER, SKELETON_KEY, LOCK_PICK, CREDIT_CARD, APPLE, BANANA, BULLWHIP, BOULDER, CARROT, CLOVE_OF_GARLIC, CORPSE, DWARVISH_MATTOCK, EGG, FLINT, ENORMOUS_MEATBALL, GOLD_PIECE, MEATBALL, MEAT_RING, MEAT_STICK, ARROW, BAG_OF_HOLDING, BLINDFOLD, BOOMERANG, CANDY_BAR, CRYSKNIFE, DAGGER, FEDORA, FORTUNE_COOKIE, LEMBAS_WAFER, LEATHER_JACKET, LEASH, MAGIC_MARKER, MAGIC_WHISTLE, OILSKIN_SACK, PANCAKE, SACK, SLING, STETHOSCOPE, TALLOW_CANDLE, TIN_OPENER, TIN_WHISTLE, TOWEL, WAX_CANDLE, AXE, BATTLE_AXE, DART, IRON_SHOES, OBJECT_BIMANUAL, OBJECT_LARGE_DAMAGE, OBJECT_SMALL_DAMAGE, OBJECT_SUBTYPE, PICK_AXE, ROCK, POT_GAIN_LEVEL, POT_HEALING, POT_INVISIBILITY, SLIME_MOLD, TIN, TRIPE_RATION, WAN_SPEED_MONSTER, BAG_OF_TRICKS, LUMP_OF_ROYAL_JELLY, POT_POLYMORPH, WAN_MAKE_INVISIBLE, WAN_POLYMORPH, } from './object_data.js';
 import { digMonsterTunnel } from './dig.js';
@@ -50,7 +49,8 @@ import { releaseHeroFromMonster, releaseMonsterHold } from './hero_expulsion.js'
 import { checkQuestMonsterStatus, talkQuestCharacter, performQuestExpulsion } from './quest.js';
 import { placeHeroOnLevel } from './hero_location.js';
 import { hasShopkeeperData } from './shop_types.js';
-import { monsterKnowsTrap, monsterLearnsTrap, monstersSeeTrap } from './trap_knowledge.js';
+import { monsterKnowsTrap, monsterLearnsTrap, monstersSeeTrap } from './mondata.js';
+import { trapName } from './trap.js';
 import { isAccessibleAt, monsterInAir, monsterFliesOrFloats, levelHasCeiling, isLavaAt, isPoolAt, } from './terrain_properties.js';
 import { insideWizardTower, sameDungeonLevel, canHeroRiseUp, levelAtDepth } from './dungeon.js';
 import { movePet, monsterCouldReachItem, finishMonsterEating, } from './dogmove.js';
@@ -61,8 +61,10 @@ import { wakeMonstersNearWithMessages, publishMonsterWake } from './mon.js';
 import { finishMonsterWebTrap } from './web_trap.js';
 import { monsterWieldedWeapon, selectMonsterRangedWeapon, wieldMonsterWeapon, } from './weapon.js';
 import { swingMonsterWeapon } from './mhitu.js';
-import { ammunitionMatchesLauncher, isPick, isPolearm, returningWeaponRangeSquared, willWeld } from './weapon_type.js';
-import { trapName } from './trap_name.js';
+import { ammunitionMatchesLauncher, isPick, isPolearm } from './object_properties.js';
+import { returningWeaponRangeSquared, rollPhysicalWeaponDamageAgainstHero } from './weapon.js';
+import { willWeld } from './wield.js';
+import { monsterWeaponStrengthBonus } from './uhitm.js';
 import { currentAttribute } from './attrib.js';
 import { heroIsDisplaced, dragonFormForArmor } from './armor.js';
 import { heroHasConflict } from './hero_conflict.js';
@@ -105,7 +107,6 @@ import { inTown, roomsAt } from './room.js';
 import { createPoisonGasCloud, leaveMovementCloud, GAS_OK, monsterGasTolerance, visibleRegionAt, updateMonsterRegions, } from './regions.js';
 import { applyMonsterStoningAttack, startHeroPetrificationFromMonster, touchPetrifies } from './stoning.js';
 import { monsterReflectsRay } from './ray.js';
-import { monsterWeaponStrengthBonus, rollPhysicalWeaponDamageAgainstHero } from './weapon_damage.js';
 import { poisonAttackAttribute, poisonHeroFromMonster } from './uhitm.js';
 import { setMonsterPermanentInvisibility } from './worn.js';
 import { talkToDemon } from './demon_talk.js';
@@ -116,7 +117,7 @@ import { rndmonstAdj, growMonster } from './makemon.js';
 import { isContainer } from './container.js';
 import { isQuantumBox } from './quantum_cat.js';
 import { ceilingName } from './terrain_name.js';
-import { inventoryItemDescription } from './invent.js';
+import { inventoryItemDescription, delobj } from './invent.js';
 import { learnWand } from './zap.js';
 import { advanceHeroAttackSequence, beginMonsterHeroAttack, monsterAttackMessagePublisher, presentMonsterAttackEffects, } from './mhitu.js';
 import { beginMonsterPitTrap, finishDeferredMonsterTrap, burnArmorByFire, monsterTrapVisibility, seeTrap, trapAt, triggerMonsterTrap, tryMonsterTrapEscape, finishMonsterPitTrap, } from './trap.js';
@@ -125,7 +126,6 @@ import { findNearbyMonsterPosition, monsterTeleportRestricted, reportMonsterTele
 import { wereChange, setHeroLycanthropy } from './were.js';
 import { stopHeroOccupation } from './occupation.js';
 import { diggingTimeToHole } from './hero_digging.js';
-import { disturbBuriedZombies } from './object_impact.js';
 import { chooseCovetousStrategy, pursueCovetousTarget, retreatCovetousMonster, publishMonsterCuss } from './wizard.js';
 import { migrateMonsterOffLevel } from './dog.js';
 export const NORMAL_SPEED = 12;
@@ -1912,8 +1912,11 @@ export async function completeMovedMonsterAction(monster, movement, state, rando
                 return movement;
             if (outcome === 'killed') {
                 // C postmov() repaints the destination before returning
-                // MMOVE_DIED for a trap that killed the actor.
+                // MMOVE_DIED for a trap that killed the actor (monmove.c:1512);
+                // the presenter must not paint this return's cell a second
+                // time, which would consume an extra display-RNG draw.
                 await newsym(movement.x, movement.y);
+                movement.postMoveDestinationPainted = true;
                 return movement;
             }
         }

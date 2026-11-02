@@ -21,10 +21,11 @@ import { currentHungerState, restoreHeroNutrition } from './hunger.js';
 import { consumeInventoryItem } from './invent.js';
 import { AD_BLND, AT_ENGL } from './monster_attack_types.js';
 import { MONSTER_ATTACKS, MONSTER_FLAGS2, requireMonsterData } from './monster_data.js';
-import { AMULET_OF_STRANGULATION, AMULET_OF_UNCHANGING, BOULDER, FUMBLE_BOOTS, GAUNTLETS_OF_FUMBLING, HELM_OF_OPPOSITE_ALIGNMENT, LEVITATION_BOOTS, LOADSTONE, OBJECT_BIMANUAL, OBJECT_NAMES, } from './object_data.js';
+import { AMULET_OF_STRANGULATION, AMULET_OF_UNCHANGING, BOULDER, FUMBLE_BOOTS, GAUNTLETS_OF_FUMBLING, HELM_OF_OPPOSITE_ALIGNMENT, LEVITATION_BOOTS, LOADSTONE, OBJECT_NAMES, } from './object_data.js';
+import { isBimanualObject } from './object_properties.js';
 import { makePlural } from './object_grammar.js';
 import { ownedObjectAction } from './objnam.js';
-import { uncurseObjectState } from './object_state.js';
+import { uncurseObjectState } from './mkobj.js';
 import { heroHasNoHands, heroIsUnchanging, returnHeroToHumanForm } from './polyself.js';
 import { hasIntrinsicProperty, refreshProperty } from './properties.js';
 import { unpunishHero } from './punishment.js';
@@ -35,8 +36,8 @@ import { makeBlinded } from './sight_change.js';
 import { clearHeroSliming, heroIsSliming } from './slime.js';
 import { clearHeroPetrification, heroIsPetrifying } from './stoning.js';
 import { teleportHeroSafely } from './teleport.js';
-import { isWeldedPrimary } from './weapon_slots.js';
-import { heroHasFreeHand } from './weapon_type.js';
+import { isWeldedPrimary } from './wield.js';
+import { heroHasFreeHand } from './engrave.js';
 import { nearCapacity } from './weight.js';
 import { purifyHeroLycanthropy } from './were.js';
 const attributeIndices = [0, 1, 2, 3, 4, 5];
@@ -147,7 +148,7 @@ export function worstCursedItem(state = game) {
     }
     const weapon = state.uwep;
     const welded = weapon && isWeldedPrimary(weapon, state) ? weapon : null;
-    if (welded && (state.uright || OBJECT_BIMANUAL[welded.otyp]))
+    if (welded && (state.uright || isBimanualObject(welded)))
         return welded;
     for (const slot of ['uarmg', 'uarms', 'uarmc', 'uarm', 'uarmh', 'uarmf',
         'uarmu', 'uamul', 'uleft', 'uright', 'ublindf']) {

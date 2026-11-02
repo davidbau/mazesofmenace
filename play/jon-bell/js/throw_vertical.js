@@ -5,20 +5,23 @@ import { In_endgame, Is_earthlevel, HEAD, FACE, KILLED_BY, KILLED_BY_AN,
     STONE_RES, Upolyd } from './const.js';
 import { PM_SHADE, PM_STONE_GOLEM } from './pm.generated.js';
 import { rn1, rnd } from './rng.js';
-import { pline } from './display.js';
+import { pline } from './pline.js';
 import { Blind } from './vision.js';
 import { potionhit } from './potion.js';
-import { breaktest, breakmsg, breakobj, dropy, body_part, ceiling, hitfloor } from './cmd.js';
+import { body_part, ceiling } from './cmd.js';
+import { breaktest, breakmsg, breakobj, hitfloor } from './dothrow.js';
+import { dropy } from './do.js';
 import { dmgval, artifact_hit, touch_petrifies } from './uhitm.js';
 import { hard_helmet } from './do_wear.js';
-import { can_blnd, poly_when_stoned, mon_hates_blessings } from './mhitm.js';
+import { can_blnd, poly_when_stoned, mon_hates_blessings } from './mondata.js';
 import { BlindedTimeout, make_blinded, hit } from './zap.js';
 import { polymon } from './polyself.js';
 import { permonstTemplate, hates_silver } from './makemon.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 import { doname, helm_simple_name, thesimpleoname, an } from './objnam.js';
-import { losehp } from './dokick.js';
+import { losehp } from './hack.js';
 import { done } from './end.js';
+import { has_ceiling } from './dungeon.js'; // relocate-fns
 
 const CLOTH = 6, SILVER = 14, AT_WEAP = 254;
 const EGG = 266, CORPSE = 265, CREAM_PIE = 287, BLINDING_VENOM = 479;
@@ -38,9 +41,6 @@ const stoneMissile = obj => {
     return (material === 20 || material === 21) && (obj.oclass | 0) !== 4;
 };
 
-export function has_ceiling(lev) {
-    return !(In_endgame(lev) && !Is_earthlevel(lev));
-}
 
 export function harmless_missile(obj) {
     const t = obj.otyp | 0;

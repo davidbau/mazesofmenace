@@ -5,9 +5,9 @@ import { clong, LONG_MIN, LONG_MAX } from './integer.js';
 import { CORPSTAT_FEMALE, CORPSTAT_MALE } from './const.js';
 import { canseemon } from './display.js';
 import { PM_WIZARD, PM_ARCHEOLOGIST } from './pm.generated.js';
-import { depth, deepest_lev_reached } from './hacklib.js';
+import { depth, deepest_lev_reached } from './dungeon.js';
 import { genders as _tt_genders, aligns as _tt_aligns } from './roles.js';
-import { yyyymmdd } from './allmain.js';
+import { yyyymmdd } from './calendar.js';
 import { vfsReadFile, vfsWriteFile } from './storage.js';
 import { set_corpsenm } from './mklev.js';
 import { christen_monst } from './mhitm.js';
@@ -138,6 +138,7 @@ function classmon(plrole) {
 import { KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX } from './const.js';
 import { game, wizard, discover } from './gstate.js';
 import { raw_print } from './rawterm.js';
+import { fopen_datafile, unlock_file } from './files.js'; // relocate-fns
 /**
  * void formatkiller(char *buf, unsigned siz, int how, boolean incl_helpless)
  * nethack-c/src/topten.c:89
@@ -615,17 +616,6 @@ function display_nhwindow(win, flag) {
 }
 function destroy_nhwindow(win) { _TT_WINDOWS.delete(win); }
 function lock_file(filename, prefix, timeout) { return 1; }
-function unlock_file(filename) { /* no-op */ }
-function fopen_datafile(filename, mode, prefix) {
-    const write = String(mode).indexOf('w') >= 0;
-    return {
-        name: String(filename),
-        write,
-        data: write ? '' : (vfsReadFile(String(filename)) ?? ''),
-        pos: 0,
-        out: '',
-    };
-}
 
 /* One fgets()' worth of the open file, or null at EOF.  A final line with no
  * '\n' is still a line, exactly as fgets() reports it. */

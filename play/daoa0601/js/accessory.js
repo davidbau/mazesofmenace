@@ -5,15 +5,16 @@ import { A_CHA, A_CON, A_STR, Is_airlevel, Upolyd, W_AMUL, W_RINGL, W_RINGR } fr
 import { attributeIsAtLimit, currentAttribute } from './attrib.js';
 import { armorOffMessage, findArmorClass } from './armor.js';
 import { game, requireLiveGame } from './gstate.js';
-import { setWornArtifactProperties } from './artifact_properties.js';
-import { AMULET_OF_CHANGE, AMULET_OF_GUARDING, AMULET_OF_RESTFUL_SLEEP, AMULET_OF_STRANGULATION, AMULET_OF_UNCHANGING, OBJECT_BIMANUAL, OBJECT_CHARGED, OBJECT_NAMES, OBJECT_PROPERTY, RIN_PROTECTION, } from './object_data.js';
+import { setWornArtifactProperties } from './artifacts.js';
+import { AMULET_OF_CHANGE, AMULET_OF_GUARDING, AMULET_OF_RESTFUL_SLEEP, AMULET_OF_STRANGULATION, AMULET_OF_UNCHANGING, OBJECT_CHARGED, OBJECT_NAMES, OBJECT_PROPERTY, RIN_PROTECTION, } from './object_data.js';
+import { isBimanualObject } from './object_properties.js';
 import { learnObjectType, observeObject } from './object_knowledge.js';
 import { refreshInvisibleMonsters } from './hero_seeing.js';
 import { showInvisibilityMessage } from './hero_invisibility.js';
 import { heroIsBlind } from './senses.js';
 import { objectTypeKnown } from './shk.js';
 import { captureLevitationState, grantWornProperty, propertyIsActive, hasIntrinsicProperty, propertyIsBlocked, propertyTimeout, refreshMovementProperties, removeWornProperty, setPropertyTimeout, } from './properties.js';
-import { isWeldedPrimary, releaseWeaponSlots } from './weapon_slots.js';
+import { isWeldedPrimary, releaseWeaponSlots } from './wield.js';
 import { cancelSlotTakeoff } from './takeoff_state.js';
 import { heroFormFlags, heroHasNoLimbs, heroIsUnchanging } from './polyself.js';
 import { changeHeroSex, heroIsBreathless, heroPolyGender } from './hero_species.js';
@@ -65,7 +66,7 @@ export function ringRemovalObstacle(ring, type, state = game) {
     const weapon = state.uwep;
     const primaryRing = state.u.rightHanded === false ? state.uleft : state.uright;
     if (weapon && isWeldedPrimary(weapon, state)
-        && (ring === primaryRing || OBJECT_BIMANUAL[weapon.otyp]))
+        && (ring === primaryRing || isBimanualObject(weapon)))
         return weapon;
     if (state.uarmg?.cursed)
         return state.uarmg;

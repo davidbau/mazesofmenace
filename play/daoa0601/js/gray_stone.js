@@ -1,5 +1,5 @@
 // C apply.c:use_stone() and touchstone_ok().
-import { commandResultCancelled } from './command_state.js';
+import { commandResultCancelled } from './cmd.js';
 import { formatFeltMessage, formatSeenMessage } from './hero_speech.js';
 import { GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_SUGGEST } from './const.js';
 import { plineWithContinuation } from './pline.js';
@@ -9,9 +9,9 @@ import { chooseInventoryObject } from './inventory_prompt.js';
 import { OBJECT_COLOR, TOUCHSTONE } from './object_data.js';
 import { makePlural } from './object_grammar.js';
 import { learnObjectType } from './object_knowledge.js';
-import { objectMaterial } from './object_material.js';
+import { objectMaterial } from './o_init.js';
 import { isFlimsyObject, isGrayStone } from './object_properties.js';
-import { objectResistsDestruction } from './object_state.js';
+import { objectResistsDestruction } from './zap.js';
 import { objectName, observeObjectForNaming } from './objnam.js';
 import { heroIsBlind, heroIsHallucinating } from './senses.js';
 import { objectTypeKnown } from './shk.js';

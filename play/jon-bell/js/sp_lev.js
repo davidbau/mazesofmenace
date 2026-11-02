@@ -9,21 +9,33 @@
 // RNG parity is the #1 correctness signal (Cardinal Rule 2).  Every rn2/rnd
 // call in this file must match C's sp_lev.c in order and argument.
 import { game } from './gstate.js';
-import { Can_dig_down as Can_dig_down_real, okdoor } from './mklev.js';
+import { okdoor } from './mklev.js';
+import { Can_dig_down as Can_dig_down_real } from './dungeon.js';
 import { rn2, rnd, rn1, pushRngLogEntry } from './rng.js';
 import { FILL_NORMAL, MELT_ICE_AWAY, GRAVE } from './const.js';
 import { dig_corridor, mineralize, make_grave, remove_object as remove_object_real } from './mklev.js';
 import { add_to_container, mkgold, blessorcurse } from './mklev.js';
 import { ALTAR, DOOR, SDOOR, D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED, D_SECRET, W_RANDOM, W_NORTH, W_SOUTH, W_EAST, W_WEST, W_ANY, IS_OBSTRUCTED, isok, IS_WALL, IS_DOOR, STONE, MAX_TYPE, INVALID_TYPE, MATCH_WALL, IS_STWALL, IS_ROOM, CROSSWALL, HWALL, VWALL, COLNO, ROWNO, W_NONDIGGABLE, W_NONPASSWALL, ROOM, MOAT, TLCORNER, TRCORNER, BLCORNER, BRCORNER, TUWALL, TDWALL, TLWALL, TRWALL, DBWALL, AIR, CLOUD, FOUNTAIN, THRONE, SINK, POOL, WATER, TREE, IRONBARS, IS_DRAWBRIDGE, DB_DIR, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP, VIBRATING_SQUARE, NO_TRAP, CORR, ICE, ICED_POOL, ICED_MOAT, SCORR, LAVAPOOL, LAVAWALL, OROOM, THEMEROOM, COURT, SWAMP, VAULT, BEEHIVE, MORGUE, BARRACKS, ZOO, DELPHI, TEMPLE, ANTHOLE, COCKNEST, LEPREHALL, SHOPBASE, ARMORSHOP, SCROLLSHOP, POTIONSHOP, WEAPONSHOP, FOODSHOP, RINGSHOP, WANDSHOP, TOOLSHOP, BOOKSHOP, FODDERSHOP, CANDLESHOP, STAIRS, LADDER, MKTRAP_MAZEFLAG, MKTRAP_NOSPIDERONWEB, MKTRAP_SEEN, MKTRAP_NOVICTIM, SP_COORD_IS_RANDOM, OBJ_CONTAINED, OBJ_MINVENT, NON_PM, NEUTRAL, MALE, FEMALE, In_mines, AM_NONE, AM_CHAOTIC, AM_NEUTRAL, AM_LAWFUL, AM_MASK, AM_SPLEV_CO, AM_SPLEV_NONCO, AM_SPLEV_RANDOM, A_NONE, A_LAWFUL, A_ORIGINAL, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPMASK, PROT_FROM_SHAPE_CHANGERS, WET, HOT, SOLID, DEFAULT_INVENT, CUSTOM_INVENT, NO_INVENT, STRAT_WAITFORU, MM_NOTAIL, MM_NOGRP, MM_ADJACENTOK, MM_IGNOREWATER, MM_NOCOUNTBIRTH, MM_NOMSG, NO_MM_FLAGS, G_EXTINCT, G_GONE, LOW_PM, TUTORIAL, QUEST, DUNGEON_ALIGN_BY_DNUM, M_AP_MONSTER, DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, CORPSTAT_NONE, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_FEMALE, ROOMOFFSET, AM_SHRINE, AM_SANCTUM, Is_waterlevel, Is_airlevel, Is_stronghold, In_quest, LR_DOWNSTAIR, LR_UPSTAIR, LR_PORTAL, LR_BRANCH, LR_TELE, LR_UPTELE, LR_DOWNTELE, LR_MONGEN, GP_CHECKSCARY, IS_LAVA, IS_POOL, OBJ_FREE, LA_UP, LA_DOWN, MAX_NESTED_ROOMS, MAXNROFROOMS, IS_FURNITURE, F_LOOTED, F_WARNED, S_LPUDDING, S_LDWASHER, S_LRING, T_LOOTED, TREE_LOOTED, TREE_SWARM, SET_LIT_NOCHANGE, IS_TREE, is_pit, is_hole, TRAPNUM, Is_botlevel, In_endgame, EPRI, ESHK, ONAME_LEVEL_DEF, RLOC_ERR, RLOC_NOMSG, P_SPEAR, Amask2align, SVALL, } from './const.js';
 import { oinit } from './o_init.js';
-import { level_finalize_topology, fill_special_room, clear_level_structures, find_branch_room, OC_MERGE, newcham, add_door, makeroguerooms, themeroom_lspo_map_redo_maploc_rng, u_on_newpos, set_wall_state, mdrop_obj_md } from './mklev.js';
+import { level_finalize_topology, fill_special_room, clear_level_structures, find_branch_room, OC_MERGE, add_door, themeroom_lspo_map_redo_maploc_rng, mdrop_obj_md } from './mklev.js';
+import { makeroguerooms } from './extralev.js';
+import { set_wall_state } from './display.js';
+import { u_on_newpos } from './dungeon.js';
+import { newcham } from './mon.js';
 import { flip_worm_segs_vertical, flip_worm_segs_horizontal, worm_seg_swap, wormgone } from './worm.js';
-import { In_hell, Can_fall_thru, mapfrag_get, mktrap, mksobj_at, mkobj_at, mksobj, makemon, somexy, somex, somey, mk_tt_object, mkcorpstat, resists_ston, del_engr_at, engr_at, make_engr_at, set_corpsenm, sobj_at, wallification, count_level_features, makecorridors, mkstairs, stairway_add, build_room, add_room, topologize, level_difficulty, get_level_extends, fix_wall_spines, occupied, mpickobj } from './mklev.js';
+import { mapfrag_get, mktrap, mksobj_at, mkobj_at, mksobj, makemon, mk_tt_object, mkcorpstat, resists_ston, del_engr_at, engr_at, make_engr_at, set_corpsenm, count_level_features, makecorridors, mkstairs, build_room, add_room, topologize, occupied } from './mklev.js';
+import { mpickobj } from './steal.js';
+import { sobj_at } from './invent.js';
+import { wallification, get_level_extends, fix_wall_spines } from './mkmaze.js';
+import { In_hell, Can_fall_thru, level_difficulty } from './dungeon.js';
+import { stairway_add } from './stairs.js';
+import { somexy, somex, somey } from './mkroom.js';
 import { set_levltyp, set_levltyp_lit, create_maze, baalz_fixup, setup_waterlevel, stolen_booty, walkfrom as maze_walkfrom } from './mkmaze.js';
 import { vision_reset, block_point } from './vision.js';
 import { litstate_rnd, mkmap, flood_fill_rm } from './mkmap.js';
 import { priestini, mk_roamer } from './priest.js';
-import { oname, artifact_exists } from './objnam.js';
+import { oname } from './objnam.js';
+import { artifact_exists } from './artifact.js';
 import { lookup_novel, safe_oname } from './do_name.js';
 import { obj_stop_timers, begin_burn } from './timeout.js';
 import { bury_an_obj } from './dig.js';
@@ -35,19 +47,23 @@ import { DEFSYM_EXPLANATION } from './defsym_data.js';
 import { MKOBJ_OC_CLASS } from './mkobj_data.js';
 import { weight } from './weight.js';
 import { bless as bless_obj, unbless as unbless_obj, curse as curse_obj, uncurse as uncurse_obj } from './mkobj.js';
-import { name_to_mon, set_mon_data, set_malign, rndmonnum, can_saddle, mkclass, mkMplayer, rndOffensiveItem, rndDefensiveItem, rndMiscItem, propagate, permonstTemplate, check_gear_next_turn, emits_light } from './makemon.js';
-import { del_light_source, monst_to_any } from './light.js';
+import { name_to_mon, set_mon_data, set_malign, rndmonnum, mkclass, mkMplayer, rndOffensiveItem, rndDefensiveItem, rndMiscItem, propagate, permonstTemplate, check_gear_next_turn, emits_light } from './makemon.js';
+import { can_saddle } from './steed.js';
+import { del_light_source } from './light.js';
+import { monst_to_any } from './hack.js';
 import { LS_MONSTER } from './const.js';
 import { mongets } from './m_initweap.js';
 import { MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
-import { t_at, deltrap, maketrap, goodpos, update_mon_extrinsics, m_dowear } from './trap.js';
+import { t_at, deltrap, maketrap, goodpos } from './trap.js';
+import { update_mon_extrinsics, m_dowear } from './worn.js';
 /* C keeps pick_vibrasquare_location in mkmaze.c; create_trap's VIBRATING_SQUARE
  * arm (sp_lev.c:1819) is its only caller outside makemaz. */
 import { pick_vibrasquare_location } from './mkmaze.js';
 import { mergable } from './cmd.js';
 import { on_level } from './dungeon.js';
 import { m_at, monmightthrowwep } from './uhitm.js';
-import { christen_monst, poly_when_stoned } from './mhitm.js';
+import { christen_monst } from './mhitm.js';
+import { poly_when_stoned } from './mondata.js';
 import { within_bounded_area } from './rect.js';
 import { create_gas_cloud, create_gas_cloud_selection as create_region_gas_cloud_selection, regions_list } from './region.js';
 import { PM_MINOTAUR, PM_ARCHEOLOGIST, PM_WIZARD, PM_FIRE_VORTEX, PM_FLAMING_SPHERE, PM_FIRE_ELEMENTAL, PM_SALAMANDER, PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER, PM_CLERIC, PM_DWARF, PM_GNOME, NUMMONS } from './pm.generated.js';
@@ -57,7 +73,7 @@ import { parse } from './lua/parser.js';
 import { nhl_init, nhl_done, nhl_loadlua } from './nhlua.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import monPmnamesPack from './makemon_pmnames.json' with { type: 'json' };
-import { create_drawbridge } from './dokick.js';
+import { create_drawbridge } from './dbridge.js';
 import { impossible } from './pline.js';
 import { map_background, map_object, map_trap, newsym_force as newsym_force_real, terrain_glyph, GLYPHCLS_CMAP } from './display.js';
 import { enexto_core, rloc } from './teleport.js';
@@ -91,62 +107,8 @@ const LVLINIT_SWAMP = 6;
 // char2typ table + splev_chr2typ — C ref: nethack-c/src/nhlua.c:335-395
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const char2typ = [
-    { ch: ' ', typ: STONE },
-    { ch: '#', typ: CORR },
-    { ch: '.', typ: ROOM },
-    { ch: '-', typ: HWALL },
-    { ch: '-', typ: TLCORNER },
-    { ch: '-', typ: TRCORNER },
-    { ch: '-', typ: BLCORNER },
-    { ch: '-', typ: BRCORNER },
-    { ch: '-', typ: CROSSWALL },
-    { ch: '-', typ: TUWALL },
-    { ch: '-', typ: TDWALL },
-    { ch: '-', typ: TLWALL },
-    { ch: '-', typ: TRWALL },
-    { ch: '-', typ: DBWALL },
-    { ch: '|', typ: VWALL },
-    { ch: '+', typ: DOOR },
-    { ch: 'A', typ: AIR },
-    { ch: 'C', typ: CLOUD },
-    { ch: 'S', typ: SDOOR },
-    { ch: 'H', typ: SCORR },
-    { ch: '{', typ: FOUNTAIN },
-    /* C nhlua.c has `{ '\\', THRONE }` — ONE backslash. The two-character
-     * form this used to hold could never equal a single map character, so
-     * knox.lua:48 `des.terrain(43,09, "\\")` resolved to INVALID_TYPE; it is
-     * only reachable at all now that the lexer decodes `"\\"` to one byte. */
-    { ch: '\\', typ: THRONE },
-    { ch: 'K', typ: SINK },
-    { ch: '}', typ: MOAT },
-    { ch: 'P', typ: POOL },
-    { ch: 'L', typ: LAVAPOOL },
-    { ch: 'Z', typ: LAVAWALL },
-    { ch: 'I', typ: ICE },
-    { ch: 'W', typ: WATER },
-    { ch: 'T', typ: TREE },
-    { ch: 'F', typ: IRONBARS }, // Fe = iron
-    { ch: 'x', typ: MAX_TYPE }, // "see-through"
-    { ch: 'B', typ: CROSSWALL }, // hack: boundary location
-    { ch: 'w', typ: MATCH_WALL }, // IS_STWALL()
-    { ch: '\0', typ: STONE },
-];
 
-function splev_chr2typ(c) {
-    for (let i = 0; char2typ[i].ch; i++) {
-        if (c === char2typ[i].ch)
-            return char2typ[i].typ;
-    }
-    return INVALID_TYPE;
-}
 
-// check_mapchr helper (static to this module)
-function check_mapchr(s) {
-    if (s && s.length === 1)
-        return splev_chr2typ(s[0]);
-    return INVALID_TYPE;
-}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // get_table_* helpers — C ref: nethack-c/src/nhlua.c:1183-1290
@@ -154,65 +116,11 @@ function check_mapchr(s) {
 // LuaTable API: .get(key) returns the value, .set(key,v) writes back.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function get_table_int_opt(args, name, defval) {
-    const v = args.get(name);
-    if (v == null) return defval;
-    return Number(v);
-}
 
-function get_table_str_opt(args, name, defval) {
-    const v = args.get(name);
-    if (v == null || v === '') return defval;
-    return String(v);
-}
 
-// C ref: nhlua.c get_table_str(L, name) — required string field (no
-// default; not reached by tut-1/tut-2, which always supply "text").
-function get_table_str(args, name) {
-    const v = args.get(name);
-    return (v == null) ? '' : String(v);
-}
 
-function get_table_mapchr_opt(args, name, defval) {
-    const v = args.get(name);
-    if (v == null || v === '') return defval;
-    const s = String(v);
-    if (s.length === 0) return defval;
-    const typ = check_mapchr(s);
-    if (typ === INVALID_TYPE)
-        throw new Error('Erroneous map char');
-    return typ;
-}
 
-// boolean_opt: accepts Lua booleans AND 0/1 like C
-function get_table_boolean_opt(args, name, defval) {
-    const v = args.get(name);
-    if (v == null) return defval;
-    const t = typeof v;
-    if (t === 'boolean') return v ? 1 : 0;
-    if (t === 'number') {
-        const n = Number(v);
-        if (n === 0 || n === 1) return n;
-        throw new Error('Expected a boolean');
-    }
-    if (t === 'string') {
-        const s = String(v).toLowerCase();
-        if (s === 'true' || s === 'yes') return 1;
-        if (s === 'false' || s === 'no') return 0;
-        throw new Error('Expected a boolean');
-    }
-    throw new Error('Expected a boolean');
-}
 
-// get_table_option: map string through allowed list → index (like luaL_checkoption)
-function get_table_option(args, name, defval, opts) {
-    const v = args.get(name);
-    const s = (v != null) ? String(v) : defval;
-    for (let i = 0; opts[i] != null; i++) {
-        if (s === opts[i]) return i;
-    }
-    return 0; // default to first option if not found (C's luaL_checkoption behavior)
-}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // lvlfill_solid — C ref: nethack-c/src/sp_lev.c:375-390
@@ -1004,12 +912,6 @@ export function mapfrag_match(mf, x, y) {
 
 // ─── selection floodfill + random wall direction — C ref: sp_lev.c:4583-4604 ─
 
-/** C ref: selvar.c set_selection_floodfillchk — module-global setter
- *  (mirrors set_ok_location_func in sp_lev_loc.js). */
-let _selection_floodfillchk = null;
-export function set_selection_floodfillchk(fn) {
-    _selection_floodfillchk = fn;
-}
 
 /** C ref: sp_lev.c:4591-4597 — static typ + floodfill predicate (returns C int 1/0). */
 let floodfillchk_match_under_typ = 0;
@@ -1084,41 +986,7 @@ export function cvt_to_relcoord(coord) {
     }
 }
 
-export function selection_new() {
-    // C: struct selectionvar *tmps = (struct selectionvar *) alloc(sizeof *tmps);
-    const tmps = {
-        wid: COLNO,      // C: tmps->wid = COLNO;
-        hei: ROWNO,      // C: tmps->hei = ROWNO;
-        bounds_dirty: false,  // C: tmps->bounds_dirty = FALSE;
-        bounds: {
-            lx: COLNO,   // C: tmps->bounds.lx = COLNO;
-            ly: ROWNO,   // C: tmps->bounds.ly = ROWNO;
-            hx: 0,       // C: tmps->bounds.hx = tmps->bounds.hy = 0;
-            hy: 0,
-        },
-        // C: tmps->map = (char *) alloc((COLNO * ROWNO) + 1);
-        // (void) memset(tmps->map, 1, (COLNO * ROWNO));
-        // tmps->map[(COLNO * ROWNO)] = '\0';
-        map: new Array(COLNO * ROWNO + 1).fill(1),
-    };
-    // Null-terminate like C (though in JS this is not strictly necessary)
-    tmps.map[COLNO * ROWNO] = 0;
-    return tmps;
-}
 
-// C alloc() compatibility helper.  The active mapfragment/selection paths now
-// construct native JS objects directly, but a few C-shaped special-level
-// helpers still ask for byte storage by size.  Return zeroed storage with the
-// requested extent rather than turning that compatibility call into a crash.
-function alloc(size) {
-    const n = Math.max(0, Number.isFinite(size) ? Math.trunc(size) : 0);
-    return new Uint8Array(n);
-}
-function dupstr(str) {
-    // C dupstr: duplicate (copy) a string
-    // In JS, strings are immutable so we just return the same string.
-    return str;
-}
 function stripdigits(s) {
     let out = '';
     for (let i = 0; i < s.length; i++) {
@@ -1143,82 +1011,9 @@ function str_lines_maxlen(str) {
     return maxLen;
 }
 
-export function selection_free(sel, freesel) {
-    if (sel) {
-        if (sel.map)
-            sel.map = null;
-        sel.map = null;
-        if (freesel) {
-            // free((genericptr_t) sel) — in JS, object will be GC'd; just leave it
-        } else {
-            // (void) memset((genericptr_t) sel, 0, sizeof *sel);
-            sel.wid = 0;
-            sel.hei = 0;
-            sel.bounds_dirty = false;
-            sel.bounds = { lx: 0, ly: 0, hx: 0, hy: 0 };
-            sel.map = null;
-        }
-    }
-}
 
-/* clear selection, setting all locations to value val */
-export function selection_clear(sel, val) {
-    /* (void) memset(sel->map, 1 + val, (COLNO * ROWNO)); */
-    for (let i = 0; i < COLNO * ROWNO; i++) {
-        sel.map[i] = 1 + val;
-    }
-    if (val) {
-        sel.bounds.lx = 0;
-        sel.bounds.ly = 0;
-        sel.bounds.hx = COLNO - 1;
-        sel.bounds.hy = ROWNO - 1;
-    } else {
-        sel.bounds.lx = COLNO;
-        sel.bounds.ly = ROWNO;
-        sel.bounds.hx = sel.bounds.hy = 0;
-    }
-    sel.bounds_dirty = false;
-}
 
-/** C ref: selvar.c:65-85 — selection_clone: deep-copy a selectionvar */
-export function selection_clone(sel) {
-    const tmps = {
-        wid: sel.wid,
-        hei: sel.hei,
-        bounds_dirty: sel.bounds_dirty,
-        bounds: {
-            lx: sel.bounds.lx,
-            ly: sel.bounds.ly,
-            hx: sel.bounds.hx,
-            hy: sel.bounds.hy,
-        },
-        map: sel.map.slice(),
-    };
-    return tmps;
-}
 
-/* set a point in a selection */
-export function selection_setpoint(x, y, sel, c) {
-    if (!sel || !sel.map)
-        return;
-    if (x < 0 || y < 0 || x >= sel.wid || y >= sel.hei)
-        return;
-
-    if (c && !sel.bounds_dirty) {
-        if (sel.bounds.lx > x)
-            sel.bounds.lx = x;
-        if (sel.bounds.ly > y)
-            sel.bounds.ly = y;
-        if (sel.bounds.hx < x)
-            sel.bounds.hx = x;
-        if (sel.bounds.hy < y)
-            sel.bounds.hy = y;
-    } else if (sel.map[sel.wid * y + x] != 0) {
-        sel.bounds_dirty = true;
-    }
-
-    sel.map[sel.wid * y + x] = c + 1;
-}
 
 /** C ref: sp_lev.c:227-254 — mapfrag_fromstr: create mapfragment from string.
  *  RNG: 0 calls (no RNG in this function).
@@ -1829,307 +1624,12 @@ export function map_contents_done() {
     reset_xystart_size();
 }
 
-export function selection_do_line(x1, y1, x2, y2, ov) {
-    let d0, dx, dy, ai, bi, xi, yi;
 
-    if (x1 < x2) {
-        xi = 1;
-        dx = x2 - x1;
-    } else {
-        xi = -1;
-        dx = x1 - x2;
-    }
-    if (y1 < y2) {
-        yi = 1;
-        dy = y2 - y1;
-    } else {
-        yi = -1;
-        dy = y1 - y2;
-    }
 
-    selection_setpoint(x1, y1, ov, 1);
 
-    if (!dx && !dy) {
-        /* single point - already all done */
-        ;
-    } else if (dx > dy) {
-        ai = (dy - dx) * 2;
-        bi = dy * 2;
-        d0 = bi - dx;
-        do {
-            if (d0 >= 0) {
-                y1 += yi;
-                d0 += ai;
-            } else
-                d0 += bi;
-            x1 += xi;
-            selection_setpoint(x1, y1, ov, 1);
-        } while (x1 != x2);
-    } else {
-        ai = (dx - dy) * 2;
-        bi = dx * 2;
-        d0 = bi - dy;
-        do {
-            if (d0 >= 0) {
-                x1 += xi;
-                d0 += ai;
-            } else
-                d0 += bi;
-            y1 += yi;
-            selection_setpoint(x1, y1, ov, 1);
-        } while (y1 != y2);
-    }
-}
 
-/** C ref: selvar.c:211-230 — selection_not: invert the selection */
-export function selection_not(s) {
-    for (let x = 0; x < s.wid; x++)
-        for (let y = 0; y < s.hei; y++)
-            selection_setpoint(x, y, s, selection_getpoint(x, y, s) ? 0 : 1);
-    /* C: selection_getbounds(s, &tmprect) — updates bounds via recalc */
-    selection_recalc_bounds(s);
-    return s;
-}
 
-/* C ref: selvar.c:801-811 — selection_force_newsyms: force newsym on selected points */
-export function selection_force_newsyms(sel) {
-    for (let x = 1; x < sel.wid; x++)
-        for (let y = 0; y < sel.hei; y++)
-            if (selection_getpoint(x, y, sel))
-                newsym_force(x, y);
-}
 
-/* C ref: selvar.c:168-185 — selection_getpoint: return point value (0/1) */
-export function selection_getpoint(x, y, sel) {
-    if (!sel || !sel.map)
-        return 0;
-    if (x < 0 || y < 0 || x >= sel.wid || y >= sel.hei)
-        return 0;
-    return sel.map[sel.wid * y + x] - 1;
-}
-
-export function selection_recalc_bounds(sel) {
-    let x, y;
-    let r = { lx: -1, ly: -1, hx: -1, hy: -1 };
-
-    if (!sel.bounds_dirty)
-        return;
-
-    sel.bounds.lx = COLNO;
-    sel.bounds.ly = ROWNO;
-    sel.bounds.hx = sel.bounds.hy = 0;
-
-    r.lx = r.ly = r.hx = r.hy = -1;
-
-    /* left */
-    for (x = 0; x < sel.wid; x++) {
-        for (y = 0; y < sel.hei; y++) {
-            if (selection_getpoint(x, y, sel)) {
-                r.lx = x;
-                break;
-            }
-        }
-        if (r.lx > -1)
-            break;
-    }
-
-    if (r.lx > -1) {
-        /* right */
-        for (x = sel.wid - 1; x >= r.lx; x--) {
-            for (y = 0; y < sel.hei; y++) {
-                if (selection_getpoint(x, y, sel)) {
-                    r.hx = x;
-                    break;
-                }
-            }
-            if (r.hx > -1)
-                break;
-        }
-
-        /* top */
-        for (y = 0; y < sel.hei; y++) {
-            for (x = r.lx; x <= r.hx; x++) {
-                if (selection_getpoint(x, y, sel)) {
-                    r.ly = y;
-                    break;
-                }
-            }
-            if (r.ly > -1)
-                break;
-        }
-
-        /* bottom */
-        for (y = sel.hei - 1; y >= r.ly; y--) {
-            for (x = r.lx; x <= r.hx; x++) {
-                if (selection_getpoint(x, y, sel)) {
-                    r.hy = y;
-                    break;
-                }
-            }
-            if (r.hy > -1)
-                break;
-        }
-        sel.bounds = r;
-    }
-
-    sel.bounds_dirty = false;
-}
-
-/* check whether <x,y> is already in xs[],ys[] — C ref: selvar.c sel_flood_havepoint */
-function sel_flood_havepoint(x, y, xs, ys, n) {
-    let xx = x, yy = y;
-    while (n > 0) {
-        --n;
-        if (xs[n] === xx && ys[n] === yy)
-            return true;
-    }
-    return false;
-}
-
-/** C ref: selvar.c selection_floodfill — flood-fill selection.
- *  Does NOT call any RNG (no rn2/rnd).
- *  Stubbed helpers: none needed beyond what's already defined. */
-export function selection_floodfill(ov, x, y, diagonals) {
-    const tmp = selection_new();
-    const SEL_FLOOD_STACK = COLNO * ROWNO;
-    const dx = new Array(SEL_FLOOD_STACK);
-    const dy = new Array(SEL_FLOOD_STACK);
-    const floodfill_stack_overrun = 'floodfill stack overrun';
-    let idx = 0;
-
-    if (_selection_floodfillchk === null) {
-        selection_free(tmp, true);
-        return;
-    }
-
-    // SEL_FLOOD(x, y)
-    if (idx < SEL_FLOOD_STACK) {
-        dx[idx] = x;
-        dy[idx] = y;
-        idx++;
-    } else {
-        throw new Error(floodfill_stack_overrun);
-    }
-
-    do {
-        idx--;
-        x = dx[idx];
-        y = dy[idx];
-        if (isok(x, y)) {
-            selection_setpoint(x, y, ov, 1);
-            selection_setpoint(x, y, tmp, 1);
-        }
-
-        // SEL_FLOOD_CHKDIR(x+1, y, tmp)
-        if (isok((x + 1), y)
-            && _selection_floodfillchk((x + 1), y)
-            && !selection_getpoint((x + 1), y, tmp)
-            && !sel_flood_havepoint((x + 1), y, dx, dy, idx)) {
-            if (idx < SEL_FLOOD_STACK) {
-                dx[idx] = (x + 1);
-                dy[idx] = y;
-                idx++;
-            } else {
-                throw new Error(floodfill_stack_overrun);
-            }
-        }
-        // SEL_FLOOD_CHKDIR(x-1, y, tmp)
-        if (isok((x - 1), y)
-            && _selection_floodfillchk((x - 1), y)
-            && !selection_getpoint((x - 1), y, tmp)
-            && !sel_flood_havepoint((x - 1), y, dx, dy, idx)) {
-            if (idx < SEL_FLOOD_STACK) {
-                dx[idx] = (x - 1);
-                dy[idx] = y;
-                idx++;
-            } else {
-                throw new Error(floodfill_stack_overrun);
-            }
-        }
-        // SEL_FLOOD_CHKDIR(x, y+1, tmp)
-        if (isok(x, (y + 1))
-            && _selection_floodfillchk(x, (y + 1))
-            && !selection_getpoint(x, (y + 1), tmp)
-            && !sel_flood_havepoint(x, (y + 1), dx, dy, idx)) {
-            if (idx < SEL_FLOOD_STACK) {
-                dx[idx] = x;
-                dy[idx] = (y + 1);
-                idx++;
-            } else {
-                throw new Error(floodfill_stack_overrun);
-            }
-        }
-        // SEL_FLOOD_CHKDIR(x, y-1, tmp)
-        if (isok(x, (y - 1))
-            && _selection_floodfillchk(x, (y - 1))
-            && !selection_getpoint(x, (y - 1), tmp)
-            && !sel_flood_havepoint(x, (y - 1), dx, dy, idx)) {
-            if (idx < SEL_FLOOD_STACK) {
-                dx[idx] = x;
-                dy[idx] = (y - 1);
-                idx++;
-            } else {
-                throw new Error(floodfill_stack_overrun);
-            }
-        }
-        if (diagonals) {
-            // SEL_FLOOD_CHKDIR(x+1, y+1, tmp)
-            if (isok((x + 1), (y + 1))
-                && _selection_floodfillchk((x + 1), (y + 1))
-                && !selection_getpoint((x + 1), (y + 1), tmp)
-                && !sel_flood_havepoint((x + 1), (y + 1), dx, dy, idx)) {
-                if (idx < SEL_FLOOD_STACK) {
-                    dx[idx] = (x + 1);
-                    dy[idx] = (y + 1);
-                    idx++;
-                } else {
-                    throw new Error(floodfill_stack_overrun);
-                }
-            }
-            // SEL_FLOOD_CHKDIR(x-1, y-1, tmp)
-            if (isok((x - 1), (y - 1))
-                && _selection_floodfillchk((x - 1), (y - 1))
-                && !selection_getpoint((x - 1), (y - 1), tmp)
-                && !sel_flood_havepoint((x - 1), (y - 1), dx, dy, idx)) {
-                if (idx < SEL_FLOOD_STACK) {
-                    dx[idx] = (x - 1);
-                    dy[idx] = (y - 1);
-                    idx++;
-                } else {
-                    throw new Error(floodfill_stack_overrun);
-                }
-            }
-            // SEL_FLOOD_CHKDIR(x-1, y+1, tmp)
-            if (isok((x - 1), (y + 1))
-                && _selection_floodfillchk((x - 1), (y + 1))
-                && !selection_getpoint((x - 1), (y + 1), tmp)
-                && !sel_flood_havepoint((x - 1), (y + 1), dx, dy, idx)) {
-                if (idx < SEL_FLOOD_STACK) {
-                    dx[idx] = (x - 1);
-                    dy[idx] = (y + 1);
-                    idx++;
-                } else {
-                    throw new Error(floodfill_stack_overrun);
-                }
-            }
-            // SEL_FLOOD_CHKDIR(x+1, y-1, tmp)
-            if (isok((x + 1), (y - 1))
-                && _selection_floodfillchk((x + 1), (y - 1))
-                && !selection_getpoint((x + 1), (y - 1), tmp)
-                && !sel_flood_havepoint((x + 1), (y - 1), dx, dy, idx)) {
-                if (idx < SEL_FLOOD_STACK) {
-                    dx[idx] = (x + 1);
-                    dy[idx] = (y - 1);
-                    idx++;
-                } else {
-                    throw new Error(floodfill_stack_overrun);
-                }
-            }
-        }
-    } while (idx > 0);
-
-    selection_free(tmp, true);
-}
 
 const trap_types = [
     { name: 'arrow', type: ARROW_TRAP },
@@ -2369,178 +1869,11 @@ export function sel_set_lit(x, y, { typ, lit }) {
     return (t === LAVAPOOL || t === LAVAWALL || lit) ? 1 : 0;
 }
 
-/* ─── selection_getbounds — C ref: selvar.c:76-95 ────────────────────────
- * void
- * selection_getbounds(struct selectionvar *sel, NhRect *b)
- * {
- *     if (!sel || !b)
- *         return;
- *     selection_recalc_bounds(sel);
- *     if (sel->bounds.lx >= sel->wid) {
- *         b->lx = 0; b->ly = 0; b->hx = COLNO - 1; b->hy = ROWNO - 1;
- *     } else {
- *         b->lx = sel->bounds.lx; b->ly = sel->bounds.ly;
- *         b->hx = sel->bounds.hx; b->hy = sel->bounds.hy;
- *     }
- * }
- * C writes THROUGH the out-parameter `b` and returns nothing. Ported
- * exactly: every caller (all in this file) now declares its own local rect
- * and passes it by out-param, matching C's call idiom at each C call site. */
-export function selection_getbounds(sel, b) {
-    if (!sel || !b) return;
-    selection_recalc_bounds(sel);
-    if (sel.bounds.lx >= sel.wid) {
-        b.lx = 0;
-        b.ly = 0;
-        b.hx = COLNO - 1;
-        b.hy = ROWNO - 1;
-    } else {
-        b.lx = sel.bounds.lx;
-        b.ly = sel.bounds.ly;
-        b.hx = sel.bounds.hx;
-        b.hy = sel.bounds.hy;
-    }
-}
 
-/* ─── selection_filter_percent — C ref: selvar.c:223-245
- * struct selectionvar *
- * selection_filter_percent(struct selectionvar *ov, int percent)
- * {
- *     int x, y;
- *     struct selectionvar *ret;
- *     NhRect rect = cg.zeroNhRect;
- *
- *     if (!ov)
- *         return NULL;
- *     ret = selection_new();
- *     selection_getbounds(ov, &rect);
- *     for (x = rect.lx; x <= rect.hx; x++)
- *         for (y = rect.ly; y <= rect.hy; y++)
- *             if (selection_getpoint(x, y, ov) && (rn2(100) < percent))
- *                 selection_setpoint(x, y, ret, 1);
- *     return ret;
- * }
- * Updated for selection_getbounds' out-parameter shape: declare `rect`
- * (C's `cg.zeroNhRect`-initialized local) and pass it through. ──────── */
-export function selection_filter_percent(ov, percent) {
-    if (!ov) return null;
-    const ret = selection_new();
-    const rect = { lx: 0, ly: 0, hx: 0, hy: 0 };
-    selection_getbounds(ov, rect);
-    for (let x = rect.lx; x <= rect.hx; x++) {
-        for (let y = rect.ly; y <= rect.hy; y++) {
-            if (selection_getpoint(x, y, ov) && (rn2(100) < percent)) {
-                selection_setpoint(x, y, ret, 1);
-            }
-        }
-    }
-    return ret;
-}
 
-export function selection_filter_mapchar(ov, typ, lit) {
-    if (!ov) return null;
-    const ret = selection_new();
-    const rect = { lx: 0, ly: 0, hx: 0, hy: 0 };
-    selection_getbounds(ov, rect);
-    for (let x = rect.lx; x <= rect.hx; x++) {
-        for (let y = rect.ly; y <= rect.hy; y++) {
-            const levc = isok(x, y) ? ((game.level.at(x, y)?.typ) | 0) : STONE;
-            if (selection_getpoint(x, y, ov) && match_maptyps(typ, levc)) {
-                switch (lit) {
-                case -1:
-                    selection_setpoint(x, y, ret, rn2(2));
-                    break;
-                case 0:
-                case 1:
-                    if (((game.level.at(x, y)?.lit) | 0) === lit)
-                        selection_setpoint(x, y, ret, 1);
-                    break;
-                default: /* -2 and anything else */
-                    selection_setpoint(x, y, ret, 1);
-                    break;
-                }
-            }
-        }
-    }
-    return ret;
-}
 
-/* C ref: nhlsel.c:655-678 l_selection_filter_mapchar — the Lua wrapper.
- * `lit` defaults to -2 (luaL_optinteger), and an unrecognised map char is a
- * hard nhl_error, not a silent empty selection. */
-export function l_selection_filter_mapchar(sel, mapchr, lit) {
-    const typ = check_mapchr(mapchr == null ? '' : String(mapchr));
-    if (typ === INVALID_TYPE)
-        throw new Error('Erroneous map char');
-    return selection_filter_mapchar(sel, typ, (lit == null) ? -2 : (Number(lit) | 0));
-}
 
-export function selection_rndcoord(ov, x, y, removeit) {
-    let idx = 0;
-    let c;
-    let rect = { lx: 0, ly: 0, hx: 0, hy: 0 };
-    selection_getbounds(ov, rect);
 
-    for (let dx = rect.lx; dx <= rect.hx; dx++)
-        for (let dy = rect.ly; dy <= rect.hy; dy++)
-            if (selection_getpoint(dx, dy, ov))
-                idx++;
-
-    if (idx) {
-        c = rn2(idx);
-        for (let dx = rect.lx; dx <= rect.hx; dx++)
-            for (let dy = rect.ly; dy <= rect.hy; dy++)
-                if (selection_getpoint(dx, dy, ov)) {
-                    if (!c) {
-                        x.value = dx;
-                        y.value = dy;
-                        if (removeit)
-                            selection_setpoint(dx, dy, ov, 0);
-                        return 1;
-                    }
-                    c--;
-                }
-    }
-    x.value = y.value = -1;
-    return 0;
-}
-
-/* ─── selection_do_grow — C ref: selvar.c:321-369 ───────────────────────── */
-export function selection_do_grow(ov, dir) {
-    if (!ov) return;
-    const tmp = selection_new();
-    if (dir === W_RANDOM) dir = random_wdir();
-    const rect = { lx: 0, ly: 0, hx: 0, hy: 0 };
-    selection_getbounds(ov, rect);
-    for (let x = Math.max(0, rect.lx - 1); x <= Math.min(COLNO - 1, rect.hx + 1); x++) {
-        for (let y = Math.max(0, rect.ly - 1); y <= Math.min(ROWNO - 1, rect.hy + 1); y++) {
-            if (((dir & W_WEST) && selection_getpoint(x + 1, y, ov))
-                || (((dir & (W_WEST | W_NORTH)) === (W_WEST | W_NORTH))
-                    && selection_getpoint(x + 1, y + 1, ov))
-                || ((dir & W_NORTH) && selection_getpoint(x, y + 1, ov))
-                || (((dir & (W_NORTH | W_EAST)) === (W_NORTH | W_EAST))
-                    && selection_getpoint(x - 1, y + 1, ov))
-                || ((dir & W_EAST) && selection_getpoint(x - 1, y, ov))
-                || (((dir & (W_EAST | W_SOUTH)) === (W_EAST | W_SOUTH))
-                    && selection_getpoint(x - 1, y - 1, ov))
-                || ((dir & W_SOUTH) && selection_getpoint(x, y - 1, ov))
-                || (((dir & (W_SOUTH | W_WEST)) === (W_SOUTH | W_WEST))
-                    && selection_getpoint(x + 1, y - 1, ov))) {
-                selection_setpoint(x, y, tmp, 1);
-            }
-        }
-    }
-    const rect2 = { lx: 0, ly: 0, hx: 0, hy: 0 };
-    selection_getbounds(tmp, rect2);
-    for (let x = rect2.lx; x <= rect2.hx; x++) {
-        for (let y = rect2.ly; y <= rect2.hy; y++) {
-            if (selection_getpoint(x, y, tmp)) {
-                selection_setpoint(x, y, ov, 1);
-            }
-        }
-    }
-    selection_free(tmp, true);
-}
 
 /* ─── selection_or — C ref: nhlsel.c:305-328 l_selection_or ──────────────────
  * Union of two selectionvars: build a fresh selection whose bounds are the
@@ -2606,235 +1939,21 @@ export function selection_sub(sela, selb) {
     return selr;
 }
 
-export function l_selection_flood(x, y, diagonals) {
-    const sel = selection_new();
-    const coord = { x: x | 0, y: y | 0 };
-    get_location_coord(coord, ANY_LOC, game.gc?.coder?.croom ?? null,
-                       SP_COORD_PACK(coord.x, coord.y));
-    if (isok(coord.x, coord.y)) {
-        set_floodfillchk_match_under(game.level?.at(coord.x, coord.y)?.typ ?? 0);
-        selection_floodfill(sel, coord.x, coord.y, !!diagonals);
-    }
-    return sel;
-}
 
-/* ─── params_sel_2coords — C ref: nhlsel.c:474-504 ────────────────────────────
- * The shared argument decoder for selection.line / selection.rect /
- * selection.fillrect (== selection.area).  C dispatches on lua_gettop, and the
- * two accepted arities differ in WHICH selection the result is built on:
- *   argc==4  (x1,y1, x2,y2)      -> a BRAND NEW selection (l_selection_new)
- *   argc==5  (sel, x1,y1, x2,y2) -> the caller's `sel`
- * anything else returns FALSE, which every caller turns into nhl_error.
- * Lua method desugaring makes `s:line(x1,y1,x2,y2)` argc==5, so both shapes
- * arrive here through the same binding.
- * Returns null for the error case; { sel, x1, y1, x2, y2 } otherwise. */
-function params_sel_2coords(args) {
-    if (args.length === 4) {
-        return {
-            sel: selection_new(),
-            x1: Number(args[0]) | 0, y1: Number(args[1]) | 0,
-            x2: Number(args[2]) | 0, y2: Number(args[3]) | 0,
-        };
-    } else if (args.length === 5) {
-        return {
-            sel: args[0],
-            x1: Number(args[1]) | 0, y1: Number(args[2]) | 0,
-            x2: Number(args[3]) | 0, y2: Number(args[4]) | 0,
-        };
-    }
-    return null;
-}
 
-/* The get_location_coord + l_selection_clone preamble those same three C
- * bodies share verbatim (e.g. nhlsel.c:569-576).  Note the CLONE: C works on a
- * copy and returns the copy, so `s:fillrect(...)` as a bare Lua statement
- * leaves `s` UNCHANGED — a quirk of the C API, ported as-is (Cardinal Rule 1).
- * Returns { sel, c1, c2 } where sel is the clone to draw into. */
-function sel_2coords_prep(p) {
-    const c1 = { x: p.x1, y: p.y1 };
-    get_location_coord(c1, ANY_LOC, game.gc?.coder?.croom ?? null,
-                       SP_COORD_PACK(p.x1, p.y1));
-    const c2 = { x: p.x2, y: p.y2 };
-    get_location_coord(c2, ANY_LOC, game.gc?.coder?.croom ?? null,
-                       SP_COORD_PACK(p.x2, p.y2));
-    return { sel: selection_clone(p.sel), c1, c2 };
-}
 
-export function l_selection_fillrect(...args) {
-    const p = params_sel_2coords(args);
-    if (!p)
-        throw new Error('selection.fillrect: illegal arguments');
-    const { sel, c1, c2 } = sel_2coords_prep(p);
-    if (c1.x === c2.x) {
-        for (let y = c1.y; y <= c2.y; y++)
-            selection_setpoint(c1.x, y, sel, 1);
-    } else {
-        for (let y = c1.y; y <= c2.y; y++)
-            selection_do_line(c1.x, y, c2.x, y, sel);
-    }
-    return sel;
-}
 
-/* ─── l_selection_line — C ref: nhlsel.c:504-527 (registered as
- * selection.line) ────────────────────────────────────────────────────────────
- * Was a record-only stub, so every `selection.line(...)` returned undefined and
- * the des.terrain / `|` union it feeds got nothing: bigrm-1.lua:37-49,
- * valley.lua:38-48 and minetn-5.lua:38-58 drew none of their terrain lines.
- * RNG: none. */
-export function l_selection_line(...args) {
-    const p = params_sel_2coords(args);
-    if (!p)
-        throw new Error('selection.line: illegal arguments');
-    const { sel, c1, c2 } = sel_2coords_prep(p);
-    selection_do_line(c1.x, c1.y, c2.x, c2.y, sel);
-    return sel;
-}
 
-/* ─── l_selection_rect — C ref: nhlsel.c:528-553 (registered as
- * selection.rect) ────────────────────────────────────────────────────────────
- * The four edges of the rectangle, in C's order. Note C's THIRD call is
- * selection_do_line(x1,y1, x1,y2) and its second is (x1,y1, x2,y1) — the
- * top edge, left edge, right edge, bottom edge, with y1/y2 as written (C does
- * not sort the corners). Was a record-only stub. RNG: none. */
-export function l_selection_rect(...args) {
-    const p = params_sel_2coords(args);
-    if (!p)
-        throw new Error('selection.rect: illegal arguments');
-    const { sel, c1, c2 } = sel_2coords_prep(p);
-    selection_do_line(c1.x, c1.y, c2.x, c1.y, sel);
-    selection_do_line(c1.x, c1.y, c1.x, c2.y, sel);
-    selection_do_line(c2.x, c1.y, c2.x, c2.y, sel);
-    selection_do_line(c1.x, c2.y, c2.x, c2.y, sel);
-    return sel;
-}
 
-/* ─── l_selection_match — C ref: nhlsel.c:680-717 (registered as
- * selection.match) ───────────────────────────────────────────────────────────
- * Build a fresh selection holding every map position whose surroundings match
- * the mapfragment string. Was a record-only stub returning undefined, and
- * tut-1.lua:122-123 does
- *     des.region(selection.match("#"), "unlit");
- *     des.region(selection.match(" "), "unlit");
- * so lspo_region was handed `undefined` and the tutorial's corridors and solid
- * rock were never unlit — while C darkens both.
- *
- * The loop bounds are C's, quirks included: y runs 0..sel->hei INCLUSIVE (the
- * last iteration is dropped by selection_setpoint's own guard) and x starts at
- * 1, so column 0 is never tested. selection_recalc_bounds afterwards is C's own
- * fix-up for the "nothing matched at (0,1)" case. RNG: none. */
-export function l_selection_match(mapstr) {
-    const sel = selection_new();
-    const mf = mapfrag_fromstr(String(mapstr));
-    const err = mapfrag_error(mf);
-    if (err != null)
-        throw new Error(err);
-    for (let y = 0; y <= sel.hei; y++)
-        for (let x = 1; x < sel.wid; x++)
-            selection_setpoint(x, y, sel, mapfrag_match(mf, x, y) ? 1 : 0);
-    selection_recalc_bounds(sel);
-    mapfrag_free(mf);
-    return sel;
-}
 
-export function l_selection_randline(sel, x1, y1, x2, y2, rough) {
-    const c1 = { x: x1, y: y1 };
-    get_location_coord(c1, ANY_LOC, game.gc?.coder?.croom ?? null,
-                       SP_COORD_PACK(x1, y1));
-    const c2 = { x: x2, y: y2 };
-    get_location_coord(c2, ANY_LOC, game.gc?.coder?.croom ?? null,
-                       SP_COORD_PACK(x2, y2));
-    const clone = selection_clone(sel);
-    selection_do_randline(c1.x, c1.y, c2.x, c2.y, rough, 12, clone);
-    return clone;
-}
 
-export function l_selection_rndcoord(sel, removeit) {
-    const xRef = { value: -1 }, yRef = { value: -1 };
-    selection_rndcoord(sel, xRef, yRef, removeit ? 1 : 0);
-    const coord = { x: xRef.value, y: yRef.value };
-    if (!(coord.x === -1 && coord.y === -1)) {
-        update_croom();
-        cvt_to_relcoord(coord);
-    }
-    return { x: coord.x, y: coord.y };
-}
 
-export function l_selection_setpoint(...args) {
-    const argc = args.length;
-    let sel = null;
-    let x = -1, y = -1;
-    let val = 1;
-
-    if (argc === 0) {
-        selection_new(); /* C: (void) l_selection_new(L) — sel stays NULL */
-    } else if (argc === 1) {
-        sel = args[0];
-    } else if (argc === 2) {
-        x = Number(args[0]) | 0;
-        y = Number(args[1]) | 0;
-        /* C pops the two integers and pushes a fresh selection, which then
-         * becomes slot 1 — i.e. the point lands in a NEW selection, and that
-         * new selection is what gets returned. */
-        sel = selection_new();
-    } else {
-        sel = args[0];
-        x = Number(args[1]) | 0;
-        y = Number(args[2]) | 0;
-        val = (args[3] == null) ? 1 : (Number(args[3]) | 0);
-    }
-
-    if (!sel || !sel.map)
-        throw new Error('Selection setpoint error');
-
-    const crd = (x === -1 && y === -1) ? SP_COORD_PACK_RANDOM(0)
-                                       : SP_COORD_PACK(x, y);
-    const coord = { x, y };
-    get_location_coord(coord, ANY_LOC, game.gc?.coder?.croom ?? null, crd);
-    selection_setpoint(coord.x, coord.y, sel, val);
-    return sel; /* C: lua_settop(L, 1); return 1 */
-}
 
 /* Back-compat alias for the bare-form call site this function grew out of. */
 export function selection_setpoint_rndcoord(sel) {
     return l_selection_setpoint(sel);
 }
 
-/* ─── selection_do_randline — C ref: selvar.c:682-723 ───────────────────── */
-export function selection_do_randline(x1, y1, x2, y2, rough, rec, ov) {
-    let mx, my;
-    let dx, dy;
-
-    if (rec < 1 || (x2 === x1 && y2 === y1))
-        return;
-
-    if (rough > Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1)))
-        rough = Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1));
-
-    if (rough < 2) {
-        mx = ((x1 + x2) / 2) | 0;
-        my = ((y1 + y2) / 2) | 0;
-    } else {
-        do {
-            dx = rn2(rough) - ((rough / 2) | 0);
-            dy = rn2(rough) - ((rough / 2) | 0);
-            mx = (((x1 + x2) / 2) | 0) + dx;
-            my = (((y1 + y2) / 2) | 0) + dy;
-        } while (mx > COLNO - 1 || mx < 0 || my < 0 || my > ROWNO - 1);
-    }
-
-    if (!selection_getpoint(mx, my, ov)) {
-        selection_setpoint(mx, my, ov, 1);
-    }
-
-    rough = ((rough * 2) / 3) | 0;
-
-    rec--;
-
-    selection_do_randline(x1, y1, mx, my, rough, rec, ov);
-    selection_do_randline(mx, my, x2, y2, rough, rec, ov);
-
-    selection_setpoint(x2, y2, ov, 1);
-}
 
 /* ─── set_door_orientation — C ref: sp_lev.c:1043-1085 ──────────────────── */
 function set_door_orientation(typ, x, y) {
@@ -3939,6 +3058,17 @@ function MON_AT_local(x, y) {
  * this port, e.g. js/mhitm.js's own PM_VAMPIRE_LORD import). */
 const SYM_VAMPIRE = 48;
 import { validvamp_nc } from './mklev.js';
+import { selection_clear, selection_clone, selection_do_grow, selection_do_line, selection_do_randline, selection_filter_mapchar, selection_floodfill, selection_free, selection_getbounds, selection_getpoint, selection_new, selection_recalc_bounds, selection_rndcoord, selection_setpoint, set_selection_floodfillchk } from './selvar.js'; // relocate-fns
+import { check_mapchr, get_table_boolean_opt, get_table_int, get_table_int_opt, get_table_mapchr, get_table_mapchr_opt, get_table_option, get_table_str, get_table_str_opt, nhl_get_xy_params } from './nhlua.js'; // relocate-fns
+import { l_selection_setpoint } from './nhlsel.js'; // relocate-fns
+import { dupstr } from './alloc.js'; // relocate-fns
+import { premap_detect } from './detect.js'; // relocate-fns
+export { BOULDER }; // relocate-fns
+export { l_selection_fillrect, l_selection_filter_mapchar, l_selection_flood, l_selection_line, l_selection_match, l_selection_randline, l_selection_rect, l_selection_rndcoord, l_selection_setpoint } from './nhlsel.js'; // relocate-fns
+export { SP_COORD_PACK, SP_COORD_PACK_RANDOM, update_croom }; // relocate-fns
+export { load_lua } from './nhlua.js'; // relocate-fns
+export { get_coord }; // relocate-fns
+export { selection_clear, selection_clone, selection_do_grow, selection_do_line, selection_do_randline, selection_filter_mapchar, selection_filter_percent, selection_floodfill, selection_force_newsyms, selection_free, selection_getbounds, selection_getpoint, selection_new, selection_not, selection_recalc_bounds, selection_rndcoord, selection_setpoint, set_selection_floodfillchk } from './selvar.js'; // relocate-fns
 function vampshiftedLocal(mtmp) {
     const cham = mtmp.cham;
     if (cham !== PM_VAMPIRE && cham !== PM_VAMPIRE_LORD && cham !== PM_VLAD_THE_IMPALER)
@@ -5663,41 +4793,6 @@ async function ensure_way_out() {
     } while (!ret);
     selection_free(ov, true);
 }
-/* C ref: detect.c:2122-2129 skip_premap_detect() — "skip premap detection of
- * areas outside Sokoban map": undiggable/unpassable STONE is the frame Sokoban
- * solidifies around its map, and C leaves it unmapped. */
-function skip_premap_detect(loc) {
-    return (loc.typ === STONE)
-        && ((loc.wall_info | 0) & (W_NONDIGGABLE | W_NONPASSWALL)) !== 0;
-}
-/* C ref: detect.c:2131-2159 premap_detect() — pre-map a level whose .lua set
- * `premapped` (des.level_flags("premapped"), i.e. every Sokoban level).  Marks
- * the whole grid seen+waslit, paints the terrain and any boulder into the
- * hero's map memory, and reveals every trap.  Consumes NO RNG. */
-function premap_detect() {
-    /* C 2140-2151: map the background and boulders */
-    for (let x = 1; x < COLNO; x++) {
-        for (let y = 0; y < ROWNO; y++) {
-            const loc = game.level?.at(x, y);
-            if (!loc || skip_premap_detect(loc))
-                continue;
-            loc.seenv = SVALL;
-            loc.waslit = true;
-            /* C 2147-2148: an SDOOR loses its wall_info here — see rm.h */
-            if (loc.typ === SDOOR)
-                loc.wall_info = 0;
-            map_background(x, y, 1);
-            const obj = sobj_at(BOULDER, x, y);
-            if (obj)
-                map_object(obj, 1);
-        }
-    }
-    /* C 2154-2157: map the traps */
-    for (let ttmp = game.ftrap; ttmp; ttmp = ttmp.ntrap) {
-        ttmp.tseen = 1;
-        map_trap(ttmp, 1);
-    }
-}
 
 // C ref: dungeon.c:1464-1473 Is_branchlev(). js/mklev.js's own copy
 // (function is_branchlev(), module-local, not exported) can't be imported
@@ -6219,20 +5314,6 @@ async function loadLuaFile(name) {
     return true;
 }
 
-// C ref: nhlua.c:2391-2411 load_lua(): fresh state, run the file, nhl_done.
-// Returns FALSE when the file cannot be loaded (ret value is ignored by
-// wiz_load_lua, wizcmds.c:368).
-export async function load_lua(name) {
-    let ret = true;
-    const L = await nhl_init();
-    if (!L) {
-        ret = false;
-    } else if (!(await nhl_loadlua(L, name))) {
-        ret = false;
-    }
-    await nhl_done(L);
-    return ret;
-}
 
 // C ref: sp_lev.c:6460-6515 load_special(). See
 // field-by-field derivation of every call below.
@@ -6537,20 +5618,6 @@ export function lspo_gas_cloud(args) {
 // coord, zero RNG. The non-table (string+positional / bare positional) call
 // forms use nhl_get_xy_params (nhlua.c:508-525), ported below.
 
-/** C ref: nhlua.c:508-525 nhl_get_xy_params(L, x, y).
- *  `args` is the (already argc==1-table-checked-by-caller-excluded) remaining
- *  positional arg list. Returns {ok,x,y}; C ignores the return value at this
- *  callsite, so ok=false leaves x,y at the caller's -1,-1 sentinel default —
- *  same as C leaving *x,*y untouched. */
-function nhl_get_xy_params(args) {
-    if (args.length === 2)
-        return { ok: true, x: Number(args[0]), y: Number(args[1]) };
-    if (args.length === 1 && args[0] && args[0].type === 'table') {
-        const c = get_coord(args[0]);
-        return { ok: true, x: c.x, y: c.y };
-    }
-    return { ok: false, x: -1, y: -1 };
-}
 
 /* callback for is_ok_location (set_ok_location_func's 2-arg (x,y) contract)
  * — C ref: sp_lev.c:4148-4155 good_stair_loc. Stairs generated at a random
@@ -7220,14 +6287,6 @@ export function lspo_feature(...args) {
 // genuinely new, distinctly-named REQUIRED (non-opt, throws-on-absence)
 // variant; verified no `get_table_int` (sans _opt) exists yet in this file.
 
-/** C ref: nhlua.c:1171-1179 get_table_int(L, name) — required integer field,
- *  throws if absent/non-numeric (no defval, unlike get_table_int_opt). */
-function get_table_int(args, name) {
-    const v = args.get(name);
-    if (v == null)
-        throw new Error(`wrong parameters (missing "${name}")`);
-    return Number(v);
-}
 
 export function lspo_wallify(args) {
     let dx1 = -1, dy1 = -1, dx2 = -1, dy2 = -1;
@@ -7262,17 +6321,6 @@ export function lspo_wallify(args) {
 // also had to pick a non-nil `darkness`. That conditional nesting is why both
 // lua-level-load-probe and loader-chain call bigrm-2 CHAIN-CLEAR while
 
-/** C ref: nhlua.c:243-255 get_table_mapchr(L, name) — required (non-opt)
- *  mapchar lookup, distinct from the EXISTING get_table_mapchr_opt
- *  (js/sp_lev.js:134, which takes a defval). Shared with lspo_terrain
- *  (port-lspo-terrain-w2-001) — defined here, reused there, not redefined. */
-function get_table_mapchr(args, name) {
-    const ter = get_table_str(args, name);
-    const typ = check_mapchr(ter);
-    if (typ === INVALID_TYPE)
-        throw new Error('Erroneous map char');
-    return typ;
-}
 
 export function lspo_replace_terrain(args) {
     create_des_coder();
@@ -7808,5 +6856,3 @@ export async function lspo_mazewalk(...args) {
     return 0;
 }
 
-/* C display.c: newsym_force — share the canonical forced repaint state. */
-function newsym_force(x, y) { return newsym_force_real(x, y); }

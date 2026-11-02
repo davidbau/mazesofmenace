@@ -2,7 +2,7 @@
 // C refs: dig.c dig_typ(), use_pick_axe2() digging branches, dig(),
 // mkcavepos()/mkcavearea(); hack.c may_dig(); weapon.c abon().
 import { monsterHasMapPosition } from './steed.js';
-import { deleteTrap } from './trap_lifecycle.js';
+import { deleteTrap, trapName } from './trap.js';
 import { RLOC_NOMSG, A_STR, A_DEX, COULD_SEE, CORR, DBWALL, D_BROKEN, D_CLOSED, D_LOCKED, D_NODOOR, D_TRAPPED, DIGCHECK_FAILED, DIGCHECK_PASSED, DIGCHECK_PASSED_DESTROY_TRAP, DIGTYP_BOULDER, DIGTYP_DOOR, DIGTYP_ROCK, DIGTYP_STATUE, DIGTYP_TREE, DIGTYP_UNDIGGABLE, DOOR, IN_SIGHT, IS_ALTAR, IS_DOOR, IS_OBSTRUCTED, IS_STWALL, IS_TREE, IS_WALL, LANDMINE, BEAR_TRAP, HOLE, KILLED_BY, TRAPDOOR, MM_NOMSG, ROOM, SCORR, SDOOR, SHOPBASE, SHOP_DOOR_COST, SHOP_PIT_COST, STONE, TT_PIT, Upolyd, W_NONDIGGABLE, Is_earthlevel, is_pit, } from './const.js';
 import { currentAttribute, exerciseAttribute } from './attrib.js';
 import { convertSecretDoor } from './detect.js';
@@ -14,7 +14,6 @@ import { displayMessageWindow } from './tty_topline.js';
 import { feel_location, flush_screen, newsym } from './display.js';
 import { pline, plineWithContinuation } from './pline.js';
 import { monsterName } from './do_name.js';
-import { trapName } from './trap_name.js';
 import { game, requireGameLevel } from './gstate.js';
 import { pitsAreConjoined } from './pit_connections.js';
 import { dropInventoryObjectAtHero } from './hero_drop.js';
@@ -29,16 +28,18 @@ import { makemonAt, adjustedMonsterLevel } from './makemon.js';
 import { mksobj } from './mkobj.js';
 import { MONSTER_FLAGS1, MONSTER_NAME, monsterTypeName, requireMonsterData } from './monster_data.js';
 import { wakeMonstersNearWithMessages } from './mon.js';
-import { APPLE, BANANA, BOULDER, EUCALYPTUS_LEAF, OBJECT_BIMANUAL, ORANGE, PEAR, STATUE, } from './object_data.js';
+import { APPLE, BANANA, BOULDER, EUCALYPTUS_LEAF, ORANGE, PEAR, STATUE, } from './object_data.js';
 import { definiteName, objectName, ownedObjectAction, ownedObjectName, simpleObjectName } from './objnam.js';
+import { isBimanualObject } from './object_properties.js';
 import { heroMonsterForm, heroIsFlying, } from './polyself.js';
 import { randomMonsterRelocation } from './teleport.js';
 import { inTown, roomsAt } from './room.js';
 import { rn2, rnd, rnl } from './rng.js';
 import { heroIsBlind } from './senses.js';
 import { breakStatue, fractureRock } from './rock_breakage.js';
-import { heroStrengthDamageBonus, rollPhysicalWeaponDamageAgainstHero, } from './weapon_damage.js';
-import { isAxe, isPick, willWeld } from './weapon_type.js';
+import { heroStrengthDamageBonus, rollPhysicalWeaponDamageAgainstHero } from './weapon.js';
+import { isAxe, isPick } from './object_properties.js';
+import { willWeld } from './wield.js';
 import { unblock_point, vision_note_blocker_change } from './vision.js';
 // Peer dig modules; see docs/porting-status.md handoff for the split.
 import { digCheck, digCheckFailMessage, digHole } from './digging_terrain.js';
@@ -79,9 +80,9 @@ function pickCanReach(tool, x, y, state) {
     if ((state.u.utrap ?? 0) > 0 && state.u.utraptype === TT_PIT) {
         if (targetInPit)
             return pitsAreConjoined(trap, trapAt(state.u.ux, state.u.uy, state));
-        return !!OBJECT_BIMANUAL[tool.otyp];
+        return isBimanualObject(tool);
     }
-    if (OBJECT_BIMANUAL[tool.otyp] || heroIsFlying(state))
+    if (isBimanualObject(tool) || heroIsFlying(state))
         return true;
     return !targetInPit;
 }

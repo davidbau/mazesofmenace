@@ -19,13 +19,13 @@ import { monsterObjectPronoun } from './mondata.js';
 import { monsterAtPosition } from './steed.js';
 import { wakeMonstersNearWithMessages } from './mon.js';
 import { BOULDER, ROCK } from './object_data.js';
-import { deleteObject } from './object_delete.js';
+import { deleteObject } from './shk.js';
 import { inventoryItemDescription } from './invent.js';
 import { objectName, observeObjectForNaming, ownedObjectName } from './objnam.js';
 import { rn1 } from './rng.js';
 import { cansee } from './vision.js';
 import { objectWeight } from './weight.js';
-import { rollPhysicalWeaponDamage, rollPhysicalWeaponDamageAgainstHero } from './weapon_damage.js';
+import { rollPhysicalWeaponDamage, rollPhysicalWeaponDamageAgainstHero } from './weapon.js';
 import { finishEnvironmentalMonsterDeath, wakeMonster } from './mon.js';
 const M1_WALLWALK = 0x00000008;
 export async function dropBoulderOnHero({ state = game, confused = false, helmetProtects = true, heroCaused = true, skipSwallower = false, finishHeroDeath = defaultHeroDeath, finishMonsterKill = finishHeroMonsterKillOutcome, } = {}) {

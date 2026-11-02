@@ -24,6 +24,9 @@ import { putmsghistory, tty_getlin_prompt, _strengthStr, force_more, force_more_
          await_topl_more_dismiss, pline_flush_point, docorner_status_row,
          botl_pmname, botl_upstart_words, botl_mon_mlevel, botl_title, botl_status1_tail, botl_frozen_status_line,
          gold_status_char, dec_mode, generic_symset, rogue_graphics, rogue_hero_showrace_cell, rogue_ibm_color, botl_status_suffix, fit_status_line_width, status_row_finish, _statusRows3, _threeStatusLines, docrt_flags, docrt, flush_screen, use_last_flush_snapshot, hitpointbar_status1, _hilite_status_wrap, _status_sgr, _status_row1_map_overlay, _status_row1_whole_with_tail } from './display.js';
+import { money_cnt } from './hack.js'; // relocate-fns
+export { ask_do_tutorial } from './options.js'; // relocate-fns
+export { money_cnt } from './hack.js'; // relocate-fns
 // ── ANSI color helpers (inlined from display.js — not exported there) ──
 const ANSI_DEFAULT = 39;
 // C ref: color.h:10-14 — CLR_BLACK(0) renders as bright-black (90); CLR_GRAY(7)
@@ -993,14 +996,6 @@ function _statusLine1Raw() {
         return `${title}\x1b[${gap}C${tail}`;
     return `${title}${' '.repeat(Math.max(0, gap))}${tail}`;
 }
-/** C ref: hack.c:4478 money_cnt — walk invent chain, return COIN_CLASS (12) obj quan. */
-export function money_cnt(otmp) {
-    for (; otmp; otmp = otmp.nobj) {
-        if ((otmp.oclass | 0) === 12 /* COIN_CLASS */)
-            return otmp.quan;
-    }
-    return 0;
-}
 // C ref: botl.c — status line 2 format.
 // Respects flags.showexp and flags.time options.
 // Note: uac passed as parameter to allow caller control (step 0 = pre-find_ac, step 1+ = current).
@@ -1345,185 +1340,6 @@ export async function com_pager_legacy(pauper = false, preInitAc = 0, preInitPw 
         }
     }
 }
-// ── ask_do_tutorial ──
-// C ref: nethack-c/src/options.c:448 ask_do_tutorial()
-// C ref: nethack-c/src/allmain.c:638-655 maybe_do_tutorial(), called from moveloop().
-//
-// Renders a PICK_ONE menu overlaid on the map showing:
-//   - title "Do you want a tutorial?" in reverse video
-//   - y/n options, blank, config hint, optional retry line, "(end)"
-// Loops until 'y', 'n', or ESC. Returns boolean (true=do tutorial).
-//
-// C options.c:430-483: an explicit tutorial option returns its value without
-// asking; only an unset option opens the menu.
-//
-// WIN_COL computation:
-//   Longest line is the config hint (57 chars): 'Put "OPTIONS=!tutorial" in .nethackrc to skip this query.'
-//   C: offx = COLNO - maxwidth - 2 = 80 - 57 - 2 = 21.
-//
-// Cursor: after "(end)" at WIN_COL + len("(end)") + 1 = 21 + 5 + 1 = 27.
-//   C ref: tty select_menu PICK_ONE — cursor ends one past last char of footer.
-export async function ask_do_tutorial() {
-    const g = game;
-    // C options.c:432-434,483 — obey either configured value without a menu.
-    if (g.tutorial_set_in_config) return !!g.flags.tutorial;
-    const u = g.u;
-    /* C tty_display_nhwindow's NHW_MENU arm clears WIN_MESSAGE before
-     * drawing an overlay (wintty.c:1939-1940), including after WIN_STOP. */
-    g._pending_message = '';
-    // C ref: options.c:463-465 — Snprintf buf with rc basename.
-    const configHint = 'Put "OPTIONS=!tutorial" in .nethackrc to skip this query.';
-    // This is a select_menu()/tty_end_menu() picklist ending in "(end)", so it
-    // takes the `min(41, 78 - maxcol)` branch of tty_window_offx() — one column
-    // LEFT of the "--More--" branch that com_pager_legacy() uses.  The config
-    // hint is the longest line at 57 visible columns (the reverse-video title
-    // is 23 once its SGR escapes are discounted, the retry line 27, "(end)" 5),
-    // so this evaluates to min(41, 78 - 57) = 21 on every pass.
-    // i.e. content column 21.
-    const footerKind = 'end';
-    // The real uac at tutorial time (find_ac has already run inside u_init_skills_discoveries).
-    const uac = u?.uac ?? 0;
-    /* C ref: win/tty/wintty.c:1329 process_menu_window — the two selectable
-     * entries, in mlist order.  `str` is what tty_add_menu stored ("%c - %s"),
-     * which is both what is drawn and what MENU_SEARCH's pmatchi() matches
-     * against (wintty.c:1714 `pmatchi(searchbuf, curr->str)`). */
-    const mlist = [
-        { selector: 'y', str: 'y - Yes, do a tutorial' },
-        { selector: 'n', str: 'n - No, just start play' },
-    ];
-    const RESP_EXPLICIT = mlist.map((m) => m.selector).join(''); /* "yn" */
-    const RESP = RESP_EXPLICIT + ' ' + '0123456789\x1b\n\r' + '^|><.-@,\\~:';
-    let pass = 0;
-    /* C ref: options.c:449-472 — do { build; select_menu } while (!n). */
-    for (;;) {
-        // C ref: options.c:466-494 — build window lines for this iteration.
-        const windowLines = [
-            /* tty_end_menu adds the prompt with tty_menu_promptstyle = iflags.menu_headings
-             * (wintty.c:2680-2689, windows.c:1769, options.c:5790) */
-            menu_heading_text('Do you want a tutorial?'),
-            '', // blank separator (add_menu_str)
-            mlist[0].str, // a_char='y' option
-            mlist[1].str, // a_char='n' option
-            '', // blank separator (add_menu_str)
-            configHint, // add_menu_str(buf)
-        ];
-        if (pass > 0) {
-            // C ref: options.c:481-482 — after first invalid key, add retry line.
-            windowLines.push("(Please choose 'y' or 'n'.)");
-        }
-        windowLines.push('(end)'); // tty footer line for single-page menus
-        /* C ref: wintty.c:1925-1928 — `!iflags.menu_overlay` drops the menu to
-         * offx 0 and clears the whole screen; the content is drawn at column 1. */
-        const fullScreen = g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0;
-        const WIN_COL = fullScreen ? 1 : tty_window_offx(windowLines, footerKind);
-        // Cursor: at end of "(end)" row, one past last character.
-        // C: tty select_menu positions cursor after last char of footer row.
-        // "(end)" is 5 chars at column WIN_COL → cursor at WIN_COL + 5 + 1 = 27.
-        const endRow = windowLines.length - 1; // 0-indexed screen row of "(end)"
-        const endCursorCol = WIN_COL + 5 + 1; // 21 + 5 + 1 = 27
-        const disp = g?.nhDisplay;
-        let titleErased = false;
-        /* C ref: wintty.c:1393-1398 — `counting`/`count` survive exactly one
-         * further iteration after a digit (reset_count is cleared by the digit
-         * arm and re-armed at the top of the next pass), and ESC while counting
-         * only stops the count instead of cancelling the menu. */
-        let counting = false, count = 0, reset_count = true;
-        /* C: select_menu()'s return — -1 cancelled, 0 nothing picked, 1 picked. */
-        let n = 0, picked = null, finished = false;
-        while (!finished) {
-            if (reset_count) { counting = false; count = 0; }
-            else reset_count = true;
-            const lines = titleErased ? ['', ...windowLines.slice(1)] : windowLines;
-            // Build the combined map+window overlay screen.
-            // uac: pass the real post-find_ac value for _statusLine2().
-            g._screen_output = fullScreen
-                ? lines.map((ln) => (ln === '' ? '' : ' ' + ln)).join('\n')
-                : build_window_screen(lines, WIN_COL, uac);
-            if (disp) {
-                disp.cursorCol = endCursorCol;
-                disp.cursorRow = endRow;
-            }
-            const keyCode = await nhgetch();
-            const morc = typeof keyCode === 'number' ? String.fromCharCode(keyCode) : String(keyCode || '');
-            /* C ref: getline.c:230-257 xwaitforspace(resp) — '\n'/'\r' always
-             * break, ESC breaks under iflags.cbreak, and so does any member of
-             * `resp`.  Anything else rings the bell and is re-read, leaving the
-             * frame identical. */
-            if (keyCode !== 10 && keyCode !== 13 && keyCode !== 27
-                && RESP.indexOf(morc) < 0) {
-                reset_count = false; /* the loop never turned over: keep the count */
-                continue;
-            }
-            /* C ref: wintty.c:1558-1563 — an explicit page selector is taken as
-             * a choice even when it also happens to be a mapped menu command. */
-            const explicit = RESP_EXPLICIT.indexOf(morc) >= 0;
-            if (!explicit && morc >= '0' && morc <= '9') {
-                /* C ref: wintty.c:1565-1600 — accumulate a count.  gacc is
-                 * empty here, so the group-accelerator shortcut cannot fire. */
-                count = count * 10 + (morc.charCodeAt(0) - 48);
-                if (count !== 0) { counting = true; reset_count = false; }
-                continue;
-            }
-            if (!explicit && keyCode === 27) {
-                /* C ref: wintty.c:1602-1613 — cancel, unless a count is live,
-                 * in which case ESC only stops the count. */
-                if (!counting) { n = -1; finished = true; }
-                continue;
-            }
-            if (!explicit && (keyCode === 10 || keyCode === 13)) {
-                /* C ref: wintty.c:1615-1620 — finished (commit) with nothing
-                 * selected, so select_menu returns 0 and options.c's do-while
-                 * re-asks with the "(Please choose 'y' or 'n'.)" line. */
-                finished = true;
-                continue;
-            }
-            if (!explicit && morc === ' ') {
-                /* C ref: wintty.c:1622-1631 MENU_NEXT_PAGE — this menu is one
-                 * page, so ' ' finishes it (and '>' deliberately does not). */
-                finished = true;
-                continue;
-            }
-            if (!explicit && morc === ':') {
-                /* C ref: wintty.c:1700-1730 MENU_SEARCH. */
-                const answer = await _menu_search(windowLines, WIN_COL, uac, titleErased);
-                titleErased = true;
-                if (!answer || answer === '\x1b')
-                    continue; /* C: `if (!tmpbuf[0] || tmpbuf[0] == '\033') break;` */
-                const searchbuf = `*${answer}*`;
-                for (const curr of mlist) {
-                    if (pmatchi(searchbuf, curr.str)) {
-                        /* C: toggle_menu_curr(); PICK_ONE -> finished. */
-                        picked = curr.selector;
-                        n = 1;
-                        finished = true;
-                        break;
-                    }
-                }
-                continue;
-            }
-            if (explicit) {
-                /* C ref: wintty.c:1743-1752 — find, toggle; PICK_ONE finishes. */
-                picked = morc;
-                n = 1;
-                finished = true;
-                continue;
-            }
-            /* C ref: the remaining default_menu_cmds.  On a single-page
-             * PICK_ONE menu with nothing selected, MENU_PREVIOUS_PAGE '<',
-             * MENU_FIRST_PAGE '^', MENU_LAST_PAGE '|' and MENU_NEXT_PAGE '>'
-             * all find their guard false, and MENU_SELECT_ALL '.',
-             * MENU_INVERT_ALL '@', MENU_SELECT_PAGE ',' and MENU_INVERT_PAGE
-             * '~' are PICK_ANY-only; MENU_UNSELECT_ALL '-' and
-             * MENU_UNSELECT_PAGE '\\' run but have nothing to deselect.  All
-             * of them re-loop with the frame unchanged. */
-        }
-        if (n < 0)
-            return false; /* C options.c:471-474 — ESC: dotut = FALSE. */
-        if (n > 0)
-            return picked === 'y'; /* C options.c:468-470 */
-        pass++; /* C options.c:481 `if (pass++)` */
-    }
-}
 
 export async function menu_search_getlin(frameRows) {
     const g = game;
@@ -1656,8 +1472,3 @@ export async function menu_search_case(how, mlist, frameRows, toggle) {
     return false;
 }
 
-async function _menu_search(windowLines, WIN_COL, uac, titleAlreadyErased) {
-    void titleAlreadyErased;
-    return menu_search_getlin(() =>
-        build_window_screen(['', ...windowLines.slice(1)], WIN_COL, uac).split('\n'));
-}

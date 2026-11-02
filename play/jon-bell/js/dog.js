@@ -1,10 +1,11 @@
 // @ts-nocheck
-import { pline_mon as pline_mon_real } from './display.js';
+import { pline_mon as pline_mon_real } from './pline.js';
 import { ledger_no as ledger_no_real } from './bones.js';
 // dog.c — Starting pet and pet AI helpers.
 // C ref: nethack-c/src/dog.c
 // @ts-nocheck — js sibling imports.
-import { pline, livelog_printf, flush_pending_messages } from './display.js';
+import { flush_pending_messages } from './display.js';
+import { pline, livelog_printf } from './pline.js';
 import { raw_print } from './rawterm.js';           /* C wintty.c tty_raw_print */
 import { nhgetch } from './input.js'; /* was an undeclared global: every pline() call in this file threw ReferenceError when reached */
 import { LL_CONDUCT } from './const.js';
@@ -24,9 +25,12 @@ import { Upolyd } from './const.js';
 /* C light.c homes: del_light_source (light.c:98) and hack.c:97 monst_to_any.
  * Re-exported so this file's historical export surface is unchanged. */
 export { del_light_source, monst_to_any } from './light.js';
-import { del_light_source, monst_to_any } from './light.js';
-import { set_ustuck as set_ustuck_dog, discard_minvent as discard_minvent_real, restore_cham,
-         stairway_find_from, stairway_find_dir, somexy, mongone, monnear } from './mklev.js';
+import { del_light_source } from './light.js';
+import { monst_to_any } from './hack.js';
+import { discard_minvent as discard_minvent_real } from './mklev.js';
+import { stairway_find_from, stairway_find_dir } from './stairs.js';
+import { somexy } from './mkroom.js';
+import { set_ustuck as set_ustuck_dog, restore_cham, mongone, monnear } from './mon.js';
 import { enexto_core, mnexto, mnearto, rloc_to, rloc } from './teleport.js';
 import { put_saddle_on_mon, impossible, place_monster } from './steed.js';
 import { newMonHp, assignMakemonFemale, peaceMinded, permonstTemplate, propagate, newmextra, emits_light, humanoid } from './makemon.js';
@@ -37,9 +41,12 @@ import { isok, Has_contents, MON_MIGRATING, MAX_NUM_WORMS } from './const.js';
 import { within_bounded_area } from './rect.js';   /* C rect.c */
 import { newsym, force_more_from_cls, docrt } from './display.js';    /* C display.c */
 import { remove_worm, wormgone, count_wsegs } from './worm.js';
-import { yelp, growl, helpless, levl_follower, mon_has_amulet, seemimic, pronoun_gender, update_inventory } from './mhitm.js';
+import { helpless, seemimic, update_inventory } from './mhitm.js';
+import { mon_has_amulet } from './wizard.js';
+import { yelp, growl } from './sounds.js';
+import { levl_follower, pronoun_gender } from './mondata.js';
 import { vision_recalc } from './vision.js';       /* C vision.c */
-import { depth } from './hacklib.js';              /* C dungeon.c depth() */
+import { depth } from './dungeon.js';              /* C dungeon.c depth() */
 import { fill_pit, mintrap } from './trap.js';              /* C trap.c:5391 */
 import { on_level, builds_up, describe_level_buf } from './dungeon.js'; /* C dungeon.c */
 import { impossible as impossible_arrive } from './pline.js';
@@ -49,7 +56,8 @@ import { picked_container, deliver_obj_to_mon } from './dokick.js';    /* C shk.
  * handling; this module's keepdogs() steed branch reaches it directly. */
 import { mdrop_special_objs as mdrop_special_objs_real } from './steal.js';
 import { obfree } from './dokick.js';
-import { set_residency, in_rooms, make_happy_shk } from './shk.js'; /* C shk.c:1395/1907 */
+import { set_residency, make_happy_shk } from './shk.js';
+import { in_rooms } from './hack.js'; /* C shk.c:1395/1907 */
 import { mon_track_clear } from './monmove.js';      /* C monmove.c:90 */
 import { get_wormno, initworm } from './worm.js';    /* C worm.c:95/119 */
 /* C monattk.h attack/damage-type constants, in C's numbering — they are
@@ -63,26 +71,27 @@ const AD_WRAP = 28;    /* C monattk.h:69 — special "stick" for eels */
 import { dmgtype as _dmgtype_real, finish_meating } from './dogmove.js';
 /* mklev.js holds the real healmon (mon.c:1080); js/monmove.js and js/mhitm.js
  * each carry a stub of the same name — import the live one explicitly. */
-import { healmon } from './mklev.js';
+import { healmon } from './mon.js';
 /* C dog.c:271-274 — makedog's own call, on the starting pet, before christening.
  * see_monster_closeup's real body is js/mklev.js:10320 (C mon.c:5971). */
-import { see_monster_closeup } from './mklev.js';
+import { see_monster_closeup } from './mon.js';
 import { carrying, body_part, set_msg_xy, dismount_steed as dismount_steed_real } from './cmd.js';
 const EXPENSIVE_CAMERA = 229;
 /* C spellbook object type SPE_CREATE_FAMILIAR = 401 (objects.h X-macro; not
  * greppable, matches the value already duplicated at js/spell.js:75,
  * js/u_init.js:1225, js/mkobj.js:85). Used by pick_familiar_pm's spell arm. */
 const SPE_CREATE_FAMILIAR_DOG = 401;
-import { attacktype as _attacktype_real } from './mhitm.js';
+import { attacktype as _attacktype_real } from './mondata.js';
 import { canseemon, canspotmon } from './display.js';   /* C display.c */
 import { cansee } from './vision.js';                   /* C vision.c */
-import { wake_nearto, place_object } from './mklev.js'; /* C sounds.c / mkobj.c */
+import { place_object } from './mklev.js';
+import { wake_nearto } from './mon.js'; /* C sounds.c / mkobj.c */
 import { ismnum, has_edog, HALLUC, HALLUC_RES } from './const.js'; /* monst.h/mextra.h/youprop.h */
 import { the, xname, Tobjnam, an } from './objnam.js';  /* C objnam.c */
 import { Monnam } from './mcastu.js';                   /* C do_name.c (js home) */
 import { s_suffix } from './mhitm.js';                  /* C hacklib.c */
 import { dogfood, dog_eat } from './dogmove.js';        /* C dog.c / dogmove.c */
-import { night } from './allmain.js';                   /* C calendar.c:223 */
+import { night } from './calendar.js';                   /* C calendar.c:223 */
 import { redraw_worm } from './worm.js';                /* C worm.c:989 */
 /* ── make_familiar()'s callees (C dog.c:103-215).  makemon is the real,
  * async port (js/mklev.js:4914) — awaited below, not this module's own
@@ -90,7 +99,8 @@ import { redraw_worm } from './worm.js';                /* C worm.c:989 */
  * christen_monst are aliased: this file still carries its own dormant
  * `set_malign`/`attacktype` stubs (js/dog.js, `sticks()`'s comment explains
  * why) that would otherwise shadow the real ones. ── */
-import { makemon, minliquid } from './mklev.js';        /* C makemon.c / mon.c:1116 */
+import { makemon } from './mklev.js';
+import { minliquid } from './mon.js';        /* C makemon.c / mon.c:1116 */
 import { is_pool } from './look.js';                    /* C dbridge.c:46 */
 import { christen_monst } from './mhitm.js';            /* C do_name.c:132 */
 import { has_oname, ONAME } from './const.js';           /* C obj.h */
@@ -467,22 +477,6 @@ export async function make_familiar(otmp, x, y, quietly) {
     return mtmp;
 }
 
-/* C ref: nethack-c-v5/upstream/src/minion.c:27-34 free_emin — release a
- * monster's minion extension and clear isminion. Not exported in C
- * (top-level, non-static, but this port has no other caller yet); kept
- * private here since make_familiar is its only user. makemon()'s
- * angel/cleric minion branch (js/mklev.js:5622-5637) stores the emin data
- * flatly on the monster object rather than under mextra (unlike the
- * MM_EMIN-flag branch a few lines above it, which does use mextra.emin via
- * newemin()) — clear both representations so a later isminion/EMIN() reader
- * sees it gone regardless of which branch produced this monster. */
-function free_emin(mtmp) {
-    if (mtmp.mextra && mtmp.mextra.emin)
-        mtmp.mextra.emin = null;
-    if (mtmp.emin)
-        mtmp.emin = null;
-    mtmp.isminion = 0;
-}
 
 
 /* discard_migrations — C ref: dog.c:939-993 */
@@ -1161,27 +1155,6 @@ export function keep_mon_accessible(mtmp) {
         return true;
     return false;
 }
-/* C apply.c:726-743 — release one monster from its inventory leash.  The
- * leash object stores the monster id; clear that link and the monster flag.
- * Return the feedback's paging promise for callers which can await it. */
-export function m_unleash(mtmp, force) {
-    if (!mtmp)
-        return;
-    const feedback = !force ? undefined : canseemon(mtmp)
-        ? pline_mon(mtmp, '%s pulls free of %s leash!', Monnam(mtmp),
-                    ['his', 'her', 'its', 'their'][pronoun_gender(mtmp, 2)])
-        : pline('Your leash falls slack.');
-    const mid = mtmp.m_id | 0;
-    for (let otmp = game.invent; otmp; otmp = otmp.nobj) {
-        if ((otmp.otyp | 0) === 236 /* LEASH */ && (otmp.leashmon | 0) === mid) {
-            otmp.leashmon = 0;
-            update_inventory();
-            break;
-        }
-    }
-    mtmp.mleashed = 0;
-    return feedback;
-}
 
 /* C dog.c:1292-1359 — revive/life-save disposition for a tame monster.
  * `pline()` and dismount_steed() are async in this port, so retain C's state
@@ -1505,7 +1478,6 @@ export { mon_leave, relmon };
 /* mondata.c:53 attacktype — expose the canonical mhitm predicate rather than
  * retaining a false-returning shadow for external callers. */
 export function attacktype(data, attk) { return _attacktype_real(data, attk); }
-async function expels(mtmp, data, flag) { return expels_gu(mtmp, mtmp?.data?.pmidx, flag); }
 /* weapon.c:797 mon_wield_item — was an empty-body stub here (returning
  * undefined, so every `if (mon_wield_item(mtmp))` caller read it as "did not
  * take time").  The real port lives in js/uhitm.js beside its siblings
@@ -1517,6 +1489,11 @@ async function expels(mtmp, data, flag) { return expels_gu(mtmp, mtmp?.data?.pmi
  * read an undeclared global.  Import it, then export the local binding. */
 import { mon_wield_item, m_at } from './uhitm.js';
 import { ENV } from './hostenv.js';
+import { free_emin } from './minion.js'; // relocate-fns
+import { m_unleash } from './apply.js'; // relocate-fns
+import { expels } from './mhitu.js'; // relocate-fns
+export { m_unleash } from './apply.js'; // relocate-fns
+export { pline_mon }; // relocate-fns
 export { mon_wield_item };
 /* C ref: nethack-c/src/dog.c:22-30 newedog
  *     if (!mtmp->mextra) mtmp->mextra = newmextra();

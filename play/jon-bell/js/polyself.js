@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { There as There_real, pline_The } from './display.js';
+import { There as There_real, pline_The } from './pline.js';
 // polyself.c — hero polymorph (poly_self / polyself / polymon / newman / set_uasmon).
 // C ref: nethack-c/src/polyself.c
 // @ts-nocheck — sibling imports from hand-maintained js/*.js.
@@ -20,29 +20,37 @@ import { rn2, rnd, rn1, rnl, d } from './rng.js';
 import { game } from './gstate.js';
 import { PM_COCKATRICE, PM_CHICKATRICE, PM_STONE_GOLEM, PM_FLAMING_SPHERE, PM_FIRE_VORTEX, PM_GREEN_SLIME } from './pm.generated.js';
 function touch_petrifies(pd) { const i = pd?.pmidx | 0; return i === PM_COCKATRICE || i === PM_CHICKATRICE; }
-import { pline, urgent_pline, newsym, see_monsters, flush_screen, _topl_stash_result, _topl_merge_result, _topl_joins_snapshot, canspotmon, canseemon, Unaware } from './display.js';
+import { newsym, see_monsters, flush_screen, _topl_stash_result, _topl_merge_result, _topl_joins_snapshot, canspotmon, canseemon, Unaware } from './display.js';
+import { pline, urgent_pline } from './pline.js';
 import { impossible } from './pline.js';
 import { exercise, acurr, getAbase, getAmax, C_ATTR_TO_DISP, redist_attr, adjabil, setuhpmax } from './attrib.js';
 import { the_unique_pm, permonstTemplate, monPmname, name_to_mon, name_to_monclass, mkclass, dmgtype_fromattack, sliparm, attacktype_fordmg, set_mon_data, is_home_elemental as is_home_elemental_real } from './makemon.js';
-import { getlin } from './wizcmds.js';
-import { mungspaces, valid_vampshiftform, set_ustuck, mksobj, setmangry, mkclass_poly_nc, hideunder, set_bknown, egg_type_from_parent } from './mklev.js';
+import { getlin } from './windows.js';
+import { mksobj, mkclass_poly_nc, set_bknown } from './mklev.js';
+import { mungspaces } from './hacklib.js';
+import { valid_vampshiftform, set_ustuck, setmangry, hideunder, egg_type_from_parent } from './mon.js';
 import * as cmdNS from './cmd.js';
 import { mnexto } from './teleport.js';
-import { rndexp } from './exper_pure.js';
+import { rndexp } from './exper.js';
 import { newhp, newpw } from './exper.js';
 import {
     find_ac, donning, encumber_msg, takeoff_slot_noac, Armor_gone, Boots_off, Blindf_off, Cloak_off, Gloves_off, Helmet_off, worn_invent_obj, cancel_don,
 } from './do_wear.js';
-import { dropx, useup, welded, could_twoweap, untwoweapon, surface, ceiling, waterbody_name, yname, You_cant, youhiding_enlightenment, instapetrify as instapetrify_real } from './cmd.js';
-import { losehp, acurrstr } from './dokick.js';
+import { useup, could_twoweap, surface, ceiling, waterbody_name, yname, You_cant, youhiding_enlightenment, instapetrify as instapetrify_real } from './cmd.js';
+import { welded, untwoweapon } from './wield.js';
+import { dropx } from './do.js';
+import { acurrstr } from './dokick.js';
+import { losehp } from './hack.js';
 import { end_burn, learn_egg_type } from './timeout.js';
 import { make_sick, make_stoned, make_slimed, make_glib } from './potion.js';
 import { newuhs } from './eat.js';
-import { artifact_light, arti_light_radius, maybe_adjust_light, new_light_source, del_light_source, monst_to_any } from './light.js';
+import { artifact_light, arti_light_radius, new_light_source, del_light_source } from './light.js';
+import { maybe_adjust_light } from './mkobj.js';
+import { monst_to_any } from './hack.js';
 import { emits_light } from './makemon.js';
 import { setworn } from './worn.js';
 import { racial_exception } from './worn.js';
-import { uwepgone as _uwepgone, uswapwepgone as _uswapwepgone } from './steal.js';
+import { uwepgone as _uwepgone, uswapwepgone as _uswapwepgone } from './wield.js';
 import { weapon_descr, MONS_NAMES } from './uhitm.js';
 import { an as an_objnam, the, cloak_simple_name, helm_simple_name, cxname, vtense, makeplural, simple_typename, simpleonames, ansimpleoname, otense } from './objnam.js';
 import { observe_object, discover_object } from './o_init.js';
@@ -69,28 +77,35 @@ import { ubuzz, ubreatheu, make_blinded, set_HBlinded, bury_objs } from './zap.j
 /* C hack.h Blind — the same reader the status line and vision_recalc use. */
 import { Blind as Blind_vis, couldsee } from './vision.js';
 import { nomul, unmul } from './allmain.js';
-import { deadhero, do_death_sequence, done, yn_function, find_delayed_killer, dealloc_killer } from './end.js';
+import { deadhero, do_death_sequence, done, find_delayed_killer, dealloc_killer } from './end.js';
+import { yn_function } from './cmd.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import { dmgtype } from './dogmove.js';
-import { float_vs_flight, breakarm, num_horns, update_inventory, hliquid, defended, Some_Monnam, poly_when_stoned, can_be_strangled } from './mhitm.js';
+import { float_vs_flight, update_inventory, hliquid, Some_Monnam } from './mhitm.js';
+import { breakarm, num_horns, defended, poly_when_stoned, can_be_strangled } from './mondata.js';
 import { is_pool } from './look.js';
 /* Shared trap timer/status bookkeeping (C trap.c:set_utrap). */
-import { set_utrap, unpunish } from './dig.js';
+import { unpunish } from './read.js';
+import { set_utrap } from './trap.js';
 import { buried_ball_to_freedom, reset_utrap, selftouch, t_at, deltrap, maketrap, dotrap, feeltrap } from './trap.js';
-import { On_stairs } from './mklev.js';
+import { On_stairs } from './stairs.js';
 import { is_pool_or_lava } from './look.js';
-import { spoteffects } from './landing-effects.js';
+import { spoteffects } from './hack.js';
 import { mon_nam } from './uhitm.js';
 import { expels_gu, destroy_items, ignite_items } from './mhitu.js';
 import { Monnam, perceives } from "./mcastu.js";
-import { helpless, Resists_Elem, killed, y_monnam, l_monnam } from './mhitm.js';
+import { helpless, killed, y_monnam, l_monnam } from './mhitm.js';
+import { Resists_Elem } from './mondata.js';
 import { s_suffix } from './hacklib.js';
 import { nonliving, poly_gender } from './makemon.js';
-import { livelog_printf, rank_of, retouch_equipment, status_reassess } from './display.js';
+import { retouch_equipment, status_reassess } from './display.js';
+import { rank_of } from './botl.js';
+import { livelog_printf } from './pline.js';
 import { LL_MINORAC, LL_CONDUCT } from './const.js';
 import { dismount_steed as dismount_steed_real } from './cmd.js';
-import { in_rooms, add_damage, pay_for_damage } from './shk.js';
-import { may_dig as may_dig_look } from './look.js';
+import { add_damage, pay_for_damage } from './shk.js';
+import { in_rooms } from './hack.js';
+import { may_dig as may_dig_look } from './hack.js';
 import { watch_dig } from './dig.js';
 import { morehungry } from './eat.js';
 import { dissolve_bars } from './monmove.js';
@@ -98,8 +113,8 @@ import { OC_WEIGHT } from './oc_weight.generated.js';
 import { W_NONDIGGABLE, NO_PART } from './const.js';
 import { recalc_block_point } from './vision.js';
 import { block_point } from './vision.js';
-import { sobj_at } from './mklev.js';
-import { closed_door } from './look.js';
+import { sobj_at } from './invent.js';
+import { closed_door } from './monmove.js';
 import { LS_MONSTER, IS_OBSTRUCTED, IS_TREE, IS_WALL, IS_DOOR, DOOR, SDOOR, D_BROKEN, D_NODOOR, D_TRAPPED, ROOM, CORR, SHOPBASE, SHOP_DOOR_COST, DISMOUNT_POLY, IRONBARS } from './const.js';
 import { set_mimic_blocking } from './sit.js';
 import { sticks } from './dog.js';
@@ -118,6 +133,9 @@ import {
     PM_HUMAN_WERERAT, PM_HUMAN_WEREJACKAL, PM_HUMAN_WEREWOLF,
     PM_STONE_GIANT, PM_HILL_GIANT, PM_MEDUSA,
 } from './pm.generated.js';
+import { body_part as body_part_real, mbodypart as mbodypart_real } from './cmd.js'; // relocate-fns
+import { youhiding } from './insight.js'; // relocate-fns
+export { M1_CLING, M1_FLY, M_AP_FURNITURE_local, M_AP_NOTHING_local, M_AP_OBJECT_local, S_EEL, _hides_under, an }; // relocate-fns
 
 // ── attrib indices (attrib.h) ────────────────────────────────────────────────
 const A_STR = 0;
@@ -2418,7 +2436,6 @@ const S_EEL = 57;                    /* defsym.h:362 MONSYM(57, ';', EEL, ...) *
 const M_AP_NOTHING_local = 0;        /* monst.h:52 */
 const M_AP_FURNITURE_local = 1;      /* monst.h:53 */
 const M_AP_OBJECT_local = 2;         /* monst.h:54 */
-const M_AP_MONSTER_local = 3;        /* monst.h:55 */
 const STRANGE_OBJECT = 0;            /* objects.h:78 — the dummy object[0] */
 const CORPSE_local = 265;
 const ECMD_OK_local = 0x00;
@@ -2572,68 +2589,6 @@ function There(msg, ...args) {
     return There_real(msg, ...args);
 }
 async function instapetrify(kbuf) { return instapetrify_real(kbuf); }
-// ── C insight.c:2027 youhiding(via_enlghtmt, msgflag) — the dohide() topline. ──
-// C ref: nethack-c/src/insight.c:2027-2082.  RNG-free.
-//
-//   Strcpy(buf, "hiding");
-//   if (U_AP_TYPE != M_AP_NOTHING) {          /* mimic */
-//       bp = eos(strcpy(buf, "mimicking"));
-//       if (U_AP_TYPE == M_AP_OBJECT)    Sprintf(bp, " %s",
-//                          an(simple_typename(gy.youmonst.mappearance)));
-//       else if (U_AP_TYPE == M_AP_FURNITURE) Strcpy(bp, " something");
-//       else if (U_AP_TYPE == M_AP_MONSTER)   Strcpy(bp, " someone");
-//   if (via_enlghtmt) you_are(buf, "");
-//   else You("are %s %s.", msgflag ? "already" : "now", buf);
-//
-// mappearance == STRANGE_OBJECT: "You are now mimicking a strange object."
-export function youhiding(via_enlghtmt, msgflag) {
-    const g = game;
-    const u = g.u;
-    let buf = 'hiding';
-    const apType = (g.youmonst?.m_ap_type | 0) & 7;
-    if (apType !== M_AP_NOTHING_local) {
-        buf = 'mimicking';
-        if (apType === M_AP_OBJECT_local)
-            buf += ' ' + an(simple_typename(g.youmonst.mappearance | 0));
-        else if (apType === M_AP_FURNITURE_local)
-            buf += ' something';
-        else if (apType === M_AP_MONSTER_local)
-            buf += ' someone';
-        /* else: something unexpected — C leaves 'buf' as "mimicking" */
-    } else if (u.uundetected) {
-        const data = g.youmonst?.data;
-        if (data && (data.mlet | 0) === S_EEL) {
-            if (is_pool(u.ux, u.uy))
-                buf += ' in the ' + waterbody_name(u.ux, u.uy);
-        } else if (data && _hides_under(data)) {
-            const otmp = g.level?.levelObjects?.[u.ux]?.[u.uy] ?? null;
-            if (otmp)
-                buf += ' underneath ' + ansimpleoname(otmp);
-        } else if ((data && ((data.mflags1 | 0) & M1_CLING) !== 0)
-                            || (((u.uprops?.[FLYING]?.intrinsic | 0)
-                                 || (u.uprops?.[FLYING]?.extrinsic | 0)
-                                 || (u.usteed?.data?.mflags1 & M1_FLY))
-                                && !(u.uprops?.[FLYING]?.blocked | 0))) {
-            /* Flying forms hide on the ceiling even when they do not cling. */
-            buf += ' on the ' + ceiling(u.ux, u.uy);
-        } else if (u.utrap && (u.utraptype | 0) === TT_PIT) {
-            const traps = g.level?.traps;
-            const trap = Array.isArray(traps)
-                ? traps.find(t => (t.tx | 0) === (u.ux | 0)
-                              && (t.ty | 0) === (u.uy | 0)) : null;
-            buf += ' in a ' + (trap && (trap.ttyp | 0) === 12 /* SPIKED_PIT */
-                ? 'spiked ' : '') + 'pit';
-        } else {
-            buf += ' on the ' + surface(u.ux, u.uy);
-        }
-    }
-    if (via_enlghtmt) {
-        youhiding_enlightenment(buf, msgflag);
-        return;
-    }
-    /* C insight.c:2075: finish the blocking message before dohide returns. */
-    return pline(`You are ${msgflag ? 'already' : 'now'} ${buf}.`);
-}
 function plur(x) { return (x === 1) ? "" : "s"; }
 
 // C hack.c:647-824 still_chewing(): boulders take priority over their terrain.
@@ -2758,4 +2713,27 @@ export async function still_chewing(x, y) {
     if (dmgtxt) await pay_for_damage(dmgtxt, false);
     resetDig();
     return false;
+}
+
+/* C polyself.c:1956-2046 mbodypart(mon, part) — the real general port lives
+ * in js/cmd.js (mbodypart_real, imported above). */
+export function mbodypart(shkp, part) { return mbodypart_real(shkp, part); }
+
+/* C polyself.c:2142-2145 body_part(part) = mbodypart(&gy.youmonst, part) —
+ * the real general port lives in js/cmd.js (body_part_real, imported above,
+ * itself calling the same real mbodypart against the hero's own youmonst). */
+export function body_part(part) { return body_part_real(part); }
+
+export function skinback(val) {
+    const u = game.u || {};
+    const skin = u.uskin;
+    if (!skin)
+        return;
+    if (!val)
+        pline('Your skin returns to its original form.');
+    /* C polyself.c:1942-1953: restore the embedded armor as uarm and clear
+     * the temporary I_SPECIAL marker used while polymorphed. */
+    u.uarm = skin;
+    u.uskin = null;
+    skin.owornmask = (skin.owornmask | 0) & ~I_SPECIAL;
 }

@@ -2,10 +2,11 @@
 // @ts-nocheck
 
 import { game } from './gstate.js';
-import { config_error_add } from './cmd_binds.js';
+import { config_error_add } from './cfgfiles.js';
 import { gs, H_UTF8 } from './const.js';
 import { glyphid_is_known } from './display.js';
 import { rgbstr_to_int32 as rgbstr_to_int32_real } from './coloratt.js';
+import { set_map_u } from './utf8map.js'; // relocate-fns
 
 /* C ref: display.h MAX_GLYPH — total glyph count; glyphs.c keeps
  * glyph_map glyphmap[MAX_GLYPH] with per-glyph custom color overrides. */
@@ -326,13 +327,6 @@ function zero_symset_customization() {
     return { customization_name: null, count: 0, custtype: 0, details: null, details_end: null };
 }
 
-/* C utf8map.c: set_map_u — copy the UTF-32 and UTF-8 replacement fields. */
-export function set_map_u(gm, utf32ch, utf8str) {
-    if (!gm) return;
-    gm.u = gm.u || {};
-    gm.u.utf32ch = utf32ch | 0;
-    gm.u.utf8str = String(utf8str ?? '');
-}
 /* C coloratt.c: set_map_customcolor — install the glyph's custom nhcolor. */
 export function set_map_customcolor(gm, nhcolor) {
     if (!gm) return;

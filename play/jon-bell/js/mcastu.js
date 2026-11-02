@@ -1,36 +1,41 @@
-import { pline_The, verbalize } from './display.js';
-import { pline_mon as pline_mon_real } from './display.js';
+import { pline_The, verbalize } from './pline.js';
+import { pline_mon as pline_mon_real } from './pline.js';
 import { Mgender } from './do_name.js';
 // js/mcastu.js — port of nethack-c/src/mcastu.c (scaffold: functions are added here
 
 import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
 import { com_pager as quest_com_pager } from './questpgr.js';
-import { pline, canseemon, canspotmon, Unaware, map_invisible, Norep, newsym, shieldeff } from './display.js';
+import { canseemon, canspotmon, Unaware, map_invisible, newsym, shieldeff } from './display.js';
+import { pline, Norep } from './pline.js';
 import { You } from './eat.js';
 import { mon_nam, Monnam as Monnam_real } from './uhitm.js';
 import { nomul } from './allmain.js';
-import { is_waterwall } from './dokick.js';
+import { is_waterwall } from './dbridge.js';
 /* mcast_lightning's leaves.  destroy_items and flashburn are exported from
  * js/zap.js (their C home is zap.c); ureflects' one real body is js/makemon.js
  * (js/mhitu.js:217 and js/mhitm.js:235 are constant-FALSE stubs of it). */
 import { destroy_items, flashburn } from './zap.js';
-import { ureflects, lined_up } from './makemon.js';
+import { ureflects } from './makemon.js';
+import { lined_up } from './mthrowu.js';
 import { couldsee, cansee } from './vision.js';
 import { M_ATTK_MISS, M_ATTK_HIT, u_at, A_LAWFUL, EMIN, ismnum, MALE, FEMALE, NEUTRAL, NUM_MGENDERS, STRAT_WAITFORU, STRAT_APPEARMSG, SLIMED, MM_NOWAIT, HEADSTONE } from './const.js';
 import { an } from './objnam.js';
-import { the_unique_pm, permonstTemplate, mon_set_minvis, pmname } from './makemon.js';
+import { the_unique_pm, permonstTemplate } from './makemon.js';
+import { pmname } from './do_name.js';
+import { mon_set_minvis } from './worn.js';
 import { mon_aligntyp } from './priest.js';
-import { wake_nearto } from './mklev.js';
+import { wake_nearto } from './mon.js';
 /* C mon.c:4596 healmon() — m_cure_self()'s heal. */
-import { healmon } from './mklev.js';
-import { mon_adjust_speed, burnarmor } from './trap.js';
+import { healmon } from './mon.js';
+import { burnarmor } from './trap.js';
+import { mon_adjust_speed } from './worn.js';
 /* mcast_stun_you's leaves: acurr, potion.js's make_stunned, and prop ids. */
 import { acurr as acurr_mc } from './attrib.js';
 import { make_stunned as make_stunned_mc } from './potion.js';
 import { FREE_ACTION as FREE_ACTION_MC, STUNNED as STUNNED_MC } from './const.js';
 /* C wizard.c:591 nasty() — mcast_summon_mons()'s body. */
-import { nasty } from './mklev.js';
+import { nasty } from './wizard.js';
 /* mcast_death_touch's leaves: mhe/nonliving/is_demon (js/makemon.js, C
  * you.h:322 + mondata.h:110/is_undead), and touch_of_death's HP machinery —
  * minuhpmax/setuhpmax/adjuhploss (attrib.c:1152/1162/1182), losehp
@@ -39,7 +44,7 @@ import { nasty } from './mklev.js';
 import { mhe, nonliving, is_demon } from './makemon.js';
 import { minuhpmax, setuhpmax, adjuhploss, losestr } from './attrib.js';
 import { Upolyd, M_AP_TYPE } from './const.js';
-import { losehp } from './dokick.js';
+import { losehp } from './hack.js';
 import { deadhero } from './end.js';
 /* C mcastu.c:337-340 touch_of_death: done(DIED) is SYNCHRONOUS in C — it
  * resolves the whole Lifesaved/wizard-"Die?" interaction before returning.
@@ -251,16 +256,6 @@ export const QUEST_CUSS_TEXT = {
         "\"I should fart in thy direction, but it might improve thy smell!\"",
     ],
 };
-function com_pager(msgid) {
-    /* C questpgr.c:458-461,486: skip before loading Lua or drawing RNG. */
-    /* C questpgr.c:487 `L = nhl_init(&sbi)`: nhlib.lua's top-level
-     * shuffle(align), before the questtext lookup and its array roll. */
-    /* com_pager_core: pick a line — questpgr.c:566 nelems = rn2(nelems) + 1. */
-    /* questpgr.c:236-302 convert_arg(): %D is always A_LAWFUL, while %p is
-       svp.plname.  Keep replacement positional and non-recursive, as C's
-       convert_line does, so a player/deity name containing '%' is preserved. */
-    return quest_com_pager(msgid);
-}
 export async function mon_spell_hits_spot(_mtmp, adtyp, _x, _y) {
     if (adtyp === AD_MAGM || adtyp === AD_ACID) {
         /* C zap.c:5509-5516 — engraving clobber. */
@@ -335,49 +330,12 @@ const HEAD_MC = 8;                    /* hack.h body-part index (js/cmd.js:35893
 import { mdamageu, ignite_items } from './mhitu.js';
 import { helpless } from './mhitm.js';
 export { mdamageu };
-export async function burn_away_slime() {
-    const p = game.u?.uprops?.[SLIMED];
-    if (p?.intrinsic | 0)
-        await make_slimed(0, 'The slime that covers you is burned away!');
-}
-export function has_aggravatables(mon) {
-    const u = game.u;
-    const in_w_tower = In_W_tower(mon.mx, mon.my, u.uz);
-
-    if (in_w_tower !== In_W_tower(u.ux, u.uy, u.uz))
-        return false;
-
-    for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
-        if (DEADMONSTER(mtmp))
-            continue;
-        if (in_w_tower !== In_W_tower(mtmp.mx, mtmp.my, u.uz))
-            continue;
-        if (((mtmp.mstrategy | 0) & STRAT_WAITFORU) !== 0 || helpless(mtmp))
-            return true;
-    }
-    return false;
-}
 /* C mondata.h:81 perceives(ptr) — ((ptr)->mflags1 & M1_SEE_INVIS) != 0L.
  * A one-line macro that was a throwing stub; cursetxt() above is a live caller. */
 export function perceives(pmdata) {
     return (((pmdata && pmdata.mflags1) | 0) & M1_SEE_INVIS_MC) !== 0;
 }
 
-export function mon_has_special(mtmp) {
-    const AMULET_OF_YENDOR = 213;
-    const BELL_OF_OPENING = 263;
-    const CANDELABRUM_OF_INVOCATION = 262;
-    const SPE_BOOK_OF_THE_DEAD = 409; /* objects.h SPELL() BOOK_OF_THE_DEAD; was 264 = TRIPE_RATION */
-    for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj)
-        if (otmp.otyp === AMULET_OF_YENDOR
-            || (otmp.oartifact | 0) >= 21 /* any_quest_artifact, obj.h:271 ART_ORB_OF_DETECTION */
-            || otmp.oartifact >= 21 /* obj.h:271 any_quest_artifact: ART_ORB_OF_DETECTION */
-            || otmp.otyp === BELL_OF_OPENING
-            || otmp.otyp === CANDELABRUM_OF_INVOCATION
-            || otmp.otyp === SPE_BOOK_OF_THE_DEAD)
-            return 1;
-    return 0;
-}
 
 /* C mcastu.c:322-354 touch_of_death(struct monst *mtmp) — the monster spell
  * "touch of death", which (unlike the finger-of-death WAND effect) only ever
@@ -508,28 +466,7 @@ export async function mcast_summon_mons(mtmp) {
 }
 import { In_W_tower_wz as In_W_tower } from './dochug.js';
 
-// DEADMONSTER macro: #define DEADMONSTER(mon) ((mon)->mhp < 1)
-function DEADMONSTER(mon) {
-    return (mon.mhp | 0) < 1;
-}
 
-export function aggravate() {
-    const u = game.u;
-    const in_w_tower = In_W_tower(u.ux, u.uy, u.uz);
-
-    for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
-        if (DEADMONSTER(mtmp))
-            continue;
-        if (in_w_tower !== In_W_tower(mtmp.mx, mtmp.my, u.uz))
-            continue;
-        mtmp.mstrategy &= ~(STRAT_WAITFORU | STRAT_APPEARMSG);
-        mtmp.msleeping = 0;
-        if (mtmp.mcanmove === 0 && !rn2(5)) {
-            mtmp.mfrozen = 0;
-            mtmp.mcanmove = 1;
-        }
-    }
-}
 /* C do_wear.c:3278 destroy_arm() — mcast_destroy_armor's body. */
 import { destroy_arm } from './do_wear.js';
 import { rndcurse } from './sit.js';
@@ -715,21 +652,28 @@ export async function mcast_lightning(mtmp, dmg) {
     return dmg;
 }
 import { mkclass, set_malign } from './makemon.js';
-import { makemon, upstart, mksobj, engr_at, wipe_engr_at } from './mklev.js';
+import { makemon, mksobj, engr_at, wipe_engr_at } from './mklev.js';
+import { upstart } from './hacklib.js';
 import { add_to_minv } from './dokick.js';
 import { monster_census } from './sit.js';
 import { enexto_out } from './teleport.js';
-import { tp_sensemon, You_hear } from './display.js';
+import { tp_sensemon } from './display.js';
+import { You_hear } from './pline.js';
 import { makeplural, makesingular, vtense } from './objnam.js';
 import { bogusmon } from './do_name.js';
 import { make_confused } from './potion.js';
 import { dobuzz, zap_over_floor } from './zap.js';
 import { make_blinded, flash_str } from './zap.js';
-import { unconscious } from './pickup.js';
+import { unconscious } from './trap.js';
 import { is_fainted } from './eat.js';
 import { PM_CYCLOPS as PM_CYCLOPS_MC, PM_FLOATING_EYE as PM_FLOATING_EYE_MC } from './pm.generated.js';
 import { PM_WIZARD_OF_YENDOR as PM_WIZARD_OF_YENDOR_MC, PM_HUMAN as PM_HUMAN_WA, PM_WATER_DEMON as PM_WATER_DEMON_WA, PM_VAMPIRE as PM_VAMPIRE_WA, PM_RED_DRAGON as PM_RED_DRAGON_WA, PM_TROLL as PM_TROLL_WA, PM_UMBER_HULK as PM_UMBER_HULK_WA, PM_XORN as PM_XORN_WA, PM_XAN as PM_XAN_WA, PM_COCKATRICE as PM_COCKATRICE_WA, PM_GUARDIAN_NAGA as PM_GUARDIAN_NAGA_WA, PM_TRAPPER as PM_TRAPPER_WA } from './pm.generated.js';
 import { PROT_FROM_SHAPE_CHANGERS as PROT_FROM_SHAPE_CHANGERS_MC } from './const.js';
+import { aggravate, has_aggravatables } from './wizard.js'; // relocate-fns
+import { burn_away_slime } from './timeout.js'; // relocate-fns
+export { burn_away_slime } from './timeout.js'; // relocate-fns
+export { aggravate } from './wizard.js'; // relocate-fns
+export { Deaf, is_minion }; // relocate-fns
 
 /* defsym.h:295/:346 monster-class symbols. */
 const S_ANT_MC = 1, S_SNAKE_MC = 45;
@@ -1423,25 +1367,6 @@ export async function buzzmu(mtmp, mattk) {
     return M_ATTK_MISS;
 }
 
-// wizard.c:824-833 — flavor-text tables rolled by cuss().
-const random_insult = [
-    'antic', 'blackguard', 'caitiff', 'chucklehead',
-    'coistrel', 'craven', 'cretin', 'cur',
-    'dastard', 'demon fodder', 'dimwit', 'dolt',
-    'fool', 'footpad', 'imbecile', 'knave',
-    'maledict', 'miscreant', 'niddering', 'poltroon',
-    'rattlepate', 'reprobate', 'scapegrace', 'varlet',
-    'villein',
-    'wittol', 'worm', 'wretch',
-];
-const random_malediction = [
-    'Hell shall soon claim thy remains,', 'I chortle at thee, thou pathetic',
-    'Prepare to die, thou', 'Resistance is useless,',
-    'Surrender or die, thou', 'There shall be no mercy, thou',
-    'Thou shalt repent of thy cunning,', 'Thou art as a flea to me,',
-    'Thou art doomed,', 'Thy fate is sealed,',
-    'Verily, thou shalt be one dead',
-];
 
 // verbalize() — pline.c:479-494. Wraps line in quotes and sets/clears the
 // transient PLINE_VERBALIZE flag around a plain pline call; no RNG, no
@@ -1459,52 +1384,7 @@ export function is_lminion(mtmp) {
     return is_minion(mtmp.data) && mon_aligntyp(mtmp) === A_LAWFUL;
 }
 
-// wizard.c:60 amulet()/mklev.c:982 precedent read u.uhave.amulet from a
-// channel exists — see js/mapstate_game_bridge.js). The only ground truth
-// the replay carries is the hero's actual invent chain, so derive the same
-// boolean the cache would hold by scanning it for the unique amulet otyp.
-const AMULET_OF_YENDOR = 213;
-function uhaveAmulet() {
-    for (let otmp = game.invent; otmp; otmp = otmp.nobj)
-        if ((otmp.otyp | 0) === AMULET_OF_YENDOR)
-            return true;
-    return false;
-}
 
-// C ref: wizard.c:845-883 cuss() — insult or intimidate the player.
-export function cuss(mtmp) {
-    if (Deaf())
-        return;
-    if (mtmp.iswiz) {
-        if (!rn2(5)) {
-            pline(`${Monnam(mtmp)} laughs fiendishly.`);
-        } else if (uhaveAmulet() && !rn2(random_insult.length)) {
-            verbalize(`Relinquish the amulet, ${random_insult[rn2(random_insult.length)]}!`);
-        } else if (game.u.uhp < 5 && !rn2(2)) { /* Panic */
-            // the format-selecting rn2(2) precedes the insult draw.
-            const panicked = rn2(2);
-            const insult = random_insult[rn2(random_insult.length)];
-            verbalize(panicked
-                ? `Even now thy life force ebbs, ${insult}!`
-                : `Savor thy breath, ${insult}, it be thy last!`);
-        } else if (mtmp.mhp < 5 && !rn2(2)) { /* Parthian shot */
-            verbalize(rn2(2) ? 'I shall return.' : "I'll be back.");
-        } else {
-            const maledict = random_malediction[rn2(random_malediction.length)];
-            const insult = random_insult[rn2(random_insult.length)];
-            verbalize(`${maledict} ${insult}!`);
-        }
-    } else if (is_lminion(mtmp)
-               && !(mtmp.isminion && EMIN(mtmp).renegade)) {
-        com_pager('angel_cuss');
-    } else {
-        if (!rn2(is_minion(mtmp.data) ? 100 : 5))
-            pline(`${Monnam(mtmp)} casts aspersions on your ancestry.`);
-        else
-            com_pager('demon_cuss');
-    }
-    wake_nearto(mtmp.mx, mtmp.my, 5 * 5);
-}
 
 // ── local helpers for death_inflicted_by (not exported from their modules) ──
 const M2_PNAME = 0x00080000;

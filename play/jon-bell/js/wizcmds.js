@@ -4,7 +4,9 @@
 // Hand-maintained JS (not tsc-emitted). Sibling imports from js/*.js.
 import { u_safe_from_fatal_corpse } from './pickup.js';
 import { olfaction } from './makemon.js';
-import { usmellmon, erosion_matters, mungspaces } from './mklev.js';
+import { erosion_matters } from './mklev.js';
+import { mungspaces } from './hacklib.js';
+import { usmellmon } from './mon.js';
 import { body_part, cmdq_pop, doprev_message } from './cmd.js';
 import { ARM, ECMD_CANCEL, UTOTYPE_NONE, Is_stronghold, Is_botlevel, CMDQ_KEY } from './const.js';
 import { getdir } from './lock.js';
@@ -17,8 +19,11 @@ import { s_suffix as _ta_s_suffix } from './hacklib.js';
 import { nhgetch } from './input.js';
 import { vision_recalc } from './vision.js';
 import { oc_merge } from './oc_merge.generated.js';
-import { pline, flash_mon, canspotmon, unmap_invisible, gamelog_add, livelog_printf } from './display.js';
-import { topl_park_cursor, TOPL_LIMIT, bot, _topl_more_pages, use_last_flush_snapshot, restore_occupation_topline, restore_command_topline } from './display.js';
+import { canspotmon, unmap_invisible } from './display.js';
+import { flash_mon } from './mon.js';
+import { pline, gamelog_add, livelog_printf } from './pline.js';
+import { topl_park_cursor, TOPL_LIMIT, _topl_more_pages, use_last_flush_snapshot, restore_occupation_topline, restore_command_topline } from './display.js';
+import { bot } from './botl.js';
 import { flush_screen, force_more, _topl_record_join, capture_painted_frame, capture_pre_movemon_botl,
          _topl_merge_result, _topl_joins_snapshot } from './display.js';
 import { pline_flush_point, _pline_flush_frame_record, prepare_deferred_pline } from './display.js';
@@ -28,16 +33,20 @@ import { OC_NAME } from './oc_name_data.js';
 import { MKOBJ_OC_PROB, MKOBJ_OC_CLASS } from './mkobj_data.js';
 import { FIRST_OBJECT } from './o_init.js';
 import { pluslvl, losexp } from './exper.js';
-import { findit, wish_history_add, wish_history_menu, wish_history_has } from './zap.js';
+import { wish_history_add, wish_history_menu, wish_history_has } from './zap.js';
+import { findit } from './detect.js';
 import { rn2, d, rnd } from './rng.js';
-import { quest_info, readobjnam, hands_obj, getObjDescr, xname_scroll, xname_spellbook, xname_amulet, xname_armor, xname_weapon, xname_oname_tail, xname, artiname, the, The, aobjnam, Tobjnam, doname as doname_real } from './objnam.js';
+import { quest_info, readobjnam, hands_obj, getObjDescr, xname_scroll, xname_spellbook, xname_amulet, xname_armor, xname_weapon, xname_oname_tail, xname, the, The, aobjnam, Tobjnam, doname as doname_real } from './objnam.js';
+import { artiname } from './artifact.js';
 import { discover_object, observe_object } from './o_init.js';
-import { near_capacity, stagger_verb, encumber_msg_sync, weight } from './weight.js';
+import { stagger_verb, encumber_msg_sync, weight } from './weight.js';
+import { near_capacity } from './hack.js';
 import { exercise, ARTILIST_MTYPE } from './attrib.js';
-import { losehp } from './dokick.js';
+import { losehp } from './hack.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 import { hates_silver, name_to_mon, name_to_monclass, permonstTemplate, monPmname, set_malign, mkclass, rndmonst, splitobj } from './makemon.js';
-import { makemon, newcham, engravings_list, mongone } from './mklev.js';
+import { makemon, engravings_list } from './mklev.js';
+import { newcham, mongone } from './mon.js';
 import { count_wsegs } from './worm.js';
 import { tamedog, migrate_to_level } from './dog.js';
 import { monster_census } from './sit.js';
@@ -54,23 +63,29 @@ import monsPack from './makemon_mons.json' with { type: 'json' };
  * TRUE)); it lives in js/cmd.js, which already imports this file — the cycle is
  * the tree's norm (20+ modules import from cmd.js) and both sides are hoisted
  * function declarations, so the binding resolves at call time. */
-import { setuqwep, get_level, y_n_default, addinv_core2, reorder_invent, inv_cnt, dropx, freeinv, hitfloor, getpos, addinv_core1, dropy, carry_obj_effects, hurtle, mhurtle } from './cmd.js';
-import { place_object, remove_object, upstart } from './mklev.js';
+import { get_level, y_n_default, addinv_core2, reorder_invent, inv_cnt, freeinv, getpos, addinv_core1, carry_obj_effects } from './cmd.js';
+import { setuqwep } from './wield.js';
+import { hitfloor, hurtle, mhurtle } from './dothrow.js';
+import { dropx, dropy } from './do.js';
+import { place_object, remove_object } from './mklev.js';
+import { upstart } from './hacklib.js';
 import { m_at, mon_nam, xkilled, XKILL_NOMSG } from './uhitm.js';
 import { x_monnam } from './mhitm.js';
 import { nonliving, mondied } from './makemon.js';
 import { ARTICLE_YOUR, ARTICLE_THE, ARTICLE_A, SUPPRESS_IT,
          SUPPRESS_HALLUCINATION, SUPPRESS_SADDLE, has_mgivenname } from './const.js';
-import { dmonsfree } from './mkmaze.js';
+import { dmonsfree } from './mon.js';
 import { forget_temple_entry } from './priest.js';
 import { flip_level, flip_level_rnd } from './sp_lev.js';
 import { docrt } from './display.js';
-import { yn_function, done } from './end.js';
+import { done } from './end.js';
+import { yn_function } from './cmd.js';
 import { paranoid_query } from './paranoid.js';
 import { DIED } from './const.js';
 import { PM_SAMURAI } from './pm.generated.js';
 import { bury_objs } from './zap.js';
-import { addinv_core0, can_reach_floor, is_missile, ammo_and_launcher } from './hold_another_object.js';
+import { can_reach_floor, is_missile, ammo_and_launcher } from './hold_another_object.js';
+import { addinv_core0 } from './invent.js';
 import { A_WIS, KILLED_BY, ANTIMAGIC, HALF_PHDAM, LOW_PM, ECMD_OK, MM_MINVIS,
          Is_airlevel, Is_waterlevel, IRONBARS, ICE, FUMBLING, COLD_RES, LS_OBJECT, LS_MONSTER,
          LL_CONDUCT, LL_WISH, LL_ARTIFACT, Upolyd } from './const.js';
@@ -443,220 +458,6 @@ export async function touch_artifact_youmonst(otmp) {
     return 1; /* C artifact.c:973 */
 }
 
-export async function getlin(prompt) {
-    const g = game;
-    let buf = '';
-    // C windows.c:1868-1896: queued keys bypass the tty line editor.  A
-    // repeat may supply answers saved by yn_function to this getlin instead;
-    // preserve that behavior, including an unterminated sequence of keys.
-    let got_cmdq = false, cmdq;
-    while ((cmdq = cmdq_pop()) !== null) {
-        if (cmdq.typ !== CMDQ_KEY) break;
-        got_cmdq = true;
-        if (cmdq.key === 10) break;
-        buf += String.fromCharCode(cmdq.key);
-    }
-    if (got_cmdq) {
-        await pline('%s %s', prompt, buf);
-        return buf;
-    }
-    /* C has one gt.toplines: an eat occupation's committed flavor line is still
-     * on it when cpostfx's polyself asks for a form (eat.c:1244-1263). */
-    restore_occupation_topline();
-    const renderPrompt = () => {
-        g._pending_message = buf ? (prompt + ' ' + buf) : prompt;
-        g._topl_prompt_written = prompt + ' ' + buf;
-    };
-    const placeCursor = () => {
-        const d = g.nhDisplay;
-        if (d) topl_park_cursor(d, prompt + ' ' + buf);
-    };
-    if (g._topl_unacknowledged && g._resultMessage && !g._pending_message
-        && !g._topl_win_stop && !g._topl_win_stop_armed) {
-        const held = String(g._resultMessage);
-        g._resultMessage = '';
-        const release = use_last_flush_snapshot();
-        try { await force_more(held); } finally { release(); }
-        g._topl_unacknowledged = false; /* more() leaves TOPLINE_EMPTY */
-    }
-    /* A command's result parked in the result channel (look_here's two
-     * plines, joined past the more() width) is still the one shown topline
-     * when a world-turn getlin (monpolycontrol's newcham prompt) opens; C
-     * already paged it inside the command, so restore it to be more()d. */
-    if (g._resultMessage && !g._pending_message && !g._topl_unacknowledged
-        && !g._topl_win_stop && !g._topl_win_stop_armed)
-        restore_command_topline();
-    if (g._pending_message && !g._topl_win_stop && !g._topl_win_stop_armed) {
-        /* Two different more()s, in C's order.  flush_screen() raises the
-         * WIDTH-driven ones update_topl() would have raised as each message
-         * arrived (the accumulated _pending_message is paged through
-         * _topl_split_for_more and left holding the final remainder); the
-         * force_more() after it is hooked_tty_getlin's own unconditional page
-         * of that remainder.  Paging the whole accumulation in one force_more
-         * instead renders it as a two-ROW topline, which is not a shape C's
-         * tty ever produces. */
-        const _live = String(g._pending_message);
-        const _snap = g._toplResultSnapshot;
-        /* hooked_tty_getlin's more() is tty_display_nhwindow-free: it does no
-         * flush_screen, so a single-page topline pages over the map as of the
-         * LAST flush (makemon's "A ryoshu appears" pline), not the live gbuf
-         * (the newcham to Famine that follows in create_particular_creation). */
-        if (_topl_more_pages(_live, _topl_joins_snapshot(_live)).length > 1) {
-            // getline.c:53-54 pages before the query's custompline flush.
-            // Drain deferred update_topl pages without flushing newer glyphs.
-            await flush_screen(1, false);
-            if (g._pending_message) {
-                const release = use_last_flush_snapshot();
-                try { await force_more(g._pending_message); } finally { release(); }
-            }
-        } else {
-            const release = use_last_flush_snapshot();
-            try { await force_more(g._pending_message); } finally { release(); }
-        }
-        if (_snap && g._resultMessage === _snap && _live.startsWith(_snap)) {
-            g._resultMessage = null;
-            g._resultMessageJoins = null;
-            g._toplResultSnapshot = null;
-        }
-    }
-    /* C getline.c:55 `cw->flags &= ~WIN_STOP;` — the ESC-at---More-- suppression
-     * ends with the getlin, so a later tty_yn_function (fountain.c:204
-     * "Dry up fountain?") pages the message the wish left on the topline. */
-    g._topl_win_stop = false;
-    g._topl_win_stop_armed = false;
-    g._topl_win_stop_buf = null;
-    /* C getline.c:66-67 custompline() overwrites the single gt.toplines buffer
-     * with the query; a result message left on the topline (here one whose
-     * update_topl was suppressed by WIN_STOP after ESC at a --More--) does not
-     * survive the prompt to prefix the next pline. */
-    if (g._resultMessage && !g._pending_message) {
-        g._resultMessage = null;
-        g._resultMessageJoins = null;
-        g._toplResultSnapshot = null;
-    }
-    /* C hooked_tty_getlin displays the query through custompline(), whose
-     * vpline() tail updates gp.prevmsg even though SUPPRESS_HISTORY keeps the
-     * query out of message history.  Keep Norep's comparison state in sync. */
-    g._prevmsg = prompt;
-    const _saved_prompt_echo = g._topl_prompt_echo;
-    const savedWritten = g._topl_prompt_written;
-    g._topl_prompt_echo = true;
-    /* C getline.c:67 custompline(OVERRIDE_MSGTYPE | SUPPRESS_HISTORY) and the
-     * echo loop (getline.c:97 gt.toplines rebuild) never reach message
-     * history; only the final "query answer" line is stored (see below). */
-    const _saved_suppress = g._topl_suppress_history;
-    g._topl_suppress_history = true;
-    /* C windows.c:1898-1900 getlin() holds gb.bot_disabled over the window
-     * port's getlin, so bot() paints nothing while the query is up. */
-    const _saved_bot_disabled = g._bot_disabled;
-    g._bot_disabled = true;
-    try {
-    /* C getline.c:67 -> pline.c:266-272: the initial custompline refreshes
-     * dirty vision before flushing the prompt; subsequent echoes do not. */
-    if (g.vision_full_recalc)
-        vision_recalc(0);
-    renderPrompt();
-    await flush_screen(1);
-    placeCursor();
-    let doprev = false, prevIdx = 0;
-    while (true) {
-        const keyCode = await nhgetch();
-        /* C getline.c:106-119 ctrl-P with msg_window:single (or combination
-         * behaving like single): recall earlier messages onto the topline and
-         * keep reading; the first recall re-shows the query (the "need two
-         * initially" call), later ones walk the history ring backwards. */
-        if (keyCode === 16) {
-            const pw = (g.iflags?.prevmsg_window || 's')[0];
-            if (pw === 's' || (pw === 'c' && !doprev)) {
-                const hist = Array.isArray(g._msg_history) ? g._msg_history : [];
-                if (hist.length) {
-                    prevIdx = doprev ? (prevIdx - 1 + hist.length) % hist.length : hist.length - 1;
-                    doprev = true;
-                    const text = hist[prevIdx];
-                    g._pending_message = text;
-                    g._topl_prompt_written = text;
-                    g._topl_history_recall = text;
-                    await flush_screen(1);
-                    const d = g.nhDisplay;
-                    if (d) topl_park_cursor(d, text);
-                    continue;
-                }
-            } else {
-                // getline.c:121-137: full/reversed history includes the live
-                // query, then restores the query and the existing input buffer.
-                await doprev_message(prompt + ' ' + buf);
-                renderPrompt();
-                await flush_screen(1);
-                placeCursor();
-            }
-        }
-        doprev = false;
-        /* ^C is not special here: it falls to the tty_nhbell() arm (getline.c:185). */
-        if (keyCode === 27 /* ESC */) {
-            if (buf.length > 0) {
-                buf = '';
-                renderPrompt();
-                await flush_screen(1);
-                placeCursor();
-                continue;
-            }
-            g._pending_message = '';
-            /* getline.c:80 rebuilt gt.toplines as "query " before this ESC read and
-             * the cancel break leaves it there, so the ring gets the bare prompt. */
-            if (!_saved_suppress) {
-                const line = prompt + ' ';
-                if (!g._msg_history) g._msg_history = [];
-                const h = g._msg_history;
-                if (h.length === 0 || h[h.length - 1] !== line) h.push(line);
-                g._toplEmptyAfterSuppress = false; /* gt.toplines = "query " */
-            }
-            return '\x1b'; /* ESC sentinel — C sets buf[0]='\033' */
-        }
-        if (keyCode === 13 /* CR */ || keyCode === 10 /* LF */) {
-            break;
-        }
-        if (keyCode === 8 /* BS */ || keyCode === 127 /* DEL */) {
-            if (buf.length > 0) buf = buf.slice(0, -1);
-        } else if (keyCode >= 32 && keyCode < 127 && buf.length < COLNO) {
-            /* getline.c:165-167 — bufp - obufp < BUFSZ - 1 && bufp - obufp < COLNO;
-             * a longer line is refused (tty_nhbell) and the frame is unchanged. */
-            buf += String.fromCharCode(keyCode);
-        } else if (keyCode === 21 /* kill_char = VKILL = ^U */) {
-            /* C getline.c:196-202 `else if (c == kill_char || c == '\177')`:
-             * putsyms("\b \b") back to the start of the input, emptying the
-             * line and leaving the bare prompt (the backspaces cross a wrapped
-             * row).  0177 never gets here: it is the pty's erase_char and takes
-             * the erase arm above first. */
-            buf = '';
-        }
-        renderPrompt();
-        await flush_screen(1);
-        placeCursor();
-    }
-    g._pending_message = '';
-    /* C getline.c:97 leaves "query answer" in gt.toplines; the history ring
-     * receives that single line (tty_getlin is not suppress_history here). */
-    if (!_saved_suppress) {
-        const line = prompt + ' ' + buf;
-        if (!g._msg_history) g._msg_history = [];
-        const h = g._msg_history;
-        if (h.length === 0 || h[h.length - 1] !== line) h.push(line);
-        /* getline.c:223-226 empties gt.toplines only when suppress_history;
-         * otherwise ^P's first recall (topl.c:46,106) shows "query answer". */
-        g._toplEmptyAfterSuppress = false;
-    }
-    return buf;
-    } finally {
-        g._topl_suppress_history = _saved_suppress;
-        g._bot_disabled = _saved_bot_disabled;
-        /* C getline.c:319 — the read loop is over; the topline stops being a
-         * TOPLINE_SPECIAL_PROMPT.  Restored rather than cleared, because
-         * js/cmd.js's '#' prompt calls getlin-shaped code with the flag
-         * already set and owns its own clear. */
-        g._topl_prompt_echo = _saved_prompt_echo;
-        g._topl_prompt_written = savedWritten;
-    }
-}
 
 /* C wizcmds.c:883-938 — #wizsmell keeps selecting until cancelled, without time. */
 export async function wiz_smell() {
@@ -1164,7 +965,7 @@ async function _wish_drop_overburdened(obj, dropSpec) {
     }
 }
 
-import { merged as merged_glob } from './hold_another_object.js';
+import { merged as merged_glob } from './invent.js';
 /* options.c:3297 burdentype[]: the option may hold the level's name. */
 export function _pickup_burden_level(v) {
     if (v == null) return 2; /* MOD_ENCUMBER */
@@ -1904,256 +1705,9 @@ export async function wiz_wish() {
     return ECMD_OK;
 }
 
-const _CP_MAXMCLASSES = 61;
-const _CP_NON_PM = -1;
-const _CP_MALE = 0, _CP_FEMALE = 1, _CP_NEUTRAL = 2;
-const _CP_MM_NOEXCLAM = 262144, _CP_MM_FEMALE = 65536, _CP_MM_MALE = 32768;
-/* defsym.h MONSYM ordinals: MONSYM(35, 'I', INVISIBLE, S_invisible, ...) and
- * MONSYM(59, '~', WORM_TAIL, S_WORM_TAIL, ...). */
-const _CP_S_INVISIBLE = 35, _CP_S_WORM_TAIL = 59;
 
-/* C read.c:3137 create_particular_parse — returns null when nothing matched. */
-function create_particular_parse(str) {
-    const g = game;
-    const d = {
-        quan: 1 + (((g.multi | 0) > 0) ? (g.multi | 0) : 0),
-        monclass: _CP_MAXMCLASSES,
-        which: (g.urole && g.urole.mnum) | 0,
-        fem: -1, genderconf: -1, randmonst: false,
-        maketame: false, makepeaceful: false, makehostile: false,
-        sleeping: false, saddled: false, invisible: false, hidden: false,
-    };
-    let bufp = String(str);
 
-    /* quantity */
-    const mq = /^([0-9]+) */.exec(bufp);
-    if (mq) { d.quan = parseInt(mq[1], 10); bufp = bufp.slice(mq[0].length); }
-    /* C read.c:3161-3166 — out-of-range quantities fill the map after
-     * accounting for the monsters already on the level. */
-    const QUAN_LIMIT = ROWNO * (COLNO - 1);
-    if (d.quan < 1 || d.quan > QUAN_LIMIT)
-        d.quan = QUAN_LIMIT - monster_census(false);
 
-    /* gear / state words — C memsets each match to spaces, then mungspaces. */
-    const strip = (word) => {
-        const i = bufp.toLowerCase().indexOf(word);
-        if (i < 0) return false;
-        bufp = bufp.slice(0, i) + ' '.repeat(Math.max(0, word.length)) + bufp.slice(i + word.length);
-        return true;
-    };
-    d.saddled   = strip('saddled ');
-    d.sleeping  = strip('sleeping ');
-    d.invisible = strip('invisible ');
-    d.hidden    = strip('hidden ');
-    /* check "female" before "male" to avoid false hit mid-word */
-    if (strip('female ')) d.fem = _CP_FEMALE;
-    if (strip('male '))   d.fem = _CP_MALE;
-    bufp = bufp.trim().replace(/\s+/g, ' ');   /* mungspaces */
-
-    /* initial disposition */
-    const lc = bufp.toLowerCase();
-    if (lc.startsWith('tame '))          { bufp = bufp.slice(5); d.maketame = true; }
-    else if (lc.startsWith('peaceful ')) { bufp = bufp.slice(9); d.makepeaceful = true; }
-    else if (lc.startsWith('hostile '))  { bufp = bufp.slice(8); d.makehostile = true; }
-
-    /* fn-truthy-lint HARD: `wizard` is a function, so this test used to be
-     * unconditional and a non-wizard game accepted "*"/"random" as a monster
-     * name.  C read.c create_particular_parse() guards it with the wizard
-     * macro. */
-    if (wizard() && (bufp === '*' || bufp === 'random')) {
-        d.randmonst = true;
-        return d;
-    }
-
-    const nm = name_to_mon(bufp, _CP_NEUTRAL);
-    d.which = (nm && typeof nm === 'object') ? (nm.mntmp | 0) : (nm | 0);
-    const gender_name_var = (nm && typeof nm === 'object') ? (nm.gender | 0) : _CP_NEUTRAL;
-    if (d.fem === _CP_MALE || d.fem === _CP_FEMALE) {
-        if (gender_name_var !== _CP_NEUTRAL && d.fem !== gender_name_var)
-            d.genderconf = gender_name_var;
-    } else {
-        d.fem = gender_name_var;
-    }
-    if (d.which >= LOW_PM)
-        return d;                              /* got one */
-
-    /* C read.c:3229-3247 — the name_to_monclass fallback.  This used to THROW,
-     * which halted the scored run on ANY unrecognised answer to "Create what
-     * kind of monster?"; C answers 0 and re-prompts.  name_to_monclass is
-     * ported at js/makemon.js (C home mondata.c:1150).
-     *
-     *     d->monclass = name_to_monclass(bufp, &d->which);
-     *     if (ismnum(d->which))       { d->monclass = MAXMCLASSES; return TRUE; }
-     *     else if (d->monclass == S_invisible) { d->which = PM_STALKER;
-     *                                            d->monclass = MAXMCLASSES;
-     *                                            return TRUE; }
-     *     else if (d->monclass == S_WORM_TAIL) { d->which = PM_LONG_WORM;
-     *                                            d->monclass = MAXMCLASSES;
-     *                                            return TRUE; }
-     *     else if (d->monclass > 0)   { d->which = gu.urole.mnum; return TRUE; }
-     *     return FALSE;
-     *
-     * The surviving `d->monclass > 0` arm is a real monster CLASS, whose
-     * creation side is mkclass() — create_particular_creation() below still
-     * throws for it (`mkclass path unported`), which is the honest place for
-     * that gap: the parse is C's, the unported creation is loud. */
-    const mbox = { value: _CP_NON_PM };
-    d.monclass = name_to_monclass(bufp, mbox);
-    d.which = mbox.value;
-    if (d.which >= LOW_PM) {
-        d.monclass = _CP_MAXMCLASSES;          /* matters below */
-        return d;
-    } else if (d.monclass === _CP_S_INVISIBLE) { /* not an actual monster class */
-        d.which = PM_STALKER;
-        d.monclass = _CP_MAXMCLASSES;
-        return d;
-    } else if (d.monclass === _CP_S_WORM_TAIL) { /* empty monster class */
-        d.which = PM_LONG_WORM;
-        d.monclass = _CP_MAXMCLASSES;
-        return d;
-    } else if (d.monclass > 0) {
-        d.which = (g.urole && g.urole.mnum) | 0; /* reset from NON_PM */
-        return d;
-    }
-    return null;
-}
-
-/* C read.c:3252 create_particular_creation. */
-async function create_particular_creation(d) {
-    const g = game, u = g.u;
-    let whichpm = null, madeany = false;
-    let firstchoice = _CP_NON_PM;
-
-    if (!d.randmonst) {
-        firstchoice = d.which;
-        const box = { value: d.which };          /* C's `int *mtype` */
-        const remapped = cant_revive(box, false, null);  /* remaps box.value */
-        d.which = box.value;
-        if (remapped && firstchoice !== PM_LONG_WORM_TAIL) {
-            const buf = `Creating ${monPmname(d.which, _CP_NEUTRAL)} instead; force `
-                      + `${monPmname(firstchoice, _CP_NEUTRAL)}?`;
-            const ans = await yn_function(buf, 'yn', 'n', true);
-            /* C win/tty/topl.c:545 — tty_yn_function never erases the answered
-             * prompt; it stays on the terminal row until a later pline
-             * overwrites it.  js nhgetch drops _pending_message on read, so hand
-             * the prompt to the paint-time fallback (js/display.js _topl_sticky)
-             * — "Creating doppelganger instead; force Juiblex?" with no
-             * "appears" message still shows at the next input boundary. */
-            game._topl_sticky = `${buf} [yn] (n)`;
-            if (ans === 'y')
-                d.which = firstchoice;
-        }
-        whichpm = permonstTemplate(d.which);
-    }
-
-    for (let i = 0; i < d.quan; i++) {
-        let mmflags = 0;
-        /* C chooses again for every requested class/random monster. */
-        if (d.monclass !== _CP_MAXMCLASSES || d.randmonst) {
-            const mndx = d.monclass !== _CP_MAXMCLASSES
-                ? mkclass(d.monclass, 0) : rndmonst();
-            whichpm = mndx == null ? null : permonstTemplate(mndx);
-        }
-        if (d.genderconf === -1) {
-            if (d.fem !== -1 && (!whichpm || (!_cp_is_male(whichpm) && !_cp_is_female(whichpm))))
-                mmflags |= (d.fem === _CP_FEMALE) ? _CP_MM_FEMALE
-                         : (d.fem === _CP_MALE) ? _CP_MM_MALE : 0;
-            /* no surprise; "<mon> appears." rather than "<mon> appears!" */
-            mmflags |= _CP_MM_NOEXCLAM;
-        } else {
-            mmflags |= (d.fem === _CP_FEMALE) ? _CP_MM_FEMALE
-                     : (d.fem === _CP_MALE) ? _CP_MM_MALE : 0;
-        }
-        /* C read.c:3313 — MM_MINVIS is consumed by makemon immediately after
-         * place_monster(), via mon_set_minvis(mtmp, FALSE).  Pass the flag
-         * through so the canonical makemon path applies both perminvis and
-         * minvis and refreshes the square's glyph at the C call site. */
-        if (d.invisible)
-            mmflags |= MM_MINVIS;
-
-        const mtmp = await makemon(whichpm, u.ux | 0, u.uy | 0, mmflags);
-        if (!mtmp) {
-            /* quit trying if creation failed and is going to repeat */
-            if (d.monclass === _CP_MAXMCLASSES && !d.randmonst)
-                break;
-            continue;
-        }
-        const mx = mtmp.mx | 0, my = mtmp.my | 0;
-        /* C read.c:3324-3327 — tame disposition is applied immediately after
-         * makemon(), before the remaining creation bookkeeping. */
-        if (d.maketame)
-            await tamedog(mtmp, null, false);
-        else if (d.makepeaceful || d.makehostile) {
-            /* C read.c:3327-3331 — explicit disposition clears mtame,
-             * sets mpeaceful, then recomputes malign; hostile leaves it 0. */
-            mtmp.mtame = 0;
-            mtmp.mpeaceful = d.makepeaceful ? 1 : 0;
-            set_malign(mtmp);
-        }
-        /* put_saddle_on_mon carries C's can_saddle and existing-saddle guards. */
-        if (d.saddled)
-            await put_saddle_on_mon(null, mtmp);
-        const mflags1 = mtmp.data?.mflags1 | 0;
-        const mlet = mtmp.data?.mlet | 0;
-        if (d.hidden
-            && (((mflags1 & 0x100) && mlet !== 13) /* is_hider, !S_MIMIC */
-                || ((mflags1 & 0x80) && !!g.level.levelObjects?.[mx]?.[my])
-                || (mlet === 57 && is_pool(mx, my))))
-            mtmp.mundetected = 1;
-        if (d.sleeping)
-            mtmp.msleeping = 1;
-        if ((d.hidden || d.invisible) && !canspotmon(mtmp))
-            await flash_mon(mtmp);
-        madeany = true;
-        /* C read.c:3350-3354 — "in case we got a doppelganger instead of what
-         * was asked for, make it start out looking like what was asked for":
-         *     if (mtmp->cham != NON_PM && firstchoice != NON_PM
-         *         && mtmp->cham != firstchoice)
-         *         (void) newcham(mtmp, &mons[firstchoice], NO_NC_FLAGS);
-         * This port's newcham (js/mklev.js:13049) takes an mndx, not a permonst
-         * pointer, and returns 0 immediately when cham is NON_PM — so the guard
-         * is C's, not a re-derivation of it.  NO_NC_FLAGS is 0. */
-        if ((mtmp.cham | 0) !== _CP_NON_PM && firstchoice !== _CP_NON_PM
-            && (mtmp.cham | 0) !== firstchoice)
-            await newcham(mtmp, firstchoice, 0 /* NO_NC_FLAGS */);
-    }
-    return madeany;
-}
-function _cp_is_male(p)   { return !!((p.mflags2 | 0) & 65536); }
-function _cp_is_female(p) { return !!((p.mflags2 | 0) & 131072); }
-
-/* C read.c:3372 create_particular. */
-export async function create_particular() {
-    const CP_TRYLIM = 5;
-    let tryct = CP_TRYLIM, altmsg = 0;
-    let prompt = 'Create what kind of monster?';
-    let d = null;
-
-    do {
-        let buf = await getlin(prompt);
-        buf = mungspaces(String(buf));
-        if (buf.charCodeAt(0) === 27 /* '\033' */)
-            return false;
-
-        d = create_particular_parse(buf);
-        if (d) break;
-
-        if (buf || altmsg || tryct < 2) {
-            await pline("I've never heard of such monsters.");
-        } else {
-            await pline('Try again (type * for random, ESC to cancel).');
-            ++altmsg;
-        }
-        if (tryct === CP_TRYLIM)
-            prompt += ' [type name or symbol]';
-    } while (--tryct > 0);
-
-    if (!tryct) {
-        await pline("That's enough tries!");
-        return false;
-    }
-    return await create_particular_creation(d);
-}
 
 /* C wizcmds.c:410-442 wiz_flip_level() — #wizfliplevel; returns ECMD_OK. */
 export async function wiz_flip_level() {
@@ -2213,6 +1767,17 @@ export async function wiz_detect() {
 
 import { ROWNO, COULD_SEE, IN_SIGHT, TEMP_LIT, IS_WALL, IS_ROOM, IS_DOOR,
          SDOOR, CORR, WM_MASK, u_at } from './const.js';
+import { create_particular } from './read.js'; // relocate-fns
+import { rumor_fgets, rumor_file_open } from './display.js'; // relocate-fns
+import { xcrypt } from './hacklib.js'; // relocate-fns
+import monAcPack from './makemon_ac.json' with { type: 'json' }; // relocate-fns
+import monMattkPack from './makemon_mattk.json' with { type: 'json' }; // relocate-fns
+import monPmnamesPack from './makemon_pmnames.json' with { type: 'json' }; // relocate-fns
+import { init_rumors, others_check } from './rumors.js'; // relocate-fns
+import { getlin } from './windows.js'; // relocate-fns
+import { makemap_prepost } from './cmd.js'; // relocate-fns
+export { makemap_prepost } from './cmd.js'; // relocate-fns
+export { getlin } from './windows.js'; // relocate-fns
 
 /* C wizcmds.c:575 wiz_show_seenv() — #wizseenv.  Each seenv value takes two
  * characters, so the display is centred on the hero.  NHW_TEXT: no turn, no
@@ -2288,176 +1853,8 @@ export async function wiz_show_wmodes() {
     return ECMD_OK;
 }
 
-/* C ref: wizcmds.c:70-105 makemap_unmakemon(mtmp, migratory) — un-create one
- * monster of the level being replaced so the new incarnation may remake it. */
-async function makemap_unmakemon(mtmp, migratory) {
-    const g = game;
-    const ndx = (mtmp.mndx ?? mtmp.mnum ?? -1) | 0;
-    const mv = ndx >= 0 && g.mvitals ? (g.mvitals[ndx] ||= { born: 0, died: 0, mvflags: 0 }) : null;
-    if (mv) {
-        /* G_UNIQ = 0x1000 (monflag.h) */
-        if (mtmp.data && (mtmp.data.geno & 0x1000))
-            mv.mvflags &= ~0x01; /* ~G_EXTINCT */
-        if (mv.born)
-            mv.born--;
-    }
-    if (mtmp.isgd) {
-        mtmp.isgd = 0; /* fall through to mongone() */
-    } else if ((mtmp.mhp | 0) < 1) {
-        return; /* DEADMONSTER: already set to be discarded */
-    }
-    /* wizcmds.c:91-93 setpaid() for a shk on this level: private to js/shk.js, RNG-free. */
-    if (migratory) {
-        mtmp.mstate = ((mtmp.mstate | 0) | 0x01 /* MON_OFFMAP */)
-            & ~(0x04 | 0x08 | 0x40); /* ~(MIGRATING|LIMBO|ENDGAME_MIGR) */
-        mtmp.nmon = g.fmon;
-        g.fmon = mtmp;
-    }
-    await mongone(mtmp);
-}
 
-/* C ref: wizcmds.c:109-153 makemap_remove_mons(void) */
-async function makemap_remove_mons() {
-    const g = game;
-    const { keepdogs } = await import('./dog.js');
-    await keepdogs(true);
-    let nxt;
-    for (let mtmp = g.fmon; mtmp; mtmp = nxt) {
-        nxt = mtmp.nmon;
-        if ((mtmp.mhp | 0) < 1)
-            continue;
-        await makemap_unmakemon(mtmp, false);
-    }
-    const { on_level } = await import('./dungeon.js');
-    let mprev = null;
-    for (let mtmp = g.migrating_mons; mtmp; ) {
-        const e = mtmp.mextra;
-        if (e && ((mtmp.isshk && e.eshk && on_level(g.u.uz, e.eshk.shoplevel))
-                  || (mtmp.ispriest && e.epri && on_level(g.u.uz, e.epri.shrlevel))
-                  || (mtmp.isgd && e.egd && on_level(g.u.uz, e.egd.gdlevel)))) {
-            const nx = mtmp.nmon;
-            if (mprev) mprev.nmon = nx; else g.migrating_mons = nx;
-            await makemap_unmakemon(mtmp, true);
-            mtmp = nx;
-        } else {
-            mprev = mtmp;
-            mtmp = mtmp.nmon;
-        }
-    }
-    await dmonsfree();
-}
 
-/* C ref: cmd.c:986-1062 makemap_prepost(pre, wiztower). */
-export async function makemap_prepost(pre, wiztower) {
-    const g = game;
-    const u = g.u;
-    if (pre) {
-        await makemap_remove_mons();
-        // C cmd.c:993 / dungeon.c:2665: remove the first mapseen before mklev.
-        const entries = g._mapseen_entries || [];
-        const idx = entries.findIndex(e => e.dnum === u.uz.dnum
-            && e.dlevel === u.uz.dlevel);
-        if (idx >= 0) entries.splice(idx, 1);
-        /* The removed mapseen carried msrooms[]; the replacement level starts
-         * with no rooms seen (dungeon.c init_mapseen). */
-        if (g._level_msrooms)
-            delete g._level_msrooms[`${u.uz.dnum | 0}:${u.uz.dlevel | 0}`];
-        for (const [i, entry] of entries.entries())
-            entry.duplicate = entries.slice(0, i).some(e => e.dnum === entry.dnum
-                && e.dlevel === entry.dlevel);
-        if (u.uball) {
-            const { ballrelease, unplacebc } = await import('./ball.js');
-            await ballrelease(false);
-            unplacebc();
-        }
-        (await import('./lock.js')).maybe_reset_pick(null);
-        const dg = g.context?.digging;
-        if (dg && dg.level && (await import('./dungeon.js')).on_level(dg.level, u.uz))
-            g.context.digging = {};
-        g.iflags = g.iflags || {};
-        g.iflags.travelcc = { x: 0, y: 0 };
-        if (g.context?.polearm) g.context.polearm.hitmon = null;
-        await (await import('./trap.js')).reset_utrap(false);
-        await (await import('./cmd.js')).check_special_room(true);
-        g.dndest = { lx: 0, ly: 0, hx: 0, hy: 0, nlx: 0, nly: 0, nhx: 0, nhy: 0 };
-        g.updest = { lx: 0, ly: 0, hx: 0, hy: 0, nlx: 0, nly: 0, nhx: 0, nhy: 0 };
-        u.ustuck = null;
-        u.uswallow = u.uswldtim = 0;
-        await (await import("./cmd.js")).set_uinwater(0);
-        u.uundetected = 0;
-        await dmonsfree();
-        (await import('./mklev.js')).dobjsfree();
-        const dgn = g.dungeons?.[u.uz.dnum | 0];
-        const ledger = (u.uz.dlevel | 0) + (dgn?.ledger_start | 0);
-        await (await import('./save.js')).savelev(ledger, true); /* cmd.c:1036-1037 get_freeing_nhfile -> FREEING */
-        (await import('./save.js')).savelev(ledger);
-    } else {
-        (await import('./vision.js')).vision_reset();
-        g.vision_full_recalc = 1;
-        const disp = await import('./display.js');
-        /* C display.c:2196 cls() opens with display_nhwindow(WIN_MESSAGE, FALSE):
-         * a pending topline (e.g. makemon's "A shopkeeper suddenly appears close
-         * by!" from fill_special_room) is paged with --More-- before the clear. */
-        if (g._pending_message)
-            await disp.force_more_from_cls(String(g._pending_message));
-        g._levelgenPaintFreeze = null; /* cls() wipes the physical screen */
-        await disp.cls();
-        const mk = await import('./mklev.js');
-        await mk.u_on_rndspot((u.uhave?.amulet ? 1 : 0) | (wiztower ? 2 : 0));
-        await (await import('./dog.js')).losedogs();
-        await mk.kill_genocided_monsters();
-        /* C cmd.c:1043-1044 u_collide_m(), as inlined in goto_level (js/cmd.js) */
-        const tp = await import('./teleport.js');
-        let collMon = m_at(u.ux | 0, u.uy | 0);
-        if (collMon) {
-            let moved = false;
-            if (!rn2(2)) {
-                const cc = tp.enexto_core(u.ux | 0, u.uy | 0);
-                if (cc && ((cc.x - u.ux) ** 2 + (cc.y - u.uy) ** 2) <= 2) {
-                    await mk.u_on_newpos(cc.x, cc.y);
-                    moved = true;
-                }
-            }
-            if (!moved)
-                await tp.mnexto(collMon, tp.RLOC_NOMSG);
-            collMon = m_at(u.ux | 0, u.uy | 0);
-            if (collMon) {
-                if (!await tp.rloc(collMon, tp.RLOC_NOMSG) || (collMon = m_at(u.ux | 0, u.uy | 0)))
-                    await (await import('./dog.js')).m_into_limbo(collMon);
-            }
-        }
-        (await import('./track.js')).initrack();
-        if (u.uball) {
-            const b = await import('./ball.js');
-            b.unplacebc();
-            await b.placebc();
-        }
-        /* C cmd.c:1059: docrt's cls() pages the standing message over the
-         * last physical paint. Do not flush losedogs' buffered glyphs first
-         * (display.c:1740-1748,2196). */
-        await disp.docrt(true);
-        flush_screen(1);
-        await (await import('./objnam.js')).deliver_splev_message();
-        await (await import('./cmd.js')).check_special_room(false);
-        /* C cmd.c:1064 -> do.c:1383-1392 save_currentstate(): the checkpoint's
-         * savelev(WRITING) -> savemonchn resets priest entry timers (save.c:894),
-         * including those just set by the room-entry greeting above.
-         * Checkpoint defaults to On (optlist.h:225-227). */
-        if (g.flags.ins_chkpt ?? true) {
-            /* savelev(WRITING) first purges dead monsters (save.c:487-488) —
-             * e.g. a statue trap's mk_trap_statue() leftover from the level
-             * just loaded — so a no-time level teleport right after cannot
-             * trip dmonsfree's pending-count impossible(). */
-            if ((g.iflags.purge_monsters | 0))
-                await dmonsfree();
-            for (let mon = g.fmon; mon; mon = mon.nmon)
-                if (mon.ispriest) forget_temple_entry(mon);
-        }
-        /* cmd.c:1062-1064 #ifdef INSURANCE save_currentstate() -> savelev(WRITING)
-         * -> save_engravings(): resets engr_txt[actual_text] to the buffer start. */
-        (await import('./mklev.js')).engr_reset_text_pointers();
-    }
-}
 
 /* C ref: wizcmds.c:155-171 wiz_makemap(void) — #wizmakemap: discard the
  * current level and replace it with a freshly generated one. */
@@ -2486,155 +1883,10 @@ export async function wiz_makemap() {
     return ECMD_OK;
 }
 
-/* C ref: dig.c:2287-2318 wiz_debug_cmd_bury() — the #wizbury command: bury
- * everything at the hero's location and around. */
-export async function wiz_debug_cmd_bury() {
-    const u = game.u;
-    const lo = game.level.levelObjects;
-    const count = (x, y) => {
-        let n = 0;
-        for (let o = lo?.[x]?.[y] || null; o; o = o.nexthere) ++n;
-        return n;
-    };
-    let before = 0, after = 0;
-    for (let x = u.ux - 1; x <= u.ux + 1; x++)
-        for (let y = u.uy - 1; y <= u.uy + 1; y++) {
-            if (x < 1 || x > COLNO - 1 || y < 0 || y > 20) continue; /* isok */
-            before += count(x, y);
-            await bury_objs(x, y);
-            after += count(x, y);
-        }
-    const diff = before - after;
-    if (before === 0)
-        await pline("No objects here or adjacent to bury.");
-    else if (diff === 0)
-        await pline("No objects buried.");
-    else
-        await pline("%d object%s buried.", diff, diff === 1 ? "" : "s");
-    return 0; /* ECMD_OK */
-}
 
-/* C ref: timeout.c:2011-2030 print_queue() — lines for one timer chain.
- * fmt_ptr() prints a host address no replay can reproduce; stand-in used. */
-const _TIMER_KINDS = ['none', 'level', 'global', 'object', 'monster'];
-const _TIMER_FUNC_NAMES = ['rot_organic', 'rot_corpse', 'revive_mon', 'zombify_mon',
-    'burn_object', 'hatch_egg', 'fig_transform', 'shrink_glob', 'melt_ice_away'];
-function _print_queue_lines(base) {
-    if (!base) return [' <empty>'];
-    const lines = ['timeout  id   kind   call'];
-    for (let curr = base; curr; curr = curr.next) {
-        const o = curr.arg?.a_obj;
-        // C timeout.c:2028 reads the anything union as a_void even when
-        // zap.c:5107-5109 stored packed coordinates in a_long.  fmt_ptr's
-        // %p (alloc.c:102) prints those bits without leading zero padding.
-        const ptr = curr.arg?.a_long != null
-            ? '0x' + BigInt.asUintN(64, BigInt(curr.arg.a_long)).toString(16)
-            : '0x' + (o ? 0x55d0c0de0000 + ((o.o_id | 0) << 6) : 0).toString(16).padStart(12, '0');
-        lines.push(' ' + String(curr.timeout).padStart(4) + '   ' + String(curr.tid).padStart(4)
-                   + '  ' + (_TIMER_KINDS[curr.kind] ?? 'unknown').padEnd(6) + ' '
-                   + _TIMER_FUNC_NAMES[curr.func_index] + '(' + ptr + ')');
-    }
-    return lines;
-}
 
-/* C ref: region.c:673-710 visible_region_summary() — lines instead of putstr. */
-function _visible_region_summary_lines() {
-    const lines = [];
-    const fldsep = game.iflags?.menu_tab_sep ? '\t' : '  ';
-    for (const reg of region_stats_snapshot().regions) {
-        if (!reg.visible || reg.ttl === -2) continue;
-        if (!lines.length) lines.push('', 'Visible regions');
-        const damg = reg.arg?.a_int | 0;
-        const typbuf = damg ? `poison gas (${damg})` : 'vapor';
-        const bb = reg.bounding_box;
-        lines.push(String(reg.ttl + 1).padStart(5) + fldsep + typbuf.padEnd(16)
-                   + fldsep + `@[${bb.lx},${bb.ly}..${bb.hx},${bb.hy}]`);
-    }
-    return lines;
-}
 
-/* C ref: timeout.c:2040-2150 wiz_timeout_queue() — the #timeout command: a
- * corner text window; no turn, no RNG. */
-export async function wiz_timeout_queue() {
-    const g = game;
-    const u = g.u;
-    const TIMEOUT = 0x00FFFFFF;
-    const COLD_RES_ID = COLD_RES;
-    const lines = [`Current time = ${g.moves | 0}.`, '', 'Active timeout queue:', ''];
-    lines.push(..._print_queue_lines(g.gt?.timer_base ?? null));
-    let count = 0, longestlen = 0, specindx = 0;
-    for (let i = 0; ; ++i) {
-        const [p, propname] = property_by_index(i);
-        if (!propname) break;
-        const intrinsic = u.uprops[p].intrinsic | 0;
-        if (intrinsic & TIMEOUT) {
-            ++count;
-            if (propname.length > longestlen) longestlen = propname.length;
-        }
-        if (specindx === 0 && p === COLD_RES_ID) specindx = i;
-    }
-    lines.push('');
-    if (!count) {
-        lines.push('No timed properties.');
-    } else {
-        lines.push('Timed properties:', '');
-        for (let i = 0; ; ++i) {
-            const [p, propname] = property_by_index(i);
-            if (!propname) break;
-            const intrinsic = u.uprops[p].intrinsic | 0;
-            if (intrinsic & TIMEOUT) {
-                if (specindx > 0 && i >= specindx) {
-                    lines.push(' -- settable via #wizintrinsic only --');
-                    specindx = 0;
-                }
-                lines.push(' ' + propname.padEnd(longestlen) + ' ' + String(intrinsic & TIMEOUT).padStart(4));
-            }
-        }
-    }
-    if (u.uswldtim) {
-        lines.push('', `Swallow countdown is ${u.uswldtim >>> 0}.`);
-    }
-    if (u.uinvault) {
-        lines.push('', `Vault counter is ${u.uinvault | 0}.`);
-    }
-    if (any_visible_region())
-        lines.push(..._visible_region_summary_lines());
-    const stasis = g.level?.flags?.stasis_until | 0;
-    if (stasis >= (g.moves | 0)) {
-        const left = stasis - (g.moves | 0);
-        lines.push('', `Level is no-teleport for ${left + 1} ${left > 0 ? 'turns' : 'more turn'}.`);
-    }
-    await displayLookWindow(lines); /* NHW_MENU corner window (timeout.c:2049) */
-    return ECMD_OK;
-}
 
-/* C ref: light.c:934-975 wiz_light_sources() — the #lightsources command: a
- * corner text window; no turn, no RNG.  fmt_ptr() stand-in as in #timeout. */
-export async function wiz_light_sources() {
-    const g = game;
-    const pad2 = (n) => String(n).padStart(2);
-    const lines = [`Mobile light sources: hero @ (${pad2(g.u.ux)},${pad2(g.u.uy)})`, ''];
-    const sources = light_sources_list();
-    if (sources.length) {
-        lines.push('location range flags  type    id',
-                   '-------- ----- ------ ----  -------');
-        for (const ls of sources) {
-            const id = ls.id || {};
-            const who = ls.type === LS_OBJECT ? 'obj'
-                : ls.type === LS_MONSTER
-                    ? ((id.a_monst?.mx | 0) > 0 ? 'mon'
-                        : (id.a_monst === g.youmonst) ? 'you' : '<m>')
-                    : '???';
-            const o = id.a_obj ?? id.a_monst;
-            const ptr = '0x' + (o ? 0x55d0c0de0000 + (((o.o_id ?? o.m_id) | 0) << 6) : 0).toString(16).padStart(12, '0');
-            lines.push(`  ${pad2(ls.x)},${pad2(ls.y)}   ${pad2(ls.range)}   0x${(ls.flags | 0).toString(16).padStart(4, '0')}  ${who}  ${ptr}`);
-        }
-    } else {
-        lines.push('<none>');
-    }
-    await displayLookWindow(lines);
-    return ECMD_OK;
-}
 
 /* C ref: wizcmds.c:1832-1868 wiz_objprobs(void) — #wizobjprobs: an NHW_TEXT
  * window listing each object's oc_prob against its class total; no turn, no RNG. */
@@ -2756,5 +2008,119 @@ export async function wiz_migrate_mons() {
             tolevel.dlevel + g.dungeons[tolevel.dnum].ledger_start, MIGR_RANDOM, null);
     }
     g.iflags.debug_mongen = mongen_saved;
+    return ECMD_OK;
+}
+
+const rumor6 = (n) => String(n).padStart(6, '0');
+
+const rumor6x = (n) => n.toString(16).padStart(6, '0');
+
+export async function wiz_rumor_check() {
+    const out = [];
+    /* C rumors.c:205-292: a failed open is reported once; failed init and
+       subsequent checks still show the other three files after a --More--. */
+    const failed = (game.true_rumor_size ?? 0) < 0;
+    const file = failed ? null : await rumor_file_open();
+    if (file && ((game.true_rumor_size ?? 0) !== 0 || init_rumors(file))) {
+        const tStart = game.true_rumor_start, tEnd = game.true_rumor_end;
+        const fStart = game.false_rumor_start, fEnd = game.false_rumor_end;
+        out.push(`T start=${rumor6(tStart)} (${rumor6x(tStart)}), end=${rumor6(tEnd)} (${rumor6x(tEnd)}), size=${rumor6(game.true_rumor_size)} (${rumor6x(game.true_rumor_size)})`);
+        out.push(`F start=${rumor6(fStart)} (${rumor6x(fStart)}), end=${rumor6(fEnd)} (${rumor6x(fEnd)}), size=${rumor6(game.false_rumor_size)} (${rumor6x(game.false_rumor_size)})`);
+        for (const [label, start, end] of [['T', tStart, tEnd], ['F', fStart, fEnd]]) {
+            file.pos = start;
+            let line = rumor_fgets(file) || '';
+            out.push(`${label} ${rumor6(start)} ${xcrypt(line.split('\n', 1)[0])}`);
+            let next;
+            while ((next = rumor_fgets(file)) !== null) {
+                line = next;
+                if (file.pos >= end) break;
+            }
+            out.push(`  ${''.padStart(6)} ${xcrypt(line.split('\n', 1)[0])}`);
+        }
+    } else if (failed || file) {
+        await pline('rumors not accessible.');
+        await force_more(game._pending_message); /* WIN_MESSAGE, TRUE */
+    }
+    await others_check('Engravings:', 'engrave', out);
+    await others_check('Epitaphs:', 'epitaph', out);
+    await others_check('Bogus monsters:', 'bogusmon', out);
+    await display_text_window(out);
+    return ECMD_OK;
+}
+
+/* C mondata.c:501 mstrength_ranged_attk() */
+function mstrength_ranged_attk(mattk) {
+    const atk_mask = (1 << 12 /* AT_BREA */) | (1 << 10 /* AT_SPIT */) | (1 << 15 /* AT_GAZE */);
+    for (let i = 0; i < 6; i++) {
+        const j = mattk[i].aatyp;
+        if (j >= 254 /* AT_WEAP */ || (j < 32 && (atk_mask & (1 << j)) !== 0))
+            return true;
+    }
+    return false;
+}
+
+/* C mondata.c:428 mstrength(ptr) — rows from makemon_{mons,ac,mattk,pmnames}.json */
+function mstrength(mndx) {
+    const row = monsPack.mons[mndx], ac = monAcPack.ac[mndx];
+    const mattk = monMattkPack.mattk[mndx], name = monPmnamesPack.pmnames[mndx][2];
+    const geno = row[3], mflags2 = row[7] >>> 0, mmove = row[9];
+    let tmp = row[1], n;
+    if (tmp > 49) /* special fixed hp monster */
+        tmp = Math.trunc(2 * (tmp - 6) / 4);
+    n = (geno & 0x0080 /* G_SGROUP */) ? 1 : 0;
+    n += ((geno & 0x0040 /* G_LGROUP */) ? 1 : 0) << 1;
+    if (mstrength_ranged_attk(mattk)) n++;
+    n += (ac < 4) ? 1 : 0;
+    n += (ac < 0) ? 1 : 0;
+    n += (mmove >= 18) ? 1 : 0;
+    for (let i = 0; i < 6; i++) {
+        const tmp2 = mattk[i].aatyp;
+        n += (tmp2 > 0) ? 1 : 0;
+        n += (tmp2 === 255 /* AT_MAGC */) ? 1 : 0;
+        n += (tmp2 === 254 /* AT_WEAP */ && (mflags2 & 0x04000000 /* M2_STRONG */)) ? 1 : 0;
+        if (tmp2 === 13 /* AT_EXPL */) {
+            const tmp3 = mattk[i].adtyp;
+            n += (tmp3 === 3 /* AD_COLD */ || tmp3 === 2 /* AD_FIRE */) ? 3
+                : (tmp3 === 6 /* AD_ELEC */) ? 5 : 0;
+        }
+    }
+    for (let i = 0; i < 6; i++) {
+        const tmp2 = mattk[i].adtyp;
+        if (tmp2 === 15 || tmp2 === 18 || tmp2 === 7 || tmp2 === 30
+            || tmp2 === 31 || tmp2 === 29) /* DRLI STON DRST DRDX DRCO WERE */
+            n += 2;
+        else if (name !== "grid bug")
+            n += (tmp2 !== 0 /* AD_PHYS */) ? 1 : 0;
+        n += (mattk[i].damd * mattk[i].damn > 23) ? 1 : 0;
+    }
+    if (name === "leprechaun") n -= 2;
+    if (name === "killer bee" || name === "soldier ant") n += 2;
+    if (n === 0) tmp -= 1;
+    else if (n < 6) tmp += Math.trunc(n / 3) + 1;
+    else tmp += Math.trunc(n / 2);
+    return (tmp >= 0) ? tmp : 0;
+}
+
+/* C wizcmds.c:1790 wiz_mon_diff() — #wizmondiff; NHW_TEXT, ECMD_OK, no turn/RNG. */
+export async function wiz_mon_diff() {
+    const out = [];
+    let trouble = 0;
+    const rows = monsPack.mons;
+    for (let cnt = 0; cnt < rows.length; cnt++) {
+        const mcalculated = mstrength(cnt);
+        const mhardcoded = rows[cnt][2];
+        const mdiff = mhardcoded - mcalculated;
+        if (mdiff) {
+            if (!trouble++)
+                out.push("Review of monster difficulty ratings [index:level]:");
+            let mlev = rows[cnt][1];
+            if (mlev > 50) /* hack for named demons */
+                mlev = 50;
+            out.push(`${monPmnamesPack.pmnames[cnt][2].padEnd(18)} [${String(cnt).padStart(3)}:${String(mlev).padStart(2)}]: calculated: ${String(mcalculated).padStart(2)}, hardcoded: ${String(mhardcoded).padStart(2)} (${mdiff > 0 ? '+' : ''}${mdiff})`);
+        }
+    }
+    if (!trouble)
+        out.push("No monster difficulty discrepancies were detected.");
+    await display_text_window(out);
     return ECMD_OK;
 }

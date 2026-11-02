@@ -18,8 +18,9 @@ import { heroHeadName } from './body_parts.js';
 import { loseHeroHp } from './hero_damage.js';
 import { removeHeroEquipment } from './hero_equipment.js';
 import { canLetGo, finishInventoryRemoval } from './hero_inventory.js';
-import { unlinkObject } from './object_location.js';
-import { isWeldedPrimary, setPrimaryWeapon, setQuiverObject, setSecondaryWeapon, } from './weapon_slots.js';
+import { unlinkObject } from './mkobj.js';
+import { isWeldedPrimary, setPrimaryWeapon, setQuiverObject, setSecondaryWeapon } from './wield.js';
+import { rangedTargetHitBonus } from './dothrow.js';
 import { rn1, rn2, rnd } from './rng.js';
 import { A_STR, BC_BALL, BC_CHAIN, D_CLOSED, D_LOCKED, DOOR, IS_OBSTRUCTED, KILLED_BY_AN, LEFT_SIDE, NO_KILLER_PREFIX, POOL, RIGHT_SIDE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, Is_waterlevel, is_hole, is_pit, } from './const.js';
 import { nearCapacity, SLT_ENCUMBER, weightCapacity } from './weight.js';
@@ -29,12 +30,11 @@ import { heroLegName } from './body_parts.js';
 import { woundHeroLegs } from './hero_legs.js';
 import { resetHeroTrap } from './terrain_movement.js';
 import { fillPitWithBoulderAt } from './pit_fill.js';
-import { endVoluntaryMultiTurn } from './command_state.js';
+import { endVoluntaryMultiTurn } from './hack.js';
 import { hitMonsterWithHeroObject } from './hero_physical_hit.js';
 import { findMonsterArmorClass } from './monworn.js';
 import { objectName, ownedObjectName } from './objnam.js';
 import { rayMissMessage } from './ray_hit_message.js';
-import { rangedTargetHitBonus } from './weapon_accuracy.js';
 import { applyHeroLocationEffects } from './hack.js';
 export const BCPOS_DIFFER = 0;
 export const BCPOS_CHAIN = 1;
@@ -718,6 +718,8 @@ export async function beginBallAndChainRedraw(state = game) {
     await unplaceMovingBallAndChain(plan, state);
     return plan;
 }
+// C ball.c:move_bc(): place the dragged ball and chain at their planned
+// coordinates; beginBallAndChainMove above is drag_ball().
 export async function finishBallAndChainMove(plan, state = game) {
     requireLiveGame(state);
     if (!plan || plan.blocked)

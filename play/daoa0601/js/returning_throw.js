@@ -10,7 +10,7 @@ import { requirePlayingGame } from './gstate.js';
 import { loseHeroHp } from './hero_damage.js';
 import { addObjectToMonsterInventory } from './steal.js';
 import { dropObjectAtHero } from './object_drop.js';
-import { shipObject } from './object_migration.js';
+import { shipObject } from './dokick.js';
 import { AKLYS, BOOMERANG } from './object_data.js';
 import { makePlural } from './object_grammar.js';
 import { definiteObjectAction, killerObjectName } from './objnam.js';
@@ -20,7 +20,7 @@ import { heroIsBlind, heroIsHallucinating } from './senses.js';
 import { captureThrownObjectFlight } from './thrown_object.js';
 import { addInventoryItemBefore } from './u_init.js';
 import { cansee } from './vision.js';
-import { setPrimaryWeapon, setQuiverObject, setTwoWeaponCombat } from './weapon_slots.js';
+import { setPrimaryWeapon, setQuiverObject, setTwoWeaponCombat } from './wield.js';
 export function isAutoReturningThrow(object, weaponMask, state) {
     return object.otyp === BOOMERANG || !!(weaponMask & W_WEP)
         && (object.otyp === AKLYS || artifactById(object.oartifact, state)?.name === 'Mjollnir'

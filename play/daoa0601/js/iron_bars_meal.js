@@ -2,7 +2,7 @@
 import { DOOR, D_BROKEN, D_CLOSED, D_LOCKED, D_NODOOR, D_TRAPPED, CORR, IRONBARS, IS_OBSTRUCTED, IS_TREE, IS_WALL, ROOM, SDOOR, SHOPBASE, SHOP_DOOR_COST, W_NONDIGGABLE } from './const.js';
 import { currentStrength } from './attrib.js';
 import { triggerBoobyTrap } from './booby_trap.js';
-import { endVoluntaryMultiTurn } from './command_state.js';
+import { endVoluntaryMultiTurn } from './hack.js';
 import { feel_location, newsym } from './display.js';
 import { plineWithContinuation as pline } from './pline.js';
 import { watchDigging } from './digging_watch.js';
@@ -14,7 +14,7 @@ import { heroPassesWalls, heroSpecies } from './hero_species.js';
 import { MONSTER_FLAGS1 } from './monster_data.js';
 import { monsterCorrodesBars, monsterPassesBars } from './mondata.js';
 import { BOULDER, HEAVY_IRON_BALL, OBJECT_WEIGHT, requireObjectData } from './object_data.js';
-import { delobj } from './object_delete.js';
+import { delobj } from './invent.js';
 import { dissolveBars } from './projectile_bars.js';
 import { rnd } from './rng.js';
 import { inTown, roomsAt } from './room.js';

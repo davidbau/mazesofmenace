@@ -4,12 +4,14 @@
 
 import { game } from './gstate.js';
 import { reset_glyphmap } from './display.js';
-import { lowc, mungspaces } from './mklev.js';
+import { lowc, mungspaces } from './hacklib.js';
 import { gs, SYM_CONTROL, SYM_PCHAR, SYM_OC, SYM_MON, SYM_OTH, H_UTF8 } from './const.js';
-import { escapes } from './cmd_config.js';
+import { escapes } from './options.js';
 import { dat_content } from './dat_source.js';
 import { match_glyph as match_glyph_real,
          glyphrep_to_custom_map_entries as glyphrep_to_custom_map_entries_real } from './glyphs.js';
+import { H_UNK, gp } from './const.js'; // relocate-fns
+import { sym_val } from './options.js'; // relocate-fns
 
 /**
  * C ref: nethack-c/src/symbols.c:121-128 — init_ov_primary_symbols()
@@ -477,7 +479,6 @@ function match_sym() { return { range: 2, name: "" }; }
 function savedsym_add() { }
 function update_ov_primary_symset() { }
 function update_ov_rogue_symset() { }
-function sym_val() { return 0; }
 
 /* ------------------------------------------------------------------------
  * dat/symbols loading: read_sym_file (files.c:2631) -> parse_sym_line
@@ -796,4 +797,28 @@ export function defsym_char(idx) { return DEFSYMS_SYM[idx]; }
 /* C symbols.c loadsyms[]: the canonical name for a display symbol. */
 export function symbol_name(idx) {
     return LOADSYMS.find(sp => sp.range !== SYM_CONTROL && sp.idx === idx)?.name;
+}
+
+const gr = { rogue_syms: null };
+
+// Autotranslated from symbols.c:306
+export function update_primary_symset(symp, val) {
+  gp.primary_syms = val;
+}
+
+// Autotranslated from symbols.c:312
+export function update_rogue_symset(symp, val) {
+  gr.rogue_syms = val;
+}
+
+// Autotranslated from symbols.c:656
+const known_handling = ["UNKNOWN", "IBM", "DEC", "UTF8", null];
+
+export function set_symhandling(handling, which_set) {
+  let i = 0;
+  gs.symset[which_set].handling = H_UNK;
+  while (known_handling[i]) {
+    if (known_handling[i].toLowerCase() === handling.toLowerCase()) { gs.symset[which_set].handling = i; return; }
+    i++;
+  }
 }

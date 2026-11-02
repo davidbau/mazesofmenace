@@ -3,7 +3,7 @@
 import { finishHeroHelplessness } from './allmain.js';
 import { nearCapacity } from './weight.js';
 import { formatFeltMessage } from './hero_speech.js';
-import { objectMaterial } from './object_material.js';
+import { objectMaterial } from './o_init.js';
 import { heroIsUnaware } from './hero_sleep.js';
 import { game, requirePlayingGame, requireInitializedGame } from './gstate.js';
 import { propertyIsActive } from './properties.js';
@@ -16,7 +16,8 @@ import { plineWithContinuation } from './pline.js';
 import { finishHeroDeath } from './end.js';
 import { makeDeaf } from './hero_hearing.js';
 import { stopHeroOccupation } from './occupation.js';
-import { nomul, setMulti } from './command_state.js';
+import { setMulti } from './cmd.js';
+import { nomul } from './hack.js';
 import { stopRun } from './runmode.js';
 import { heroIsHallucinating } from './senses.js';
 import { selfTouchPetrifyingWeapons } from './stoning.js';

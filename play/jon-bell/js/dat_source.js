@@ -57,7 +57,7 @@ import { DAT } from './dat_bundle.js';
 export { V5_DIVERGENT } from './dat_divergent.js';
 import { V5_DIVERGENT } from './dat_divergent.js';
 import { TRUE_RUMORS, TRUE_RUMOR_OFFSETS, TRUE_RUMOR_SIZE, FALSE_RUMORS, FALSE_RUMOR_OFFSETS, FALSE_RUMOR_SIZE } from './engrave_data.js';
-import { xcrypt } from './mklev.js';
+import { xcrypt } from './hacklib.js';
 
 /* C util/makedefs.c:1145-1230 do_rumors(): reconstruct the compiled 5.0 file
  * from its existing decoded records. The generated bundle still has 3.7's

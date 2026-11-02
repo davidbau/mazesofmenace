@@ -1,14 +1,15 @@
 // @ts-nocheck
 // cfgfiles.js — Configuration file names and statement parsing.
 // C ref: nethack-c-v5/upstream/src/cfgfiles.c.
-import { pline } from './display.js'; /* was an undeclared global: every pline() call in this file threw ReferenceError when reached */
+import { pline } from './pline.js'; /* was an undeclared global: every pline() call in this file threw ReferenceError when reached */
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { str2role } from './roles.js';
 import { WIZKIT_MAX } from './const.js';
 import { LuaTable } from './lua/interp.js';
-import { config_error_add } from './cmd_binds.js';
+import './cmd_binds.js';
 import { sha1Hex } from './sha1.js';
+import { config_error_handler } from './cmd_binds.js'; // relocate-fns
 
 /* tty synchronization is unnecessary for the replay terminal. */
 function wait_synch() { }
@@ -421,3 +422,9 @@ export function config_line_error(origbuf) {
 }
 function reset_duplicate_opt_detection() { /* no-op stub */ }
 function fclose(fp) { /* no-op stub */ }
+
+export function config_error_add(...args) {
+    if (!config_error_handler)
+        throw new Error('configuration-error reporting is not initialized');
+    config_error_handler(...args);
+}

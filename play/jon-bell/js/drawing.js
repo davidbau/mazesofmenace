@@ -73,10 +73,3 @@ export function def_char_to_objclass(ch) {
     return MAXOCLASSES;
 }
 
-export function oc_to_str(src) {
-    let dest = '';
-    for (const ch of (Array.isArray(src) ? src : String(src ?? '')))
-        if (def_oc_syms_chars.includes(ch))
-            dest += ch;
-    return dest;
-}

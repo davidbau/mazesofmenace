@@ -12,6 +12,8 @@ import { TtyMenu, PICK_NONE } from './tty_menu.js';
 import { l_obj_gc } from './nhlobj.js';
 import { nhlib_load_toplevel_rng } from './nhlib.js';
 import { registerStaticReset } from './statics.js';
+import { AIR, BLCORNER, BRCORNER, CLOUD, CORR, CROSSWALL, DBWALL, DOOR, FOUNTAIN, HWALL, ICE, INVALID_TYPE, IRONBARS, LAVAPOOL, LAVAWALL, MATCH_WALL, MAX_TYPE, MOAT, POOL, ROOM, SCORR, SDOOR, SINK, STONE, TDWALL, THRONE, TLCORNER, TLWALL, TRCORNER, TREE, TRWALL, TUWALL, VWALL, WATER } from './const.js'; // relocate-fns
+import { get_coord } from './sp_lev.js'; // relocate-fns
 
 // Existing version-query boundary; its throwaway version-only Lua state is
 // still represented by nhlib's top-level RNG helper, independently of core.
@@ -210,4 +212,172 @@ export async function nhl_text(...args) {
     }
     win.end_menu(null);
     await win.select_menu(PICK_NONE);
+}
+
+const char2typ = [
+    { ch: ' ', typ: STONE },
+    { ch: '#', typ: CORR },
+    { ch: '.', typ: ROOM },
+    { ch: '-', typ: HWALL },
+    { ch: '-', typ: TLCORNER },
+    { ch: '-', typ: TRCORNER },
+    { ch: '-', typ: BLCORNER },
+    { ch: '-', typ: BRCORNER },
+    { ch: '-', typ: CROSSWALL },
+    { ch: '-', typ: TUWALL },
+    { ch: '-', typ: TDWALL },
+    { ch: '-', typ: TLWALL },
+    { ch: '-', typ: TRWALL },
+    { ch: '-', typ: DBWALL },
+    { ch: '|', typ: VWALL },
+    { ch: '+', typ: DOOR },
+    { ch: 'A', typ: AIR },
+    { ch: 'C', typ: CLOUD },
+    { ch: 'S', typ: SDOOR },
+    { ch: 'H', typ: SCORR },
+    { ch: '{', typ: FOUNTAIN },
+    /* C nhlua.c has `{ '\\', THRONE }` — ONE backslash. The two-character
+     * form this used to hold could never equal a single map character, so
+     * knox.lua:48 `des.terrain(43,09, "\\")` resolved to INVALID_TYPE; it is
+     * only reachable at all now that the lexer decodes `"\\"` to one byte. */
+    { ch: '\\', typ: THRONE },
+    { ch: 'K', typ: SINK },
+    { ch: '}', typ: MOAT },
+    { ch: 'P', typ: POOL },
+    { ch: 'L', typ: LAVAPOOL },
+    { ch: 'Z', typ: LAVAWALL },
+    { ch: 'I', typ: ICE },
+    { ch: 'W', typ: WATER },
+    { ch: 'T', typ: TREE },
+    { ch: 'F', typ: IRONBARS }, // Fe = iron
+    { ch: 'x', typ: MAX_TYPE }, // "see-through"
+    { ch: 'B', typ: CROSSWALL }, // hack: boundary location
+    { ch: 'w', typ: MATCH_WALL }, // IS_STWALL()
+    { ch: '\0', typ: STONE },
+];
+
+function splev_chr2typ(c) {
+    for (let i = 0; char2typ[i].ch; i++) {
+        if (c === char2typ[i].ch)
+            return char2typ[i].typ;
+    }
+    return INVALID_TYPE;
+}
+
+// check_mapchr helper (static to this module)
+export function check_mapchr(s) {
+    if (s && s.length === 1)
+        return splev_chr2typ(s[0]);
+    return INVALID_TYPE;
+}
+
+export function get_table_int_opt(args, name, defval) {
+    const v = args.get(name);
+    if (v == null) return defval;
+    return Number(v);
+}
+
+export function get_table_str_opt(args, name, defval) {
+    const v = args.get(name);
+    if (v == null || v === '') return defval;
+    return String(v);
+}
+
+// C ref: nhlua.c get_table_str(L, name) — required string field (no
+// default; not reached by tut-1/tut-2, which always supply "text").
+export function get_table_str(args, name) {
+    const v = args.get(name);
+    return (v == null) ? '' : String(v);
+}
+
+export function get_table_mapchr_opt(args, name, defval) {
+    const v = args.get(name);
+    if (v == null || v === '') return defval;
+    const s = String(v);
+    if (s.length === 0) return defval;
+    const typ = check_mapchr(s);
+    if (typ === INVALID_TYPE)
+        throw new Error('Erroneous map char');
+    return typ;
+}
+
+// boolean_opt: accepts Lua booleans AND 0/1 like C
+export function get_table_boolean_opt(args, name, defval) {
+    const v = args.get(name);
+    if (v == null) return defval;
+    const t = typeof v;
+    if (t === 'boolean') return v ? 1 : 0;
+    if (t === 'number') {
+        const n = Number(v);
+        if (n === 0 || n === 1) return n;
+        throw new Error('Expected a boolean');
+    }
+    if (t === 'string') {
+        const s = String(v).toLowerCase();
+        if (s === 'true' || s === 'yes') return 1;
+        if (s === 'false' || s === 'no') return 0;
+        throw new Error('Expected a boolean');
+    }
+    throw new Error('Expected a boolean');
+}
+
+// get_table_option: map string through allowed list → index (like luaL_checkoption)
+export function get_table_option(args, name, defval, opts) {
+    const v = args.get(name);
+    const s = (v != null) ? String(v) : defval;
+    for (let i = 0; opts[i] != null; i++) {
+        if (s === opts[i]) return i;
+    }
+    return 0; // default to first option if not found (C's luaL_checkoption behavior)
+}
+
+// C ref: nhlua.c:2391-2411 load_lua(): fresh state, run the file, nhl_done.
+// Returns FALSE when the file cannot be loaded (ret value is ignored by
+// wiz_load_lua, wizcmds.c:368).
+export async function load_lua(name) {
+    let ret = true;
+    const L = await nhl_init();
+    if (!L) {
+        ret = false;
+    } else if (!(await nhl_loadlua(L, name))) {
+        ret = false;
+    }
+    await nhl_done(L);
+    return ret;
+}
+
+/** C ref: nhlua.c:508-525 nhl_get_xy_params(L, x, y).
+ *  `args` is the (already argc==1-table-checked-by-caller-excluded) remaining
+ *  positional arg list. Returns {ok,x,y}; C ignores the return value at this
+ *  callsite, so ok=false leaves x,y at the caller's -1,-1 sentinel default —
+ *  same as C leaving *x,*y untouched. */
+export function nhl_get_xy_params(args) {
+    if (args.length === 2)
+        return { ok: true, x: Number(args[0]), y: Number(args[1]) };
+    if (args.length === 1 && args[0] && args[0].type === 'table') {
+        const c = get_coord(args[0]);
+        return { ok: true, x: c.x, y: c.y };
+    }
+    return { ok: false, x: -1, y: -1 };
+}
+
+/** C ref: nhlua.c:1171-1179 get_table_int(L, name) — required integer field,
+ *  throws if absent/non-numeric (no defval, unlike get_table_int_opt). */
+export function get_table_int(args, name) {
+    const v = args.get(name);
+    if (v == null)
+        throw new Error(`wrong parameters (missing "${name}")`);
+    return Number(v);
+}
+
+/** C ref: nhlua.c:243-255 get_table_mapchr(L, name) — required (non-opt)
+ *  mapchar lookup, distinct from the EXISTING get_table_mapchr_opt
+ *  (js/sp_lev.js:134, which takes a defval). Shared with lspo_terrain
+ *  (port-lspo-terrain-w2-001) — defined here, reused there, not redefined. */
+export function get_table_mapchr(args, name) {
+    const ter = get_table_str(args, name);
+    const typ = check_mapchr(ter);
+    if (typ === INVALID_TYPE)
+        throw new Error('Erroneous map char');
+    return typ;
 }

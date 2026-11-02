@@ -1,13 +1,13 @@
 // worm.js — port of nethack-c/src/worm.c (scaffold: functions are added here
 
-import { MAX_NUM_WORMS, NON_PM, MCORPSENM, NORMAL_SPEED, MSLOW, MFAST, MHPMAX } from './const.js';
+import { MAX_NUM_WORMS, NON_PM, MCORPSENM, NORMAL_SPEED, MHPMAX } from './const.js';
 import { PM_LONG_WORM, PM_LONG_WORM_TAIL, NUMMONS } from './pm.generated.js';
 import { HALLUC, HALLUC_RES } from './const.js';
 import { rnd_nextto_goodpos } from './trap.js';
 import { newsym, show_detected_monster_glyph } from './display.js';
 import { m_at, mon_nam } from './uhitm.js';
 import { clone_mon_ml } from './mklev.js';
-import { pline } from './display.js';
+import { pline } from './pline.js';
 import { canspotmon } from './display.js';
 import { Monnam } from './mcastu.js';
 import { s_suffix } from './hacklib.js';
@@ -16,7 +16,7 @@ import { impossible } from './steed.js';
 import { impossible as cutworm_impossible } from './pline.js';
 import { cansee } from './vision.js';
 import { rn2, rnd, rn1, d, rn2_on_display_rng } from './rng.js';
-import monsPack from './makemon_mons.json' with { type: 'json' };
+import { mcalcmove } from './mon.js';
 
 // C ref: worm.c:77-79 — static struct wseg *wheads[MAX_NUM_WORMS],
 // *wtails[MAX_NUM_WORMS]; static long wgrowtime[MAX_NUM_WORMS]. Module-private
@@ -330,37 +330,9 @@ export async function cutworm(worm, x, y, cuttier) {
         await pline("You cut " + mon_nam(worm) + " in half.");
 }
 
-const MONS = /** @type {number[][]} */ (monsPack.mons);
-
-function mcalcmove(mon, m_moving) {
-    const mndx = (mon.data?.pmidx ?? mon.mndx ?? mon.mnum ?? 0) | 0;
-    let mmove = (mndx >= 0 && mndx < MONS.length) ? ((MONS[mndx][9] ?? 0) | 0) : 0;
-    const mspeed = mon.mspeed | 0;
-
-    if (mspeed === MSLOW) {
-        if (mmove < NORMAL_SPEED)
-            mmove = Math.trunc((2 * mmove + 1) / 3);
-        else
-            mmove = 4 + Math.trunc(mmove / 3);
-    } else if (mspeed === MFAST) {
-        mmove = Math.trunc((4 * mmove + 2) / 3);
-    }
-
-    /* C mon.c:1148-1153 — if (mon == u.usteed && u.ugallop && svc.context.mv)
-       mmove = ((rn2(2) ? 4 : 5) * mmove) / 3; -- dead for a worm, kept for
-       fidelity (see comment above). */
-    if (mon === game.u?.usteed && (game.u?.ugallop | 0) && (game.context?.mv | 0)) {
-        mmove = Math.trunc(((rn2(2) ? 4 : 5) * mmove) / 3);
-    }
-
-    if (m_moving) {
-        const mmove_adj = mmove % NORMAL_SPEED;
-        mmove -= mmove_adj;
-        if (rn2(NORMAL_SPEED) < mmove_adj)
-            mmove += NORMAL_SPEED;
-    }
-    return mmove;
-}
+/* C ref: mon.c:1126-1168 mcalcmove(mon, m_moving) — the single port lives in
+ * js/fastforward.js and takes C's m_moving parameter; worm_move's
+ * mcalcmove(worm, FALSE) (worm.c:222) skips its rounding draw there too. */
 
 export function worm_move(worm) {
     const wnum = worm.wormno | 0;

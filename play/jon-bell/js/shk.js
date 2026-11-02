@@ -2,10 +2,13 @@
 // shk.js — Shopkeeper AI and commerce.
 // C ref: nethack-c/src/shk.c
 
-import { verbalize } from './display.js';
-import { growl as growl_mhitm, yelp as yelp_mhitm, y_monnam as y_monnam_shk, pronoun_gender, a_monnam } from './mhitm.js';
+import { verbalize } from './pline.js';
+import { y_monnam as y_monnam_shk, a_monnam } from './mhitm.js';
+import { growl as growl_mhitm, yelp as yelp_mhitm } from './sounds.js';
+import { pronoun_gender } from './mondata.js';
 import { game } from './gstate.js';
-import { locomotion, x_monnam as x_monnam_shk } from './mhitm.js';
+import { x_monnam as x_monnam_shk } from './mhitm.js';
+import { locomotion } from './mondata.js';
 import { ARTICLE_THE as ARTICLE_THE_SHK, ANY_SHOP, Upolyd } from './const.js';
 import { search_special } from './mkroom.js';
 import { makeplural } from './objnam.js';
@@ -18,13 +21,17 @@ import { stop_occupation } from './allmain.js';
 import { picking_at } from './lock.js';
 import { dochug, m_canseeu } from './dochug.js';
 import { newobj } from './game.js';
-import { pline, You_hear, Norep, topl_park_cursor, force_more, impossible_sync } from './display.js';
+import { topl_park_cursor, force_more, impossible_sync } from './display.js';
+import { pline, You_hear, Norep, pline_The, There, You_cant } from './pline.js';
 /* C pline.c You/Your — use the shared async formatters.  Sale settlement
  * awaits these message boundaries; older unrelated callers retain their
  * existing contracts until their own closure is migrated. */
 import { You as You_real, Your as Your_real } from './do_wear.js';
 import { canspotmon, canseemon as canseemon_real } from './display.js';
-import { highc, shtype_name, inside_shop, makemon, angry_guards, next_ident, mksobj, del_engr_at, mpickobj, mongone as mongone_real } from './mklev.js';
+import { shtype_name, makemon, next_ident, mksobj, del_engr_at } from './mklev.js';
+import { mpickobj } from './steal.js';
+import { highc } from './hacklib.js';
+import { angry_guards, mongone as mongone_real } from './mon.js';
 import { is_demon, poly_gender } from './makemon.js';
 import { is_pick } from './dig.js';
 import { ECMD_OK, ECMD_CANCEL, ECMD_TIME, ESHK, SHARED, SHARED_PLUS, NO_ROOM, COLNO, ROWNO, IS_DOOR, IS_ROOM, IS_WALL, SHOPBASE, CANDLESHOP, D_BROKEN, D_CLOSED, BILLSZ, Has_contents, isok, u_at, ROOMOFFSET, RLOC_MSG, DEAF, INVIS, PASSES_WALLS, QBUFSZ, LL_ACHIEVE, G_GONE, MM_NOMSG, CONFLICT, REPAIR_DELAY, BOLT_LIM, ZAP_POS, D_LOCKED, LANDMINE, BEAR_TRAP, PIT, SPIKED_PIT, HOLE, ACH_SHOP, M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, DETECT_MONSTERS } from './const.js';
@@ -41,7 +48,7 @@ import { menu_heading_text } from './tty_menu.js'; // wintty.c:2688
 /* C ref: hack.c:4478 money_cnt — the single ported implementation lives in
  * js/com_pager.js; re-used here rather than the `return 0` stub this file
  * used to carry, which made every affordability test read as "hero is broke". */
-import { money_cnt } from './com_pager.js';
+import { money_cnt } from './hack.js';
 /* C ref: hack.h RLOC_ERR=0x01, RLOC_MSG=0x02, RLOC_NOMSG=0x04.  RLOC_MSG comes
  * from const.js (which agrees); RLOC_NOMSG comes from js/teleport.js, whose
  * copy is the corrected one — const.js's RLOC_NOMSG is 0x0001, i.e. C's
@@ -51,21 +58,21 @@ import { money_cnt } from './com_pager.js';
 import { rloc_to_flag, RLOC_NOMSG, mnexto, mnearto, enexto_out } from './teleport.js';
 import { dist2, s_suffix } from './hacklib.js';
 import { Monnam as Monnam_chat } from './mcastu.js';
-import { online2, place_object, remove_object, add_to_container, newomid } from './mklev.js';
+import { place_object, remove_object, add_to_container, newomid } from './mklev.js';
+import { online2 } from './hacklib.js';
 import { cansee } from './vision.js';
 import { holetime } from './dig.js';
-import { carrying, count_unpaid, currency as currency_real, um_dist,
-         mbodypart as mbodypart_real, body_part as body_part_real,
-         merge_choice, inv_cnt, dropy, getpos, record_achievement, check_special_room, obj_no_longer_held } from './cmd.js';
+import { carrying, count_unpaid, currency as currency_real, um_dist, mbodypart as mbodypart_real, body_part as body_part_real, merge_choice, inv_cnt, getpos, record_achievement, check_special_room } from './cmd.js';
+import { dropy, obj_no_longer_held } from './do.js';
 import { xprname as xprname_cmd, dbase_display_window as dbase_display_window_cmd } from './cmd.js';
-import { addinv } from './hold_another_object.js';
+import { addinv } from './invent.js';
 import { mattacku } from './mhitu.js';
 import { m_at } from './uhitm.js';
 import { can_carry } from './dogmove.js';
-import { resist_conflict } from './mhitm.js';
+import { resist_conflict } from './mondata.js';
 import { move_special } from './priest.js';
 import { rn2 as rn2_shk, rnd as rnd_shk } from './rng.js';
-import { depth as depth_shk } from './hacklib.js';
+import { depth as depth_shk } from './dungeon.js';
 import { builds_up, on_level as on_level_real } from './dungeon.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
@@ -73,11 +80,8 @@ import monArmedPack from './makemon_mons_armed.json' with { type: 'json' };
 import monMsoundPack from './makemon_msound.json' with { type: 'json' };
 import { OC_COST, OC_CHARGED } from './oc_cost_data.js';
 import { OC_NAME } from './oc_name_data.js';
-import { xname_flags as xname_flags_shk, CXN_NORMAL as CXN_NORMAL_SHK,
-         the as the_shk, The as The_shk, arti_cost,
-         thesimpleoname as thesimpleoname_real,
-         simpleonames as simpleonames_real,
-         short_oname as short_oname_shk } from './objnam.js';
+import { xname_flags as xname_flags_shk, CXN_NORMAL as CXN_NORMAL_SHK, the as the_shk, The as The_shk, thesimpleoname as thesimpleoname_real, simpleonames as simpleonames_real, short_oname as short_oname_shk } from './objnam.js';
+import { arti_cost } from './artifact.js';
 /* C attrib.c acurr(i) — ACURR(A_CHA) in get_cost(). */
 import { acurr, adjalign as adjalign_real } from './attrib.js';
 import { exercise } from './attrib.js';
@@ -91,7 +95,7 @@ import { splitobj, findgold, permonstTemplate, the_unique_pm } from './makemon.j
 import { intrinsic_possible, food_disappears } from './eat.js';
 import { book_disappears } from './spell.js';
 import { maybe_reset_pick } from './lock.js';
-import { o_unleash } from './dig.js';
+import { o_unleash } from './apply.js';
 import { setnotworn } from './worn.js';
 import { obj_stop_timers } from './timeout.js';
 import { impossible as lifecycle_impossible } from './pline.js';
@@ -109,19 +113,21 @@ import { remove_worn_item } from './steal.js';
 import { dealloc_obj, shtype_row } from './mklev.js';
 import { update_inventory } from './mhitm.js';
 import { hidden_gold } from './vault.js';
-import { bot, flush_screen, livelog_printf } from './display.js';
+import { flush_screen } from './display.js';
+import { bot } from './botl.js';
+import { livelog_printf } from './pline.js';
 import { nhgetch } from './input.js';
 /* C shk.c:2101/2251 yn_function prompts.  This creates a cycle with end.js
  * (end.js imports paybill), but the binding is only used after module
  * initialization, just like the existing cmd.js/end.js cycle. */
-import { yn_function as yn_function_shk } from './end.js';
+import { yn_function as yn_function_shk } from './cmd.js';
 import { build_window_screen, tty_window_offx, menu_search_case } from './com_pager.js';
 import { observe_object, discover_object } from './o_init.js';
 import { MKOBJ_OC_MAGIC } from './mkobj_erosion_meta.js';
-import { veggy_item } from './mklev.js';
-import { is_izchak } from './cmd.js';
-import { You_feel } from './display.js';
-import { sobj_at } from './mklev.js';
+import { veggy_item } from './shknam.js';
+import { is_izchak } from './shknam.js';
+import { You_feel } from './pline.js';
+import { sobj_at } from './invent.js';
 import { unplacebc, placebc } from './ball.js';
 import { obj_typename } from './objnam.js';
 import { bill_dummy_object } from './cmd.js';
@@ -368,27 +374,6 @@ async function money2u(mon, amount) {
     }
 }
 
-/* C shknam.c:805 saleable(shkp, obj) — does this shop deal in this item? */
-export function saleable(shkp, obj) {
-    const eshkp = ESHK(shkp);
-    const shp = shtype_row(((eshkp ? (eshkp.shoptype | 0) : 0) - SHOPBASE) | 0);
-    if (!shp)
-        return false;
-    if ((shp.symb | 0) === 0 /* RANDOM_CLASS */)
-        return true;
-    for (let i = 0; i < shp.iprobs.length && shp.iprobs[i].iprob; i++) {
-        const itype = shp.iprobs[i].itype | 0;
-        if (itype === VEGETARIAN_CLASS_SALE) {
-            if (veggy_item(obj, 0)) return true;
-            continue;
-        }
-        if (itype < 0 ? (itype === -(obj.otyp | 0)) : (itype === (obj.oclass | 0)))
-            return true;
-    }
-    return false;
-}
-/* C shknam.c:37 VEGETARIAN_CLASS = MAXOCLASSES + 1 (js/mklev.js:1888). */
-const VEGETARIAN_CLASS_SALE = 19;
 
 /* C objnam.c:2313 paydoname: the billing menu supplies its own price. */
 async function paydoname(obj) {
@@ -1089,11 +1074,11 @@ export async function dopay() {
         const telepat = g.u?.uprops?.[TELEPAT];
         const Blind_telepat = !!(telepat?.intrinsic || telepat?.extrinsic);
         if ((!sk && (!Blind || Blind_telepat)) || (!Blind && !seensk)) {
-            await pline('There appears to be no shopkeeper here to receive your payment.');
+            await There('appears to be no shopkeeper here to receive your payment.');
             return ECMD_OK; /* C shk.c:1785 */
         }
         if (!seensk) {
-            await pline("You can't see...");
+            await You_cant("see...");
             return ECMD_OK; /* C shk.c:1790 */
         }
         /* C shk.c:1796 — the usual case: one shk, or the resident one. */
@@ -1129,7 +1114,7 @@ export async function dopay() {
                 return ECMD_OK;
             }
             if (!chosen) {
-                await pline('There is no one there to receive your payment.');
+                await There('is no one there to receive your payment.');
                 return ECMD_OK;
             }
             if (!chosen.isshk) {
@@ -1696,73 +1681,6 @@ function plur(x) {
     return (x === 1) ? "" : "s";
 }
 
-/* C ref: hack.c:697-760 in_rooms(x, y, typewanted) — return the room numbers
- * that <x,y> belongs to, filtered by room type.  C returns a NUL-terminated
- * char string of room numbers built backwards from the end of a static buffer;
- * this returns the same numbers, in the same order, as an array (every JS
- * caller in this file already consumes the stub's array form).
- *
- * C's goodtype(rno) macro:
- *   !typewanted
- *   || (typefound = svr.rooms[rno - ROOMOFFSET].rtype) == typewanted
- *   || (typewanted == SHOPBASE && typefound > SHOPBASE)
- * i.e. SHOPBASE is a "any shop" wildcard, since each shop kind is SHOPBASE+n.
- */
-export function in_rooms(x, y, typewanted) {
-    const buf = [];
-    const rooms = game.level?.rooms ?? [];
-    const goodtype = (rno) => {
-        if (!typewanted)
-            return true;
-        const typefound = rooms[rno - ROOMOFFSET]?.rtype | 0;
-        return typefound === typewanted
-            || (typewanted === SHOPBASE && typefound > SHOPBASE);
-    };
-    const roomno_at = (xx, yy) =>
-        (game.level?.locations?.[xx]?.[yy]?.roomno | 0);
-
-    let rno = roomno_at(x, y);
-    let step;
-    switch (rno) {
-    case NO_ROOM:
-        return buf;
-    case SHARED:
-        step = 2;
-        break;
-    case SHARED_PLUS:
-        step = 1;
-        break;
-    default: /* i.e. a regular room # */
-        if (goodtype(rno))
-            buf.unshift(rno);
-        return buf;
-    }
-
-    /* C hack.c:721-737 — scan the 3x3 (or 2x2, for SHARED's step 2) window
-     * around <x,y> collecting every distinct good-type room number. */
-    let min_x = x - 1, max_x = x + 1;
-    if (x < 1)
-        min_x += step;
-    else if (x >= COLNO)
-        max_x -= step;
-
-    let min_y = y - 1, max_y_offset = 2;
-    if (min_y < 0) {
-        min_y += step;
-        max_y_offset -= step;
-    } else if ((min_y + max_y_offset) >= ROWNO) {
-        max_y_offset -= step;
-    }
-
-    for (let xx = min_x; xx <= max_x; xx += step) {
-        for (let yy = 0; yy <= max_y_offset; yy += step) {
-            rno = roomno_at(xx, min_y + yy);
-            if (rno >= ROOMOFFSET && !buf.includes(rno) && goodtype(rno))
-                buf.unshift(rno);
-        }
-    }
-    return buf;
-}
 /* inside_shop (C shk.c:567) already has exactly one body in this tree, at
  * js/mklev.js:2561; imported rather than re-derived here. */
 export function costly_spot(x, y) {
@@ -3597,17 +3515,6 @@ function discard_damage_struct(damg) {
         }
     }
 }
-/* C ref: shknam.c:841-849 Shknam(mtmp) = shkname(mtmp) with its first
- * character capitalized via highc(). js/dokick.js's own Shknam is a
- * throwing stub (not a real candidate to re-point to); js/dokick.js's
- * shkname IS the real general port (shkname_real, imported above), so this
- * composes it with the same highc() capitalization C applies, rather than
- * reading ESHK().shknam directly (which skipped both shkname's
- * leading-marker strip and this capitalization). */
-export function Shknam(shkp) {
-    const nam = shkname_real(shkp);
-    return nam ? (highc(nam.charAt(0)) + nam.slice(1)) : nam;
-}
 function helpless(shkp) { return !!(shkp.msleeping || !shkp.mcanmove); }
 export async function inherits(shkp, numsk, croaked, silently) {
     const g = game;
@@ -3636,6 +3543,7 @@ export async function inherits(shkp, numsk, croaked, silently) {
                  * numeric HEAD=8 bodypart_types enum value, which the throw-
                  * away stub masked (it ignored its part argument entirely). */
                 takes = `, shakes ${noit_mhis(shkp)} ${mbodypart(shkp, HEAD)},`;
+            await _shk_vpline_flush();
             await pline("%s %slooks at your corpse%s and %s.", Shknam(shkp),
                   helpless(shkp) ? 'wakes up, ' : '',
                   takes, !inhishop(shkp) ? 'disappears' : 'sighs');
@@ -3694,13 +3602,15 @@ export async function inherits(shkp, numsk, croaked, silently) {
         } else {
             await money2mon(shkp, loss);
             if (game.disp) game.disp.botl = true;
-            if (!silently)
+            if (!silently) {
+                await _shk_vpline_flush();
                 await pline('%s %s the %ld %s %sowed %s.', Shknam(shkp), takes, loss,
                       currency(loss),
                       (String(eshkp.customer || '').slice(0, 32)
                        !== String(g.plname ?? g.u?.plname ?? '').slice(0, 32))
                           ? '' : 'you ',
                       noit_mhim(shkp));
+            }
             /* shopkeeper has now been paid in full */
             pacify_shk(shkp, false);
             eshkp.following = 0;
@@ -4047,14 +3957,6 @@ export async function remote_burglary(x, y) {
  * C's vpline is reached through verbalize's own '"%s"' wrapper, so the
  * rendered text is the message in double quotes. */
 function SetVoice(_shkp, _a, _b, _c) { }
-/* C ref: shknam.c:855-897 shkname(mtmp) — the real general port lives in
- * js/dokick.js (shkname_real, imported above; documented KNOWN GAP: its
- * Hallucination arm returns the true name rather than drawing the two rn2
- * calls C's random-shop-type/random-name picker would). Previously this
- * called Shknam(shkp) directly — backwards from C, which has Shknam call
- * shkname, not the reverse — and never stripped a leading non-letter
- * marker. */
-function shkname(shkp) { return shkname_real(shkp); }
 /* C ref: shk.c:1361-1377 rile_shk(shkp) — make the shopkeeper angry and add
  * the one-time aggravation surcharge to every billed item. */
 function rile_shk(shkp) {
@@ -4206,132 +4108,38 @@ async function home_shk(shkp, killkops) {
  * js/dokick.js also has a `currency` but it is a throwing stub, not a
  * candidate. */
 export function currency(amount) { return currency_real(amount); }
-/* C apply.c:746-756: release both ends before dropping the hero's inventory. */
-export function unleash_all() {
-    for (let obj = game.invent; obj; obj = obj.nobj)
-        if (obj.otyp === 236 /* LEASH */) obj.leashmon = 0;
-    for (let mon = game.fmon; mon; mon = mon.nmon)
-        mon.mleashed = 0;
-}
 
 // C mondata.h likes_gold/likes_gems/likes_objs/likes_magic — bit tests against
 // mons[mndx].mflags2 (row[7] of js/makemon_mons.json), plus is_armed() for
 // likes_objs. Read directly from the JSON data packs (no import from
 // makemon.js) to avoid porting anything beyond this task's scope.
 const MONS_ROWS = monsPack.mons;
-const MON_HAS_WEAP_ATK = monArmedPack.has_weap_atk;
-const M2_GREEDY = 0x10000000;
-const M2_JEWELS = 0x20000000;
-const M2_COLLECT = 0x40000000;
-const M2_MAGIC = 0x80000000;
 function monMflags2_fp(mndx) {
     const row = (mndx >= 0 && mndx < MONS_ROWS.length) ? MONS_ROWS[mndx] : null;
     return row ? (row[7] >>> 0) : 0;
 }
-function is_armed_fp(mndx) {
-    return mndx >= 0 && mndx < MON_HAS_WEAP_ATK.length && MON_HAS_WEAP_ATK[mndx] !== 0;
-}
-function likes_gold_fp(mndx) { return (monMflags2_fp(mndx) & M2_GREEDY) !== 0; }
-function likes_gems_fp(mndx) { return (monMflags2_fp(mndx) & M2_JEWELS) !== 0; }
-function likes_objs_fp(mndx) { return (monMflags2_fp(mndx) & M2_COLLECT) !== 0 || is_armed_fp(mndx); }
-function likes_magic_fp(mndx) { return (monMflags2_fp(mndx) & M2_MAGIC) !== 0; }
 
-// C mon.c add_to_minv — untracked by this task's diff fields (monster
-// inventory chains aren't part of finish_paybill's state_diff_fields), so
-async function add_to_minv_fp(mtmp, otmp) {
-    const { add_to_minv } = await import('./mklev.js'); // C mkobj.c:2648
-    return add_to_minv(mtmp, otmp);
-}
 
-async function give_to_nearby_mon(otmp, x, y) {
-    let selected = null;
-    let nmon = 0;
-    for (let xx = x - 1; xx <= x + 1; xx++) {
-        for (let yy = y - 1; yy <= y + 1; yy++) {
-            if (!isok(xx, yy))
-                continue;
-            if (u_at(xx, yy))
-                continue;
-            const mtmp = m_at(xx, yy);
-            if (!mtmp)
-                continue;
-            const mndx = (mtmp.mnum ?? mtmp.mndx) | 0;
-            if (!(likes_gold_fp(mndx) || likes_gems_fp(mndx) || likes_objs_fp(mndx) || likes_magic_fp(mndx)))
-                continue;
-            nmon++;
-            if (!rn2_shk(nmon))
-                selected = mtmp;
-        }
-    }
-    if (selected && can_carry(selected, otmp))
-        await add_to_minv_fp(selected, otmp);
-    else
-        place_object(otmp, x, y);
-}
 
 // C bones.c:276-277 uses do.c:893 obj_no_longer_held, including billing.
 import { artifact_light as artifact_light_real } from './light.js';
-function artifact_light_fp(obj) {
-    return artifact_light_real(obj);
-}
-function obj_is_burning_fp(obj) {
-    return !!(obj && obj.lamplit);
-}
 import { end_burn as end_burn_fp } from './timeout.js';
+import { Shknam, saleable, shkname } from './shknam.js'; // relocate-fns
+import { drop_upon_death } from './bones.js'; // relocate-fns
+import { body_part, mbodypart } from './polyself.js'; // relocate-fns
+import { wake_nearto } from './mon.js'; // relocate-fns
+import { impossible as bill_impossible } from './pline.js'; // relocate-fns
+import { in_rooms } from './hack.js'; // relocate-fns
+import { unleash_all } from './apply.js'; // relocate-fns
+export { in_rooms } from './hack.js'; // relocate-fns
+export { COIN_CLASS, monMflags2_fp }; // relocate-fns
 
 // C bones.c:42-49: mark a fruit type present on the bones level.
 export function goodfruit_fp(id) {
     for (let f = game.ffruit; f; f = f.nextf)
         if (f.fid === -id) { f.fid = id; return; }
 }
-const SLIME_MOLD_OTYP = 285;
 
-export async function drop_upon_death(mtmp, cont, x, y) {
-    const g = game;
-    let otmp;
-    while ((otmp = g.invent) != null) {
-        await freeinv(otmp); // C bones.c:273: extract from OBJ_INVENT.
-
-        if (!mtmp || is_undead(mtmp.data))
-            await obj_no_longer_held(otmp);
-
-        if ((cont || artifact_light_fp(otmp)) && obj_is_burning_fp(otmp))
-            end_burn_fp(otmp, true);
-        otmp.owornmask = 0;
-
-        if (otmp.otyp === SLIME_MOLD_OTYP)
-            goodfruit_fp(otmp.spe);
-
-        if (rn2_shk(5))
-            curse_fp(otmp);
-
-        if (mtmp)
-            await add_to_minv_fp(mtmp, otmp);
-        else if (cont)
-            await add_to_container(cont, otmp);
-        else if (!rn2_shk(8))
-            await give_to_nearby_mon(otmp, x, y);
-        else
-            place_object(otmp, x, y);
-    }
-    if (cont)
-        cont.owt = weight(cont); // C bones.c:302: include the statue's contents.
-}
-// C mkobj.c curse(otmp) — clear blessed, set cursed; coins are never cursed
-// (mkobj.c:1787 `if (otmp->oclass == COIN_CLASS) return;`).
-function curse_fp(otmp) {
-    if (!otmp || (otmp.oclass | 0) === COIN_CLASS) return;
-    otmp.blessed = 0;
-    otmp.cursed = 1;
-}
-// C nethack-c/include/mondata.h:95
-//   #define is_undead(ptr) (((ptr)->mflags2 & M2_UNDEAD) != 0L)
-// M2_UNDEAD == 0x00000002L (nethack-c/include/monflag.h:124).
-// Was `return false`, which is wrong for every undead monster; the caller
-// (bones.c:279 drop_upon_death, mirrored at shk.js:1467) is short-circuited by
-// `!mtmp ||`, so ptr is always non-null when this is reached.
-const M2_UNDEAD = 0x00000002; /* monflag.h:124 */
-function is_undead(data) { return ((data.mflags2 | 0) & M2_UNDEAD) !== 0; }
 
 export async function finish_paybill() {
     const g = game;
@@ -4362,13 +4170,6 @@ function noit_mhis(shkp) {
     return ['his', 'her', 'its', 'their'][pronoun_gender(shkp, 3)];
 }
 function noit_mhim(mon) { return ['him', 'her', 'it', 'them'][pronoun_gender(mon, 3)]; }
-/* C polyself.c:1956-2046 mbodypart(mon, part) — the real general port lives
- * in js/cmd.js (mbodypart_real, imported above). */
-function mbodypart(shkp, part) { return mbodypart_real(shkp, part); }
-/* C polyself.c:2142-2145 body_part(part) = mbodypart(&gy.youmonst, part) —
- * the real general port lives in js/cmd.js (body_part_real, imported above,
- * itself calling the same real mbodypart against the hero's own youmonst). */
-function body_part(part) { return body_part_real(part); }
 /* C shk.c:5908 cad(altusage).  The pick_pick() and usage-charge messages use
  * the short form (altusage=false); keep the alternate form complete because
  * this helper is shared by check_unpaid_usage and getcad. */
@@ -4749,19 +4550,19 @@ export async function globby_bill_fixup(absorber, absorbed) {
     const ba = await onbill(absorber, shkp, false), bp = await onbill(absorbed, shkp, false), e = ESHK(shkp), cost = set_cost(absorbed, shkp);
     if (bp && (!absorber.no_charge || await billable({ value: shkp }, absorber, e.shoproom, false))) {
         const amount = bp.price; Object.assign(bp, e.bill_p[--e.billct]);
-        if (await onbill(absorbed, shkp, true)) absorbed.unpaid = 0;
+        await clear_unpaid_obj(shkp, absorbed);
         if (ba) ba.price += amount;
     } else if (!ba && !bp && !absorber.no_charge) {
         const amount = get_pricing_units(absorbed) * cost;
         if (!saleable(shkp, absorbed)) return;
         if (e.debit >= amount) {
             if (e.loan) e.loan = Math.max(0, e.loan - amount);
-            e.debit -= amount; await pline('The donated %s %spays off your debt.', obj_typename(absorbed.otyp), e.debit ? 'partially ' : '');
+            e.debit -= amount; await pline_The('donated %s %spays off your debt.', obj_typename(absorbed.otyp), e.debit ? 'partially ' : '');
         } else {
             const delta = amount - e.debit; e.credit += delta;
             if (e.debit) { e.debit = e.loan = 0; await Your_real('debt is paid off.'); }
-            if (e.credit === delta) await pline('The %s established %ld %s credit.', obj_typename(absorbed.otyp), delta, currency(delta));
-            else await pline('The %s added %ld %s %s %ld %s.', obj_typename(absorbed.otyp), delta, currency(delta), 'to your credit; total is now', e.credit, currency(e.credit));
+            if (e.credit === delta) await pline_The('%s established %ld %s credit.', obj_typename(absorbed.otyp), delta, currency(delta));
+            else await pline_The('%s added %ld %s %s %ld %s.', obj_typename(absorbed.otyp), delta, currency(delta), 'to your credit; total is now', e.credit, currency(e.credit));
         }
     } else if (ba) ba.price += cost * get_pricing_units(absorbed);
     else if (bp && (absorber.no_charge || (floor && !costly_spot(x, y)))) {
@@ -5161,7 +4962,7 @@ export async function addtobill(obj, ininv, dummy, silent) {
         return;
     } else if ((ESHK(shkp).billct | 0) === BILLSZ) {
         if (!silent)
-            await pline("You got that for free!");
+            await You_real("got that for free!");
         return;
     }
 
@@ -5239,7 +5040,7 @@ export async function addtobill(obj, ininv, dummy, silent) {
     } else if (!silent) {
         if (ltmp) {
             SetVoice(shkp, 0, 80, 0);
-            await pline(`The list price of `
+            await pline_The(`list price of `
                         + `${(contentscount && !obj.unpaid) ? the_contents_of_shk : ''}`
                         + `${the_shk(xname_shk(obj))}`
                         + `${(contentscount && obj.unpaid) ? and_its_contents : ''}`
@@ -5344,4 +5145,84 @@ export function check_unpaid_usage(obj, altusage = false) {
         exercise(2, true); // A_WIS
     }
     if (e) e.debit = (e.debit | 0) + tmp;
+}
+
+/* C ref: shk.c:1125-1133 noisy_shop(sroom)
+ *   struct monst *mtmp = sroom->resident;
+ *   if (mtmp && inhishop(mtmp)) wake_nearto(mtmp->mx, mtmp->my, 11 * 11);
+ * wake_nearto_core (mon.c:4374) consumes no RNG; js/mklev.js's wake_nearto is
+ * still a no-op stub, so this is RNG- and state-neutral today and activates
+ * automatically when that stub lands. */
+export function noisy_shop(sroom) {
+    const mtmp = sroom?.resident;
+    if (mtmp && inhishop(mtmp))
+        wake_nearto(mtmp.mx | 0, mtmp.my | 0, 11 * 11);
+}
+
+/* C shk.c:3623-3659 splitbill(obj, otmp) — move the split-off quantity to a
+ * second bill entry while retaining the original entry for the remainder.
+ * This path is synchronous and RNG-free; it is reached by splitobj() whenever
+ * an unpaid stack is divided. */
+export async function splitbill(obj, otmp) {
+    const shops = game.u?.ushops || '';
+    const roomno = typeof shops === 'string' ? shops.charCodeAt(0) : shops[0];
+    const shkp = shops.length ? shop_keeper(roomno) : null;
+    if (!shkp || !inhishop(shkp)) {
+        await bill_impossible('splitbill: no resident shopkeeper??');
+        return;
+    }
+    const eshk = ESHK(shkp);
+    const bp = await onbill(obj, shkp, false);
+    if (!bp) {
+        await bill_impossible('splitbill: not on bill?');
+        return;
+    }
+
+    const childQuan = otmp.quan | 0;
+    const billedQuan = bp.bquan | 0;
+    if (billedQuan < childQuan)
+        await bill_impossible('Negative quantity on bill??');
+    if (billedQuan === childQuan)
+        await bill_impossible('Zero quantity on bill??');
+    bp.bquan = billedQuan - childQuan;
+
+    const billct = eshk.billct | 0;
+    if (billct === BILLSZ) {
+        otmp.unpaid = 0;
+        return;
+    }
+    const bill = eshk.bill_p || eshk.bill || (eshk.bill_p = []);
+    bill[billct] = {
+        bo_id: otmp.o_id,
+        bquan: childQuan,
+        useup: false,
+        price: bp.price
+    };
+    eshk.billct = billct + 1;
+}
+
+/* C shk.c:5010-5015 is_fshk(mtmp) — "for use in levl_follower":
+ *     return (boolean) (mtmp->isshk && ESHK(mtmp)->following);
+ * ESHK(mon) is mon->mextra->eshk (mextra.h); this port keeps it at
+ * mtmp.mextra.eshk, the same spelling js/priest.js:403 and js/shk.js:1571
+ * already read.  Was a throw stub, and levl_follower() reaches it for EVERY
+ * non-tame monster, so the whole stalker arm below was unreachable. */
+export function is_fshk(mtmp) {
+    return !!(mtmp?.isshk && mtmp.mextra?.eshk?.following);
+}
+
+/* C ref: shk.c:567 inside_shop(x,y) — "x,y is strictly inside shop".  Returns
+   the shop's roomno (>= ROOMOFFSET, truthy) or NO_ROOM(0).  A cell counts only
+   when its roomno is a real room, it is NOT an edge (wall) cell, and that room
+   is a shop (rtype >= SHOPBASE).  IS_SHOP(rno-ROOMOFFSET) === rooms[rno-
+   ROOMOFFSET].rtype >= SHOPBASE (mirrors js/shk.js IS_SHOP). */
+export function inside_shop(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc)
+        return NO_ROOM;
+    const rno = loc.roomno | 0;
+    const room = game.level?.rooms?.[rno - ROOMOFFSET];
+    if (rno < ROOMOFFSET || loc.edge || !room || (room.rtype | 0) < SHOPBASE)
+        return NO_ROOM;
+    return rno;
 }

@@ -10,8 +10,9 @@ import { PM_KILLER_BEE, PM_QUEEN_BEE, PM_STONE_GOLEM, PM_DWARF,
 import { FIRE_RES, SLEEP_RES, COLD_RES, DISINT_RES, SHOCK_RES, POISON_RES, ACID_RES, STONE_RES, SICK_RES, TELEPORT, TELEPORT_CONTROL, TELEPAT, STUNNED, DISPLACED } from './const.js';
 import { PM_FLOATING_EYE, PM_MIND_FLAYER, PM_MASTER_MIND_FLAYER, PM_PYROLISK,
          PM_LITTLE_DOG, PM_DOG, PM_LARGE_DOG, PM_KITTEN, PM_HOUSECAT, PM_LARGE_CAT } from './pm.generated.js';
-import { permonstTemplate, olfaction, monPmname, splitobj, attacktype_fordmg, levelDifficulty, mon_set_minvis, monflee } from './makemon.js';
-import { same_race, defended } from './mhitm.js';
+import { permonstTemplate, olfaction, monPmname, splitobj, attacktype_fordmg, levelDifficulty, monflee } from './makemon.js';
+import { mon_set_minvis } from './worn.js';
+import { same_race, defended } from './mondata.js';
 import { monstone as monstone_real } from './dogmove.js';
 import { game, wizard, discover } from './gstate.js';
 import { paranoid_query } from './paranoid.js';
@@ -22,33 +23,38 @@ import { OBJ_FREE, OBJ_INVENT, OBJ_DELETED, SELL_NORMAL, SELL_DONTSELL } from '.
 const BEARTRAP = 244;
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import corpseData from './eat_corpse_data.json' with { type: 'json' };
-import { FOOD_PROPS, eaten_stat as food_eaten_stat } from './food_props.js';
+import { FOOD_PROPS, eaten_stat as food_eaten_stat, obj_nutrition } from './food_props.js';
+import { is_rottable } from './mklev.js';
+import { inv_cnt } from './cmd.js';
+import { set_itimeout } from './potion.js';
+import { pline_The } from './pline.js';
 import { touch_artifact_youmonst } from './wizcmds.js';
-import { pline, canseemon, canspotmon, nh_sprintf, newsym, You_hear, You_feel, Unaware, You_with_output, You_cant,
-         Deaf as hero_Deaf, livelog_printf, retouch_equipment, flush_pending_messages,
-         _topl_merge_result, _topl_joins_snapshot, _topl_stash_result,
-         _topl_record_join, capture_painted_frame_with_status, bot, urgent_pline,
-         _topl_joins_committed, _topl_more_pages, TOPL_LIMIT } from './display.js';
+import { canseemon, canspotmon, nh_sprintf, newsym, Unaware, You_with_output, Deaf as hero_Deaf, retouch_equipment, flush_pending_messages, _topl_merge_result, _topl_joins_snapshot, _topl_stash_result, _topl_record_join, capture_painted_frame_with_status, _topl_joins_committed, _topl_more_pages, TOPL_LIMIT } from './display.js';
+import { bot } from './botl.js';
+import { pline, You_hear, You_feel, You_cant, livelog_printf, urgent_pline } from './pline.js';
 import { stop_occupation } from './allmain.js';
-import { end_running, is_pool_or_lava } from './look.js';
+import { is_pool_or_lava } from './look.js';
+import { end_running } from './hack.js';
 import { PM_ELF as PM_ELF_EAT } from './pm.generated.js';
-import { eos, getrumor, outrumor, BY_COOKIE, mksobj as mksobj_real, slimeproof, polyfood, pline_mon_unported as pline_mon_eat } from './mklev.js';
+import { BY_COOKIE, mksobj as mksobj_real, slimeproof, polyfood, pline_mon_unported as pline_mon_eat } from './mklev.js';
+import { getrumor, outrumor } from './rumors.js';
+import { eos } from './hacklib.js';
 import { discover_object } from './o_init.js';
 import { SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED, STARVED, HUNGER, CONFLICT, SLOW_DIGESTION, REGENERATION, W_ARTI, W_WEP, FROMFORM, W_RINGL, W_RINGR, W_RING, SPINACH_TIN, HEALTHY_TIN, ROTTEN_TIN, HOMEMADE_TIN, NON_PM, A_STR, A_INT, M_ATTK_HIT, M_ATTK_MISS, M_ATTK_AGR_DIED, DIED, KILLED_BY_AN, KILLED_BY, M_AP_MONSTER, NO_KILLER_PREFIX, LIFESAVED, EDOG, STRANGLED, W_ARMOR, W_TOOL, W_AMUL, W_SADDLE, ECMD_OK, ECMD_TIME, GENOCIDED, PANICKED, POISONING, STONING, Upolyd, COST_BITE, LL_CONDUCT, CHOKING, STARVING, MAGICAL_BREATHING, A_LAWFUL } from './const.js';
 /* C ref: invent.c:1752 getobj() — the ONE real (keystroke-consuming) getobj
  * body in this port; js/cmd.js:14406.  eat.js<->cmd.js is already a proven
  * circular import (js/potion.js<->js/cmd.js is the same shape) — safe because
  * nothing here calls it at module-evaluation time. */
-import { getObjFromGetobj, wield_tool as wield_tool_real, costly_alteration, costly_spot,
-         obj_extract_self_general, useup, useupf, freeinv as freeinv_real, carrying as carrying_real } from './cmd.js';
+import { getObjFromGetobj, costly_alteration, costly_spot, obj_extract_self_general, useup, useupf, freeinv as freeinv_real, carrying as carrying_real } from './cmd.js';
+import { wield_tool as wield_tool_real } from './wield.js';
 import { sellobj_state, safe_qbuf as safe_qbuf_real } from './shk.js';
 import { g_at, will_feel_cockatrice as will_feel_cockatrice_real } from './cmd.js';
 import { flush_screen, restore_occupation_topline, restore_command_topline, force_more, topl_park_cursor, _pline_flush_frame_record, pline_flush_point, msgtype_suppressed } from './display.js';
 import { more_experienced, newexplevel } from './uhitm.js';
 import { pluslvl } from './exper.js';
 import { nhgetch } from './input.js';
-import { yn_function, savelife, deadhero, pending_death_is_final,
-         do_death_sequence, done as done_end, delayed_killer } from './end.js';
+import { savelife, deadhero, pending_death_is_final, do_death_sequence, done as done_end, delayed_killer } from './end.js';
+import { yn_function } from './cmd.js';
 /* C trap.c:1046 reset_utrap(msg) — real body lives in js/trap.js (which
  * already imports You from this file, so this is also a circular import,
  * same safety argument as the js/end.js edge above). Not async: it does not
@@ -61,7 +67,7 @@ import { reset_utrap, selftouch, t_at as t_at_real, deltrap as deltrap_real } fr
  * js/cmd.js:9202). No cycle: js/dungeon.js does not import js/eat.js. */
 import { on_level } from './dungeon.js';
 import { can_reach_floor } from './hold_another_object.js';
-import { addinv_nomerge as addinv_nomerge_real } from './hold_another_object.js';
+import { addinv_nomerge as addinv_nomerge_real } from './invent.js';
 import { BLINDED, CONFUSION, HALLUC, HALLUC_RES, LEVITATION, SICK, VOMITING,
          EXPL_FIERY, STONED, UNCHANGING, SICK_ALL, FROMOUTSIDE, INTRINSIC, INVIS as INVIS_PROP, SEE_INVIS as SEE_INVIS_PROP, TIMEOUT, LAST_PROP, AGGRAVATE_MONSTER,
          FAST as FAST_PROP, DEAF as DEAF_PROP, SLIMED as SLIMED_PROP, WOUNDED_LEGS as WOUNDED_LEGS_PROP,
@@ -105,7 +111,8 @@ import { makeplural, the, yobjnam, otense,
 import { the_unique_pm } from './makemon.js';
 import { rndmonnam } from './do_name.js';
 import { observe_object } from './o_init.js';
-import { hcolor, poly_when_stoned as poly_when_stoned_eat } from './mhitm.js';
+import { hcolor } from './mhitm.js';
+import { poly_when_stoned as poly_when_stoned_eat } from './mondata.js';
 import { is_were, you_unwere, set_ulycn, were_beastie } from './were.js';
 import { PM_WERERAT, PM_WEREJACKAL, PM_WEREWOLF } from './pm.generated.js';
 import { polymon, rehumanize, still_chewing, polyself } from './polyself.js';
@@ -118,13 +125,15 @@ import { self_invis_message, make_hallucinated, make_glib, make_vomiting, make_s
  * js/lock.js already imports it the same way (cmd.js -> eat.js is an existing
  * edge, and this closes it, so the import is used LAZILY inside start_tin's
  * tail rather than at module scope). */
-import { set_occupation, dropx, dropy as dropy_real, instapetrify as instapetrify_eat,
-         useup as useup_eat, heal_legs, verbalize, pooleffects_breathless,
-         welded, surface } from './cmd.js';
-import { near_capacity, weight, encumber_msg as encumber_msg_real } from './weight.js';
+import { set_occupation, instapetrify as instapetrify_eat, useup as useup_eat, verbalize, pooleffects_breathless, surface } from './cmd.js';
+import { welded } from './wield.js';
+import { dropx, dropy as dropy_real, heal_legs } from './do.js';
+import { weight, encumber_msg as encumber_msg_real } from './weight.js';
+import { near_capacity } from './hack.js';
 import { obj_here } from './cmd.js';
-import { losehp } from './dokick.js';
-import { obj_resists, make_blinded, explode } from './zap.js';
+import { losehp } from './hack.js';
+import { obj_resists, make_blinded } from './zap.js';
+import { explode } from './explode.js';
 import { Monnam } from './mcastu.js';
 import { mon_nam } from './uhitm.js';
 import { s_suffix } from './mhitm.js';
@@ -133,16 +142,21 @@ import { corpse_xname, CXN_SINGULAR, CXN_ARTICLE, xname as xname_eat, singular, 
 import { mondied } from './makemon.js';
 import { OC_WEIGHT } from './oc_weight.generated.js';
 import { obj_is_pname, getObjDescr } from './objnam.js';
-import { Ring_gone, float_up } from './do_wear.js';
+import { Ring_gone } from './do_wear.js';
+import { float_up } from './trap.js';
 import { set_mimic_blocking } from './sit.js';
 import { see_monsters, putmsghistory, curs_on_u, retouch_object_hero } from './display.js';
-import { rescham, revive_corpse, set_bknown } from './mklev.js';
+import { revive_corpse, set_bknown } from './mklev.js';
+import { rescham } from './mon.js';
 import { perceives } from './mcastu.js';
 import { change_sex } from './polyself.js';
 import { dopotion_unported as dopotion } from './potion.js';
-import { o_unleash, unpunish } from './dig.js';
-import { uwepgone, uqwepgone, uswapwepgone, remove_worn_item } from './steal.js';
-import { useupall, dismount_steed, body_part, trycall } from './cmd.js';
+import { unpunish } from './read.js';
+import { o_unleash } from './apply.js';
+import { remove_worn_item } from './steal.js';
+import { uwepgone, uqwepgone, uswapwepgone } from './wield.js';
+import { useupall, dismount_steed, body_part } from './cmd.js';
+import { trycall } from './do.js';
 import { vault_gd_watching } from './vault.js';
 import { SLEEPY, M_AP_NOTHING, M_AP_OBJECT, DISMOUNT_FELL, GD_EATGOLD, STOMACH } from './const.js';
 
@@ -153,8 +167,16 @@ import { Has_contents } from './const.js';
 /* C you.h:562  #define u_at(x,y) ((x) == u.ux && (y) == u.uy).  This file
  * carried a local `function u_at(x, y) { return true; }` shadow, which made
  * eat.c:3644's resume test unconditionally true. */
-import { u_at } from './const.js';
+import { u_at, M_AP_TYPE } from './const.js';
 import { unmul, nomul } from './allmain.js';
+import { carrying, feel_cockatrice, getobj, will_feel_cockatrice } from './invent.js'; // relocate-fns
+import { encumber_msg } from './pickup.js'; // relocate-fns
+import { check_capacity } from './hack.js'; // relocate-fns
+import { tinnable } from './apply.js'; // relocate-fns
+export { _cnutritE }; // relocate-fns
+export { slime_dialogue, stoned_dialogue } from './timeout.js'; // relocate-fns
+export { PM_GREEN_SLIME_E, _eat_Blind, _eat_Hallucination, _uprop_on, make_stoned }; // relocate-fns
+export { carrying, feel_cockatrice, getobj } from './invent.js'; // relocate-fns
 /* C include/objects.h ring/amulet otyp constants.
  * Ring class SVB base = MKOBJ_SVB_BASES[RING_CLASS=4] = 173 (mkobj_data.js).
  * Amulet class SVB base = MKOBJ_SVB_BASES[AMULET_CLASS=5] = 201 (defsym.h:471
@@ -183,14 +205,6 @@ const PROTECTION = 59;
 /* const M1_METALLIVORE = 0x80000000; */
 /* C hack.h encumbrance levels; SLT_ENCUMBER = 1 = "Burdened". */
 const SLT_ENCUMBER = 1;
-/* near_capacity() — C hack.c:4349; real STR/CON+inventory-weight impl now
- * imported from weight.js (shared faithful impl). */
-/* encumber_msg() stub — C hack.c:4382.
- * Prints an encumbrance message to the player.
- * Not yet ported; called only when STR is restored from negative. */
-async function encumber_msg() {
-    return encumber_msg_real();
-}
 /* C objects.h FOOD_CLASS — fortune cookie otyp.
  * FOOD_CLASS SVB base = MKOBJ_SVB_BASES[FOOD_CLASS=6] = 252.
  * FORTUNE_COOKIE is at offset 37 in the food declaration sequence.
@@ -942,6 +956,19 @@ export async function gethungry() {
     if (u.uinvulnerable || (g.iflags && g.iflags.debug_hunger)) {
         return;
     }
+    /* C eat.c:3174-3179:
+     *   if ((!Unaware || !rn2(10))
+     *       && (carnivorous(gy.youmonst.data) || herbivorous(...) || metallivorous(...))
+     *       && !Slow_digestion)
+     *       u.uhunger--;
+     * Unaware = (gm.multi < 0 && (unconscious() || is_fainted())), read from
+     * the live g.multi; when !Unaware C short-circuits and rn2(10) is not
+     * drawn.  The diet and Slow_digestion terms are RNG-free, so evaluating
+     * them first does not change the draw order.
+     * Diet: _heroMnum() < 0 means "not resolvable", which can only be the
+     * un-polymorphed hero whose role row always eats (C's youmonst.data is
+     * always valid), so it takes C's TRUE.
+     * Slow_digestion = HSlow_digestion || ESlow_digestion (youprop.h:289-291). */
     const multiVal = (g.multi | 0);
     const unaware = (multiVal < 0) && (_unconscious() || is_fainted());
     /* C: (!Unaware || !rn2(10)) — consume rn2(10) only when asleep. */
@@ -1373,108 +1400,6 @@ export function Popeye(threat) {
         return false;
     }
 }
-const _STONED_TEXTS = ['You are slowing down.', 'Your limbs are stiffening.',
-    'Your limbs have turned to stone.', 'You have turned to stone.',
-    'You are a statue.'];
-/* C timeout.c:137 stoned_dialogue(), called from nh_timeout (timeout.c:624)
- * before the generic property countdown.  Ends with exercise(A_DEX, FALSE). */
-export async function stoned_dialogue() {
-    const u = game.u;
-    const i = (u.uprops?.[STONED]?.intrinsic | 0) & TIMEOUT;
-    if (i > 0 && i <= _STONED_TEXTS.length) {
-        let buf = _STONED_TEXTS[_STONED_TEXTS.length - i];
-        if ((((game.youmonst?.data?.mflags1) | 0) & 0x6000) === 0x6000
-            && buf.includes('limbs'))
-            buf = buf.replace('limbs', 'extremities');
-        await urgent_pline(buf);
-        /* nh_timeout runs AFTER the HEAD svm.moves++ (allmain.c:257, timeout.c:624),
-         * so a --More-- this pline raises freezes T: at the CURRENT svm.moves, not
-         * the movemon-turn tag (moves-1) left by an earlier turn's pending line. */
-        if (game._pending_message) game._movemonMsgTurn = game.moves | 0;
-    }
-    switch (i) {
-    case 5:
-        u.uprops[FAST_PROP].intrinsic = 0; /* HFast = 0L */
-        if ((game.multi | 0) > 0) nomul(0);
-        break;
-    case 4:
-        if (!Popeye(STONED)) await stop_occupation();
-        if ((game.multi | 0) > 0) nomul(0);
-        break;
-    case 3:
-        await stop_occupation();
-        nomul(-3);
-        game.multi_reason = 'getting stoned';
-        game.nomovemsg = 'You can move again.';
-        if (_uprop_on(WOUNDED_LEGS_PROP) && !u.usteed) heal_legs(2);
-        break;
-    case 2: {
-        const hd = u.uprops?.[DEAF_PROP];
-        const t = ((hd?.intrinsic | 0) | (u.HDeaf | 0)) & TIMEOUT;
-        if (t > 0 && t < 5) { // C timeout.c:173-174: set the live HDeaf timer too.
-            if (hd) hd.intrinsic = ((hd.intrinsic | 0) & ~TIMEOUT) | 5;
-            u.HDeaf = ((u.HDeaf | 0) & ~TIMEOUT) | 5;
-        }
-        if (_uprop_on(VOMITING)) await make_vomiting(0, false);
-        if (_uprop_on(SLIMED_PROP)) await make_slimed(0, null);
-        break;
-    }
-    default:
-        break;
-    }
-    exercise(A_DEX, false);
-}
-const _SLIME_TEXTS = ['You are turning a little %s.', 'Your limbs are getting oozy.',
-    'Your skin begins to peel away.', 'You are turning into %s.',
-    'You have become %s.'];
-/* C timeout.c:389 slime_dialogue(), called from nh_timeout (timeout.c:626)
- * after stoned_dialogue.  Ends with exercise(A_DEX, FALSE). */
-export async function slime_dialogue() {
-    const u = game.u;
-    const t = (u.uprops?.[SLIMED_PROP]?.intrinsic | 0) & TIMEOUT;
-    const i = Math.trunc(t / 2);
-    if (t === 1) {
-        game.youmonst.m_ap_type = M_AP_MONSTER;
-        game.youmonst.mappearance = PM_GREEN_SLIME_E;
-        newsym(u.ux, u.uy);
-    }
-    if ((t % 2) !== 0 && i >= 0 && i < _SLIME_TEXTS.length) {
-        let buf = _SLIME_TEXTS[_SLIME_TEXTS.length - i - 1];
-        if ((((game.youmonst?.data?.mflags1) | 0) & 0x6000) === 0x6000
-            && buf.includes('limbs'))
-            buf = buf.replace('limbs', 'extremities');
-        if (buf.includes('%s')) {
-            if (i === 4) { /* "you are turning green" */
-                if (!_eat_Blind()) await urgent_pline(buf.replace('%s', hcolor('green')));
-            } else {
-                await urgent_pline(buf.replace('%s',
-                    an_eat(_eat_Hallucination() ? rndmonnam(null) : 'green slime')));
-            }
-        } else {
-            await urgent_pline(buf);
-        }
-    }
-    switch (i) {
-    case 3:
-        u.uprops[FAST_PROP].intrinsic = 0; /* HFast = 0L */
-        if (!Popeye(SLIMED_PROP)) await stop_occupation();
-        if ((game.multi | 0) > 0) nomul(0);
-        break;
-    case 2: {
-        const hd = u.uprops?.[DEAF_PROP];
-        const dt = ((hd?.intrinsic | 0) | (u.HDeaf | 0)) & TIMEOUT;
-        if (dt > 0 && dt < 5) { // C timeout.c:433-434: avoid hearing again too soon.
-            if (hd) hd.intrinsic = ((hd.intrinsic | 0) & ~TIMEOUT) | 5;
-            u.HDeaf = ((u.HDeaf | 0) & ~TIMEOUT) | 5;
-        }
-        break;
-    }
-    case 1:
-        if (_uprop_on(STONED)) await make_stoned(0, null, KILLED_BY_AN, null);
-        break;
-    }
-    exercise(A_DEX, false);
-}
 async function make_stoned(xtime, msg, killedby, killername) {
     /* Keep the canonical async effect in the attack's ordering. */
     await make_stoned_shared(xtime, msg, killedby, killername);
@@ -1848,10 +1773,6 @@ function _oc_delay(otyp) {
     const p = FOOD_PROPS[otyp | 0];
     return p ? (p[0] | 0) : 0;
 }
-function _oc_nutrition(otyp) {
-    const p = FOOD_PROPS[otyp | 0];
-    return p ? (p[1] | 0) : 0;
-}
 const LEMBAS_WAFER_OTYP = 291, CRAM_RATION_OTYP = 292;
 /* C eat.c:338 adj_victual_nutrition — only called when nmod < 0.  nut = -nmod;
  * race-adjusts LEMBAS_WAFER (elf +1/4, orc -1/4) and CRAM_RATION (dwarf +1/6). */
@@ -1878,10 +1799,7 @@ function _adj_victual_nutrition() {
 /* C eat.c:325 obj_nutrition(otmp): CORPSE → mons[corpsenm].cnutrit;
  * globby → owt; else objects[otyp].oc_nutrition (FOOD_PROPS table). */
 function _obj_nutrition(otmp) {
-    if ((otmp.otyp | 0) === CORPSE_OTYP)
-        return _cnutritE(otmp.corpsenm | 0);
-    if (otmp.globby) return otmp.owt | 0;
-    return _oc_nutrition(otmp.otyp | 0); /* non-corpse comestibles: oc_nutrition */
+    return obj_nutrition(otmp); /* js/food_props.js — the one port */
 }
 function _eat_carried(obj) {
     for (let o = game.invent; o; o = o.nobj)
@@ -1890,10 +1808,7 @@ function _eat_carried(obj) {
 }
 /* C ref: hack.c:4495 inv_cnt(incl_gold). */
 function _eat_inv_cnt(incl_gold) {
-    let ct = 0;
-    for (let o = game.invent; o; o = o.nobj)
-        if (incl_gold || (o.invlet | 0) !== 0x24 /* GOLD_SYM */) ct++;
-    return ct;
+    return inv_cnt(incl_gold); /* js/cmd.js — the one port */
 }
 /* C ref: invent.c freeinv(obj) — extract_nobj(obj, &gi.invent); pickup_prev=0;
  * share freeinv_core() and update_inventory(), including non-food meals. */
@@ -1972,11 +1887,11 @@ async function touchfood(otmp) {
         /* C eat.c:371 — costly_alteration before assigning fresh nutrition.
          * cmd.js's exported helper is the canonical mkobj.c:744 path. */
         await costly_alteration(otmp, COST_BITE);
-        otmp.oeaten = _obj_nutrition(otmp);
+        otmp.oeaten = obj_nutrition(otmp); /* C eat.c:371 */
     }
     if (_eat_carried(otmp)) {
         await _eat_freeinv(otmp);
-        if (_eat_inv_cnt(false) >= 52 /* invlet_basic */) {
+        if (inv_cnt(false) >= 52 /* invlet_basic */) { /* C eat.c:376 */
             /* C eat.c:377-382 — a full pack cannot assign the bitten piece a
              * distinct inventory letter. Drop it without offering it to a
              * shopkeeper, then honor dropy's destructive terrain/trap result:
@@ -2160,16 +2075,10 @@ function _emit_eat_pline(msg) {
     _pline_flush_frame_record(prev.length, String(msg));
 }
 
-/* C objclass.h enum obj_material_types — only the two values is_rottable reads. */
-const MAT_LIQUID = 1;
-const MAT_WOOD = 8;
-/* C mkobj.h:34 is_rottable(otmp):
- *     objects[otmp->otyp].oc_material <= WOOD
- *     && objects[otmp->otyp].oc_material != LIQUID
- * A corpse is FLESH (4), so it is rottable. */
+/* C mkobj.c:2289-2296 is_rottable: (<= WOOD && != LIQUID) || == DRAGON_HIDE.
+ * The local copy here dropped the DRAGON_HIDE term; forward to the one port. */
 function _is_rottable(otmp) {
-    const m = MKOBJ_OC_MATERIAL[otmp.otyp | 0] | 0;
-    return m <= MAT_WOOD && m !== MAT_LIQUID;
+    return is_rottable(otmp);
 }
 /* C eat.c:2490-2506 foodword(otmp).  The table's order is exactly the
  * obj_material_types enum's; index 0 (NO_MATERIAL) is "meal". */
@@ -2210,18 +2119,6 @@ function _eat_Hallucination() { return _uprop_on(HALLUC) && !_uprop_on(HALLUC_RE
 function _eat_HConfusion() {
     return (game.u?.uprops?.[CONFUSION]?.intrinsic) | 0;
 }
-function _eat_make_blinded(xtime) {
-    const u = game.u;
-    if (!u) return;
-    u.uprops = u.uprops || {};
-    u.uprops[BLINDED] = u.uprops[BLINDED] || { intrinsic: 0, extrinsic: 0, blocked: 0 };
-    const p = u.uprops[BLINDED];
-    let v = xtime | 0;
-    if (v > 0x00ffffff) v = 0x00ffffff;
-    if (v < 0) v = 0;
-    p.intrinsic = ((p.intrinsic | 0) & ~0x00ffffff) | v;
-}
-
 export function Hear_again() {
     if (!rn2(2)) {
         // With talk=false the async setter completes all state writes synchronously.
@@ -2240,7 +2137,7 @@ async function rottenfood(obj) {
      * just as the ordinary corpse-flavor pline does at eat.c:2002. */
     game._eatPreEffectFrame = capture_painted_frame_with_status();
     /* C eat.c:1815-1816 pline("Blecch!  %s %s!", ...) */
-    await pline(`Blecch!  ${_is_rottable(obj) ? 'Rotten' : 'Awful'} ${_foodword(obj)}!`);
+    await pline(`Blecch!  ${is_rottable(obj) ? 'Rotten' : 'Awful'} ${_foodword(obj)}!`);
     if (!rn2(4)) { /* C eat.c:1817 */
         /* C eat.c:1818-1821 */
         /* C eat.c:1821 body_part(LIGHT_HEADED): polymorphed forms differ
@@ -2280,14 +2177,19 @@ async function rottenfood(obj) {
             what = 'you slap against the';
             where = game.u?.usteed ? 'saddle' : surface(game.u.ux, game.u.uy);
         }
-        await pline(`The world spins and ${what} ${where}.`);
+        await pline_The(`world spins and ${what} ${where}.`); /* C eat.c:1840 */
         /* C eat.c:1845-1846 incr_itimeout(&HDeaf, duration); disp.botl = TRUE.
          * HDeaf is u.HDeaf in this port — the same slot js/monmove.js:1762 and
          * js/cmd.js:8016 read for the Deaf macro.  RNG-free, but Hear_again
          * below clears it and its rn2(2) is not. */
         {
             const _u = game.u || (game.u = {});
-            _u.HDeaf = (_u.HDeaf | 0) + duration;
+            /* C potion.c incr_itimeout: set_itimeout(which,
+             * itimeout_incr(*which, incr)) — clamp to [0, TIMEOUT], keep the
+             * non-timeout bits. */
+            const _w = { value: _u.HDeaf | 0 };
+            set_itimeout(_w, (_w.value & TIMEOUT) + duration);
+            _u.HDeaf = _w.value;
             game.disp = game.disp || {};
             game.disp.botl = 1;
         }
@@ -4651,24 +4553,23 @@ export async function cpostfx(pm) {
  * Updates the hero's mimicking message and appearance. */
 export function eatmupdate() {
     const g = game;
+    let altmsg = null;
+    let altapp = 0; /* lint suppression */
+
     if (!g.eatmbuf || g.nomovemsg !== g.eatmbuf)
         return;
-    if (((g.youmonst.m_ap_type | 0) & 7) !== M_AP_OBJECT) return;
 
-    /* objects.h FOOD() run: ORANGE = 278 (svb.bases[FOOD_CLASS=7] = 264).
-     * 15 was the ILLOBJ placeholder "generic iron ball", so neither arm of
-     * eatmupdate's mappearance test could ever fire on the orange. */
-    const ORANGE = 278;
-    const GOLD_PIECE = 438; /* confirmed in mklev.js */
+    /* C monst.h is_obj_mappear(mon, otyp):
+     *   M_AP_TYPE(mon) == M_AP_OBJECT && mon->mappearance == otyp */
+    const is_obj_mappear = (mon, otyp) =>
+        M_AP_TYPE(mon) === M_AP_OBJECT && mon.mappearance === otyp;
+    const ORANGE = 278, GOLD_PIECE = 438; /* C objects.h otyps */
 
-    let altmsg = null;
-    let altapp = 0;
-
-    if (g.youmonst.mappearance === ORANGE && !_eat_Hallucination()) {
+    if (is_obj_mappear(g.youmonst, ORANGE) && !_eat_Hallucination()) {
         /* revert from hallucinatory to "normal" mimicking */
         altmsg = "You now prefer mimicking yourself.";
         altapp = GOLD_PIECE;
-    } else if (g.youmonst.mappearance === GOLD_PIECE && _eat_Hallucination()) {
+    } else if (is_obj_mappear(g.youmonst, GOLD_PIECE) && _eat_Hallucination()) {
         /* won't happen; anything which might make immobilized
            hero begin hallucinating (black light attack, theft
            of Grayswandir) will terminate the mimicry first */
@@ -4677,14 +4578,10 @@ export function eatmupdate() {
     }
 
     if (altmsg) {
-        /* replace end-of-mimicking message */
-        const amlen = altmsg.length;
-        if (amlen > (g.eatmbuf ? g.eatmbuf.length : 0)) {
-            /* free old buffer; alloc new — in JS just reassign */
-        }
-        /* strcpy(ge.eatmbuf, altmsg): copy altmsg into eatmbuf */
+        /* replace end-of-mimicking message; C's free/alloc of a larger
+         * buffer (eat.c:203-207) is the string reassignment here. */
         g.eatmbuf = altmsg;
-        g.nomovemsg = g.eatmbuf;
+        g.nomovemsg = g.eatmbuf; /* C eat.c:208 strcpy */
         /* update current image */
         g.youmonst.mappearance = altapp;
         newsym(g.u.ux, g.u.uy);
@@ -4819,10 +4716,6 @@ async function _put_eat_message(msg) {
         game._prevmsg = msg;
     }
 }
-export function carrying(otyp) { return carrying_real(otyp); }
-export async function getobj(verb, callback, flags) {
-    return await getObjFromGetobj(verb, callback, flags);
-}
 export async function safe_qbuf(qbuf, prefix, suffix, obj, fn1, fn2, that) {
     // C objnam.c:5623-5698: use the shared length-bounded prompt formatter.
     return await safe_qbuf_real(qbuf, prefix, suffix, obj, fn1, fn2, that);
@@ -4871,7 +4764,7 @@ export async function floorfood(verb, corpsecheck) {
             let qbuf = "There is a bear trap here (" +
                        (u_in_beartrap ? "holding you" : "armed") +
                        "); eat it?";
-            let c = await yn_function(qbuf, ynqchars, 'n');
+            let c = await yn_function(qbuf, ynqchars, 'n', true);
             if (c === 'y') {
                 deltrap(ttmp);
                 if (u_in_beartrap)
@@ -4908,7 +4801,7 @@ export async function floorfood(verb, corpsecheck) {
                               && u_at(dig.pos.x, dig.pos.y)
                               && on_level(dig.level, u.uz));
                 qbuf += resume ? "; resume eating them?" : "; eat them?";
-                c = await yn_function(qbuf, ynqchars, 'n');
+                c = await yn_function(qbuf, ynqchars, 'n', true);
             }
             if (c === 'y')
                 return hands_obj;
@@ -4929,7 +4822,7 @@ export async function floorfood(verb, corpsecheck) {
                 qbuf = "There is 1 gold piece here; eat it?";
             else
                 qbuf = "There are " + gold.quan + " gold pieces here; eat them?";
-            let c = await yn_function(qbuf, ynqchars, 'n');
+            let c = await yn_function(qbuf, ynqchars, 'n', true);
             if (c === 'y') {
                 return gold;
             } else if (c === 'q') {
@@ -4966,7 +4859,7 @@ export async function floorfood(verb, corpsecheck) {
             /* C eat.c:3695-3696 — safe_qbuf(..., doname, ansimpleoname, ...) */
             qbuf = (await safe_qbuf_real(qbuf, qbuf, qsfx, otmp, doname, ansimpleoname,
                              one ? "something" : "things"));
-            let c = await yn_function(qbuf, ynqchars, 'n');
+            let c = await yn_function(qbuf, ynqchars, 'n', true);
             if (c === 'y')
                 return otmp;
             else if (c === 'q') {
@@ -5008,43 +4901,7 @@ export async function floorfood(verb, corpsecheck) {
     return otmp;
 }
 
-/* C ref: pline.c You_cant(const char *line, ...) — "You can't %s!". */
-/* C ref: hack.c:4370 check_capacity(str) —
- *     if (near_capacity() >= EXT_ENCUMBER) {
- *         if (str) pline(str); else You_cant("do that while carrying so much stuff.");
- *         return TRUE;
- *     }
- *     return FALSE;
- * EXT_ENCUMBER = 4 (hack.h encumbrance levels: Unencumbered=0, Burdened=1,
- * Stressed=2, Strained=3, Overtaxed=4, Overloaded=5) — same threshold
- * js/cmd.js's own check_capacity uses. */
-const EAT_EXT_ENCUMBER = 4;
-async function check_capacity(qbuf) {
-    if (near_capacity() >= EAT_EXT_ENCUMBER) {
-        if (qbuf) await pline(qbuf);
-        else await You_cant('do that while carrying so much stuff.');
-        return true;
-    }
-    return false;
-}
 async function dropy(obj) { return await dropy_real(obj); }
-export async function feel_cockatrice(obj, force) {
-    if (!will_feel_cockatrice(obj, force)) return;
-    /* C invent.c:4348-4361: "the <cockatrice> corpse" via corpse_xname */
-    const name = corpse_xname(obj, null, 4 /* CXN_PFX_THE */);
-    if (game.youmonst?.data && poly_when_stoned_eat(game.youmonst.data))
-        await pline(`You touched ${name} with your bare ${makeplural(body_part(HAND))}.`);
-    else
-        await pline(`Touching ${name} is a fatal mistake...`);
-    await instapetrify_eat(`touching ${killer_xname(obj)} bare-handed`);
-}
-export function tinnable(corpse) {
-    if (corpse.oeaten | 0)
-        return false;
-    if (!_cnutritE(corpse.corpsenm | 0))
-        return false;
-    return true;
-}
 /* C ref: dbridge.c:46-83 is_pool_or_lava — real body imported above from
  * js/look.js, which this file already imports from (end_running). */
 const M1_CLING_E = 0x00000010;
@@ -5059,9 +4916,6 @@ function deltrap(ttmp) { return deltrap_real(ttmp); }
 async function mksobj(otyp, init, artif) { return await mksobj_real(otyp, init, artif); }
 function obj_extract_self(obj) {
     return obj_extract_self_general(obj);
-}
-function will_feel_cockatrice(obj, force) {
-    return will_feel_cockatrice_real(obj, force);
 }
 /* C ref: eat.c:3517 eat_ok(obj) — getobj's callback for the 'eat' command.
  *
@@ -5086,26 +4940,32 @@ function eat_ok(obj) {
     if ((obj.oclass | 0) === COIN_CLASS) return 0; /* GETOBJ_EXCLUDE */
     return -3; /* GETOBJ_EXCLUDE_SELECTABLE */
 }
+/* C eat.c:3539 offer_ok — same getObjFromGetobj-local numbering as eat_ok. */
 function offer_ok(obj) {
-    if (!obj) return (game.getobj_else | 0) ? -2 : 0;
+    /* C eat.c:3541-3542:
+     *   if (!obj) return getobj_else ? GETOBJ_EXCLUDE_NONINVENT : GETOBJ_EXCLUDE; */
+    if (!obj) return (game.getobj_else | 0) ? -2 /* GETOBJ_EXCLUDE_NONINVENT */
+                                             : 0 /* GETOBJ_EXCLUDE */;
     if ((obj.oclass | 0) !== FOOD_CLASS && (obj.oclass | 0) !== AMULET_CLASS)
-        return 0;
+        return 0; /* GETOBJ_EXCLUDE */
     if ((obj.otyp | 0) !== CORPSE_OTYP
         && (obj.otyp | 0) !== 213 /* AMULET_OF_YENDOR */
         && (obj.otyp | 0) !== 212 /* FAKE_AMULET_OF_YENDOR */)
-        return -3;
+        return -3; /* GETOBJ_EXCLUDE_SELECTABLE */
     const astral = Is_astralevel(game.u?.uz);
     if (astral !== ((obj.oclass | 0) === AMULET_CLASS))
         return 1; /* GETOBJ_DOWNPLAY */
     return 2; /* GETOBJ_SUGGEST */
 }
+/* C eat.c:3561 tin_ok — the one port; js/cmd.js's tinning kit uses it too. */
 export function tin_ok(obj) {
-    if (!obj) return (game.getobj_else | 0) ? -2 : 0;
+    if (!obj) return (game.getobj_else | 0) ? -2 /* GETOBJ_EXCLUDE_NONINVENT */
+                                             : 0 /* GETOBJ_EXCLUDE */;
     if ((obj.oclass | 0) !== FOOD_CLASS)
-        return 0;
+        return 0; /* GETOBJ_EXCLUDE */
     if ((obj.otyp | 0) !== CORPSE_OTYP || !tinnable(obj))
-        return -3;
-    return 2;
+        return -3; /* GETOBJ_EXCLUDE_SELECTABLE */
+    return 2; /* GETOBJ_SUGGEST */
 }
 function impossible(_fmt, ..._args) { /* no-op — see note above */ }
 

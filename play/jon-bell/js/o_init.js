@@ -6,7 +6,7 @@
 //
 // Object type ordinals: from nethack-c/include/objects.h enum (post-SCR_MAIL fix).
 import { game, wizard } from './gstate.js';
-import { yn_function } from './end.js';
+import { yn_function } from './cmd.js';
 import { maxledgerno } from './dungeon.js';
 import { rn2, pushRngLogEntry } from './rng.js';
 import { exercise } from './attrib.js';
@@ -37,15 +37,15 @@ import { Japanese_item_name, getObjDescr } from './objnam.js';
 import { HALLUC, HALLUC_RES } from './const.js';
 import { TtyMenu, PICK_ONE, ATR_NONE, menu_heading_attr_text } from './tty_menu.js';
 import { display_text_window } from './com_pager.js';
-import { pline, flush_screen, raw_print_wait, impossible_sync } from './display.js';
+import { flush_screen, raw_print_wait, impossible_sync } from './display.js';
+import { pline } from './pline.js';
 import { impossible } from './pline.js';
-import { config_error_add } from './cmd_binds.js';
+import { config_error_add } from './cfgfiles.js';
 import { OC_USES_KNOWN } from './mklev.js';
 import { ARTILIST, quest_info, simple_typename } from './objnam.js';
 import { ARTI_PROPS, ARTI_GIFT_ROLE } from './wizcmds.js';
 import { A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC } from './const.js';
-import { _interesting_to_discover, _disco_typename, _disco_append_price_quote,
-    _sortloot_classify, disco_fmt_uniq, OCLASS_NAME, INV_ORDER, align_str } from './cmd.js';
+import { _interesting_to_discover, _disco_typename, _disco_append_price_quote, _sortloot_classify, OCLASS_NAME, INV_ORDER, align_str } from './cmd.js';
 
 /* C ref: include/objects.h:80-108 — MARKER(FIRST_OBJECT, LAST_GENERIC + 1),
  * with LAST_GENERIC == GENERIC_VENOM, the seventeenth and last GENERIC() row.
@@ -513,6 +513,9 @@ function MKOBJ_OC_CLASS_LOCAL(otyp) {
 // C owns skill-based recognition in spell.c; retain the old import path.
 export { skill_based_spellbook_id } from './spell.js';
 import { ENV } from './hostenv.js';
+import { display_text_window as _display_text_window } from './com_pager.js'; // relocate-fns
+import { ECMD_OK } from './const.js'; // relocate-fns
+import { objName as _objName_full } from './objnam.js'; // relocate-fns
 /* Fixed (non-shuffled) descriptions for weapons, from WEAPON_TABLE; null when
  * the type is outside the weapon range or has no description (NoDes). */
 function _fixedDescrOf(otyp) {
@@ -742,4 +745,91 @@ export function discovery_class_title(oclass) {
     const order = game.flags.discosort === 'o' ? 'order of discovery'
         : game.flags.discosort === 's' ? "'sortloot' order" : 'alphabetical order';
     return `Discovered ${OCLASS_NAME[oclass]} in ${order}`;
+}
+
+// C o_init.c:726 disco_fmt_uniq: relics use their bare name or appearance,
+// with no discovery marker, annotation, or parenthesized appearance.
+export function disco_fmt_uniq(otyp) {
+    const known = !!game._oc_name_known?.[otyp];
+    const name = known ? _objName_full(otyp) : getObjDescr(otyp);
+    return `  ${name}${!known && otyp === 409 ? ' spellbook' : ''}`;
+}
+
+export async function dodiscovered() {
+    if (!await prepare_discoveries(1)) return ECMD_OK;
+    const g = game;
+    /* C o_init.c:764-868 lists existing discoveries; viewing the list does
+     * not observe objects in monsters' inventories. */
+    const disco = g._disco || {};
+    const enc = g._oc_encountered || {};
+    /* C o_init.c:817-819: use packorder, then append VENOM. */
+    const classes = (g.flags?.inv_order || INV_ORDER).slice();
+    if (!classes.includes(17)) classes.push(17);
+    /* C: putstr title "Discoveries, %s" with disco_orders_descr[sortindx];
+     * default sort 'o' → "by order of discovery within each class". */
+    const lines = [`Discoveries, ${get_sortdisco()}`, ''], sorted_lines = [];
+    let ct = 0;
+    /* C o_init.c:547-560 — unique objects are emitted first under a
+     * pseudo-class; C also shows them again in their regular class below. */
+    const uniqueDiscoveryTypes = [213 /* AMULET_OF_YENDOR */, 263 /* BELL_OF_OPENING */, 409 /* BOOK_OF_THE_DEAD */, 262 /* CANDELABRUM_OF_INVOCATION */];
+    let uniqueHeader = false;
+    for (const utyp of uniqueDiscoveryTypes) {
+        /* C o_init.c:803-805 — the Amulet of Yendor is excluded when merely
+         * encountered; every other unique object is included on encounter. */
+        const known = !!(g._oc_name_known && g._oc_name_known[utyp]);
+        if (!(known || (enc[utyp] && utyp !== 213)))
+            continue;
+        if (!uniqueHeader) {
+            lines.push(menu_heading_attr_text('Unique items or Relics'));
+            uniqueHeader = true;
+        }
+        ct++;
+        lines.push(disco_fmt_uniq(utyp));
+    }
+    /* C o_init.c:814; artifact.c:1147-1176, with hack_artifacts():88-105. */
+    for (const [i, art] of (g.artidisco || []).entries()) {
+        if (!art) break;
+        if (i === 0) lines.push(menu_heading_attr_text('Artifacts'));
+        const { name, otyp } = ARTILIST[art - 1];
+        let al = ARTI_PROPS[art].al;
+        if ((al !== A_NONE && ARTI_GIFT_ROLE[art] === g.flags.initrole)
+            || art === quest_info(0))
+            al = [A_LAWFUL, A_NEUTRAL, A_CHAOTIC][g.flags.initalign];
+        const algnstr = al === A_NONE ? 'non-aligned' : align_str(al);
+        lines.push(`  ${name} [${algnstr} ${simple_typename(otyp)}]`);
+        ct++;
+    }
+    for (const oclass of classes) {
+        if (g.flags.discosort !== 'a') disco_output_sorted(lines, sorted_lines);
+        const list = disco[oclass];
+        if (!list || list.length === 0)
+            continue;
+        let prev_class = oclass + 1;
+        for (const dis of list) {
+            /* C o_init.c:828 — the disco[] walk is FILTERED by
+             * interesting_to_discover(). */
+            if (!dis || !_interesting_to_discover(dis))
+                continue;
+            ct++;
+            if (oclass !== prev_class) {
+                const header = OCLASS_NAME[oclass];
+                if (header && g.flags.discosort !== 'a')
+                    lines.push(menu_heading_attr_text(header));
+                prev_class = oclass;
+            }
+            /* C o_init.c:844: buf = oc_encountered ? "  " : "* " */
+            const prefix = enc[dis] ? '  ' : '* ';
+            (g.flags.discosort === 'o' ? lines : sorted_lines).push(discovery_line(dis, prefix));
+        }
+    }
+    disco_output_sorted(lines, sorted_lines, uniqueHeader || !!g.artidisco?.[0]);
+    if (ct === 0) {
+        /* C: You("haven't discovered anything yet..."); (a pline, not a window) */
+        await pline("You haven't discovered anything yet...");
+        return ECMD_OK;
+    }
+    await _display_text_window(lines);
+    await flush_screen(1);
+    /* C: this handler returns ECMD_OK on every path; rhack() maps it. */
+    return ECMD_OK;
 }

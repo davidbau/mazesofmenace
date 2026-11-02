@@ -1,16 +1,16 @@
-import { urgent_pline, pline_The } from './display.js';
-import { pline_mon as pline_mon_real } from './display.js';
+import { urgent_pline, pline_The } from './pline.js';
+import { pline_mon as pline_mon_real } from './pline.js';
 import { Monnam as Monnam_real } from './uhitm.js';
 import { Mgender } from './do_name.js';
 import { u_carried_gloves, set_msg_xy as set_msg_xy_mu, reset_occupations } from './cmd.js';
 import { registerStaticReset } from './statics.js';
-import { yyyymmdd } from './allmain.js';
+import { yyyymmdd } from './calendar.js';
 import { attacktype_fordmg } from './makemon.js';
 import { drain_item } from './zap.js';
-import { stagger } from './mhitm.js';
+import { stagger } from './mondata.js';
 import { tele_restrict } from './teleport.js';
 let mon_currwep = null;
-import { spoteffects } from './landing-effects.js';
+import { spoteffects } from './hack.js';
 // @ts-nocheck
 /* js/mhitu.js — gazemu(): monster gaze attack on hero.
  * C ref: nethack-c/src/mhitu.c:1662-1893
@@ -36,14 +36,17 @@ import { spoteffects } from './landing-effects.js';
  */
 import { game } from './gstate.js';
 import { freehand } from './engrave.js';
-import { get_atkdam_type, is_youmonst as is_youmonst_mu, ugolemeffects as ugolemeffects_mh,
-         seemimic as seemimic_real, killed as killed_real } from './mhitm.js';
-import { erode_armor as erode_armor_um, mon_hates_blessings } from './mhitm.js';
+import { is_youmonst as is_youmonst_mu, ugolemeffects as ugolemeffects_mh, seemimic as seemimic_real, killed as killed_real } from './mhitm.js';
+import { get_atkdam_type } from './mondata.js';
+import { erode_armor as erode_armor_um } from './mhitm.js';
+import { mon_hates_blessings } from './mondata.js';
 import monKbMsizePack from './makemon_msize.json' with { type: 'json' };
 import monKbMattkPack from './makemon_mattk.json' with { type: 'json' };
 import monKbMonsPack from './makemon_mons.json' with { type: 'json' };
 import { rn2, rn1, rnd, d, pushRngLogEntry } from './rng.js';
-import { pline, urgent_pline as urgent_pline_disp, newsym, mon_visible as mon_visible_disp, canspotmon as canspotmon_disp, map_invisible, glyph_is_invisible_at, tmp_at, obj_to_glyph, DISP_END, DISP_FLASH, DISP_TETHER, DISP_FREEMEM, Unaware as Unaware_real, shieldeff, _topline_more_pending, _more_never_dismissed, flush_pending_messages, bot as bot_um } from './display.js';
+import { newsym, mon_visible as mon_visible_disp, canspotmon as canspotmon_disp, map_invisible, glyph_is_invisible_at, tmp_at, obj_to_glyph, DISP_END, DISP_FLASH, DISP_TETHER, DISP_FREEMEM, Unaware as Unaware_real, shieldeff, _topline_more_pending, _more_never_dismissed, flush_pending_messages } from './display.js';
+import { bot as bot_um } from './botl.js';
+import { pline, urgent_pline as urgent_pline_disp } from './pline.js';
 import { m_at as uhitm_m_at, hitval, mon_wield_item, dmgval, select_rwep, spec_abon,
          resists_fire as resists_fire_um, resists_elec as resists_elec_um,
          golemeffects as golemeffects_um } from './uhitm.js';
@@ -88,7 +91,8 @@ import { losexp } from './exper.js';
  * grabbed" arm (uhitm.c:4030), RNG-free (FALSE == decrement, no rn2). */
 import { exercise, adjattrib, get_artifact, ART_NONARTIFACT, arti_spfx, arti_cspfx } from './attrib.js';
 import { eat_brains } from './eat.js';
-import { losespells, drain_weapon_skill } from './read.js';
+import { drain_weapon_skill } from './weapon.js';
+import { losespells } from './spell.js';
 /* Object metadata extracted from compiled include/objects.h; pure data module. */
 import { MKOBJ_OC_OPROP, MKOBJ_OC_MAGIC } from './mkobj_erosion_meta.js';
 /* C monst.h PM_ROPE_GOLEM — mhitm_ad_phys_u's AT_HUGS choke-vs-crush wording
@@ -97,10 +101,10 @@ import { PM_ROPE_GOLEM as PM_ROPE_GOLEM_MU } from './pm.generated.js';
 import { set_apparxy as set_apparxy_kb, dissolve_bars } from './monmove.js';
 /* C uhitm.c:3866 -> pline.c:387-400: Death's touch uses the dream
  * prefix while the hero is unaware, just like other You_feel messages. */
-import { You_hear, You_feel as You_feel_mu } from './display.js';
+import { You_hear, You_feel as You_feel_mu } from './pline.js';
 import { impossible as impossible_breath } from './pline.js';
-import { snuff_lit as snuff_lit_mu, cmdq_clear, catch_lit as catch_lit_mu, hurtle as hurtle_cmd, test_move as test_move_kb,
-         mhurtle as mhurtle_kb, will_hurtle as will_hurtle_mu } from './cmd.js';
+import { snuff_lit as snuff_lit_mu, cmdq_clear, catch_lit as catch_lit_mu, test_move as test_move_kb } from './cmd.js';
+import { hurtle as hurtle_cmd, mhurtle as mhurtle_kb, will_hurtle as will_hurtle_mu } from './dothrow.js';
 import { m_is_steadfast as m_is_steadfast_kb } from './uhitm.js';
 import { W_SADDLE as W_SADDLE_KB, DISMOUNT_KNOCKED as DISMOUNT_KNOCKED_KB } from './const.js';
 import { mbodypart as mbodypart_mu, snuff_candle as snuff_candle_mu } from './cmd.js';
@@ -109,7 +113,9 @@ import { mbodypart as mbodypart_mu, snuff_candle as snuff_candle_mu } from './cm
 import { subfrombill as subfrombill_real, shop_keeper as shop_keeper_real } from './shk.js';
 /* mwelded (C wield.c:1072) is used at the autoreturn_weapon arm below; the
    binding was never imported, so reaching that arm threw a ReferenceError. */
-import { mwelded, welded, showdamage as showdamage_mu, growl_sound } from './cmd.js';
+import { showdamage as showdamage_mu } from './cmd.js';
+import { growl_sound } from './sounds.js';
+import { mwelded, welded } from './wield.js';
 import { make_confused, make_stoned, make_sick, potionhit } from './potion.js';
 import { STONING as STONING_MU } from './const.js';
 import { SICK_RES as SICK_RES_MU, SICK_NONVOMITABLE as SICK_NONVOMITABLE_MU } from './const.js';
@@ -124,21 +130,26 @@ import { destroy_items as destroy_items_zap, destroy_items_mon as destroy_items_
 import { mon_nam as uhitm_mon_nam } from './uhitm.js';
 import { xkilled as xkilled_uh, XKILL_NOMSG as XKILL_NOMSG_UH } from './uhitm.js';
 import { dmgtype, mattackm, can_carry as can_carry_mu, rustm as rustm_mu } from './dogmove.js';
-import { name_to_mon, permonstTemplate, gender, poly_gender, find_offensive, lined_up, monflee, pmname } from './makemon.js';
-import { noteleport_level as noteleport_level_mu, Inhell } from './makemon.js';
+import { name_to_mon, permonstTemplate, gender, poly_gender, find_offensive, monflee } from './makemon.js';
+import { pmname } from './do_name.js';
+import { lined_up } from './mthrowu.js';
+import { Inhell } from './makemon.js';
+import { noteleport_level as noteleport_level_mu } from './teleport.js';
 /* js/mhitu.js:262 declares a local `mon_nam` stub that returns the literal
  * "monster"; tele_restrict's pline needs the real uhitm.c:232 body. */
 import { mon_nam as mon_nam_uh, sr_oc_material as sr_oc_material_mu, cloneu as cloneu_mu } from './uhitm.js';
 import { PM_BLACK_PUDDING as PM_BLACK_PUDDING_MU, PM_BROWN_PUDDING as PM_BROWN_PUDDING_MU } from './pm.generated.js';
 /* C mondata.c:1367 locomotion() — the "tries to run away with" verb. */
-import { locomotion, m_monnam as m_monnam_mu } from './mhitm.js';
+import { m_monnam as m_monnam_mu } from './mhitm.js';
+import { locomotion } from './mondata.js';
 /* C mhitu.c:1176 Amonnam(mtmp) — the hider-reveal message's subject. */
 import { Amonnam as Amonnam_mu } from './mhitm.js';
 import { mksobj, split_mon_ml } from './mklev.js';
 /* C mthrowu.c:190 drop_throw -> stackobj(obj) (mkobj.c:2170). */
 import { stackobj } from './sp_lev.js';
 import { worm_move } from './worm.js';
-import { nomul, unmul, night, midnight, stop_occupation as real_stop_occupation } from './allmain.js';
+import { nomul, unmul, stop_occupation as real_stop_occupation } from './allmain.js';
+import { night, midnight } from './calendar.js';
 import { is_were as is_were_real, new_were as new_were_real,
          were_summon as were_summon_real, set_ulycn as set_ulycn_real } from './were.js';
 import { you_were, you_unwere } from './were.js';
@@ -161,7 +172,7 @@ import { ureflects as ureflects_mm } from './makemon.js';
  * cycle). js/dogmove.js ALSO carries a same-named
  * `function poly_when_stoned(data) { return false; }` stub — do not pick it
  * by filename; the mhitm.js one is the real body. */
-import { poly_when_stoned as poly_when_stoned_mh } from './mhitm.js';
+import { poly_when_stoned as poly_when_stoned_mh } from './mondata.js';
 /* C timeout.c:955-980 fall_asleep(how_long,wakeup_msg) — RNG-free. */
 import { fall_asleep as fall_asleep_to } from './timeout.js';
 /* C mondata.c:1557-1568 monstseesu(seenres) — RNG-free. The real port lives
@@ -170,43 +181,47 @@ import { fall_asleep as fall_asleep_to } from './timeout.js';
  * carries a same-named copy but it is a local, unexported stub there — do
  * not pick it by filename. */
 import { monstseesu as monstseesu_mc, monstunseesu as monstunseesu_mc } from './mcastu.js';
-import { bot as bot_mu, retouch_equipment as retouch_equipment_mu } from './display.js';
+import { retouch_equipment as retouch_equipment_mu } from './display.js';
+import { bot as bot_mu } from './botl.js';
 /* C display.c:2064 cls()'s opening display_nhwindow(WIN_MESSAGE, FALSE) — the
  * page this port's cls() does not do (see expels_gu). */
 import { force_more_pages as force_more_pages_mu,
          _topl_merge_result as _topl_merge_result_mu,
          _topl_joins_snapshot as _topl_joins_snapshot_mu } from './display.js';
 import { cansee as cansee_mu, vision_recalc as vision_recalc_mu } from './vision.js';
-import { is_waterwall as is_waterwall_mu, breaks as breaks_mu } from './dokick.js';
+import { breaks as breaks_mu } from './dothrow.js';
+import { is_waterwall as is_waterwall_mu } from './dbridge.js';
 import { harmless_missile as harmless_missile_mu } from './throw_vertical.js';
 /* explmu's callees (C mhitu.c:1589-1665).  Every one of these has a REAL body
  * elsewhere in js/ and this file carries a file-local no-op or `return false`
  * shadow of two of them (resists_blnd at :220, make_blinded at :314), so the
  * real ones are imported under aliases rather than reached by bare name. */
-import { mon_explodes as mon_explodes_mu, make_blinded as make_blinded_real_mu,
-         BlindedTimeout as BlindedTimeout_mu } from './zap.js';
+import { make_blinded as make_blinded_real_mu, BlindedTimeout as BlindedTimeout_mu } from './zap.js';
+import { mon_explodes as mon_explodes_mu } from './explode.js';
 import { make_hallucinated as make_hallucinated_mu } from './potion.js';
-import { mondead as mondead_mu, wake_nearto as wake_nearto_mu } from './mklev.js';
-import { ugolemeffects as ugolemeffects_mu, resists_blnd as resists_blnd_real_mu, defended as defended_mu } from './mhitm.js';
+import { mondead as mondead_mu, wake_nearto as wake_nearto_mu } from './mon.js';
+import { ugolemeffects as ugolemeffects_mu } from './mhitm.js';
+import { resists_blnd as resists_blnd_real_mu, defended as defended_mu } from './mondata.js';
 import { PM_BLACK_LIGHT as PM_BLACK_LIGHT_MU, PM_VIOLET_FUNGUS as PM_VIOLET_FUNGUS_MU } from './pm.generated.js';
 import { isok as isok_mu, IS_OBSTRUCTED as IS_OBSTRUCTED_MU, IRONBARS as IRONBARS_MU,
          SINK as SINK_MU, u_at as u_at_mu } from './const.js';
 import { BACKTRACK as BACKTRACK_MU, W_WEP as W_WEP_MU, HAND as HAND_MU,
          FOOT as FOOT_MU, LEG as LEG_MU, FACE as FACE_MU, EYE as EYE_MU } from './const.js';
-import { closed_door as closed_door_mu, is_pool as is_pool_mu } from './look.js';
+import { is_pool as is_pool_mu } from './look.js';
+import { closed_door as closed_door_mu } from './monmove.js';
 import { y_monnam as y_monnam_mu } from './mhitm.js';
 import { Is_waterlevel as Is_waterlevel_mu, Is_airlevel as Is_airlevel_mu, LEVITATION as LEVITATION_MU, FLYING as FLYING_MU, DROWNING as DROWNING_MU } from './const.js';
 import { observe_object as observe_object_mu } from './o_init.js';
-import { hold_another_object } from './hold_another_object.js';
-import { dropy } from './cmd.js';
+import { hold_another_object } from './invent.js';
+import { dropy } from './do.js';
 import { LAST_REAL_GEM, LAST_GLASS_GEM } from './objclass_ranges.js';
 /* C objnam.c:2424 simpleonames(obj) — minimal_xname made plural for quan>1.
  * RNG-free; C evaluates it twice in the u_catch_thrown_obj call, once per
  * argument, so calling it once and reusing the string is faithful. */
 import { simpleonames as simpleonames_mu, is_quest_artifact } from './objnam.js';
 import { obj_resists as obj_resists_mu } from './dogmove.js';
-import { thitu as thitu_mu, monkilled_trap as monkilled_mu,
-         openholdingtrap as openholdingtrap_mu } from './trap.js';
+import { monkilled_trap as monkilled_mu, openholdingtrap as openholdingtrap_mu } from './trap.js';
+import { thitu as thitu_mu } from './mthrowu.js';
 import { t_at as t_at_mu } from './trap.js';
 /* ── engulf/swallow (gulpmu, expels) ── */
 import { failed_grab as failed_grab_mu } from './dogmove.js';
@@ -226,7 +241,7 @@ import { use_offensive } from './muse.js';
  * bindings are hoisted `export function` declarations and neither module
  * calls the other at evaluation time, so the cycle is inert. */
 import { dobuzz, destroy_items as destroy_items_hero_zap } from './zap.js';
-import { m_lined_up } from './makemon.js';
+import { m_lined_up } from './mthrowu.js';
 import { cloak_simple_name, helm_simple_name, mimic_obj_name, an, the, obj_is_pname, mshot_xname, singular, Tobjnam, makeplural, vtense } from './objnam.js';
 import { xname, bimanual as bimanual_mu } from './do_wear.js';
 /* ohitmon dependencies (C mthrowu.c:321).  Each is imported under a `_mu` alias
@@ -237,17 +252,16 @@ import { miss as miss_mu, hit as hit_mu,
 import { distant_name as distant_name_mu, killer_xname as killer_xname_mu } from './objnam.js';
 import { The as The_mu } from './objnam.js';
 import { otense as otense_mu } from './objnam.js';
-import { find_mac as find_mac_mu } from './trap.js';
+import { find_mac as find_mac_mu } from './worn.js';
 import { reset_utrap as reset_utrap_mu } from './trap.js';
-import { omon_adj as omon_adj_mu } from './cmd.js';
-import { exclam as exclam_mu } from './uhitm.js';
+import { omon_adj as omon_adj_mu } from './dothrow.js';
+import { exclam as exclam_mu } from './zap.js';
 /* NOT s_suffix: this file already has a local s_suffix_mu (:2303) that handles
  * a name already ending in 's' (C hacklib.c), which mhitm.js's exported
  * `s + "'s"` does not — the local is the more faithful body, so keep it. */
-import { shade_miss as shade_miss_mu, can_blnd as can_blnd_mu,
-         mon_hates_silver as mon_hates_silver_mu,
-         hliquid as hliquid_mu } from './mhitm.js';
-import { setmangry as setmangry_mu } from './mklev.js';
+import { shade_miss as shade_miss_mu, hliquid as hliquid_mu } from './mhitm.js';
+import { can_blnd as can_blnd_mu, mon_hates_silver as mon_hates_silver_mu } from './mondata.js';
+import { setmangry as setmangry_mu } from './mon.js';
 import { nonliving as nonliving_mu, monPmname as monPmname_mu, hates_silver as hates_silver_mu } from './makemon.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 /* je_Monnam (mcastu.js Monnam) and VENOM_CLASS_MU are ALREADY bound in this
@@ -262,14 +276,17 @@ import { mhe as mhe_mu } from './makemon.js';
 /* C mhitu.c:1917 — mdamageu()'s Upolyd arm. */
 import { rehumanize } from './polyself.js';
 /* C mhitu.c:924 mattacku's AT_MAGC case. */
-import { castmu, buzzmu, burn_away_slime, cvt_adtyp_to_mseenres as cvt_adtyp_to_mseenres_real } from './mcastu.js';
+import { castmu, buzzmu, cvt_adtyp_to_mseenres as cvt_adtyp_to_mseenres_real } from './mcastu.js';
+import { burn_away_slime } from './timeout.js';
 /* C mcastu.c:322 touch_of_death — mhitm_ad_deth_u's Death-touch arm below. */
 import { touch_of_death as touch_of_death_mc } from './mcastu.js';
 /* C makemon.c:35 — getmattk()'s home-elemental damage doubling. */
 import { is_home_elemental } from './makemon.js';
 import { extract_from_minvent_dm } from './dogmove.js';
-import { down_gate, ship_object, add_to_minv, obfree, delobj as delobj_mu } from './dokick.js';
-import { place_object, remove_object, obj_extract_self, clear_dknown, set_ustuck as set_ustuck_mu } from './mklev.js';
+import { down_gate, ship_object, add_to_minv, obfree } from './dokick.js';
+import { delobj as delobj_mu } from './invent.js';
+import { place_object, remove_object, obj_extract_self, clear_dknown } from './mklev.js';
+import { set_ustuck as set_ustuck_mu } from './mon.js';
 import { mondied_dm } from './dogmove.js';
 import { passive_obj, attk_protection as attk_protection_mu } from './mhitm.js';
 import { resists_ston as resists_ston_mu } from './mklev.js';
@@ -283,7 +300,8 @@ import { W_ARMG as W_ARMG_MU } from './const.js';
 import { couldsee as couldsee_mu } from './vision.js';
 import { dist2, s_suffix } from './hacklib.js';
 import { acurr } from './attrib.js';
-import { calc_capacity, weight as weight_mu } from './weight.js';
+import { weight as weight_mu } from './weight.js';
+import { calc_capacity } from './hack.js';
 import { obj_is_burning } from './light.js';
 import { is_flammable as is_flammable_mu } from './mklev.js';
 import { bhp_is_lava as bhp_is_lava_mu } from './cmd.js';
@@ -291,7 +309,7 @@ import { rnl } from './rng.js';
 import { BLINDED, STUNNED, FUMBLING, A_INT, A_DEX, A_CON } from './const.js';
 /* prop ids for the youprop.h macro block above (const.js:2310-2361). */
 import { HALLUC as HALLUC_MU, HALLUC_RES as HALLUC_RES_MU, FAST as FAST_MU } from './const.js';
-import { flooreffects as flooreffects_real_mu } from './cmd.js';
+import { flooreffects as flooreffects_real_mu } from './do.js';
 async function flooreffects_mu(obj, x, y, verb) {
     return await flooreffects_real_mu(obj, x, y, verb);
 }
@@ -334,8 +352,6 @@ function m_seenres(mon, mask) {
 function canseemon(mon) { return canseemon_mu(mon); }
 function couldsee(x, y) { return couldsee_mu(x, y); }
 function m_canseeu(mon) { return m_canseeu_dh(mon); }
-function mon_reflects(mon, msg) { return mon_reflects_real(mon, msg); }
-function ureflects(fmt, arg1) { return ureflects_mm(fmt, arg1); }
 function poly_when_stoned(mdat) { return poly_when_stoned_mh(mdat); }
 async function polymon(pm) { return await polymon_polyself(pm); }
 function resists_blnd(mon) { return resists_blnd_real_mu(mon); }
@@ -395,8 +411,6 @@ function resists_blnd(mon) { return resists_blnd_real_mu(mon); }
 async function stop_occupation() {
     await real_stop_occupation();
 }
-/* C mon.c:3469 killed() — use the canonical async xkilled sequence. */
-async function killed(mon) { return await killed_real(mon); }
 function DEADMONSTER(mon) { return !!(mon && mon.mhp <= 0); }
 /* make_confused's C home is potion.c:88; this used to be an EXPORTED empty body
  * and it was the copy js/potion.js and js/spell.js imported, so every store any
@@ -459,8 +473,6 @@ function pline_mon(mon, ...args) {
     return pline_mon_real(mon, ...args);
 }
 function Your1(_msg) { pline("Your " + _msg); }
-function Monnam(mon) { return je_Monnam(mon); }
-function mon_nam(mon) { return uhitm_mon_nam(mon); }
 /* C you.h:324 mhis(mtmp) — use the canonical pronoun implementation below,
  * including hallucination's rn2(4) choice and gender/visibility rules. */
 function mhis(mon) { return mhis_mon(mon); }
@@ -1545,7 +1557,7 @@ function _hero_is_steadfast_mu() {
     return false;
 }
 /* C artifact.c:2837 permapoisoned(obj) — only Grimtooth (artilist.h #5). */
-import { permapoisoned as _permapoisoned_mu } from './objnam.js';
+import { permapoisoned as _permapoisoned_mu } from './artifact.js';
 async function mhitm_knockback_u(mtmp, mattk, hitflags) {
     const u = game.u || (game.u = {});
     /* C uhitm.c:5259 — int knockdistance = rn2(3) ? 1 : 2;  (unconditional) */
@@ -1694,13 +1706,13 @@ import { maybe_finished_meal as maybe_finished_meal_mu, is_fainted as is_fainted
          morehungry as morehungry_mu } from './eat.js';
 import { inv_cnt as inv_cnt_mu, freeinv as freeinv_mu,
          doname_body as doname_body_mu, surface as surface_kb } from './cmd.js';
-import { mpickobj as mpickobj_mu } from './mklev.js';
+import { mpickobj as mpickobj_mu } from './steal.js';
 import { encumber_msg as encumber_msg_mu } from './weight.js';
 /* poisoned() (attrib.c:316) helpers — imported here, next to the encumber_msg
  * its tail calls, rather than folded into the big const.js/attrib.js lines. */
 import { adjattrib as adjattrib_mu, poisontell as poisontell_mu,
          setuhpmax as setuhpmax_mu, minuhpmax as minuhpmax_mu } from './attrib.js';
-import { losehp as losehp_mu } from './dokick.js';
+import { losehp as losehp_mu } from './hack.js';
 import { KILLED_BY_AN as KILLED_BY_AN_MU, KILLED_BY as KILLED_BY_MU,
          POISON_RES as POISON_RES_MU, DIED, POISONING } from './const.js';
 /* C youprop.h Poison_resistance = (HPoison_resistance || EPoison_resistance ||
@@ -1714,7 +1726,7 @@ import { stop_donning, doffing as doffing_mu, yname as yname_mu, armor_simple_na
 /* C objects[otyp].oc_delay for ARMOR_CLASS — the generated C table. */
 import { ARMOR_DATA as ARMOR_DATA_MU } from './armor_data.js';
 import { rloc, mnexto as mnexto_mu, enexto_out as enexto_out_mu, teleds as teleds_mu } from './teleport.js';
-import { which_armor as which_armor_mu } from './makemon.js';
+import { which_armor as which_armor_mu } from './worn.js';
 import { hard_helmet as hard_helmet_mu } from './do_wear.js';
 import { ceiling as ceiling_mu } from './cmd.js';
 import { PM_TRAPPER as PM_TRAPPER_MU } from './pm.generated.js';
@@ -1723,7 +1735,7 @@ import { RLOC_NOMSG as RLOC_NOMSG_MU } from './const.js';
 import { um_dist as um_dist_mu } from './cmd.js';
 import { Some_Monnam as Some_Monnam_mu, Adjmonnam as Adjmonnam_mu } from './mhitm.js';
 import { some_mon_nam } from './mhitm.js';
-import { pronoun_gender as pronoun_gender_nit_mu_real } from './mhitm.js';
+import { pronoun_gender as pronoun_gender_nit_mu_real } from './mondata.js';
 /* C you.h:328 noit_mhim(mtmp): pronoun_gender(mtmp, PRONOUN_NO_IT|PRONOUN_HALLU) */
 function pronoun_gender_nit_mu(m) { return pronoun_gender_nit_mu_real(m, 3); }
 import { RIGHT_HANDED as RIGHT_HANDED_MU } from './const.js';
@@ -1759,17 +1771,18 @@ function monnear_mu(mon, x, y) {
         return false; /* NODIAG: PM_GRID_BUG */
     return dx <= 1 && dy <= 1;
 }
-import { noit_Monnam as noit_Monnam_ds, noit_mon_nam as noit_mon_nam_ds, resists_drli as resists_drli_ds } from './mhitm.js';
+import { noit_Monnam as noit_Monnam_ds, noit_mon_nam as noit_mon_nam_ds } from './mhitm.js';
+import { resists_drli as resists_drli_ds } from './mondata.js';
 import { safe_qbuf as safe_qbuf_ds, money2mon as money2mon_ds } from './shk.js';
-import { yn_function as yn_function_ds } from './end.js';
+import { yn_function as yn_function_ds } from './cmd.js';
 import { prinv as prinv_ds, verbalize as verbalize_ds, body_part as body_part_ds } from './cmd.js';
 import { Ring_gone as Ring_gone_ds, Ring_on as Ring_on_ds } from './do_wear.js';
 import { setworn as setworn_ds } from './worn.js';
 import { discover_object as discover_object_ds } from './o_init.js';
 import { pluslvl as pluslvl_ds } from './exper.js';
 import { adjalign as adjalign_ds } from './attrib.js';
-import { currency as currency_ds } from './dokick.js';
-import { money_cnt as money_cnt_ds } from './com_pager.js';
+import { currency as currency_ds } from './invent.js';
+import { money_cnt as money_cnt_ds } from './hack.js';
 import { suit_simple_name as suit_simple_name_ds, simpleonames as simpleonames_ds } from './objnam.js';
 
 const A_STR_DS = 0, A_WIS_DS = 2, A_DEX_DS = 3, A_CON_DS = 4, A_CHA_DS = 5;
@@ -1817,18 +1830,18 @@ export async function doseduce(mon) {
     let tried_gloves = 0;
 
     if (mon.mcan || mon.mspec_used) {
-        pline_mon(mon, `${Monnam(mon)} acts as though ${mhe_mu(mon)} has got a ${mon.mcan ? 'severe ' : ''}headache.`);
+        await pline_mon(mon, `${Monnam(mon)} acts as though ${mhe_mu(mon)} has got a ${mon.mcan ? 'severe ' : ''}headache.`);
         return 0;
     }
     if (unresponsive_mu()) {
-        pline_mon(mon, `${Monnam(mon)} seems dismayed at your lack of response.`);
+        await pline_mon(mon, `${Monnam(mon)} seems dismayed at your lack of response.`);
         return 0;
     }
     const seewho = canseemon(mon);
     if (!seewho)
-        pline('Someone caresses you...');
+        await pline('Someone caresses you...');
     else
-        pline(`You feel very attracted to ${mon_nam(mon)}.`);
+        await You_feel_mu(`very attracted to ${mon_nam(mon)}.`);
     const Who = !seewho ? (fem ? 'She' : 'He') : Monnam(mon);
 
     await stop_donning(null);
@@ -1854,7 +1867,7 @@ export async function doseduce(mon) {
                 if (await yn_function_ds(qbuf, 'yn', 'n', true) === 'n')
                     continue;
             } else
-                pline(`${Who} decides she'd like ${await yname_mu(ring)}, and takes it.`);
+                await pline(`${Who} decides she'd like ${await yname_mu(ring)}, and takes it.`);
             discover_object_ds(RIN_ADORNMENT_DS, true, true, true);
             if (ring.owornmask)
                 await remove_worn_item_mu(ring, false);
@@ -1879,24 +1892,24 @@ export async function doseduce(mon) {
                 if (await yn_function_ds(qbuf, 'yn', 'n', true) === 'n')
                     continue;
             } else {
-                pline(`${Who} decides you'd look prettier wearing ${await yname_mu(ring)},`);
-                pline('and puts it on your finger.');
+                await pline(`${Who} decides you'd look prettier wearing ${await yname_mu(ring)},`);
+                await pline('and puts it on your finger.');
             }
             discover_object_ds(RIN_ADORNMENT_DS, true, true, true);
             if (!u.uright) {
-                pline(`${Who} puts ${the(await xname(ring))} on your right ${body_part_ds(HAND_DS)}.`);
+                await pline(`${Who} puts ${the(await xname(ring))} on your right ${body_part_ds(HAND_DS)}.`);
                 await setworn_ds(ring, RIGHT_RING_MU);
             } else if (!u.uleft) {
-                pline(`${Who} puts ${the(await xname(ring))} on your left ${body_part_ds(HAND_DS)}.`);
+                await pline(`${Who} puts ${the(await xname(ring))} on your left ${body_part_ds(HAND_DS)}.`);
                 await setworn_ds(ring, LEFT_RING_MU);
             } else if (u.uright && u.uright.otyp !== RIN_ADORNMENT_DS) {
-                pline(`${Who} replaces ${await yname_mu(u.uright)} with ${await yname_mu(ring)}.`);
+                await pline(`${Who} replaces ${await yname_mu(u.uright)} with ${await yname_mu(ring)}.`);
                 await Ring_gone_ds(u.uright);
                 if ((u.utotype | 0) || !m_next2u_ds(mon))
                     return 1;
                 await setworn_ds(ring, RIGHT_RING_MU);
             } else if (u.uleft && u.uleft.otyp !== RIN_ADORNMENT_DS) {
-                pline(`${Who} replaces ${await yname_mu(u.uleft)} with ${await yname_mu(ring)}.`);
+                await pline(`${Who} replaces ${await yname_mu(u.uleft)} with ${await yname_mu(ring)}.`);
                 await Ring_gone_ds(u.uleft);
                 if ((u.utotype | 0) || !m_next2u_ds(mon))
                     return 1;
@@ -1935,7 +1948,7 @@ export async function doseduce(mon) {
             } else
                 await verbalize_ds(`You're such a ${g.flags?.female ? 'sweet lady' : 'nice guy'}; I wish...`);
         } else if (seewho)
-            pline_mon(mon, `${Monnam(mon)} appears to sigh.`);
+            await pline_mon(mon, `${Monnam(mon)} appears to sigh.`);
         if (!tele_restrict_mu(mon))
             await rloc(mon, RLOC_MSG_MU);
         return 1;
@@ -1946,10 +1959,10 @@ export async function doseduce(mon) {
     await urgent_pline(`Time stands still while you and ${noit_mon_nam_ds(mon)} lie in each other's arms...`);
     const attr_tot = acurr(u, A_CHA_DS) + acurr(u, A_INT);
     if (rn2(35) > Math.min(attr_tot, 32)) {
-        pline(`${noit_Monnam_ds(mon)} seems to have enjoyed it more than you...`);
+        await pline(`${noit_Monnam_ds(mon)} seems to have enjoyed it more than you...`);
         switch (rn2(5)) {
         case 0:
-            pline('You feel drained of energy.');
+            await You_feel_mu('drained of energy.');
             /* C mhitu.c:2184-2186: Pw changes after the pline's flush_screen()
              * with no disp.botl, so the status keeps the pre-drain Pw. */
             if (!(g.disp && ((g.disp.botl | 0) || (g.disp.botlx | 0)))) {
@@ -1962,30 +1975,30 @@ export async function doseduce(mon) {
             if (u.uenmax < 0) u.uenmax = 0;
             break;
         case 1:
-            pline('You are down in the dumps.');
+            await pline('You are down in the dumps.');
             adjattrib(A_CON_DS, -1, true);
             exercise(A_CON_DS, false);
             if (g.disp) g.disp.botl = true;
             break;
         case 2:
-            pline('Your senses are dulled.');
+            await pline('Your senses are dulled.');
             adjattrib(A_WIS_DS, -1, true);
             exercise(A_WIS_DS, false);
             if (g.disp) g.disp.botl = true;
             break;
         case 3:
             if (!resists_drli_ds(g.youmonst)) {
-                pline('You feel out of shape.');
+                await You_feel_mu('out of shape.');
                 await losexp('overexertion');
             } else {
-                pline('You have a curious feeling...');
+                await pline('You have a curious feeling...');
             }
             exercise(A_CON_DS, false);
             exercise(A_DEX_DS, false);
             exercise(A_WIS_DS, false);
             break;
         case 4: {
-            pline('You feel exhausted.');
+            await You_feel_mu('exhausted.');
             exercise(A_STR_DS, false);
             const tmp = rn1(10, 6);
             await losehp_mu(maybe_half_phys_mu(tmp), 'exhaustion', 1 /* KILLED_BY */);
@@ -1994,10 +2007,10 @@ export async function doseduce(mon) {
         }
     } else {
         mon.mspec_used = rnd(100);
-        pline(`You seem to have enjoyed it more than ${noit_mon_nam_ds(mon)}...`);
+        await pline(`You seem to have enjoyed it more than ${noit_mon_nam_ds(mon)}...`);
         switch (rn2(5)) {
         case 0:
-            pline('You feel raised to your full potential.');
+            await You_feel_mu('raised to your full potential.');
             /* C mhitu.c:2229-2231: Pw changes after the pline with no botl flag. */
             if (!(g.disp && ((g.disp.botl | 0) || (g.disp.botlx | 0)))) {
                 if (g._botlStaleUen === undefined) g._botlStaleUen = u.uen | 0;
@@ -2008,24 +2021,24 @@ export async function doseduce(mon) {
             if (u.uenmax > u.uenpeak) u.uenpeak = u.uenmax;
             break;
         case 1:
-            pline('You feel good enough to do it again.');
+            await You_feel_mu('good enough to do it again.');
             adjattrib(A_CON_DS, 1, true);
             exercise(A_CON_DS, true);
             if (g.disp) g.disp.botl = true;
             break;
         case 2:
-            pline(`You will always remember ${noit_mon_nam_ds(mon)}...`);
+            await pline(`You will always remember ${noit_mon_nam_ds(mon)}...`);
             adjattrib(A_WIS_DS, 1, true);
             exercise(A_WIS_DS, true);
             if (g.disp) g.disp.botl = true;
             break;
         case 3:
-            pline('That was a very educational experience.');
+            await pline('That was a very educational experience.');
             await pluslvl_ds(false);
             exercise(A_WIS_DS, true);
             break;
         case 4:
-            pline('You feel restored to health!');
+            await You_feel_mu('restored to health!');
             u.uhp = u.uhpmax;
             if (Upolyd_fn(u)) u.mh = u.mhmax;
             exercise(A_STR_DS, true);
@@ -2039,9 +2052,9 @@ export async function doseduce(mon) {
     } else if (rn2(20) < acurr(u, A_CHA_DS)) {
         // C mhitu.c:2267 noit_mhim(): hallucination also draws rn2(4).
         const whom = ['him', 'her', 'it', 'them'][pronoun_gender_nit_mu(mon)];
-        pline(`${noit_Monnam_ds(mon)} demands that you pay ${whom}, but you refuse...`);
+        await pline(`${noit_Monnam_ds(mon)} demands that you pay ${whom}, but you refuse...`);
     } else if ((u.umonnum | 0) === PM_LEPRECHAUN_DS) {
-        pline_mon(mon, `${noit_Monnam_ds(mon)} tries to take your gold, but fails...`);
+        await pline_mon(mon, `${noit_Monnam_ds(mon)} tries to take your gold, but fails...`);
     } else {
         const umoney = money_cnt_ds(g.invent);
         let cost;
@@ -2059,9 +2072,9 @@ export async function doseduce(mon) {
             if (!Deaf_mu())
                 await verbalize_ds("It's on the house!");
             else
-                pline('No charge.');
+                await pline('No charge.');
         } else {
-            pline_mon(mon, `${noit_Monnam_ds(mon)} takes ${cost} ${currency_ds(cost)} for services rendered!`);
+            await pline_mon(mon, `${noit_Monnam_ds(mon)} takes ${cost} ${currency_ds(cost)} for services rendered!`);
             await money2mon_ds(mon, cost);
             if (g.disp) g.disp.botl = true;
         }
@@ -2078,6 +2091,13 @@ const AD_SSEX_ = 35;
 
 const AD_SGLD_ = 20;      /* monattk.h:62 — steals gold (leprechaun) */
 import { stealgold as stealgold_mu } from './makemon.js';
+import { mon_reflects, ureflects } from './muse.js'; // relocate-fns
+import { Monnam, mon_nam } from './do_name.js'; // relocate-fns
+import { is_pit } from './const.js'; // relocate-fns
+import { t_at } from './trap.js'; // relocate-fns
+import { killed } from './mon.js'; // relocate-fns
+import { protects } from './artifact.js'; // relocate-fns
+export { je_Monnam }; // relocate-fns
 const AD_SITM_ = 21;      /* monattk.h:63 — steals item (nymphs) */
 const AD_SEDU_ = 22;       /* monattk.h:64 */
 const S_NYMPH_ = 14;       /* monsym.h — matches js/makemon.js:1890 */
@@ -6833,17 +6853,6 @@ const M2_MINION = 0x00001000;
 function is_minion(data) {
     return !!(data && (data.mflags2 & M2_MINION) !== 0);
 }
-const PROTECTION_PROP = 59;      /* C prop.h:82 */
-const SPFX_PROTECT = 0x08000000; /* C artifact.h:43 */
-function protects(otmp, being_worn) {
-    if (being_worn && (MKOBJ_OC_OPROP[otmp.otyp | 0] | 0) === PROTECTION_PROP)
-        return true;
-    const arti = get_artifact(otmp);
-    if (arti === ART_NONARTIFACT)
-        return false;
-    return ((arti_cspfx(arti) & SPFX_PROTECT) !== 0
-            || (being_worn && (arti_spfx(arti) & SPFX_PROTECT) !== 0));
-}
 /* C ref: obj.h:249 is_weptool(o) — (o)->oclass == TOOL_CLASS && objects[(o)->otyp].oc_skill != P_NONE. Macro, inlined. */
 function is_weptool(obj) {
     return (obj.oclass | 0) === 6 /* TOOL_CLASS */
@@ -7035,4 +7044,13 @@ export function mpoisons_subj(mtmp, mattk) {
             : (mattk.aatyp === AT_GAZE) ? "gaze"
                 : (mattk.aatyp === AT_BITE_) ? "bite" : "sting";
     }
+}
+
+export async function expels(mtmp, data, flag) { return expels_gu(mtmp, mtmp?.data?.pmidx, flag); }
+
+export function mtrapped_in_pit(magr) {
+    if (!(magr?.mtrapped | 0))
+        return false;
+    const ttmp = t_at(magr.mx | 0, magr.my | 0);
+    return !!(ttmp && is_pit(ttmp.ttyp | 0));
 }

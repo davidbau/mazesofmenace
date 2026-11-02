@@ -29,12 +29,13 @@ import { nhl_callback, nhl_variable, nhl_text, nhl_loadlua, lua_checkstring, lua
 import { l_obj_register } from '../nhlobj.js';
 /* C ref: dungeon.c depth(&u.uz) — the absolute cross-branch depth the
  * `u.depth` Lua key returns (nhlua.c:2017). */
-import { depth } from '../hacklib.js';
+import { depth } from '../dungeon.js';
 /* C dungeon.c:2016 Invocation_lev — the `u.invocation_level` Lua key
  * (nhlua.c:2019).  js/mkmaze.js owns the one faithful copy. */
-import { Invocation_lev } from '../mkmaze.js';
+import { Invocation_lev } from '../dungeon.js';
 import { levelDifficulty } from '../makemon.js';
-import { pline, force_more } from '../display.js';
+import { force_more } from '../display.js';
+import { pline } from '../pline.js';
 import monPmnamesPack from '../makemon_pmnames.json' with { type: 'json' };
 import { G_GENOD, NON_PM } from '../const.js';
 

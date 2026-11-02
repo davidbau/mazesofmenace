@@ -17,7 +17,8 @@ import { apply_customizations, purge_all_custom_entries, clear_all_glyphmap_colo
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import { roleOptionToIndex, raceOptionToIndex, genderOptionToIndex, alignOptionToIndex, genlPlayerSetupRandomPicksForY, sessionNeedsRandomPlayerPicks, extractChargenPreInitRng, replayChargenPreInitRng, detectInteractiveChargenFromSession, } from './roles.js';
 import { GameDisplay } from './game_display.js';
-import { reglyph_darkroom, tty_restore_menu, tty_restore_base_topline, pline } from './display.js';
+import { reglyph_darkroom, tty_restore_menu, tty_restore_base_topline } from './display.js';
+import { pline } from './pline.js';
 import { generateChargenFrames, chargenShallAnswer, playChargen } from './chargen_ui.js';
 import { rn2 } from './rng.js';
 import { nhgetch } from './input.js';
@@ -31,7 +32,8 @@ import { regions_rest_snapshot } from './region.js';
 import { vision_debug_snapshot, vision_init } from './vision.js';
 // WRITE-ONLY route-attribution telemetry (inert unless NH_ROUTE_TELEMETRY=1 —
 import { routeTag, routeFrameTick } from './route_telemetry.js';
-import { restore_saved_game, dorecover, restore_preamble } from './restore.js';
+import { dorecover, restore_preamble } from './restore.js';
+import { restore_saved_game } from './files.js';
 import { ENV } from './hostenv.js';
 function extractRoleInitRng(sessionData) {
     const calls = [];
@@ -912,13 +914,15 @@ export async function runSegment(input, prevGame = null) {
             // frames, and park the cause on the game for the diagnosis tools.
             if (!String(e?.message || '').includes('Input queue empty'))
                 nhGame.replayError = e;
-            else if (game._moreRngMark != null) {
+            else if (game._moreRngMark != null || game._moreParkMark != null) {
                 /* The recording ends on a --More-- C raised inside a pline (topl.c more()): C
                  * never drew past that pline, but this port ran the rest of the turn ahead of
-                 * paging.  Drop those over-draws so they cannot shift the next segment. */
+                 * paging.  Drop those over-draws so they cannot shift the next segment.
+                 * _moreParkMark is the first more() no recorded key could dismiss. */
+                const mark = Math.min(game._moreRngMark ?? Infinity, game._moreParkMark ?? Infinity);
                 const _log = getRngLog();
-                if (_log && _log.length > game._moreRngMark) _log.length = game._moreRngMark;
-                let left = game._moreRngMark;
+                if (_log && _log.length > mark) _log.length = mark;
+                let left = mark;
                 for (let i = 0; i < nhGame._rngSlices.length; i++) {
                     const n = nhGame._rngSlices[i].length;
                     if (left >= n) { left -= n; continue; }

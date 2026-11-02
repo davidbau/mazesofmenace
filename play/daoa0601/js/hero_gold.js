@@ -3,12 +3,11 @@
 import { formatFeltMessage } from './hero_speech.js';
 import { plineWithContinuation } from './pline.js';
 import { game } from './gstate.js';
-import { createObjectBase } from './object_constructor.js';
 import { removeWornHeroItem } from './hero_equipment.js';
 import { splitObjectStack } from './object_stack.js';
-import { unlinkObject } from './object_location.js';
+import { unlinkObject, createObjectBase } from './mkobj.js';
 import { nextIdent } from './ident.js';
-import { delobj } from './object_delete.js';
+import { delobj } from './invent.js';
 import { markJustPicked } from './just_picked.js';
 import { GOLD_PIECE } from './object_data.js';
 const COIN_CLASS = 12;
@@ -47,6 +46,8 @@ function normalizeGoldObject(object, amount = quantity(object)) {
 export function heroGoldObject(state) {
     return (state?.inventory || []).find(object => object?.otyp === GOLD_PIECE || object?.oclass === COIN_CLASS) || null;
 }
+// C hack.c:money_cnt() over the hero's inventory: zero gold pieces
+// rather than a missing stack.
 export function heroGoldAmount(state) {
     const object = heroGoldObject(state);
     return object ? quantity(object) : 0;

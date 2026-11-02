@@ -16,9 +16,10 @@ import { update_inventory } from './inventory_refresh.js';
 import { abuse_dog } from './dog.js';
 import { Is_juiblex_level as Is_juiblex_level_real } from './const.js';
 import { rn2, rnd, rn1, rnl } from './rng.js';
-import { pline, newsym, You_hear, flush_pending_messages, canseemon, tmp_at, DISP_FLASH, DISP_END, obj_to_glyph, impossible_sync } from './display.js';
+import { newsym, flush_pending_messages, canseemon, tmp_at, DISP_FLASH, DISP_END, obj_to_glyph, impossible_sync } from './display.js';
+import { pline, You_hear } from './pline.js';
 import { impossible } from './pline.js';
-import { Norep } from './display.js';
+import { Norep } from './pline.js';
 import { PASSES_WALLS, HALLUC_RES } from './const.js';
 function strchr(str, ch) {
     if (str == null) return false;
@@ -49,10 +50,10 @@ import { TELEPORT, SEE_INVIS, POISON_RES, COLD_RES, SHOCK_RES, FIRE_RES,
 import { OC_COST } from './oc_cost_data.js';
 import { PM_SOLDIER, PM_SERGEANT, PM_LIEUTENANT, PM_CAPTAIN } from './pm.generated.js';
 import { wakeup } from './mhitm.js';
-import { sink_backs_up } from './potion.js';
+import { sink_backs_up } from './fountain.js';
 import { finish_meating } from './dogmove.js';
 import { verbalize } from './cmd.js';
-import { money_cnt } from './com_pager.js';
+import { money_cnt } from './hack.js';
 import { hidden_gold } from './vault.js';
 import { miss } from './zap.js';
 import { mhis_mon } from './mhitu.js';
@@ -67,7 +68,8 @@ import { PM_KILLER_BEE, PM_BLACK_PUDDING, PM_ARCHEOLOGIST, PM_SAMURAI, PM_WIZARD
 import { hcolor, hliquid, You, noit_mon_nam } from './mhitm.js';
 const PM_AMOROUS_DEMON_DK = 290;
 import { m_at, do_attack, overexertion } from './uhitm.js';
-import { MONS_CWT, wipe_engr_at, maybe_unhide_at, place_object, makemon, mkgold, wake_nearto } from './mklev.js';
+import { MONS_CWT, wipe_engr_at, place_object, makemon, mkgold } from './mklev.js';
+import { maybe_unhide_at, wake_nearto } from './mon.js';
 import { stackobj } from './sp_lev.js';
 import { poly_gender } from './makemon.js';
 import { book_disappears as spell_book_disappears } from './spell.js';
@@ -80,7 +82,7 @@ import { splitobj, attacktype_fordmg } from './makemon.js';
 import { maybe_mnexto } from './teleport.js';
 import { set_apparxy } from './monmove.js';
 import { m_in_out_region } from './region.js';
-import { noteleport_level } from './makemon.js';
+import { noteleport_level } from './teleport.js';
 import { permonstTemplate, monflee } from './makemon.js';
 import { enexto_out } from './teleport.js';
 // C shk.c:1166 is_unpaid() — the ONE implementation lives in js/shk.js, which
@@ -88,12 +90,14 @@ import { enexto_out } from './teleport.js';
 // used to carry a second, throwing copy of the name, which made the local call
 // at dokick.js:937 (ship_object's `unpaid` test) throw at runtime; re-exported
 // rather than re-implemented so there is no second body to drift.
-import { obfree, is_unpaid, in_rooms, shop_keeper, add_damage, pay_for_damage, oid_price_adjustment, costly_spot as shk_costly_spot, Shknam as shk_Shknam, hot_pursuit as shk_hot_pursuit, stolen_value, subfrombill, contained_gold, donate_gold, addtobill as shk_addtobill, delete_contents as shk_delete_contents, add_to_billobjs } from './shk.js';
+import { obfree, is_unpaid, shop_keeper, add_damage, pay_for_damage, oid_price_adjustment, costly_spot as shk_costly_spot, hot_pursuit as shk_hot_pursuit, stolen_value, subfrombill, contained_gold, donate_gold, addtobill as shk_addtobill, delete_contents as shk_delete_contents, add_to_billobjs } from './shk.js';
+import { in_rooms } from './hack.js';
+import { Shknam as shk_Shknam } from './shknam.js';
 import { make_happy_shk, make_angry_shk } from './shk.js';
 import { costly_gold } from "./shk.js";
 import { shkcatch } from './shk.js';
 import { is_pick } from './dig.js';
-import { stairway_at } from './mklev.js';
+import { stairway_at } from './stairs.js';
 import { remove_worn_item, rloco } from './steal.js';
 import { ismnum } from './const.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
@@ -112,16 +116,21 @@ import { ER_NOTHING } from './const.js';
 import { can_reach_floor } from './hold_another_object.js';
 import { fracture_rock, break_statue } from './zap.js';
 import { deadhero, do_death_sequence } from './end.js';
-import { set_wounded_legs, ok_to_quest, breaktest, breakmsg, breakobj, altar_wrath, _delobj_useupf as delobj_core, currency as cmd_currency, snuff_candle, thitmonst } from './cmd.js';
-import { surface, hurtle, showdamage, body_part, Yname2 } from './cmd.js';
+import { ok_to_quest, _delobj_useupf as delobj_core, currency as cmd_currency, snuff_candle } from './cmd.js';
+import { altar_wrath } from './pray.js';
+import { breaktest, breakmsg, breakobj, thitmonst } from './dothrow.js';
+import { set_wounded_legs } from './do.js';
+import { surface, showdamage, body_part, Yname2 } from './cmd.js';
+import { hurtle } from './dothrow.js';
 import { RIGHT_SIDE } from './const.js';
 import { UNCHANGING } from './const.js';
 import { rehumanize, polymon } from './polyself.js';
-import { poly_when_stoned } from './mhitm.js';
+import { poly_when_stoned } from './mondata.js';
 import { instapetrify } from './cmd.js';
 import { STONE_RES } from './const.js';
 import { PM_COCKATRICE, PM_CHICKATRICE, PM_STONE_GOLEM, PM_SASQUATCH } from './pm.generated.js';
-import { end_running, is_pool as is_pool_real } from './look.js';
+import { is_pool as is_pool_real } from './look.js';
+import { end_running } from './hack.js';
 /* ── the monster-kick arm's dependencies (see maybe_kick_monster below) ── */
 import { FUMBLING, W_ARMF, P_NONE, P_MARTIAL_ARTS, NATTK,
          ARTICLE_A, SUPPRESS_SADDLE, M_AP_TYPE, Upolyd } from './const.js';
@@ -133,12 +142,15 @@ import { shade_miss, passive, killed, seemimic, check_caitiff, x_monnam, wakeup_
  * no-RNG stub that used to shadow it.  See the note above christen_orc(). */
 import { rndorcname } from './mhitm.js';
 /* The two mkobj.c migration constructors; see the re-export note further down. */
-import { add_to_migration, mksobj_migr_to_species, stairway_find_from as stairway_find_from_real } from './mklev.js';
-import { setmangry, angry_guards as mklev_angry_guards } from './mklev.js';
-import { weight_cap, inv_weight, weight } from './weight.js';
+import { add_to_migration, mksobj_migr_to_species } from './mklev.js';
+import { stairway_find_from as stairway_find_from_real } from './stairs.js';
+import { setmangry, angry_guards as mklev_angry_guards } from './mon.js';
+import { weight } from './weight.js';
+import { weight_cap, inv_weight } from './hack.js';
 import { goodpos, chest_trap, activate_statue_trap, mintrap } from './trap.js';
-import { closed_door } from './look.js';
-import { hero_breaks, find_trap, impact_disturbs_zombies } from './cmd.js';
+import { closed_door } from './monmove.js';
+import { find_trap, impact_disturbs_zombies } from './cmd.js';
+import { hero_breaks } from './dothrow.js';
 import { breakchestlock, b_trapped } from './lock.js';
 import { FOOT, AIR, CLOUD, IS_POOL } from './const.js';
 import { find_objowner, costly_adjacent } from './shk.js';
@@ -147,14 +159,18 @@ import { LEG, TT_PIT, is_pit, WEB, STATUE_TRAP, ZAP_POS } from './const.js';
 import { obj_resists } from './zap.js';
 import { useup } from './cmd.js';
 export { is_unpaid, in_rooms, shop_keeper };
-import { del_engr_at as del_engr_at_dk, mksobj_at, mksobj, mpickobj, obj_extract_self, rnd_class, sobj_at } from './mklev.js';
+import { del_engr_at as del_engr_at_dk, mksobj_at, mksobj, obj_extract_self, rnd_class } from './mklev.js';
+import { mpickobj } from './steal.js';
+import { sobj_at } from './invent.js';
 /* C mkobj.c:1977-1987 rnd_treefruit_at(x, y) — the one real body lives in
  * js/dig.js (a monster-digs-near-a-tree caller already exercises it), which
  * used to keep it file-local; exported there rather than re-derived here so
  * there is only one ROLL_FROM(treefruits) draw site in the tree. */
-import { rnd_treefruit_at, unpunish, cvt_sdoor_to_door } from './dig.js';
+import { cvt_sdoor_to_door } from './detect.js';
+import { unpunish } from './read.js';
+import { rnd_treefruit_at } from './mkobj.js';
 import { feel_newsym, feel_location } from './display.js';
-import { flooreffects } from './cmd.js';
+import { flooreffects } from './do.js';
 /* Historical alias, identical to the shared mkobj extraction above. */
 import { obj_extract_self_general } from './cmd.js';
 /* C mthrowu.c:325-431 ohitmon(mtmp, otmp, range, verbose) — thrown/scattered
@@ -165,7 +181,8 @@ import { ohitmon } from './mhitu.js';
  * trap-missile call sites; its own note says the general "plain hit" tail it
  * implements is exactly what a non-acid/non-stone/non-potion/non-silver
  * scattered object (a tree fruit) takes too). */
-import { thitu, fall_through } from './trap.js';
+import { fall_through } from './trap.js';
+import { thitu } from './mthrowu.js';
 /* C weapon.c:262-... dmgval(otmp, mon) — the one body lives in js/uhitm.js. */
 import { dmgval } from './uhitm.js';
 /* C objnam.c xname(obj) / An(str) — the one bodies live in js/objnam.js;
@@ -184,9 +201,23 @@ import { MAY_HITMON, MAY_HITYOU, MAY_HIT, MAY_DESTROY, MAY_FRACTURE, VIS_EFFECTS
 /* C const.js u_at(x,y) — the hero-at-square predicate. */
 import { u_at, HALF_PHDAM } from './const.js';
 /* C mon.c hideunder(mtmp) — the one body lives in js/mklev.js. */
-import { inside_shop, hideunder, shkname_halluc_pick, letter } from './mklev.js';
+import { shkname_halluc_pick } from './mklev.js';
+import { inside_shop } from './shk.js';
+import { letter } from './hacklib.js';
+import { hideunder } from './mon.js';
 /* C allmain.c nomul(nval) / stop_occupation() — the one bodies. */
 import { nomul, stop_occupation } from './allmain.js';
+import { find_drawbridge, is_drawbridge_wall, is_ice, is_pool } from './dbridge.js'; // relocate-fns
+import { losehp } from './hack.js'; // relocate-fns
+import { currency, delobj } from './invent.js'; // relocate-fns
+import { breaks } from './dothrow.js'; // relocate-fns
+import { scatter } from './explode.js'; // relocate-fns
+export { _KO_BOULDER_OTYP, _KO_COIN_CLASS, _KO_EGG_OTYP, _KO_GLASS_MATERIAL, _dk_Maybe_Half_Phys, _km_bigmonst }; // relocate-fns
+export { breaks } from './dothrow.js'; // relocate-fns
+export { _Blind_dk }; // relocate-fns
+export { delobj } from './invent.js'; // relocate-fns
+export { losehp } from './hack.js'; // relocate-fns
+export { create_drawbridge, db_under_typ, find_drawbridge, is_db_wall, is_drawbridge_wall, is_ice, is_moat, is_waterwall } from './dbridge.js'; // relocate-fns
 export { ok_to_quest };
 // C mon.c:4687 maybe_unhide_at() — the ONE implementation lives in js/mklev.js
 // (this repo's mon.c host module, alongside hideunder/can_hide_under_obj).
@@ -199,31 +230,6 @@ export { maybe_unhide_at };
 /* C ref: hack.h:76 — cost of a destroyed shop door. */
 const SHOP_DOOR_COST = 400;
 
-/* C ref: dbridge.c:84-95 is_pool(x,y) — POOL/MOAT/WATER or is_moat(). */
-function is_pool(x, y) {
-    return is_pool_real(x, y);
-}
-function Is_juiblex_level(uz) { return Is_juiblex_level_real(uz); }
-/* C ref: dbridge.c:99-114 is_moat(x,y) — MOAT or DRAWBRIDGE_UP over DB_MOAT,
-   except on Juiblex level (always false there). */
-export function is_moat(x, y) {
-    if (!isok(x, y))
-        return false;
-    const loc = game.level.at(x, y);
-    const ltyp = loc.typ | 0;
-    if (!Is_juiblex_level(game.u.uz)
-        && (ltyp === MOAT
-            || (ltyp === DRAWBRIDGE_UP
-                && ((loc.drawbridgemask | 0) & DB_UNDER) === DB_MOAT)))
-        return true;
-    return false;
-}
-/* C ref: dbridge.c:84-95 is_ice(x,y) — ICE, or DRAWBRIDGE_UP over DB_ICE.
- * Same host module and shape as is_moat above; needed by really_kick_object's
- * slide check (dokick.c:588). */
-export function is_ice(x, y) {
-    return is_ice_real(x, y);
-}
 /* C ref: mkobj.c svl.level.objects[x][y] — per-tile object chain head. */
 function obj_at(x, y) {
     return (game.level?.levelObjects?.[x]?.[y]) ?? null;
@@ -288,125 +294,7 @@ async function kick_dumb(x, y) {
         await hurtle(-(u.dx | 0), -(u.dy | 0), 1, true);
     }
 }
-/* C ref: hack.c:4219 losehp(n, knam, k_format) — apply hit-point loss to the
- * current monster form or the hero's ordinary HP, then resolve rehumanization
- * or death before returning to the caller. */
-export async function losehp(n, knam, k_format) {
-    const u = game.u;
-    if (!u)
-        return;
-    n |= 0;
-    // C's preceding pline has completed update_topl/more before losehp starts.
-    // Drain the port's queued pages while they still show the pre-damage HP.
-    /* C runs no flush_screen between the preceding pline and losehp's
-     * SET_BOTL (hack.c:4265): status dirtied since that pline's own
-     * flush_screen (kick_ouch's set_wounded_legs, dokick.c:900-901, ATEMP(A_DEX)--)
-     * is not on the physical line until a later bot().  The port's drain below
-     * must not paint it. */
-    const _d0 = (game.disp ||= {});
-    const _bl = _d0.botl, _blx = _d0.botlx;
-    _d0.botl = 0; _d0.botlx = 0;
-    /* ...and neither is the map: the port's drain below flushes the gbuf
-     * (kick_ouch's feel_location paint), which C does not do here, so a later
-     * display_nhwindow(WIN_MESSAGE) that blocks without flushing (vamp_shift,
-     * monmove.c:2391) still shows the terminal as of the pline's own flush. */
-    const _lff0 = game._lastFlushFrame;
-    await flush_pending_messages();
-    if (_lff0) game._lastFlushFrame = _lff0;
-    if (_bl) _d0.botl = _bl;
-    if (_blx) _d0.botlx = _blx;
-    (game.disp ||= {}).botl = 1;
-    end_running(true);
-    if (Upolyd(u)) {
-        u.mh = (u.mh | 0) - (n | 0);
-        showdamage(n); /* C hack.c:4269 */
-        if ((u.mhmax | 0) < (u.mh | 0)) u.mhmax = u.mh;
-        if ((u.mh | 0) < 1) {
-            await rehumanize();
-        } else {
-            const p = u.uprops?.[UNCHANGING];
-            if ((n | 0) > 0 && (u.mh | 0) * 10 < (u.mhmax | 0)
-                && ((p?.intrinsic | 0) || (p?.extrinsic | 0))) await maybe_wail();
-        }
-        return;
-    }
-    u.uhp = (u.uhp | 0) - (n | 0);
-    showdamage(n); /* C hack.c:4280 */
-    if ((u.uhp | 0) > (u.uhpmax | 0))
-        u.uhpmax = u.uhp; /* perhaps n was negative */
-    if ((u.uhp | 0) < 1) {
-        /* C hack.c:4248-4250 writes svk.killer, which is the struct
-         * formatkiller() (topten.c:172) reads for the tombstone and the score
-         * line.  This wrote a DIFFERENT object, `game.killer`, that nothing
-         * reads — so a hero killed by a falling rock or a thrown potion got an
-         * empty killer name on the stone. */
-        if (!game.svk) game.svk = {};
-        if (!game.svk.killer)
-            game.svk.killer = { id: 0, format: 0, name: '', next: null };
-        game.svk.killer.format = k_format | 0;
-        game.svk.killer.name = knam || '';
-        /* Preserve hack.c:4287's source-specific urgent death line across the
-         * port's deferred async death boundary. */
-        deadhero(0 /* DIED */, { urgentDeathLine: true });
-        await do_death_sequence({ inPlace: true });
-    } else if ((n | 0) > 0 && (u.uhp | 0) * 10 < (u.uhpmax | 0)) {
-        await maybe_wail();
-    }
-}
 
-/* ══ C hack.c:4210-4241 maybe_wail() ═════════════════════════════════════════
- * The "you are nearly dead" warning, fired by losehp() once the hero drops
- * below a tenth of max HP.  RNG-FREE.
- *
- * gw.wailmsg is a global that throttles it to once per 50 moves; this port had
- * no such field, so it is introduced here under C's name on `game`.  The
- * powers[] list and the >= 4 threshold are C's, verbatim; the intrinsic test is
- * `u.uprops[powers[i]].intrinsic & INTRINSIC` (youprop.h), the same uprops
- * spelling js/ writes elsewhere (see the note in js/const.js). */
-const _WAIL_POWERS = [TELEPORT, SEE_INVIS, POISON_RES, COLD_RES, SHOCK_RES,
-                      FIRE_RES, SLEEP_RES, DISINT_RES, TELEPORT_CONTROL,
-                      STEALTH, FAST, INVIS];
-async function maybe_wail() {
-    const g = game, u = g.u;
-    /* C hack.c:4217-4220 */
-    if ((g.moves | 0) <= ((g.wailmsg | 0) + 50))
-        return;
-    g.wailmsg = g.moves | 0;
-    if (g._touch_artifact_blast_msg) {
-        const _bm = g._touch_artifact_blast_msg;
-        g._touch_artifact_blast_msg = null;
-        await pline(_bm);
-    }
-    /* C you.h:240/290 Role_if/Race_if — gu.urole.mnum / gu.urace.mnum, the same
-     * readers js/cmd.js:254 and js/cmd.js:11131 use. */
-    const role = (g.urole && g.urole.mnum) | 0;
-    const race = (g.urace && g.urace.mnum) | 0;
-    const isWiz = role === PM_WIZARD, isValk = role === PM_VALKYRIE;
-    if (isWiz || race === PM_ELF || isValk) {
-        /* C hack.c:4221-4237 */
-        const who = (isWiz || isValk) ? (g.urole?.name?.m ?? 'Wizard') : 'Elf';
-        if ((u.uhp | 0) === 1) {
-            await pline(`${who} is about to die.`);
-        } else {
-            let powercnt = 0;
-            for (const pw of _WAIL_POWERS)
-                if (((u.uprops?.[pw]?.intrinsic | 0) & INTRINSIC) !== 0)
-                    ++powercnt;
-            await pline(powercnt >= 4
-                ? `${who}, all your powers will be lost...`
-                : `${who}, your life force is running out.`);
-        }
-        return;
-    }
-    /* C hack.c:4238-4241 — You_hear(...), the whole call.  The guard and both
-     * prefixes used to be hand-inlined here; the copy read u.uprops[DEAF] (a
-     * slot nothing in js/ writes, so its guard could never fire) and hardcoded
-     * `unaware = false` because "unconscious()/is_fainted() are not ported
-     * here".  Both ARE ported and js/display.js's You_hear calls them. */
-    const what = (u.uhp | 0) === 1 ? 'the wailing of the Banshee...'
-                                   : 'the howling of the CwnAnnwn...';
-    await You_hear(what);
-}
 
 /* C ref: dokick.c:880-906 kick_ouch(x, y, kickobjnam) — painful kick failure.
  * RNG: rn2(3)             — maybe set wounded legs.
@@ -1981,13 +1869,6 @@ function u_wipe_engr(cnt) {
 /* real body: js/hold_another_object.js (engrave.c:187), incl. the check_pit
  * uteetering_at_seen_pit arm the stub dropped. */
 
-/* C ref: dbridge.c:169-173 is_db_wall(x, y) — verify drawbridge wall is UP.
- * RNG: none. Return boolean (drawbridge wall typ). */
-export function is_db_wall(x, y) {
-    const loc = game.level?.at(x, y);
-    if (!loc) return false;
-    return (loc.typ | 0) === DBWALL;
-}
 /* C ref: dokick.c:1510-1631 impact_drop(missile, x, y, dlev)
  * Player or missile impacts location, causing objects to fall down.
  * RNG: rn2(obj->otyp == BOULDER ? 30 : 3) for each object in pile. */
@@ -2414,7 +2295,6 @@ export async function angry_guards(flag) { return await mklev_angry_guards(flag)
 export function costly_spot(x, y) {
     return shk_costly_spot(x, y);
 }
-export function currency(amt) { return cmd_currency(amt); }
 export function hot_pursuit(shkp) { return shk_hot_pursuit(shkp); }
 /* is_unpaid (C shk.c:1166) and maybe_unhide_at (C mon.c:4687) are re-exported
  * at the top of this file from js/shk.js and js/mklev.js respectively, which
@@ -2621,143 +2501,8 @@ export async function deliver_obj_to_mon(mtmp, cnt, deliverflags) {
         otmp = otmp2;
     }
 }
-/* C ref: dbridge.c:115-128 db_under_typ(mask) — get terrain under a drawbridge.
- * RNG: none. Return schar (terrain type: ICE, LAVAPOOL, MOAT, or STONE). */
-export function db_under_typ(mask) {
-    const m = (mask & DB_UNDER) | 0;
-    switch (m) {
-    case DB_ICE:
-        return ICE;
-    case DB_LAVA:
-        return LAVAPOOL;
-    case DB_MOAT:
-        return MOAT;
-    default:
-        return STONE;
-    }
-}
-/* C ref: dbridge.c:37-43 is_waterwall(x, y) — check if location is a waterwall.
- * RNG: none. Return boolean. */
-export function is_waterwall(x, y) {
-    if (isok(x, y)) {
-        const loc = game.level?.at(x, y);
-        if (loc && IS_WATERWALL(loc.typ)) {
-            return true;
-        }
-    }
-    return false;
-}
-/* C ref: dbridge.c:136-162 is_drawbridge_wall(x, y) — check if location is a drawbridge wall.
- * RNG: none. Return int (direction of drawbridge or -1 if not a valid wall). */
-export function is_drawbridge_wall(x, y) {
-    if (!isok(x, y)) {
-        return -1;
-    }
-    const lev = game.level?.at(x, y);
-    if (!lev || (lev.typ !== DOOR && lev.typ !== DBWALL)) {
-        return -1;
-    }
-    /* Check all four cardinal directions for drawbridge walls */
-    if (isok(x + 1, y)) {
-        const adj = game.level?.at(x + 1, y);
-        if (adj && IS_DRAWBRIDGE(adj.typ) && ((adj.drawbridgemask & DB_DIR) | 0) === DB_WEST) {
-            return DB_WEST;
-        }
-    }
-    if (isok(x - 1, y)) {
-        const adj = game.level?.at(x - 1, y);
-        if (adj && IS_DRAWBRIDGE(adj.typ) && ((adj.drawbridgemask & DB_DIR) | 0) === DB_EAST) {
-            return DB_EAST;
-        }
-    }
-    if (isok(x, y - 1)) {
-        const adj = game.level?.at(x, y - 1);
-        if (adj && IS_DRAWBRIDGE(adj.typ) && ((adj.drawbridgemask & DB_DIR) | 0) === DB_SOUTH) {
-            return DB_SOUTH;
-        }
-    }
-    if (isok(x, y + 1)) {
-        const adj = game.level?.at(x, y + 1);
-        if (adj && IS_DRAWBRIDGE(adj.typ) && ((adj.drawbridgemask & DB_DIR) | 0) === DB_NORTH) {
-            return DB_NORTH;
-        }
-    }
-    return -1;
-}
 
-/* C ref: dbridge.c:179-206 find_drawbridge(x, y) — locate drawbridge from wall or bridge.
- * RNG: none. Return boolean; mutates *x,*y to point to drawbridge if found. */
-export function find_drawbridge(x, y) {
-    if (IS_DRAWBRIDGE((game.level?.at(x.value, y.value)?.typ | 0)))
-        return true;
-    const dir = is_drawbridge_wall(x.value, y.value);
-    if (dir >= 0) {
-        switch (dir) {
-        case DB_NORTH:
-            y.value++;
-            break;
-        case DB_SOUTH:
-            y.value--;
-            break;
-        case DB_EAST:
-            x.value--;
-            break;
-        case DB_WEST:
-            x.value++;
-            break;
-        }
-        return true;
-    }
-    return false;
-}
 
-/* C ref: dbridge.c:234-284 create_drawbridge(x, y, dir, flag)
- * RNG: none. Return boolean. */
-export function create_drawbridge(x, y, dir, flag) {
-    let x2 = x;
-    let y2 = y;
-    let horiz;
-    const lava = (game.level?.at(x, y)?.typ | 0) === LAVAPOOL;
-
-    switch (dir) {
-    case DB_NORTH:
-        horiz = true;
-        y2--;
-        break;
-    case DB_SOUTH:
-        horiz = true;
-        y2++;
-        break;
-    case DB_EAST:
-        horiz = false;
-        x2++;
-        break;
-    default:
-        /* impossible("bad direction in create_drawbridge"); */
-        /*FALLTHRU*/
-    case DB_WEST:
-        horiz = false;
-        x2--;
-        break;
-    }
-    if (!IS_WALL((game.level?.at(x2, y2)?.typ | 0)))
-        return false;
-    if (flag) {
-        game.level.at(x, y).typ = DRAWBRIDGE_DOWN;
-        game.level.at(x2, y2).typ = DOOR;
-        game.level.at(x2, y2).doormask = D_NODOOR;
-    } else {
-        game.level.at(x, y).typ = DRAWBRIDGE_UP;
-        game.level.at(x2, y2).typ = DBWALL;
-        game.level.at(x2, y2).wall_info = W_NONDIGGABLE;
-    }
-    game.level.at(x, y).horizontal = !horiz;
-    game.level.at(x2, y2).horizontal = horiz;
-    game.level.at(x, y).drawbridgemask = dir;
-    if (lava)
-        game.level.at(x, y).drawbridgemask |= DB_LAVA;
-    return true;
-}
 
 /* C ref: dokick.c:1769-1849 obj_delivery(near_hero)
  * RNG: rnd(2) — scatter direction
@@ -2874,225 +2619,12 @@ export async function obj_delivery(near_hero) {
     }
 }
 
-/* Unported helper stubs for obj_delivery */
-/* C dothrow.c:2445-2456 breaks(obj, x, y): announce and dispose of an object
- * that breaks for a non-hero reason.  The message and destruction bodies are
- * canonical cmd.js implementations; this wrapper supplies the missing
- * visibility/test sequencing. */
-export async function breaks(otmp, nx, ny) {
-    const blind = _Blind_dk();
-    const inView = !blind && !!cansee(nx, ny);
-    if (!breaktest(otmp)) return 0;
-    await breakmsg(otmp, inView);
-    return await breakobj(otmp, nx, ny, false, false) ? 1 : 0;
-}
-/* C invent.c:1430 delobj() — use the canonical object extraction/deallocation
- * path, including resistance, map redraw, and nested-container cleanup. */
-export async function delobj(otmp) {
-    return await delobj_core(otmp);
-}
 function _dk_Maybe_Half_Phys(dmg) {
     const p = game.u?.uprops?.[HALF_PHDAM];
     const active = !!(p && ((p.intrinsic | 0) || (p.extrinsic | 0)));
     return active ? Math.trunc((dmg + 1) / 2) : dmg;
 }
-/* C mondata.h:35 hides_under(ptr) = ((ptr)->mflags1 & M1_CONCEAL) != 0.
- * M1_CONCEAL is monflag.h 0x00000080 (see js/dig.js's identical note, which
- * caught a DIFFERENT file's wrong 0x08000000 value for the same macro). */
-function _dk_hides_under(ptr) {
-    return !!ptr && ((ptr.mflags1 | 0) & 0x00000080) !== 0;
-}
 
-/* C explode.c:700-976 scatter. Each object is extracted before flight;
- * shop credit is snapshotted before the first object and reported after all
- * landing and billing operations complete. */
-export async function scatter(sx, sy, blastforce, scflags, obj) {
-    const individual_object = !!obj;
-    const mayFracture = (scflags & MAY_FRACTURE) !== 0;
-
-    /* C explode.c:740-742: diagnose a misplaced individual object. */
-    if (individual_object && (obj.ox !== sx || obj.oy !== sy))
-        await impossible('scattered object <%d,%d> not at scatter site <%d,%d>',
-                         obj.ox, obj.oy, sx, sy);
-
-    /* C:738-741 shop_origin = shop_keeper(*in_rooms(sx,sy,SHOPBASE)) != 0 &&
-     * costly_spot(sx,sy).  RNG-free query; safe to always compute. */
-    const _sc_rooms = in_rooms(sx, sy, SHOPBASE);
-    const _sc_shkp = shop_keeper(_sc_rooms.length ? _sc_rooms[0] : 0);
-    const shop_origin = !!_sc_shkp && shk_costly_spot(sx, sy);
-    if (shop_origin) await credit_report(_sc_shkp, 0, true);
-    let lostgoods = false;
-
-    /* ── build the scatter chain, splitting stacks as C's while-loop does ── */
-    const schain = [];
-    let total = 0;
-    for (;;) {
-        let otmp = individual_object ? obj : (game.level?.levelObjects?.[sx]?.[sy] ?? null);
-        if (otmp == null)
-            break;
-        if (otmp === game.u?.uball || otmp === game.u?.uchain) {
-            /* C explode.c:751-760 — the chain shatters before scattering;
-             * unpunish() clears the worn linkage and removes the chain.  A
-             * ball then continues through the normal scatter loop, while a
-             * chain starts the next object. */
-            const wasChain = otmp === game.u?.uchain;
-            await pline('The chain shatters!');
-            await unpunish();
-            if (wasChain)
-                continue;
-        }
-        if (otmp.quan > 1) {
-            let qtmp = Math.min(otmp.quan - 1, 32767 /* LARGEST_INT */);
-            qtmp = rnd(qtmp);
-            otmp = (await splitobj(otmp, qtmp));
-        } else {
-            obj = null; /* all used */
-        }
-        obj_extract_self_general(otmp);
-
-        /* C explode.c:766-807 — boulders fracture into rocks and statues
-         * crumble in place on a 9-in-10 roll. */
-        if (mayFracture
-            && ((otmp.otyp | 0) === _KO_BOULDER_OTYP || (otmp.otyp | 0) === 476)
-            && rn2(10)) {
-            if ((otmp.otyp | 0) === _KO_BOULDER_OTYP) {
-                if (cansee(sx, sy)) await pline('%s apart.', Tobjnam(otmp, 'break'));
-                else await You_hear('stone breaking.');
-                await fracture_rock(otmp);
-                place_object(otmp, sx, sy);
-                otmp = sobj_at(_KO_BOULDER_OTYP, sx, sy);
-                if (otmp) {
-                    obj_extract_self_general(otmp);
-                    place_object(otmp, sx, sy);
-                }
-            } else {
-                const trap = t_at(sx, sy);
-                if (trap && trap.ttyp === STATUE_TRAP) deltrap(trap);
-                if (cansee(sx, sy)) await pline('%s.', Tobjnam(otmp, 'crumble'));
-                else await You_hear('stone crumbling.');
-                await break_statue(otmp);
-                place_object(otmp, sx, sy);
-            }
-            newsym(sx | 0, sy | 0);
-            continue;
-        }
-
-        /* C evaluates the random destruction roll before the glass/egg
-         * exceptions, even when either exception guarantees a break test. */
-        const destroy_roll = (scflags & MAY_DESTROY)
-            && (!rn2(10)
-                || (MKOBJ_OC_MATERIAL[otmp.otyp | 0] | 0) === _KO_GLASS_MATERIAL
-                || (otmp.otyp | 0) === _KO_EGG_OTYP);
-        if (destroy_roll) {
-            if (await breaks(otmp, sx, sy))
-                continue;
-        }
-
-        const dirIdx = rn2(N_DIRS);
-        let rangeBase = (blastforce | 0) - Math.trunc((otmp.owt | 0) / 40);
-        if (rangeBase < 1)
-            rangeBase = 1;
-        schain.push({
-            obj: otmp, ox: sx, oy: sy,
-            dx: xdir[dirIdx], dy: ydir[dirIdx],
-            range: rnd(rangeBase),
-            stopped: false,
-        });
-    }
-
-    let farthest = 0;
-    for (const s of schain)
-        if (s.range > farthest) farthest = s.range;
-
-    /* ── the flight loop: each un-stopped piece advances one square/round ── */
-    while (farthest-- > 0) {
-        for (const stmp of schain) {
-            const oldRange = stmp.range;
-            stmp.range = oldRange - 1;
-            if (!(oldRange > 0 && !stmp.stopped))
-                continue;
-            game.thrownobj = stmp.obj;
-            if (game.gt) game.gt.thrownobj = stmp.obj;
-            let bx = stmp.ox + stmp.dx, by = stmp.oy + stmp.dy;
-            const typ = isok(bx, by) ? ((game.level?.at(bx, by)?.typ) ?? STONE) : STONE;
-            game.bhitpos = { x: bx, y: by };
-            let mtmp;
-            if (!isok(bx, by)) {
-                game.bhitpos.x -= stmp.dx; game.bhitpos.y -= stmp.dy;
-                stmp.stopped = true;
-            } else if (!ZAP_POS(typ) || closed_door(game.bhitpos.x, game.bhitpos.y)) {
-                game.bhitpos.x -= stmp.dx; game.bhitpos.y -= stmp.dy;
-                stmp.stopped = true;
-            } else if ((mtmp = m_at(game.bhitpos.x, game.bhitpos.y))) {
-                if (scflags & MAY_HITMON) {
-                    stmp.range -= 1;
-                    if (await ohitmon(mtmp, stmp.obj, 1, false)) {
-                        stmp.obj = null;
-                        stmp.stopped = true;
-                    }
-                }
-            } else if (u_at(game.bhitpos.x, game.bhitpos.y)) {
-                if (scflags & MAY_HITYOU) {
-                    if (game.multi) nomul(0);
-                    const dam = dmgval(stmp.obj, game.youmonst);
-                    let hitvalu = 8 + (stmp.obj.spe | 0);
-                    if (_km_bigmonst(game.youmonst?.data)) hitvalu++;
-                    const hitu = await thitu(hitvalu, _dk_Maybe_Half_Phys(dam), stmp.obj, null);
-                    if (hitu && (stmp.obj.oclass | 0) === 8 /* POTION_CLASS */) {
-                        stmp.obj = null;
-                        stmp.stopped = true;
-                    }
-                    if (hitu) {
-                        stmp.range -= 3;
-                        await stop_occupation();
-                    }
-                }
-            }
-            /* else: VIS_EFFECTS branch — no-op, see the doc comment above. */
-            stmp.ox = game.bhitpos.x;
-            stmp.oy = game.bhitpos.y;
-            if (stmp.obj && IS_SINK((game.level?.at(stmp.ox, stmp.oy)?.typ) ?? STONE))
-                stmp.stopped = true;
-            game.thrownobj = null;
-            if (game.gt) game.gt.thrownobj = null;
-        }
-    }
-
-    /* ── landing: place whatever's left where it stopped ── */
-    for (const stmp of schain) {
-        const x = stmp.ox, y = stmp.oy;
-        if (stmp.obj) {
-            if (x !== sx || y !== sy)
-                total += (stmp.obj.quan | 0);
-            if (!await flooreffects(stmp.obj, x, y, 'land')) {
-                /* C explode.c:916-938 — gold scattered out of a shop is
-                 * added to the bill when the hero is still in that shop. */
-                const heroShop = in_rooms(game.u.ux, game.u.uy, SHOPBASE)[0] || 0;
-                if (shop_origin && (x !== sx || y !== sy)
-                    && !shk_costly_spot(x, y)
-                    && (!heroShop || game.u.urooms?.includes(String.fromCharCode(heroShop)))
-                    && (stmp.obj.oclass | 0) === _KO_COIN_CLASS) {
-                    await shk_addtobill(stmp.obj, false, false, true);
-                    lostgoods = true;
-                }
-                place_object(stmp.obj, x, y);
-                await stackobj(stmp.obj);
-            }
-        }
-        newsym(x, y);
-    }
-    newsym(sx, sy);
-    if (u_at(sx, sy) && game.u?.uundetected && _dk_hides_under(game.youmonst?.data))
-        hideunder(game.youmonst);
-    {
-        const mtmp = m_at(sx, sy);
-        if (mtmp && mtmp.mtrapped)
-            mtmp.mtrapped = 0;
-    }
-    maybe_unhide_at(sx, sy);
-    if (lostgoods) await credit_report(_sc_shkp, 1, false);
-    return total;
-}
 /* stairway_find_from: LOCAL throwing stub DELETED — use mklev.js's canonical
  * stairs lookup at the migration call site above. */
 

@@ -17,14 +17,15 @@ import { finishMealMimicry } from './meal_mimic.js';
 import { finishHeroDigestion } from './hero_combat_engulf.js';
 import { game, requireGameLevel, requireInitializedGame, requireGameDisplay, requireLiveGame } from './gstate.js';
 import { isRoom } from './map_types.js';
-import { clearBypasses } from './object_bypass.js';
+import { clearBypasses } from './worn.js';
 import { clearSplitObjects } from './object_stack.js';
 import { A_CURRENT, A_ORIGINAL, ESCAPED, G_NOCORPSE, In_endgame, In_hell, MON_FLOOR, PICK_ONE, PLNMSG_MON_TAKES_OFF_ITEM, RLOC_NOMSG, WATER, RLOC_MSG, LOST_STOLEN, MMOVE_DIED, NORMAL_SPEED, A_CHA, A_CON, A_DEX, A_INT, A_STR, A_WIS, COLNO, ROWNO, DOOR, D_CLOSED, D_LOCKED, HOLE, M_SEEN_ELEC, M_SEEN_FIRE, M_SEEN_MAGR, M_SEEN_REFL, STONE, ZAP_POS, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE, W_ARMG, UNENCUMBERED, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, W_ACCESSORY, W_ARMOR, W_WEAPONS, ismnum, Upolyd, Is_airlevel, Is_waterlevel, LUCKMIN, LUCKMAX, TT_BURIEDBALL, TT_LAVA, KILLED_BY_AN, } from './const.js';
-import { mapVicinity } from './magic_mapping.js';
 import { showInventoryWindow } from './windows.js';
-import { clearCannedCommands, endVoluntaryMultiTurn, heroHasInvoluntaryDelay, nomul, currentMulti, pendingArmorAction, setMulti, } from './command_state.js';
+import { clearCannedCommands, currentMulti, heroHasInvoluntaryDelay, setMulti } from './cmd.js';
+import { pendingArmorAction } from './do_wear.js';
+import { endVoluntaryMultiTurn, nomul } from './hack.js';
 import { dosounds, sessionIsNight } from './ambient_sounds.js';
-import { warnWithMasterKey } from './artifact_warning.js';
+import { warnWithMasterKey, applyArtifactHit } from './artifacts.js';
 import { regenerateHeroHp } from './hero_regeneration.js';
 import { overexertHeroHp } from './hero_overexertion.js';
 import { ceilingName } from './terrain_name.js';
@@ -32,17 +33,15 @@ import { tryCallObjectType } from './object_call.js';
 import { consumeMonsterItem } from './mthrowu.js';
 import { heroCanTeleport, moveMonsterNextToHero, randomMonsterRelocation, teleportHero, askTeleportDestination, } from './teleport.js';
 import { runDueTimers } from './timer_effects.js';
-import { finishInUseInventory } from './object_cleanup.js';
 import { askKeepRestoredSave, restoreMonsterCover } from './save.js';
 import { placeHeroAtRandomArrival, finishScheduledLevelChange } from './level_change.js';
 import { monsterName } from './do_name.js';
 import { possessiveName, dist2, dungeonDepth } from './hacklib.js';
 import { monsterSubjectPronoun, monstersForgetHeroResistance, monstersObserveHeroResistance, seenResistanceForDamage, monsterLocomotion, } from './mondata.js';
 import { resolveMonsterWeaponContact, tryKnockback, resolveMonsterContactEffect } from './uhitm.js';
-import { applyArtifactHit } from './artifact_hit.js';
 import { MONSTER_GENO, monsterIsAnimal, MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_LEVEL, MONSTER_MOVE, MONSTER_NAME, MONSTER_SOUND, MONSTER_SYMBOL, monsterIsNonliving, monsterTypeName, } from './monster_data.js';
 import { monsterAtPosition } from './steed.js';
-import { finishHeroDeathAfterMonsterMessage, finishMonsterAttackDeath, waitForCurrentMonsterMore, finishHeroDeath, } from './end.js';
+import { finishHeroDeathAfterMonsterMessage, finishMonsterAttackDeath, waitForCurrentMonsterMore, finishHeroDeath, finishInUseInventory } from './end.js';
 import { monsterCanCarryObject } from './mon.js';
 import { releaseObjectLeash, checkHeroLeashes } from './leash_apply.js';
 import { touchPetrifies } from './stoning.js';
@@ -52,7 +51,7 @@ import { OBJECT_DELAY, ACID_VENOM, BOULDER, CORPSE, LEASH, GOLD_PIECE, OBJECT_BI
 import { heroIsUnaware } from './hero_sleep.js';
 import { heroSpecies, setHeroSpecies } from './hero_species.js';
 import { heroHasConflict } from './hero_conflict.js';
-import { openHoldingTrap } from './trap_magic.js';
+import { openHoldingTrap, erodeArmor, erodeAttackingWeapon } from './trap.js';
 import { AD_COLD, AD_DGST, AD_DRST, AD_FIRE, AD_MAGM, AD_SEDU, AD_SITM, AD_SSEX, AD_STCK, } from './monster_attack_types.js';
 import { findArtifact } from './artifacts.js';
 import { observeBucForNaming, observeObject, recordObjectEncounter, recordObjectKnowledge, learnObjectType, } from './object_knowledge.js';
@@ -60,8 +59,8 @@ import { loseHeroExperience } from './exper.js';
 import { makeMonsterFlee, interruptOccupationForMonster, monsterSightingBeforeAction, completeMonsterOffensiveAction, heroEveryturnEffect, runMonsterEveryturnEffects, beginMonsterMove, beginMonsterDochug, runMonsterAction, } from './monmove.js';
 import { stopHeroOccupation } from './occupation.js';
 import { removeWornHeroItem } from './hero_equipment.js';
-import { isWeldedPrimary } from './weapon_slots.js';
-import { unlinkObject } from './object_location.js';
+import { isWeldedPrimary } from './wield.js';
+import { unlinkObject } from './mkobj.js';
 import { finishInventoryRemoval } from './hero_inventory.js';
 import { reassessMonsterArmor } from './monworn.js';
 import { currentLuaLifecycle } from './lua/lifecycle.js';
@@ -71,7 +70,7 @@ import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { makemonAt, finishMonsterGrowth } from './makemon.js';
 import { continueCountedCommand, getLine, promptYesNo, rhack } from './cmd.js';
 import { finishArmorRemoval } from './do_wear.js';
-import { clearRepeatCommand } from './command_repeat.js';
+import { clearRepeatCommand } from './cmd.js';
 import { finishDestinationSpotEffects } from './location_effects.js';
 import { performQuestExpulsion, ensureQuestStatus, talkQuestCharacter } from './quest.js';
 import { amuletTurn, intervene, monsterCarriesAmulet, publishMonsterCuss } from './wizard.js';
@@ -107,7 +106,6 @@ import { finishDeferredMonsterMiscItem, monsterGainLevelRiseDestination, present
 import { fumaroles } from './mkmaze.js';
 import { petrifyMonsterImmediately, resumeDeferredMonsterTrap, burnHeroArmorByFire } from './trap.js';
 import { commitPetPickup } from './dogmove.js';
-import { erodeArmor, erodeAttackingWeapon } from './object_erosion.js';
 import { monsterWieldedWeapon } from './weapon.js';
 import { wakeMonstersNearWithMessages } from './mon.js';
 import { applyHeroWereChange, presentWereChange } from './were.js';
@@ -120,7 +118,7 @@ import { clearJustPicked } from './just_picked.js';
 import { nearCapacity } from './weight.js';
 import { runLevelRegions } from './regions.js';
 import { invault, moveVaultGuard } from './vault.js';
-import { automaticSearch, revealWarnedMonsters } from './detect.js';
+import { automaticSearch, mapVicinity, revealWarnedMonsters } from './detect.js';
 import { activateStatueTrapAt } from './statue_trap.js';
 import { finishPrayerOccupation } from './pray.js';
 import { getHungry, recoverHeroFromFainting, regainHearingAfterHelplessness } from './hunger.js';
@@ -932,6 +930,10 @@ async function finishInitialTurnMaintenanceAfterMonsterDistress(capacity) {
         return { kind: 'complete' };
     return { kind: 'regions', sourceTurn: game.moves, capacity };
 }
+// C allmain.c:moveloop_core() runs the immobile-hero delay tail (allmain.c:379-388)
+// inside this turn's maintenance: finishInitialTurnMaintenanceAfterIntervention
+// completes the delay and calls hack.c:unmul() through finishHeroHelplessness,
+// then deferred_goto() through finishScheduledLevelChange.
 async function advanceWorldTurn() {
     const game = requireInitializedGame();
     const initialPhase = await beginInitialTurnMaintenance();

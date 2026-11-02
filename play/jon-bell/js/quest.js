@@ -13,6 +13,7 @@ import { update_inventory } from './inventory_refresh.js';
 import { create_gas_cloud } from './region.js';
 import { DEAF } from './const.js';
 import { BELL_OF_OPENING } from './objclass_ranges.js';
+import { stinky_nemesis } from './questpgr.js'; // relocate-fns
 
 const AMULET_OF_YENDOR = 213, FAKE_AMULET_OF_YENDOR = 212;
 const MS_LEADER = 36, MS_NEMESIS = 37; // monflag.h
@@ -81,22 +82,6 @@ export function nemesis_stinks(mx, my) {
     game.context.mon_moving = save_mon_moving;
 }
 
-// C questpgr.c:147-194 uses the HERO'S quest text even for a different
-// role's nemesis. Reading raw text still initializes Lua and consumes RNG.
-async function stinky_nemesis() {
-    const raw = await quest_nemesis_death_text();
-    if (!raw)
-        return false;
-    // C hacklib.c:strNsubst copies its BUFSZ buffer back only if it replaced
-    // a newline before the 255-character output limit.
-    const prefix = raw.slice(0, 255);
-    const text = (prefix.includes('\n') ? prefix.replace(/\n/g, ' ') : raw).toLowerCase();
-    let pos = text.indexOf('noxious');
-    if (pos < 0) pos = text.indexOf('poisonous');
-    if (pos < 0) pos = text.indexOf('toxic');
-    return pos >= 0 && (text.indexOf(' gas', pos) >= 0
-                       || text.indexOf(' fumes', pos) >= 0);
-}
 
 // C mon.c:2767-2776, shared by the port's inlined m_detach death paths.
 // Call after map removal and Wizard death handling, before inventory drops.
