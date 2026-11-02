@@ -114,7 +114,6 @@ import {
     passes_walls,
     perceives,
     resists_magm,
-    tunnels,
     verysmall,
 } from './mondata.js';
 import {
@@ -608,6 +607,14 @@ export function planningState(state) {
         atemp: [...(state.u?.atemp ?? [])],
         atime: [...(state.u?.atime ?? [])],
         uevent: { ...(state.u?.uevent ?? {}) },
+        // mon.c xkilled() counts u.uconduct.killer when a planned passive
+        // counterattack kills the attacker; the live pass must still see
+        // the first kill and log it.
+        uconduct: { ...(state.u?.uconduct ?? {}) },
+        // attrib.c adjalign() lowers u.ualign.record and raises
+        // u.ualign.abuse when a planned passive counterattack kills a
+        // peaceful attacker (mon.c xkilled()); the live pass applies it once.
+        ualign: { ...(state.u?.ualign ?? {}) },
         uhave: { ...(state.u?.uhave ?? {}) },
         uprops: state.u?.uprops?.map(
             (property) => property ? { ...property } : property,
@@ -879,15 +886,18 @@ function resistsTrapEffect(monster, trapType, env) {
 // a trapped closed door when OPENDOOR is set; postmov() checks the trap before
 // its whole-mask D_CLOSED arm, so retain the D_TRAPPED bit here and let that
 // source-owned boundary run. can_open repeats mon.c mon_allowflags():2067; a
-// wall-walker or a tunneler skips the block instead and leaves the door closed.
-function opensClosedDoor(monster, location, doorMask) {
+// wall-walker or a monster whose m_move() can_tunnel is still set skips the
+// block instead, and digsDestination() admits the door mdig_tunnel() breaks.
+// can_tunnel is m_move()'s own copy: a hostile dwarf close to the hero has
+// lost it at monmove.c:1910-1914 and opens the door with its hands.
+function opensClosedDoor(monster, location, doorMask, canTunnel) {
     const species = monster.data;
     return location?.typ === DOOR
         && (doorMask & D_CLOSED)
         && !(doorMask & D_LOCKED)
         && !(nohands(species) || verysmall(species))
         && !passes_walls(species)
-        && !tunnels(species);
+        && !canTunnel;
 }
 
 // UnblockDoor (monmove.c:1526-1536) writes the doormask and then rebuilds the
@@ -1011,7 +1021,9 @@ async function admitSimpleDestinationAndRegion(monster, x, y, env) {
     // beside the block that skips them.
     const inertDoorway = location?.typ === DOOR
         && INERT_DOOR_MASKS.has(doorMask);
-    const opensDoor = opensClosedDoor(monster, location, doorMask);
+    const opensDoor = opensClosedDoor(
+        monster, location, doorMask, env.canTunnel,
+    );
     // C mon.c mfndpos admits UNLOCKDOOR. m_move supplies the same captured
     // can_unlock that its existing postmov door-opening branch consumes.
     const unlocksDoor = location?.typ === DOOR
@@ -1804,8 +1816,9 @@ async function planSimpleMonsterScan(monster, env) {
             throw new MonsterInputPlanningBoundaryError(operation);
         },
         // C ref: mon.c movemon_singlemon():1233-1239. The parked guard's
-        // vault.c gd_move() receives env.planning and leaves the clone alone,
-        // as it does for a guard on the map; the live scan runs it.
+        // vault.c gd_move() receives env.planning and stops the dry run
+        // through requestPlanningInput above, as it does for a guard on the
+        // map; the live scan runs it and the plan resumes after that scan.
         guardMove: (guard, guardEnv) => gd_move(guard, guardEnv),
         everyTurnEffect: planningEveryTurnEffect,
         // C ref: mon.c:1258-1259. movemon()'s tail sets vision_full_recalc
@@ -1965,6 +1978,7 @@ export async function preflightSimpleMonsterActions(
     let beforeChange = false;
     let beforeLevelEffects = false;
     let beforeStorms = false;
+    let beforeVaultInput = false;
     try {
         try {
             const scan = await planSimpleMonsterTurn(
@@ -1980,6 +1994,7 @@ export async function preflightSimpleMonsterActions(
                     beforeChange = Boolean(result?.beforeChange);
                     beforeLevelEffects = Boolean(result?.beforeLevelEffects);
                     beforeStorms = Boolean(result?.beforeStorms);
+                    beforeVaultInput = Boolean(result?.beforeVaultInput);
                     return result;
                 } : null,
                 afterMonsterScan,
@@ -2030,6 +2045,7 @@ export async function preflightSimpleMonsterActions(
         beforeChange,
         beforeLevelEffects,
         beforeStorms,
+        beforeVaultInput,
         inputBoundary,
     };
 }

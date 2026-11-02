@@ -966,11 +966,17 @@ export function hero_glyph_info(state = game) {
     );
     const glyph = glyphPresentation(
         symbol,
-        (showRace && !Upolyd(state.u))
-            ? HI_DOMESTIC : species?.mcolor ?? CLR_WHITE,
+        species?.mcolor ?? CLR_WHITE,
         state,
         numeric_glyph_customization(logicalGlyph, state),
     );
+    // C ref: display.c map_glyphinfo() (2620-2632). The hero's color tweak
+    // replaces the stored glyphmap color, so it survives reset_glyphmap()
+    // turning colors off on a Rogue level without Rogue IBM colors.
+    if (state.iflags?.wc_color !== false && !Upolyd(state.u)) {
+        if (hasRogueColor(state)) glyph.color = CLR_YELLOW;
+        else if (showRace) glyph.color = HI_DOMESTIC;
+    }
     // C ref: display.h hero_glyph (654-656). The hero's own square takes an
     // ordinary monster glyph, so reset_glyphmap()'s GLYPH_MON arm gives it
     // MG_MALE or MG_FEMALE like any other monster -- but from Ugender rather
@@ -3691,8 +3697,8 @@ export function unmap_object(x, y, state = game) {
  * C's newsym_force() is newsym() plus the glyph buffer's dirty bookkeeping.
  * js/display.js flush_screen() repaints from game.level rather than from a
  * dirty range, so newsym() alone carries the whole live effect here. A
- * planned clone can supply a redraw callback; its current callback records
- * newsym_force as a named gap while this helper still observes the object.
+ * planned clone supplies a silent redraw callback, so it still observes the
+ * object but never paints the live terminal.
  *
  * The default redraw below is newsym(), which takes no state and reads the
  * module-global `game`. Keep the foreign-state guard unless a caller supplies
@@ -6064,6 +6070,9 @@ function _statusRelationMatches(actual, relation, threshold) {
 // Read-only TTY painting consumes the selection made by the status
 // notification pass. Plain flush_screen repaints never advance this history.
 function _statusFieldStyle(field) {
+    // C ref: wintty.c render_status() (5213-5232) draws a field's stored
+    // color and attributes only while iflags.hilite_delta is nonzero.
+    if (!game.iflags?.hilite_delta) return null;
     const fieldRow = STATUS_FIELDS.find(row => row.key === field);
     if (!fieldRow) return null;
     return game.gb?.status_hilite_rule?.[0]?.[fieldRow.fld]?.style ?? null;
@@ -6324,6 +6333,24 @@ function _collectStatusHilites(layouts, onlyField = null) {
         const data = _statusFieldData(field.key,
             field.key === 'carrying-capacity'
                 ? game._statusCapacitySnapshot : null);
+        // C ref: botl.c eval_notify_windowport_field() (1523-1543). A
+        // percentage field recomputes its percentage only while it has
+        // highlight rules, and then only when its value changed, on
+        // update_all, or (for BL_XP) always; 'hitpointbar' forces BL_HP.
+        // Otherwise the bank keeps its last percentage, 0 until one has been
+        // computed, so the first pass after a rule is added can see a change.
+        if (data.percent != null) {
+            const hasThresholds = (game.iflags?.status_hilites ?? []).some(
+                (rule) => rule.field === field.key,
+            );
+            const valueChanged = gb.status_hilite_compare_value[1][fld]
+                !== (data.compareValue ?? data.value ?? null);
+            const recompute = (hasThresholds && (valueChanged || updateAll
+                    || field.key === 'experience-level'))
+                || (field.key === 'hitpoints'
+                    && Boolean(game.iflags?.wc2_hitpointbar));
+            if (!recompute) data.percent = gb.status_hilite_percent[1][fld] ?? 0;
+        }
         const value = data.value ?? null;
         const compareValue = data.compareValue ?? value;
         const percent = data.percent ?? null;
@@ -6368,10 +6395,12 @@ function _collectStatusHilites(layouts, onlyField = null) {
             && (pendingChanged || game.multi
                 || (until > 0 && (game.moves ?? 0) <= until));
         if (notification) {
+            // botl.c get_hilite() picks the rule whatever 'statushilites'
+            // says; the tty applies iflags.hilite_delta when it draws the
+            // field (wintty.c render_status()), in _statusFieldStyle().
             const selected = holdTemporary
                 ? previousRule
-                : game.iflags?.hilite_delta
-                    ? _selectStatusHilite(field.key, data, change) : null;
+                : _selectStatusHilite(field.key, data, change);
             gb.status_hilite_rule[0][fld] = selected;
             // eval_notify_windowport_field() writes the selected rule into
             // both banks only when it notifies the field, including on

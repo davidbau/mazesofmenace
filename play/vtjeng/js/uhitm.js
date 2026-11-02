@@ -256,6 +256,7 @@ import {
     test_move,
     You_can_move_again,
 } from './hack.js';
+import { mapseen_room } from './dungeon.js';
 import { in_rooms } from './rooms.js';
 import { dopay, tended_shop } from './shk.js';
 import { paranoid_query, xytodir } from './cmd.js';
@@ -2214,7 +2215,9 @@ export async function do_attack(monster, state = game, env = {}) {
             for (const roomNumber of in_rooms(
                 monster.mx, monster.my, SHOPBASE, state,
             )) {
-                const room = state.level.rooms[roomNumber - ROOMOFFSET];
+                // C indexes svr.rooms[*p - ROOMOFFSET], where subrooms
+                // (a Minetown shop, say) follow the top-level rooms.
+                const room = mapseen_room(roomNumber - ROOMOFFSET, state);
                 if (tended_shop(room, state)) {
                     inShop = true;
                     break;
@@ -8146,6 +8149,10 @@ export async function passive(
             }
             if (!propertyPresent(state.u, ACID_RES)) {
                 await mdamageu(mon, tmp, state, effectEnv);
+                // A lethal splash reaches done() through mdamageu(), and C's
+                // really_done() never returns. The port's end.js returns
+                // with gameover set, so stop before the rest of the passive.
+                if (state.program_state?.gameover) return M_ATTK_DEF_DIED;
                 monstunseesu(M_SEEN_ACID, state);
             } else {
                 monstseesu(M_SEEN_ACID, state);
@@ -8240,6 +8247,8 @@ export async function passive(
                 effectEnv,
             );
             await mdamageu(mon, tmp, state, effectEnv);
+            // As for AD_ACID: C's done() does not return to draw rn2(3).
+            if (state.program_state?.gameover) return M_ATTK_DEF_DIED;
             monstunseesu(M_SEEN_MAGR, state);
         }
         break;
@@ -8340,6 +8349,8 @@ export async function passive(
                 await effectEnv.message('You are suddenly very cold!', state,
                     effectEnv);
                 await mdamageu(mon, tmp, state, effectEnv);
+                // As for AD_ACID: C's done() does not return to draw rn2(2).
+                if (state.program_state?.gameover) return M_ATTK_DEF_DIED;
                 healmon(
                     mon,
                     Math.trunc((tmp + random.rn2(2)) / 2),

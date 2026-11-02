@@ -176,7 +176,7 @@ import {
 } from './cmd.js';
 import { food_disappears } from './eat.js';
 import { makeplural } from './fruit.js';
-import { digit, encodeUtf8ByteString, ing_suffix, letter, s_suffix, strstri, strsubst, visctrl } from './hacklib.js';
+import { digit, encodeUtf8ByteString, ing_suffix, letter, nh_deterministic_qsort, s_suffix, strstri, strsubst, visctrl } from './hacklib.js';
 import {
     LOW_PM,
     PM_ARCHEOLOGIST,
@@ -844,7 +844,7 @@ export function sortloot(olist, mode, by_nexthere, filterfunc, state = game) {
         ++index;
     }
     if (sortMode && items.length > 1) {
-        items.sort((a, b) => sortloot_cmp(a, b, sortMode, state));
+        nh_deterministic_qsort(items, (a, b) => sortloot_cmp(a, b, sortMode, state));
         // C frees comparator-owned name buffers before returning the array.
         for (const item of items) item.str = null;
     }
@@ -1233,10 +1233,11 @@ export async function getobj(word, obj_ok, ctrlflags, state = game) {
                 if (ilet === '?' && !lets && altletsStr)
                     allowed_choices = altletsStr;
 
-                // C clears qbuf before display_pickinv(). Forced menus use
-                // the prompt as their menu query; the JS menu owner already
-                // displays the same title through the enclosing prompt.
-                const menuquery = null;
+                // C:1972-1975 -- C clears qbuf and menuquery before
+                // display_pickinv(); a forced menu then gets the prompt as
+                // its query, which end_menu() shows above the choices.
+                const menuquery = state.iflags.force_invmenu
+                    ? `What do you want to ${word}?` : null;
 
                 // C:1976-1978 -- compute the hands description when the
                 // full inventory is shown (allowed_choices is null), or
@@ -1340,11 +1341,12 @@ export async function getobj(word, obj_ok, ctrlflags, state = game) {
         /* verify the chosen object */
         if (!otmp) {
             await ttyPline("You don't have that object.", state);
+            if (state.in_doagain) return null;
             continue;
         }
         if (cntgiven && (cnt < 0 || otmp.quan < cnt)) {
             await ttyPline(
-                `You don't have that many! You have only ${otmp.quan}.`,
+                `You don't have that many!  You have only ${otmp.quan}.`,
                 state,
             );
             if (state.in_doagain) return null;
@@ -2015,6 +2017,10 @@ export async function display_pickinv(
                 const glyphInfo = obj_to_glyph(otmp, state);
                 items.push({
                     selector: otmp.invlet,
+                    // invent.c 3323-3325: #wizidentify makes each item's
+                    // default class symbol its group accelerator.
+                    ...(wizid ? { groupSelector: String.fromCharCode(
+                        DEFAULT_PRIMARY_SYMBOLS[SYM_OFF_O + otmp.oclass]) } : {}),
                     label: donameFresh(otmp, state),
                     value: wizid ? otmp : otmp.invlet,
                     glyphInfo,
@@ -2050,6 +2056,10 @@ export async function display_pickinv(
                 const glyphInfo = obj_to_glyph(otmp, state);
                 items.push({
                     selector: otmp.invlet,
+                    // invent.c 3323-3325: #wizidentify makes each item's
+                    // default class symbol its group accelerator.
+                    ...(wizid ? { groupSelector: String.fromCharCode(
+                        DEFAULT_PRIMARY_SYMBOLS[SYM_OFF_O + otmp.oclass]) } : {}),
                     label: donameFresh(otmp, state),
                     value: wizid ? otmp : otmp.invlet,
                     glyphInfo,
@@ -2366,7 +2376,6 @@ export function preflight_look_here(
             seenTrap: null,
             skip_dfeature,
             skip_objects,
-            withShopPrice: false,
         };
     }
     const objectList = objects ?? (() => {
@@ -2378,7 +2387,6 @@ export function preflight_look_here(
     })();
     const otmp = objectList[0] ?? null;
     const hasPile = objectList.length > 1;
-    const withShopPrice = Boolean(otmp) && costly_spot(ux, uy, state);
     const trap = t_at(ux, uy, state);
     // C ref: invent.c look_here() (4162-4178). The live call names only a
     // visible region and a trap whose tseen bit is set; admission records both
@@ -2410,13 +2418,11 @@ export function preflight_look_here(
             // C names the first tactile cockatrice and breaks; this projection
             // stops there before checking any later object's price.
             if (tactileCockatrice) break;
-            if (withShopPrice)
-                assertPricedObjectNameable(object, state);
+            assertPricedObjectNameable(object, state);
         }
     }
 
-    if (!skipsObjectPriceCheck && otmp && !hasPile && !skip_objects
-        && withShopPrice)
+    if (!skipsObjectPriceCheck && otmp && !hasPile && !skip_objects)
         assertPricedObjectNameable(otmp, state);
     return {
         blind,
@@ -2430,7 +2436,6 @@ export function preflight_look_here(
         seenTrap,
         skip_dfeature,
         skip_objects,
-        withShopPrice,
     };
 }
 
@@ -2470,7 +2475,6 @@ export async function look_here(
         region,
         seenTrap,
         skip_objects,
-        withShopPrice,
     } = plan;
     const verb = blind ? 'feel' : 'see';
     const { ux, uy } = state.u;
@@ -2619,11 +2623,14 @@ export async function look_here(
         for (let object = otmp; object; object = object.nexthere) {
             const canFeelCockatrice = object.otyp === CORPSE
                 && will_feel_cockatrice(object, false, state);
+            // C invent.c:4306 names every pile object with
+            // doname_with_price(); doname_base() decides from the object's
+            // own location whether any price or "(no charge)" applies,
+            // including on the shopkeeper's square, which costly_spot()
+            // excludes.
             lines.push(canFeelCockatrice
                 ? `${donameFresh(object, state)}...`
-                : withShopPrice
-                ? doname_with_price(object, state, { currencyName: currency })
-                : donameFresh(object, state));
+                : doname_with_price(object, state, { currencyName: currency }));
             if (canFeelCockatrice) {
                 feltCockatrice = object;
                 break;
@@ -2637,9 +2644,10 @@ export async function look_here(
     }
     if (dfeature && !skip_dfeature) await message(fbuf, state);
     await readEngraving(state);
-    const namedObject = withShopPrice
-        ? doname_with_price(otmp, state, { currencyName: currency })
-        : donameFresh(otmp, state);
+    // C invent.c:4282, doname_with_price() for the single object too.
+    const namedObject = doname_with_price(
+        otmp, state, { currencyName: currency },
+    );
     await message(`You ${verb} here ${namedObject}.`, state);
     state.iflags.last_msg = PLNMSG_ONE_ITEM_HERE;
     if (otmp.otyp === CORPSE)
@@ -4889,7 +4897,10 @@ export async function hold_another_object(
         const placement = place_object(obj, state.u.ux, state.u.uy, normalized);
         if (placement && typeof placement.then === 'function') await placement;
 
-        if (!await touch_artifact(obj, state.youmonst, normalized)) {
+        const touched = await touch_artifact(obj, state.youmonst, normalized);
+        // C's accepted death enters done() and does not return.
+        if (state.program_state?.gameover) return obj;
+        if (!touched) {
             obj_extract_self(obj, normalized);
             await holdDropY(obj, normalized);
             return obj;

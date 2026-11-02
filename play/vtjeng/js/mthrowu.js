@@ -241,6 +241,7 @@ import {
     xnameFresh,
 } from './objnam.js';
 import { rn2, rnd } from './rng.js';
+import { obj_stop_timers } from './timeout.js';
 import { note_unported } from './unported.js';
 import { cansee, clear_path, couldsee } from './vision.js';
 import {
@@ -278,7 +279,7 @@ import {
 } from './do_name.js';
 
 import { snuff_candle } from './apply_splash_lit.js';
-import { canseemon, canspotmon } from './display.js';
+import { canseemon, canspotmon, newsym } from './display.js';
 
 /* C ref: mthrowu.c:24-28. Breath weapon names indexed by BZ_OFS_AD(typ).
  * Keep consistent with breath weapons in zap.c, and AD_* in monattk.h. */
@@ -544,6 +545,14 @@ async function u_catch_thrown_obj(obj, env) {
                     encumberMessage: env.hooks?.encumberMessage
                         ?? env.encumberMessage
                         ?? (subject => encumber_msg(subject, { message: env.message ?? ttyPline })),
+                    // invent.c merged() 941: the caught missile joins a
+                    // stack whose identity the hero learns by comparison.
+                    inventoryComparisonDiscovered:
+                        env.hooks?.inventoryComparisonDiscovered
+                        ?? (() => (env.message ?? ttyPline)(
+                            'You learn more about your items by comparing them.',
+                            state,
+                        )),
                 },
             });
         return true;
@@ -572,7 +581,17 @@ export async function drop_throw(obj, ohit, x, y, rawEnv = {}) {
         || Boolean(ohit && obj.otyp === EGG);
     if (!broken) broken = Boolean(ohit && shouldMulch(obj, env));
     if (broken) {
-        delobj(obj, env);
+        // mkobj.c obfree() calls obj_stop_timers() for a timed object: a
+        // thrown egg carries its hatch timer.
+        delobj(obj, {
+            ...env,
+            hooks: {
+                stopObjectTimers: (timed, hookEnv) => obj_stop_timers(
+                    timed, hookEnv.state, hookEnv,
+                ),
+                ...env.hooks,
+            },
+        });
     } else {
         if (down_gate(x, y, state) !== -1)
             broken = await ship_object(obj, x, y, false, env);
@@ -1286,6 +1305,10 @@ export async function m_throw(monster, x, y, dx, dy, range, obj, rawEnv = {}) {
 // return goes wrong (weapon hits thrower or drops).
 export async function return_from_mtoss(magr, otmp, tethered_weapon, state = game, random = { rn2, rnd }, rawEnv = {}) {
     const env = { ...rawEnv, state, random };
+    // C's three newsym() calls repaint the live map. newsym() paints the
+    // module-global game whatever state it is handed, so a foreign state
+    // (a planning clone) draws only through a redraw operation it supplies.
+    const redraw = env.newsym ?? (state === game ? newsym : () => {});
     // C uses one process-wide throttle. Each game and speculative clone
     // must own its value so planning cannot claim the live return message.
     const returnDoNotAnnoy = state._returnDoNotAnnoy ?? 0;
@@ -1345,12 +1368,8 @@ export async function return_from_mtoss(magr, otmp, tethered_weapon, state = gam
                     otmp.owornmask |= W_WEP;
                 }
             }
-            if (cansee(x, y, state)) {
-                if (typeof env.newsym === 'function')
-                    env.newsym(x, y, state);
-                else
-                    note_unported('display.c newsym');
-            }
+            if (cansee(x, y, state))
+                redraw(x, y, state);
         } else {
             /* Weapon return fumbled. */
             dmg = random.rn2(2);
@@ -1417,12 +1436,8 @@ export async function return_from_mtoss(magr, otmp, tethered_weapon, state = gam
             await snuff_candle(otmp, env);
             if (!await ship_object(otmp, x, y, false, env)) {
                 if (await flooreffects(otmp, x, y, 'drop', env)) {
-                    if (cansee(x, y, state)) {
-                        if (typeof env.newsym === 'function')
-                            env.newsym(x, y, state);
-                        else
-                            note_unported('display.c newsym');
-                    }
+                    if (cansee(x, y, state))
+                        redraw(x, y, state);
                     return;
                 }
                 const placement = place_object(otmp, x, y, env);
@@ -1444,12 +1459,8 @@ export async function return_from_mtoss(magr, otmp, tethered_weapon, state = gam
             }
         }
     }
-    if (cansee(x, y, state)) {
-        if (typeof env.newsym === 'function')
-            env.newsym(x, y, state);
-        else
-            note_unported('display.c newsym');
-    }
+    if (cansee(x, y, state))
+        redraw(x, y, state);
 }
 
 // C ref: mthrowu.c thrwmm() (968-1012). Monster throws item at another

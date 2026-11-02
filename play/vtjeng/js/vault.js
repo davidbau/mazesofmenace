@@ -567,12 +567,6 @@ async function gd_letknow(grd, state, env) {
 // -2 guard died.
 export async function gd_move(grd, env = {}) {
     const state = env.state ?? game;
-    // The planning pass (dry run) clones state but shares the guard's egd.
-    // gd_move modifies egd (fcend, fakecorr, ogx/ogy) and the map, which
-    // corrupts the live state if done on a shared reference. Returning 0
-    // (didn't move) is safe: the planning pass only decides whether dochug
-    // should attack the hero, and a guard escort never attacks.
-    if (env.planning) return 0;
     const random = env.random ?? { rn2: () => { throw new Error('no rng'); } };
     const message = env.message ?? ttyPline;
     const gdEnv = { ...env, message };
@@ -581,6 +575,18 @@ export async function gd_move(grd, env = {}) {
 
     if (!on_level(egrd.gdlevel, state.u.uz))
         return -1;
+
+    // Everything below can draw (the "Move along!" rn2(10), rloc(),
+    // gd_mv_monaway()), dig and restore the fake corridor, and repaint
+    // squares through newsym(), which always draws the live map. The dry run
+    // cannot do that silently, and skipping it would leave the plan's random
+    // draws behind the live pass's for the rest of the turn. Stop the dry run
+    // here: js/allmain.js replays this scan live and plans the rest from it.
+    if (env.planning) {
+        if (typeof env.requestPlanningInput !== 'function')
+            throw new TypeError('planned gd_move requires a planning boundary');
+        env.requestPlanningInput('vault.c gd_move');
+    }
 
     if (semi_dead || !grd.mx || egrd.gddone) {
         egrd.gddone = 1;
@@ -1244,6 +1250,13 @@ export async function invault(state, env = {}) {
         nomul(0, state);
     }
 
+    // The dry run of the elapsed-turn tail stops at the guard's question:
+    // getlin() reads keys, so the question and every effect after it belong
+    // to the live pass alone. The live pass reports { afterInput: true } from
+    // every exit past the question, so its caller can plan the rest of the
+    // turn from the answer's actual state.
+    if (env.planning) return { beforeInput: true };
+
     let buf = '';
     let trycount = 5;
     do {
@@ -1276,7 +1289,7 @@ export async function invault(state, env = {}) {
                 );
             }
             await mongone(guard, { state });
-            return;
+            return { afterInput: true };
         }
         const guardEnv = { ...env, state, random, message };
         await setmangry(guard, false, guardEnv);
@@ -1293,7 +1306,7 @@ export async function invault(state, env = {}) {
             guard.weapon_check = NEED_HTH_WEAPON;
             await mon_wield_item(guard, guardEnv);
         }
-        return;
+        return { afterInput: true };
     }
 
     if (Deaf(state)) {
@@ -1368,6 +1381,7 @@ export async function invault(state, env = {}) {
     unblock_point(x, y, state);
     EGD(guard).fcend = 1;
     EGD(guard).warncnt = 1;
+    return { afterInput: true };
 }
 
 // C ref: vault.c paygd() (1204-1247), called before end.c disclosure.

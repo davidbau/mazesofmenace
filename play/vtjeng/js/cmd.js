@@ -109,6 +109,7 @@ import {
     zdir,
     W_SADDLE,
 } from './const.js';
+import { NO_COLOR } from './terminal.js';
 import {
     doapply,
     dojump,
@@ -624,7 +625,11 @@ export async function cmdSafetyPrevention(
     return false;
 }
 
-// C ref: do.c donull().
+// C ref: do.c donull(). Returns true for ECMD_TIME and false for ECMD_OK.
+// Like C, it leaves context.move alone: rhack()'s result tail turns the
+// answer into context.move, while timed_occupation() discards it, so a
+// counted rest that cmd_safety_prevention() stops still spends the turn
+// moveloop_core() already marked as taken.
 export async function donull(state = game) {
     const prevented = await cmdSafetyPrevention(
         'Waiting',
@@ -633,7 +638,6 @@ export async function donull(state = game) {
         'did_nothing_flag',
         state,
     );
-    state.context.move = prevented ? 0 : 1;
     return !prevented;
 }
 
@@ -3117,16 +3121,15 @@ async function runShowspellsCommand(key, state) {
 async function runKnownCommand(key, state) {
     return failClosedCommand(key, state, () => dodiscovered(state, {
         message: ttyPline,
-        // o_init.c dodiscovered() writes its headings with
-        // iflags.menu_headings, the same style the inventory menu's class
-        // headings use.
+        // o_init.c dodiscovered() writes its headings with putstr(tmpwin,
+        // iflags.menu_headings.attr, ...): the attribute but not the color.
         textWindow: (lines) => displayTtyTextWindow(
             state,
             lines.map((line) => (line.heading
                 ? {
                     ...line,
                     attr: menuTitleStyle(state).titleAttr,
-                    color: menuTitleStyle(state).titleColor,
+                    color: NO_COLOR,
                 }
                 : line)),
         ),
@@ -3137,13 +3140,15 @@ async function runKnownCommand(key, state) {
 async function runKnownClassCommand(key, state) {
     return failClosedCommand(key, state, () => doclassdisco(state, {
         message: ttyPline,
+        // o_init.c doclassdisco() putstr()s its headings with
+        // iflags.menu_headings.attr and no color.
         textWindow: (lines) => displayTtyTextWindow(
             state,
             lines.map((line) => (line.heading
                 ? {
                     ...line,
                     attr: menuTitleStyle(state).titleAttr,
-                    color: menuTitleStyle(state).titleColor,
+                    color: NO_COLOR,
                 }
                 : line)),
         ),
@@ -3225,6 +3230,9 @@ export async function doterrain(state = game) {
         how: PICK_ONE,
         title: 'View which?',
         preselected: 1,
+        // cmd.c doterrain(): n == 0 means the preselected entry was toggled
+        // off and then the menu was committed; C still shows the known map.
+        emptyValue: 1,
         cancelValue: null,
         overlay: state.iflags?.menu_overlay !== false,
     });
@@ -5756,12 +5764,10 @@ export async function rhack(key, state = game, selectedPrefixEntry = null) {
             return;
         }
         if (command === 'wait') {
-            // donull() writes context.move itself, so this arm carries only
-            // the halves of rhack():3805-3825 that it does not: the reset for
-            // ECMD_OK and, for ECMD_TIME, the kickedloc clear every handler
-            // but dokick() performs.
-            if (!await donull(state)) resetCommandVars(state);
-            else clear_kickedloc(state);
+            // C ref: rhack():3810-3825, the result tail for donull()'s
+            // ECMD_OK or ECMD_TIME.
+            if (!await donull(state)) resetCommandVars(state, state.multi < 0);
+            else commandTookTime(state);
             return;
         }
         if (command === '#') {
