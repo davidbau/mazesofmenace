@@ -7,12 +7,12 @@ import { shieldeff } from './display.js';
 import { finishHeroDeath } from './end.js';
 import { game, requirePlayingGame } from './gstate.js';
 import { nameToMonster } from './mondata.js';
-import { MONSTER_FLAGS2, MONSTER_GENO } from './monster_data.js';
+import { MONSTER_FLAGS2, MONSTER_GENO, monsterHasProperName } from './monster_data.js';
 import { definiteName } from './objnam.js';
 import { withIndefiniteArticle } from './objnam.js';
 import { formatFeltMessage } from './hero_speech.js';
 import { d, rn2, rnd } from './rng.js';
-import { reportHeroEncumbrance } from './encumbrance.js';
+import { reportHeroEncumbrance } from './pickup.js';
 import { loseHeroHp } from './hack.js';
 const POISON_EFFECT = [
     'You feel weaker!',
@@ -77,7 +77,7 @@ export async function poisonHero({ reason, killer, attribute, fatal = 30, state 
     // article, even though its caller only supplied a species name.
     const species = nameToMonster(killer);
     const unique = species >= 0 && !!((MONSTER_GENO[species] ?? 0) & 0x1000);
-    const personal = species >= 0 && !!((MONSTER_FLAGS2[species] ?? 0) & 0x00080000);
+    const personal = species >= 0 && monsterHasProperName(species);
     if (unique && !personal)
         killer = definiteName(killer);
     const attributedKiller = unique || /^(?:the|an?) /iu.test(killer)

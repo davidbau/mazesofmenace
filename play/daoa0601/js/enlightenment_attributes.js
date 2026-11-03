@@ -10,12 +10,12 @@ import { fromWhat, extrinsicPropertyMask, intrinsicPropertyMask, veryFast } from
 import { hasPermanentIntrinsicProperty, propertyIsActive, propertyIsBlocked, propertyTimeout } from './properties.js';
 import { blindnessBlocked, blindfolded, heroIsBlind, permanentBlind } from './senses.js';
 import { heroHatesSilver, heroIsAmphibious, heroIsBreathless, heroPassesWalls } from './polyself.js';
-import { MONSTER_FLAGS1, MONSTER_NAME, monsterTypeName } from './monster_data.js';
+import { MONSTER_FLAGS1, MONSTER_NAME, monsterIsClinger, monsterIsFlyer, monsterTypeName } from './monster_data.js';
 import { isLavaAt, isPoolAt } from './dbridge.js';
 import { levelHasCeiling } from './dungeon.js';
 import { makePlural, withIndefiniteArticle } from './objnam.js';
 import { DWARVISH_CLOAK, LUCKSTONE, OBJECT_PROPERTY, RIN_PROTECTION, AMULET_OF_GUARDING, ROBE, TOWEL, } from './object_data.js';
-import { TT_PIT, Upolyd, W_ARMOR, W_ACCESSORY, W_WEP, W_ART } from './const.js';
+import { TT_PIT, Luck, Upolyd, W_ARMOR, W_ACCESSORY, W_WEP, W_ART } from './const.js';
 import { temporaryResistance } from './eat.js';
 export function piousness(record, { showNegative = true, suffix = '' } = {}) {
     const description = record >= 20 ? 'piously' : record > 13 ? 'devoutly'
@@ -166,7 +166,7 @@ export function attributeEnlightenmentLines(final = 0) {
     if (levitationSources && (trapped || levitationTerrain))
         message('You ', 'would levitate', 'would have levitated', `${trapped ? ' if not trapped' : ''}${trapped && levitationTerrain ? ' and' : ''}${levitationTerrain ? ' if surroundings permitted' : ''}`);
     const flightSources = intrinsicPropertyMask('flying') || extrinsicPropertyMask('flying')
-        || !!((MONSTER_FLAGS1[u.usteed?.mnum ?? -1] ?? 0) & 0x01);
+        || monsterIsFlyer(u.usteed?.mnum ?? -1);
     if (flightSources && propertyIsBlocked('flying')) {
         const terrain = u._propertySources?.flying?.blockedByTerrain;
         const reason = propertyIsActive('levitation') ? " if you weren't levitating"
@@ -174,7 +174,7 @@ export function attributeEnlightenmentLines(final = 0) {
                 : terrain && !trapped ? ' if surroundings permitted' : ' if circumstances permitted';
         message('You ', 'would fly', 'would have flown', reason);
     }
-    if ((MONSTER_FLAGS1[u.umonnum ?? -1] ?? 0) & 0x10) {
+    if (monsterIsClinger(u.umonnum ?? -1)) {
         const ceiling = levelHasCeiling();
         if (ceiling && !u.uinwater)
             can('cling to the ceiling');
@@ -275,8 +275,8 @@ export function attributeEnlightenmentLines(final = 0) {
         have('fixed abilities', 'sustainAbility');
     if (extrinsicPropertyMask('lifeSaving'))
         message('Your life ', 'will be', 'would have been', ' saved');
-    // youprop.h Luck includes the luckstone/luck item bonus.
-    const luck = (u.uluck ?? 0) + (u.moreluck ?? 0);
+    // C insight.c:1909 — youprop.h Luck includes the luckstone/luck item bonus.
+    const luck = Luck(u);
     if (luck)
         are(`${Math.abs(luck) >= 10 ? 'extremely ' : Math.abs(luck) >= 5 ? 'very ' : ''}${luck < 0 ? 'un' : ''}lucky${wizard ? ` (${luck})` : ''}`);
     else if (wizard)

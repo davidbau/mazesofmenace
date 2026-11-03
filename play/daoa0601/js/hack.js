@@ -4,7 +4,7 @@ import { setHeroGrip } from './hero_grip.js';
 import { finishHeroHelplessness } from './allmain.js';
 import { formatFeltMessage, formatHeardMessage, publishHeardMessage } from './hero_speech.js';
 import { heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
-import { BURNING, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DISMOUNT_FELL, DISMOUNT_GENERIC, DISSOLVED, DROWNING, DOOR, IS_AIR, IS_OBSTRUCTED, IS_STWALL, IS_WALL, IS_WATERWALL, IS_TREE, Is_earthlevel, Is_juiblex_level, Is_waterlevel, Is_rogue_level, LAVAPOOL, LAVAWALL, MAX_TYPE, MOAT, PARANOID_SWIM, POOL, ROOM, STONE, FAINTED, M_SEEN_FIRE, TREE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, Upolyd, WATER, W_NONDIGGABLE, W_NONPASSWALL, W_ARTI, I_SPECIAL, TIMEOUT, NO_KILLER_PREFIX, WT_TOOMUCH_DIAGONAL, TIP_SWIM, PLNMSG_BACK_ON_GROUND, DBWALL, DB_UNDER, DB_ICE, LEVEL_TIMER_KIND, def_warnsyms, A_CON, A_DEX, A_STR, COLNO, ROWNO, SCORR, SDOOR, CORR, ICE, IRONBARS, IS_FURNITURE, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, MGIVENNAME, SHOPBASE, Is_airlevel, In_sokoban, In_mines, ACCESSIBLE, AIR, DIGTYP_UNDIGGABLE, DRAWBRIDGE_UP, OBJECT_TIMER_KIND, HOLE, LANDMINE, LEVEL_TELEP, MIGR_RANDOM, P_BASIC, P_RIDING, P_TWO_WEAPON_COMBAT, P_ISRESTRICTED, P_UNSKILLED, ROLLING_BOULDER_TRAP, TELEP_TRAP, TRAPDOOR, WT_SQUEEZABLE_INV, IN_SIGHT, SHOP_DOOR_COST, PARANOID_CONFIRM, PARANOID_TRAP, TRAP_EXPLANATIONS, TRAPNUM, W_QUIVER, W_SWAPWEP, SQKY_BOARD, SLP_GAS_TRAP, RUST_TRAP, BEAR_TRAP, PIT, SPIKED_PIT, MAGIC_PORTAL, VIBRATING_SQUARE, WEB, HEADSTONE, In_endgame, is_hole, is_pit, NO_ROOM, ROOMOFFSET, SHARED, SHARED_PLUS, MAXNROFROOMS, Invocation_lev, OROOM, DELPHI, TEMPLE, COURT, MORGUE, ZOO, BARRACKS, BEEHIVE, LEPREHALL, COCKNEST, ANTHOLE, THRONE, ACH_TOWN, RLOC_NOMSG, IS_SINK, KILLED_BY_AN, LL_CONDUCT, SWAMP, GP_ALLOW_U } from './const.js';
+import { BURNING, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DISMOUNT_FELL, DISMOUNT_GENERIC, DISSOLVED, DROWNING, DOOR, IS_AIR, IS_OBSTRUCTED, IS_STWALL, IS_WALL, IS_WATERWALL, IS_TREE, Is_earthlevel, Is_juiblex_level, Is_waterlevel, Is_rogue_level, LAVAPOOL, LAVAWALL, Luck, MAX_TYPE, MOAT, PARANOID_SWIM, POOL, ROOM, STONE, FAINTED, M_SEEN_FIRE, TREE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, Upolyd, WATER, W_NONDIGGABLE, W_NONPASSWALL, W_ARTI, I_SPECIAL, TIMEOUT, NO_KILLER_PREFIX, WT_TOOMUCH_DIAGONAL, TIP_SWIM, PLNMSG_BACK_ON_GROUND, DBWALL, DB_UNDER, DB_ICE, LEVEL_TIMER_KIND, def_warnsyms, A_CON, A_DEX, A_STR, COLNO, ROWNO, SCORR, SDOOR, CORR, ICE, IRONBARS, IS_FURNITURE, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, MGIVENNAME, SHOPBASE, Is_airlevel, In_sokoban, In_mines, ACCESSIBLE, AIR, DIGTYP_UNDIGGABLE, DRAWBRIDGE_UP, OBJECT_TIMER_KIND, HOLE, LANDMINE, LEVEL_TELEP, MIGR_RANDOM, P_BASIC, P_RIDING, P_TWO_WEAPON_COMBAT, P_ISRESTRICTED, P_UNSKILLED, ROLLING_BOULDER_TRAP, TELEP_TRAP, TRAPDOOR, WT_SQUEEZABLE_INV, IN_SIGHT, SHOP_DOOR_COST, PARANOID_CONFIRM, PARANOID_TRAP, TRAP_EXPLANATIONS, TRAPNUM, W_QUIVER, W_SWAPWEP, SQKY_BOARD, SLP_GAS_TRAP, RUST_TRAP, BEAR_TRAP, PIT, SPIKED_PIT, MAGIC_PORTAL, VIBRATING_SQUARE, WEB, HEADSTONE, In_endgame, is_hole, is_pit, NO_ROOM, ROOMOFFSET, SHARED, SHARED_PLUS, MAXNROFROOMS, Invocation_lev, OROOM, DELPHI, TEMPLE, COURT, MORGUE, ZOO, BARRACKS, BEEHIVE, LEPREHALL, COCKNEST, ANTHOLE, THRONE, ACH_TOWN, RLOC_NOMSG, IS_SINK, KILLED_BY_AN, LL_CONDUCT, SWAMP, GP_ALLOW_U } from './const.js';
 import { isok } from './cmd.js';
 import { heroIsPunished, placeBallAndChain, unplaceBallAndChain, beginBallAndChainMove, finishBallAndChainMove } from './ball.js';
 import { displayLiquidName, docrt, feel_newsym, newsym, under_water, updateLastSeenTerrain, feel_location, terrain_glyph, glyphAt, canSpotMonster, canSenseMonster, canSeeMonster, monsterVisible, unmap_invisible, map_object, unmapObject, map_invisible, flush_screen } from './display.js';
@@ -23,11 +23,11 @@ import { heroIsUnaware } from './senses.js';
 import { putHeroToSleep } from './timeout.js';
 import { resetHeroFaint, getHungry, spendHeroNutrition } from './eat.js';
 import { removeWornHeroItem } from './hero_equipment.js';
-import { dropInventoryObjectAtHero } from './hero_drop.js';
+import { dropInventoryObjectAtHero, dropBoulderIntoLiquid } from './do.js';
 import { destroyFireInventory } from './zap.js';
 import { releaseAllMonsterLeashes, checkHeroLeashes } from './apply.js';
 import { splitHeroMonsterForm } from './potion.js';
-import { MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_MOVE, MONSTER_NAME, MONSTER_SIZE, MONSTER_SYMBOL, MONSTER_ATTACKS, requireMonsterData, monsterIsAmorphous, MONSTER_BODY_META, monsterIsNoncorporeal, monsterIsWhirly, monsterIsUnsolid, monsterIsVerySmall } from './monster_data.js';
+import { MONSTER_ATTACKS, MONSTER_BODY_META, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_MOVE, MONSTER_NAME, MONSTER_SIZE, MONSTER_SYMBOL, monsterHasProperName, monsterHidesUnder, monsterIsAmorphous, monsterIsBig, monsterIsEel, monsterIsFlyer, monsterIsHider, monsterIsNoncorporeal, monsterIsUnsolid, monsterIsVerySmall, monsterIsWhirly, monsterThrowsRocks, requireMonsterData } from './monster_data.js';
 import { AMULET_OF_LIFE_SAVING, BOULDER, LOADSTONE, OBJECT_MATERIAL, PICK_AXE, DWARVISH_MATTOCK, WAN_DIGGING, STATUE, CORPSE, LEVITATION_BOOTS, OBJECT_NAMES, OBJECT_SUBTYPE, OBJECT_WEIGHT, HEAVY_IRON_BALL, CANDELABRUM_OF_INVOCATION, OBJECT_NUTRITION, OBJECT_DESCRIPTIONS, TALLOW_CANDLE, requireObjectData } from './object_data.js';
 import { ownedObjectAction, simpleObjectNameWithArticle, observeObjectForNaming, makePlural, withIndefiniteArticle, objectCombatName, objectNameIsPlural, definiteObjectAction } from './objnam.js';
 import { d, rn1, rn2, rnd } from './rng.js';
@@ -48,7 +48,7 @@ import { levelAtDepth, recordDiscoveredRoom, levelHasCeiling, levelIsWaterLevel 
 import { clearHeroSliming, heroIsSliming } from './potion.js';
 import { isLavaAt, isPoolAt, isPoolOrLavaAt, isIceAt, drawbridgeUnderlyingType } from './dbridge.js';
 import { clearLevitationMasks, hasIntrinsicProperty, hasInvokedProperty, hasWornProperty, propertyIsActive, refreshMovementProperties, refreshProperty, restoreLevitationSources, setPropertyTimeout, stashLevitationSources, propertyIsBlocked, setPropertyTerrainBlocked, levitationIsPurelyTimed, propertySourceIsActive, levitationSourceIsActive, existingPropertyRecord, hasPermanentIntrinsicProperty } from './properties.js';
-import { iceDescriptionAt } from './dungeon_feature.js';
+import { iceDescriptionAt } from './pager.js';
 import { ingSuffix, upstart, depth } from './hacklib.js';
 import { objectTimers, stopObjectTimer, scheduleObjectTimer, stopLevelTimer, levelTimers } from './timeout.js';
 import { resetOccupations } from './cmd.js';
@@ -100,7 +100,6 @@ import { awardMonsterExperience, checkExperienceLevel } from './exper.js';
 import { findMonsterArmorClass } from './monworn.js';
 import { abusePet } from './dog.js';
 import { applyWaterFriction } from './mkmaze.js';
-import { dropBoulderIntoLiquid } from './boulder_pool.js';
 import { adjustHeroAlignment } from './alignment.js';
 import { damageHeroFromMonster } from './mhitu.js';
 import { currentStrength, currentAttribute, exerciseAttribute } from './attrib.js';
@@ -266,7 +265,7 @@ function boulderAt(x, y) {
     return game.level?.objects[x]?.[y]?.find(object => object.otyp === BOULDER);
 }
 function heroThrowsRocks(state = game) {
-    return !!((MONSTER_FLAGS2[heroSpecies(state)] ?? 0) & M2_ROCKTHROW);
+    return monsterThrowsRocks(heroSpecies(state));
 }
 async function stepOntoBoulder(x, y) {
     const old = glyphAt(x, y);
@@ -856,7 +855,7 @@ export function heroTightDiagonalReason(state = game) {
     const flexible = !!(flags & (M1_AMORPHOUS | M1_SLITHY | M1_UNSOLID))
         || (mnum !== null && MONSTER_SYMBOL[mnum] === S_VORTEX)
         || mnum === PM_AIR_ELEMENTAL;
-    if (mnum !== null && (MONSTER_SIZE[mnum] ?? 2) >= 3 && !flexible)
+    if (mnum !== null && monsterIsBig(mnum) && !flexible)
         return 1;
     if (inventoryWeight(state) > WT_TOOMUCH_DIAGONAL)
         return 2;
@@ -1417,8 +1416,8 @@ export async function heroLiquidEffects(options = {}) {
         state.vision_full_recalc = 1;
         return { entered: true, moved: false, died: false };
     }
-    // C Luck includes the luckstone bonus (u.uluck + u.moreluck).
-    const luck = (u.uluck ?? 0) + (u.moreluck ?? 0);
+    // C trap.c:5128 reads Luck, which includes a carried luckstone's bonus.
+    const luck = Luck(u);
     if (heroCanTeleport(state) && !heroIsUnaware(state)
         && (heroControlsTeleport(state) || random(3) < luck + 2)) {
         await publish('You attempt a teleport spell.');
@@ -3006,8 +3005,8 @@ async function finishHeroMovement({ oldx, oldy, loc, ballChainMove = null, }) {
         && (MONSTER_BODY_META[heroSpecies(game)]?.[0] ?? 0) >= 400)
         disturbBuriedZombies(u.ux, u.uy);
     const species = heroSpecies(game);
-    if (((MONSTER_FLAGS1[species] ?? 0) & M1_CONCEAL)
-        || MONSTER_SYMBOL[species] === S_EEL || u.dx || u.dy)
+    if ((monsterHidesUnder(species))
+        || monsterIsEel(species) || u.dx || u.dy)
         await hideHeroUnder();
     if ((u.dx || u.dy) && (u.m_ap_type === M_AP_OBJECT || u.m_ap_type === M_AP_FURNITURE))
         u.m_ap_type = M_AP_NOTHING;
@@ -3589,7 +3588,7 @@ export async function petRefusesHeroSwap(monster, state) {
     }
     else if (diagonal && petBadRock(monster, state, x, hero.uy0)
         && petBadRock(monster, state, hero.ux0, y)
-        && ((MONSTER_SIZE[monster.mnum] ?? 0) >= 3 || currentMonsterLoad(monster) > 600)) {
+        && (monsterIsBig(monster.mnum) || currentMonsterLoad(monster) > 600)) {
         reason = "won't fit through";
     }
     else if (monster.mpeaceful && trap) {
@@ -3631,7 +3630,7 @@ export async function settlePetHeroDisplacement(monster, state) {
     const name = monsterName(monster, {
         state,
         article: monster.mtame ? 'your'
-            : !givenName && !((MONSTER_FLAGS2[monster.mnum] ?? 0) & M2_PNAME)
+            : !givenName && !(monsterHasProperName(monster.mnum))
                 ? 'the' : 'none',
         adjective: monster.mpeaceful && !monster.mtame ? 'peaceful' : '',
         suppressSaddle: givenName,
@@ -3878,7 +3877,7 @@ async function domoveCore(dx, dy) {
         : game.level ? monsterAtPosition(game.level, newx, newy) : null;
     const hiddenCeilingMonster = monster?.mundetected && !game.context.forcefight
         && !canSenseMonster(monster)
-        && !((MONSTER_FLAGS1[monster.mnum] ?? 0) & 0x80)
+        && !(monsterHidesUnder(monster.mnum))
         && MONSTER_SYMBOL[monster.mnum] !== 57;
     // C display.h:_is_safemon() requires a spotted peaceful monster and
     // an unimpaired hero. Concealed ceiling monsters still cancel running
@@ -4279,7 +4278,7 @@ export async function noticeMonster(monster, state = game, publish = plineWithCo
         monster.mspotted = 1;
         const named = MGIVENNAME(monster) !== '';
         const article = monster.mtame ? 'your'
-            : !named && !((MONSTER_FLAGS2[monster.mnum] ?? 0) & M2_PNAME) ? 'a'
+            : !named && !(monsterHasProperName(monster.mnum)) ? 'a'
                 : 'none';
         // C hack.c:1727 suppresses the saddle only for a named monster, so
         // an unnamed steed is announced as "your saddled pony".
@@ -4369,7 +4368,7 @@ export function threateningMonsterNearby(state = game) {
                 continue;
             if (!hallucinating && (monster.mpeaceful || !monsterHasActiveAttack(monster)))
                 continue;
-            const hider = (MONSTER_FLAGS1[monster.mnum] ?? 0) & M1_HIDE;
+            const hider = monsterIsHider(monster.mnum);
             if ((hider && monster.mundetected) || monsterIsHelpless(monster)
                 || monsterIsScaredAt(monster, state, u.ux, u.uy)
                 || !canSpotMonster(monster))
@@ -4817,14 +4816,14 @@ export function flyingSupportsLoad(ignoreBoots, state = game) {
     if (flying && trapped)
         return false;
     const steedFlies = hero.usteed
-        && !!((MONSTER_FLAGS1[hero.usteed.mnum] ?? 0) & 0x01);
+        && monsterIsFlyer(hero.usteed.mnum);
     return flying || !!steedFlies;
 }
 export function inventoryWeight(state) {
     const inventory = state.inventory || [];
     const species = state.u.umonnum;
     const throwsRocks = species !== undefined && Number.isInteger(species)
-        && !!((MONSTER_FLAGS2[species] ?? 0) & M2_ROCKTHROW);
+        && monsterThrowsRocks(species);
     const objectWeightTotal = inventory.reduce((total, object) => {
         // NetHack's only coin denomination weighs one unit per 100 coins,
         // rounded after combining the entire inventory stack.

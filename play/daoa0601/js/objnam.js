@@ -11,11 +11,11 @@ import { monsterName } from './do_name.js';
 import { currency } from './currency.js';
 import { eggHasMonsterSpecies } from './egg_impact.js';
 import { garmentInscription, candyWrapperText, hawaiianMotif } from './read.js';
-import { CORPSTAT_GENDER, MV_KNOWS_EGG, P_BOW, W_AMUL, W_ARMOR, W_BALL, W_CHAIN, W_QUIVER, W_RING, W_RINGL, W_RINGR, W_SADDLE, W_SWAPWEP, W_TOOL, W_WEP, A_CHAOTIC, A_LAWFUL, A_NEUTRAL, A_NONE, Align2amask, ALTAR, BEAR_TRAP, BUFSZ, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORPSTAT_RANDOM, CORR, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_UNDER, DBWALL, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DOOR, DRAWBRIDGE_UP, F_LOOTED, FOUNTAIN, G_GENOD, G_NOCORPSE, GRAVE, HWALL, ICE, ICED_MOAT, ICED_POOL, IRONBARS, IS_DRAWBRIDGE, IS_FURNITURE, IS_WALL, is_hole, Is_rogue_level, LANDMINE, LAVAPOOL, LAVAWALL, M_AP_OBJECT, M_AP_TYPE, MAGIC_PORTAL, MOAT, P_HAMMER, P_POLEARMS, PL_PSIZ, POOL, QBUFSZ, ROCKTRAP, ROOM, ROWNO, SCORR, SDOOR, SINK, SPE_LIM, S_LDWASHER, S_LPUDDING, S_LRING, THRONE, T_LOOTED, TRAPNUM, TREE, TREE_LOOTED, TREE_SWARM, TT_LAVA, VWALL, WATER, WM_MASK, W_NONDIGGABLE, W_NONPASSWALL, WT_IRON_BALL_INCR, OBJECT_TIMER_KIND, LEVEL_TIMER_KIND } from './const.js';
+import { CORPSTAT_GENDER, MV_KNOWS_EGG, P_BOW, W_AMUL, W_ARMOR, W_BALL, W_CHAIN, W_QUIVER, W_RING, W_RINGL, W_RINGR, W_SADDLE, W_SWAPWEP, W_TOOL, W_WEP, A_CHAOTIC, A_LAWFUL, A_NEUTRAL, A_NONE, Align2amask, ALTAR, BEAR_TRAP, BUFSZ, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORPSTAT_RANDOM, CORR, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_UNDER, DBWALL, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DOOR, DRAWBRIDGE_UP, F_LOOTED, FOUNTAIN, G_GENOD, G_NOCORPSE, GRAVE, HWALL, ICE, ICED_MOAT, ICED_POOL, IRONBARS, IS_DRAWBRIDGE, IS_FURNITURE, IS_WALL, is_hole, Is_rogue_level, LANDMINE, LAVAPOOL, LAVAWALL, Luck, M_AP_OBJECT, M_AP_TYPE, MAGIC_PORTAL, MOAT, P_HAMMER, P_POLEARMS, PL_PSIZ, POOL, QBUFSZ, ROCKTRAP, ROOM, ROWNO, SCORR, SDOOR, SINK, SPE_LIM, S_LDWASHER, S_LPUDDING, S_LRING, THRONE, T_LOOTED, TRAPNUM, TREE, TREE_LOOTED, TREE_SWARM, TT_LAVA, VWALL, WATER, WM_MASK, W_NONDIGGABLE, W_NONPASSWALL, WT_IRON_BALL_INCR, OBJECT_TIMER_KIND, LEVEL_TIMER_KIND } from './const.js';
 import { mkobj, mksobj, set_corpsenm, unlinkObject, objectWeight } from './mkobj.js';
 import { heroHandName } from './body_parts.js';
 import { plineWithContinuation } from './pline.js';
-import { MONSTER_BODY_META, MONSTER_FLAGS2, MONSTER_GENO, MONSTER_NAME, MONSTER_SOUND, monsterClassSymbol, monsterIsVerySmall, monsterTypeName } from './monster_data.js';
+import { MONSTER_BODY_META, MONSTER_FLAGS2, MONSTER_GENO, MONSTER_NAME, MONSTER_SOUND, monsterClassSymbol, monsterHasProperName, monsterIsVerySmall, monsterTypeName } from './monster_data.js';
 import { possessiveName } from './hacklib.js';
 import { parseTinPreparation, setTinVariety, tinDetails, consumeRemainingFood, foodNutrition } from './eat.js';
 import { isBimanualObject, isLauncherAmmunition, isMissileObject, isPoisonableObject, isWeaponTool } from './object_properties.js';
@@ -36,7 +36,7 @@ import { placeCreatedObject } from './floor_object.js';
 import { hatchableEggSpecies } from './egg_species.js';
 import { counterWereSpecies } from './were.js';
 import { applyHeroLiquidEffects, switchHeroTerrain } from './hack.js';
-import { iceDescriptionAt } from './dungeon_feature.js';
+import { iceDescriptionAt } from './pager.js';
 import { deleteEngravingAt } from './engrave.js';
 import { fireDamageChain, deleteTrap, trapName, waterDamageObject, erosionMatters as trapErosionMatters, objectIsVulnerableToErosion, resetHeroTrap, maketrap } from './trap.js';
 import { canFallThrough, countLevelFeatures, make_grave } from './mklev.js';
@@ -324,7 +324,7 @@ export function corpseName(object, { adjective = '', includeArticle = false, sin
     const glob = object.otyp !== CORPSE && object.globby;
     let name = glob ? requireObjectName(object.otyp) : objectMonsterName(object);
     const personal = !glob && object.corpsenm !== undefined
-        && !!((MONSTER_FLAGS2[object.corpsenm] ?? 0) & 0x00080000);
+        && monsterHasProperName(object.corpsenm);
     const unique = !glob && corpseMonsterIsUnique(object.corpsenm);
     if (personal || unique)
         name = possessiveName(name);
@@ -354,7 +354,7 @@ function physicalObjectNoun(object, noun, state) {
         return `${noun} of ${withIndefiniteArticle(objectMonsterName(object))}`;
     if (object.otyp === STATUE && object.corpsenm !== undefined && object.corpsenm >= 0) {
         const name = objectMonsterName(object);
-        const personal = !!((MONSTER_FLAGS2[object.corpsenm] ?? 0) & 0x00080000);
+        const personal = monsterHasProperName(object.corpsenm);
         const monster = personal ? name : corpseMonsterIsUnique(object.corpsenm)
             ? `the ${name}` : withIndefiniteArticle(name);
         const historic = state.urole?.key === 'archeologist'
@@ -419,7 +419,7 @@ export function definiteName(name, state = game) {
 const CAPITALIZED_MONSTER_TITLES = [
     ...MONSTER_NAME.flatMap((name, species) => {
         const unique = !!((MONSTER_GENO[species] ?? 0) & 0x1000);
-        const personal = !!((MONSTER_FLAGS2[species] ?? 0) & 0x00080000);
+        const personal = monsterHasProperName(species);
         if (unique && (personal || name === 'high cleric' || name === 'long worm tail'))
             return [];
         return [name, monsterTypeName(species), monsterTypeName(species, true)];
@@ -966,7 +966,7 @@ export async function readObjectName(text, { wizardWish = false } = {}) {
     }
     await applyWishQuantity(object, parsed, wizardWish);
     lightWishedObject(object, parsed);
-    const luck = (game.u.uluck || 0) + (game.u.moreluck || 0);
+    const luck = Luck(game.u);
     const enchantmentSign = applyWishEnchantment(object, parsed, wizardWish, luck);
     await applyWishSpecies(object, parsed, wizardWish);
     applyWishBlessing(object, parsed, wizardWish, luck, enchantmentSign);

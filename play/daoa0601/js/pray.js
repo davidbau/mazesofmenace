@@ -10,9 +10,9 @@ import { heroFootName, heroEyeCount, heroEyeName, heroStomachName, monsterStomac
 import { heroIsPunished } from './ball.js';
 import { isRider } from './corpse_species.js';
 import { reviveCorpseForHero, reviveCorpseImmediately } from './corpse_revival.js';
-import { ACH_TUNE, A_CON, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, DISSOLVED, EXT_ENCUMBER, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_NONINVENT, GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_SUGGEST, HUNGRY, HVY_ENCUMBER, IS_OBSTRUCTED, Is_astralevel, LUCKMAX, LUCKMIN, M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_REFL, MM_NOMSG, P_BROAD_SWORD, P_LONG_SWORD, PARANOID_CONFIRM, PARANOID_PRAY, PLNMSG_OBJ_GLOWS, ROOM, SCORR, SDOOR, STRAT_APPEARMSG, TT_BURIEDBALL, TT_LAVA, Upolyd, W_SADDLE, WEAK } from './const.js';
+import { ACH_TUNE, A_CON, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, DISSOLVED, EXT_ENCUMBER, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_NONINVENT, GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_SUGGEST, HUNGRY, HVY_ENCUMBER, IS_OBSTRUCTED, Is_astralevel, LUCKMAX, LUCKMIN, Luck, M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_REFL, MM_NOMSG, P_BROAD_SWORD, P_LONG_SWORD, PARANOID_CONFIRM, PARANOID_PRAY, PLNMSG_OBJ_GLOWS, ROOM, SCORR, SDOOR, STRAT_APPEARMSG, TT_BURIEDBALL, TT_LAVA, Upolyd, W_SADDLE, WEAK } from './const.js';
 import { isok } from './cmd.js';
-import { reportHeroEncumbrance } from './encumbrance.js';
+import { reportHeroEncumbrance } from './pickup.js';
 import { finishHeroDeath, finishLivingGame } from './end.js';
 import { gainExperienceLevel, loseHeroExperience } from './exper.js';
 import { landFloorObject } from './floor_effects.js';
@@ -29,7 +29,7 @@ import { angerTemplePriest } from './priest.js';
 import { makeConfused, makeHallucinated, makeStunned, makeBlinded } from './potion.js';
 import { finishHeroMonsterKill } from './hero_monster_death.js';
 import { cureHeroSickness, heroIsSick } from './potion.js';
-import { healHeroLegs } from './hero_legs.js';
+import { healHeroLegs } from './do.js';
 import { confersLuck } from './hero_inventory.js';
 import { clearHeroStrangulation, heroIsStrangled } from './do_wear.js';
 import { clearHeroTrap, announceTerrainRescue } from './trap.js';
@@ -40,7 +40,7 @@ import { chooseInventoryObject } from './inventory_prompt.js';
 import { demonLord, summonMinion } from './minion.js';
 import { makemonNear } from './mklev.js';
 import { mkobj, mksobj, blessObjectState, curseObject, uncurseObjectState, objectQuantity } from './mkobj.js';
-import { MONSTER_ALIGNMENT, MONSTER_ATTACKS, MONSTER_BODY_META, MONSTER_DIFFICULTY, MONSTER_FLAGS2, MONSTER_NAME, MONSTER_SYMBOL, monsterIsUnicorn, requireMonsterData } from './monster_data.js';
+import { MONSTER_ALIGNMENT, MONSTER_ATTACKS, MONSTER_BODY_META, MONSTER_DIFFICULTY, MONSTER_FLAGS2, MONSTER_NAME, MONSTER_SYMBOL, monsterIsDemon, monsterIsUnicorn, monsterThrowsRocks, requireMonsterData } from './monster_data.js';
 import { monsterName } from './do_name.js';
 import { monstersForgetHeroResistance, monstersObserveHeroResistance, monsterHasDisintegrationResistance, monsterHasShockResistance } from './mondata.js';
 import { wakeMonstersNearWithMessages } from './mon.js';
@@ -101,10 +101,11 @@ export async function altarWrath(x, y, state = game) {
         ? `Despite your deafness, you seem to hear ${deity} say:`
         : `A voice (could it be ${deity}?) whispers:`);
     await pline('"Thou shalt pay, infidel!"');
-    const baseLuck = state.u.uluck ?? 0;
-    const luck = baseLuck + (state.u.moreluck ?? 0);
+    // C pray.c:2670 altar_wrath() reads Luck (u.uluck + u.moreluck) but
+    // change_luck() adjusts u.uluck only.
+    const luck = Luck(state.u);
     if (luck > -5 && rn2(luck + 6))
-        state.u.uluck = Math.max(LUCKMIN, baseLuck - (rn2(20) ? 1 : 2));
+        state.u.uluck = Math.max(LUCKMIN, (state.u.uluck ?? 0) - (rn2(20) ? 1 : 2));
 }
 export async function dopray() {
     const game = requireInitializedGame();
@@ -169,7 +170,7 @@ export function canPraySafely() {
 }
 function demonRejectsPrayer(alignment) {
     const game = requireInitializedGame();
-    return !!(requireMonsterData(MONSTER_FLAGS2, game.u.umonnum) & M2_DEMON) && alignment !== 0;
+    return monsterIsDemon(game.u.umonnum) && alignment !== 0;
 }
 function prayerOutcome(alignment, trouble) {
     const game = requireInitializedGame();
@@ -369,8 +370,10 @@ function inHell() {
     const game = requireInitializedGame();
     return !!game.dungeons?.[game.u.uz.dnum]?.flags?.hellish;
 }
+// C you.h:Luck; the local alias keeps the recorded rng-callsites argument
+// text (pleaseGod rn1/rn2) stable while reading the shared accessor.
 function luck() {
-    return (game.u.uluck || 0) + (game.u.moreluck || 0);
+    return Luck(game.u);
 }
 // C ref: pray.c:doturn().
 export async function doturn() {
@@ -529,7 +532,7 @@ export function heroIsSurroundedByRock(state = game) {
             if (IS_OBSTRUCTED(type) && type !== SDOOR && type !== SCORR)
                 continue;
             if (blockedByBoulders(dx, dy, state)
-                && !(requireMonsterData(MONSTER_FLAGS2, state.u.umonnum) & M2_ROCKTHROW))
+                && !(monsterThrowsRocks(state.u.umonnum)))
                 continue;
             return false;
         }
@@ -811,7 +814,7 @@ export async function angryGods(alignment, state = game) {
         heroAlignment: hero.ualign.type,
         alignmentRecord: hero.ualign.record,
         anger: hero.ugangr ?? 0,
-        luck: (hero.uluck || 0) + (hero.moreluck || 0),
+        luck: Luck(hero),
     });
     const outcome = rn2(maximum);
     const mortal = MONSTER_SYMBOL[hero.umonnum] === S_HUMAN ? 'mortal' : 'creature';
@@ -1627,7 +1630,7 @@ async function offerToAnotherGod(corpse, alignment) {
 async function offerOwnRace(corpse, highAltar, alignment) {
     const game = requireInitializedGame();
     const hero = game.u;
-    if ((MONSTER_FLAGS2[hero.umonnum] ?? 0) & M2_DEMON) {
+    if (monsterIsDemon(hero.umonnum)) {
         await pline('You find the idea very satisfying.');
         await exerciseAttribute(A_WIS, true);
     }

@@ -1,5 +1,5 @@
 // C dothrow.c:AutoReturn(), throwit(), and sho_obj_return_to_u().
-import { reportHeroEncumbrance } from './encumbrance.js';
+import { reportHeroEncumbrance } from './pickup.js';
 import { artifactById } from './artifacts.js';
 import { heroArmName, heroFootName } from './body_parts.js';
 import { KILLED_BY, W_QUIVER, W_WEP } from './const.js';
@@ -9,7 +9,7 @@ import { plineWithContinuation } from './pline.js';
 import { hitHeroWithFallingArtifact } from './falling_artifact.js';
 import { requirePlayingGame } from './gstate.js';
 import { addObjectToMonsterInventory } from './steal.js';
-import { dropObjectAtHero } from './hero_drop.js';
+import { dropObjectAtHero } from './do.js';
 import { makePlural } from './objnam.js';
 import { shipObject } from './dokick.js';
 import { AKLYS, BOOMERANG } from './object_data.js';

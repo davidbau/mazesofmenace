@@ -10,11 +10,11 @@ import { canSenseMonster, canSpotMonster, map_invisible, newsym } from './displa
 import { pline, plineWithContinuation } from './pline.js';
 import { stumbleOntoMimic } from './uhitm.js';
 import { placeObject, remove_object, stack_object } from './floor_object.js';
-import { objectNoLongerHeld } from './do.js';
+import { objectNoLongerHeld, dropInventoryObjectAtHero } from './do.js';
 import { pickupFloorObject } from './pickup.js';
 import { game } from './gstate.js';
 import { inventoryItemDescription } from './invent.js';
-import { MONSTER_SIZE, monsterTypeName } from './monster_data.js';
+import { MONSTER_SIZE, monsterIsBig, monsterTypeName } from './monster_data.js';
 import { findMonsterNearPosition } from './mklev.js';
 import { heroSpecies } from './polyself.js';
 import { unlinkMonsterObject } from './mkobj.js';
@@ -31,7 +31,6 @@ import { heroIsBlind } from './senses.js';
 import { isLavaAt, isPoolOrLavaAt } from './dbridge.js';
 import { moveHeroByTeleport } from './teleport.js';
 import { vision_recalc, vision_reset } from './vision.js';
-import { dropInventoryObjectAtHero } from './hero_drop.js';
 import { holdAnotherObject } from './hero_hold_object.js';
 import { propertyIsActive } from './properties.js';
 import { heroHasSlipperyHands } from './do_wear.js';
@@ -224,7 +223,7 @@ function pitAnchor(targetX, targetY, monster, state) {
         ? 'a boulder'
         : location && IS_FURNITURE(location.typ)
             ? 'something' : null;
-    if (monster && (MONSTER_SIZE[monster.mnum] ?? 2) >= 3
+    if (monster && monsterIsBig(monster.mnum)
         && canSpotMonster(monster))
         anchor = describeMonsterName(monster, { state });
     return anchor;

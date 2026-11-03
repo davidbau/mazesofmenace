@@ -12,7 +12,7 @@ import { isRoom } from './map_types.js';
 import { pline, plineWithContinuation, verbalize } from './pline.js';
 import { hasShopBill, hasShopkeeperData, requireShopGame } from './shop_types.js';
 import { SHOP_TYPES, saleable, shopkeeperName, shopStocksObject } from './shknam.js';
-import { MONSTER_FLAGS2, MONSTER_GENO, MONSTER_NAME, monsterIsHuman, monsterIsVampire, monsterHasHead, MONSTER_SOUND, MONSTER_LEVEL, MONSTER_NUTRITION, monsterHasNoLimbs, MONSTER_FLAGS1, MONSTER_SYMBOL } from './monster_data.js';
+import { MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_GENO, MONSTER_LEVEL, MONSTER_NAME, MONSTER_NUTRITION, MONSTER_SOUND, MONSTER_SYMBOL, monsterHasEyes, monsterHasHead, monsterHasNoLimbs, monsterHasProperName, monsterIsDemon, monsterIsHuman, monsterIsVampire, monsterPassesWalls } from './monster_data.js';
 import { heroSpecies, heroPolyGender, heroPassesWalls } from './polyself.js';
 import { monsterName } from './do_name.js';
 import { possessiveName, depth, distmin, dist2, pointsOnline, upstart } from './hacklib.js';
@@ -34,7 +34,7 @@ import { moveSpecial, specialMoverSeesHero } from './priest.js';
 import { BAG_OF_TRICKS, BRASS_LANTERN, CAN_OF_GREASE, CORPSE, CRYSTAL_BALL, DRUM_OF_EARTHQUAKE, EXPENSIVE_CAMERA, HORN_OF_PLENTY, LARGE_BOX, MAGIC_FLUTE, MAGIC_LAMP, MAGIC_MARKER, OBJECT_CHARGED, OBJECT_COST, OBJECT_NAMES, OBJECT_INITIAL_KNOWN, DUNCE_CAP, OIL_LAMP, POT_OIL, TINNING_KIT, WORTHLESS_PIECE_OF_WHITE_GLASS, PICK_AXE, DWARVISH_MATTOCK, OBJECT_MAGIC, MIRROR, POT_WATER, WAX_CANDLE, TALLOW_CANDLE, OBJECT_WEIGHT, TIN, EGG, CANDELABRUM_OF_INVOCATION, BOULDER, ROCK, LAND_MINE, BEARTRAP, LEASH, GOLD_PIECE } from './object_data.js';
 import { learnObjectType, observeObject } from './o_init.js';
 import { paymentObjectDescription, objectDescription } from './objnam.js';
-import { dropObjectAtHero } from './hero_drop.js';
+import { dropObjectAtHero } from './do.js';
 import { mergable } from './invent.js';
 import { splitObjectStack } from './mkobj.js';
 import { ACH_SHOP, recordAchievement } from './achievements.js';
@@ -219,43 +219,10 @@ export function costlySpot(x, y, state = game) {
         return null;
     return { ...spot, resident };
 }
-// C dothrow.c:check_shop_obj(). Broken objects settle through the hero's
-// current shop. Intact returns remove bills or offer a sale before stacking.
+// C shk.c:is_unpaid(); also used by dothrow.c:check_shop_obj() in dothrow.ts.
 export function objectIsUnpaid(object) {
     return Boolean(object.unpaid)
         || (object.contents || []).some(objectIsUnpaid);
-}
-export async function settleThrownShopObject(object, x, y, state = game, publish = plineWithContinuation, { broken = false } = {}) {
-    requireLiveGame(state);
-    requireShopGame(state);
-    const heroShop = state.u.ushops[0];
-    const resident = shopResident(heroShop, state);
-    if (!resident)
-        return false;
-    const spot = costlySpot(x, y, state);
-    const objectRoom = roomsAt(state.level, x, y, SHOPBASE)[0];
-    if (broken || !spot || objectRoom !== heroShop) {
-        if (objectIsUnpaid(object))
-            await stolenValue(object, state.u.ux, state.u.uy, resident.mpeaceful, {
-                state, publish, silent: false,
-            });
-        if (broken)
-            object.no_charge = true;
-        return true;
-    }
-    const previousRoom = state.u.ushops0[0];
-    if (objectRoom === heroShop || objectRoom === previousRoom) {
-        if (objectIsUnpaid(object)) {
-            const gold = containedGold(object, true);
-            removeObjectAndContentsFromBill(object, state, { resident });
-            if (gold > 0)
-                await donateGold(gold, resident, { selling: true, publish });
-        }
-        else if (x !== resident.mx || y !== resident.my) {
-            await sellHeroDroppedObject(object, x, y, state, { publish });
-        }
-    }
-    return true;
 }
 const glassGemImitations = [
     ['diamond', 'opal'], ['sapphire', 'aquamarine'], ['ruby', 'jasper'],
@@ -984,7 +951,7 @@ export function updateUnpaidObjectPrice(object, state = game) {
 export function objectOwnershipPrefix(object, state = game, { capitalized = true } = {}) {
     const species = object.corpsenm;
     if (object.otyp === CORPSE && species !== undefined && MONSTER_NAME[species] !== undefined) {
-        if ((MONSTER_FLAGS2[species] ?? 0) & M2_PNAME)
+        if (monsterHasProperName(species))
             return '';
         if (((MONSTER_GENO[species] ?? 0) & G_UNIQ)
             && !['high cleric', 'long worm tail'].includes(MONSTER_NAME[species]))
@@ -1707,7 +1674,7 @@ export async function makeAngryShopkeeper(keeper, state = game) {
 // cad/minx/beast.
 export function shopkeeperCustomerInsult(state, altUsage = false) {
     const species = heroSpecies(state);
-    const gender = (MONSTER_FLAGS2[species] ?? 0) & M2_DEMON
+    const gender = monsterIsDemon(species)
         ? 3 : heroPolyGender(state);
     const word = ['cad', 'minx', 'beast', 'fiend'][gender] || 'thing';
     return altUsage ? `"${word.charAt(0).toUpperCase()}${word.slice(1)}!  ` : word;
@@ -1821,8 +1788,7 @@ export function repairableShopDamage(record, keeper, state = game) {
             || (x === keeper.mx && y === keeper.my))
             return false;
         const resident = monsterAt(state, x, y);
-        if (resident && !((MONSTER_FLAGS1[resident.mnum] ?? 0)
-            & M1_WALLWALK))
+        if (resident && !monsterPassesWalls(resident.mnum))
             return false;
     }
     // Is it a trap?  Don't fix if the hero or a monster is in it.
@@ -4633,7 +4599,7 @@ export async function warnAboutRemovedPick(object, state = game) {
             await plineWithContinuation(`"You sneaky ${shopkeeperCustomerInsult(state)}!  Get out of here with that pick!"`);
         }
         else {
-            const hasEyes = !((MONSTER_FLAGS1[keeper.mnum] ?? 0) & M1_NOEYES);
+            const hasEyes = monsterHasEyes(keeper.mnum);
             await plineWithContinuation(`${shopkeeperName(keeper, { state })} ${hasEyes ? 'glares at' : 'is dismayed because of'} your pick!`);
         }
     }

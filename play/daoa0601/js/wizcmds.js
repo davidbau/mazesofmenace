@@ -28,14 +28,14 @@ import { monsterIsNonliving, MONSTER_GENO, MONSTER_NAME, monsterTypeName } from 
 import { finishMonsterKilled, finishMonsterLiquidDeath, killGenocidedMonsters, purgeDeadMonsters, removeMonsterFromGame, restoreNaturalMonsterShapes, smellUnseenMonster } from './mon.js';
 import { finishHeroDeath } from './end.js';
 import { finishHeroMonsterKill, finishHeroMonsterKillOutcome, finishHurtleMonsterDeath } from './hero_monster_death.js';
-import { hurtleHero } from './hero_hurtle.js';
-import { hurtleMonster } from './dothrow.js';
+import { hurtleHero, hurtleMonster } from './dothrow.js';
 import { finishTeleportArrival } from './location_effects.js';
-import { gotoLevel, deliverSpecialLevelMessages, placeHeroAtRandomArrival, resolveHeroArrivalCollision } from './level_change.js';
+import { gotoLevel, deliverSpecialLevelMessages, placeHeroAtRandomArrival } from './level_change.js';
+import { resolveHeroArrivalCollision } from './do.js';
 import { levelTeleport } from './level_teleport.js';
 import { loseHeroExperience, gainExperienceLevel } from './exper.js';
 import { exerciseAttribute } from './attrib.js';
-import { reportHeroEncumbrance } from './encumbrance.js';
+import { reportHeroEncumbrance } from './pickup.js';
 import { withMonsterNoticesBlocked, applyHeroLiquidEffects, mayDig, showGetposTip, checkSpecialRoom } from './hack.js';
 import { dungeonDepth, depth } from './hacklib.js';
 import { specialDisplayName, initOverviewRecord, insideWizardTower, levelAtDepth, levelIsWizardTower, sameDungeonLevel, specialPrototypeAt } from './dungeon.js';

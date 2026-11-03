@@ -44,17 +44,17 @@ import { breatheInDirection } from './breath_ray.js';
 import { promptDirection } from './cmd.js';
 import { finishHeroMonsterKill, finishHeroMonsterKillOutcome } from './hero_monster_death.js';
 import { hitMonsterWithThrownEggPieOrVenom } from './hero_thrown_egg_pie_venom.js';
-import { hurtleHero } from './hero_hurtle.js';
+import { hurtleHero } from './dothrow.js';
 import { placeCreatedObject, stack_object } from './floor_object.js';
 import { mksobj } from './mkobj.js';
 import { breakFloorObject, breakObjectAtLocation, objectBreaksOnImpact } from './dothrow.js';
-import { tossObjectUp } from './toss_up.js';
+import { tossObjectUp } from './dothrow.js';
 import { deleteTrap, feelTrap, clearHeroTrap, triggerHeroTrap, igniteItems, resetHeroTrap, maketrap } from './trap.js';
 import { buryFloorObjectsAt, freeHeroFromBuriedBall } from './dig.js';
 import { destroyFireMonsterInventory, monsterHasElementalResistance } from './zap.js';
 import { currentAttribute, maximumAttribute, exerciseAttribute } from './attrib.js';
-import { reportHeroEncumbrance } from './encumbrance.js';
-import { FLAMING_SPECIES, MONSTER_ATTACKS, MONSTER_EXPERIENCE_META, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_FLAGS3, MONSTER_GENO, MONSTER_LEVEL, MONSTER_MOVE, MONSTER_NAME, MONSTER_RESISTS, MONSTER_SIZE, MONSTER_SOUND, MONSTER_SYMBOL, PM_GREEN_SLIME, S_GHOST, SPECIAL_PM, monsterBreaksArmor, monsterHasHead, monsterHasNoHands, monsterHornCount, monsterIsAmorphous, monsterIsAnimal, monsterIsBat, monsterIsCentaur, monsterIsMindFlayer, monsterIsMindless, monsterIsNonliving, monsterIsSlithy, monsterIsTelepathic, monsterIsUnicorn, monsterIsUnsolid, monsterIsVampire, monsterIsVerySmall, monsterIsWeirdNonliving, monsterIsWhirly, monsterSlipsArmor, monsterSpeciesHatesSilver, monsterSpeciesSticks, monsterTypeName, monsterWrappingAllowed, validVampireShiftForm } from './monster_data.js';
+import { reportHeroEncumbrance } from './pickup.js';
+import { FLAMING_SPECIES, MONSTER_ATTACKS, MONSTER_EXPERIENCE_META, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_FLAGS3, MONSTER_GENO, MONSTER_LEVEL, MONSTER_MOVE, MONSTER_NAME, MONSTER_RESISTS, MONSTER_SIZE, MONSTER_SOUND, MONSTER_SYMBOL, PM_GREEN_SLIME, S_GHOST, SPECIAL_PM, monsterBreaksArmor, monsterHasHead, monsterHasNoHands, monsterHornCount, monsterIsAmorphous, monsterIsAnimal, monsterIsBat, monsterIsCentaur, monsterIsMindFlayer, monsterIsMindless, monsterIsNonliving, monsterIsSlithy, monsterIsTelepathic, monsterIsUnicorn, monsterIsUnsolid, monsterIsVampire, monsterIsVerySmall, monsterIsWeirdNonliving, monsterIsWhirly, monsterSlipsArmor, monsterSpeciesHatesSilver, monsterSpeciesSticks, monsterTypeName, monsterWrappingAllowed, validVampireShiftForm, monsterHasEyes, monsterHasProperName, monsterIsAmphibious, monsterIsBreathless, monsterIsEel, monsterIsHumanoid, monsterPassesWalls, monsterPerceives } from './monster_data.js';
 import { canSeeMonster, canSpotMonster, newsym, see_monsters } from './display.js';
 import { addShopDamage, deleteObject } from './shk.js';
 import { isFlimsyObject } from './object_properties.js';
@@ -70,7 +70,7 @@ import { cureHeroSickness, heroIsSick } from './potion.js';
 import { clearHeroPetrification, formCanBecomeStoneGolem, heroIsPetrifying, selfTouchPetrifyingWeapons } from './stoning.js';
 import { retouchEquipment } from './hero_retouch.js';
 import { removeHeroEquipment, removeWornHeroItem } from './hero_equipment.js';
-import { dropInventoryObjectAtHero } from './hero_drop.js';
+import { dropInventoryObjectAtHero } from './do.js';
 import { heroCanUseTwoWeapons, stopTwoWeaponCombat } from './two_weapon.js';
 import { heroIsPunished } from './ball.js';
 import { unpunishHero } from './read.js';
@@ -375,7 +375,7 @@ export function heroSpecies(state = game) {
 export function heroPolyGender(state = game) {
     const species = heroSpecies(state);
     if ((speciesEntry(MONSTER_FLAGS2, species) & 0x00040000)
-        || !(speciesEntry(MONSTER_FLAGS1, species) & 0x00020000))
+        || !monsterIsHumanoid(species))
         return 2;
     return state.flags.female ? 1 : 0;
 }
@@ -410,15 +410,15 @@ export function heroHasNoHead(state) {
 }
 export function heroIsBreathless(state = game) {
     return !!state.u.magicalBreathing
-        || !!(speciesEntry(MONSTER_FLAGS1, heroSpecies(state)) & 0x00000400);
+        || monsterIsBreathless(heroSpecies(state));
 }
 // C youprop.h:Amphibious. Breathless bodies alone do not qualify.
 export function heroIsAmphibious(state = game) {
     return !!state.u.magicalBreathing
-        || !!(speciesEntry(MONSTER_FLAGS1, heroSpecies(state)) & 0x00000200);
+        || monsterIsAmphibious(heroSpecies(state));
 }
 export function heroPassesWalls(state = game) {
-    return !!state.u.passesWalls || !!(speciesEntry(MONSTER_FLAGS1, heroSpecies(state)) & 0x08);
+    return !!state.u.passesWalls || monsterPassesWalls(heroSpecies(state));
 }
 export function heroLikesLava(state = game) {
     const hero = state.u;
@@ -910,7 +910,7 @@ async function explainFormAbilities() {
     const laysEggs = !!((MONSTER_FLAGS1[form] ?? 0) & M1_OVIPAROUS);
     const name = MONSTER_NAME[form];
     if (laysEggs && game.flags.female && name !== 'giant eel' && name !== 'electric eel') {
-        const waterEggs = MONSTER_SYMBOL[form] === S_EEL && game.u.swimming;
+        const waterEggs = monsterIsEel(form) && game.u.swimming;
         await plineWithContinuation(`Use the command #sit to ${waterEggs ? 'spawn in the water' : 'lay an egg'}.`);
     }
 }
@@ -1616,7 +1616,7 @@ export function pickFormFromClass(monsterClass) {
 }
 function formNameWithArticle(mnum) {
     const name = monsterTypeName(mnum, game.flags.female);
-    if ((MONSTER_FLAGS2[mnum] ?? 0) & M2_PNAME)
+    if (monsterHasProperName(mnum))
         return name;
     if (((MONSTER_GENO[mnum] ?? 0) & G_UNIQ) && mnum !== SPECIAL_PM
         && mnum !== nameToMonster('high cleric'))
@@ -2019,7 +2019,7 @@ function gazeCannotAffect(monster) {
         || monster.mcanmove === false
         || (monster.mfrozen ?? 0) > 0;
     const blind = !monster.mcansee;
-    const eyeless = !!((MONSTER_FLAGS1[monster.mnum] ?? 0) & M1_NOEYES);
+    const eyeless = !monsterHasEyes(monster.mnum);
     return helpless || monster.mstun || blind || eyeless;
 }
 function floatingEyeFreezeDuration(monster, state, random, rollDice) {
@@ -2126,7 +2126,7 @@ export async function useHeroGaze({ state = game, attack = heroGazeAttack(state)
             continue;
         looked++;
         if (heroIsInvisible(state)
-            && !((MONSTER_FLAGS1[monster.mnum] ?? 0) & M1_SEE_INVIS)) {
+            && !(monsterPerceives(monster.mnum))) {
             await publish(`${monsterName(monster, { state, capitalized: true })} seems not to notice your gaze.`);
             continue;
         }

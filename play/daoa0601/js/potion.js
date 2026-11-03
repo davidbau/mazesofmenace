@@ -26,7 +26,7 @@ import { canSeeMonster, canSpotMonster, displayColorName, displayLiquidName, map
 import { monsterName } from './do_name.js';
 import { tameMonster } from './dog.js';
 import { canHeroRiseUp, levelAtDepth, levelHasCeiling } from './dungeon.js';
-import { reportHeroEncumbrance } from './encumbrance.js';
+import { reportHeroEncumbrance } from './pickup.js';
 import { addExperience, gainExperienceLevel, randomExperience } from './exper.js';
 import { explode } from './explosion.js';
 import { fireDamageObject, waterDamageObject, erodeObject, objectIsVulnerableToErosion, captureLevitationState, floatHeroUp } from './trap.js';
@@ -40,11 +40,10 @@ import { depth, dist2, ledgerNo, possessiveName } from './hacklib.js';
 import { releaseHeroFromMonster } from './hero_expulsion.js';
 import { removeWornHeroItem } from './hero_equipment.js';
 import { holdAnotherObject } from './hero_hold_object.js';
-import { hurtleHero } from './hero_hurtle.js';
+import { hurtleHero } from './dothrow.js';
 import { burnAwayHeroSlime, dropHeroSliming, putHeroToSleep } from './timeout.js';
 import { freeInventoryObject, learnUnseenInventory, useUpInventoryStack } from './hero_inventory.js';
 import { hasInternalInvisibility, heroIsInvisible, invisibilityIsBlocked, syncHeroInvisibility } from './hero_invisibility.js';
-import { healHeroLegs } from './hero_legs.js';
 import { reportHeroThrownMiss } from './dothrow.js';
 import { grantHeroSeeInvisible } from './hero_seeing.js';
 import { heroIsUnaware } from './senses.js';
@@ -59,7 +58,7 @@ import { consumeInventoryItem, inventoryItemDescription } from './invent.js';
 import { chooseInventoryObject, getobj } from './inventory_prompt.js';
 import { gotoLevel } from './level_change.js';
 import { floatingAbove } from './levitation_commands.js';
-import { pickupBurden } from './lift_object.js';
+import { pickupBurden } from './pickup.js';
 import { adjustObjectLightAfterBlessing, objectLightRadius } from './light.js';
 import { detectMonsters, detectObjects } from './detect.js';
 import { cloneMonster, setMonsterMalign } from './makemon.js';
@@ -69,8 +68,8 @@ import { mkobj, blessObjectState, curseObject, curseObjectState, deallocateObjec
 import { finishMonsterKilled, removeMonsterFromGame, removeWishGrantingMonster, revealMonsterAppearance, wakeMonstersNearWithMessages } from './mon.js';
 import { monsterHasAcidResistance, monsterHasPoisonResistance, monstersForgetHeroResistance, monstersObserveHeroResistance } from './mondata.js';
 import { AD_ACID, AD_DISE, AD_PEST } from './monster_attack_types.js';
-import { MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_LEVEL, MONSTER_MAGIC_RESISTANCE, MONSTER_NAME, MONSTER_RESISTS, MONSTER_SOUND, MONSTER_SYMBOL, monsterHatesBlessings, monsterIsHuman, monsterIsPlayerMonster } from './monster_data.js';
-import { tryCallObjectType } from './do.js';
+import { MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_LEVEL, MONSTER_MAGIC_RESISTANCE, MONSTER_NAME, MONSTER_RESISTS, MONSTER_SOUND, MONSTER_SYMBOL, monsterHasEyes, monsterHatesBlessings, monsterIsHuman, monsterIsPlayerMonster } from './monster_data.js';
+import { tryCallObjectType, healHeroLegs } from './do.js';
 import { objectDescription, makePlural, verbForSubject, withIndefiniteArticle, definiteName, definiteObjectAction, objectAction, objectCombatName, objectName, objectNameIsPlural, objectQuestion, observeObjectForNaming, ownedObjectAction, ownedObjectName, simpleObjectName } from './objnam.js';
 import { hitFloorWithObject, staggerVerb } from './dothrow.js';
 import { learnObjectType, observeObject, recordObjectEncounter, recordObjectKnowledge } from './o_init.js';
@@ -91,7 +90,7 @@ import { isPoolAt } from './dbridge.js';
 import { applyLowStaminaThrow, applyThrowSlip } from './throw_state.js';
 import { offerThrownFood } from './thrown_food.js';
 import { detachThrownUnit, finishHeroThrownObjectLanding, flyHeroThrownObject, heroThrowTrajectory, prepareHeroThrownTarget } from './thrown_object.js';
-import { tossObjectUp } from './toss_up.js';
+import { tossObjectUp } from './dothrow.js';
 import { flushPendingTopline } from './tty_topline.js';
 import { dropCursedSecondaryWeapon } from './two_weapon.js';
 import { cansee, vision_recalc } from './vision.js';
@@ -995,8 +994,11 @@ async function drinkPolymorph(source, state) {
         return false;
     const controlled = source.blessed && !heroIsPolymorphed(state);
     const result = await polymorphHero(controlled ? POLY_CONTROLLED | POLY_LOW_CTRL : POLY_NOFLAGS);
+    // C min() is the hack.h macro ((x) < (y) ? (x) : (y)), so rn2(15) + 10
+    // is evaluated a second time when it is not smaller than mtimedone.
     if (controlled && state.u.mtimedone && heroIsPolymorphed(state))
-        state.u.mtimedone = Math.min(state.u.mtimedone, rn2(15) + 10);
+        state.u.mtimedone = state.u.mtimedone < rn2(15) + 10
+            ? state.u.mtimedone : rn2(15) + 10;
     return !!result?.died || !!state.program_state.gameover;
 }
 // ---- peffects() (C potion.c:1333) ----
@@ -1953,7 +1955,7 @@ async function applySupportedDirectEffect({ state, monster, potion, targetVisibl
         };
     }
     if (potion.otyp === POT_BLINDNESS) {
-        const hasEyes = !((MONSTER_FLAGS1[monster.mnum] ?? 0) & M1_NOEYES);
+        const hasEyes = monsterHasEyes(monster.mnum);
         const permanentlyBlind = (monster.mcansee === 0
             || monster.mcansee === false) && !(monster.mblinded ?? 0);
         const before = monster.mblinded ?? 0;
@@ -2052,7 +2054,7 @@ async function applySupportedDirectEffect({ state, monster, potion, targetVisibl
         monster.mblinded = 0;
         curedBlindness = true;
         if (targetSpotted
-            && !((MONSTER_FLAGS1[monster.mnum] ?? 0) & M1_NOEYES)) {
+            && monsterHasEyes(monster.mnum)) {
             await publish(`${sentenceSubject(monster)} can see again.`);
         }
     }
